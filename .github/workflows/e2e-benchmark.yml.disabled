@@ -1,0 +1,130 @@
+name: E2E Benchmark
+
+on:
+  workflow_dispatch:  # 수동 트리거
+    inputs:
+      unity_version:
+        description: 'Unity version to use'
+        required: false
+        default: '2022.3.16f1'
+  schedule:
+    - cron: '0 0 * * 0'  # 주 1회 일요일 자정
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: macos-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Git 설정 (HTTPS 인증용)
+      - name: Configure git for HTTPS
+        run: |
+          git config --global url."https://oauth2:${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
+
+      # Unity 설치
+      - name: Cache Unity installation
+        id: cache-unity
+        uses: actions/cache@v3
+        with:
+          path: /Applications/Unity
+          key: unity-${{ inputs.unity_version || '2022.3.16f1' }}-macos
+
+      - name: Install Unity
+        if: steps.cache-unity.outputs.cache-hit != 'true'
+        uses: game-ci/unity-builder@v4
+        with:
+          unityVersion: ${{ inputs.unity_version || '2022.3.16f1' }}
+          buildMethod: ''  # 설치만
+
+      # Unity 라이선스 활성화
+      - name: Activate Unity license
+        uses: game-ci/unity-activate@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+
+      # Node.js 설치
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      # Python 설치 (서버용)
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      # Chrome 설치 확인
+      - name: Verify Chrome installation
+        run: |
+          if [ -f "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" ]; then
+            echo "✅ Chrome installed"
+            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --version
+          else
+            echo "❌ Chrome not found, installing..."
+            brew install --cask google-chrome
+          fi
+
+      # 벤치마크 실행
+      - name: Run E2E benchmark
+        env:
+          CI: true
+        run: |
+          cd Tests~/E2E
+          chmod +x benchmark.sh
+          ./benchmark.sh 2>&1 | tee benchmark_ci.log
+        continue-on-error: true
+
+      # 결과 파싱
+      - name: Parse benchmark results
+        id: parse_results
+        run: |
+          cd Tests~/E2E
+
+          # JSON 결과 추출 (마지막 JSON 블록)
+          if grep -q "avgFPS" benchmark_ci.log; then
+            echo "results_found=true" >> $GITHUB_OUTPUT
+
+            # 간단한 요약 생성
+            grep -A 20 "BENCHMARK RESULTS" benchmark_ci.log > summary.txt || true
+          else
+            echo "results_found=false" >> $GITHUB_OUTPUT
+          fi
+
+      # 결과 업로드
+      - name: Upload benchmark results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results-${{ github.run_number }}
+          path: |
+            Tests~/E2E/benchmark_ci.log
+            Tests~/E2E/summary.txt
+            Tests~/E2E/build.log
+          retention-days: 30
+
+      # 실패 시 로그 출력
+      - name: Display failure logs
+        if: failure()
+        run: |
+          echo "=== Build Log (last 100 lines) ==="
+          tail -100 Tests~/E2E/build.log || echo "No build log found"
+
+          echo ""
+          echo "=== Benchmark Log ==="
+          cat Tests~/E2E/benchmark_ci.log || echo "No benchmark log found"
+
+      # Unity 라이선스 반환
+      - name: Return Unity license
+        if: always()
+        uses: game-ci/unity-return-license@v4

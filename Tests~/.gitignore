@@ -1,0 +1,15 @@
+# E2E Test Build Artifacts
+E2E/temp/
+E2E/build.log
+E2E/benchmark_*.log
+E2E/benchmark_pr.log
+E2E/summary.txt
+E2E/.env
+
+# E2E Playwright Test Results
+E2E/tests/playwright-report/
+E2E/tests/test-results/
+E2E/tests/benchmark-results.json
+
+# JavaScript Test Coverage
+JavaScript/coverage/

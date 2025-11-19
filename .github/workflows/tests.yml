@@ -1,0 +1,264 @@
+name: Tests
+
+on:
+  push:
+    branches: [master, dave]
+  pull_request:
+    branches: [master]
+
+jobs:
+  # JavaScript 브릿지 테스트
+  javascript-tests:
+    name: JavaScript Bridge Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+        # macos-latest: macOS 14 (Apple Silicon M1)
+        # windows-latest: Windows Server 2022
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+          cache-dependency-path: Tests/JavaScript/package-lock.json
+
+      - name: Install Dependencies
+        run: npm ci
+        working-directory: Tests/JavaScript
+
+      - name: Run Vitest
+        run: npm test
+        working-directory: Tests/JavaScript
+
+      - name: Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: javascript-test-results-${{ matrix.os }}
+          path: Tests/JavaScript/test-results.json
+          if-no-files-found: ignore
+
+  # Node.js Downloader 크로스 플랫폼 E2E 테스트
+  nodejs-downloader-e2e:
+    name: Node.js Downloader E2E (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+        # macos-latest: macOS 14 (Apple Silicon M1)
+        # windows-latest: Windows Server 2022
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+          cache-dependency-path: Tests~/E2E/tests/package-lock.json
+
+      - name: Install Playwright Dependencies
+        run: |
+          npm ci
+          npx playwright install chromium --with-deps
+        working-directory: Tests~/E2E/tests
+
+      - name: Run E2E Tests (macOS/Linux)
+        if: runner.os != 'Windows'
+        run: chmod +x run-all-tests.sh && ./run-all-tests.sh
+        working-directory: Tests~/E2E/tests
+        env:
+          SKIP_BUILD: true
+
+      - name: Run E2E Tests (Windows)
+        if: runner.os == 'Windows'
+        run: run-all-tests.bat
+        working-directory: Tests~/E2E/tests
+        shell: cmd
+        env:
+          SKIP_BUILD: true
+
+      - name: Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: playwright-report-nodejs-${{ matrix.os }}
+          path: Tests~/E2E/tests/playwright-report/
+          if-no-files-found: ignore
+
+      - name: Upload Test Screenshots
+        if: failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-screenshots-${{ matrix.os }}
+          path: Tests~/E2E/tests/test-results/
+          if-no-files-found: ignore
+
+  # E2E 벤치마크 테스트 (Unity 빌드는 수동)
+  e2e-validation:
+    name: E2E Test Files Validation (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+        # macos-latest: macOS 14 (Apple Silicon M1)
+        # windows-latest: Windows Server 2022
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Validate E2E Test Structure (macOS/Linux)
+        if: runner.os != 'Windows'
+        run: |
+          echo "Checking E2E test structure..."
+
+          # E2E 프로젝트 파일 확인
+          if [ ! -f "Tests/E2E/SampleUnityProject/Assets/Scripts/E2ETestRunner.cs" ]; then
+            echo "❌ E2ETestRunner.cs not found"
+            exit 1
+          fi
+
+          if [ ! -f "Tests/E2E/SampleUnityProject/Assets/Scripts/Editor/BuildScript.cs" ]; then
+            echo "❌ BuildScript.cs not found"
+            exit 1
+          fi
+
+          if [ ! -f "Tests/E2E/tests/build-and-benchmark.test.js" ]; then
+            echo "❌ build-and-benchmark.test.js not found"
+            exit 1
+          fi
+
+          if [ ! -f "Tests/E2E/tests/playwright.config.ts" ]; then
+            echo "❌ playwright.config.ts not found"
+            exit 1
+          fi
+
+          echo "✅ All E2E test files found"
+
+      - name: Validate E2E Test Structure (Windows)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          echo Checking E2E test structure...
+
+          if not exist "Tests\E2E\SampleUnityProject\Assets\Scripts\E2ETestRunner.cs" (
+            echo ❌ E2ETestRunner.cs not found
+            exit /b 1
+          )
+
+          if not exist "Tests\E2E\SampleUnityProject\Assets\Scripts\Editor\BuildScript.cs" (
+            echo ❌ BuildScript.cs not found
+            exit /b 1
+          )
+
+          if not exist "Tests\E2E\tests\build-and-benchmark.test.js" (
+            echo ❌ build-and-benchmark.test.js not found
+            exit /b 1
+          )
+
+          if not exist "Tests\E2E\tests\playwright.config.ts" (
+            echo ❌ playwright.config.ts not found
+            exit /b 1
+          )
+
+          echo ✅ All E2E test files found
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install Playwright Dependencies
+        run: npm install
+        working-directory: Tests/E2E/tests
+
+      - name: Validate Playwright Config
+        run: npx playwright --version
+        working-directory: Tests/E2E/tests
+
+      - name: Check Test Syntax
+        run: node -c build-and-benchmark.test.js
+        working-directory: Tests/E2E/tests
+
+  # Unity 빌드 테스트 (수동 트리거만)
+  # 실제 Unity 빌드는 시간이 오래 걸리므로 workflow_dispatch로만 실행
+  unity-build-test:
+    name: Unity WebGL Build Test
+    runs-on: macos-latest
+    timeout-minutes: 60
+    if: github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Cache Unity Library
+        uses: actions/cache@v3
+        with:
+          path: Tests/E2E/SampleUnityProject/Library
+          key: Library-E2E-${{ hashFiles('Tests/E2E/SampleUnityProject/**') }}
+          restore-keys: Library-E2E-
+
+      - name: Setup Unity
+        uses: game-ci/unity-builder@v4
+        env:
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+          UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
+        with:
+          projectPath: Tests/E2E/SampleUnityProject
+          targetPlatform: WebGL
+          buildMethod: BuildScript.BuildForE2EInternal
+          versioning: None
+
+      - name: Verify Build Output
+        run: |
+          if [ ! -d "Tests/E2E/SampleUnityProject/ait-build/dist" ]; then
+            echo "❌ Build output not found"
+            exit 1
+          fi
+          echo "✅ Build output verified"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install Playwright
+        run: |
+          npm ci
+          npx playwright install chromium
+        working-directory: Tests/E2E/tests
+
+      - name: Run E2E Benchmark Tests
+        run: npm test
+        working-directory: Tests/E2E/tests
+
+      - name: Upload Benchmark Results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: benchmark-results
+          path: Tests/E2E/tests/benchmark-results.json
+
+      - name: Upload Test Report
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: playwright-report
+          path: Tests/E2E/tests/playwright-report/

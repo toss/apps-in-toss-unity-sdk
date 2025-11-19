@@ -1,0 +1,18 @@
+{
+  "name": "ait-sdk-e2e-tests",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "E2E benchmark tests for Apps in Toss Unity SDK",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:debug": "playwright test --debug",
+    "report": "playwright show-report"
+  },
+  "keywords": ["e2e", "benchmark", "unity", "webgl"],
+  "author": "",
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "@playwright/test": "^1.40.0"
+  }
+}

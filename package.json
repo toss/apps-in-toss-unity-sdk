@@ -1,1 +1,30 @@
-{"name":"com.appsintoss.miniapp","displayName":"Apps in Toss SDK","description":"Apps in Toss Mini App Unity Engine Adapter SDK Package.","version":"1.0.0","unity":"2019.4","unityRelease":"29f1","keywords":["Unity","AppsInToss","MiniApp","토스","Toss"],"author":{"name":"Apps in Toss Team","email":"dev@appsintoss.com"},"license":"MIT","homepage":"https://appsintoss.com","repository":{"type":"git","url":"https://github.com/appsintoss/apps-in-toss-unity-transform-sdk"},"dependencies":{},"engines":{"unity":">=2019.4"},"category":"Platform SDK","samples":[{"displayName":"Basic Integration","description":"Basic Apps in Toss SDK integration example","path":"Samples~/BasicIntegration"},{"displayName":"Payment Example","description":"Payment integration with Toss Pay","path":"Samples~/PaymentExample"},{"displayName":"Advertisement Example","description":"Advertisement integration example","path":"Samples~/AdExample"}]}
+{
+  "name": "im.toss.apps-in-toss-unity-sdk",
+  "displayName": "Apps in Toss SDK",
+  "description": "Apps in Toss Mini App Unity Engine Adapter SDK Package.",
+  "version": "0.0.1",
+  "unity": "2019.4",
+  "unityRelease": "29f1",
+  "keywords": [
+    "Unity",
+    "AppsInToss",
+    "MiniApp",
+    "WebGL",
+    "토스",
+    "Toss"
+  ],
+  "author": {
+    "name": "Apps in Toss Team",
+    "email": "dev@appsintoss.com"
+  },
+  "homepage": "https://appsintoss.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/appsintoss/apps-in-toss-unity-transform-sdk"
+  },
+  "dependencies": {},
+  "engines": {
+    "unity": ">=2019.4"
+  },
+  "category": "Platform SDK"
+}

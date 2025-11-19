@@ -9,10 +9,10 @@ namespace AppsInToss
     public class AITEditorScriptObject : ScriptableObject
     {
         [Header("앱 기본 정보")]
-        public string appName = "my-unity-game";
-        public string displayName = "my-unity-game";
-        public string version = "1.0.0";
-        public string description = "Apps in Toss 미니앱 게임";
+        public string appName = "";
+        public string displayName = "";
+        public string version = "0.0.1";
+        public string description = "";
 
         [Header("브랜드 설정")]
         public string primaryColor = "#3182F6";
@@ -43,5 +43,64 @@ namespace AppsInToss
 
         [Header("플러그인 설정")]
         public string[] plugins = new string[] { };
+
+        /// <summary>
+        /// 아이콘 URL 유효성 검사
+        /// </summary>
+        public bool IsIconUrlValid()
+        {
+            return !string.IsNullOrWhiteSpace(iconUrl) &&
+                   (iconUrl.StartsWith("http://") || iconUrl.StartsWith("https://"));
+        }
+
+        /// <summary>
+        /// 앱 ID 유효성 검사
+        /// </summary>
+        public bool IsAppNameValid()
+        {
+            if (string.IsNullOrWhiteSpace(appName))
+                return false;
+
+            // 영문, 숫자, 하이픈만 허용
+            foreach (char c in appName)
+            {
+                if (!char.IsLetterOrDigit(c) && c != '-')
+                    return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// 버전 형식 검사 (x.y.z)
+        /// </summary>
+        public bool IsVersionValid()
+        {
+            if (string.IsNullOrWhiteSpace(version))
+                return false;
+
+            string[] parts = version.Split('.');
+            if (parts.Length != 3)
+                return false;
+
+            foreach (string part in parts)
+            {
+                if (!int.TryParse(part, out _))
+                    return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// 배포 준비 완료 여부
+        /// </summary>
+        public bool IsReadyForDeploy()
+        {
+            return IsIconUrlValid() &&
+                   IsAppNameValid() &&
+                   IsVersionValid() &&
+                   !string.IsNullOrWhiteSpace(deploymentKey);
+        }
     }
 }

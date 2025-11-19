@@ -86,8 +86,6 @@ if (window.ReactNativeWebView) {
     console.log('[AIT] ReactNativeWebView.postMessage:', typeof window.ReactNativeWebView.postMessage !== 'undefined' ? 'YES' : 'NO');
 }
 
-var options
-window.ReactNativeWebView.postMessage('loadGoogleAdMobIn', options)
 // window 객체의 모든 Google/AdMob/AIT/Toss 관련 속성 출력
 var relevantProps = [];
 for (var key in window) {

@@ -46,9 +46,37 @@ namespace AppsInToss
 
     public class AITConvertCore
     {
+        // 빌드 취소 플래그
+        private static bool isCancelled = false;
+
         static AITConvertCore()
         {
 
+        }
+
+        /// <summary>
+        /// 빌드 취소 요청
+        /// </summary>
+        public static void CancelBuild()
+        {
+            isCancelled = true;
+            Debug.Log("[AIT] 빌드 취소 요청됨");
+        }
+
+        /// <summary>
+        /// 빌드 취소 플래그 리셋
+        /// </summary>
+        public static void ResetCancellation()
+        {
+            isCancelled = false;
+        }
+
+        /// <summary>
+        /// 빌드가 취소되었는지 확인
+        /// </summary>
+        public static bool IsCancelled()
+        {
+            return isCancelled;
         }
 
         public static void Init()
@@ -62,25 +90,22 @@ namespace AppsInToss
             string templateHeader = "PROJECT:";
             var editorConfig = UnityUtil.GetEditorConf();
 
-            // Apps in Toss 플랫폼에 맞는 WebGL 최적화 설정
-            PlayerSettings.WebGL.threadsSupport = false;
-            PlayerSettings.runInBackground = false;
+            // Unity 버전별 최적화 프리셋 자동 적용
+            Debug.Log($"[AIT] 현재 Unity 버전: {AITBuildPresets.GetUnityVersionInfo()}");
 
-            // 압축 설정 (사용자 설정 및 Unity 버전에 따라)
-            if (editorConfig.enableCompression)
+            if (editorConfig.enableOptimization)
             {
-#if UNITY_2022_3_OR_NEWER
-                // Unity 2022.3+ : Brotli 압축 (최대 성능)
-                PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Brotli;
-#else
-                // Unity 2021.3 이하: Gzip 압축 (안정적)
-                PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Gzip;
-#endif
+                AITBuildPresets.ApplyOptimalSettings();
             }
             else
             {
+                // 최소 설정만 적용
                 PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Disabled;
             }
+
+            // Apps in Toss 플랫폼에 맞는 WebGL 기본 설정
+            PlayerSettings.WebGL.threadsSupport = false;
+            PlayerSettings.runInBackground = false;
 
 #if UNITY_2022_3_OR_NEWER
             PlayerSettings.WebGL.template = $"{templateHeader}AITTemplate2022";
@@ -93,64 +118,15 @@ namespace AppsInToss
             PlayerSettings.WebGL.linkerTarget = WebGLLinkerTarget.Wasm;
             PlayerSettings.WebGL.dataCaching = false;
 
-#if UNITY_2021_2_OR_NEWER
-            PlayerSettings.WebGL.debugSymbolMode = WebGLDebugSymbolMode.External;
-#else
-            PlayerSettings.WebGL.debugSymbols = true;
-#endif
-
-            // 최적화 설정 (Unity 버전별 - AppsInToss 문서 권장사항)
-            if (editorConfig.enableOptimization)
-            {
-                // 모든 버전: 엔진 코드 스트리핑
-                PlayerSettings.stripEngineCode = true;
-
-#if UNITY_2023_3_OR_NEWER
-                // Unity 2023.3 LTS (Unity 6): 최고 성능 최적화 (문서 권장)
-                PlayerSettings.WebGL.memorySize = 1024;  // Unity 6 - 더 큰 메모리 풀
-                PlayerSettings.WebGL.exceptionSupport = WebGLExceptionSupport.ExplicitlyThrownExceptionsOnly;
-                // PlayerSettings.WebGL.threadsSupport = true;  // 모바일 브라우저 호환성을 위해 비활성화
-                PlayerSettings.WebGL.powerPreference = WebGLPowerPreference.HighPerformance;
-#elif UNITY_2022_3_OR_NEWER
-                // Unity 2022.3 LTS: 고급 최적화 (문서 권장)
-                PlayerSettings.WebGL.memorySize = 512;
-                PlayerSettings.WebGL.exceptionSupport = WebGLExceptionSupport.ExplicitlyThrownExceptionsOnly;
-                PlayerSettings.WebGL.threadsSupport = false;  // 브라우저 호환성
-#elif UNITY_2021_2_OR_NEWER
-                // Unity 2021.3 LTS: 안정적 설정 (문서 권장)
-                PlayerSettings.WebGL.memorySize = 256;
-                PlayerSettings.WebGL.linkerTarget = WebGLLinkerTarget.Wasm;
-#pragma warning disable CS0618
-                PlayerSettings.SetManagedStrippingLevel(BuildTargetGroup.WebGL, ManagedStrippingLevel.High);
-#pragma warning restore CS0618
-#endif
-            }
-
             // Apps in Toss 플랫폼 특화 설정
             PlayerSettings.companyName = "Apps in Toss";
             PlayerSettings.defaultCursor = null;
             PlayerSettings.cursorHotspot = Vector2.zero;
 
             // 설정 요약 로그
-            string unityVersion = "Unknown";
-#if UNITY_2023_3_OR_NEWER
-            unityVersion = "2023.3+ (Unity 6)";
-#elif UNITY_2022_3_OR_NEWER
-            unityVersion = "2022.3 LTS";
-#elif UNITY_2021_2_OR_NEWER
-            unityVersion = "2021.3 LTS";
-#elif UNITY_2020_3_OR_NEWER
-            unityVersion = "2020.3 LTS";
-#endif
-
-            Debug.Log($"[AIT] Unity 버전: {unityVersion}");
             Debug.Log($"[AIT] WebGL Template: {PlayerSettings.WebGL.template}");
             Debug.Log($"[AIT] 압축 포맷: {PlayerSettings.WebGL.compressionFormat}");
-            Debug.Log($"[AIT] 최적화 활성화: {editorConfig.enableOptimization}");
-            if (editorConfig.enableOptimization)
-            {
-                Debug.Log($"[AIT] 메모리 크기: {PlayerSettings.WebGL.memorySize}MB");
-            }
+            Debug.Log($"[AIT] 메모리 크기: {PlayerSettings.WebGL.memorySize}MB");
         }
 
         private static void EnsureWebGLTemplatesExist()
@@ -223,6 +199,54 @@ namespace AppsInToss
             BUILD_WEBGL_FAILED = 2,
             INVALID_APP_CONFIG = 3,
             NETWORK_ERROR = 4,
+            CANCELLED = 5,
+        }
+
+        /// <summary>
+        /// 에러 코드를 사용자 친화적 메시지로 변환
+        /// </summary>
+        public static string GetErrorMessage(AITExportError error)
+        {
+            switch (error)
+            {
+                case AITExportError.SUCCEED:
+                    return "성공";
+
+                case AITExportError.NODE_NOT_FOUND:
+                    return "Node.js를 찾을 수 없습니다.\n\n" +
+                           "해결 방법:\n" +
+                           "1. https://nodejs.org 에서 Node.js 설치\n" +
+                           "2. Unity Editor 재시작\n" +
+                           "3. 터미널에서 'node --version' 확인";
+
+                case AITExportError.BUILD_WEBGL_FAILED:
+                    return "WebGL 빌드에 실패했습니다.\n\n" +
+                           "해결 방법:\n" +
+                           "1. Unity Console 창에서 에러 메시지 확인\n" +
+                           "2. WebGL Build Support가 설치되어 있는지 확인\n" +
+                           "3. 프로젝트에 빌드 오류가 없는지 확인\n" +
+                           "4. File > Build Settings > WebGL에서 직접 빌드 시도";
+
+                case AITExportError.INVALID_APP_CONFIG:
+                    return "앱 설정이 올바르지 않습니다.\n\n" +
+                           "해결 방법:\n" +
+                           "1. Apps in Toss > Build & Deploy Window 열기\n" +
+                           "2. 설정 섹션에서 아이콘 URL 입력 (필수)\n" +
+                           "3. 앱 ID, 버전 등 기본 정보 확인";
+
+                case AITExportError.NETWORK_ERROR:
+                    return "네트워크 오류가 발생했습니다.\n\n" +
+                           "해결 방법:\n" +
+                           "1. 인터넷 연결 확인\n" +
+                           "2. npm 레지스트리 접속 가능 여부 확인\n" +
+                           "3. 방화벽 또는 프록시 설정 확인";
+
+                case AITExportError.CANCELLED:
+                    return "사용자에 의해 빌드가 취소되었습니다.";
+
+                default:
+                    return $"알 수 없는 오류가 발생했습니다. (코드: {error})";
+            }
         }
 
         public static AITEditorScriptObject config => UnityUtil.GetEditorConf();
@@ -255,6 +279,9 @@ namespace AppsInToss
         /// <returns>변환 결과</returns>
         public static AITExportError DoExport(bool buildWebGL = true, bool doPackaging = true)
         {
+            // 빌드 시작 전 취소 플래그 리셋
+            ResetCancellation();
+
             Init();
 
             Debug.Log("Apps in Toss 미니앱 변환을 시작합니다...");
@@ -270,6 +297,13 @@ namespace AppsInToss
             {
                 if (buildWebGL)
                 {
+                    // 취소 확인
+                    if (IsCancelled())
+                    {
+                        Debug.LogWarning("[AIT] 빌드가 취소되었습니다.");
+                        return AITExportError.CANCELLED;
+                    }
+
                     var webglResult = BuildWebGL();
                     if (webglResult != AITExportError.SUCCEED)
                     {
@@ -280,6 +314,13 @@ namespace AppsInToss
                 // Apps in Toss 미니앱 패키지 생성
                 if (doPackaging)
                 {
+                    // 취소 확인
+                    if (IsCancelled())
+                    {
+                        Debug.LogWarning("[AIT] 빌드가 취소되었습니다.");
+                        return AITExportError.CANCELLED;
+                    }
+
                     var exportResult = GenerateMiniAppPackage();
                     if (exportResult != AITExportError.SUCCEED)
                     {
@@ -501,6 +542,8 @@ namespace AppsInToss
             }
             else
             {
+                // 캐시 통계 출력
+                LogBuildCacheStats(buildProjectPath);
                 Debug.Log("[AIT] node_modules가 존재합니다. npm install을 건너뜁니다.");
             }
 
@@ -701,6 +744,29 @@ namespace AppsInToss
 
         private static string FindNpmPath()
         {
+            // 1. 시스템 설치 npm 우선 사용
+            string systemNpm = FindSystemNpm();
+            if (!string.IsNullOrEmpty(systemNpm))
+            {
+                Debug.Log($"[npm] 시스템 npm 사용: {systemNpm}");
+                return systemNpm;
+            }
+
+            // 2. Embedded portable Node.js 사용 (자동 다운로드)
+            string embeddedNpm = AITNodeJSDownloader.FindEmbeddedNpm(autoDownload: true);
+            if (!string.IsNullOrEmpty(embeddedNpm))
+            {
+                Debug.Log($"[npm] Embedded npm 사용: {embeddedNpm}");
+                return embeddedNpm;
+            }
+
+            // 3. 둘 다 없으면 에러
+            Debug.LogError("[npm] npm을 찾을 수 없습니다. Node.js가 설치되어 있는지 확인하세요.");
+            return null;
+        }
+
+        private static string FindSystemNpm()
+        {
             // 1. 일반적인 npm 설치 경로 확인
             string[] possiblePaths = new string[]
             {
@@ -713,7 +779,7 @@ namespace AppsInToss
             {
                 if (File.Exists(path))
                 {
-                    Debug.Log($"[npm] npm 발견: {path}");
+                    Debug.Log($"[npm] 시스템 npm 발견: {path}");
                     return path;
                 }
             }
@@ -740,7 +806,7 @@ namespace AppsInToss
 
                 if (process.ExitCode == 0 && !string.IsNullOrEmpty(output) && File.Exists(output))
                 {
-                    Debug.Log($"[npm] which로 npm 발견: {output}");
+                    Debug.Log($"[npm] which로 시스템 npm 발견: {output}");
                     return output;
                 }
             }
@@ -873,6 +939,65 @@ namespace AppsInToss
                 Directory.Delete(path, true);
             }
             catch { }
+        }
+
+        /// <summary>
+        /// 빌드 캐시 통계 출력
+        /// </summary>
+        private static void LogBuildCacheStats(string buildProjectPath)
+        {
+            try
+            {
+                var nodeModulesPath = Path.Combine(buildProjectPath, "node_modules");
+                var npmCachePath = Path.Combine(buildProjectPath, ".npm-cache");
+
+                if (Directory.Exists(nodeModulesPath))
+                {
+                    long nodeModulesSize = GetDirectorySize(nodeModulesPath);
+                    int packageCount = Directory.GetDirectories(nodeModulesPath).Length;
+
+                    Debug.Log($"[AIT] ✓ 빌드 캐시 사용 중:");
+                    Debug.Log($"[AIT]   - node_modules: {nodeModulesSize / 1024 / 1024}MB ({packageCount}개 패키지)");
+                    Debug.Log($"[AIT]   - npm install 건너뜀 → 약 1-2분 절약!");
+                }
+
+                if (Directory.Exists(npmCachePath))
+                {
+                    long npmCacheSize = GetDirectorySize(npmCachePath);
+                    Debug.Log($"[AIT]   - npm 캐시: {npmCacheSize / 1024 / 1024}MB");
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[AIT] 캐시 통계 출력 실패: {e.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 디렉토리 크기 계산
+        /// </summary>
+        private static long GetDirectorySize(string path)
+        {
+            if (!Directory.Exists(path))
+                return 0;
+
+            long size = 0;
+            try
+            {
+                var files = Directory.GetFiles(path, "*", SearchOption.AllDirectories);
+                foreach (var file in files)
+                {
+                    try
+                    {
+                        var fileInfo = new FileInfo(file);
+                        size += fileInfo.Length;
+                    }
+                    catch { }
+                }
+            }
+            catch { }
+
+            return size;
         }
     }
 

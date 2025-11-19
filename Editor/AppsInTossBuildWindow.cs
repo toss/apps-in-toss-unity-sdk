@@ -24,6 +24,9 @@ namespace AppsInToss
         // Settings 섹션 접기/펴기
         private bool showSettings = true;
 
+        // 빌드 시간 측정
+        private System.Diagnostics.Stopwatch buildStopwatch = new System.Diagnostics.Stopwatch();
+
         [MenuItem("Apps in Toss/Build & Deploy Window", false, 1)]
         public static void ShowWindow()
         {
@@ -82,9 +85,23 @@ namespace AppsInToss
 
                 // 앱 기본 정보
                 EditorGUILayout.LabelField("앱 기본 정보", EditorStyles.boldLabel);
+
+                // 앱 ID (검증 포함)
                 config.appName = EditorGUILayout.TextField("앱 ID", config.appName);
+                if (!string.IsNullOrWhiteSpace(config.appName) && !config.IsAppNameValid())
+                {
+                    EditorGUILayout.HelpBox("앱 ID는 영문, 숫자, 하이픈(-)만 사용할 수 있습니다.", MessageType.Warning);
+                }
+
                 config.displayName = EditorGUILayout.TextField("표시 이름", config.displayName);
+
+                // 버전 (검증 포함)
                 config.version = EditorGUILayout.TextField("버전", config.version);
+                if (!string.IsNullOrWhiteSpace(config.version) && !config.IsVersionValid())
+                {
+                    EditorGUILayout.HelpBox("버전은 x.y.z 형식이어야 합니다. (예: 1.0.0)", MessageType.Warning);
+                }
+
                 config.description = EditorGUILayout.TextArea(config.description, GUILayout.Height(60));
 
                 GUILayout.Space(10);
@@ -94,13 +111,24 @@ namespace AppsInToss
                 config.primaryColor = EditorGUILayout.TextField("기본 색상", config.primaryColor);
                 config.iconUrl = EditorGUILayout.TextField("아이콘 URL (필수)", config.iconUrl);
 
-                // 아이콘 URL 검증 경고
+                // 아이콘 URL 검증
                 if (string.IsNullOrWhiteSpace(config.iconUrl))
                 {
                     EditorGUILayout.HelpBox(
                         "⚠️ 아이콘 URL을 입력해주세요. 빌드 시 필수입니다.\n예: https://your-domain.com/icon.png",
                         MessageType.Warning
                     );
+                }
+                else if (!config.IsIconUrlValid())
+                {
+                    EditorGUILayout.HelpBox(
+                        "⚠️ 아이콘 URL은 http:// 또는 https://로 시작해야 합니다.",
+                        MessageType.Error
+                    );
+                }
+                else
+                {
+                    EditorGUILayout.HelpBox("✓ 아이콘 URL이 올바른 형식입니다.", MessageType.Info);
                 }
 
                 GUILayout.Space(10);
@@ -179,12 +207,72 @@ namespace AppsInToss
             string buildPath = GetBuildTemplatePath();
             bool hasBuild = Directory.Exists(buildPath);
             EditorGUILayout.LabelField("빌드 상태:", hasBuild ? "빌드 완료" : "빌드 필요");
+
+            GUILayout.Space(5);
+
+            // 설정 검증 상태 요약
+            bool readyForBuild = config.IsIconUrlValid() && config.IsAppNameValid() && config.IsVersionValid();
+            bool readyForDeploy = config.IsReadyForDeploy();
+
+            if (readyForBuild)
+            {
+                EditorGUILayout.HelpBox("✓ 빌드 준비 완료", MessageType.Info);
+            }
+            else
+            {
+                EditorGUILayout.HelpBox("⚠ 설정을 완료해주세요 (아이콘 URL, 앱 ID, 버전)", MessageType.Warning);
+            }
+
+            if (hasBuild && readyForDeploy)
+            {
+                EditorGUILayout.HelpBox("✓ 배포 준비 완료", MessageType.Info);
+            }
+            else if (hasBuild && !readyForDeploy)
+            {
+                EditorGUILayout.HelpBox("⚠ 배포 키를 입력해주세요", MessageType.Warning);
+            }
+
+            GUILayout.Space(5);
+
+            // 빌드 통계
+            var stats = AITBuildHistory.GetStatistics();
+            if (stats.totalBuilds > 0)
+            {
+                EditorGUILayout.LabelField("빌드 통계:", EditorStyles.boldLabel);
+                EditorGUILayout.LabelField($"  총 빌드: {stats.totalBuilds}회");
+                EditorGUILayout.LabelField($"  성공률: {stats.SuccessRate:F1}% ({stats.successfulBuilds}성공/{stats.failedBuilds}실패)");
+                EditorGUILayout.LabelField($"  평균 시간: {stats.averageBuildTime:F1}초");
+
+                if (GUILayout.Button("빌드 히스토리 초기화", GUILayout.Height(20)))
+                {
+                    if (EditorUtility.DisplayDialog("히스토리 초기화", "모든 빌드 히스토리를 삭제하시겠습니까?", "삭제", "취소"))
+                    {
+                        AITBuildHistory.ClearHistory();
+                        AppendLog("빌드 히스토리가 초기화되었습니다.");
+                    }
+                }
+            }
+
             EditorGUILayout.EndVertical();
         }
 
         private void DrawActionButtons()
         {
             EditorGUILayout.LabelField("🚀 작업", EditorStyles.boldLabel);
+
+            // 빌드 중일 때 취소 버튼 표시
+            bool isAnyBuildRunning = isBuildingStep1 || isBuildingStep2 || isBuildingStep3;
+            if (isAnyBuildRunning)
+            {
+                GUI.backgroundColor = new Color(0.9f, 0.3f, 0.3f);
+                if (GUILayout.Button("⛔ Cancel Build", GUILayout.Height(50)))
+                {
+                    AITConvertCore.CancelBuild();
+                    AppendLog("빌드 취소 요청됨...");
+                }
+                GUI.backgroundColor = Color.white;
+                GUILayout.Space(10);
+            }
 
             EditorGUI.BeginDisabledGroup(isBuildingStep1 || isBuildingStep2 || isBuildingStep3);
 
@@ -323,28 +411,65 @@ namespace AppsInToss
         {
             if (!ValidateSettings()) return;
 
+            // 빌드 전 검증
+            var validationErrors = AITBuildValidator.ValidateBeforeBuild();
+            if (validationErrors.Count > 0)
+            {
+                string errorMessage = AITBuildValidator.FormatValidationErrors(validationErrors);
+                AppendLog("✗ 빌드 전 검증 실패:");
+                foreach (var error in validationErrors)
+                {
+                    AppendLog($"  - {error}");
+                }
+                EditorUtility.DisplayDialog("빌드 전 검증 실패", errorMessage, "확인");
+                return;
+            }
+
             AppendLog("WebGL 빌드 시작...");
             isBuildingStep1 = true;
+            buildStopwatch.Restart();
+
+            // 빌드 히스토리 항목 생성
+            var historyEntry = new BuildHistoryEntry
+            {
+                buildType = "WebGL",
+                appVersion = config.version
+            };
 
             try
             {
                 var result = AITConvertCore.DoExport(buildWebGL: true, doPackaging: false);
+                buildStopwatch.Stop();
                 isBuildingStep1 = false;
+
+                historyEntry.success = (result == AITConvertCore.AITExportError.SUCCEED);
+                historyEntry.buildTimeSeconds = (float)buildStopwatch.Elapsed.TotalSeconds;
 
                 if (result == AITConvertCore.AITExportError.SUCCEED)
                 {
-                    AppendLog("✓ WebGL 빌드 완료!");
-                    EditorUtility.DisplayDialog("성공", "WebGL 빌드가 완료되었습니다!", "확인");
+                    AppendLog($"✓ WebGL 빌드 완료! (소요 시간: {buildStopwatch.Elapsed.TotalSeconds:F1}초)");
+                    EditorUtility.DisplayDialog("성공", $"WebGL 빌드가 완료되었습니다!\n\n소요 시간: {buildStopwatch.Elapsed.TotalSeconds:F1}초", "확인");
                 }
                 else
                 {
+                    string errorMessage = AITConvertCore.GetErrorMessage(result);
+                    historyEntry.errorMessage = result.ToString();
                     AppendLog($"✗ WebGL 빌드 실패: {result}");
-                    EditorUtility.DisplayDialog("실패", $"WebGL 빌드 실패:\n{result}", "확인");
+                    EditorUtility.DisplayDialog("빌드 실패", errorMessage, "확인");
                 }
+
+                // 빌드 히스토리 저장
+                AITBuildHistory.AddHistory(historyEntry);
             }
             catch (Exception e)
             {
+                buildStopwatch.Stop();
                 isBuildingStep1 = false;
+                historyEntry.success = false;
+                historyEntry.buildTimeSeconds = (float)buildStopwatch.Elapsed.TotalSeconds;
+                historyEntry.errorMessage = e.Message;
+                AITBuildHistory.AddHistory(historyEntry);
+
                 AppendLog($"✗ 오류: {e.Message}");
                 EditorUtility.DisplayDialog("오류", e.Message, "확인");
             }
@@ -356,26 +481,48 @@ namespace AppsInToss
 
             AppendLog("패키징 시작...");
             isBuildingStep2 = true;
+            buildStopwatch.Restart();
+
+            var historyEntry = new BuildHistoryEntry
+            {
+                buildType = "Package",
+                appVersion = config.version
+            };
 
             try
             {
                 var result = AITConvertCore.DoExport(buildWebGL: false, doPackaging: true);
+                buildStopwatch.Stop();
                 isBuildingStep2 = false;
+
+                historyEntry.success = (result == AITConvertCore.AITExportError.SUCCEED);
+                historyEntry.buildTimeSeconds = (float)buildStopwatch.Elapsed.TotalSeconds;
 
                 if (result == AITConvertCore.AITExportError.SUCCEED)
                 {
-                    AppendLog("✓ 패키징 완료!");
-                    EditorUtility.DisplayDialog("성공", "패키징이 완료되었습니다!", "확인");
+                    AppendLog($"✓ 패키징 완료! (소요 시간: {buildStopwatch.Elapsed.TotalSeconds:F1}초)");
+                    EditorUtility.DisplayDialog("성공", $"패키징이 완료되었습니다!\n\n소요 시간: {buildStopwatch.Elapsed.TotalSeconds:F1}초", "확인");
                 }
                 else
                 {
+                    string errorMessage = AITConvertCore.GetErrorMessage(result);
+                    historyEntry.errorMessage = result.ToString();
                     AppendLog($"✗ 패키징 실패: {result}");
-                    EditorUtility.DisplayDialog("실패", $"패키징 실패:\n{result}", "확인");
+                    EditorUtility.DisplayDialog("패키징 실패", errorMessage, "확인");
                 }
+
+                // 빌드 히스토리 저장
+                AITBuildHistory.AddHistory(historyEntry);
             }
             catch (Exception e)
             {
+                buildStopwatch.Stop();
                 isBuildingStep2 = false;
+                historyEntry.success = false;
+                historyEntry.buildTimeSeconds = (float)buildStopwatch.Elapsed.TotalSeconds;
+                historyEntry.errorMessage = e.Message;
+                AITBuildHistory.AddHistory(historyEntry);
+
                 AppendLog($"✗ 오류: {e.Message}");
                 EditorUtility.DisplayDialog("오류", e.Message, "확인");
             }
@@ -385,28 +532,64 @@ namespace AppsInToss
         {
             if (!ValidateSettings()) return;
 
+            // 빌드 전 검증
+            var validationErrors = AITBuildValidator.ValidateBeforeBuild();
+            if (validationErrors.Count > 0)
+            {
+                string errorMessage = AITBuildValidator.FormatValidationErrors(validationErrors);
+                AppendLog("✗ 빌드 전 검증 실패:");
+                foreach (var error in validationErrors)
+                {
+                    AppendLog($"  - {error}");
+                }
+                EditorUtility.DisplayDialog("빌드 전 검증 실패", errorMessage, "확인");
+                return;
+            }
+
             AppendLog("전체 빌드 & 패키징 시작...");
             isBuildingStep1 = true;
+            buildStopwatch.Restart();
+
+            var historyEntry = new BuildHistoryEntry
+            {
+                buildType = "Full",
+                appVersion = config.version
+            };
 
             try
             {
                 var result = AITConvertCore.DoExport(buildWebGL: true, doPackaging: true);
+                buildStopwatch.Stop();
                 isBuildingStep1 = false;
+
+                historyEntry.success = (result == AITConvertCore.AITExportError.SUCCEED);
+                historyEntry.buildTimeSeconds = (float)buildStopwatch.Elapsed.TotalSeconds;
 
                 if (result == AITConvertCore.AITExportError.SUCCEED)
                 {
-                    AppendLog("✓ 전체 프로세스 완료!");
-                    EditorUtility.DisplayDialog("성공", "빌드 & 패키징이 완료되었습니다!", "확인");
+                    AppendLog($"✓ 전체 프로세스 완료! (총 소요 시간: {buildStopwatch.Elapsed.TotalSeconds:F1}초)");
+                    EditorUtility.DisplayDialog("성공", $"빌드 & 패키징이 완료되었습니다!\n\n총 소요 시간: {buildStopwatch.Elapsed.TotalSeconds:F1}초", "확인");
                 }
                 else
                 {
+                    string errorMessage = AITConvertCore.GetErrorMessage(result);
+                    historyEntry.errorMessage = result.ToString();
                     AppendLog($"✗ 빌드 실패: {result}");
-                    EditorUtility.DisplayDialog("실패", $"빌드 실패:\n{result}", "확인");
+                    EditorUtility.DisplayDialog("빌드 실패", errorMessage, "확인");
                 }
+
+                // 빌드 히스토리 저장
+                AITBuildHistory.AddHistory(historyEntry);
             }
             catch (Exception e)
             {
+                buildStopwatch.Stop();
                 isBuildingStep1 = false;
+                historyEntry.success = false;
+                historyEntry.buildTimeSeconds = (float)buildStopwatch.Elapsed.TotalSeconds;
+                historyEntry.errorMessage = e.Message;
+                AITBuildHistory.AddHistory(historyEntry);
+
                 AppendLog($"✗ 오류: {e.Message}");
                 EditorUtility.DisplayDialog("오류", e.Message, "확인");
             }
@@ -416,20 +599,22 @@ namespace AppsInToss
         {
             if (!ValidateSettings()) return;
 
-            if (string.IsNullOrWhiteSpace(config.deploymentKey))
+            // 배포 전 검증
+            var validationErrors = AITBuildValidator.ValidateBeforeDeploy();
+            if (validationErrors.Count > 0)
             {
-                EditorUtility.DisplayDialog("오류", "배포 키를 입력해주세요.", "확인");
+                string errorMessage = AITBuildValidator.FormatValidationErrors(validationErrors);
+                AppendLog("✗ 배포 전 검증 실패:");
+                foreach (var error in validationErrors)
+                {
+                    AppendLog($"  - {error}");
+                }
+                EditorUtility.DisplayDialog("배포 전 검증 실패", errorMessage, "확인");
                 return;
             }
 
             string buildPath = GetBuildTemplatePath();
             string distPath = Path.Combine(buildPath, "dist");
-
-            if (!Directory.Exists(distPath))
-            {
-                EditorUtility.DisplayDialog("오류", "빌드 출력물을 찾을 수 없습니다. 먼저 빌드를 실행하세요.", "확인");
-                return;
-            }
 
             // npm 경로 찾기
             string npmPath = FindNpmPath();
@@ -724,6 +909,27 @@ namespace AppsInToss
         }
 
         private string FindNpmPath()
+        {
+            // 1. 시스템 설치 npm 우선 사용
+            string systemNpm = FindSystemNpm();
+            if (!string.IsNullOrEmpty(systemNpm))
+            {
+                AppendLog($"✓ 시스템 npm 사용: {systemNpm}");
+                return systemNpm;
+            }
+
+            // 2. Embedded portable Node.js 사용 (자동 다운로드)
+            string embeddedNpm = AITNodeJSDownloader.FindEmbeddedNpm(autoDownload: true);
+            if (!string.IsNullOrEmpty(embeddedNpm))
+            {
+                AppendLog($"✓ Embedded npm 사용: {embeddedNpm}");
+                return embeddedNpm;
+            }
+
+            return null;
+        }
+
+        private string FindSystemNpm()
         {
             // 1. 일반적인 npm 설치 경로 확인
             string[] possiblePaths = new string[]

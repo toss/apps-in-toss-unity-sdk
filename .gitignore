@@ -106,3 +106,11 @@ Tools~/NodeJS/darwin-x64/
 Tools~/NodeJS/win-x64/
 Tools~/NodeJS/linux-x64/
 !Tools~/NodeJS/*/README.txt
+
+# SDK generator build artifacts
+sdk-runtime-generator/dist/
+sdk-runtime-generator/.tmp/
+sdk-runtime-generator/.temp-csharp-validation/
+
+# Unity meta files (UPM 패키지는 .meta 불필요, 사용자 프로젝트에서 자동 생성)
+*.meta

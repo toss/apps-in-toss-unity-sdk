@@ -27,7 +27,7 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
           cache: npm
-          cache-dependency-path: sdk-runtime-generator/package-lock.json
+          cache-dependency-path: sdk-runtime-generator~/package-lock.json
 
       - name: Install Dependencies
         run: npm ci

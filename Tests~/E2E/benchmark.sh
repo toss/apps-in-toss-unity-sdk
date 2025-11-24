@@ -7,9 +7,8 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SDK_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-TEMP_DIR="$SCRIPT_DIR/temp"
-PROJECT_PATH="$TEMP_DIR/apps-in-toss-unity-sdk-sample"
-BUILD_PATH="$PROJECT_PATH/WebGLBuild"
+PROJECT_PATH="$SCRIPT_DIR/SampleUnityProject"
+BUILD_PATH="$PROJECT_PATH/ait-build/dist"
 BUILD_LOG="$SCRIPT_DIR/build.log"
 
 # Load configuration from .env if exists
@@ -27,9 +26,9 @@ else
     SAMPLE_REPO="${SAMPLE_REPO_URL:-git@github.toss.bz:toss/apps-in-toss-unity-sdk-sample.git}"
 fi
 
-# Unity 경로 자동 탐색 (2022.3.* 우선)
+# Unity 경로 자동 탐색 (2021.3.* 우선)
 if [ -z "$UNITY_PATH" ]; then
-    UNITY_PATH=$(ls -d /Applications/Unity/Hub/Editor/2022.3.*/Unity.app/Contents/MacOS/Unity 2>/dev/null | head -1)
+    UNITY_PATH=$(ls -d /Applications/Unity/Hub/Editor/2021.3.*/Unity.app/Contents/MacOS/Unity 2>/dev/null | head -1)
     if [ -z "$UNITY_PATH" ]; then
         UNITY_PATH=$(ls -d /Applications/Unity/Hub/Editor/*/Unity.app/Contents/MacOS/Unity 2>/dev/null | head -1)
     fi
@@ -43,67 +42,33 @@ echo "" >&2
 # NODE_OPTIONS 제거 (Emscripten 충돌 방지)
 unset NODE_OPTIONS
 
-# 0. 기존 temp 디렉토리 정리
-if [ -d "$TEMP_DIR" ]; then
-    echo "[0/4] Cleaning previous build..." >&2
-    rm -rf "$TEMP_DIR"
+# 0. 기존 빌드 정리
+if [ -d "$PROJECT_PATH/ait-build" ]; then
+    echo "[0/3] Cleaning previous build..." >&2
+    rm -rf "$PROJECT_PATH/ait-build"
 fi
 
-mkdir -p "$TEMP_DIR"
-
-# 1. 샘플 프로젝트 클론
-echo "[1/4] Cloning sample project..." >&2
-echo "Repository: $SAMPLE_REPO" >&2
-
-cd "$TEMP_DIR"
-git clone --depth 1 "$SAMPLE_REPO" 2>&1 | grep -v "^Cloning" || true
-
-# 백업 폴더 삭제 (컴파일 충돌 방지)
-if [ -d "$PROJECT_PATH" ]; then
-    rm -rf "$PROJECT_PATH/Assets_backup_2021"
-    rm -rf "$PROJECT_PATH/ProjectSettings_backup_2021"
+if [ -d "$PROJECT_PATH/Library" ]; then
+    echo "Preserving Library folder for faster rebuild..." >&2
 fi
 
-if [ ! -d "$PROJECT_PATH" ]; then
-    echo "❌ Failed to get sample project!" >&2
-    exit 1
-fi
-
+# SDK는 이미 manifest.json에 file:../../../.. 로 추가되어 있음
+echo "[1/3] Using embedded sample project at: $PROJECT_PATH" >&2
 echo "✅ Sample project ready" >&2
 echo "" >&2
 
-# 2. SDK를 local package로 추가
-echo "[2/4] Adding SDK as local package..." >&2
-
-# manifest.json에 SDK 추가
-cd "$PROJECT_PATH"
-SDK_PACKAGE_PATH="file:$SDK_ROOT"
-
-# jq가 있으면 사용, 없으면 수동으로 추가
-if command -v jq &> /dev/null; then
-    jq --arg path "$SDK_PACKAGE_PATH" '.dependencies += {"im.toss.apps-in-toss-unity-sdk": $path}' Packages/manifest.json > Packages/manifest.json.tmp
-    mv Packages/manifest.json.tmp Packages/manifest.json
-else
-    # jq 없으면 수동 추가 (마지막 dependency 앞에 추가)
-    sed -i.bak "s|\"com.unity.modules.ai\": \"1.0.0\"|\"im.toss.apps-in-toss-unity-sdk\": \"$SDK_PACKAGE_PATH\",\n    \"com.unity.modules.ai\": \"1.0.0\"|" Packages/manifest.json
-    rm Packages/manifest.json.bak
-fi
-
-echo "✅ SDK added to manifest.json" >&2
-echo "" >&2
-
-# 3. Unity WebGL 빌드 실행
-echo "[3/4] Building Unity WebGL with SDK..." >&2
+# 2. Unity WebGL 빌드 실행 (SDK API 호출)
+echo "[2/3] Building with Apps in Toss SDK..." >&2
 echo "This may take 5-10 minutes. Please wait..." >&2
 echo "" >&2
 
-# Unity CLI 빌드 실행
+# Unity CLI 빌드 실행 (E2EBuildRunner 사용)
 "$UNITY_PATH" \
   -quit \
   -batchmode \
   -nographics \
   -projectPath "$PROJECT_PATH" \
-  -executeMethod BuildAndRunBenchmark.CommandLineBuild \
+  -executeMethod E2EBuildRunner.CommandLineBuild \
   -logFile "$BUILD_LOG"
 
 # 빌드 성공 확인
@@ -117,8 +82,8 @@ fi
 echo "✅ Build complete!" >&2
 echo "" >&2
 
-# 4. Python 서버 시작 + Headless Chrome
-echo "[4/4] Running benchmark in headless Chrome..." >&2
+# 3. Python 서버 시작 + Headless Chrome
+echo "[3/3] Running benchmark in headless Chrome..." >&2
 echo "(Benchmark will run for ~70 seconds)" >&2
 echo "" >&2
 
@@ -192,6 +157,5 @@ echo "✅ Benchmark complete!" >&2
 # 임시 파일 정리
 rm -f /tmp/ait_benchmark_server.log
 rm -rf /tmp/ait-chrome-benchmark-profile
-rm -rf "$TEMP_DIR"
 
 echo "✅ Cleaned up temporary files" >&2

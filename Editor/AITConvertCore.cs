@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using UnityEditor;
 using UnityEngine;
+using AppsInToss.Editor;
 
 namespace AppsInToss
 {
@@ -107,10 +108,9 @@ namespace AppsInToss
             PlayerSettings.WebGL.threadsSupport = false;
             PlayerSettings.runInBackground = false;
 
-#if UNITY_2022_3_OR_NEWER
+#if UNITY_2020_1_OR_NEWER
+            // Unity 2020.1+ 모두 AITTemplate2022 사용 (Unity 2020~2023 호환)
             PlayerSettings.WebGL.template = $"{templateHeader}AITTemplate2022";
-#elif UNITY_2020_1_OR_NEWER
-            PlayerSettings.WebGL.template = $"{templateHeader}AITTemplate2020";
 #else
             PlayerSettings.WebGL.template = $"{templateHeader}AITTemplate";
 #endif
@@ -146,6 +146,7 @@ namespace AppsInToss
             string[] possibleSdkPaths = new string[]
             {
                 // Package로 설치된 경우 (Unity 프로젝트 루트 기준)
+                Path.Combine(projectRoot, "Packages/im.toss.apps-in-toss-unity-sdk/WebGLTemplates"),
                 Path.Combine(projectRoot, "Packages/com.appsintoss.miniapp/WebGLTemplates"),
                 // Assembly 경로 기반
                 Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(typeof(AITConvertCore).Assembly.Location)), "WebGLTemplates")
@@ -573,52 +574,66 @@ namespace AppsInToss
         private static void CopyBuildConfigFromTemplate(string buildProjectPath)
         {
             // SDK의 BuildConfig 템플릿 경로 찾기
+            Debug.Log("[AIT] SDK BuildConfig 템플릿 경로 검색 중...");
             string[] possibleSdkPaths = new string[]
             {
-                Path.GetFullPath("Packages/com.appsintoss.miniapp/WebGLTemplates/AITTemplate2022/BuildConfig"),
+                Path.GetFullPath("Packages/im.toss.apps-in-toss-unity-sdk/WebGLTemplates/AITTemplate2022/BuildConfig"),
+                Path.GetFullPath("Packages/com.appsintoss.miniapp/WebGLTemplates/AITTemplate2022/BuildConfig"), // 레거시 호환성
                 Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(typeof(AITConvertCore).Assembly.Location)), "WebGLTemplates/AITTemplate2022/BuildConfig")
             };
 
             string sdkBuildConfigPath = null;
-            foreach (string path in possibleSdkPaths)
+            for (int i = 0; i < possibleSdkPaths.Length; i++)
             {
-                if (Directory.Exists(path))
+                string path = possibleSdkPaths[i];
+                bool exists = Directory.Exists(path);
+                Debug.Log($"[AIT]   경로 {i + 1}/{possibleSdkPaths.Length}: {(exists ? "✓ 발견" : "✗ 없음")} - {path}");
+
+                if (exists && sdkBuildConfigPath == null)
                 {
                     sdkBuildConfigPath = path;
-                    break;
                 }
             }
 
             if (sdkBuildConfigPath == null)
             {
                 Debug.LogError("[AIT] SDK BuildConfig 폴더를 찾을 수 없습니다.");
+                Debug.LogError("[AIT] 위의 경로들을 확인해주세요. SDK가 올바르게 설치되었는지 확인하세요.");
                 return;
             }
 
+            Debug.Log($"[AIT] ✓ SDK BuildConfig 템플릿 발견: {sdkBuildConfigPath}");
+
             var config = UnityUtil.GetEditorConf();
 
+            Debug.Log("[AIT] BuildConfig 파일 복사 중...");
+
             // package.json 복사 (치환 없음)
-            File.Copy(
-                Path.Combine(sdkBuildConfigPath, "package.json"),
-                Path.Combine(buildProjectPath, "package.json"),
-                true
-            );
+            string packageJsonSrc = Path.Combine(sdkBuildConfigPath, "package.json");
+            string packageJsonDst = Path.Combine(buildProjectPath, "package.json");
+            File.Copy(packageJsonSrc, packageJsonDst, true);
+            Debug.Log($"[AIT]   ✓ package.json 복사: {new FileInfo(packageJsonSrc).Length / 1024}KB");
 
             // vite.config.ts 복사 (치환 없음)
-            File.Copy(
-                Path.Combine(sdkBuildConfigPath, "vite.config.ts"),
-                Path.Combine(buildProjectPath, "vite.config.ts"),
-                true
-            );
+            string viteConfigSrc = Path.Combine(sdkBuildConfigPath, "vite.config.ts");
+            string viteConfigDst = Path.Combine(buildProjectPath, "vite.config.ts");
+            File.Copy(viteConfigSrc, viteConfigDst, true);
+            Debug.Log($"[AIT]   ✓ vite.config.ts 복사: {new FileInfo(viteConfigSrc).Length / 1024}KB");
 
             // tsconfig.json 복사 (치환 없음)
-            File.Copy(
-                Path.Combine(sdkBuildConfigPath, "tsconfig.json"),
-                Path.Combine(buildProjectPath, "tsconfig.json"),
-                true
-            );
+            string tsconfigSrc = Path.Combine(sdkBuildConfigPath, "tsconfig.json");
+            string tsconfigDst = Path.Combine(buildProjectPath, "tsconfig.json");
+            File.Copy(tsconfigSrc, tsconfigDst, true);
+            Debug.Log($"[AIT]   ✓ tsconfig.json 복사: {new FileInfo(tsconfigSrc).Length / 1024}KB");
 
             // granite.config.ts 복사 및 플레이스홀더 치환
+            Debug.Log("[AIT] granite.config.ts placeholder 치환 중...");
+            Debug.Log($"[AIT]   %AIT_APP_NAME% → '{config.appName}'");
+            Debug.Log($"[AIT]   %AIT_DISPLAY_NAME% → '{config.displayName}'");
+            Debug.Log($"[AIT]   %AIT_PRIMARY_COLOR% → '{config.primaryColor}'");
+            Debug.Log($"[AIT]   %AIT_ICON_URL% → '{config.iconUrl}'");
+            Debug.Log($"[AIT]   %AIT_LOCAL_PORT% → '{config.localPort}'");
+
             string graniteConfigTemplate = File.ReadAllText(Path.Combine(sdkBuildConfigPath, "granite.config.ts"));
             string graniteConfig = graniteConfigTemplate
                 .Replace("%AIT_APP_NAME%", config.appName)
@@ -633,7 +648,7 @@ namespace AppsInToss
                 new System.Text.UTF8Encoding(false)
             );
 
-            Debug.Log("[AIT] 빌드 설정 파일 복사 및 치환 완료");
+            Debug.Log("[AIT] ✓ 빌드 설정 파일 복사 및 치환 완료");
         }
 
         private static void CopyWebGLToPublic(string webglPath, string buildProjectPath)
@@ -825,6 +840,12 @@ namespace AppsInToss
 
             string fullCommand = $"cd '{workingDirectory}' && '{npmPath}' {arguments} --cache '{cachePath}' --prefer-offline false";
 
+            Debug.Log($"[npm] 명령 실행 준비:");
+            Debug.Log($"[npm]   작업 디렉토리: {workingDirectory}");
+            Debug.Log($"[npm]   npm 경로: {npmPath}");
+            Debug.Log($"[npm]   명령: npm {arguments}");
+            Debug.Log($"[npm]   캐시 경로: {cachePath}");
+
             var process = new System.Diagnostics.Process
             {
                 StartInfo = new System.Diagnostics.ProcessStartInfo
@@ -840,6 +861,7 @@ namespace AppsInToss
 
             try
             {
+                Debug.Log($"[npm] 프로세스 시작...");
                 process.Start();
 
                 System.Text.StringBuilder output = new System.Text.StringBuilder();
@@ -897,6 +919,7 @@ namespace AppsInToss
                     return AITExportError.BUILD_WEBGL_FAILED;
                 }
 
+                Debug.Log($"[npm] ✓ 명령 성공 완료: npm {arguments} (소요 시간: {elapsedSeconds}초)");
                 return AITExportError.SUCCEED;
             }
             catch (Exception e)

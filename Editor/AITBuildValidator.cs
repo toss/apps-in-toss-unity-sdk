@@ -39,11 +39,8 @@ namespace AppsInToss
                 errors.Add("앱 버전이 설정되지 않았습니다.");
             }
 
-            // 2. Node.js 검증
-            if (!IsNodeJsInstalled())
-            {
-                errors.Add("Node.js가 설치되지 않았습니다. https://nodejs.org 에서 설치해주세요.");
-            }
+            // 2. Node.js 검증은 제거 (빌드 시 Portable Node.js 자동 다운로드)
+            // SDK가 필요시 자동으로 Embedded Node.js를 다운로드하므로 사전 검증 불필요
 
             // 3. WebGL Build Support 검증
             if (!IsWebGLBuildSupportInstalled())
@@ -106,38 +103,6 @@ namespace AppsInToss
                 return false;
 
             return url.StartsWith("http://") || url.StartsWith("https://");
-        }
-
-        /// <summary>
-        /// Node.js 설치 여부 확인
-        /// </summary>
-        private static bool IsNodeJsInstalled()
-        {
-            try
-            {
-                var process = new System.Diagnostics.Process
-                {
-                    StartInfo = new System.Diagnostics.ProcessStartInfo
-                    {
-                        FileName = "/bin/bash",
-                        Arguments = "-l -c \"which node\"",
-                        UseShellExecute = false,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true,
-                        CreateNoWindow = true
-                    }
-                };
-
-                process.Start();
-                string output = process.StandardOutput.ReadToEnd().Trim();
-                process.WaitForExit();
-
-                return process.ExitCode == 0 && !string.IsNullOrEmpty(output);
-            }
-            catch
-            {
-                return false;
-            }
         }
 
         /// <summary>

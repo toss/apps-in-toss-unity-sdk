@@ -22,9 +22,11 @@
     "type": "git",
     "url": "https://github.com/appsintoss/apps-in-toss-unity-transform-sdk"
   },
-  "dependencies": {},
   "engines": {
     "unity": ">=2019.4"
   },
-  "category": "Platform SDK"
+  "category": "Platform SDK",
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
 }

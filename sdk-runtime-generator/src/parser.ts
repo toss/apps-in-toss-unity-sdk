@@ -13,6 +13,7 @@ export class TypeScriptParser {
     const possibleConfigs = [
       path.join(sourceDir, 'tsconfig.json'),
       path.join(sourceDir, '..', 'tsconfig.json'),
+      path.join(sourceDir, '../..', 'tsconfig.json'),
     ];
 
     let tsConfigPath: string | undefined;
@@ -30,10 +31,37 @@ export class TypeScriptParser {
     this.project = new Project({
       tsConfigFilePath: tsConfigPath,
       skipAddingFilesFromTsConfig: true, // 수동으로 파일 추가
+      compilerOptions: {
+        // module resolution 설정 (import 따라가기)
+        moduleResolution: 99, // NodeNext
+        resolveJsonModule: true,
+      },
     });
 
-    // sourceDir의 .d.ts 파일들만 추가
+    // sourceDir의 .d.ts 파일들을 재귀적으로 추가
     this.project.addSourceFilesAtPaths(path.join(sourceDir, '**', '*.d.ts'));
+
+    // ts-morph가 module resolution을 할 수 있도록 의존성 경로들도 추가
+    // (pnpm virtual store, node_modules 등)
+    const nodeModulesPaths = [
+      path.join(sourceDir, '..', 'node_modules'),
+      path.join(sourceDir, '../..', 'node_modules'),
+      path.join(process.cwd(), 'node_modules'),
+    ];
+
+    for (const nmPath of nodeModulesPaths) {
+      try {
+        if (require('fs').existsSync(nmPath)) {
+          // node_modules/@apps-in-toss 하위 패키지들 추가
+          const appsInTossPath = path.join(nmPath, '@apps-in-toss');
+          if (require('fs').existsSync(appsInTossPath)) {
+            this.project.addSourceFilesAtPaths(path.join(appsInTossPath, '**', '*.d.ts'));
+          }
+        }
+      } catch {
+        continue;
+      }
+    }
   }
 
   /**
@@ -78,15 +106,28 @@ export class TypeScriptParser {
           }
         }
 
-        // 변수 선언 (const openCamera = ...)
+        // 변수 선언 (const openCamera = ..., const getClipboardText: PermissionFunctionWithDialog<...>)
         if (declaration.getKind() === SyntaxKind.VariableDeclaration) {
           const varDecl = declaration.asKind(SyntaxKind.VariableDeclaration);
           if (varDecl) {
             const initializer = varDecl.getInitializer();
+            // Arrow function (const fn = () => {})
             if (initializer && initializer.getKind() === SyntaxKind.ArrowFunction) {
               const api = this.parseVariableFunction(name, varDecl, sourceFile);
               if (api) {
                 apis.push(api);
+              }
+            }
+            // Const with function type (const fn: FnType = ...)
+            // Arrow function이 없어도 타입이 함수면 파싱
+            else {
+              const type = varDecl.getType();
+              const callSignatures = type.getCallSignatures();
+              if (callSignatures.length > 0) {
+                const api = this.parseVariableFunction(name, varDecl, sourceFile);
+                if (api) {
+                  apis.push(api);
+                }
               }
             }
           }
@@ -117,13 +158,17 @@ export class TypeScriptParser {
     const examples = this.extractExamples(jsDoc);
 
     // 파라미터 파싱 (JSDoc 설명 포함)
-    const parameters = func.getParameters().map(param => {
-      const paramName = param.getName();
+    const parameters = func.getParameters().map((param, index) => {
+      let paramName = param.getName();
+      // Destructuring parameter ({ foo }) 처리: 간단한 이름으로 변경
+      if (paramName.includes('{') || paramName.includes('}') || paramName.includes(',')) {
+        paramName = `options${index > 0 ? index : ''}`;
+      }
       return {
         name: paramName,
         type: this.parseType(param.getType()),
         optional: param.isOptional(),
-        description: paramDescriptions.get(paramName),
+        description: paramDescriptions.get(param.getName()), // 원본 이름으로 설명 찾기
       };
     });
 
@@ -162,9 +207,11 @@ export class TypeScriptParser {
     if (signatures.length === 0) return null;
 
     const signature = signatures[0];
-    const jsDoc = varDecl.getJsDocs()[0];
-    const description = jsDoc?.getDescription().trim();
-    const category = this.extractCategory(jsDoc?.getTags() || []);
+    // getJsDocs()가 있으면 사용, 없으면 빈 배열
+    const jsDocs = typeof varDecl.getJsDocs === 'function' ? varDecl.getJsDocs() : [];
+    const jsDoc = jsDocs[0];
+    const description = jsDoc?.getDescription?.()?.trim();
+    const category = this.extractCategory(jsDoc?.getTags?.() || []);
 
     // JSDoc에서 추가 정보 추출
     const paramDescriptions = this.extractParamDescriptions(jsDoc);
@@ -172,13 +219,17 @@ export class TypeScriptParser {
     const examples = this.extractExamples(jsDoc);
 
     // 파라미터 파싱 (JSDoc 설명 포함)
-    const parameters = signature.getParameters().map((param: any) => {
-      const paramName = param.getName();
+    const parameters = signature.getParameters().map((param: any, index: number) => {
+      let paramName = param.getName();
+      // Destructuring parameter ({ foo }) 처리: 간단한 이름으로 변경
+      if (paramName.includes('{') || paramName.includes('}') || paramName.includes(',')) {
+        paramName = `options${index > 0 ? index : ''}`;
+      }
       return {
         name: paramName,
         type: this.parseType(param.getValueDeclaration()?.getType()),
         optional: param.isOptional(),
-        description: paramDescriptions.get(paramName),
+        description: paramDescriptions.get(param.getName()), // 원본 이름으로 설명 찾기
       };
     });
 
@@ -240,6 +291,30 @@ export class TypeScriptParser {
     const isObject = typeNode.isObject?.();
     const isUnion = typeNode.isUnion?.();
     const symbol = typeNode.getSymbol?.();
+
+    // Enum 타입 감지: typeNode가 enum이면 symbol에서 타입 이름 추출
+    // typeText가 enum value (예: "Lowest")일 경우, symbol에서 enum 타입 이름을 가져옴
+    if (symbol) {
+      const declarations = symbol.getDeclarations();
+      if (declarations && declarations.length > 0) {
+        for (const decl of declarations) {
+          // EnumMember인 경우, 부모 Enum의 이름을 가져옴
+          if (decl.getKind() === SyntaxKind.EnumMember) {
+            const parentEnum = decl.getParent();
+            if (parentEnum && parentEnum.getKind() === SyntaxKind.EnumDeclaration) {
+              const enumName = parentEnum.asKind(SyntaxKind.EnumDeclaration)?.getName();
+              if (enumName) {
+                return {
+                  name: enumName,
+                  kind: 'object', // enum은 object 취급
+                  raw: enumName,
+                };
+              }
+            }
+          }
+        }
+      }
+    }
 
     // Array 타입
     if (isArray || typeText.endsWith('[]')) {
@@ -528,6 +603,34 @@ export class TypeScriptParser {
       }
 
       try {
+        // 먼저 declare enum 등 파일 내 모든 enum을 찾음 (export 여부 무관)
+        const allEnums = sourceFile.getEnums();
+        for (const enumDecl of allEnums) {
+          const name = enumDecl.getName();
+          const members = enumDecl.getMembers();
+          const enumValues = members.map(member => {
+            return member.getName();
+          });
+
+          // JSDoc에서 description 추출
+          const jsDocs = enumDecl.getJsDocs();
+          const description = jsDocs.length > 0
+            ? jsDocs[0].getDescription().trim()
+            : undefined;
+
+          // 중복 체크: 같은 이름의 enum이 이미 있으면 스킵
+          if (!typeMap.has(name)) {
+            typeMap.set(name, {
+              name,
+              kind: 'enum',
+              file: fileName,
+              description,
+              enumValues,
+            });
+          }
+        }
+
+        // 이제 exported 선언들 처리
         const exportedDeclarations = sourceFile.getExportedDeclarations();
 
         for (const [name, declarations] of exportedDeclarations) {
@@ -574,6 +677,34 @@ export class TypeScriptParser {
                     }
                   }
                 }
+              }
+            }
+          }
+
+          // Enum Declaration (declare enum Foo { ... } 또는 export enum Foo { ... })
+          if (declaration.getKind() === SyntaxKind.EnumDeclaration) {
+            const enumDecl = declaration.asKind(SyntaxKind.EnumDeclaration);
+            if (enumDecl) {
+              const members = enumDecl.getMembers();
+              const enumValues = members.map(member => {
+                return member.getName();
+              });
+
+              // JSDoc에서 description 추출
+              const jsDocs = enumDecl.getJsDocs();
+              const description = jsDocs.length > 0
+                ? jsDocs[0].getDescription().trim()
+                : undefined;
+
+              // 중복 체크: 같은 이름의 enum이 이미 있으면 스킵
+              if (!typeMap.has(name)) {
+                typeMap.set(name, {
+                  name,
+                  kind: 'enum',
+                  file: fileName,
+                  description,
+                  enumValues,
+                });
               }
             }
           }
@@ -630,7 +761,7 @@ export class TypeScriptParser {
       }
       } catch (error) {
         // 파일 파싱 실패 시 스킵하고 계속 진행
-        console.warn(`Warning: Failed to parse type definitions in ${fileName}: ${error}`);
+        // 생성 단계에서는 경고 없이 조용히 스킵
         continue;
       }
     }

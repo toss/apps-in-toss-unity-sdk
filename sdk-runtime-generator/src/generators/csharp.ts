@@ -4,7 +4,6 @@ import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { ParsedAPI, ParsedParameter, GeneratedCode, ParsedTypeDefinition, ParsedType } from '../types.js';
 import { mapToCSharpType } from '../validators/types.js';
-import { CSharpFormatter } from '../formatters/csharp.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -42,6 +41,8 @@ export class CSharpGenerator {
   private apiTemplate?: HandlebarsTemplateDelegate;
   private classTemplate?: HandlebarsTemplateDelegate;
   private coreTemplate?: HandlebarsTemplateDelegate;
+  private partialApiTemplate?: HandlebarsTemplateDelegate;
+  private mainTemplate?: HandlebarsTemplateDelegate;
 
   constructor() {
     this.registerHelpers();
@@ -62,26 +63,66 @@ export class CSharpGenerator {
       const values = args.slice(0, -1);
       return values.some(v => v);
     });
+
+    // XML 주석용 텍스트 변환 (마크다운 제거)
+    Handlebars.registerHelper('xmlSafe', function(text: string) {
+      if (!text) return '';
+      // 마크다운 리스트 제거 (- item -> item)
+      let cleaned = text.replace(/^[\s-]*-\s+/gm, '');
+      // 백틱 코드 제거 (`code` -> code)
+      cleaned = cleaned.replace(/`([^`]+)`/g, '$1');
+      // 줄바꿈을 공백으로 변환
+      cleaned = cleaned.replace(/\n/g, ' ');
+      // 연속된 공백을 하나로
+      cleaned = cleaned.replace(/\s+/g, ' ');
+      // 앞뒤 공백 제거
+      cleaned = cleaned.trim();
+      // XML 특수 문자 이스케이프 (C# XML 주석에서는 ', "는 이스케이프 불필요)
+      cleaned = cleaned
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+      return new Handlebars.SafeString(cleaned);
+    });
+
+    // 배열 타입 체크 헬퍼
+    Handlebars.registerHelper('isArray', function(typeName: string) {
+      return typeName && typeName.endsWith('[]');
+    });
+
+    // 배열의 요소 타입 추출
+    Handlebars.registerHelper('arrayElementType', function(typeName: string) {
+      if (typeName && typeName.endsWith('[]')) {
+        return typeName.slice(0, -2);
+      }
+      return typeName;
+    });
   }
 
   /**
    * 템플릿 로드
    */
   private async loadTemplates(): Promise<void> {
-    if (this.apiTemplate && this.classTemplate && this.coreTemplate) return;
+    if (this.apiTemplate && this.classTemplate && this.coreTemplate && this.partialApiTemplate && this.mainTemplate) return;
 
     const templatesDir = path.join(__dirname, '../templates');
     const apiTemplatePath = path.join(templatesDir, 'csharp-api.hbs');
     const classTemplatePath = path.join(templatesDir, 'csharp-class.hbs');
     const coreTemplatePath = path.join(templatesDir, 'csharp-core.hbs');
+    const partialApiTemplatePath = path.join(templatesDir, 'csharp-partial-api.hbs');
+    const mainTemplatePath = path.join(templatesDir, 'csharp-main.hbs');
 
     const apiTemplateSource = await fs.readFile(apiTemplatePath, 'utf-8');
     const classTemplateSource = await fs.readFile(classTemplatePath, 'utf-8');
     const coreTemplateSource = await fs.readFile(coreTemplatePath, 'utf-8');
+    const partialApiTemplateSource = await fs.readFile(partialApiTemplatePath, 'utf-8');
+    const mainTemplateSource = await fs.readFile(mainTemplatePath, 'utf-8');
 
     this.apiTemplate = Handlebars.compile(apiTemplateSource);
     this.classTemplate = Handlebars.compile(classTemplateSource);
     this.coreTemplate = Handlebars.compile(coreTemplateSource);
+    this.partialApiTemplate = Handlebars.compile(partialApiTemplateSource);
+    this.mainTemplate = Handlebars.compile(mainTemplateSource);
   }
 
   /**
@@ -215,8 +256,8 @@ export class CSharpGenerator {
       apis: generatedAPIs,
     });
 
-    // 최종 클래스 파일에 포맷터 적용
-    return CSharpFormatter.format(classCode);
+    // 템플릿으로 생성된 코드를 그대로 반환
+    return classCode;
   }
 
   /**
@@ -234,10 +275,19 @@ export class CSharpGenerator {
 
     for (const api of apis) {
       if (api.isAsync && api.returnType.kind === 'promise' && api.returnType.promiseType) {
-        const callbackType = mapToCSharpType(api.returnType.promiseType);
+        let callbackType = mapToCSharpType(api.returnType.promiseType);
 
-        // void, object 같은 primitive는 제외하고 실제 타입만 추가
-        if (callbackType !== 'void' && callbackType !== 'object' && callbackType !== 'string') {
+        // Discriminated Union인 경우 Result 클래스 사용
+        if (api.returnType.promiseType.isDiscriminatedUnion) {
+          callbackType = `${api.pascalName}Result`;
+        }
+        // 익명 객체 타입(__type, object 등)이면 Result 클래스 사용
+        else if (callbackType === '__type') {
+          callbackType = `${api.pascalName}Result`;
+        }
+
+        // void, object, __type 같은 primitive는 제외하고 실제 타입만 추가
+        if (callbackType !== 'void' && callbackType !== 'object' && callbackType !== 'string' && callbackType !== '__type') {
           callbackTypes.add(callbackType);
         }
       }
@@ -246,6 +296,107 @@ export class CSharpGenerator {
     return this.coreTemplate({
       callbackTypes: Array.from(callbackTypes).sort(),
     });
+  }
+
+  /**
+   * 메인 AIT.cs 파일 생성 (partial class 선언만)
+   */
+  async generateMainFile(webFrameworkTag: string, apiCount: number): Promise<string> {
+    await this.loadTemplates();
+
+    if (!this.mainTemplate) {
+      throw new Error('Main template not loaded');
+    }
+
+    return this.mainTemplate({
+      webFrameworkTag,
+      timestamp: new Date().toISOString(),
+      apiCount,
+    });
+  }
+
+  /**
+   * 개별 API의 partial class 파일 생성
+   */
+  async generatePartialApiFile(api: ParsedAPI): Promise<string> {
+    await this.loadTemplates();
+
+    if (!this.partialApiTemplate) {
+      throw new Error('Partial API template not loaded');
+    }
+
+    // 파라미터 변환
+    const parameters = api.parameters.map(param => {
+      let paramType = mapToCSharpType(param.type);
+
+      // 파라미터가 익명 객체(__type)인 경우 의미있는 이름 생성
+      if (paramType === '__type' && param.type.kind === 'object' && param.type.properties && param.type.properties.length > 0) {
+        const capitalize = (str: string) => str.charAt(0).toUpperCase() + str.slice(1);
+        const apiName = capitalize(api.name);
+        const paramName = capitalize(param.name);
+        paramType = `${apiName}${paramName}`;
+      }
+
+      return {
+        paramName: escapeCSharpKeyword(param.name),
+        paramType,
+        optional: param.optional,
+        description: param.description,
+      };
+    });
+
+    // 반환 타입 변환
+    const returnType = mapToCSharpType(api.returnType);
+
+    // 콜백 타입
+    const hasCallback = api.isAsync;
+    let callbackType =
+      api.returnType.kind === 'promise' && api.returnType.promiseType
+        ? mapToCSharpType(api.returnType.promiseType)
+        : 'object';
+
+    // Discriminated Union인 경우 Result 클래스 사용
+    if (api.returnType.kind === 'promise' &&
+        api.returnType.promiseType?.isDiscriminatedUnion) {
+      callbackType = `${api.pascalName}Result`;
+    }
+    // 익명 객체 타입(__type, object 등)이면 더 구체적인 이름 생성
+    else if (callbackType === '__type') {
+      callbackType = `${api.pascalName}Result`;
+    }
+
+    const data = {
+      name: api.name,
+      pascalName: api.pascalName,
+      originalName: api.originalName,
+      description: api.description,
+      returnDescription: api.returnDescription,
+      examples: api.examples,
+      parameters,
+      returnType,
+      isAsync: api.isAsync,
+      callbackType,
+    };
+
+    const generated = this.partialApiTemplate(data);
+    // 템플릿으로 생성된 코드를 그대로 반환
+    return generated;
+  }
+
+  /**
+   * 모든 API의 partial class 파일들을 Map으로 반환
+   * @returns Map<파일명, 내용>
+   */
+  async generatePartialApiFiles(apis: ParsedAPI[]): Promise<Map<string, string>> {
+    const files = new Map<string, string>();
+
+    for (const api of apis) {
+      const fileName = `AIT.${api.pascalName}.cs`;
+      const content = await this.generatePartialApiFile(api);
+      files.set(fileName, content);
+    }
+
+    return files;
   }
 }
 
@@ -297,6 +448,29 @@ export class CSharpTypeGenerator {
   }
 
   /**
+   * XML 주석용 텍스트 변환 (마크다운 제거)
+   */
+  private xmlSafe(text: string): string {
+    if (!text) return '';
+    // 마크다운 리스트 제거 (- item -> item)
+    let cleaned = text.replace(/^[\s-]*-\s+/gm, '');
+    // 백틱 코드 제거 (`code` -> code)
+    cleaned = cleaned.replace(/`([^`]+)`/g, '$1');
+    // 줄바꿈을 공백으로 변환
+    cleaned = cleaned.replace(/\n/g, ' ');
+    // 연속된 공백을 하나로
+    cleaned = cleaned.replace(/\s+/g, ' ');
+    // 앞뒤 공백 제거
+    cleaned = cleaned.trim();
+    // XML 특수 문자 이스케이프 (C# XML 주석에서는 ', "는 이스케이프 불필요)
+    cleaned = cleaned
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+    return cleaned;
+  }
+
+  /**
    * enum 정의 생성
    */
   private generateEnum(typeDef: ParsedTypeDefinition): string {
@@ -339,7 +513,7 @@ export class CSharpTypeGenerator {
         const type = mapToCSharpType(prop.type);
         const optional = prop.optional ? ' // optional' : '';
         const description = prop.description
-          ? `        /// <summary>${prop.description}</summary>\n`
+          ? `        /// <summary>${this.xmlSafe(prop.description)}</summary>\n`
           : '';
         return `${description}        public ${type} ${this.capitalize(prop.name)};${optional}`;
       })
@@ -383,9 +557,10 @@ export class CSharpTypeGenerator {
   /**
    * API에서 사용되는 모든 타입 정의 생성
    */
-  async generateTypes(apis: ParsedAPI[]): Promise<string> {
+  async generateTypes(apis: ParsedAPI[], excludeTypeNames?: Set<string>): Promise<string> {
     const typeMap = new Map<string, string>(); // typeName -> classDefinition
     const unionResultMap = new Map<string, string>(); // API name -> Union Result class
+    const exclude = excludeTypeNames || new Set<string>();
 
     // API에서 사용되는 모든 타입 수집
     for (const api of apis) {
@@ -417,7 +592,7 @@ export class CSharpTypeGenerator {
 
           // cleanName을 키로 사용 (중복 방지)
           const cleanName = this.extractCleanName(typeName);
-          if (!typeMap.has(cleanName)) {
+          if (!typeMap.has(cleanName) && !exclude.has(cleanName)) {
             typeMap.set(cleanName, this.generateClassType(typeName, param.type.properties));
           }
         }
@@ -449,7 +624,7 @@ export class CSharpTypeGenerator {
               }
             }
 
-            if (allProperties.size > 0 && !typeMap.has(unionTypeName)) {
+            if (allProperties.size > 0 && !typeMap.has(unionTypeName) && !exclude.has(unionTypeName)) {
               typeMap.set(unionTypeName, this.generateClassType(
                 innerType.name,
                 Array.from(allProperties.values())
@@ -466,7 +641,7 @@ export class CSharpTypeGenerator {
                 }
 
                 const cleanName = this.extractCleanName(typeName);
-                if (!typeMap.has(cleanName)) {
+                if (!typeMap.has(cleanName) && !exclude.has(cleanName)) {
                   typeMap.set(cleanName, this.generateClassType(typeName, unionMember.properties));
                 }
               }
@@ -482,7 +657,7 @@ export class CSharpTypeGenerator {
           }
 
           const cleanName = this.extractCleanName(typeName);
-          if (!typeMap.has(cleanName)) {
+          if (!typeMap.has(cleanName) && !exclude.has(cleanName)) {
             typeMap.set(cleanName, this.generateClassType(typeName, innerType.properties));
           }
         }
@@ -496,7 +671,7 @@ export class CSharpTypeGenerator {
         }
 
         const cleanName = this.extractCleanName(typeName);
-        if (!typeMap.has(cleanName)) {
+        if (!typeMap.has(cleanName) && !exclude.has(cleanName)) {
           typeMap.set(cleanName, this.generateClassType(typeName, api.returnType.properties));
         }
       }
@@ -528,8 +703,8 @@ export class CSharpTypeGenerator {
       cleanName = cleanName.split('|')[0].trim();
     }
 
-    // 특수 문자 제거 (큰따옴표, 작은따옴표, 중괄호, 괄호, 쉼표, 파이프)
-    cleanName = cleanName.replace(/["'{}(),|]/g, '').trim();
+    // 특수 문자 제거 (큰따옴표, 작은따옴표, 중괄호, 괄호, 쉼표, 파이프, C# 식별자로 유효하지 않은 문자)
+    cleanName = cleanName.replace(/["'{}(),|$<>]/g, '').trim();
 
     // C# 식별자로 유효하지 않은 문자 제거 (공백, 하이픈 등)
     cleanName = cleanName.replace(/[\s\-]+/g, '');
@@ -548,7 +723,10 @@ export class CSharpTypeGenerator {
       .map(prop => {
         const type = mapToCSharpType(prop.type);
         const optional = prop.optional ? ' // optional' : '';
-        return `        public ${type} ${this.capitalize(prop.name)};${optional}`;
+        const description = prop.description
+          ? `        /// <summary>${this.xmlSafe(prop.description)}</summary>\n`
+          : '';
+        return `${description}        public ${type} ${this.capitalize(prop.name)};${optional}`;
       })
       .join('\n');
 

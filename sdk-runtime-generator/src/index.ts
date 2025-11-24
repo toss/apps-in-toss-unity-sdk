@@ -4,94 +4,14 @@ import { Command } from 'commander';
 import picocolors from 'picocolors';
 import * as path from 'path';
 import * as fs from 'fs/promises';
-import { execSync } from 'child_process';
 import { TypeScriptParser } from './parser.js';
 import { validateAllTypes } from './validators/types.js';
 import { validateCompleteness, printSummary } from './validators/completeness.js';
-import { validateAllSyntax, printValidationResults } from './validators/syntax.js';
 import { CSharpGenerator, CSharpTypeGenerator } from './generators/csharp.js';
 import { JSLibGenerator } from './generators/jslib.js';
+import { formatCommand } from './commands/format.js';
 
 const program = new Command();
-
-/**
- * GitHub에서 web-framework 레포지토리 clone
- */
-async function cloneWebFramework(tag: string, tempDir: string): Promise<string> {
-  console.log(picocolors.cyan(`\n📦 web-framework clone 중... (tag: ${tag})`));
-
-  const repoUrl = 'https://github.com/toss/frontend-bedrock.git';
-  const clonePath = path.join(tempDir, 'frontend-bedrock');
-
-  try {
-    // 기존 디렉토리 삭제
-    await fs.rm(clonePath, { recursive: true, force: true });
-
-    // Sparse checkout으로 필요한 부분만 clone
-    execSync(
-      `git clone --depth 1 --branch ${tag} --filter=blob:none --sparse ${repoUrl} ${clonePath}`,
-      { stdio: 'inherit' }
-    );
-
-    // web-framework 디렉토리만 checkout
-    execSync('git sparse-checkout set apps-in-toss-packages/web-framework', {
-      cwd: clonePath,
-      stdio: 'inherit',
-    });
-
-    const webFrameworkPath = path.join(
-      clonePath,
-      'apps-in-toss-packages',
-      'web-framework'
-    );
-
-    console.log(picocolors.green(`✅ Clone 완료: ${webFrameworkPath}`));
-    return webFrameworkPath;
-  } catch (error) {
-    throw new Error(
-      `GitHub clone 실패: ${error instanceof Error ? error.message : String(error)}`
-    );
-  }
-}
-
-/**
- * npm 패키지 빌드
- */
-async function buildWebFramework(webFrameworkPath: string): Promise<void> {
-  console.log(picocolors.cyan('\n🔨 web-framework 빌드 중...'));
-
-  try {
-    // package.json 확인
-    const packageJsonPath = path.join(webFrameworkPath, 'package.json');
-    const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf-8'));
-
-    // 빌드 스크립트가 있는지 확인
-    if (!packageJson.scripts?.build) {
-      console.log(picocolors.yellow('⚠️  빌드 스크립트 없음, 스킵'));
-      return;
-    }
-
-    // npm install
-    console.log(picocolors.cyan('  npm install...'));
-    execSync('npm install', {
-      cwd: webFrameworkPath,
-      stdio: 'inherit',
-    });
-
-    // npm run build
-    console.log(picocolors.cyan('  npm run build...'));
-    execSync('npm run build', {
-      cwd: webFrameworkPath,
-      stdio: 'inherit',
-    });
-
-    console.log(picocolors.green('✅ 빌드 완료'));
-  } catch (error) {
-    throw new Error(
-      `web-framework 빌드 실패: ${error instanceof Error ? error.message : String(error)}`
-    );
-  }
-}
 
 /**
  * TypeScript 정의 파일 경로 찾기
@@ -99,8 +19,13 @@ async function buildWebFramework(webFrameworkPath: string): Promise<void> {
 async function findTypeDefinitions(webFrameworkPath: string): Promise<string> {
   // 일반적인 경로들 확인
   const possiblePaths = [
-    path.join(webFrameworkPath, 'dist-web'),
+    // pnpm virtual store 경로 (우선순위 높음)
+    path.join(process.cwd(), 'node_modules/.pnpm/@apps-in-toss+web-bridge@1.5.0_@apps-in-toss+bridge-core@1.5.0/node_modules/@apps-in-toss/web-bridge/built'),
+    // 일반 node_modules 경로
+    path.join(process.cwd(), 'node_modules/@apps-in-toss/web-bridge/built'),
+    // web-framework 내부 경로
     path.join(webFrameworkPath, 'node_modules/@apps-in-toss/web-bridge/built'),
+    path.join(webFrameworkPath, 'dist-web'),
     path.join(webFrameworkPath, 'built'),
     path.join(webFrameworkPath, 'dist'),
     path.join(webFrameworkPath, 'lib'),
@@ -110,9 +35,14 @@ async function findTypeDefinitions(webFrameworkPath: string): Promise<string> {
     try {
       const stat = await fs.stat(p);
       if (stat.isDirectory()) {
-        // .d.ts 파일이 있는지 확인
+        // .d.ts 파일이 있는지 확인 (index.d.ts 제외)
         const files = await fs.readdir(p);
-        if (files.some(f => f.endsWith('.d.ts'))) {
+        const hasValidDts = files.some(f =>
+          f.endsWith('.d.ts') &&
+          f !== 'index.d.ts' &&
+          f !== 'index.d.cts'
+        );
+        if (hasValidDts) {
           console.log(picocolors.green(`✅ TypeScript 정의 파일 발견: ${p}`));
           return p;
         }
@@ -124,6 +54,24 @@ async function findTypeDefinitions(webFrameworkPath: string): Promise<string> {
   }
 
   throw new Error('TypeScript 정의 파일을 찾을 수 없습니다.');
+}
+
+/**
+ * node_modules에서 web-framework 찾기
+ */
+async function findWebFrameworkInNodeModules(): Promise<string> {
+  const webFrameworkPath = path.join(process.cwd(), 'node_modules/@apps-in-toss/web-framework');
+
+  try {
+    await fs.access(webFrameworkPath);
+    console.log(picocolors.green(`✅ web-framework 발견: ${webFrameworkPath}`));
+    return webFrameworkPath;
+  } catch {
+    throw new Error(
+      'web-framework를 찾을 수 없습니다.\n' +
+      '다음 명령을 실행하세요: pnpm install'
+    );
+  }
 }
 
 /**
@@ -139,32 +87,35 @@ async function generate(options: {
 
   try {
     console.log(picocolors.cyan(picocolors.bold('\n🚀 Unity SDK 자동 생성 시작\n')));
-    console.log(picocolors.cyan(`📌 web-framework tag: ${options.tag}`));
     console.log(picocolors.cyan(`📁 출력 경로: ${options.output}\n`));
 
-    // 1. GitHub에서 clone 또는 로컬 경로 사용
+    // 1. web-framework 경로 결정
     let webFrameworkPath: string;
     if (options.skipClone && options.sourcePath) {
-      console.log(picocolors.yellow(`⚠️  Clone 스킵, 로컬 경로 사용: ${options.sourcePath}`));
+      console.log(picocolors.yellow(`⚠️  로컬 경로 사용: ${options.sourcePath}`));
       webFrameworkPath = options.sourcePath;
     } else {
-      const tempDir = path.join(process.cwd(), '.tmp');
-      await fs.mkdir(tempDir, { recursive: true });
-      webFrameworkPath = await cloneWebFramework(options.tag, tempDir);
+      // node_modules에서 web-framework 찾기
+      webFrameworkPath = await findWebFrameworkInNodeModules();
     }
 
-    // 2. 빌드 (필요시)
-    if (!options.skipClone) {
-      await buildWebFramework(webFrameworkPath);
-    }
-
-    // 3. TypeScript 정의 파일 찾기
+    // 2. TypeScript 정의 파일 찾기
     const typeDefinitionsPath = await findTypeDefinitions(webFrameworkPath);
 
     // 4. API 파싱
     console.log(picocolors.cyan('\n📊 web-framework 분석 중...'));
     const parser = new TypeScriptParser(typeDefinitionsPath);
     const apis = await parser.parseAPIs();
+
+    if (apis.length === 0) {
+      console.error(picocolors.red('\n❌ web-framework에서 API를 발견하지 못했습니다.\n'));
+      console.error(picocolors.yellow('다음을 확인하세요:'));
+      console.error(picocolors.yellow(`  1. TypeScript 정의 경로: ${typeDefinitionsPath}`));
+      console.error(picocolors.yellow(`  2. web-framework 버전: ${webFrameworkPath}`));
+      console.error(picocolors.yellow(`  3. .d.ts 파일에 export된 함수가 있는지 확인`));
+      process.exit(1);
+    }
+
     console.log(picocolors.green(`✓ ${apis.length}개 API 발견`));
 
     // 5. 타입 검증
@@ -200,20 +151,29 @@ async function generate(options: {
     const jslibGenerator = new JSLibGenerator();
     const typeGenerator = new CSharpTypeGenerator();
 
-    // C# API 생성
+    // C# API 생성 (기존 방식 - 검증용)
     const generatedCodes = await csharpGenerator.generate(apis, options.tag);
-    const csharpClassFile = await csharpGenerator.generateClassFile(apis, options.tag);
-    console.log(picocolors.green(`✓ AIT.cs (${apis.length} APIs)`));
+
+    // 메인 AIT.cs 생성 (partial class 선언만)
+    const mainFile = await csharpGenerator.generateMainFile(options.tag, apis.length);
+    console.log(picocolors.green(`✓ AIT.cs (메인 partial class)`));
+
+    // 개별 API partial class 파일들 생성
+    const partialApiFiles = await csharpGenerator.generatePartialApiFiles(apis);
+    console.log(picocolors.green(`✓ ${partialApiFiles.size}개 partial class 파일 (AIT.*.cs)`));
 
     // AITCore 생성 (인프라 코드)
     const coreFile = await csharpGenerator.generateCoreFile(apis);
     console.log(picocolors.green(`✓ AITCore.cs (Infrastructure)`));
 
-    // C# 타입 정의 생성 (API에서 추출된 타입) - 본문만
-    const apiTypesBody = await typeGenerator.generateTypes(apis);
-
     // C# 타입 정의 생성 (파싱된 enum/interface) - 본문만
     const parsedTypesBody = await typeGenerator.generateTypeDefinitions(typeDefinitions);
+
+    // 파싱된 타입 이름 목록 생성 (중복 방지용)
+    const parsedTypeNames = new Set(typeDefinitions.map(t => t.name));
+
+    // C# 타입 정의 생성 (API에서 추출된 타입) - 본문만 (중복 제외)
+    const apiTypesBody = await typeGenerator.generateTypes(apis, parsedTypeNames);
 
     // 헤더 + 본문들을 합침
     const typeFileHeader = `// -----------------------------------------------------------------------
@@ -224,6 +184,7 @@ async function generate(options: {
 // -----------------------------------------------------------------------
 
 using System;
+using UnityEngine;
 
 namespace AppsInToss
 {
@@ -253,18 +214,6 @@ namespace AppsInToss
     }
     console.log(picocolors.green('✓ API 완전성 확인'));
 
-    // 8. 문법 검증
-    console.log(picocolors.cyan('\n🧪 문법 검증 중...'));
-    const syntaxValidation = validateAllSyntax(csharpClassFile, jslibFiles);
-    if (!syntaxValidation.success) {
-      console.error(picocolors.yellow('\n⚠️  문법 경고 발견\n'));
-      printValidationResults(syntaxValidation.errors);
-      // 경고는 계속 진행
-    } else {
-      console.log(picocolors.green('✓ C# 문법 검증'));
-      console.log(picocolors.green('✓ jslib 문법 검증'));
-    }
-
     // 9. 파일 출력
     console.log(picocolors.cyan('\n📝 파일 쓰기 중...'));
     const outputDir = path.resolve(process.cwd(), options.output);
@@ -272,9 +221,19 @@ namespace AppsInToss
     // 기존 생성 파일 모두 삭제 (재현성 보장)
     console.log(picocolors.yellow('  🗑️  기존 생성 파일 삭제 중...'));
     try {
+      // 기존 단일 파일 삭제
       await fs.rm(path.join(outputDir, 'AIT.cs'), { force: true });
       await fs.rm(path.join(outputDir, 'AITCore.cs'), { force: true });
       await fs.rm(path.join(outputDir, 'AIT.Types.cs'), { force: true });
+
+      // 개별 partial class 파일들 삭제 (AIT.*.cs 패턴)
+      const files = await fs.readdir(outputDir).catch(() => []);
+      for (const file of files) {
+        if (file.startsWith('AIT.') && file.endsWith('.cs') && file !== 'AIT.cs') {
+          await fs.rm(path.join(outputDir, file), { force: true });
+        }
+      }
+
       await fs.rm(path.join(outputDir, 'Plugins'), { recursive: true, force: true });
       console.log(picocolors.green('  ✓ 기존 파일 삭제 완료'));
     } catch (error) {
@@ -283,9 +242,15 @@ namespace AppsInToss
 
     await fs.mkdir(outputDir, { recursive: true });
 
-    // AIT.cs 쓰기 (주요 API)
-    await fs.writeFile(path.join(outputDir, 'AIT.cs'), csharpClassFile);
+    // 메인 AIT.cs 쓰기 (partial class 선언만)
+    await fs.writeFile(path.join(outputDir, 'AIT.cs'), mainFile);
     console.log(picocolors.green(`  ✓ ${path.join(outputDir, 'AIT.cs')}`));
+
+    // 개별 API partial class 파일들 쓰기
+    for (const [fileName, content] of partialApiFiles.entries()) {
+      await fs.writeFile(path.join(outputDir, fileName), content);
+      console.log(picocolors.green(`  ✓ ${path.join(outputDir, fileName)}`));
+    }
 
     // AITCore.cs 쓰기 (내부 인프라)
     await fs.writeFile(path.join(outputDir, 'AITCore.cs'), coreFile);
@@ -324,11 +289,21 @@ program
 
 program
   .command('generate')
-  .description('web-framework에서 Unity SDK 생성')
-  .option('-t, --tag <tag>', 'web-framework Git 태그', 'next')
-  .option('-o, --output <path>', '출력 디렉토리', '../../Runtime/SDK')
-  .option('--skip-clone', '로컬 경로 사용 (개발용)', false)
-  .option('--source-path <path>', '로컬 web-framework 경로 (--skip-clone과 함께 사용)')
-  .action(generate);
+  .description('node_modules의 @apps-in-toss/web-framework에서 Unity SDK 생성')
+  .option('-o, --output <path>', '출력 디렉토리', '../Runtime/SDK')
+  .option('--source-path <path>', '(옵션) 로컬 web-framework 경로 (개발/테스트용)')
+  .action((options) => {
+    generate({
+      tag: 'next', // 더 이상 사용하지 않음 (node_modules에서 가져옴)
+      output: options.output,
+      skipClone: !!options.sourcePath,
+      sourcePath: options.sourcePath,
+    });
+  });
+
+program
+  .command('format')
+  .description('생성된 C# 파일들을 CSharpier로 포맷팅')
+  .action(formatCommand);
 
 program.parse();

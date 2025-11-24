@@ -17,7 +17,7 @@ namespace AppsInToss
     /// </summary>
     public class AITCore : MonoBehaviour
     {
-        private static AITCore? _instance;
+        private static AITCore _instance;
 
         /// <summary>
         /// Singleton instance
@@ -30,7 +30,7 @@ namespace AppsInToss
                 {
                     var go = new GameObject("AITCore");
                     _instance = go.AddComponent<AITCore>();
-                    DontDestroyOnLoad(go);
+                    UnityEngine.Object.DontDestroyOnLoad(go);
                 }
                 return _instance;
             }
@@ -53,7 +53,7 @@ namespace AppsInToss
         /// <summary>
         /// Try to get and remove a callback by ID
         /// </summary>
-        public bool TryGetCallback<T>(string callbackId, out Action<T>? callback)
+        public bool TryGetCallback<T>(string callbackId, out Action<T> callback)
         {
             if (_callbacks.TryGetValue(callbackId, out var rawCallback))
             {
@@ -109,7 +109,7 @@ namespace AppsInToss
                 case "void":
                     if (TryGetCallback<object>(callbackId, out var voidCallback) && voidCallback != null)
                     {
-                        voidCallback(null!);
+                        voidCallback(null);
                     }
                     break;
 

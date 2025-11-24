@@ -17,7 +17,7 @@ namespace AppsInToss
     /// </summary>
     public class AITCore : MonoBehaviour
     {
-        private static AITCore? _instance;
+        private static AITCore _instance;
 
         /// <summary>
         /// Singleton instance
@@ -30,7 +30,7 @@ namespace AppsInToss
                 {
                     var go = new GameObject("AITCore");
                     _instance = go.AddComponent<AITCore>();
-                    DontDestroyOnLoad(go);
+                    UnityEngine.Object.DontDestroyOnLoad(go);
                 }
                 return _instance;
             }
@@ -53,7 +53,7 @@ namespace AppsInToss
         /// <summary>
         /// Try to get and remove a callback by ID
         /// </summary>
-        public bool TryGetCallback<T>(string callbackId, out Action<T>? callback)
+        public bool TryGetCallback<T>(string callbackId, out Action<T> callback)
         {
             if (_callbacks.TryGetValue(callbackId, out var rawCallback))
             {
@@ -97,10 +97,87 @@ namespace AppsInToss
         {
             switch (typeName)
             {
+                case "CheckoutPaymentResult":
+                    if (TryGetCallback<CheckoutPaymentResult>(callbackId, out var callback0) && callback0 != null)
+                    {
+                        var result0 = JsonUtility.FromJson<CheckoutPaymentResult>(resultJson);
+                        callback0(result0);
+                    }
+                    break;
+                case "ContactResult":
+                    if (TryGetCallback<ContactResult>(callbackId, out var callback1) && callback1 != null)
+                    {
+                        var result1 = JsonUtility.FromJson<ContactResult>(resultJson);
+                        callback1(result1);
+                    }
+                    break;
+                case "GameCenterGameProfileResponse":
+                    if (TryGetCallback<GameCenterGameProfileResponse>(callbackId, out var callback2) && callback2 != null)
+                    {
+                        var result2 = JsonUtility.FromJson<GameCenterGameProfileResponse>(resultJson);
+                        callback2(result2);
+                    }
+                    break;
+                case "GetUserKeyForGameResult":
+                    if (TryGetCallback<GetUserKeyForGameResult>(callbackId, out var callback3) && callback3 != null)
+                    {
+                        var result3 = JsonUtility.FromJson<GetUserKeyForGameResult>(resultJson);
+                        callback3(result3);
+                    }
+                    break;
+                case "GrantPromotionRewardForGameResult":
+                    if (TryGetCallback<GrantPromotionRewardForGameResult>(callbackId, out var callback4) && callback4 != null)
+                    {
+                        var result4 = JsonUtility.FromJson<GrantPromotionRewardForGameResult>(resultJson);
+                        callback4(result4);
+                    }
+                    break;
+                case "ImageResponse":
+                    if (TryGetCallback<ImageResponse>(callbackId, out var callback5) && callback5 != null)
+                    {
+                        var result5 = JsonUtility.FromJson<ImageResponse>(resultJson);
+                        callback5(result5);
+                    }
+                    break;
+                case "ImageResponse[]":
+                    if (TryGetCallback<ImageResponse[]>(callbackId, out var callback6) && callback6 != null)
+                    {
+                        var result6 = JsonUtility.FromJson<ImageResponse[]>(resultJson);
+                        callback6(result6);
+                    }
+                    break;
+                case "Location1":
+                    if (TryGetCallback<Location1>(callbackId, out var callback7) && callback7 != null)
+                    {
+                        var result7 = JsonUtility.FromJson<Location1>(resultJson);
+                        callback7(result7);
+                    }
+                    break;
+                case "NetworkStatus":
+                    if (TryGetCallback<NetworkStatus>(callbackId, out var callback8) && callback8 != null)
+                    {
+                        var result8 = JsonUtility.FromJson<NetworkStatus>(resultJson);
+                        callback8(result8);
+                    }
+                    break;
+                case "SubmitGameCenterLeaderBoardScoreResponse":
+                    if (TryGetCallback<SubmitGameCenterLeaderBoardScoreResponse>(callbackId, out var callback9) && callback9 != null)
+                    {
+                        var result9 = JsonUtility.FromJson<SubmitGameCenterLeaderBoardScoreResponse>(resultJson);
+                        callback9(result9);
+                    }
+                    break;
+                case "bool":
+                    if (TryGetCallback<bool>(callbackId, out var callback10) && callback10 != null)
+                    {
+                        var result10 = JsonUtility.FromJson<bool>(resultJson);
+                        callback10(result10);
+                    }
+                    break;
                 case "void":
                     if (TryGetCallback<object>(callbackId, out var voidCallback) && voidCallback != null)
                     {
-                        voidCallback(null!);
+                        voidCallback(null);
                     }
                     break;
 

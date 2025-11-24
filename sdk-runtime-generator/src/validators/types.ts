@@ -178,13 +178,13 @@ export function mapToCSharpType(type: ParsedType): string {
         ? type.name.split('.').pop() || type.name
         : type.name;
 
-      // 특수 문자 제거 (중괄호, 콤마, 공백 등)
-      let cleanName = objectName.replace(/["'{}(),\s]/g, '').trim();
+      // 특수 문자 제거 (중괄호, 콤마, 공백, C# 식별자로 유효하지 않은 문자 등)
+      let cleanName = objectName.replace(/["'{}(),\s$<>|]/g, '').trim();
 
       // __type 또는 빈 이름은 익명 타입
-      // 이 경우 호출자가 의미있는 이름을 생성해야 함
+      // C#에서는 object로 매핑 (Dictionary<string, object> 또는 JsonData 등으로 사용 가능)
       if (cleanName === '__type' || !cleanName || cleanName.startsWith('{')) {
-        return '__type'; // 특수 마커 (호출자가 처리)
+        return 'object'; // C#의 object 타입으로 매핑
       }
 
       return cleanName;
@@ -194,7 +194,7 @@ export function mapToCSharpType(type: ParsedType): string {
       // 예: import("...").GameCenterGameProfileResponse -> GameCenterGameProfileResponse
       if (type.name && (type.name.includes('.') || type.name.includes('import('))) {
         const typeName = type.name.split('.').pop() || type.name;
-        const cleanName = typeName.replace(/["'{}()|,\s]/g, '').trim();
+        const cleanName = typeName.replace(/["'{}()|,\s$<>]/g, '').trim();
 
         if (cleanName && cleanName !== '__type') {
           return cleanName;

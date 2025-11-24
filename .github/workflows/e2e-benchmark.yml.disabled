@@ -1,20 +1,41 @@
 name: E2E Benchmark
 
 on:
-  workflow_dispatch:  # 수동 트리거
+  # PR 체크
+  pull_request:
+    branches:
+      - develop
+      - master
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      # SDK 핵심 코드 변경 시에만 실행
+      - 'Runtime/**'
+      - 'Editor/**'
+      - 'WebGLTemplates/**'
+      - 'package.json'
+      # 워크플로우 자체 변경 시에도 실행
+      - '.github/workflows/e2e-benchmark.yml'
+
+  # 수동 트리거
+  workflow_dispatch:
     inputs:
       unity_version:
         description: 'Unity version to use'
         required: false
         default: '2022.3.16f1'
+
+  # 정기 실행 (주 1회 일요일 자정)
   schedule:
-    - cron: '0 0 * * 0'  # 주 1회 일요일 자정
+    - cron: '0 0 * * 0'
 
 permissions:
   contents: read
+  pull-requests: write
 
 jobs:
   benchmark:
+    # Draft PR은 스킵 (리소스 절약)
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: macos-latest
     timeout-minutes: 60
 
@@ -75,14 +96,15 @@ jobs:
             brew install --cask google-chrome
           fi
 
-      # 벤치마크 실행
+      # E2E 벤치마크 실행
       - name: Run E2E benchmark
+        id: benchmark
         env:
           CI: true
         run: |
           cd Tests~/E2E
           chmod +x benchmark.sh
-          ./benchmark.sh 2>&1 | tee benchmark_ci.log
+          ./benchmark.sh 2>&1 | tee benchmark.log
         continue-on-error: true
 
       # 결과 파싱
@@ -91,24 +113,93 @@ jobs:
         run: |
           cd Tests~/E2E
 
-          # JSON 결과 추출 (마지막 JSON 블록)
-          if grep -q "avgFPS" benchmark_ci.log; then
+          # JSON 결과 추출
+          if grep -q "avgFPS" benchmark.log; then
             echo "results_found=true" >> $GITHUB_OUTPUT
 
-            # 간단한 요약 생성
-            grep -A 20 "BENCHMARK RESULTS" benchmark_ci.log > summary.txt || true
+            # 성능 메트릭 추출 (macOS는 grep -P를 지원하지 않으므로 sed 사용)
+            AVG_FPS=$(grep -o '"avgFPS":[[:space:]]*[0-9.]*' benchmark.log | head -1 | sed 's/.*:[[:space:]]*//')
+            MIN_FPS=$(grep -o '"minFPS":[[:space:]]*[0-9.]*' benchmark.log | head -1 | sed 's/.*:[[:space:]]*//')
+            MEMORY=$(grep -o '"memoryUsageMB":[[:space:]]*[0-9.]*' benchmark.log | head -1 | sed 's/.*:[[:space:]]*//')
+
+            echo "avg_fps=$AVG_FPS" >> $GITHUB_OUTPUT
+            echo "min_fps=$MIN_FPS" >> $GITHUB_OUTPUT
+            echo "memory=$MEMORY" >> $GITHUB_OUTPUT
+
+            # 성능 기준 체크 (평균 FPS > 20, 최소 FPS > 10, 메모리 < 1000MB)
+            if [ -n "$AVG_FPS" ] && [ -n "$MIN_FPS" ] && [ -n "$MEMORY" ]; then
+              if (( $(echo "$AVG_FPS > 20" | bc -l) )) && \
+                 (( $(echo "$MIN_FPS > 10" | bc -l) )) && \
+                 (( $(echo "$MEMORY < 1000" | bc -l) )); then
+                echo "performance_pass=true" >> $GITHUB_OUTPUT
+              else
+                echo "performance_pass=false" >> $GITHUB_OUTPUT
+              fi
+            else
+              echo "performance_pass=false" >> $GITHUB_OUTPUT
+            fi
+
+            # 요약 생성
+            grep -A 20 "BENCHMARK RESULTS" benchmark.log > summary.txt || true
           else
             echo "results_found=false" >> $GITHUB_OUTPUT
+            echo "performance_pass=false" >> $GITHUB_OUTPUT
           fi
+
+      # PR 코멘트 작성 (PR 이벤트일 때만)
+      - name: Comment PR with results
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const resultsFound = '${{ steps.parse_results.outputs.results_found }}' === 'true';
+            const performancePass = '${{ steps.parse_results.outputs.performance_pass }}' === 'true';
+
+            let comment = '## 🎮 E2E Benchmark Results\n\n';
+
+            if (resultsFound) {
+              const avgFPS = '${{ steps.parse_results.outputs.avg_fps }}';
+              const minFPS = '${{ steps.parse_results.outputs.min_fps }}';
+              const memory = '${{ steps.parse_results.outputs.memory }}';
+
+              comment += '### Performance Metrics\n\n';
+              comment += `| Metric | Value | Status |\n`;
+              comment += `|--------|-------|--------|\n`;
+              comment += `| Avg FPS | ${avgFPS} | ${parseFloat(avgFPS) > 20 ? '✅' : '❌'} |\n`;
+              comment += `| Min FPS | ${minFPS} | ${parseFloat(minFPS) > 10 ? '✅' : '❌'} |\n`;
+              comment += `| Memory | ${memory} MB | ${parseFloat(memory) < 1000 ? '✅' : '❌'} |\n\n`;
+
+              comment += '### Performance Criteria\n';
+              comment += '- Avg FPS > 20\n';
+              comment += '- Min FPS > 10\n';
+              comment += '- Memory < 1000 MB\n\n';
+
+              if (performancePass) {
+                comment += '✅ **All performance checks passed!**\n';
+              } else {
+                comment += '❌ **Performance checks failed. Please optimize before merging.**\n';
+              }
+            } else {
+              comment += '❌ **Benchmark failed to run. Please check the logs.**\n';
+            }
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
 
       # 결과 업로드
       - name: Upload benchmark results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: benchmark-results-${{ github.run_number }}
+          name: benchmark-results-${{ github.event_name }}-${{ github.run_number }}
           path: |
-            Tests~/E2E/benchmark_ci.log
+            Tests~/E2E/benchmark.log
             Tests~/E2E/summary.txt
             Tests~/E2E/build.log
           retention-days: 30
@@ -122,7 +213,17 @@ jobs:
 
           echo ""
           echo "=== Benchmark Log ==="
-          cat Tests~/E2E/benchmark_ci.log || echo "No benchmark log found"
+          cat Tests~/E2E/benchmark.log || echo "No benchmark log found"
+
+      # 성능 기준 미달 시 실패 (PR 이벤트일 때만)
+      - name: Check performance criteria
+        if: github.event_name == 'pull_request' && steps.parse_results.outputs.performance_pass != 'true'
+        run: |
+          echo "❌ Performance criteria not met!"
+          echo "   - Avg FPS must be > 20"
+          echo "   - Min FPS must be > 10"
+          echo "   - Memory must be < 1000 MB"
+          exit 1
 
       # Unity 라이선스 반환
       - name: Return Unity license

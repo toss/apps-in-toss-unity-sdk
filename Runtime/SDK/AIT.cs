@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------
 // <copyright file="AIT.cs" company="Toss">
 //     Copyright (c) Toss. All rights reserved.
-//     Apps in Toss Unity SDK - Platform API
+//     Apps in Toss Unity SDK - Main Class
 // </copyright>
 // -----------------------------------------------------------------------
 
@@ -14,6 +14,12 @@ namespace AppsInToss
     /// </summary>
     /// <remarks>
     /// Source: @apps-in-toss/web-framework (next)
+    /// Generated: 2025-11-24T10:39:15.933Z
+    /// Total APIs: 39
     /// </remarks>
-    public static partial class AIT { }
+    public static partial class AIT
+    {
+        // 개별 API 메서드들은 AIT.{ApiName}.cs 파일들에 정의되어 있습니다.
+        // This is a partial class. Individual API methods are defined in AIT.{ApiName}.cs files.
+    }
 }

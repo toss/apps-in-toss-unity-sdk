@@ -107,10 +107,23 @@ Tools~/NodeJS/win-x64/
 Tools~/NodeJS/linux-x64/
 !Tools~/NodeJS/*/README.txt
 
-# SDK generator build artifacts
-sdk-runtime-generator/dist/
-sdk-runtime-generator/.tmp/
-sdk-runtime-generator/.temp-csharp-validation/
+# SDK generator build artifacts (~ suffix excludes from Unity)
+sdk-runtime-generator~/dist/
+sdk-runtime-generator~/.tmp/
+sdk-runtime-generator~/.temp-csharp-validation/
 
-# Unity meta files (UPM 패키지는 .meta 불필요, 사용자 프로젝트에서 자동 생성)
-*.meta
+# E2E Test artifacts
+Tests~/E2E/SampleUnityProject/Library/
+Tests~/E2E/SampleUnityProject/Temp/
+Tests~/E2E/SampleUnityProject/ait-build/
+Tests~/E2E/SampleUnityProject/webgl/
+Tests~/E2E/SampleUnityProject/WebGLBuild/
+Tests~/E2E/SampleUnityProject/Builds/
+Tests~/E2E/build.log
+Tests~/E2E/benchmark*.log
+Tests~/E2E/temp/
+
+# Unity meta files
+# Note: UPM packages SHOULD include .meta files for consistent GUIDs
+# Only exclude test project meta files
+Tests~/E2E/SampleUnityProject/**/*.meta

@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <title>Unity WebGL Benchmark</title>
+    <style>
+        * { margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #fff;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .info-box {
+            background: rgba(255,255,255,0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+
+        .game-container {
+            background: rgba(0,0,0,0.3);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        #unity-container {
+            width: 960px;
+            height: 600px;
+            margin: 0 auto;
+            background: #000;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        #unity-canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        #unity-loading-bar {
+            margin: 20px auto;
+            height: 30px;
+            width: 80%;
+            background: rgba(255,255,255,0.1);
+            border-radius: 15px;
+            overflow: hidden;
+        }
+
+        #unity-progress-bar-full {
+            height: 100%;
+            background: linear-gradient(90deg, #4CAF50, #8BC34A);
+            border-radius: 15px;
+            transition: width 0.3s;
+        }
+
+        .status {
+            text-align: center;
+            margin: 10px 0;
+            font-size: 1.2em;
+        }
+
+        .results {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .result-card {
+            background: rgba(255,255,255,0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 20px;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+
+        .result-card h3 {
+            margin-bottom: 15px;
+            color: #ffd700;
+        }
+
+        .result-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .result-item:last-child {
+            border-bottom: none;
+        }
+
+        .fps-value {
+            font-size: 1.3em;
+            font-weight: bold;
+            color: #4CAF50;
+        }
+
+        .warning {
+            background: rgba(255,152,0,0.2);
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎮 Unity WebGL Performance Benchmark</h1>
+
+        <div class="info-box">
+            <h3>📊 Benchmark Information</h3>
+            <p>This benchmark will automatically run four performance tests:</p>
+            <ul style="margin: 10px 0 10px 20px;">
+                <li><strong>Baseline Test</strong> (10s) - Empty scene performance</li>
+                <li><strong>Physics Stress Test</strong> (15s) - 50 physics objects</li>
+                <li><strong>Rendering Benchmark</strong> (15s) - 100 animated objects</li>
+                <li><strong>Combined Test</strong> (20s) - Physics + Rendering</li>
+            </ul>
+            <p><strong>Total Duration: ~60 seconds</strong></p>
+            <div class="warning">
+                ⚠️ <strong>IMPORTANT:</strong> Keep this browser tab VISIBLE and ACTIVE during the benchmark.
+                <br>Background tabs may be throttled by the browser, affecting accuracy.
+                <br>Results will be sent to the server terminal for display.
+            </div>
+        </div>
+
+        <div class="game-container">
+            <div id="unity-container">
+                <canvas id="unity-canvas"></canvas>
+                <div id="unity-loading-bar">
+                    <div id="unity-progress-bar-full"></div>
+                </div>
+            </div>
+            <div class="status" id="status">Loading Unity...</div>
+        </div>
+
+        <div id="results-container" style="display: none;">
+            <h2 style="text-align: center; margin: 20px 0;">Benchmark Results</h2>
+            <div class="results" id="results"></div>
+        </div>
+    </div>
+
+    <script>
+        var container = document.querySelector("#unity-container");
+        var canvas = document.querySelector("#unity-canvas");
+        var loadingBar = document.querySelector("#unity-loading-bar");
+        var progressBarFull = document.querySelector("#unity-progress-bar-full");
+        var status = document.querySelector("#status");
+
+        var buildUrl = "Build";
+        var loaderUrl = buildUrl + "/%UNITY_WEBGL_LOADER_FILENAME%";
+        var config = {
+            dataUrl: buildUrl + "/%UNITY_WEBGL_DATA_FILENAME%",
+            frameworkUrl: buildUrl + "/%UNITY_WEBGL_FRAMEWORK_FILENAME%",
+            codeUrl: buildUrl + "/%UNITY_WEBGL_CODE_FILENAME%",
+#if MEMORY_FILENAME
+            memoryUrl: buildUrl + "/%UNITY_WEBGL_MEMORY_FILENAME%",
+#endif
+#if SYMBOLS_FILENAME
+            symbolsUrl: buildUrl + "/%UNITY_SYMBOLS_FILENAME%",
+#endif
+            streamingAssetsUrl: "StreamingAssets",
+            companyName: "%UNITY_COMPANY_NAME%",
+            productName: "%UNITY_PRODUCT_NAME%",
+            productVersion: "%UNITY_PRODUCT_VERSION%",
+        };
+
+        var unityInstance = null;
+        var benchmarkResults = null;
+
+        var script = document.createElement("script");
+        script.src = loaderUrl;
+        script.onload = () => {
+            createUnityInstance(canvas, config, (progress) => {
+                progressBarFull.style.width = 100 * progress + "%";
+                status.textContent = "Loading: " + Math.round(100 * progress) + "%";
+            }).then((instance) => {
+                unityInstance = instance;
+                loadingBar.style.display = "none";
+                status.textContent = "✅ Benchmark Running...";
+
+                // 벤치마크 완료 감지 (LocalStorage 폴링)
+                checkForResults();
+            }).catch((message) => {
+                status.textContent = "❌ Error: " + message;
+            });
+        };
+        document.body.appendChild(script);
+
+        // Page Visibility API - 탭 백그라운드 경고
+        var originalTitle = document.title;
+        document.addEventListener('visibilitychange', function() {
+            if (document.hidden) {
+                document.title = '⚠️ TAB HIDDEN - Bring to front!';
+                status.style.color = '#FF9800';
+                status.textContent = '⚠️ WARNING: Tab is hidden! Bring to front for accurate results.';
+            } else {
+                document.title = originalTitle;
+                status.style.color = '#fff';
+                if (unityInstance) {
+                    status.textContent = '✅ Benchmark Running...';
+                }
+            }
+        });
+
+        // 결과 확인 (주기적으로 LocalStorage 체크)
+        function checkForResults() {
+            var checkInterval = setInterval(function() {
+                var results = localStorage.getItem('unity_benchmark_results');
+                if (results) {
+                    clearInterval(checkInterval);
+                    displayResults(JSON.parse(results));
+                }
+            }, 1000);
+        }
+
+        function displayResults(results) {
+            benchmarkResults = results;
+            status.textContent = "✅ Benchmark Complete! Results sent to server.";
+
+            document.getElementById('results-container').style.display = 'block';
+
+            var resultsHtml = '';
+
+            // Baseline Test
+            if (results.baselineTest) {
+                resultsHtml += createResultCard('Baseline Test', results.baselineTest);
+            }
+
+            // Physics Test
+            if (results.physicsTest) {
+                resultsHtml += createResultCard('Physics Stress Test', results.physicsTest);
+            }
+
+            // Rendering Test
+            if (results.renderingTest) {
+                resultsHtml += createResultCard('Rendering Benchmark', results.renderingTest);
+            }
+
+            // Combined Test
+            if (results.combinedTest) {
+                resultsHtml += createResultCard('Combined Test', results.combinedTest);
+            }
+
+            document.getElementById('results').innerHTML = resultsHtml;
+        }
+
+        function createResultCard(title, test) {
+            var fpsColor = test.avgFps >= 50 ? '#4CAF50' : test.avgFps >= 30 ? '#FFC107' : '#F44336';
+
+            return `
+                <div class="result-card">
+                    <h3>${title}</h3>
+                    <p style="margin-bottom: 10px; opacity: 0.8;">${test.description || ''}</p>
+                    <div class="result-item">
+                        <span>Avg FPS:</span>
+                        <span class="fps-value" style="color: ${fpsColor}">${test.avgFps.toFixed(2)}</span>
+                    </div>
+                    <div class="result-item">
+                        <span>Min FPS:</span>
+                        <span>${test.minFps.toFixed(2)}</span>
+                    </div>
+                    <div class="result-item">
+                        <span>Max FPS:</span>
+                        <span>${test.maxFps.toFixed(2)}</span>
+                    </div>
+                    <div class="result-item">
+                        <span>Memory Used:</span>
+                        <span>${test.memoryUsedMB.toFixed(2)} MB</span>
+                    </div>
+                    <div class="result-item">
+                        <span>Samples:</span>
+                        <span>${test.sampleCount}</span>
+                    </div>
+                </div>
+            `;
+        }
+
+    </script>
+</body>
+</html>

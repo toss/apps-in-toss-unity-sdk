@@ -1,0 +1,17 @@
+{
+  "name": "unity-miniapp",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "granite dev",
+    "build": "granite build",
+    "deploy": "ait deploy"
+  },
+  "dependencies": {
+    "@apps-in-toss/web-framework": "latest"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0",
+    "typescript": "^5.0.0"
+  }
+}

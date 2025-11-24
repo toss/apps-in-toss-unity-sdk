@@ -20,7 +20,7 @@
 
 ### 1.1 SDK Runtime Generator 개요
 
-**위치**: `sdk-runtime-generator/`
+**위치**: `sdk-runtime-generator~/`
 
 **역할**:
 - `@apps-in-toss/web-framework` TypeScript 정의 파싱
@@ -299,8 +299,8 @@ Tests/
 
 ```typescript
 import { compileCSharp } from './helpers/roslyn-compiler';
-import { generateCSharp } from '../../../sdk-runtime-generator/src/generators/csharp';
-import { parseWebFramework } from '../../../sdk-runtime-generator/src/parser';
+import { generateCSharp } from '../../../sdk-runtime-generator~/src/generators/csharp';
+import { parseWebFramework } from '../../../sdk-runtime-generator~/src/parser';
 
 describe('Tier 1: C# Compilation', () => {
   let generatedCode: { [file: string]: string };
@@ -377,7 +377,7 @@ describe('Tier 1: C# Compilation', () => {
 
 ```typescript
 import * as ts from 'typescript';
-import { generateJSLib } from '../../../sdk-runtime-generator/src/generators/jslib';
+import { generateJSLib } from '../../../sdk-runtime-generator~/src/generators/jslib';
 
 describe('Tier 1: JavaScript Syntax', () => {
   let jslibFiles: { [file: string]: string };
@@ -589,8 +589,8 @@ function parseCompilerOutput(output: string): CompilationResult {
 **파일**: `Tests/SDK-Generator/unit/invariants.test.ts`
 
 ```typescript
-import { generateCSharp, generateJSLib } from '../../../sdk-runtime-generator/src';
-import { parseWebFramework } from '../../../sdk-runtime-generator/src/parser';
+import { generateCSharp, generateJSLib } from '../../../sdk-runtime-generator~/src';
+import { parseWebFramework } from '../../../sdk-runtime-generator~/src/parser';
 import { extractMethod, extractDllImport } from './helpers/method-extractor';
 
 describe('Tier 2: Structural Invariants', () => {

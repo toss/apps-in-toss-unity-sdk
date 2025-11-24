@@ -101,6 +101,63 @@ npx playwright install chromium
 
 ## 테스트 실행
 
+### ⚡ 빠른 C# 빌드 검증 (build-only.sh)
+
+**SDK 코드 변경 후 C# 컴파일만 빠르게 검증:**
+
+```bash
+cd Tests~/E2E
+./build-only.sh
+```
+
+**실행 내용:**
+1. 샘플 프로젝트 clone
+2. SDK를 local package로 추가
+3. Unity WebGL 빌드 수행 (C# 컴파일 검증)
+4. 컴파일 에러/경고 출력
+5. 벤치마크는 실행하지 않음 (시간 절약)
+
+**장점:**
+- ✅ C# 컴파일 에러를 빠르게 발견
+- ✅ 벤치마크 실행 생략으로 시간 단축
+- ✅ SDK 코드 변경 후 바로 검증 가능
+
+**출력 예시:**
+```
+[1/3] Cloning sample project...
+✅ Sample project ready
+
+[2/3] Adding SDK as local package...
+✅ SDK added to manifest.json
+
+[3/3] Building Unity WebGL with SDK...
+This will take 5-10 minutes. Validating C# compilation...
+
+✅ Build successful!
+
+Build artifacts:
+  Location: Tests~/E2E/temp/.../WebGLBuild
+  Size: 47M
+
+✅ No C# compilation errors or warnings!
+✅ C# build validation complete!
+```
+
+**에러가 있을 경우:**
+```
+❌ Build failed with exit code: 1
+
+Showing last 100 lines of build log:
+======================================
+error CS1519: Invalid token '=' in class, struct, or interface member declaration
+error CS0246: The type or namespace name 'Action<void>' could not be found
+======================================
+
+Full log: Tests~/E2E/build.log
+```
+
+---
+
 ### ⭐ 방법 1: benchmark.sh로 완전 자동화 (권장)
 
 **가장 간단한 방법:** Unity 빌드부터 헤드리스 Chrome 실행까지 한 번에 자동화

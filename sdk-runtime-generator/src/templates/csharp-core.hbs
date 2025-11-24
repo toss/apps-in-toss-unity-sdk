@@ -1,0 +1,133 @@
+// -----------------------------------------------------------------------
+// <copyright file="AITCore.cs" company="Toss">
+//     Copyright (c) Toss. All rights reserved.
+//     Generated from @apps-in-toss/web-framework
+// </copyright>
+// -----------------------------------------------------------------------
+
+using System;
+using System.Collections.Generic;
+using UnityEngine;
+
+namespace AppsInToss
+{
+    /// <summary>
+    /// Apps in Toss SDK Core Infrastructure
+    /// Callback management and JavaScript bridge
+    /// </summary>
+    public class AITCore : MonoBehaviour
+    {
+        private static AITCore? _instance;
+
+        /// <summary>
+        /// Singleton instance
+        /// </summary>
+        public static AITCore Instance
+        {
+            get
+            {
+                if (_instance == null)
+                {
+                    var go = new GameObject("AITCore");
+                    _instance = go.AddComponent<AITCore>();
+                    DontDestroyOnLoad(go);
+                }
+                return _instance;
+            }
+        }
+
+        // Callback storage
+        private int _callbackIdCounter = 0;
+        private Dictionary<string, Delegate> _callbacks = new Dictionary<string, Delegate>();
+
+        /// <summary>
+        /// Register a callback and return its ID
+        /// </summary>
+        public string RegisterCallback<T>(Action<T> callback)
+        {
+            string id = $"cb_{_callbackIdCounter++}";
+            _callbacks[id] = callback;
+            return id;
+        }
+
+        /// <summary>
+        /// Try to get and remove a callback by ID
+        /// </summary>
+        public bool TryGetCallback<T>(string callbackId, out Action<T>? callback)
+        {
+            if (_callbacks.TryGetValue(callbackId, out var rawCallback))
+            {
+                callback = rawCallback as Action<T>;
+                _callbacks.Remove(callbackId);
+                return callback != null;
+            }
+            callback = null;
+            return false;
+        }
+
+        /// <summary>
+        /// Remove a callback without invoking it
+        /// </summary>
+        public void RemoveCallback(string callbackId)
+        {
+            _callbacks.Remove(callbackId);
+        }
+
+        /// <summary>
+        /// Called by JavaScript when a callback is triggered
+        /// This is the entry point for all JavaScript -> Unity callbacks
+        /// </summary>
+        public void OnAITCallback(string jsonPayload)
+        {
+            try
+            {
+                var callbackData = JsonUtility.FromJson<CallbackData>(jsonPayload);
+                RouteCallback(callbackData.CallbackId, callbackData.TypeName, callbackData.Result);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[AITCore] Failed to process callback: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Route callback based on type name
+        /// </summary>
+        private void RouteCallback(string callbackId, string typeName, string resultJson)
+        {
+            switch (typeName)
+            {
+{{#each callbackTypes}}
+                case "{{this}}":
+                    if (TryGetCallback<{{this}}>(callbackId, out var callback{{@index}}) && callback{{@index}} != null)
+                    {
+                        var result{{@index}} = JsonUtility.FromJson<{{this}}>(resultJson);
+                        callback{{@index}}(result{{@index}});
+                    }
+                    break;
+{{/each}}
+                case "void":
+                    if (TryGetCallback<object>(callbackId, out var voidCallback) && voidCallback != null)
+                    {
+                        voidCallback(null!);
+                    }
+                    break;
+
+                default:
+                    Debug.LogWarning($"[AITCore] Unknown callback type: {typeName}");
+                    break;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Callback payload from JavaScript
+    /// </summary>
+    [Serializable]
+    public class CallbackData
+    {
+        public string CallbackId = "";
+        public string TypeName = "";
+        public string Result = "";
+    }
+}

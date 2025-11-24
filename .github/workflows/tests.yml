@@ -7,6 +7,67 @@ on:
     branches: [master]
 
 jobs:
+  # Unity SDK Generator 빌드 테스트
+  sdk-generator-build:
+    name: SDK Generator Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+        node-version: [18, 20]
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+          cache-dependency-path: sdk-runtime-generator/package-lock.json
+
+      - name: Install Dependencies
+        run: npm ci
+        working-directory: sdk-runtime-generator
+
+      - name: Build TypeScript
+        run: npm run build
+        working-directory: sdk-runtime-generator
+
+      - name: Verify Templates Copied
+        if: runner.os != 'Windows'
+        run: |
+          if [ ! -d "dist/templates" ]; then
+            echo "❌ Templates directory not found"
+            exit 1
+          fi
+          echo "✅ Templates copied successfully"
+          ls -la dist/templates/
+        working-directory: sdk-runtime-generator
+
+      - name: Verify Templates Copied (Windows)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          if not exist "dist\templates\" (
+            echo ❌ Templates directory not found
+            exit /b 1
+          )
+          echo ✅ Templates copied successfully
+          dir dist\templates\
+        working-directory: sdk-runtime-generator
+
+      - name: Test CLI Help Command
+        run: node dist/index.js --help
+        working-directory: sdk-runtime-generator
+
+      - name: Run Type Checking
+        run: npx tsc --noEmit
+        working-directory: sdk-runtime-generator
+
   # JavaScript 브릿지 테스트
   javascript-tests:
     name: JavaScript Bridge Tests (${{ matrix.os }})

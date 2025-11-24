@@ -1,0 +1,232 @@
+import { ParsedAPI, ParsedType, ValidationError } from '../types.js';
+import picocolors from 'picocolors';
+
+/**
+ * 지원되는 타입 목록
+ */
+const SUPPORTED_PRIMITIVES = new Set(['string', 'number', 'boolean', 'void', 'any', 'unknown']);
+
+/**
+ * C# 타입 매핑 테이블
+ */
+export const TYPE_MAPPING: Record<string, string> = {
+  // Primitives
+  string: 'string',
+  number: 'double',
+  boolean: 'bool',
+  void: 'void',
+  any: 'object',
+  unknown: 'object',
+
+  // Unity types
+  Date: 'DateTime',
+  ArrayBuffer: 'byte[]',
+  Uint8Array: 'byte[]',
+
+  // Common types
+  Error: 'Exception',
+};
+
+/**
+ * 타입 지원 여부 확인
+ */
+export function isTypeSupported(type: ParsedType): boolean {
+  switch (type.kind) {
+    case 'primitive':
+      return SUPPORTED_PRIMITIVES.has(type.name);
+
+    case 'promise':
+      // Promise의 내부 타입 검증
+      return type.promiseType ? isTypeSupported(type.promiseType) : false;
+
+    case 'array':
+      // Array의 요소 타입 검증
+      return type.elementType ? isTypeSupported(type.elementType) : false;
+
+    case 'object':
+      // Object는 허용 (프로퍼티가 있으면 재귀 검증)
+      if (type.properties && type.properties.length > 0) {
+        return type.properties.every(prop => isTypeSupported(prop.type));
+      }
+      // 프로퍼티 없는 object도 허용 (Named type이거나 any)
+      return true;
+
+    case 'union':
+      // Union의 모든 타입 검증
+      return type.unionTypes ? type.unionTypes.every(t => isTypeSupported(t)) : false;
+
+    case 'function':
+      // 함수 타입은 System.Action으로 매핑 가능
+      return true;
+
+    case 'unknown':
+      // 알 수 없는 타입은 허용하지 않음
+      return false;
+
+    default:
+      return false;
+  }
+}
+
+/**
+ * API 타입 매핑 검증
+ */
+export function validateTypeMapping(api: ParsedAPI): ValidationError[] {
+  const errors: ValidationError[] = [];
+
+  // 파라미터 타입 검증
+  for (const param of api.parameters) {
+    if (!isTypeSupported(param.type)) {
+      errors.push({
+        api: api.name,
+        type: 'type-unsupported',
+        message: picocolors.red(`
+❌ 지원되지 않는 타입: ${param.type.raw}
+
+API: ${api.name}
+Parameter: ${param.name}
+Type: ${param.type.raw}
+Kind: ${param.type.kind}
+
+🛠️  조치 필요:
+1. tools/generate-unity-sdk/src/validators/types.ts에 타입 매핑 추가
+2. 또는 src/templates/에 수동 템플릿 작성
+
+지원 가능한 타입:
+- Primitives: string, number, boolean, void
+- Objects: interface { ... }
+- Arrays: T[]
+- Promises: Promise<T>
+- Unions: T | U
+
+생성 중단됨.
+        `),
+        suggestion: `${param.type.kind} 타입에 대한 매핑 추가 필요`,
+      });
+    }
+  }
+
+  // 반환 타입 검증
+  if (!isTypeSupported(api.returnType)) {
+    errors.push({
+      api: api.name,
+      type: 'type-unsupported',
+      message: picocolors.red(`
+❌ 지원되지 않는 반환 타입: ${api.returnType.raw}
+
+API: ${api.name}
+Return Type: ${api.returnType.raw}
+Kind: ${api.returnType.kind}
+
+🛠️  조치 필요:
+1. tools/generate-unity-sdk/src/validators/types.ts에 타입 매핑 추가
+2. 또는 src/templates/에 수동 템플릿 작성
+
+생성 중단됨.
+      `),
+      suggestion: `${api.returnType.kind} 타입에 대한 매핑 추가 필요`,
+    });
+  }
+
+  return errors;
+}
+
+/**
+ * 전체 API 목록에 대한 타입 검증
+ */
+export function validateAllTypes(apis: ParsedAPI[]): { success: boolean; errors: ValidationError[] } {
+  const allErrors: ValidationError[] = [];
+
+  for (const api of apis) {
+    const errors = validateTypeMapping(api);
+    allErrors.push(...errors);
+  }
+
+  return {
+    success: allErrors.length === 0,
+    errors: allErrors,
+  };
+}
+
+/**
+ * TypeScript 타입을 C# 타입으로 변환
+ */
+export function mapToCSharpType(type: ParsedType): string {
+  switch (type.kind) {
+    case 'primitive':
+      return TYPE_MAPPING[type.name] || type.name;
+
+    case 'promise':
+      // Promise<T> -> Task<T> 또는 void (callback 기반)
+      if (type.promiseType) {
+        const innerType = mapToCSharpType(type.promiseType);
+        return innerType === 'void' ? 'void' : innerType;
+      }
+      return 'void';
+
+    case 'array':
+      if (type.elementType) {
+        const elementType = mapToCSharpType(type.elementType);
+        return `${elementType}[]`;
+      }
+      return 'object[]';
+
+    case 'object':
+      // 객체는 클래스로 생성해야 함
+      // import("path").TypeName 형식에서 TypeName만 추출
+      let objectName = type.name.includes('.')
+        ? type.name.split('.').pop() || type.name
+        : type.name;
+
+      // 특수 문자 제거 (중괄호, 콤마, 공백 등)
+      let cleanName = objectName.replace(/["'{}(),\s]/g, '').trim();
+
+      // __type 또는 빈 이름은 익명 타입
+      // 이 경우 호출자가 의미있는 이름을 생성해야 함
+      if (cleanName === '__type' || !cleanName || cleanName.startsWith('{')) {
+        return '__type'; // 특수 마커 (호출자가 처리)
+      }
+
+      return cleanName;
+
+    case 'union':
+      // Union 타입이 named type이면 (import 경로 포함) 타입 이름 추출 - 최우선
+      // 예: import("...").GameCenterGameProfileResponse -> GameCenterGameProfileResponse
+      if (type.name && (type.name.includes('.') || type.name.includes('import('))) {
+        const typeName = type.name.split('.').pop() || type.name;
+        const cleanName = typeName.replace(/["'{}()|,\s]/g, '').trim();
+
+        if (cleanName && cleanName !== '__type') {
+          return cleanName;
+        }
+      }
+
+      // Union 타입은 첫 번째 비-undefined/비-익명 타입 사용
+      if (type.unionTypes && type.unionTypes.length > 0) {
+        // undefined와 익명 타입(__type)을 제외한 첫 번째 타입
+        const namedType = type.unionTypes.find(
+          t => t.name !== 'undefined' && t.name !== '__type' && !t.name.startsWith('{') && !t.name.includes('|')
+        );
+        if (namedType) {
+          return mapToCSharpType(namedType);
+        }
+
+        // 익명 타입이지만 properties가 있는 타입
+        const nonUndefined = type.unionTypes.find(t => t.name !== 'undefined');
+        if (nonUndefined) {
+          return mapToCSharpType(nonUndefined);
+        }
+
+        return mapToCSharpType(type.unionTypes[0]);
+      }
+
+      return 'object';
+
+    case 'function':
+      // 함수 타입 () => void는 System.Action으로 매핑
+      return 'System.Action';
+
+    default:
+      return 'object';
+  }
+}

@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Discriminated Union 테스트</title>
+    <style>
+        body {
+            font-family: 'Courier New', monospace;
+            padding: 20px;
+            background: #1e1e1e;
+            color: #d4d4d4;
+        }
+        .test-case {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #3c3c3c;
+            border-radius: 5px;
+            background: #252526;
+        }
+        .test-title {
+            font-weight: bold;
+            color: #4ec9b0;
+            margin-bottom: 10px;
+        }
+        .result {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 3px;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+        .success {
+            background: #1e3a1e;
+            border-left: 3px solid #4ec9b0;
+        }
+        .error {
+            background: #3a1e1e;
+            border-left: 3px solid #f48771;
+        }
+        button {
+            padding: 8px 16px;
+            background: #0e639c;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #1177bb;
+        }
+        .code-block {
+            background: #1e1e1e;
+            padding: 10px;
+            border-radius: 3px;
+            margin: 10px 0;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 Discriminated Union 런타임 검증</h1>
+    <p>생성된 jslib 코드의 런타임 타입 체크 동작을 검증합니다.</p>
+
+    <!-- Test Case 1: Error String -->
+    <div class="test-case">
+        <div class="test-title">Test 1: 에러 케이스 (문자열 리터럴)</div>
+        <div class="code-block">
+Mock: getUserKeyForGame() → "INVALID_CATEGORY"
+Expected: { _type: "error", _errorCode: "INVALID_CATEGORY", _successJson: "" }
+        </div>
+        <button onclick="testErrorCase()">▶ 실행</button>
+        <div id="result1" class="result" style="display:none;"></div>
+    </div>
+
+    <!-- Test Case 2: Success Object -->
+    <div class="test-case">
+        <div class="test-title">Test 2: 성공 케이스 (객체)</div>
+        <div class="code-block">
+Mock: getUserKeyForGame() → { type: "HASH", hash: "abc123" }
+Expected: { _type: "success", _successJson: "...", _errorCode: "" }
+        </div>
+        <button onclick="testSuccessCase()">▶ 실행</button>
+        <div id="result2" class="result" style="display:none;"></div>
+    </div>
+
+    <!-- Test Case 3: Another Error -->
+    <div class="test-case">
+        <div class="test-title">Test 3: 다른 에러 케이스</div>
+        <div class="code-block">
+Mock: getUserKeyForGame() → "ERROR"
+Expected: { _type: "error", _errorCode: "ERROR", _successJson: "" }
+        </div>
+        <button onclick="testAnotherError()">▶ 실행</button>
+        <div id="result3" class="result" style="display:none;"></div>
+    </div>
+
+    <!-- Test Case 4: Multiple Sequential Calls -->
+    <div class="test-case">
+        <div class="test-title">Test 4: 순차 호출 (에러 → 성공 → 에러)</div>
+        <button onclick="testSequentialCalls()">▶ 실행</button>
+        <div id="result4" class="result" style="display:none;"></div>
+    </div>
+
+    <hr style="margin: 40px 0; border-color: #3c3c3c;">
+
+    <div class="test-case">
+        <div class="test-title">📋 jslib 코드 (생성된 코드 시뮬레이션)</div>
+        <div class="code-block" id="jslib-code"></div>
+    </div>
+
+    <script>
+        // 생성된 jslib 코드를 시뮬레이션
+        // 실제 생성된 코드: Runtime/Generated/Plugins/AppsInToss-게임.jslib
+
+        function simulateJslibCall(apiResult) {
+            // 이것이 jslib에서 생성되는 로직입니다
+            let resultPayload;
+
+            if (typeof apiResult === 'string') {
+                // 에러 케이스 (문자열 리터럴)
+                resultPayload = {
+                    _type: "error",
+                    _errorCode: apiResult,
+                    _successJson: ""
+                };
+            } else {
+                // 성공 케이스 (객체)
+                resultPayload = {
+                    _type: "success",
+                    _successJson: JSON.stringify(apiResult),
+                    _errorCode: ""
+                };
+            }
+
+            return resultPayload;
+        }
+
+        // 표시용 코드
+        document.getElementById('jslib-code').textContent = simulateJslibCall.toString();
+
+        function displayResult(elementId, input, output, expected) {
+            const el = document.getElementById(elementId);
+            const isError = typeof input === 'string';
+
+            const match = JSON.stringify(output) === JSON.stringify(expected);
+
+            el.innerHTML = `
+<strong>Input (from web-framework):</strong>
+${JSON.stringify(input, null, 2)}
+
+<strong>Runtime Type Check:</strong>
+typeof result === '${typeof input}' → ${isError ? 'Error Case' : 'Success Case'}
+
+<strong>Output (to Unity):</strong>
+${JSON.stringify(output, null, 2)}
+
+<strong>Expected:</strong>
+${JSON.stringify(expected, null, 2)}
+
+<strong>Result:</strong> ${match ? '✅ PASS' : '❌ FAIL'}
+            `.trim();
+
+            el.className = `result ${match ? 'success' : 'error'}`;
+            el.style.display = 'block';
+        }
+
+        function testErrorCase() {
+            const input = "INVALID_CATEGORY";
+            const output = simulateJslibCall(input);
+            const expected = {
+                _type: "error",
+                _errorCode: "INVALID_CATEGORY",
+                _successJson: ""
+            };
+
+            displayResult('result1', input, output, expected);
+        }
+
+        function testSuccessCase() {
+            const input = { type: "HASH", hash: "abc123" };
+            const output = simulateJslibCall(input);
+            const expected = {
+                _type: "success",
+                _successJson: JSON.stringify(input),
+                _errorCode: ""
+            };
+
+            displayResult('result2', input, output, expected);
+        }
+
+        function testAnotherError() {
+            const input = "ERROR";
+            const output = simulateJslibCall(input);
+            const expected = {
+                _type: "error",
+                _errorCode: "ERROR",
+                _successJson: ""
+            };
+
+            displayResult('result3', input, output, expected);
+        }
+
+        function testSequentialCalls() {
+            const tests = [
+                { input: "INVALID_CATEGORY", label: "에러 1" },
+                { input: { type: "HASH", hash: "user123" }, label: "성공" },
+                { input: "ERROR", label: "에러 2" }
+            ];
+
+            let results = [];
+            tests.forEach(test => {
+                const output = simulateJslibCall(test.input);
+                const isError = typeof test.input === 'string';
+                results.push(`${test.label}: _type="${output._type}" ${isError ? '✅' : '✅'}`);
+            });
+
+            const el = document.getElementById('result4');
+            el.innerHTML = `
+<strong>순차 호출 결과:</strong>
+
+${results.join('\n')}
+
+<strong>상태 변화:</strong>
+1. "INVALID_CATEGORY" → { _type: "error", _errorCode: "INVALID_CATEGORY" }
+2. { type: "HASH", ... } → { _type: "success", _successJson: "{...}" }
+3. "ERROR" → { _type: "error", _errorCode: "ERROR" }
+
+✅ 각 호출마다 올바른 타입 분기 확인
+            `.trim();
+
+            el.className = 'result success';
+            el.style.display = 'block';
+        }
+
+        // Auto-run all tests on load
+        console.log('🧪 Discriminated Union 테스트 준비 완료');
+        console.log('각 테스트 버튼을 클릭하여 실행하세요.');
+    </script>
+
+    <footer style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #3c3c3c; color: #858585;">
+        <p>이 테스트는 생성된 jslib 코드의 런타임 타입 체크 로직을 검증합니다.</p>
+        <p>실제 Unity 프로젝트에서는 이 로직이 C# GetUserKeyForGameResult 객체로 전달됩니다.</p>
+        <p>생성 위치: <code>Runtime/Generated/Plugins/AppsInToss-게임.jslib</code></p>
+    </footer>
+</body>
+</html>

@@ -57,13 +57,6 @@ namespace AppsInToss
             ExecuteDeploy();
         }
 
-        // ==================== Logs ====================
-        [MenuItem("AIT/Logs", false, 101)]
-        public static void ShowLogs()
-        {
-            AITLogsWindow.ShowWindow();
-        }
-
         // ==================== Open Build Output ====================
         [MenuItem("AIT/Open Build Output", false, 102)]
         public static void OpenBuildOutput()
@@ -96,32 +89,13 @@ namespace AppsInToss
             var config = UnityUtil.GetEditorConf();
             if (!ValidateSettings(config)) return;
 
-            // 빌드 전 검증
-            var validationErrors = AITBuildValidator.ValidateBeforeBuild();
-            if (validationErrors.Count > 0)
-            {
-                string errorMessage = AITBuildValidator.FormatValidationErrors(validationErrors);
-                Debug.LogError("AIT: 빌드 전 검증 실패:\n" + errorMessage);
-                EditorUtility.DisplayDialog("빌드 전 검증 실패", errorMessage, "확인");
-                return;
-            }
-
             Debug.Log("AIT: WebGL 빌드 시작...");
             buildStopwatch.Restart();
-
-            var historyEntry = new BuildHistoryEntry
-            {
-                buildType = "WebGL",
-                appVersion = config.version
-            };
 
             try
             {
                 var result = AITConvertCore.DoExport(buildWebGL: true, doPackaging: false);
                 buildStopwatch.Stop();
-
-                historyEntry.success = (result == AITConvertCore.AITExportError.SUCCEED);
-                historyEntry.buildTimeSeconds = (float)buildStopwatch.Elapsed.TotalSeconds;
 
                 if (result == AITConvertCore.AITExportError.SUCCEED)
                 {
@@ -131,21 +105,13 @@ namespace AppsInToss
                 else
                 {
                     string errorMessage = AITConvertCore.GetErrorMessage(result);
-                    historyEntry.errorMessage = result.ToString();
                     Debug.LogError($"AIT: WebGL 빌드 실패: {result}");
                     EditorUtility.DisplayDialog("빌드 실패", errorMessage, "확인");
                 }
-
-                AITBuildHistory.AddHistory(historyEntry);
             }
             catch (Exception e)
             {
                 buildStopwatch.Stop();
-                historyEntry.success = false;
-                historyEntry.buildTimeSeconds = (float)buildStopwatch.Elapsed.TotalSeconds;
-                historyEntry.errorMessage = e.Message;
-                AITBuildHistory.AddHistory(historyEntry);
-
                 Debug.LogError($"AIT: 오류: {e.Message}");
                 EditorUtility.DisplayDialog("오류", e.Message, "확인");
             }
@@ -159,19 +125,10 @@ namespace AppsInToss
             Debug.Log("AIT: 패키징 시작...");
             buildStopwatch.Restart();
 
-            var historyEntry = new BuildHistoryEntry
-            {
-                buildType = "Package",
-                appVersion = config.version
-            };
-
             try
             {
                 var result = AITConvertCore.DoExport(buildWebGL: false, doPackaging: true);
                 buildStopwatch.Stop();
-
-                historyEntry.success = (result == AITConvertCore.AITExportError.SUCCEED);
-                historyEntry.buildTimeSeconds = (float)buildStopwatch.Elapsed.TotalSeconds;
 
                 if (result == AITConvertCore.AITExportError.SUCCEED)
                 {
@@ -181,21 +138,13 @@ namespace AppsInToss
                 else
                 {
                     string errorMessage = AITConvertCore.GetErrorMessage(result);
-                    historyEntry.errorMessage = result.ToString();
                     Debug.LogError($"AIT: 패키징 실패: {result}");
                     EditorUtility.DisplayDialog("패키징 실패", errorMessage, "확인");
                 }
-
-                AITBuildHistory.AddHistory(historyEntry);
             }
             catch (Exception e)
             {
                 buildStopwatch.Stop();
-                historyEntry.success = false;
-                historyEntry.buildTimeSeconds = (float)buildStopwatch.Elapsed.TotalSeconds;
-                historyEntry.errorMessage = e.Message;
-                AITBuildHistory.AddHistory(historyEntry);
-
                 Debug.LogError($"AIT: 오류: {e.Message}");
                 EditorUtility.DisplayDialog("오류", e.Message, "확인");
             }
@@ -206,32 +155,13 @@ namespace AppsInToss
             var config = UnityUtil.GetEditorConf();
             if (!ValidateSettings(config)) return;
 
-            // 빌드 전 검증
-            var validationErrors = AITBuildValidator.ValidateBeforeBuild();
-            if (validationErrors.Count > 0)
-            {
-                string errorMessage = AITBuildValidator.FormatValidationErrors(validationErrors);
-                Debug.LogError("AIT: 빌드 전 검증 실패:\n" + errorMessage);
-                EditorUtility.DisplayDialog("빌드 전 검증 실패", errorMessage, "확인");
-                return;
-            }
-
             Debug.Log("AIT: 전체 빌드 & 패키징 시작...");
             buildStopwatch.Restart();
-
-            var historyEntry = new BuildHistoryEntry
-            {
-                buildType = "Full",
-                appVersion = config.version
-            };
 
             try
             {
                 var result = AITConvertCore.DoExport(buildWebGL: true, doPackaging: true);
                 buildStopwatch.Stop();
-
-                historyEntry.success = (result == AITConvertCore.AITExportError.SUCCEED);
-                historyEntry.buildTimeSeconds = (float)buildStopwatch.Elapsed.TotalSeconds;
 
                 if (result == AITConvertCore.AITExportError.SUCCEED)
                 {
@@ -241,21 +171,13 @@ namespace AppsInToss
                 else
                 {
                     string errorMessage = AITConvertCore.GetErrorMessage(result);
-                    historyEntry.errorMessage = result.ToString();
                     Debug.LogError($"AIT: 빌드 실패: {result}");
                     EditorUtility.DisplayDialog("빌드 실패", errorMessage, "확인");
                 }
-
-                AITBuildHistory.AddHistory(historyEntry);
             }
             catch (Exception e)
             {
                 buildStopwatch.Stop();
-                historyEntry.success = false;
-                historyEntry.buildTimeSeconds = (float)buildStopwatch.Elapsed.TotalSeconds;
-                historyEntry.errorMessage = e.Message;
-                AITBuildHistory.AddHistory(historyEntry);
-
                 Debug.LogError($"AIT: 오류: {e.Message}");
                 EditorUtility.DisplayDialog("오류", e.Message, "확인");
             }
@@ -265,16 +187,6 @@ namespace AppsInToss
         {
             var config = UnityUtil.GetEditorConf();
             if (!ValidateSettings(config)) return;
-
-            // 배포 전 검증
-            var validationErrors = AITBuildValidator.ValidateBeforeDeploy();
-            if (validationErrors.Count > 0)
-            {
-                string errorMessage = AITBuildValidator.FormatValidationErrors(validationErrors);
-                Debug.LogError("AIT: 배포 전 검증 실패:\n" + errorMessage);
-                EditorUtility.DisplayDialog("배포 전 검증 실패", errorMessage, "확인");
-                return;
-            }
 
             string buildPath = GetBuildTemplatePath();
             string distPath = Path.Combine(buildPath, "dist");

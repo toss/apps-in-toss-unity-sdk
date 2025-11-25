@@ -91,12 +91,18 @@ namespace AppsInToss
             string templateHeader = "PROJECT:";
             var editorConfig = UnityUtil.GetEditorConf();
 
-            // Unity 버전별 최적화 프리셋 자동 적용
-            Debug.Log($"[AIT] 현재 Unity 버전: {AITBuildPresets.GetUnityVersionInfo()}");
+            // Unity 버전 정보
+            Debug.Log($"[AIT] 현재 Unity 버전: {Application.unityVersion}");
 
             if (editorConfig.enableOptimization)
             {
-                AITBuildPresets.ApplyOptimalSettings();
+                // 최적 설정 적용
+                PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Disabled;
+                PlayerSettings.WebGL.memorySize = 512;
+                PlayerSettings.WebGL.threadsSupport = false;
+                PlayerSettings.WebGL.dataCaching = false;
+                PlayerSettings.WebGL.linkerTarget = WebGLLinkerTarget.Wasm;
+                Debug.Log("[AIT] 최적화 설정 적용 완료");
             }
             else
             {

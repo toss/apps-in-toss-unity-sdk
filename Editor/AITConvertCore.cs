@@ -201,6 +201,7 @@ namespace AppsInToss
             INVALID_APP_CONFIG = 3,
             NETWORK_ERROR = 4,
             CANCELLED = 5,
+            FAIL_NPM_BUILD = 6,
         }
 
         /// <summary>
@@ -244,6 +245,14 @@ namespace AppsInToss
 
                 case AITExportError.CANCELLED:
                     return "사용자에 의해 빌드가 취소되었습니다.";
+
+                case AITExportError.FAIL_NPM_BUILD:
+                    return "pnpm 빌드에 실패했습니다.\n\n" +
+                           "해결 방법:\n" +
+                           "1. pnpm이 설치되어 있는지 확인: npm install -g pnpm\n" +
+                           "2. Unity Console 창에서 에러 메시지 확인\n" +
+                           "3. ait-build 폴더에서 직접 pnpm install 시도\n" +
+                           "4. package.json 파일이 올바른지 확인";
 
                 default:
                     return $"알 수 없는 오류가 발생했습니다. (코드: {error})";
@@ -529,15 +538,24 @@ namespace AppsInToss
             string localCachePath = Path.Combine(buildProjectPath, ".npm-cache");
             string nodeModulesPath = Path.Combine(buildProjectPath, "node_modules");
 
-            // node_modules가 없는 경우에만 npm install 실행
+            // node_modules가 없는 경우에만 pnpm install 실행
             if (!Directory.Exists(nodeModulesPath))
             {
-                Debug.Log("[AIT] node_modules가 없습니다. npm install을 실행합니다 (1-2분 소요)...");
-                var installResult = RunNpmCommandWithCache(buildProjectPath, npmPath, "install", localCachePath, "npm install 실행 중...");
+                Debug.Log("[AIT] node_modules가 없습니다. pnpm install을 실행합니다 (1-2분 소요)...");
+
+                // pnpm 경로 찾기
+                string pnpmPath = FindPnpmPath();
+                if (string.IsNullOrEmpty(pnpmPath))
+                {
+                    Debug.LogError("[AIT] pnpm을 찾을 수 없습니다. pnpm을 설치해주세요: npm install -g pnpm");
+                    return AITExportError.FAIL_NPM_BUILD;
+                }
+
+                var installResult = RunNpmCommandWithCache(buildProjectPath, pnpmPath, "install", localCachePath, "pnpm install 실행 중...");
 
                 if (installResult != AITExportError.SUCCEED)
                 {
-                    Debug.LogError("[AIT] npm install 실패");
+                    Debug.LogError("[AIT] pnpm install 실패");
                     return installResult;
                 }
             }
@@ -545,12 +563,21 @@ namespace AppsInToss
             {
                 // 캐시 통계 출력
                 LogBuildCacheStats(buildProjectPath);
-                Debug.Log("[AIT] node_modules가 존재합니다. npm install을 건너뜁니다.");
+                Debug.Log("[AIT] node_modules가 존재합니다. pnpm install을 건너뜁니다.");
             }
 
             // granite build 실행 (web 폴더를 dist로 복사)
             Debug.Log("[AIT] granite build 실행 중...");
-            var buildResult = RunNpmCommandWithCache(buildProjectPath, npmPath, "run build", localCachePath, "granite build 실행 중...");
+
+            // pnpm 경로 찾기
+            string pnpmPathForBuild = FindPnpmPath();
+            if (string.IsNullOrEmpty(pnpmPathForBuild))
+            {
+                Debug.LogError("[AIT] pnpm을 찾을 수 없습니다. pnpm을 설치해주세요: npm install -g pnpm");
+                return AITExportError.FAIL_NPM_BUILD;
+            }
+
+            var buildResult = RunNpmCommandWithCache(buildProjectPath, pnpmPathForBuild, "run build", localCachePath, "granite build 실행 중...");
 
             if (buildResult != AITExportError.SUCCEED)
             {
@@ -759,92 +786,76 @@ namespace AppsInToss
 
         private static string FindNpmPath()
         {
-            // 1. 시스템 설치 npm 우선 사용
-            string systemNpm = FindSystemNpm();
-            if (!string.IsNullOrEmpty(systemNpm))
-            {
-                Debug.Log($"[npm] 시스템 npm 사용: {systemNpm}");
-                return systemNpm;
-            }
-
-            // 2. Embedded portable Node.js 사용 (자동 다운로드)
-            string embeddedNpm = AITNodeJSDownloader.FindEmbeddedNpm(autoDownload: true);
-            if (!string.IsNullOrEmpty(embeddedNpm))
-            {
-                Debug.Log($"[npm] Embedded npm 사용: {embeddedNpm}");
-                return embeddedNpm;
-            }
-
-            // 3. 둘 다 없으면 에러
-            Debug.LogError("[npm] npm을 찾을 수 없습니다. Node.js가 설치되어 있는지 확인하세요.");
-            return null;
+            // AITPackageManagerHelper를 사용한 통합 패키지 매니저 검색
+            string buildPath = AITPackageManagerHelper.GetBuildPath();
+            return AITPackageManagerHelper.FindPackageManager(buildPath, verbose: true);
         }
 
-        private static string FindSystemNpm()
+        /// <summary>
+        /// pnpm 경로를 찾는 함수
+        /// </summary>
+        private static string FindPnpmPath()
         {
-            // 1. 일반적인 npm 설치 경로 확인
-            string[] possiblePaths = new string[]
-            {
-                "/usr/local/bin/npm",
-                "/opt/homebrew/bin/npm",
-                "/usr/bin/npm"
-            };
-
-            foreach (string path in possiblePaths)
-            {
-                if (File.Exists(path))
-                {
-                    Debug.Log($"[npm] 시스템 npm 발견: {path}");
-                    return path;
-                }
-            }
-
-            // 2. which npm 명령으로 찾기
-            try
-            {
-                var process = new System.Diagnostics.Process
-                {
-                    StartInfo = new System.Diagnostics.ProcessStartInfo
-                    {
-                        FileName = "/bin/bash",
-                        Arguments = "-l -c \"which npm\"",
-                        UseShellExecute = false,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true,
-                        CreateNoWindow = true
-                    }
-                };
-
-                process.Start();
-                string output = process.StandardOutput.ReadToEnd().Trim();
-                process.WaitForExit();
-
-                if (process.ExitCode == 0 && !string.IsNullOrEmpty(output) && File.Exists(output))
-                {
-                    Debug.Log($"[npm] which로 시스템 npm 발견: {output}");
-                    return output;
-                }
-            }
-            catch (Exception e)
-            {
-                Debug.LogWarning($"[npm] which npm 실행 실패: {e.Message}");
-            }
-
-            return null;
+            // pnpm 실행 파일 검색
+            return AITPackageManagerHelper.FindExecutable("pnpm", verbose: true);
         }
 
-        private static AITExportError RunNpmCommandWithCache(string workingDirectory, string npmPath, string arguments, string cachePath, string progressTitle)
+        /// <summary>
+        /// FindNpm - 외부 접근용 public 메서드
+        /// AppsInTossMenu.cs 등에서 사용
+        /// </summary>
+        public static string FindNpm()
+        {
+            string buildPath = AITPackageManagerHelper.GetBuildPath();
+            return AITPackageManagerHelper.FindPackageManager(buildPath, verbose: true);
+        }
+
+        internal static AITExportError RunNpmCommandWithCache(string workingDirectory, string npmPath, string arguments, string cachePath, string progressTitle)
         {
             string npmDir = Path.GetDirectoryName(npmPath);
-            string pathEnv = $"{npmDir}:/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin";
 
-            string fullCommand = $"cd '{workingDirectory}' && '{npmPath}' {arguments} --cache '{cachePath}' --prefer-offline false";
+            // node 실행 파일 경로 찾기 (pnpm이 node를 찾을 수 있도록)
+            string nodePath = AITPackageManagerHelper.FindExecutable("node", verbose: false);
+            string nodeDir = "";
 
-            Debug.Log($"[npm] 명령 실행 준비:");
-            Debug.Log($"[npm]   작업 디렉토리: {workingDirectory}");
-            Debug.Log($"[npm]   npm 경로: {npmPath}");
-            Debug.Log($"[npm]   명령: npm {arguments}");
-            Debug.Log($"[npm]   캐시 경로: {cachePath}");
+            if (!string.IsNullOrEmpty(nodePath))
+            {
+                nodeDir = Path.GetDirectoryName(nodePath);
+            }
+            else
+            {
+                // node를 찾지 못한 경우, npmPath가 embedded Node.js인지 확인
+                // 예: Tools~/NodeJS/darwin-arm64/bin/npm -> Tools~/NodeJS/darwin-arm64/bin/node
+                string possibleNodePath = Path.Combine(npmDir, "node");
+                if (File.Exists(possibleNodePath))
+                {
+                    nodePath = possibleNodePath;
+                    nodeDir = npmDir;
+                    Debug.Log($"[Package Manager] Embedded node 발견: {nodePath}");
+                }
+            }
+
+            // PATH 환경변수 구성: npmDir, nodeDir, 표준 경로들
+            string pathEnv = string.IsNullOrEmpty(nodeDir)
+                ? $"{npmDir}:/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin"
+                : $"{npmDir}:{nodeDir}:/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin";
+
+            // 패키지 매니저 이름 추출 (pnpm 또는 npm)
+            string pmName = Path.GetFileName(npmPath); // "pnpm" or "npm"
+
+            // --cache와 --prefer-offline은 install 명령어에만 적용 (run build에는 적용하지 않음)
+            bool isInstallCommand = arguments.Trim() == "install";
+            string fullCommand = isInstallCommand
+                ? $"cd '{workingDirectory}' && '{npmPath}' {arguments} --store-dir '{cachePath}'"
+                : $"cd '{workingDirectory}' && '{npmPath}' {arguments}";
+
+            Debug.Log($"[{pmName}] 명령 실행 준비:");
+            Debug.Log($"[{pmName}]   작업 디렉토리: {workingDirectory}");
+            Debug.Log($"[{pmName}]   {pmName} 경로: {npmPath}");
+            Debug.Log($"[{pmName}]   node 경로: {nodePath ?? "찾을 수 없음"}");
+            Debug.Log($"[{pmName}]   PATH 환경변수: {pathEnv}");
+            Debug.Log($"[{pmName}]   명령: {pmName} {arguments}");
+            Debug.Log($"[{pmName}]   캐시 경로: {cachePath}");
 
             var process = new System.Diagnostics.Process
             {
@@ -861,7 +872,7 @@ namespace AppsInToss
 
             try
             {
-                Debug.Log($"[npm] 프로세스 시작...");
+                Debug.Log($"[{pmName}] 프로세스 시작...");
                 process.Start();
 
                 System.Text.StringBuilder output = new System.Text.StringBuilder();
@@ -871,12 +882,12 @@ namespace AppsInToss
                     if (args.Data != null)
                     {
                         output.AppendLine(args.Data);
-                        Debug.Log($"[npm] {args.Data}");
+                        Debug.Log($"[{pmName}] {args.Data}");
                     }
                 };
 
                 process.ErrorDataReceived += (sender, args) => {
-                    if (args.Data != null && !args.Data.Contains("npm WARN"))
+                    if (args.Data != null && !args.Data.Contains("WARN"))
                     {
                         error.AppendLine(args.Data);
                     }
@@ -905,7 +916,7 @@ namespace AppsInToss
                 if (!process.HasExited)
                 {
                     process.Kill();
-                    Debug.LogError($"[npm] 명령 시간 초과: npm {arguments}");
+                    Debug.LogError($"[{pmName}] 명령 시간 초과: {pmName} {arguments}");
                     return AITExportError.BUILD_WEBGL_FAILED;
                 }
 
@@ -914,18 +925,18 @@ namespace AppsInToss
 
                 if (process.ExitCode != 0)
                 {
-                    Debug.LogError($"[npm] 명령 실패 (Exit Code: {process.ExitCode}): npm {arguments}");
-                    Debug.LogError($"[npm] 오류:\n{error}");
+                    Debug.LogError($"[{pmName}] 명령 실패 (Exit Code: {process.ExitCode}): {pmName} {arguments}");
+                    Debug.LogError($"[{pmName}] 오류:\n{error}");
                     return AITExportError.BUILD_WEBGL_FAILED;
                 }
 
-                Debug.Log($"[npm] ✓ 명령 성공 완료: npm {arguments} (소요 시간: {elapsedSeconds}초)");
+                Debug.Log($"[{pmName}] ✓ 명령 성공 완료: {pmName} {arguments} (소요 시간: {elapsedSeconds}초)");
                 return AITExportError.SUCCEED;
             }
             catch (Exception e)
             {
                 EditorUtility.ClearProgressBar();
-                Debug.LogError($"[npm] 명령 실행 오류: {e.Message}");
+                Debug.LogError($"[{pmName}] 명령 실행 오류: {e.Message}");
                 return AITExportError.NODE_NOT_FOUND;
             }
         }

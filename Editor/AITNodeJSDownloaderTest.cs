@@ -7,11 +7,11 @@ namespace AppsInToss.Editor
 {
     /// <summary>
     /// AITNodeJSDownloader 테스트 유틸리티
-    /// Unity 메뉴: Apps in Toss > Test Node.js Downloader
+    /// Unity 메뉴: AIT > Debug > Test Node.js Downloader
     /// </summary>
     public static class AITNodeJSDownloaderTest
     {
-        [MenuItem("Apps in Toss/Test Node.js Downloader/1. Test Platform Detection")]
+        [MenuItem("AIT/Debug/Test Node.js Downloader/1. Test Platform Detection")]
         public static void TestPlatformDetection()
         {
             Debug.Log("=== Platform Detection Test ===");
@@ -33,7 +33,7 @@ namespace AppsInToss.Editor
             Debug.Log("=== Test Complete ===");
         }
 
-        [MenuItem("Apps in Toss/Test Node.js Downloader/2. Test npm Path Finding (Dry Run)")]
+        [MenuItem("AIT/Debug/Test Node.js Downloader/2. Test npm Path Finding (Dry Run)")]
         public static void TestNpmPathFinding()
         {
             Debug.Log("=== npm Path Finding Test ===");
@@ -113,7 +113,7 @@ namespace AppsInToss.Editor
             Debug.Log("=== Test Complete ===");
         }
 
-        [MenuItem("Apps in Toss/Test Node.js Downloader/3. Test Download URLs")]
+        [MenuItem("AIT/Debug/Test Node.js Downloader/3. Test Download URLs")]
         public static void TestDownloadUrls()
         {
             Debug.Log("=== Download URL Test ===");
@@ -151,7 +151,7 @@ namespace AppsInToss.Editor
                 : $"node-v{version}-{platform}.tar.gz";
         }
 
-        [MenuItem("Apps in Toss/Test Node.js Downloader/4. Verify SHA256 Checksums")]
+        [MenuItem("AIT/Debug/Test Node.js Downloader/4. Verify SHA256 Checksums")]
         public static void VerifyChecksums()
         {
             Debug.Log("=== SHA256 Checksum Verification ===");
@@ -166,7 +166,7 @@ namespace AppsInToss.Editor
             Debug.Log("=== All checksums verified from official source ===");
         }
 
-        [MenuItem("Apps in Toss/Test Node.js Downloader/5. Test Full Download (REAL DOWNLOAD)")]
+        [MenuItem("AIT/Debug/Test Node.js Downloader/5. Test Full Download (REAL DOWNLOAD)")]
         public static void TestFullDownload()
         {
             bool confirm = EditorUtility.DisplayDialog(
@@ -249,7 +249,7 @@ namespace AppsInToss.Editor
             }
         }
 
-        [MenuItem("Apps in Toss/Test Node.js Downloader/6. Clean Embedded Node.js")]
+        [MenuItem("AIT/Debug/Test Node.js Downloader/6. Clean Embedded Node.js")]
         public static void CleanEmbeddedNodeJS()
         {
             bool confirm = EditorUtility.DisplayDialog(

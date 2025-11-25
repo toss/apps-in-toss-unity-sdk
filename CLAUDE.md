@@ -27,6 +27,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Do not add LICENSE files or open source licensing information
 - Do not add package.json "license" fields
 
+### File Hygiene
+- **Proactively add unnecessary files to .gitignore** when discovered
+- Common files to ignore:
+  - Unity: `Library/`, `Temp/`, `Logs/`, `UserSettings/`, `*.csproj`, `*.sln`
+  - Build artifacts: `ait-build/`, `webgl/`, `dist/`, `node_modules/`
+  - Logs: `*.log`, `*.log.meta`
+  - IDE: `.idea/`, `.vscode/`, `*.swp`
+- When you see untracked files that should not be committed, add them to the appropriate `.gitignore` file
+
 ## Overview
 
 This is the **Apps in Toss Unity SDK** - a Unity package that enables Unity/Tuanjie engine game projects to be converted and deployed as mini-apps on the Apps in Toss platform. The SDK provides:
@@ -134,9 +143,12 @@ npm run deploy
 ```
 
 ### Unity Version Requirements
-- Unity 2019.4 LTS or higher
-- Unity 2022.3 LTS recommended (uses AITTemplate2022)
+- **Minimum**: Unity 2021.3 LTS
+- **Recommended**: Unity 2022.3 LTS or higher
+- **E2E Testing**: Always use Unity 2021.3.45f2 to ensure backward compatibility
 - Tuanjie Engine supported
+
+**IMPORTANT**: When testing the SDK or running E2E tests, ALWAYS use Unity 2021.3 to verify that the minimum supported version works correctly. The SDK must support Unity 2021.3 and all higher versions.
 
 ## Important Implementation Details
 

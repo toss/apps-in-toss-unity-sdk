@@ -5,11 +5,24 @@ E2E/benchmark_*.log
 E2E/benchmark_pr.log
 E2E/summary.txt
 E2E/.env
+E2E/*.log
+
+# Unity Project Artifacts
+E2E/SampleUnityProject/Library/
+E2E/SampleUnityProject/Temp/
+E2E/SampleUnityProject/Logs/
+E2E/SampleUnityProject/UserSettings/
+E2E/SampleUnityProject/ait-build/
+E2E/SampleUnityProject/webgl/
+E2E/SampleUnityProject/*.csproj
+E2E/SampleUnityProject/*.sln
 
 # E2E Playwright Test Results
 E2E/tests/playwright-report/
 E2E/tests/test-results/
 E2E/tests/benchmark-results.json
+E2E/tests/node_modules/
 
 # JavaScript Test Coverage
 JavaScript/coverage/
+JavaScript/node_modules/

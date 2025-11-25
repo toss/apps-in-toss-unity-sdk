@@ -12,13 +12,7 @@ using System.Runtime.InteropServices;
 /// </summary>
 public class AutoBenchmarkRunner : MonoBehaviour
 {
-#if UNITY_WEBGL && !UNITY_EDITOR
-    [DllImport("__Internal")]
-    private static extern void SaveToLocalStorage(string key, string value);
-
-    [DllImport("__Internal")]
-    private static extern void SendResultsToServer(string jsonContent);
-#endif
+// E2E tests only need Debug.Log output - no extra JS calls needed
 
     [Header("Benchmark Settings")]
     public bool autoRunOnStart = true;
@@ -288,17 +282,8 @@ public class AutoBenchmarkRunner : MonoBehaviour
     {
         try
         {
-#if UNITY_WEBGL && !UNITY_EDITOR
-            // 1. 서버로 결과 전송 (stdout 출력용)
-            SendResultsToServer(json);
-            Debug.Log("Results sent to server");
-
-            // 2. 브라우저 LocalStorage에 저장
-            SaveToLocalStorage("unity_benchmark_results", json);
-            Debug.Log("Results saved to browser LocalStorage");
-#endif
-
-            // 3. 콘솔에 결과 출력
+            // E2E 테스트는 Debug.Log 출력만 필요함
+            // 콘솔에 결과 출력
             Debug.Log("=== BENCHMARK RESULTS ===");
             Debug.Log($"Baseline: {results.baselineTest.avgFps:F2} FPS");
             Debug.Log($"Physics: {results.physicsTest.avgFps:F2} FPS");

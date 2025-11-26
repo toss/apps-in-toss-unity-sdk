@@ -2,15 +2,13 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: './',
-  timeout: 180000, // 3분
+  timeout: 300000, // 5분 (Unity 로딩 포함)
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   workers: 1,
 
   reporter: [
-    ['html'],
-    ['json', { outputFile: 'test-results.json' }],
     ['list']
   ],
 
@@ -37,9 +35,4 @@ export default defineConfig({
     },
   ],
 
-  webServer: process.env.SKIP_BUILD ? undefined : {
-    command: 'echo "Build will be performed in test beforeAll"',
-    port: 4173,
-    reuseExistingServer: !process.env.CI,
-  },
 });

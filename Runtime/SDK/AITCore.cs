@@ -51,6 +51,17 @@ namespace AppsInToss
         }
 
         /// <summary>
+        /// Register a void callback (no parameters) and return its ID
+        /// </summary>
+        public string RegisterCallback(Action callback)
+        {
+            string id = $"cb_{_callbackIdCounter++}";
+            // Wrap Action in Action<object> for storage
+            _callbacks[id] = new Action<object>((_) => callback?.Invoke());
+            return id;
+        }
+
+        /// <summary>
         /// Try to get and remove a callback by ID
         /// </summary>
         public bool TryGetCallback<T>(string callbackId, out Action<T> callback)

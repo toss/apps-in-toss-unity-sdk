@@ -122,6 +122,9 @@ Tests~/E2E/SampleUnityProject/Builds/
 Tests~/E2E/build.log
 Tests~/E2E/benchmark*.log
 Tests~/E2E/temp/
+Tests~/E2E/tests/test-results.json
+Tests~/E2E/tests/benchmark-results.json
+Tests~/E2E/tests/test-results/
 
 # Unity meta files
 # Note: UPM packages SHOULD include .meta files for consistent GUIDs

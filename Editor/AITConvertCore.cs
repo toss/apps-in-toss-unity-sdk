@@ -114,12 +114,8 @@ namespace AppsInToss
             PlayerSettings.WebGL.threadsSupport = false;
             PlayerSettings.runInBackground = false;
 
-#if UNITY_2020_1_OR_NEWER
-            // Unity 2020.1+ 모두 AITTemplate2022 사용 (Unity 2020~2023 호환)
-            PlayerSettings.WebGL.template = $"{templateHeader}AITTemplate2022";
-#else
+            // Unity 2021.3+ 지원
             PlayerSettings.WebGL.template = $"{templateHeader}AITTemplate";
-#endif
 
             PlayerSettings.WebGL.linkerTarget = WebGLLinkerTarget.Wasm;
             PlayerSettings.WebGL.dataCaching = false;
@@ -139,10 +135,10 @@ namespace AppsInToss
         {
             // 프로젝트의 Assets/WebGLTemplates 경로
             string projectTemplatesPath = Path.Combine(Application.dataPath, "WebGLTemplates");
-            string projectTemplate2022 = Path.Combine(projectTemplatesPath, "AITTemplate2022");
+            string projectTemplate = Path.Combine(projectTemplatesPath, "AITTemplate");
 
             // 이미 존재하고 index.html이 있으면 복사 불필요
-            if (Directory.Exists(projectTemplate2022) && File.Exists(Path.Combine(projectTemplate2022, "index.html")))
+            if (Directory.Exists(projectTemplate) && File.Exists(Path.Combine(projectTemplate, "index.html")))
             {
                 return;
             }
@@ -176,26 +172,26 @@ namespace AppsInToss
                 return;
             }
 
-            // AITTemplate2022 복사
-            string sdkTemplate2022 = Path.Combine(sdkTemplatesPath, "AITTemplate2022");
+            // AITTemplate 복사
+            string sdkTemplate = Path.Combine(sdkTemplatesPath, "AITTemplate");
 
-            if (Directory.Exists(sdkTemplate2022))
+            if (Directory.Exists(sdkTemplate))
             {
                 Debug.Log("[AIT] WebGLTemplates를 프로젝트로 복사 중...");
 
                 // 기존 폴더가 비어있으면 삭제
-                if (Directory.Exists(projectTemplate2022))
+                if (Directory.Exists(projectTemplate))
                 {
-                    Directory.Delete(projectTemplate2022, true);
+                    Directory.Delete(projectTemplate, true);
                 }
 
                 Directory.CreateDirectory(projectTemplatesPath);
-                UnityUtil.CopyDirectory(sdkTemplate2022, projectTemplate2022);
+                UnityUtil.CopyDirectory(sdkTemplate, projectTemplate);
                 Debug.Log("[AIT] ✓ WebGLTemplates 복사 완료");
             }
             else
             {
-                Debug.LogError($"[AIT] SDK 템플릿 폴더를 찾을 수 없습니다: {sdkTemplate2022}");
+                Debug.LogError($"[AIT] SDK 템플릿 폴더를 찾을 수 없습니다: {sdkTemplate}");
             }
         }
 
@@ -610,9 +606,9 @@ namespace AppsInToss
             Debug.Log("[AIT] SDK BuildConfig 템플릿 경로 검색 중...");
             string[] possibleSdkPaths = new string[]
             {
-                Path.GetFullPath("Packages/im.toss.apps-in-toss-unity-sdk/WebGLTemplates/AITTemplate2022/BuildConfig"),
-                Path.GetFullPath("Packages/com.appsintoss.miniapp/WebGLTemplates/AITTemplate2022/BuildConfig"), // 레거시 호환성
-                Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(typeof(AITConvertCore).Assembly.Location)), "WebGLTemplates/AITTemplate2022/BuildConfig")
+                Path.GetFullPath("Packages/im.toss.apps-in-toss-unity-sdk/WebGLTemplates/AITTemplate/BuildConfig"),
+                Path.GetFullPath("Packages/com.appsintoss.miniapp/WebGLTemplates/AITTemplate/BuildConfig"), // 레거시 호환성
+                Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(typeof(AITConvertCore).Assembly.Location)), "WebGLTemplates/AITTemplate/BuildConfig")
             };
 
             string sdkBuildConfigPath = null;

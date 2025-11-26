@@ -1,4 +1,4 @@
-# Apps in Toss 미니앱 Unity SDK
+# Apps in Toss Unity SDK
 
 Apps in Toss 플랫폼을 위한 Unity/Tuanjie 엔진 SDK입니다.
 
@@ -7,146 +7,121 @@ Apps in Toss 플랫폼을 위한 Unity/Tuanjie 엔진 SDK입니다.
 Unity 엔진 또는 [Tuanjie 엔진](https://unity.cn/tuanjie/tuanjieyinqing)으로 게임 프로젝트를 생성/열기한 후,
 Unity Editor 메뉴바에서 `Window` - `Package Manager` - `오른쪽 상단 + 버튼` - `Add package from git URL...`을 클릭하여 본 저장소 Git 리소스 주소를 입력하면 됩니다.
 
-예: `https://github.com/appsintoss/apps-in-toss-unity-transform-sdk.git`
+## 지원 Unity 버전
+
+- **최소 버전**: Unity 2021.3 LTS
+- **권장 버전**: Unity 2022.3 LTS 이상
+- Tuanjie Engine 지원
 
 ## 주요 기능
 
-### 🚀 핵심 기능
-- **플랫폼 연동**: Apps in Toss 플랫폼과 완벽한 연동
-- **웹GL 최적화**: Apps in Toss 환경에 최적화된 WebGL 빌드
+### 플랫폼 연동
+- **WebGL 최적화**: Apps in Toss 환경에 최적화된 WebGL 빌드
 - **자동 변환**: Unity 프로젝트를 Apps in Toss 미니앱으로 자동 변환
 - **성능 최적화**: 모바일 환경에 최적화된 성능 튜닝
 
-### 💰 결제 시스템
-- **토스 페이 연동**: 토스페이를 통한 간편 결제
-- **인앱 결제**: 게임 아이템 및 프리미엄 기능 결제
-- **결제 검증**: 서버 측 결제 검증 지원
-
-### 📱 광고 시스템
-- **배너 광고**: 게임 화면에 배너 광고 표시
-- **전면 광고**: 레벨 완료 후 전면 광고 표시
-- **보상형 광고**: 게임 아이템 지급을 위한 보상형 광고
-
-### 🔐 사용자 인증
-- **토스 로그인**: 토스 계정을 통한 간편 로그인
-- **사용자 정보**: 기본 사용자 정보 조회
-- **권한 관리**: 필요한 권한만 요청하는 최소 권한 정책
-
-### 📊 분석 도구
-- **게임 분석**: 플레이어 행동 분석 및 통계
-- **성능 모니터링**: 실시간 성능 지표 모니터링
-- **오류 추적**: 자동 오류 보고 및 추적
+### API 기능
+- **결제**: 토스페이 결제 연동 (`CheckoutPayment`)
+- **사용자 인증**: 앱 로그인 및 사용자 정보 (`AppLogin`, `GetUserKeyForGame`)
+- **기기 정보**: 기기 ID, 플랫폼, 네트워크 상태 조회
+- **권한 관리**: 카메라, 연락처 등 권한 요청 및 확인
+- **위치 서비스**: 현재 위치 조회
+- **피드백**: 햅틱 피드백, 클립보드 접근
+- **공유**: 컨텐츠 공유 기능
 
 ## 시작하기
 
 ### 1. SDK 설치
-```bash
-# Package Manager를 통한 설치
-https://github.com/appsintoss/apps-in-toss-unity-transform-sdk.git
+
+Package Manager에서 Git URL로 설치하거나, Packages/manifest.json에 직접 추가:
+
+```json
+{
+  "dependencies": {
+    "com.toss.appsintoss": "https://github.toss.bz/toss/apps-in-toss-unity-sdk.git"
+  }
+}
 ```
 
 ### 2. 기본 설정
-Unity Editor에서 `Apps in Toss` 메뉴를 클릭하여 설정 패널을 열고:
+
+Unity Editor에서 `Apps in Toss > Build & Deploy Window` 메뉴를 클릭하여 설정 패널을 열고:
 - 앱 ID 입력
+- 아이콘 URL 입력 (필수)
 - 빌드 설정 구성
-- 플랫폼 특화 설정 조정
 
-### 3. 게임 변환
+### 3. SDK 사용 예제
+
 ```csharp
-// C# 코드에서 SDK 사용 예제
 using AppsInToss;
+using UnityEngine;
 
-public class GameManager : MonoBehaviour 
+public class GameManager : MonoBehaviour
 {
-    void Start() 
+    void Start()
     {
-        // Apps in Toss 플랫폼 초기화
-        AIT.Init();
-        
-        // 사용자 로그인 확인
-        AIT.CheckLoginStatus();
+        // 기기 ID 조회
+        string deviceId = AIT.GetDeviceId();
+        Debug.Log($"Device ID: {deviceId}");
+
+        // 플랫폼 OS 조회
+        AIT.GetPlatformOS((os) => {
+            Debug.Log($"Platform: {os}");
+        });
+
+        // 네트워크 상태 확인
+        AIT.GetNetworkStatus((status) => {
+            Debug.Log($"Network: {status}");
+        });
+    }
+
+    // 결제 요청 예제
+    public void RequestPayment()
+    {
+        var options = new CheckoutPaymentOptions {
+            // 결제 옵션 설정
+        };
+
+        AIT.CheckoutPayment(options, (result) => {
+            Debug.Log($"Payment result: {result}");
+        });
+    }
+
+    // 햅틱 피드백 예제
+    public void VibrateDevice()
+    {
+        var options = new HapticFeedbackOptions {
+            // 피드백 옵션 설정
+        };
+
+        AIT.GenerateHapticFeedback(options, () => {
+            Debug.Log("Haptic feedback generated");
+        });
     }
 }
 ```
 
 ### 4. 빌드 및 배포
-1. `Apps in Toss / 미니앱 변환` 메뉴 클릭
-2. 설정 확인 후 빌드 실행
-3. 생성된 미니앱 파일을 Apps in Toss 개발자 콘솔에 업로드
 
-## 사용 예제
-
-### 결제 연동
-```csharp
-// 토스페이 결제 요청
-AIT.Payment.RequestPayment(new PaymentRequest 
-{
-    amount = 1000,
-    productName = "게임 아이템",
-    onSuccess = (result) => Debug.Log("결제 성공"),
-    onFailure = (error) => Debug.Log("결제 실패: " + error)
-});
-```
-
-### 광고 표시
-```csharp
-// 보상형 광고 표시
-AIT.Advertisement.ShowRewardedAd(new RewardedAdRequest 
-{
-    onRewarded = () => Debug.Log("보상 지급"),
-    onClosed = () => Debug.Log("광고 닫힘")
-});
-```
-
-### 사용자 정보
-```csharp
-// 사용자 정보 조회
-AIT.User.GetUserInfo((userInfo) => 
-{
-    Debug.Log($"사용자 ID: {userInfo.userId}");
-    Debug.Log($"닉네임: {userInfo.nickname}");
-});
-```
-
-## API 문서
-
-자세한 API 문서는 [개발자 가이드](https://docs.appsintoss.com/unity-sdk)를 참조하세요.
-
-## 지원 Unity 버전
-
-- Unity 2019.4 LTS 이상
-- Tuanjie Engine 지원
+1. `Apps in Toss > Build & Deploy Window` 메뉴 클릭
+2. 설정 확인 후 "🚀 Build & Package" 클릭
+3. 빌드 완료 후 `ait-build/dist/` 폴더에서 결과물 확인
+4. `npm run deploy`로 Apps in Toss 플랫폼에 배포
 
 ## 자주 묻는 질문
 
-### Q1. 게임 프로젝트는 빌드되지만 Apps in Toss 앱에서 실행 시 오류가 발생합니다
-일반적으로 빈 프로젝트이거나 게임 코드에서 Apps in Toss SDK를 사용하지 않을 때 발생합니다. 
-해결책: 게임의 적절한 위치에서 `AIT.Init()` 호출을 추가하세요.
+### Q1. 빌드 시 Node.js가 없다는 오류가 발생합니다
 
-### Q2. 결제 기능이 작동하지 않습니다
-토스페이 연동을 위해서는 별도의 가맹점 등록이 필요합니다. 
-[토스페이 개발자 센터](https://developers.tosspayments.com)에서 등록 후 SDK에 설정하세요.
+SDK는 시스템에 Node.js가 설치되어 있지 않아도 자동으로 내장 Node.js를 다운로드합니다.
+다운로드 다이얼로그가 표시되면 "다운로드"를 선택하세요.
 
-### Q3. 광고가 표시되지 않습니다
-광고 표시를 위해서는 Apps in Toss 광고 플랫폼 승인이 필요합니다.
-개발자 콘솔에서 광고 승인 상태를 확인하세요.
+### Q2. 아이콘 URL을 입력하라는 오류가 발생합니다
 
-## 라이센스
+Build & Deploy Window에서 앱 아이콘 URL을 반드시 입력해야 합니다.
+이 URL은 Apps in Toss 앱에서 미니앱 아이콘으로 표시됩니다.
 
-MIT License. 자세한 내용은 [LICENSE](LICENSE) 파일을 참조하세요.
+### Q3. Unity Editor에서 API 호출 시 Mock 로그만 출력됩니다
 
-## 지원
-
-- 📧 이메일: appsintoss@toss.im
-- 📞 전화: 02-1234-5678
-- 💬 개발자 커뮤니티: [https://devtalk-apps-in-toss.toss.im](https://devtalk-apps-in-toss.toss.im)
-- 📖 문서: [https://developers-apps-in-toss.toss.im](https://developers-apps-in-toss.toss.im)
-
-## 업데이트 로그
-
-### v1.0.0 (2025-09-01)
-- 최초 릴리스
-- 기본 플랫폼 연동 기능
-- 토스페이 결제 연동
-- 광고 시스템 통합
-- 사용자 인증 시스템
+SDK API는 WebGL 빌드에서만 실제로 동작합니다.
+Unity Editor에서는 Mock 구현이 호출되어 테스트 로그만 출력됩니다.
+실제 동작은 WebGL로 빌드 후 Apps in Toss 앱에서 확인하세요.

@@ -6,18 +6,20 @@
  * 수정하지 마세요. 변경사항은 재생성 시 손실됩니다.
  *
  * web-framework tag: next
- * 생성 시각: 2025-11-24T10:39:15.951Z
+ * 생성 시각: 2025-11-26T13:03:05.260Z
  * Category: OnVisibilityChangedByTransparentServiceWeb
  */
 
 mergeInto(LibraryManager.library, {
-    onVisibilityChangedByTransparentServiceWeb: function(eventParams) {
-        // 동기 반환 함수
-        if (typeof window.AppsInToss !== 'undefined' && window.AppsInToss.onVisibilityChangedByTransparentServiceWeb) {
-            return window.AppsInToss.onVisibilityChangedByTransparentServiceWeb(eventParams);
+    __onVisibilityChangedByTransparentServiceWeb_Internal: function(eventParams) {
+        // @apps-in-toss/web-framework 직접 호출 (bridge-core 패턴)
+        // bridge-core와 동일한 에러 메시지 사용
+        // Constant Bridge: bridge-core와 동일한 에러 처리
+        var constantHandlerMap = window.__CONSTANT_HANDLER_MAP;
+        if (constantHandlerMap && 'onVisibilityChangedByTransparentServiceWeb' in constantHandlerMap) {
+            return constantHandlerMap['onVisibilityChangedByTransparentServiceWeb'];
         }
-        console.warn('window.AppsInToss.onVisibilityChangedByTransparentServiceWeb not available');
-        return null;
+        throw new Error('onVisibilityChangedByTransparentServiceWeb is not a constant handler');
     },
 
 });

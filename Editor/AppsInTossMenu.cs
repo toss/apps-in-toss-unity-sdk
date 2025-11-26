@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
@@ -14,19 +15,107 @@ namespace AppsInToss
     public class AppsInTossMenu
     {
         private static Process devServerProcess;
-        private static bool isDevServerRunning = false;
+        private static Process prodServerProcess;
+        private static int devServerPort = 0;
+        private static int prodServerPort = 0;
         private static Stopwatch buildStopwatch = new Stopwatch();
 
-        // ==================== Dev ====================
-        [MenuItem("AIT/Dev", false, 1)]
+        /// <summary>
+        /// Dev 서버가 실행 중인지 확인
+        /// </summary>
+        private static bool IsDevServerRunning
+        {
+            get
+            {
+                if (devServerProcess == null) return false;
+                try
+                {
+                    return !devServerProcess.HasExited;
+                }
+                catch
+                {
+                    devServerProcess = null;
+                    return false;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Production 서버가 실행 중인지 확인
+        /// </summary>
+        private static bool IsProdServerRunning
+        {
+            get
+            {
+                if (prodServerProcess == null) return false;
+                try
+                {
+                    return !prodServerProcess.HasExited;
+                }
+                catch
+                {
+                    prodServerProcess = null;
+                    return false;
+                }
+            }
+        }
+
+        // ==================== Dev Server ====================
+        [MenuItem("AIT/Dev Server/Start", false, 1)]
         public static void StartDev()
         {
             Debug.Log("AIT: Dev 서버 시작...");
             StartDevServer();
         }
 
+        [MenuItem("AIT/Dev Server/Start", true)]
+        public static bool ValidateStartDev()
+        {
+            return !IsDevServerRunning;
+        }
+
+        [MenuItem("AIT/Dev Server/Stop", false, 2)]
+        public static void StopDev()
+        {
+            Debug.Log("AIT: Dev 서버 중지...");
+            StopDevServer();
+        }
+
+        [MenuItem("AIT/Dev Server/Stop", true)]
+        public static bool ValidateStopDev()
+        {
+            return IsDevServerRunning;
+        }
+
+        // ==================== Production Server ====================
+        [MenuItem("AIT/Production Server/Start", false, 11)]
+        public static void StartProduction()
+        {
+            Debug.Log("AIT: Production 서버 시작...");
+            StartProdServer();
+        }
+
+        [MenuItem("AIT/Production Server/Start", true)]
+        public static bool ValidateStartProduction()
+        {
+            return !IsProdServerRunning;
+        }
+
+        [MenuItem("AIT/Production Server/Stop", false, 12)]
+        public static void StopProduction()
+        {
+            Debug.Log("AIT: Production 서버 중지...");
+            StopProdServer();
+        }
+
+        [MenuItem("AIT/Production Server/Stop", true)]
+        public static bool ValidateStopProduction()
+        {
+            return IsProdServerRunning;
+        }
+
         // ==================== Build ====================
-        [MenuItem("AIT/Build", false, 2)]
+        [MenuItem("AIT/Build", false, 21)]
         public static void Build()
         {
             Debug.Log("AIT: WebGL 빌드 시작...");
@@ -34,7 +123,7 @@ namespace AppsInToss
         }
 
         // ==================== Package ====================
-        [MenuItem("AIT/Package", false, 3)]
+        [MenuItem("AIT/Package", false, 22)]
         public static void Package()
         {
             Debug.Log("AIT: 패키징 시작...");
@@ -42,7 +131,7 @@ namespace AppsInToss
         }
 
         // ==================== Build & Package ====================
-        [MenuItem("AIT/Build & Package", false, 4)]
+        [MenuItem("AIT/Build & Package", false, 23)]
         public static void BuildAndPackage()
         {
             Debug.Log("AIT: Build & Package 시작...");
@@ -50,7 +139,7 @@ namespace AppsInToss
         }
 
         // ==================== Publish ====================
-        [MenuItem("AIT/Publish", false, 5)]
+        [MenuItem("AIT/Publish", false, 31)]
         public static void Publish()
         {
             Debug.Log("AIT: 배포 시작...");
@@ -279,35 +368,253 @@ namespace AppsInToss
             }
         }
 
+        /// <summary>
+        /// Dev 서버 시작 (granite dev 사용)
+        /// </summary>
         private static void StartDevServer()
         {
-            var config = UnityUtil.GetEditorConf();
-            string buildPath = GetBuildTemplatePath();
-
-            if (!Directory.Exists(buildPath))
+            if (IsDevServerRunning)
             {
-                EditorUtility.DisplayDialog("오류", "빌드 폴더를 찾을 수 없습니다. 먼저 빌드를 실행하세요.", "확인");
+                Debug.LogWarning("AIT: Dev 서버가 이미 실행 중입니다.");
                 return;
             }
 
-            // index.html이 있는지 확인
+            string buildPath = GetBuildTemplatePath();
+
+            if (!ValidateBuildPath(buildPath)) return;
+
+            string npmPath = FindNpmPath();
+            if (!ValidateNpmPath(npmPath)) return;
+
+            if (!EnsureNodeModules(buildPath, npmPath)) return;
+
+            Debug.Log($"AIT: Dev 서버 시작 중 (granite dev)... ({buildPath})");
+
+            try
+            {
+                devServerProcess = StartServerProcessWithPortDetection(
+                    buildPath, npmPath, "run dev", "Dev Server",
+                    (port) =>
+                    {
+                        devServerPort = port;
+                        Debug.Log($"AIT: Dev 서버가 시작되었습니다: http://localhost:{port}");
+                        Application.OpenURL($"http://localhost:{port}/index.html");
+                    }
+                );
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"AIT: Dev 서버 시작 실패: {e.Message}");
+                EditorUtility.DisplayDialog("오류", $"Dev 서버 시작 실패:\n{e.Message}", "확인");
+            }
+        }
+
+        /// <summary>
+        /// Dev 서버 중지
+        /// </summary>
+        private static void StopDevServer()
+        {
+            if (devServerProcess != null && !devServerProcess.HasExited)
+            {
+                try
+                {
+                    devServerProcess.Kill();
+                    devServerProcess.WaitForExit(2000);
+                }
+                catch { }
+            }
+            devServerProcess = null;
+
+            // 감지된 포트에서 실행 중인 프로세스도 종료
+            if (devServerPort > 0)
+            {
+                KillProcessOnPort(devServerPort);
+            }
+
+            devServerPort = 0;
+            Debug.Log("AIT: Dev 서버가 중지되었습니다.");
+        }
+
+        /// <summary>
+        /// Production 서버 시작 (vite preview 사용)
+        /// </summary>
+        private static void StartProdServer()
+        {
+            if (IsProdServerRunning)
+            {
+                Debug.LogWarning("AIT: Production 서버가 이미 실행 중입니다.");
+                return;
+            }
+
+            string buildPath = GetBuildTemplatePath();
+            string distPath = Path.Combine(buildPath, "dist");
+
+            if (!ValidateBuildPath(buildPath)) return;
+
+            // dist 폴더 확인 (프로덕션 빌드 결과물)
+            if (!Directory.Exists(distPath))
+            {
+                EditorUtility.DisplayDialog("오류", "dist 폴더를 찾을 수 없습니다.\n\n먼저 'Build & Package'를 실행하세요.", "확인");
+                return;
+            }
+
+            string npmPath = FindNpmPath();
+            if (!ValidateNpmPath(npmPath)) return;
+
+            if (!EnsureNodeModules(buildPath, npmPath)) return;
+
+            Debug.Log($"AIT: Production 서버 시작 중 (vite preview)... ({buildPath})");
+
+            try
+            {
+                prodServerProcess = StartServerProcessWithPortDetection(
+                    buildPath, npmPath, "run start", "Prod Server",
+                    (port) =>
+                    {
+                        prodServerPort = port;
+                        Debug.Log($"AIT: Production 서버가 시작되었습니다: http://localhost:{port}");
+                        Application.OpenURL($"http://localhost:{port}/");
+                    }
+                );
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"AIT: Production 서버 시작 실패: {e.Message}");
+                EditorUtility.DisplayDialog("오류", $"Production 서버 시작 실패:\n{e.Message}", "확인");
+            }
+        }
+
+        /// <summary>
+        /// Production 서버 중지
+        /// </summary>
+        private static void StopProdServer()
+        {
+            if (prodServerProcess != null && !prodServerProcess.HasExited)
+            {
+                try
+                {
+                    prodServerProcess.Kill();
+                    prodServerProcess.WaitForExit(2000);
+                }
+                catch { }
+            }
+            prodServerProcess = null;
+
+            // 감지된 포트에서 실행 중인 프로세스도 종료
+            if (prodServerPort > 0)
+            {
+                KillProcessOnPort(prodServerPort);
+            }
+
+            prodServerPort = 0;
+            Debug.Log("AIT: Production 서버가 중지되었습니다.");
+        }
+
+        /// <summary>
+        /// 서버 프로세스 시작 (동적 포트 감지 포함)
+        /// </summary>
+        /// <param name="onPortDetected">포트가 감지되면 호출되는 콜백 (메인 스레드에서 실행)</param>
+        private static Process StartServerProcessWithPortDetection(
+            string buildPath,
+            string npmPath,
+            string npmCommand,
+            string logPrefix,
+            Action<int> onPortDetected)
+        {
+            string npmDir = Path.GetDirectoryName(npmPath);
+            string pathEnv = $"{npmDir}:/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin";
+
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = "/bin/bash",
+                Arguments = $"-l -c \"export PATH='{pathEnv}' && cd '{buildPath}' && '{npmPath}' {npmCommand}\"",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
+
+            var process = new Process { StartInfo = startInfo };
+            bool portDetected = false;
+
+            process.OutputDataReceived += (sender, args) =>
+            {
+                if (args.Data != null)
+                {
+                    Debug.Log($"[{logPrefix}] {args.Data}");
+
+                    // 포트 감지 (ANSI 코드 제거 후 파싱)
+                    if (!portDetected)
+                    {
+                        string cleanOutput = Regex.Replace(args.Data, @"\x1B\[[0-9;]*[mGKH]", "");
+                        var portMatch = Regex.Match(cleanOutput, @"localhost:(\d+)");
+                        if (portMatch.Success)
+                        {
+                            int port = int.Parse(portMatch.Groups[1].Value);
+                            portDetected = true;
+
+                            // Unity 메인 스레드에서 콜백 실행
+                            EditorApplication.delayCall += () => onPortDetected?.Invoke(port);
+                        }
+                    }
+                }
+            };
+
+            process.ErrorDataReceived += (sender, args) =>
+            {
+                if (args.Data != null)
+                {
+                    Debug.Log($"[{logPrefix}] {args.Data}");
+                }
+            };
+
+            process.Start();
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
+
+            return process;
+        }
+
+        /// <summary>
+        /// 빌드 경로 유효성 검사
+        /// </summary>
+        private static bool ValidateBuildPath(string buildPath)
+        {
+            if (!Directory.Exists(buildPath))
+            {
+                EditorUtility.DisplayDialog("오류", "빌드 폴더를 찾을 수 없습니다.\n\n먼저 빌드를 실행하세요.", "확인");
+                return false;
+            }
+
             string indexPath = Path.Combine(buildPath, "index.html");
             if (!File.Exists(indexPath))
             {
-                EditorUtility.DisplayDialog("오류", "index.html을 찾을 수 없습니다. 먼저 빌드를 실행하세요.", "확인");
-                return;
+                EditorUtility.DisplayDialog("오류", "index.html을 찾을 수 없습니다.\n\n먼저 빌드를 실행하세요.", "확인");
+                return false;
             }
 
-            // npm 경로 찾기
-            string npmPath = FindNpmPath();
+            return true;
+        }
+
+        /// <summary>
+        /// npm 경로 유효성 검사
+        /// </summary>
+        private static bool ValidateNpmPath(string npmPath)
+        {
             if (string.IsNullOrEmpty(npmPath))
             {
-                Debug.LogError("AIT: npm을 찾을 수 없습니다. Node.js가 설치되어 있는지 확인하세요.");
+                Debug.LogError("AIT: npm을 찾을 수 없습니다.");
                 EditorUtility.DisplayDialog("오류", "npm을 찾을 수 없습니다.\n\nNode.js가 설치되어 있는지 확인하세요.", "확인");
-                return;
+                return false;
             }
+            return true;
+        }
 
-            // node_modules가 없으면 npm install 실행
+        /// <summary>
+        /// node_modules 확인 및 설치
+        /// </summary>
+        private static bool EnsureNodeModules(string buildPath, string npmPath)
+        {
             string nodeModulesPath = Path.Combine(buildPath, "node_modules");
             if (!Directory.Exists(nodeModulesPath))
             {
@@ -315,85 +622,19 @@ namespace AppsInToss
 
                 string localCachePath = Path.Combine(buildPath, ".npm-cache");
                 var installResult = AITConvertCore.RunNpmCommandWithCache(
-                    buildPath,
-                    npmPath,
-                    "install",
-                    localCachePath,
-                    "npm install 실행 중..."
+                    buildPath, npmPath, "install", localCachePath, "npm install 실행 중..."
                 );
 
                 if (installResult != AITConvertCore.AITExportError.SUCCEED)
                 {
                     Debug.LogError("AIT: npm install 실패");
                     EditorUtility.DisplayDialog("오류", "npm install 실패\n\nConsole 로그를 확인하세요.", "확인");
-                    return;
+                    return false;
                 }
 
                 Debug.Log("AIT: npm install 완료");
             }
-
-            // 포트가 이미 사용 중인지 확인하고 종료
-            Debug.Log($"AIT: 포트 {config.localPort} 확인 중...");
-            KillProcessOnPort(config.localPort);
-
-            // 프로세스 종료 대기
-            System.Threading.Thread.Sleep(500);
-
-            Debug.Log($"AIT: Vite 개발 서버 시작 중... ({buildPath})");
-
-            try
-            {
-                string npmDir = Path.GetDirectoryName(npmPath);
-
-                // pnpm만 사용 (내장 Node.js + pnpm)
-                string pnpxPath = Path.Combine(npmDir, "pnpx");
-
-                string pathEnv = $"{npmDir}:/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin";
-
-                var startInfo = new ProcessStartInfo
-                {
-                    FileName = "/bin/bash",
-                    Arguments = $"-l -c \"export PATH='{pathEnv}' && cd '{buildPath}' && '{pnpxPath}' vite --port {config.localPort} --host\"",
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    CreateNoWindow = true
-                };
-
-                devServerProcess = new Process { StartInfo = startInfo };
-
-                devServerProcess.OutputDataReceived += (sender, args) =>
-                {
-                    if (args.Data != null)
-                    {
-                        Debug.Log($"[Dev Server] {args.Data}");
-                    }
-                };
-
-                devServerProcess.ErrorDataReceived += (sender, args) =>
-                {
-                    if (args.Data != null)
-                    {
-                        Debug.Log($"[Dev Server] {args.Data}");
-                    }
-                };
-
-                devServerProcess.Start();
-                devServerProcess.BeginOutputReadLine();
-                devServerProcess.BeginErrorReadLine();
-
-                isDevServerRunning = true;
-                Debug.Log($"AIT: Vite 개발 서버가 시작되었습니다: http://localhost:{config.localPort}");
-                Debug.Log($"브라우저에서 http://localhost:{config.localPort} 로 접속하세요");
-
-                // 브라우저에서 자동으로 열기
-                Application.OpenURL($"http://localhost:{config.localPort}/index.html");
-            }
-            catch (Exception e)
-            {
-                Debug.LogError($"AIT: 개발 서버 시작 실패: {e.Message}");
-                EditorUtility.DisplayDialog("오류", $"개발 서버 시작 실패:\n{e.Message}\n\nvite가 설치되어 있는지 확인하세요.", "확인");
-            }
+            return true;
         }
 
         private static void KillProcessOnPort(int port)

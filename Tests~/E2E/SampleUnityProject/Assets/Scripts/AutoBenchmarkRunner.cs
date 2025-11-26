@@ -12,7 +12,10 @@ using System.Runtime.InteropServices;
 /// </summary>
 public class AutoBenchmarkRunner : MonoBehaviour
 {
-// E2E tests only need Debug.Log output - no extra JS calls needed
+#if UNITY_WEBGL && !UNITY_EDITOR
+    [DllImport("__Internal")]
+    private static extern void SendBenchmarkData(string json);
+#endif
 
     [Header("Benchmark Settings")]
     public bool autoRunOnStart = true;
@@ -282,18 +285,46 @@ public class AutoBenchmarkRunner : MonoBehaviour
     {
         try
         {
-            // E2E 테스트는 Debug.Log 출력만 필요함
             // 콘솔에 결과 출력
             Debug.Log("=== BENCHMARK RESULTS ===");
             Debug.Log($"Baseline: {results.baselineTest.avgFps:F2} FPS");
             Debug.Log($"Physics: {results.physicsTest.avgFps:F2} FPS");
             Debug.Log($"Rendering: {results.renderingTest.avgFps:F2} FPS");
             Debug.Log($"Combined: {results.combinedTest.avgFps:F2} FPS");
+
+            // JavaScript로 벤치마크 데이터 전송
+            var benchmarkData = new BenchmarkDataForJS
+            {
+                avgFps = results.baselineTest.avgFps,
+                minFps = results.baselineTest.minFps,
+                maxFps = results.baselineTest.maxFps,
+                memoryUsageMB = results.baselineTest.totalMemoryMB,
+                physicsAvgFps = results.physicsTest.avgFps,
+                renderingAvgFps = results.renderingTest.avgFps,
+                combinedAvgFps = results.combinedTest.avgFps
+            };
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+            SendBenchmarkData(JsonUtility.ToJson(benchmarkData));
+            Debug.Log("[Benchmark] Data sent to JavaScript");
+#endif
         }
         catch (Exception e)
         {
             Debug.LogError($"Failed to save WebGL results: {e.Message}");
         }
+    }
+
+    [System.Serializable]
+    public class BenchmarkDataForJS
+    {
+        public float avgFps;
+        public float minFps;
+        public float maxFps;
+        public float memoryUsageMB;
+        public float physicsAvgFps;
+        public float renderingAvgFps;
+        public float combinedAvgFps;
     }
 
     void SaveResultsStandalone(string json, string csv)

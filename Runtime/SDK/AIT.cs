@@ -14,7 +14,7 @@ namespace AppsInToss
     /// </summary>
     /// <remarks>
     /// Source: @apps-in-toss/web-framework (next)
-    /// Generated: 2025-11-24T10:39:15.933Z
+    /// Generated: 2025-11-26T13:03:05.240Z
     /// Total APIs: 39
     /// </remarks>
     public static partial class AIT

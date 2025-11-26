@@ -294,8 +294,8 @@ namespace AppsInToss.Editor
                 packagePath = Path.Combine(Application.dataPath, "AppsInToss");
             }
 
-            // WebGLTemplates/AITTemplate2022/BuildConfig/package.json
-            string packageJsonPath = Path.Combine(packagePath, "WebGLTemplates", "AITTemplate2022", "BuildConfig", "package.json");
+            // WebGLTemplates/AITTemplate/BuildConfig/package.json
+            string packageJsonPath = Path.Combine(packagePath, "WebGLTemplates", "AITTemplate", "BuildConfig", "package.json");
 
             if (File.Exists(packageJsonPath))
             {

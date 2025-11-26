@@ -6,6 +6,7 @@
 // -----------------------------------------------------------------------
 
 using System;
+using System.Threading.Tasks;
 
 namespace AppsInToss
 {
@@ -14,21 +15,23 @@ namespace AppsInToss
     /// </summary>
     public static partial class AIT
     {
-        public static void Share(object message, Action callback)
+        public static Task Share(ShareMessage message)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            string callbackId = AITCore.Instance.RegisterCallback(callback);
+            var tcs = new TaskCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<object>(_ => tcs.SetResult(true));
             __share_Internal(message, callbackId, "void");
+            return tcs.Task;
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] Share called");
-            callback?.Invoke();
+            return Task.CompletedTask;
 #endif
         }
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
-        private static extern void __share_Internal(object message, string callbackId, string typeName);
+        private static extern void __share_Internal(ShareMessage message, string callbackId, string typeName);
 #endif
     }
 }

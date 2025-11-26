@@ -93,7 +93,7 @@ namespace AppsInToss
     }
 
     [Serializable]
-    public class Location1
+    public class Location
     {
         public string AccessLocation; // optional
         public double Timestamp;
@@ -116,9 +116,16 @@ namespace AppsInToss
     }
 
     [Serializable]
+    public class GrantPromotionRewardForGameOptionsParams
+    {
+        public string PromotionCode;
+        public double Amount;
+    }
+
+    [Serializable]
     public class GrantPromotionRewardForGameOptions
     {
-        public object Params;
+        public GrantPromotionRewardForGameOptionsParams Params;
     }
 
     [Serializable]
@@ -189,8 +196,8 @@ namespace AppsInToss
     [Serializable]
     public class StartUpdateLocationEventParams
     {
-        public System.Action OnEvent;
-        public System.Action OnError;
+        public System.Action<Location> OnEvent;
+        public System.Action<object> OnError;
         public StartUpdateLocationOptions Options;
     }
 
@@ -223,11 +230,17 @@ namespace AppsInToss
     }
 
     [Serializable]
+    public class ContactsViralParamsOptions
+    {
+        public string ModuleId;
+    }
+
+    [Serializable]
     public class ContactsViralParams
     {
-        public object Options;
-        public System.Action OnEvent;
-        public System.Action OnError;
+        public ContactsViralParamsOptions Options;
+        public System.Action<ContactsViralEvent> OnEvent;
+        public System.Action<object> OnError;
     }
 
     [Serializable]
@@ -235,7 +248,7 @@ namespace AppsInToss
     {
         public string Log_name;
         public string Log_type;
-        public object Params;
+        public Dictionary<string, object> Params;
     }
 
     /// <summary>
@@ -265,11 +278,17 @@ namespace AppsInToss
     }
 
     [Serializable]
+    public class FetchContactsOptionsQuery
+    {
+        public string Contains; // optional
+    }
+
+    [Serializable]
     public class FetchContactsOptions
     {
         public double Size;
         public double Offset;
-        public object Query; // optional
+        public FetchContactsOptionsQuery Query; // optional
     }
 
     /// <summary>

@@ -6,6 +6,7 @@
 // -----------------------------------------------------------------------
 
 using System;
+using System.Threading.Tasks;
 
 namespace AppsInToss
 {
@@ -14,16 +15,17 @@ namespace AppsInToss
     /// </summary>
     public static partial class AIT
     {
-        public static void FetchContacts(FetchContactsOptions options, Action<ContactResult> callback)
+        public static Task<ContactResult> FetchContacts(FetchContactsOptions options)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            string callbackId = AITCore.Instance.RegisterCallback(callback);
+            var tcs = new TaskCompletionSource<ContactResult>();
+            string callbackId = AITCore.Instance.RegisterCallback<ContactResult>(result => tcs.SetResult(result));
             __fetchContacts_Internal(options, callbackId, "ContactResult");
+            return tcs.Task;
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] FetchContacts called");
-            var mockResult = default(ContactResult);
-            callback?.Invoke(mockResult);
+            return Task.FromResult(default(ContactResult));
 #endif
         }
 

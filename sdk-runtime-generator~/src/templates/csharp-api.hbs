@@ -1,0 +1,68 @@
+{{#if description}}
+        /// <summary>
+        /// {{{description}}}
+        /// </summary>
+{{/if}}
+{{#each parameters}}
+{{#if this.description}}
+        /// <param name="{{this.paramName}}">{{{this.description}}}</param>
+{{/if}}
+{{/each}}
+{{#if returnDescription}}
+        /// <returns>{{{returnDescription}}}</returns>
+{{/if}}
+{{#if isAsync}}
+        public static void {{{pascalName}}}({{#each parameters}}{{this.paramType}} {{this.paramName}}{{#unless @last}}, {{/unless}}{{/each}}{{#if parameters.length}}, {{/if}}{{#if (eq callbackType "void")}}Action{{else}}Action<{{{callbackType}}}>{{/if}} callback)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            string callbackId = AITCore.Instance.RegisterCallback(callback);
+            __{{{originalName}}}_Internal({{#each parameters}}{{this.paramName}}, {{/each}}callbackId, "{{{callbackType}}}");
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] {{{pascalName}}} called");
+{{#if callbackType}}
+{{#if (eq callbackType "void")}}
+            callback?.Invoke();
+{{else}}
+            var mockResult = new {{{callbackType}}}();
+            callback?.Invoke(mockResult);
+{{/if}}
+{{/if}}
+#endif
+        }
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __{{{originalName}}}_Internal({{#each parameters}}{{this.paramType}} {{this.paramName}}, {{/each}}string callbackId, string typeName);
+#endif
+
+{{else}}
+        public static {{{returnType}}} {{{pascalName}}}({{#each parameters}}{{this.paramType}} {{this.paramName}}{{#unless @last}}, {{/unless}}{{/each}})
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            return __{{{originalName}}}_Internal({{#each parameters}}{{this.paramName}}{{#unless @last}}, {{/unless}}{{/each}});
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] {{{pascalName}}} called");
+{{#if returnType}}
+{{#if (eq returnType "void")}}
+            return;
+{{else if (eq returnType "string")}}
+            return "";
+{{else if (eq returnType "bool")}}
+            return false;
+{{else if (or (eq returnType "int") (eq returnType "float") (eq returnType "double"))}}
+            return 0;
+{{else}}
+            return new {{{returnType}}}();
+{{/if}}
+{{/if}}
+#endif
+        }
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern {{{returnType}}} __{{{originalName}}}_Internal({{#each parameters}}{{this.paramType}} {{this.paramName}}{{#unless @last}}, {{/unless}}{{/each}});
+#endif
+
+{{/if}}

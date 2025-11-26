@@ -6,6 +6,7 @@
 // -----------------------------------------------------------------------
 
 using System;
+using System.Threading.Tasks;
 
 namespace AppsInToss
 {
@@ -16,22 +17,23 @@ namespace AppsInToss
     {
         /// <param name="options">화면 캡쳐 설정 옵션이에요.</param>
         /// <returns>: boolean} 현재 설정된 캡쳐 차단 상태를 반환해요.</returns>
-        public static void SetSecureScreen(object options, Action<object> callback)
+        public static Task<SetSecureScreenResult> SetSecureScreen(SetSecureScreenOptions options)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            string callbackId = AITCore.Instance.RegisterCallback(callback);
-            __setSecureScreen_Internal(options, callbackId, "object");
+            var tcs = new TaskCompletionSource<SetSecureScreenResult>();
+            string callbackId = AITCore.Instance.RegisterCallback<SetSecureScreenResult>(result => tcs.SetResult(result));
+            __setSecureScreen_Internal(options, callbackId, "SetSecureScreenResult");
+            return tcs.Task;
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] SetSecureScreen called");
-            var mockResult = default(object);
-            callback?.Invoke(mockResult);
+            return Task.FromResult(default(SetSecureScreenResult));
 #endif
         }
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
-        private static extern void __setSecureScreen_Internal(object options, string callbackId, string typeName);
+        private static extern void __setSecureScreen_Internal(SetSecureScreenOptions options, string callbackId, string typeName);
 #endif
     }
 }

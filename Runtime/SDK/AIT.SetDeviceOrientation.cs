@@ -6,6 +6,7 @@
 // -----------------------------------------------------------------------
 
 using System;
+using System.Threading.Tasks;
 
 namespace AppsInToss
 {
@@ -16,21 +17,23 @@ namespace AppsInToss
     {
         /// <param name="options">화면 방향 설정 값이에요.</param>
         /// <returns>화면 방향 설정이 완료되면 해결되는 Promise를 반환해요.</returns>
-        public static void SetDeviceOrientation(object options, Action callback)
+        public static Task SetDeviceOrientation(SetDeviceOrientationOptions options)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            string callbackId = AITCore.Instance.RegisterCallback(callback);
+            var tcs = new TaskCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<object>(_ => tcs.SetResult(true));
             __setDeviceOrientation_Internal(options, callbackId, "void");
+            return tcs.Task;
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] SetDeviceOrientation called");
-            callback?.Invoke();
+            return Task.CompletedTask;
 #endif
         }
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
-        private static extern void __setDeviceOrientation_Internal(object options, string callbackId, string typeName);
+        private static extern void __setDeviceOrientation_Internal(SetDeviceOrientationOptions options, string callbackId, string typeName);
 #endif
     }
 }

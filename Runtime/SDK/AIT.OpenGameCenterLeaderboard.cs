@@ -6,6 +6,7 @@
 // -----------------------------------------------------------------------
 
 using System;
+using System.Threading.Tasks;
 
 namespace AppsInToss
 {
@@ -15,15 +16,17 @@ namespace AppsInToss
     public static partial class AIT
     {
         /// <returns>리더보드 웹뷰를 호출해요. 앱 버전이 낮으면 아무 동작도 하지 않고 undefined를 반환해요.</returns>
-        public static void OpenGameCenterLeaderboard(Action callback)
+        public static Task OpenGameCenterLeaderboard()
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            string callbackId = AITCore.Instance.RegisterCallback(callback);
+            var tcs = new TaskCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<object>(_ => tcs.SetResult(true));
             __openGameCenterLeaderboard_Internal(callbackId, "void");
+            return tcs.Task;
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] OpenGameCenterLeaderboard called");
-            callback?.Invoke();
+            return Task.CompletedTask;
 #endif
         }
 

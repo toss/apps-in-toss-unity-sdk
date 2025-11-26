@@ -6,6 +6,7 @@
 // -----------------------------------------------------------------------
 
 using System;
+using System.Threading.Tasks;
 
 namespace AppsInToss
 {
@@ -14,16 +15,17 @@ namespace AppsInToss
     /// </summary>
     public static partial class AIT
     {
-        public static void AppLogin(Action<object> callback)
+        public static Task<AppLoginResult> AppLogin()
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            string callbackId = AITCore.Instance.RegisterCallback(callback);
-            __appLogin_Internal(callbackId, "object");
+            var tcs = new TaskCompletionSource<AppLoginResult>();
+            string callbackId = AITCore.Instance.RegisterCallback<AppLoginResult>(result => tcs.SetResult(result));
+            __appLogin_Internal(callbackId, "AppLoginResult");
+            return tcs.Task;
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] AppLogin called");
-            var mockResult = default(object);
-            callback?.Invoke(mockResult);
+            return Task.FromResult(default(AppLoginResult));
 #endif
         }
 

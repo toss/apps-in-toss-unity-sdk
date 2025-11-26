@@ -6,6 +6,7 @@
 // -----------------------------------------------------------------------
 
 using System;
+using System.Threading.Tasks;
 
 namespace AppsInToss
 {
@@ -14,16 +15,17 @@ namespace AppsInToss
     /// </summary>
     public static partial class AIT
     {
-        public static void GetClipboardText(Action<string> callback)
+        public static Task<string> GetClipboardText()
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            string callbackId = AITCore.Instance.RegisterCallback(callback);
+            var tcs = new TaskCompletionSource<string>();
+            string callbackId = AITCore.Instance.RegisterCallback<string>(result => tcs.SetResult(result));
             __getClipboardText_Internal(callbackId, "string");
+            return tcs.Task;
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] GetClipboardText called");
-            var mockResult = "";
-            callback?.Invoke(mockResult);
+            return Task.FromResult("");
 #endif
         }
 

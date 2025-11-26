@@ -14,6 +14,9 @@ webgl/
 # WebGL Templates (copied from SDK during build)
 Assets/WebGLTemplates/
 
+# Scene files (Unity modifies on every build due to fileID regeneration)
+Assets/Scenes/BenchmarkScene.unity
+
 # IDE
 .idea/
 .vscode/

@@ -6,6 +6,7 @@
 // -----------------------------------------------------------------------
 
 using System;
+using System.Threading.Tasks;
 
 namespace AppsInToss
 {
@@ -14,15 +15,17 @@ namespace AppsInToss
     /// </summary>
     public static partial class AIT
     {
-        public static void GenerateHapticFeedback(HapticFeedbackOptions options, Action callback)
+        public static Task GenerateHapticFeedback(HapticFeedbackOptions options)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            string callbackId = AITCore.Instance.RegisterCallback(callback);
+            var tcs = new TaskCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<object>(_ => tcs.SetResult(true));
             __generateHapticFeedback_Internal(options, callbackId, "void");
+            return tcs.Task;
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] GenerateHapticFeedback called");
-            callback?.Invoke();
+            return Task.CompletedTask;
 #endif
         }
 

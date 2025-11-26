@@ -6,6 +6,7 @@
 // -----------------------------------------------------------------------
 
 using System;
+using System.Threading.Tasks;
 
 namespace AppsInToss
 {
@@ -15,15 +16,17 @@ namespace AppsInToss
     public static partial class AIT
     {
         /// <param name="paramsParam">서명에 필요한 파라미터를 포함하는 객체예요.</param>
-        public static void AppsInTossSignTossCert(AppsInTossSignTossCertParams paramsParam, Action callback)
+        public static Task AppsInTossSignTossCert(AppsInTossSignTossCertParams paramsParam)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            string callbackId = AITCore.Instance.RegisterCallback(callback);
+            var tcs = new TaskCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<object>(_ => tcs.SetResult(true));
             __appsInTossSignTossCert_Internal(paramsParam, callbackId, "void");
+            return tcs.Task;
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] AppsInTossSignTossCert called");
-            callback?.Invoke();
+            return Task.CompletedTask;
 #endif
         }
 

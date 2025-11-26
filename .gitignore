@@ -95,6 +95,7 @@ logs/
 *~
 !Tests~
 !Tools~
+!sdk-runtime-generator~
 
 # AI Assistant files
 .claude/

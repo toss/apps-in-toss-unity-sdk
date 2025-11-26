@@ -6,6 +6,7 @@
 // -----------------------------------------------------------------------
 
 using System;
+using System.Threading.Tasks;
 
 namespace AppsInToss
 {
@@ -15,16 +16,17 @@ namespace AppsInToss
     public static partial class AIT
     {
         /// <returns>프로필 정보 또는 undefined를 반환해요.</returns>
-        public static void GetGameCenterGameProfile(Action<GameCenterGameProfileResponse> callback)
+        public static Task<GameCenterGameProfileResponse> GetGameCenterGameProfile()
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            string callbackId = AITCore.Instance.RegisterCallback(callback);
+            var tcs = new TaskCompletionSource<GameCenterGameProfileResponse>();
+            string callbackId = AITCore.Instance.RegisterCallback<GameCenterGameProfileResponse>(result => tcs.SetResult(result));
             __getGameCenterGameProfile_Internal(callbackId, "GameCenterGameProfileResponse");
+            return tcs.Task;
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] GetGameCenterGameProfile called");
-            var mockResult = default(GameCenterGameProfileResponse);
-            callback?.Invoke(mockResult);
+            return Task.FromResult(default(GameCenterGameProfileResponse));
 #endif
         }
 

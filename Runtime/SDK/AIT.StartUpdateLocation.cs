@@ -6,6 +6,7 @@
 // -----------------------------------------------------------------------
 
 using System;
+using System.Threading.Tasks;
 
 namespace AppsInToss
 {
@@ -14,7 +15,7 @@ namespace AppsInToss
     /// </summary>
     public static partial class AIT
     {
-        public static System.Action StartUpdateLocation(object eventParams)
+        public static System.Action StartUpdateLocation(StartUpdateLocationEventParams eventParams)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             return __startUpdateLocation_Internal(eventParams);
@@ -27,7 +28,7 @@ namespace AppsInToss
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
-        private static extern System.Action __startUpdateLocation_Internal(object eventParams);
+        private static extern System.Action __startUpdateLocation_Internal(StartUpdateLocationEventParams eventParams);
 #endif
     }
 }

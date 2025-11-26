@@ -6,6 +6,7 @@
 // -----------------------------------------------------------------------
 
 using System;
+using System.Threading.Tasks;
 
 namespace AppsInToss
 {
@@ -15,16 +16,17 @@ namespace AppsInToss
     public static partial class AIT
     {
         /// <returns>네트워크 상태를 반환해요.</returns>
-        public static void GetNetworkStatus(Action<NetworkStatus> callback)
+        public static Task<NetworkStatus> GetNetworkStatus()
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            string callbackId = AITCore.Instance.RegisterCallback(callback);
+            var tcs = new TaskCompletionSource<NetworkStatus>();
+            string callbackId = AITCore.Instance.RegisterCallback<NetworkStatus>(result => tcs.SetResult(result));
             __getNetworkStatus_Internal(callbackId, "NetworkStatus");
+            return tcs.Task;
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] GetNetworkStatus called");
-            var mockResult = default(NetworkStatus);
-            callback?.Invoke(mockResult);
+            return Task.FromResult(default(NetworkStatus));
 #endif
         }
 

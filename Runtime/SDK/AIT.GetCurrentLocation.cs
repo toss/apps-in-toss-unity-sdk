@@ -6,6 +6,7 @@
 // -----------------------------------------------------------------------
 
 using System;
+using System.Threading.Tasks;
 
 namespace AppsInToss
 {
@@ -14,16 +15,17 @@ namespace AppsInToss
     /// </summary>
     public static partial class AIT
     {
-        public static void GetCurrentLocation(GetCurrentLocationOptions options, Action<Location1> callback)
+        public static Task<Location> GetCurrentLocation(GetCurrentLocationOptions options)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            string callbackId = AITCore.Instance.RegisterCallback(callback);
-            __getCurrentLocation_Internal(options, callbackId, "Location1");
+            var tcs = new TaskCompletionSource<Location>();
+            string callbackId = AITCore.Instance.RegisterCallback<Location>(result => tcs.SetResult(result));
+            __getCurrentLocation_Internal(options, callbackId, "Location");
+            return tcs.Task;
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] GetCurrentLocation called");
-            var mockResult = default(Location1);
-            callback?.Invoke(mockResult);
+            return Task.FromResult(default(Location));
 #endif
         }
 

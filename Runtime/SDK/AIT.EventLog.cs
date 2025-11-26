@@ -6,6 +6,7 @@
 // -----------------------------------------------------------------------
 
 using System;
+using System.Threading.Tasks;
 
 namespace AppsInToss
 {
@@ -16,15 +17,17 @@ namespace AppsInToss
     {
         /// <param name="paramsParam">로그 기록에 필요한 매개변수 객체예요.</param>
         /// <returns>로그 기록이 완료되면 해결되는 Promise예요.</returns>
-        public static void EventLog(EventLogParams paramsParam, Action callback)
+        public static Task EventLog(EventLogParams paramsParam)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            string callbackId = AITCore.Instance.RegisterCallback(callback);
+            var tcs = new TaskCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<object>(_ => tcs.SetResult(true));
             __eventLog_Internal(paramsParam, callbackId, "void");
+            return tcs.Task;
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] EventLog called");
-            callback?.Invoke();
+            return Task.CompletedTask;
 #endif
         }
 

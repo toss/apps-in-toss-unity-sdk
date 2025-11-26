@@ -6,6 +6,7 @@
 // -----------------------------------------------------------------------
 
 using System;
+using System.Threading.Tasks;
 
 namespace AppsInToss
 {
@@ -14,16 +15,17 @@ namespace AppsInToss
     /// </summary>
     public static partial class AIT
     {
-        public static void OpenCamera(OpenCameraOptions options, Action<ImageResponse> callback)
+        public static Task<ImageResponse> OpenCamera(OpenCameraOptions options)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            string callbackId = AITCore.Instance.RegisterCallback(callback);
+            var tcs = new TaskCompletionSource<ImageResponse>();
+            string callbackId = AITCore.Instance.RegisterCallback<ImageResponse>(result => tcs.SetResult(result));
             __openCamera_Internal(options, callbackId, "ImageResponse");
+            return tcs.Task;
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] OpenCamera called");
-            var mockResult = default(ImageResponse);
-            callback?.Invoke(mockResult);
+            return Task.FromResult(default(ImageResponse));
 #endif
         }
 

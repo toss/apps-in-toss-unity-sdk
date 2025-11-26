@@ -1,0 +1,73 @@
+    /// <summary>
+    /// Result type for {{apiName}} (Discriminated Union)
+    /// Success: {{successTypeName}} | Error: {{errorCodes}}
+    /// </summary>
+    [Serializable]
+    public class {{resultClassName}}
+    {
+        public string _type;
+        public string _successJson;
+        public string _errorCode;
+
+        /// <summary>성공 여부를 나타냅니다.</summary>
+        public bool IsSuccess => _type == "success";
+
+        /// <summary>에러 여부를 나타냅니다.</summary>
+        public bool IsError => _type == "error";
+
+        /// <summary>
+        /// 성공 데이터를 가져옵니다.
+        /// </summary>
+        public {{successTypeName}} GetSuccess()
+            => IsSuccess ? JsonUtility.FromJson<{{successTypeName}}>(_successJson) : null;
+
+        /// <summary>
+        /// 에러 코드를 가져옵니다.
+        /// Possible values: {{#each errorCodes}}"{{this}}"{{#unless @last}}, {{/unless}}{{/each}}
+        /// </summary>
+        public string GetErrorCode()
+            => IsError ? _errorCode : null;
+
+        /// <summary>
+        /// Pattern matching을 사용하여 결과를 처리합니다.
+        /// </summary>
+        public void Match(
+            Action<{{successTypeName}}> onSuccess,
+            Action<string> onError
+        )
+        {
+            if (IsSuccess)
+                onSuccess(GetSuccess());
+            else
+                onError(GetErrorCode());
+        }
+
+        /// <summary>
+        /// Pattern matching을 사용하여 결과를 처리하고 값을 반환합니다.
+        /// </summary>
+        public T Match<T>(
+            Func<{{successTypeName}}, T> onSuccess,
+            Func<string, T> onError
+        )
+        {
+            return IsSuccess ? onSuccess(GetSuccess()) : onError(GetErrorCode());
+        }
+
+        /// <summary>
+        /// Fluent API: 성공 시 액션을 실행합니다.
+        /// </summary>
+        public {{resultClassName}} OnSuccess(Action<{{successTypeName}}> action)
+        {
+            if (IsSuccess) action(GetSuccess());
+            return this;
+        }
+
+        /// <summary>
+        /// Fluent API: 에러 시 액션을 실행합니다.
+        /// </summary>
+        public {{resultClassName}} OnError(Action<string> action)
+        {
+            if (IsError) action(GetErrorCode());
+            return this;
+        }
+    }

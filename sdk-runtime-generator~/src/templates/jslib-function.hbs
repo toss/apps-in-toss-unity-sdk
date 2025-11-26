@@ -1,0 +1,74 @@
+    __{{originalName}}_Internal: function({{#each parameters}}{{name}}{{#unless @last}}, {{/unless}}{{/each}}{{#if hasCallback}}{{#if parameters.length}}, {{/if}}callbackId, typeName{{/if}}) {
+        // @apps-in-toss/web-framework 직접 호출 (bridge-core 패턴)
+        // bridge-core와 동일한 에러 메시지 사용
+{{#if isAsync}}
+        var callback = UTF8ToString(callbackId);
+        var typeNameStr = UTF8ToString(typeName);
+        var eventId = Math.random().toString(36).substring(2, 15);
+        var emitter = window.__GRANITE_NATIVE_EMITTER;
+        var webView = window.ReactNativeWebView;
+
+        // bridge-core 에러 체크: __GRANITE_NATIVE_EMITTER
+        if (!emitter) {
+            throw new Error('__GRANITE_NATIVE_EMITTER is not available');
+        }
+
+        // bridge-core 에러 체크: ReactNativeWebView
+        if (!webView) {
+            throw new Error('ReactNativeWebView is not available in browser environment');
+        }
+
+        // 응답 리스너 등록
+        var removeResolve = emitter.on('{{originalName}}/resolve/' + eventId, function(result) {
+            removeResolve();
+            removeReject();
+{{#if isDiscriminatedUnion}}
+            // Discriminated Union 처리
+            var resultPayload;
+            if (typeof result === 'string') {
+                resultPayload = { _type: "error", _errorCode: result, _successJson: "" };
+            } else {
+                resultPayload = { _type: "success", _successJson: JSON.stringify(result), _errorCode: "" };
+            }
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify(resultPayload)
+            });
+{{else}}
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify(result)
+            });
+{{/if}}
+            SendMessage('AITCore', 'OnAITCallback', payload);
+        });
+
+        var removeReject = emitter.on('{{originalName}}/reject/' + eventId, function(error) {
+            removeResolve();
+            removeReject();
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ error: error.message || String(error) })
+            });
+            SendMessage('AITCore', 'OnAITCallback', payload);
+        });
+
+        // Native로 메시지 전송
+        webView.postMessage(JSON.stringify({
+            type: 'method',
+            functionName: '{{originalName}}',
+            eventId: eventId,
+            args: [{{#each parameters}}{{jsConversion}}{{#unless @last}}, {{/unless}}{{/each}}]
+        }));
+{{else}}
+        // Constant Bridge: bridge-core와 동일한 에러 처리
+        var constantHandlerMap = window.__CONSTANT_HANDLER_MAP;
+        if (constantHandlerMap && '{{originalName}}' in constantHandlerMap) {
+            return constantHandlerMap['{{originalName}}'];
+        }
+        throw new Error('{{originalName}} is not a constant handler');
+{{/if}}
+    },

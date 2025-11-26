@@ -6,6 +6,7 @@
 // -----------------------------------------------------------------------
 
 using System;
+using System.Threading.Tasks;
 
 namespace AppsInToss
 {
@@ -16,16 +17,17 @@ namespace AppsInToss
     {
         /// <param name="path">딥링크로 열고 싶은 경로예요. intoss://로 시작하는 문자열이어야 해요.</param>
         /// <returns>deep_link_value가 포함된 토스 공유 링크를 반환해요.</returns>
-        public static void GetTossShareLink(string path, Action<string> callback)
+        public static Task<string> GetTossShareLink(string path)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            string callbackId = AITCore.Instance.RegisterCallback(callback);
+            var tcs = new TaskCompletionSource<string>();
+            string callbackId = AITCore.Instance.RegisterCallback<string>(result => tcs.SetResult(result));
             __getTossShareLink_Internal(path, callbackId, "string");
+            return tcs.Task;
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] GetTossShareLink called");
-            var mockResult = "";
-            callback?.Invoke(mockResult);
+            return Task.FromResult("");
 #endif
         }
 

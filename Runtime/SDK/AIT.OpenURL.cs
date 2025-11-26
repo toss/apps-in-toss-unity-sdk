@@ -6,6 +6,7 @@
 // -----------------------------------------------------------------------
 
 using System;
+using System.Threading.Tasks;
 
 namespace AppsInToss
 {
@@ -16,16 +17,17 @@ namespace AppsInToss
     {
         /// <param name="url">열고자 하는 URL 주소</param>
         /// <returns>URL이 성공적으로 열렸을 때 해결되는 Promise</returns>
-        public static void OpenURL(string url, Action<object> callback)
+        public static Task OpenURL(string url)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            string callbackId = AITCore.Instance.RegisterCallback(callback);
-            __openURL_Internal(url, callbackId, "object");
+            var tcs = new TaskCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<object>(_ => tcs.SetResult(true));
+            __openURL_Internal(url, callbackId, "void");
+            return tcs.Task;
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] OpenURL called");
-            var mockResult = default(object);
-            callback?.Invoke(mockResult);
+            return Task.CompletedTask;
 #endif
         }
 

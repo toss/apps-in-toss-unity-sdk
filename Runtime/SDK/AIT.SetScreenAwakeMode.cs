@@ -6,6 +6,7 @@
 // -----------------------------------------------------------------------
 
 using System;
+using System.Threading.Tasks;
 
 namespace AppsInToss
 {
@@ -16,22 +17,23 @@ namespace AppsInToss
     {
         /// <param name="options">화면 항상 켜짐 모드의 설정 값이에요.</param>
         /// <returns>현재 화면 항상 켜짐 모드의 설정 상태를 반환해요.</returns>
-        public static void SetScreenAwakeMode(object options, Action<object> callback)
+        public static Task<SetScreenAwakeModeResult> SetScreenAwakeMode(SetScreenAwakeModeOptions options)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            string callbackId = AITCore.Instance.RegisterCallback(callback);
-            __setScreenAwakeMode_Internal(options, callbackId, "object");
+            var tcs = new TaskCompletionSource<SetScreenAwakeModeResult>();
+            string callbackId = AITCore.Instance.RegisterCallback<SetScreenAwakeModeResult>(result => tcs.SetResult(result));
+            __setScreenAwakeMode_Internal(options, callbackId, "SetScreenAwakeModeResult");
+            return tcs.Task;
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] SetScreenAwakeMode called");
-            var mockResult = default(object);
-            callback?.Invoke(mockResult);
+            return Task.FromResult(default(SetScreenAwakeModeResult));
 #endif
         }
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
-        private static extern void __setScreenAwakeMode_Internal(object options, string callbackId, string typeName);
+        private static extern void __setScreenAwakeMode_Internal(SetScreenAwakeModeOptions options, string callbackId, string typeName);
 #endif
     }
 }

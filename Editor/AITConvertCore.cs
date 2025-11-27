@@ -827,8 +827,8 @@ namespace AppsInToss
             else
             {
                 // node를 찾지 못한 경우, npmPath가 embedded Node.js인지 확인
-                // 예: Tools~/NodeJS/darwin-arm64/bin/npm -> Tools~/NodeJS/darwin-arm64/bin/node
-                string possibleNodePath = Path.Combine(npmDir, "node");
+                string nodeExeName = AppsInToss.Editor.AITPlatformHelper.GetExecutableName("node");
+                string possibleNodePath = Path.Combine(npmDir, nodeExeName);
                 if (File.Exists(possibleNodePath))
                 {
                     nodePath = possibleNodePath;
@@ -837,102 +837,58 @@ namespace AppsInToss
                 }
             }
 
-            // PATH 환경변수 구성: npmDir, nodeDir, 표준 경로들
-            string pathEnv = string.IsNullOrEmpty(nodeDir)
-                ? $"{npmDir}:/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin"
-                : $"{npmDir}:{nodeDir}:/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin";
-
             // 패키지 매니저 이름 추출 (pnpm 또는 npm)
-            string pmName = Path.GetFileName(npmPath); // "pnpm" or "npm"
+            string pmName = Path.GetFileNameWithoutExtension(npmPath);
 
-            // --cache와 --prefer-offline은 install 명령어에만 적용 (run build에는 적용하지 않음)
+            // --store-dir는 install 명령어에만 적용 (run build에는 적용하지 않음)
             bool isInstallCommand = arguments.Trim() == "install";
-            string fullCommand = isInstallCommand
-                ? $"cd '{workingDirectory}' && '{npmPath}' {arguments} --store-dir '{cachePath}'"
-                : $"cd '{workingDirectory}' && '{npmPath}' {arguments}";
+            string fullArguments = isInstallCommand
+                ? $"{arguments} --store-dir \"{cachePath}\""
+                : arguments;
+
+            // 추가 PATH 경로 수집
+            var additionalPaths = new System.Collections.Generic.List<string>();
+            if (!string.IsNullOrEmpty(npmDir)) additionalPaths.Add(npmDir);
+            if (!string.IsNullOrEmpty(nodeDir) && nodeDir != npmDir) additionalPaths.Add(nodeDir);
 
             Debug.Log($"[{pmName}] 명령 실행 준비:");
             Debug.Log($"[{pmName}]   작업 디렉토리: {workingDirectory}");
             Debug.Log($"[{pmName}]   {pmName} 경로: {npmPath}");
             Debug.Log($"[{pmName}]   node 경로: {nodePath ?? "찾을 수 없음"}");
-            Debug.Log($"[{pmName}]   PATH 환경변수: {pathEnv}");
             Debug.Log($"[{pmName}]   명령: {pmName} {arguments}");
             Debug.Log($"[{pmName}]   캐시 경로: {cachePath}");
-
-            var process = new System.Diagnostics.Process
-            {
-                StartInfo = new System.Diagnostics.ProcessStartInfo
-                {
-                    FileName = "/bin/bash",
-                    Arguments = $"-l -c \"export PATH='{pathEnv}' && {fullCommand}\"",
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    CreateNoWindow = true
-                }
-            };
 
             try
             {
                 Debug.Log($"[{pmName}] 프로세스 시작...");
-                process.Start();
 
-                System.Text.StringBuilder output = new System.Text.StringBuilder();
-                System.Text.StringBuilder error = new System.Text.StringBuilder();
-
-                process.OutputDataReceived += (sender, args) => {
-                    if (args.Data != null)
-                    {
-                        output.AppendLine(args.Data);
-                        Debug.Log($"[{pmName}] {args.Data}");
-                    }
-                };
-
-                process.ErrorDataReceived += (sender, args) => {
-                    if (args.Data != null && !args.Data.Contains("WARN"))
-                    {
-                        error.AppendLine(args.Data);
-                    }
-                };
-
-                process.BeginOutputReadLine();
-                process.BeginErrorReadLine();
+                // 크로스 플랫폼 명령 구성
+                string command = $"\"{npmPath}\" {fullArguments}";
 
                 // 프로세스 완료를 대기하되, 진행 상황을 업데이트
                 int maxWaitSeconds = 300; // 5분
-                int elapsedSeconds = 0;
 
-                while (!process.HasExited && elapsedSeconds < maxWaitSeconds)
-                {
-                    float progress = (float)elapsedSeconds / maxWaitSeconds;
-                    EditorUtility.DisplayProgressBar("Apps in Toss",
-                        $"{progressTitle} ({elapsedSeconds}초 경과)",
-                        progress);
+                // EditorUtility.DisplayProgressBar와 함께 명령 실행
+                EditorUtility.DisplayProgressBar("Apps in Toss", $"{progressTitle} (시작 중...)", 0);
 
-                    System.Threading.Thread.Sleep(1000); // 1초 대기
-                    elapsedSeconds++;
-                }
+                var result = AppsInToss.Editor.AITPlatformHelper.ExecuteCommand(
+                    command,
+                    workingDirectory,
+                    additionalPaths.ToArray(),
+                    timeoutMs: maxWaitSeconds * 1000,
+                    verbose: true
+                );
 
                 EditorUtility.ClearProgressBar();
 
-                if (!process.HasExited)
+                if (!result.Success)
                 {
-                    process.Kill();
-                    Debug.LogError($"[{pmName}] 명령 시간 초과: {pmName} {arguments}");
+                    Debug.LogError($"[{pmName}] 명령 실패 (Exit Code: {result.ExitCode}): {pmName} {arguments}");
+                    Debug.LogError($"[{pmName}] 오류:\n{result.Error}");
                     return AITExportError.BUILD_WEBGL_FAILED;
                 }
 
-                // 프로세스가 종료될 때까지 대기
-                process.WaitForExit();
-
-                if (process.ExitCode != 0)
-                {
-                    Debug.LogError($"[{pmName}] 명령 실패 (Exit Code: {process.ExitCode}): {pmName} {arguments}");
-                    Debug.LogError($"[{pmName}] 오류:\n{error}");
-                    return AITExportError.BUILD_WEBGL_FAILED;
-                }
-
-                Debug.Log($"[{pmName}] ✓ 명령 성공 완료: {pmName} {arguments} (소요 시간: {elapsedSeconds}초)");
+                Debug.Log($"[{pmName}] ✓ 명령 성공 완료: {pmName} {arguments}");
                 return AITExportError.SUCCEED;
             }
             catch (Exception e)

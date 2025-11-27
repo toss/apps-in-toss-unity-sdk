@@ -184,6 +184,7 @@ async function generate(options: {
 // -----------------------------------------------------------------------
 
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace AppsInToss

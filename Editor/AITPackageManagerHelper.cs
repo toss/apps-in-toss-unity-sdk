@@ -8,19 +8,14 @@ namespace AppsInToss.Editor
     /// <summary>
     /// 패키지 매니저 및 Node.js 검색/설치 통합 유틸리티
     /// 모든 npm/pnpm/node 관련 로직을 중앙화하여 관리
+    /// 크로스 플랫폼 지원 (Windows, macOS, Linux)
     /// </summary>
     public static class AITPackageManagerHelper
     {
         /// <summary>
-        /// 표준 실행 파일 경로 (macOS/Linux 기준)
-        /// Windows의 경우 환경변수 PATH에서 찾음
+        /// 표준 실행 파일 경로 (플랫폼별)
         /// </summary>
-        private static readonly string[] StandardPaths = new string[]
-        {
-            "/opt/homebrew/bin",     // Apple Silicon Mac (Homebrew)
-            "/usr/local/bin",        // Intel Mac (Homebrew)
-            "/usr/bin"               // System default
-        };
+        private static string[] StandardPaths => AITPlatformHelper.StandardBinPaths;
 
         /// <summary>
         /// npm 실행 환경에서 node 경로 찾기
@@ -36,7 +31,8 @@ namespace AppsInToss.Editor
             if (verbose) Debug.Log($"[Package Manager] Finding node from npm path: {npmPath}");
 
             // 1. npm과 같은 디렉토리에서 node 찾기 (가장 확실한 방법)
-            string nodePath = Path.Combine(npmDir, "node");
+            string nodeExeName = AITPlatformHelper.GetExecutableName("node");
+            string nodePath = Path.Combine(npmDir, nodeExeName);
             if (verbose) Debug.Log($"[Package Manager] [1/4] Checking npm directory: {nodePath}");
 
             if (File.Exists(nodePath))
@@ -44,40 +40,36 @@ namespace AppsInToss.Editor
                 if (verbose) Debug.Log($"[Package Manager] ✓ node found in npm directory: {nodePath}");
                 return nodePath;
             }
-            else
+
+            // Windows에서는 node.exe도 확인
+            if (AITPlatformHelper.IsWindows)
             {
-                if (verbose) Debug.Log($"[Package Manager] ✗ node not found in npm directory");
+                nodePath = Path.Combine(npmDir, "node.exe");
+                if (File.Exists(nodePath))
+                {
+                    if (verbose) Debug.Log($"[Package Manager] ✓ node found in npm directory: {nodePath}");
+                    return nodePath;
+                }
             }
+
+            if (verbose) Debug.Log($"[Package Manager] ✗ node not found in npm directory");
 
             // 2. npm config get prefix 명령으로 prefix 경로 알아내기
             try
             {
                 if (verbose) Debug.Log($"[Package Manager] [2/4] Trying 'npm config get prefix'...");
 
-                var process = new System.Diagnostics.Process
-                {
-                    StartInfo = new System.Diagnostics.ProcessStartInfo
-                    {
-                        FileName = "/bin/bash",
-                        Arguments = $"-l -c \"export PATH='{npmDir}:$PATH' && '{npmPath}' config get prefix\"",
-                        UseShellExecute = false,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true,
-                        CreateNoWindow = true
-                    }
-                };
+                string command = $"cd \"{npmDir}\" && \"{npmPath}\" config get prefix";
+                var result = AITPlatformHelper.ExecuteCommand(command, npmDir, new[] { npmDir }, verbose: false);
 
-                process.Start();
-                string prefix = process.StandardOutput.ReadToEnd().Trim();
-                string stderr = process.StandardError.ReadToEnd().Trim();
-                process.WaitForExit();
-
-                if (process.ExitCode == 0 && !string.IsNullOrEmpty(prefix))
+                if (result.Success && !string.IsNullOrEmpty(result.Output))
                 {
+                    string prefix = result.Output.Trim();
                     if (verbose) Debug.Log($"[Package Manager]   npm prefix: {prefix}");
 
-                    // prefix/bin/node 경로 확인
-                    string prefixNodePath = Path.Combine(prefix, "bin", "node");
+                    // 플랫폼별 bin 경로
+                    string binDir = AITPlatformHelper.IsWindows ? prefix : Path.Combine(prefix, "bin");
+                    string prefixNodePath = Path.Combine(binDir, nodeExeName);
                     if (verbose) Debug.Log($"[Package Manager]   Checking: {prefixNodePath}");
 
                     if (File.Exists(prefixNodePath))
@@ -87,13 +79,12 @@ namespace AppsInToss.Editor
                     }
                     else
                     {
-                        if (verbose) Debug.Log($"[Package Manager] ✗ node not found at prefix/bin/node");
+                        if (verbose) Debug.Log($"[Package Manager] ✗ node not found at prefix path");
                     }
                 }
                 else
                 {
-                    if (verbose) Debug.Log($"[Package Manager] ✗ npm config get prefix failed (exit: {process.ExitCode})");
-                    if (verbose && !string.IsNullOrEmpty(stderr)) Debug.Log($"[Package Manager]   stderr: {stderr}");
+                    if (verbose) Debug.Log($"[Package Manager] ✗ npm config get prefix failed");
                 }
             }
             catch (Exception e)
@@ -101,52 +92,13 @@ namespace AppsInToss.Editor
                 if (verbose) Debug.LogWarning($"[Package Manager] ✗ npm config get prefix exception: {e.Message}");
             }
 
-            // 3. npm 실행 환경에서 type -P node (함수가 아닌 실제 실행 파일만)
-            try
+            // 3. 시스템 명령으로 node 찾기 (where/type -P)
+            if (verbose) Debug.Log($"[Package Manager] [3/4] Finding node via system command...");
+            string systemNodePath = AITPlatformHelper.FindExecutable("node", new[] { npmDir }, verbose: verbose);
+            if (!string.IsNullOrEmpty(systemNodePath))
             {
-                if (verbose) Debug.Log($"[Package Manager] [3/4] Trying 'type -P node' in npm environment...");
-
-                var process = new System.Diagnostics.Process
-                {
-                    StartInfo = new System.Diagnostics.ProcessStartInfo
-                    {
-                        FileName = "/bin/bash",
-                        Arguments = $"-l -c \"export PATH='{npmDir}:$PATH' && type -P node\"",
-                        UseShellExecute = false,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true,
-                        CreateNoWindow = true
-                    }
-                };
-
-                process.Start();
-                string output = process.StandardOutput.ReadToEnd().Trim();
-                string stderr = process.StandardError.ReadToEnd().Trim();
-                process.WaitForExit();
-
-                if (process.ExitCode == 0 && !string.IsNullOrEmpty(output))
-                {
-                    if (verbose) Debug.Log($"[Package Manager]   type -P node output: {output}");
-
-                    if (File.Exists(output))
-                    {
-                        if (verbose) Debug.Log($"[Package Manager] ✓ node found via type -P in npm environment: {output}");
-                        return output;
-                    }
-                    else
-                    {
-                        if (verbose) Debug.Log($"[Package Manager] ✗ type -P returned path but file doesn't exist: {output}");
-                    }
-                }
-                else
-                {
-                    if (verbose) Debug.Log($"[Package Manager] ✗ type -P node failed (exit: {process.ExitCode})");
-                    if (verbose && !string.IsNullOrEmpty(stderr)) Debug.Log($"[Package Manager]   stderr: {stderr}");
-                }
-            }
-            catch (Exception e)
-            {
-                if (verbose) Debug.LogWarning($"[Package Manager] ✗ type -P node exception: {e.Message}");
+                if (verbose) Debug.Log($"[Package Manager] ✓ node found via system: {systemNodePath}");
+                return systemNodePath;
             }
 
             // 4. 일반적인 경로에서 찾기
@@ -271,71 +223,15 @@ namespace AppsInToss.Editor
         }
 
         /// <summary>
-        /// 실행 파일 경로 찾기 (표준 경로 + which 명령)
+        /// 실행 파일 경로 찾기 (크로스 플랫폼)
         /// </summary>
         /// <param name="executableName">실행 파일 이름 (예: "pnpm", "npm", "node")</param>
         /// <param name="verbose">상세 로그 출력 여부</param>
         /// <returns>실행 파일 절대 경로 또는 null</returns>
         public static string FindExecutable(string executableName, bool verbose = true)
         {
-            if (verbose) Debug.Log($"[Package Manager]   '{executableName}' 검색 중...");
-
-            // 1. 표준 경로에서 찾기
-            if (verbose) Debug.Log($"[Package Manager]   표준 경로 검색...");
-            foreach (string dir in StandardPaths)
-            {
-                string fullPath = Path.Combine(dir, executableName);
-                if (verbose) Debug.Log($"[Package Manager]     확인: {fullPath}");
-                if (File.Exists(fullPath))
-                {
-                    if (verbose) Debug.Log($"[Package Manager]   ✓ 발견: {fullPath}");
-                    return fullPath;
-                }
-            }
-            if (verbose) Debug.Log($"[Package Manager]   표준 경로에서 찾지 못함");
-
-            // 2. type -P 명령으로 찾기 (PATH 환경변수 고려, nvm/함수 무시)
-            // type -P는 which와 달리 함수가 아닌 실제 실행 파일 경로만 반환
-            if (verbose) Debug.Log($"[Package Manager]   type -P {executableName} 실행...");
-            try
-            {
-                var process = new System.Diagnostics.Process
-                {
-                    StartInfo = new System.Diagnostics.ProcessStartInfo
-                    {
-                        FileName = "/bin/bash",
-                        Arguments = $"-l -c \"type -P {executableName}\"",
-                        UseShellExecute = false,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true,
-                        CreateNoWindow = true
-                    }
-                };
-
-                process.Start();
-                string output = process.StandardOutput.ReadToEnd().Trim();
-                string error = process.StandardError.ReadToEnd().Trim();
-                process.WaitForExit();
-
-                if (verbose) Debug.Log($"[Package Manager]   명령어: /bin/bash -l -c \"type -P {executableName}\"");
-                if (verbose) Debug.Log($"[Package Manager]   종료 코드: {process.ExitCode}");
-                if (verbose && !string.IsNullOrEmpty(output)) Debug.Log($"[Package Manager]   출력: {output}");
-                if (verbose && !string.IsNullOrEmpty(error)) Debug.Log($"[Package Manager]   에러: {error}");
-
-                if (process.ExitCode == 0 && !string.IsNullOrEmpty(output) && File.Exists(output))
-                {
-                    if (verbose) Debug.Log($"[Package Manager]   ✓ 발견: {output}");
-                    return output;
-                }
-
-                if (verbose) Debug.Log($"[Package Manager]   ✗ '{executableName}' 찾을 수 없음");
-            }
-            catch (Exception e)
-            {
-                if (verbose) Debug.LogWarning($"[Package Manager]   ✗ type -P {executableName} 실행 실패: {e.Message}");
-            }
-
-            return null;
+            // AITPlatformHelper에 위임 (크로스 플랫폼 지원)
+            return AITPlatformHelper.FindExecutable(executableName, null, verbose);
         }
 
         /// <summary>
@@ -357,7 +253,6 @@ namespace AppsInToss.Editor
 
                 // npm 디렉토리 경로 구하기 (npm 실행 파일이 있는 bin 디렉토리)
                 string npmBinPath = Path.GetDirectoryName(npmPath);
-                string pathEnv = $"{npmBinPath}:/usr/local/bin:/usr/bin:/bin";
 
                 if (verbose) Debug.Log($"[Package Manager] pnpm 로컬 설치 시작: npm install pnpm");
                 if (verbose) Debug.Log($"[Package Manager]   빌드 경로: {buildPath}");
@@ -366,34 +261,20 @@ namespace AppsInToss.Editor
                 // Progress bar 표시
                 EditorUtility.DisplayProgressBar("pnpm 설치", "pnpm을 로컬에 설치하고 있습니다...", 0.5f);
 
-                var process = new System.Diagnostics.Process
-                {
-                    StartInfo = new System.Diagnostics.ProcessStartInfo
-                    {
-                        FileName = "/bin/bash",
-                        Arguments = $"-l -c \"export PATH='{pathEnv}' && cd '{buildPath}' && '{npmPath}' install pnpm\"",
-                        UseShellExecute = false,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true,
-                        CreateNoWindow = true
-                    }
-                };
-
-                process.Start();
-                string output = process.StandardOutput.ReadToEnd();
-                string error = process.StandardError.ReadToEnd();
-                process.WaitForExit();
+                // 크로스 플랫폼 명령 실행
+                string command = $"\"{npmPath}\" install pnpm";
+                var result = AITPlatformHelper.ExecuteCommand(command, buildPath, new[] { npmBinPath }, verbose: verbose);
 
                 EditorUtility.ClearProgressBar();
 
-                if (process.ExitCode == 0)
+                if (result.Success)
                 {
-                    if (verbose) Debug.Log($"[Package Manager] ✓ pnpm 설치 성공\n{output}");
+                    if (verbose) Debug.Log($"[Package Manager] ✓ pnpm 설치 성공");
                     return true;
                 }
                 else
                 {
-                    if (verbose) Debug.LogWarning($"[Package Manager] ✗ pnpm 설치 실패 (exit code: {process.ExitCode})\nStderr: {error}");
+                    if (verbose) Debug.LogWarning($"[Package Manager] ✗ pnpm 설치 실패 (exit code: {result.ExitCode})\nStderr: {result.Error}");
                     return false;
                 }
             }
@@ -578,7 +459,7 @@ namespace AppsInToss.Editor
         }
 
         /// <summary>
-        /// 패키지 매니저 명령 실제 실행 (내부 헬퍼)
+        /// 패키지 매니저 명령 실제 실행 (내부 헬퍼 - 크로스 플랫폼)
         /// </summary>
         private static bool ExecutePackageManagerCommand(
             string packageManagerPath,
@@ -597,19 +478,18 @@ namespace AppsInToss.Editor
                 }
 
                 // 패키지 매니저 종류 확인
-                string pmName = Path.GetFileName(packageManagerPath);
+                string pmName = Path.GetFileNameWithoutExtension(packageManagerPath);
                 string pmDir = Path.GetDirectoryName(packageManagerPath);
 
-                // PATH 환경변수 설정 (내장 Node.js bin 경로 우선)
-                string pathEnv;
+                // 추가 PATH 경로 수집
+                var additionalPaths = new System.Collections.Generic.List<string>();
                 if (!string.IsNullOrEmpty(_embeddedNodeBinPath))
                 {
-                    // 내장 Node.js bin 경로를 맨 앞에 추가 (최우선)
-                    pathEnv = $"{_embeddedNodeBinPath}:{pmDir}:/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin";
+                    additionalPaths.Add(_embeddedNodeBinPath);
                 }
-                else
+                if (!string.IsNullOrEmpty(pmDir))
                 {
-                    pathEnv = $"{pmDir}:/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin";
+                    additionalPaths.Add(pmDir);
                 }
 
                 if (verbose) Debug.Log($"[{pmName}] {(async ? "백그라운드" : "동기")} 명령 실행: {command}");
@@ -624,55 +504,32 @@ namespace AppsInToss.Editor
                     );
                 }
 
-                var process = new System.Diagnostics.Process
+                // 크로스 플랫폼 명령 구성
+                string fullCommand = $"\"{packageManagerPath}\" {command}";
+                if (async)
                 {
-                    StartInfo = new System.Diagnostics.ProcessStartInfo
-                    {
-                        FileName = "/bin/bash",
-                        Arguments = $"-l -c \"export PATH='{pathEnv}' && cd '{buildPath}' && '{packageManagerPath}' {command} {(async ? "--loglevel=error" : "")}\"",
-                        UseShellExecute = false,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true,
-                        CreateNoWindow = true
-                    }
-                };
-
-                process.Start();
+                    fullCommand += " --loglevel=error";
+                }
 
                 if (async)
                 {
                     // 비동기 모드: 백그라운드에서 실행
-                    process.OutputDataReceived += (sender, e) =>
-                    {
-                        if (!string.IsNullOrEmpty(e.Data))
-                        {
-                            Debug.Log($"[{pmName}] {e.Data}");
-                        }
-                    };
-
-                    process.ErrorDataReceived += (sender, e) =>
-                    {
-                        if (!string.IsNullOrEmpty(e.Data) && !e.Data.Contains("npm WARN") && !e.Data.Contains("pnpm WARN"))
-                        {
-                            Debug.LogWarning($"[{pmName}] {e.Data}");
-                        }
-                    };
-
-                    process.BeginOutputReadLine();
-                    process.BeginErrorReadLine();
-
-                    // 비동기 대기
                     System.Threading.Tasks.Task.Run(() =>
                     {
-                        process.WaitForExit();
+                        var result = AITPlatformHelper.ExecuteCommand(
+                            fullCommand,
+                            buildPath,
+                            additionalPaths.ToArray(),
+                            verbose: verbose
+                        );
 
-                        if (process.ExitCode == 0)
+                        if (result.Success)
                         {
                             UnityEngine.Debug.Log($"[{pmName}] ✓ 백그라운드 {command} 완료");
                         }
                         else
                         {
-                            UnityEngine.Debug.LogWarning($"[{pmName}] 백그라운드 {command} 실패 (exit code: {process.ExitCode})");
+                            UnityEngine.Debug.LogWarning($"[{pmName}] 백그라운드 {command} 실패 (exit code: {result.ExitCode})");
                         }
                     });
 
@@ -681,23 +538,26 @@ namespace AppsInToss.Editor
                 else
                 {
                     // 동기 모드: 결과 대기
-                    string output = process.StandardOutput.ReadToEnd();
-                    string error = process.StandardError.ReadToEnd();
-                    process.WaitForExit();
+                    var result = AITPlatformHelper.ExecuteCommand(
+                        fullCommand,
+                        buildPath,
+                        additionalPaths.ToArray(),
+                        verbose: verbose
+                    );
 
                     if (showProgressBar)
                     {
                         EditorUtility.ClearProgressBar();
                     }
 
-                    if (process.ExitCode == 0)
+                    if (result.Success)
                     {
-                        if (verbose) Debug.Log($"[{pmName}] ✓ {command} 성공\n{output}");
+                        if (verbose) Debug.Log($"[{pmName}] ✓ {command} 성공");
                         return true;
                     }
                     else
                     {
-                        if (verbose) Debug.LogWarning($"[{pmName}] ✗ {command} 실패 (exit code: {process.ExitCode})\nStderr: {error}");
+                        if (verbose) Debug.LogWarning($"[{pmName}] ✗ {command} 실패 (exit code: {result.ExitCode})\nStderr: {result.Error}");
                         return false;
                     }
                 }

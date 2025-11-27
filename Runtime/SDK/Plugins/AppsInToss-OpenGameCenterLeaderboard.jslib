@@ -6,7 +6,7 @@
  * 수정하지 마세요. 변경사항은 재생성 시 손실됩니다.
  *
  * web-framework tag: next
- * 생성 시각: 2025-11-27T12:04:21.133Z
+ * 생성 시각: 2025-11-27T13:37:25.164Z
  * Category: OpenGameCenterLeaderboard
  */
 

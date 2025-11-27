@@ -6,6 +6,7 @@
 // -----------------------------------------------------------------------
 
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace AppsInToss
@@ -90,6 +91,20 @@ namespace AppsInToss
     {
         public string AuthorizationCode;
         public string Referrer;
+    }
+
+    [Serializable]
+    public class ContactsViralEventData
+    {
+        public double RewardAmount;
+        public string RewardUnit;
+    }
+
+    [Serializable]
+    public class ContactsViralEvent
+    {
+        public string Type;
+        public ContactsViralEventData Data;
     }
 
     [Serializable]

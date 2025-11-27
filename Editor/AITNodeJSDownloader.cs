@@ -299,10 +299,16 @@ namespace AppsInToss.Editor
         }
 
         /// <summary>
-        /// 실행 권한 부여 (macOS/Linux)
+        /// 실행 권한 부여 (Unix 전용, Windows에서는 무시)
         /// </summary>
         private static void SetExecutablePermissions(string nodePath)
         {
+            // Windows에서는 실행 권한이 필요 없음
+            if (AITPlatformHelper.IsWindows)
+            {
+                return;
+            }
+
             string[] executables = new string[]
             {
                 Path.Combine(nodePath, "bin", "node"),
@@ -312,26 +318,7 @@ namespace AppsInToss.Editor
 
             foreach (string exe in executables)
             {
-                if (File.Exists(exe))
-                {
-                    try
-                    {
-                        var process = Process.Start(new ProcessStartInfo
-                        {
-                            FileName = "/bin/chmod",
-                            Arguments = $"+x \"{exe}\"",
-                            UseShellExecute = false,
-                            CreateNoWindow = true
-                        });
-                        process?.WaitForExit();
-
-                        Debug.Log($"[NodeJS] 실행 권한 부여: {exe}");
-                    }
-                    catch (Exception e)
-                    {
-                        Debug.LogWarning($"[NodeJS] 실행 권한 부여 실패 ({exe}): {e.Message}");
-                    }
-                }
+                AITPlatformHelper.SetExecutablePermission(exe, verbose: true);
             }
         }
 
@@ -392,15 +379,18 @@ namespace AppsInToss.Editor
         }
 
         /// <summary>
-        /// npm 실행 파일 경로
+        /// npm 실행 파일 경로 (크로스 플랫폼)
         /// </summary>
         private static string GetNpmExecutablePath(string nodePath)
         {
-            #if UNITY_EDITOR_WIN
+            if (AITPlatformHelper.IsWindows)
+            {
                 return Path.Combine(nodePath, "npm.cmd");
-            #else
+            }
+            else
+            {
                 return Path.Combine(nodePath, "bin", "npm");
-            #endif
+            }
         }
 
         /// <summary>

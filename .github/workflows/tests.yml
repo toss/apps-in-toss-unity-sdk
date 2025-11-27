@@ -7,11 +7,22 @@ on:
     branches: [master]
 
 jobs:
-  # E2E Full Pipeline Test (8개 테스트)
+  # E2E Full Pipeline Test (크로스 플랫폼)
   e2e-full-pipeline:
-    name: E2E Full Pipeline Test
-    runs-on: macos-latest
+    name: E2E Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+        include:
+          - os: macos-latest
+            platform_name: macOS
+          - os: windows-latest
+            platform_name: Windows
+          - os: ubuntu-latest
+            platform_name: Linux
 
     steps:
       - name: Checkout Repository
@@ -21,9 +32,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: Tests~/E2E/SampleUnityProject/Library
-          key: Library-E2E-${{ hashFiles('Tests~/E2E/SampleUnityProject/**/*.cs', 'Runtime/**/*.cs', 'Editor/**/*.cs') }}
+          key: Library-E2E-${{ matrix.os }}-${{ hashFiles('Tests~/E2E/SampleUnityProject/**/*.cs', 'Runtime/**/*.cs', 'Editor/**/*.cs') }}
           restore-keys: |
-            Library-E2E-
+            Library-E2E-${{ matrix.os }}-
 
       - name: Unity WebGL Build
         uses: game-ci/unity-builder@v4
@@ -38,7 +49,8 @@ jobs:
           unityVersion: 2021.3.45f1
           versioning: None
 
-      - name: Verify Build Output
+      - name: Verify Build Output (Unix)
+        if: runner.os != 'Windows'
         run: |
           echo "Checking build output..."
           if [ -d "Tests~/E2E/SampleUnityProject/ait-build/dist/web" ]; then
@@ -49,6 +61,22 @@ jobs:
             echo "❌ Build output not found"
             exit 1
           fi
+
+      - name: Verify Build Output (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Write-Host "Checking build output..."
+          $distPath = "Tests~/E2E/SampleUnityProject/ait-build/dist/web"
+          if (Test-Path $distPath) {
+            Write-Host "✅ Build output found"
+            Get-ChildItem -Path $distPath
+            $size = (Get-ChildItem -Path $distPath -Recurse | Measure-Object -Property Length -Sum).Sum / 1MB
+            Write-Host "Total size: $([math]::Round($size, 2)) MB"
+          } else {
+            Write-Host "❌ Build output not found"
+            exit 1
+          }
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -67,12 +95,12 @@ jobs:
         run: npm test
         working-directory: Tests~/E2E/tests
 
-      - name: Generate Job Summary
-        if: always()
+      - name: Generate Job Summary (Unix)
+        if: always() && runner.os != 'Windows'
         run: |
           RESULTS_FILE="Tests~/E2E/tests/benchmark-results.json"
 
-          echo "## 📊 E2E Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "## 📊 E2E Test Results (${{ matrix.platform_name }})" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
           if [ -f "$RESULTS_FILE" ]; then
@@ -83,11 +111,28 @@ jobs:
             echo "⚠️ No benchmark results found" >> $GITHUB_STEP_SUMMARY
           fi
 
+      - name: Generate Job Summary (Windows)
+        if: always() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $resultsFile = "Tests~/E2E/tests/benchmark-results.json"
+
+          "## 📊 E2E Test Results (${{ matrix.platform_name }})" | Out-File -Append -FilePath $env:GITHUB_STEP_SUMMARY
+          "" | Out-File -Append -FilePath $env:GITHUB_STEP_SUMMARY
+
+          if (Test-Path $resultsFile) {
+            '```json' | Out-File -Append -FilePath $env:GITHUB_STEP_SUMMARY
+            Get-Content $resultsFile | Out-File -Append -FilePath $env:GITHUB_STEP_SUMMARY
+            '```' | Out-File -Append -FilePath $env:GITHUB_STEP_SUMMARY
+          } else {
+            "⚠️ No benchmark results found" | Out-File -Append -FilePath $env:GITHUB_STEP_SUMMARY
+          }
+
       - name: Upload Benchmark Results
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: benchmark-results
+          name: benchmark-results-${{ matrix.os }}
           path: Tests~/E2E/tests/benchmark-results.json
           if-no-files-found: ignore
 
@@ -95,7 +140,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.os }}
           path: Tests~/E2E/tests/playwright-report/
           if-no-files-found: ignore
 
@@ -103,6 +148,6 @@ jobs:
         uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: test-screenshots
+          name: test-screenshots-${{ matrix.os }}
           path: Tests~/E2E/tests/test-results/
           if-no-files-found: ignore

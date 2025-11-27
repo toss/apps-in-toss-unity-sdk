@@ -16,7 +16,7 @@ namespace AppsInToss
     public static partial class AIT
     {
         /// <returns>사용자가 선택한 최종 권한 상태를 반환해요. 반환값은 다음 중 하나예요: allowed: 권한이 허용된 경우 denied: 권한이 거부된 경우</returns>
-        public static Task<string> RequestPermission(PermissionAccess; permission)
+        public static Task<string> RequestPermission(RequestPermissionPermission permission)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<string>();
@@ -32,7 +32,7 @@ namespace AppsInToss
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
-        private static extern void __requestPermission_Internal(PermissionAccess; permission, string callbackId, string typeName);
+        private static extern void __requestPermission_Internal(RequestPermissionPermission permission, string callbackId, string typeName);
 #endif
     }
 }

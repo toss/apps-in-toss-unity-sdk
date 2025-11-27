@@ -185,15 +185,16 @@ export function mapToCSharpType(type: ParsedType): string {
         ? type.name.split('.').pop() || type.name
         : type.name;
 
-      // 특수 문자 제거 (중괄호, 콤마, 공백, C# 식별자로 유효하지 않은 문자 등)
+      // 특수 문자 제거 (중괄호, 콤마, 공백, 세미콜론, C# 식별자로 유효하지 않은 문자 등)
       // TypeScript 빌드 시 생성되는 $1, $2 등의 접미사도 제거
-      let cleanName = objectName.replace(/["'{}(),\s<>|]/g, '').replace(/\$\d+$/, '').trim();
+      let cleanName = objectName.replace(/["'{}(),;\s<>|]/g, '').replace(/\$\d+$/, '').trim();
 
       // __type 또는 빈 이름은 익명 타입
       if (cleanName === '__type' || !cleanName || cleanName.startsWith('{')) {
         // raw 필드에서 실제 타입 이름 추출 시도 (import("...").TypeName 형식)
-        if (type.raw && type.raw.includes('.')) {
-          const rawTypeName = type.raw.split('.').pop()?.replace(/["'{}(),\s$<>|]/g, '').trim();
+        // 단, raw가 '{'로 시작하면 인라인 객체이므로 스킵
+        if (type.raw && type.raw.includes('.') && !type.raw.trim().startsWith('{')) {
+          const rawTypeName = type.raw.split('.').pop()?.replace(/["'{}(),;\s$<>|]/g, '').trim();
           if (rawTypeName && rawTypeName !== '__type' && !rawTypeName.startsWith('{')) {
             return rawTypeName;
           }
@@ -208,7 +209,7 @@ export function mapToCSharpType(type: ParsedType): string {
       // 예: import("...").GameCenterGameProfileResponse -> GameCenterGameProfileResponse
       if (type.name && (type.name.includes('.') || type.name.includes('import('))) {
         const typeName = type.name.split('.').pop() || type.name;
-        const cleanName = typeName.replace(/["'{}()|,\s$<>]/g, '').trim();
+        const cleanName = typeName.replace(/["'{}()|,;\s$<>]/g, '').trim();
 
         if (cleanName && cleanName !== '__type') {
           return cleanName;

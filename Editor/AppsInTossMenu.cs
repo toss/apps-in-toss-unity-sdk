@@ -305,60 +305,36 @@ namespace AppsInToss
                 string npmDir = Path.GetDirectoryName(npmPath);
 
                 // pnpm만 사용 (내장 Node.js + pnpm)
-                string pnpxPath = Path.Combine(npmDir, "pnpx");
+                string pnpxName = AITPlatformHelper.IsWindows ? "pnpx.cmd" : "pnpx";
+                string pnpxPath = Path.Combine(npmDir, pnpxName);
 
-                string pathEnv = $"{npmDir}:/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin";
+                // 크로스 플랫폼 명령 실행
+                string command = $"\"{pnpxPath}\" ait deploy --api-key \"{config.deploymentKey}\"";
+                var result = AITPlatformHelper.ExecuteCommand(
+                    command,
+                    buildPath,
+                    new[] { npmDir },
+                    timeoutMs: 300000,
+                    verbose: true
+                );
 
-                var startInfo = new ProcessStartInfo
+                if (!result.Success)
                 {
-                    FileName = "/bin/bash",
-                    Arguments = $"-l -c \"export PATH='{pathEnv}' && cd '{buildPath}' && '{pnpxPath}' ait deploy --api-key '{config.deploymentKey}'\"",
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    CreateNoWindow = true
-                };
-
-                var process = new Process { StartInfo = startInfo };
-
-                process.OutputDataReceived += (sender, args) =>
-                {
-                    if (args.Data != null)
+                    if (result.ExitCode == -1)
                     {
-                        Debug.Log($"[Deploy] {args.Data}");
+                        Debug.LogError("AIT: 배포 타임아웃 (5분 초과)");
+                        EditorUtility.DisplayDialog("타임아웃", "배포 시간이 초과되었습니다.", "확인");
                     }
-                };
-
-                process.ErrorDataReceived += (sender, args) =>
-                {
-                    if (args.Data != null)
+                    else
                     {
-                        Debug.Log($"[Deploy] {args.Data}");
+                        Debug.LogError($"AIT: 배포 실패 (Exit Code: {result.ExitCode})");
+                        EditorUtility.DisplayDialog("실패", "배포에 실패했습니다.\n\nConsole 로그를 확인하세요.", "확인");
                     }
-                };
-
-                process.Start();
-                process.BeginOutputReadLine();
-                process.BeginErrorReadLine();
-
-                // 타임아웃 설정 (5분)
-                bool finished = process.WaitForExit(300000);
-
-                if (!finished)
-                {
-                    process.Kill();
-                    Debug.LogError("AIT: 배포 타임아웃 (5분 초과)");
-                    EditorUtility.DisplayDialog("타임아웃", "배포 시간이 초과되었습니다.", "확인");
-                }
-                else if (process.ExitCode == 0)
-                {
-                    Debug.Log("AIT: 배포 완료!");
-                    EditorUtility.DisplayDialog("성공", "Apps in Toss에 배포되었습니다!", "확인");
                 }
                 else
                 {
-                    Debug.LogError($"AIT: 배포 실패 (Exit Code: {process.ExitCode})");
-                    EditorUtility.DisplayDialog("실패", "배포에 실패했습니다.\n\nConsole 로그를 확인하세요.", "확인");
+                    Debug.Log("AIT: 배포 완료!");
+                    EditorUtility.DisplayDialog("성공", "Apps in Toss에 배포되었습니다!", "확인");
                 }
             }
             catch (Exception e)
@@ -511,7 +487,7 @@ namespace AppsInToss
         }
 
         /// <summary>
-        /// 서버 프로세스 시작 (동적 포트 감지 포함)
+        /// 서버 프로세스 시작 (동적 포트 감지 포함) - 크로스 플랫폼
         /// </summary>
         /// <param name="onPortDetected">포트가 감지되면 호출되는 콜백 (메인 스레드에서 실행)</param>
         private static Process StartServerProcessWithPortDetection(
@@ -522,17 +498,36 @@ namespace AppsInToss
             Action<int> onPortDetected)
         {
             string npmDir = Path.GetDirectoryName(npmPath);
-            string pathEnv = $"{npmDir}:/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin";
+            string pathEnv = AITPlatformHelper.BuildPathEnv(npmDir);
 
-            var startInfo = new ProcessStartInfo
+            ProcessStartInfo startInfo;
+
+            if (AITPlatformHelper.IsWindows)
             {
-                FileName = "/bin/bash",
-                Arguments = $"-l -c \"export PATH='{pathEnv}' && cd '{buildPath}' && '{npmPath}' {npmCommand}\"",
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true
-            };
+                startInfo = new ProcessStartInfo
+                {
+                    FileName = "cmd.exe",
+                    Arguments = $"/c \"\"{npmPath}\" {npmCommand}\"",
+                    WorkingDirectory = buildPath,
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true
+                };
+                startInfo.EnvironmentVariables["PATH"] = pathEnv;
+            }
+            else
+            {
+                startInfo = new ProcessStartInfo
+                {
+                    FileName = "/bin/bash",
+                    Arguments = $"-l -c \"export PATH='{pathEnv}' && cd '{buildPath}' && '{npmPath}' {npmCommand}\"",
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true
+                };
+            }
 
             var process = new Process { StartInfo = startInfo };
             bool portDetected = false;
@@ -641,21 +636,20 @@ namespace AppsInToss
         {
             try
             {
-                var process = new Process
-                {
-                    StartInfo = new ProcessStartInfo
-                    {
-                        FileName = "/bin/bash",
-                        Arguments = $"-c \"lsof -ti :{port} | xargs kill -9 2>/dev/null\"",
-                        UseShellExecute = false,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true,
-                        CreateNoWindow = true
-                    }
-                };
+                string command;
 
-                process.Start();
-                process.WaitForExit(2000);
+                if (AITPlatformHelper.IsWindows)
+                {
+                    // Windows: netstat + taskkill
+                    command = $"for /f \"tokens=5\" %a in ('netstat -aon ^| findstr :{port}') do taskkill /PID %a /F 2>nul";
+                }
+                else
+                {
+                    // Unix: lsof + kill
+                    command = $"lsof -ti :{port} | xargs kill -9 2>/dev/null";
+                }
+
+                AITPlatformHelper.ExecuteCommand(command, null, null, timeoutMs: 2000, verbose: false);
             }
             catch
             {

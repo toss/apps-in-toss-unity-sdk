@@ -645,6 +645,15 @@ export class CSharpTypeGenerator {
           if (!typeMap.has(cleanName) && !exclude.has(cleanName)) {
             typeMap.set(cleanName, this.generateClassType(typeName, param.type.properties));
           }
+
+          // 객체의 프로퍼티에 함수 타입이 있으면 함수 파라미터 타입도 수집
+          for (const prop of param.type.properties) {
+            if (prop.type.kind === 'function' && prop.type.functionParams) {
+              for (const funcParam of prop.type.functionParams) {
+                this.collectFunctionParamTypes(funcParam, typeMap, exclude);
+              }
+            }
+          }
         }
       }
 
@@ -858,5 +867,56 @@ ${fields}
 
   private capitalize(str: string): string {
     return str.charAt(0).toUpperCase() + str.slice(1);
+  }
+
+  /**
+   * 함수 파라미터 타입을 재귀적으로 수집
+   */
+  private collectFunctionParamTypes(
+    paramType: ParsedType,
+    typeMap: Map<string, string>,
+    exclude: Set<string>
+  ): void {
+    // Union 타입 처리 (ContactsViralEvent = RewardFromContactsViralEvent | ContactsViralSuccessEvent)
+    if (paramType.kind === 'union') {
+      // Union 타입 자체가 named type이면 클래스로 생성
+      if (paramType.name && paramType.name.includes('.')) {
+        const unionTypeName = this.extractCleanName(paramType.name);
+        if (!typeMap.has(unionTypeName) && !exclude.has(unionTypeName)) {
+          // Union의 모든 멤버 속성을 수집
+          const allProperties = new Map<string, any>();
+          if (paramType.unionTypes) {
+            for (const member of paramType.unionTypes) {
+              if (member.kind === 'object' && member.properties) {
+                for (const prop of member.properties) {
+                  if (!allProperties.has(prop.name)) {
+                    allProperties.set(prop.name, prop);
+                  }
+                }
+              }
+            }
+          }
+          if (allProperties.size > 0) {
+            typeMap.set(unionTypeName, this.generateClassType(unionTypeName, Array.from(allProperties.values())));
+          }
+        }
+      }
+      // Union 멤버들도 재귀 처리
+      if (paramType.unionTypes) {
+        for (const member of paramType.unionTypes) {
+          this.collectFunctionParamTypes(member, typeMap, exclude);
+        }
+      }
+    }
+    // Object 타입 처리
+    else if (paramType.kind === 'object' && paramType.properties && paramType.properties.length > 0) {
+      const typeName = paramType.name === '__type' || paramType.name === 'object' || paramType.name.startsWith('{')
+        ? 'object'
+        : this.extractCleanName(paramType.name);
+
+      if (typeName !== 'object' && !typeMap.has(typeName) && !exclude.has(typeName)) {
+        typeMap.set(typeName, this.generateClassType(typeName, paramType.properties));
+      }
+    }
   }
 }

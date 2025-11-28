@@ -101,6 +101,10 @@ logs/
 .claude/
 CLAUDE.md
 
+# Unity License files (sensitive)
+*.alf
+*.ulf
+
 # Embedded Node.js runtime (downloaded automatically)
 Tools~/NodeJS/darwin-arm64/
 Tools~/NodeJS/darwin-x64/

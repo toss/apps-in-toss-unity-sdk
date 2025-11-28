@@ -24,7 +24,7 @@ namespace AppsInToss.Editor
             ["darwin-arm64"] = "b05aa3a66efe680023f930bd5af3fdbbd542794da5644ca2ad711d68cbd4dc35",
             ["darwin-x64"] = "096081b6d6fcdd3f5ba0f5f1d44a47e83037ad2e78eada26671c252fe64dd111",
             ["win-x64"] = "5355ae6d7c49eddcfde7d34ac3486820600a831bf81dc3bdca5c8db6a9bb0e76",
-            ["linux-x64"] = "60e3b0a8500819514aca603487c254298cd776de0698d3cd08f11dba5b8289a8"
+            ["linux-x64"] = "58a5ff5cc8f2200e458bea22e329d5c1994aa1b111d499ca46ec2411d58239ca"
         };
 
         /// <summary>
@@ -55,14 +55,26 @@ namespace AppsInToss.Editor
             {
                 Debug.Log($"[NodeJS] Embedded Node.js를 찾을 수 없습니다. 다운로드를 시작합니다...");
 
-                bool download = EditorUtility.DisplayDialog(
-                    "Node.js 자동 다운로드",
-                    $"Apps in Toss SDK는 빌드를 위해 Node.js {NODE_VERSION} (LTS)가 필요합니다.\n\n" +
-                    "SDK에 포함된 portable Node.js를 자동으로 다운로드하시겠습니까?\n\n" +
-                    $"다운로드 크기: 약 40-50MB\n" +
-                    $"설치 위치: {nodePath}",
-                    "다운로드", "취소"
-                );
+                bool download = false;
+
+                // 배치 모드 (CI/CD)에서는 다이얼로그 없이 자동 다운로드
+                if (Application.isBatchMode)
+                {
+                    Debug.Log("[NodeJS] 배치 모드 감지 - 자동 다운로드를 진행합니다.");
+                    download = true;
+                }
+                else
+                {
+                    // 인터랙티브 모드에서는 사용자에게 확인
+                    download = EditorUtility.DisplayDialog(
+                        "Node.js 자동 다운로드",
+                        $"Apps in Toss SDK는 빌드를 위해 Node.js {NODE_VERSION} (LTS)가 필요합니다.\n\n" +
+                        "SDK에 포함된 portable Node.js를 자동으로 다운로드하시겠습니까?\n\n" +
+                        $"다운로드 크기: 약 40-50MB\n" +
+                        $"설치 위치: {nodePath}",
+                        "다운로드", "취소"
+                    );
+                }
 
                 if (download)
                 {
@@ -163,20 +175,28 @@ namespace AppsInToss.Editor
 
                 Debug.Log($"[NodeJS] 다운로드 및 설치 완료: {targetPath}");
 
-                EditorUtility.DisplayDialog("다운로드 완료",
-                    $"Node.js {NODE_VERSION}이(가) 성공적으로 설치되었습니다.\n\n" +
-                    $"위치: {targetPath}",
-                    "확인");
+                // 배치 모드에서는 다이얼로그 스킵
+                if (!Application.isBatchMode)
+                {
+                    EditorUtility.DisplayDialog("다운로드 완료",
+                        $"Node.js {NODE_VERSION}이(가) 성공적으로 설치되었습니다.\n\n" +
+                        $"위치: {targetPath}",
+                        "확인");
+                }
             }
             catch (Exception e)
             {
                 Debug.LogError($"[NodeJS] 다운로드 실패: {e.Message}");
 
-                EditorUtility.DisplayDialog("다운로드 실패",
-                    $"Node.js 다운로드에 실패했습니다:\n\n{e.Message}\n\n" +
-                    "수동으로 Node.js를 설치하시거나, 나중에 다시 시도해주세요.\n\n" +
-                    "공식 사이트: https://nodejs.org",
-                    "확인");
+                // 배치 모드에서는 다이얼로그 스킵
+                if (!Application.isBatchMode)
+                {
+                    EditorUtility.DisplayDialog("다운로드 실패",
+                        $"Node.js 다운로드에 실패했습니다:\n\n{e.Message}\n\n" +
+                        "수동으로 Node.js를 설치하시거나, 나중에 다시 시도해주세요.\n\n" +
+                        "공식 사이트: https://nodejs.org",
+                        "확인");
+                }
 
                 throw;
             }

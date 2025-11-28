@@ -794,12 +794,56 @@ namespace AppsInToss
         }
 
         /// <summary>
-        /// pnpm 경로를 찾는 함수
+        /// pnpm 경로를 찾는 함수 (내장 Node.js 사용 시 자동 설치 포함)
         /// </summary>
         private static string FindPnpmPath()
         {
-            // pnpm 실행 파일 검색
-            return AITPackageManagerHelper.FindExecutable("pnpm", verbose: true);
+            // 1. 내장 Node.js bin 디렉토리에서 pnpm 찾기
+            string embeddedNodeBinPath = AppsInToss.Editor.AITPackageManagerHelper.GetEmbeddedNodeBinPath();
+            if (!string.IsNullOrEmpty(embeddedNodeBinPath))
+            {
+                string pnpmInEmbedded = Path.Combine(embeddedNodeBinPath, AppsInToss.Editor.AITPlatformHelper.GetExecutableName("pnpm"));
+                if (File.Exists(pnpmInEmbedded))
+                {
+                    Debug.Log($"[AIT] ✓ 내장 pnpm 발견: {pnpmInEmbedded}");
+                    return pnpmInEmbedded;
+                }
+
+                // 2. pnpm이 없으면 npm으로 글로벌 설치
+                Debug.Log("[AIT] 내장 pnpm이 없습니다. npm install -g pnpm 실행 중...");
+                string npmPath = Path.Combine(embeddedNodeBinPath, AppsInToss.Editor.AITPlatformHelper.GetExecutableName("npm"));
+
+                if (File.Exists(npmPath))
+                {
+                    // npm install -g pnpm 실행
+                    string command = $"\"{npmPath}\" install -g pnpm";
+                    var result = AppsInToss.Editor.AITPlatformHelper.ExecuteCommand(
+                        command,
+                        embeddedNodeBinPath,
+                        new[] { embeddedNodeBinPath },
+                        timeoutMs: 120000, // 2분
+                        verbose: true
+                    );
+
+                    if (result.Success)
+                    {
+                        Debug.Log("[AIT] ✓ pnpm 글로벌 설치 완료");
+
+                        // 설치 후 pnpm 경로 다시 확인
+                        if (File.Exists(pnpmInEmbedded))
+                        {
+                            return pnpmInEmbedded;
+                        }
+                    }
+                    else
+                    {
+                        Debug.LogError($"[AIT] pnpm 설치 실패: {result.Error}");
+                    }
+                }
+            }
+
+            // 3. 시스템 pnpm 검색 (fallback)
+            return AppsInToss.Editor.AITPackageManagerHelper.FindExecutable("pnpm", verbose: true);
         }
 
         /// <summary>

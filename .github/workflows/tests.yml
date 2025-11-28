@@ -6,73 +6,464 @@ on:
   pull_request:
     branches: [master]
 
+# 동일 브랜치에서 새 실행 시 이전 실행 자동 취소
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UNITY_VERSION: 2021.3.45f1
+  UNITY_CHANGESET: 0da89fac8e79
+
 jobs:
-  # E2E Full Pipeline Test (크로스 플랫폼)
-  e2e-full-pipeline:
-    name: E2E Test (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+  # =====================================================
+  # macOS E2E Test
+  # =====================================================
+  e2e-macos:
+    name: E2E Test (macOS)
+    runs-on: macos-latest
     timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-latest, windows-latest, ubuntu-latest]
-        include:
-          - os: macos-latest
-            platform_name: macOS
-          - os: windows-latest
-            platform_name: Windows
-          - os: ubuntu-latest
-            platform_name: Linux
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      - name: Cache Unity Installation
+        id: cache-unity
+        uses: actions/cache@v4
+        with:
+          path: /Applications/Unity/Hub/Editor
+          key: unity-macos-latest-${{ env.UNITY_VERSION }}-v3
+          restore-keys: |
+            unity-macos-latest-${{ env.UNITY_VERSION }}-
+
       - name: Cache Unity Library
         uses: actions/cache@v4
         with:
           path: Tests~/E2E/SampleUnityProject/Library
-          key: Library-E2E-${{ matrix.os }}-${{ hashFiles('Tests~/E2E/SampleUnityProject/**/*.cs', 'Runtime/**/*.cs', 'Editor/**/*.cs') }}
+          key: Library-E2E-macos-latest-${{ hashFiles('Tests~/E2E/SampleUnityProject/**/*.cs', 'Runtime/**/*.cs', 'Editor/**/*.cs') }}
           restore-keys: |
-            Library-E2E-${{ matrix.os }}-
+            Library-E2E-macos-latest-
 
-      - name: Unity WebGL Build
-        uses: game-ci/unity-builder@v4
-        env:
-          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
-          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
-          UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
-        with:
-          projectPath: Tests~/E2E/SampleUnityProject
-          targetPlatform: WebGL
-          buildMethod: E2EBuildRunner.CommandLineBuild
-          unityVersion: 2021.3.45f1
-          versioning: None
-
-      - name: Verify Build Output (Unix)
-        if: runner.os != 'Windows'
+      - name: Install Unity Hub
         run: |
-          echo "Checking build output..."
+          if [ ! -d "/Applications/Unity Hub.app" ]; then
+            echo "Installing Unity Hub via Homebrew..."
+            brew install --cask unity-hub
+          else
+            echo "Unity Hub already installed"
+          fi
+
+      - name: Install Unity Editor
+        if: steps.cache-unity.outputs.cache-hit != 'true'
+        run: |
+          UNITY_HUB="/Applications/Unity Hub.app/Contents/MacOS/Unity Hub"
+
+          echo "Installing Unity ${{ env.UNITY_VERSION }} (arm64)..."
+          "$UNITY_HUB" -- --headless install \
+            --version ${{ env.UNITY_VERSION }} \
+            --changeset ${{ env.UNITY_CHANGESET }} \
+            -a arm64
+
+          echo "Installing WebGL module..."
+          "$UNITY_HUB" -- --headless install-modules \
+            --version ${{ env.UNITY_VERSION }} \
+            -m webgl \
+            -a arm64 \
+            --childModules || true
+
+      - name: Activate Unity License
+        continue-on-error: true
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+        run: |
+          UNITY_PATH="/Applications/Unity/Hub/Editor/${{ env.UNITY_VERSION }}/Unity.app/Contents/MacOS/Unity"
+          LICENSE_DIR="$HOME/Library/Application Support/Unity"
+          mkdir -p "$LICENSE_DIR"
+
+          if [ -n "$UNITY_LICENSE" ]; then
+            echo "Restoring Unity license file from secret..."
+            echo "$UNITY_LICENSE" | base64 --decode > "$LICENSE_DIR/Unity_lic.ulf"
+
+            if [ -f "$LICENSE_DIR/Unity_lic.ulf" ]; then
+              echo "✓ License file restored successfully"
+              ls -la "$LICENSE_DIR/Unity_lic.ulf"
+            else
+              echo "✗ Failed to restore license file"
+            fi
+          else
+            echo "⚠ UNITY_LICENSE secret not set"
+          fi
+
+      - name: Build Unity WebGL
+        run: |
+          UNITY_PATH="/Applications/Unity/Hub/Editor/${{ env.UNITY_VERSION }}/Unity.app/Contents/MacOS/Unity"
+          PROJECT_PATH="${{ github.workspace }}/Tests~/E2E/SampleUnityProject"
+
+          echo "Unity path: $UNITY_PATH"
+          ls -la "$UNITY_PATH" || echo "Unity not found at path"
+
+          "$UNITY_PATH" -quit -batchmode -nographics \
+            -projectPath "$PROJECT_PATH" \
+            -executeMethod E2EBuildRunner.CommandLineBuild \
+            -buildTarget WebGL \
+            -logFile -
+
+      - name: Verify Build Output
+        run: |
           if [ -d "Tests~/E2E/SampleUnityProject/ait-build/dist/web" ]; then
             echo "✅ Build output found"
             ls -la Tests~/E2E/SampleUnityProject/ait-build/dist/web/
-            du -sh Tests~/E2E/SampleUnityProject/ait-build/dist/web/
           else
             echo "❌ Build output not found"
             exit 1
           fi
 
-      - name: Verify Build Output (Windows)
-        if: runner.os == 'Windows'
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install Playwright Dependencies
+        working-directory: Tests~/E2E/tests
+        run: |
+          rm -rf node_modules package-lock.json
+          npm install
+          ./node_modules/.bin/playwright install chromium --with-deps
+          ./node_modules/.bin/playwright --version
+
+      - name: Run E2E Tests
+        working-directory: Tests~/E2E/tests
+        run: ./node_modules/.bin/playwright test
+
+      - name: Upload Benchmark Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-results-macos
+          path: Tests~/E2E/tests/benchmark-results.json
+          if-no-files-found: ignore
+
+      - name: Upload Playwright Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report-macos
+          path: Tests~/E2E/tests/playwright-report/
+          if-no-files-found: ignore
+
+      - name: Save Unity Cache (on failure)
+        if: failure() && steps.cache-unity.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: /Applications/Unity/Hub/Editor
+          key: unity-macos-latest-${{ env.UNITY_VERSION }}-v3
+
+  # =====================================================
+  # Linux E2E Test
+  # =====================================================
+  e2e-linux:
+    name: E2E Test (Linux)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Cache Unity Installation
+        id: cache-unity
+        uses: actions/cache@v4
+        with:
+          path: /home/runner/Unity/Hub/Editor
+          key: unity-ubuntu-22.04-${{ env.UNITY_VERSION }}-v3
+          restore-keys: |
+            unity-ubuntu-22.04-${{ env.UNITY_VERSION }}-
+
+      - name: Cache Unity Library
+        uses: actions/cache@v4
+        with:
+          path: Tests~/E2E/SampleUnityProject/Library
+          key: Library-E2E-ubuntu-22.04-${{ hashFiles('Tests~/E2E/SampleUnityProject/**/*.cs', 'Runtime/**/*.cs', 'Editor/**/*.cs') }}
+          restore-keys: |
+            Library-E2E-ubuntu-22.04-
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfuse2 xvfb libgtk-3-0 libglu1-mesa
+
+      - name: Install Unity Hub
+        run: |
+          echo "Installing Unity Hub..."
+          wget -qO - https://hub.unity3d.com/linux/keys/public | sudo gpg --dearmor -o /usr/share/keyrings/Unity_Technologies_ApS.gpg
+          echo "deb [signed-by=/usr/share/keyrings/Unity_Technologies_ApS.gpg] https://hub.unity3d.com/linux/repos/deb stable main" | sudo tee /etc/apt/sources.list.d/unityhub.list
+          sudo apt-get update
+          sudo apt-get install -y unityhub
+
+          # Unity Hub 경로 확인
+          which unityhub || find /opt -name "unityhub" 2>/dev/null || find /usr -name "*unity*" 2>/dev/null | head -10
+
+      - name: Install Unity Editor
+        if: steps.cache-unity.outputs.cache-hit != 'true'
+        run: |
+          export DISPLAY=:99
+          Xvfb :99 &
+          sleep 3
+
+          # Unity Hub 실행 파일 찾기
+          UNITY_HUB=""
+          if [ -f "/opt/unityhub/unityhub" ]; then
+            UNITY_HUB="/opt/unityhub/unityhub"
+          elif [ -f "/opt/Unity Hub/unityhub" ]; then
+            UNITY_HUB="/opt/Unity Hub/unityhub"
+          elif command -v unityhub &> /dev/null; then
+            UNITY_HUB="unityhub"
+          else
+            echo "Unity Hub not found!"
+            find /opt -name "*unity*" 2>/dev/null || true
+            exit 1
+          fi
+
+          echo "Using Unity Hub: $UNITY_HUB"
+          echo "Installing Unity ${{ env.UNITY_VERSION }}..."
+          xvfb-run --auto-servernum "$UNITY_HUB" --headless install \
+            --version ${{ env.UNITY_VERSION }} \
+            --changeset ${{ env.UNITY_CHANGESET }}
+
+          echo "Installing WebGL module..."
+          xvfb-run --auto-servernum "$UNITY_HUB" --headless install-modules \
+            --version ${{ env.UNITY_VERSION }} \
+            -m webgl \
+            --childModules || true
+
+      - name: Activate Unity License
+        continue-on-error: true
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+        run: |
+          UNITY_PATH="/home/runner/Unity/Hub/Editor/${{ env.UNITY_VERSION }}/Editor/Unity"
+          LICENSE_DIR="$HOME/.local/share/unity3d/Unity"
+          mkdir -p "$LICENSE_DIR"
+
+          if [ -n "$UNITY_LICENSE" ]; then
+            echo "Restoring Unity license file from secret..."
+            echo "$UNITY_LICENSE" | base64 --decode > "$LICENSE_DIR/Unity_lic.ulf"
+
+            if [ -f "$LICENSE_DIR/Unity_lic.ulf" ]; then
+              echo "✓ License file restored successfully"
+              ls -la "$LICENSE_DIR/Unity_lic.ulf"
+            else
+              echo "✗ Failed to restore license file"
+            fi
+          else
+            echo "⚠ UNITY_LICENSE secret not set"
+          fi
+
+      - name: Build Unity WebGL
+        run: |
+          UNITY_PATH="/home/runner/Unity/Hub/Editor/${{ env.UNITY_VERSION }}/Editor/Unity"
+          PROJECT_PATH="${{ github.workspace }}/Tests~/E2E/SampleUnityProject"
+
+          echo "Unity path: $UNITY_PATH"
+          ls -la "$UNITY_PATH" || echo "Unity not found at path"
+
+          # Xvfb 설정
+          pkill -9 Xvfb || true
+          rm -f /tmp/.X99-lock || true
+          export DISPLAY=:99
+          Xvfb :99 -screen 0 1024x768x24 &
+          sleep 3
+
+          "$UNITY_PATH" -quit -batchmode -nographics \
+            -projectPath "$PROJECT_PATH" \
+            -executeMethod E2EBuildRunner.CommandLineBuild \
+            -buildTarget WebGL \
+            -logFile -
+
+      - name: Verify Build Output
+        run: |
+          if [ -d "Tests~/E2E/SampleUnityProject/ait-build/dist/web" ]; then
+            echo "✅ Build output found"
+            ls -la Tests~/E2E/SampleUnityProject/ait-build/dist/web/
+          else
+            echo "❌ Build output not found"
+            exit 1
+          fi
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install Playwright Dependencies
+        working-directory: Tests~/E2E/tests
+        run: |
+          rm -rf node_modules package-lock.json
+          npm install
+          ./node_modules/.bin/playwright install chromium --with-deps
+          ./node_modules/.bin/playwright --version
+
+      - name: Run E2E Tests
+        working-directory: Tests~/E2E/tests
+        run: ./node_modules/.bin/playwright test
+
+      - name: Upload Benchmark Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-results-linux
+          path: Tests~/E2E/tests/benchmark-results.json
+          if-no-files-found: ignore
+
+      - name: Upload Playwright Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report-linux
+          path: Tests~/E2E/tests/playwright-report/
+          if-no-files-found: ignore
+
+      - name: Save Unity Cache (on failure)
+        if: failure() && steps.cache-unity.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: /home/runner/Unity/Hub/Editor
+          key: unity-ubuntu-22.04-${{ env.UNITY_VERSION }}-v3
+
+  # =====================================================
+  # Windows E2E Test
+  # =====================================================
+  e2e-windows:
+    name: E2E Test (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Cache Unity Installation
+        id: cache-unity
+        uses: actions/cache@v4
+        with:
+          path: C:\Program Files\Unity\Hub\Editor
+          key: unity-windows-latest-${{ env.UNITY_VERSION }}-v3
+          restore-keys: |
+            unity-windows-latest-${{ env.UNITY_VERSION }}-
+
+      - name: Cache Unity Library
+        uses: actions/cache@v4
+        with:
+          path: Tests~/E2E/SampleUnityProject/Library
+          key: Library-E2E-windows-latest-${{ hashFiles('Tests~/E2E/SampleUnityProject/**/*.cs', 'Runtime/**/*.cs', 'Editor/**/*.cs') }}
+          restore-keys: |
+            Library-E2E-windows-latest-
+
+      - name: Install Unity Hub
         shell: pwsh
         run: |
-          Write-Host "Checking build output..."
-          $distPath = "Tests~/E2E/SampleUnityProject/ait-build/dist/web"
+          $hubPath = "C:\Program Files\Unity Hub\Unity Hub.exe"
+          if (-not (Test-Path $hubPath)) {
+            Write-Host "Installing Unity Hub..."
+            $installerUrl = "https://public-cdn.cloud.unity3d.com/hub/prod/UnityHubSetup.exe"
+            $installerPath = "$env:TEMP\UnityHubSetup.exe"
+            Invoke-WebRequest -Uri $installerUrl -OutFile $installerPath
+            Start-Process -FilePath $installerPath -Args "/S" -Wait
+            Remove-Item $installerPath
+            Start-Sleep -Seconds 5
+          }
+
+          if (Test-Path $hubPath) {
+            Write-Host "Unity Hub installed at: $hubPath"
+          } else {
+            Write-Host "Unity Hub installation failed."
+            exit 1
+          }
+
+      - name: Install Unity Editor
+        if: steps.cache-unity.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          $hubPath = "C:\Program Files\Unity Hub\Unity Hub.exe"
+
+          Write-Host "Installing Unity ${{ env.UNITY_VERSION }}..."
+          & "$hubPath" -- --headless install `
+            --version ${{ env.UNITY_VERSION }} `
+            --changeset ${{ env.UNITY_CHANGESET }}
+
+          Start-Sleep -Seconds 5
+
+          Write-Host "Installing WebGL module..."
+          & "$hubPath" -- --headless install-modules `
+            --version ${{ env.UNITY_VERSION }} `
+            -m webgl `
+            --childModules
+
+          # 설치 확인
+          $editorPath = "C:\Program Files\Unity\Hub\Editor\${{ env.UNITY_VERSION }}\Editor\Unity.exe"
+          if (Test-Path $editorPath) {
+            Write-Host "Unity Editor installed at: $editorPath"
+          } else {
+            Write-Host "Unity Editor not found at expected path"
+            Get-ChildItem -Path "C:\Program Files\Unity" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 20
+            exit 1
+          }
+
+      - name: Activate Unity License
+        continue-on-error: true
+        shell: pwsh
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+        run: |
+          $licenseDir = "C:\ProgramData\Unity"
+          New-Item -ItemType Directory -Force -Path $licenseDir | Out-Null
+
+          if ($env:UNITY_LICENSE) {
+            Write-Host "Restoring Unity license file from secret..."
+            [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($env:UNITY_LICENSE)) | Out-File -FilePath "$licenseDir\Unity_lic.ulf" -Encoding UTF8
+
+            if (Test-Path "$licenseDir\Unity_lic.ulf") {
+              Write-Host "✓ License file restored successfully"
+              Get-ChildItem -Path "$licenseDir\Unity_lic.ulf"
+            } else {
+              Write-Host "✗ Failed to restore license file"
+            }
+          } else {
+            Write-Host "⚠ UNITY_LICENSE secret not set"
+          }
+
+      - name: Build Unity WebGL
+        shell: pwsh
+        run: |
+          $unityPath = "C:\Program Files\Unity\Hub\Editor\${{ env.UNITY_VERSION }}\Editor\Unity.exe"
+          $projectPath = "${{ github.workspace }}\Tests~\E2E\SampleUnityProject"
+
+          Write-Host "Unity path: $unityPath"
+          Write-Host "Project path: $projectPath"
+
+          if (-not (Test-Path $unityPath)) {
+            Write-Host "ERROR: Unity Editor not found at $unityPath"
+            exit 1
+          }
+
+          Write-Host "Starting Unity build..."
+          & $unityPath -quit -batchmode -nographics `
+            -projectPath $projectPath `
+            -executeMethod E2EBuildRunner.CommandLineBuild `
+            -buildTarget WebGL `
+            -logFile -
+
+          Write-Host "Build command completed with exit code: $LASTEXITCODE"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Verify Build Output
+        shell: pwsh
+        run: |
+          $distPath = "Tests~\E2E\SampleUnityProject\ait-build\dist\web"
           if (Test-Path $distPath) {
             Write-Host "✅ Build output found"
             Get-ChildItem -Path $distPath
-            $size = (Get-ChildItem -Path $distPath -Recurse | Measure-Object -Property Length -Sum).Sum / 1MB
-            Write-Host "Total size: $([math]::Round($size, 2)) MB"
           } else {
             Write-Host "❌ Build output not found"
             exit 1
@@ -82,57 +473,24 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 18
-          cache: npm
-          cache-dependency-path: Tests~/E2E/tests/package-lock.json
 
       - name: Install Playwright Dependencies
-        run: |
-          npm ci
-          npx playwright install chromium --with-deps
-        working-directory: Tests~/E2E/tests
-
-      - name: Run E2E Pipeline Tests (7 tests)
-        run: npm test
-        working-directory: Tests~/E2E/tests
-
-      - name: Generate Job Summary (Unix)
-        if: always() && runner.os != 'Windows'
-        run: |
-          RESULTS_FILE="Tests~/E2E/tests/benchmark-results.json"
-
-          echo "## 📊 E2E Test Results (${{ matrix.platform_name }})" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          if [ -f "$RESULTS_FILE" ]; then
-            echo '```json' >> $GITHUB_STEP_SUMMARY
-            cat "$RESULTS_FILE" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-          else
-            echo "⚠️ No benchmark results found" >> $GITHUB_STEP_SUMMARY
-          fi
-
-      - name: Generate Job Summary (Windows)
-        if: always() && runner.os == 'Windows'
         shell: pwsh
+        working-directory: Tests~/E2E/tests
         run: |
-          $resultsFile = "Tests~/E2E/tests/benchmark-results.json"
+          try { npm ci } catch { Remove-Item -Recurse -Force node_modules -ErrorAction SilentlyContinue; npm install }
+          npx playwright install chromium --with-deps
 
-          "## 📊 E2E Test Results (${{ matrix.platform_name }})" | Out-File -Append -FilePath $env:GITHUB_STEP_SUMMARY
-          "" | Out-File -Append -FilePath $env:GITHUB_STEP_SUMMARY
-
-          if (Test-Path $resultsFile) {
-            '```json' | Out-File -Append -FilePath $env:GITHUB_STEP_SUMMARY
-            Get-Content $resultsFile | Out-File -Append -FilePath $env:GITHUB_STEP_SUMMARY
-            '```' | Out-File -Append -FilePath $env:GITHUB_STEP_SUMMARY
-          } else {
-            "⚠️ No benchmark results found" | Out-File -Append -FilePath $env:GITHUB_STEP_SUMMARY
-          }
+      - name: Run E2E Tests
+        shell: pwsh
+        working-directory: Tests~/E2E/tests
+        run: npm test
 
       - name: Upload Benchmark Results
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: benchmark-results-${{ matrix.os }}
+          name: benchmark-results-windows
           path: Tests~/E2E/tests/benchmark-results.json
           if-no-files-found: ignore
 
@@ -140,14 +498,63 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: playwright-report-${{ matrix.os }}
+          name: playwright-report-windows
           path: Tests~/E2E/tests/playwright-report/
           if-no-files-found: ignore
 
-      - name: Upload Test Screenshots
-        uses: actions/upload-artifact@v4
-        if: failure()
+      - name: Save Unity Cache (on failure)
+        if: failure() && steps.cache-unity.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
         with:
-          name: test-screenshots-${{ matrix.os }}
-          path: Tests~/E2E/tests/test-results/
+          path: C:\Program Files\Unity\Hub\Editor
+          key: unity-windows-latest-${{ env.UNITY_VERSION }}-v3
+
+  # =====================================================
+  # Test Report Summary
+  # =====================================================
+  test-report:
+    name: Test Report Summary
+    runs-on: ubuntu-latest
+    needs: [e2e-macos, e2e-linux, e2e-windows]
+    if: always()
+
+    steps:
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Generate Summary
+        run: |
+          echo "## 📊 E2E Test Results Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Job 결과 요약
+          echo "### Job Status" >> $GITHUB_STEP_SUMMARY
+          echo "| Platform | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| macOS | ${{ needs.e2e-macos.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Linux | ${{ needs.e2e-linux.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Windows | ${{ needs.e2e-windows.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Benchmark 결과
+          echo "### Benchmark Results" >> $GITHUB_STEP_SUMMARY
+          for platform in macos linux windows; do
+            RESULTS_FILE="artifacts/benchmark-results-${platform}/benchmark-results.json"
+            if [ -f "$RESULTS_FILE" ]; then
+              echo "#### ${platform^}" >> $GITHUB_STEP_SUMMARY
+              echo '```json' >> $GITHUB_STEP_SUMMARY
+              cat "$RESULTS_FILE" >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+            else
+              echo "#### ${platform^}: No results" >> $GITHUB_STEP_SUMMARY
+            fi
+          done
+
+      - name: Upload Combined Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: combined-test-report
+          path: artifacts/
           if-no-files-found: ignore

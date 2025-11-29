@@ -414,7 +414,6 @@ namespace AppsInToss.Editor
         {
             try
             {
-                string command;
                 string shell;
                 string shellArgs;
 

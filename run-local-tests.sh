@@ -4,11 +4,14 @@
 # 사용법: ./run-local-tests.sh [옵션]
 #
 # 옵션:
-#   --all           모든 테스트 실행 (Unity 빌드 포함)
-#   --quick         빠른 테스트만 (E2E validation)
-#   --e2e           E2E 테스트만 (빌드 결과물 필요)
-#   --unity-build   Unity WebGL 빌드 실행
-#   --help          도움말
+#   --all                    모든 테스트 실행 (Unity 빌드 포함)
+#   --quick                  빠른 테스트만 (E2E validation)
+#   --e2e                    E2E 테스트만 (빌드 결과물 필요)
+#   --unity-build            Unity WebGL 빌드 실행
+#   --unity-version <버전>   특정 Unity 버전 지정 (예: 2022.3, 6000.0)
+#   --parallel               모든 버전을 병렬로 빌드 및 테스트
+#   --list-unity             설치된 Unity 버전 목록 표시
+#   --help                   도움말
 #
 
 # set -e 제거 - 각 테스트 함수에서 직접 에러 처리
@@ -21,6 +24,7 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # 프로젝트 루트 디렉토리
@@ -31,6 +35,44 @@ cd "$SCRIPT_DIR"
 PASSED=0
 FAILED=0
 SKIPPED=0
+
+# Unity 버전 설정
+UNITY_VERSION=""
+UNITY_PATH=""
+PARALLEL_MODE=false
+
+# 지원하는 Unity 버전 패턴 (우선순위 순)
+UNITY_VERSION_PATTERNS=(
+    "6000.2"    # Unity 6000.2.x (Unity 6 LTS)
+    "6000.0"    # Unity 6000.0.x (Unity 6)
+    "2022.3"    # Unity 2022.3.x LTS
+    "2021.3"    # Unity 2021.3.x LTS (최소 지원 버전)
+)
+
+# 버전별 프로젝트 경로 매핑
+get_project_path_for_version() {
+    local version_pattern="$1"
+
+    case "$version_pattern" in
+        6000.2*)
+            echo "$SCRIPT_DIR/Tests~/E2E/SampleUnityProject-6000.2"
+            ;;
+        6000.0*)
+            echo "$SCRIPT_DIR/Tests~/E2E/SampleUnityProject-6000.0"
+            ;;
+        2022.3*)
+            echo "$SCRIPT_DIR/Tests~/E2E/SampleUnityProject-2022.3"
+            ;;
+        2021.3*)
+            echo "$SCRIPT_DIR/Tests~/E2E/SampleUnityProject-2021.3"
+            ;;
+        *)
+            # 기본값: 버전 패턴에서 major.minor 추출
+            local short_version=$(echo "$version_pattern" | grep -oE '^[0-9]+\.[0-9]+')
+            echo "$SCRIPT_DIR/Tests~/E2E/SampleUnityProject-$short_version"
+            ;;
+    esac
+}
 
 # 유틸리티 함수
 print_header() {
@@ -59,31 +101,203 @@ print_info() {
     echo -e "${YELLOW}ℹ $1${NC}"
 }
 
+# 설치된 Unity 버전 목록 가져오기
+get_installed_unity_versions() {
+    local versions=()
+    local hub_path="/Applications/Unity/Hub/Editor"
+
+    if [ -d "$hub_path" ]; then
+        for dir in "$hub_path"/*/; do
+            if [ -d "$dir" ]; then
+                local version_name=$(basename "$dir")
+                local unity_exe="$dir/Unity.app/Contents/MacOS/Unity"
+                if [ -f "$unity_exe" ]; then
+                    versions+=("$version_name")
+                fi
+            fi
+        done
+    fi
+
+    # 버전 역순 정렬 (최신 버전 우선)
+    printf '%s\n' "${versions[@]}" | sort -rV
+}
+
+# 설치된 Unity 버전 목록 출력
+list_unity_versions() {
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo -e "${BLUE}📦 설치된 Unity 버전 목록${NC}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+
+    local versions=($(get_installed_unity_versions))
+
+    if [ ${#versions[@]} -eq 0 ]; then
+        echo "  ❌ 설치된 Unity 버전이 없습니다."
+        echo "  Unity Hub에서 Unity를 설치해주세요."
+        return 1
+    fi
+
+    echo "  지원 대상 버전:"
+    for version in "${versions[@]}"; do
+        local is_supported=""
+        local project_path=""
+        for pattern in "${UNITY_VERSION_PATTERNS[@]}"; do
+            if [[ "$version" == "$pattern"* ]]; then
+                is_supported="✓"
+                project_path=$(get_project_path_for_version "$pattern")
+                break
+            fi
+        done
+
+        if [ -n "$is_supported" ]; then
+            if [ -d "$project_path" ]; then
+                echo -e "    ${GREEN}✓${NC} $version → $(basename "$project_path")"
+            else
+                echo -e "    ${YELLOW}✓${NC} $version (프로젝트 없음)"
+            fi
+        else
+            echo -e "    ${YELLOW}○${NC} $version (지원 대상 외)"
+        fi
+    done
+
+    echo ""
+    echo "  버전별 프로젝트 디렉토리:"
+    for pattern in "${UNITY_VERSION_PATTERNS[@]}"; do
+        local project_path=$(get_project_path_for_version "$pattern")
+        if [ -d "$project_path" ]; then
+            echo -e "    ${GREEN}✓${NC} $pattern → $(basename "$project_path")"
+        else
+            echo -e "    ${RED}✗${NC} $pattern → 프로젝트 없음"
+        fi
+    done
+
+    echo ""
+    echo "  사용법:"
+    echo "    ./run-local-tests.sh --unity-build --unity-version 2022.3"
+    echo "    ./run-local-tests.sh --all --unity-version 6000.0"
+    echo "    ./run-local-tests.sh --parallel           # 모든 버전 병렬 빌드"
+    echo ""
+}
+
+# 특정 버전 패턴에 맞는 Unity 경로 찾기
+find_unity_by_pattern() {
+    local pattern="$1"
+    local hub_path="/Applications/Unity/Hub/Editor"
+
+    # 패턴에 맞는 버전들을 찾아서 최신 버전 반환
+    local matching_versions=()
+    for dir in "$hub_path"/"$pattern"*/; do
+        if [ -d "$dir" ]; then
+            local unity_exe="$dir/Unity.app/Contents/MacOS/Unity"
+            if [ -f "$unity_exe" ]; then
+                matching_versions+=("$dir")
+            fi
+        fi
+    done
+
+    if [ ${#matching_versions[@]} -gt 0 ]; then
+        # 버전 역순 정렬 후 첫 번째 (최신) 반환
+        local latest=$(printf '%s\n' "${matching_versions[@]}" | sort -rV | head -1)
+        echo "${latest}Unity.app/Contents/MacOS/Unity"
+    fi
+}
+
+# Unity 경로 찾기 (버전 지정 또는 자동 탐지)
+find_unity_path() {
+    local requested_version="$1"
+
+    if [ -n "$requested_version" ]; then
+        # 특정 버전이 요청된 경우
+        local found_path=$(find_unity_by_pattern "$requested_version")
+        if [ -n "$found_path" ] && [ -f "$found_path" ]; then
+            echo "$found_path"
+            return 0
+        else
+            echo ""
+            return 1
+        fi
+    fi
+
+    # 자동 탐지: 우선순위 순으로 찾기
+    for pattern in "${UNITY_VERSION_PATTERNS[@]}"; do
+        local found_path=$(find_unity_by_pattern "$pattern")
+        if [ -n "$found_path" ] && [ -f "$found_path" ]; then
+            echo "$found_path"
+            return 0
+        fi
+    done
+
+    echo ""
+    return 1
+}
+
+# Unity 버전 정보 추출
+get_unity_version_from_path() {
+    local path="$1"
+    # /Applications/Unity/Hub/Editor/2022.3.62f3/Unity.app/... 에서 버전 추출
+    echo "$path" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+[a-z][0-9]+'
+}
+
+# 버전 패턴 추출 (예: 2022.3.62f3 -> 2022.3)
+get_version_pattern() {
+    local full_version="$1"
+    echo "$full_version" | grep -oE '^[0-9]+\.[0-9]+'
+}
+
 # 도움말
 show_help() {
     echo "Apps in Toss Unity SDK - 로컬 테스트 실행 스크립트"
     echo ""
     echo "사용법: $0 [옵션]"
     echo ""
-    echo "┌─────────────────────────────────────────────────────────────────────────┐"
-    echo "│ 옵션            │ 실행 내용                           │ 소요 시간     │"
-    echo "├─────────────────────────────────────────────────────────────────────────┤"
-    echo "│ --validate      │ 파일 구조 검증 + Playwright 설정    │ ~30초         │"
-    echo "│ --unity-build   │ Unity WebGL 빌드                    │ ~20분         │"
-    echo "│ --e2e           │ Playwright 7개 테스트 (빌드 필요)   │ ~5분          │"
-    echo "│ --all           │ Unity 빌드 + Playwright 테스트      │ ~30분         │"
-    echo "└─────────────────────────────────────────────────────────────────────────┘"
+    echo "┌───────────────────────────────────────────────────────────────────────────────┐"
+    echo "│ 옵션                      │ 실행 내용                       │ 소요 시간     │"
+    echo "├───────────────────────────────────────────────────────────────────────────────┤"
+    echo "│ --validate                │ 파일 구조 검증 + Playwright 설정│ ~30초         │"
+    echo "│ --unity-build             │ Unity WebGL 빌드                │ ~20분         │"
+    echo "│ --e2e                     │ Playwright 7개 테스트 (빌드 필요)│ ~5분         │"
+    echo "│ --all                     │ Unity 빌드 + Playwright 테스트  │ ~30분         │"
+    echo "│ --parallel                │ 모든 버전 병렬 빌드 + 테스트    │ ~30분 (병렬) │"
+    echo "│ --list-unity              │ 설치된 Unity 버전 목록 표시     │ 즉시          │"
+    echo "│ --unity-version <버전>    │ 특정 Unity 버전 지정            │ -             │"
+    echo "└───────────────────────────────────────────────────────────────────────────────┘"
+    echo ""
+    echo "버전별 프로젝트 구조:"
+    echo "  Tests~/E2E/"
+    echo "    ├── SampleUnityProject-2021.3/   # Unity 2021.3.x용"
+    echo "    ├── SampleUnityProject-2022.3/   # Unity 2022.3.x용"
+    echo "    ├── SampleUnityProject-6000.0/   # Unity 6000.0.x용"
+    echo "    └── SampleUnityProject-6000.2/   # Unity 6000.2.x용"
+    echo ""
+    echo "Unity 버전 지정:"
+    echo "  --unity-version 옵션으로 특정 Unity 버전을 지정할 수 있습니다."
+    echo "  지정하지 않으면 우선순위에 따라 자동 선택됩니다."
+    echo ""
+    echo "  지원 버전 (우선순위 순):"
+    echo "    • Unity 6000.2.x (Unity 6 LTS)"
+    echo "    • Unity 6000.0.x (Unity 6)"
+    echo "    • Unity 2022.3.x LTS"
+    echo "    • Unity 2021.3.x LTS (최소 지원 버전)"
+    echo ""
+    echo "  예시:"
+    echo "    $0 --unity-build --unity-version 6000.2"
+    echo "    $0 --all --unity-version 2022.3"
+    echo "    $0 --parallel   # 모든 설치된 버전으로 병렬 테스트"
+    echo "    $0 --list-unity   # 설치된 버전 확인"
     echo ""
     echo "실행 순서:"
     echo "  --validate    : [1] 파일 구조 검증 → [2] Playwright 설정 검증"
     echo "  --unity-build : [1] Unity WebGL 빌드"
     echo "  --e2e         : [1] Playwright E2E 테스트 (빌드 결과물 필요)"
     echo "  --all         : [1] 파일 검증 → [2] Playwright 설정 → [3] Unity 빌드 → [4] E2E 테스트"
+    echo "  --parallel    : 모든 버전을 병렬로 빌드 및 E2E 테스트"
     echo ""
     echo "권장 워크플로우:"
     echo "  1. 처음 실행:     $0 --all           # 전체 빌드 + 테스트"
     echo "  2. 코드 수정 후:  $0 --e2e           # 기존 빌드로 빠른 테스트"
     echo "  3. SDK 변경 후:   $0 --unity-build && $0 --e2e"
+    echo "  4. 다중 버전:     $0 --parallel      # 모든 버전 병렬 테스트"
     echo ""
     exit 0
 }
@@ -96,26 +310,37 @@ test_e2e_validation() {
 
     echo "Checking E2E test structure..."
 
-    if [ ! -f "Tests~/E2E/SampleUnityProject/Assets/Scripts/AutoBenchmarkRunner.cs" ]; then
-        echo "  ❌ AutoBenchmarkRunner.cs not found"
-        all_found=false
-    else
-        echo "  ✓ AutoBenchmarkRunner.cs"
-    fi
+    # 각 버전별 프로젝트 확인
+    for pattern in "${UNITY_VERSION_PATTERNS[@]}"; do
+        local project_path=$(get_project_path_for_version "$pattern")
+        local project_name=$(basename "$project_path")
 
-    if [ ! -f "Tests~/E2E/SampleUnityProject/Assets/Scripts/RuntimeAPITester.cs" ]; then
-        echo "  ❌ RuntimeAPITester.cs not found"
-        all_found=false
-    else
-        echo "  ✓ RuntimeAPITester.cs"
-    fi
+        if [ -d "$project_path" ]; then
+            echo -e "  ${GREEN}✓${NC} $project_name"
 
-    if [ ! -f "Tests~/E2E/SampleUnityProject/Assets/Editor/E2EBuildRunner.cs" ]; then
-        echo "  ❌ E2EBuildRunner.cs not found"
-        all_found=false
-    else
-        echo "  ✓ E2EBuildRunner.cs"
-    fi
+            # 필수 파일 확인
+            if [ ! -f "$project_path/Assets/Scripts/AutoBenchmarkRunner.cs" ]; then
+                echo -e "    ${RED}✗${NC} AutoBenchmarkRunner.cs not found"
+                all_found=false
+            fi
+
+            if [ ! -f "$project_path/Assets/Scripts/RuntimeAPITester.cs" ]; then
+                echo -e "    ${RED}✗${NC} RuntimeAPITester.cs not found"
+                all_found=false
+            fi
+
+            if [ ! -f "$project_path/Assets/Editor/E2EBuildRunner.cs" ]; then
+                echo -e "    ${RED}✗${NC} E2EBuildRunner.cs not found"
+                all_found=false
+            fi
+        else
+            echo -e "  ${YELLOW}○${NC} $project_name (없음)"
+        fi
+    done
+
+    # Playwright 테스트 파일 확인
+    echo ""
+    echo "Checking Playwright test files..."
 
     if [ ! -f "Tests~/E2E/tests/e2e-full-pipeline.test.js" ]; then
         echo "  ❌ e2e-full-pipeline.test.js not found"
@@ -142,13 +367,32 @@ test_e2e_validation() {
 
 # 3. Playwright E2E 테스트 (빌드 결과물 필요)
 test_e2e_playwright() {
-    print_header "E2E Playwright Tests"
+    local version_pattern="$1"
+    local project_path=""
+
+    if [ -n "$version_pattern" ]; then
+        project_path=$(get_project_path_for_version "$version_pattern")
+        print_header "E2E Playwright Tests ($version_pattern)"
+    else
+        # 자동 탐지: 빌드 결과물이 있는 첫 번째 프로젝트 사용
+        for pattern in "${UNITY_VERSION_PATTERNS[@]}"; do
+            local test_path=$(get_project_path_for_version "$pattern")
+            if [ -d "$test_path/ait-build/dist/web" ]; then
+                project_path="$test_path"
+                version_pattern="$pattern"
+                break
+            fi
+        done
+        print_header "E2E Playwright Tests"
+    fi
 
     # 빌드 결과물 확인
-    if [ ! -d "Tests~/E2E/SampleUnityProject/ait-build/dist/web" ]; then
+    if [ -z "$project_path" ] || [ ! -d "$project_path/ait-build/dist/web" ]; then
         print_skip "E2E Playwright Tests - 빌드 결과물 없음 (--unity-build 먼저 실행)"
         return 0
     fi
+
+    echo "Using project: $(basename "$project_path")"
 
     cd "$SCRIPT_DIR/Tests~/E2E/tests"
 
@@ -158,9 +402,10 @@ test_e2e_playwright() {
     echo "Installing Playwright Chromium..."
     npx playwright install chromium
 
+    # 테스트 실행 시 프로젝트 경로를 환경변수로 전달
     echo "Running E2E tests..."
-    if npm test; then
-        print_success "E2E Playwright Tests"
+    if UNITY_PROJECT_PATH="$project_path" npm test; then
+        print_success "E2E Playwright Tests ($version_pattern)"
 
         # 결과 출력
         if [ -f "benchmark-results.json" ]; then
@@ -169,7 +414,8 @@ test_e2e_playwright() {
             cat benchmark-results.json | head -30
         fi
     else
-        print_failure "E2E Playwright Tests"
+        print_failure "E2E Playwright Tests ($version_pattern)"
+        cd "$SCRIPT_DIR"
         return 1
     fi
 
@@ -178,55 +424,60 @@ test_e2e_playwright() {
 
 # 4. Unity WebGL 빌드
 test_unity_build() {
+    local version_pattern="${1:-$UNITY_VERSION}"
+
     print_header "Unity WebGL Build"
 
     # Unity 경로 찾기
-    UNITY_PATH=""
-    for path in "/Applications/Unity/Hub/Editor/2021.3."*"/Unity.app/Contents/MacOS/Unity"; do
-        if [ -f "$path" ]; then
-            UNITY_PATH="$path"
-            break
+    local unity_path=$(find_unity_path "$version_pattern")
+
+    if [ -z "$unity_path" ]; then
+        if [ -n "$version_pattern" ]; then
+            print_failure "Unity WebGL Build - Unity $version_pattern 버전을 찾을 수 없음"
+            echo ""
+            echo "설치된 Unity 버전 확인:"
+            list_unity_versions
+        else
+            print_skip "Unity WebGL Build - Unity를 찾을 수 없음"
         fi
-    done
-
-    if [ -z "$UNITY_PATH" ]; then
-        for path in "/Applications/Unity/Hub/Editor/2022.3."*"/Unity.app/Contents/MacOS/Unity"; do
-            if [ -f "$path" ]; then
-                UNITY_PATH="$path"
-                break
-            fi
-        done
+        return 1
     fi
 
-    if [ -z "$UNITY_PATH" ]; then
-        print_skip "Unity WebGL Build - Unity를 찾을 수 없음"
-        return 0
+    local detected_version=$(get_unity_version_from_path "$unity_path")
+    local detected_pattern=$(get_version_pattern "$detected_version")
+    local project_path=$(get_project_path_for_version "$detected_pattern")
+
+    echo "Using Unity: $detected_version"
+    echo "Path: $unity_path"
+    echo "Project: $(basename "$project_path")"
+
+    # 프로젝트 디렉토리 확인
+    if [ ! -d "$project_path" ]; then
+        print_failure "Unity WebGL Build - 프로젝트 디렉토리 없음: $project_path"
+        return 1
     fi
 
-    echo "Using Unity: $UNITY_PATH"
-
-    local PROJECT_PATH="$SCRIPT_DIR/Tests~/E2E/SampleUnityProject"
-    local LOG_FILE="$SCRIPT_DIR/Tests~/E2E/unity-build.log"
+    local LOG_FILE="$project_path/unity-build.log"
 
     echo "Building WebGL..."
     echo "Log file: $LOG_FILE"
 
     # 기존 빌드 정리 (Library는 패키지 캐시를 위해 유지)
-    rm -rf "$PROJECT_PATH/ait-build"
-    rm -rf "$PROJECT_PATH/Temp"
+    rm -rf "$project_path/ait-build"
+    rm -rf "$project_path/Temp"
 
     # Unity 빌드 실행
-    if "$UNITY_PATH" \
+    if "$unity_path" \
         -quit -batchmode -nographics \
-        -projectPath "$PROJECT_PATH" \
+        -projectPath "$project_path" \
         -executeMethod E2EBuildRunner.CommandLineBuild \
         -logFile "$LOG_FILE"; then
 
         # 빌드 결과 확인
-        if [ -d "$PROJECT_PATH/ait-build/dist/web" ]; then
-            print_success "Unity WebGL Build"
-            echo "Build output: $PROJECT_PATH/ait-build/dist/web"
-            du -sh "$PROJECT_PATH/ait-build/dist/web"
+        if [ -d "$project_path/ait-build/dist/web" ]; then
+            print_success "Unity WebGL Build ($detected_version)"
+            echo "Build output: $project_path/ait-build/dist/web"
+            du -sh "$project_path/ait-build/dist/web"
         else
             print_failure "Unity WebGL Build - 결과물 없음"
             echo "Check log: $LOG_FILE"
@@ -263,6 +514,118 @@ test_playwright_config() {
     fi
 
     cd "$SCRIPT_DIR"
+}
+
+# 6. 병렬 빌드 및 테스트
+run_parallel_builds() {
+    print_header "Parallel Unity Builds & E2E Tests"
+
+    local versions_to_build=()
+    local pids=()
+    local log_files=()
+
+    # 설치된 버전 중 지원하는 버전 찾기
+    local installed_versions=($(get_installed_unity_versions))
+
+    for version in "${installed_versions[@]}"; do
+        for pattern in "${UNITY_VERSION_PATTERNS[@]}"; do
+            if [[ "$version" == "$pattern"* ]]; then
+                local project_path=$(get_project_path_for_version "$pattern")
+                if [ -d "$project_path" ]; then
+                    versions_to_build+=("$pattern")
+                fi
+                break
+            fi
+        done
+    done
+
+    if [ ${#versions_to_build[@]} -eq 0 ]; then
+        print_failure "병렬 빌드 - 빌드 가능한 버전 없음"
+        return 1
+    fi
+
+    echo "Building ${#versions_to_build[@]} versions in parallel:"
+    for pattern in "${versions_to_build[@]}"; do
+        echo "  • $pattern"
+    done
+    echo ""
+
+    # 병렬 빌드 시작
+    for pattern in "${versions_to_build[@]}"; do
+        local unity_path=$(find_unity_by_pattern "$pattern")
+        local project_path=$(get_project_path_for_version "$pattern")
+        local log_file="$project_path/unity-build.log"
+
+        echo -e "${CYAN}Starting build for $pattern...${NC}"
+
+        # 빌드 정리
+        rm -rf "$project_path/ait-build"
+        rm -rf "$project_path/Temp"
+
+        # 백그라운드로 빌드 실행
+        (
+            "$unity_path" \
+                -quit -batchmode -nographics \
+                -projectPath "$project_path" \
+                -executeMethod E2EBuildRunner.CommandLineBuild \
+                -logFile "$log_file"
+        ) &
+
+        pids+=($!)
+        log_files+=("$log_file")
+    done
+
+    echo ""
+    echo "Waiting for ${#pids[@]} builds to complete..."
+    echo ""
+
+    # 빌드 완료 대기 및 결과 확인
+    local build_results=()
+    for i in "${!pids[@]}"; do
+        local pid=${pids[$i]}
+        local pattern=${versions_to_build[$i]}
+        local project_path=$(get_project_path_for_version "$pattern")
+        local log_file=${log_files[$i]}
+
+        wait $pid
+        local exit_code=$?
+
+        if [ $exit_code -eq 0 ] && [ -d "$project_path/ait-build/dist/web" ]; then
+            echo -e "${GREEN}✓${NC} $pattern build completed"
+            build_results+=("$pattern:success")
+            ((PASSED++))
+        else
+            echo -e "${RED}✗${NC} $pattern build failed"
+            echo "  Log: $log_file"
+            build_results+=("$pattern:failed")
+            ((FAILED++))
+        fi
+    done
+
+    echo ""
+    echo "Build Summary:"
+    for result in "${build_results[@]}"; do
+        local pattern=$(echo "$result" | cut -d: -f1)
+        local status=$(echo "$result" | cut -d: -f2)
+        if [ "$status" = "success" ]; then
+            echo -e "  ${GREEN}✓${NC} $pattern"
+        else
+            echo -e "  ${RED}✗${NC} $pattern"
+        fi
+    done
+
+    # E2E 테스트 실행 (성공한 빌드에 대해)
+    echo ""
+    print_header "Running E2E Tests for Successful Builds"
+
+    for result in "${build_results[@]}"; do
+        local pattern=$(echo "$result" | cut -d: -f1)
+        local status=$(echo "$result" | cut -d: -f2)
+
+        if [ "$status" = "success" ]; then
+            test_e2e_playwright "$pattern"
+        fi
+    done
 }
 
 # 벤치마크 결과 출력
@@ -318,7 +681,47 @@ print_summary() {
 
 # 메인 실행
 main() {
-    local mode="${1:---validate}"
+    local mode=""
+    local args=("$@")
+
+    # 인수 파싱
+    local i=0
+    while [ $i -lt ${#args[@]} ]; do
+        case "${args[$i]}" in
+            --help|-h)
+                show_help
+                ;;
+            --list-unity)
+                list_unity_versions
+                exit 0
+                ;;
+            --unity-version)
+                i=$((i + 1))
+                if [ $i -lt ${#args[@]} ]; then
+                    UNITY_VERSION="${args[$i]}"
+                else
+                    echo -e "${RED}오류: --unity-version 옵션에 버전 값이 필요합니다.${NC}"
+                    echo "예: --unity-version 2022.3"
+                    exit 1
+                fi
+                ;;
+            --parallel)
+                PARALLEL_MODE=true
+                mode="--parallel"
+                ;;
+            --all|--e2e|--unity-build|--validate)
+                mode="${args[$i]}"
+                ;;
+            *)
+                echo "Unknown option: ${args[$i]}"
+                show_help
+                ;;
+        esac
+        i=$((i + 1))
+    done
+
+    # 기본 모드 설정
+    mode="${mode:---validate}"
 
     echo ""
     echo "╔══════════════════════════════════════════════════════════════════════════╗"
@@ -326,31 +729,36 @@ main() {
     echo "╚══════════════════════════════════════════════════════════════════════════╝"
     echo ""
     echo "Mode: $mode"
+    if [ -n "$UNITY_VERSION" ]; then
+        echo "Unity Version: $UNITY_VERSION"
+    fi
     echo "Directory: $SCRIPT_DIR"
 
     case "$mode" in
-        --help|-h)
-            show_help
-            ;;
         --all)
             test_e2e_validation
             test_playwright_config
             test_unity_build
-            test_e2e_playwright
+            test_e2e_playwright "$(get_version_pattern "$(get_unity_version_from_path "$(find_unity_path "$UNITY_VERSION")")")"
             ;;
         --e2e)
-            test_e2e_playwright
+            if [ -n "$UNITY_VERSION" ]; then
+                test_e2e_playwright "$UNITY_VERSION"
+            else
+                test_e2e_playwright
+            fi
             ;;
         --unity-build)
-            test_unity_build
+            test_unity_build "$UNITY_VERSION"
             ;;
         --validate)
             test_e2e_validation
             test_playwright_config
             ;;
-        *)
-            echo "Unknown option: $mode"
-            show_help
+        --parallel)
+            test_e2e_validation
+            test_playwright_config
+            run_parallel_builds
             ;;
     esac
 

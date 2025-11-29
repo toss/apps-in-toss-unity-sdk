@@ -148,3 +148,4 @@ Editor/*.cs.meta
 
 # WebGL template meta files
 WebGLTemplates/**/*.meta
+Unity_v*.alf.meta

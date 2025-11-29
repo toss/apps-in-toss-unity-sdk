@@ -1,0 +1,15 @@
+<linker>
+    <!--
+        Preserve Physics classes that are used at runtime via CreatePrimitive().
+        Unity's CreatePrimitive automatically adds colliders:
+        - PrimitiveType.Sphere -> SphereCollider
+        - PrimitiveType.Capsule -> CapsuleCollider
+        - PrimitiveType.Cube -> BoxCollider
+        - PrimitiveType.Cylinder -> MeshCollider
+        - PrimitiveType.Plane -> MeshCollider
+
+        These are stripped when Managed Stripping Level is High because
+        they're not directly referenced in code at compile time.
+    -->
+    <assembly fullname="UnityEngine.PhysicsModule" preserve="all"/>
+</linker>

@@ -24,7 +24,45 @@ const __dirname = path.dirname(__filename);
 
 // 경로 상수
 const PROJECT_ROOT = path.resolve(__dirname, '../../..');
-const SAMPLE_PROJECT = path.resolve(__dirname, '../SampleUnityProject');
+
+// UNITY_PROJECT_PATH 환경변수로 프로젝트 경로 지정 가능
+// 기본값: 빌드 결과물이 있는 첫 번째 버전별 프로젝트 탐지
+function findSampleProject() {
+  const envPath = process.env.UNITY_PROJECT_PATH;
+  if (envPath && fs.existsSync(envPath)) {
+    return envPath;
+  }
+
+  // 버전별 프로젝트 탐지 (우선순위: 6000.2 > 6000.0 > 2022.3 > 2021.3)
+  const versionPatterns = ['6000.2', '6000.0', '2022.3', '2021.3'];
+  for (const version of versionPatterns) {
+    const projectPath = path.resolve(__dirname, `../SampleUnityProject-${version}`);
+    const distPath = path.resolve(projectPath, 'ait-build/dist/web');
+    if (fs.existsSync(distPath)) {
+      console.log(`📁 Auto-detected project: SampleUnityProject-${version}`);
+      return projectPath;
+    }
+  }
+
+  // 기존 단일 프로젝트 폴백 (하위 호환)
+  const legacyPath = path.resolve(__dirname, '../SampleUnityProject');
+  if (fs.existsSync(legacyPath)) {
+    console.log('📁 Using legacy SampleUnityProject');
+    return legacyPath;
+  }
+
+  // 빌드 없이 첫 번째 버전별 프로젝트 반환
+  for (const version of versionPatterns) {
+    const projectPath = path.resolve(__dirname, `../SampleUnityProject-${version}`);
+    if (fs.existsSync(projectPath)) {
+      return projectPath;
+    }
+  }
+
+  return path.resolve(__dirname, '../SampleUnityProject');
+}
+
+const SAMPLE_PROJECT = findSampleProject();
 const AIT_BUILD = path.resolve(SAMPLE_PROJECT, 'ait-build');
 const DIST_WEB = path.resolve(AIT_BUILD, 'dist/web');
 const WEBGL_BUILD = path.resolve(SAMPLE_PROJECT, 'webgl');

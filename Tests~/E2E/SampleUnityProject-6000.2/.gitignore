@@ -1,0 +1,24 @@
+# Unity generated
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+
+# Build artifacts
+ait-build/
+webgl/
+
+# WebGL Templates (copied from SDK during build)
+Assets/WebGLTemplates/
+
+# Scene files (Unity modifies on every build due to fileID regeneration)
+Assets/Scenes/BenchmarkScene.unity
+
+# IDE
+.idea/
+.vscode/
+*.csproj
+*.sln

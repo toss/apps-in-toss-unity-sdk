@@ -156,9 +156,15 @@ npm run deploy
 ```
 
 ### Unity Version Requirements
-- **Minimum**: Unity 2021.3 LTS
-- **Recommended**: Unity 2022.3 LTS or higher
-- **E2E Testing**: Unity 2021.3.45f1 to ensure backward compatibility
+
+**Primary Supported Versions (우선 지원 버전):**
+- Unity 6000.2.14f1 (Unity 6 LTS)
+- Unity 6000.0.63f1 (Unity 6)
+- Unity 2022.3.62f3 (LTS)
+- Unity 2021.3.45f2 (LTS - 최소 지원 버전)
+
+All development, testing, and QA should prioritize these 4 versions.
+
 - Tuanjie Engine supported
 
 **IMPORTANT**: The SDK must support Unity 2021.3 and all higher versions.
@@ -261,13 +267,14 @@ npm test
 
 ## Version Compatibility
 
-**Supported Unity Versions**: Unity 2021.3 LTS and above
+**Primary Supported Versions (우선 지원 버전):**
 
 | Unity Version | WebGL Template | Memory | Compression |
 |--------------|----------------|--------|-------------|
-| 2021.3 LTS   | AITTemplate    | 512MB  | Disabled |
-| 2022.3 LTS   | AITTemplate    | 512MB  | Disabled |
-| 2023.3+ (Unity 6) | AITTemplate | 1024MB | Disabled |
+| 6000.2.14f1 (Unity 6 LTS) | AITTemplate | 1024MB | Disabled |
+| 6000.0.63f1 (Unity 6) | AITTemplate | 1024MB | Disabled |
+| 2022.3.62f3 LTS | AITTemplate | 512MB  | Disabled |
+| 2021.3.45f2 LTS | AITTemplate | 512MB  | Disabled |
 
 **Note**: Compression must be Disabled for Apps in Toss deployment (platform requirement).
 

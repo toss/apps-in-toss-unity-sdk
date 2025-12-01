@@ -95,6 +95,12 @@
       "source": "local",
       "dependencies": {}
     },
+    "im.toss.sdk-test-scripts": {
+      "version": "file:../../SharedScripts",
+      "depth": 0,
+      "source": "local",
+      "dependencies": {}
+    },
     "com.unity.modules.ai": {
       "version": "1.0.0",
       "depth": 0,

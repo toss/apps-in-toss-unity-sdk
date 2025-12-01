@@ -10,6 +10,7 @@
     "com.unity.timeline": "1.7.7",
     "com.unity.ugui": "1.0.0",
     "im.toss.apps-in-toss-unity-sdk": "file:../../../..",
+    "im.toss.sdk-test-scripts": "file:../../SharedScripts",
     "com.unity.modules.ai": "1.0.0",
     "com.unity.modules.androidjni": "1.0.0",
     "com.unity.modules.animation": "1.0.0",

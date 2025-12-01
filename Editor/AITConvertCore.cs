@@ -2,6 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using UnityEditor;
+#if UNITY_6000_0_OR_NEWER
+using UnityEditor.Build;
+#endif
 using UnityEngine;
 using AppsInToss.Editor;
 
@@ -88,47 +91,142 @@ namespace AppsInToss
             // 템플릿이 복사되었을 경우 Unity가 인식하도록 강제 리프레시
             AssetDatabase.Refresh();
 
-            string templateHeader = "PROJECT:";
             var editorConfig = UnityUtil.GetEditorConf();
 
             // Unity 버전 정보
-            Debug.Log($"[AIT] 현재 Unity 버전: {Application.unityVersion}");
+            Debug.Log($"[AIT] 현재 Unity 버전: {Application.unityVersion} ({AITDefaultSettings.GetUnityVersionGroup()})");
 
-            if (editorConfig.enableOptimization)
-            {
-                // 최적 설정 적용
-                PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Disabled;
-                PlayerSettings.WebGL.memorySize = 512;
-                PlayerSettings.WebGL.threadsSupport = false;
-                PlayerSettings.WebGL.dataCaching = false;
-                PlayerSettings.WebGL.linkerTarget = WebGLLinkerTarget.Wasm;
-                Debug.Log("[AIT] 최적화 설정 적용 완료");
-            }
-            else
-            {
-                // 최소 설정만 적용
-                PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Disabled;
-            }
-
-            // Apps in Toss 플랫폼에 맞는 WebGL 기본 설정
-            PlayerSettings.WebGL.threadsSupport = false;
-            PlayerSettings.runInBackground = false;
-
-            // Unity 2021.3+ 지원
-            PlayerSettings.WebGL.template = $"{templateHeader}AITTemplate";
-
+            // ===== 기본 설정 (모든 버전 공통) =====
+            PlayerSettings.WebGL.template = "PROJECT:AITTemplate";
             PlayerSettings.WebGL.linkerTarget = WebGLLinkerTarget.Wasm;
-            PlayerSettings.WebGL.dataCaching = false;
-
-            // Apps in Toss 플랫폼 특화 설정
             PlayerSettings.companyName = "Apps in Toss";
             PlayerSettings.defaultCursor = null;
             PlayerSettings.cursorHotspot = Vector2.zero;
 
+            // ===== Run In Background (사용자 지정 또는 자동) =====
+            bool runInBackground = editorConfig.runInBackground >= 0
+                ? editorConfig.runInBackground == 1
+                : AITDefaultSettings.GetDefaultRunInBackground();
+            PlayerSettings.runInBackground = runInBackground;
+
+            // ===== 메모리 설정 (버전별 자동 또는 사용자 지정) =====
+            int memorySize = editorConfig.memorySize > 0
+                ? editorConfig.memorySize
+                : AITDefaultSettings.GetDefaultMemorySize();
+            PlayerSettings.WebGL.memorySize = memorySize;
+
+            // ===== 압축 설정 (버전별 자동 또는 사용자 지정) =====
+            WebGLCompressionFormat compressionFormat = editorConfig.compressionFormat >= 0
+                ? (WebGLCompressionFormat)editorConfig.compressionFormat
+                : AITDefaultSettings.GetDefaultCompressionFormat();
+            PlayerSettings.WebGL.compressionFormat = compressionFormat;
+
+            // ===== 스레딩 설정 (버전별 자동 또는 사용자 지정) =====
+            bool threadsSupport = editorConfig.threadsSupport >= 0
+                ? editorConfig.threadsSupport == 1
+                : AITDefaultSettings.GetDefaultThreadsSupport();
+            PlayerSettings.WebGL.threadsSupport = threadsSupport;
+
+            // ===== 데이터 캐싱 (버전별 자동 또는 사용자 지정) =====
+            bool dataCaching = editorConfig.dataCaching >= 0
+                ? editorConfig.dataCaching == 1
+                : AITDefaultSettings.GetDefaultDataCaching();
+            PlayerSettings.WebGL.dataCaching = dataCaching;
+
+            // ===== 예외 처리 (사용자 지정 또는 자동) =====
+            // 출처: UnityVersion.md:393, 431
+            WebGLExceptionSupport exceptionSupport = editorConfig.exceptionSupport >= 0
+                ? (WebGLExceptionSupport)editorConfig.exceptionSupport
+                : AITDefaultSettings.GetDefaultExceptionSupport();
+            PlayerSettings.WebGL.exceptionSupport = exceptionSupport;
+
+            // ===== 파일 해싱 =====
+            PlayerSettings.WebGL.nameFilesAsHashes = editorConfig.nameFilesAsHashes;
+
+            // ===== IL2CPP/Stripping 설정 =====
+            // 출처: startup-speed.md:82-89
+            // WebGL은 IL2CPP만 지원하지만 명시적으로 설정
+#if UNITY_6000_0_OR_NEWER
+            PlayerSettings.SetScriptingBackend(NamedBuildTarget.WebGL, ScriptingImplementation.IL2CPP);
+#else
+            PlayerSettings.SetScriptingBackend(BuildTargetGroup.WebGL, ScriptingImplementation.IL2CPP);
+#endif
+
+            PlayerSettings.stripEngineCode = editorConfig.stripEngineCode;
+
+            ManagedStrippingLevel strippingLevel = editorConfig.managedStrippingLevel >= 0
+                ? (ManagedStrippingLevel)editorConfig.managedStrippingLevel
+                : AITDefaultSettings.GetDefaultManagedStrippingLevel();
+#if UNITY_6000_0_OR_NEWER
+            PlayerSettings.SetManagedStrippingLevel(NamedBuildTarget.WebGL, strippingLevel);
+#else
+            PlayerSettings.SetManagedStrippingLevel(BuildTargetGroup.WebGL, strippingLevel);
+#endif
+
+            Il2CppCompilerConfiguration il2cppConfig = editorConfig.il2cppConfiguration >= 0
+                ? (Il2CppCompilerConfiguration)editorConfig.il2cppConfiguration
+                : AITDefaultSettings.GetDefaultIl2CppConfiguration();
+#if UNITY_6000_0_OR_NEWER
+            PlayerSettings.SetIl2CppCompilerConfiguration(NamedBuildTarget.WebGL, il2cppConfig);
+#else
+            PlayerSettings.SetIl2CppCompilerConfiguration(BuildTargetGroup.WebGL, il2cppConfig);
+#endif
+
+            // ===== Unity 6 (2023.3+) 전용 설정 =====
+#if UNITY_2023_3_OR_NEWER
+            // 출처: UnityVersion.md:394-402
+            WebGLPowerPreference powerPreference = editorConfig.powerPreference >= 0
+                ? (WebGLPowerPreference)editorConfig.powerPreference
+                : AITDefaultSettings.GetDefaultPowerPreference();
+            PlayerSettings.WebGL.powerPreference = powerPreference;
+
+            // wasmStreaming은 Unity 6000에서 deprecated됨 (decompressionFallback에 의해 자동 결정)
+#if !UNITY_6000_0_OR_NEWER
+            PlayerSettings.WebGL.wasmStreaming = editorConfig.wasmStreaming;
+#endif
+#endif
+
+            // ===== Unity 로고 표시 (사용자 지정 또는 자동, Unity Pro 라이선스 필요) =====
+            bool showUnityLogo = editorConfig.showUnityLogo >= 0
+                ? editorConfig.showUnityLogo == 1
+                : AITDefaultSettings.GetDefaultShowUnityLogo();
+            PlayerSettings.SplashScreen.showUnityLogo = showUnityLogo;
+
+            // ===== 디버그 심볼 (프로덕션 여부에 따라) =====
+#if UNITY_2022_3_OR_NEWER
+            // 출처: UnityVersion.md:402
+            PlayerSettings.WebGL.debugSymbolMode = editorConfig.isProduction
+                ? WebGLDebugSymbolMode.External
+                : WebGLDebugSymbolMode.Embedded;
+#endif
+
+            // ===== Decompression Fallback (사용자 지정 또는 자동) =====
+            // 출처: StartupOptimization.md:93
+            bool decompressionFallback = editorConfig.decompressionFallback >= 0
+                ? editorConfig.decompressionFallback == 1
+                : AITDefaultSettings.GetDefaultDecompressionFallback();
+            PlayerSettings.WebGL.decompressionFallback = decompressionFallback;
+
             // 설정 요약 로그
-            Debug.Log($"[AIT] WebGL Template: {PlayerSettings.WebGL.template}");
-            Debug.Log($"[AIT] 압축 포맷: {PlayerSettings.WebGL.compressionFormat}");
-            Debug.Log($"[AIT] 메모리 크기: {PlayerSettings.WebGL.memorySize}MB");
+            Debug.Log($"[AIT] Unity {AITDefaultSettings.GetUnityVersionGroup()} 최적화 설정 적용:");
+            Debug.Log($"[AIT]   - WebGL Template: {PlayerSettings.WebGL.template}");
+            Debug.Log($"[AIT]   - 메모리: {memorySize}MB{(editorConfig.memorySize <= 0 ? " (자동)" : "")}");
+            Debug.Log($"[AIT]   - 압축: {compressionFormat}{(editorConfig.compressionFormat < 0 ? " (자동)" : "")}");
+            Debug.Log($"[AIT]   - 스레딩: {threadsSupport}{(editorConfig.threadsSupport < 0 ? " (자동)" : "")}");
+            Debug.Log($"[AIT]   - 데이터 캐싱: {dataCaching}{(editorConfig.dataCaching < 0 ? " (자동)" : "")}");
+            Debug.Log($"[AIT]   - 예외 처리: {exceptionSupport}{(editorConfig.exceptionSupport < 0 ? " (자동)" : "")}");
+            Debug.Log($"[AIT]   - Stripping Level: {strippingLevel}{(editorConfig.managedStrippingLevel < 0 ? " (자동)" : "")}");
+            Debug.Log($"[AIT]   - IL2CPP 설정: {il2cppConfig}{(editorConfig.il2cppConfiguration < 0 ? " (자동)" : "")}");
+            Debug.Log($"[AIT]   - Unity 로고: {showUnityLogo}{(editorConfig.showUnityLogo < 0 ? " (자동)" : "")}");
+            Debug.Log($"[AIT]   - Run In Background: {runInBackground}{(editorConfig.runInBackground < 0 ? " (자동)" : "")}");
+            Debug.Log($"[AIT]   - Decompression Fallback: {decompressionFallback}{(editorConfig.decompressionFallback < 0 ? " (자동)" : "")}");
+#if UNITY_2023_3_OR_NEWER
+            Debug.Log($"[AIT]   - Power Preference: {powerPreference}{(editorConfig.powerPreference < 0 ? " (자동)" : "")}");
+#if !UNITY_6000_0_OR_NEWER
+            Debug.Log($"[AIT]   - WASM Streaming: {editorConfig.wasmStreaming}");
+            Debug.Log($"[AIT]   - WASM 산술 예외: {wasmArithmeticExceptions}{(editorConfig.webAssemblyArithmeticExceptions < 0 ? " (자동)" : "")}");
+#endif
+#endif
         }
 
         private static void EnsureWebGLTemplatesExist()
@@ -288,15 +386,16 @@ namespace AppsInToss
         /// </summary>
         /// <param name="buildWebGL">WebGL 빌드 실행 여부</param>
         /// <param name="doPackaging">패키징 실행 여부</param>
+        /// <param name="cleanBuild">클린 빌드 여부 (false면 incremental build)</param>
         /// <returns>변환 결과</returns>
-        public static AITExportError DoExport(bool buildWebGL = true, bool doPackaging = true)
+        public static AITExportError DoExport(bool buildWebGL = true, bool doPackaging = true, bool cleanBuild = false)
         {
             // 빌드 시작 전 취소 플래그 리셋
             ResetCancellation();
 
             Init();
 
-            Debug.Log("Apps in Toss 미니앱 변환을 시작합니다...");
+            Debug.Log($"Apps in Toss 미니앱 변환을 시작합니다... (cleanBuild: {cleanBuild})");
 
             var config = UnityUtil.GetEditorConf();
             if (config == null)
@@ -316,7 +415,7 @@ namespace AppsInToss
                         return AITExportError.CANCELLED;
                     }
 
-                    var webglResult = BuildWebGL();
+                    var webglResult = BuildWebGL(cleanBuild);
                     if (webglResult != AITExportError.SUCCEED)
                     {
                         return webglResult;
@@ -350,16 +449,17 @@ namespace AppsInToss
             }
         }
 
-        private static AITExportError BuildWebGL()
+        private static AITExportError BuildWebGL(bool cleanBuild = false)
         {
-            Debug.Log("WebGL 빌드를 시작합니다...");
+            Debug.Log($"WebGL 빌드를 시작합니다... ({(cleanBuild ? "클린 빌드" : "증분 빌드")})");
 
             string[] scenes = UnityUtil.GetBuildScenes();
             string outputPath = Path.Combine(UnityUtil.GetProjectPath(), webglDir);
 
-            // 기존 WebGL 빌드 폴더 정리
-            if (Directory.Exists(outputPath))
+            // 클린 빌드 시에만 기존 빌드 폴더 삭제
+            if (cleanBuild && Directory.Exists(outputPath))
             {
+                Debug.Log("[AIT] 클린 빌드: 기존 WebGL 빌드 폴더 삭제 중...");
                 Directory.Delete(outputPath, true);
             }
 
@@ -591,12 +691,6 @@ namespace AppsInToss
 
             Debug.Log($"[AIT] ✓ 패키징 완료: {distPath}");
 
-            // dist 폴더 열기
-            if (Directory.Exists(distPath))
-            {
-                EditorUtility.RevealInFinder(distPath);
-            }
-
             return AITExportError.SUCCEED;
         }
 
@@ -725,11 +819,12 @@ namespace AppsInToss
                 string indexContent = File.ReadAllText(indexSrc);
 
                 // Build 폴더에서 실제 파일 이름 찾기
+                // Unity 압축 설정에 따라 .unityweb, .gz, .br 확장자가 붙을 수 있음
                 string loaderFile = FindFileInBuild(buildSrc, "*.loader.js");
-                string dataFile = FindFileInBuild(buildSrc, "*.data");
-                string frameworkFile = FindFileInBuild(buildSrc, "*.framework.js");
-                string wasmFile = FindFileInBuild(buildSrc, "*.wasm");
-                string symbolsFile = FindFileInBuild(buildSrc, "*.symbols.json");
+                string dataFile = FindFileInBuild(buildSrc, "*.data*");
+                string frameworkFile = FindFileInBuild(buildSrc, "*.framework.js*");
+                string wasmFile = FindFileInBuild(buildSrc, "*.wasm*");
+                string symbolsFile = FindFileInBuild(buildSrc, "*.symbols.json*");
 
                 // AIT Config에서 프로덕션 모드 가져오기
                 var aitConfig = UnityUtil.GetEditorConf();

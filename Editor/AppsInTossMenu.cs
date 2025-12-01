@@ -12,13 +12,125 @@ namespace AppsInToss
     /// <summary>
     /// Apps in Toss 메뉴 시스템
     /// </summary>
+    [InitializeOnLoad]
     public class AppsInTossMenu
     {
+        /// <summary>
+        /// 서버 상태
+        /// </summary>
+        private enum ServerStatus
+        {
+            NotRunning,
+            Starting,
+            Running,
+            Stopping
+        }
+
         private static Process devServerProcess;
         private static Process prodServerProcess;
         private static int devServerPort = 0;
         private static int prodServerPort = 0;
+        private static ServerStatus devServerStatus = ServerStatus.NotRunning;
+        private static ServerStatus prodServerStatus = ServerStatus.NotRunning;
         private static Stopwatch buildStopwatch = new Stopwatch();
+
+        private const string DEV_SERVER_PID_KEY = "AIT_DevServerPID";
+        private const string DEV_SERVER_PORT_KEY = "AIT_DevServerPort";
+        private const string PROD_SERVER_PID_KEY = "AIT_ProdServerPID";
+        private const string PROD_SERVER_PORT_KEY = "AIT_ProdServerPort";
+
+        /// <summary>
+        /// 도메인 리로드 시 기존 서버 프로세스 복원
+        /// </summary>
+        static AppsInTossMenu()
+        {
+            RestoreServerProcesses();
+        }
+
+        private static void RestoreServerProcesses()
+        {
+            // Dev 서버 복원
+            int devPid = EditorPrefs.GetInt(DEV_SERVER_PID_KEY, 0);
+            int savedDevPort = EditorPrefs.GetInt(DEV_SERVER_PORT_KEY, 0);
+            if (devPid > 0)
+            {
+                try
+                {
+                    var process = Process.GetProcessById(devPid);
+                    if (!process.HasExited)
+                    {
+                        devServerProcess = process;
+                        devServerPort = savedDevPort;
+                        devServerStatus = ServerStatus.Running;
+                        Debug.Log($"[AIT] Dev 서버 프로세스 복원됨 (PID: {devPid}, Port: {savedDevPort})");
+                    }
+                    else
+                    {
+                        ClearDevServerPrefs();
+                        devServerStatus = ServerStatus.NotRunning;
+                    }
+                }
+                catch
+                {
+                    // 프로세스가 더 이상 존재하지 않음
+                    ClearDevServerPrefs();
+                    devServerStatus = ServerStatus.NotRunning;
+                }
+            }
+
+            // Prod 서버 복원
+            int prodPid = EditorPrefs.GetInt(PROD_SERVER_PID_KEY, 0);
+            int savedProdPort = EditorPrefs.GetInt(PROD_SERVER_PORT_KEY, 0);
+            if (prodPid > 0)
+            {
+                try
+                {
+                    var process = Process.GetProcessById(prodPid);
+                    if (!process.HasExited)
+                    {
+                        prodServerProcess = process;
+                        prodServerPort = savedProdPort;
+                        prodServerStatus = ServerStatus.Running;
+                        Debug.Log($"[AIT] Prod 서버 프로세스 복원됨 (PID: {prodPid}, Port: {savedProdPort})");
+                    }
+                    else
+                    {
+                        ClearProdServerPrefs();
+                        prodServerStatus = ServerStatus.NotRunning;
+                    }
+                }
+                catch
+                {
+                    // 프로세스가 더 이상 존재하지 않음
+                    ClearProdServerPrefs();
+                    prodServerStatus = ServerStatus.NotRunning;
+                }
+            }
+        }
+
+        private static void SaveDevServerPrefs(int pid, int port)
+        {
+            EditorPrefs.SetInt(DEV_SERVER_PID_KEY, pid);
+            EditorPrefs.SetInt(DEV_SERVER_PORT_KEY, port);
+        }
+
+        private static void ClearDevServerPrefs()
+        {
+            EditorPrefs.DeleteKey(DEV_SERVER_PID_KEY);
+            EditorPrefs.DeleteKey(DEV_SERVER_PORT_KEY);
+        }
+
+        private static void SaveProdServerPrefs(int pid, int port)
+        {
+            EditorPrefs.SetInt(PROD_SERVER_PID_KEY, pid);
+            EditorPrefs.SetInt(PROD_SERVER_PORT_KEY, port);
+        }
+
+        private static void ClearProdServerPrefs()
+        {
+            EditorPrefs.DeleteKey(PROD_SERVER_PID_KEY);
+            EditorPrefs.DeleteKey(PROD_SERVER_PORT_KEY);
+        }
 
         /// <summary>
         /// Dev 서버가 실행 중인지 확인
@@ -61,57 +173,109 @@ namespace AppsInToss
         }
 
         // ==================== Dev Server ====================
-        [MenuItem("AIT/Dev Server/Start", false, 1)]
-        public static void StartDev()
+
+        [MenuItem("AIT/Dev Server/Start Server", false, 1)]
+        public static void MenuStartDevServer()
         {
             Debug.Log("AIT: Dev 서버 시작...");
             StartDevServer();
         }
 
-        [MenuItem("AIT/Dev Server/Start", true)]
-        public static bool ValidateStartDev()
+        [MenuItem("AIT/Dev Server/Start Server", true)]
+        public static bool ValidateMenuStartDevServer()
         {
-            return !IsDevServerRunning;
+            return devServerStatus == ServerStatus.NotRunning;
         }
 
-        [MenuItem("AIT/Dev Server/Stop", false, 2)]
-        public static void StopDev()
+        [MenuItem("AIT/Dev Server/Stop Server", false, 2)]
+        public static void MenuStopDevServer()
         {
             Debug.Log("AIT: Dev 서버 중지...");
             StopDevServer();
         }
 
-        [MenuItem("AIT/Dev Server/Stop", true)]
-        public static bool ValidateStopDev()
+        [MenuItem("AIT/Dev Server/Stop Server", true)]
+        public static bool ValidateMenuStopDevServer()
         {
-            return IsDevServerRunning;
+            return devServerStatus == ServerStatus.Running || devServerStatus == ServerStatus.Starting;
+        }
+
+        [MenuItem("AIT/Dev Server/Restart Server", false, 3)]
+        public static void MenuRestartDevServer()
+        {
+            Debug.Log("AIT: Dev 서버 재시작...");
+            RestartDevServer();
+        }
+
+        [MenuItem("AIT/Dev Server/Restart Server", true)]
+        public static bool ValidateMenuRestartDevServer()
+        {
+            return devServerStatus == ServerStatus.Running;
         }
 
         // ==================== Production Server ====================
-        [MenuItem("AIT/Production Server/Start", false, 11)]
-        public static void StartProduction()
+
+        [MenuItem("AIT/Production Server/Start Server", false, 11)]
+        public static void MenuStartProdServer()
         {
             Debug.Log("AIT: Production 서버 시작...");
             StartProdServer();
         }
 
-        [MenuItem("AIT/Production Server/Start", true)]
-        public static bool ValidateStartProduction()
+        [MenuItem("AIT/Production Server/Start Server", true)]
+        public static bool ValidateMenuStartProdServer()
         {
-            return !IsProdServerRunning;
+            return prodServerStatus == ServerStatus.NotRunning;
         }
 
-        [MenuItem("AIT/Production Server/Stop", false, 12)]
-        public static void StopProduction()
+        [MenuItem("AIT/Production Server/Stop Server", false, 12)]
+        public static void MenuStopProdServer()
         {
             Debug.Log("AIT: Production 서버 중지...");
             StopProdServer();
         }
 
-        [MenuItem("AIT/Production Server/Stop", true)]
-        public static bool ValidateStopProduction()
+        [MenuItem("AIT/Production Server/Stop Server", true)]
+        public static bool ValidateMenuStopProdServer()
         {
-            return IsProdServerRunning;
+            return prodServerStatus == ServerStatus.Running || prodServerStatus == ServerStatus.Starting;
+        }
+
+        [MenuItem("AIT/Production Server/Restart Server", false, 13)]
+        public static void MenuRestartProdServer()
+        {
+            Debug.Log("AIT: Production 서버 재시작...");
+            RestartProdServer();
+        }
+
+        [MenuItem("AIT/Production Server/Restart Server", true)]
+        public static bool ValidateMenuRestartProdServer()
+        {
+            return prodServerStatus == ServerStatus.Running;
+        }
+
+        // ==================== Helper Methods ====================
+
+        private static void RestartDevServer()
+        {
+            StopDevServer();
+            // 짧은 딜레이 후 시작 (프로세스 종료 대기)
+            EditorApplication.delayCall += () =>
+            {
+                System.Threading.Thread.Sleep(500);
+                StartDevServer();
+            };
+        }
+
+        private static void RestartProdServer()
+        {
+            StopProdServer();
+            // 짧은 딜레이 후 시작 (프로세스 종료 대기)
+            EditorApplication.delayCall += () =>
+            {
+                System.Threading.Thread.Sleep(500);
+                StartProdServer();
+            };
         }
 
         // ==================== Build ====================
@@ -153,7 +317,15 @@ namespace AppsInToss
             string buildPath = GetBuildTemplatePath();
             if (Directory.Exists(buildPath))
             {
+                // EditorUtility.RevealInFinder는 폴더를 "선택"하므로 부모 폴더가 열림
+                // 폴더 자체를 열려면 플랫폼별 명령 사용
+#if UNITY_EDITOR_OSX
+                System.Diagnostics.Process.Start("open", buildPath);
+#elif UNITY_EDITOR_WIN
+                System.Diagnostics.Process.Start("explorer.exe", buildPath);
+#else
                 EditorUtility.RevealInFinder(buildPath);
+#endif
                 Debug.Log($"AIT: 빌드 폴더 열기: {buildPath}");
             }
             else
@@ -346,6 +518,7 @@ namespace AppsInToss
 
         /// <summary>
         /// Dev 서버 시작 (granite dev 사용)
+        /// 자동으로 빌드 & 패키징 수행 후 서버 시작
         /// </summary>
         private static void StartDevServer()
         {
@@ -355,24 +528,75 @@ namespace AppsInToss
                 return;
             }
 
+            devServerStatus = ServerStatus.Starting;
+
+            var config = UnityUtil.GetEditorConf();
+            if (!ValidateSettings(config))
+            {
+                devServerStatus = ServerStatus.NotRunning;
+                return;
+            }
+
+            // 빌드 & 패키징 수행 (Dev: incremental build로 빠른 반복)
+            Debug.Log("AIT: 빌드 & 패키징 수행 중 (증분 빌드)...");
+            buildStopwatch.Restart();
+
+            var result = AITConvertCore.DoExport(buildWebGL: true, doPackaging: true, cleanBuild: false);
+            buildStopwatch.Stop();
+
+            if (result != AITConvertCore.AITExportError.SUCCEED)
+            {
+                string errorMessage = AITConvertCore.GetErrorMessage(result);
+                Debug.LogError($"AIT: 빌드 실패: {result}");
+                EditorUtility.DisplayDialog("빌드 실패", errorMessage, "확인");
+                devServerStatus = ServerStatus.NotRunning;
+                return;
+            }
+
+            Debug.Log($"AIT: 빌드 & 패키징 완료 (소요 시간: {buildStopwatch.Elapsed.TotalSeconds:F1}초)");
+
             string buildPath = GetBuildTemplatePath();
-
-            if (!ValidateBuildPath(buildPath)) return;
-
             string npmPath = FindNpmPath();
-            if (!ValidateNpmPath(npmPath)) return;
+            if (!ValidateNpmPath(npmPath))
+            {
+                devServerStatus = ServerStatus.NotRunning;
+                return;
+            }
 
-            if (!EnsureNodeModules(buildPath, npmPath)) return;
+            if (!EnsureNodeModules(buildPath, npmPath))
+            {
+                devServerStatus = ServerStatus.NotRunning;
+                return;
+            }
 
-            Debug.Log($"AIT: Dev 서버 시작 중 (granite dev)... ({buildPath})");
+            // 사용 가능한 포트 찾기 (Dev 서버)
+            int preferredPort = config.localPort > 0 ? config.localPort : 5173;
+            int availablePort = FindAvailablePort(preferredPort);
+            if (availablePort < 0)
+            {
+                Debug.LogError($"AIT: 사용 가능한 포트를 찾을 수 없습니다 ({preferredPort}~{preferredPort + 9})");
+                EditorUtility.DisplayDialog("오류", $"사용 가능한 포트를 찾을 수 없습니다.\n\n포트 {preferredPort}~{preferredPort + 9}가 모두 사용 중입니다.", "확인");
+                devServerStatus = ServerStatus.NotRunning;
+                return;
+            }
+
+            if (availablePort != preferredPort)
+            {
+                Debug.Log($"AIT: 포트 {preferredPort}가 사용 중이므로 {availablePort} 사용");
+            }
+
+            Debug.Log($"AIT: Dev 서버 시작 중 (granite dev --port {availablePort})... ({buildPath})");
 
             try
             {
+                // pnpx granite dev --port로 직접 호출 (pnpm run dev --는 인자 전달이 안됨)
                 devServerProcess = StartServerProcessWithPortDetection(
-                    buildPath, npmPath, "run dev", "Dev Server",
+                    buildPath, npmPath, $"exec granite dev --port {availablePort}", "Dev Server",
                     (port) =>
                     {
                         devServerPort = port;
+                        devServerStatus = ServerStatus.Running;
+                        SaveDevServerPrefs(devServerProcess.Id, port);
                         Debug.Log($"AIT: Dev 서버가 시작되었습니다: http://localhost:{port}");
                         Application.OpenURL($"http://localhost:{port}/index.html");
                     }
@@ -382,6 +606,7 @@ namespace AppsInToss
             {
                 Debug.LogError($"AIT: Dev 서버 시작 실패: {e.Message}");
                 EditorUtility.DisplayDialog("오류", $"Dev 서버 시작 실패:\n{e.Message}", "확인");
+                devServerStatus = ServerStatus.NotRunning;
             }
         }
 
@@ -390,6 +615,8 @@ namespace AppsInToss
         /// </summary>
         private static void StopDevServer()
         {
+            devServerStatus = ServerStatus.Stopping;
+
             if (devServerProcess != null && !devServerProcess.HasExited)
             {
                 try
@@ -408,11 +635,14 @@ namespace AppsInToss
             }
 
             devServerPort = 0;
+            ClearDevServerPrefs();
+            devServerStatus = ServerStatus.NotRunning;
             Debug.Log("AIT: Dev 서버가 중지되었습니다.");
         }
 
         /// <summary>
         /// Production 서버 시작 (vite preview 사용)
+        /// 자동으로 빌드 & 패키징 수행 후 서버 시작
         /// </summary>
         private static void StartProdServer()
         {
@@ -422,32 +652,75 @@ namespace AppsInToss
                 return;
             }
 
-            string buildPath = GetBuildTemplatePath();
-            string distPath = Path.Combine(buildPath, "dist");
+            prodServerStatus = ServerStatus.Starting;
 
-            if (!ValidateBuildPath(buildPath)) return;
-
-            // dist 폴더 확인 (프로덕션 빌드 결과물)
-            if (!Directory.Exists(distPath))
+            var config = UnityUtil.GetEditorConf();
+            if (!ValidateSettings(config))
             {
-                EditorUtility.DisplayDialog("오류", "dist 폴더를 찾을 수 없습니다.\n\n먼저 'Build & Package'를 실행하세요.", "확인");
+                prodServerStatus = ServerStatus.NotRunning;
                 return;
             }
 
+            // 빌드 & 패키징 수행 (Production: 클린 빌드로 깨끗한 결과물 보장)
+            Debug.Log("AIT: 빌드 & 패키징 수행 중 (클린 빌드)...");
+            buildStopwatch.Restart();
+
+            var result = AITConvertCore.DoExport(buildWebGL: true, doPackaging: true, cleanBuild: true);
+            buildStopwatch.Stop();
+
+            if (result != AITConvertCore.AITExportError.SUCCEED)
+            {
+                string errorMessage = AITConvertCore.GetErrorMessage(result);
+                Debug.LogError($"AIT: 빌드 실패: {result}");
+                EditorUtility.DisplayDialog("빌드 실패", errorMessage, "확인");
+                prodServerStatus = ServerStatus.NotRunning;
+                return;
+            }
+
+            Debug.Log($"AIT: 빌드 & 패키징 완료 (소요 시간: {buildStopwatch.Elapsed.TotalSeconds:F1}초)");
+
+            string buildPath = GetBuildTemplatePath();
             string npmPath = FindNpmPath();
-            if (!ValidateNpmPath(npmPath)) return;
+            if (!ValidateNpmPath(npmPath))
+            {
+                prodServerStatus = ServerStatus.NotRunning;
+                return;
+            }
 
-            if (!EnsureNodeModules(buildPath, npmPath)) return;
+            if (!EnsureNodeModules(buildPath, npmPath))
+            {
+                prodServerStatus = ServerStatus.NotRunning;
+                return;
+            }
 
-            Debug.Log($"AIT: Production 서버 시작 중 (vite preview)... ({buildPath})");
+            // 사용 가능한 포트 찾기 (Production은 Dev와 다른 포트 사용)
+            int preferredPort = config.localPort > 0 ? config.localPort + 100 : 5273;
+            int availablePort = FindAvailablePort(preferredPort);
+            if (availablePort < 0)
+            {
+                Debug.LogError($"AIT: 사용 가능한 포트를 찾을 수 없습니다 ({preferredPort}~{preferredPort + 9})");
+                EditorUtility.DisplayDialog("오류", $"사용 가능한 포트를 찾을 수 없습니다.\n\n포트 {preferredPort}~{preferredPort + 9}가 모두 사용 중입니다.", "확인");
+                prodServerStatus = ServerStatus.NotRunning;
+                return;
+            }
+
+            if (availablePort != preferredPort)
+            {
+                Debug.Log($"AIT: 포트 {preferredPort}가 사용 중이므로 {availablePort} 사용");
+            }
+
+            Debug.Log($"AIT: Production 서버 시작 중 (vite preview --port {availablePort})... ({buildPath})");
 
             try
             {
+                // pnpx vite preview --port로 직접 호출 (pnpm run start --는 인자 전달이 안됨)
                 prodServerProcess = StartServerProcessWithPortDetection(
-                    buildPath, npmPath, "run start", "Prod Server",
+                    buildPath, npmPath, $"exec vite preview --outDir dist/web --port {availablePort}", "Prod Server",
                     (port) =>
                     {
                         prodServerPort = port;
+                        prodServerStatus = ServerStatus.Running;
+                        SaveProdServerPrefs(prodServerProcess.Id, port);
                         Debug.Log($"AIT: Production 서버가 시작되었습니다: http://localhost:{port}");
                         Application.OpenURL($"http://localhost:{port}/");
                     }
@@ -457,6 +730,7 @@ namespace AppsInToss
             {
                 Debug.LogError($"AIT: Production 서버 시작 실패: {e.Message}");
                 EditorUtility.DisplayDialog("오류", $"Production 서버 시작 실패:\n{e.Message}", "확인");
+                prodServerStatus = ServerStatus.NotRunning;
             }
         }
 
@@ -465,6 +739,8 @@ namespace AppsInToss
         /// </summary>
         private static void StopProdServer()
         {
+            prodServerStatus = ServerStatus.Stopping;
+
             if (prodServerProcess != null && !prodServerProcess.HasExited)
             {
                 try
@@ -483,6 +759,8 @@ namespace AppsInToss
             }
 
             prodServerPort = 0;
+            ClearProdServerPrefs();
+            prodServerStatus = ServerStatus.NotRunning;
             Debug.Log("AIT: Production 서버가 중지되었습니다.");
         }
 
@@ -512,7 +790,9 @@ namespace AppsInToss
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
-                    CreateNoWindow = true
+                    CreateNoWindow = true,
+                    StandardOutputEncoding = System.Text.Encoding.UTF8,
+                    StandardErrorEncoding = System.Text.Encoding.UTF8
                 };
                 startInfo.EnvironmentVariables["PATH"] = pathEnv;
             }
@@ -525,7 +805,9 @@ namespace AppsInToss
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
-                    CreateNoWindow = true
+                    CreateNoWindow = true,
+                    StandardOutputEncoding = System.Text.Encoding.UTF8,
+                    StandardErrorEncoding = System.Text.Encoding.UTF8
                 };
             }
 
@@ -655,6 +937,55 @@ namespace AppsInToss
             {
                 // 무시
             }
+        }
+
+        /// <summary>
+        /// 포트가 사용 가능한지 확인 (0.0.0.0과 127.0.0.1 모두 체크)
+        /// </summary>
+        private static bool IsPortAvailable(int port)
+        {
+            // granite/vite는 0.0.0.0에 바인딩하므로 Any로 체크해야 함
+            try
+            {
+                var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Any, port);
+                listener.Start();
+                listener.Stop();
+            }
+            catch
+            {
+                return false;
+            }
+
+            // 추가로 Loopback도 체크 (다른 프로세스가 127.0.0.1에만 바인딩한 경우)
+            try
+            {
+                var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, port);
+                listener.Start();
+                listener.Stop();
+            }
+            catch
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// 사용 가능한 포트 찾기 (시작 포트부터 최대 10개 시도)
+        /// </summary>
+        private static int FindAvailablePort(int startPort, int maxAttempts = 10)
+        {
+            for (int i = 0; i < maxAttempts; i++)
+            {
+                int port = startPort + i;
+                if (IsPortAvailable(port))
+                {
+                    return port;
+                }
+                Debug.Log($"[AIT] 포트 {port}가 사용 중, 다음 포트 시도...");
+            }
+            return -1; // 사용 가능한 포트 없음
         }
 
         // ============================================

@@ -310,28 +310,43 @@ test_e2e_validation() {
 
     echo "Checking E2E test structure..."
 
-    # 각 버전별 프로젝트 확인
+    # SharedScripts 패키지 확인 (UPM 패키지)
+    if [ -d "Tests~/E2E/SharedScripts" ]; then
+        echo -e "  ${GREEN}✓${NC} SharedScripts package"
+
+        # SharedScripts 내부 파일 확인
+        if [ ! -f "Tests~/E2E/SharedScripts/Runtime/AutoBenchmarkRunner.cs" ]; then
+            echo -e "    ${RED}✗${NC} AutoBenchmarkRunner.cs not found"
+            all_found=false
+        fi
+
+        if [ ! -f "Tests~/E2E/SharedScripts/Runtime/RuntimeAPITester.cs" ]; then
+            echo -e "    ${RED}✗${NC} RuntimeAPITester.cs not found"
+            all_found=false
+        fi
+
+        if [ ! -f "Tests~/E2E/SharedScripts/Editor/E2EBuildRunner.cs" ]; then
+            echo -e "    ${RED}✗${NC} E2EBuildRunner.cs not found"
+            all_found=false
+        fi
+    else
+        echo -e "  ${RED}✗${NC} SharedScripts package not found"
+        all_found=false
+    fi
+
+    # 각 버전별 프로젝트 디렉토리 확인
+    echo ""
+    echo "Checking Unity project directories..."
     for pattern in "${UNITY_VERSION_PATTERNS[@]}"; do
         local project_path=$(get_project_path_for_version "$pattern")
         local project_name=$(basename "$project_path")
 
         if [ -d "$project_path" ]; then
-            echo -e "  ${GREEN}✓${NC} $project_name"
-
-            # 필수 파일 확인
-            if [ ! -f "$project_path/Assets/Scripts/AutoBenchmarkRunner.cs" ]; then
-                echo -e "    ${RED}✗${NC} AutoBenchmarkRunner.cs not found"
-                all_found=false
-            fi
-
-            if [ ! -f "$project_path/Assets/Scripts/RuntimeAPITester.cs" ]; then
-                echo -e "    ${RED}✗${NC} RuntimeAPITester.cs not found"
-                all_found=false
-            fi
-
-            if [ ! -f "$project_path/Assets/Editor/E2EBuildRunner.cs" ]; then
-                echo -e "    ${RED}✗${NC} E2EBuildRunner.cs not found"
-                all_found=false
+            # manifest.json에서 SharedScripts 패키지 참조 확인
+            if grep -q "im.toss.sdk-test-scripts" "$project_path/Packages/manifest.json" 2>/dev/null; then
+                echo -e "  ${GREEN}✓${NC} $project_name (SharedScripts linked)"
+            else
+                echo -e "  ${YELLOW}!${NC} $project_name (SharedScripts not in manifest)"
             fi
         else
             echo -e "  ${YELLOW}○${NC} $project_name (없음)"
@@ -408,10 +423,10 @@ test_e2e_playwright() {
         print_success "E2E Playwright Tests ($version_pattern)"
 
         # 결과 출력
-        if [ -f "benchmark-results.json" ]; then
+        if [ -f "e2e-test-results.json" ]; then
             echo ""
             echo "📊 Benchmark Results:"
-            cat benchmark-results.json | head -30
+            cat e2e-test-results.json | head -30
         fi
     else
         print_failure "E2E Playwright Tests ($version_pattern)"
@@ -630,7 +645,7 @@ run_parallel_builds() {
 
 # 벤치마크 결과 출력
 print_benchmark_results() {
-    local RESULTS_FILE="$SCRIPT_DIR/Tests~/E2E/tests/benchmark-results.json"
+    local RESULTS_FILE="$SCRIPT_DIR/Tests~/E2E/tests/e2e-test-results.json"
 
     if [ ! -f "$RESULTS_FILE" ]; then
         return

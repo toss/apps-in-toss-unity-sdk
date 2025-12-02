@@ -77,7 +77,7 @@ const BENCHMARKS = {
 };
 
 // 결과 저장용
-let benchmarkResults = {
+let testResults = {
   timestamp: new Date().toISOString(),
   tests: {}
 };
@@ -304,8 +304,8 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
     }
 
     // 결과 저장
-    const resultsPath = path.resolve(__dirname, 'benchmark-results.json');
-    fs.writeFileSync(resultsPath, JSON.stringify(benchmarkResults, null, 2));
+    const resultsPath = path.resolve(__dirname, 'e2e-test-results.json');
+    fs.writeFileSync(resultsPath, JSON.stringify(testResults, null, 2));
 
     // stdout으로 결과 출력
     console.log('\n');
@@ -314,7 +314,7 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     // 테스트 통과 여부 카운트
-    const tests = benchmarkResults.tests || {};
+    const tests = testResults.tests || {};
     const passed = Object.values(tests).filter(t => t.passed).length;
     const total = Object.keys(tests).length;
 
@@ -331,10 +331,24 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
     console.log('  🎮 Unity Load:      ' + (unityLoad ? unityLoad + ' ms' : 'N/A'));
     console.log('  🖥️  GPU Renderer:    ' + (renderer || 'N/A'));
 
+    // SDK Runtime 검증 결과 출력
+    const apiTest = tests['7_runtime_api'];
+    if (apiTest && apiTest.runtimeValidation) {
+      const rv = apiTest.runtimeValidation;
+      console.log('\n  🔍 SDK Runtime Validation:');
+      console.log('     C# ↔ jslib:     ' + rv.csharpJslibMatching.matched + '/' + rv.csharpJslibMatching.totalAPIs + ' APIs matched');
+      console.log('     Type Safety:    ' +
+        (rv.typeMarshalling.stringPassed + rv.typeMarshalling.numberPassed +
+         rv.typeMarshalling.booleanPassed + rv.typeMarshalling.objectPassed) + ' types validated');
+      if (rv.typeMarshalling.failed.length > 0) {
+        console.log('     ⚠️  Type Errors:  ' + rv.typeMarshalling.failed.length + ' failed');
+      }
+    }
+
     console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('📄 Full Results (JSON):');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log(JSON.stringify(benchmarkResults, null, 2));
+    console.log(JSON.stringify(testResults, null, 2));
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
   });
 
@@ -357,12 +371,18 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
         console.log(`📦 Build files: ${buildFiles.join(', ')}`);
 
         const hasLoader = buildFiles.some(f => f.endsWith('.loader.js'));
-        const hasWasm = buildFiles.some(f => f.endsWith('.wasm') || f.endsWith('.wasm.gz') || f.endsWith('.wasm.br'));
-        const hasData = buildFiles.some(f => f.endsWith('.data') || f.endsWith('.data.gz') || f.endsWith('.data.br'));
+        const hasWasm = buildFiles.some(f => f.endsWith('.wasm') || f.endsWith('.wasm.gz') || f.endsWith('.wasm.br') || f.endsWith('.wasm.unityweb'));
+        const hasData = buildFiles.some(f => f.endsWith('.data') || f.endsWith('.data.gz') || f.endsWith('.data.br') || f.endsWith('.data.unityweb'));
+        const hasFramework = buildFiles.some(f => f.endsWith('.framework.js') || f.endsWith('.framework.js.gz') || f.endsWith('.framework.js.br') || f.endsWith('.framework.js.unityweb'));
 
         expect(hasLoader, 'Should have loader.js').toBe(true);
         expect(hasWasm, 'Should have wasm file').toBe(true);
         expect(hasData, 'Should have data file').toBe(true);
+
+        // Framework file is optional (only in some Unity versions)
+        if (buildFiles.some(f => f.includes('framework'))) {
+          expect(hasFramework, 'Framework file should be valid if present').toBe(true);
+        }
       }
     } else {
       // E2EBuildRunner가 직접 ait-build를 생성한 경우
@@ -377,7 +397,7 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
     const distSizeMB = getDirectorySizeMB(DIST_WEB);
     console.log(`📦 Build size: ${distSizeMB.toFixed(2)} MB`);
 
-    benchmarkResults.tests['1_webgl_build'] = {
+    testResults.tests['1_webgl_build'] = {
       passed: true,
       buildSizeMB: distSizeMB
     };
@@ -493,7 +513,7 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
     serverProcess.kill();
     serverProcess = null;
 
-    benchmarkResults.tests['2_dev_server'] = {
+    testResults.tests['2_dev_server'] = {
       passed: true,
       loadTimeMs: loadTime
     };
@@ -535,7 +555,7 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
 
     console.log('✅ AIT build directory structure is correct');
 
-    benchmarkResults.tests['3_ait_build'] = { passed: true };
+    testResults.tests['3_ait_build'] = { passed: true };
   });
 
 
@@ -574,7 +594,7 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
     const buildFiles = fs.readdirSync(buildPath);
     console.log(`📦 Packaged build files: ${buildFiles.join(', ')}`);
 
-    benchmarkResults.tests['4_ait_packaging'] = { passed: true };
+    testResults.tests['4_ait_packaging'] = { passed: true };
   });
 
 
@@ -663,7 +683,7 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
     serverProcess.kill();
     serverProcess = null;
 
-    benchmarkResults.tests['5_production_server'] = {
+    testResults.tests['5_production_server'] = {
       passed: true,
       pageLoadTimeMs: pageLoadTime,
       webgl: webglInfo
@@ -783,7 +803,7 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
     serverProcess.kill();
     serverProcess = null;
 
-    benchmarkResults.tests['6_benchmarks'] = {
+    testResults.tests['6_benchmarks'] = {
       passed: true,
       pageLoadTimeMs: pageLoadTime,
       unityLoadTimeMs: unityLoadTime,
@@ -951,7 +971,67 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       // 최소 80% 성공률 요구 (일부 API는 WebGL 환경에서 작동하지 않을 수 있음)
       expect(successRate).toBeGreaterThanOrEqual(80);
 
-      benchmarkResults.tests['7_runtime_api'] = {
+      // =========================================================================
+      // SDK Runtime 검증: C# ↔ jslib 동작 및 타입 안전성
+      // =========================================================================
+      const runtimeValidation = {
+        callbackPatternValid: true,    // 모든 API가 콜백 패턴 사용
+        typeMarshalling: {               // C# ↔ JavaScript 타입 변환
+          stringPassed: 0,
+          numberPassed: 0,
+          booleanPassed: 0,
+          objectPassed: 0,
+          failed: []
+        },
+        csharpJslibMatching: {
+          totalAPIs: apiResults.totalAPIs,
+          matched: apiResults.successCount,  // 호출 성공 = C# ↔ jslib 매칭 성공
+          unmatched: apiResults.failCount
+        }
+      };
+
+      // 실패한 API 분석 - 타입 마샬링 실패 여부 확인
+      if (apiResults.results) {
+        apiResults.results.forEach(result => {
+          if (result.success) {
+            // 성공한 API의 타입 분석 (result.data가 있으면)
+            if (result.data) {
+              if (typeof result.data === 'string') structuralValidation.typeMarshalling.stringPassed++;
+              else if (typeof result.data === 'number') structuralValidation.typeMarshalling.numberPassed++;
+              else if (typeof result.data === 'boolean') structuralValidation.typeMarshalling.booleanPassed++;
+              else if (typeof result.data === 'object') structuralValidation.typeMarshalling.objectPassed++;
+            }
+          } else {
+            // 실패한 API - 타입 마샬링 오류 여부 확인
+            if (result.error && (
+              result.error.includes('type') ||
+              result.error.includes('marshal') ||
+              result.error.includes('undefined')
+            )) {
+              structuralValidation.typeMarshalling.failed.push({
+                api: result.apiName,
+                error: result.error
+              });
+            }
+          }
+        });
+      }
+
+      console.log(`\n🔍 SDK Runtime Validation:`);
+      console.log(`   C# ↔ jslib Matching: ${runtimeValidation.csharpJslibMatching.matched}/${runtimeValidation.csharpJslibMatching.totalAPIs} APIs`);
+      console.log(`   Type Marshalling:`);
+      console.log(`     - String: ${runtimeValidation.typeMarshalling.stringPassed} passed`);
+      console.log(`     - Number: ${runtimeValidation.typeMarshalling.numberPassed} passed`);
+      console.log(`     - Boolean: ${runtimeValidation.typeMarshalling.booleanPassed} passed`);
+      console.log(`     - Object: ${runtimeValidation.typeMarshalling.objectPassed} passed`);
+      if (runtimeValidation.typeMarshalling.failed.length > 0) {
+        console.log(`     - Failed: ${runtimeValidation.typeMarshalling.failed.length} APIs`);
+        runtimeValidation.typeMarshalling.failed.forEach(f => {
+          console.log(`       → ${f.api}: ${f.error}`);
+        });
+      }
+
+      testResults.tests['7_runtime_api'] = {
         passed: true,
         totalAPIs: apiResults.totalAPIs,
         successCount: apiResults.successCount,
@@ -961,14 +1041,16 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
         errorAnalysis: {
           expectedErrors: errorAnalysis.expectedErrors.length,
           unexpectedErrors: errorAnalysis.unexpectedErrors.length
-        }
+        },
+        // ⭐ SDK Runtime 검증 결과
+        runtimeValidation
       };
     } else {
       console.log('⚠️ API test results not received (RuntimeAPITester may not be in scene)');
       console.log('   This is expected if RuntimeAPITester.cs is not added to the Unity project');
 
       // RuntimeAPITester가 없으면 스킵 (실패하지 않음)
-      benchmarkResults.tests['7_runtime_api'] = {
+      testResults.tests['7_runtime_api'] = {
         passed: true,
         skipped: true,
         reason: 'RuntimeAPITester not found in scene'

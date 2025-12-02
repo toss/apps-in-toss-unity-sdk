@@ -118,17 +118,21 @@ sdk-runtime-generator~/.tmp/
 sdk-runtime-generator~/.temp-csharp-validation/
 
 # E2E Test artifacts
-Tests~/E2E/SampleUnityProject/Library/
-Tests~/E2E/SampleUnityProject/Temp/
-Tests~/E2E/SampleUnityProject/ait-build/
-Tests~/E2E/SampleUnityProject/webgl/
-Tests~/E2E/SampleUnityProject/WebGLBuild/
-Tests~/E2E/SampleUnityProject/Builds/
+Tests~/E2E/SampleUnityProject*/Library/
+Tests~/E2E/SampleUnityProject*/Temp/
+Tests~/E2E/SampleUnityProject*/Logs/
+Tests~/E2E/SampleUnityProject*/UserSettings/
+Tests~/E2E/SampleUnityProject*/ait-build/
+Tests~/E2E/SampleUnityProject*/webgl/
+Tests~/E2E/SampleUnityProject*/WebGLBuild/
+Tests~/E2E/SampleUnityProject*/Builds/
+Tests~/E2E/SampleUnityProject*/Assets/Plugins/E2ETestBridge.jslib*
+Tests~/E2E/SampleUnityProject*/Assets/Scenes/
 Tests~/E2E/build.log
 Tests~/E2E/benchmark*.log
 Tests~/E2E/temp/
 Tests~/E2E/tests/test-results.json
-Tests~/E2E/tests/benchmark-results.json
+Tests~/E2E/tests/e2e-test-results.json
 Tests~/E2E/tests/test-results/
 
 # Unity meta files

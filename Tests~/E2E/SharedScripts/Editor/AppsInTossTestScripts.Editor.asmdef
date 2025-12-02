@@ -2,9 +2,9 @@
     "name": "AppsInTossTestScripts.Editor",
     "rootNamespace": "",
     "references": [
+        "AppsInTossTestScripts",
         "AppsInTossSDK",
-        "AppsInTossSDKEditor",
-        "AppsInTossTestScripts"
+        "AppsInTossSDKEditor"
     ],
     "includePlatforms": [
         "Editor"

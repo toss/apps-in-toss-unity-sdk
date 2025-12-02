@@ -185,13 +185,18 @@ Unity WebGL template is in `WebGLTemplates/AITTemplate/`. The template is automa
 - **Data caching**: Disabled
 - **Linker target**: Wasm
 
-### Node.js/npm Detection
+### Embedded Node.js System
 The SDK uses embedded Node.js with automatic download:
 1. First checks system Node.js installation
 2. Falls back to `Tools~/NodeJS/{platform}/` embedded version
-3. Auto-downloads from nodejs.org with SHA256 checksum verification
+3. Auto-downloads with SHA256 checksum verification
 
-See `Tools~/README.md` for details on the embedded Node.js system.
+**Download sources (fallback order):**
+1. https://nodejs.org (official)
+2. https://cdn.npmmirror.com
+3. https://repo.huaweicloud.com
+
+**Node.js version**: v24.11.1 (checksums in `Editor/AITNodeJSDownloader.cs`)
 
 ### Configuration Storage
 Settings are stored in `Assets/AppsInToss/Editor/AITConfig.asset` (ScriptableObject):
@@ -204,19 +209,26 @@ Settings are stored in `Assets/AppsInToss/Editor/AITConfig.asset` (ScriptableObj
 
 ## SDK Runtime Generator
 
-The `sdk-runtime-generator~/` directory contains tools for auto-generating C# SDK code from TypeScript definitions. This ensures the Unity SDK stays in sync with the web framework APIs.
+Auto-generates C# SDK code from TypeScript definitions in `@apps-in-toss/web-framework`.
 
-Key files:
-- `jslib.ts` - Generates the .jslib bridge file
-- `csharp.ts` - Generates C# API wrapper classes
-- `templates/` - Handlebars templates for code generation
-
-To regenerate SDK code:
+### Workflow
 ```bash
 cd sdk-runtime-generator~
 pnpm install
-pnpm run generate
+pnpm generate   # TypeScript → C# + JavaScript bridge (~1.5s)
+pnpm format     # CSharpier formatting (optional, requires dotnet)
+pnpm validate   # Compile check with Mono mcs
+pnpm test       # Run unit tests
 ```
+
+### Type Mapping
+| TypeScript | C# |
+|------------|-----|
+| `string` | `string` |
+| `number` | `double` |
+| `boolean` | `bool` |
+| `Promise<T>` | `System.Action<T>` callback |
+| `T \| U` | Discriminated union class |
 
 ## Testing Strategy
 
@@ -265,42 +277,3 @@ npm test
 3. Benchmark results uploaded as artifacts
 4. Job summary with performance metrics
 
-## Version Compatibility
-
-**Primary Supported Versions (우선 지원 버전):**
-
-| Unity Version | WebGL Template | Memory | Compression |
-|--------------|----------------|--------|-------------|
-| 6000.2.14f1 (Unity 6 LTS) | AITTemplate | 1024MB | Disabled |
-| 6000.0.63f1 (Unity 6) | AITTemplate | 1024MB | Disabled |
-| 2022.3.62f3 LTS | AITTemplate | 512MB  | Disabled |
-| 2021.3.45f2 LTS | AITTemplate | 512MB  | Disabled |
-
-**Note**: Compression must be Disabled for Apps in Toss deployment (platform requirement).
-
-## File Naming Patterns
-
-- Editor scripts: `AIT*.cs` (e.g., `AITConvertCore.cs`, `AITNodeJSDownloader.cs`)
-- Runtime API: `AIT.*.cs` (e.g., `AIT.GetDeviceId.cs`, `AIT.CheckoutPayment.cs`)
-- Core infrastructure: `AITCore.cs`
-- Template: `WebGLTemplates/AITTemplate/`
-- Build output: `webgl/` (Unity), `ait-build/` (package), `ait-build/dist/` (deployable)
-- Config files: `AITConfig.asset`, `granite.config.ts`, `vite.config.ts`
-
-## Apps in Toss Platform Integration
-
-The SDK integrates with the Apps in Toss platform through:
-1. **@apps-in-toss/web-framework** npm package (runtime framework)
-2. **granite** build tool (converts Unity WebGL to mini-app format)
-3. **ait deploy** CLI (uploads to platform)
-4. **appsintoss-unity-bridge.js** (JavaScript bridge for Unity C# ↔ platform APIs)
-
-The bridge enables bidirectional communication:
-- Unity → Platform: jslib calls invoke platform APIs via window object
-- Platform → Unity: JavaScript calls Unity game object methods
-
-## Documentation Files
-
-- `README.md` - User-facing documentation (Korean)
-- `Tools~/README.md` - Embedded Node.js documentation
-- `sdk-runtime-generator~/README.md` - SDK generator documentation

@@ -141,7 +141,18 @@ namespace AppsInToss
             PlayerSettings.WebGL.exceptionSupport = exceptionSupport;
 
             // ===== 파일 해싱 =====
+            // Unity 2021.3에서 nameFilesAsHashes = true 시 Bee 빌드 루프 버그 발생
+            // Unity 2022.3+ 에서는 정상 작동
+#if UNITY_2022_1_OR_NEWER
             PlayerSettings.WebGL.nameFilesAsHashes = editorConfig.nameFilesAsHashes;
+#else
+            // Unity 2021.x: nameFilesAsHashes 비활성화 (빌드 루프 방지)
+            PlayerSettings.WebGL.nameFilesAsHashes = false;
+            if (editorConfig.nameFilesAsHashes)
+            {
+                Debug.LogWarning("[AIT] Unity 2021.x에서는 '파일명 해싱' 옵션이 빌드 오류를 유발하여 자동으로 비활성화됩니다. Unity 2022.3 이상으로 업그레이드를 권장합니다.");
+            }
+#endif
 
             // ===== IL2CPP/Stripping 설정 =====
             // 출처: startup-speed.md:82-89
@@ -471,6 +482,13 @@ namespace AppsInToss
             if (config.enableOptimization)
             {
                 buildOptions |= BuildOptions.CompressWithLz4;  // LZ4 압축으로 빌드 속도 향상
+            }
+
+            // Unity 2021.3에서 Bee 빌드 캐시 문제로 인한 빌드 루프 방지
+            // cleanBuild 시 CleanBuildCache 옵션 추가
+            if (cleanBuild)
+            {
+                buildOptions |= BuildOptions.CleanBuildCache;
             }
 
             BuildPlayerOptions buildPlayerOptions = new BuildPlayerOptions

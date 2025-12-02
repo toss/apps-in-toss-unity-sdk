@@ -15,20 +15,23 @@ namespace AppsInToss
     /// </summary>
     public static partial class AIT
     {
-        public static System.Action StartUpdateLocation(StartUpdateLocationEventParams eventParams)
+        public static Task StartUpdateLocation(StartUpdateLocationEventParams eventParams)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            return __startUpdateLocation_Internal(eventParams);
+            var tcs = new TaskCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<object>(_ => tcs.SetResult(true));
+            __startUpdateLocation_Internal(eventParams, callbackId, "void");
+            return tcs.Task;
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] StartUpdateLocation called");
-            return () => { };
+            return Task.CompletedTask;
 #endif
         }
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
-        private static extern System.Action __startUpdateLocation_Internal(StartUpdateLocationEventParams eventParams);
+        private static extern void __startUpdateLocation_Internal(StartUpdateLocationEventParams eventParams, string callbackId, string typeName);
 #endif
     }
 }

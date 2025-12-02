@@ -68,38 +68,6 @@ namespace AppsInToss
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __{{{originalName}}}_Internal({{#each parameters}}{{this.paramType}} {{this.paramName}}, {{/each}}string callbackId, string typeName);
 #endif
-{{else}}
-        public static {{{returnType}}} {{{pascalName}}}({{#each parameters}}{{this.paramType}} {{this.paramName}}{{#unless @last}}, {{/unless}}{{/each}})
-        {
-#if UNITY_WEBGL && !UNITY_EDITOR
-            return __{{{originalName}}}_Internal({{#each parameters}}{{this.paramName}}{{#unless @last}}, {{/unless}}{{/each}});
-#else
-            // Unity Editor mock implementation
-            UnityEngine.Debug.Log($"[AIT Mock] {{{pascalName}}} called");
-{{#if returnType}}
-{{#if (eq returnType "void")}}
-            return;
-{{else if (eq returnType "string")}}
-            return "";
-{{else if (eq returnType "bool")}}
-            return false;
-{{else if (or (eq returnType "int") (eq returnType "float") (eq returnType "double"))}}
-            return 0;
-{{else if (isArray returnType)}}
-            return new {{arrayElementType returnType}}[0];
-{{else if (eq returnType "System.Action")}}
-            return () => { };
-{{else}}
-            return default({{{returnType}}});
-{{/if}}
-{{/if}}
-#endif
-        }
-
-#if UNITY_WEBGL && !UNITY_EDITOR
-        [System.Runtime.InteropServices.DllImport("__Internal")]
-        private static extern {{{returnType}}} __{{{originalName}}}_Internal({{#each parameters}}{{this.paramType}} {{this.paramName}}{{#unless @last}}, {{/unless}}{{/each}});
-#endif
 {{/if}}
     }
 }

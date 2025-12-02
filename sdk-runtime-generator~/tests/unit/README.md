@@ -1,37 +1,54 @@
-# SDK Generator 속성 기반 검증 테스트
+# SDK Generator 문법 검증 테스트
 
-Unity SDK Generator의 생성 코드 품질을 **실제 컴파일러**를 사용하여 검증합니다.
+Unity SDK Generator가 생성한 코드의 문법 오류를 **실제 컴파일러**로 검증합니다.
 
-## 📋 테스트 계층
+## 📋 테스트 범위
 
-### Tier 1: 컴파일 가능성 (⭐⭐⭐)
+### 문법 검증 (Syntax Validation)
 **파일**: `compilation.test.ts`
 
 **검증 내용**:
-- C#: Roslyn/Mono mcs 컴파일러로 실제 컴파일
-- JavaScript: TypeScript Compiler API로 문법 검증
-- mergeInto 패턴 검증
+- ✅ C# 컴파일 가능 여부 (Roslyn/Mono mcs)
+- ✅ JavaScript 문법 오류 검사 (TypeScript Compiler API)
+- ✅ jslib mergeInto 패턴 정합성
 
 **실행**:
 ```bash
-npm run test:tier1
+npm test
 ```
 
-### Tier 2: 구조적 불변성 (⭐⭐)
-**파일**: `invariants.test.ts` (TODO)
+**목적**: SDK 생성 직후 빠른 문법 검증 (~10초)
 
-**검증 내용**:
-- DllImport 패턴 검증
-- 콜백 등록 검증
-- 네임스페이스 검증
+**언제 실행?**
+- SDK Generator 코드 수정 후
+- `pnpm generate` 실행 후
+- Pull Request 생성 전
 
-### Tier 3: 타입 안전성 (⭐⭐)
-**파일**: `type-safety.test.ts` (TODO)
+---
 
-**검증 내용**:
-- C# ↔ jslib 시그니처 일치
-- 타입 마샬링 검증
-- Promise → Action 변환 검증
+## SDK Runtime 동작 검증
+
+SDK가 실제 브라우저 환경에서 올바르게 동작하는지는 **E2E 테스트**에서 검증합니다.
+
+**위치**: `Tests~/E2E/tests/e2e-full-pipeline.test.js` (Test 7: Runtime API Tests)
+
+**E2E에서 검증하는 항목**:
+- ✅ C# API → jslib 함수 호출 성공
+- ✅ 콜백 기반 비동기 처리
+- ✅ 타입 마샬링 (C# string/double/bool ↔ JavaScript)
+- ✅ 브라우저 WebGL 환경 실행
+
+**실행**:
+```bash
+cd ../../..  # 프로젝트 루트
+./run-local-tests.sh --all
+```
+
+**결과 확인**:
+```bash
+cat Tests~/E2E/tests/benchmark-results.json
+# Test 7 섹션에 Runtime 검증 결과 포함
+```
 
 ## 🚀 실행 방법
 

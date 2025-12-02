@@ -16,20 +16,23 @@ namespace AppsInToss
     public static partial class AIT
     {
         /// <returns>사용자의 로케일 정보를 반환해요.</returns>
-        public static string GetLocale()
+        public static Task GetLocale()
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            return __getLocale_Internal();
+            var tcs = new TaskCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<object>(_ => tcs.SetResult(true));
+            __getLocale_Internal(callbackId, "void");
+            return tcs.Task;
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] GetLocale called");
-            return "";
+            return Task.CompletedTask;
 #endif
         }
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
-        private static extern string __getLocale_Internal();
+        private static extern void __getLocale_Internal(string callbackId, string typeName);
 #endif
     }
 }

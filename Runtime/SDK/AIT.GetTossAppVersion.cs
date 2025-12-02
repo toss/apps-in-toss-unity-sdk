@@ -16,20 +16,23 @@ namespace AppsInToss
     public static partial class AIT
     {
         /// <returns>토스 앱 버전</returns>
-        public static string GetTossAppVersion()
+        public static Task GetTossAppVersion()
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            return __getTossAppVersion_Internal();
+            var tcs = new TaskCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<object>(_ => tcs.SetResult(true));
+            __getTossAppVersion_Internal(callbackId, "void");
+            return tcs.Task;
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] GetTossAppVersion called");
-            return "";
+            return Task.CompletedTask;
 #endif
         }
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
-        private static extern string __getTossAppVersion_Internal();
+        private static extern void __getTossAppVersion_Internal(string callbackId, string typeName);
 #endif
     }
 }

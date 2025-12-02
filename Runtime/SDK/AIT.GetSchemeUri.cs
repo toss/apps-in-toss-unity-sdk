@@ -16,20 +16,23 @@ namespace AppsInToss
     public static partial class AIT
     {
         /// <returns>처음에 화면에 진입한 스킴 값을 반환해요.</returns>
-        public static string GetSchemeUri()
+        public static Task GetSchemeUri()
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            return __getSchemeUri_Internal();
+            var tcs = new TaskCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<object>(_ => tcs.SetResult(true));
+            __getSchemeUri_Internal(callbackId, "void");
+            return tcs.Task;
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] GetSchemeUri called");
-            return "";
+            return Task.CompletedTask;
 #endif
         }
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
-        private static extern string __getSchemeUri_Internal();
+        private static extern void __getSchemeUri_Internal(string callbackId, string typeName);
 #endif
     }
 }

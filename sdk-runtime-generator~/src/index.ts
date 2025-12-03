@@ -158,12 +158,13 @@ async function generate(options: {
     const mainFile = await csharpGenerator.generateMainFile(options.tag, apis.length);
     console.log(picocolors.green(`✓ AIT.cs (메인 partial class)`));
 
-    // 개별 API partial class 파일들 생성
-    const partialApiFiles = await csharpGenerator.generatePartialApiFiles(apis);
-    console.log(picocolors.green(`✓ ${partialApiFiles.size}개 partial class 파일 (AIT.*.cs)`));
+    // 카테고리별 API partial class 파일들 생성
+    const categoryFiles = await csharpGenerator.generateCategoryFiles(apis);
+    console.log(picocolors.green(`✓ ${categoryFiles.size}개 카테고리 파일 (AIT.{Category}.cs)`));
 
-    // AITCore 생성 (인프라 코드)
-    const coreFile = await csharpGenerator.generateCoreFile(apis);
+    // AITCore 생성 (인프라 코드) - enum 타입 목록 전달
+    const enumTypeNames = new Set(enums.map(e => e.name));
+    const coreFile = await csharpGenerator.generateCoreFile(apis, enumTypeNames);
     console.log(picocolors.green(`✓ AITCore.cs (Infrastructure)`));
 
     // C# 타입 정의 생성 (파싱된 enum/interface) - 본문만
@@ -247,8 +248,8 @@ namespace AppsInToss
     await fs.writeFile(path.join(outputDir, 'AIT.cs'), mainFile);
     console.log(picocolors.green(`  ✓ ${path.join(outputDir, 'AIT.cs')}`));
 
-    // 개별 API partial class 파일들 쓰기
-    for (const [fileName, content] of partialApiFiles.entries()) {
+    // 카테고리별 API partial class 파일들 쓰기
+    for (const [fileName, content] of categoryFiles.entries()) {
       await fs.writeFile(path.join(outputDir, fileName), content);
       console.log(picocolors.green(`  ✓ ${path.join(outputDir, fileName)}`));
     }

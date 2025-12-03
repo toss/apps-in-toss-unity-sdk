@@ -1,0 +1,115 @@
+// -----------------------------------------------------------------------
+// <copyright file="AIT.{{categoryName}}.cs" company="Toss">
+//     Copyright (c) Toss. All rights reserved.
+//     Apps in Toss Unity SDK - {{categoryName}} APIs
+// </copyright>
+// -----------------------------------------------------------------------
+
+using System;
+using System.Threading.Tasks;
+
+namespace AppsInToss
+{
+    /// <summary>
+    /// Apps in Toss Platform API - {{categoryName}}
+    /// </summary>
+    public static partial class AIT
+    {
+{{#each apis}}
+{{#if this.description}}
+        /// <summary>
+        /// {{{this.description}}}
+        /// </summary>
+{{/if}}
+{{#each this.parameters}}
+{{#if this.description}}
+        /// <param name="{{this.paramName}}">{{xmlSafe this.description}}</param>
+{{/if}}
+{{/each}}
+{{#if this.returnDescription}}
+        /// <returns>{{xmlSafe this.returnDescription}}</returns>
+{{/if}}
+{{#if this.isAsync}}
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [APICategory("{{../categoryName}}")]
+        public static async {{#if (eq this.callbackType "void")}}Task{{else}}Task<{{{this.callbackType}}}>{{/if}} {{{this.pascalName}}}({{#each this.parameters}}{{this.paramType}} {{this.paramName}}{{#unless @last}}, {{/unless}}{{/each}})
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+{{#if (eq this.callbackType "void")}}
+            var tcs = new TaskCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<object>(
+                result => tcs.TrySetResult(true),
+                error => tcs.TrySetException(error)
+            );
+            __{{{this.originalName}}}_Internal({{#each this.parameters}}{{#if this.isPrimitive}}{{this.paramName}}{{else}}UnityEngine.JsonUtility.ToJson({{this.paramName}}){{/if}}, {{/each}}callbackId, "{{{this.callbackType}}}");
+            await tcs.Task;
+{{else}}
+            var tcs = new TaskCompletionSource<{{{this.callbackType}}}>();
+            string callbackId = AITCore.Instance.RegisterCallback<{{{this.callbackType}}}>(
+                result => tcs.TrySetResult(result),
+                error => tcs.TrySetException(error)
+            );
+            __{{{this.originalName}}}_Internal({{#each this.parameters}}{{#if this.isPrimitive}}{{this.paramName}}{{else}}UnityEngine.JsonUtility.ToJson({{this.paramName}}){{/if}}, {{/each}}callbackId, "{{{this.callbackType}}}");
+            return await tcs.Task;
+{{/if}}
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] {{{this.pascalName}}} called");
+            await Task.CompletedTask;
+{{#if (eq this.callbackType "void")}}
+            // void return - nothing to return
+{{else if (isArray this.callbackType)}}
+            return new {{arrayElementType this.callbackType}}[0];
+{{else if (eq this.callbackType "string")}}
+            return "";
+{{else if (eq this.callbackType "bool")}}
+            return false;
+{{else if (or (eq this.callbackType "int") (eq this.callbackType "float") (eq this.callbackType "double"))}}
+            return 0;
+{{else}}
+            return default({{{this.callbackType}}});
+{{/if}}
+#endif
+        }
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __{{{this.originalName}}}_Internal({{#each this.parameters}}string {{this.paramName}}, {{/each}}string callbackId, string typeName);
+#endif
+{{else}}
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [APICategory("{{../categoryName}}")]
+        public static async Task<{{{this.callbackType}}}> {{{this.pascalName}}}({{#each this.parameters}}{{this.paramType}} {{this.paramName}}{{#unless @last}}, {{/unless}}{{/each}})
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<{{{this.callbackType}}}>();
+            string callbackId = AITCore.Instance.RegisterCallback<{{{this.callbackType}}}>(
+                result => tcs.TrySetResult(result),
+                error => tcs.TrySetException(error)
+            );
+            __{{{this.originalName}}}_Internal({{#each this.parameters}}{{#if this.isPrimitive}}{{this.paramName}}{{else}}UnityEngine.JsonUtility.ToJson({{this.paramName}}){{/if}}, {{/each}}callbackId, "{{{this.callbackType}}}");
+            return await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] {{{this.pascalName}}} called");
+            await Task.CompletedTask;
+{{#if (eq this.callbackType "string")}}
+            return "";
+{{else if (eq this.callbackType "bool")}}
+            return false;
+{{else if (or (eq this.callbackType "int") (eq this.callbackType "float") (eq this.callbackType "double"))}}
+            return 0;
+{{else}}
+            return default({{{this.callbackType}}});
+{{/if}}
+#endif
+        }
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __{{{this.originalName}}}_Internal({{#each this.parameters}}string {{this.paramName}}, {{/each}}string callbackId, string typeName);
+#endif
+{{/if}}
+{{/each}}
+    }
+}

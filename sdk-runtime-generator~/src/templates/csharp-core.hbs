@@ -12,6 +12,87 @@ using UnityEngine;
 namespace AppsInToss
 {
     /// <summary>
+    /// Attribute to mark API methods with their category for grouping in UI.
+    /// </summary>
+    [AttributeUsage(AttributeTargets.Method)]
+    public class APICategoryAttribute : Attribute
+    {
+        /// <summary>
+        /// The category name (e.g., "Authentication", "Payment", "Location")
+        /// </summary>
+        public string Category { get; }
+
+        public APICategoryAttribute(string category)
+        {
+            Category = category;
+        }
+    }
+
+    /// <summary>
+    /// Exception thrown when an Apps in Toss API call fails.
+    /// Use try-catch to handle API errors in a C#-idiomatic way.
+    /// </summary>
+    public class AITException : Exception
+    {
+        /// <summary>The API name that failed</summary>
+        public string APIName { get; }
+
+        /// <summary>Error code for categorization (if available from platform)</summary>
+        public string ErrorCode { get; }
+
+        /// <summary>Whether this error is due to platform unavailability (browser environment)</summary>
+        public bool IsPlatformUnavailable { get; }
+
+        public AITException(string message) : base(message)
+        {
+            APIName = "";
+            ErrorCode = "";
+            IsPlatformUnavailable = CheckPlatformUnavailable(message);
+        }
+
+        public AITException(string apiName, string message) : base(message)
+        {
+            APIName = apiName;
+            ErrorCode = "";
+            IsPlatformUnavailable = CheckPlatformUnavailable(message);
+        }
+
+        public AITException(string apiName, string message, string errorCode) : base(message)
+        {
+            APIName = apiName;
+            ErrorCode = errorCode;
+            IsPlatformUnavailable = CheckPlatformUnavailable(message);
+        }
+
+        public AITException(string message, Exception innerException) : base(message, innerException)
+        {
+            APIName = "";
+            ErrorCode = "";
+            IsPlatformUnavailable = CheckPlatformUnavailable(message);
+        }
+
+        private static bool CheckPlatformUnavailable(string message)
+        {
+            if (string.IsNullOrEmpty(message)) return false;
+            return message.Contains("__GRANITE_NATIVE_EMITTER") ||
+                   message.Contains("ReactNativeWebView") ||
+                   message.Contains("is not a constant handler");
+        }
+    }
+
+    /// <summary>
+    /// API response from JavaScript bridge.
+    /// Uses explicit success/data/error format to avoid IL2CPP stripping issues.
+    /// </summary>
+    [Serializable]
+    public class APIResponse
+    {
+        public bool success;
+        public string data = "";
+        public string error = "";
+    }
+
+    /// <summary>
     /// Apps in Toss SDK Core Infrastructure
     /// Callback management and JavaScript bridge
     /// </summary>
@@ -36,33 +117,37 @@ namespace AppsInToss
             }
         }
 
-        // Callback storage
+        // Callback storage: success callbacks and error callbacks
         private int _callbackIdCounter = 0;
         private Dictionary<string, Delegate> _callbacks = new Dictionary<string, Delegate>();
+        private Dictionary<string, Action<AITException>> _errorCallbacks = new Dictionary<string, Action<AITException>>();
 
         /// <summary>
-        /// Register a callback and return its ID
+        /// Register success and error callbacks, return the callback ID.
+        /// Used by async API methods with TaskCompletionSource.
         /// </summary>
-        public string RegisterCallback<T>(Action<T> callback)
+        public string RegisterCallback<T>(Action<T> onSuccess, Action<AITException> onError)
         {
             string id = $"cb_{_callbackIdCounter++}";
-            _callbacks[id] = callback;
+            _callbacks[id] = onSuccess;
+            _errorCallbacks[id] = onError;
             return id;
         }
 
         /// <summary>
         /// Register a void callback (no parameters) and return its ID
         /// </summary>
-        public string RegisterCallback(Action callback)
+        public string RegisterVoidCallback(Action onSuccess, Action<AITException> onError)
         {
             string id = $"cb_{_callbackIdCounter++}";
             // Wrap Action in Action<object> for storage
-            _callbacks[id] = new Action<object>((_) => callback?.Invoke());
+            _callbacks[id] = new Action<object>((_) => onSuccess?.Invoke());
+            _errorCallbacks[id] = onError;
             return id;
         }
 
         /// <summary>
-        /// Try to get and remove a callback by ID
+        /// Try to get and remove a success callback by ID
         /// </summary>
         public bool TryGetCallback<T>(string callbackId, out Action<T> callback)
         {
@@ -70,6 +155,7 @@ namespace AppsInToss
             {
                 callback = rawCallback as Action<T>;
                 _callbacks.Remove(callbackId);
+                _errorCallbacks.Remove(callbackId);
                 return callback != null;
             }
             callback = null;
@@ -77,11 +163,27 @@ namespace AppsInToss
         }
 
         /// <summary>
-        /// Remove a callback without invoking it
+        /// Try to get and remove an error callback by ID
+        /// </summary>
+        public bool TryGetErrorCallback(string callbackId, out Action<AITException> callback)
+        {
+            if (_errorCallbacks.TryGetValue(callbackId, out callback))
+            {
+                _callbacks.Remove(callbackId);
+                _errorCallbacks.Remove(callbackId);
+                return callback != null;
+            }
+            callback = null;
+            return false;
+        }
+
+        /// <summary>
+        /// Remove callbacks without invoking them
         /// </summary>
         public void RemoveCallback(string callbackId)
         {
             _callbacks.Remove(callbackId);
+            _errorCallbacks.Remove(callbackId);
         }
 
         /// <summary>
@@ -90,9 +192,11 @@ namespace AppsInToss
         /// </summary>
         public void OnAITCallback(string jsonPayload)
         {
+            Debug.Log($"[AITCore] OnAITCallback received: {jsonPayload}");
             try
             {
                 var callbackData = JsonUtility.FromJson<CallbackData>(jsonPayload);
+                Debug.Log($"[AITCore] Routing callback: id={callbackData.CallbackId}, type={callbackData.TypeName}");
                 RouteCallback(callbackData.CallbackId, callbackData.TypeName, callbackData.Result);
             }
             catch (Exception ex)
@@ -102,25 +206,137 @@ namespace AppsInToss
         }
 
         /// <summary>
-        /// Route callback based on type name
+        /// Route callback based on type name.
+        /// On success: calls callback with data.
+        /// On error: calls error callback with AITException (causes Task to fault).
         /// </summary>
         private void RouteCallback(string callbackId, string typeName, string resultJson)
         {
+            // Parse APIResponse first (success/data/error format)
+            var apiResponse = JsonUtility.FromJson<APIResponse>(resultJson);
+
             switch (typeName)
             {
 {{#each callbackTypes}}
                 case "{{this}}":
-                    if (TryGetCallback<{{this}}>(callbackId, out var callback{{@index}}) && callback{{@index}} != null)
+                    if (apiResponse.success)
                     {
-                        var result{{@index}} = JsonUtility.FromJson<{{this}}>(resultJson);
-                        callback{{@index}}(result{{@index}});
+                        if (TryGetCallback<{{this}}>(callbackId, out var callback{{@index}}) && callback{{@index}} != null)
+                        {
+                            var data{{@index}} = JsonUtility.FromJson<{{this}}>(apiResponse.data);
+                            callback{{@index}}(data{{@index}});
+                        }
+                    }
+                    else
+                    {
+                        if (TryGetErrorCallback(callbackId, out var errorCallback{{@index}}) && errorCallback{{@index}} != null)
+                        {
+                            errorCallback{{@index}}(new AITException("{{this}}", apiResponse.error));
+                        }
                     }
                     break;
 {{/each}}
-                case "void":
-                    if (TryGetCallback<object>(callbackId, out var voidCallback) && voidCallback != null)
+{{#each enumCallbackTypes}}
+                case "{{this}}":
+                    if (apiResponse.success)
                     {
-                        voidCallback(null);
+                        if (TryGetCallback<{{this}}>(callbackId, out var enumCb_{{this}}) && enumCb_{{this}} != null)
+                        {
+                            // enum은 JsonUtility가 파싱 불가. Enum.TryParse 사용
+                            var enumStr_{{this}} = apiResponse.data.Trim().Trim('"');
+                            if (Enum.TryParse<{{this}}>(enumStr_{{this}}, true, out var enumVal_{{this}}))
+                            {
+                                enumCb_{{this}}(enumVal_{{this}});
+                            }
+                            else
+                            {
+                                Debug.LogWarning("[AITCore] Failed to parse enum {{this}}: " + enumStr_{{this}});
+                            }
+                        }
+                    }
+                    else
+                    {
+                        if (TryGetErrorCallback(callbackId, out var enumErrCb_{{this}}) && enumErrCb_{{this}} != null)
+                        {
+                            enumErrCb_{{this}}(new AITException("{{this}}", apiResponse.error));
+                        }
+                    }
+                    break;
+{{/each}}
+                case "string":
+                    if (apiResponse.success)
+                    {
+                        if (TryGetCallback<string>(callbackId, out var stringCallback) && stringCallback != null)
+                        {
+                            // string은 JsonUtility가 파싱 불가. data가 JSON 문자열이면 따옴표 제거
+                            var stringData = apiResponse.data;
+                            if (stringData.StartsWith("\"") && stringData.EndsWith("\""))
+                            {
+                                stringData = stringData.Substring(1, stringData.Length - 2);
+                            }
+                            stringCallback(stringData);
+                        }
+                    }
+                    else
+                    {
+                        if (TryGetErrorCallback(callbackId, out var stringErrorCallback) && stringErrorCallback != null)
+                        {
+                            stringErrorCallback(new AITException("string", apiResponse.error));
+                        }
+                    }
+                    break;
+                case "bool":
+                    if (apiResponse.success)
+                    {
+                        if (TryGetCallback<bool>(callbackId, out var boolCallback) && boolCallback != null)
+                        {
+                            // bool은 JsonUtility가 파싱 불가. 직접 파싱
+                            var boolData = apiResponse.data.Trim().ToLower() == "true";
+                            boolCallback(boolData);
+                        }
+                    }
+                    else
+                    {
+                        if (TryGetErrorCallback(callbackId, out var boolErrorCallback) && boolErrorCallback != null)
+                        {
+                            boolErrorCallback(new AITException("bool", apiResponse.error));
+                        }
+                    }
+                    break;
+                case "double":
+                    if (apiResponse.success)
+                    {
+                        if (TryGetCallback<double>(callbackId, out var doubleCallback) && doubleCallback != null)
+                        {
+                            // double은 JsonUtility가 파싱 불가. 직접 파싱
+                            if (double.TryParse(apiResponse.data, out var doubleData))
+                            {
+                                doubleCallback(doubleData);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        if (TryGetErrorCallback(callbackId, out var doubleErrorCallback) && doubleErrorCallback != null)
+                        {
+                            doubleErrorCallback(new AITException("double", apiResponse.error));
+                        }
+                    }
+                    break;
+                case "void":
+                    if (apiResponse.success)
+                    {
+                        if (TryGetCallback<object>(callbackId, out var voidCallback) && voidCallback != null)
+                        {
+                            voidCallback(null);
+                        }
+                    }
+                    else
+                    {
+                        if (TryGetErrorCallback(callbackId, out var voidErrorCallback) && voidErrorCallback != null)
+                        {
+                            voidErrorCallback(new AITException("void", apiResponse.error));
+                        }
                     }
                     break;
 

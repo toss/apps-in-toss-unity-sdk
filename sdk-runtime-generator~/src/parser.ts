@@ -181,8 +181,8 @@ export class TypeScriptParser {
 
     const returnType = this.parseType(func.getReturnType());
 
-    // 모든 API를 비동기로 강제하여 에러 처리를 일관되게 callback으로 수행
-    const isAsync = true; // returnType.kind === 'promise';
+    // returnType이 Promise인지 확인하여 동기/비동기 구분
+    const isAsync = returnType.kind === 'promise';
     const hasPermission = this.checkPermissionSupport(func);
 
     // 항상 .d.ts 파일명에서 카테고리 추출 (@category JSDoc 태그 무시)
@@ -245,8 +245,8 @@ export class TypeScriptParser {
     });
 
     const returnType = this.parseType(signature.getReturnType());
-    // 모든 API를 비동기로 강제하여 에러 처리를 일관되게 callback으로 수행
-    const isAsync = true; // returnType.kind === 'promise';
+    // returnType이 Promise인지 확인하여 동기/비동기 구분
+    const isAsync = returnType.kind === 'promise';
     const hasPermission = false; // TODO: 검증 로직 추가
 
     // 항상 .d.ts 파일명에서 카테고리 추출 (@category JSDoc 태그 무시)

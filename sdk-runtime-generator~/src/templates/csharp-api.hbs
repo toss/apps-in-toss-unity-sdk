@@ -12,7 +12,7 @@
         /// <returns>{{{returnDescription}}}</returns>
 {{/if}}
 {{#if isAsync}}
-        public static void {{{pascalName}}}({{#each parameters}}{{this.paramType}} {{this.paramName}}{{#unless @last}}, {{/unless}}{{/each}}{{#if parameters.length}}, {{/if}}{{#if (eq callbackType "void")}}Action{{else}}Action<{{{callbackType}}}>{{/if}} callback)
+        public static void {{{pascalName}}}({{#each parameters}}{{this.paramType}} {{this.paramName}}{{#unless @last}}, {{/unless}}{{/each}}{{#if parameters.length}}, {{/if}}{{#if (eq callbackType "void")}}Action<Result<object>>{{else}}Action<Result<{{{callbackType}}}>>{{/if}} callback)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             string callbackId = AITCore.Instance.RegisterCallback(callback);
@@ -22,10 +22,10 @@
             UnityEngine.Debug.Log($"[AIT Mock] {{{pascalName}}} called");
 {{#if callbackType}}
 {{#if (eq callbackType "void")}}
-            callback?.Invoke();
+            callback?.Invoke(Result<object>.Success(null));
 {{else}}
             var mockResult = new {{{callbackType}}}();
-            callback?.Invoke(mockResult);
+            callback?.Invoke(Result<{{{callbackType}}}>.Success(mockResult));
 {{/if}}
 {{/if}}
 #endif

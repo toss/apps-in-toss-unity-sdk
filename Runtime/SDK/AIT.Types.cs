@@ -91,6 +91,8 @@ namespace AppsInToss
     {
         public string AuthorizationCode;
         public string Referrer;
+        /// <summary>에러 발생 시 에러 메시지 (플랫폼 미지원 등)</summary>
+        public string error;
     }
 
     [Serializable]
@@ -113,6 +115,8 @@ namespace AppsInToss
         public string AccessLocation; // optional
         public double Timestamp;
         public LocationCoords Coords;
+        /// <summary>에러 발생 시 에러 메시지 (플랫폼 미지원 등)</summary>
+        public string error;
     }
 
     [Serializable]
@@ -188,6 +192,8 @@ namespace AppsInToss
     public class SetScreenAwakeModeResult
     {
         public bool Enabled;
+        /// <summary>에러 발생 시 에러 메시지 (플랫폼 미지원 등)</summary>
+        public string error;
     }
 
     [Serializable]
@@ -200,6 +206,8 @@ namespace AppsInToss
     public class SetSecureScreenResult
     {
         public bool Enabled;
+        /// <summary>에러 발생 시 에러 메시지 (플랫폼 미지원 등)</summary>
+        public string error;
     }
 
     [Serializable]

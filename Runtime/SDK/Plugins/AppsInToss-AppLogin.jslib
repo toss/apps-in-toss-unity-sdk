@@ -6,65 +6,62 @@
  * 수정하지 마세요. 변경사항은 재생성 시 손실됩니다.
  *
  * web-framework tag: next
- * 생성 시각: 2025-12-01T09:35:24.816Z
+ * 생성 시각: 2025-12-03T10:02:26.825Z
  * Category: AppLogin
  */
 
 mergeInto(LibraryManager.library, {
     __appLogin_Internal: function(callbackId, typeName) {
-        // @apps-in-toss/web-framework 직접 호출 (bridge-core 패턴)
-        // 모든 API가 비동기이므로 에러를 callback으로 전달
+        // 비동기 함수 (Promise 반환)
         var callback = UTF8ToString(callbackId);
         var typeNameStr = UTF8ToString(typeName);
-        var eventId = Math.random().toString(36).substring(2, 15);
-        var emitter = window.__GRANITE_NATIVE_EMITTER;
-        var webView = window.ReactNativeWebView;
 
-        // bridge-core 에러 체크: 플랫폼 미지원 시 throw 대신 callback으로 에러 전달
-        if (!emitter || !webView) {
-            var errorMessage = !emitter
-                ? '__GRANITE_NATIVE_EMITTER is not available'
-                : 'ReactNativeWebView is not available in browser environment';
+        console.log('[AIT jslib] appLogin called, callbackId:', callback);
 
-            var errorPayload = JSON.stringify({
+        try {
+            var promiseResult = window.AppsInToss.appLogin();
+            console.log('[AIT jslib] appLogin returned:', promiseResult, 'isPromise:', promiseResult && typeof promiseResult.then === 'function');
+
+            if (!promiseResult || typeof promiseResult.then !== 'function') {
+                // Promise가 아닌 경우 (undefined, null 등) - 즉시 응답
+                console.log('[AIT jslib] appLogin did not return a Promise, sending immediate response');
+                var payload = JSON.stringify({
+                    CallbackId: callback,
+                    TypeName: typeNameStr,
+                    Result: JSON.stringify({ success: true, data: JSON.stringify(promiseResult), error: '' })
+                });
+                SendMessage('AITCore', 'OnAITCallback', payload);
+                return;
+            }
+
+            promiseResult
+                .then(function(result) {
+                    console.log('[AIT jslib] appLogin resolved:', result);
+                    var payload = JSON.stringify({
+                        CallbackId: callback,
+                        TypeName: typeNameStr,
+                        Result: JSON.stringify({ success: true, data: JSON.stringify(result), error: '' })
+                    });
+                    SendMessage('AITCore', 'OnAITCallback', payload);
+                })
+                .catch(function(error) {
+                    console.log('[AIT jslib] appLogin rejected:', error);
+                    var payload = JSON.stringify({
+                        CallbackId: callback,
+                        TypeName: typeNameStr,
+                        Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+                    });
+                    SendMessage('AITCore', 'OnAITCallback', payload);
+                });
+        } catch (error) {
+            console.log('[AIT jslib] appLogin sync error:', error);
+            var payload = JSON.stringify({
                 CallbackId: callback,
                 TypeName: typeNameStr,
-                Result: JSON.stringify({ error: errorMessage })
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
             });
-            SendMessage('AITCore', 'OnAITCallback', errorPayload);
-            return;
+            SendMessage('AITCore', 'OnAITCallback', payload);
         }
-
-        // 응답 리스너 등록
-        var removeResolve = emitter.on('appLogin/resolve/' + eventId, function(result) {
-            removeResolve();
-            removeReject();
-            var payload = JSON.stringify({
-                CallbackId: callback,
-                TypeName: typeNameStr,
-                Result: JSON.stringify(result)
-            });
-            SendMessage('AITCore', 'OnAITCallback', payload);
-        });
-
-        var removeReject = emitter.on('appLogin/reject/' + eventId, function(error) {
-            removeResolve();
-            removeReject();
-            var payload = JSON.stringify({
-                CallbackId: callback,
-                TypeName: typeNameStr,
-                Result: JSON.stringify({ error: error.message || String(error) })
-            });
-            SendMessage('AITCore', 'OnAITCallback', payload);
-        });
-
-        // Native로 메시지 전송
-        webView.postMessage(JSON.stringify({
-            type: 'method',
-            functionName: 'appLogin',
-            eventId: eventId,
-            args: []
-        }));
     },
 
 });

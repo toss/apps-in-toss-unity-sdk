@@ -106,7 +106,7 @@ export class JSLibGenerator {
       name: api.name,
       originalName: api.originalName, // Use the original TypeScript name from parser
       parameters,
-      hasCallback: api.isAsync,
+      hasCallback: true, // 동기/비동기 모두 Unity로 콜백 필요
       isAsync: api.isAsync,
       hasWebFrameworkImport: true,
       webFrameworkNamespace,

@@ -1,0 +1,67 @@
+// -----------------------------------------------------------------------
+// <copyright file="AIT.Location.cs" company="Toss">
+//     Copyright (c) Toss. All rights reserved.
+//     Apps in Toss Unity SDK - Location APIs
+// </copyright>
+// -----------------------------------------------------------------------
+
+using System;
+using System.Threading.Tasks;
+
+namespace AppsInToss
+{
+    /// <summary>
+    /// Apps in Toss Platform API - Location
+    /// </summary>
+    public static partial class AIT
+    {
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [APICategory("Location")]
+        public static async Task<Location> GetCurrentLocation(GetCurrentLocationOptions options)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<Location>();
+            string callbackId = AITCore.Instance.RegisterCallback<Location>(
+                result => tcs.TrySetResult(result),
+                error => tcs.TrySetException(error)
+            );
+            __getCurrentLocation_Internal(UnityEngine.JsonUtility.ToJson(options), callbackId, "Location");
+            return await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] GetCurrentLocation called");
+            await Task.CompletedTask;
+            return default(Location);
+#endif
+        }
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __getCurrentLocation_Internal(string options, string callbackId, string typeName);
+#endif
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [APICategory("Location")]
+        public static async Task<System.Action> StartUpdateLocation(StartUpdateLocationEventParams eventParams)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<System.Action>();
+            string callbackId = AITCore.Instance.RegisterCallback<System.Action>(
+                result => tcs.TrySetResult(result),
+                error => tcs.TrySetException(error)
+            );
+            __startUpdateLocation_Internal(UnityEngine.JsonUtility.ToJson(eventParams), callbackId, "System.Action");
+            return await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] StartUpdateLocation called");
+            await Task.CompletedTask;
+            return default(System.Action);
+#endif
+        }
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __startUpdateLocation_Internal(string eventParams, string callbackId, string typeName);
+#endif
+    }
+}

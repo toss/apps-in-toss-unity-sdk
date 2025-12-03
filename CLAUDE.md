@@ -60,9 +60,26 @@ This is the **Apps in Toss Unity SDK** - a Unity package that enables Unity/Tuan
 ```
 apps-in-toss-unity-sdk/
 ├── Runtime/                          # Runtime SDK code
-│   └── SDK/                          # Auto-generated SDK API files
-│       ├── AITCore.cs               # Core infrastructure (jslib bridge)
-│       └── AIT.*.cs                 # Individual API methods
+│   └── SDK/                          # Auto-generated SDK API files (카테고리별 partial class)
+│       ├── AIT.cs                   # Main partial class 선언
+│       ├── AIT.Authentication.cs    # 인증 API (AppLogin, GetIsTossLoginIntegratedService)
+│       ├── AIT.Payment.cs           # 결제 API (CheckoutPayment)
+│       ├── AIT.SystemInfo.cs        # 시스템 정보 API (GetDeviceId, GetLocale, etc.)
+│       ├── AIT.Location.cs          # 위치 API (GetCurrentLocation, StartUpdateLocation)
+│       ├── AIT.Permission.cs        # 권한 API (GetPermission, RequestPermission, etc.)
+│       ├── AIT.GameCenter.cs        # 게임센터 API
+│       ├── AIT.Share.cs             # 공유 API
+│       ├── AIT.Media.cs             # 미디어 API
+│       ├── AIT.Clipboard.cs         # 클립보드 API
+│       ├── AIT.Device.cs            # 디바이스 API
+│       ├── AIT.Navigation.cs        # 네비게이션 API
+│       ├── AIT.Events.cs            # 이벤트 API
+│       ├── AIT.Certificate.cs       # 인증서 API
+│       ├── AIT.Visibility.cs        # 가시성 API
+│       ├── AIT.Types.cs             # 타입 정의 (Options, Result 클래스)
+│       ├── AITCore.cs               # 인프라 코드 (jslib 브릿지, 예외 처리)
+│       └── Plugins/
+│           └── AITBridge.jslib      # JavaScript 브릿지
 ├── Editor/                           # Unity Editor scripts
 │   ├── AppsInTossBuildWindow.cs     # Main build & deploy UI window
 │   ├── AITConvertCore.cs            # Core build pipeline logic
@@ -80,7 +97,15 @@ apps-in-toss-unity-sdk/
 ├── Tools~/                           # Development tools (excluded from UPM)
 │   └── NodeJS/                      # Embedded Node.js (auto-downloaded)
 ├── Tests~/                           # Test files (excluded from UPM)
-│   └── E2E/                         # E2E benchmark tests
+│   └── E2E/                         # E2E 테스트
+│       ├── SampleUnityProject-6000.2/  # Unity 6000.2 테스트 프로젝트
+│       ├── SampleUnityProject-6000.0/  # Unity 6000.0 테스트 프로젝트
+│       ├── SampleUnityProject-2022.3/  # Unity 2022.3 테스트 프로젝트
+│       ├── SampleUnityProject-2021.3/  # Unity 2021.3 테스트 프로젝트
+│       ├── SharedScripts/              # 공유 테스트 스크립트 (UPM 패키지)
+│       │   ├── Runtime/               # InteractiveAPITester, RuntimeAPITester, etc.
+│       │   └── Editor/                # E2EBuildRunner
+│       └── tests/                     # Playwright E2E 테스트
 └── sdk-runtime-generator~/           # SDK code generator (excluded from UPM)
 ```
 
@@ -227,29 +252,52 @@ pnpm test       # Run unit tests
 | `string` | `string` |
 | `number` | `double` |
 | `boolean` | `bool` |
-| `Promise<T>` | `System.Action<T>` callback |
+| `Promise<T>` | `Task<T>` (async/await 패턴) |
 | `T \| U` | Discriminated union class |
+
+### API 사용 패턴
+SDK API는 async/await 패턴을 사용하며, 에러 발생 시 `AITException`을 throw합니다:
+
+```csharp
+try
+{
+    string deviceId = await AIT.GetDeviceId();
+    PlatformOS os = await AIT.GetPlatformOS();
+}
+catch (AITException ex)
+{
+    Debug.LogError($"API 호출 실패: {ex.Message} (code: {ex.Code})");
+}
+```
 
 ## Testing Strategy
 
-### E2E Benchmark Tests
-The SDK uses an E2E-focused testing strategy with Playwright:
+### E2E 테스트 구조
+SDK는 4개 Unity 버전에 대해 E2E 테스트를 실행합니다:
 
 ```
 Tests~/E2E/
-├── SampleUnityProject/           # Minimal Unity project for testing
-│   ├── Assets/
-│   │   ├── Scripts/
-│   │   │   ├── AutoBenchmarkRunner.cs  # Benchmark data collection
-│   │   │   └── RuntimeAPITester.cs     # SDK API testing
-│   │   └── Editor/
-│   │       └── E2EBuildRunner.cs       # CLI build automation
-│   └── ait-build/dist/           # Built artifacts (gitignored)
+├── SampleUnityProject-6000.2/    # Unity 6000.2 테스트 프로젝트
+├── SampleUnityProject-6000.0/    # Unity 6000.0 테스트 프로젝트
+├── SampleUnityProject-2022.3/    # Unity 2022.3 테스트 프로젝트
+├── SampleUnityProject-2021.3/    # Unity 2021.3 테스트 프로젝트
+├── SharedScripts/                # 공유 테스트 스크립트 (UPM 패키지)
+│   ├── Runtime/
+│   │   ├── InteractiveAPITester.cs   # 대화형 API 테스터 (WebGL UI)
+│   │   ├── RuntimeAPITester.cs       # 자동 API 테스트 러너
+│   │   ├── APIParameterInspector.cs  # API 리플렉션 유틸리티
+│   │   ├── AutoBenchmarkRunner.cs    # 벤치마크 수집기
+│   │   └── E2EBootstrapper.cs        # 런타임 컴포넌트 초기화
+│   └── Editor/
+│       └── E2EBuildRunner.cs         # CLI 빌드 자동화
 └── tests/
-    ├── e2e-full-pipeline.test.js # Playwright E2E tests (7 tests)
-    ├── playwright.config.ts
-    └── benchmark-results.json    # Test results
+    ├── e2e-full-pipeline.test.js     # Playwright E2E 테스트 (9 tests)
+    └── playwright.config.ts
 ```
+
+### 테스트 모드
+- **E2E 모드** (`?e2e=true`): 자동 벤치마크 + API 테스트 실행
+- **Interactive 모드** (기본): 대화형 API 테스터 UI 표시
 
 ### Running Tests
 

@@ -17,6 +17,13 @@ Assets/WebGLTemplates/
 # Scene files (Unity modifies on every build due to fileID regeneration)
 Assets/Scenes/BenchmarkScene.unity
 
+# Resources folder (fonts copied from SharedScripts during build)
+Assets/Resources/
+Assets/Resources.meta
+
+# Benchmark results (generated during E2E tests)
+BenchmarkResults/
+
 # IDE
 .idea/
 .vscode/

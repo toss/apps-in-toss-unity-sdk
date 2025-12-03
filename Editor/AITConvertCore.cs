@@ -767,6 +767,15 @@ namespace AppsInToss
             File.Copy(tsconfigSrc, tsconfigDst, true);
             Debug.Log($"[AIT]   ✓ tsconfig.json 복사: {new FileInfo(tsconfigSrc).Length / 1024}KB");
 
+            // unity-bridge.ts 복사 (치환 없음) - @apps-in-toss/web-framework 함수를 window.AppsInToss에 노출
+            string unityBridgeSrc = Path.Combine(sdkBuildConfigPath, "unity-bridge.ts");
+            string unityBridgeDst = Path.Combine(buildProjectPath, "unity-bridge.ts");
+            if (File.Exists(unityBridgeSrc))
+            {
+                File.Copy(unityBridgeSrc, unityBridgeDst, true);
+                Debug.Log($"[AIT]   ✓ unity-bridge.ts 복사: {new FileInfo(unityBridgeSrc).Length / 1024}KB");
+            }
+
             // granite.config.ts 복사 및 플레이스홀더 치환
             Debug.Log("[AIT] granite.config.ts placeholder 치환 중...");
             Debug.Log($"[AIT]   %AIT_APP_NAME% → '{config.appName}'");
@@ -847,6 +856,7 @@ namespace AppsInToss
                 // AIT Config에서 프로덕션 모드 가져오기
                 var aitConfig = UnityUtil.GetEditorConf();
                 string isProduction = aitConfig.isProduction ? "true" : "false";
+                string enableDebugConsole = aitConfig.enableDebugConsole ? "true" : "false";
 
                 // Unity 플레이스홀더 치환
                 indexContent = indexContent
@@ -862,7 +872,8 @@ namespace AppsInToss
                     .Replace("%UNITY_WEBGL_FRAMEWORK_FILENAME%", frameworkFile)
                     .Replace("%UNITY_WEBGL_CODE_FILENAME%", wasmFile)
                     .Replace("%UNITY_WEBGL_SYMBOLS_FILENAME%", symbolsFile)
-                    .Replace("%AIT_IS_PRODUCTION%", isProduction);
+                    .Replace("%AIT_IS_PRODUCTION%", isProduction)
+                    .Replace("%AIT_ENABLE_DEBUG_CONSOLE%", enableDebugConsole);
 
                 File.WriteAllText(indexDest, indexContent, System.Text.Encoding.UTF8);
                 Debug.Log("[AIT] index.html → 프로젝트 루트에 생성");

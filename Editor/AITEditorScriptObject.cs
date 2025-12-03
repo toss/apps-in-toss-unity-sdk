@@ -82,6 +82,10 @@ namespace AppsInToss
         public string interstitialAdGroupId = "ait-ad-test-interstitial-id";
         public string rewardedAdGroupId = "ait-ad-test-rewarded-id";
 
+        [Header("디버그 설정")]
+        [Tooltip("프로덕션 빌드에서 디버그 콘솔을 활성화합니다. 개발/테스트 목적으로 사용하세요.")]
+        public bool enableDebugConsole = false;
+
         [Header("배포 설정")]
         public string deploymentKey = "";
 

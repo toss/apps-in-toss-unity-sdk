@@ -299,7 +299,10 @@
     </div>
 
     <!-- Apps in Toss Unity Bridge (Unity 로더보다 먼저!) -->
+    <!-- Legacy bridge for compatibility -->
     <script src="Runtime/appsintoss-unity-bridge.js"></script>
+    <!-- Web Framework Bridge - @apps-in-toss/web-framework 함수를 window.AppsInToss에 노출 -->
+    <script type="module" src="./unity-bridge.ts"></script>
 
     <!-- Unity Loader Script -->
     <script src="%UNITY_WEBGL_LOADER_URL%"></script>
@@ -402,251 +405,344 @@
                 console.log('[AIT] ✓ Apps in Toss Unity Bridge 초기화 완료');
             }
 
-            // Debug Console 직접 초기화 (Unity 씬에 DebugConsole GameObject가 없을 경우)
-            setTimeout(function() {
-                try {
-                    console.log('[AIT] Debug Console 초기화 중...');
+            // Debug Console 초기화 (옵션에 따라 활성화)
+            // %AIT_ENABLE_DEBUG_CONSOLE% 값이 'true'인 경우에만 디버그 콘솔 표시
+            var enableDebugConsole = '%AIT_ENABLE_DEBUG_CONSOLE%' === 'true';
 
-                    // CSS 스타일 추가
-                    var style = document.createElement('style');
-                    style.textContent = `
-                        #unity-debug-console {
-                            position: fixed;
-                            top: 0;
-                            left: 0;
-                            width: 100%;
-                            height: 40%;
-                            background: rgba(0, 0, 0, 0.9);
-                            color: white;
-                            font-family: "Courier New", monospace;
-                            font-size: 12px;
-                            z-index: 99999;
-                            display: flex;
-                            flex-direction: column;
-                            pointer-events: auto;
-                            overflow: hidden;
-                        }
-                        #unity-debug-console.hidden { display: none; }
-                        #unity-debug-console-header {
-                            background: rgba(50, 50, 50, 0.95);
-                            padding: 8px 12px;
-                            border-bottom: 1px solid #555;
-                            display: flex;
-                            justify-content: space-between;
-                            align-items: center;
-                        }
-                        #unity-debug-console-title {
-                            font-weight: bold;
-                            color: #00ff00;
-                        }
-                        #unity-debug-console-controls {
-                            display: flex;
-                            gap: 10px;
-                        }
-                        #unity-debug-console-controls button {
-                            background: #444;
-                            border: 1px solid #666;
-                            color: white;
-                            padding: 4px 12px;
-                            cursor: pointer;
-                            border-radius: 3px;
-                            font-size: 11px;
-                        }
-                        #unity-debug-console-controls button:hover { background: #555; }
-                        #unity-debug-console-metrics {
-                            background: rgba(30, 30, 30, 0.95);
-                            padding: 8px 12px;
-                            border-bottom: 1px solid #444;
-                            line-height: 1.6;
-                        }
-                        #unity-debug-console-metrics .metric {
-                            color: #00ff88;
-                            margin-right: 20px;
-                            display: inline-block;
-                        }
-                        #unity-debug-console-logs {
-                            flex: 1;
-                            overflow-y: auto;
-                            padding: 8px 12px;
-                        }
-                        #unity-debug-console-logs::-webkit-scrollbar { width: 8px; }
-                        #unity-debug-console-logs::-webkit-scrollbar-track { background: #222; }
-                        #unity-debug-console-logs::-webkit-scrollbar-thumb {
-                            background: #555;
-                            border-radius: 4px;
-                        }
-                        .debug-log-entry {
-                            padding: 3px 0;
-                            border-bottom: 1px solid #333;
-                        }
-                        .debug-log-entry.log { color: #fff; }
-                        .debug-log-entry.warning { color: #ffcc00; }
-                        .debug-log-entry.error {
-                            color: #ff4444;
-                            font-weight: bold;
-                        }
-                        .debug-log-timestamp {
-                            color: #888;
-                            margin-right: 8px;
-                        }
-                    `;
-                    document.head.appendChild(style);
+            if (enableDebugConsole) {
+                setTimeout(function() {
+                    try {
+                        console.log('[AIT] Debug Console 초기화 중...');
 
-                    // 콘솔 HTML 생성
-                    var consoleDiv = document.createElement('div');
-                    consoleDiv.id = 'unity-debug-console';
-                    consoleDiv.innerHTML = `
-                        <div id="unity-debug-console-header">
-                            <div id="unity-debug-console-title">🎮 Unity Debug Console (Press \` to toggle)</div>
-                            <div id="unity-debug-console-controls">
-                                <button onclick="(function(){var logs=document.getElementById('unity-debug-console-logs').innerText;if(navigator.clipboard){navigator.clipboard.writeText(logs).then(function(){alert('📋 로그가 클립보드에 복사되었습니다!')}).catch(function(err){alert('복사 실패: '+err.message)})}else{var textArea=document.createElement('textarea');textArea.value=logs;textArea.style.position='fixed';textArea.style.opacity='0';document.body.appendChild(textArea);textArea.select();try{document.execCommand('copy');alert('📋 로그가 클립보드에 복사되었습니다!')}catch(err){alert('복사 실패: '+err.message)}document.body.removeChild(textArea)}})()">📋 Copy Logs</button>
-                                <button onclick="document.getElementById('unity-debug-console-logs').innerHTML=''">Clear</button>
-                                <button onclick="document.getElementById('unity-debug-console').classList.toggle('hidden')">Hide</button>
+                        // CSS 스타일 추가
+                        var style = document.createElement('style');
+                        style.textContent = `
+                            /* Debug Console 전체화면 오버레이 */
+                            #unity-debug-console {
+                                position: fixed;
+                                top: 0;
+                                left: 0;
+                                width: 100%;
+                                height: 100%;
+                                background: rgba(0, 0, 0, 0.95);
+                                color: white;
+                                font-family: "Courier New", monospace;
+                                font-size: 12px;
+                                z-index: 99999;
+                                display: none;
+                                flex-direction: column;
+                                pointer-events: auto;
+                                overflow: hidden;
+                            }
+                            #unity-debug-console.visible { display: flex; }
+                            #unity-debug-console-header {
+                                background: rgba(50, 50, 50, 0.98);
+                                padding: 12px 16px;
+                                border-bottom: 2px solid #00ff00;
+                                display: flex;
+                                justify-content: space-between;
+                                align-items: center;
+                            }
+                            #unity-debug-console-title {
+                                font-weight: bold;
+                                color: #00ff00;
+                                font-size: 16px;
+                            }
+                            #unity-debug-console-controls {
+                                display: flex;
+                                gap: 10px;
+                            }
+                            #unity-debug-console-controls button {
+                                background: #444;
+                                border: 1px solid #666;
+                                color: white;
+                                padding: 8px 16px;
+                                cursor: pointer;
+                                border-radius: 4px;
+                                font-size: 13px;
+                                transition: background 0.2s;
+                            }
+                            #unity-debug-console-controls button:hover { background: #555; }
+                            #unity-debug-console-controls button:active { background: #333; }
+                            #unity-debug-console-metrics {
+                                background: rgba(30, 30, 30, 0.98);
+                                padding: 12px 16px;
+                                border-bottom: 1px solid #444;
+                                line-height: 1.8;
+                            }
+                            #unity-debug-console-metrics .metric {
+                                color: #00ff88;
+                                margin-right: 24px;
+                                display: inline-block;
+                                font-size: 13px;
+                            }
+                            #unity-debug-console-logs {
+                                flex: 1;
+                                overflow-y: auto;
+                                padding: 12px 16px;
+                            }
+                            #unity-debug-console-logs::-webkit-scrollbar { width: 10px; }
+                            #unity-debug-console-logs::-webkit-scrollbar-track { background: #222; }
+                            #unity-debug-console-logs::-webkit-scrollbar-thumb {
+                                background: #555;
+                                border-radius: 5px;
+                            }
+                            .debug-log-entry {
+                                padding: 4px 0;
+                                border-bottom: 1px solid #333;
+                                font-size: 13px;
+                                line-height: 1.5;
+                            }
+                            .debug-log-entry.log { color: #fff; }
+                            .debug-log-entry.warning { color: #ffcc00; }
+                            .debug-log-entry.error {
+                                color: #ff4444;
+                                font-weight: bold;
+                            }
+                            .debug-log-timestamp {
+                                color: #888;
+                                margin-right: 10px;
+                            }
+
+                            /* 왼쪽 하단 토글 버튼 */
+                            #unity-debug-toggle-btn {
+                                position: fixed;
+                                bottom: 20px;
+                                left: 20px;
+                                width: 56px;
+                                height: 56px;
+                                background: rgba(0, 0, 0, 0.8);
+                                border: 2px solid #00ff00;
+                                border-radius: 50%;
+                                color: #00ff00;
+                                font-size: 24px;
+                                cursor: pointer;
+                                z-index: 99998;
+                                display: flex;
+                                align-items: center;
+                                justify-content: center;
+                                transition: all 0.2s;
+                                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+                            }
+                            #unity-debug-toggle-btn:hover {
+                                background: rgba(0, 255, 0, 0.2);
+                                transform: scale(1.1);
+                            }
+                            #unity-debug-toggle-btn:active {
+                                transform: scale(0.95);
+                            }
+                        `;
+                        document.head.appendChild(style);
+
+                        // 콘솔 HTML 생성
+                        var consoleDiv = document.createElement('div');
+                        consoleDiv.id = 'unity-debug-console';
+                        consoleDiv.innerHTML = `
+                            <div id="unity-debug-console-header">
+                                <div id="unity-debug-console-title">Unity Debug Console</div>
+                                <div id="unity-debug-console-controls">
+                                    <button id="debug-copy-btn">Copy Logs</button>
+                                    <button id="debug-clear-btn">Clear</button>
+                                    <button id="debug-close-btn">Close</button>
+                                </div>
                             </div>
-                        </div>
-                        <div id="unity-debug-console-metrics">
-                            <div style="margin-bottom: 4px;">
-                                <span class="metric">FPS: --</span>
-                                <span class="metric">Frame: -- ms</span>
-                                <span class="metric">JS Heap: -- / -- MB</span>
-                                <span class="metric">Resolution: --</span>
+                            <div id="unity-debug-console-metrics">
+                                <div style="margin-bottom: 4px;">
+                                    <span class="metric">FPS: --</span>
+                                    <span class="metric">Frame: -- ms</span>
+                                    <span class="metric">JS Heap: -- / -- MB</span>
+                                    <span class="metric">Resolution: --</span>
+                                </div>
+                                <div>
+                                    <span class="metric">Device: -- GB RAM, -- Cores</span>
+                                    <span class="metric">GPU: --</span>
+                                </div>
                             </div>
-                            <div>
-                                <span class="metric">Device: -- GB RAM, -- Cores</span>
-                                <span class="metric">GPU: --</span>
-                            </div>
-                        </div>
-                        <div id="unity-debug-console-logs"></div>
-                    `;
-                    document.body.appendChild(consoleDiv);
+                            <div id="unity-debug-console-logs"></div>
+                        `;
+                        document.body.appendChild(consoleDiv);
 
-                    // 백틱 키 토글
-                    document.addEventListener('keydown', function(e) {
-                        if (e.key === '`' || e.keyCode === 192) {
-                            consoleDiv.classList.toggle('hidden');
-                            e.preventDefault();
-                        }
-                    });
+                        // 토글 버튼 생성
+                        var toggleBtn = document.createElement('button');
+                        toggleBtn.id = 'unity-debug-toggle-btn';
+                        toggleBtn.innerHTML = '&#128736;'; // 🛠️ 공구 아이콘
+                        toggleBtn.title = 'Debug Console 열기';
+                        document.body.appendChild(toggleBtn);
 
-                    // 로그 추가 함수
-                    var logsElement = document.getElementById('unity-debug-console-logs');
-                    var maxLogs = 50;
+                        // 버튼 이벤트 연결
+                        var copyBtn = document.getElementById('debug-copy-btn');
+                        var clearBtn = document.getElementById('debug-clear-btn');
+                        var closeBtn = document.getElementById('debug-close-btn');
 
-                    function addLog(message, type) {
-                        var now = new Date();
-                        var timestamp = now.getHours().toString().padStart(2, '0') + ':' +
-                                       now.getMinutes().toString().padStart(2, '0') + ':' +
-                                       now.getSeconds().toString().padStart(2, '0');
-
-                        var entry = document.createElement('div');
-                        entry.className = 'debug-log-entry ' + type;
-                        entry.innerHTML = '<span class="debug-log-timestamp">[' + timestamp + ']</span>' +
-                                         '<span class="debug-log-message">' + String(message) + '</span>';
-
-                        logsElement.appendChild(entry);
-
-                        // 최대 로그 수 유지
-                        var logs = logsElement.children;
-                        if (logs.length > maxLogs) {
-                            logsElement.removeChild(logs[0]);
+                        // 콘솔 열기/닫기 함수
+                        function toggleConsole() {
+                            var isVisible = consoleDiv.classList.toggle('visible');
+                            toggleBtn.innerHTML = isVisible ? '&#10006;' : '&#128736;'; // ✖ 또는 🛠️
+                            toggleBtn.title = isVisible ? 'Debug Console 닫기' : 'Debug Console 열기';
                         }
 
-                        // 자동 스크롤
-                        logsElement.scrollTop = logsElement.scrollHeight;
-                    }
+                        toggleBtn.onclick = toggleConsole;
+                        closeBtn.onclick = toggleConsole;
 
-                    // console.log/warn/error 후킹
-                    var originalLog = console.log;
-                    var originalWarn = console.warn;
-                    var originalError = console.error;
+                        copyBtn.onclick = function() {
+                            var logs = document.getElementById('unity-debug-console-logs').innerText;
+                            if (navigator.clipboard) {
+                                navigator.clipboard.writeText(logs).then(function() {
+                                    alert('로그가 클립보드에 복사되었습니다!');
+                                }).catch(function(err) {
+                                    alert('복사 실패: ' + err.message);
+                                });
+                            } else {
+                                var textArea = document.createElement('textarea');
+                                textArea.value = logs;
+                                textArea.style.position = 'fixed';
+                                textArea.style.opacity = '0';
+                                document.body.appendChild(textArea);
+                                textArea.select();
+                                try {
+                                    document.execCommand('copy');
+                                    alert('로그가 클립보드에 복사되었습니다!');
+                                } catch (err) {
+                                    alert('복사 실패: ' + err.message);
+                                }
+                                document.body.removeChild(textArea);
+                            }
+                        };
 
-                    console.log = function() {
-                        originalLog.apply(console, arguments);
-                        var message = Array.prototype.slice.call(arguments).join(' ');
-                        addLog(message, 'log');
-                    };
+                        clearBtn.onclick = function() {
+                            document.getElementById('unity-debug-console-logs').innerHTML = '';
+                        };
 
-                    console.warn = function() {
-                        originalWarn.apply(console, arguments);
-                        var message = Array.prototype.slice.call(arguments).join(' ');
-                        addLog(message, 'warning');
-                    };
-
-                    console.error = function() {
-                        originalError.apply(console, arguments);
-                        var message = Array.prototype.slice.call(arguments).join(' ');
-                        addLog(message, 'error');
-                    };
-
-                    // 초기 메시지
-                    addLog('Debug Console initialized', 'log');
-
-                    // 🔥 Early logs 출력 (bridge.js가 먼저 실행되어 저장한 로그들)
-                    if (window._aitEarlyLogs && window._aitEarlyLogs.length > 0) {
-                        addLog('=== Bridge Initialization Logs ===', 'log');
-                        window._aitEarlyLogs.forEach(function(log) {
-                            addLog('[Bridge] ' + log, 'log');
+                        // 백틱 키 토글
+                        document.addEventListener('keydown', function(e) {
+                            if (e.key === '`' || e.keyCode === 192) {
+                                toggleConsole();
+                                e.preventDefault();
+                            }
                         });
-                        addLog('=== End Bridge Logs ===', 'log');
-                    }
 
-                    // FPS 및 메트릭 업데이트
-                    var frameCount = 0;
-                    var lastTime = performance.now();
-                    var startTime = lastTime;
-                    var metricsElement = document.getElementById('unity-debug-console-metrics');
+                        // 로그 추가 함수
+                        var logsElement = document.getElementById('unity-debug-console-logs');
+                        var maxLogs = 100;
 
-                    // 초기 시스템 정보 가져오기
-                    var deviceMemory = navigator.deviceMemory || '--';
-                    var cpuCores = navigator.hardwareConcurrency || '--';
-                    var gl = canvas ? canvas.getContext('webgl2') || canvas.getContext('webgl') : null;
-                    var gpuInfo = gl ? gl.getParameter(gl.RENDERER) : '--';
+                        function addLog(message, type) {
+                            var now = new Date();
+                            var timestamp = now.getHours().toString().padStart(2, '0') + ':' +
+                                           now.getMinutes().toString().padStart(2, '0') + ':' +
+                                           now.getSeconds().toString().padStart(2, '0');
 
-                    function updateMetrics() {
-                        frameCount++;
-                        var currentTime = performance.now();
-                        var elapsed = currentTime - startTime;
+                            var entry = document.createElement('div');
+                            entry.className = 'debug-log-entry ' + type;
+                            entry.innerHTML = '<span class="debug-log-timestamp">[' + timestamp + ']</span>' +
+                                             '<span class="debug-log-message">' + String(message) + '</span>';
 
-                        if (elapsed >= 500) { // 0.5초마다 업데이트
-                            // FPS 계산
-                            var fps = Math.round((frameCount * 1000) / elapsed);
+                            logsElement.appendChild(entry);
 
-                            // 평균 프레임 타임 계산
-                            var avgFrameTime = (elapsed / frameCount).toFixed(2);
+                            // 최대 로그 수 유지
+                            var logs = logsElement.children;
+                            if (logs.length > maxLogs) {
+                                logsElement.removeChild(logs[0]);
+                            }
 
-                            // 메모리
-                            var memUsed = performance.memory ? (performance.memory.usedJSHeapSize / (1024 * 1024)).toFixed(1) : '--';
-                            var memTotal = performance.memory ? (performance.memory.totalJSHeapSize / (1024 * 1024)).toFixed(1) : '--';
-
-                            // 해상도
-                            var resolution = window.innerWidth + 'x' + window.innerHeight;
-                            var pixelRatio = window.devicePixelRatio ? ' @' + window.devicePixelRatio.toFixed(1) + 'x' : '';
-
-                            metricsElement.innerHTML =
-                                '<div style="margin-bottom: 4px;">' +
-                                '<span class="metric">FPS: ' + fps + '</span>' +
-                                '<span class="metric">Frame: ' + avgFrameTime + ' ms</span>' +
-                                '<span class="metric">JS Heap: ' + memUsed + ' / ' + memTotal + ' MB</span>' +
-                                '<span class="metric">Resolution: ' + resolution + pixelRatio + '</span>' +
-                                '</div>' +
-                                '<div>' +
-                                '<span class="metric">Device: ' + deviceMemory + ' GB RAM, ' + cpuCores + ' Cores</span>' +
-                                '<span class="metric">GPU: ' + gpuInfo + '</span>' +
-                                '</div>';
-
-                            frameCount = 0;
-                            startTime = currentTime;
+                            // 자동 스크롤
+                            logsElement.scrollTop = logsElement.scrollHeight;
                         }
 
-                        requestAnimationFrame(updateMetrics);
-                    }
-                    updateMetrics();
+                        // console.log/warn/error 후킹
+                        var originalLog = console.log;
+                        var originalWarn = console.warn;
+                        var originalError = console.error;
 
-                    console.log('[AIT] ✓ Debug Console 초기화 완료');
-                } catch (e) {
-                    console.error('[AIT] Debug Console 초기화 실패:', e);
-                }
-            }, 100);
+                        console.log = function() {
+                            originalLog.apply(console, arguments);
+                            var message = Array.prototype.slice.call(arguments).join(' ');
+                            addLog(message, 'log');
+                        };
+
+                        console.warn = function() {
+                            originalWarn.apply(console, arguments);
+                            var message = Array.prototype.slice.call(arguments).join(' ');
+                            addLog(message, 'warning');
+                        };
+
+                        console.error = function() {
+                            originalError.apply(console, arguments);
+                            var message = Array.prototype.slice.call(arguments).join(' ');
+                            addLog(message, 'error');
+                        };
+
+                        // 초기 메시지
+                        addLog('Debug Console initialized', 'log');
+
+                        // Early logs 출력 (bridge.js가 먼저 실행되어 저장한 로그들)
+                        if (window._aitEarlyLogs && window._aitEarlyLogs.length > 0) {
+                            addLog('=== Bridge Initialization Logs ===', 'log');
+                            window._aitEarlyLogs.forEach(function(log) {
+                                addLog('[Bridge] ' + log, 'log');
+                            });
+                            addLog('=== End Bridge Logs ===', 'log');
+                        }
+
+                        // FPS 및 메트릭 업데이트
+                        var frameCount = 0;
+                        var lastTime = performance.now();
+                        var startTime = lastTime;
+                        var metricsElement = document.getElementById('unity-debug-console-metrics');
+
+                        // 초기 시스템 정보 가져오기
+                        var deviceMemory = navigator.deviceMemory || '--';
+                        var cpuCores = navigator.hardwareConcurrency || '--';
+                        var gl = canvas ? canvas.getContext('webgl2') || canvas.getContext('webgl') : null;
+                        var gpuInfo = gl ? gl.getParameter(gl.RENDERER) : '--';
+
+                        function updateMetrics() {
+                            frameCount++;
+                            var currentTime = performance.now();
+                            var elapsed = currentTime - startTime;
+
+                            if (elapsed >= 500) { // 0.5초마다 업데이트
+                                // FPS 계산
+                                var fps = Math.round((frameCount * 1000) / elapsed);
+
+                                // 평균 프레임 타임 계산
+                                var avgFrameTime = (elapsed / frameCount).toFixed(2);
+
+                                // 메모리
+                                var memUsed = performance.memory ? (performance.memory.usedJSHeapSize / (1024 * 1024)).toFixed(1) : '--';
+                                var memTotal = performance.memory ? (performance.memory.totalJSHeapSize / (1024 * 1024)).toFixed(1) : '--';
+
+                                // 해상도
+                                var resolution = window.innerWidth + 'x' + window.innerHeight;
+                                var pixelRatio = window.devicePixelRatio ? ' @' + window.devicePixelRatio.toFixed(1) + 'x' : '';
+
+                                metricsElement.innerHTML =
+                                    '<div style="margin-bottom: 4px;">' +
+                                    '<span class="metric">FPS: ' + fps + '</span>' +
+                                    '<span class="metric">Frame: ' + avgFrameTime + ' ms</span>' +
+                                    '<span class="metric">JS Heap: ' + memUsed + ' / ' + memTotal + ' MB</span>' +
+                                    '<span class="metric">Resolution: ' + resolution + pixelRatio + '</span>' +
+                                    '</div>' +
+                                    '<div>' +
+                                    '<span class="metric">Device: ' + deviceMemory + ' GB RAM, ' + cpuCores + ' Cores</span>' +
+                                    '<span class="metric">GPU: ' + gpuInfo + '</span>' +
+                                    '</div>';
+
+                                frameCount = 0;
+                                startTime = currentTime;
+                            }
+
+                            requestAnimationFrame(updateMetrics);
+                        }
+                        updateMetrics();
+
+                        console.log('[AIT] Debug Console 초기화 완료 (오른쪽 하단 버튼으로 열기/닫기)');
+                    } catch (e) {
+                        console.error('[AIT] Debug Console 초기화 실패:', e);
+                    }
+                }, 100);
+            } else {
+                console.log('[AIT] Debug Console 비활성화됨 (enableDebugConsole: false)');
+            }
 
             // 로딩 화면 숨기기
             console.log('[AIT] ✓ 게임 로딩 완료!');

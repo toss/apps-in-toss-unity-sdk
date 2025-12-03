@@ -1,21 +1,9 @@
 <linker>
-    <!--
-        Preserve Physics classes that are used at runtime via CreatePrimitive().
-        Unity's CreatePrimitive automatically adds colliders:
-        - PrimitiveType.Sphere -> SphereCollider
-        - PrimitiveType.Capsule -> CapsuleCollider
-        - PrimitiveType.Cube -> BoxCollider
-        - PrimitiveType.Cylinder -> MeshCollider
-        - PrimitiveType.Plane -> MeshCollider
-
-        These are stripped when Managed Stripping Level is High because
-        they're not directly referenced in code at compile time.
-    -->
-    <assembly fullname="UnityEngine.PhysicsModule" preserve="all"/>
-
     <!-- Prevent IL2CPP from stripping AppsInToss SDK types -->
-    <!-- SDK Result types have fields accessed via Reflection (JsonUtility) -->
+    <!-- SDK is compiled as AppsInTossSDK assembly (defined in asmdef) -->
+    <!-- Fields are accessed via Reflection (JsonUtility) so must be preserved -->
     <assembly fullname="AppsInTossSDK" preserve="all">
+        <!-- Explicitly preserve all types with their fields -->
         <type fullname="AppsInToss.AppLoginResult" preserve="all"/>
         <type fullname="AppsInToss.CheckoutPaymentResult" preserve="all"/>
         <type fullname="AppsInToss.ContactResult" preserve="all"/>
@@ -29,7 +17,7 @@
         <type fullname="AppsInToss.SetSecureScreenResult" preserve="all"/>
         <type fullname="AppsInToss.SubmitGameCenterLeaderBoardScoreResponse" preserve="all"/>
         <type fullname="AppsInToss.CallbackData" preserve="all"/>
-        <!-- Preserve all types in AppsInToss namespace -->
+        <!-- Wildcard to catch any other types -->
         <type fullname="AppsInToss.*" preserve="all"/>
     </assembly>
 </linker>

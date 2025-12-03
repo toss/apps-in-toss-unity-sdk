@@ -4,12 +4,24 @@ using UnityEngine;
 /// E2E 테스트용 부트스트래퍼 - 런타임에 필요한 컴포넌트들을 동적으로 생성
 /// Unity 6에서 Editor에서 AddComponent로 추가한 스크립트가 Scene 직렬화 시 누락되는 문제를 해결
 /// </summary>
-public class E2EBootstrapper : MonoBehaviour
+public static class E2EBootstrapper
 {
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void OnAfterSceneLoad()
     {
-        Debug.Log("[E2EBootstrapper] Initializing E2E test components...");
+        Initialize();
+    }
+
+    /// <summary>
+    /// Public initialization method that can be called from E2EBootstrapperHelper
+    /// </summary>
+    public static void Initialize()
+    {
+        Debug.Log("[E2EBootstrapper] ===== BOOTSTRAPPER STARTED =====");
+
+        // URL 파라미터로 E2E 모드 확인
+        bool isE2EMode = IsE2EMode();
+        Debug.Log($"[E2EBootstrapper] Mode: {(isE2EMode ? "E2E Test" : "Interactive Test App")}");
 
         // BenchmarkManager 찾기 또는 생성
         GameObject benchmarkManager = GameObject.Find("BenchmarkManager");
@@ -18,6 +30,58 @@ public class E2EBootstrapper : MonoBehaviour
             benchmarkManager = new GameObject("BenchmarkManager");
             Debug.Log("[E2EBootstrapper] Created BenchmarkManager GameObject");
         }
+
+        // E2E 모드인 경우 자동 테스트 컴포넌트 추가
+        if (isE2EMode)
+        {
+            InitializeE2EComponents(benchmarkManager);
+        }
+        else
+        {
+            // 일반 모드인 경우 대화형 테스터 추가
+            InitializeInteractiveComponents(benchmarkManager);
+        }
+    }
+
+    /// <summary>
+    /// URL 파라미터로 E2E 모드 여부 확인
+    /// WebGL: ?e2e=true 또는 &e2e=true 파라미터 체크
+    /// Editor: 항상 E2E 모드로 취급 (개발 편의성)
+    /// </summary>
+    private static bool IsE2EMode()
+    {
+#if UNITY_WEBGL && !UNITY_EDITOR
+        try
+        {
+            string url = Application.absoluteURL;
+            if (string.IsNullOrEmpty(url))
+            {
+                Debug.LogWarning("[E2EBootstrapper] Application.absoluteURL is empty, defaulting to Interactive mode");
+                return false;
+            }
+
+            string urlLower = url.ToLower();
+            bool isE2E = urlLower.Contains("?e2e=true") || urlLower.Contains("&e2e=true");
+            Debug.Log($"[E2EBootstrapper] URL: {url}, IsE2E: {isE2E}");
+            return isE2E;
+        }
+        catch (System.Exception ex)
+        {
+            Debug.LogError($"[E2EBootstrapper] Failed to check URL: {ex.Message}");
+            return false;
+        }
+#else
+        // Editor에서는 Interactive 모드로 변경 (InteractiveAPITester 테스트용)
+        return false;
+#endif
+    }
+
+    /// <summary>
+    /// E2E 자동 테스트 컴포넌트 초기화
+    /// </summary>
+    private static void InitializeE2EComponents(GameObject benchmarkManager)
+    {
+        Debug.Log("[E2EBootstrapper] Initializing E2E test components...");
 
         // AutoBenchmarkRunner 추가
         if (benchmarkManager.GetComponent<AutoBenchmarkRunner>() == null)
@@ -71,5 +135,30 @@ public class E2EBootstrapper : MonoBehaviour
         }
 
         Debug.Log("[E2EBootstrapper] E2E test components initialization complete");
+    }
+
+    /// <summary>
+    /// 대화형 테스터 컴포넌트 초기화
+    /// </summary>
+    private static void InitializeInteractiveComponents(GameObject benchmarkManager)
+    {
+        Debug.Log("[E2EBootstrapper] Initializing interactive test app components...");
+
+        // InteractiveAPITester 추가
+        if (benchmarkManager.GetComponent<InteractiveAPITester>() == null)
+        {
+            benchmarkManager.AddComponent<InteractiveAPITester>();
+            Debug.Log("[E2EBootstrapper] Added InteractiveAPITester component");
+        }
+
+        // CameraController는 양쪽 모두 필요
+        Camera mainCamera = Camera.main;
+        if (mainCamera != null && mainCamera.GetComponent<CameraController>() == null)
+        {
+            mainCamera.gameObject.AddComponent<CameraController>();
+            Debug.Log("[E2EBootstrapper] Added CameraController component");
+        }
+
+        Debug.Log("[E2EBootstrapper] Interactive test app components initialization complete");
     }
 }

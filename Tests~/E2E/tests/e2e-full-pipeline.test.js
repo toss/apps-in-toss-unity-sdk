@@ -152,8 +152,8 @@ async function startDevServer(aitBuildDir, defaultPort) {
   await new Promise(r => setTimeout(r, 1000));
 
   return new Promise((resolve, reject) => {
-    // npm run dev (granite dev) 실행
-    const server = spawn('npm', ['run', 'dev'], {
+    // pnpm run dev (granite dev) 실행
+    const server = spawn('pnpm', ['run', 'dev'], {
       cwd: aitBuildDir,
       stdio: 'pipe',
       env: { ...process.env, NODE_OPTIONS: '' }
@@ -215,8 +215,8 @@ async function startProductionServer(aitBuildDir, defaultPort) {
   await new Promise(r => setTimeout(r, 1000));
 
   return new Promise((resolve, reject) => {
-    // npm run start (granite start) 실행
-    const server = spawn('npm', ['run', 'start'], {
+    // pnpm run start (granite start) 실행
+    const server = spawn('pnpm', ['run', 'start'], {
       cwd: aitBuildDir,
       stdio: 'pipe',
       env: { ...process.env, NODE_OPTIONS: '' }
@@ -474,9 +474,9 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
 
     console.log(`✅ Dev server running on port: ${workingPort}`);
 
-    // 페이지 로딩
+    // 페이지 로딩 (E2E 모드 활성화)
     const startTime = Date.now();
-    const response = await page.goto(`http://localhost:${workingPort}`, {
+    const response = await page.goto(`http://localhost:${workingPort}?e2e=true`, {
       waitUntil: 'domcontentloaded',
       timeout: 30000
     });
@@ -632,9 +632,9 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       throw new Error(`Server failed to start on port ${actualPort}`);
     }
 
-    // 페이지 로딩
+    // 페이지 로딩 (E2E 모드 활성화)
     const startTime = Date.now();
-    const response = await page.goto(`http://localhost:${actualPort}`, {
+    const response = await page.goto(`http://localhost:${actualPort}?e2e=true`, {
       waitUntil: 'networkidle',
       timeout: 60000
     });
@@ -724,9 +724,9 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       throw new Error(`Server failed to start on port ${actualPort}`);
     }
 
-    // 페이지 로딩 시간 측정
+    // 페이지 로딩 시간 측정 (E2E 모드 활성화)
     const startTime = Date.now();
-    await page.goto(`http://localhost:${actualPort}`, {
+    await page.goto(`http://localhost:${actualPort}?e2e=true`, {
       waitUntil: 'domcontentloaded',
       timeout: 60000
     });
@@ -863,8 +863,8 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       consoleErrors.push(`[PageError] ${error.message}`);
     });
 
-    // 페이지 로딩
-    await page.goto(`http://localhost:${actualPort}`, {
+    // 페이지 로딩 (E2E 모드 활성화)
+    await page.goto(`http://localhost:${actualPort}?e2e=true`, {
       waitUntil: 'networkidle',
       timeout: 60000
     });

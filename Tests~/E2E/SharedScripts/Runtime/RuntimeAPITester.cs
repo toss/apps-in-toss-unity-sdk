@@ -22,9 +22,6 @@ public class RuntimeAPITester : MonoBehaviour
     private static extern void SendAPITestResults(string json);
 
     [DllImport("__Internal")]
-    private static extern void CopyToClipboard(string text);
-
-    [DllImport("__Internal")]
     private static extern int IsAppsInTossPlatformAvailable();
 #endif
 
@@ -438,17 +435,9 @@ public class RuntimeAPITester : MonoBehaviour
     void CopyResultsToClipboard()
     {
 #if UNITY_WEBGL && !UNITY_EDITOR
-        try
-        {
-            CopyToClipboard(_lastResultJson);
-            _showCopyConfirmation = true;
-            _copyConfirmationTime = Time.time;
-            Debug.Log("[RuntimeAPITester] Results copied to clipboard");
-        }
-        catch (Exception e)
-        {
-            Debug.LogError($"[RuntimeAPITester] Failed to copy to clipboard: {e.Message}");
-        }
+        // Clipboard API removed - not available in WebGL
+        Debug.Log("[RuntimeAPITester] Clipboard copy not available in WebGL");
+        _showCopyConfirmation = false;
 #else
         // Unity Editor: 시스템 클립보드 사용
         GUIUtility.systemCopyBuffer = _lastResultJson;

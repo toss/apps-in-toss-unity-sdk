@@ -4,6 +4,7 @@ import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { ParsedAPI, ParsedParameter, GeneratedCode, ParsedTypeDefinition, ParsedType } from '../types.js';
 import { mapToCSharpType } from '../validators/types.js';
+import { getCategory, CATEGORY_ORDER } from '../categories.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -43,6 +44,7 @@ export class CSharpGenerator {
   private coreTemplate?: HandlebarsTemplateDelegate;
   private partialApiTemplate?: HandlebarsTemplateDelegate;
   private mainTemplate?: HandlebarsTemplateDelegate;
+  private categoryPartialTemplate?: HandlebarsTemplateDelegate;
 
   constructor() {
     this.registerHelpers();
@@ -103,7 +105,7 @@ export class CSharpGenerator {
    * 템플릿 로드
    */
   private async loadTemplates(): Promise<void> {
-    if (this.apiTemplate && this.classTemplate && this.coreTemplate && this.partialApiTemplate && this.mainTemplate) return;
+    if (this.apiTemplate && this.classTemplate && this.coreTemplate && this.partialApiTemplate && this.mainTemplate && this.categoryPartialTemplate) return;
 
     const templatesDir = path.join(__dirname, '../templates');
     const apiTemplatePath = path.join(templatesDir, 'csharp-api.hbs');
@@ -111,18 +113,21 @@ export class CSharpGenerator {
     const coreTemplatePath = path.join(templatesDir, 'csharp-core.hbs');
     const partialApiTemplatePath = path.join(templatesDir, 'csharp-partial-api.hbs');
     const mainTemplatePath = path.join(templatesDir, 'csharp-main.hbs');
+    const categoryPartialTemplatePath = path.join(templatesDir, 'csharp-category-partial.hbs');
 
     const apiTemplateSource = await fs.readFile(apiTemplatePath, 'utf-8');
     const classTemplateSource = await fs.readFile(classTemplatePath, 'utf-8');
     const coreTemplateSource = await fs.readFile(coreTemplatePath, 'utf-8');
     const partialApiTemplateSource = await fs.readFile(partialApiTemplatePath, 'utf-8');
     const mainTemplateSource = await fs.readFile(mainTemplatePath, 'utf-8');
+    const categoryPartialTemplateSource = await fs.readFile(categoryPartialTemplatePath, 'utf-8');
 
     this.apiTemplate = Handlebars.compile(apiTemplateSource);
     this.classTemplate = Handlebars.compile(classTemplateSource);
     this.coreTemplate = Handlebars.compile(coreTemplateSource);
     this.partialApiTemplate = Handlebars.compile(partialApiTemplateSource);
     this.mainTemplate = Handlebars.compile(mainTemplateSource);
+    this.categoryPartialTemplate = Handlebars.compile(categoryPartialTemplateSource);
   }
 
   /**
@@ -158,12 +163,14 @@ export class CSharpGenerator {
     // 반환 타입 변환
     const returnType = mapToCSharpType(api.returnType);
 
-    // 콜백 사용 여부
-    const hasCallback = api.isAsync;
-    let callbackType =
-      api.returnType.kind === 'promise' && api.returnType.promiseType
-        ? mapToCSharpType(api.returnType.promiseType)
-        : 'object';
+    // 콜백 타입 결정: 비동기는 Promise 내부 타입, 동기는 반환 타입 직접 사용
+    let callbackType: string;
+    if (api.returnType.kind === 'promise' && api.returnType.promiseType) {
+      callbackType = mapToCSharpType(api.returnType.promiseType);
+    } else {
+      // 동기 함수: 반환 타입을 직접 사용
+      callbackType = mapToCSharpType(api.returnType);
+    }
 
     // Discriminated Union인 경우 Result 클래스 사용
     if (api.returnType.kind === 'promise' &&
@@ -268,8 +275,10 @@ export class CSharpGenerator {
 
   /**
    * AITCore.cs 파일 생성 (인프라 코드)
+   * @param apis API 목록
+   * @param enumTypeNames enum 타입 이름 Set (enum은 별도 처리 필요)
    */
-  async generateCoreFile(apis: ParsedAPI[]): Promise<string> {
+  async generateCoreFile(apis: ParsedAPI[], enumTypeNames?: Set<string>): Promise<string> {
     await this.loadTemplates();
 
     if (!this.coreTemplate) {
@@ -278,6 +287,7 @@ export class CSharpGenerator {
 
     // 모든 비동기 API의 콜백 타입 수집
     const callbackTypes = new Set<string>();
+    const enumCallbackTypes = new Set<string>();
 
     for (const api of apis) {
       if (api.isAsync && api.returnType.kind === 'promise' && api.returnType.promiseType) {
@@ -298,15 +308,22 @@ export class CSharpGenerator {
           }
         }
 
-        // void, object, __type 같은 primitive는 제외하고 실제 타입만 추가
-        if (callbackType !== 'void' && callbackType !== 'object' && callbackType !== 'string' && callbackType !== '__type') {
-          callbackTypes.add(callbackType);
+        // void, object, __type, primitive 타입은 제외 (템플릿에서 수동으로 처리)
+        const primitiveTypes = ['void', 'object', 'string', 'bool', 'double', 'int', 'float', 'long', '__type'];
+        if (!primitiveTypes.includes(callbackType)) {
+          // enum 타입과 일반 타입 분리
+          if (enumTypeNames && enumTypeNames.has(callbackType)) {
+            enumCallbackTypes.add(callbackType);
+          } else {
+            callbackTypes.add(callbackType);
+          }
         }
       }
     }
 
     return this.coreTemplate({
       callbackTypes: Array.from(callbackTypes).sort(),
+      enumCallbackTypes: Array.from(enumCallbackTypes).sort(),
     });
   }
 
@@ -349,23 +366,29 @@ export class CSharpGenerator {
         paramType = `${apiName}${paramName}`;
       }
 
+      // WebGL DllImport에서 직접 전달 가능한 primitive 타입인지 확인
+      const isPrimitive = ['string', 'int', 'float', 'double', 'bool', 'long', 'short', 'byte'].includes(paramType);
+
       return {
         paramName: escapeCSharpKeyword(param.name),
         paramType,
         optional: param.optional,
         description: param.description,
+        isPrimitive,
       };
     });
 
     // 반환 타입 변환
     const returnType = mapToCSharpType(api.returnType);
 
-    // 콜백 타입
-    const hasCallback = api.isAsync;
-    let callbackType =
-      api.returnType.kind === 'promise' && api.returnType.promiseType
-        ? mapToCSharpType(api.returnType.promiseType)
-        : 'object';
+    // 콜백 타입 결정: 비동기는 Promise 내부 타입, 동기는 반환 타입 직접 사용
+    let callbackType: string;
+    if (api.returnType.kind === 'promise' && api.returnType.promiseType) {
+      callbackType = mapToCSharpType(api.returnType.promiseType);
+    } else {
+      // 동기 함수: 반환 타입을 직접 사용
+      callbackType = mapToCSharpType(api.returnType);
+    }
 
     // Discriminated Union인 경우 Result 클래스 사용
     if (api.returnType.kind === 'promise' &&
@@ -404,6 +427,7 @@ export class CSharpGenerator {
   /**
    * 모든 API의 partial class 파일들을 Map으로 반환
    * @returns Map<파일명, 내용>
+   * @deprecated Use generateCategoryFiles() instead for category-based grouping
    */
   async generatePartialApiFiles(apis: ParsedAPI[]): Promise<Map<string, string>> {
     const files = new Map<string, string>();
@@ -415,6 +439,154 @@ export class CSharpGenerator {
     }
 
     return files;
+  }
+
+  /**
+   * API를 카테고리별로 그룹핑하여 partial class 파일들을 생성
+   * @returns Map<파일명, 내용>
+   */
+  async generateCategoryFiles(apis: ParsedAPI[]): Promise<Map<string, string>> {
+    await this.loadTemplates();
+
+    if (!this.categoryPartialTemplate) {
+      throw new Error('Category partial template not loaded');
+    }
+
+    const files = new Map<string, string>();
+
+    // API를 카테고리별로 그룹핑
+    const categoryMap = new Map<string, ParsedAPI[]>();
+    for (const api of apis) {
+      const category = getCategory(api.originalName);
+      if (!categoryMap.has(category)) {
+        categoryMap.set(category, []);
+      }
+      categoryMap.get(category)!.push(api);
+    }
+
+    // 카테고리 순서에 따라 파일 생성
+    for (const category of CATEGORY_ORDER) {
+      const categoryApis = categoryMap.get(category);
+      if (!categoryApis || categoryApis.length === 0) continue;
+
+      // 각 API에 대해 템플릿 데이터 준비
+      const apisData = categoryApis.map(api => this.prepareApiData(api));
+
+      const content = this.categoryPartialTemplate({
+        categoryName: category,
+        apis: apisData,
+      });
+
+      const fileName = `AIT.${category}.cs`;
+      files.set(fileName, content);
+    }
+
+    // Other 카테고리 처리 (정의되지 않은 API들)
+    const otherApis = categoryMap.get('Other');
+    if (otherApis && otherApis.length > 0) {
+      const apisData = otherApis.map(api => this.prepareApiData(api));
+
+      const content = this.categoryPartialTemplate({
+        categoryName: 'Other',
+        apis: apisData,
+      });
+
+      files.set('AIT.Other.cs', content);
+    }
+
+    return files;
+  }
+
+  /**
+   * API 데이터를 템플릿에서 사용할 형식으로 변환
+   */
+  private prepareApiData(api: ParsedAPI): any {
+    // 파라미터 변환
+    const parameters = api.parameters.map(param => {
+      let paramType = mapToCSharpType(param.type);
+
+      // 파라미터가 익명 객체(__type, object)인 경우 의미있는 이름 생성
+      if ((paramType === '__type' || paramType === 'object') && param.type.kind === 'object' && param.type.properties && param.type.properties.length > 0) {
+        const capitalize = (str: string) => str.charAt(0).toUpperCase() + str.slice(1);
+        const apiName = capitalize(api.name);
+        const paramName = capitalize(param.name);
+        paramType = `${apiName}${paramName}`;
+      }
+
+      // WebGL DllImport에서 직접 전달 가능한 primitive 타입인지 확인
+      const isPrimitive = ['string', 'int', 'float', 'double', 'bool', 'long', 'short', 'byte'].includes(paramType);
+
+      return {
+        paramName: this.escapeCSharpKeyword(param.name),
+        paramType,
+        optional: param.optional,
+        description: param.description,
+        isPrimitive,
+      };
+    });
+
+    // 반환 타입 변환
+    const returnType = mapToCSharpType(api.returnType);
+
+    // 콜백 타입 결정
+    let callbackType: string;
+    if (api.returnType.kind === 'promise' && api.returnType.promiseType) {
+      callbackType = mapToCSharpType(api.returnType.promiseType);
+    } else {
+      callbackType = mapToCSharpType(api.returnType);
+    }
+
+    // Discriminated Union인 경우 Result 클래스 사용
+    if (api.returnType.kind === 'promise' &&
+        api.returnType.promiseType?.isDiscriminatedUnion) {
+      callbackType = `${api.pascalName}Result`;
+    }
+    // 익명 객체 타입(__type, object)이면 더 구체적인 이름 생성
+    else if (callbackType === '__type' || callbackType === 'object') {
+      const promiseType = api.returnType.promiseType;
+      if (promiseType && promiseType.kind === 'object' &&
+          promiseType.properties && promiseType.properties.length > 0) {
+        callbackType = `${api.pascalName}Result`;
+      } else if (!promiseType || promiseType.name === 'void' || promiseType.name === 'undefined') {
+        callbackType = 'void';
+      }
+    }
+
+    return {
+      name: api.name,
+      pascalName: api.pascalName,
+      originalName: api.originalName,
+      description: api.description,
+      returnDescription: api.returnDescription,
+      examples: api.examples,
+      parameters,
+      returnType,
+      isAsync: api.isAsync,
+      callbackType,
+    };
+  }
+
+  /**
+   * C# 예약어를 안전한 변수명으로 변환
+   */
+  private escapeCSharpKeyword(name: string): string {
+    const CSHARP_KEYWORDS = new Set([
+      'abstract', 'as', 'base', 'bool', 'break', 'byte', 'case', 'catch', 'char',
+      'checked', 'class', 'const', 'continue', 'decimal', 'default', 'delegate',
+      'do', 'double', 'else', 'enum', 'event', 'explicit', 'extern', 'false',
+      'finally', 'fixed', 'float', 'for', 'foreach', 'goto', 'if', 'implicit',
+      'in', 'int', 'interface', 'internal', 'is', 'lock', 'long', 'namespace',
+      'new', 'null', 'object', 'operator', 'out', 'override', 'params', 'private',
+      'protected', 'public', 'readonly', 'ref', 'return', 'sbyte', 'sealed',
+      'short', 'sizeof', 'stackalloc', 'static', 'string', 'struct', 'switch',
+      'this', 'throw', 'true', 'try', 'typeof', 'uint', 'ulong', 'unchecked',
+      'unsafe', 'ushort', 'using', 'virtual', 'void', 'volatile', 'while'
+    ]);
+
+    if (CSHARP_KEYWORDS.has(name)) {
+      return `${name}Param`;
+    }
+    return name;
   }
 }
 
@@ -701,7 +873,8 @@ export class CSharpTypeGenerator {
 
                 const cleanName = this.extractCleanName(typeName);
                 if (!typeMap.has(cleanName) && !exclude.has(cleanName)) {
-                  typeMap.set(cleanName, this.generateClassType(typeName, unionMember.properties));
+                  // 반환 타입이므로 isResultType: true - error 필드 추가
+                  typeMap.set(cleanName, this.generateClassType(typeName, unionMember.properties, true));
                 }
               }
             }
@@ -717,7 +890,8 @@ export class CSharpTypeGenerator {
 
           const cleanName = this.extractCleanName(typeName);
           if (!typeMap.has(cleanName) && !exclude.has(cleanName)) {
-            typeMap.set(cleanName, this.generateClassType(typeName, innerType.properties));
+            // 반환 타입이므로 isResultType: true - error 필드 추가
+            typeMap.set(cleanName, this.generateClassType(typeName, innerType.properties, true));
           }
         }
       }
@@ -731,7 +905,8 @@ export class CSharpTypeGenerator {
 
         const cleanName = this.extractCleanName(typeName);
         if (!typeMap.has(cleanName) && !exclude.has(cleanName)) {
-          typeMap.set(cleanName, this.generateClassType(typeName, api.returnType.properties));
+          // 반환 타입이므로 isResultType: true - error 필드 추가
+          typeMap.set(cleanName, this.generateClassType(typeName, api.returnType.properties, true));
         }
       }
     }
@@ -828,7 +1003,7 @@ ${fields}
   /**
    * 클래스 타입 생성
    */
-  private generateClassType(name: string, properties: any[]): string {
+  private generateClassType(name: string, properties: any[], isResultType: boolean = false): string {
     // extractCleanName을 사용하여 정리된 이름 얻기
     const cleanName = this.extractCleanName(name);
 
@@ -854,12 +1029,17 @@ ${fields}
       })
       .join('\n');
 
+    // Result 타입이면 error 필드 추가 (jslib 에러 응답 수신용)
+    const errorField = isResultType
+      ? '\n        /// <summary>에러 발생 시 에러 메시지 (플랫폼 미지원 등)</summary>\n        public string error;'
+      : '';
+
     // 중첩 타입들을 먼저 출력하고, 메인 클래스 출력
     const nestedTypesCode = Array.from(nestedTypes.values()).join('\n\n');
     const mainClass = `    [Serializable]
     public class ${cleanName}
     {
-${fields}
+${fields}${errorField}
     }`;
 
     return nestedTypesCode ? `${nestedTypesCode}\n\n${mainClass}` : mainClass;

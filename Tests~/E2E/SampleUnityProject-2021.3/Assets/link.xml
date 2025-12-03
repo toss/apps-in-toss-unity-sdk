@@ -12,4 +12,24 @@
         they're not directly referenced in code at compile time.
     -->
     <assembly fullname="UnityEngine.PhysicsModule" preserve="all"/>
+
+    <!-- Prevent IL2CPP from stripping AppsInToss SDK types -->
+    <!-- SDK Result types have fields accessed via Reflection (JsonUtility) -->
+    <assembly fullname="AppsInTossSDK" preserve="all">
+        <type fullname="AppsInToss.AppLoginResult" preserve="all"/>
+        <type fullname="AppsInToss.CheckoutPaymentResult" preserve="all"/>
+        <type fullname="AppsInToss.ContactResult" preserve="all"/>
+        <type fullname="AppsInToss.GameCenterGameProfileResponse" preserve="all"/>
+        <type fullname="AppsInToss.GetUserKeyForGameResult" preserve="all"/>
+        <type fullname="AppsInToss.GrantPromotionRewardForGameResult" preserve="all"/>
+        <type fullname="AppsInToss.ImageResponse" preserve="all"/>
+        <type fullname="AppsInToss.Location" preserve="all"/>
+        <type fullname="AppsInToss.NetworkStatus" preserve="all"/>
+        <type fullname="AppsInToss.SetScreenAwakeModeResult" preserve="all"/>
+        <type fullname="AppsInToss.SetSecureScreenResult" preserve="all"/>
+        <type fullname="AppsInToss.SubmitGameCenterLeaderBoardScoreResponse" preserve="all"/>
+        <type fullname="AppsInToss.CallbackData" preserve="all"/>
+        <!-- Preserve all types in AppsInToss namespace -->
+        <type fullname="AppsInToss.*" preserve="all"/>
+    </assembly>
 </linker>

@@ -52,51 +52,71 @@ Unity Editor에서 `Apps in Toss > Build & Deploy Window` 메뉴를 클릭하여
 
 ### 3. SDK 사용 예제
 
+SDK API는 async/await 패턴을 사용합니다:
+
 ```csharp
 using AppsInToss;
 using UnityEngine;
+using System.Threading.Tasks;
 
 public class GameManager : MonoBehaviour
 {
-    void Start()
+    async void Start()
     {
-        // 기기 ID 조회
-        string deviceId = AIT.GetDeviceId();
-        Debug.Log($"Device ID: {deviceId}");
+        try
+        {
+            // 기기 ID 조회
+            string deviceId = await AIT.GetDeviceId();
+            Debug.Log($"Device ID: {deviceId}");
 
-        // 플랫폼 OS 조회
-        AIT.GetPlatformOS((os) => {
+            // 플랫폼 OS 조회
+            PlatformOS os = await AIT.GetPlatformOS();
             Debug.Log($"Platform: {os}");
-        });
 
-        // 네트워크 상태 확인
-        AIT.GetNetworkStatus((status) => {
+            // 네트워크 상태 확인
+            NetworkStatus status = await AIT.GetNetworkStatus();
             Debug.Log($"Network: {status}");
-        });
+        }
+        catch (AITException ex)
+        {
+            Debug.LogError($"API 호출 실패: {ex.Message} (code: {ex.Code})");
+        }
     }
 
     // 결제 요청 예제
-    public void RequestPayment()
+    public async Task RequestPayment()
     {
-        var options = new CheckoutPaymentOptions {
-            // 결제 옵션 설정
-        };
+        try
+        {
+            var options = new CheckoutPaymentOptions {
+                // 결제 옵션 설정
+            };
 
-        AIT.CheckoutPayment(options, (result) => {
-            Debug.Log($"Payment result: {result}");
-        });
+            CheckoutPaymentResult result = await AIT.CheckoutPayment(options);
+            Debug.Log($"Payment result: {result.paymentKey}");
+        }
+        catch (AITException ex)
+        {
+            Debug.LogError($"결제 실패: {ex.Message}");
+        }
     }
 
     // 햅틱 피드백 예제
-    public void VibrateDevice()
+    public async void VibrateDevice()
     {
-        var options = new HapticFeedbackOptions {
-            // 피드백 옵션 설정
-        };
+        try
+        {
+            var options = new GenerateHapticFeedbackOptions {
+                style = "medium"
+            };
 
-        AIT.GenerateHapticFeedback(options, () => {
+            await AIT.GenerateHapticFeedback(options);
             Debug.Log("Haptic feedback generated");
-        });
+        }
+        catch (AITException ex)
+        {
+            Debug.LogError($"햅틱 피드백 실패: {ex.Message}");
+        }
     }
 }
 ```

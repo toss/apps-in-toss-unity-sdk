@@ -2,13 +2,169 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Text;
 using UnityEngine;
+using AppsInToss;
 
 /// <summary>
 /// SDK API 메서드를 리플렉션으로 분석하고 파라미터 정보를 추출하는 유틸리티
 /// </summary>
 public static class APIParameterInspector
 {
+    /// <summary>
+    /// SDK에서 사용하는 모든 enum 타입 레지스트리 (IL2CPP 호환)
+    /// </summary>
+    private static readonly Dictionary<Type, string[]> EnumRegistry = new Dictionary<Type, string[]>
+    {
+        { typeof(HapticFeedbackType), new[] { "TickWeak", "Tap", "TickMedium", "SoftMedium", "BasicWeak", "BasicMedium", "Success", "Error", "Wiggle", "Confetti" } },
+        { typeof(Accuracy), new[] { "Lowest", "Low", "Balanced", "High", "Highest", "BestForNavigation" } },
+        { typeof(NetworkStatus), new[] { "OFFLINE", "WIFI", "_2G", "_3G", "_4G", "_5G", "WWAN", "UNKNOWN" } },
+        { typeof(PermissionAccess), new[] { "Read", "Write", "Access" } }
+    };
+
+    /// <summary>
+    /// Enum 이름 목록 반환 (레지스트리 우선, 폴백으로 리플렉션)
+    /// </summary>
+    public static string[] GetEnumNames(Type enumType)
+    {
+        if (EnumRegistry.TryGetValue(enumType, out var names))
+            return names;
+
+        // 폴백: 런타임 리플렉션 (Editor에서만 동작 보장)
+        return Enum.GetNames(enumType);
+    }
+
+    /// <summary>
+    /// Enum 인덱스로 값 반환
+    /// </summary>
+    public static object GetEnumValueByIndex(Type enumType, int index)
+    {
+        var names = GetEnumNames(enumType);
+        if (index >= 0 && index < names.Length)
+        {
+            return Enum.Parse(enumType, names[index]);
+        }
+        return Enum.GetValues(enumType).GetValue(0);
+    }
+
+    /// <summary>
+    /// 타입의 공개 필드 목록 반환 (IL2CPP 호환)
+    /// </summary>
+    public static FieldInfo[] GetPublicFields(Type type)
+    {
+        return type.GetFields(BindingFlags.Public | BindingFlags.Instance);
+    }
+
+    /// <summary>
+    /// 필드가 Action/Delegate 타입인지 확인 (UI 입력 불가)
+    /// </summary>
+    public static bool IsCallbackField(FieldInfo field)
+    {
+        return typeof(Delegate).IsAssignableFrom(field.FieldType) ||
+               field.FieldType.Name.StartsWith("Action") ||
+               field.FieldType.Name.StartsWith("Func");
+    }
+
+    /// <summary>
+    /// 타입이 단순 타입인지 확인 (재사용을 위한 static 버전)
+    /// </summary>
+    public static bool IsSimpleType(Type type)
+    {
+        return type == typeof(string) ||
+               type == typeof(int) ||
+               type == typeof(double) ||
+               type == typeof(float) ||
+               type == typeof(bool);
+    }
+
+    /// <summary>
+    /// 결과 객체를 구조화된 형태로 변환 (필드명: 값 형식)
+    /// </summary>
+    public static string FormatResultStructured(object result, int maxDepth = 5)
+    {
+        if (result == null) return "null";
+
+        var sb = new StringBuilder();
+        FormatObjectRecursive(result, sb, 0, maxDepth);
+        return sb.ToString();
+    }
+
+    private static void FormatObjectRecursive(object obj, StringBuilder sb, int indent, int maxDepth)
+    {
+        if (obj == null)
+        {
+            sb.Append("null");
+            return;
+        }
+
+        if (indent > maxDepth)
+        {
+            sb.Append("...");
+            return;
+        }
+
+        var type = obj.GetType();
+        var indentStr = new string(' ', indent * 2);
+
+        // 단순 타입
+        if (IsSimpleType(type))
+        {
+            if (type == typeof(string))
+                sb.Append($"\"{obj}\"");
+            else
+                sb.Append(obj.ToString());
+            return;
+        }
+
+        // Enum
+        if (type.IsEnum)
+        {
+            sb.Append(obj.ToString());
+            return;
+        }
+
+        // 배열
+        if (type.IsArray)
+        {
+            var array = (Array)obj;
+            if (array.Length == 0)
+            {
+                sb.Append("[]");
+                return;
+            }
+            sb.AppendLine("[");
+            for (int i = 0; i < array.Length; i++)
+            {
+                sb.Append($"{indentStr}  [{i}]: ");
+                FormatObjectRecursive(array.GetValue(i), sb, indent + 1, maxDepth);
+                if (i < array.Length - 1) sb.Append(",");
+                sb.AppendLine();
+            }
+            sb.Append($"{indentStr}]");
+            return;
+        }
+
+        // 복합 객체
+        var fields = GetPublicFields(type);
+        if (fields.Length == 0)
+        {
+            sb.Append(obj.ToString());
+            return;
+        }
+
+        sb.AppendLine("{");
+        for (int i = 0; i < fields.Length; i++)
+        {
+            var field = fields[i];
+            var value = field.GetValue(obj);
+            sb.Append($"{indentStr}  {field.Name}: ");
+            FormatObjectRecursive(value, sb, indent + 1, maxDepth);
+            if (i < fields.Length - 1) sb.Append(",");
+            sb.AppendLine();
+        }
+        sb.Append($"{indentStr}}}");
+    }
+
     /// <summary>
     /// 카테고리 표시 순서
     /// </summary>

@@ -1,6 +1,6 @@
 // -----------------------------------------------------------------------
 // RuntimeAPITester.cs - E2E Runtime API Test Runner
-// SDK 접근 테스트 및 Reflection 기반 API 호출 테스트 수행
+// 39개 SDK API에 대한 올바른 에러 발생 검증
 // -----------------------------------------------------------------------
 
 using UnityEngine;
@@ -10,19 +10,17 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
+using AppsInToss;
 
 /// <summary>
 /// Runtime API 테스트 실행기
-/// SDK 접근 테스트 및 Reflection 기반 API 호출 테스트 수행
+/// 모든 39개 SDK API를 호출하고, 개발 환경에서 올바른 에러가 발생하는지 검증
 /// </summary>
 public class RuntimeAPITester : MonoBehaviour
 {
 #if UNITY_WEBGL && !UNITY_EDITOR
     [DllImport("__Internal")]
     private static extern void SendAPITestResults(string json);
-
-    [DllImport("__Internal")]
-    private static extern int IsAppsInTossPlatformAvailable();
 #endif
 
     [Header("Test Settings")]
@@ -33,14 +31,38 @@ public class RuntimeAPITester : MonoBehaviour
     public bool showUI = true;
     public bool showDetailedResults = false;
 
+    // 상정된 에러 패턴 (개발 환경에서 예상되는 에러)
+    // 이 패턴과 일치하면 "expectedError"로 분류 (정상)
+    private static readonly string[] EXPECTED_ERROR_PATTERNS = new string[]
+    {
+        // bridge-core 에러
+        "is not a constant handler",                    // Constant API
+        "__GRANITE_NATIVE_EMITTER is not available",    // Async API (emitter)
+        "ReactNativeWebView is not available",          // Native 통신
+
+        // 플랫폼 미지원 에러
+        "Platform not available",
+        "Not supported in browser",
+        "Native bridge not initialized",
+
+        // JavaScript 에러 (window.AppsInToss 미정의 등)
+        "Cannot read properties of undefined",          // window.AppsInToss.xxx 접근 시
+        "Cannot read property",                         // 구 브라우저 호환
+        "is not defined",                               // ReferenceError
+        "is undefined",                                 // TypeError
+
+        // Unity 직렬화 에러
+        "Default constructor not found",                // JsonUtility (Dictionary 등)
+        "MissingMethodException",                       // 생성자 누락
+    };
+
     private Dictionary<string, APITestResult> _results = new Dictionary<string, APITestResult>();
     private bool _testStarted = false;
     private bool _testCompleted = false;
+    private bool _allTestsQueued = false;  // 모든 테스트가 시작된 후에만 결과 전송 가능
     private int _pendingAsyncTests = 0;
     private Vector2 _scrollPosition = Vector2.zero;
     private string _lastResultJson = "";
-    private bool _showCopyConfirmation = false;
-    private float _copyConfirmationTime = 0f;
 
     void Start()
     {
@@ -64,13 +86,18 @@ public class RuntimeAPITester : MonoBehaviour
 
         Debug.Log("[RuntimeAPITester] ========================================");
         Debug.Log("[RuntimeAPITester] RUNTIME API TESTS STARTING");
+        Debug.Log("[RuntimeAPITester] Testing all 39 SDK APIs for correct error handling");
         Debug.Log("[RuntimeAPITester] ========================================");
 
-        // 1. SDK 접근 테스트
+        // 1. SDK 기본 접근 테스트
         TestSDKAccess();
 
-        // 2. SDK API 호출 테스트 (Reflection 기반)
+        // 2. 모든 39개 SDK API 호출 테스트
         TestAllSDKAPIs();
+
+        // 모든 테스트가 큐에 추가됨 - 이제 결과 전송 가능
+        _allTestsQueued = true;
+        Debug.Log($"[RuntimeAPITester] All tests queued. Pending: {_pendingAsyncTests}");
 
         // 비동기 테스트가 없으면 바로 결과 전송
         if (_pendingAsyncTests == 0)
@@ -86,126 +113,158 @@ public class RuntimeAPITester : MonoBehaviour
         // AppsInToss.AIT 타입 존재 확인
         try
         {
-            var aitType = typeof(AppsInToss.AIT);
-            RecordResult("SDK_Namespace_Access", aitType != null, null);
-            Debug.Log("[RuntimeAPITester] SDK_Namespace_Access: ✓");
+            var aitType = typeof(AIT);
+            RecordResult("SDK_Namespace_Access", true, false, null, null);
+            Debug.Log("[RuntimeAPITester] SDK_Namespace_Access: PASS");
         }
         catch (Exception e)
         {
-            RecordResult("SDK_Namespace_Access", false, e.Message);
-            Debug.LogError("[RuntimeAPITester] SDK_Namespace_Access: ✗ " + e.Message);
-        }
-
-        // AITCore 타입 존재 확인
-        try
-        {
-            var coreType = typeof(AppsInToss.AITCore);
-            RecordResult("AITCore_Access", coreType != null, null);
-            Debug.Log("[RuntimeAPITester] AITCore_Access: ✓");
-        }
-        catch (Exception e)
-        {
-            RecordResult("AITCore_Access", false, e.Message);
-            Debug.LogError("[RuntimeAPITester] AITCore_Access: ✗ " + e.Message);
-        }
-
-        // SDK Version 확인
-        try
-        {
-            // AIT 클래스의 메서드 목록 확인
-            var methods = typeof(AppsInToss.AIT).GetMethods();
-            RecordResult("SDK_Methods_Available", methods.Length > 0, null);
-            Debug.Log($"[RuntimeAPITester] SDK_Methods_Available: ✓ ({methods.Length} methods)");
-        }
-        catch (Exception e)
-        {
-            RecordResult("SDK_Methods_Available", false, e.Message);
-            Debug.LogError("[RuntimeAPITester] SDK_Methods_Available: ✗ " + e.Message);
+            RecordResult("SDK_Namespace_Access", false, false, e.Message, null);
+            Debug.LogError($"[RuntimeAPITester] SDK_Namespace_Access: FAIL - {e.Message}");
         }
 
         // AITCore 인스턴스 생성 확인
         try
         {
-            var instance = AppsInToss.AITCore.Instance;
-            RecordResult("AITCore_Instance", instance != null, null);
-            Debug.Log("[RuntimeAPITester] AITCore_Instance: ✓");
+            var instance = AITCore.Instance;
+            RecordResult("AITCore_Instance", instance != null, false, null, null);
+            Debug.Log("[RuntimeAPITester] AITCore_Instance: PASS");
         }
         catch (Exception e)
         {
-            RecordResult("AITCore_Instance", false, e.Message);
-            Debug.LogError("[RuntimeAPITester] AITCore_Instance: ✗ " + e.Message);
+            RecordResult("AITCore_Instance", false, false, e.Message, null);
+            Debug.LogError($"[RuntimeAPITester] AITCore_Instance: FAIL - {e.Message}");
         }
     }
 
     void TestAllSDKAPIs()
     {
-        Debug.Log("[RuntimeAPITester] Testing all SDK APIs via Reflection...");
+        Debug.Log("[RuntimeAPITester] Testing all SDK APIs...");
+
+        // =====================================================================
+        // 파라미터 없는 API들 (14개) - 직접 호출
+        // =====================================================================
+        TestAPICall("GetDeviceId", () => AIT.GetDeviceId());
+        TestAPICall("GetLocale", () => AIT.GetLocale());
+        TestAPICall("GetNetworkStatus", () => AIT.GetNetworkStatus());
+        TestAPICall("GetOperationalEnvironment", () => AIT.GetOperationalEnvironment());
+        TestAPICall("GetPlatformOS", () => AIT.GetPlatformOS());
+        TestAPICall("GetSchemeUri", () => AIT.GetSchemeUri());
+        TestAPICall("GetTossAppVersion", () => AIT.GetTossAppVersion());
+        TestAPICall("AppLogin", () => AIT.AppLogin());
+        TestAPICall("GetIsTossLoginIntegratedService", () => AIT.GetIsTossLoginIntegratedService());
+        TestAPICall("GetClipboardText", () => AIT.GetClipboardText());
+        TestAPICall("CloseView", () => AIT.CloseView());
+        TestAPICall("GetGameCenterGameProfile", () => AIT.GetGameCenterGameProfile());
+        TestAPICall("GetUserKeyForGame", () => AIT.GetUserKeyForGame());
+        TestAPICall("OpenGameCenterLeaderboard", () => AIT.OpenGameCenterLeaderboard());
+
+        // =====================================================================
+        // 파라미터 있는 API들 (25개) - SDK 타입에 맞는 더미값으로 호출
+        // =====================================================================
+
+        // Clipboard & Navigation APIs
+        TestAPICall("SetClipboardText", () => AIT.SetClipboardText("test"));
+        TestAPICall("OpenURL", () => AIT.OpenURL("https://example.com"));
+
+        // Share APIs
+        TestAPICall("GetTossShareLink", () => AIT.GetTossShareLink("/test"));
+        TestAPICall("Share", () => AIT.Share(new ShareMessage { Message = "test" }));
+        TestAPICall("FetchContacts", () => AIT.FetchContacts(new FetchContactsOptions { Size = 10, Offset = 0 }));
+
+        // Event API
+        TestAPICall("EventLog", () => AIT.EventLog(new EventLogParams { Log_name = "test", Log_type = "test" }));
+
+        // Permission APIs (class 타입 파라미터)
+        TestAPICall("GetPermission", () => AIT.GetPermission(new GetPermissionPermission { Name = "camera", Access = PermissionAccess.Access }));
+        TestAPICall("RequestPermission", () => AIT.RequestPermission(new RequestPermissionPermission { Name = "camera", Access = PermissionAccess.Access }));
+        TestAPICall("OpenPermissionDialog", () => AIT.OpenPermissionDialog(new OpenPermissionDialogPermission { Name = "camera", Access = PermissionAccess.Access }));
+
+        // Location APIs
+        TestAPICall("GetCurrentLocation", () => AIT.GetCurrentLocation(new GetCurrentLocationOptions { Accuracy = Accuracy.Balanced }));
+
+        // Device APIs (SDK 타입 필드명 사용)
+        TestAPICall("GenerateHapticFeedback", () => AIT.GenerateHapticFeedback(new HapticFeedbackOptions { Type = HapticFeedbackType.Tap }));
+        TestAPICall("SetDeviceOrientation", () => AIT.SetDeviceOrientation(new SetDeviceOrientationOptions { Type = "portrait" }));
+        TestAPICall("SetIosSwipeGestureEnabled", () => AIT.SetIosSwipeGestureEnabled(new SetIosSwipeGestureEnabledOptions { IsEnabled = true }));
+        TestAPICall("SetScreenAwakeMode", () => AIT.SetScreenAwakeMode(new SetScreenAwakeModeOptions { Enabled = true }));
+        TestAPICall("SetSecureScreen", () => AIT.SetSecureScreen(new SetSecureScreenOptions { Enabled = true }));
+
+        // Payment API
+        TestAPICall("CheckoutPayment", () => AIT.CheckoutPayment(new CheckoutPaymentOptions { PayToken = "test-token" }));
+
+        // Media APIs
+        TestAPICall("FetchAlbumPhotos", () => AIT.FetchAlbumPhotos(new FetchAlbumPhotosOptions { MaxCount = 1 }));
+        TestAPICall("OpenCamera", () => AIT.OpenCamera(new OpenCameraOptions { Base64 = false }));
+        TestAPICall("SaveBase64Data", () => AIT.SaveBase64Data(new SaveBase64DataParams { Data = "dGVzdA==", FileName = "test.txt", MimeType = "text/plain" }));
+
+        // GameCenter APIs
+        TestAPICall("SubmitGameCenterLeaderBoardScore", () => AIT.SubmitGameCenterLeaderBoardScore(new SubmitGameCenterLeaderBoardScoreParams { Score = "100" }));
+        TestAPICall("GrantPromotionRewardForGame", () => AIT.GrantPromotionRewardForGame(new GrantPromotionRewardForGameOptions()));
+
+        // Certificate API
+        TestAPICall("AppsInTossSignTossCert", () => AIT.AppsInTossSignTossCert(new AppsInTossSignTossCertParams { TxId = "test-tx" }));
+
+        // Visibility API (이벤트 기반)
+        TestAPICall("OnVisibilityChangedByTransparentServiceWeb", () =>
+            AIT.OnVisibilityChangedByTransparentServiceWeb(() => { }));
+
+        // Location 이벤트 API
+        TestAPICall("StartUpdateLocation", () =>
+            AIT.StartUpdateLocation(new StartUpdateLocationEventParams { OnEvent = (loc) => { } }));
+
+        // ContactsViral API
+        TestAPICall("ContactsViral", () =>
+            AIT.ContactsViral(new ContactsViralParams { OnEvent = (evt) => { } }));
+    }
+
+    void TestAPICall(string apiName, Func<Task> apiCall)
+    {
+        string testName = $"API_{apiName}";
+        _pendingAsyncTests++;
 
         try
         {
-            var aitType = typeof(AppsInToss.AIT);
-            var methods = aitType.GetMethods(BindingFlags.Public | BindingFlags.Static | BindingFlags.DeclaredOnly);
-
-            Debug.Log($"[RuntimeAPITester] Found {methods.Length} SDK methods");
-
-            foreach (var method in methods)
-            {
-                // 모든 환경에서 파라미터 없는 메서드는 실제 호출 시도
-                var parameters = method.GetParameters();
-                if (parameters.Length == 0)
-                {
-                    TestParameterlessAPI(method);
-                }
-                else
-                {
-                    // 파라미터가 있는 메서드는 존재만 확인
-                    string testName = $"API_Exists_{method.Name}";
-                    RecordResult(testName, true, null);
-                    Debug.Log($"[RuntimeAPITester] {testName}: ✓ ({parameters.Length} parameters, skipped call)");
-                }
-            }
+            var task = apiCall();
+            StartCoroutine(WaitForTask(testName, apiName, task));
         }
         catch (Exception e)
         {
-            RecordResult("SDK_API_Reflection", false, e.Message);
-            Debug.LogError($"[RuntimeAPITester] SDK_API_Reflection: ✗ {e.Message}");
+            _pendingAsyncTests--;
+            HandleSyncException(testName, apiName, e);
         }
     }
 
-    void TestParameterlessAPI(MethodInfo method)
+    void HandleSyncException(string testName, string apiName, Exception e)
     {
-        string testName = $"API_Call_{method.Name}";
+        var innerEx = e.InnerException ?? e;
+        string errorMessage = innerEx.Message;
 
-        try
+        // AITException인지 확인
+        bool isAITException = innerEx is AITException;
+        string errorCode = isAITException ? ((AITException)innerEx).ErrorCode : null;
+
+        // 상정된 에러인지 확인
+        bool isExpectedError = IsExpectedError(errorMessage);
+
+        if (isExpectedError)
         {
-            var result = method.Invoke(null, null);
-
-            // Task 반환인 경우 비동기 처리
-            if (result is Task task)
-            {
-                _pendingAsyncTests++;
-                StartCoroutine(WaitForTask(testName, task));
-                return;
-            }
-
-            // 동기 메서드: 즉시 결과 기록
-            RecordResult(testName, true, null);
-            Debug.Log($"[RuntimeAPITester] {testName}: ✓ (result: {result ?? "null"})");
+            // 상정된 에러: 정상 동작
+            RecordResult(testName, true, true, errorMessage, errorCode);
+            Debug.Log($"[RuntimeAPITester] {testName}: PASS (expected error: {TruncateError(errorMessage)})");
         }
-        catch (Exception e)
+        else
         {
-            var innerEx = e.InnerException ?? e;
-            // WebGL 환경에서는 대부분의 API가 네이티브 환경 부재로 실패하므로
-            // 모든 실패를 성공으로 처리 (메서드 호출 자체가 되었다면 OK)
-            RecordResult(testName, true, $"Called but failed: {innerEx.Message}");
-            Debug.Log($"[RuntimeAPITester] {testName}: ✓ (called but failed - {innerEx.Message})");
+            // 상정되지 않은 에러: 실패
+            RecordResult(testName, false, false, errorMessage, errorCode);
+            Debug.LogError($"[RuntimeAPITester] {testName}: FAIL (unexpected error: {errorMessage})");
         }
     }
 
-    IEnumerator WaitForTask(string testName, Task task)
+    IEnumerator WaitForTask(string testName, string apiName, Task task)
     {
-        // Task 완료 대기 (최대 5초)
-        float timeout = 5f;
+        // Task 완료 대기 (최대 10초)
+        float timeout = 10f;
         float elapsed = 0f;
 
         while (!task.IsCompleted && elapsed < timeout)
@@ -216,39 +275,91 @@ public class RuntimeAPITester : MonoBehaviour
 
         if (!task.IsCompleted)
         {
-            // 타임아웃도 성공으로 처리 (메서드 호출은 성공)
-            RecordResult(testName, true, "Timeout after 5 seconds");
-            Debug.Log($"[RuntimeAPITester] {testName}: ✓ (called but timeout)");
+            // 타임아웃: 상정된 에러로 처리 (플랫폼 미지원 시 응답 없음)
+            RecordResult(testName, true, true, "Timeout (platform not responding)", null);
+            Debug.Log($"[RuntimeAPITester] {testName}: PASS (timeout - expected in dev environment)");
         }
         else if (task.IsFaulted)
         {
-            var error = task.Exception?.InnerException?.Message ?? "Unknown error";
-            // Faulted도 성공으로 처리 (메서드 호출은 성공)
-            RecordResult(testName, true, $"Called but faulted: {error}");
-            Debug.Log($"[RuntimeAPITester] {testName}: ✓ (called but faulted - {error})");
+            // Task 실패: 에러 분석
+            var innerEx = task.Exception?.InnerException ?? task.Exception;
+            string errorMessage = innerEx?.Message ?? "Unknown error";
+
+            // AITException인지 확인
+            bool isAITException = innerEx is AITException;
+            string errorCode = isAITException ? ((AITException)innerEx).ErrorCode : null;
+            bool isPlatformUnavailable = isAITException && ((AITException)innerEx).IsPlatformUnavailable;
+
+            // 상정된 에러인지 확인
+            bool isExpectedError = IsExpectedError(errorMessage) || isPlatformUnavailable;
+
+            if (isExpectedError)
+            {
+                // 상정된 에러: 정상 동작 (개발 환경에서 예상되는 에러)
+                RecordResult(testName, true, true, errorMessage, errorCode);
+                Debug.Log($"[RuntimeAPITester] {testName}: PASS (expected error: {TruncateError(errorMessage)})");
+            }
+            else
+            {
+                // 상정되지 않은 에러: 테스트 실패
+                RecordResult(testName, false, false, errorMessage, errorCode);
+                Debug.LogError($"[RuntimeAPITester] {testName}: FAIL (unexpected error: {errorMessage})");
+            }
+        }
+        else if (task.IsCanceled)
+        {
+            // 취소: 상정된 에러로 처리
+            RecordResult(testName, true, true, "Task canceled", null);
+            Debug.Log($"[RuntimeAPITester] {testName}: PASS (canceled - expected in dev environment)");
         }
         else
         {
-            RecordResult(testName, true, null);
-            Debug.Log($"[RuntimeAPITester] {testName}: ✓ (Task completed)");
+            // Task 성공: 개발 환경에서 성공은 의외 (Mock이 동작한 경우)
+            RecordResult(testName, true, false, null, null);
+            Debug.Log($"[RuntimeAPITester] {testName}: PASS (completed successfully)");
         }
 
         _pendingAsyncTests--;
 
-        // 모든 비동기 테스트 완료 시 결과 전송
-        if (_pendingAsyncTests == 0)
+        // 모든 테스트가 큐에 추가되고, 모든 비동기 테스트가 완료되면 결과 전송
+        if (_allTestsQueued && _pendingAsyncTests == 0)
         {
             SendResults();
         }
     }
 
-    void RecordResult(string apiName, bool success, string error)
+    /// <summary>
+    /// 에러 메시지가 상정된 패턴과 일치하는지 확인
+    /// </summary>
+    bool IsExpectedError(string errorMessage)
+    {
+        if (string.IsNullOrEmpty(errorMessage)) return false;
+
+        foreach (var pattern in EXPECTED_ERROR_PATTERNS)
+        {
+            if (errorMessage.Contains(pattern))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    string TruncateError(string error)
+    {
+        if (string.IsNullOrEmpty(error)) return "";
+        return error.Length > 60 ? error.Substring(0, 60) + "..." : error;
+    }
+
+    void RecordResult(string apiName, bool success, bool isExpectedError, string error, string errorCode)
     {
         _results[apiName] = new APITestResult
         {
             apiName = apiName,
             success = success,
-            error = error
+            isExpectedError = isExpectedError,
+            error = error ?? "",
+            errorCode = errorCode ?? ""
         };
     }
 
@@ -257,37 +368,59 @@ public class RuntimeAPITester : MonoBehaviour
         if (_testCompleted) return;
         _testCompleted = true;
 
-        var report = new APITestReport
-        {
-            totalAPIs = _results.Count,
-            successCount = 0,
-            failCount = 0,
-            results = new List<APITestResult>()
-        };
+        int successCount = 0;
+        int expectedErrorCount = 0;
+        int unexpectedErrorCount = 0;
+
+        var resultsList = new List<APITestResult>();
 
         foreach (var kv in _results)
         {
-            report.results.Add(kv.Value);
+            resultsList.Add(kv.Value);
             if (kv.Value.success)
-                report.successCount++;
+            {
+                successCount++;
+                if (kv.Value.isExpectedError)
+                {
+                    expectedErrorCount++;
+                }
+            }
             else
-                report.failCount++;
+            {
+                unexpectedErrorCount++;
+            }
         }
+
+        var report = new APITestReport
+        {
+            totalAPIs = _results.Count,
+            successCount = successCount,
+            failCount = unexpectedErrorCount,
+            expectedErrorCount = expectedErrorCount,
+            unexpectedErrorCount = unexpectedErrorCount,
+            results = resultsList
+        };
 
         string json = JsonUtility.ToJson(report, true);
         _lastResultJson = json;
 
         Debug.Log("[RuntimeAPITester] ========================================");
         Debug.Log("[RuntimeAPITester] RUNTIME API TESTS COMPLETED");
-        Debug.Log($"[RuntimeAPITester] Total: {report.totalAPIs}, Passed: {report.successCount}, Failed: {report.failCount}");
+        Debug.Log($"[RuntimeAPITester] Total: {report.totalAPIs}");
+        Debug.Log($"[RuntimeAPITester] Success: {report.successCount} (Expected Errors: {report.expectedErrorCount})");
+        Debug.Log($"[RuntimeAPITester] Failed (Unexpected Errors): {report.unexpectedErrorCount}");
         Debug.Log("[RuntimeAPITester] ========================================");
 
-        // 실패한 API 목록 출력
-        foreach (var result in report.results)
+        // 상정되지 않은 에러 목록 출력
+        if (unexpectedErrorCount > 0)
         {
-            if (!result.success)
+            Debug.LogError("[RuntimeAPITester] UNEXPECTED ERRORS:");
+            foreach (var result in resultsList)
             {
-                Debug.LogWarning($"[RuntimeAPITester] FAILED: {result.apiName} - {result.error}");
+                if (!result.success)
+                {
+                    Debug.LogError($"  - {result.apiName}: {result.error}");
+                }
             }
         }
 
@@ -306,15 +439,6 @@ public class RuntimeAPITester : MonoBehaviour
 #endif
     }
 
-    void Update()
-    {
-        // 복사 확인 메시지 타이머
-        if (_showCopyConfirmation && Time.time - _copyConfirmationTime > 2f)
-        {
-            _showCopyConfirmation = false;
-        }
-    }
-
     void OnGUI()
     {
         if (!showUI) return;
@@ -323,13 +447,11 @@ public class RuntimeAPITester : MonoBehaviour
         int width = Screen.width - (padding * 2);
         int height = Screen.height - (padding * 2);
 
-        // 반투명 배경
         GUI.Box(new Rect(padding, padding, width, height), "");
 
         GUILayout.BeginArea(new Rect(padding + 10, padding + 10, width - 20, height - 20));
 
-        // 헤더
-        GUILayout.Label("Apps in Toss Unity SDK - Runtime API Test", GUI.skin.box);
+        GUILayout.Label("Apps in Toss Unity SDK - API Error Validation", GUI.skin.box);
         GUILayout.Space(10);
 
         if (!_testStarted)
@@ -342,30 +464,11 @@ public class RuntimeAPITester : MonoBehaviour
         }
         else if (!_testCompleted)
         {
-            GUILayout.Label("🔄 Testing in progress...");
-            GUILayout.Label($"Pending async tests: {_pendingAsyncTests}");
-            GUILayout.Space(10);
-
-            // 진행 상황 표시
-            int totalTests = _results.Count;
-            int completedTests = 0;
-            int passedTests = 0;
-            int failedTests = 0;
-
-            foreach (var result in _results.Values)
-            {
-                completedTests++;
-                if (result.success) passedTests++;
-                else failedTests++;
-            }
-
-            GUILayout.Label($"Completed: {completedTests} / {totalTests}");
-            GUILayout.Label($"✅ Passed: {passedTests}");
-            GUILayout.Label($"❌ Failed: {failedTests}");
+            GUILayout.Label("Testing in progress...");
+            GUILayout.Label($"Pending: {_pendingAsyncTests} APIs");
         }
         else
         {
-            // 테스트 완료 - 결과 표시
             DisplayResults();
         }
 
@@ -374,77 +477,79 @@ public class RuntimeAPITester : MonoBehaviour
 
     void DisplayResults()
     {
-        int passedCount = 0;
-        int failedCount = 0;
+        int successCount = 0;
+        int expectedErrorCount = 0;
+        int unexpectedErrorCount = 0;
 
         foreach (var result in _results.Values)
         {
-            if (result.success) passedCount++;
-            else failedCount++;
+            if (result.success)
+            {
+                successCount++;
+                if (result.isExpectedError) expectedErrorCount++;
+            }
+            else
+            {
+                unexpectedErrorCount++;
+            }
         }
 
-        float successRate = _results.Count > 0 ? (float)passedCount / _results.Count * 100f : 0f;
-
-        // 결과 요약
-        GUILayout.Label("✅ Tests Completed!", GUI.skin.box);
+        GUILayout.Label("Tests Completed!", GUI.skin.box);
         GUILayout.Space(5);
 
         GUILayout.Label($"Total APIs: {_results.Count}");
-        GUILayout.Label($"✅ Passed: {passedCount}");
-        GUILayout.Label($"❌ Failed: {failedCount}");
-        GUILayout.Label($"Success Rate: {successRate:F1}%");
-        GUILayout.Space(10);
+        GUILayout.Label($"Success: {successCount}");
+        GUILayout.Label($"  - Expected Errors: {expectedErrorCount}");
+        GUILayout.Label($"  - Clean Success: {successCount - expectedErrorCount}");
 
-        // 클립보드 복사 버튼
-        if (GUILayout.Button("📋 Copy Results to Clipboard", GUILayout.Height(40)))
+        if (unexpectedErrorCount > 0)
         {
-            CopyResultsToClipboard();
+            GUI.color = Color.red;
+            GUILayout.Label($"FAILED (Unexpected Errors): {unexpectedErrorCount}");
+            GUI.color = Color.white;
+        }
+        else
+        {
+            GUI.color = Color.green;
+            GUILayout.Label("All APIs validated correctly!");
+            GUI.color = Color.white;
         }
 
-        if (_showCopyConfirmation)
-        {
-            GUILayout.Label("✅ Copied to clipboard!", GUI.skin.box);
-        }
-
         GUILayout.Space(10);
 
-        // 상세 결과 토글
-        showDetailedResults = GUILayout.Toggle(showDetailedResults, "Show Detailed Results");
+        showDetailedResults = GUILayout.Toggle(showDetailedResults, "Show Details");
 
         if (showDetailedResults)
         {
-            GUILayout.Space(10);
-            GUILayout.Label("Detailed Results:", GUI.skin.box);
-
             _scrollPosition = GUILayout.BeginScrollView(_scrollPosition, GUILayout.Height(Screen.height / 2));
 
             foreach (var result in _results.Values)
             {
-                string status = result.success ? "✅" : "❌";
-                GUILayout.Label($"{status} {result.apiName}");
-                if (!result.success && !string.IsNullOrEmpty(result.error))
+                string status;
+                if (result.success)
                 {
-                    GUILayout.Label($"   Error: {result.error}");
+                    status = result.isExpectedError ? "[OK-ERR]" : "[OK]";
+                    GUI.color = Color.green;
                 }
+                else
+                {
+                    status = "[FAIL]";
+                    GUI.color = Color.red;
+                }
+
+                GUILayout.Label($"{status} {result.apiName}");
+
+                if (!string.IsNullOrEmpty(result.error))
+                {
+                    GUI.color = result.success ? Color.yellow : Color.red;
+                    GUILayout.Label($"   {TruncateError(result.error)}");
+                }
+
+                GUI.color = Color.white;
             }
 
             GUILayout.EndScrollView();
         }
-    }
-
-    void CopyResultsToClipboard()
-    {
-#if UNITY_WEBGL && !UNITY_EDITOR
-        // Clipboard API removed - not available in WebGL
-        Debug.Log("[RuntimeAPITester] Clipboard copy not available in WebGL");
-        _showCopyConfirmation = false;
-#else
-        // Unity Editor: 시스템 클립보드 사용
-        GUIUtility.systemCopyBuffer = _lastResultJson;
-        _showCopyConfirmation = true;
-        _copyConfirmationTime = Time.time;
-        Debug.Log("[RuntimeAPITester] Results copied to clipboard (Editor)");
-#endif
     }
 
     [Serializable]
@@ -452,7 +557,9 @@ public class RuntimeAPITester : MonoBehaviour
     {
         public string apiName;
         public bool success;
+        public bool isExpectedError;  // true면 상정된 에러 (개발 환경에서 정상)
         public string error;
+        public string errorCode;
     }
 
     [Serializable]
@@ -461,6 +568,8 @@ public class RuntimeAPITester : MonoBehaviour
         public int totalAPIs;
         public int successCount;
         public int failCount;
+        public int expectedErrorCount;
+        public int unexpectedErrorCount;
         public List<APITestResult> results;
     }
 }

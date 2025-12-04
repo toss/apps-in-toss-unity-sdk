@@ -116,39 +116,41 @@ jobs:
       - name: Detect Unity Installation (Windows)
         if: matrix.os == 'windows'
         id: unity-windows
-        shell: powershell
+        shell: cmd
         run: |
-          $unityBase = "C:\Program Files\Unity\Hub\Editor"
-          $versionPattern = "${{ matrix.unity-version }}"
+          @echo off
+          setlocal enabledelayedexpansion
 
-          Write-Host "Searching for Unity ${versionPattern}.x in ${unityBase}..."
+          set "UNITY_BASE=C:\Program Files\Unity\Hub\Editor"
+          set "VERSION_PATTERN=${{ matrix.unity-version }}"
 
-          # 패턴에 맞는 설치된 Unity 버전 찾기 (최신 버전 우선)
-          $unityDirs = Get-ChildItem -Path $unityBase -Directory -ErrorAction SilentlyContinue |
-            Where-Object { $_.Name -like "$versionPattern*" } |
-            Sort-Object Name -Descending |
-            Select-Object -First 1
+          echo Searching for Unity %VERSION_PATTERN%.x in %UNITY_BASE%...
 
-          if (-not $unityDirs) {
-            Write-Error "Unity ${versionPattern}.x not found"
-            Write-Host "Available versions:"
-            Get-ChildItem -Path $unityBase -Directory -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  $($_.Name)" }
-            exit 1
-          }
+          set "UNITY_DIR="
+          for /d %%d in ("%UNITY_BASE%\%VERSION_PATTERN%*") do (
+            set "UNITY_DIR=%%d"
+          )
 
-          $unityPath = Join-Path $unityDirs.FullName "Editor\Unity.exe"
+          if not defined UNITY_DIR (
+            echo ::error::Unity %VERSION_PATTERN%.x not found
+            echo Available versions:
+            dir /b "%UNITY_BASE%" 2>nul
+            exit /b 1
+          )
 
-          if (-not (Test-Path $unityPath)) {
-            Write-Error "Unity executable not found at ${unityPath}"
-            exit 1
-          }
+          set "UNITY_PATH=%UNITY_DIR%\Editor\Unity.exe"
 
-          $detectedVersion = $unityDirs.Name
-          Write-Host "Found Unity ${detectedVersion}"
-          Write-Host "  Path: ${unityPath}"
+          if not exist "%UNITY_PATH%" (
+            echo ::error::Unity executable not found at %UNITY_PATH%
+            exit /b 1
+          )
 
-          "UNITY_PATH=$unityPath" >> $env:GITHUB_OUTPUT
-          "UNITY_VERSION=$detectedVersion" >> $env:GITHUB_OUTPUT
+          for %%i in ("%UNITY_DIR%") do set "DETECTED_VERSION=%%~nxi"
+          echo Found Unity %DETECTED_VERSION%
+          echo   Path: %UNITY_PATH%
+
+          echo UNITY_PATH=%UNITY_PATH%>> %GITHUB_OUTPUT%
+          echo UNITY_VERSION=%DETECTED_VERSION%>> %GITHUB_OUTPUT%
 
       # =====================================================
       # Unity WebGL 빌드 (macOS)
@@ -178,29 +180,26 @@ jobs:
       # =====================================================
       - name: Build Unity WebGL (Windows)
         if: matrix.os == 'windows'
-        shell: powershell
+        shell: cmd
         run: |
-          $unityPath = "${{ steps.unity-windows.outputs.UNITY_PATH }}"
-          $projectPath = "${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ matrix.project-suffix }}"
+          @echo off
+          set "UNITY_PATH=${{ steps.unity-windows.outputs.UNITY_PATH }}"
+          set "PROJECT_PATH=${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ matrix.project-suffix }}"
 
-          Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          Write-Host "Unity Build Configuration"
-          Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          Write-Host "Unity Version: ${{ steps.unity-windows.outputs.UNITY_VERSION }}"
-          Write-Host "Unity Path: $unityPath"
-          Write-Host "Project Path: $projectPath"
-          Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+          echo Unity Build Configuration
+          echo ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+          echo Unity Version: ${{ steps.unity-windows.outputs.UNITY_VERSION }}
+          echo Unity Path: %UNITY_PATH%
+          echo Project Path: %PROJECT_PATH%
+          echo ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-          & $unityPath -quit -batchmode -nographics `
-            -projectPath $projectPath `
-            -executeMethod E2EBuildRunner.CommandLineBuild `
-            -buildTarget WebGL `
-            -logFile -
+          "%UNITY_PATH%" -quit -batchmode -nographics -projectPath "%PROJECT_PATH%" -executeMethod E2EBuildRunner.CommandLineBuild -buildTarget WebGL -logFile -
 
-          if ($LASTEXITCODE -ne 0) {
-            Write-Error "Unity build failed with exit code: $LASTEXITCODE"
-            exit $LASTEXITCODE
-          }
+          if %ERRORLEVEL% neq 0 (
+            echo Unity build failed with exit code: %ERRORLEVEL%
+            exit /b %ERRORLEVEL%
+          )
 
       # =====================================================
       # 빌드 결과 확인
@@ -219,16 +218,17 @@ jobs:
 
       - name: Verify Build Output (Windows)
         if: matrix.os == 'windows'
-        shell: powershell
+        shell: cmd
         run: |
-          $distPath = "Tests~\E2E\SampleUnityProject-${{ matrix.project-suffix }}\ait-build\dist\web"
-          if (Test-Path $distPath) {
-            Write-Host "Build output found"
-            Get-ChildItem -Path $distPath
-          } else {
-            Write-Error "Build output not found at $distPath"
-            exit 1
-          }
+          @echo off
+          set "DIST_PATH=Tests~\E2E\SampleUnityProject-${{ matrix.project-suffix }}\ait-build\dist\web"
+          if exist "%DIST_PATH%" (
+            echo Build output found
+            dir "%DIST_PATH%"
+          ) else (
+            echo ::error::Build output not found at %DIST_PATH%
+            exit /b 1
+          )
 
       # =====================================================
       # Node.js 및 Playwright 설정
@@ -249,14 +249,15 @@ jobs:
 
       - name: Install Playwright Dependencies (Windows)
         if: matrix.os == 'windows'
-        shell: powershell
+        shell: cmd
         working-directory: Tests~/E2E/tests
         run: |
-          Remove-Item -Recurse -Force node_modules -ErrorAction SilentlyContinue
-          Remove-Item -Force package-lock.json -ErrorAction SilentlyContinue
-          npm install
-          npx playwright install chromium --with-deps
-          npx playwright --version
+          @echo off
+          if exist node_modules rmdir /s /q node_modules
+          if exist package-lock.json del /f package-lock.json
+          call npm install
+          call npx playwright install chromium --with-deps
+          call npx playwright --version
 
       # =====================================================
       # E2E 테스트 실행
@@ -270,11 +271,11 @@ jobs:
 
       - name: Run E2E Tests (Windows)
         if: matrix.os == 'windows'
-        shell: powershell
+        shell: cmd
         working-directory: Tests~/E2E/tests
         env:
           UNITY_PROJECT_PATH: ${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ matrix.project-suffix }}
-        run: npm test
+        run: call npm test
 
       # =====================================================
       # 아티팩트 업로드

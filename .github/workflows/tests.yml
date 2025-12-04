@@ -116,7 +116,7 @@ jobs:
       - name: Detect Unity Installation (Windows)
         if: matrix.os == 'windows'
         id: unity-windows
-        shell: pwsh
+        shell: powershell
         run: |
           $unityBase = "C:\Program Files\Unity\Hub\Editor"
           $versionPattern = "${{ matrix.unity-version }}"
@@ -178,7 +178,7 @@ jobs:
       # =====================================================
       - name: Build Unity WebGL (Windows)
         if: matrix.os == 'windows'
-        shell: pwsh
+        shell: powershell
         run: |
           $unityPath = "${{ steps.unity-windows.outputs.UNITY_PATH }}"
           $projectPath = "${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ matrix.project-suffix }}"
@@ -219,7 +219,7 @@ jobs:
 
       - name: Verify Build Output (Windows)
         if: matrix.os == 'windows'
-        shell: pwsh
+        shell: powershell
         run: |
           $distPath = "Tests~\E2E\SampleUnityProject-${{ matrix.project-suffix }}\ait-build\dist\web"
           if (Test-Path $distPath) {
@@ -249,7 +249,7 @@ jobs:
 
       - name: Install Playwright Dependencies (Windows)
         if: matrix.os == 'windows'
-        shell: pwsh
+        shell: powershell
         working-directory: Tests~/E2E/tests
         run: |
           Remove-Item -Recurse -Force node_modules -ErrorAction SilentlyContinue
@@ -270,7 +270,7 @@ jobs:
 
       - name: Run E2E Tests (Windows)
         if: matrix.os == 'windows'
-        shell: pwsh
+        shell: powershell
         working-directory: Tests~/E2E/tests
         env:
           UNITY_PROJECT_PATH: ${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ matrix.project-suffix }}

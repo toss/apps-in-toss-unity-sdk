@@ -22,92 +22,57 @@ jobs:
     timeout-minutes: 60
 
     strategy:
-      fail-fast: true
+      fail-fast: false
       # 8개 job 병렬 실행 (macOS 4 + Windows 4)
       # 포트 충돌 방지: E2EBuildRunner.cs에서 EditorUserBuildSettings.connectProfiler = false 설정
       matrix:
         include:
-          # 디버그: Windows 환경만 테스트
+          # macOS ARM64 runners
+          - os: macos
+            os-name: macOS
+            runner: [self-hosted, macOS, ARM64]
+            unity-version: "2021.3"
+            project-suffix: "2021.3"
+          - os: macos
+            os-name: macOS
+            runner: [self-hosted, macOS, ARM64]
+            unity-version: "2022.3"
+            project-suffix: "2022.3"
+          - os: macos
+            os-name: macOS
+            runner: [self-hosted, macOS, ARM64]
+            unity-version: "6000.0"
+            project-suffix: "6000.0"
+          - os: macos
+            os-name: macOS
+            runner: [self-hosted, macOS, ARM64]
+            unity-version: "6000.2"
+            project-suffix: "6000.2"
+          # Windows X64 runners
           - os: windows
             os-name: Windows
             runner: [self-hosted, Windows, X64]
             unity-version: "2021.3"
             project-suffix: "2021.3"
-          # TODO: 디버그 완료 후 아래 주석 해제
-          # # macOS ARM64 runners
-          # - os: macos
-          #   os-name: macOS
-          #   runner: [self-hosted, macOS, ARM64]
-          #   unity-version: "2021.3"
-          #   project-suffix: "2021.3"
-          # - os: macos
-          #   os-name: macOS
-          #   runner: [self-hosted, macOS, ARM64]
-          #   unity-version: "2022.3"
-          #   project-suffix: "2022.3"
-          # - os: macos
-          #   os-name: macOS
-          #   runner: [self-hosted, macOS, ARM64]
-          #   unity-version: "6000.0"
-          #   project-suffix: "6000.0"
-          # - os: macos
-          #   os-name: macOS
-          #   runner: [self-hosted, macOS, ARM64]
-          #   unity-version: "6000.2"
-          #   project-suffix: "6000.2"
-          # # Windows X64 runners
-          # - os: windows
-          #   os-name: Windows
-          #   runner: [self-hosted, Windows, X64]
-          #   unity-version: "2022.3"
-          #   project-suffix: "2022.3"
-          # - os: windows
-          #   os-name: Windows
-          #   runner: [self-hosted, Windows, X64]
-          #   unity-version: "6000.0"
-          #   project-suffix: "6000.0"
-          # - os: windows
-          #   os-name: Windows
-          #   runner: [self-hosted, Windows, X64]
-          #   unity-version: "6000.2"
-          #   project-suffix: "6000.2"
+          - os: windows
+            os-name: Windows
+            runner: [self-hosted, Windows, X64]
+            unity-version: "2022.3"
+            project-suffix: "2022.3"
+          - os: windows
+            os-name: Windows
+            runner: [self-hosted, Windows, X64]
+            unity-version: "6000.0"
+            project-suffix: "6000.0"
+          - os: windows
+            os-name: Windows
+            runner: [self-hosted, Windows, X64]
+            unity-version: "6000.2"
+            project-suffix: "6000.2"
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
-
-      # =====================================================
-      # 디버그: 실행 환경 확인 (Windows)
-      # =====================================================
-      - name: Debug Environment (Windows)
-        if: matrix.os == 'windows'
-        shell: cmd
-        run: |
-          @echo off
-          echo === Runner Environment Debug ===
-          echo.
-          echo Current User: %USERNAME%
-          echo User Profile: %USERPROFILE%
-          echo Home Drive: %HOMEDRIVE%%HOMEPATH%
-          echo.
-          echo === Unity License Locations ===
-          echo Checking user license folder...
-          if exist "%USERPROFILE%\AppData\Local\Unity\Unity.ulf" (
-            echo [OK] Found: %USERPROFILE%\AppData\Local\Unity\Unity.ulf
-          ) else (
-            echo [MISSING] %USERPROFILE%\AppData\Local\Unity\Unity.ulf
-          )
-          echo.
-          echo Checking ProgramData license folder...
-          dir /b "C:\ProgramData\Unity" 2>nul || echo [EMPTY or NOT FOUND] C:\ProgramData\Unity
-          echo.
-          echo === Unity Hub Config ===
-          if exist "%APPDATA%\UnityHub" (
-            echo UnityHub config folder exists
-            dir /b "%APPDATA%\UnityHub" 2>nul
-          ) else (
-            echo [MISSING] UnityHub config folder
-          )
 
       # =====================================================
       # Unity 탐지 (macOS)

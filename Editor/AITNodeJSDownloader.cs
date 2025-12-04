@@ -97,7 +97,11 @@ namespace AppsInToss.Editor
         private static void DownloadNodeJS(string platform, string targetPath)
         {
             string fileName = GetNodeJSFileName(platform);
-            string tempFile = Path.Combine(Application.temporaryCachePath, fileName);
+            // Application.temporaryCachePath는 공백이 포함될 수 있어 문제 발생 가능
+            // 시스템 임시 디렉토리 사용 (공백 없음)
+            string tempDir = Path.Combine(Path.GetTempPath(), "AppsInTossSDK");
+            Directory.CreateDirectory(tempDir);
+            string tempFile = Path.Combine(tempDir, fileName);
 
             try
             {

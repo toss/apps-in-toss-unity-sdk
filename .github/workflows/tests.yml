@@ -75,6 +75,31 @@ jobs:
         uses: actions/checkout@v4
 
       # =====================================================
+      # 이전 빌드 아티팩트 정리 (캐시 충돌 방지)
+      # =====================================================
+      - name: Clean Previous Build Artifacts (macOS)
+        if: matrix.os == 'macos'
+        run: |
+          PROJECT_PATH="Tests~/E2E/SampleUnityProject-${{ matrix.project-suffix }}"
+          echo "Cleaning previous build artifacts..."
+          rm -rf "${PROJECT_PATH}/ait-build" 2>/dev/null || true
+          rm -rf "${PROJECT_PATH}/webgl" 2>/dev/null || true
+          rm -rf "${PROJECT_PATH}/Library/Bee" 2>/dev/null || true
+          echo "Done."
+
+      - name: Clean Previous Build Artifacts (Windows)
+        if: matrix.os == 'windows'
+        shell: cmd
+        run: |
+          @echo off
+          set "PROJECT_PATH=Tests~\E2E\SampleUnityProject-${{ matrix.project-suffix }}"
+          echo Cleaning previous build artifacts...
+          if exist "%PROJECT_PATH%\ait-build" rmdir /s /q "%PROJECT_PATH%\ait-build"
+          if exist "%PROJECT_PATH%\webgl" rmdir /s /q "%PROJECT_PATH%\webgl"
+          if exist "%PROJECT_PATH%\Library\Bee" rmdir /s /q "%PROJECT_PATH%\Library\Bee"
+          echo Done.
+
+      # =====================================================
       # Unity 탐지 (macOS)
       # =====================================================
       - name: Detect Unity Installation (macOS)

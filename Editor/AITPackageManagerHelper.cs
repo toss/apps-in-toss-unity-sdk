@@ -160,7 +160,9 @@ namespace AppsInToss.Editor
 
             // npm 경로에서 node bin 디렉토리 추출
             string embeddedNodeDir = System.IO.Path.GetDirectoryName(embeddedNpm);
-            string nodePath = System.IO.Path.Combine(embeddedNodeDir, "node");
+            // Windows에서는 node.exe, macOS/Linux에서는 node
+            string nodeExe = AITPlatformHelper.IsWindows ? "node.exe" : "node";
+            string nodePath = System.IO.Path.Combine(embeddedNodeDir, nodeExe);
 
             if (!File.Exists(nodePath))
             {
@@ -178,7 +180,9 @@ namespace AppsInToss.Editor
             if (verbose) Debug.Log("[Package Manager] [2/2] pnpm 확인...");
 
             // pnpm 경로 (내장 Node.js bin 디렉토리 내)
-            string pnpmPath = System.IO.Path.Combine(embeddedNodeDir, "pnpm");
+            // Windows에서는 pnpm.cmd, macOS/Linux에서는 pnpm
+            string pnpmExe = AITPlatformHelper.IsWindows ? "pnpm.cmd" : "pnpm";
+            string pnpmPath = System.IO.Path.Combine(embeddedNodeDir, pnpmExe);
 
             if (File.Exists(pnpmPath))
             {

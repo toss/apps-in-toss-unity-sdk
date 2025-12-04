@@ -44,6 +44,13 @@ public class InteractiveAPITester : MonoBehaviour
     private ResultDisplayMode resultDisplayMode = ResultDisplayMode.Structured;
     private Vector2 scrollPosition = Vector2.zero;
 
+    // 터치 스크롤 지원
+    private bool isTouchScrolling = false;
+    private Vector2 lastTouchPosition;
+    private Vector2 scrollVelocity = Vector2.zero;
+    private float scrollMomentumDecay = 0.95f;
+    private Rect currentScrollViewRect;
+
     // 파라미터 입력 상태 (fieldPath -> value)
     private Dictionary<string, string> stringInputs = new Dictionary<string, string>();
     private Dictionary<string, double> numberInputs = new Dictionary<string, double>();
@@ -102,6 +109,116 @@ public class InteractiveAPITester : MonoBehaviour
         }
 
         Debug.Log($"[InteractiveAPITester] Found {allMethods.Count} API methods in {groupedMethods.Count} categories");
+    }
+
+    void Update()
+    {
+        HandleTouchScroll();
+        ApplyScrollMomentum();
+    }
+
+    /// <summary>
+    /// 터치 스크롤 처리
+    /// </summary>
+    private void HandleTouchScroll()
+    {
+        // 터치 입력 처리
+        if (Input.touchCount > 0)
+        {
+            Touch touch = Input.GetTouch(0);
+
+            switch (touch.phase)
+            {
+                case TouchPhase.Began:
+                    // 스크롤 영역 내에서 터치 시작했는지 확인
+                    Vector2 touchPos = new Vector2(touch.position.x, Screen.height - touch.position.y);
+                    if (currentScrollViewRect.Contains(touchPos))
+                    {
+                        isTouchScrolling = true;
+                        lastTouchPosition = touch.position;
+                        scrollVelocity = Vector2.zero;
+                    }
+                    break;
+
+                case TouchPhase.Moved:
+                    if (isTouchScrolling)
+                    {
+                        Vector2 delta = touch.position - lastTouchPosition;
+                        // 위로 스와이프하면 (delta.y > 0) 컨텐츠가 위로 올라감 (scrollPosition.y 증가)
+                        // 아래로 스와이프하면 (delta.y < 0) 컨텐츠가 아래로 내려감 (scrollPosition.y 감소)
+                        scrollPosition.y += delta.y;
+                        scrollPosition.x += delta.x;
+
+                        // 스크롤 범위 제한
+                        scrollPosition.y = Mathf.Max(0, scrollPosition.y);
+                        scrollPosition.x = Mathf.Max(0, scrollPosition.x);
+
+                        // 속도 계산 (관성용)
+                        scrollVelocity = new Vector2(delta.x, delta.y) / Time.deltaTime * 0.1f;
+                        lastTouchPosition = touch.position;
+                    }
+                    break;
+
+                case TouchPhase.Ended:
+                case TouchPhase.Canceled:
+                    isTouchScrolling = false;
+                    break;
+            }
+        }
+        // 마우스 드래그 지원 (WebGL 데스크톱 테스트용)
+        else if (Input.GetMouseButton(0))
+        {
+            Vector2 mousePos = new Vector2(Input.mousePosition.x, Screen.height - Input.mousePosition.y);
+
+            if (Input.GetMouseButtonDown(0))
+            {
+                if (currentScrollViewRect.Contains(mousePos))
+                {
+                    isTouchScrolling = true;
+                    lastTouchPosition = Input.mousePosition;
+                    scrollVelocity = Vector2.zero;
+                }
+            }
+            else if (isTouchScrolling)
+            {
+                Vector2 delta = (Vector2)Input.mousePosition - lastTouchPosition;
+                // 위로 드래그하면 (delta.y > 0) 컨텐츠가 위로 올라감 (scrollPosition.y 증가)
+                scrollPosition.y += delta.y;
+                scrollPosition.x += delta.x;
+
+                scrollPosition.y = Mathf.Max(0, scrollPosition.y);
+                scrollPosition.x = Mathf.Max(0, scrollPosition.x);
+
+                scrollVelocity = new Vector2(delta.x, delta.y) / Time.deltaTime * 0.1f;
+                lastTouchPosition = Input.mousePosition;
+            }
+        }
+        else
+        {
+            if (isTouchScrolling)
+            {
+                isTouchScrolling = false;
+            }
+        }
+    }
+
+    /// <summary>
+    /// 스크롤 관성 적용
+    /// </summary>
+    private void ApplyScrollMomentum()
+    {
+        if (!isTouchScrolling && scrollVelocity.sqrMagnitude > 0.01f)
+        {
+            scrollPosition += scrollVelocity * Time.deltaTime;
+            scrollPosition.y = Mathf.Max(0, scrollPosition.y);
+            scrollPosition.x = Mathf.Max(0, scrollPosition.x);
+            scrollVelocity *= scrollMomentumDecay;
+
+            if (scrollVelocity.sqrMagnitude < 0.01f)
+            {
+                scrollVelocity = Vector2.zero;
+            }
+        }
     }
 
     void OnGUI()
@@ -264,6 +381,8 @@ public class InteractiveAPITester : MonoBehaviour
 
         // 스크롤뷰 - 세로 스크롤만 활성화, 가로 스크롤 비활성화
         scrollPosition = GUILayout.BeginScrollView(scrollPosition, false, true, GUILayout.ExpandHeight(true));
+        // 터치 스크롤을 위한 영역 저장 (대략적인 스크롤 영역)
+        currentScrollViewRect = new Rect(0, 100, Screen.width, Screen.height - 100);
 
         if (isSearchMode && !string.IsNullOrEmpty(searchQuery))
         {
@@ -514,7 +633,10 @@ public class InteractiveAPITester : MonoBehaviour
             GUILayout.Label("Parameters:", labelStyle);
             GUILayout.Space(5);
 
-            scrollPosition = GUILayout.BeginScrollView(scrollPosition, GUILayout.Height(Screen.height - 280));
+            // 터치 스크롤을 위한 영역 저장 (대략적인 스크롤 영역)
+            float scrollHeight = Screen.height - 280;
+            currentScrollViewRect = new Rect(0, 150, Screen.width, scrollHeight);
+            scrollPosition = GUILayout.BeginScrollView(scrollPosition, GUILayout.Height(scrollHeight));
 
             foreach (var param in selectedMethod.Parameters)
             {
@@ -848,7 +970,10 @@ public class InteractiveAPITester : MonoBehaviour
 
         GUILayout.Label("Response:", labelStyle);
 
-        scrollPosition = GUILayout.BeginScrollView(scrollPosition, GUILayout.Height(Screen.height - 320));
+        // 터치 스크롤을 위한 영역 저장 (대략적인 스크롤 영역)
+        float scrollHeight = Screen.height - 320;
+        currentScrollViewRect = new Rect(0, 200, Screen.width, scrollHeight);
+        scrollPosition = GUILayout.BeginScrollView(scrollPosition, GUILayout.Height(scrollHeight));
 
         if (lastResultSuccess && lastResultObject != null && resultDisplayMode == ResultDisplayMode.Structured)
         {

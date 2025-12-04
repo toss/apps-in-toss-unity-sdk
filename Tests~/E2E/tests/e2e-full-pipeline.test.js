@@ -161,9 +161,11 @@ async function startDevServer(aitBuildDir, defaultPort) {
 
   return new Promise((resolve, reject) => {
     // npm run dev (granite dev) 실행
+    // Windows에서 spawn('npm', ...)이 ENOENT 에러 발생하므로 shell: true 사용
     const server = spawn('npm', ['run', 'dev'], {
       cwd: aitBuildDir,
       stdio: 'pipe',
+      shell: true,
       env: { ...process.env, NODE_OPTIONS: '' }
     });
 
@@ -224,9 +226,11 @@ async function startProductionServer(aitBuildDir, defaultPort) {
 
   return new Promise((resolve, reject) => {
     // npm run start (vite preview) 실행
+    // Windows에서 spawn('npm', ...)이 ENOENT 에러 발생하므로 shell: true 사용
     const server = spawn('npm', ['run', 'start'], {
       cwd: aitBuildDir,
       stdio: 'pipe',
+      shell: true,
       env: { ...process.env, NODE_OPTIONS: '' }
     });
 

@@ -28,6 +28,7 @@ const serverPort = 5173;
  */
 async function startServer(aitBuildDir, defaultPort) {
   return new Promise((resolve, reject) => {
+    // Windows에서 spawn('npm', ...)이 ENOENT 에러 발생하므로 shell: true 사용
     const server = spawn('npm', ['run', 'dev'], {
       cwd: aitBuildDir,
       stdio: 'pipe',

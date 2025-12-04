@@ -14,104 +14,39 @@ concurrency:
 
 jobs:
   # =====================================================
-  # E2E Tests (Matrix: OS × Unity Version)
+  # E2E Tests - macOS (병렬 실행)
   # =====================================================
-  e2e-test:
-    name: E2E (${{ matrix.os-name }}, Unity ${{ matrix.unity-version }})
-    runs-on: ${{ matrix.runner }}
+  e2e-test-macos:
+    name: E2E (macOS, Unity ${{ matrix.unity-version }})
+    runs-on: [self-hosted, macOS, ARM64]
     timeout-minutes: 60
 
     strategy:
       fail-fast: false
-      # 8개 job 병렬 실행 (macOS 4 + Windows 4)
-      # 포트 충돌 방지: E2EBuildRunner.cs에서 EditorUserBuildSettings.connectProfiler = false 설정
       matrix:
-        include:
-          # macOS ARM64 runners
-          - os: macos
-            os-name: macOS
-            runner: [self-hosted, macOS, ARM64]
-            unity-version: "2021.3"
-            project-suffix: "2021.3"
-          - os: macos
-            os-name: macOS
-            runner: [self-hosted, macOS, ARM64]
-            unity-version: "2022.3"
-            project-suffix: "2022.3"
-          - os: macos
-            os-name: macOS
-            runner: [self-hosted, macOS, ARM64]
-            unity-version: "6000.0"
-            project-suffix: "6000.0"
-          - os: macos
-            os-name: macOS
-            runner: [self-hosted, macOS, ARM64]
-            unity-version: "6000.2"
-            project-suffix: "6000.2"
-          # Windows X64 runners
-          - os: windows
-            os-name: Windows
-            runner: [self-hosted, Windows, X64]
-            unity-version: "2021.3"
-            project-suffix: "2021.3"
-          - os: windows
-            os-name: Windows
-            runner: [self-hosted, Windows, X64]
-            unity-version: "2022.3"
-            project-suffix: "2022.3"
-          - os: windows
-            os-name: Windows
-            runner: [self-hosted, Windows, X64]
-            unity-version: "6000.0"
-            project-suffix: "6000.0"
-          - os: windows
-            os-name: Windows
-            runner: [self-hosted, Windows, X64]
-            unity-version: "6000.2"
-            project-suffix: "6000.2"
+        unity-version: ["2021.3", "2022.3", "6000.0", "6000.2"]
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # =====================================================
-      # 이전 빌드 아티팩트 정리 (캐시 충돌 방지)
-      # =====================================================
-      - name: Clean Previous Build Artifacts (macOS)
-        if: matrix.os == 'macos'
+      - name: Clean Previous Build Artifacts
         run: |
-          PROJECT_PATH="Tests~/E2E/SampleUnityProject-${{ matrix.project-suffix }}"
+          PROJECT_PATH="Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}"
           echo "Cleaning previous build artifacts..."
           rm -rf "${PROJECT_PATH}/ait-build" 2>/dev/null || true
           rm -rf "${PROJECT_PATH}/webgl" 2>/dev/null || true
           rm -rf "${PROJECT_PATH}/Library/Bee" 2>/dev/null || true
           echo "Done."
 
-      - name: Clean Previous Build Artifacts (Windows)
-        if: matrix.os == 'windows'
-        shell: cmd
-        run: |
-          @echo off
-          set "PROJECT_PATH=Tests~\E2E\SampleUnityProject-${{ matrix.project-suffix }}"
-          echo Cleaning previous build artifacts...
-          if exist "%PROJECT_PATH%\ait-build" rmdir /s /q "%PROJECT_PATH%\ait-build"
-          if exist "%PROJECT_PATH%\webgl" rmdir /s /q "%PROJECT_PATH%\webgl"
-          if exist "%PROJECT_PATH%\Library\Bee" rmdir /s /q "%PROJECT_PATH%\Library\Bee"
-          echo Done.
-
-      # =====================================================
-      # Unity 탐지 (macOS)
-      # =====================================================
-      - name: Detect Unity Installation (macOS)
-        if: matrix.os == 'macos'
-        id: unity-macos
+      - name: Detect Unity Installation
+        id: unity
         run: |
           UNITY_BASE="/Applications/Unity/Hub/Editor"
           UNITY_VERSION_PATTERN="${{ matrix.unity-version }}"
 
           echo "Searching for Unity ${UNITY_VERSION_PATTERN}.x in ${UNITY_BASE}..."
 
-          # 패턴에 맞는 설치된 Unity 버전 찾기 (최신 버전 우선)
           UNITY_DIR=$(ls -d "${UNITY_BASE}/${UNITY_VERSION_PATTERN}"* 2>/dev/null | sort -rV | head -1)
 
           if [ -z "$UNITY_DIR" ]; then
@@ -135,12 +70,105 @@ jobs:
           echo "UNITY_PATH=${UNITY_PATH}" >> $GITHUB_OUTPUT
           echo "UNITY_VERSION=${DETECTED_VERSION}" >> $GITHUB_OUTPUT
 
-      # =====================================================
-      # Unity 탐지 (Windows)
-      # =====================================================
-      - name: Detect Unity Installation (Windows)
-        if: matrix.os == 'windows'
-        id: unity-windows
+      - name: Build Unity WebGL
+        run: |
+          UNITY_PATH="${{ steps.unity.outputs.UNITY_PATH }}"
+          PROJECT_PATH="${{ github.workspace }}/Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}"
+
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "Unity Build Configuration"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "Unity Version: ${{ steps.unity.outputs.UNITY_VERSION }}"
+          echo "Unity Path: ${UNITY_PATH}"
+          echo "Project Path: ${PROJECT_PATH}"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+          "$UNITY_PATH" -quit -batchmode -nographics \
+            -projectPath "$PROJECT_PATH" \
+            -executeMethod E2EBuildRunner.CommandLineBuild \
+            -buildTarget WebGL \
+            -logFile -
+
+      - name: Verify Build Output
+        run: |
+          DIST_PATH="Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/dist/web"
+          if [ -d "$DIST_PATH" ]; then
+            echo "✅ Build output found"
+            ls -la "$DIST_PATH"
+          else
+            echo "❌ Build output not found at $DIST_PATH"
+            exit 1
+          fi
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install Playwright Dependencies
+        working-directory: Tests~/E2E/tests
+        run: |
+          rm -rf node_modules package-lock.json
+          npm install
+          npx playwright install chromium --with-deps
+          npx playwright --version
+
+      - name: Run E2E Tests
+        working-directory: Tests~/E2E/tests
+        env:
+          UNITY_PROJECT_PATH: ${{ github.workspace }}/Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}
+        run: npm test
+
+      - name: Upload Benchmark Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-results-macos-${{ matrix.unity-version }}
+          path: Tests~/E2E/tests/benchmark-results.json
+          if-no-files-found: ignore
+
+      - name: Upload Playwright Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report-macos-${{ matrix.unity-version }}
+          path: Tests~/E2E/tests/playwright-report/
+          if-no-files-found: ignore
+
+  # =====================================================
+  # E2E Tests - Windows (순차 실행 - 라이선스 충돌 방지)
+  # =====================================================
+  e2e-test-windows:
+    name: E2E (Windows, Unity ${{ matrix.unity-version }})
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 60
+
+    strategy:
+      fail-fast: false
+      # Windows에서는 동일 머신에서 여러 Unity 버전이 동시에 실행될 때
+      # 라이선싱 클라이언트 충돌 발생 (Code 10 signature error)
+      # 순차 실행으로 충돌 방지
+      max-parallel: 1
+      matrix:
+        unity-version: ["2021.3", "2022.3", "6000.0", "6000.2"]
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Clean Previous Build Artifacts
+        shell: cmd
+        run: |
+          @echo off
+          set "PROJECT_PATH=Tests~\E2E\SampleUnityProject-${{ matrix.unity-version }}"
+          echo Cleaning previous build artifacts...
+          if exist "%PROJECT_PATH%\ait-build" rmdir /s /q "%PROJECT_PATH%\ait-build"
+          if exist "%PROJECT_PATH%\webgl" rmdir /s /q "%PROJECT_PATH%\webgl"
+          if exist "%PROJECT_PATH%\Library\Bee" rmdir /s /q "%PROJECT_PATH%\Library\Bee"
+          echo Done.
+
+      - name: Detect Unity Installation
+        id: unity
         shell: cmd
         run: |
           @echo off
@@ -177,44 +205,17 @@ jobs:
           echo UNITY_PATH=%UNITY_PATH%>> %GITHUB_OUTPUT%
           echo UNITY_VERSION=%DETECTED_VERSION%>> %GITHUB_OUTPUT%
 
-      # =====================================================
-      # Unity WebGL 빌드 (macOS)
-      # =====================================================
-      - name: Build Unity WebGL (macOS)
-        if: matrix.os == 'macos'
-        run: |
-          UNITY_PATH="${{ steps.unity-macos.outputs.UNITY_PATH }}"
-          PROJECT_PATH="${{ github.workspace }}/Tests~/E2E/SampleUnityProject-${{ matrix.project-suffix }}"
-
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "Unity Build Configuration"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "Unity Version: ${{ steps.unity-macos.outputs.UNITY_VERSION }}"
-          echo "Unity Path: ${UNITY_PATH}"
-          echo "Project Path: ${PROJECT_PATH}"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-
-          "$UNITY_PATH" -quit -batchmode -nographics \
-            -projectPath "$PROJECT_PATH" \
-            -executeMethod E2EBuildRunner.CommandLineBuild \
-            -buildTarget WebGL \
-            -logFile -
-
-      # =====================================================
-      # Unity WebGL 빌드 (Windows)
-      # =====================================================
-      - name: Build Unity WebGL (Windows)
-        if: matrix.os == 'windows'
+      - name: Build Unity WebGL
         shell: cmd
         run: |
           @echo off
-          set "UNITY_PATH=${{ steps.unity-windows.outputs.UNITY_PATH }}"
-          set "PROJECT_PATH=${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ matrix.project-suffix }}"
+          set "UNITY_PATH=${{ steps.unity.outputs.UNITY_PATH }}"
+          set "PROJECT_PATH=${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ matrix.unity-version }}"
 
           echo ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
           echo Unity Build Configuration
           echo ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-          echo Unity Version: ${{ steps.unity-windows.outputs.UNITY_VERSION }}
+          echo Unity Version: ${{ steps.unity.outputs.UNITY_VERSION }}
           echo Unity Path: %UNITY_PATH%
           echo Project Path: %PROJECT_PATH%
           echo ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -226,27 +227,11 @@ jobs:
             exit /b %ERRORLEVEL%
           )
 
-      # =====================================================
-      # 빌드 결과 확인
-      # =====================================================
-      - name: Verify Build Output (macOS)
-        if: matrix.os == 'macos'
-        run: |
-          DIST_PATH="Tests~/E2E/SampleUnityProject-${{ matrix.project-suffix }}/ait-build/dist/web"
-          if [ -d "$DIST_PATH" ]; then
-            echo "✅ Build output found"
-            ls -la "$DIST_PATH"
-          else
-            echo "❌ Build output not found at $DIST_PATH"
-            exit 1
-          fi
-
-      - name: Verify Build Output (Windows)
-        if: matrix.os == 'windows'
+      - name: Verify Build Output
         shell: cmd
         run: |
           @echo off
-          set "DIST_PATH=Tests~\E2E\SampleUnityProject-${{ matrix.project-suffix }}\ait-build\dist\web"
+          set "DIST_PATH=Tests~\E2E\SampleUnityProject-${{ matrix.unity-version }}\ait-build\dist\web"
           if exist "%DIST_PATH%" (
             echo Build output found
             dir "%DIST_PATH%"
@@ -255,25 +240,12 @@ jobs:
             exit /b 1
           )
 
-      # =====================================================
-      # Node.js 및 Playwright 설정
-      # =====================================================
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 18
 
-      - name: Install Playwright Dependencies (macOS)
-        if: matrix.os == 'macos'
-        working-directory: Tests~/E2E/tests
-        run: |
-          rm -rf node_modules package-lock.json
-          npm install
-          npx playwright install chromium --with-deps
-          npx playwright --version
-
-      - name: Install Playwright Dependencies (Windows)
-        if: matrix.os == 'windows'
+      - name: Install Playwright Dependencies
         shell: cmd
         working-directory: Tests~/E2E/tests
         run: |
@@ -284,32 +256,18 @@ jobs:
           call npx playwright install chromium --with-deps
           call npx playwright --version
 
-      # =====================================================
-      # E2E 테스트 실행
-      # =====================================================
-      - name: Run E2E Tests (macOS)
-        if: matrix.os == 'macos'
-        working-directory: Tests~/E2E/tests
-        env:
-          UNITY_PROJECT_PATH: ${{ github.workspace }}/Tests~/E2E/SampleUnityProject-${{ matrix.project-suffix }}
-        run: npm test
-
-      - name: Run E2E Tests (Windows)
-        if: matrix.os == 'windows'
+      - name: Run E2E Tests
         shell: cmd
         working-directory: Tests~/E2E/tests
         env:
-          UNITY_PROJECT_PATH: ${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ matrix.project-suffix }}
+          UNITY_PROJECT_PATH: ${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ matrix.unity-version }}
         run: call npm test
 
-      # =====================================================
-      # 아티팩트 업로드
-      # =====================================================
       - name: Upload Benchmark Results
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: benchmark-results-${{ matrix.os }}-${{ matrix.unity-version }}
+          name: benchmark-results-windows-${{ matrix.unity-version }}
           path: Tests~/E2E/tests/benchmark-results.json
           if-no-files-found: ignore
 
@@ -317,7 +275,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: playwright-report-${{ matrix.os }}-${{ matrix.unity-version }}
+          name: playwright-report-windows-${{ matrix.unity-version }}
           path: Tests~/E2E/tests/playwright-report/
           if-no-files-found: ignore
 
@@ -327,7 +285,7 @@ jobs:
   test-report:
     name: Test Report Summary
     runs-on: ubuntu-latest
-    needs: [e2e-test]
+    needs: [e2e-test-macos, e2e-test-windows]
     if: always()
 
     steps:
@@ -345,8 +303,8 @@ jobs:
           echo "### 🖥️ Test Environment" >> $GITHUB_STEP_SUMMARY
           echo "| OS | Unity Versions | Runner Type |" >> $GITHUB_STEP_SUMMARY
           echo "|-----|---------------|-------------|" >> $GITHUB_STEP_SUMMARY
-          echo "| macOS | 2021.3, 2022.3, 6000.0, 6000.2 | Self-hosted ARM64 |" >> $GITHUB_STEP_SUMMARY
-          echo "| Windows | 2021.3, 2022.3, 6000.0, 6000.2 | Self-hosted X64 |" >> $GITHUB_STEP_SUMMARY
+          echo "| macOS | 2021.3, 2022.3, 6000.0, 6000.2 | Self-hosted ARM64 (병렬) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Windows | 2021.3, 2022.3, 6000.0, 6000.2 | Self-hosted X64 (순차) |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
           # Benchmark 결과

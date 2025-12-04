@@ -21,16 +21,10 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
 
-    # 같은 OS에서 한 번에 하나의 Unity 빌드만 실행 (포트 충돌 방지)
-    # macOS runner 4개가 같은 머신, Windows runner 4개가 같은 머신이므로
-    # websockify 포트(54998 등)가 충돌함
-    concurrency:
-      group: e2e-${{ matrix.os }}-${{ github.ref }}
-      cancel-in-progress: false
-
     strategy:
       fail-fast: false
-      # macOS/Windows 각 1개 job씩만 병렬 실행 (같은 머신 내 포트 충돌 방지)
+      # 8개 job 병렬 실행 (macOS 4 + Windows 4)
+      # 포트 충돌 방지: E2EBuildRunner.cs에서 EditorUserBuildSettings.connectProfiler = false 설정
       matrix:
         include:
           # macOS ARM64 runners

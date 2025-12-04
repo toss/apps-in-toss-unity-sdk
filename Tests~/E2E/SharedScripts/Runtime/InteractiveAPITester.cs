@@ -86,11 +86,11 @@ public class InteractiveAPITester : MonoBehaviour
     {
         Debug.Log("[InteractiveAPITester] Loading SDK APIs...");
 
-        // 한글 폰트 로드 (Pretendard - SIL OFL License)
-        koreanFont = Resources.Load<Font>("Fonts/Pretendard-Regular");
+        // 한글 폰트 로드 (Noto Sans KR - SIL OFL License)
+        koreanFont = Resources.Load<Font>("Fonts/NotoSansKR-Regular");
         if (koreanFont != null)
         {
-            Debug.Log("[InteractiveAPITester] Korean font (Pretendard) loaded successfully");
+            Debug.Log("[InteractiveAPITester] Korean font (Noto Sans KR) loaded successfully");
         }
         else
         {

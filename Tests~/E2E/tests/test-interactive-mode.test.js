@@ -7,7 +7,9 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const SAMPLE_PROJECT = path.resolve(__dirname, '../SampleUnityProject-2021.3');
+// 환경변수 또는 기본값으로 프로젝트 경로 결정
+const UNITY_VERSION = process.env.UNITY_VERSION || '6000.0';
+const SAMPLE_PROJECT = path.resolve(__dirname, `../SampleUnityProject-${UNITY_VERSION}`);
 const AIT_BUILD = path.resolve(SAMPLE_PROJECT, 'ait-build');
 
 let serverProcess = null;
@@ -21,6 +23,7 @@ async function startServer(aitBuildDir, defaultPort) {
     const server = spawn('pnpm', ['run', 'dev'], {
       cwd: aitBuildDir,
       stdio: 'pipe',
+      shell: true,
       env: { ...process.env, NODE_OPTIONS: '' }
     });
 

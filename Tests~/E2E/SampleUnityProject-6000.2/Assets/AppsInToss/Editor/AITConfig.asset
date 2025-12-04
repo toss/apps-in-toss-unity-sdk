@@ -1,0 +1,51 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e053371d85a8345e9bdd36a1ea48d00f, type: 3}
+  m_Name: AITConfig
+  m_EditorClassIdentifier: AppsInTossSDKEditor::AppsInToss.AITEditorScriptObject
+  appName: unity-sdk-sample
+  displayName: Unity SDK Sample
+  version: 1.0.0
+  description: E2E test for Apps in Toss Unity SDK
+  primaryColor: '#1E88E5'
+  iconUrl: https://via.placeholder.com/512
+  localPort: 4173
+  isProduction: 1
+  enableOptimization: 1
+  enableCompression: 0
+  memorySize: -1
+  compressionFormat: -1
+  threadsSupport: -1
+  dataCaching: -1
+  nameFilesAsHashes: 1
+  stripEngineCode: 1
+  managedStrippingLevel: -1
+  il2cppConfiguration: -1
+  powerPreference: -1
+  wasmStreaming: 1
+  exceptionSupport: -1
+  showUnityLogo: -1
+  decompressionFallback: -1
+  runInBackground: -1
+  webAssemblyArithmeticExceptions: -1
+  tossPayMerchantId: 
+  tossPayClientKey: 
+  enableAdvertisement: 0
+  interstitialAdGroupId: ait-ad-test-interstitial-id
+  rewardedAdGroupId: ait-ad-test-rewarded-id
+  enableDebugConsole: 1
+  deploymentKey: 
+  permissions:
+  - userInfo
+  - location
+  - camera
+  plugins: []

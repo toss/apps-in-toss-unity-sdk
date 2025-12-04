@@ -90,6 +90,8 @@ logs/
 # Editor configuration
 **/Editor/AITConfig.asset
 **/Editor/AITConfig.asset.meta
+# Allow AITConfig in test sample projects
+!Tests~/E2E/SampleUnityProject*/Assets/AppsInToss/Editor/AITConfig.asset
 
 # Temporary files
 *.temp
@@ -97,6 +99,8 @@ logs/
 !Tests~
 !Tools~
 !sdk-runtime-generator~
+!**/Plugins~
+!**/Plugins~/**
 
 # AI Assistant files
 .claude/

@@ -21,10 +21,16 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
 
+    # 같은 OS에서 한 번에 하나의 Unity 빌드만 실행 (포트 충돌 방지)
+    # macOS runner 4개가 같은 머신, Windows runner 4개가 같은 머신이므로
+    # websockify 포트(54998 등)가 충돌함
+    concurrency:
+      group: e2e-${{ matrix.os }}-${{ github.ref }}
+      cancel-in-progress: false
+
     strategy:
       fail-fast: false
-      # 8개 runner (macOS 4 + Windows 4)가 있으므로 8개 job 병렬 실행 가능
-      # 각 self-hosted runner는 한 번에 하나의 job만 실행
+      # macOS/Windows 각 1개 job씩만 병렬 실행 (같은 머신 내 포트 충돌 방지)
       matrix:
         include:
           # macOS ARM64 runners
@@ -237,9 +243,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 18
-
-      - name: Install pnpm
-        run: npm install -g pnpm
 
       - name: Install Playwright Dependencies (macOS)
         if: matrix.os == 'macos'

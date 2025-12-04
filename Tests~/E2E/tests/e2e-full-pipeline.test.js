@@ -15,7 +15,15 @@ import { fileURLToPath } from 'url';
  * 4. AIT Packaging
  * 5. Production Server
  * 6. Performance Benchmarks
- * 7. Runtime API Tests
+ * 7. Runtime API Error Validation (39개 SDK API 에러 검증)
+ *
+ * Test 7 검증 기준:
+ * - 모든 39개 SDK API를 호출
+ * - 개발 환경에서 "상정된 에러" (expected error) 발생 = PASS
+ *   - "XXX is not a constant handler" (bridge-core Constant API)
+ *   - "__GRANITE_NATIVE_EMITTER is not available" (Async API)
+ *   - "ReactNativeWebView is not available" (Native 통신)
+ * - "상정되지 않은 에러" (unexpected error) 발생 = FAIL
  */
 
 // ES Module에서 __dirname 대체
@@ -814,15 +822,16 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
 
 
   // -------------------------------------------------------------------------
-  // Test 7: Runtime API Tests (vite preview)
+  // Test 7: Runtime API Error Validation
+  // 39개 SDK API 호출 시 올바른 에러가 발생하는지 검증
   // -------------------------------------------------------------------------
-  test('7. All Runtime APIs should work with callbacks', async ({ page }) => {
+  test('7. All 39 SDK APIs should return correct errors in dev environment', async ({ page }) => {
     test.setTimeout(180000); // 3분
 
     expect(directoryExists(DIST_WEB), 'dist/web/ should exist').toBe(true);
 
     // Production 서버 시작 (npm run start = vite preview)
-    console.log('🚀 Starting production server (vite preview)...');
+    console.log('🚀 Starting production server for API error validation...');
     const prodServer = await startProductionServer(AIT_BUILD, serverPort);
     serverProcess = prodServer.process;
     const actualPort = prodServer.port;
@@ -846,23 +855,6 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       throw new Error(`Server failed to start on port ${actualPort}`);
     }
 
-    // 콘솔 로그/에러 캡처 (에러 소스 분석용)
-    const consoleErrors = [];
-    const consoleWarnings = [];
-
-    page.on('console', msg => {
-      const text = msg.text();
-      if (msg.type() === 'error') {
-        consoleErrors.push(text);
-      } else if (msg.type() === 'warning') {
-        consoleWarnings.push(text);
-      }
-    });
-
-    page.on('pageerror', error => {
-      consoleErrors.push(`[PageError] ${error.message}`);
-    });
-
     // 페이지 로딩 (E2E 모드 활성화)
     await page.goto(`http://localhost:${actualPort}?e2e=true`, {
       waitUntil: 'networkidle',
@@ -880,6 +872,7 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
     }
 
     // RuntimeAPITester에서 결과 수신 대기 (CustomEvent 방식)
+    // 39개 API 테스트에 충분한 시간 (최대 120초)
     const apiResults = await page.evaluate(() => {
       return new Promise((resolve) => {
         // E2EBridge.jslib에서 발생시키는 CustomEvent 수신
@@ -895,8 +888,8 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
           return;
         }
 
-        // 60초 타임아웃 (모든 API 테스트 완료 대기)
-        setTimeout(() => resolve(null), 60000);
+        // 120초 타임아웃 (39개 API 테스트 완료 대기)
+        setTimeout(() => resolve(null), 120000);
       });
     });
 
@@ -904,157 +897,90 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
     serverProcess.kill();
     serverProcess = null;
 
-    // 에러 분류: expected vs unexpected
-    // bridge-core 에러 패턴 (개발 환경에서 예상되는 에러)
-    const EXPECTED_ERROR_PATTERNS = [
-      'is not a constant handler',                              // Constant API 에러
-      '__GRANITE_NATIVE_EMITTER is not available',              // Async API 에러 (emitter)
-      'ReactNativeWebView is not available in browser environment', // Async API 에러 (webview)
-    ];
-
-    const errorAnalysis = {
-      expectedErrors: [],    // 개발 환경에서 예상되는 에러 (bridge-core)
-      unexpectedErrors: []   // 발생하면 안 되는 에러
-    };
-
-    consoleErrors.forEach(error => {
-      const isExpected = EXPECTED_ERROR_PATTERNS.some(pattern => error.includes(pattern));
-
-      if (isExpected) {
-        errorAnalysis.expectedErrors.push(error);
-      } else {
-        errorAnalysis.unexpectedErrors.push(error);
-      }
-    });
-
-    // 에러 분석 결과 출력
-    console.log('\n📋 Console Error Analysis:');
-
-    if (errorAnalysis.expectedErrors.length > 0) {
-      console.log(`   ✅ Expected errors (bridge-core in dev): ${errorAnalysis.expectedErrors.length}`);
-      errorAnalysis.expectedErrors.slice(0, 5).forEach(e => console.log(`      → ${e.substring(0, 100)}`));
-    } else {
-      console.log(`   ⚠️  No expected errors detected`);
-      console.log(`      → Expected: "XXX is not a constant handler" in dev environment`);
-    }
-
-    if (errorAnalysis.unexpectedErrors.length > 0) {
-      console.log(`   ❌ Unexpected errors: ${errorAnalysis.unexpectedErrors.length}`);
-      errorAnalysis.unexpectedErrors.slice(0, 10).forEach(e => console.log(`      → ${e.substring(0, 100)}`));
-    }
-
-    // 결과 처리
+    // =========================================================================
+    // C# Task 결과 기반 검증 (콘솔 에러가 아닌 실제 API 호출 결과)
+    // =========================================================================
     if (apiResults) {
-      console.log(`\n📊 API TEST RESULTS:`);
-      console.log(`   Total APIs: ${apiResults.totalAPIs}`);
-      console.log(`   Passed: ${apiResults.successCount}`);
-      console.log(`   Failed: ${apiResults.failCount}`);
+      console.log('\n' + '='.repeat(70));
+      console.log('📊 SDK API ERROR VALIDATION RESULTS');
+      console.log('='.repeat(70));
+      console.log(`   Total APIs Tested: ${apiResults.totalAPIs}`);
+      console.log(`   Success (including expected errors): ${apiResults.successCount}`);
+      console.log(`   Expected Errors: ${apiResults.expectedErrorCount || 0}`);
+      console.log(`   Unexpected Errors (FAILURES): ${apiResults.unexpectedErrorCount || 0}`);
+      console.log('='.repeat(70));
 
-      // 실패한 API 목록
+      // 상정된 에러가 발생한 API 목록 (정상)
       if (apiResults.results) {
-        const failures = apiResults.results.filter(r => !r.success);
-        if (failures.length > 0) {
-          console.log('\n❌ Failed APIs:');
-          failures.forEach(f => {
-            console.log(`   - ${f.apiName}: ${f.error || 'Unknown error'}`);
+        const expectedErrors = apiResults.results.filter(r => r.success && r.isExpectedError);
+        if (expectedErrors.length > 0) {
+          console.log('\n✅ APIs with Expected Errors (correct behavior in dev):');
+          expectedErrors.forEach(r => {
+            const truncatedError = r.error?.length > 50 ? r.error.substring(0, 50) + '...' : r.error;
+            console.log(`   [OK] ${r.apiName}: ${truncatedError}`);
+          });
+        }
+
+        // 에러 없이 성공한 API (Mock이 동작한 경우)
+        const cleanSuccess = apiResults.results.filter(r => r.success && !r.isExpectedError && !r.error);
+        if (cleanSuccess.length > 0) {
+          console.log('\n✅ APIs Completed Successfully (mock worked):');
+          cleanSuccess.forEach(r => {
+            console.log(`   [OK] ${r.apiName}`);
+          });
+        }
+
+        // 상정되지 않은 에러 (테스트 실패)
+        const unexpectedErrors = apiResults.results.filter(r => !r.success);
+        if (unexpectedErrors.length > 0) {
+          console.log('\n❌ APIs with UNEXPECTED Errors (TEST FAILURES):');
+          unexpectedErrors.forEach(r => {
+            console.log(`   [FAIL] ${r.apiName}: ${r.error}`);
           });
         }
       }
 
-      // 모든 API가 성공해야 함 (또는 최소 성공률 검증)
-      const successRate = apiResults.totalAPIs > 0
-        ? (apiResults.successCount / apiResults.totalAPIs) * 100
-        : 0;
-
-      console.log(`\n✅ Success rate: ${successRate.toFixed(1)}%`);
-
-      // 최소 80% 성공률 요구 (일부 API는 WebGL 환경에서 작동하지 않을 수 있음)
-      expect(successRate).toBeGreaterThanOrEqual(80);
-
       // =========================================================================
-      // SDK Runtime 검증: C# ↔ jslib 동작 및 타입 안전성
+      // 핵심 검증: unexpectedErrorCount가 0이어야 테스트 통과
       // =========================================================================
-      const runtimeValidation = {
-        callbackPatternValid: true,    // 모든 API가 콜백 패턴 사용
-        typeMarshalling: {               // C# ↔ JavaScript 타입 변환
-          stringPassed: 0,
-          numberPassed: 0,
-          booleanPassed: 0,
-          objectPassed: 0,
-          failed: []
-        },
-        csharpJslibMatching: {
-          totalAPIs: apiResults.totalAPIs,
-          matched: apiResults.successCount,  // 호출 성공 = C# ↔ jslib 매칭 성공
-          unmatched: apiResults.failCount
-        }
-      };
+      const unexpectedErrorCount = apiResults.unexpectedErrorCount || 0;
 
-      // 실패한 API 분석 - 타입 마샬링 실패 여부 확인
-      if (apiResults.results) {
-        apiResults.results.forEach(result => {
-          if (result.success) {
-            // 성공한 API의 타입 분석 (result.data가 있으면)
-            if (result.data) {
-              if (typeof result.data === 'string') structuralValidation.typeMarshalling.stringPassed++;
-              else if (typeof result.data === 'number') structuralValidation.typeMarshalling.numberPassed++;
-              else if (typeof result.data === 'boolean') structuralValidation.typeMarshalling.booleanPassed++;
-              else if (typeof result.data === 'object') structuralValidation.typeMarshalling.objectPassed++;
-            }
-          } else {
-            // 실패한 API - 타입 마샬링 오류 여부 확인
-            if (result.error && (
-              result.error.includes('type') ||
-              result.error.includes('marshal') ||
-              result.error.includes('undefined')
-            )) {
-              structuralValidation.typeMarshalling.failed.push({
-                api: result.apiName,
-                error: result.error
-              });
-            }
-          }
-        });
+      console.log('\n' + '='.repeat(70));
+      if (unexpectedErrorCount === 0) {
+        console.log('✅ ALL API ERROR VALIDATIONS PASSED');
+        console.log(`   All ${apiResults.totalAPIs} APIs returned correct errors or succeeded`);
+      } else {
+        console.log('❌ API ERROR VALIDATION FAILED');
+        console.log(`   ${unexpectedErrorCount} APIs returned unexpected errors`);
       }
+      console.log('='.repeat(70) + '\n');
 
-      console.log(`\n🔍 SDK Runtime Validation:`);
-      console.log(`   C# ↔ jslib Matching: ${runtimeValidation.csharpJslibMatching.matched}/${runtimeValidation.csharpJslibMatching.totalAPIs} APIs`);
-      console.log(`   Type Marshalling:`);
-      console.log(`     - String: ${runtimeValidation.typeMarshalling.stringPassed} passed`);
-      console.log(`     - Number: ${runtimeValidation.typeMarshalling.numberPassed} passed`);
-      console.log(`     - Boolean: ${runtimeValidation.typeMarshalling.booleanPassed} passed`);
-      console.log(`     - Object: ${runtimeValidation.typeMarshalling.objectPassed} passed`);
-      if (runtimeValidation.typeMarshalling.failed.length > 0) {
-        console.log(`     - Failed: ${runtimeValidation.typeMarshalling.failed.length} APIs`);
-        runtimeValidation.typeMarshalling.failed.forEach(f => {
-          console.log(`       → ${f.api}: ${f.error}`);
-        });
-      }
-
+      // 테스트 결과 저장
       testResults.tests['7_runtime_api'] = {
-        passed: true,
+        passed: unexpectedErrorCount === 0,
         totalAPIs: apiResults.totalAPIs,
         successCount: apiResults.successCount,
-        failCount: apiResults.failCount,
-        successRate,
-        failures: apiResults.results?.filter(r => !r.success) || [],
-        errorAnalysis: {
-          expectedErrors: errorAnalysis.expectedErrors.length,
-          unexpectedErrors: errorAnalysis.unexpectedErrors.length
-        },
-        // ⭐ SDK Runtime 검증 결과
-        runtimeValidation
+        expectedErrorCount: apiResults.expectedErrorCount || 0,
+        unexpectedErrorCount: unexpectedErrorCount,
+        results: apiResults.results || []
       };
+
+      // 상정되지 않은 에러가 있으면 테스트 실패
+      expect(unexpectedErrorCount, 'All APIs should return expected errors or succeed').toBe(0);
+
     } else {
       console.log('⚠️ API test results not received (RuntimeAPITester may not be in scene)');
-      console.log('   This is expected if RuntimeAPITester.cs is not added to the Unity project');
+      console.log('   Waiting for RuntimeAPITester to complete...');
 
-      // RuntimeAPITester가 없으면 스킵 (실패하지 않음)
+      // RuntimeAPITester 결과가 없으면 테스트 실패
       testResults.tests['7_runtime_api'] = {
-        passed: true,
-        skipped: true,
-        reason: 'RuntimeAPITester not found in scene'
+        passed: false,
+        skipped: false,
+        reason: 'RuntimeAPITester results not received'
       };
+
+      // 결과가 없으면 실패
+      expect(apiResults, 'RuntimeAPITester should return results').not.toBeNull();
     }
   });
 

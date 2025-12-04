@@ -68,7 +68,7 @@ Desktop.ini
 *.swo
 
 # Node modules
-node_modules/
+node_modules
 node_modules.meta
 npm-debug.log*
 yarn-debug.log*
@@ -97,6 +97,8 @@ logs/
 !Tests~
 !Tools~
 !sdk-runtime-generator~
+!**/Plugins~
+!**/Plugins~/**
 
 # AI Assistant files
 .claude/

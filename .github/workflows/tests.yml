@@ -21,8 +21,14 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
 
+    # OS별로 하나의 빌드만 실행 (Unity WebGL 빌드 시 포트 충돌 방지)
+    concurrency:
+      group: unity-build-${{ matrix.os }}
+      cancel-in-progress: false
+
     strategy:
       fail-fast: false
+      max-parallel: 2  # macOS 1개 + Windows 1개 동시 실행 (포트 충돌 방지)
       matrix:
         include:
           # macOS ARM64 runners

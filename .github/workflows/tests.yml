@@ -242,6 +242,9 @@ jobs:
         with:
           node-version: 18
 
+      - name: Install pnpm
+        run: npm install -g pnpm
+
       - name: Install Playwright Dependencies (macOS)
         if: matrix.os == 'macos'
         working-directory: Tests~/E2E/tests

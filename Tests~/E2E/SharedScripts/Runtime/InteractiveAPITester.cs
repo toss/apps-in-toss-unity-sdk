@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using UnityEngine;
 using AppsInToss;
@@ -77,7 +78,39 @@ public class InteractiveAPITester : MonoBehaviour
     private GUIStyle resultValueStyle;
     private GUIStyle callbackLabelStyle;
     private GUIStyle toggleButtonStyle;
+    private GUIStyle dangerButtonStyle;
     private bool stylesInitialized = false;
+
+    // OOM 테스트 관련
+    private List<byte[]> oomAllocations = new List<byte[]>();
+    private string oomStatus = "";
+    private double jsAllocatedBytes = 0;
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+    // JavaScript 브릿지 (WebView 레벨 메모리 할당)
+    // double 사용: int는 2GB 초과 시 오버플로우 발생
+    [DllImport("__Internal")]
+    private static extern double OOMTester_AllocateJSMemory(int megabytes);
+
+    [DllImport("__Internal")]
+    private static extern double OOMTester_AllocateVideoBuffer(int megabytes);
+
+    [DllImport("__Internal")]
+    private static extern double OOMTester_AllocateCanvasMemory(int megabytes);
+
+    [DllImport("__Internal")]
+    private static extern double OOMTester_GetTotalJSAllocated();
+
+    [DllImport("__Internal")]
+    private static extern double OOMTester_ClearJSMemory();
+#else
+    // Editor/Standalone 스텁
+    private static double OOMTester_AllocateJSMemory(int megabytes) { Debug.Log($"[OOMTester-Stub] Would allocate {megabytes}MB JS memory"); return megabytes * 1024.0 * 1024.0; }
+    private static double OOMTester_AllocateVideoBuffer(int megabytes) { Debug.Log($"[OOMTester-Stub] Would allocate {megabytes}MB video buffer"); return megabytes * 1024.0 * 1024.0; }
+    private static double OOMTester_AllocateCanvasMemory(int megabytes) { Debug.Log($"[OOMTester-Stub] Would allocate {megabytes}MB canvas"); return megabytes * 1024.0 * 1024.0; }
+    private static double OOMTester_GetTotalJSAllocated() { return 0; }
+    private static double OOMTester_ClearJSMemory() { Debug.Log("[OOMTester-Stub] Would clear JS memory"); return 0; }
+#endif
 
     // 한글 폰트
     private Font koreanFont;
@@ -371,6 +404,18 @@ public class InteractiveAPITester : MonoBehaviour
         toggleButtonStyle.padding = new RectOffset(10, 10, 6, 6);
         if (koreanFont != null) toggleButtonStyle.font = koreanFont;
 
+        // 위험 버튼 스타일 (OOM 테스트용)
+        dangerButtonStyle = new GUIStyle(GUI.skin.button);
+        dangerButtonStyle.fontSize = 14;
+        dangerButtonStyle.fontStyle = FontStyle.Bold;
+        dangerButtonStyle.padding = new RectOffset(15, 15, 12, 12);
+        dangerButtonStyle.margin = new RectOffset(4, 4, 8, 8);
+        dangerButtonStyle.normal.textColor = Color.white;
+        dangerButtonStyle.normal.background = MakeTex(2, 2, new Color(0.8f, 0.2f, 0.2f, 1f));
+        dangerButtonStyle.hover.background = MakeTex(2, 2, new Color(0.9f, 0.3f, 0.3f, 1f));
+        dangerButtonStyle.active.background = MakeTex(2, 2, new Color(0.6f, 0.1f, 0.1f, 1f));
+        if (koreanFont != null) dangerButtonStyle.font = koreanFont;
+
         stylesInitialized = true;
     }
 
@@ -410,6 +455,10 @@ public class InteractiveAPITester : MonoBehaviour
                     GUILayout.Space(5);
                 }
             }
+
+            // OOM Tester 섹션 (API 목록 하단에 추가)
+            GUILayout.Space(20);
+            DrawOOMTesterSection();
         }
 
         GUILayout.EndScrollView();
@@ -1404,4 +1453,219 @@ public class InteractiveAPITester : MonoBehaviour
         result.Apply();
         return result;
     }
+
+    #region OOM Tester
+
+    /// <summary>
+    /// OOM (Out of Memory) 테스터 UI 섹션
+    /// iOS WebView에서 메모리 압박으로 인한 크래시 재현용
+    /// 사용자가 직접 크기를 선택하여 메모리를 할당할 수 있음
+    /// </summary>
+    private void DrawOOMTesterSection()
+    {
+        GUILayout.BeginVertical(boxStyle);
+
+        // 섹션 헤더
+        GUILayout.Label("⚠️ OOM Tester (Memory Crash Simulator)", groupHeaderStyle);
+        GUILayout.Label("iOS WebView 메모리 부족 상황을 재현합니다.", labelStyle);
+
+        GUILayout.Space(10);
+
+        // 현재 메모리 상태 표시
+        long wasmAllocated = 0;
+        foreach (var alloc in oomAllocations)
+        {
+            wasmAllocated += alloc.Length;
+        }
+
+        // JS 메모리 상태 업데이트
+        jsAllocatedBytes = OOMTester_GetTotalJSAllocated();
+
+        string memoryInfo = $"WASM 힙: {wasmAllocated / (1024 * 1024)}MB ({oomAllocations.Count}개 블록)";
+        GUILayout.Label(memoryInfo, labelStyle);
+
+        string jsMemoryInfo = $"WebView (JS): {jsAllocatedBytes / (1024 * 1024):F0}MB";
+        GUILayout.Label(jsMemoryInfo, labelStyle);
+
+        string totalInfo = $"총 할당: {(wasmAllocated + jsAllocatedBytes) / (1024 * 1024):F0}MB";
+        GUILayout.Label(totalInfo, labelStyle);
+
+        if (!string.IsNullOrEmpty(oomStatus))
+        {
+            GUILayout.Label(oomStatus, labelStyle);
+        }
+
+        GUILayout.Space(10);
+
+        // WASM 힙 할당 버튼들 (세로 배치)
+        GUILayout.Label("WASM 힙 (C# byte[])", labelStyle);
+        if (GUILayout.Button("+50MB WASM", dangerButtonStyle, GUILayout.Height(40)))
+        {
+            AllocateWasm(50);
+        }
+        if (GUILayout.Button("+100MB WASM", dangerButtonStyle, GUILayout.Height(40)))
+        {
+            AllocateWasm(100);
+        }
+        if (GUILayout.Button("+500MB WASM", dangerButtonStyle, GUILayout.Height(40)))
+        {
+            AllocateWasm(500);
+        }
+
+        GUILayout.Space(10);
+
+        // WebView (JS) 할당 버튼들 (세로 배치)
+        GUILayout.Label("WebView (JS ArrayBuffer)", labelStyle);
+        if (GUILayout.Button("+50MB WebView", dangerButtonStyle, GUILayout.Height(40)))
+        {
+            AllocateWebView(50);
+        }
+        if (GUILayout.Button("+100MB WebView", dangerButtonStyle, GUILayout.Height(40)))
+        {
+            AllocateWebView(100);
+        }
+        if (GUILayout.Button("+500MB WebView", dangerButtonStyle, GUILayout.Height(40)))
+        {
+            AllocateWebView(500);
+        }
+
+        GUILayout.Space(10);
+
+        // 메모리 해제 버튼 (세로 배치)
+        bool hasWasmMemory = oomAllocations.Count > 0;
+        bool hasJsMemory = jsAllocatedBytes > 0;
+
+        if (hasWasmMemory || hasJsMemory)
+        {
+            GUILayout.Label("메모리 해제", labelStyle);
+
+            if (hasWasmMemory)
+            {
+                if (GUILayout.Button("WASM 해제", buttonStyle, GUILayout.Height(36)))
+                {
+                    ClearWasmAllocations();
+                }
+            }
+
+            if (hasJsMemory)
+            {
+                if (GUILayout.Button("WebView 해제", buttonStyle, GUILayout.Height(36)))
+                {
+                    ClearJSAllocations();
+                }
+            }
+
+            if (hasWasmMemory && hasJsMemory)
+            {
+                if (GUILayout.Button("전체 해제", buttonStyle, GUILayout.Height(36)))
+                {
+                    ClearAllAllocations();
+                }
+            }
+        }
+
+        GUILayout.EndVertical();
+    }
+
+    /// <summary>
+    /// WASM 힙에 지정된 MB 크기의 메모리를 할당합니다.
+    /// </summary>
+    private void AllocateWasm(int megabytes)
+    {
+        try
+        {
+            int bytes = megabytes * 1024 * 1024;
+            byte[] chunk = new byte[bytes];
+
+            // 실제 데이터를 쓰면서 메모리가 실제로 할당되도록 합니다.
+            // (Lazy allocation 방지)
+            for (int i = 0; i < bytes; i += 4096)
+            {
+                chunk[i] = (byte)(i % 256);
+            }
+
+            oomAllocations.Add(chunk);
+            oomStatus = $"WASM +{megabytes}MB 할당됨";
+            Debug.Log($"[OOMTester] WASM 힙 {megabytes}MB 청크 할당됨");
+        }
+        catch (OutOfMemoryException ex)
+        {
+            oomStatus = $"WASM OOM 발생! {ex.Message}";
+            Debug.LogError($"[OOMTester] WASM OOM: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// WebView (JavaScript) 레벨에서 지정된 MB 크기의 메모리를 할당합니다.
+    /// </summary>
+    private void AllocateWebView(int megabytes)
+    {
+        double allocated = OOMTester_AllocateJSMemory(megabytes);
+        if (allocated > 0)
+        {
+            oomStatus = $"WebView +{megabytes}MB 할당됨";
+            Debug.Log($"[OOMTester] WebView {megabytes}MB 할당됨");
+        }
+        else
+        {
+            oomStatus = $"WebView 할당 실패 ({megabytes}MB)";
+            Debug.LogError($"[OOMTester] WebView {megabytes}MB 할당 실패");
+        }
+    }
+
+    /// <summary>
+    /// 할당된 WASM 힙 메모리를 해제합니다.
+    /// </summary>
+    private void ClearWasmAllocations()
+    {
+        int count = oomAllocations.Count;
+        long totalSize = 0;
+        foreach (var alloc in oomAllocations)
+        {
+            totalSize += alloc.Length;
+        }
+
+        oomAllocations.Clear();
+        GC.Collect();
+
+        oomStatus = $"WASM: {count}개 블록 ({totalSize / (1024 * 1024)}MB) 해제됨";
+        Debug.Log($"[OOMTester] WASM 힙 {count}개 블록 ({totalSize / (1024 * 1024)}MB) 해제됨");
+    }
+
+    /// <summary>
+    /// 할당된 JavaScript/WebView 메모리를 해제합니다.
+    /// </summary>
+    private void ClearJSAllocations()
+    {
+        double freedBytes = OOMTester_ClearJSMemory();
+        jsAllocatedBytes = 0;
+
+        oomStatus = $"WebView: {freedBytes / (1024 * 1024):F0}MB 해제됨";
+        Debug.Log($"[OOMTester] WebView {freedBytes / (1024 * 1024):F0}MB 해제됨");
+    }
+
+    /// <summary>
+    /// 할당된 모든 메모리 (WASM + WebView)를 해제합니다.
+    /// </summary>
+    private void ClearAllAllocations()
+    {
+        // WASM 해제
+        int wasmCount = oomAllocations.Count;
+        long wasmSize = 0;
+        foreach (var alloc in oomAllocations)
+        {
+            wasmSize += alloc.Length;
+        }
+        oomAllocations.Clear();
+        GC.Collect();
+
+        // JS 해제
+        double jsFreed = OOMTester_ClearJSMemory();
+        jsAllocatedBytes = 0;
+
+        oomStatus = $"전체 해제: WASM {wasmSize / (1024 * 1024)}MB + WebView {jsFreed / (1024 * 1024):F0}MB";
+        Debug.Log($"[OOMTester] 전체 해제 완료: WASM {wasmSize / (1024 * 1024)}MB + WebView {jsFreed / (1024 * 1024):F0}MB");
+    }
+
+    #endregion
 }

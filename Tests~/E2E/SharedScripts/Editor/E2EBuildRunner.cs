@@ -57,81 +57,10 @@ public class E2EBuildRunner
         EditorSceneManager.SaveScene(scene, scenePath);
         Debug.Log($"✓ Scene saved to: {scenePath}");
 
-        // E2ETestBridge.jslib 복사 (SharedScripts의 Plugins~를 Assets/Plugins로)
-        // Note: Plugins~ 폴더는 Unity에서 무시되므로 중복 참조 문제 없음
-        string packagePath = Path.GetFullPath("Packages/im.toss.sdk-test-scripts");
-        string sharedPluginsPath = Path.Combine(packagePath, "../SharedScripts/Plugins~/E2ETestBridge.jslib");
-        string assetsPluginsPath = "Assets/Plugins/E2ETestBridge.jslib";
-        string assetsPluginsMetaPath = "Assets/Plugins/E2ETestBridge.jslib.meta";
-
-        if (File.Exists(sharedPluginsPath))
-        {
-            if (!Directory.Exists("Assets/Plugins"))
-            {
-                Directory.CreateDirectory("Assets/Plugins");
-            }
-
-            // 기존 구버전 jslib 파일 삭제 (E2EBridge.jslib)
-            string oldJslibPath = "Assets/Plugins/E2EBridge.jslib";
-            string oldJslibMetaPath = "Assets/Plugins/E2EBridge.jslib.meta";
-            if (File.Exists(oldJslibPath))
-            {
-                File.Delete(oldJslibPath);
-                Debug.Log($"✓ Deleted old E2EBridge.jslib");
-            }
-            if (File.Exists(oldJslibMetaPath))
-            {
-                File.Delete(oldJslibMetaPath);
-            }
-
-            // jslib 파일 복사
-            File.Copy(sharedPluginsPath, assetsPluginsPath, true);
-
-            // Unity가 인식할 수 있도록 .meta 파일 생성 (WebGL 플랫폼용)
-            string metaContent = @"fileFormatVersion: 2
-guid: a1b2c3d4e5f6789012345678abcdef00
-PluginImporter:
-  externalObjects: {}
-  serializedVersion: 2
-  iconMap: {}
-  executionOrder: {}
-  defineConstraints: []
-  isPreloaded: 0
-  isOverridable: 0
-  isExplicitlyReferenced: 0
-  validateReferences: 1
-  platformData:
-  - first:
-      Any:
-    second:
-      enabled: 0
-      settings: {}
-  - first:
-      Editor: Editor
-    second:
-      enabled: 0
-      settings:
-        DefaultValueInitialized: true
-  - first:
-      WebGL: WebGL
-    second:
-      enabled: 1
-      settings: {}
-  userData:
-  assetBundleName:
-  assetBundleVariant:
-";
-            File.WriteAllText(assetsPluginsMetaPath, metaContent);
-            AssetDatabase.Refresh();
-            Debug.Log($"✓ E2ETestBridge.jslib copied to Assets/Plugins");
-        }
-        else
-        {
-            Debug.LogError($"✗ E2ETestBridge.jslib not found at {sharedPluginsPath}");
-            Debug.LogError("RuntimeAPITester requires E2ETestBridge.jslib to work properly.");
-            EditorApplication.Exit(1);
-            return;
-        }
+        // E2ETestBridge.jslib는 SharedScripts 패키지의 Plugins/ 폴더에 포함되어 있음
+        // UPM 패키지로 자동 로드되므로 별도 복사 불필요
+        // Note: Assets/Plugins에 중복 복사하면 "Plugin used from several locations" 오류 발생
+        Debug.Log("✓ E2ETestBridge.jslib available via SharedScripts package");
 
         // Build Settings에 Scene 추가
         EditorBuildSettingsScene[] scenes = new EditorBuildSettingsScene[]
@@ -167,8 +96,8 @@ PluginImporter:
         // 4. SDK의 빌드 & 패키징 실행
         Debug.Log("[4/5] Building WebGL and packaging with SDK...");
 
-        // cleanBuild: true로 안정적인 빌드 수행
-        // Library/Bee 캐시는 CI에서 유지하여 IL2CPP 컴파일 캐시 활용
+        // Library/Bee 캐시를 유지하여 증분 빌드 활용
+        // 무한 루프 문제는 package.json devDependencies와 WebGLTemplates .meta 파일이 원인이었음
         var result = AITConvertCore.DoExport(buildWebGL: true, doPackaging: true, cleanBuild: true);
 
         if (result == AITConvertCore.AITExportError.SUCCEED)

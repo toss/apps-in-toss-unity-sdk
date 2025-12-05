@@ -93,6 +93,10 @@ logs/
 # Allow AITConfig in test sample projects
 !Tests~/E2E/SampleUnityProject*/Assets/AppsInToss/Editor/AITConfig.asset
 
+# Apps in Toss SDK - 민감한 인증 정보 보호
+**/AITCredentials.asset
+**/AITCredentials.asset.meta
+
 # Temporary files
 *.temp
 *~

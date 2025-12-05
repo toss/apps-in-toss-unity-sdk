@@ -17,6 +17,21 @@ Assets/WebGLTemplates/
 # Scene files (Unity modifies on every build due to fileID regeneration)
 Assets/Scenes/BenchmarkScene.unity
 
+# ============================================================
+# Apps in Toss SDK 설정 파일 (.gitignore 권장 설정)
+# 아래 패턴을 프로젝트의 .gitignore에 추가하세요
+# ============================================================
+
+# Apps in Toss SDK 설정 파일 (선택)
+# 프로젝트별 설정이므로 팀 정책에 따라 관리합니다
+# **/AITConfig.asset
+# **/AITConfig.asset.meta
+
+# Apps in Toss SDK - 민감한 인증 정보 보호 (필수!)
+# deploymentKey가 포함된 파일입니다. 절대 Git에 커밋하지 마세요!
+**/AITCredentials.asset
+**/AITCredentials.asset.meta
+
 # IDE
 .idea/
 .vscode/

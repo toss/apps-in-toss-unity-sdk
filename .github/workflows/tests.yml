@@ -2,9 +2,9 @@ name: Tests
 
 on:
   push:
-    branches: [master, dave, chore/github-actions-runner]
+    branches: [main]
   pull_request:
-    branches: [master]
+    branches: [main]
   workflow_dispatch:
 
 # 동일 브랜치에서 새 실행 시 이전 실행 자동 취소

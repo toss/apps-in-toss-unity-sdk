@@ -73,21 +73,9 @@ namespace AppsInToss
         [Tooltip("-1 = 자동 (false, Unity 6+)")]
         public int webAssemblyArithmeticExceptions = -1;
 
-        [Header("토스페이 설정")]
-        public string tossPayMerchantId = "";
-        public string tossPayClientKey = "";
-
-        [Header("광고 설정")]
-        public bool enableAdvertisement = false;
-        public string interstitialAdGroupId = "ait-ad-test-interstitial-id";
-        public string rewardedAdGroupId = "ait-ad-test-rewarded-id";
-
         [Header("디버그 설정")]
         [Tooltip("프로덕션 빌드에서 디버그 콘솔을 활성화합니다. 개발/테스트 목적으로 사용하세요.")]
         public bool enableDebugConsole = false;
-
-        [Header("배포 설정")]
-        public string deploymentKey = "";
 
         [Header("권한 설정")]
         public string[] permissions = new string[] { "userInfo", "location", "camera" };
@@ -144,14 +132,13 @@ namespace AppsInToss
         }
 
         /// <summary>
-        /// 배포 준비 완료 여부
+        /// 배포 준비 완료 여부 (기본 설정만 체크, deploymentKey는 AITCredentials에서 별도 확인)
         /// </summary>
         public bool IsReadyForDeploy()
         {
             return IsIconUrlValid() &&
                    IsAppNameValid() &&
-                   IsVersionValid() &&
-                   !string.IsNullOrWhiteSpace(deploymentKey);
+                   IsVersionValid();
         }
     }
 

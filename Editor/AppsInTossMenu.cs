@@ -449,6 +449,15 @@ namespace AppsInToss
             var config = UnityUtil.GetEditorConf();
             if (!ValidateSettings(config)) return;
 
+            // AITCredentials에서 배포 키 로드
+            string deploymentKey = AITCredentialsUtil.GetDeploymentKey();
+            if (string.IsNullOrWhiteSpace(deploymentKey))
+            {
+                Debug.LogError("AIT: 배포 키가 설정되지 않았습니다.");
+                EditorUtility.DisplayDialog("오류", "배포 키가 설정되지 않았습니다.\n\nApps in Toss > Configuration에서 배포 키를 입력해주세요.", "확인");
+                return;
+            }
+
             string buildPath = GetBuildTemplatePath();
             string distPath = Path.Combine(buildPath, "dist");
 
@@ -481,7 +490,7 @@ namespace AppsInToss
                 string pnpxPath = Path.Combine(npmDir, pnpxName);
 
                 // 크로스 플랫폼 명령 실행
-                string command = $"\"{pnpxPath}\" ait deploy --api-key \"{config.deploymentKey}\"";
+                string command = $"\"{pnpxPath}\" ait deploy --api-key \"{deploymentKey}\"";
                 var result = AITPlatformHelper.ExecuteCommand(
                     command,
                     buildPath,

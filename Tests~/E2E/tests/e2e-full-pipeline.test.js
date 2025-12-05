@@ -95,6 +95,28 @@ let serverProcess = null;
 let serverPort = 4173;
 
 /**
+ * Unity 버전에서 고유 포트 오프셋 계산
+ * 동시 실행 시 포트 충돌 방지
+ */
+function getPortOffsetFromUnityVersion(projectPath) {
+  const match = projectPath.match(/SampleUnityProject-(\d+)\.(\d+)/);
+  if (!match) return 0;
+
+  const major = parseInt(match[1], 10);
+  const minor = parseInt(match[2], 10);
+
+  // 2021.3 → 0, 2022.3 → 1, 6000.0 → 2, 6000.2 → 3
+  if (major === 2021) return 0;
+  if (major === 2022) return 1;
+  if (major === 6000 && minor === 0) return 2;
+  if (major === 6000 && minor === 2) return 3;
+  return 0;
+}
+
+const PORT_OFFSET = getPortOffsetFromUnityVersion(SAMPLE_PROJECT);
+const GRANITE_PORT = 8081 + PORT_OFFSET;  // granite dev 내부 포트
+
+/**
  * 유틸리티: 디렉토리 존재 확인
  */
 function directoryExists(dirPath) {
@@ -147,8 +169,12 @@ function getDirectorySizeMB(dirPath) {
  * @returns {Promise<{process: ChildProcess, port: number}>}
  */
 async function startDevServer(aitBuildDir, defaultPort) {
+  // Unity 버전별 고유 포트 사용 (동시 실행 시 충돌 방지)
+  const granitePort = GRANITE_PORT;
+  console.log(`🔌 Using granite port: ${granitePort} (offset: ${PORT_OFFSET})`);
+
   // 기존 프로세스 종료 시도 (여러 포트)
-  for (const port of [defaultPort, 5173, 8081]) {
+  for (const port of [defaultPort, 5173, granitePort]) {
     try {
       execSync(`lsof -ti:${port} | xargs kill -9 2>/dev/null || true`, { stdio: 'ignore' });
     } catch {
@@ -160,9 +186,10 @@ async function startDevServer(aitBuildDir, defaultPort) {
   await new Promise(r => setTimeout(r, 1000));
 
   return new Promise((resolve, reject) => {
-    // npm run dev (granite dev) 실행
+    // npm run dev (granite dev --port) 실행
     // Windows에서 spawn('npm', ...)이 ENOENT 에러 발생하므로 shell: true 사용
-    const server = spawn('npm', ['run', 'dev'], {
+    // -- 뒤에 --port를 붙여서 granite에 전달
+    const server = spawn('npm', ['run', 'dev', '--', '--port', String(granitePort)], {
       cwd: aitBuildDir,
       stdio: 'pipe',
       shell: true,

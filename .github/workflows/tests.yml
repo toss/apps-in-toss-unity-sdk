@@ -249,31 +249,18 @@ jobs:
           }
 
           try {
-            # Unity 프로세스 설정 (실시간 출력 스트리밍)
+            # Unity 빌드 시작 (로그 파일을 $env:TEMP에 저장하여 SDK 디렉토리 오염 방지)
+            $logFile = "$env:TEMP\unity-build-${{ matrix.unity-version }}.log"
             Write-Host "Starting Unity build..."
-            $psi = New-Object System.Diagnostics.ProcessStartInfo
-            $psi.FileName = $unityPath
-            $psi.Arguments = "-quit -batchmode -nographics -projectPath `"$projectPath`" -executeMethod E2EBuildRunner.CommandLineBuild -buildTarget WebGL -logFile -"
-            $psi.UseShellExecute = $false
-            $psi.RedirectStandardOutput = $true
-            $psi.RedirectStandardError = $true
-            $psi.CreateNoWindow = $true
+            Write-Host "Log file: $logFile"
 
-            $unityProcess = New-Object System.Diagnostics.Process
-            $unityProcess.StartInfo = $psi
-
-            # 출력 이벤트 핸들러 (실시간 스트리밍)
-            $outputHandler = {
-              if (-not [String]::IsNullOrEmpty($EventArgs.Data)) {
-                Write-Host $EventArgs.Data
-              }
-            }
-            $unityProcess.add_OutputDataReceived($outputHandler)
-            $unityProcess.add_ErrorDataReceived($outputHandler)
-
-            $unityProcess.Start() | Out-Null
-            $unityProcess.BeginOutputReadLine()
-            $unityProcess.BeginErrorReadLine()
+            $unityProcess = Start-Process -FilePath $unityPath -ArgumentList @(
+              "-quit", "-batchmode", "-nographics",
+              "-projectPath", $projectPath,
+              "-executeMethod", "E2EBuildRunner.CommandLineBuild",
+              "-buildTarget", "WebGL",
+              "-logFile", $logFile
+            ) -PassThru -NoNewWindow
 
             # Unity가 라이선스를 확인하는 동안 대기 (30초)
             Write-Host "Holding license lock for $lockHoldSeconds seconds..."
@@ -283,9 +270,28 @@ jobs:
             $lockStream.Close()
             Write-Host "License lock released"
 
-            # Unity 빌드 완료 대기
+            # Unity 빌드 완료 대기 (로그 실시간 출력)
             Write-Host "Waiting for Unity build to complete..."
-            $unityProcess.WaitForExit()
+            $lastSize = 0
+            while (-not $unityProcess.HasExited) {
+              Start-Sleep -Seconds 5
+              if (Test-Path $logFile) {
+                $content = Get-Content $logFile -Raw -ErrorAction SilentlyContinue
+                if ($content -and $content.Length -gt $lastSize) {
+                  $newContent = $content.Substring($lastSize)
+                  Write-Host $newContent
+                  $lastSize = $content.Length
+                }
+              }
+            }
+
+            # 최종 로그 출력
+            if (Test-Path $logFile) {
+              $content = Get-Content $logFile -Raw -ErrorAction SilentlyContinue
+              if ($content -and $content.Length -gt $lastSize) {
+                Write-Host $content.Substring($lastSize)
+              }
+            }
 
             if ($unityProcess.ExitCode -ne 0) {
               Write-Host "::error::Unity build failed with exit code: $($unityProcess.ExitCode)"

@@ -175,7 +175,7 @@ jobs:
           echo Cleaning previous build artifacts...
           if exist "%PROJECT_PATH%\ait-build" rmdir /s /q "%PROJECT_PATH%\ait-build"
           if exist "%PROJECT_PATH%\webgl" rmdir /s /q "%PROJECT_PATH%\webgl"
-          REM Library/Bee 캐시는 유지하여 증분 빌드 활용 (self-hosted runner 장점)
+          rem Library 캐시는 유지하여 증분 빌드 활용 (self-hosted runner 장점)
           echo Done.
 
       - name: Detect Unity Installation

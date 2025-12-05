@@ -96,8 +96,8 @@ public class E2EBuildRunner
         // 4. SDK의 빌드 & 패키징 실행
         Debug.Log("[4/5] Building WebGL and packaging with SDK...");
 
-        // cleanBuild: true로 안정적인 빌드 수행
-        // Library/Bee 캐시는 CI에서 유지하여 IL2CPP 컴파일 캐시 활용
+        // Library/Bee 캐시를 유지하여 증분 빌드 활용
+        // 무한 루프 문제는 package.json devDependencies와 WebGLTemplates .meta 파일이 원인이었음
         var result = AITConvertCore.DoExport(buildWebGL: true, doPackaging: true, cleanBuild: true);
 
         if (result == AITConvertCore.AITExportError.SUCCEED)

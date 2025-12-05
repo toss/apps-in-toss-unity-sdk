@@ -57,10 +57,9 @@ public class E2EBuildRunner
         EditorSceneManager.SaveScene(scene, scenePath);
         Debug.Log($"✓ Scene saved to: {scenePath}");
 
-        // E2ETestBridge.jslib 복사 (SharedScripts의 Plugins~를 Assets/Plugins로)
-        // Note: Plugins~ 폴더는 Unity에서 무시되므로 중복 참조 문제 없음
+        // E2ETestBridge.jslib 복사 (SharedScripts의 Plugins를 Assets/Plugins로)
         string packagePath = Path.GetFullPath("Packages/im.toss.sdk-test-scripts");
-        string sharedPluginsPath = Path.Combine(packagePath, "../SharedScripts/Plugins~/E2ETestBridge.jslib");
+        string sharedPluginsPath = Path.Combine(packagePath, "../SharedScripts/Plugins/E2ETestBridge.jslib");
         string assetsPluginsPath = "Assets/Plugins/E2ETestBridge.jslib";
         string assetsPluginsMetaPath = "Assets/Plugins/E2ETestBridge.jslib.meta";
 

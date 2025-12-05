@@ -136,7 +136,6 @@ Tests~/E2E/SampleUnityProject*/webgl/
 Tests~/E2E/SampleUnityProject*/WebGLBuild/
 Tests~/E2E/SampleUnityProject*/Builds/
 Tests~/E2E/SampleUnityProject*/Assets/Plugins/E2ETestBridge.jslib*
-Tests~/E2E/SampleUnityProject*/Assets/Scenes/
 Tests~/E2E/build.log
 Tests~/E2E/benchmark*.log
 Tests~/E2E/temp/

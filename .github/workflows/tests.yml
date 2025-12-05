@@ -182,13 +182,14 @@ jobs:
         run: |
           @echo off
           set "PROJECT_PATH=Tests~\E2E\SampleUnityProject-${{ matrix.unity-version }}"
+          set "CLEAN_LIBRARY=${{ inputs.clean_library }}"
           echo Cleaning previous build artifacts...
           if exist "%PROJECT_PATH%\ait-build" rmdir /s /q "%PROJECT_PATH%\ait-build"
           if exist "%PROJECT_PATH%\webgl" rmdir /s /q "%PROJECT_PATH%\webgl"
           rem Library 캐시는 유지하여 증분 빌드 활용 (self-hosted runner 장점)
           rem 캐시 문제 발생 시 workflow_dispatch에서 clean_library=true로 실행
-          if "${{ inputs.clean_library }}"=="true" (
-            echo Cleaning Library cache (requested via workflow_dispatch)...
+          if "%CLEAN_LIBRARY%"=="true" (
+            echo Cleaning Library cache requested via workflow_dispatch...
             if exist "%PROJECT_PATH%\Library" rmdir /s /q "%PROJECT_PATH%\Library"
           )
           echo Done.

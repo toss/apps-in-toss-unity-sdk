@@ -90,10 +90,6 @@ let testResults = {
   tests: {}
 };
 
-// 서버 프로세스 관리
-let serverProcess = null;
-let serverPort = 4173;
-
 /**
  * Unity 버전에서 고유 포트 오프셋 계산
  * 동시 실행 시 포트 충돌 방지
@@ -115,6 +111,14 @@ function getPortOffsetFromUnityVersion(projectPath) {
 
 const PORT_OFFSET = getPortOffsetFromUnityVersion(SAMPLE_PROJECT);
 const GRANITE_PORT = 8081 + PORT_OFFSET;  // granite dev 내부 포트
+
+// 서버 프로세스 관리
+let serverProcess = null;
+// Unity 버전별 고유 포트 (E2EBuildRunner.cs의 GetPortForUnityVersion()와 동일)
+// 2021.3 → 4173, 2022.3 → 4174, 6000.0 → 4175, 6000.2 → 4176
+let serverPort = 4173 + PORT_OFFSET;
+console.log(`📦 Unity project: ${SAMPLE_PROJECT}`);
+console.log(`🔌 Server port: ${serverPort} (offset: ${PORT_OFFSET})`);
 
 /**
  * 유틸리티: 디렉토리 존재 확인

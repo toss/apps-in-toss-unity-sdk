@@ -9,17 +9,17 @@ MonoBehaviour:
   m_GameObject: {fileID: 0}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 27ce6f1142d7e40e69387619a617f77b, type: 3}
+  m_Script: {fileID: 11500000, guid: 7c3cbd8251a0c434481614bbcd8082ff, type: 3}
   m_Name: AITConfig
   m_EditorClassIdentifier: 
-  appName: unity-sdk-sample
-  displayName: Unity SDK Sample
-  version: 1.0.0
-  description: E2E test for Apps in Toss Unity SDK
-  primaryColor: '#1E88E5'
-  iconUrl: https://via.placeholder.com/512
-  localPort: 4173
-  isProduction: 1
+  appName: test-app
+  displayName: Test App
+  version: 0.0.1
+  description: 
+  primaryColor: '#3182F6'
+  iconUrl: https://placehold.co/512x512/3182F6/white/png?text=AIT
+  localPort: 5173
+  isProduction: 0
   enableOptimization: 1
   enableCompression: 0
   memorySize: -1
@@ -37,7 +37,7 @@ MonoBehaviour:
   decompressionFallback: -1
   runInBackground: -1
   webAssemblyArithmeticExceptions: -1
-  enableDebugConsole: 1
+  enableDebugConsole: 0
   permissions:
   - userInfo
   - location

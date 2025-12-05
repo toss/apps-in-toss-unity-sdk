@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      clean_library:
+        description: 'Clean Unity Library cache (for cache corruption issues)'
+        type: boolean
+        default: false
 
 # 동일 브랜치에서 새 실행 시 이전 실행 자동 취소
 concurrency:
@@ -36,7 +41,12 @@ jobs:
           echo "Cleaning previous build artifacts..."
           rm -rf "${PROJECT_PATH}/ait-build" 2>/dev/null || true
           rm -rf "${PROJECT_PATH}/webgl" 2>/dev/null || true
-          # Library/Bee 캐시는 유지하여 증분 빌드 활용 (self-hosted runner 장점)
+          # Library 캐시는 유지하여 증분 빌드 활용 (self-hosted runner 장점)
+          # 캐시 문제 발생 시 workflow_dispatch에서 clean_library=true로 실행
+          if [ "${{ inputs.clean_library }}" = "true" ]; then
+            echo "Cleaning Library cache (requested via workflow_dispatch)..."
+            rm -rf "${PROJECT_PATH}/Library" 2>/dev/null || true
+          fi
           echo "Done."
 
       - name: Detect Unity Installation
@@ -176,6 +186,11 @@ jobs:
           if exist "%PROJECT_PATH%\ait-build" rmdir /s /q "%PROJECT_PATH%\ait-build"
           if exist "%PROJECT_PATH%\webgl" rmdir /s /q "%PROJECT_PATH%\webgl"
           rem Library 캐시는 유지하여 증분 빌드 활용 (self-hosted runner 장점)
+          rem 캐시 문제 발생 시 workflow_dispatch에서 clean_library=true로 실행
+          if "${{ inputs.clean_library }}"=="true" (
+            echo Cleaning Library cache (requested via workflow_dispatch)...
+            if exist "%PROJECT_PATH%\Library" rmdir /s /q "%PROJECT_PATH%\Library"
+          )
           echo Done.
 
       - name: Detect Unity Installation

@@ -11,7 +11,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 27ce6f1142d7e40e69387619a617f77b, type: 3}
   m_Name: AITConfig
-  m_EditorClassIdentifier: 
+  m_EditorClassIdentifier:
   appName: unity-sdk-sample
   displayName: Unity SDK Sample
   version: 1.0.0

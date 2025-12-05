@@ -156,19 +156,16 @@ jobs:
 
       - name: Exclude Project from Windows Defender
         shell: powershell
+        continue-on-error: true
         run: |
           # Windows Defender 실시간 검사에서 빌드 폴더 제외 (빌드 성능 향상)
-          # 이미 제외되어 있으면 무시됨
+          # 관리자 권한이 없으면 실패하지만 빌드는 계속 진행
           $projectPath = "${{ github.workspace }}"
           $unityPath = "C:\Program Files\Unity"
 
-          try {
-            Add-MpPreference -ExclusionPath $projectPath -ErrorAction SilentlyContinue
-            Add-MpPreference -ExclusionPath $unityPath -ErrorAction SilentlyContinue
-            Write-Host "Windows Defender exclusions configured for build performance"
-          } catch {
-            Write-Host "Note: Could not configure Defender exclusions (may require admin rights)"
-          }
+          Add-MpPreference -ExclusionPath $projectPath -ErrorAction SilentlyContinue
+          Add-MpPreference -ExclusionPath $unityPath -ErrorAction SilentlyContinue
+          Write-Host "Windows Defender exclusions configured (or skipped if no admin rights)"
 
       - name: Clean Previous Build Artifacts
         shell: cmd

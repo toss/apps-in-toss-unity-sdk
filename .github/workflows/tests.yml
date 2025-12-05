@@ -36,7 +36,7 @@ jobs:
           echo "Cleaning previous build artifacts..."
           rm -rf "${PROJECT_PATH}/ait-build" 2>/dev/null || true
           rm -rf "${PROJECT_PATH}/webgl" 2>/dev/null || true
-          rm -rf "${PROJECT_PATH}/Library/Bee" 2>/dev/null || true
+          # Library/Bee 캐시는 유지하여 증분 빌드 활용 (self-hosted runner 장점)
           echo "Done."
 
       - name: Detect Unity Installation
@@ -146,12 +146,26 @@ jobs:
 
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix:
         unity-version: ["2021.3", "2022.3", "6000.0", "6000.2"]
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+
+      - name: Exclude Project from Windows Defender
+        shell: powershell
+        continue-on-error: true
+        run: |
+          # Windows Defender 실시간 검사에서 빌드 폴더 제외 (빌드 성능 향상)
+          # 관리자 권한이 없으면 실패하지만 빌드는 계속 진행
+          $projectPath = "${{ github.workspace }}"
+          $unityPath = "C:\Program Files\Unity"
+
+          Add-MpPreference -ExclusionPath $projectPath -ErrorAction SilentlyContinue
+          Add-MpPreference -ExclusionPath $unityPath -ErrorAction SilentlyContinue
+          Write-Host "Windows Defender exclusions configured (or skipped if no admin rights)"
 
       - name: Clean Previous Build Artifacts
         shell: cmd
@@ -161,7 +175,7 @@ jobs:
           echo Cleaning previous build artifacts...
           if exist "%PROJECT_PATH%\ait-build" rmdir /s /q "%PROJECT_PATH%\ait-build"
           if exist "%PROJECT_PATH%\webgl" rmdir /s /q "%PROJECT_PATH%\webgl"
-          if exist "%PROJECT_PATH%\Library\Bee" rmdir /s /q "%PROJECT_PATH%\Library\Bee"
+          REM Library/Bee 캐시는 유지하여 증분 빌드 활용 (self-hosted runner 장점)
           echo Done.
 
       - name: Detect Unity Installation

@@ -152,7 +152,9 @@ PluginImporter:
         config.primaryColor = "#1E88E5";
         config.isProduction = true;  // 프로덕션 환경 시뮬레이션
         config.enableOptimization = true;
-        config.localPort = 4173;
+        // Unity 버전별 고유 포트 사용 (동시 실행 시 충돌 방지)
+        // 2021.3 → 4173, 2022.3 → 4174, 6000.0 → 4175, 6000.2 → 4176
+        config.localPort = GetPortForUnityVersion();
         EditorUtility.SetDirty(config);
         AssetDatabase.SaveAssets();
         Debug.Log("✓ SDK config updated");
@@ -165,15 +167,8 @@ PluginImporter:
         // 4. SDK의 빌드 & 패키징 실행
         Debug.Log("[4/5] Building WebGL and packaging with SDK...");
 
-        // Unity 2021.3에서 Bee 빌드 캐시 문제로 인한 무한 루프 방지
-        // Library/Bee 폴더를 삭제하여 완전한 클린 빌드 수행
-        string beePath = System.IO.Path.Combine(Application.dataPath, "../Library/Bee");
-        if (System.IO.Directory.Exists(beePath))
-        {
-            Debug.Log("[AIT] Bee 빌드 캐시 삭제 중... (빌드 루프 방지)");
-            System.IO.Directory.Delete(beePath, true);
-        }
-
+        // cleanBuild: true로 안정적인 빌드 수행
+        // Library/Bee 캐시는 CI에서 유지하여 IL2CPP 컴파일 캐시 활용
         var result = AITConvertCore.DoExport(buildWebGL: true, doPackaging: true, cleanBuild: true);
 
         if (result == AITConvertCore.AITExportError.SUCCEED)
@@ -193,6 +188,24 @@ PluginImporter:
             Debug.LogError("========================================");
             EditorApplication.Exit(1);
         }
+    }
+
+    /// <summary>
+    /// Unity 버전에 따른 고유 포트 반환 (동시 실행 시 충돌 방지)
+    /// </summary>
+    private static int GetPortForUnityVersion()
+    {
+        // Unity 버전별 포트 오프셋
+        // 2021.3 → 4173, 2022.3 → 4174, 6000.0 → 4175, 6000.2 → 4176
+#if UNITY_6000_2_OR_NEWER
+        return 4176;
+#elif UNITY_6000_0_OR_NEWER
+        return 4175;
+#elif UNITY_2022_3_OR_NEWER
+        return 4174;
+#else
+        return 4173;
+#endif
     }
 
     /// <summary>

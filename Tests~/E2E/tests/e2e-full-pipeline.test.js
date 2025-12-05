@@ -90,9 +90,35 @@ let testResults = {
   tests: {}
 };
 
+/**
+ * Unity 버전에서 고유 포트 오프셋 계산
+ * 동시 실행 시 포트 충돌 방지
+ */
+function getPortOffsetFromUnityVersion(projectPath) {
+  const match = projectPath.match(/SampleUnityProject-(\d+)\.(\d+)/);
+  if (!match) return 0;
+
+  const major = parseInt(match[1], 10);
+  const minor = parseInt(match[2], 10);
+
+  // 2021.3 → 0, 2022.3 → 1, 6000.0 → 2, 6000.2 → 3
+  if (major === 2021) return 0;
+  if (major === 2022) return 1;
+  if (major === 6000 && minor === 0) return 2;
+  if (major === 6000 && minor === 2) return 3;
+  return 0;
+}
+
+const PORT_OFFSET = getPortOffsetFromUnityVersion(SAMPLE_PROJECT);
+const GRANITE_PORT = 8081 + PORT_OFFSET;  // granite dev 내부 포트
+
 // 서버 프로세스 관리
 let serverProcess = null;
-let serverPort = 4173;
+// Unity 버전별 고유 포트 (E2EBuildRunner.cs의 GetPortForUnityVersion()와 동일)
+// 2021.3 → 4173, 2022.3 → 4174, 6000.0 → 4175, 6000.2 → 4176
+let serverPort = 4173 + PORT_OFFSET;
+console.log(`📦 Unity project: ${SAMPLE_PROJECT}`);
+console.log(`🔌 Server port: ${serverPort} (offset: ${PORT_OFFSET})`);
 
 /**
  * 유틸리티: 디렉토리 존재 확인
@@ -147,10 +173,23 @@ function getDirectorySizeMB(dirPath) {
  * @returns {Promise<{process: ChildProcess, port: number}>}
  */
 async function startDevServer(aitBuildDir, defaultPort) {
-  // 기존 프로세스 종료 시도 (여러 포트)
-  for (const port of [defaultPort, 5173, 8081]) {
+  // Unity 버전별 고유 포트 사용 (동시 실행 시 충돌 방지)
+  const granitePort = GRANITE_PORT;
+  console.log(`🔌 Using granite port: ${granitePort} (offset: ${PORT_OFFSET})`);
+
+  // 이 테스트 전용 포트만 정리 (다른 Unity 버전 테스트와 충돌 방지)
+  // 다른 버전의 포트는 건드리지 않음
+  const myPorts = [serverPort, granitePort];
+  const isWindows = process.platform === 'win32';
+  for (const port of myPorts) {
     try {
-      execSync(`lsof -ti:${port} | xargs kill -9 2>/dev/null || true`, { stdio: 'ignore' });
+      if (isWindows) {
+        // Windows: netstat + taskkill
+        execSync(`for /f "tokens=5" %a in ('netstat -ano ^| findstr :${port} ^| findstr LISTENING') do taskkill /F /PID %a 2>nul`, { stdio: 'ignore', shell: true });
+      } else {
+        // macOS/Linux: lsof + kill
+        execSync(`lsof -ti:${port} | xargs kill -9 2>/dev/null || true`, { stdio: 'ignore' });
+      }
     } catch {
       // 무시
     }
@@ -160,9 +199,10 @@ async function startDevServer(aitBuildDir, defaultPort) {
   await new Promise(r => setTimeout(r, 1000));
 
   return new Promise((resolve, reject) => {
-    // npm run dev (granite dev) 실행
+    // npm run dev (granite dev --port) 실행
     // Windows에서 spawn('npm', ...)이 ENOENT 에러 발생하므로 shell: true 사용
-    const server = spawn('npm', ['run', 'dev'], {
+    // -- 뒤에 --port를 붙여서 granite에 전달
+    const server = spawn('npm', ['run', 'dev', '--', '--port', String(granitePort)], {
       cwd: aitBuildDir,
       stdio: 'pipe',
       shell: true,
@@ -212,22 +252,29 @@ async function startDevServer(aitBuildDir, defaultPort) {
  * @returns {Promise<{process: ChildProcess, port: number}>}
  */
 async function startProductionServer(aitBuildDir, defaultPort) {
-  // 기존 프로세스 종료 시도 (여러 포트)
-  for (const port of [defaultPort, 4173, 3000, 8080]) {
-    try {
-      execSync(`lsof -ti:${port} | xargs kill -9 2>/dev/null || true`, { stdio: 'ignore' });
-    } catch {
-      // 무시
+  // 이 테스트 전용 포트만 정리 (다른 Unity 버전 테스트와 충돌 방지)
+  const isWindows = process.platform === 'win32';
+  const myPort = serverPort;  // Unity 버전별 고유 포트
+  try {
+    if (isWindows) {
+      // Windows: netstat + taskkill
+      execSync(`for /f "tokens=5" %a in ('netstat -ano ^| findstr :${myPort} ^| findstr LISTENING') do taskkill /F /PID %a 2>nul`, { stdio: 'ignore', shell: true });
+    } else {
+      // macOS/Linux: lsof + kill
+      execSync(`lsof -ti:${myPort} | xargs kill -9 2>/dev/null || true`, { stdio: 'ignore' });
     }
+  } catch {
+    // 무시
   }
 
   // 포트가 해제될 때까지 대기
   await new Promise(r => setTimeout(r, 1000));
 
   return new Promise((resolve, reject) => {
-    // npm run start (vite preview) 실행
-    // Windows에서 spawn('npm', ...)이 ENOENT 에러 발생하므로 shell: true 사용
-    const server = spawn('npm', ['run', 'start'], {
+    // vite preview 직접 실행 (포트 지정 가능)
+    // npm run start는 포트 인자를 전달하기 어려우므로 npx vite preview 사용
+    // Windows에서 spawn('npx', ...)이 ENOENT 에러 발생하므로 shell: true 사용
+    const server = spawn('npx', ['vite', 'preview', '--outDir', 'dist/web', '--port', String(defaultPort)], {
       cwd: aitBuildDir,
       stdio: 'pipe',
       shell: true,

@@ -31,23 +31,6 @@ namespace AppsInToss
         public string[] plugins;
     }
 
-    [System.Serializable]
-    public class PaymentConfigData
-    {
-        public string merchantId;
-        public string clientKey;
-        public string environment;
-    }
-
-    [System.Serializable]
-    public class AdConfigData
-    {
-        public bool enabled;
-        public string bannerId;
-        public string interstitialId;
-        public string rewardedId;
-    }
-
     public class AITConvertCore
     {
         // 빌드 취소 플래그
@@ -1290,24 +1273,6 @@ namespace AppsInToss
             config.isProduction = EditorGUILayout.Toggle("프로덕션 모드", config.isProduction);
             config.enableOptimization = EditorGUILayout.Toggle("최적화 활성화", config.enableOptimization);
             config.enableCompression = EditorGUILayout.Toggle("압축 활성화", config.enableCompression);
-
-            GUILayout.Space(10);
-
-            // 토스페이 설정
-            GUILayout.Label("토스페이 설정", EditorStyles.boldLabel);
-            config.tossPayMerchantId = EditorGUILayout.TextField("가맹점 ID", config.tossPayMerchantId);
-            config.tossPayClientKey = EditorGUILayout.TextField("클라이언트 키", config.tossPayClientKey);
-
-            GUILayout.Space(10);
-
-            // 광고 설정
-            GUILayout.Label("광고 설정", EditorStyles.boldLabel);
-            config.enableAdvertisement = EditorGUILayout.Toggle("광고 활성화", config.enableAdvertisement);
-            if (config.enableAdvertisement)
-            {
-                config.interstitialAdGroupId = EditorGUILayout.TextField("전면 광고 ID", config.interstitialAdGroupId);
-                config.rewardedAdGroupId = EditorGUILayout.TextField("보상형 광고 ID", config.rewardedAdGroupId);
-            }
 
             EditorGUILayout.EndScrollView();
 

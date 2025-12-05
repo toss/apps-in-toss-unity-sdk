@@ -56,8 +56,6 @@ namespace AppsInToss.Editor
             GUILayout.Space(10);
             DrawAdvancedSettings();
             GUILayout.Space(10);
-            DrawAdvertisementSettings();
-            GUILayout.Space(10);
             DrawDeploymentSettings();
             GUILayout.Space(10);
             DrawProjectInfo();
@@ -703,46 +701,44 @@ namespace AppsInToss.Editor
             config.runInBackground = -1;
         }
 
-        private void DrawAdvertisementSettings()
-        {
-            EditorGUILayout.LabelField("광고 설정 (선택)", EditorStyles.boldLabel);
-            EditorGUILayout.BeginVertical("box");
-
-            config.enableAdvertisement = EditorGUILayout.Toggle("광고 활성화", config.enableAdvertisement);
-
-            if (config.enableAdvertisement)
-            {
-                EditorGUI.indentLevel++;
-                config.interstitialAdGroupId = EditorGUILayout.TextField("전면 광고 ID", config.interstitialAdGroupId);
-                config.rewardedAdGroupId = EditorGUILayout.TextField("보상형 광고 ID", config.rewardedAdGroupId);
-                EditorGUI.indentLevel--;
-
-                EditorGUILayout.HelpBox(
-                    "광고 ID는 Apps in Toss 콘솔에서 발급받을 수 있습니다.",
-                    MessageType.Info
-                );
-            }
-
-            EditorGUILayout.EndVertical();
-        }
-
         private void DrawDeploymentSettings()
         {
             EditorGUILayout.LabelField("배포 설정", EditorStyles.boldLabel);
             EditorGUILayout.BeginVertical("box");
 
-            config.deploymentKey = EditorGUILayout.PasswordField("배포 키 (API Key)", config.deploymentKey);
-
-            if (string.IsNullOrWhiteSpace(config.deploymentKey))
+            // AITCredentials에서 배포 키 로드
+            var credentials = AITCredentialsUtil.GetCredentials();
+            if (credentials != null)
             {
-                EditorGUILayout.HelpBox(
-                    "배포 키를 입력해주세요. 배포 시 필수입니다.",
-                    MessageType.Warning
-                );
+                EditorGUI.BeginChangeCheck();
+                credentials.deploymentKey = EditorGUILayout.PasswordField("배포 키 (API Key)", credentials.deploymentKey);
+                if (EditorGUI.EndChangeCheck())
+                {
+                    EditorUtility.SetDirty(credentials);
+                }
+
+                if (string.IsNullOrWhiteSpace(credentials.deploymentKey))
+                {
+                    EditorGUILayout.HelpBox(
+                        "배포 키를 입력해주세요. 배포 시 필수입니다.",
+                        MessageType.Warning
+                    );
+                }
+                else
+                {
+                    EditorGUILayout.HelpBox(
+                        "배포 키가 설정되었습니다.\n" +
+                        "※ 이 키는 AITCredentials.asset에 별도 저장되며, .gitignore로 보호됩니다.",
+                        MessageType.Info
+                    );
+                }
             }
             else
             {
-                EditorGUILayout.HelpBox("배포 키가 설정되었습니다.", MessageType.Info);
+                EditorGUILayout.HelpBox(
+                    "AITCredentials 파일을 로드할 수 없습니다.",
+                    MessageType.Error
+                );
             }
 
             EditorGUILayout.EndVertical();

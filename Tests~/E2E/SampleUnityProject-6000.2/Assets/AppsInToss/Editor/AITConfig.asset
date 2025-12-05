@@ -37,13 +37,7 @@ MonoBehaviour:
   decompressionFallback: -1
   runInBackground: -1
   webAssemblyArithmeticExceptions: -1
-  tossPayMerchantId: 
-  tossPayClientKey: 
-  enableAdvertisement: 0
-  interstitialAdGroupId: ait-ad-test-interstitial-id
-  rewardedAdGroupId: ait-ad-test-rewarded-id
   enableDebugConsole: 1
-  deploymentKey: 
   permissions:
   - userInfo
   - location

@@ -203,7 +203,7 @@ jobs:
           echo UNITY_VERSION=%DETECTED_VERSION%>> %GITHUB_OUTPUT%
 
       - name: Build Unity WebGL (with License Lock)
-        shell: pwsh
+        shell: powershell -ExecutionPolicy Bypass -File {0}
         run: |
           $unityPath = "${{ steps.unity.outputs.UNITY_PATH }}"
           $projectPath = "${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ matrix.unity-version }}"

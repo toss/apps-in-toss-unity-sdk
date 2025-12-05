@@ -165,9 +165,9 @@ PluginImporter:
         // 4. SDK의 빌드 & 패키징 실행
         Debug.Log("[4/5] Building WebGL and packaging with SDK...");
 
-        // Library/Bee 캐시를 유지하여 증분 빌드 활용 (CI 빌드 시간 단축)
-        // Unity 2021.3의 빌드 루프 문제는 cleanBuild: false로 해결
-        var result = AITConvertCore.DoExport(buildWebGL: true, doPackaging: true, cleanBuild: false);
+        // cleanBuild: true로 안정적인 빌드 수행
+        // Library/Bee 캐시는 CI에서 유지하여 IL2CPP 컴파일 캐시 활용
+        var result = AITConvertCore.DoExport(buildWebGL: true, doPackaging: true, cleanBuild: true);
 
         if (result == AITConvertCore.AITExportError.SUCCEED)
         {

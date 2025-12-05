@@ -244,7 +244,7 @@ jobs:
           $projectPath = "${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ matrix.unity-version }}"
           $lockFile = "C:\Temp\unity-license.lock"
           $maxWaitSeconds = 600  # 10분 최대 대기
-          $lockHoldSeconds = 30  # 라이선스 확인에 충분한 시간
+          $lockHoldSeconds = 15  # Unity 라이선스 확인에 충분한 시간 (5-10초 소요)
 
           # Lock 디렉토리 생성
           if (!(Test-Path "C:\Temp")) {
@@ -309,7 +309,7 @@ jobs:
             Write-Host "Waiting for Unity build to complete..."
             $lastSize = 0
             while (-not $unityProcess.HasExited) {
-              Start-Sleep -Seconds 5
+              Start-Sleep -Seconds 2
               if (Test-Path $logFile) {
                 $content = Get-Content $logFile -Raw -ErrorAction SilentlyContinue
                 if ($content -and $content.Length -gt $lastSize) {

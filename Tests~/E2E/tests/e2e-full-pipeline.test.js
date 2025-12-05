@@ -177,10 +177,19 @@ async function startDevServer(aitBuildDir, defaultPort) {
   const granitePort = GRANITE_PORT;
   console.log(`🔌 Using granite port: ${granitePort} (offset: ${PORT_OFFSET})`);
 
-  // 기존 프로세스 종료 시도 (여러 포트)
-  for (const port of [defaultPort, 5173, granitePort]) {
+  // 이 테스트 전용 포트만 정리 (다른 Unity 버전 테스트와 충돌 방지)
+  // 다른 버전의 포트는 건드리지 않음
+  const myPorts = [serverPort, granitePort];
+  const isWindows = process.platform === 'win32';
+  for (const port of myPorts) {
     try {
-      execSync(`lsof -ti:${port} | xargs kill -9 2>/dev/null || true`, { stdio: 'ignore' });
+      if (isWindows) {
+        // Windows: netstat + taskkill
+        execSync(`for /f "tokens=5" %a in ('netstat -ano ^| findstr :${port} ^| findstr LISTENING') do taskkill /F /PID %a 2>nul`, { stdio: 'ignore', shell: true });
+      } else {
+        // macOS/Linux: lsof + kill
+        execSync(`lsof -ti:${port} | xargs kill -9 2>/dev/null || true`, { stdio: 'ignore' });
+      }
     } catch {
       // 무시
     }
@@ -243,13 +252,19 @@ async function startDevServer(aitBuildDir, defaultPort) {
  * @returns {Promise<{process: ChildProcess, port: number}>}
  */
 async function startProductionServer(aitBuildDir, defaultPort) {
-  // 기존 프로세스 종료 시도 (여러 포트)
-  for (const port of [defaultPort, 4173, 3000, 8080]) {
-    try {
-      execSync(`lsof -ti:${port} | xargs kill -9 2>/dev/null || true`, { stdio: 'ignore' });
-    } catch {
-      // 무시
+  // 이 테스트 전용 포트만 정리 (다른 Unity 버전 테스트와 충돌 방지)
+  const isWindows = process.platform === 'win32';
+  const myPort = serverPort;  // Unity 버전별 고유 포트
+  try {
+    if (isWindows) {
+      // Windows: netstat + taskkill
+      execSync(`for /f "tokens=5" %a in ('netstat -ano ^| findstr :${myPort} ^| findstr LISTENING') do taskkill /F /PID %a 2>nul`, { stdio: 'ignore', shell: true });
+    } else {
+      // macOS/Linux: lsof + kill
+      execSync(`lsof -ti:${myPort} | xargs kill -9 2>/dev/null || true`, { stdio: 'ignore' });
     }
+  } catch {
+    // 무시
   }
 
   // 포트가 해제될 때까지 대기

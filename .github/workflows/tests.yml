@@ -136,7 +136,8 @@ jobs:
           if-no-files-found: ignore
 
   # =====================================================
-  # E2E Tests - Windows (순차 실행 - 라이선스 충돌 방지)
+  # E2E Tests - Windows (병렬 실행 + 라이선스 Lock)
+  # Unity Licensing Client 경합 방지를 위해 시작 시 Lock 사용
   # =====================================================
   e2e-test-windows:
     name: E2E (Windows, Unity ${{ matrix.unity-version }})
@@ -145,10 +146,6 @@ jobs:
 
     strategy:
       fail-fast: false
-      # Windows에서는 동일 머신에서 여러 Unity 버전이 동시에 실행될 때
-      # 라이선싱 클라이언트 충돌 발생 (Code 10 signature error)
-      # 순차 실행으로 충돌 방지
-      max-parallel: 1
       matrix:
         unity-version: ["2021.3", "2022.3", "6000.0", "6000.2"]
 
@@ -205,27 +202,97 @@ jobs:
           echo UNITY_PATH=%UNITY_PATH%>> %GITHUB_OUTPUT%
           echo UNITY_VERSION=%DETECTED_VERSION%>> %GITHUB_OUTPUT%
 
-      - name: Build Unity WebGL
-        shell: cmd
+      - name: Build Unity WebGL (with License Lock)
+        shell: powershell
         run: |
-          @echo off
-          set "UNITY_PATH=${{ steps.unity.outputs.UNITY_PATH }}"
-          set "PROJECT_PATH=${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ matrix.unity-version }}"
+          $unityPath = "${{ steps.unity.outputs.UNITY_PATH }}"
+          $projectPath = "${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ matrix.unity-version }}"
+          $lockFile = "C:\Temp\unity-license.lock"
+          $maxWaitSeconds = 600  # 10분 최대 대기
+          $lockHoldSeconds = 30  # 라이선스 확인에 충분한 시간
 
-          echo ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-          echo Unity Build Configuration
-          echo ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-          echo Unity Version: ${{ steps.unity.outputs.UNITY_VERSION }}
-          echo Unity Path: %UNITY_PATH%
-          echo Project Path: %PROJECT_PATH%
-          echo ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+          # Lock 디렉토리 생성
+          if (!(Test-Path "C:\Temp")) {
+            New-Item -ItemType Directory -Path "C:\Temp" -Force | Out-Null
+          }
 
-          "%UNITY_PATH%" -quit -batchmode -nographics -projectPath "%PROJECT_PATH%" -executeMethod E2EBuildRunner.CommandLineBuild -buildTarget WebGL -logFile -
+          Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          Write-Host "Unity Build Configuration"
+          Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          Write-Host "Unity Version: ${{ steps.unity.outputs.UNITY_VERSION }}"
+          Write-Host "Unity Path: $unityPath"
+          Write-Host "Project Path: $projectPath"
+          Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-          if %ERRORLEVEL% neq 0 (
-            echo Unity build failed with exit code: %ERRORLEVEL%
-            exit /b %ERRORLEVEL%
-          )
+          # Lock 획득 대기
+          $startTime = Get-Date
+          $lockAcquired = $false
+
+          Write-Host "Waiting for Unity license lock..."
+
+          while (-not $lockAcquired) {
+            $elapsed = ((Get-Date) - $startTime).TotalSeconds
+            if ($elapsed -gt $maxWaitSeconds) {
+              Write-Host "::error::Timeout waiting for Unity license lock"
+              exit 1
+            }
+
+            try {
+              # 다른 프로세스가 Lock을 가지고 있으면 실패
+              $lockStream = [System.IO.File]::Open($lockFile, 'OpenOrCreate', 'ReadWrite', 'None')
+              $lockAcquired = $true
+              Write-Host "License lock acquired after $([int]$elapsed) seconds"
+            } catch {
+              Write-Host "Lock held by another process, waiting... ($([int]$elapsed)s)"
+              Start-Sleep -Seconds 5
+            }
+          }
+
+          try {
+            # Unity 시작 (백그라운드)
+            Write-Host "Starting Unity build..."
+            $unityProcess = Start-Process -FilePath $unityPath -ArgumentList @(
+              "-quit", "-batchmode", "-nographics",
+              "-projectPath", $projectPath,
+              "-executeMethod", "E2EBuildRunner.CommandLineBuild",
+              "-buildTarget", "WebGL",
+              "-logFile", "-"
+            ) -PassThru -NoNewWindow -RedirectStandardOutput "unity-stdout.txt" -RedirectStandardError "unity-stderr.txt"
+
+            # Unity가 라이선스를 확인하는 동안 대기 (30초)
+            Write-Host "Holding license lock for $lockHoldSeconds seconds..."
+            Start-Sleep -Seconds $lockHoldSeconds
+
+            # Lock 해제 (다른 Unity가 시작할 수 있음)
+            $lockStream.Close()
+            Write-Host "License lock released"
+
+            # Unity 빌드 완료 대기
+            Write-Host "Waiting for Unity build to complete..."
+            $unityProcess.WaitForExit()
+
+            # 출력 표시
+            if (Test-Path "unity-stdout.txt") {
+              Get-Content "unity-stdout.txt"
+            }
+            if (Test-Path "unity-stderr.txt") {
+              Get-Content "unity-stderr.txt"
+            }
+
+            if ($unityProcess.ExitCode -ne 0) {
+              Write-Host "::error::Unity build failed with exit code: $($unityProcess.ExitCode)"
+              exit $unityProcess.ExitCode
+            }
+
+            Write-Host "Unity build completed successfully"
+          } finally {
+            if ($lockStream) {
+              $lockStream.Dispose()
+            }
+            # 임시 파일 정리
+            Remove-Item -Path "unity-stdout.txt" -ErrorAction SilentlyContinue
+            Remove-Item -Path "unity-stderr.txt" -ErrorAction SilentlyContinue
+          }
 
       - name: Verify Build Output
         shell: cmd
@@ -304,7 +371,7 @@ jobs:
           echo "| OS | Unity Versions | Runner Type |" >> $GITHUB_STEP_SUMMARY
           echo "|-----|---------------|-------------|" >> $GITHUB_STEP_SUMMARY
           echo "| macOS | 2021.3, 2022.3, 6000.0, 6000.2 | Self-hosted ARM64 (병렬) |" >> $GITHUB_STEP_SUMMARY
-          echo "| Windows | 2021.3, 2022.3, 6000.0, 6000.2 | Self-hosted X64 (순차) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Windows | 2021.3, 2022.3, 6000.0, 6000.2 | Self-hosted X64 (병렬 + License Lock) |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
           # Benchmark 결과

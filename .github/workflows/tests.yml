@@ -203,9 +203,8 @@ jobs:
           echo UNITY_VERSION=%DETECTED_VERSION%>> %GITHUB_OUTPUT%
 
       - name: Build Unity WebGL (with License Lock)
-        shell: powershell
+        shell: pwsh
         run: |
-          Set-ExecutionPolicy Bypass -Scope Process -Force
           $unityPath = "${{ steps.unity.outputs.UNITY_PATH }}"
           $projectPath = "${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ matrix.unity-version }}"
           $lockFile = "C:\Temp\unity-license.lock"

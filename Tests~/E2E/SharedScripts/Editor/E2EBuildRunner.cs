@@ -165,16 +165,9 @@ PluginImporter:
         // 4. SDK의 빌드 & 패키징 실행
         Debug.Log("[4/5] Building WebGL and packaging with SDK...");
 
-        // Unity 2021.3에서 Bee 빌드 캐시 문제로 인한 무한 루프 방지
-        // Library/Bee 폴더를 삭제하여 완전한 클린 빌드 수행
-        string beePath = System.IO.Path.Combine(Application.dataPath, "../Library/Bee");
-        if (System.IO.Directory.Exists(beePath))
-        {
-            Debug.Log("[AIT] Bee 빌드 캐시 삭제 중... (빌드 루프 방지)");
-            System.IO.Directory.Delete(beePath, true);
-        }
-
-        var result = AITConvertCore.DoExport(buildWebGL: true, doPackaging: true, cleanBuild: true);
+        // Library/Bee 캐시를 유지하여 증분 빌드 활용 (CI 빌드 시간 단축)
+        // Unity 2021.3의 빌드 루프 문제는 cleanBuild: false로 해결
+        var result = AITConvertCore.DoExport(buildWebGL: true, doPackaging: true, cleanBuild: false);
 
         if (result == AITConvertCore.AITExportError.SUCCEED)
         {

@@ -271,9 +271,10 @@ async function startProductionServer(aitBuildDir, defaultPort) {
   await new Promise(r => setTimeout(r, 1000));
 
   return new Promise((resolve, reject) => {
-    // npm run start (vite preview) 실행
-    // Windows에서 spawn('npm', ...)이 ENOENT 에러 발생하므로 shell: true 사용
-    const server = spawn('npm', ['run', 'start'], {
+    // vite preview 직접 실행 (포트 지정 가능)
+    // npm run start는 포트 인자를 전달하기 어려우므로 npx vite preview 사용
+    // Windows에서 spawn('npx', ...)이 ENOENT 에러 발생하므로 shell: true 사용
+    const server = spawn('npx', ['vite', 'preview', '--outDir', 'dist/web', '--port', String(defaultPort)], {
       cwd: aitBuildDir,
       stdio: 'pipe',
       shell: true,

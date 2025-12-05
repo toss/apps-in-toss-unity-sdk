@@ -16,6 +16,12 @@ public class E2EBuildRunner
         Debug.Log("E2E Build with Apps in Toss SDK");
         Debug.Log("========================================");
 
+        // 포트 충돌 방지: Profiler 자동연결 비활성화
+        // Unity WebGL 빌드 시 websockify가 포트 54998을 사용하는데,
+        // 같은 머신에서 여러 Unity 버전이 동시 빌드하면 충돌 발생
+        EditorUserBuildSettings.connectProfiler = false;
+        Debug.Log("✓ Profiler autoconnect disabled (prevents port 54998 conflict)");
+
         // 1. 씬 생성 및 설정
         Debug.Log("[1/5] Creating and setting up benchmark scene...");
         string scenePath = "Assets/Scenes/BenchmarkScene.unity";

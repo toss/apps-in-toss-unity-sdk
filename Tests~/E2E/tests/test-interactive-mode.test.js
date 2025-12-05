@@ -7,9 +7,17 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// 환경변수 또는 기본값으로 프로젝트 경로 결정
-const UNITY_VERSION = process.env.UNITY_VERSION || '6000.0';
-const SAMPLE_PROJECT = path.resolve(__dirname, `../SampleUnityProject-${UNITY_VERSION}`);
+// UNITY_PROJECT_PATH 환경변수 사용, 없으면 기본값
+function findSampleProject() {
+  const envPath = process.env.UNITY_PROJECT_PATH;
+  if (envPath) {
+    return envPath;
+  }
+  // 기본값: 2021.3
+  return path.resolve(__dirname, '../SampleUnityProject-2021.3');
+}
+
+const SAMPLE_PROJECT = findSampleProject();
 const AIT_BUILD = path.resolve(SAMPLE_PROJECT, 'ait-build');
 
 let serverProcess = null;
@@ -20,7 +28,8 @@ const serverPort = 5173;
  */
 async function startServer(aitBuildDir, defaultPort) {
   return new Promise((resolve, reject) => {
-    const server = spawn('pnpm', ['run', 'dev'], {
+    // Windows에서 spawn('npm', ...)이 ENOENT 에러 발생하므로 shell: true 사용
+    const server = spawn('npm', ['run', 'dev'], {
       cwd: aitBuildDir,
       stdio: 'pipe',
       shell: true,

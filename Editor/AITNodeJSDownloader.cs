@@ -97,7 +97,13 @@ namespace AppsInToss.Editor
         private static void DownloadNodeJS(string platform, string targetPath)
         {
             string fileName = GetNodeJSFileName(platform);
-            string tempFile = Path.Combine(Application.temporaryCachePath, fileName);
+            // Application.temporaryCachePath는 공백이 포함될 수 있어 문제 발생 가능
+            // 시스템 임시 디렉토리 사용 (공백 없음)
+            // 여러 Unity 버전이 동시 실행될 때 race condition 방지를 위해 고유 ID 추가
+            string uniqueId = Guid.NewGuid().ToString("N").Substring(0, 8);
+            string tempDir = Path.Combine(Path.GetTempPath(), $"AppsInTossSDK-{uniqueId}");
+            Directory.CreateDirectory(tempDir);
+            string tempFile = Path.Combine(tempDir, fileName);
 
             try
             {
@@ -204,10 +210,10 @@ namespace AppsInToss.Editor
             {
                 EditorUtility.ClearProgressBar();
 
-                // 임시 파일 삭제
-                if (File.Exists(tempFile))
+                // 임시 디렉토리 전체 삭제 (고유 ID로 생성했으므로 안전)
+                if (Directory.Exists(tempDir))
                 {
-                    try { File.Delete(tempFile); }
+                    try { Directory.Delete(tempDir, true); }
                     catch { /* ignore */ }
                 }
             }

@@ -168,17 +168,16 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Exclude Project from Windows Defender
-        shell: powershell
+        shell: cmd
         continue-on-error: true
         run: |
-          # Windows Defender 실시간 검사에서 빌드 폴더 제외 (빌드 성능 향상)
-          # 관리자 권한이 없으면 실패하지만 빌드는 계속 진행
-          $projectPath = "${{ github.workspace }}"
-          $unityPath = "C:\Program Files\Unity"
-
-          Add-MpPreference -ExclusionPath $projectPath -ErrorAction SilentlyContinue
-          Add-MpPreference -ExclusionPath $unityPath -ErrorAction SilentlyContinue
-          Write-Host "Windows Defender exclusions configured (or skipped if no admin rights)"
+          @echo off
+          REM Windows Defender 실시간 검사에서 빌드 폴더 제외 (빌드 성능 향상)
+          REM 관리자 권한이 없으면 실패하지만 빌드는 계속 진행
+          powershell -Command "Add-MpPreference -ExclusionPath '${{ github.workspace }}' -ErrorAction SilentlyContinue" 2>nul
+          powershell -Command "Add-MpPreference -ExclusionPath 'C:\Program Files\Unity' -ErrorAction SilentlyContinue" 2>nul
+          echo Windows Defender exclusions configured (or skipped if no admin rights)
+          exit /b 0
 
       - name: Clean Previous Build Artifacts
         shell: cmd

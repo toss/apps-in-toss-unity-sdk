@@ -19,8 +19,22 @@ namespace AppsInToss
         public string primaryColor = "#3182F6";
         public string iconUrl = "";
 
+        [Header("WebView 설정")]
+        [Tooltip("브릿지 색상 모드. 게임앱은 'inverted' (다크모드), 일반앱은 'basic'")]
+        public int bridgeColorMode = 0; // 0=inverted (게임 기본), 1=basic
+
+        [Tooltip("WebView 타입. 게임앱은 'game' (투명배경), 일반앱은 'partner' (흰색배경), 외부연동은 'external'")]
+        public int webViewType = 0; // 0=game, 1=partner, 2=external
+
         [Header("개발 서버 설정")]
+        [Tooltip("개발 서버 호스트. 기본값: localhost")]
+        public string devHost = "localhost";
+
         public int localPort = 5173;
+
+        [Header("빌드 출력 설정")]
+        [Tooltip("granite build 출력 디렉토리. 기본값: dist")]
+        public string outdir = "dist";
 
         [Header("빌드 설정")]
         public bool isProduction = false;
@@ -139,6 +153,44 @@ namespace AppsInToss
             return IsIconUrlValid() &&
                    IsAppNameValid() &&
                    IsVersionValid();
+        }
+
+        /// <summary>
+        /// bridgeColorMode 문자열 반환
+        /// </summary>
+        public string GetBridgeColorModeString()
+        {
+            return bridgeColorMode == 0 ? "inverted" : "basic";
+        }
+
+        /// <summary>
+        /// webViewProps.type 문자열 반환
+        /// </summary>
+        public string GetWebViewTypeString()
+        {
+            switch (webViewType)
+            {
+                case 0: return "game";
+                case 1: return "partner";
+                case 2: return "external";
+                default: return "game";
+            }
+        }
+
+        /// <summary>
+        /// permissions 배열을 JSON 배열 문자열로 변환
+        /// </summary>
+        public string GetPermissionsJson()
+        {
+            if (permissions == null || permissions.Length == 0)
+                return "[]";
+
+            var quoted = new string[permissions.Length];
+            for (int i = 0; i < permissions.Length; i++)
+            {
+                quoted[i] = $"'{permissions[i]}'";
+            }
+            return "[" + string.Join(", ", quoted) + "]";
         }
     }
 

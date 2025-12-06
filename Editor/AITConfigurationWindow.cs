@@ -48,7 +48,11 @@ namespace AppsInToss.Editor
             GUILayout.Space(10);
             DrawBrandSettings();
             GUILayout.Space(10);
+            DrawWebViewSettings();
+            GUILayout.Space(10);
             DrawDevServerSettings();
+            GUILayout.Space(10);
+            DrawBuildOutputSettings();
             GUILayout.Space(10);
             DrawBuildSettings();
             GUILayout.Space(10);
@@ -134,15 +138,62 @@ namespace AppsInToss.Editor
             EditorGUILayout.EndVertical();
         }
 
+        private void DrawWebViewSettings()
+        {
+            EditorGUILayout.LabelField("WebView 설정", EditorStyles.boldLabel);
+            EditorGUILayout.BeginVertical("box");
+
+            // bridgeColorMode 드롭다운
+            string[] bridgeColorModeOptions = { "inverted (게임앱 권장)", "basic (일반앱)" };
+            config.bridgeColorMode = EditorGUILayout.Popup("Bridge Color Mode", config.bridgeColorMode, bridgeColorModeOptions);
+
+            EditorGUILayout.HelpBox(
+                "게임앱은 'inverted' (다크 모드)를 사용합니다.\n" +
+                "일반앱은 'basic'을 사용합니다.",
+                MessageType.Info
+            );
+
+            GUILayout.Space(5);
+
+            // webViewProps.type 드롭다운
+            string[] webViewTypeOptions = { "game (게임앱 - 투명배경)", "partner (일반앱 - 흰색배경)", "external (외부연동)" };
+            config.webViewType = EditorGUILayout.Popup("WebView Type", config.webViewType, webViewTypeOptions);
+
+            EditorGUILayout.HelpBox(
+                "게임앱은 'game' 타입으로 투명 배경 내비게이션이 적용됩니다.\n" +
+                "일반앱은 'partner' 타입으로 흰색 배경 내비게이션이 적용됩니다.\n" +
+                "외부 연동은 'external' 타입을 사용합니다.",
+                MessageType.Info
+            );
+
+            EditorGUILayout.EndVertical();
+        }
+
         private void DrawDevServerSettings()
         {
             EditorGUILayout.LabelField("개발 서버 설정", EditorStyles.boldLabel);
             EditorGUILayout.BeginVertical("box");
 
-            config.localPort = EditorGUILayout.IntField("로컬 포트", config.localPort);
+            config.devHost = EditorGUILayout.TextField("호스트", config.devHost);
+            config.localPort = EditorGUILayout.IntField("포트", config.localPort);
 
             EditorGUILayout.HelpBox(
-                "개발 서버가 사용할 로컬 포트 번호입니다. (기본값: 5173)",
+                "개발 서버의 호스트와 포트 설정입니다. (기본값: localhost:5173)",
+                MessageType.Info
+            );
+
+            EditorGUILayout.EndVertical();
+        }
+
+        private void DrawBuildOutputSettings()
+        {
+            EditorGUILayout.LabelField("빌드 출력 설정", EditorStyles.boldLabel);
+            EditorGUILayout.BeginVertical("box");
+
+            config.outdir = EditorGUILayout.TextField("출력 디렉토리", config.outdir);
+
+            EditorGUILayout.HelpBox(
+                "granite build 결과물이 저장될 디렉토리입니다. (기본값: dist)",
                 MessageType.Info
             );
 

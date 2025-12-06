@@ -765,7 +765,12 @@ namespace AppsInToss
             Debug.Log($"[AIT]   %AIT_DISPLAY_NAME% → '{config.displayName}'");
             Debug.Log($"[AIT]   %AIT_PRIMARY_COLOR% → '{config.primaryColor}'");
             Debug.Log($"[AIT]   %AIT_ICON_URL% → '{config.iconUrl}'");
+            Debug.Log($"[AIT]   %AIT_BRIDGE_COLOR_MODE% → '{config.GetBridgeColorModeString()}'");
+            Debug.Log($"[AIT]   %AIT_WEBVIEW_TYPE% → '{config.GetWebViewTypeString()}'");
+            Debug.Log($"[AIT]   %AIT_HOST% → '{config.devHost}'");
             Debug.Log($"[AIT]   %AIT_LOCAL_PORT% → '{config.localPort}'");
+            Debug.Log($"[AIT]   %AIT_PERMISSIONS% → {config.GetPermissionsJson()}");
+            Debug.Log($"[AIT]   %AIT_OUTDIR% → '{config.outdir}'");
 
             string graniteConfigTemplate = File.ReadAllText(Path.Combine(sdkBuildConfigPath, "granite.config.ts"));
             string graniteConfig = graniteConfigTemplate
@@ -773,7 +778,12 @@ namespace AppsInToss
                 .Replace("%AIT_DISPLAY_NAME%", config.displayName)
                 .Replace("%AIT_PRIMARY_COLOR%", config.primaryColor)
                 .Replace("%AIT_ICON_URL%", config.iconUrl)
-                .Replace("%AIT_LOCAL_PORT%", config.localPort.ToString());
+                .Replace("%AIT_BRIDGE_COLOR_MODE%", config.GetBridgeColorModeString())
+                .Replace("%AIT_WEBVIEW_TYPE%", config.GetWebViewTypeString())
+                .Replace("%AIT_HOST%", config.devHost)
+                .Replace("%AIT_LOCAL_PORT%", config.localPort.ToString())
+                .Replace("%AIT_PERMISSIONS%", config.GetPermissionsJson())
+                .Replace("%AIT_OUTDIR%", config.outdir);
 
             File.WriteAllText(
                 Path.Combine(buildProjectPath, "granite.config.ts"),

@@ -6,16 +6,19 @@ export default defineConfig({
     displayName: '%AIT_DISPLAY_NAME%',
     primaryColor: '%AIT_PRIMARY_COLOR%',
     icon: '%AIT_ICON_URL%',
-    bridgeColorMode: 'basic',
+    bridgeColorMode: '%AIT_BRIDGE_COLOR_MODE%',
+  },
+  webViewProps: {
+    type: '%AIT_WEBVIEW_TYPE%',
   },
   web: {
-    host: 'localhost',
+    host: '%AIT_HOST%',
     port: %AIT_LOCAL_PORT%,
     commands: {
       dev: 'vite --host',
       build: 'vite build',
     },
   },
-  permissions: [],
-  outdir: 'dist',
+  permissions: %AIT_PERMISSIONS%,
+  outdir: '%AIT_OUTDIR%',
 });

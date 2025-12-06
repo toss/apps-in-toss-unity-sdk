@@ -81,6 +81,8 @@ jobs:
           echo "UNITY_VERSION=${DETECTED_VERSION}" >> $GITHUB_OUTPUT
 
       - name: Build Unity WebGL
+        env:
+          AIT_DEBUG_CONSOLE: "true"
         run: |
           UNITY_PATH="${{ steps.unity.outputs.UNITY_PATH }}"
           PROJECT_PATH="${{ github.workspace }}/Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}"
@@ -91,6 +93,7 @@ jobs:
           echo "Unity Version: ${{ steps.unity.outputs.UNITY_VERSION }}"
           echo "Unity Path: ${UNITY_PATH}"
           echo "Project Path: ${PROJECT_PATH}"
+          echo "AIT_DEBUG_CONSOLE: ${AIT_DEBUG_CONSOLE}"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
           "$UNITY_PATH" -quit -batchmode -nographics \
@@ -234,6 +237,8 @@ jobs:
 
       - name: Build Unity WebGL (with License Lock)
         shell: powershell -ExecutionPolicy Bypass -File {0}
+        env:
+          AIT_DEBUG_CONSOLE: "true"
         run: |
           $unityPath = "${{ steps.unity.outputs.UNITY_PATH }}"
           $projectPath = "${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ matrix.unity-version }}"

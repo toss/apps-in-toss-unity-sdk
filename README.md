@@ -160,6 +160,36 @@ SDK는 각 작업 메뉴별로 다른 빌드 설정(프로필)을 자동 적용�
 3. 각 옵션의 체크박스를 변경
 4. 변경 사항은 자동 저장됨
 
+### 환경 변수 오버라이드
+
+CI/CD 환경이나 자동화 스크립트에서 환경 변수를 통해 빌드 프로필 설정을 오버라이드할 수 있습니다.
+
+| 환경 변수 | 설명 | 값 |
+|----------|------|-----|
+| `AIT_DEBUG_CONSOLE` | 디버그 콘솔 활성화 | `true`/`false` |
+
+**사용 예시:**
+
+```bash
+# 로컬 테스트
+AIT_DEBUG_CONSOLE=true ./run-local-tests.sh --all
+
+# Unity 직접 실행
+AIT_DEBUG_CONSOLE=true /Applications/Unity/Hub/Editor/2022.3.62f1/Unity.app/Contents/MacOS/Unity \
+  -quit -batchmode -projectPath ./MyProject \
+  -executeMethod AITConvertCore.CommandLineBuild
+```
+
+**GitHub Actions 예시:**
+
+```yaml
+- name: Build with Debug Console
+  env:
+    AIT_DEBUG_CONSOLE: "true"
+  run: |
+    unity -executeMethod E2EBuildRunner.CommandLineBuild ...
+```
+
 ### 빌드 로그
 
 빌드 시작 시 적용된 프로필이 Console에 출력됩니다:

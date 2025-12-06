@@ -23,9 +23,26 @@ MonoBehaviour:
   devHost: localhost
   localPort: 5173
   outdir: dist
-  isProduction: 0
-  enableOptimization: 1
-  enableCompression: 0
+  devServerProfile:
+    enableMockBridge: 1
+    debugSymbolsExternal: 0
+    enableDebugConsole: 1
+    enableLZ4Compression: 1
+  prodServerProfile:
+    enableMockBridge: 0
+    debugSymbolsExternal: 1
+    enableDebugConsole: 0
+    enableLZ4Compression: 1
+  buildPackageProfile:
+    enableMockBridge: 0
+    debugSymbolsExternal: 1
+    enableDebugConsole: 0
+    enableLZ4Compression: 1
+  publishProfile:
+    enableMockBridge: 0
+    debugSymbolsExternal: 1
+    enableDebugConsole: 0
+    enableLZ4Compression: 1
   memorySize: -1
   compressionFormat: -1
   threadsSupport: -1

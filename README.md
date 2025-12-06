@@ -123,10 +123,57 @@ public class GameManager : MonoBehaviour
 
 ### 4. 빌드 및 배포
 
-1. `Apps in Toss > Build & Deploy Window` 메뉴 클릭
-2. 설정 확인 후 "🚀 Build & Package" 클릭
+1. `AIT > Configuration` 메뉴에서 설정 확인
+2. 메뉴에서 원하는 작업 선택:
+   - `AIT > Dev Server > Start Server`: 로컬 개발 서버 실행
+   - `AIT > Production Server > Start Server`: 프로덕션 환경 로컬 확인
+   - `AIT > Build & Package`: 배포용 패키지 생성
+   - `AIT > Publish`: Apps in Toss에 배포
 3. 빌드 완료 후 `ait-build/dist/` 폴더에서 결과물 확인
-4. `npm run deploy`로 Apps in Toss 플랫폼에 배포
+
+## 빌드 프로필 시스템
+
+SDK는 각 작업 메뉴별로 다른 빌드 설정(프로필)을 자동 적용합니다.
+
+### 기본 프로필 매트릭스
+
+| 작업 | Mock 브릿지 | 디버그 심볼 | 디버그 콘솔 | LZ4 압축 |
+|------|:-----------:|:-----------:|:-----------:|:--------:|
+| **Dev Server** | ✅ 활성화 | Embedded | ✅ 활성화 | ✅ 활성화 |
+| **Production Server** | ❌ 비활성화 | External | ❌ 비활성화 | ✅ 활성화 |
+| **Build & Package** | ❌ 비활성화 | External | ❌ 비활성화 | ✅ 활성화 |
+| **Publish** | ❌ 비활성화 | External | ❌ 비활성화 | ✅ 활성화 |
+
+### 각 설정의 의미
+
+- **Mock 브릿지**: 로컬 브라우저에서 테스트할 때 네이티브 API 없이 동작하도록 Mock 구현 사용
+- **디버그 심볼**: `External`은 심볼을 별도 파일로 분리하여 빌드 크기 감소, `Embedded`는 빌드에 포함
+- **디버그 콘솔**: 개발/테스트용 콘솔 UI 활성화
+- **LZ4 압축**: 빌드 속도 향상을 위한 LZ4 압축 사용
+
+### 프로필 커스터마이징
+
+`AIT > Configuration` 메뉴에서 각 프로필의 설정을 변경할 수 있습니다:
+
+1. "빌드 프로필" 섹션 확장
+2. 원하는 프로필(Dev Server, Production Server 등)을 펼치기
+3. 각 옵션의 체크박스를 변경
+4. 변경 사항은 자동 저장됨
+
+### 빌드 로그
+
+빌드 시작 시 적용된 프로필이 Console에 출력됩니다:
+
+```
+[AIT] ========================================
+[AIT] 빌드 프로필: Dev Server
+[AIT] ========================================
+[AIT]   Mock 브릿지: 활성화
+[AIT]   디버그 심볼: Embedded
+[AIT]   디버그 콘솔: 활성화
+[AIT]   LZ4 압축: 활성화
+[AIT] ========================================
+```
 
 ## 자주 묻는 질문
 

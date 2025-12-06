@@ -15,6 +15,11 @@ namespace AppsInToss.Editor
         // UI 접힘 상태
         private bool showWebGLSettings = true;
         private bool showAdvancedSettings = false;
+        private bool showBuildProfiles = true;
+        private bool showDevServerProfile = false;
+        private bool showProdServerProfile = false;
+        private bool showBuildPackageProfile = false;
+        private bool showPublishProfile = false;
 
         // 하이라이트 색상
         private static readonly Color ModifiedColor = new Color(1f, 0.6f, 0f); // 주황색
@@ -191,13 +196,159 @@ namespace AppsInToss.Editor
 
         private void DrawBuildSettings()
         {
-            EditorGUILayout.LabelField("빌드 설정", EditorStyles.boldLabel);
+            showBuildProfiles = EditorGUILayout.Foldout(showBuildProfiles, "빌드 프로필", true);
+
+            if (!showBuildProfiles) return;
+
             EditorGUILayout.BeginVertical("box");
 
-            config.isProduction = EditorGUILayout.Toggle("프로덕션 모드", config.isProduction);
-            config.enableOptimization = EditorGUILayout.Toggle("최적화 활성화", config.enableOptimization);
+            EditorGUILayout.HelpBox(
+                "각 메뉴(Dev Server, Production Server, Build & Package, Publish)별로 다른 빌드 설정이 적용됩니다.\n" +
+                "아래에서 각 프로필의 기본 설정을 커스터마이징할 수 있습니다.",
+                MessageType.Info
+            );
+
+            GUILayout.Space(10);
+
+            // Dev Server 프로필
+            DrawBuildProfile(
+                ref showDevServerProfile,
+                "Dev Server",
+                "로컬 브라우저에서 테스트할 때 사용 (Mock 브릿지 활성화)",
+                config.devServerProfile,
+                AITBuildProfile.CreateDevServerProfile()
+            );
+
+            GUILayout.Space(5);
+
+            // Production Server 프로필
+            DrawBuildProfile(
+                ref showProdServerProfile,
+                "Production Server",
+                "프로덕션 환경을 로컬에서 확인할 때 사용",
+                config.prodServerProfile,
+                AITBuildProfile.CreateProdServerProfile()
+            );
+
+            GUILayout.Space(5);
+
+            // Build & Package 프로필
+            DrawBuildProfile(
+                ref showBuildPackageProfile,
+                "Build & Package",
+                "배포용 패키지를 생성할 때 사용",
+                config.buildPackageProfile,
+                AITBuildProfile.CreateBuildPackageProfile()
+            );
+
+            GUILayout.Space(5);
+
+            // Publish 프로필
+            DrawBuildProfile(
+                ref showPublishProfile,
+                "Publish",
+                "Apps in Toss에 배포할 때 사용",
+                config.publishProfile,
+                AITBuildProfile.CreatePublishProfile()
+            );
+
+            GUILayout.Space(10);
+
+            // 모든 프로필 초기화 버튼
+            if (GUILayout.Button("모든 프로필 기본값으로 초기화"))
+            {
+                if (EditorUtility.DisplayDialog("프로필 초기화", "모든 빌드 프로필을 기본값으로 초기화하시겠습니까?", "예", "아니오"))
+                {
+                    config.devServerProfile = AITBuildProfile.CreateDevServerProfile();
+                    config.prodServerProfile = AITBuildProfile.CreateProdServerProfile();
+                    config.buildPackageProfile = AITBuildProfile.CreateBuildPackageProfile();
+                    config.publishProfile = AITBuildProfile.CreatePublishProfile();
+                    SaveSettings();
+                }
+            }
 
             EditorGUILayout.EndVertical();
+        }
+
+        private void DrawBuildProfile(ref bool foldout, string name, string description, AITBuildProfile profile, AITBuildProfile defaultProfile)
+        {
+            EditorGUILayout.BeginVertical("box");
+
+            foldout = EditorGUILayout.Foldout(foldout, $"{name}", true);
+
+            if (!foldout)
+            {
+                // 접힌 상태에서 요약 표시
+                EditorGUI.indentLevel++;
+                string summary = GetProfileSummary(profile);
+                EditorGUILayout.LabelField(summary, EditorStyles.miniLabel);
+                EditorGUI.indentLevel--;
+                EditorGUILayout.EndVertical();
+                return;
+            }
+
+            EditorGUILayout.HelpBox(description, MessageType.None);
+
+            EditorGUI.indentLevel++;
+
+            // Mock 브릿지
+            profile.enableMockBridge = EditorGUILayout.Toggle(
+                new GUIContent("Mock 브릿지 사용", "로컬 테스트용, 네이티브 API 없이 동작"),
+                profile.enableMockBridge
+            );
+
+            // 디버그 심볼
+            profile.debugSymbolsExternal = EditorGUILayout.Toggle(
+                new GUIContent("디버그 심볼 외부 분리", "빌드 크기 감소를 위해 심볼을 외부 파일로 분리"),
+                profile.debugSymbolsExternal
+            );
+
+            // 디버그 콘솔
+            profile.enableDebugConsole = EditorGUILayout.Toggle(
+                new GUIContent("디버그 콘솔 활성화", "개발/테스트 목적으로 콘솔 사용"),
+                profile.enableDebugConsole
+            );
+
+            // LZ4 압축
+            profile.enableLZ4Compression = EditorGUILayout.Toggle(
+                new GUIContent("LZ4 압축", "빌드 속도 향상을 위한 LZ4 압축"),
+                profile.enableLZ4Compression
+            );
+
+            // 기본값과 다른 경우 리셋 버튼 표시
+            if (!IsProfileDefault(profile, defaultProfile))
+            {
+                GUILayout.Space(5);
+                if (GUILayout.Button($"{name} 프로필 기본값으로 복원", GUILayout.Height(20)))
+                {
+                    profile.enableMockBridge = defaultProfile.enableMockBridge;
+                    profile.debugSymbolsExternal = defaultProfile.debugSymbolsExternal;
+                    profile.enableDebugConsole = defaultProfile.enableDebugConsole;
+                    profile.enableLZ4Compression = defaultProfile.enableLZ4Compression;
+                }
+            }
+
+            EditorGUI.indentLevel--;
+
+            EditorGUILayout.EndVertical();
+        }
+
+        private string GetProfileSummary(AITBuildProfile profile)
+        {
+            var parts = new System.Collections.Generic.List<string>();
+            if (profile.enableMockBridge) parts.Add("Mock");
+            if (profile.debugSymbolsExternal) parts.Add("External");
+            if (profile.enableDebugConsole) parts.Add("Debug");
+            if (profile.enableLZ4Compression) parts.Add("LZ4");
+            return parts.Count > 0 ? string.Join(", ", parts) : "(모두 비활성화)";
+        }
+
+        private bool IsProfileDefault(AITBuildProfile profile, AITBuildProfile defaultProfile)
+        {
+            return profile.enableMockBridge == defaultProfile.enableMockBridge &&
+                   profile.debugSymbolsExternal == defaultProfile.debugSymbolsExternal &&
+                   profile.enableDebugConsole == defaultProfile.enableDebugConsole &&
+                   profile.enableLZ4Compression == defaultProfile.enableLZ4Compression;
         }
 
         private void DrawWebGLOptimizationSettings()

@@ -4,6 +4,82 @@ using UnityEditor;
 namespace AppsInToss
 {
     /// <summary>
+    /// 빌드 프로필 설정
+    /// 각 빌드 작업(Dev Server, Prod Server, Build & Package, Publish)별로 다른 설정 적용
+    /// </summary>
+    [System.Serializable]
+    public class AITBuildProfile
+    {
+        [Tooltip("Mock 브릿지 사용 (로컬 테스트용, 네이티브 API 없이 동작)")]
+        public bool enableMockBridge = true;
+
+        [Tooltip("디버그 심볼을 외부 파일로 분리 (빌드 크기 감소)")]
+        public bool debugSymbolsExternal = false;
+
+        [Tooltip("디버그 콘솔 활성화 (개발/테스트 목적)")]
+        public bool enableDebugConsole = true;
+
+        [Tooltip("LZ4 압축으로 빌드 속도 향상")]
+        public bool enableLZ4Compression = true;
+
+        /// <summary>
+        /// Dev Server 기본 프로필 생성
+        /// </summary>
+        public static AITBuildProfile CreateDevServerProfile()
+        {
+            return new AITBuildProfile
+            {
+                enableMockBridge = true,
+                debugSymbolsExternal = false,
+                enableDebugConsole = true,
+                enableLZ4Compression = true
+            };
+        }
+
+        /// <summary>
+        /// Production Server 기본 프로필 생성
+        /// </summary>
+        public static AITBuildProfile CreateProdServerProfile()
+        {
+            return new AITBuildProfile
+            {
+                enableMockBridge = false,
+                debugSymbolsExternal = true,
+                enableDebugConsole = false,
+                enableLZ4Compression = true
+            };
+        }
+
+        /// <summary>
+        /// Build & Package 기본 프로필 생성
+        /// </summary>
+        public static AITBuildProfile CreateBuildPackageProfile()
+        {
+            return new AITBuildProfile
+            {
+                enableMockBridge = false,
+                debugSymbolsExternal = true,
+                enableDebugConsole = false,
+                enableLZ4Compression = true
+            };
+        }
+
+        /// <summary>
+        /// Publish 기본 프로필 생성
+        /// </summary>
+        public static AITBuildProfile CreatePublishProfile()
+        {
+            return new AITBuildProfile
+            {
+                enableMockBridge = false,
+                debugSymbolsExternal = true,
+                enableDebugConsole = false,
+                enableLZ4Compression = true
+            };
+        }
+    }
+
+    /// <summary>
     /// Apps in Toss Editor 설정 오브젝트
     /// </summary>
     [System.Serializable]
@@ -36,10 +112,18 @@ namespace AppsInToss
         [Tooltip("granite build 출력 디렉토리. 기본값: dist")]
         public string outdir = "dist";
 
-        [Header("빌드 설정")]
-        public bool isProduction = false;
-        public bool enableOptimization = true;
-        public bool enableCompression = false;
+        [Header("빌드 프로필")]
+        [Tooltip("Dev Server 실행 시 적용되는 빌드 설정")]
+        public AITBuildProfile devServerProfile = AITBuildProfile.CreateDevServerProfile();
+
+        [Tooltip("Production Server 실행 시 적용되는 빌드 설정")]
+        public AITBuildProfile prodServerProfile = AITBuildProfile.CreateProdServerProfile();
+
+        [Tooltip("Build & Package 실행 시 적용되는 빌드 설정")]
+        public AITBuildProfile buildPackageProfile = AITBuildProfile.CreateBuildPackageProfile();
+
+        [Tooltip("Publish 실행 시 적용되는 빌드 설정")]
+        public AITBuildProfile publishProfile = AITBuildProfile.CreatePublishProfile();
 
         [Header("WebGL 최적화 설정")]
         [Tooltip("-1 = 자동 (Unity 버전별 권장값)")]

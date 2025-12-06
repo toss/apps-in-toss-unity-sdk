@@ -355,7 +355,14 @@ namespace AppsInToss
 
             try
             {
-                var result = AITConvertCore.DoExport(buildWebGL: true, doPackaging: false);
+                // Build 단독 실행은 buildPackageProfile 사용
+                var result = AITConvertCore.DoExport(
+                    buildWebGL: true,
+                    doPackaging: false,
+                    cleanBuild: false,
+                    profile: config.buildPackageProfile,
+                    profileName: "Build"
+                );
                 buildStopwatch.Stop();
 
                 if (result == AITConvertCore.AITExportError.SUCCEED)
@@ -388,7 +395,14 @@ namespace AppsInToss
 
             try
             {
-                var result = AITConvertCore.DoExport(buildWebGL: false, doPackaging: true);
+                // Package 단독 실행은 buildPackageProfile 사용
+                var result = AITConvertCore.DoExport(
+                    buildWebGL: false,
+                    doPackaging: true,
+                    cleanBuild: false,
+                    profile: config.buildPackageProfile,
+                    profileName: "Package"
+                );
                 buildStopwatch.Stop();
 
                 if (result == AITConvertCore.AITExportError.SUCCEED)
@@ -421,7 +435,14 @@ namespace AppsInToss
 
             try
             {
-                var result = AITConvertCore.DoExport(buildWebGL: true, doPackaging: true);
+                // Build & Package 메뉴는 buildPackageProfile 사용
+                var result = AITConvertCore.DoExport(
+                    buildWebGL: true,
+                    doPackaging: true,
+                    cleanBuild: false,
+                    profile: config.buildPackageProfile,
+                    profileName: "Build & Package"
+                );
                 buildStopwatch.Stop();
 
                 if (result == AITConvertCore.AITExportError.SUCCEED)
@@ -546,11 +567,17 @@ namespace AppsInToss
                 return;
             }
 
-            // 빌드 & 패키징 수행 (Dev: incremental build로 빠른 반복)
-            Debug.Log("AIT: 빌드 & 패키징 수행 중 (증분 빌드)...");
+            // 빌드 & 패키징 수행 (Dev Server: devServerProfile 사용, 증분 빌드로 빠른 반복)
+            Debug.Log("AIT: 빌드 & 패키징 수행 중 (증분 빌드, Dev Server 프로필)...");
             buildStopwatch.Restart();
 
-            var result = AITConvertCore.DoExport(buildWebGL: true, doPackaging: true, cleanBuild: false);
+            var result = AITConvertCore.DoExport(
+                buildWebGL: true,
+                doPackaging: true,
+                cleanBuild: false,
+                profile: config.devServerProfile,
+                profileName: "Dev Server"
+            );
             buildStopwatch.Stop();
 
             if (result != AITConvertCore.AITExportError.SUCCEED)
@@ -670,11 +697,17 @@ namespace AppsInToss
                 return;
             }
 
-            // 빌드 & 패키징 수행 (Production: 클린 빌드로 깨끗한 결과물 보장)
-            Debug.Log("AIT: 빌드 & 패키징 수행 중 (클린 빌드)...");
+            // 빌드 & 패키징 수행 (Production Server: prodServerProfile 사용, 클린 빌드로 깨끗한 결과물 보장)
+            Debug.Log("AIT: 빌드 & 패키징 수행 중 (클린 빌드, Production Server 프로필)...");
             buildStopwatch.Restart();
 
-            var result = AITConvertCore.DoExport(buildWebGL: true, doPackaging: true, cleanBuild: true);
+            var result = AITConvertCore.DoExport(
+                buildWebGL: true,
+                doPackaging: true,
+                cleanBuild: true,
+                profile: config.prodServerProfile,
+                profileName: "Production Server"
+            );
             buildStopwatch.Stop();
 
             if (result != AITConvertCore.AITExportError.SUCCEED)

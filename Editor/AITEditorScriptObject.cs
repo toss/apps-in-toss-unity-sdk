@@ -4,6 +4,82 @@ using UnityEditor;
 namespace AppsInToss
 {
     /// <summary>
+    /// 빌드 프로필 설정
+    /// 각 빌드 작업(Dev Server, Prod Server, Build & Package, Publish)별로 다른 설정 적용
+    /// </summary>
+    [System.Serializable]
+    public class AITBuildProfile
+    {
+        [Tooltip("Mock 브릿지 사용 (로컬 테스트용, 네이티브 API 없이 동작)")]
+        public bool enableMockBridge = true;
+
+        [Tooltip("디버그 심볼을 외부 파일로 분리 (빌드 크기 감소)")]
+        public bool debugSymbolsExternal = false;
+
+        [Tooltip("디버그 콘솔 활성화 (개발/테스트 목적)")]
+        public bool enableDebugConsole = true;
+
+        [Tooltip("LZ4 압축으로 빌드 속도 향상")]
+        public bool enableLZ4Compression = true;
+
+        /// <summary>
+        /// Dev Server 기본 프로필 생성
+        /// </summary>
+        public static AITBuildProfile CreateDevServerProfile()
+        {
+            return new AITBuildProfile
+            {
+                enableMockBridge = true,
+                debugSymbolsExternal = false,
+                enableDebugConsole = true,
+                enableLZ4Compression = true
+            };
+        }
+
+        /// <summary>
+        /// Production Server 기본 프로필 생성
+        /// </summary>
+        public static AITBuildProfile CreateProdServerProfile()
+        {
+            return new AITBuildProfile
+            {
+                enableMockBridge = false,
+                debugSymbolsExternal = true,
+                enableDebugConsole = false,
+                enableLZ4Compression = true
+            };
+        }
+
+        /// <summary>
+        /// Build & Package 기본 프로필 생성
+        /// </summary>
+        public static AITBuildProfile CreateBuildPackageProfile()
+        {
+            return new AITBuildProfile
+            {
+                enableMockBridge = false,
+                debugSymbolsExternal = true,
+                enableDebugConsole = false,
+                enableLZ4Compression = true
+            };
+        }
+
+        /// <summary>
+        /// Publish 기본 프로필 생성
+        /// </summary>
+        public static AITBuildProfile CreatePublishProfile()
+        {
+            return new AITBuildProfile
+            {
+                enableMockBridge = false,
+                debugSymbolsExternal = true,
+                enableDebugConsole = false,
+                enableLZ4Compression = true
+            };
+        }
+    }
+
+    /// <summary>
     /// Apps in Toss Editor 설정 오브젝트
     /// </summary>
     [System.Serializable]
@@ -19,13 +95,35 @@ namespace AppsInToss
         public string primaryColor = "#3182F6";
         public string iconUrl = "";
 
+        [Header("WebView 설정")]
+        [Tooltip("브릿지 색상 모드. 게임앱은 'inverted' (다크모드), 일반앱은 'basic'")]
+        public int bridgeColorMode = 0; // 0=inverted (게임 기본), 1=basic
+
+        [Tooltip("WebView 타입. 게임앱은 'game' (투명배경), 일반앱은 'partner' (흰색배경), 외부연동은 'external'")]
+        public int webViewType = 0; // 0=game, 1=partner, 2=external
+
         [Header("개발 서버 설정")]
+        [Tooltip("개발 서버 호스트. 기본값: localhost")]
+        public string devHost = "localhost";
+
         public int localPort = 5173;
 
-        [Header("빌드 설정")]
-        public bool isProduction = false;
-        public bool enableOptimization = true;
-        public bool enableCompression = false;
+        [Header("빌드 출력 설정")]
+        [Tooltip("granite build 출력 디렉토리. 기본값: dist")]
+        public string outdir = "dist";
+
+        [Header("빌드 프로필")]
+        [Tooltip("Dev Server 실행 시 적용되는 빌드 설정")]
+        public AITBuildProfile devServerProfile = AITBuildProfile.CreateDevServerProfile();
+
+        [Tooltip("Production Server 실행 시 적용되는 빌드 설정")]
+        public AITBuildProfile prodServerProfile = AITBuildProfile.CreateProdServerProfile();
+
+        [Tooltip("Build & Package 실행 시 적용되는 빌드 설정")]
+        public AITBuildProfile buildPackageProfile = AITBuildProfile.CreateBuildPackageProfile();
+
+        [Tooltip("Publish 실행 시 적용되는 빌드 설정")]
+        public AITBuildProfile publishProfile = AITBuildProfile.CreatePublishProfile();
 
         [Header("WebGL 최적화 설정")]
         [Tooltip("-1 = 자동 (Unity 버전별 권장값)")]
@@ -139,6 +237,82 @@ namespace AppsInToss
             return IsIconUrlValid() &&
                    IsAppNameValid() &&
                    IsVersionValid();
+        }
+
+        /// <summary>
+        /// bridgeColorMode 문자열 반환
+        /// </summary>
+        public string GetBridgeColorModeString()
+        {
+            return bridgeColorMode == 0 ? "inverted" : "basic";
+        }
+
+        /// <summary>
+        /// webViewProps.type 문자열 반환
+        /// </summary>
+        public string GetWebViewTypeString()
+        {
+            switch (webViewType)
+            {
+                case 0: return "game";
+                case 1: return "partner";
+                case 2: return "external";
+                default: return "game";
+            }
+        }
+
+        /// <summary>
+        /// permissions 배열을 granite.config.ts 형식의 JSON 배열로 변환
+        /// 형식: [{ name: 'geolocation', access: 'access' }, ...]
+        /// </summary>
+        public string GetPermissionsJson()
+        {
+            if (permissions == null || permissions.Length == 0)
+                return "[]";
+
+            var objects = new System.Collections.Generic.List<string>();
+            foreach (var perm in permissions)
+            {
+                var (name, access) = ConvertPermission(perm);
+                if (name != null)
+                {
+                    objects.Add($"{{ name: '{name}', access: '{access}' }}");
+                }
+            }
+            return "[" + string.Join(", ", objects) + "]";
+        }
+
+        /// <summary>
+        /// 권한 문자열을 (name, access) 튜플로 변환
+        /// </summary>
+        private (string name, string access) ConvertPermission(string permission)
+        {
+            switch (permission?.ToLowerInvariant())
+            {
+                case "geolocation":
+                case "location":
+                    return ("geolocation", "access");
+                case "camera":
+                    return ("camera", "access");
+                case "clipboard":
+                case "clipboard-read":
+                    return ("clipboard", "read");
+                case "clipboard-write":
+                    return ("clipboard", "write");
+                case "contacts":
+                case "contacts-read":
+                    return ("contacts", "read");
+                case "contacts-write":
+                    return ("contacts", "write");
+                case "photos":
+                case "photos-read":
+                    return ("photos", "read");
+                case "photos-write":
+                    return ("photos", "write");
+                default:
+                    // 알 수 없는 권한은 무시
+                    return (null, null);
+            }
         }
     }
 

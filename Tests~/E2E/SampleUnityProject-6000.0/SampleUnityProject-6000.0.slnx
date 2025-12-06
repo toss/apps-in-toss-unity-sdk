@@ -1,6 +1,6 @@
 ﻿<Solution>
   <Project Path="AppsInTossSDK.csproj" />
-  <Project Path="AppsInTossSDKEditor.csproj" />
   <Project Path="AppsInTossTestScripts.csproj" />
+  <Project Path="AppsInTossSDKEditor.csproj" />
   <Project Path="AppsInTossTestScripts.Editor.csproj" />
 </Solution>

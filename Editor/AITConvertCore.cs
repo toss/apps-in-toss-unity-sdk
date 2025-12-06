@@ -186,13 +186,8 @@ namespace AppsInToss
                 : AITDefaultSettings.GetDefaultShowUnityLogo();
             PlayerSettings.SplashScreen.showUnityLogo = showUnityLogo;
 
-            // ===== 디버그 심볼 (프로덕션 여부에 따라) =====
-#if UNITY_2022_3_OR_NEWER
-            // 출처: UnityVersion.md:402
-            PlayerSettings.WebGL.debugSymbolMode = editorConfig.isProduction
-                ? WebGLDebugSymbolMode.External
-                : WebGLDebugSymbolMode.Embedded;
-#endif
+            // ===== 디버그 심볼 (빌드 프로필에서 설정 - ApplyBuildProfileSettings 참조) =====
+            // 프로필 기반 설정은 DoExport()에서 ApplyBuildProfileSettings()를 통해 적용됨
 
             // ===== Decompression Fallback (사용자 지정 또는 자동) =====
             // 출처: StartupOptimization.md:93
@@ -220,6 +215,67 @@ namespace AppsInToss
             Debug.Log($"[AIT]   - WASM Streaming: {editorConfig.wasmStreaming}");
             Debug.Log($"[AIT]   - WASM 산술 예외: {wasmArithmeticExceptions}{(editorConfig.webAssemblyArithmeticExceptions < 0 ? " (자동)" : "")}");
 #endif
+#endif
+        }
+
+        /// <summary>
+        /// 빌드 프로필 정보를 로그로 출력
+        /// </summary>
+        private static void LogBuildProfile(AITBuildProfile profile, string profileName)
+        {
+            Debug.Log("[AIT] ========================================");
+            Debug.Log($"[AIT] 빌드 프로필: {profileName}");
+            Debug.Log("[AIT] ========================================");
+            Debug.Log($"[AIT]   Mock 브릿지: {(profile.enableMockBridge ? "활성화" : "비활성화")}");
+            Debug.Log($"[AIT]   디버그 심볼: {(profile.debugSymbolsExternal ? "External" : "Embedded")}");
+            Debug.Log($"[AIT]   디버그 콘솔: {(profile.enableDebugConsole ? "활성화" : "비활성화")}");
+            Debug.Log($"[AIT]   LZ4 압축: {(profile.enableLZ4Compression ? "활성화" : "비활성화")}");
+            Debug.Log("[AIT] ========================================");
+        }
+
+        /// <summary>
+        /// 환경 변수로 빌드 프로필 설정 오버라이드
+        /// </summary>
+        private static AITBuildProfile ApplyEnvironmentVariableOverrides(AITBuildProfile profile)
+        {
+            if (profile == null) return null;
+
+            string debugConsoleEnv = System.Environment.GetEnvironmentVariable("AIT_DEBUG_CONSOLE");
+            if (string.IsNullOrEmpty(debugConsoleEnv))
+            {
+                return profile;
+            }
+
+            if (!bool.TryParse(debugConsoleEnv, out bool debugConsole))
+            {
+                Debug.LogWarning($"[AIT] AIT_DEBUG_CONSOLE 환경 변수 값이 올바르지 않습니다: '{debugConsoleEnv}' (true/false 필요)");
+                return profile;
+            }
+
+            // 복사본 생성 (원본 프로필 보존)
+            var overriddenProfile = new AITBuildProfile
+            {
+                enableMockBridge = profile.enableMockBridge,
+                debugSymbolsExternal = profile.debugSymbolsExternal,
+                enableDebugConsole = debugConsole,
+                enableLZ4Compression = profile.enableLZ4Compression
+            };
+
+            Debug.Log($"[AIT] 환경 변수 오버라이드: AIT_DEBUG_CONSOLE={debugConsole}");
+            return overriddenProfile;
+        }
+
+        /// <summary>
+        /// 빌드 프로필 기반으로 PlayerSettings 적용
+        /// </summary>
+        private static void ApplyBuildProfileSettings(AITBuildProfile profile)
+        {
+            // 디버그 심볼 설정 (Unity 2022.3+)
+#if UNITY_2022_3_OR_NEWER
+            PlayerSettings.WebGL.debugSymbolMode = profile.debugSymbolsExternal
+                ? WebGLDebugSymbolMode.External
+                : WebGLDebugSymbolMode.Embedded;
+            Debug.Log($"[AIT] 디버그 심볼 모드 설정: {PlayerSettings.WebGL.debugSymbolMode}");
 #endif
         }
 
@@ -381,17 +437,35 @@ namespace AppsInToss
         /// <param name="buildWebGL">WebGL 빌드 실행 여부</param>
         /// <param name="doPackaging">패키징 실행 여부</param>
         /// <param name="cleanBuild">클린 빌드 여부 (false면 incremental build)</param>
+        /// <param name="profile">적용할 빌드 프로필 (null이면 buildPackageProfile 사용)</param>
+        /// <param name="profileName">빌드 프로필 이름 (로그 출력용)</param>
         /// <returns>변환 결과</returns>
-        public static AITExportError DoExport(bool buildWebGL = true, bool doPackaging = true, bool cleanBuild = false)
+        public static AITExportError DoExport(bool buildWebGL = true, bool doPackaging = true, bool cleanBuild = false, AITBuildProfile profile = null, string profileName = null)
         {
             // 빌드 시작 전 취소 플래그 리셋
             ResetCancellation();
 
             Init();
 
+            // 프로필이 지정되지 않으면 기본 프로필 사용
+            var config = UnityUtil.GetEditorConf();
+            if (profile == null)
+            {
+                profile = config.buildPackageProfile;
+                profileName = profileName ?? "Build & Package";
+            }
+
+            // 환경 변수로 프로필 오버라이드 적용
+            profile = ApplyEnvironmentVariableOverrides(profile);
+
+            // 빌드 프로필 로그 출력
+            LogBuildProfile(profile, profileName);
+
+            // 프로필 기반으로 PlayerSettings 설정
+            ApplyBuildProfileSettings(profile);
+
             Debug.Log($"Apps in Toss 미니앱 변환을 시작합니다... (cleanBuild: {cleanBuild})");
 
-            var config = UnityUtil.GetEditorConf();
             if (config == null)
             {
                 Debug.LogError("Apps in Toss 설정을 찾을 수 없습니다.");
@@ -409,7 +483,7 @@ namespace AppsInToss
                         return AITExportError.CANCELLED;
                     }
 
-                    var webglResult = BuildWebGL(cleanBuild);
+                    var webglResult = BuildWebGL(cleanBuild, profile);
                     if (webglResult != AITExportError.SUCCEED)
                     {
                         return webglResult;
@@ -426,7 +500,7 @@ namespace AppsInToss
                         return AITExportError.CANCELLED;
                     }
 
-                    var exportResult = GenerateMiniAppPackage();
+                    var exportResult = GenerateMiniAppPackage(profile);
                     if (exportResult != AITExportError.SUCCEED)
                     {
                         return exportResult;
@@ -443,7 +517,7 @@ namespace AppsInToss
             }
         }
 
-        private static AITExportError BuildWebGL(bool cleanBuild = false)
+        private static AITExportError BuildWebGL(bool cleanBuild = false, AITBuildProfile profile = null)
         {
             Debug.Log($"WebGL 빌드를 시작합니다... ({(cleanBuild ? "클린 빌드" : "증분 빌드")})");
 
@@ -457,12 +531,16 @@ namespace AppsInToss
                 Directory.Delete(outputPath, true);
             }
 
-            var config = UnityUtil.GetEditorConf();
+            // 프로필이 없으면 기본 프로필 사용
+            if (profile == null)
+            {
+                profile = AITBuildProfile.CreateBuildPackageProfile();
+            }
 
             // 빌드 옵션 설정
             BuildOptions buildOptions = BuildOptions.None;
 
-            if (config.enableOptimization)
+            if (profile.enableLZ4Compression)
             {
                 buildOptions |= BuildOptions.CompressWithLz4;  // LZ4 압축으로 빌드 속도 향상
             }
@@ -510,24 +588,14 @@ namespace AppsInToss
             return AITExportError.SUCCEED;
         }
 
-        private static AITExportError GenerateMiniAppPackage()
+        private static AITExportError GenerateMiniAppPackage(AITBuildProfile profile = null)
         {
             Debug.Log("Apps in Toss 미니앱 패키지를 생성합니다...");
 
-            // 설정 검증
-            var config = UnityUtil.GetEditorConf();
-            if (string.IsNullOrWhiteSpace(config.iconUrl))
+            // 프로필이 없으면 기본 프로필 사용
+            if (profile == null)
             {
-                Debug.LogError("[AIT] 아이콘 URL이 설정되지 않았습니다. Apps in Toss Build Window에서 아이콘 URL을 설정해주세요.");
-                EditorUtility.DisplayDialog(
-                    "아이콘 URL 필요",
-                    "앱 아이콘 URL이 설정되지 않았습니다.\n\n" +
-                    "Apps in Toss > Build & Deploy Window를 열어서\n" +
-                    "브랜드 설정 > 아이콘 URL을 입력해주세요.\n\n" +
-                    "예: https://your-domain.com/icon.png",
-                    "확인"
-                );
-                return AITExportError.INVALID_APP_CONFIG;
+                profile = AITBuildProfile.CreateBuildPackageProfile();
             }
 
             string projectPath = UnityUtil.GetProjectPath();
@@ -540,7 +608,7 @@ namespace AppsInToss
             }
 
             // WebGL 빌드 결과를 ait-build로 복사
-            var packageResult = PackageWebGLBuild(projectPath, webglPath);
+            var packageResult = PackageWebGLBuild(projectPath, webglPath, profile);
             if (packageResult != AITExportError.SUCCEED)
             {
                 return packageResult;
@@ -550,9 +618,15 @@ namespace AppsInToss
             return AITExportError.SUCCEED;
         }
 
-        private static AITExportError PackageWebGLBuild(string projectPath, string webglPath)
+        private static AITExportError PackageWebGLBuild(string projectPath, string webglPath, AITBuildProfile profile = null)
         {
             Debug.Log("[AIT] Vite 기반 빌드 패키징 시작...");
+
+            // 프로필이 없으면 기본 프로필 사용
+            if (profile == null)
+            {
+                profile = AITBuildProfile.CreateBuildPackageProfile();
+            }
 
             string buildProjectPath = Path.Combine(projectPath, "ait-build");
 
@@ -634,7 +708,7 @@ namespace AppsInToss
 
             // 2. Unity WebGL 빌드를 public 폴더로 복사
             Debug.Log("[AIT] Step 2/3: Unity WebGL 빌드 복사 중...");
-            CopyWebGLToPublic(webglPath, buildProjectPath);
+            CopyWebGLToPublic(webglPath, buildProjectPath, profile);
 
             // 3. npm install 및 build 실행
             Debug.Log("[AIT] Step 3/3: npm install & build 실행 중...");
@@ -765,7 +839,12 @@ namespace AppsInToss
             Debug.Log($"[AIT]   %AIT_DISPLAY_NAME% → '{config.displayName}'");
             Debug.Log($"[AIT]   %AIT_PRIMARY_COLOR% → '{config.primaryColor}'");
             Debug.Log($"[AIT]   %AIT_ICON_URL% → '{config.iconUrl}'");
+            Debug.Log($"[AIT]   %AIT_BRIDGE_COLOR_MODE% → '{config.GetBridgeColorModeString()}'");
+            Debug.Log($"[AIT]   %AIT_WEBVIEW_TYPE% → '{config.GetWebViewTypeString()}'");
+            Debug.Log($"[AIT]   %AIT_HOST% → '{config.devHost}'");
             Debug.Log($"[AIT]   %AIT_LOCAL_PORT% → '{config.localPort}'");
+            Debug.Log($"[AIT]   %AIT_PERMISSIONS% → {config.GetPermissionsJson()}");
+            Debug.Log($"[AIT]   %AIT_OUTDIR% → '{config.outdir}'");
 
             string graniteConfigTemplate = File.ReadAllText(Path.Combine(sdkBuildConfigPath, "granite.config.ts"));
             string graniteConfig = graniteConfigTemplate
@@ -773,7 +852,12 @@ namespace AppsInToss
                 .Replace("%AIT_DISPLAY_NAME%", config.displayName)
                 .Replace("%AIT_PRIMARY_COLOR%", config.primaryColor)
                 .Replace("%AIT_ICON_URL%", config.iconUrl)
-                .Replace("%AIT_LOCAL_PORT%", config.localPort.ToString());
+                .Replace("%AIT_BRIDGE_COLOR_MODE%", config.GetBridgeColorModeString())
+                .Replace("%AIT_WEBVIEW_TYPE%", config.GetWebViewTypeString())
+                .Replace("%AIT_HOST%", config.devHost)
+                .Replace("%AIT_LOCAL_PORT%", config.localPort.ToString())
+                .Replace("%AIT_PERMISSIONS%", config.GetPermissionsJson())
+                .Replace("%AIT_OUTDIR%", config.outdir);
 
             File.WriteAllText(
                 Path.Combine(buildProjectPath, "granite.config.ts"),
@@ -784,8 +868,14 @@ namespace AppsInToss
             Debug.Log("[AIT] ✓ 빌드 설정 파일 복사 및 치환 완료");
         }
 
-        private static void CopyWebGLToPublic(string webglPath, string buildProjectPath)
+        private static void CopyWebGLToPublic(string webglPath, string buildProjectPath, AITBuildProfile profile = null)
         {
+            // 프로필이 없으면 기본 프로필 사용
+            if (profile == null)
+            {
+                profile = AITBuildProfile.CreateBuildPackageProfile();
+            }
+
             // Unity WebGL 빌드를 Vite 프로젝트에 복사
             // - index.html: 프로젝트 루트 (Vite 요구사항)
             // - Build, TemplateData, Runtime: public 폴더 (정적 자산)
@@ -836,10 +926,9 @@ namespace AppsInToss
                 string wasmFile = FindFileInBuild(buildSrc, "*.wasm*");
                 string symbolsFile = FindFileInBuild(buildSrc, "*.symbols.json*");
 
-                // AIT Config에서 프로덕션 모드 가져오기
-                var aitConfig = UnityUtil.GetEditorConf();
-                string isProduction = aitConfig.isProduction ? "true" : "false";
-                string enableDebugConsole = aitConfig.enableDebugConsole ? "true" : "false";
+                // 프로필 기반 설정값 (Mock 브릿지가 비활성화되면 프로덕션 모드로 간주)
+                string isProduction = profile.enableMockBridge ? "false" : "true";
+                string enableDebugConsole = profile.enableDebugConsole ? "true" : "false";
 
                 // Unity 플레이스홀더 치환
                 indexContent = indexContent
@@ -866,13 +955,13 @@ namespace AppsInToss
             string bridgeSrc = Path.Combine(publicPath, "Runtime", "appsintoss-unity-bridge.js");
             if (File.Exists(bridgeSrc))
             {
-                var aitConfig = UnityUtil.GetEditorConf();
-                string isProduction = aitConfig.isProduction ? "true" : "false";
+                // 프로필 기반 설정값 (Mock 브릿지가 비활성화되면 프로덕션 모드로 간주)
+                string isProduction = profile.enableMockBridge ? "false" : "true";
 
                 string bridgeContent = File.ReadAllText(bridgeSrc);
                 bridgeContent = bridgeContent.Replace("%AIT_IS_PRODUCTION%", isProduction);
                 File.WriteAllText(bridgeSrc, bridgeContent, System.Text.Encoding.UTF8);
-                Debug.Log($"[AIT] appsintoss-unity-bridge.js 프로덕션 모드 치환: {isProduction}");
+                Debug.Log($"[AIT] appsintoss-unity-bridge.js Mock 브릿지 모드: {(profile.enableMockBridge ? "활성화" : "비활성화")}");
             }
 
             Debug.Log("[AIT] Unity WebGL 빌드 복사 완료");
@@ -1268,11 +1357,9 @@ namespace AppsInToss
 
             GUILayout.Space(10);
 
-            // 빌드 설정
-            GUILayout.Label("빌드 설정", EditorStyles.boldLabel);
-            config.isProduction = EditorGUILayout.Toggle("프로덕션 모드", config.isProduction);
-            config.enableOptimization = EditorGUILayout.Toggle("최적화 활성화", config.enableOptimization);
-            config.enableCompression = EditorGUILayout.Toggle("압축 활성화", config.enableCompression);
+            // 빌드 설정 (빌드 프로필 UI는 AITConfigurationWindow에서 관리)
+            GUILayout.Label("빌드 프로필", EditorStyles.boldLabel);
+            EditorGUILayout.HelpBox("빌드 프로필 설정은 Apps in Toss > Configuration 메뉴에서 확인하세요.", MessageType.Info);
 
             EditorGUILayout.EndScrollView();
 

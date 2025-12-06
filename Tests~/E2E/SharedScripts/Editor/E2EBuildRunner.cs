@@ -79,8 +79,6 @@ public class E2EBuildRunner
         config.description = "E2E test for Apps in Toss Unity SDK";
         config.iconUrl = "https://via.placeholder.com/512"; // 테스트용 아이콘
         config.primaryColor = "#1E88E5";
-        config.isProduction = true;  // 프로덕션 환경 시뮬레이션
-        config.enableOptimization = true;
         // Unity 버전별 고유 포트 사용 (동시 실행 시 충돌 방지)
         // 2021.3 → 4173, 2022.3 → 4174, 6000.0 → 4175, 6000.2 → 4176
         config.localPort = GetPortForUnityVersion();
@@ -98,7 +96,14 @@ public class E2EBuildRunner
 
         // Library/Bee 캐시를 유지하여 증분 빌드 활용
         // 무한 루프 문제는 package.json devDependencies와 WebGLTemplates .meta 파일이 원인이었음
-        var result = AITConvertCore.DoExport(buildWebGL: true, doPackaging: true, cleanBuild: true);
+        // E2E 테스트에서는 프로덕션 환경을 시뮬레이션하기 위해 buildPackageProfile 사용
+        var result = AITConvertCore.DoExport(
+            buildWebGL: true,
+            doPackaging: true,
+            cleanBuild: true,
+            profile: config.buildPackageProfile,
+            profileName: "E2E Build"
+        );
 
         if (result == AITConvertCore.AITExportError.SUCCEED)
         {

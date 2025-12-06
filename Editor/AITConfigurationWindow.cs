@@ -113,26 +113,15 @@ namespace AppsInToss.Editor
             EditorGUILayout.BeginVertical("box");
 
             config.primaryColor = EditorGUILayout.TextField("기본 색상", config.primaryColor);
-            config.iconUrl = EditorGUILayout.TextField("아이콘 URL (필수)", config.iconUrl);
+            config.iconUrl = EditorGUILayout.TextField("아이콘 URL", config.iconUrl);
 
-            // 아이콘 URL 검증
-            if (string.IsNullOrWhiteSpace(config.iconUrl))
-            {
-                EditorGUILayout.HelpBox(
-                    "아이콘 URL을 입력해주세요. 빌드 시 필수입니다.\n예: https://your-domain.com/icon.png",
-                    MessageType.Warning
-                );
-            }
-            else if (!config.IsIconUrlValid())
+            // 아이콘 URL 검증 (선택 사항)
+            if (!string.IsNullOrWhiteSpace(config.iconUrl) && !config.IsIconUrlValid())
             {
                 EditorGUILayout.HelpBox(
                     "아이콘 URL은 http:// 또는 https://로 시작해야 합니다.",
-                    MessageType.Error
+                    MessageType.Warning
                 );
-            }
-            else
-            {
-                EditorGUILayout.HelpBox("아이콘 URL이 올바른 형식입니다.", MessageType.Info);
             }
 
             EditorGUILayout.EndVertical();

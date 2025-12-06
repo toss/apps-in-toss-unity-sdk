@@ -514,21 +514,7 @@ namespace AppsInToss
         {
             Debug.Log("Apps in Toss 미니앱 패키지를 생성합니다...");
 
-            // 설정 검증
             var config = UnityUtil.GetEditorConf();
-            if (string.IsNullOrWhiteSpace(config.iconUrl))
-            {
-                Debug.LogError("[AIT] 아이콘 URL이 설정되지 않았습니다. Apps in Toss Build Window에서 아이콘 URL을 설정해주세요.");
-                EditorUtility.DisplayDialog(
-                    "아이콘 URL 필요",
-                    "앱 아이콘 URL이 설정되지 않았습니다.\n\n" +
-                    "Apps in Toss > Build & Deploy Window를 열어서\n" +
-                    "브랜드 설정 > 아이콘 URL을 입력해주세요.\n\n" +
-                    "예: https://your-domain.com/icon.png",
-                    "확인"
-                );
-                return AITExportError.INVALID_APP_CONFIG;
-            }
 
             string projectPath = UnityUtil.GetProjectPath();
             string webglPath = Path.Combine(projectPath, webglDir);

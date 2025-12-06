@@ -178,19 +178,57 @@ namespace AppsInToss
         }
 
         /// <summary>
-        /// permissions 배열을 JSON 배열 문자열로 변환
+        /// permissions 배열을 granite.config.ts 형식의 JSON 배열로 변환
+        /// 형식: [{ name: 'geolocation', access: 'access' }, ...]
         /// </summary>
         public string GetPermissionsJson()
         {
             if (permissions == null || permissions.Length == 0)
                 return "[]";
 
-            var quoted = new string[permissions.Length];
-            for (int i = 0; i < permissions.Length; i++)
+            var objects = new System.Collections.Generic.List<string>();
+            foreach (var perm in permissions)
             {
-                quoted[i] = $"'{permissions[i]}'";
+                var (name, access) = ConvertPermission(perm);
+                if (name != null)
+                {
+                    objects.Add($"{{ name: '{name}', access: '{access}' }}");
+                }
             }
-            return "[" + string.Join(", ", quoted) + "]";
+            return "[" + string.Join(", ", objects) + "]";
+        }
+
+        /// <summary>
+        /// 권한 문자열을 (name, access) 튜플로 변환
+        /// </summary>
+        private (string name, string access) ConvertPermission(string permission)
+        {
+            switch (permission?.ToLowerInvariant())
+            {
+                case "geolocation":
+                case "location":
+                    return ("geolocation", "access");
+                case "camera":
+                    return ("camera", "access");
+                case "clipboard":
+                case "clipboard-read":
+                    return ("clipboard", "read");
+                case "clipboard-write":
+                    return ("clipboard", "write");
+                case "contacts":
+                case "contacts-read":
+                    return ("contacts", "read");
+                case "contacts-write":
+                    return ("contacts", "write");
+                case "photos":
+                case "photos-read":
+                    return ("photos", "read");
+                case "photos-write":
+                    return ("photos", "write");
+                default:
+                    // 알 수 없는 권한은 무시
+                    return (null, null);
+            }
         }
     }
 

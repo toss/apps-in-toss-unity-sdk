@@ -234,6 +234,38 @@ namespace AppsInToss
         }
 
         /// <summary>
+        /// 환경 변수로 빌드 프로필 설정 오버라이드
+        /// </summary>
+        private static AITBuildProfile ApplyEnvironmentVariableOverrides(AITBuildProfile profile)
+        {
+            if (profile == null) return null;
+
+            string debugConsoleEnv = System.Environment.GetEnvironmentVariable("AIT_DEBUG_CONSOLE");
+            if (string.IsNullOrEmpty(debugConsoleEnv))
+            {
+                return profile;
+            }
+
+            if (!bool.TryParse(debugConsoleEnv, out bool debugConsole))
+            {
+                Debug.LogWarning($"[AIT] AIT_DEBUG_CONSOLE 환경 변수 값이 올바르지 않습니다: '{debugConsoleEnv}' (true/false 필요)");
+                return profile;
+            }
+
+            // 복사본 생성 (원본 프로필 보존)
+            var overriddenProfile = new AITBuildProfile
+            {
+                enableMockBridge = profile.enableMockBridge,
+                debugSymbolsExternal = profile.debugSymbolsExternal,
+                enableDebugConsole = debugConsole,
+                enableLZ4Compression = profile.enableLZ4Compression
+            };
+
+            Debug.Log($"[AIT] 환경 변수 오버라이드: AIT_DEBUG_CONSOLE={debugConsole}");
+            return overriddenProfile;
+        }
+
+        /// <summary>
         /// 빌드 프로필 기반으로 PlayerSettings 적용
         /// </summary>
         private static void ApplyBuildProfileSettings(AITBuildProfile profile)
@@ -422,6 +454,9 @@ namespace AppsInToss
                 profile = config.buildPackageProfile;
                 profileName = profileName ?? "Build & Package";
             }
+
+            // 환경 변수로 프로필 오버라이드 적용
+            profile = ApplyEnvironmentVariableOverrides(profile);
 
             // 빌드 프로필 로그 출력
             LogBuildProfile(profile, profileName);

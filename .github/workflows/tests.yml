@@ -34,6 +34,10 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+        with:
+          # Self-hosted runner에서 Library 캐시 유지를 위해 clean: false 설정
+          # 이전 빌드의 Library/Bee 캐시를 유지하여 증분 빌드 성능 향상
+          clean: false
 
       - name: Clean Previous Build Artifacts
         run: |
@@ -166,6 +170,10 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+        with:
+          # Self-hosted runner에서 Library 캐시 유지를 위해 clean: false 설정
+          # 이전 빌드의 Library/Bee 캐시를 유지하여 증분 빌드 성능 향상
+          clean: false
 
       - name: Exclude Project from Windows Defender
         shell: cmd

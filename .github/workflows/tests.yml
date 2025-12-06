@@ -34,10 +34,6 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
-        with:
-          # Self-hosted runner에서 Library 캐시 유지를 위해 clean: false 설정
-          # 이전 빌드의 Library/Bee 캐시를 유지하여 증분 빌드 성능 향상
-          clean: false
 
       - name: Clean Previous Build Artifacts
         run: |
@@ -167,12 +163,21 @@ jobs:
       matrix:
         unity-version: ["2021.3", "2022.3", "6000.0", "6000.2"]
 
+    # 버전별 캐시 경로 분리: 각 Unity 버전이 독립적인 작업 디렉토리 사용
+    # 이렇게 하면 clean: false로 설정해도 버전 간 Library 캐시 충돌이 발생하지 않음
+    env:
+      VERSION_WORKSPACE: unity-${{ matrix.unity-version }}
+    defaults:
+      run:
+        working-directory: unity-${{ matrix.unity-version }}
+
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
-          # Self-hosted runner에서 Library 캐시 유지를 위해 clean: false 설정
-          # 이전 빌드의 Library/Bee 캐시를 유지하여 증분 빌드 성능 향상
+          # 버전별로 별도 디렉토리에 체크아웃하여 Library 캐시 분리
+          path: unity-${{ matrix.unity-version }}
+          # 버전별 디렉토리가 분리되어 있으므로 clean: false로 캐시 유지 가능
           clean: false
 
       - name: Exclude Project from Windows Defender
@@ -182,7 +187,7 @@ jobs:
           @echo off
           REM Windows Defender 실시간 검사에서 빌드 폴더 제외 (빌드 성능 향상)
           REM 관리자 권한이 없으면 실패하지만 빌드는 계속 진행
-          powershell -Command "Add-MpPreference -ExclusionPath '${{ github.workspace }}' -ErrorAction SilentlyContinue" 2>nul
+          powershell -Command "Add-MpPreference -ExclusionPath '${{ github.workspace }}\unity-${{ matrix.unity-version }}' -ErrorAction SilentlyContinue" 2>nul
           powershell -Command "Add-MpPreference -ExclusionPath 'C:\Program Files\Unity' -ErrorAction SilentlyContinue" 2>nul
           echo Windows Defender exclusions configured (or skipped if no admin rights)
           exit /b 0
@@ -248,7 +253,7 @@ jobs:
           AIT_DEBUG_CONSOLE: "true"
         run: |
           $unityPath = "${{ steps.unity.outputs.UNITY_PATH }}"
-          $projectPath = "${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ matrix.unity-version }}"
+          $projectPath = "${{ github.workspace }}\unity-${{ matrix.unity-version }}\Tests~\E2E\SampleUnityProject-${{ matrix.unity-version }}"
           $lockFile = "C:\Temp\unity-license.lock"
           $maxWaitSeconds = 600  # 10분 최대 대기
           $lockHoldSeconds = 15  # Unity 라이선스 확인에 충분한 시간 (5-10초 소요)
@@ -367,9 +372,9 @@ jobs:
 
       - name: Install Playwright Dependencies
         shell: cmd
-        working-directory: Tests~/E2E/tests
         run: |
           @echo off
+          cd Tests~\E2E\tests
           if exist node_modules rmdir /s /q node_modules
           if exist package-lock.json del /f package-lock.json
           call npm install
@@ -378,17 +383,18 @@ jobs:
 
       - name: Run E2E Tests
         shell: cmd
-        working-directory: Tests~/E2E/tests
         env:
-          UNITY_PROJECT_PATH: ${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ matrix.unity-version }}
-        run: call npm test
+          UNITY_PROJECT_PATH: ${{ github.workspace }}\unity-${{ matrix.unity-version }}\Tests~\E2E\SampleUnityProject-${{ matrix.unity-version }}
+        run: |
+          cd Tests~\E2E\tests
+          call npm test
 
       - name: Upload Benchmark Results
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: benchmark-results-windows-${{ matrix.unity-version }}
-          path: Tests~/E2E/tests/benchmark-results.json
+          path: unity-${{ matrix.unity-version }}/Tests~/E2E/tests/benchmark-results.json
           if-no-files-found: ignore
 
       - name: Upload Playwright Report
@@ -396,7 +402,7 @@ jobs:
         if: always()
         with:
           name: playwright-report-windows-${{ matrix.unity-version }}
-          path: Tests~/E2E/tests/playwright-report/
+          path: unity-${{ matrix.unity-version }}/Tests~/E2E/tests/playwright-report/
           if-no-files-found: ignore
 
   # =====================================================

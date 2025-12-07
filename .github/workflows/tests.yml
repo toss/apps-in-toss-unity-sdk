@@ -33,7 +33,7 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Clean Previous Build Artifacts
         run: |
@@ -163,7 +163,7 @@ jobs:
         run: git config --global core.longPaths true
 
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Exclude Project from Windows Defender
         shell: cmd
@@ -361,7 +361,7 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Exclude Project from Windows Defender
         shell: cmd

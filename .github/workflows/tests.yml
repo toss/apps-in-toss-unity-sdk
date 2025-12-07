@@ -11,17 +11,6 @@ on:
         description: 'Clean Unity Library cache (for cache corruption issues)'
         type: boolean
         default: false
-  # 다른 워크플로우에서 호출 가능하도록 설정
-  workflow_call:
-    inputs:
-      clean_library:
-        description: 'Clean Unity Library cache'
-        type: boolean
-        default: false
-      ref:
-        description: 'Git ref to checkout'
-        type: string
-        required: false
 
 # 동일 브랜치에서 새 실행 시 이전 실행 자동 취소
 concurrency:

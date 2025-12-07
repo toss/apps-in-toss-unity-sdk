@@ -72,12 +72,18 @@ jobs:
           echo "Reported pending status for commit $SHA"
 
   # =====================================================
-  # E2E Tests - macOS (병렬 실행)
+  # E2E Tests - macOS
   # =====================================================
   e2e-test-macos:
     name: E2E (macOS, Unity ${{ matrix.unity-version }})
     runs-on: [self-hosted, macOS, ARM64]
     timeout-minutes: 60
+
+    # OS + Unity 버전별 동시성 1로 제한 (포트 충돌 방지)
+    # 같은 물리 머신에서 같은 Unity 버전의 테스트가 동시에 실행되지 않도록 함
+    concurrency:
+      group: e2e-macos-${{ matrix.unity-version }}
+      cancel-in-progress: false
 
     strategy:
       fail-fast: false
@@ -204,12 +210,18 @@ jobs:
           if-no-files-found: ignore
 
   # =====================================================
-  # E2E Tests - Windows (병렬 실행)
+  # E2E Tests - Windows
   # =====================================================
   e2e-test-windows:
     name: E2E (Windows, Unity ${{ matrix.unity-version }})
     runs-on: [self-hosted, Windows, X64, enabled]
     timeout-minutes: 60
+
+    # OS + Unity 버전별 동시성 1로 제한 (포트 충돌 방지)
+    # 같은 물리 머신에서 같은 Unity 버전의 테스트가 동시에 실행되지 않도록 함
+    concurrency:
+      group: e2e-windows-${{ matrix.unity-version }}
+      cancel-in-progress: false
 
     strategy:
       fail-fast: false

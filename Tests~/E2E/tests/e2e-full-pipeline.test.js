@@ -170,33 +170,13 @@ function getDirectorySizeMB(dirPath) {
 
 /**
  * 유틸리티: Dev 서버 시작 (npm run dev = granite dev)
+ * 포트 충돌은 GitHub Actions의 job-level concurrency로 방지됨
  * @returns {Promise<{process: ChildProcess, port: number}>}
  */
 async function startDevServer(aitBuildDir, defaultPort) {
-  // Unity 버전별 고유 포트 사용 (동시 실행 시 충돌 방지)
+  // Unity 버전별 고유 포트 사용
   const granitePort = GRANITE_PORT;
   console.log(`🔌 Using granite port: ${granitePort} (offset: ${PORT_OFFSET})`);
-
-  // 이 테스트 전용 포트만 정리 (다른 Unity 버전 테스트와 충돌 방지)
-  // 다른 버전의 포트는 건드리지 않음
-  const myPorts = [serverPort, granitePort];
-  const isWindows = process.platform === 'win32';
-  for (const port of myPorts) {
-    try {
-      if (isWindows) {
-        // Windows: netstat + taskkill
-        execSync(`for /f "tokens=5" %a in ('netstat -ano ^| findstr :${port} ^| findstr LISTENING') do taskkill /F /PID %a 2>nul`, { stdio: 'ignore', shell: true });
-      } else {
-        // macOS/Linux: lsof + kill
-        execSync(`lsof -ti:${port} | xargs kill -9 2>/dev/null || true`, { stdio: 'ignore' });
-      }
-    } catch {
-      // 무시
-    }
-  }
-
-  // 포트가 해제될 때까지 대기
-  await new Promise(r => setTimeout(r, 1000));
 
   return new Promise((resolve, reject) => {
     // npm run dev (granite dev --port) 실행

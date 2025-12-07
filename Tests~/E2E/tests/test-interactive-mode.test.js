@@ -1,6 +1,6 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
-import { spawn, execSync } from 'child_process';
+import { spawn } from 'child_process';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -47,25 +47,11 @@ let serverProcess = null;
 let actualServerPort = DEFAULT_PORT;
 
 /**
- * Dev 서버 시작 (e2e-full-pipeline.test.js의 startDevServer와 동일한 로직)
+ * Dev 서버 시작
+ * 포트 충돌은 GitHub Actions의 job-level concurrency로 방지됨
  */
 async function startServer(aitBuildDir, port) {
-  console.log(`🔌 Requested port: ${port}`);
-
-  // 기존 포트 점유 프로세스 정리 (동시 실행 시 충돌 방지)
-  const isWindows = process.platform === 'win32';
-  try {
-    if (isWindows) {
-      execSync(`for /f "tokens=5" %a in ('netstat -ano ^| findstr :${port} ^| findstr LISTENING') do taskkill /F /PID %a 2>nul`, { stdio: 'ignore', shell: true });
-    } else {
-      execSync(`lsof -ti:${port} | xargs kill -9 2>/dev/null || true`, { stdio: 'ignore' });
-    }
-  } catch {
-    // 무시
-  }
-
-  // 포트가 해제될 때까지 대기
-  await new Promise(r => setTimeout(r, 1000));
+  console.log(`🔌 Starting server on port: ${port}`);
 
   return new Promise((resolve, reject) => {
     // Windows에서 spawn('npm', ...)이 ENOENT 에러 발생하므로 shell: true 사용

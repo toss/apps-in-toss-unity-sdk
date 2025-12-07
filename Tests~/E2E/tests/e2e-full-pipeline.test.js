@@ -110,7 +110,7 @@ function getPortOffsetFromUnityVersion(projectPath) {
 }
 
 const PORT_OFFSET = getPortOffsetFromUnityVersion(SAMPLE_PROJECT);
-const GRANITE_PORT = 8081 + PORT_OFFSET;  // granite dev 내부 포트
+const VITE_DEV_PORT = 8081 + PORT_OFFSET;  // vite dev 서버 포트
 
 // 서버 프로세스 관리
 let serverProcess = null;
@@ -169,17 +169,17 @@ function getDirectorySizeMB(dirPath) {
 }
 
 /**
- * 유틸리티: Dev 서버 시작 (npm run dev = granite dev)
+ * 유틸리티: Dev 서버 시작 (npx vite --host --port)
  * @returns {Promise<{process: ChildProcess, port: number}>}
  */
 async function startDevServer(aitBuildDir, defaultPort) {
   // Unity 버전별 고유 포트 사용 (동시 실행 시 충돌 방지)
-  const granitePort = GRANITE_PORT;
-  console.log(`🔌 Using granite port: ${granitePort} (offset: ${PORT_OFFSET})`);
+  const vitePort = VITE_DEV_PORT;
+  console.log(`🔌 Using vite port: ${vitePort} (offset: ${PORT_OFFSET})`);
 
   // 이 테스트 전용 포트만 정리 (다른 Unity 버전 테스트와 충돌 방지)
   // 다른 버전의 포트는 건드리지 않음
-  const myPorts = [serverPort, granitePort];
+  const myPorts = [serverPort, vitePort];
   const isWindows = process.platform === 'win32';
   for (const port of myPorts) {
     try {
@@ -199,10 +199,9 @@ async function startDevServer(aitBuildDir, defaultPort) {
   await new Promise(r => setTimeout(r, 1000));
 
   return new Promise((resolve, reject) => {
-    // npm run dev (granite dev --port) 실행
-    // Windows에서 spawn('npm', ...)이 ENOENT 에러 발생하므로 shell: true 사용
-    // -- 뒤에 --port를 붙여서 granite에 전달
-    const server = spawn('npm', ['run', 'dev', '--', '--port', String(granitePort)], {
+    // npx vite 직접 실행 (granite는 --port 인자를 무시하므로 vite 직접 호출)
+    // Windows에서 spawn('npx', ...)이 ENOENT 에러 발생하므로 shell: true 사용
+    const server = spawn('npx', ['vite', '--host', '--port', String(vitePort)], {
       cwd: aitBuildDir,
       stdio: 'pipe',
       shell: true,
@@ -214,7 +213,7 @@ async function startDevServer(aitBuildDir, defaultPort) {
 
     server.stdout.on('data', (data) => {
       const output = data.toString();
-      console.log('[granite dev]', output);
+      console.log('[vite dev]', output);
 
       // ANSI 색상 코드 제거 후 포트 파싱
       const cleanOutput = output.replace(/\x1B\[[0-9;]*[mGKH]/g, '');
@@ -232,7 +231,7 @@ async function startDevServer(aitBuildDir, defaultPort) {
     });
 
     server.stderr.on('data', (data) => {
-      console.error('[granite dev error]', data.toString());
+      console.error('[vite dev error]', data.toString());
     });
 
     server.on('error', reject);
@@ -464,7 +463,7 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
 
 
   // -------------------------------------------------------------------------
-  // Test 2: AIT Dev Server (granite dev)
+  // Test 2: AIT Dev Server (vite)
   // -------------------------------------------------------------------------
   test('2. AIT dev server should start and load Unity', async ({ page }) => {
     test.setTimeout(120000); // 2분
@@ -472,8 +471,8 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
     // ait-build 디렉토리 확인
     expect(directoryExists(AIT_BUILD), 'ait-build/ should exist for dev server').toBe(true);
 
-    // Dev 서버 시작 (npm run dev = granite dev)
-    console.log('🚀 Starting dev server (granite dev)...');
+    // Dev 서버 시작 (npx vite --host --port)
+    console.log('🚀 Starting dev server (vite)...');
     const devServer = await startDevServer(AIT_BUILD, serverPort);
     serverProcess = devServer.process;
     const actualPort = devServer.port;
@@ -497,7 +496,7 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
 
     if (!serverReady) {
       console.log(`⚠️ Server not responding on port ${actualPort}, trying common dev ports...`);
-      // 다른 포트도 시도 (granite dev는 5173을 사용할 수 있음)
+      // 다른 포트도 시도 (vite 기본값은 5173)
       const tryPorts = [5173, 8081, 3000];
       for (const port of tryPorts) {
         if (port === actualPort) continue;

@@ -209,6 +209,14 @@ jobs:
           path: Tests~/E2E/tests/playwright-report/
           if-no-files-found: ignore
 
+      - name: Upload Test Results (Screenshots, Videos, Traces)
+        uses: actions/upload-artifact@v5
+        if: failure()
+        with:
+          name: test-results-macos-${{ matrix.unity-version }}
+          path: Tests~/E2E/tests/test-results/
+          if-no-files-found: ignore
+
   # =====================================================
   # E2E Tests - Windows
   # =====================================================
@@ -431,6 +439,14 @@ jobs:
         with:
           name: playwright-report-windows-${{ matrix.unity-version }}
           path: Tests~/E2E/tests/playwright-report/
+          if-no-files-found: ignore
+
+      - name: Upload Test Results (Screenshots, Videos, Traces)
+        uses: actions/upload-artifact@v5
+        if: failure()
+        with:
+          name: test-results-windows-${{ matrix.unity-version }}
+          path: Tests~/E2E/tests/test-results/
           if-no-files-found: ignore
 
   # =====================================================

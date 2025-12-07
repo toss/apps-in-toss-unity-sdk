@@ -4,6 +4,7 @@ import { Command } from 'commander';
 import picocolors from 'picocolors';
 import * as path from 'path';
 import * as fs from 'fs/promises';
+import * as crypto from 'crypto';
 import { TypeScriptParser } from './parser.js';
 import { validateAllTypes } from './validators/types.js';
 import { validateCompleteness, printSummary } from './validators/completeness.js';
@@ -12,6 +13,129 @@ import { JSLibGenerator } from './generators/jslib.js';
 import { formatCommand } from './commands/format.js';
 
 const program = new Command();
+
+// =====================================================
+// Unity .meta 파일 관리
+// =====================================================
+
+/**
+ * Unity GUID 생성 (32자리 소문자 hex)
+ */
+function generateUnityGUID(): string {
+  return crypto.randomBytes(16).toString('hex');
+}
+
+/**
+ * C# 파일용 .meta 파일 내용 생성
+ */
+function generateCSharpMeta(guid: string): string {
+  return `fileFormatVersion: 2
+guid: ${guid}
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData:
+  assetBundleName:
+  assetBundleVariant:
+`;
+}
+
+/**
+ * jslib 파일용 .meta 파일 내용 생성 (WebGL 플랫폼만 활성화)
+ */
+function generateJslibMeta(guid: string): string {
+  return `fileFormatVersion: 2
+guid: ${guid}
+PluginImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  iconMap: {}
+  executionOrder: {}
+  defineConstraints: []
+  isPreloaded: 0
+  isOverridable: 1
+  isExplicitlyReferenced: 0
+  validateReferences: 1
+  platformData:
+  - first:
+      Any:
+    second:
+      enabled: 0
+      settings: {}
+  - first:
+      Editor: Editor
+    second:
+      enabled: 0
+      settings:
+        DefaultValueInitialized: true
+  - first:
+      WebGL: WebGL
+    second:
+      enabled: 1
+      settings: {}
+  userData:
+  assetBundleName:
+  assetBundleVariant:
+`;
+}
+
+/**
+ * 디렉토리 내 모든 .meta 파일 수집 (재귀적)
+ * @returns Map<파일명(확장자 제외), .meta 파일 내용>
+ */
+async function collectMetaFiles(dir: string): Promise<Map<string, string>> {
+  const metaFiles = new Map<string, string>();
+
+  try {
+    const entries = await fs.readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        // 재귀적으로 하위 디렉토리 탐색
+        const subMetas = await collectMetaFiles(fullPath);
+        for (const [key, value] of subMetas) {
+          metaFiles.set(key, value);
+        }
+      } else if (entry.name.endsWith('.meta')) {
+        // .meta 파일 발견: 원본 파일명을 키로 저장
+        const originalFileName = entry.name.slice(0, -5); // .meta 제거
+        const content = await fs.readFile(fullPath, 'utf-8');
+        metaFiles.set(fullPath.slice(0, -5), content); // 전체 경로에서 .meta 제거
+      }
+    }
+  } catch {
+    // 디렉토리가 없으면 빈 맵 반환
+  }
+
+  return metaFiles;
+}
+
+/**
+ * 파일에 대응하는 .meta 파일 처리
+ * - 기존 .meta 파일이 있으면 복원
+ * - 없으면 새로 생성
+ */
+async function ensureMetaFile(
+  filePath: string,
+  existingMetas: Map<string, string>,
+  fileType: 'cs' | 'jslib'
+): Promise<void> {
+  const metaPath = filePath + '.meta';
+
+  if (existingMetas.has(filePath)) {
+    // 기존 .meta 파일 복원
+    await fs.writeFile(metaPath, existingMetas.get(filePath)!);
+  } else {
+    // 새 .meta 파일 생성
+    const guid = generateUnityGUID();
+    const content = fileType === 'cs' ? generateCSharpMeta(guid) : generateJslibMeta(guid);
+    await fs.writeFile(metaPath, content);
+    console.log(picocolors.blue(`  📄 새 .meta 파일 생성: ${path.basename(metaPath)}`));
+  }
+}
 
 /**
  * pnpm virtual store에서 web-bridge 패키지 동적 검색
@@ -250,55 +374,96 @@ namespace AppsInToss
     // 9. 파일 출력
     console.log(picocolors.cyan('\n📝 파일 쓰기 중...'));
     const outputDir = path.resolve(process.cwd(), options.output);
+    const pluginsDir = path.join(outputDir, 'Plugins');
 
-    // 기존 생성 파일 모두 삭제 (재현성 보장)
+    // 새로 생성될 파일 목록 수집
+    const newCsFiles = new Set<string>([
+      path.join(outputDir, 'AIT.cs'),
+      path.join(outputDir, 'AITCore.cs'),
+      path.join(outputDir, 'AIT.Types.cs'),
+      ...Array.from(categoryFiles.keys()).map(f => path.join(outputDir, f)),
+    ]);
+    const newJslibFiles = new Set<string>(
+      Array.from(jslibFiles.keys()).map(f => path.join(pluginsDir, f))
+    );
+
+    // 1. 기존 .meta 파일 수집 (삭제 전에)
+    console.log(picocolors.yellow('  📋 기존 .meta 파일 수집 중...'));
+    const existingMetas = await collectMetaFiles(outputDir);
+    console.log(picocolors.gray(`     ${existingMetas.size}개 .meta 파일 발견`));
+
+    // 2. 기존 생성 파일 삭제 (재현성 보장)
+    // 삭제될 파일 중 새로 생성되지 않는 파일의 .meta도 삭제
     console.log(picocolors.yellow('  🗑️  기존 생성 파일 삭제 중...'));
     try {
-      // 기존 단일 파일 삭제
-      await fs.rm(path.join(outputDir, 'AIT.cs'), { force: true });
-      await fs.rm(path.join(outputDir, 'AITCore.cs'), { force: true });
-      await fs.rm(path.join(outputDir, 'AIT.Types.cs'), { force: true });
-
-      // 개별 partial class 파일들 삭제 (AIT.*.cs 패턴)
       const files = await fs.readdir(outputDir).catch(() => []);
       for (const file of files) {
-        if (file.startsWith('AIT.') && file.endsWith('.cs') && file !== 'AIT.cs') {
-          await fs.rm(path.join(outputDir, file), { force: true });
+        const filePath = path.join(outputDir, file);
+        // .cs 파일 처리
+        if (file.endsWith('.cs')) {
+          await fs.rm(filePath, { force: true });
+          // 새로 생성될 파일이 아니면 .meta도 삭제
+          if (!newCsFiles.has(filePath)) {
+            await fs.rm(filePath + '.meta', { force: true });
+            existingMetas.delete(filePath);
+          }
         }
       }
 
-      await fs.rm(path.join(outputDir, 'Plugins'), { recursive: true, force: true });
+      // Plugins 디렉토리 내 jslib 파일들 처리
+      const pluginFiles = await fs.readdir(pluginsDir).catch(() => []);
+      for (const file of pluginFiles) {
+        const filePath = path.join(pluginsDir, file);
+        if (file.endsWith('.jslib')) {
+          await fs.rm(filePath, { force: true });
+          // 새로 생성될 파일이 아니면 .meta도 삭제
+          if (!newJslibFiles.has(filePath)) {
+            await fs.rm(filePath + '.meta', { force: true });
+            existingMetas.delete(filePath);
+          }
+        }
+      }
+
       console.log(picocolors.green('  ✓ 기존 파일 삭제 완료'));
-    } catch (error) {
+    } catch {
       // 파일이 없으면 무시
     }
 
     await fs.mkdir(outputDir, { recursive: true });
+    await fs.mkdir(pluginsDir, { recursive: true });
 
-    // 메인 AIT.cs 쓰기 (partial class 선언만)
-    await fs.writeFile(path.join(outputDir, 'AIT.cs'), mainFile);
-    console.log(picocolors.green(`  ✓ ${path.join(outputDir, 'AIT.cs')}`));
+    // 3. 메인 AIT.cs 쓰기 (partial class 선언만)
+    const aitCsPath = path.join(outputDir, 'AIT.cs');
+    await fs.writeFile(aitCsPath, mainFile);
+    await ensureMetaFile(aitCsPath, existingMetas, 'cs');
+    console.log(picocolors.green(`  ✓ AIT.cs`));
 
-    // 카테고리별 API partial class 파일들 쓰기
+    // 4. 카테고리별 API partial class 파일들 쓰기
     for (const [fileName, content] of categoryFiles.entries()) {
-      await fs.writeFile(path.join(outputDir, fileName), content);
-      console.log(picocolors.green(`  ✓ ${path.join(outputDir, fileName)}`));
+      const filePath = path.join(outputDir, fileName);
+      await fs.writeFile(filePath, content);
+      await ensureMetaFile(filePath, existingMetas, 'cs');
+      console.log(picocolors.green(`  ✓ ${fileName}`));
     }
 
-    // AITCore.cs 쓰기 (내부 인프라)
-    await fs.writeFile(path.join(outputDir, 'AITCore.cs'), coreFile);
-    console.log(picocolors.green(`  ✓ ${path.join(outputDir, 'AITCore.cs')}`));
+    // 5. AITCore.cs 쓰기 (내부 인프라)
+    const corePath = path.join(outputDir, 'AITCore.cs');
+    await fs.writeFile(corePath, coreFile);
+    await ensureMetaFile(corePath, existingMetas, 'cs');
+    console.log(picocolors.green(`  ✓ AITCore.cs`));
 
-    // AIT.Types.cs 쓰기 (타입 정의)
-    await fs.writeFile(path.join(outputDir, 'AIT.Types.cs'), typesFile);
-    console.log(picocolors.green(`  ✓ ${path.join(outputDir, 'AIT.Types.cs')}`));
+    // 6. AIT.Types.cs 쓰기 (타입 정의)
+    const typesPath = path.join(outputDir, 'AIT.Types.cs');
+    await fs.writeFile(typesPath, typesFile);
+    await ensureMetaFile(typesPath, existingMetas, 'cs');
+    console.log(picocolors.green(`  ✓ AIT.Types.cs`));
 
-    // jslib 파일들 쓰기
-    const pluginsDir = path.join(outputDir, 'Plugins');
-    await fs.mkdir(pluginsDir, { recursive: true });
+    // 7. jslib 파일들 쓰기
     for (const [fileName, content] of jslibFiles.entries()) {
-      await fs.writeFile(path.join(pluginsDir, fileName), content);
-      console.log(picocolors.green(`  ✓ ${path.join(pluginsDir, fileName)}`));
+      const filePath = path.join(pluginsDir, fileName);
+      await fs.writeFile(filePath, content);
+      await ensureMetaFile(filePath, existingMetas, 'jslib');
+      console.log(picocolors.green(`  ✓ Plugins/${fileName}`));
     }
 
     // 9. 요약 출력

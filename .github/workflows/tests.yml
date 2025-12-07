@@ -155,7 +155,7 @@ jobs:
   # =====================================================
   e2e-test-windows:
     name: E2E (Windows, Unity ${{ matrix.unity-version }})
-    runs-on: [self-hosted, Windows, X64]
+    runs-on: [self-hosted, Windows, X64, enabled]
     timeout-minutes: 60
     strategy:
       fail-fast: false

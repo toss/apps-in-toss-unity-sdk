@@ -94,13 +94,14 @@ public class E2EBuildRunner
         // 4. SDK의 빌드 & 패키징 실행
         Debug.Log("[4/5] Building WebGL and packaging with SDK...");
 
-        // Library/Bee 캐시를 유지하여 증분 빌드 활용
-        // 무한 루프 문제는 package.json devDependencies와 WebGLTemplates .meta 파일이 원인이었음
+        // Library/Bee 캐시를 유지하여 증분 빌드 활용 (self-hosted runner 성능 최적화)
+        // cleanBuild: false로 설정하여 이전 빌드 캐시 재사용
+        // 캐시 문제 발생 시 workflow_dispatch에서 clean_library=true로 실행
         // E2E 테스트에서는 프로덕션 환경을 시뮬레이션하기 위해 buildPackageProfile 사용
         var result = AITConvertCore.DoExport(
             buildWebGL: true,
             doPackaging: true,
-            cleanBuild: true,
+            cleanBuild: false,
             profile: config.buildPackageProfile,
             profileName: "E2E Build"
         );

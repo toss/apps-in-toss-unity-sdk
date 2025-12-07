@@ -168,17 +168,16 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Exclude Project from Windows Defender
-        shell: powershell
+        shell: cmd
         continue-on-error: true
         run: |
-          # Windows Defender 실시간 검사에서 빌드 폴더 제외 (빌드 성능 향상)
-          # 관리자 권한이 없으면 실패하지만 빌드는 계속 진행
-          $projectPath = "${{ github.workspace }}"
-          $unityPath = "C:\Program Files\Unity"
-
-          Add-MpPreference -ExclusionPath $projectPath -ErrorAction SilentlyContinue
-          Add-MpPreference -ExclusionPath $unityPath -ErrorAction SilentlyContinue
-          Write-Host "Windows Defender exclusions configured (or skipped if no admin rights)"
+          @echo off
+          REM Windows Defender 실시간 검사에서 빌드 폴더 제외 (빌드 성능 향상)
+          REM 관리자 권한이 없으면 실패하지만 빌드는 계속 진행
+          powershell -Command "Add-MpPreference -ExclusionPath '${{ github.workspace }}' -ErrorAction SilentlyContinue" 2>nul
+          powershell -Command "Add-MpPreference -ExclusionPath 'C:\Program Files\Unity' -ErrorAction SilentlyContinue" 2>nul
+          echo Windows Defender exclusions configured (or skipped if no admin rights)
+          exit /b 0
 
       - name: Clean Previous Build Artifacts
         shell: cmd
@@ -244,7 +243,7 @@ jobs:
           $projectPath = "${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ matrix.unity-version }}"
           $lockFile = "C:\Temp\unity-license.lock"
           $maxWaitSeconds = 600  # 10분 최대 대기
-          $lockHoldSeconds = 30  # 라이선스 확인에 충분한 시간
+          $lockHoldSeconds = 15  # Unity 라이선스 확인에 충분한 시간 (5-10초 소요)
 
           # Lock 디렉토리 생성
           if (!(Test-Path "C:\Temp")) {
@@ -309,7 +308,7 @@ jobs:
             Write-Host "Waiting for Unity build to complete..."
             $lastSize = 0
             while (-not $unityProcess.HasExited) {
-              Start-Sleep -Seconds 5
+              Start-Sleep -Seconds 2
               if (Test-Path $logFile) {
                 $content = Get-Content $logFile -Raw -ErrorAction SilentlyContinue
                 if ($content -and $content.Length -gt $lastSize) {
@@ -359,8 +358,8 @@ jobs:
           node-version: 18
 
       - name: Install Playwright Dependencies
-        shell: cmd
         working-directory: Tests~/E2E/tests
+        shell: cmd
         run: |
           @echo off
           if exist node_modules rmdir /s /q node_modules
@@ -370,8 +369,8 @@ jobs:
           call npx playwright --version
 
       - name: Run E2E Tests
-        shell: cmd
         working-directory: Tests~/E2E/tests
+        shell: cmd
         env:
           UNITY_PROJECT_PATH: ${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ matrix.unity-version }}
         run: call npm test

@@ -142,6 +142,20 @@ jobs:
           mv tmp.json package.json
           echo "package.json 버전: ${VERSION}"
 
+      - name: README.md 설치 가이드 업데이트
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          TAG_NAME="release/v${VERSION}"
+
+          # README.md의 Git URL을 최신 릴리즈 태그로 업데이트
+          # 패턴: https://github.com/toss/apps-in-toss-unity-sdk.git 또는
+          #       https://github.com/toss/apps-in-toss-unity-sdk.git#release/vX.X.X
+          sed -i 's|https://github.com/toss/apps-in-toss-unity-sdk\.git\(#[^"]*\)\?|https://github.com/toss/apps-in-toss-unity-sdk.git#'"${TAG_NAME}"'|g' README.md
+
+          echo "README.md 업데이트 완료: #${TAG_NAME}"
+          grep -n "apps-in-toss-unity-sdk.git" README.md || true
+
       - name: 브랜치 생성 및 커밋
         if: steps.check.outputs.skip != 'true'
         id: commit
@@ -165,6 +179,7 @@ jobs:
 
           - @apps-in-toss/web-framework v${VERSION} 기반 SDK 코드 재생성
           - package.json 버전 동기화
+          - README.md 설치 가이드 업데이트
 
           자동 생성: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
@@ -195,8 +210,13 @@ jobs:
 
           ### 머지 후 자동 처리
           이 PR이 머지되면 자동으로 릴리즈가 생성됩니다:
-          - 릴리즈 브랜치: \`release/v${VERSION}\`
-          - 릴리즈 태그: \`release/v${VERSION}\`" \
+          - 릴리즈 태그: \`release/v${VERSION}\`
+          - GitHub Release: https://github.com/${{ github.repository }}/releases/tag/release/v${VERSION}
+
+          ### UPM 설치 (머지 후)
+          \`\`\`
+          https://github.com/${{ github.repository }}.git#release/v${VERSION}
+          \`\`\`" \
             --base main \
             --head "${BRANCH_NAME}")
 

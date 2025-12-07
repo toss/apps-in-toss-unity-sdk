@@ -38,6 +38,17 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
       - name: 버전 결정
         id: version
         run: |
@@ -77,6 +88,60 @@ jobs:
           echo "버전 검증 통과: ${VERSION}"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "tag_name=release/v${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Git 설정
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: web-framework 버전 고정 및 SDK 재생성
+        working-directory: sdk-runtime-generator~
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+
+          echo "=== web-framework 버전 고정: ${VERSION} ==="
+
+          # package.json에서 web-framework 버전 고정
+          jq --arg v "$VERSION" '.dependencies["@apps-in-toss/web-framework"] = $v' package.json > tmp.json
+          mv tmp.json package.json
+
+          # 내부 레지스트리 참조가 있는 lockfile 삭제 후 공개 레지스트리에서 새로 생성
+          rm -f pnpm-lock.yaml
+
+          echo "의존성 설치 중 (공개 npm 레지스트리 사용)..."
+          pnpm install --registry https://registry.npmjs.org
+
+          echo "SDK 코드 생성 중..."
+          pnpm generate
+
+          echo "SDK 코드 생성 완료"
+
+      - name: 루트 package.json 버전 업데이트
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+
+          jq --arg v "$VERSION" '.version = $v' package.json > tmp.json
+          mv tmp.json package.json
+
+          echo "package.json 버전: ${VERSION}"
+
+      - name: 릴리즈 커밋 생성
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+
+          # 변경사항이 있으면 커밋
+          if ! git diff --quiet || ! git diff --staged --quiet; then
+            git add -A
+            git commit -m "릴리즈: v${VERSION}
+
+          Apps in Toss Unity SDK v${VERSION}
+          - @apps-in-toss/web-framework v${VERSION} 기반
+
+          Generated at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "릴리즈 커밋 생성 완료"
+          else
+            echo "변경사항 없음 - 기존 커밋 사용"
+          fi
 
       - name: 릴리즈 태그 생성
         run: |

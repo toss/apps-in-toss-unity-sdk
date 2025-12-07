@@ -107,6 +107,16 @@ logs/
 !**/Plugins~
 !**/Plugins~/**
 
+# Legacy folders (replaced with ~ suffix versions)
+BuildTemplate/
+BuildTemplate.meta
+ViteTemplate/
+ViteTemplate.meta
+sdk-runtime-generator/
+sdk-runtime-generator.meta
+tools/
+tools.meta
+
 # AI Assistant files
 .claude/
 CLAUDE.md

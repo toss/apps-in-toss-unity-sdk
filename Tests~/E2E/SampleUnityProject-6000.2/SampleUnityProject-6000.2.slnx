@@ -1,7 +1,0 @@
-﻿<Solution>
-  <Project Path="AppsInTossSDK.csproj" />
-  <Project Path="Assembly-CSharp-Editor.csproj" />
-  <Project Path="AppsInTossTestScripts.csproj" />
-  <Project Path="AppsInTossSDKEditor.csproj" />
-  <Project Path="AppsInTossTestScripts.Editor.csproj" />
-</Solution>

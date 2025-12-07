@@ -14,13 +14,44 @@ import { formatCommand } from './commands/format.js';
 const program = new Command();
 
 /**
+ * pnpm virtual store에서 web-bridge 패키지 동적 검색
+ */
+async function findWebBridgeInPnpmStore(): Promise<string | null> {
+  const pnpmDir = path.join(process.cwd(), 'node_modules/.pnpm');
+
+  try {
+    const entries = await fs.readdir(pnpmDir);
+    // @apps-in-toss+web-bridge@{version}_... 패턴 찾기
+    const webBridgeEntry = entries.find(e =>
+      e.startsWith('@apps-in-toss+web-bridge@') && !e.includes('+web-analytics')
+    );
+
+    if (webBridgeEntry) {
+      const builtPath = path.join(
+        pnpmDir,
+        webBridgeEntry,
+        'node_modules/@apps-in-toss/web-bridge/built'
+      );
+      return builtPath;
+    }
+  } catch {
+    // pnpm store가 없으면 null 반환
+  }
+
+  return null;
+}
+
+/**
  * TypeScript 정의 파일 경로 찾기
  */
 async function findTypeDefinitions(webFrameworkPath: string): Promise<string> {
-  // 일반적인 경로들 확인
+  // pnpm virtual store에서 동적으로 검색
+  const pnpmStorePath = await findWebBridgeInPnpmStore();
+
+  // 가능한 경로들 확인
   const possiblePaths = [
-    // pnpm virtual store 경로 (우선순위 높음)
-    path.join(process.cwd(), 'node_modules/.pnpm/@apps-in-toss+web-bridge@1.5.0_@apps-in-toss+bridge-core@1.5.0/node_modules/@apps-in-toss/web-bridge/built'),
+    // pnpm virtual store 경로 (동적 검색 결과)
+    ...(pnpmStorePath ? [pnpmStorePath] : []),
     // 일반 node_modules 경로
     path.join(process.cwd(), 'node_modules/@apps-in-toss/web-bridge/built'),
     // web-framework 내부 경로

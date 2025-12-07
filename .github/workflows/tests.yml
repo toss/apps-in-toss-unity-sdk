@@ -11,6 +11,17 @@ on:
         description: 'Clean Unity Library cache (for cache corruption issues)'
         type: boolean
         default: false
+  # update.yml에서 호출될 때 사용 (GITHUB_TOKEN 제한 우회)
+  workflow_call:
+    inputs:
+      clean_library:
+        description: 'Clean Unity Library cache'
+        type: boolean
+        default: false
+      pr_number:
+        description: 'PR number to report results'
+        type: number
+        required: false
 
 # 동일 브랜치에서 새 실행 시 이전 실행 자동 취소
 concurrency:

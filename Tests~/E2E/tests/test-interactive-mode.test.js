@@ -20,16 +20,30 @@ function findSampleProject() {
 const SAMPLE_PROJECT = findSampleProject();
 const AIT_BUILD = path.resolve(SAMPLE_PROJECT, 'ait-build');
 
+// Unity 버전별 포트 오프셋 (e2e-full-pipeline.test.js와 동일한 로직)
+function getPortOffset() {
+  const projectPath = SAMPLE_PROJECT;
+  if (projectPath.includes('6000.2')) return 4;
+  if (projectPath.includes('6000.0')) return 3;
+  if (projectPath.includes('2022.3')) return 2;
+  if (projectPath.includes('2021.3')) return 1;
+  return 0;
+}
+
+const PORT_OFFSET = getPortOffset();
+const DEFAULT_PORT = 5173 + PORT_OFFSET;
+
 let serverProcess = null;
-const serverPort = 5173;
+let actualServerPort = DEFAULT_PORT;
 
 /**
  * Production 서버 시작
  */
-async function startServer(aitBuildDir, defaultPort) {
+async function startServer(aitBuildDir, port) {
   return new Promise((resolve, reject) => {
     // Windows에서 spawn('npm', ...)이 ENOENT 에러 발생하므로 shell: true 사용
-    const server = spawn('npm', ['run', 'dev'], {
+    // 포트를 명시적으로 지정하여 granite dev에 전달
+    const server = spawn('npm', ['run', 'dev', '--', '--port', String(port)], {
       cwd: aitBuildDir,
       stdio: 'pipe',
       shell: true,
@@ -37,7 +51,7 @@ async function startServer(aitBuildDir, defaultPort) {
     });
 
     let started = false;
-    let actualPort = defaultPort;
+    let actualPort = port;
 
     server.stdout.on('data', (data) => {
       const output = data.toString();
@@ -70,8 +84,15 @@ async function startServer(aitBuildDir, defaultPort) {
 test.describe('Interactive API Tester', () => {
   test.beforeAll(async () => {
     console.log('🚀 Starting dev server for interactive mode test...');
-    const devServer = await startServer(AIT_BUILD, serverPort);
+    console.log(`📁 Sample Project: ${SAMPLE_PROJECT}`);
+    console.log(`📁 AIT Build: ${AIT_BUILD}`);
+    console.log(`🔌 Default port: ${DEFAULT_PORT} (offset: ${PORT_OFFSET})`);
+
+    const devServer = await startServer(AIT_BUILD, DEFAULT_PORT);
     serverProcess = devServer.process;
+    actualServerPort = devServer.port;
+
+    console.log(`✅ Server started on port: ${actualServerPort}`);
 
     // 서버 준비 대기
     await new Promise(r => setTimeout(r, 3000));
@@ -96,8 +117,8 @@ test.describe('Interactive API Tester', () => {
     });
 
     // 페이지 로딩 (파라미터 없음 - 대화형 모드)
-    console.log(`📍 Loading page: http://localhost:${serverPort}`);
-    await page.goto(`http://localhost:${serverPort}`, {
+    console.log(`📍 Loading page: http://localhost:${actualServerPort}`);
+    await page.goto(`http://localhost:${actualServerPort}`, {
       waitUntil: 'domcontentloaded',
       timeout: 30000
     });
@@ -143,8 +164,8 @@ test.describe('Interactive API Tester', () => {
     });
 
     // 페이지 로딩 (E2E 모드)
-    console.log(`📍 Loading page: http://localhost:${serverPort}?e2e=true`);
-    await page.goto(`http://localhost:${serverPort}?e2e=true`, {
+    console.log(`📍 Loading page: http://localhost:${actualServerPort}?e2e=true`);
+    await page.goto(`http://localhost:${actualServerPort}?e2e=true`, {
       waitUntil: 'domcontentloaded',
       timeout: 30000
     });

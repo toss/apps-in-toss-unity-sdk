@@ -27,6 +27,7 @@ jobs:
     outputs:
       pr_created: ${{ steps.create-pr.outputs.pr_created }}
       pr_number: ${{ steps.create-pr.outputs.pr_number }}
+      branch_name: ${{ steps.version.outputs.branch_name }}
       skip: ${{ steps.check.outputs.skip }}
       no_changes: ${{ steps.commit.outputs.no_changes }}
 
@@ -260,4 +261,4 @@ jobs:
     uses: ./.github/workflows/tests.yml
     with:
       clean_library: false
-      pr_number: ${{ fromJSON(needs.update.outputs.pr_number) }}
+      ref: ${{ needs.update.outputs.branch_name }}

@@ -18,9 +18,9 @@ on:
         description: 'Clean Unity Library cache'
         type: boolean
         default: false
-      pr_number:
-        description: 'PR number to report results'
-        type: number
+      ref:
+        description: 'Git ref to checkout (branch name)'
+        type: string
         required: false
 
 # 동일 브랜치에서 새 실행 시 이전 실행 자동 취소
@@ -45,6 +45,8 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.ref }}
 
       - name: Clean Previous Build Artifacts
         run: |
@@ -179,6 +181,8 @@ jobs:
 
       - name: Checkout Repository
         uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.ref }}
 
       - name: Exclude Project from Windows Defender
         shell: cmd

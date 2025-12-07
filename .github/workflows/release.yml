@@ -204,7 +204,7 @@ jobs:
 
           # web-framework changelog 가져오기 (toss/granite 저장소에서)
           echo "Fetching changelog from toss/granite..."
-          CHANGELOG=$(gh api repos/toss/granite/releases/tags/${VERSION} --jq '.body' 2>/dev/null || echo "")
+          CHANGELOG=$(gh api repos/toss/granite/releases/tags/v${VERSION} --jq '.body' 2>/dev/null || echo "")
 
           if [ -z "$CHANGELOG" ]; then
             CHANGELOG="- \`@apps-in-toss/web-framework\` v${VERSION} 기반 SDK"

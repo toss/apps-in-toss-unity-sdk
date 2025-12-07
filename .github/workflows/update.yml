@@ -24,6 +24,9 @@ jobs:
   update:
     name: SDK 업데이트 PR 생성
     runs-on: ubuntu-latest
+    outputs:
+      pr_created: ${{ steps.create-pr.outputs.pr_created }}
+      branch_name: ${{ steps.version.outputs.branch_name }}
 
     steps:
       - name: Checkout main
@@ -177,8 +180,8 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           BRANCH_NAME="${{ steps.version.outputs.branch_name }}"
 
-          # web-framework changelog 가져오기
-          CHANGELOG=$(gh api repos/toss/granite/releases/tags/${VERSION} --jq '.body' 2>/dev/null || echo "")
+          # web-framework changelog 가져오기 (toss/granite 릴리즈에서)
+          CHANGELOG=$(gh api repos/toss/granite/releases/tags/v${VERSION} --jq '.body' 2>/dev/null || echo "")
 
           if [ -z "$CHANGELOG" ]; then
             CHANGELOG="- \`@apps-in-toss/web-framework\` v${VERSION} 기반 SDK"
@@ -209,6 +212,7 @@ jobs:
             --head "${BRANCH_NAME}")
 
           echo "pr_url=${PR_URL}" >> $GITHUB_OUTPUT
+          echo "pr_created=true" >> $GITHUB_OUTPUT
           echo "PR 생성 완료: ${PR_URL}"
 
       - name: 업데이트 요약
@@ -236,3 +240,12 @@ jobs:
           else
             echo "❌ 처리 실패" >> $GITHUB_STEP_SUMMARY
           fi
+
+  # PR 생성 후 E2E 테스트 실행
+  run-tests:
+    name: E2E 테스트 실행
+    needs: update
+    if: needs.update.outputs.pr_created == 'true'
+    uses: ./.github/workflows/tests.yml
+    with:
+      ref: ${{ needs.update.outputs.branch_name }}

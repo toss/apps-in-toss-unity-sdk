@@ -110,6 +110,7 @@ logs/
 # AI Assistant files
 .claude/
 CLAUDE.md
+CLAUDE.md.meta
 
 # Unity License files (sensitive)
 *.alf
@@ -137,6 +138,8 @@ Tests~/E2E/SampleUnityProject*/webgl/
 Tests~/E2E/SampleUnityProject*/WebGLBuild/
 Tests~/E2E/SampleUnityProject*/Builds/
 Tests~/E2E/SampleUnityProject*/Assets/Plugins/E2ETestBridge.jslib*
+Tests~/E2E/SampleUnityProject*/Assets/WebGLTemplates.meta
+Tests~/E2E/SampleUnityProject*/Assets/WebGLTemplates/
 Tests~/E2E/build.log
 Tests~/E2E/benchmark*.log
 Tests~/E2E/temp/
@@ -147,10 +150,7 @@ Tests~/E2E/tests/*-screenshot.png
 
 # Unity meta files - most .meta files should be tracked for consistent GUIDs
 # Exceptions:
-# - WebGLTemplates: Unity treats this folder specially, .meta files cause import loops
 # - License files: sensitive
-**/WebGLTemplates.meta
-**/WebGLTemplates/**/*.meta
 Unity_v*.alf.meta
 .playwright-mcp
 *.slnx

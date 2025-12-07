@@ -149,17 +149,21 @@ jobs:
           if-no-files-found: ignore
 
   # =====================================================
-  # E2E Tests - Windows (병렬 실행 + 라이선스 Lock)
-  # Unity Licensing Client 경합 방지를 위해 시작 시 Lock 사용
+  # E2E Tests - Windows (순차 실행)
+  # 4개의 self-hosted runner가 1개의 HW에서 동작하므로
+  # 모든 workflow에서 Windows 빌드는 전역적으로 하나씩만 실행
   # =====================================================
   e2e-test-windows:
     name: E2E (Windows, Unity ${{ matrix.unity-version }})
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 60
+    concurrency:
+      group: windows-unity-build
+      cancel-in-progress: false
 
     strategy:
       fail-fast: false
-      max-parallel: 2
+      max-parallel: 1
       matrix:
         unity-version: ["2021.3", "2022.3", "6000.0", "6000.2"]
 

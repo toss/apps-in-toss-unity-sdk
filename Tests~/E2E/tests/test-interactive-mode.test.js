@@ -85,7 +85,7 @@ test.describe('Interactive API Tester', () => {
   });
 
   test('Interactive mode (without ?e2e=true) should load InteractiveAPITester', async ({ page }) => {
-    test.setTimeout(60000);
+    test.setTimeout(180000);  // 3분 (Unity 6000.x는 초기화가 더 오래 걸릴 수 있음)
 
     // 콘솔 로그 캡처
     const consoleLogs = [];
@@ -99,13 +99,13 @@ test.describe('Interactive API Tester', () => {
     console.log(`📍 Loading page: http://localhost:${serverPort}`);
     await page.goto(`http://localhost:${serverPort}`, {
       waitUntil: 'domcontentloaded',
-      timeout: 30000
+      timeout: 60000
     });
 
-    // Unity 초기화 대기
+    // Unity 초기화 대기 (Unity 6000.x는 더 오래 걸릴 수 있음)
     await page.waitForFunction(() => {
       return window['unityInstance'] !== undefined;
-    }, { timeout: 30000 });
+    }, { timeout: 120000 });
 
     console.log('✅ Unity instance initialized');
 
@@ -133,7 +133,7 @@ test.describe('Interactive API Tester', () => {
   });
 
   test('E2E mode (with ?e2e=true) should load AutoBenchmarkRunner', async ({ page }) => {
-    test.setTimeout(60000);
+    test.setTimeout(180000);  // 3분 (Unity 6000.x는 초기화가 더 오래 걸릴 수 있음)
 
     const consoleLogs = [];
     page.on('console', msg => {
@@ -146,13 +146,13 @@ test.describe('Interactive API Tester', () => {
     console.log(`📍 Loading page: http://localhost:${serverPort}?e2e=true`);
     await page.goto(`http://localhost:${serverPort}?e2e=true`, {
       waitUntil: 'domcontentloaded',
-      timeout: 30000
+      timeout: 60000
     });
 
-    // Unity 초기화 대기
+    // Unity 초기화 대기 (Unity 6000.x는 더 오래 걸릴 수 있음)
     await page.waitForFunction(() => {
       return window['unityInstance'] !== undefined;
-    }, { timeout: 30000 });
+    }, { timeout: 120000 });
 
     console.log('✅ Unity instance initialized');
 

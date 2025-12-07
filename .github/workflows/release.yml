@@ -18,7 +18,8 @@ concurrency:
 
 jobs:
   # =====================================================
-  # 릴리즈 생성 (단일 커밋 + 태그)
+  # 릴리즈 생성 (태그 + GitHub Release)
+  # update/* PR이 머지되면 main 브랜치에 태그를 생성
   # =====================================================
   release:
     name: 릴리즈 생성
@@ -36,17 +37,6 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: 20
-          registry-url: 'https://registry.npmjs.org'
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9
 
       - name: 버전 결정
         id: version
@@ -87,113 +77,35 @@ jobs:
           echo "버전 검증 통과: ${VERSION}"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "tag_name=release/v${VERSION}" >> $GITHUB_OUTPUT
-          echo "branch_name=release/v${VERSION}" >> $GITHUB_OUTPUT
 
-      - name: Git 설정
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-      - name: web-framework 버전 고정 및 SDK 재생성
-        id: generate
-        working-directory: sdk-runtime-generator~
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-
-          echo "=== web-framework 버전 고정: ${VERSION} ==="
-
-          # package.json에서 web-framework 버전 고정
-          jq --arg v "$VERSION" '.dependencies["@apps-in-toss/web-framework"] = $v' package.json > tmp.json
-          mv tmp.json package.json
-
-          # 내부 레지스트리 참조가 있는 lockfile 삭제 후 공개 레지스트리에서 새로 생성
-          rm -f pnpm-lock.yaml
-
-          echo "의존성 설치 중 (공개 npm 레지스트리 사용)..."
-          pnpm install --registry https://registry.npmjs.org
-
-          echo "SDK 코드 생성 중..."
-          pnpm generate
-
-          echo "SDK 코드 생성 완료"
-
-      - name: 루트 package.json 버전 업데이트
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-
-          jq --arg v "$VERSION" '.version = $v' package.json > tmp.json
-          mv tmp.json package.json
-
-          echo "package.json 버전: ${VERSION}"
-
-      - name: 릴리즈 브랜치 생성 (orphan - UPM 파일만)
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          RELEASE_BRANCH="${{ steps.version.outputs.branch_name }}"
-
-          echo "=== 릴리즈 브랜치 생성: ${RELEASE_BRANCH} ==="
-
-          # 생성된 SDK 파일들을 임시 저장
-          mkdir -p /tmp/release-files
-          cp package.json /tmp/release-files/
-          cp -r Runtime /tmp/release-files/
-          cp -r Editor /tmp/release-files/
-          cp -r WebGLTemplates /tmp/release-files/
-
-          # 기존 릴리즈 브랜치/태그가 있으면 삭제 (upsert)
-          git push origin --delete "${RELEASE_BRANCH}" 2>/dev/null || true
-          git push origin --delete "${{ steps.version.outputs.tag_name }}" 2>/dev/null || true
-
-          # orphan 브랜치 생성 (히스토리 없이)
-          git checkout --orphan "${RELEASE_BRANCH}"
-
-          # 모든 파일 제거
-          git rm -rf --cached . > /dev/null 2>&1 || true
-          find . -maxdepth 1 ! -name '.git' ! -name '.' -exec rm -rf {} + 2>/dev/null || true
-
-          # UPM 필수 파일만 복사
-          cp /tmp/release-files/package.json .
-          cp -r /tmp/release-files/Runtime .
-          cp -r /tmp/release-files/Editor .
-          cp -r /tmp/release-files/WebGLTemplates .
-
-          echo "복사된 파일:"
-          find . -type f ! -path './.git/*' | head -30
-
-      - name: 릴리즈 커밋 및 태그
+      - name: 릴리즈 태그 생성
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           TAG_NAME="${{ steps.version.outputs.tag_name }}"
 
-          git add -A
-          git commit -m "릴리즈: v${VERSION}
+          echo "=== 릴리즈 태그 생성: ${TAG_NAME} ==="
+
+          # 기존 태그가 있으면 삭제 (upsert)
+          git push origin --delete "${TAG_NAME}" 2>/dev/null || true
+
+          # main 브랜치의 현재 HEAD에 태그 생성
+          git tag -f "${TAG_NAME}" -m "릴리즈: v${VERSION}
 
           Apps in Toss Unity SDK v${VERSION}
           - @apps-in-toss/web-framework v${VERSION} 기반
-          - UPM 패키지 전용 브랜치 (필수 파일만 포함)
 
           Generated at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-          # 태그 생성
-          git tag -f "${TAG_NAME}"
+          echo "태그 생성 완료: ${TAG_NAME}"
 
-          echo "커밋 및 태그 생성 완료: ${TAG_NAME}"
-
-      - name: 릴리즈 브랜치 및 태그 푸시
+      - name: 태그 푸시
         run: |
-          RELEASE_BRANCH="${{ steps.version.outputs.branch_name }}"
           TAG_NAME="${{ steps.version.outputs.tag_name }}"
-
-          # 명시적 refspec으로 브랜치와 태그 구분 (같은 이름 충돌 방지)
-          # 브랜치 푸시 (force - upsert)
-          git push -f origin "HEAD:refs/heads/${RELEASE_BRANCH}"
 
           # 태그 푸시 (force - upsert)
           git push -f origin "refs/tags/${TAG_NAME}:refs/tags/${TAG_NAME}"
 
-          echo "푸시 완료"
-          echo "  브랜치: ${RELEASE_BRANCH}"
-          echo "  태그: ${TAG_NAME}"
+          echo "태그 푸시 완료: ${TAG_NAME}"
 
       - name: GitHub Release 생성/업데이트
         env:

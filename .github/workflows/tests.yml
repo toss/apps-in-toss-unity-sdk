@@ -30,6 +30,48 @@ concurrency:
 
 jobs:
   # =====================================================
+  # Pending Status 보고 (테스트 시작 시)
+  # =====================================================
+  report-pending:
+    name: Report Pending Status
+    runs-on: ubuntu-latest
+    if: inputs.ref != ''
+
+    steps:
+      - name: Get Commit SHA
+        id: sha
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          REF="${{ inputs.ref }}"
+          SHA=$(gh api "repos/${{ github.repository }}/git/ref/heads/${REF}" --jq '.object.sha' 2>/dev/null || echo "")
+
+          if [ -z "$SHA" ]; then
+            echo "::warning::Could not get SHA for ref ${REF}"
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "sha=${SHA}" >> $GITHUB_OUTPUT
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Report Pending Status
+        if: steps.sha.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SHA="${{ steps.sha.outputs.sha }}"
+          TARGET_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          gh api "repos/${{ github.repository }}/statuses/${SHA}" \
+            -X POST \
+            -f state="pending" \
+            -f target_url="$TARGET_URL" \
+            -f description="E2E tests running..." \
+            -f context="E2E Tests (via SDK Update)"
+
+          echo "Reported pending status for commit $SHA"
+
+  # =====================================================
   # E2E Tests - macOS (병렬 실행)
   # =====================================================
   e2e-test-macos:

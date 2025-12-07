@@ -202,23 +202,11 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           TAG_NAME="${{ steps.version.outputs.tag_name }}"
 
-          # web-framework changelog 가져오기 (toss/granite 저장소에서)
-          echo "Fetching changelog from toss/granite..."
-          CHANGELOG=$(gh api repos/toss/granite/releases/tags/v${VERSION} --jq '.body' 2>/dev/null || echo "")
-
-          if [ -z "$CHANGELOG" ]; then
-            CHANGELOG="- \`@apps-in-toss/web-framework\` v${VERSION} 기반 SDK"
-          fi
-
           # 릴리즈 노트 생성
           RELEASE_BODY=$(cat <<EOF
           ## Apps in Toss Unity SDK v${VERSION}
 
-          ### 변경사항 (web-framework v${VERSION})
-
-          ${CHANGELOG}
-
-          ---
+          \`@apps-in-toss/web-framework\` v${VERSION} 기반으로 생성된 SDK입니다.
 
           ### 설치 방법
 

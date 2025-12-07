@@ -182,25 +182,12 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           BRANCH_NAME="${{ steps.version.outputs.branch_name }}"
 
-          # web-framework changelog 가져오기 (toss/granite 릴리즈에서)
-          CHANGELOG=$(gh api repos/toss/granite/releases/tags/v${VERSION} --jq '.body' 2>/dev/null || echo "")
-
-          if [ -z "$CHANGELOG" ]; then
-            CHANGELOG="- \`@apps-in-toss/web-framework\` v${VERSION} 기반 SDK"
-          fi
-
           # PR 생성
           PR_RESULT=$(gh pr create \
             --title "SDK 업데이트: v${VERSION}" \
             --body "## SDK 업데이트: v${VERSION}
 
-          @apps-in-toss/web-framework v${VERSION} 기반으로 SDK 코드를 재생성했습니다.
-
-          ### 변경사항 (web-framework v${VERSION})
-
-          ${CHANGELOG}
-
-          ---
+          \`@apps-in-toss/web-framework\` v${VERSION} 기반으로 SDK 코드를 재생성했습니다.
 
           ### 검토 사항
           - [ ] E2E 테스트 통과 확인 (이 워크플로우에서 자동 실행)

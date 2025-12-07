@@ -133,7 +133,7 @@ jobs:
         run: npm test
 
       - name: Upload Benchmark Results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: always()
         with:
           name: benchmark-results-macos-${{ matrix.unity-version }}
@@ -141,7 +141,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Upload Playwright Report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: always()
         with:
           name: playwright-report-macos-${{ matrix.unity-version }}
@@ -327,7 +327,7 @@ jobs:
         run: call npm test
 
       - name: Upload Benchmark Results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: always()
         with:
           name: benchmark-results-windows-6000.2
@@ -335,7 +335,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Upload Playwright Report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: always()
         with:
           name: playwright-report-windows-6000.2
@@ -519,7 +519,7 @@ jobs:
         run: call npm test
 
       - name: Upload Benchmark Results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: always()
         with:
           name: benchmark-results-windows-${{ matrix.unity-version }}
@@ -527,7 +527,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Upload Playwright Report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: always()
         with:
           name: playwright-report-windows-${{ matrix.unity-version }}
@@ -585,7 +585,7 @@ jobs:
           fi
 
       - name: Upload Combined Report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: combined-test-report
           path: artifacts/

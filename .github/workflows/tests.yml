@@ -158,6 +158,10 @@ jobs:
     timeout-minutes: 60
 
     steps:
+      - name: Configure Git Long Paths
+        shell: cmd
+        run: git config --global core.longPaths true
+
       - name: Checkout Repository
         uses: actions/checkout@v4
 

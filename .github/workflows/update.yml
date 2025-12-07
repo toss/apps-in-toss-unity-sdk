@@ -27,7 +27,7 @@ jobs:
 
     steps:
       - name: Checkout main
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: main
           # PAT를 사용해야 이 워크플로우에서 생성한 커밋/PR이 다른 워크플로우(tests.yml)를 트리거함

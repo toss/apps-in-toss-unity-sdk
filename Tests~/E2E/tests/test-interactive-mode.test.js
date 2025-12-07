@@ -21,17 +21,27 @@ const SAMPLE_PROJECT = findSampleProject();
 const AIT_BUILD = path.resolve(SAMPLE_PROJECT, 'ait-build');
 
 // Unity 버전별 포트 오프셋 (e2e-full-pipeline.test.js와 동일한 로직)
-function getPortOffset() {
-  const projectPath = SAMPLE_PROJECT;
-  if (projectPath.includes('6000.2')) return 4;
-  if (projectPath.includes('6000.0')) return 3;
-  if (projectPath.includes('2022.3')) return 2;
-  if (projectPath.includes('2021.3')) return 1;
+// 2021.3 → 0, 2022.3 → 1, 6000.0 → 2, 6000.2 → 3
+function getPortOffsetFromUnityVersion(projectPath) {
+  const match = projectPath.match(/(\d{4})\.(\d+)/);
+  if (!match) return 0;
+
+  const major = parseInt(match[1], 10);
+  const minor = parseInt(match[2], 10);
+
+  if (major === 2021) return 0;
+  if (major === 2022) return 1;
+  if (major === 6000 && minor === 0) return 2;
+  if (major === 6000 && minor === 2) return 3;
   return 0;
 }
 
-const PORT_OFFSET = getPortOffset();
+const PORT_OFFSET = getPortOffsetFromUnityVersion(SAMPLE_PROJECT);
+// e2e-full-pipeline.test.js는 4173+offset, 여기서는 5173+offset 사용
+// 두 테스트 파일이 다른 포트 범위를 사용하므로 충돌 없음
 const DEFAULT_PORT = 5173 + PORT_OFFSET;
+console.log(`📦 Unity project: ${SAMPLE_PROJECT}`);
+console.log(`🔌 Interactive test port: ${DEFAULT_PORT} (offset: ${PORT_OFFSET})`);
 
 let serverProcess = null;
 let actualServerPort = DEFAULT_PORT;

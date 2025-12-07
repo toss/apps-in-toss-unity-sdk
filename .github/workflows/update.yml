@@ -129,6 +129,12 @@ jobs:
 
           echo "SDK 코드 생성 완료"
 
+          # sdk-runtime-generator~/package.json 버전을 latest로 복원 (main에 고정 버전이 머지되지 않도록)
+          echo "sdk-runtime-generator~/package.json 버전 복원..."
+          jq '.dependencies["@apps-in-toss/web-framework"] = "latest"' package.json > tmp.json
+          mv tmp.json package.json
+          rm -f pnpm-lock.yaml
+
       - name: 루트 package.json 버전 업데이트
         if: steps.check.outputs.skip != 'true'
         run: |

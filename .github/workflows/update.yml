@@ -1,12 +1,6 @@
 name: SDK Update
 
 on:
-  # TODO: 테스트 후 제거
-  push:
-    branches:
-      - feat/deploy-strategy
-    paths:
-      - '.github/workflows/update.yml'
   workflow_dispatch:
     inputs:
       version:
@@ -32,9 +26,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout main
         uses: actions/checkout@v4
         with:
+          ref: main
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
 

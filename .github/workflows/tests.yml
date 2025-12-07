@@ -157,13 +157,8 @@ jobs:
     name: E2E (Windows, Unity ${{ matrix.unity-version }})
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 60
-    concurrency:
-      group: windows-unity-build
-      cancel-in-progress: false
-
     strategy:
       fail-fast: false
-      max-parallel: 1
       matrix:
         unity-version: ["2021.3", "2022.3", "6000.0", "6000.2"]
 

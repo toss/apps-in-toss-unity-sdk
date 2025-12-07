@@ -1,13 +1,8 @@
 /**
  * AppsInToss-GetTossAppVersion.jslib
  *
- * 이 파일은 자동 생성되었습니다.
- * tools/generate-unity-sdk로 생성됨
- * 수정하지 마세요. 변경사항은 재생성 시 손실됩니다.
- *
- * web-framework tag: next
- * 생성 시각: 2025-12-03T10:02:26.827Z
- * Category: GetTossAppVersion
+ * This file is auto-generated. Do not modify directly.
+ * 이 파일은 자동 생성되었습니다. 직접 수정하지 마세요.
  */
 
 mergeInto(LibraryManager.library, {

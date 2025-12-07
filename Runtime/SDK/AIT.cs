@@ -13,9 +13,8 @@ namespace AppsInToss
     /// Apps in Toss Platform API
     /// </summary>
     /// <remarks>
-    /// Source: @apps-in-toss/web-framework (next)
-    /// Generated: 2025-12-03T10:02:26.807Z
-    /// Total APIs: 39
+    /// This file is auto-generated. Do not modify directly.
+    /// 이 파일은 자동 생성되었습니다. 직접 수정하지 마세요.
     /// </remarks>
     public static partial class AIT
     {

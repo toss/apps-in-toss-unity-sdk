@@ -1,0 +1,37 @@
+version: 2
+updates:
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  # 루트 package.json
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  # SDK 생성기
+  - package-ecosystem: "npm"
+    directory: "/sdk-runtime-generator~"
+    schedule:
+      interval: "weekly"
+
+  # WebGL 빌드 설정
+  - package-ecosystem: "npm"
+    directory: "/WebGLTemplates/AITTemplate/BuildConfig"
+    schedule:
+      interval: "weekly"
+
+  # E2E 테스트
+  - package-ecosystem: "npm"
+    directory: "/Tests~/E2E/tests"
+    schedule:
+      interval: "weekly"
+
+  # 공유 테스트 스크립트
+  - package-ecosystem: "npm"
+    directory: "/Tests~/E2E/SharedScripts"
+    schedule:
+      interval: "weekly"

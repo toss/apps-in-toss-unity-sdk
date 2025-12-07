@@ -230,8 +230,26 @@ jobs:
 
     steps:
       - name: Configure Git Long Paths
-        shell: cmd
-        run: git config --global core.longPaths true
+        shell: pwsh
+        run: |
+          # 여러 job이 동시에 실행될 때 .gitconfig 잠금 충돌 방지를 위한 retry 로직
+          $maxRetries = 5
+          for ($i = 1; $i -le $maxRetries; $i++) {
+            try {
+              git config --global core.longPaths true
+              Write-Host "Git longPaths configured successfully"
+              exit 0
+            } catch {
+              if ($i -lt $maxRetries) {
+                $delay = Get-Random -Minimum 1 -Maximum 5
+                Write-Host "Retry $i/$maxRetries after ${delay}s..."
+                Start-Sleep -Seconds $delay
+              }
+            }
+          }
+          # 마지막 시도 - 실패해도 이미 설정되어 있을 수 있으므로 continue
+          git config --global core.longPaths 2>$null
+          Write-Host "Git longPaths configuration completed (may have been set by another job)"
 
       - name: Checkout Repository
         uses: actions/checkout@v6

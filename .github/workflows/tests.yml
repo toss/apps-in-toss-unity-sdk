@@ -149,13 +149,17 @@ jobs:
           if-no-files-found: ignore
 
   # =====================================================
-  # E2E Tests - Windows (필수 - Unity 6000.2만)
-  # PR merge 필수 조건, 빠른 피드백 제공
+  # E2E Tests - Windows (병렬 실행)
   # =====================================================
   e2e-test-windows:
-    name: E2E (Windows, Unity 6000.2)
+    name: E2E (Windows, Unity ${{ matrix.unity-version }})
     runs-on: [self-hosted, Windows, X64, enabled]
     timeout-minutes: 60
+
+    strategy:
+      fail-fast: false
+      matrix:
+        unity-version: ["2021.3", "2022.3", "6000.0", "6000.2"]
 
     steps:
       - name: Configure Git Long Paths
@@ -181,207 +185,13 @@ jobs:
         shell: cmd
         run: |
           @echo off
-          set "PROJECT_PATH=Tests~\E2E\SampleUnityProject-6000.2"
+          set "PROJECT_PATH=Tests~\E2E\SampleUnityProject-${{ matrix.unity-version }}"
           set "CLEAN_LIBRARY=${{ inputs.clean_library }}"
           echo Cleaning previous build artifacts...
           if exist "%PROJECT_PATH%\ait-build" rmdir /s /q "%PROJECT_PATH%\ait-build"
           if exist "%PROJECT_PATH%\webgl" rmdir /s /q "%PROJECT_PATH%\webgl"
           rem Library 캐시는 유지하여 증분 빌드 활용 (self-hosted runner 장점)
           rem 캐시 문제 발생 시 workflow_dispatch에서 clean_library=true로 실행
-          if "%CLEAN_LIBRARY%"=="true" (
-            echo Cleaning Library cache requested via workflow_dispatch...
-            if exist "%PROJECT_PATH%\Library" rmdir /s /q "%PROJECT_PATH%\Library"
-          )
-          echo Done.
-
-      - name: Detect Unity Installation
-        id: unity
-        shell: cmd
-        run: |
-          @echo off
-          setlocal enabledelayedexpansion
-
-          set "UNITY_BASE=C:\Program Files\Unity\Hub\Editor"
-          set "VERSION_PATTERN=6000.2"
-
-          echo Searching for Unity %VERSION_PATTERN%.x in %UNITY_BASE%...
-
-          set "UNITY_DIR="
-          for /d %%d in ("%UNITY_BASE%\%VERSION_PATTERN%*") do (
-            set "UNITY_DIR=%%d"
-          )
-
-          if not defined UNITY_DIR (
-            echo ::error::Unity %VERSION_PATTERN%.x not found
-            echo Available versions:
-            dir /b "%UNITY_BASE%" 2>nul
-            exit /b 1
-          )
-
-          set "UNITY_PATH=%UNITY_DIR%\Editor\Unity.exe"
-
-          if not exist "%UNITY_PATH%" (
-            echo ::error::Unity executable not found at %UNITY_PATH%
-            exit /b 1
-          )
-
-          for %%i in ("%UNITY_DIR%") do set "DETECTED_VERSION=%%~nxi"
-          echo Found Unity %DETECTED_VERSION%
-          echo   Path: %UNITY_PATH%
-
-          echo UNITY_PATH=%UNITY_PATH%>> %GITHUB_OUTPUT%
-          echo UNITY_VERSION=%DETECTED_VERSION%>> %GITHUB_OUTPUT%
-
-      - name: Build Unity WebGL
-        shell: powershell -ExecutionPolicy Bypass -File {0}
-        env:
-          AIT_DEBUG_CONSOLE: "true"
-        run: |
-          $unityPath = "${{ steps.unity.outputs.UNITY_PATH }}"
-          $projectPath = "${{ github.workspace }}\Tests~\E2E\SampleUnityProject-6000.2"
-
-          Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          Write-Host "Unity Build Configuration"
-          Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          Write-Host "Unity Version: ${{ steps.unity.outputs.UNITY_VERSION }}"
-          Write-Host "Unity Path: $unityPath"
-          Write-Host "Project Path: $projectPath"
-          Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-
-          $logFile = "$env:TEMP\unity-build-6000.2.log"
-          Write-Host "Starting Unity build..."
-          Write-Host "Log file: $logFile"
-
-          $unityProcess = Start-Process -FilePath $unityPath -ArgumentList @(
-            "-quit", "-batchmode", "-nographics",
-            "-projectPath", $projectPath,
-            "-executeMethod", "E2EBuildRunner.CommandLineBuild",
-            "-buildTarget", "WebGL",
-            "-logFile", $logFile
-          ) -PassThru -NoNewWindow
-
-          # Unity 빌드 완료 대기 (로그 실시간 출력)
-          Write-Host "Waiting for Unity build to complete..."
-          $lastSize = 0
-          while (-not $unityProcess.HasExited) {
-            Start-Sleep -Seconds 2
-            if (Test-Path $logFile) {
-              $content = Get-Content $logFile -Raw -ErrorAction SilentlyContinue
-              if ($content -and $content.Length -gt $lastSize) {
-                $newContent = $content.Substring($lastSize)
-                Write-Host $newContent
-                $lastSize = $content.Length
-              }
-            }
-          }
-
-          # 최종 로그 출력
-          if (Test-Path $logFile) {
-            $content = Get-Content $logFile -Raw -ErrorAction SilentlyContinue
-            if ($content -and $content.Length -gt $lastSize) {
-              Write-Host $content.Substring($lastSize)
-            }
-          }
-
-          if ($unityProcess.ExitCode -ne 0) {
-            Write-Host "::error::Unity build failed with exit code: $($unityProcess.ExitCode)"
-            exit $unityProcess.ExitCode
-          }
-
-          Write-Host "Unity build completed successfully"
-
-      - name: Verify Build Output
-        shell: cmd
-        run: |
-          @echo off
-          set "DIST_PATH=Tests~\E2E\SampleUnityProject-6000.2\ait-build\dist\web"
-          if exist "%DIST_PATH%" (
-            echo Build output found
-            dir "%DIST_PATH%"
-          ) else (
-            echo ::error::Build output not found at %DIST_PATH%
-            exit /b 1
-          )
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24
-
-      - name: Install Playwright Dependencies
-        working-directory: Tests~/E2E/tests
-        shell: cmd
-        run: |
-          @echo off
-          if exist node_modules rmdir /s /q node_modules
-          if exist package-lock.json del /f package-lock.json
-          call npm install
-          call npx playwright install chromium --with-deps
-          call npx playwright --version
-
-      - name: Run E2E Tests
-        working-directory: Tests~/E2E/tests
-        shell: cmd
-        env:
-          UNITY_PROJECT_PATH: ${{ github.workspace }}\Tests~\E2E\SampleUnityProject-6000.2
-        run: call npm test
-
-      - name: Upload Benchmark Results
-        uses: actions/upload-artifact@v5
-        if: always()
-        with:
-          name: benchmark-results-windows-6000.2
-          path: Tests~/E2E/tests/benchmark-results.json
-          if-no-files-found: ignore
-
-      - name: Upload Playwright Report
-        uses: actions/upload-artifact@v5
-        if: always()
-        with:
-          name: playwright-report-windows-6000.2
-          path: Tests~/E2E/tests/playwright-report/
-          if-no-files-found: ignore
-
-  # =====================================================
-  # E2E Tests - Windows Extended (선택 - 나머지 3개 버전)
-  # Non-blocking: 실패해도 PR merge에 영향 없음
-  # =====================================================
-  e2e-test-windows-extended:
-    name: E2E Extended (Windows, Unity ${{ matrix.unity-version }})
-    needs: [e2e-test-windows]
-    if: always()
-    runs-on: [self-hosted, Windows, X64, enabled]
-    timeout-minutes: 60
-    continue-on-error: true
-
-    strategy:
-      fail-fast: false
-      matrix:
-        unity-version: ["2021.3", "2022.3", "6000.0"]
-
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v6
-
-      - name: Exclude Project from Windows Defender
-        shell: cmd
-        continue-on-error: true
-        run: |
-          @echo off
-          powershell -Command "Add-MpPreference -ExclusionPath '${{ github.workspace }}' -ErrorAction SilentlyContinue" 2>nul
-          powershell -Command "Add-MpPreference -ExclusionPath 'C:\Program Files\Unity' -ErrorAction SilentlyContinue" 2>nul
-          echo Windows Defender exclusions configured (or skipped if no admin rights)
-          exit /b 0
-
-      - name: Clean Previous Build Artifacts
-        shell: cmd
-        run: |
-          @echo off
-          set "PROJECT_PATH=Tests~\E2E\SampleUnityProject-${{ matrix.unity-version }}"
-          set "CLEAN_LIBRARY=${{ inputs.clean_library }}"
-          echo Cleaning previous build artifacts...
-          if exist "%PROJECT_PATH%\ait-build" rmdir /s /q "%PROJECT_PATH%\ait-build"
-          if exist "%PROJECT_PATH%\webgl" rmdir /s /q "%PROJECT_PATH%\webgl"
           if "%CLEAN_LIBRARY%"=="true" (
             echo Cleaning Library cache requested via workflow_dispatch...
             if exist "%PROJECT_PATH%\Library" rmdir /s /q "%PROJECT_PATH%\Library"
@@ -454,6 +264,7 @@ jobs:
             "-logFile", $logFile
           ) -PassThru -NoNewWindow
 
+          # Unity 빌드 완료 대기 (로그 실시간 출력)
           Write-Host "Waiting for Unity build to complete..."
           $lastSize = 0
           while (-not $unityProcess.HasExited) {
@@ -468,6 +279,7 @@ jobs:
             }
           }
 
+          # 최종 로그 출력
           if (Test-Path $logFile) {
             $content = Get-Content $logFile -Raw -ErrorAction SilentlyContinue
             if ($content -and $content.Length -gt $lastSize) {
@@ -540,7 +352,7 @@ jobs:
   test-report:
     name: Test Report Summary
     runs-on: ubuntu-latest
-    needs: [e2e-test-macos, e2e-test-windows, e2e-test-windows-extended]
+    needs: [e2e-test-macos, e2e-test-windows]
     if: always()
 
     steps:
@@ -556,11 +368,10 @@ jobs:
 
           # Self-hosted Runner 정보
           echo "### 🖥️ Test Environment" >> $GITHUB_STEP_SUMMARY
-          echo "| OS | Unity Versions | Runner Type | Required |" >> $GITHUB_STEP_SUMMARY
-          echo "|-----|---------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
-          echo "| macOS | 2021.3, 2022.3, 6000.0, 6000.2 | Self-hosted ARM64 (병렬) | ✅ Yes |" >> $GITHUB_STEP_SUMMARY
-          echo "| Windows | 6000.2 | Self-hosted X64 | ✅ Yes |" >> $GITHUB_STEP_SUMMARY
-          echo "| Windows | 2021.3, 2022.3, 6000.0 | Self-hosted X64 | ⚪ No (Extended) |" >> $GITHUB_STEP_SUMMARY
+          echo "| OS | Unity Versions | Runner Type |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|---------------|-------------|" >> $GITHUB_STEP_SUMMARY
+          echo "| macOS | 2021.3, 2022.3, 6000.0, 6000.2 | Self-hosted ARM64 (병렬) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Windows | 2021.3, 2022.3, 6000.0, 6000.2 | Self-hosted X64 (병렬) |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
           # Benchmark 결과

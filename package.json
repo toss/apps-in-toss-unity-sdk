@@ -2,7 +2,7 @@
   "name": "im.toss.apps-in-toss-unity-sdk",
   "displayName": "Apps in Toss SDK",
   "description": "Apps in Toss Mini App Unity Engine Adapter SDK Package.",
-  "version": "0.0.1",
+  "version": "1.5.0",
   "unity": "2019.4",
   "unityRelease": "29f1",
   "keywords": [
@@ -25,5 +25,8 @@
   "engines": {
     "unity": ">=2019.4"
   },
-  "category": "Platform SDK"
+  "category": "Platform SDK",
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
 }

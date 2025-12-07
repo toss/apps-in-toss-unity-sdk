@@ -24,16 +24,15 @@ jobs:
   update:
     name: SDK 업데이트 PR 생성
     runs-on: ubuntu-latest
-    outputs:
-      pr_created: ${{ steps.create-pr.outputs.pr_created }}
-      branch_name: ${{ steps.version.outputs.branch_name }}
 
     steps:
       - name: Checkout main
         uses: actions/checkout@v4
         with:
           ref: main
-          token: ${{ secrets.GITHUB_TOKEN }}
+          # PAT를 사용해야 이 워크플로우에서 생성한 커밋/PR이 다른 워크플로우(tests.yml)를 트리거함
+          # GITHUB_TOKEN으로 생성된 커밋/PR은 다른 워크플로우를 트리거하지 않음 (무한 루프 방지 정책)
+          token: ${{ secrets.WORKFLOW_PAT }}
           fetch-depth: 0
 
       - name: Setup Node.js
@@ -175,7 +174,7 @@ jobs:
         if: steps.check.outputs.skip != 'true' && steps.commit.outputs.no_changes != 'true'
         id: create-pr
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.WORKFLOW_PAT }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           BRANCH_NAME="${{ steps.version.outputs.branch_name }}"
@@ -240,12 +239,3 @@ jobs:
           else
             echo "❌ 처리 실패" >> $GITHUB_STEP_SUMMARY
           fi
-
-  # PR 생성 후 E2E 테스트 실행
-  run-tests:
-    name: E2E 테스트 실행
-    needs: update
-    if: needs.update.outputs.pr_created == 'true'
-    uses: ./.github/workflows/tests.yml
-    with:
-      ref: ${{ needs.update.outputs.branch_name }}

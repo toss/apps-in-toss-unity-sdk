@@ -288,17 +288,14 @@ jobs:
         run: |
           @echo off
           set "DIST_PATH=Tests~\E2E\SampleUnityProject-${{ matrix.unity-version }}\ait-build\dist"
-          if exist "%DIST_PATH%" (
-            echo Build output found
-            echo dist\ 내용:
-            dir "%DIST_PATH%"
-            echo.
-            echo dist\web\ 내용:
-            dir "%DIST_PATH%\web" 2>nul || echo (web 폴더 없음)
-          ) else (
+          if not exist "%DIST_PATH%" (
             echo ::error::Build output not found at %DIST_PATH%
             exit /b 1
           )
+          echo Build output found
+          dir "%DIST_PATH%"
+          echo.
+          dir "%DIST_PATH%\web" 2>nul
 
       # NOTE: AITConvertCore.DoExport()가 이미 ait-build/dist/에 패키징된 결과물 생성
       # 별도의 zip 패키징 불필요 - granite 빌드 결과물을 그대로 업로드

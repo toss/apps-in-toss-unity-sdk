@@ -75,12 +75,13 @@ jobs:
       version: ${{ needs.release.outputs.version }}
 
   # =====================================================
-  # 릴리즈 태그 생성 (UPM 패키지 정리 포함)
+  # 릴리즈 커밋 및 태그 생성 (UPM 패키지 정리 포함)
+  # AIT 빌드 성공 후에만 실행 → 빌드 실패 시 릴리즈 방지
   # =====================================================
   create-release-tag:
-    name: 릴리즈 태그 생성
+    name: 릴리즈 커밋 및 태그 생성
     runs-on: ubuntu-latest
-    needs: release
+    needs: [release, build-ait]
     if: success()
 
     steps:

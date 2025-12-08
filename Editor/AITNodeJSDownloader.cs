@@ -27,6 +27,17 @@ namespace AppsInToss.Editor
             ["linux-x64"] = "58a5ff5cc8f2200e458bea22e329d5c1994aa1b111d499ca46ec2411d58239ca"
         };
 
+        // 예상 파일 크기 (bytes) - 불완전한 다운로드 감지용
+        private static readonly Dictionary<string, long> ExpectedFileSizes = new Dictionary<string, long>
+        {
+            ["darwin-arm64"] = 44_000_000,  // ~44MB
+            ["darwin-x64"] = 47_000_000,    // ~47MB
+            ["win-x64"] = 32_000_000,       // ~32MB
+            ["linux-x64"] = 48_000_000      // ~48MB
+        };
+
+        private const int MAX_DOWNLOAD_RETRIES = 3;
+
         /// <summary>
         /// Embedded Node.js 경로 찾기 (없으면 자동 다운로드)
         /// </summary>
@@ -116,51 +127,121 @@ namespace AppsInToss.Editor
                 EditorUtility.DisplayProgressBar("Node.js 다운로드",
                     "Node.js 런타임을 다운로드하고 있습니다...", 0.1f);
 
-                // 폴백을 사용하여 다운로드
+                // 재시도 + 폴백을 사용하여 다운로드
                 bool downloaded = false;
                 Exception lastException = null;
+                int totalAttempts = 0;
 
-                foreach (string url in downloadUrls)
+                for (int retry = 0; retry < MAX_DOWNLOAD_RETRIES && !downloaded; retry++)
                 {
-                    try
+                    if (retry > 0)
                     {
-                        Debug.Log($"[NodeJS] 다운로드 시도: {url}");
-                        DownloadFile(url, tempFile);
-                        downloaded = true;
-                        break;
+                        Debug.Log($"[NodeJS] === 재시도 {retry}/{MAX_DOWNLOAD_RETRIES - 1} ===");
+                        // 재시도 전 잠시 대기 (exponential backoff)
+                        System.Threading.Thread.Sleep(1000 * retry);
                     }
-                    catch (Exception e)
+
+                    foreach (string url in downloadUrls)
                     {
-                        Debug.LogWarning($"[NodeJS] 다운로드 실패 ({url}): {e.Message}");
-                        lastException = e;
+                        totalAttempts++;
+                        try
+                        {
+                            Debug.Log($"[NodeJS] 다운로드 시도 #{totalAttempts}: {url}");
+                            EditorUtility.DisplayProgressBar("Node.js 다운로드",
+                                $"다운로드 시도 #{totalAttempts}: {new Uri(url).Host}...", 0.1f);
+
+                            DownloadFile(url, tempFile, platform);
+                            downloaded = true;
+                            Debug.Log($"[NodeJS] ✓ 다운로드 성공: {url}");
+                            break;
+                        }
+                        catch (Exception e)
+                        {
+                            Debug.LogWarning($"[NodeJS] 다운로드 실패 ({url}): {e.Message}");
+                            lastException = e;
+
+                            // 다운로드 실패 시 임시 파일 삭제
+                            if (File.Exists(tempFile))
+                            {
+                                try { File.Delete(tempFile); } catch { /* ignore */ }
+                            }
+                        }
                     }
                 }
 
                 if (!downloaded)
                 {
-                    throw new Exception($"모든 다운로드 소스가 실패했습니다: {lastException?.Message}");
+                    throw new Exception(
+                        $"Node.js 다운로드 실패 (총 {totalAttempts}회 시도)\n\n" +
+                        $"마지막 오류: {lastException?.Message}\n\n" +
+                        "가능한 원인:\n" +
+                        "- 네트워크 연결 불안정\n" +
+                        "- 방화벽/프록시 차단\n" +
+                        "- 디스크 공간 부족\n\n" +
+                        "해결 방법:\n" +
+                        "1. 네트워크 연결 확인 후 다시 시도\n" +
+                        "2. 직접 Node.js 설치: https://nodejs.org"
+                    );
                 }
 
                 EditorUtility.DisplayProgressBar("Node.js 다운로드",
                     "파일 무결성 검증 중 (SHA256)...", 0.85f);
 
-                // 체크섬 검증 (필수 - 보안)
+                // 체크섬 검증 (필수 - 보안) - 실패 시 재시도
                 if (!Checksums.ContainsKey(platform) || string.IsNullOrEmpty(Checksums[platform]))
                 {
                     throw new Exception($"플랫폼 '{platform}'의 체크섬 정보가 없습니다. SDK 업데이트가 필요합니다.");
                 }
 
-                if (!VerifyChecksum(tempFile, Checksums[platform]))
+                bool checksumValid = VerifyChecksum(tempFile, Checksums[platform]);
+                if (!checksumValid)
                 {
-                    // 보안상 중요: 체크섬 불일치 시 파일 즉시 삭제
+                    // 체크섬 실패 시 다른 미러에서 재시도
+                    Debug.LogWarning("[NodeJS] 체크섬 불일치! 다른 미러에서 재다운로드를 시도합니다...");
                     File.Delete(tempFile);
+
+                    // 나머지 미러들로 재시도
+                    for (int mirrorIdx = 1; mirrorIdx < downloadUrls.Length && !checksumValid; mirrorIdx++)
+                    {
+                        string mirrorUrl = downloadUrls[mirrorIdx];
+                        try
+                        {
+                            Debug.Log($"[NodeJS] 대체 미러 시도 ({mirrorIdx}/{downloadUrls.Length - 1}): {mirrorUrl}");
+                            EditorUtility.DisplayProgressBar("Node.js 다운로드",
+                                $"체크섬 실패 - 대체 미러에서 재다운로드 중...", 0.2f);
+
+                            DownloadFile(mirrorUrl, tempFile, platform);
+                            checksumValid = VerifyChecksum(tempFile, Checksums[platform]);
+
+                            if (checksumValid)
+                            {
+                                Debug.Log($"[NodeJS] ✓ 대체 미러에서 다운로드 성공!");
+                            }
+                            else
+                            {
+                                Debug.LogWarning($"[NodeJS] 대체 미러도 체크섬 실패: {mirrorUrl}");
+                                File.Delete(tempFile);
+                            }
+                        }
+                        catch (Exception e)
+                        {
+                            Debug.LogWarning($"[NodeJS] 대체 미러 다운로드 실패: {e.Message}");
+                            if (File.Exists(tempFile)) File.Delete(tempFile);
+                        }
+                    }
+                }
+
+                if (!checksumValid)
+                {
                     throw new Exception(
-                        "보안 경고: 다운로드한 파일의 체크섬이 일치하지 않습니다.\n\n" +
-                        "파일이 변조되었거나 손상되었을 수 있습니다.\n" +
-                        "다운로드를 중단합니다.\n\n" +
-                        "문제가 지속되면 다음을 시도하세요:\n" +
-                        "1. 인터넷 연결 확인\n" +
-                        "2. 방화벽/프록시 설정 확인\n" +
+                        "보안 경고: 모든 다운로드 소스에서 체크섬 검증에 실패했습니다.\n\n" +
+                        "가능한 원인:\n" +
+                        "- 네트워크 연결 불안정으로 파일이 손상됨\n" +
+                        "- 프록시/방화벽이 파일을 변조함\n" +
+                        "- 다운로드 서버 문제\n\n" +
+                        "해결 방법:\n" +
+                        "1. 네트워크 연결 확인 후 다시 시도\n" +
+                        "2. VPN/프록시 비활성화 후 시도\n" +
                         "3. 직접 Node.js 설치: https://nodejs.org"
                     );
                 }
@@ -220,12 +301,21 @@ namespace AppsInToss.Editor
         }
 
         /// <summary>
-        /// 파일 다운로드 (진행률 표시)
+        /// 파일 다운로드 (진행률 표시, 파일 크기 검증 포함)
         /// </summary>
-        private static void DownloadFile(string url, string targetPath)
+        private static void DownloadFile(string url, string targetPath, string platform)
         {
+            // 기존 파일 삭제
+            if (File.Exists(targetPath))
+            {
+                File.Delete(targetPath);
+            }
+
             using (var webClient = new WebClient())
             {
+                // 타임아웃 방지를 위한 User-Agent 설정
+                webClient.Headers.Add("User-Agent", "AppsInTossSDK/1.0");
+
                 // 진행률 이벤트
                 webClient.DownloadProgressChanged += (sender, e) => {
                     float progress = 0.1f + (e.ProgressPercentage / 100f * 0.75f);
@@ -236,6 +326,45 @@ namespace AppsInToss.Editor
 
                 // 동기적 다운로드 (Editor 전용)
                 webClient.DownloadFile(url, targetPath);
+            }
+
+            // 다운로드 완료 후 파일 크기 검증
+            ValidateFileSize(targetPath, platform);
+        }
+
+        /// <summary>
+        /// 다운로드한 파일 크기 검증 (불완전한 다운로드 감지)
+        /// </summary>
+        private static void ValidateFileSize(string filePath, string platform)
+        {
+            if (!File.Exists(filePath))
+            {
+                throw new Exception("다운로드한 파일이 존재하지 않습니다.");
+            }
+
+            var fileInfo = new FileInfo(filePath);
+            long actualSize = fileInfo.Length;
+
+            Debug.Log($"[NodeJS] 다운로드 파일 크기: {actualSize / 1024 / 1024}MB ({actualSize:N0} bytes)");
+
+            // 최소 예상 크기 검증
+            if (ExpectedFileSizes.TryGetValue(platform, out long minExpectedSize))
+            {
+                if (actualSize < minExpectedSize)
+                {
+                    throw new Exception(
+                        $"다운로드가 불완전합니다.\n" +
+                        $"예상 크기: {minExpectedSize / 1024 / 1024}MB 이상\n" +
+                        $"실제 크기: {actualSize / 1024 / 1024}MB ({actualSize:N0} bytes)\n" +
+                        $"네트워크 연결을 확인하고 다시 시도해주세요."
+                    );
+                }
+            }
+
+            // 파일이 비어있는지 확인
+            if (actualSize == 0)
+            {
+                throw new Exception("다운로드한 파일이 비어있습니다. 네트워크 연결을 확인해주세요.");
             }
         }
 

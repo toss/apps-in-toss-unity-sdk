@@ -13,11 +13,10 @@ on:
 
 jobs:
   # =====================================================
-  # 릴리즈 생성 (태그 + GitHub Release)
-  # update/* PR이 머지되면 main 브랜치에 태그를 생성
+  # 버전 결정
   # =====================================================
   release:
-    name: 릴리즈 생성
+    name: 버전 결정
     runs-on: ubuntu-latest
     # PR이 머지된 경우에만 실행 (update/* 브랜치에서 온 경우)
     # 또는 수동 트리거인 경우
@@ -26,24 +25,11 @@ jobs:
       (github.event.pull_request.merged == true &&
        startsWith(github.event.pull_request.head.ref, 'update/'))
 
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag_name: ${{ steps.version.outputs.tag_name }}
+
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          fetch-depth: 0
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: 20
-          registry-url: 'https://registry.npmjs.org'
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9
-
       - name: 버전 결정
         id: version
         run: |
@@ -53,18 +39,10 @@ jobs:
             echo "수동 트리거 버전: ${VERSION}"
           else
             # PR 머지 트리거: 브랜치 이름에서 버전 추출
-            # 브랜치 형식: update/{version}-{timestamp}
-            # 예: update/1.5.20-20251207-192052
             BRANCH_NAME="${{ github.event.pull_request.head.ref }}"
             echo "머지된 브랜치: ${BRANCH_NAME}"
 
-            # update/ 접두사 제거 후 버전 추출 (타임스탬프 앞까지)
-            # update/1.5.20-20251207-192052 → 1.5.20
             VERSION_WITH_TIMESTAMP="${BRANCH_NAME#update/}"
-
-            # 정규식으로 버전 부분만 추출 (semver 형식)
-            # 1.5.20-20251207-192052 에서 1.5.20 추출
-            # prerelease 버전은 -alpha, -beta.1 등 문자로 시작 (-20251207은 타임스탬프)
             VERSION=$(echo "$VERSION_WITH_TIMESTAMP" | sed -E 's/^([0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z][a-zA-Z0-9.]*)?).*/\1/')
 
             if [ -z "$VERSION" ] || ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+'; then
@@ -75,7 +53,7 @@ jobs:
             echo "추출된 버전: ${VERSION}"
           fi
 
-          # Semver 형식 검증 (prerelease는 문자로 시작)
+          # Semver 형식 검증
           if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z][a-zA-Z0-9.]*)?$'; then
             echo "::error::올바른 버전 형식이 아닙니다: ${VERSION}"
             exit 1
@@ -85,71 +63,100 @@ jobs:
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "tag_name=release/v${VERSION}" >> $GITHUB_OUTPUT
 
+  # =====================================================
+  # AIT 빌드 (build-ait.yml 호출)
+  # =====================================================
+  build-ait:
+    name: AIT 빌드
+    needs: release
+    uses: ./.github/workflows/build-ait.yml
+    with:
+      ref: main
+      version: ${{ needs.release.outputs.version }}
+
+  # =====================================================
+  # 릴리즈 태그 생성 (UPM 패키지 정리 포함)
+  # =====================================================
+  create-release-tag:
+    name: 릴리즈 태그 생성
+    runs-on: ubuntu-latest
+    needs: release
+    if: success()
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: UPM 패키지 정리
+        run: |
+          echo "=== UPM 패키지 정리 ==="
+
+          # 불필요한 디렉토리 제거
+          rm -rf .github/
+          rm -rf Tests~/
+          rm -rf Tools~/
+          rm -rf sdk-runtime-generator~/
+          rm -rf scripts/
+
+          # 불필요한 파일 제거
+          rm -f .gitignore
+          rm -f .mcp.json
+          rm -f CLAUDE.md
+          rm -f run-local-tests.sh
+
+          # 해당 .meta 파일도 제거
+          rm -f .gitignore.meta
+          rm -f .mcp.json.meta
+          rm -f CLAUDE.md.meta
+          rm -f run-local-tests.sh.meta
+          rm -f scripts.meta
+          rm -f Tests~.meta
+          rm -f Tools~.meta
+          rm -f sdk-runtime-generator~.meta
+
+          echo "정리된 파일 목록:"
+          ls -la
+          echo ""
+          echo "Runtime/ 내용:"
+          ls -la Runtime/ || true
+          echo ""
+          echo "Editor/ 내용:"
+          ls -la Editor/ || true
+
       - name: Git 설정
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: web-framework 버전 고정 및 SDK 재생성
-        working-directory: sdk-runtime-generator~
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-
-          echo "=== web-framework 버전 고정: ${VERSION} ==="
-
-          # package.json에서 web-framework 버전 고정
-          jq --arg v "$VERSION" '.dependencies["@apps-in-toss/web-framework"] = $v' package.json > tmp.json
-          mv tmp.json package.json
-
-          # 내부 레지스트리 참조가 있는 lockfile 삭제 후 공개 레지스트리에서 새로 생성
-          rm -f pnpm-lock.yaml
-
-          echo "의존성 설치 중 (공개 npm 레지스트리 사용)..."
-          pnpm install --registry https://registry.npmjs.org
-
-          echo "SDK 코드 생성 중..."
-          pnpm generate
-
-          echo "SDK 코드 생성 완료"
-
-      - name: 루트 package.json 버전 업데이트
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-
-          jq --arg v "$VERSION" '.version = $v' package.json > tmp.json
-          mv tmp.json package.json
-
-          echo "package.json 버전: ${VERSION}"
-
       - name: 릴리즈 커밋 생성
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
+          VERSION="${{ needs.release.outputs.version }}"
 
-          # 변경사항이 있으면 커밋
-          if ! git diff --quiet || ! git diff --staged --quiet; then
-            git add -A
-            git commit -m "릴리즈: v${VERSION}
+          git add -A
+          git commit -m "릴리즈: v${VERSION} (UPM 패키지)
 
           Apps in Toss Unity SDK v${VERSION}
-          - @apps-in-toss/web-framework v${VERSION} 기반
+          - UPM 패키지용 정리된 릴리즈
+          - 개발/테스트 파일 제외
 
           Generated at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            echo "릴리즈 커밋 생성 완료"
-          else
-            echo "변경사항 없음 - 기존 커밋 사용"
-          fi
+
+          echo "릴리즈 커밋 생성 완료"
 
       - name: 릴리즈 태그 생성
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          TAG_NAME="${{ steps.version.outputs.tag_name }}"
+          VERSION="${{ needs.release.outputs.version }}"
+          TAG_NAME="${{ needs.release.outputs.tag_name }}"
 
           echo "=== 릴리즈 태그 생성: ${TAG_NAME} ==="
 
           # 기존 태그가 있으면 삭제 (upsert)
           git push origin --delete "${TAG_NAME}" 2>/dev/null || true
 
-          # main 브랜치의 현재 HEAD에 태그 생성
           git tag -f "${TAG_NAME}" -m "릴리즈: v${VERSION}
 
           Apps in Toss Unity SDK v${VERSION}
@@ -161,21 +168,17 @@ jobs:
 
       - name: 태그 푸시
         run: |
-          TAG_NAME="${{ steps.version.outputs.tag_name }}"
-
-          # 태그 푸시 (force - upsert)
+          TAG_NAME="${{ needs.release.outputs.tag_name }}"
           git push -f origin "refs/tags/${TAG_NAME}:refs/tags/${TAG_NAME}"
-
           echo "태그 푸시 완료: ${TAG_NAME}"
 
       - name: GitHub Release 생성/업데이트
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          TAG_NAME="${{ steps.version.outputs.tag_name }}"
+          VERSION="${{ needs.release.outputs.version }}"
+          TAG_NAME="${{ needs.release.outputs.tag_name }}"
 
-          # 릴리즈 노트 생성
           RELEASE_BODY=$(cat <<EOF
           ## Apps in Toss Unity SDK v${VERSION}
 
@@ -203,7 +206,6 @@ jobs:
           # 기존 릴리즈가 있으면 삭제 (upsert)
           gh release delete "${TAG_NAME}" --yes 2>/dev/null || true
 
-          # 새 릴리즈 생성 (태그가 이미 push 되었으므로 --target 불필요)
           gh release create "${TAG_NAME}" \
             --title "v${VERSION}" \
             --notes "$RELEASE_BODY"
@@ -213,8 +215,8 @@ jobs:
 
       - name: 릴리즈 요약
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          TAG_NAME="${{ steps.version.outputs.tag_name }}"
+          VERSION="${{ needs.release.outputs.version }}"
+          TAG_NAME="${{ needs.release.outputs.tag_name }}"
 
           echo "## 릴리즈 완료" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -230,8 +232,8 @@ jobs:
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
 
     outputs:
-      version: ${{ steps.version.outputs.version }}
-      tag_name: ${{ steps.version.outputs.tag_name }}
+      version: ${{ needs.release.outputs.version }}
+      tag_name: ${{ needs.release.outputs.tag_name }}
 
   # =====================================================
   # AIT 패키지 배포
@@ -239,60 +241,16 @@ jobs:
   deploy-ait:
     name: AIT 패키지 배포
     runs-on: ubuntu-latest
-    needs: release
+    needs: [build-ait, create-release-tag]
     if: success()
 
     steps:
-      - name: PR에서 E2E 테스트 Run ID 찾기
-        id: find-run
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          # PR 머지 트리거인 경우 해당 PR의 Tests 워크플로우 Run을 찾음
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            PR_NUMBER="${{ github.event.pull_request.number }}"
-            HEAD_SHA="${{ github.event.pull_request.head.sha }}"
-
-            echo "PR #${PR_NUMBER}의 Tests 워크플로우 Run 찾는 중..."
-            echo "HEAD SHA: ${HEAD_SHA}"
-
-            # PR의 head commit에서 실행된 Tests 워크플로우 찾기
-            RUN_ID=$(gh api "repos/${{ github.repository }}/actions/workflows/tests.yml/runs?head_sha=${HEAD_SHA}&status=success" \
-              --jq '.workflow_runs[0].id' 2>/dev/null || echo "")
-
-            if [ -n "$RUN_ID" ] && [ "$RUN_ID" != "null" ]; then
-              echo "run_id=${RUN_ID}" >> $GITHUB_OUTPUT
-              echo "found=true" >> $GITHUB_OUTPUT
-              echo "✅ Tests 워크플로우 Run 찾음: ${RUN_ID}"
-            else
-              echo "found=false" >> $GITHUB_OUTPUT
-              echo "::warning::PR에서 Tests 워크플로우 Run을 찾을 수 없습니다"
-            fi
-          else
-            # workflow_dispatch인 경우 최근 성공한 Tests 워크플로우 찾기
-            RUN_ID=$(gh api "repos/${{ github.repository }}/actions/workflows/tests.yml/runs?status=success&per_page=1" \
-              --jq '.workflow_runs[0].id' 2>/dev/null || echo "")
-
-            if [ -n "$RUN_ID" ] && [ "$RUN_ID" != "null" ]; then
-              echo "run_id=${RUN_ID}" >> $GITHUB_OUTPUT
-              echo "found=true" >> $GITHUB_OUTPUT
-              echo "✅ 최근 Tests 워크플로우 Run 찾음: ${RUN_ID}"
-            else
-              echo "found=false" >> $GITHUB_OUTPUT
-              echo "::warning::Tests 워크플로우 Run을 찾을 수 없습니다"
-            fi
-          fi
-
       - name: AIT 패키지 다운로드
-        if: steps.find-run.outputs.found == 'true'
-        uses: dawidd6/action-download-artifact@v6
+        uses: actions/download-artifact@v4
         with:
-          workflow: tests.yml
-          run_id: ${{ steps.find-run.outputs.run_id }}
-          name: ait-package-.*
-          name_is_regexp: true
+          pattern: ait-package-*
           path: ait-packages/
-          if_no_artifact_found: warn
+          merge-multiple: true
 
       - name: 다운로드된 패키지 확인
         id: check-packages
@@ -318,13 +276,12 @@ jobs:
         env:
           AIT_DEPLOY_KEY: ${{ secrets.AIT_DEPLOY_KEY }}
         run: |
-          VERSION="${{ needs.release.outputs.version }}"
+          VERSION="${{ needs.create-release-tag.outputs.version }}"
           DEPLOYED=0
           FAILED=0
 
           echo "=== AIT 패키지 배포 시작 ==="
 
-          # AIT_DEPLOY_KEY가 없으면 스킵
           if [ -z "$AIT_DEPLOY_KEY" ]; then
             echo "::warning::AIT_DEPLOY_KEY가 설정되지 않았습니다. 배포를 건너뜁니다."
             exit 0
@@ -333,7 +290,6 @@ jobs:
           for ait_file in $(find ait-packages -name "*.ait" -type f); do
             echo "배포 중: ${ait_file}"
 
-            # curl을 사용하여 AIT 배포 API에 업로드
             HTTP_CODE=$(curl -s -o /tmp/response.txt -w "%{http_code}" \
               -X POST \
               -H "Authorization: Bearer ${AIT_DEPLOY_KEY}" \
@@ -366,15 +322,13 @@ jobs:
         env:
           DEPLOY_NOTIFY_URL: ${{ secrets.DEPLOY_NOTIFY_URL }}
         run: |
-          VERSION="${{ needs.release.outputs.version }}"
+          VERSION="${{ needs.create-release-tag.outputs.version }}"
 
-          # DEPLOY_NOTIFY_URL이 없으면 스킵
           if [ -z "$DEPLOY_NOTIFY_URL" ]; then
             echo "DEPLOY_NOTIFY_URL이 설정되지 않았습니다. 알림을 건너뜁니다."
             exit 0
           fi
 
-          # 배포 알림 전송
           curl -s -X POST "$DEPLOY_NOTIFY_URL" \
             -H "Content-Type: application/json" \
             -d "{\"version\": \"${VERSION}\", \"repository\": \"${{ github.repository }}\", \"status\": \"deployed\"}" \

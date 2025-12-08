@@ -166,14 +166,27 @@ jobs:
 
       - name: Verify Build Output
         run: |
-          DIST_PATH="Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/dist/web"
+          DIST_PATH="Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/dist"
           if [ -d "$DIST_PATH" ]; then
             echo "✅ Build output found"
+            echo "dist/ 내용:"
             ls -la "$DIST_PATH"
+            echo ""
+            echo "dist/web/ 내용:"
+            ls -la "$DIST_PATH/web" || true
           else
             echo "❌ Build output not found at $DIST_PATH"
             exit 1
           fi
+
+      # AITConvertCore.DoExport()가 생성한 dist/ 폴더를 artifact로 업로드
+      # release.yml에서 이 artifact를 다운받아 배포에 사용
+      - name: Upload AIT Build
+        uses: actions/upload-artifact@v5
+        with:
+          name: ait-dist-macos-${{ matrix.unity-version }}
+          path: Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/dist/
+          if-no-files-found: error
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -394,6 +407,15 @@ jobs:
             echo ::error::Build output not found at %DIST_PATH%
             exit /b 1
           )
+
+      # AITConvertCore.DoExport()가 생성한 dist/ 폴더를 artifact로 업로드
+      # release.yml에서 이 artifact를 다운받아 배포에 사용
+      - name: Upload AIT Build
+        uses: actions/upload-artifact@v5
+        with:
+          name: ait-dist-windows-${{ matrix.unity-version }}
+          path: Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/dist/
+          if-no-files-found: error
 
       - name: Setup Node.js
         uses: actions/setup-node@v6

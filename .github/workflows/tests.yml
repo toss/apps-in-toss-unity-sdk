@@ -24,10 +24,10 @@ on:
         type: string
         required: false
 
-# 동일 브랜치에서 새 실행 시 이전 실행 자동 취소
+# 동일 브랜치에서 새 실행 시 이전 실행 완료까지 대기
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   # =====================================================

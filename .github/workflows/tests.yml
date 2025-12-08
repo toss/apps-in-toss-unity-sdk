@@ -217,6 +217,37 @@ jobs:
           path: Tests~/E2E/tests/test-results/
           if-no-files-found: ignore
 
+      - name: Package AIT Build
+        if: success()
+        run: |
+          PROJECT_PATH="Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}"
+          DIST_PATH="${PROJECT_PATH}/ait-build/dist"
+          SDK_VERSION=$(jq -r '.version' package.json)
+
+          if [ -d "$DIST_PATH" ]; then
+            AIT_FILENAME="sample-unity-${{ matrix.unity-version }}-sdk-${SDK_VERSION}.ait"
+            echo "Packaging to: ${AIT_FILENAME}"
+
+            # zip으로 압축 (ait 확장자)
+            cd "$DIST_PATH"
+            zip -r "../../../${AIT_FILENAME}" .
+            cd -
+
+            echo "AIT_FILENAME=${AIT_FILENAME}" >> $GITHUB_ENV
+            echo "AIT_PATH=${PROJECT_PATH}/${AIT_FILENAME}" >> $GITHUB_ENV
+            echo "✅ Package created: ${AIT_FILENAME}"
+          else
+            echo "⚠️ Build output not found, skipping packaging"
+          fi
+
+      - name: Upload AIT Package
+        uses: actions/upload-artifact@v5
+        if: success() && env.AIT_PATH != ''
+        with:
+          name: ait-package-macos-${{ matrix.unity-version }}
+          path: ${{ env.AIT_PATH }}
+          if-no-files-found: warn
+
   # =====================================================
   # E2E Tests - Windows
   # =====================================================
@@ -448,6 +479,40 @@ jobs:
           name: test-results-windows-${{ matrix.unity-version }}
           path: Tests~/E2E/tests/test-results/
           if-no-files-found: ignore
+
+      - name: Package AIT Build
+        if: success()
+        shell: powershell
+        run: |
+          $projectPath = "Tests~\E2E\SampleUnityProject-${{ matrix.unity-version }}"
+          $distPath = "$projectPath\ait-build\dist"
+
+          $packageJson = Get-Content "package.json" -Raw | ConvertFrom-Json
+          $sdkVersion = $packageJson.version
+
+          if (Test-Path $distPath) {
+            $aitFilename = "sample-unity-${{ matrix.unity-version }}-sdk-$sdkVersion.ait"
+            Write-Host "Packaging to: $aitFilename"
+
+            # zip으로 압축 (ait 확장자)
+            $aitPath = "$projectPath\$aitFilename"
+            Compress-Archive -Path "$distPath\*" -DestinationPath $aitPath -Force
+
+            # GitHub Actions 환경변수 설정
+            "AIT_FILENAME=$aitFilename" | Out-File -FilePath $env:GITHUB_ENV -Append
+            "AIT_PATH=$aitPath" | Out-File -FilePath $env:GITHUB_ENV -Append
+            Write-Host "Package created: $aitFilename"
+          } else {
+            Write-Host "Build output not found, skipping packaging"
+          }
+
+      - name: Upload AIT Package
+        uses: actions/upload-artifact@v5
+        if: success() && env.AIT_PATH != ''
+        with:
+          name: ait-package-windows-${{ matrix.unity-version }}
+          path: ${{ env.AIT_PATH }}
+          if-no-files-found: warn
 
   # =====================================================
   # Test Report Summary

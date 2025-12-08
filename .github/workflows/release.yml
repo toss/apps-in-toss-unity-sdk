@@ -246,6 +246,21 @@ jobs:
     if: success()
 
     steps:
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install AIT CLI
+        run: |
+          pnpm install -g @apps-in-toss/web-framework
+          ait --version || echo "AIT CLI installed"
+
       - name: AIT 빌드 결과물 다운로드
         uses: actions/download-artifact@v4
         with:
@@ -261,7 +276,6 @@ jobs:
             ls -la ait-builds/
             echo ""
 
-            # 각 빌드의 web/ 폴더 확인
             BUILD_COUNT=0
             for build_dir in ait-builds/ait-dist-*/; do
               if [ -d "$build_dir" ]; then
@@ -289,6 +303,7 @@ jobs:
           fi
 
       - name: AIT 빌드 배포
+        id: deploy
         if: steps.check-packages.outputs.package_count > 0
         env:
           AIT_DEPLOY_KEY: ${{ secrets.AIT_DEPLOY_KEY }}
@@ -299,54 +314,127 @@ jobs:
           echo "버전: ${VERSION}"
           echo ""
 
-          # TODO: 실제 배포 API 형식 확인 필요
-          # AITConvertCore.DoExport()가 생성한 dist/ 폴더 내용을 배포해야 함
-          # 현재는 빌드 결과물만 artifact로 보존
-
           if [ -z "$AIT_DEPLOY_KEY" ]; then
-            echo "::notice::AIT_DEPLOY_KEY가 설정되지 않았습니다."
-            echo "빌드 결과물은 GitHub Actions artifact에서 다운로드 가능합니다."
-            exit 0
+            echo "::error::AIT_DEPLOY_KEY가 설정되지 않았습니다."
+            echo "deploy_results=" >> $GITHUB_OUTPUT
+            exit 1
           fi
 
-          echo "빌드 결과물 목록:"
+          # 배포 결과 저장용 변수
+          DEPLOY_RESULTS=""
+          HAS_FAILURE=false
+
           for build_dir in ait-builds/ait-dist-*/; do
             if [ -d "$build_dir" ]; then
               BUILD_NAME=$(basename "$build_dir")
+              # ait-dist-{os}-{unity-version} 형식에서 OS와 버전 추출
+              OS=$(echo "$BUILD_NAME" | sed 's/ait-dist-\([^-]*\)-.*/\1/')
+              UNITY_VERSION=$(echo "$BUILD_NAME" | sed 's/ait-dist-[^-]*-//')
+
+              # OS 이름 정규화
+              case "$OS" in
+                macos) OS_DISPLAY="macOS" ;;
+                windows) OS_DISPLAY="Windows" ;;
+                *) OS_DISPLAY="$OS" ;;
+              esac
+
               echo ""
               echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-              echo "빌드: ${BUILD_NAME}"
+              echo "배포: ${OS_DISPLAY} - Unity ${UNITY_VERSION}"
               echo "경로: ${build_dir}"
 
-              if [ -d "${build_dir}web" ]; then
-                WEB_SIZE=$(du -sh "${build_dir}web" | cut -f1)
-                echo "web/ 폴더 크기: ${WEB_SIZE}"
-                echo "파일 목록:"
-                ls -la "${build_dir}web" | head -15
+              # dist 폴더 내의 .ait 파일 또는 배포 가능한 파일 찾기
+              # AITConvertCore.DoExport()가 생성한 결과물 구조에 따라 조정 필요
+              AIT_FILE=""
+
+              # .ait 파일이 있는지 확인
+              if ls "${build_dir}"*.ait 1> /dev/null 2>&1; then
+                AIT_FILE=$(ls "${build_dir}"*.ait | head -1)
+              elif ls "${build_dir}"*.android.js 1> /dev/null 2>&1; then
+                # granite 빌드 결과물인 경우 - dist 폴더 자체를 배포
+                AIT_FILE="${build_dir}"
+              fi
+
+              if [ -n "$AIT_FILE" ]; then
+                echo "배포 대상: ${AIT_FILE}"
+
+                # ait deploy 실행
+                DEPLOY_OUTPUT=$(ait deploy --api-key "$AIT_DEPLOY_KEY" "$AIT_FILE" 2>&1) && DEPLOY_STATUS=0 || DEPLOY_STATUS=$?
+
+                echo "$DEPLOY_OUTPUT"
+
+                if [ $DEPLOY_STATUS -eq 0 ]; then
+                  # 배포 성공 - URL 추출 시도
+                  DEPLOY_URL=$(echo "$DEPLOY_OUTPUT" | grep -oE 'intoss-private://[^ ]+' | head -1 || echo "")
+                  if [ -z "$DEPLOY_URL" ]; then
+                    DEPLOY_URL=$(echo "$DEPLOY_OUTPUT" | grep -oE 'https?://[^ ]+' | head -1 || echo "SUCCESS")
+                  fi
+                  echo "✅ 배포 성공: ${DEPLOY_URL}"
+                  DEPLOY_RESULTS="${DEPLOY_RESULTS}${OS_DISPLAY} - ${UNITY_VERSION}: ${DEPLOY_URL}\n"
+                else
+                  echo "❌ 배포 실패"
+                  DEPLOY_RESULTS="${DEPLOY_RESULTS}${OS_DISPLAY} - ${UNITY_VERSION}: FAILED\n"
+                  HAS_FAILURE=true
+                fi
+              else
+                echo "::warning::배포 가능한 파일을 찾을 수 없습니다: ${build_dir}"
+                DEPLOY_RESULTS="${DEPLOY_RESULTS}${OS_DISPLAY} - ${UNITY_VERSION}: FAILED (no deployable file)\n"
+                HAS_FAILURE=true
               fi
             fi
           done
 
-          echo ""
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "## AIT 빌드 결과" >> $GITHUB_STEP_SUMMARY
-          echo "빌드 완료. artifact에서 다운로드 가능." >> $GITHUB_STEP_SUMMARY
+          # 결과 저장
+          echo "deploy_results<<EOF" >> $GITHUB_OUTPUT
+          echo -e "$DEPLOY_RESULTS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+          if [ "$HAS_FAILURE" = true ]; then
+            echo "has_failure=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_failure=false" >> $GITHUB_OUTPUT
+          fi
+
+          # Step Summary 작성
+          echo "## AIT 배포 결과" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "배포 API 연동은 추후 구현 예정." >> $GITHUB_STEP_SUMMARY
+          echo "| 플랫폼 | Unity 버전 | 상태 |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-----------|------|" >> $GITHUB_STEP_SUMMARY
+
+          echo -e "$DEPLOY_RESULTS" | while IFS= read -r line; do
+            if [ -n "$line" ]; then
+              PLATFORM=$(echo "$line" | cut -d: -f1 | xargs)
+              STATUS=$(echo "$line" | cut -d: -f2- | xargs)
+              if [[ "$STATUS" == *"FAILED"* ]]; then
+                echo "| ${PLATFORM} | ❌ ${STATUS} |" >> $GITHUB_STEP_SUMMARY
+              else
+                echo "| ${PLATFORM} | ✅ ${STATUS} |" >> $GITHUB_STEP_SUMMARY
+              fi
+            fi
+          done
 
       - name: 배포 알림 전송
         if: always() && steps.check-packages.outputs.package_count > 0
         env:
-          DEPLOY_NOTIFY_URL: ${{ secrets.DEPLOY_NOTIFY_URL }}
+          DEPLOY_WEBHOOK_URL: "https://ipd-public-gateway.core.toss-internal.com/api-public/v3/ipd-public-gateway/webhooks/ipd-corp-core-automation-webhook/8b6db539-6cb4-4b99-b2a8-8981c43b2592"
         run: |
           VERSION="${{ needs.create-release-tag.outputs.version }}"
+          DEPLOY_RESULTS="${{ steps.deploy.outputs.deploy_results }}"
 
-          if [ -z "$DEPLOY_NOTIFY_URL" ]; then
-            echo "DEPLOY_NOTIFY_URL이 설정되지 않았습니다. 알림을 건너뜁니다."
-            exit 0
+          if [ -z "$DEPLOY_RESULTS" ]; then
+            DEPLOY_RESULTS="배포 결과 없음"
           fi
 
-          curl -s -X POST "$DEPLOY_NOTIFY_URL" \
+          echo "=== 배포 알림 전송 ==="
+          echo "버전: ${VERSION}"
+          echo "결과:"
+          echo -e "$DEPLOY_RESULTS"
+
+          # JSON 이스케이프 처리
+          ESCAPED_RESULTS=$(echo -e "$DEPLOY_RESULTS" | sed 's/"/\\"/g' | tr '\n' ' ')
+
+          curl -s -X POST "$DEPLOY_WEBHOOK_URL" \
             -H "Content-Type: application/json" \
-            -d "{\"version\": \"${VERSION}\", \"repository\": \"${{ github.repository }}\", \"status\": \"deployed\"}" \
+            -d "{\"version\": \"${VERSION}\", \"urlsForEdition\": \"${ESCAPED_RESULTS}\"}" \
+            && echo "✅ 알림 전송 완료" \
             || echo "::warning::알림 전송 실패"

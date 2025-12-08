@@ -361,9 +361,30 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       serverProcess = null;
     }
 
-    // 결과 저장
+    // 결과 저장 (두 가지 파일)
+    // 1. 전체 테스트 결과
     const resultsPath = path.resolve(__dirname, 'e2e-test-results.json');
     fs.writeFileSync(resultsPath, JSON.stringify(testResults, null, 2));
+
+    // 2. 벤치마크 결과 (workflow에서 업로드하는 파일)
+    const benchmarkPath = path.resolve(__dirname, 'benchmark-results.json');
+    const benchmarkResults = {
+      timestamp: testResults.timestamp,
+      unityProject: SAMPLE_PROJECT,
+      buildSize: testResults.tests['1_webgl_build']?.buildSizeMB,
+      pageLoadTime: testResults.tests['5_production_server']?.pageLoadTimeMs || testResults.tests['6_benchmarks']?.pageLoadTimeMs,
+      unityLoadTime: testResults.tests['6_benchmarks']?.unityLoadTimeMs,
+      webgl: testResults.tests['5_production_server']?.webgl,
+      benchmarkData: testResults.tests['6_benchmarks']?.benchmarkData,
+      apiTestResults: testResults.tests['7_runtime_api'] ? {
+        totalAPIs: testResults.tests['7_runtime_api'].totalAPIs,
+        successCount: testResults.tests['7_runtime_api'].successCount,
+        unexpectedErrorCount: testResults.tests['7_runtime_api'].unexpectedErrorCount
+      } : null,
+      testsPassed: Object.values(testResults.tests || {}).filter(t => t.passed).length,
+      testsTotal: Object.keys(testResults.tests || {}).length
+    };
+    fs.writeFileSync(benchmarkPath, JSON.stringify(benchmarkResults, null, 2));
 
     // stdout으로 결과 출력
     console.log('\n');

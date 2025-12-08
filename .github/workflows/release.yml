@@ -203,11 +203,10 @@ jobs:
           # 기존 릴리즈가 있으면 삭제 (upsert)
           gh release delete "${TAG_NAME}" --yes 2>/dev/null || true
 
-          # 새 릴리즈 생성
+          # 새 릴리즈 생성 (태그가 이미 push 되었으므로 --target 불필요)
           gh release create "${TAG_NAME}" \
             --title "v${VERSION}" \
-            --notes "$RELEASE_BODY" \
-            --target "${TAG_NAME}"
+            --notes "$RELEASE_BODY"
 
           echo "GitHub Release 생성 완료"
           echo "URL: https://github.com/${{ github.repository }}/releases/tag/${TAG_NAME}"

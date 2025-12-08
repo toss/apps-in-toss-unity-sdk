@@ -235,11 +235,19 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
 
           if [ "$SKIP" = "true" ]; then
-            echo "⏭️ 업데이트 스킵됨 (이미 최신 버전 또는 열린 PR 존재)" >> $GITHUB_STEP_SUMMARY
+            echo "⏭️ **업데이트 스킵됨**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "이미 최신 버전이거나 동일 버전의 열린 PR이 존재합니다." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "> E2E 테스트가 스킵되었습니다 (변경사항 없음)" >> $GITHUB_STEP_SUMMARY
           elif [ "$NO_CHANGES" = "true" ]; then
-            echo "⏭️ 변경사항 없음" >> $GITHUB_STEP_SUMMARY
+            echo "⏭️ **변경사항 없음**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "SDK 재생성 결과 기존 코드와 동일합니다." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "> E2E 테스트가 스킵되었습니다 (변경사항 없음)" >> $GITHUB_STEP_SUMMARY
           elif [ -n "$PR_URL" ]; then
-            echo "✅ PR 생성 완료" >> $GITHUB_STEP_SUMMARY
+            echo "✅ **PR 생성 완료**" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "| 항목 | 값 |" >> $GITHUB_STEP_SUMMARY
             echo "|------|-----|" >> $GITHUB_STEP_SUMMARY
@@ -248,7 +256,7 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "E2E 테스트가 자동으로 실행됩니다." >> $GITHUB_STEP_SUMMARY
           else
-            echo "❌ 처리 실패" >> $GITHUB_STEP_SUMMARY
+            echo "❌ **처리 실패**" >> $GITHUB_STEP_SUMMARY
           fi
 
   # =====================================================

@@ -20,43 +20,31 @@ function findSampleProject() {
 const SAMPLE_PROJECT = findSampleProject();
 const AIT_BUILD = path.resolve(SAMPLE_PROJECT, 'ait-build');
 
-// Unity 버전별 포트 오프셋 (e2e-full-pipeline.test.js와 동일한 로직)
-// 2021.3 → 0, 2022.3 → 1, 6000.0 → 2, 6000.2 → 3
+// Unity 버전별 포트 오프셋 계산
 function getPortOffsetFromUnityVersion(projectPath) {
-  const match = projectPath.match(/(\d{4})\.(\d+)/);
-  if (!match) return 0;
-
-  const major = parseInt(match[1], 10);
-  const minor = parseInt(match[2], 10);
-
-  if (major === 2021) return 0;
-  if (major === 2022) return 1;
-  if (major === 6000 && minor === 0) return 2;
-  if (major === 6000 && minor === 2) return 3;
+  if (projectPath.includes('2021.3')) return 0;
+  if (projectPath.includes('2022.3')) return 1;
+  if (projectPath.includes('6000.0')) return 2;
+  if (projectPath.includes('6000.2')) return 3;
   return 0;
 }
 
 const PORT_OFFSET = getPortOffsetFromUnityVersion(SAMPLE_PROJECT);
-// e2e-full-pipeline.test.js는 4173+offset, 여기서는 5173+offset 사용
-// 두 테스트 파일이 다른 포트 범위를 사용하므로 충돌 없음
-const DEFAULT_PORT = 5173 + PORT_OFFSET;
-console.log(`📦 Unity project: ${SAMPLE_PROJECT}`);
-console.log(`🔌 Interactive test port: ${DEFAULT_PORT} (offset: ${PORT_OFFSET})`);
+const VITE_DEV_PORT = 5173 + PORT_OFFSET;  // vite dev 서버 포트
 
 let serverProcess = null;
-let actualServerPort = DEFAULT_PORT;
+let actualServerPort = VITE_DEV_PORT;
 
 /**
- * Dev 서버 시작
- * 포트 충돌은 GitHub Actions의 job-level concurrency로 방지됨
+ * Dev 서버 시작 (npx vite --host --port)
  */
-async function startServer(aitBuildDir, port) {
-  console.log(`🔌 Starting server on port: ${port}`);
+async function startServer(aitBuildDir, vitePort) {
+  console.log(`🔌 Using vite port: ${vitePort} (offset: ${PORT_OFFSET})`);
 
   return new Promise((resolve, reject) => {
-    // Windows에서 spawn('npm', ...)이 ENOENT 에러 발생하므로 shell: true 사용
-    // 포트를 명시적으로 지정하여 granite dev에 전달
-    const server = spawn('npm', ['run', 'dev', '--', '--port', String(port)], {
+    // npx vite 직접 실행 (granite는 --port 인자를 무시하므로 vite 직접 호출)
+    // Windows에서 spawn('npx', ...)이 ENOENT 에러 발생하므로 shell: true 사용
+    const server = spawn('npx', ['vite', '--host', '--port', String(vitePort)], {
       cwd: aitBuildDir,
       stdio: 'pipe',
       shell: true,
@@ -64,13 +52,15 @@ async function startServer(aitBuildDir, port) {
     });
 
     let started = false;
-    let actualPort = port;
+    let actualPort = vitePort;
 
     server.stdout.on('data', (data) => {
       const output = data.toString();
-      console.log('[dev server]', output);
+      console.log('[vite dev]', output);
 
-      const portMatch = output.match(/localhost:(\d+)/);
+      // ANSI 색상 코드 제거 후 포트 파싱
+      const cleanOutput = output.replace(/\x1B\[[0-9;]*[mGKH]/g, '');
+      const portMatch = cleanOutput.match(/localhost:(\d+)/);
       if (portMatch && !started) {
         actualPort = parseInt(portMatch[1], 10);
         console.log(`📍 Server running on port: ${actualPort}`);
@@ -80,7 +70,7 @@ async function startServer(aitBuildDir, port) {
     });
 
     server.stderr.on('data', (data) => {
-      console.error('[dev server error]', data.toString());
+      console.error('[vite dev error]', data.toString());
     });
 
     server.on('error', reject);
@@ -97,15 +87,9 @@ async function startServer(aitBuildDir, port) {
 test.describe('Interactive API Tester', () => {
   test.beforeAll(async () => {
     console.log('🚀 Starting dev server for interactive mode test...');
-    console.log(`📁 Sample Project: ${SAMPLE_PROJECT}`);
-    console.log(`📁 AIT Build: ${AIT_BUILD}`);
-    console.log(`🔌 Default port: ${DEFAULT_PORT} (offset: ${PORT_OFFSET})`);
-
-    const devServer = await startServer(AIT_BUILD, DEFAULT_PORT);
+    const devServer = await startServer(AIT_BUILD, VITE_DEV_PORT);
     serverProcess = devServer.process;
     actualServerPort = devServer.port;
-
-    console.log(`✅ Server started on port: ${actualServerPort}`);
 
     // 서버 준비 대기
     await new Promise(r => setTimeout(r, 3000));
@@ -119,7 +103,7 @@ test.describe('Interactive API Tester', () => {
   });
 
   test('Interactive mode (without ?e2e=true) should load InteractiveAPITester', async ({ page }) => {
-    test.setTimeout(60000);
+    test.setTimeout(180000);  // 3분 (Unity 6000.x는 초기화가 더 오래 걸릴 수 있음)
 
     // 콘솔 로그 캡처
     const consoleLogs = [];
@@ -133,13 +117,13 @@ test.describe('Interactive API Tester', () => {
     console.log(`📍 Loading page: http://localhost:${actualServerPort}`);
     await page.goto(`http://localhost:${actualServerPort}`, {
       waitUntil: 'domcontentloaded',
-      timeout: 30000
+      timeout: 60000
     });
 
-    // Unity 초기화 대기
+    // Unity 초기화 대기 (Unity 6000.x는 더 오래 걸릴 수 있음)
     await page.waitForFunction(() => {
       return window['unityInstance'] !== undefined;
-    }, { timeout: 30000 });
+    }, { timeout: 120000 });
 
     console.log('✅ Unity instance initialized');
 
@@ -167,7 +151,7 @@ test.describe('Interactive API Tester', () => {
   });
 
   test('E2E mode (with ?e2e=true) should load AutoBenchmarkRunner', async ({ page }) => {
-    test.setTimeout(60000);
+    test.setTimeout(180000);  // 3분 (Unity 6000.x는 초기화가 더 오래 걸릴 수 있음)
 
     const consoleLogs = [];
     page.on('console', msg => {
@@ -180,13 +164,13 @@ test.describe('Interactive API Tester', () => {
     console.log(`📍 Loading page: http://localhost:${actualServerPort}?e2e=true`);
     await page.goto(`http://localhost:${actualServerPort}?e2e=true`, {
       waitUntil: 'domcontentloaded',
-      timeout: 30000
+      timeout: 60000
     });
 
-    // Unity 초기화 대기
+    // Unity 초기화 대기 (Unity 6000.x는 더 오래 걸릴 수 있음)
     await page.waitForFunction(() => {
       return window['unityInstance'] !== undefined;
-    }, { timeout: 30000 });
+    }, { timeout: 120000 });
 
     console.log('✅ Unity instance initialized');
 

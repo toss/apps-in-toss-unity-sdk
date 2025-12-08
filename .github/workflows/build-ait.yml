@@ -100,42 +100,27 @@ jobs:
 
       - name: Verify Build Output
         run: |
-          DIST_PATH="Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/dist/web"
+          DIST_PATH="Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/dist"
           if [ -d "$DIST_PATH" ]; then
             echo "✅ Build output found"
+            echo "dist/ 내용:"
             ls -la "$DIST_PATH"
+            echo ""
+            echo "dist/web/ 내용:"
+            ls -la "$DIST_PATH/web" || true
           else
             echo "❌ Build output not found at $DIST_PATH"
             exit 1
           fi
 
-      - name: Package AIT Build
-        run: |
-          PROJECT_PATH="Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}"
-          DIST_PATH="${PROJECT_PATH}/ait-build/dist"
-          SDK_VERSION="${{ inputs.version }}"
-
-          if [ -d "$DIST_PATH" ]; then
-            AIT_FILENAME="sample-unity-${{ matrix.unity-version }}-sdk-${SDK_VERSION}.ait"
-            echo "Packaging to: ${AIT_FILENAME}"
-
-            cd "$DIST_PATH"
-            zip -r "../../${AIT_FILENAME}" .
-            cd -
-
-            echo "AIT_FILENAME=${AIT_FILENAME}" >> $GITHUB_ENV
-            echo "AIT_PATH=${PROJECT_PATH}/${AIT_FILENAME}" >> $GITHUB_ENV
-            echo "✅ Package created: ${AIT_FILENAME}"
-          else
-            echo "❌ Build output not found at ${DIST_PATH}"
-            exit 1
-          fi
+      # NOTE: AITConvertCore.DoExport()가 이미 ait-build/dist/에 패키징된 결과물 생성
+      # 별도의 zip 패키징 불필요 - granite 빌드 결과물을 그대로 업로드
 
       - name: Upload AIT Package
         uses: actions/upload-artifact@v5
         with:
-          name: ait-package-macos-${{ matrix.unity-version }}
-          path: ${{ env.AIT_PATH }}
+          name: ait-dist-macos-${{ matrix.unity-version }}
+          path: Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/dist/
           if-no-files-found: error
 
   # =====================================================
@@ -302,43 +287,25 @@ jobs:
         shell: cmd
         run: |
           @echo off
-          set "DIST_PATH=Tests~\E2E\SampleUnityProject-${{ matrix.unity-version }}\ait-build\dist\web"
+          set "DIST_PATH=Tests~\E2E\SampleUnityProject-${{ matrix.unity-version }}\ait-build\dist"
           if exist "%DIST_PATH%" (
             echo Build output found
+            echo dist\ 내용:
             dir "%DIST_PATH%"
+            echo.
+            echo dist\web\ 내용:
+            dir "%DIST_PATH%\web" 2>nul || echo (web 폴더 없음)
           ) else (
             echo ::error::Build output not found at %DIST_PATH%
             exit /b 1
           )
 
-      - name: Package AIT Build
-        shell: powershell
-        run: |
-          $projectPath = "Tests~\E2E\SampleUnityProject-${{ matrix.unity-version }}"
-          $distPath = "$projectPath\ait-build\dist"
-          $sdkVersion = "${{ inputs.version }}"
-
-          if (Test-Path $distPath) {
-            $aitFilename = "sample-unity-${{ matrix.unity-version }}-sdk-$sdkVersion.ait"
-            $zipFilename = "sample-unity-${{ matrix.unity-version }}-sdk-$sdkVersion.zip"
-            Write-Host "Packaging to: $aitFilename"
-
-            $zipPath = "$projectPath\$zipFilename"
-            $aitPath = "$projectPath\$aitFilename"
-            Compress-Archive -Path "$distPath\*" -DestinationPath $zipPath -Force
-            Move-Item -Path $zipPath -Destination $aitPath -Force
-
-            "AIT_FILENAME=$aitFilename" | Out-File -FilePath $env:GITHUB_ENV -Append
-            "AIT_PATH=$aitPath" | Out-File -FilePath $env:GITHUB_ENV -Append
-            Write-Host "✅ Package created: $aitFilename"
-          } else {
-            Write-Host "::error::Build output not found at $distPath"
-            exit 1
-          }
+      # NOTE: AITConvertCore.DoExport()가 이미 ait-build/dist/에 패키징된 결과물 생성
+      # 별도의 zip 패키징 불필요 - granite 빌드 결과물을 그대로 업로드
 
       - name: Upload AIT Package
         uses: actions/upload-artifact@v5
         with:
-          name: ait-package-windows-${{ matrix.unity-version }}
-          path: ${{ env.AIT_PATH }}
+          name: ait-dist-windows-${{ matrix.unity-version }}
+          path: Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/dist/
           if-no-files-found: error

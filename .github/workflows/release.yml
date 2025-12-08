@@ -246,114 +246,93 @@ jobs:
     if: success()
 
     steps:
-      - name: AIT 패키지 다운로드
+      - name: AIT 빌드 결과물 다운로드
         uses: actions/download-artifact@v4
         with:
-          pattern: ait-package-*
-          path: ait-packages/
-          merge-multiple: true
+          pattern: ait-dist-*
+          path: ait-builds/
 
-      - name: 다운로드된 패키지 확인
+      - name: 다운로드된 빌드 확인
         id: check-packages
         run: |
-          echo "=== 다운로드된 AIT 패키지 ==="
-          if [ -d "ait-packages" ]; then
-            find ait-packages -name "*.ait" -type f | head -20
-            PACKAGE_COUNT=$(find ait-packages -name "*.ait" -type f | wc -l)
-            echo "package_count=${PACKAGE_COUNT}" >> $GITHUB_OUTPUT
+          echo "=== 다운로드된 AIT 빌드 결과물 ==="
+          if [ -d "ait-builds" ]; then
+            echo "빌드 목록:"
+            ls -la ait-builds/
+            echo ""
 
-            if [ "$PACKAGE_COUNT" -gt 0 ]; then
-              echo "✅ ${PACKAGE_COUNT}개 AIT 패키지 발견"
+            # 각 빌드의 web/ 폴더 확인
+            BUILD_COUNT=0
+            for build_dir in ait-builds/ait-dist-*/; do
+              if [ -d "$build_dir" ]; then
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                echo "빌드: $(basename $build_dir)"
+                ls -la "$build_dir"
+                if [ -d "${build_dir}web" ]; then
+                  echo "web/ 폴더:"
+                  ls -la "${build_dir}web" | head -10
+                  BUILD_COUNT=$((BUILD_COUNT + 1))
+                fi
+              fi
+            done
+
+            echo "package_count=${BUILD_COUNT}" >> $GITHUB_OUTPUT
+
+            if [ "$BUILD_COUNT" -gt 0 ]; then
+              echo "✅ ${BUILD_COUNT}개 AIT 빌드 발견"
             else
-              echo "::warning::AIT 패키지가 없습니다"
+              echo "::warning::유효한 AIT 빌드가 없습니다"
             fi
           else
-            echo "::warning::ait-packages 디렉토리가 없습니다"
+            echo "::warning::ait-builds 디렉토리가 없습니다"
             echo "package_count=0" >> $GITHUB_OUTPUT
           fi
 
-      - name: AIT 패키지 배포
+      - name: AIT 빌드 배포
         if: steps.check-packages.outputs.package_count > 0
         env:
           AIT_DEPLOY_KEY: ${{ secrets.AIT_DEPLOY_KEY }}
         run: |
           VERSION="${{ needs.create-release-tag.outputs.version }}"
-          DEPLOYED=0
-          FAILED=0
 
-          echo "=== AIT 패키지 배포 시작 ==="
+          echo "=== AIT 빌드 배포 ==="
           echo "버전: ${VERSION}"
+          echo ""
+
+          # TODO: 실제 배포 API 형식 확인 필요
+          # AITConvertCore.DoExport()가 생성한 dist/ 폴더 내용을 배포해야 함
+          # 현재는 빌드 결과물만 artifact로 보존
 
           if [ -z "$AIT_DEPLOY_KEY" ]; then
-            echo "::warning::AIT_DEPLOY_KEY가 설정되지 않았습니다. 배포를 건너뜁니다."
+            echo "::notice::AIT_DEPLOY_KEY가 설정되지 않았습니다."
+            echo "빌드 결과물은 GitHub Actions artifact에서 다운로드 가능합니다."
             exit 0
           fi
 
-          # 배포 서버 연결 테스트
-          DEPLOY_URL="https://ait-deploy.toss.im/api/upload"
-          echo "배포 서버: ${DEPLOY_URL}"
-          echo "연결 테스트 중..."
-
-          if ! curl -sf --connect-timeout 10 --max-time 30 -o /dev/null "https://ait-deploy.toss.im/health" 2>/dev/null; then
-            echo "::warning::배포 서버 연결 실패 - health check 엔드포인트 없거나 서버 다운"
-            echo "DNS 확인:"
-            nslookup ait-deploy.toss.im || host ait-deploy.toss.im || echo "DNS 조회 실패"
-          fi
-
-          for ait_file in $(find ait-packages -name "*.ait" -type f); do
-            FILE_SIZE=$(stat -f%z "$ait_file" 2>/dev/null || stat -c%s "$ait_file" 2>/dev/null || echo "unknown")
-            echo ""
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            echo "배포 중: ${ait_file}"
-            echo "파일 크기: ${FILE_SIZE} bytes"
-
-            # curl 실행 (stderr도 캡처)
-            CURL_OUTPUT=$(mktemp)
-            HTTP_CODE=$(curl -v -o /tmp/response.txt -w "%{http_code}" \
-              --connect-timeout 30 \
-              --max-time 300 \
-              -X POST \
-              -H "Authorization: Bearer ${AIT_DEPLOY_KEY}" \
-              -H "Content-Type: application/octet-stream" \
-              -H "X-SDK-Version: ${VERSION}" \
-              --data-binary "@${ait_file}" \
-              "${DEPLOY_URL}" 2>"${CURL_OUTPUT}"; echo $?)
-
-            # curl 종료 코드 확인
-            CURL_EXIT=$?
-
-            if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "201" ]; then
-              echo "✅ 배포 성공: ${ait_file}"
-              DEPLOYED=$((DEPLOYED + 1))
-            else
-              echo "::error::배포 실패 (HTTP ${HTTP_CODE}): ${ait_file}"
+          echo "빌드 결과물 목록:"
+          for build_dir in ait-builds/ait-dist-*/; do
+            if [ -d "$build_dir" ]; then
+              BUILD_NAME=$(basename "$build_dir")
               echo ""
-              echo "=== curl 디버그 출력 ==="
-              cat "${CURL_OUTPUT}" | tail -50
-              echo ""
-              echo "=== 서버 응답 ==="
-              cat /tmp/response.txt 2>/dev/null || echo "(응답 없음)"
-              FAILED=$((FAILED + 1))
+              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+              echo "빌드: ${BUILD_NAME}"
+              echo "경로: ${build_dir}"
+
+              if [ -d "${build_dir}web" ]; then
+                WEB_SIZE=$(du -sh "${build_dir}web" | cut -f1)
+                echo "web/ 폴더 크기: ${WEB_SIZE}"
+                echo "파일 목록:"
+                ls -la "${build_dir}web" | head -15
+              fi
             fi
-
-            rm -f "${CURL_OUTPUT}"
           done
 
           echo ""
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "=== 배포 결과 ==="
-          echo "성공: ${DEPLOYED}개"
-          echo "실패: ${FAILED}개"
-
-          echo "## AIT 패키지 배포" >> $GITHUB_STEP_SUMMARY
-          echo "- 성공: ${DEPLOYED}개" >> $GITHUB_STEP_SUMMARY
-          echo "- 실패: ${FAILED}개" >> $GITHUB_STEP_SUMMARY
-
-          # 전체 실패 시 에러로 처리
-          if [ "$DEPLOYED" -eq 0 ] && [ "$FAILED" -gt 0 ]; then
-            echo "::error::모든 AIT 패키지 배포 실패"
-            exit 1
-          fi
+          echo "## AIT 빌드 결과" >> $GITHUB_STEP_SUMMARY
+          echo "빌드 완료. artifact에서 다운로드 가능." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "배포 API 연동은 추후 구현 예정." >> $GITHUB_STEP_SUMMARY
 
       - name: 배포 알림 전송
         if: always() && steps.check-packages.outputs.package_count > 0

@@ -223,7 +223,7 @@ jobs:
 
             # zip으로 압축 (ait 확장자)
             cd "$DIST_PATH"
-            zip -r "../../../${AIT_FILENAME}" .
+            zip -r "../../${AIT_FILENAME}" .
             cd -
 
             echo "AIT_FILENAME=${AIT_FILENAME}" >> $GITHUB_ENV

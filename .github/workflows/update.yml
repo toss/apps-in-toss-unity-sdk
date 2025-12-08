@@ -15,11 +15,6 @@ on:
   schedule:
     - cron: '0 0 * * 1-5'  # 평일 오전 9시 KST (UTC 0시)
 
-# 동시 실행 방지
-concurrency:
-  group: sdk-update
-  cancel-in-progress: false
-
 jobs:
   update:
     name: SDK 업데이트 PR 생성

@@ -11,11 +11,6 @@ on:
         required: true
         type: string
 
-# 동시 실행 방지
-concurrency:
-  group: release
-  cancel-in-progress: false
-
 jobs:
   # =====================================================
   # 릴리즈 생성 (태그 + GitHub Release)

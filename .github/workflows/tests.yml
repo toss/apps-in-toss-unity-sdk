@@ -326,7 +326,7 @@ jobs:
           setlocal enabledelayedexpansion
 
           set "UNITY_BASE=C:\Program Files\Unity\Hub\Editor"
-          set "VERSION_PATTERN=6000.2"
+          set "VERSION_PATTERN=${{ matrix.unity-version }}"
 
           echo Searching for Unity %VERSION_PATTERN%.x in %UNITY_BASE%...
 
@@ -362,7 +362,7 @@ jobs:
           AIT_DEBUG_CONSOLE: "true"
         run: |
           $unityPath = "${{ steps.unity.outputs.UNITY_PATH }}"
-          $projectPath = "${{ github.workspace }}\Tests~\E2E\SampleUnityProject-6000.2"
+          $projectPath = "${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ matrix.unity-version }}"
 
           Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           Write-Host "Unity Build Configuration"
@@ -372,7 +372,7 @@ jobs:
           Write-Host "Project Path: $projectPath"
           Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-          $logFile = "$env:TEMP\unity-build-6000.2.log"
+          $logFile = "$env:TEMP\unity-build-${{ matrix.unity-version }}.log"
           Write-Host "Starting Unity build..."
           Write-Host "Log file: $logFile"
 
@@ -418,7 +418,7 @@ jobs:
         shell: cmd
         run: |
           @echo off
-          set "DIST_PATH=Tests~\E2E\SampleUnityProject-6000.2\ait-build\dist\web"
+          set "DIST_PATH=Tests~\E2E\SampleUnityProject-${{ matrix.unity-version }}\ait-build\dist\web"
           if exist "%DIST_PATH%" (
             echo Build output found
             dir "%DIST_PATH%"
@@ -428,9 +428,9 @@ jobs:
           )
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: 18
+          node-version: 24
 
       - name: Install Playwright Dependencies
         working-directory: Tests~/E2E/tests
@@ -447,22 +447,22 @@ jobs:
         working-directory: Tests~/E2E/tests
         shell: cmd
         env:
-          UNITY_PROJECT_PATH: ${{ github.workspace }}\Tests~\E2E\SampleUnityProject-6000.2
+          UNITY_PROJECT_PATH: ${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ matrix.unity-version }}
         run: call npm test
 
       - name: Upload Benchmark Results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: always()
         with:
-          name: benchmark-results-windows-6000.2
+          name: benchmark-results-windows-${{ matrix.unity-version }}
           path: Tests~/E2E/tests/benchmark-results.json
           if-no-files-found: ignore
 
       - name: Upload Playwright Report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: always()
         with:
-          name: playwright-report-windows-6000.2
+          name: playwright-report-windows-${{ matrix.unity-version }}
           path: Tests~/E2E/tests/playwright-report/
           if-no-files-found: ignore
 
@@ -470,14 +470,14 @@ jobs:
         if: success()
         shell: powershell
         run: |
-          $projectPath = "Tests~\E2E\SampleUnityProject-6000.2"
+          $projectPath = "Tests~\E2E\SampleUnityProject-${{ matrix.unity-version }}"
           $distPath = "$projectPath\ait-build\dist"
 
           $packageJson = Get-Content "package.json" -Raw | ConvertFrom-Json
           $sdkVersion = $packageJson.version
 
           if (Test-Path $distPath) {
-            $aitFilename = "sample-unity-6000.2-sdk-$sdkVersion.ait"
+            $aitFilename = "sample-unity-${{ matrix.unity-version }}-sdk-$sdkVersion.ait"
             Write-Host "Packaging to: $aitFilename"
 
             # zip으로 압축 (ait 확장자)
@@ -493,10 +493,10 @@ jobs:
           }
 
       - name: Upload AIT Package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: success() && env.AIT_PATH != ''
         with:
-          name: ait-package-windows-6000.2
+          name: ait-package-windows-${{ matrix.unity-version }}
           path: ${{ env.AIT_PATH }}
           if-no-files-found: warn
 

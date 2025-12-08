@@ -23,7 +23,7 @@
   },
   "dependencies": {
     "@apps-in-toss/web-framework": "1.5.2",
-    "commander": "^12.1.0",
+    "commander": "^14.0.2",
     "handlebars": "^4.7.8",
     "picocolors": "^1.1.1",
     "ts-morph": "^27.0.2"

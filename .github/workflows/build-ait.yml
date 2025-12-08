@@ -1,0 +1,342 @@
+name: Build AIT
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: 'Git ref to checkout'
+        type: string
+        required: true
+      version:
+        description: 'SDK version for AIT filename'
+        type: string
+        required: true
+
+jobs:
+  # =====================================================
+  # AIT Build - macOS
+  # =====================================================
+  build-macos:
+    name: AIT Build (macOS, Unity ${{ matrix.unity-version }})
+    runs-on: [self-hosted, macOS, ARM64]
+    timeout-minutes: 60
+
+    concurrency:
+      group: build-ait-macos-${{ matrix.unity-version }}
+      cancel-in-progress: false
+
+    strategy:
+      fail-fast: false
+      matrix:
+        unity-version: ["2021.3", "2022.3", "6000.0", "6000.2"]
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Clean Previous Build Artifacts
+        run: |
+          PROJECT_PATH="Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}"
+          echo "Cleaning previous build artifacts..."
+          rm -rf "${PROJECT_PATH}/ait-build" 2>/dev/null || true
+          rm -rf "${PROJECT_PATH}/webgl" 2>/dev/null || true
+          echo "Done."
+
+      - name: Detect Unity Installation
+        id: unity
+        run: |
+          UNITY_BASE="/Applications/Unity/Hub/Editor"
+          UNITY_VERSION_PATTERN="${{ matrix.unity-version }}"
+
+          echo "Searching for Unity ${UNITY_VERSION_PATTERN}.x in ${UNITY_BASE}..."
+
+          UNITY_DIR=$(ls -d "${UNITY_BASE}/${UNITY_VERSION_PATTERN}"* 2>/dev/null | sort -rV | head -1)
+
+          if [ -z "$UNITY_DIR" ]; then
+            echo "::error::Unity ${UNITY_VERSION_PATTERN}.x not found"
+            echo "Available versions:"
+            ls -la "${UNITY_BASE}" 2>/dev/null || echo "Unity Hub Editor directory not found"
+            exit 1
+          fi
+
+          UNITY_PATH="${UNITY_DIR}/Unity.app/Contents/MacOS/Unity"
+
+          if [ ! -f "$UNITY_PATH" ]; then
+            echo "::error::Unity executable not found at ${UNITY_PATH}"
+            exit 1
+          fi
+
+          DETECTED_VERSION=$(basename "${UNITY_DIR}")
+          echo "✓ Found Unity ${DETECTED_VERSION}"
+          echo "  Path: ${UNITY_PATH}"
+
+          echo "UNITY_PATH=${UNITY_PATH}" >> $GITHUB_OUTPUT
+          echo "UNITY_VERSION=${DETECTED_VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Build Unity WebGL
+        env:
+          AIT_DEBUG_CONSOLE: "true"
+        run: |
+          UNITY_PATH="${{ steps.unity.outputs.UNITY_PATH }}"
+          PROJECT_PATH="${{ github.workspace }}/Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}"
+
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "Unity Build Configuration"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "Unity Version: ${{ steps.unity.outputs.UNITY_VERSION }}"
+          echo "Unity Path: ${UNITY_PATH}"
+          echo "Project Path: ${PROJECT_PATH}"
+          echo "SDK Version: ${{ inputs.version }}"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+          "$UNITY_PATH" -quit -batchmode -nographics \
+            -projectPath "$PROJECT_PATH" \
+            -executeMethod E2EBuildRunner.CommandLineBuild \
+            -buildTarget WebGL \
+            -logFile -
+
+      - name: Verify Build Output
+        run: |
+          DIST_PATH="Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/dist/web"
+          if [ -d "$DIST_PATH" ]; then
+            echo "✅ Build output found"
+            ls -la "$DIST_PATH"
+          else
+            echo "❌ Build output not found at $DIST_PATH"
+            exit 1
+          fi
+
+      - name: Package AIT Build
+        run: |
+          PROJECT_PATH="Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}"
+          DIST_PATH="${PROJECT_PATH}/ait-build/dist"
+          SDK_VERSION="${{ inputs.version }}"
+
+          if [ -d "$DIST_PATH" ]; then
+            AIT_FILENAME="sample-unity-${{ matrix.unity-version }}-sdk-${SDK_VERSION}.ait"
+            echo "Packaging to: ${AIT_FILENAME}"
+
+            cd "$DIST_PATH"
+            zip -r "../../${AIT_FILENAME}" .
+            cd -
+
+            echo "AIT_FILENAME=${AIT_FILENAME}" >> $GITHUB_ENV
+            echo "AIT_PATH=${PROJECT_PATH}/${AIT_FILENAME}" >> $GITHUB_ENV
+            echo "✅ Package created: ${AIT_FILENAME}"
+          else
+            echo "❌ Build output not found at ${DIST_PATH}"
+            exit 1
+          fi
+
+      - name: Upload AIT Package
+        uses: actions/upload-artifact@v5
+        with:
+          name: ait-package-macos-${{ matrix.unity-version }}
+          path: ${{ env.AIT_PATH }}
+          if-no-files-found: error
+
+  # =====================================================
+  # AIT Build - Windows
+  # =====================================================
+  build-windows:
+    name: AIT Build (Windows, Unity ${{ matrix.unity-version }})
+    runs-on: [self-hosted, Windows, X64, enabled]
+    timeout-minutes: 60
+
+    concurrency:
+      group: build-ait-windows-${{ matrix.unity-version }}
+      cancel-in-progress: false
+
+    strategy:
+      fail-fast: false
+      matrix:
+        unity-version: ["2021.3", "2022.3", "6000.0", "6000.2"]
+
+    steps:
+      - name: Configure Git Long Paths
+        shell: cmd
+        run: |
+          @echo off
+          setlocal enabledelayedexpansion
+          set MAX_RETRIES=5
+          set RETRY=0
+          :retry_loop
+          git config --global core.longPaths true 2>nul && (
+            echo Git longPaths configured successfully
+            exit /b 0
+          )
+          set /a RETRY+=1
+          if !RETRY! LSS %MAX_RETRIES% (
+            echo Retry !RETRY!/%MAX_RETRIES%...
+            timeout /t 2 /nobreak >nul
+            goto retry_loop
+          )
+          echo Git longPaths configuration completed
+          exit /b 0
+
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Exclude Project from Windows Defender
+        shell: cmd
+        continue-on-error: true
+        run: |
+          @echo off
+          powershell -Command "Add-MpPreference -ExclusionPath '${{ github.workspace }}' -ErrorAction SilentlyContinue" 2>nul
+          powershell -Command "Add-MpPreference -ExclusionPath 'C:\Program Files\Unity' -ErrorAction SilentlyContinue" 2>nul
+          echo Windows Defender exclusions configured (or skipped if no admin rights)
+          exit /b 0
+
+      - name: Clean Previous Build Artifacts
+        shell: cmd
+        run: |
+          @echo off
+          set "PROJECT_PATH=Tests~\E2E\SampleUnityProject-${{ matrix.unity-version }}"
+          echo Cleaning previous build artifacts...
+          if exist "%PROJECT_PATH%\ait-build" rmdir /s /q "%PROJECT_PATH%\ait-build"
+          if exist "%PROJECT_PATH%\webgl" rmdir /s /q "%PROJECT_PATH%\webgl"
+          echo Done.
+
+      - name: Detect Unity Installation
+        id: unity
+        shell: cmd
+        run: |
+          @echo off
+          setlocal enabledelayedexpansion
+
+          set "UNITY_BASE=C:\Program Files\Unity\Hub\Editor"
+          set "VERSION_PATTERN=${{ matrix.unity-version }}"
+
+          echo Searching for Unity %VERSION_PATTERN%.x in %UNITY_BASE%...
+
+          set "UNITY_DIR="
+          for /d %%d in ("%UNITY_BASE%\%VERSION_PATTERN%*") do (
+            set "UNITY_DIR=%%d"
+          )
+
+          if not defined UNITY_DIR (
+            echo ::error::Unity %VERSION_PATTERN%.x not found
+            echo Available versions:
+            dir /b "%UNITY_BASE%" 2>nul
+            exit /b 1
+          )
+
+          set "UNITY_PATH=%UNITY_DIR%\Editor\Unity.exe"
+
+          if not exist "%UNITY_PATH%" (
+            echo ::error::Unity executable not found at %UNITY_PATH%
+            exit /b 1
+          )
+
+          for %%i in ("%UNITY_DIR%") do set "DETECTED_VERSION=%%~nxi"
+          echo Found Unity %DETECTED_VERSION%
+          echo   Path: %UNITY_PATH%
+
+          echo UNITY_PATH=%UNITY_PATH%>> %GITHUB_OUTPUT%
+          echo UNITY_VERSION=%DETECTED_VERSION%>> %GITHUB_OUTPUT%
+
+      - name: Build Unity WebGL
+        shell: powershell -ExecutionPolicy Bypass -File {0}
+        env:
+          AIT_DEBUG_CONSOLE: "true"
+        run: |
+          $unityPath = "${{ steps.unity.outputs.UNITY_PATH }}"
+          $projectPath = "${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ matrix.unity-version }}"
+
+          Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          Write-Host "Unity Build Configuration"
+          Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          Write-Host "Unity Version: ${{ steps.unity.outputs.UNITY_VERSION }}"
+          Write-Host "Unity Path: $unityPath"
+          Write-Host "Project Path: $projectPath"
+          Write-Host "SDK Version: ${{ inputs.version }}"
+          Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+          $logFile = "$env:TEMP\unity-build-${{ matrix.unity-version }}.log"
+          Write-Host "Starting Unity build..."
+          Write-Host "Log file: $logFile"
+
+          $unityProcess = Start-Process -FilePath $unityPath -ArgumentList @(
+            "-quit", "-batchmode", "-nographics",
+            "-projectPath", $projectPath,
+            "-executeMethod", "E2EBuildRunner.CommandLineBuild",
+            "-buildTarget", "WebGL",
+            "-logFile", $logFile
+          ) -PassThru -NoNewWindow
+
+          Write-Host "Waiting for Unity build to complete..."
+          $lastSize = 0
+          while (-not $unityProcess.HasExited) {
+            Start-Sleep -Seconds 2
+            if (Test-Path $logFile) {
+              $content = Get-Content $logFile -Raw -ErrorAction SilentlyContinue
+              if ($content -and $content.Length -gt $lastSize) {
+                $newContent = $content.Substring($lastSize)
+                Write-Host $newContent
+                $lastSize = $content.Length
+              }
+            }
+          }
+
+          if (Test-Path $logFile) {
+            $content = Get-Content $logFile -Raw -ErrorAction SilentlyContinue
+            if ($content -and $content.Length -gt $lastSize) {
+              Write-Host $content.Substring($lastSize)
+            }
+          }
+
+          if ($unityProcess.ExitCode -ne 0) {
+            Write-Host "::error::Unity build failed with exit code: $($unityProcess.ExitCode)"
+            exit $unityProcess.ExitCode
+          }
+
+          Write-Host "Unity build completed successfully"
+
+      - name: Verify Build Output
+        shell: cmd
+        run: |
+          @echo off
+          set "DIST_PATH=Tests~\E2E\SampleUnityProject-${{ matrix.unity-version }}\ait-build\dist\web"
+          if exist "%DIST_PATH%" (
+            echo Build output found
+            dir "%DIST_PATH%"
+          ) else (
+            echo ::error::Build output not found at %DIST_PATH%
+            exit /b 1
+          )
+
+      - name: Package AIT Build
+        shell: powershell
+        run: |
+          $projectPath = "Tests~\E2E\SampleUnityProject-${{ matrix.unity-version }}"
+          $distPath = "$projectPath\ait-build\dist"
+          $sdkVersion = "${{ inputs.version }}"
+
+          if (Test-Path $distPath) {
+            $aitFilename = "sample-unity-${{ matrix.unity-version }}-sdk-$sdkVersion.ait"
+            $zipFilename = "sample-unity-${{ matrix.unity-version }}-sdk-$sdkVersion.zip"
+            Write-Host "Packaging to: $aitFilename"
+
+            $zipPath = "$projectPath\$zipFilename"
+            $aitPath = "$projectPath\$aitFilename"
+            Compress-Archive -Path "$distPath\*" -DestinationPath $zipPath -Force
+            Move-Item -Path $zipPath -Destination $aitPath -Force
+
+            "AIT_FILENAME=$aitFilename" | Out-File -FilePath $env:GITHUB_ENV -Append
+            "AIT_PATH=$aitPath" | Out-File -FilePath $env:GITHUB_ENV -Append
+            Write-Host "✅ Package created: $aitFilename"
+          } else {
+            Write-Host "::error::Build output not found at $distPath"
+            exit 1
+          }
+
+      - name: Upload AIT Package
+        uses: actions/upload-artifact@v5
+        with:
+          name: ait-package-windows-${{ matrix.unity-version }}
+          path: ${{ env.AIT_PATH }}
+          if-no-files-found: error

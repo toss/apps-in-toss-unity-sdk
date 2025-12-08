@@ -68,7 +68,8 @@ jobs:
 
             # 정규식으로 버전 부분만 추출 (semver 형식)
             # 1.5.20-20251207-192052 에서 1.5.20 추출
-            VERSION=$(echo "$VERSION_WITH_TIMESTAMP" | sed -E 's/^([0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?).*/\1/')
+            # prerelease 버전은 -alpha, -beta.1 등 문자로 시작 (-20251207은 타임스탬프)
+            VERSION=$(echo "$VERSION_WITH_TIMESTAMP" | sed -E 's/^([0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z][a-zA-Z0-9.]*)?).*/\1/')
 
             if [ -z "$VERSION" ] || ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+'; then
               echo "::error::브랜치 이름에서 버전을 추출할 수 없습니다: ${BRANCH_NAME}"
@@ -78,8 +79,8 @@ jobs:
             echo "추출된 버전: ${VERSION}"
           fi
 
-          # Semver 형식 검증
-          if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$'; then
+          # Semver 형식 검증 (prerelease는 문자로 시작)
+          if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z][a-zA-Z0-9.]*)?$'; then
             echo "::error::올바른 버전 형식이 아닙니다: ${VERSION}"
             exit 1
           fi

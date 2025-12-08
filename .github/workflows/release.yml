@@ -228,3 +228,197 @@ jobs:
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           echo "https://github.com/${{ github.repository }}.git#${TAG_NAME}" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag_name: ${{ steps.version.outputs.tag_name }}
+
+  # =====================================================
+  # AIT 패키지 배포
+  # PR에서 실행된 E2E 테스트의 아티팩트를 수집하여 배포
+  # =====================================================
+  deploy-ait:
+    name: AIT 패키지 배포
+    runs-on: ubuntu-latest
+    needs: release
+
+    steps:
+      - name: PR에서 E2E 테스트 Run ID 찾기
+        id: find-run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "수동 트리거 - 최근 성공한 Tests 워크플로우 검색"
+            # main 브랜치의 최근 성공한 Tests 워크플로우 찾기
+            RUN_ID=$(gh run list \
+              --repo ${{ github.repository }} \
+              --workflow "Tests" \
+              --branch main \
+              --status success \
+              --limit 1 \
+              --json databaseId \
+              --jq '.[0].databaseId')
+          else
+            # PR 머지 트리거 - 해당 PR의 head branch에서 실행된 워크플로우 찾기
+            PR_NUMBER="${{ github.event.pull_request.number }}"
+            HEAD_BRANCH="${{ github.event.pull_request.head.ref }}"
+            echo "PR #${PR_NUMBER} (${HEAD_BRANCH}) 에서 E2E 테스트 Run 검색"
+
+            # SDK Update 워크플로우에서 실행된 Tests 찾기 (workflow_call)
+            RUN_ID=$(gh run list \
+              --repo ${{ github.repository }} \
+              --workflow "SDK Update" \
+              --branch "${HEAD_BRANCH}" \
+              --status success \
+              --limit 1 \
+              --json databaseId \
+              --jq '.[0].databaseId')
+          fi
+
+          if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
+            echo "::warning::E2E 테스트 Run을 찾을 수 없습니다. AIT 배포를 건너뜁니다."
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "E2E 테스트 Run ID: ${RUN_ID}"
+            echo "run_id=${RUN_ID}" >> $GITHUB_OUTPUT
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: AIT 아티팩트 다운로드
+        if: steps.find-run.outputs.skip != 'true'
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          run_id: ${{ steps.find-run.outputs.run_id }}
+          name: ait-package-*
+          name_is_regexp: true
+          path: ait-packages
+          if_no_artifact_found: warn
+
+      - name: AIT 파일 목록 확인
+        if: steps.find-run.outputs.skip != 'true'
+        id: list-ait
+        run: |
+          echo "=== AIT 패키지 목록 ==="
+          if [ -d "ait-packages" ]; then
+            find ait-packages -name "*.ait" -type f | while read f; do
+              echo "  - $(basename "$f")"
+            done
+
+            AIT_COUNT=$(find ait-packages -name "*.ait" -type f | wc -l)
+            echo "총 ${AIT_COUNT}개의 AIT 파일 발견"
+            echo "count=${AIT_COUNT}" >> $GITHUB_OUTPUT
+
+            if [ "$AIT_COUNT" -eq 0 ]; then
+              echo "::warning::AIT 파일이 없습니다. 배포를 건너뜁니다."
+              echo "skip=true" >> $GITHUB_OUTPUT
+            else
+              echo "skip=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "ait-packages 디렉토리가 없습니다."
+            echo "count=0" >> $GITHUB_OUTPUT
+            echo "skip=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: AIT 패키지 배포
+        if: steps.find-run.outputs.skip != 'true' && steps.list-ait.outputs.skip != 'true'
+        id: deploy
+        env:
+          AIT_DEPLOY_KEY: ${{ secrets.AIT_DEPLOY_KEY }}
+        run: |
+          VERSION="${{ needs.release.outputs.version }}"
+          DEPLOY_RESULTS=""
+
+          echo "=== AIT 패키지 배포 시작 ==="
+
+          for ait_dir in ait-packages/ait-package-*/; do
+            if [ -d "$ait_dir" ]; then
+              AIT_FILE=$(find "$ait_dir" -name "*.ait" -type f | head -1)
+              if [ -n "$AIT_FILE" ]; then
+                FILENAME=$(basename "$AIT_FILE")
+                echo "배포 중: ${FILENAME}"
+
+                # granite deploy 명령 실행 (실제 배포 명령)
+                # 배포 결과로 intoss-private:// URL을 받아옴
+                DEPLOY_URL=$(curl -s -X POST \
+                  -H "Authorization: Bearer ${AIT_DEPLOY_KEY}" \
+                  -H "Content-Type: application/octet-stream" \
+                  --data-binary "@${AIT_FILE}" \
+                  "https://ait-deploy.toss.im/api/upload?version=${VERSION}&filename=${FILENAME}" \
+                  | jq -r '.url // empty')
+
+                if [ -n "$DEPLOY_URL" ]; then
+                  echo "✅ 배포 완료: ${FILENAME}"
+                  echo "   URL: ${DEPLOY_URL}"
+                  DEPLOY_RESULTS="${DEPLOY_RESULTS}${FILENAME}|${DEPLOY_URL}\n"
+                else
+                  echo "⚠️ 배포 실패: ${FILENAME}"
+                fi
+              fi
+            fi
+          done
+
+          # 결과 저장
+          echo -e "$DEPLOY_RESULTS" > deploy_results.txt
+          echo "deploy_done=true" >> $GITHUB_OUTPUT
+
+      - name: 배포 알림 전송
+        if: steps.deploy.outputs.deploy_done == 'true'
+        env:
+          DEPLOY_NOTIFY_URL: ${{ secrets.DEPLOY_NOTIFY_URL }}
+        run: |
+          VERSION="${{ needs.release.outputs.version }}"
+
+          echo "=== 배포 알림 전송 ==="
+
+          # deploy_results.txt에서 결과 읽기
+          URLS=""
+          while IFS='|' read -r filename url; do
+            if [ -n "$url" ]; then
+              URLS="${URLS}- ${filename}: ${url}\n"
+            fi
+          done < deploy_results.txt
+
+          # 알림 전송
+          NOTIFY_BODY=$(cat <<EOF
+          {
+            "version": "${VERSION}",
+            "tag": "${{ needs.release.outputs.tag_name }}",
+            "packages": $(cat deploy_results.txt | jq -R -s 'split("\n") | map(select(length > 0) | split("|") | {filename: .[0], url: .[1]})')
+          }
+          EOF
+          )
+
+          curl -s -X POST \
+            -H "Content-Type: application/json" \
+            -d "$NOTIFY_BODY" \
+            "${DEPLOY_NOTIFY_URL}"
+
+          echo "✅ 알림 전송 완료"
+
+      - name: 배포 요약
+        if: always()
+        run: |
+          VERSION="${{ needs.release.outputs.version }}"
+
+          echo "## AIT 패키지 배포" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ -f "deploy_results.txt" ] && [ -s "deploy_results.txt" ]; then
+            echo "### 배포된 패키지" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| 파일 | intoss-private URL |" >> $GITHUB_STEP_SUMMARY
+            echo "|------|---------------------|" >> $GITHUB_STEP_SUMMARY
+
+            while IFS='|' read -r filename url; do
+              if [ -n "$filename" ] && [ -n "$url" ]; then
+                echo "| ${filename} | \`${url}\` |" >> $GITHUB_STEP_SUMMARY
+              fi
+            done < deploy_results.txt
+
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "✅ 배포가 완료되었습니다." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ 배포된 패키지가 없거나 배포가 건너뛰어졌습니다." >> $GITHUB_STEP_SUMMARY
+          fi

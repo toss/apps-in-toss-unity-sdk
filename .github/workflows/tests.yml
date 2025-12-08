@@ -179,13 +179,13 @@ jobs:
             exit 1
           fi
 
-      # AITConvertCore.DoExport()가 생성한 dist/ 폴더를 artifact로 업로드
-      # release.yml에서 이 artifact를 다운받아 배포에 사용
+      # ait deploy는 ait-build/ 디렉토리 내에서 실행되어야 함
+      # package.json, granite.config.ts 등 설정 파일이 필요하므로 전체 업로드
       - name: Upload AIT Build
         uses: actions/upload-artifact@v5
         with:
-          name: ait-dist-macos-${{ matrix.unity-version }}
-          path: Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/dist/
+          name: ait-build-macos-${{ matrix.unity-version }}
+          path: Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/
           if-no-files-found: error
 
       - name: Setup Node.js
@@ -408,13 +408,13 @@ jobs:
             exit /b 1
           )
 
-      # AITConvertCore.DoExport()가 생성한 dist/ 폴더를 artifact로 업로드
-      # release.yml에서 이 artifact를 다운받아 배포에 사용
+      # ait deploy는 ait-build/ 디렉토리 내에서 실행되어야 함
+      # package.json, granite.config.ts 등 설정 파일이 필요하므로 전체 업로드
       - name: Upload AIT Build
         uses: actions/upload-artifact@v5
         with:
-          name: ait-dist-windows-${{ matrix.unity-version }}
-          path: Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/dist/
+          name: ait-build-windows-${{ matrix.unity-version }}
+          path: Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/
           if-no-files-found: error
 
       - name: Setup Node.js

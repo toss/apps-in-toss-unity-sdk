@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - feat/deploy-strategy  # 테스트용 - 추후 제거
   pull_request:
     branches: [main]
   workflow_dispatch:

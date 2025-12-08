@@ -113,14 +113,14 @@ jobs:
             exit 1
           fi
 
-      # NOTE: AITConvertCore.DoExport()가 이미 ait-build/dist/에 패키징된 결과물 생성
-      # 별도의 zip 패키징 불필요 - granite 빌드 결과물을 그대로 업로드
+      # ait deploy는 ait-build/ 디렉토리 내에서 실행되어야 함
+      # package.json, granite.config.ts 등 설정 파일이 필요하므로 전체 업로드
 
       - name: Upload AIT Package
         uses: actions/upload-artifact@v5
         with:
-          name: ait-dist-macos-${{ matrix.unity-version }}
-          path: Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/dist/
+          name: ait-build-macos-${{ matrix.unity-version }}
+          path: Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/
           if-no-files-found: error
 
   # =====================================================
@@ -297,12 +297,12 @@ jobs:
           echo.
           dir "%DIST_PATH%\web" 2>nul
 
-      # NOTE: AITConvertCore.DoExport()가 이미 ait-build/dist/에 패키징된 결과물 생성
-      # 별도의 zip 패키징 불필요 - granite 빌드 결과물을 그대로 업로드
+      # ait deploy는 ait-build/ 디렉토리 내에서 실행되어야 함
+      # package.json, granite.config.ts 등 설정 파일이 필요하므로 전체 업로드
 
       - name: Upload AIT Package
         uses: actions/upload-artifact@v5
         with:
-          name: ait-dist-windows-${{ matrix.unity-version }}
-          path: Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/dist/
+          name: ait-build-windows-${{ matrix.unity-version }}
+          path: Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/
           if-no-files-found: error

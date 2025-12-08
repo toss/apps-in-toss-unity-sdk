@@ -264,7 +264,7 @@ jobs:
       - name: AIT 빌드 결과물 다운로드
         uses: actions/download-artifact@v4
         with:
-          pattern: ait-dist-*
+          pattern: ait-build-*
           path: ait-builds/
 
       - name: 다운로드된 빌드 확인
@@ -277,14 +277,14 @@ jobs:
             echo ""
 
             BUILD_COUNT=0
-            for build_dir in ait-builds/ait-dist-*/; do
+            for build_dir in ait-builds/ait-build-*/; do
               if [ -d "$build_dir" ]; then
                 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                 echo "빌드: $(basename $build_dir)"
                 ls -la "$build_dir"
-                if [ -d "${build_dir}web" ]; then
-                  echo "web/ 폴더:"
-                  ls -la "${build_dir}web" | head -10
+                if [ -d "${build_dir}dist" ]; then
+                  echo "dist/ 폴더:"
+                  ls -la "${build_dir}dist" | head -10
                   BUILD_COUNT=$((BUILD_COUNT + 1))
                 fi
               fi
@@ -324,12 +324,12 @@ jobs:
           DEPLOY_RESULTS=""
           HAS_FAILURE=false
 
-          for build_dir in ait-builds/ait-dist-*/; do
+          for build_dir in ait-builds/ait-build-*/; do
             if [ -d "$build_dir" ]; then
               BUILD_NAME=$(basename "$build_dir")
-              # ait-dist-{os}-{unity-version} 형식에서 OS와 버전 추출
-              OS=$(echo "$BUILD_NAME" | sed 's/ait-dist-\([^-]*\)-.*/\1/')
-              UNITY_VERSION=$(echo "$BUILD_NAME" | sed 's/ait-dist-[^-]*-//')
+              # ait-build-{os}-{unity-version} 형식에서 OS와 버전 추출
+              OS=$(echo "$BUILD_NAME" | sed 's/ait-build-\([^-]*\)-.*/\1/')
+              UNITY_VERSION=$(echo "$BUILD_NAME" | sed 's/ait-build-[^-]*-//')
 
               # OS 이름 정규화
               case "$OS" in

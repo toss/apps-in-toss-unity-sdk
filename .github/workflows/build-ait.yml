@@ -21,9 +21,10 @@ jobs:
     runs-on: [self-hosted, macOS, ARM64]
     timeout-minutes: 60
 
-    concurrency:
-      group: build-ait-macos-${{ matrix.unity-version }}
-      cancel-in-progress: false
+    # NOTE: job-level concurrency 제거됨
+    # - self-hosted runner는 동시에 1개 job만 실행하므로 별도 동시성 제어 불필요
+    # - job-level concurrency + cancel-in-progress: false 조합은
+    #   "higher priority waiting request"로 인한 예기치 않은 취소 유발
 
     strategy:
       fail-fast: false
@@ -145,9 +146,10 @@ jobs:
     runs-on: [self-hosted, Windows, X64, enabled]
     timeout-minutes: 60
 
-    concurrency:
-      group: build-ait-windows-${{ matrix.unity-version }}
-      cancel-in-progress: false
+    # NOTE: job-level concurrency 제거됨
+    # - self-hosted runner는 동시에 1개 job만 실행하므로 별도 동시성 제어 불필요
+    # - job-level concurrency + cancel-in-progress: false 조합은
+    #   "higher priority waiting request"로 인한 예기치 않은 취소 유발
 
     strategy:
       fail-fast: false

@@ -478,11 +478,14 @@ jobs:
 
           if (Test-Path $distPath) {
             $aitFilename = "sample-unity-${{ matrix.unity-version }}-sdk-$sdkVersion.ait"
+            $zipFilename = "sample-unity-${{ matrix.unity-version }}-sdk-$sdkVersion.zip"
             Write-Host "Packaging to: $aitFilename"
 
-            # zip으로 압축 (ait 확장자)
+            # Compress-Archive는 .zip만 지원하므로 zip으로 생성 후 rename
+            $zipPath = "$projectPath\$zipFilename"
             $aitPath = "$projectPath\$aitFilename"
-            Compress-Archive -Path "$distPath\*" -DestinationPath $aitPath -Force
+            Compress-Archive -Path "$distPath\*" -DestinationPath $zipPath -Force
+            Move-Item -Path $zipPath -Destination $aitPath -Force
 
             # GitHub Actions 환경변수 설정
             "AIT_FILENAME=$aitFilename" | Out-File -FilePath $env:GITHUB_ENV -Append

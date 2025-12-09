@@ -12,8 +12,8 @@ export default defineConfig({
     type: '%AIT_WEBVIEW_TYPE%',
   },
   web: {
-    host: process.env.AIT_GRANITE_HOST || '%AIT_GRANITE_HOST%',
-    port: parseInt(process.env.AIT_GRANITE_PORT || '%AIT_GRANITE_PORT%', 10),
+    host: process.env.AIT_VITE_HOST || '%AIT_VITE_HOST%',
+    port: parseInt(process.env.AIT_VITE_PORT || '%AIT_VITE_PORT%', 10),
     strictPort: false,
     commands: {
       dev: 'vite --host',

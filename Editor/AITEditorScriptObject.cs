@@ -99,6 +99,9 @@ namespace AppsInToss
         [Tooltip("Granite (Metro) 서버 포트. 기본값: 8081")]
         public int granitePort = 8081;
 
+        [Tooltip("Vite 서버 호스트. 기본값: localhost")]
+        public string viteHost = "localhost";
+
         [Tooltip("Vite 서버 포트. 기본값: 5173")]
         public int vitePort = 5173;
 

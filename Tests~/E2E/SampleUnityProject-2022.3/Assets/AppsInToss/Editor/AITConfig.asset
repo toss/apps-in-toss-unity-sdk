@@ -11,13 +11,13 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 7c3cbd8251a0c434481614bbcd8082ff, type: 3}
   m_Name: AITConfig
-  m_EditorClassIdentifier: 
-  appName: 
-  displayName: 
+  m_EditorClassIdentifier:
+  appName:
+  displayName:
   version: 0.0.1
-  description: 
+  description:
   primaryColor: '#3182F6'
-  iconUrl: 
+  iconUrl:
   bridgeColorMode: 0
   webViewType: 0
   devHost: localhost

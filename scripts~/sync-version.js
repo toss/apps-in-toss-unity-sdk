@@ -32,7 +32,20 @@ const FILES_TO_UPDATE = [
   },
   {
     path: "sdk-runtime-generator~/package.json",
-    description: "web-framework 의존성",
+    description: "web-framework 의존성 (생성기)",
+    update: (content, version) => {
+      const pkg = JSON.parse(content);
+      pkg.dependencies["@apps-in-toss/web-framework"] = version;
+      return JSON.stringify(pkg, null, 2) + "\n";
+    },
+    getVersion: (content) => {
+      const pkg = JSON.parse(content);
+      return pkg.dependencies["@apps-in-toss/web-framework"];
+    },
+  },
+  {
+    path: "WebGLTemplates/AITTemplate/BuildConfig/package.json",
+    description: "web-framework 의존성 (빌드 템플릿)",
     update: (content, version) => {
       const pkg = JSON.parse(content);
       pkg.dependencies["@apps-in-toss/web-framework"] = version;

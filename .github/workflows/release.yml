@@ -96,12 +96,12 @@ jobs:
         run: |
           echo "=== UPM 패키지 정리 ==="
 
-          # 불필요한 디렉토리 제거
+          # 불필요한 디렉토리 제거 (~ 접미사 디렉토리는 Unity가 무시하므로 .meta 없음)
           rm -rf .github/
           rm -rf Tests~/
           rm -rf Tools~/
           rm -rf sdk-runtime-generator~/
-          rm -rf scripts/
+          rm -rf scripts~/
 
           # 불필요한 파일 제거
           rm -f .gitignore
@@ -114,10 +114,6 @@ jobs:
           rm -f .mcp.json.meta
           rm -f CLAUDE.md.meta
           rm -f run-local-tests.sh.meta
-          rm -f scripts.meta
-          rm -f Tests~.meta
-          rm -f Tools~.meta
-          rm -f sdk-runtime-generator~.meta
 
           echo "정리된 파일 목록:"
           ls -la

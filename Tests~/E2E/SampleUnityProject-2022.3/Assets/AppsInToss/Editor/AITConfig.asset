@@ -23,16 +23,27 @@ MonoBehaviour:
   devHost: localhost
   localPort: 5173
   outdir: dist
-  isProduction: 0
-  enableOptimization: 1
-  enableCompression: 0
+  devServerProfile:
+    enableMockBridge: 1
+    enableDebugConsole: 1
+    developmentBuild: 1
+    enableLZ4Compression: 1
+    compressionFormat: 0
+    managedStrippingLevel: 1
+    debugSymbolsExternal: 0
+  productionProfile:
+    enableMockBridge: 0
+    enableDebugConsole: 0
+    developmentBuild: 0
+    enableLZ4Compression: 1
+    compressionFormat: -1
+    managedStrippingLevel: -1
+    debugSymbolsExternal: 1
   memorySize: -1
-  compressionFormat: -1
   threadsSupport: -1
   dataCaching: -1
   nameFilesAsHashes: 1
   stripEngineCode: 1
-  managedStrippingLevel: -1
   il2cppConfiguration: -1
   powerPreference: -1
   wasmStreaming: 1

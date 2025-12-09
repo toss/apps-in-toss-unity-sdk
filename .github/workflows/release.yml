@@ -200,12 +200,13 @@ jobs:
           EOF
           )
 
-          # 기존 릴리즈가 있으면 삭제 (upsert) - --cleanup-tag로 태그도 함께 삭제
-          gh release delete "${TAG_NAME}" --yes --cleanup-tag 2>/dev/null || true
+          # 기존 릴리즈가 있으면 삭제 (upsert) - 태그는 유지 (이미 푸시됨)
+          gh release delete "${TAG_NAME}" --yes 2>/dev/null || true
 
-          # --target HEAD로 현재 커밋을 타겟으로 새 태그 생성
+          # 현재 커밋 SHA를 타겟으로 릴리즈 생성
+          COMMIT_SHA=$(git rev-parse HEAD)
           gh release create "${TAG_NAME}" \
-            --target HEAD \
+            --target "$COMMIT_SHA" \
             --title "v${VERSION}" \
             --notes "$RELEASE_BODY"
 

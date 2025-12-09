@@ -1170,7 +1170,8 @@ namespace AppsInToss
             string pmName = Path.GetFileNameWithoutExtension(npmPath);
 
             // --store-dir는 install 명령어에만 적용 (run build에는 적용하지 않음)
-            bool isInstallCommand = arguments.Trim() == "install";
+            // install, install --frozen-lockfile 등 모든 install 명령어에 적용
+            bool isInstallCommand = arguments.TrimStart().StartsWith("install");
             string fullArguments = isInstallCommand
                 ? $"{arguments} --store-dir \"{cachePath}\""
                 : arguments;

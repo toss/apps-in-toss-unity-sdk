@@ -214,7 +214,6 @@ namespace AppsInToss
         [MenuItem("AIT/Dev Server/Start Server", false, 1)]
         public static void MenuStartDevServer()
         {
-            Debug.Log("AIT: Dev 서버 시작...");
             StartDevServer();
         }
 
@@ -255,7 +254,6 @@ namespace AppsInToss
         [MenuItem("AIT/Production Server/Start Server", false, 11)]
         public static void MenuStartProdServer()
         {
-            Debug.Log("AIT: Production 서버 시작...");
             StartProdServer();
         }
 

@@ -93,8 +93,8 @@ namespace AppsInToss
         public int webViewType = 0; // 0=game, 1=partner, 2=external
 
         [Header("서버 설정")]
-        [Tooltip("Granite (Metro) 서버 호스트. 기본값: localhost")]
-        public string graniteHost = "localhost";
+        [Tooltip("Granite (Metro) 서버 호스트. 기본값: 0.0.0.0")]
+        public string graniteHost = "0.0.0.0";
 
         [Tooltip("Granite (Metro) 서버 포트. 기본값: 8081")]
         public int granitePort = 8081;

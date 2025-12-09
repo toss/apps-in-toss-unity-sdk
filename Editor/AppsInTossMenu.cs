@@ -659,7 +659,7 @@ namespace AppsInToss
             }
 
             // 서버 설정
-            string graniteHost = !string.IsNullOrEmpty(config.graniteHost) ? config.graniteHost : "localhost";
+            string graniteHost = !string.IsNullOrEmpty(config.graniteHost) ? config.graniteHost : "0.0.0.0";
             int granitePort = config.granitePort > 0 ? config.granitePort : 8081;
             string viteHost = !string.IsNullOrEmpty(config.viteHost) ? config.viteHost : "localhost";
             int vitePort = config.vitePort > 0 ? config.vitePort : 5173;
@@ -686,13 +686,15 @@ namespace AppsInToss
                 StartServerProcessWithPortDetection(
                     devServerManager,
                     buildPath, npmPath, graniteCommand, "Dev Server", envVars,
-                    (port) =>
+                    (detectedPort) =>
                     {
-                        devServerPort = port;
+                        devServerPort = vitePort;
                         devServerStatus = ServerStatus.Running;
-                        SaveDevServerPrefs(devServerManager.ProcessId, port);
-                        Debug.Log($"AIT: Dev 서버가 시작되었습니다: http://localhost:{port}");
-                        Application.OpenURL($"http://localhost:{port}/index.html");
+                        SaveDevServerPrefs(devServerManager.ProcessId, vitePort);
+                        Debug.Log($"AIT: Dev 서버가 시작되었습니다");
+                        Debug.Log($"AIT:   Granite (Metro): http://{graniteHost}:{granitePort}");
+                        Debug.Log($"AIT:   Vite: http://{viteHost}:{vitePort}");
+                        Application.OpenURL($"http://localhost:{vitePort}/index.html");
                     }
                 );
             }
@@ -810,33 +812,43 @@ namespace AppsInToss
                 return;
             }
 
-            // 서버 설정 (Dev 서버와 동일한 Vite 포트 사용)
+            // 서버 설정 (Dev 서버와 동일)
+            string graniteHost = !string.IsNullOrEmpty(config.graniteHost) ? config.graniteHost : "0.0.0.0";
+            int granitePort = config.granitePort > 0 ? config.granitePort : 8081;
             string viteHost = !string.IsNullOrEmpty(config.viteHost) ? config.viteHost : "localhost";
             int vitePort = config.vitePort > 0 ? config.vitePort : 5173;
 
-            Debug.Log($"AIT: Production 서버 시작 중 (vite preview)... ({buildPath})");
+            Debug.Log($"AIT: Production 서버 시작 중 (granite dev)... ({buildPath})");
+            Debug.Log($"AIT:   Granite: {graniteHost}:{granitePort}");
             Debug.Log($"AIT:   Vite: {viteHost}:{vitePort}");
 
             try
             {
-                // 환경 변수로 Vite 설정 전달
+                // 환경 변수로 Vite 설정 전달 (granite.config.ts, vite.config.ts에서 사용)
                 var envVars = new Dictionary<string, string>
                 {
+                    { "AIT_GRANITE_HOST", graniteHost },
+                    { "AIT_GRANITE_PORT", granitePort.ToString() },
                     { "AIT_VITE_HOST", viteHost },
                     { "AIT_VITE_PORT", vitePort.ToString() }
                 };
 
+                // granite dev 명령어에 --host, --port 인자로 granite 서버 설정 전달
+                string graniteCommand = $"exec granite dev --host {graniteHost} --port {granitePort}";
+
                 prodServerManager = new AITProcessTreeManager();
                 StartServerProcessWithPortDetection(
                     prodServerManager,
-                    buildPath, npmPath, $"exec vite preview --outDir dist/web --host {viteHost} --port {vitePort}", "Prod Server", envVars,
-                    (port) =>
+                    buildPath, npmPath, graniteCommand, "Prod Server", envVars,
+                    (detectedPort) =>
                     {
-                        prodServerPort = port;
+                        prodServerPort = vitePort;
                         prodServerStatus = ServerStatus.Running;
-                        SaveProdServerPrefs(prodServerManager.ProcessId, port);
-                        Debug.Log($"AIT: Production 서버가 시작되었습니다: http://localhost:{port}");
-                        Application.OpenURL($"http://localhost:{port}/");
+                        SaveProdServerPrefs(prodServerManager.ProcessId, vitePort);
+                        Debug.Log($"AIT: Production 서버가 시작되었습니다");
+                        Debug.Log($"AIT:   Granite (Metro): http://{graniteHost}:{granitePort}");
+                        Debug.Log($"AIT:   Vite: http://{viteHost}:{vitePort}");
+                        Application.OpenURL($"http://localhost:{vitePort}/");
                     }
                 );
             }

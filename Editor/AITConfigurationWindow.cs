@@ -173,7 +173,8 @@ namespace AppsInToss.Editor
 
             EditorGUILayout.HelpBox(
                 "Granite (Metro) 서버와 Vite 서버 설정입니다.\n" +
-                "기본값: Granite localhost:8081, Vite localhost:5173\n" +
+                "기본값: Granite 0.0.0.0:8081, Vite localhost:5173\n" +
+                "브라우저는 Vite 포트로 열립니다.\n" +
                 "환경 변수: AIT_GRANITE_HOST, AIT_GRANITE_PORT, AIT_VITE_HOST, AIT_VITE_PORT",
                 MessageType.Info
             );

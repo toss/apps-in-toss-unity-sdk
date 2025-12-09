@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "granite dev",
     "build": "granite build",
-    "start": "vite preview --outDir dist/web",
+    "start": "granite start",
     "deploy": "ait deploy"
   },
   "dependencies": {

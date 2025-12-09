@@ -40,11 +40,13 @@ namespace AppsInToss
         private const string PROD_SERVER_PORT_KEY = "AIT_ProdServerPort";
 
         /// <summary>
-        /// 도메인 리로드 시 기존 서버 프로세스 복원
+        /// 도메인 리로드 시 기존 서버 프로세스 복원 및 종료 이벤트 등록
         /// </summary>
         static AppsInTossMenu()
         {
             RestoreServerProcesses();
+            EditorApplication.quitting += OnEditorQuitting;
+            UnityEditor.PackageManager.Events.registeredPackages += OnPackagesChanged;
         }
 
         private static void RestoreServerProcesses()
@@ -130,6 +132,58 @@ namespace AppsInToss
         {
             EditorPrefs.DeleteKey(PROD_SERVER_PID_KEY);
             EditorPrefs.DeleteKey(PROD_SERVER_PORT_KEY);
+        }
+
+        /// <summary>
+        /// Unity Editor 종료 시 모든 서버 프로세스 정리
+        /// </summary>
+        private static void OnEditorQuitting()
+        {
+            bool hadRunningServers = IsDevServerRunning || IsProdServerRunning;
+
+            if (IsDevServerRunning)
+            {
+                Debug.Log("[AIT] Editor 종료 - Dev 서버 프로세스 정리 중...");
+                StopDevServer();
+            }
+
+            if (IsProdServerRunning)
+            {
+                Debug.Log("[AIT] Editor 종료 - Prod 서버 프로세스 정리 중...");
+                StopProdServer();
+            }
+
+            if (hadRunningServers)
+            {
+                Debug.Log("[AIT] 모든 서버 프로세스가 정리되었습니다.");
+            }
+        }
+
+        /// <summary>
+        /// 패키지 등록 변경 시 SDK 패키지 제거 감지
+        /// </summary>
+        private static void OnPackagesChanged(UnityEditor.PackageManager.PackageRegistrationEventArgs args)
+        {
+            foreach (var package in args.removed)
+            {
+                // 이 SDK 패키지가 제거되었는지 확인
+                if (package.name == "im.toss.apps-in-toss-unity-sdk")
+                {
+                    Debug.Log("[AIT] SDK 패키지가 제거됨 - 서버 프로세스 정리 중...");
+
+                    if (IsDevServerRunning)
+                    {
+                        StopDevServer();
+                    }
+
+                    if (IsProdServerRunning)
+                    {
+                        StopProdServer();
+                    }
+
+                    break;
+                }
+            }
         }
 
         /// <summary>

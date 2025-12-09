@@ -1019,35 +1019,53 @@ namespace AppsInToss
         /// </summary>
         private static string FindPnpmPath()
         {
+            string requiredVersion = AITPackageManagerHelper.PNPM_VERSION;
+
             // 1. 내장 Node.js bin 디렉토리에서 pnpm 찾기
             string embeddedNodeBinPath = AppsInToss.Editor.AITPackageManagerHelper.GetEmbeddedNodeBinPath();
             if (!string.IsNullOrEmpty(embeddedNodeBinPath))
             {
                 string pnpmInEmbedded = Path.Combine(embeddedNodeBinPath, AppsInToss.Editor.AITPlatformHelper.GetExecutableName("pnpm"));
+                string npmPath = Path.Combine(embeddedNodeBinPath, AppsInToss.Editor.AITPlatformHelper.GetExecutableName("npm"));
+
                 if (File.Exists(pnpmInEmbedded))
                 {
-                    Debug.Log($"[AIT] ✓ 내장 pnpm 발견: {pnpmInEmbedded}");
-                    return pnpmInEmbedded;
+                    // 버전 확인
+                    string installedVersion = GetPnpmVersion(pnpmInEmbedded, embeddedNodeBinPath);
+                    if (!string.IsNullOrEmpty(installedVersion))
+                    {
+                        if (installedVersion == requiredVersion)
+                        {
+                            Debug.Log($"[AIT] ✓ 내장 pnpm v{installedVersion} 발견 (요구 버전과 일치)");
+                            return pnpmInEmbedded;
+                        }
+                        else
+                        {
+                            Debug.Log($"[AIT] 내장 pnpm v{installedVersion} 발견 (요구 버전: v{requiredVersion})");
+                            Debug.Log($"[AIT] pnpm을 v{requiredVersion}으로 업데이트합니다...");
+
+                            // 버전이 다르면 재설치
+                            if (File.Exists(npmPath) && InstallPnpmWithNpm(npmPath, embeddedNodeBinPath, requiredVersion))
+                            {
+                                Debug.Log($"[AIT] ✓ pnpm v{requiredVersion} 설치 완료");
+                                return pnpmInEmbedded;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // 버전 확인 실패 시 그냥 사용
+                        Debug.Log($"[AIT] ✓ 내장 pnpm 발견 (버전 확인 불가): {pnpmInEmbedded}");
+                        return pnpmInEmbedded;
+                    }
                 }
 
                 // 2. pnpm이 없으면 npm으로 글로벌 설치
-                string pnpmVersion = AITPackageManagerHelper.PNPM_VERSION;
-                Debug.Log($"[AIT] 내장 pnpm이 없습니다. npm install -g pnpm@{pnpmVersion} 실행 중...");
-                string npmPath = Path.Combine(embeddedNodeBinPath, AppsInToss.Editor.AITPlatformHelper.GetExecutableName("npm"));
+                Debug.Log($"[AIT] 내장 pnpm이 없습니다. npm install -g pnpm@{requiredVersion} 실행 중...");
 
                 if (File.Exists(npmPath))
                 {
-                    // npm install -g pnpm@버전 실행
-                    string command = $"\"{npmPath}\" install -g pnpm@{pnpmVersion}";
-                    var result = AppsInToss.Editor.AITPlatformHelper.ExecuteCommand(
-                        command,
-                        embeddedNodeBinPath,
-                        new[] { embeddedNodeBinPath },
-                        timeoutMs: 120000, // 2분
-                        verbose: true
-                    );
-
-                    if (result.Success)
+                    if (InstallPnpmWithNpm(npmPath, embeddedNodeBinPath, requiredVersion))
                     {
                         Debug.Log("[AIT] ✓ pnpm 글로벌 설치 완료");
 
@@ -1057,15 +1075,60 @@ namespace AppsInToss
                             return pnpmInEmbedded;
                         }
                     }
-                    else
-                    {
-                        Debug.LogError($"[AIT] pnpm 설치 실패: {result.Error}");
-                    }
                 }
             }
 
             // 3. 시스템 pnpm 검색 (fallback)
             return AppsInToss.Editor.AITPackageManagerHelper.FindExecutable("pnpm", verbose: true);
+        }
+
+        /// <summary>
+        /// pnpm 버전 확인
+        /// </summary>
+        private static string GetPnpmVersion(string pnpmPath, string workingDir)
+        {
+            try
+            {
+                var result = AppsInToss.Editor.AITPlatformHelper.ExecuteCommand(
+                    $"\"{pnpmPath}\" --version",
+                    workingDir,
+                    new[] { workingDir },
+                    timeoutMs: 10000,
+                    verbose: false
+                );
+
+                if (result.Success && !string.IsNullOrEmpty(result.Output))
+                {
+                    return result.Output.Trim();
+                }
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogWarning($"[AIT] pnpm 버전 확인 실패: {ex.Message}");
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// npm을 사용해 pnpm 설치
+        /// </summary>
+        private static bool InstallPnpmWithNpm(string npmPath, string workingDir, string version)
+        {
+            string command = $"\"{npmPath}\" install -g pnpm@{version}";
+            var result = AppsInToss.Editor.AITPlatformHelper.ExecuteCommand(
+                command,
+                workingDir,
+                new[] { workingDir },
+                timeoutMs: 120000, // 2분
+                verbose: true
+            );
+
+            if (!result.Success)
+            {
+                Debug.LogError($"[AIT] pnpm 설치 실패: {result.Error}");
+                return false;
+            }
+            return true;
         }
 
         /// <summary>

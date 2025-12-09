@@ -243,6 +243,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [build-ait, create-release-tag]
     if: success()
+    timeout-minutes: 30
 
     steps:
       - name: Setup Node.js
@@ -348,11 +349,17 @@ jobs:
                 echo "배포 디렉토리: ${build_dir}"
 
                 # ait deploy 실행 (작업 디렉토리를 build_dir로 변경)
-                DEPLOY_OUTPUT=$(cd "${build_dir}" && ait deploy --api-key "$AIT_DEPLOY_KEY" 2>&1) && DEPLOY_STATUS=0 || DEPLOY_STATUS=$?
+                # 5분(300초) 타임아웃 설정 - 배포 서버 응답 대기
+                DEPLOY_OUTPUT=$(cd "${build_dir}" && timeout 300 ait deploy --api-key "$AIT_DEPLOY_KEY" 2>&1) && DEPLOY_STATUS=0 || DEPLOY_STATUS=$?
 
                 echo "$DEPLOY_OUTPUT"
 
-                if [ $DEPLOY_STATUS -eq 0 ]; then
+                if [ $DEPLOY_STATUS -eq 124 ]; then
+                  # timeout 명령어의 타임아웃 종료 코드
+                  echo "❌ 배포 타임아웃 (5분 초과)"
+                  DEPLOY_RESULTS="${DEPLOY_RESULTS}${OS_DISPLAY} - ${UNITY_VERSION}: TIMEOUT\n"
+                  HAS_FAILURE=true
+                elif [ $DEPLOY_STATUS -eq 0 ]; then
                   # 배포 성공 - URL 추출 시도 (ANSI 이스케이프 시퀀스 제거 후 파싱)
                   CLEANED_OUTPUT=$(echo "$DEPLOY_OUTPUT" | sed 's/\x1b\[[0-9;]*m//g' | tr -d '\r')
                   DEPLOY_URL=$(echo "$CLEANED_OUTPUT" | grep -oE 'intoss-private://[^[:space:]]+' | head -1 || true)
@@ -362,7 +369,7 @@ jobs:
                   echo "✅ 배포 성공: ${DEPLOY_URL}"
                   DEPLOY_RESULTS="${DEPLOY_RESULTS}${OS_DISPLAY} - ${UNITY_VERSION}: ${DEPLOY_URL}\n"
                 else
-                  echo "❌ 배포 실패"
+                  echo "❌ 배포 실패 (exit code: $DEPLOY_STATUS)"
                   DEPLOY_RESULTS="${DEPLOY_RESULTS}${OS_DISPLAY} - ${UNITY_VERSION}: FAILED\n"
                   HAS_FAILURE=true
                 fi

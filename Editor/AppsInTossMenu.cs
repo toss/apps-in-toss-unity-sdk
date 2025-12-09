@@ -658,27 +658,34 @@ namespace AppsInToss
                 return;
             }
 
-            // 포트 설정 (환경 변수로 전달)
+            // 서버 설정
+            string graniteHost = !string.IsNullOrEmpty(config.graniteHost) ? config.graniteHost : "localhost";
             int granitePort = config.granitePort > 0 ? config.granitePort : 8081;
+            string viteHost = !string.IsNullOrEmpty(config.viteHost) ? config.viteHost : "localhost";
             int vitePort = config.vitePort > 0 ? config.vitePort : 5173;
 
             Debug.Log($"AIT: Dev 서버 시작 중 (granite dev)... ({buildPath})");
-            Debug.Log($"AIT:   Granite 포트: {granitePort}, Vite 포트: {vitePort}");
+            Debug.Log($"AIT:   Granite: {graniteHost}:{granitePort}");
+            Debug.Log($"AIT:   Vite: {viteHost}:{vitePort}");
 
             try
             {
-                // 환경 변수로 포트 설정 전달
+                // 환경 변수로 Vite 설정 전달 (granite.config.ts, vite.config.ts에서 사용)
                 var envVars = new Dictionary<string, string>
                 {
-                    { "AIT_GRANITE_HOST", config.graniteHost },
+                    { "AIT_GRANITE_HOST", graniteHost },
                     { "AIT_GRANITE_PORT", granitePort.ToString() },
+                    { "AIT_VITE_HOST", viteHost },
                     { "AIT_VITE_PORT", vitePort.ToString() }
                 };
+
+                // granite dev 명령어에 --host, --port 인자로 granite 서버 설정 전달
+                string graniteCommand = $"exec granite dev --host {graniteHost} --port {granitePort}";
 
                 devServerManager = new AITProcessTreeManager();
                 StartServerProcessWithPortDetection(
                     devServerManager,
-                    buildPath, npmPath, "exec granite dev", "Dev Server", envVars,
+                    buildPath, npmPath, graniteCommand, "Dev Server", envVars,
                     (port) =>
                     {
                         devServerPort = port;
@@ -803,24 +810,26 @@ namespace AppsInToss
                 return;
             }
 
-            // 포트 설정 (Dev 서버와 동일한 포트 사용, 환경 변수로 전달)
+            // 서버 설정 (Dev 서버와 동일한 Vite 포트 사용)
+            string viteHost = !string.IsNullOrEmpty(config.viteHost) ? config.viteHost : "localhost";
             int vitePort = config.vitePort > 0 ? config.vitePort : 5173;
 
             Debug.Log($"AIT: Production 서버 시작 중 (vite preview)... ({buildPath})");
-            Debug.Log($"AIT:   Vite 포트: {vitePort}");
+            Debug.Log($"AIT:   Vite: {viteHost}:{vitePort}");
 
             try
             {
-                // 환경 변수로 포트 설정 전달
+                // 환경 변수로 Vite 설정 전달
                 var envVars = new Dictionary<string, string>
                 {
+                    { "AIT_VITE_HOST", viteHost },
                     { "AIT_VITE_PORT", vitePort.ToString() }
                 };
 
                 prodServerManager = new AITProcessTreeManager();
                 StartServerProcessWithPortDetection(
                     prodServerManager,
-                    buildPath, npmPath, $"exec vite preview --outDir dist/web --port {vitePort}", "Prod Server", envVars,
+                    buildPath, npmPath, $"exec vite preview --outDir dist/web --host {viteHost} --port {vitePort}", "Prod Server", envVars,
                     (port) =>
                     {
                         prodServerPort = port;

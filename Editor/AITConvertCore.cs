@@ -866,8 +866,8 @@ namespace AppsInToss
             Debug.Log($"[AIT]   %AIT_ICON_URL% → '{config.iconUrl}'");
             Debug.Log($"[AIT]   %AIT_BRIDGE_COLOR_MODE% → '{config.GetBridgeColorModeString()}'");
             Debug.Log($"[AIT]   %AIT_WEBVIEW_TYPE% → '{config.GetWebViewTypeString()}'");
-            Debug.Log($"[AIT]   %AIT_GRANITE_HOST% → '{config.graniteHost}'");
-            Debug.Log($"[AIT]   %AIT_GRANITE_PORT% → '{config.granitePort}'");
+            Debug.Log($"[AIT]   %AIT_VITE_HOST% → '{config.viteHost}'");
+            Debug.Log($"[AIT]   %AIT_VITE_PORT% → '{config.vitePort}'");
             Debug.Log($"[AIT]   %AIT_PERMISSIONS% → {config.GetPermissionsJson()}");
             Debug.Log($"[AIT]   %AIT_OUTDIR% → '{config.outdir}'");
 
@@ -879,14 +879,30 @@ namespace AppsInToss
                 .Replace("%AIT_ICON_URL%", config.iconUrl)
                 .Replace("%AIT_BRIDGE_COLOR_MODE%", config.GetBridgeColorModeString())
                 .Replace("%AIT_WEBVIEW_TYPE%", config.GetWebViewTypeString())
-                .Replace("%AIT_GRANITE_HOST%", config.graniteHost)
-                .Replace("%AIT_GRANITE_PORT%", config.granitePort.ToString())
+                .Replace("%AIT_VITE_HOST%", config.viteHost)
+                .Replace("%AIT_VITE_PORT%", config.vitePort.ToString())
                 .Replace("%AIT_PERMISSIONS%", config.GetPermissionsJson())
                 .Replace("%AIT_OUTDIR%", config.outdir);
 
             File.WriteAllText(
                 Path.Combine(buildProjectPath, "granite.config.ts"),
                 graniteConfig,
+                new System.Text.UTF8Encoding(false)
+            );
+
+            // vite.config.ts 복사 및 플레이스홀더 치환
+            Debug.Log("[AIT] vite.config.ts placeholder 치환 중...");
+            Debug.Log($"[AIT]   %AIT_VITE_HOST% → '{config.viteHost}'");
+            Debug.Log($"[AIT]   %AIT_VITE_PORT% → '{config.vitePort}'");
+
+            string viteConfigTemplate = File.ReadAllText(Path.Combine(sdkBuildConfigPath, "vite.config.ts"));
+            string viteConfig = viteConfigTemplate
+                .Replace("%AIT_VITE_HOST%", config.viteHost)
+                .Replace("%AIT_VITE_PORT%", config.vitePort.ToString());
+
+            File.WriteAllText(
+                Path.Combine(buildProjectPath, "vite.config.ts"),
+                viteConfig,
                 new System.Text.UTF8Encoding(false)
             );
 

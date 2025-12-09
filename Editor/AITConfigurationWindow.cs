@@ -168,12 +168,13 @@ namespace AppsInToss.Editor
 
             config.graniteHost = EditorGUILayout.TextField("Granite 호스트", config.graniteHost);
             config.granitePort = EditorGUILayout.IntField("Granite 포트", config.granitePort);
+            config.viteHost = EditorGUILayout.TextField("Vite 호스트", config.viteHost);
             config.vitePort = EditorGUILayout.IntField("Vite 포트", config.vitePort);
 
             EditorGUILayout.HelpBox(
                 "Granite (Metro) 서버와 Vite 서버 설정입니다.\n" +
-                "기본값: Granite localhost:8081, Vite :5173\n" +
-                "환경 변수: AIT_GRANITE_HOST, AIT_GRANITE_PORT, AIT_VITE_PORT",
+                "기본값: Granite localhost:8081, Vite localhost:5173\n" +
+                "환경 변수: AIT_GRANITE_HOST, AIT_GRANITE_PORT, AIT_VITE_HOST, AIT_VITE_PORT",
                 MessageType.Info
             );
 

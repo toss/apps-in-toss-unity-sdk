@@ -2,8 +2,8 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
   server: {
-    host: true,
-    port: parseInt(process.env.AIT_VITE_PORT || '5173', 10),
+    host: process.env.AIT_VITE_HOST || '%AIT_VITE_HOST%',
+    port: parseInt(process.env.AIT_VITE_PORT || '%AIT_VITE_PORT%', 10),
     strictPort: true, // 포트 충돌 시 서버 실행 실패
   },
   build: {

@@ -88,11 +88,9 @@ logs/
 .env.local
 .env.*.local
 
-# Editor configuration
-**/Editor/AITConfig.asset
-**/Editor/AITConfig.asset.meta
-# Allow AITConfig in test sample projects
-!Tests~/E2E/SampleUnityProject*/Assets/AppsInToss/Editor/AITConfig.asset
+# Editor configuration - SDK 설정 파일 (프로젝트별로 생성됨)
+**/AppsInToss/Editor/AITConfig.asset
+**/AppsInToss/Editor/AITConfig.asset.meta
 
 # Apps in Toss SDK - 민감한 인증 정보 보호
 **/AITCredentials.asset

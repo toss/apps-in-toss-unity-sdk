@@ -82,10 +82,11 @@ public class E2EBuildRunner
         // Unity 버전별 고유 포트 사용 (동시 실행 시 충돌 방지)
         // 환경 변수가 설정된 경우 해당 값 사용 (CI 제어용)
         int portOffset = GetPortOffsetForUnityVersion();
-        config.granitePort = GetEnvInt("AIT_GRANITE_PORT", 8081 + portOffset);
-        config.vitePort = GetEnvInt("AIT_VITE_PORT", 5173 + portOffset);
         config.graniteHost = GetEnvString("AIT_GRANITE_HOST", "localhost");
-        Debug.Log($"✓ Server ports: Granite={config.granitePort}, Vite={config.vitePort}");
+        config.granitePort = GetEnvInt("AIT_GRANITE_PORT", 8081 + portOffset);
+        config.viteHost = GetEnvString("AIT_VITE_HOST", "localhost");
+        config.vitePort = GetEnvInt("AIT_VITE_PORT", 5173 + portOffset);
+        Debug.Log($"✓ Server config: Granite={config.graniteHost}:{config.granitePort}, Vite={config.viteHost}:{config.vitePort}");
         EditorUtility.SetDirty(config);
         AssetDatabase.SaveAssets();
         Debug.Log("✓ SDK config updated");

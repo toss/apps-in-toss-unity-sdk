@@ -116,51 +116,33 @@ namespace AppsInToss.Editor
             string pmName = Path.GetFileName(packageManagerPath);
             Debug.Log($"[AIT] ✓ 패키지 매니저 사용 가능: {pmName} ({packageManagerPath})");
 
-            // 2. node_modules 상태 확인
-            string nodeModulesPath = Path.Combine(buildPath, "node_modules");
-            bool hasNodeModules = Directory.Exists(nodeModulesPath);
-            bool hasLocalPnpm = File.Exists(Path.Combine(buildPath, "node_modules", ".bin", "pnpm"));
-
-            if (!hasNodeModules)
+            // 2. pnpm 글로벌 설치 확인 (내장 Node.js에 pnpm이 설치되어 있는지)
+            // npm이 반환되었다면 pnpm이 아직 설치되지 않은 것
+            if (pmName == "npm")
             {
-                // node_modules가 없으면 pnpm 설치 + dependencies 설치
-                Debug.Log("[AIT] ait-build/node_modules가 없습니다.");
-                Debug.Log("[AIT] 백그라운드에서 pnpm 및 dependencies를 설치합니다...");
+                Debug.Log("[AIT] 내장 Node.js에 pnpm이 설치되어 있지 않습니다.");
+                Debug.Log($"[AIT] 백그라운드에서 pnpm@{AITPackageManagerHelper.PNPM_VERSION}을 설치합니다...");
 
-                string packageJsonSource = FindPackageJsonTemplate();
-                if (!string.IsNullOrEmpty(packageJsonSource))
+                string npmPath = packageManagerPath;
+                EditorApplication.delayCall += () =>
                 {
-                    // 백그라운드에서 통합 함수로 dependencies 설치
-                    EditorApplication.delayCall += () =>
-                    {
-                        AITPackageManagerHelper.RunPackageCommand(
-                            "install",
-                            buildPath,
-                            packageJsonSource,
-                            async: true,
-                            verbose: true,
-                            showProgressBar: false
-                        );
-                    };
-                }
-                else
-                {
-                    Debug.LogWarning("[AIT] package.json 템플릿을 찾을 수 없습니다. 첫 빌드 시 자동으로 설치됩니다.");
-                }
+                    InstallPnpmGlobal(npmPath);
+                };
             }
-            else if (!hasLocalPnpm)
+
+            // 3. 의존성 동기화 (pnpm install)
+            // package.json 변경에 대비하여 항상 실행 (이미 설치된 경우 빠르게 완료됨)
+            string packageJsonSource = FindPackageJsonTemplate();
+            if (!string.IsNullOrEmpty(packageJsonSource))
             {
-                // node_modules는 있지만 pnpm이 없으면 pnpm만 설치
-                Debug.Log("[AIT] node_modules는 있지만 로컬 pnpm이 없습니다.");
-                Debug.Log("[AIT] 백그라운드에서 pnpm을 설치합니다...");
+                Debug.Log("[AIT] 백그라운드에서 의존성을 동기화합니다...");
 
                 EditorApplication.delayCall += () =>
                 {
-                    // pnpm 로컬 설치
                     AITPackageManagerHelper.RunPackageCommand(
-                        "install pnpm",
+                        "install",
                         buildPath,
-                        packageJsonTemplatePath: null,
+                        packageJsonSource,
                         async: true,
                         verbose: true,
                         showProgressBar: false
@@ -169,7 +151,7 @@ namespace AppsInToss.Editor
             }
             else
             {
-                Debug.Log("[AIT] ✓ ait-build/node_modules 및 pnpm 존재. 준비 완료.");
+                Debug.LogWarning("[AIT] package.json 템플릿을 찾을 수 없습니다. 첫 빌드 시 자동으로 설치됩니다.");
             }
         }
 
@@ -303,6 +285,38 @@ namespace AppsInToss.Editor
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// 내장 Node.js에 pnpm 글로벌 설치 (백그라운드)
+        /// </summary>
+        /// <param name="npmPath">npm 실행 파일 경로</param>
+        private static void InstallPnpmGlobal(string npmPath)
+        {
+            try
+            {
+                string npmDir = Path.GetDirectoryName(npmPath);
+                string pnpmVersion = AITPackageManagerHelper.PNPM_VERSION;
+
+                Debug.Log($"[AIT] pnpm@{pnpmVersion} 글로벌 설치 시작...");
+
+                // npm install -g pnpm@버전 실행
+                string command = $"\"{npmPath}\" install -g pnpm@{pnpmVersion}";
+                var result = AITPlatformHelper.ExecuteCommand(command, npmDir, new[] { npmDir }, verbose: true);
+
+                if (result.Success)
+                {
+                    Debug.Log($"[AIT] ✓ pnpm@{pnpmVersion} 글로벌 설치 완료");
+                }
+                else
+                {
+                    Debug.LogWarning($"[AIT] pnpm 글로벌 설치 실패 (exit code: {result.ExitCode}). 첫 빌드 시 다시 시도됩니다.");
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[AIT] pnpm 글로벌 설치 중 예외 발생: {e.Message}");
+            }
         }
     }
 }

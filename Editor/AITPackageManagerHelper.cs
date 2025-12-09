@@ -13,6 +13,12 @@ namespace AppsInToss.Editor
     public static class AITPackageManagerHelper
     {
         /// <summary>
+        /// pnpm 버전 (내장 Node.js에 설치할 버전)
+        /// 최신 버전 강제 방지를 위해 고정
+        /// </summary>
+        public const string PNPM_VERSION = "10.20.0";
+
+        /// <summary>
         /// 표준 실행 파일 경로 (플랫폼별)
         /// </summary>
         private static string[] StandardPaths => AITPlatformHelper.StandardBinPaths;
@@ -360,12 +366,12 @@ namespace AppsInToss.Editor
 
                     if (!File.Exists(pnpmGlobalPath))
                     {
-                        if (verbose) Debug.Log("[Package Manager] pnpm이 없습니다. npm install -g pnpm 실행...");
+                        if (verbose) Debug.Log($"[Package Manager] pnpm이 없습니다. npm install -g pnpm@{PNPM_VERSION} 실행...");
 
-                        // npm install -g pnpm 실행 (동기)
+                        // npm install -g pnpm@버전 실행 (동기)
                         bool pnpmInstallSuccess = ExecutePackageManagerCommand(
                             packageManagerPath,
-                            "install -g pnpm",
+                            $"install -g pnpm@{PNPM_VERSION}",
                             buildPath,
                             async: false,  // 글로벌 설치는 항상 동기
                             verbose: verbose,
@@ -408,7 +414,7 @@ namespace AppsInToss.Editor
                 {
                     if (verbose) Debug.Log($"[Package Manager] node_modules가 없습니다. 먼저 dependencies를 설치합니다...");
 
-                    // package.json 복사 (제공된 경우)
+                    // package.json 및 pnpm-lock.yaml 복사 (제공된 경우)
                     if (!string.IsNullOrEmpty(packageJsonTemplatePath) && File.Exists(packageJsonTemplatePath))
                     {
                         if (!Directory.Exists(buildPath))
@@ -419,12 +425,23 @@ namespace AppsInToss.Editor
                         string packageJsonDest = Path.Combine(buildPath, "package.json");
                         File.Copy(packageJsonTemplatePath, packageJsonDest, true);
                         if (verbose) Debug.Log($"[Package Manager] package.json 복사: {packageJsonTemplatePath} → {packageJsonDest}");
+
+                        // pnpm-lock.yaml도 복사 (빠른 설치를 위해)
+                        string lockfilePath = Path.Combine(Path.GetDirectoryName(packageJsonTemplatePath), "pnpm-lock.yaml");
+                        if (File.Exists(lockfilePath))
+                        {
+                            string lockfileDest = Path.Combine(buildPath, "pnpm-lock.yaml");
+                            File.Copy(lockfilePath, lockfileDest, true);
+                            if (verbose) Debug.Log($"[Package Manager] pnpm-lock.yaml 복사: {lockfilePath} → {lockfileDest}");
+                        }
                     }
 
-                    // install 먼저 실행 (동기 모드로 강제)
+                    // install 먼저 실행 (동기 모드로 강제, lockfile이 있으면 --frozen-lockfile 사용)
+                    string lockfileInBuild = Path.Combine(buildPath, "pnpm-lock.yaml");
+                    string installCommand = File.Exists(lockfileInBuild) ? "install --frozen-lockfile" : "install";
                     bool installSuccess = ExecutePackageManagerCommand(
                         packageManagerPath,
-                        "install",
+                        installCommand,
                         buildPath,
                         async: false,  // install은 항상 동기로
                         verbose: verbose,
@@ -533,7 +550,7 @@ namespace AppsInToss.Editor
                         }
                         else
                         {
-                            UnityEngine.Debug.LogWarning($"[{pmName}] 백그라운드 {command} 실패 (exit code: {result.ExitCode})");
+                            UnityEngine.Debug.LogWarning($"[{pmName}] 백그라운드 {command} 실패 (exit code: {result.ExitCode})\nStderr: {result.Error}");
                         }
                     });
 

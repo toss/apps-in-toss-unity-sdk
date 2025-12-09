@@ -423,10 +423,10 @@ namespace AppsInToss
                 case AITExportError.FAIL_NPM_BUILD:
                     return "pnpm 빌드에 실패했습니다.\n\n" +
                            "해결 방법:\n" +
-                           "1. pnpm이 설치되어 있는지 확인: npm install -g pnpm\n" +
-                           "2. Unity Console 창에서 에러 메시지 확인\n" +
-                           "3. ait-build 폴더에서 직접 pnpm install 시도\n" +
-                           "4. package.json 파일이 올바른지 확인";
+                           "1. Unity Console 창에서 에러 메시지 확인\n" +
+                           "2. ait-build 폴더에서 직접 pnpm install 시도\n" +
+                           "3. package.json 파일이 올바른지 확인\n" +
+                           "4. Tools~/NodeJS 폴더를 삭제 후 다시 빌드 시도";
 
                 default:
                     return $"알 수 없는 오류가 발생했습니다. (코드: {error})";
@@ -744,50 +744,32 @@ namespace AppsInToss
             CopyWebGLToPublic(webglPath, buildProjectPath, profile);
 
             // 3. npm install 및 build 실행
-            Debug.Log("[AIT] Step 3/3: npm install & build 실행 중...");
+            Debug.Log("[AIT] Step 3/3: pnpm install & build 실행 중...");
             string localCachePath = Path.Combine(buildProjectPath, ".npm-cache");
-            string nodeModulesPath = Path.Combine(buildProjectPath, "node_modules");
 
-            // node_modules가 없는 경우에만 pnpm install 실행
-            if (!Directory.Exists(nodeModulesPath))
+            // pnpm install 실행 (의존성 동기화 - 이미 설치된 경우 빠르게 완료됨)
+            Debug.Log("[AIT] pnpm install 실행 중...");
+
+            // pnpm 경로 찾기 (없으면 자동 설치)
+            string pnpmPath = FindPnpmPath();
+            if (string.IsNullOrEmpty(pnpmPath))
             {
-                Debug.Log("[AIT] node_modules가 없습니다. pnpm install을 실행합니다 (1-2분 소요)...");
-
-                // pnpm 경로 찾기
-                string pnpmPath = FindPnpmPath();
-                if (string.IsNullOrEmpty(pnpmPath))
-                {
-                    Debug.LogError("[AIT] pnpm을 찾을 수 없습니다. pnpm을 설치해주세요: npm install -g pnpm");
-                    return AITExportError.FAIL_NPM_BUILD;
-                }
-
-                var installResult = RunNpmCommandWithCache(buildProjectPath, pnpmPath, "install", localCachePath, "pnpm install 실행 중...");
-
-                if (installResult != AITExportError.SUCCEED)
-                {
-                    Debug.LogError("[AIT] pnpm install 실패");
-                    return installResult;
-                }
+                Debug.LogError("[AIT] pnpm 설치에 실패했습니다. Unity Console에서 에러를 확인해주세요.");
+                return AITExportError.FAIL_NPM_BUILD;
             }
-            else
+
+            var installResult = RunNpmCommandWithCache(buildProjectPath, pnpmPath, "install --frozen-lockfile", localCachePath, "pnpm install 실행 중...");
+
+            if (installResult != AITExportError.SUCCEED)
             {
-                // 캐시 통계 출력
-                LogBuildCacheStats(buildProjectPath);
-                Debug.Log("[AIT] node_modules가 존재합니다. pnpm install을 건너뜁니다.");
+                Debug.LogError("[AIT] pnpm install 실패");
+                return installResult;
             }
 
             // granite build 실행 (web 폴더를 dist로 복사)
             Debug.Log("[AIT] granite build 실행 중...");
 
-            // pnpm 경로 찾기
-            string pnpmPathForBuild = FindPnpmPath();
-            if (string.IsNullOrEmpty(pnpmPathForBuild))
-            {
-                Debug.LogError("[AIT] pnpm을 찾을 수 없습니다. pnpm을 설치해주세요: npm install -g pnpm");
-                return AITExportError.FAIL_NPM_BUILD;
-            }
-
-            var buildResult = RunNpmCommandWithCache(buildProjectPath, pnpmPathForBuild, "run build", localCachePath, "granite build 실행 중...");
+            var buildResult = RunNpmCommandWithCache(buildProjectPath, pnpmPath, "run build", localCachePath, "granite build 실행 중...");
 
             if (buildResult != AITExportError.SUCCEED)
             {
@@ -844,6 +826,15 @@ namespace AppsInToss
             string packageJsonDst = Path.Combine(buildProjectPath, "package.json");
             File.Copy(packageJsonSrc, packageJsonDst, true);
             Debug.Log($"[AIT]   ✓ package.json 복사: {new FileInfo(packageJsonSrc).Length / 1024}KB");
+
+            // pnpm-lock.yaml 복사 (빠른 설치를 위해 lockfile 사용)
+            string pnpmLockSrc = Path.Combine(sdkBuildConfigPath, "pnpm-lock.yaml");
+            string pnpmLockDst = Path.Combine(buildProjectPath, "pnpm-lock.yaml");
+            if (File.Exists(pnpmLockSrc))
+            {
+                File.Copy(pnpmLockSrc, pnpmLockDst, true);
+                Debug.Log($"[AIT]   ✓ pnpm-lock.yaml 복사: {new FileInfo(pnpmLockSrc).Length / 1024}KB");
+            }
 
             // vite.config.ts 복사 (치환 없음)
             string viteConfigSrc = Path.Combine(sdkBuildConfigPath, "vite.config.ts");
@@ -1039,13 +1030,14 @@ namespace AppsInToss
                 }
 
                 // 2. pnpm이 없으면 npm으로 글로벌 설치
-                Debug.Log("[AIT] 내장 pnpm이 없습니다. npm install -g pnpm 실행 중...");
+                string pnpmVersion = AITPackageManagerHelper.PNPM_VERSION;
+                Debug.Log($"[AIT] 내장 pnpm이 없습니다. npm install -g pnpm@{pnpmVersion} 실행 중...");
                 string npmPath = Path.Combine(embeddedNodeBinPath, AppsInToss.Editor.AITPlatformHelper.GetExecutableName("npm"));
 
                 if (File.Exists(npmPath))
                 {
-                    // npm install -g pnpm 실행
-                    string command = $"\"{npmPath}\" install -g pnpm";
+                    // npm install -g pnpm@버전 실행
+                    string command = $"\"{npmPath}\" install -g pnpm@{pnpmVersion}";
                     var result = AppsInToss.Editor.AITPlatformHelper.ExecuteCommand(
                         command,
                         embeddedNodeBinPath,

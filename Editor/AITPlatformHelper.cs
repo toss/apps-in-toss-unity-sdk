@@ -212,7 +212,8 @@ namespace AppsInToss.Editor
                 {
                     shell = "/bin/bash";
                     // -l 옵션으로 로그인 셸로 실행하여 .bashrc, .bash_profile 등을 로드
-                    shellArgs = $"-l -c \"export PATH='{pathEnv}' && {command}\"";
+                    // CI=true: pnpm이 비-TTY 환경에서 확인 프롬프트 없이 실행되도록 설정
+                    shellArgs = $"-l -c \"export CI=true && export PATH='{pathEnv}' && {command}\"";
                 }
 
                 if (verbose)
@@ -240,10 +241,15 @@ namespace AppsInToss.Editor
                     processInfo.WorkingDirectory = workingDirectory;
                 }
 
-                // Windows에서는 환경변수로 PATH 설정
-                if (IsWindows && additionalPaths != null)
+                // Windows에서는 환경변수로 PATH 및 CI 설정
+                if (IsWindows)
                 {
-                    processInfo.EnvironmentVariables["PATH"] = pathEnv;
+                    if (additionalPaths != null)
+                    {
+                        processInfo.EnvironmentVariables["PATH"] = pathEnv;
+                    }
+                    // CI=true: pnpm이 비-TTY 환경에서 확인 프롬프트 없이 실행되도록 설정
+                    processInfo.EnvironmentVariables["CI"] = "true";
                 }
 
                 using (var process = new Process { StartInfo = processInfo })

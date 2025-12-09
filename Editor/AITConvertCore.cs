@@ -66,7 +66,7 @@ namespace AppsInToss
             return isCancelled;
         }
 
-        public static void Init()
+        public static void Init(AITBuildProfile profile = null)
         {
             // WebGL 템플릿 복사 (필요한 경우)
             EnsureWebGLTemplatesExist();
@@ -98,9 +98,9 @@ namespace AppsInToss
                 : AITDefaultSettings.GetDefaultMemorySize();
             PlayerSettings.WebGL.memorySize = memorySize;
 
-            // ===== 압축 설정 (버전별 자동 또는 사용자 지정) =====
-            WebGLCompressionFormat compressionFormat = editorConfig.compressionFormat >= 0
-                ? (WebGLCompressionFormat)editorConfig.compressionFormat
+            // ===== 압축 설정 (프로필 → 자동) =====
+            WebGLCompressionFormat compressionFormat = profile?.compressionFormat >= 0
+                ? (WebGLCompressionFormat)profile.compressionFormat
                 : AITDefaultSettings.GetDefaultCompressionFormat();
             PlayerSettings.WebGL.compressionFormat = compressionFormat;
 
@@ -148,8 +148,9 @@ namespace AppsInToss
 
             PlayerSettings.stripEngineCode = editorConfig.stripEngineCode;
 
-            ManagedStrippingLevel strippingLevel = editorConfig.managedStrippingLevel >= 0
-                ? (ManagedStrippingLevel)editorConfig.managedStrippingLevel
+            // ===== Managed Stripping Level (프로필 → 자동) =====
+            ManagedStrippingLevel strippingLevel = profile?.managedStrippingLevel >= 0
+                ? (ManagedStrippingLevel)profile.managedStrippingLevel
                 : AITDefaultSettings.GetDefaultManagedStrippingLevel();
 #if UNITY_6000_0_OR_NEWER
             PlayerSettings.SetManagedStrippingLevel(NamedBuildTarget.WebGL, strippingLevel);
@@ -200,11 +201,11 @@ namespace AppsInToss
             Debug.Log($"[AIT] Unity {AITDefaultSettings.GetUnityVersionGroup()} 최적화 설정 적용:");
             Debug.Log($"[AIT]   - WebGL Template: {PlayerSettings.WebGL.template}");
             Debug.Log($"[AIT]   - 메모리: {memorySize}MB{(editorConfig.memorySize <= 0 ? " (자동)" : "")}");
-            Debug.Log($"[AIT]   - 압축: {compressionFormat}{(editorConfig.compressionFormat < 0 ? " (자동)" : "")}");
+            Debug.Log($"[AIT]   - 압축: {compressionFormat}{(profile?.compressionFormat < 0 || profile == null ? " (자동)" : " (프로필)")}");
             Debug.Log($"[AIT]   - 스레딩: {threadsSupport}{(editorConfig.threadsSupport < 0 ? " (자동)" : "")}");
             Debug.Log($"[AIT]   - 데이터 캐싱: {dataCaching}{(editorConfig.dataCaching < 0 ? " (자동)" : "")}");
             Debug.Log($"[AIT]   - 예외 처리: {exceptionSupport}{(editorConfig.exceptionSupport < 0 ? " (자동)" : "")}");
-            Debug.Log($"[AIT]   - Stripping Level: {strippingLevel}{(editorConfig.managedStrippingLevel < 0 ? " (자동)" : "")}");
+            Debug.Log($"[AIT]   - Stripping Level: {strippingLevel}{(profile?.managedStrippingLevel < 0 || profile == null ? " (자동)" : " (프로필)")}");
             Debug.Log($"[AIT]   - IL2CPP 설정: {il2cppConfig}{(editorConfig.il2cppConfiguration < 0 ? " (자동)" : "")}");
             Debug.Log($"[AIT]   - Unity 로고: {showUnityLogo}{(editorConfig.showUnityLogo < 0 ? " (자동)" : "")}");
             Debug.Log($"[AIT]   - Run In Background: {runInBackground}{(editorConfig.runInBackground < 0 ? " (자동)" : "")}");
@@ -223,13 +224,36 @@ namespace AppsInToss
         /// </summary>
         private static void LogBuildProfile(AITBuildProfile profile, string profileName)
         {
+            // 압축 포맷 문자열 생성
+            string compressionStr = profile.compressionFormat switch
+            {
+                0 => "Disabled",
+                1 => "Gzip",
+                2 => "Brotli",
+                _ => "자동"
+            };
+
+            // Stripping Level 문자열 생성
+            string strippingStr = profile.managedStrippingLevel switch
+            {
+                0 => "Disabled",
+                1 => "Minimal",
+                2 => "Low",
+                3 => "Medium",
+                4 => "High",
+                _ => "자동 (High)"
+            };
+
             Debug.Log("[AIT] ========================================");
             Debug.Log($"[AIT] 빌드 프로필: {profileName}");
             Debug.Log("[AIT] ========================================");
             Debug.Log($"[AIT]   Mock 브릿지: {(profile.enableMockBridge ? "활성화" : "비활성화")}");
-            Debug.Log($"[AIT]   디버그 심볼: {(profile.debugSymbolsExternal ? "External" : "Embedded")}");
             Debug.Log($"[AIT]   디버그 콘솔: {(profile.enableDebugConsole ? "활성화" : "비활성화")}");
+            Debug.Log($"[AIT]   Development Build: {(profile.developmentBuild ? "활성화" : "비활성화")}");
             Debug.Log($"[AIT]   LZ4 압축: {(profile.enableLZ4Compression ? "활성화" : "비활성화")}");
+            Debug.Log($"[AIT]   압축 포맷: {compressionStr}");
+            Debug.Log($"[AIT]   Stripping Level: {strippingStr}");
+            Debug.Log($"[AIT]   디버그 심볼: {(profile.debugSymbolsExternal ? "External" : "Embedded")}");
             Debug.Log("[AIT] ========================================");
         }
 
@@ -437,7 +461,7 @@ namespace AppsInToss
         /// <param name="buildWebGL">WebGL 빌드 실행 여부</param>
         /// <param name="doPackaging">패키징 실행 여부</param>
         /// <param name="cleanBuild">클린 빌드 여부 (false면 incremental build)</param>
-        /// <param name="profile">적용할 빌드 프로필 (null이면 buildPackageProfile 사용)</param>
+        /// <param name="profile">적용할 빌드 프로필 (null이면 productionProfile 사용)</param>
         /// <param name="profileName">빌드 프로필 이름 (로그 출력용)</param>
         /// <returns>변환 결과</returns>
         public static AITExportError DoExport(bool buildWebGL = true, bool doPackaging = true, bool cleanBuild = false, AITBuildProfile profile = null, string profileName = null)
@@ -445,15 +469,16 @@ namespace AppsInToss
             // 빌드 시작 전 취소 플래그 리셋
             ResetCancellation();
 
-            Init();
-
             // 프로필이 지정되지 않으면 기본 프로필 사용
             var config = UnityUtil.GetEditorConf();
             if (profile == null)
             {
-                profile = config.buildPackageProfile;
-                profileName = profileName ?? "Build & Package";
+                profile = config.productionProfile;
+                profileName = profileName ?? "Production";
             }
+
+            // Init()에 프로필 전달하여 프로필별 압축/스트리핑 설정 적용
+            Init(profile);
 
             // 환경 변수로 프로필 오버라이드 적용
             profile = ApplyEnvironmentVariableOverrides(profile);
@@ -534,15 +559,23 @@ namespace AppsInToss
             // 프로필이 없으면 기본 프로필 사용
             if (profile == null)
             {
-                profile = AITBuildProfile.CreateBuildPackageProfile();
+                profile = AITBuildProfile.CreateProductionProfile();
             }
 
             // 빌드 옵션 설정
             BuildOptions buildOptions = BuildOptions.None;
 
+            // Development Build 옵션 (빌드 속도 향상, 디버깅 편의)
+            if (profile.developmentBuild)
+            {
+                buildOptions |= BuildOptions.Development;
+                Debug.Log("[AIT] Development Build 활성화");
+            }
+
+            // LZ4 압축으로 빌드 속도 향상
             if (profile.enableLZ4Compression)
             {
-                buildOptions |= BuildOptions.CompressWithLz4;  // LZ4 압축으로 빌드 속도 향상
+                buildOptions |= BuildOptions.CompressWithLz4;
             }
 
             // Unity 2021.3에서 Bee 빌드 캐시 문제로 인한 빌드 루프 방지
@@ -595,7 +628,7 @@ namespace AppsInToss
             // 프로필이 없으면 기본 프로필 사용
             if (profile == null)
             {
-                profile = AITBuildProfile.CreateBuildPackageProfile();
+                profile = AITBuildProfile.CreateProductionProfile();
             }
 
             string projectPath = UnityUtil.GetProjectPath();

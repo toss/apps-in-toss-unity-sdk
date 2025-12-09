@@ -5,76 +5,66 @@ namespace AppsInToss
 {
     /// <summary>
     /// 빌드 프로필 설정
-    /// 각 빌드 작업(Dev Server, Prod Server, Build & Package, Publish)별로 다른 설정 적용
+    /// Dev Server (개발용, 빌드 속도 우선)와 Production (배포용, 최적화 우선)으로 구분
     /// </summary>
     [System.Serializable]
     public class AITBuildProfile
     {
+        [Header("런타임 설정")]
         [Tooltip("Mock 브릿지 사용 (로컬 테스트용, 네이티브 API 없이 동작)")]
-        public bool enableMockBridge = true;
-
-        [Tooltip("디버그 심볼을 외부 파일로 분리 (빌드 크기 감소)")]
-        public bool debugSymbolsExternal = false;
+        public bool enableMockBridge = false;
 
         [Tooltip("디버그 콘솔 활성화 (개발/테스트 목적)")]
-        public bool enableDebugConsole = true;
+        public bool enableDebugConsole = false;
+
+        [Header("빌드 설정")]
+        [Tooltip("Development Build 활성화 (빌드 속도 향상, 디버깅 편의)")]
+        public bool developmentBuild = false;
 
         [Tooltip("LZ4 압축으로 빌드 속도 향상")]
         public bool enableLZ4Compression = true;
 
+        [Tooltip("압축 포맷: -1 = 자동, 0 = Disabled, 1 = Gzip, 2 = Brotli")]
+        public int compressionFormat = -1;
+
+        [Tooltip("Managed Stripping Level: -1 = 자동 (High), 0 = Disabled, 1 = Minimal, 2 = Low, 3 = Medium, 4 = High")]
+        public int managedStrippingLevel = -1;
+
+        [Tooltip("디버그 심볼을 외부 파일로 분리 (빌드 크기 감소)")]
+        public bool debugSymbolsExternal = true;
+
         /// <summary>
-        /// Dev Server 기본 프로필 생성
+        /// Dev Server 기본 프로필 생성 (빌드 속도 우선)
         /// </summary>
         public static AITBuildProfile CreateDevServerProfile()
         {
             return new AITBuildProfile
             {
                 enableMockBridge = true,
-                debugSymbolsExternal = false,
                 enableDebugConsole = true,
-                enableLZ4Compression = true
+                developmentBuild = true,
+                enableLZ4Compression = true,
+                compressionFormat = 0,  // Disabled - 빌드 속도 우선
+                managedStrippingLevel = 1,  // Minimal - 빌드 속도 우선
+                debugSymbolsExternal = false
             };
         }
 
         /// <summary>
-        /// Production Server 기본 프로필 생성
+        /// Production 기본 프로필 생성 (최적화 우선)
+        /// Prod Server, Build & Package, Publish에서 공통으로 사용
         /// </summary>
-        public static AITBuildProfile CreateProdServerProfile()
+        public static AITBuildProfile CreateProductionProfile()
         {
             return new AITBuildProfile
             {
                 enableMockBridge = false,
-                debugSymbolsExternal = true,
                 enableDebugConsole = false,
-                enableLZ4Compression = true
-            };
-        }
-
-        /// <summary>
-        /// Build & Package 기본 프로필 생성
-        /// </summary>
-        public static AITBuildProfile CreateBuildPackageProfile()
-        {
-            return new AITBuildProfile
-            {
-                enableMockBridge = false,
-                debugSymbolsExternal = true,
-                enableDebugConsole = false,
-                enableLZ4Compression = true
-            };
-        }
-
-        /// <summary>
-        /// Publish 기본 프로필 생성
-        /// </summary>
-        public static AITBuildProfile CreatePublishProfile()
-        {
-            return new AITBuildProfile
-            {
-                enableMockBridge = false,
-                debugSymbolsExternal = true,
-                enableDebugConsole = false,
-                enableLZ4Compression = true
+                developmentBuild = false,
+                enableLZ4Compression = true,
+                compressionFormat = -1,  // 자동 (Brotli)
+                managedStrippingLevel = -1,  // 자동 (High)
+                debugSymbolsExternal = true
             };
         }
     }
@@ -113,24 +103,15 @@ namespace AppsInToss
         public string outdir = "dist";
 
         [Header("빌드 프로필")]
-        [Tooltip("Dev Server 실행 시 적용되는 빌드 설정")]
+        [Tooltip("Dev Server 실행 시 적용되는 빌드 설정 (빌드 속도 우선)")]
         public AITBuildProfile devServerProfile = AITBuildProfile.CreateDevServerProfile();
 
-        [Tooltip("Production Server 실행 시 적용되는 빌드 설정")]
-        public AITBuildProfile prodServerProfile = AITBuildProfile.CreateProdServerProfile();
-
-        [Tooltip("Build & Package 실행 시 적용되는 빌드 설정")]
-        public AITBuildProfile buildPackageProfile = AITBuildProfile.CreateBuildPackageProfile();
-
-        [Tooltip("Publish 실행 시 적용되는 빌드 설정")]
-        public AITBuildProfile publishProfile = AITBuildProfile.CreatePublishProfile();
+        [Tooltip("Production 빌드 시 적용되는 빌드 설정 (Prod Server, Build & Package, Publish)")]
+        public AITBuildProfile productionProfile = AITBuildProfile.CreateProductionProfile();
 
         [Header("WebGL 최적화 설정")]
         [Tooltip("-1 = 자동 (Unity 버전별 권장값)")]
         public int memorySize = -1;
-
-        [Tooltip("-1 = 자동, 0 = Disabled, 1 = Gzip, 2 = Brotli")]
-        public int compressionFormat = -1;
 
         [Tooltip("-1 = 자동, 0 = false, 1 = true")]
         public int threadsSupport = -1;
@@ -142,9 +123,6 @@ namespace AppsInToss
 
         [Header("IL2CPP/Stripping 설정")]
         public bool stripEngineCode = true;
-
-        [Tooltip("-1 = 자동 (High)")]
-        public int managedStrippingLevel = -1;
 
         [Tooltip("-1 = 자동 (Release)")]
         public int il2cppConfiguration = -1;

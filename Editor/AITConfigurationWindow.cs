@@ -17,9 +17,7 @@ namespace AppsInToss.Editor
         private bool showAdvancedSettings = false;
         private bool showBuildProfiles = true;
         private bool showDevServerProfile = false;
-        private bool showProdServerProfile = false;
-        private bool showBuildPackageProfile = false;
-        private bool showPublishProfile = false;
+        private bool showProductionProfile = false;
 
         // 하이라이트 색상
         private static readonly Color ModifiedColor = new Color(1f, 0.6f, 0f); // 주황색
@@ -203,8 +201,8 @@ namespace AppsInToss.Editor
             EditorGUILayout.BeginVertical("box");
 
             EditorGUILayout.HelpBox(
-                "각 메뉴(Dev Server, Production Server, Build & Package, Publish)별로 다른 빌드 설정이 적용됩니다.\n" +
-                "아래에서 각 프로필의 기본 설정을 커스터마이징할 수 있습니다.",
+                "Dev Server: 로컬 개발/테스트용 (빌드 속도 우선)\n" +
+                "Production: 배포용 (Prod Server, Build & Package, Publish에서 공통 사용)",
                 MessageType.Info
             );
 
@@ -214,42 +212,20 @@ namespace AppsInToss.Editor
             DrawBuildProfile(
                 ref showDevServerProfile,
                 "Dev Server",
-                "로컬 브라우저에서 테스트할 때 사용 (Mock 브릿지 활성화)",
+                "로컬 개발/테스트용 (빌드 속도 우선, Mock 브릿지 활성화)",
                 config.devServerProfile,
                 AITBuildProfile.CreateDevServerProfile()
             );
 
             GUILayout.Space(5);
 
-            // Production Server 프로필
+            // Production 프로필
             DrawBuildProfile(
-                ref showProdServerProfile,
-                "Production Server",
-                "프로덕션 환경을 로컬에서 확인할 때 사용",
-                config.prodServerProfile,
-                AITBuildProfile.CreateProdServerProfile()
-            );
-
-            GUILayout.Space(5);
-
-            // Build & Package 프로필
-            DrawBuildProfile(
-                ref showBuildPackageProfile,
-                "Build & Package",
-                "배포용 패키지를 생성할 때 사용",
-                config.buildPackageProfile,
-                AITBuildProfile.CreateBuildPackageProfile()
-            );
-
-            GUILayout.Space(5);
-
-            // Publish 프로필
-            DrawBuildProfile(
-                ref showPublishProfile,
-                "Publish",
-                "Apps in Toss에 배포할 때 사용",
-                config.publishProfile,
-                AITBuildProfile.CreatePublishProfile()
+                ref showProductionProfile,
+                "Production",
+                "배포용 (Prod Server, Build & Package, Publish에서 공통 사용)",
+                config.productionProfile,
+                AITBuildProfile.CreateProductionProfile()
             );
 
             GUILayout.Space(10);
@@ -260,9 +236,7 @@ namespace AppsInToss.Editor
                 if (EditorUtility.DisplayDialog("프로필 초기화", "모든 빌드 프로필을 기본값으로 초기화하시겠습니까?", "예", "아니오"))
                 {
                     config.devServerProfile = AITBuildProfile.CreateDevServerProfile();
-                    config.prodServerProfile = AITBuildProfile.CreateProdServerProfile();
-                    config.buildPackageProfile = AITBuildProfile.CreateBuildPackageProfile();
-                    config.publishProfile = AITBuildProfile.CreatePublishProfile();
+                    config.productionProfile = AITBuildProfile.CreateProductionProfile();
                     SaveSettings();
                 }
             }
@@ -291,16 +265,13 @@ namespace AppsInToss.Editor
 
             EditorGUI.indentLevel++;
 
+            // 런타임 설정 헤더
+            EditorGUILayout.LabelField("런타임 설정", EditorStyles.boldLabel);
+
             // Mock 브릿지
             profile.enableMockBridge = EditorGUILayout.Toggle(
                 new GUIContent("Mock 브릿지 사용", "로컬 테스트용, 네이티브 API 없이 동작"),
                 profile.enableMockBridge
-            );
-
-            // 디버그 심볼
-            profile.debugSymbolsExternal = EditorGUILayout.Toggle(
-                new GUIContent("디버그 심볼 외부 분리", "빌드 크기 감소를 위해 심볼을 외부 파일로 분리"),
-                profile.debugSymbolsExternal
             );
 
             // 디버그 콘솔
@@ -309,10 +280,47 @@ namespace AppsInToss.Editor
                 profile.enableDebugConsole
             );
 
+            GUILayout.Space(5);
+
+            // 빌드 설정 헤더
+            EditorGUILayout.LabelField("빌드 설정", EditorStyles.boldLabel);
+
+            // Development Build
+            profile.developmentBuild = EditorGUILayout.Toggle(
+                new GUIContent("Development Build", "빌드 속도 향상 및 디버깅 편의성 (배포용에서는 비활성화 권장)"),
+                profile.developmentBuild
+            );
+
             // LZ4 압축
             profile.enableLZ4Compression = EditorGUILayout.Toggle(
-                new GUIContent("LZ4 압축", "빌드 속도 향상을 위한 LZ4 압축"),
+                new GUIContent("LZ4 압축", "빌드 프로세스 속도 향상을 위한 LZ4 압축"),
                 profile.enableLZ4Compression
+            );
+
+            // 압축 포맷
+            string[] compressionOptions = { "자동", "Disabled", "Gzip", "Brotli" };
+            int compressionIndex = profile.compressionFormat < 0 ? 0 : profile.compressionFormat + 1;
+            compressionIndex = EditorGUILayout.Popup(
+                new GUIContent("WebGL 압축", "최종 빌드 결과물의 압축 포맷 (-1=자동: Brotli)"),
+                compressionIndex,
+                compressionOptions
+            );
+            profile.compressionFormat = compressionIndex == 0 ? -1 : compressionIndex - 1;
+
+            // Stripping Level
+            string[] strippingOptions = { "자동 (High)", "Disabled", "Minimal", "Low", "Medium", "High" };
+            int strippingIndex = profile.managedStrippingLevel < 0 ? 0 : profile.managedStrippingLevel + 1;
+            strippingIndex = EditorGUILayout.Popup(
+                new GUIContent("Managed Stripping", "코드 스트리핑 레벨 (낮을수록 빌드 속도 향상)"),
+                strippingIndex,
+                strippingOptions
+            );
+            profile.managedStrippingLevel = strippingIndex == 0 ? -1 : strippingIndex - 1;
+
+            // 디버그 심볼
+            profile.debugSymbolsExternal = EditorGUILayout.Toggle(
+                new GUIContent("디버그 심볼 외부 분리", "빌드 크기 감소를 위해 심볼을 외부 파일로 분리"),
+                profile.debugSymbolsExternal
             );
 
             // 기본값과 다른 경우 리셋 버튼 표시
@@ -321,10 +329,7 @@ namespace AppsInToss.Editor
                 GUILayout.Space(5);
                 if (GUILayout.Button($"{name} 프로필 기본값으로 복원", GUILayout.Height(20)))
                 {
-                    profile.enableMockBridge = defaultProfile.enableMockBridge;
-                    profile.debugSymbolsExternal = defaultProfile.debugSymbolsExternal;
-                    profile.enableDebugConsole = defaultProfile.enableDebugConsole;
-                    profile.enableLZ4Compression = defaultProfile.enableLZ4Compression;
+                    ResetProfile(profile, defaultProfile);
                 }
             }
 
@@ -333,22 +338,56 @@ namespace AppsInToss.Editor
             EditorGUILayout.EndVertical();
         }
 
+        private void ResetProfile(AITBuildProfile profile, AITBuildProfile defaultProfile)
+        {
+            profile.enableMockBridge = defaultProfile.enableMockBridge;
+            profile.enableDebugConsole = defaultProfile.enableDebugConsole;
+            profile.developmentBuild = defaultProfile.developmentBuild;
+            profile.enableLZ4Compression = defaultProfile.enableLZ4Compression;
+            profile.compressionFormat = defaultProfile.compressionFormat;
+            profile.managedStrippingLevel = defaultProfile.managedStrippingLevel;
+            profile.debugSymbolsExternal = defaultProfile.debugSymbolsExternal;
+        }
+
         private string GetProfileSummary(AITBuildProfile profile)
         {
             var parts = new System.Collections.Generic.List<string>();
             if (profile.enableMockBridge) parts.Add("Mock");
-            if (profile.debugSymbolsExternal) parts.Add("External");
             if (profile.enableDebugConsole) parts.Add("Debug");
+            if (profile.developmentBuild) parts.Add("Dev");
             if (profile.enableLZ4Compression) parts.Add("LZ4");
-            return parts.Count > 0 ? string.Join(", ", parts) : "(모두 비활성화)";
+
+            // 압축 포맷
+            string compression = profile.compressionFormat switch
+            {
+                0 => "NoCompress",
+                1 => "Gzip",
+                2 => "Brotli",
+                _ => ""
+            };
+            if (!string.IsNullOrEmpty(compression)) parts.Add(compression);
+
+            // Stripping
+            string stripping = profile.managedStrippingLevel switch
+            {
+                0 => "NoStrip",
+                1 => "Minimal",
+                _ => ""
+            };
+            if (!string.IsNullOrEmpty(stripping)) parts.Add(stripping);
+
+            return parts.Count > 0 ? string.Join(", ", parts) : "(기본 설정)";
         }
 
         private bool IsProfileDefault(AITBuildProfile profile, AITBuildProfile defaultProfile)
         {
             return profile.enableMockBridge == defaultProfile.enableMockBridge &&
-                   profile.debugSymbolsExternal == defaultProfile.debugSymbolsExternal &&
                    profile.enableDebugConsole == defaultProfile.enableDebugConsole &&
-                   profile.enableLZ4Compression == defaultProfile.enableLZ4Compression;
+                   profile.developmentBuild == defaultProfile.developmentBuild &&
+                   profile.enableLZ4Compression == defaultProfile.enableLZ4Compression &&
+                   profile.compressionFormat == defaultProfile.compressionFormat &&
+                   profile.managedStrippingLevel == defaultProfile.managedStrippingLevel &&
+                   profile.debugSymbolsExternal == defaultProfile.debugSymbolsExternal;
         }
 
         private void DrawWebGLOptimizationSettings()
@@ -370,9 +409,6 @@ namespace AppsInToss.Editor
 
             // 메모리 크기
             DrawMemorySizeSetting();
-
-            // 압축 포맷
-            DrawCompressionFormatSetting();
 
             // 스레딩 지원
             DrawThreadsSupportSetting();
@@ -425,32 +461,6 @@ namespace AppsInToss.Editor
             if (isModified && DrawResetButton())
             {
                 config.memorySize = -1;
-            }
-
-            EditorGUILayout.EndHorizontal();
-        }
-
-        private void DrawCompressionFormatSetting()
-        {
-            WebGLCompressionFormat defaultCompression = AITDefaultSettings.GetDefaultCompressionFormat();
-            bool isModified = config.compressionFormat >= 0 && (WebGLCompressionFormat)config.compressionFormat != defaultCompression;
-
-            EditorGUILayout.BeginHorizontal();
-
-            DrawModifiedIndicator(isModified);
-
-            string label = config.compressionFormat < 0
-                ? $"압축 포맷 (자동: {defaultCompression})"
-                : "압축 포맷";
-
-            string[] options = { $"자동 ({defaultCompression})", "Disabled", "Gzip", "Brotli" };
-            int currentIndex = config.compressionFormat < 0 ? 0 : config.compressionFormat + 1;
-            int newIndex = EditorGUILayout.Popup(label, currentIndex, options);
-            config.compressionFormat = newIndex == 0 ? -1 : newIndex - 1;
-
-            if (isModified && DrawResetButton())
-            {
-                config.compressionFormat = -1;
             }
 
             EditorGUILayout.EndHorizontal();
@@ -522,9 +532,6 @@ namespace AppsInToss.Editor
             // 엔진 코드 제거
             config.stripEngineCode = EditorGUILayout.Toggle("엔진 코드 제거", config.stripEngineCode);
 
-            // Managed Stripping Level
-            DrawManagedStrippingLevelSetting();
-
             // IL2CPP 컴파일러 설정
             DrawIl2CppConfigurationSetting();
 
@@ -574,32 +581,6 @@ namespace AppsInToss.Editor
             }
 
             EditorGUILayout.EndVertical();
-        }
-
-        private void DrawManagedStrippingLevelSetting()
-        {
-            ManagedStrippingLevel defaultLevel = AITDefaultSettings.GetDefaultManagedStrippingLevel();
-            bool isModified = config.managedStrippingLevel >= 0 && (ManagedStrippingLevel)config.managedStrippingLevel != defaultLevel;
-
-            EditorGUILayout.BeginHorizontal();
-
-            DrawModifiedIndicator(isModified);
-
-            string label = config.managedStrippingLevel < 0
-                ? $"Stripping Level (자동: {defaultLevel})"
-                : "Stripping Level";
-
-            string[] options = { $"자동 ({defaultLevel})", "Disabled", "Minimal", "Low", "Medium", "High" };
-            int currentIndex = config.managedStrippingLevel < 0 ? 0 : config.managedStrippingLevel + 1;
-            int newIndex = EditorGUILayout.Popup(label, currentIndex, options);
-            config.managedStrippingLevel = newIndex == 0 ? -1 : newIndex - 1;
-
-            if (isModified && DrawResetButton())
-            {
-                config.managedStrippingLevel = -1;
-            }
-
-            EditorGUILayout.EndHorizontal();
         }
 
         private void DrawIl2CppConfigurationSetting()
@@ -856,9 +837,6 @@ namespace AppsInToss.Editor
             int defaultMemory = AITDefaultSettings.GetDefaultMemorySize();
             if (config.memorySize > 0 && config.memorySize != defaultMemory) count++;
 
-            WebGLCompressionFormat defaultCompression = AITDefaultSettings.GetDefaultCompressionFormat();
-            if (config.compressionFormat >= 0 && (WebGLCompressionFormat)config.compressionFormat != defaultCompression) count++;
-
             bool defaultThreads = AITDefaultSettings.GetDefaultThreadsSupport();
             if (config.threadsSupport >= 0 && (config.threadsSupport == 1) != defaultThreads) count++;
 
@@ -871,7 +849,6 @@ namespace AppsInToss.Editor
         private void ResetWebGLSettings()
         {
             config.memorySize = -1;
-            config.compressionFormat = -1;
             config.threadsSupport = -1;
             config.dataCaching = -1;
         }
@@ -879,7 +856,6 @@ namespace AppsInToss.Editor
         private void ResetAdvancedSettings()
         {
             config.stripEngineCode = true;
-            config.managedStrippingLevel = -1;
             config.il2cppConfiguration = -1;
             config.powerPreference = -1;
 #if !UNITY_6000_0_OR_NEWER
@@ -947,13 +923,13 @@ namespace AppsInToss.Editor
             GUILayout.Space(10);
 
             // 적용될 WebGL 설정 요약
-            EditorGUILayout.LabelField("적용될 WebGL 설정", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("적용될 WebGL 설정 (Production 프로필)", EditorStyles.boldLabel);
 
             int effectiveMemory = config.memorySize > 0 ? config.memorySize : AITDefaultSettings.GetDefaultMemorySize();
             EditorGUILayout.LabelField($"  메모리: {effectiveMemory}MB");
 
-            WebGLCompressionFormat effectiveCompression = config.compressionFormat >= 0
-                ? (WebGLCompressionFormat)config.compressionFormat
+            WebGLCompressionFormat effectiveCompression = config.productionProfile.compressionFormat >= 0
+                ? (WebGLCompressionFormat)config.productionProfile.compressionFormat
                 : AITDefaultSettings.GetDefaultCompressionFormat();
             EditorGUILayout.LabelField($"  압축: {effectiveCompression}");
 

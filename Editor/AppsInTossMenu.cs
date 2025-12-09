@@ -355,12 +355,12 @@ namespace AppsInToss
 
             try
             {
-                // Build 단독 실행은 buildPackageProfile 사용
+                // Build 단독 실행은 productionProfile 사용
                 var result = AITConvertCore.DoExport(
                     buildWebGL: true,
                     doPackaging: false,
                     cleanBuild: false,
-                    profile: config.buildPackageProfile,
+                    profile: config.productionProfile,
                     profileName: "Build"
                 );
                 buildStopwatch.Stop();
@@ -395,12 +395,12 @@ namespace AppsInToss
 
             try
             {
-                // Package 단독 실행은 buildPackageProfile 사용
+                // Package 단독 실행은 productionProfile 사용
                 var result = AITConvertCore.DoExport(
                     buildWebGL: false,
                     doPackaging: true,
                     cleanBuild: false,
-                    profile: config.buildPackageProfile,
+                    profile: config.productionProfile,
                     profileName: "Package"
                 );
                 buildStopwatch.Stop();
@@ -435,12 +435,12 @@ namespace AppsInToss
 
             try
             {
-                // Build & Package 메뉴는 buildPackageProfile 사용
+                // Build & Package 메뉴는 productionProfile 사용
                 var result = AITConvertCore.DoExport(
                     buildWebGL: true,
                     doPackaging: true,
                     cleanBuild: false,
-                    profile: config.buildPackageProfile,
+                    profile: config.productionProfile,
                     profileName: "Build & Package"
                 );
                 buildStopwatch.Stop();
@@ -697,15 +697,15 @@ namespace AppsInToss
                 return;
             }
 
-            // 빌드 & 패키징 수행 (Production Server: prodServerProfile 사용, 클린 빌드로 깨끗한 결과물 보장)
-            Debug.Log("AIT: 빌드 & 패키징 수행 중 (클린 빌드, Production Server 프로필)...");
+            // 빌드 & 패키징 수행 (Production Server: productionProfile 사용, 클린 빌드로 깨끗한 결과물 보장)
+            Debug.Log("AIT: 빌드 & 패키징 수행 중 (클린 빌드, Production 프로필)...");
             buildStopwatch.Restart();
 
             var result = AITConvertCore.DoExport(
                 buildWebGL: true,
                 doPackaging: true,
                 cleanBuild: true,
-                profile: config.prodServerProfile,
+                profile: config.productionProfile,
                 profileName: "Production Server"
             );
             buildStopwatch.Stop();

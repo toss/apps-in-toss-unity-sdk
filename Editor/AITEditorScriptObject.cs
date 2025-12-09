@@ -92,11 +92,15 @@ namespace AppsInToss
         [Tooltip("WebView 타입. 게임앱은 'game' (투명배경), 일반앱은 'partner' (흰색배경), 외부연동은 'external'")]
         public int webViewType = 0; // 0=game, 1=partner, 2=external
 
-        [Header("개발 서버 설정")]
-        [Tooltip("개발 서버 호스트. 기본값: localhost")]
-        public string devHost = "localhost";
+        [Header("서버 설정")]
+        [Tooltip("Granite (Metro) 서버 호스트. 기본값: localhost")]
+        public string graniteHost = "localhost";
 
-        public int localPort = 5173;
+        [Tooltip("Granite (Metro) 서버 포트. 기본값: 8081")]
+        public int granitePort = 8081;
+
+        [Tooltip("Vite 서버 포트. 기본값: 5173")]
+        public int vitePort = 5173;
 
         [Header("빌드 출력 설정")]
         [Tooltip("granite build 출력 디렉토리. 기본값: dist")]

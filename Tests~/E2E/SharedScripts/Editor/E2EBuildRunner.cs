@@ -80,8 +80,12 @@ public class E2EBuildRunner
         config.iconUrl = "https://via.placeholder.com/512"; // 테스트용 아이콘
         config.primaryColor = "#1E88E5";
         // Unity 버전별 고유 포트 사용 (동시 실행 시 충돌 방지)
-        // 2021.3 → 4173, 2022.3 → 4174, 6000.0 → 4175, 6000.2 → 4176
-        config.localPort = GetPortForUnityVersion();
+        // 환경 변수가 설정된 경우 해당 값 사용 (CI 제어용)
+        int portOffset = GetPortOffsetForUnityVersion();
+        config.granitePort = GetEnvInt("AIT_GRANITE_PORT", 8081 + portOffset);
+        config.vitePort = GetEnvInt("AIT_VITE_PORT", 5173 + portOffset);
+        config.graniteHost = GetEnvString("AIT_GRANITE_HOST", "localhost");
+        Debug.Log($"✓ Server ports: Granite={config.granitePort}, Vite={config.vitePort}");
         EditorUtility.SetDirty(config);
         AssetDatabase.SaveAssets();
         Debug.Log("✓ SDK config updated");
@@ -126,21 +130,42 @@ public class E2EBuildRunner
     }
 
     /// <summary>
-    /// Unity 버전에 따른 고유 포트 반환 (동시 실행 시 충돌 방지)
+    /// Unity 버전에 따른 포트 오프셋 반환 (동시 실행 시 충돌 방지)
+    /// 2021.3 → 0, 2022.3 → 1, 6000.0 → 2, 6000.2 → 3
     /// </summary>
-    private static int GetPortForUnityVersion()
+    private static int GetPortOffsetForUnityVersion()
     {
-        // Unity 버전별 포트 오프셋
-        // 2021.3 → 4173, 2022.3 → 4174, 6000.0 → 4175, 6000.2 → 4176
 #if UNITY_6000_2_OR_NEWER
-        return 4176;
+        return 3;
 #elif UNITY_6000_0_OR_NEWER
-        return 4175;
+        return 2;
 #elif UNITY_2022_3_OR_NEWER
-        return 4174;
+        return 1;
 #else
-        return 4173;
+        return 0;
 #endif
+    }
+
+    /// <summary>
+    /// 환경 변수에서 int 값 읽기 (없으면 기본값 반환)
+    /// </summary>
+    private static int GetEnvInt(string name, int defaultValue)
+    {
+        string value = System.Environment.GetEnvironmentVariable(name);
+        if (!string.IsNullOrEmpty(value) && int.TryParse(value, out int result))
+        {
+            return result;
+        }
+        return defaultValue;
+    }
+
+    /// <summary>
+    /// 환경 변수에서 string 값 읽기 (없으면 기본값 반환)
+    /// </summary>
+    private static string GetEnvString(string name, string defaultValue)
+    {
+        string value = System.Environment.GetEnvironmentVariable(name);
+        return string.IsNullOrEmpty(value) ? defaultValue : value;
     }
 
     /// <summary>

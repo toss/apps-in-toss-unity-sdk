@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Text.RegularExpressions;
@@ -594,6 +595,22 @@ namespace AppsInToss
                 return;
             }
 
+            // Production 서버가 실행 중이면 확인 후 전환
+            if (IsProdServerRunning)
+            {
+                if (EditorUtility.DisplayDialog(
+                    "서버 전환",
+                    "Production 서버가 실행 중입니다.\nDev 서버로 전환하시겠습니까?",
+                    "예", "아니오"))
+                {
+                    StopProdServer();
+                }
+                else
+                {
+                    return;
+                }
+            }
+
             devServerStatus = ServerStatus.Starting;
 
             var config = UnityUtil.GetEditorConf();
@@ -641,31 +658,27 @@ namespace AppsInToss
                 return;
             }
 
-            // 사용 가능한 포트 찾기 (Dev 서버)
-            int preferredPort = config.localPort > 0 ? config.localPort : 5173;
-            int availablePort = FindAvailablePort(preferredPort);
-            if (availablePort < 0)
-            {
-                Debug.LogError($"AIT: 사용 가능한 포트를 찾을 수 없습니다 ({preferredPort}~{preferredPort + 9})");
-                EditorUtility.DisplayDialog("오류", $"사용 가능한 포트를 찾을 수 없습니다.\n\n포트 {preferredPort}~{preferredPort + 9}가 모두 사용 중입니다.", "확인");
-                devServerStatus = ServerStatus.NotRunning;
-                return;
-            }
+            // 포트 설정 (환경 변수로 전달)
+            int granitePort = config.granitePort > 0 ? config.granitePort : 8081;
+            int vitePort = config.vitePort > 0 ? config.vitePort : 5173;
 
-            if (availablePort != preferredPort)
-            {
-                Debug.Log($"AIT: 포트 {preferredPort}가 사용 중이므로 {availablePort} 사용");
-            }
-
-            Debug.Log($"AIT: Dev 서버 시작 중 (granite dev --port {availablePort})... ({buildPath})");
+            Debug.Log($"AIT: Dev 서버 시작 중 (granite dev)... ({buildPath})");
+            Debug.Log($"AIT:   Granite 포트: {granitePort}, Vite 포트: {vitePort}");
 
             try
             {
-                // pnpx granite dev --port로 직접 호출 (pnpm run dev --는 인자 전달이 안됨)
+                // 환경 변수로 포트 설정 전달
+                var envVars = new Dictionary<string, string>
+                {
+                    { "AIT_GRANITE_HOST", config.graniteHost },
+                    { "AIT_GRANITE_PORT", granitePort.ToString() },
+                    { "AIT_VITE_PORT", vitePort.ToString() }
+                };
+
                 devServerManager = new AITProcessTreeManager();
                 StartServerProcessWithPortDetection(
                     devServerManager,
-                    buildPath, npmPath, $"exec granite dev --port {availablePort}", "Dev Server",
+                    buildPath, npmPath, "exec granite dev", "Dev Server", envVars,
                     (port) =>
                     {
                         devServerPort = port;
@@ -727,6 +740,22 @@ namespace AppsInToss
                 return;
             }
 
+            // Dev 서버가 실행 중이면 확인 후 전환
+            if (IsDevServerRunning)
+            {
+                if (EditorUtility.DisplayDialog(
+                    "서버 전환",
+                    "Dev 서버가 실행 중입니다.\nProduction 서버로 전환하시겠습니까?",
+                    "예", "아니오"))
+                {
+                    StopDevServer();
+                }
+                else
+                {
+                    return;
+                }
+            }
+
             prodServerStatus = ServerStatus.Starting;
 
             var config = UnityUtil.GetEditorConf();
@@ -774,31 +803,24 @@ namespace AppsInToss
                 return;
             }
 
-            // 사용 가능한 포트 찾기 (Production은 Dev와 다른 포트 사용)
-            int preferredPort = config.localPort > 0 ? config.localPort + 100 : 5273;
-            int availablePort = FindAvailablePort(preferredPort);
-            if (availablePort < 0)
-            {
-                Debug.LogError($"AIT: 사용 가능한 포트를 찾을 수 없습니다 ({preferredPort}~{preferredPort + 9})");
-                EditorUtility.DisplayDialog("오류", $"사용 가능한 포트를 찾을 수 없습니다.\n\n포트 {preferredPort}~{preferredPort + 9}가 모두 사용 중입니다.", "확인");
-                prodServerStatus = ServerStatus.NotRunning;
-                return;
-            }
+            // 포트 설정 (Dev 서버와 동일한 포트 사용, 환경 변수로 전달)
+            int vitePort = config.vitePort > 0 ? config.vitePort : 5173;
 
-            if (availablePort != preferredPort)
-            {
-                Debug.Log($"AIT: 포트 {preferredPort}가 사용 중이므로 {availablePort} 사용");
-            }
-
-            Debug.Log($"AIT: Production 서버 시작 중 (vite preview --port {availablePort})... ({buildPath})");
+            Debug.Log($"AIT: Production 서버 시작 중 (vite preview)... ({buildPath})");
+            Debug.Log($"AIT:   Vite 포트: {vitePort}");
 
             try
             {
-                // pnpx vite preview --port로 직접 호출 (pnpm run start --는 인자 전달이 안됨)
+                // 환경 변수로 포트 설정 전달
+                var envVars = new Dictionary<string, string>
+                {
+                    { "AIT_VITE_PORT", vitePort.ToString() }
+                };
+
                 prodServerManager = new AITProcessTreeManager();
                 StartServerProcessWithPortDetection(
                     prodServerManager,
-                    buildPath, npmPath, $"exec vite preview --outDir dist/web --port {availablePort}", "Prod Server",
+                    buildPath, npmPath, $"exec vite preview --outDir dist/web --port {vitePort}", "Prod Server", envVars,
                     (port) =>
                     {
                         prodServerPort = port;
@@ -853,6 +875,7 @@ namespace AppsInToss
         /// AITProcessTreeManager를 사용하여 프로세스 트리 전체를 관리
         /// </summary>
         /// <param name="manager">프로세스 트리 관리자</param>
+        /// <param name="envVars">환경 변수 (AIT_GRANITE_HOST, AIT_GRANITE_PORT, AIT_VITE_PORT 등)</param>
         /// <param name="onPortDetected">포트가 감지되면 호출되는 콜백 (메인 스레드에서 실행)</param>
         private static void StartServerProcessWithPortDetection(
             AITProcessTreeManager manager,
@@ -860,10 +883,23 @@ namespace AppsInToss
             string npmPath,
             string npmCommand,
             string logPrefix,
+            Dictionary<string, string> envVars,
             Action<int> onPortDetected)
         {
             string npmDir = Path.GetDirectoryName(npmPath);
             string pathEnv = AITPlatformHelper.BuildPathEnv(npmDir);
+
+            // 환경 변수 export 문자열 생성 (Unix용)
+            string envExports = "";
+            if (envVars != null && envVars.Count > 0)
+            {
+                var exports = new List<string>();
+                foreach (var kv in envVars)
+                {
+                    exports.Add($"export {kv.Key}='{kv.Value}'");
+                }
+                envExports = string.Join(" && ", exports) + " && ";
+            }
 
             ProcessStartInfo startInfo;
 
@@ -882,13 +918,22 @@ namespace AppsInToss
                     StandardErrorEncoding = System.Text.Encoding.UTF8
                 };
                 startInfo.EnvironmentVariables["PATH"] = pathEnv;
+
+                // Windows: 환경 변수 직접 설정
+                if (envVars != null)
+                {
+                    foreach (var kv in envVars)
+                    {
+                        startInfo.EnvironmentVariables[kv.Key] = kv.Value;
+                    }
+                }
             }
             else
             {
                 startInfo = new ProcessStartInfo
                 {
                     FileName = "/bin/bash",
-                    Arguments = $"-l -c \"export PATH='{pathEnv}' && cd '{buildPath}' && '{npmPath}' {npmCommand}\"",
+                    Arguments = $"-l -c \"{envExports}export PATH='{pathEnv}' && cd '{buildPath}' && '{npmPath}' {npmCommand}\"",
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,

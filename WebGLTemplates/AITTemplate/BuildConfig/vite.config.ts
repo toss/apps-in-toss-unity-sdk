@@ -3,7 +3,8 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   server: {
     host: true,
-    strictPort: false, // 포트 충돌 시 자동으로 다음 가용 포트 사용
+    port: parseInt(process.env.AIT_VITE_PORT || '5173', 10),
+    strictPort: true, // 포트 충돌 시 서버 실행 실패
   },
   build: {
     // Unity WebGL 빌드와 호환되도록 설정

@@ -163,14 +163,17 @@ namespace AppsInToss.Editor
 
         private void DrawDevServerSettings()
         {
-            EditorGUILayout.LabelField("개발 서버 설정", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("서버 설정", EditorStyles.boldLabel);
             EditorGUILayout.BeginVertical("box");
 
-            config.devHost = EditorGUILayout.TextField("호스트", config.devHost);
-            config.localPort = EditorGUILayout.IntField("포트", config.localPort);
+            config.graniteHost = EditorGUILayout.TextField("Granite 호스트", config.graniteHost);
+            config.granitePort = EditorGUILayout.IntField("Granite 포트", config.granitePort);
+            config.vitePort = EditorGUILayout.IntField("Vite 포트", config.vitePort);
 
             EditorGUILayout.HelpBox(
-                "개발 서버의 호스트와 포트 설정입니다. (기본값: localhost:5173)",
+                "Granite (Metro) 서버와 Vite 서버 설정입니다.\n" +
+                "기본값: Granite localhost:8081, Vite :5173\n" +
+                "환경 변수: AIT_GRANITE_HOST, AIT_GRANITE_PORT, AIT_VITE_PORT",
                 MessageType.Info
             );
 

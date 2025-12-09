@@ -506,12 +506,12 @@ namespace AppsInToss
             {
                 string npmDir = Path.GetDirectoryName(npmPath);
 
-                // pnpm만 사용 (내장 Node.js + pnpm)
-                string pnpxName = AITPlatformHelper.IsWindows ? "pnpx.cmd" : "pnpx";
-                string pnpxPath = Path.Combine(npmDir, pnpxName);
+                // pnpm run deploy를 사용하여 로컬 node_modules/.bin/ait 사용
+                string pnpmName = AITPlatformHelper.IsWindows ? "pnpm.cmd" : "pnpm";
+                string pnpmPath = Path.Combine(npmDir, pnpmName);
 
-                // 크로스 플랫폼 명령 실행
-                string command = $"\"{pnpxPath}\" ait deploy --api-key \"{deploymentKey}\"";
+                // pnpm run deploy -- --api-key "KEY" 형태로 인자 전달 (로컬 node_modules 사용)
+                string command = $"\"{pnpmPath}\" run deploy -- --api-key \"{deploymentKey}\"";
                 var result = AITPlatformHelper.ExecuteCommand(
                     command,
                     buildPath,

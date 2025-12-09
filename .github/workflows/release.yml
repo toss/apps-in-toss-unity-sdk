@@ -200,10 +200,12 @@ jobs:
           EOF
           )
 
-          # 기존 릴리즈가 있으면 삭제 (upsert)
-          gh release delete "${TAG_NAME}" --yes 2>/dev/null || true
+          # 기존 릴리즈가 있으면 삭제 (upsert) - --cleanup-tag로 태그도 함께 삭제
+          gh release delete "${TAG_NAME}" --yes --cleanup-tag 2>/dev/null || true
 
+          # --target HEAD로 현재 커밋을 타겟으로 새 태그 생성
           gh release create "${TAG_NAME}" \
+            --target HEAD \
             --title "v${VERSION}" \
             --notes "$RELEASE_BODY"
 

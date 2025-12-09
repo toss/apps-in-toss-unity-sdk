@@ -11,28 +11,39 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 7c3cbd8251a0c434481614bbcd8082ff, type: 3}
   m_Name: AITConfig
-  m_EditorClassIdentifier: AppsInTossSDKEditor::AppsInToss.AITEditorScriptObject
-  appName: unity-sdk-sample
-  displayName: Unity SDK Sample
+  m_EditorClassIdentifier:
+  appName:
+  displayName:
   version: 0.0.1
-  description: 
+  description:
   primaryColor: '#3182F6'
-  iconUrl: 
+  iconUrl:
   bridgeColorMode: 0
   webViewType: 0
   devHost: localhost
   localPort: 5173
   outdir: dist
-  isProduction: 0
-  enableOptimization: 1
-  enableCompression: 0
+  devServerProfile:
+    enableMockBridge: 1
+    enableDebugConsole: 1
+    developmentBuild: 1
+    enableLZ4Compression: 1
+    compressionFormat: 0
+    managedStrippingLevel: 1
+    debugSymbolsExternal: 0
+  productionProfile:
+    enableMockBridge: 0
+    enableDebugConsole: 0
+    developmentBuild: 0
+    enableLZ4Compression: 1
+    compressionFormat: -1
+    managedStrippingLevel: -1
+    debugSymbolsExternal: 1
   memorySize: -1
-  compressionFormat: -1
   threadsSupport: -1
   dataCaching: -1
   nameFilesAsHashes: 1
   stripEngineCode: 1
-  managedStrippingLevel: -1
   il2cppConfiguration: -1
   powerPreference: -1
   wasmStreaming: 1
@@ -43,6 +54,7 @@ MonoBehaviour:
   webAssemblyArithmeticExceptions: -1
   enableDebugConsole: 0
   permissions:
-  - geolocation
+  - userInfo
+  - location
   - camera
   plugins: []

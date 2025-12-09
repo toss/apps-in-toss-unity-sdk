@@ -26,8 +26,8 @@ namespace AppsInToss
             Stopping
         }
 
-        private static Process devServerProcess;
-        private static Process prodServerProcess;
+        private static AITProcessTreeManager devServerManager;
+        private static AITProcessTreeManager prodServerManager;
         private static int devServerPort = 0;
         private static int prodServerPort = 0;
         private static ServerStatus devServerStatus = ServerStatus.NotRunning;
@@ -56,25 +56,16 @@ namespace AppsInToss
             int savedDevPort = EditorPrefs.GetInt(DEV_SERVER_PORT_KEY, 0);
             if (devPid > 0)
             {
-                try
+                devServerManager = new AITProcessTreeManager();
+                if (devServerManager.RestoreFromPid(devPid))
                 {
-                    var process = Process.GetProcessById(devPid);
-                    if (!process.HasExited)
-                    {
-                        devServerProcess = process;
-                        devServerPort = savedDevPort;
-                        devServerStatus = ServerStatus.Running;
-                        Debug.Log($"[AIT] Dev 서버 프로세스 복원됨 (PID: {devPid}, Port: {savedDevPort})");
-                    }
-                    else
-                    {
-                        ClearDevServerPrefs();
-                        devServerStatus = ServerStatus.NotRunning;
-                    }
+                    devServerPort = savedDevPort;
+                    devServerStatus = ServerStatus.Running;
+                    Debug.Log($"[AIT] Dev 서버 프로세스 복원됨 (PID: {devPid}, Port: {savedDevPort})");
                 }
-                catch
+                else
                 {
-                    // 프로세스가 더 이상 존재하지 않음
+                    devServerManager = null;
                     ClearDevServerPrefs();
                     devServerStatus = ServerStatus.NotRunning;
                 }
@@ -85,25 +76,16 @@ namespace AppsInToss
             int savedProdPort = EditorPrefs.GetInt(PROD_SERVER_PORT_KEY, 0);
             if (prodPid > 0)
             {
-                try
+                prodServerManager = new AITProcessTreeManager();
+                if (prodServerManager.RestoreFromPid(prodPid))
                 {
-                    var process = Process.GetProcessById(prodPid);
-                    if (!process.HasExited)
-                    {
-                        prodServerProcess = process;
-                        prodServerPort = savedProdPort;
-                        prodServerStatus = ServerStatus.Running;
-                        Debug.Log($"[AIT] Prod 서버 프로세스 복원됨 (PID: {prodPid}, Port: {savedProdPort})");
-                    }
-                    else
-                    {
-                        ClearProdServerPrefs();
-                        prodServerStatus = ServerStatus.NotRunning;
-                    }
+                    prodServerPort = savedProdPort;
+                    prodServerStatus = ServerStatus.Running;
+                    Debug.Log($"[AIT] Prod 서버 프로세스 복원됨 (PID: {prodPid}, Port: {savedProdPort})");
                 }
-                catch
+                else
                 {
-                    // 프로세스가 더 이상 존재하지 않음
+                    prodServerManager = null;
                     ClearProdServerPrefs();
                     prodServerStatus = ServerStatus.NotRunning;
                 }
@@ -193,14 +175,14 @@ namespace AppsInToss
         {
             get
             {
-                if (devServerProcess == null) return false;
+                if (devServerManager == null) return false;
                 try
                 {
-                    return !devServerProcess.HasExited;
+                    return !devServerManager.HasExited;
                 }
                 catch
                 {
-                    devServerProcess = null;
+                    devServerManager = null;
                     return false;
                 }
             }
@@ -213,14 +195,14 @@ namespace AppsInToss
         {
             get
             {
-                if (prodServerProcess == null) return false;
+                if (prodServerManager == null) return false;
                 try
                 {
-                    return !prodServerProcess.HasExited;
+                    return !prodServerManager.HasExited;
                 }
                 catch
                 {
-                    prodServerProcess = null;
+                    prodServerManager = null;
                     return false;
                 }
             }
@@ -680,13 +662,15 @@ namespace AppsInToss
             try
             {
                 // pnpx granite dev --port로 직접 호출 (pnpm run dev --는 인자 전달이 안됨)
-                devServerProcess = StartServerProcessWithPortDetection(
+                devServerManager = new AITProcessTreeManager();
+                StartServerProcessWithPortDetection(
+                    devServerManager,
                     buildPath, npmPath, $"exec granite dev --port {availablePort}", "Dev Server",
                     (port) =>
                     {
                         devServerPort = port;
                         devServerStatus = ServerStatus.Running;
-                        SaveDevServerPrefs(devServerProcess.Id, port);
+                        SaveDevServerPrefs(devServerManager.ProcessId, port);
                         Debug.Log($"AIT: Dev 서버가 시작되었습니다: http://localhost:{port}");
                         Application.OpenURL($"http://localhost:{port}/index.html");
                     }
@@ -696,6 +680,7 @@ namespace AppsInToss
             {
                 Debug.LogError($"AIT: Dev 서버 시작 실패: {e.Message}");
                 EditorUtility.DisplayDialog("오류", $"Dev 서버 시작 실패:\n{e.Message}", "확인");
+                devServerManager = null;
                 devServerStatus = ServerStatus.NotRunning;
             }
         }
@@ -707,18 +692,18 @@ namespace AppsInToss
         {
             devServerStatus = ServerStatus.Stopping;
 
-            if (devServerProcess != null && !devServerProcess.HasExited)
+            // AITProcessTreeManager로 프로세스 트리 전체 종료
+            if (devServerManager != null)
             {
                 try
                 {
-                    devServerProcess.Kill();
-                    devServerProcess.WaitForExit(2000);
+                    devServerManager.KillProcessTree();
                 }
                 catch { }
+                devServerManager = null;
             }
-            devServerProcess = null;
 
-            // 감지된 포트에서 실행 중인 프로세스도 종료
+            // 백업: 포트에서 실행 중인 프로세스도 종료 (혹시 남아있는 경우)
             if (devServerPort > 0)
             {
                 KillProcessOnPort(devServerPort);
@@ -810,13 +795,15 @@ namespace AppsInToss
             try
             {
                 // pnpx vite preview --port로 직접 호출 (pnpm run start --는 인자 전달이 안됨)
-                prodServerProcess = StartServerProcessWithPortDetection(
+                prodServerManager = new AITProcessTreeManager();
+                StartServerProcessWithPortDetection(
+                    prodServerManager,
                     buildPath, npmPath, $"exec vite preview --outDir dist/web --port {availablePort}", "Prod Server",
                     (port) =>
                     {
                         prodServerPort = port;
                         prodServerStatus = ServerStatus.Running;
-                        SaveProdServerPrefs(prodServerProcess.Id, port);
+                        SaveProdServerPrefs(prodServerManager.ProcessId, port);
                         Debug.Log($"AIT: Production 서버가 시작되었습니다: http://localhost:{port}");
                         Application.OpenURL($"http://localhost:{port}/");
                     }
@@ -826,6 +813,7 @@ namespace AppsInToss
             {
                 Debug.LogError($"AIT: Production 서버 시작 실패: {e.Message}");
                 EditorUtility.DisplayDialog("오류", $"Production 서버 시작 실패:\n{e.Message}", "확인");
+                prodServerManager = null;
                 prodServerStatus = ServerStatus.NotRunning;
             }
         }
@@ -837,18 +825,18 @@ namespace AppsInToss
         {
             prodServerStatus = ServerStatus.Stopping;
 
-            if (prodServerProcess != null && !prodServerProcess.HasExited)
+            // AITProcessTreeManager로 프로세스 트리 전체 종료
+            if (prodServerManager != null)
             {
                 try
                 {
-                    prodServerProcess.Kill();
-                    prodServerProcess.WaitForExit(2000);
+                    prodServerManager.KillProcessTree();
                 }
                 catch { }
+                prodServerManager = null;
             }
-            prodServerProcess = null;
 
-            // 감지된 포트에서 실행 중인 프로세스도 종료
+            // 백업: 포트에서 실행 중인 프로세스도 종료 (혹시 남아있는 경우)
             if (prodServerPort > 0)
             {
                 KillProcessOnPort(prodServerPort);
@@ -862,9 +850,12 @@ namespace AppsInToss
 
         /// <summary>
         /// 서버 프로세스 시작 (동적 포트 감지 포함) - 크로스 플랫폼
+        /// AITProcessTreeManager를 사용하여 프로세스 트리 전체를 관리
         /// </summary>
+        /// <param name="manager">프로세스 트리 관리자</param>
         /// <param name="onPortDetected">포트가 감지되면 호출되는 콜백 (메인 스레드에서 실행)</param>
-        private static Process StartServerProcessWithPortDetection(
+        private static void StartServerProcessWithPortDetection(
+            AITProcessTreeManager manager,
             string buildPath,
             string npmPath,
             string npmCommand,
@@ -907,8 +898,10 @@ namespace AppsInToss
                 };
             }
 
-            var process = new Process { StartInfo = startInfo };
             bool portDetected = false;
+
+            // AITProcessTreeManager를 통해 프로세스 시작 (프로세스 그룹 관리)
+            var process = manager.StartProcess(startInfo);
 
             process.OutputDataReceived += (sender, args) =>
             {
@@ -941,11 +934,8 @@ namespace AppsInToss
                 }
             };
 
-            process.Start();
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
-
-            return process;
         }
 
         /// <summary>

@@ -680,6 +680,7 @@ namespace AppsInToss
                     ".npm-cache",
                     "package.json",
                     "package-lock.json",
+                    "pnpm-lock.yaml",
                     "granite.config.ts",
                     "vite.config.ts",
                     "tsconfig.json"

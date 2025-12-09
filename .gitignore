@@ -169,5 +169,6 @@ pnpm-lock.yaml
 package-lock.json.meta
 pnpm-lock.yaml.meta
 
-# BuildConfig의 lockfile은 커밋 (빠른 설치를 위해)
+# BuildConfig의 lockfile과 meta 파일은 커밋 (빠른 설치 + Unity 패키지 안정성)
 !WebGLTemplates/AITTemplate/BuildConfig/pnpm-lock.yaml
+!WebGLTemplates/AITTemplate/BuildConfig/pnpm-lock.yaml.meta

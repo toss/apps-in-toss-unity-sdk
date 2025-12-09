@@ -4,7 +4,7 @@
 PlayerSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 24
-  productGUID: 24747a126dd614769b65daac82bd5ce2
+  productGUID: 322a7147d6911431dbbd360d84f89311
   AndroidProfiler: 0
   AndroidFilterTouchesWhenObscured: 0
   AndroidEnableSustainedPerformanceMode: 0
@@ -13,7 +13,7 @@ PlayerSettings:
   useOnDemandResources: 0
   accelerometerFrequency: 60
   companyName: Apps in Toss
-  productName: SampleUnityProject
+  productName: SampleUnityProject-2021.3
   defaultCursor: {fileID: 0}
   cursorHotspot: {x: 0, y: 0}
   m_SplashScreenBackgroundColor: {r: 0.12156863, g: 0.12156863, b: 0.1254902, a: 1}
@@ -485,7 +485,7 @@ PlayerSettings:
   ps4GarlicHeapSize: 2048
   ps4ProGarlicHeapSize: 2560
   playerPrefsMaxSize: 32768
-  ps4Passcode: MUSVHWORlOTf17rZ186NxQUbJy9xboj7
+  ps4Passcode: A0C2F6HHoeehGPKcJaP5MPzKpSYojkuW
   ps4pnSessions: 1
   ps4pnPresence: 1
   ps4pnFriends: 1
@@ -529,13 +529,13 @@ PlayerSettings:
   webGLExceptionSupport: 1
   webGLNameFilesAsHashes: 0
   webGLDataCaching: 0
-  webGLDebugSymbols: 1
+  webGLDebugSymbols: 0
   webGLEmscriptenArgs: 
   webGLModulesDirectory: 
   webGLTemplate: PROJECT:AITTemplate
   webGLAnalyzeBuildSize: 0
   webGLUseEmbeddedResources: 0
-  webGLCompressionFormat: 1
+  webGLCompressionFormat: 0
   webGLWasmArithmeticExceptions: 0
   webGLLinkerTarget: 1
   webGLThreadsSupport: 0
@@ -549,7 +549,7 @@ PlayerSettings:
   il2cppCompilerConfiguration:
     WebGL: 1
   managedStrippingLevel:
-    WebGL: 3
+    WebGL: 1
   incrementalIl2cppBuild: {}
   suppressCommonWarnings: 1
   allowUnsafeCode: 0
@@ -563,14 +563,14 @@ PlayerSettings:
   apiCompatibilityLevelPerPlatform: {}
   m_RenderingPath: 1
   m_MobileRenderingPath: 1
-  metroPackageName: SampleUnityProject
+  metroPackageName: SampleUnityProject-2021.3
   metroPackageVersion: 
   metroCertificatePath: 
   metroCertificatePassword: 
   metroCertificateSubject: 
   metroCertificateIssuer: 
   metroCertificateNotAfter: 0000000000000000
-  metroApplicationDescription: SampleUnityProject
+  metroApplicationDescription: SampleUnityProject-2021.3
   wsaImages: {}
   metroTileShortName: 
   metroTileShowName: 0

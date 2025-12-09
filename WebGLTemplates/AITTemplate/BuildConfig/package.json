@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "granite dev",
     "build": "granite build",
-    "start": "granite start",
+    "start": "granite dev",
     "deploy": "ait deploy"
   },
   "dependencies": {

@@ -686,7 +686,7 @@ namespace AppsInToss
                 StartServerProcessWithPortDetection(
                     devServerManager,
                     buildPath, npmPath, graniteCommand, "Dev Server", envVars,
-                    (detectedPort) =>
+                    onServerStarted: (detectedPort) =>
                     {
                         devServerPort = vitePort;
                         devServerStatus = ServerStatus.Running;
@@ -695,6 +695,14 @@ namespace AppsInToss
                         Debug.Log($"AIT:   Granite (Metro): http://{graniteHost}:{granitePort}");
                         Debug.Log($"AIT:   Vite: http://{viteHost}:{vitePort}");
                         Application.OpenURL($"http://localhost:{vitePort}/index.html");
+                    },
+                    onServerFailed: (reason) =>
+                    {
+                        Debug.LogError($"AIT: Dev 서버 시작 실패 - {reason}");
+                        EditorUtility.DisplayDialog("Dev 서버 시작 실패", reason, "확인");
+                        devServerManager = null;
+                        devServerStatus = ServerStatus.NotRunning;
+                        ClearDevServerPrefs();
                     }
                 );
             }
@@ -840,7 +848,7 @@ namespace AppsInToss
                 StartServerProcessWithPortDetection(
                     prodServerManager,
                     buildPath, npmPath, graniteCommand, "Prod Server", envVars,
-                    (detectedPort) =>
+                    onServerStarted: (detectedPort) =>
                     {
                         prodServerPort = vitePort;
                         prodServerStatus = ServerStatus.Running;
@@ -849,6 +857,14 @@ namespace AppsInToss
                         Debug.Log($"AIT:   Granite (Metro): http://{graniteHost}:{granitePort}");
                         Debug.Log($"AIT:   Vite: http://{viteHost}:{vitePort}");
                         Application.OpenURL($"http://localhost:{vitePort}/");
+                    },
+                    onServerFailed: (reason) =>
+                    {
+                        Debug.LogError($"AIT: Production 서버 시작 실패 - {reason}");
+                        EditorUtility.DisplayDialog("Production 서버 시작 실패", reason, "확인");
+                        prodServerManager = null;
+                        prodServerStatus = ServerStatus.NotRunning;
+                        ClearProdServerPrefs();
                     }
                 );
             }
@@ -897,7 +913,8 @@ namespace AppsInToss
         /// </summary>
         /// <param name="manager">프로세스 트리 관리자</param>
         /// <param name="envVars">환경 변수 (AIT_GRANITE_HOST, AIT_GRANITE_PORT, AIT_VITE_PORT 등)</param>
-        /// <param name="onPortDetected">포트가 감지되면 호출되는 콜백 (메인 스레드에서 실행)</param>
+        /// <param name="onServerStarted">서버가 성공적으로 시작되면 호출되는 콜백 (메인 스레드에서 실행)</param>
+        /// <param name="onServerFailed">서버 시작에 실패하면 호출되는 콜백 (메인 스레드에서 실행)</param>
         private static void StartServerProcessWithPortDetection(
             AITProcessTreeManager manager,
             string buildPath,
@@ -905,7 +922,8 @@ namespace AppsInToss
             string npmCommand,
             string logPrefix,
             Dictionary<string, string> envVars,
-            Action<int> onPortDetected)
+            Action<int> onServerStarted,
+            Action<string> onServerFailed = null)
         {
             string npmDir = Path.GetDirectoryName(npmPath);
             string pathEnv = AITPlatformHelper.BuildPathEnv(npmDir);
@@ -964,29 +982,65 @@ namespace AppsInToss
                 };
             }
 
-            bool portDetected = false;
+            bool serverStarted = false;
+            bool serverFailed = false;
+            string failureReason = null;
 
             // AITProcessTreeManager를 통해 프로세스 시작 (프로세스 그룹 관리)
             var process = manager.StartProcess(startInfo);
+
+            // 프로세스 종료 감지
+            process.EnableRaisingEvents = true;
+            process.Exited += (sender, args) =>
+            {
+                // 서버가 아직 시작되지 않았는데 프로세스가 종료된 경우 = 실패
+                if (!serverStarted && !serverFailed)
+                {
+                    serverFailed = true;
+                    int exitCode = process.ExitCode;
+                    string reason = failureReason ?? $"프로세스가 비정상 종료되었습니다 (Exit Code: {exitCode})";
+
+                    EditorApplication.delayCall += () =>
+                    {
+                        Debug.LogError($"[{logPrefix}] 서버 시작 실패: {reason}");
+                        onServerFailed?.Invoke(reason);
+                    };
+                }
+            };
 
             process.OutputDataReceived += (sender, args) =>
             {
                 if (args.Data != null)
                 {
-                    Debug.Log($"[{logPrefix}] {args.Data}");
+                    string cleanOutput = Regex.Replace(args.Data, @"\x1B\[[0-9;]*[mGKH]", "");
 
-                    // 포트 감지 (ANSI 코드 제거 후 파싱)
-                    if (!portDetected)
+                    // 에러 패턴 감지 (stdout에도 에러가 출력될 수 있음)
+                    if (IsErrorOutput(cleanOutput))
                     {
-                        string cleanOutput = Regex.Replace(args.Data, @"\x1B\[[0-9;]*[mGKH]", "");
+                        Debug.LogError($"[{logPrefix}] {cleanOutput}");
+
+                        // 포트 충돌 에러 감지
+                        if (IsPortConflictError(cleanOutput))
+                        {
+                            failureReason = "포트가 이미 사용 중입니다. 다른 서버가 실행 중인지 확인하세요.";
+                        }
+                    }
+                    else
+                    {
+                        Debug.Log($"[{logPrefix}] {args.Data}");
+                    }
+
+                    // 서버 시작 성공 감지 (포트 감지)
+                    if (!serverStarted && !serverFailed)
+                    {
                         var portMatch = Regex.Match(cleanOutput, @"localhost:(\d+)");
                         if (portMatch.Success)
                         {
                             int port = int.Parse(portMatch.Groups[1].Value);
-                            portDetected = true;
+                            serverStarted = true;
 
                             // Unity 메인 스레드에서 콜백 실행
-                            EditorApplication.delayCall += () => onPortDetected?.Invoke(port);
+                            EditorApplication.delayCall += () => onServerStarted?.Invoke(port);
                         }
                     }
                 }
@@ -996,12 +1050,59 @@ namespace AppsInToss
             {
                 if (args.Data != null)
                 {
-                    Debug.Log($"[{logPrefix}] {args.Data}");
+                    string cleanOutput = Regex.Replace(args.Data, @"\x1B\[[0-9;]*[mGKH]", "");
+
+                    // stderr는 기본적으로 에러로 처리
+                    Debug.LogError($"[{logPrefix}] {cleanOutput}");
+
+                    // 포트 충돌 에러 감지
+                    if (IsPortConflictError(cleanOutput))
+                    {
+                        failureReason = "포트가 이미 사용 중입니다. 다른 서버가 실행 중인지 확인하세요.";
+                    }
                 }
             };
 
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
+        }
+
+        /// <summary>
+        /// 출력이 에러인지 판단
+        /// </summary>
+        private static bool IsErrorOutput(string output)
+        {
+            if (string.IsNullOrEmpty(output)) return false;
+
+            string lower = output.ToLowerInvariant();
+
+            // 명확한 에러 패턴
+            if (lower.Contains("error:") ||
+                lower.Contains("failed") ||
+                lower.Contains("eaddrinuse") ||
+                lower.Contains("port is already in use") ||
+                lower.Contains("address already in use") ||
+                lower.Contains("cannot find module") ||
+                lower.Contains("command not found") ||
+                lower.Contains("permission denied"))
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// 포트 충돌 에러인지 판단
+        /// </summary>
+        private static bool IsPortConflictError(string output)
+        {
+            if (string.IsNullOrEmpty(output)) return false;
+
+            string lower = output.ToLowerInvariant();
+            return lower.Contains("eaddrinuse") ||
+                   lower.Contains("port is already in use") ||
+                   lower.Contains("address already in use");
         }
 
         /// <summary>

@@ -97,12 +97,12 @@ public class E2EBuildRunner
         // Library/Bee 캐시를 유지하여 증분 빌드 활용 (self-hosted runner 성능 최적화)
         // cleanBuild: false로 설정하여 이전 빌드 캐시 재사용
         // 캐시 문제 발생 시 workflow_dispatch에서 clean_library=true로 실행
-        // E2E 테스트에서는 프로덕션 환경을 시뮬레이션하기 위해 buildPackageProfile 사용
+        // E2E 테스트에서는 프로덕션 환경을 시뮬레이션하기 위해 productionProfile 사용
         var result = AITConvertCore.DoExport(
             buildWebGL: true,
             doPackaging: true,
             cleanBuild: false,
-            profile: config.buildPackageProfile,
+            profile: config.productionProfile,
             profileName: "E2E Build"
         );
 

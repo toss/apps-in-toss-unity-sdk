@@ -658,7 +658,7 @@ namespace AppsInToss
             // 프로필이 없으면 기본 프로필 사용
             if (profile == null)
             {
-                profile = AITBuildProfile.CreateBuildPackageProfile();
+                profile = AITBuildProfile.CreateProductionProfile();
             }
 
             string buildProjectPath = Path.Combine(projectPath, "ait-build");
@@ -906,7 +906,7 @@ namespace AppsInToss
             // 프로필이 없으면 기본 프로필 사용
             if (profile == null)
             {
-                profile = AITBuildProfile.CreateBuildPackageProfile();
+                profile = AITBuildProfile.CreateProductionProfile();
             }
 
             // Unity WebGL 빌드를 Vite 프로젝트에 복사

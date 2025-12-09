@@ -350,10 +350,11 @@ jobs:
                 echo "$DEPLOY_OUTPUT"
 
                 if [ $DEPLOY_STATUS -eq 0 ]; then
-                  # 배포 성공 - URL 추출 시도
-                  DEPLOY_URL=$(echo "$DEPLOY_OUTPUT" | grep -oE 'intoss-private://[^ ]+' | head -1 || echo "")
+                  # 배포 성공 - URL 추출 시도 (ANSI 이스케이프 시퀀스 제거 후 파싱)
+                  CLEANED_OUTPUT=$(echo "$DEPLOY_OUTPUT" | sed 's/\x1b\[[0-9;]*m//g' | tr -d '\r')
+                  DEPLOY_URL=$(echo "$CLEANED_OUTPUT" | grep -oE 'intoss-private://[^[:space:]]+' | head -1 || true)
                   if [ -z "$DEPLOY_URL" ]; then
-                    DEPLOY_URL=$(echo "$DEPLOY_OUTPUT" | grep -oE 'https?://[^ ]+' | head -1 || echo "SUCCESS")
+                    DEPLOY_URL=$(echo "$CLEANED_OUTPUT" | grep -oE 'https?://[^[:space:]]+' | head -1 || echo "SUCCESS")
                   fi
                   echo "✅ 배포 성공: ${DEPLOY_URL}"
                   DEPLOY_RESULTS="${DEPLOY_RESULTS}${OS_DISPLAY} - ${UNITY_VERSION}: ${DEPLOY_URL}\n"
@@ -416,11 +417,24 @@ jobs:
           echo "결과:"
           echo -e "$DEPLOY_RESULTS"
 
-          # JSON 이스케이프 처리
-          ESCAPED_RESULTS=$(echo -e "$DEPLOY_RESULTS" | sed 's/"/\\"/g' | tr '\n' ' ')
+          # jq로 안전한 JSON 생성
+          JSON_PAYLOAD=$(jq -n \
+            --arg version "$VERSION" \
+            --arg urls "$(echo -e "$DEPLOY_RESULTS")" \
+            '{version: $version, urlsForEdition: $urls}')
 
-          curl -s -X POST "$DEPLOY_WEBHOOK_URL" \
+          echo "전송할 JSON:"
+          echo "$JSON_PAYLOAD"
+
+          # HTTP 상태 코드 확인하여 실패 처리
+          HTTP_STATUS=$(curl -s -o /tmp/webhook_response.txt -w "%{http_code}" -X POST "$DEPLOY_WEBHOOK_URL" \
             -H "Content-Type: application/json" \
-            -d "{\"version\": \"${VERSION}\", \"urlsForEdition\": \"${ESCAPED_RESULTS}\"}" \
-            && echo "✅ 알림 전송 완료" \
-            || echo "::warning::알림 전송 실패"
+            -d "$JSON_PAYLOAD")
+
+          if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
+            echo "✅ 알림 전송 완료 (HTTP ${HTTP_STATUS})"
+          else
+            echo "::error::알림 전송 실패 (HTTP ${HTTP_STATUS})"
+            cat /tmp/webhook_response.txt
+            exit 1
+          fi

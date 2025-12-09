@@ -1214,7 +1214,14 @@ namespace AppsInToss
                 if (!result.Success)
                 {
                     Debug.LogError($"[{pmName}] 명령 실패 (Exit Code: {result.ExitCode}): {pmName} {arguments}");
-                    Debug.LogError($"[{pmName}] 오류:\n{result.Error}");
+                    if (!string.IsNullOrEmpty(result.Output))
+                    {
+                        Debug.LogError($"[{pmName}] 출력:\n{result.Output}");
+                    }
+                    if (!string.IsNullOrEmpty(result.Error))
+                    {
+                        Debug.LogError($"[{pmName}] 오류:\n{result.Error}");
+                    }
                     return AITExportError.BUILD_WEBGL_FAILED;
                 }
 

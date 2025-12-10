@@ -313,19 +313,22 @@ namespace AppsInToss.Editor
         {
             if (port <= 0) return false;
 
+            TcpListener listener = null;
             try
             {
                 // Loopback 주소로 확인
-                using (var listener = new TcpListener(IPAddress.Loopback, port))
-                {
-                    listener.Start();
-                    listener.Stop();
-                }
+                listener = new TcpListener(IPAddress.Loopback, port);
+                listener.Start();
+                listener.Stop();
                 return false; // 포트 사용 가능 = 사용 중이 아님
             }
             catch (SocketException)
             {
                 return true; // 포트 사용 불가 = 사용 중
+            }
+            finally
+            {
+                listener?.Stop();
             }
         }
     }

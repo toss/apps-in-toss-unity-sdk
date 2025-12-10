@@ -718,19 +718,17 @@ export class CSharpTypeGenerator {
           const nestedFields = prop.type.properties
             .map((nestedProp: any) => {
               const nestedType = mapToCSharpType(nestedProp.type);
-              const nestedOptional = nestedProp.optional ? ' // optional' : '';
-              return `        public ${nestedType} ${this.toCamelCase(nestedProp.name)};${nestedOptional}`;
+              return this.generateFieldDeclaration(nestedProp.name, nestedType, nestedProp.optional);
             })
             .join('\n');
 
           nestedTypes.push(`    [Serializable]\n    public class ${nestedTypeName}\n    {\n${nestedFields}\n    }`);
         }
 
-        const optional = prop.optional ? ' // optional' : '';
         const description = prop.description
           ? `        /// <summary>${this.xmlSafe(prop.description)}</summary>\n`
           : '';
-        return `${description}        public ${type} ${this.toCamelCase(prop.name)};${optional}`;
+        return `${description}${this.generateFieldDeclaration(prop.name, type, prop.optional)}`;
       })
       .join('\n');
 
@@ -985,11 +983,10 @@ export class CSharpTypeGenerator {
             (prop.type.name === '__type' || prop.type.name === 'object' || prop.type.name.startsWith('{'))) {
           type = `${name}${this.capitalize(prop.name)}`;
         }
-        const optional = prop.optional ? ' // optional' : '';
         const description = prop.description
           ? `        /// <summary>${this.xmlSafe(prop.description)}</summary>\n`
           : '';
-        return `${description}        public ${type} ${this.toCamelCase(prop.name)};${optional}`;
+        return `${description}${this.generateFieldDeclaration(prop.name, type, prop.optional)}`;
       })
       .join('\n');
 
@@ -1021,11 +1018,10 @@ ${fields}
             (prop.type.name === '__type' || prop.type.name === 'object' || prop.type.name.startsWith('{'))) {
           type = `${cleanName}${this.capitalize(prop.name)}`;
         }
-        const optional = prop.optional ? ' // optional' : '';
         const description = prop.description
           ? `        /// <summary>${this.xmlSafe(prop.description)}</summary>\n`
           : '';
-        return `${description}        public ${type} ${this.toCamelCase(prop.name)};${optional}`;
+        return `${description}${this.generateFieldDeclaration(prop.name, type, prop.optional)}`;
       })
       .join('\n');
 
@@ -1050,12 +1046,17 @@ ${fields}${errorField}
   }
 
   /**
-   * 필드명을 camelCase로 유지 (JSON 직렬화 호환용)
-   * TypeScript 프로퍼티명은 이미 camelCase이므로 그대로 반환
+   * 필드 선언을 생성 (JsonProperty 어트리뷰트 포함)
+   * C# 필드명은 PascalCase, JSON 직렬화는 원본 camelCase 사용
    */
-  private toCamelCase(str: string): string {
-    if (!str) return str;
-    return str.charAt(0).toLowerCase() + str.slice(1);
+  private generateFieldDeclaration(originalName: string, type: string, optional: boolean = false): string {
+    const pascalName = this.capitalize(originalName);
+    const optionalComment = optional ? ' // optional' : '';
+    // 원본 이름과 PascalCase가 다른 경우에만 JsonProperty 추가
+    if (originalName !== pascalName) {
+      return `        [JsonProperty("${originalName}")]\n        public ${type} ${pascalName};${optionalComment}`;
+    }
+    return `        public ${type} ${pascalName};${optionalComment}`;
   }
 
   /**

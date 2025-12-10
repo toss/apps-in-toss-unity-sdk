@@ -7,6 +7,7 @@
 
 using System;
 using System.Threading.Tasks;
+using Newtonsoft.Json;
 
 namespace AppsInToss
 {
@@ -27,7 +28,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(true),
                 error => tcs.TrySetException(error)
             );
-            __eventLog_Internal(UnityEngine.JsonUtility.ToJson(paramsParam), callbackId, "void");
+            __eventLog_Internal(JsonConvert.SerializeObject(paramsParam), callbackId, "void");
             await tcs.Task;
 #else
             // Unity Editor mock implementation

@@ -7,6 +7,7 @@
 
 using System;
 using System.Threading.Tasks;
+using Newtonsoft.Json;
 
 namespace AppsInToss
 {
@@ -25,7 +26,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(true),
                 error => tcs.TrySetException(error)
             );
-            __generateHapticFeedback_Internal(UnityEngine.JsonUtility.ToJson(options), callbackId, "void");
+            __generateHapticFeedback_Internal(JsonConvert.SerializeObject(options), callbackId, "void");
             await tcs.Task;
 #else
             // Unity Editor mock implementation
@@ -51,7 +52,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(true),
                 error => tcs.TrySetException(error)
             );
-            __setDeviceOrientation_Internal(UnityEngine.JsonUtility.ToJson(options), callbackId, "void");
+            __setDeviceOrientation_Internal(JsonConvert.SerializeObject(options), callbackId, "void");
             await tcs.Task;
 #else
             // Unity Editor mock implementation
@@ -76,7 +77,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(true),
                 error => tcs.TrySetException(error)
             );
-            __setIosSwipeGestureEnabled_Internal(UnityEngine.JsonUtility.ToJson(options), callbackId, "void");
+            __setIosSwipeGestureEnabled_Internal(JsonConvert.SerializeObject(options), callbackId, "void");
             await tcs.Task;
 #else
             // Unity Editor mock implementation
@@ -102,7 +103,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __setScreenAwakeMode_Internal(UnityEngine.JsonUtility.ToJson(options), callbackId, "SetScreenAwakeModeResult");
+            __setScreenAwakeMode_Internal(JsonConvert.SerializeObject(options), callbackId, "SetScreenAwakeModeResult");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation
@@ -128,7 +129,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __setSecureScreen_Internal(UnityEngine.JsonUtility.ToJson(options), callbackId, "SetSecureScreenResult");
+            __setSecureScreen_Internal(JsonConvert.SerializeObject(options), callbackId, "SetSecureScreenResult");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation

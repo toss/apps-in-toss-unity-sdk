@@ -7,6 +7,7 @@
 
 using System;
 using System.Collections.Generic;
+using Newtonsoft.Json;
 using UnityEngine;
 
 namespace AppsInToss
@@ -195,7 +196,7 @@ namespace AppsInToss
             Debug.Log($"[AITCore] OnAITCallback received: {jsonPayload}");
             try
             {
-                var callbackData = JsonUtility.FromJson<CallbackData>(jsonPayload);
+                var callbackData = JsonConvert.DeserializeObject<CallbackData>(jsonPayload);
                 Debug.Log($"[AITCore] Routing callback: id={callbackData.CallbackId}, type={callbackData.TypeName}");
                 RouteCallback(callbackData.CallbackId, callbackData.TypeName, callbackData.Result);
             }
@@ -213,7 +214,7 @@ namespace AppsInToss
         private void RouteCallback(string callbackId, string typeName, string resultJson)
         {
             // Parse APIResponse first (success/data/error format)
-            var apiResponse = JsonUtility.FromJson<APIResponse>(resultJson);
+            var apiResponse = JsonConvert.DeserializeObject<APIResponse>(resultJson);
 
             switch (typeName)
             {
@@ -223,7 +224,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<{{this}}>(callbackId, out var callback{{@index}}) && callback{{@index}} != null)
                         {
-                            var data{{@index}} = JsonUtility.FromJson<{{this}}>(apiResponse.data);
+                            var data{{@index}} = JsonConvert.DeserializeObject<{{this}}>(apiResponse.data);
                             callback{{@index}}(data{{@index}});
                         }
                     }

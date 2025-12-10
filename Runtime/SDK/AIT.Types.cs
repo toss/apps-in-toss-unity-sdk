@@ -7,6 +7,7 @@
 
 using System;
 using System.Collections.Generic;
+using Newtonsoft.Json;
 using UnityEngine;
 
 namespace AppsInToss
@@ -89,8 +90,10 @@ namespace AppsInToss
     [Serializable]
     public class AppLoginResult
     {
-        public string authorizationCode;
-        public string referrer;
+        [JsonProperty("authorizationCode")]
+        public string AuthorizationCode;
+        [JsonProperty("referrer")]
+        public string Referrer;
         /// <summary>에러 발생 시 에러 메시지 (플랫폼 미지원 등)</summary>
         public string error;
     }
@@ -98,23 +101,30 @@ namespace AppsInToss
     [Serializable]
     public class ContactsViralEventData
     {
-        public double rewardAmount;
-        public string rewardUnit;
+        [JsonProperty("rewardAmount")]
+        public double RewardAmount;
+        [JsonProperty("rewardUnit")]
+        public string RewardUnit;
     }
 
     [Serializable]
     public class ContactsViralEvent
     {
-        public string type;
-        public ContactsViralEventData data;
+        [JsonProperty("type")]
+        public string Type;
+        [JsonProperty("data")]
+        public ContactsViralEventData Data;
     }
 
     [Serializable]
     public class Location
     {
-        public string accessLocation; // optional
-        public double timestamp;
-        public LocationCoords coords;
+        [JsonProperty("accessLocation")]
+        public string AccessLocation; // optional
+        [JsonProperty("timestamp")]
+        public double Timestamp;
+        [JsonProperty("coords")]
+        public LocationCoords Coords;
         /// <summary>에러 발생 시 에러 메시지 (플랫폼 미지원 등)</summary>
         public string error;
     }
@@ -122,76 +132,96 @@ namespace AppsInToss
     [Serializable]
     public class GameCenterGameProfileResponse
     {
-        public string statusCode;
-        public string nickname;
-        public string profileImageUri;
+        [JsonProperty("statusCode")]
+        public string StatusCode;
+        [JsonProperty("nickname")]
+        public string Nickname;
+        [JsonProperty("profileImageUri")]
+        public string ProfileImageUri;
     }
 
     [Serializable]
     public class GetPermissionPermission
     {
-        public string name;
-        public PermissionAccess access;
+        [JsonProperty("name")]
+        public string Name;
+        [JsonProperty("access")]
+        public PermissionAccess Access;
     }
 
     [Serializable]
     public class GrantPromotionRewardForGameOptionsParams
     {
-        public string promotionCode;
-        public double amount;
+        [JsonProperty("promotionCode")]
+        public string PromotionCode;
+        [JsonProperty("amount")]
+        public double Amount;
     }
 
     [Serializable]
     public class GrantPromotionRewardForGameOptions
     {
-        public GrantPromotionRewardForGameOptionsParams params;
+        [JsonProperty("params")]
+        public GrantPromotionRewardForGameOptionsParams Params;
     }
 
     [Serializable]
     public class GrantPromotionRewardForGameResult
     {
-        public string key;
-        public string code;
-        public string errorCode;
-        public string message;
+        [JsonProperty("key")]
+        public string Key;
+        [JsonProperty("code")]
+        public string Code;
+        [JsonProperty("errorCode")]
+        public string ErrorCode;
+        [JsonProperty("message")]
+        public string Message;
     }
 
     [Serializable]
     public class OpenPermissionDialogPermission
     {
-        public string name;
-        public PermissionAccess access;
+        [JsonProperty("name")]
+        public string Name;
+        [JsonProperty("access")]
+        public PermissionAccess Access;
     }
 
     [Serializable]
     public class RequestPermissionPermission
     {
-        public string name;
-        public PermissionAccess access;
+        [JsonProperty("name")]
+        public string Name;
+        [JsonProperty("access")]
+        public PermissionAccess Access;
     }
 
     [Serializable]
     public class SetDeviceOrientationOptions
     {
-        public string type;
+        [JsonProperty("type")]
+        public string Type;
     }
 
     [Serializable]
     public class SetIosSwipeGestureEnabledOptions
     {
-        public bool isEnabled;
+        [JsonProperty("isEnabled")]
+        public bool IsEnabled;
     }
 
     [Serializable]
     public class SetScreenAwakeModeOptions
     {
-        public bool enabled;
+        [JsonProperty("enabled")]
+        public bool Enabled;
     }
 
     [Serializable]
     public class SetScreenAwakeModeResult
     {
-        public bool enabled;
+        [JsonProperty("enabled")]
+        public bool Enabled;
         /// <summary>에러 발생 시 에러 메시지 (플랫폼 미지원 등)</summary>
         public string error;
     }
@@ -199,13 +229,15 @@ namespace AppsInToss
     [Serializable]
     public class SetSecureScreenOptions
     {
-        public bool enabled;
+        [JsonProperty("enabled")]
+        public bool Enabled;
     }
 
     [Serializable]
     public class SetSecureScreenResult
     {
-        public bool enabled;
+        [JsonProperty("enabled")]
+        public bool Enabled;
         /// <summary>에러 발생 시 에러 메시지 (플랫폼 미지원 등)</summary>
         public string error;
     }
@@ -213,65 +245,81 @@ namespace AppsInToss
     [Serializable]
     public class ShareMessage
     {
-        public string message;
+        [JsonProperty("message")]
+        public string Message;
     }
 
     [Serializable]
     public class StartUpdateLocationEventParams
     {
-        public System.Action<Location> onEvent;
-        public System.Action<object> onError;
-        public StartUpdateLocationOptions options;
+        [JsonProperty("onEvent")]
+        public System.Action<Location> OnEvent;
+        [JsonProperty("onError")]
+        public System.Action<object> OnError;
+        [JsonProperty("options")]
+        public StartUpdateLocationOptions Options;
     }
 
     [Serializable]
     public class SubmitGameCenterLeaderBoardScoreParams
     {
-        public string score;
+        [JsonProperty("score")]
+        public string Score;
     }
 
     [Serializable]
     public class AppsInTossSignTossCertParams
     {
-        public string txId;
+        [JsonProperty("txId")]
+        public string TxId;
     }
 
     [Serializable]
     public class CheckoutPaymentOptions
     {
         /// <summary>결제 토큰이에요.</summary>
-        public string payToken;
+        [JsonProperty("payToken")]
+        public string PayToken;
     }
 
     [Serializable]
     public class CheckoutPaymentResult
     {
         /// <summary>인증이 성공했는지 여부예요.</summary>
-        public bool success;
+        [JsonProperty("success")]
+        public bool Success;
         /// <summary>인증이 실패했을 경우의 이유예요.</summary>
-        public string reason; // optional
+        [JsonProperty("reason")]
+        public string Reason; // optional
     }
 
     [Serializable]
     public class ContactsViralParamsOptions
     {
-        public string moduleId;
+        [JsonProperty("moduleId")]
+        public string ModuleId;
     }
 
     [Serializable]
     public class ContactsViralParams
     {
-        public ContactsViralParamsOptions options;
-        public System.Action<ContactsViralEvent> onEvent;
-        public System.Action<object> onError;
+        [JsonProperty("options")]
+        public ContactsViralParamsOptions Options;
+        [JsonProperty("onEvent")]
+        public System.Action<ContactsViralEvent> OnEvent;
+        [JsonProperty("onError")]
+        public System.Action<object> OnError;
     }
 
     [Serializable]
     public class EventLogParams
     {
-        public string log_name;
-        public string log_type;
-        public Dictionary<string, object> params;
+        [JsonProperty("log_name")]
+        public string Log_name;
+        [JsonProperty("log_type")]
+        public string Log_type;
+        [JsonProperty("params")]
+        public Dictionary<string, object> Params;
     }
 
     /// <summary>
@@ -281,11 +329,14 @@ namespace AppsInToss
     public class FetchAlbumPhotosOptions
     {
         /// <summary>가져올 사진의 최대 개수를 설정해요. 숫자를 입력하고 기본값은 10이에요.</summary>
-        public double maxCount; // optional
+        [JsonProperty("maxCount")]
+        public double MaxCount; // optional
         /// <summary>사진의 최대 폭을 제한해요. 단위는 픽셀이고 기본값은 1024이에요.</summary>
-        public double maxWidth; // optional
+        [JsonProperty("maxWidth")]
+        public double MaxWidth; // optional
         /// <summary>이미지를 base64 형식으로 반환할지 설정해요. 기본값은 false예요.</summary>
-        public bool base64; // optional
+        [JsonProperty("base64")]
+        public bool Base64; // optional
     }
 
     /// <summary>
@@ -295,23 +346,29 @@ namespace AppsInToss
     public class ImageResponse
     {
         /// <summary>가져온 사진의 고유 ID예요.</summary>
-        public string id;
+        [JsonProperty("id")]
+        public string Id;
         /// <summary>사진의 데이터 URI예요. base64 옵션이 true인 경우 Base64 문자열로 반환돼요.</summary>
-        public string dataUri;
+        [JsonProperty("dataUri")]
+        public string DataUri;
     }
 
     [Serializable]
     public class FetchContactsOptionsQuery
     {
-        public string contains; // optional
+        [JsonProperty("contains")]
+        public string Contains; // optional
     }
 
     [Serializable]
     public class FetchContactsOptions
     {
-        public double size;
-        public double offset;
-        public FetchContactsOptionsQuery query; // optional
+        [JsonProperty("size")]
+        public double Size;
+        [JsonProperty("offset")]
+        public double Offset;
+        [JsonProperty("query")]
+        public FetchContactsOptionsQuery Query; // optional
     }
 
     /// <summary>
@@ -321,17 +378,22 @@ namespace AppsInToss
     public class ContactEntity
     {
         /// <summary>연락처 이름이에요.</summary>
-        public string name;
+        [JsonProperty("name")]
+        public string Name;
         /// <summary>연락처 전화번호로, 문자열 형식이에요.</summary>
-        public string phoneNumber;
+        [JsonProperty("phoneNumber")]
+        public string PhoneNumber;
     }
 
     [Serializable]
     public class ContactResult
     {
-        public ContactEntity[] result;
-        public double nextOffset;
-        public bool done;
+        [JsonProperty("result")]
+        public ContactEntity[] Result;
+        [JsonProperty("nextOffset")]
+        public double NextOffset;
+        [JsonProperty("done")]
+        public bool Done;
     }
 
     public enum HapticFeedbackType
@@ -351,7 +413,8 @@ namespace AppsInToss
     [Serializable]
     public class HapticFeedbackOptions
     {
-        public HapticFeedbackType type;
+        [JsonProperty("type")]
+        public HapticFeedbackType Type;
     }
 
     public enum Accuracy
@@ -368,24 +431,31 @@ namespace AppsInToss
     public class GetCurrentLocationOptions
     {
         /// <summary>위치 정보를 가져올 정확도 수준이에요.</summary>
-        public Accuracy accuracy;
+        [JsonProperty("accuracy")]
+        public Accuracy Accuracy;
     }
 
     [Serializable]
     public class LocationCoords
     {
         /// <summary>위도</summary>
-        public double latitude;
+        [JsonProperty("latitude")]
+        public double Latitude;
         /// <summary>경도</summary>
-        public double longitude;
+        [JsonProperty("longitude")]
+        public double Longitude;
         /// <summary>높이</summary>
-        public double altitude;
+        [JsonProperty("altitude")]
+        public double Altitude;
         /// <summary>위치 정확도</summary>
-        public double accuracy;
+        [JsonProperty("accuracy")]
+        public double Accuracy;
         /// <summary>고도 정확도</summary>
-        public double altitudeAccuracy;
+        [JsonProperty("altitudeAccuracy")]
+        public double AltitudeAccuracy;
         /// <summary>방향</summary>
-        public double heading;
+        [JsonProperty("heading")]
+        public double Heading;
     }
 
     public enum NetworkStatus
@@ -410,66 +480,82 @@ namespace AppsInToss
     [Serializable]
     public class GetUserKeyForGameSuccessResponse
     {
-        public string hash;
-        public string type;
+        [JsonProperty("hash")]
+        public string Hash;
+        [JsonProperty("type")]
+        public string Type;
     }
 
     [Serializable]
     public class GetUserKeyForGameErrorResponse
     {
-        public string type;
+        [JsonProperty("type")]
+        public string Type;
     }
 
     [Serializable]
     public class GrantPromotionRewardForGameSuccessResponse
     {
-        public string key;
+        [JsonProperty("key")]
+        public string Key;
     }
 
     [Serializable]
     public class GrantPromotionRewardForGameErrorResponse
     {
-        public string code;
+        [JsonProperty("code")]
+        public string Code;
     }
 
     [Serializable]
     public class GrantPromotionRewardForGameErrorResult
     {
-        public string errorCode;
-        public string message;
+        [JsonProperty("errorCode")]
+        public string ErrorCode;
+        [JsonProperty("message")]
+        public string Message;
     }
 
     [Serializable]
     public class OpenCameraOptions
     {
         /// <summary>이미지를 Base64 형식으로 반환할지 여부를 나타내는 불리언 값이에요. 기본값: false.</summary>
-        public bool base64; // optional
+        [JsonProperty("base64")]
+        public bool Base64; // optional
         /// <summary>이미지의 최대 너비를 나타내는 숫자 값이에요. 기본값: 1024.</summary>
-        public double maxWidth; // optional
+        [JsonProperty("maxWidth")]
+        public double MaxWidth; // optional
     }
 
     [Serializable]
     public class SaveBase64DataParams
     {
-        public string data;
-        public string fileName;
-        public string mimeType;
+        [JsonProperty("data")]
+        public string Data;
+        [JsonProperty("fileName")]
+        public string FileName;
+        [JsonProperty("mimeType")]
+        public string MimeType;
     }
 
     [Serializable]
     public class StartUpdateLocationOptions
     {
         /// <summary>위치 정확도를 설정해요.</summary>
-        public Accuracy accuracy;
+        [JsonProperty("accuracy")]
+        public Accuracy Accuracy;
         /// <summary>위치 업데이트 주기를 밀리초(ms) 단위로 설정해요.</summary>
-        public double timeInterval;
+        [JsonProperty("timeInterval")]
+        public double TimeInterval;
         /// <summary>위치 변경 거리를 미터(m) 단위로 설정해요.</summary>
-        public double distanceInterval;
+        [JsonProperty("distanceInterval")]
+        public double DistanceInterval;
     }
 
     [Serializable]
     public class SubmitGameCenterLeaderBoardScoreResponse
     {
-        public string statusCode;
+        [JsonProperty("statusCode")]
+        public string StatusCode;
     }
 }

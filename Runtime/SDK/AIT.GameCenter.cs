@@ -7,6 +7,7 @@
 
 using System;
 using System.Threading.Tasks;
+using Newtonsoft.Json;
 
 namespace AppsInToss
 {
@@ -76,7 +77,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __grantPromotionRewardForGame_Internal(UnityEngine.JsonUtility.ToJson(options), callbackId, "GrantPromotionRewardForGameResult");
+            __grantPromotionRewardForGame_Internal(JsonConvert.SerializeObject(options), callbackId, "GrantPromotionRewardForGameResult");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation
@@ -126,7 +127,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __submitGameCenterLeaderBoardScore_Internal(UnityEngine.JsonUtility.ToJson(paramsParam), callbackId, "SubmitGameCenterLeaderBoardScoreResponse");
+            __submitGameCenterLeaderBoardScore_Internal(JsonConvert.SerializeObject(paramsParam), callbackId, "SubmitGameCenterLeaderBoardScoreResponse");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation

@@ -7,6 +7,7 @@
 
 using System;
 using System.Threading.Tasks;
+using Newtonsoft.Json;
 
 namespace AppsInToss
 {
@@ -27,7 +28,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __checkoutPayment_Internal(UnityEngine.JsonUtility.ToJson(options), callbackId, "CheckoutPaymentResult");
+            __checkoutPayment_Internal(JsonConvert.SerializeObject(options), callbackId, "CheckoutPaymentResult");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation

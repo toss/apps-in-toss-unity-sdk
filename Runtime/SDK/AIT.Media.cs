@@ -7,6 +7,7 @@
 
 using System;
 using System.Threading.Tasks;
+using Newtonsoft.Json;
 
 namespace AppsInToss
 {
@@ -25,7 +26,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __fetchAlbumPhotos_Internal(UnityEngine.JsonUtility.ToJson(options), callbackId, "ImageResponse[]");
+            __fetchAlbumPhotos_Internal(JsonConvert.SerializeObject(options), callbackId, "ImageResponse[]");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation
@@ -49,7 +50,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __openCamera_Internal(UnityEngine.JsonUtility.ToJson(options), callbackId, "ImageResponse");
+            __openCamera_Internal(JsonConvert.SerializeObject(options), callbackId, "ImageResponse");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation
@@ -74,7 +75,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(true),
                 error => tcs.TrySetException(error)
             );
-            __saveBase64Data_Internal(UnityEngine.JsonUtility.ToJson(paramsParam), callbackId, "void");
+            __saveBase64Data_Internal(JsonConvert.SerializeObject(paramsParam), callbackId, "void");
             await tcs.Task;
 #else
             // Unity Editor mock implementation

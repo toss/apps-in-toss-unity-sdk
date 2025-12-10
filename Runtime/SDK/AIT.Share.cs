@@ -7,6 +7,7 @@
 
 using System;
 using System.Threading.Tasks;
+using Newtonsoft.Json;
 
 namespace AppsInToss
 {
@@ -27,7 +28,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __contactsViral_Internal(UnityEngine.JsonUtility.ToJson(paramsParam), callbackId, "System.Action");
+            __contactsViral_Internal(JsonConvert.SerializeObject(paramsParam), callbackId, "System.Action");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation
@@ -51,7 +52,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __fetchContacts_Internal(UnityEngine.JsonUtility.ToJson(options), callbackId, "ContactResult");
+            __fetchContacts_Internal(JsonConvert.SerializeObject(options), callbackId, "ContactResult");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation
@@ -101,7 +102,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(true),
                 error => tcs.TrySetException(error)
             );
-            __share_Internal(UnityEngine.JsonUtility.ToJson(message), callbackId, "void");
+            __share_Internal(JsonConvert.SerializeObject(message), callbackId, "void");
             await tcs.Task;
 #else
             // Unity Editor mock implementation

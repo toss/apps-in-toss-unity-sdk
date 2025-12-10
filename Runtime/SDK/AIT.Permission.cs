@@ -7,6 +7,7 @@
 
 using System;
 using System.Threading.Tasks;
+using Newtonsoft.Json;
 
 namespace AppsInToss
 {
@@ -26,7 +27,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __getPermission_Internal(UnityEngine.JsonUtility.ToJson(permission), callbackId, "string");
+            __getPermission_Internal(JsonConvert.SerializeObject(permission), callbackId, "string");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation
@@ -51,7 +52,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __openPermissionDialog_Internal(UnityEngine.JsonUtility.ToJson(permission), callbackId, "string");
+            __openPermissionDialog_Internal(JsonConvert.SerializeObject(permission), callbackId, "string");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation
@@ -76,7 +77,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __requestPermission_Internal(UnityEngine.JsonUtility.ToJson(permission), callbackId, "string");
+            __requestPermission_Internal(JsonConvert.SerializeObject(permission), callbackId, "string");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation

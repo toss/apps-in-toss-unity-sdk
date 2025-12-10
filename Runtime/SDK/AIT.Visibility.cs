@@ -7,6 +7,7 @@
 
 using System;
 using System.Threading.Tasks;
+using Newtonsoft.Json;
 
 namespace AppsInToss
 {
@@ -25,7 +26,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __onVisibilityChangedByTransparentServiceWeb_Internal(UnityEngine.JsonUtility.ToJson(eventParams), callbackId, "System.Action");
+            __onVisibilityChangedByTransparentServiceWeb_Internal(JsonConvert.SerializeObject(eventParams), callbackId, "System.Action");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation

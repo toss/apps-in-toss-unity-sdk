@@ -7,6 +7,7 @@
 
 using System;
 using System.Collections.Generic;
+using Newtonsoft.Json;
 using UnityEngine;
 
 namespace AppsInToss
@@ -195,7 +196,7 @@ namespace AppsInToss
             Debug.Log($"[AITCore] OnAITCallback received: {jsonPayload}");
             try
             {
-                var callbackData = JsonUtility.FromJson<CallbackData>(jsonPayload);
+                var callbackData = JsonConvert.DeserializeObject<CallbackData>(jsonPayload);
                 Debug.Log($"[AITCore] Routing callback: id={callbackData.CallbackId}, type={callbackData.TypeName}");
                 RouteCallback(callbackData.CallbackId, callbackData.TypeName, callbackData.Result);
             }
@@ -213,7 +214,7 @@ namespace AppsInToss
         private void RouteCallback(string callbackId, string typeName, string resultJson)
         {
             // Parse APIResponse first (success/data/error format)
-            var apiResponse = JsonUtility.FromJson<APIResponse>(resultJson);
+            var apiResponse = JsonConvert.DeserializeObject<APIResponse>(resultJson);
 
             switch (typeName)
             {
@@ -222,7 +223,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<AppLoginResult>(callbackId, out var callback0) && callback0 != null)
                         {
-                            var data0 = JsonUtility.FromJson<AppLoginResult>(apiResponse.data);
+                            var data0 = JsonConvert.DeserializeObject<AppLoginResult>(apiResponse.data);
                             callback0(data0);
                         }
                     }
@@ -239,7 +240,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<CheckoutPaymentResult>(callbackId, out var callback1) && callback1 != null)
                         {
-                            var data1 = JsonUtility.FromJson<CheckoutPaymentResult>(apiResponse.data);
+                            var data1 = JsonConvert.DeserializeObject<CheckoutPaymentResult>(apiResponse.data);
                             callback1(data1);
                         }
                     }
@@ -256,7 +257,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<ContactResult>(callbackId, out var callback2) && callback2 != null)
                         {
-                            var data2 = JsonUtility.FromJson<ContactResult>(apiResponse.data);
+                            var data2 = JsonConvert.DeserializeObject<ContactResult>(apiResponse.data);
                             callback2(data2);
                         }
                     }
@@ -273,7 +274,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<GameCenterGameProfileResponse>(callbackId, out var callback3) && callback3 != null)
                         {
-                            var data3 = JsonUtility.FromJson<GameCenterGameProfileResponse>(apiResponse.data);
+                            var data3 = JsonConvert.DeserializeObject<GameCenterGameProfileResponse>(apiResponse.data);
                             callback3(data3);
                         }
                     }
@@ -290,7 +291,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<GetUserKeyForGameResult>(callbackId, out var callback4) && callback4 != null)
                         {
-                            var data4 = JsonUtility.FromJson<GetUserKeyForGameResult>(apiResponse.data);
+                            var data4 = JsonConvert.DeserializeObject<GetUserKeyForGameResult>(apiResponse.data);
                             callback4(data4);
                         }
                     }
@@ -307,7 +308,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<GrantPromotionRewardForGameResult>(callbackId, out var callback5) && callback5 != null)
                         {
-                            var data5 = JsonUtility.FromJson<GrantPromotionRewardForGameResult>(apiResponse.data);
+                            var data5 = JsonConvert.DeserializeObject<GrantPromotionRewardForGameResult>(apiResponse.data);
                             callback5(data5);
                         }
                     }
@@ -324,7 +325,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<ImageResponse>(callbackId, out var callback6) && callback6 != null)
                         {
-                            var data6 = JsonUtility.FromJson<ImageResponse>(apiResponse.data);
+                            var data6 = JsonConvert.DeserializeObject<ImageResponse>(apiResponse.data);
                             callback6(data6);
                         }
                     }
@@ -341,7 +342,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<ImageResponse[]>(callbackId, out var callback7) && callback7 != null)
                         {
-                            var data7 = JsonUtility.FromJson<ImageResponse[]>(apiResponse.data);
+                            var data7 = JsonConvert.DeserializeObject<ImageResponse[]>(apiResponse.data);
                             callback7(data7);
                         }
                     }
@@ -358,7 +359,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<Location>(callbackId, out var callback8) && callback8 != null)
                         {
-                            var data8 = JsonUtility.FromJson<Location>(apiResponse.data);
+                            var data8 = JsonConvert.DeserializeObject<Location>(apiResponse.data);
                             callback8(data8);
                         }
                     }
@@ -375,7 +376,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<SetScreenAwakeModeResult>(callbackId, out var callback9) && callback9 != null)
                         {
-                            var data9 = JsonUtility.FromJson<SetScreenAwakeModeResult>(apiResponse.data);
+                            var data9 = JsonConvert.DeserializeObject<SetScreenAwakeModeResult>(apiResponse.data);
                             callback9(data9);
                         }
                     }
@@ -392,7 +393,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<SetSecureScreenResult>(callbackId, out var callback10) && callback10 != null)
                         {
-                            var data10 = JsonUtility.FromJson<SetSecureScreenResult>(apiResponse.data);
+                            var data10 = JsonConvert.DeserializeObject<SetSecureScreenResult>(apiResponse.data);
                             callback10(data10);
                         }
                     }
@@ -409,7 +410,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<SubmitGameCenterLeaderBoardScoreResponse>(callbackId, out var callback11) && callback11 != null)
                         {
-                            var data11 = JsonUtility.FromJson<SubmitGameCenterLeaderBoardScoreResponse>(apiResponse.data);
+                            var data11 = JsonConvert.DeserializeObject<SubmitGameCenterLeaderBoardScoreResponse>(apiResponse.data);
                             callback11(data11);
                         }
                     }

@@ -7,6 +7,7 @@
 
 using System;
 using System.Threading.Tasks;
+using Newtonsoft.Json;
 
 namespace AppsInToss
 {
@@ -41,7 +42,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(true),
                 error => tcs.TrySetException(error)
             );
-            __{{{this.originalName}}}_Internal({{#each this.parameters}}{{#if this.isPrimitive}}{{this.paramName}}{{else}}UnityEngine.JsonUtility.ToJson({{this.paramName}}){{/if}}, {{/each}}callbackId, "{{{this.callbackType}}}");
+            __{{{this.originalName}}}_Internal({{#each this.parameters}}{{#if this.isPrimitive}}{{this.paramName}}{{else}}JsonConvert.SerializeObject({{this.paramName}}){{/if}}, {{/each}}callbackId, "{{{this.callbackType}}}");
             await tcs.Task;
 {{else}}
             var tcs = new TaskCompletionSource<{{{this.callbackType}}}>();
@@ -49,7 +50,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __{{{this.originalName}}}_Internal({{#each this.parameters}}{{#if this.isPrimitive}}{{this.paramName}}{{else}}UnityEngine.JsonUtility.ToJson({{this.paramName}}){{/if}}, {{/each}}callbackId, "{{{this.callbackType}}}");
+            __{{{this.originalName}}}_Internal({{#each this.parameters}}{{#if this.isPrimitive}}{{this.paramName}}{{else}}JsonConvert.SerializeObject({{this.paramName}}){{/if}}, {{/each}}callbackId, "{{{this.callbackType}}}");
             return await tcs.Task;
 {{/if}}
 #else
@@ -87,7 +88,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __{{{this.originalName}}}_Internal({{#each this.parameters}}{{#if this.isPrimitive}}{{this.paramName}}{{else}}UnityEngine.JsonUtility.ToJson({{this.paramName}}){{/if}}, {{/each}}callbackId, "{{{this.callbackType}}}");
+            __{{{this.originalName}}}_Internal({{#each this.parameters}}{{#if this.isPrimitive}}{{this.paramName}}{{else}}JsonConvert.SerializeObject({{this.paramName}}){{/if}}, {{/each}}callbackId, "{{{this.callbackType}}}");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation

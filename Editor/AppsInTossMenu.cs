@@ -286,28 +286,66 @@ namespace AppsInToss
             var config = UnityUtil.GetEditorConf();
             if (!ValidateSettingsForPackage(config)) return;
 
-            // 클린 빌드 후 배포 (Production 프로필 사용)
-            Debug.Log("AIT: 클린 빌드 & 배포 시작...");
-            buildStopwatch.Restart();
+            string projectPath = UnityUtil.GetProjectPath();
+            string aitBuildPath = Path.Combine(projectPath, "ait-build");
+            string distPath = Path.Combine(aitBuildPath, "dist");
 
-            var result = AITConvertCore.DoExport(
-                buildWebGL: true,
-                doPackaging: true,
-                cleanBuild: true,
-                profile: config.productionProfile,
-                profileName: "Publish"
-            );
-            buildStopwatch.Stop();
+            // 기존 빌드가 있는지 확인
+            bool hasExistingBuild = Directory.Exists(distPath) &&
+                                    Directory.GetFiles(distPath, "*", SearchOption.AllDirectories).Length > 0;
 
-            if (result != AITConvertCore.AITExportError.SUCCEED)
+            bool shouldRebuild = true;
+
+            if (hasExistingBuild)
             {
-                string errorMessage = AITConvertCore.GetErrorMessage(result);
-                Debug.LogError($"AIT: 빌드 실패: {result}");
-                EditorUtility.DisplayDialog("빌드 실패", errorMessage, "확인");
-                return;
+                // 기존 빌드가 있으면 사용자에게 선택권 부여
+                int choice = EditorUtility.DisplayDialogComplex(
+                    "Publish",
+                    "기존 빌드가 존재합니다.\n\n" +
+                    "코드나 에셋을 변경했다면 다시 빌드하는 것을 권장합니다.",
+                    "다시 빌드 후 배포",  // 0: Alt (권장)
+                    "취소",               // 1: Cancel
+                    "기존 빌드로 배포"    // 2: Other
+                );
+
+                if (choice == 1)
+                {
+                    Debug.Log("AIT: Publish 취소됨");
+                    return;
+                }
+
+                shouldRebuild = (choice == 0);
             }
 
-            Debug.Log($"AIT: 클린 빌드 완료 (소요 시간: {buildStopwatch.Elapsed.TotalSeconds:F1}초)");
+            if (shouldRebuild)
+            {
+                // 클린 빌드 후 배포 (Production 프로필 사용)
+                Debug.Log("AIT: 클린 빌드 & 배포 시작...");
+                buildStopwatch.Restart();
+
+                var result = AITConvertCore.DoExport(
+                    buildWebGL: true,
+                    doPackaging: true,
+                    cleanBuild: true,
+                    profile: config.productionProfile,
+                    profileName: "Publish"
+                );
+                buildStopwatch.Stop();
+
+                if (result != AITConvertCore.AITExportError.SUCCEED)
+                {
+                    string errorMessage = AITConvertCore.GetErrorMessage(result);
+                    Debug.LogError($"AIT: 빌드 실패: {result}");
+                    EditorUtility.DisplayDialog("빌드 실패", errorMessage, "확인");
+                    return;
+                }
+
+                Debug.Log($"AIT: 클린 빌드 완료 (소요 시간: {buildStopwatch.Elapsed.TotalSeconds:F1}초)");
+            }
+            else
+            {
+                Debug.Log("AIT: 기존 빌드를 사용하여 배포합니다.");
+            }
 
             // 배포 실행
             ExecuteDeploy();

@@ -334,6 +334,49 @@ jobs:
           echo UNITY_PATH=%UNITY_PATH%>> %GITHUB_OUTPUT%
           echo UNITY_VERSION=%DETECTED_VERSION%>> %GITHUB_OUTPUT%
 
+      - name: Wait for Unity License Client
+        shell: powershell -ExecutionPolicy Bypass -File {0}
+        run: |
+          $targetVersion = "${{ matrix.unity-version }}"
+          $maxWait = 60
+          $interval = 10
+          $waited = 0
+
+          Write-Host "Checking for conflicting Unity License Client processes..."
+
+          while ($waited -lt $maxWait) {
+            # 다른 버전의 LicenseClient 찾기
+            $otherClients = Get-Process -Name "Unity.Licensing.Client" -ErrorAction SilentlyContinue |
+              Where-Object { $_.Path -notlike "*$targetVersion*" }
+
+            if (-not $otherClients) {
+              Write-Host "No conflicting License Client found"
+              break
+            }
+
+            Write-Host "Found License Client from other Unity version, waiting... ($waited/$maxWait sec)"
+            foreach ($proc in $otherClients) {
+              Write-Host "  - PID: $($proc.Id), Path: $($proc.Path)"
+            }
+            Start-Sleep -Seconds $interval
+            $waited += $interval
+          }
+
+          # 대기 후에도 존재하면 kill
+          $otherClients = Get-Process -Name "Unity.Licensing.Client" -ErrorAction SilentlyContinue |
+            Where-Object { $_.Path -notlike "*$targetVersion*" }
+
+          if ($otherClients) {
+            Write-Host "::warning::Killing stale License Client processes after ${maxWait}s timeout..."
+            foreach ($proc in $otherClients) {
+              Write-Host "  Killing PID: $($proc.Id), Path: $($proc.Path)"
+              Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+            }
+            Start-Sleep -Seconds 2
+          }
+
+          Write-Host "License Client check completed"
+
       - name: Build Unity WebGL
         shell: powershell -ExecutionPolicy Bypass -File {0}
         env:

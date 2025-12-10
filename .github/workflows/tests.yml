@@ -24,10 +24,7 @@ on:
         type: string
         required: false
 
-# 동일 브랜치에서 새 실행 시 이전 실행 완료까지 대기
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
+# 워크플로우 레벨 concurrency 제거 - job 레벨에서 OS+Unity 버전별로 제어
 
 jobs:
   # =====================================================
@@ -80,11 +77,11 @@ jobs:
     runs-on: [self-hosted, macOS, ARM64]
     timeout-minutes: 60
 
-    # NOTE: job-level concurrency 제거됨
-    # - self-hosted runner는 동시에 1개 job만 실행하므로 별도 동시성 제어 불필요
-    # - job-level concurrency + cancel-in-progress: false 조합은
-    #   "higher priority waiting request"로 인한 예기치 않은 취소 유발
-    # - workflow-level concurrency로 충분히 순차 실행 보장됨
+    # 동일 OS + Unity 버전 조합에서만 동시 실행 방지
+    # 다른 버전은 병렬로 실행 가능
+    concurrency:
+      group: macos-${{ matrix.unity-version }}
+      cancel-in-progress: false
 
     strategy:
       fail-fast: false
@@ -231,11 +228,11 @@ jobs:
     runs-on: [self-hosted, Windows, X64, enabled]
     timeout-minutes: 60
 
-    # NOTE: job-level concurrency 제거됨
-    # - self-hosted runner는 동시에 1개 job만 실행하므로 별도 동시성 제어 불필요
-    # - job-level concurrency + cancel-in-progress: false 조합은
-    #   "higher priority waiting request"로 인한 예기치 않은 취소 유발
-    # - workflow-level concurrency로 충분히 순차 실행 보장됨
+    # 동일 OS + Unity 버전 조합에서만 동시 실행 방지
+    # 다른 버전은 병렬로 실행 가능
+    concurrency:
+      group: windows-${{ matrix.unity-version }}
+      cancel-in-progress: false
 
     strategy:
       fail-fast: false

@@ -16,105 +16,26 @@ namespace AppsInToss
     [InitializeOnLoad]
     public class AppsInTossMenu
     {
-        /// <summary>
-        /// 서버 상태
-        /// </summary>
-        private enum ServerStatus
-        {
-            NotRunning,
-            Starting,
-            Running,
-            Stopping
-        }
-
-        private static AITProcessTreeManager devServerManager;
-        private static AITProcessTreeManager prodServerManager;
-        private static int devServerPort = 0;
-        private static int prodServerPort = 0;
-        private static ServerStatus devServerStatus = ServerStatus.NotRunning;
-        private static ServerStatus prodServerStatus = ServerStatus.NotRunning;
+        // 서버 상태 관리자 (실제 상태 기반 판단)
+        private static AITServerStateManager devServerState;
+        private static AITServerStateManager prodServerState;
         private static Stopwatch buildStopwatch = new Stopwatch();
-
-        private const string DEV_SERVER_PID_KEY = "AIT_DevServerPID";
-        private const string DEV_SERVER_PORT_KEY = "AIT_DevServerPort";
-        private const string PROD_SERVER_PID_KEY = "AIT_ProdServerPID";
-        private const string PROD_SERVER_PORT_KEY = "AIT_ProdServerPort";
 
         /// <summary>
         /// 도메인 리로드 시 기존 서버 프로세스 복원 및 종료 이벤트 등록
         /// </summary>
         static AppsInTossMenu()
         {
-            RestoreServerProcesses();
+            // 상태 관리자 초기화
+            devServerState = new AITServerStateManager(ServerType.Dev);
+            prodServerState = new AITServerStateManager(ServerType.Prod);
+
+            // 즉시 실제 상태 검증 (domain reload 후 복원)
+            devServerState.ValidateState();
+            prodServerState.ValidateState();
+
             EditorApplication.quitting += OnEditorQuitting;
             UnityEditor.PackageManager.Events.registeredPackages += OnPackagesChanged;
-        }
-
-        private static void RestoreServerProcesses()
-        {
-            // Dev 서버 복원
-            int devPid = EditorPrefs.GetInt(DEV_SERVER_PID_KEY, 0);
-            int savedDevPort = EditorPrefs.GetInt(DEV_SERVER_PORT_KEY, 0);
-            if (devPid > 0)
-            {
-                devServerManager = new AITProcessTreeManager();
-                if (devServerManager.RestoreFromPid(devPid))
-                {
-                    devServerPort = savedDevPort;
-                    devServerStatus = ServerStatus.Running;
-                    Debug.Log($"[AIT] Dev 서버 프로세스 복원됨 (PID: {devPid}, Port: {savedDevPort})");
-                }
-                else
-                {
-                    devServerManager = null;
-                    ClearDevServerPrefs();
-                    devServerStatus = ServerStatus.NotRunning;
-                }
-            }
-
-            // Prod 서버 복원
-            int prodPid = EditorPrefs.GetInt(PROD_SERVER_PID_KEY, 0);
-            int savedProdPort = EditorPrefs.GetInt(PROD_SERVER_PORT_KEY, 0);
-            if (prodPid > 0)
-            {
-                prodServerManager = new AITProcessTreeManager();
-                if (prodServerManager.RestoreFromPid(prodPid))
-                {
-                    prodServerPort = savedProdPort;
-                    prodServerStatus = ServerStatus.Running;
-                    Debug.Log($"[AIT] Prod 서버 프로세스 복원됨 (PID: {prodPid}, Port: {savedProdPort})");
-                }
-                else
-                {
-                    prodServerManager = null;
-                    ClearProdServerPrefs();
-                    prodServerStatus = ServerStatus.NotRunning;
-                }
-            }
-        }
-
-        private static void SaveDevServerPrefs(int pid, int port)
-        {
-            EditorPrefs.SetInt(DEV_SERVER_PID_KEY, pid);
-            EditorPrefs.SetInt(DEV_SERVER_PORT_KEY, port);
-        }
-
-        private static void ClearDevServerPrefs()
-        {
-            EditorPrefs.DeleteKey(DEV_SERVER_PID_KEY);
-            EditorPrefs.DeleteKey(DEV_SERVER_PORT_KEY);
-        }
-
-        private static void SaveProdServerPrefs(int pid, int port)
-        {
-            EditorPrefs.SetInt(PROD_SERVER_PID_KEY, pid);
-            EditorPrefs.SetInt(PROD_SERVER_PORT_KEY, port);
-        }
-
-        private static void ClearProdServerPrefs()
-        {
-            EditorPrefs.DeleteKey(PROD_SERVER_PID_KEY);
-            EditorPrefs.DeleteKey(PROD_SERVER_PORT_KEY);
         }
 
         /// <summary>
@@ -122,15 +43,17 @@ namespace AppsInToss
         /// </summary>
         private static void OnEditorQuitting()
         {
-            bool hadRunningServers = IsDevServerRunning || IsProdServerRunning;
+            var devState = devServerState?.GetCachedState() ?? ServerState.NotRunning;
+            var prodState = prodServerState?.GetCachedState() ?? ServerState.NotRunning;
+            bool hadRunningServers = devState != ServerState.NotRunning || prodState != ServerState.NotRunning;
 
-            if (IsDevServerRunning)
+            if (devState != ServerState.NotRunning)
             {
                 Debug.Log("[AIT] Editor 종료 - Dev 서버 프로세스 정리 중...");
                 StopDevServer();
             }
 
-            if (IsProdServerRunning)
+            if (prodState != ServerState.NotRunning)
             {
                 Debug.Log("[AIT] Editor 종료 - Prod 서버 프로세스 정리 중...");
                 StopProdServer();
@@ -154,57 +77,20 @@ namespace AppsInToss
                 {
                     Debug.Log("[AIT] SDK 패키지가 제거됨 - 서버 프로세스 정리 중...");
 
-                    if (IsDevServerRunning)
+                    var devState = devServerState?.GetCachedState() ?? ServerState.NotRunning;
+                    var prodState = prodServerState?.GetCachedState() ?? ServerState.NotRunning;
+
+                    if (devState != ServerState.NotRunning)
                     {
                         StopDevServer();
                     }
 
-                    if (IsProdServerRunning)
+                    if (prodState != ServerState.NotRunning)
                     {
                         StopProdServer();
                     }
 
                     break;
-                }
-            }
-        }
-
-        /// <summary>
-        /// Dev 서버가 실행 중인지 확인
-        /// </summary>
-        private static bool IsDevServerRunning
-        {
-            get
-            {
-                if (devServerManager == null) return false;
-                try
-                {
-                    return !devServerManager.HasExited;
-                }
-                catch
-                {
-                    devServerManager = null;
-                    return false;
-                }
-            }
-        }
-
-        /// <summary>
-        /// Production 서버가 실행 중인지 확인
-        /// </summary>
-        private static bool IsProdServerRunning
-        {
-            get
-            {
-                if (prodServerManager == null) return false;
-                try
-                {
-                    return !prodServerManager.HasExited;
-                }
-                catch
-                {
-                    prodServerManager = null;
-                    return false;
                 }
             }
         }
@@ -220,7 +106,8 @@ namespace AppsInToss
         [MenuItem("AIT/Dev Server/Start Server", true)]
         public static bool ValidateMenuStartDevServer()
         {
-            return devServerStatus == ServerStatus.NotRunning;
+            var state = devServerState?.GetCachedState() ?? ServerState.NotRunning;
+            return state == ServerState.NotRunning;
         }
 
         [MenuItem("AIT/Dev Server/Stop Server", false, 2)]
@@ -233,7 +120,8 @@ namespace AppsInToss
         [MenuItem("AIT/Dev Server/Stop Server", true)]
         public static bool ValidateMenuStopDevServer()
         {
-            return devServerStatus == ServerStatus.Running || devServerStatus == ServerStatus.Starting;
+            var state = devServerState?.GetCachedState() ?? ServerState.NotRunning;
+            return state == ServerState.Running || state == ServerState.Starting;
         }
 
         [MenuItem("AIT/Dev Server/Restart Server", false, 3)]
@@ -246,7 +134,8 @@ namespace AppsInToss
         [MenuItem("AIT/Dev Server/Restart Server", true)]
         public static bool ValidateMenuRestartDevServer()
         {
-            return devServerStatus == ServerStatus.Running;
+            var state = devServerState?.GetCachedState() ?? ServerState.NotRunning;
+            return state == ServerState.Running;
         }
 
         // ==================== Production Server ====================
@@ -260,7 +149,8 @@ namespace AppsInToss
         [MenuItem("AIT/Production Server/Start Server", true)]
         public static bool ValidateMenuStartProdServer()
         {
-            return prodServerStatus == ServerStatus.NotRunning;
+            var state = prodServerState?.GetCachedState() ?? ServerState.NotRunning;
+            return state == ServerState.NotRunning;
         }
 
         [MenuItem("AIT/Production Server/Stop Server", false, 12)]
@@ -273,7 +163,8 @@ namespace AppsInToss
         [MenuItem("AIT/Production Server/Stop Server", true)]
         public static bool ValidateMenuStopProdServer()
         {
-            return prodServerStatus == ServerStatus.Running || prodServerStatus == ServerStatus.Starting;
+            var state = prodServerState?.GetCachedState() ?? ServerState.NotRunning;
+            return state == ServerState.Running || state == ServerState.Starting;
         }
 
         [MenuItem("AIT/Production Server/Restart Server", false, 13)]
@@ -286,7 +177,8 @@ namespace AppsInToss
         [MenuItem("AIT/Production Server/Restart Server", true)]
         public static bool ValidateMenuRestartProdServer()
         {
-            return prodServerStatus == ServerStatus.Running;
+            var state = prodServerState?.GetCachedState() ?? ServerState.NotRunning;
+            return state == ServerState.Running;
         }
 
         // ==================== Helper Methods ====================
@@ -587,14 +479,17 @@ namespace AppsInToss
         /// </summary>
         private static void StartDevServer()
         {
-            if (IsDevServerRunning)
+            // 실제 상태 검증
+            var currentState = devServerState.ValidateState();
+            if (currentState == ServerState.Running)
             {
                 Debug.LogWarning("AIT: Dev 서버가 이미 실행 중입니다.");
                 return;
             }
 
             // Production 서버가 실행 중이면 확인 후 전환
-            if (IsProdServerRunning)
+            var prodState = prodServerState.ValidateState();
+            if (prodState == ServerState.Running || prodState == ServerState.Starting)
             {
                 if (EditorUtility.DisplayDialog(
                     "서버 전환",
@@ -609,12 +504,9 @@ namespace AppsInToss
                 }
             }
 
-            devServerStatus = ServerStatus.Starting;
-
             var config = UnityUtil.GetEditorConf();
             if (!ValidateSettings(config))
             {
-                devServerStatus = ServerStatus.NotRunning;
                 return;
             }
 
@@ -636,7 +528,6 @@ namespace AppsInToss
                 string errorMessage = AITConvertCore.GetErrorMessage(result);
                 Debug.LogError($"AIT: 빌드 실패: {result}");
                 EditorUtility.DisplayDialog("빌드 실패", errorMessage, "확인");
-                devServerStatus = ServerStatus.NotRunning;
                 return;
             }
 
@@ -646,13 +537,11 @@ namespace AppsInToss
             string npmPath = FindNpmPath();
             if (!ValidateNpmPath(npmPath))
             {
-                devServerStatus = ServerStatus.NotRunning;
                 return;
             }
 
             if (!EnsureNodeModules(buildPath, npmPath))
             {
-                devServerStatus = ServerStatus.NotRunning;
                 return;
             }
 
@@ -680,15 +569,17 @@ namespace AppsInToss
                 // granite dev 명령어에 --host, --port 인자로 granite 서버 설정 전달
                 string graniteCommand = $"exec granite dev --host {graniteHost} --port {granitePort}";
 
-                devServerManager = new AITProcessTreeManager();
+                var processManager = new AITProcessTreeManager();
+
+                // 상태 관리자에 Starting 상태 알림
+                devServerState.OnServerStarting(processManager, vitePort);
+
                 StartServerProcessWithPortDetection(
-                    devServerManager,
+                    processManager,
                     buildPath, npmPath, graniteCommand, "Dev Server", envVars,
                     onServerStarted: (detectedPort) =>
                     {
-                        devServerPort = vitePort;
-                        devServerStatus = ServerStatus.Running;
-                        SaveDevServerPrefs(devServerManager.ProcessId, vitePort);
+                        devServerState.OnServerStarted(vitePort);
                         Debug.Log($"AIT: Dev 서버가 시작되었습니다");
                         Debug.Log($"AIT:   Granite (Metro): http://{graniteHost}:{granitePort}");
                         Debug.Log($"AIT:   Vite: http://{viteHost}:{vitePort}");
@@ -698,9 +589,7 @@ namespace AppsInToss
                     {
                         Debug.LogError($"AIT: Dev 서버 시작 실패 - {reason}");
                         EditorUtility.DisplayDialog("Dev 서버 시작 실패", reason, "확인");
-                        devServerManager = null;
-                        devServerStatus = ServerStatus.NotRunning;
-                        ClearDevServerPrefs();
+                        devServerState.OnServerFailed();
                     }
                 );
             }
@@ -708,8 +597,7 @@ namespace AppsInToss
             {
                 Debug.LogError($"AIT: Dev 서버 시작 실패: {e.Message}");
                 EditorUtility.DisplayDialog("오류", $"Dev 서버 시작 실패:\n{e.Message}", "확인");
-                devServerManager = null;
-                devServerStatus = ServerStatus.NotRunning;
+                devServerState.OnServerFailed();
             }
         }
 
@@ -718,28 +606,16 @@ namespace AppsInToss
         /// </summary>
         private static void StopDevServer()
         {
-            devServerStatus = ServerStatus.Stopping;
-
-            // AITProcessTreeManager로 프로세스 트리 전체 종료
-            if (devServerManager != null)
-            {
-                try
-                {
-                    devServerManager.KillProcessTree();
-                }
-                catch { }
-                devServerManager = null;
-            }
-
             // 백업: 포트에서 실행 중인 프로세스도 종료 (혹시 남아있는 경우)
-            if (devServerPort > 0)
+            int port = devServerState?.Port ?? 0;
+            if (port > 0)
             {
-                KillProcessOnPort(devServerPort);
+                KillProcessOnPort(port);
             }
 
-            devServerPort = 0;
-            ClearDevServerPrefs();
-            devServerStatus = ServerStatus.NotRunning;
+            // 상태 관리자에 중지 알림
+            devServerState?.OnServerStopped();
+
             Debug.Log("AIT: Dev 서버가 중지되었습니다.");
         }
 
@@ -749,14 +625,17 @@ namespace AppsInToss
         /// </summary>
         private static void StartProdServer()
         {
-            if (IsProdServerRunning)
+            // 실제 상태 검증
+            var currentState = prodServerState.ValidateState();
+            if (currentState == ServerState.Running)
             {
                 Debug.LogWarning("AIT: Production 서버가 이미 실행 중입니다.");
                 return;
             }
 
             // Dev 서버가 실행 중이면 확인 후 전환
-            if (IsDevServerRunning)
+            var devState = devServerState.ValidateState();
+            if (devState == ServerState.Running || devState == ServerState.Starting)
             {
                 if (EditorUtility.DisplayDialog(
                     "서버 전환",
@@ -771,12 +650,9 @@ namespace AppsInToss
                 }
             }
 
-            prodServerStatus = ServerStatus.Starting;
-
             var config = UnityUtil.GetEditorConf();
             if (!ValidateSettings(config))
             {
-                prodServerStatus = ServerStatus.NotRunning;
                 return;
             }
 
@@ -798,7 +674,6 @@ namespace AppsInToss
                 string errorMessage = AITConvertCore.GetErrorMessage(result);
                 Debug.LogError($"AIT: 빌드 실패: {result}");
                 EditorUtility.DisplayDialog("빌드 실패", errorMessage, "확인");
-                prodServerStatus = ServerStatus.NotRunning;
                 return;
             }
 
@@ -808,13 +683,11 @@ namespace AppsInToss
             string npmPath = FindNpmPath();
             if (!ValidateNpmPath(npmPath))
             {
-                prodServerStatus = ServerStatus.NotRunning;
                 return;
             }
 
             if (!EnsureNodeModules(buildPath, npmPath))
             {
-                prodServerStatus = ServerStatus.NotRunning;
                 return;
             }
 
@@ -842,15 +715,17 @@ namespace AppsInToss
                 // granite dev 명령어에 --host, --port 인자로 granite 서버 설정 전달
                 string graniteCommand = $"exec granite dev --host {graniteHost} --port {granitePort}";
 
-                prodServerManager = new AITProcessTreeManager();
+                var processManager = new AITProcessTreeManager();
+
+                // 상태 관리자에 Starting 상태 알림
+                prodServerState.OnServerStarting(processManager, vitePort);
+
                 StartServerProcessWithPortDetection(
-                    prodServerManager,
+                    processManager,
                     buildPath, npmPath, graniteCommand, "Prod Server", envVars,
                     onServerStarted: (detectedPort) =>
                     {
-                        prodServerPort = vitePort;
-                        prodServerStatus = ServerStatus.Running;
-                        SaveProdServerPrefs(prodServerManager.ProcessId, vitePort);
+                        prodServerState.OnServerStarted(vitePort);
                         Debug.Log($"AIT: Production 서버가 시작되었습니다");
                         Debug.Log($"AIT:   Granite (Metro): http://{graniteHost}:{granitePort}");
                         Debug.Log($"AIT:   Vite: http://{viteHost}:{vitePort}");
@@ -860,9 +735,7 @@ namespace AppsInToss
                     {
                         Debug.LogError($"AIT: Production 서버 시작 실패 - {reason}");
                         EditorUtility.DisplayDialog("Production 서버 시작 실패", reason, "확인");
-                        prodServerManager = null;
-                        prodServerStatus = ServerStatus.NotRunning;
-                        ClearProdServerPrefs();
+                        prodServerState.OnServerFailed();
                     }
                 );
             }
@@ -870,8 +743,7 @@ namespace AppsInToss
             {
                 Debug.LogError($"AIT: Production 서버 시작 실패: {e.Message}");
                 EditorUtility.DisplayDialog("오류", $"Production 서버 시작 실패:\n{e.Message}", "확인");
-                prodServerManager = null;
-                prodServerStatus = ServerStatus.NotRunning;
+                prodServerState.OnServerFailed();
             }
         }
 
@@ -880,28 +752,16 @@ namespace AppsInToss
         /// </summary>
         private static void StopProdServer()
         {
-            prodServerStatus = ServerStatus.Stopping;
-
-            // AITProcessTreeManager로 프로세스 트리 전체 종료
-            if (prodServerManager != null)
-            {
-                try
-                {
-                    prodServerManager.KillProcessTree();
-                }
-                catch { }
-                prodServerManager = null;
-            }
-
             // 백업: 포트에서 실행 중인 프로세스도 종료 (혹시 남아있는 경우)
-            if (prodServerPort > 0)
+            int port = prodServerState?.Port ?? 0;
+            if (port > 0)
             {
-                KillProcessOnPort(prodServerPort);
+                KillProcessOnPort(port);
             }
 
-            prodServerPort = 0;
-            ClearProdServerPrefs();
-            prodServerStatus = ServerStatus.NotRunning;
+            // 상태 관리자에 중지 알림
+            prodServerState?.OnServerStopped();
+
             Debug.Log("AIT: Production 서버가 중지되었습니다.");
         }
 

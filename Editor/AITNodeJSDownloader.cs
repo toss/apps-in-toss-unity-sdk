@@ -258,17 +258,32 @@ namespace AppsInToss.Editor
                 #endif
 
                 EditorUtility.DisplayProgressBar("Node.js 다운로드",
-                    "완료!", 1.0f);
+                    "Node.js 설치 완료! pnpm 설치 중...", 0.95f);
 
-                Debug.Log($"[NodeJS] 다운로드 및 설치 완료: {targetPath}");
+                Debug.Log($"[NodeJS] Node.js 다운로드 및 설치 완료: {targetPath}");
+
+                // pnpm 자동 설치
+                bool pnpmInstalled = InstallPnpm(targetPath);
+
+                EditorUtility.DisplayProgressBar("Node.js 다운로드",
+                    "완료!", 1.0f);
 
                 // 배치 모드에서는 다이얼로그 스킵
                 if (!Application.isBatchMode)
                 {
-                    EditorUtility.DisplayDialog("다운로드 완료",
-                        $"Node.js {NODE_VERSION}이(가) 성공적으로 설치되었습니다.\n\n" +
-                        $"위치: {targetPath}",
-                        "확인");
+                    string message = $"Node.js {NODE_VERSION}이(가) 성공적으로 설치되었습니다.\n\n" +
+                        $"위치: {targetPath}";
+
+                    if (pnpmInstalled)
+                    {
+                        message += "\n\npnpm도 함께 설치되었습니다.";
+                    }
+                    else
+                    {
+                        message += "\n\n⚠️ pnpm 설치에 실패했습니다.\n빌드 시 자동으로 재시도됩니다.";
+                    }
+
+                    EditorUtility.DisplayDialog("다운로드 완료", message, "확인");
                 }
             }
             catch (Exception e)
@@ -451,6 +466,70 @@ namespace AppsInToss.Editor
                     throw new Exception($"압축 해제 실패 (exit code {process.ExitCode}):\n{stderr}");
                 }
             #endif
+        }
+
+        /// <summary>
+        /// pnpm 설치 (npm install -g pnpm)
+        /// </summary>
+        /// <param name="nodePath">Node.js 설치 경로</param>
+        /// <returns>설치 성공 여부</returns>
+        private static bool InstallPnpm(string nodePath)
+        {
+            Debug.Log("[NodeJS] pnpm 설치 시작...");
+
+            try
+            {
+                string npmPath = GetNpmExecutablePath(nodePath);
+                if (!File.Exists(npmPath))
+                {
+                    Debug.LogError($"[NodeJS] npm을 찾을 수 없습니다: {npmPath}");
+                    return false;
+                }
+
+                // npm 실행을 위한 PATH 설정
+                string binPath = AITPlatformHelper.IsWindows ? nodePath : Path.Combine(nodePath, "bin");
+
+                // npm install -g pnpm 실행
+                string command = $"\"{npmPath}\" install -g pnpm";
+                var result = AITPlatformHelper.ExecuteCommand(
+                    command,
+                    workingDirectory: nodePath,
+                    additionalPaths: new[] { binPath },
+                    timeoutMs: 120000,  // 2분 타임아웃
+                    verbose: true
+                );
+
+                if (result.Success)
+                {
+                    Debug.Log("[NodeJS] ✓ pnpm 설치 완료!");
+
+                    // pnpm 실행 권한 부여 (Unix)
+                    if (!AITPlatformHelper.IsWindows)
+                    {
+                        string pnpmPath = Path.Combine(nodePath, "bin", "pnpm");
+                        if (File.Exists(pnpmPath))
+                        {
+                            AITPlatformHelper.SetExecutablePermission(pnpmPath, verbose: true);
+                        }
+                    }
+
+                    return true;
+                }
+                else
+                {
+                    Debug.LogWarning($"[NodeJS] pnpm 설치 실패 (Exit Code: {result.ExitCode})");
+                    if (!string.IsNullOrEmpty(result.Error))
+                    {
+                        Debug.LogWarning($"[NodeJS] 에러: {result.Error}");
+                    }
+                    return false;
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[NodeJS] pnpm 설치 중 예외 발생: {e.Message}");
+                return false;
+            }
         }
 
         /// <summary>

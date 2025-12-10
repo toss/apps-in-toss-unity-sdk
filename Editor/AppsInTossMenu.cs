@@ -283,7 +283,33 @@ namespace AppsInToss
         [MenuItem("AIT/Publish", false, 31)]
         public static void Publish()
         {
-            Debug.Log("AIT: 배포 시작...");
+            var config = UnityUtil.GetEditorConf();
+            if (!ValidateSettingsForPackage(config)) return;
+
+            // 클린 빌드 후 배포 (Production 프로필 사용)
+            Debug.Log("AIT: 클린 빌드 & 배포 시작...");
+            buildStopwatch.Restart();
+
+            var result = AITConvertCore.DoExport(
+                buildWebGL: true,
+                doPackaging: true,
+                cleanBuild: true,
+                profile: config.productionProfile,
+                profileName: "Publish"
+            );
+            buildStopwatch.Stop();
+
+            if (result != AITConvertCore.AITExportError.SUCCEED)
+            {
+                string errorMessage = AITConvertCore.GetErrorMessage(result);
+                Debug.LogError($"AIT: 빌드 실패: {result}");
+                EditorUtility.DisplayDialog("빌드 실패", errorMessage, "확인");
+                return;
+            }
+
+            Debug.Log($"AIT: 클린 빌드 완료 (소요 시간: {buildStopwatch.Elapsed.TotalSeconds:F1}초)");
+
+            // 배포 실행
             ExecuteDeploy();
         }
 

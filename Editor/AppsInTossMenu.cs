@@ -435,7 +435,7 @@ namespace AppsInToss
         private static void ExecutePackageOnly()
         {
             var config = UnityUtil.GetEditorConf();
-            if (!ValidateSettings(config)) return;
+            if (!ValidateSettingsForPackage(config)) return;
 
             Debug.Log("AIT: 패키징 시작...");
             buildStopwatch.Restart();
@@ -475,7 +475,7 @@ namespace AppsInToss
         private static void ExecuteBuildAndPackage()
         {
             var config = UnityUtil.GetEditorConf();
-            if (!ValidateSettings(config)) return;
+            if (!ValidateSettingsForPackage(config)) return;
 
             Debug.Log("AIT: 전체 빌드 & 패키징 시작...");
             buildStopwatch.Restart();
@@ -515,7 +515,7 @@ namespace AppsInToss
         private static void ExecuteDeploy()
         {
             var config = UnityUtil.GetEditorConf();
-            if (!ValidateSettings(config)) return;
+            if (!ValidateSettingsForPackage(config)) return;
 
             // AITCredentials에서 배포 키 로드
             string deploymentKey = AITCredentialsUtil.GetDeploymentKey();
@@ -1456,6 +1456,26 @@ namespace AppsInToss
             if (config == null)
             {
                 EditorUtility.DisplayDialog("오류", "설정을 찾을 수 없습니다.", "확인");
+                return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// 패키징/배포용 설정 검증 (appName 필수)
+        /// </summary>
+        private static bool ValidateSettingsForPackage(AITEditorScriptObject config)
+        {
+            if (!ValidateSettings(config))
+            {
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(config.appName))
+            {
+                Debug.LogError("AIT: App Name이 설정되지 않았습니다.");
+                EditorUtility.DisplayDialog("오류", "App Name이 설정되지 않았습니다.\n\nAIT > Configuration에서 App Name을 입력해주세요.", "확인");
                 return false;
             }
 

@@ -719,7 +719,7 @@ export class CSharpTypeGenerator {
             .map((nestedProp: any) => {
               const nestedType = mapToCSharpType(nestedProp.type);
               const nestedOptional = nestedProp.optional ? ' // optional' : '';
-              return `        public ${nestedType} ${this.capitalize(nestedProp.name)};${nestedOptional}`;
+              return `        public ${nestedType} ${this.toCamelCase(nestedProp.name)};${nestedOptional}`;
             })
             .join('\n');
 
@@ -730,7 +730,7 @@ export class CSharpTypeGenerator {
         const description = prop.description
           ? `        /// <summary>${this.xmlSafe(prop.description)}</summary>\n`
           : '';
-        return `${description}        public ${type} ${this.capitalize(prop.name)};${optional}`;
+        return `${description}        public ${type} ${this.toCamelCase(prop.name)};${optional}`;
       })
       .join('\n');
 
@@ -989,7 +989,7 @@ export class CSharpTypeGenerator {
         const description = prop.description
           ? `        /// <summary>${this.xmlSafe(prop.description)}</summary>\n`
           : '';
-        return `${description}        public ${type} ${this.capitalize(prop.name)};${optional}`;
+        return `${description}        public ${type} ${this.toCamelCase(prop.name)};${optional}`;
       })
       .join('\n');
 
@@ -1025,7 +1025,7 @@ ${fields}
         const description = prop.description
           ? `        /// <summary>${this.xmlSafe(prop.description)}</summary>\n`
           : '';
-        return `${description}        public ${type} ${this.capitalize(prop.name)};${optional}`;
+        return `${description}        public ${type} ${this.toCamelCase(prop.name)};${optional}`;
       })
       .join('\n');
 
@@ -1047,6 +1047,15 @@ ${fields}${errorField}
 
   private capitalize(str: string): string {
     return str.charAt(0).toUpperCase() + str.slice(1);
+  }
+
+  /**
+   * 필드명을 camelCase로 유지 (JSON 직렬화 호환용)
+   * TypeScript 프로퍼티명은 이미 camelCase이므로 그대로 반환
+   */
+  private toCamelCase(str: string): string {
+    if (!str) return str;
+    return str.charAt(0).toLowerCase() + str.slice(1);
   }
 
   /**

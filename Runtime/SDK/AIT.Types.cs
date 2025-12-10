@@ -89,8 +89,8 @@ namespace AppsInToss
     [Serializable]
     public class AppLoginResult
     {
-        public string AuthorizationCode;
-        public string Referrer;
+        public string authorizationCode;
+        public string referrer;
         /// <summary>에러 발생 시 에러 메시지 (플랫폼 미지원 등)</summary>
         public string error;
     }
@@ -98,23 +98,23 @@ namespace AppsInToss
     [Serializable]
     public class ContactsViralEventData
     {
-        public double RewardAmount;
-        public string RewardUnit;
+        public double rewardAmount;
+        public string rewardUnit;
     }
 
     [Serializable]
     public class ContactsViralEvent
     {
-        public string Type;
-        public ContactsViralEventData Data;
+        public string type;
+        public ContactsViralEventData data;
     }
 
     [Serializable]
     public class Location
     {
-        public string AccessLocation; // optional
-        public double Timestamp;
-        public LocationCoords Coords;
+        public string accessLocation; // optional
+        public double timestamp;
+        public LocationCoords coords;
         /// <summary>에러 발생 시 에러 메시지 (플랫폼 미지원 등)</summary>
         public string error;
     }
@@ -122,76 +122,76 @@ namespace AppsInToss
     [Serializable]
     public class GameCenterGameProfileResponse
     {
-        public string StatusCode;
-        public string Nickname;
-        public string ProfileImageUri;
+        public string statusCode;
+        public string nickname;
+        public string profileImageUri;
     }
 
     [Serializable]
     public class GetPermissionPermission
     {
-        public string Name;
-        public PermissionAccess Access;
+        public string name;
+        public PermissionAccess access;
     }
 
     [Serializable]
     public class GrantPromotionRewardForGameOptionsParams
     {
-        public string PromotionCode;
-        public double Amount;
+        public string promotionCode;
+        public double amount;
     }
 
     [Serializable]
     public class GrantPromotionRewardForGameOptions
     {
-        public GrantPromotionRewardForGameOptionsParams Params;
+        public GrantPromotionRewardForGameOptionsParams params;
     }
 
     [Serializable]
     public class GrantPromotionRewardForGameResult
     {
-        public string Key;
-        public string Code;
-        public string ErrorCode;
-        public string Message;
+        public string key;
+        public string code;
+        public string errorCode;
+        public string message;
     }
 
     [Serializable]
     public class OpenPermissionDialogPermission
     {
-        public string Name;
-        public PermissionAccess Access;
+        public string name;
+        public PermissionAccess access;
     }
 
     [Serializable]
     public class RequestPermissionPermission
     {
-        public string Name;
-        public PermissionAccess Access;
+        public string name;
+        public PermissionAccess access;
     }
 
     [Serializable]
     public class SetDeviceOrientationOptions
     {
-        public string Type;
+        public string type;
     }
 
     [Serializable]
     public class SetIosSwipeGestureEnabledOptions
     {
-        public bool IsEnabled;
+        public bool isEnabled;
     }
 
     [Serializable]
     public class SetScreenAwakeModeOptions
     {
-        public bool Enabled;
+        public bool enabled;
     }
 
     [Serializable]
     public class SetScreenAwakeModeResult
     {
-        public bool Enabled;
+        public bool enabled;
         /// <summary>에러 발생 시 에러 메시지 (플랫폼 미지원 등)</summary>
         public string error;
     }
@@ -199,13 +199,13 @@ namespace AppsInToss
     [Serializable]
     public class SetSecureScreenOptions
     {
-        public bool Enabled;
+        public bool enabled;
     }
 
     [Serializable]
     public class SetSecureScreenResult
     {
-        public bool Enabled;
+        public bool enabled;
         /// <summary>에러 발생 시 에러 메시지 (플랫폼 미지원 등)</summary>
         public string error;
     }
@@ -213,65 +213,65 @@ namespace AppsInToss
     [Serializable]
     public class ShareMessage
     {
-        public string Message;
+        public string message;
     }
 
     [Serializable]
     public class StartUpdateLocationEventParams
     {
-        public System.Action<Location> OnEvent;
-        public System.Action<object> OnError;
-        public StartUpdateLocationOptions Options;
+        public System.Action<Location> onEvent;
+        public System.Action<object> onError;
+        public StartUpdateLocationOptions options;
     }
 
     [Serializable]
     public class SubmitGameCenterLeaderBoardScoreParams
     {
-        public string Score;
+        public string score;
     }
 
     [Serializable]
     public class AppsInTossSignTossCertParams
     {
-        public string TxId;
+        public string txId;
     }
 
     [Serializable]
     public class CheckoutPaymentOptions
     {
         /// <summary>결제 토큰이에요.</summary>
-        public string PayToken;
+        public string payToken;
     }
 
     [Serializable]
     public class CheckoutPaymentResult
     {
         /// <summary>인증이 성공했는지 여부예요.</summary>
-        public bool Success;
+        public bool success;
         /// <summary>인증이 실패했을 경우의 이유예요.</summary>
-        public string Reason; // optional
+        public string reason; // optional
     }
 
     [Serializable]
     public class ContactsViralParamsOptions
     {
-        public string ModuleId;
+        public string moduleId;
     }
 
     [Serializable]
     public class ContactsViralParams
     {
-        public ContactsViralParamsOptions Options;
-        public System.Action<ContactsViralEvent> OnEvent;
-        public System.Action<object> OnError;
+        public ContactsViralParamsOptions options;
+        public System.Action<ContactsViralEvent> onEvent;
+        public System.Action<object> onError;
     }
 
     [Serializable]
     public class EventLogParams
     {
-        public string Log_name;
-        public string Log_type;
-        public Dictionary<string, object> Params;
+        public string log_name;
+        public string log_type;
+        public Dictionary<string, object> params;
     }
 
     /// <summary>
@@ -281,11 +281,11 @@ namespace AppsInToss
     public class FetchAlbumPhotosOptions
     {
         /// <summary>가져올 사진의 최대 개수를 설정해요. 숫자를 입력하고 기본값은 10이에요.</summary>
-        public double MaxCount; // optional
+        public double maxCount; // optional
         /// <summary>사진의 최대 폭을 제한해요. 단위는 픽셀이고 기본값은 1024이에요.</summary>
-        public double MaxWidth; // optional
+        public double maxWidth; // optional
         /// <summary>이미지를 base64 형식으로 반환할지 설정해요. 기본값은 false예요.</summary>
-        public bool Base64; // optional
+        public bool base64; // optional
     }
 
     /// <summary>
@@ -295,23 +295,23 @@ namespace AppsInToss
     public class ImageResponse
     {
         /// <summary>가져온 사진의 고유 ID예요.</summary>
-        public string Id;
+        public string id;
         /// <summary>사진의 데이터 URI예요. base64 옵션이 true인 경우 Base64 문자열로 반환돼요.</summary>
-        public string DataUri;
+        public string dataUri;
     }
 
     [Serializable]
     public class FetchContactsOptionsQuery
     {
-        public string Contains; // optional
+        public string contains; // optional
     }
 
     [Serializable]
     public class FetchContactsOptions
     {
-        public double Size;
-        public double Offset;
-        public FetchContactsOptionsQuery Query; // optional
+        public double size;
+        public double offset;
+        public FetchContactsOptionsQuery query; // optional
     }
 
     /// <summary>
@@ -321,17 +321,17 @@ namespace AppsInToss
     public class ContactEntity
     {
         /// <summary>연락처 이름이에요.</summary>
-        public string Name;
+        public string name;
         /// <summary>연락처 전화번호로, 문자열 형식이에요.</summary>
-        public string PhoneNumber;
+        public string phoneNumber;
     }
 
     [Serializable]
     public class ContactResult
     {
-        public ContactEntity[] Result;
-        public double NextOffset;
-        public bool Done;
+        public ContactEntity[] result;
+        public double nextOffset;
+        public bool done;
     }
 
     public enum HapticFeedbackType
@@ -351,7 +351,7 @@ namespace AppsInToss
     [Serializable]
     public class HapticFeedbackOptions
     {
-        public HapticFeedbackType Type;
+        public HapticFeedbackType type;
     }
 
     public enum Accuracy
@@ -368,24 +368,24 @@ namespace AppsInToss
     public class GetCurrentLocationOptions
     {
         /// <summary>위치 정보를 가져올 정확도 수준이에요.</summary>
-        public Accuracy Accuracy;
+        public Accuracy accuracy;
     }
 
     [Serializable]
     public class LocationCoords
     {
         /// <summary>위도</summary>
-        public double Latitude;
+        public double latitude;
         /// <summary>경도</summary>
-        public double Longitude;
+        public double longitude;
         /// <summary>높이</summary>
-        public double Altitude;
+        public double altitude;
         /// <summary>위치 정확도</summary>
-        public double Accuracy;
+        public double accuracy;
         /// <summary>고도 정확도</summary>
-        public double AltitudeAccuracy;
+        public double altitudeAccuracy;
         /// <summary>방향</summary>
-        public double Heading;
+        public double heading;
     }
 
     public enum NetworkStatus
@@ -410,66 +410,66 @@ namespace AppsInToss
     [Serializable]
     public class GetUserKeyForGameSuccessResponse
     {
-        public string Hash;
-        public string Type;
+        public string hash;
+        public string type;
     }
 
     [Serializable]
     public class GetUserKeyForGameErrorResponse
     {
-        public string Type;
+        public string type;
     }
 
     [Serializable]
     public class GrantPromotionRewardForGameSuccessResponse
     {
-        public string Key;
+        public string key;
     }
 
     [Serializable]
     public class GrantPromotionRewardForGameErrorResponse
     {
-        public string Code;
+        public string code;
     }
 
     [Serializable]
     public class GrantPromotionRewardForGameErrorResult
     {
-        public string ErrorCode;
-        public string Message;
+        public string errorCode;
+        public string message;
     }
 
     [Serializable]
     public class OpenCameraOptions
     {
         /// <summary>이미지를 Base64 형식으로 반환할지 여부를 나타내는 불리언 값이에요. 기본값: false.</summary>
-        public bool Base64; // optional
+        public bool base64; // optional
         /// <summary>이미지의 최대 너비를 나타내는 숫자 값이에요. 기본값: 1024.</summary>
-        public double MaxWidth; // optional
+        public double maxWidth; // optional
     }
 
     [Serializable]
     public class SaveBase64DataParams
     {
-        public string Data;
-        public string FileName;
-        public string MimeType;
+        public string data;
+        public string fileName;
+        public string mimeType;
     }
 
     [Serializable]
     public class StartUpdateLocationOptions
     {
         /// <summary>위치 정확도를 설정해요.</summary>
-        public Accuracy Accuracy;
+        public Accuracy accuracy;
         /// <summary>위치 업데이트 주기를 밀리초(ms) 단위로 설정해요.</summary>
-        public double TimeInterval;
+        public double timeInterval;
         /// <summary>위치 변경 거리를 미터(m) 단위로 설정해요.</summary>
-        public double DistanceInterval;
+        public double distanceInterval;
     }
 
     [Serializable]
     public class SubmitGameCenterLeaderBoardScoreResponse
     {
-        public string StatusCode;
+        public string statusCode;
     }
 }

@@ -132,11 +132,13 @@ public class E2EBuildRunner
 
     /// <summary>
     /// Unity 버전에 따른 포트 오프셋 반환 (동시 실행 시 충돌 방지)
-    /// 2021.3 → 0, 2022.3 → 1, 6000.0 → 2, 6000.2 → 3
+    /// 2021.3 → 0, 2022.3 → 1, 6000.0 → 2, 6000.2 → 3, 6000.3 → 4
     /// </summary>
     private static int GetPortOffsetForUnityVersion()
     {
-#if UNITY_6000_2_OR_NEWER
+#if UNITY_6000_3_OR_NEWER
+        return 4;
+#elif UNITY_6000_2_OR_NEWER
         return 3;
 #elif UNITY_6000_0_OR_NEWER
         return 2;

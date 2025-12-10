@@ -345,6 +345,76 @@ namespace AppsInToss
             ExecuteDeploy();
         }
 
+        // ==================== Clean ====================
+        [MenuItem("AIT/Clean", false, 101)]
+        public static void Clean()
+        {
+            string projectPath = UnityUtil.GetProjectPath();
+            string webglPath = Path.Combine(projectPath, "webgl");
+            string aitBuildPath = Path.Combine(projectPath, "ait-build");
+
+            bool webglExists = Directory.Exists(webglPath);
+            bool aitBuildExists = Directory.Exists(aitBuildPath);
+
+            if (!webglExists && !aitBuildExists)
+            {
+                EditorUtility.DisplayDialog("정보", "삭제할 빌드 폴더가 없습니다.", "확인");
+                return;
+            }
+
+            // 삭제할 폴더 목록 구성
+            var foldersToDelete = new List<string>();
+            if (webglExists) foldersToDelete.Add("webgl/");
+            if (aitBuildExists) foldersToDelete.Add("ait-build/");
+
+            bool confirmed = EditorUtility.DisplayDialog(
+                "빌드 Clean",
+                $"다음 폴더를 삭제하시겠습니까?\n\n• {string.Join("\n• ", foldersToDelete)}\n\n이 작업은 되돌릴 수 없습니다.",
+                "삭제",
+                "취소"
+            );
+
+            if (!confirmed) return;
+
+            Debug.Log("AIT: 빌드 폴더 삭제 시작...");
+
+            int deletedCount = 0;
+
+            if (webglExists)
+            {
+                try
+                {
+                    Directory.Delete(webglPath, true);
+                    Debug.Log($"AIT: ✓ webgl/ 폴더 삭제 완료");
+                    deletedCount++;
+                }
+                catch (Exception e)
+                {
+                    Debug.LogError($"AIT: webgl/ 폴더 삭제 실패: {e.Message}");
+                }
+            }
+
+            if (aitBuildExists)
+            {
+                try
+                {
+                    Directory.Delete(aitBuildPath, true);
+                    Debug.Log($"AIT: ✓ ait-build/ 폴더 삭제 완료");
+                    deletedCount++;
+                }
+                catch (Exception e)
+                {
+                    Debug.LogError($"AIT: ait-build/ 폴더 삭제 실패: {e.Message}");
+                }
+            }
+
+            if (deletedCount > 0)
+            {
+                Debug.Log($"AIT: Clean 완료! ({deletedCount}개 폴더 삭제됨)");
+                EditorUtility.DisplayDialog("완료", $"빌드 폴더 {deletedCount}개가 삭제되었습니다.", "확인");
+            }
+        }
+
         // ==================== Open Build Output ====================
         [MenuItem("AIT/Open Build Output", false, 102)]
         public static void OpenBuildOutput()

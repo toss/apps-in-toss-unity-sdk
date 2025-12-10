@@ -557,8 +557,8 @@ namespace AppsInToss
                 string pnpmName = AITPlatformHelper.IsWindows ? "pnpm.cmd" : "pnpm";
                 string pnpmPath = Path.Combine(npmDir, pnpmName);
 
-                // pnpm run deploy -- --api-key "KEY" 형태로 인자 전달 (로컬 node_modules 사용)
-                string command = $"\"{pnpmPath}\" run deploy -- --api-key \"{deploymentKey}\"";
+                // pnpm exec ait deploy --api-key "KEY" 형태로 직접 실행
+                string command = $"\"{pnpmPath}\" exec ait deploy --api-key \"{deploymentKey}\"";
                 var result = AITPlatformHelper.ExecuteCommand(
                     command,
                     buildPath,

@@ -148,7 +148,8 @@ namespace AppsInToss
         [MenuItem("AIT/Dev Server/Restart Server (server-only)", true)]
         public static bool ValidateMenuRestartDevServerOnly()
         {
-            return devServerStatus == ServerStatus.Running;
+            var state = devServerState?.GetCachedState() ?? ServerState.NotRunning;
+            return state == ServerState.Running;
         }
 
         // ==================== Production Server ====================
@@ -204,7 +205,8 @@ namespace AppsInToss
         [MenuItem("AIT/Production Server/Restart Server (server-only)", true)]
         public static bool ValidateMenuRestartProdServerOnly()
         {
-            return prodServerStatus == ServerStatus.Running;
+            var state = prodServerState?.GetCachedState() ?? ServerState.NotRunning;
+            return state == ServerState.Running;
         }
 
         // ==================== Helper Methods ====================
@@ -725,14 +727,17 @@ namespace AppsInToss
         /// </summary>
         private static void StartDevServerOnly()
         {
-            if (IsDevServerRunning)
+            // 실제 상태 검증
+            var currentState = devServerState.ValidateState();
+            if (currentState == ServerState.Running)
             {
                 Debug.LogWarning("AIT: Dev 서버가 이미 실행 중입니다.");
                 return;
             }
 
             // Production 서버가 실행 중이면 확인 후 전환
-            if (IsProdServerRunning)
+            var prodState = prodServerState.ValidateState();
+            if (prodState == ServerState.Running || prodState == ServerState.Starting)
             {
                 if (EditorUtility.DisplayDialog(
                     "서버 전환",
@@ -747,36 +752,30 @@ namespace AppsInToss
                 }
             }
 
-            devServerStatus = ServerStatus.Starting;
-
             var config = UnityUtil.GetEditorConf();
             if (!ValidateSettings(config))
             {
-                devServerStatus = ServerStatus.NotRunning;
                 return;
             }
 
             string buildPath = GetBuildTemplatePath();
 
             // 빌드 결과물이 있는지 확인
-            if (!System.IO.Directory.Exists(buildPath))
+            if (!Directory.Exists(buildPath))
             {
                 Debug.LogError($"AIT: 빌드 결과물이 없습니다. 먼저 Build & Package를 실행하세요. ({buildPath})");
                 EditorUtility.DisplayDialog("빌드 필요", "빌드 결과물이 없습니다.\n먼저 Build & Package를 실행하세요.", "확인");
-                devServerStatus = ServerStatus.NotRunning;
                 return;
             }
 
             string npmPath = FindNpmPath();
             if (!ValidateNpmPath(npmPath))
             {
-                devServerStatus = ServerStatus.NotRunning;
                 return;
             }
 
             if (!EnsureNodeModules(buildPath, npmPath))
             {
-                devServerStatus = ServerStatus.NotRunning;
                 return;
             }
 
@@ -804,15 +803,17 @@ namespace AppsInToss
                 // granite dev 명령어에 --host, --port 인자로 granite 서버 설정 전달
                 string graniteCommand = $"exec granite dev --host {graniteHost} --port {granitePort}";
 
-                devServerManager = new AITProcessTreeManager();
+                var processManager = new AITProcessTreeManager();
+
+                // 상태 관리자에 Starting 상태 알림
+                devServerState.OnServerStarting(processManager, vitePort);
+
                 StartServerProcessWithPortDetection(
-                    devServerManager,
+                    processManager,
                     buildPath, npmPath, graniteCommand, "Dev Server", envVars,
                     onServerStarted: (detectedPort) =>
                     {
-                        devServerPort = vitePort;
-                        devServerStatus = ServerStatus.Running;
-                        SaveDevServerPrefs(devServerManager.ProcessId, vitePort);
+                        devServerState.OnServerStarted(vitePort);
                         Debug.Log($"AIT: Dev 서버가 시작되었습니다 (서버만)");
                         Debug.Log($"AIT:   Granite (Metro): http://{graniteHost}:{granitePort}");
                         Debug.Log($"AIT:   Vite: http://{viteHost}:{vitePort}");
@@ -822,9 +823,7 @@ namespace AppsInToss
                     {
                         Debug.LogError($"AIT: Dev 서버 시작 실패 - {reason}");
                         EditorUtility.DisplayDialog("Dev 서버 시작 실패", reason, "확인");
-                        devServerManager = null;
-                        devServerStatus = ServerStatus.NotRunning;
-                        ClearDevServerPrefs();
+                        devServerState.OnServerFailed();
                     }
                 );
             }
@@ -832,8 +831,7 @@ namespace AppsInToss
             {
                 Debug.LogError($"AIT: Dev 서버 시작 실패: {e.Message}");
                 EditorUtility.DisplayDialog("오류", $"Dev 서버 시작 실패:\n{e.Message}", "확인");
-                devServerManager = null;
-                devServerStatus = ServerStatus.NotRunning;
+                devServerState.OnServerFailed();
             }
         }
 
@@ -989,14 +987,17 @@ namespace AppsInToss
         /// </summary>
         private static void StartProdServerOnly()
         {
-            if (IsProdServerRunning)
+            // 실제 상태 검증
+            var currentState = prodServerState.ValidateState();
+            if (currentState == ServerState.Running)
             {
                 Debug.LogWarning("AIT: Production 서버가 이미 실행 중입니다.");
                 return;
             }
 
             // Dev 서버가 실행 중이면 확인 후 전환
-            if (IsDevServerRunning)
+            var devState = devServerState.ValidateState();
+            if (devState == ServerState.Running || devState == ServerState.Starting)
             {
                 if (EditorUtility.DisplayDialog(
                     "서버 전환",
@@ -1011,36 +1012,30 @@ namespace AppsInToss
                 }
             }
 
-            prodServerStatus = ServerStatus.Starting;
-
             var config = UnityUtil.GetEditorConf();
             if (!ValidateSettings(config))
             {
-                prodServerStatus = ServerStatus.NotRunning;
                 return;
             }
 
             string buildPath = GetBuildTemplatePath();
 
             // 빌드 결과물이 있는지 확인
-            if (!System.IO.Directory.Exists(buildPath))
+            if (!Directory.Exists(buildPath))
             {
                 Debug.LogError($"AIT: 빌드 결과물이 없습니다. 먼저 Build & Package를 실행하세요. ({buildPath})");
                 EditorUtility.DisplayDialog("빌드 필요", "빌드 결과물이 없습니다.\n먼저 Build & Package를 실행하세요.", "확인");
-                prodServerStatus = ServerStatus.NotRunning;
                 return;
             }
 
             string npmPath = FindNpmPath();
             if (!ValidateNpmPath(npmPath))
             {
-                prodServerStatus = ServerStatus.NotRunning;
                 return;
             }
 
             if (!EnsureNodeModules(buildPath, npmPath))
             {
-                prodServerStatus = ServerStatus.NotRunning;
                 return;
             }
 
@@ -1068,15 +1063,17 @@ namespace AppsInToss
                 // granite dev 명령어에 --host, --port 인자로 granite 서버 설정 전달
                 string graniteCommand = $"exec granite dev --host {graniteHost} --port {granitePort}";
 
-                prodServerManager = new AITProcessTreeManager();
+                var processManager = new AITProcessTreeManager();
+
+                // 상태 관리자에 Starting 상태 알림
+                prodServerState.OnServerStarting(processManager, vitePort);
+
                 StartServerProcessWithPortDetection(
-                    prodServerManager,
+                    processManager,
                     buildPath, npmPath, graniteCommand, "Prod Server", envVars,
                     onServerStarted: (detectedPort) =>
                     {
-                        prodServerPort = vitePort;
-                        prodServerStatus = ServerStatus.Running;
-                        SaveProdServerPrefs(prodServerManager.ProcessId, vitePort);
+                        prodServerState.OnServerStarted(vitePort);
                         Debug.Log($"AIT: Production 서버가 시작되었습니다 (서버만)");
                         Debug.Log($"AIT:   Granite (Metro): http://{graniteHost}:{granitePort}");
                         Debug.Log($"AIT:   Vite: http://{viteHost}:{vitePort}");
@@ -1086,9 +1083,7 @@ namespace AppsInToss
                     {
                         Debug.LogError($"AIT: Production 서버 시작 실패 - {reason}");
                         EditorUtility.DisplayDialog("Production 서버 시작 실패", reason, "확인");
-                        prodServerManager = null;
-                        prodServerStatus = ServerStatus.NotRunning;
-                        ClearProdServerPrefs();
+                        prodServerState.OnServerFailed();
                     }
                 );
             }
@@ -1096,8 +1091,7 @@ namespace AppsInToss
             {
                 Debug.LogError($"AIT: Production 서버 시작 실패: {e.Message}");
                 EditorUtility.DisplayDialog("오류", $"Production 서버 시작 실패:\n{e.Message}", "확인");
-                prodServerManager = null;
-                prodServerStatus = ServerStatus.NotRunning;
+                prodServerState.OnServerFailed();
             }
         }
 

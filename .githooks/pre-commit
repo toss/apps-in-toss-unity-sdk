@@ -13,42 +13,18 @@ NC='\033[0m' # No Color
 # 체크할 디렉토리 목록 (Unity 패키지에서 .meta가 필요한 디렉토리)
 UNITY_DIRS=("Editor" "Runtime" "WebGLTemplates")
 
-# 제외할 파일/디렉토리 패턴
-EXCLUDE_PATTERNS=(
-    "*.meta"
-    ".DS_Store"
-    "*.swp"
-    "*.tmp"
-)
-
 missing_meta_files=()
 
 for dir in "${UNITY_DIRS[@]}"; do
     if [ -d "$dir" ]; then
-        # 디렉토리 내 모든 파일 검사 (숨김 파일 제외)
+        # 디렉토리 내 모든 파일 검사 (숨김 파일, .meta 파일, node_modules 제외)
         while IFS= read -r -d '' file; do
-            # 파일명만 추출
-            filename=$(basename "$file")
-
-            # 제외 패턴 확인
-            skip=false
-            for pattern in "${EXCLUDE_PATTERNS[@]}"; do
-                if [[ "$filename" == $pattern ]]; then
-                    skip=true
-                    break
-                fi
-            done
-
-            if [ "$skip" = true ]; then
-                continue
-            fi
-
             # .meta 파일이 존재하는지 확인
             meta_file="${file}.meta"
             if [ ! -f "$meta_file" ]; then
                 missing_meta_files+=("$file")
             fi
-        done < <(find "$dir" -type f ! -name ".*" -print0)
+        done < <(find "$dir" -type d -name "node_modules" -prune -o -type f ! -name ".*" ! -name "*.meta" ! -name ".DS_Store" ! -name "*.swp" ! -name "*.tmp" -print0)
     fi
 done
 

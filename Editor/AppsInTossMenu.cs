@@ -576,8 +576,18 @@ namespace AppsInToss
                     }
                     else
                     {
+                        // 에러 메시지 추출 (stdout과 stderr에서)
+                        string errorDetail = ExtractDeployErrorMessage(result.Output, result.Error);
                         Debug.LogError($"AIT: 배포 실패 (Exit Code: {result.ExitCode})");
-                        EditorUtility.DisplayDialog("실패", "배포에 실패했습니다.\n\nConsole 로그를 확인하세요.", "확인");
+
+                        string dialogMessage = "배포에 실패했습니다.";
+                        if (!string.IsNullOrEmpty(errorDetail))
+                        {
+                            dialogMessage += $"\n\n{errorDetail}";
+                        }
+                        dialogMessage += "\n\n자세한 내용은 Console 로그를 확인하세요.";
+
+                        EditorUtility.DisplayDialog("배포 실패", dialogMessage, "확인");
                     }
                 }
                 else
@@ -1450,6 +1460,78 @@ namespace AppsInToss
         // ============================================
         // 유틸리티 메서드들
         // ============================================
+
+        /// <summary>
+        /// 배포 에러 메시지에서 사용자에게 보여줄 핵심 내용 추출
+        /// </summary>
+        private static string ExtractDeployErrorMessage(string stdout, string stderr)
+        {
+            // stderr와 stdout 합치기
+            string combined = $"{stdout}\n{stderr}".Trim();
+
+            if (string.IsNullOrEmpty(combined))
+            {
+                return null;
+            }
+
+            // 일반적인 에러 패턴 감지
+            var lines = combined.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+            var errorLines = new List<string>();
+
+            foreach (var line in lines)
+            {
+                string trimmed = line.Trim();
+
+                // ANSI 색상 코드 제거
+                trimmed = Regex.Replace(trimmed, @"\x1B\[[0-9;]*[mGKH]", "");
+
+                // 에러 관련 라인 수집
+                if (trimmed.StartsWith("Error:", StringComparison.OrdinalIgnoreCase) ||
+                    trimmed.StartsWith("error:", StringComparison.OrdinalIgnoreCase) ||
+                    trimmed.StartsWith("ERR!", StringComparison.OrdinalIgnoreCase) ||
+                    trimmed.Contains("ENOENT") ||
+                    trimmed.Contains("EACCES") ||
+                    trimmed.Contains("401") ||
+                    trimmed.Contains("403") ||
+                    trimmed.Contains("404") ||
+                    trimmed.Contains("500") ||
+                    trimmed.Contains("Unauthorized") ||
+                    trimmed.Contains("Forbidden") ||
+                    trimmed.Contains("Not Found") ||
+                    trimmed.Contains("failed") && trimmed.Contains("deploy"))
+                {
+                    errorLines.Add(trimmed);
+                }
+            }
+
+            if (errorLines.Count > 0)
+            {
+                // 최대 3줄까지만 표시
+                int maxLines = Math.Min(errorLines.Count, 3);
+                return string.Join("\n", errorLines.GetRange(0, maxLines));
+            }
+
+            // 에러 패턴을 못 찾았으면 마지막 몇 줄 반환
+            if (lines.Length > 0)
+            {
+                int startIndex = Math.Max(0, lines.Length - 3);
+                var lastLines = new List<string>();
+                for (int i = startIndex; i < lines.Length; i++)
+                {
+                    string trimmed = Regex.Replace(lines[i].Trim(), @"\x1B\[[0-9;]*[mGKH]", "");
+                    if (!string.IsNullOrEmpty(trimmed))
+                    {
+                        lastLines.Add(trimmed);
+                    }
+                }
+                if (lastLines.Count > 0)
+                {
+                    return string.Join("\n", lastLines);
+                }
+            }
+
+            return null;
+        }
 
         private static bool ValidateSettings(AITEditorScriptObject config)
         {

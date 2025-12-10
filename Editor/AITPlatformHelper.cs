@@ -289,15 +289,20 @@ namespace AppsInToss.Editor
                             Debug.Log($"[Platform] ✓ 명령 성공 (Exit Code: {result.ExitCode})");
                             if (!string.IsNullOrEmpty(result.Output))
                             {
-                                Debug.Log($"[Platform] 출력: {result.Output.Trim()}");
+                                Debug.Log($"[Platform] 출력:\n{result.Output.Trim()}");
                             }
                         }
                         else
                         {
-                            Debug.LogWarning($"[Platform] ✗ 명령 실패 (Exit Code: {result.ExitCode})");
+                            Debug.LogError($"[Platform] ✗ 명령 실패 (Exit Code: {result.ExitCode})");
+                            // 실패 시 stdout과 stderr 모두 출력 (에러 정보가 stdout에 있을 수 있음)
+                            if (!string.IsNullOrEmpty(result.Output))
+                            {
+                                Debug.LogError($"[Platform] stdout:\n{result.Output.Trim()}");
+                            }
                             if (!string.IsNullOrEmpty(result.Error))
                             {
-                                Debug.LogWarning($"[Platform] 에러: {result.Error.Trim()}");
+                                Debug.LogError($"[Platform] stderr:\n{result.Error.Trim()}");
                             }
                         }
                     }

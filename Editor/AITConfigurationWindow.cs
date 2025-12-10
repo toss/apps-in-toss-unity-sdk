@@ -21,6 +21,7 @@ namespace AppsInToss.Editor
 
         // 하이라이트 색상
         private static readonly Color ModifiedColor = new Color(1f, 0.6f, 0f); // 주황색
+        private static readonly Color RequiredFieldColor = new Color(1f, 0.4f, 0.4f); // 붉은색 (필수 필드 누락)
 
         public static void ShowWindow()
         {
@@ -89,9 +90,18 @@ namespace AppsInToss.Editor
             EditorGUILayout.LabelField("앱 기본 정보", EditorStyles.boldLabel);
             EditorGUILayout.BeginVertical("box");
 
-            // 앱 ID (검증 포함)
-            config.appName = EditorGUILayout.TextField("앱 ID", config.appName);
-            if (!string.IsNullOrWhiteSpace(config.appName) && !config.IsAppNameValid())
+            // 앱 ID (필수 필드)
+            bool appNameMissing = string.IsNullOrWhiteSpace(config.appName);
+            bool appNameInvalid = !appNameMissing && !config.IsAppNameValid();
+
+            if (appNameMissing || appNameInvalid)
+            {
+                GUI.backgroundColor = RequiredFieldColor;
+            }
+            config.appName = EditorGUILayout.TextField("앱 ID *", config.appName);
+            GUI.backgroundColor = Color.white;
+
+            if (appNameInvalid)
             {
                 EditorGUILayout.HelpBox("앱 ID는 영문, 숫자, 하이픈(-)만 사용할 수 있습니다.", MessageType.Warning);
             }
@@ -950,26 +960,22 @@ namespace AppsInToss.Editor
 
             GUILayout.Space(10);
 
-            // 설정 검증 상태 요약
-            bool readyForBuild = config.IsIconUrlValid() && config.IsAppNameValid() && config.IsVersionValid();
-            bool readyForDeploy = config.IsReadyForDeploy();
+            // 설정 검증 상태 요약 (appName만 필수)
+            bool readyForBuild = config.IsAppNameValid();
+            bool hasDeploymentKey = !string.IsNullOrWhiteSpace(AITCredentialsUtil.GetDeploymentKey());
 
             if (readyForBuild)
             {
                 EditorGUILayout.HelpBox("빌드 준비 완료", MessageType.Info);
-            }
-            else
-            {
-                EditorGUILayout.HelpBox("설정을 완료해주세요 (아이콘 URL, 앱 ID, 버전)", MessageType.Warning);
-            }
 
-            if (readyForDeploy)
-            {
-                EditorGUILayout.HelpBox("배포 준비 완료", MessageType.Info);
-            }
-            else if (!readyForDeploy && readyForBuild)
-            {
-                EditorGUILayout.HelpBox("배포 키를 입력해주세요", MessageType.Warning);
+                if (hasDeploymentKey)
+                {
+                    EditorGUILayout.HelpBox("배포 준비 완료", MessageType.Info);
+                }
+                else
+                {
+                    EditorGUILayout.HelpBox("배포 키를 입력해주세요", MessageType.Warning);
+                }
             }
 
             EditorGUILayout.EndVertical();

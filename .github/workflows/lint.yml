@@ -1,0 +1,71 @@
+name: Lint
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches: [main]
+
+jobs:
+  check-unity-meta-files:
+    name: Check Unity .meta files
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+
+      - name: Check for missing .meta files
+        run: |
+          echo "Unity .meta 파일 누락 검사 중..."
+          echo ""
+
+          # 체크할 디렉토리
+          UNITY_DIRS="Editor Runtime WebGLTemplates"
+
+          # 제외할 패턴
+          EXCLUDE_PATTERNS="*.meta .DS_Store *.swp *.tmp"
+
+          MISSING_FILES=()
+
+          for dir in $UNITY_DIRS; do
+            if [ -d "$dir" ]; then
+              while IFS= read -r -d '' file; do
+                filename=$(basename "$file")
+
+                # 제외 패턴 확인
+                skip=false
+                for pattern in $EXCLUDE_PATTERNS; do
+                  case "$filename" in
+                    $pattern) skip=true; break ;;
+                  esac
+                done
+
+                if [ "$skip" = true ]; then
+                  continue
+                fi
+
+                # .meta 파일 존재 확인
+                if [ ! -f "${file}.meta" ]; then
+                  MISSING_FILES+=("$file")
+                fi
+              done < <(find "$dir" -type f ! -name ".*" -print0)
+            fi
+          done
+
+          if [ ${#MISSING_FILES[@]} -gt 0 ]; then
+            echo "::error::Unity .meta 파일이 누락되었습니다!"
+            echo ""
+            echo "다음 파일들에 대한 .meta 파일이 없습니다:"
+            for file in "${MISSING_FILES[@]}"; do
+              echo "  - $file"
+            done
+            echo ""
+            echo "해결 방법:"
+            echo "  1. Unity Editor에서 프로젝트를 열어 자동으로 .meta 파일 생성"
+            echo "  2. 또는 기존 .meta 파일을 참고하여 수동으로 생성 (GUID 포함)"
+            exit 1
+          fi
+
+          echo "✓ 모든 Unity 파일에 .meta 파일이 있습니다."

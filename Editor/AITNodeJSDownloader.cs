@@ -65,37 +65,15 @@ namespace AppsInToss.Editor
             if (autoDownload)
             {
                 Debug.Log($"[NodeJS] Embedded Node.js를 찾을 수 없습니다. 다운로드를 시작합니다...");
+                Debug.Log($"[NodeJS] Node.js {NODE_VERSION} 자동 다운로드를 시작합니다. (약 40-50MB)");
+                Debug.Log($"[NodeJS] 설치 위치: {nodePath}");
 
-                bool download = false;
+                DownloadNodeJS(platform, nodePath);
 
-                // 배치 모드 (CI/CD)에서는 다이얼로그 없이 자동 다운로드
-                if (Application.isBatchMode)
+                // 다운로드 후 재확인
+                if (File.Exists(npmPath))
                 {
-                    Debug.Log("[NodeJS] 배치 모드 감지 - 자동 다운로드를 진행합니다.");
-                    download = true;
-                }
-                else
-                {
-                    // 인터랙티브 모드에서는 사용자에게 확인
-                    download = EditorUtility.DisplayDialog(
-                        "Node.js 자동 다운로드",
-                        $"Apps in Toss SDK는 빌드를 위해 Node.js {NODE_VERSION} (LTS)가 필요합니다.\n\n" +
-                        "SDK에 포함된 portable Node.js를 자동으로 다운로드하시겠습니까?\n\n" +
-                        $"다운로드 크기: 약 40-50MB\n" +
-                        $"설치 위치: {nodePath}",
-                        "다운로드", "취소"
-                    );
-                }
-
-                if (download)
-                {
-                    DownloadNodeJS(platform, nodePath);
-
-                    // 다운로드 후 재확인
-                    if (File.Exists(npmPath))
-                    {
-                        return npmPath;
-                    }
+                    return npmPath;
                 }
             }
 
@@ -268,22 +246,14 @@ namespace AppsInToss.Editor
                 EditorUtility.DisplayProgressBar("Node.js 다운로드",
                     "완료!", 1.0f);
 
-                // 배치 모드에서는 다이얼로그 스킵
-                if (!Application.isBatchMode)
+                // 로그만 남김 (다이얼로그 없음)
+                if (pnpmInstalled)
                 {
-                    string message = $"Node.js {NODE_VERSION}이(가) 성공적으로 설치되었습니다.\n\n" +
-                        $"위치: {targetPath}";
-
-                    if (pnpmInstalled)
-                    {
-                        message += "\n\npnpm도 함께 설치되었습니다.";
-                    }
-                    else
-                    {
-                        message += "\n\n⚠️ pnpm 설치에 실패했습니다.\n빌드 시 자동으로 재시도됩니다.";
-                    }
-
-                    EditorUtility.DisplayDialog("다운로드 완료", message, "확인");
+                    Debug.Log($"[NodeJS] ✓ Node.js {NODE_VERSION} 및 pnpm 설치 완료!");
+                }
+                else
+                {
+                    Debug.LogWarning($"[NodeJS] ✓ Node.js {NODE_VERSION} 설치 완료. pnpm 설치 실패 (빌드 시 재시도됨)");
                 }
             }
             catch (Exception e)

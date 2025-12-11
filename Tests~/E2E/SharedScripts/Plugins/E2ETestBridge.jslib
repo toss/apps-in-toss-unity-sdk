@@ -11,7 +11,7 @@ mergeInto(LibraryManager.library, {
         console.log('[E2E-BENCHMARK] ' + json);
 
         // window 객체에 저장하여 Playwright에서 접근 가능하도록 함
-        window.__E2E_BENCHMARK_RESULTS__ = json;
+        window.__E2E_BENCHMARK_DATA__ = json;
 
         // CustomEvent 발생
         var event = new CustomEvent('e2e-benchmark-complete', { detail: json });
@@ -27,7 +27,7 @@ mergeInto(LibraryManager.library, {
         console.log('[E2E-API-TEST] ' + json);
 
         // window 객체에 저장하여 Playwright에서 접근 가능하도록 함
-        window.__E2E_API_TEST_RESULTS__ = json;
+        window.__E2E_API_TEST_DATA__ = json;
 
         // CustomEvent 발생
         var event = new CustomEvent('e2e-api-test-complete', { detail: json });

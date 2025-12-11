@@ -506,57 +506,64 @@ jobs:
     if: always()
 
     steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+
       - name: Download All Artifacts
         uses: actions/download-artifact@v6
         with:
           path: artifacts
 
-      - name: Generate Summary
-        shell: bash
-        run: |
-          echo "## 📊 E2E Test Results Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
 
-          # Self-hosted Runner 정보
-          echo "### 🖥️ Test Environment" >> $GITHUB_STEP_SUMMARY
-          echo "| OS | Unity Versions | Runner Type |" >> $GITHUB_STEP_SUMMARY
-          echo "|-----|---------------|-------------|" >> $GITHUB_STEP_SUMMARY
-          echo "| macOS | 2021.3, 2022.3, 6000.0, 6000.2 | Self-hosted ARM64 (병렬) |" >> $GITHUB_STEP_SUMMARY
-          echo "| Windows | 2021.3, 2022.3, 6000.0, 6000.2 | Self-hosted X64 (병렬) |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+      - name: Generate Benchmark Report
+        run: node .github/scripts/generate-benchmark-report.js
 
-          # Benchmark 결과
-          echo "### 📈 Benchmark Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+      - name: Write Job Summary
+        run: cat benchmark-report.md >> $GITHUB_STEP_SUMMARY
 
-          HAS_RESULTS=false
-          for os in macos windows; do
-            # OS 이름 대문자화 (bash 4+ 문법 대신 호환 방식)
-            if [ "$os" = "macos" ]; then
-              OS_DISPLAY="macOS"
-            else
-              OS_DISPLAY="Windows"
-            fi
+      - name: Comment on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const report = fs.readFileSync('benchmark-report.md', 'utf8');
 
-            for version in 2021.3 2022.3 6000.0 6000.2; do
-              RESULTS_FILE="artifacts/benchmark-results-${os}-${version}/benchmark-results.json"
-              if [ -f "$RESULTS_FILE" ]; then
-                HAS_RESULTS=true
-                echo "#### ${OS_DISPLAY} - Unity ${version}" >> $GITHUB_STEP_SUMMARY
-                echo "" >> $GITHUB_STEP_SUMMARY
-                echo '```json' >> $GITHUB_STEP_SUMMARY
-                cat "$RESULTS_FILE" >> $GITHUB_STEP_SUMMARY
-                echo "" >> $GITHUB_STEP_SUMMARY
-                echo '```' >> $GITHUB_STEP_SUMMARY
-                echo "" >> $GITHUB_STEP_SUMMARY
-              fi
-            done
-          done
+            // 기존 벤치마크 코멘트 찾기
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number
+            });
 
-          # 결과 없는 경우
-          if [ "$HAS_RESULTS" = "false" ]; then
-            echo "⚠️ No benchmark results available" >> $GITHUB_STEP_SUMMARY
-          fi
+            const botComment = comments.find(c =>
+              c.user.type === 'Bot' &&
+              c.body.includes('## 📊 Benchmark Results')
+            );
+
+            if (botComment) {
+              // 기존 코멘트 업데이트
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: report
+              });
+              console.log('Updated existing benchmark comment');
+            } else {
+              // 새 코멘트 생성
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: report
+              });
+              console.log('Created new benchmark comment');
+            }
 
       - name: Upload Combined Report
         uses: actions/upload-artifact@v5
@@ -564,6 +571,13 @@ jobs:
           name: combined-test-report
           path: artifacts/
           if-no-files-found: ignore
+
+      - name: Upload Benchmark Report
+        uses: actions/upload-artifact@v5
+        with:
+          name: benchmark-report
+          path: benchmark-report.md
+          if-no-files-found: warn
 
   # =====================================================
   # Commit Status 보고 (workflow_call로 호출된 경우)

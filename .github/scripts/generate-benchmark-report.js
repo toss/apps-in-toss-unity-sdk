@@ -354,14 +354,17 @@ function generateDetailedReport(data) {
     const m = data.macos[version]?.apiTestResults;
     const w = data.windows[version]?.apiTestResults;
 
-    const macosApi = m
-      ? `${statusEmoji(m.unexpectedErrorCount === 0)} ${m.successCount}/${m.totalAPIs}`
-      : "⏳";
-    const windowsApi = w
-      ? `${statusEmoji(w.unexpectedErrorCount === 0)} ${w.successCount}/${w.totalAPIs}`
-      : "⏳";
+    // totalAPIs가 있으면 상세 표시, 없으면 unexpectedErrorCount만으로 판단
+    const formatApiResult = (api) => {
+      if (!api) return "⏳";
+      if (api.totalAPIs != null && api.successCount != null) {
+        return `${statusEmoji(api.unexpectedErrorCount === 0)} ${api.successCount}/${api.totalAPIs}`;
+      }
+      // totalAPIs가 없는 경우 (이전 버전 호환)
+      return `${statusEmoji(api.unexpectedErrorCount === 0)} ${api.unexpectedErrorCount === 0 ? "Pass" : "Fail"}`;
+    };
 
-    md += `| ${version} | ${macosApi} | ${windowsApi} |\n`;
+    md += `| ${version} | ${formatApiResult(m)} | ${formatApiResult(w)} |\n`;
   }
   md += "\n";
 

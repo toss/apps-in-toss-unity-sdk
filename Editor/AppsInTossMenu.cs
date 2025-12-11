@@ -1544,8 +1544,11 @@ namespace AppsInToss
                 return null;
             }
 
+            // ANSI 컬러 코드 제거 (예: [h39m[24m[22m)
+            string cleaned = Regex.Replace(output, @"\x1B\[[0-9;]*[a-zA-Z]|\[[0-9;]*[a-zA-Z]", "");
+
             // intoss-private://... URL 패턴 찾기
-            var match = Regex.Match(output, @"intoss-private://[^\s\│\│]+");
+            var match = Regex.Match(cleaned, @"intoss-private://[^\s\│\│]+");
             if (match.Success)
             {
                 return match.Value.TrimEnd('│', ' ', '\r', '\n');

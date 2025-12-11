@@ -844,8 +844,8 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
             return;
           }
 
-          // 30초 타임아웃
-          setTimeout(() => resolve(null), 30000);
+          // 90초 타임아웃 (AutoBenchmarkRunner는 약 60초 소요)
+          setTimeout(() => resolve(null), 90000);
         });
       });
     } catch {

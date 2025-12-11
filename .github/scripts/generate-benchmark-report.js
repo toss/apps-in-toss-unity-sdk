@@ -12,6 +12,16 @@ import path from "path";
 const UNITY_VERSIONS = ["2021.3", "2022.3", "6000.0", "6000.2", "6000.3"];
 const OS_LIST = ["macos", "windows"];
 
+// OS별 표시 이름 (테스트 환경 표시)
+const OS_DISPLAY_NAMES = {
+  macos: "macOS (Mobile)",
+  windows: "Windows (Desktop)",
+};
+const OS_SHORT_NAMES = {
+  macos: "macOS",
+  windows: "Windows",
+};
+
 // 벤치마크 기준값
 const THRESHOLDS = {
   BUILD_SIZE_MB: 50,
@@ -108,12 +118,12 @@ function generateBuildSizeChart(data) {
       labels: UNITY_VERSIONS,
       datasets: [
         {
-          label: "macOS",
+          label: OS_DISPLAY_NAMES.macos,
           data: macosData,
           backgroundColor: "rgba(59, 130, 246, 0.8)",
         },
         {
-          label: "Windows",
+          label: OS_DISPLAY_NAMES.windows,
           data: windowsData,
           backgroundColor: "rgba(239, 68, 68, 0.8)",
         },
@@ -145,14 +155,14 @@ function generateFpsChart(data) {
       labels: UNITY_VERSIONS,
       datasets: [
         {
-          label: "macOS Avg FPS",
+          label: `${OS_DISPLAY_NAMES.macos} Avg FPS`,
           data: macosAvgFps,
           borderColor: "rgba(59, 130, 246, 1)",
           backgroundColor: "rgba(59, 130, 246, 0.1)",
           fill: true,
         },
         {
-          label: "Windows Avg FPS",
+          label: `${OS_DISPLAY_NAMES.windows} Avg FPS`,
           data: windowsAvgFps,
           borderColor: "rgba(239, 68, 68, 1)",
           backgroundColor: "rgba(239, 68, 68, 0.1)",
@@ -186,12 +196,12 @@ function generateLoadTimeChart(data) {
       labels: UNITY_VERSIONS,
       datasets: [
         {
-          label: "macOS",
+          label: OS_DISPLAY_NAMES.macos,
           data: macosPageLoad,
           backgroundColor: "rgba(59, 130, 246, 0.8)",
         },
         {
-          label: "Windows",
+          label: OS_DISPLAY_NAMES.windows,
           data: windowsPageLoad,
           backgroundColor: "rgba(239, 68, 68, 0.8)",
         },
@@ -235,7 +245,7 @@ function hasAnyTestFailure(data) {
 function generateTestSummary(data) {
   let md = "";
   md += "### 📈 Test Summary\n\n";
-  md += "| Unity Version | macOS | Windows |\n";
+  md += `| Unity Version | ${OS_DISPLAY_NAMES.macos} | ${OS_DISPLAY_NAMES.windows} |\n`;
   md += "|:--------------|:-----:|:-------:|\n";
 
   for (const version of UNITY_VERSIONS) {
@@ -269,7 +279,7 @@ function generateDetailedReport(data) {
 
   // ===== 빌드 크기 테이블 =====
   md += "### 📦 Build Size (MB)\n\n";
-  md += "| Unity Version | macOS | Windows | Diff |\n";
+  md += `| Unity Version | ${OS_SHORT_NAMES.macos} | ${OS_SHORT_NAMES.windows} | Diff |\n`;
   md += "|:--------------|------:|--------:|-----:|\n";
 
   for (const version of UNITY_VERSIONS) {
@@ -288,7 +298,7 @@ function generateDetailedReport(data) {
 
   // ===== 로드 시간 테이블 =====
   md += "### ⏱️ Load Time (ms)\n\n";
-  md += "| Unity Version | macOS Page | macOS Unity | Windows Page | Windows Unity |\n";
+  md += `| Unity Version | ${OS_SHORT_NAMES.macos} Page | ${OS_SHORT_NAMES.macos} Unity | ${OS_SHORT_NAMES.windows} Page | ${OS_SHORT_NAMES.windows} Unity |\n`;
   md += "|:--------------|----------:|-----------:|-------------:|-------------:|\n";
 
   for (const version of UNITY_VERSIONS) {
@@ -301,7 +311,7 @@ function generateDetailedReport(data) {
 
   // ===== FPS 성능 테이블 =====
   md += "### ⚡ Performance (FPS)\n\n";
-  md += "| Unity Version | macOS Avg | macOS Min | Windows Avg | Windows Min |\n";
+  md += `| Unity Version | ${OS_SHORT_NAMES.macos} Avg | ${OS_SHORT_NAMES.macos} Min | ${OS_SHORT_NAMES.windows} Avg | ${OS_SHORT_NAMES.windows} Min |\n`;
   md += "|:--------------|----------:|----------:|------------:|------------:|\n";
 
   for (const version of UNITY_VERSIONS) {
@@ -317,7 +327,7 @@ function generateDetailedReport(data) {
 
   for (const os of OS_LIST) {
     const osEmoji = os === "macos" ? "🍎" : "🪟";
-    const osName = os === "macos" ? "macOS" : "Windows";
+    const osName = OS_DISPLAY_NAMES[os];
 
     md += `#### ${osEmoji} ${osName}\n\n`;
     md += "| Version | Build Size | Avg FPS | Memory | Load Time |\n";
@@ -347,7 +357,7 @@ function generateDetailedReport(data) {
 
   // ===== API 테스트 결과 =====
   md += "### 🔌 API Test Results\n\n";
-  md += "| Unity Version | macOS | Windows |\n";
+  md += `| Unity Version | ${OS_DISPLAY_NAMES.macos} | ${OS_DISPLAY_NAMES.windows} |\n`;
   md += "|:--------------|:-----:|:-------:|\n";
 
   for (const version of UNITY_VERSIONS) {
@@ -377,7 +387,7 @@ function generateDetailedReport(data) {
     for (const version of UNITY_VERSIONS) {
       const d = data[os][version];
       if (d?.webgl) {
-        const osName = os === "macos" ? "macOS" : "Windows";
+        const osName = OS_DISPLAY_NAMES[os];
         const renderer = d.webgl.renderer || "-";
         const vendor = d.webgl.vendor || "-";
         const shortRenderer =

@@ -215,26 +215,25 @@ function formatNumber(value, decimals = 1) {
 }
 
 /**
- * 마크다운 리포트 생성
+ * 테스트 실패 여부 확인
  */
-function generateReport(data) {
-  let md = "";
-
-  // 헤더
-  md += "## 📊 Benchmark Results\n\n";
-  md += `> Generated: ${new Date().toISOString()}\n\n`;
-
-  // 데이터 존재 여부 확인
-  const hasData = OS_LIST.some((os) =>
-    UNITY_VERSIONS.some((v) => data[os][v])
-  );
-
-  if (!hasData) {
-    md += "⚠️ No benchmark results available\n";
-    return md;
+function hasAnyTestFailure(data) {
+  for (const os of OS_LIST) {
+    for (const version of UNITY_VERSIONS) {
+      const result = data[os][version];
+      if (result && result.testsPassed !== result.testsTotal) {
+        return true;
+      }
+    }
   }
+  return false;
+}
 
-  // ===== 요약 섹션 =====
+/**
+ * Test Summary 섹션 생성
+ */
+function generateTestSummary(data) {
+  let md = "";
   md += "### 📈 Test Summary\n\n";
   md += "| Unity Version | macOS | Windows |\n";
   md += "|:--------------|:-----:|:-------:|\n";
@@ -253,6 +252,14 @@ function generateReport(data) {
     md += `| ${version} | ${macosStatus} | ${windowsStatus} |\n`;
   }
   md += "\n";
+  return md;
+}
+
+/**
+ * 상세 리포트 섹션 생성 (차트, 테이블 등)
+ */
+function generateDetailedReport(data) {
+  let md = "";
 
   // ===== 차트 섹션 =====
   md += "### 📊 Charts\n\n";
@@ -307,7 +314,6 @@ function generateReport(data) {
 
   // ===== 프로그레스바 시각화 =====
   md += "### 🎯 Performance Overview\n\n";
-  md += "<details>\n<summary>Click to expand detailed metrics</summary>\n\n";
 
   for (const os of OS_LIST) {
     const osEmoji = os === "macos" ? "🍎" : "🪟";
@@ -339,8 +345,6 @@ function generateReport(data) {
     md += "\n";
   }
 
-  md += "</details>\n\n";
-
   // ===== API 테스트 결과 =====
   md += "### 🔌 API Test Results\n\n";
   md += "| Unity Version | macOS | Windows |\n";
@@ -363,7 +367,6 @@ function generateReport(data) {
 
   // ===== WebGL 환경 정보 =====
   md += "### 🖥️ WebGL Environment\n\n";
-  md += "<details>\n<summary>Click to expand WebGL info</summary>\n\n";
   md += "| OS | Version | Renderer | Vendor |\n";
   md += "|:---|:--------|:---------|:-------|\n";
 
@@ -374,7 +377,6 @@ function generateReport(data) {
         const osName = os === "macos" ? "macOS" : "Windows";
         const renderer = d.webgl.renderer || "-";
         const vendor = d.webgl.vendor || "-";
-        // 긴 문자열 자르기
         const shortRenderer =
           renderer.length > 40 ? renderer.substring(0, 40) + "..." : renderer;
         const shortVendor =
@@ -383,8 +385,47 @@ function generateReport(data) {
       }
     }
   }
+  md += "\n";
 
-  md += "\n</details>\n";
+  return md;
+}
+
+/**
+ * 마크다운 리포트 생성
+ */
+function generateReport(data) {
+  let md = "";
+
+  // 헤더
+  md += "## 📊 Benchmark Results\n\n";
+  md += `> Generated: ${new Date().toISOString()}\n\n`;
+
+  // 데이터 존재 여부 확인
+  const hasData = OS_LIST.some((os) =>
+    UNITY_VERSIONS.some((v) => data[os][v])
+  );
+
+  if (!hasData) {
+    md += "⚠️ No benchmark results available\n";
+    return md;
+  }
+
+  // 실패 여부 확인
+  const hasFailure = hasAnyTestFailure(data);
+
+  if (hasFailure) {
+    // 실패 시: Test Summary는 펼쳐서 보여주고, 나머지는 접기
+    md += generateTestSummary(data);
+    md += "<details>\n<summary>📋 View detailed benchmark report</summary>\n\n";
+    md += generateDetailedReport(data);
+    md += "</details>\n";
+  } else {
+    // 성공 시: 전체를 접기
+    md += "<details>\n<summary>✅ All tests passed - Click to view details</summary>\n\n";
+    md += generateTestSummary(data);
+    md += generateDetailedReport(data);
+    md += "</details>\n";
+  }
 
   return md;
 }

@@ -852,6 +852,15 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       console.log('⚠️ Benchmark data not received from Unity');
     }
 
+    // JSON 문자열인 경우 파싱
+    if (typeof benchmarkData === 'string') {
+      try {
+        benchmarkData = JSON.parse(benchmarkData);
+      } catch {
+        console.log('⚠️ Failed to parse benchmark data JSON');
+      }
+    }
+
     // 결과 로깅
     console.log('\n📊 BENCHMARK RESULTS:');
     console.log(`   Page Load: ${pageLoadTime}ms (max: ${BENCHMARKS.MAX_LOAD_TIME_MS}ms)`);

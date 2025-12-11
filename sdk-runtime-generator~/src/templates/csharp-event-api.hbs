@@ -1,0 +1,46 @@
+{{!-- Event API method template for subscription-based events --}}
+{{#if this.description}}
+        /// <summary>
+        /// {{{this.description}}}
+        /// </summary>
+{{/if}}
+        /// <param name="onEvent">Event callback when the event is triggered</param>
+        /// <param name="onError">Error callback (optional)</param>
+        /// <returns>Action to call for unsubscribing from the event</returns>
+        [APICategory("{{categoryName}}")]
+{{#if this.hasEventData}}
+        public static Action {{this.pascalName}}(
+            Action<{{this.eventDataType}}> onEvent,
+            Action<AITException> onError = null)
+{{else}}
+        public static Action {{this.pascalName}}(
+            Action onEvent,
+            Action<AITException> onError = null)
+{{/if}}
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+{{#if this.hasEventData}}
+            string subscriptionId = AITCore.Instance.RegisterSubscriptionCallback<{{this.eventDataType}}>(
+                onEvent,
+                onError
+            );
+            __{{this.name}}_Internal(subscriptionId, "{{this.eventDataType}}");
+{{else}}
+            string subscriptionId = AITCore.Instance.RegisterVoidSubscriptionCallback(
+                onEvent,
+                onError
+            );
+            __{{this.name}}_Internal(subscriptionId, "void");
+{{/if}}
+            return () => AITCore.Instance.Unsubscribe(subscriptionId);
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] {{this.pascalName}} subscribed");
+            return () => UnityEngine.Debug.Log($"[AIT Mock] {{this.pascalName}} unsubscribed");
+#endif
+        }
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __{{this.name}}_Internal(string subscriptionId, string typeName);
+#endif

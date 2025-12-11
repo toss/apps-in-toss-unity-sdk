@@ -455,9 +455,10 @@ export class CSharpGenerator {
     const files = new Map<string, string>();
 
     // API를 카테고리별로 그룹핑
+    // 이벤트 API는 파서에서 설정한 카테고리 사용, 나머지는 categories.ts에서 룩업
     const categoryMap = new Map<string, ParsedAPI[]>();
     for (const api of apis) {
-      const category = getCategory(api.originalName);
+      const category = api.isEventSubscription ? api.category : getCategory(api.originalName);
       if (!categoryMap.has(category)) {
         categoryMap.set(category, []);
       }
@@ -552,6 +553,24 @@ export class CSharpGenerator {
       }
     }
 
+    // deprecated 메시지의 줄바꿈 제거 (C# [Obsolete] 어트리뷰트에서 줄바꿈 불가)
+    let deprecatedMessage = api.deprecatedMessage;
+    if (deprecatedMessage) {
+      deprecatedMessage = deprecatedMessage
+        .replace(/\n/g, ' ')  // 줄바꿈을 공백으로
+        .replace(/\s+/g, ' ') // 연속 공백을 하나로
+        .replace(/"/g, '\\"') // 큰따옴표 이스케이프
+        .trim();
+    }
+
+    // 이벤트 데이터 타입 결정
+    let eventDataType: string | undefined;
+    let hasEventData = false;
+    if (api.isEventSubscription && api.eventDataType) {
+      eventDataType = mapToCSharpType(api.eventDataType);
+      hasEventData = eventDataType !== 'void' && eventDataType !== 'undefined';
+    }
+
     return {
       name: api.name,
       pascalName: api.pascalName,
@@ -563,6 +582,15 @@ export class CSharpGenerator {
       returnType,
       isAsync: api.isAsync,
       callbackType,
+      // 네임스페이스 API 지원
+      namespace: api.namespace,
+      isDeprecated: api.isDeprecated,
+      deprecatedMessage,
+      // 이벤트 구독 API 지원
+      isEventSubscription: api.isEventSubscription,
+      eventName: api.eventName,
+      hasEventData,
+      eventDataType,
     };
   }
 

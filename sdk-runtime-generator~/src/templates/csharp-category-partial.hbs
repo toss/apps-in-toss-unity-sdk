@@ -17,6 +17,55 @@ namespace AppsInToss
     public static partial class AIT
     {
 {{#each apis}}
+{{#if this.isEventSubscription}}
+{{!-- Event subscription API (persistent callback pattern) --}}
+{{#if this.description}}
+        /// <summary>
+        /// {{{this.description}}}
+        /// </summary>
+{{/if}}
+        /// <param name="onEvent">Event callback when the event is triggered</param>
+        /// <param name="onError">Error callback (optional)</param>
+        /// <returns>Action to call for unsubscribing from the event</returns>
+        [APICategory("{{../categoryName}}")]
+{{#if this.hasEventData}}
+        public static Action {{this.pascalName}}(
+            Action<{{this.eventDataType}}> onEvent,
+            Action<AITException> onError = null)
+{{else}}
+        public static Action {{this.pascalName}}(
+            Action onEvent,
+            Action<AITException> onError = null)
+{{/if}}
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+{{#if this.hasEventData}}
+            string subscriptionId = AITCore.Instance.RegisterSubscriptionCallback<{{this.eventDataType}}>(
+                onEvent,
+                onError
+            );
+            __{{{this.name}}}_Internal(subscriptionId, "{{this.eventDataType}}");
+{{else}}
+            string subscriptionId = AITCore.Instance.RegisterVoidSubscriptionCallback(
+                onEvent,
+                onError
+            );
+            __{{{this.name}}}_Internal(subscriptionId, "void");
+{{/if}}
+            return () => AITCore.Instance.Unsubscribe(subscriptionId);
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] {{this.pascalName}} subscribed");
+            return () => UnityEngine.Debug.Log($"[AIT Mock] {{this.pascalName}} unsubscribed");
+#endif
+        }
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __{{{this.name}}}_Internal(string subscriptionId, string typeName);
+#endif
+{{else}}
+{{!-- Regular API (one-time callback pattern) --}}
 {{#if this.description}}
         /// <summary>
         /// {{{this.description}}}
@@ -32,6 +81,9 @@ namespace AppsInToss
 {{/if}}
 {{#if this.isAsync}}
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+{{#if this.isDeprecated}}
+        [Obsolete("{{this.deprecatedMessage}}")]
+{{/if}}
         [APICategory("{{../categoryName}}")]
         public static async {{#if (eq this.callbackType "void")}}Task{{else}}Task<{{{this.callbackType}}}>{{/if}} {{{this.pascalName}}}({{#each this.parameters}}{{this.paramType}} {{this.paramName}}{{#unless @last}}, {{/unless}}{{/each}})
         {
@@ -42,7 +94,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(true),
                 error => tcs.TrySetException(error)
             );
-            __{{{this.originalName}}}_Internal({{#each this.parameters}}{{#if this.isPrimitive}}{{this.paramName}}{{else}}JsonConvert.SerializeObject({{this.paramName}}){{/if}}, {{/each}}callbackId, "{{{this.callbackType}}}");
+            __{{{this.name}}}_Internal({{#each this.parameters}}{{#if this.isPrimitive}}{{this.paramName}}{{else}}JsonConvert.SerializeObject({{this.paramName}}){{/if}}, {{/each}}callbackId, "{{{this.callbackType}}}");
             await tcs.Task;
 {{else}}
             var tcs = new TaskCompletionSource<{{{this.callbackType}}}>();
@@ -50,7 +102,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __{{{this.originalName}}}_Internal({{#each this.parameters}}{{#if this.isPrimitive}}{{this.paramName}}{{else}}JsonConvert.SerializeObject({{this.paramName}}){{/if}}, {{/each}}callbackId, "{{{this.callbackType}}}");
+            __{{{this.name}}}_Internal({{#each this.parameters}}{{#if this.isPrimitive}}{{this.paramName}}{{else}}JsonConvert.SerializeObject({{this.paramName}}){{/if}}, {{/each}}callbackId, "{{{this.callbackType}}}");
             return await tcs.Task;
 {{/if}}
 #else
@@ -75,10 +127,13 @@ namespace AppsInToss
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
-        private static extern void __{{{this.originalName}}}_Internal({{#each this.parameters}}string {{this.paramName}}, {{/each}}string callbackId, string typeName);
+        private static extern void __{{{this.name}}}_Internal({{#each this.parameters}}string {{this.paramName}}, {{/each}}string callbackId, string typeName);
 #endif
 {{else}}
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+{{#if this.isDeprecated}}
+        [Obsolete("{{this.deprecatedMessage}}")]
+{{/if}}
         [APICategory("{{../categoryName}}")]
         public static async Task<{{{this.callbackType}}}> {{{this.pascalName}}}({{#each this.parameters}}{{this.paramType}} {{this.paramName}}{{#unless @last}}, {{/unless}}{{/each}})
         {
@@ -88,7 +143,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __{{{this.originalName}}}_Internal({{#each this.parameters}}{{#if this.isPrimitive}}{{this.paramName}}{{else}}JsonConvert.SerializeObject({{this.paramName}}){{/if}}, {{/each}}callbackId, "{{{this.callbackType}}}");
+            __{{{this.name}}}_Internal({{#each this.parameters}}{{#if this.isPrimitive}}{{this.paramName}}{{else}}JsonConvert.SerializeObject({{this.paramName}}){{/if}}, {{/each}}callbackId, "{{{this.callbackType}}}");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation
@@ -108,8 +163,9 @@ namespace AppsInToss
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
-        private static extern void __{{{this.originalName}}}_Internal({{#each this.parameters}}string {{this.paramName}}, {{/each}}string callbackId, string typeName);
+        private static extern void __{{{this.name}}}_Internal({{#each this.parameters}}string {{this.paramName}}, {{/each}}string callbackId, string typeName);
 #endif
+{{/if}}
 {{/if}}
 {{/each}}
     }

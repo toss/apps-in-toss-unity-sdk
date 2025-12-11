@@ -14,6 +14,14 @@ export interface ParsedAPI {
   returnType: ParsedType;
   isAsync: boolean;
   hasPermission: boolean;
+  // 네임스페이스 객체 지원 (IAP, Storage 등)
+  namespace?: string; // 네임스페이스 이름 (예: 'IAP', 'Storage')
+  isDeprecated?: boolean; // deprecated 여부
+  deprecatedMessage?: string; // 대체 API 안내 메시지
+  // 이벤트 API 지원 (tdsEvent, graniteEvent, appsInTossEvent)
+  isEventSubscription?: boolean; // addEventListener 패턴인지
+  eventName?: string; // 이벤트 이름 (예: 'navigationAccessoryEvent')
+  eventDataType?: ParsedType; // onEvent 콜백 데이터 타입 (void면 undefined)
 }
 
 /**

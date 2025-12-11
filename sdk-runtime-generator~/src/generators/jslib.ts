@@ -15,6 +15,7 @@ const __dirname = path.dirname(__filename);
  */
 export class JSLibGenerator {
   private functionTemplate?: HandlebarsTemplateDelegate;
+  private eventFunctionTemplate?: HandlebarsTemplateDelegate;
   private fileTemplate?: HandlebarsTemplateDelegate;
 
   constructor() {
@@ -67,16 +68,19 @@ export class JSLibGenerator {
    * 템플릿 로드
    */
   private async loadTemplates(): Promise<void> {
-    if (this.functionTemplate && this.fileTemplate) return;
+    if (this.functionTemplate && this.eventFunctionTemplate && this.fileTemplate) return;
 
     const templatesDir = path.join(__dirname, '../templates');
     const functionTemplatePath = path.join(templatesDir, 'jslib-function.hbs');
+    const eventFunctionTemplatePath = path.join(templatesDir, 'jslib-event-function.hbs');
     const fileTemplatePath = path.join(templatesDir, 'jslib-file.hbs');
 
     const functionTemplateSource = await fs.readFile(functionTemplatePath, 'utf-8');
+    const eventFunctionTemplateSource = await fs.readFile(eventFunctionTemplatePath, 'utf-8');
     const fileTemplateSource = await fs.readFile(fileTemplatePath, 'utf-8');
 
     this.functionTemplate = Handlebars.compile(functionTemplateSource);
+    this.eventFunctionTemplate = Handlebars.compile(eventFunctionTemplateSource);
     this.fileTemplate = Handlebars.compile(fileTemplateSource);
   }
 
@@ -84,6 +88,11 @@ export class JSLibGenerator {
    * 단일 API 함수 생성
    */
   private generateFunction(api: ParsedAPI): string {
+    // 이벤트 구독 API는 별도 템플릿 사용
+    if (api.isEventSubscription) {
+      return this.generateEventFunction(api);
+    }
+
     if (!this.functionTemplate) {
       throw new Error('Templates not loaded');
     }
@@ -112,9 +121,34 @@ export class JSLibGenerator {
       webFrameworkNamespace,
       defaultReturnValue: this.getDefaultReturnValue(api.returnType),
       isDiscriminatedUnion,
+      // 네임스페이스 API 지원 (IAP, Storage 등)
+      namespace: api.namespace,
     };
 
     return this.functionTemplate(data);
+  }
+
+  /**
+   * 이벤트 구독 API 함수 생성
+   */
+  private generateEventFunction(api: ParsedAPI): string {
+    if (!this.eventFunctionTemplate) {
+      throw new Error('Event function template not loaded');
+    }
+
+    // 이벤트 데이터 존재 여부 확인
+    const hasEventData = api.eventDataType &&
+                         api.eventDataType.name !== 'void' &&
+                         api.eventDataType.name !== 'undefined';
+
+    const data = {
+      name: api.name,
+      namespace: api.namespace, // 예: 'tdsEvent', 'graniteEvent', 'appsInTossEvent'
+      eventName: api.eventName, // 예: 'navigationAccessoryEvent', 'backEvent'
+      hasEventData,
+    };
+
+    return this.eventFunctionTemplate(data);
   }
 
   /**
@@ -196,6 +230,12 @@ export class JSLibGenerator {
     for (const [category, categoryAPIs] of apisByCategory.entries()) {
       const functions = categoryAPIs.map(api => this.generateFunction(api));
 
+      // 이벤트 API가 있는 카테고리에는 구독 해제 함수 추가
+      const hasEventApis = categoryAPIs.some(api => api.isEventSubscription);
+      if (hasEventApis) {
+        functions.push(this.generateUnsubscribeFunction());
+      }
+
       // 카테고리는 파서에서 .d.ts 파일명 기반으로 추출되어 이미 영어
       const fileName = `AppsInToss-${category}.jslib`;
       const fileContent = this.fileTemplate({
@@ -210,5 +250,25 @@ export class JSLibGenerator {
     }
 
     return jslibFiles;
+  }
+
+  /**
+   * 이벤트 구독 해제 함수 생성
+   */
+  private generateUnsubscribeFunction(): string {
+    return `    __AITUnsubscribe_Internal: function(subscriptionId) {
+        var subId = UTF8ToString(subscriptionId);
+
+        if (window.__AIT_SUBSCRIPTIONS && window.__AIT_SUBSCRIPTIONS[subId]) {
+            console.log('[AIT jslib] Unsubscribing:', subId);
+            var unsubscribe = window.__AIT_SUBSCRIPTIONS[subId];
+            if (typeof unsubscribe === 'function') {
+                unsubscribe();
+            }
+            delete window.__AIT_SUBSCRIPTIONS[subId];
+        } else {
+            console.warn('[AIT jslib] Unknown subscription:', subId);
+        }
+    },`;
   }
 }

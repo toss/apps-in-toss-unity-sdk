@@ -1,0 +1,75 @@
+    __{{name}}_Internal: function(subscriptionId, typeName) {
+        var subId = UTF8ToString(subscriptionId);
+        var typeNameStr = UTF8ToString(typeName);
+
+        console.log('[AIT jslib] {{name}} subscribing, id:', subId);
+
+        try {
+            // Subscribe to event
+            var unsubscribe = window.AppsInToss.{{namespace}}.addEventListener('{{eventName}}', {
+{{#if hasEventData}}
+                onEvent: function(data) {
+                    console.log('[AIT jslib] {{eventName}} fired:', data);
+                    var payload = JSON.stringify({
+                        CallbackId: subId,
+                        TypeName: typeNameStr,
+                        Result: JSON.stringify({
+                            success: true,
+                            data: JSON.stringify(data || {}),
+                            error: ''
+                        })
+                    });
+                    // Event callbacks go to OnAITEventCallback (persistent)
+                    SendMessage('AITCore', 'OnAITEventCallback', payload);
+                },
+{{else}}
+                onEvent: function() {
+                    console.log('[AIT jslib] {{eventName}} fired (void)');
+                    var payload = JSON.stringify({
+                        CallbackId: subId,
+                        TypeName: typeNameStr,
+                        Result: JSON.stringify({
+                            success: true,
+                            data: 'null',
+                            error: ''
+                        })
+                    });
+                    // Event callbacks go to OnAITEventCallback (persistent)
+                    SendMessage('AITCore', 'OnAITEventCallback', payload);
+                },
+{{/if}}
+                onError: function(error) {
+                    console.log('[AIT jslib] {{eventName}} error:', error);
+                    var payload = JSON.stringify({
+                        CallbackId: subId,
+                        TypeName: typeNameStr,
+                        Result: JSON.stringify({
+                            success: false,
+                            data: '',
+                            error: error.message || String(error)
+                        })
+                    });
+                    SendMessage('AITCore', 'OnAITEventCallback', payload);
+                }
+            });
+
+            // Store unsubscribe function for later cleanup
+            if (!window.__AIT_SUBSCRIPTIONS) {
+                window.__AIT_SUBSCRIPTIONS = {};
+            }
+            window.__AIT_SUBSCRIPTIONS[subId] = unsubscribe;
+
+        } catch (error) {
+            console.error('[AIT jslib] {{name}} subscribe error:', error);
+            var payload = JSON.stringify({
+                CallbackId: subId,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({
+                    success: false,
+                    data: '',
+                    error: error.message || String(error)
+                })
+            });
+            SendMessage('AITCore', 'OnAITEventCallback', payload);
+        }
+    },

@@ -199,12 +199,46 @@ namespace AppsInToss
     }
 
     [Serializable]
+    public class IapCreateOneTimePurchaseOrderResult
+    {
+        [JsonProperty("orderId")]
+        public string OrderId;
+        [JsonProperty("displayName")]
+        public string DisplayName;
+        [JsonProperty("displayAmount")]
+        public string DisplayAmount;
+        [JsonProperty("amount")]
+        public double Amount;
+        [JsonProperty("currency")]
+        public string Currency;
+        [JsonProperty("fraction")]
+        public double Fraction;
+        [JsonProperty("miniAppIconUrl")]
+        public string MiniAppIconUrl;
+    }
+
+    [Serializable]
     public class IAPGetProductItemListResult
     {
         [JsonProperty("products")]
         public IapProductListItem[] Products;
         /// <summary>에러 발생 시 에러 메시지 (플랫폼 미지원 등)</summary>
         public string error;
+    }
+
+    [Serializable]
+    public class IapProductListItem
+    {
+        [JsonProperty("sku")]
+        public string Sku;
+        [JsonProperty("displayAmount")]
+        public string DisplayAmount;
+        [JsonProperty("displayName")]
+        public string DisplayName;
+        [JsonProperty("iconUrl")]
+        public string IconUrl;
+        [JsonProperty("description")]
+        public string Description;
     }
 
     [Serializable]
@@ -285,21 +319,21 @@ namespace AppsInToss
     }
 
     [Serializable]
-    public class PartnerAddAccessoryButtonArgs_0Icon
+    public class AddAccessoryButtonOptionsIcon
     {
         [JsonProperty("name")]
         public string Name;
     }
 
     [Serializable]
-    public class PartnerAddAccessoryButtonArgs_0
+    public class AddAccessoryButtonOptions
     {
         [JsonProperty("id")]
         public string Id;
         [JsonProperty("title")]
         public string Title;
         [JsonProperty("icon")]
-        public PartnerAddAccessoryButtonArgs_0Icon Icon;
+        public AddAccessoryButtonOptionsIcon Icon;
     }
 
     [Serializable]

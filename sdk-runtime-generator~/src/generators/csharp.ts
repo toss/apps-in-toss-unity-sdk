@@ -837,11 +837,23 @@ export class CSharpTypeGenerator {
       // 파라미터 타입
       for (const param of api.parameters) {
         if (param.type.kind === 'object' && param.type.properties && param.type.properties.length > 0) {
-          // 익명 타입이면 의미있는 이름 생성
+          // 익명 타입이면 의미있는 이름 생성, named type이면 그대로 사용
           let typeName = param.type.name;
-          if (typeName === '__type' || typeName === 'object' || typeName.startsWith('{') || !typeName) {
-            const capitalize = (str: string) => str.charAt(0).toUpperCase() + str.slice(1);
-            typeName = `${capitalize(api.name)}${capitalize(param.name)}`;
+          const isAnonymous = typeName === '__type' || typeName === 'object' || typeName.startsWith('{') || !typeName;
+          if (isAnonymous) {
+            // raw 필드에서 named type 추출 시도 (import("...").TypeName 형식)
+            if (param.type.raw && param.type.raw.includes('.') && !param.type.raw.trim().startsWith('{')) {
+              const rawTypeName = param.type.raw.split('.').pop()?.replace(/["'{}(),;\s$<>|]/g, '').trim();
+              if (rawTypeName && rawTypeName !== '__type' && !rawTypeName.startsWith('{')) {
+                typeName = rawTypeName;
+              } else {
+                const capitalize = (str: string) => str.charAt(0).toUpperCase() + str.slice(1);
+                typeName = `${capitalize(api.name)}${capitalize(param.name)}`;
+              }
+            } else {
+              const capitalize = (str: string) => str.charAt(0).toUpperCase() + str.slice(1);
+              typeName = `${capitalize(api.name)}${capitalize(param.name)}`;
+            }
           }
 
           // cleanName을 키로 사용 (중복 방지)
@@ -849,6 +861,9 @@ export class CSharpTypeGenerator {
           if (!typeMap.has(cleanName) && !exclude.has(cleanName)) {
             typeMap.set(cleanName, this.generateClassType(typeName, param.type.properties));
           }
+
+          // 프로퍼티에서 참조되는 named type도 수집 (재귀)
+          this.collectReferencedTypes(param.type.properties, typeMap, exclude);
 
           // 객체의 프로퍼티에 함수 타입이 있으면 함수 파라미터 타입도 수집
           for (const prop of param.type.properties) {
@@ -892,6 +907,8 @@ export class CSharpTypeGenerator {
                 innerType.name,
                 Array.from(allProperties.values())
               ));
+              // 프로퍼티에서 참조되는 named type도 수집 (재귀)
+              this.collectReferencedTypes(Array.from(allProperties.values()), typeMap, exclude);
             }
           } else {
             // 익명 union: 각 멤버를 별도 클래스로
@@ -907,6 +924,8 @@ export class CSharpTypeGenerator {
                 if (!typeMap.has(cleanName) && !exclude.has(cleanName)) {
                   // 반환 타입이므로 isResultType: true - error 필드 추가
                   typeMap.set(cleanName, this.generateClassType(typeName, unionMember.properties, true));
+                  // 프로퍼티에서 참조되는 named type도 수집 (재귀)
+                  this.collectReferencedTypes(unionMember.properties, typeMap, exclude);
                 }
               }
             }
@@ -924,6 +943,8 @@ export class CSharpTypeGenerator {
           if (!typeMap.has(cleanName) && !exclude.has(cleanName)) {
             // 반환 타입이므로 isResultType: true - error 필드 추가
             typeMap.set(cleanName, this.generateClassType(typeName, innerType.properties, true));
+            // 프로퍼티에서 참조되는 named type도 수집 (재귀)
+            this.collectReferencedTypes(innerType.properties, typeMap, exclude);
           }
         }
       }
@@ -939,6 +960,8 @@ export class CSharpTypeGenerator {
         if (!typeMap.has(cleanName) && !exclude.has(cleanName)) {
           // 반환 타입이므로 isResultType: true - error 필드 추가
           typeMap.set(cleanName, this.generateClassType(typeName, api.returnType.properties, true));
+          // 프로퍼티에서 참조되는 named type도 수집 (재귀)
+          this.collectReferencedTypes(api.returnType.properties, typeMap, exclude);
         }
       }
     }
@@ -1094,6 +1117,55 @@ ${fields}${errorField}
   }
 
   /**
+   * 프로퍼티에서 참조되는 named type을 재귀적으로 수집
+   */
+  private collectReferencedTypes(
+    properties: any[],
+    typeMap: Map<string, string>,
+    exclude: Set<string>
+  ): void {
+    for (const prop of properties) {
+      // named object 타입 (익명이 아닌 경우)
+      if (prop.type.kind === 'object' &&
+          prop.type.properties &&
+          prop.type.properties.length > 0 &&
+          prop.type.name !== '__type' &&
+          prop.type.name !== 'object' &&
+          !prop.type.name.startsWith('{')) {
+        const typeName = this.extractCleanName(prop.type.name);
+        if (!typeMap.has(typeName) && !exclude.has(typeName)) {
+          typeMap.set(typeName, this.generateClassType(typeName, prop.type.properties));
+          // 재귀적으로 해당 타입의 프로퍼티도 수집
+          this.collectReferencedTypes(prop.type.properties, typeMap, exclude);
+        }
+      }
+      // 배열의 요소 타입
+      else if (prop.type.kind === 'array' && prop.type.elementType) {
+        const elementType = prop.type.elementType;
+        if (elementType.kind === 'object' &&
+            elementType.properties &&
+            elementType.properties.length > 0 &&
+            elementType.name !== '__type' &&
+            elementType.name !== 'object' &&
+            !elementType.name.startsWith('{')) {
+          const typeName = this.extractCleanName(elementType.name);
+          if (!typeMap.has(typeName) && !exclude.has(typeName)) {
+            typeMap.set(typeName, this.generateClassType(typeName, elementType.properties));
+            // 재귀적으로 해당 타입의 프로퍼티도 수집
+            this.collectReferencedTypes(elementType.properties, typeMap, exclude);
+          }
+        }
+      }
+      // 함수 타입의 파라미터
+      else if (prop.type.kind === 'function' && prop.type.functionParams) {
+        for (const funcParam of prop.type.functionParams) {
+          this.collectFunctionParamTypes(funcParam, typeMap, exclude);
+        }
+      }
+    }
+  }
+
+  /**
    * 함수 파라미터 타입을 재귀적으로 수집
    */
   private collectFunctionParamTypes(
@@ -1140,6 +1212,8 @@ ${fields}${errorField}
 
       if (typeName !== 'object' && !typeMap.has(typeName) && !exclude.has(typeName)) {
         typeMap.set(typeName, this.generateClassType(typeName, paramType.properties));
+        // 프로퍼티에서 참조되는 named type도 수집 (재귀)
+        this.collectReferencedTypes(paramType.properties, typeMap, exclude);
       }
     }
   }

@@ -262,7 +262,7 @@ jobs:
           ait --version || echo "AIT CLI installed"
 
       - name: AIT 빌드 결과물 다운로드
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           pattern: ait-build-*
           path: ait-builds/

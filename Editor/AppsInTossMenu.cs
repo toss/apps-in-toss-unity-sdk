@@ -1544,11 +1544,9 @@ namespace AppsInToss
                 return null;
             }
 
-            // ANSI 컬러 코드 제거 (예: [h39m[24m[22m)
-            string cleaned = Regex.Replace(output, @"\x1B\[[0-9;]*[a-zA-Z]|\[[0-9;]*[a-zA-Z]", "");
-
             // intoss-private://... URL 패턴 찾기
-            var match = Regex.Match(cleaned, @"intoss-private://[^\s\│\│]+");
+            // (ANSI 코드는 AITPlatformHelper.ExecuteCommand에서 이미 제거됨)
+            var match = Regex.Match(output, @"intoss-private://[^\s\│\│]+");
             if (match.Success)
             {
                 return match.Value.TrimEnd('│', ' ', '\r', '\n');
@@ -1577,9 +1575,7 @@ namespace AppsInToss
             foreach (var line in lines)
             {
                 string trimmed = line.Trim();
-
-                // ANSI 색상 코드 제거
-                trimmed = Regex.Replace(trimmed, @"\x1B\[[0-9;]*[mGKH]", "");
+                // (ANSI 코드는 AITPlatformHelper.ExecuteCommand에서 이미 제거됨)
 
                 // 에러 관련 라인 수집
                 if (trimmed.StartsWith("Error:", StringComparison.OrdinalIgnoreCase) ||

@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Text.RegularExpressions;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
 
@@ -279,8 +280,8 @@ namespace AppsInToss.Editor
                         return result;
                     }
 
-                    result.Output = outputTask.Result;
-                    result.Error = errorTask.Result;
+                    result.Output = StripAnsiCodes(outputTask.Result);
+                    result.Error = StripAnsiCodes(errorTask.Result);
                     result.ExitCode = process.ExitCode;
                     result.Success = process.ExitCode == 0;
 
@@ -550,6 +551,25 @@ namespace AppsInToss.Editor
                 string directory = File.Exists(path) ? Path.GetDirectoryName(path) : path;
                 Process.Start("xdg-open", $"\"{directory}\"");
             }
+        }
+
+        /// <summary>
+        /// ANSI 이스케이프 코드 제거
+        /// </summary>
+        /// <param name="input">입력 문자열</param>
+        /// <returns>ANSI 코드가 제거된 문자열</returns>
+        public static string StripAnsiCodes(string input)
+        {
+            if (string.IsNullOrEmpty(input))
+            {
+                return input;
+            }
+
+            // ANSI 이스케이프 시퀀스 패턴:
+            // - \x1B\[..m : 표준 ANSI (ESC[...m)
+            // - \x1B\]....\x07 : OSC 시퀀스
+            // - \[..m : ESC 없이 시작하는 경우 (일부 터미널)
+            return Regex.Replace(input, @"\x1B\[[0-9;]*[a-zA-Z]|\x1B\][^\x07]*\x07|\[[0-9;]*[a-zA-Z]", "");
         }
 
         /// <summary>

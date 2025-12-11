@@ -135,9 +135,18 @@ namespace AppsInToss
         [Obsolete("{{this.deprecatedMessage}}")]
 {{/if}}
         [APICategory("{{../categoryName}}")]
-        public static async Task<{{{this.callbackType}}}> {{{this.pascalName}}}({{#each this.parameters}}{{this.paramType}} {{this.paramName}}{{#unless @last}}, {{/unless}}{{/each}})
+        public static async {{#if (eq this.callbackType "void")}}Task{{else}}Task<{{{this.callbackType}}}>{{/if}} {{{this.pascalName}}}({{#each this.parameters}}{{this.paramType}} {{this.paramName}}{{#unless @last}}, {{/unless}}{{/each}})
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+{{#if (eq this.callbackType "void")}}
+            var tcs = new TaskCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<object>(
+                result => tcs.TrySetResult(true),
+                error => tcs.TrySetException(error)
+            );
+            __{{{this.name}}}_Internal({{#each this.parameters}}{{#if this.isPrimitive}}{{this.paramName}}{{else}}JsonConvert.SerializeObject({{this.paramName}}){{/if}}, {{/each}}callbackId, "{{{this.callbackType}}}");
+            await tcs.Task;
+{{else}}
             var tcs = new TaskCompletionSource<{{{this.callbackType}}}>();
             string callbackId = AITCore.Instance.RegisterCallback<{{{this.callbackType}}}>(
                 result => tcs.TrySetResult(result),
@@ -145,11 +154,14 @@ namespace AppsInToss
             );
             __{{{this.name}}}_Internal({{#each this.parameters}}{{#if this.isPrimitive}}{{this.paramName}}{{else}}JsonConvert.SerializeObject({{this.paramName}}){{/if}}, {{/each}}callbackId, "{{{this.callbackType}}}");
             return await tcs.Task;
+{{/if}}
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] {{{this.pascalName}}} called");
             await Task.CompletedTask;
-{{#if (eq this.callbackType "string")}}
+{{#if (eq this.callbackType "void")}}
+            // void return - nothing to return
+{{else if (eq this.callbackType "string")}}
             return "";
 {{else if (eq this.callbackType "bool")}}
             return false;

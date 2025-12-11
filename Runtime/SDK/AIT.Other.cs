@@ -309,21 +309,21 @@ namespace AppsInToss
 #endif
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [APICategory("Other")]
-        public static async Task<void> SafeAreaInsetsGet()
+        public static async Task SafeAreaInsetsGet()
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            var tcs = new TaskCompletionSource<void>();
-            string callbackId = AITCore.Instance.RegisterCallback<void>(
-                result => tcs.TrySetResult(result),
+            var tcs = new TaskCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<object>(
+                result => tcs.TrySetResult(true),
                 error => tcs.TrySetException(error)
             );
             __SafeAreaInsetsGet_Internal(callbackId, "void");
-            return await tcs.Task;
+            await tcs.Task;
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] SafeAreaInsetsGet called");
             await Task.CompletedTask;
-            return default(void);
+            // void return - nothing to return
 #endif
         }
 
@@ -441,7 +441,7 @@ namespace AppsInToss
         /// </summary>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [APICategory("Other")]
-        public static async Task StorageClearItems(void args_0)
+        public static async Task StorageClearItems()
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<bool>();
@@ -449,7 +449,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(true),
                 error => tcs.TrySetException(error)
             );
-            __StorageClearItems_Internal(JsonConvert.SerializeObject(args_0), callbackId, "void");
+            __StorageClearItems_Internal(callbackId, "void");
             await tcs.Task;
 #else
             // Unity Editor mock implementation
@@ -461,7 +461,7 @@ namespace AppsInToss
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
-        private static extern void __StorageClearItems_Internal(string args_0, string callbackId, string typeName);
+        private static extern void __StorageClearItems_Internal(string callbackId, string typeName);
 #endif
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [APICategory("Other")]

@@ -502,8 +502,14 @@ export class CSharpGenerator {
    * API 데이터를 템플릿에서 사용할 형식으로 변환
    */
   private prepareApiData(api: ParsedAPI): any {
-    // 파라미터 변환
-    const parameters = api.parameters.map(param => {
+    // 파라미터 변환 (void 타입 파라미터는 제외)
+    const parameters = api.parameters
+      .filter(param => {
+        const paramType = mapToCSharpType(param.type);
+        // C#에서 void는 파라미터 타입으로 사용할 수 없음
+        return paramType !== 'void';
+      })
+      .map(param => {
       let paramType = mapToCSharpType(param.type);
 
       // 파라미터가 익명 객체(__type, object)인 경우 의미있는 이름 생성

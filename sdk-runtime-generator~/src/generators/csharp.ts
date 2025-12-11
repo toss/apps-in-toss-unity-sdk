@@ -179,12 +179,20 @@ export class CSharpGenerator {
     }
     // 익명 객체 타입(__type, object)이면 더 구체적인 이름 생성
     else if (callbackType === '__type' || callbackType === 'object') {
-      const promiseType = api.returnType.promiseType;
-      if (promiseType && promiseType.kind === 'object' &&
-          promiseType.properties && promiseType.properties.length > 0) {
+      // 동기/비동기 함수 모두 처리: promiseType이 있으면 사용, 없으면 returnType 직접 사용
+      const targetType = api.returnType.kind === 'promise'
+        ? api.returnType.promiseType
+        : api.returnType;
+
+      if (targetType && targetType.kind === 'object' &&
+          targetType.properties && targetType.properties.length > 0) {
         callbackType = `${api.pascalName}Result`;
-      } else if (!promiseType || promiseType.name === 'void' || promiseType.name === 'undefined') {
+      } else if (!targetType || targetType.name === 'void' || targetType.name === 'undefined') {
         callbackType = 'void';
+      } else {
+        // 이름이 있는 타입이지만 properties가 빈 경우 (예: interface 참조)
+        // → Result 타입으로 처리
+        callbackType = `${api.pascalName}Result`;
       }
     }
 
@@ -299,12 +307,20 @@ export class CSharpGenerator {
         }
         // 익명 객체 타입(__type, object)이면 Result 클래스 사용
         else if (callbackType === '__type' || callbackType === 'object') {
-          const promiseType = api.returnType.promiseType;
-          if (promiseType && promiseType.kind === 'object' &&
-              promiseType.properties && promiseType.properties.length > 0) {
+          // 동기/비동기 함수 모두 처리: promiseType이 있으면 사용, 없으면 returnType 직접 사용
+          const targetType = api.returnType.kind === 'promise'
+            ? api.returnType.promiseType
+            : api.returnType;
+
+          if (targetType && targetType.kind === 'object' &&
+              targetType.properties && targetType.properties.length > 0) {
             callbackType = `${api.pascalName}Result`;
-          } else if (!promiseType || promiseType.name === 'void' || promiseType.name === 'undefined') {
+          } else if (!targetType || targetType.name === 'void' || targetType.name === 'undefined') {
             callbackType = 'void';
+          } else {
+            // 이름이 있는 타입이지만 properties가 빈 경우 (예: interface 참조)
+            // → Result 타입으로 처리
+            callbackType = `${api.pascalName}Result`;
           }
         }
 
@@ -397,12 +413,20 @@ export class CSharpGenerator {
     }
     // 익명 객체 타입(__type, object)이면 더 구체적인 이름 생성
     else if (callbackType === '__type' || callbackType === 'object') {
-      const promiseType = api.returnType.promiseType;
-      if (promiseType && promiseType.kind === 'object' &&
-          promiseType.properties && promiseType.properties.length > 0) {
+      // 동기/비동기 함수 모두 처리: promiseType이 있으면 사용, 없으면 returnType 직접 사용
+      const targetType = api.returnType.kind === 'promise'
+        ? api.returnType.promiseType
+        : api.returnType;
+
+      if (targetType && targetType.kind === 'object' &&
+          targetType.properties && targetType.properties.length > 0) {
         callbackType = `${api.pascalName}Result`;
-      } else if (!promiseType || promiseType.name === 'void' || promiseType.name === 'undefined') {
+      } else if (!targetType || targetType.name === 'void' || targetType.name === 'undefined') {
         callbackType = 'void';
+      } else {
+        // 이름이 있는 타입이지만 properties가 빈 경우 (예: interface 참조)
+        // → Result 타입으로 처리
+        callbackType = `${api.pascalName}Result`;
       }
     }
 
@@ -550,12 +574,20 @@ export class CSharpGenerator {
     }
     // 익명 객체 타입(__type, object)이면 더 구체적인 이름 생성
     else if (callbackType === '__type' || callbackType === 'object') {
-      const promiseType = api.returnType.promiseType;
-      if (promiseType && promiseType.kind === 'object' &&
-          promiseType.properties && promiseType.properties.length > 0) {
+      // 동기/비동기 함수 모두 처리: promiseType이 있으면 사용, 없으면 returnType 직접 사용
+      const targetType = api.returnType.kind === 'promise'
+        ? api.returnType.promiseType
+        : api.returnType;
+
+      if (targetType && targetType.kind === 'object' &&
+          targetType.properties && targetType.properties.length > 0) {
         callbackType = `${api.pascalName}Result`;
-      } else if (!promiseType || promiseType.name === 'void' || promiseType.name === 'undefined') {
+      } else if (!targetType || targetType.name === 'void' || targetType.name === 'undefined') {
         callbackType = 'void';
+      } else {
+        // 이름이 있는 타입이지만 properties가 빈 경우 (예: interface 참조)
+        // → Result 타입으로 처리
+        callbackType = `${api.pascalName}Result`;
       }
     }
 

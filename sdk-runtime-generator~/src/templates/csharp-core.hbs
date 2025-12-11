@@ -187,6 +187,111 @@ namespace AppsInToss
             _errorCallbacks.Remove(callbackId);
         }
 
+        // ===================================================================
+        // Event Subscription System (persistent callbacks)
+        // ===================================================================
+
+        private int _subscriptionIdCounter = 0;
+        private Dictionary<string, Delegate> _subscriptionCallbacks = new Dictionary<string, Delegate>();
+        private Dictionary<string, Action<AITException>> _subscriptionErrorCallbacks = new Dictionary<string, Action<AITException>>();
+
+        /// <summary>
+        /// Register a subscription callback (not removed after invocation) - for events with data
+        /// </summary>
+        public string RegisterSubscriptionCallback<T>(Action<T> onEvent, Action<AITException> onError)
+        {
+            string id = $"sub_{_subscriptionIdCounter++}";
+            _subscriptionCallbacks[id] = onEvent;
+            if (onError != null) _subscriptionErrorCallbacks[id] = onError;
+            return id;
+        }
+
+        /// <summary>
+        /// Register a void subscription callback - for events without data (backEvent, entryMessageExited)
+        /// </summary>
+        public string RegisterVoidSubscriptionCallback(Action onEvent, Action<AITException> onError)
+        {
+            string id = $"sub_{_subscriptionIdCounter++}";
+            _subscriptionCallbacks[id] = onEvent;
+            if (onError != null) _subscriptionErrorCallbacks[id] = onError;
+            return id;
+        }
+
+        /// <summary>
+        /// Unsubscribe from an event
+        /// </summary>
+        public void Unsubscribe(string subscriptionId)
+        {
+            _subscriptionCallbacks.Remove(subscriptionId);
+            _subscriptionErrorCallbacks.Remove(subscriptionId);
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+            __AITUnsubscribe_Internal(subscriptionId);
+#endif
+        }
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __AITUnsubscribe_Internal(string subscriptionId);
+#endif
+
+        /// <summary>
+        /// Called by JavaScript when an event is triggered (persistent callback)
+        /// </summary>
+        public void OnAITEventCallback(string jsonPayload)
+        {
+            Debug.Log($"[AITCore] OnAITEventCallback received: {jsonPayload}");
+            try
+            {
+                var callbackData = JsonConvert.DeserializeObject<CallbackData>(jsonPayload);
+                Debug.Log($"[AITCore] Routing event callback: id={callbackData.CallbackId}, type={callbackData.TypeName}");
+                RouteSubscriptionCallback(callbackData.CallbackId, callbackData.TypeName, callbackData.Result);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[AITCore] Failed to process event callback: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Route subscription callback (does NOT remove after invocation)
+        /// </summary>
+        private void RouteSubscriptionCallback(string callbackId, string typeName, string resultJson)
+        {
+            if (!_subscriptionCallbacks.TryGetValue(callbackId, out var rawCallback))
+            {
+                Debug.LogWarning($"[AITCore] Unknown subscription: {callbackId}");
+                return;
+            }
+
+            var apiResponse = JsonConvert.DeserializeObject<APIResponse>(resultJson);
+
+            if (apiResponse.success)
+            {
+                switch (typeName)
+                {
+                    case "TdsNavigationAccessoryEventData":
+                        var tdsData = JsonConvert.DeserializeObject<TdsNavigationAccessoryEventData>(apiResponse.data);
+                        (rawCallback as Action<TdsNavigationAccessoryEventData>)?.Invoke(tdsData);
+                        break;
+                    case "void":
+                        // Void event - call Action directly
+                        (rawCallback as Action)?.Invoke();
+                        break;
+                    default:
+                        Debug.LogWarning($"[AITCore] Unknown subscription type: {typeName}");
+                        break;
+                }
+            }
+            else
+            {
+                if (_subscriptionErrorCallbacks.TryGetValue(callbackId, out var errorCallback))
+                {
+                    errorCallback?.Invoke(new AITException(typeName, apiResponse.error));
+                }
+            }
+        }
+
         /// <summary>
         /// Called by JavaScript when a callback is triggered
         /// This is the entry point for all JavaScript -> Unity callbacks
@@ -357,5 +462,19 @@ namespace AppsInToss
         public string CallbackId = "";
         public string TypeName = "";
         public string Result = "";
+    }
+
+    // ===================================================================
+    // Event Data Types
+    // ===================================================================
+
+    /// <summary>
+    /// TdsEvent navigationAccessoryEvent 데이터
+    /// </summary>
+    [Serializable]
+    public class TdsNavigationAccessoryEventData
+    {
+        [JsonProperty("id")]
+        public string Id;
     }
 }

@@ -1,13 +1,17 @@
-    __{{originalName}}_Internal: function({{#each parameters}}{{name}}{{#unless @last}}, {{/unless}}{{/each}}{{#if hasCallback}}{{#if parameters.length}}, {{/if}}callbackId, typeName{{/if}}) {
+    __{{name}}_Internal: function({{#each parameters}}{{name}}{{#unless @last}}, {{/unless}}{{/each}}{{#if hasCallback}}{{#if parameters.length}}, {{/if}}callbackId, typeName{{/if}}) {
 {{#if isAsync}}
         // 비동기 함수 (Promise 반환)
         var callback = UTF8ToString(callbackId);
         var typeNameStr = UTF8ToString(typeName);
 
-        console.log('[AIT jslib] {{originalName}} called, callbackId:', callback);
+        console.log('[AIT jslib] {{name}} called, callbackId:', callback);
 
         try {
+{{#if namespace}}
+            var promiseResult = window.AppsInToss.{{namespace}}.{{originalName}}({{#each parameters}}{{jsConversion}}{{#unless @last}}, {{/unless}}{{/each}});
+{{else}}
             var promiseResult = window.AppsInToss.{{originalName}}({{#each parameters}}{{jsConversion}}{{#unless @last}}, {{/unless}}{{/each}});
+{{/if}}
             console.log('[AIT jslib] {{originalName}} returned:', promiseResult, 'isPromise:', promiseResult && typeof promiseResult.then === 'function');
 
             if (!promiseResult || typeof promiseResult.then !== 'function') {
@@ -70,7 +74,11 @@
         var typeNameStr = UTF8ToString(typeName);
 
         try {
+{{#if namespace}}
+            var result = window.AppsInToss.{{namespace}}.{{originalName}}({{#each parameters}}{{jsConversion}}{{#unless @last}}, {{/unless}}{{/each}});
+{{else}}
             var result = window.AppsInToss.{{originalName}}({{#each parameters}}{{jsConversion}}{{#unless @last}}, {{/unless}}{{/each}});
+{{/if}}
             var payload = JSON.stringify({
                 CallbackId: callback,
                 TypeName: typeNameStr,

@@ -80,15 +80,298 @@ export class TypeScriptParser {
     const sourceFiles = this.project.getSourceFiles();
 
     for (const sourceFile of sourceFiles) {
-      // index.d.ts, bridge.d.ts, types.d.ts 파일은 스킵 (전체 re-export 파일)
       const filePath = sourceFile.getFilePath();
       const fileName = path.basename(filePath);
-      if (fileName === 'index.d.ts' || fileName === 'index.d.cts' || fileName === 'types.d.ts' || fileName === 'bridge.d.ts') {
+
+      // index.d.ts는 네임스페이스 객체만 파싱 (IAP, Storage 등)
+      if (fileName === 'index.d.ts') {
+        const namespaceAPIs = this.parseNamespaceObjects(sourceFile);
+        apis.push(...namespaceAPIs);
+        continue;
+      }
+
+      // index.d.cts, bridge.d.ts, types.d.ts 파일은 스킵 (전체 re-export 파일)
+      if (fileName === 'index.d.cts' || fileName === 'types.d.ts' || fileName === 'bridge.d.ts') {
         continue;
       }
 
       const fileAPIs = this.parseSourceFile(sourceFile);
       apis.push(...fileAPIs);
+    }
+
+    return apis;
+  }
+
+  /**
+   * 파싱할 네임스페이스 객체 목록
+   */
+  private static readonly NAMESPACE_OBJECTS = [
+    'IAP',
+    'Storage',
+    'GoogleAdMob',
+    'SafeAreaInsets',
+    'partner',
+    'env',
+  ];
+
+  /**
+   * 이벤트 네임스페이스 목록 (addEventListener 패턴)
+   */
+  private static readonly EVENT_NAMESPACES = [
+    'tdsEvent',
+    'graniteEvent',
+    'appsInTossEvent',
+  ];
+
+  /**
+   * 이벤트 타입 정의 (하드코딩 - TypeScript 제네릭 파싱의 복잡성 회피)
+   */
+  private static readonly EVENT_DEFINITIONS: Record<string, { eventName: string; hasData: boolean; dataType?: string }[]> = {
+    tdsEvent: [
+      { eventName: 'navigationAccessoryEvent', hasData: true, dataType: 'TdsNavigationAccessoryEventData' },
+    ],
+    graniteEvent: [
+      { eventName: 'backEvent', hasData: false },
+    ],
+    appsInTossEvent: [
+      { eventName: 'entryMessageExited', hasData: false },
+    ],
+  };
+
+  /**
+   * 파싱할 글로벌 함수 목록 (index.d.ts에 정의된 독립 함수)
+   */
+  private static readonly GLOBAL_FUNCTIONS = [
+    'isMinVersionSupported',
+    'getAppsInTossGlobals',
+  ];
+
+  /**
+   * index.d.ts에서 네임스페이스 객체와 글로벌 함수 파싱
+   */
+  private parseNamespaceObjects(sourceFile: SourceFile): ParsedAPI[] {
+    const apis: ParsedAPI[] = [];
+    const exportedDeclarations = sourceFile.getExportedDeclarations();
+
+    for (const [name, declarations] of exportedDeclarations) {
+      // 네임스페이스 객체 파싱 (IAP, Storage 등)
+      if (TypeScriptParser.NAMESPACE_OBJECTS.includes(name)) {
+        for (const declaration of declarations) {
+          if (declaration.getKind() === SyntaxKind.VariableDeclaration) {
+            const varDecl = declaration.asKind(SyntaxKind.VariableDeclaration);
+            if (varDecl) {
+              const namespaceAPIs = this.parseNamespaceObject(name, varDecl, sourceFile);
+              apis.push(...namespaceAPIs);
+            }
+          }
+        }
+      }
+
+      // 이벤트 네임스페이스 파싱 (tdsEvent, graniteEvent, appsInTossEvent)
+      if (TypeScriptParser.EVENT_NAMESPACES.includes(name)) {
+        const eventAPIs = this.parseEventNamespace(name, sourceFile);
+        apis.push(...eventAPIs);
+      }
+
+      // 글로벌 함수 파싱 (isMinVersionSupported, getAppsInTossGlobals)
+      if (TypeScriptParser.GLOBAL_FUNCTIONS.includes(name)) {
+        for (const declaration of declarations) {
+          if (declaration.getKind() === SyntaxKind.FunctionDeclaration) {
+            const func = declaration as FunctionDeclaration;
+            const api = this.parseFunctionDeclaration(func, sourceFile);
+            if (api) {
+              // 글로벌 함수는 Environment 카테고리로 설정
+              api.category = 'Environment';
+              apis.push(api);
+            }
+          }
+          // 변수 선언 형태의 함수도 처리
+          if (declaration.getKind() === SyntaxKind.VariableDeclaration) {
+            const varDecl = declaration.asKind(SyntaxKind.VariableDeclaration);
+            if (varDecl) {
+              const type = varDecl.getType();
+              const callSignatures = type.getCallSignatures();
+              if (callSignatures.length > 0) {
+                const api = this.parseVariableFunction(name, varDecl, sourceFile);
+                if (api) {
+                  api.category = 'Environment';
+                  apis.push(api);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    return apis;
+  }
+
+  /**
+   * 네임스페이스 객체의 메서드들을 파싱
+   * 예: IAP.getProductItemList, Storage.getItem 등
+   */
+  private parseNamespaceObject(
+    namespaceName: string,
+    varDecl: any,
+    sourceFile: SourceFile
+  ): ParsedAPI[] {
+    const apis: ParsedAPI[] = [];
+    const type = varDecl.getType();
+    const properties = type.getProperties?.() || [];
+
+    // JSDoc에서 각 프로퍼티의 설명 추출을 위해 원본 텍스트도 확인
+    const varDeclText = varDecl.getText?.() || '';
+
+    for (const prop of properties) {
+      const methodName = prop.getName();
+      const propType = prop.getTypeAtLocation?.(varDecl) || prop.getDeclaredType?.();
+
+      if (!propType) continue;
+
+      // 메서드인지 확인 (함수 타입)
+      const callSignatures = propType.getCallSignatures?.() || [];
+      if (callSignatures.length === 0) continue;
+
+      const signature = callSignatures[0];
+
+      // JSDoc에서 deprecated 확인
+      const jsDocComment = this.extractJsDocForProperty(varDeclText, methodName);
+      const isDeprecated = jsDocComment.includes('@deprecated');
+      const deprecatedMatch = jsDocComment.match(/@deprecated\s+(.+?)(?=\n\s*\*\s*@|\n\s*\*\/|$)/s);
+      const deprecatedMessage = deprecatedMatch ? deprecatedMatch[1].trim() : undefined;
+
+      // 설명 추출
+      const descriptionMatch = jsDocComment.match(/@description\s+(.+?)(?=\n\s*\*\s*@|\n\s*\*\/|$)/s);
+      const description = descriptionMatch ? descriptionMatch[1].trim() : undefined;
+
+      // 파라미터 파싱
+      const parameters = signature.getParameters?.().map((param: any, index: number) => {
+        let paramName = param.getName();
+        if (paramName.includes('{') || paramName.includes('}') || paramName.includes(',')) {
+          paramName = `options${index > 0 ? index : ''}`;
+        }
+        const valueDecl = param.getValueDeclaration?.();
+        const paramType = valueDecl?.getType?.() || param.getDeclaredType?.();
+        return {
+          name: paramName,
+          type: paramType ? this.parseType(paramType) : { name: 'any', kind: 'primitive' as const, raw: 'any' },
+          optional: param.isOptional?.() || false,
+          description: undefined,
+        };
+      }) || [];
+
+      const returnType = this.parseType(signature.getReturnType());
+      const isAsync = returnType.kind === 'promise';
+
+      // C# 메서드 이름: 네임스페이스 + PascalCase 메서드명
+      // 예: IAP.getProductItemList → IAPGetProductItemList
+      const pascalMethodName = this.toPascalCase(methodName);
+      const fullName = `${namespaceName}${pascalMethodName}`;
+
+      // 네임스페이스를 카테고리로 사용
+      const category = this.getNamespaceCategory(namespaceName);
+
+      apis.push({
+        name: fullName,
+        pascalName: fullName,
+        originalName: methodName,
+        category,
+        file: sourceFile.getFilePath(),
+        description,
+        parameters,
+        returnType,
+        isAsync,
+        hasPermission: false,
+        namespace: namespaceName,
+        isDeprecated,
+        deprecatedMessage,
+      });
+    }
+
+    return apis;
+  }
+
+  /**
+   * 변수 선언의 텍스트에서 특정 프로퍼티의 JSDoc 추출
+   */
+  private extractJsDocForProperty(varDeclText: string, propertyName: string): string {
+    // JSDoc 주석 패턴: /** ... */ propertyName:
+    const regex = new RegExp(`(\\/\\*\\*[\\s\\S]*?\\*\\/)\\s*(?:\\[?"?)?${propertyName}(?:"?\\])?\\s*:`, 'm');
+    const match = varDeclText.match(regex);
+    return match ? match[1] : '';
+  }
+
+  /**
+   * 네임스페이스 이름을 카테고리로 변환
+   */
+  private getNamespaceCategory(namespaceName: string): string {
+    const categoryMap: Record<string, string> = {
+      IAP: 'IAP',
+      Storage: 'Storage',
+      GoogleAdMob: 'Advertising',
+      SafeAreaInsets: 'SafeArea',
+      partner: 'Partner',
+      tdsEvent: 'AppEvents',
+      graniteEvent: 'AppEvents',
+      appsInTossEvent: 'AppEvents',
+      env: 'Environment',
+    };
+    return categoryMap[namespaceName] || 'Other';
+  }
+
+  /**
+   * 이벤트 네임스페이스 파싱 (tdsEvent, graniteEvent, appsInTossEvent)
+   * 각 이벤트를 별도의 Subscribe 메서드로 생성
+   */
+  private parseEventNamespace(namespaceName: string, sourceFile: SourceFile): ParsedAPI[] {
+    const apis: ParsedAPI[] = [];
+    const eventDefs = TypeScriptParser.EVENT_DEFINITIONS[namespaceName];
+
+    if (!eventDefs) return apis;
+
+    for (const eventDef of eventDefs) {
+      // C# 메서드 이름: 네임스페이스 + Subscribe + PascalCase 이벤트명
+      // 예: tdsEvent.addEventListener('navigationAccessoryEvent', ...)
+      //     → TdsEventSubscribeNavigationAccessoryEvent
+      const pascalNamespace = this.toPascalCase(namespaceName);
+      const pascalEventName = this.toPascalCase(eventDef.eventName);
+      const fullName = `${pascalNamespace}Subscribe${pascalEventName}`;
+
+      // 이벤트 데이터 타입
+      let eventDataType: ParsedType | undefined;
+      if (eventDef.hasData && eventDef.dataType) {
+        eventDataType = {
+          name: eventDef.dataType,
+          kind: 'object',
+          raw: eventDef.dataType,
+        };
+      }
+
+      // 반환 타입은 Action (구독 해제 함수)
+      const returnType: ParsedType = {
+        name: 'Action',
+        kind: 'function',
+        raw: '() => void',
+      };
+
+      apis.push({
+        name: fullName,
+        pascalName: fullName,
+        originalName: 'addEventListener',
+        category: 'AppEvents',
+        file: sourceFile.getFilePath(),
+        description: `${namespaceName}.${eventDef.eventName} 이벤트를 구독합니다.`,
+        parameters: [], // 이벤트 API는 콜백 파라미터를 C# 템플릿에서 직접 생성
+        returnType,
+        isAsync: false, // 이벤트 구독은 동기적
+        hasPermission: false,
+        namespace: namespaceName,
+        // 이벤트 API 전용 필드
+        isEventSubscription: true,
+        eventName: eventDef.eventName,
+        eventDataType,
+      });
     }
 
     return apis;
@@ -284,6 +567,16 @@ export class TypeScriptParser {
 
     // String literal 타입 ("foo", 'bar')
     if (typeText.startsWith('"') || typeText.startsWith("'")) {
+      return {
+        name: 'string',
+        kind: 'primitive',
+        raw: typeText,
+      };
+    }
+
+    // Template literal 타입 (`${number}.${number}.${number}`)
+    // 이런 타입은 결국 string이므로 string으로 처리
+    if (typeText.startsWith('`')) {
       return {
         name: 'string',
         kind: 'primitive',

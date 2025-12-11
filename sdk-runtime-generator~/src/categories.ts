@@ -38,6 +38,47 @@ export const API_CATEGORIES: Record<string, string[]> = {
   Events: ['eventLog'],
   Certificate: ['appsInTossSignTossCert'],
   Visibility: ['onVisibilityChangedByTransparentServiceWeb'],
+
+  // 네임스페이스 객체 API (index.d.ts에서 파싱)
+  IAP: [
+    'IAPCreateOneTimePurchaseOrder',
+    'IAPGetProductItemList',
+    'IAPGetPendingOrders',
+    'IAPGetCompletedOrRefundedOrders',
+    'IAPCompleteProductGrant',
+  ],
+  Storage: [
+    'StorageGetItem',
+    'StorageSetItem',
+    'StorageRemoveItem',
+    'StorageClearItems',
+  ],
+  Advertising: [
+    'GoogleAdMobLoadAppsInTossAdMob',
+    'GoogleAdMobShowAppsInTossAdMob',
+    'GoogleAdMobLoadAdMobInterstitialAd',
+    'GoogleAdMobShowAdMobInterstitialAd',
+    'GoogleAdMobLoadAdMobRewardedAd',
+    'GoogleAdMobShowAdMobRewardedAd',
+  ],
+  SafeArea: [
+    'SafeAreaInsetsGet',
+    'SafeAreaInsetsSubscribe',
+  ],
+  Partner: [
+    'partnerAddAccessoryButton',
+    'partnerRemoveAccessoryButton',
+  ],
+  AppEvents: [
+    'TdsEventSubscribeNavigationAccessoryEvent',
+    'GraniteEventSubscribeBackEvent',
+    'AppsInTossEventSubscribeEntryMessageExited',
+  ],
+  Environment: [
+    'envGetDeploymentId',
+    'isMinVersionSupported',
+    'getAppsInTossGlobals',
+  ],
 };
 
 /**
@@ -46,6 +87,7 @@ export const API_CATEGORIES: Record<string, string[]> = {
 export const CATEGORY_ORDER: string[] = [
   'Authentication',
   'Payment',
+  'IAP',
   'SystemInfo',
   'Location',
   'Permission',
@@ -58,6 +100,12 @@ export const CATEGORY_ORDER: string[] = [
   'Events',
   'Certificate',
   'Visibility',
+  'Storage',
+  'Advertising',
+  'SafeArea',
+  'Partner',
+  'AppEvents',
+  'Environment',
   'Other',
 ];
 

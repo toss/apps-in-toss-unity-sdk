@@ -179,6 +179,164 @@ namespace AppsInToss
     }
 
     [Serializable]
+    public class IapCreateOneTimePurchaseOrderOptions
+    {
+        [JsonProperty("options")]
+        public System.Action Options;
+        [JsonProperty("onEvent")]
+        public System.Action<SuccessEvent> OnEvent;
+        [JsonProperty("onError")]
+        public System.Action<object> OnError;
+    }
+
+    [Serializable]
+    public class SuccessEvent
+    {
+        [JsonProperty("type")]
+        public string Type;
+        [JsonProperty("data")]
+        public IapCreateOneTimePurchaseOrderResult Data;
+    }
+
+    [Serializable]
+    public class IapCreateOneTimePurchaseOrderResult
+    {
+        [JsonProperty("orderId")]
+        public string OrderId;
+        [JsonProperty("displayName")]
+        public string DisplayName;
+        [JsonProperty("displayAmount")]
+        public string DisplayAmount;
+        [JsonProperty("amount")]
+        public double Amount;
+        [JsonProperty("currency")]
+        public string Currency;
+        [JsonProperty("fraction")]
+        public double Fraction;
+        [JsonProperty("miniAppIconUrl")]
+        public string MiniAppIconUrl;
+    }
+
+    [Serializable]
+    public class IAPGetProductItemListResult
+    {
+        [JsonProperty("products")]
+        public IapProductListItem[] Products;
+        /// <summary>에러 발생 시 에러 메시지 (플랫폼 미지원 등)</summary>
+        public string error;
+    }
+
+    [Serializable]
+    public class IapProductListItem
+    {
+        [JsonProperty("sku")]
+        public string Sku;
+        [JsonProperty("displayAmount")]
+        public string DisplayAmount;
+        [JsonProperty("displayName")]
+        public string DisplayName;
+        [JsonProperty("iconUrl")]
+        public string IconUrl;
+        [JsonProperty("description")]
+        public string Description;
+    }
+
+    [Serializable]
+    public class IAPGetPendingOrdersResult
+    {
+        [JsonProperty("orders")]
+        public object[] Orders;
+        /// <summary>에러 발생 시 에러 메시지 (플랫폼 미지원 등)</summary>
+        public string error;
+    }
+
+    [Serializable]
+    public class CompletedOrRefundedOrdersResult
+    {
+        [JsonProperty("hasNext")]
+        public bool HasNext;
+        [JsonProperty("nextKey")]
+        public string NextKey; // optional
+        [JsonProperty("orders")]
+        public object[] Orders;
+        /// <summary>에러 발생 시 에러 메시지 (플랫폼 미지원 등)</summary>
+        public string error;
+    }
+
+    [Serializable]
+    public class IAPCompleteProductGrantArgs_0Params
+    {
+        [JsonProperty("orderId")]
+        public string OrderId;
+    }
+
+    [Serializable]
+    public class IAPCompleteProductGrantArgs_0
+    {
+        [JsonProperty("params")]
+        public IAPCompleteProductGrantArgs_0Params Params;
+    }
+
+    [Serializable]
+    public class SafeAreaInsetsGetResult
+    {
+        [JsonProperty("top")]
+        public double Top;
+        [JsonProperty("bottom")]
+        public double Bottom;
+        [JsonProperty("left")]
+        public double Left;
+        [JsonProperty("right")]
+        public double Right;
+        /// <summary>에러 발생 시 에러 메시지 (플랫폼 미지원 등)</summary>
+        public string error;
+    }
+
+    [Serializable]
+    public class AppsInTossGlobals
+    {
+        [JsonProperty("deploymentId")]
+        public string DeploymentId;
+        [JsonProperty("brandDisplayName")]
+        public string BrandDisplayName;
+        [JsonProperty("brandIcon")]
+        public string BrandIcon;
+        [JsonProperty("brandPrimaryColor")]
+        public string BrandPrimaryColor;
+        [JsonProperty("brandBridgeColorMode")]
+        public string BrandBridgeColorMode;
+        /// <summary>에러 발생 시 에러 메시지 (플랫폼 미지원 등)</summary>
+        public string error;
+    }
+
+    [Serializable]
+    public class IsMinVersionSupportedMinVersions
+    {
+        [JsonProperty("android")]
+        public string Android;
+        [JsonProperty("ios")]
+        public string Ios;
+    }
+
+    [Serializable]
+    public class AddAccessoryButtonOptionsIcon
+    {
+        [JsonProperty("name")]
+        public string Name;
+    }
+
+    [Serializable]
+    public class AddAccessoryButtonOptions
+    {
+        [JsonProperty("id")]
+        public string Id;
+        [JsonProperty("title")]
+        public string Title;
+        [JsonProperty("icon")]
+        public AddAccessoryButtonOptionsIcon Icon;
+    }
+
+    [Serializable]
     public class OpenPermissionDialogPermission
     {
         [JsonProperty("name")]

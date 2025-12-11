@@ -8,10 +8,16 @@
         - PrimitiveType.Cylinder -> MeshCollider
         - PrimitiveType.Plane -> MeshCollider
 
-        These are stripped when Managed Stripping Level is High because
-        they're not directly referenced in code at compile time.
+        Only preserve specific Collider types instead of the entire module
+        to reduce build size.
     -->
-    <assembly fullname="UnityEngine.PhysicsModule" preserve="all"/>
+    <assembly fullname="UnityEngine.PhysicsModule">
+        <type fullname="UnityEngine.BoxCollider" preserve="all"/>
+        <type fullname="UnityEngine.SphereCollider" preserve="all"/>
+        <type fullname="UnityEngine.CapsuleCollider" preserve="all"/>
+        <type fullname="UnityEngine.MeshCollider" preserve="all"/>
+        <type fullname="UnityEngine.Rigidbody" preserve="all"/>
+    </assembly>
 
     <!-- Prevent IL2CPP from stripping AppsInToss SDK types -->
     <!-- SDK Result types have fields accessed via Reflection (JsonUtility) -->

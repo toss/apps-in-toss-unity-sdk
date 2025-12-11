@@ -657,7 +657,16 @@ namespace AppsInToss
                 else
                 {
                     Debug.Log("AIT: 배포 완료!");
-                    EditorUtility.DisplayDialog("성공", "Apps in Toss에 배포되었습니다!", "확인");
+                    string deployUrl = ExtractDeployUrl(result.Output);
+                    if (!string.IsNullOrEmpty(deployUrl))
+                    {
+                        Debug.Log($"AIT: 배포 URL: {deployUrl}");
+                        DeploySuccessWindow.Show(deployUrl);
+                    }
+                    else
+                    {
+                        EditorUtility.DisplayDialog("성공", "Apps in Toss에 배포되었습니다!", "확인");
+                    }
                 }
             }
             catch (Exception e)
@@ -1526,6 +1535,26 @@ namespace AppsInToss
         // ============================================
 
         /// <summary>
+        /// 배포 출력에서 intoss-private:// URL 추출
+        /// </summary>
+        private static string ExtractDeployUrl(string output)
+        {
+            if (string.IsNullOrEmpty(output))
+            {
+                return null;
+            }
+
+            // intoss-private://... URL 패턴 찾기
+            var match = Regex.Match(output, @"intoss-private://[^\s\│\│]+");
+            if (match.Success)
+            {
+                return match.Value.TrimEnd('│', ' ', '\r', '\n');
+            }
+
+            return null;
+        }
+
+        /// <summary>
         /// 배포 에러 메시지에서 사용자에게 보여줄 핵심 내용 추출
         /// </summary>
         private static string ExtractDeployErrorMessage(string stdout, string stderr)
@@ -1638,6 +1667,116 @@ namespace AppsInToss
         {
             // AITConvertCore의 FindNpm 사용 (pnpm 우선, 로컬 설치 지원)
             return AITConvertCore.FindNpm();
+        }
+    }
+
+    /// <summary>
+    /// 배포 성공 시 URL을 표시하고 복사할 수 있는 창
+    /// </summary>
+    public class DeploySuccessWindow : EditorWindow
+    {
+        private string deployUrl;
+        private bool copied = false;
+        private GUIStyle urlStyle;
+        private GUIStyle buttonStyle;
+        private GUIStyle copiedLabelStyle;
+
+        public static void Show(string url)
+        {
+            var window = GetWindow<DeploySuccessWindow>(true, "배포 완료", true);
+            window.deployUrl = url;
+            window.copied = false;
+            window.minSize = new Vector2(500, 160);
+            window.maxSize = new Vector2(700, 200);
+            window.ShowUtility();
+            window.CenterOnMainWin();
+        }
+
+        private void CenterOnMainWin()
+        {
+            var mainWindow = EditorGUIUtility.GetMainWindowPosition();
+            var pos = position;
+            pos.x = mainWindow.x + (mainWindow.width - pos.width) / 2;
+            pos.y = mainWindow.y + (mainWindow.height - pos.height) / 2;
+            position = pos;
+        }
+
+        private void OnGUI()
+        {
+            // 스타일 초기화
+            if (urlStyle == null)
+            {
+                urlStyle = new GUIStyle(EditorStyles.textField)
+                {
+                    fontSize = 12,
+                    wordWrap = false,
+                    alignment = TextAnchor.MiddleLeft,
+                    padding = new RectOffset(8, 8, 8, 8)
+                };
+            }
+
+            if (buttonStyle == null)
+            {
+                buttonStyle = new GUIStyle(GUI.skin.button)
+                {
+                    fontSize = 13,
+                    fontStyle = FontStyle.Bold,
+                    fixedHeight = 32
+                };
+            }
+
+            if (copiedLabelStyle == null)
+            {
+                copiedLabelStyle = new GUIStyle(EditorStyles.label)
+                {
+                    fontSize = 11,
+                    alignment = TextAnchor.MiddleCenter,
+                    normal = { textColor = new Color(0.2f, 0.7f, 0.3f) }
+                };
+            }
+
+            GUILayout.Space(15);
+
+            // 성공 메시지
+            EditorGUILayout.LabelField("Apps in Toss에 배포되었습니다!", EditorStyles.boldLabel);
+
+            GUILayout.Space(10);
+
+            // URL 표시
+            EditorGUILayout.LabelField("배포 URL:", EditorStyles.miniLabel);
+            EditorGUILayout.SelectableLabel(deployUrl, urlStyle, GUILayout.Height(30));
+
+            GUILayout.Space(10);
+
+            // 버튼 영역
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.FlexibleSpace();
+
+            if (GUILayout.Button("URL 복사", buttonStyle, GUILayout.Width(120)))
+            {
+                EditorGUIUtility.systemCopyBuffer = deployUrl;
+                copied = true;
+                Debug.Log($"AIT: 배포 URL이 클립보드에 복사되었습니다: {deployUrl}");
+            }
+
+            GUILayout.Space(10);
+
+            if (GUILayout.Button("닫기", buttonStyle, GUILayout.Width(80)))
+            {
+                Close();
+            }
+
+            GUILayout.FlexibleSpace();
+            EditorGUILayout.EndHorizontal();
+
+            // 복사 완료 표시
+            if (copied)
+            {
+                GUILayout.Space(5);
+                EditorGUILayout.LabelField("✓ 클립보드에 복사되었습니다", copiedLabelStyle);
+            }
+
+            GUILayout.Space(10);
         }
     }
 }

@@ -98,6 +98,7 @@ apps-in-toss-unity-sdk/
 │   └── NodeJS/                      # 내장 Node.js (자동 다운로드)
 ├── Tests~/                           # 테스트 파일 (UPM에서 제외)
 │   └── E2E/                         # E2E 테스트
+│       ├── SampleUnityProject-6000.3/  # Unity 6000.3 테스트 프로젝트
 │       ├── SampleUnityProject-6000.2/  # Unity 6000.2 테스트 프로젝트
 │       ├── SampleUnityProject-6000.0/  # Unity 6000.0 테스트 프로젝트
 │       ├── SampleUnityProject-2022.3/  # Unity 2022.3 테스트 프로젝트
@@ -183,12 +184,13 @@ npm run deploy
 ### Unity 버전 요구사항
 
 **우선 지원 버전:**
+- Unity 6000.3.0f1 (Unity 6.3)
 - Unity 6000.2.14f1 (Unity 6 LTS)
 - Unity 6000.0.63f1 (Unity 6)
 - Unity 2022.3.62f3 (LTS)
 - Unity 2021.3.45f2 (LTS - 최소 지원 버전)
 
-모든 개발, 테스트, QA는 이 4개 버전을 우선으로 진행해야 합니다.
+모든 개발, 테스트, QA는 이 5개 버전을 우선으로 진행해야 합니다.
 
 - Tuanjie Engine 지원
 
@@ -273,10 +275,11 @@ catch (AITException ex)
 ## 테스트 전략
 
 ### E2E 테스트 구조
-SDK는 4개 Unity 버전에 대해 E2E 테스트를 실행합니다:
+SDK는 5개 Unity 버전에 대해 E2E 테스트를 실행합니다:
 
 ```
 Tests~/E2E/
+├── SampleUnityProject-6000.3/    # Unity 6000.3 테스트 프로젝트
 ├── SampleUnityProject-6000.2/    # Unity 6000.2 테스트 프로젝트
 ├── SampleUnityProject-6000.0/    # Unity 6000.0 테스트 프로젝트
 ├── SampleUnityProject-2022.3/    # Unity 2022.3 테스트 프로젝트

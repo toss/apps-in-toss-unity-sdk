@@ -17,6 +17,13 @@ Assets/WebGLTemplates/
 # Scene files (Unity modifies on every build due to fileID regeneration)
 Assets/Scenes/BenchmarkScene.unity
 
+# Resources folder (fonts copied from SharedScripts during build)
+Assets/Resources/
+Assets/Resources.meta
+
+# Benchmark results (generated during E2E tests)
+BenchmarkResults/
+
 # ============================================================
 # Apps in Toss SDK 설정 파일 (.gitignore 권장 설정)
 # 아래 패턴을 프로젝트의 .gitignore에 추가하세요

@@ -202,6 +202,7 @@ jobs:
         working-directory: Tests~/E2E/tests
         env:
           UNITY_PROJECT_PATH: ${{ github.workspace }}/Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}
+          MOBILE_EMULATION: "true"
         run: npm test
 
       - name: Upload Benchmark Results

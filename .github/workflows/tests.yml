@@ -77,11 +77,11 @@ jobs:
     runs-on: [self-hosted, macOS, ARM64]
     timeout-minutes: 60
 
-    # 동일 OS + Unity 버전 조합에서만 동시 실행 방지
-    # 다른 버전은 병렬로 실행 가능
+    # 동일 브랜치 + Unity 버전 조합에서만 동시 실행 방지
+    # 다른 브랜치는 독립 실행, 같은 브랜치 내 이전 실행은 취소
     concurrency:
-      group: macos-${{ matrix.unity-version }}
-      cancel-in-progress: false
+      group: ${{ github.workflow }}-macos-${{ matrix.unity-version }}-${{ github.head_ref || github.ref }}
+      cancel-in-progress: true
 
     strategy:
       fail-fast: false
@@ -228,11 +228,11 @@ jobs:
     runs-on: [self-hosted, Windows, X64, enabled]
     timeout-minutes: 60
 
-    # 동일 OS + Unity 버전 조합에서만 동시 실행 방지
-    # 다른 버전은 병렬로 실행 가능
+    # 동일 브랜치 + Unity 버전 조합에서만 동시 실행 방지
+    # 다른 브랜치는 독립 실행, 같은 브랜치 내 이전 실행은 취소
     concurrency:
-      group: windows-${{ matrix.unity-version }}
-      cancel-in-progress: false
+      group: ${{ github.workflow }}-windows-${{ matrix.unity-version }}-${{ github.head_ref || github.ref }}
+      cancel-in-progress: true
 
     strategy:
       fail-fast: false

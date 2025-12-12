@@ -21,9 +21,9 @@ MonoBehaviour:
   bridgeColorMode: 0
   webViewType: 1
   graniteHost: 0.0.0.0
-  granitePort: 8085
+  granitePort: 8084
   viteHost: localhost
-  vitePort: 5177
+  vitePort: 5176
   outdir: dist
   devServerProfile:
     enableMockBridge: 1
@@ -55,14 +55,11 @@ MonoBehaviour:
   runInBackground: -1
   webAssemblyArithmeticExceptions: -1
   enableDebugConsole: 0
-  permissions:
-  - userInfo
-  - location
-  - camera
-  - clipboard-read
-  - clipboard-write
-  - contacts-read
-  - contacts-write
-  - photos-read
-  - photos-write
+  permissionConfig:
+    clipboardRead: 1
+    clipboardWrite: 1
+    contacts: 1
+    photos: 1
+    camera: 1
+    geolocation: 1
   plugins: []

@@ -12,6 +12,7 @@ mergeInto(LibraryManager.library, {
         var typeNameStr = UTF8ToString(typeName);
 
         console.log('[AIT jslib] setIosSwipeGestureEnabled called, callbackId:', callback);
+        console.log('[AIT jslib] setIosSwipeGestureEnabled raw param options:', UTF8ToString(options));
 
         try {
             var promiseResult = window.AppsInToss.setIosSwipeGestureEnabled(JSON.parse(UTF8ToString(options)));

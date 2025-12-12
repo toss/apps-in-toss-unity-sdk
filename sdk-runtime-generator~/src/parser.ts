@@ -977,6 +977,53 @@ export class TypeScriptParser {
           }
         }
 
+        // non-exported type alias도 처리 (PermissionName$1 같은 로컬 타입)
+        const allTypeAliases = sourceFile.getTypeAliases();
+        for (const typeAlias of allTypeAliases) {
+          const rawName = typeAlias.getName();
+          // TypeScript 빌드 시 생성되는 $1, $2 등의 접미사 제거
+          const name = rawName.replace(/\$\d+$/, '');
+
+          const typeNode = typeAlias.getTypeNode();
+          if (typeNode && typeNode.getKind() === SyntaxKind.UnionType) {
+            const unionType = typeNode.asKind(SyntaxKind.UnionType);
+            if (unionType) {
+              const members = unionType.getTypeNodes();
+              const allStringLiterals = members.every(
+                m => m.getKind() === SyntaxKind.LiteralType
+              );
+
+              if (allStringLiterals) {
+                const enumValues = members.map(m => {
+                  const literalType = m.asKind(SyntaxKind.LiteralType);
+                  if (literalType) {
+                    const literal = literalType.getLiteral();
+                    return literal.getText().replace(/['"]/g, '');
+                  }
+                  return '';
+                }).filter(v => v !== '');
+
+                // JSDoc에서 description 추출
+                const jsDocs = typeAlias.getJsDocs();
+                const description = jsDocs.length > 0
+                  ? jsDocs[0].getDescription().trim()
+                  : undefined;
+
+                // 중복 체크: 같은 이름의 enum이 이미 있으면 스킵
+                if (!typeMap.has(name) && enumValues.length > 0) {
+                  typeMap.set(name, {
+                    name,
+                    kind: 'enum',
+                    file: fileName,
+                    description,
+                    enumValues,
+                  });
+                }
+              }
+            }
+          }
+        }
+
         // 이제 exported 선언들 처리
         const exportedDeclarations = sourceFile.getExportedDeclarations();
 

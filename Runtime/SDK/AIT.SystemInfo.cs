@@ -8,6 +8,7 @@
 using System;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
+using UnityEngine.Scripting;
 
 namespace AppsInToss
 {
@@ -18,6 +19,7 @@ namespace AppsInToss
     {
         /// <returns>기기의 고유 식별자를 나타내는 문자열이에요.</returns>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
         [APICategory("SystemInfo")]
         public static async Task<string> GetDeviceId()
         {
@@ -43,6 +45,7 @@ namespace AppsInToss
 #endif
         /// <returns>사용자의 로케일 정보를 반환해요.</returns>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
         [APICategory("SystemInfo")]
         public static async Task<string> GetLocale()
         {
@@ -68,6 +71,7 @@ namespace AppsInToss
 #endif
         /// <returns>네트워크 상태를 반환해요.</returns>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
         [APICategory("SystemInfo")]
         public static async Task<NetworkStatus> GetNetworkStatus()
         {
@@ -93,6 +97,7 @@ namespace AppsInToss
 #endif
         /// <returns>현재 운영 환경을 나타내는 문자열이에요. 'toss': 토스 앱에서 실행 중이에요. 'sandbox': 샌드박스 환경에서 실행 중이에요.</returns>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
         [APICategory("SystemInfo")]
         public static async Task<string> GetOperationalEnvironment()
         {
@@ -118,6 +123,7 @@ namespace AppsInToss
 #endif
         /// <returns>현재 실행 중인 플랫폼</returns>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
         [APICategory("SystemInfo")]
         public static async Task<string> GetPlatformOS()
         {
@@ -143,6 +149,7 @@ namespace AppsInToss
 #endif
         /// <returns>처음에 화면에 진입한 스킴 값을 반환해요.</returns>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
         [APICategory("SystemInfo")]
         public static async Task<string> GetSchemeUri()
         {
@@ -168,6 +175,7 @@ namespace AppsInToss
 #endif
         /// <returns>토스 앱 버전</returns>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
         [APICategory("SystemInfo")]
         public static async Task<string> GetTossAppVersion()
         {

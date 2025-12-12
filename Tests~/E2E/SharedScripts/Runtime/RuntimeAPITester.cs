@@ -176,9 +176,9 @@ public class RuntimeAPITester : MonoBehaviour
         TestAPICall("EventLog", () => AIT.EventLog(new EventLogParams { Log_name = "test", Log_type = "test" }));
 
         // Permission APIs (class 타입 파라미터)
-        TestAPICall("GetPermission", () => AIT.GetPermission(new GetPermissionPermission { Name = "camera", Access = PermissionAccess.Access }));
-        TestAPICall("RequestPermission", () => AIT.RequestPermission(new RequestPermissionPermission { Name = "camera", Access = PermissionAccess.Access }));
-        TestAPICall("OpenPermissionDialog", () => AIT.OpenPermissionDialog(new OpenPermissionDialogPermission { Name = "camera", Access = PermissionAccess.Access }));
+        TestAPICall("GetPermission", () => AIT.GetPermission(new GetPermissionPermission { Name = PermissionName.Camera, Access = PermissionAccess.Access }));
+        TestAPICall("RequestPermission", () => AIT.RequestPermission(new RequestPermissionPermission { Name = PermissionName.Camera, Access = PermissionAccess.Access }));
+        TestAPICall("OpenPermissionDialog", () => AIT.OpenPermissionDialog(new OpenPermissionDialogPermission { Name = PermissionName.Camera, Access = PermissionAccess.Access }));
 
         // Location APIs
         TestAPICall("GetCurrentLocation", () => AIT.GetCurrentLocation(new GetCurrentLocationOptions { Accuracy = Accuracy.Balanced }));

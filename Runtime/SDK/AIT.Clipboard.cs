@@ -8,6 +8,7 @@
 using System;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
+using UnityEngine.Scripting;
 
 namespace AppsInToss
 {
@@ -17,6 +18,7 @@ namespace AppsInToss
     public static partial class AIT
     {
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
         [APICategory("Clipboard")]
         public static async Task<string> GetClipboardText()
         {
@@ -41,6 +43,7 @@ namespace AppsInToss
         private static extern void __getClipboardText_Internal(string callbackId, string typeName);
 #endif
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
         [APICategory("Clipboard")]
         public static async Task SetClipboardText(string text)
         {

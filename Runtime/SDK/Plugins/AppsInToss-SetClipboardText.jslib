@@ -12,6 +12,7 @@ mergeInto(LibraryManager.library, {
         var typeNameStr = UTF8ToString(typeName);
 
         console.log('[AIT jslib] setClipboardText called, callbackId:', callback);
+        console.log('[AIT jslib] setClipboardText raw param text:', UTF8ToString(text));
 
         try {
             var promiseResult = window.AppsInToss.setClipboardText(UTF8ToString(text));

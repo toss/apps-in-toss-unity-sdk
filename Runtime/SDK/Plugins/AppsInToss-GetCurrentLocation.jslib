@@ -12,6 +12,7 @@ mergeInto(LibraryManager.library, {
         var typeNameStr = UTF8ToString(typeName);
 
         console.log('[AIT jslib] getCurrentLocation called, callbackId:', callback);
+        console.log('[AIT jslib] getCurrentLocation raw param options:', UTF8ToString(options));
 
         try {
             var promiseResult = window.AppsInToss.getCurrentLocation(JSON.parse(UTF8ToString(options)));

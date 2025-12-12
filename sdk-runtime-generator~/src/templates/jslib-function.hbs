@@ -5,6 +5,9 @@
         var typeNameStr = UTF8ToString(typeName);
 
         console.log('[AIT jslib] {{name}} called, callbackId:', callback);
+{{#each parameters}}
+        console.log('[AIT jslib] {{../name}} raw param {{name}}:', UTF8ToString({{name}}));
+{{/each}}
 
         try {
 {{#if namespace}}

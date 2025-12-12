@@ -12,6 +12,7 @@ mergeInto(LibraryManager.library, {
         var typeNameStr = UTF8ToString(typeName);
 
         console.log('[AIT jslib] fetchAlbumPhotos called, callbackId:', callback);
+        console.log('[AIT jslib] fetchAlbumPhotos raw param options:', UTF8ToString(options));
 
         try {
             var promiseResult = window.AppsInToss.fetchAlbumPhotos(JSON.parse(UTF8ToString(options)));

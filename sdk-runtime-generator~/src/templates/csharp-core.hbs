@@ -386,7 +386,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<{{this}}>(callbackId, out var enumCb_{{this}}) && enumCb_{{this}} != null)
                         {
-                            // enum은 JsonUtility가 파싱 불가. Enum.TryParse 사용
+                            // enum 파싱: 문자열에서 따옴표 제거 후 Enum.TryParse
                             var enumStr_{{this}} = apiResponse.data.Trim().Trim('"');
                             if (Enum.TryParse<{{this}}>(enumStr_{{this}}, true, out var enumVal_{{this}}))
                             {
@@ -395,6 +395,11 @@ namespace AppsInToss
                             else
                             {
                                 Debug.LogWarning("[AITCore] Failed to parse enum {{this}}: " + enumStr_{{this}});
+                                // 파싱 실패 시 에러 콜백 호출하여 Task 완료
+                                if (TryGetErrorCallback(callbackId, out var parseErrCb_{{this}}) && parseErrCb_{{this}} != null)
+                                {
+                                    parseErrCb_{{this}}(new AITException("{{this}}", "Failed to parse enum value: " + enumStr_{{this}}));
+                                }
                             }
                         }
                     }
@@ -412,11 +417,11 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<string>(callbackId, out var stringCallback) && stringCallback != null)
                         {
-                            // string은 JsonUtility가 파싱 불가. data가 JSON 문자열이면 따옴표 제거
+                            // JSON 문자열에서 실제 문자열 추출 (따옴표 제거)
                             var stringData = apiResponse.data;
-                            if (stringData.StartsWith("\"") && stringData.EndsWith("\""))
+                            if (stringData.StartsWith("\"") && stringData.EndsWith("\"") && stringData.Length >= 2)
                             {
-                                stringData = stringData.Substring(1, stringData.Length - 2);
+                                stringData = JsonConvert.DeserializeObject<string>(stringData);
                             }
                             stringCallback(stringData);
                         }
@@ -434,8 +439,9 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<bool>(callbackId, out var boolCallback) && boolCallback != null)
                         {
-                            // bool은 JsonUtility가 파싱 불가. 직접 파싱
-                            var boolData = apiResponse.data.Trim().ToLower() == "true";
+                            // JSON에서 bool 파싱
+                            var boolStr = apiResponse.data.Trim().ToLower();
+                            var boolData = boolStr == "true";
                             boolCallback(boolData);
                         }
                     }
@@ -452,11 +458,9 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<double>(callbackId, out var doubleCallback) && doubleCallback != null)
                         {
-                            // double은 JsonUtility가 파싱 불가. 직접 파싱
-                            if (double.TryParse(apiResponse.data, out var doubleData))
-                            {
-                                doubleCallback(doubleData);
-                            }
+                            // JSON에서 double 파싱
+                            double.TryParse(apiResponse.data.Trim(), out var doubleData);
+                            doubleCallback(doubleData);
                         }
                     }
                     else

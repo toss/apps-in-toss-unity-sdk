@@ -671,8 +671,59 @@ export class CSharpGenerator {
 export class CSharpTypeGenerator {
   private unionResultTemplate?: HandlebarsTemplateDelegate;
 
+  // Inline string literal union을 enum으로 변환할 때 수집
+  // key: enum 이름 (예: SetDeviceOrientationOptionsType)
+  // value: enum 값들 (예: ["portrait", "landscape"])
+  private inlineEnums: Map<string, string[]> = new Map();
+
   constructor() {
     // Constructor for future template loading if needed
+  }
+
+  /**
+   * inline string literal union인지 확인
+   * Case 1: kind가 'union'이고 모든 unionTypes가 string literal
+   * Case 2: kind가 'primitive'이지만 raw가 "value1" | "value2" 형태
+   */
+  private isInlineStringLiteralUnion(type: ParsedType): boolean {
+    // Case 1: 파서가 union으로 인식한 경우
+    if (type.kind === 'union' && type.unionTypes && type.unionTypes.length > 0) {
+      return type.unionTypes.every(
+        t => t.kind === 'primitive' && t.name === 'string' && t.raw.startsWith('"')
+      );
+    }
+
+    // Case 2: 파서가 primitive로 인식했지만 raw가 string literal union인 경우
+    // 예: { kind: 'primitive', name: 'string', raw: '"portrait" | "landscape"' }
+    if (type.kind === 'primitive' && type.name === 'string' && type.raw) {
+      // raw가 "..." | "..." 형태인지 확인
+      const unionPattern = /^"[^"]*"(\s*\|\s*"[^"]*")+$/;
+      return unionPattern.test(type.raw.trim());
+    }
+
+    return false;
+  }
+
+  /**
+   * inline string literal union에서 enum 값들 추출
+   */
+  private extractEnumValues(type: ParsedType): string[] {
+    // Case 1: unionTypes가 있는 경우
+    if (type.unionTypes && type.unionTypes.length > 0) {
+      return type.unionTypes
+        .filter(t => t.raw.startsWith('"'))
+        .map(t => t.raw.replace(/"/g, ''));
+    }
+
+    // Case 2: raw에서 직접 추출 (예: '"portrait" | "landscape"')
+    if (type.raw) {
+      const matches = type.raw.match(/"([^"]*)"/g);
+      if (matches) {
+        return matches.map(m => m.replace(/"/g, ''));
+      }
+    }
+
+    return [];
   }
 
   /**
@@ -753,7 +804,7 @@ export class CSharpTypeGenerator {
     const enumMembers = typeDef.enumValues
       .map(value => {
         if (isNumericEnum) {
-          // 숫자 enum: 명시적 값 할당
+          // 숫자 enum: 명시적 값 할당 + EnumMember로 숫자 값 직렬화 지원
           const item = typeof value === 'object' && value !== null && 'name' in value
             ? value as { name: string; value: number }
             : { name: value as string, value: 0 };
@@ -764,7 +815,8 @@ export class CSharpTypeGenerator {
             memberName = `_${memberName}`;
           }
           const pascalValue = memberName.charAt(0).toUpperCase() + memberName.slice(1);
-          return `        ${pascalValue} = ${item.value}`;
+          // EnumMember로 숫자 값을 문자열로 직렬화 (StringEnumConverter와 호환)
+          return `        [EnumMember(Value = "${item.value}")]\n        ${pascalValue} = ${item.value}`;
         } else {
           // 문자열 enum: EnumMember 어트리뷰트 사용
           const originalValue = value as string;
@@ -884,6 +936,9 @@ export class CSharpTypeGenerator {
     const typeMap = new Map<string, string>(); // typeName -> classDefinition
     const unionResultMap = new Map<string, string>(); // API name -> Union Result class
     const exclude = excludeTypeNames || new Set<string>();
+
+    // Inline enum Map 초기화 (generateClassType에서 채워짐)
+    this.inlineEnums.clear();
 
     // API에서 사용되는 모든 타입 수집
     for (const api of apis) {
@@ -1035,8 +1090,23 @@ export class CSharpTypeGenerator {
       }
     }
 
+    // Inline string literal union에서 생성된 enum 코드
+    const inlineEnumTypes: string[] = [];
+    for (const [enumName, enumValues] of this.inlineEnums) {
+      const enumCode = this.generateEnum({
+        name: enumName,
+        kind: 'enum',
+        file: '',
+        enumValues: enumValues,
+      });
+      if (enumCode) {
+        inlineEnumTypes.push(enumCode);
+      }
+    }
+
     // Union Result 클래스와 일반 타입 클래스 합치기
     const allTypes = [
+      ...inlineEnumTypes,  // inline enum이 먼저 (타입 참조 순서)
       ...Array.from(unionResultMap.values()),
       ...Array.from(typeMap.values())
     ];
@@ -1138,8 +1208,19 @@ ${fields}
     const fields = properties
       .map(prop => {
         let type = mapToCSharpType(prop.type);
+
+        // Inline string literal union → enum 변환
+        if (this.isInlineStringLiteralUnion(prop.type)) {
+          const enumName = `${cleanName}${this.capitalize(prop.name)}`;
+          const enumValues = this.extractEnumValues(prop.type);
+          // enum 수집 (중복 방지)
+          if (!this.inlineEnums.has(enumName)) {
+            this.inlineEnums.set(enumName, enumValues);
+          }
+          type = enumName;
+        }
         // 중첩 익명 객체는 생성된 클래스 이름 사용
-        if (prop.type.kind === 'object' &&
+        else if (prop.type.kind === 'object' &&
             prop.type.properties &&
             prop.type.properties.length > 0 &&
             (prop.type.name === '__type' || prop.type.name === 'object' || prop.type.name.startsWith('{'))) {

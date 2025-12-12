@@ -14,6 +14,110 @@ using UnityEngine.Scripting;
 
 namespace AppsInToss
 {
+    public enum AppLoginResultReferrer
+    {
+        [EnumMember(Value = "DEFAULT")]
+        DEFAULT,
+        [EnumMember(Value = "SANDBOX")]
+        SANDBOX
+    }
+
+    public enum LocationAccessLocation
+    {
+        [EnumMember(Value = "FINE")]
+        FINE,
+        [EnumMember(Value = "COARSE")]
+        COARSE
+    }
+
+    public enum GetPermissionPermissionName
+    {
+        [EnumMember(Value = "clipboard")]
+        Clipboard,
+        [EnumMember(Value = "contacts")]
+        Contacts,
+        [EnumMember(Value = "photos")]
+        Photos,
+        [EnumMember(Value = "geolocation")]
+        Geolocation,
+        [EnumMember(Value = "camera")]
+        Camera
+    }
+
+    public enum GetPermissionPermissionAccess
+    {
+        [EnumMember(Value = "read")]
+        Read,
+        [EnumMember(Value = "write")]
+        Write,
+        [EnumMember(Value = "access")]
+        Access
+    }
+
+    public enum AppsInTossGlobalsBrandBridgeColorMode
+    {
+        [EnumMember(Value = "basic")]
+        Basic,
+        [EnumMember(Value = "inverted")]
+        Inverted
+    }
+
+    public enum OpenPermissionDialogPermissionName
+    {
+        [EnumMember(Value = "clipboard")]
+        Clipboard,
+        [EnumMember(Value = "contacts")]
+        Contacts,
+        [EnumMember(Value = "photos")]
+        Photos,
+        [EnumMember(Value = "geolocation")]
+        Geolocation,
+        [EnumMember(Value = "camera")]
+        Camera
+    }
+
+    public enum OpenPermissionDialogPermissionAccess
+    {
+        [EnumMember(Value = "read")]
+        Read,
+        [EnumMember(Value = "write")]
+        Write,
+        [EnumMember(Value = "access")]
+        Access
+    }
+
+    public enum RequestPermissionPermissionName
+    {
+        [EnumMember(Value = "clipboard")]
+        Clipboard,
+        [EnumMember(Value = "contacts")]
+        Contacts,
+        [EnumMember(Value = "photos")]
+        Photos,
+        [EnumMember(Value = "geolocation")]
+        Geolocation,
+        [EnumMember(Value = "camera")]
+        Camera
+    }
+
+    public enum RequestPermissionPermissionAccess
+    {
+        [EnumMember(Value = "read")]
+        Read,
+        [EnumMember(Value = "write")]
+        Write,
+        [EnumMember(Value = "access")]
+        Access
+    }
+
+    public enum SetDeviceOrientationOptionsType
+    {
+        [EnumMember(Value = "portrait")]
+        Portrait,
+        [EnumMember(Value = "landscape")]
+        Landscape
+    }
+
     /// <summary>
     /// Result type for GetUserKeyForGame (Discriminated Union)
     /// Success: GetUserKeyForGameSuccessResponse | Error: INVALID_CATEGORY,ERROR
@@ -23,10 +127,15 @@ namespace AppsInToss
     public class GetUserKeyForGameResult
     {
         [Preserve]
+        [JsonProperty("_type")]
         public string _type;
+
         [Preserve]
-        public string _successJson;
+        [JsonProperty("_successJson")]
+        public GetUserKeyForGameSuccessResponse _successData;
+
         [Preserve]
+        [JsonProperty("_errorCode")]
         public string _errorCode;
 
         /// <summary>성공 여부를 나타냅니다.</summary>
@@ -39,7 +148,7 @@ namespace AppsInToss
         /// 성공 데이터를 가져옵니다.
         /// </summary>
         public GetUserKeyForGameSuccessResponse GetSuccess()
-            => IsSuccess ? JsonUtility.FromJson<GetUserKeyForGameSuccessResponse>(_successJson) : null;
+            => IsSuccess ? _successData : null;
 
         /// <summary>
         /// 에러 코드를 가져옵니다.
@@ -102,7 +211,7 @@ namespace AppsInToss
         public string AuthorizationCode;
         [Preserve]
         [JsonProperty("referrer")]
-        public string Referrer;
+        public AppLoginResultReferrer Referrer;
         /// <summary>에러 발생 시 에러 메시지 (플랫폼 미지원 등)</summary>
         public string error;
     }
@@ -137,7 +246,7 @@ namespace AppsInToss
     {
         [Preserve]
         [JsonProperty("accessLocation")]
-        public string AccessLocation; // optional
+        public LocationAccessLocation AccessLocation; // optional
         [Preserve]
         [JsonProperty("timestamp")]
         public double Timestamp;
@@ -169,10 +278,10 @@ namespace AppsInToss
     {
         [Preserve]
         [JsonProperty("name")]
-        public PermissionName Name;
+        public GetPermissionPermissionName Name;
         [Preserve]
         [JsonProperty("access")]
-        public PermissionAccess Access;
+        public GetPermissionPermissionAccess Access;
     }
 
     [Serializable]
@@ -381,7 +490,7 @@ namespace AppsInToss
         public string BrandPrimaryColor;
         [Preserve]
         [JsonProperty("brandBridgeColorMode")]
-        public string BrandBridgeColorMode;
+        public AppsInTossGlobalsBrandBridgeColorMode BrandBridgeColorMode;
         /// <summary>에러 발생 시 에러 메시지 (플랫폼 미지원 등)</summary>
         public string error;
     }
@@ -428,10 +537,10 @@ namespace AppsInToss
     {
         [Preserve]
         [JsonProperty("name")]
-        public PermissionName Name;
+        public OpenPermissionDialogPermissionName Name;
         [Preserve]
         [JsonProperty("access")]
-        public PermissionAccess Access;
+        public OpenPermissionDialogPermissionAccess Access;
     }
 
     [Serializable]
@@ -440,10 +549,10 @@ namespace AppsInToss
     {
         [Preserve]
         [JsonProperty("name")]
-        public PermissionName Name;
+        public RequestPermissionPermissionName Name;
         [Preserve]
         [JsonProperty("access")]
-        public PermissionAccess Access;
+        public RequestPermissionPermissionAccess Access;
     }
 
     [Serializable]
@@ -452,7 +561,7 @@ namespace AppsInToss
     {
         [Preserve]
         [JsonProperty("type")]
-        public string Type;
+        public SetDeviceOrientationOptionsType Type;
     }
 
     [Serializable]
@@ -744,11 +853,17 @@ namespace AppsInToss
 
     public enum Accuracy
     {
+        [EnumMember(Value = "1")]
         Lowest = 1,
+        [EnumMember(Value = "2")]
         Low = 2,
+        [EnumMember(Value = "3")]
         Balanced = 3,
+        [EnumMember(Value = "4")]
         High = 4,
+        [EnumMember(Value = "5")]
         Highest = 5,
+        [EnumMember(Value = "6")]
         BestForNavigation = 6
     }
 

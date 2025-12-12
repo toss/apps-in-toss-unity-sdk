@@ -175,17 +175,17 @@ public class RuntimeAPITester : MonoBehaviour
         // Event API
         TestAPICall("EventLog", () => AIT.EventLog(new EventLogParams { Log_name = "test", Log_type = "test" }));
 
-        // Permission APIs (class 타입 파라미터)
-        TestAPICall("GetPermission", () => AIT.GetPermission(new GetPermissionPermission { Name = PermissionName.Camera, Access = PermissionAccess.Access }));
-        TestAPICall("RequestPermission", () => AIT.RequestPermission(new RequestPermissionPermission { Name = PermissionName.Camera, Access = PermissionAccess.Access }));
-        TestAPICall("OpenPermissionDialog", () => AIT.OpenPermissionDialog(new OpenPermissionDialogPermission { Name = PermissionName.Camera, Access = PermissionAccess.Access }));
+        // Permission APIs (class 타입 파라미터) - inline enum 사용
+        TestAPICall("GetPermission", () => AIT.GetPermission(new GetPermissionPermission { Name = GetPermissionPermissionName.Camera, Access = GetPermissionPermissionAccess.Access }));
+        TestAPICall("RequestPermission", () => AIT.RequestPermission(new RequestPermissionPermission { Name = RequestPermissionPermissionName.Camera, Access = RequestPermissionPermissionAccess.Access }));
+        TestAPICall("OpenPermissionDialog", () => AIT.OpenPermissionDialog(new OpenPermissionDialogPermission { Name = OpenPermissionDialogPermissionName.Camera, Access = OpenPermissionDialogPermissionAccess.Access }));
 
         // Location APIs
         TestAPICall("GetCurrentLocation", () => AIT.GetCurrentLocation(new GetCurrentLocationOptions { Accuracy = Accuracy.Balanced }));
 
         // Device APIs (SDK 타입 필드명 사용)
         TestAPICall("GenerateHapticFeedback", () => AIT.GenerateHapticFeedback(new HapticFeedbackOptions { Type = HapticFeedbackType.Tap }));
-        TestAPICall("SetDeviceOrientation", () => AIT.SetDeviceOrientation(new SetDeviceOrientationOptions { Type = "portrait" }));
+        TestAPICall("SetDeviceOrientation", () => AIT.SetDeviceOrientation(new SetDeviceOrientationOptions { Type = SetDeviceOrientationOptionsType.Portrait }));
         TestAPICall("SetIosSwipeGestureEnabled", () => AIT.SetIosSwipeGestureEnabled(new SetIosSwipeGestureEnabledOptions { IsEnabled = true }));
         TestAPICall("SetScreenAwakeMode", () => AIT.SetScreenAwakeMode(new SetScreenAwakeModeOptions { Enabled = true }));
         TestAPICall("SetSecureScreen", () => AIT.SetSecureScreen(new SetSecureScreenOptions { Enabled = true }));

@@ -655,7 +655,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<NetworkStatus>(callbackId, out var enumCb_NetworkStatus) && enumCb_NetworkStatus != null)
                         {
-                            // enum은 JsonUtility가 파싱 불가. Enum.TryParse 사용
+                            // enum 파싱: 문자열에서 따옴표 제거 후 Enum.TryParse
                             var enumStr_NetworkStatus = apiResponse.data.Trim().Trim('"');
                             if (Enum.TryParse<NetworkStatus>(enumStr_NetworkStatus, true, out var enumVal_NetworkStatus))
                             {
@@ -664,6 +664,11 @@ namespace AppsInToss
                             else
                             {
                                 Debug.LogWarning("[AITCore] Failed to parse enum NetworkStatus: " + enumStr_NetworkStatus);
+                                // 파싱 실패 시 에러 콜백 호출하여 Task 완료
+                                if (TryGetErrorCallback(callbackId, out var parseErrCb_NetworkStatus) && parseErrCb_NetworkStatus != null)
+                                {
+                                    parseErrCb_NetworkStatus(new AITException("NetworkStatus", "Failed to parse enum value: " + enumStr_NetworkStatus));
+                                }
                             }
                         }
                     }
@@ -680,7 +685,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<PermissionStatus>(callbackId, out var enumCb_PermissionStatus) && enumCb_PermissionStatus != null)
                         {
-                            // enum은 JsonUtility가 파싱 불가. Enum.TryParse 사용
+                            // enum 파싱: 문자열에서 따옴표 제거 후 Enum.TryParse
                             var enumStr_PermissionStatus = apiResponse.data.Trim().Trim('"');
                             if (Enum.TryParse<PermissionStatus>(enumStr_PermissionStatus, true, out var enumVal_PermissionStatus))
                             {
@@ -689,6 +694,11 @@ namespace AppsInToss
                             else
                             {
                                 Debug.LogWarning("[AITCore] Failed to parse enum PermissionStatus: " + enumStr_PermissionStatus);
+                                // 파싱 실패 시 에러 콜백 호출하여 Task 완료
+                                if (TryGetErrorCallback(callbackId, out var parseErrCb_PermissionStatus) && parseErrCb_PermissionStatus != null)
+                                {
+                                    parseErrCb_PermissionStatus(new AITException("PermissionStatus", "Failed to parse enum value: " + enumStr_PermissionStatus));
+                                }
                             }
                         }
                     }
@@ -705,11 +715,11 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<string>(callbackId, out var stringCallback) && stringCallback != null)
                         {
-                            // string은 JsonUtility가 파싱 불가. data가 JSON 문자열이면 따옴표 제거
+                            // JSON 문자열에서 실제 문자열 추출 (따옴표 제거)
                             var stringData = apiResponse.data;
-                            if (stringData.StartsWith("\"") && stringData.EndsWith("\""))
+                            if (stringData.StartsWith("\"") && stringData.EndsWith("\"") && stringData.Length >= 2)
                             {
-                                stringData = stringData.Substring(1, stringData.Length - 2);
+                                stringData = JsonConvert.DeserializeObject<string>(stringData);
                             }
                             stringCallback(stringData);
                         }
@@ -727,8 +737,9 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<bool>(callbackId, out var boolCallback) && boolCallback != null)
                         {
-                            // bool은 JsonUtility가 파싱 불가. 직접 파싱
-                            var boolData = apiResponse.data.Trim().ToLower() == "true";
+                            // JSON에서 bool 파싱
+                            var boolStr = apiResponse.data.Trim().ToLower();
+                            var boolData = boolStr == "true";
                             boolCallback(boolData);
                         }
                     }
@@ -745,11 +756,9 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<double>(callbackId, out var doubleCallback) && doubleCallback != null)
                         {
-                            // double은 JsonUtility가 파싱 불가. 직접 파싱
-                            if (double.TryParse(apiResponse.data, out var doubleData))
-                            {
-                                doubleCallback(doubleData);
-                            }
+                            // JSON에서 double 파싱
+                            double.TryParse(apiResponse.data.Trim(), out var doubleData);
+                            doubleCallback(doubleData);
                         }
                     }
                     else

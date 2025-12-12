@@ -7,6 +7,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Reflection;
+using System.Runtime.Serialization;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 using UnityEngine;
@@ -15,10 +17,66 @@ using UnityEngine.Scripting;
 namespace AppsInToss
 {
     /// <summary>
+    /// Custom enum converter that handles both string and numeric enums:
+    /// - Enums with [EnumMember] attributes: serialize as string (using EnumMember value)
+    /// - Enums without [EnumMember] attributes: serialize as number (for numeric enums like Accuracy)
+    /// </summary>
+    public class SmartEnumConverter : JsonConverter
+    {
+        private readonly StringEnumConverter _stringConverter = new StringEnumConverter();
+
+        public override bool CanConvert(Type objectType)
+        {
+            Type type = Nullable.GetUnderlyingType(objectType) ?? objectType;
+            return type.IsEnum;
+        }
+
+        public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer)
+        {
+            if (value == null)
+            {
+                writer.WriteNull();
+                return;
+            }
+
+            Type enumType = value.GetType();
+
+            // Check if any member has EnumMember attribute
+            bool hasEnumMember = false;
+            foreach (var field in enumType.GetFields(BindingFlags.Public | BindingFlags.Static))
+            {
+                if (field.GetCustomAttribute<EnumMemberAttribute>() != null)
+                {
+                    hasEnumMember = true;
+                    break;
+                }
+            }
+
+            if (hasEnumMember)
+            {
+                // String enum: use StringEnumConverter
+                _stringConverter.WriteJson(writer, value, serializer);
+            }
+            else
+            {
+                // Numeric enum: serialize as integer
+                writer.WriteValue(Convert.ToInt32(value));
+            }
+        }
+
+        public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer)
+        {
+            // Delegate to StringEnumConverter for reading (handles both cases)
+            return _stringConverter.ReadJson(reader, objectType, existingValue, serializer);
+        }
+    }
+
+    /// <summary>
     /// Shared JSON serialization settings for SDK.
-    /// Uses StringEnumConverter to serialize enums as strings (matching JavaScript API expectations).
-    /// Note: [JsonConverter(typeof(StringEnumConverter))] on enums causes IL2CPP infinite loop,
-    /// so we configure it globally here instead.
+    /// Uses SmartEnumConverter to serialize:
+    /// - String enums (with EnumMember): as strings matching JavaScript API expectations
+    /// - Numeric enums (without EnumMember): as integers matching JavaScript API expectations
+    /// Note: [JsonConverter] attribute on enums causes IL2CPP infinite loop, so we configure it globally here.
     /// </summary>
     public static class AITJsonSettings
     {
@@ -31,14 +89,14 @@ namespace AppsInToss
                 if (_settings == null)
                 {
                     _settings = new JsonSerializerSettings();
-                    _settings.Converters.Add(new StringEnumConverter());
+                    _settings.Converters.Add(new SmartEnumConverter());
                 }
                 return _settings;
             }
         }
 
         /// <summary>
-        /// Serialize object to JSON with enum-as-string support.
+        /// Serialize object to JSON with smart enum support.
         /// </summary>
         public static string Serialize(object obj)
         {

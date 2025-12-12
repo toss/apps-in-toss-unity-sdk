@@ -853,17 +853,11 @@ namespace AppsInToss
 
     public enum Accuracy
     {
-        [EnumMember(Value = "1")]
         Lowest = 1,
-        [EnumMember(Value = "2")]
         Low = 2,
-        [EnumMember(Value = "3")]
         Balanced = 3,
-        [EnumMember(Value = "4")]
         High = 4,
-        [EnumMember(Value = "5")]
         Highest = 5,
-        [EnumMember(Value = "6")]
         BestForNavigation = 6
     }
 

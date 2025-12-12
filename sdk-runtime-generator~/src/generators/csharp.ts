@@ -804,7 +804,8 @@ export class CSharpTypeGenerator {
     const enumMembers = typeDef.enumValues
       .map(value => {
         if (isNumericEnum) {
-          // 숫자 enum: 명시적 값 할당 + EnumMember로 숫자 값 직렬화 지원
+          // 숫자 enum: EnumMember 없이 명시적 값 할당
+          // StringEnumConverter가 적용되지 않아 숫자로 직렬화됨
           const item = typeof value === 'object' && value !== null && 'name' in value
             ? value as { name: string; value: number }
             : { name: value as string, value: 0 };
@@ -815,8 +816,7 @@ export class CSharpTypeGenerator {
             memberName = `_${memberName}`;
           }
           const pascalValue = memberName.charAt(0).toUpperCase() + memberName.slice(1);
-          // EnumMember로 숫자 값을 문자열로 직렬화 (StringEnumConverter와 호환)
-          return `        [EnumMember(Value = "${item.value}")]\n        ${pascalValue} = ${item.value}`;
+          return `        ${pascalValue} = ${item.value}`;
         } else {
           // 문자열 enum: EnumMember 어트리뷰트 사용
           const originalValue = value as string;

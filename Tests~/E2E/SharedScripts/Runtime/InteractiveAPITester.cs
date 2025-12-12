@@ -58,7 +58,6 @@ public class InteractiveAPITester : MonoBehaviour
     // Safe Area (AIT API)
     private SafeAreaInsetsGetResult cachedSafeAreaInsets = null;
     private bool safeAreaLoaded = false;
-    private bool safeAreaLoadAttempted = false;  // API 호출 시도 여부
 
     // 파라미터 입력 상태 (fieldPath -> value)
     private Dictionary<string, string> stringInputs = new Dictionary<string, string>();
@@ -161,7 +160,6 @@ public class InteractiveAPITester : MonoBehaviour
     /// </summary>
     private async Task LoadSafeAreaInsets()
     {
-        safeAreaLoadAttempted = true;
         try
         {
             cachedSafeAreaInsets = await AIT.SafeAreaInsetsGet();
@@ -389,84 +387,6 @@ public class InteractiveAPITester : MonoBehaviour
 
         GUILayout.EndVertical();
         GUILayout.EndArea();
-
-        // Safe Area 디버그 표시 (테스트용)
-        DrawSafeAreaDebug();
-    }
-
-    /// <summary>
-    /// Safe Area 경계를 시각적으로 표시 (디버그용)
-    /// </summary>
-    private void DrawSafeAreaDebug()
-    {
-        Rect guiSafeRect = GetSafeAreaRect();
-
-        // 로딩 상태 표시
-        string status;
-        if (!safeAreaLoadAttempted)
-        {
-            status = "Loading...";
-        }
-        else if (safeAreaLoaded)
-        {
-            status = "AIT API";
-        }
-        else
-        {
-            status = "Unity (fallback)";
-        }
-
-        // 디버그 정보 표시 (Safe Area 내부 하단에 표시)
-        GUIStyle debugStyle = new GUIStyle(GUI.skin.label);
-        debugStyle.fontSize = 12;
-        debugStyle.normal.textColor = Color.yellow;
-        debugStyle.alignment = TextAnchor.LowerLeft;
-
-        // 배경 스타일
-        GUIStyle bgStyle = new GUIStyle();
-        bgStyle.normal.background = MakeTex(2, 2, new Color(0, 0, 0, 0.7f));
-
-        string debugInfo = $"[SafeArea Debug] {status}\n" +
-            $"Screen: {Screen.width}x{Screen.height}\n" +
-            $"SafeRect: ({guiSafeRect.x:F0}, {guiSafeRect.y:F0}, {guiSafeRect.width:F0}, {guiSafeRect.height:F0})";
-
-        if (safeAreaLoaded && cachedSafeAreaInsets != null)
-        {
-            debugInfo += $"\nInsets: T={cachedSafeAreaInsets.Top:F0} B={cachedSafeAreaInsets.Bottom:F0} L={cachedSafeAreaInsets.Left:F0} R={cachedSafeAreaInsets.Right:F0}";
-        }
-        else
-        {
-            Rect safeArea = Screen.safeArea;
-            debugInfo += $"\nUnity.safeArea: ({safeArea.x:F0}, {safeArea.y:F0}, {safeArea.width:F0}, {safeArea.height:F0})";
-        }
-
-        // Safe Area 내부 하단에 표시 (노치에 가려지지 않음)
-        float debugHeight = 80;
-        float debugY = guiSafeRect.y + guiSafeRect.height - debugHeight - 10;
-        Rect debugRect = new Rect(guiSafeRect.x + 5, debugY, guiSafeRect.width - 10, debugHeight);
-
-        GUI.Box(debugRect, "", bgStyle);
-        GUI.Label(debugRect, debugInfo, debugStyle);
-
-        // Safe Area 경계선 표시 (빨간색)
-        DrawRectOutline(guiSafeRect, Color.red, 2);
-    }
-
-    /// <summary>
-    /// Rect의 외곽선을 그립니다
-    /// </summary>
-    private void DrawRectOutline(Rect rect, Color color, float thickness)
-    {
-        Texture2D tex = MakeTex(1, 1, color);
-
-        // 상단
-        GUI.DrawTexture(new Rect(rect.x, rect.y, rect.width, thickness), tex);
-        // 하단
-        GUI.DrawTexture(new Rect(rect.x, rect.y + rect.height - thickness, rect.width, thickness), tex);
-        // 좌측
-        GUI.DrawTexture(new Rect(rect.x, rect.y, thickness, rect.height), tex);
-        // 우측
-        GUI.DrawTexture(new Rect(rect.x + rect.width - thickness, rect.y, thickness, rect.height), tex);
     }
 
     private void InitializeStyles()

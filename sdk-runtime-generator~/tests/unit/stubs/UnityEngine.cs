@@ -34,3 +34,27 @@ namespace UnityEngine
         public static void LogError(object message) { }
     }
 }
+
+namespace UnityEngine.Scripting
+{
+    /// <summary>
+    /// Prevents Unity's bytecode stripping from removing types, methods, etc.
+    /// </summary>
+    [AttributeUsage(
+        AttributeTargets.Assembly |
+        AttributeTargets.Class |
+        AttributeTargets.Struct |
+        AttributeTargets.Enum |
+        AttributeTargets.Constructor |
+        AttributeTargets.Method |
+        AttributeTargets.Property |
+        AttributeTargets.Field |
+        AttributeTargets.Event |
+        AttributeTargets.Interface |
+        AttributeTargets.Delegate,
+        Inherited = false)]
+    public class PreserveAttribute : Attribute
+    {
+        public PreserveAttribute() { }
+    }
+}

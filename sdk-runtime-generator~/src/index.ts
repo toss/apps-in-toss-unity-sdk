@@ -10,6 +10,7 @@ import { validateAllTypes } from './validators/types.js';
 import { validateCompleteness, printSummary } from './validators/completeness.js';
 import { CSharpGenerator, CSharpTypeGenerator } from './generators/csharp.js';
 import { JSLibGenerator } from './generators/jslib.js';
+import { typeCheckBridgeCode, printTypeCheckResult, cleanupCache } from './generators/jslib-compiler.js';
 import { formatCommand } from './commands/format.js';
 
 const program = new Command();
@@ -358,11 +359,29 @@ namespace AppsInToss
       typeFileFooter;
     console.log(picocolors.green(`✓ AIT.Types.cs (${typeDefinitions.length}개 타입 정의)`));
 
-    // jslib 파일들 생성
-    const jslibFiles = await jslibGenerator.generate(apis, options.tag);
+    // jslib 파일들 생성 (TypeScript 포함)
+    const jslibResult = await jslibGenerator.generateWithTypescript(apis, options.tag);
+    const jslibFiles = jslibResult.jslibFiles;
     console.log(picocolors.green(`✓ ${jslibFiles.size}개 jslib 파일`));
 
-    // 7. 완전성 검증
+    // 8. jslib TypeScript 타입 검사
+    console.log(picocolors.cyan('\n🔍 jslib TypeScript 타입 검사 중...'));
+    const cacheDir = path.join(process.cwd(), '.cache', 'jslib-typecheck');
+    const typeCheckResult = await typeCheckBridgeCode(jslibResult.typescriptFiles, cacheDir);
+
+    if (!typeCheckResult.success) {
+      printTypeCheckResult(typeCheckResult);
+      console.error(picocolors.red('\n❌ jslib TypeScript 타입 검사 실패\n'));
+      console.error(picocolors.yellow('타입 오류를 수정하세요. web-framework API와의 타입 불일치가 있을 수 있습니다.'));
+      console.error(picocolors.gray(`디버깅용 TypeScript 파일: ${cacheDir}`));
+      // 에러 시 캐시를 보존하여 디버깅 가능하도록 함
+      process.exit(1);
+    }
+    console.log(picocolors.green(`✓ TypeScript 타입 검사 통과 (${typeCheckResult.checkedFiles.length}개 파일)`));
+    console.log(picocolors.gray(`  (검사 파일 보기: ${cacheDir})`));
+    // 성공 시에도 캐시 보존 (디버깅/검토용)
+
+    // 9. 완전성 검증
     console.log(picocolors.cyan('\n🔍 API 완전성 검증 중...'));
     const completenessValidation = validateCompleteness(apis, generatedCodes);
     if (!completenessValidation.success) {

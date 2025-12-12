@@ -70,6 +70,48 @@ jobs:
           echo "Reported pending status for commit $SHA"
 
   # =====================================================
+  # SDK Generator Unit Tests
+  # =====================================================
+  sdk-generator-tests:
+    name: SDK Generator Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install Mono (for C# compilation tests)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mono-mcs
+          mcs --version
+
+      - name: Install Dependencies
+        working-directory: sdk-runtime-generator~
+        run: pnpm install
+
+      - name: Run Unit Tests (Tier 1 - C# compilation)
+        working-directory: sdk-runtime-generator~/tests/unit
+        run: npm run test:tier1
+
+      - name: Run Unit Tests (Tier 2 - C#/jslib invariants)
+        working-directory: sdk-runtime-generator~/tests/unit
+        run: npm run test:tier2
+
+  # =====================================================
   # E2E Tests - macOS
   # =====================================================
   e2e-test-macos:
@@ -517,7 +559,7 @@ jobs:
   test-report:
     name: Test Report Summary
     runs-on: ubuntu-latest
-    needs: [e2e-test-macos, e2e-test-windows]
+    needs: [sdk-generator-tests, e2e-test-macos, e2e-test-windows]
     if: always()
 
     steps:
@@ -599,25 +641,26 @@ jobs:
   report-status:
     name: Report Status to PR
     runs-on: ubuntu-latest
-    needs: [e2e-test-macos, e2e-test-windows]
+    needs: [sdk-generator-tests, e2e-test-macos, e2e-test-windows]
     if: always() && inputs.ref != ''
 
     steps:
       - name: Determine Status
         id: status
         run: |
+          SDK_RESULT="${{ needs.sdk-generator-tests.result }}"
           MACOS_RESULT="${{ needs.e2e-test-macos.result }}"
           WINDOWS_RESULT="${{ needs.e2e-test-windows.result }}"
 
-          if [ "$MACOS_RESULT" = "success" ] && [ "$WINDOWS_RESULT" = "success" ]; then
+          if [ "$SDK_RESULT" = "success" ] && [ "$MACOS_RESULT" = "success" ] && [ "$WINDOWS_RESULT" = "success" ]; then
             echo "state=success" >> $GITHUB_OUTPUT
-            echo "description=E2E tests passed (macOS + Windows)" >> $GITHUB_OUTPUT
-          elif [ "$MACOS_RESULT" = "cancelled" ] || [ "$WINDOWS_RESULT" = "cancelled" ]; then
+            echo "description=All tests passed (SDK + E2E)" >> $GITHUB_OUTPUT
+          elif [ "$SDK_RESULT" = "cancelled" ] || [ "$MACOS_RESULT" = "cancelled" ] || [ "$WINDOWS_RESULT" = "cancelled" ]; then
             echo "state=error" >> $GITHUB_OUTPUT
-            echo "description=E2E tests cancelled" >> $GITHUB_OUTPUT
+            echo "description=Tests cancelled" >> $GITHUB_OUTPUT
           else
             echo "state=failure" >> $GITHUB_OUTPUT
-            echo "description=E2E tests failed (macOS: $MACOS_RESULT, Windows: $WINDOWS_RESULT)" >> $GITHUB_OUTPUT
+            echo "description=Tests failed (SDK: $SDK_RESULT, macOS: $MACOS_RESULT, Windows: $WINDOWS_RESULT)" >> $GITHUB_OUTPUT
           fi
 
       - name: Get Commit SHA

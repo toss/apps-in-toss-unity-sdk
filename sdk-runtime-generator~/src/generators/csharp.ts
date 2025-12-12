@@ -737,29 +737,50 @@ export class CSharpTypeGenerator {
 
   /**
    * enum 정의 생성
-   * - EnumMember 어트리뷰트로 원본 값(camelCase) 지정
-   * - JsonConverter(StringEnumConverter)로 문자열 직렬화
+   * - 숫자 enum: 명시적 값 할당 (Accuracy = 1, 2, 3...)
+   * - 문자열 enum: EnumMember 어트리뷰트로 원본 값(camelCase) 지정
    */
   private generateEnum(typeDef: ParsedTypeDefinition): string {
     if (!typeDef.enumValues || typeDef.enumValues.length === 0) {
       return '';
     }
 
+    // 숫자 enum인지 확인 (하나라도 { name, value } 형태면 숫자 enum)
+    const isNumericEnum = typeDef.enumValues.some(
+      v => typeof v === 'object' && v !== null && 'value' in v
+    );
+
     const enumMembers = typeDef.enumValues
       .map(value => {
-        const originalValue = value; // 원본 값 보존 (camelCase)
-        let memberName = value;
+        if (isNumericEnum) {
+          // 숫자 enum: 명시적 값 할당
+          const item = typeof value === 'object' && value !== null && 'name' in value
+            ? value as { name: string; value: number }
+            : { name: value as string, value: 0 };
 
-        // 숫자로 시작하는 경우 언더스코어 추가 (C# 식별자 규칙)
-        if (/^\d/.test(memberName)) {
-          memberName = `_${memberName}`;
+          let memberName = item.name;
+          // 숫자로 시작하는 경우 언더스코어 추가
+          if (/^\d/.test(memberName)) {
+            memberName = `_${memberName}`;
+          }
+          const pascalValue = memberName.charAt(0).toUpperCase() + memberName.slice(1);
+          return `        ${pascalValue} = ${item.value}`;
+        } else {
+          // 문자열 enum: EnumMember 어트리뷰트 사용
+          const originalValue = value as string;
+          let memberName = originalValue;
+
+          // 숫자로 시작하는 경우 언더스코어 추가 (C# 식별자 규칙)
+          if (/^\d/.test(memberName)) {
+            memberName = `_${memberName}`;
+          }
+
+          // camelCase를 PascalCase로 변환
+          const pascalValue = memberName.charAt(0).toUpperCase() + memberName.slice(1);
+
+          // EnumMember 어트리뷰트로 원본 값 지정 (JSON 직렬화 시 사용)
+          return `        [EnumMember(Value = "${originalValue}")]\n        ${pascalValue}`;
         }
-
-        // camelCase를 PascalCase로 변환
-        const pascalValue = memberName.charAt(0).toUpperCase() + memberName.slice(1);
-
-        // EnumMember 어트리뷰트로 원본 값 지정 (JSON 직렬화 시 사용)
-        return `        [EnumMember(Value = "${originalValue}")]\n        ${pascalValue}`;
       })
       .join(',\n');
 

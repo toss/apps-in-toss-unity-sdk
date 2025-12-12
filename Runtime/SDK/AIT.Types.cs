@@ -744,18 +744,12 @@ namespace AppsInToss
 
     public enum Accuracy
     {
-        [EnumMember(Value = "Lowest")]
-        Lowest,
-        [EnumMember(Value = "Low")]
-        Low,
-        [EnumMember(Value = "Balanced")]
-        Balanced,
-        [EnumMember(Value = "High")]
-        High,
-        [EnumMember(Value = "Highest")]
-        Highest,
-        [EnumMember(Value = "BestForNavigation")]
-        BestForNavigation
+        Lowest = 1,
+        Low = 2,
+        Balanced = 3,
+        High = 4,
+        Highest = 5,
+        BestForNavigation = 6
     }
 
     [Serializable]

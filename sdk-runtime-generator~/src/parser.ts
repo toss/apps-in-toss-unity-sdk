@@ -956,7 +956,17 @@ export class TypeScriptParser {
           const name = enumDecl.getName();
           const members = enumDecl.getMembers();
           const enumValues = members.map(member => {
-            return member.getName();
+            const memberName = member.getName();
+            const initializer = member.getInitializer();
+            // 숫자 초기화 값이 있으면 { name, value } 형태로 반환
+            if (initializer) {
+              const initText = initializer.getText();
+              const numValue = Number(initText);
+              if (!isNaN(numValue)) {
+                return { name: memberName, value: numValue };
+              }
+            }
+            return memberName;
           });
 
           // JSDoc에서 description 추출

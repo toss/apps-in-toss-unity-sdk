@@ -62,6 +62,8 @@ namespace AppsInToss.Editor
             GUILayout.Space(10);
             DrawWebGLOptimizationSettings();
             GUILayout.Space(10);
+            DrawPermissionSettings();
+            GUILayout.Space(10);
             DrawAdvancedSettings();
             GUILayout.Space(10);
             DrawDeploymentSettings();
@@ -531,6 +533,99 @@ namespace AppsInToss.Editor
             }
 
             EditorGUILayout.EndHorizontal();
+        }
+
+        private void DrawPermissionSettings()
+        {
+            EditorGUILayout.LabelField("권한 설정", EditorStyles.boldLabel);
+            EditorGUILayout.BeginVertical("box");
+
+            EditorGUILayout.HelpBox(
+                "앱에서 사용할 권한을 선택하세요.\n" +
+                "선택한 권한은 granite.config.ts의 permissions에 반영됩니다.",
+                MessageType.Info
+            );
+
+            GUILayout.Space(5);
+
+            // 권한이 null인 경우 초기화
+            if (config.permissionConfig == null)
+            {
+                config.permissionConfig = new AITPermissionConfig();
+            }
+
+            // Clipboard 섹션
+            EditorGUILayout.LabelField("Clipboard", EditorStyles.boldLabel);
+            EditorGUI.indentLevel++;
+            config.permissionConfig.clipboardRead = EditorGUILayout.Toggle(
+                new GUIContent("읽기 (Read)", "클립보드 내용 읽기 권한"),
+                config.permissionConfig.clipboardRead
+            );
+            config.permissionConfig.clipboardWrite = EditorGUILayout.Toggle(
+                new GUIContent("쓰기 (Write)", "클립보드에 내용 쓰기 권한"),
+                config.permissionConfig.clipboardWrite
+            );
+            EditorGUI.indentLevel--;
+
+            GUILayout.Space(5);
+
+            // Contacts 섹션
+            EditorGUILayout.LabelField("Contacts", EditorStyles.boldLabel);
+            EditorGUI.indentLevel++;
+            config.permissionConfig.contacts = EditorGUILayout.Toggle(
+                new GUIContent("읽기 (Read)", "연락처 읽기 권한 (read만 지원)"),
+                config.permissionConfig.contacts
+            );
+            EditorGUI.indentLevel--;
+
+            GUILayout.Space(5);
+
+            // Photos 섹션
+            EditorGUILayout.LabelField("Photos", EditorStyles.boldLabel);
+            EditorGUI.indentLevel++;
+            config.permissionConfig.photos = EditorGUILayout.Toggle(
+                new GUIContent("읽기 (Read)", "사진 앨범 읽기 권한 (read만 지원)"),
+                config.permissionConfig.photos
+            );
+            EditorGUI.indentLevel--;
+
+            GUILayout.Space(5);
+
+            // Camera 섹션
+            EditorGUILayout.LabelField("Camera", EditorStyles.boldLabel);
+            EditorGUI.indentLevel++;
+            config.permissionConfig.camera = EditorGUILayout.Toggle(
+                new GUIContent("접근 (Access)", "카메라 접근 권한 (access만 지원)"),
+                config.permissionConfig.camera
+            );
+            EditorGUI.indentLevel--;
+
+            GUILayout.Space(5);
+
+            // Geolocation 섹션
+            EditorGUILayout.LabelField("Geolocation", EditorStyles.boldLabel);
+            EditorGUI.indentLevel++;
+            config.permissionConfig.geolocation = EditorGUILayout.Toggle(
+                new GUIContent("접근 (Access)", "위치 정보 접근 권한 (access만 지원)"),
+                config.permissionConfig.geolocation
+            );
+            EditorGUI.indentLevel--;
+
+            GUILayout.Space(10);
+
+            // 현재 권한 설정 미리보기
+            string permissionsJson = config.GetPermissionsJson();
+            if (permissionsJson != "[]")
+            {
+                EditorGUILayout.LabelField("적용될 권한:", EditorStyles.boldLabel);
+                EditorGUILayout.HelpBox(permissionsJson, MessageType.None);
+            }
+            else
+            {
+                EditorGUILayout.HelpBox("선택된 권한이 없습니다.", MessageType.Warning);
+            }
+
+            EditorGUILayout.EndVertical();
         }
 
         private void DrawAdvancedSettings()

@@ -194,7 +194,7 @@ export function mapToCSharpType(type: ParsedType): string {
         // raw 필드에서 실제 타입 이름 추출 시도 (import("...").TypeName 형식)
         // 단, raw가 '{'로 시작하면 인라인 객체이므로 스킵
         if (type.raw && type.raw.includes('.') && !type.raw.trim().startsWith('{')) {
-          const rawTypeName = type.raw.split('.').pop()?.replace(/["'{}(),;\s$<>|]/g, '').trim();
+          const rawTypeName = type.raw.split('.').pop()?.replace(/["'{}(),;\s<>|]/g, '').replace(/\$\d+$/, '').trim();
           if (rawTypeName && rawTypeName !== '__type' && !rawTypeName.startsWith('{')) {
             return rawTypeName;
           }
@@ -205,11 +205,21 @@ export function mapToCSharpType(type: ParsedType): string {
       return cleanName;
 
     case 'union':
-      // Union 타입이 named type이면 (import 경로 포함) 타입 이름 추출 - 최우선
+      // Named union type이면 이름 그대로 반환 (enum으로 생성됨)
+      // 예: PermissionName, PermissionAccess, HapticFeedbackType 등
+      if (type.name && !type.name.includes('|') && !type.name.includes('"') && !type.name.includes("'")) {
+        // 특수 문자 제거 후 $1, $2 등의 접미사도 제거
+        const cleanName = type.name.replace(/["'{}()|,;\s<>]/g, '').replace(/\$\d+$/, '').trim();
+        if (cleanName && cleanName !== '__type' && !cleanName.startsWith('{')) {
+          return cleanName;
+        }
+      }
+
+      // Union 타입이 import 경로를 포함하면 타입 이름 추출
       // 예: import("...").GameCenterGameProfileResponse -> GameCenterGameProfileResponse
       if (type.name && (type.name.includes('.') || type.name.includes('import('))) {
         const typeName = type.name.split('.').pop() || type.name;
-        const cleanName = typeName.replace(/["'{}()|,;\s$<>]/g, '').trim();
+        const cleanName = typeName.replace(/["'{}()|,;\s<>]/g, '').replace(/\$\d+$/, '').trim();
 
         if (cleanName && cleanName !== '__type') {
           return cleanName;

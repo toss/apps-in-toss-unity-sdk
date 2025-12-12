@@ -12,6 +12,7 @@ mergeInto(LibraryManager.library, {
         var typeNameStr = UTF8ToString(typeName);
 
         console.log('[AIT jslib] grantPromotionRewardForGame called, callbackId:', callback);
+        console.log('[AIT jslib] grantPromotionRewardForGame raw param options:', UTF8ToString(options));
 
         try {
             var promiseResult = window.AppsInToss.grantPromotionRewardForGame(JSON.parse(UTF8ToString(options)));

@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Text;
+// Note: Newtonsoft.Json 타입 사용 금지 - IL2CPP 무한루프 유발
+// using Newtonsoft.Json;
 using UnityEngine;
 using AppsInToss;
 
@@ -157,7 +159,8 @@ public static class APIParameterInspector
         {
             var field = fields[i];
             var value = field.GetValue(obj);
-            sb.Append($"{indentStr}  {field.Name}: ");
+            // camelCase로 표시 (SDK JSON 형식과 일관성 유지)
+            sb.Append($"{indentStr}  {ToCamelCase(field.Name)}: ");
             FormatObjectRecursive(value, sb, indent + 1, maxDepth);
             if (i < fields.Length - 1) sb.Append(",");
             sb.AppendLine();
@@ -171,7 +174,10 @@ public static class APIParameterInspector
     public static readonly string[] CategoryOrder = {
         "Authentication",
         "Payment",
+        "IAP",
+        "Advertising",
         "SystemInfo",
+        "Environment",
         "Location",
         "Permission",
         "GameCenter",
@@ -183,6 +189,10 @@ public static class APIParameterInspector
         "Events",
         "Certificate",
         "Visibility",
+        "Storage",
+        "SafeArea",
+        "Partner",
+        "AppEvents",
         "Other"
     };
 
@@ -198,6 +208,21 @@ public static class APIParameterInspector
         // Payment
         { "CheckoutPayment", "Payment" },
 
+        // IAP (In-App Purchase)
+        { "IAPCreateOneTimePurchaseOrder", "IAP" },
+        { "IAPGetProductItemList", "IAP" },
+        { "IAPGetPendingOrders", "IAP" },
+        { "IAPGetCompletedOrRefundedOrders", "IAP" },
+        { "IAPCompleteProductGrant", "IAP" },
+
+        // Advertising (Google AdMob)
+        { "GoogleAdMobLoadAdMobInterstitialAd", "Advertising" },
+        { "GoogleAdMobShowAdMobInterstitialAd", "Advertising" },
+        { "GoogleAdMobLoadAdMobRewardedAd", "Advertising" },
+        { "GoogleAdMobShowAdMobRewardedAd", "Advertising" },
+        { "GoogleAdMobLoadAppsInTossAdMob", "Advertising" },
+        { "GoogleAdMobShowAppsInTossAdMob", "Advertising" },
+
         // SystemInfo
         { "GetDeviceId", "SystemInfo" },
         { "GetLocale", "SystemInfo" },
@@ -206,6 +231,11 @@ public static class APIParameterInspector
         { "GetPlatformOS", "SystemInfo" },
         { "GetSchemeUri", "SystemInfo" },
         { "GetTossAppVersion", "SystemInfo" },
+
+        // Environment
+        { "GetAppsInTossGlobals", "Environment" },
+        { "IsMinVersionSupported", "Environment" },
+        { "envGetDeploymentId", "Environment" },
 
         // Location
         { "GetCurrentLocation", "Location" },
@@ -256,7 +286,26 @@ public static class APIParameterInspector
         { "AppsInTossSignTossCert", "Certificate" },
 
         // Visibility
-        { "OnVisibilityChange", "Visibility" },
+        { "OnVisibilityChangedByTransparentServiceWeb", "Visibility" },
+
+        // Storage
+        { "StorageGetItem", "Storage" },
+        { "StorageSetItem", "Storage" },
+        { "StorageRemoveItem", "Storage" },
+        { "StorageClearItems", "Storage" },
+
+        // SafeArea
+        { "SafeAreaInsetsGet", "SafeArea" },
+        { "SafeAreaInsetsSubscribe", "SafeArea" },
+
+        // Partner
+        { "partnerAddAccessoryButton", "Partner" },
+        { "partnerRemoveAccessoryButton", "Partner" },
+
+        // AppEvents
+        { "AppsInTossEventSubscribeEntryMessageExited", "AppEvents" },
+        { "GraniteEventSubscribeBackEvent", "AppEvents" },
+        { "TdsEventSubscribeNavigationAccessoryEvent", "AppEvents" },
     };
 
     /// <summary>
@@ -345,8 +394,9 @@ public static class APIParameterInspector
             // 특수 메서드 제외 (get_, set_, add_, remove_ 등)
             if (method.IsSpecialName) continue;
 
-            // Task 또는 Task<T> 반환 타입만 포함
-            if (!method.ReturnType.Name.StartsWith("Task")) continue;
+            // Task, Task<T>, 또는 Action 반환 타입만 포함 (일반 void 메서드 제외)
+            var returnTypeName = method.ReturnType.Name;
+            if (!returnTypeName.StartsWith("Task") && !returnTypeName.StartsWith("Action")) continue;
 
             // 카테고리 추출 (APICategoryAttribute에서)
             string category = "Other";
@@ -496,7 +546,157 @@ public static class APIParameterInspector
     }
 
     /// <summary>
+    /// 객체를 수동으로 JSON 직렬화 (StringEnumConverter 사용 회피 - IL2CPP 무한루프 방지)
+    /// </summary>
+    private static string SerializeObjectManually(object obj, int indent)
+    {
+        if (obj == null)
+            return "null";
+
+        Type type = obj.GetType();
+        string indentStr = new string(' ', indent * 2);
+        string nextIndentStr = new string(' ', (indent + 1) * 2);
+
+        // 디버그 로깅 (최상위 호출만)
+        if (indent == 0)
+        {
+            Debug.Log($"[SerializeObjectManually] Type: {type.FullName}, IsEnum: {type.IsEnum}, IsArray: {type.IsArray}, IsClass: {type.IsClass}");
+        }
+
+        // 단순 타입
+        if (type == typeof(string))
+            return $"\"{EscapeJsonString((string)obj)}\"";
+        if (type == typeof(bool))
+            return obj.ToString().ToLower();
+        if (type.IsPrimitive || type == typeof(decimal) || type == typeof(double) || type == typeof(float))
+            return obj.ToString();
+
+        // Enum은 문자열로
+        if (type.IsEnum)
+            return $"\"{obj}\"";
+
+        // 배열
+        if (type.IsArray)
+        {
+            var array = (Array)obj;
+            if (array.Length == 0)
+                return "[]";
+
+            var sb = new StringBuilder();
+            sb.AppendLine("[");
+            for (int i = 0; i < array.Length; i++)
+            {
+                sb.Append(nextIndentStr);
+                sb.Append(SerializeObjectManually(array.GetValue(i), indent + 1));
+                if (i < array.Length - 1)
+                    sb.Append(",");
+                sb.AppendLine();
+            }
+            sb.Append(indentStr);
+            sb.Append("]");
+            return sb.ToString();
+        }
+
+        // 복합 객체
+        var fields = GetPublicFields(type);
+        if (indent == 0)
+        {
+            Debug.Log($"[SerializeObjectManually] Fields count: {fields.Length}");
+            foreach (var f in fields)
+            {
+                Debug.Log($"[SerializeObjectManually]   Field: {f.Name} ({f.FieldType.Name})");
+            }
+        }
+        if (fields.Length == 0)
+        {
+            // IL2CPP에서 리플렉션 메타데이터가 스트리핑됨
+            // Unity의 JsonUtility를 폴백으로 사용 ([Serializable] 타입은 작동함)
+            try
+            {
+                var json = JsonUtility.ToJson(obj, true);
+                if (!string.IsNullOrEmpty(json) && json != "{}")
+                {
+                    return json;
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[SerializeObjectManually] JsonUtility fallback failed: {ex.Message}");
+            }
+            // 최종 폴백: ToString
+            return $"\"{obj}\"";
+        }
+
+        var objSb = new StringBuilder();
+        objSb.AppendLine("{");
+        int fieldCount = 0;
+        foreach (var field in fields)
+        {
+            // 콜백 필드 건너뛰기
+            if (IsCallbackField(field))
+                continue;
+
+            var value = field.GetValue(obj);
+
+            // 필드 이름을 camelCase로 변환 (JsonPropertyAttribute 사용 안함 - IL2CPP 무한루프 방지)
+            string fieldName = ToCamelCase(field.Name);
+
+            if (fieldCount > 0)
+                objSb.AppendLine(",");
+
+            objSb.Append(nextIndentStr);
+            objSb.Append($"\"{fieldName}\": ");
+            objSb.Append(SerializeObjectManually(value, indent + 1));
+            fieldCount++;
+        }
+        if (fieldCount > 0)
+            objSb.AppendLine();
+        else if (indent == 0)
+        {
+            // 필드가 있지만 모두 콜백 타입이어서 스킵됨 - JsonUtility 폴백
+            try
+            {
+                var json = JsonUtility.ToJson(obj, true);
+                if (!string.IsNullOrEmpty(json) && json != "{}")
+                {
+                    return json;
+                }
+            }
+            catch { }
+            return $"\"{obj}\"";
+        }
+        objSb.Append(indentStr);
+        objSb.Append("}");
+        return objSb.ToString();
+    }
+
+    /// <summary>
+    /// PascalCase를 camelCase로 변환 (첫 글자만 소문자로)
+    /// </summary>
+    private static string ToCamelCase(string str)
+    {
+        if (string.IsNullOrEmpty(str) || char.IsLower(str[0]))
+            return str;
+        return char.ToLower(str[0]) + str.Substring(1);
+    }
+
+    /// <summary>
+    /// JSON 문자열 이스케이프
+    /// </summary>
+    private static string EscapeJsonString(string str)
+    {
+        if (string.IsNullOrEmpty(str))
+            return str;
+        return str.Replace("\\", "\\\\")
+                  .Replace("\"", "\\\"")
+                  .Replace("\n", "\\n")
+                  .Replace("\r", "\\r")
+                  .Replace("\t", "\\t");
+    }
+
+    /// <summary>
     /// 객체를 JSON 문자열로 변환
+    /// StringEnumConverter 사용 회피 (IL2CPP 무한루프 방지)
     /// </summary>
     public static string SerializeToJson(object obj)
     {
@@ -506,16 +706,20 @@ public static class APIParameterInspector
         Type type = obj.GetType();
 
         if (type == typeof(string))
-            return (string)obj;
+            return $"\"{obj}\"";
         if (type.IsPrimitive || type == typeof(decimal) || type == typeof(double) || type == typeof(float))
             return obj.ToString();
         if (type == typeof(bool))
             return obj.ToString().ToLower();
 
-        // 복잡한 객체는 JsonUtility로 직렬화
+        // Enum은 문자열로 변환
+        if (type.IsEnum)
+            return $"\"{obj}\"";
+
+        // 복잡한 객체는 수동으로 JSON 직렬화 (StringEnumConverter는 IL2CPP 무한루프 유발)
         try
         {
-            return JsonUtility.ToJson(obj, true);
+            return SerializeObjectManually(obj, 0);
         }
         catch (Exception ex)
         {

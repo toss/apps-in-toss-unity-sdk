@@ -12,6 +12,7 @@ mergeInto(LibraryManager.library, {
         var typeNameStr = UTF8ToString(typeName);
 
         console.log('[AIT jslib] openURL called, callbackId:', callback);
+        console.log('[AIT jslib] openURL raw param url:', UTF8ToString(url));
 
         try {
             var promiseResult = window.AppsInToss.openURL(UTF8ToString(url));

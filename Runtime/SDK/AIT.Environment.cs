@@ -8,6 +8,7 @@
 using System;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
+using UnityEngine.Scripting;
 
 namespace AppsInToss
 {
@@ -17,6 +18,7 @@ namespace AppsInToss
     public static partial class AIT
     {
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
         [APICategory("Environment")]
         public static async Task<AppsInTossGlobals> GetAppsInTossGlobals()
         {
@@ -43,6 +45,7 @@ namespace AppsInToss
         /// <param name="minVersions">플랫폼별 최소 버전 요구사항을 지정하는 객체예요.</param>
         /// <returns>현재 앱 버전이 최소 버전 이상이면 true, 그렇지 않으면 false를 반환해요.</returns>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
         [APICategory("Environment")]
         public static async Task<bool> IsMinVersionSupported(IsMinVersionSupportedMinVersions minVersions)
         {
@@ -52,7 +55,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __isMinVersionSupported_Internal(JsonConvert.SerializeObject(minVersions), callbackId, "bool");
+            __isMinVersionSupported_Internal(AITJsonSettings.Serialize(minVersions), callbackId, "bool");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation

@@ -8,6 +8,7 @@
 using System;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
+using UnityEngine.Scripting;
 
 namespace AppsInToss
 {
@@ -17,6 +18,7 @@ namespace AppsInToss
     public static partial class AIT
     {
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
         [APICategory("Media")]
         public static async Task<ImageResponse[]> FetchAlbumPhotos(FetchAlbumPhotosOptions options)
         {
@@ -26,7 +28,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __fetchAlbumPhotos_Internal(JsonConvert.SerializeObject(options), callbackId, "ImageResponse[]");
+            __fetchAlbumPhotos_Internal(AITJsonSettings.Serialize(options), callbackId, "ImageResponse[]");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation
@@ -41,6 +43,7 @@ namespace AppsInToss
         private static extern void __fetchAlbumPhotos_Internal(string options, string callbackId, string typeName);
 #endif
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
         [APICategory("Media")]
         public static async Task<ImageResponse> OpenCamera(OpenCameraOptions options)
         {
@@ -50,7 +53,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __openCamera_Internal(JsonConvert.SerializeObject(options), callbackId, "ImageResponse");
+            __openCamera_Internal(AITJsonSettings.Serialize(options), callbackId, "ImageResponse");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation
@@ -66,6 +69,7 @@ namespace AppsInToss
 #endif
         /// <param name="paramsParam">저장할 데이터와 파일 정보를 담은 객체예요.</param>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
         [APICategory("Media")]
         public static async Task SaveBase64Data(SaveBase64DataParams paramsParam)
         {
@@ -75,7 +79,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(true),
                 error => tcs.TrySetException(error)
             );
-            __saveBase64Data_Internal(JsonConvert.SerializeObject(paramsParam), callbackId, "void");
+            __saveBase64Data_Internal(AITJsonSettings.Serialize(paramsParam), callbackId, "void");
             await tcs.Task;
 #else
             // Unity Editor mock implementation

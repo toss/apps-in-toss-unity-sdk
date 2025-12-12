@@ -12,6 +12,7 @@ mergeInto(LibraryManager.library, {
         var typeNameStr = UTF8ToString(typeName);
 
         console.log('[AIT jslib] saveBase64Data called, callbackId:', callback);
+        console.log('[AIT jslib] saveBase64Data raw param params:', UTF8ToString(params));
 
         try {
             var promiseResult = window.AppsInToss.saveBase64Data(JSON.parse(UTF8ToString(params)));

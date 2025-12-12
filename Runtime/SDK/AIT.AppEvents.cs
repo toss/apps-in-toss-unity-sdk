@@ -8,6 +8,7 @@
 using System;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
+using UnityEngine.Scripting;
 
 namespace AppsInToss
 {
@@ -22,6 +23,7 @@ namespace AppsInToss
         /// <param name="onEvent">Event callback when the event is triggered</param>
         /// <param name="onError">Error callback (optional)</param>
         /// <returns>Action to call for unsubscribing from the event</returns>
+        [Preserve]
         [APICategory("AppEvents")]
         public static Action AppsInTossEventSubscribeEntryMessageExited(
             Action onEvent,
@@ -51,6 +53,7 @@ namespace AppsInToss
         /// <param name="onEvent">Event callback when the event is triggered</param>
         /// <param name="onError">Error callback (optional)</param>
         /// <returns>Action to call for unsubscribing from the event</returns>
+        [Preserve]
         [APICategory("AppEvents")]
         public static Action GraniteEventSubscribeBackEvent(
             Action onEvent,
@@ -80,6 +83,7 @@ namespace AppsInToss
         /// <param name="onEvent">Event callback when the event is triggered</param>
         /// <param name="onError">Error callback (optional)</param>
         /// <returns>Action to call for unsubscribing from the event</returns>
+        [Preserve]
         [APICategory("AppEvents")]
         public static Action TdsEventSubscribeNavigationAccessoryEvent(
             Action<TdsNavigationAccessoryEventData> onEvent,

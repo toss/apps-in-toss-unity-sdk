@@ -8,6 +8,7 @@
 using System;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
+using UnityEngine.Scripting;
 
 namespace AppsInToss
 {
@@ -17,6 +18,7 @@ namespace AppsInToss
     public static partial class AIT
     {
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
         [APICategory("Visibility")]
         public static async Task<System.Action> OnVisibilityChangedByTransparentServiceWeb(System.Action eventParams)
         {
@@ -26,7 +28,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __onVisibilityChangedByTransparentServiceWeb_Internal(JsonConvert.SerializeObject(eventParams), callbackId, "System.Action");
+            __onVisibilityChangedByTransparentServiceWeb_Internal(AITJsonSettings.Serialize(eventParams), callbackId, "System.Action");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation

@@ -8,6 +8,7 @@
 using System;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
+using UnityEngine.Scripting;
 
 namespace AppsInToss
 {
@@ -17,6 +18,7 @@ namespace AppsInToss
     public static partial class AIT
     {
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
         [APICategory("Authentication")]
         public static async Task<AppLoginResult> AppLogin()
         {
@@ -42,6 +44,7 @@ namespace AppsInToss
 #endif
         /// <returns>토스 로그인이 연동된 유저인지 여부를 반환해요. true: 토스 로그인이 연동된 유저에요. false: 토스 로그인이 연동되지 않은 유저에요. undefined: 앱 버전이 최소 지원 버전보다 낮아요.</returns>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
         [APICategory("Authentication")]
         public static async Task<bool> GetIsTossLoginIntegratedService()
         {

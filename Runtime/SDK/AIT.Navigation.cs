@@ -8,6 +8,7 @@
 using System;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
+using UnityEngine.Scripting;
 
 namespace AppsInToss
 {
@@ -17,6 +18,7 @@ namespace AppsInToss
     public static partial class AIT
     {
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
         [APICategory("Navigation")]
         public static async Task CloseView()
         {
@@ -43,6 +45,7 @@ namespace AppsInToss
         /// <param name="url">열고자 하는 URL 주소</param>
         /// <returns>URL이 성공적으로 열렸을 때 해결되는 Promise</returns>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
         [APICategory("Navigation")]
         public static async Task OpenURL(string url)
         {

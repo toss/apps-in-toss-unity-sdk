@@ -8,6 +8,7 @@
 using System;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
+using UnityEngine.Scripting;
 
 namespace AppsInToss
 {
@@ -17,6 +18,7 @@ namespace AppsInToss
     public static partial class AIT
     {
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
         [APICategory("Device")]
         public static async Task GenerateHapticFeedback(HapticFeedbackOptions options)
         {
@@ -26,7 +28,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(true),
                 error => tcs.TrySetException(error)
             );
-            __generateHapticFeedback_Internal(JsonConvert.SerializeObject(options), callbackId, "void");
+            __generateHapticFeedback_Internal(AITJsonSettings.Serialize(options), callbackId, "void");
             await tcs.Task;
 #else
             // Unity Editor mock implementation
@@ -43,6 +45,7 @@ namespace AppsInToss
         /// <param name="options">화면 방향 설정 값이에요.</param>
         /// <returns>화면 방향 설정이 완료되면 해결되는 Promise를 반환해요.</returns>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
         [APICategory("Device")]
         public static async Task SetDeviceOrientation(SetDeviceOrientationOptions options)
         {
@@ -52,7 +55,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(true),
                 error => tcs.TrySetException(error)
             );
-            __setDeviceOrientation_Internal(JsonConvert.SerializeObject(options), callbackId, "void");
+            __setDeviceOrientation_Internal(AITJsonSettings.Serialize(options), callbackId, "void");
             await tcs.Task;
 #else
             // Unity Editor mock implementation
@@ -68,6 +71,7 @@ namespace AppsInToss
 #endif
         /// <param name="options">스와이프하여 뒤로가기 기능을 활성화하거나 비활성화하는 옵션이에요.</param>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
         [APICategory("Device")]
         public static async Task SetIosSwipeGestureEnabled(SetIosSwipeGestureEnabledOptions options)
         {
@@ -77,7 +81,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(true),
                 error => tcs.TrySetException(error)
             );
-            __setIosSwipeGestureEnabled_Internal(JsonConvert.SerializeObject(options), callbackId, "void");
+            __setIosSwipeGestureEnabled_Internal(AITJsonSettings.Serialize(options), callbackId, "void");
             await tcs.Task;
 #else
             // Unity Editor mock implementation
@@ -94,6 +98,7 @@ namespace AppsInToss
         /// <param name="options">화면 항상 켜짐 모드의 설정 값이에요.</param>
         /// <returns>현재 화면 항상 켜짐 모드의 설정 상태를 반환해요.</returns>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
         [APICategory("Device")]
         public static async Task<SetScreenAwakeModeResult> SetScreenAwakeMode(SetScreenAwakeModeOptions options)
         {
@@ -103,7 +108,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __setScreenAwakeMode_Internal(JsonConvert.SerializeObject(options), callbackId, "SetScreenAwakeModeResult");
+            __setScreenAwakeMode_Internal(AITJsonSettings.Serialize(options), callbackId, "SetScreenAwakeModeResult");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation
@@ -120,6 +125,7 @@ namespace AppsInToss
         /// <param name="options">화면 캡쳐 설정 옵션이에요.</param>
         /// <returns>: boolean} 현재 설정된 캡쳐 차단 상태를 반환해요.</returns>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
         [APICategory("Device")]
         public static async Task<SetSecureScreenResult> SetSecureScreen(SetSecureScreenOptions options)
         {
@@ -129,7 +135,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __setSecureScreen_Internal(JsonConvert.SerializeObject(options), callbackId, "SetSecureScreenResult");
+            __setSecureScreen_Internal(AITJsonSettings.Serialize(options), callbackId, "SetSecureScreenResult");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation

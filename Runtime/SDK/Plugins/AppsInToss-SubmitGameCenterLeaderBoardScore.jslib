@@ -12,6 +12,7 @@ mergeInto(LibraryManager.library, {
         var typeNameStr = UTF8ToString(typeName);
 
         console.log('[AIT jslib] submitGameCenterLeaderBoardScore called, callbackId:', callback);
+        console.log('[AIT jslib] submitGameCenterLeaderBoardScore raw param params:', UTF8ToString(params));
 
         try {
             var promiseResult = window.AppsInToss.submitGameCenterLeaderBoardScore(JSON.parse(UTF8ToString(params)));

@@ -12,6 +12,7 @@ mergeInto(LibraryManager.library, {
         var typeNameStr = UTF8ToString(typeName);
 
         console.log('[AIT jslib] getTossShareLink called, callbackId:', callback);
+        console.log('[AIT jslib] getTossShareLink raw param path:', UTF8ToString(path));
 
         try {
             var promiseResult = window.AppsInToss.getTossShareLink(UTF8ToString(path));

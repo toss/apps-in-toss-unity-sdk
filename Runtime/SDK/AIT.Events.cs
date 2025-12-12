@@ -8,6 +8,7 @@
 using System;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
+using UnityEngine.Scripting;
 
 namespace AppsInToss
 {
@@ -19,6 +20,7 @@ namespace AppsInToss
         /// <param name="paramsParam">로그 기록에 필요한 매개변수 객체예요.</param>
         /// <returns>로그 기록이 완료되면 해결되는 Promise예요.</returns>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
         [APICategory("Events")]
         public static async Task EventLog(EventLogParams paramsParam)
         {
@@ -28,7 +30,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(true),
                 error => tcs.TrySetException(error)
             );
-            __eventLog_Internal(JsonConvert.SerializeObject(paramsParam), callbackId, "void");
+            __eventLog_Internal(AITJsonSettings.Serialize(paramsParam), callbackId, "void");
             await tcs.Task;
 #else
             // Unity Editor mock implementation

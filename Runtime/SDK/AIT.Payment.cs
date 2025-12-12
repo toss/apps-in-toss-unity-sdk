@@ -8,6 +8,7 @@
 using System;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
+using UnityEngine.Scripting;
 
 namespace AppsInToss
 {
@@ -19,6 +20,7 @@ namespace AppsInToss
         /// <param name="options">결제창을 띄울 때 필요한 옵션이에요.</param>
         /// <returns>인증 성공 여부를 포함한 결과를 반환해요.</returns>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
         [APICategory("Payment")]
         public static async Task<CheckoutPaymentResult> CheckoutPayment(CheckoutPaymentOptions options)
         {
@@ -28,7 +30,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __checkoutPayment_Internal(JsonConvert.SerializeObject(options), callbackId, "CheckoutPaymentResult");
+            __checkoutPayment_Internal(AITJsonSettings.Serialize(options), callbackId, "CheckoutPaymentResult");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation

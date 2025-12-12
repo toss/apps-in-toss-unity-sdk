@@ -8,6 +8,7 @@
 using System;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
+using UnityEngine.Scripting;
 
 namespace AppsInToss
 {
@@ -18,22 +19,23 @@ namespace AppsInToss
     {
         /// <returns>권한의 현재 상태를 반환해요. 반환값은 다음 중 하나예요: allowed: 권한이 허용된 상태예요. denied: 권한이 거부된 상태예요. notDetermined: 아직 권한 요청에 대한 결정이 이루어지지 않은 상태예요.</returns>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
         [APICategory("Permission")]
-        public static async Task<string> GetPermission(GetPermissionPermission permission)
+        public static async Task<PermissionStatus> GetPermission(GetPermissionPermission permission)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            var tcs = new TaskCompletionSource<string>();
-            string callbackId = AITCore.Instance.RegisterCallback<string>(
+            var tcs = new TaskCompletionSource<PermissionStatus>();
+            string callbackId = AITCore.Instance.RegisterCallback<PermissionStatus>(
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __getPermission_Internal(JsonConvert.SerializeObject(permission), callbackId, "string");
+            __getPermission_Internal(AITJsonSettings.Serialize(permission), callbackId, "PermissionStatus");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] GetPermission called");
             await Task.CompletedTask;
-            return "";
+            return default(PermissionStatus);
 #endif
         }
 
@@ -43,6 +45,7 @@ namespace AppsInToss
 #endif
         /// <returns>권한의 현재 상태를 반환해요. 반환값은 다음 중 하나예요: allowed: 권한이 허용된 상태예요. denied: 권한이 거부된 상태예요.</returns>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
         [APICategory("Permission")]
         public static async Task<string> OpenPermissionDialog(OpenPermissionDialogPermission permission)
         {
@@ -52,7 +55,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __openPermissionDialog_Internal(JsonConvert.SerializeObject(permission), callbackId, "string");
+            __openPermissionDialog_Internal(AITJsonSettings.Serialize(permission), callbackId, "string");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation
@@ -68,6 +71,7 @@ namespace AppsInToss
 #endif
         /// <returns>사용자가 선택한 최종 권한 상태를 반환해요. 반환값은 다음 중 하나예요: allowed: 권한이 허용된 경우 denied: 권한이 거부된 경우</returns>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
         [APICategory("Permission")]
         public static async Task<string> RequestPermission(RequestPermissionPermission permission)
         {
@@ -77,7 +81,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __requestPermission_Internal(JsonConvert.SerializeObject(permission), callbackId, "string");
+            __requestPermission_Internal(AITJsonSettings.Serialize(permission), callbackId, "string");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation

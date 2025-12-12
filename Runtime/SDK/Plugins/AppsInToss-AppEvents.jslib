@@ -22,7 +22,7 @@ mergeInto(LibraryManager.library, {
                         TypeName: typeNameStr,
                         Result: JSON.stringify({
                             success: true,
-                            data: 'null',
+                            data: null,
                             error: ''
                         })
                     });
@@ -81,7 +81,7 @@ mergeInto(LibraryManager.library, {
                         TypeName: typeNameStr,
                         Result: JSON.stringify({
                             success: true,
-                            data: 'null',
+                            data: null,
                             error: ''
                         })
                     });

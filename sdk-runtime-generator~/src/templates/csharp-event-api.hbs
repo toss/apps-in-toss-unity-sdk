@@ -7,6 +7,7 @@
         /// <param name="onEvent">Event callback when the event is triggered</param>
         /// <param name="onError">Error callback (optional)</param>
         /// <returns>Action to call for unsubscribing from the event</returns>
+        [Preserve]
         [APICategory("{{categoryName}}")]
 {{#if this.hasEventData}}
         public static Action {{this.pascalName}}(

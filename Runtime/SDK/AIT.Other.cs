@@ -8,6 +8,7 @@
 using System;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
+using UnityEngine.Scripting;
 
 namespace AppsInToss
 {
@@ -18,6 +19,7 @@ namespace AppsInToss
     {
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Obsolete("이 함수는 더 이상 사용되지 않습니다. 대신 {@link GoogleAdMob.loadAppsInTossAdMob}를 사용해주세요. *")]
+        [Preserve]
         [APICategory("Other")]
         public static async Task<System.Action> GoogleAdMobLoadAdMobInterstitialAd(System.Action args)
         {
@@ -27,7 +29,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __GoogleAdMobLoadAdMobInterstitialAd_Internal(JsonConvert.SerializeObject(args), callbackId, "System.Action");
+            __GoogleAdMobLoadAdMobInterstitialAd_Internal(AITJsonSettings.Serialize(args), callbackId, "System.Action");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation
@@ -43,6 +45,7 @@ namespace AppsInToss
 #endif
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Obsolete("이 함수는 더 이상 사용되지 않습니다. 대신 {@link GoogleAdMob.loadAppsInTossAdMob}를 사용해주세요. *")]
+        [Preserve]
         [APICategory("Other")]
         public static async Task<System.Action> GoogleAdMobShowAdMobInterstitialAd(System.Action args)
         {
@@ -52,7 +55,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __GoogleAdMobShowAdMobInterstitialAd_Internal(JsonConvert.SerializeObject(args), callbackId, "System.Action");
+            __GoogleAdMobShowAdMobInterstitialAd_Internal(AITJsonSettings.Serialize(args), callbackId, "System.Action");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation
@@ -68,6 +71,7 @@ namespace AppsInToss
 #endif
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Obsolete("이 함수는 더 이상 사용되지 않습니다. 대신 {@link GoogleAdMob.loadAppsInTossAdMob}를 사용해주세요. *")]
+        [Preserve]
         [APICategory("Other")]
         public static async Task<System.Action> GoogleAdMobLoadAdMobRewardedAd(System.Action args)
         {
@@ -77,7 +81,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __GoogleAdMobLoadAdMobRewardedAd_Internal(JsonConvert.SerializeObject(args), callbackId, "System.Action");
+            __GoogleAdMobLoadAdMobRewardedAd_Internal(AITJsonSettings.Serialize(args), callbackId, "System.Action");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation
@@ -93,6 +97,7 @@ namespace AppsInToss
 #endif
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Obsolete("이 함수는 더 이상 사용되지 않습니다. 대신 {@link GoogleAdMob.loadAppsInTossAdMob}를 사용해주세요. *")]
+        [Preserve]
         [APICategory("Other")]
         public static async Task<System.Action> GoogleAdMobShowAdMobRewardedAd(System.Action args)
         {
@@ -102,7 +107,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __GoogleAdMobShowAdMobRewardedAd_Internal(JsonConvert.SerializeObject(args), callbackId, "System.Action");
+            __GoogleAdMobShowAdMobRewardedAd_Internal(AITJsonSettings.Serialize(args), callbackId, "System.Action");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation
@@ -121,6 +126,7 @@ namespace AppsInToss
         /// </summary>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Obsolete("이 함수는 더 이상 사용되지 않습니다. 대신 {@link GoogleAdMob.loadAppsInTossAdMob}를 사용해주세요. *")]
+        [Preserve]
         [APICategory("Other")]
         public static async Task<System.Action> GoogleAdMobLoadAppsInTossAdMob(System.Action args)
         {
@@ -130,7 +136,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __GoogleAdMobLoadAppsInTossAdMob_Internal(JsonConvert.SerializeObject(args), callbackId, "System.Action");
+            __GoogleAdMobLoadAppsInTossAdMob_Internal(AITJsonSettings.Serialize(args), callbackId, "System.Action");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation
@@ -149,6 +155,7 @@ namespace AppsInToss
         /// </summary>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Obsolete("이 함수는 더 이상 사용되지 않습니다. 대신 {@link GoogleAdMob.loadAppsInTossAdMob}를 사용해주세요. *")]
+        [Preserve]
         [APICategory("Other")]
         public static async Task<System.Action> GoogleAdMobShowAppsInTossAdMob(System.Action args)
         {
@@ -158,7 +165,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __GoogleAdMobShowAppsInTossAdMob_Internal(JsonConvert.SerializeObject(args), callbackId, "System.Action");
+            __GoogleAdMobShowAppsInTossAdMob_Internal(AITJsonSettings.Serialize(args), callbackId, "System.Action");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation
@@ -176,6 +183,7 @@ namespace AppsInToss
         /// * 특정 인앱결제 주문서 페이지로 이동해요. 사용자가 상품 구매 버튼을 누르는 상황 등에 사용할 수 있어요. 사용자의 결제는 이동한 페이지에서 진행돼요. 만약 결제 중에 에러가 발생하면 에러 유형에 따라 에러 페이지로 이동해요.
         /// </summary>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
         [APICategory("Other")]
         public static async Task<System.Action> IAPCreateOneTimePurchaseOrder(IapCreateOneTimePurchaseOrderOptions paramsParam)
         {
@@ -185,7 +193,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __IAPCreateOneTimePurchaseOrder_Internal(JsonConvert.SerializeObject(paramsParam), callbackId, "System.Action");
+            __IAPCreateOneTimePurchaseOrder_Internal(AITJsonSettings.Serialize(paramsParam), callbackId, "System.Action");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation
@@ -203,6 +211,7 @@ namespace AppsInToss
         /// * 특정 인앱결제 주문서 페이지로 이동해요. 사용자가 상품 구매 버튼을 누르는 상황 등에 사용할 수 있어요. 사용자의 결제는 이동한 페이지에서 진행돼요. 만약 결제 중에 에러가 발생하면 에러 유형에 따라 에러 페이지로 이동해요.
         /// </summary>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
         [APICategory("Other")]
         public static async Task<IAPGetProductItemListResult> IAPGetProductItemList()
         {
@@ -230,6 +239,7 @@ namespace AppsInToss
         /// * 특정 인앱결제 주문서 페이지로 이동해요. 사용자가 상품 구매 버튼을 누르는 상황 등에 사용할 수 있어요. 사용자의 결제는 이동한 페이지에서 진행돼요. 만약 결제 중에 에러가 발생하면 에러 유형에 따라 에러 페이지로 이동해요.
         /// </summary>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
         [APICategory("Other")]
         public static async Task<IAPGetPendingOrdersResult> IAPGetPendingOrders()
         {
@@ -257,6 +267,7 @@ namespace AppsInToss
         /// * 특정 인앱결제 주문서 페이지로 이동해요. 사용자가 상품 구매 버튼을 누르는 상황 등에 사용할 수 있어요. 사용자의 결제는 이동한 페이지에서 진행돼요. 만약 결제 중에 에러가 발생하면 에러 유형에 따라 에러 페이지로 이동해요.
         /// </summary>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
         [APICategory("Other")]
         public static async Task<CompletedOrRefundedOrdersResult> IAPGetCompletedOrRefundedOrders()
         {
@@ -284,6 +295,7 @@ namespace AppsInToss
         /// * 특정 인앱결제 주문서 페이지로 이동해요. 사용자가 상품 구매 버튼을 누르는 상황 등에 사용할 수 있어요. 사용자의 결제는 이동한 페이지에서 진행돼요. 만약 결제 중에 에러가 발생하면 에러 유형에 따라 에러 페이지로 이동해요.
         /// </summary>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
         [APICategory("Other")]
         public static async Task<bool> IAPCompleteProductGrant(IAPCompleteProductGrantArgs_0 args_0)
         {
@@ -293,7 +305,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __IAPCompleteProductGrant_Internal(JsonConvert.SerializeObject(args_0), callbackId, "bool");
+            __IAPCompleteProductGrant_Internal(AITJsonSettings.Serialize(args_0), callbackId, "bool");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation
@@ -308,6 +320,7 @@ namespace AppsInToss
         private static extern void __IAPCompleteProductGrant_Internal(string args_0, string callbackId, string typeName);
 #endif
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
         [APICategory("Other")]
         public static async Task<SafeAreaInsetsGetResult> SafeAreaInsetsGet()
         {
@@ -332,6 +345,7 @@ namespace AppsInToss
         private static extern void __SafeAreaInsetsGet_Internal(string callbackId, string typeName);
 #endif
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
         [APICategory("Other")]
         public static async Task<System.Action> SafeAreaInsetsSubscribe(System.Action __0)
         {
@@ -341,7 +355,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __SafeAreaInsetsSubscribe_Internal(JsonConvert.SerializeObject(__0), callbackId, "System.Action");
+            __SafeAreaInsetsSubscribe_Internal(AITJsonSettings.Serialize(__0), callbackId, "System.Action");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation
@@ -359,6 +373,7 @@ namespace AppsInToss
         /// 모바일 앱의 로컬 저장소에서 문자열 데이터를 가져와요. 주로 앱이 종료되었다가 다시 시작해도 데이터가 유지되어야 하는 경우에 사용해요.
         /// </summary>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
         [APICategory("Other")]
         public static async Task<string> StorageGetItem(string args_0)
         {
@@ -386,6 +401,7 @@ namespace AppsInToss
         /// 모바일 앱의 로컬 저장소에서 문자열 데이터를 가져와요. 주로 앱이 종료되었다가 다시 시작해도 데이터가 유지되어야 하는 경우에 사용해요.
         /// </summary>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
         [APICategory("Other")]
         public static async Task StorageSetItem(string args_0, string args_1)
         {
@@ -413,6 +429,7 @@ namespace AppsInToss
         /// 모바일 앱의 로컬 저장소에서 문자열 데이터를 가져와요. 주로 앱이 종료되었다가 다시 시작해도 데이터가 유지되어야 하는 경우에 사용해요.
         /// </summary>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
         [APICategory("Other")]
         public static async Task StorageRemoveItem(string args_0)
         {
@@ -440,6 +457,7 @@ namespace AppsInToss
         /// 모바일 앱의 로컬 저장소에서 문자열 데이터를 가져와요. 주로 앱이 종료되었다가 다시 시작해도 데이터가 유지되어야 하는 경우에 사용해요.
         /// </summary>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
         [APICategory("Other")]
         public static async Task StorageClearItems()
         {
@@ -464,6 +482,7 @@ namespace AppsInToss
         private static extern void __StorageClearItems_Internal(string callbackId, string typeName);
 #endif
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
         [APICategory("Other")]
         public static async Task<string> envGetDeploymentId()
         {
@@ -491,6 +510,7 @@ namespace AppsInToss
         /// 상단 네비게이션의 악세서리 버튼을 추가해요. callback에 대한 정의는 `tdsEvent.addEventListener("navigationAccessoryEvent", callback)`를 참고해주세요.
         /// </summary>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
         [APICategory("Other")]
         public static async Task partnerAddAccessoryButton(AddAccessoryButtonOptions args_0)
         {
@@ -500,7 +520,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(true),
                 error => tcs.TrySetException(error)
             );
-            __partnerAddAccessoryButton_Internal(JsonConvert.SerializeObject(args_0), callbackId, "void");
+            __partnerAddAccessoryButton_Internal(AITJsonSettings.Serialize(args_0), callbackId, "void");
             await tcs.Task;
 #else
             // Unity Editor mock implementation
@@ -518,6 +538,7 @@ namespace AppsInToss
         /// 상단 네비게이션의 악세서리 버튼을 추가해요. callback에 대한 정의는 `tdsEvent.addEventListener("navigationAccessoryEvent", callback)`를 참고해주세요.
         /// </summary>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
         [APICategory("Other")]
         public static async Task partnerRemoveAccessoryButton()
         {

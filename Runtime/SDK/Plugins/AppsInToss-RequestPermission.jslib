@@ -12,6 +12,7 @@ mergeInto(LibraryManager.library, {
         var typeNameStr = UTF8ToString(typeName);
 
         console.log('[AIT jslib] requestPermission called, callbackId:', callback);
+        console.log('[AIT jslib] requestPermission raw param permission:', UTF8ToString(permission));
 
         try {
             var promiseResult = window.AppsInToss.requestPermission(JSON.parse(UTF8ToString(permission)));

@@ -7,11 +7,103 @@
 
 using System;
 using System.Collections.Generic;
+using System.Reflection;
+using System.Runtime.Serialization;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Converters;
 using UnityEngine;
+using UnityEngine.Scripting;
 
 namespace AppsInToss
 {
+    /// <summary>
+    /// Custom enum converter that handles both string and numeric enums:
+    /// - Enums with [EnumMember] attributes: serialize as string (using EnumMember value)
+    /// - Enums without [EnumMember] attributes: serialize as number (for numeric enums like Accuracy)
+    /// </summary>
+    public class SmartEnumConverter : JsonConverter
+    {
+        private readonly StringEnumConverter _stringConverter = new StringEnumConverter();
+
+        public override bool CanConvert(Type objectType)
+        {
+            Type type = Nullable.GetUnderlyingType(objectType) ?? objectType;
+            return type.IsEnum;
+        }
+
+        public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer)
+        {
+            if (value == null)
+            {
+                writer.WriteNull();
+                return;
+            }
+
+            Type enumType = value.GetType();
+
+            // Check if any member has EnumMember attribute
+            bool hasEnumMember = false;
+            foreach (var field in enumType.GetFields(BindingFlags.Public | BindingFlags.Static))
+            {
+                if (field.GetCustomAttribute<EnumMemberAttribute>() != null)
+                {
+                    hasEnumMember = true;
+                    break;
+                }
+            }
+
+            if (hasEnumMember)
+            {
+                // String enum: use StringEnumConverter
+                _stringConverter.WriteJson(writer, value, serializer);
+            }
+            else
+            {
+                // Numeric enum: serialize as integer
+                writer.WriteValue(Convert.ToInt32(value));
+            }
+        }
+
+        public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer)
+        {
+            // Delegate to StringEnumConverter for reading (handles both cases)
+            return _stringConverter.ReadJson(reader, objectType, existingValue, serializer);
+        }
+    }
+
+    /// <summary>
+    /// Shared JSON serialization settings for SDK.
+    /// Uses SmartEnumConverter to serialize:
+    /// - String enums (with EnumMember): as strings matching JavaScript API expectations
+    /// - Numeric enums (without EnumMember): as integers matching JavaScript API expectations
+    /// Note: [JsonConverter] attribute on enums causes IL2CPP infinite loop, so we configure it globally here.
+    /// </summary>
+    public static class AITJsonSettings
+    {
+        private static JsonSerializerSettings _settings;
+
+        public static JsonSerializerSettings Default
+        {
+            get
+            {
+                if (_settings == null)
+                {
+                    _settings = new JsonSerializerSettings();
+                    _settings.Converters.Add(new SmartEnumConverter());
+                }
+                return _settings;
+            }
+        }
+
+        /// <summary>
+        /// Serialize object to JSON with smart enum support.
+        /// </summary>
+        public static string Serialize(object obj)
+        {
+            return JsonConvert.SerializeObject(obj, Default);
+        }
+    }
+
     /// <summary>
     /// Attribute to mark API methods with their category for grouping in UI.
     /// </summary>
@@ -86,10 +178,14 @@ namespace AppsInToss
     /// Uses explicit success/data/error format to avoid IL2CPP stripping issues.
     /// </summary>
     [Serializable]
+    [Preserve]
     public class APIResponse
     {
+        [Preserve]
         public bool success;
+        [Preserve]
         public string data = "";
+        [Preserve]
         public string error = "";
     }
 
@@ -340,12 +436,12 @@ namespace AppsInToss
                         }
                     }
                     break;
-                case "CheckoutPaymentResult":
+                case "AppsInTossGlobals":
                     if (apiResponse.success)
                     {
-                        if (TryGetCallback<CheckoutPaymentResult>(callbackId, out var callback1) && callback1 != null)
+                        if (TryGetCallback<AppsInTossGlobals>(callbackId, out var callback1) && callback1 != null)
                         {
-                            var data1 = JsonConvert.DeserializeObject<CheckoutPaymentResult>(apiResponse.data);
+                            var data1 = JsonConvert.DeserializeObject<AppsInTossGlobals>(apiResponse.data);
                             callback1(data1);
                         }
                     }
@@ -353,16 +449,16 @@ namespace AppsInToss
                     {
                         if (TryGetErrorCallback(callbackId, out var errorCallback1) && errorCallback1 != null)
                         {
-                            errorCallback1(new AITException("CheckoutPaymentResult", apiResponse.error));
+                            errorCallback1(new AITException("AppsInTossGlobals", apiResponse.error));
                         }
                     }
                     break;
-                case "CompletedOrRefundedOrdersResult":
+                case "CheckoutPaymentResult":
                     if (apiResponse.success)
                     {
-                        if (TryGetCallback<CompletedOrRefundedOrdersResult>(callbackId, out var callback2) && callback2 != null)
+                        if (TryGetCallback<CheckoutPaymentResult>(callbackId, out var callback2) && callback2 != null)
                         {
-                            var data2 = JsonConvert.DeserializeObject<CompletedOrRefundedOrdersResult>(apiResponse.data);
+                            var data2 = JsonConvert.DeserializeObject<CheckoutPaymentResult>(apiResponse.data);
                             callback2(data2);
                         }
                     }
@@ -370,16 +466,16 @@ namespace AppsInToss
                     {
                         if (TryGetErrorCallback(callbackId, out var errorCallback2) && errorCallback2 != null)
                         {
-                            errorCallback2(new AITException("CompletedOrRefundedOrdersResult", apiResponse.error));
+                            errorCallback2(new AITException("CheckoutPaymentResult", apiResponse.error));
                         }
                     }
                     break;
-                case "ContactResult":
+                case "CompletedOrRefundedOrdersResult":
                     if (apiResponse.success)
                     {
-                        if (TryGetCallback<ContactResult>(callbackId, out var callback3) && callback3 != null)
+                        if (TryGetCallback<CompletedOrRefundedOrdersResult>(callbackId, out var callback3) && callback3 != null)
                         {
-                            var data3 = JsonConvert.DeserializeObject<ContactResult>(apiResponse.data);
+                            var data3 = JsonConvert.DeserializeObject<CompletedOrRefundedOrdersResult>(apiResponse.data);
                             callback3(data3);
                         }
                     }
@@ -387,16 +483,16 @@ namespace AppsInToss
                     {
                         if (TryGetErrorCallback(callbackId, out var errorCallback3) && errorCallback3 != null)
                         {
-                            errorCallback3(new AITException("ContactResult", apiResponse.error));
+                            errorCallback3(new AITException("CompletedOrRefundedOrdersResult", apiResponse.error));
                         }
                     }
                     break;
-                case "GameCenterGameProfileResponse":
+                case "ContactResult":
                     if (apiResponse.success)
                     {
-                        if (TryGetCallback<GameCenterGameProfileResponse>(callbackId, out var callback4) && callback4 != null)
+                        if (TryGetCallback<ContactResult>(callbackId, out var callback4) && callback4 != null)
                         {
-                            var data4 = JsonConvert.DeserializeObject<GameCenterGameProfileResponse>(apiResponse.data);
+                            var data4 = JsonConvert.DeserializeObject<ContactResult>(apiResponse.data);
                             callback4(data4);
                         }
                     }
@@ -404,16 +500,16 @@ namespace AppsInToss
                     {
                         if (TryGetErrorCallback(callbackId, out var errorCallback4) && errorCallback4 != null)
                         {
-                            errorCallback4(new AITException("GameCenterGameProfileResponse", apiResponse.error));
+                            errorCallback4(new AITException("ContactResult", apiResponse.error));
                         }
                     }
                     break;
-                case "GetUserKeyForGameResult":
+                case "GameCenterGameProfileResponse":
                     if (apiResponse.success)
                     {
-                        if (TryGetCallback<GetUserKeyForGameResult>(callbackId, out var callback5) && callback5 != null)
+                        if (TryGetCallback<GameCenterGameProfileResponse>(callbackId, out var callback5) && callback5 != null)
                         {
-                            var data5 = JsonConvert.DeserializeObject<GetUserKeyForGameResult>(apiResponse.data);
+                            var data5 = JsonConvert.DeserializeObject<GameCenterGameProfileResponse>(apiResponse.data);
                             callback5(data5);
                         }
                     }
@@ -421,16 +517,16 @@ namespace AppsInToss
                     {
                         if (TryGetErrorCallback(callbackId, out var errorCallback5) && errorCallback5 != null)
                         {
-                            errorCallback5(new AITException("GetUserKeyForGameResult", apiResponse.error));
+                            errorCallback5(new AITException("GameCenterGameProfileResponse", apiResponse.error));
                         }
                     }
                     break;
-                case "GrantPromotionRewardForGameResult":
+                case "GetUserKeyForGameResult":
                     if (apiResponse.success)
                     {
-                        if (TryGetCallback<GrantPromotionRewardForGameResult>(callbackId, out var callback6) && callback6 != null)
+                        if (TryGetCallback<GetUserKeyForGameResult>(callbackId, out var callback6) && callback6 != null)
                         {
-                            var data6 = JsonConvert.DeserializeObject<GrantPromotionRewardForGameResult>(apiResponse.data);
+                            var data6 = JsonConvert.DeserializeObject<GetUserKeyForGameResult>(apiResponse.data);
                             callback6(data6);
                         }
                     }
@@ -438,16 +534,16 @@ namespace AppsInToss
                     {
                         if (TryGetErrorCallback(callbackId, out var errorCallback6) && errorCallback6 != null)
                         {
-                            errorCallback6(new AITException("GrantPromotionRewardForGameResult", apiResponse.error));
+                            errorCallback6(new AITException("GetUserKeyForGameResult", apiResponse.error));
                         }
                     }
                     break;
-                case "IAPGetPendingOrdersResult":
+                case "GrantPromotionRewardForGameResult":
                     if (apiResponse.success)
                     {
-                        if (TryGetCallback<IAPGetPendingOrdersResult>(callbackId, out var callback7) && callback7 != null)
+                        if (TryGetCallback<GrantPromotionRewardForGameResult>(callbackId, out var callback7) && callback7 != null)
                         {
-                            var data7 = JsonConvert.DeserializeObject<IAPGetPendingOrdersResult>(apiResponse.data);
+                            var data7 = JsonConvert.DeserializeObject<GrantPromotionRewardForGameResult>(apiResponse.data);
                             callback7(data7);
                         }
                     }
@@ -455,16 +551,16 @@ namespace AppsInToss
                     {
                         if (TryGetErrorCallback(callbackId, out var errorCallback7) && errorCallback7 != null)
                         {
-                            errorCallback7(new AITException("IAPGetPendingOrdersResult", apiResponse.error));
+                            errorCallback7(new AITException("GrantPromotionRewardForGameResult", apiResponse.error));
                         }
                     }
                     break;
-                case "IAPGetProductItemListResult":
+                case "IAPGetPendingOrdersResult":
                     if (apiResponse.success)
                     {
-                        if (TryGetCallback<IAPGetProductItemListResult>(callbackId, out var callback8) && callback8 != null)
+                        if (TryGetCallback<IAPGetPendingOrdersResult>(callbackId, out var callback8) && callback8 != null)
                         {
-                            var data8 = JsonConvert.DeserializeObject<IAPGetProductItemListResult>(apiResponse.data);
+                            var data8 = JsonConvert.DeserializeObject<IAPGetPendingOrdersResult>(apiResponse.data);
                             callback8(data8);
                         }
                     }
@@ -472,16 +568,16 @@ namespace AppsInToss
                     {
                         if (TryGetErrorCallback(callbackId, out var errorCallback8) && errorCallback8 != null)
                         {
-                            errorCallback8(new AITException("IAPGetProductItemListResult", apiResponse.error));
+                            errorCallback8(new AITException("IAPGetPendingOrdersResult", apiResponse.error));
                         }
                     }
                     break;
-                case "ImageResponse":
+                case "IAPGetProductItemListResult":
                     if (apiResponse.success)
                     {
-                        if (TryGetCallback<ImageResponse>(callbackId, out var callback9) && callback9 != null)
+                        if (TryGetCallback<IAPGetProductItemListResult>(callbackId, out var callback9) && callback9 != null)
                         {
-                            var data9 = JsonConvert.DeserializeObject<ImageResponse>(apiResponse.data);
+                            var data9 = JsonConvert.DeserializeObject<IAPGetProductItemListResult>(apiResponse.data);
                             callback9(data9);
                         }
                     }
@@ -489,16 +585,16 @@ namespace AppsInToss
                     {
                         if (TryGetErrorCallback(callbackId, out var errorCallback9) && errorCallback9 != null)
                         {
-                            errorCallback9(new AITException("ImageResponse", apiResponse.error));
+                            errorCallback9(new AITException("IAPGetProductItemListResult", apiResponse.error));
                         }
                     }
                     break;
-                case "ImageResponse[]":
+                case "ImageResponse":
                     if (apiResponse.success)
                     {
-                        if (TryGetCallback<ImageResponse[]>(callbackId, out var callback10) && callback10 != null)
+                        if (TryGetCallback<ImageResponse>(callbackId, out var callback10) && callback10 != null)
                         {
-                            var data10 = JsonConvert.DeserializeObject<ImageResponse[]>(apiResponse.data);
+                            var data10 = JsonConvert.DeserializeObject<ImageResponse>(apiResponse.data);
                             callback10(data10);
                         }
                     }
@@ -506,16 +602,16 @@ namespace AppsInToss
                     {
                         if (TryGetErrorCallback(callbackId, out var errorCallback10) && errorCallback10 != null)
                         {
-                            errorCallback10(new AITException("ImageResponse[]", apiResponse.error));
+                            errorCallback10(new AITException("ImageResponse", apiResponse.error));
                         }
                     }
                     break;
-                case "Location":
+                case "ImageResponse[]":
                     if (apiResponse.success)
                     {
-                        if (TryGetCallback<Location>(callbackId, out var callback11) && callback11 != null)
+                        if (TryGetCallback<ImageResponse[]>(callbackId, out var callback11) && callback11 != null)
                         {
-                            var data11 = JsonConvert.DeserializeObject<Location>(apiResponse.data);
+                            var data11 = JsonConvert.DeserializeObject<ImageResponse[]>(apiResponse.data);
                             callback11(data11);
                         }
                     }
@@ -523,16 +619,16 @@ namespace AppsInToss
                     {
                         if (TryGetErrorCallback(callbackId, out var errorCallback11) && errorCallback11 != null)
                         {
-                            errorCallback11(new AITException("Location", apiResponse.error));
+                            errorCallback11(new AITException("ImageResponse[]", apiResponse.error));
                         }
                     }
                     break;
-                case "SetScreenAwakeModeResult":
+                case "Location":
                     if (apiResponse.success)
                     {
-                        if (TryGetCallback<SetScreenAwakeModeResult>(callbackId, out var callback12) && callback12 != null)
+                        if (TryGetCallback<Location>(callbackId, out var callback12) && callback12 != null)
                         {
-                            var data12 = JsonConvert.DeserializeObject<SetScreenAwakeModeResult>(apiResponse.data);
+                            var data12 = JsonConvert.DeserializeObject<Location>(apiResponse.data);
                             callback12(data12);
                         }
                     }
@@ -540,16 +636,16 @@ namespace AppsInToss
                     {
                         if (TryGetErrorCallback(callbackId, out var errorCallback12) && errorCallback12 != null)
                         {
-                            errorCallback12(new AITException("SetScreenAwakeModeResult", apiResponse.error));
+                            errorCallback12(new AITException("Location", apiResponse.error));
                         }
                     }
                     break;
-                case "SetSecureScreenResult":
+                case "SafeAreaInsetsGetResult":
                     if (apiResponse.success)
                     {
-                        if (TryGetCallback<SetSecureScreenResult>(callbackId, out var callback13) && callback13 != null)
+                        if (TryGetCallback<SafeAreaInsetsGetResult>(callbackId, out var callback13) && callback13 != null)
                         {
-                            var data13 = JsonConvert.DeserializeObject<SetSecureScreenResult>(apiResponse.data);
+                            var data13 = JsonConvert.DeserializeObject<SafeAreaInsetsGetResult>(apiResponse.data);
                             callback13(data13);
                         }
                     }
@@ -557,16 +653,16 @@ namespace AppsInToss
                     {
                         if (TryGetErrorCallback(callbackId, out var errorCallback13) && errorCallback13 != null)
                         {
-                            errorCallback13(new AITException("SetSecureScreenResult", apiResponse.error));
+                            errorCallback13(new AITException("SafeAreaInsetsGetResult", apiResponse.error));
                         }
                     }
                     break;
-                case "SubmitGameCenterLeaderBoardScoreResponse":
+                case "SetScreenAwakeModeResult":
                     if (apiResponse.success)
                     {
-                        if (TryGetCallback<SubmitGameCenterLeaderBoardScoreResponse>(callbackId, out var callback14) && callback14 != null)
+                        if (TryGetCallback<SetScreenAwakeModeResult>(callbackId, out var callback14) && callback14 != null)
                         {
-                            var data14 = JsonConvert.DeserializeObject<SubmitGameCenterLeaderBoardScoreResponse>(apiResponse.data);
+                            var data14 = JsonConvert.DeserializeObject<SetScreenAwakeModeResult>(apiResponse.data);
                             callback14(data14);
                         }
                     }
@@ -574,7 +670,41 @@ namespace AppsInToss
                     {
                         if (TryGetErrorCallback(callbackId, out var errorCallback14) && errorCallback14 != null)
                         {
-                            errorCallback14(new AITException("SubmitGameCenterLeaderBoardScoreResponse", apiResponse.error));
+                            errorCallback14(new AITException("SetScreenAwakeModeResult", apiResponse.error));
+                        }
+                    }
+                    break;
+                case "SetSecureScreenResult":
+                    if (apiResponse.success)
+                    {
+                        if (TryGetCallback<SetSecureScreenResult>(callbackId, out var callback15) && callback15 != null)
+                        {
+                            var data15 = JsonConvert.DeserializeObject<SetSecureScreenResult>(apiResponse.data);
+                            callback15(data15);
+                        }
+                    }
+                    else
+                    {
+                        if (TryGetErrorCallback(callbackId, out var errorCallback15) && errorCallback15 != null)
+                        {
+                            errorCallback15(new AITException("SetSecureScreenResult", apiResponse.error));
+                        }
+                    }
+                    break;
+                case "SubmitGameCenterLeaderBoardScoreResponse":
+                    if (apiResponse.success)
+                    {
+                        if (TryGetCallback<SubmitGameCenterLeaderBoardScoreResponse>(callbackId, out var callback16) && callback16 != null)
+                        {
+                            var data16 = JsonConvert.DeserializeObject<SubmitGameCenterLeaderBoardScoreResponse>(apiResponse.data);
+                            callback16(data16);
+                        }
+                    }
+                    else
+                    {
+                        if (TryGetErrorCallback(callbackId, out var errorCallback16) && errorCallback16 != null)
+                        {
+                            errorCallback16(new AITException("SubmitGameCenterLeaderBoardScoreResponse", apiResponse.error));
                         }
                     }
                     break;
@@ -583,7 +713,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<NetworkStatus>(callbackId, out var enumCb_NetworkStatus) && enumCb_NetworkStatus != null)
                         {
-                            // enum은 JsonUtility가 파싱 불가. Enum.TryParse 사용
+                            // enum 파싱: 문자열에서 따옴표 제거 후 Enum.TryParse
                             var enumStr_NetworkStatus = apiResponse.data.Trim().Trim('"');
                             if (Enum.TryParse<NetworkStatus>(enumStr_NetworkStatus, true, out var enumVal_NetworkStatus))
                             {
@@ -592,6 +722,11 @@ namespace AppsInToss
                             else
                             {
                                 Debug.LogWarning("[AITCore] Failed to parse enum NetworkStatus: " + enumStr_NetworkStatus);
+                                // 파싱 실패 시 에러 콜백 호출하여 Task 완료
+                                if (TryGetErrorCallback(callbackId, out var parseErrCb_NetworkStatus) && parseErrCb_NetworkStatus != null)
+                                {
+                                    parseErrCb_NetworkStatus(new AITException("NetworkStatus", "Failed to parse enum value: " + enumStr_NetworkStatus));
+                                }
                             }
                         }
                     }
@@ -603,16 +738,46 @@ namespace AppsInToss
                         }
                     }
                     break;
+                case "PermissionStatus":
+                    if (apiResponse.success)
+                    {
+                        if (TryGetCallback<PermissionStatus>(callbackId, out var enumCb_PermissionStatus) && enumCb_PermissionStatus != null)
+                        {
+                            // enum 파싱: 문자열에서 따옴표 제거 후 Enum.TryParse
+                            var enumStr_PermissionStatus = apiResponse.data.Trim().Trim('"');
+                            if (Enum.TryParse<PermissionStatus>(enumStr_PermissionStatus, true, out var enumVal_PermissionStatus))
+                            {
+                                enumCb_PermissionStatus(enumVal_PermissionStatus);
+                            }
+                            else
+                            {
+                                Debug.LogWarning("[AITCore] Failed to parse enum PermissionStatus: " + enumStr_PermissionStatus);
+                                // 파싱 실패 시 에러 콜백 호출하여 Task 완료
+                                if (TryGetErrorCallback(callbackId, out var parseErrCb_PermissionStatus) && parseErrCb_PermissionStatus != null)
+                                {
+                                    parseErrCb_PermissionStatus(new AITException("PermissionStatus", "Failed to parse enum value: " + enumStr_PermissionStatus));
+                                }
+                            }
+                        }
+                    }
+                    else
+                    {
+                        if (TryGetErrorCallback(callbackId, out var enumErrCb_PermissionStatus) && enumErrCb_PermissionStatus != null)
+                        {
+                            enumErrCb_PermissionStatus(new AITException("PermissionStatus", apiResponse.error));
+                        }
+                    }
+                    break;
                 case "string":
                     if (apiResponse.success)
                     {
                         if (TryGetCallback<string>(callbackId, out var stringCallback) && stringCallback != null)
                         {
-                            // string은 JsonUtility가 파싱 불가. data가 JSON 문자열이면 따옴표 제거
+                            // JSON 문자열에서 실제 문자열 추출 (따옴표 제거)
                             var stringData = apiResponse.data;
-                            if (stringData.StartsWith("\"") && stringData.EndsWith("\""))
+                            if (stringData.StartsWith("\"") && stringData.EndsWith("\"") && stringData.Length >= 2)
                             {
-                                stringData = stringData.Substring(1, stringData.Length - 2);
+                                stringData = JsonConvert.DeserializeObject<string>(stringData);
                             }
                             stringCallback(stringData);
                         }
@@ -630,8 +795,9 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<bool>(callbackId, out var boolCallback) && boolCallback != null)
                         {
-                            // bool은 JsonUtility가 파싱 불가. 직접 파싱
-                            var boolData = apiResponse.data.Trim().ToLower() == "true";
+                            // JSON에서 bool 파싱
+                            var boolStr = apiResponse.data.Trim().ToLower();
+                            var boolData = boolStr == "true";
                             boolCallback(boolData);
                         }
                     }
@@ -648,11 +814,9 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<double>(callbackId, out var doubleCallback) && doubleCallback != null)
                         {
-                            // double은 JsonUtility가 파싱 불가. 직접 파싱
-                            if (double.TryParse(apiResponse.data, out var doubleData))
-                            {
-                                doubleCallback(doubleData);
-                            }
+                            // JSON에서 double 파싱
+                            double.TryParse(apiResponse.data.Trim(), out var doubleData);
+                            doubleCallback(doubleData);
                         }
                     }
                     else
@@ -691,10 +855,14 @@ namespace AppsInToss
     /// Callback payload from JavaScript
     /// </summary>
     [Serializable]
+    [Preserve]
     public class CallbackData
     {
+        [Preserve]
         public string CallbackId = "";
+        [Preserve]
         public string TypeName = "";
+        [Preserve]
         public string Result = "";
     }
 
@@ -706,8 +874,10 @@ namespace AppsInToss
     /// TdsEvent navigationAccessoryEvent 데이터
     /// </summary>
     [Serializable]
+    [Preserve]
     public class TdsNavigationAccessoryEventData
     {
+        [Preserve]
         [JsonProperty("id")]
         public string Id;
     }

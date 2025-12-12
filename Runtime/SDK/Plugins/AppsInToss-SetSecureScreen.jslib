@@ -12,6 +12,7 @@ mergeInto(LibraryManager.library, {
         var typeNameStr = UTF8ToString(typeName);
 
         console.log('[AIT jslib] setSecureScreen called, callbackId:', callback);
+        console.log('[AIT jslib] setSecureScreen raw param options:', UTF8ToString(options));
 
         try {
             var promiseResult = window.AppsInToss.setSecureScreen(JSON.parse(UTF8ToString(options)));

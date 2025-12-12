@@ -3,10 +3,19 @@
     /// Success: {{successTypeName}} | Error: {{errorCodes}}
     /// </summary>
     [Serializable]
+    [Preserve]
     public class {{resultClassName}}
     {
+        [Preserve]
+        [JsonProperty("_type")]
         public string _type;
-        public string _successJson;
+
+        [Preserve]
+        [JsonProperty("_successJson")]
+        public {{successTypeName}} _successData;
+
+        [Preserve]
+        [JsonProperty("_errorCode")]
         public string _errorCode;
 
         /// <summary>성공 여부를 나타냅니다.</summary>
@@ -19,7 +28,7 @@
         /// 성공 데이터를 가져옵니다.
         /// </summary>
         public {{successTypeName}} GetSuccess()
-            => IsSuccess ? JsonUtility.FromJson<{{successTypeName}}>(_successJson) : null;
+            => IsSuccess ? _successData : null;
 
         /// <summary>
         /// 에러 코드를 가져옵니다.

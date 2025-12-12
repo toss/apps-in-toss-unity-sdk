@@ -8,6 +8,7 @@
 using System;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
+using UnityEngine.Scripting;
 
 namespace AppsInToss
 {
@@ -17,6 +18,7 @@ namespace AppsInToss
     public static partial class AIT
     {
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
         [APICategory("Location")]
         public static async Task<Location> GetCurrentLocation(GetCurrentLocationOptions options)
         {
@@ -26,7 +28,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __getCurrentLocation_Internal(JsonConvert.SerializeObject(options), callbackId, "Location");
+            __getCurrentLocation_Internal(AITJsonSettings.Serialize(options), callbackId, "Location");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation
@@ -41,6 +43,7 @@ namespace AppsInToss
         private static extern void __getCurrentLocation_Internal(string options, string callbackId, string typeName);
 #endif
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
         [APICategory("Location")]
         public static async Task<System.Action> StartUpdateLocation(StartUpdateLocationEventParams eventParams)
         {
@@ -50,7 +53,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __startUpdateLocation_Internal(JsonConvert.SerializeObject(eventParams), callbackId, "System.Action");
+            __startUpdateLocation_Internal(AITJsonSettings.Serialize(eventParams), callbackId, "System.Action");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation

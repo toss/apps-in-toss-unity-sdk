@@ -12,6 +12,7 @@ mergeInto(LibraryManager.library, {
         var typeNameStr = UTF8ToString(typeName);
 
         console.log('[AIT jslib] share called, callbackId:', callback);
+        console.log('[AIT jslib] share raw param message:', UTF8ToString(message));
 
         try {
             var promiseResult = window.AppsInToss.share(JSON.parse(UTF8ToString(message)));

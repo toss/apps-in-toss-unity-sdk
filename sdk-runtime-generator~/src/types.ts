@@ -65,7 +65,15 @@ export interface ParsedProperty {
   type: ParsedType;
   optional: boolean;
   description?: string;
+  // Inline string literal union을 enum으로 변환할 때 사용
+  inlineEnumName?: string;    // 생성될 enum 이름 (예: SetDeviceOrientationType)
+  inlineEnumValues?: string[]; // enum 값들 (예: ["portrait", "landscape"])
 }
+
+/**
+ * Enum 멤버 값 (문자열 또는 숫자 값을 가진 객체)
+ */
+export type EnumValue = string | { name: string; value: number };
 
 /**
  * 파싱된 타입 정의 (enum, interface)
@@ -75,8 +83,8 @@ export interface ParsedTypeDefinition {
   kind: 'enum' | 'interface';
   file: string;
   description?: string;
-  // enum인 경우
-  enumValues?: string[];
+  // enum인 경우 (문자열 enum 또는 숫자 enum)
+  enumValues?: EnumValue[];
   // interface인 경우
   properties?: ParsedProperty[];
 }

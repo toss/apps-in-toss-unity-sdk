@@ -12,6 +12,7 @@ mergeInto(LibraryManager.library, {
         var typeNameStr = UTF8ToString(typeName);
 
         console.log('[AIT jslib] StorageGetItem called, callbackId:', callback);
+        console.log('[AIT jslib] StorageGetItem raw param args_0:', UTF8ToString(args_0));
 
         try {
             var promiseResult = window.AppsInToss.Storage.getItem(UTF8ToString(args_0));
@@ -65,6 +66,8 @@ mergeInto(LibraryManager.library, {
         var typeNameStr = UTF8ToString(typeName);
 
         console.log('[AIT jslib] StorageSetItem called, callbackId:', callback);
+        console.log('[AIT jslib] StorageSetItem raw param args_0:', UTF8ToString(args_0));
+        console.log('[AIT jslib] StorageSetItem raw param args_1:', UTF8ToString(args_1));
 
         try {
             var promiseResult = window.AppsInToss.Storage.setItem(UTF8ToString(args_0), UTF8ToString(args_1));
@@ -118,6 +121,7 @@ mergeInto(LibraryManager.library, {
         var typeNameStr = UTF8ToString(typeName);
 
         console.log('[AIT jslib] StorageRemoveItem called, callbackId:', callback);
+        console.log('[AIT jslib] StorageRemoveItem raw param args_0:', UTF8ToString(args_0));
 
         try {
             var promiseResult = window.AppsInToss.Storage.removeItem(UTF8ToString(args_0));
@@ -171,6 +175,7 @@ mergeInto(LibraryManager.library, {
         var typeNameStr = UTF8ToString(typeName);
 
         console.log('[AIT jslib] StorageClearItems called, callbackId:', callback);
+        console.log('[AIT jslib] StorageClearItems raw param args_0:', UTF8ToString(args_0));
 
         try {
             var promiseResult = window.AppsInToss.Storage.clearItems(args_0);

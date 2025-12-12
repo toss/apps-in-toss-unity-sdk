@@ -341,8 +341,10 @@ async function generate(options: {
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.Serialization;
 using Newtonsoft.Json;
 using UnityEngine;
+using UnityEngine.Scripting;
 
 namespace AppsInToss
 {

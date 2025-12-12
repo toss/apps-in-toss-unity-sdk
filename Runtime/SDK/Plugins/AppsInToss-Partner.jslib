@@ -12,6 +12,7 @@ mergeInto(LibraryManager.library, {
         var typeNameStr = UTF8ToString(typeName);
 
         console.log('[AIT jslib] partnerAddAccessoryButton called, callbackId:', callback);
+        console.log('[AIT jslib] partnerAddAccessoryButton raw param args_0:', UTF8ToString(args_0));
 
         try {
             var promiseResult = window.AppsInToss.partner.addAccessoryButton(JSON.parse(UTF8ToString(args_0)));

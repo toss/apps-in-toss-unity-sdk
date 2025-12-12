@@ -194,6 +194,7 @@ mergeInto(LibraryManager.library, {
         var typeNameStr = UTF8ToString(typeName);
 
         console.log('[AIT jslib] IAPCompleteProductGrant called, callbackId:', callback);
+        console.log('[AIT jslib] IAPCompleteProductGrant raw param args_0:', UTF8ToString(args_0));
 
         try {
             var promiseResult = window.AppsInToss.IAP.completeProductGrant(JSON.parse(UTF8ToString(args_0)));

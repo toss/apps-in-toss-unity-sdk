@@ -70,6 +70,37 @@ namespace AppsInToss
     }
 
     /// <summary>
+    /// 권한 설정 구성
+    /// 문서: https://developers-apps-in-toss.toss.im/bedrock/reference/framework/권한/permission.html
+    /// </summary>
+    [System.Serializable]
+    public class AITPermissionConfig
+    {
+        [Header("Clipboard")]
+        [Tooltip("클립보드 읽기 권한")]
+        public bool clipboardRead = false;
+
+        [Tooltip("클립보드 쓰기 권한")]
+        public bool clipboardWrite = false;
+
+        [Header("Contacts")]
+        [Tooltip("연락처 읽기 권한 (read only)")]
+        public bool contacts = false;
+
+        [Header("Photos")]
+        [Tooltip("사진 앨범 읽기 권한 (read only)")]
+        public bool photos = false;
+
+        [Header("Camera")]
+        [Tooltip("카메라 접근 권한 (access only)")]
+        public bool camera = false;
+
+        [Header("Geolocation")]
+        [Tooltip("위치 정보 접근 권한 (access only)")]
+        public bool geolocation = false;
+    }
+
+    /// <summary>
     /// Apps in Toss Editor 설정 오브젝트
     /// </summary>
     [System.Serializable]
@@ -161,7 +192,7 @@ namespace AppsInToss
         public bool enableDebugConsole = false;
 
         [Header("권한 설정")]
-        public string[] permissions = new string[] { "userInfo", "location", "camera" };
+        public AITPermissionConfig permissionConfig = new AITPermissionConfig();
 
         [Header("플러그인 설정")]
         public string[] plugins = new string[] { };
@@ -247,57 +278,39 @@ namespace AppsInToss
         }
 
         /// <summary>
-        /// permissions 배열을 granite.config.ts 형식의 JSON 배열로 변환
+        /// permissionConfig를 granite.config.ts 형식의 JSON 배열로 변환
         /// 형식: [{ name: 'geolocation', access: 'access' }, ...]
         /// </summary>
         public string GetPermissionsJson()
         {
-            if (permissions == null || permissions.Length == 0)
+            if (permissionConfig == null)
                 return "[]";
 
             var objects = new System.Collections.Generic.List<string>();
-            foreach (var perm in permissions)
-            {
-                var (name, access) = ConvertPermission(perm);
-                if (name != null)
-                {
-                    objects.Add($"{{ name: '{name}', access: '{access}' }}");
-                }
-            }
-            return "[" + string.Join(", ", objects) + "]";
-        }
 
-        /// <summary>
-        /// 권한 문자열을 (name, access) 튜플로 변환
-        /// </summary>
-        private (string name, string access) ConvertPermission(string permission)
-        {
-            switch (permission?.ToLowerInvariant())
-            {
-                case "geolocation":
-                case "location":
-                    return ("geolocation", "access");
-                case "camera":
-                    return ("camera", "access");
-                case "clipboard":
-                case "clipboard-read":
-                    return ("clipboard", "read");
-                case "clipboard-write":
-                    return ("clipboard", "write");
-                case "contacts":
-                case "contacts-read":
-                    return ("contacts", "read");
-                case "contacts-write":
-                    return ("contacts", "write");
-                case "photos":
-                case "photos-read":
-                    return ("photos", "read");
-                case "photos-write":
-                    return ("photos", "write");
-                default:
-                    // 알 수 없는 권한은 무시
-                    return (null, null);
-            }
+            // Clipboard
+            if (permissionConfig.clipboardRead)
+                objects.Add("{ name: 'clipboard', access: 'read' }");
+            if (permissionConfig.clipboardWrite)
+                objects.Add("{ name: 'clipboard', access: 'write' }");
+
+            // Contacts (read only)
+            if (permissionConfig.contacts)
+                objects.Add("{ name: 'contacts', access: 'read' }");
+
+            // Photos (read only)
+            if (permissionConfig.photos)
+                objects.Add("{ name: 'photos', access: 'read' }");
+
+            // Camera (access only)
+            if (permissionConfig.camera)
+                objects.Add("{ name: 'camera', access: 'access' }");
+
+            // Geolocation (access only)
+            if (permissionConfig.geolocation)
+                objects.Add("{ name: 'geolocation', access: 'access' }");
+
+            return "[" + string.Join(", ", objects) + "]";
         }
     }
 

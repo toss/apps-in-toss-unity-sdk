@@ -34,7 +34,7 @@ mergeInto(LibraryManager.library, {
                     console.log('[AIT jslib] getUserKeyForGame resolved:', result);
                     var resultPayload;
                     if (typeof result === 'string') {
-                        resultPayload = { _type: "error", _errorCode: result, _successJson: "" };
+                        resultPayload = { _type: "error", _errorCode: result, _successJson: null };
                     } else {
                         resultPayload = { _type: "success", _successJson: JSON.stringify(result), _errorCode: "" };
                     }

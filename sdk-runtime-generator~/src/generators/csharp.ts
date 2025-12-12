@@ -293,46 +293,55 @@ export class CSharpGenerator {
       throw new Error('Core template not loaded');
     }
 
-    // 모든 비동기 API의 콜백 타입 수집
+    // 모든 API의 콜백 타입 수집 (동기/비동기 모두 Unity SDK에서는 콜백 패턴 사용)
     const callbackTypes = new Set<string>();
     const enumCallbackTypes = new Set<string>();
 
     for (const api of apis) {
-      if (api.isAsync && api.returnType.kind === 'promise' && api.returnType.promiseType) {
-        let callbackType = mapToCSharpType(api.returnType.promiseType);
+      // 이벤트 구독 API는 제외 (별도의 콜백 시스템 사용)
+      if (api.isEventSubscription) continue;
+
+      let callbackType: string;
+
+      // 비동기 API (Promise 반환)
+      if (api.returnType.kind === 'promise' && api.returnType.promiseType) {
+        callbackType = mapToCSharpType(api.returnType.promiseType);
 
         // Discriminated Union인 경우 Result 클래스 사용
         if (api.returnType.promiseType.isDiscriminatedUnion) {
           callbackType = `${api.pascalName}Result`;
         }
-        // 익명 객체 타입(__type, object)이면 Result 클래스 사용
-        else if (callbackType === '__type' || callbackType === 'object') {
-          // 동기/비동기 함수 모두 처리: promiseType이 있으면 사용, 없으면 returnType 직접 사용
-          const targetType = api.returnType.kind === 'promise'
-            ? api.returnType.promiseType
-            : api.returnType;
+      }
+      // 동기 API (직접 값 반환)
+      else {
+        callbackType = mapToCSharpType(api.returnType);
+      }
 
-          if (targetType && targetType.kind === 'object' &&
-              targetType.properties && targetType.properties.length > 0) {
-            callbackType = `${api.pascalName}Result`;
-          } else if (!targetType || targetType.name === 'void' || targetType.name === 'undefined') {
-            callbackType = 'void';
-          } else {
-            // 이름이 있는 타입이지만 properties가 빈 경우 (예: interface 참조)
-            // → Result 타입으로 처리
-            callbackType = `${api.pascalName}Result`;
-          }
+      // 익명 객체 타입(__type, object)이면 Result 클래스 사용
+      if (callbackType === '__type' || callbackType === 'object') {
+        const targetType = api.returnType.kind === 'promise'
+          ? api.returnType.promiseType
+          : api.returnType;
+
+        if (targetType && targetType.kind === 'object' &&
+            targetType.properties && targetType.properties.length > 0) {
+          callbackType = `${api.pascalName}Result`;
+        } else if (!targetType || targetType.name === 'void' || targetType.name === 'undefined') {
+          callbackType = 'void';
+        } else {
+          // 이름이 있는 타입이지만 properties가 빈 경우 (예: interface 참조)
+          callbackType = `${api.pascalName}Result`;
         }
+      }
 
-        // void, object, __type, primitive 타입은 제외 (템플릿에서 수동으로 처리)
-        const primitiveTypes = ['void', 'object', 'string', 'bool', 'double', 'int', 'float', 'long', '__type'];
-        if (!primitiveTypes.includes(callbackType)) {
-          // enum 타입과 일반 타입 분리
-          if (enumTypeNames && enumTypeNames.has(callbackType)) {
-            enumCallbackTypes.add(callbackType);
-          } else {
-            callbackTypes.add(callbackType);
-          }
+      // void, object, __type, primitive 타입은 제외 (템플릿에서 수동으로 처리)
+      const primitiveTypes = ['void', 'object', 'string', 'bool', 'double', 'int', 'float', 'long', '__type', 'System.Action'];
+      if (!primitiveTypes.includes(callbackType) && !callbackType.startsWith('System.Action')) {
+        // enum 타입과 일반 타입 분리
+        if (enumTypeNames && enumTypeNames.has(callbackType)) {
+          enumCallbackTypes.add(callbackType);
+        } else {
+          callbackTypes.add(callbackType);
         }
       }
     }
@@ -662,8 +671,59 @@ export class CSharpGenerator {
 export class CSharpTypeGenerator {
   private unionResultTemplate?: HandlebarsTemplateDelegate;
 
+  // Inline string literal union을 enum으로 변환할 때 수집
+  // key: enum 이름 (예: SetDeviceOrientationOptionsType)
+  // value: enum 값들 (예: ["portrait", "landscape"])
+  private inlineEnums: Map<string, string[]> = new Map();
+
   constructor() {
     // Constructor for future template loading if needed
+  }
+
+  /**
+   * inline string literal union인지 확인
+   * Case 1: kind가 'union'이고 모든 unionTypes가 string literal
+   * Case 2: kind가 'primitive'이지만 raw가 "value1" | "value2" 형태
+   */
+  private isInlineStringLiteralUnion(type: ParsedType): boolean {
+    // Case 1: 파서가 union으로 인식한 경우
+    if (type.kind === 'union' && type.unionTypes && type.unionTypes.length > 0) {
+      return type.unionTypes.every(
+        t => t.kind === 'primitive' && t.name === 'string' && t.raw.startsWith('"')
+      );
+    }
+
+    // Case 2: 파서가 primitive로 인식했지만 raw가 string literal union인 경우
+    // 예: { kind: 'primitive', name: 'string', raw: '"portrait" | "landscape"' }
+    if (type.kind === 'primitive' && type.name === 'string' && type.raw) {
+      // raw가 "..." | "..." 형태인지 확인
+      const unionPattern = /^"[^"]*"(\s*\|\s*"[^"]*")+$/;
+      return unionPattern.test(type.raw.trim());
+    }
+
+    return false;
+  }
+
+  /**
+   * inline string literal union에서 enum 값들 추출
+   */
+  private extractEnumValues(type: ParsedType): string[] {
+    // Case 1: unionTypes가 있는 경우
+    if (type.unionTypes && type.unionTypes.length > 0) {
+      return type.unionTypes
+        .filter(t => t.raw.startsWith('"'))
+        .map(t => t.raw.replace(/"/g, ''));
+    }
+
+    // Case 2: raw에서 직접 추출 (예: '"portrait" | "landscape"')
+    if (type.raw) {
+      const matches = type.raw.match(/"([^"]*)"/g);
+      if (matches) {
+        return matches.map(m => m.replace(/"/g, ''));
+      }
+    }
+
+    return [];
   }
 
   /**
@@ -728,24 +788,51 @@ export class CSharpTypeGenerator {
 
   /**
    * enum 정의 생성
+   * - 숫자 enum: 명시적 값 할당 (Accuracy = 1, 2, 3...)
+   * - 문자열 enum: EnumMember 어트리뷰트로 원본 값(camelCase) 지정
    */
   private generateEnum(typeDef: ParsedTypeDefinition): string {
     if (!typeDef.enumValues || typeDef.enumValues.length === 0) {
       return '';
     }
 
+    // 숫자 enum인지 확인 (하나라도 { name, value } 형태면 숫자 enum)
+    const isNumericEnum = typeDef.enumValues.some(
+      v => typeof v === 'object' && v !== null && 'value' in v
+    );
+
     const enumMembers = typeDef.enumValues
       .map(value => {
-        let memberName = value;
+        if (isNumericEnum) {
+          // 숫자 enum: EnumMember 없이 명시적 값 할당
+          // StringEnumConverter가 적용되지 않아 숫자로 직렬화됨
+          const item = typeof value === 'object' && value !== null && 'name' in value
+            ? value as { name: string; value: number }
+            : { name: value as string, value: 0 };
 
-        // 숫자로 시작하는 경우 언더스코어 추가 (C# 식별자 규칙)
-        if (/^\d/.test(memberName)) {
-          memberName = `_${memberName}`;
+          let memberName = item.name;
+          // 숫자로 시작하는 경우 언더스코어 추가
+          if (/^\d/.test(memberName)) {
+            memberName = `_${memberName}`;
+          }
+          const pascalValue = memberName.charAt(0).toUpperCase() + memberName.slice(1);
+          return `        ${pascalValue} = ${item.value}`;
+        } else {
+          // 문자열 enum: EnumMember 어트리뷰트 사용
+          const originalValue = value as string;
+          let memberName = originalValue;
+
+          // 숫자로 시작하는 경우 언더스코어 추가 (C# 식별자 규칙)
+          if (/^\d/.test(memberName)) {
+            memberName = `_${memberName}`;
+          }
+
+          // camelCase를 PascalCase로 변환
+          const pascalValue = memberName.charAt(0).toUpperCase() + memberName.slice(1);
+
+          // EnumMember 어트리뷰트로 원본 값 지정 (JSON 직렬화 시 사용)
+          return `        [EnumMember(Value = "${originalValue}")]\n        ${pascalValue}`;
         }
-
-        // camelCase를 PascalCase로 변환
-        const pascalValue = memberName.charAt(0).toUpperCase() + memberName.slice(1);
-        return `        ${pascalValue}`;
       })
       .join(',\n');
 
@@ -753,6 +840,8 @@ export class CSharpTypeGenerator {
       ? `    /// <summary>\n    /// ${typeDef.description}\n    /// </summary>\n`
       : '';
 
+    // 참고: [JsonConverter(typeof(StringEnumConverter))]는 IL2CPP에서 타입 해석 무한 루프를 일으킴
+    // EnumMember 어트리뷰트만 사용하고, 직렬화 시 JsonSerializerSettings에서 StringEnumConverter 설정
     return `${description}    public enum ${typeDef.name}\n    {\n${enumMembers}\n    }`;
   }
 
@@ -788,7 +877,7 @@ export class CSharpTypeGenerator {
             })
             .join('\n');
 
-          nestedTypes.push(`    [Serializable]\n    public class ${nestedTypeName}\n    {\n${nestedFields}\n    }`);
+          nestedTypes.push(`    [Serializable]\n    [Preserve]\n    public class ${nestedTypeName}\n    {\n${nestedFields}\n    }`);
         }
 
         const description = prop.description
@@ -802,7 +891,7 @@ export class CSharpTypeGenerator {
       ? `    /// <summary>\n    /// ${typeDef.description}\n    /// </summary>\n`
       : '';
 
-    const mainClass = `${description}    [Serializable]\n    public class ${typeDef.name}\n    {\n${fields}\n    }`;
+    const mainClass = `${description}    [Serializable]\n    [Preserve]\n    public class ${typeDef.name}\n    {\n${fields}\n    }`;
 
     // 중첩 타입들을 먼저 출력
     if (nestedTypes.length > 0) {
@@ -847,6 +936,9 @@ export class CSharpTypeGenerator {
     const typeMap = new Map<string, string>(); // typeName -> classDefinition
     const unionResultMap = new Map<string, string>(); // API name -> Union Result class
     const exclude = excludeTypeNames || new Set<string>();
+
+    // Inline enum Map 초기화 (generateClassType에서 채워짐)
+    this.inlineEnums.clear();
 
     // API에서 사용되는 모든 타입 수집
     for (const api of apis) {
@@ -998,8 +1090,23 @@ export class CSharpTypeGenerator {
       }
     }
 
+    // Inline string literal union에서 생성된 enum 코드
+    const inlineEnumTypes: string[] = [];
+    for (const [enumName, enumValues] of this.inlineEnums) {
+      const enumCode = this.generateEnum({
+        name: enumName,
+        kind: 'enum',
+        file: '',
+        enumValues: enumValues,
+      });
+      if (enumCode) {
+        inlineEnumTypes.push(enumCode);
+      }
+    }
+
     // Union Result 클래스와 일반 타입 클래스 합치기
     const allTypes = [
+      ...inlineEnumTypes,  // inline enum이 먼저 (타입 참조 순서)
       ...Array.from(unionResultMap.values()),
       ...Array.from(typeMap.values())
     ];
@@ -1080,6 +1187,7 @@ export class CSharpTypeGenerator {
       .join('\n');
 
     return `    [Serializable]
+    [Preserve]
     public class ${name}
     {
 ${fields}
@@ -1100,8 +1208,19 @@ ${fields}
     const fields = properties
       .map(prop => {
         let type = mapToCSharpType(prop.type);
+
+        // Inline string literal union → enum 변환
+        if (this.isInlineStringLiteralUnion(prop.type)) {
+          const enumName = `${cleanName}${this.capitalize(prop.name)}`;
+          const enumValues = this.extractEnumValues(prop.type);
+          // enum 수집 (중복 방지)
+          if (!this.inlineEnums.has(enumName)) {
+            this.inlineEnums.set(enumName, enumValues);
+          }
+          type = enumName;
+        }
         // 중첩 익명 객체는 생성된 클래스 이름 사용
-        if (prop.type.kind === 'object' &&
+        else if (prop.type.kind === 'object' &&
             prop.type.properties &&
             prop.type.properties.length > 0 &&
             (prop.type.name === '__type' || prop.type.name === 'object' || prop.type.name.startsWith('{'))) {
@@ -1122,6 +1241,7 @@ ${fields}
     // 중첩 타입들을 먼저 출력하고, 메인 클래스 출력
     const nestedTypesCode = Array.from(nestedTypes.values()).join('\n\n');
     const mainClass = `    [Serializable]
+    [Preserve]
     public class ${cleanName}
     {
 ${fields}${errorField}
@@ -1137,15 +1257,23 @@ ${fields}${errorField}
   /**
    * 필드 선언을 생성 (JsonProperty 어트리뷰트 포함)
    * C# 필드명은 PascalCase, JSON 직렬화는 원본 camelCase 사용
+   * System.Action 타입은 직렬화할 수 없으므로 JsonIgnore 추가
    */
   private generateFieldDeclaration(originalName: string, type: string, optional: boolean = false): string {
     const pascalName = this.capitalize(originalName);
     const optionalComment = optional ? ' // optional' : '';
-    // 원본 이름과 PascalCase가 다른 경우에만 JsonProperty 추가
-    if (originalName !== pascalName) {
-      return `        [JsonProperty("${originalName}")]\n        public ${type} ${pascalName};${optionalComment}`;
+
+    // System.Action 타입은 직렬화 불가능하므로 JsonIgnore 사용
+    if (type.startsWith('System.Action')) {
+      return `        [JsonIgnore]\n        public ${type} ${pascalName};${optionalComment}`;
     }
-    return `        public ${type} ${pascalName};${optionalComment}`;
+
+    // 원본 이름과 PascalCase가 다른 경우에만 JsonProperty 추가
+    // [Preserve]는 IL2CPP 코드 스트리핑 방지
+    if (originalName !== pascalName) {
+      return `        [Preserve]\n        [JsonProperty("${originalName}")]\n        public ${type} ${pascalName};${optionalComment}`;
+    }
+    return `        [Preserve]\n        public ${type} ${pascalName};${optionalComment}`;
   }
 
   /**

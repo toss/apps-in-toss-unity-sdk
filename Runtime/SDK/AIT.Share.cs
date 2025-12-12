@@ -8,6 +8,7 @@
 using System;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
+using UnityEngine.Scripting;
 
 namespace AppsInToss
 {
@@ -19,6 +20,7 @@ namespace AppsInToss
         /// <param name="paramsParam">연락처 공유 기능을 실행할 때 사용하는 파라미터예요. 옵션 설정과 이벤트 핸들러를 포함해요. 자세한 내용은 [ContactsViralParams](/bedrock/reference/native-modules/친구초대/ContactsViralParams.html) 문서를 참고하세요.</param>
         /// <returns>앱브릿지 cleanup 함수를 반환해요. 공유 기능이 끝나면 반드시 이 함수를 호출해서 리소스를 해제해야 해요.</returns>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
         [APICategory("Share")]
         public static async Task<System.Action> ContactsViral(ContactsViralParams paramsParam)
         {
@@ -28,7 +30,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __contactsViral_Internal(JsonConvert.SerializeObject(paramsParam), callbackId, "System.Action");
+            __contactsViral_Internal(AITJsonSettings.Serialize(paramsParam), callbackId, "System.Action");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation
@@ -43,6 +45,7 @@ namespace AppsInToss
         private static extern void __contactsViral_Internal(string paramsParam, string callbackId, string typeName);
 #endif
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
         [APICategory("Share")]
         public static async Task<ContactResult> FetchContacts(FetchContactsOptions options)
         {
@@ -52,7 +55,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __fetchContacts_Internal(JsonConvert.SerializeObject(options), callbackId, "ContactResult");
+            __fetchContacts_Internal(AITJsonSettings.Serialize(options), callbackId, "ContactResult");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation
@@ -69,6 +72,7 @@ namespace AppsInToss
         /// <param name="path">딥링크로 열고 싶은 경로예요. intoss://로 시작하는 문자열이어야 해요.</param>
         /// <returns>deep_link_value가 포함된 토스 공유 링크를 반환해요.</returns>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
         [APICategory("Share")]
         public static async Task<string> GetTossShareLink(string path)
         {
@@ -93,6 +97,7 @@ namespace AppsInToss
         private static extern void __getTossShareLink_Internal(string path, string callbackId, string typeName);
 #endif
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
         [APICategory("Share")]
         public static async Task Share(ShareMessage message)
         {
@@ -102,7 +107,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(true),
                 error => tcs.TrySetException(error)
             );
-            __share_Internal(JsonConvert.SerializeObject(message), callbackId, "void");
+            __share_Internal(AITJsonSettings.Serialize(message), callbackId, "void");
             await tcs.Task;
 #else
             // Unity Editor mock implementation

@@ -9,7 +9,7 @@
 #   --e2e                    E2E 테스트만 (빌드 결과물 필요)
 #   --unity-build            Unity WebGL 빌드 실행
 #   --unity-version <버전>   특정 Unity 버전 지정 (예: 2022.3, 6000.0)
-#   --parallel               모든 버전을 병렬로 빌드 및 테스트
+#   --parallel               다른 모드와 조합하여 병렬 실행 (예: --unity-build --parallel)
 #   --list-unity             설치된 Unity 버전 목록 표시
 #   --help                   도움말
 #
@@ -180,7 +180,8 @@ list_unity_versions() {
     echo "  사용법:"
     echo "    ./run-local-tests.sh --unity-build --unity-version 2022.3"
     echo "    ./run-local-tests.sh --all --unity-version 6000.0"
-    echo "    ./run-local-tests.sh --parallel           # 모든 버전 병렬 빌드"
+    echo "    ./run-local-tests.sh --unity-build --parallel   # 모든 버전 병렬 빌드"
+    echo "    ./run-local-tests.sh --all --parallel           # 모든 버전 빌드 + 테스트"
     echo ""
 }
 
@@ -255,17 +256,19 @@ show_help() {
     echo ""
     echo "사용법: $0 [옵션]"
     echo ""
-    echo "┌───────────────────────────────────────────────────────────────────────────────┐"
-    echo "│ 옵션                      │ 실행 내용                       │ 소요 시간     │"
-    echo "├───────────────────────────────────────────────────────────────────────────────┤"
-    echo "│ --validate                │ 파일 구조 검증 + Playwright 설정│ ~30초         │"
-    echo "│ --unity-build             │ Unity WebGL 빌드                │ ~20분         │"
-    echo "│ --e2e                     │ Playwright 7개 테스트 (빌드 필요)│ ~5분         │"
-    echo "│ --all                     │ Unity 빌드 + Playwright 테스트  │ ~30분         │"
-    echo "│ --parallel                │ 모든 버전 병렬 빌드 + 테스트    │ ~30분 (병렬) │"
-    echo "│ --list-unity              │ 설치된 Unity 버전 목록 표시     │ 즉시          │"
-    echo "│ --unity-version <버전>    │ 특정 Unity 버전 지정            │ -             │"
-    echo "└───────────────────────────────────────────────────────────────────────────────┘"
+    echo "┌─────────────────────────────────────────────────────────────────────────────────────┐"
+    echo "│ 옵션                        │ 실행 내용                          │ 소요 시간    │"
+    echo "├─────────────────────────────────────────────────────────────────────────────────────┤"
+    echo "│ --validate                  │ 파일 구조 검증 + Playwright 설정   │ ~30초        │"
+    echo "│ --unity-build               │ Unity WebGL 빌드 (단일 버전)       │ ~20분        │"
+    echo "│ --unity-build --parallel    │ 모든 버전 병렬 빌드                │ ~20분 (병렬) │"
+    echo "│ --e2e                       │ Playwright 테스트 (빌드 필요)      │ ~5분         │"
+    echo "│ --e2e --parallel            │ 모든 빌드에 대해 E2E 테스트        │ ~15분        │"
+    echo "│ --all                       │ 빌드 + 테스트 (단일 버전)          │ ~30분        │"
+    echo "│ --all --parallel            │ 빌드 + 테스트 (모든 버전 병렬)     │ ~30분 (병렬) │"
+    echo "│ --list-unity                │ 설치된 Unity 버전 목록 표시        │ 즉시         │"
+    echo "│ --unity-version <버전>      │ 특정 Unity 버전 지정               │ -            │"
+    echo "└─────────────────────────────────────────────────────────────────────────────────────┘"
     echo ""
     echo "버전별 프로젝트 구조:"
     echo "  Tests~/E2E/"
@@ -289,21 +292,27 @@ show_help() {
     echo "  예시:"
     echo "    $0 --unity-build --unity-version 6000.2"
     echo "    $0 --all --unity-version 2022.3"
-    echo "    $0 --parallel   # 모든 설치된 버전으로 병렬 테스트"
-    echo "    $0 --list-unity   # 설치된 버전 확인"
+    echo "    $0 --unity-build --parallel   # 모든 버전 병렬 빌드"
+    echo "    $0 --list-unity               # 설치된 버전 확인"
     echo ""
     echo "실행 순서:"
     echo "  --validate    : [1] 파일 구조 검증 → [2] Playwright 설정 검증"
     echo "  --unity-build : [1] Unity WebGL 빌드"
     echo "  --e2e         : [1] Playwright E2E 테스트 (빌드 결과물 필요)"
     echo "  --all         : [1] 파일 검증 → [2] Playwright 설정 → [3] Unity 빌드 → [4] E2E 테스트"
-    echo "  --parallel    : 모든 버전을 병렬로 빌드 및 E2E 테스트"
+    echo ""
+    echo "--parallel 플래그:"
+    echo "  다른 모드와 조합하여 모든 버전을 병렬로 처리합니다:"
+    echo "  --unity-build --parallel : 모든 Unity 버전 병렬 빌드 (E2E 테스트 없음)"
+    echo "  --e2e --parallel         : 모든 빌드에 대해 E2E 테스트"
+    echo "  --all --parallel         : 전체 파이프라인 병렬 실행"
     echo ""
     echo "권장 워크플로우:"
-    echo "  1. 처음 실행:     $0 --all           # 전체 빌드 + 테스트"
-    echo "  2. 코드 수정 후:  $0 --e2e           # 기존 빌드로 빠른 테스트"
+    echo "  1. 처음 실행:     $0 --all                    # 전체 빌드 + 테스트 (단일 버전)"
+    echo "  2. 코드 수정 후:  $0 --e2e                    # 기존 빌드로 빠른 테스트"
     echo "  3. SDK 변경 후:   $0 --unity-build && $0 --e2e"
-    echo "  4. 다중 버전:     $0 --parallel      # 모든 버전 병렬 테스트"
+    echo "  4. 다중 버전:     $0 --unity-build --parallel # 모든 버전 병렬 빌드"
+    echo "  5. 전체 병렬:     $0 --all --parallel         # 모든 버전 빌드 + 테스트"
     echo ""
     exit 0
 }
@@ -538,7 +547,91 @@ test_playwright_config() {
     cd "$SCRIPT_DIR"
 }
 
-# 6. 병렬 빌드 및 테스트
+# 6. 병렬 Unity 빌드만 (E2E 테스트 없음)
+run_parallel_unity_builds_only() {
+    print_header "Parallel Unity Builds Only"
+
+    local versions_to_build=()
+    local pids=()
+    local log_files=()
+
+    # 설치된 버전 중 지원하는 버전 찾기
+    local installed_versions=($(get_installed_unity_versions))
+
+    for version in "${installed_versions[@]}"; do
+        for pattern in "${UNITY_VERSION_PATTERNS[@]}"; do
+            if [[ "$version" == "$pattern"* ]]; then
+                local project_path=$(get_project_path_for_version "$pattern")
+                if [ -d "$project_path" ]; then
+                    versions_to_build+=("$pattern")
+                fi
+                break
+            fi
+        done
+    done
+
+    if [ ${#versions_to_build[@]} -eq 0 ]; then
+        print_failure "병렬 빌드 - 빌드 가능한 버전 없음"
+        return 1
+    fi
+
+    echo "Building ${#versions_to_build[@]} versions in parallel:"
+    for pattern in "${versions_to_build[@]}"; do
+        echo "  • $pattern"
+    done
+    echo ""
+
+    # 병렬 빌드 시작
+    for pattern in "${versions_to_build[@]}"; do
+        local unity_path=$(find_unity_by_pattern "$pattern")
+        local project_path=$(get_project_path_for_version "$pattern")
+        local log_file="$project_path/unity-build.log"
+
+        echo -e "${CYAN}Starting build for $pattern...${NC}"
+
+        # 빌드 정리
+        rm -rf "$project_path/ait-build"
+        rm -rf "$project_path/Temp"
+
+        # 백그라운드로 빌드 실행 (AIT_DEBUG_CONSOLE=true로 디버그 콘솔 활성화)
+        (
+            AIT_DEBUG_CONSOLE=true "$unity_path" \
+                -quit -batchmode -nographics \
+                -projectPath "$project_path" \
+                -executeMethod E2EBuildRunner.CommandLineBuild \
+                -logFile "$log_file"
+        ) &
+
+        pids+=($!)
+        log_files+=("$log_file")
+    done
+
+    echo ""
+    echo "Waiting for ${#pids[@]} builds to complete..."
+    echo ""
+
+    # 빌드 완료 대기 및 결과 확인
+    for i in "${!pids[@]}"; do
+        local pid=${pids[$i]}
+        local pattern=${versions_to_build[$i]}
+        local project_path=$(get_project_path_for_version "$pattern")
+        local log_file=${log_files[$i]}
+
+        wait $pid
+        local exit_code=$?
+
+        if [ $exit_code -eq 0 ] && [ -d "$project_path/ait-build/dist/web" ]; then
+            echo -e "${GREEN}✓${NC} $pattern build completed"
+            ((PASSED++))
+        else
+            echo -e "${RED}✗${NC} $pattern build failed"
+            echo "  Log: $log_file"
+            ((FAILED++))
+        fi
+    done
+}
+
+# 7. 병렬 빌드 및 테스트 (전체)
 run_parallel_builds() {
     print_header "Parallel Unity Builds & E2E Tests"
 
@@ -729,7 +822,7 @@ main() {
                 ;;
             --parallel)
                 PARALLEL_MODE=true
-                mode="--parallel"
+                # --parallel은 다른 모드와 조합 가능한 플래그 (모드 덮어쓰기 안함)
                 ;;
             --all|--e2e|--unity-build|--validate)
                 mode="${args[$i]}"
@@ -760,27 +853,39 @@ main() {
         --all)
             test_e2e_validation
             test_playwright_config
-            test_unity_build
-            test_e2e_playwright "$(get_version_pattern "$(get_unity_version_from_path "$(find_unity_path "$UNITY_VERSION")")")"
+            if [ "$PARALLEL_MODE" = true ]; then
+                run_parallel_builds
+            else
+                test_unity_build "$UNITY_VERSION"
+                test_e2e_playwright "$(get_version_pattern "$(get_unity_version_from_path "$(find_unity_path "$UNITY_VERSION")")")"
+            fi
             ;;
         --e2e)
-            if [ -n "$UNITY_VERSION" ]; then
+            if [ "$PARALLEL_MODE" = true ]; then
+                # 모든 빌드된 프로젝트에 대해 E2E 테스트 실행
+                for pattern in "${UNITY_VERSION_PATTERNS[@]}"; do
+                    local project_path=$(get_project_path_for_version "$pattern")
+                    if [ -d "$project_path/ait-build/dist/web" ]; then
+                        test_e2e_playwright "$pattern"
+                    fi
+                done
+            elif [ -n "$UNITY_VERSION" ]; then
                 test_e2e_playwright "$UNITY_VERSION"
             else
                 test_e2e_playwright
             fi
             ;;
         --unity-build)
-            test_unity_build "$UNITY_VERSION"
+            if [ "$PARALLEL_MODE" = true ]; then
+                # 병렬 Unity 빌드만 실행 (E2E 테스트 없음)
+                run_parallel_unity_builds_only
+            else
+                test_unity_build "$UNITY_VERSION"
+            fi
             ;;
         --validate)
             test_e2e_validation
             test_playwright_config
-            ;;
-        --parallel)
-            test_e2e_validation
-            test_playwright_config
-            run_parallel_builds
             ;;
     esac
 

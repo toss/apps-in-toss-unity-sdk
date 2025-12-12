@@ -8,6 +8,7 @@
 using System;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
+using UnityEngine.Scripting;
 
 namespace AppsInToss
 {
@@ -18,6 +19,7 @@ namespace AppsInToss
     {
         /// <param name="paramsParam">서명에 필요한 파라미터를 포함하는 객체예요.</param>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
         [APICategory("Certificate")]
         public static async Task AppsInTossSignTossCert(AppsInTossSignTossCertParams paramsParam)
         {
@@ -27,7 +29,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(true),
                 error => tcs.TrySetException(error)
             );
-            __appsInTossSignTossCert_Internal(JsonConvert.SerializeObject(paramsParam), callbackId, "void");
+            __appsInTossSignTossCert_Internal(AITJsonSettings.Serialize(paramsParam), callbackId, "void");
             await tcs.Task;
 #else
             // Unity Editor mock implementation

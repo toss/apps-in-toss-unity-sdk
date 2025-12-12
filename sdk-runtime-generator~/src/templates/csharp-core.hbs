@@ -7,11 +7,103 @@
 
 using System;
 using System.Collections.Generic;
+using System.Reflection;
+using System.Runtime.Serialization;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Converters;
 using UnityEngine;
+using UnityEngine.Scripting;
 
 namespace AppsInToss
 {
+    /// <summary>
+    /// Custom enum converter that handles both string and numeric enums:
+    /// - Enums with [EnumMember] attributes: serialize as string (using EnumMember value)
+    /// - Enums without [EnumMember] attributes: serialize as number (for numeric enums like Accuracy)
+    /// </summary>
+    public class SmartEnumConverter : JsonConverter
+    {
+        private readonly StringEnumConverter _stringConverter = new StringEnumConverter();
+
+        public override bool CanConvert(Type objectType)
+        {
+            Type type = Nullable.GetUnderlyingType(objectType) ?? objectType;
+            return type.IsEnum;
+        }
+
+        public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer)
+        {
+            if (value == null)
+            {
+                writer.WriteNull();
+                return;
+            }
+
+            Type enumType = value.GetType();
+
+            // Check if any member has EnumMember attribute
+            bool hasEnumMember = false;
+            foreach (var field in enumType.GetFields(BindingFlags.Public | BindingFlags.Static))
+            {
+                if (field.GetCustomAttribute<EnumMemberAttribute>() != null)
+                {
+                    hasEnumMember = true;
+                    break;
+                }
+            }
+
+            if (hasEnumMember)
+            {
+                // String enum: use StringEnumConverter
+                _stringConverter.WriteJson(writer, value, serializer);
+            }
+            else
+            {
+                // Numeric enum: serialize as integer
+                writer.WriteValue(Convert.ToInt32(value));
+            }
+        }
+
+        public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer)
+        {
+            // Delegate to StringEnumConverter for reading (handles both cases)
+            return _stringConverter.ReadJson(reader, objectType, existingValue, serializer);
+        }
+    }
+
+    /// <summary>
+    /// Shared JSON serialization settings for SDK.
+    /// Uses SmartEnumConverter to serialize:
+    /// - String enums (with EnumMember): as strings matching JavaScript API expectations
+    /// - Numeric enums (without EnumMember): as integers matching JavaScript API expectations
+    /// Note: [JsonConverter] attribute on enums causes IL2CPP infinite loop, so we configure it globally here.
+    /// </summary>
+    public static class AITJsonSettings
+    {
+        private static JsonSerializerSettings _settings;
+
+        public static JsonSerializerSettings Default
+        {
+            get
+            {
+                if (_settings == null)
+                {
+                    _settings = new JsonSerializerSettings();
+                    _settings.Converters.Add(new SmartEnumConverter());
+                }
+                return _settings;
+            }
+        }
+
+        /// <summary>
+        /// Serialize object to JSON with smart enum support.
+        /// </summary>
+        public static string Serialize(object obj)
+        {
+            return JsonConvert.SerializeObject(obj, Default);
+        }
+    }
+
     /// <summary>
     /// Attribute to mark API methods with their category for grouping in UI.
     /// </summary>
@@ -86,10 +178,14 @@ namespace AppsInToss
     /// Uses explicit success/data/error format to avoid IL2CPP stripping issues.
     /// </summary>
     [Serializable]
+    [Preserve]
     public class APIResponse
     {
+        [Preserve]
         public bool success;
+        [Preserve]
         public string data = "";
+        [Preserve]
         public string error = "";
     }
 
@@ -348,7 +444,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<{{this}}>(callbackId, out var enumCb_{{this}}) && enumCb_{{this}} != null)
                         {
-                            // enum은 JsonUtility가 파싱 불가. Enum.TryParse 사용
+                            // enum 파싱: 문자열에서 따옴표 제거 후 Enum.TryParse
                             var enumStr_{{this}} = apiResponse.data.Trim().Trim('"');
                             if (Enum.TryParse<{{this}}>(enumStr_{{this}}, true, out var enumVal_{{this}}))
                             {
@@ -357,6 +453,11 @@ namespace AppsInToss
                             else
                             {
                                 Debug.LogWarning("[AITCore] Failed to parse enum {{this}}: " + enumStr_{{this}});
+                                // 파싱 실패 시 에러 콜백 호출하여 Task 완료
+                                if (TryGetErrorCallback(callbackId, out var parseErrCb_{{this}}) && parseErrCb_{{this}} != null)
+                                {
+                                    parseErrCb_{{this}}(new AITException("{{this}}", "Failed to parse enum value: " + enumStr_{{this}}));
+                                }
                             }
                         }
                     }
@@ -374,11 +475,11 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<string>(callbackId, out var stringCallback) && stringCallback != null)
                         {
-                            // string은 JsonUtility가 파싱 불가. data가 JSON 문자열이면 따옴표 제거
+                            // JSON 문자열에서 실제 문자열 추출 (따옴표 제거)
                             var stringData = apiResponse.data;
-                            if (stringData.StartsWith("\"") && stringData.EndsWith("\""))
+                            if (stringData.StartsWith("\"") && stringData.EndsWith("\"") && stringData.Length >= 2)
                             {
-                                stringData = stringData.Substring(1, stringData.Length - 2);
+                                stringData = JsonConvert.DeserializeObject<string>(stringData);
                             }
                             stringCallback(stringData);
                         }
@@ -396,8 +497,9 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<bool>(callbackId, out var boolCallback) && boolCallback != null)
                         {
-                            // bool은 JsonUtility가 파싱 불가. 직접 파싱
-                            var boolData = apiResponse.data.Trim().ToLower() == "true";
+                            // JSON에서 bool 파싱
+                            var boolStr = apiResponse.data.Trim().ToLower();
+                            var boolData = boolStr == "true";
                             boolCallback(boolData);
                         }
                     }
@@ -414,11 +516,9 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<double>(callbackId, out var doubleCallback) && doubleCallback != null)
                         {
-                            // double은 JsonUtility가 파싱 불가. 직접 파싱
-                            if (double.TryParse(apiResponse.data, out var doubleData))
-                            {
-                                doubleCallback(doubleData);
-                            }
+                            // JSON에서 double 파싱
+                            double.TryParse(apiResponse.data.Trim(), out var doubleData);
+                            doubleCallback(doubleData);
                         }
                     }
                     else
@@ -457,10 +557,14 @@ namespace AppsInToss
     /// Callback payload from JavaScript
     /// </summary>
     [Serializable]
+    [Preserve]
     public class CallbackData
     {
+        [Preserve]
         public string CallbackId = "";
+        [Preserve]
         public string TypeName = "";
+        [Preserve]
         public string Result = "";
     }
 
@@ -472,8 +576,10 @@ namespace AppsInToss
     /// TdsEvent navigationAccessoryEvent 데이터
     /// </summary>
     [Serializable]
+    [Preserve]
     public class TdsNavigationAccessoryEventData
     {
+        [Preserve]
         [JsonProperty("id")]
         public string Id;
     }

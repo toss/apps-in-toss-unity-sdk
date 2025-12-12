@@ -99,9 +99,13 @@ jobs:
           sudo apt-get install -y mono-mcs
           mcs --version
 
-      - name: Install Dependencies
+      - name: Install Generator Dependencies
         working-directory: sdk-runtime-generator~
         run: pnpm install
+
+      - name: Install Test Dependencies
+        working-directory: sdk-runtime-generator~/tests/unit
+        run: npm install
 
       - name: Run Unit Tests (Tier 1 - C# compilation)
         working-directory: sdk-runtime-generator~/tests/unit

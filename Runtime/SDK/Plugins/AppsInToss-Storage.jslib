@@ -169,16 +169,15 @@ mergeInto(LibraryManager.library, {
         }
     },
 
-    __StorageClearItems_Internal: function(args_0, callbackId, typeName) {
+    __StorageClearItems_Internal: function(callbackId, typeName) {
         // 비동기 함수 (Promise 반환)
         var callback = UTF8ToString(callbackId);
         var typeNameStr = UTF8ToString(typeName);
 
         console.log('[AIT jslib] StorageClearItems called, callbackId:', callback);
-        console.log('[AIT jslib] StorageClearItems raw param args_0:', UTF8ToString(args_0));
 
         try {
-            var promiseResult = window.AppsInToss.Storage.clearItems(args_0);
+            var promiseResult = window.AppsInToss.Storage.clearItems();
             console.log('[AIT jslib] clearItems returned:', promiseResult, 'isPromise:', promiseResult && typeof promiseResult.then === 'function');
 
             if (!promiseResult || typeof promiseResult.then !== 'function') {

@@ -9,12 +9,14 @@
     "copy-templates": "cp -r src/templates dist/",
     "generate": "pnpm run build && node dist/index.js generate",
     "format": "pnpm run build && node dist/index.js format",
-    "validate": "cd tests/unit && npm test",
+    "validate": "vitest run",
     "dev": "tsx src/index.ts generate",
     "prebuild": "rm -rf dist",
-    "test": "cd tests/unit && npm test",
-    "test:watch": "cd tests/unit && npm run test:watch",
-    "test:tier1": "cd tests/unit && npm run test:tier1"
+    "test": "vitest run",
+    "test:watch": "vitest watch",
+    "test:ui": "vitest --ui",
+    "test:tier1": "vitest run tests/unit/compilation.test.ts",
+    "test:tier2": "vitest run tests/unit/invariants.test.ts"
   },
   "pnpm": {
     "overrides": {
@@ -31,7 +33,10 @@
   "devDependencies": {
     "@types/handlebars": "^4.1.0",
     "@types/node": "^25.0.0",
+    "@vitest/ui": "^4.0.15",
+    "glob": "^11.0.0",
     "tsx": "^4.19.2",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vitest": "^4.0.15"
   }
 }

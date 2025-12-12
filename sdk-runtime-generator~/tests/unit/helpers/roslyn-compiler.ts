@@ -185,13 +185,25 @@ async function resolveReferences(
   unityPath: string
 ): Promise<string[]> {
   const resolved: string[] = [];
+  const stubsDir = path.resolve(__dirname, '../stubs');
 
   // Unity stub DLL 경로 (tests가 실행되는 동안 Unity 없이도 컴파일 가능하도록)
-  const stubDllPath = path.resolve(__dirname, '../stubs/UnityEngine.dll');
-  let hasStub = false;
+  const unityStubPath = path.join(stubsDir, 'UnityEngine.dll');
+  const newtonsoftStubPath = path.join(stubsDir, 'Newtonsoft.Json.dll');
+
+  let hasUnityStub = false;
+  let hasNewtonsoftStub = false;
+
   try {
-    await fs.access(stubDllPath);
-    hasStub = true;
+    await fs.access(unityStubPath);
+    hasUnityStub = true;
+  } catch {
+    // stub 없음
+  }
+
+  try {
+    await fs.access(newtonsoftStubPath);
+    hasNewtonsoftStub = true;
   } catch {
     // stub 없음
   }
@@ -199,7 +211,7 @@ async function resolveReferences(
   // Unity DLL이 하나라도 없으면 모든 Unity DLL을 stub으로 대체
   // (부분적으로 찾으면 버전 불일치로 인한 컴파일 오류 발생)
   let useStubForAllUnity = false;
-  if (hasStub && unityPath) {
+  if (hasUnityStub && unityPath) {
     for (const ref of references) {
       if (ref.startsWith('Unity')) {
         const dllPath = path.join(unityPath, 'Managed', ref);
@@ -211,17 +223,21 @@ async function resolveReferences(
         }
       }
     }
-  } else if (hasStub) {
+  } else if (hasUnityStub) {
     // Unity가 설치되지 않았으면 stub 사용
     useStubForAllUnity = true;
   }
 
+  // 중복 방지를 위한 Set
+  const addedStubs = new Set<string>();
+
   for (const ref of references) {
     if (ref.startsWith('Unity')) {
       // Unity stub을 사용하기로 결정했으면 모든 Unity DLL을 stub으로 대체
-      if (useStubForAllUnity) {
-        resolved.push(stubDllPath);
-      } else if (unityPath) {
+      if (useStubForAllUnity && !addedStubs.has('unity')) {
+        resolved.push(unityStubPath);
+        addedStubs.add('unity');
+      } else if (!useStubForAllUnity && unityPath) {
         // 실제 Unity DLL 사용
         const dllPath = path.join(unityPath, 'Managed', ref);
         try {
@@ -230,6 +246,12 @@ async function resolveReferences(
         } catch {
           console.warn(`Unity DLL not found: ${dllPath}`);
         }
+      }
+    } else if (ref === 'Newtonsoft.Json.dll' && hasNewtonsoftStub) {
+      // Newtonsoft.Json은 항상 stub 사용 (Unity 패키지에서 제공되므로)
+      if (!addedStubs.has('newtonsoft')) {
+        resolved.push(newtonsoftStubPath);
+        addedStubs.add('newtonsoft');
       }
     } else if (ref.includes(path.sep) || ref.includes('/')) {
       // 절대 경로

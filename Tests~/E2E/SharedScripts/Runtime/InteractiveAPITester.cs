@@ -47,10 +47,17 @@ public class InteractiveAPITester : MonoBehaviour
 
     // 터치 스크롤 지원
     private bool isTouchScrolling = false;
+    private bool isDragging = false;  // 실제 드래그 중인지 (임계값 초과)
+    private Vector2 touchStartPosition;  // 터치 시작 위치
     private Vector2 lastTouchPosition;
     private Vector2 scrollVelocity = Vector2.zero;
     private float scrollMomentumDecay = 0.95f;
+    private float dragThreshold = 10f;  // 드래그 인식 임계값 (픽셀)
     private Rect currentScrollViewRect;
+
+    // Safe Area (AIT API)
+    private SafeAreaInsetsGetResult cachedSafeAreaInsets = null;
+    private bool safeAreaLoaded = false;
 
     // 파라미터 입력 상태 (fieldPath -> value)
     private Dictionary<string, string> stringInputs = new Dictionary<string, string>();
@@ -115,7 +122,7 @@ public class InteractiveAPITester : MonoBehaviour
     // 한글 폰트
     private Font koreanFont;
 
-    void Start()
+    async void Start()
     {
         Debug.Log("[InteractiveAPITester] Loading SDK APIs...");
 
@@ -142,6 +149,35 @@ public class InteractiveAPITester : MonoBehaviour
         }
 
         Debug.Log($"[InteractiveAPITester] Found {allMethods.Count} API methods in {groupedMethods.Count} categories");
+
+        // Safe Area Insets 로드 (Apps in Toss 플랫폼)
+        await LoadSafeAreaInsets();
+    }
+
+    /// <summary>
+    /// Apps in Toss 플랫폼에서 Safe Area Insets를 로드합니다.
+    /// 플랫폼 미지원 시 Unity Screen.safeArea를 폴백으로 사용합니다.
+    /// </summary>
+    private async Task LoadSafeAreaInsets()
+    {
+        try
+        {
+            cachedSafeAreaInsets = await AIT.SafeAreaInsetsGet();
+            safeAreaLoaded = true;
+            Debug.Log($"[InteractiveAPITester] Safe Area loaded from AIT API: top={cachedSafeAreaInsets.Top}, bottom={cachedSafeAreaInsets.Bottom}, left={cachedSafeAreaInsets.Left}, right={cachedSafeAreaInsets.Right}");
+        }
+        catch (AITException ex)
+        {
+            // 플랫폼 미지원 시 Unity 기본값 사용
+            Debug.LogWarning($"[InteractiveAPITester] SafeAreaInsetsGet failed: {ex.Message}, using Unity Screen.safeArea as fallback");
+            safeAreaLoaded = false;
+        }
+        catch (Exception ex)
+        {
+            // 기타 예외
+            Debug.LogWarning($"[InteractiveAPITester] SafeAreaInsetsGet error: {ex.Message}, using Unity Screen.safeArea as fallback");
+            safeAreaLoaded = false;
+        }
     }
 
     void Update()
@@ -168,6 +204,8 @@ public class InteractiveAPITester : MonoBehaviour
                     if (currentScrollViewRect.Contains(touchPos))
                     {
                         isTouchScrolling = true;
+                        isDragging = false;  // 아직 드래그 시작 안함
+                        touchStartPosition = touch.position;
                         lastTouchPosition = touch.position;
                         scrollVelocity = Vector2.zero;
                     }
@@ -176,18 +214,23 @@ public class InteractiveAPITester : MonoBehaviour
                 case TouchPhase.Moved:
                     if (isTouchScrolling)
                     {
+                        // 드래그 임계값 확인
+                        float totalDragDistance = Vector2.Distance(touch.position, touchStartPosition);
+                        if (!isDragging && totalDragDistance > dragThreshold)
+                        {
+                            isDragging = true;
+                        }
+
                         Vector2 delta = touch.position - lastTouchPosition;
                         // 위로 스와이프하면 (delta.y > 0) 컨텐츠가 위로 올라감 (scrollPosition.y 증가)
                         // 아래로 스와이프하면 (delta.y < 0) 컨텐츠가 아래로 내려감 (scrollPosition.y 감소)
                         scrollPosition.y += delta.y;
-                        scrollPosition.x += delta.x;
 
-                        // 스크롤 범위 제한
+                        // 스크롤 범위 제한 (세로만)
                         scrollPosition.y = Mathf.Max(0, scrollPosition.y);
-                        scrollPosition.x = Mathf.Max(0, scrollPosition.x);
 
-                        // 속도 계산 (관성용)
-                        scrollVelocity = new Vector2(delta.x, delta.y) / Time.deltaTime * 0.1f;
+                        // 속도 계산 (관성용, 세로만)
+                        scrollVelocity = new Vector2(0, delta.y) / Time.deltaTime * 0.1f;
                         lastTouchPosition = touch.position;
                     }
                     break;
@@ -195,6 +238,7 @@ public class InteractiveAPITester : MonoBehaviour
                 case TouchPhase.Ended:
                 case TouchPhase.Canceled:
                     isTouchScrolling = false;
+                    isDragging = false;
                     break;
             }
         }
@@ -208,21 +252,30 @@ public class InteractiveAPITester : MonoBehaviour
                 if (currentScrollViewRect.Contains(mousePos))
                 {
                     isTouchScrolling = true;
+                    isDragging = false;
+                    touchStartPosition = Input.mousePosition;
                     lastTouchPosition = Input.mousePosition;
                     scrollVelocity = Vector2.zero;
                 }
             }
             else if (isTouchScrolling)
             {
+                // 드래그 임계값 확인
+                float totalDragDistance = Vector2.Distance(Input.mousePosition, touchStartPosition);
+                if (!isDragging && totalDragDistance > dragThreshold)
+                {
+                    isDragging = true;
+                }
+
                 Vector2 delta = (Vector2)Input.mousePosition - lastTouchPosition;
                 // 위로 드래그하면 (delta.y > 0) 컨텐츠가 위로 올라감 (scrollPosition.y 증가)
                 scrollPosition.y += delta.y;
-                scrollPosition.x += delta.x;
 
+                // 스크롤 범위 제한 (세로만)
                 scrollPosition.y = Mathf.Max(0, scrollPosition.y);
-                scrollPosition.x = Mathf.Max(0, scrollPosition.x);
 
-                scrollVelocity = new Vector2(delta.x, delta.y) / Time.deltaTime * 0.1f;
+                // 속도 계산 (관성용, 세로만)
+                scrollVelocity = new Vector2(0, delta.y) / Time.deltaTime * 0.1f;
                 lastTouchPosition = Input.mousePosition;
             }
         }
@@ -231,6 +284,7 @@ public class InteractiveAPITester : MonoBehaviour
             if (isTouchScrolling)
             {
                 isTouchScrolling = false;
+                isDragging = false;
             }
         }
     }
@@ -242,9 +296,9 @@ public class InteractiveAPITester : MonoBehaviour
     {
         if (!isTouchScrolling && scrollVelocity.sqrMagnitude > 0.01f)
         {
-            scrollPosition += scrollVelocity * Time.deltaTime;
+            // 세로 스크롤 관성만 적용
+            scrollPosition.y += scrollVelocity.y * Time.deltaTime;
             scrollPosition.y = Mathf.Max(0, scrollPosition.y);
-            scrollPosition.x = Mathf.Max(0, scrollPosition.x);
             scrollVelocity *= scrollMomentumDecay;
 
             if (scrollVelocity.sqrMagnitude < 0.01f)
@@ -254,12 +308,68 @@ public class InteractiveAPITester : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Safe Area를 IMGUI 좌표계로 변환하여 반환
+    /// AIT API 값이 있으면 우선 사용, 없으면 Unity Screen.safeArea 폴백
+    /// </summary>
+    private Rect GetSafeAreaRect()
+    {
+        // AIT API에서 로드된 값이 있으면 사용
+        if (safeAreaLoaded && cachedSafeAreaInsets != null)
+        {
+            float top = (float)cachedSafeAreaInsets.Top;
+            float bottom = (float)cachedSafeAreaInsets.Bottom;
+            float left = (float)cachedSafeAreaInsets.Left;
+            float right = (float)cachedSafeAreaInsets.Right;
+
+            // IMGUI 좌표계: 좌상단 원점
+            // AIT API는 insets (여백)을 반환하므로 직접 사용
+            return new Rect(
+                left,
+                top,
+                Screen.width - left - right,
+                Screen.height - top - bottom
+            );
+        }
+
+        // 폴백: Unity Screen.safeArea 사용
+        Rect safeArea = Screen.safeArea;
+
+        // Screen.safeArea: 좌하단 원점, (x, y)는 safe area의 좌하단 코너
+        // IMGUI: 좌상단 원점
+        // 변환: IMGUI의 y = Screen.height - (safeArea.y + safeArea.height)
+        float x = safeArea.x;
+        float y = Screen.height - (safeArea.y + safeArea.height);
+        float width = safeArea.width;
+        float height = safeArea.height;
+
+        return new Rect(x, y, width, height);
+    }
+
+    /// <summary>
+    /// 스크롤 중 버튼 클릭 방지 여부
+    /// </summary>
+    private bool ShouldBlockInput()
+    {
+        return isDragging || scrollVelocity.sqrMagnitude > 1f;
+    }
+
+    /// <summary>
+    /// 스크롤 영역 내 버튼 - 드래그 중에는 클릭 무시
+    /// </summary>
+    private bool ScrollAreaButton(string text, GUIStyle style, params GUILayoutOption[] options)
+    {
+        bool clicked = GUILayout.Button(text, style, options);
+        return clicked && !ShouldBlockInput();
+    }
+
     void OnGUI()
     {
         InitializeStyles();
 
-        // 메인 컨테이너 - 전체 화면 사용
-        GUILayout.BeginArea(new Rect(0, 0, Screen.width, Screen.height));
+        // 메인 컨테이너 - Safe Area 내에서만 UI 표시 (iOS 노치/상단바 회피)
+        Rect safeRect = GetSafeAreaRect();
+        GUILayout.BeginArea(safeRect);
         GUILayout.BeginVertical(boxStyle);
 
         switch (currentState)
@@ -277,6 +387,39 @@ public class InteractiveAPITester : MonoBehaviour
 
         GUILayout.EndVertical();
         GUILayout.EndArea();
+
+        // Safe Area 디버그 표시 (테스트용)
+        DrawSafeAreaDebug();
+    }
+
+    /// <summary>
+    /// Safe Area 경계를 시각적으로 표시 (디버그용)
+    /// </summary>
+    private void DrawSafeAreaDebug()
+    {
+        Rect guiSafeRect = GetSafeAreaRect();
+        string source = safeAreaLoaded ? "AIT" : "Unity";
+
+        // 디버그 정보 표시 (화면 좌상단, safe area 밖)
+        GUIStyle debugStyle = new GUIStyle(GUI.skin.label);
+        debugStyle.fontSize = 10;
+        debugStyle.normal.textColor = Color.yellow;
+
+        string debugInfo = $"Screen: {Screen.width}x{Screen.height}\n" +
+            $"Source: {source}\n" +
+            $"GUI Rect: ({guiSafeRect.x:F0}, {guiSafeRect.y:F0}, {guiSafeRect.width:F0}, {guiSafeRect.height:F0})";
+
+        if (safeAreaLoaded && cachedSafeAreaInsets != null)
+        {
+            debugInfo += $"\nAIT Insets: T={cachedSafeAreaInsets.Top:F0} B={cachedSafeAreaInsets.Bottom:F0} L={cachedSafeAreaInsets.Left:F0} R={cachedSafeAreaInsets.Right:F0}";
+        }
+        else
+        {
+            Rect safeArea = Screen.safeArea;
+            debugInfo += $"\nUnity SafeArea: ({safeArea.x:F0}, {safeArea.y:F0}, {safeArea.width:F0}, {safeArea.height:F0})";
+        }
+
+        GUI.Label(new Rect(5, 5, 350, 80), debugInfo, debugStyle);
     }
 
     private void InitializeStyles()
@@ -426,8 +569,9 @@ public class InteractiveAPITester : MonoBehaviour
 
         // 스크롤뷰 - 세로 스크롤만 활성화, 가로 스크롤 비활성화
         scrollPosition = GUILayout.BeginScrollView(scrollPosition, false, true, GUILayout.ExpandHeight(true));
-        // 터치 스크롤을 위한 영역 저장 (대략적인 스크롤 영역)
-        currentScrollViewRect = new Rect(0, 100, Screen.width, Screen.height - 100);
+        // 터치 스크롤을 위한 영역 저장 (전체 화면 기준 좌표, safe area 오프셋 포함)
+        Rect safeArea = GetSafeAreaRect();
+        currentScrollViewRect = new Rect(safeArea.x, safeArea.y + 100, safeArea.width, safeArea.height - 100);
 
         if (isSearchMode && !string.IsNullOrEmpty(searchQuery))
         {
@@ -637,7 +781,7 @@ public class InteractiveAPITester : MonoBehaviour
         GUILayout.Label($"[{method.Category}]", labelStyle, GUILayout.Width(100));
 
         // API 버튼
-        if (GUILayout.Button(method.Name, apiButtonStyle, GUILayout.Height(44), GUILayout.ExpandWidth(true)))
+        if (ScrollAreaButton(method.Name, apiButtonStyle, GUILayout.Height(44), GUILayout.ExpandWidth(true)))
         {
             SelectAPI(method);
         }
@@ -651,7 +795,7 @@ public class InteractiveAPITester : MonoBehaviour
         string icon = isExpanded ? "▼" : "▶";
         string label = $"{icon}  {categoryName} ({apiCount})";
 
-        if (GUILayout.Button(label, groupHeaderStyle, GUILayout.Height(44)))
+        if (ScrollAreaButton(label, groupHeaderStyle, GUILayout.Height(44)))
         {
             groupFoldouts[categoryName] = !isExpanded;
         }
@@ -663,7 +807,7 @@ public class InteractiveAPITester : MonoBehaviour
         GUILayout.Space(20); // 들여쓰기
 
         // API 버튼 - 반응형으로 남은 공간 채우기
-        if (GUILayout.Button(method.Name, apiButtonStyle, GUILayout.Height(44), GUILayout.ExpandWidth(true)))
+        if (ScrollAreaButton(method.Name, apiButtonStyle, GUILayout.Height(44), GUILayout.ExpandWidth(true)))
         {
             SelectAPI(method);
         }
@@ -682,9 +826,10 @@ public class InteractiveAPITester : MonoBehaviour
             GUILayout.Label("Parameters:", labelStyle);
             GUILayout.Space(5);
 
-            // 터치 스크롤을 위한 영역 저장 (대략적인 스크롤 영역)
-            float scrollHeight = Screen.height - 280;
-            currentScrollViewRect = new Rect(0, 150, Screen.width, scrollHeight);
+            // 터치 스크롤을 위한 영역 저장 (전체 화면 기준 좌표, safe area 오프셋 포함)
+            Rect safeArea = GetSafeAreaRect();
+            float scrollHeight = safeArea.height - 280;
+            currentScrollViewRect = new Rect(safeArea.x, safeArea.y + 150, safeArea.width, scrollHeight);
             scrollPosition = GUILayout.BeginScrollView(scrollPosition, GUILayout.Height(scrollHeight));
 
             foreach (var param in selectedMethod.Parameters)
@@ -1019,9 +1164,10 @@ public class InteractiveAPITester : MonoBehaviour
 
         GUILayout.Label("Response:", labelStyle);
 
-        // 터치 스크롤을 위한 영역 저장 (대략적인 스크롤 영역)
-        float scrollHeight = Screen.height - 320;
-        currentScrollViewRect = new Rect(0, 200, Screen.width, scrollHeight);
+        // 터치 스크롤을 위한 영역 저장 (전체 화면 기준 좌표, safe area 오프셋 포함)
+        Rect safeArea = GetSafeAreaRect();
+        float scrollHeight = safeArea.height - 320;
+        currentScrollViewRect = new Rect(safeArea.x, safeArea.y + 200, safeArea.width, scrollHeight);
         scrollPosition = GUILayout.BeginScrollView(scrollPosition, GUILayout.Height(scrollHeight));
 
         if (lastResultSuccess && lastResultObject != null && resultDisplayMode == ResultDisplayMode.Structured)
@@ -1466,7 +1612,7 @@ public class InteractiveAPITester : MonoBehaviour
         GUILayout.BeginVertical(boxStyle);
 
         // 섹션 헤더
-        GUILayout.Label("⚠️ OOM Tester (Memory Crash Simulator)", groupHeaderStyle);
+        GUILayout.Label("⚠️ OOM Tester", groupHeaderStyle);
         GUILayout.Label("iOS WebView 메모리 부족 상황을 재현합니다.", labelStyle);
 
         GUILayout.Space(10);

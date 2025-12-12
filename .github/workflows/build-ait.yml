@@ -114,14 +114,19 @@ jobs:
           fi
 
       # ait deploy는 ait-build/ 디렉토리 내에서 실행되어야 함
-      # package.json, granite.config.ts 등 설정 파일이 필요하므로 전체 업로드
+      # 배포에 필요한 파일만 업로드 (node_modules, public 등 제외하여 용량 절감)
 
       - name: Upload AIT Package
         uses: actions/upload-artifact@v5
         with:
           name: ait-build-macos-${{ matrix.unity-version }}
-          path: Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/
+          path: |
+            Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/dist/
+            Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/package.json
+            Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/pnpm-lock.yaml
+            Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/granite.config.ts
           if-no-files-found: error
+          retention-days: 7
 
   # =====================================================
   # AIT Build - Windows
@@ -298,11 +303,16 @@ jobs:
           dir "%DIST_PATH%\web" 2>nul
 
       # ait deploy는 ait-build/ 디렉토리 내에서 실행되어야 함
-      # package.json, granite.config.ts 등 설정 파일이 필요하므로 전체 업로드
+      # 배포에 필요한 파일만 업로드 (node_modules, public 등 제외하여 용량 절감)
 
       - name: Upload AIT Package
         uses: actions/upload-artifact@v5
         with:
           name: ait-build-windows-${{ matrix.unity-version }}
-          path: Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/
+          path: |
+            Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/dist/
+            Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/package.json
+            Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/pnpm-lock.yaml
+            Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/granite.config.ts
           if-no-files-found: error
+          retention-days: 7

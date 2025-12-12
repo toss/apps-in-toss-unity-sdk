@@ -177,13 +177,18 @@ jobs:
           fi
 
       # ait deploy는 ait-build/ 디렉토리 내에서 실행되어야 함
-      # package.json, granite.config.ts 등 설정 파일이 필요하므로 전체 업로드
+      # 배포에 필요한 파일만 업로드 (node_modules, public 등 제외하여 용량 절감)
       - name: Upload AIT Build
         uses: actions/upload-artifact@v5
         with:
           name: ait-build-macos-${{ matrix.unity-version }}
-          path: Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/
+          path: |
+            Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/dist/
+            Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/package.json
+            Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/pnpm-lock.yaml
+            Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/granite.config.ts
           if-no-files-found: error
+          retention-days: 7
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -219,6 +224,8 @@ jobs:
           name: playwright-report-macos-${{ matrix.unity-version }}
           path: Tests~/E2E/tests/playwright-report/
           if-no-files-found: ignore
+          compression-level: 9
+          retention-days: 7
 
   # =====================================================
   # E2E Tests - Windows
@@ -449,13 +456,18 @@ jobs:
           )
 
       # ait deploy는 ait-build/ 디렉토리 내에서 실행되어야 함
-      # package.json, granite.config.ts 등 설정 파일이 필요하므로 전체 업로드
+      # 배포에 필요한 파일만 업로드 (node_modules, public 등 제외하여 용량 절감)
       - name: Upload AIT Build
         uses: actions/upload-artifact@v5
         with:
           name: ait-build-windows-${{ matrix.unity-version }}
-          path: Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/
+          path: |
+            Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/dist/
+            Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/package.json
+            Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/pnpm-lock.yaml
+            Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/granite.config.ts
           if-no-files-found: error
+          retention-days: 7
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -495,6 +507,8 @@ jobs:
           name: playwright-report-windows-${{ matrix.unity-version }}
           path: Tests~/E2E/tests/playwright-report/
           if-no-files-found: ignore
+          compression-level: 9
+          retention-days: 7
 
   # =====================================================
   # Test Report Summary
@@ -565,12 +579,8 @@ jobs:
               console.log('Created new benchmark comment');
             }
 
-      - name: Upload Combined Report
-        uses: actions/upload-artifact@v5
-        with:
-          name: combined-test-report
-          path: artifacts/
-          if-no-files-found: ignore
+      # combined-test-report 제거됨: 모든 아티팩트를 중복 저장하여 용량 낭비
+      # 개별 아티팩트(ait-build-*, benchmark-results-*, playwright-report-*)는 여전히 다운로드 가능
 
       - name: Upload Benchmark Report
         uses: actions/upload-artifact@v5
@@ -578,6 +588,7 @@ jobs:
           name: benchmark-report
           path: benchmark-report.md
           if-no-files-found: warn
+          retention-days: 30
 
   # =====================================================
   # Commit Status 보고 (workflow_call로 호출된 경우)

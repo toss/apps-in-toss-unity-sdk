@@ -59,4 +59,10 @@ MonoBehaviour:
   - userInfo
   - location
   - camera
+  - clipboard-read
+  - clipboard-write
+  - contacts-read
+  - contacts-write
+  - photos-read
+  - photos-write
   plugins: []

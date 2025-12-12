@@ -30,6 +30,9 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// 모바일 에뮬레이션 활성화 여부 (macOS CI에서만 true)
+const isMobileEmulation = process.env.MOBILE_EMULATION === 'true';
+
 // 경로 상수
 const PROJECT_ROOT = path.resolve(__dirname, '../../..');
 
@@ -75,9 +78,15 @@ const AIT_BUILD = path.resolve(SAMPLE_PROJECT, 'ait-build');
 const DIST_WEB = path.resolve(AIT_BUILD, 'dist/web');
 const WEBGL_BUILD = path.resolve(SAMPLE_PROJECT, 'webgl');
 
-// 벤치마크 기준
-const BENCHMARKS = {
-  MAX_LOAD_TIME_MS: 10000,      // 10초
+// 벤치마크 기준 (모바일 환경에서는 완화된 기준 적용)
+const BENCHMARKS = isMobileEmulation ? {
+  MAX_LOAD_TIME_MS: 30000,      // 30초 (CPU 4x + 네트워크 지연)
+  MAX_BUILD_SIZE_MB: 50,        // 50MB
+  MIN_AVG_FPS: 20,              // 20 FPS (모바일 기준)
+  MIN_FPS: 10,                  // 최소 FPS
+  MAX_MEMORY_MB: 512            // 512MB
+} : {
+  MAX_LOAD_TIME_MS: 10000,      // 10초 (데스크톱)
   MAX_BUILD_SIZE_MB: 50,        // 50MB
   MIN_AVG_FPS: 30,              // 30 FPS
   MIN_FPS: 15,                  // 최소 FPS (흔들림 허용)
@@ -338,6 +347,32 @@ function checkForPlaceholders(content) {
   return [...new Set(found)]; // 중복 제거
 }
 
+/**
+ * CDP를 통한 모바일 환경 시뮬레이션 적용 (MOBILE_EMULATION=true 일 때만)
+ * - CPU: 4x slowdown (iPhone 8 수준)
+ * - Network: 4G LTE (12Mbps down, 6Mbps up, 70ms latency)
+ */
+async function applyMobileThrottling(page) {
+  if (!isMobileEmulation) return null;
+
+  console.log('📱 Applying mobile throttling (CPU 4x, 4G LTE)...');
+  const client = await page.context().newCDPSession(page);
+
+  // CPU 4x slowdown
+  await client.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+
+  // 4G LTE 네트워크 스로틀링
+  // 12 Mbps = 1,572,864 bytes/s, 6 Mbps = 786,432 bytes/s
+  await client.send('Network.emulateNetworkConditions', {
+    offline: false,
+    downloadThroughput: 12 * 1024 * 1024 / 8,  // 12 Mbps
+    uploadThroughput: 6 * 1024 * 1024 / 8,     // 6 Mbps
+    latency: 70
+  });
+
+  return client;
+}
+
 
 // ============================================================================
 // Test Suite
@@ -488,6 +523,9 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
   // -------------------------------------------------------------------------
   test('2. AIT dev server should start and load Unity', async ({ page }) => {
     test.setTimeout(120000); // 2분
+
+    // 모바일 스로틀링 적용 (MOBILE_EMULATION=true일 때만 실행)
+    await applyMobileThrottling(page);
 
     // ait-build 디렉토리 확인
     expect(directoryExists(AIT_BUILD), 'ait-build/ should exist for dev server').toBe(true);
@@ -683,6 +721,9 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
   test('5. Production build should load in browser', async ({ page }) => {
     test.setTimeout(180000); // 3분
 
+    // 모바일 스로틀링 적용 (MOBILE_EMULATION=true일 때만 실행)
+    await applyMobileThrottling(page);
+
     expect(directoryExists(DIST_WEB), 'dist/web/ should exist for production server').toBe(true);
 
     // Production 서버 시작 (npm run start = vite preview)
@@ -775,6 +816,9 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
   // -------------------------------------------------------------------------
   test('6. Performance benchmarks should pass', async ({ page }) => {
     test.setTimeout(180000); // 3분
+
+    // 모바일 스로틀링 적용 (MOBILE_EMULATION=true일 때만 실행)
+    await applyMobileThrottling(page);
 
     expect(directoryExists(DIST_WEB), 'dist/web/ should exist').toBe(true);
 
@@ -907,6 +951,9 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
   // -------------------------------------------------------------------------
   test('7. All 39 SDK APIs should return correct errors in dev environment', async ({ page }) => {
     test.setTimeout(180000); // 3분
+
+    // 모바일 스로틀링 적용 (MOBILE_EMULATION=true일 때만 실행)
+    await applyMobileThrottling(page);
 
     expect(directoryExists(DIST_WEB), 'dist/web/ should exist').toBe(true);
 

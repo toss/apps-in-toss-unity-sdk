@@ -259,7 +259,7 @@ show_help() {
     echo "┌─────────────────────────────────────────────────────────────────────────────────────┐"
     echo "│ 옵션                        │ 실행 내용                          │ 소요 시간    │"
     echo "├─────────────────────────────────────────────────────────────────────────────────────┤"
-    echo "│ --validate                  │ 파일 구조 검증 + Playwright 설정   │ ~30초        │"
+    echo "│ --validate                  │ 파일 검증 + SDK 유닛 테스트        │ ~30초        │"
     echo "│ --unity-build               │ Unity WebGL 빌드 (단일 버전)       │ ~20분        │"
     echo "│ --unity-build --parallel    │ 모든 버전 병렬 빌드                │ ~20분 (병렬) │"
     echo "│ --e2e                       │ Playwright 테스트 (빌드 필요)      │ ~5분         │"
@@ -296,10 +296,10 @@ show_help() {
     echo "    $0 --list-unity               # 설치된 버전 확인"
     echo ""
     echo "실행 순서:"
-    echo "  --validate    : [1] 파일 구조 검증 → [2] Playwright 설정 검증"
+    echo "  --validate    : [1] 파일 구조 검증 → [2] Playwright 설정 → [3] SDK 유닛 테스트"
     echo "  --unity-build : [1] Unity WebGL 빌드"
     echo "  --e2e         : [1] Playwright E2E 테스트 (빌드 결과물 필요)"
-    echo "  --all         : [1] 파일 검증 → [2] Playwright 설정 → [3] Unity 빌드 → [4] E2E 테스트"
+    echo "  --all         : [1] 파일 검증 → [2] Playwright 설정 → [3] SDK 유닛 테스트 → [4] Unity 빌드 → [5] E2E 테스트"
     echo ""
     echo "--parallel 플래그:"
     echo "  다른 모드와 조합하여 모든 버전을 병렬로 처리합니다:"
@@ -545,6 +545,67 @@ test_playwright_config() {
     fi
 
     cd "$SCRIPT_DIR"
+}
+
+# 5.5 SDK 생성기 유닛 테스트
+test_sdk_generator_unit() {
+    print_header "SDK Generator Unit Tests"
+
+    local GENERATOR_PATH="$SCRIPT_DIR/sdk-runtime-generator~"
+    local TESTS_PATH="$GENERATOR_PATH/tests/unit"
+
+    if [ ! -d "$GENERATOR_PATH" ]; then
+        print_skip "SDK Generator Unit Tests - sdk-runtime-generator~ 디렉토리 없음"
+        return 0
+    fi
+
+    cd "$GENERATOR_PATH"
+
+    echo "Installing dependencies..."
+    pnpm install --silent 2>/dev/null || pnpm install
+
+    cd "$TESTS_PATH"
+
+    local has_mcs=false
+    if command -v mcs &> /dev/null; then
+        has_mcs=true
+    fi
+
+    local tier1_passed=true
+    local tier2_passed=true
+
+    # Tier 1: C# 컴파일 테스트 (Mono mcs 필요)
+    if [ "$has_mcs" = true ]; then
+        echo "Running Tier 1 tests (C# compilation)..."
+        if npm run test:tier1 2>&1; then
+            echo -e "${GREEN}✓${NC} Tier 1 (C# compilation) passed"
+        else
+            echo -e "${RED}✗${NC} Tier 1 (C# compilation) failed"
+            tier1_passed=false
+        fi
+    else
+        echo -e "${YELLOW}⊘${NC} Tier 1 (C# compilation) skipped - mcs not installed"
+        echo "  Install Mono: brew install mono (macOS) or apt install mono-mcs (Linux)"
+    fi
+
+    # Tier 2: C# ↔ jslib 일관성 검증
+    echo "Running Tier 2 tests (C# ↔ jslib invariants)..."
+    if npm run test:tier2 2>&1; then
+        echo -e "${GREEN}✓${NC} Tier 2 (C# ↔ jslib invariants) passed"
+    else
+        echo -e "${RED}✗${NC} Tier 2 (C# ↔ jslib invariants) failed"
+        tier2_passed=false
+    fi
+
+    cd "$SCRIPT_DIR"
+
+    if [ "$tier1_passed" = true ] && [ "$tier2_passed" = true ]; then
+        print_success "SDK Generator Unit Tests"
+        return 0
+    else
+        print_failure "SDK Generator Unit Tests"
+        return 1
+    fi
 }
 
 # 6. 병렬 Unity 빌드만 (E2E 테스트 없음)
@@ -853,6 +914,7 @@ main() {
         --all)
             test_e2e_validation
             test_playwright_config
+            test_sdk_generator_unit
             if [ "$PARALLEL_MODE" = true ]; then
                 run_parallel_builds
             else
@@ -886,6 +948,7 @@ main() {
         --validate)
             test_e2e_validation
             test_playwright_config
+            test_sdk_generator_unit
             ;;
     esac
 

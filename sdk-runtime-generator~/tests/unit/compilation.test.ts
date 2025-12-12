@@ -74,7 +74,7 @@ describe('Tier 1: 컴파일 가능성 검증', () => {
       const result = await compileCSharp(csharpFiles['AIT.cs'], {
         references: [
           'UnityEngine.dll',
-          'UnityEngine.CoreModule.dll',
+          'Newtonsoft.Json.dll',
           'System.dll',
         ],
         allowUnsafe: false,
@@ -97,7 +97,7 @@ describe('Tier 1: 컴파일 가능성 검증', () => {
       }, {
         references: [
           'UnityEngine.dll',
-          'UnityEngine.CoreModule.dll',
+          'Newtonsoft.Json.dll',
           'System.dll',
         ],
       });
@@ -113,7 +113,7 @@ describe('Tier 1: 컴파일 가능성 검증', () => {
 
     test('AIT.Types.cs가 컴파일 가능해야 함', async () => {
       const result = await compileCSharp(csharpFiles['AIT.Types.cs'], {
-        references: ['System.dll', 'UnityEngine.dll'], // UnityEngine needed for JsonUtility
+        references: ['System.dll', 'UnityEngine.dll', 'Newtonsoft.Json.dll'],
       });
 
       if (!result.success) {
@@ -132,7 +132,7 @@ describe('Tier 1: 컴파일 가능성 검증', () => {
         const result = await compileCSharpFiles(csharpFiles, {
           references: [
             'UnityEngine.dll',
-            'UnityEngine.CoreModule.dll',
+            'Newtonsoft.Json.dll',
             // System.Runtime.InteropServices는 System.dll에 포함되어 있음 (Mono)
             'System.dll',
           ],

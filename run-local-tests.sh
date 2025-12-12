@@ -552,7 +552,6 @@ test_sdk_generator_unit() {
     print_header "SDK Generator Unit Tests"
 
     local GENERATOR_PATH="$SCRIPT_DIR/sdk-runtime-generator~"
-    local TESTS_PATH="$GENERATOR_PATH/tests/unit"
 
     if [ ! -d "$GENERATOR_PATH" ]; then
         print_skip "SDK Generator Unit Tests - sdk-runtime-generator~ 디렉토리 없음"
@@ -563,8 +562,6 @@ test_sdk_generator_unit() {
 
     echo "Installing dependencies..."
     pnpm install --silent 2>/dev/null || pnpm install
-
-    cd "$TESTS_PATH"
 
     local has_mcs=false
     if command -v mcs &> /dev/null; then
@@ -577,7 +574,7 @@ test_sdk_generator_unit() {
     # Tier 1: C# 컴파일 테스트 (Mono mcs 필요)
     if [ "$has_mcs" = true ]; then
         echo "Running Tier 1 tests (C# compilation)..."
-        if npm run test:tier1 2>&1; then
+        if pnpm run test:tier1 2>&1; then
             echo -e "${GREEN}✓${NC} Tier 1 (C# compilation) passed"
         else
             echo -e "${RED}✗${NC} Tier 1 (C# compilation) failed"
@@ -590,7 +587,7 @@ test_sdk_generator_unit() {
 
     # Tier 2: C# ↔ jslib 일관성 검증
     echo "Running Tier 2 tests (C# ↔ jslib invariants)..."
-    if npm run test:tier2 2>&1; then
+    if pnpm run test:tier2 2>&1; then
         echo -e "${GREEN}✓${NC} Tier 2 (C# ↔ jslib invariants) passed"
     else
         echo -e "${RED}✗${NC} Tier 2 (C# ↔ jslib invariants) failed"

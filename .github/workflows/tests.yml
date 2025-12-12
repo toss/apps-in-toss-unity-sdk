@@ -99,21 +99,17 @@ jobs:
           sudo apt-get install -y mono-mcs
           mcs --version
 
-      - name: Install Generator Dependencies
+      - name: Install Dependencies
         working-directory: sdk-runtime-generator~
         run: pnpm install
 
-      - name: Install Test Dependencies
-        working-directory: sdk-runtime-generator~/tests/unit
-        run: npm install
-
       - name: Run Unit Tests (Tier 1 - C# compilation)
-        working-directory: sdk-runtime-generator~/tests/unit
-        run: npm run test:tier1
+        working-directory: sdk-runtime-generator~
+        run: pnpm run test:tier1
 
       - name: Run Unit Tests (Tier 2 - C#/jslib invariants)
-        working-directory: sdk-runtime-generator~/tests/unit
-        run: npm run test:tier2
+        working-directory: sdk-runtime-generator~
+        run: pnpm run test:tier2
 
   # =====================================================
   # E2E Tests - macOS

@@ -521,7 +521,7 @@ jobs:
         shell: powershell
         env:
           UNITY_PROJECT_PATH: ${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ matrix.unity-version }}
-        run: npx playwright test --grep "^[1-5]\."
+        run: npx playwright test --grep "[1-5]\. "
 
       - name: Upload Playwright Report
         uses: actions/upload-artifact@v5

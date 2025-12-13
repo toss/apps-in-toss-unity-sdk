@@ -179,7 +179,7 @@ jobs:
           RELEASE_BODY=$(cat <<EOF
           ## Apps in Toss Unity SDK v${VERSION}
 
-          \`@apps-in-toss/web-framework\` v${VERSION} 기반으로 생성된 SDK입니다.
+          \`@apps-in-toss/web-framework\` v${VERSION} 기반으로 생성된 Unity SDK입니다.
 
           ### 설치 방법
 
@@ -194,9 +194,26 @@ jobs:
           \`\`\`
 
           ### 지원 Unity 버전
-          - Unity 2021.3 LTS 이상
-          - Unity 2022.3 LTS
-          - Unity 6000.0, 6000.2
+
+          | 버전 | 상태 |
+          |------|------|
+          | Unity 6000.3 (Unity 6.3) | ✅ 지원 |
+          | Unity 6000.2 (Unity 6 LTS) | ✅ 지원 |
+          | Unity 6000.0 (Unity 6) | ✅ 지원 |
+          | Unity 2022.3 LTS | ✅ 지원 |
+          | Unity 2021.3 LTS | ✅ 지원 (최소 버전) |
+
+          ### 주요 기능
+
+          - Apps in Toss 플랫폼에 최적화된 WebGL 빌드 자동화
+          - 커스텀 Build & Deploy 윈도우를 통한 Unity Editor 통합
+          - 플랫폼별 브릿지 코드가 포함된 커스텀 WebGL 템플릿 (AITTemplate)
+          - granite 빌드 시스템을 사용한 Vite 기반 빌드 파이프라인
+          - 플랫폼 기능을 위한 종합 C# API (결제, 사용자 인증, 기기 API 등)
+
+          ### 문서
+
+          - [Unity Editor 설정](https://github.com/${{ github.repository }}#readme)
           EOF
           )
 

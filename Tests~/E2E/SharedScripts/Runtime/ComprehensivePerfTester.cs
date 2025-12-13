@@ -60,9 +60,9 @@ public class ComprehensivePerfTester : MonoBehaviour
     public int renderingGridSize = 20;
 
     [Header("Memory Load Settings")]
-    public int wasmMemoryMB = 40;
-    public int jsMemoryMB = 40;
-    public int canvasCount = 3;
+    public int wasmMemoryMB = 500;
+    public int jsMemoryMB = 500;
+    public int canvasCount = 125;  // 125 × 4MB ≈ 500MB
     public int canvasSize = 1024;
 
     [Header("UI Settings")]

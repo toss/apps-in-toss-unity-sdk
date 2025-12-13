@@ -88,15 +88,16 @@ public static class E2EBootstrapper
         if (benchmarkManager.GetComponent<ComprehensivePerfTester>() == null)
         {
             var perfTester = benchmarkManager.AddComponent<ComprehensivePerfTester>();
-            perfTester.autoRunOnStart = true;
-            perfTester.startDelay = 2f;
+            perfTester.autoRunOnStart = false;  // JavaScript에서 트리거
+            perfTester.startDelay = 0f;
             perfTester.showUI = true;
-            // 강화된 부하 설정
+            // 강화된 부하 설정 (500MB 메모리 압박)
             perfTester.physicsObjectCount = 200;
             perfTester.renderingGridSize = 20;
-            perfTester.wasmMemoryMB = 40;
-            perfTester.jsMemoryMB = 40;
-            Debug.Log("[E2EBootstrapper] Added ComprehensivePerfTester component");
+            perfTester.wasmMemoryMB = 500;
+            perfTester.jsMemoryMB = 500;
+            perfTester.canvasCount = 125;  // 125 × 4MB ≈ 500MB
+            Debug.Log("[E2EBootstrapper] Added ComprehensivePerfTester component (waiting for trigger)");
         }
 
         // PerformanceBenchmark 추가 (FPS 표시용)
@@ -126,22 +127,29 @@ public static class E2EBootstrapper
         if (benchmarkManager.GetComponent<RuntimeAPITester>() == null)
         {
             var runtimeTester = benchmarkManager.AddComponent<RuntimeAPITester>();
-            runtimeTester.autoRunOnStart = true;
-            runtimeTester.startDelay = 3f;
+            runtimeTester.autoRunOnStart = false;  // JavaScript에서 트리거
+            runtimeTester.startDelay = 0f;
             runtimeTester.showUI = true;
             runtimeTester.showDetailedResults = false;
-            Debug.Log("[E2EBootstrapper] Added RuntimeAPITester component");
+            Debug.Log("[E2EBootstrapper] Added RuntimeAPITester component (waiting for trigger)");
         }
 
         // SerializationTester 추가 (Test 7용)
         if (benchmarkManager.GetComponent<SerializationTester>() == null)
         {
             var serializationTester = benchmarkManager.AddComponent<SerializationTester>();
-            serializationTester.autoRunOnStart = true;
-            serializationTester.startDelay = 4f;
+            serializationTester.autoRunOnStart = false;  // JavaScript에서 트리거
+            serializationTester.startDelay = 0f;
             serializationTester.showUI = true;
             serializationTester.showDetailedResults = false;
-            Debug.Log("[E2EBootstrapper] Added SerializationTester component");
+            Debug.Log("[E2EBootstrapper] Added SerializationTester component (waiting for trigger)");
+        }
+
+        // E2ETestTrigger 추가 (JavaScript → Unity 테스트 트리거용)
+        if (benchmarkManager.GetComponent<E2ETestTrigger>() == null)
+        {
+            benchmarkManager.AddComponent<E2ETestTrigger>();
+            Debug.Log("[E2EBootstrapper] Added E2ETestTrigger component");
         }
 
         // CameraController 추가
@@ -178,5 +186,84 @@ public static class E2EBootstrapper
         }
 
         Debug.Log("[E2EBootstrapper] Interactive test app components initialization complete");
+    }
+}
+
+/// <summary>
+/// JavaScript에서 Unity 테스트를 트리거하기 위한 헬퍼 컴포넌트
+/// SendMessage는 MonoBehaviour에만 동작하므로 별도 컴포넌트 필요
+/// </summary>
+public class E2ETestTrigger : MonoBehaviour
+{
+#if UNITY_WEBGL && !UNITY_EDITOR
+    [System.Runtime.InteropServices.DllImport("__Internal")]
+    private static extern void RegisterTriggerFunctions();
+#endif
+
+    void Awake()
+    {
+        // JavaScript에서 호출 가능한 트리거 함수 등록
+#if UNITY_WEBGL && !UNITY_EDITOR
+        try
+        {
+            RegisterTriggerFunctions();
+            Debug.Log("[E2ETestTrigger] Trigger functions registered in JavaScript");
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogWarning($"[E2ETestTrigger] Failed to register trigger functions: {e.Message}");
+        }
+#endif
+    }
+
+    /// <summary>
+    /// JavaScript에서 호출: window.TriggerAPITest() → SendMessage('BenchmarkManager', 'TriggerAPITest')
+    /// </summary>
+    public void TriggerAPITest()
+    {
+        Debug.Log("[E2ETestTrigger] API Test triggered from JavaScript");
+        var tester = GetComponent<RuntimeAPITester>();
+        if (tester != null)
+        {
+            tester.RunAPITests();
+        }
+        else
+        {
+            Debug.LogError("[E2ETestTrigger] RuntimeAPITester component not found!");
+        }
+    }
+
+    /// <summary>
+    /// JavaScript에서 호출: window.TriggerSerializationTest()
+    /// </summary>
+    public void TriggerSerializationTest()
+    {
+        Debug.Log("[E2ETestTrigger] Serialization Test triggered from JavaScript");
+        var tester = GetComponent<SerializationTester>();
+        if (tester != null)
+        {
+            tester.RunSerializationTests();
+        }
+        else
+        {
+            Debug.LogError("[E2ETestTrigger] SerializationTester component not found!");
+        }
+    }
+
+    /// <summary>
+    /// JavaScript에서 호출: window.TriggerPerformanceTest()
+    /// </summary>
+    public void TriggerPerformanceTest()
+    {
+        Debug.Log("[E2ETestTrigger] Performance Test triggered from JavaScript");
+        var tester = GetComponent<ComprehensivePerfTester>();
+        if (tester != null)
+        {
+            tester.RunTests();
+        }
+        else
+        {
+            Debug.LogError("[E2ETestTrigger] ComprehensivePerfTester component not found!");
+        }
     }
 }

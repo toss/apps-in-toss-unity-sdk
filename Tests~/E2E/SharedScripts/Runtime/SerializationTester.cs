@@ -169,8 +169,7 @@ public class SerializationTester : MonoBehaviour
         // ShareMessage 테스트
         TestClassSerialization("ShareMessage", new ShareMessage
         {
-            Message = "Test message",
-            ImagePath = "/path/to/image.png"
+            Message = "Test message"
         }, json => json.Contains("Test message"));
 
         // GetCurrentLocationOptions 테스트
@@ -264,9 +263,9 @@ public class SerializationTester : MonoBehaviour
         Debug.Log("[SerializationTester] Testing Result type (discriminated union) serialization...");
 
         // GetUserKeyForGameResult 성공 케이스 시뮬레이션
-        var successJson = @"{""_type"":""success"",""_successJson"":{""userKey"":""test-key-123""},""_errorCode"":null}";
+        var successJson = @"{""_type"":""success"",""_successJson"":{""hash"":""test-hash-123"",""type"":""test-type""},""_errorCode"":null}";
         TestResultDeserialization<GetUserKeyForGameResult>("GetUserKeyForGameResult.Success", successJson, result =>
-            result.IsSuccess && result.GetSuccess()?.UserKey == "test-key-123");
+            result.IsSuccess && result.GetSuccess()?.Hash == "test-hash-123");
 
         // GetUserKeyForGameResult 에러 케이스 시뮬레이션
         var errorJson = @"{""_type"":""error"",""_successJson"":null,""_errorCode"":""INVALID_CATEGORY""}";

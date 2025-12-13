@@ -8,17 +8,18 @@ import { fileURLToPath } from 'url';
 /**
  * Apps in Toss Unity SDK - E2E Full Pipeline Tests
  *
- * 7개 테스트 케이스:
+ * 8개 테스트 케이스 (빠른 테스트 → 느린 테스트 순서):
  * 1. Unity WebGL Build (Runtime 컴파일)
  * 2. AIT Dev Server
  * 3. AIT Build Directory
  * 4. AIT Packaging
  * 5. Production Server
- * 6. Performance Benchmarks
- * 7. Runtime API Error Validation (39개 SDK API 에러 검증)
+ * 6. Runtime API Error Validation (SDK API 에러 검증)
+ * 7. Serialization Round-trip Tests (C# ↔ JavaScript 직렬화 검증)
+ * 8. Comprehensive Performance (CPU/GPU + 메모리 통합 성능 테스트)
  *
- * Test 7 검증 기준:
- * - 모든 39개 SDK API를 호출
+ * Test 6 (Runtime API) 검증 기준:
+ * - 모든 61개 SDK API를 호출
  * - 개발 환경에서 "상정된 에러" (expected error) 발생 = PASS
  *   - "XXX is not a constant handler" (bridge-core Constant API)
  *   - "__GRANITE_NATIVE_EMITTER is not available" (Async API)
@@ -32,6 +33,10 @@ const __dirname = path.dirname(__filename);
 
 // 모바일 에뮬레이션 활성화 여부 (macOS CI에서만 true)
 const isMobileEmulation = process.env.MOBILE_EMULATION === 'true';
+
+// CPU 쓰로틀링 배율 (환경변수로 제어, 기본값: 0 = 비활성화)
+// 예: CPU_THROTTLE_RATE=4 → 4배 느림
+const cpuThrottleRate = parseInt(process.env.CPU_THROTTLE_RATE || '0', 10);
 
 // 경로 상수
 const PROJECT_ROOT = path.resolve(__dirname, '../../..');
@@ -348,27 +353,43 @@ function checkForPlaceholders(content) {
 }
 
 /**
- * CDP를 통한 모바일 환경 시뮬레이션 적용 (MOBILE_EMULATION=true 일 때만)
- * - CPU: 4x slowdown (iPhone 8 수준)
- * - Network: 4G LTE (12Mbps down, 6Mbps up, 70ms latency)
+ * CDP를 통한 모바일 환경 시뮬레이션 적용
+ *
+ * 환경변수로 제어:
+ * - MOBILE_EMULATION=true: 모바일 에뮬레이션 (CPU 4x + 4G LTE)
+ * - CPU_THROTTLE_RATE=N: CPU만 N배 느리게 (독립 사용 가능)
+ *
+ * @param {number} overrideRate - 특정 테스트에서 강제로 사용할 CPU 배율 (0=비활성화)
  */
-async function applyMobileThrottling(page) {
-  if (!isMobileEmulation) return null;
+async function applyMobileThrottling(page, overrideRate = undefined) {
+  // 쓰로틀링 배율 결정 (우선순위: override > 환경변수)
+  const rate = overrideRate !== undefined ? overrideRate :
+               (isMobileEmulation ? 4 : cpuThrottleRate);
 
-  console.log('📱 Applying mobile throttling (CPU 4x, 4G LTE)...');
+  if (rate <= 0 && !isMobileEmulation) {
+    console.log('📱 Throttling disabled (no MOBILE_EMULATION or CPU_THROTTLE_RATE)');
+    return null;
+  }
+
   const client = await page.context().newCDPSession(page);
 
-  // CPU 4x slowdown
-  await client.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+  // CPU 쓰로틀링 적용 (rate > 0인 경우)
+  if (rate > 0) {
+    console.log(`📱 Applying CPU ${rate}x slowdown...`);
+    await client.send('Emulation.setCPUThrottlingRate', { rate });
+  }
 
-  // 4G LTE 네트워크 스로틀링
-  // 12 Mbps = 1,572,864 bytes/s, 6 Mbps = 786,432 bytes/s
-  await client.send('Network.emulateNetworkConditions', {
-    offline: false,
-    downloadThroughput: 12 * 1024 * 1024 / 8,  // 12 Mbps
-    uploadThroughput: 6 * 1024 * 1024 / 8,     // 6 Mbps
-    latency: 70
-  });
+  // 네트워크 쓰로틀링 (MOBILE_EMULATION인 경우에만)
+  if (isMobileEmulation) {
+    console.log('📱 Applying 4G LTE network throttling...');
+    // 12 Mbps = 1,572,864 bytes/s, 6 Mbps = 786,432 bytes/s
+    await client.send('Network.emulateNetworkConditions', {
+      offline: false,
+      downloadThroughput: 12 * 1024 * 1024 / 8,  // 12 Mbps
+      uploadThroughput: 6 * 1024 * 1024 / 8,     // 6 Mbps
+      latency: 70
+    });
+  }
 
   return client;
 }
@@ -403,18 +424,26 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
 
     // 2. 벤치마크 결과 (workflow에서 업로드하는 파일)
     const benchmarkPath = path.resolve(__dirname, 'benchmark-results.json');
+    const comprehensivePerf = testResults.tests['8_comprehensive_perf'];
     const benchmarkResults = {
       timestamp: testResults.timestamp,
       unityProject: SAMPLE_PROJECT,
       buildSize: testResults.tests['1_webgl_build']?.buildSizeMB,
-      pageLoadTime: testResults.tests['5_production_server']?.pageLoadTimeMs || testResults.tests['6_benchmarks']?.pageLoadTimeMs,
-      unityLoadTime: testResults.tests['6_benchmarks']?.unityLoadTimeMs,
+      pageLoadTime: testResults.tests['5_production_server']?.pageLoadTimeMs || comprehensivePerf?.pageLoadTimeMs,
+      unityLoadTime: comprehensivePerf?.unityLoadTimeMs,
       webgl: testResults.tests['5_production_server']?.webgl,
-      benchmarkData: testResults.tests['6_benchmarks']?.benchmarkData,
-      apiTestResults: testResults.tests['7_runtime_api'] ? {
-        totalAPIs: testResults.tests['7_runtime_api'].totalAPIs,
-        successCount: testResults.tests['7_runtime_api'].successCount,
-        unexpectedErrorCount: testResults.tests['7_runtime_api'].unexpectedErrorCount
+      // 종합 성능 테스트 데이터 (새 구조)
+      comprehensivePerfData: comprehensivePerf ? {
+        oomOccurred: comprehensivePerf.oomOccurred,
+        baseline: comprehensivePerf.baseline,
+        physicsWithMemory: comprehensivePerf.physicsWithMemory,
+        renderingWithMemory: comprehensivePerf.renderingWithMemory,
+        fullLoad: comprehensivePerf.fullLoad
+      } : null,
+      apiTestResults: testResults.tests['6_runtime_api'] ? {
+        totalAPIs: testResults.tests['6_runtime_api'].totalAPIs,
+        successCount: testResults.tests['6_runtime_api'].successCount,
+        unexpectedErrorCount: testResults.tests['6_runtime_api'].unexpectedErrorCount
       } : null,
       testsPassed: Object.values(testResults.tests || {}).filter(t => t.passed).length,
       testsTotal: Object.keys(testResults.tests || {}).length
@@ -436,8 +465,8 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
 
     // 주요 메트릭
     const buildSize = tests['1_webgl_build']?.buildSizeMB;
-    const pageLoad = tests['5_production_server']?.pageLoadTimeMs || tests['6_benchmarks']?.pageLoadTimeMs;
-    const unityLoad = tests['6_benchmarks']?.unityLoadTimeMs;
+    const pageLoad = tests['5_production_server']?.pageLoadTimeMs || tests['8_comprehensive_perf']?.pageLoadTimeMs;
+    const unityLoad = tests['8_comprehensive_perf']?.unityLoadTimeMs;
     const renderer = tests['5_production_server']?.webgl?.renderer;
 
     console.log('\n  📦 Build Size:      ' + (buildSize ? buildSize.toFixed(2) + ' MB' : 'N/A'));
@@ -446,7 +475,7 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
     console.log('  🖥️  GPU Renderer:    ' + (renderer || 'N/A'));
 
     // SDK Runtime 검증 결과 출력
-    const apiTest = tests['7_runtime_api'];
+    const apiTest = tests['6_runtime_api'];
     if (apiTest && apiTest.runtimeValidation) {
       const rv = apiTest.runtimeValidation;
       console.log('\n  🔍 SDK Runtime Validation:');
@@ -812,18 +841,16 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
 
 
   // -------------------------------------------------------------------------
-  // Test 6: Performance Benchmarks (vite preview)
+  // Test 8: Comprehensive Performance Test (CPU/GPU + Memory 통합)
+  // Physics + Rendering + Memory 압박을 동시에 적용하여 현실적인 성능 측정
   // -------------------------------------------------------------------------
-  test('6. Performance benchmarks should pass', async ({ page }) => {
-    test.setTimeout(180000); // 3분
-
-    // 모바일 스로틀링 적용 (MOBILE_EMULATION=true일 때만 실행)
-    await applyMobileThrottling(page);
+  test('8. Comprehensive performance test should pass', async ({ page }) => {
+    test.setTimeout(240000); // 4분 (통합 테스트이므로 시간 증가)
 
     expect(directoryExists(DIST_WEB), 'dist/web/ should exist').toBe(true);
 
     // Production 서버 시작 (npm run start = vite preview)
-    console.log('🚀 Starting production server (vite preview)...');
+    console.log('🚀 Starting production server for comprehensive performance test...');
     const prodServer = await startProductionServer(AIT_BUILD, serverPort);
     serverProcess = prodServer.process;
     const actualPort = prodServer.port;
@@ -847,11 +874,40 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       throw new Error(`Server failed to start on port ${actualPort}`);
     }
 
+    // CPU 쓰로틀링 6x 적용 (저사양 기기 시뮬레이션)
+    const client = await page.context().newCDPSession(page);
+    await client.send('Emulation.setCPUThrottlingRate', { rate: 6 });
+    console.log('🐢 CPU throttling 6x applied');
+
+    // 이벤트 리스너를 페이지 로드 전에 등록 (이벤트 놓침 방지)
+    await page.addInitScript(() => {
+      window.__comprehensivePerfPromise = new Promise((resolve) => {
+        const handler = (event) => {
+          window.removeEventListener('e2e-comprehensive-perf-complete', handler);
+          console.log('[E2E] Comprehensive perf test event received');
+          resolve(event.detail);
+        };
+        window.addEventListener('e2e-comprehensive-perf-complete', handler);
+
+        // 이미 데이터가 있으면 바로 반환
+        if (window['__E2E_COMPREHENSIVE_PERF_DATA__']) {
+          resolve(window['__E2E_COMPREHENSIVE_PERF_DATA__']);
+          return;
+        }
+
+        // 180초 타임아웃 (통합 테스트 ~90초)
+        setTimeout(() => {
+          console.log('[E2E] Comprehensive perf test timeout');
+          resolve(null);
+        }, 180000);
+      });
+    });
+
     // 페이지 로딩 시간 측정 (E2E 모드 활성화)
     const startTime = Date.now();
     await page.goto(`http://localhost:${actualPort}?e2e=true`, {
       waitUntil: 'domcontentloaded',
-      timeout: 60000
+      timeout: 90000
     });
     const pageLoadTime = Date.now() - startTime;
 
@@ -859,9 +915,9 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
     const unityStartTime = Date.now();
     try {
       await page.waitForFunction(() => {
-        return window['unityInstance'] !== undefined ||
-               (window['unityInstance']?.Module?.ready === true);
+        return window['unityInstance'] !== undefined;
       }, { timeout: 120000 });
+      console.log('✅ Unity instance ready for comprehensive performance test');
     } catch {
       console.log('⚠️ Unity initialization timeout');
     }
@@ -870,90 +926,118 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
     // 빌드 크기 확인
     const buildSizeMB = getDirectorySizeMB(DIST_WEB);
 
-    // 벤치마크 데이터 수집 (Unity에서 CustomEvent로 전송)
-    let benchmarkData = null;
-    try {
-      benchmarkData = await page.evaluate(() => {
-        return new Promise((resolve) => {
-          // E2EBridge.jslib에서 발생시키는 CustomEvent 수신
-          const handler = (event) => {
-            window.removeEventListener('e2e-benchmark-complete', handler);
-            resolve(event.detail);
-          };
-          window.addEventListener('e2e-benchmark-complete', handler);
+    // ComprehensivePerfTester에서 결과 수신 대기
+    const perfResults = await page.evaluate(() => window.__comprehensivePerfPromise);
 
-          // 이미 데이터가 있으면 바로 반환
-          if (window['__E2E_BENCHMARK_DATA__']) {
-            resolve(window['__E2E_BENCHMARK_DATA__']);
-            return;
-          }
-
-          // 90초 타임아웃 (AutoBenchmarkRunner는 약 60초 소요)
-          setTimeout(() => resolve(null), 90000);
-        });
-      });
-    } catch {
-      console.log('⚠️ Benchmark data not received from Unity');
-    }
-
-    // JSON 문자열인 경우 파싱
-    if (typeof benchmarkData === 'string') {
-      try {
-        benchmarkData = JSON.parse(benchmarkData);
-      } catch {
-        console.log('⚠️ Failed to parse benchmark data JSON');
-      }
-    }
-
-    // 결과 로깅
-    console.log('\n📊 BENCHMARK RESULTS:');
-    console.log(`   Page Load: ${pageLoadTime}ms (max: ${BENCHMARKS.MAX_LOAD_TIME_MS}ms)`);
-    console.log(`   Unity Load: ${unityLoadTime}ms`);
-    console.log(`   Build Size: ${buildSizeMB.toFixed(2)}MB (max: ${BENCHMARKS.MAX_BUILD_SIZE_MB}MB)`);
-
-    if (benchmarkData) {
-      console.log(`   Avg FPS: ${benchmarkData.avgFps?.toFixed(1) || 'N/A'} (min: ${BENCHMARKS.MIN_AVG_FPS})`);
-      console.log(`   Min FPS: ${benchmarkData.minFps?.toFixed(1) || 'N/A'}`);
-      console.log(`   Memory: ${benchmarkData.memoryUsageMB?.toFixed(1) || 'N/A'}MB`);
-    }
-
-    // 검증
-    // 로딩 시간은 CI 환경에서 느릴 수 있으므로 경고만
-    if (pageLoadTime > BENCHMARKS.MAX_LOAD_TIME_MS) {
-      console.log(`⚠️ Page load time exceeded (${pageLoadTime}ms > ${BENCHMARKS.MAX_LOAD_TIME_MS}ms)`);
-    }
-
-    // 빌드 크기는 반드시 검증
-    expect(buildSizeMB).toBeLessThanOrEqual(BENCHMARKS.MAX_BUILD_SIZE_MB);
-
-    // FPS는 데이터가 있을 때만 검증
-    if (benchmarkData?.avgFps) {
-      expect(benchmarkData.avgFps).toBeGreaterThanOrEqual(BENCHMARKS.MIN_AVG_FPS);
-    }
+    // CPU 쓰로틀링 해제
+    await client.send('Emulation.setCPUThrottlingRate', { rate: 1 });
 
     // 서버 종료
     serverProcess.kill();
     serverProcess = null;
 
-    testResults.tests['6_benchmarks'] = {
-      passed: true,
-      pageLoadTimeMs: pageLoadTime,
-      unityLoadTimeMs: unityLoadTime,
-      buildSizeMB,
-      benchmarkData
-    };
+    // 결과 검증
+    if (perfResults) {
+      // JSON 문자열인 경우 파싱
+      let results = perfResults;
+      if (typeof results === 'string') {
+        try {
+          results = JSON.parse(results);
+        } catch {
+          console.log('⚠️ Failed to parse comprehensive perf results JSON');
+        }
+      }
+
+      console.log('\n' + '='.repeat(70));
+      console.log('📊 COMPREHENSIVE PERFORMANCE TEST RESULTS');
+      console.log('='.repeat(70));
+      console.log(`   Page Load: ${pageLoadTime}ms`);
+      console.log(`   Unity Load: ${unityLoadTime}ms`);
+      console.log(`   Build Size: ${buildSizeMB.toFixed(2)}MB (max: ${BENCHMARKS.MAX_BUILD_SIZE_MB}MB)`);
+      console.log('---');
+      console.log(`   Baseline:          ${results.baseline?.avgFps?.toFixed(1) || 'N/A'} FPS (min req: 20)`);
+      console.log(`   Physics + Memory:  ${results.physicsWithMemory?.avgFps?.toFixed(1) || 'N/A'} FPS (min req: 12)`);
+      console.log(`   Rendering + Memory: ${results.renderingWithMemory?.avgFps?.toFixed(1) || 'N/A'} FPS (min req: 12)`);
+      console.log(`   Full Load:         ${results.fullLoad?.avgFps?.toFixed(1) || 'N/A'} FPS (min req: 10)`);
+      console.log(`   OOM Occurred:      ${results.oomOccurred ? '❌ YES' : '✅ NO'}`);
+      console.log('='.repeat(70));
+
+      // 단계별 상세 출력
+      const phases = [
+        { name: 'Baseline', data: results.baseline, minFps: 20 },
+        { name: 'Physics+Memory', data: results.physicsWithMemory, minFps: 12 },
+        { name: 'Rendering+Memory', data: results.renderingWithMemory, minFps: 12 },
+        { name: 'Full Load', data: results.fullLoad, minFps: 10 }
+      ];
+
+      let allPassed = true;
+      for (const phase of phases) {
+        if (phase.data?.avgFps !== undefined) {
+          const passed = phase.data.avgFps >= phase.minFps;
+          const status = passed ? '✅' : '❌';
+          console.log(`   ${status} ${phase.name}: ${phase.data.avgFps.toFixed(1)} FPS (min: ${phase.data.minFps?.toFixed(1)}, max: ${phase.data.maxFps?.toFixed(1)})`);
+          if (!passed) allPassed = false;
+        }
+      }
+
+      console.log('\n' + '='.repeat(70));
+      if (!results.oomOccurred && allPassed) {
+        console.log('✅ COMPREHENSIVE PERFORMANCE TEST PASSED');
+      } else {
+        console.log('❌ COMPREHENSIVE PERFORMANCE TEST FAILED');
+        if (results.oomOccurred) {
+          console.log('   - OOM occurred during tests');
+        }
+        if (!allPassed) {
+          console.log('   - One or more phases failed FPS requirements');
+        }
+      }
+      console.log('='.repeat(70) + '\n');
+
+      // 테스트 결과 저장
+      testResults.tests['8_comprehensive_perf'] = {
+        passed: !results.oomOccurred && allPassed,
+        pageLoadTimeMs: pageLoadTime,
+        unityLoadTimeMs: unityLoadTime,
+        buildSizeMB,
+        oomOccurred: results.oomOccurred,
+        baseline: results.baseline,
+        physicsWithMemory: results.physicsWithMemory,
+        renderingWithMemory: results.renderingWithMemory,
+        fullLoad: results.fullLoad
+      };
+
+      // 빌드 크기 검증
+      expect(buildSizeMB).toBeLessThanOrEqual(BENCHMARKS.MAX_BUILD_SIZE_MB);
+
+      // OOM 검증
+      expect(results.oomOccurred, 'Should complete without OOM').toBe(false);
+
+      // Full Load에서 최소 10 FPS 이상 유지해야 함
+      if (results.fullLoad?.avgFps !== undefined) {
+        expect(results.fullLoad.avgFps, 'Full Load should maintain at least 10 FPS').toBeGreaterThanOrEqual(10);
+      }
+
+    } else {
+      console.log('⚠️ Comprehensive performance test results not received');
+      testResults.tests['8_comprehensive_perf'] = {
+        passed: false,
+        reason: 'ComprehensivePerfTester results not received'
+      };
+      expect(perfResults, 'ComprehensivePerfTester should return results').not.toBeNull();
+    }
   });
 
 
   // -------------------------------------------------------------------------
-  // Test 7: Runtime API Error Validation
+  // Test 6: Runtime API Error Validation
   // 39개 SDK API 호출 시 올바른 에러가 발생하는지 검증
   // -------------------------------------------------------------------------
-  test('7. All 39 SDK APIs should return correct errors in dev environment', async ({ page }) => {
+  test('6. All 39 SDK APIs should return correct errors in dev environment', async ({ page }) => {
     test.setTimeout(180000); // 3분
 
-    // 모바일 스로틀링 적용 (MOBILE_EMULATION=true일 때만 실행)
-    await applyMobileThrottling(page);
+    // API 에러 검증은 기능 테스트 → CPU 쓰로틀링 불필요 (overrideRate=0)
+    await applyMobileThrottling(page, 0);
 
     expect(directoryExists(DIST_WEB), 'dist/web/ should exist').toBe(true);
 
@@ -1083,7 +1167,7 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       console.log('='.repeat(70) + '\n');
 
       // 테스트 결과 저장
-      testResults.tests['7_runtime_api'] = {
+      testResults.tests['6_runtime_api'] = {
         passed: unexpectedErrorCount === 0,
         totalAPIs: apiResults.totalAPIs,
         successCount: apiResults.successCount,
@@ -1100,7 +1184,7 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       console.log('   Waiting for RuntimeAPITester to complete...');
 
       // RuntimeAPITester 결과가 없으면 테스트 실패
-      testResults.tests['7_runtime_api'] = {
+      testResults.tests['6_runtime_api'] = {
         passed: false,
         skipped: false,
         reason: 'RuntimeAPITester results not received'
@@ -1110,5 +1194,160 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       expect(apiResults, 'RuntimeAPITester should return results').not.toBeNull();
     }
   });
+
+
+  // -------------------------------------------------------------------------
+  // Test 7: Serialization Round-trip Tests
+  // C# ↔ JavaScript JSON 직렬화/역직렬화 일관성 검증
+  // -------------------------------------------------------------------------
+  test('7. Serialization round-trip should succeed for all types', async ({ page }) => {
+    test.setTimeout(180000); // 3분
+
+    // 직렬화 검증은 기능 테스트 → CPU 쓰로틀링 불필요 (overrideRate=0)
+    await applyMobileThrottling(page, 0);
+
+    expect(directoryExists(DIST_WEB), 'dist/web/ should exist').toBe(true);
+
+    // Production 서버 시작
+    console.log('🚀 Starting server for serialization tests...');
+    const prodServer = await startProductionServer(AIT_BUILD, serverPort);
+    serverProcess = prodServer.process;
+    const actualPort = prodServer.port;
+
+    // 서버가 준비될 때까지 대기
+    let serverReady = false;
+    for (let i = 0; i < 20; i++) {
+      try {
+        const response = await fetch(`http://localhost:${actualPort}/`, { method: 'HEAD' });
+        if (response.ok) {
+          serverReady = true;
+          break;
+        }
+      } catch {
+        // 서버가 아직 준비되지 않음
+      }
+      await new Promise(r => setTimeout(r, 500));
+    }
+
+    if (!serverReady) {
+      throw new Error(`Server failed to start on port ${actualPort}`);
+    }
+
+    // 페이지 로딩 (E2E 모드 활성화)
+    await page.goto(`http://localhost:${actualPort}?e2e=true`, {
+      waitUntil: 'networkidle',
+      timeout: 60000
+    });
+
+    // Unity 초기화 대기
+    try {
+      await page.waitForFunction(() => {
+        return window['unityInstance'] !== undefined;
+      }, { timeout: 120000 });
+      console.log('✅ Unity instance ready for serialization tests');
+    } catch {
+      console.log('⚠️ Unity instance not ready, serialization tests may fail');
+    }
+
+    // SerializationTester에서 결과 수신 대기 (CustomEvent 방식)
+    const serializationResults = await page.evaluate(() => {
+      return new Promise((resolve) => {
+        // E2EBridge.jslib에서 발생시키는 CustomEvent 수신
+        const handler = (event) => {
+          window.removeEventListener('e2e-serialization-complete', handler);
+          resolve(event.detail);
+        };
+        window.addEventListener('e2e-serialization-complete', handler);
+
+        // 이미 데이터가 있으면 바로 반환
+        if (window['__E2E_SERIALIZATION_TEST_DATA__']) {
+          resolve(window['__E2E_SERIALIZATION_TEST_DATA__']);
+          return;
+        }
+
+        // 90초 타임아웃
+        setTimeout(() => resolve(null), 90000);
+      });
+    });
+
+    // 서버 종료
+    serverProcess.kill();
+    serverProcess = null;
+
+    // 결과 검증
+    if (serializationResults) {
+      // JSON 문자열인 경우 파싱
+      let results = serializationResults;
+      if (typeof results === 'string') {
+        try {
+          results = JSON.parse(results);
+        } catch {
+          console.log('⚠️ Failed to parse serialization results JSON');
+        }
+      }
+
+      console.log('\n' + '='.repeat(70));
+      console.log('📊 SERIALIZATION ROUND-TRIP TEST RESULTS');
+      console.log('='.repeat(70));
+      console.log(`   Total Tests: ${results.totalTests}`);
+      console.log(`   Success: ${results.successCount}`);
+      console.log(`   Failed: ${results.failCount}`);
+      console.log('='.repeat(70));
+
+      // 개별 결과 출력
+      if (results.results && Array.isArray(results.results)) {
+        const passed = results.results.filter(r => r.success);
+        const failed = results.results.filter(r => !r.success);
+
+        if (passed.length > 0) {
+          console.log('\n✅ Passed Tests:');
+          passed.forEach(r => {
+            console.log(`   [OK] ${r.testName}`);
+          });
+        }
+
+        if (failed.length > 0) {
+          console.log('\n❌ Failed Tests:');
+          failed.forEach(r => {
+            console.log(`   [FAIL] ${r.testName}: ${r.error || 'unknown error'}`);
+            if (r.serializedJson) {
+              console.log(`          Got: ${r.serializedJson}`);
+            }
+            if (r.expectedJson) {
+              console.log(`          Expected: ${r.expectedJson}`);
+            }
+          });
+        }
+      }
+
+      console.log('\n' + '='.repeat(70));
+      if (results.failCount === 0) {
+        console.log('✅ ALL SERIALIZATION TESTS PASSED');
+      } else {
+        console.log('❌ SERIALIZATION TESTS FAILED');
+      }
+      console.log('='.repeat(70) + '\n');
+
+      // 테스트 결과 저장
+      testResults.tests['7_serialization'] = {
+        passed: results.failCount === 0,
+        totalTests: results.totalTests,
+        successCount: results.successCount,
+        failCount: results.failCount
+      };
+
+      // 실패한 테스트가 있으면 전체 테스트 실패
+      expect(results.failCount, 'All serialization tests should pass').toBe(0);
+
+    } else {
+      console.log('⚠️ Serialization test results not received');
+      testResults.tests['7_serialization'] = {
+        passed: false,
+        reason: 'SerializationTester results not received'
+      };
+      expect(serializationResults, 'SerializationTester should return results').not.toBeNull();
+    }
+  });
+
 
 });

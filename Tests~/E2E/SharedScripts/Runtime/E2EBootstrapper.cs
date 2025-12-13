@@ -83,23 +83,30 @@ public static class E2EBootstrapper
     {
         Debug.Log("[E2EBootstrapper] Initializing E2E test components...");
 
-        // AutoBenchmarkRunner 추가
-        if (benchmarkManager.GetComponent<AutoBenchmarkRunner>() == null)
+        // ComprehensivePerfTester 추가 (Test 8용 - 통합 성능 테스트)
+        // AutoBenchmarkRunner + MemoryPressureTester를 대체
+        if (benchmarkManager.GetComponent<ComprehensivePerfTester>() == null)
         {
-            var autoRunner = benchmarkManager.AddComponent<AutoBenchmarkRunner>();
-            autoRunner.autoRunOnStart = true;
-            autoRunner.quitAfterComplete = true;
-            Debug.Log("[E2EBootstrapper] Added AutoBenchmarkRunner component");
+            var perfTester = benchmarkManager.AddComponent<ComprehensivePerfTester>();
+            perfTester.autoRunOnStart = true;
+            perfTester.startDelay = 2f;
+            perfTester.showUI = true;
+            // 강화된 부하 설정
+            perfTester.physicsObjectCount = 200;
+            perfTester.renderingGridSize = 20;
+            perfTester.wasmMemoryMB = 40;
+            perfTester.jsMemoryMB = 40;
+            Debug.Log("[E2EBootstrapper] Added ComprehensivePerfTester component");
         }
 
-        // PerformanceBenchmark 추가
+        // PerformanceBenchmark 추가 (FPS 표시용)
         if (benchmarkManager.GetComponent<PerformanceBenchmark>() == null)
         {
             benchmarkManager.AddComponent<PerformanceBenchmark>();
             Debug.Log("[E2EBootstrapper] Added PerformanceBenchmark component");
         }
 
-        // PhysicsStressTest 추가
+        // PhysicsStressTest 추가 (ComprehensivePerfTester가 사용)
         if (benchmarkManager.GetComponent<PhysicsStressTest>() == null)
         {
             var physicsTest = benchmarkManager.AddComponent<PhysicsStressTest>();
@@ -107,7 +114,7 @@ public static class E2EBootstrapper
             Debug.Log("[E2EBootstrapper] Added PhysicsStressTest component");
         }
 
-        // RenderingBenchmark 추가
+        // RenderingBenchmark 추가 (ComprehensivePerfTester가 사용)
         if (benchmarkManager.GetComponent<RenderingBenchmark>() == null)
         {
             var renderingBenchmark = benchmarkManager.AddComponent<RenderingBenchmark>();
@@ -115,7 +122,7 @@ public static class E2EBootstrapper
             Debug.Log("[E2EBootstrapper] Added RenderingBenchmark component");
         }
 
-        // RuntimeAPITester 추가 (Test 7용)
+        // RuntimeAPITester 추가 (Test 6용)
         if (benchmarkManager.GetComponent<RuntimeAPITester>() == null)
         {
             var runtimeTester = benchmarkManager.AddComponent<RuntimeAPITester>();
@@ -124,6 +131,17 @@ public static class E2EBootstrapper
             runtimeTester.showUI = true;
             runtimeTester.showDetailedResults = false;
             Debug.Log("[E2EBootstrapper] Added RuntimeAPITester component");
+        }
+
+        // SerializationTester 추가 (Test 7용)
+        if (benchmarkManager.GetComponent<SerializationTester>() == null)
+        {
+            var serializationTester = benchmarkManager.AddComponent<SerializationTester>();
+            serializationTester.autoRunOnStart = true;
+            serializationTester.startDelay = 4f;
+            serializationTester.showUI = true;
+            serializationTester.showDetailedResults = false;
+            Debug.Log("[E2EBootstrapper] Added SerializationTester component");
         }
 
         // CameraController 추가

@@ -126,6 +126,27 @@ public static class E2EBootstrapper
             Debug.Log("[E2EBootstrapper] Added RuntimeAPITester component");
         }
 
+        // SerializationTester 추가 (Test 8용)
+        if (benchmarkManager.GetComponent<SerializationTester>() == null)
+        {
+            var serializationTester = benchmarkManager.AddComponent<SerializationTester>();
+            serializationTester.autoRunOnStart = true;
+            serializationTester.startDelay = 4f; // RuntimeAPITester 이후에 실행
+            serializationTester.showUI = true;
+            serializationTester.showDetailedResults = false;
+            Debug.Log("[E2EBootstrapper] Added SerializationTester component");
+        }
+
+        // MemoryPressureTester 추가 (Test 9용)
+        if (benchmarkManager.GetComponent<MemoryPressureTester>() == null)
+        {
+            var memoryTester = benchmarkManager.AddComponent<MemoryPressureTester>();
+            memoryTester.autoRunOnStart = true;
+            memoryTester.startDelay = 5f; // SerializationTester 이후에 실행
+            memoryTester.showUI = true;
+            Debug.Log("[E2EBootstrapper] Added MemoryPressureTester component");
+        }
+
         // CameraController 추가
         Camera mainCamera = Camera.main;
         if (mainCamera != null && mainCamera.GetComponent<CameraController>() == null)

@@ -29,7 +29,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        unity-version: ["2021.3", "2022.3", "6000.0", "6000.2"]
+        unity-version: ["2021.3", "2022.3", "6000.0", "6000.2", "6000.3"]
 
     steps:
       - name: Checkout Repository
@@ -144,7 +144,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        unity-version: ["2021.3", "2022.3", "6000.0", "6000.2"]
+        unity-version: ["2021.3", "2022.3", "6000.0", "6000.2", "6000.3"]
 
     steps:
       - name: Configure Git Long Paths

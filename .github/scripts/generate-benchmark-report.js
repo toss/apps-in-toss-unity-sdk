@@ -10,16 +10,15 @@ import fs from "fs";
 import path from "path";
 
 const UNITY_VERSIONS = ["2021.3", "2022.3", "6000.0", "6000.2", "6000.3"];
-const OS_LIST = ["macos", "windows"];
+// Windows E2E 테스트가 제거되어 macOS만 리포트
+const OS_LIST = ["macos"];
 
 // OS별 표시 이름 (테스트 환경 표시)
 const OS_DISPLAY_NAMES = {
-  macos: "macOS (Mobile)",
-  windows: "Windows (Desktop)",
+  macos: "macOS (Mobile Emulation)",
 };
 const OS_SHORT_NAMES = {
   macos: "macOS",
-  windows: "Windows",
 };
 
 // 벤치마크 기준값
@@ -108,9 +107,6 @@ function generateBuildSizeChart(data) {
   const macosData = UNITY_VERSIONS.map(
     (v) => data.macos[v]?.buildSize?.toFixed(2) || 0
   );
-  const windowsData = UNITY_VERSIONS.map(
-    (v) => data.windows[v]?.buildSize?.toFixed(2) || 0
-  );
 
   const config = {
     type: "bar",
@@ -118,14 +114,9 @@ function generateBuildSizeChart(data) {
       labels: UNITY_VERSIONS,
       datasets: [
         {
-          label: OS_DISPLAY_NAMES.macos,
+          label: "Build Size (MB)",
           data: macosData,
           backgroundColor: "rgba(59, 130, 246, 0.8)",
-        },
-        {
-          label: OS_DISPLAY_NAMES.windows,
-          data: windowsData,
-          backgroundColor: "rgba(239, 68, 68, 0.8)",
         },
       ],
     },
@@ -139,14 +130,20 @@ function generateBuildSizeChart(data) {
 }
 
 /**
- * FPS 성능 비교 라인 차트 URL 생성
+ * FPS 성능 비교 라인 차트 URL 생성 (Baseline, Physics, Rendering, Combined)
  */
 function generateFpsChart(data) {
-  const macosAvgFps = UNITY_VERSIONS.map(
+  const baselineFps = UNITY_VERSIONS.map(
     (v) => data.macos[v]?.benchmarkData?.avgFps?.toFixed(1) || 0
   );
-  const windowsAvgFps = UNITY_VERSIONS.map(
-    (v) => data.windows[v]?.benchmarkData?.avgFps?.toFixed(1) || 0
+  const physicsFps = UNITY_VERSIONS.map(
+    (v) => data.macos[v]?.benchmarkData?.physicsAvgFps?.toFixed(1) || 0
+  );
+  const renderingFps = UNITY_VERSIONS.map(
+    (v) => data.macos[v]?.benchmarkData?.renderingAvgFps?.toFixed(1) || 0
+  );
+  const combinedFps = UNITY_VERSIONS.map(
+    (v) => data.macos[v]?.benchmarkData?.combinedAvgFps?.toFixed(1) || 0
   );
 
   const config = {
@@ -155,23 +152,37 @@ function generateFpsChart(data) {
       labels: UNITY_VERSIONS,
       datasets: [
         {
-          label: `${OS_DISPLAY_NAMES.macos} Avg FPS`,
-          data: macosAvgFps,
-          borderColor: "rgba(59, 130, 246, 1)",
-          backgroundColor: "rgba(59, 130, 246, 0.1)",
-          fill: true,
+          label: "Baseline",
+          data: baselineFps,
+          borderColor: "rgba(34, 197, 94, 1)",
+          backgroundColor: "rgba(34, 197, 94, 0.1)",
+          fill: false,
         },
         {
-          label: `${OS_DISPLAY_NAMES.windows} Avg FPS`,
-          data: windowsAvgFps,
+          label: "Physics",
+          data: physicsFps,
+          borderColor: "rgba(59, 130, 246, 1)",
+          backgroundColor: "rgba(59, 130, 246, 0.1)",
+          fill: false,
+        },
+        {
+          label: "Rendering",
+          data: renderingFps,
+          borderColor: "rgba(168, 85, 247, 1)",
+          backgroundColor: "rgba(168, 85, 247, 0.1)",
+          fill: false,
+        },
+        {
+          label: "Combined",
+          data: combinedFps,
           borderColor: "rgba(239, 68, 68, 1)",
           backgroundColor: "rgba(239, 68, 68, 0.1)",
-          fill: true,
+          fill: false,
         },
       ],
     },
     options: {
-      title: { display: true, text: "Average FPS by Unity Version" },
+      title: { display: true, text: "Benchmark FPS by Unity Version" },
       scales: { yAxes: [{ ticks: { beginAtZero: true } }] },
     },
   };
@@ -183,11 +194,11 @@ function generateFpsChart(data) {
  * 로드 시간 비교 차트 URL 생성
  */
 function generateLoadTimeChart(data) {
-  const macosPageLoad = UNITY_VERSIONS.map(
+  const pageLoadTime = UNITY_VERSIONS.map(
     (v) => (data.macos[v]?.pageLoadTime / 1000)?.toFixed(2) || 0
   );
-  const windowsPageLoad = UNITY_VERSIONS.map(
-    (v) => (data.windows[v]?.pageLoadTime / 1000)?.toFixed(2) || 0
+  const unityLoadTime = UNITY_VERSIONS.map(
+    (v) => (data.macos[v]?.unityLoadTime / 1000)?.toFixed(2) || 0
   );
 
   const config = {
@@ -196,19 +207,19 @@ function generateLoadTimeChart(data) {
       labels: UNITY_VERSIONS,
       datasets: [
         {
-          label: OS_DISPLAY_NAMES.macos,
-          data: macosPageLoad,
+          label: "Page Load (sec)",
+          data: pageLoadTime,
           backgroundColor: "rgba(59, 130, 246, 0.8)",
         },
         {
-          label: OS_DISPLAY_NAMES.windows,
-          data: windowsPageLoad,
-          backgroundColor: "rgba(239, 68, 68, 0.8)",
+          label: "Unity Init (sec)",
+          data: unityLoadTime,
+          backgroundColor: "rgba(168, 85, 247, 0.8)",
         },
       ],
     },
     options: {
-      title: { display: true, text: "Page Load Time by Unity Version (sec)" },
+      title: { display: true, text: "Load Time by Unity Version (sec)" },
       scales: { yAxes: [{ ticks: { beginAtZero: true } }] },
     },
   };
@@ -245,24 +256,79 @@ function hasAnyTestFailure(data) {
 function generateTestSummary(data) {
   let md = "";
   md += "### 📈 Test Summary\n\n";
-  md += `| Unity Version | ${OS_DISPLAY_NAMES.macos} | ${OS_DISPLAY_NAMES.windows} |\n`;
-  md += "|:--------------|:-----:|:-------:|\n";
+  md += `| Unity Version | Tests | Build Size | Avg FPS |\n`;
+  md += "|:--------------|:-----:|:----------:|:-------:|\n";
 
   for (const version of UNITY_VERSIONS) {
-    const macosResult = data.macos[version];
-    const windowsResult = data.windows[version];
+    const result = data.macos[version];
 
-    const macosStatus = macosResult
-      ? `${statusEmoji(macosResult.testsPassed === macosResult.testsTotal)} ${macosResult.testsPassed}/${macosResult.testsTotal}`
+    const testStatus = result
+      ? `${statusEmoji(result.testsPassed === result.testsTotal)} ${result.testsPassed}/${result.testsTotal}`
       : "⏳";
-    const windowsStatus = windowsResult
-      ? `${statusEmoji(windowsResult.testsPassed === windowsResult.testsTotal)} ${windowsResult.testsPassed}/${windowsResult.testsTotal}`
-      : "⏳";
+    const buildSize = result?.buildSize ? `${result.buildSize.toFixed(1)} MB` : "-";
+    const avgFps = result?.benchmarkData?.avgFps ? `${result.benchmarkData.avgFps.toFixed(0)} FPS` : "-";
 
-    md += `| ${version} | ${macosStatus} | ${windowsStatus} |\n`;
+    md += `| ${version} | ${testStatus} | ${buildSize} | ${avgFps} |\n`;
   }
   md += "\n";
   return md;
+}
+
+/**
+ * 메모리 압박 테스트 차트 URL 생성
+ */
+function generateMemoryPressureChart(data) {
+  // 각 Unity 버전별 메모리 압박 테스트 결과에서 단계별 FPS 추출
+  const datasets = [];
+  const colors = [
+    "rgba(34, 197, 94, 1)",   // green
+    "rgba(59, 130, 246, 1)",  // blue
+    "rgba(168, 85, 247, 1)",  // purple
+    "rgba(239, 68, 68, 1)",   // red
+    "rgba(245, 158, 11, 1)",  // amber
+  ];
+
+  // 첫 번째 데이터에서 스텝 이름 추출
+  let stepLabels = [];
+  for (const version of UNITY_VERSIONS) {
+    const memPressure = data.macos[version]?.memoryPressureData;
+    if (memPressure?.steps?.length > 0) {
+      stepLabels = memPressure.steps.map(s => s.stepName);
+      break;
+    }
+  }
+
+  if (stepLabels.length === 0) {
+    return null; // 데이터 없음
+  }
+
+  UNITY_VERSIONS.forEach((version, idx) => {
+    const memPressure = data.macos[version]?.memoryPressureData;
+    if (memPressure?.steps) {
+      datasets.push({
+        label: `Unity ${version}`,
+        data: memPressure.steps.map(s => s.avgFps?.toFixed(1) || 0),
+        borderColor: colors[idx % colors.length],
+        fill: false,
+      });
+    }
+  });
+
+  if (datasets.length === 0) return null;
+
+  const config = {
+    type: "line",
+    data: {
+      labels: stepLabels,
+      datasets: datasets,
+    },
+    options: {
+      title: { display: true, text: "Memory Pressure Test - FPS by Step" },
+      scales: { yAxes: [{ ticks: { beginAtZero: true } }] },
+    },
+  };
+
+  return generateQuickChartUrl(config);
 }
 
 /**
@@ -277,125 +343,166 @@ function generateDetailedReport(data) {
   md += `![FPS Chart](${generateFpsChart(data)})\n\n`;
   md += `![Load Time Chart](${generateLoadTimeChart(data)})\n\n`;
 
+  // 메모리 압박 테스트 차트 (데이터가 있는 경우에만)
+  const memPressureChart = generateMemoryPressureChart(data);
+  if (memPressureChart) {
+    md += `![Memory Pressure Chart](${memPressureChart})\n\n`;
+  }
+
   // ===== 빌드 크기 테이블 =====
-  md += "### 📦 Build Size (MB)\n\n";
-  md += `| Unity Version | ${OS_SHORT_NAMES.macos} | ${OS_SHORT_NAMES.windows} | Diff |\n`;
-  md += "|:--------------|------:|--------:|-----:|\n";
+  md += "### 📦 Build Size\n\n";
+  md += `| Unity Version | Build Size (MB) | Status |\n`;
+  md += "|:--------------|----------------:|:------:|\n";
 
   for (const version of UNITY_VERSIONS) {
     const macosSize = data.macos[version]?.buildSize;
-    const windowsSize = data.windows[version]?.buildSize;
+    const status = macosSize != null
+      ? warningEmoji(macosSize, THRESHOLDS.BUILD_SIZE_MB, true)
+      : "⏳";
 
-    let diff = "-";
-    if (macosSize != null && windowsSize != null) {
-      const diffValue = windowsSize - macosSize;
-      diff = (diffValue >= 0 ? "+" : "") + diffValue.toFixed(2);
-    }
-
-    md += `| ${version} | ${formatNumber(macosSize, 2)} | ${formatNumber(windowsSize, 2)} | ${diff} |\n`;
+    md += `| ${version} | ${formatNumber(macosSize, 2)} | ${status} |\n`;
   }
   md += "\n";
 
   // ===== 로드 시간 테이블 =====
-  md += "### ⏱️ Load Time (ms)\n\n";
-  md += `| Unity Version | ${OS_SHORT_NAMES.macos} Page | ${OS_SHORT_NAMES.macos} Unity | ${OS_SHORT_NAMES.windows} Page | ${OS_SHORT_NAMES.windows} Unity |\n`;
-  md += "|:--------------|----------:|-----------:|-------------:|-------------:|\n";
+  md += "### ⏱️ Load Time\n\n";
+  md += `| Unity Version | Page Load (ms) | Unity Init (ms) | Total (sec) |\n`;
+  md += "|:--------------|---------------:|----------------:|------------:|\n";
 
   for (const version of UNITY_VERSIONS) {
     const m = data.macos[version];
-    const w = data.windows[version];
+    const total = m?.pageLoadTime ? (m.pageLoadTime / 1000).toFixed(2) : "-";
 
-    md += `| ${version} | ${formatNumber(m?.pageLoadTime, 0)} | ${formatNumber(m?.unityLoadTime, 0)} | ${formatNumber(w?.pageLoadTime, 0)} | ${formatNumber(w?.unityLoadTime, 0)} |\n`;
+    md += `| ${version} | ${formatNumber(m?.pageLoadTime, 0)} | ${formatNumber(m?.unityLoadTime, 0)} | ${total} |\n`;
   }
   md += "\n";
 
-  // ===== FPS 성능 테이블 =====
-  md += "### ⚡ Performance (FPS)\n\n";
-  md += `| Unity Version | ${OS_SHORT_NAMES.macos} Avg | ${OS_SHORT_NAMES.macos} Min | ${OS_SHORT_NAMES.windows} Avg | ${OS_SHORT_NAMES.windows} Min |\n`;
-  md += "|:--------------|----------:|----------:|------------:|------------:|\n";
+  // ===== 벤치마크 FPS 상세 테이블 =====
+  md += "### ⚡ Benchmark FPS Detail\n\n";
+  md += `| Unity Version | Baseline | Physics | Rendering | Combined | Min FPS |\n`;
+  md += "|:--------------|:--------:|:-------:|:---------:|:--------:|:-------:|\n";
 
   for (const version of UNITY_VERSIONS) {
     const m = data.macos[version]?.benchmarkData;
-    const w = data.windows[version]?.benchmarkData;
 
-    md += `| ${version} | ${formatNumber(m?.avgFps)} | ${formatNumber(m?.minFps)} | ${formatNumber(w?.avgFps)} | ${formatNumber(w?.minFps)} |\n`;
+    md += `| ${version} | ${formatNumber(m?.avgFps)} | ${formatNumber(m?.physicsAvgFps)} | ${formatNumber(m?.renderingAvgFps)} | ${formatNumber(m?.combinedAvgFps)} | ${formatNumber(m?.minFps)} |\n`;
   }
   md += "\n";
 
-  // ===== 프로그레스바 시각화 =====
+  // ===== 프로그레스바 시각화 (macOS만) =====
   md += "### 🎯 Performance Overview\n\n";
+  md += "| Version | Build Size | Baseline FPS | Combined FPS | Load Time |\n";
+  md += "|:--------|:-----------|:-------------|:-------------|:----------|\n";
 
-  for (const os of OS_LIST) {
-    const osEmoji = os === "macos" ? "🍎" : "🪟";
-    const osName = OS_DISPLAY_NAMES[os];
+  for (const version of UNITY_VERSIONS) {
+    const d = data.macos[version];
 
-    md += `#### ${osEmoji} ${osName}\n\n`;
-    md += "| Version | Build Size | Avg FPS | Memory | Load Time |\n";
-    md += "|:--------|:-----------|:--------|:-------|:----------|\n";
+    if (d) {
+      const buildSize = d.buildSize;
+      const baselineFps = d.benchmarkData?.avgFps;
+      const combinedFps = d.benchmarkData?.combinedAvgFps;
+      const loadTime = d.pageLoadTime;
+
+      const buildBar = `${progressBar(buildSize, THRESHOLDS.BUILD_SIZE_MB)} ${formatNumber(buildSize, 1)}MB`;
+      const baselineBar = `${progressBar(baselineFps, THRESHOLDS.MAX_FPS)} ${formatNumber(baselineFps, 0)}`;
+      const combinedBar = `${progressBar(combinedFps, THRESHOLDS.MAX_FPS)} ${formatNumber(combinedFps, 0)}`;
+      const loadBar = `${progressBar(loadTime, THRESHOLDS.MAX_LOAD_TIME_MS)} ${formatNumber(loadTime / 1000, 1)}s`;
+
+      md += `| ${version} | ${buildBar} | ${baselineBar} | ${combinedBar} | ${loadBar} |\n`;
+    } else {
+      md += `| ${version} | ⏳ | ⏳ | ⏳ | ⏳ |\n`;
+    }
+  }
+  md += "\n";
+
+  // ===== 메모리 압박 테스트 결과 =====
+  md += "### 🧠 Memory Pressure Test Results\n\n";
+
+  let hasMemoryData = false;
+  for (const version of UNITY_VERSIONS) {
+    if (data.macos[version]?.memoryPressureData) {
+      hasMemoryData = true;
+      break;
+    }
+  }
+
+  if (hasMemoryData) {
+    md += `| Unity Version | OOM | Combined Avg FPS | Combined Min FPS | Steps |\n`;
+    md += "|:--------------|:---:|:----------------:|:----------------:|:-----:|\n";
 
     for (const version of UNITY_VERSIONS) {
-      const d = data[os][version];
-
-      if (d) {
-        const buildSize = d.buildSize;
-        const avgFps = d.benchmarkData?.avgFps;
-        const memoryMB = d.benchmarkData?.memoryUsageMB;
-        const loadTime = d.pageLoadTime;
-
-        const buildBar = `${progressBar(buildSize, THRESHOLDS.BUILD_SIZE_MB)} ${formatNumber(buildSize, 1)}MB`;
-        const fpsBar = `${progressBar(avgFps, THRESHOLDS.MAX_FPS)} ${formatNumber(avgFps, 0)}`;
-        const memBar = `${progressBar(memoryMB, THRESHOLDS.MAX_MEMORY_MB)} ${formatNumber(memoryMB, 0)}MB`;
-        const loadBar = `${progressBar(loadTime, THRESHOLDS.MAX_LOAD_TIME_MS)} ${formatNumber(loadTime / 1000, 1)}s`;
-
-        md += `| ${version} | ${buildBar} | ${fpsBar} | ${memBar} | ${loadBar} |\n`;
+      const mp = data.macos[version]?.memoryPressureData;
+      if (mp) {
+        const oomStatus = mp.oomOccurred ? "❌" : "✅";
+        md += `| ${version} | ${oomStatus} | ${formatNumber(mp.combinedPressureAvgFps)} | ${formatNumber(mp.combinedPressureMinFps)} | ${mp.totalSteps || 0} |\n`;
       } else {
-        md += `| ${version} | ⏳ | ⏳ | ⏳ | ⏳ |\n`;
+        md += `| ${version} | ⏳ | - | - | - |\n`;
       }
     }
     md += "\n";
+
+    // 메모리 압박 단계별 상세 (첫 번째 버전만 예시로 표시)
+    for (const version of UNITY_VERSIONS) {
+      const mp = data.macos[version]?.memoryPressureData;
+      if (mp?.steps?.length > 0) {
+        md += `<details>\n<summary>📊 Memory Pressure Steps (Unity ${version})</summary>\n\n`;
+        md += `| Step | Category | Avg FPS | Min FPS | Max FPS |\n`;
+        md += `|:-----|:---------|:-------:|:-------:|:-------:|\n`;
+        for (const step of mp.steps) {
+          md += `| ${step.stepName} | ${step.category} | ${formatNumber(step.avgFps)} | ${formatNumber(step.minFps)} | ${formatNumber(step.maxFps)} |\n`;
+        }
+        md += `\n</details>\n\n`;
+        break; // 하나만 표시
+      }
+    }
+  } else {
+    md += "> ⏳ Memory pressure test data not available\n\n";
   }
 
   // ===== API 테스트 결과 =====
   md += "### 🔌 API Test Results\n\n";
-  md += `| Unity Version | ${OS_DISPLAY_NAMES.macos} | ${OS_DISPLAY_NAMES.windows} |\n`;
-  md += "|:--------------|:-----:|:-------:|\n";
+  md += `| Unity Version | Status | APIs Tested |\n`;
+  md += "|:--------------|:------:|:-----------:|\n";
 
   for (const version of UNITY_VERSIONS) {
     const m = data.macos[version]?.apiTestResults;
-    const w = data.windows[version]?.apiTestResults;
 
-    // totalAPIs가 있으면 상세 표시, 없으면 unexpectedErrorCount만으로 판단
     const formatApiResult = (api) => {
-      if (!api) return "⏳";
+      if (!api) return { status: "⏳", count: "-" };
       if (api.totalAPIs != null && api.successCount != null) {
-        return `${statusEmoji(api.unexpectedErrorCount === 0)} ${api.successCount}/${api.totalAPIs}`;
+        return {
+          status: statusEmoji(api.unexpectedErrorCount === 0),
+          count: `${api.successCount}/${api.totalAPIs}`,
+        };
       }
-      // totalAPIs가 없는 경우 (이전 버전 호환)
-      return `${statusEmoji(api.unexpectedErrorCount === 0)} ${api.unexpectedErrorCount === 0 ? "Pass" : "Fail"}`;
+      return {
+        status: statusEmoji(api.unexpectedErrorCount === 0),
+        count: api.unexpectedErrorCount === 0 ? "Pass" : "Fail",
+      };
     };
 
-    md += `| ${version} | ${formatApiResult(m)} | ${formatApiResult(w)} |\n`;
+    const result = formatApiResult(m);
+    md += `| ${version} | ${result.status} | ${result.count} |\n`;
   }
   md += "\n";
 
   // ===== WebGL 환경 정보 =====
   md += "### 🖥️ WebGL Environment\n\n";
-  md += "| OS | Version | Renderer | Vendor |\n";
-  md += "|:---|:--------|:---------|:-------|\n";
+  md += "| Version | Renderer | Vendor |\n";
+  md += "|:--------|:---------|:-------|\n";
 
-  for (const os of OS_LIST) {
-    for (const version of UNITY_VERSIONS) {
-      const d = data[os][version];
-      if (d?.webgl) {
-        const osName = OS_DISPLAY_NAMES[os];
-        const renderer = d.webgl.renderer || "-";
-        const vendor = d.webgl.vendor || "-";
-        const shortRenderer =
-          renderer.length > 40 ? renderer.substring(0, 40) + "..." : renderer;
-        const shortVendor =
-          vendor.length > 30 ? vendor.substring(0, 30) + "..." : vendor;
-        md += `| ${osName} | ${version} | ${shortRenderer} | ${shortVendor} |\n`;
-      }
+  for (const version of UNITY_VERSIONS) {
+    const d = data.macos[version];
+    if (d?.webgl) {
+      const renderer = d.webgl.renderer || "-";
+      const vendor = d.webgl.vendor || "-";
+      const shortRenderer =
+        renderer.length > 50 ? renderer.substring(0, 50) + "..." : renderer;
+      const shortVendor =
+        vendor.length > 30 ? vendor.substring(0, 30) + "..." : vendor;
+      md += `| ${version} | ${shortRenderer} | ${shortVendor} |\n`;
+    } else {
+      md += `| ${version} | - | - |\n`;
     }
   }
   md += "\n";

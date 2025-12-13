@@ -425,6 +425,7 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
 
     // 2. 벤치마크 결과 (workflow에서 업로드하는 파일)
     const benchmarkPath = path.resolve(__dirname, 'benchmark-results.json');
+    const memPressure = testResults.tests['9_memory_pressure'];
     const benchmarkResults = {
       timestamp: testResults.timestamp,
       unityProject: SAMPLE_PROJECT,
@@ -433,6 +434,14 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       unityLoadTime: testResults.tests['8_benchmarks']?.unityLoadTimeMs,
       webgl: testResults.tests['5_production_server']?.webgl,
       benchmarkData: testResults.tests['8_benchmarks']?.benchmarkData,
+      // 메모리 압박 테스트 데이터 (시계열 포함)
+      memoryPressureData: memPressure ? {
+        totalSteps: memPressure.totalSteps,
+        oomOccurred: memPressure.oomOccurred,
+        combinedPressureAvgFps: memPressure.combinedPressureAvgFps,
+        combinedPressureMinFps: memPressure.combinedPressureMinFps,
+        steps: memPressure.steps || []
+      } : null,
       apiTestResults: testResults.tests['6_runtime_api'] ? {
         totalAPIs: testResults.tests['6_runtime_api'].totalAPIs,
         successCount: testResults.tests['6_runtime_api'].successCount,
@@ -1419,13 +1428,15 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       }
       console.log('='.repeat(70) + '\n');
 
-      // 테스트 결과 저장
+      // 테스트 결과 저장 (시계열 데이터 포함)
       testResults.tests['9_memory_pressure'] = {
         passed: !results.oomOccurred && (results.combinedPressureAvgFps >= 15 || results.combinedPressureAvgFps === undefined),
         totalSteps: results.totalSteps,
         oomOccurred: results.oomOccurred,
         combinedPressureAvgFps: results.combinedPressureAvgFps,
-        combinedPressureMinFps: results.combinedPressureMinFps
+        combinedPressureMinFps: results.combinedPressureMinFps,
+        // 시계열 데이터 - 각 단계별 FPS 정보
+        steps: results.steps || []
       };
 
       // OOM이 발생하지 않아야 함

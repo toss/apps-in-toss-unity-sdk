@@ -225,7 +225,7 @@ public class E2ETestTrigger : MonoBehaviour
         var tester = GetComponent<RuntimeAPITester>();
         if (tester != null)
         {
-            tester.RunTests();
+            tester.RunAPITests();
         }
         else
         {
@@ -242,7 +242,7 @@ public class E2ETestTrigger : MonoBehaviour
         var tester = GetComponent<SerializationTester>();
         if (tester != null)
         {
-            tester.RunTests();
+            tester.RunSerializationTests();
         }
         else
         {

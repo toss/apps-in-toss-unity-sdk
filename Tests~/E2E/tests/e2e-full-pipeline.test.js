@@ -8,18 +8,18 @@ import { fileURLToPath } from 'url';
 /**
  * Apps in Toss Unity SDK - E2E Full Pipeline Tests
  *
- * 9개 테스트 케이스:
+ * 9개 테스트 케이스 (빠른 테스트 → 느린 테스트 순서):
  * 1. Unity WebGL Build (Runtime 컴파일)
  * 2. AIT Dev Server
  * 3. AIT Build Directory
  * 4. AIT Packaging
  * 5. Production Server
- * 6. Performance Benchmarks
- * 7. Runtime API Error Validation (61개 SDK API 에러 검증)
- * 8. Serialization Round-trip Tests (C# ↔ JavaScript 직렬화 검증)
- * 9. Memory Pressure Tests (WASM + JS + Canvas 메모리 압박)
+ * 6. Runtime API Error Validation (SDK API 에러 검증)
+ * 7. Serialization Round-trip Tests (C# ↔ JavaScript 직렬화 검증)
+ * 8. Performance Benchmarks (느림)
+ * 9. Memory Pressure Tests (느림)
  *
- * Test 7 검증 기준:
+ * Test 6 (Runtime API) 검증 기준:
  * - 모든 61개 SDK API를 호출
  * - 개발 환경에서 "상정된 에러" (expected error) 발생 = PASS
  *   - "XXX is not a constant handler" (bridge-core Constant API)
@@ -429,14 +429,14 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       timestamp: testResults.timestamp,
       unityProject: SAMPLE_PROJECT,
       buildSize: testResults.tests['1_webgl_build']?.buildSizeMB,
-      pageLoadTime: testResults.tests['5_production_server']?.pageLoadTimeMs || testResults.tests['6_benchmarks']?.pageLoadTimeMs,
-      unityLoadTime: testResults.tests['6_benchmarks']?.unityLoadTimeMs,
+      pageLoadTime: testResults.tests['5_production_server']?.pageLoadTimeMs || testResults.tests['8_benchmarks']?.pageLoadTimeMs,
+      unityLoadTime: testResults.tests['8_benchmarks']?.unityLoadTimeMs,
       webgl: testResults.tests['5_production_server']?.webgl,
-      benchmarkData: testResults.tests['6_benchmarks']?.benchmarkData,
-      apiTestResults: testResults.tests['7_runtime_api'] ? {
-        totalAPIs: testResults.tests['7_runtime_api'].totalAPIs,
-        successCount: testResults.tests['7_runtime_api'].successCount,
-        unexpectedErrorCount: testResults.tests['7_runtime_api'].unexpectedErrorCount
+      benchmarkData: testResults.tests['8_benchmarks']?.benchmarkData,
+      apiTestResults: testResults.tests['6_runtime_api'] ? {
+        totalAPIs: testResults.tests['6_runtime_api'].totalAPIs,
+        successCount: testResults.tests['6_runtime_api'].successCount,
+        unexpectedErrorCount: testResults.tests['6_runtime_api'].unexpectedErrorCount
       } : null,
       testsPassed: Object.values(testResults.tests || {}).filter(t => t.passed).length,
       testsTotal: Object.keys(testResults.tests || {}).length
@@ -458,8 +458,8 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
 
     // 주요 메트릭
     const buildSize = tests['1_webgl_build']?.buildSizeMB;
-    const pageLoad = tests['5_production_server']?.pageLoadTimeMs || tests['6_benchmarks']?.pageLoadTimeMs;
-    const unityLoad = tests['6_benchmarks']?.unityLoadTimeMs;
+    const pageLoad = tests['5_production_server']?.pageLoadTimeMs || tests['8_benchmarks']?.pageLoadTimeMs;
+    const unityLoad = tests['8_benchmarks']?.unityLoadTimeMs;
     const renderer = tests['5_production_server']?.webgl?.renderer;
 
     console.log('\n  📦 Build Size:      ' + (buildSize ? buildSize.toFixed(2) + ' MB' : 'N/A'));
@@ -468,7 +468,7 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
     console.log('  🖥️  GPU Renderer:    ' + (renderer || 'N/A'));
 
     // SDK Runtime 검증 결과 출력
-    const apiTest = tests['7_runtime_api'];
+    const apiTest = tests['6_runtime_api'];
     if (apiTest && apiTest.runtimeValidation) {
       const rv = apiTest.runtimeValidation;
       console.log('\n  🔍 SDK Runtime Validation:');
@@ -834,9 +834,9 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
 
 
   // -------------------------------------------------------------------------
-  // Test 6: Performance Benchmarks (vite preview)
+  // Test 8: Performance Benchmarks (vite preview) - 느린 테스트
   // -------------------------------------------------------------------------
-  test('6. Performance benchmarks should pass', async ({ page }) => {
+  test('8. Performance benchmarks should pass', async ({ page }) => {
     test.setTimeout(180000); // 3분
 
     // 모바일 스로틀링 적용 (MOBILE_EMULATION=true일 때만 실행)
@@ -957,7 +957,7 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
     serverProcess.kill();
     serverProcess = null;
 
-    testResults.tests['6_benchmarks'] = {
+    testResults.tests['8_benchmarks'] = {
       passed: true,
       pageLoadTimeMs: pageLoadTime,
       unityLoadTimeMs: unityLoadTime,
@@ -968,10 +968,10 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
 
 
   // -------------------------------------------------------------------------
-  // Test 7: Runtime API Error Validation
+  // Test 6: Runtime API Error Validation
   // 39개 SDK API 호출 시 올바른 에러가 발생하는지 검증
   // -------------------------------------------------------------------------
-  test('7. All 39 SDK APIs should return correct errors in dev environment', async ({ page }) => {
+  test('6. All 39 SDK APIs should return correct errors in dev environment', async ({ page }) => {
     test.setTimeout(180000); // 3분
 
     // API 에러 검증은 기능 테스트 → CPU 쓰로틀링 불필요 (overrideRate=0)
@@ -1105,7 +1105,7 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       console.log('='.repeat(70) + '\n');
 
       // 테스트 결과 저장
-      testResults.tests['7_runtime_api'] = {
+      testResults.tests['6_runtime_api'] = {
         passed: unexpectedErrorCount === 0,
         totalAPIs: apiResults.totalAPIs,
         successCount: apiResults.successCount,
@@ -1122,7 +1122,7 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       console.log('   Waiting for RuntimeAPITester to complete...');
 
       // RuntimeAPITester 결과가 없으면 테스트 실패
-      testResults.tests['7_runtime_api'] = {
+      testResults.tests['6_runtime_api'] = {
         passed: false,
         skipped: false,
         reason: 'RuntimeAPITester results not received'
@@ -1135,10 +1135,10 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
 
 
   // -------------------------------------------------------------------------
-  // Test 8: Serialization Round-trip Tests
+  // Test 7: Serialization Round-trip Tests
   // C# ↔ JavaScript JSON 직렬화/역직렬화 일관성 검증
   // -------------------------------------------------------------------------
-  test('8. Serialization round-trip should succeed for all types', async ({ page }) => {
+  test('7. Serialization round-trip should succeed for all types', async ({ page }) => {
     test.setTimeout(180000); // 3분
 
     // 직렬화 검증은 기능 테스트 → CPU 쓰로틀링 불필요 (overrideRate=0)
@@ -1267,7 +1267,7 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       console.log('='.repeat(70) + '\n');
 
       // 테스트 결과 저장
-      testResults.tests['8_serialization'] = {
+      testResults.tests['7_serialization'] = {
         passed: results.failCount === 0,
         totalTests: results.totalTests,
         successCount: results.successCount,
@@ -1279,7 +1279,7 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
 
     } else {
       console.log('⚠️ Serialization test results not received');
-      testResults.tests['8_serialization'] = {
+      testResults.tests['7_serialization'] = {
         passed: false,
         reason: 'SerializationTester results not received'
       };
@@ -1289,7 +1289,7 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
 
 
   // -------------------------------------------------------------------------
-  // Test 9: Memory Pressure Tests
+  // Test 9: Memory Pressure Tests - 느린 테스트
   // WASM 힙 + JavaScript 힙 + Canvas(GPU) 메모리 압박 테스트
   // -------------------------------------------------------------------------
   test('9. Memory pressure tests should complete without OOM', async ({ page }) => {

@@ -35,6 +35,10 @@ const __dirname = path.dirname(__filename);
 // 모바일 에뮬레이션 활성화 여부 (macOS CI에서만 true)
 const isMobileEmulation = process.env.MOBILE_EMULATION === 'true';
 
+// CPU 쓰로틀링 배율 (환경변수로 제어, 기본값: 0 = 비활성화)
+// 예: CPU_THROTTLE_RATE=4 → 4배 느림
+const cpuThrottleRate = parseInt(process.env.CPU_THROTTLE_RATE || '0', 10);
+
 // 경로 상수
 const PROJECT_ROOT = path.resolve(__dirname, '../../..');
 
@@ -350,27 +354,43 @@ function checkForPlaceholders(content) {
 }
 
 /**
- * CDP를 통한 모바일 환경 시뮬레이션 적용 (MOBILE_EMULATION=true 일 때만)
- * - CPU: 4x slowdown (iPhone 8 수준)
- * - Network: 4G LTE (12Mbps down, 6Mbps up, 70ms latency)
+ * CDP를 통한 모바일 환경 시뮬레이션 적용
+ *
+ * 환경변수로 제어:
+ * - MOBILE_EMULATION=true: 모바일 에뮬레이션 (CPU 4x + 4G LTE)
+ * - CPU_THROTTLE_RATE=N: CPU만 N배 느리게 (독립 사용 가능)
+ *
+ * @param {number} overrideRate - 특정 테스트에서 강제로 사용할 CPU 배율 (0=비활성화)
  */
-async function applyMobileThrottling(page) {
-  if (!isMobileEmulation) return null;
+async function applyMobileThrottling(page, overrideRate = undefined) {
+  // 쓰로틀링 배율 결정 (우선순위: override > 환경변수)
+  const rate = overrideRate !== undefined ? overrideRate :
+               (isMobileEmulation ? 4 : cpuThrottleRate);
 
-  console.log('📱 Applying mobile throttling (CPU 4x, 4G LTE)...');
+  if (rate <= 0 && !isMobileEmulation) {
+    console.log('📱 Throttling disabled (no MOBILE_EMULATION or CPU_THROTTLE_RATE)');
+    return null;
+  }
+
   const client = await page.context().newCDPSession(page);
 
-  // CPU 4x slowdown
-  await client.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+  // CPU 쓰로틀링 적용 (rate > 0인 경우)
+  if (rate > 0) {
+    console.log(`📱 Applying CPU ${rate}x slowdown...`);
+    await client.send('Emulation.setCPUThrottlingRate', { rate });
+  }
 
-  // 4G LTE 네트워크 스로틀링
-  // 12 Mbps = 1,572,864 bytes/s, 6 Mbps = 786,432 bytes/s
-  await client.send('Network.emulateNetworkConditions', {
-    offline: false,
-    downloadThroughput: 12 * 1024 * 1024 / 8,  // 12 Mbps
-    uploadThroughput: 6 * 1024 * 1024 / 8,     // 6 Mbps
-    latency: 70
-  });
+  // 네트워크 쓰로틀링 (MOBILE_EMULATION인 경우에만)
+  if (isMobileEmulation) {
+    console.log('📱 Applying 4G LTE network throttling...');
+    // 12 Mbps = 1,572,864 bytes/s, 6 Mbps = 786,432 bytes/s
+    await client.send('Network.emulateNetworkConditions', {
+      offline: false,
+      downloadThroughput: 12 * 1024 * 1024 / 8,  // 12 Mbps
+      uploadThroughput: 6 * 1024 * 1024 / 8,     // 6 Mbps
+      latency: 70
+    });
+  }
 
   return client;
 }
@@ -954,8 +974,8 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
   test('7. All 39 SDK APIs should return correct errors in dev environment', async ({ page }) => {
     test.setTimeout(180000); // 3분
 
-    // 모바일 스로틀링 적용 (MOBILE_EMULATION=true일 때만 실행)
-    await applyMobileThrottling(page);
+    // API 에러 검증은 기능 테스트 → CPU 쓰로틀링 불필요 (overrideRate=0)
+    await applyMobileThrottling(page, 0);
 
     expect(directoryExists(DIST_WEB), 'dist/web/ should exist').toBe(true);
 
@@ -1121,8 +1141,8 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
   test('8. Serialization round-trip should succeed for all types', async ({ page }) => {
     test.setTimeout(180000); // 3분
 
-    // 모바일 스로틀링 적용 (MOBILE_EMULATION=true일 때만 실행)
-    await applyMobileThrottling(page);
+    // 직렬화 검증은 기능 테스트 → CPU 쓰로틀링 불필요 (overrideRate=0)
+    await applyMobileThrottling(page, 0);
 
     expect(directoryExists(DIST_WEB), 'dist/web/ should exist').toBe(true);
 
@@ -1302,12 +1322,8 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       throw new Error(`Server failed to start on port ${actualPort}`);
     }
 
-    // CDP 세션 생성하여 메모리 압박 시뮬레이션
-    console.log('📱 Applying memory pressure simulation (CPU 6x)...');
-    const client = await page.context().newCDPSession(page);
-
-    // CPU 6x slowdown (저사양 기기 시뮬레이션)
-    await client.send('Emulation.setCPUThrottlingRate', { rate: 6 });
+    // 메모리 압박 테스트: 메모리 할당 자체가 부하 → CPU 쓰로틀링 불필요 (overrideRate=0)
+    await applyMobileThrottling(page, 0);
 
     // 페이지 로딩 (E2E 모드 활성화)
     await page.goto(`http://localhost:${actualPort}?e2e=true`, {

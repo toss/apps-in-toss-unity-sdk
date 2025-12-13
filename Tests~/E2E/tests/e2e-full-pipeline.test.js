@@ -8,17 +8,19 @@ import { fileURLToPath } from 'url';
 /**
  * Apps in Toss Unity SDK - E2E Full Pipeline Tests
  *
- * 7개 테스트 케이스:
+ * 9개 테스트 케이스:
  * 1. Unity WebGL Build (Runtime 컴파일)
  * 2. AIT Dev Server
  * 3. AIT Build Directory
  * 4. AIT Packaging
  * 5. Production Server
  * 6. Performance Benchmarks
- * 7. Runtime API Error Validation (39개 SDK API 에러 검증)
+ * 7. Runtime API Error Validation (61개 SDK API 에러 검증)
+ * 8. Serialization Round-trip Tests (C# ↔ JavaScript 직렬화 검증)
+ * 9. Memory Pressure Tests (WASM + JS + Canvas 메모리 압박)
  *
  * Test 7 검증 기준:
- * - 모든 39개 SDK API를 호출
+ * - 모든 61개 SDK API를 호출
  * - 개발 환경에서 "상정된 에러" (expected error) 발생 = PASS
  *   - "XXX is not a constant handler" (bridge-core Constant API)
  *   - "__GRANITE_NATIVE_EMITTER is not available" (Async API)
@@ -1108,6 +1110,317 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
 
       // 결과가 없으면 실패
       expect(apiResults, 'RuntimeAPITester should return results').not.toBeNull();
+    }
+  });
+
+
+  // -------------------------------------------------------------------------
+  // Test 8: Serialization Round-trip Tests
+  // C# ↔ JavaScript JSON 직렬화/역직렬화 일관성 검증
+  // -------------------------------------------------------------------------
+  test('8. Serialization round-trip should succeed for all types', async ({ page }) => {
+    test.setTimeout(180000); // 3분
+
+    // 모바일 스로틀링 적용 (MOBILE_EMULATION=true일 때만 실행)
+    await applyMobileThrottling(page);
+
+    expect(directoryExists(DIST_WEB), 'dist/web/ should exist').toBe(true);
+
+    // Production 서버 시작
+    console.log('🚀 Starting server for serialization tests...');
+    const prodServer = await startProductionServer(AIT_BUILD, serverPort);
+    serverProcess = prodServer.process;
+    const actualPort = prodServer.port;
+
+    // 서버가 준비될 때까지 대기
+    let serverReady = false;
+    for (let i = 0; i < 20; i++) {
+      try {
+        const response = await fetch(`http://localhost:${actualPort}/`, { method: 'HEAD' });
+        if (response.ok) {
+          serverReady = true;
+          break;
+        }
+      } catch {
+        // 서버가 아직 준비되지 않음
+      }
+      await new Promise(r => setTimeout(r, 500));
+    }
+
+    if (!serverReady) {
+      throw new Error(`Server failed to start on port ${actualPort}`);
+    }
+
+    // 페이지 로딩 (E2E 모드 활성화)
+    await page.goto(`http://localhost:${actualPort}?e2e=true`, {
+      waitUntil: 'networkidle',
+      timeout: 60000
+    });
+
+    // Unity 초기화 대기
+    try {
+      await page.waitForFunction(() => {
+        return window['unityInstance'] !== undefined;
+      }, { timeout: 120000 });
+      console.log('✅ Unity instance ready for serialization tests');
+    } catch {
+      console.log('⚠️ Unity instance not ready, serialization tests may fail');
+    }
+
+    // SerializationTester에서 결과 수신 대기 (CustomEvent 방식)
+    const serializationResults = await page.evaluate(() => {
+      return new Promise((resolve) => {
+        // E2EBridge.jslib에서 발생시키는 CustomEvent 수신
+        const handler = (event) => {
+          window.removeEventListener('e2e-serialization-complete', handler);
+          resolve(event.detail);
+        };
+        window.addEventListener('e2e-serialization-complete', handler);
+
+        // 이미 데이터가 있으면 바로 반환
+        if (window['__E2E_SERIALIZATION_TEST_DATA__']) {
+          resolve(window['__E2E_SERIALIZATION_TEST_DATA__']);
+          return;
+        }
+
+        // 90초 타임아웃
+        setTimeout(() => resolve(null), 90000);
+      });
+    });
+
+    // 서버 종료
+    serverProcess.kill();
+    serverProcess = null;
+
+    // 결과 검증
+    if (serializationResults) {
+      // JSON 문자열인 경우 파싱
+      let results = serializationResults;
+      if (typeof results === 'string') {
+        try {
+          results = JSON.parse(results);
+        } catch {
+          console.log('⚠️ Failed to parse serialization results JSON');
+        }
+      }
+
+      console.log('\n' + '='.repeat(70));
+      console.log('📊 SERIALIZATION ROUND-TRIP TEST RESULTS');
+      console.log('='.repeat(70));
+      console.log(`   Total Tests: ${results.totalTests}`);
+      console.log(`   Success: ${results.successCount}`);
+      console.log(`   Failed: ${results.failCount}`);
+      console.log('='.repeat(70));
+
+      // 개별 결과 출력
+      if (results.results && Array.isArray(results.results)) {
+        const passed = results.results.filter(r => r.success);
+        const failed = results.results.filter(r => !r.success);
+
+        if (passed.length > 0) {
+          console.log('\n✅ Passed Tests:');
+          passed.forEach(r => {
+            console.log(`   [OK] ${r.testName}`);
+          });
+        }
+
+        if (failed.length > 0) {
+          console.log('\n❌ Failed Tests:');
+          failed.forEach(r => {
+            console.log(`   [FAIL] ${r.testName}: ${r.error || 'unknown error'}`);
+            if (r.serializedJson) {
+              console.log(`          Got: ${r.serializedJson}`);
+            }
+            if (r.expectedJson) {
+              console.log(`          Expected: ${r.expectedJson}`);
+            }
+          });
+        }
+      }
+
+      console.log('\n' + '='.repeat(70));
+      if (results.failCount === 0) {
+        console.log('✅ ALL SERIALIZATION TESTS PASSED');
+      } else {
+        console.log('❌ SERIALIZATION TESTS FAILED');
+      }
+      console.log('='.repeat(70) + '\n');
+
+      // 테스트 결과 저장
+      testResults.tests['8_serialization'] = {
+        passed: results.failCount === 0,
+        totalTests: results.totalTests,
+        successCount: results.successCount,
+        failCount: results.failCount
+      };
+
+      // 실패한 테스트가 있으면 전체 테스트 실패
+      expect(results.failCount, 'All serialization tests should pass').toBe(0);
+
+    } else {
+      console.log('⚠️ Serialization test results not received');
+      testResults.tests['8_serialization'] = {
+        passed: false,
+        reason: 'SerializationTester results not received'
+      };
+      expect(serializationResults, 'SerializationTester should return results').not.toBeNull();
+    }
+  });
+
+
+  // -------------------------------------------------------------------------
+  // Test 9: Memory Pressure Tests
+  // WASM 힙 + JavaScript 힙 + Canvas(GPU) 메모리 압박 테스트
+  // -------------------------------------------------------------------------
+  test('9. Memory pressure tests should complete without OOM', async ({ page }) => {
+    test.setTimeout(300000); // 5분 (메모리 테스트는 시간이 오래 걸림)
+
+    expect(directoryExists(DIST_WEB), 'dist/web/ should exist').toBe(true);
+
+    // Production 서버 시작
+    console.log('🚀 Starting server for memory pressure tests...');
+    const prodServer = await startProductionServer(AIT_BUILD, serverPort);
+    serverProcess = prodServer.process;
+    const actualPort = prodServer.port;
+
+    // 서버가 준비될 때까지 대기
+    let serverReady = false;
+    for (let i = 0; i < 20; i++) {
+      try {
+        const response = await fetch(`http://localhost:${actualPort}/`, { method: 'HEAD' });
+        if (response.ok) {
+          serverReady = true;
+          break;
+        }
+      } catch {
+        // 서버가 아직 준비되지 않음
+      }
+      await new Promise(r => setTimeout(r, 500));
+    }
+
+    if (!serverReady) {
+      throw new Error(`Server failed to start on port ${actualPort}`);
+    }
+
+    // CDP 세션 생성하여 메모리 압박 시뮬레이션
+    console.log('📱 Applying memory pressure simulation (CPU 6x)...');
+    const client = await page.context().newCDPSession(page);
+
+    // CPU 6x slowdown (저사양 기기 시뮬레이션)
+    await client.send('Emulation.setCPUThrottlingRate', { rate: 6 });
+
+    // 페이지 로딩 (E2E 모드 활성화)
+    await page.goto(`http://localhost:${actualPort}?e2e=true`, {
+      waitUntil: 'networkidle',
+      timeout: 90000
+    });
+
+    // Unity 초기화 대기
+    try {
+      await page.waitForFunction(() => {
+        return window['unityInstance'] !== undefined;
+      }, { timeout: 120000 });
+      console.log('✅ Unity instance ready for memory pressure tests');
+    } catch {
+      console.log('⚠️ Unity instance not ready, memory pressure tests may fail');
+    }
+
+    // MemoryPressureTester에서 결과 수신 대기 (CustomEvent 방식)
+    // 메모리 테스트는 시간이 오래 걸리므로 충분한 타임아웃 설정
+    const memoryResults = await page.evaluate(() => {
+      return new Promise((resolve) => {
+        // E2EBridge.jslib에서 발생시키는 CustomEvent 수신
+        const handler = (event) => {
+          window.removeEventListener('e2e-memory-test-complete', handler);
+          resolve(event.detail);
+        };
+        window.addEventListener('e2e-memory-test-complete', handler);
+
+        // 이미 데이터가 있으면 바로 반환
+        if (window['__E2E_MEMORY_TEST_DATA__']) {
+          resolve(window['__E2E_MEMORY_TEST_DATA__']);
+          return;
+        }
+
+        // 180초 타임아웃 (메모리 테스트는 시간이 걸림)
+        setTimeout(() => resolve(null), 180000);
+      });
+    });
+
+    // 서버 종료
+    serverProcess.kill();
+    serverProcess = null;
+
+    // 결과 검증
+    if (memoryResults) {
+      // JSON 문자열인 경우 파싱
+      let results = memoryResults;
+      if (typeof results === 'string') {
+        try {
+          results = JSON.parse(results);
+        } catch {
+          console.log('⚠️ Failed to parse memory test results JSON');
+        }
+      }
+
+      console.log('\n' + '='.repeat(70));
+      console.log('📊 MEMORY PRESSURE TEST RESULTS');
+      console.log('='.repeat(70));
+      console.log(`   Total Steps: ${results.totalSteps}`);
+      console.log(`   OOM Occurred: ${results.oomOccurred ? '❌ YES' : '✅ NO'}`);
+      console.log(`   Combined Pressure Avg FPS: ${results.combinedPressureAvgFps?.toFixed(1) || 'N/A'}`);
+      console.log(`   Combined Pressure Min FPS: ${results.combinedPressureMinFps?.toFixed(1) || 'N/A'}`);
+      console.log('='.repeat(70));
+
+      // 단계별 결과 출력
+      if (results.steps && Array.isArray(results.steps)) {
+        console.log('\n📈 Step-by-step Results:');
+        results.steps.forEach(step => {
+          const fpsStatus = step.avgFps < 15 ? '⚠️' : (step.avgFps < 30 ? '🔶' : '✅');
+          console.log(`   ${fpsStatus} ${step.stepName}: ${step.avgFps?.toFixed(1) || 'N/A'} FPS (min: ${step.minFps?.toFixed(1) || 'N/A'})`);
+        });
+      }
+
+      console.log('\n' + '='.repeat(70));
+      if (!results.oomOccurred && results.combinedPressureAvgFps >= 15) {
+        console.log('✅ MEMORY PRESSURE TESTS PASSED');
+        console.log('   - No OOM occurred');
+        console.log('   - FPS maintained above threshold under pressure');
+      } else {
+        console.log('❌ MEMORY PRESSURE TESTS FAILED');
+        if (results.oomOccurred) {
+          console.log('   - OOM occurred during tests');
+        }
+        if (results.combinedPressureAvgFps < 15) {
+          console.log(`   - FPS too low under combined pressure (${results.combinedPressureAvgFps?.toFixed(1)} < 15)`);
+        }
+      }
+      console.log('='.repeat(70) + '\n');
+
+      // 테스트 결과 저장
+      testResults.tests['9_memory_pressure'] = {
+        passed: !results.oomOccurred && (results.combinedPressureAvgFps >= 15 || results.combinedPressureAvgFps === undefined),
+        totalSteps: results.totalSteps,
+        oomOccurred: results.oomOccurred,
+        combinedPressureAvgFps: results.combinedPressureAvgFps,
+        combinedPressureMinFps: results.combinedPressureMinFps
+      };
+
+      // OOM이 발생하지 않아야 함
+      expect(results.oomOccurred, 'Should complete without OOM').toBe(false);
+
+      // Combined pressure에서 최소 15 FPS 이상 유지해야 함 (데이터가 있을 때만)
+      if (results.combinedPressureAvgFps !== undefined) {
+        expect(results.combinedPressureAvgFps, 'Should maintain at least 15 FPS under pressure').toBeGreaterThanOrEqual(15);
+      }
+
+    } else {
+      console.log('⚠️ Memory pressure test results not received');
+      testResults.tests['9_memory_pressure'] = {
+        passed: false,
+        reason: 'MemoryPressureTester results not received'
+      };
+      expect(memoryResults, 'MemoryPressureTester should return results').not.toBeNull();
     }
   });
 

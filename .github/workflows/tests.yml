@@ -271,12 +271,14 @@ jobs:
           retention-days: 7
 
   # =====================================================
-  # E2E Tests - Windows
+  # E2E Tests - Windows (테스트 1-5만 실행)
+  # 목적: Windows에서 빌드 및 기본 서버 동작 검증
+  # 테스트 6-9 (벤치마크, API 검증, 직렬화, 메모리 압박)는 macOS에서만 실행
   # =====================================================
   e2e-test-windows:
-    name: E2E (Windows, Unity ${{ matrix.unity-version }})
+    name: E2E 1-5 (Windows, Unity ${{ matrix.unity-version }})
     runs-on: [self-hosted, Windows, X64, enabled]
-    timeout-minutes: 60
+    timeout-minutes: 50
 
     # 동일 브랜치 + Unity 버전 조합에서만 동시 실행 방지
     # 다른 브랜치는 독립 실행, 같은 브랜치 내 이전 실행은 취소
@@ -498,20 +500,6 @@ jobs:
             exit /b 1
           )
 
-      # ait deploy는 ait-build/ 디렉토리 내에서 실행되어야 함
-      # 배포에 필요한 파일만 업로드 (node_modules, public 등 제외하여 용량 절감)
-      - name: Upload AIT Build
-        uses: actions/upload-artifact@v5
-        with:
-          name: ait-build-windows-${{ matrix.unity-version }}
-          path: |
-            Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/dist/
-            Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/package.json
-            Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/pnpm-lock.yaml
-            Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/granite.config.ts
-          if-no-files-found: error
-          retention-days: 7
-
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
@@ -521,27 +509,19 @@ jobs:
         working-directory: Tests~/E2E/tests
         shell: cmd
         run: |
-          @echo off
           if exist node_modules rmdir /s /q node_modules
-          if exist package-lock.json del /f package-lock.json
-          call npm install
-          call npx playwright install chromium --with-deps
-          call npx playwright --version
+          if exist package-lock.json del package-lock.json
+          npm install
+          npx playwright install chromium --with-deps
 
-      - name: Run E2E Tests
+      # Windows에서는 E2E 테스트 1-5만 실행 (빌드/서버 검증)
+      # 테스트 6-9 (벤치마크, API 검증, 직렬화, 메모리 압박)는 macOS에서만 실행
+      - name: Run E2E Tests (1-5 only)
         working-directory: Tests~/E2E/tests
         shell: cmd
         env:
           UNITY_PROJECT_PATH: ${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ matrix.unity-version }}
-        run: call npm test
-
-      - name: Upload Benchmark Results
-        uses: actions/upload-artifact@v5
-        if: always()
-        with:
-          name: benchmark-results-windows-${{ matrix.unity-version }}
-          path: Tests~/E2E/tests/benchmark-results.json
-          if-no-files-found: ignore
+        run: npx playwright test --grep "^[1-5]\."
 
       - name: Upload Playwright Report
         uses: actions/upload-artifact@v5
@@ -654,7 +634,7 @@ jobs:
 
           if [ "$SDK_RESULT" = "success" ] && [ "$MACOS_RESULT" = "success" ] && [ "$WINDOWS_RESULT" = "success" ]; then
             echo "state=success" >> $GITHUB_OUTPUT
-            echo "description=All tests passed (SDK + E2E)" >> $GITHUB_OUTPUT
+            echo "description=All tests passed (SDK + E2E macOS:1-9, Windows:1-5)" >> $GITHUB_OUTPUT
           elif [ "$SDK_RESULT" = "cancelled" ] || [ "$MACOS_RESULT" = "cancelled" ] || [ "$WINDOWS_RESULT" = "cancelled" ]; then
             echo "state=error" >> $GITHUB_OUTPUT
             echo "description=Tests cancelled" >> $GITHUB_OUTPUT

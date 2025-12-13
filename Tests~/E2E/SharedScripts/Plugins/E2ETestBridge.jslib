@@ -303,5 +303,49 @@ mergeInto(LibraryManager.library, {
 
         var event = new CustomEvent('e2e-comprehensive-perf-complete', { detail: json });
         window.dispatchEvent(event);
+    },
+
+    // =====================================================
+    // JavaScript → Unity 테스트 트리거 함수들
+    // Playwright에서 Unity SendMessage를 호출하기 위한 헬퍼
+    // =====================================================
+
+    /**
+     * API 테스트 트리거 (JavaScript에서 호출 가능)
+     * window.TriggerAPITest() 로 호출
+     */
+    RegisterTriggerFunctions: function() {
+        // 글로벌 트리거 함수 등록
+        window.TriggerAPITest = function() {
+            console.log('[E2E-TRIGGER] Triggering API Test...');
+            if (window.unityInstance) {
+                window.unityInstance.SendMessage('BenchmarkManager', 'TriggerAPITest');
+                return true;
+            }
+            console.error('[E2E-TRIGGER] Unity instance not available');
+            return false;
+        };
+
+        window.TriggerSerializationTest = function() {
+            console.log('[E2E-TRIGGER] Triggering Serialization Test...');
+            if (window.unityInstance) {
+                window.unityInstance.SendMessage('BenchmarkManager', 'TriggerSerializationTest');
+                return true;
+            }
+            console.error('[E2E-TRIGGER] Unity instance not available');
+            return false;
+        };
+
+        window.TriggerPerformanceTest = function() {
+            console.log('[E2E-TRIGGER] Triggering Performance Test...');
+            if (window.unityInstance) {
+                window.unityInstance.SendMessage('BenchmarkManager', 'TriggerPerformanceTest');
+                return true;
+            }
+            console.error('[E2E-TRIGGER] Unity instance not available');
+            return false;
+        };
+
+        console.log('[E2E-TRIGGER] Trigger functions registered');
     }
 });

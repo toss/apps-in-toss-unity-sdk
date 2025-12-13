@@ -424,22 +424,21 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
 
     // 2. 벤치마크 결과 (workflow에서 업로드하는 파일)
     const benchmarkPath = path.resolve(__dirname, 'benchmark-results.json');
-    const memPressure = testResults.tests['9_memory_pressure'];
+    const comprehensivePerf = testResults.tests['8_comprehensive_perf'];
     const benchmarkResults = {
       timestamp: testResults.timestamp,
       unityProject: SAMPLE_PROJECT,
       buildSize: testResults.tests['1_webgl_build']?.buildSizeMB,
-      pageLoadTime: testResults.tests['5_production_server']?.pageLoadTimeMs || testResults.tests['8_benchmarks']?.pageLoadTimeMs,
-      unityLoadTime: testResults.tests['8_benchmarks']?.unityLoadTimeMs,
+      pageLoadTime: testResults.tests['5_production_server']?.pageLoadTimeMs || comprehensivePerf?.pageLoadTimeMs,
+      unityLoadTime: comprehensivePerf?.unityLoadTimeMs,
       webgl: testResults.tests['5_production_server']?.webgl,
-      benchmarkData: testResults.tests['8_benchmarks']?.benchmarkData,
-      // 메모리 압박 테스트 데이터 (시계열 포함)
-      memoryPressureData: memPressure ? {
-        totalSteps: memPressure.totalSteps,
-        oomOccurred: memPressure.oomOccurred,
-        combinedPressureAvgFps: memPressure.combinedPressureAvgFps,
-        combinedPressureMinFps: memPressure.combinedPressureMinFps,
-        steps: memPressure.steps || []
+      // 종합 성능 테스트 데이터 (새 구조)
+      comprehensivePerfData: comprehensivePerf ? {
+        oomOccurred: comprehensivePerf.oomOccurred,
+        baseline: comprehensivePerf.baseline,
+        physicsWithMemory: comprehensivePerf.physicsWithMemory,
+        renderingWithMemory: comprehensivePerf.renderingWithMemory,
+        fullLoad: comprehensivePerf.fullLoad
       } : null,
       apiTestResults: testResults.tests['6_runtime_api'] ? {
         totalAPIs: testResults.tests['6_runtime_api'].totalAPIs,
@@ -466,8 +465,8 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
 
     // 주요 메트릭
     const buildSize = tests['1_webgl_build']?.buildSizeMB;
-    const pageLoad = tests['5_production_server']?.pageLoadTimeMs || tests['8_benchmarks']?.pageLoadTimeMs;
-    const unityLoad = tests['8_benchmarks']?.unityLoadTimeMs;
+    const pageLoad = tests['5_production_server']?.pageLoadTimeMs || tests['8_comprehensive_perf']?.pageLoadTimeMs;
+    const unityLoad = tests['8_comprehensive_perf']?.unityLoadTimeMs;
     const renderer = tests['5_production_server']?.webgl?.renderer;
 
     console.log('\n  📦 Build Size:      ' + (buildSize ? buildSize.toFixed(2) + ' MB' : 'N/A'));

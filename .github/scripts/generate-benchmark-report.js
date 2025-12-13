@@ -130,21 +130,27 @@ function generateBuildSizeChart(data) {
 }
 
 /**
- * FPS 성능 비교 라인 차트 URL 생성 (Baseline, Physics, Rendering, Combined)
+ * FPS 성능 비교 라인 차트 URL 생성 (Baseline, Physics+Memory, Rendering+Memory, Full Load)
+ * 새로운 통합 성능 테스트 데이터 구조 지원
  */
 function generateFpsChart(data) {
-  const baselineFps = UNITY_VERSIONS.map(
-    (v) => data.macos[v]?.benchmarkData?.avgFps?.toFixed(1) || 0
-  );
-  const physicsFps = UNITY_VERSIONS.map(
-    (v) => data.macos[v]?.benchmarkData?.physicsAvgFps?.toFixed(1) || 0
-  );
-  const renderingFps = UNITY_VERSIONS.map(
-    (v) => data.macos[v]?.benchmarkData?.renderingAvgFps?.toFixed(1) || 0
-  );
-  const combinedFps = UNITY_VERSIONS.map(
-    (v) => data.macos[v]?.benchmarkData?.combinedAvgFps?.toFixed(1) || 0
-  );
+  // 새로운 comprehensivePerfData 구조 우선 사용
+  const baselineFps = UNITY_VERSIONS.map((v) => {
+    const perf = data.macos[v]?.comprehensivePerfData;
+    return perf?.baseline?.avgFps?.toFixed(1) || data.macos[v]?.benchmarkData?.avgFps?.toFixed(1) || 0;
+  });
+  const physicsFps = UNITY_VERSIONS.map((v) => {
+    const perf = data.macos[v]?.comprehensivePerfData;
+    return perf?.physicsWithMemory?.avgFps?.toFixed(1) || data.macos[v]?.benchmarkData?.physicsAvgFps?.toFixed(1) || 0;
+  });
+  const renderingFps = UNITY_VERSIONS.map((v) => {
+    const perf = data.macos[v]?.comprehensivePerfData;
+    return perf?.renderingWithMemory?.avgFps?.toFixed(1) || data.macos[v]?.benchmarkData?.renderingAvgFps?.toFixed(1) || 0;
+  });
+  const fullLoadFps = UNITY_VERSIONS.map((v) => {
+    const perf = data.macos[v]?.comprehensivePerfData;
+    return perf?.fullLoad?.avgFps?.toFixed(1) || data.macos[v]?.benchmarkData?.combinedAvgFps?.toFixed(1) || 0;
+  });
 
   const config = {
     type: "line",
@@ -159,22 +165,22 @@ function generateFpsChart(data) {
           fill: false,
         },
         {
-          label: "Physics",
+          label: "Physics+Memory",
           data: physicsFps,
           borderColor: "rgba(59, 130, 246, 1)",
           backgroundColor: "rgba(59, 130, 246, 0.1)",
           fill: false,
         },
         {
-          label: "Rendering",
+          label: "Rendering+Memory",
           data: renderingFps,
           borderColor: "rgba(168, 85, 247, 1)",
           backgroundColor: "rgba(168, 85, 247, 0.1)",
           fill: false,
         },
         {
-          label: "Combined",
-          data: combinedFps,
+          label: "Full Load",
+          data: fullLoadFps,
           borderColor: "rgba(239, 68, 68, 1)",
           backgroundColor: "rgba(239, 68, 68, 0.1)",
           fill: false,
@@ -182,7 +188,7 @@ function generateFpsChart(data) {
       ],
     },
     options: {
-      title: { display: true, text: "Benchmark FPS by Unity Version" },
+      title: { display: true, text: "Comprehensive Performance FPS by Unity Version" },
       scales: { yAxes: [{ ticks: { beginAtZero: true } }] },
     },
   };
@@ -256,8 +262,8 @@ function hasAnyTestFailure(data) {
 function generateTestSummary(data) {
   let md = "";
   md += "### 📈 Test Summary\n\n";
-  md += `| Unity Version | Tests | Build Size | Avg FPS |\n`;
-  md += "|:--------------|:-----:|:----------:|:-------:|\n";
+  md += `| Unity Version | Tests | Build Size | Full Load FPS | OOM |\n`;
+  md += "|:--------------|:-----:|:----------:|:-------------:|:---:|\n";
 
   for (const version of UNITY_VERSIONS) {
     const result = data.macos[version];
@@ -266,9 +272,19 @@ function generateTestSummary(data) {
       ? `${statusEmoji(result.testsPassed === result.testsTotal)} ${result.testsPassed}/${result.testsTotal}`
       : "⏳";
     const buildSize = result?.buildSize ? `${result.buildSize.toFixed(1)} MB` : "-";
-    const avgFps = result?.benchmarkData?.avgFps ? `${result.benchmarkData.avgFps.toFixed(0)} FPS` : "-";
 
-    md += `| ${version} | ${testStatus} | ${buildSize} | ${avgFps} |\n`;
+    // 새로운 comprehensivePerfData 구조 우선 사용
+    const perf = result?.comprehensivePerfData;
+    const fullLoadFps = perf?.fullLoad?.avgFps
+      ? `${perf.fullLoad.avgFps.toFixed(0)} FPS`
+      : result?.benchmarkData?.combinedAvgFps
+        ? `${result.benchmarkData.combinedAvgFps.toFixed(0)} FPS`
+        : "-";
+    const oomStatus = perf?.oomOccurred !== undefined
+      ? (perf.oomOccurred ? "❌" : "✅")
+      : "-";
+
+    md += `| ${version} | ${testStatus} | ${buildSize} | ${fullLoadFps} | ${oomStatus} |\n`;
   }
   md += "\n";
   return md;
@@ -377,56 +393,88 @@ function generateDetailedReport(data) {
   }
   md += "\n";
 
-  // ===== 벤치마크 FPS 상세 테이블 =====
-  md += "### ⚡ Benchmark FPS Detail\n\n";
-  md += `| Unity Version | Baseline | Physics | Rendering | Combined | Min FPS |\n`;
-  md += "|:--------------|:--------:|:-------:|:---------:|:--------:|:-------:|\n";
+  // ===== 종합 성능 FPS 상세 테이블 =====
+  md += "### ⚡ Comprehensive Performance FPS Detail\n\n";
+  md += `| Unity Version | Baseline | Physics+Mem | Rendering+Mem | Full Load | Min FPS |\n`;
+  md += "|:--------------|:--------:|:-----------:|:-------------:|:---------:|:-------:|\n";
 
   for (const version of UNITY_VERSIONS) {
-    const m = data.macos[version]?.benchmarkData;
+    // 새로운 comprehensivePerfData 구조 우선 사용
+    const perf = data.macos[version]?.comprehensivePerfData;
+    const oldBench = data.macos[version]?.benchmarkData;
 
-    md += `| ${version} | ${formatNumber(m?.avgFps)} | ${formatNumber(m?.physicsAvgFps)} | ${formatNumber(m?.renderingAvgFps)} | ${formatNumber(m?.combinedAvgFps)} | ${formatNumber(m?.minFps)} |\n`;
+    const baseline = perf?.baseline?.avgFps ?? oldBench?.avgFps;
+    const physics = perf?.physicsWithMemory?.avgFps ?? oldBench?.physicsAvgFps;
+    const rendering = perf?.renderingWithMemory?.avgFps ?? oldBench?.renderingAvgFps;
+    const fullLoad = perf?.fullLoad?.avgFps ?? oldBench?.combinedAvgFps;
+    const minFps = perf?.fullLoad?.minFps ?? oldBench?.minFps;
+
+    md += `| ${version} | ${formatNumber(baseline)} | ${formatNumber(physics)} | ${formatNumber(rendering)} | ${formatNumber(fullLoad)} | ${formatNumber(minFps)} |\n`;
   }
   md += "\n";
 
   // ===== 프로그레스바 시각화 (macOS만) =====
   md += "### 🎯 Performance Overview\n\n";
-  md += "| Version | Build Size | Baseline FPS | Combined FPS | Load Time |\n";
-  md += "|:--------|:-----------|:-------------|:-------------|:----------|\n";
+  md += "| Version | Build Size | Baseline FPS | Full Load FPS | Load Time |\n";
+  md += "|:--------|:-----------|:-------------|:--------------|:----------|\n";
 
   for (const version of UNITY_VERSIONS) {
     const d = data.macos[version];
 
     if (d) {
       const buildSize = d.buildSize;
-      const baselineFps = d.benchmarkData?.avgFps;
-      const combinedFps = d.benchmarkData?.combinedAvgFps;
+      // 새로운 comprehensivePerfData 구조 우선 사용
+      const perf = d.comprehensivePerfData;
+      const oldBench = d.benchmarkData;
+      const baselineFps = perf?.baseline?.avgFps ?? oldBench?.avgFps;
+      const fullLoadFps = perf?.fullLoad?.avgFps ?? oldBench?.combinedAvgFps;
       const loadTime = d.pageLoadTime;
 
       const buildBar = `${progressBar(buildSize, THRESHOLDS.BUILD_SIZE_MB)} ${formatNumber(buildSize, 1)}MB`;
       const baselineBar = `${progressBar(baselineFps, THRESHOLDS.MAX_FPS)} ${formatNumber(baselineFps, 0)}`;
-      const combinedBar = `${progressBar(combinedFps, THRESHOLDS.MAX_FPS)} ${formatNumber(combinedFps, 0)}`;
+      const fullLoadBar = `${progressBar(fullLoadFps, THRESHOLDS.MAX_FPS)} ${formatNumber(fullLoadFps, 0)}`;
       const loadBar = `${progressBar(loadTime, THRESHOLDS.MAX_LOAD_TIME_MS)} ${formatNumber(loadTime / 1000, 1)}s`;
 
-      md += `| ${version} | ${buildBar} | ${baselineBar} | ${combinedBar} | ${loadBar} |\n`;
+      md += `| ${version} | ${buildBar} | ${baselineBar} | ${fullLoadBar} | ${loadBar} |\n`;
     } else {
       md += `| ${version} | ⏳ | ⏳ | ⏳ | ⏳ |\n`;
     }
   }
   md += "\n";
 
-  // ===== 메모리 압박 테스트 결과 =====
-  md += "### 🧠 Memory Pressure Test Results\n\n";
+  // ===== 메모리 압박 + 종합 성능 테스트 결과 =====
+  md += "### 🧠 Memory & Load Test Results\n\n";
 
-  let hasMemoryData = false;
+  // 새로운 comprehensivePerfData 또는 기존 memoryPressureData 확인
+  let hasPerfData = false;
+  let hasLegacyMemoryData = false;
   for (const version of UNITY_VERSIONS) {
-    if (data.macos[version]?.memoryPressureData) {
-      hasMemoryData = true;
+    if (data.macos[version]?.comprehensivePerfData) {
+      hasPerfData = true;
       break;
+    }
+    if (data.macos[version]?.memoryPressureData) {
+      hasLegacyMemoryData = true;
     }
   }
 
-  if (hasMemoryData) {
+  if (hasPerfData) {
+    // 새로운 종합 성능 테스트 결과 표시
+    md += `| Unity Version | OOM | Full Load Avg FPS | Full Load Min FPS | Memory (MB) |\n`;
+    md += "|:--------------|:---:|:-----------------:|:-----------------:|:-----------:|\n";
+
+    for (const version of UNITY_VERSIONS) {
+      const perf = data.macos[version]?.comprehensivePerfData;
+      if (perf) {
+        const oomStatus = perf.oomOccurred ? "❌" : "✅";
+        md += `| ${version} | ${oomStatus} | ${formatNumber(perf.fullLoad?.avgFps)} | ${formatNumber(perf.fullLoad?.minFps)} | ${formatNumber(perf.fullLoad?.memoryMB)} |\n`;
+      } else {
+        md += `| ${version} | ⏳ | - | - | - |\n`;
+      }
+    }
+    md += "\n";
+  } else if (hasLegacyMemoryData) {
+    // 기존 memoryPressureData 형식 표시 (하위 호환성)
     md += `| Unity Version | OOM | Combined Avg FPS | Combined Min FPS | Steps |\n`;
     md += "|:--------------|:---:|:----------------:|:----------------:|:-----:|\n";
 
@@ -456,7 +504,7 @@ function generateDetailedReport(data) {
       }
     }
   } else {
-    md += "> ⏳ Memory pressure test data not available\n\n";
+    md += "> ⏳ Memory/load test data not available\n\n";
   }
 
   // ===== API 테스트 결과 =====

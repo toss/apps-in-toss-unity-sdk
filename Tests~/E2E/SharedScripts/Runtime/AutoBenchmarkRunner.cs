@@ -10,6 +10,11 @@ using System.Runtime.InteropServices;
 /// 자동 벤치마크 실행 및 결과 저장
 /// 씬 로드 시 자동으로 벤치마크를 순차 실행하고 결과를 파일로 저장 후 종료
 /// </summary>
+/// <remarks>
+/// [Obsolete] 이 클래스는 ComprehensivePerfTester로 대체되었습니다.
+/// ComprehensivePerfTester는 벤치마크와 메모리 압박 테스트를 통합하여 더 현실적인 성능 측정을 제공합니다.
+/// </remarks>
+[System.Obsolete("Use ComprehensivePerfTester instead. This class will be removed in a future version.")]
 public class AutoBenchmarkRunner : MonoBehaviour
 {
 #if UNITY_WEBGL && !UNITY_EDITOR

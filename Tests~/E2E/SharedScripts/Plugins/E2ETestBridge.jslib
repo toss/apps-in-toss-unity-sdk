@@ -289,5 +289,19 @@ mergeInto(LibraryManager.library, {
 
         var event = new CustomEvent('e2e-memory-test-complete', { detail: json });
         window.dispatchEvent(event);
+    },
+
+    /**
+     * 종합 성능 테스트 결과 전송
+     * @param {string} jsonPtr - JSON 문자열 포인터
+     */
+    SendComprehensivePerfResults: function(jsonPtr) {
+        var json = UTF8ToString(jsonPtr);
+        console.log('[E2E-COMPREHENSIVE-PERF] ' + json);
+
+        window.__E2E_COMPREHENSIVE_PERF_DATA__ = json;
+
+        var event = new CustomEvent('e2e-comprehensive-perf-complete', { detail: json });
+        window.dispatchEvent(event);
     }
 });

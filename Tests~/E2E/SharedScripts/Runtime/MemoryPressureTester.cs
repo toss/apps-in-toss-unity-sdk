@@ -13,6 +13,11 @@ using System.Runtime.InteropServices;
 /// 메모리 압박 테스트 실행기
 /// WebGL 환경에서 WASM, JavaScript, Canvas 메모리에 부하를 주어 안정성 검증
 /// </summary>
+/// <remarks>
+/// [Obsolete] 이 클래스는 ComprehensivePerfTester로 대체되었습니다.
+/// ComprehensivePerfTester는 벤치마크와 메모리 압박 테스트를 통합하여 더 현실적인 성능 측정을 제공합니다.
+/// </remarks>
+[System.Obsolete("Use ComprehensivePerfTester instead. This class will be removed in a future version.")]
 public class MemoryPressureTester : MonoBehaviour
 {
 #if UNITY_WEBGL && !UNITY_EDITOR

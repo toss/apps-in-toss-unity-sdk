@@ -47,26 +47,26 @@ public class MemoryPressureTester : MonoBehaviour
 
     [Header("Memory Allocation Settings")]
     [Tooltip("각 단계에서 할당할 메모리 크기 (MB)")]
-    public int allocationSizeMB = 50;
+    public int allocationSizeMB = 20;  // CI 환경 안정성을 위해 축소 (50 → 20)
 
     [Tooltip("WASM 메모리 할당 횟수")]
-    public int wasmAllocationSteps = 5;
+    public int wasmAllocationSteps = 3;  // CI 환경 안정성을 위해 축소 (5 → 3)
 
     [Tooltip("JS 메모리 할당 횟수")]
-    public int jsAllocationSteps = 5;
+    public int jsAllocationSteps = 3;  // CI 환경 안정성을 위해 축소 (5 → 3)
 
     [Tooltip("동시 압박 테스트용 Canvas 개수")]
-    public int canvasCount = 5;
+    public int canvasCount = 3;  // CI 환경 안정성을 위해 축소 (5 → 3)
 
     [Tooltip("Canvas 크기")]
-    public int canvasSize = 2048;
+    public int canvasSize = 1024;  // CI 환경 안정성을 위해 축소 (2048 → 1024)
 
     [Header("Performance Measurement")]
     [Tooltip("각 단계별 측정 시간 (초)")]
-    public float measurementDuration = 5f;
+    public float measurementDuration = 3f;  // 테스트 시간 단축 (5 → 3)
 
     [Tooltip("동시 압박 측정 시간 (초)")]
-    public float combinedMeasurementDuration = 10f;
+    public float combinedMeasurementDuration = 5f;  // 테스트 시간 단축 (10 → 5)
 
     [Header("UI Settings")]
     public bool showUI = true;

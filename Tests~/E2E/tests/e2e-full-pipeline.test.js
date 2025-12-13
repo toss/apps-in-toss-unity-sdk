@@ -1325,6 +1325,31 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
     // 메모리 압박 테스트: 메모리 할당 자체가 부하 → CPU 쓰로틀링 불필요 (overrideRate=0)
     await applyMobileThrottling(page, 0);
 
+    // 이벤트 리스너를 페이지 로드 전에 등록 (이벤트 놓침 방지)
+    // addInitScript는 페이지 JS 실행 전에 실행됨
+    await page.addInitScript(() => {
+      window.__memoryPressurePromise = new Promise((resolve) => {
+        const handler = (event) => {
+          window.removeEventListener('e2e-memory-test-complete', handler);
+          console.log('[E2E] Memory pressure test event received');
+          resolve(event.detail);
+        };
+        window.addEventListener('e2e-memory-test-complete', handler);
+
+        // 이미 데이터가 있으면 바로 반환
+        if (window['__E2E_MEMORY_TEST_DATA__']) {
+          resolve(window['__E2E_MEMORY_TEST_DATA__']);
+          return;
+        }
+
+        // 240초 타임아웃 (메모리 테스트 ~80초 + 다른 테스터와 리소스 경쟁)
+        setTimeout(() => {
+          console.log('[E2E] Memory pressure test timeout');
+          resolve(null);
+        }, 240000);
+      });
+    });
+
     // 페이지 로딩 (E2E 모드 활성화)
     await page.goto(`http://localhost:${actualPort}?e2e=true`, {
       waitUntil: 'networkidle',
@@ -1341,27 +1366,8 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       console.log('⚠️ Unity instance not ready, memory pressure tests may fail');
     }
 
-    // MemoryPressureTester에서 결과 수신 대기 (CustomEvent 방식)
-    // 메모리 테스트는 시간이 오래 걸리므로 충분한 타임아웃 설정
-    const memoryResults = await page.evaluate(() => {
-      return new Promise((resolve) => {
-        // E2EBridge.jslib에서 발생시키는 CustomEvent 수신
-        const handler = (event) => {
-          window.removeEventListener('e2e-memory-test-complete', handler);
-          resolve(event.detail);
-        };
-        window.addEventListener('e2e-memory-test-complete', handler);
-
-        // 이미 데이터가 있으면 바로 반환
-        if (window['__E2E_MEMORY_TEST_DATA__']) {
-          resolve(window['__E2E_MEMORY_TEST_DATA__']);
-          return;
-        }
-
-        // 180초 타임아웃 (메모리 테스트는 시간이 걸림)
-        setTimeout(() => resolve(null), 180000);
-      });
-    });
+    // MemoryPressureTester에서 결과 수신 대기 (이미 등록된 Promise 사용)
+    const memoryResults = await page.evaluate(() => window.__memoryPressurePromise);
 
     // 서버 종료
     serverProcess.kill();

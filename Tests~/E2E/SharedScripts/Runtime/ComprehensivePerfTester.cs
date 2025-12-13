@@ -286,6 +286,35 @@ public class ComprehensivePerfTester : MonoBehaviour
         }
 
         result.memoryMB = endMemory / (1024f * 1024f);
+
+        // WebGL에서 WASM/JS/Canvas 메모리 상태 가져오기
+#if UNITY_WEBGL && !UNITY_EDITOR
+        try
+        {
+            string statusJson = GetMemoryStatus();
+            if (!string.IsNullOrEmpty(statusJson))
+            {
+                var status = JsonUtility.FromJson<MemoryStatusData>(statusJson);
+                result.wasmAllocatedMB = status.wasmAllocatedMB;
+                result.jsAllocatedMB = status.jsAllocatedMB;
+                result.canvasEstimatedMB = status.canvasEstimatedMB;
+            }
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning($"[ComprehensivePerfTester] Failed to get memory status: {e.Message}");
+        }
+#endif
+    }
+
+    [Serializable]
+    private class MemoryStatusData
+    {
+        public float wasmHeapSize;
+        public float wasmAllocatedMB;
+        public float jsAllocatedMB;
+        public int canvasCount;
+        public float canvasEstimatedMB;
     }
 
     #region Helper Components
@@ -502,7 +531,10 @@ public class ComprehensivePerfTester : MonoBehaviour
         public float avgFps;
         public float minFps;
         public float maxFps;
-        public float memoryMB;
+        public float memoryMB;           // C# 관리 힙
+        public float wasmAllocatedMB;    // WASM 힙 할당량
+        public float jsAllocatedMB;      // JS 힙 할당량
+        public float canvasEstimatedMB;  // Canvas 메모리 추정
         public int sampleCount;
         public bool oomOccurred;
     }

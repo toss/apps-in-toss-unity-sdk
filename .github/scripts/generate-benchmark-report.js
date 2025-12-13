@@ -262,8 +262,8 @@ function hasAnyTestFailure(data) {
 function generateTestSummary(data) {
   let md = "";
   md += "### 📈 Test Summary\n\n";
-  md += `| Unity Version | Tests | Build Size | Full Load FPS | OOM |\n`;
-  md += "|:--------------|:-----:|:----------:|:-------------:|:---:|\n";
+  md += `| Unity Version | Tests | Build Size | Full Load FPS | Allocated (MB) | OOM |\n`;
+  md += "|:--------------|:-----:|:----------:|:-------------:|:--------------:|:---:|\n";
 
   for (const version of UNITY_VERSIONS) {
     const result = data.macos[version];
@@ -280,11 +280,17 @@ function generateTestSummary(data) {
       : result?.benchmarkData?.combinedAvgFps
         ? `${result.benchmarkData.combinedAvgFps.toFixed(0)} FPS`
         : "-";
+
+    // WASM + JS 할당량 합계
+    const fullLoad = perf?.fullLoad;
+    const totalAllocatedMB = (fullLoad?.wasmAllocatedMB || 0) + (fullLoad?.jsAllocatedMB || 0) + (fullLoad?.canvasEstimatedMB || 0);
+    const allocatedStr = totalAllocatedMB > 0 ? `${totalAllocatedMB.toFixed(0)}` : "-";
+
     const oomStatus = perf?.oomOccurred !== undefined
       ? (perf.oomOccurred ? "❌" : "✅")
       : "-";
 
-    md += `| ${version} | ${testStatus} | ${buildSize} | ${fullLoadFps} | ${oomStatus} |\n`;
+    md += `| ${version} | ${testStatus} | ${buildSize} | ${fullLoadFps} | ${allocatedStr} | ${oomStatus} |\n`;
   }
   md += "\n";
   return md;
@@ -460,16 +466,17 @@ function generateDetailedReport(data) {
 
   if (hasPerfData) {
     // 새로운 종합 성능 테스트 결과 표시
-    md += `| Unity Version | OOM | Full Load Avg FPS | Full Load Min FPS | Memory (MB) |\n`;
-    md += "|:--------------|:---:|:-----------------:|:-----------------:|:-----------:|\n";
+    md += `| Unity Version | OOM | Full Load FPS | WASM (MB) | JS (MB) | Canvas (MB) |\n`;
+    md += "|:--------------|:---:|:-------------:|:---------:|:-------:|:-----------:|\n";
 
     for (const version of UNITY_VERSIONS) {
       const perf = data.macos[version]?.comprehensivePerfData;
       if (perf) {
         const oomStatus = perf.oomOccurred ? "❌" : "✅";
-        md += `| ${version} | ${oomStatus} | ${formatNumber(perf.fullLoad?.avgFps)} | ${formatNumber(perf.fullLoad?.minFps)} | ${formatNumber(perf.fullLoad?.memoryMB)} |\n`;
+        const fullLoad = perf.fullLoad;
+        md += `| ${version} | ${oomStatus} | ${formatNumber(fullLoad?.avgFps)} | ${formatNumber(fullLoad?.wasmAllocatedMB)} | ${formatNumber(fullLoad?.jsAllocatedMB)} | ${formatNumber(fullLoad?.canvasEstimatedMB)} |\n`;
       } else {
-        md += `| ${version} | ⏳ | - | - | - |\n`;
+        md += `| ${version} | ⏳ | - | - | - | - |\n`;
       }
     }
     md += "\n";

@@ -182,26 +182,32 @@ jobs:
           echo "UNITY_VERSION=${DETECTED_VERSION}" >> $GITHUB_OUTPUT
 
       - name: Build Unity WebGL
+        uses: nick-invision/retry@v3
         env:
           AIT_DEBUG_CONSOLE: "true"
-        run: |
-          UNITY_PATH="${{ steps.unity.outputs.UNITY_PATH }}"
-          PROJECT_PATH="${{ github.workspace }}/Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}"
+        with:
+          timeout_minutes: 30
+          max_attempts: 3
+          retry_wait_seconds: 30
+          shell: bash
+          command: |
+            UNITY_PATH="${{ steps.unity.outputs.UNITY_PATH }}"
+            PROJECT_PATH="${{ github.workspace }}/Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}"
 
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "Unity Build Configuration"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "Unity Version: ${{ steps.unity.outputs.UNITY_VERSION }}"
-          echo "Unity Path: ${UNITY_PATH}"
-          echo "Project Path: ${PROJECT_PATH}"
-          echo "AIT_DEBUG_CONSOLE: ${AIT_DEBUG_CONSOLE}"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "Unity Build Configuration"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "Unity Version: ${{ steps.unity.outputs.UNITY_VERSION }}"
+            echo "Unity Path: ${UNITY_PATH}"
+            echo "Project Path: ${PROJECT_PATH}"
+            echo "AIT_DEBUG_CONSOLE: ${AIT_DEBUG_CONSOLE}"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-          "$UNITY_PATH" -quit -batchmode -nographics \
-            -projectPath "$PROJECT_PATH" \
-            -executeMethod E2EBuildRunner.CommandLineBuild \
-            -buildTarget WebGL \
-            -logFile -
+            "$UNITY_PATH" -quit -batchmode -nographics \
+              -projectPath "$PROJECT_PATH" \
+              -executeMethod E2EBuildRunner.CommandLineBuild \
+              -buildTarget WebGL \
+              -logFile -
 
       - name: Verify Build Output
         run: |
@@ -452,62 +458,67 @@ jobs:
           Write-Host "License Client check completed"
 
       - name: Build Unity WebGL
-        shell: powershell -ExecutionPolicy Bypass -File {0}
+        uses: nick-invision/retry@v3
         env:
           AIT_DEBUG_CONSOLE: "true"
-        run: |
-          $unityPath = "${{ steps.unity.outputs.UNITY_PATH }}"
-          $projectPath = "${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ matrix.unity-version }}"
+        with:
+          timeout_minutes: 30
+          max_attempts: 3
+          retry_wait_seconds: 30
+          shell: powershell
+          command: |
+            $unityPath = "${{ steps.unity.outputs.UNITY_PATH }}"
+            $projectPath = "${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ matrix.unity-version }}"
 
-          Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          Write-Host "Unity Build Configuration"
-          Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          Write-Host "Unity Version: ${{ steps.unity.outputs.UNITY_VERSION }}"
-          Write-Host "Unity Path: $unityPath"
-          Write-Host "Project Path: $projectPath"
-          Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            Write-Host "Unity Build Configuration"
+            Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            Write-Host "Unity Version: ${{ steps.unity.outputs.UNITY_VERSION }}"
+            Write-Host "Unity Path: $unityPath"
+            Write-Host "Project Path: $projectPath"
+            Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-          $logFile = "$env:TEMP\unity-build-${{ matrix.unity-version }}.log"
-          Write-Host "Starting Unity build..."
-          Write-Host "Log file: $logFile"
+            $logFile = "$env:TEMP\unity-build-${{ matrix.unity-version }}.log"
+            Write-Host "Starting Unity build..."
+            Write-Host "Log file: $logFile"
 
-          $unityProcess = Start-Process -FilePath $unityPath -ArgumentList @(
-            "-quit", "-batchmode", "-nographics",
-            "-projectPath", $projectPath,
-            "-executeMethod", "E2EBuildRunner.CommandLineBuild",
-            "-buildTarget", "WebGL",
-            "-logFile", $logFile
-          ) -PassThru -NoNewWindow
+            $unityProcess = Start-Process -FilePath $unityPath -ArgumentList @(
+              "-quit", "-batchmode", "-nographics",
+              "-projectPath", $projectPath,
+              "-executeMethod", "E2EBuildRunner.CommandLineBuild",
+              "-buildTarget", "WebGL",
+              "-logFile", $logFile
+            ) -PassThru -NoNewWindow
 
-          # Unity 빌드 완료 대기 (로그 실시간 출력)
-          Write-Host "Waiting for Unity build to complete..."
-          $lastSize = 0
-          while (-not $unityProcess.HasExited) {
-            Start-Sleep -Seconds 2
+            # Unity 빌드 완료 대기 (로그 실시간 출력)
+            Write-Host "Waiting for Unity build to complete..."
+            $lastSize = 0
+            while (-not $unityProcess.HasExited) {
+              Start-Sleep -Seconds 2
+              if (Test-Path $logFile) {
+                $content = Get-Content $logFile -Raw -ErrorAction SilentlyContinue
+                if ($content -and $content.Length -gt $lastSize) {
+                  $newContent = $content.Substring($lastSize)
+                  Write-Host $newContent
+                  $lastSize = $content.Length
+                }
+              }
+            }
+
+            # 최종 로그 출력
             if (Test-Path $logFile) {
               $content = Get-Content $logFile -Raw -ErrorAction SilentlyContinue
               if ($content -and $content.Length -gt $lastSize) {
-                $newContent = $content.Substring($lastSize)
-                Write-Host $newContent
-                $lastSize = $content.Length
+                Write-Host $content.Substring($lastSize)
               }
             }
-          }
 
-          # 최종 로그 출력
-          if (Test-Path $logFile) {
-            $content = Get-Content $logFile -Raw -ErrorAction SilentlyContinue
-            if ($content -and $content.Length -gt $lastSize) {
-              Write-Host $content.Substring($lastSize)
+            if ($unityProcess.ExitCode -ne 0) {
+              Write-Host "::error::Unity build failed with exit code: $($unityProcess.ExitCode)"
+              exit $unityProcess.ExitCode
             }
-          }
 
-          if ($unityProcess.ExitCode -ne 0) {
-            Write-Host "::error::Unity build failed with exit code: $($unityProcess.ExitCode)"
-            exit $unityProcess.ExitCode
-          }
-
-          Write-Host "Unity build completed successfully"
+            Write-Host "Unity build completed successfully"
 
       - name: Verify Build Output
         shell: cmd

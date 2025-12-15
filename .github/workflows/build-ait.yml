@@ -80,11 +80,16 @@ jobs:
         run: |
           VERSION="${{ inputs.version }}"
           BUILD_CONFIG="WebGLTemplates/AITTemplate/BuildConfig/package.json"
+          LOCK_FILE="WebGLTemplates/AITTemplate/BuildConfig/pnpm-lock.yaml"
 
           echo "Updating @apps-in-toss/web-framework to ${VERSION}"
 
           # sed로 버전 업데이트 (jq가 없는 환경에서도 작동)
           sed -i '' 's/"@apps-in-toss\/web-framework": "[^"]*"/"@apps-in-toss\/web-framework": "'"$VERSION"'"/' "$BUILD_CONFIG"
+
+          # pnpm-lock.yaml 삭제 (버전 변경 시 lockfile 재생성 필요)
+          rm -f "$LOCK_FILE"
+          echo "Removed pnpm-lock.yaml for lockfile regeneration"
 
           echo "Updated BuildConfig:"
           cat "$BUILD_CONFIG"
@@ -271,11 +276,16 @@ jobs:
         run: |
           VERSION="${{ inputs.version }}"
           BUILD_CONFIG="WebGLTemplates/AITTemplate/BuildConfig/package.json"
+          LOCK_FILE="WebGLTemplates/AITTemplate/BuildConfig/pnpm-lock.yaml"
 
           echo "Updating @apps-in-toss/web-framework to ${VERSION}"
 
           # sed로 버전 업데이트 (jq가 없는 환경에서도 작동)
           sed -i 's/"@apps-in-toss\/web-framework": "[^"]*"/"@apps-in-toss\/web-framework": "'"$VERSION"'"/' "$BUILD_CONFIG"
+
+          # pnpm-lock.yaml 삭제 (버전 변경 시 lockfile 재생성 필요)
+          rm -f "$LOCK_FILE"
+          echo "Removed pnpm-lock.yaml for lockfile regeneration"
 
           echo "Updated BuildConfig:"
           cat "$BUILD_CONFIG"

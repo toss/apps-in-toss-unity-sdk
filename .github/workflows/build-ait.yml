@@ -76,6 +76,21 @@ jobs:
           echo "UNITY_PATH=${UNITY_PATH}" >> $GITHUB_OUTPUT
           echo "UNITY_VERSION=${DETECTED_VERSION}" >> $GITHUB_OUTPUT
 
+      - name: Update BuildConfig SDK Version
+        run: |
+          VERSION="${{ inputs.version }}"
+          BUILD_CONFIG="WebGLTemplates/AITTemplate/BuildConfig/package.json"
+
+          echo "Updating @apps-in-toss/web-framework to ${VERSION}"
+
+          # jq로 버전 업데이트
+          jq --arg v "$VERSION" '.dependencies["@apps-in-toss/web-framework"] = $v' \
+            "$BUILD_CONFIG" > tmp.json
+          mv tmp.json "$BUILD_CONFIG"
+
+          echo "Updated BuildConfig:"
+          cat "$BUILD_CONFIG"
+
       - name: Build Unity WebGL
         env:
           AIT_DEBUG_CONSOLE: "true"
@@ -252,6 +267,22 @@ jobs:
 
           echo UNITY_PATH=%UNITY_PATH%>> %GITHUB_OUTPUT%
           echo UNITY_VERSION=%DETECTED_VERSION%>> %GITHUB_OUTPUT%
+
+      - name: Update BuildConfig SDK Version
+        shell: bash
+        run: |
+          VERSION="${{ inputs.version }}"
+          BUILD_CONFIG="WebGLTemplates/AITTemplate/BuildConfig/package.json"
+
+          echo "Updating @apps-in-toss/web-framework to ${VERSION}"
+
+          # jq로 버전 업데이트
+          jq --arg v "$VERSION" '.dependencies["@apps-in-toss/web-framework"] = $v' \
+            "$BUILD_CONFIG" > tmp.json
+          mv tmp.json "$BUILD_CONFIG"
+
+          echo "Updated BuildConfig:"
+          cat "$BUILD_CONFIG"
 
       - name: Build Unity WebGL
         shell: powershell -ExecutionPolicy Bypass -File {0}

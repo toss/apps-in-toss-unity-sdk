@@ -242,7 +242,7 @@ jobs:
       # ait deploy는 ait-build/ 디렉토리 내에서 실행되어야 함
       # 배포에 필요한 파일만 업로드 (node_modules, public 등 제외하여 용량 절감)
       - name: Upload AIT Build
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: ait-build-macos-${{ matrix.unity-version }}
           path: |
@@ -275,7 +275,7 @@ jobs:
         run: npm test
 
       - name: Upload Benchmark Results
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         if: always()
         with:
           name: benchmark-results-macos-${{ matrix.unity-version }}
@@ -283,7 +283,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Upload Playwright Report
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         if: always()
         with:
           name: playwright-report-macos-${{ matrix.unity-version }}
@@ -576,7 +576,7 @@ jobs:
         run: npx playwright test --grep "[1-5]\. "
 
       - name: Upload Playwright Report
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         if: always()
         with:
           name: playwright-report-windows-${{ matrix.unity-version }}
@@ -658,7 +658,7 @@ jobs:
       # 개별 아티팩트(ait-build-*, benchmark-results-*, playwright-report-*)는 여전히 다운로드 가능
 
       - name: Upload Benchmark Report
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: benchmark-report
           path: benchmark-report.md

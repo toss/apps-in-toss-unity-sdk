@@ -138,7 +138,7 @@ jobs:
       # 배포에 필요한 파일만 업로드 (node_modules, public 등 제외하여 용량 절감)
 
       - name: Upload AIT Package
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: ait-build-macos-${{ matrix.unity-version }}
           path: |
@@ -357,7 +357,7 @@ jobs:
       # 배포에 필요한 파일만 업로드 (node_modules, public 등 제외하여 용량 절감)
 
       - name: Upload AIT Package
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: ait-build-windows-${{ matrix.unity-version }}
           path: |

@@ -101,17 +101,38 @@ jobs:
       - name: Verify Build Output
         run: |
           DIST_PATH="Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/dist"
-          if [ -d "$DIST_PATH" ]; then
-            echo "✅ Build output found"
-            echo "dist/ 내용:"
-            ls -la "$DIST_PATH"
-            echo ""
-            echo "dist/web/ 내용:"
-            ls -la "$DIST_PATH/web" || true
-          else
+          AIT_BUILD_PATH="Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build"
+
+          if [ ! -d "$DIST_PATH" ]; then
             echo "❌ Build output not found at $DIST_PATH"
             exit 1
           fi
+
+          echo "✅ dist/ 폴더 확인됨"
+          echo ""
+          echo "dist/ 내용:"
+          ls -la "$DIST_PATH"
+          echo ""
+          echo "dist/web/ 내용:"
+          ls -la "$DIST_PATH/web" || true
+          echo ""
+
+          # .ait 파일 확인 (dist/ 또는 ait-build/ 폴더에서)
+          AIT_FILE=$(find "$DIST_PATH" -maxdepth 1 -name "*.ait" -type f 2>/dev/null | head -1)
+          if [ -z "$AIT_FILE" ]; then
+            AIT_FILE=$(find "$AIT_BUILD_PATH" -maxdepth 1 -name "*.ait" -type f 2>/dev/null | head -1)
+          fi
+
+          if [ -z "$AIT_FILE" ]; then
+            echo "❌ .ait 파일이 생성되지 않았습니다!"
+            echo "ait-build/ 루트 내용:"
+            ls -la "$AIT_BUILD_PATH"
+            echo ""
+            echo "::error::.ait 파일 미생성 - 배포에 필요한 파일이 없습니다"
+            exit 1
+          fi
+
+          echo "✅ .ait 파일 생성 확인: $AIT_FILE"
 
       # ait deploy는 ait-build/ 디렉토리 내에서 실행되어야 함
       # 배포에 필요한 파일만 업로드 (node_modules, public 등 제외하여 용량 절감)
@@ -122,6 +143,7 @@ jobs:
           name: ait-build-macos-${{ matrix.unity-version }}
           path: |
             Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/dist/
+            Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/*.ait
             Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/package.json
             Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/pnpm-lock.yaml
             Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/granite.config.ts
@@ -292,15 +314,44 @@ jobs:
         shell: cmd
         run: |
           @echo off
+          setlocal enabledelayedexpansion
           set "DIST_PATH=Tests~\E2E\SampleUnityProject-${{ matrix.unity-version }}\ait-build\dist"
+          set "AIT_BUILD_PATH=Tests~\E2E\SampleUnityProject-${{ matrix.unity-version }}\ait-build"
+
           if not exist "%DIST_PATH%" (
             echo ::error::Build output not found at %DIST_PATH%
             exit /b 1
           )
-          echo Build output found
+
+          echo ✅ dist\ 폴더 확인됨
+          echo.
+          echo dist\ 내용:
           dir "%DIST_PATH%"
           echo.
+          echo dist\web\ 내용:
           dir "%DIST_PATH%\web" 2>nul
+          echo.
+
+          REM .ait 파일 확인 (dist\ 또는 ait-build\ 폴더에서)
+          set "AIT_FILE="
+          for %%f in ("%DIST_PATH%\*.ait") do (
+            set "AIT_FILE=%%f"
+            goto :found_ait
+          )
+          for %%f in ("%AIT_BUILD_PATH%\*.ait") do (
+            set "AIT_FILE=%%f"
+            goto :found_ait
+          )
+
+          echo ❌ .ait 파일이 생성되지 않았습니다!
+          echo ait-build\ 루트 내용:
+          dir "%AIT_BUILD_PATH%"
+          echo.
+          echo ::error::.ait 파일 미생성 - 배포에 필요한 파일이 없습니다
+          exit /b 1
+
+          :found_ait
+          echo ✅ .ait 파일 생성 확인: !AIT_FILE!
 
       # ait deploy는 ait-build/ 디렉토리 내에서 실행되어야 함
       # 배포에 필요한 파일만 업로드 (node_modules, public 등 제외하여 용량 절감)
@@ -311,6 +362,7 @@ jobs:
           name: ait-build-windows-${{ matrix.unity-version }}
           path: |
             Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/dist/
+            Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/*.ait
             Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/package.json
             Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/pnpm-lock.yaml
             Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build/granite.config.ts

@@ -83,10 +83,8 @@ jobs:
 
           echo "Updating @apps-in-toss/web-framework to ${VERSION}"
 
-          # jq로 버전 업데이트
-          jq --arg v "$VERSION" '.dependencies["@apps-in-toss/web-framework"] = $v' \
-            "$BUILD_CONFIG" > tmp.json
-          mv tmp.json "$BUILD_CONFIG"
+          # sed로 버전 업데이트 (jq가 없는 환경에서도 작동)
+          sed -i '' 's/"@apps-in-toss\/web-framework": "[^"]*"/"@apps-in-toss\/web-framework": "'"$VERSION"'"/' "$BUILD_CONFIG"
 
           echo "Updated BuildConfig:"
           cat "$BUILD_CONFIG"
@@ -276,10 +274,8 @@ jobs:
 
           echo "Updating @apps-in-toss/web-framework to ${VERSION}"
 
-          # jq로 버전 업데이트
-          jq --arg v "$VERSION" '.dependencies["@apps-in-toss/web-framework"] = $v' \
-            "$BUILD_CONFIG" > tmp.json
-          mv tmp.json "$BUILD_CONFIG"
+          # sed로 버전 업데이트 (jq가 없는 환경에서도 작동)
+          sed -i 's/"@apps-in-toss\/web-framework": "[^"]*"/"@apps-in-toss\/web-framework": "'"$VERSION"'"/' "$BUILD_CONFIG"
 
           echo "Updated BuildConfig:"
           cat "$BUILD_CONFIG"

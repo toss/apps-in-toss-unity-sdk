@@ -76,16 +76,6 @@ jobs:
           echo "UNITY_PATH=${UNITY_PATH}" >> $GITHUB_OUTPUT
           echo "UNITY_VERSION=${DETECTED_VERSION}" >> $GITHUB_OUTPUT
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: 20
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9
-
       - name: Update BuildConfig SDK Version
         run: |
           VERSION="${{ inputs.version }}"
@@ -105,7 +95,7 @@ jobs:
           rm -f "$LOCK_FILE"
           echo "Regenerating pnpm-lock.yaml..."
           cd "$BUILD_CONFIG_DIR"
-          pnpm install --lockfile-only
+          npx pnpm@9 install --lockfile-only
           echo "✓ pnpm-lock.yaml regenerated"
 
       - name: Build Unity WebGL
@@ -285,16 +275,6 @@ jobs:
           echo UNITY_PATH=%UNITY_PATH%>> %GITHUB_OUTPUT%
           echo UNITY_VERSION=%DETECTED_VERSION%>> %GITHUB_OUTPUT%
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: 20
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9
-
       - name: Update BuildConfig SDK Version
         shell: bash
         run: |
@@ -315,7 +295,7 @@ jobs:
           rm -f "$LOCK_FILE"
           echo "Regenerating pnpm-lock.yaml..."
           cd "$BUILD_CONFIG_DIR"
-          pnpm install --lockfile-only
+          npx pnpm@9 install --lockfile-only
           echo "✓ pnpm-lock.yaml regenerated"
 
       - name: Build Unity WebGL

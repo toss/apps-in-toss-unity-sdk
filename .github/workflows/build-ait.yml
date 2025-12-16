@@ -76,6 +76,28 @@ jobs:
           echo "UNITY_PATH=${UNITY_PATH}" >> $GITHUB_OUTPUT
           echo "UNITY_VERSION=${DETECTED_VERSION}" >> $GITHUB_OUTPUT
 
+      - name: Update BuildConfig SDK Version
+        run: |
+          VERSION="${{ inputs.version }}"
+          BUILD_CONFIG_DIR="WebGLTemplates/AITTemplate/BuildConfig"
+          BUILD_CONFIG="${BUILD_CONFIG_DIR}/package.json"
+          LOCK_FILE="${BUILD_CONFIG_DIR}/pnpm-lock.yaml"
+
+          echo "Updating @apps-in-toss/web-framework to ${VERSION}"
+
+          # sed로 버전 업데이트 (jq가 없는 환경에서도 작동)
+          sed -i '' 's/"@apps-in-toss\/web-framework": "[^"]*"/"@apps-in-toss\/web-framework": "'"$VERSION"'"/' "$BUILD_CONFIG"
+
+          echo "Updated BuildConfig:"
+          cat "$BUILD_CONFIG"
+
+          # pnpm-lock.yaml 삭제 후 재생성 (frozen-lockfile 호환성 유지)
+          rm -f "$LOCK_FILE"
+          echo "Regenerating pnpm-lock.yaml..."
+          cd "$BUILD_CONFIG_DIR"
+          npx pnpm@9 install --lockfile-only
+          echo "✓ pnpm-lock.yaml regenerated"
+
       - name: Build Unity WebGL
         uses: nick-invision/retry@v3
         env:
@@ -258,6 +280,29 @@ jobs:
 
           echo UNITY_PATH=%UNITY_PATH%>> %GITHUB_OUTPUT%
           echo UNITY_VERSION=%DETECTED_VERSION%>> %GITHUB_OUTPUT%
+
+      - name: Update BuildConfig SDK Version
+        shell: bash
+        run: |
+          VERSION="${{ inputs.version }}"
+          BUILD_CONFIG_DIR="WebGLTemplates/AITTemplate/BuildConfig"
+          BUILD_CONFIG="${BUILD_CONFIG_DIR}/package.json"
+          LOCK_FILE="${BUILD_CONFIG_DIR}/pnpm-lock.yaml"
+
+          echo "Updating @apps-in-toss/web-framework to ${VERSION}"
+
+          # sed로 버전 업데이트 (jq가 없는 환경에서도 작동)
+          sed -i 's/"@apps-in-toss\/web-framework": "[^"]*"/"@apps-in-toss\/web-framework": "'"$VERSION"'"/' "$BUILD_CONFIG"
+
+          echo "Updated BuildConfig:"
+          cat "$BUILD_CONFIG"
+
+          # pnpm-lock.yaml 삭제 후 재생성 (frozen-lockfile 호환성 유지)
+          rm -f "$LOCK_FILE"
+          echo "Regenerating pnpm-lock.yaml..."
+          cd "$BUILD_CONFIG_DIR"
+          npx pnpm@9 install --lockfile-only
+          echo "✓ pnpm-lock.yaml regenerated"
 
       - name: Build Unity WebGL
         uses: nick-invision/retry@v3

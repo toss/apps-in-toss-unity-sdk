@@ -19,7 +19,7 @@ MonoBehaviour:
   primaryColor: '#1E88E5'
   iconUrl: https://via.placeholder.com/512
   bridgeColorMode: 0
-  webViewType: 1
+  webViewType: 0
   graniteHost: 0.0.0.0
   granitePort: 8083
   viteHost: localhost

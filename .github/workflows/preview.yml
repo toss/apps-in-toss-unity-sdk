@@ -181,6 +181,41 @@ jobs:
             ls -la "$dir" 2>/dev/null || true
           done
 
+      - name: Prepare Build Directories
+        id: prepare
+        run: |
+          # download-artifact@v7가 단일 아티팩트일 때 서브디렉토리를 생성하지 않는 문제 해결
+          # ait-build-* 디렉토리가 없으면 targets에서 정보를 가져와서 디렉토리 구조 생성
+
+          if compgen -G "ait-builds/ait-build-*/" > /dev/null 2>&1; then
+            echo "다중 아티팩트 구조 감지됨"
+            echo "structure=multi" >> $GITHUB_OUTPUT
+          else
+            echo "단일 아티팩트 구조 감지됨 - 디렉토리 재구성"
+            echo "structure=single" >> $GITHUB_OUTPUT
+
+            # targets JSON에서 빌드 정보 추출
+            TARGETS='${{ needs.parse-targets.outputs.targets }}'
+            FIRST_TARGET=$(echo "$TARGETS" | jq -r '.[0]')
+            OS=$(echo "$FIRST_TARGET" | jq -r '.os')
+            UNITY_VERSION=$(echo "$FIRST_TARGET" | jq -r '.["unity-version"]')
+
+            # 단일 아티팩트를 적절한 디렉토리로 이동
+            ARTIFACT_DIR="ait-builds/ait-build-${OS}-${UNITY_VERSION}"
+            mkdir -p "$ARTIFACT_DIR"
+
+            # ait-builds/ 내의 파일들을 새 디렉토리로 이동 (ait-build-* 제외)
+            for item in ait-builds/*; do
+              BASENAME=$(basename "$item")
+              if [[ ! "$BASENAME" =~ ^ait-build- ]]; then
+                mv "$item" "$ARTIFACT_DIR/"
+              fi
+            done
+
+            echo "재구성 완료: $ARTIFACT_DIR"
+            ls -la "$ARTIFACT_DIR"
+          fi
+
       - name: Deploy All Builds
         id: deploy
         env:

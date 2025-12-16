@@ -1,0 +1,49 @@
+name: Validate
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches: [main]
+
+jobs:
+  # =====================================================
+  # SDK Generator Unit Tests
+  # =====================================================
+  sdk-generator-tests:
+    name: SDK Generator Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install Mono (for C# compilation tests)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mono-mcs
+          mcs --version
+
+      - name: Install Dependencies
+        working-directory: sdk-runtime-generator~
+        run: pnpm install
+
+      - name: Run Unit Tests (Tier 1 - C# compilation)
+        working-directory: sdk-runtime-generator~
+        run: pnpm run test:tier1
+
+      - name: Run Unit Tests (Tier 2 - C#/jslib invariants)
+        working-directory: sdk-runtime-generator~
+        run: pnpm run test:tier2

@@ -1,100 +1,70 @@
-name: Preview Deploy
+name: Preview
 
 on:
-  issue_comment:
-    types: [created]
-
-permissions:
-  contents: read
-  pull-requests: write
-  issues: write
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: '빌드할 브랜치 (예: feature/my-branch)'
+        required: true
+        type: string
+      targets:
+        description: '빌드 타겟 - 쉼표로 구분 (예: macos-6000.2,windows-2021.3)'
+        required: false
+        default: 'macos-6000.2'
+        type: string
 
 jobs:
   # =====================================================
-  # 코멘트 파싱 및 빌드 대상 결정
+  # 타겟 파싱
   # =====================================================
-  parse-command:
-    name: Parse Command
+  parse-targets:
+    name: Parse Targets
     runs-on: ubuntu-latest
-    # PR 코멘트에서 /preview로 시작하는 경우에만 실행
-    if: |
-      github.event.issue.pull_request &&
-      startsWith(github.event.comment.body, '/preview')
 
     outputs:
-      should_run: ${{ steps.parse.outputs.should_run }}
       targets: ${{ steps.parse.outputs.targets }}
-      pr_number: ${{ github.event.issue.number }}
-      pr_head_ref: ${{ steps.pr.outputs.head_ref }}
-      pr_head_sha: ${{ steps.pr.outputs.head_sha }}
-      comment_id: ${{ github.event.comment.id }}
+      ref: ${{ inputs.ref }}
 
     steps:
-      - name: Add Reaction to Comment
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh api "repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions" \
-            -X POST \
-            -f content="eyes"
-
-      - name: Get PR Info
-        id: pr
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          PR_DATA=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.issue.number }}")
-          HEAD_REF=$(echo "$PR_DATA" | jq -r '.head.ref')
-          HEAD_SHA=$(echo "$PR_DATA" | jq -r '.head.sha')
-
-          echo "head_ref=${HEAD_REF}" >> $GITHUB_OUTPUT
-          echo "head_sha=${HEAD_SHA}" >> $GITHUB_OUTPUT
-          echo "PR branch: ${HEAD_REF}, SHA: ${HEAD_SHA}"
-
-      - name: Parse Preview Command
+      - name: Parse Build Targets
         id: parse
         run: |
-          COMMENT_BODY="${{ github.event.comment.body }}"
-          echo "Comment: ${COMMENT_BODY}"
+          INPUT_TARGETS="${{ inputs.targets }}"
+          echo "Input targets: ${INPUT_TARGETS}"
 
-          # /preview 다음의 인자들 추출
-          ARGS=$(echo "$COMMENT_BODY" | sed 's|^/preview||' | xargs)
-          echo "Args: ${ARGS}"
+          # 쉼표로 분리하여 JSON 배열 생성
+          TARGETS="["
+          FIRST=true
 
-          # 기본값: macOS + Unity 6000.2 (빠른 프리뷰)
-          if [ -z "$ARGS" ]; then
-            TARGETS='[{"os":"macos","unity-version":"6000.2"}]'
-            echo "Using default: macOS + Unity 6000.2"
-          else
-            # 인자 파싱: macos-6000.3 windows-2021.3 형식
-            TARGETS="["
-            FIRST=true
-            for ARG in $ARGS; do
-              # os-version 형식 파싱
-              OS=$(echo "$ARG" | cut -d'-' -f1)
-              VERSION=$(echo "$ARG" | cut -d'-' -f2-)
+          IFS=',' read -ra TARGET_ARRAY <<< "$INPUT_TARGETS"
+          for TARGET in "${TARGET_ARRAY[@]}"; do
+            # 공백 제거
+            TARGET=$(echo "$TARGET" | xargs)
 
-              # OS 검증
-              if [ "$OS" != "macos" ] && [ "$OS" != "windows" ]; then
-                echo "::warning::Invalid OS: ${OS}, skipping"
-                continue
-              fi
+            # os-version 형식 파싱
+            OS=$(echo "$TARGET" | cut -d'-' -f1)
+            VERSION=$(echo "$TARGET" | cut -d'-' -f2-)
 
-              # 버전 검증 (2021.3, 2022.3, 6000.0, 6000.2, 6000.3)
-              if ! echo "$VERSION" | grep -qE '^(2021\.3|2022\.3|6000\.0|6000\.2|6000\.3)$'; then
-                echo "::warning::Invalid Unity version: ${VERSION}, skipping"
-                continue
-              fi
+            # OS 검증
+            if [ "$OS" != "macos" ] && [ "$OS" != "windows" ]; then
+              echo "::warning::Invalid OS: ${OS}, skipping"
+              continue
+            fi
 
-              if [ "$FIRST" = true ]; then
-                FIRST=false
-              else
-                TARGETS="${TARGETS},"
-              fi
-              TARGETS="${TARGETS}{\"os\":\"${OS}\",\"unity-version\":\"${VERSION}\"}"
-            done
-            TARGETS="${TARGETS}]"
-          fi
+            # 버전 검증
+            if ! echo "$VERSION" | grep -qE '^(2021\.3|2022\.3|6000\.0|6000\.2|6000\.3)$'; then
+              echo "::warning::Invalid Unity version: ${VERSION}, skipping"
+              continue
+            fi
+
+            if [ "$FIRST" = true ]; then
+              FIRST=false
+            else
+              TARGETS="${TARGETS},"
+            fi
+            TARGETS="${TARGETS}{\"os\":\"${OS}\",\"unity-version\":\"${VERSION}\"}"
+          done
+          TARGETS="${TARGETS}]"
 
           echo "Parsed targets: ${TARGETS}"
 
@@ -102,58 +72,26 @@ jobs:
           TARGET_COUNT=$(echo "$TARGETS" | jq 'length')
           if [ "$TARGET_COUNT" -eq 0 ]; then
             echo "::error::No valid build targets found"
-            echo "should_run=false" >> $GITHUB_OUTPUT
-            exit 0
+            exit 1
           fi
 
-          echo "should_run=true" >> $GITHUB_OUTPUT
           echo "targets=${TARGETS}" >> $GITHUB_OUTPUT
 
-      - name: Post Starting Comment
-        if: steps.parse.outputs.should_run == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          TARGETS='${{ steps.parse.outputs.targets }}'
-          PR_NUMBER="${{ github.event.issue.number }}"
-
-          # 타겟 목록을 읽기 좋은 형식으로 변환
-          TARGET_LIST=$(echo "$TARGETS" | jq -r '.[] | "- \(.os) / Unity \(.["unity-version"])"')
-
-          COMMENT_BODY=$(cat <<EOF
-          ## 🚀 Preview Build Started
-
-          **Build targets:**
-          ${TARGET_LIST}
-
-          **PR:** #${PR_NUMBER}
-          **Commit:** \`${{ steps.pr.outputs.head_sha }}\`
-          **Workflow:** [View Progress](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
-
-          _Building... This may take 10-30 minutes._
-          EOF
-          )
-
-          gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
-            -X POST \
-            -f body="$COMMENT_BODY"
-
   # =====================================================
-  # 빌드 매트릭스 생성
+  # 빌드 매트릭스
   # =====================================================
   build:
     name: Build (${{ matrix.target.os }}, Unity ${{ matrix.target.unity-version }})
-    needs: parse-command
-    if: needs.parse-command.outputs.should_run == 'true'
+    needs: parse-targets
 
     strategy:
       fail-fast: false
       matrix:
-        target: ${{ fromJson(needs.parse-command.outputs.targets) }}
+        target: ${{ fromJson(needs.parse-targets.outputs.targets) }}
 
     uses: ./.github/workflows/unity-build.yml
     with:
-      ref: ${{ needs.parse-command.outputs.pr_head_ref }}
+      ref: ${{ needs.parse-targets.outputs.ref }}
       os: ${{ matrix.target.os }}
       unity-version: ${{ matrix.target.unity-version }}
       run-build: true
@@ -161,12 +99,12 @@ jobs:
       run-benchmark: false
 
   # =====================================================
-  # 배포 및 PR 코멘트
+  # 배포
   # =====================================================
   deploy:
     name: Deploy Preview
     runs-on: ubuntu-latest
-    needs: [parse-command, build]
+    needs: [parse-targets, build]
     if: success()
 
     steps:
@@ -234,7 +172,6 @@ jobs:
               echo "$DEPLOY_OUTPUT"
 
               if [ $DEPLOY_STATUS -eq 0 ]; then
-                # URL 추출 (ANSI 이스케이프 시퀀스 제거)
                 CLEANED_OUTPUT=$(echo "$DEPLOY_OUTPUT" | sed 's/\x1b\[[0-9;]*m//g' | tr -d '\r')
                 DEPLOY_URL=$(echo "$CLEANED_OUTPUT" | grep -oE 'intoss-private://[^[:space:]]+' | head -1 || true)
 
@@ -243,7 +180,6 @@ jobs:
                   DEPLOY_RESULTS="${DEPLOY_RESULTS}| ${OS_DISPLAY} | ${UNITY_VERSION} | ✅ | \`${DEPLOY_URL}\` |\n"
                   HAS_SUCCESS=true
                 else
-                  # intoss-private URL이 없으면 다른 URL 시도
                   DEPLOY_URL=$(echo "$CLEANED_OUTPUT" | grep -oE 'https?://[^[:space:]]+' | head -1 || echo "SUCCESS")
                   DEPLOY_RESULTS="${DEPLOY_RESULTS}| ${OS_DISPLAY} | ${UNITY_VERSION} | ✅ | ${DEPLOY_URL} |\n"
                   HAS_SUCCESS=true
@@ -266,18 +202,15 @@ jobs:
             echo "has_success=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Post Deploy Results to PR
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Write Job Summary
         run: |
-          PR_NUMBER="${{ needs.parse-command.outputs.pr_number }}"
+          REF="${{ inputs.ref }}"
           DEPLOY_RESULTS='${{ steps.deploy.outputs.deploy_results }}'
-          HEAD_SHA="${{ needs.parse-command.outputs.pr_head_sha }}"
 
-          COMMENT_BODY=$(cat <<EOF
+          cat <<EOF >> $GITHUB_STEP_SUMMARY
           ## 🎉 Preview Deploy Complete
 
-          **Commit:** \`${HEAD_SHA}\`
+          **Branch:** \`${REF}\`
 
           | OS | Unity | Status | URL |
           |----|-------|--------|-----|
@@ -292,65 +225,4 @@ jobs:
           3. Paste the URL in browser or use deep link
 
           </details>
-
-          _Triggered by /preview command_
           EOF
-          )
-
-          gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
-            -X POST \
-            -f body="$COMMENT_BODY"
-
-      - name: Add Success Reaction
-        if: steps.deploy.outputs.has_success == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh api "repos/${{ github.repository }}/issues/comments/${{ needs.parse-command.outputs.comment_id }}/reactions" \
-            -X POST \
-            -f content="rocket"
-
-  # =====================================================
-  # 실패 시 알림
-  # =====================================================
-  notify-failure:
-    name: Notify Failure
-    runs-on: ubuntu-latest
-    needs: [parse-command, build, deploy]
-    if: failure()
-
-    steps:
-      - name: Post Failure Comment
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          PR_NUMBER="${{ needs.parse-command.outputs.pr_number }}"
-
-          if [ -z "$PR_NUMBER" ]; then
-            echo "::warning::PR number not available, skipping failure comment"
-            exit 0
-          fi
-
-          COMMENT_BODY=$(cat <<EOF
-          ## ❌ Preview Deploy Failed
-
-          The preview build or deployment failed. Please check the [workflow logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.
-
-          _Triggered by /preview command_
-          EOF
-          )
-
-          gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
-            -X POST \
-            -f body="$COMMENT_BODY"
-
-      - name: Add Failure Reaction
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          COMMENT_ID="${{ needs.parse-command.outputs.comment_id }}"
-          if [ -n "$COMMENT_ID" ]; then
-            gh api "repos/${{ github.repository }}/issues/comments/${COMMENT_ID}/reactions" \
-              -X POST \
-              -f content="-1"
-          fi

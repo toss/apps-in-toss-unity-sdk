@@ -262,13 +262,13 @@ jobs:
   # =====================================================
   # E2E 테스트 실행 (PR 생성 후)
   # GITHUB_TOKEN으로 생성된 PR은 다른 워크플로우를 트리거하지 않으므로
-  # workflow_call을 통해 직접 tests.yml을 호출
+  # workflow_call을 통해 직접 test-e2e.yml을 호출
   # =====================================================
   run-tests:
     name: E2E 테스트 실행
     needs: update
     if: needs.update.outputs.pr_created == 'true'
-    uses: ./.github/workflows/tests.yml
+    uses: ./.github/workflows/test-e2e.yml
     with:
       clean_library: false
       ref: ${{ needs.update.outputs.branch_name }}

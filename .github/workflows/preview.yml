@@ -300,7 +300,7 @@ jobs:
                   echo "✅ Deploy success: ${DEPLOY_URL}"
                   # URL 인코딩하여 QR 코드 API URL 생성
                   ENCODED_URL=$(printf '%s' "$DEPLOY_URL" | jq -sRr @uri)
-                  QR_IMG="![QR](https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${ENCODED_URL})"
+                  QR_IMG="![QR](https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${ENCODED_URL})"
                   DEPLOY_RESULTS="${DEPLOY_RESULTS}| ${OS_DISPLAY} | ${UNITY_VERSION} | ✅ | \`${DEPLOY_URL}\` | ${QR_IMG} |\n"
                   HAS_SUCCESS=true
                 else

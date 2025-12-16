@@ -115,11 +115,19 @@ jobs:
 
           echo "=== web-framework v${VERSION} 업데이트 ==="
 
-          # 기존 lockfile 유지하면서 web-framework와 transitive deps만 업데이트
-          pnpm update "@apps-in-toss/web-framework@${VERSION}" --registry https://registry.npmjs.org
+          # 캐시 정리 후 강제 업데이트 (캐시로 인한 오래된 버전 문제 방지)
+          pnpm store prune
+          pnpm update "@apps-in-toss/web-framework@${VERSION}" --force --registry https://registry.npmjs.org
 
-          echo "설치된 web-framework 버전:"
-          pnpm list @apps-in-toss/web-framework
+          # 설치된 버전 검증
+          INSTALLED_VERSION=$(pnpm list @apps-in-toss/web-framework --json | jq -r '.[0].dependencies["@apps-in-toss/web-framework"].version')
+          echo "요청 버전: ${VERSION}"
+          echo "설치된 버전: ${INSTALLED_VERSION}"
+          if [ "$INSTALLED_VERSION" != "$VERSION" ]; then
+            echo "::error::버전 불일치! 요청: ${VERSION}, 설치됨: ${INSTALLED_VERSION}"
+            exit 1
+          fi
+          echo "✅ 버전 검증 완료: ${INSTALLED_VERSION}"
 
           echo "SDK 코드 생성 중..."
           # 타입 검사 실패해도 PR 생성을 위해 계속 진행

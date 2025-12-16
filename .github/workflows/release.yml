@@ -38,7 +38,8 @@ jobs:
           echo "tag_name=release/v${VERSION}" >> $GITHUB_OUTPUT
 
   # =====================================================
-  # SDK Runtime 재생성
+  # SDK Runtime 재생성 (Orphan Commit)
+  # main branch를 건드리지 않고 orphan commit 생성
   # =====================================================
   regenerate-sdk:
     name: SDK Runtime 재생성
@@ -47,6 +48,7 @@ jobs:
 
     outputs:
       ref: ${{ steps.commit.outputs.ref }}
+      sha: ${{ steps.commit.outputs.sha }}
 
     steps:
       - name: Checkout
@@ -103,32 +105,34 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: 변경사항 커밋
+      - name: Orphan Commit 생성 및 Push
         id: commit
         run: |
           VERSION="${{ needs.release.outputs.version }}"
+          BUILD_REF="refs/builds/release-v${VERSION}"
 
-          # 변경사항 확인
-          if git diff --quiet && git diff --staged --quiet; then
-            echo "변경사항이 없습니다."
-            echo "ref=main" >> $GITHUB_OUTPUT
-            exit 0
-          fi
+          echo "=== Orphan Commit 생성 ==="
 
-          # 모든 변경사항 커밋
+          # 모든 변경사항을 staging에 추가
           git add -A
-          git commit -m "빌드: SDK v${VERSION} 재생성
+
+          # Orphan commit 생성 (부모 없는 커밋)
+          TREE=$(git write-tree)
+          COMMIT=$(git commit-tree "$TREE" -m "빌드: SDK v${VERSION} 재생성
 
           - @apps-in-toss/web-framework v${VERSION} 기반 SDK 코드 재생성
           - package.json 버전 동기화
 
-          Generated at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          Generated at: $(date -u +%Y-%m-%dT%H:%M:%SZ)")
 
-          # main에 직접 푸시
-          git push origin main
+          echo "Orphan commit SHA: ${COMMIT}"
 
-          echo "ref=main" >> $GITHUB_OUTPUT
-          echo "SDK 재생성 및 커밋 완료"
+          # 임시 ref로 push (main은 건드리지 않음)
+          git push origin "${COMMIT}:${BUILD_REF}" --force
+
+          echo "ref=${BUILD_REF}" >> $GITHUB_OUTPUT
+          echo "sha=${COMMIT}" >> $GITHUB_OUTPUT
+          echo "Orphan commit push 완료: ${BUILD_REF}"
 
   # =====================================================
   # AIT 빌드 - macOS
@@ -143,7 +147,7 @@ jobs:
 
     uses: ./.github/workflows/unity-build.yml
     with:
-      ref: main
+      ref: ${{ needs.regenerate-sdk.outputs.ref }}
       os: macos
       unity-version: ${{ matrix.unity-version }}
       web-framework-version: ${{ needs.release.outputs.version }}
@@ -164,7 +168,7 @@ jobs:
 
     uses: ./.github/workflows/unity-build.yml
     with:
-      ref: main
+      ref: ${{ needs.regenerate-sdk.outputs.ref }}
       os: windows
       unity-version: ${{ matrix.unity-version }}
       web-framework-version: ${{ needs.release.outputs.version }}
@@ -173,22 +177,22 @@ jobs:
       run-benchmark: false
 
   # =====================================================
-  # 릴리즈 커밋 및 태그 생성 (UPM 패키지 정리 포함)
+  # 릴리즈 태그 생성 (UPM 패키지 정리 포함)
   # AIT 빌드 성공 후에만 실행 → 빌드 실패 시 릴리즈 방지
+  # main branch는 건드리지 않고 orphan commit에서 태그 생성
   # =====================================================
   create-release-tag:
-    name: 릴리즈 커밋 및 태그 생성
+    name: 릴리즈 태그 생성
     runs-on: ubuntu-latest
-    needs: [release, build-ait-macos, build-ait-windows]
+    needs: [release, regenerate-sdk, build-ait-macos, build-ait-windows]
     if: success()
 
     steps:
-      - name: Checkout
+      - name: Checkout (Orphan Ref)
         uses: actions/checkout@v6
         with:
-          ref: main
+          ref: ${{ needs.regenerate-sdk.outputs.ref }}
           token: ${{ secrets.GITHUB_TOKEN }}
-          fetch-depth: 0
 
       - name: UPM 패키지 정리
         run: |
@@ -222,62 +226,49 @@ jobs:
           echo "Editor/ 내용:"
           ls -la Editor/ || true
 
-      - name: package.json 버전 업데이트
-        run: |
-          VERSION="${{ needs.release.outputs.version }}"
-          echo "=== package.json 버전 업데이트: ${VERSION} ==="
-
-          # jq로 버전 업데이트
-          jq --arg version "$VERSION" '.version = $version' package.json > package.json.tmp
-          mv package.json.tmp package.json
-
-          echo "업데이트된 버전:"
-          grep '"version"' package.json
-
       - name: Git 설정
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: 릴리즈 커밋 생성
-        run: |
-          VERSION="${{ needs.release.outputs.version }}"
-
-          git add -A
-          git commit -m "릴리즈: v${VERSION} (UPM 패키지)
-
-          Apps in Toss Unity SDK v${VERSION}
-          - UPM 패키지용 정리된 릴리즈
-          - 개발/테스트 파일 제외
-
-          Generated at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-
-          echo "릴리즈 커밋 생성 완료"
-
-      - name: 릴리즈 태그 생성
+      - name: 릴리즈 태그 생성 (Orphan Commit)
         run: |
           VERSION="${{ needs.release.outputs.version }}"
           TAG_NAME="${{ needs.release.outputs.tag_name }}"
+          BUILD_REF="${{ needs.regenerate-sdk.outputs.ref }}"
 
           echo "=== 릴리즈 태그 생성: ${TAG_NAME} ==="
+
+          # 정리된 상태로 새 orphan commit 생성
+          git add -A
+          TREE=$(git write-tree)
+          RELEASE_COMMIT=$(git commit-tree "$TREE" -m "릴리즈: v${VERSION} (UPM 패키지)
+
+          Apps in Toss Unity SDK v${VERSION}
+          - @apps-in-toss/web-framework v${VERSION} 기반
+          - UPM 패키지용 정리된 릴리즈
+          - 개발/테스트 파일 제외
+
+          Generated at: $(date -u +%Y-%m-%dT%H:%M:%SZ)")
+
+          echo "릴리즈 commit SHA: ${RELEASE_COMMIT}"
 
           # 기존 태그가 있으면 삭제 (upsert)
           git push origin --delete "${TAG_NAME}" 2>/dev/null || true
 
-          git tag -f "${TAG_NAME}" -m "릴리즈: v${VERSION}
+          # 태그 생성 및 푸시
+          git tag -f "${TAG_NAME}" "${RELEASE_COMMIT}" -m "릴리즈: v${VERSION}
 
           Apps in Toss Unity SDK v${VERSION}
           - @apps-in-toss/web-framework v${VERSION} 기반
 
           Generated at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-          echo "태그 생성 완료: ${TAG_NAME}"
-
-      - name: 태그 푸시
-        run: |
-          TAG_NAME="${{ needs.release.outputs.tag_name }}"
           git push -f origin "refs/tags/${TAG_NAME}:refs/tags/${TAG_NAME}"
           echo "태그 푸시 완료: ${TAG_NAME}"
+
+          # 임시 빌드 ref 정리
+          git push origin --delete "${BUILD_REF}" 2>/dev/null || echo "빌드 ref 정리 스킵 (이미 없거나 권한 없음)"
 
       - name: GitHub Release 생성/업데이트
         env:
@@ -330,10 +321,8 @@ jobs:
           # 기존 릴리즈가 있으면 삭제 (upsert) - 태그는 유지 (이미 푸시됨)
           gh release delete "${TAG_NAME}" --yes 2>/dev/null || true
 
-          # 현재 커밋 SHA를 타겟으로 릴리즈 생성
-          COMMIT_SHA=$(git rev-parse HEAD)
+          # 태그 기반으로 릴리즈 생성 (태그가 이미 올바른 커밋을 가리킴)
           gh release create "${TAG_NAME}" \
-            --target "$COMMIT_SHA" \
             --title "v${VERSION}" \
             --notes "$RELEASE_BODY"
 

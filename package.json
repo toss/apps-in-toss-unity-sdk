@@ -3,8 +3,8 @@
   "displayName": "Apps in Toss SDK",
   "description": "Apps in Toss Mini App Unity Engine Adapter SDK Package.",
   "version": "1.5.0",
-  "unity": "2019.4",
-  "unityRelease": "29f1",
+  "unity": "2021.3",
+  "unityRelease": "45f1",
   "keywords": [
     "Unity",
     "AppsInToss",
@@ -23,7 +23,7 @@
     "url": "https://github.com/appsintoss/apps-in-toss-unity-transform-sdk"
   },
   "engines": {
-    "unity": ">=2019.4"
+    "unity": ">=2021.3"
   },
   "dependencies": {
     "com.unity.nuget.newtonsoft-json": "3.0.2"

@@ -3,8 +3,8 @@ name: Preview
 on:
   workflow_dispatch:
     inputs:
-      ref:
-        description: '빌드할 브랜치 (예: feature/my-branch)'
+      target_ref:
+        description: 'PR 번호 또는 브랜치 이름 (예: 23 또는 feature/my-branch)'
         required: true
         type: string
       targets:
@@ -23,9 +23,52 @@ jobs:
 
     outputs:
       targets: ${{ steps.parse.outputs.targets }}
-      ref: ${{ inputs.ref }}
+      ref: ${{ steps.resolve.outputs.ref }}
+      pr_number: ${{ steps.resolve.outputs.pr_number }}
 
     steps:
+      - name: Resolve Target Ref
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TARGET_REF="${{ inputs.target_ref }}"
+
+          # 숫자만 있으면 PR 번호로 간주
+          if [[ "$TARGET_REF" =~ ^[0-9]+$ ]]; then
+            PR_NUMBER="$TARGET_REF"
+            echo "PR 번호로 감지: #${PR_NUMBER}"
+
+            # PR에서 브랜치 가져오기
+            PR_DATA=$(gh api "repos/${{ github.repository }}/pulls/${PR_NUMBER}" --jq '{ref: .head.ref}' 2>/dev/null || echo "")
+
+            if [ -z "$PR_DATA" ]; then
+              echo "::error::PR #${PR_NUMBER}을(를) 찾을 수 없습니다"
+              exit 1
+            fi
+
+            REF=$(echo "$PR_DATA" | jq -r '.ref')
+            echo "ref=${REF}" >> $GITHUB_OUTPUT
+            echo "pr_number=${PR_NUMBER}" >> $GITHUB_OUTPUT
+            echo "브랜치: ${REF}"
+          else
+            # 브랜치 이름으로 간주
+            REF="$TARGET_REF"
+            echo "브랜치 이름으로 감지: ${REF}"
+            echo "ref=${REF}" >> $GITHUB_OUTPUT
+
+            # 브랜치에서 열린 PR 찾기
+            PR_NUMBER=$(gh pr list --head "${REF}" --state open --json number --jq '.[0].number' 2>/dev/null || echo "")
+
+            if [ -n "$PR_NUMBER" ]; then
+              echo "pr_number=${PR_NUMBER}" >> $GITHUB_OUTPUT
+              echo "열린 PR 발견: #${PR_NUMBER}"
+            else
+              echo "pr_number=" >> $GITHUB_OUTPUT
+              echo "열린 PR 없음 (코멘트 보고 스킵)"
+            fi
+          fi
+
       - name: Parse Build Targets
         id: parse
         run: |
@@ -138,6 +181,41 @@ jobs:
             ls -la "$dir" 2>/dev/null || true
           done
 
+      - name: Prepare Build Directories
+        id: prepare
+        run: |
+          # download-artifact@v7가 단일 아티팩트일 때 서브디렉토리를 생성하지 않는 문제 해결
+          # ait-build-* 디렉토리가 없으면 targets에서 정보를 가져와서 디렉토리 구조 생성
+
+          if compgen -G "ait-builds/ait-build-*/" > /dev/null 2>&1; then
+            echo "다중 아티팩트 구조 감지됨"
+            echo "structure=multi" >> $GITHUB_OUTPUT
+          else
+            echo "단일 아티팩트 구조 감지됨 - 디렉토리 재구성"
+            echo "structure=single" >> $GITHUB_OUTPUT
+
+            # targets JSON에서 빌드 정보 추출
+            TARGETS='${{ needs.parse-targets.outputs.targets }}'
+            FIRST_TARGET=$(echo "$TARGETS" | jq -r '.[0]')
+            OS=$(echo "$FIRST_TARGET" | jq -r '.os')
+            UNITY_VERSION=$(echo "$FIRST_TARGET" | jq -r '.["unity-version"]')
+
+            # 단일 아티팩트를 적절한 디렉토리로 이동
+            ARTIFACT_DIR="ait-builds/ait-build-${OS}-${UNITY_VERSION}"
+            mkdir -p "$ARTIFACT_DIR"
+
+            # ait-builds/ 내의 파일들을 새 디렉토리로 이동 (ait-build-* 제외)
+            for item in ait-builds/*; do
+              BASENAME=$(basename "$item")
+              if [[ ! "$BASENAME" =~ ^ait-build- ]]; then
+                mv "$item" "$ARTIFACT_DIR/"
+              fi
+            done
+
+            echo "재구성 완료: $ARTIFACT_DIR"
+            ls -la "$ARTIFACT_DIR"
+          fi
+
       - name: Deploy All Builds
         id: deploy
         env:
@@ -204,7 +282,7 @@ jobs:
 
       - name: Write Job Summary
         run: |
-          REF="${{ inputs.ref }}"
+          REF="${{ needs.parse-targets.outputs.ref }}"
           DEPLOY_RESULTS='${{ steps.deploy.outputs.deploy_results }}'
 
           cat <<EOF >> $GITHUB_STEP_SUMMARY
@@ -226,3 +304,47 @@ jobs:
 
           </details>
           EOF
+
+      - name: Post PR Comment
+        if: needs.parse-targets.outputs.pr_number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PR_NUMBER="${{ needs.parse-targets.outputs.pr_number }}"
+          REF="${{ needs.parse-targets.outputs.ref }}"
+          DEPLOY_RESULTS='${{ steps.deploy.outputs.deploy_results }}'
+          HAS_SUCCESS="${{ steps.deploy.outputs.has_success }}"
+
+          if [ "$HAS_SUCCESS" = "true" ]; then
+            STATUS_EMOJI="🎉"
+            STATUS_TEXT="Preview deploy complete"
+          else
+            STATUS_EMOJI="❌"
+            STATUS_TEXT="Preview deploy failed"
+          fi
+
+          COMMENT_BODY=$(cat <<EOF
+          ## ${STATUS_EMOJI} ${STATUS_TEXT}
+
+          **Branch:** \`${REF}\`
+
+          | OS | Unity | Status | URL |
+          |----|-------|--------|-----|
+          $(echo -e "$DEPLOY_RESULTS")
+
+          <details>
+          <summary>📱 How to test</summary>
+
+          1. Copy the \`intoss-private://\` URL above
+          2. Open Toss app on your device
+          3. Paste the URL in browser or use deep link
+
+          </details>
+
+          ---
+          [View full run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          EOF
+          )
+
+          gh pr comment "$PR_NUMBER" --body "$COMMENT_BODY"
+          echo "PR #${PR_NUMBER}에 배포 결과 코멘트 작성 완료"

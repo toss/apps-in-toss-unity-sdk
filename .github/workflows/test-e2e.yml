@@ -4,8 +4,8 @@ on:
   # 수동 실행
   workflow_dispatch:
     inputs:
-      ref:
-        description: '테스트할 브랜치 (비워두면 현재 브랜치)'
+      target_ref:
+        description: 'PR 번호 또는 브랜치 이름 (예: 23 또는 feature/my-branch)'
         type: string
         required: false
       clean_library:
@@ -16,8 +16,8 @@ on:
   # update.yml에서 호출
   workflow_call:
     inputs:
-      ref:
-        description: 'Git ref to checkout (branch name)'
+      target_ref:
+        description: 'PR number or branch name'
         type: string
         required: false
       clean_library:
@@ -35,18 +35,97 @@ jobs:
 
     outputs:
       ref: ${{ steps.ref.outputs.ref }}
+      pr_number: ${{ steps.ref.outputs.pr_number }}
 
     steps:
-      - name: Determine Ref
+      - name: Resolve Target Ref
         id: ref
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          if [ -n "${{ inputs.ref }}" ]; then
-            echo "ref=${{ inputs.ref }}" >> $GITHUB_OUTPUT
-            echo "Using provided ref: ${{ inputs.ref }}"
+          TARGET_REF="${{ inputs.target_ref }}"
+
+          if [ -z "$TARGET_REF" ]; then
+            # 입력이 없으면 현재 브랜치 사용
+            REF="${{ github.ref_name }}"
+            echo "현재 ref 사용: ${REF}"
+          elif [[ "$TARGET_REF" =~ ^[0-9]+$ ]]; then
+            # 숫자만 있으면 PR 번호로 간주
+            PR_NUMBER="$TARGET_REF"
+            echo "PR 번호로 감지: #${PR_NUMBER}"
+
+            PR_DATA=$(gh api "repos/${{ github.repository }}/pulls/${PR_NUMBER}" --jq '{ref: .head.ref}' 2>/dev/null || echo "")
+
+            if [ -z "$PR_DATA" ]; then
+              echo "::error::PR #${PR_NUMBER}을(를) 찾을 수 없습니다"
+              exit 1
+            fi
+
+            REF=$(echo "$PR_DATA" | jq -r '.ref')
+            echo "ref=${REF}" >> $GITHUB_OUTPUT
+            echo "pr_number=${PR_NUMBER}" >> $GITHUB_OUTPUT
+            echo "브랜치: ${REF}"
+            exit 0
           else
-            echo "ref=${{ github.ref_name }}" >> $GITHUB_OUTPUT
-            echo "Using current ref: ${{ github.ref_name }}"
+            # 브랜치 이름으로 간주
+            REF="$TARGET_REF"
+            echo "브랜치 이름으로 감지: ${REF}"
           fi
+
+          # 브랜치에서 열린 PR 찾기
+          echo "ref=${REF}" >> $GITHUB_OUTPUT
+          PR_NUMBER=$(gh pr list --head "${REF}" --state open --json number --jq '.[0].number' 2>/dev/null || echo "")
+
+          if [ -n "$PR_NUMBER" ]; then
+            echo "pr_number=${PR_NUMBER}" >> $GITHUB_OUTPUT
+            echo "열린 PR 발견: #${PR_NUMBER}"
+          else
+            echo "pr_number=" >> $GITHUB_OUTPUT
+            echo "열린 PR 없음 (코멘트 보고 스킵)"
+          fi
+
+  # =====================================================
+  # SDK Generator Unit Tests
+  # =====================================================
+  sdk-generator-tests:
+    name: SDK Generator Tests
+    runs-on: ubuntu-latest
+    needs: setup
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.setup.outputs.ref }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install Mono (for C# compilation tests)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mono-mcs
+          mcs --version
+
+      - name: Install Dependencies
+        working-directory: sdk-runtime-generator~
+        run: pnpm install
+
+      - name: Run Unit Tests (Tier 1 - C# compilation)
+        working-directory: sdk-runtime-generator~
+        run: pnpm run test:tier1
+
+      - name: Run Unit Tests (Tier 2 - C#/jslib invariants)
+        working-directory: sdk-runtime-generator~
+        run: pnpm run test:tier2
 
   # =====================================================
   # Pending Status 보고
@@ -96,7 +175,7 @@ jobs:
   # =====================================================
   e2e-test-macos:
     name: E2E (macOS, Unity ${{ matrix.unity-version }})
-    needs: setup
+    needs: [setup, sdk-generator-tests]
 
     strategy:
       fail-fast: false
@@ -118,7 +197,7 @@ jobs:
   # =====================================================
   e2e-test-windows:
     name: E2E 1-5 (Windows, Unity ${{ matrix.unity-version }})
-    needs: setup
+    needs: [setup, sdk-generator-tests]
 
     strategy:
       fail-fast: false
@@ -141,7 +220,7 @@ jobs:
   test-report:
     name: Test Report Summary
     runs-on: ubuntu-latest
-    needs: [setup, e2e-test-macos, e2e-test-windows]
+    needs: [setup, sdk-generator-tests, e2e-test-macos, e2e-test-windows]
     if: always()
 
     steps:
@@ -172,31 +251,89 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
+      - name: Post PR Comment
+        if: needs.setup.outputs.pr_number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PR_NUMBER="${{ needs.setup.outputs.pr_number }}"
+
+          # 테스트 결과 상태 확인
+          SDK_RESULT="${{ needs.sdk-generator-tests.result }}"
+          MACOS_RESULT="${{ needs.e2e-test-macos.result }}"
+          WINDOWS_RESULT="${{ needs.e2e-test-windows.result }}"
+
+          if [ "$SDK_RESULT" = "success" ] && [ "$MACOS_RESULT" = "success" ] && [ "$WINDOWS_RESULT" = "success" ]; then
+            STATUS_EMOJI="✅"
+            STATUS_TEXT="All tests passed"
+          elif [ "$SDK_RESULT" = "cancelled" ] || [ "$MACOS_RESULT" = "cancelled" ] || [ "$WINDOWS_RESULT" = "cancelled" ]; then
+            STATUS_EMOJI="⚠️"
+            STATUS_TEXT="Tests cancelled"
+          else
+            STATUS_EMOJI="❌"
+            STATUS_TEXT="Tests failed"
+          fi
+
+          # 벤치마크 리포트 읽기 (있으면)
+          if [ -f "benchmark-report.md" ]; then
+            BENCHMARK_CONTENT=$(cat benchmark-report.md)
+          else
+            BENCHMARK_CONTENT="벤치마크 데이터 없음"
+          fi
+
+          # PR 코멘트 생성
+          COMMENT_BODY=$(cat <<EOF
+          ## ${STATUS_EMOJI} E2E Test Report
+
+          | Test | Result |
+          |------|--------|
+          | SDK Generator | ${SDK_RESULT} |
+          | E2E macOS | ${MACOS_RESULT} |
+          | E2E Windows | ${WINDOWS_RESULT} |
+
+          **Status**: ${STATUS_TEXT}
+
+          <details>
+          <summary>📊 Benchmark Report</summary>
+
+          ${BENCHMARK_CONTENT}
+
+          </details>
+
+          ---
+          [View full run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          EOF
+          )
+
+          gh pr comment "$PR_NUMBER" --body "$COMMENT_BODY"
+          echo "PR #${PR_NUMBER}에 테스트 리포트 코멘트 작성 완료"
+
   # =====================================================
   # Commit Status 보고
   # =====================================================
   report-status:
     name: Report Status
     runs-on: ubuntu-latest
-    needs: [setup, e2e-test-macos, e2e-test-windows]
+    needs: [setup, sdk-generator-tests, e2e-test-macos, e2e-test-windows]
     if: always() && needs.setup.outputs.ref != ''
 
     steps:
       - name: Determine Status
         id: status
         run: |
+          SDK_RESULT="${{ needs.sdk-generator-tests.result }}"
           MACOS_RESULT="${{ needs.e2e-test-macos.result }}"
           WINDOWS_RESULT="${{ needs.e2e-test-windows.result }}"
 
-          if [ "$MACOS_RESULT" = "success" ] && [ "$WINDOWS_RESULT" = "success" ]; then
+          if [ "$SDK_RESULT" = "success" ] && [ "$MACOS_RESULT" = "success" ] && [ "$WINDOWS_RESULT" = "success" ]; then
             echo "state=success" >> $GITHUB_OUTPUT
-            echo "description=All E2E tests passed (macOS:1-9, Windows:1-5)" >> $GITHUB_OUTPUT
-          elif [ "$MACOS_RESULT" = "cancelled" ] || [ "$WINDOWS_RESULT" = "cancelled" ]; then
+            echo "description=All tests passed (SDK + E2E macOS:1-9, Windows:1-5)" >> $GITHUB_OUTPUT
+          elif [ "$SDK_RESULT" = "cancelled" ] || [ "$MACOS_RESULT" = "cancelled" ] || [ "$WINDOWS_RESULT" = "cancelled" ]; then
             echo "state=error" >> $GITHUB_OUTPUT
             echo "description=Tests cancelled" >> $GITHUB_OUTPUT
           else
             echo "state=failure" >> $GITHUB_OUTPUT
-            echo "description=Tests failed (macOS: $MACOS_RESULT, Windows: $WINDOWS_RESULT)" >> $GITHUB_OUTPUT
+            echo "description=Tests failed (SDK: $SDK_RESULT, macOS: $MACOS_RESULT, Windows: $WINDOWS_RESULT)" >> $GITHUB_OUTPUT
           fi
 
       - name: Get Commit SHA

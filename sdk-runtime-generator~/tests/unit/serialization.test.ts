@@ -58,7 +58,7 @@ describe('Tier 3: JSON 스키마 일치성 검증', () => {
   }, 10000);
 
   describe('Enum 직렬화 어트리뷰트', () => {
-    test('모든 enum이 EnumMember 어트리뷰트를 가져야 함', () => {
+    test('문자열 enum은 EnumMember 어트리뷰트를 가져야 함', () => {
       // enum 정의 찾기
       const enumRegex = /public enum (\w+)\s*\{([^}]+)\}/g;
       const enumMatches = [...typesFileContent.matchAll(enumRegex)];
@@ -71,6 +71,13 @@ describe('Tier 3: JSON 스키마 일치성 검증', () => {
       for (const match of enumMatches) {
         const enumName = match[1];
         const enumBody = match[2];
+
+        // 숫자 기반 enum인지 확인 (= 1, = 2, ... 패턴)
+        // 숫자 enum은 EnumMember가 필요 없음 (JSON에서 숫자로 직렬화)
+        const isNumericEnum = /=\s*\d+/.test(enumBody);
+        if (isNumericEnum) {
+          continue;
+        }
 
         // enum 값마다 EnumMember 어트리뷰트가 있는지 확인
         // 패턴: [EnumMember(Value = "...")] 또는 enum 값 이름
@@ -228,7 +235,8 @@ describe('Tier 3: JSON 스키마 일치성 검증', () => {
 
     test('모든 public 프로퍼티가 [Preserve] 어트리뷰트를 가져야 함', () => {
       // JsonProperty가 있는 프로퍼티 찾기
-      const propertyRegex = /\[JsonProperty\([^\]]+\)\]\s*(?:\[Preserve\])?\s*public\s+\w+\s+(\w+)/g;
+      // 패턴: [Preserve]와 [JsonProperty]가 순서에 상관없이 있어야 함
+      const propertyRegex = /(?:\[Preserve\]\s*)?(?:\[JsonProperty\([^\]]+\)\])\s*(?:\[Preserve\])?\s*public\s+\w+\s+(\w+)/g;
       const matches = [...typesFileContent.matchAll(propertyRegex)];
 
       let propertiesWithPreserve = 0;

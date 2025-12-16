@@ -65,22 +65,18 @@ jobs:
         with:
           version: 10
 
-      - name: web-framework 버전 고정 및 SDK 재생성
+      - name: web-framework 버전 업데이트 및 SDK 재생성
         working-directory: sdk-runtime-generator~
         run: |
           VERSION="${{ needs.release.outputs.version }}"
 
-          echo "=== web-framework 버전 고정: ${VERSION} ==="
+          echo "=== web-framework v${VERSION} 업데이트 ==="
 
-          # package.json에서 web-framework 버전 고정
-          jq --arg v "$VERSION" '.dependencies["@apps-in-toss/web-framework"] = $v' package.json > tmp.json
-          mv tmp.json package.json
+          # 기존 lockfile 유지하면서 web-framework와 transitive deps만 업데이트
+          pnpm update "@apps-in-toss/web-framework@${VERSION}" --registry https://registry.npmjs.org
 
-          # 내부 레지스트리 참조가 있는 lockfile 삭제 후 공개 레지스트리에서 새로 생성
-          rm -f pnpm-lock.yaml
-
-          echo "의존성 설치 중 (공개 npm 레지스트리 사용)..."
-          pnpm install --registry https://registry.npmjs.org
+          echo "설치된 web-framework 버전:"
+          pnpm list @apps-in-toss/web-framework
 
           echo "SDK 코드 생성 중..."
           pnpm generate

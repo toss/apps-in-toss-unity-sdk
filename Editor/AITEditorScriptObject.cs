@@ -120,8 +120,8 @@ namespace AppsInToss
         [Tooltip("브릿지 색상 모드. 게임앱은 'inverted' (다크모드), 일반앱은 'basic'")]
         public int bridgeColorMode = 0; // 0=inverted (게임 기본), 1=basic
 
-        [Tooltip("WebView 타입. 게임앱은 'game' (투명배경), 일반앱은 'partner' (흰색배경), 외부연동은 'external'")]
-        public int webViewType = 0; // 0=game, 1=partner, 2=external
+        [Tooltip("WebView 타입. 게임앱은 'game' (투명배경), 일반앱은 'partner' (흰색배경)")]
+        public int webViewType = 0; // 0=game, 1=partner
 
         [Header("서버 설정")]
         [Tooltip("Granite (Metro) 서버 호스트. 기본값: 0.0.0.0")]
@@ -272,7 +272,6 @@ namespace AppsInToss
             {
                 case 0: return "game";
                 case 1: return "partner";
-                case 2: return "external";
                 default: return "game";
             }
         }

@@ -366,19 +366,19 @@ jobs:
             STATUS_TEXT="Preview deploy failed"
           fi
 
-          COMMENT_BODY=$(cat <<EOF
-          ## ${STATUS_EMOJI} ${STATUS_TEXT}
+          COMMENT_BODY=$(cat <<'EOF'
+          ## STATUS_EMOJI_PLACEHOLDER STATUS_TEXT_PLACEHOLDER
 
-          **Branch:** \`${REF}\`
+          **Branch:** `REF_PLACEHOLDER`
 
           | OS | Unity | Status | URL |
           |----|-------|--------|-----|
-          $(echo -e "$DEPLOY_RESULTS")
+          DEPLOY_RESULTS_PLACEHOLDER
 
           <details>
           <summary>📱 How to test</summary>
 
-          1. Copy the \`intoss-private://\` URL above
+          1. Copy the `intoss-private://` URL above
           2. Open Toss app on your device
           3. Paste the URL in browser or use deep link
 
@@ -389,7 +389,17 @@ jobs:
           EOF
           )
 
-          gh pr comment "$PR_NUMBER" --body "$COMMENT_BODY"
+          # 플레이스홀더 치환
+          COMMENT_BODY="${COMMENT_BODY//STATUS_EMOJI_PLACEHOLDER/$STATUS_EMOJI}"
+          COMMENT_BODY="${COMMENT_BODY//STATUS_TEXT_PLACEHOLDER/$STATUS_TEXT}"
+          COMMENT_BODY="${COMMENT_BODY//REF_PLACEHOLDER/$REF}"
+          COMMENT_BODY="${COMMENT_BODY//DEPLOY_RESULTS_PLACEHOLDER/$(echo -e "$DEPLOY_RESULTS")}"
+
+          # gh api로 코멘트 작성 (git repo 불필요)
+          gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
+            -X POST \
+            -f body="$COMMENT_BODY"
+
           echo "PR #${PR_NUMBER}에 배포 결과 코멘트 작성 완료"
 
   # =====================================================

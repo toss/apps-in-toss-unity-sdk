@@ -305,7 +305,11 @@ jobs:
           EOF
           )
 
-          gh pr comment "$PR_NUMBER" --body "$COMMENT_BODY"
+          # gh api로 코멘트 작성
+          gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
+            -X POST \
+            -f body="$COMMENT_BODY"
+
           echo "PR #${PR_NUMBER}에 테스트 리포트 코멘트 작성 완료"
 
   # =====================================================

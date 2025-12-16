@@ -369,20 +369,21 @@ jobs:
             STATUS_TEXT="Preview deploy failed"
           fi
 
-          COMMENT_BODY=$(cat <<'EOF'
-          ## STATUS_EMOJI_PLACEHOLDER STATUS_TEXT_PLACEHOLDER
+          # HEREDOC에서 직접 변수 삽입 (플레이스홀더 치환 시 & 문자 문제 방지)
+          COMMENT_BODY=$(cat <<EOF
+          ## ${STATUS_EMOJI} ${STATUS_TEXT}
 
-          **Branch:** `REF_PLACEHOLDER`
+          **Branch:** \`${REF}\`
 
           | OS | Unity | Status | URL | QR |
           |----|-------|--------|-----|:--:|
-          DEPLOY_RESULTS_PLACEHOLDER
+          $(echo -e "$DEPLOY_RESULTS")
 
           <details>
           <summary>📱 How to test</summary>
 
           1. Scan QR code with Toss app, or
-          2. Copy the `intoss-private://` URL and open in Toss app
+          2. Copy the \`intoss-private://\` URL and open in Toss app
 
           </details>
 
@@ -390,12 +391,6 @@ jobs:
           [View full run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
           EOF
           )
-
-          # 플레이스홀더 치환
-          COMMENT_BODY="${COMMENT_BODY//STATUS_EMOJI_PLACEHOLDER/$STATUS_EMOJI}"
-          COMMENT_BODY="${COMMENT_BODY//STATUS_TEXT_PLACEHOLDER/$STATUS_TEXT}"
-          COMMENT_BODY="${COMMENT_BODY//REF_PLACEHOLDER/$REF}"
-          COMMENT_BODY="${COMMENT_BODY//DEPLOY_RESULTS_PLACEHOLDER/$(echo -e "$DEPLOY_RESULTS")}"
 
           # gh api로 코멘트 작성 (git repo 불필요)
           gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \

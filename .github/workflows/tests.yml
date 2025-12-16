@@ -119,10 +119,8 @@ jobs:
       matrix:
         unity-version: ["2021.3", "2022.3", "6000.0", "6000.2", "6000.3"]
 
-    # 동일 브랜치 + Unity 버전 조합에서만 동시 실행 방지
-    concurrency:
-      group: ${{ github.workflow }}-macos-${{ matrix.unity-version }}-${{ github.head_ref || github.ref }}
-      cancel-in-progress: true
+    # NOTE: reusable workflow 호출 시 concurrency는 unity-build.yml 내부에서 처리
+    # caller job에서 concurrency 사용 시 예상치 못한 취소 발생
 
     uses: ./.github/workflows/unity-build.yml
     with:
@@ -144,10 +142,8 @@ jobs:
       matrix:
         unity-version: ["2021.3", "2022.3", "6000.0", "6000.2", "6000.3"]
 
-    # 동일 브랜치 + Unity 버전 조합에서만 동시 실행 방지
-    concurrency:
-      group: ${{ github.workflow }}-windows-${{ matrix.unity-version }}-${{ github.head_ref || github.ref }}
-      cancel-in-progress: true
+    # NOTE: reusable workflow 호출 시 concurrency는 unity-build.yml 내부에서 처리
+    # caller job에서 concurrency 사용 시 예상치 못한 취소 발생
 
     uses: ./.github/workflows/unity-build.yml
     with:

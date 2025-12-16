@@ -298,16 +298,19 @@ jobs:
 
                 if [ -n "$DEPLOY_URL" ]; then
                   echo "✅ Deploy success: ${DEPLOY_URL}"
-                  DEPLOY_RESULTS="${DEPLOY_RESULTS}| ${OS_DISPLAY} | ${UNITY_VERSION} | ✅ | \`${DEPLOY_URL}\` |\n"
+                  # URL 인코딩하여 QR 코드 API URL 생성
+                  ENCODED_URL=$(printf '%s' "$DEPLOY_URL" | jq -sRr @uri)
+                  QR_IMG="![QR](https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${ENCODED_URL})"
+                  DEPLOY_RESULTS="${DEPLOY_RESULTS}| ${OS_DISPLAY} | ${UNITY_VERSION} | ✅ | \`${DEPLOY_URL}\` | ${QR_IMG} |\n"
                   HAS_SUCCESS=true
                 else
                   DEPLOY_URL=$(echo "$CLEANED_OUTPUT" | grep -oE 'https?://[^[:space:]]+' | head -1 || echo "SUCCESS")
-                  DEPLOY_RESULTS="${DEPLOY_RESULTS}| ${OS_DISPLAY} | ${UNITY_VERSION} | ✅ | ${DEPLOY_URL} |\n"
+                  DEPLOY_RESULTS="${DEPLOY_RESULTS}| ${OS_DISPLAY} | ${UNITY_VERSION} | ✅ | ${DEPLOY_URL} | - |\n"
                   HAS_SUCCESS=true
                 fi
               else
                 echo "❌ Deploy failed (exit code: $DEPLOY_STATUS)"
-                DEPLOY_RESULTS="${DEPLOY_RESULTS}| ${OS_DISPLAY} | ${UNITY_VERSION} | ❌ | Failed |\n"
+                DEPLOY_RESULTS="${DEPLOY_RESULTS}| ${OS_DISPLAY} | ${UNITY_VERSION} | ❌ | Failed | - |\n"
               fi
             fi
           done
@@ -333,8 +336,8 @@ jobs:
 
           **Branch:** \`${REF}\`
 
-          | OS | Unity | Status | URL |
-          |----|-------|--------|-----|
+          | OS | Unity | Status | URL | QR |
+          |----|-------|--------|-----|:--:|
           $(echo -e "$DEPLOY_RESULTS")
 
           ---
@@ -371,16 +374,15 @@ jobs:
 
           **Branch:** `REF_PLACEHOLDER`
 
-          | OS | Unity | Status | URL |
-          |----|-------|--------|-----|
+          | OS | Unity | Status | URL | QR |
+          |----|-------|--------|-----|:--:|
           DEPLOY_RESULTS_PLACEHOLDER
 
           <details>
           <summary>📱 How to test</summary>
 
-          1. Copy the `intoss-private://` URL above
-          2. Open Toss app on your device
-          3. Paste the URL in browser or use deep link
+          1. Scan QR code with Toss app, or
+          2. Copy the `intoss-private://` URL and open in Toss app
 
           </details>
 

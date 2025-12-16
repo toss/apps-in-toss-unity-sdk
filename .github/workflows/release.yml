@@ -38,11 +38,100 @@ jobs:
           echo "tag_name=release/v${VERSION}" >> $GITHUB_OUTPUT
 
   # =====================================================
+  # SDK Runtime 재생성
+  # =====================================================
+  regenerate-sdk:
+    name: SDK Runtime 재생성
+    runs-on: ubuntu-latest
+    needs: release
+
+    outputs:
+      ref: ${{ steps.commit.outputs.ref }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: web-framework 버전 고정 및 SDK 재생성
+        working-directory: sdk-runtime-generator~
+        run: |
+          VERSION="${{ needs.release.outputs.version }}"
+
+          echo "=== web-framework 버전 고정: ${VERSION} ==="
+
+          # package.json에서 web-framework 버전 고정
+          jq --arg v "$VERSION" '.dependencies["@apps-in-toss/web-framework"] = $v' package.json > tmp.json
+          mv tmp.json package.json
+
+          # 내부 레지스트리 참조가 있는 lockfile 삭제 후 공개 레지스트리에서 새로 생성
+          rm -f pnpm-lock.yaml
+
+          echo "의존성 설치 중 (공개 npm 레지스트리 사용)..."
+          pnpm install --registry https://registry.npmjs.org
+
+          echo "SDK 코드 생성 중..."
+          pnpm generate
+
+          echo "SDK 코드 생성 완료"
+
+      - name: 루트 package.json 버전 업데이트
+        run: |
+          VERSION="${{ needs.release.outputs.version }}"
+          jq --arg v "$VERSION" '.version = $v' package.json > tmp.json
+          mv tmp.json package.json
+          echo "package.json 버전: ${VERSION}"
+
+      - name: Git 설정
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: 변경사항 커밋
+        id: commit
+        run: |
+          VERSION="${{ needs.release.outputs.version }}"
+
+          # 변경사항 확인
+          if git diff --quiet && git diff --staged --quiet; then
+            echo "변경사항이 없습니다."
+            echo "ref=main" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # 모든 변경사항 커밋
+          git add -A
+          git commit -m "빌드: SDK v${VERSION} 재생성
+
+          - @apps-in-toss/web-framework v${VERSION} 기반 SDK 코드 재생성
+          - package.json 버전 동기화
+
+          Generated at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+          # main에 직접 푸시
+          git push origin main
+
+          echo "ref=main" >> $GITHUB_OUTPUT
+          echo "SDK 재생성 및 커밋 완료"
+
+  # =====================================================
   # AIT 빌드 - macOS
   # =====================================================
   build-ait-macos:
     name: AIT 빌드 (macOS)
-    needs: release
+    needs: [release, regenerate-sdk]
     strategy:
       fail-fast: false
       matrix:
@@ -63,7 +152,7 @@ jobs:
   # =====================================================
   build-ait-windows:
     name: AIT 빌드 (Windows)
-    needs: release
+    needs: [release, regenerate-sdk]
     strategy:
       fail-fast: false
       matrix:

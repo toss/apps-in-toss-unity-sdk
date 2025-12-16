@@ -160,11 +160,24 @@ public class InteractiveAPITester : MonoBehaviour
     /// </summary>
     private async Task LoadSafeAreaInsets()
     {
+        // Unity Screen.safeArea 값 먼저 로깅 (비교용)
+        Rect unitySafeArea = Screen.safeArea;
+        Debug.Log($"[InteractiveAPITester] Unity Screen.safeArea: x={unitySafeArea.x}, y={unitySafeArea.y}, width={unitySafeArea.width}, height={unitySafeArea.height}");
+        Debug.Log($"[InteractiveAPITester] Screen size: width={Screen.width}, height={Screen.height}");
+
         try
         {
             cachedSafeAreaInsets = await AIT.SafeAreaInsetsGet();
             safeAreaLoaded = true;
-            Debug.Log($"[InteractiveAPITester] Safe Area loaded from AIT API: top={cachedSafeAreaInsets.Top}, bottom={cachedSafeAreaInsets.Bottom}, left={cachedSafeAreaInsets.Left}, right={cachedSafeAreaInsets.Right}");
+            Debug.Log($"[InteractiveAPITester] AIT SafeAreaInsetsGet: top={cachedSafeAreaInsets.Top}, bottom={cachedSafeAreaInsets.Bottom}, left={cachedSafeAreaInsets.Left}, right={cachedSafeAreaInsets.Right}");
+
+            // 최종 적용될 safeRect 계산 및 로깅
+            float top = (float)cachedSafeAreaInsets.Top;
+            float bottom = (float)cachedSafeAreaInsets.Bottom;
+            float left = (float)cachedSafeAreaInsets.Left;
+            float right = (float)cachedSafeAreaInsets.Right;
+            Rect finalRect = new Rect(left, top, Screen.width - left - right, Screen.height - top - bottom);
+            Debug.Log($"[InteractiveAPITester] Final SafeArea Rect (using AIT): x={finalRect.x}, y={finalRect.y}, width={finalRect.width}, height={finalRect.height}");
         }
         catch (AITException ex)
         {

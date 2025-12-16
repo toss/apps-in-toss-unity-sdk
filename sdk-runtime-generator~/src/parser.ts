@@ -124,18 +124,13 @@ export class TypeScriptParser {
   ];
 
   /**
-   * 이벤트 타입 정의 (하드코딩 - TypeScript 제네릭 파싱의 복잡성 회피)
+   * 이벤트 네임스페이스 → 타입 별칭 매핑
+   * 런타임에 web-framework의 타입 정의에서 동적으로 이벤트를 파싱
    */
-  private static readonly EVENT_DEFINITIONS: Record<string, { eventName: string; hasData: boolean; dataType?: string }[]> = {
-    tdsEvent: [
-      { eventName: 'navigationAccessoryEvent', hasData: true, dataType: 'TdsNavigationAccessoryEventData' },
-    ],
-    graniteEvent: [
-      { eventName: 'backEvent', hasData: false },
-    ],
-    appsInTossEvent: [
-      { eventName: 'entryMessageExited', hasData: false },
-    ],
+  private static readonly EVENT_TYPE_MAP: Record<string, string> = {
+    tdsEvent: 'TdsEvent',
+    graniteEvent: 'GraniteEvent',
+    appsInTossEvent: 'AppsInTossEvent',
   };
 
   /**
@@ -321,14 +316,82 @@ export class TypeScriptParser {
   }
 
   /**
+   * 이벤트 타입 정의에서 이벤트 목록 동적 파싱
+   * 예: TdsEvent, GraniteEvent, AppsInTossEvent 타입 별칭에서 이벤트 추출
+   */
+  private parseEventTypeDefinition(
+    typeName: string,
+    sourceFile: SourceFile
+  ): { eventName: string; hasData: boolean; dataType?: string }[] {
+    const events: { eventName: string; hasData: boolean; dataType?: string }[] = [];
+
+    // 타입 별칭 찾기
+    const exportedDeclarations = sourceFile.getExportedDeclarations();
+    const typeDeclarations = exportedDeclarations.get(typeName);
+
+    if (!typeDeclarations || typeDeclarations.length === 0) {
+      return events;
+    }
+
+    const typeAlias = typeDeclarations[0];
+    if (typeAlias.getKind() !== SyntaxKind.TypeAliasDeclaration) {
+      return events;
+    }
+
+    // 타입의 프로퍼티 추출 (이벤트 이름들)
+    const type = typeAlias.getType();
+    const properties = type.getProperties();
+
+    for (const prop of properties) {
+      const eventName = prop.getName();
+      const propType = prop.getTypeAtLocation(typeAlias);
+
+      // onEvent 프로퍼티 찾기
+      const onEventProp = propType.getProperty('onEvent');
+      if (!onEventProp) continue;
+
+      const onEventType = onEventProp.getTypeAtLocation(typeAlias);
+      const callSignatures = onEventType.getCallSignatures();
+
+      if (callSignatures.length > 0) {
+        const params = callSignatures[0].getParameters();
+        const hasData = params.length > 0;
+
+        let dataType: string | undefined;
+        if (hasData && params[0]) {
+          const paramType = params[0].getTypeAtLocation(typeAlias);
+          // 인라인 객체 타입인 경우 이벤트명 기반으로 타입 이름 생성
+          const typeText = paramType.getText();
+          if (typeText.startsWith('{')) {
+            // 인라인 객체: TdsNavigationAccessoryEventData 형태로 생성 (네임스페이스 접두사 포함)
+            // typeName에서 'Event' 접미사를 제거하여 네임스페이스 접두사 추출 (TdsEvent → Tds)
+            const namespacePrefix = typeName.replace(/Event$/, '');
+            dataType = `${namespacePrefix}${this.toPascalCase(eventName)}Data`;
+          } else {
+            // 명명된 타입 사용
+            dataType = typeText;
+          }
+        }
+
+        events.push({ eventName, hasData, dataType });
+      }
+    }
+
+    return events;
+  }
+
+  /**
    * 이벤트 네임스페이스 파싱 (tdsEvent, graniteEvent, appsInTossEvent)
    * 각 이벤트를 별도의 Subscribe 메서드로 생성
    */
   private parseEventNamespace(namespaceName: string, sourceFile: SourceFile): ParsedAPI[] {
     const apis: ParsedAPI[] = [];
-    const eventDefs = TypeScriptParser.EVENT_DEFINITIONS[namespaceName];
+    const typeName = TypeScriptParser.EVENT_TYPE_MAP[namespaceName];
 
-    if (!eventDefs) return apis;
+    if (!typeName) return apis;
+
+    // 동적으로 이벤트 정의 파싱
+    const eventDefs = this.parseEventTypeDefinition(typeName, sourceFile);
 
     for (const eventDef of eventDefs) {
       // C# 메서드 이름: 네임스페이스 + Subscribe + PascalCase 이벤트명

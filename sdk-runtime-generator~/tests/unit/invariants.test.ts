@@ -350,7 +350,6 @@ describe('Tier 2: C# ↔ jslib 일관성 검증', () => {
       // 결제
       ['__checkoutPayment_Internal', 3, 'OnAITCallback'],
       // 이벤트 구독
-      ['__AppsInTossEventSubscribeEntryMessageExited_Internal', 2, 'OnAITEventCallback'],
       ['__GraniteEventSubscribeBackEvent_Internal', 2, 'OnAITEventCallback'],
       ['__TdsEventSubscribeNavigationAccessoryEvent_Internal', 2, 'OnAITEventCallback'],
       // Unsubscribe

@@ -299,9 +299,19 @@ describe('Tier 2: C# ↔ jslib 바인딩 일관성 검증', () => {
     test('void 반환 함수는 SendMessage 콜백을 사용해야 함', () => {
       const missingSendMessage: string[] = [];
 
+      // 콜백이 필요 없는 동기 함수 목록 (예외)
+      const syncFunctions = [
+        '__AITUnsubscribe_Internal', // 구독 해제는 동기적으로 처리됨
+      ];
+
       for (const extern of csharpExterns) {
         // void 반환 타입인 경우 (비동기 API)
         if (extern.returnType === 'void') {
+          // 동기 함수는 제외
+          if (syncFunctions.includes(extern.functionName)) {
+            continue;
+          }
+
           const jslibFunc = jslibFunctions.find(f => f.functionName === extern.functionName);
           if (jslibFunc && !jslibFunc.usesSendMessage) {
             missingSendMessage.push(`${extern.functionName} (from ${jslibFunc.sourceFile})`);

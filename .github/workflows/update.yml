@@ -271,4 +271,4 @@ jobs:
     uses: ./.github/workflows/test-e2e.yml
     with:
       clean_library: false
-      ref: ${{ needs.update.outputs.branch_name }}
+      target_ref: ${{ needs.update.outputs.pr_number }}

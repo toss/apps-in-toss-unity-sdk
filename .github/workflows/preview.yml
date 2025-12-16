@@ -121,6 +121,49 @@ jobs:
           echo "targets=${TARGETS}" >> $GITHUB_OUTPUT
 
   # =====================================================
+  # Pending Status 보고
+  # =====================================================
+  report-pending:
+    name: Report Pending Status
+    runs-on: ubuntu-latest
+    needs: parse-targets
+    if: needs.parse-targets.outputs.ref != ''
+
+    steps:
+      - name: Get Commit SHA
+        id: sha
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          REF="${{ needs.parse-targets.outputs.ref }}"
+          SHA=$(gh api "repos/${{ github.repository }}/git/ref/heads/${REF}" --jq '.object.sha' 2>/dev/null || echo "")
+
+          if [ -z "$SHA" ]; then
+            echo "::warning::Could not get SHA for ref ${REF}"
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "sha=${SHA}" >> $GITHUB_OUTPUT
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Report Pending Status
+        if: steps.sha.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SHA="${{ steps.sha.outputs.sha }}"
+          TARGET_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          gh api "repos/${{ github.repository }}/statuses/${SHA}" \
+            -X POST \
+            -f state="pending" \
+            -f target_url="$TARGET_URL" \
+            -f description="Preview build & deploy running..." \
+            -f context="Preview"
+
+          echo "Reported pending status for commit $SHA"
+
+  # =====================================================
   # 빌드 매트릭스
   # =====================================================
   build:
@@ -323,19 +366,19 @@ jobs:
             STATUS_TEXT="Preview deploy failed"
           fi
 
-          COMMENT_BODY=$(cat <<EOF
-          ## ${STATUS_EMOJI} ${STATUS_TEXT}
+          COMMENT_BODY=$(cat <<'EOF'
+          ## STATUS_EMOJI_PLACEHOLDER STATUS_TEXT_PLACEHOLDER
 
-          **Branch:** \`${REF}\`
+          **Branch:** `REF_PLACEHOLDER`
 
           | OS | Unity | Status | URL |
           |----|-------|--------|-----|
-          $(echo -e "$DEPLOY_RESULTS")
+          DEPLOY_RESULTS_PLACEHOLDER
 
           <details>
           <summary>📱 How to test</summary>
 
-          1. Copy the \`intoss-private://\` URL above
+          1. Copy the `intoss-private://` URL above
           2. Open Toss app on your device
           3. Paste the URL in browser or use deep link
 
@@ -346,5 +389,77 @@ jobs:
           EOF
           )
 
-          gh pr comment "$PR_NUMBER" --body "$COMMENT_BODY"
+          # 플레이스홀더 치환
+          COMMENT_BODY="${COMMENT_BODY//STATUS_EMOJI_PLACEHOLDER/$STATUS_EMOJI}"
+          COMMENT_BODY="${COMMENT_BODY//STATUS_TEXT_PLACEHOLDER/$STATUS_TEXT}"
+          COMMENT_BODY="${COMMENT_BODY//REF_PLACEHOLDER/$REF}"
+          COMMENT_BODY="${COMMENT_BODY//DEPLOY_RESULTS_PLACEHOLDER/$(echo -e "$DEPLOY_RESULTS")}"
+
+          # gh api로 코멘트 작성 (git repo 불필요)
+          gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
+            -X POST \
+            -f body="$COMMENT_BODY"
+
           echo "PR #${PR_NUMBER}에 배포 결과 코멘트 작성 완료"
+
+  # =====================================================
+  # Commit Status 보고
+  # =====================================================
+  report-status:
+    name: Report Status
+    runs-on: ubuntu-latest
+    needs: [parse-targets, build, deploy]
+    if: always() && needs.parse-targets.outputs.ref != ''
+
+    steps:
+      - name: Determine Status
+        id: status
+        run: |
+          BUILD_RESULT="${{ needs.build.result }}"
+          DEPLOY_RESULT="${{ needs.deploy.result }}"
+
+          if [ "$BUILD_RESULT" = "success" ] && [ "$DEPLOY_RESULT" = "success" ]; then
+            echo "state=success" >> $GITHUB_OUTPUT
+            echo "description=Preview build & deploy succeeded" >> $GITHUB_OUTPUT
+          elif [ "$BUILD_RESULT" = "cancelled" ] || [ "$DEPLOY_RESULT" = "cancelled" ]; then
+            echo "state=error" >> $GITHUB_OUTPUT
+            echo "description=Preview cancelled" >> $GITHUB_OUTPUT
+          else
+            echo "state=failure" >> $GITHUB_OUTPUT
+            echo "description=Preview failed (build: $BUILD_RESULT, deploy: $DEPLOY_RESULT)" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Get Commit SHA
+        id: sha
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          REF="${{ needs.parse-targets.outputs.ref }}"
+          SHA=$(gh api "repos/${{ github.repository }}/git/ref/heads/${REF}" --jq '.object.sha' 2>/dev/null || echo "")
+
+          if [ -z "$SHA" ]; then
+            echo "::warning::Could not get SHA for ref ${REF}"
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "sha=${SHA}" >> $GITHUB_OUTPUT
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Report Commit Status
+        if: steps.sha.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SHA="${{ steps.sha.outputs.sha }}"
+          STATE="${{ steps.status.outputs.state }}"
+          DESCRIPTION="${{ steps.status.outputs.description }}"
+          TARGET_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          gh api "repos/${{ github.repository }}/statuses/${SHA}" \
+            -X POST \
+            -f state="$STATE" \
+            -f target_url="$TARGET_URL" \
+            -f description="$DESCRIPTION" \
+            -f context="Preview"
+
+          echo "Reported status: $STATE for commit $SHA"

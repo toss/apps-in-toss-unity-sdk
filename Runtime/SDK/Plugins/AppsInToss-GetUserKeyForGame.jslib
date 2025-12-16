@@ -36,7 +36,7 @@ mergeInto(LibraryManager.library, {
                     if (typeof result === 'string') {
                         resultPayload = { _type: "error", _errorCode: result, _successJson: null };
                     } else {
-                        resultPayload = { _type: "success", _successJson: JSON.stringify(result), _errorCode: "" };
+                        resultPayload = { _type: "success", _successJson: result, _errorCode: "" };
                     }
                     var payload = JSON.stringify({
                         CallbackId: callback,

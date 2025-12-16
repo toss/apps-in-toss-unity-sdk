@@ -1,9 +1,6 @@
 name: Release
 
 on:
-  pull_request:
-    types: [closed]
-    branches: [main]
   workflow_dispatch:
     inputs:
       version:
@@ -18,12 +15,6 @@ jobs:
   release:
     name: 버전 결정
     runs-on: ubuntu-latest
-    # PR이 머지된 경우에만 실행 (update/* 브랜치에서 온 경우)
-    # 또는 수동 트리거인 경우
-    if: |
-      (github.event_name == 'workflow_dispatch') ||
-      (github.event.pull_request.merged == true &&
-       startsWith(github.event.pull_request.head.ref, 'update/'))
 
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -33,25 +24,8 @@ jobs:
       - name: 버전 결정
         id: version
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            # 수동 트리거: 입력된 버전 사용
-            VERSION="${{ github.event.inputs.version }}"
-            echo "수동 트리거 버전: ${VERSION}"
-          else
-            # PR 머지 트리거: 브랜치 이름에서 버전 추출
-            BRANCH_NAME="${{ github.event.pull_request.head.ref }}"
-            echo "머지된 브랜치: ${BRANCH_NAME}"
-
-            VERSION_WITH_TIMESTAMP="${BRANCH_NAME#update/}"
-            VERSION=$(echo "$VERSION_WITH_TIMESTAMP" | sed -E 's/^([0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z][a-zA-Z0-9.]*)?).*/\1/')
-
-            if [ -z "$VERSION" ] || ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+'; then
-              echo "::error::브랜치 이름에서 버전을 추출할 수 없습니다: ${BRANCH_NAME}"
-              exit 1
-            fi
-
-            echo "추출된 버전: ${VERSION}"
-          fi
+          VERSION="${{ github.event.inputs.version }}"
+          echo "입력된 버전: ${VERSION}"
 
           # Semver 형식 검증
           if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z][a-zA-Z0-9.]*)?$'; then

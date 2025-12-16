@@ -1,131 +1,61 @@
 name: E2E Tests
 
 on:
-  # PR 코멘트에서 /test-e2e 커맨드로 트리거
-  issue_comment:
-    types: [created]
-
   # 수동 실행
   workflow_dispatch:
     inputs:
+      ref:
+        description: '테스트할 브랜치 (비워두면 현재 브랜치)'
+        type: string
+        required: false
       clean_library:
-        description: 'Clean Unity Library cache (for cache corruption issues)'
+        description: 'Clean Unity Library cache'
         type: boolean
         default: false
 
   # update.yml에서 호출
   workflow_call:
     inputs:
-      clean_library:
-        description: 'Clean Unity Library cache'
-        type: boolean
-        default: false
       ref:
         description: 'Git ref to checkout (branch name)'
         type: string
         required: false
-
-permissions:
-  contents: read
-  pull-requests: write
-  issues: write
-  statuses: write
+      clean_library:
+        description: 'Clean Unity Library cache'
+        type: boolean
+        default: false
 
 jobs:
   # =====================================================
-  # 슬래시 커맨드 파싱 (/test-e2e)
+  # Ref 결정
   # =====================================================
-  parse-command:
-    name: Parse Command
+  setup:
+    name: Setup
     runs-on: ubuntu-latest
-    # PR 코멘트에서 /test-e2e로 시작하는 경우에만 실행
-    if: |
-      github.event_name != 'issue_comment' ||
-      (github.event.issue.pull_request && startsWith(github.event.comment.body, '/test-e2e'))
 
     outputs:
-      should_run: ${{ steps.check.outputs.should_run }}
-      ref: ${{ steps.pr.outputs.head_ref }}
-      pr_number: ${{ steps.pr.outputs.pr_number }}
-      comment_id: ${{ github.event.comment.id }}
+      ref: ${{ steps.ref.outputs.ref }}
 
     steps:
-      - name: Check Trigger Type
-        id: check
+      - name: Determine Ref
+        id: ref
         run: |
-          if [ "${{ github.event_name }}" = "issue_comment" ]; then
-            echo "should_run=true" >> $GITHUB_OUTPUT
-            echo "Triggered by /test-e2e command"
-          elif [ "${{ github.event_name }}" = "workflow_call" ]; then
-            echo "should_run=true" >> $GITHUB_OUTPUT
-            echo "Triggered by workflow_call"
-          else
-            echo "should_run=true" >> $GITHUB_OUTPUT
-            echo "Triggered by workflow_dispatch"
-          fi
-
-      - name: Add Reaction to Comment
-        if: github.event_name == 'issue_comment'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh api "repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions" \
-            -X POST \
-            -f content="eyes"
-
-      - name: Get PR Info
-        id: pr
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          if [ "${{ github.event_name }}" = "issue_comment" ]; then
-            PR_DATA=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.issue.number }}")
-            HEAD_REF=$(echo "$PR_DATA" | jq -r '.head.ref')
-            echo "head_ref=${HEAD_REF}" >> $GITHUB_OUTPUT
-            echo "pr_number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
-            echo "PR branch: ${HEAD_REF}"
-          elif [ -n "${{ inputs.ref }}" ]; then
-            echo "head_ref=${{ inputs.ref }}" >> $GITHUB_OUTPUT
-            echo "pr_number=" >> $GITHUB_OUTPUT
+          if [ -n "${{ inputs.ref }}" ]; then
+            echo "ref=${{ inputs.ref }}" >> $GITHUB_OUTPUT
             echo "Using provided ref: ${{ inputs.ref }}"
           else
-            echo "head_ref=${{ github.ref_name }}" >> $GITHUB_OUTPUT
-            echo "pr_number=" >> $GITHUB_OUTPUT
+            echo "ref=${{ github.ref_name }}" >> $GITHUB_OUTPUT
             echo "Using current ref: ${{ github.ref_name }}"
           fi
 
-      - name: Post Starting Comment
-        if: github.event_name == 'issue_comment'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          PR_NUMBER="${{ github.event.issue.number }}"
-
-          COMMENT_BODY=$(cat <<'EOF'
-          ## 🧪 E2E Tests Started
-
-          **Build targets:**
-          - macOS: Unity 2021.3, 2022.3, 6000.0, 6000.2, 6000.3
-          - Windows: Unity 2021.3, 2022.3, 6000.0, 6000.2, 6000.3
-
-          **Workflow:** [View Progress](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
-
-          _Running E2E tests + benchmarks... This may take 30-60 minutes._
-          EOF
-          )
-
-          gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
-            -X POST \
-            -f body="$COMMENT_BODY"
-
   # =====================================================
-  # Pending Status 보고 (테스트 시작 시)
+  # Pending Status 보고
   # =====================================================
   report-pending:
     name: Report Pending Status
     runs-on: ubuntu-latest
-    needs: parse-command
-    if: needs.parse-command.outputs.should_run == 'true' && needs.parse-command.outputs.ref != ''
+    needs: setup
+    if: needs.setup.outputs.ref != ''
 
     steps:
       - name: Get Commit SHA
@@ -133,7 +63,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          REF="${{ needs.parse-command.outputs.ref }}"
+          REF="${{ needs.setup.outputs.ref }}"
           SHA=$(gh api "repos/${{ github.repository }}/git/ref/heads/${REF}" --jq '.object.sha' 2>/dev/null || echo "")
 
           if [ -z "$SHA" ]; then
@@ -166,8 +96,7 @@ jobs:
   # =====================================================
   e2e-test-macos:
     name: E2E (macOS, Unity ${{ matrix.unity-version }})
-    needs: parse-command
-    if: needs.parse-command.outputs.should_run == 'true'
+    needs: setup
 
     strategy:
       fail-fast: false
@@ -176,7 +105,7 @@ jobs:
 
     uses: ./.github/workflows/unity-build.yml
     with:
-      ref: ${{ needs.parse-command.outputs.ref || '' }}
+      ref: ${{ needs.setup.outputs.ref }}
       os: macos
       unity-version: ${{ matrix.unity-version }}
       run-build: true
@@ -189,8 +118,7 @@ jobs:
   # =====================================================
   e2e-test-windows:
     name: E2E 1-5 (Windows, Unity ${{ matrix.unity-version }})
-    needs: parse-command
-    if: needs.parse-command.outputs.should_run == 'true'
+    needs: setup
 
     strategy:
       fail-fast: false
@@ -199,7 +127,7 @@ jobs:
 
     uses: ./.github/workflows/unity-build.yml
     with:
-      ref: ${{ needs.parse-command.outputs.ref || '' }}
+      ref: ${{ needs.setup.outputs.ref }}
       os: windows
       unity-version: ${{ matrix.unity-version }}
       run-build: true
@@ -213,8 +141,8 @@ jobs:
   test-report:
     name: Test Report Summary
     runs-on: ubuntu-latest
-    needs: [parse-command, e2e-test-macos, e2e-test-windows]
-    if: always() && needs.parse-command.outputs.should_run == 'true'
+    needs: [setup, e2e-test-macos, e2e-test-windows]
+    if: always()
 
     steps:
       - name: Checkout Repository
@@ -236,33 +164,6 @@ jobs:
       - name: Write Job Summary
         run: cat benchmark-report.md >> $GITHUB_STEP_SUMMARY
 
-      - name: Comment on PR
-        if: needs.parse-command.outputs.pr_number != ''
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          PR_NUMBER="${{ needs.parse-command.outputs.pr_number }}"
-          REPORT=$(cat benchmark-report.md)
-
-          # 기존 벤치마크 코멘트 찾기
-          EXISTING_COMMENT=$(gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
-            --jq '.[] | select(.user.type == "Bot" and (.body | contains("## 📊 Benchmark Results"))) | .id' \
-            | head -1)
-
-          if [ -n "$EXISTING_COMMENT" ]; then
-            # 기존 코멘트 업데이트
-            gh api "repos/${{ github.repository }}/issues/comments/${EXISTING_COMMENT}" \
-              -X PATCH \
-              -f body="$REPORT"
-            echo "Updated existing benchmark comment"
-          else
-            # 새 코멘트 생성
-            gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
-              -X POST \
-              -f body="$REPORT"
-            echo "Created new benchmark comment"
-          fi
-
       - name: Upload Benchmark Report
         uses: actions/upload-artifact@v6
         with:
@@ -277,8 +178,8 @@ jobs:
   report-status:
     name: Report Status
     runs-on: ubuntu-latest
-    needs: [parse-command, e2e-test-macos, e2e-test-windows]
-    if: always() && needs.parse-command.outputs.should_run == 'true' && needs.parse-command.outputs.ref != ''
+    needs: [setup, e2e-test-macos, e2e-test-windows]
+    if: always() && needs.setup.outputs.ref != ''
 
     steps:
       - name: Determine Status
@@ -303,7 +204,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          REF="${{ needs.parse-command.outputs.ref }}"
+          REF="${{ needs.setup.outputs.ref }}"
           SHA=$(gh api "repos/${{ github.repository }}/git/ref/heads/${REF}" --jq '.object.sha' 2>/dev/null || echo "")
 
           if [ -z "$SHA" ]; then
@@ -332,27 +233,3 @@ jobs:
             -f context="E2E Tests"
 
           echo "Reported status: $STATE for commit $SHA"
-
-      - name: Add Reaction to Comment
-        if: github.event_name == 'issue_comment' && steps.status.outputs.state == 'success'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          COMMENT_ID="${{ needs.parse-command.outputs.comment_id }}"
-          if [ -n "$COMMENT_ID" ]; then
-            gh api "repos/${{ github.repository }}/issues/comments/${COMMENT_ID}/reactions" \
-              -X POST \
-              -f content="rocket"
-          fi
-
-      - name: Add Failure Reaction
-        if: github.event_name == 'issue_comment' && steps.status.outputs.state != 'success'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          COMMENT_ID="${{ needs.parse-command.outputs.comment_id }}"
-          if [ -n "$COMMENT_ID" ]; then
-            gh api "repos/${{ github.repository }}/issues/comments/${COMMENT_ID}/reactions" \
-              -X POST \
-              -f content="-1"
-          fi

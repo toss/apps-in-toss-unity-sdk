@@ -160,13 +160,12 @@ namespace AppsInToss.Editor
             GUILayout.Space(5);
 
             // webViewProps.type 드롭다운
-            string[] webViewTypeOptions = { "game (게임앱 - 투명배경)", "partner (일반앱 - 흰색배경)", "external (외부연동)" };
+            string[] webViewTypeOptions = { "game (게임앱 - 투명배경)", "partner (일반앱 - 흰색배경)" };
             config.webViewType = EditorGUILayout.Popup("WebView Type", config.webViewType, webViewTypeOptions);
 
             EditorGUILayout.HelpBox(
                 "게임앱은 'game' 타입으로 투명 배경 내비게이션이 적용됩니다.\n" +
-                "일반앱은 'partner' 타입으로 흰색 배경 내비게이션이 적용됩니다.\n" +
-                "외부 연동은 'external' 타입을 사용합니다.",
+                "일반앱은 'partner' 타입으로 흰색 배경 내비게이션이 적용됩니다.",
                 MessageType.Info
             );
 

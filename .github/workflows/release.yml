@@ -64,15 +64,46 @@ jobs:
           echo "tag_name=release/v${VERSION}" >> $GITHUB_OUTPUT
 
   # =====================================================
-  # AIT 빌드 (build-ait.yml 호출)
+  # AIT 빌드 - macOS
   # =====================================================
-  build-ait:
-    name: AIT 빌드
+  build-ait-macos:
+    name: AIT 빌드 (macOS)
     needs: release
-    uses: ./.github/workflows/build-ait.yml
+    strategy:
+      fail-fast: false
+      matrix:
+        unity-version: ["2021.3", "2022.3", "6000.0", "6000.2", "6000.3"]
+
+    uses: ./.github/workflows/unity-build.yml
     with:
       ref: main
-      version: ${{ needs.release.outputs.version }}
+      os: macos
+      unity-version: ${{ matrix.unity-version }}
+      web-framework-version: ${{ needs.release.outputs.version }}
+      run-build: true
+      run-e2e-test: false
+      run-benchmark: false
+
+  # =====================================================
+  # AIT 빌드 - Windows
+  # =====================================================
+  build-ait-windows:
+    name: AIT 빌드 (Windows)
+    needs: release
+    strategy:
+      fail-fast: false
+      matrix:
+        unity-version: ["2021.3", "2022.3", "6000.0", "6000.2", "6000.3"]
+
+    uses: ./.github/workflows/unity-build.yml
+    with:
+      ref: main
+      os: windows
+      unity-version: ${{ matrix.unity-version }}
+      web-framework-version: ${{ needs.release.outputs.version }}
+      run-build: true
+      run-e2e-test: false
+      run-benchmark: false
 
   # =====================================================
   # 릴리즈 커밋 및 태그 생성 (UPM 패키지 정리 포함)
@@ -81,7 +112,7 @@ jobs:
   create-release-tag:
     name: 릴리즈 커밋 및 태그 생성
     runs-on: ubuntu-latest
-    needs: [release, build-ait]
+    needs: [release, build-ait-macos, build-ait-windows]
     if: success()
 
     steps:
@@ -270,7 +301,7 @@ jobs:
   deploy-ait:
     name: AIT 패키지 배포
     runs-on: ubuntu-latest
-    needs: [build-ait, create-release-tag]
+    needs: [build-ait-macos, build-ait-windows, create-release-tag]
     if: success()
     timeout-minutes: 30
 

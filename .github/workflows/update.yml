@@ -108,6 +108,7 @@ jobs:
 
       - name: web-framework 버전 업데이트 및 SDK 재생성
         if: steps.check.outputs.skip != 'true'
+        id: generate
         working-directory: sdk-runtime-generator~
         run: |
           VERSION="${{ steps.version.outputs.version }}"
@@ -121,9 +122,14 @@ jobs:
           pnpm list @apps-in-toss/web-framework
 
           echo "SDK 코드 생성 중..."
-          pnpm generate
-
-          echo "SDK 코드 생성 완료"
+          # 타입 검사 실패해도 PR 생성을 위해 계속 진행
+          if pnpm generate; then
+            echo "generate_status=success" >> $GITHUB_OUTPUT
+            echo "SDK 코드 생성 완료"
+          else
+            echo "generate_status=failed" >> $GITHUB_OUTPUT
+            echo "::warning::SDK 코드 생성 실패 - PR 생성 후 수동 수정 필요"
+          fi
 
       - name: 루트 package.json 버전 업데이트
         if: steps.check.outputs.skip != 'true'
@@ -187,13 +193,25 @@ jobs:
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           BRANCH_NAME="${{ steps.version.outputs.branch_name }}"
+          GENERATE_STATUS="${{ steps.generate.outputs.generate_status }}"
+
+          # SDK 생성 실패 시 경고 메시지
+          if [ "$GENERATE_STATUS" = "failed" ]; then
+            GENERATE_WARNING="> ⚠️ **SDK 코드 생성 중 타입 검사 실패** - 수동 수정이 필요합니다.
+
+          "
+            TITLE_PREFIX="[타입 오류] "
+          else
+            GENERATE_WARNING=""
+            TITLE_PREFIX=""
+          fi
 
           # PR 생성
           PR_RESULT=$(gh pr create \
-            --title "SDK 업데이트: v${VERSION}" \
+            --title "${TITLE_PREFIX}SDK 업데이트: v${VERSION}" \
             --body "## SDK 업데이트: v${VERSION}
 
-          \`@apps-in-toss/web-framework\` v${VERSION} 기반으로 SDK 코드를 재생성했습니다.
+          ${GENERATE_WARNING}\`@apps-in-toss/web-framework\` v${VERSION} 기반으로 SDK 코드를 재생성했습니다.
 
           ### 검토 사항
           - [ ] E2E 테스트 통과 확인 (이 워크플로우에서 자동 실행)

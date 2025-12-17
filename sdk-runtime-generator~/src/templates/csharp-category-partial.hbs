@@ -88,7 +88,7 @@ namespace AppsInToss
 {{/if}}
         [Preserve]
         [APICategory("{{../categoryName}}")]
-        public static async {{#if (eq this.callbackType "void")}}Task{{else}}Task<{{{this.callbackType}}}>{{/if}} {{{this.pascalName}}}({{#each this.parameters}}{{this.paramType}} {{this.paramName}}{{#unless @last}}, {{/unless}}{{/each}})
+        public static async {{#if (eq this.callbackType "void")}}Task{{else}}Task<{{{this.callbackType}}}>{{/if}} {{{this.pascalName}}}({{#each this.parameters}}{{this.paramType}} {{this.paramName}}{{#if this.optional}} = null{{/if}}{{#unless @last}}, {{/unless}}{{/each}})
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
 {{#if (eq this.callbackType "void")}}
@@ -139,7 +139,7 @@ namespace AppsInToss
 {{/if}}
         [Preserve]
         [APICategory("{{../categoryName}}")]
-        public static async {{#if (eq this.callbackType "void")}}Task{{else}}Task<{{{this.callbackType}}}>{{/if}} {{{this.pascalName}}}({{#each this.parameters}}{{this.paramType}} {{this.paramName}}{{#unless @last}}, {{/unless}}{{/each}})
+        public static async {{#if (eq this.callbackType "void")}}Task{{else}}Task<{{{this.callbackType}}}>{{/if}} {{{this.pascalName}}}({{#each this.parameters}}{{this.paramType}} {{this.paramName}}{{#if this.optional}} = null{{/if}}{{#unless @last}}, {{/unless}}{{/each}})
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
 {{#if (eq this.callbackType "void")}}

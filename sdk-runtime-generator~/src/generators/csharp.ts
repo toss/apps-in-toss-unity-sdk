@@ -297,8 +297,20 @@ export class CSharpGenerator {
     const callbackTypes = new Set<string>();
     const enumCallbackTypes = new Set<string>();
 
+    // 이벤트 데이터 타입 수집 (void가 아닌 이벤트)
+    const eventDataTypes = new Set<string>();
+
     for (const api of apis) {
-      // 이벤트 구독 API는 제외 (별도의 콜백 시스템 사용)
+      // 이벤트 구독 API에서 이벤트 데이터 타입 수집
+      if (api.isEventSubscription && api.eventDataType) {
+        const dataType = mapToCSharpType(api.eventDataType);
+        if (dataType !== 'void' && dataType !== 'undefined') {
+          eventDataTypes.add(dataType);
+        }
+        continue;
+      }
+
+      // 이벤트 구독 API는 콜백 타입 수집에서 제외
       if (api.isEventSubscription) continue;
 
       let callbackType: string;
@@ -349,6 +361,7 @@ export class CSharpGenerator {
     return this.coreTemplate({
       callbackTypes: Array.from(callbackTypes).sort(),
       enumCallbackTypes: Array.from(enumCallbackTypes).sort(),
+      eventDataTypes: Array.from(eventDataTypes).sort(),
     });
   }
 
@@ -491,14 +504,29 @@ export class CSharpGenerator {
     // 이벤트 API는 파서에서 설정한 카테고리 사용, 나머지는 categories.ts에서 룩업
     const categoryMap = new Map<string, ParsedAPI[]>();
     for (const api of apis) {
-      const category = api.isEventSubscription ? api.category : getCategory(api.originalName);
+      // 이벤트 구독 API는 파서에서 설정한 카테고리 사용
+      // 네임스페이스 API는 전체 이름(pascalName)으로 룩업
+      // 일반 API는 원본 이름(originalName)으로 룩업
+      let category: string;
+      if (api.isEventSubscription) {
+        category = api.category;
+      } else if (api.namespace) {
+        // 네임스페이스 API: 전체 이름으로 룩업 (예: IAPGetProductItemList)
+        category = getCategory(api.pascalName);
+      } else {
+        // 일반 API: 원본 이름으로 룩업 (예: appLogin)
+        category = getCategory(api.originalName);
+      }
       if (!categoryMap.has(category)) {
         categoryMap.set(category, []);
       }
       categoryMap.get(category)!.push(api);
     }
 
-    // 카테고리 순서에 따라 파일 생성
+    // 카테고리 순서에 따라 파일 생성 (CATEGORY_ORDER 우선, 그 외 알파벳 순)
+    const processedCategories = new Set<string>();
+
+    // 1. CATEGORY_ORDER에 있는 카테고리 먼저 처리
     for (const category of CATEGORY_ORDER) {
       const categoryApis = categoryMap.get(category);
       if (!categoryApis || categoryApis.length === 0) continue;
@@ -513,19 +541,25 @@ export class CSharpGenerator {
 
       const fileName = `AIT.${category}.cs`;
       files.set(fileName, content);
+      processedCategories.add(category);
     }
 
-    // Other 카테고리 처리 (정의되지 않은 API들)
-    const otherApis = categoryMap.get('Other');
-    if (otherApis && otherApis.length > 0) {
-      const apisData = otherApis.map(api => this.prepareApiData(api));
+    // 2. CATEGORY_ORDER에 없는 새로운 카테고리 처리 (동적 감지된 카테고리)
+    const remainingCategories = Array.from(categoryMap.keys())
+      .filter(cat => !processedCategories.has(cat))
+      .sort(); // 알파벳 순
+
+    for (const category of remainingCategories) {
+      const categoryApis = categoryMap.get(category)!;
+      const apisData = categoryApis.map(api => this.prepareApiData(api));
 
       const content = this.categoryPartialTemplate({
-        categoryName: 'Other',
+        categoryName: category,
         apis: apisData,
       });
 
-      files.set('AIT.Other.cs', content);
+      const fileName = `AIT.${category}.cs`;
+      files.set(fileName, content);
     }
 
     return files;

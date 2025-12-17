@@ -85,15 +85,16 @@ PluginImporter:
 
 /**
  * 디렉토리 내 모든 .meta 파일 수집 (재귀적)
- * @returns Map<파일명(확장자 제외), .meta 파일 내용>
+ * @returns Map<파일 절대경로(확장자 제외), .meta 파일 내용>
  */
 async function collectMetaFiles(dir: string): Promise<Map<string, string>> {
   const metaFiles = new Map<string, string>();
+  const absoluteDir = path.resolve(dir);
 
   try {
-    const entries = await fs.readdir(dir, { withFileTypes: true });
+    const entries = await fs.readdir(absoluteDir, { withFileTypes: true });
     for (const entry of entries) {
-      const fullPath = path.join(dir, entry.name);
+      const fullPath = path.join(absoluteDir, entry.name);
       if (entry.isDirectory()) {
         // 재귀적으로 하위 디렉토리 탐색
         const subMetas = await collectMetaFiles(fullPath);
@@ -101,10 +102,9 @@ async function collectMetaFiles(dir: string): Promise<Map<string, string>> {
           metaFiles.set(key, value);
         }
       } else if (entry.name.endsWith('.meta')) {
-        // .meta 파일 발견: 원본 파일명을 키로 저장
-        const originalFileName = entry.name.slice(0, -5); // .meta 제거
+        // .meta 파일 발견: 원본 파일의 절대경로를 키로 저장
         const content = await fs.readFile(fullPath, 'utf-8');
-        metaFiles.set(fullPath.slice(0, -5), content); // 전체 경로에서 .meta 제거
+        metaFiles.set(fullPath.slice(0, -5), content); // .meta 제거한 절대경로
       }
     }
   } catch {

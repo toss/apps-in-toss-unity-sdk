@@ -366,10 +366,12 @@ namespace AppsInToss
             {
                 switch (typeName)
                 {
-                    case "TdsNavigationAccessoryEventData":
-                        var tdsData = JsonConvert.DeserializeObject<TdsNavigationAccessoryEventData>(apiResponse.data);
-                        (rawCallback as Action<TdsNavigationAccessoryEventData>)?.Invoke(tdsData);
+{{#each eventDataTypes}}
+                    case "{{this}}":
+                        var data_{{@index}} = JsonConvert.DeserializeObject<{{this}}>(apiResponse.data);
+                        (rawCallback as Action<{{this}}>)?.Invoke(data_{{@index}});
                         break;
+{{/each}}
                     case "void":
                         // Void event - call Action directly
                         (rawCallback as Action)?.Invoke();

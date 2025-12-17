@@ -30,7 +30,7 @@ namespace AppsInToss
 {{/if}}
 {{#if isAsync}}
         /// <exception cref="AITException">Thrown when the API call fails</exception>
-        public static async {{#if (eq callbackType "void")}}Task{{else}}Task<{{{callbackType}}}>{{/if}} {{{pascalName}}}({{#each parameters}}{{this.paramType}} {{this.paramName}}{{#unless @last}}, {{/unless}}{{/each}})
+        public static async {{#if (eq callbackType "void")}}Task{{else}}Task<{{{callbackType}}}>{{/if}} {{{pascalName}}}({{#each parameters}}{{this.paramType}} {{this.paramName}}{{#if this.optional}} = null{{/if}}{{#unless @last}}, {{/unless}}{{/each}})
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
 {{#if (eq callbackType "void")}}
@@ -76,7 +76,7 @@ namespace AppsInToss
 #endif
 {{else}}
         /// <exception cref="AITException">Thrown when the API call fails</exception>
-        public static async Task<{{{callbackType}}}> {{{pascalName}}}({{#each parameters}}{{this.paramType}} {{this.paramName}}{{#unless @last}}, {{/unless}}{{/each}})
+        public static async Task<{{{callbackType}}}> {{{pascalName}}}({{#each parameters}}{{this.paramType}} {{this.paramName}}{{#if this.optional}} = null{{/if}}{{#unless @last}}, {{/unless}}{{/each}})
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<{{{callbackType}}}>();

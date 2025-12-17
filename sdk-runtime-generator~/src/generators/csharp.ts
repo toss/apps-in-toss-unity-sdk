@@ -160,6 +160,12 @@ export class CSharpGenerator {
       };
     });
 
+    // C# 규칙: optional 파라미터는 필수 파라미터 뒤에 와야 함
+    parameters.sort((a, b) => {
+      if (a.optional === b.optional) return 0;
+      return a.optional ? 1 : -1;
+    });
+
     // 반환 타입 변환
     const returnType = mapToCSharpType(api.returnType);
 
@@ -416,6 +422,12 @@ export class CSharpGenerator {
       };
     });
 
+    // C# 규칙: optional 파라미터는 필수 파라미터 뒤에 와야 함
+    parameters.sort((a, b) => {
+      if (a.optional === b.optional) return 0;
+      return a.optional ? 1 : -1;
+    });
+
     // 반환 타입 변환
     const returnType = mapToCSharpType(api.returnType);
 
@@ -597,6 +609,12 @@ export class CSharpGenerator {
         description: param.description,
         isPrimitive,
       };
+    });
+
+    // C# 규칙: optional 파라미터는 필수 파라미터 뒤에 와야 함
+    parameters.sort((a, b) => {
+      if (a.optional === b.optional) return 0;
+      return a.optional ? 1 : -1;
     });
 
     // 반환 타입 변환

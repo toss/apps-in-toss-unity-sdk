@@ -651,6 +651,9 @@ namespace AppsInToss
         [Preserve]
         [JsonProperty("txId")]
         public string TxId;
+        [Preserve]
+        [JsonProperty("skipConfirmDoc")]
+        public bool SkipConfirmDoc; // optional
     }
 
     [Serializable]

@@ -1,4 +1,4 @@
-import { Project, SourceFile, FunctionDeclaration, TypeNode, SyntaxKind } from 'ts-morph';
+import { Project, SourceFile, FunctionDeclaration, SyntaxKind } from 'ts-morph';
 import { ParsedAPI, ParsedParameter, ParsedType, ParsedTypeDefinition } from './types.js';
 import * as path from 'path';
 
@@ -102,55 +102,195 @@ export class TypeScriptParser {
     return apis;
   }
 
-  /**
-   * 파싱할 네임스페이스 객체 목록
-   */
-  private static readonly NAMESPACE_OBJECTS = [
-    'IAP',
-    'Storage',
-    'GoogleAdMob',
-    'SafeAreaInsets',
-    'partner',
-    'env',
-  ];
+  // ============================================================
+  // 동적 감지 메서드 (타입 주석 텍스트 기반)
+  // getTypeNode().getText()를 사용하여 타입 해석 없이 패턴 매칭
+  // 스택 오버플로우 없이 완전 자동 감지
+  // ============================================================
 
   /**
-   * 이벤트 네임스페이스 목록 (addEventListener 패턴)
+   * VariableDeclaration에서 타입 주석 텍스트만 추출 (JSDoc 제외)
+   * getType()을 사용하지 않으므로 스택 오버플로우 위험 없음
    */
-  private static readonly EVENT_NAMESPACES = [
-    'tdsEvent',
-    'graniteEvent',
-    'appsInTossEvent',
-  ];
+  private getTypeAnnotationText(varDecl: any): string {
+    try {
+      // 타입 노드가 있으면 직접 텍스트 추출 (JSDoc 제외)
+      const typeNode = varDecl.getTypeNode?.();
+      if (typeNode) {
+        return typeNode.getText();
+      }
+      // 타입 노드가 없으면 빈 문자열 반환 (JSDoc 포함 방지)
+      return '';
+    } catch {
+      return '';
+    }
+  }
 
   /**
-   * 이벤트 네임스페이스 → 타입 별칭 매핑
-   * 런타임에 web-framework의 타입 정의에서 동적으로 이벤트를 파싱
+   * 선언이 현재 소스 파일에 정의되어 있는지 확인 (re-export 제외)
    */
-  private static readonly EVENT_TYPE_MAP: Record<string, string> = {
-    tdsEvent: 'TdsEvent',
-    graniteEvent: 'GraniteEvent',
-    appsInTossEvent: 'AppsInTossEvent',
-  };
+  private isDefinedInFile(decl: any, sourceFile: SourceFile): boolean {
+    try {
+      const declFile = decl.getSourceFile?.();
+      if (!declFile) return false;
+      return declFile.getFilePath() === sourceFile.getFilePath();
+    } catch {
+      return false;
+    }
+  }
 
   /**
-   * 파싱할 글로벌 함수 목록 (index.d.ts에 정의된 독립 함수)
+   * 이벤트 네임스페이스 감지 (타입에 addEventListener 속성 포함)
+   * 패턴: const xxxEvent: { addEventListener: <K extends keyof ...> ... }
    */
-  private static readonly GLOBAL_FUNCTIONS = [
-    'isMinVersionSupported',
-    'getAppsInTossGlobals',
-  ];
+  private detectEventNamespaces(sourceFile: SourceFile): Set<string> {
+    const eventNamespaces = new Set<string>();
+    const exportedDeclarations = sourceFile.getExportedDeclarations();
+
+    for (const [name, declarations] of exportedDeclarations) {
+      for (const decl of declarations) {
+        if (decl.getKind() !== SyntaxKind.VariableDeclaration) continue;
+        // 이 파일에 정의된 선언만 처리 (re-export 제외)
+        if (!this.isDefinedInFile(decl, sourceFile)) continue;
+
+        const typeText = this.getTypeAnnotationText(decl);
+        // addEventListener가 속성으로 정의되어 있는지 확인
+        // 패턴: addEventListener: 또는 addEventListener< (JSDoc 내 언급 제외)
+        if (/addEventListener\s*[:<]/.test(typeText)) {
+          eventNamespaces.add(name);
+        }
+      }
+    }
+
+    return eventNamespaces;
+  }
 
   /**
-   * index.d.ts에서 네임스페이스 객체와 글로벌 함수 파싱
+   * 선언이 deprecated인지 확인 (JSDoc @deprecated 태그)
+   */
+  private isDeprecatedDeclaration(decl: any): boolean {
+    try {
+      const jsDocs = decl.getJsDocs?.() || [];
+      for (const jsDoc of jsDocs) {
+        const tags = jsDoc.getTags?.() || [];
+        if (tags.some((tag: any) => tag.getTagName?.() === 'deprecated')) {
+          return true;
+        }
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * 글로벌 함수 감지 (이 파일에 정의된 FunctionDeclaration 또는 단순 화살표 함수)
+   * 패턴: declare function NAME(...) 또는 declare const NAME: () => ...
+   * deprecated 함수는 제외
+   */
+  private detectGlobalFunctions(sourceFile: SourceFile): Set<string> {
+    const globalFunctions = new Set<string>();
+    const exportedDeclarations = sourceFile.getExportedDeclarations();
+
+    for (const [name, declarations] of exportedDeclarations) {
+      for (const decl of declarations) {
+        // 이 파일에 정의된 선언만 처리 (re-export 제외)
+        if (!this.isDefinedInFile(decl, sourceFile)) continue;
+
+        // deprecated 선언은 제외
+        if (this.isDeprecatedDeclaration(decl)) continue;
+
+        // Case 1: function declaration (declare function isMinVersionSupported(...))
+        if (decl.getKind() === SyntaxKind.FunctionDeclaration) {
+          globalFunctions.add(name);
+          continue;
+        }
+
+        // Case 2: const with simple arrow function type (const getAppsInTossGlobals: () => ...)
+        if (decl.getKind() === SyntaxKind.VariableDeclaration) {
+          const typeText = this.getTypeAnnotationText(decl);
+          // 단순 화살표 함수 타입: () => ... 형태이면서 객체 리터럴이 아닌 경우
+          if (/^\s*\(\s*\)\s*=>\s*\w/.test(typeText) && !typeText.includes('{')) {
+            globalFunctions.add(name);
+          }
+        }
+      }
+    }
+
+    return globalFunctions;
+  }
+
+  /**
+   * 네임스페이스 객체 감지 (메서드들의 모음인 순수 객체)
+   * 패턴: declare const NAME: { method1: (...) => ..., ... } 또는 { method1: typeof fn, ... }
+   * 호출 가능한 객체(callable)는 제외 (예: startUpdateLocation)
+   */
+  private detectNamespaceObjects(
+    sourceFile: SourceFile,
+    eventNamespaces: Set<string>,
+    globalFunctions: Set<string>
+  ): Set<string> {
+    const namespaceObjects = new Set<string>();
+    const exportedDeclarations = sourceFile.getExportedDeclarations();
+
+    for (const [name, declarations] of exportedDeclarations) {
+      // 이미 이벤트 네임스페이스거나 글로벌 함수면 스킵
+      if (eventNamespaces.has(name) || globalFunctions.has(name)) continue;
+
+      for (const decl of declarations) {
+        if (decl.getKind() !== SyntaxKind.VariableDeclaration) continue;
+        // 이 파일에 정의된 선언만 처리 (re-export 제외)
+        if (!this.isDefinedInFile(decl, sourceFile)) continue;
+
+        const typeText = this.getTypeAnnotationText(decl);
+
+        // 객체 리터럴 타입인지 확인 ({ ... } 형태)
+        if (!typeText.startsWith('{')) continue;
+
+        // 호출 가능한 객체는 제외 (타입이 (...)로 시작하면 callable)
+        // 예: { (params: Foo): Bar; getPermission(): ... }
+        if (/^\{\s*\(/.test(typeText)) continue;
+
+        // 메서드가 있는지 확인:
+        // 패턴 1: => (화살표 함수)
+        // 패턴 2: typeof (함수 참조)
+        const hasArrowMethods = typeText.includes('=>');
+        const hasTypeofMethods = typeText.includes('typeof ');
+
+        if (!hasArrowMethods && !hasTypeofMethods) continue;
+
+        namespaceObjects.add(name);
+      }
+    }
+
+    return namespaceObjects;
+  }
+
+  /**
+   * index.d.ts에서 네임스페이스 객체, 이벤트 네임스페이스, 글로벌 함수 파싱
+   * 모든 항목을 동적으로 감지하여 파싱
    */
   private parseNamespaceObjects(sourceFile: SourceFile): ParsedAPI[] {
     const apis: ParsedAPI[] = [];
     const exportedDeclarations = sourceFile.getExportedDeclarations();
 
+    // 1. 이벤트 네임스페이스 감지 (addEventListener 패턴)
+    const eventNamespaces = this.detectEventNamespaces(sourceFile);
+
+    // 2. 글로벌 함수 감지 (FunctionDeclaration)
+    const globalFunctions = this.detectGlobalFunctions(sourceFile);
+
+    // 3. 네임스페이스 객체 감지 (나머지 중 메서드만 있는 객체)
+    const namespaceObjects = this.detectNamespaceObjects(sourceFile, eventNamespaces, globalFunctions);
+
+    // 감지된 항목 로깅 (디버깅용)
+    // console.log('Detected event namespaces:', [...eventNamespaces]);
+    // console.log('Detected global functions:', [...globalFunctions]);
+    // console.log('Detected namespace objects:', [...namespaceObjects]);
+
     for (const [name, declarations] of exportedDeclarations) {
-      // 네임스페이스 객체 파싱 (IAP, Storage 등)
-      if (TypeScriptParser.NAMESPACE_OBJECTS.includes(name)) {
+      // 네임스페이스 객체 파싱 (동적 감지됨)
+      if (namespaceObjects.has(name)) {
         for (const declaration of declarations) {
           if (declaration.getKind() === SyntaxKind.VariableDeclaration) {
             const varDecl = declaration.asKind(SyntaxKind.VariableDeclaration);
@@ -162,14 +302,14 @@ export class TypeScriptParser {
         }
       }
 
-      // 이벤트 네임스페이스 파싱 (tdsEvent, graniteEvent, appsInTossEvent)
-      if (TypeScriptParser.EVENT_NAMESPACES.includes(name)) {
+      // 이벤트 네임스페이스 파싱 (동적 감지됨)
+      if (eventNamespaces.has(name)) {
         const eventAPIs = this.parseEventNamespace(name, sourceFile);
         apis.push(...eventAPIs);
       }
 
-      // 글로벌 함수 파싱 (isMinVersionSupported, getAppsInTossGlobals)
-      if (TypeScriptParser.GLOBAL_FUNCTIONS.includes(name)) {
+      // 글로벌 함수 파싱 (동적 감지됨)
+      if (globalFunctions.has(name)) {
         for (const declaration of declarations) {
           if (declaration.getKind() === SyntaxKind.FunctionDeclaration) {
             const func = declaration as FunctionDeclaration;
@@ -298,21 +438,27 @@ export class TypeScriptParser {
   }
 
   /**
+   * 네임스페이스 → 카테고리 특수 매핑 (기본값: 네임스페이스명을 PascalCase로)
+   * 새 네임스페이스가 추가되어도 자동으로 처리됨
+   */
+  private static readonly NAMESPACE_CATEGORY_OVERRIDES: Record<string, string> = {
+    GoogleAdMob: 'Advertising',
+    SafeAreaInsets: 'SafeArea',
+    env: 'Environment',
+  };
+
+  /**
    * 네임스페이스 이름을 카테고리로 변환
+   * - 특수 매핑이 있으면 사용
+   * - 없으면 PascalCase로 변환하여 카테고리로 사용
    */
   private getNamespaceCategory(namespaceName: string): string {
-    const categoryMap: Record<string, string> = {
-      IAP: 'IAP',
-      Storage: 'Storage',
-      GoogleAdMob: 'Advertising',
-      SafeAreaInsets: 'SafeArea',
-      partner: 'Partner',
-      tdsEvent: 'AppEvents',
-      graniteEvent: 'AppEvents',
-      appsInTossEvent: 'AppEvents',
-      env: 'Environment',
-    };
-    return categoryMap[namespaceName] || 'Other';
+    // 특수 매핑 확인
+    if (TypeScriptParser.NAMESPACE_CATEGORY_OVERRIDES[namespaceName]) {
+      return TypeScriptParser.NAMESPACE_CATEGORY_OVERRIDES[namespaceName];
+    }
+    // 기본값: PascalCase로 변환 (partner → Partner, IAP → IAP)
+    return this.toPascalCase(namespaceName);
   }
 
   /**
@@ -381,14 +527,13 @@ export class TypeScriptParser {
   }
 
   /**
-   * 이벤트 네임스페이스 파싱 (tdsEvent, graniteEvent, appsInTossEvent)
+   * 이벤트 네임스페이스 파싱 (addEventListener 패턴이 있는 객체)
    * 각 이벤트를 별도의 Subscribe 메서드로 생성
    */
   private parseEventNamespace(namespaceName: string, sourceFile: SourceFile): ParsedAPI[] {
     const apis: ParsedAPI[] = [];
-    const typeName = TypeScriptParser.EVENT_TYPE_MAP[namespaceName];
-
-    if (!typeName) return apis;
+    // 이벤트 타입 이름을 동적으로 결정: tdsEvent → TdsEvent (첫 글자 대문자화)
+    const typeName = this.toPascalCase(namespaceName);
 
     // 동적으로 이벤트 정의 파싱
     const eventDefs = this.parseEventTypeDefinition(typeName, sourceFile);

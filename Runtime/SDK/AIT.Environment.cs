@@ -20,6 +20,31 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Environment")]
+        public static async Task<string> envGetDeploymentId()
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<string>();
+            string callbackId = AITCore.Instance.RegisterCallback<string>(
+                result => tcs.TrySetResult(result),
+                error => tcs.TrySetException(error)
+            );
+            __envGetDeploymentId_Internal(callbackId, "string");
+            return await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] envGetDeploymentId called");
+            await Task.CompletedTask;
+            return "";
+#endif
+        }
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __envGetDeploymentId_Internal(string callbackId, string typeName);
+#endif
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
+        [APICategory("Environment")]
         public static async Task<AppsInTossGlobals> GetAppsInTossGlobals()
         {
 #if UNITY_WEBGL && !UNITY_EDITOR

@@ -1,6 +1,8 @@
 /**
  * API 카테고리 매핑
  * SDK 생성 시 API를 카테고리별로 그룹핑하여 partial class 파일 생성
+ *
+ * ⚠️ 새 API 추가 시 이 목록에 추가 필요 (매핑에 없으면 생성 실패)
  */
 
 export const API_CATEGORIES: Record<string, string[]> = {
@@ -111,8 +113,9 @@ export const CATEGORY_ORDER: string[] = [
 
 /**
  * API 이름으로 카테고리 찾기
- * @param apiName API 이름 (camelCase, 예: appLogin)
- * @returns 카테고리 이름 또는 'Other'
+ * @param apiName API 이름 (camelCase, 예: appLogin) 또는 PascalCase (예: IAPGetProductItemList)
+ * @returns 카테고리 이름
+ * @throws 매핑에 없는 API인 경우 에러 발생
  */
 export function getCategory(apiName: string): string {
   for (const [category, apis] of Object.entries(API_CATEGORIES)) {
@@ -120,37 +123,30 @@ export function getCategory(apiName: string): string {
       return category;
     }
   }
-  return 'Other';
+  // 매핑에 없는 API는 에러 발생 (명시적으로 카테고리 추가 필요)
+  throw new Error(
+    `API '${apiName}'의 카테고리가 정의되지 않았습니다.\n` +
+    `categories.ts의 API_CATEGORIES에 추가해주세요.`
+  );
 }
 
 /**
- * API 목록을 카테고리별로 그룹핑
- * @param apiNames API 이름 목록
- * @returns 카테고리별 API 이름 Map
+ * 모든 API가 카테고리에 매핑되어 있는지 검증
+ * @param apiNames 검증할 API 이름 목록
+ * @returns 검증 결과 (성공 여부, 누락된 API 목록)
  */
-export function groupByCategory(apiNames: string[]): Map<string, string[]> {
-  const grouped = new Map<string, string[]>();
-
-  for (const apiName of apiNames) {
-    const category = getCategory(apiName);
-    if (!grouped.has(category)) {
-      grouped.set(category, []);
-    }
-    grouped.get(category)!.push(apiName);
+export function validateCategoryMappings(apiNames: string[]): {
+  success: boolean;
+  missingApis: string[];
+} {
+  const allMappedApis = new Set<string>();
+  for (const apis of Object.values(API_CATEGORIES)) {
+    apis.forEach(api => allMappedApis.add(api));
   }
 
-  // 카테고리 순서에 따라 정렬된 Map 반환
-  const sorted = new Map<string, string[]>();
-  for (const category of CATEGORY_ORDER) {
-    if (grouped.has(category)) {
-      sorted.set(category, grouped.get(category)!);
-    }
-  }
-
-  // Other 카테고리 추가
-  if (grouped.has('Other')) {
-    sorted.set('Other', grouped.get('Other')!);
-  }
-
-  return sorted;
+  const missingApis = apiNames.filter(name => !allMappedApis.has(name));
+  return {
+    success: missingApis.length === 0,
+    missingApis,
+  };
 }

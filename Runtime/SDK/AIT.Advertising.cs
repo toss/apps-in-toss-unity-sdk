@@ -1,0 +1,183 @@
+// -----------------------------------------------------------------------
+// <copyright file="AIT.Advertising.cs" company="Toss">
+//     Copyright (c) Toss. All rights reserved.
+//     Apps in Toss Unity SDK - Advertising APIs
+// </copyright>
+// -----------------------------------------------------------------------
+
+using System;
+using System.Threading.Tasks;
+using Newtonsoft.Json;
+using UnityEngine.Scripting;
+
+namespace AppsInToss
+{
+    /// <summary>
+    /// Apps in Toss Platform API - Advertising
+    /// </summary>
+    public static partial class AIT
+    {
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Obsolete("이 함수는 더 이상 사용되지 않습니다. 대신 {@link GoogleAdMob.loadAppsInTossAdMob}를 사용해주세요. *")]
+        [Preserve]
+        [APICategory("Advertising")]
+        public static async Task<System.Action> GoogleAdMobLoadAdMobInterstitialAd(System.Action args)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<System.Action>();
+            string callbackId = AITCore.Instance.RegisterCallback<System.Action>(
+                result => tcs.TrySetResult(result),
+                error => tcs.TrySetException(error)
+            );
+            __GoogleAdMobLoadAdMobInterstitialAd_Internal(AITJsonSettings.Serialize(args), callbackId, "System.Action");
+            return await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] GoogleAdMobLoadAdMobInterstitialAd called");
+            await Task.CompletedTask;
+            return default(System.Action);
+#endif
+        }
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __GoogleAdMobLoadAdMobInterstitialAd_Internal(string args, string callbackId, string typeName);
+#endif
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Obsolete("이 함수는 더 이상 사용되지 않습니다. 대신 {@link GoogleAdMob.loadAppsInTossAdMob}를 사용해주세요. *")]
+        [Preserve]
+        [APICategory("Advertising")]
+        public static async Task<System.Action> GoogleAdMobShowAdMobInterstitialAd(System.Action args)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<System.Action>();
+            string callbackId = AITCore.Instance.RegisterCallback<System.Action>(
+                result => tcs.TrySetResult(result),
+                error => tcs.TrySetException(error)
+            );
+            __GoogleAdMobShowAdMobInterstitialAd_Internal(AITJsonSettings.Serialize(args), callbackId, "System.Action");
+            return await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] GoogleAdMobShowAdMobInterstitialAd called");
+            await Task.CompletedTask;
+            return default(System.Action);
+#endif
+        }
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __GoogleAdMobShowAdMobInterstitialAd_Internal(string args, string callbackId, string typeName);
+#endif
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Obsolete("이 함수는 더 이상 사용되지 않습니다. 대신 {@link GoogleAdMob.loadAppsInTossAdMob}를 사용해주세요. *")]
+        [Preserve]
+        [APICategory("Advertising")]
+        public static async Task<System.Action> GoogleAdMobLoadAdMobRewardedAd(System.Action args)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<System.Action>();
+            string callbackId = AITCore.Instance.RegisterCallback<System.Action>(
+                result => tcs.TrySetResult(result),
+                error => tcs.TrySetException(error)
+            );
+            __GoogleAdMobLoadAdMobRewardedAd_Internal(AITJsonSettings.Serialize(args), callbackId, "System.Action");
+            return await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] GoogleAdMobLoadAdMobRewardedAd called");
+            await Task.CompletedTask;
+            return default(System.Action);
+#endif
+        }
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __GoogleAdMobLoadAdMobRewardedAd_Internal(string args, string callbackId, string typeName);
+#endif
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Obsolete("이 함수는 더 이상 사용되지 않습니다. 대신 {@link GoogleAdMob.loadAppsInTossAdMob}를 사용해주세요. *")]
+        [Preserve]
+        [APICategory("Advertising")]
+        public static async Task<System.Action> GoogleAdMobShowAdMobRewardedAd(System.Action args)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<System.Action>();
+            string callbackId = AITCore.Instance.RegisterCallback<System.Action>(
+                result => tcs.TrySetResult(result),
+                error => tcs.TrySetException(error)
+            );
+            __GoogleAdMobShowAdMobRewardedAd_Internal(AITJsonSettings.Serialize(args), callbackId, "System.Action");
+            return await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] GoogleAdMobShowAdMobRewardedAd called");
+            await Task.CompletedTask;
+            return default(System.Action);
+#endif
+        }
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __GoogleAdMobShowAdMobRewardedAd_Internal(string args, string callbackId, string typeName);
+#endif
+        /// <summary>
+        /// 광고를 미리 불러와서, 광고가 필요한 시점에 바로 보여줄 수 있도록 준비하는 함수예요.
+        /// </summary>
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Obsolete("이 함수는 더 이상 사용되지 않습니다. 대신 {@link GoogleAdMob.loadAppsInTossAdMob}를 사용해주세요. *")]
+        [Preserve]
+        [APICategory("Advertising")]
+        public static async Task<System.Action> GoogleAdMobLoadAppsInTossAdMob(System.Action args)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<System.Action>();
+            string callbackId = AITCore.Instance.RegisterCallback<System.Action>(
+                result => tcs.TrySetResult(result),
+                error => tcs.TrySetException(error)
+            );
+            __GoogleAdMobLoadAppsInTossAdMob_Internal(AITJsonSettings.Serialize(args), callbackId, "System.Action");
+            return await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] GoogleAdMobLoadAppsInTossAdMob called");
+            await Task.CompletedTask;
+            return default(System.Action);
+#endif
+        }
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __GoogleAdMobLoadAppsInTossAdMob_Internal(string args, string callbackId, string typeName);
+#endif
+        /// <summary>
+        /// 광고를 미리 불러와서, 광고가 필요한 시점에 바로 보여줄 수 있도록 준비하는 함수예요.
+        /// </summary>
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Obsolete("이 함수는 더 이상 사용되지 않습니다. 대신 {@link GoogleAdMob.loadAppsInTossAdMob}를 사용해주세요. *")]
+        [Preserve]
+        [APICategory("Advertising")]
+        public static async Task<System.Action> GoogleAdMobShowAppsInTossAdMob(System.Action args)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<System.Action>();
+            string callbackId = AITCore.Instance.RegisterCallback<System.Action>(
+                result => tcs.TrySetResult(result),
+                error => tcs.TrySetException(error)
+            );
+            __GoogleAdMobShowAppsInTossAdMob_Internal(AITJsonSettings.Serialize(args), callbackId, "System.Action");
+            return await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] GoogleAdMobShowAppsInTossAdMob called");
+            await Task.CompletedTask;
+            return default(System.Action);
+#endif
+        }
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __GoogleAdMobShowAppsInTossAdMob_Internal(string args, string callbackId, string typeName);
+#endif
+    }
+}

@@ -168,7 +168,7 @@ public class RuntimeAPITester : MonoBehaviour
         TestAPICall("OpenURL", () => AIT.OpenURL("https://example.com"));
 
         // Share APIs
-        TestAPICall("GetTossShareLink", () => AIT.GetTossShareLink("/test", "https://example.com/og-image.png"));
+        TestAPICall("GetTossShareLink", () => AIT.GetTossShareLink("/test"));
         TestAPICall("Share", () => AIT.Share(new ShareMessage { Message = "test" }));
         TestAPICall("FetchContacts", () => AIT.FetchContacts(new FetchContactsOptions { Size = 10, Offset = 0 }));
 

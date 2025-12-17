@@ -75,7 +75,7 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Share")]
-        public static async Task<string> GetTossShareLink(string path, string ogImageUrl)
+        public static async Task<string> GetTossShareLink(string path, string ogImageUrl = null)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<string>();

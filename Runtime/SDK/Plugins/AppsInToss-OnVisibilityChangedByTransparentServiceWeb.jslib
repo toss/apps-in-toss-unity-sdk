@@ -12,7 +12,7 @@ mergeInto(LibraryManager.library, {
         var typeNameStr = UTF8ToString(typeName);
 
         try {
-            var result = window.AppsInToss.onVisibilityChangedByTransparentServiceWeb(eventParams);
+            var result = window.AppsInToss.onVisibilityChangedByTransparentServiceWeb(JSON.parse(UTF8ToString(eventParams)));
             var payload = JSON.stringify({
                 CallbackId: callback,
                 TypeName: typeNameStr,

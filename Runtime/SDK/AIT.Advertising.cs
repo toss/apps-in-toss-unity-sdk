@@ -21,7 +21,7 @@ namespace AppsInToss
         [Obsolete("이 함수는 더 이상 사용되지 않습니다. 대신 {@link GoogleAdMob.loadAppsInTossAdMob}를 사용해주세요. *")]
         [Preserve]
         [APICategory("Advertising")]
-        public static async Task<System.Action> GoogleAdMobLoadAdMobInterstitialAd(System.Action args)
+        public static async Task<System.Action> GoogleAdMobLoadAdMobInterstitialAd(GoogleAdMobLoadAdMobInterstitialAdArgs args)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<System.Action>();
@@ -47,7 +47,7 @@ namespace AppsInToss
         [Obsolete("이 함수는 더 이상 사용되지 않습니다. 대신 {@link GoogleAdMob.loadAppsInTossAdMob}를 사용해주세요. *")]
         [Preserve]
         [APICategory("Advertising")]
-        public static async Task<System.Action> GoogleAdMobShowAdMobInterstitialAd(System.Action args)
+        public static async Task<System.Action> GoogleAdMobShowAdMobInterstitialAd(GoogleAdMobShowAdMobInterstitialAdArgs args)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<System.Action>();
@@ -73,7 +73,7 @@ namespace AppsInToss
         [Obsolete("이 함수는 더 이상 사용되지 않습니다. 대신 {@link GoogleAdMob.loadAppsInTossAdMob}를 사용해주세요. *")]
         [Preserve]
         [APICategory("Advertising")]
-        public static async Task<System.Action> GoogleAdMobLoadAdMobRewardedAd(System.Action args)
+        public static async Task<System.Action> GoogleAdMobLoadAdMobRewardedAd(GoogleAdMobLoadAdMobRewardedAdArgs args)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<System.Action>();
@@ -99,7 +99,7 @@ namespace AppsInToss
         [Obsolete("이 함수는 더 이상 사용되지 않습니다. 대신 {@link GoogleAdMob.loadAppsInTossAdMob}를 사용해주세요. *")]
         [Preserve]
         [APICategory("Advertising")]
-        public static async Task<System.Action> GoogleAdMobShowAdMobRewardedAd(System.Action args)
+        public static async Task<System.Action> GoogleAdMobShowAdMobRewardedAd(GoogleAdMobShowAdMobRewardedAdArgs args)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<System.Action>();
@@ -128,7 +128,7 @@ namespace AppsInToss
         [Obsolete("이 함수는 더 이상 사용되지 않습니다. 대신 {@link GoogleAdMob.loadAppsInTossAdMob}를 사용해주세요. *")]
         [Preserve]
         [APICategory("Advertising")]
-        public static async Task<System.Action> GoogleAdMobLoadAppsInTossAdMob(System.Action args)
+        public static async Task<System.Action> GoogleAdMobLoadAppsInTossAdMob(GoogleAdMobLoadAppsInTossAdMobArgs args)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<System.Action>();
@@ -157,7 +157,7 @@ namespace AppsInToss
         [Obsolete("이 함수는 더 이상 사용되지 않습니다. 대신 {@link GoogleAdMob.loadAppsInTossAdMob}를 사용해주세요. *")]
         [Preserve]
         [APICategory("Advertising")]
-        public static async Task<System.Action> GoogleAdMobShowAppsInTossAdMob(System.Action args)
+        public static async Task<System.Action> GoogleAdMobShowAppsInTossAdMob(GoogleAdMobShowAppsInTossAdMobArgs args)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<System.Action>();

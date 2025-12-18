@@ -180,10 +180,8 @@ public class IAPTester : MonoBehaviour
         {
             var options = new IapCreateOneTimePurchaseOrderOptions
             {
-                Options = () =>
-                {
-                    iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Options callback invoked");
-                },
+                // Options에 SKU를 포함하는 객체 전달
+                Options = new { sku = iapSku },
                 OnEvent = (successEvent) =>
                 {
                     iapStatus = "Purchase completed";

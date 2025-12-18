@@ -828,7 +828,7 @@ export class TypeScriptParser {
     }
 
     // Primitive 타입 (string literal도 포함)
-    if (['string', 'number', 'boolean', 'void', 'any', 'unknown', 'undefined', 'null'].includes(typeText)) {
+    if (['string', 'number', 'boolean', 'void', 'any', 'unknown', 'undefined', 'null', 'never'].includes(typeText)) {
       return {
         name: typeText,
         kind: 'primitive',
@@ -984,7 +984,10 @@ export class TypeScriptParser {
     }
 
     // 함수 타입 (예: () => void, (event: T) => void)
-    if (typeText.includes('=>') || (typeNode.getCallSignatures && typeNode.getCallSignatures().length > 0)) {
+    // 실제로 호출 가능한 타입인지 확인 (call signature가 있어야 함)
+    // 중요: typeText.includes('=>')를 사용하면 함수 속성을 가진 객체 타입도 함수로 분류됨
+    // 예: Sku & { processProductGrant: (...) => ... } 같은 intersection 타입은 객체이지만 => 포함
+    if (typeNode.getCallSignatures && typeNode.getCallSignatures().length > 0) {
       const callSignatures = typeNode.getCallSignatures?.() || [];
       let functionParams: any[] = [];
       let functionReturnType: any = { name: 'void', kind: 'primitive', raw: 'void' };

@@ -45,7 +45,7 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("SafeArea")]
-        public static async Task<System.Action> SafeAreaInsetsSubscribe(System.Action __0)
+        public static async Task<System.Action> SafeAreaInsetsSubscribe(SafeAreaInsetsSubscribe__0 __0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<System.Action>();

@@ -333,10 +333,206 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class IapCreateOneTimePurchaseOrderOptions
+    public class GoogleAdMobLoadAdMobInterstitialAdArgs
     {
         [JsonIgnore]
-        public System.Action Options;
+        public System.Action<object> OnEvent;
+        [JsonIgnore]
+        public System.Action<Error> OnError;
+        [Preserve]
+        [JsonProperty("options")]
+        public LoadAdMobInterstitialAdOptions Options; // optional
+    }
+
+    [Serializable]
+    [Preserve]
+    public class LoadAdMobInterstitialAdEvent
+    {
+        [Preserve]
+        [JsonProperty("type")]
+        public string Type;
+        [Preserve]
+        [JsonProperty("data")]
+        public object Data;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class Error
+    {
+        [Preserve]
+        [JsonProperty("name")]
+        public string Name;
+        [Preserve]
+        [JsonProperty("message")]
+        public string Message;
+        [Preserve]
+        [JsonProperty("stack")]
+        public string Stack; // optional
+    }
+
+    [Serializable]
+    [Preserve]
+    public class LoadAdMobInterstitialAdOptions
+    {
+        [Preserve]
+        [JsonProperty("adUnitId")]
+        public string AdUnitId;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class GoogleAdMobShowAdMobInterstitialAdArgs
+    {
+        [JsonIgnore]
+        public System.Action<object> OnEvent;
+        [JsonIgnore]
+        public System.Action<Error> OnError;
+        [Preserve]
+        [JsonProperty("options")]
+        public ShowAdMobInterstitialAdOptions Options; // optional
+    }
+
+    [Serializable]
+    [Preserve]
+    public class ShowAdMobInterstitialAdOptions
+    {
+        [Preserve]
+        [JsonProperty("adUnitId")]
+        public string AdUnitId;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class GoogleAdMobLoadAdMobRewardedAdArgs
+    {
+        [JsonIgnore]
+        public System.Action<object> OnEvent;
+        [JsonIgnore]
+        public System.Action<Error> OnError;
+        [Preserve]
+        [JsonProperty("options")]
+        public LoadAdMobRewardedAdOptions Options; // optional
+    }
+
+    [Serializable]
+    [Preserve]
+    public class LoadAdMobRewardedAdEvent
+    {
+        [Preserve]
+        [JsonProperty("type")]
+        public string Type;
+        [Preserve]
+        [JsonProperty("data")]
+        public object Data;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class LoadAdMobRewardedAdOptions
+    {
+        [Preserve]
+        [JsonProperty("adUnitId")]
+        public string AdUnitId;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class GoogleAdMobShowAdMobRewardedAdArgs
+    {
+        [JsonIgnore]
+        public System.Action<object> OnEvent;
+        [JsonIgnore]
+        public System.Action<Error> OnError;
+        [Preserve]
+        [JsonProperty("options")]
+        public ShowAdMobRewardedAdOptions Options; // optional
+    }
+
+    [Serializable]
+    [Preserve]
+    public class ShowAdMobRewardedAdOptions
+    {
+        [Preserve]
+        [JsonProperty("adUnitId")]
+        public string AdUnitId;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class GoogleAdMobLoadAppsInTossAdMobArgs
+    {
+        [JsonIgnore]
+        public System.Action<object> OnEvent;
+        [JsonIgnore]
+        public System.Action<Error> OnError;
+        [Preserve]
+        [JsonProperty("options")]
+        public LoadAdMobOptions Options; // optional
+    }
+
+    [Serializable]
+    [Preserve]
+    public class LoadAdMobOptions
+    {
+        [Preserve]
+        [JsonProperty("adGroupId")]
+        public string AdGroupId;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class GoogleAdMobShowAppsInTossAdMobArgs
+    {
+        [JsonIgnore]
+        public System.Action<object> OnEvent;
+        [JsonIgnore]
+        public System.Action<Error> OnError;
+        [Preserve]
+        [JsonProperty("options")]
+        public ShowAdMobOptions Options; // optional
+    }
+
+    [Serializable]
+    [Preserve]
+    public class ShowAdMobEventData
+    {
+        [Preserve]
+        [JsonProperty("unitType")]
+        public string UnitType;
+        [Preserve]
+        [JsonProperty("unitAmount")]
+        public double UnitAmount;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class ShowAdMobEvent
+    {
+        [Preserve]
+        [JsonProperty("type")]
+        public string Type;
+        [Preserve]
+        [JsonProperty("data")]
+        public ShowAdMobEventData Data;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class ShowAdMobOptions
+    {
+        [Preserve]
+        [JsonProperty("adGroupId")]
+        public string AdGroupId;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class IapCreateOneTimePurchaseOrderOptions
+    {
+        [Preserve]
+        [JsonProperty("options")]
+        public object Options;
         [JsonIgnore]
         public System.Action<SuccessEvent> OnEvent;
         [JsonIgnore]
@@ -482,10 +678,47 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class InitializeOptions
+    public class SafeAreaInsetsSubscribe__0
     {
         [JsonIgnore]
-        public System.Action Callbacks; // optional
+        public System.Action<SafeAreaInsets> OnEvent;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class SafeAreaInsets
+    {
+        [Preserve]
+        [JsonProperty("top")]
+        public double Top;
+        [Preserve]
+        [JsonProperty("bottom")]
+        public double Bottom;
+        [Preserve]
+        [JsonProperty("left")]
+        public double Left;
+        [Preserve]
+        [JsonProperty("right")]
+        public double Right;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class InitializeOptionsCallbacks
+    {
+        [JsonIgnore]
+        public System.Action OnInitialized; // optional
+        [JsonIgnore]
+        public System.Action<Error> OnInitializationFailed; // optional
+    }
+
+    [Serializable]
+    [Preserve]
+    public class InitializeOptions
+    {
+        [Preserve]
+        [JsonProperty("callbacks")]
+        public InitializeOptionsCallbacks Callbacks; // optional
     }
 
     [Serializable]
@@ -638,6 +871,28 @@ namespace AppsInToss
         [Preserve]
         [JsonProperty("icon")]
         public AddAccessoryButtonOptionsIcon Icon;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class OnVisibilityChangedByTransparentServiceWebEventParamsOptions
+    {
+        [Preserve]
+        [JsonProperty("callbackId")]
+        public string CallbackId;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class OnVisibilityChangedByTransparentServiceWebEventParams
+    {
+        [Preserve]
+        [JsonProperty("options")]
+        public OnVisibilityChangedByTransparentServiceWebEventParamsOptions Options;
+        [JsonIgnore]
+        public System.Action<bool> OnEvent;
+        [JsonIgnore]
+        public System.Action<object> OnError;
     }
 
     [Serializable]

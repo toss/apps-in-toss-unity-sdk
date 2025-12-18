@@ -4,7 +4,7 @@ import picocolors from 'picocolors';
 /**
  * 지원되는 타입 목록
  */
-const SUPPORTED_PRIMITIVES = new Set(['string', 'number', 'boolean', 'void', 'any', 'unknown', 'object', 'null', 'undefined']);
+const SUPPORTED_PRIMITIVES = new Set(['string', 'number', 'boolean', 'void', 'any', 'unknown', 'object', 'null', 'undefined', 'never']);
 
 /**
  * C# 타입 매핑 테이블
@@ -156,9 +156,44 @@ export function validateAllTypes(apis: ParsedAPI[]): { success: boolean; errors:
 }
 
 /**
+ * 알려진 외부 타입 (Google AdMob SDK 등)
+ * 이 타입들은 web-bridge에서 참조되지만 정의가 없음
+ */
+const EXTERNAL_TYPES = new Set([
+  'InterstitialAd',
+  'RewardedAd',
+  // Google AdMob 이벤트 타입들 (native-modules에서 정의)
+  'LoadAdMobInterstitialAdEvent',    // loadAdMobInterstitialAd의 onEvent 파라미터
+  'LoadAdMobRewardedAdEvent',        // loadAdMobRewardedAd의 onEvent 파라미터
+  'ShowAdMobInterstitialAdEvent',    // showAdMobInterstitialAd의 onEvent 파라미터
+  'ShowAdMobRewardedAdEvent',        // showAdMobRewardedAd의 onEvent 파라미터
+  'LoadAdMobEvent',                  // 일반적인 AdMob 로드 이벤트
+  'ShowAdMobEvent',                  // showAdMob의 onEvent 파라미터
+]);
+
+/**
+ * 타입 이름에서 외부 타입 체크
+ */
+function isExternalType(typeName: string): boolean {
+  if (!typeName) return false;
+  // import("path").TypeName 형식에서 TypeName만 추출
+  const simpleName = typeName.includes('.')
+    ? typeName.split('.').pop() || typeName
+    : typeName;
+  const cleanName = simpleName.replace(/["'{}(),;\s<>|]/g, '').replace(/\$\d+$/, '').trim();
+
+  return EXTERNAL_TYPES.has(cleanName);
+}
+
+/**
  * TypeScript 타입을 C# 타입으로 변환
  */
 export function mapToCSharpType(type: ParsedType): string {
+  // 외부 타입 체크 (모든 kind에 대해 먼저 체크)
+  if (isExternalType(type.name)) {
+    return 'object';
+  }
+
   switch (type.kind) {
     case 'primitive':
       return TYPE_MAPPING[type.name] || type.name;
@@ -196,10 +231,19 @@ export function mapToCSharpType(type: ParsedType): string {
         if (type.raw && type.raw.includes('.') && !type.raw.trim().startsWith('{')) {
           const rawTypeName = type.raw.split('.').pop()?.replace(/["'{}(),;\s<>|]/g, '').replace(/\$\d+$/, '').trim();
           if (rawTypeName && rawTypeName !== '__type' && !rawTypeName.startsWith('{')) {
+            // 외부 타입 체크: raw에서 추출한 타입 이름도 외부 타입인지 확인
+            if (isExternalType(rawTypeName)) {
+              return 'object';
+            }
             return rawTypeName;
           }
         }
         return 'object'; // C#의 object 타입으로 매핑
+      }
+
+      // 외부 타입 체크: cleanName도 확인
+      if (isExternalType(cleanName)) {
+        return 'object';
       }
 
       return cleanName;

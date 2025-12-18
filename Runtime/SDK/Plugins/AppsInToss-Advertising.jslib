@@ -12,7 +12,7 @@ mergeInto(LibraryManager.library, {
         var typeNameStr = UTF8ToString(typeName);
 
         try {
-            var result = window.AppsInToss.GoogleAdMob.loadAdMobInterstitialAd(args);
+            var result = window.AppsInToss.GoogleAdMob.loadAdMobInterstitialAd(JSON.parse(UTF8ToString(args)));
             var payload = JSON.stringify({
                 CallbackId: callback,
                 TypeName: typeNameStr,
@@ -35,7 +35,7 @@ mergeInto(LibraryManager.library, {
         var typeNameStr = UTF8ToString(typeName);
 
         try {
-            var result = window.AppsInToss.GoogleAdMob.showAdMobInterstitialAd(args);
+            var result = window.AppsInToss.GoogleAdMob.showAdMobInterstitialAd(JSON.parse(UTF8ToString(args)));
             var payload = JSON.stringify({
                 CallbackId: callback,
                 TypeName: typeNameStr,
@@ -58,7 +58,7 @@ mergeInto(LibraryManager.library, {
         var typeNameStr = UTF8ToString(typeName);
 
         try {
-            var result = window.AppsInToss.GoogleAdMob.loadAdMobRewardedAd(args);
+            var result = window.AppsInToss.GoogleAdMob.loadAdMobRewardedAd(JSON.parse(UTF8ToString(args)));
             var payload = JSON.stringify({
                 CallbackId: callback,
                 TypeName: typeNameStr,
@@ -81,7 +81,7 @@ mergeInto(LibraryManager.library, {
         var typeNameStr = UTF8ToString(typeName);
 
         try {
-            var result = window.AppsInToss.GoogleAdMob.showAdMobRewardedAd(args);
+            var result = window.AppsInToss.GoogleAdMob.showAdMobRewardedAd(JSON.parse(UTF8ToString(args)));
             var payload = JSON.stringify({
                 CallbackId: callback,
                 TypeName: typeNameStr,
@@ -104,7 +104,7 @@ mergeInto(LibraryManager.library, {
         var typeNameStr = UTF8ToString(typeName);
 
         try {
-            var result = window.AppsInToss.GoogleAdMob.loadAppsInTossAdMob(args);
+            var result = window.AppsInToss.GoogleAdMob.loadAppsInTossAdMob(JSON.parse(UTF8ToString(args)));
             var payload = JSON.stringify({
                 CallbackId: callback,
                 TypeName: typeNameStr,
@@ -127,7 +127,7 @@ mergeInto(LibraryManager.library, {
         var typeNameStr = UTF8ToString(typeName);
 
         try {
-            var result = window.AppsInToss.GoogleAdMob.showAppsInTossAdMob(args);
+            var result = window.AppsInToss.GoogleAdMob.showAppsInTossAdMob(JSON.parse(UTF8ToString(args)));
             var payload = JSON.stringify({
                 CallbackId: callback,
                 TypeName: typeNameStr,

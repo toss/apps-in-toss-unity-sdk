@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 using UnityEngine;
@@ -42,32 +41,15 @@ public class InteractiveAPITester : MonoBehaviour
     private bool lastResultSuccess = true;
     private object lastResultObject = null;
     private ResultDisplayMode resultDisplayMode = ResultDisplayMode.Structured;
-    private Vector2 scrollPosition = Vector2.zero;
-
-    // 터치 스크롤 지원
-    private bool isTouchScrolling = false;
-    private bool isDragging = false;  // 실제 드래그 중인지 (임계값 초과)
-    private Vector2 touchStartPosition;  // 터치 시작 위치
-    private Vector2 lastTouchPosition;
-    private Vector2 scrollVelocity = Vector2.zero;
-    private float scrollMomentumDecay = 0.95f;
-    private float dragThreshold = 10f;  // 드래그 인식 임계값 (픽셀)
-    private Rect currentScrollViewRect;
 
     // Safe Area (AIT API)
     private SafeAreaInsetsGetResult cachedSafeAreaInsets = null;
     private bool safeAreaLoaded = false;
 
-    // 파라미터 입력 상태 (fieldPath -> value)
-    private Dictionary<string, string> stringInputs = new Dictionary<string, string>();
-    private Dictionary<string, double> numberInputs = new Dictionary<string, double>();
-    private Dictionary<string, bool> boolInputs = new Dictionary<string, bool>();
-    private Dictionary<string, int> enumSelectedIndices = new Dictionary<string, int>();
-    private Dictionary<string, bool> nestedFoldouts = new Dictionary<string, bool>();
-    private Dictionary<string, bool> enumDropdownOpen = new Dictionary<string, bool>();
-
-    // OOM Tester 컴포넌트 참조
+    // 분리된 컴포넌트 참조
     private OOMTester _oomTester;
+    private TouchScrollHandler _scrollHandler;
+    private ParameterInputRenderer _paramRenderer;
 
     // 한글 폰트
     private Font koreanFont;
@@ -76,12 +58,14 @@ public class InteractiveAPITester : MonoBehaviour
     {
         Debug.Log("[InteractiveAPITester] Loading SDK APIs...");
 
-        // OOM Tester 컴포넌트 추가
+        // 분리된 컴포넌트 초기화
         _oomTester = GetComponent<OOMTester>();
         if (_oomTester == null)
         {
             _oomTester = gameObject.AddComponent<OOMTester>();
         }
+        _scrollHandler = new TouchScrollHandler();
+        _paramRenderer = new ParameterInputRenderer();
 
         // 한글 폰트 로드 (Noto Sans KR - SIL OFL License)
         koreanFont = Resources.Load<Font>("Fonts/NotoSansKR-Regular");
@@ -152,130 +136,7 @@ public class InteractiveAPITester : MonoBehaviour
 
     void Update()
     {
-        HandleTouchScroll();
-        ApplyScrollMomentum();
-    }
-
-    /// <summary>
-    /// 터치 스크롤 처리
-    /// </summary>
-    private void HandleTouchScroll()
-    {
-        // 터치 입력 처리
-        if (Input.touchCount > 0)
-        {
-            Touch touch = Input.GetTouch(0);
-
-            switch (touch.phase)
-            {
-                case TouchPhase.Began:
-                    // 스크롤 영역 내에서 터치 시작했는지 확인
-                    Vector2 touchPos = new Vector2(touch.position.x, Screen.height - touch.position.y);
-                    if (currentScrollViewRect.Contains(touchPos))
-                    {
-                        isTouchScrolling = true;
-                        isDragging = false;  // 아직 드래그 시작 안함
-                        touchStartPosition = touch.position;
-                        lastTouchPosition = touch.position;
-                        scrollVelocity = Vector2.zero;
-                    }
-                    break;
-
-                case TouchPhase.Moved:
-                    if (isTouchScrolling)
-                    {
-                        // 드래그 임계값 확인
-                        float totalDragDistance = Vector2.Distance(touch.position, touchStartPosition);
-                        if (!isDragging && totalDragDistance > dragThreshold)
-                        {
-                            isDragging = true;
-                        }
-
-                        Vector2 delta = touch.position - lastTouchPosition;
-                        // 위로 스와이프하면 (delta.y > 0) 컨텐츠가 위로 올라감 (scrollPosition.y 증가)
-                        // 아래로 스와이프하면 (delta.y < 0) 컨텐츠가 아래로 내려감 (scrollPosition.y 감소)
-                        scrollPosition.y += delta.y;
-
-                        // 스크롤 범위 제한 (세로만)
-                        scrollPosition.y = Mathf.Max(0, scrollPosition.y);
-
-                        // 속도 계산 (관성용, 세로만)
-                        scrollVelocity = new Vector2(0, delta.y) / Time.deltaTime * 0.1f;
-                        lastTouchPosition = touch.position;
-                    }
-                    break;
-
-                case TouchPhase.Ended:
-                case TouchPhase.Canceled:
-                    isTouchScrolling = false;
-                    isDragging = false;
-                    break;
-            }
-        }
-        // 마우스 드래그 지원 (WebGL 데스크톱 테스트용)
-        else if (Input.GetMouseButton(0))
-        {
-            Vector2 mousePos = new Vector2(Input.mousePosition.x, Screen.height - Input.mousePosition.y);
-
-            if (Input.GetMouseButtonDown(0))
-            {
-                if (currentScrollViewRect.Contains(mousePos))
-                {
-                    isTouchScrolling = true;
-                    isDragging = false;
-                    touchStartPosition = Input.mousePosition;
-                    lastTouchPosition = Input.mousePosition;
-                    scrollVelocity = Vector2.zero;
-                }
-            }
-            else if (isTouchScrolling)
-            {
-                // 드래그 임계값 확인
-                float totalDragDistance = Vector2.Distance(Input.mousePosition, touchStartPosition);
-                if (!isDragging && totalDragDistance > dragThreshold)
-                {
-                    isDragging = true;
-                }
-
-                Vector2 delta = (Vector2)Input.mousePosition - lastTouchPosition;
-                // 위로 드래그하면 (delta.y > 0) 컨텐츠가 위로 올라감 (scrollPosition.y 증가)
-                scrollPosition.y += delta.y;
-
-                // 스크롤 범위 제한 (세로만)
-                scrollPosition.y = Mathf.Max(0, scrollPosition.y);
-
-                // 속도 계산 (관성용, 세로만)
-                scrollVelocity = new Vector2(0, delta.y) / Time.deltaTime * 0.1f;
-                lastTouchPosition = Input.mousePosition;
-            }
-        }
-        else
-        {
-            if (isTouchScrolling)
-            {
-                isTouchScrolling = false;
-                isDragging = false;
-            }
-        }
-    }
-
-    /// <summary>
-    /// 스크롤 관성 적용
-    /// </summary>
-    private void ApplyScrollMomentum()
-    {
-        if (!isTouchScrolling && scrollVelocity.sqrMagnitude > 0.01f)
-        {
-            // 세로 스크롤 관성만 적용
-            scrollPosition.y += scrollVelocity.y * Time.deltaTime;
-            scrollPosition.y = Mathf.Max(0, scrollPosition.y);
-            scrollVelocity *= scrollMomentumDecay;
-
-            if (scrollVelocity.sqrMagnitude < 0.01f)
-            {
-                scrollVelocity = Vector2.zero;
-            }
-        }
+        _scrollHandler.HandleInput();
     }
 
     /// <summary>
@@ -321,7 +182,7 @@ public class InteractiveAPITester : MonoBehaviour
     /// </summary>
     private bool ShouldBlockInput()
     {
-        return isDragging || scrollVelocity.sqrMagnitude > 1f;
+        return _scrollHandler.ShouldBlockInput();
     }
 
     /// <summary>
@@ -365,10 +226,10 @@ public class InteractiveAPITester : MonoBehaviour
         DrawSearchBox();
 
         // 스크롤뷰 - 세로 스크롤만 활성화, 가로 스크롤 비활성화
-        scrollPosition = GUILayout.BeginScrollView(scrollPosition, false, true, GUILayout.ExpandHeight(true));
+        _scrollHandler.ScrollPosition = GUILayout.BeginScrollView(_scrollHandler.ScrollPosition, false, true, GUILayout.ExpandHeight(true));
         // 터치 스크롤을 위한 영역 저장 (전체 화면 기준 좌표, safe area 오프셋 포함)
         Rect safeArea = GetSafeAreaRect();
-        currentScrollViewRect = new Rect(safeArea.x, safeArea.y + 100, safeArea.width, safeArea.height - 100);
+        _scrollHandler.SetScrollViewRect(new Rect(safeArea.x, safeArea.y + 100, safeArea.width, safeArea.height - 100));
 
         if (isSearchMode && !string.IsNullOrEmpty(searchQuery))
         {
@@ -632,12 +493,12 @@ public class InteractiveAPITester : MonoBehaviour
             // 터치 스크롤을 위한 영역 저장 (전체 화면 기준 좌표, safe area 오프셋 포함)
             Rect safeArea = GetSafeAreaRect();
             float scrollHeight = safeArea.height - 280;
-            currentScrollViewRect = new Rect(safeArea.x, safeArea.y + 150, safeArea.width, scrollHeight);
-            scrollPosition = GUILayout.BeginScrollView(scrollPosition, GUILayout.Height(scrollHeight));
+            _scrollHandler.SetScrollViewRect(new Rect(safeArea.x, safeArea.y + 150, safeArea.width, scrollHeight));
+            _scrollHandler.ScrollPosition = GUILayout.BeginScrollView(_scrollHandler.ScrollPosition, GUILayout.Height(scrollHeight));
 
             foreach (var param in selectedMethod.Parameters)
             {
-                DrawParameterField(param.Name, param.Type, 0);
+                _paramRenderer.DrawParameterField(param.Name, param.Type, 0);
             }
 
             GUILayout.EndScrollView();
@@ -663,263 +524,6 @@ public class InteractiveAPITester : MonoBehaviour
         }
 
         GUILayout.EndHorizontal();
-    }
-
-    /// <summary>
-    /// 타입에 따른 적절한 입력 UI 렌더링 (재귀)
-    /// </summary>
-    private void DrawParameterField(string fieldPath, Type type, int indentLevel)
-    {
-        string displayName = GetDisplayName(fieldPath);
-
-        // Enum 타입
-        if (type.IsEnum)
-        {
-            DrawEnumSelector(fieldPath, type, displayName, indentLevel);
-            return;
-        }
-
-        // String 타입
-        if (type == typeof(string))
-        {
-            DrawStringField(fieldPath, displayName, indentLevel);
-            return;
-        }
-
-        // Number 타입
-        if (type == typeof(int) || type == typeof(double) || type == typeof(float))
-        {
-            DrawNumberField(fieldPath, displayName, indentLevel);
-            return;
-        }
-
-        // Bool 타입
-        if (type == typeof(bool))
-        {
-            DrawBoolField(fieldPath, displayName, indentLevel);
-            return;
-        }
-
-        // 복합 객체 타입
-        if (type.IsClass && type != typeof(string) && !type.IsArray)
-        {
-            DrawNestedObject(fieldPath, type, displayName, indentLevel);
-            return;
-        }
-
-        // 기타 타입 (폴백)
-        GUILayout.BeginHorizontal();
-        GUILayout.Space(indentLevel * 20);
-        GUILayout.Label($"{displayName}: (지원하지 않는 타입: {type.Name})", InteractiveAPITesterStyles.CallbackLabelStyle);
-        GUILayout.EndHorizontal();
-    }
-
-    private string GetDisplayName(string fieldPath)
-    {
-        int lastDot = fieldPath.LastIndexOf('.');
-        return lastDot >= 0 ? fieldPath.Substring(lastDot + 1) : fieldPath;
-    }
-
-    /// <summary>
-    /// Enum 드롭다운 UI
-    /// </summary>
-    private void DrawEnumSelector(string fieldPath, Type enumType, string displayName, int indentLevel)
-    {
-        var enumNames = APIParameterInspector.GetEnumNames(enumType);
-
-        if (!enumSelectedIndices.TryGetValue(fieldPath, out int selectedIndex))
-        {
-            selectedIndex = 0;
-            enumSelectedIndices[fieldPath] = selectedIndex;
-        }
-
-        if (!enumDropdownOpen.TryGetValue(fieldPath, out bool isOpen))
-        {
-            isOpen = false;
-            enumDropdownOpen[fieldPath] = isOpen;
-        }
-
-        GUILayout.BeginVertical();
-
-        // 현재 선택값 버튼
-        GUILayout.BeginHorizontal();
-        GUILayout.Space(indentLevel * 20);
-        GUILayout.Label($"{displayName}:", InteractiveAPITesterStyles.FieldLabelStyle, GUILayout.Width(120));
-
-        string buttonLabel = isOpen ? $"▲ {enumNames[selectedIndex]}" : $"▼ {enumNames[selectedIndex]}";
-        if (GUILayout.Button(buttonLabel, InteractiveAPITesterStyles.EnumButtonStyle, GUILayout.Height(36), GUILayout.ExpandWidth(true)))
-        {
-            enumDropdownOpen[fieldPath] = !isOpen;
-        }
-        GUILayout.EndHorizontal();
-
-        // 드롭다운 옵션 목록
-        if (isOpen)
-        {
-            for (int i = 0; i < enumNames.Length; i++)
-            {
-                GUILayout.BeginHorizontal();
-                GUILayout.Space(indentLevel * 20 + 120);
-
-                string optionLabel = i == selectedIndex ? $"✓ {enumNames[i]}" : $"   {enumNames[i]}";
-                if (GUILayout.Button(optionLabel, InteractiveAPITesterStyles.EnumOptionStyle, GUILayout.Height(32)))
-                {
-                    enumSelectedIndices[fieldPath] = i;
-                    enumDropdownOpen[fieldPath] = false;
-                }
-                GUILayout.EndHorizontal();
-            }
-        }
-
-        GUILayout.EndVertical();
-        GUILayout.Space(4);
-    }
-
-    /// <summary>
-    /// String 입력 UI
-    /// </summary>
-    private void DrawStringField(string fieldPath, string displayName, int indentLevel)
-    {
-        if (!stringInputs.TryGetValue(fieldPath, out string value))
-        {
-            value = "";
-            stringInputs[fieldPath] = value;
-        }
-
-        GUILayout.BeginHorizontal();
-        GUILayout.Space(indentLevel * 20);
-        GUILayout.Label($"{displayName}:", InteractiveAPITesterStyles.FieldLabelStyle, GUILayout.Width(120));
-        stringInputs[fieldPath] = GUILayout.TextField(value, InteractiveAPITesterStyles.TextFieldStyle, GUILayout.Height(36), GUILayout.ExpandWidth(true));
-        GUILayout.EndHorizontal();
-        GUILayout.Space(4);
-    }
-
-    /// <summary>
-    /// Number 입력 UI
-    /// </summary>
-    private void DrawNumberField(string fieldPath, string displayName, int indentLevel)
-    {
-        if (!numberInputs.TryGetValue(fieldPath, out double value))
-        {
-            value = 0;
-            numberInputs[fieldPath] = value;
-        }
-
-        GUILayout.BeginHorizontal();
-        GUILayout.Space(indentLevel * 20);
-        GUILayout.Label($"{displayName}:", InteractiveAPITesterStyles.FieldLabelStyle, GUILayout.Width(120));
-
-        string strValue = value.ToString();
-        string newStrValue = GUILayout.TextField(strValue, InteractiveAPITesterStyles.TextFieldStyle, GUILayout.Height(36), GUILayout.ExpandWidth(true));
-
-        if (newStrValue != strValue)
-        {
-            if (double.TryParse(newStrValue, out double newValue))
-            {
-                numberInputs[fieldPath] = newValue;
-            }
-            else if (string.IsNullOrEmpty(newStrValue))
-            {
-                numberInputs[fieldPath] = 0;
-            }
-        }
-
-        GUILayout.EndHorizontal();
-        GUILayout.Space(4);
-    }
-
-    /// <summary>
-    /// Bool 토글 UI
-    /// </summary>
-    private void DrawBoolField(string fieldPath, string displayName, int indentLevel)
-    {
-        if (!boolInputs.TryGetValue(fieldPath, out bool value))
-        {
-            value = false;
-            boolInputs[fieldPath] = value;
-        }
-
-        GUILayout.BeginHorizontal();
-        GUILayout.Space(indentLevel * 20);
-        GUILayout.Label($"{displayName}:", InteractiveAPITesterStyles.FieldLabelStyle, GUILayout.Width(120));
-
-        // 토글 버튼
-        string btnLabel = value ? "✓ true" : "✗ false";
-        Color originalColor = GUI.backgroundColor;
-        GUI.backgroundColor = value ? new Color(0.4f, 0.7f, 0.4f) : new Color(0.5f, 0.5f, 0.5f);
-
-        if (GUILayout.Button(btnLabel, InteractiveAPITesterStyles.ToggleButtonStyle, GUILayout.Height(36), GUILayout.Width(100)))
-        {
-            boolInputs[fieldPath] = !value;
-        }
-
-        GUI.backgroundColor = originalColor;
-        GUILayout.FlexibleSpace();
-        GUILayout.EndHorizontal();
-        GUILayout.Space(4);
-    }
-
-    /// <summary>
-    /// 중첩 객체 UI (접기/펼치기 지원)
-    /// </summary>
-    private void DrawNestedObject(string fieldPath, Type type, string displayName, int indentLevel)
-    {
-        var fields = APIParameterInspector.GetPublicFields(type);
-
-        // 모든 필드가 콜백인지 확인
-        bool hasEditableFields = fields.Any(f => !APIParameterInspector.IsCallbackField(f));
-
-        if (!hasEditableFields)
-        {
-            // 편집 가능한 필드가 없으면 라벨만 표시
-            GUILayout.BeginHorizontal();
-            GUILayout.Space(indentLevel * 20);
-            GUILayout.Label($"{displayName}: (콜백 전용 - 편집 불가)", InteractiveAPITesterStyles.CallbackLabelStyle);
-            GUILayout.EndHorizontal();
-            GUILayout.Space(4);
-            return;
-        }
-
-        if (!nestedFoldouts.TryGetValue(fieldPath, out bool isExpanded))
-        {
-            isExpanded = true;
-            nestedFoldouts[fieldPath] = isExpanded;
-        }
-
-        // 접기/펼치기 헤더
-        GUILayout.BeginHorizontal();
-        GUILayout.Space(indentLevel * 20);
-
-        string icon = isExpanded ? "▼" : "▶";
-        if (GUILayout.Button($"{icon} {displayName} ({type.Name})", InteractiveAPITesterStyles.NestedHeaderStyle, GUILayout.Height(36), GUILayout.ExpandWidth(true)))
-        {
-            nestedFoldouts[fieldPath] = !isExpanded;
-        }
-
-        GUILayout.EndHorizontal();
-
-        // 펼쳐져 있으면 필드들 렌더링
-        if (isExpanded)
-        {
-            foreach (var field in fields)
-            {
-                if (APIParameterInspector.IsCallbackField(field))
-                {
-                    // 콜백 필드는 라벨로 표시
-                    GUILayout.BeginHorizontal();
-                    GUILayout.Space((indentLevel + 1) * 20);
-                    GUILayout.Label($"{field.Name}: (콜백 - 편집 불가)", InteractiveAPITesterStyles.CallbackLabelStyle);
-                    GUILayout.EndHorizontal();
-                    GUILayout.Space(2);
-                    continue;
-                }
-
-                string nestedPath = $"{fieldPath}.{field.Name}";
-                DrawParameterField(nestedPath, field.FieldType, indentLevel + 1);
-            }
-        }
-
-        GUILayout.Space(4);
     }
 
     private void DrawResult()
@@ -970,8 +574,8 @@ public class InteractiveAPITester : MonoBehaviour
         // 터치 스크롤을 위한 영역 저장 (전체 화면 기준 좌표, safe area 오프셋 포함)
         Rect safeArea = GetSafeAreaRect();
         float scrollHeight = safeArea.height - 320;
-        currentScrollViewRect = new Rect(safeArea.x, safeArea.y + 200, safeArea.width, scrollHeight);
-        scrollPosition = GUILayout.BeginScrollView(scrollPosition, GUILayout.Height(scrollHeight));
+        _scrollHandler.SetScrollViewRect(new Rect(safeArea.x, safeArea.y + 200, safeArea.width, scrollHeight));
+        _scrollHandler.ScrollPosition = GUILayout.BeginScrollView(_scrollHandler.ScrollPosition, GUILayout.Height(scrollHeight));
 
         if (lastResultSuccess && lastResultObject != null && resultDisplayMode == ResultDisplayMode.Structured)
         {
@@ -999,7 +603,7 @@ public class InteractiveAPITester : MonoBehaviour
         if (GUILayout.Button("Retry", InteractiveAPITesterStyles.ButtonStyle, GUILayout.Height(48), GUILayout.Width(120)))
         {
             currentState = UIState.ParameterInput;
-            scrollPosition = Vector2.zero;
+            _scrollHandler.ResetScroll();
         }
 
         GUILayout.EndHorizontal();
@@ -1110,128 +714,25 @@ public class InteractiveAPITester : MonoBehaviour
         selectedMethod = method;
 
         // 모든 입력 상태 초기화
-        stringInputs.Clear();
-        numberInputs.Clear();
-        boolInputs.Clear();
-        enumSelectedIndices.Clear();
-        nestedFoldouts.Clear();
-        enumDropdownOpen.Clear();
+        _paramRenderer.ClearAll();
 
         // 파라미터 기본값 초기화
         foreach (var param in method.Parameters)
         {
-            InitializeParameterDefaults(param.Name, param.Type);
+            _paramRenderer.InitializeDefaults(param.Name, param.Type);
         }
 
         currentState = UIState.ParameterInput;
-        scrollPosition = Vector2.zero;
+        _scrollHandler.ResetScroll();
         Debug.Log($"[InteractiveAPITester] Selected API: {method.Name} ({method.Category})");
-    }
-
-    /// <summary>
-    /// 파라미터 타입에 따른 기본값 초기화 (재귀)
-    /// </summary>
-    private void InitializeParameterDefaults(string basePath, Type type)
-    {
-        if (type == typeof(string))
-        {
-            stringInputs[basePath] = "";
-        }
-        else if (type == typeof(int) || type == typeof(double) || type == typeof(float))
-        {
-            numberInputs[basePath] = 0;
-        }
-        else if (type == typeof(bool))
-        {
-            boolInputs[basePath] = false;
-        }
-        else if (type.IsEnum)
-        {
-            enumSelectedIndices[basePath] = 0;
-        }
-        else if (type.IsClass && type != typeof(string) && !type.IsArray)
-        {
-            // 중첩 객체: 기본적으로 펼침
-            nestedFoldouts[basePath] = true;
-
-            // 중첩 필드들도 초기화
-            var fields = APIParameterInspector.GetPublicFields(type);
-            foreach (var field in fields)
-            {
-                if (APIParameterInspector.IsCallbackField(field)) continue;
-                string fieldPath = $"{basePath}.{field.Name}";
-                InitializeParameterDefaults(fieldPath, field.FieldType);
-            }
-        }
     }
 
     private void BackToList()
     {
         currentState = UIState.APIList;
         selectedMethod = null;
-        stringInputs.Clear();
-        numberInputs.Clear();
-        boolInputs.Clear();
-        enumSelectedIndices.Clear();
-        nestedFoldouts.Clear();
-        enumDropdownOpen.Clear();
-        scrollPosition = Vector2.zero;
-    }
-
-    /// <summary>
-    /// 입력 상태에서 파라미터 객체 조합 (재귀)
-    /// </summary>
-    private object BuildParameterObject(string basePath, Type type)
-    {
-        // 단순 타입
-        if (type == typeof(string))
-        {
-            return stringInputs.TryGetValue(basePath, out var s) ? s : "";
-        }
-        if (type == typeof(int))
-        {
-            return (int)(numberInputs.TryGetValue(basePath, out var n) ? n : 0);
-        }
-        if (type == typeof(double))
-        {
-            return numberInputs.TryGetValue(basePath, out var n) ? n : 0.0;
-        }
-        if (type == typeof(float))
-        {
-            return (float)(numberInputs.TryGetValue(basePath, out var n) ? n : 0.0);
-        }
-        if (type == typeof(bool))
-        {
-            return boolInputs.TryGetValue(basePath, out var b) ? b : false;
-        }
-
-        // Enum 타입
-        if (type.IsEnum)
-        {
-            var index = enumSelectedIndices.TryGetValue(basePath, out var i) ? i : 0;
-            return APIParameterInspector.GetEnumValueByIndex(type, index);
-        }
-
-        // 복합 객체
-        if (type.IsClass && type != typeof(string) && !type.IsArray)
-        {
-            var obj = Activator.CreateInstance(type);
-            var fields = APIParameterInspector.GetPublicFields(type);
-
-            foreach (var field in fields)
-            {
-                if (APIParameterInspector.IsCallbackField(field)) continue;
-
-                string fieldPath = $"{basePath}.{field.Name}";
-                var value = BuildParameterObject(fieldPath, field.FieldType);
-                field.SetValue(obj, value);
-            }
-
-            return obj;
-        }
-
-        // 지원하지 않는 타입
-        return null;
+        _paramRenderer.ClearAll();
+        _scrollHandler.ResetScroll();
     }
 
     private async void ExecuteAPI()
@@ -1245,7 +746,7 @@ public class InteractiveAPITester : MonoBehaviour
             for (int i = 0; i < selectedMethod.Parameters.Count; i++)
             {
                 var param = selectedMethod.Parameters[i];
-                parameters[i] = BuildParameterObject(param.Name, param.Type);
+                parameters[i] = _paramRenderer.BuildParameterObject(param.Name, param.Type);
                 Debug.Log($"[InteractiveAPITester] Parameter {param.Name}: {parameters[i]}");
             }
 
@@ -1386,7 +887,7 @@ public class InteractiveAPITester : MonoBehaviour
         }
 
         currentState = UIState.Result;
-        scrollPosition = Vector2.zero;
+        _scrollHandler.ResetScroll();
         resultDisplayMode = ResultDisplayMode.Structured; // 기본은 구조화 표시
         Debug.Log($"[InteractiveAPITester] Result: {lastResult}");
     }

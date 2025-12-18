@@ -207,7 +207,7 @@ public class RuntimeAPITester : MonoBehaviour
 
         // Visibility API (이벤트 기반)
         TestAPICall("OnVisibilityChangedByTransparentServiceWeb", () =>
-            AIT.OnVisibilityChangedByTransparentServiceWeb(() => { }));
+            AIT.OnVisibilityChangedByTransparentServiceWeb(new OnVisibilityChangedByTransparentServiceWebEventParams { OnEvent = (visible) => { } }));
 
         // Location 이벤트 API
         TestAPICall("StartUpdateLocation", () =>

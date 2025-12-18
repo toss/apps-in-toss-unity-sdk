@@ -136,12 +136,18 @@ public class AdMobTester : MonoBehaviour
 
         try
         {
-            // 현재 SDK API는 System.Action을 받지만, 실제로는 콜백 기반
-            // TODO: SDK API 타입이 정확히 정의되면 수정 필요
-            var disposer = await AIT.GoogleAdMobLoadAppsInTossAdMob(() =>
+            var args = new GoogleAdMobLoadAppsInTossAdMobArgs
             {
-                adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Ad load callback invoked");
-            });
+                OnEvent = (result) =>
+                {
+                    adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Ad load callback invoked");
+                },
+                OnError = (error) =>
+                {
+                    adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Ad load error: {error}");
+                }
+            };
+            var disposer = await AIT.GoogleAdMobLoadAppsInTossAdMob(args);
 
             isAdLoaded = true;
             adStatus = $"{selectedAdType} ad loaded";
@@ -174,10 +180,18 @@ public class AdMobTester : MonoBehaviour
 
         try
         {
-            var disposer = await AIT.GoogleAdMobShowAppsInTossAdMob(() =>
+            var args = new GoogleAdMobShowAppsInTossAdMobArgs
             {
-                adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Ad show callback invoked");
-            });
+                OnEvent = (result) =>
+                {
+                    adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Ad show callback invoked");
+                },
+                OnError = (error) =>
+                {
+                    adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Ad show error: {error}");
+                }
+            };
+            var disposer = await AIT.GoogleAdMobShowAppsInTossAdMob(args);
 
             // 광고 표시 후 다시 로드 필요 (한 번에 1개만 로드 가능)
             isAdLoaded = false;

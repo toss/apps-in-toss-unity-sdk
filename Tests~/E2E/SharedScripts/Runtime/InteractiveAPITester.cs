@@ -48,6 +48,8 @@ public class InteractiveAPITester : MonoBehaviour
 
     // 분리된 컴포넌트 참조
     private OOMTester _oomTester;
+    private IAPTester _iapTester;
+    private AdMobTester _adMobTester;
     private TouchScrollHandler _scrollHandler;
     private ParameterInputRenderer _paramRenderer;
 
@@ -63,6 +65,16 @@ public class InteractiveAPITester : MonoBehaviour
         if (_oomTester == null)
         {
             _oomTester = gameObject.AddComponent<OOMTester>();
+        }
+        _iapTester = GetComponent<IAPTester>();
+        if (_iapTester == null)
+        {
+            _iapTester = gameObject.AddComponent<IAPTester>();
+        }
+        _adMobTester = GetComponent<AdMobTester>();
+        if (_adMobTester == null)
+        {
+            _adMobTester = gameObject.AddComponent<AdMobTester>();
         }
         _scrollHandler = new TouchScrollHandler();
         _paramRenderer = new ParameterInputRenderer();
@@ -266,6 +278,30 @@ public class InteractiveAPITester : MonoBehaviour
                 InteractiveAPITesterStyles.LabelStyle,
                 InteractiveAPITesterStyles.DangerButtonStyle,
                 InteractiveAPITesterStyles.ButtonStyle
+            );
+
+            // IAP 테스터 섹션
+            GUILayout.Space(20);
+            _iapTester?.DrawUI(
+                InteractiveAPITesterStyles.BoxStyle,
+                InteractiveAPITesterStyles.GroupHeaderStyle,
+                InteractiveAPITesterStyles.LabelStyle,
+                InteractiveAPITesterStyles.ButtonStyle,
+                InteractiveAPITesterStyles.TextFieldStyle,
+                InteractiveAPITesterStyles.FieldLabelStyle,
+                InteractiveAPITesterStyles.CallbackLabelStyle
+            );
+
+            // AdMob 테스터 섹션 (인앱광고v2)
+            GUILayout.Space(20);
+            _adMobTester?.DrawUI(
+                InteractiveAPITesterStyles.BoxStyle,
+                InteractiveAPITesterStyles.GroupHeaderStyle,
+                InteractiveAPITesterStyles.LabelStyle,
+                InteractiveAPITesterStyles.ButtonStyle,
+                InteractiveAPITesterStyles.TextFieldStyle,
+                InteractiveAPITesterStyles.FieldLabelStyle,
+                InteractiveAPITesterStyles.CallbackLabelStyle
             );
         }
 
@@ -891,4 +927,5 @@ public class InteractiveAPITester : MonoBehaviour
         resultDisplayMode = ResultDisplayMode.Structured; // 기본은 구조화 표시
         Debug.Log($"[InteractiveAPITester] Result: {lastResult}");
     }
+
 }

@@ -11,6 +11,7 @@ import { validateCompleteness, printSummary } from './validators/completeness.js
 import { CSharpGenerator, CSharpTypeGenerator } from './generators/csharp.js';
 import { JSLibGenerator } from './generators/jslib.js';
 import { typeCheckBridgeCode, printTypeCheckResult, cleanupCache } from './generators/jslib-compiler.js';
+import { generateUnityBridge } from './generators/unity-bridge.js';
 import { formatCommand } from './commands/format.js';
 
 const program = new Command();
@@ -487,6 +488,13 @@ namespace AppsInToss
       await ensureMetaFile(filePath, existingMetas, 'jslib');
       console.log(picocolors.green(`  ✓ Plugins/${fileName}`));
     }
+
+    // 8. unity-bridge.ts 생성 (WebGLTemplates/AITTemplate/BuildConfig/)
+    console.log(picocolors.cyan('\n🌉 Unity Bridge 생성 중...'));
+    const unityBridgeContent = generateUnityBridge(apis);
+    const unityBridgePath = path.resolve(outputDir, '../../WebGLTemplates/AITTemplate/BuildConfig/unity-bridge.ts');
+    await fs.writeFile(unityBridgePath, unityBridgeContent);
+    console.log(picocolors.green(`  ✓ unity-bridge.ts`));
 
     // 9. 요약 출력
     printSummary(apis, generatedCodes);

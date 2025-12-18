@@ -1,5 +1,5 @@
 import { Project, SourceFile, FunctionDeclaration, SyntaxKind } from 'ts-morph';
-import { ParsedAPI, ParsedParameter, ParsedType, ParsedTypeDefinition } from './types.js';
+import { ParsedAPI, ParsedParameter, ParsedProperty, ParsedType, ParsedTypeDefinition } from './types.js';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -1091,6 +1091,86 @@ export class TypeScriptParser {
         kind: 'union',
         unionTypes: parsedUnionTypes,
         raw: typeText,
+      };
+    }
+
+    // Intersection 타입 (예: Sku & { processProductGrant: ... })
+    const isIntersection = typeNode.isIntersection?.();
+    if (isIntersection) {
+      const intersectionTypes = typeNode.getIntersectionTypes?.() || [];
+
+      // 모든 intersection 멤버의 프로퍼티를 병합
+      const mergedProperties: ParsedProperty[] = [];
+      const seenProps = new Set<string>();
+
+      for (const intersectType of intersectionTypes) {
+        const parsed = this.parseType(intersectType);
+
+        // Union 타입의 경우 각 멤버에서 프로퍼티 수집
+        if (parsed.kind === 'union' && parsed.unionTypes) {
+          for (const unionMember of parsed.unionTypes) {
+            if (unionMember.properties) {
+              for (const prop of unionMember.properties) {
+                if (!seenProps.has(prop.name)) {
+                  seenProps.add(prop.name);
+                  mergedProperties.push(prop);
+                }
+              }
+            }
+          }
+        }
+        // Object 타입의 경우 프로퍼티 직접 수집
+        else if (parsed.properties) {
+          for (const prop of parsed.properties) {
+            if (!seenProps.has(prop.name)) {
+              seenProps.add(prop.name);
+              mergedProperties.push(prop);
+            }
+          }
+        }
+        // 인라인 객체인 경우 프로퍼티 파싱
+        else if (intersectType.getProperties) {
+          const props = intersectType.getProperties?.() || [];
+          for (const prop of props) {
+            const propName = prop.getName();
+            if (!seenProps.has(propName)) {
+              seenProps.add(propName);
+              const propDecl = prop.getValueDeclaration?.();
+              const propType = propDecl?.getType?.() || prop.getDeclaredType?.();
+              const parsedPropType: ParsedType = propType ? this.parseType(propType) : { name: 'any', kind: 'primitive' as const, raw: 'any' };
+
+              mergedProperties.push({
+                name: propName,
+                type: parsedPropType,
+                optional: propDecl?.hasQuestionToken?.() || false,
+                description: undefined,
+              });
+            }
+          }
+        }
+      }
+
+      // Intersection 타입 이름 생성
+      // named type이 있으면 사용, 없으면 익명 타입(__type)으로 처리
+      let intersectionName = '__type';
+      for (const t of intersectionTypes) {
+        const symbol = t.getSymbol?.();
+        if (symbol) {
+          const symbolName = symbol.getName();
+          // __type이 아닌 실제 이름이면 사용
+          if (symbolName && symbolName !== '__type' && !symbolName.startsWith('__')) {
+            intersectionName = symbolName;
+            break;
+          }
+        }
+      }
+
+      return {
+        name: intersectionName,
+        kind: 'object',
+        properties: mergedProperties,
+        raw: typeText,
+        isIntersection: true,
       };
     }
 

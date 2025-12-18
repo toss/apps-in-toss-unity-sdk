@@ -325,10 +325,12 @@ async function generate(options: {
     console.log(picocolors.green(`✓ AITCore.cs (Infrastructure)`));
 
     // C# 타입 정의 생성 (파싱된 enum/interface) - 본문만
-    const parsedTypesBody = await typeGenerator.generateTypeDefinitions(typeDefinitions);
+    // 생성된 타입 이름도 함께 반환하여 API 타입 생성 시 중복 방지
+    const parsedTypesResult = await typeGenerator.generateTypeDefinitions(typeDefinitions);
+    const parsedTypesBody = parsedTypesResult.code;
 
-    // 파싱된 타입 이름 목록 생성 (중복 방지용)
-    const parsedTypeNames = new Set(typeDefinitions.map(t => t.name));
+    // 파싱된 타입 이름 목록 (중첩 타입 포함) - 중복 방지용
+    const parsedTypeNames = parsedTypesResult.generatedTypeNames;
 
     // C# 타입 정의 생성 (API에서 추출된 타입) - 본문만 (중복 제외)
     // typeDefinitions와 parser도 전달하여 pending external types 해결에 사용

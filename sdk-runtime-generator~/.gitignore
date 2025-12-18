@@ -3,3 +3,4 @@ node_modules/
 .tmp/
 .cache/
 debug-parse-output.ts
+tests/unit/fixtures/

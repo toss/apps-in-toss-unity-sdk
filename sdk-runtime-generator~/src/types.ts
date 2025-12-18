@@ -55,6 +55,8 @@ export interface ParsedType {
   // Function 타입 정보
   functionParams?: ParsedType[]; // 함수 파라미터 타입들
   functionReturnType?: ParsedType; // 함수 반환 타입
+  // Intersection 타입 정보
+  isIntersection?: boolean;
 }
 
 /**

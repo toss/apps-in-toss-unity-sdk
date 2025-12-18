@@ -729,6 +729,8 @@ export class CSharpTypeGenerator {
   private inlineEnums: Map<string, string[]> = new Map();
   // 익명 배열 요소 타입을 추적 (propertyPath -> generatedClassName)
   private inlineArrayElementTypes: Map<string, string> = new Map();
+  // 익명/intersection 객체 타입을 추적 (propertyPath -> generatedClassName)
+  private inlineObjectTypes: Map<string, string> = new Map();
   // 프로퍼티가 없지만 참조된 외부 타입을 추적 (나중에 type definitions에서 해결)
   private pendingExternalTypes: Set<string> = new Set();
 
@@ -909,31 +911,18 @@ export class CSharpTypeGenerator {
       return '';
     }
 
-    // 중첩 타입 수집
-    const nestedTypes: string[] = [];
-
+    // Note: 중첩 타입은 generateTypes에서 collectReferencedTypes로 생성됨 (중복 방지)
     const fields = typeDef.properties
       .map(prop => {
         let type = mapToCSharpType(prop.type);
 
-        // 중첩 익명 객체 처리
+        // 중첩 익명 객체 처리 - 타입 이름만 생성 (클래스는 별도 생성)
         if (prop.type.kind === 'object' &&
             prop.type.properties &&
             prop.type.properties.length > 0 &&
             (prop.type.name === '__type' || prop.type.name === 'object' || prop.type.name.startsWith('{'))) {
           // 중첩 클래스 이름 생성
-          const nestedTypeName = `${typeDef.name}${this.capitalize(prop.name)}`;
-          type = nestedTypeName;
-
-          // 중첩 클래스 생성
-          const nestedFields = prop.type.properties
-            .map((nestedProp: any) => {
-              const nestedType = mapToCSharpType(nestedProp.type);
-              return this.generateFieldDeclaration(nestedProp.name, nestedType, nestedProp.optional);
-            })
-            .join('\n');
-
-          nestedTypes.push(`    [Serializable]\n    [Preserve]\n    public class ${nestedTypeName}\n    {\n${nestedFields}\n    }`);
+          type = `${typeDef.name}${this.capitalize(prop.name)}`;
         }
 
         const description = prop.description
@@ -947,42 +936,85 @@ export class CSharpTypeGenerator {
       ? `    /// <summary>\n    /// ${typeDef.description}\n    /// </summary>\n`
       : '';
 
-    const mainClass = `${description}    [Serializable]\n    [Preserve]\n    public class ${typeDef.name}\n    {\n${fields}\n    }`;
-
-    // 중첩 타입들을 먼저 출력
-    if (nestedTypes.length > 0) {
-      return nestedTypes.join('\n\n') + '\n\n' + mainClass;
-    }
-
-    return mainClass;
+    return `${description}    [Serializable]\n    [Preserve]\n    public class ${typeDef.name}\n    {\n${fields}\n    }`;
   }
 
   /**
    * 타입 정의들을 C# 코드로 생성 (헤더 없이, 본문만)
+   * @param typeDefinitions 파싱된 타입 정의 목록
+   * @param excludeTypeNames 제외할 타입 이름 Set (API에서 이미 생성된 타입)
+   * @returns 객체 { code: 생성된 C# 코드, generatedTypeNames: 생성된 타입 이름 Set }
    */
-  async generateTypeDefinitions(typeDefinitions: ParsedTypeDefinition[]): Promise<string> {
+  async generateTypeDefinitions(
+    typeDefinitions: ParsedTypeDefinition[],
+    excludeTypeNames?: Set<string>
+  ): Promise<{ code: string; generatedTypeNames: Set<string> }> {
     const generatedTypes: string[] = [];
+    const generatedTypeNames = new Set<string>();
+    const exclude = excludeTypeNames || new Set<string>();
 
     for (const typeDef of typeDefinitions) {
       if (typeDef.kind === 'enum') {
         const enumCode = this.generateEnum(typeDef);
         if (enumCode) {
           generatedTypes.push(enumCode);
+          generatedTypeNames.add(typeDef.name);
         }
       } else if (typeDef.kind === 'interface') {
         const classCode = this.generateInterfaceAsClass(typeDef);
         if (classCode) {
           generatedTypes.push(classCode);
+          generatedTypeNames.add(typeDef.name);
+        }
+
+        // 중첩 타입 수집 및 생성 (type definitions에서 참조되는 nested types)
+        if (typeDef.properties) {
+          const nestedTypes = new Map<string, string>();
+          this.collectNestedTypesForTypeDefinition(typeDef.name, typeDef.properties, nestedTypes, exclude, generatedTypeNames);
+          for (const [nestedName, nestedCode] of nestedTypes) {
+            if (!generatedTypeNames.has(nestedName) && !exclude.has(nestedName)) {
+              generatedTypes.push(nestedCode);
+              generatedTypeNames.add(nestedName);
+            }
+          }
         }
       }
     }
 
     if (generatedTypes.length === 0) {
-      return '';
+      return { code: '', generatedTypeNames };
     }
 
     // 헤더/푸터 없이 본문만 반환 (호출자가 합침)
-    return generatedTypes.join('\n\n');
+    return { code: generatedTypes.join('\n\n'), generatedTypeNames };
+  }
+
+  /**
+   * 타입 정의에서 중첩 타입을 수집 (generateTypeDefinitions 전용)
+   * collectNestedTypes와 유사하지만 exclude/generatedTypeNames 체크 포함
+   */
+  private collectNestedTypesForTypeDefinition(
+    parentName: string,
+    properties: any[],
+    nestedTypes: Map<string, string>,
+    exclude: Set<string>,
+    generatedTypeNames: Set<string>
+  ): void {
+    for (const prop of properties) {
+      // 중첩 익명 객체 타입 처리
+      if (prop.type.kind === 'object' &&
+          prop.type.properties &&
+          prop.type.properties.length > 0 &&
+          (prop.type.name === '__type' || prop.type.name === 'object' || prop.type.name.startsWith('{'))) {
+        const nestedTypeName = `${parentName}${this.capitalize(prop.name)}`;
+        if (!nestedTypes.has(nestedTypeName) && !exclude.has(nestedTypeName) && !generatedTypeNames.has(nestedTypeName)) {
+          // 재귀적으로 중첩 타입 수집
+          this.collectNestedTypesForTypeDefinition(nestedTypeName, prop.type.properties, nestedTypes, exclude, generatedTypeNames);
+          // 중첩 클래스 생성
+          nestedTypes.set(nestedTypeName, this.generateNestedClassType(nestedTypeName, prop.type.properties, nestedTypes));
+        }
+      }
+    }
   }
 
   /**
@@ -1257,6 +1289,8 @@ export class CSharpTypeGenerator {
           nestedTypes.set(nestedTypeName, this.generateNestedClassType(nestedTypeName, prop.type.properties, nestedTypes));
         }
       }
+      // Note: Union 타입의 intersection 멤버는 collectReferencedTypes에서 처리됨
+      // 여기서 중복 생성하면 안됨
     }
   }
 
@@ -1273,6 +1307,15 @@ export class CSharpTypeGenerator {
             prop.type.properties.length > 0 &&
             (prop.type.name === '__type' || prop.type.name === 'object' || prop.type.name.startsWith('{'))) {
           type = `${name}${this.capitalize(prop.name)}`;
+        }
+        // Union 타입의 멤버가 intersection/익명 객체인 경우
+        else if (prop.type.kind === 'union' && prop.type.unionTypes && prop.type.unionTypes.length > 0) {
+          const membersWithProps = prop.type.unionTypes.filter(
+            (t: any) => (t.kind === 'object' || t.isIntersection) && t.properties && t.properties.length > 0
+          );
+          if (membersWithProps.length > 0) {
+            type = `${name}${this.capitalize(prop.name)}`;
+          }
         }
         const description = prop.description
           ? `        /// <summary>${this.xmlSafe(prop.description)}</summary>\n`
@@ -1291,14 +1334,11 @@ ${fields}
 
   /**
    * 클래스 타입 생성
+   * Note: 중첩 타입은 collectReferencedTypes에서 별도로 생성됨 (중복 방지)
    */
   private generateClassType(name: string, properties: any[], isResultType: boolean = false): string {
     // extractCleanName을 사용하여 정리된 이름 얻기
     const cleanName = this.extractCleanName(name);
-
-    // 중첩 타입 수집
-    const nestedTypes = new Map<string, string>();
-    this.collectNestedTypes(cleanName, properties, nestedTypes);
 
     const fields = properties
       .map(prop => {
@@ -1320,6 +1360,17 @@ ${fields}
             prop.type.properties.length > 0 &&
             (prop.type.name === '__type' || prop.type.name === 'object' || prop.type.name.startsWith('{'))) {
           type = `${cleanName}${this.capitalize(prop.name)}`;
+        }
+        // Union 타입의 멤버가 intersection/익명 객체인 경우 (예: (Sku & Opts) | (Sku2 & Opts))
+        // 모든 멤버의 프로퍼티를 병합하여 단일 클래스 생성
+        else if (prop.type.kind === 'union' && prop.type.unionTypes && prop.type.unionTypes.length > 0) {
+          // Union 멤버 중 프로퍼티가 있는 객체/intersection 타입만 수집
+          const membersWithProps = prop.type.unionTypes.filter(
+            (t: any) => (t.kind === 'object' || t.isIntersection) && t.properties && t.properties.length > 0
+          );
+          if (membersWithProps.length > 0) {
+            type = `${cleanName}${this.capitalize(prop.name)}`;
+          }
         }
         // 익명 객체 배열은 생성된 클래스 이름 + [] 사용
         else if (prop.type.kind === 'array' &&
@@ -1343,16 +1394,12 @@ ${fields}
       ? '\n        /// <summary>에러 발생 시 에러 메시지 (플랫폼 미지원 등)</summary>\n        public string error;'
       : '';
 
-    // 중첩 타입들을 먼저 출력하고, 메인 클래스 출력
-    const nestedTypesCode = Array.from(nestedTypes.values()).join('\n\n');
-    const mainClass = `    [Serializable]
+    return `    [Serializable]
     [Preserve]
     public class ${cleanName}
     {
 ${fields}${errorField}
     }`;
-
-    return nestedTypesCode ? `${nestedTypesCode}\n\n${mainClass}` : mainClass;
   }
 
   private capitalize(str: string): string {
@@ -1410,6 +1457,27 @@ ${fields}${errorField}
           }
         }
       }
+      // Intersection 타입 또는 익명 객체 타입이지만 프로퍼티가 있는 경우
+      // 부모 컨텍스트에서 타입 이름 생성 (예: IapCreateOneTimePurchaseOrderOptionsOptions)
+      else if (prop.type.kind === 'object' &&
+               (prop.type.name === '__type' || prop.type.name === 'object' || prop.type.name.startsWith('{')) &&
+               prop.type.properties && prop.type.properties.length > 0) {
+        // 부모 타입 이름 + 프로퍼티 이름으로 타입 이름 생성
+        const capitalize = (str: string) => str.charAt(0).toUpperCase() + str.slice(1);
+        const typeName = parentTypeName
+          ? `${parentTypeName}${capitalize(prop.name)}`
+          : `${capitalize(prop.name)}Type`;
+
+        if (!typeMap.has(typeName) && !exclude.has(typeName)) {
+          typeMap.set(typeName, this.generateClassType(typeName, prop.type.properties));
+          // 재귀적으로 해당 타입의 프로퍼티도 수집
+          this.collectReferencedTypes(prop.type.properties, typeMap, exclude, typeName);
+        }
+
+        // 익명 타입 매핑 저장 (나중에 타입 변환 시 사용)
+        const propPath = parentTypeName ? `${parentTypeName}.${prop.name}` : prop.name;
+        this.inlineObjectTypes.set(propPath, typeName);
+      }
       // 배열의 요소 타입
       else if (prop.type.kind === 'array' && prop.type.elementType) {
         const elementType = prop.type.elementType;
@@ -1444,6 +1512,39 @@ ${fields}${errorField}
             // 재귀적으로 해당 타입의 프로퍼티도 수집
             this.collectReferencedTypes(elementType.properties, typeMap, exclude, typeName);
           }
+        }
+      }
+      // Union 타입의 멤버가 intersection/익명 객체인 경우
+      // 모든 멤버의 프로퍼티를 병합하여 단일 클래스 생성
+      else if (prop.type.kind === 'union' && prop.type.unionTypes && prop.type.unionTypes.length > 0) {
+        const membersWithProps = prop.type.unionTypes.filter(
+          (t: any) => (t.kind === 'object' || t.isIntersection) && t.properties && t.properties.length > 0
+        );
+        if (membersWithProps.length > 0) {
+          const capitalize = (str: string) => str.charAt(0).toUpperCase() + str.slice(1);
+          const typeName = parentTypeName
+            ? `${parentTypeName}${capitalize(prop.name)}`
+            : `${capitalize(prop.name)}Type`;
+
+          if (!typeMap.has(typeName) && !exclude.has(typeName)) {
+            // 모든 멤버의 프로퍼티 병합 (중복 제거)
+            const mergedProps = new Map<string, any>();
+            for (const member of membersWithProps) {
+              for (const memberProp of member.properties) {
+                if (!mergedProps.has(memberProp.name)) {
+                  mergedProps.set(memberProp.name, memberProp);
+                }
+              }
+            }
+            const mergedPropsArray = Array.from(mergedProps.values());
+            typeMap.set(typeName, this.generateClassType(typeName, mergedPropsArray));
+            // 재귀적으로 해당 타입의 프로퍼티도 수집
+            this.collectReferencedTypes(mergedPropsArray, typeMap, exclude, typeName);
+          }
+
+          // 익명 타입 매핑 저장 (나중에 타입 변환 시 사용)
+          const propPath = parentTypeName ? `${parentTypeName}.${prop.name}` : prop.name;
+          this.inlineObjectTypes.set(propPath, typeName);
         }
       }
       // 함수 타입의 파라미터
@@ -1483,7 +1584,10 @@ ${fields}${errorField}
             }
           }
           if (allProperties.size > 0) {
-            typeMap.set(unionTypeName, this.generateClassType(unionTypeName, Array.from(allProperties.values())));
+            const mergedPropsArray = Array.from(allProperties.values());
+            typeMap.set(unionTypeName, this.generateClassType(unionTypeName, mergedPropsArray));
+            // 중첩 타입도 수집 (예: ContactsViralEventData)
+            this.collectReferencedTypes(mergedPropsArray, typeMap, exclude, unionTypeName);
           }
         }
       }

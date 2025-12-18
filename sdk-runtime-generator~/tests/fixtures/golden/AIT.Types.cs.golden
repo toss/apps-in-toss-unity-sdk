@@ -22,6 +22,14 @@ namespace AppsInToss
         SANDBOX
     }
 
+    public enum ContactsViralSuccessEventDataCloseReason
+    {
+        [EnumMember(Value = "clickBackButton")]
+        ClickBackButton,
+        [EnumMember(Value = "noReward")]
+        NoReward
+    }
+
     public enum LocationAccessLocation
     {
         [EnumMember(Value = "FINE")]
@@ -234,18 +242,6 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class ContactsViralEventData
-    {
-        [Preserve]
-        [JsonProperty("rewardAmount")]
-        public double RewardAmount;
-        [Preserve]
-        [JsonProperty("rewardUnit")]
-        public string RewardUnit;
-    }
-
-    [Serializable]
-    [Preserve]
     public class ContactsViralEvent
     {
         [Preserve]
@@ -258,7 +254,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class RewardFromContactsViralEventData
+    public class ContactsViralEventData
     {
         [Preserve]
         [JsonProperty("rewardAmount")]
@@ -282,23 +278,14 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class ContactsViralSuccessEventData
+    public class RewardFromContactsViralEventData
     {
         [Preserve]
-        [JsonProperty("closeReason")]
-        public string CloseReason;
-        [Preserve]
-        [JsonProperty("sentRewardAmount")]
-        public double SentRewardAmount; // optional
-        [Preserve]
-        [JsonProperty("sendableRewardsCount")]
-        public double SendableRewardsCount; // optional
-        [Preserve]
-        [JsonProperty("sentRewardsCount")]
-        public double SentRewardsCount;
+        [JsonProperty("rewardAmount")]
+        public double RewardAmount;
         [Preserve]
         [JsonProperty("rewardUnit")]
-        public string RewardUnit; // optional
+        public string RewardUnit;
     }
 
     [Serializable]
@@ -311,6 +298,27 @@ namespace AppsInToss
         [Preserve]
         [JsonProperty("data")]
         public ContactsViralSuccessEventData Data;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class ContactsViralSuccessEventData
+    {
+        [Preserve]
+        [JsonProperty("closeReason")]
+        public ContactsViralSuccessEventDataCloseReason CloseReason;
+        [Preserve]
+        [JsonProperty("sentRewardAmount")]
+        public double SentRewardAmount; // optional
+        [Preserve]
+        [JsonProperty("sendableRewardsCount")]
+        public double SendableRewardsCount; // optional
+        [Preserve]
+        [JsonProperty("sentRewardsCount")]
+        public double SentRewardsCount;
+        [Preserve]
+        [JsonProperty("rewardUnit")]
+        public string RewardUnit; // optional
     }
 
     [Serializable]
@@ -359,6 +367,15 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
+    public class GrantPromotionRewardForGameOptions
+    {
+        [Preserve]
+        [JsonProperty("params")]
+        public GrantPromotionRewardForGameOptionsParams Params;
+    }
+
+    [Serializable]
+    [Preserve]
     public class GrantPromotionRewardForGameOptionsParams
     {
         [Preserve]
@@ -367,15 +384,6 @@ namespace AppsInToss
         [Preserve]
         [JsonProperty("amount")]
         public double Amount;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class GrantPromotionRewardForGameOptions
-    {
-        [Preserve]
-        [JsonProperty("params")]
-        public GrantPromotionRewardForGameOptionsParams Params;
     }
 
     [Serializable]
@@ -665,6 +673,18 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
+    public class ShowAdMobEvent
+    {
+        [Preserve]
+        [JsonProperty("type")]
+        public string Type;
+        [Preserve]
+        [JsonProperty("data")]
+        public ShowAdMobEventData Data;
+    }
+
+    [Serializable]
+    [Preserve]
     public class ShowAdMobEventData
     {
         [Preserve]
@@ -677,14 +697,14 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class ShowAdMobEvent
+    public class DataType
     {
         [Preserve]
-        [JsonProperty("type")]
-        public string Type;
+        [JsonProperty("unitType")]
+        public string UnitType;
         [Preserve]
-        [JsonProperty("data")]
-        public ShowAdMobEventData Data;
+        [JsonProperty("unitAmount")]
+        public double UnitAmount;
     }
 
     [Serializable]
@@ -702,11 +722,25 @@ namespace AppsInToss
     {
         [Preserve]
         [JsonProperty("options")]
-        public object Options;
+        public IapCreateOneTimePurchaseOrderOptionsOptions Options;
         [JsonIgnore]
         public System.Action<SuccessEvent> OnEvent;
         [JsonIgnore]
         public System.Action<object> OnError;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class IapCreateOneTimePurchaseOrderOptionsOptions
+    {
+        [Preserve]
+        [JsonProperty("productId")]
+        public string ProductId;
+        [Preserve]
+        [JsonProperty("sku")]
+        public string Sku; // optional
+        [JsonIgnore]
+        public System.Action<object> ProcessProductGrant;
     }
 
     [Serializable]
@@ -843,20 +877,20 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class IAPCompleteProductGrantArgs_0Params
-    {
-        [Preserve]
-        [JsonProperty("orderId")]
-        public string OrderId;
-    }
-
-    [Serializable]
-    [Preserve]
     public class IAPCompleteProductGrantArgs_0
     {
         [Preserve]
         [JsonProperty("params")]
         public IAPCompleteProductGrantArgs_0Params Params;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class IAPCompleteProductGrantArgs_0Params
+    {
+        [Preserve]
+        [JsonProperty("orderId")]
+        public string OrderId;
     }
 
     [Serializable]
@@ -907,21 +941,21 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
+    public class InitializeOptions
+    {
+        [Preserve]
+        [JsonProperty("callbacks")]
+        public InitializeOptionsCallbacks Callbacks; // optional
+    }
+
+    [Serializable]
+    [Preserve]
     public class InitializeOptionsCallbacks
     {
         [JsonIgnore]
         public System.Action OnInitialized; // optional
         [JsonIgnore]
         public System.Action<Error> OnInitializationFailed; // optional
-    }
-
-    [Serializable]
-    [Preserve]
-    public class InitializeOptions
-    {
-        [Preserve]
-        [JsonProperty("callbacks")]
-        public InitializeOptionsCallbacks Callbacks; // optional
     }
 
     [Serializable]
@@ -959,18 +993,6 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class BannerSlotEventPayloadAdMetadata
-    {
-        [Preserve]
-        [JsonProperty("creativeId")]
-        public string CreativeId;
-        [Preserve]
-        [JsonProperty("requestId")]
-        public string RequestId;
-    }
-
-    [Serializable]
-    [Preserve]
     public class BannerSlotEventPayload
     {
         [Preserve]
@@ -986,17 +1008,14 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class BannerSlotErrorPayloadError
+    public class BannerSlotEventPayloadAdMetadata
     {
         [Preserve]
-        [JsonProperty("code")]
-        public double Code;
+        [JsonProperty("creativeId")]
+        public string CreativeId;
         [Preserve]
-        [JsonProperty("message")]
-        public string Message;
-        [Preserve]
-        [JsonProperty("domain")]
-        public string Domain; // optional
+        [JsonProperty("requestId")]
+        public string RequestId;
     }
 
     [Serializable]
@@ -1015,6 +1034,21 @@ namespace AppsInToss
         [Preserve]
         [JsonProperty("error")]
         public BannerSlotErrorPayloadError Error;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class BannerSlotErrorPayloadError
+    {
+        [Preserve]
+        [JsonProperty("code")]
+        public double Code;
+        [Preserve]
+        [JsonProperty("message")]
+        public string Message;
+        [Preserve]
+        [JsonProperty("domain")]
+        public string Domain; // optional
     }
 
     [Serializable]
@@ -1054,15 +1088,6 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class AddAccessoryButtonOptionsIcon
-    {
-        [Preserve]
-        [JsonProperty("name")]
-        public string Name;
-    }
-
-    [Serializable]
-    [Preserve]
     public class AddAccessoryButtonOptions
     {
         [Preserve]
@@ -1078,11 +1103,11 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class OnVisibilityChangedByTransparentServiceWebEventParamsOptions
+    public class AddAccessoryButtonOptionsIcon
     {
         [Preserve]
-        [JsonProperty("callbackId")]
-        public string CallbackId;
+        [JsonProperty("name")]
+        public string Name;
     }
 
     [Serializable]
@@ -1096,6 +1121,15 @@ namespace AppsInToss
         public System.Action<bool> OnEvent;
         [JsonIgnore]
         public System.Action<object> OnError;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class OnVisibilityChangedByTransparentServiceWebEventParamsOptions
+    {
+        [Preserve]
+        [JsonProperty("callbackId")]
+        public string CallbackId;
     }
 
     [Serializable]
@@ -1249,15 +1283,6 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class ContactsViralParamsOptions
-    {
-        [Preserve]
-        [JsonProperty("moduleId")]
-        public string ModuleId;
-    }
-
-    [Serializable]
-    [Preserve]
     public class ContactsViralParams
     {
         [Preserve]
@@ -1267,6 +1292,15 @@ namespace AppsInToss
         public System.Action<ContactsViralEvent> OnEvent;
         [JsonIgnore]
         public System.Action<object> OnError;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class ContactsViralParamsOptions
+    {
+        [Preserve]
+        [JsonProperty("moduleId")]
+        public string ModuleId;
     }
 
     [Serializable]
@@ -1334,15 +1368,6 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class FetchContactsOptionsQuery
-    {
-        [Preserve]
-        [JsonProperty("contains")]
-        public string Contains; // optional
-    }
-
-    [Serializable]
-    [Preserve]
     public class FetchContactsOptions
     {
         [Preserve]
@@ -1354,6 +1379,15 @@ namespace AppsInToss
         [Preserve]
         [JsonProperty("query")]
         public FetchContactsOptionsQuery Query; // optional
+    }
+
+    [Serializable]
+    [Preserve]
+    public class FetchContactsOptionsQuery
+    {
+        [Preserve]
+        [JsonProperty("contains")]
+        public string Contains; // optional
     }
 
     /// <summary>

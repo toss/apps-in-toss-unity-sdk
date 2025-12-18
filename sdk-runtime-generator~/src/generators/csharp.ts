@@ -727,6 +727,8 @@ export class CSharpTypeGenerator {
   // key: enum 이름 (예: SetDeviceOrientationOptionsType)
   // value: enum 값들 (예: ["portrait", "landscape"])
   private inlineEnums: Map<string, string[]> = new Map();
+  // 익명 배열 요소 타입을 추적 (propertyPath -> generatedClassName)
+  private inlineArrayElementTypes: Map<string, string> = new Map();
 
   constructor() {
     // Constructor for future template loading if needed
@@ -991,6 +993,8 @@ export class CSharpTypeGenerator {
 
     // Inline enum Map 초기화 (generateClassType에서 채워짐)
     this.inlineEnums.clear();
+    // Inline array element types Map 초기화
+    this.inlineArrayElementTypes.clear();
 
     // API에서 사용되는 모든 타입 수집
     for (const api of apis) {
@@ -1039,7 +1043,7 @@ export class CSharpTypeGenerator {
           }
 
           // 프로퍼티에서 참조되는 named type도 수집 (재귀)
-          this.collectReferencedTypes(param.type.properties, typeMap, exclude);
+          this.collectReferencedTypes(param.type.properties, typeMap, exclude, cleanName);
 
           // 객체의 프로퍼티에 함수 타입이 있으면 함수 파라미터 타입도 수집
           for (const prop of param.type.properties) {
@@ -1084,7 +1088,7 @@ export class CSharpTypeGenerator {
                 Array.from(allProperties.values())
               ));
               // 프로퍼티에서 참조되는 named type도 수집 (재귀)
-              this.collectReferencedTypes(Array.from(allProperties.values()), typeMap, exclude);
+              this.collectReferencedTypes(Array.from(allProperties.values()), typeMap, exclude, unionTypeName);
             }
           } else {
             // 익명 union: 각 멤버를 별도 클래스로
@@ -1101,7 +1105,7 @@ export class CSharpTypeGenerator {
                   // 반환 타입이므로 isResultType: true - error 필드 추가
                   typeMap.set(cleanName, this.generateClassType(typeName, unionMember.properties, true));
                   // 프로퍼티에서 참조되는 named type도 수집 (재귀)
-                  this.collectReferencedTypes(unionMember.properties, typeMap, exclude);
+                  this.collectReferencedTypes(unionMember.properties, typeMap, exclude, cleanName);
                 }
               }
             }
@@ -1120,7 +1124,7 @@ export class CSharpTypeGenerator {
             // 반환 타입이므로 isResultType: true - error 필드 추가
             typeMap.set(cleanName, this.generateClassType(typeName, innerType.properties, true));
             // 프로퍼티에서 참조되는 named type도 수집 (재귀)
-            this.collectReferencedTypes(innerType.properties, typeMap, exclude);
+            this.collectReferencedTypes(innerType.properties, typeMap, exclude, cleanName);
           }
         }
       }
@@ -1137,7 +1141,7 @@ export class CSharpTypeGenerator {
           // 반환 타입이므로 isResultType: true - error 필드 추가
           typeMap.set(cleanName, this.generateClassType(typeName, api.returnType.properties, true));
           // 프로퍼티에서 참조되는 named type도 수집 (재귀)
-          this.collectReferencedTypes(api.returnType.properties, typeMap, exclude);
+          this.collectReferencedTypes(api.returnType.properties, typeMap, exclude, cleanName);
         }
       }
     }
@@ -1278,6 +1282,16 @@ ${fields}
             (prop.type.name === '__type' || prop.type.name === 'object' || prop.type.name.startsWith('{'))) {
           type = `${cleanName}${this.capitalize(prop.name)}`;
         }
+        // 익명 객체 배열은 생성된 클래스 이름 + [] 사용
+        else if (prop.type.kind === 'array' &&
+            prop.type.elementType &&
+            prop.type.elementType.kind === 'object' &&
+            prop.type.elementType.properties &&
+            prop.type.elementType.properties.length > 0 &&
+            (prop.type.elementType.name === '__type' || prop.type.elementType.name === 'object' || prop.type.elementType.name.startsWith('{'))) {
+          const propNameSingular = prop.name.endsWith('s') ? prop.name.slice(0, -1) : prop.name;
+          type = `${cleanName}${this.capitalize(propNameSingular)}[]`;
+        }
         const description = prop.description
           ? `        /// <summary>${this.xmlSafe(prop.description)}</summary>\n`
           : '';
@@ -1334,7 +1348,8 @@ ${fields}${errorField}
   private collectReferencedTypes(
     properties: any[],
     typeMap: Map<string, string>,
-    exclude: Set<string>
+    exclude: Set<string>,
+    parentTypeName?: string
   ): void {
     for (const prop of properties) {
       // named object 타입 (익명이 아닌 경우)
@@ -1348,23 +1363,42 @@ ${fields}${errorField}
         if (!typeMap.has(typeName) && !exclude.has(typeName)) {
           typeMap.set(typeName, this.generateClassType(typeName, prop.type.properties));
           // 재귀적으로 해당 타입의 프로퍼티도 수집
-          this.collectReferencedTypes(prop.type.properties, typeMap, exclude);
+          this.collectReferencedTypes(prop.type.properties, typeMap, exclude, typeName);
         }
       }
       // 배열의 요소 타입
       else if (prop.type.kind === 'array' && prop.type.elementType) {
         const elementType = prop.type.elementType;
-        if (elementType.kind === 'object' &&
+        const isAnonymousObject = elementType.kind === 'object' &&
             elementType.properties &&
-            elementType.properties.length > 0 &&
-            elementType.name !== '__type' &&
-            elementType.name !== 'object' &&
-            !elementType.name.startsWith('{')) {
-          const typeName = this.extractCleanName(elementType.name);
+            elementType.properties.length > 0;
+
+        if (isAnonymousObject) {
+          const isNamedType = elementType.name !== '__type' &&
+              elementType.name !== 'object' &&
+              !elementType.name.startsWith('{');
+
+          let typeName: string;
+          if (isNamedType) {
+            typeName = this.extractCleanName(elementType.name);
+          } else {
+            // 익명 객체 배열 요소 타입: 부모 컨텍스트에서 이름 생성
+            // 예: IAPGetPendingOrdersResult의 orders 필드 -> IAPGetPendingOrdersResultOrder
+            const capitalize = (str: string) => str.charAt(0).toUpperCase() + str.slice(1);
+            const propNameSingular = prop.name.endsWith('s') ? prop.name.slice(0, -1) : prop.name;
+            typeName = parentTypeName
+              ? `${parentTypeName}${capitalize(propNameSingular)}`
+              : `${capitalize(propNameSingular)}Item`;
+
+            // 익명 타입 매핑 저장 (나중에 타입 변환 시 사용)
+            const propPath = parentTypeName ? `${parentTypeName}.${prop.name}` : prop.name;
+            this.inlineArrayElementTypes.set(propPath, typeName);
+          }
+
           if (!typeMap.has(typeName) && !exclude.has(typeName)) {
             typeMap.set(typeName, this.generateClassType(typeName, elementType.properties));
             // 재귀적으로 해당 타입의 프로퍼티도 수집
-            this.collectReferencedTypes(elementType.properties, typeMap, exclude);
+            this.collectReferencedTypes(elementType.properties, typeMap, exclude, typeName);
           }
         }
       }
@@ -1425,7 +1459,7 @@ ${fields}${errorField}
       if (typeName !== 'object' && !typeMap.has(typeName) && !exclude.has(typeName)) {
         typeMap.set(typeName, this.generateClassType(typeName, paramType.properties));
         // 프로퍼티에서 참조되는 named type도 수집 (재귀)
-        this.collectReferencedTypes(paramType.properties, typeMap, exclude);
+        this.collectReferencedTypes(paramType.properties, typeMap, exclude, typeName);
       }
     }
   }

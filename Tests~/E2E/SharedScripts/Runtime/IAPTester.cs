@@ -15,6 +15,7 @@ public class IAPTester : MonoBehaviour
     private string iapOrderId = "";
     private string iapStatus = "";
     private IAPGetProductItemListResult iapProducts = null;
+    private IAPGetPendingOrdersResult iapPendingOrders = null;
     private List<string> iapEventLog = new List<string>();
 
     /// <summary>
@@ -114,6 +115,23 @@ public class IAPTester : MonoBehaviour
         if (GUILayout.Button("IAPGetPendingOrders()", buttonStyle, GUILayout.Height(40)))
         {
             ExecuteIAPGetPendingOrders();
+        }
+
+        // Pending Orders 목록 표시 및 선택
+        if (iapPendingOrders != null && iapPendingOrders.Orders != null && iapPendingOrders.Orders.Length > 0)
+        {
+            GUILayout.Label($"Pending Orders ({iapPendingOrders.Orders.Length}):", labelStyle);
+            GUILayout.Label("Select to fill Order ID:", callbackLabelStyle);
+            foreach (var order in iapPendingOrders.Orders)
+            {
+                if (!string.IsNullOrEmpty(order.OrderId))
+                {
+                    if (GUILayout.Button($"→ {order.OrderId} ({order.Sku})", buttonStyle, GUILayout.Height(32)))
+                    {
+                        iapOrderId = order.OrderId;
+                    }
+                }
+            }
         }
 
         GUILayout.Space(10);
@@ -218,18 +236,20 @@ public class IAPTester : MonoBehaviour
 
         try
         {
-            var result = await AIT.IAPGetPendingOrders();
-            int count = result?.Orders?.Length ?? 0;
+            iapPendingOrders = await AIT.IAPGetPendingOrders();
+            int count = iapPendingOrders?.Orders?.Length ?? 0;
             iapStatus = $"Found {count} pending orders";
             iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Success: {count} orders");
         }
         catch (AITException ex)
         {
+            iapPendingOrders = null;
             iapStatus = $"Error: {ex.Message}";
             iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Error: {ex.ErrorCode} - {ex.Message}");
         }
         catch (Exception ex)
         {
+            iapPendingOrders = null;
             iapStatus = $"Error: {ex.Message}";
             iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Exception: {ex.Message}");
         }

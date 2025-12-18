@@ -54,6 +54,14 @@ namespace AppsInToss
         Access
     }
 
+    public enum CompletedOrRefundedOrdersResultOrderStatus
+    {
+        [EnumMember(Value = "COMPLETED")]
+        COMPLETED,
+        [EnumMember(Value = "REFUNDED")]
+        REFUNDED
+    }
+
     public enum AttachOptionsTheme
     {
         [EnumMember(Value = "light")]
@@ -616,9 +624,24 @@ namespace AppsInToss
     {
         [Preserve]
         [JsonProperty("orders")]
-        public object[] Orders;
+        public IAPGetPendingOrdersResultOrder[] Orders;
         /// <summary>에러 발생 시 에러 메시지 (플랫폼 미지원 등)</summary>
         public string error;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class IAPGetPendingOrdersResultOrder
+    {
+        [Preserve]
+        [JsonProperty("orderId")]
+        public string OrderId;
+        [Preserve]
+        [JsonProperty("sku")]
+        public string Sku;
+        [Preserve]
+        [JsonProperty("paymentCompletedDate")]
+        public string PaymentCompletedDate;
     }
 
     [Serializable]
@@ -633,9 +656,27 @@ namespace AppsInToss
         public string NextKey; // optional
         [Preserve]
         [JsonProperty("orders")]
-        public object[] Orders;
+        public CompletedOrRefundedOrdersResultOrder[] Orders;
         /// <summary>에러 발생 시 에러 메시지 (플랫폼 미지원 등)</summary>
         public string error;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class CompletedOrRefundedOrdersResultOrder
+    {
+        [Preserve]
+        [JsonProperty("orderId")]
+        public string OrderId;
+        [Preserve]
+        [JsonProperty("sku")]
+        public string Sku;
+        [Preserve]
+        [JsonProperty("status")]
+        public CompletedOrRefundedOrdersResultOrderStatus Status;
+        [Preserve]
+        [JsonProperty("date")]
+        public string Date;
     }
 
     [Serializable]

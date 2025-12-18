@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using UnityEngine;
 using AppsInToss;
@@ -67,57 +66,8 @@ public class InteractiveAPITester : MonoBehaviour
     private Dictionary<string, bool> nestedFoldouts = new Dictionary<string, bool>();
     private Dictionary<string, bool> enumDropdownOpen = new Dictionary<string, bool>();
 
-    // UI 스타일
-    private GUIStyle boxStyle;
-    private GUIStyle buttonStyle;
-    private GUIStyle apiButtonStyle;
-    private GUIStyle groupHeaderStyle;
-    private GUIStyle labelStyle;
-    private GUIStyle textAreaStyle;
-    private GUIStyle textFieldStyle;
-    private GUIStyle headerStyle;
-    private GUIStyle searchBoxStyle;
-    private GUIStyle nestedHeaderStyle;
-    private GUIStyle enumButtonStyle;
-    private GUIStyle enumOptionStyle;
-    private GUIStyle fieldLabelStyle;
-    private GUIStyle resultKeyStyle;
-    private GUIStyle resultValueStyle;
-    private GUIStyle callbackLabelStyle;
-    private GUIStyle toggleButtonStyle;
-    private GUIStyle dangerButtonStyle;
-    private bool stylesInitialized = false;
-
-    // OOM 테스트 관련
-    private List<byte[]> oomAllocations = new List<byte[]>();
-    private string oomStatus = "";
-    private double jsAllocatedBytes = 0;
-
-#if UNITY_WEBGL && !UNITY_EDITOR
-    // JavaScript 브릿지 (WebView 레벨 메모리 할당)
-    // double 사용: int는 2GB 초과 시 오버플로우 발생
-    [DllImport("__Internal")]
-    private static extern double OOMTester_AllocateJSMemory(int megabytes);
-
-    [DllImport("__Internal")]
-    private static extern double OOMTester_AllocateVideoBuffer(int megabytes);
-
-    [DllImport("__Internal")]
-    private static extern double OOMTester_AllocateCanvasMemory(int megabytes);
-
-    [DllImport("__Internal")]
-    private static extern double OOMTester_GetTotalJSAllocated();
-
-    [DllImport("__Internal")]
-    private static extern double OOMTester_ClearJSMemory();
-#else
-    // Editor/Standalone 스텁
-    private static double OOMTester_AllocateJSMemory(int megabytes) { Debug.Log($"[OOMTester-Stub] Would allocate {megabytes}MB JS memory"); return megabytes * 1024.0 * 1024.0; }
-    private static double OOMTester_AllocateVideoBuffer(int megabytes) { Debug.Log($"[OOMTester-Stub] Would allocate {megabytes}MB video buffer"); return megabytes * 1024.0 * 1024.0; }
-    private static double OOMTester_AllocateCanvasMemory(int megabytes) { Debug.Log($"[OOMTester-Stub] Would allocate {megabytes}MB canvas"); return megabytes * 1024.0 * 1024.0; }
-    private static double OOMTester_GetTotalJSAllocated() { return 0; }
-    private static double OOMTester_ClearJSMemory() { Debug.Log("[OOMTester-Stub] Would clear JS memory"); return 0; }
-#endif
+    // OOM Tester 컴포넌트 참조
+    private OOMTester _oomTester;
 
     // 한글 폰트
     private Font koreanFont;
@@ -125,6 +75,13 @@ public class InteractiveAPITester : MonoBehaviour
     async void Start()
     {
         Debug.Log("[InteractiveAPITester] Loading SDK APIs...");
+
+        // OOM Tester 컴포넌트 추가
+        _oomTester = GetComponent<OOMTester>();
+        if (_oomTester == null)
+        {
+            _oomTester = gameObject.AddComponent<OOMTester>();
+        }
 
         // 한글 폰트 로드 (Noto Sans KR - SIL OFL License)
         koreanFont = Resources.Load<Font>("Fonts/NotoSansKR-Regular");
@@ -378,12 +335,12 @@ public class InteractiveAPITester : MonoBehaviour
 
     void OnGUI()
     {
-        InitializeStyles();
+        InteractiveAPITesterStyles.Initialize(koreanFont);
 
         // 메인 컨테이너 - Safe Area 내에서만 UI 표시 (iOS 노치/상단바 회피)
         Rect safeRect = GetSafeAreaRect();
         GUILayout.BeginArea(safeRect);
-        GUILayout.BeginVertical(boxStyle);
+        GUILayout.BeginVertical(InteractiveAPITesterStyles.BoxStyle);
 
         switch (currentState)
         {
@@ -400,146 +357,6 @@ public class InteractiveAPITester : MonoBehaviour
 
         GUILayout.EndVertical();
         GUILayout.EndArea();
-    }
-
-    private void InitializeStyles()
-    {
-        if (stylesInitialized) return;
-
-        boxStyle = new GUIStyle(GUI.skin.box);
-        boxStyle.padding = new RectOffset(10, 10, 10, 10);
-        boxStyle.normal.background = MakeTex(2, 2, new Color(0.1f, 0.1f, 0.1f, 0.95f));
-
-        // 기본 버튼 스타일
-        buttonStyle = new GUIStyle(GUI.skin.button);
-        buttonStyle.fontSize = 14;
-        buttonStyle.padding = new RectOffset(10, 10, 8, 8);
-        buttonStyle.margin = new RectOffset(4, 4, 4, 4);
-        if (koreanFont != null) buttonStyle.font = koreanFont;
-
-        // API 버튼 스타일 (너비 제한, 높이 증가)
-        apiButtonStyle = new GUIStyle(GUI.skin.button);
-        apiButtonStyle.fontSize = 15;
-        apiButtonStyle.fontStyle = FontStyle.Normal;
-        apiButtonStyle.padding = new RectOffset(15, 15, 12, 12);
-        apiButtonStyle.margin = new RectOffset(4, 4, 3, 3);
-        apiButtonStyle.alignment = TextAnchor.MiddleLeft;
-        if (koreanFont != null) apiButtonStyle.font = koreanFont;
-
-        // 그룹 헤더 스타일
-        groupHeaderStyle = new GUIStyle(GUI.skin.button);
-        groupHeaderStyle.fontSize = 16;
-        groupHeaderStyle.fontStyle = FontStyle.Bold;
-        groupHeaderStyle.padding = new RectOffset(12, 12, 10, 10);
-        groupHeaderStyle.margin = new RectOffset(0, 0, 8, 4);
-        groupHeaderStyle.alignment = TextAnchor.MiddleLeft;
-        groupHeaderStyle.normal.textColor = new Color(0.4f, 0.8f, 1f);
-        if (koreanFont != null) groupHeaderStyle.font = koreanFont;
-
-        labelStyle = new GUIStyle(GUI.skin.label);
-        labelStyle.fontSize = 12;
-        labelStyle.wordWrap = true;
-        if (koreanFont != null) labelStyle.font = koreanFont;
-
-        textAreaStyle = new GUIStyle(GUI.skin.textArea);
-        textAreaStyle.fontSize = 12;
-        textAreaStyle.padding = new RectOffset(5, 5, 5, 5);
-        textAreaStyle.wordWrap = true;
-        if (koreanFont != null) textAreaStyle.font = koreanFont;
-
-        headerStyle = new GUIStyle(GUI.skin.label);
-        headerStyle.fontSize = 20;
-        headerStyle.fontStyle = FontStyle.Bold;
-        headerStyle.alignment = TextAnchor.MiddleCenter;
-        headerStyle.margin = new RectOffset(0, 0, 10, 5);
-        if (koreanFont != null) headerStyle.font = koreanFont;
-
-        // 검색 입력 필드 스타일
-        textFieldStyle = new GUIStyle(GUI.skin.textField);
-        textFieldStyle.fontSize = 16;
-        textFieldStyle.padding = new RectOffset(12, 12, 10, 10);
-        textFieldStyle.margin = new RectOffset(0, 0, 5, 10);
-        if (koreanFont != null) textFieldStyle.font = koreanFont;
-
-        // 검색 박스 배경 스타일
-        searchBoxStyle = new GUIStyle(GUI.skin.box);
-        searchBoxStyle.padding = new RectOffset(10, 10, 8, 8);
-        searchBoxStyle.margin = new RectOffset(0, 0, 0, 5);
-        searchBoxStyle.normal.background = MakeTex(2, 2, new Color(0.15f, 0.15f, 0.2f, 0.95f));
-
-        // 중첩 객체 헤더 스타일
-        nestedHeaderStyle = new GUIStyle(GUI.skin.button);
-        nestedHeaderStyle.fontSize = 14;
-        nestedHeaderStyle.fontStyle = FontStyle.Bold;
-        nestedHeaderStyle.padding = new RectOffset(10, 10, 8, 8);
-        nestedHeaderStyle.margin = new RectOffset(0, 0, 4, 4);
-        nestedHeaderStyle.alignment = TextAnchor.MiddleLeft;
-        nestedHeaderStyle.normal.textColor = new Color(0.6f, 0.9f, 0.6f);
-        if (koreanFont != null) nestedHeaderStyle.font = koreanFont;
-
-        // Enum 버튼 스타일 (현재 선택값 표시)
-        enumButtonStyle = new GUIStyle(GUI.skin.button);
-        enumButtonStyle.fontSize = 14;
-        enumButtonStyle.padding = new RectOffset(12, 12, 8, 8);
-        enumButtonStyle.alignment = TextAnchor.MiddleLeft;
-        enumButtonStyle.normal.textColor = new Color(0.9f, 0.9f, 0.5f);
-        if (koreanFont != null) enumButtonStyle.font = koreanFont;
-
-        // Enum 옵션 스타일
-        enumOptionStyle = new GUIStyle(GUI.skin.button);
-        enumOptionStyle.fontSize = 13;
-        enumOptionStyle.padding = new RectOffset(20, 10, 6, 6);
-        enumOptionStyle.margin = new RectOffset(0, 0, 1, 1);
-        enumOptionStyle.alignment = TextAnchor.MiddleLeft;
-        if (koreanFont != null) enumOptionStyle.font = koreanFont;
-
-        // 필드 라벨 스타일
-        fieldLabelStyle = new GUIStyle(GUI.skin.label);
-        fieldLabelStyle.fontSize = 13;
-        fieldLabelStyle.fontStyle = FontStyle.Normal;
-        fieldLabelStyle.normal.textColor = new Color(0.8f, 0.8f, 0.8f);
-        if (koreanFont != null) fieldLabelStyle.font = koreanFont;
-
-        // 결과 키 스타일
-        resultKeyStyle = new GUIStyle(GUI.skin.label);
-        resultKeyStyle.fontSize = 13;
-        resultKeyStyle.fontStyle = FontStyle.Bold;
-        resultKeyStyle.normal.textColor = new Color(0.7f, 0.85f, 1f);
-        if (koreanFont != null) resultKeyStyle.font = koreanFont;
-
-        // 결과 값 스타일
-        resultValueStyle = new GUIStyle(GUI.skin.label);
-        resultValueStyle.fontSize = 13;
-        resultValueStyle.wordWrap = true;
-        resultValueStyle.normal.textColor = new Color(0.9f, 0.9f, 0.9f);
-        if (koreanFont != null) resultValueStyle.font = koreanFont;
-
-        // 콜백 필드 라벨 스타일
-        callbackLabelStyle = new GUIStyle(GUI.skin.label);
-        callbackLabelStyle.fontSize = 12;
-        callbackLabelStyle.fontStyle = FontStyle.Italic;
-        callbackLabelStyle.normal.textColor = new Color(0.6f, 0.6f, 0.6f);
-        if (koreanFont != null) callbackLabelStyle.font = koreanFont;
-
-        // 토글 버튼 스타일
-        toggleButtonStyle = new GUIStyle(GUI.skin.button);
-        toggleButtonStyle.fontSize = 13;
-        toggleButtonStyle.padding = new RectOffset(10, 10, 6, 6);
-        if (koreanFont != null) toggleButtonStyle.font = koreanFont;
-
-        // 위험 버튼 스타일 (OOM 테스트용)
-        dangerButtonStyle = new GUIStyle(GUI.skin.button);
-        dangerButtonStyle.fontSize = 14;
-        dangerButtonStyle.fontStyle = FontStyle.Bold;
-        dangerButtonStyle.padding = new RectOffset(15, 15, 12, 12);
-        dangerButtonStyle.margin = new RectOffset(4, 4, 8, 8);
-        dangerButtonStyle.normal.textColor = Color.white;
-        dangerButtonStyle.normal.background = MakeTex(2, 2, new Color(0.8f, 0.2f, 0.2f, 1f));
-        dangerButtonStyle.hover.background = MakeTex(2, 2, new Color(0.9f, 0.3f, 0.3f, 1f));
-        dangerButtonStyle.active.background = MakeTex(2, 2, new Color(0.6f, 0.1f, 0.1f, 1f));
-        if (koreanFont != null) dangerButtonStyle.font = koreanFont;
-
-        stylesInitialized = true;
     }
 
     private void DrawAPIList()
@@ -582,7 +399,13 @@ public class InteractiveAPITester : MonoBehaviour
 
             // OOM Tester 섹션 (API 목록 하단에 추가)
             GUILayout.Space(20);
-            DrawOOMTesterSection();
+            _oomTester?.DrawUI(
+                InteractiveAPITesterStyles.BoxStyle,
+                InteractiveAPITesterStyles.GroupHeaderStyle,
+                InteractiveAPITesterStyles.LabelStyle,
+                InteractiveAPITesterStyles.DangerButtonStyle,
+                InteractiveAPITesterStyles.ButtonStyle
+            );
         }
 
         GUILayout.EndScrollView();
@@ -590,15 +413,15 @@ public class InteractiveAPITester : MonoBehaviour
 
     private void DrawSearchBox()
     {
-        GUILayout.BeginVertical(searchBoxStyle);
+        GUILayout.BeginVertical(InteractiveAPITesterStyles.SearchBoxStyle);
 
         GUILayout.BeginHorizontal();
 
         // 검색 아이콘/레이블
-        GUILayout.Label("🔍", labelStyle, GUILayout.Width(24));
+        GUILayout.Label("🔍", InteractiveAPITesterStyles.LabelStyle, GUILayout.Width(24));
 
         // 검색 입력 필드
-        string newQuery = GUILayout.TextField(searchQuery, textFieldStyle, GUILayout.Height(36), GUILayout.ExpandWidth(true));
+        string newQuery = GUILayout.TextField(searchQuery, InteractiveAPITesterStyles.TextFieldStyle, GUILayout.Height(36), GUILayout.ExpandWidth(true));
 
         // 검색어가 변경되면 검색 수행
         if (newQuery != searchQuery)
@@ -610,7 +433,7 @@ public class InteractiveAPITester : MonoBehaviour
         // 검색어 지우기 버튼
         if (!string.IsNullOrEmpty(searchQuery))
         {
-            if (GUILayout.Button("✕", buttonStyle, GUILayout.Width(40), GUILayout.Height(36)))
+            if (GUILayout.Button("✕", InteractiveAPITesterStyles.ButtonStyle, GUILayout.Width(40), GUILayout.Height(36)))
             {
                 searchQuery = "";
                 searchResults.Clear();
@@ -623,7 +446,7 @@ public class InteractiveAPITester : MonoBehaviour
         // 검색 결과 개수 표시
         if (isSearchMode && !string.IsNullOrEmpty(searchQuery))
         {
-            GUILayout.Label($"검색 결과: {searchResults.Count}개", labelStyle);
+            GUILayout.Label($"검색 결과: {searchResults.Count}개", InteractiveAPITesterStyles.LabelStyle);
         }
 
         GUILayout.EndVertical();
@@ -743,7 +566,7 @@ public class InteractiveAPITester : MonoBehaviour
     {
         if (searchResults.Count == 0)
         {
-            GUILayout.Label("검색 결과가 없습니다.", labelStyle);
+            GUILayout.Label("검색 결과가 없습니다.", InteractiveAPITesterStyles.LabelStyle);
             return;
         }
 
@@ -758,10 +581,10 @@ public class InteractiveAPITester : MonoBehaviour
         GUILayout.BeginHorizontal();
 
         // 카테고리 라벨
-        GUILayout.Label($"[{method.Category}]", labelStyle, GUILayout.Width(100));
+        GUILayout.Label($"[{method.Category}]", InteractiveAPITesterStyles.LabelStyle, GUILayout.Width(100));
 
         // API 버튼
-        if (ScrollAreaButton(method.Name, apiButtonStyle, GUILayout.Height(44), GUILayout.ExpandWidth(true)))
+        if (ScrollAreaButton(method.Name, InteractiveAPITesterStyles.ApiButtonStyle, GUILayout.Height(44), GUILayout.ExpandWidth(true)))
         {
             SelectAPI(method);
         }
@@ -775,7 +598,7 @@ public class InteractiveAPITester : MonoBehaviour
         string icon = isExpanded ? "▼" : "▶";
         string label = $"{icon}  {categoryName} ({apiCount})";
 
-        if (ScrollAreaButton(label, groupHeaderStyle, GUILayout.Height(44)))
+        if (ScrollAreaButton(label, InteractiveAPITesterStyles.GroupHeaderStyle, GUILayout.Height(44)))
         {
             groupFoldouts[categoryName] = !isExpanded;
         }
@@ -787,7 +610,7 @@ public class InteractiveAPITester : MonoBehaviour
         GUILayout.Space(20); // 들여쓰기
 
         // API 버튼 - 반응형으로 남은 공간 채우기
-        if (ScrollAreaButton(method.Name, apiButtonStyle, GUILayout.Height(44), GUILayout.ExpandWidth(true)))
+        if (ScrollAreaButton(method.Name, InteractiveAPITesterStyles.ApiButtonStyle, GUILayout.Height(44), GUILayout.ExpandWidth(true)))
         {
             SelectAPI(method);
         }
@@ -797,13 +620,13 @@ public class InteractiveAPITester : MonoBehaviour
 
     private void DrawParameterInput()
     {
-        GUILayout.Label($"API: {selectedMethod.Name}", headerStyle);
-        GUILayout.Label($"Category: {selectedMethod.Category}", labelStyle);
+        GUILayout.Label($"API: {selectedMethod.Name}", InteractiveAPITesterStyles.HeaderStyle);
+        GUILayout.Label($"Category: {selectedMethod.Category}", InteractiveAPITesterStyles.LabelStyle);
         GUILayout.Space(10);
 
         if (selectedMethod.HasParameters)
         {
-            GUILayout.Label("Parameters:", labelStyle);
+            GUILayout.Label("Parameters:", InteractiveAPITesterStyles.LabelStyle);
             GUILayout.Space(5);
 
             // 터치 스크롤을 위한 영역 저장 (전체 화면 기준 좌표, safe area 오프셋 포함)
@@ -821,20 +644,20 @@ public class InteractiveAPITester : MonoBehaviour
         }
         else
         {
-            GUILayout.Label("No parameters required", labelStyle);
+            GUILayout.Label("No parameters required", InteractiveAPITesterStyles.LabelStyle);
         }
 
         GUILayout.Space(10);
         GUILayout.BeginHorizontal();
 
-        if (GUILayout.Button("← Back", buttonStyle, GUILayout.Height(48), GUILayout.Width(120)))
+        if (GUILayout.Button("← Back", InteractiveAPITesterStyles.ButtonStyle, GUILayout.Height(48), GUILayout.Width(120)))
         {
             BackToList();
         }
 
         GUILayout.FlexibleSpace();
 
-        if (GUILayout.Button("Execute →", buttonStyle, GUILayout.Height(48), GUILayout.Width(140)))
+        if (GUILayout.Button("Execute →", InteractiveAPITesterStyles.ButtonStyle, GUILayout.Height(48), GUILayout.Width(140)))
         {
             ExecuteAPI();
         }
@@ -887,7 +710,7 @@ public class InteractiveAPITester : MonoBehaviour
         // 기타 타입 (폴백)
         GUILayout.BeginHorizontal();
         GUILayout.Space(indentLevel * 20);
-        GUILayout.Label($"{displayName}: (지원하지 않는 타입: {type.Name})", callbackLabelStyle);
+        GUILayout.Label($"{displayName}: (지원하지 않는 타입: {type.Name})", InteractiveAPITesterStyles.CallbackLabelStyle);
         GUILayout.EndHorizontal();
     }
 
@@ -921,10 +744,10 @@ public class InteractiveAPITester : MonoBehaviour
         // 현재 선택값 버튼
         GUILayout.BeginHorizontal();
         GUILayout.Space(indentLevel * 20);
-        GUILayout.Label($"{displayName}:", fieldLabelStyle, GUILayout.Width(120));
+        GUILayout.Label($"{displayName}:", InteractiveAPITesterStyles.FieldLabelStyle, GUILayout.Width(120));
 
         string buttonLabel = isOpen ? $"▲ {enumNames[selectedIndex]}" : $"▼ {enumNames[selectedIndex]}";
-        if (GUILayout.Button(buttonLabel, enumButtonStyle, GUILayout.Height(36), GUILayout.ExpandWidth(true)))
+        if (GUILayout.Button(buttonLabel, InteractiveAPITesterStyles.EnumButtonStyle, GUILayout.Height(36), GUILayout.ExpandWidth(true)))
         {
             enumDropdownOpen[fieldPath] = !isOpen;
         }
@@ -939,7 +762,7 @@ public class InteractiveAPITester : MonoBehaviour
                 GUILayout.Space(indentLevel * 20 + 120);
 
                 string optionLabel = i == selectedIndex ? $"✓ {enumNames[i]}" : $"   {enumNames[i]}";
-                if (GUILayout.Button(optionLabel, enumOptionStyle, GUILayout.Height(32)))
+                if (GUILayout.Button(optionLabel, InteractiveAPITesterStyles.EnumOptionStyle, GUILayout.Height(32)))
                 {
                     enumSelectedIndices[fieldPath] = i;
                     enumDropdownOpen[fieldPath] = false;
@@ -965,8 +788,8 @@ public class InteractiveAPITester : MonoBehaviour
 
         GUILayout.BeginHorizontal();
         GUILayout.Space(indentLevel * 20);
-        GUILayout.Label($"{displayName}:", fieldLabelStyle, GUILayout.Width(120));
-        stringInputs[fieldPath] = GUILayout.TextField(value, textFieldStyle, GUILayout.Height(36), GUILayout.ExpandWidth(true));
+        GUILayout.Label($"{displayName}:", InteractiveAPITesterStyles.FieldLabelStyle, GUILayout.Width(120));
+        stringInputs[fieldPath] = GUILayout.TextField(value, InteractiveAPITesterStyles.TextFieldStyle, GUILayout.Height(36), GUILayout.ExpandWidth(true));
         GUILayout.EndHorizontal();
         GUILayout.Space(4);
     }
@@ -984,10 +807,10 @@ public class InteractiveAPITester : MonoBehaviour
 
         GUILayout.BeginHorizontal();
         GUILayout.Space(indentLevel * 20);
-        GUILayout.Label($"{displayName}:", fieldLabelStyle, GUILayout.Width(120));
+        GUILayout.Label($"{displayName}:", InteractiveAPITesterStyles.FieldLabelStyle, GUILayout.Width(120));
 
         string strValue = value.ToString();
-        string newStrValue = GUILayout.TextField(strValue, textFieldStyle, GUILayout.Height(36), GUILayout.ExpandWidth(true));
+        string newStrValue = GUILayout.TextField(strValue, InteractiveAPITesterStyles.TextFieldStyle, GUILayout.Height(36), GUILayout.ExpandWidth(true));
 
         if (newStrValue != strValue)
         {
@@ -1018,14 +841,14 @@ public class InteractiveAPITester : MonoBehaviour
 
         GUILayout.BeginHorizontal();
         GUILayout.Space(indentLevel * 20);
-        GUILayout.Label($"{displayName}:", fieldLabelStyle, GUILayout.Width(120));
+        GUILayout.Label($"{displayName}:", InteractiveAPITesterStyles.FieldLabelStyle, GUILayout.Width(120));
 
         // 토글 버튼
         string btnLabel = value ? "✓ true" : "✗ false";
         Color originalColor = GUI.backgroundColor;
         GUI.backgroundColor = value ? new Color(0.4f, 0.7f, 0.4f) : new Color(0.5f, 0.5f, 0.5f);
 
-        if (GUILayout.Button(btnLabel, toggleButtonStyle, GUILayout.Height(36), GUILayout.Width(100)))
+        if (GUILayout.Button(btnLabel, InteractiveAPITesterStyles.ToggleButtonStyle, GUILayout.Height(36), GUILayout.Width(100)))
         {
             boolInputs[fieldPath] = !value;
         }
@@ -1051,7 +874,7 @@ public class InteractiveAPITester : MonoBehaviour
             // 편집 가능한 필드가 없으면 라벨만 표시
             GUILayout.BeginHorizontal();
             GUILayout.Space(indentLevel * 20);
-            GUILayout.Label($"{displayName}: (콜백 전용 - 편집 불가)", callbackLabelStyle);
+            GUILayout.Label($"{displayName}: (콜백 전용 - 편집 불가)", InteractiveAPITesterStyles.CallbackLabelStyle);
             GUILayout.EndHorizontal();
             GUILayout.Space(4);
             return;
@@ -1068,7 +891,7 @@ public class InteractiveAPITester : MonoBehaviour
         GUILayout.Space(indentLevel * 20);
 
         string icon = isExpanded ? "▼" : "▶";
-        if (GUILayout.Button($"{icon} {displayName} ({type.Name})", nestedHeaderStyle, GUILayout.Height(36), GUILayout.ExpandWidth(true)))
+        if (GUILayout.Button($"{icon} {displayName} ({type.Name})", InteractiveAPITesterStyles.NestedHeaderStyle, GUILayout.Height(36), GUILayout.ExpandWidth(true)))
         {
             nestedFoldouts[fieldPath] = !isExpanded;
         }
@@ -1085,7 +908,7 @@ public class InteractiveAPITester : MonoBehaviour
                     // 콜백 필드는 라벨로 표시
                     GUILayout.BeginHorizontal();
                     GUILayout.Space((indentLevel + 1) * 20);
-                    GUILayout.Label($"{field.Name}: (콜백 - 편집 불가)", callbackLabelStyle);
+                    GUILayout.Label($"{field.Name}: (콜백 - 편집 불가)", InteractiveAPITesterStyles.CallbackLabelStyle);
                     GUILayout.EndHorizontal();
                     GUILayout.Space(2);
                     continue;
@@ -1101,13 +924,13 @@ public class InteractiveAPITester : MonoBehaviour
 
     private void DrawResult()
     {
-        GUILayout.Label($"Result: {selectedMethod.Name}", headerStyle);
+        GUILayout.Label($"Result: {selectedMethod.Name}", InteractiveAPITesterStyles.HeaderStyle);
         GUILayout.Space(10);
 
         // 성공/실패 상태 표시
         Color originalColor = GUI.backgroundColor;
         GUI.backgroundColor = lastResultSuccess ? Color.green : Color.red;
-        GUILayout.Label(lastResultSuccess ? "✓ Success" : "✗ Failed", headerStyle);
+        GUILayout.Label(lastResultSuccess ? "✓ Success" : "✗ Failed", InteractiveAPITesterStyles.HeaderStyle);
         GUI.backgroundColor = originalColor;
 
         GUILayout.Space(10);
@@ -1116,14 +939,14 @@ public class InteractiveAPITester : MonoBehaviour
         if (lastResultSuccess && lastResultObject != null)
         {
             GUILayout.BeginHorizontal();
-            GUILayout.Label("표시 모드:", labelStyle, GUILayout.Width(80));
+            GUILayout.Label("표시 모드:", InteractiveAPITesterStyles.LabelStyle, GUILayout.Width(80));
 
             Color origBg = GUI.backgroundColor;
 
             GUI.backgroundColor = resultDisplayMode == ResultDisplayMode.Structured
                 ? new Color(0.3f, 0.6f, 0.3f)
                 : new Color(0.3f, 0.3f, 0.3f);
-            if (GUILayout.Button("구조화", toggleButtonStyle, GUILayout.Height(32), GUILayout.Width(80)))
+            if (GUILayout.Button("구조화", InteractiveAPITesterStyles.ToggleButtonStyle, GUILayout.Height(32), GUILayout.Width(80)))
             {
                 resultDisplayMode = ResultDisplayMode.Structured;
             }
@@ -1131,7 +954,7 @@ public class InteractiveAPITester : MonoBehaviour
             GUI.backgroundColor = resultDisplayMode == ResultDisplayMode.RawJson
                 ? new Color(0.3f, 0.6f, 0.3f)
                 : new Color(0.3f, 0.3f, 0.3f);
-            if (GUILayout.Button("JSON", toggleButtonStyle, GUILayout.Height(32), GUILayout.Width(80)))
+            if (GUILayout.Button("JSON", InteractiveAPITesterStyles.ToggleButtonStyle, GUILayout.Height(32), GUILayout.Width(80)))
             {
                 resultDisplayMode = ResultDisplayMode.RawJson;
             }
@@ -1142,7 +965,7 @@ public class InteractiveAPITester : MonoBehaviour
             GUILayout.Space(10);
         }
 
-        GUILayout.Label("Response:", labelStyle);
+        GUILayout.Label("Response:", InteractiveAPITesterStyles.LabelStyle);
 
         // 터치 스크롤을 위한 영역 저장 (전체 화면 기준 좌표, safe area 오프셋 포함)
         Rect safeArea = GetSafeAreaRect();
@@ -1158,7 +981,7 @@ public class InteractiveAPITester : MonoBehaviour
         else
         {
             // JSON 표시
-            GUILayout.TextArea(lastResult, textAreaStyle, GUILayout.ExpandHeight(true));
+            GUILayout.TextArea(lastResult, InteractiveAPITesterStyles.TextAreaStyle, GUILayout.ExpandHeight(true));
         }
 
         GUILayout.EndScrollView();
@@ -1166,14 +989,14 @@ public class InteractiveAPITester : MonoBehaviour
         GUILayout.Space(10);
         GUILayout.BeginHorizontal();
 
-        if (GUILayout.Button("← Back to List", buttonStyle, GUILayout.Height(48), GUILayout.Width(160)))
+        if (GUILayout.Button("← Back to List", InteractiveAPITesterStyles.ButtonStyle, GUILayout.Height(48), GUILayout.Width(160)))
         {
             BackToList();
         }
 
         GUILayout.FlexibleSpace();
 
-        if (GUILayout.Button("Retry", buttonStyle, GUILayout.Height(48), GUILayout.Width(120)))
+        if (GUILayout.Button("Retry", InteractiveAPITesterStyles.ButtonStyle, GUILayout.Height(48), GUILayout.Width(120)))
         {
             currentState = UIState.ParameterInput;
             scrollPosition = Vector2.zero;
@@ -1224,7 +1047,7 @@ public class InteractiveAPITester : MonoBehaviour
             {
                 GUILayout.BeginHorizontal();
                 GUILayout.Space(indentLevel * 20);
-                GUILayout.Label($"[{i}]:", resultKeyStyle, GUILayout.Width(60));
+                GUILayout.Label($"[{i}]:", InteractiveAPITesterStyles.ResultKeyStyle, GUILayout.Width(60));
                 GUILayout.EndHorizontal();
                 DrawStructuredResult(array.GetValue(i), indentLevel + 1);
             }
@@ -1255,10 +1078,10 @@ public class InteractiveAPITester : MonoBehaviour
             {
                 GUILayout.BeginHorizontal();
                 GUILayout.Space(indentLevel * 20);
-                GUILayout.Label($"{field.Name}:", resultKeyStyle, GUILayout.Width(150));
+                GUILayout.Label($"{field.Name}:", InteractiveAPITesterStyles.ResultKeyStyle, GUILayout.Width(150));
                 string displayValue = value == null ? "null" :
                     (fieldType == typeof(string) ? $"\"{value}\"" : value.ToString());
-                GUILayout.Label(displayValue, resultValueStyle, GUILayout.ExpandWidth(true));
+                GUILayout.Label(displayValue, InteractiveAPITesterStyles.ResultValueStyle, GUILayout.ExpandWidth(true));
                 GUILayout.EndHorizontal();
                 GUILayout.Space(2);
             }
@@ -1267,7 +1090,7 @@ public class InteractiveAPITester : MonoBehaviour
                 // 중첩 객체
                 GUILayout.BeginHorizontal();
                 GUILayout.Space(indentLevel * 20);
-                GUILayout.Label($"{field.Name}:", resultKeyStyle);
+                GUILayout.Label($"{field.Name}:", InteractiveAPITesterStyles.ResultKeyStyle);
                 GUILayout.EndHorizontal();
                 DrawStructuredResult(value, indentLevel + 1);
             }
@@ -1278,7 +1101,7 @@ public class InteractiveAPITester : MonoBehaviour
     {
         GUILayout.BeginHorizontal();
         GUILayout.Space(indentLevel * 20);
-        GUILayout.Label(value, resultValueStyle);
+        GUILayout.Label(value, InteractiveAPITesterStyles.ResultValueStyle);
         GUILayout.EndHorizontal();
     }
 
@@ -1567,231 +1390,4 @@ public class InteractiveAPITester : MonoBehaviour
         resultDisplayMode = ResultDisplayMode.Structured; // 기본은 구조화 표시
         Debug.Log($"[InteractiveAPITester] Result: {lastResult}");
     }
-
-    private Texture2D MakeTex(int width, int height, Color col)
-    {
-        Color[] pix = new Color[width * height];
-        for (int i = 0; i < pix.Length; i++)
-            pix[i] = col;
-
-        Texture2D result = new Texture2D(width, height);
-        result.SetPixels(pix);
-        result.Apply();
-        return result;
-    }
-
-    #region OOM Tester
-
-    /// <summary>
-    /// OOM (Out of Memory) 테스터 UI 섹션
-    /// iOS WebView에서 메모리 압박으로 인한 크래시 재현용
-    /// 사용자가 직접 크기를 선택하여 메모리를 할당할 수 있음
-    /// </summary>
-    private void DrawOOMTesterSection()
-    {
-        GUILayout.BeginVertical(boxStyle);
-
-        // 섹션 헤더
-        GUILayout.Label("⚠️ OOM Tester", groupHeaderStyle);
-        GUILayout.Label("iOS WebView 메모리 부족 상황을 재현합니다.", labelStyle);
-
-        GUILayout.Space(10);
-
-        // 현재 메모리 상태 표시
-        long wasmAllocated = 0;
-        foreach (var alloc in oomAllocations)
-        {
-            wasmAllocated += alloc.Length;
-        }
-
-        // JS 메모리 상태 업데이트
-        jsAllocatedBytes = OOMTester_GetTotalJSAllocated();
-
-        string memoryInfo = $"WASM 힙: {wasmAllocated / (1024 * 1024)}MB ({oomAllocations.Count}개 블록)";
-        GUILayout.Label(memoryInfo, labelStyle);
-
-        string jsMemoryInfo = $"WebView (JS): {jsAllocatedBytes / (1024 * 1024):F0}MB";
-        GUILayout.Label(jsMemoryInfo, labelStyle);
-
-        string totalInfo = $"총 할당: {(wasmAllocated + jsAllocatedBytes) / (1024 * 1024):F0}MB";
-        GUILayout.Label(totalInfo, labelStyle);
-
-        if (!string.IsNullOrEmpty(oomStatus))
-        {
-            GUILayout.Label(oomStatus, labelStyle);
-        }
-
-        GUILayout.Space(10);
-
-        // WASM 힙 할당 버튼들 (세로 배치)
-        GUILayout.Label("WASM 힙 (C# byte[])", labelStyle);
-        if (GUILayout.Button("+50MB WASM", dangerButtonStyle, GUILayout.Height(40)))
-        {
-            AllocateWasm(50);
-        }
-        if (GUILayout.Button("+100MB WASM", dangerButtonStyle, GUILayout.Height(40)))
-        {
-            AllocateWasm(100);
-        }
-        if (GUILayout.Button("+500MB WASM", dangerButtonStyle, GUILayout.Height(40)))
-        {
-            AllocateWasm(500);
-        }
-
-        GUILayout.Space(10);
-
-        // WebView (JS) 할당 버튼들 (세로 배치)
-        GUILayout.Label("WebView (JS ArrayBuffer)", labelStyle);
-        if (GUILayout.Button("+50MB WebView", dangerButtonStyle, GUILayout.Height(40)))
-        {
-            AllocateWebView(50);
-        }
-        if (GUILayout.Button("+100MB WebView", dangerButtonStyle, GUILayout.Height(40)))
-        {
-            AllocateWebView(100);
-        }
-        if (GUILayout.Button("+500MB WebView", dangerButtonStyle, GUILayout.Height(40)))
-        {
-            AllocateWebView(500);
-        }
-
-        GUILayout.Space(10);
-
-        // 메모리 해제 버튼 (세로 배치)
-        bool hasWasmMemory = oomAllocations.Count > 0;
-        bool hasJsMemory = jsAllocatedBytes > 0;
-
-        if (hasWasmMemory || hasJsMemory)
-        {
-            GUILayout.Label("메모리 해제", labelStyle);
-
-            if (hasWasmMemory)
-            {
-                if (GUILayout.Button("WASM 해제", buttonStyle, GUILayout.Height(36)))
-                {
-                    ClearWasmAllocations();
-                }
-            }
-
-            if (hasJsMemory)
-            {
-                if (GUILayout.Button("WebView 해제", buttonStyle, GUILayout.Height(36)))
-                {
-                    ClearJSAllocations();
-                }
-            }
-
-            if (hasWasmMemory && hasJsMemory)
-            {
-                if (GUILayout.Button("전체 해제", buttonStyle, GUILayout.Height(36)))
-                {
-                    ClearAllAllocations();
-                }
-            }
-        }
-
-        GUILayout.EndVertical();
-    }
-
-    /// <summary>
-    /// WASM 힙에 지정된 MB 크기의 메모리를 할당합니다.
-    /// </summary>
-    private void AllocateWasm(int megabytes)
-    {
-        try
-        {
-            int bytes = megabytes * 1024 * 1024;
-            byte[] chunk = new byte[bytes];
-
-            // 실제 데이터를 쓰면서 메모리가 실제로 할당되도록 합니다.
-            // (Lazy allocation 방지)
-            for (int i = 0; i < bytes; i += 4096)
-            {
-                chunk[i] = (byte)(i % 256);
-            }
-
-            oomAllocations.Add(chunk);
-            oomStatus = $"WASM +{megabytes}MB 할당됨";
-            Debug.Log($"[OOMTester] WASM 힙 {megabytes}MB 청크 할당됨");
-        }
-        catch (OutOfMemoryException ex)
-        {
-            oomStatus = $"WASM OOM 발생! {ex.Message}";
-            Debug.LogError($"[OOMTester] WASM OOM: {ex.Message}");
-        }
-    }
-
-    /// <summary>
-    /// WebView (JavaScript) 레벨에서 지정된 MB 크기의 메모리를 할당합니다.
-    /// </summary>
-    private void AllocateWebView(int megabytes)
-    {
-        double allocated = OOMTester_AllocateJSMemory(megabytes);
-        if (allocated > 0)
-        {
-            oomStatus = $"WebView +{megabytes}MB 할당됨";
-            Debug.Log($"[OOMTester] WebView {megabytes}MB 할당됨");
-        }
-        else
-        {
-            oomStatus = $"WebView 할당 실패 ({megabytes}MB)";
-            Debug.LogError($"[OOMTester] WebView {megabytes}MB 할당 실패");
-        }
-    }
-
-    /// <summary>
-    /// 할당된 WASM 힙 메모리를 해제합니다.
-    /// </summary>
-    private void ClearWasmAllocations()
-    {
-        int count = oomAllocations.Count;
-        long totalSize = 0;
-        foreach (var alloc in oomAllocations)
-        {
-            totalSize += alloc.Length;
-        }
-
-        oomAllocations.Clear();
-        GC.Collect();
-
-        oomStatus = $"WASM: {count}개 블록 ({totalSize / (1024 * 1024)}MB) 해제됨";
-        Debug.Log($"[OOMTester] WASM 힙 {count}개 블록 ({totalSize / (1024 * 1024)}MB) 해제됨");
-    }
-
-    /// <summary>
-    /// 할당된 JavaScript/WebView 메모리를 해제합니다.
-    /// </summary>
-    private void ClearJSAllocations()
-    {
-        double freedBytes = OOMTester_ClearJSMemory();
-        jsAllocatedBytes = 0;
-
-        oomStatus = $"WebView: {freedBytes / (1024 * 1024):F0}MB 해제됨";
-        Debug.Log($"[OOMTester] WebView {freedBytes / (1024 * 1024):F0}MB 해제됨");
-    }
-
-    /// <summary>
-    /// 할당된 모든 메모리 (WASM + WebView)를 해제합니다.
-    /// </summary>
-    private void ClearAllAllocations()
-    {
-        // WASM 해제
-        int wasmCount = oomAllocations.Count;
-        long wasmSize = 0;
-        foreach (var alloc in oomAllocations)
-        {
-            wasmSize += alloc.Length;
-        }
-        oomAllocations.Clear();
-        GC.Collect();
-
-        // JS 해제
-        double jsFreed = OOMTester_ClearJSMemory();
-        jsAllocatedBytes = 0;
-
-        oomStatus = $"전체 해제: WASM {wasmSize / (1024 * 1024)}MB + WebView {jsFreed / (1024 * 1024):F0}MB";
-        Debug.Log($"[OOMTester] 전체 해제 완료: WASM {wasmSize / (1024 * 1024)}MB + WebView {jsFreed / (1024 * 1024):F0}MB");
-    }
-
-    #endregion
 }

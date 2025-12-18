@@ -759,10 +759,73 @@ export class TypeScriptParser {
   }
 
   /**
+   * DOM/브라우저 전용 타입 목록
+   * 이 타입들은 Unity에서 사용할 수 없으므로 'object'로 처리
+   * 순환 참조가 많아 스택 오버플로우를 유발할 수 있음
+   */
+  private static readonly DOM_TYPES = new Set([
+    'HTMLElement',
+    'Element',
+    'Node',
+    'Document',
+    'Window',
+    'Event',
+    'EventTarget',
+    'HTMLDivElement',
+    'HTMLSpanElement',
+    'HTMLInputElement',
+    'HTMLButtonElement',
+    'HTMLAnchorElement',
+    'HTMLImageElement',
+    'HTMLCanvasElement',
+    'HTMLVideoElement',
+    'HTMLAudioElement',
+    'HTMLFormElement',
+    'HTMLSelectElement',
+    'HTMLTextAreaElement',
+    'HTMLTableElement',
+    'HTMLIFrameElement',
+    'SVGElement',
+    'SVGSVGElement',
+    'DocumentFragment',
+    'ShadowRoot',
+    'Text',
+    'Comment',
+    'Attr',
+    'NamedNodeMap',
+    'NodeList',
+    'HTMLCollection',
+    'DOMTokenList',
+    'CSSStyleDeclaration',
+    'DOMRect',
+    'DOMRectReadOnly',
+    'TouchEvent',
+    'MouseEvent',
+    'KeyboardEvent',
+    'PointerEvent',
+    'FocusEvent',
+    'WheelEvent',
+    'DragEvent',
+    'ClipboardEvent',
+    'AnimationEvent',
+    'TransitionEvent',
+  ]);
+
+  /**
    * 타입 파싱 (ts-morph Type 객체 사용)
    */
   private parseType(typeNode: any): ParsedType {
     const typeText = typeNode.getText?.() || typeNode.toString();
+
+    // DOM/브라우저 전용 타입 감지 (순환 참조로 인한 스택 오버플로우 방지)
+    // Unity에서는 DOM 타입을 사용할 수 없으므로 'object'로 처리
+    if (TypeScriptParser.DOM_TYPES.has(typeText)) {
+      return {
+        name: 'object',
+        kind: 'primitive',
+        raw: typeText,
+      };
+    }
 
     // Primitive 타입 (string literal도 포함)
     if (['string', 'number', 'boolean', 'void', 'any', 'unknown', 'undefined', 'null'].includes(typeText)) {

@@ -62,6 +62,11 @@ export const API_CATEGORIES: Record<string, string[]> = {
     'GoogleAdMobShowAdMobInterstitialAd',
     'GoogleAdMobLoadAdMobRewardedAd',
     'GoogleAdMobShowAdMobRewardedAd',
+    // TossAds (v1.6.0+)
+    'TossAdsInitialize',
+    'TossAdsAttach',
+    'TossAdsDestroy',
+    'TossAdsDestroyAll',
   ],
   SafeArea: [
     'SafeAreaInsetsGet',

@@ -6,7 +6,7 @@
     <title>Unity WebGL Player | %UNITY_WEB_NAME%</title>
     <link rel="shortcut icon" href="TemplateData/favicon.ico">
     <link rel="stylesheet" href="TemplateData/style.css">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
 
     <style>
         body {
@@ -417,7 +417,7 @@
                         // CSS 스타일 추가
                         var style = document.createElement('style');
                         style.textContent = `
-                            /* Debug Console 전체화면 오버레이 */
+                            /* Debug Console 전체화면 오버레이 - Safe Area 지원 */
                             #unity-debug-console {
                                 position: fixed;
                                 top: 0;
@@ -433,6 +433,12 @@
                                 flex-direction: column;
                                 pointer-events: auto;
                                 overflow: hidden;
+                                /* Safe Area padding for iOS notch/home indicator */
+                                padding-top: env(safe-area-inset-top, 0px);
+                                padding-bottom: env(safe-area-inset-bottom, 0px);
+                                padding-left: env(safe-area-inset-left, 0px);
+                                padding-right: env(safe-area-inset-right, 0px);
+                                box-sizing: border-box;
                             }
                             #unity-debug-console.visible { display: flex; }
                             #unity-debug-console-header {
@@ -504,11 +510,11 @@
                                 margin-right: 10px;
                             }
 
-                            /* 왼쪽 하단 토글 버튼 */
+                            /* 왼쪽 하단 토글 버튼 - Safe Area 지원 */
                             #unity-debug-toggle-btn {
                                 position: fixed;
-                                bottom: 20px;
-                                left: 20px;
+                                bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+                                left: calc(20px + env(safe-area-inset-left, 0px));
                                 width: 56px;
                                 height: 56px;
                                 background: rgba(0, 0, 0, 0.8);
@@ -561,6 +567,30 @@
                             <div id="unity-debug-console-logs"></div>
                         `;
                         document.body.appendChild(consoleDiv);
+
+                        // Safe Area 동적 적용 (게임 앱에서 CSS env() 변수가 0일 수 있음)
+                        async function applySafeAreaToDebugConsole() {
+                            try {
+                                // Apps in Toss API로 safe area 가져오기
+                                if (window.AppsInToss && window.AppsInToss.safeAreaInsetsGet) {
+                                    var insets = await window.AppsInToss.safeAreaInsetsGet();
+                                    console.log('[AIT] Debug Console safe area insets:', insets);
+
+                                    if (insets) {
+                                        consoleDiv.style.paddingTop = (insets.top || 0) + 'px';
+                                        consoleDiv.style.paddingBottom = (insets.bottom || 0) + 'px';
+                                        consoleDiv.style.paddingLeft = (insets.left || 0) + 'px';
+                                        consoleDiv.style.paddingRight = (insets.right || 0) + 'px';
+                                        console.log('[AIT] Debug Console safe area applied successfully');
+                                    }
+                                } else {
+                                    console.log('[AIT] AppsInToss.safeAreaInsetsGet not available, using CSS fallback');
+                                }
+                            } catch (err) {
+                                console.warn('[AIT] Safe area API failed, using CSS fallback:', err);
+                            }
+                        }
+                        applySafeAreaToDebugConsole();
 
                         // 토글 버튼 생성
                         var toggleBtn = document.createElement('button');

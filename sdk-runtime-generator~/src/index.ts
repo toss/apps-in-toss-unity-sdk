@@ -331,7 +331,8 @@ async function generate(options: {
     const parsedTypeNames = new Set(typeDefinitions.map(t => t.name));
 
     // C# 타입 정의 생성 (API에서 추출된 타입) - 본문만 (중복 제외)
-    const apiTypesBody = await typeGenerator.generateTypes(apis, parsedTypeNames);
+    // typeDefinitions와 parser도 전달하여 pending external types 해결에 사용
+    const apiTypesBody = await typeGenerator.generateTypes(apis, parsedTypeNames, typeDefinitions, parser);
 
     // 헤더 + 본문들을 합침
     const typeFileHeader = `// -----------------------------------------------------------------------

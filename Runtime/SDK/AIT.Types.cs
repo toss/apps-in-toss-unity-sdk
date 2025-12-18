@@ -258,6 +258,63 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
+    public class RewardFromContactsViralEventData
+    {
+        [Preserve]
+        [JsonProperty("rewardAmount")]
+        public double RewardAmount;
+        [Preserve]
+        [JsonProperty("rewardUnit")]
+        public string RewardUnit;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class RewardFromContactsViralEvent
+    {
+        [Preserve]
+        [JsonProperty("type")]
+        public string Type;
+        [Preserve]
+        [JsonProperty("data")]
+        public RewardFromContactsViralEventData Data;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class ContactsViralSuccessEventData
+    {
+        [Preserve]
+        [JsonProperty("closeReason")]
+        public string CloseReason;
+        [Preserve]
+        [JsonProperty("sentRewardAmount")]
+        public double SentRewardAmount; // optional
+        [Preserve]
+        [JsonProperty("sendableRewardsCount")]
+        public double SendableRewardsCount; // optional
+        [Preserve]
+        [JsonProperty("sentRewardsCount")]
+        public double SentRewardsCount;
+        [Preserve]
+        [JsonProperty("rewardUnit")]
+        public string RewardUnit; // optional
+    }
+
+    [Serializable]
+    [Preserve]
+    public class ContactsViralSuccessEvent
+    {
+        [Preserve]
+        [JsonProperty("type")]
+        public string Type;
+        [Preserve]
+        [JsonProperty("data")]
+        public ContactsViralSuccessEventData Data;
+    }
+
+    [Serializable]
+    [Preserve]
     public class Location
     {
         [Preserve]
@@ -344,7 +401,7 @@ namespace AppsInToss
     public class GoogleAdMobLoadAdMobInterstitialAdArgs
     {
         [JsonIgnore]
-        public System.Action<object> OnEvent;
+        public System.Action<LoadAdMobInterstitialAdEvent> OnEvent;
         [JsonIgnore]
         public System.Action<Error> OnError;
         [Preserve]
@@ -361,7 +418,55 @@ namespace AppsInToss
         public string Type;
         [Preserve]
         [JsonProperty("data")]
-        public object Data;
+        public InterstitialAd Data;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class InterstitialAd
+    {
+        [Preserve]
+        [JsonProperty("adUnitId")]
+        public string AdUnitId;
+        [Preserve]
+        [JsonProperty("responseInfo")]
+        public ResponseInfo ResponseInfo;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class ResponseInfo
+    {
+        [Preserve]
+        [JsonProperty("adNetworkInfoArray")]
+        public AdNetworkResponseInfo[] AdNetworkInfoArray;
+        [Preserve]
+        [JsonProperty("loadedAdNetworkInfo")]
+        public AdNetworkResponseInfo LoadedAdNetworkInfo;
+        [Preserve]
+        [JsonProperty("responseId")]
+        public string ResponseId;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class AdNetworkResponseInfo
+    {
+        [Preserve]
+        [JsonProperty("adSourceId")]
+        public string AdSourceId;
+        [Preserve]
+        [JsonProperty("adSourceName")]
+        public string AdSourceName;
+        [Preserve]
+        [JsonProperty("adSourceInstanceId")]
+        public string AdSourceInstanceId;
+        [Preserve]
+        [JsonProperty("adSourceInstanceName")]
+        public string AdSourceInstanceName;
+        [Preserve]
+        [JsonProperty("adNetworkClassName")]
+        public string AdNetworkClassName;
     }
 
     [Serializable]
@@ -393,12 +498,21 @@ namespace AppsInToss
     public class GoogleAdMobShowAdMobInterstitialAdArgs
     {
         [JsonIgnore]
-        public System.Action<object> OnEvent;
+        public System.Action<ShowAdMobInterstitialAdEvent> OnEvent;
         [JsonIgnore]
         public System.Action<Error> OnError;
         [Preserve]
         [JsonProperty("options")]
         public ShowAdMobInterstitialAdOptions Options; // optional
+    }
+
+    [Serializable]
+    [Preserve]
+    public class ShowAdMobInterstitialAdEvent
+    {
+        [Preserve]
+        [JsonProperty("type")]
+        public string Type;
     }
 
     [Serializable]
@@ -415,7 +529,7 @@ namespace AppsInToss
     public class GoogleAdMobLoadAdMobRewardedAdArgs
     {
         [JsonIgnore]
-        public System.Action<object> OnEvent;
+        public System.Action<LoadAdMobRewardedAdEvent> OnEvent;
         [JsonIgnore]
         public System.Action<Error> OnError;
         [Preserve]
@@ -432,7 +546,19 @@ namespace AppsInToss
         public string Type;
         [Preserve]
         [JsonProperty("data")]
-        public object Data;
+        public RewardedAd Data;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class RewardedAd
+    {
+        [Preserve]
+        [JsonProperty("adUnitId")]
+        public string AdUnitId;
+        [Preserve]
+        [JsonProperty("responseInfo")]
+        public ResponseInfo ResponseInfo;
     }
 
     [Serializable]
@@ -449,12 +575,21 @@ namespace AppsInToss
     public class GoogleAdMobShowAdMobRewardedAdArgs
     {
         [JsonIgnore]
-        public System.Action<object> OnEvent;
+        public System.Action<ShowAdMobRewardedAdEvent> OnEvent;
         [JsonIgnore]
         public System.Action<Error> OnError;
         [Preserve]
         [JsonProperty("options")]
         public ShowAdMobRewardedAdOptions Options; // optional
+    }
+
+    [Serializable]
+    [Preserve]
+    public class ShowAdMobRewardedAdEvent
+    {
+        [Preserve]
+        [JsonProperty("type")]
+        public string Type;
     }
 
     [Serializable]
@@ -471,12 +606,39 @@ namespace AppsInToss
     public class GoogleAdMobLoadAppsInTossAdMobArgs
     {
         [JsonIgnore]
-        public System.Action<object> OnEvent;
+        public System.Action<LoadAdMobEvent> OnEvent;
         [JsonIgnore]
         public System.Action<Error> OnError;
         [Preserve]
         [JsonProperty("options")]
         public LoadAdMobOptions Options; // optional
+    }
+
+    [Serializable]
+    [Preserve]
+    public class LoadAdMobEvent
+    {
+        [Preserve]
+        [JsonProperty("type")]
+        public string Type;
+        [Preserve]
+        [JsonProperty("data")]
+        public AdMobLoadResult Data;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class AdMobLoadResult
+    {
+        [Preserve]
+        [JsonProperty("adGroupId")]
+        public string AdGroupId;
+        [Preserve]
+        [JsonProperty("adUnitId")]
+        public string AdUnitId;
+        [Preserve]
+        [JsonProperty("responseInfo")]
+        public ResponseInfo ResponseInfo;
     }
 
     [Serializable]
@@ -493,7 +655,7 @@ namespace AppsInToss
     public class GoogleAdMobShowAppsInTossAdMobArgs
     {
         [JsonIgnore]
-        public System.Action<object> OnEvent;
+        public System.Action<ShowAdMobEvent> OnEvent;
         [JsonIgnore]
         public System.Action<Error> OnError;
         [Preserve]

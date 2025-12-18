@@ -1,6 +1,7 @@
 import { Project, SourceFile, FunctionDeclaration, SyntaxKind } from 'ts-morph';
 import { ParsedAPI, ParsedParameter, ParsedType, ParsedTypeDefinition } from './types.js';
 import * as path from 'path';
+import * as fs from 'fs';
 
 /**
  * TypeScript 빌드 시 생성되는 $1, $2 등의 접미사 제거
@@ -27,7 +28,7 @@ export class TypeScriptParser {
     let tsConfigPath: string | undefined;
     for (const configPath of possibleConfigs) {
       try {
-        if (require('fs').existsSync(configPath)) {
+        if (fs.existsSync(configPath)) {
           tsConfigPath = configPath;
           break;
         }
@@ -49,27 +50,137 @@ export class TypeScriptParser {
     // sourceDir의 .d.ts 파일들을 재귀적으로 추가
     this.project.addSourceFilesAtPaths(path.join(sourceDir, '**', '*.d.ts'));
 
-    // ts-morph가 module resolution을 할 수 있도록 의존성 경로들도 추가
-    // (pnpm virtual store, node_modules 등)
-    const nodeModulesPaths = [
-      path.join(sourceDir, '..', 'node_modules'),
-      path.join(sourceDir, '../..', 'node_modules'),
-      path.join(process.cwd(), 'node_modules'),
-    ];
+    // 의존성 타입 해결: ts-morph의 module resolution으로 자동 처리
+    // node_modules 파일을 수동 추가하지 않음 (순환 참조, 불필요한 API 파싱 방지)
+    // native-modules의 비-export 타입은 parseNativeModulesType()으로 별도 처리
+  }
 
-    for (const nmPath of nodeModulesPaths) {
-      try {
-        if (require('fs').existsSync(nmPath)) {
-          // node_modules/@apps-in-toss 하위 패키지들 추가
-          const appsInTossPath = path.join(nmPath, '@apps-in-toss');
-          if (require('fs').existsSync(appsInTossPath)) {
-            this.project.addSourceFilesAtPaths(path.join(appsInTossPath, '**', '*.d.ts'));
-          }
+  /**
+   * native-modules에서 특정 타입 정의 파싱 (on-demand)
+   * 순환 참조로 인한 스택 오버플로우를 방지하기 위해 별도 메서드로 분리
+   */
+  parseNativeModulesType(typeName: string): ParsedTypeDefinition | null {
+    // native-modules 경로 찾기
+    const nmPath = path.join(process.cwd(), 'node_modules');
+    const pnpmPath = path.join(nmPath, '.pnpm');
+
+    if (!fs.existsSync(pnpmPath)) {
+      return null;
+    }
+
+    const pnpmDirs = fs.readdirSync(pnpmPath);
+    let nativeModulesPath: string | null = null;
+
+    for (const dir of pnpmDirs) {
+      if (dir.startsWith('@apps-in-toss+native-modules')) {
+        const indexPath = path.join(pnpmPath, dir, 'node_modules', '@apps-in-toss', 'native-modules', 'dist', 'index.d.ts');
+        if (fs.existsSync(indexPath)) {
+          nativeModulesPath = indexPath;
+          break;
         }
-      } catch {
-        continue;
       }
     }
+
+    if (!nativeModulesPath) {
+      return null;
+    }
+
+    // 별도 프로젝트로 파싱 (메인 프로젝트 오염 방지)
+    const tempProject = new Project({
+      skipAddingFilesFromTsConfig: true,
+    });
+    const sourceFile = tempProject.addSourceFileAtPath(nativeModulesPath);
+
+    // 1. interface 찾기
+    const interfaces = sourceFile.getInterfaces();
+    const targetInterface = interfaces.find(i => i.getName() === typeName);
+
+    if (targetInterface) {
+      const members = targetInterface.getMembers();
+      const properties = this.parseTypeMembers(members);
+
+      if (properties.length === 0) {
+        return null;
+      }
+
+      return {
+        name: typeName,
+        kind: 'interface',
+        file: 'native-modules/index.d.ts',
+        description: undefined,
+        properties,
+      };
+    }
+
+    // 2. type alias 찾기
+    const typeAliases = sourceFile.getTypeAliases();
+    const targetTypeAlias = typeAliases.find(t => t.getName() === typeName);
+
+    if (targetTypeAlias) {
+      const typeNode = targetTypeAlias.getTypeNode();
+      if (typeNode && typeNode.getKind() === SyntaxKind.TypeLiteral) {
+        const typeLiteral = typeNode.asKind(SyntaxKind.TypeLiteral);
+        if (typeLiteral) {
+          const members = typeLiteral.getMembers();
+          const properties = this.parseTypeMembers(members);
+
+          if (properties.length === 0) {
+            return null;
+          }
+
+          return {
+            name: typeName,
+            kind: 'interface', // type alias도 interface로 처리 (C# class로 변환됨)
+            file: 'native-modules/index.d.ts',
+            description: undefined,
+            properties,
+          };
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * 타입 멤버들을 파싱하여 프로퍼티 배열로 변환
+   */
+  private parseTypeMembers(members: any[]): any[] {
+    return members.map(member => {
+      if (member.getKind() === SyntaxKind.PropertySignature) {
+        const propSig = member.asKind(SyntaxKind.PropertySignature);
+        if (propSig) {
+          const propName = propSig.getName();
+          const propTypeNode = propSig.getTypeNode();
+          const propTypeText = propTypeNode?.getText() || 'any';
+          const isOptional = propSig.hasQuestionToken();
+
+          // 단순 타입 파싱 (재귀 방지)
+          let parsedType: ParsedType;
+          if (['string', 'number', 'boolean', 'void', 'any'].includes(propTypeText)) {
+            parsedType = { name: propTypeText, kind: 'primitive', raw: propTypeText };
+          } else if (propTypeText.endsWith('[]')) {
+            const elementTypeName = propTypeText.slice(0, -2);
+            parsedType = {
+              name: 'Array',
+              kind: 'array',
+              elementType: { name: elementTypeName, kind: 'object', raw: elementTypeName },
+              raw: propTypeText,
+            };
+          } else {
+            parsedType = { name: propTypeText, kind: 'object', raw: propTypeText };
+          }
+
+          return {
+            name: propName,
+            type: parsedType,
+            optional: isOptional,
+            description: undefined,
+          };
+        }
+      }
+      return null;
+    }).filter(p => p !== null);
   }
 
   /**
@@ -1218,7 +1329,8 @@ export class TypeScriptParser {
       const filePath = sourceFile.getFilePath();
       const fileName = path.basename(filePath);
 
-      // index, bridge, types 파일은 스킵
+      // web-bridge의 index, bridge, types 파일은 스킵
+      // native-modules는 parseNativeModulesType으로 별도 처리
       if (fileName === 'index.d.ts' || fileName === 'index.d.cts' || fileName === 'types.d.ts' || fileName === 'bridge.d.ts') {
         continue;
       }
@@ -1308,7 +1420,10 @@ export class TypeScriptParser {
           }
         }
 
-        // 이제 exported 선언들 처리
+        // native-modules의 비-export 인터페이스(InterstitialAd 등)는
+        // parseNativeModulesType()으로 별도 처리 (순환 참조 방지)
+
+        // exported 선언들 처리
         const exportedDeclarations = sourceFile.getExportedDeclarations();
 
         for (const [name, declarations] of exportedDeclarations) {

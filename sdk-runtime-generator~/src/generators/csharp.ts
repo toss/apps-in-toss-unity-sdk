@@ -729,6 +729,8 @@ export class CSharpTypeGenerator {
   private inlineEnums: Map<string, string[]> = new Map();
   // 익명 배열 요소 타입을 추적 (propertyPath -> generatedClassName)
   private inlineArrayElementTypes: Map<string, string> = new Map();
+  // 프로퍼티가 없지만 참조된 외부 타입을 추적 (나중에 type definitions에서 해결)
+  private pendingExternalTypes: Set<string> = new Set();
 
   constructor() {
     // Constructor for future template loading if needed
@@ -986,7 +988,12 @@ export class CSharpTypeGenerator {
   /**
    * API에서 사용되는 모든 타입 정의 생성
    */
-  async generateTypes(apis: ParsedAPI[], excludeTypeNames?: Set<string>): Promise<string> {
+  async generateTypes(
+    apis: ParsedAPI[],
+    excludeTypeNames?: Set<string>,
+    typeDefinitions?: ParsedTypeDefinition[],
+    parser?: { parseNativeModulesType: (typeName: string) => ParsedTypeDefinition | null }
+  ): Promise<string> {
     const typeMap = new Map<string, string>(); // typeName -> classDefinition
     const unionResultMap = new Map<string, string>(); // API name -> Union Result class
     const exclude = excludeTypeNames || new Set<string>();
@@ -995,6 +1002,8 @@ export class CSharpTypeGenerator {
     this.inlineEnums.clear();
     // Inline array element types Map 초기화
     this.inlineArrayElementTypes.clear();
+    // Pending external types 초기화
+    this.pendingExternalTypes.clear();
 
     // API에서 사용되는 모든 타입 수집
     for (const api of apis) {
@@ -1143,6 +1152,36 @@ export class CSharpTypeGenerator {
           // 프로퍼티에서 참조되는 named type도 수집 (재귀)
           this.collectReferencedTypes(api.returnType.properties, typeMap, exclude, cleanName);
         }
+      }
+    }
+
+    // Pending external types 해결: typeDefinitions와 native-modules에서 찾아서 클래스 생성
+    if (this.pendingExternalTypes.size > 0) {
+      // 재귀적으로 추가된 pending types 해결 (최대 10번 반복하여 무한 루프 방지)
+      let iteration = 0;
+      while (this.pendingExternalTypes.size > 0 && iteration < 10) {
+        const remainingTypes = new Set(this.pendingExternalTypes);
+        this.pendingExternalTypes.clear();
+
+        for (const typeName of remainingTypes) {
+          if (typeMap.has(typeName) || exclude.has(typeName)) {
+            continue;
+          }
+
+          // 1. typeDefinitions에서 먼저 찾기
+          let typeDef = typeDefinitions?.find(t => t.name === typeName);
+
+          // 2. 없으면 native-modules에서 찾기
+          if (!typeDef && parser) {
+            typeDef = parser.parseNativeModulesType(typeName) || undefined;
+          }
+
+          if (typeDef && typeDef.kind === 'interface' && typeDef.properties && typeDef.properties.length > 0) {
+            typeMap.set(typeName, this.generateClassType(typeName, typeDef.properties));
+            this.collectReferencedTypes(typeDef.properties, typeMap, exclude, typeName);
+          }
+        }
+        iteration++;
       }
     }
 
@@ -1354,16 +1393,21 @@ ${fields}${errorField}
     for (const prop of properties) {
       // named object 타입 (익명이 아닌 경우)
       if (prop.type.kind === 'object' &&
-          prop.type.properties &&
-          prop.type.properties.length > 0 &&
           prop.type.name !== '__type' &&
           prop.type.name !== 'object' &&
           !prop.type.name.startsWith('{')) {
         const typeName = this.extractCleanName(prop.type.name);
         if (!typeMap.has(typeName) && !exclude.has(typeName)) {
-          typeMap.set(typeName, this.generateClassType(typeName, prop.type.properties));
-          // 재귀적으로 해당 타입의 프로퍼티도 수집
-          this.collectReferencedTypes(prop.type.properties, typeMap, exclude, typeName);
+          // 프로퍼티가 있으면 바로 클래스 생성
+          if (prop.type.properties && prop.type.properties.length > 0) {
+            typeMap.set(typeName, this.generateClassType(typeName, prop.type.properties));
+            // 재귀적으로 해당 타입의 프로퍼티도 수집
+            this.collectReferencedTypes(prop.type.properties, typeMap, exclude, typeName);
+          } else {
+            // 프로퍼티가 없는 named type은 pendingExternalTypes에 추가
+            // (나중에 type definitions에서 해결)
+            this.pendingExternalTypes.add(typeName);
+          }
         }
       }
       // 배열의 요소 타입
@@ -1451,15 +1495,37 @@ ${fields}${errorField}
       }
     }
     // Object 타입 처리
-    else if (paramType.kind === 'object' && paramType.properties && paramType.properties.length > 0) {
-      const typeName = paramType.name === '__type' || paramType.name === 'object' || paramType.name.startsWith('{')
-        ? 'object'
-        : this.extractCleanName(paramType.name);
+    else if (paramType.kind === 'object') {
+      // Named type (not anonymous)
+      let isAnonymous = paramType.name === '__type' || paramType.name === 'object' || paramType.name.startsWith('{');
 
-      if (typeName !== 'object' && !typeMap.has(typeName) && !exclude.has(typeName)) {
-        typeMap.set(typeName, this.generateClassType(typeName, paramType.properties));
-        // 프로퍼티에서 참조되는 named type도 수집 (재귀)
-        this.collectReferencedTypes(paramType.properties, typeMap, exclude, typeName);
+      // __type이지만 raw에서 실제 타입 이름을 추출할 수 있는 경우
+      let extractedTypeName: string | undefined;
+      if (isAnonymous && paramType.raw && paramType.raw.includes('.') && !paramType.raw.trim().startsWith('{')) {
+        const rawTypeName = paramType.raw.split('.').pop()?.replace(/["'{}(),;\s<>|]/g, '').replace(/\$\d+$/, '').trim();
+        if (rawTypeName && rawTypeName !== '__type' && !rawTypeName.startsWith('{')) {
+          extractedTypeName = rawTypeName;
+          isAnonymous = false; // raw에서 타입 이름을 추출했으므로 익명이 아님
+        }
+      }
+
+      if (!isAnonymous) {
+        const typeName = extractedTypeName || this.extractCleanName(paramType.name);
+
+        if (!typeMap.has(typeName) && !exclude.has(typeName)) {
+          if (paramType.properties && paramType.properties.length > 0) {
+            // 인라인 프로퍼티가 있으면 클래스 생성
+            typeMap.set(typeName, this.generateClassType(typeName, paramType.properties));
+            this.collectReferencedTypes(paramType.properties, typeMap, exclude, typeName);
+          } else {
+            // 프로퍼티가 없는 named type은 pendingExternalTypes에 추가
+            this.pendingExternalTypes.add(typeName);
+          }
+        }
+      }
+      // Anonymous type - still collect referenced types if it has properties
+      else if (paramType.properties && paramType.properties.length > 0) {
+        this.collectReferencedTypes(paramType.properties, typeMap, exclude, undefined);
       }
     }
   }

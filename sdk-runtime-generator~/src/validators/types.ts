@@ -156,19 +156,14 @@ export function validateAllTypes(apis: ParsedAPI[]): { success: boolean; errors:
 }
 
 /**
- * 알려진 외부 타입 (Google AdMob SDK 등)
- * 이 타입들은 web-bridge에서 참조되지만 정의가 없음
+ * 알려진 외부 타입 (런타임에만 존재하는 타입)
+ * 이 타입들은 web-bridge에서 참조되지만 TypeScript 정의가 없어서 object로 매핑됨
+ *
+ * 참고: InterstitialAd, RewardedAd, ResponseInfo 등의 AdMob 타입은
+ * @apps-in-toss/native-modules에 정의되어 있으므로 제외됨 (파서가 자동으로 파싱)
  */
-const EXTERNAL_TYPES = new Set([
-  'InterstitialAd',
-  'RewardedAd',
-  // Google AdMob 이벤트 타입들 (native-modules에서 정의)
-  'LoadAdMobInterstitialAdEvent',    // loadAdMobInterstitialAd의 onEvent 파라미터
-  'LoadAdMobRewardedAdEvent',        // loadAdMobRewardedAd의 onEvent 파라미터
-  'ShowAdMobInterstitialAdEvent',    // showAdMobInterstitialAd의 onEvent 파라미터
-  'ShowAdMobRewardedAdEvent',        // showAdMobRewardedAd의 onEvent 파라미터
-  'LoadAdMobEvent',                  // 일반적인 AdMob 로드 이벤트
-  'ShowAdMobEvent',                  // showAdMob의 onEvent 파라미터
+const EXTERNAL_TYPES = new Set<string>([
+  // 현재 런타임 전용 타입 없음 - 필요시 추가
 ]);
 
 /**

@@ -54,6 +54,14 @@ namespace AppsInToss
         Access
     }
 
+    public enum AttachOptionsTheme
+    {
+        [EnumMember(Value = "light")]
+        Light,
+        [EnumMember(Value = "dark")]
+        Dark
+    }
+
     public enum AppsInTossGlobalsBrandBridgeColorMode
     {
         [EnumMember(Value = "basic")]
@@ -470,6 +478,107 @@ namespace AppsInToss
         public double Right;
         /// <summary>에러 발생 시 에러 메시지 (플랫폼 미지원 등)</summary>
         public string error;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class InitializeOptions
+    {
+        [JsonIgnore]
+        public System.Action Callbacks; // optional
+    }
+
+    [Serializable]
+    [Preserve]
+    public class AttachOptions
+    {
+        [Preserve]
+        [JsonProperty("theme")]
+        public AttachOptionsTheme Theme; // optional
+        [Preserve]
+        [JsonProperty("padding")]
+        public string Padding; // optional
+        [Preserve]
+        [JsonProperty("callbacks")]
+        public BannerSlotCallbacks Callbacks; // optional
+    }
+
+    [Serializable]
+    [Preserve]
+    public class BannerSlotCallbacks
+    {
+        [JsonIgnore]
+        public System.Action<BannerSlotEventPayload> OnAdRendered; // optional
+        [JsonIgnore]
+        public System.Action<BannerSlotEventPayload> OnAdViewable; // optional
+        [JsonIgnore]
+        public System.Action<BannerSlotEventPayload> OnAdClicked; // optional
+        [JsonIgnore]
+        public System.Action<BannerSlotEventPayload> OnAdImpression; // optional
+        [JsonIgnore]
+        public System.Action<BannerSlotErrorPayload> OnAdFailedToRender; // optional
+        [JsonIgnore]
+        public System.Action<object> OnNoFill; // optional
+    }
+
+    [Serializable]
+    [Preserve]
+    public class BannerSlotEventPayloadAdMetadata
+    {
+        [Preserve]
+        [JsonProperty("creativeId")]
+        public string CreativeId;
+        [Preserve]
+        [JsonProperty("requestId")]
+        public string RequestId;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class BannerSlotEventPayload
+    {
+        [Preserve]
+        [JsonProperty("slotId")]
+        public string SlotId;
+        [Preserve]
+        [JsonProperty("adGroupId")]
+        public string AdGroupId;
+        [Preserve]
+        [JsonProperty("adMetadata")]
+        public BannerSlotEventPayloadAdMetadata AdMetadata;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class BannerSlotErrorPayloadError
+    {
+        [Preserve]
+        [JsonProperty("code")]
+        public double Code;
+        [Preserve]
+        [JsonProperty("message")]
+        public string Message;
+        [Preserve]
+        [JsonProperty("domain")]
+        public string Domain; // optional
+    }
+
+    [Serializable]
+    [Preserve]
+    public class BannerSlotErrorPayload
+    {
+        [Preserve]
+        [JsonProperty("slotId")]
+        public string SlotId;
+        [Preserve]
+        [JsonProperty("adGroupId")]
+        public string AdGroupId;
+        [Preserve]
+        [JsonProperty("adMetadata")]
+        public Dictionary<string, object> AdMetadata;
+        [Preserve]
+        [JsonProperty("error")]
+        public BannerSlotErrorPayloadError Error;
     }
 
     [Serializable]

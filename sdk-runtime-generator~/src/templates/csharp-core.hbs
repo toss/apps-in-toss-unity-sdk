@@ -547,6 +547,24 @@ namespace AppsInToss
                         }
                     }
                     break;
+                case "System.Action":
+                    // Disposer function return type - resolve Task with no-op Action
+                    if (apiResponse.success)
+                    {
+                        if (TryGetCallback<System.Action>(callbackId, out var actionCallback) && actionCallback != null)
+                        {
+                            // Return an empty disposer - actual unsubscription handled by SDK
+                            actionCallback(() => { });
+                        }
+                    }
+                    else
+                    {
+                        if (TryGetErrorCallback(callbackId, out var actionErrorCallback) && actionErrorCallback != null)
+                        {
+                            actionErrorCallback(new AITException("System.Action", apiResponse.error));
+                        }
+                    }
+                    break;
 
                 default:
                     Debug.LogWarning($"[AITCore] Unknown callback type: {typeName}");

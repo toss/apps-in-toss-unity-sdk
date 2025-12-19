@@ -19,7 +19,7 @@
     "test:tier2": "vitest run tests/unit/invariants.test.ts"
   },
   "dependencies": {
-    "@apps-in-toss/web-framework": "1.6.0",
+    "@apps-in-toss/web-framework": "1.6.1",
     "commander": "^14.0.2",
     "handlebars": "^4.7.8",
     "picocolors": "^1.1.1",

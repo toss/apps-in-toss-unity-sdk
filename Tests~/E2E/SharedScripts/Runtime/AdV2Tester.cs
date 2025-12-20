@@ -10,9 +10,28 @@ using AppsInToss;
 /// </summary>
 public class AdV2Tester : MonoBehaviour
 {
-    // 테스트용 광고 ID (문서 참조: https://developers-apps-in-toss.toss.im/ads/develop.html)
-    private const string TEST_INTERSTITIAL_AD_ID = "ait-ad-test-interstitial-id";
-    private const string TEST_REWARDED_AD_ID = "ait-ad-test-rewarded-id";
+    // 광고 ID 환경 변수명
+    private const string ENV_INTERSTITIAL_AD_ID = "AIT_AD_INTERSTITIAL_ID";
+    private const string ENV_REWARDED_AD_ID = "AIT_AD_REWARDED_ID";
+
+    // 기본 테스트용 광고 ID (환경 변수가 없을 때 사용)
+    private const string DEFAULT_INTERSTITIAL_AD_ID = "ait-ad-test-interstitial-id";
+    private const string DEFAULT_REWARDED_AD_ID = "ait-ad-test-rewarded-id";
+
+    // 실제 사용할 광고 ID (환경 변수 우선, 없으면 기본값)
+    private static readonly string TEST_INTERSTITIAL_AD_ID =
+        GetEnvString(ENV_INTERSTITIAL_AD_ID, DEFAULT_INTERSTITIAL_AD_ID);
+    private static readonly string TEST_REWARDED_AD_ID =
+        GetEnvString(ENV_REWARDED_AD_ID, DEFAULT_REWARDED_AD_ID);
+
+    /// <summary>
+    /// 환경 변수에서 string 값 읽기 (없으면 기본값 반환)
+    /// </summary>
+    private static string GetEnvString(string name, string defaultValue)
+    {
+        string value = System.Environment.GetEnvironmentVariable(name);
+        return string.IsNullOrEmpty(value) ? defaultValue : value;
+    }
 
     // 광고 상태
     private string adStatus = "";

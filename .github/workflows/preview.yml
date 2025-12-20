@@ -183,6 +183,9 @@ jobs:
       run-build: true
       run-e2e-test: false
       run-benchmark: false
+    secrets:
+      AIT_AD_INTERSTITIAL_ID: ${{ secrets.AIT_AD_INTERSTITIAL_ID }}
+      AIT_AD_REWARDED_ID: ${{ secrets.AIT_AD_REWARDED_ID }}
 
   # =====================================================
   # 배포

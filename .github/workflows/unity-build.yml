@@ -41,6 +41,13 @@ on:
         type: boolean
         required: false
         default: false
+    secrets:
+      AIT_AD_INTERSTITIAL_ID:
+        description: 'Interstitial ad ID for testing'
+        required: false
+      AIT_AD_REWARDED_ID:
+        description: 'Rewarded ad ID for testing'
+        required: false
     outputs:
       artifact-name:
         description: 'Uploaded artifact name'
@@ -309,6 +316,8 @@ jobs:
         uses: nick-invision/retry@v3
         env:
           AIT_DEBUG_CONSOLE: "true"
+          AIT_AD_INTERSTITIAL_ID: ${{ secrets.AIT_AD_INTERSTITIAL_ID }}
+          AIT_AD_REWARDED_ID: ${{ secrets.AIT_AD_REWARDED_ID }}
         with:
           timeout_minutes: 30
           max_attempts: 3
@@ -333,6 +342,8 @@ jobs:
         uses: nick-invision/retry@v3
         env:
           AIT_DEBUG_CONSOLE: "true"
+          AIT_AD_INTERSTITIAL_ID: ${{ secrets.AIT_AD_INTERSTITIAL_ID }}
+          AIT_AD_REWARDED_ID: ${{ secrets.AIT_AD_REWARDED_ID }}
         with:
           timeout_minutes: 30
           max_attempts: 3

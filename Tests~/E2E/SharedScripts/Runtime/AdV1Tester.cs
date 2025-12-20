@@ -161,7 +161,7 @@ public class AdV1Tester : MonoBehaviour
             {
                 isAdLoaded = false;
                 adStatus = $"Error: {error.Message}";
-                adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Error: {error.Code} - {error.Message}");
+                adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Error: {error.ErrorCode} - {error.Message}");
             }
         );
     }
@@ -203,7 +203,7 @@ public class AdV1Tester : MonoBehaviour
             onError: (error) =>
             {
                 adStatus = $"Error: {error.Message}";
-                adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Error: {error.Code} - {error.Message}");
+                adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Error: {error.ErrorCode} - {error.Message}");
             }
         );
     }

@@ -302,6 +302,7 @@ describe('Tier 2: C# ↔ jslib 바인딩 일관성 검증', () => {
       // 콜백이 필요 없는 동기 함수 목록 (예외)
       const syncFunctions = [
         '__AITUnsubscribe_Internal', // 구독 해제는 동기적으로 처리됨
+        '__AITRespondToNestedCallback', // 중첩 콜백 응답 (동기적으로 결과 전달)
       ];
 
       for (const extern of csharpExterns) {

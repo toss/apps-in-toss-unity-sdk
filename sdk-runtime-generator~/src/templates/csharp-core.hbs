@@ -303,6 +303,15 @@ namespace AppsInToss
         }
 
         /// <summary>
+        /// Register a subscription callback with specified ID (for nested callback APIs)
+        /// </summary>
+        public void RegisterSubscriptionCallback<T>(string subscriptionId, Action<T> onEvent, Action<AITException> onError)
+        {
+            _subscriptionCallbacks[subscriptionId] = onEvent;
+            if (onError != null) _subscriptionErrorCallbacks[subscriptionId] = onError;
+        }
+
+        /// <summary>
         /// Register a void subscription callback - for events without data (backEvent, entryMessageExited)
         /// </summary>
         public string RegisterVoidSubscriptionCallback(Action onEvent, Action<AITException> onError)
@@ -547,27 +556,177 @@ namespace AppsInToss
                         }
                     }
                     break;
+                case "System.Action":
+                    // Disposer function return type - resolve Task with no-op Action
+                    if (apiResponse.success)
+                    {
+                        if (TryGetCallback<System.Action>(callbackId, out var actionCallback) && actionCallback != null)
+                        {
+                            // Return an empty disposer - actual unsubscription handled by SDK
+                            actionCallback(() => { });
+                        }
+                    }
+                    else
+                    {
+                        if (TryGetErrorCallback(callbackId, out var actionErrorCallback) && actionErrorCallback != null)
+                        {
+                            actionErrorCallback(new AITException("System.Action", apiResponse.error));
+                        }
+                    }
+                    break;
 
                 default:
                     Debug.LogWarning($"[AITCore] Unknown callback type: {typeName}");
                     break;
             }
         }
-    }
 
-    /// <summary>
-    /// Callback payload from JavaScript
-    /// </summary>
-    [Serializable]
-    [Preserve]
-    public class CallbackData
-    {
+        /// <summary>
+        /// Callback payload from JavaScript
+        /// </summary>
+        [Serializable]
         [Preserve]
-        public string CallbackId = "";
+        public class CallbackData
+        {
+            [Preserve]
+            public string CallbackId = "";
+            [Preserve]
+            public string TypeName = "";
+            [Preserve]
+            public string Result = "";
+        }
+
+        // ===================================================================
+        // Nested Callback System (processProductGrant 등 options 내부 콜백)
+        // ===================================================================
+
+        private Dictionary<string, Delegate> _nestedCallbacks = new Dictionary<string, Delegate>();
+
+        /// <summary>
+        /// Register a nested callback (e.g., processProductGrant in IAPCreateOneTimePurchaseOrder)
+        /// </summary>
+        /// <param name="subscriptionId">Parent subscription ID</param>
+        /// <param name="callbackName">Callback name (e.g., "processProductGrant")</param>
+        /// <param name="callback">Callback function (Func&lt;T, bool&gt; or similar)</param>
+        public void RegisterNestedCallback<TParam, TResult>(string subscriptionId, string callbackName, Func<TParam, TResult> callback)
+        {
+            var key = $"{subscriptionId}_{callbackName}";
+            // Wrap the callback to accept JSON string and return bool
+            Func<string, bool> wrapper = (string jsonData) => {
+                try
+                {
+                    var param = JsonConvert.DeserializeObject<TParam>(jsonData);
+                    var result = callback(param);
+                    // Convert result to bool (handles bool, object, etc.)
+                    if (result is bool boolResult) return boolResult;
+                    return result != null;
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogError($"[AITCore] Nested callback error: {ex.Message}");
+                    return false;
+                }
+            };
+            _nestedCallbacks[key] = wrapper;
+            Debug.Log($"[AITCore] Registered nested callback: {key}");
+        }
+
+        /// <summary>
+        /// Remove all nested callbacks for a subscription
+        /// </summary>
+        public void RemoveNestedCallbacks(string subscriptionId)
+        {
+            var keysToRemove = new List<string>();
+            foreach (var key in _nestedCallbacks.Keys)
+            {
+                if (key.StartsWith(subscriptionId + "_"))
+                {
+                    keysToRemove.Add(key);
+                }
+            }
+            foreach (var key in keysToRemove)
+            {
+                _nestedCallbacks.Remove(key);
+                Debug.Log($"[AITCore] Removed nested callback: {key}");
+            }
+        }
+
+        /// <summary>
+        /// Called by JavaScript when a nested callback is triggered.
+        /// JavaScript waits for the result via RespondToNestedCallback.
+        /// </summary>
+        public void OnNestedCallback(string jsonPayload)
+        {
+            Debug.Log($"[AITCore] OnNestedCallback received: {jsonPayload}");
+            try
+            {
+                var request = JsonConvert.DeserializeObject<NestedCallbackRequest>(jsonPayload);
+                var key = $"{request.CallbackId}_{request.CallbackName}";
+
+                if (_nestedCallbacks.TryGetValue(key, out var rawCallback))
+                {
+                    // The stored callback is already a Func<string, bool> wrapper
+                    if (rawCallback is Func<string, bool> callback)
+                    {
+                        bool result = callback(request.Data);
+                        RespondToNestedCallback(request.RequestId, result);
+                    }
+                    else
+                    {
+                        Debug.LogError($"[AITCore] Callback is not a Func<string, bool>: {rawCallback.GetType()}");
+                        RespondToNestedCallback(request.RequestId, false);
+                    }
+                }
+                else
+                {
+                    Debug.LogWarning($"[AITCore] Unknown nested callback: {key}");
+                    // Return false if callback not found
+                    RespondToNestedCallback(request.RequestId, false);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[AITCore] Failed to process nested callback: {ex.Message}");
+            }
+        }
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __AITRespondToNestedCallback(string requestId, int result);
+#endif
+
+        /// <summary>
+        /// Send result back to JavaScript for a nested callback
+        /// </summary>
+        private void RespondToNestedCallback(string requestId, bool result)
+        {
+            Debug.Log($"[AITCore] RespondToNestedCallback: {requestId} = {result}");
+#if UNITY_WEBGL && !UNITY_EDITOR
+            __AITRespondToNestedCallback(requestId, result ? 1 : 0);
+#endif
+        }
+
+        /// <summary>
+        /// Nested callback request from JavaScript
+        /// </summary>
+        [Serializable]
         [Preserve]
-        public string TypeName = "";
-        [Preserve]
-        public string Result = "";
+        public class NestedCallbackRequest
+        {
+            [Preserve]
+            [JsonProperty("requestId")]
+            public string RequestId = "";
+            [Preserve]
+            [JsonProperty("callbackId")]
+            public string CallbackId = "";
+            [Preserve]
+            [JsonProperty("callbackName")]
+            public string CallbackName = "";
+            [Preserve]
+            [JsonProperty("data")]
+            public string Data = "";
+        }
+
     }
 
     // ===================================================================

@@ -20,6 +20,7 @@ namespace AppsInToss
         /// <summary>
         /// 모바일 앱의 로컬 저장소에서 문자열 데이터를 가져와요. 주로 앱이 종료되었다가 다시 시작해도 데이터가 유지되어야 하는 경우에 사용해요.
         /// </summary>
+        /// <returns>결과 값 또는 null</returns>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Storage")]

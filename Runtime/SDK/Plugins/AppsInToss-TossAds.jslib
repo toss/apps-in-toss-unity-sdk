@@ -35,7 +35,7 @@ mergeInto(LibraryManager.library, {
         var typeNameStr = UTF8ToString(typeName);
 
         try {
-            var result = window.AppsInToss.TossAds.attach(UTF8ToString(adGroupId), target, JSON.parse(UTF8ToString(options)));
+            var result = window.AppsInToss.TossAds.attach(UTF8ToString(adGroupId), target, options);
             var payload = JSON.stringify({
                 CallbackId: callback,
                 TypeName: typeNameStr,

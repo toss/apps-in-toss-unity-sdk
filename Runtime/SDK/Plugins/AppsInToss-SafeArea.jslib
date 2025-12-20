@@ -35,7 +35,7 @@ mergeInto(LibraryManager.library, {
         var typeNameStr = UTF8ToString(typeName);
 
         try {
-            var result = window.AppsInToss.SafeAreaInsets.subscribe(__0);
+            var result = window.AppsInToss.SafeAreaInsets.subscribe(JSON.parse(UTF8ToString(__0)));
             var payload = JSON.stringify({
                 CallbackId: callback,
                 TypeName: typeNameStr,

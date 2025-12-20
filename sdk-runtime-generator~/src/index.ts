@@ -11,7 +11,9 @@ import { validateCompleteness, printSummary } from './validators/completeness.js
 import { CSharpGenerator, CSharpTypeGenerator } from './generators/csharp.js';
 import { JSLibGenerator } from './generators/jslib.js';
 import { typeCheckBridgeCode, printTypeCheckResult, cleanupCache } from './generators/jslib-compiler.js';
+import { generateUnityBridge } from './generators/unity-bridge.js';
 import { formatCommand } from './commands/format.js';
+import { FRAMEWORK_APIS } from './categories.js';
 
 const program = new Command();
 
@@ -261,7 +263,7 @@ async function generate(options: {
     // 4. API 파싱
     console.log(picocolors.cyan('\n📊 web-framework 분석 중...'));
     const parser = new TypeScriptParser(typeDefinitionsPath);
-    const apis = await parser.parseAPIs();
+    const apis = await parser.parseAPIs(FRAMEWORK_APIS);
 
     if (apis.length === 0) {
       console.error(picocolors.red('\n❌ web-framework에서 API를 발견하지 못했습니다.\n'));
@@ -289,7 +291,15 @@ async function generate(options: {
     // 6. 타입 정의 파싱 (enum, interface)
     console.log(picocolors.cyan('\n📦 타입 정의 파싱 중...'));
     const typeDefinitions = await parser.parseTypeDefinitions();
+
+    // @apps-in-toss/framework 타입 정의 추가 (loadFullScreenAd, showFullScreenAd 관련)
+    const frameworkTypeDefinitions = parser.parseFrameworkTypeDefinitions(FRAMEWORK_APIS);
+    typeDefinitions.push(...frameworkTypeDefinitions);
+
     console.log(picocolors.green(`✓ ${typeDefinitions.length}개 타입 정의 발견`));
+    if (frameworkTypeDefinitions.length > 0) {
+      console.log(picocolors.gray(`   - Framework 타입: ${frameworkTypeDefinitions.length}개 (${frameworkTypeDefinitions.map(t => t.name).join(', ')})`));
+    }
 
     // enum과 interface 분류
     const enums = typeDefinitions.filter(t => t.kind === 'enum');
@@ -324,13 +334,16 @@ async function generate(options: {
     console.log(picocolors.green(`✓ AITCore.cs (Infrastructure)`));
 
     // C# 타입 정의 생성 (파싱된 enum/interface) - 본문만
-    const parsedTypesBody = await typeGenerator.generateTypeDefinitions(typeDefinitions);
+    // 생성된 타입 이름도 함께 반환하여 API 타입 생성 시 중복 방지
+    const parsedTypesResult = await typeGenerator.generateTypeDefinitions(typeDefinitions);
+    const parsedTypesBody = parsedTypesResult.code;
 
-    // 파싱된 타입 이름 목록 생성 (중복 방지용)
-    const parsedTypeNames = new Set(typeDefinitions.map(t => t.name));
+    // 파싱된 타입 이름 목록 (중첩 타입 포함) - 중복 방지용
+    const parsedTypeNames = parsedTypesResult.generatedTypeNames;
 
     // C# 타입 정의 생성 (API에서 추출된 타입) - 본문만 (중복 제외)
-    const apiTypesBody = await typeGenerator.generateTypes(apis, parsedTypeNames);
+    // typeDefinitions와 parser도 전달하여 pending external types 해결에 사용
+    const apiTypesBody = await typeGenerator.generateTypes(apis, parsedTypeNames, typeDefinitions, parser);
 
     // 헤더 + 본문들을 합침
     const typeFileHeader = `// -----------------------------------------------------------------------
@@ -487,6 +500,13 @@ namespace AppsInToss
       await ensureMetaFile(filePath, existingMetas, 'jslib');
       console.log(picocolors.green(`  ✓ Plugins/${fileName}`));
     }
+
+    // 8. unity-bridge.ts 생성 (WebGLTemplates/AITTemplate/BuildConfig/)
+    console.log(picocolors.cyan('\n🌉 Unity Bridge 생성 중...'));
+    const unityBridgeContent = generateUnityBridge(apis);
+    const unityBridgePath = path.resolve(outputDir, '../../WebGLTemplates/AITTemplate/BuildConfig/unity-bridge.ts');
+    await fs.writeFile(unityBridgePath, unityBridgeContent);
+    console.log(picocolors.green(`  ✓ unity-bridge.ts`));
 
     // 9. 요약 출력
     printSummary(apis, generatedCodes);

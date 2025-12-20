@@ -22,6 +22,22 @@ export interface ParsedAPI {
   isEventSubscription?: boolean; // addEventListener 패턴인지
   eventName?: string; // 이벤트 이름 (예: 'navigationAccessoryEvent')
   eventDataType?: ParsedType; // onEvent 콜백 데이터 타입 (void면 undefined)
+  // 콜백 기반 API 지원 (loadFullScreenAd, showFullScreenAd 등)
+  isCallbackBased?: boolean; // 콜백 기반 API인지 (onEvent/onError 콜백 사용)
+  isTopLevelExport?: boolean; // 최상위 export인지 (AppsInToss 네임스페이스 없이 호출)
+  // 중첩 콜백 지원 (options.processProductGrant 등)
+  nestedCallbacks?: NestedCallback[];
+}
+
+/**
+ * 중첩 콜백 정보 (options 객체 내부의 콜백 함수)
+ * 예: createOneTimePurchaseOrder의 options.processProductGrant
+ */
+export interface NestedCallback {
+  name: string;           // 콜백 이름 (예: "processProductGrant")
+  path: string[];         // 경로 (예: ["options", "processProductGrant"])
+  parameterType?: ParsedType; // 콜백 파라미터 타입 (예: { orderId: string })
+  returnType?: ParsedType;    // 콜백 반환 타입 (예: boolean | Promise<boolean>)
 }
 
 /**
@@ -55,6 +71,10 @@ export interface ParsedType {
   // Function 타입 정보
   functionParams?: ParsedType[]; // 함수 파라미터 타입들
   functionReturnType?: ParsedType; // 함수 반환 타입
+  // Intersection 타입 정보
+  isIntersection?: boolean;
+  // Nullable 타입 정보 (T | null 또는 T | undefined 패턴)
+  isNullable?: boolean;
 }
 
 /**

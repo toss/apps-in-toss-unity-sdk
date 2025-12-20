@@ -215,6 +215,10 @@ export class CSharpGenerator {
       errorCodes: api.returnType.promiseType!.errorCodes || []
     } : undefined;
 
+    // nullable 참조 타입 여부 확인 (C#에서 ?를 붙일 수 없지만 문서에 명시 필요)
+    const innerType = api.returnType.kind === 'promise' ? api.returnType.promiseType : api.returnType;
+    const isNullableReturn = innerType?.isNullable === true && callbackType !== 'void';
+
     const data = {
       name: api.name,
       pascalName: api.pascalName, // PascalCase 이름 추가
@@ -228,6 +232,7 @@ export class CSharpGenerator {
       callbackType,
       isDiscriminatedUnion,
       unionInfo,
+      isNullableReturn, // nullable 참조 타입 여부 (문서용)
     };
 
     const generated = this.apiTemplate(data);
@@ -675,6 +680,31 @@ export class CSharpGenerator {
       hasEventData = eventDataType !== 'void' && eventDataType !== 'undefined';
     }
 
+    // 콜백 기반 API의 이벤트 타입 및 에러 타입 결정
+    let callbackEventType: string | undefined;
+    let callbackErrorType: string | undefined;
+    if (api.isCallbackBased && api.parameters) {
+      // onEvent 파라미터에서 이벤트 타입 추출
+      const onEventParam = api.parameters.find(p => p.name === 'onEvent');
+      if (onEventParam && onEventParam.type.kind === 'function' && onEventParam.type.functionParams?.[0]) {
+        callbackEventType = mapToCSharpType(onEventParam.type.functionParams[0]);
+      }
+      // onError 파라미터에서 에러 타입 추출
+      const onErrorParam = api.parameters.find(p => p.name === 'onError');
+      if (onErrorParam && onErrorParam.type.kind === 'function' && onErrorParam.type.functionParams?.[0]) {
+        callbackErrorType = mapToCSharpType(onErrorParam.type.functionParams[0]);
+      }
+    }
+
+    // 콜백 기반 API의 options 파라미터만 추출 (onEvent, onError 제외)
+    const callbackApiParameters = api.isCallbackBased
+      ? parameters.filter(p => p.paramName !== 'onEvent' && p.paramName !== 'onError')
+      : parameters;
+
+    // nullable 참조 타입 여부 확인 (C#에서 ?를 붙일 수 없지만 문서에 명시 필요)
+    const innerType = api.returnType.kind === 'promise' ? api.returnType.promiseType : api.returnType;
+    const isNullableReturn = innerType?.isNullable === true && callbackType !== 'void';
+
     return {
       name: api.name,
       pascalName: api.pascalName,
@@ -682,10 +712,11 @@ export class CSharpGenerator {
       description: api.description,
       returnDescription: api.returnDescription,
       examples: api.examples,
-      parameters,
+      parameters: api.isCallbackBased ? callbackApiParameters : parameters,
       returnType,
       isAsync: api.isAsync,
       callbackType,
+      isNullableReturn, // nullable 참조 타입 여부 (문서용)
       // 네임스페이스 API 지원
       namespace: api.namespace,
       isDeprecated: api.isDeprecated,
@@ -695,6 +726,10 @@ export class CSharpGenerator {
       eventName: api.eventName,
       hasEventData,
       eventDataType,
+      // 콜백 기반 API 지원
+      isCallbackBased: api.isCallbackBased,
+      callbackEventType,
+      callbackErrorType,
     };
   }
 
@@ -1100,6 +1135,14 @@ export class CSharpTypeGenerator {
             }
           }
         }
+        // unknown 타입 파라미터: import("...").TypeName 형식의 외부 타입
+        else if (param.type.kind === 'unknown' && param.type.name && param.type.name.includes('.')) {
+          const typeName = this.extractCleanName(param.type.name);
+          if (typeName && typeName !== '__type' && typeName !== 'undefined' &&
+              !typeMap.has(typeName) && !exclude.has(typeName)) {
+            this.pendingExternalTypes.add(typeName);
+          }
+        }
       }
 
       // 반환 타입 (Promise 내부 포함)
@@ -1460,6 +1503,15 @@ ${fields}${errorField}
             // (나중에 type definitions에서 해결)
             this.pendingExternalTypes.add(typeName);
           }
+        }
+      }
+      // unknown 타입: import("...").TypeName 형식의 외부 타입
+      // 예: import("...").LoadAdMobInterstitialAdOptions
+      else if (prop.type.kind === 'unknown' && prop.type.name && prop.type.name.includes('.')) {
+        const typeName = this.extractCleanName(prop.type.name);
+        if (typeName && typeName !== '__type' && typeName !== 'undefined' &&
+            !typeMap.has(typeName) && !exclude.has(typeName)) {
+          this.pendingExternalTypes.add(typeName);
         }
       }
       // Intersection 타입 또는 익명 객체 타입이지만 프로퍼티가 있는 경우

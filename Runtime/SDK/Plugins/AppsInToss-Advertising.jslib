@@ -144,49 +144,125 @@ mergeInto(LibraryManager.library, {
         }
     },
 
-    __loadFullScreenAd_Internal: function(adGroupId, onEvent, onError, callbackId, typeName) {
-        // 동기 함수 (즉시 값 반환)
-        var callback = UTF8ToString(callbackId);
+    __loadFullScreenAd_Internal: function(adGroupId, subscriptionId, typeName) {
+        var subId = UTF8ToString(subscriptionId);
         var typeNameStr = UTF8ToString(typeName);
 
+        var adGroupIdVal = UTF8ToString(adGroupId);
+
+        console.log('[AIT jslib] loadFullScreenAd called, id:', subId);
+
         try {
-            var result = window.AppsInToss.loadFullScreenAd(UTF8ToString(adGroupId), onEvent, onError);
-            var payload = JSON.stringify({
-                CallbackId: callback,
-                TypeName: typeNameStr,
-                Result: JSON.stringify({ success: true, data: JSON.stringify(result), error: '' })
+            var unsubscribe = window.loadFullScreenAd({
+                options: { adGroupId: adGroupIdVal },
+                onEvent: function(data) {
+                    console.log('[AIT jslib] loadFullScreenAd event:', data);
+                    var payload = JSON.stringify({
+                        CallbackId: subId,
+                        TypeName: typeNameStr,
+                        Result: JSON.stringify({
+                            success: true,
+                            data: JSON.stringify(data || {}),
+                            error: ''
+                        })
+                    });
+                    SendMessage('AITCore', 'OnAITEventCallback', payload);
+                },
+                onError: function(error) {
+                    console.log('[AIT jslib] loadFullScreenAd error:', error);
+                    var errorMessage = error instanceof Error ? error.message : String(error);
+                    var payload = JSON.stringify({
+                        CallbackId: subId,
+                        TypeName: typeNameStr,
+                        Result: JSON.stringify({
+                            success: false,
+                            data: '',
+                            error: errorMessage
+                        })
+                    });
+                    SendMessage('AITCore', 'OnAITEventCallback', payload);
+                }
             });
-            SendMessage('AITCore', 'OnAITCallback', payload);
+
+            if (!window.__AIT_SUBSCRIPTIONS) {
+                window.__AIT_SUBSCRIPTIONS = {};
+            }
+            window.__AIT_SUBSCRIPTIONS[subId] = unsubscribe;
+
         } catch (error) {
+            console.error('[AIT jslib] loadFullScreenAd error:', error);
+            var errorMessage = error instanceof Error ? error.message : String(error);
             var payload = JSON.stringify({
-                CallbackId: callback,
+                CallbackId: subId,
                 TypeName: typeNameStr,
-                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+                Result: JSON.stringify({
+                    success: false,
+                    data: '',
+                    error: errorMessage
+                })
             });
-            SendMessage('AITCore', 'OnAITCallback', payload);
+            SendMessage('AITCore', 'OnAITEventCallback', payload);
         }
     },
 
-    __showFullScreenAd_Internal: function(adGroupId, onEvent, onError, callbackId, typeName) {
-        // 동기 함수 (즉시 값 반환)
-        var callback = UTF8ToString(callbackId);
+    __showFullScreenAd_Internal: function(adGroupId, subscriptionId, typeName) {
+        var subId = UTF8ToString(subscriptionId);
         var typeNameStr = UTF8ToString(typeName);
 
+        var adGroupIdVal = UTF8ToString(adGroupId);
+
+        console.log('[AIT jslib] showFullScreenAd called, id:', subId);
+
         try {
-            var result = window.AppsInToss.showFullScreenAd(UTF8ToString(adGroupId), onEvent, onError);
-            var payload = JSON.stringify({
-                CallbackId: callback,
-                TypeName: typeNameStr,
-                Result: JSON.stringify({ success: true, data: JSON.stringify(result), error: '' })
+            var unsubscribe = window.showFullScreenAd({
+                options: { adGroupId: adGroupIdVal },
+                onEvent: function(data) {
+                    console.log('[AIT jslib] showFullScreenAd event:', data);
+                    var payload = JSON.stringify({
+                        CallbackId: subId,
+                        TypeName: typeNameStr,
+                        Result: JSON.stringify({
+                            success: true,
+                            data: JSON.stringify(data || {}),
+                            error: ''
+                        })
+                    });
+                    SendMessage('AITCore', 'OnAITEventCallback', payload);
+                },
+                onError: function(error) {
+                    console.log('[AIT jslib] showFullScreenAd error:', error);
+                    var errorMessage = error instanceof Error ? error.message : String(error);
+                    var payload = JSON.stringify({
+                        CallbackId: subId,
+                        TypeName: typeNameStr,
+                        Result: JSON.stringify({
+                            success: false,
+                            data: '',
+                            error: errorMessage
+                        })
+                    });
+                    SendMessage('AITCore', 'OnAITEventCallback', payload);
+                }
             });
-            SendMessage('AITCore', 'OnAITCallback', payload);
+
+            if (!window.__AIT_SUBSCRIPTIONS) {
+                window.__AIT_SUBSCRIPTIONS = {};
+            }
+            window.__AIT_SUBSCRIPTIONS[subId] = unsubscribe;
+
         } catch (error) {
+            console.error('[AIT jslib] showFullScreenAd error:', error);
+            var errorMessage = error instanceof Error ? error.message : String(error);
             var payload = JSON.stringify({
-                CallbackId: callback,
+                CallbackId: subId,
                 TypeName: typeNameStr,
-                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+                Result: JSON.stringify({
+                    success: false,
+                    data: '',
+                    error: errorMessage
+                })
             });
-            SendMessage('AITCore', 'OnAITCallback', payload);
+            SendMessage('AITCore', 'OnAITEventCallback', payload);
         }
     },
 

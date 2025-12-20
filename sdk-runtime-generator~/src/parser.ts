@@ -63,7 +63,15 @@ export class TypeScriptParser {
    * 순환 참조로 인한 스택 오버플로우를 방지하기 위해 별도 메서드로 분리
    */
   parseNativeModulesType(typeName: string): ParsedTypeDefinition | null {
-    // native-modules 경로 찾기
+    // TossAdsAttachOptions -> AttachOptions 변환 (export alias 처리)
+    const typeNameMappings: Record<string, string> = {
+      'TossAdsAttachOptions': 'AttachOptions',
+      'TossAdsInitializeOptions': 'InitializeOptions',
+      'TossAdsBannerSlotCallbacks': 'BannerSlotCallbacks',
+    };
+    const actualTypeName = typeNameMappings[typeName] || typeName;
+
+    // pnpm virtual store 경로 찾기
     const nmPath = path.join(process.cwd(), 'node_modules');
     const pnpmPath = path.join(nmPath, '.pnpm');
 
@@ -72,8 +80,9 @@ export class TypeScriptParser {
     }
 
     const pnpmDirs = fs.readdirSync(pnpmPath);
-    let nativeModulesPath: string | null = null;
 
+    // 1. native-modules에서 먼저 찾기
+    let nativeModulesPath: string | null = null;
     for (const dir of pnpmDirs) {
       if (dir.startsWith('@apps-in-toss+native-modules')) {
         const indexPath = path.join(pnpmPath, dir, 'node_modules', '@apps-in-toss', 'native-modules', 'dist', 'index.d.ts');
@@ -84,19 +93,49 @@ export class TypeScriptParser {
       }
     }
 
-    if (!nativeModulesPath) {
-      return null;
+    if (nativeModulesPath) {
+      const result = this.parseTypeFromFile(nativeModulesPath, actualTypeName, typeName);
+      if (result) return result;
     }
 
+    // 2. web-bridge에서도 찾기 (TossAds 관련 타입 등)
+    let webBridgePath: string | null = null;
+    for (const dir of pnpmDirs) {
+      if (dir.startsWith('@apps-in-toss+web-bridge')) {
+        const indexPath = path.join(pnpmPath, dir, 'node_modules', '@apps-in-toss', 'web-bridge', 'built', 'index.d.ts');
+        if (fs.existsSync(indexPath)) {
+          webBridgePath = indexPath;
+          break;
+        }
+      }
+    }
+
+    if (webBridgePath) {
+      const result = this.parseTypeFromFile(webBridgePath, actualTypeName, typeName);
+      if (result) return result;
+    }
+
+    return null;
+  }
+
+  /**
+   * 특정 파일에서 타입 정의 파싱 (interface 또는 type alias)
+   */
+  private parseTypeFromFile(
+    filePath: string,
+    searchTypeName: string,
+    outputTypeName: string
+  ): ParsedTypeDefinition | null {
     // 별도 프로젝트로 파싱 (메인 프로젝트 오염 방지)
     const tempProject = new Project({
       skipAddingFilesFromTsConfig: true,
     });
-    const sourceFile = tempProject.addSourceFileAtPath(nativeModulesPath);
+    const sourceFile = tempProject.addSourceFileAtPath(filePath);
+    const fileName = path.basename(filePath);
 
     // 1. interface 찾기
     const interfaces = sourceFile.getInterfaces();
-    const targetInterface = interfaces.find(i => i.getName() === typeName);
+    const targetInterface = interfaces.find(i => i.getName() === searchTypeName);
 
     if (targetInterface) {
       const members = targetInterface.getMembers();
@@ -107,9 +146,9 @@ export class TypeScriptParser {
       }
 
       return {
-        name: typeName,
+        name: outputTypeName,
         kind: 'interface',
-        file: 'native-modules/index.d.ts',
+        file: fileName,
         description: undefined,
         properties,
       };
@@ -117,7 +156,7 @@ export class TypeScriptParser {
 
     // 2. type alias 찾기
     const typeAliases = sourceFile.getTypeAliases();
-    const targetTypeAlias = typeAliases.find(t => t.getName() === typeName);
+    const targetTypeAlias = typeAliases.find(t => t.getName() === searchTypeName);
 
     if (targetTypeAlias) {
       const typeNode = targetTypeAlias.getTypeNode();
@@ -132,9 +171,9 @@ export class TypeScriptParser {
           }
 
           return {
-            name: typeName,
+            name: outputTypeName,
             kind: 'interface', // type alias도 interface로 처리 (C# class로 변환됨)
-            file: 'native-modules/index.d.ts',
+            file: fileName,
             description: undefined,
             properties,
           };
@@ -192,6 +231,238 @@ export class TypeScriptParser {
     }
 
     return apis;
+  }
+
+  /**
+   * @apps-in-toss/framework에서 특정 API 관련 타입 정의 파싱
+   * (LoadFullScreenAdEvent, ShowFullScreenAdEvent, Options 등)
+   */
+  parseFrameworkTypeDefinitions(apiNames: string[]): ParsedTypeDefinition[] {
+    const nmPath = path.join(process.cwd(), 'node_modules');
+    const pnpmPath = path.join(nmPath, '.pnpm');
+
+    if (!fs.existsSync(pnpmPath)) {
+      return [];
+    }
+
+    const pnpmDirs = fs.readdirSync(pnpmPath);
+    let frameworkPath: string | null = null;
+
+    for (const dir of pnpmDirs) {
+      if (dir.startsWith('@apps-in-toss+framework@')) {
+        const indexPath = path.join(pnpmPath, dir, 'node_modules', '@apps-in-toss', 'framework', 'dist', 'index.d.cts');
+        if (fs.existsSync(indexPath)) {
+          frameworkPath = indexPath;
+          break;
+        }
+      }
+    }
+
+    if (!frameworkPath) {
+      return [];
+    }
+
+    // 별도 프로젝트로 파싱 (메인 프로젝트 오염 방지)
+    const tempProject = new Project({
+      skipAddingFilesFromTsConfig: true,
+      compilerOptions: {
+        strictNullChecks: true,
+      },
+    });
+    const sourceFile = tempProject.addSourceFileAtPath(frameworkPath);
+    const typeDefinitions: ParsedTypeDefinition[] = [];
+
+    for (const apiName of apiNames) {
+      // API 관련 타입 이름 패턴 생성
+      // loadFullScreenAd -> LoadFullScreenAd
+      const pascalName = apiName.charAt(0).toUpperCase() + apiName.slice(1);
+
+      // 필요한 타입들: Options, Event만 (Params는 내부 사용 타입이므로 제외)
+      const typePatterns = [
+        `${pascalName}Options`,      // LoadFullScreenAdOptions
+        `${pascalName}Event`,        // LoadFullScreenAdEvent
+      ];
+
+      for (const typeName of typePatterns) {
+        const typeDef = this.parseFrameworkInterface(sourceFile, typeName);
+        if (typeDef) {
+          typeDefinitions.push(typeDef);
+        }
+      }
+
+      // ShowFullScreenAd의 경우 Union 타입 이벤트 및 데이터 타입 처리
+      if (apiName === 'showFullScreenAd') {
+        // ShowFullScreenAdEventData 수동 추가 (userEarnedReward의 data 타입)
+        typeDefinitions.push({
+          name: 'ShowFullScreenAdEventData',
+          kind: 'interface',
+          file: 'framework/index.d.cts',
+          description: 'Data for userEarnedReward event',
+          properties: [
+            {
+              name: 'unitType',
+              type: { name: 'string', kind: 'primitive', raw: 'string' },
+              optional: false,
+              description: undefined,
+            },
+            {
+              name: 'unitAmount',
+              type: { name: 'number', kind: 'primitive', raw: 'number' },
+              optional: false,
+              description: undefined,
+            },
+          ],
+        });
+
+        // ShowFullScreenAdEvent는 Union 타입이므로 특별 처리
+        const showEventTypeDef = this.parseFrameworkUnionEventType(sourceFile, 'ShowFullScreenAdEvent');
+        if (showEventTypeDef) {
+          typeDefinitions.push(showEventTypeDef);
+        }
+      }
+    }
+
+    return typeDefinitions;
+  }
+
+  /**
+   * framework 패키지에서 인터페이스 타입 정의 파싱
+   */
+  private parseFrameworkInterface(sourceFile: SourceFile, typeName: string): ParsedTypeDefinition | null {
+    const interfaceDecl = sourceFile.getInterface(typeName);
+
+    if (interfaceDecl) {
+      const members = interfaceDecl.getMembers();
+      const properties: ParsedProperty[] = [];
+
+      for (const member of members) {
+        if (member.getKind() === SyntaxKind.PropertySignature) {
+          const propSig = member.asKind(SyntaxKind.PropertySignature);
+          if (!propSig) continue;
+
+          const propName = propSig.getName();
+          const propTypeNode = propSig.getTypeNode();
+          const propTypeText = propTypeNode?.getText() || 'any';
+          const isOptional = propSig.hasQuestionToken();
+
+          properties.push({
+            name: propName,
+            type: this.parseFrameworkSimpleType(propTypeText),
+            optional: isOptional,
+            description: undefined,
+          });
+        }
+      }
+
+      if (properties.length > 0) {
+        return {
+          name: typeName,
+          kind: 'interface',
+          file: 'framework/index.d.cts',
+          description: undefined,
+          properties,
+        };
+      }
+    }
+
+    // Type alias로 정의된 경우 (type LoadFullScreenAdEvent = { type: 'loaded' })
+    const typeAlias = sourceFile.getTypeAlias(typeName);
+    if (typeAlias) {
+      const typeNode = typeAlias.getTypeNode();
+      if (typeNode && typeNode.getKind() === SyntaxKind.TypeLiteral) {
+        const typeLiteral = typeNode.asKind(SyntaxKind.TypeLiteral);
+        if (typeLiteral) {
+          const members = typeLiteral.getMembers();
+          const properties: ParsedProperty[] = [];
+
+          for (const member of members) {
+            if (member.getKind() === SyntaxKind.PropertySignature) {
+              const propSig = member.asKind(SyntaxKind.PropertySignature);
+              if (!propSig) continue;
+
+              const propName = propSig.getName();
+              const propTypeNode = propSig.getTypeNode();
+              const propTypeText = propTypeNode?.getText() || 'any';
+              const isOptional = propSig.hasQuestionToken();
+
+              properties.push({
+                name: propName,
+                type: this.parseFrameworkSimpleType(propTypeText),
+                optional: isOptional,
+                description: undefined,
+              });
+            }
+          }
+
+          if (properties.length > 0) {
+            return {
+              name: typeName,
+              kind: 'interface',
+              file: 'framework/index.d.cts',
+              description: undefined,
+              properties,
+            };
+          }
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Framework 타입 파싱 (리터럴 타입 처리 포함)
+   * 'loaded' -> string, 'userEarnedReward' -> string 등
+   */
+  private parseFrameworkSimpleType(typeText: string): ParsedType {
+    // 문자열 리터럴 타입 ('loaded', 'userEarnedReward' 등)은 string으로 변환
+    if (typeText.startsWith("'") || typeText.startsWith('"')) {
+      return { name: 'string', kind: 'primitive', raw: typeText };
+    }
+
+    // 함수 타입은 무시 (Params의 콜백 등)
+    if (typeText.includes('=>')) {
+      return { name: 'object', kind: 'primitive', raw: typeText };
+    }
+
+    // 일반 타입은 parseSimpleType 사용
+    return this.parseSimpleType(typeText);
+  }
+
+  /**
+   * ShowFullScreenAdEvent Union 타입 파싱
+   * type ShowFullScreenAdEvent = AdMobFullScreenEvent | AdUserEarnedReward | { type: 'requested' }
+   */
+  private parseFrameworkUnionEventType(sourceFile: SourceFile, typeName: string): ParsedTypeDefinition | null {
+    const typeAlias = sourceFile.getTypeAlias(typeName);
+    if (!typeAlias) return null;
+
+    // ShowFullScreenAdEvent는 discriminated union
+    // C#에서는 단일 클래스로 생성하고 type 프로퍼티로 구분
+    // data 프로퍼티는 userEarnedReward일 때만 사용
+
+    const properties: ParsedProperty[] = [
+      {
+        name: 'type',
+        type: { name: 'string', kind: 'primitive', raw: 'string' },
+        optional: false,
+        description: 'Event type: clicked, dismissed, failedToShow, impression, show, userEarnedReward, requested',
+      },
+      {
+        name: 'data',
+        type: { name: 'ShowFullScreenAdEventData', kind: 'object', raw: 'ShowFullScreenAdEventData' },
+        optional: true, // userEarnedReward일 때만 존재
+        description: 'Event data (only for userEarnedReward)',
+      },
+    ];
+
+    return {
+      name: typeName,
+      kind: 'interface',
+      file: 'framework/index.d.cts',
+      description: 'Full screen ad event (discriminated union)',
+      properties,
+    };
   }
 
   /**
@@ -394,6 +665,54 @@ export class TypeScriptParser {
               elementType: { name: elementTypeName, kind: 'object', raw: elementTypeName },
               raw: propTypeText,
             };
+          } else if (propTypeText.includes('=>')) {
+            // 함수 타입: (param: Type) => ReturnType 또는 () => void
+            // 파라미터 추출: (param: Type, param2: Type2) => ...
+            const paramsMatch = propTypeText.match(/^\(([^)]*)\)\s*=>/);
+            const functionParams: ParsedType[] = [];
+            if (paramsMatch && paramsMatch[1].trim()) {
+              // 파라미터 목록 파싱 (간단한 버전: 콤마로 분리)
+              const paramStrings = paramsMatch[1].split(',').map((s: string) => s.trim());
+              for (const paramStr of paramStrings) {
+                // "name: Type" 또는 "name?: Type" 형식
+                const colonIdx = paramStr.indexOf(':');
+                if (colonIdx > 0) {
+                  const paramType = paramStr.slice(colonIdx + 1).trim();
+                  // 간단한 타입 파싱 (재귀 방지)
+                  if (['string', 'number', 'boolean', 'void', 'any'].includes(paramType)) {
+                    functionParams.push({ name: paramType, kind: 'primitive', raw: paramType });
+                  } else {
+                    functionParams.push({ name: paramType, kind: 'object', raw: paramType });
+                  }
+                }
+              }
+            }
+            parsedType = {
+              name: propTypeText,
+              kind: 'function',
+              functionParams,
+              raw: propTypeText,
+            };
+          } else if (propTypeText.startsWith('Record<')) {
+            // Record<K, V> 타입
+            const recordMatch = propTypeText.match(/^Record<([^,]+),\s*([^>]+)>/);
+            if (recordMatch) {
+              const keyTypeText = recordMatch[1].trim();
+              const valueTypeText = recordMatch[2].trim();
+              parsedType = {
+                name: 'Record',
+                kind: 'record',
+                keyType: { name: keyTypeText, kind: 'primitive', raw: keyTypeText },
+                valueType: { name: valueTypeText, kind: 'primitive', raw: valueTypeText },
+                raw: propTypeText,
+              };
+            } else {
+              parsedType = { name: propTypeText, kind: 'object', raw: propTypeText };
+            }
+          } else if (propTypeText.includes('|') && propTypeText.includes("'")) {
+            // 문자열 리터럴 union: 'light' | 'dark'
+            // C#에서는 string으로 매핑 (enum은 상위 레벨에서 처리)
+            parsedType = { name: 'string', kind: 'primitive', raw: propTypeText };
           } else {
             parsedType = { name: propTypeText, kind: 'object', raw: propTypeText };
           }
@@ -733,10 +1052,12 @@ export class TypeScriptParser {
         }
         const valueDecl = param.getValueDeclaration?.();
         const paramType = valueDecl?.getType?.() || param.getDeclaredType?.();
+        // optional 확인: isOptional() 또는 hasQuestionToken() (typeof 참조 시 isOptional이 false 반환할 수 있음)
+        const isOptional = param.isOptional?.() || valueDecl?.hasQuestionToken?.() || false;
         return {
           name: paramName,
           type: paramType ? this.parseType(paramType) : { name: 'any', kind: 'primitive' as const, raw: 'any' },
-          optional: param.isOptional?.() || false,
+          optional: isOptional,
           description: undefined,
         };
       }) || [];
@@ -1007,10 +1328,12 @@ export class TypeScriptParser {
       if (paramName.includes('{') || paramName.includes('}') || paramName.includes(',')) {
         paramName = `options${index > 0 ? index : ''}`;
       }
+      // optional 확인: isOptional() 또는 hasQuestionToken()
+      const isOptional = param.isOptional() || param.hasQuestionToken?.() || false;
       return {
         name: paramName,
         type: this.parseType(param.getType()),
-        optional: param.isOptional(),
+        optional: isOptional,
         description: paramDescriptions.get(param.getName()), // 원본 이름으로 설명 찾기
       };
     });
@@ -1072,10 +1395,12 @@ export class TypeScriptParser {
       }
       const valueDecl = param.getValueDeclaration?.();
       const paramType = valueDecl?.getType?.() || param.getDeclaredType?.();
+      // optional 확인: isOptional() 또는 hasQuestionToken() (typeof 참조 시 isOptional이 false 반환할 수 있음)
+      const isOptional = param.isOptional?.() || valueDecl?.hasQuestionToken?.() || false;
       return {
         name: paramName,
         type: paramType ? this.parseType(paramType) : { name: 'any', kind: 'primitive', raw: 'any' },
-        optional: param.isOptional(),
+        optional: isOptional,
         description: paramDescriptions.get(param.getName()), // 원본 이름으로 설명 찾기
       };
     });
@@ -1822,6 +2147,112 @@ export class TypeScriptParser {
                         description,
                         enumValues,
                       });
+                    }
+                  } else {
+                    // Discriminated Union: 모든 멤버가 객체 리터럴이고 공통 discriminator 필드를 가진 경우
+                    // 예: { statusCode: "SUCCESS"; ... } | { statusCode: "PROFILE_NOT_FOUND" }
+                    const allTypeLiterals = members.every(
+                      m => m.getKind() === SyntaxKind.TypeLiteral
+                    );
+
+                    if (allTypeLiterals) {
+                      // 각 멤버의 첫 번째 프로퍼티를 추출하여 discriminator 후보로 사용
+                      const memberProperties: ParsedProperty[][] = [];
+                      let discriminatorField: string | null = null;
+
+                      for (const member of members) {
+                        const typeLiteral = member.asKind(SyntaxKind.TypeLiteral);
+                        if (typeLiteral) {
+                          const props: ParsedProperty[] = [];
+                          const memberProps = typeLiteral.getMembers();
+                          for (const prop of memberProps) {
+                            if (prop.getKind() === SyntaxKind.PropertySignature) {
+                              const propSig = prop.asKind(SyntaxKind.PropertySignature);
+                              if (propSig) {
+                                const propName = propSig.getName();
+                                const propType = propSig.getType();
+                                const isOptional = propSig.hasQuestionToken();
+
+                                // 첫 번째 프로퍼티가 문자열 리터럴이면 discriminator 후보
+                                if (!discriminatorField && propType.isStringLiteral()) {
+                                  discriminatorField = propName;
+                                }
+
+                                props.push({
+                                  name: propName,
+                                  type: this.parseType(propType),
+                                  optional: isOptional,
+                                });
+                              }
+                            }
+                          }
+                          memberProperties.push(props);
+                        }
+                      }
+
+                      // discriminator 필드가 있으면 interface로 처리
+                      if (discriminatorField && memberProperties.length > 0) {
+                        // 모든 프로퍼티를 합쳐서 하나의 interface로 생성
+                        // 공통되지 않은 프로퍼티는 optional로 표시
+                        const allPropertyNames = new Set<string>();
+                        const propertyOccurrences = new Map<string, number>();
+
+                        for (const props of memberProperties) {
+                          for (const prop of props) {
+                            allPropertyNames.add(prop.name);
+                            propertyOccurrences.set(
+                              prop.name,
+                              (propertyOccurrences.get(prop.name) || 0) + 1
+                            );
+                          }
+                        }
+
+                        const mergedProperties: ParsedProperty[] = [];
+                        for (const propName of allPropertyNames) {
+                          // 모든 멤버에 있는 프로퍼티만 필수, 나머지는 optional
+                          const isInAll = propertyOccurrences.get(propName) === memberProperties.length;
+                          // 첫 번째로 발견된 타입 정보 사용
+                          let propType: ParsedType = { name: 'string', kind: 'primitive', raw: 'string' };
+                          let propDescription: string | undefined;
+
+                          for (const props of memberProperties) {
+                            const found = props.find(p => p.name === propName);
+                            if (found) {
+                              // discriminator 필드는 string으로 처리 (리터럴 타입이므로)
+                              if (propName === discriminatorField) {
+                                propType = { name: 'string', kind: 'primitive', raw: 'string' };
+                              } else {
+                                propType = found.type;
+                              }
+                              propDescription = found.description;
+                              break;
+                            }
+                          }
+
+                          mergedProperties.push({
+                            name: propName,
+                            type: propType,
+                            optional: !isInAll,
+                            description: propDescription,
+                          });
+                        }
+
+                        // JSDoc에서 description 추출
+                        const jsDocs = typeAlias.getJsDocs();
+                        const description = jsDocs.length > 0
+                          ? jsDocs[0].getDescription().trim()
+                          : undefined;
+
+                        if (!typeMap.has(name)) {
+                          typeMap.set(name, {
+                            name,
+                            kind: 'interface',
+                            file: fileName,
+                            description,
+                            properties: mergedProperties,
+                          });
+                        }
+                      }
                     }
                   }
                 }

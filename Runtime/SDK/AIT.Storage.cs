@@ -20,24 +20,25 @@ namespace AppsInToss
         /// <summary>
         /// 모바일 앱의 로컬 저장소에서 문자열 데이터를 가져와요. 주로 앱이 종료되었다가 다시 시작해도 데이터가 유지되어야 하는 경우에 사용해요.
         /// </summary>
+        /// <returns>결과 값 또는 null</returns>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Storage")]
-        public static async Task<string?> StorageGetItem(string args_0)
+        public static async Task<string> StorageGetItem(string args_0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            var tcs = new TaskCompletionSource<string?>();
-            string callbackId = AITCore.Instance.RegisterCallback<string?>(
+            var tcs = new TaskCompletionSource<string>();
+            string callbackId = AITCore.Instance.RegisterCallback<string>(
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __StorageGetItem_Internal(args_0, callbackId, "string?");
+            __StorageGetItem_Internal(args_0, callbackId, "string");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] StorageGetItem called");
             await Task.CompletedTask;
-            return null;
+            return "";
 #endif
         }
 

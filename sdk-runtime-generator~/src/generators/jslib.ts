@@ -665,7 +665,99 @@ ${jsConversions ? '\n' + jsConversions + '\n' : ''}
     if (api.isEventSubscription) {
       return this.generateEventFunction(api);
     }
+    if (api.isCallbackBased) {
+      return this.generateCallbackBasedFunction(api);
+    }
     return this.generateRegularFunction(api);
+  }
+
+  /**
+   * 콜백 기반 API 함수 생성 (JavaScript) - loadFullScreenAd, showFullScreenAd 패턴
+   */
+  private generateCallbackBasedFunction(api: ParsedAPI): string {
+    // onEvent, onError 콜백이 아닌 파라미터들만 필터링 (예: adGroupId)
+    const dataParams = api.parameters.filter(p =>
+      p.name !== 'onEvent' && p.name !== 'onError'
+    );
+
+    const params = dataParams.map(p => p.name);
+    const paramList = [...params, 'subscriptionId', 'typeName'].join(', ');
+
+    // API 호출 표현식 (top-level export는 window에서 직접 호출)
+    const apiCallExpr = api.isTopLevelExport
+      ? `window.${api.originalName}`
+      : api.namespace
+        ? `window.AppsInToss.${api.namespace}.${api.originalName}`
+        : `window.AppsInToss.${api.originalName}`;
+
+    // 파라미터 변환 코드
+    const paramConversions = dataParams.map(p =>
+      `        var ${p.name}Val = UTF8ToString(${p.name});`
+    ).join('\n');
+
+    // 옵션 객체 구성 (adGroupId -> { adGroupId: adGroupIdVal })
+    const optionsObj = dataParams.length > 0
+      ? `{ ${dataParams.map(p => `${p.name}: ${p.name}Val`).join(', ')} }`
+      : '{}';
+
+    return `    __${api.name}_Internal: function(${paramList}) {
+        var subId = UTF8ToString(subscriptionId);
+        var typeNameStr = UTF8ToString(typeName);
+${paramConversions ? '\n' + paramConversions + '\n' : ''}
+        console.log('[AIT jslib] ${api.name} called, id:', subId);
+
+        try {
+            var unsubscribe = ${apiCallExpr}({
+                options: ${optionsObj},
+                onEvent: function(data) {
+                    console.log('[AIT jslib] ${api.name} event:', data);
+                    var payload = JSON.stringify({
+                        CallbackId: subId,
+                        TypeName: typeNameStr,
+                        Result: JSON.stringify({
+                            success: true,
+                            data: JSON.stringify(data || {}),
+                            error: ''
+                        })
+                    });
+                    SendMessage('AITCore', 'OnAITEventCallback', payload);
+                },
+                onError: function(error) {
+                    console.log('[AIT jslib] ${api.name} error:', error);
+                    var errorMessage = error instanceof Error ? error.message : String(error);
+                    var payload = JSON.stringify({
+                        CallbackId: subId,
+                        TypeName: typeNameStr,
+                        Result: JSON.stringify({
+                            success: false,
+                            data: '',
+                            error: errorMessage
+                        })
+                    });
+                    SendMessage('AITCore', 'OnAITEventCallback', payload);
+                }
+            });
+
+            if (!window.__AIT_SUBSCRIPTIONS) {
+                window.__AIT_SUBSCRIPTIONS = {};
+            }
+            window.__AIT_SUBSCRIPTIONS[subId] = unsubscribe;
+
+        } catch (error) {
+            console.error('[AIT jslib] ${api.name} error:', error);
+            var errorMessage = error instanceof Error ? error.message : String(error);
+            var payload = JSON.stringify({
+                CallbackId: subId,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({
+                    success: false,
+                    data: '',
+                    error: errorMessage
+                })
+            });
+            SendMessage('AITCore', 'OnAITEventCallback', payload);
+        }
+    },`;
   }
 
   /**

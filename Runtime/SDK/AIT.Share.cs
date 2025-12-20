@@ -75,7 +75,7 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Share")]
-        public static async Task<string> GetTossShareLink(string path, string? ogImageUrl = null)
+        public static async Task<string> GetTossShareLink(string path, string ogImageUrl = null)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<string>();
@@ -83,7 +83,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __getTossShareLink_Internal(path, AITJsonSettings.Serialize(ogImageUrl), callbackId, "string");
+            __getTossShareLink_Internal(path, ogImageUrl, callbackId, "string");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation

@@ -20,7 +20,7 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Media")]
-        public static async Task<ImageResponse[]> FetchAlbumPhotos(object? options)
+        public static async Task<ImageResponse[]> FetchAlbumPhotos(FetchAlbumPhotosOptions options = null)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<ImageResponse[]>();
@@ -45,7 +45,7 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Media")]
-        public static async Task<ImageResponse> OpenCamera(object? options)
+        public static async Task<ImageResponse> OpenCamera(OpenCameraOptions options = null)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<ImageResponse>();

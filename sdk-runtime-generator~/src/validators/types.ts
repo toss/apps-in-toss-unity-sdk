@@ -193,15 +193,29 @@ function isExternalType(typeName: string): boolean {
 }
 
 /**
+ * C# 값 타입 (Value Types) 목록
+ * 이 타입들만 Nullable<T> 또는 T?를 사용할 수 있음
+ * 참조 타입(string, object, 클래스 등)은 이미 null이 될 수 있으므로 ? 접미사 불필요
+ */
+const CSHARP_VALUE_TYPES = new Set(['int', 'double', 'float', 'bool', 'long', 'short', 'byte', 'char', 'decimal', 'DateTime']);
+
+/**
  * TypeScript 타입을 C# 타입으로 변환
  */
 export function mapToCSharpType(type: ParsedType): string {
   // 기본 타입 변환
   const baseType = mapToCSharpTypeCore(type);
 
-  // nullable 타입에 ? 접미사 추가
+  // nullable 타입에 ? 접미사 추가 (값 타입만)
+  // C#에서 Nullable<T>는 값 타입만 지원함
+  // 참조 타입(string, object, class)은 이미 null 할당 가능하므로 ? 불필요
+  // Unity의 기본 설정은 Nullable Reference Types가 비활성화되어 있음
   if (type.isNullable && !baseType.endsWith('?') && !baseType.endsWith('[]')) {
-    return baseType + '?';
+    // 값 타입인지 확인
+    if (CSHARP_VALUE_TYPES.has(baseType)) {
+      return baseType + '?';
+    }
+    // 참조 타입은 그대로 반환
   }
 
   return baseType;
@@ -241,6 +255,12 @@ function mapToCSharpTypeCore(type: ParsedType): string {
       let objectName = type.name.includes('.')
         ? type.name.split('.').pop() || type.name
         : type.name;
+
+      // 인라인 객체 리터럴 감지: { prop: type; ... } 형식
+      // 이런 타입은 클래스로 매핑할 수 없으므로 object로 반환
+      if (objectName.trim().startsWith('{') || objectName.includes(':')) {
+        return 'object';
+      }
 
       // 특수 문자 제거 (중괄호, 콤마, 공백, 세미콜론, C# 식별자로 유효하지 않은 문자 등)
       // TypeScript 빌드 시 생성되는 $1, $2 등의 접미사도 제거
@@ -332,9 +352,25 @@ function mapToCSharpTypeCore(type: ParsedType): string {
         if (type.valueType.kind === 'union') {
           valueType = 'object';
         }
+        // 'never' 타입은 C#에서 유효하지 않으므로 object로 변환
+        if (valueType === 'never') {
+          valueType = 'object';
+        }
         return `Dictionary<${keyType}, ${valueType}>`;
       }
       return 'Dictionary<string, object>';
+
+    case 'unknown':
+      // unknown 타입이지만 name에 import 경로가 있으면 타입 이름 추출
+      // 예: import("...").GameCenterGameProfileResponse -> GameCenterGameProfileResponse
+      if (type.name && type.name.includes('.')) {
+        const typeName = type.name.split('.').pop() || type.name;
+        const cleanName = typeName.replace(/["'{}()|,;\s<>]/g, '').replace(/\$\d+$/, '').trim();
+        if (cleanName && cleanName !== '__type' && cleanName !== 'undefined') {
+          return cleanName;
+        }
+      }
+      return 'object';
 
     default:
       return 'object';

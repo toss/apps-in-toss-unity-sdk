@@ -708,6 +708,23 @@ namespace AppsInToss
                         }
                     }
                     break;
+                case "bool?":
+                    if (apiResponse.success)
+                    {
+                        if (TryGetCallback<bool?>(callbackId, out var callback17) && callback17 != null)
+                        {
+                            var data17 = JsonConvert.DeserializeObject<bool?>(apiResponse.data);
+                            callback17(data17);
+                        }
+                    }
+                    else
+                    {
+                        if (TryGetErrorCallback(callbackId, out var errorCallback17) && errorCallback17 != null)
+                        {
+                            errorCallback17(new AITException("bool?", apiResponse.error));
+                        }
+                    }
+                    break;
                 case "NetworkStatus":
                     if (apiResponse.success)
                     {
@@ -840,6 +857,24 @@ namespace AppsInToss
                         if (TryGetErrorCallback(callbackId, out var voidErrorCallback) && voidErrorCallback != null)
                         {
                             voidErrorCallback(new AITException("void", apiResponse.error));
+                        }
+                    }
+                    break;
+                case "System.Action":
+                    // Disposer function return type - resolve Task with no-op Action
+                    if (apiResponse.success)
+                    {
+                        if (TryGetCallback<System.Action>(callbackId, out var actionCallback) && actionCallback != null)
+                        {
+                            // Return an empty disposer - actual unsubscription handled by SDK
+                            actionCallback(() => { });
+                        }
+                    }
+                    else
+                    {
+                        if (TryGetErrorCallback(callbackId, out var actionErrorCallback) && actionErrorCallback != null)
+                        {
+                            actionErrorCallback(new AITException("System.Action", apiResponse.error));
                         }
                     }
                     break;

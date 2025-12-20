@@ -291,7 +291,15 @@ async function generate(options: {
     // 6. 타입 정의 파싱 (enum, interface)
     console.log(picocolors.cyan('\n📦 타입 정의 파싱 중...'));
     const typeDefinitions = await parser.parseTypeDefinitions();
+
+    // @apps-in-toss/framework 타입 정의 추가 (loadFullScreenAd, showFullScreenAd 관련)
+    const frameworkTypeDefinitions = parser.parseFrameworkTypeDefinitions(FRAMEWORK_APIS);
+    typeDefinitions.push(...frameworkTypeDefinitions);
+
     console.log(picocolors.green(`✓ ${typeDefinitions.length}개 타입 정의 발견`));
+    if (frameworkTypeDefinitions.length > 0) {
+      console.log(picocolors.gray(`   - Framework 타입: ${frameworkTypeDefinitions.length}개 (${frameworkTypeDefinitions.map(t => t.name).join(', ')})`));
+    }
 
     // enum과 interface 분류
     const enums = typeDefinitions.filter(t => t.kind === 'enum');

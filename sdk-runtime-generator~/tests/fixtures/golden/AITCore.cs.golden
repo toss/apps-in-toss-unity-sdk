@@ -708,6 +708,23 @@ namespace AppsInToss
                         }
                     }
                     break;
+                case "bool?":
+                    if (apiResponse.success)
+                    {
+                        if (TryGetCallback<bool?>(callbackId, out var callback17) && callback17 != null)
+                        {
+                            var data17 = JsonConvert.DeserializeObject<bool?>(apiResponse.data);
+                            callback17(data17);
+                        }
+                    }
+                    else
+                    {
+                        if (TryGetErrorCallback(callbackId, out var errorCallback17) && errorCallback17 != null)
+                        {
+                            errorCallback17(new AITException("bool?", apiResponse.error));
+                        }
+                    }
+                    break;
                 case "NetworkStatus":
                     if (apiResponse.success)
                     {

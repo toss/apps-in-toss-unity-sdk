@@ -199,7 +199,7 @@ public class IAPTester : MonoBehaviour
             var options = new IapCreateOneTimePurchaseOrderOptions
             {
                 // Options에 SKU를 포함하는 객체 전달
-                Options = new { sku = iapSku },
+                Options = new IapCreateOneTimePurchaseOrderOptionsOptions { Sku = iapSku },
                 OnEvent = (successEvent) =>
                 {
                     iapStatus = "Purchase completed";

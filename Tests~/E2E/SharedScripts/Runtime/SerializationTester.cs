@@ -87,10 +87,6 @@ public class SerializationTester : MonoBehaviour
         TestEnumValue("AppLoginResultReferrer.DEFAULT", AppLoginResultReferrer.DEFAULT, "DEFAULT");
         TestEnumValue("AppLoginResultReferrer.SANDBOX", AppLoginResultReferrer.SANDBOX, "SANDBOX");
 
-        // LocationAccessLocation 테스트
-        TestEnumValue("LocationAccessLocation.FINE", LocationAccessLocation.FINE, "FINE");
-        TestEnumValue("LocationAccessLocation.COARSE", LocationAccessLocation.COARSE, "COARSE");
-
         // GetPermissionPermissionName 테스트
         TestEnumValue("GetPermissionPermissionName.Camera", GetPermissionPermissionName.Camera, "camera");
         TestEnumValue("GetPermissionPermissionName.Clipboard", GetPermissionPermissionName.Clipboard, "clipboard");

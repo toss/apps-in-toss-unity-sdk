@@ -229,44 +229,44 @@ public class IAPv2Tester : MonoBehaviour
 
         try
         {
-            var options = new IapCreateOneTimePurchaseOrderOptions
+            // Options에 SKU와 processProductGrant 콜백 전달
+            var options = new IapCreateOneTimePurchaseOrderOptionsOptions
             {
-                // Options에 SKU와 processProductGrant 콜백 전달
-                Options = new IapCreateOneTimePurchaseOrderOptionsOptions
+                Sku = iapSku,
+                // processProductGrant 콜백 - 결제 완료 시 호출됨
+                // 여기서 상품 지급 후 true를 반환하면 SDK가 자동으로 CompleteProductGrant를 호출하여
+                // 주문을 완료 처리함. false 반환 시 주문이 미처리 상태로 남음.
+                ProcessProductGrant = (data) =>
                 {
-                    Sku = iapSku,
-                    // processProductGrant 콜백 - 결제 완료 시 호출됨
-                    // 여기서 상품 지급 후 true를 반환하면 SDK가 자동으로 CompleteProductGrant를 호출하여
-                    // 주문을 완료 처리함. false 반환 시 주문이 미처리 상태로 남음.
-                    ProcessProductGrant = (data) =>
-                    {
-                        iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] ProcessProductGrant called: {data}");
-                        Debug.Log($"[IAPv2Tester] ProcessProductGrant called with data: {data}");
+                    iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] ProcessProductGrant called: {data}");
+                    Debug.Log($"[IAPv2Tester] ProcessProductGrant called with data: {data}");
 
-                        // 여기서 실제 상품 지급 로직 수행
-                        // 예: 코인 추가, 아이템 지급 등
-                        bool grantSuccess = GrantGameProduct(data);
+                    // 여기서 실제 상품 지급 로직 수행
+                    // 예: 코인 추가, 아이템 지급 등
+                    bool grantSuccess = GrantGameProduct(data);
 
-                        // true 반환 시 SDK가 자동으로 주문 완료 처리
-                        iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] ProcessProductGrant result: {grantSuccess}");
-                        return grantSuccess;
-                    }
-                },
-                OnEvent = (successEvent) =>
+                    // true 반환 시 SDK가 자동으로 주문 완료 처리
+                    iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] ProcessProductGrant result: {grantSuccess}");
+                    return grantSuccess;
+                }
+            };
+
+            // IAPCreateOneTimePurchaseOrder는 동기 함수로 cleanup Action을 반환
+            // 시그니처: (onEvent, options, onError)
+            var disposer = AIT.IAPCreateOneTimePurchaseOrder(
+                onEvent: (successEvent) =>
                 {
                     iapStatus = "Purchase completed";
                     iapOrderId = successEvent.Data?.OrderId ?? "";
                     iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] OnEvent: orderId={successEvent.Data?.OrderId}, amount={successEvent.Data?.DisplayAmount}");
                 },
-                OnError = (error) =>
+                options: options,
+                onError: (error) =>
                 {
                     iapStatus = "Purchase failed";
-                    iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] OnError: {error}");
+                    iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] OnError: {error.ErrorCode} - {error.Message}");
                 }
-            };
-
-            // IAPCreateOneTimePurchaseOrder는 동기 함수로 cleanup Action을 반환
-            var disposer = AIT.IAPCreateOneTimePurchaseOrder(options);
+            );
             iapStatus = "Purchase order created";
             iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Order created successfully");
         }

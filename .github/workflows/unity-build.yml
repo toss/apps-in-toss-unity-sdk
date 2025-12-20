@@ -309,15 +309,57 @@ jobs:
           Write-Host "License Client check completed"
 
       # =====================================================
+      # 광고 ID 치환 (빌드 전)
+      # =====================================================
+      - name: Inject Ad IDs (macOS)
+        if: inputs.os == 'macos' && inputs.run-build
+        env:
+          AIT_AD_INTERSTITIAL_ID: ${{ secrets.AIT_AD_INTERSTITIAL_ID }}
+          AIT_AD_REWARDED_ID: ${{ secrets.AIT_AD_REWARDED_ID }}
+        run: |
+          AD_TESTER="Tests~/E2E/SharedScripts/Runtime/AdV2Tester.cs"
+
+          if [ -n "$AIT_AD_INTERSTITIAL_ID" ]; then
+            echo "Injecting interstitial ad ID..."
+            sed -i '' 's/ait-ad-test-interstitial-id/'"$AIT_AD_INTERSTITIAL_ID"'/g' "$AD_TESTER"
+          fi
+
+          if [ -n "$AIT_AD_REWARDED_ID" ]; then
+            echo "Injecting rewarded ad ID..."
+            sed -i '' 's/ait-ad-test-rewarded-id/'"$AIT_AD_REWARDED_ID"'/g' "$AD_TESTER"
+          fi
+
+          echo "Ad IDs injected successfully"
+
+      - name: Inject Ad IDs (Windows)
+        if: inputs.os == 'windows' && inputs.run-build
+        shell: powershell
+        env:
+          AIT_AD_INTERSTITIAL_ID: ${{ secrets.AIT_AD_INTERSTITIAL_ID }}
+          AIT_AD_REWARDED_ID: ${{ secrets.AIT_AD_REWARDED_ID }}
+        run: |
+          $adTester = "Tests~\E2E\SharedScripts\Runtime\AdV2Tester.cs"
+          $content = Get-Content $adTester -Raw
+
+          if ($env:AIT_AD_INTERSTITIAL_ID) {
+            Write-Host "Injecting interstitial ad ID..."
+            $content = $content -replace 'ait-ad-test-interstitial-id', $env:AIT_AD_INTERSTITIAL_ID
+          }
+
+          if ($env:AIT_AD_REWARDED_ID) {
+            Write-Host "Injecting rewarded ad ID..."
+            $content = $content -replace 'ait-ad-test-rewarded-id', $env:AIT_AD_REWARDED_ID
+          }
+
+          Set-Content $adTester -Value $content -NoNewline
+          Write-Host "Ad IDs injected successfully"
+
+      # =====================================================
       # Unity WebGL 빌드
       # =====================================================
       - name: Build Unity WebGL (macOS)
         if: inputs.os == 'macos' && inputs.run-build
         uses: nick-invision/retry@v3
-        env:
-          AIT_DEBUG_CONSOLE: "true"
-          AIT_AD_INTERSTITIAL_ID: ${{ secrets.AIT_AD_INTERSTITIAL_ID }}
-          AIT_AD_REWARDED_ID: ${{ secrets.AIT_AD_REWARDED_ID }}
         with:
           timeout_minutes: 30
           max_attempts: 3
@@ -340,10 +382,6 @@ jobs:
       - name: Build Unity WebGL (Windows)
         if: inputs.os == 'windows' && inputs.run-build
         uses: nick-invision/retry@v3
-        env:
-          AIT_DEBUG_CONSOLE: "true"
-          AIT_AD_INTERSTITIAL_ID: ${{ secrets.AIT_AD_INTERSTITIAL_ID }}
-          AIT_AD_REWARDED_ID: ${{ secrets.AIT_AD_REWARDED_ID }}
         with:
           timeout_minutes: 30
           max_attempts: 3

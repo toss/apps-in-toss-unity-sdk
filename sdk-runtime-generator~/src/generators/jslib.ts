@@ -201,6 +201,7 @@ ${functions}
   private generateWindowType(apis: ParsedAPI[]): string {
     const members: string[] = [];
     const seenNamespaces = new Set<string>();
+    const seenApis = new Set<string>();
 
     for (const api of apis) {
       if (api.namespace) {
@@ -209,9 +210,13 @@ ${functions}
           members.push(`    ${api.namespace}: typeof ${api.namespace};`);
           seenNamespaces.add(api.namespace);
         }
-      } else if (!api.isEventSubscription && !api.isTopLevelExport) {
-        // 일반 API 함수 (top-level export 제외)
-        members.push(`    ${api.originalName}: typeof ${api.originalName};`);
+      } else if (!api.isEventSubscription) {
+        // 일반 API 함수 (top-level export 포함)
+        // top-level export도 window.AppsInToss에서 호출하므로 포함
+        if (!seenApis.has(api.originalName)) {
+          members.push(`    ${api.originalName}: typeof ${api.originalName};`);
+          seenApis.add(api.originalName);
+        }
       }
     }
 
@@ -546,9 +551,10 @@ ${onEventHandler}
       ? `${params}, subscriptionId: number, typeName: number`
       : 'subscriptionId: number, typeName: number';
 
-    // API 호출 표현식 (top-level export는 window에서 직접 호출)
+    // API 호출 표현식
+    // top-level export는 window에서 직접 호출, 네임스페이스 API는 AppsInToss에서 호출
     const apiCallExpr = api.isTopLevelExport
-      ? `window.${api.originalName}`
+      ? `window.AppsInToss.${api.originalName}`
       : api.namespace
         ? `window.AppsInToss.${api.namespace}.${api.originalName}`
         : `window.AppsInToss.${api.originalName}`;
@@ -886,9 +892,10 @@ ${nestedCallbacksCode}
     const params = dataParams.map(p => p.name);
     const paramList = [...params, 'subscriptionId', 'typeName'].join(', ');
 
-    // API 호출 표현식 (top-level export는 window에서 직접 호출)
+    // API 호출 표현식
+    // top-level export는 window에서 직접 호출, 네임스페이스 API는 AppsInToss에서 호출
     const apiCallExpr = api.isTopLevelExport
-      ? `window.${api.originalName}`
+      ? `window.AppsInToss.${api.originalName}`
       : api.namespace
         ? `window.AppsInToss.${api.namespace}.${api.originalName}`
         : `window.AppsInToss.${api.originalName}`;

@@ -375,7 +375,7 @@ mergeInto(LibraryManager.library, {
         console.log('[AIT jslib] loadFullScreenAd called, id:', subId);
 
         try {
-            var unsubscribe = window.loadFullScreenAd({
+            var unsubscribe = window.AppsInToss.loadFullScreenAd({
                 options: { adGroupId: adGroupIdVal },
                 onEvent: function(data) {
                     console.log('[AIT jslib] loadFullScreenAd event:', data);
@@ -436,7 +436,7 @@ mergeInto(LibraryManager.library, {
         console.log('[AIT jslib] showFullScreenAd called, id:', subId);
 
         try {
-            var unsubscribe = window.showFullScreenAd({
+            var unsubscribe = window.AppsInToss.showFullScreenAd({
                 options: { adGroupId: adGroupIdVal },
                 onEvent: function(data) {
                     console.log('[AIT jslib] showFullScreenAd event:', data);

@@ -23,21 +23,21 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Storage")]
-        public static async Task<string> StorageGetItem(string args_0)
+        public static async Task<string?> StorageGetItem(string args_0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            var tcs = new TaskCompletionSource<string>();
-            string callbackId = AITCore.Instance.RegisterCallback<string>(
+            var tcs = new TaskCompletionSource<string?>();
+            string callbackId = AITCore.Instance.RegisterCallback<string?>(
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __StorageGetItem_Internal(args_0, callbackId, "string");
+            __StorageGetItem_Internal(args_0, callbackId, "string?");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] StorageGetItem called");
             await Task.CompletedTask;
-            return "";
+            return null;
 #endif
         }
 

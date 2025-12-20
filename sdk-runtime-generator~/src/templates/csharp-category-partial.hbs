@@ -114,6 +114,8 @@ namespace AppsInToss
             await Task.CompletedTask;
 {{#if (eq this.callbackType "void")}}
             // void return - nothing to return
+{{else if (isNullable this.callbackType)}}
+            return null;
 {{else if (isArray this.callbackType)}}
             return new {{arrayElementType this.callbackType}}[0];
 {{else if (eq this.callbackType "string")}}
@@ -165,6 +167,8 @@ namespace AppsInToss
             await Task.CompletedTask;
 {{#if (eq this.callbackType "void")}}
             // void return - nothing to return
+{{else if (isNullable this.callbackType)}}
+            return null;
 {{else if (eq this.callbackType "string")}}
             return "";
 {{else if (eq this.callbackType "bool")}}

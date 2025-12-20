@@ -21,21 +21,21 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("GameCenter")]
-        public static async Task<GameCenterGameProfileResponse> GetGameCenterGameProfile()
+        public static async Task<object?> GetGameCenterGameProfile()
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            var tcs = new TaskCompletionSource<GameCenterGameProfileResponse>();
-            string callbackId = AITCore.Instance.RegisterCallback<GameCenterGameProfileResponse>(
+            var tcs = new TaskCompletionSource<object?>();
+            string callbackId = AITCore.Instance.RegisterCallback<object?>(
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __getGameCenterGameProfile_Internal(callbackId, "GameCenterGameProfileResponse");
+            __getGameCenterGameProfile_Internal(callbackId, "object?");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] GetGameCenterGameProfile called");
             await Task.CompletedTask;
-            return default(GameCenterGameProfileResponse);
+            return null;
 #endif
         }
 
@@ -125,21 +125,21 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("GameCenter")]
-        public static async Task<SubmitGameCenterLeaderBoardScoreResponse> SubmitGameCenterLeaderBoardScore(SubmitGameCenterLeaderBoardScoreParams paramsParam)
+        public static async Task<object?> SubmitGameCenterLeaderBoardScore(SubmitGameCenterLeaderBoardScoreParams paramsParam)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            var tcs = new TaskCompletionSource<SubmitGameCenterLeaderBoardScoreResponse>();
-            string callbackId = AITCore.Instance.RegisterCallback<SubmitGameCenterLeaderBoardScoreResponse>(
+            var tcs = new TaskCompletionSource<object?>();
+            string callbackId = AITCore.Instance.RegisterCallback<object?>(
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __submitGameCenterLeaderBoardScore_Internal(AITJsonSettings.Serialize(paramsParam), callbackId, "SubmitGameCenterLeaderBoardScoreResponse");
+            __submitGameCenterLeaderBoardScore_Internal(AITJsonSettings.Serialize(paramsParam), callbackId, "object?");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] SubmitGameCenterLeaderBoardScore called");
             await Task.CompletedTask;
-            return default(SubmitGameCenterLeaderBoardScoreResponse);
+            return null;
 #endif
         }
 

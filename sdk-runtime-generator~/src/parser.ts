@@ -1,5 +1,6 @@
 import { Project, SourceFile, FunctionDeclaration, SyntaxKind } from 'ts-morph';
 import { ParsedAPI, ParsedParameter, ParsedProperty, ParsedType, ParsedTypeDefinition } from './types.js';
+import { getCategory } from './categories.js';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -44,6 +45,8 @@ export class TypeScriptParser {
         // module resolution 설정 (import 따라가기)
         moduleResolution: 99, // NodeNext
         resolveJsonModule: true,
+        // nullable 타입 감지를 위해 strictNullChecks 활성화
+        strictNullChecks: true,
       },
     });
 
@@ -143,6 +146,230 @@ export class TypeScriptParser {
   }
 
   /**
+   * @apps-in-toss/framework에서 특정 API 파싱 (loadFullScreenAd, showFullScreenAd 등)
+   * 이 API들은 web-framework에서 re-export되지 않으므로 직접 파싱
+   */
+  parseFrameworkAPIs(apiNames: string[]): ParsedAPI[] {
+    const nmPath = path.join(process.cwd(), 'node_modules');
+    const pnpmPath = path.join(nmPath, '.pnpm');
+
+    if (!fs.existsSync(pnpmPath)) {
+      return [];
+    }
+
+    const pnpmDirs = fs.readdirSync(pnpmPath);
+    let frameworkPath: string | null = null;
+
+    for (const dir of pnpmDirs) {
+      if (dir.startsWith('@apps-in-toss+framework@')) {
+        const indexPath = path.join(pnpmPath, dir, 'node_modules', '@apps-in-toss', 'framework', 'dist', 'index.d.cts');
+        if (fs.existsSync(indexPath)) {
+          frameworkPath = indexPath;
+          break;
+        }
+      }
+    }
+
+    if (!frameworkPath) {
+      return [];
+    }
+
+    // 별도 프로젝트로 파싱 (메인 프로젝트 오염 방지)
+    const tempProject = new Project({
+      skipAddingFilesFromTsConfig: true,
+      compilerOptions: {
+        strictNullChecks: true,
+      },
+    });
+    const sourceFile = tempProject.addSourceFileAtPath(frameworkPath);
+    const apis: ParsedAPI[] = [];
+
+    for (const apiName of apiNames) {
+      const api = this.parseFrameworkAPI(sourceFile, apiName);
+      if (api) {
+        apis.push(api);
+      }
+    }
+
+    return apis;
+  }
+
+  /**
+   * 개별 framework API 파싱
+   */
+  private parseFrameworkAPI(sourceFile: SourceFile, apiName: string): ParsedAPI | null {
+    // 함수 또는 변수 선언 찾기
+    const funcDecl = sourceFile.getFunction(apiName);
+    const varDecl = sourceFile.getVariableDeclaration(apiName);
+
+    if (!funcDecl && !varDecl) {
+      return null;
+    }
+
+    // 파라미터 타입 인터페이스 이름 추론 (예: loadFullScreenAd -> LoadFullScreenAdParams)
+    const paramsTypeName = apiName.charAt(0).toUpperCase() + apiName.slice(1) + 'Params';
+    const paramsInterface = sourceFile.getInterface(paramsTypeName);
+
+    if (!paramsInterface) {
+      return null;
+    }
+
+    // Params 인터페이스의 프로퍼티 파싱
+    const parameters: ParsedParameter[] = [];
+    const members = paramsInterface.getMembers();
+
+    for (const member of members) {
+      if (member.getKind() === SyntaxKind.PropertySignature) {
+        const propSig = member.asKind(SyntaxKind.PropertySignature);
+        if (!propSig) continue;
+
+        const propName = propSig.getName();
+        const propTypeNode = propSig.getTypeNode();
+        const propTypeText = propTypeNode?.getText() || 'any';
+        const isOptional = propSig.hasQuestionToken();
+
+        // onEvent, onError는 콜백으로 특별 처리
+        if (propName === 'onEvent' || propName === 'onError') {
+          // 함수 타입 파싱
+          const parsedType = this.parseSimpleFunctionType(propTypeText);
+          parameters.push({
+            name: propName,
+            type: parsedType,
+            optional: isOptional,
+            description: propName === 'onEvent' ? '이벤트 콜백' : '에러 콜백',
+          });
+        } else if (propName === 'options') {
+          // options 객체 내부 프로퍼티를 풀어서 파라미터로 추가
+          const optionsTypeName = propTypeText;
+          const optionsInterface = sourceFile.getInterface(optionsTypeName);
+
+          if (optionsInterface) {
+            const optionsMembers = optionsInterface.getMembers();
+            for (const optMember of optionsMembers) {
+              if (optMember.getKind() === SyntaxKind.PropertySignature) {
+                const optPropSig = optMember.asKind(SyntaxKind.PropertySignature);
+                if (!optPropSig) continue;
+
+                const optPropName = optPropSig.getName();
+                const optPropTypeNode = optPropSig.getTypeNode();
+                const optPropTypeText = optPropTypeNode?.getText() || 'any';
+                const optIsOptional = optPropSig.hasQuestionToken();
+
+                parameters.push({
+                  name: optPropName,
+                  type: this.parseSimpleType(optPropTypeText),
+                  optional: optIsOptional,
+                  description: undefined,
+                });
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // JSDoc에서 설명 추출
+    let description: string | undefined;
+    const jsDocs = funcDecl?.getJsDocs() || varDecl?.getVariableStatement()?.getJsDocs() || [];
+    if (jsDocs.length > 0) {
+      description = jsDocs[0].getDescription()?.trim();
+    }
+
+    // 반환 타입: () => void (구독 해제 함수)
+    const returnType: ParsedType = {
+      name: 'void',
+      kind: 'function',
+      functionParams: [],
+      raw: '() => void',
+    };
+
+    // PascalCase 이름 생성
+    const pascalName = this.toPascalCase(apiName);
+
+    // 카테고리 찾기
+    let category: string;
+    try {
+      category = getCategory(apiName);
+    } catch {
+      category = 'Advertising'; // 기본 카테고리
+    }
+
+    return {
+      name: apiName,
+      pascalName,
+      originalName: apiName,
+      category,
+      file: 'framework/index.d.cts',
+      description,
+      parameters,
+      returnType,
+      isAsync: false, // 콜백 기반 API
+      hasPermission: false,
+      isDeprecated: false,
+      deprecatedMessage: undefined,
+      isEventSubscription: false,
+      // 콜백 기반 API (onEvent/onError 콜백 사용)
+      isCallbackBased: true,
+      // @apps-in-toss/framework에서 직접 export됨 (AppsInToss 네임스페이스 없음)
+      isTopLevelExport: true,
+    };
+  }
+
+  /**
+   * 간단한 함수 타입 파싱 (예: (data: SomeType) => void)
+   */
+  private parseSimpleFunctionType(typeText: string): ParsedType {
+    // 파라미터 추출: (data: Type) => void
+    const match = typeText.match(/\(([^)]*)\)\s*=>\s*(\w+)/);
+    if (!match) {
+      return { name: 'Function', kind: 'function', raw: typeText };
+    }
+
+    const paramsText = match[1];
+    const returnTypeText = match[2];
+    const functionParams: ParsedType[] = [];
+
+    if (paramsText.trim()) {
+      // 파라미터 파싱: data: Type 또는 err: unknown
+      const paramMatch = paramsText.match(/(\w+)\s*:\s*(.+)/);
+      if (paramMatch) {
+        const paramType = paramMatch[2].trim();
+        functionParams.push(this.parseSimpleType(paramType));
+      }
+    }
+
+    return {
+      name: 'Function',
+      kind: 'function',
+      functionParams,
+      raw: typeText,
+    };
+  }
+
+  /**
+   * 간단한 타입 파싱 (재귀 없이)
+   */
+  private parseSimpleType(typeText: string): ParsedType {
+    const primitives = ['string', 'number', 'boolean', 'void', 'any', 'unknown', 'object'];
+
+    if (primitives.includes(typeText)) {
+      return { name: typeText, kind: 'primitive', raw: typeText };
+    }
+
+    if (typeText.endsWith('[]')) {
+      const elementType = typeText.slice(0, -2);
+      return {
+        name: 'Array',
+        kind: 'array',
+        elementType: { name: elementType, kind: 'object', raw: elementType },
+        raw: typeText,
+      };
+    }
+
+    return { name: typeText, kind: 'object', raw: typeText };
+  }
+
+  /**
    * 타입 멤버들을 파싱하여 프로퍼티 배열로 변환
    */
   private parseTypeMembers(members: any[]): any[] {
@@ -185,8 +412,9 @@ export class TypeScriptParser {
 
   /**
    * 모든 API 파싱
+   * @param frameworkApiNames @apps-in-toss/framework에서 직접 파싱할 API 이름 목록 (선택)
    */
-  async parseAPIs(): Promise<ParsedAPI[]> {
+  async parseAPIs(frameworkApiNames?: string[]): Promise<ParsedAPI[]> {
     const apis: ParsedAPI[] = [];
     const sourceFiles = this.project.getSourceFiles();
 
@@ -208,6 +436,12 @@ export class TypeScriptParser {
 
       const fileAPIs = this.parseSourceFile(sourceFile);
       apis.push(...fileAPIs);
+    }
+
+    // @apps-in-toss/framework에서 추가 API 파싱 (web-framework에서 re-export되지 않는 API)
+    if (frameworkApiNames && frameworkApiNames.length > 0) {
+      const frameworkAPIs = this.parseFrameworkAPIs(frameworkApiNames);
+      apis.push(...frameworkAPIs);
     }
 
     return apis;
@@ -947,6 +1181,24 @@ export class TypeScriptParser {
       };
     }
 
+    // 텍스트 기반 nullable 패턴 감지: "SomeType | undefined" 또는 "SomeType | null"
+    // ts-morph가 isUnion()을 false로 반환하는 경우가 있어서 텍스트 기반 체크 추가
+    // 단순 패턴만 처리 (단일 타입 | null/undefined)
+    const nullableSimpleMatch = typeText.match(/^([^|]+)\s*\|\s*(undefined|null)$/);
+    if (nullableSimpleMatch) {
+      const baseTypeText = nullableSimpleMatch[1].trim();
+      // 기본 타입이 추가 | 를 포함하지 않는 경우만 처리 (복잡한 union 제외)
+      if (!baseTypeText.includes('|')) {
+        // 재귀적으로 기본 타입 파싱 (새로운 객체로 생성하여 무한 루프 방지)
+        const baseType = this.parseType({ getText: () => baseTypeText });
+        return {
+          ...baseType,
+          isNullable: true,
+          raw: typeText,
+        };
+      }
+    }
+
     // String literal 타입 ("foo", 'bar')
     if (typeText.startsWith('"') || typeText.startsWith("'")) {
       return {
@@ -1066,24 +1318,47 @@ export class TypeScriptParser {
       const unionTypes = typeNode.getUnionTypes?.() || [];
       const parsedUnionTypes = unionTypes.map((t: any) => this.parseType(t));
 
+      // Nullable 패턴 감지: T | null 또는 T | undefined
+      const nullTypes = parsedUnionTypes.filter((t: ParsedType) =>
+        t.name === 'null' || t.name === 'undefined'
+      );
+      const nonNullTypes = parsedUnionTypes.filter((t: ParsedType) =>
+        t.name !== 'null' && t.name !== 'undefined'
+      );
+
+      // 단일 타입 + null/undefined = nullable 타입
+      if (nullTypes.length > 0 && nonNullTypes.length === 1) {
+        return {
+          ...nonNullTypes[0],
+          isNullable: true,
+          raw: typeText,
+        };
+      }
+
       // Discriminated Union 감지: 객체 1개 + 문자열 리터럴 N개
-      const objectTypes = parsedUnionTypes.filter((t: ParsedType) => t.kind === 'object');
-      const stringLiterals = parsedUnionTypes.filter((t: ParsedType) =>
+      // undefined가 포함된 경우 제외하고 검사 (T | "error1" | "error2" | undefined)
+      const objectTypes = nonNullTypes.filter((t: ParsedType) => t.kind === 'object');
+      const stringLiterals = nonNullTypes.filter((t: ParsedType) =>
         t.kind === 'primitive' && t.name === 'string' && t.raw.startsWith('"')
       );
 
       const isDiscriminatedUnion = objectTypes.length === 1 && stringLiterals.length > 0;
 
       if (isDiscriminatedUnion) {
-        return {
+        const result: ParsedType = {
           name: typeText,
           kind: 'union',
-          unionTypes: parsedUnionTypes,
+          unionTypes: nonNullTypes, // undefined 제외
           raw: typeText,
           isDiscriminatedUnion: true,
           successType: objectTypes[0],
           errorCodes: stringLiterals.map((t: ParsedType) => t.raw.replace(/['"]/g, '')),
         };
+        // undefined가 포함된 경우 nullable 플래그 설정
+        if (nullTypes.length > 0) {
+          result.isNullable = true;
+        }
+        return result;
       }
 
       return {

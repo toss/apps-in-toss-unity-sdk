@@ -99,6 +99,11 @@ export class CSharpGenerator {
       }
       return typeName;
     });
+
+    // nullable 타입 체크 헬퍼 (string?, double? 등)
+    Handlebars.registerHelper('isNullable', function(typeName: string) {
+      return typeName && typeName.endsWith('?');
+    });
   }
 
   /**

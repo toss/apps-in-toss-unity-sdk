@@ -30,14 +30,6 @@ namespace AppsInToss
         NoReward
     }
 
-    public enum LocationAccessLocation
-    {
-        [EnumMember(Value = "FINE")]
-        FINE,
-        [EnumMember(Value = "COARSE")]
-        COARSE
-    }
-
     public enum GetPermissionPermissionName
     {
         [EnumMember(Value = "clipboard")]
@@ -68,14 +60,6 @@ namespace AppsInToss
         COMPLETED,
         [EnumMember(Value = "REFUNDED")]
         REFUNDED
-    }
-
-    public enum AttachOptionsTheme
-    {
-        [EnumMember(Value = "light")]
-        Light,
-        [EnumMember(Value = "dark")]
-        Dark
     }
 
     public enum AppsInTossGlobalsBrandBridgeColorMode
@@ -309,16 +293,16 @@ namespace AppsInToss
         public ContactsViralSuccessEventDataCloseReason CloseReason;
         [Preserve]
         [JsonProperty("sentRewardAmount")]
-        public double SentRewardAmount; // optional
+        public double? SentRewardAmount; // optional
         [Preserve]
         [JsonProperty("sendableRewardsCount")]
-        public double SendableRewardsCount; // optional
+        public double? SendableRewardsCount; // optional
         [Preserve]
         [JsonProperty("sentRewardsCount")]
         public double SentRewardsCount;
         [Preserve]
         [JsonProperty("rewardUnit")]
-        public string RewardUnit; // optional
+        public string? RewardUnit; // optional
     }
 
     [Serializable]
@@ -327,7 +311,7 @@ namespace AppsInToss
     {
         [Preserve]
         [JsonProperty("accessLocation")]
-        public LocationAccessLocation AccessLocation; // optional
+        public string AccessLocation; // optional
         [Preserve]
         [JsonProperty("timestamp")]
         public double Timestamp;
@@ -336,21 +320,6 @@ namespace AppsInToss
         public LocationCoords Coords;
         /// <summary>에러 발생 시 에러 메시지 (플랫폼 미지원 등)</summary>
         public string error;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class GameCenterGameProfileResponse
-    {
-        [Preserve]
-        [JsonProperty("statusCode")]
-        public string StatusCode;
-        [Preserve]
-        [JsonProperty("nickname")]
-        public string Nickname;
-        [Preserve]
-        [JsonProperty("profileImageUri")]
-        public string ProfileImageUri;
     }
 
     [Serializable]
@@ -414,7 +383,7 @@ namespace AppsInToss
         public System.Action<Error> OnError;
         [Preserve]
         [JsonProperty("options")]
-        public LoadAdMobInterstitialAdOptions Options; // optional
+        public object? Options; // optional
     }
 
     [Serializable]
@@ -450,10 +419,10 @@ namespace AppsInToss
         public AdNetworkResponseInfo[] AdNetworkInfoArray;
         [Preserve]
         [JsonProperty("loadedAdNetworkInfo")]
-        public AdNetworkResponseInfo LoadedAdNetworkInfo;
+        public object? LoadedAdNetworkInfo;
         [Preserve]
         [JsonProperty("responseId")]
-        public string ResponseId;
+        public string? ResponseId;
     }
 
     [Serializable]
@@ -474,7 +443,7 @@ namespace AppsInToss
         public string AdSourceInstanceName;
         [Preserve]
         [JsonProperty("adNetworkClassName")]
-        public string AdNetworkClassName;
+        public string? AdNetworkClassName;
     }
 
     [Serializable]
@@ -489,16 +458,7 @@ namespace AppsInToss
         public string Message;
         [Preserve]
         [JsonProperty("stack")]
-        public string Stack; // optional
-    }
-
-    [Serializable]
-    [Preserve]
-    public class LoadAdMobInterstitialAdOptions
-    {
-        [Preserve]
-        [JsonProperty("adUnitId")]
-        public string AdUnitId;
+        public string? Stack; // optional
     }
 
     [Serializable]
@@ -511,7 +471,7 @@ namespace AppsInToss
         public System.Action<Error> OnError;
         [Preserve]
         [JsonProperty("options")]
-        public ShowAdMobInterstitialAdOptions Options; // optional
+        public object? Options; // optional
     }
 
     [Serializable]
@@ -525,15 +485,6 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class ShowAdMobInterstitialAdOptions
-    {
-        [Preserve]
-        [JsonProperty("adUnitId")]
-        public string AdUnitId;
-    }
-
-    [Serializable]
-    [Preserve]
     public class GoogleAdMobLoadAdMobRewardedAdArgs
     {
         [JsonIgnore]
@@ -542,7 +493,7 @@ namespace AppsInToss
         public System.Action<Error> OnError;
         [Preserve]
         [JsonProperty("options")]
-        public LoadAdMobRewardedAdOptions Options; // optional
+        public object? Options; // optional
     }
 
     [Serializable]
@@ -571,15 +522,6 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class LoadAdMobRewardedAdOptions
-    {
-        [Preserve]
-        [JsonProperty("adUnitId")]
-        public string AdUnitId;
-    }
-
-    [Serializable]
-    [Preserve]
     public class GoogleAdMobShowAdMobRewardedAdArgs
     {
         [JsonIgnore]
@@ -588,7 +530,7 @@ namespace AppsInToss
         public System.Action<Error> OnError;
         [Preserve]
         [JsonProperty("options")]
-        public ShowAdMobRewardedAdOptions Options; // optional
+        public object? Options; // optional
     }
 
     [Serializable]
@@ -602,15 +544,6 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class ShowAdMobRewardedAdOptions
-    {
-        [Preserve]
-        [JsonProperty("adUnitId")]
-        public string AdUnitId;
-    }
-
-    [Serializable]
-    [Preserve]
     public class GoogleAdMobLoadAppsInTossAdMobArgs
     {
         [JsonIgnore]
@@ -619,7 +552,7 @@ namespace AppsInToss
         public System.Action<Error> OnError;
         [Preserve]
         [JsonProperty("options")]
-        public LoadAdMobOptions Options; // optional
+        public object? Options; // optional
     }
 
     [Serializable]
@@ -651,15 +584,6 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class LoadAdMobOptions
-    {
-        [Preserve]
-        [JsonProperty("adGroupId")]
-        public string AdGroupId;
-    }
-
-    [Serializable]
-    [Preserve]
     public class GoogleAdMobShowAppsInTossAdMobArgs
     {
         [JsonIgnore]
@@ -668,7 +592,7 @@ namespace AppsInToss
         public System.Action<Error> OnError;
         [Preserve]
         [JsonProperty("options")]
-        public ShowAdMobOptions Options; // optional
+        public object? Options; // optional
     }
 
     [Serializable]
@@ -709,15 +633,6 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class ShowAdMobOptions
-    {
-        [Preserve]
-        [JsonProperty("adGroupId")]
-        public string AdGroupId;
-    }
-
-    [Serializable]
-    [Preserve]
     public class IapCreateOneTimePurchaseOrderOptions
     {
         [Preserve]
@@ -738,7 +653,7 @@ namespace AppsInToss
         public string ProductId;
         [Preserve]
         [JsonProperty("sku")]
-        public string Sku; // optional
+        public string? Sku; // optional
         [JsonIgnore]
         public System.Action<object> ProcessProductGrant;
     }
@@ -779,7 +694,7 @@ namespace AppsInToss
         public double Fraction;
         [Preserve]
         [JsonProperty("miniAppIconUrl")]
-        public string MiniAppIconUrl;
+        public string? MiniAppIconUrl;
     }
 
     [Serializable]
@@ -849,7 +764,7 @@ namespace AppsInToss
         public bool HasNext;
         [Preserve]
         [JsonProperty("nextKey")]
-        public string NextKey; // optional
+        public string? NextKey; // optional
         [Preserve]
         [JsonProperty("orders")]
         public CompletedOrRefundedOrdersResultOrder[] Orders;
@@ -952,103 +867,12 @@ namespace AppsInToss
     [Preserve]
     public class InitializeOptionsCallbacks
     {
-        [JsonIgnore]
-        public System.Action OnInitialized; // optional
-        [JsonIgnore]
-        public System.Action<Error> OnInitializationFailed; // optional
-    }
-
-    [Serializable]
-    [Preserve]
-    public class AttachOptions
-    {
         [Preserve]
-        [JsonProperty("theme")]
-        public AttachOptionsTheme Theme; // optional
+        [JsonProperty("onInitialized")]
+        public object? OnInitialized; // optional
         [Preserve]
-        [JsonProperty("padding")]
-        public string Padding; // optional
-        [Preserve]
-        [JsonProperty("callbacks")]
-        public BannerSlotCallbacks Callbacks; // optional
-    }
-
-    [Serializable]
-    [Preserve]
-    public class BannerSlotCallbacks
-    {
-        [JsonIgnore]
-        public System.Action<BannerSlotEventPayload> OnAdRendered; // optional
-        [JsonIgnore]
-        public System.Action<BannerSlotEventPayload> OnAdViewable; // optional
-        [JsonIgnore]
-        public System.Action<BannerSlotEventPayload> OnAdClicked; // optional
-        [JsonIgnore]
-        public System.Action<BannerSlotEventPayload> OnAdImpression; // optional
-        [JsonIgnore]
-        public System.Action<BannerSlotErrorPayload> OnAdFailedToRender; // optional
-        [JsonIgnore]
-        public System.Action<object> OnNoFill; // optional
-    }
-
-    [Serializable]
-    [Preserve]
-    public class BannerSlotEventPayload
-    {
-        [Preserve]
-        [JsonProperty("slotId")]
-        public string SlotId;
-        [Preserve]
-        [JsonProperty("adGroupId")]
-        public string AdGroupId;
-        [Preserve]
-        [JsonProperty("adMetadata")]
-        public BannerSlotEventPayloadAdMetadata AdMetadata;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class BannerSlotEventPayloadAdMetadata
-    {
-        [Preserve]
-        [JsonProperty("creativeId")]
-        public string CreativeId;
-        [Preserve]
-        [JsonProperty("requestId")]
-        public string RequestId;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class BannerSlotErrorPayload
-    {
-        [Preserve]
-        [JsonProperty("slotId")]
-        public string SlotId;
-        [Preserve]
-        [JsonProperty("adGroupId")]
-        public string AdGroupId;
-        [Preserve]
-        [JsonProperty("adMetadata")]
-        public Dictionary<string, object> AdMetadata;
-        [Preserve]
-        [JsonProperty("error")]
-        public BannerSlotErrorPayloadError Error;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class BannerSlotErrorPayloadError
-    {
-        [Preserve]
-        [JsonProperty("code")]
-        public double Code;
-        [Preserve]
-        [JsonProperty("message")]
-        public string Message;
-        [Preserve]
-        [JsonProperty("domain")]
-        public string Domain; // optional
+        [JsonProperty("onInitializationFailed")]
+        public object? OnInitializationFailed; // optional
     }
 
     [Serializable]
@@ -1254,7 +1078,7 @@ namespace AppsInToss
         public string TxId;
         [Preserve]
         [JsonProperty("skipConfirmDoc")]
-        public bool SkipConfirmDoc; // optional
+        public bool? SkipConfirmDoc; // optional
     }
 
     [Serializable]
@@ -1278,7 +1102,7 @@ namespace AppsInToss
         /// <summary>인증이 실패했을 경우의 이유예요.</summary>
         [Preserve]
         [JsonProperty("reason")]
-        public string Reason; // optional
+        public string? Reason; // optional
     }
 
     [Serializable]
@@ -1338,15 +1162,15 @@ namespace AppsInToss
         /// <summary>가져올 사진의 최대 개수를 설정해요. 숫자를 입력하고 기본값은 10이에요.</summary>
         [Preserve]
         [JsonProperty("maxCount")]
-        public double MaxCount; // optional
+        public double? MaxCount; // optional
         /// <summary>사진의 최대 폭을 제한해요. 단위는 픽셀이고 기본값은 1024이에요.</summary>
         [Preserve]
         [JsonProperty("maxWidth")]
-        public double MaxWidth; // optional
+        public double? MaxWidth; // optional
         /// <summary>이미지를 base64 형식으로 반환할지 설정해요. 기본값은 false예요.</summary>
         [Preserve]
         [JsonProperty("base64")]
-        public bool Base64; // optional
+        public bool? Base64; // optional
     }
 
     /// <summary>
@@ -1387,7 +1211,7 @@ namespace AppsInToss
     {
         [Preserve]
         [JsonProperty("contains")]
-        public string Contains; // optional
+        public string? Contains; // optional
     }
 
     /// <summary>
@@ -1416,7 +1240,7 @@ namespace AppsInToss
         public ContactEntity[] Result;
         [Preserve]
         [JsonProperty("nextOffset")]
-        public double NextOffset;
+        public double? NextOffset;
         [Preserve]
         [JsonProperty("done")]
         public bool Done;
@@ -1607,11 +1431,11 @@ namespace AppsInToss
         /// <summary>이미지를 Base64 형식으로 반환할지 여부를 나타내는 불리언 값이에요. 기본값: false.</summary>
         [Preserve]
         [JsonProperty("base64")]
-        public bool Base64; // optional
+        public bool? Base64; // optional
         /// <summary>이미지의 최대 너비를 나타내는 숫자 값이에요. 기본값: 1024.</summary>
         [Preserve]
         [JsonProperty("maxWidth")]
-        public double MaxWidth; // optional
+        public double? MaxWidth; // optional
     }
 
     [Serializable]

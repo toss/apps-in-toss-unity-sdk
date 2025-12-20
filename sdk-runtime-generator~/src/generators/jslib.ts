@@ -104,7 +104,26 @@ export class JSLibGenerator {
   private generateTypescriptFile(category: string, apis: ParsedAPI[]): string {
     const imports = this.generateApiImports(apis);
     const windowType = this.generateWindowType(apis);
+    const windowTopLevelType = this.generateWindowTopLevelType(apis);
     const functions = apis.map(api => this.generateTypescriptFunction(api)).join('\n\n');
+
+    // top-level API가 있으면 window 타입에 추가
+    const windowDecl = windowTopLevelType
+      ? `// window.AppsInToss 및 top-level API 타입 선언
+declare const window: {
+  AppsInToss: {
+${windowType}
+  };
+${windowTopLevelType}
+  __AIT_SUBSCRIPTIONS?: Record<string, () => void>;
+};`
+      : `// window.AppsInToss 타입 선언
+declare const window: {
+  AppsInToss: {
+${windowType}
+  };
+  __AIT_SUBSCRIPTIONS?: Record<string, () => void>;
+};`;
 
     return `/**
  * bridge-${category}.ts
@@ -120,13 +139,7 @@ declare function SendMessage(objectName: string, methodName: string, param: stri
 // web-framework API 타입 import
 ${imports}
 
-// window.AppsInToss 타입 선언
-declare const window: {
-  AppsInToss: {
-${windowType}
-  };
-  __AIT_SUBSCRIPTIONS?: Record<string, () => void>;
-};
+${windowDecl}
 
 ${functions}
 `;
@@ -138,6 +151,7 @@ ${functions}
   private generateApiImports(apis: ParsedAPI[]): string {
     const imports: string[] = [];
     const seenNamespaces = new Set<string>();
+    const seenTopLevelApis = new Set<string>();
 
     for (const api of apis) {
       if (api.namespace) {
@@ -145,6 +159,12 @@ ${functions}
         if (!seenNamespaces.has(api.namespace)) {
           imports.push(`import type { ${api.namespace} } from '@apps-in-toss/web-framework';`);
           seenNamespaces.add(api.namespace);
+        }
+      } else if (api.isTopLevelExport) {
+        // Top-level export API (framework 패키지에서 직접 export)
+        if (!seenTopLevelApis.has(api.originalName)) {
+          imports.push(`import type { ${api.originalName} } from '@apps-in-toss/framework';`);
+          seenTopLevelApis.add(api.originalName);
         }
       } else if (!api.isEventSubscription) {
         // 일반 API 함수
@@ -177,9 +197,26 @@ ${functions}
           members.push(`    ${api.namespace}: typeof ${api.namespace};`);
           seenNamespaces.add(api.namespace);
         }
-      } else if (!api.isEventSubscription) {
-        // 일반 API 함수
+      } else if (!api.isEventSubscription && !api.isTopLevelExport) {
+        // 일반 API 함수 (top-level export 제외)
         members.push(`    ${api.originalName}: typeof ${api.originalName};`);
+      }
+    }
+
+    return members.join('\n');
+  }
+
+  /**
+   * window top-level 타입 생성 (framework 패키지에서 직접 export되는 API)
+   */
+  private generateWindowTopLevelType(apis: ParsedAPI[]): string {
+    const members: string[] = [];
+    const seen = new Set<string>();
+
+    for (const api of apis) {
+      if (api.isTopLevelExport && !seen.has(api.originalName)) {
+        members.push(`  ${api.originalName}: typeof ${api.originalName};`);
+        seen.add(api.originalName);
       }
     }
 
@@ -239,6 +276,9 @@ import type { ${sortedTypes.join(', ')} } from '@apps-in-toss/web-framework';`;
   private generateTypescriptFunction(api: ParsedAPI): string {
     if (api.isEventSubscription) {
       return this.generateTypescriptEventFunction(api);
+    }
+    if (api.isCallbackBased) {
+      return this.generateTypescriptCallbackFunction(api);
     }
     return this.generateTypescriptRegularFunction(api);
   }
@@ -471,6 +511,99 @@ ${onEventHandler}
   }
 
   /**
+   * 콜백 기반 API TypeScript 함수 생성 (loadFullScreenAd, showFullScreenAd 등)
+   * 이 API들은 onEvent/onError 콜백을 받고 unsubscribe 함수를 반환함
+   */
+  private generateTypescriptCallbackFunction(api: ParsedAPI): string {
+    // onEvent, onError 콜백이 아닌 파라미터들만 필터링 (예: adGroupId)
+    const dataParams = api.parameters.filter(p =>
+      p.name !== 'onEvent' && p.name !== 'onError'
+    );
+
+    // 파라미터 시그니처
+    const params = dataParams.map(p => `${p.name}: number`).join(', ');
+    const paramList = dataParams.length > 0
+      ? `${params}, subscriptionId: number, typeName: number`
+      : 'subscriptionId: number, typeName: number';
+
+    // API 호출 표현식 (top-level export는 window에서 직접 호출)
+    const apiCallExpr = api.isTopLevelExport
+      ? `window.${api.originalName}`
+      : api.namespace
+        ? `window.AppsInToss.${api.namespace}.${api.originalName}`
+        : `window.AppsInToss.${api.originalName}`;
+
+    // 파라미터 변환 코드
+    const jsConversions = dataParams.map(p =>
+      `  const ${p.name}Val = UTF8ToString(${p.name});`
+    ).join('\n');
+
+    // 옵션 객체 구성
+    const optionsObj = dataParams.length > 0
+      ? `{ ${dataParams.map(p => `${p.name}: ${p.name}Val`).join(', ')} }`
+      : '{}';
+
+    return `export const __${api.name}_Internal = (${paramList}): void => {
+  const subId = UTF8ToString(subscriptionId);
+  const typeNameStr = UTF8ToString(typeName);
+${jsConversions ? '\n' + jsConversions + '\n' : ''}
+  console.log('[AIT jslib] ${api.name} called, id:', subId);
+
+  try {
+    const unsubscribe = ${apiCallExpr}({
+      options: ${optionsObj},
+      onEvent: (data: unknown) => {
+        console.log('[AIT jslib] ${api.name} event:', data);
+        const payload = JSON.stringify({
+          CallbackId: subId,
+          TypeName: typeNameStr,
+          Result: JSON.stringify({
+            success: true,
+            data: JSON.stringify(data || {}),
+            error: ''
+          })
+        });
+        SendMessage('AITCore', 'OnAITEventCallback', payload);
+      },
+      onError: (error: unknown) => {
+        console.log('[AIT jslib] ${api.name} error:', error);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        const payload = JSON.stringify({
+          CallbackId: subId,
+          TypeName: typeNameStr,
+          Result: JSON.stringify({
+            success: false,
+            data: '',
+            error: errorMessage
+          })
+        });
+        SendMessage('AITCore', 'OnAITEventCallback', payload);
+      }
+    });
+
+    if (!window.__AIT_SUBSCRIPTIONS) {
+      window.__AIT_SUBSCRIPTIONS = {};
+    }
+    window.__AIT_SUBSCRIPTIONS[subId] = unsubscribe;
+
+  } catch (error: unknown) {
+    console.error('[AIT jslib] ${api.name} error:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const payload = JSON.stringify({
+      CallbackId: subId,
+      TypeName: typeNameStr,
+      Result: JSON.stringify({
+        success: false,
+        data: '',
+        error: errorMessage
+      })
+    });
+    SendMessage('AITCore', 'OnAITEventCallback', payload);
+  }
+};`;
+  }
+
+  /**
    * TypeScript 타입 변환 코드 생성
    * @param paramIndex - 파라미터 인덱스 (Parameters<typeof func>[index] 타입 추출용)
    * @param apiCall - API 호출 표현식 (window.AppsInToss.xxx 또는 window.AppsInToss.Namespace.xxx)
@@ -478,6 +611,12 @@ ${onEventHandler}
   private getJSConversionTs(paramName: string, paramType: ParsedType, paramIndex: number, apiCall: string): string {
     // 함수 시그니처에서 직접 타입을 추출 (Parameters<typeof xxx>[index])
     const paramTypeExpr = `Parameters<typeof ${apiCall}>[${paramIndex}]`;
+
+    // nullable 타입은 기본 타입처럼 처리 (object, array, union 등)
+    // isNullable이 설정된 경우 JSON.parse로 변환 필요
+    if (paramType.isNullable) {
+      return `JSON.parse(UTF8ToString(${paramName})) as ${paramTypeExpr}`;
+    }
 
     switch (paramType.kind) {
       case 'primitive':
@@ -492,7 +631,7 @@ ${onEventHandler}
 
       default:
         // function, union 등 복잡한 타입도 Parameters로 추출
-        if (paramType.kind === 'function' || paramType.kind === 'union' || paramType.kind === 'record') {
+        if (paramType.kind === 'function' || paramType.kind === 'union' || paramType.kind === 'record' || paramType.kind === 'unknown') {
           return `JSON.parse(UTF8ToString(${paramName})) as ${paramTypeExpr}`;
         }
         return paramName;

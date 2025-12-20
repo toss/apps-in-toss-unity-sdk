@@ -46,21 +46,21 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Authentication")]
-        public static async Task<bool> GetIsTossLoginIntegratedService()
+        public static async Task<bool?> GetIsTossLoginIntegratedService()
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            var tcs = new TaskCompletionSource<bool>();
-            string callbackId = AITCore.Instance.RegisterCallback<bool>(
+            var tcs = new TaskCompletionSource<bool?>();
+            string callbackId = AITCore.Instance.RegisterCallback<bool?>(
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __getIsTossLoginIntegratedService_Internal(callbackId, "bool");
+            __getIsTossLoginIntegratedService_Internal(callbackId, "bool?");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] GetIsTossLoginIntegratedService called");
             await Task.CompletedTask;
-            return false;
+            return null;
 #endif
         }
 

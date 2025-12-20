@@ -67,6 +67,9 @@ export const API_CATEGORIES: Record<string, string[]> = {
     'TossAdsAttach',
     'TossAdsDestroy',
     'TossAdsDestroyAll',
+    // Full Screen Ads (top-level exports)
+    'loadFullScreenAd',
+    'showFullScreenAd',
   ],
   SafeArea: [
     'SafeAreaInsetsGet',
@@ -134,6 +137,15 @@ export function getCategory(apiName: string): string {
     `categories.ts의 API_CATEGORIES에 추가해주세요.`
   );
 }
+
+/**
+ * @apps-in-toss/framework 패키지에서 직접 파싱해야 하는 API 목록
+ * 이 API들은 web-framework에서 re-export되지 않음
+ */
+export const FRAMEWORK_APIS: string[] = [
+  'loadFullScreenAd',
+  'showFullScreenAd',
+];
 
 /**
  * 모든 API가 카테고리에 매핑되어 있는지 검증

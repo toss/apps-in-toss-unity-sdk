@@ -31,6 +31,10 @@ export const TYPE_MAPPING: Record<string, string> = {
  * 타입 지원 여부 확인
  */
 export function isTypeSupported(type: ParsedType): boolean {
+  // nullable 타입은 base 타입이 지원되면 허용
+  // isNullable이 설정된 경우, 이미 base 타입으로 변환되어 있음
+  // 따라서 별도 처리 없이 kind에 따른 검증 진행
+
   switch (type.kind) {
     case 'primitive':
       return SUPPORTED_PRIMITIVES.has(type.name);
@@ -52,6 +56,10 @@ export function isTypeSupported(type: ParsedType): boolean {
       return true;
 
     case 'union':
+      // Discriminated Union은 항상 지원 (객체 + 문자열 리터럴)
+      if (type.isDiscriminatedUnion) {
+        return true;
+      }
       // Union의 모든 타입 검증
       return type.unionTypes ? type.unionTypes.every(t => isTypeSupported(t)) : false;
 
@@ -68,6 +76,10 @@ export function isTypeSupported(type: ParsedType): boolean {
 
     case 'unknown':
       // 알 수 없는 타입은 허용하지 않음
+      // 단, nullable 타입인 경우 기본 허용 (타입 이름이 있으면 object로 처리됨)
+      if (type.isNullable && type.name && !type.name.includes('|')) {
+        return true;
+      }
       return false;
 
     default:
@@ -184,6 +196,21 @@ function isExternalType(typeName: string): boolean {
  * TypeScript 타입을 C# 타입으로 변환
  */
 export function mapToCSharpType(type: ParsedType): string {
+  // 기본 타입 변환
+  const baseType = mapToCSharpTypeCore(type);
+
+  // nullable 타입에 ? 접미사 추가
+  if (type.isNullable && !baseType.endsWith('?') && !baseType.endsWith('[]')) {
+    return baseType + '?';
+  }
+
+  return baseType;
+}
+
+/**
+ * TypeScript 타입을 C# 타입으로 변환 (내부 구현)
+ */
+function mapToCSharpTypeCore(type: ParsedType): string {
   // 외부 타입 체크 (모든 kind에 대해 먼저 체크)
   if (isExternalType(type.name)) {
     return 'object';

@@ -15,7 +15,7 @@ mergeInto(LibraryManager.library, {
         console.log('[AIT jslib] fetchAlbumPhotos raw param options:', UTF8ToString(options));
 
         try {
-            var promiseResult = window.AppsInToss.fetchAlbumPhotos(JSON.parse(UTF8ToString(options)));
+            var promiseResult = window.AppsInToss.fetchAlbumPhotos(options);
             console.log('[AIT jslib] fetchAlbumPhotos returned:', promiseResult, 'isPromise:', promiseResult && typeof promiseResult.then === 'function');
 
             if (!promiseResult || typeof promiseResult.then !== 'function') {

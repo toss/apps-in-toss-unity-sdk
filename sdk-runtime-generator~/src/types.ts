@@ -22,6 +22,9 @@ export interface ParsedAPI {
   isEventSubscription?: boolean; // addEventListener 패턴인지
   eventName?: string; // 이벤트 이름 (예: 'navigationAccessoryEvent')
   eventDataType?: ParsedType; // onEvent 콜백 데이터 타입 (void면 undefined)
+  // 콜백 기반 API 지원 (loadFullScreenAd, showFullScreenAd 등)
+  isCallbackBased?: boolean; // 콜백 기반 API인지 (onEvent/onError 콜백 사용)
+  isTopLevelExport?: boolean; // 최상위 export인지 (AppsInToss 네임스페이스 없이 호출)
 }
 
 /**
@@ -57,6 +60,8 @@ export interface ParsedType {
   functionReturnType?: ParsedType; // 함수 반환 타입
   // Intersection 타입 정보
   isIntersection?: boolean;
+  // Nullable 타입 정보 (T | null 또는 T | undefined 패턴)
+  isNullable?: boolean;
 }
 
 /**

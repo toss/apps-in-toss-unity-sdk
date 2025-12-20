@@ -15,7 +15,7 @@ mergeInto(LibraryManager.library, {
         console.log('[AIT jslib] openCamera raw param options:', UTF8ToString(options));
 
         try {
-            var promiseResult = window.AppsInToss.openCamera(JSON.parse(UTF8ToString(options)));
+            var promiseResult = window.AppsInToss.openCamera(options);
             console.log('[AIT jslib] openCamera returned:', promiseResult, 'isPromise:', promiseResult && typeof promiseResult.then === 'function');
 
             if (!promiseResult || typeof promiseResult.then !== 'function') {

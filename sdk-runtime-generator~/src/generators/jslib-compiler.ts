@@ -79,6 +79,9 @@ export async function typeCheckBridgeCode(
           '@apps-in-toss/web-framework': [
             path.resolve(__dirname, '../../node_modules/@apps-in-toss/web-framework'),
           ],
+          '@apps-in-toss/framework': [
+            path.resolve(__dirname, '../../node_modules/@apps-in-toss/framework'),
+          ],
         },
       },
       include: ['*.ts'],

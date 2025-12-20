@@ -144,4 +144,50 @@ mergeInto(LibraryManager.library, {
         }
     },
 
+    __loadFullScreenAd_Internal: function(adGroupId, onEvent, onError, callbackId, typeName) {
+        // 동기 함수 (즉시 값 반환)
+        var callback = UTF8ToString(callbackId);
+        var typeNameStr = UTF8ToString(typeName);
+
+        try {
+            var result = window.AppsInToss.loadFullScreenAd(UTF8ToString(adGroupId), onEvent, onError);
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: true, data: JSON.stringify(result), error: '' })
+            });
+            SendMessage('AITCore', 'OnAITCallback', payload);
+        } catch (error) {
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+            });
+            SendMessage('AITCore', 'OnAITCallback', payload);
+        }
+    },
+
+    __showFullScreenAd_Internal: function(adGroupId, onEvent, onError, callbackId, typeName) {
+        // 동기 함수 (즉시 값 반환)
+        var callback = UTF8ToString(callbackId);
+        var typeNameStr = UTF8ToString(typeName);
+
+        try {
+            var result = window.AppsInToss.showFullScreenAd(UTF8ToString(adGroupId), onEvent, onError);
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: true, data: JSON.stringify(result), error: '' })
+            });
+            SendMessage('AITCore', 'OnAITCallback', payload);
+        } catch (error) {
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+            });
+            SendMessage('AITCore', 'OnAITCallback', payload);
+        }
+    },
+
 });

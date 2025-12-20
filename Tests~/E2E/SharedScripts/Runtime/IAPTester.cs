@@ -7,6 +7,20 @@ using AppsInToss;
 /// IAP (In-App Purchase) 테스터 컴포넌트
 /// 인앱결제 v2 API 워크플로우를 테스트할 수 있는 UI 제공
 /// OOMTester 패턴을 따라 InteractiveAPITester에서 분리됨
+///
+/// ## 정상 플로우 (소모품)
+/// 1. GetProductItemList() - 상품 목록 조회
+/// 2. CreateOneTimePurchaseOrder() - 구매 주문 생성
+///    - processProductGrant 콜백에서 상품 지급 후 true 반환
+///    - SDK가 자동으로 CompleteProductGrant 호출하여 주문 완료 처리
+///
+/// ## 복구 플로우 (앱 크래시/네트워크 끊김 등으로 processProductGrant 콜백 미호출 시)
+/// 1. GetCompletedOrRefundedOrders() - 미처리 완료 주문 조회
+/// 2. 각 주문에 대해 상품 지급 수행
+/// 3. CompleteProductGrant() - 수동으로 주문 완료 처리
+///
+/// ## 비소모품
+/// - 한 번 구매하면 영구 소유, CompleteProductGrant 불필요
 /// </summary>
 public class IAPTester : MonoBehaviour
 {
@@ -16,6 +30,7 @@ public class IAPTester : MonoBehaviour
     private string iapStatus = "";
     private IAPGetProductItemListResult iapProducts = null;
     private IAPGetPendingOrdersResult iapPendingOrders = null;
+    private CompletedOrRefundedOrdersResult iapCompletedOrders = null;
     private List<string> iapEventLog = new List<string>();
 
     /// <summary>
@@ -38,8 +53,8 @@ public class IAPTester : MonoBehaviour
         GUILayout.BeginVertical(boxStyle);
 
         // 섹션 헤더
-        GUILayout.Label("IAP Example", groupHeaderStyle);
-        GUILayout.Label("인앱결제 v2 API 워크플로우를 테스트합니다.", labelStyle);
+        GUILayout.Label("IAP Example (인앱결제v2)", groupHeaderStyle);
+        GUILayout.Label("인앱결제 v2 API 워크플로우 예제입니다.", labelStyle);
 
         GUILayout.Space(10);
 
@@ -136,17 +151,35 @@ public class IAPTester : MonoBehaviour
 
         GUILayout.Space(10);
 
-        // Step 4: 완료/환불 주문 조회
-        GUILayout.Label("Step 4: Get Completed/Refunded Orders", fieldLabelStyle);
+        // Step 4: 완료/환불 주문 조회 (복구 플로우용)
+        GUILayout.Label("Step 4: Get Completed/Refunded Orders (복구용)", fieldLabelStyle);
         if (GUILayout.Button("IAPGetCompletedOrRefundedOrders()", buttonStyle, GUILayout.Height(40)))
         {
             ExecuteIAPGetCompletedOrRefundedOrders();
         }
 
+        // Completed/Refunded Orders 목록 표시 및 선택
+        if (iapCompletedOrders != null && iapCompletedOrders.Orders != null && iapCompletedOrders.Orders.Length > 0)
+        {
+            GUILayout.Label($"Completed/Refunded Orders ({iapCompletedOrders.Orders.Length}):", labelStyle);
+            GUILayout.Label("Select to fill Order ID:", callbackLabelStyle);
+            foreach (var order in iapCompletedOrders.Orders)
+            {
+                if (!string.IsNullOrEmpty(order.OrderId))
+                {
+                    string status = order.Status == CompletedOrRefundedOrdersResultOrderStatus.REFUNDED ? "Refunded" : "Completed";
+                    if (GUILayout.Button($"→ {order.OrderId} ({order.Sku}, {status})", buttonStyle, GUILayout.Height(32)))
+                    {
+                        iapOrderId = order.OrderId;
+                    }
+                }
+            }
+        }
+
         GUILayout.Space(10);
 
-        // Step 5: 상품 지급 완료 처리
-        GUILayout.Label("Step 5: Complete Product Grant", fieldLabelStyle);
+        // Step 5: 상품 지급 완료 처리 (복구 플로우용 - 정상 플로우에서는 processProductGrant 콜백에서 자동 처리됨)
+        GUILayout.Label("Step 5: Complete Product Grant (복구용)", fieldLabelStyle);
         GUILayout.BeginHorizontal();
         GUILayout.Label("Order ID:", fieldLabelStyle, GUILayout.Width(80));
         iapOrderId = GUILayout.TextField(iapOrderId, textFieldStyle, GUILayout.Height(36), GUILayout.ExpandWidth(true));
@@ -202,8 +235,9 @@ public class IAPTester : MonoBehaviour
                 Options = new IapCreateOneTimePurchaseOrderOptionsOptions
                 {
                     Sku = iapSku,
-                    // processProductGrant 콜백 - 상품 지급 로직 수행 후 결과 반환
-                    // JS에서 이 함수가 호출되면 C#에서 실행되고 결과가 JS로 반환됨
+                    // processProductGrant 콜백 - 결제 완료 시 호출됨
+                    // 여기서 상품 지급 후 true를 반환하면 SDK가 자동으로 CompleteProductGrant를 호출하여
+                    // 주문을 완료 처리함. false 반환 시 주문이 미처리 상태로 남음.
                     ProcessProductGrant = (data) =>
                     {
                         iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] ProcessProductGrant called: {data}");
@@ -213,6 +247,7 @@ public class IAPTester : MonoBehaviour
                         // 예: 코인 추가, 아이템 지급 등
                         bool grantSuccess = GrantGameProduct(data);
 
+                        // true 반환 시 SDK가 자동으로 주문 완료 처리
                         iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] ProcessProductGrant result: {grantSuccess}");
                         return grantSuccess;
                     }
@@ -280,18 +315,20 @@ public class IAPTester : MonoBehaviour
 
         try
         {
-            var result = await AIT.IAPGetCompletedOrRefundedOrders();
-            int count = result?.Orders?.Length ?? 0;
+            iapCompletedOrders = await AIT.IAPGetCompletedOrRefundedOrders();
+            int count = iapCompletedOrders?.Orders?.Length ?? 0;
             iapStatus = $"Found {count} completed/refunded orders";
-            iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Success: {count} orders, HasNext={result?.HasNext}");
+            iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Success: {count} orders, HasNext={iapCompletedOrders?.HasNext}");
         }
         catch (AITException ex)
         {
+            iapCompletedOrders = null;
             iapStatus = $"Error: {ex.Message}";
             iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Error: {ex.ErrorCode} - {ex.Message}");
         }
         catch (Exception ex)
         {
+            iapCompletedOrders = null;
             iapStatus = $"Error: {ex.Message}";
             iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Exception: {ex.Message}");
         }

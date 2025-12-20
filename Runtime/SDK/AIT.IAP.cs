@@ -20,30 +20,47 @@ namespace AppsInToss
         /// <summary>
         /// * 특정 인앱결제 주문서 페이지로 이동해요. 사용자가 상품 구매 버튼을 누르는 상황 등에 사용할 수 있어요. 사용자의 결제는 이동한 페이지에서 진행돼요. 만약 결제 중에 에러가 발생하면 에러 유형에 따라 에러 페이지로 이동해요.
         /// </summary>
-        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <returns>구독 취소를 위한 Action</returns>
         [Preserve]
         [APICategory("IAP")]
-        public static async Task<System.Action> IAPCreateOneTimePurchaseOrder(IapCreateOneTimePurchaseOrderOptions paramsParam)
+        public static Action IAPCreateOneTimePurchaseOrder(IapCreateOneTimePurchaseOrderOptions options)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            var tcs = new TaskCompletionSource<System.Action>();
-            string callbackId = AITCore.Instance.RegisterCallback<System.Action>(
-                result => tcs.TrySetResult(result),
-                error => tcs.TrySetException(error)
+            string subscriptionId = Guid.NewGuid().ToString();
+
+            // 중첩 콜백 등록
+            if (options.Options?.ProcessProductGrant != null)
+            {
+                AITCore.Instance.RegisterNestedCallback(
+                    subscriptionId,
+                    "processProductGrant",
+                    options.Options.ProcessProductGrant
+                );
+            }
+
+            // 이벤트 콜백 등록
+            AITCore.Instance.RegisterSubscriptionCallback<SuccessEvent>(
+                subscriptionId,
+                options.OnEvent,
+                options.OnError
             );
-            __IAPCreateOneTimePurchaseOrder_Internal(AITJsonSettings.Serialize(paramsParam), callbackId, "System.Action");
-            return await tcs.Task;
+
+            __IAPCreateOneTimePurchaseOrder_Internal(AITJsonSettings.Serialize(options), subscriptionId, "SuccessEvent");
+
+            return () => {
+                AITCore.Instance.Unsubscribe(subscriptionId);
+                AITCore.Instance.RemoveNestedCallbacks(subscriptionId);
+            };
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] IAPCreateOneTimePurchaseOrder called");
-            await Task.CompletedTask;
-            return default(System.Action);
+            return () => UnityEngine.Debug.Log($"[AIT Mock] IAPCreateOneTimePurchaseOrder cancelled");
 #endif
         }
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
-        private static extern void __IAPCreateOneTimePurchaseOrder_Internal(string paramsParam, string callbackId, string typeName);
+        private static extern void __IAPCreateOneTimePurchaseOrder_Internal(string options, string subscriptionId, string typeName);
 #endif
         /// <summary>
         /// * 특정 인앱결제 주문서 페이지로 이동해요. 사용자가 상품 구매 버튼을 누르는 상황 등에 사용할 수 있어요. 사용자의 결제는 이동한 페이지에서 진행돼요. 만약 결제 중에 에러가 발생하면 에러 유형에 따라 에러 페이지로 이동해요.

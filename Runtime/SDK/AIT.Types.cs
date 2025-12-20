@@ -654,8 +654,9 @@ namespace AppsInToss
         [Preserve]
         [JsonProperty("sku")]
         public string Sku; // optional
-        [JsonIgnore]
-        public System.Action<object> ProcessProductGrant;
+        [Preserve]
+        [JsonProperty("processProductGrant")]
+        public System.Func<object, object> ProcessProductGrant;
     }
 
     [Serializable]

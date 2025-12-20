@@ -730,7 +730,51 @@ export class CSharpGenerator {
       isCallbackBased: api.isCallbackBased,
       callbackEventType,
       callbackErrorType,
+      // 중첩 콜백 API 지원
+      hasNestedCallbacks: api.nestedCallbacks && api.nestedCallbacks.length > 0,
+      nestedCallbacks: api.nestedCallbacks?.map(nc => ({
+        name: nc.name,
+        pascalName: this.toPascalCase(nc.name),
+        path: nc.path,
+      })),
+      nestedCallbackParamType: this.getNestedCallbackParamType(api),
+      nestedCallbackEventType: this.getNestedCallbackEventType(api),
     };
+  }
+
+  /**
+   * 중첩 콜백 API의 파라미터 타입 추출
+   */
+  private getNestedCallbackParamType(api: ParsedAPI): string | undefined {
+    if (!api.nestedCallbacks || api.nestedCallbacks.length === 0) return undefined;
+    // 첫 번째 파라미터 타입 사용
+    if (api.parameters.length > 0) {
+      return mapToCSharpType(api.parameters[0].type);
+    }
+    return 'object';
+  }
+
+  /**
+   * 중첩 콜백 API의 이벤트 타입 추출
+   */
+  private getNestedCallbackEventType(api: ParsedAPI): string | undefined {
+    if (!api.nestedCallbacks || api.nestedCallbacks.length === 0) return undefined;
+    // 파라미터에서 onEvent 콜백의 타입 추출
+    if (api.parameters.length > 0 && api.parameters[0].type.kind === 'object') {
+      const onEventProp = api.parameters[0].type.properties?.find(p => p.name === 'onEvent');
+      if (onEventProp && onEventProp.type.kind === 'function' && onEventProp.type.functionParams?.[0]) {
+        return mapToCSharpType(onEventProp.type.functionParams[0]);
+      }
+    }
+    return 'object';
+  }
+
+  /**
+   * camelCase → PascalCase 변환
+   */
+  private toPascalCase(str: string): string {
+    if (!str) return str;
+    return str.charAt(0).toUpperCase() + str.slice(1);
   }
 
   /**

@@ -1,5 +1,5 @@
 import { Project, SourceFile, FunctionDeclaration, SyntaxKind } from 'ts-morph';
-import { ParsedAPI, ParsedParameter, ParsedProperty, ParsedType, ParsedTypeDefinition } from './types.js';
+import { ParsedAPI, ParsedParameter, ParsedProperty, ParsedType, ParsedTypeDefinition, NestedCallback } from './types.js';
 import { getCategory } from './categories.js';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -1073,6 +1073,9 @@ export class TypeScriptParser {
       // 네임스페이스를 카테고리로 사용
       const category = this.getNamespaceCategory(namespaceName);
 
+      // 중첩 콜백 감지 (options 파라미터 내부의 함수 타입)
+      const nestedCallbacks = this.detectNestedCallbacks(parameters);
+
       apis.push({
         name: fullName,
         pascalName: fullName,
@@ -1087,10 +1090,91 @@ export class TypeScriptParser {
         namespace: namespaceName,
         isDeprecated,
         deprecatedMessage,
+        nestedCallbacks: nestedCallbacks.length > 0 ? nestedCallbacks : undefined,
       });
     }
 
     return apis;
+  }
+
+  /**
+   * 파라미터에서 중첩 콜백 감지
+   *
+   * 구조 기반 감지:
+   * - 최상위 함수 프로퍼티 (param.onEvent, param.onError): 이벤트 콜백 시스템 사용
+   * - object 타입 프로퍼티 내부의 함수 (param.options.processProductGrant): 중첩 콜백
+   *
+   * 이름이 아닌 구조(depth)로 구분하므로, 어떤 이름의 콜백도 올바르게 처리됨
+   */
+  private detectNestedCallbacks(parameters: ParsedParameter[]): NestedCallback[] {
+    const nestedCallbacks: NestedCallback[] = [];
+    const seenCallbacks = new Set<string>(); // 중복 방지
+
+    // object 타입 내부에서 중첩 콜백을 추출하는 재귀 헬퍼 함수
+    // depth가 1 이상인 함수 프로퍼티만 중첩 콜백으로 취급
+    const extractNestedCallbacksFromType = (
+      type: ParsedType,
+      path: string[],
+      depth: number  // 0 = 최상위 파라미터 레벨, 1+ = 중첩
+    ): void => {
+      // object 타입: properties 확인
+      if (type.kind === 'object' && type.properties) {
+        for (const prop of type.properties) {
+          if (prop.type.kind === 'function') {
+            // depth가 1 이상이면 중첩 콜백 (options.xyz, nested.abc 등)
+            if (depth >= 1) {
+              const callbackKey = [...path, prop.name].join('.');
+              if (!seenCallbacks.has(callbackKey)) {
+                seenCallbacks.add(callbackKey);
+                nestedCallbacks.push({
+                  name: prop.name,
+                  path: [...path, prop.name],
+                  parameterType: prop.type.functionParams?.[0],
+                  returnType: prop.type.functionReturnType,
+                });
+              }
+            }
+            // depth 0의 함수 프로퍼티는 최상위 콜백이므로 무시
+          } else if (prop.type.kind === 'object' || prop.type.kind === 'union') {
+            // object 또는 union 타입이면 재귀 탐색 (depth 증가)
+            extractNestedCallbacksFromType(
+              prop.type,
+              [...path, prop.name],
+              depth + 1
+            );
+          }
+        }
+      }
+
+      // union 타입: 각 멤버 확인 (인터섹션 타입이 잘못 파싱된 경우 포함)
+      if (type.kind === 'union' && type.unionTypes) {
+        for (const unionMember of type.unionTypes) {
+          extractNestedCallbacksFromType(unionMember, path, depth);
+        }
+      }
+    };
+
+    for (const param of parameters) {
+      // object 타입 파라미터 확인
+      if (param.type.kind !== 'object' || !param.type.properties) {
+        continue;
+      }
+
+      // 파라미터의 각 프로퍼티 확인 (depth 0에서 시작)
+      for (const prop of param.type.properties) {
+        if (prop.type.kind === 'object' || prop.type.kind === 'union') {
+          // object/union 타입 프로퍼티 내부 탐색 (depth 1부터 중첩 콜백)
+          extractNestedCallbacksFromType(
+            prop.type,
+            [prop.name],
+            1  // 이 레벨의 함수부터 중첩 콜백
+          );
+        }
+        // depth 0의 함수 타입 프로퍼티는 최상위 콜백이므로 여기서 무시
+      }
+    }
+
+    return nestedCallbacks;
   }
 
   /**

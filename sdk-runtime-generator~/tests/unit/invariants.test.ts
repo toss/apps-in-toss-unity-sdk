@@ -158,6 +158,8 @@ const eventSubscriptionPatterns = [
   '__TdsEventSubscribe',
   '__loadFullScreenAd',    // 광고 로드 이벤트 (여러 이벤트 발생)
   '__showFullScreenAd',    // 광고 표시 이벤트 (여러 이벤트 발생)
+  '__IAPCreateOneTimePurchaseOrder', // 인앱결제 (중첩 콜백 패턴)
+  '__AITRespondToNestedCallback', // 중첩 콜백 응답 함수
 ];
 
 function isEventSubscription(name: string): boolean {

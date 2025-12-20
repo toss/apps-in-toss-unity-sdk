@@ -50,6 +50,12 @@ export class JSLibGenerator {
         functions.push(this.generateUnsubscribeFunction());
       }
 
+      // 중첩 콜백이 있는 API가 있는 카테고리에는 응답 함수 추가
+      const hasNestedCallbacks = categoryAPIs.some(api => api.nestedCallbacks && api.nestedCallbacks.length > 0);
+      if (hasNestedCallbacks) {
+        functions.push(this.generateNestedCallbackResponseFunction());
+      }
+
       const fileName = `AppsInToss-${category}.jslib`;
       const fileContent = this.generateFileContent(fileName, webFrameworkTag, category, functions);
       jslibFiles.set(fileName, fileContent);
@@ -88,6 +94,12 @@ export class JSLibGenerator {
       const hasEventApis = categoryAPIs.some(api => api.isEventSubscription);
       if (hasEventApis) {
         functions.push(this.generateUnsubscribeFunction());
+      }
+
+      // 중첩 콜백이 있는 API가 있는 카테고리에는 응답 함수 추가
+      const hasNestedCallbacks = categoryAPIs.some(api => api.nestedCallbacks && api.nestedCallbacks.length > 0);
+      if (hasNestedCallbacks) {
+        functions.push(this.generateNestedCallbackResponseFunction());
       }
 
       const fileName = `AppsInToss-${category}.jslib`;
@@ -668,7 +680,107 @@ ${jsConversions ? '\n' + jsConversions + '\n' : ''}
     if (api.isCallbackBased) {
       return this.generateCallbackBasedFunction(api);
     }
+    // 중첩 콜백이 있는 API는 별도 처리
+    if (api.nestedCallbacks && api.nestedCallbacks.length > 0) {
+      return this.generateNestedCallbackFunction(api);
+    }
     return this.generateRegularFunction(api);
+  }
+
+  /**
+   * 중첩 콜백이 있는 API 함수 생성 (JavaScript)
+   * 예: IAPCreateOneTimePurchaseOrder with processProductGrant callback
+   */
+  private generateNestedCallbackFunction(api: ParsedAPI): string {
+    const paramList = ['params', 'subscriptionId', 'typeName'].join(', ');
+
+    // API 호출 표현식
+    const apiCallExpr = api.namespace
+      ? `window.AppsInToss.${api.namespace}.${api.originalName}`
+      : `window.AppsInToss.${api.originalName}`;
+
+    // 중첩 콜백 생성 코드
+    const nestedCallbacksCode = api.nestedCallbacks!.map(nc => {
+      const callbackPath = nc.path.join('.');
+      return `                ${nc.name}: function(data) {
+                    return new Promise(function(resolve) {
+                        var requestId = subId + '_${nc.name}_' + Date.now();
+                        window.__AIT_NESTED_CALLBACKS = window.__AIT_NESTED_CALLBACKS || {};
+                        window.__AIT_NESTED_CALLBACKS[requestId] = resolve;
+
+                        var payload = JSON.stringify({
+                            RequestId: requestId,
+                            CallbackId: subId,
+                            CallbackName: '${nc.name}',
+                            Data: JSON.stringify(data)
+                        });
+                        SendMessage('AITCore', 'OnNestedCallback', payload);
+                    });
+                }`;
+    }).join(',\n');
+
+    return `    __${api.name}_Internal: function(${paramList}) {
+        var subId = UTF8ToString(subscriptionId);
+        var typeNameStr = UTF8ToString(typeName);
+        var parsedParams = JSON.parse(UTF8ToString(params));
+
+        console.log('[AIT jslib] ${api.name} called, id:', subId);
+
+        try {
+            var result = ${apiCallExpr}({
+                options: Object.assign({}, parsedParams.options, {
+${nestedCallbacksCode}
+                }),
+                onEvent: function(event) {
+                    console.log('[AIT jslib] ${api.name} event:', event);
+                    var payload = JSON.stringify({
+                        CallbackId: subId,
+                        TypeName: typeNameStr,
+                        Result: JSON.stringify({
+                            success: true,
+                            data: JSON.stringify(event || {}),
+                            error: ''
+                        })
+                    });
+                    SendMessage('AITCore', 'OnAITEventCallback', payload);
+                },
+                onError: function(error) {
+                    console.log('[AIT jslib] ${api.name} error:', error);
+                    var errorMessage = error instanceof Error ? error.message : String(error);
+                    var payload = JSON.stringify({
+                        CallbackId: subId,
+                        TypeName: typeNameStr,
+                        Result: JSON.stringify({
+                            success: false,
+                            data: '',
+                            error: errorMessage
+                        })
+                    });
+                    SendMessage('AITCore', 'OnAITEventCallback', payload);
+                }
+            });
+
+            // cleanup 함수 저장
+            if (!window.__AIT_SUBSCRIPTIONS) {
+                window.__AIT_SUBSCRIPTIONS = {};
+            }
+            window.__AIT_SUBSCRIPTIONS[subId] = result;
+
+        } catch (error) {
+            console.error('[AIT jslib] ${api.name} error:', error);
+            var errorMessage = error instanceof Error ? error.message : String(error);
+            var payload = JSON.stringify({
+                CallbackId: subId,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({
+                    success: false,
+                    data: '',
+                    error: errorMessage
+                })
+            });
+            SendMessage('AITCore', 'OnAITEventCallback', payload);
+        }
+    },`;
   }
 
   /**
@@ -1023,6 +1135,25 @@ ${onEventHandler}
             delete window.__AIT_SUBSCRIPTIONS[subId];
         } else {
             console.warn('[AIT jslib] Unknown subscription:', subId);
+        }
+    },`;
+  }
+
+  /**
+   * 중첩 콜백 응답 함수 생성 (C# → JS)
+   */
+  private generateNestedCallbackResponseFunction(): string {
+    return `    __AITRespondToNestedCallback: function(requestId, result) {
+        var reqId = UTF8ToString(requestId);
+        var resultBool = result !== 0;
+
+        console.log('[AIT jslib] RespondToNestedCallback:', reqId, resultBool);
+
+        if (window.__AIT_NESTED_CALLBACKS && window.__AIT_NESTED_CALLBACKS[reqId]) {
+            window.__AIT_NESTED_CALLBACKS[reqId](resultBool);
+            delete window.__AIT_NESTED_CALLBACKS[reqId];
+        } else {
+            console.warn('[AIT jslib] Unknown nested callback:', reqId);
         }
     },`;
   }

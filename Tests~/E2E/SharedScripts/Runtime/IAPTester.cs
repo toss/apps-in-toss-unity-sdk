@@ -198,8 +198,25 @@ public class IAPTester : MonoBehaviour
         {
             var options = new IapCreateOneTimePurchaseOrderOptions
             {
-                // Options에 SKU를 포함하는 객체 전달
-                Options = new IapCreateOneTimePurchaseOrderOptionsOptions { Sku = iapSku },
+                // Options에 SKU와 processProductGrant 콜백 전달
+                Options = new IapCreateOneTimePurchaseOrderOptionsOptions
+                {
+                    Sku = iapSku,
+                    // processProductGrant 콜백 - 상품 지급 로직 수행 후 결과 반환
+                    // JS에서 이 함수가 호출되면 C#에서 실행되고 결과가 JS로 반환됨
+                    ProcessProductGrant = (data) =>
+                    {
+                        iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] ProcessProductGrant called: {data}");
+                        Debug.Log($"[IAPTester] ProcessProductGrant called with data: {data}");
+
+                        // 여기서 실제 상품 지급 로직 수행
+                        // 예: 코인 추가, 아이템 지급 등
+                        bool grantSuccess = GrantGameProduct(data);
+
+                        iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] ProcessProductGrant result: {grantSuccess}");
+                        return grantSuccess;
+                    }
+                },
                 OnEvent = (successEvent) =>
                 {
                     iapStatus = "Purchase completed";
@@ -314,5 +331,25 @@ public class IAPTester : MonoBehaviour
             iapStatus = $"Error: {ex.Message}";
             iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Exception: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// 실제 게임 상품 지급 로직 (데모용)
+    /// 실제 게임에서는 여기서 코인, 아이템 등을 플레이어에게 지급합니다.
+    /// </summary>
+    /// <param name="data">결제 데이터 (orderId 등 포함)</param>
+    /// <returns>지급 성공 여부</returns>
+    private bool GrantGameProduct(object data)
+    {
+        Debug.Log($"[IAPTester] Granting product: {data}");
+
+        // 실제 게임에서는 여기서 상품 지급 로직 수행
+        // 예:
+        // - 코인 추가: PlayerData.AddCoins(100);
+        // - 아이템 추가: Inventory.AddItem("premium_sword");
+        // - 레벨업: PlayerData.SetLevel(10);
+
+        // 데모에서는 항상 성공 반환
+        return true;
     }
 }

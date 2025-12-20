@@ -638,10 +638,12 @@ namespace AppsInToss
         [Preserve]
         [JsonProperty("options")]
         public IapCreateOneTimePurchaseOrderOptionsOptions Options;
-        [JsonIgnore]
-        public System.Action<SuccessEvent> OnEvent;
-        [JsonIgnore]
-        public System.Action<object> OnError;
+        [Preserve]
+        [JsonProperty("onEvent")]
+        public System.Func<SuccessEvent, void> OnEvent;
+        [Preserve]
+        [JsonProperty("onError")]
+        public System.Func<object, void> OnError;
     }
 
     [Serializable]
@@ -654,8 +656,9 @@ namespace AppsInToss
         [Preserve]
         [JsonProperty("sku")]
         public string Sku; // optional
-        [JsonIgnore]
-        public System.Action<object> ProcessProductGrant;
+        [Preserve]
+        [JsonProperty("processProductGrant")]
+        public System.Func<object, object> ProcessProductGrant;
     }
 
     [Serializable]

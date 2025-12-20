@@ -25,6 +25,19 @@ export interface ParsedAPI {
   // 콜백 기반 API 지원 (loadFullScreenAd, showFullScreenAd 등)
   isCallbackBased?: boolean; // 콜백 기반 API인지 (onEvent/onError 콜백 사용)
   isTopLevelExport?: boolean; // 최상위 export인지 (AppsInToss 네임스페이스 없이 호출)
+  // 중첩 콜백 지원 (options.processProductGrant 등)
+  nestedCallbacks?: NestedCallback[];
+}
+
+/**
+ * 중첩 콜백 정보 (options 객체 내부의 콜백 함수)
+ * 예: createOneTimePurchaseOrder의 options.processProductGrant
+ */
+export interface NestedCallback {
+  name: string;           // 콜백 이름 (예: "processProductGrant")
+  path: string[];         // 경로 (예: ["options", "processProductGrant"])
+  parameterType?: ParsedType; // 콜백 파라미터 타입 (예: { orderId: string })
+  returnType?: ParsedType;    // 콜백 반환 타입 (예: boolean | Promise<boolean>)
 }
 
 /**

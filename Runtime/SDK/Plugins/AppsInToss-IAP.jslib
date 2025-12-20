@@ -6,26 +6,80 @@
  */
 
 mergeInto(LibraryManager.library, {
-    __IAPCreateOneTimePurchaseOrder_Internal: function(params, callbackId, typeName) {
-        // 동기 함수 (즉시 값 반환)
-        var callback = UTF8ToString(callbackId);
+    __IAPCreateOneTimePurchaseOrder_Internal: function(params, subscriptionId, typeName) {
+        var subId = UTF8ToString(subscriptionId);
         var typeNameStr = UTF8ToString(typeName);
+        var parsedParams = JSON.parse(UTF8ToString(params));
+
+        console.log('[AIT jslib] IAPCreateOneTimePurchaseOrder called, id:', subId);
 
         try {
-            var result = window.AppsInToss.IAP.createOneTimePurchaseOrder(JSON.parse(UTF8ToString(params)));
-            var payload = JSON.stringify({
-                CallbackId: callback,
-                TypeName: typeNameStr,
-                Result: JSON.stringify({ success: true, data: JSON.stringify(result), error: '' })
+            var result = window.AppsInToss.IAP.createOneTimePurchaseOrder({
+                options: Object.assign({}, parsedParams.options, {
+                processProductGrant: function(data) {
+                    return new Promise(function(resolve) {
+                        var requestId = subId + '_processProductGrant_' + Date.now();
+                        window.__AIT_NESTED_CALLBACKS = window.__AIT_NESTED_CALLBACKS || {};
+                        window.__AIT_NESTED_CALLBACKS[requestId] = resolve;
+
+                        var payload = JSON.stringify({
+                            RequestId: requestId,
+                            CallbackId: subId,
+                            CallbackName: 'processProductGrant',
+                            Data: JSON.stringify(data)
+                        });
+                        SendMessage('AITCore', 'OnNestedCallback', payload);
+                    });
+                }
+                }),
+                onEvent: function(event) {
+                    console.log('[AIT jslib] IAPCreateOneTimePurchaseOrder event:', event);
+                    var payload = JSON.stringify({
+                        CallbackId: subId,
+                        TypeName: typeNameStr,
+                        Result: JSON.stringify({
+                            success: true,
+                            data: JSON.stringify(event || {}),
+                            error: ''
+                        })
+                    });
+                    SendMessage('AITCore', 'OnAITEventCallback', payload);
+                },
+                onError: function(error) {
+                    console.log('[AIT jslib] IAPCreateOneTimePurchaseOrder error:', error);
+                    var errorMessage = error instanceof Error ? error.message : String(error);
+                    var payload = JSON.stringify({
+                        CallbackId: subId,
+                        TypeName: typeNameStr,
+                        Result: JSON.stringify({
+                            success: false,
+                            data: '',
+                            error: errorMessage
+                        })
+                    });
+                    SendMessage('AITCore', 'OnAITEventCallback', payload);
+                }
             });
-            SendMessage('AITCore', 'OnAITCallback', payload);
+
+            // cleanup 함수 저장
+            if (!window.__AIT_SUBSCRIPTIONS) {
+                window.__AIT_SUBSCRIPTIONS = {};
+            }
+            window.__AIT_SUBSCRIPTIONS[subId] = result;
+
         } catch (error) {
+            console.error('[AIT jslib] IAPCreateOneTimePurchaseOrder error:', error);
+            var errorMessage = error instanceof Error ? error.message : String(error);
             var payload = JSON.stringify({
-                CallbackId: callback,
+                CallbackId: subId,
                 TypeName: typeNameStr,
-                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+                Result: JSON.stringify({
+                    success: false,
+                    data: '',
+                    error: errorMessage
+                })
             });
-            SendMessage('AITCore', 'OnAITCallback', payload);
+            SendMessage('AITCore', 'OnAITEventCallback', payload);
         }
     },
 
@@ -239,6 +293,20 @@ mergeInto(LibraryManager.library, {
                 Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
             });
             SendMessage('AITCore', 'OnAITCallback', payload);
+        }
+    },
+
+    __AITRespondToNestedCallback: function(requestId, result) {
+        var reqId = UTF8ToString(requestId);
+        var resultBool = result !== 0;
+
+        console.log('[AIT jslib] RespondToNestedCallback:', reqId, resultBool);
+
+        if (window.__AIT_NESTED_CALLBACKS && window.__AIT_NESTED_CALLBACKS[reqId]) {
+            window.__AIT_NESTED_CALLBACKS[reqId](resultBool);
+            delete window.__AIT_NESTED_CALLBACKS[reqId];
+        } else {
+            console.warn('[AIT jslib] Unknown nested callback:', reqId);
         }
     },
 

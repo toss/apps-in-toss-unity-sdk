@@ -334,7 +334,45 @@ function mapToCSharpTypeCore(type: ParsedType): string {
       return 'object';
 
     case 'function':
-      // 함수 타입 매핑: () => void -> Action, (T) => void -> Action<T>
+      // 함수 타입 매핑
+      // 먼저 반환 타입이 void인지 확인
+      const isVoidReturn = !type.functionReturnType ||
+        (type.functionReturnType.kind === 'primitive' && type.functionReturnType.name === 'void') ||
+        (type.functionReturnType.kind === 'primitive' && type.functionReturnType.name === 'any');
+
+      if (!isVoidReturn && type.functionReturnType) {
+        // 반환 타입이 있는 함수: Func<T1, T2, ..., TResult>
+        let returnType = mapToCSharpType(type.functionReturnType);
+
+        // void가 매핑되면 Action 사용
+        if (returnType === 'void') {
+          // fall through to Action handling below
+        } else {
+          // Promise<T> 반환은 T로 단순화 (JS 측에서 await 처리)
+          if (type.functionReturnType.kind === 'promise' && type.functionReturnType.promiseType) {
+            returnType = mapToCSharpType(type.functionReturnType.promiseType);
+          }
+          // union 타입 (boolean | Promise<boolean>)은 첫 번째 타입 사용
+          if (type.functionReturnType.kind === 'union' && type.functionReturnType.unionTypes?.[0]) {
+            let firstType = type.functionReturnType.unionTypes[0];
+            if (firstType.kind === 'promise' && firstType.promiseType) {
+              firstType = firstType.promiseType;
+            }
+            returnType = mapToCSharpType(firstType);
+          }
+
+          // void가 아닌 경우만 Func 반환
+          if (returnType !== 'void') {
+            if (type.functionParams && type.functionParams.length > 0) {
+              const paramTypes = type.functionParams.map(p => mapToCSharpType(p));
+              return `System.Func<${paramTypes.join(', ')}, ${returnType}>`;
+            }
+            return `System.Func<${returnType}>`;
+          }
+        }
+      }
+
+      // 반환 타입이 void인 함수: Action
       if (type.functionParams && type.functionParams.length > 0) {
         // 파라미터가 있는 함수: Action<T1, T2, ...>
         const paramTypes = type.functionParams.map(p => mapToCSharpType(p));

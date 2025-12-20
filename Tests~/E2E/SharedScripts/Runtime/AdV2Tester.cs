@@ -4,14 +4,13 @@ using UnityEngine;
 using AppsInToss;
 
 /// <summary>
-/// AdV2 (인앱광고 v2) 테스터 컴포넌트
-/// LoadFullScreenAd/ShowFullScreenAd API를 테스트합니다.
-/// 이것이 현재 권장되는 광고 API입니다.
+/// AdMob 광고 테스터 컴포넌트
+/// GoogleAdMobLoadAppsInTossAdMob/GoogleAdMobShowAppsInTossAdMob API를 테스트합니다.
 /// </summary>
 public class AdV2Tester : MonoBehaviour
 {
     // 테스트용 광고 ID (CI에서 빌드 시 sed로 치환됨)
-    // 문서 참조: https://developers-apps-in-toss.toss.im/ads/develop.html
+    // 문서 참조: https://developers-apps-in-toss.toss.im/bedrock/reference/framework/광고/loadAppsInTossAdMob.html
     private const string TEST_INTERSTITIAL_AD_ID = "ait-ad-test-interstitial-id";
     private const string TEST_REWARDED_AD_ID = "ait-ad-test-rewarded-id";
 
@@ -27,7 +26,7 @@ public class AdV2Tester : MonoBehaviour
     public string Status => adStatus;
 
     /// <summary>
-    /// AdV2 테스터 UI를 렌더링합니다.
+    /// AdMob 테스터 UI를 렌더링합니다.
     /// </summary>
     public void DrawUI(
         GUIStyle boxStyle,
@@ -41,8 +40,8 @@ public class AdV2Tester : MonoBehaviour
         GUILayout.BeginVertical(boxStyle);
 
         // 섹션 헤더
-        GUILayout.Label("AdV2 Tester (인앱광고v2)", groupHeaderStyle);
-        GUILayout.Label("LoadFullScreenAd/ShowFullScreenAd API를 테스트합니다.", labelStyle);
+        GUILayout.Label("AdMob Tester", groupHeaderStyle);
+        GUILayout.Label("loadAppsInTossAdMob/showAppsInTossAdMob API를 테스트합니다.", labelStyle);
         GUILayout.Label("Load → Show 순서로 호출해야 합니다.", labelStyle);
 
         GUILayout.Space(10);
@@ -93,7 +92,7 @@ public class AdV2Tester : MonoBehaviour
 
         // Step 1: 광고 로드
         GUILayout.Label("Step 1: Load Ad", fieldLabelStyle);
-        if (GUILayout.Button("LoadFullScreenAd(...)", buttonStyle, GUILayout.Height(40)))
+        if (GUILayout.Button("loadAppsInTossAdMob(...)", buttonStyle, GUILayout.Height(40)))
         {
             ExecuteLoadAd();
         }
@@ -103,7 +102,7 @@ public class AdV2Tester : MonoBehaviour
         // Step 2: 광고 표시
         GUILayout.Label("Step 2: Show Ad", fieldLabelStyle);
         GUI.enabled = isAdLoaded;
-        if (GUILayout.Button("ShowFullScreenAd(...)", buttonStyle, GUILayout.Height(40)))
+        if (GUILayout.Button("showAppsInTossAdMob(...)", buttonStyle, GUILayout.Height(40)))
         {
             ExecuteShowAd();
         }
@@ -135,14 +134,15 @@ public class AdV2Tester : MonoBehaviour
     {
         string adId = selectedAdType == "interstitial" ? TEST_INTERSTITIAL_AD_ID : TEST_REWARDED_AD_ID;
         adStatus = $"Loading {selectedAdType} ad...";
-        adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] LoadFullScreenAd({adId})");
+        adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] loadAppsInTossAdMob(adGroupId: {adId})");
 
         // 기존 구독 해제
         _loadUnsubscribe?.Invoke();
 
-        // LoadFullScreenAd API 호출
-        _loadUnsubscribe = AIT.LoadFullScreenAd(
-            adGroupId: adId,
+        // GoogleAdMobLoadAppsInTossAdMob API 호출
+#pragma warning disable CS0618 // Obsolete 경고 무시
+        _loadUnsubscribe = AIT.GoogleAdMobLoadAppsInTossAdMob(
+            options: new LoadAdMobOptions { AdGroupId = adId },
             onEvent: (result) =>
             {
                 adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Load event: {result.Type}");
@@ -150,7 +150,10 @@ public class AdV2Tester : MonoBehaviour
                 {
                     isAdLoaded = true;
                     adStatus = $"{selectedAdType} ad loaded";
-                    adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Success: Ad loaded");
+                    if (result.Data != null)
+                    {
+                        adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] AdGroupId: {result.Data.AdGroupId}, AdUnitId: {result.Data.AdUnitId}");
+                    }
                 }
             },
             onError: (error) =>
@@ -160,6 +163,7 @@ public class AdV2Tester : MonoBehaviour
                 adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Error: {error.ErrorCode} - {error.Message}");
             }
         );
+#pragma warning restore CS0618
     }
 
     private Action _showUnsubscribe;
@@ -174,14 +178,15 @@ public class AdV2Tester : MonoBehaviour
 
         string adId = selectedAdType == "interstitial" ? TEST_INTERSTITIAL_AD_ID : TEST_REWARDED_AD_ID;
         adStatus = $"Showing {selectedAdType} ad...";
-        adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] ShowFullScreenAd({adId})");
+        adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] showAppsInTossAdMob(adGroupId: {adId})");
 
         // 기존 구독 해제
         _showUnsubscribe?.Invoke();
 
-        // ShowFullScreenAd API 호출
-        _showUnsubscribe = AIT.ShowFullScreenAd(
-            adGroupId: adId,
+        // GoogleAdMobShowAppsInTossAdMob API 호출
+#pragma warning disable CS0618 // Obsolete 경고 무시
+        _showUnsubscribe = AIT.GoogleAdMobShowAppsInTossAdMob(
+            options: new ShowAdMobOptions { AdGroupId = adId },
             onEvent: (result) =>
             {
                 adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Show event: {result.Type}");
@@ -203,6 +208,7 @@ public class AdV2Tester : MonoBehaviour
                 adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Error: {error.ErrorCode} - {error.Message}");
             }
         );
+#pragma warning restore CS0618
     }
 
     private void OnDestroy()

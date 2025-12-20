@@ -207,7 +207,7 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Advertising")]
-        public static async Task TossAdsAttach(string adGroupId, string target, object? options)
+        public static async Task TossAdsAttach(string adGroupId, string target, TossAdsAttachOptions options = null)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<bool>();
@@ -281,57 +281,59 @@ namespace AppsInToss
 #endif
         /// <param name="onEvent">이벤트 콜백</param>
         /// <param name="onError">에러 콜백</param>
-        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <returns>구독 취소를 위한 Action</returns>
         [Preserve]
         [APICategory("Advertising")]
-        public static async Task<System.Action> LoadFullScreenAd(string adGroupId, System.Action&lt;LoadFullScreenAdEvent&gt; onEvent, System.Action&lt;object&gt; onError)
+        public static Action LoadFullScreenAd(
+            string adGroupId,
+            Action<LoadFullScreenAdEvent> onEvent,
+            Action<AITException> onError = null)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            var tcs = new TaskCompletionSource<System.Action>();
-            string callbackId = AITCore.Instance.RegisterCallback<System.Action>(
-                result => tcs.TrySetResult(result),
-                error => tcs.TrySetException(error)
+            string subscriptionId = AITCore.Instance.RegisterSubscriptionCallback<LoadFullScreenAdEvent>(
+                onEvent,
+                onError
             );
-            __loadFullScreenAd_Internal(adGroupId, AITJsonSettings.Serialize(onEvent), AITJsonSettings.Serialize(onError), callbackId, "System.Action");
-            return await tcs.Task;
+            __loadFullScreenAd_Internal(adGroupId, subscriptionId, "LoadFullScreenAdEvent");
+            return () => AITCore.Instance.Unsubscribe(subscriptionId);
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] LoadFullScreenAd called");
-            await Task.CompletedTask;
-            return default(System.Action);
+            return () => UnityEngine.Debug.Log($"[AIT Mock] LoadFullScreenAd cancelled");
 #endif
         }
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
-        private static extern void __loadFullScreenAd_Internal(string adGroupId, string onEvent, string onError, string callbackId, string typeName);
+        private static extern void __loadFullScreenAd_Internal(string adGroupId, string subscriptionId, string typeName);
 #endif
         /// <param name="onEvent">이벤트 콜백</param>
         /// <param name="onError">에러 콜백</param>
-        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <returns>구독 취소를 위한 Action</returns>
         [Preserve]
         [APICategory("Advertising")]
-        public static async Task<System.Action> ShowFullScreenAd(string adGroupId, System.Action&lt;ShowFullScreenAdEvent&gt; onEvent, System.Action&lt;object&gt; onError)
+        public static Action ShowFullScreenAd(
+            string adGroupId,
+            Action<ShowFullScreenAdEvent> onEvent,
+            Action<AITException> onError = null)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            var tcs = new TaskCompletionSource<System.Action>();
-            string callbackId = AITCore.Instance.RegisterCallback<System.Action>(
-                result => tcs.TrySetResult(result),
-                error => tcs.TrySetException(error)
+            string subscriptionId = AITCore.Instance.RegisterSubscriptionCallback<ShowFullScreenAdEvent>(
+                onEvent,
+                onError
             );
-            __showFullScreenAd_Internal(adGroupId, AITJsonSettings.Serialize(onEvent), AITJsonSettings.Serialize(onError), callbackId, "System.Action");
-            return await tcs.Task;
+            __showFullScreenAd_Internal(adGroupId, subscriptionId, "ShowFullScreenAdEvent");
+            return () => AITCore.Instance.Unsubscribe(subscriptionId);
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] ShowFullScreenAd called");
-            await Task.CompletedTask;
-            return default(System.Action);
+            return () => UnityEngine.Debug.Log($"[AIT Mock] ShowFullScreenAd cancelled");
 #endif
         }
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
-        private static extern void __showFullScreenAd_Internal(string adGroupId, string onEvent, string onError, string callbackId, string typeName);
+        private static extern void __showFullScreenAd_Internal(string adGroupId, string subscriptionId, string typeName);
 #endif
     }
 }

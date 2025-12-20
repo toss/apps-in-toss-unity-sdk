@@ -4,11 +4,11 @@ using UnityEngine;
 using AppsInToss;
 
 /// <summary>
-/// AdMob (인앱광고v2) 테스터 컴포넌트
+/// AdV2 (인앱광고 v2) 테스터 컴포넌트
 /// 인앱광고 v2 API 워크플로우를 테스트할 수 있는 UI 제공
-/// OOMTester/IAPTester 패턴을 따라 InteractiveAPITester에서 분리됨
+/// OOMTester/IAPv2Tester 패턴을 따라 InteractiveAPITester에서 분리됨
 /// </summary>
-public class AdMobTester : MonoBehaviour
+public class AdV2Tester : MonoBehaviour
 {
     // 테스트용 광고 ID (문서 참조: https://developers-apps-in-toss.toss.im/ads/develop.html)
     private const string TEST_INTERSTITIAL_AD_ID = "ait-ad-test-interstitial-id";
@@ -40,7 +40,7 @@ public class AdMobTester : MonoBehaviour
         GUILayout.BeginVertical(boxStyle);
 
         // 섹션 헤더
-        GUILayout.Label("AdMob Example (인앱광고v2)", groupHeaderStyle);
+        GUILayout.Label("AdV2 Tester (인앱광고v2)", groupHeaderStyle);
         GUILayout.Label("인앱광고 v2 API 워크플로우를 테스트합니다.", labelStyle);
         GUILayout.Label("Load → Show 순서로 호출해야 합니다.", labelStyle);
 

@@ -48,8 +48,8 @@ public class InteractiveAPITester : MonoBehaviour
 
     // 분리된 컴포넌트 참조
     private OOMTester _oomTester;
-    private IAPTester _iapTester;
-    private AdMobTester _adMobTester;
+    private IAPv2Tester _iapTester;
+    private AdV2Tester _adMobTester;
     private TouchScrollHandler _scrollHandler;
     private ParameterInputRenderer _paramRenderer;
 
@@ -66,15 +66,15 @@ public class InteractiveAPITester : MonoBehaviour
         {
             _oomTester = gameObject.AddComponent<OOMTester>();
         }
-        _iapTester = GetComponent<IAPTester>();
+        _iapTester = GetComponent<IAPv2Tester>();
         if (_iapTester == null)
         {
-            _iapTester = gameObject.AddComponent<IAPTester>();
+            _iapTester = gameObject.AddComponent<IAPv2Tester>();
         }
-        _adMobTester = GetComponent<AdMobTester>();
+        _adMobTester = GetComponent<AdV2Tester>();
         if (_adMobTester == null)
         {
-            _adMobTester = gameObject.AddComponent<AdMobTester>();
+            _adMobTester = gameObject.AddComponent<AdV2Tester>();
         }
         _scrollHandler = new TouchScrollHandler();
         _paramRenderer = new ParameterInputRenderer();

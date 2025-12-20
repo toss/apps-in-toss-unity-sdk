@@ -4,7 +4,7 @@ using UnityEngine;
 using AppsInToss;
 
 /// <summary>
-/// IAP (In-App Purchase) 테스터 컴포넌트
+/// IAPv2 (인앱결제 v2) 테스터 컴포넌트
 /// 인앱결제 v2 API 워크플로우를 테스트할 수 있는 UI 제공
 /// OOMTester 패턴을 따라 InteractiveAPITester에서 분리됨
 ///
@@ -22,7 +22,7 @@ using AppsInToss;
 /// ## 비소모품
 /// - 한 번 구매하면 영구 소유, CompleteProductGrant 불필요
 /// </summary>
-public class IAPTester : MonoBehaviour
+public class IAPv2Tester : MonoBehaviour
 {
     // IAP 테스트 상태
     private string iapSku = "";
@@ -53,7 +53,7 @@ public class IAPTester : MonoBehaviour
         GUILayout.BeginVertical(boxStyle);
 
         // 섹션 헤더
-        GUILayout.Label("IAP Example (인앱결제v2)", groupHeaderStyle);
+        GUILayout.Label("IAPv2 Tester (인앱결제v2)", groupHeaderStyle);
         GUILayout.Label("인앱결제 v2 API 워크플로우 예제입니다.", labelStyle);
 
         GUILayout.Space(10);
@@ -241,7 +241,7 @@ public class IAPTester : MonoBehaviour
                     ProcessProductGrant = (data) =>
                     {
                         iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] ProcessProductGrant called: {data}");
-                        Debug.Log($"[IAPTester] ProcessProductGrant called with data: {data}");
+                        Debug.Log($"[IAPv2Tester] ProcessProductGrant called with data: {data}");
 
                         // 여기서 실제 상품 지급 로직 수행
                         // 예: 코인 추가, 아이템 지급 등
@@ -379,7 +379,7 @@ public class IAPTester : MonoBehaviour
     /// <returns>지급 성공 여부</returns>
     private bool GrantGameProduct(object data)
     {
-        Debug.Log($"[IAPTester] Granting product: {data}");
+        Debug.Log($"[IAPv2Tester] Granting product: {data}");
 
         // 실제 게임에서는 여기서 상품 지급 로직 수행
         // 예:

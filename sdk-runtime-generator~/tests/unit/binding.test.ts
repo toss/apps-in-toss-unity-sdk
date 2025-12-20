@@ -149,10 +149,18 @@ describe('Tier 2: C# ↔ jslib 바인딩 일관성 검증', () => {
     // functionName: function(params) { ... }
     const functionRegex = /(\w+)\s*:\s*function\s*\(([^)]*)\)\s*\{/g;
 
+    // 중첩된 콜백 함수는 제외 (onEvent, onError 등)
+    const nestedCallbackNames = ['onEvent', 'onError', 'onSuccess', 'onFailure'];
+
     let match;
     while ((match = functionRegex.exec(content)) !== null) {
       const functionName = match[1];
       const paramsStr = match[2];
+
+      // 중첩 콜백 함수는 건너뛰기
+      if (nestedCallbackNames.includes(functionName)) {
+        continue;
+      }
 
       // 파라미터 개수 계산
       let parameterCount = 0;

@@ -4,13 +4,13 @@ using UnityEngine;
 using AppsInToss;
 
 /// <summary>
-/// AdV2 (인앱광고 v2) 테스터 컴포넌트
-/// 인앱광고 v2 API 워크플로우를 테스트할 수 있는 UI 제공
-/// OOMTester/IAPv2Tester 패턴을 따라 InteractiveAPITester에서 분리됨
+/// AdMob 광고 테스터 컴포넌트
+/// GoogleAdMobLoadAppsInTossAdMob/GoogleAdMobShowAppsInTossAdMob API를 테스트합니다.
 /// </summary>
 public class AdV2Tester : MonoBehaviour
 {
-    // 테스트용 광고 ID (문서 참조: https://developers-apps-in-toss.toss.im/ads/develop.html)
+    // 테스트용 광고 ID (CI에서 빌드 시 sed로 치환됨)
+    // 문서 참조: https://developers-apps-in-toss.toss.im/bedrock/reference/framework/광고/loadAppsInTossAdMob.html
     private const string TEST_INTERSTITIAL_AD_ID = "ait-ad-test-interstitial-id";
     private const string TEST_REWARDED_AD_ID = "ait-ad-test-rewarded-id";
 
@@ -40,8 +40,8 @@ public class AdV2Tester : MonoBehaviour
         GUILayout.BeginVertical(boxStyle);
 
         // 섹션 헤더
-        GUILayout.Label("AdV2 Tester (인앱광고v2)", groupHeaderStyle);
-        GUILayout.Label("인앱광고 v2 API 워크플로우를 테스트합니다.", labelStyle);
+        GUILayout.Label("AdMob Tester", groupHeaderStyle);
+        GUILayout.Label("loadAppsInTossAdMob/showAppsInTossAdMob API를 테스트합니다.", labelStyle);
         GUILayout.Label("Load → Show 순서로 호출해야 합니다.", labelStyle);
 
         GUILayout.Space(10);
@@ -72,13 +72,13 @@ public class AdV2Tester : MonoBehaviour
         GUILayout.BeginHorizontal();
         if (GUILayout.Button(
             selectedAdType == "interstitial" ? "[Interstitial]" : "Interstitial",
-            buttonStyle, GUILayout.Height(36)))
+            buttonStyle, GUILayout.Height(36), GUILayout.ExpandWidth(true)))
         {
             selectedAdType = "interstitial";
         }
         if (GUILayout.Button(
             selectedAdType == "rewarded" ? "[Rewarded]" : "Rewarded",
-            buttonStyle, GUILayout.Height(36)))
+            buttonStyle, GUILayout.Height(36), GUILayout.ExpandWidth(true)))
         {
             selectedAdType = "rewarded";
         }
@@ -92,7 +92,7 @@ public class AdV2Tester : MonoBehaviour
 
         // Step 1: 광고 로드
         GUILayout.Label("Step 1: Load Ad", fieldLabelStyle);
-        if (GUILayout.Button("GoogleAdMobLoadAppsInTossAdMob(...)", buttonStyle, GUILayout.Height(40)))
+        if (GUILayout.Button("loadAppsInTossAdMob(...)", buttonStyle, GUILayout.Height(40)))
         {
             ExecuteLoadAd();
         }
@@ -102,7 +102,7 @@ public class AdV2Tester : MonoBehaviour
         // Step 2: 광고 표시
         GUILayout.Label("Step 2: Show Ad", fieldLabelStyle);
         GUI.enabled = isAdLoaded;
-        if (GUILayout.Button("GoogleAdMobShowAppsInTossAdMob(...)", buttonStyle, GUILayout.Height(40)))
+        if (GUILayout.Button("showAppsInTossAdMob(...)", buttonStyle, GUILayout.Height(40)))
         {
             ExecuteShowAd();
         }
@@ -128,46 +128,47 @@ public class AdV2Tester : MonoBehaviour
         GUILayout.EndVertical();
     }
 
-    private async void ExecuteLoadAd()
+    private Action _loadUnsubscribe;
+
+    private void ExecuteLoadAd()
     {
         string adId = selectedAdType == "interstitial" ? TEST_INTERSTITIAL_AD_ID : TEST_REWARDED_AD_ID;
         adStatus = $"Loading {selectedAdType} ad...";
-        adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] LoadAppsInTossAdMob({selectedAdType})");
+        adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] loadAppsInTossAdMob(adGroupId: {adId})");
 
-        try
-        {
-            var args = new GoogleAdMobLoadAppsInTossAdMobArgs
+        // 기존 구독 해제
+        _loadUnsubscribe?.Invoke();
+
+        // GoogleAdMobLoadAppsInTossAdMob API 호출
+#pragma warning disable CS0618 // Obsolete 경고 무시
+        _loadUnsubscribe = AIT.GoogleAdMobLoadAppsInTossAdMob(
+            options: new LoadAdMobOptions { AdGroupId = adId },
+            onEvent: (result) =>
             {
-                OnEvent = (result) =>
+                adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Load event: {result.Type}");
+                if (result.Type == "loaded")
                 {
-                    adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Ad load callback invoked");
-                },
-                OnError = (error) =>
-                {
-                    adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Ad load error: {error}");
+                    isAdLoaded = true;
+                    adStatus = $"{selectedAdType} ad loaded";
+                    if (result.Data != null)
+                    {
+                        adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] AdGroupId: {result.Data.AdGroupId}, AdUnitId: {result.Data.AdUnitId}");
+                    }
                 }
-            };
-            var disposer = await AIT.GoogleAdMobLoadAppsInTossAdMob(args);
-
-            isAdLoaded = true;
-            adStatus = $"{selectedAdType} ad loaded";
-            adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Success: Ad loaded");
-        }
-        catch (AITException ex)
-        {
-            isAdLoaded = false;
-            adStatus = $"Error: {ex.Message}";
-            adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Error: {ex.ErrorCode} - {ex.Message}");
-        }
-        catch (Exception ex)
-        {
-            isAdLoaded = false;
-            adStatus = $"Error: {ex.Message}";
-            adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Exception: {ex.Message}");
-        }
+            },
+            onError: (error) =>
+            {
+                isAdLoaded = false;
+                adStatus = $"Error: {error.Message}";
+                adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Error: {error.ErrorCode} - {error.Message}");
+            }
+        );
+#pragma warning restore CS0618
     }
 
-    private async void ExecuteShowAd()
+    private Action _showUnsubscribe;
+
+    private void ExecuteShowAd()
     {
         if (!isAdLoaded)
         {
@@ -175,38 +176,45 @@ public class AdV2Tester : MonoBehaviour
             return;
         }
 
+        string adId = selectedAdType == "interstitial" ? TEST_INTERSTITIAL_AD_ID : TEST_REWARDED_AD_ID;
         adStatus = $"Showing {selectedAdType} ad...";
-        adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] ShowAppsInTossAdMob({selectedAdType})");
+        adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] showAppsInTossAdMob(adGroupId: {adId})");
 
-        try
-        {
-            var args = new GoogleAdMobShowAppsInTossAdMobArgs
+        // 기존 구독 해제
+        _showUnsubscribe?.Invoke();
+
+        // GoogleAdMobShowAppsInTossAdMob API 호출
+#pragma warning disable CS0618 // Obsolete 경고 무시
+        _showUnsubscribe = AIT.GoogleAdMobShowAppsInTossAdMob(
+            options: new ShowAdMobOptions { AdGroupId = adId },
+            onEvent: (result) =>
             {
-                OnEvent = (result) =>
+                adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Show event: {result.Type}");
+                if (result.Type == "dismissed")
                 {
-                    adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Ad show callback invoked");
-                },
-                OnError = (error) =>
-                {
-                    adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Ad show error: {error}");
+                    // 광고 표시 후 다시 로드 필요 (한 번에 1개만 로드 가능)
+                    isAdLoaded = false;
+                    adStatus = $"{selectedAdType} ad shown (reload required for next ad)";
+                    adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Success: Ad dismissed");
                 }
-            };
-            var disposer = await AIT.GoogleAdMobShowAppsInTossAdMob(args);
+                else if (result.Type == "userEarnedReward" && result.Data != null)
+                {
+                    adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Reward: {result.Data.UnitAmount} {result.Data.UnitType}");
+                }
+            },
+            onError: (error) =>
+            {
+                adStatus = $"Error: {error.Message}";
+                adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Error: {error.ErrorCode} - {error.Message}");
+            }
+        );
+#pragma warning restore CS0618
+    }
 
-            // 광고 표시 후 다시 로드 필요 (한 번에 1개만 로드 가능)
-            isAdLoaded = false;
-            adStatus = $"{selectedAdType} ad shown (reload required for next ad)";
-            adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Success: Ad shown");
-        }
-        catch (AITException ex)
-        {
-            adStatus = $"Error: {ex.Message}";
-            adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Error: {ex.ErrorCode} - {ex.Message}");
-        }
-        catch (Exception ex)
-        {
-            adStatus = $"Error: {ex.Message}";
-            adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Exception: {ex.Message}");
-        }
+    private void OnDestroy()
+    {
+        // 컴포넌트 제거 시 구독 해제
+        _loadUnsubscribe?.Invoke();
+        _showUnsubscribe?.Invoke();
     }
 }

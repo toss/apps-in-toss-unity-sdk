@@ -154,6 +154,9 @@ jobs:
       run-build: true
       run-e2e-test: false
       run-benchmark: false
+    secrets:
+      AIT_AD_INTERSTITIAL_ID: ${{ secrets.AIT_AD_INTERSTITIAL_ID }}
+      AIT_AD_REWARDED_ID: ${{ secrets.AIT_AD_REWARDED_ID }}
 
   # =====================================================
   # AIT 빌드 - Windows
@@ -175,6 +178,9 @@ jobs:
       run-build: true
       run-e2e-test: false
       run-benchmark: false
+    secrets:
+      AIT_AD_INTERSTITIAL_ID: ${{ secrets.AIT_AD_INTERSTITIAL_ID }}
+      AIT_AD_REWARDED_ID: ${{ secrets.AIT_AD_REWARDED_ID }}
 
   # =====================================================
   # 릴리즈 태그 생성 (UPM 패키지 정리 포함)

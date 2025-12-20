@@ -49,7 +49,7 @@ public class InteractiveAPITester : MonoBehaviour
     // 분리된 컴포넌트 참조
     private OOMTester _oomTester;
     private IAPv2Tester _iapTester;
-    private AdV2Tester _adMobTester;
+    private AdV2Tester _adV2Tester; // current LoadFullScreenAd/ShowFullScreenAd API
     private TouchScrollHandler _scrollHandler;
     private ParameterInputRenderer _paramRenderer;
 
@@ -71,10 +71,10 @@ public class InteractiveAPITester : MonoBehaviour
         {
             _iapTester = gameObject.AddComponent<IAPv2Tester>();
         }
-        _adMobTester = GetComponent<AdV2Tester>();
-        if (_adMobTester == null)
+        _adV2Tester = GetComponent<AdV2Tester>();
+        if (_adV2Tester == null)
         {
-            _adMobTester = gameObject.AddComponent<AdV2Tester>();
+            _adV2Tester = gameObject.AddComponent<AdV2Tester>();
         }
         _scrollHandler = new TouchScrollHandler();
         _paramRenderer = new ParameterInputRenderer();
@@ -292,9 +292,9 @@ public class InteractiveAPITester : MonoBehaviour
                 InteractiveAPITesterStyles.CallbackLabelStyle
             );
 
-            // AdMob 테스터 섹션 (인앱광고v2)
+            // AdV2 테스터 섹션 (인앱광고v2 - 현재 API)
             GUILayout.Space(20);
-            _adMobTester?.DrawUI(
+            _adV2Tester?.DrawUI(
                 InteractiveAPITesterStyles.BoxStyle,
                 InteractiveAPITesterStyles.GroupHeaderStyle,
                 InteractiveAPITesterStyles.LabelStyle,

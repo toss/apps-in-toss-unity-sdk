@@ -201,6 +201,7 @@ ${functions}
   private generateWindowType(apis: ParsedAPI[]): string {
     const members: string[] = [];
     const seenNamespaces = new Set<string>();
+    const seenApis = new Set<string>();
 
     for (const api of apis) {
       if (api.namespace) {
@@ -209,9 +210,13 @@ ${functions}
           members.push(`    ${api.namespace}: typeof ${api.namespace};`);
           seenNamespaces.add(api.namespace);
         }
-      } else if (!api.isEventSubscription && !api.isTopLevelExport) {
-        // 일반 API 함수 (top-level export 제외)
-        members.push(`    ${api.originalName}: typeof ${api.originalName};`);
+      } else if (!api.isEventSubscription) {
+        // 일반 API 함수 (top-level export 포함)
+        // top-level export도 window.AppsInToss에서 호출하므로 포함
+        if (!seenApis.has(api.originalName)) {
+          members.push(`    ${api.originalName}: typeof ${api.originalName};`);
+          seenApis.add(api.originalName);
+        }
       }
     }
 
@@ -527,6 +532,14 @@ ${onEventHandler}
    * 이 API들은 onEvent/onError 콜백을 받고 unsubscribe 함수를 반환함
    */
   private generateTypescriptCallbackFunction(api: ParsedAPI): string {
+    // 네임스페이스 메서드인지 확인 (args 객체 패턴)
+    const isNamespaceMethod = api.namespace && !api.isTopLevelExport;
+
+    if (isNamespaceMethod) {
+      return this.generateTypescriptNamespaceCallbackFunction(api);
+    }
+
+    // Top-level export 패턴 (기존 로직)
     // onEvent, onError 콜백이 아닌 파라미터들만 필터링 (예: adGroupId)
     const dataParams = api.parameters.filter(p =>
       p.name !== 'onEvent' && p.name !== 'onError'
@@ -538,9 +551,10 @@ ${onEventHandler}
       ? `${params}, subscriptionId: number, typeName: number`
       : 'subscriptionId: number, typeName: number';
 
-    // API 호출 표현식 (top-level export는 window에서 직접 호출)
+    // API 호출 표현식
+    // top-level export는 window에서 직접 호출, 네임스페이스 API는 AppsInToss에서 호출
     const apiCallExpr = api.isTopLevelExport
-      ? `window.${api.originalName}`
+      ? `window.AppsInToss.${api.originalName}`
       : api.namespace
         ? `window.AppsInToss.${api.namespace}.${api.originalName}`
         : `window.AppsInToss.${api.originalName}`;
@@ -564,6 +578,77 @@ ${jsConversions ? '\n' + jsConversions + '\n' : ''}
   try {
     const unsubscribe = ${apiCallExpr}({
       options: ${optionsObj},
+      onEvent: (data: unknown) => {
+        console.log('[AIT jslib] ${api.name} event:', data);
+        const payload = JSON.stringify({
+          CallbackId: subId,
+          TypeName: typeNameStr,
+          Result: JSON.stringify({
+            success: true,
+            data: JSON.stringify(data || {}),
+            error: ''
+          })
+        });
+        SendMessage('AITCore', 'OnAITEventCallback', payload);
+      },
+      onError: (error: unknown) => {
+        console.log('[AIT jslib] ${api.name} error:', error);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        const payload = JSON.stringify({
+          CallbackId: subId,
+          TypeName: typeNameStr,
+          Result: JSON.stringify({
+            success: false,
+            data: '',
+            error: errorMessage
+          })
+        });
+        SendMessage('AITCore', 'OnAITEventCallback', payload);
+      }
+    });
+
+    if (!window.__AIT_SUBSCRIPTIONS) {
+      window.__AIT_SUBSCRIPTIONS = {};
+    }
+    window.__AIT_SUBSCRIPTIONS[subId] = unsubscribe;
+
+  } catch (error: unknown) {
+    console.error('[AIT jslib] ${api.name} error:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const payload = JSON.stringify({
+      CallbackId: subId,
+      TypeName: typeNameStr,
+      Result: JSON.stringify({
+        success: false,
+        data: '',
+        error: errorMessage
+      })
+    });
+    SendMessage('AITCore', 'OnAITEventCallback', payload);
+  }
+};`;
+  }
+
+  /**
+   * 네임스페이스 메서드용 콜백 기반 TypeScript 함수 생성
+   *
+   * 패턴: GoogleAdMob.loadAppsInTossAdMob({ options, onEvent, onError })
+   * - Unity에서 options 객체를 JSON으로 직렬화하여 전달
+   * - JavaScript에서 파싱 후 onEvent/onError 콜백과 합쳐서 호출
+   */
+  private generateTypescriptNamespaceCallbackFunction(api: ParsedAPI): string {
+    const apiCallExpr = `window.AppsInToss.${api.namespace}.${api.originalName}`;
+
+    return `export const __${api.name}_Internal = (options: number, subscriptionId: number, typeName: number): void => {
+  const subId = UTF8ToString(subscriptionId);
+  const typeNameStr = UTF8ToString(typeName);
+  const optionsObj = options ? JSON.parse(UTF8ToString(options)) : {};
+
+  console.log('[AIT jslib] ${api.name} called, id:', subId, 'options:', optionsObj);
+
+  try {
+    const unsubscribe = ${apiCallExpr}({
+      options: optionsObj.options || optionsObj,
       onEvent: (data: unknown) => {
         console.log('[AIT jslib] ${api.name} event:', data);
         const payload = JSON.stringify({
@@ -785,8 +870,20 @@ ${nestedCallbacksCode}
 
   /**
    * 콜백 기반 API 함수 생성 (JavaScript) - loadFullScreenAd, showFullScreenAd 패턴
+   *
+   * 두 가지 패턴 지원:
+   * 1. Top-level export: loadFullScreenAd(adGroupId, onEvent, onError) - 개별 파라미터
+   * 2. Namespace method: GoogleAdMob.loadAppsInTossAdMob({ options, onEvent, onError }) - args 객체
    */
   private generateCallbackBasedFunction(api: ParsedAPI): string {
+    // 네임스페이스 메서드인지 확인 (args 객체 패턴)
+    const isNamespaceMethod = api.namespace && !api.isTopLevelExport;
+
+    if (isNamespaceMethod) {
+      return this.generateNamespaceCallbackBasedFunction(api);
+    }
+
+    // Top-level export 패턴 (기존 로직)
     // onEvent, onError 콜백이 아닌 파라미터들만 필터링 (예: adGroupId)
     const dataParams = api.parameters.filter(p =>
       p.name !== 'onEvent' && p.name !== 'onError'
@@ -795,9 +892,10 @@ ${nestedCallbacksCode}
     const params = dataParams.map(p => p.name);
     const paramList = [...params, 'subscriptionId', 'typeName'].join(', ');
 
-    // API 호출 표현식 (top-level export는 window에서 직접 호출)
+    // API 호출 표현식
+    // top-level export는 window에서 직접 호출, 네임스페이스 API는 AppsInToss에서 호출
     const apiCallExpr = api.isTopLevelExport
-      ? `window.${api.originalName}`
+      ? `window.AppsInToss.${api.originalName}`
       : api.namespace
         ? `window.AppsInToss.${api.namespace}.${api.originalName}`
         : `window.AppsInToss.${api.originalName}`;
@@ -821,6 +919,77 @@ ${paramConversions ? '\n' + paramConversions + '\n' : ''}
         try {
             var unsubscribe = ${apiCallExpr}({
                 options: ${optionsObj},
+                onEvent: function(data) {
+                    console.log('[AIT jslib] ${api.name} event:', data);
+                    var payload = JSON.stringify({
+                        CallbackId: subId,
+                        TypeName: typeNameStr,
+                        Result: JSON.stringify({
+                            success: true,
+                            data: JSON.stringify(data || {}),
+                            error: ''
+                        })
+                    });
+                    SendMessage('AITCore', 'OnAITEventCallback', payload);
+                },
+                onError: function(error) {
+                    console.log('[AIT jslib] ${api.name} error:', error);
+                    var errorMessage = error instanceof Error ? error.message : String(error);
+                    var payload = JSON.stringify({
+                        CallbackId: subId,
+                        TypeName: typeNameStr,
+                        Result: JSON.stringify({
+                            success: false,
+                            data: '',
+                            error: errorMessage
+                        })
+                    });
+                    SendMessage('AITCore', 'OnAITEventCallback', payload);
+                }
+            });
+
+            if (!window.__AIT_SUBSCRIPTIONS) {
+                window.__AIT_SUBSCRIPTIONS = {};
+            }
+            window.__AIT_SUBSCRIPTIONS[subId] = unsubscribe;
+
+        } catch (error) {
+            console.error('[AIT jslib] ${api.name} error:', error);
+            var errorMessage = error instanceof Error ? error.message : String(error);
+            var payload = JSON.stringify({
+                CallbackId: subId,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({
+                    success: false,
+                    data: '',
+                    error: errorMessage
+                })
+            });
+            SendMessage('AITCore', 'OnAITEventCallback', payload);
+        }
+    },`;
+  }
+
+  /**
+   * 네임스페이스 메서드용 콜백 기반 API 함수 생성
+   *
+   * 패턴: GoogleAdMob.loadAppsInTossAdMob({ options, onEvent, onError })
+   * - Unity에서 options 객체를 JSON으로 직렬화하여 전달
+   * - JavaScript에서 파싱 후 onEvent/onError 콜백과 합쳐서 호출
+   */
+  private generateNamespaceCallbackBasedFunction(api: ParsedAPI): string {
+    const apiCallExpr = `window.AppsInToss.${api.namespace}.${api.originalName}`;
+
+    return `    __${api.name}_Internal: function(options, subscriptionId, typeName) {
+        var subId = UTF8ToString(subscriptionId);
+        var typeNameStr = UTF8ToString(typeName);
+        var optionsObj = options ? JSON.parse(UTF8ToString(options)) : {};
+
+        console.log('[AIT jslib] ${api.name} called, id:', subId, 'options:', optionsObj);
+
+        try {
+            var unsubscribe = ${apiCallExpr}({
+                options: optionsObj.options || optionsObj,
                 onEvent: function(data) {
                     console.log('[AIT jslib] ${api.name} event:', data);
                     var payload = JSON.stringify({

@@ -684,26 +684,66 @@ export class CSharpGenerator {
     let callbackEventType: string | undefined;
     let callbackErrorType: string | undefined;
     if (api.isCallbackBased && api.parameters) {
-      // onEvent 파라미터에서 이벤트 타입 추출
-      const onEventParam = api.parameters.find(p => p.name === 'onEvent');
+      // 1. 먼저 최상위 파라미터에서 onEvent/onError 찾기 (top-level export 패턴)
+      let onEventParam = api.parameters.find(p => p.name === 'onEvent');
+      let onErrorParam = api.parameters.find(p => p.name === 'onError');
+
+      // 2. 없으면 첫 번째 파라미터(args 객체)의 프로퍼티에서 찾기 (namespace method 패턴)
+      if (!onEventParam && api.parameters.length === 1 && api.parameters[0].type.kind === 'object') {
+        const argsProperties = api.parameters[0].type.properties || [];
+        const onEventProp = argsProperties.find(p => p.name === 'onEvent');
+        if (onEventProp && onEventProp.type.kind === 'function') {
+          onEventParam = { name: 'onEvent', type: onEventProp.type, optional: false };
+        }
+        const onErrorProp = argsProperties.find(p => p.name === 'onError');
+        if (onErrorProp && onErrorProp.type.kind === 'function') {
+          onErrorParam = { name: 'onError', type: onErrorProp.type, optional: false };
+        }
+      }
+
       if (onEventParam && onEventParam.type.kind === 'function' && onEventParam.type.functionParams?.[0]) {
         callbackEventType = mapToCSharpType(onEventParam.type.functionParams[0]);
       }
-      // onError 파라미터에서 에러 타입 추출
-      const onErrorParam = api.parameters.find(p => p.name === 'onError');
       if (onErrorParam && onErrorParam.type.kind === 'function' && onErrorParam.type.functionParams?.[0]) {
         callbackErrorType = mapToCSharpType(onErrorParam.type.functionParams[0]);
       }
     }
 
-    // 콜백 기반 API의 options 파라미터만 추출 (onEvent, onError 제외)
-    const callbackApiParameters = api.isCallbackBased
-      ? parameters.filter(p => p.paramName !== 'onEvent' && p.paramName !== 'onError')
-      : parameters;
+    // 콜백 기반 API의 options 파라미터만 추출
+    // - top-level export: onEvent, onError 제외
+    // - namespace method: args 객체 내의 options 프로퍼티만 사용
+    let callbackApiParameters = parameters;
+    if (api.isCallbackBased) {
+      if (api.namespace && !api.isTopLevelExport && api.parameters.length === 1) {
+        // namespace method 패턴: args 객체 내의 options 프로퍼티 추출
+        const argsType = api.parameters[0].type;
+        if (argsType.kind === 'object' && argsType.properties) {
+          const optionsProp = argsType.properties.find(p => p.name === 'options');
+          if (optionsProp) {
+            const optionsTypeName = mapToCSharpType(optionsProp.type);
+            callbackApiParameters = [{
+              paramName: 'options',
+              paramType: optionsTypeName,
+              optional: optionsProp.optional ?? true,
+              description: undefined,
+              isPrimitive: false,
+            }];
+          } else {
+            callbackApiParameters = [];
+          }
+        }
+      } else {
+        // top-level export 패턴: onEvent, onError 제외
+        callbackApiParameters = parameters.filter(p => p.paramName !== 'onEvent' && p.paramName !== 'onError');
+      }
+    }
 
     // nullable 참조 타입 여부 확인 (C#에서 ?를 붙일 수 없지만 문서에 명시 필요)
     const innerType = api.returnType.kind === 'promise' ? api.returnType.promiseType : api.returnType;
     const isNullableReturn = innerType?.isNullable === true && callbackType !== 'void';
+
+    // 네임스페이스 콜백 기반 API 여부 (args 객체 패턴)
+    const isNamespaceCallbackBased = api.isCallbackBased && api.namespace && !api.isTopLevelExport;
 
     return {
       name: api.name,
@@ -728,6 +768,7 @@ export class CSharpGenerator {
       eventDataType,
       // 콜백 기반 API 지원
       isCallbackBased: api.isCallbackBased,
+      isNamespaceCallbackBased, // 네임스페이스 메서드의 콜백 기반 API (args 객체 패턴)
       callbackEventType,
       callbackErrorType,
       // 중첩 콜백 API 지원

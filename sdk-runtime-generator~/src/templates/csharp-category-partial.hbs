@@ -66,6 +66,52 @@ namespace AppsInToss
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __{{{this.name}}}_Internal(string subscriptionId, string typeName);
 #endif
+{{else if this.isNamespaceCallbackBased}}
+{{!-- Namespace callback-based API (GoogleAdMob.loadAppsInTossAdMob pattern) --}}
+{{!-- options 객체를 JSON으로 직렬화하여 전달 --}}
+{{#if this.description}}
+        /// <summary>
+        /// {{{this.description}}}
+        /// </summary>
+{{/if}}
+        /// <param name="onEvent">이벤트 콜백</param>
+{{#each this.parameters}}
+{{#if this.description}}
+        /// <param name="{{this.paramName}}">{{xmlSafe this.description}}</param>
+{{/if}}
+{{/each}}
+        /// <param name="onError">에러 콜백</param>
+        /// <returns>구독 취소를 위한 Action</returns>
+{{#if this.isDeprecated}}
+        [Obsolete("{{{this.deprecatedMessage}}}")]
+{{/if}}
+        [Preserve]
+        [APICategory("{{../categoryName}}")]
+        public static Action {{{this.pascalName}}}(
+            Action<{{{this.callbackEventType}}}> onEvent,
+{{#each this.parameters}}
+            {{{this.paramType}}} {{this.paramName}}{{#if this.optional}} = null{{/if}},
+{{/each}}
+            Action<AITException> onError = null)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            string subscriptionId = AITCore.Instance.RegisterSubscriptionCallback<{{{this.callbackEventType}}}>(
+                onEvent,
+                onError
+            );
+            __{{{this.name}}}_Internal(AITJsonSettings.Serialize(new { options = {{#if this.parameters}}{{#with (lookup this.parameters 0)}}{{this.paramName}}{{/with}}{{else}}(object)null{{/if}} }), subscriptionId, "{{{this.callbackEventType}}}");
+            return () => AITCore.Instance.Unsubscribe(subscriptionId);
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] {{{this.pascalName}}} called");
+            return () => UnityEngine.Debug.Log($"[AIT Mock] {{{this.pascalName}}} cancelled");
+#endif
+        }
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __{{{this.name}}}_Internal(string options, string subscriptionId, string typeName);
+#endif
 {{else if this.isCallbackBased}}
 {{!-- Callback-based API (loadFullScreenAd, showFullScreenAd pattern) --}}
 {{#if this.description}}

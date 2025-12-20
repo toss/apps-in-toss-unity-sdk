@@ -1076,6 +1076,9 @@ export class TypeScriptParser {
       // 중첩 콜백 감지 (options 파라미터 내부의 함수 타입)
       const nestedCallbacks = this.detectNestedCallbacks(parameters);
 
+      // 콜백 기반 API 감지 (onEvent/onError 패턴)
+      const isCallbackBased = this.detectCallbackBasedPattern(parameters, returnType);
+
       apis.push({
         name: fullName,
         pascalName: fullName,
@@ -1085,16 +1088,59 @@ export class TypeScriptParser {
         description,
         parameters,
         returnType,
-        isAsync,
+        isAsync: isCallbackBased ? false : isAsync, // 콜백 기반 API는 동기로 처리
         hasPermission: false,
         namespace: namespaceName,
         isDeprecated,
         deprecatedMessage,
         nestedCallbacks: nestedCallbacks.length > 0 ? nestedCallbacks : undefined,
+        isCallbackBased,
       });
     }
 
     return apis;
+  }
+
+  /**
+   * 콜백 기반 API 패턴 감지
+   *
+   * 조건:
+   * 1. 파라미터가 1개 (args 객체)
+   * 2. args 객체에 onEvent, onError 함수 프로퍼티 존재
+   * 3. 반환 타입이 () => void (cleanup/dispose 함수)
+   *
+   * 예: GoogleAdMob.loadAppsInTossAdMob, loadFullScreenAd 등
+   */
+  private detectCallbackBasedPattern(
+    parameters: ParsedParameter[],
+    returnType: ParsedType
+  ): boolean {
+    // 조건 1: 파라미터가 1개
+    if (parameters.length !== 1) return false;
+
+    const argsType = parameters[0].type;
+
+    // 조건 2: args가 object 타입이고 properties가 있어야 함
+    if (argsType.kind !== 'object' || !argsType.properties) return false;
+
+    // onEvent와 onError 함수 프로퍼티 존재 확인
+    const hasOnEvent = argsType.properties.some(
+      (p) => p.name === 'onEvent' && p.type.kind === 'function'
+    );
+    const hasOnError = argsType.properties.some(
+      (p) => p.name === 'onError' && p.type.kind === 'function'
+    );
+
+    if (!hasOnEvent || !hasOnError) return false;
+
+    // 조건 3: 반환 타입이 () => void (cleanup 함수)
+    // returnType.kind가 'function'이고 반환값이 void인 경우
+    const isCleanupReturn =
+      returnType.kind === 'function' &&
+      (returnType.raw?.includes('() => void') ||
+        returnType.functionReturnType?.name === 'void');
+
+    return isCleanupReturn;
   }
 
   /**

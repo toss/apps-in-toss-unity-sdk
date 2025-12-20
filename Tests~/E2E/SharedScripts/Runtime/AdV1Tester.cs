@@ -72,13 +72,13 @@ public class AdV1Tester : MonoBehaviour
         GUILayout.BeginHorizontal();
         if (GUILayout.Button(
             selectedAdType == "interstitial" ? "[Interstitial]" : "Interstitial",
-            buttonStyle, GUILayout.Height(36)))
+            buttonStyle, GUILayout.Height(36), GUILayout.ExpandWidth(true)))
         {
             selectedAdType = "interstitial";
         }
         if (GUILayout.Button(
             selectedAdType == "rewarded" ? "[Rewarded]" : "Rewarded",
-            buttonStyle, GUILayout.Height(36)))
+            buttonStyle, GUILayout.Height(36), GUILayout.ExpandWidth(true)))
         {
             selectedAdType = "rewarded";
         }

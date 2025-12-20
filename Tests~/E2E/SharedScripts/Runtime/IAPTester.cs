@@ -183,7 +183,7 @@ public class IAPTester : MonoBehaviour
         }
     }
 
-    private async void ExecuteIAPCreateOrder()
+    private void ExecuteIAPCreateOrder()
     {
         if (string.IsNullOrEmpty(iapSku))
         {
@@ -230,7 +230,8 @@ public class IAPTester : MonoBehaviour
                 }
             };
 
-            var disposer = await AIT.IAPCreateOneTimePurchaseOrder(options);
+            // IAPCreateOneTimePurchaseOrder는 동기 함수로 cleanup Action을 반환
+            var disposer = AIT.IAPCreateOneTimePurchaseOrder(options);
             iapStatus = "Purchase order created";
             iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Order created successfully");
         }

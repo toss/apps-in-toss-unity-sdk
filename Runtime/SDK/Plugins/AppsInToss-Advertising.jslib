@@ -6,141 +6,363 @@
  */
 
 mergeInto(LibraryManager.library, {
-    __GoogleAdMobLoadAdMobInterstitialAd_Internal: function(args, callbackId, typeName) {
-        // 동기 함수 (즉시 값 반환)
-        var callback = UTF8ToString(callbackId);
+    __GoogleAdMobLoadAdMobInterstitialAd_Internal: function(options, subscriptionId, typeName) {
+        var subId = UTF8ToString(subscriptionId);
         var typeNameStr = UTF8ToString(typeName);
+        var optionsObj = options ? JSON.parse(UTF8ToString(options)) : {};
+
+        console.log('[AIT jslib] GoogleAdMobLoadAdMobInterstitialAd called, id:', subId, 'options:', optionsObj);
 
         try {
-            var result = window.AppsInToss.GoogleAdMob.loadAdMobInterstitialAd(JSON.parse(UTF8ToString(args)));
-            var payload = JSON.stringify({
-                CallbackId: callback,
-                TypeName: typeNameStr,
-                Result: JSON.stringify({ success: true, data: JSON.stringify(result), error: '' })
+            var unsubscribe = window.AppsInToss.GoogleAdMob.loadAdMobInterstitialAd({
+                options: optionsObj.options || optionsObj,
+                onEvent: function(data) {
+                    console.log('[AIT jslib] GoogleAdMobLoadAdMobInterstitialAd event:', data);
+                    var payload = JSON.stringify({
+                        CallbackId: subId,
+                        TypeName: typeNameStr,
+                        Result: JSON.stringify({
+                            success: true,
+                            data: JSON.stringify(data || {}),
+                            error: ''
+                        })
+                    });
+                    SendMessage('AITCore', 'OnAITEventCallback', payload);
+                },
+                onError: function(error) {
+                    console.log('[AIT jslib] GoogleAdMobLoadAdMobInterstitialAd error:', error);
+                    var errorMessage = error instanceof Error ? error.message : String(error);
+                    var payload = JSON.stringify({
+                        CallbackId: subId,
+                        TypeName: typeNameStr,
+                        Result: JSON.stringify({
+                            success: false,
+                            data: '',
+                            error: errorMessage
+                        })
+                    });
+                    SendMessage('AITCore', 'OnAITEventCallback', payload);
+                }
             });
-            SendMessage('AITCore', 'OnAITCallback', payload);
+
+            if (!window.__AIT_SUBSCRIPTIONS) {
+                window.__AIT_SUBSCRIPTIONS = {};
+            }
+            window.__AIT_SUBSCRIPTIONS[subId] = unsubscribe;
+
         } catch (error) {
+            console.error('[AIT jslib] GoogleAdMobLoadAdMobInterstitialAd error:', error);
+            var errorMessage = error instanceof Error ? error.message : String(error);
             var payload = JSON.stringify({
-                CallbackId: callback,
+                CallbackId: subId,
                 TypeName: typeNameStr,
-                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+                Result: JSON.stringify({
+                    success: false,
+                    data: '',
+                    error: errorMessage
+                })
             });
-            SendMessage('AITCore', 'OnAITCallback', payload);
+            SendMessage('AITCore', 'OnAITEventCallback', payload);
         }
     },
 
-    __GoogleAdMobShowAdMobInterstitialAd_Internal: function(args, callbackId, typeName) {
-        // 동기 함수 (즉시 값 반환)
-        var callback = UTF8ToString(callbackId);
+    __GoogleAdMobShowAdMobInterstitialAd_Internal: function(options, subscriptionId, typeName) {
+        var subId = UTF8ToString(subscriptionId);
         var typeNameStr = UTF8ToString(typeName);
+        var optionsObj = options ? JSON.parse(UTF8ToString(options)) : {};
+
+        console.log('[AIT jslib] GoogleAdMobShowAdMobInterstitialAd called, id:', subId, 'options:', optionsObj);
 
         try {
-            var result = window.AppsInToss.GoogleAdMob.showAdMobInterstitialAd(JSON.parse(UTF8ToString(args)));
-            var payload = JSON.stringify({
-                CallbackId: callback,
-                TypeName: typeNameStr,
-                Result: JSON.stringify({ success: true, data: JSON.stringify(result), error: '' })
+            var unsubscribe = window.AppsInToss.GoogleAdMob.showAdMobInterstitialAd({
+                options: optionsObj.options || optionsObj,
+                onEvent: function(data) {
+                    console.log('[AIT jslib] GoogleAdMobShowAdMobInterstitialAd event:', data);
+                    var payload = JSON.stringify({
+                        CallbackId: subId,
+                        TypeName: typeNameStr,
+                        Result: JSON.stringify({
+                            success: true,
+                            data: JSON.stringify(data || {}),
+                            error: ''
+                        })
+                    });
+                    SendMessage('AITCore', 'OnAITEventCallback', payload);
+                },
+                onError: function(error) {
+                    console.log('[AIT jslib] GoogleAdMobShowAdMobInterstitialAd error:', error);
+                    var errorMessage = error instanceof Error ? error.message : String(error);
+                    var payload = JSON.stringify({
+                        CallbackId: subId,
+                        TypeName: typeNameStr,
+                        Result: JSON.stringify({
+                            success: false,
+                            data: '',
+                            error: errorMessage
+                        })
+                    });
+                    SendMessage('AITCore', 'OnAITEventCallback', payload);
+                }
             });
-            SendMessage('AITCore', 'OnAITCallback', payload);
+
+            if (!window.__AIT_SUBSCRIPTIONS) {
+                window.__AIT_SUBSCRIPTIONS = {};
+            }
+            window.__AIT_SUBSCRIPTIONS[subId] = unsubscribe;
+
         } catch (error) {
+            console.error('[AIT jslib] GoogleAdMobShowAdMobInterstitialAd error:', error);
+            var errorMessage = error instanceof Error ? error.message : String(error);
             var payload = JSON.stringify({
-                CallbackId: callback,
+                CallbackId: subId,
                 TypeName: typeNameStr,
-                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+                Result: JSON.stringify({
+                    success: false,
+                    data: '',
+                    error: errorMessage
+                })
             });
-            SendMessage('AITCore', 'OnAITCallback', payload);
+            SendMessage('AITCore', 'OnAITEventCallback', payload);
         }
     },
 
-    __GoogleAdMobLoadAdMobRewardedAd_Internal: function(args, callbackId, typeName) {
-        // 동기 함수 (즉시 값 반환)
-        var callback = UTF8ToString(callbackId);
+    __GoogleAdMobLoadAdMobRewardedAd_Internal: function(options, subscriptionId, typeName) {
+        var subId = UTF8ToString(subscriptionId);
         var typeNameStr = UTF8ToString(typeName);
+        var optionsObj = options ? JSON.parse(UTF8ToString(options)) : {};
+
+        console.log('[AIT jslib] GoogleAdMobLoadAdMobRewardedAd called, id:', subId, 'options:', optionsObj);
 
         try {
-            var result = window.AppsInToss.GoogleAdMob.loadAdMobRewardedAd(JSON.parse(UTF8ToString(args)));
-            var payload = JSON.stringify({
-                CallbackId: callback,
-                TypeName: typeNameStr,
-                Result: JSON.stringify({ success: true, data: JSON.stringify(result), error: '' })
+            var unsubscribe = window.AppsInToss.GoogleAdMob.loadAdMobRewardedAd({
+                options: optionsObj.options || optionsObj,
+                onEvent: function(data) {
+                    console.log('[AIT jslib] GoogleAdMobLoadAdMobRewardedAd event:', data);
+                    var payload = JSON.stringify({
+                        CallbackId: subId,
+                        TypeName: typeNameStr,
+                        Result: JSON.stringify({
+                            success: true,
+                            data: JSON.stringify(data || {}),
+                            error: ''
+                        })
+                    });
+                    SendMessage('AITCore', 'OnAITEventCallback', payload);
+                },
+                onError: function(error) {
+                    console.log('[AIT jslib] GoogleAdMobLoadAdMobRewardedAd error:', error);
+                    var errorMessage = error instanceof Error ? error.message : String(error);
+                    var payload = JSON.stringify({
+                        CallbackId: subId,
+                        TypeName: typeNameStr,
+                        Result: JSON.stringify({
+                            success: false,
+                            data: '',
+                            error: errorMessage
+                        })
+                    });
+                    SendMessage('AITCore', 'OnAITEventCallback', payload);
+                }
             });
-            SendMessage('AITCore', 'OnAITCallback', payload);
+
+            if (!window.__AIT_SUBSCRIPTIONS) {
+                window.__AIT_SUBSCRIPTIONS = {};
+            }
+            window.__AIT_SUBSCRIPTIONS[subId] = unsubscribe;
+
         } catch (error) {
+            console.error('[AIT jslib] GoogleAdMobLoadAdMobRewardedAd error:', error);
+            var errorMessage = error instanceof Error ? error.message : String(error);
             var payload = JSON.stringify({
-                CallbackId: callback,
+                CallbackId: subId,
                 TypeName: typeNameStr,
-                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+                Result: JSON.stringify({
+                    success: false,
+                    data: '',
+                    error: errorMessage
+                })
             });
-            SendMessage('AITCore', 'OnAITCallback', payload);
+            SendMessage('AITCore', 'OnAITEventCallback', payload);
         }
     },
 
-    __GoogleAdMobShowAdMobRewardedAd_Internal: function(args, callbackId, typeName) {
-        // 동기 함수 (즉시 값 반환)
-        var callback = UTF8ToString(callbackId);
+    __GoogleAdMobShowAdMobRewardedAd_Internal: function(options, subscriptionId, typeName) {
+        var subId = UTF8ToString(subscriptionId);
         var typeNameStr = UTF8ToString(typeName);
+        var optionsObj = options ? JSON.parse(UTF8ToString(options)) : {};
+
+        console.log('[AIT jslib] GoogleAdMobShowAdMobRewardedAd called, id:', subId, 'options:', optionsObj);
 
         try {
-            var result = window.AppsInToss.GoogleAdMob.showAdMobRewardedAd(JSON.parse(UTF8ToString(args)));
-            var payload = JSON.stringify({
-                CallbackId: callback,
-                TypeName: typeNameStr,
-                Result: JSON.stringify({ success: true, data: JSON.stringify(result), error: '' })
+            var unsubscribe = window.AppsInToss.GoogleAdMob.showAdMobRewardedAd({
+                options: optionsObj.options || optionsObj,
+                onEvent: function(data) {
+                    console.log('[AIT jslib] GoogleAdMobShowAdMobRewardedAd event:', data);
+                    var payload = JSON.stringify({
+                        CallbackId: subId,
+                        TypeName: typeNameStr,
+                        Result: JSON.stringify({
+                            success: true,
+                            data: JSON.stringify(data || {}),
+                            error: ''
+                        })
+                    });
+                    SendMessage('AITCore', 'OnAITEventCallback', payload);
+                },
+                onError: function(error) {
+                    console.log('[AIT jslib] GoogleAdMobShowAdMobRewardedAd error:', error);
+                    var errorMessage = error instanceof Error ? error.message : String(error);
+                    var payload = JSON.stringify({
+                        CallbackId: subId,
+                        TypeName: typeNameStr,
+                        Result: JSON.stringify({
+                            success: false,
+                            data: '',
+                            error: errorMessage
+                        })
+                    });
+                    SendMessage('AITCore', 'OnAITEventCallback', payload);
+                }
             });
-            SendMessage('AITCore', 'OnAITCallback', payload);
+
+            if (!window.__AIT_SUBSCRIPTIONS) {
+                window.__AIT_SUBSCRIPTIONS = {};
+            }
+            window.__AIT_SUBSCRIPTIONS[subId] = unsubscribe;
+
         } catch (error) {
+            console.error('[AIT jslib] GoogleAdMobShowAdMobRewardedAd error:', error);
+            var errorMessage = error instanceof Error ? error.message : String(error);
             var payload = JSON.stringify({
-                CallbackId: callback,
+                CallbackId: subId,
                 TypeName: typeNameStr,
-                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+                Result: JSON.stringify({
+                    success: false,
+                    data: '',
+                    error: errorMessage
+                })
             });
-            SendMessage('AITCore', 'OnAITCallback', payload);
+            SendMessage('AITCore', 'OnAITEventCallback', payload);
         }
     },
 
-    __GoogleAdMobLoadAppsInTossAdMob_Internal: function(args, callbackId, typeName) {
-        // 동기 함수 (즉시 값 반환)
-        var callback = UTF8ToString(callbackId);
+    __GoogleAdMobLoadAppsInTossAdMob_Internal: function(options, subscriptionId, typeName) {
+        var subId = UTF8ToString(subscriptionId);
         var typeNameStr = UTF8ToString(typeName);
+        var optionsObj = options ? JSON.parse(UTF8ToString(options)) : {};
+
+        console.log('[AIT jslib] GoogleAdMobLoadAppsInTossAdMob called, id:', subId, 'options:', optionsObj);
 
         try {
-            var result = window.AppsInToss.GoogleAdMob.loadAppsInTossAdMob(JSON.parse(UTF8ToString(args)));
-            var payload = JSON.stringify({
-                CallbackId: callback,
-                TypeName: typeNameStr,
-                Result: JSON.stringify({ success: true, data: JSON.stringify(result), error: '' })
+            var unsubscribe = window.AppsInToss.GoogleAdMob.loadAppsInTossAdMob({
+                options: optionsObj.options || optionsObj,
+                onEvent: function(data) {
+                    console.log('[AIT jslib] GoogleAdMobLoadAppsInTossAdMob event:', data);
+                    var payload = JSON.stringify({
+                        CallbackId: subId,
+                        TypeName: typeNameStr,
+                        Result: JSON.stringify({
+                            success: true,
+                            data: JSON.stringify(data || {}),
+                            error: ''
+                        })
+                    });
+                    SendMessage('AITCore', 'OnAITEventCallback', payload);
+                },
+                onError: function(error) {
+                    console.log('[AIT jslib] GoogleAdMobLoadAppsInTossAdMob error:', error);
+                    var errorMessage = error instanceof Error ? error.message : String(error);
+                    var payload = JSON.stringify({
+                        CallbackId: subId,
+                        TypeName: typeNameStr,
+                        Result: JSON.stringify({
+                            success: false,
+                            data: '',
+                            error: errorMessage
+                        })
+                    });
+                    SendMessage('AITCore', 'OnAITEventCallback', payload);
+                }
             });
-            SendMessage('AITCore', 'OnAITCallback', payload);
+
+            if (!window.__AIT_SUBSCRIPTIONS) {
+                window.__AIT_SUBSCRIPTIONS = {};
+            }
+            window.__AIT_SUBSCRIPTIONS[subId] = unsubscribe;
+
         } catch (error) {
+            console.error('[AIT jslib] GoogleAdMobLoadAppsInTossAdMob error:', error);
+            var errorMessage = error instanceof Error ? error.message : String(error);
             var payload = JSON.stringify({
-                CallbackId: callback,
+                CallbackId: subId,
                 TypeName: typeNameStr,
-                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+                Result: JSON.stringify({
+                    success: false,
+                    data: '',
+                    error: errorMessage
+                })
             });
-            SendMessage('AITCore', 'OnAITCallback', payload);
+            SendMessage('AITCore', 'OnAITEventCallback', payload);
         }
     },
 
-    __GoogleAdMobShowAppsInTossAdMob_Internal: function(args, callbackId, typeName) {
-        // 동기 함수 (즉시 값 반환)
-        var callback = UTF8ToString(callbackId);
+    __GoogleAdMobShowAppsInTossAdMob_Internal: function(options, subscriptionId, typeName) {
+        var subId = UTF8ToString(subscriptionId);
         var typeNameStr = UTF8ToString(typeName);
+        var optionsObj = options ? JSON.parse(UTF8ToString(options)) : {};
+
+        console.log('[AIT jslib] GoogleAdMobShowAppsInTossAdMob called, id:', subId, 'options:', optionsObj);
 
         try {
-            var result = window.AppsInToss.GoogleAdMob.showAppsInTossAdMob(JSON.parse(UTF8ToString(args)));
-            var payload = JSON.stringify({
-                CallbackId: callback,
-                TypeName: typeNameStr,
-                Result: JSON.stringify({ success: true, data: JSON.stringify(result), error: '' })
+            var unsubscribe = window.AppsInToss.GoogleAdMob.showAppsInTossAdMob({
+                options: optionsObj.options || optionsObj,
+                onEvent: function(data) {
+                    console.log('[AIT jslib] GoogleAdMobShowAppsInTossAdMob event:', data);
+                    var payload = JSON.stringify({
+                        CallbackId: subId,
+                        TypeName: typeNameStr,
+                        Result: JSON.stringify({
+                            success: true,
+                            data: JSON.stringify(data || {}),
+                            error: ''
+                        })
+                    });
+                    SendMessage('AITCore', 'OnAITEventCallback', payload);
+                },
+                onError: function(error) {
+                    console.log('[AIT jslib] GoogleAdMobShowAppsInTossAdMob error:', error);
+                    var errorMessage = error instanceof Error ? error.message : String(error);
+                    var payload = JSON.stringify({
+                        CallbackId: subId,
+                        TypeName: typeNameStr,
+                        Result: JSON.stringify({
+                            success: false,
+                            data: '',
+                            error: errorMessage
+                        })
+                    });
+                    SendMessage('AITCore', 'OnAITEventCallback', payload);
+                }
             });
-            SendMessage('AITCore', 'OnAITCallback', payload);
+
+            if (!window.__AIT_SUBSCRIPTIONS) {
+                window.__AIT_SUBSCRIPTIONS = {};
+            }
+            window.__AIT_SUBSCRIPTIONS[subId] = unsubscribe;
+
         } catch (error) {
+            console.error('[AIT jslib] GoogleAdMobShowAppsInTossAdMob error:', error);
+            var errorMessage = error instanceof Error ? error.message : String(error);
             var payload = JSON.stringify({
-                CallbackId: callback,
+                CallbackId: subId,
                 TypeName: typeNameStr,
-                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+                Result: JSON.stringify({
+                    success: false,
+                    data: '',
+                    error: errorMessage
+                })
             });
-            SendMessage('AITCore', 'OnAITCallback', payload);
+            SendMessage('AITCore', 'OnAITEventCallback', payload);
         }
     },
 
@@ -153,7 +375,7 @@ mergeInto(LibraryManager.library, {
         console.log('[AIT jslib] loadFullScreenAd called, id:', subId);
 
         try {
-            var unsubscribe = window.loadFullScreenAd({
+            var unsubscribe = window.AppsInToss.loadFullScreenAd({
                 options: { adGroupId: adGroupIdVal },
                 onEvent: function(data) {
                     console.log('[AIT jslib] loadFullScreenAd event:', data);
@@ -214,7 +436,7 @@ mergeInto(LibraryManager.library, {
         console.log('[AIT jslib] showFullScreenAd called, id:', subId);
 
         try {
-            var unsubscribe = window.showFullScreenAd({
+            var unsubscribe = window.AppsInToss.showFullScreenAd({
                 options: { adGroupId: adGroupIdVal },
                 onEvent: function(data) {
                     console.log('[AIT jslib] showFullScreenAd event:', data);

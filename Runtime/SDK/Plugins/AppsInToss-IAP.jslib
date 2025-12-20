@@ -6,40 +6,24 @@
  */
 
 mergeInto(LibraryManager.library, {
-    __IAPCreateOneTimePurchaseOrder_Internal: function(params, subscriptionId, typeName) {
+    __IAPCreateOneTimePurchaseOrder_Internal: function(options, subscriptionId, typeName) {
         var subId = UTF8ToString(subscriptionId);
         var typeNameStr = UTF8ToString(typeName);
-        var parsedParams = JSON.parse(UTF8ToString(params));
+        var optionsObj = options ? JSON.parse(UTF8ToString(options)) : {};
 
-        console.log('[AIT jslib] IAPCreateOneTimePurchaseOrder called, id:', subId);
+        console.log('[AIT jslib] IAPCreateOneTimePurchaseOrder called, id:', subId, 'options:', optionsObj);
 
         try {
-            var result = window.AppsInToss.IAP.createOneTimePurchaseOrder({
-                options: Object.assign({}, parsedParams.options, {
-                processProductGrant: function(data) {
-                    return new Promise(function(resolve) {
-                        var requestId = subId + '_processProductGrant_' + Date.now();
-                        window.__AIT_NESTED_CALLBACKS = window.__AIT_NESTED_CALLBACKS || {};
-                        window.__AIT_NESTED_CALLBACKS[requestId] = resolve;
-
-                        var payload = JSON.stringify({
-                            RequestId: requestId,
-                            CallbackId: subId,
-                            CallbackName: 'processProductGrant',
-                            Data: JSON.stringify(data)
-                        });
-                        SendMessage('AITCore', 'OnNestedCallback', payload);
-                    });
-                }
-                }),
-                onEvent: function(event) {
-                    console.log('[AIT jslib] IAPCreateOneTimePurchaseOrder event:', event);
+            var unsubscribe = window.AppsInToss.IAP.createOneTimePurchaseOrder({
+                options: optionsObj.options || optionsObj,
+                onEvent: function(data) {
+                    console.log('[AIT jslib] IAPCreateOneTimePurchaseOrder event:', data);
                     var payload = JSON.stringify({
                         CallbackId: subId,
                         TypeName: typeNameStr,
                         Result: JSON.stringify({
                             success: true,
-                            data: JSON.stringify(event || {}),
+                            data: JSON.stringify(data || {}),
                             error: ''
                         })
                     });
@@ -61,11 +45,10 @@ mergeInto(LibraryManager.library, {
                 }
             });
 
-            // cleanup 함수 저장
             if (!window.__AIT_SUBSCRIPTIONS) {
                 window.__AIT_SUBSCRIPTIONS = {};
             }
-            window.__AIT_SUBSCRIPTIONS[subId] = result;
+            window.__AIT_SUBSCRIPTIONS[subId] = unsubscribe;
 
         } catch (error) {
             console.error('[AIT jslib] IAPCreateOneTimePurchaseOrder error:', error);

@@ -9,7 +9,7 @@
     "deploy": "ait deploy"
   },
   "dependencies": {
-    "@apps-in-toss/web-framework": "1.6.0"
+    "@apps-in-toss/web-framework": "1.6.2"
   },
   "devDependencies": {
     "vite": "^7.2.6",

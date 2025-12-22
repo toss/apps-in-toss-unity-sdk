@@ -161,6 +161,13 @@ jobs:
           # 확인
           cat "$BUILDCONFIG_PKG" | jq '.dependencies'
 
+      - name: BuildConfig pnpm-lock.yaml 업데이트
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          cd WebGLTemplates/AITTemplate/BuildConfig
+          pnpm install --no-frozen-lockfile
+          echo "BuildConfig pnpm-lock.yaml 업데이트 완료"
+
       - name: README.md 설치 가이드 업데이트
         if: steps.check.outputs.skip != 'true'
         run: |

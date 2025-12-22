@@ -648,7 +648,7 @@ ${jsConversions ? '\n' + jsConversions + '\n' : ''}
 
   try {
     const unsubscribe = ${apiCallExpr}({
-      options: optionsObj.options || optionsObj,
+      options: optionsObj,
       onEvent: (data: unknown) => {
         console.log('[AIT jslib] ${api.name} event:', data);
         const payload = JSON.stringify({
@@ -989,7 +989,7 @@ ${paramConversions ? '\n' + paramConversions + '\n' : ''}
 
         try {
             var unsubscribe = ${apiCallExpr}({
-                options: optionsObj.options || optionsObj,
+                options: optionsObj,
                 onEvent: function(data) {
                     console.log('[AIT jslib] ${api.name} event:', data);
                     var payload = JSON.stringify({

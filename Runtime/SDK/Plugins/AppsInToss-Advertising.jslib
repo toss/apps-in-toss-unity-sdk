@@ -15,7 +15,7 @@ mergeInto(LibraryManager.library, {
 
         try {
             var unsubscribe = window.AppsInToss.GoogleAdMob.loadAdMobInterstitialAd({
-                options: optionsObj.options || optionsObj,
+                options: optionsObj,
                 onEvent: function(data) {
                     console.log('[AIT jslib] GoogleAdMobLoadAdMobInterstitialAd event:', data);
                     var payload = JSON.stringify({
@@ -75,7 +75,7 @@ mergeInto(LibraryManager.library, {
 
         try {
             var unsubscribe = window.AppsInToss.GoogleAdMob.showAdMobInterstitialAd({
-                options: optionsObj.options || optionsObj,
+                options: optionsObj,
                 onEvent: function(data) {
                     console.log('[AIT jslib] GoogleAdMobShowAdMobInterstitialAd event:', data);
                     var payload = JSON.stringify({
@@ -135,7 +135,7 @@ mergeInto(LibraryManager.library, {
 
         try {
             var unsubscribe = window.AppsInToss.GoogleAdMob.loadAdMobRewardedAd({
-                options: optionsObj.options || optionsObj,
+                options: optionsObj,
                 onEvent: function(data) {
                     console.log('[AIT jslib] GoogleAdMobLoadAdMobRewardedAd event:', data);
                     var payload = JSON.stringify({
@@ -195,7 +195,7 @@ mergeInto(LibraryManager.library, {
 
         try {
             var unsubscribe = window.AppsInToss.GoogleAdMob.showAdMobRewardedAd({
-                options: optionsObj.options || optionsObj,
+                options: optionsObj,
                 onEvent: function(data) {
                     console.log('[AIT jslib] GoogleAdMobShowAdMobRewardedAd event:', data);
                     var payload = JSON.stringify({
@@ -255,7 +255,7 @@ mergeInto(LibraryManager.library, {
 
         try {
             var unsubscribe = window.AppsInToss.GoogleAdMob.loadAppsInTossAdMob({
-                options: optionsObj.options || optionsObj,
+                options: optionsObj,
                 onEvent: function(data) {
                     console.log('[AIT jslib] GoogleAdMobLoadAppsInTossAdMob event:', data);
                     var payload = JSON.stringify({
@@ -315,7 +315,7 @@ mergeInto(LibraryManager.library, {
 
         try {
             var unsubscribe = window.AppsInToss.GoogleAdMob.showAppsInTossAdMob({
-                options: optionsObj.options || optionsObj,
+                options: optionsObj,
                 onEvent: function(data) {
                     console.log('[AIT jslib] GoogleAdMobShowAppsInTossAdMob event:', data);
                     var payload = JSON.stringify({

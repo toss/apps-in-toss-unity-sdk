@@ -326,6 +326,15 @@ export class CSharpGenerator {
         continue;
       }
 
+      // Callback-based API (loadFullScreenAd, GoogleAdMob.loadAppsInTossAdMob 패턴) 이벤트 타입 수집
+      if (api.isCallbackBased) {
+        const callbackEventType = this.extractCallbackEventType(api);
+        if (callbackEventType && callbackEventType !== 'void') {
+          eventDataTypes.add(callbackEventType);
+        }
+        continue;
+      }
+
       // 이벤트 구독 API는 콜백 타입 수집에서 제외
       if (api.isEventSubscription) continue;
 
@@ -808,6 +817,32 @@ export class CSharpGenerator {
       }
     }
     return 'object';
+  }
+
+  /**
+   * 콜백 기반 API에서 이벤트 타입 추출
+   * loadFullScreenAd, GoogleAdMob.loadAppsInTossAdMob 등의 패턴에서 onEvent 콜백의 데이터 타입 추출
+   */
+  private extractCallbackEventType(api: ParsedAPI): string | undefined {
+    if (!api.isCallbackBased) return undefined;
+
+    // 1. 직접 파라미터에서 onEvent 찾기 (top-level export 패턴)
+    let onEventParam = api.parameters.find(p => p.name === 'onEvent');
+
+    // 2. 없으면 첫 번째 파라미터(args 객체)의 프로퍼티에서 찾기 (namespace method 패턴)
+    if (!onEventParam && api.parameters.length === 1 && api.parameters[0].type.kind === 'object') {
+      const argsProperties = api.parameters[0].type.properties || [];
+      const onEventProp = argsProperties.find(p => p.name === 'onEvent');
+      if (onEventProp && onEventProp.type.kind === 'function') {
+        onEventParam = { name: 'onEvent', type: onEventProp.type, optional: false };
+      }
+    }
+
+    if (onEventParam && onEventParam.type.kind === 'function' && onEventParam.type.functionParams?.[0]) {
+      return mapToCSharpType(onEventParam.type.functionParams[0]);
+    }
+
+    return undefined;
   }
 
   /**

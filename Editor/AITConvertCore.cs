@@ -780,6 +780,9 @@ namespace AppsInToss
 
             string distPath = Path.Combine(buildProjectPath, "dist");
 
+            // 빌드 완료 리포트 출력
+            PrintBuildReport(buildProjectPath, distPath);
+
             Debug.Log($"[AIT] ✓ 패키징 완료: {distPath}");
 
             return AITExportError.SUCCEED;
@@ -961,11 +964,41 @@ namespace AppsInToss
 
                 // Build 폴더에서 실제 파일 이름 찾기
                 // Unity 압축 설정에 따라 .unityweb, .gz, .br 확장자가 붙을 수 있음
-                string loaderFile = FindFileInBuild(buildSrc, "*.loader.js");
-                string dataFile = FindFileInBuild(buildSrc, "*.data*");
-                string frameworkFile = FindFileInBuild(buildSrc, "*.framework.js*");
-                string wasmFile = FindFileInBuild(buildSrc, "*.wasm*");
-                string symbolsFile = FindFileInBuild(buildSrc, "*.symbols.json*");
+                Debug.Log("[AIT] WebGL 빌드 파일 검색 중...");
+
+                // 필수 파일들 (isRequired = true)
+                string loaderFile = FindFileInBuild(buildSrc, "*.loader.js", isRequired: true);
+                string dataFile = FindFileInBuild(buildSrc, "*.data*", isRequired: true);
+                string frameworkFile = FindFileInBuild(buildSrc, "*.framework.js*", isRequired: true);
+                string wasmFile = FindFileInBuild(buildSrc, "*.wasm*", isRequired: true);
+
+                // 선택적 파일 (isRequired = false)
+                string symbolsFile = FindFileInBuild(buildSrc, "*.symbols.json*", isRequired: false);
+
+                // 필수 파일 검증 경고
+                var missingFiles = new List<string>();
+                if (string.IsNullOrEmpty(loaderFile)) missingFiles.Add("*.loader.js");
+                if (string.IsNullOrEmpty(dataFile)) missingFiles.Add("*.data");
+                if (string.IsNullOrEmpty(frameworkFile)) missingFiles.Add("*.framework.js");
+                if (string.IsNullOrEmpty(wasmFile)) missingFiles.Add("*.wasm");
+
+                if (missingFiles.Count > 0)
+                {
+                    Debug.LogError("[AIT] ========================================");
+                    Debug.LogError("[AIT] ⚠ WebGL 빌드 파일 검증 경고!");
+                    Debug.LogError("[AIT] ========================================");
+                    Debug.LogError($"[AIT] 누락된 필수 파일: {string.Join(", ", missingFiles)}");
+                    Debug.LogError("[AIT] ");
+                    Debug.LogError("[AIT] 가능한 원인:");
+                    Debug.LogError("[AIT]   1. Unity WebGL 빌드가 완료되지 않았습니다.");
+                    Debug.LogError("[AIT]   2. WebGL 빌드가 실패했지만 부분 결과물만 남아있습니다.");
+                    Debug.LogError("[AIT]   3. 빌드 설정(압축 방식 등)이 예상과 다릅니다.");
+                    Debug.LogError("[AIT] ");
+                    Debug.LogError("[AIT] 해결 방법:");
+                    Debug.LogError("[AIT]   1. 'Clean Build' 옵션을 활성화하고 다시 빌드하세요.");
+                    Debug.LogError("[AIT]   2. Unity Console에서 빌드 에러를 확인하세요.");
+                    Debug.LogError("[AIT] ========================================");
+                }
 
                 // 프로필 기반 설정값 (Mock 브릿지가 비활성화되면 프로덕션 모드로 간주)
                 string isProduction = profile.enableMockBridge ? "false" : "true";
@@ -990,6 +1023,9 @@ namespace AppsInToss
 
                 File.WriteAllText(indexDest, indexContent, System.Text.Encoding.UTF8);
                 Debug.Log("[AIT] index.html → 프로젝트 루트에 생성");
+
+                // 플레이스홀더 치환 결과 검증
+                ValidatePlaceholderSubstitution(indexContent, indexDest);
             }
 
             // Runtime/appsintoss-unity-bridge.js 파일도 치환
@@ -1010,16 +1046,220 @@ namespace AppsInToss
             Debug.Log("[AIT]   - Build, TemplateData, Runtime → public/");
         }
 
-        private static string FindFileInBuild(string buildPath, string pattern)
+        /// <summary>
+        /// index.html에서 미치환된 플레이스홀더가 있는지 검증합니다.
+        /// </summary>
+        private static void ValidatePlaceholderSubstitution(string content, string filePath)
+        {
+            // %로 시작하고 %로 끝나는 패턴 검색 (예: %UNITY_WEBGL_LOADER_URL%)
+            var regex = new System.Text.RegularExpressions.Regex(@"%[A-Z_]+%");
+            var matches = regex.Matches(content);
+
+            if (matches.Count > 0)
+            {
+                Debug.LogWarning("[AIT] ========================================");
+                Debug.LogWarning("[AIT] ⚠ 미치환된 플레이스홀더 발견!");
+                Debug.LogWarning("[AIT] ========================================");
+
+                var uniquePlaceholders = new HashSet<string>();
+                foreach (System.Text.RegularExpressions.Match match in matches)
+                {
+                    uniquePlaceholders.Add(match.Value);
+                }
+
+                foreach (var placeholder in uniquePlaceholders)
+                {
+                    Debug.LogWarning($"[AIT]   - {placeholder}");
+                }
+
+                Debug.LogWarning($"[AIT] 파일: {filePath}");
+                Debug.LogWarning("[AIT] 이 플레이스홀더들이 치환되지 않으면 런타임 에러가 발생할 수 있습니다.");
+                Debug.LogWarning("[AIT] ========================================");
+            }
+
+            // 잘못된 경로 패턴 검증 (예: Build/ 뒤에 파일명이 없는 경우)
+            if (content.Contains("src=\"Build/\"") || content.Contains("\"Build/\"") || content.Contains("Build/\","))
+            {
+                Debug.LogError("[AIT] ========================================");
+                Debug.LogError("[AIT] ✗ 치명적: 빈 파일 경로 발견!");
+                Debug.LogError("[AIT] ========================================");
+                Debug.LogError("[AIT] index.html에 'Build/' 뒤에 파일명이 없는 경로가 있습니다.");
+                Debug.LogError("[AIT] 이로 인해 'createUnityInstance is not defined' 에러가 발생합니다.");
+                Debug.LogError("[AIT] ");
+                Debug.LogError("[AIT] 원인: WebGL 빌드의 loader.js 파일을 찾지 못했습니다.");
+                Debug.LogError("[AIT] 해결: 위의 빌드 파일 검색 로그를 확인하세요.");
+                Debug.LogError("[AIT] ========================================");
+            }
+        }
+
+        /// <summary>
+        /// 빌드 완료 후 결과 리포트를 출력합니다.
+        /// </summary>
+        private static void PrintBuildReport(string buildProjectPath, string distPath)
+        {
+            Debug.Log("[AIT] ========================================");
+            Debug.Log("[AIT] 빌드 완료 리포트");
+            Debug.Log("[AIT] ========================================");
+
+            // 1. 필수 파일 존재 확인
+            string publicBuildPath = Path.Combine(buildProjectPath, "public", "Build");
+
+            if (!Directory.Exists(publicBuildPath))
+            {
+                Debug.LogError($"[AIT] ✗ Build 폴더가 존재하지 않습니다: {publicBuildPath}");
+                Debug.Log("[AIT] ========================================");
+                return;
+            }
+
+            var requiredPatterns = new Dictionary<string, string>
+            {
+                { "*.loader.js", "Unity WebGL 로더 (필수)" },
+                { "*.data*", "게임 데이터 (필수)" },
+                { "*.framework.js*", "Unity 프레임워크 (필수)" },
+                { "*.wasm*", "WebAssembly 바이너리 (필수)" }
+            };
+
+            var optionalPatterns = new Dictionary<string, string>
+            {
+                { "*.symbols.json*", "디버그 심볼 (선택)" }
+            };
+
+            bool hasErrors = false;
+
+            Debug.Log("[AIT] ");
+            Debug.Log("[AIT] WebGL 빌드 파일:");
+
+            foreach (var kvp in requiredPatterns)
+            {
+                var files = Directory.GetFiles(publicBuildPath, kvp.Key);
+                if (files.Length > 0)
+                {
+                    var fileInfo = new FileInfo(files[0]);
+                    string size = FormatFileSize(fileInfo.Length);
+                    Debug.Log($"[AIT]   ✓ {Path.GetFileName(files[0])} ({size}) - {kvp.Value}");
+                }
+                else
+                {
+                    Debug.LogError($"[AIT]   ✗ {kvp.Key} - {kvp.Value} [누락됨!]");
+                    hasErrors = true;
+                }
+            }
+
+            foreach (var kvp in optionalPatterns)
+            {
+                var files = Directory.GetFiles(publicBuildPath, kvp.Key);
+                if (files.Length > 0)
+                {
+                    var fileInfo = new FileInfo(files[0]);
+                    string size = FormatFileSize(fileInfo.Length);
+                    Debug.Log($"[AIT]   ○ {Path.GetFileName(files[0])} ({size}) - {kvp.Value}");
+                }
+            }
+
+            // 2. index.html 검증
+            string indexPath = Path.Combine(buildProjectPath, "index.html");
+            if (File.Exists(indexPath))
+            {
+                string indexContent = File.ReadAllText(indexPath);
+
+                // 빈 경로 검사
+                bool hasBadPath = indexContent.Contains("src=\"Build/\"") ||
+                                  indexContent.Contains("\"Build/\"") ||
+                                  indexContent.Contains("Build/\",");
+
+                if (hasBadPath)
+                {
+                    Debug.LogError("[AIT]   ✗ index.html에 잘못된 빌드 경로 발견!");
+                    hasErrors = true;
+                }
+                else
+                {
+                    Debug.Log("[AIT]   ✓ index.html 경로 검증 통과");
+                }
+            }
+
+            // 3. 최종 결과
+            Debug.Log("[AIT] ");
+            if (hasErrors)
+            {
+                Debug.LogError("[AIT] ⚠ 빌드에 문제가 있습니다!");
+                Debug.LogError("[AIT] 위의 에러를 확인하고 Clean Build를 실행하세요.");
+            }
+            else
+            {
+                Debug.Log("[AIT] ✅ 모든 필수 파일 확인 완료");
+                Debug.Log($"[AIT] 배포 폴더: {distPath}");
+            }
+            Debug.Log("[AIT] ========================================");
+        }
+
+        /// <summary>
+        /// 파일 크기를 읽기 쉬운 형식으로 변환합니다.
+        /// </summary>
+        private static string FormatFileSize(long bytes)
+        {
+            string[] suffixes = { "B", "KB", "MB", "GB" };
+            int order = 0;
+            double size = bytes;
+            while (size >= 1024 && order < suffixes.Length - 1)
+            {
+                order++;
+                size /= 1024;
+            }
+            return $"{size:0.##} {suffixes[order]}";
+        }
+
+        /// <summary>
+        /// Build 폴더에서 패턴에 맞는 파일을 찾습니다.
+        /// </summary>
+        /// <param name="buildPath">검색할 빌드 경로</param>
+        /// <param name="pattern">파일 패턴 (예: *.loader.js)</param>
+        /// <param name="isRequired">필수 파일 여부 (true면 못 찾을 경우 에러 로그)</param>
+        /// <returns>찾은 파일명 또는 빈 문자열</returns>
+        private static string FindFileInBuild(string buildPath, string pattern, bool isRequired = false)
         {
             if (!Directory.Exists(buildPath))
+            {
+                if (isRequired)
+                {
+                    Debug.LogError($"[AIT] 빌드 경로가 존재하지 않습니다: {buildPath}");
+                }
                 return "";
+            }
 
             var files = Directory.GetFiles(buildPath, pattern);
             if (files.Length > 0)
             {
-                return Path.GetFileName(files[0]);
+                string fileName = Path.GetFileName(files[0]);
+                if (isRequired)
+                {
+                    Debug.Log($"[AIT]   ✓ {pattern} → {fileName}");
+                }
+                return fileName;
             }
+
+            if (isRequired)
+            {
+                Debug.LogError($"[AIT] ✗ 필수 파일을 찾을 수 없습니다: {pattern}");
+                Debug.LogError($"[AIT]   검색 경로: {buildPath}");
+                Debug.LogError($"[AIT]   이 파일이 없으면 런타임에서 'createUnityInstance is not defined' 에러가 발생합니다.");
+
+                // 실제로 어떤 파일들이 있는지 출력
+                var existingFiles = Directory.GetFiles(buildPath);
+                if (existingFiles.Length > 0)
+                {
+                    Debug.LogError($"[AIT]   Build 폴더의 실제 파일들:");
+                    foreach (var file in existingFiles)
+                    {
+                        Debug.LogError($"[AIT]     - {Path.GetFileName(file)}");
+                    }
+                }
+                else
+                {
+                    Debug.LogError($"[AIT]   Build 폴더가 비어 있습니다!");
+                }
+            }
+
             return "";
         }
 

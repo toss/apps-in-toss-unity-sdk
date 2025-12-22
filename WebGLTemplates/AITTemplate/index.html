@@ -304,8 +304,48 @@
     <!-- Web Framework Bridge - @apps-in-toss/web-framework 함수를 window.AppsInToss에 노출 -->
     <script type="module" src="./unity-bridge.ts"></script>
 
+    <!-- 에러 표시 함수 (Unity Loader보다 먼저 정의) -->
+    <script>
+        // 에러 표시 함수
+        function showLoadError(title, message, hints, debugInfo) {
+            console.error('[AIT] ' + title);
+            console.error('[AIT] ' + message);
+            if (hints) {
+                hints.forEach(function(hint) {
+                    console.error('[AIT]   - ' + hint);
+                });
+            }
+            if (debugInfo) {
+                console.error('[AIT] Debug info:', JSON.stringify(debugInfo, null, 2));
+            }
+
+            // 로딩 화면을 에러 화면으로 변경
+            var loadingElement = document.getElementById('ait-loading');
+            if (loadingElement) {
+                loadingElement.innerHTML =
+                    '<div style="padding: 20px; text-align: center; max-width: 400px;">' +
+                        '<div style="font-size: 48px; margin-bottom: 20px;">⚠️</div>' +
+                        '<div style="font-size: 18px; font-weight: bold; margin-bottom: 10px; color: #ff6b6b;">' + title + '</div>' +
+                        '<div style="font-size: 14px; margin-bottom: 20px; color: #ccc;">' + message + '</div>' +
+                        '<div style="font-size: 12px; text-align: left; background: rgba(0,0,0,0.3); padding: 15px; border-radius: 8px; color: #aaa;">' +
+                            '<div style="font-weight: bold; margin-bottom: 8px;">가능한 해결 방법:</div>' +
+                            '<ul style="margin: 0; padding-left: 20px;">' +
+                                (hints ? hints.map(function(h) { return '<li style="margin-bottom: 4px;">' + h + '</li>'; }).join('') : '') +
+                            '</ul>' +
+                        '</div>' +
+                        '<div style="margin-top: 20px;">' +
+                            '<button onclick="location.reload()" style="padding: 10px 20px; background: #4a90d9; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px;">다시 시도</button>' +
+                        '</div>' +
+                    '</div>';
+            }
+        }
+
+        // Loader 스크립트 로드 상태 추적
+        window._aitLoaderLoaded = false;
+    </script>
+
     <!-- Unity Loader Script -->
-    <script src="%UNITY_WEBGL_LOADER_URL%"></script>
+    <script src="%UNITY_WEBGL_LOADER_URL%" onerror="showLoadError('Unity Loader 스크립트 로드 실패', '게임을 시작하는 데 필요한 파일을 불러올 수 없습니다.', ['파일 경로: %UNITY_WEBGL_LOADER_URL%', '서버에서 파일이 제공되고 있는지 확인하세요.', '브라우저 개발자 도구의 Network 탭을 확인하세요.'], {url: '%UNITY_WEBGL_LOADER_URL%'});" onload="window._aitLoaderLoaded = true; console.log('[AIT] ✓ Unity Loader 스크립트 로드 완료');"></script>
 
     <script>
         var container = document.querySelector("#unity-container");
@@ -384,6 +424,48 @@
         console.log('[AIT] Unity 로딩 시작...');
         updateLoadingProgress(0.1);
 
+        // createUnityInstance 존재 여부 확인
+        if (typeof createUnityInstance === 'undefined') {
+            console.error('[AIT] ========================================');
+            console.error('[AIT] ✗ createUnityInstance is not defined!');
+            console.error('[AIT] ========================================');
+            console.error('[AIT] Unity Loader 스크립트가 정상적으로 로드되지 않았습니다.');
+            console.error('[AIT] ');
+            console.error('[AIT] 가능한 원인:');
+            console.error('[AIT]   1. loader.js 파일 경로가 잘못되었습니다.');
+            console.error('[AIT]   2. loader.js 파일이 서버에 존재하지 않습니다.');
+            console.error('[AIT]   3. 빌드 시 loader.js 파일을 찾지 못했습니다.');
+            console.error('[AIT] ');
+            console.error('[AIT] 확인할 사항:');
+            console.error('[AIT]   - 설정된 로더 URL: %UNITY_WEBGL_LOADER_URL%');
+            console.error('[AIT]   - Loader 스크립트 로드 상태: ' + (window._aitLoaderLoaded ? '성공' : '실패/대기중'));
+            console.error('[AIT] ========================================');
+
+            // 빌드 파일 정보 출력
+            console.error('[AIT] 현재 빌드 설정:');
+            console.error('[AIT]   - dataUrl:', config.dataUrl);
+            console.error('[AIT]   - frameworkUrl:', config.frameworkUrl);
+            console.error('[AIT]   - codeUrl:', config.codeUrl);
+
+            showLoadError(
+                'Unity 엔진 초기화 실패',
+                'createUnityInstance 함수를 찾을 수 없습니다.',
+                [
+                    'Unity WebGL 빌드가 손상되었을 수 있습니다.',
+                    '개발자에게 문의하거나, 잠시 후 다시 시도해 주세요.',
+                    '(개발자용) Unity Editor에서 Clean Build를 실행하세요.'
+                ],
+                {
+                    loaderUrl: '%UNITY_WEBGL_LOADER_URL%',
+                    loaderLoaded: window._aitLoaderLoaded || false,
+                    config: config
+                }
+            );
+            return;
+        }
+
+        // 정상적으로 로드된 경우 실행
+        console.log('[AIT] ✓ createUnityInstance 함수 확인됨');
         createUnityInstance(canvas, config, (progress) => {
             var unityProgress = 0.1 + (progress * 0.9); // 10%부터 시작해서 100%까지
             updateLoadingProgress(unityProgress);

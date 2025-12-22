@@ -12,7 +12,7 @@
     "@apps-in-toss/web-framework": "1.6.0"
   },
   "devDependencies": {
-    "vite": "^7.2.6",
+    "vite": "^7.3.0",
     "typescript": "^5.0.0"
   },
   "pnpm": {

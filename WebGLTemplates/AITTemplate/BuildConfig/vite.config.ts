@@ -1,6 +1,8 @@
 import { defineConfig } from 'vite';
 
 export default defineConfig({
+  // Apps in Toss 플랫폼에서 서브 경로 호스팅을 위해 상대 경로 사용
+  base: './',
   server: {
     host: process.env.AIT_VITE_HOST || '%AIT_VITE_HOST%',
     port: parseInt(process.env.AIT_VITE_PORT || '%AIT_VITE_PORT%', 10),

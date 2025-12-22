@@ -33,7 +33,7 @@ namespace AppsInToss
                 onEvent,
                 onError
             );
-            __GoogleAdMobLoadAdMobInterstitialAd_Internal(AITJsonSettings.Serialize(new { options = options }), subscriptionId, "LoadAdMobInterstitialAdEvent");
+            __GoogleAdMobLoadAdMobInterstitialAd_Internal(AITJsonSettings.Serialize(options), subscriptionId, "LoadAdMobInterstitialAdEvent");
             return () => AITCore.Instance.Unsubscribe(subscriptionId);
 #else
             // Unity Editor mock implementation
@@ -62,7 +62,7 @@ namespace AppsInToss
                 onEvent,
                 onError
             );
-            __GoogleAdMobShowAdMobInterstitialAd_Internal(AITJsonSettings.Serialize(new { options = options }), subscriptionId, "ShowAdMobInterstitialAdEvent");
+            __GoogleAdMobShowAdMobInterstitialAd_Internal(AITJsonSettings.Serialize(options), subscriptionId, "ShowAdMobInterstitialAdEvent");
             return () => AITCore.Instance.Unsubscribe(subscriptionId);
 #else
             // Unity Editor mock implementation
@@ -91,7 +91,7 @@ namespace AppsInToss
                 onEvent,
                 onError
             );
-            __GoogleAdMobLoadAdMobRewardedAd_Internal(AITJsonSettings.Serialize(new { options = options }), subscriptionId, "LoadAdMobRewardedAdEvent");
+            __GoogleAdMobLoadAdMobRewardedAd_Internal(AITJsonSettings.Serialize(options), subscriptionId, "LoadAdMobRewardedAdEvent");
             return () => AITCore.Instance.Unsubscribe(subscriptionId);
 #else
             // Unity Editor mock implementation
@@ -120,7 +120,7 @@ namespace AppsInToss
                 onEvent,
                 onError
             );
-            __GoogleAdMobShowAdMobRewardedAd_Internal(AITJsonSettings.Serialize(new { options = options }), subscriptionId, "ShowAdMobRewardedAdEvent");
+            __GoogleAdMobShowAdMobRewardedAd_Internal(AITJsonSettings.Serialize(options), subscriptionId, "ShowAdMobRewardedAdEvent");
             return () => AITCore.Instance.Unsubscribe(subscriptionId);
 #else
             // Unity Editor mock implementation
@@ -152,7 +152,7 @@ namespace AppsInToss
                 onEvent,
                 onError
             );
-            __GoogleAdMobLoadAppsInTossAdMob_Internal(AITJsonSettings.Serialize(new { options = options }), subscriptionId, "LoadAdMobEvent");
+            __GoogleAdMobLoadAppsInTossAdMob_Internal(AITJsonSettings.Serialize(options), subscriptionId, "LoadAdMobEvent");
             return () => AITCore.Instance.Unsubscribe(subscriptionId);
 #else
             // Unity Editor mock implementation
@@ -184,7 +184,7 @@ namespace AppsInToss
                 onEvent,
                 onError
             );
-            __GoogleAdMobShowAppsInTossAdMob_Internal(AITJsonSettings.Serialize(new { options = options }), subscriptionId, "ShowAdMobEvent");
+            __GoogleAdMobShowAppsInTossAdMob_Internal(AITJsonSettings.Serialize(options), subscriptionId, "ShowAdMobEvent");
             return () => AITCore.Instance.Unsubscribe(subscriptionId);
 #else
             // Unity Editor mock implementation

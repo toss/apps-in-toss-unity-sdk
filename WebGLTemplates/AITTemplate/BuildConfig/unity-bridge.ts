@@ -36,20 +36,8 @@ declare global {
   }
 }
 
-// ES Module 객체는 frozen이므로 새 객체로 복사하여 window.AppsInToss에 노출
-// (직접 할당 시 "Cannot assign to read only property" 에러 발생)
-window.AppsInToss = {
-  ...WebFramework,
-  GoogleAdMob,
-  IAP,
-  SafeAreaInsets,
-  Storage,
-  TossAds,
-  env,
-  graniteEvent,
-  partner,
-  tdsEvent,
-} as typeof WebFramework & {
+// 모듈 전체를 window.AppsInToss에 노출
+window.AppsInToss = WebFramework as typeof WebFramework & {
   GoogleAdMob: typeof GoogleAdMob;
   IAP: typeof IAP;
   SafeAreaInsets: typeof SafeAreaInsets;
@@ -60,6 +48,17 @@ window.AppsInToss = {
   partner: typeof partner;
   tdsEvent: typeof tdsEvent;
 };
+
+// 네임스페이스 API 명시적 노출 (ES module export 누락 방지)
+window.AppsInToss.GoogleAdMob = GoogleAdMob;
+window.AppsInToss.IAP = IAP;
+window.AppsInToss.SafeAreaInsets = SafeAreaInsets;
+window.AppsInToss.Storage = Storage;
+window.AppsInToss.TossAds = TossAds;
+window.AppsInToss.env = env;
+window.AppsInToss.graniteEvent = graniteEvent;
+window.AppsInToss.partner = partner;
+window.AppsInToss.tdsEvent = tdsEvent;
 
 console.log('[Unity Bridge] AppsInToss bridge initialized with', Object.keys(WebFramework).length, 'exports');
 console.log('[Unity Bridge] Available:', Object.keys(WebFramework).join(', '));

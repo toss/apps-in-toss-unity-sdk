@@ -99,7 +99,7 @@ namespace AppsInToss
                 onEvent,
                 onError
             );
-            __{{{this.name}}}_Internal(AITJsonSettings.Serialize(new { options = {{#if this.parameters}}{{#with (lookup this.parameters 0)}}{{this.paramName}}{{/with}}{{else}}(object)null{{/if}} }), subscriptionId, "{{{this.callbackEventType}}}");
+            __{{{this.name}}}_Internal(AITJsonSettings.Serialize({{#if this.parameters}}{{#with (lookup this.parameters 0)}}{{this.paramName}}{{/with}}{{else}}(object)null{{/if}}), subscriptionId, "{{{this.callbackEventType}}}");
             return () => AITCore.Instance.Unsubscribe(subscriptionId);
 #else
             // Unity Editor mock implementation

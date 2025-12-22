@@ -15,7 +15,7 @@ mergeInto(LibraryManager.library, {
 
         try {
             var unsubscribe = window.AppsInToss.IAP.createOneTimePurchaseOrder({
-                options: optionsObj.options || optionsObj,
+                options: optionsObj,
                 onEvent: function(data) {
                     console.log('[AIT jslib] IAPCreateOneTimePurchaseOrder event:', data);
                     var payload = JSON.stringify({

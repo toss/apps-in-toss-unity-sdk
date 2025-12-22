@@ -20,7 +20,7 @@
   "homepage": "https://appsintoss.com",
   "repository": {
     "type": "git",
-    "url": "https://github.com/appsintoss/apps-in-toss-unity-transform-sdk"
+    "url": "https://github.com/toss/apps-in-toss-unity-sdk"
   },
   "engines": {
     "unity": ">=2021.3"

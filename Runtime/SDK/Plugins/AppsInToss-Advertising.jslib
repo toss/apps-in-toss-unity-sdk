@@ -15,7 +15,7 @@ mergeInto(LibraryManager.library, {
 
         try {
             var unsubscribe = window.AppsInToss.GoogleAdMob.loadAdMobInterstitialAd({
-                options: optionsObj.options || optionsObj,
+                options: optionsObj,
                 onEvent: function(data) {
                     console.log('[AIT jslib] GoogleAdMobLoadAdMobInterstitialAd event:', data);
                     var payload = JSON.stringify({
@@ -75,7 +75,7 @@ mergeInto(LibraryManager.library, {
 
         try {
             var unsubscribe = window.AppsInToss.GoogleAdMob.showAdMobInterstitialAd({
-                options: optionsObj.options || optionsObj,
+                options: optionsObj,
                 onEvent: function(data) {
                     console.log('[AIT jslib] GoogleAdMobShowAdMobInterstitialAd event:', data);
                     var payload = JSON.stringify({
@@ -135,7 +135,7 @@ mergeInto(LibraryManager.library, {
 
         try {
             var unsubscribe = window.AppsInToss.GoogleAdMob.loadAdMobRewardedAd({
-                options: optionsObj.options || optionsObj,
+                options: optionsObj,
                 onEvent: function(data) {
                     console.log('[AIT jslib] GoogleAdMobLoadAdMobRewardedAd event:', data);
                     var payload = JSON.stringify({
@@ -195,7 +195,7 @@ mergeInto(LibraryManager.library, {
 
         try {
             var unsubscribe = window.AppsInToss.GoogleAdMob.showAdMobRewardedAd({
-                options: optionsObj.options || optionsObj,
+                options: optionsObj,
                 onEvent: function(data) {
                     console.log('[AIT jslib] GoogleAdMobShowAdMobRewardedAd event:', data);
                     var payload = JSON.stringify({
@@ -249,25 +249,13 @@ mergeInto(LibraryManager.library, {
     __GoogleAdMobLoadAppsInTossAdMob_Internal: function(options, subscriptionId, typeName) {
         var subId = UTF8ToString(subscriptionId);
         var typeNameStr = UTF8ToString(typeName);
-        var optionsStr = options ? UTF8ToString(options) : null;
-        var optionsObj = optionsStr ? JSON.parse(optionsStr) : {};
+        var optionsObj = options ? JSON.parse(UTF8ToString(options)) : {};
 
-        console.log('[AIT jslib] GoogleAdMobLoadAppsInTossAdMob called');
-        console.log('[AIT jslib]   subscriptionId:', subId);
-        console.log('[AIT jslib]   raw options string:', optionsStr);
-        console.log('[AIT jslib]   parsed optionsObj:', JSON.stringify(optionsObj, null, 2));
-        console.log('[AIT jslib]   optionsObj.options:', JSON.stringify(optionsObj.options, null, 2));
-
-        var apiOptions = optionsObj.options || optionsObj;
-        console.log('[AIT jslib]   final apiOptions:', JSON.stringify(apiOptions, null, 2));
-
-        var apiPayload = { options: apiOptions };
-        console.log('[AIT jslib]   full API payload:', JSON.stringify(apiPayload, null, 2));
+        console.log('[AIT jslib] GoogleAdMobLoadAppsInTossAdMob called, id:', subId, 'options:', optionsObj);
 
         try {
-            console.log('[AIT jslib]   calling window.AppsInToss.GoogleAdMob.loadAppsInTossAdMob...');
             var unsubscribe = window.AppsInToss.GoogleAdMob.loadAppsInTossAdMob({
-                options: apiOptions,
+                options: optionsObj,
                 onEvent: function(data) {
                     console.log('[AIT jslib] GoogleAdMobLoadAppsInTossAdMob event:', data);
                     var payload = JSON.stringify({
@@ -282,12 +270,7 @@ mergeInto(LibraryManager.library, {
                     SendMessage('AITCore', 'OnAITEventCallback', payload);
                 },
                 onError: function(error) {
-                    console.log('[AIT jslib] GoogleAdMobLoadAppsInTossAdMob onError callback:');
-                    console.log('[AIT jslib]   error type:', typeof error);
-                    console.log('[AIT jslib]   error:', error);
-                    console.log('[AIT jslib]   error.message:', error && error.message);
-                    console.log('[AIT jslib]   error.code:', error && error.code);
-                    console.log('[AIT jslib]   error stringified:', JSON.stringify(error, null, 2));
+                    console.log('[AIT jslib] GoogleAdMobLoadAppsInTossAdMob error:', error);
                     var errorMessage = error instanceof Error ? error.message : String(error);
                     var payload = JSON.stringify({
                         CallbackId: subId,
@@ -302,18 +285,13 @@ mergeInto(LibraryManager.library, {
                 }
             });
 
-            console.log('[AIT jslib]   loadAppsInTossAdMob returned, unsubscribe:', typeof unsubscribe);
-
             if (!window.__AIT_SUBSCRIPTIONS) {
                 window.__AIT_SUBSCRIPTIONS = {};
             }
             window.__AIT_SUBSCRIPTIONS[subId] = unsubscribe;
 
         } catch (error) {
-            console.error('[AIT jslib] GoogleAdMobLoadAppsInTossAdMob catch error:');
-            console.error('[AIT jslib]   error type:', typeof error);
-            console.error('[AIT jslib]   error:', error);
-            console.error('[AIT jslib]   error.stack:', error && error.stack);
+            console.error('[AIT jslib] GoogleAdMobLoadAppsInTossAdMob error:', error);
             var errorMessage = error instanceof Error ? error.message : String(error);
             var payload = JSON.stringify({
                 CallbackId: subId,
@@ -331,25 +309,13 @@ mergeInto(LibraryManager.library, {
     __GoogleAdMobShowAppsInTossAdMob_Internal: function(options, subscriptionId, typeName) {
         var subId = UTF8ToString(subscriptionId);
         var typeNameStr = UTF8ToString(typeName);
-        var optionsStr = options ? UTF8ToString(options) : null;
-        var optionsObj = optionsStr ? JSON.parse(optionsStr) : {};
+        var optionsObj = options ? JSON.parse(UTF8ToString(options)) : {};
 
-        console.log('[AIT jslib] GoogleAdMobShowAppsInTossAdMob called');
-        console.log('[AIT jslib]   subscriptionId:', subId);
-        console.log('[AIT jslib]   raw options string:', optionsStr);
-        console.log('[AIT jslib]   parsed optionsObj:', JSON.stringify(optionsObj, null, 2));
-        console.log('[AIT jslib]   optionsObj.options:', JSON.stringify(optionsObj.options, null, 2));
-
-        var apiOptions = optionsObj.options || optionsObj;
-        console.log('[AIT jslib]   final apiOptions:', JSON.stringify(apiOptions, null, 2));
-
-        var apiPayload = { options: apiOptions };
-        console.log('[AIT jslib]   full API payload:', JSON.stringify(apiPayload, null, 2));
+        console.log('[AIT jslib] GoogleAdMobShowAppsInTossAdMob called, id:', subId, 'options:', optionsObj);
 
         try {
-            console.log('[AIT jslib]   calling window.AppsInToss.GoogleAdMob.showAppsInTossAdMob...');
             var unsubscribe = window.AppsInToss.GoogleAdMob.showAppsInTossAdMob({
-                options: apiOptions,
+                options: optionsObj,
                 onEvent: function(data) {
                     console.log('[AIT jslib] GoogleAdMobShowAppsInTossAdMob event:', data);
                     var payload = JSON.stringify({
@@ -364,12 +330,7 @@ mergeInto(LibraryManager.library, {
                     SendMessage('AITCore', 'OnAITEventCallback', payload);
                 },
                 onError: function(error) {
-                    console.log('[AIT jslib] GoogleAdMobShowAppsInTossAdMob onError callback:');
-                    console.log('[AIT jslib]   error type:', typeof error);
-                    console.log('[AIT jslib]   error:', error);
-                    console.log('[AIT jslib]   error.message:', error && error.message);
-                    console.log('[AIT jslib]   error.code:', error && error.code);
-                    console.log('[AIT jslib]   error stringified:', JSON.stringify(error, null, 2));
+                    console.log('[AIT jslib] GoogleAdMobShowAppsInTossAdMob error:', error);
                     var errorMessage = error instanceof Error ? error.message : String(error);
                     var payload = JSON.stringify({
                         CallbackId: subId,
@@ -384,18 +345,13 @@ mergeInto(LibraryManager.library, {
                 }
             });
 
-            console.log('[AIT jslib]   showAppsInTossAdMob returned, unsubscribe:', typeof unsubscribe);
-
             if (!window.__AIT_SUBSCRIPTIONS) {
                 window.__AIT_SUBSCRIPTIONS = {};
             }
             window.__AIT_SUBSCRIPTIONS[subId] = unsubscribe;
 
         } catch (error) {
-            console.error('[AIT jslib] GoogleAdMobShowAppsInTossAdMob catch error:');
-            console.error('[AIT jslib]   error type:', typeof error);
-            console.error('[AIT jslib]   error:', error);
-            console.error('[AIT jslib]   error.stack:', error && error.stack);
+            console.error('[AIT jslib] GoogleAdMobShowAppsInTossAdMob error:', error);
             var errorMessage = error instanceof Error ? error.message : String(error);
             var payload = JSON.stringify({
                 CallbackId: subId,

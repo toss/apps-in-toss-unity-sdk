@@ -35,7 +35,7 @@ namespace AppsInToss
                 onEvent,
                 onError
             );
-            __IAPCreateOneTimePurchaseOrder_Internal(AITJsonSettings.Serialize(new { options = options }), subscriptionId, "SuccessEvent");
+            __IAPCreateOneTimePurchaseOrder_Internal(AITJsonSettings.Serialize(options), subscriptionId, "SuccessEvent");
             return () => AITCore.Instance.Unsubscribe(subscriptionId);
 #else
             // Unity Editor mock implementation

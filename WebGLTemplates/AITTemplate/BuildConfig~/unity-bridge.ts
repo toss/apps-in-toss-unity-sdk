@@ -13,7 +13,7 @@ import { GoogleAdMob } from '@apps-in-toss/web-framework';
 import { IAP } from '@apps-in-toss/web-framework';
 import { SafeAreaInsets } from '@apps-in-toss/web-framework';
 import { Storage } from '@apps-in-toss/web-framework';
-import { TossAds } from '@apps-in-toss/web-framework';
+import { appsInTossEvent } from '@apps-in-toss/web-framework';
 import { env } from '@apps-in-toss/web-framework';
 import { graniteEvent } from '@apps-in-toss/web-framework';
 import { partner } from '@apps-in-toss/web-framework';
@@ -27,7 +27,7 @@ declare global {
       IAP: typeof IAP;
       SafeAreaInsets: typeof SafeAreaInsets;
       Storage: typeof Storage;
-      TossAds: typeof TossAds;
+      appsInTossEvent: typeof appsInTossEvent;
       env: typeof env;
       graniteEvent: typeof graniteEvent;
       partner: typeof partner;
@@ -42,26 +42,35 @@ window.AppsInToss = WebFramework as typeof WebFramework & {
   IAP: typeof IAP;
   SafeAreaInsets: typeof SafeAreaInsets;
   Storage: typeof Storage;
-  TossAds: typeof TossAds;
+  appsInTossEvent: typeof appsInTossEvent;
   env: typeof env;
   graniteEvent: typeof graniteEvent;
   partner: typeof partner;
   tdsEvent: typeof tdsEvent;
 };
 
-// 네임스페이스 API 명시적 노출 (ES module export 누락 방지)
-window.AppsInToss.GoogleAdMob = GoogleAdMob;
-window.AppsInToss.IAP = IAP;
-window.AppsInToss.SafeAreaInsets = SafeAreaInsets;
-window.AppsInToss.Storage = Storage;
-window.AppsInToss.TossAds = TossAds;
-window.AppsInToss.env = env;
-window.AppsInToss.graniteEvent = graniteEvent;
-window.AppsInToss.partner = partner;
-window.AppsInToss.tdsEvent = tdsEvent;
+// 네임스페이스 API 안전한 노출 (Unity 6000.3+ Module 읽기 전용 속성 호환)
+const _aitNamespaces = { GoogleAdMob, IAP, SafeAreaInsets, Storage, appsInTossEvent, env, graniteEvent, partner, tdsEvent };
+for (const [_name, _value] of Object.entries(_aitNamespaces)) {
+  try {
+    // 이미 존재하고 값이 같으면 건너뛰기
+    if ((window.AppsInToss as any)[_name] === _value) continue;
+
+    // Object.defineProperty로 안전하게 속성 설정
+    Object.defineProperty(window.AppsInToss, _name, {
+      value: _value,
+      writable: true,
+      configurable: true,
+      enumerable: true
+    });
+  } catch (_err) {
+    // Unity 6000.3+에서 Module 객체가 읽기 전용이면 무시
+    console.warn(`[Unity Bridge] ${_name} is read-only, skipping`);
+  }
+}
 
 console.log('[Unity Bridge] AppsInToss bridge initialized with', Object.keys(WebFramework).length, 'exports');
 console.log('[Unity Bridge] Available:', Object.keys(WebFramework).join(', '));
-console.log('[Unity Bridge] Namespaces: GoogleAdMob, IAP, SafeAreaInsets, Storage, TossAds, env, graniteEvent, partner, tdsEvent');
+console.log('[Unity Bridge] Namespaces: GoogleAdMob, IAP, SafeAreaInsets, Storage, appsInTossEvent, env, graniteEvent, partner, tdsEvent');
 
 export default WebFramework;

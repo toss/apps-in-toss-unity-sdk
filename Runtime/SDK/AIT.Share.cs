@@ -69,13 +69,12 @@ namespace AppsInToss
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __fetchContacts_Internal(string options, string callbackId, string typeName);
 #endif
-        /// <param name="path">딥링크 경로예요. intoss://로 시작하는 문자열이어야 해요. (예: intoss://my-app, intoss://my-app/detail?id=123)</param>
-        /// <param name="ogImageUrl">(선택) 공유 시 표시될 커스텀 OG 이미지 URL이에요. 최소 버전: Android 5.240.0, iOS 5.239.0</param>
-        /// <returns>생성된 토스 공유 링크</returns>
+        /// <param name="path">딥링크로 열고 싶은 경로예요. intoss://로 시작하는 문자열이어야 해요.</param>
+        /// <returns>deep_link_value가 포함된 토스 공유 링크를 반환해요.</returns>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Share")]
-        public static async Task<string> GetTossShareLink(string path, string ogImageUrl = null)
+        public static async Task<string> GetTossShareLink(string path)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<string>();
@@ -83,7 +82,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __getTossShareLink_Internal(path, ogImageUrl, callbackId, "string");
+            __getTossShareLink_Internal(path, callbackId, "string");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation
@@ -95,7 +94,7 @@ namespace AppsInToss
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
-        private static extern void __getTossShareLink_Internal(string path, string ogImageUrl, string callbackId, string typeName);
+        private static extern void __getTossShareLink_Internal(string path, string callbackId, string typeName);
 #endif
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]

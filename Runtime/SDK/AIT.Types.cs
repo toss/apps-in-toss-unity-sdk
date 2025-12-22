@@ -857,27 +857,6 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class InitializeOptions
-    {
-        [Preserve]
-        [JsonProperty("callbacks")]
-        public InitializeOptionsCallbacks Callbacks; // optional
-    }
-
-    [Serializable]
-    [Preserve]
-    public class InitializeOptionsCallbacks
-    {
-        [Preserve]
-        [JsonProperty("onInitialized")]
-        public object OnInitialized; // optional
-        [Preserve]
-        [JsonProperty("onInitializationFailed")]
-        public object OnInitializationFailed; // optional
-    }
-
-    [Serializable]
-    [Preserve]
     public class AppsInTossGlobals
     {
         [Preserve]
@@ -1126,80 +1105,11 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class TossAdsAttachOptions
-    {
-        [Preserve]
-        [JsonProperty("theme")]
-        public string Theme; // optional
-        [Preserve]
-        [JsonProperty("padding")]
-        public string Padding; // optional
-        [Preserve]
-        [JsonProperty("callbacks")]
-        public BannerSlotCallbacks Callbacks; // optional
-    }
-
-    [Serializable]
-    [Preserve]
-    public class BannerSlotCallbacks
-    {
-        [JsonIgnore]
-        public System.Action<BannerSlotEventPayload> OnAdRendered; // optional
-        [JsonIgnore]
-        public System.Action<BannerSlotEventPayload> OnAdViewable; // optional
-        [JsonIgnore]
-        public System.Action<BannerSlotEventPayload> OnAdClicked; // optional
-        [JsonIgnore]
-        public System.Action<BannerSlotEventPayload> OnAdImpression; // optional
-        [JsonIgnore]
-        public System.Action<BannerSlotErrorPayload> OnAdFailedToRender; // optional
-        [JsonIgnore]
-        public System.Action<object> OnNoFill; // optional
-    }
-
-    [Serializable]
-    [Preserve]
-    public class BannerSlotEventPayload
-    {
-        [Preserve]
-        [JsonProperty("slotId")]
-        public string SlotId;
-        [Preserve]
-        [JsonProperty("adGroupId")]
-        public string AdGroupId;
-        [Preserve]
-        [JsonProperty("adMetadata")]
-        public object AdMetadata;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class BannerSlotErrorPayload
-    {
-        [Preserve]
-        [JsonProperty("slotId")]
-        public string SlotId;
-        [Preserve]
-        [JsonProperty("adGroupId")]
-        public string AdGroupId;
-        [Preserve]
-        [JsonProperty("adMetadata")]
-        public Dictionary<string, object> AdMetadata;
-        [Preserve]
-        [JsonProperty("error")]
-        public object Error;
-    }
-
-    [Serializable]
-    [Preserve]
     public class AppsInTossSignTossCertParams
     {
         [Preserve]
         [JsonProperty("txId")]
         public string TxId;
-        [Preserve]
-        [JsonProperty("skipConfirmDoc")]
-        public bool? SkipConfirmDoc; // optional
     }
 
     [Serializable]
@@ -1616,33 +1526,6 @@ namespace AppsInToss
         public string StatusCode;
     }
 
-    [Serializable]
-    [Preserve]
-    public class LoadFullScreenAdOptions
-    {
-        [Preserve]
-        [JsonProperty("adGroupId")]
-        public string AdGroupId;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class LoadFullScreenAdEvent
-    {
-        [Preserve]
-        [JsonProperty("type")]
-        public string Type;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class ShowFullScreenAdOptions
-    {
-        [Preserve]
-        [JsonProperty("adGroupId")]
-        public string AdGroupId;
-    }
-
     /// <summary>
     /// Data for userEarnedReward event
     /// </summary>
@@ -1656,22 +1539,5 @@ namespace AppsInToss
         [Preserve]
         [JsonProperty("unitAmount")]
         public double UnitAmount;
-    }
-
-    /// <summary>
-    /// Full screen ad event (discriminated union)
-    /// </summary>
-    [Serializable]
-    [Preserve]
-    public class ShowFullScreenAdEvent
-    {
-        /// <summary>Event type: clicked, dismissed, failedToShow, impression, show, userEarnedReward, requested</summary>
-        [Preserve]
-        [JsonProperty("type")]
-        public string Type;
-        /// <summary>Event data (only for userEarnedReward)</summary>
-        [Preserve]
-        [JsonProperty("data")]
-        public ShowFullScreenAdEventData Data; // optional
     }
 }

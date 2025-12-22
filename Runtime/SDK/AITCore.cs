@@ -387,33 +387,25 @@ namespace AppsInToss
                         var data_2 = JsonConvert.DeserializeObject<LoadAdMobRewardedAdEvent>(apiResponse.data);
                         (rawCallback as Action<LoadAdMobRewardedAdEvent>)?.Invoke(data_2);
                         break;
-                    case "LoadFullScreenAdEvent":
-                        var data_3 = JsonConvert.DeserializeObject<LoadFullScreenAdEvent>(apiResponse.data);
-                        (rawCallback as Action<LoadFullScreenAdEvent>)?.Invoke(data_3);
-                        break;
                     case "ShowAdMobEvent":
-                        var data_4 = JsonConvert.DeserializeObject<ShowAdMobEvent>(apiResponse.data);
-                        (rawCallback as Action<ShowAdMobEvent>)?.Invoke(data_4);
+                        var data_3 = JsonConvert.DeserializeObject<ShowAdMobEvent>(apiResponse.data);
+                        (rawCallback as Action<ShowAdMobEvent>)?.Invoke(data_3);
                         break;
                     case "ShowAdMobInterstitialAdEvent":
-                        var data_5 = JsonConvert.DeserializeObject<ShowAdMobInterstitialAdEvent>(apiResponse.data);
-                        (rawCallback as Action<ShowAdMobInterstitialAdEvent>)?.Invoke(data_5);
+                        var data_4 = JsonConvert.DeserializeObject<ShowAdMobInterstitialAdEvent>(apiResponse.data);
+                        (rawCallback as Action<ShowAdMobInterstitialAdEvent>)?.Invoke(data_4);
                         break;
                     case "ShowAdMobRewardedAdEvent":
-                        var data_6 = JsonConvert.DeserializeObject<ShowAdMobRewardedAdEvent>(apiResponse.data);
-                        (rawCallback as Action<ShowAdMobRewardedAdEvent>)?.Invoke(data_6);
-                        break;
-                    case "ShowFullScreenAdEvent":
-                        var data_7 = JsonConvert.DeserializeObject<ShowFullScreenAdEvent>(apiResponse.data);
-                        (rawCallback as Action<ShowFullScreenAdEvent>)?.Invoke(data_7);
+                        var data_5 = JsonConvert.DeserializeObject<ShowAdMobRewardedAdEvent>(apiResponse.data);
+                        (rawCallback as Action<ShowAdMobRewardedAdEvent>)?.Invoke(data_5);
                         break;
                     case "SuccessEvent":
-                        var data_8 = JsonConvert.DeserializeObject<SuccessEvent>(apiResponse.data);
-                        (rawCallback as Action<SuccessEvent>)?.Invoke(data_8);
+                        var data_6 = JsonConvert.DeserializeObject<SuccessEvent>(apiResponse.data);
+                        (rawCallback as Action<SuccessEvent>)?.Invoke(data_6);
                         break;
                     case "TdsNavigationAccessoryEventData":
-                        var data_9 = JsonConvert.DeserializeObject<TdsNavigationAccessoryEventData>(apiResponse.data);
-                        (rawCallback as Action<TdsNavigationAccessoryEventData>)?.Invoke(data_9);
+                        var data_7 = JsonConvert.DeserializeObject<TdsNavigationAccessoryEventData>(apiResponse.data);
+                        (rawCallback as Action<TdsNavigationAccessoryEventData>)?.Invoke(data_7);
                         break;
                     case "void":
                         // Void event - call Action directly

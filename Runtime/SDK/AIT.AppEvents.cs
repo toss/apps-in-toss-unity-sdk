@@ -18,6 +18,36 @@ namespace AppsInToss
     public static partial class AIT
     {
         /// <summary>
+        /// appsInTossEvent.entryMessageExited 이벤트를 구독합니다.
+        /// </summary>
+        /// <param name="onEvent">Event callback when the event is triggered</param>
+        /// <param name="onError">Error callback (optional)</param>
+        /// <returns>Action to call for unsubscribing from the event</returns>
+        [Preserve]
+        [APICategory("AppEvents")]
+        public static Action AppsInTossEventSubscribeEntryMessageExited(
+            Action onEvent,
+            Action<AITException> onError = null)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            string subscriptionId = AITCore.Instance.RegisterVoidSubscriptionCallback(
+                onEvent,
+                onError
+            );
+            __AppsInTossEventSubscribeEntryMessageExited_Internal(subscriptionId, "void");
+            return () => AITCore.Instance.Unsubscribe(subscriptionId);
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] AppsInTossEventSubscribeEntryMessageExited subscribed");
+            return () => UnityEngine.Debug.Log($"[AIT Mock] AppsInTossEventSubscribeEntryMessageExited unsubscribed");
+#endif
+        }
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __AppsInTossEventSubscribeEntryMessageExited_Internal(string subscriptionId, string typeName);
+#endif
+        /// <summary>
         /// graniteEvent.backEvent 이벤트를 구독합니다.
         /// </summary>
         /// <param name="onEvent">Event callback when the event is triggered</param>

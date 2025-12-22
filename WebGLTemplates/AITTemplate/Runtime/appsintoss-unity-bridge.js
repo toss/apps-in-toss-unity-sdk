@@ -144,11 +144,17 @@ var googleAdMobCheckInterval = setInterval(function() {
         if (typeof window.GoogleAdMob === 'undefined') {
             console.log('[AIT] → window.GoogleAdMob로 전역 노출 시도...');
             try {
-                window.GoogleAdMob = GoogleAdMob;
+                // Object.defineProperty로 안전하게 할당 시도 (Unity 6000.3+ 호환)
+                Object.defineProperty(window, 'GoogleAdMob', {
+                    value: GoogleAdMob,
+                    writable: true,
+                    configurable: true,
+                    enumerable: true
+                });
                 console.log('[AIT] ✓ window.GoogleAdMob 노출 성공!');
             } catch (err) {
                 // Unity 6000.3+에서 Module 속성이 읽기 전용이면 무시
-                console.log('[AIT] ℹ️ window.GoogleAdMob 노출 생략 (이미 Module에서 제공됨)');
+                console.log('[AIT] ℹ️ window.GoogleAdMob 노출 생략 (이미 Module에서 제공됨):', err.message);
             }
         } else {
             console.log('[AIT] ✓ window.GoogleAdMob 이미 존재함');
@@ -378,9 +384,14 @@ if (!hasAppsInTossGoogleAdMob) {
             };
         }
     };
-            // window.GoogleAdMob에 Mock 할당 시도
+            // window.GoogleAdMob에 Mock 할당 시도 (Object.defineProperty로 안전하게)
             try {
-                window.GoogleAdMob = mockGoogleAdMob;
+                Object.defineProperty(window, 'GoogleAdMob', {
+                    value: mockGoogleAdMob,
+                    writable: true,
+                    configurable: true,
+                    enumerable: true
+                });
                 console.log('[AIT Mock] ✓ window.GoogleAdMob Mock 할당 성공');
             } catch (err) {
                 // Unity 6000.3+에서 Module 속성이 읽기 전용이면 무시

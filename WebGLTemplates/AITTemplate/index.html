@@ -461,12 +461,10 @@
                     config: config
                 }
             );
-            return;
-        }
-
-        // 정상적으로 로드된 경우 실행
-        console.log('[AIT] ✓ createUnityInstance 함수 확인됨');
-        createUnityInstance(canvas, config, (progress) => {
+        } else {
+            // 정상적으로 로드된 경우 실행
+            console.log('[AIT] ✓ createUnityInstance 함수 확인됨');
+            createUnityInstance(canvas, config, (progress) => {
             var unityProgress = 0.1 + (progress * 0.9); // 10%부터 시작해서 100%까지
             updateLoadingProgress(unityProgress);
             progressBarFull.style.width = 100 * progress + "%";
@@ -865,6 +863,7 @@
             alert('게임 로드에 실패했습니다.\n\n오류: ' + message + '\n\n브라우저 콘솔을 확인하세요.');
             hideLoadingScreen();
         });
+        } // end of else block for createUnityInstance check
     </script>
 </body>
 </html>

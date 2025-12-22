@@ -285,8 +285,8 @@ mergeInto(LibraryManager.library, {
                     console.log('[AIT jslib] GoogleAdMobLoadAppsInTossAdMob onError callback:');
                     console.log('[AIT jslib]   error type:', typeof error);
                     console.log('[AIT jslib]   error:', error);
-                    console.log('[AIT jslib]   error.message:', error?.message);
-                    console.log('[AIT jslib]   error.code:', error?.code);
+                    console.log('[AIT jslib]   error.message:', error && error.message);
+                    console.log('[AIT jslib]   error.code:', error && error.code);
                     console.log('[AIT jslib]   error stringified:', JSON.stringify(error, null, 2));
                     var errorMessage = error instanceof Error ? error.message : String(error);
                     var payload = JSON.stringify({
@@ -313,7 +313,7 @@ mergeInto(LibraryManager.library, {
             console.error('[AIT jslib] GoogleAdMobLoadAppsInTossAdMob catch error:');
             console.error('[AIT jslib]   error type:', typeof error);
             console.error('[AIT jslib]   error:', error);
-            console.error('[AIT jslib]   error.stack:', error?.stack);
+            console.error('[AIT jslib]   error.stack:', error && error.stack);
             var errorMessage = error instanceof Error ? error.message : String(error);
             var payload = JSON.stringify({
                 CallbackId: subId,
@@ -367,8 +367,8 @@ mergeInto(LibraryManager.library, {
                     console.log('[AIT jslib] GoogleAdMobShowAppsInTossAdMob onError callback:');
                     console.log('[AIT jslib]   error type:', typeof error);
                     console.log('[AIT jslib]   error:', error);
-                    console.log('[AIT jslib]   error.message:', error?.message);
-                    console.log('[AIT jslib]   error.code:', error?.code);
+                    console.log('[AIT jslib]   error.message:', error && error.message);
+                    console.log('[AIT jslib]   error.code:', error && error.code);
                     console.log('[AIT jslib]   error stringified:', JSON.stringify(error, null, 2));
                     var errorMessage = error instanceof Error ? error.message : String(error);
                     var payload = JSON.stringify({
@@ -395,7 +395,7 @@ mergeInto(LibraryManager.library, {
             console.error('[AIT jslib] GoogleAdMobShowAppsInTossAdMob catch error:');
             console.error('[AIT jslib]   error type:', typeof error);
             console.error('[AIT jslib]   error:', error);
-            console.error('[AIT jslib]   error.stack:', error?.stack);
+            console.error('[AIT jslib]   error.stack:', error && error.stack);
             var errorMessage = error instanceof Error ? error.message : String(error);
             var payload = JSON.stringify({
                 CallbackId: subId,

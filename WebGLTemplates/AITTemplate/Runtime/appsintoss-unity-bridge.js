@@ -61,7 +61,7 @@ window._aitEarlyLogs.push('호스트: ' + window.location.hostname);
 window._aitEarlyLogs.push('브라우저: ' + browserInfo.name + ' ' + browserInfo.version);
 window._aitEarlyLogs.push('OS: ' + browserInfo.os);
 window._aitEarlyLogs.push('ReactNativeWebView: ' + (typeof window.ReactNativeWebView !== 'undefined' ? 'YES ✅' : 'NO ❌'));
-window._aitEarlyLogs.push('GoogleAdMob 초기: ' + (window.AppsInToss && window.AppsInToss.GoogleAdMob ? 'YES ✅' : 'NO ❌'));
+window._aitEarlyLogs.push('GoogleAdMob: ' + (window.AppsInToss && window.AppsInToss.GoogleAdMob ? 'YES ✅' : '⏳ 확인 중...'));
 window._aitEarlyLogs.push('========================================');
 
 // 일반 콘솔에도 출력 (브라우저 개발자 도구용)
@@ -159,34 +159,43 @@ var googleAdMobCheckInterval = setInterval(function() {
 }, 1000); // 1초마다 체크
 
 // ===========================================
-// GoogleAdMob 확인 (프로덕션 환경)
+// GoogleAdMob 확인 (프로덕션 환경) - Polling 방식
 // ===========================================
 // 프로덕션 환경(Apps in Toss 앱)에서는 GoogleAdMob이 네이티브(React Native)에서 자동으로 주입됨
 // Unity .jslib 파일에서 직접 GoogleAdMob.loadAppsInTossAdMob / GoogleAdMob.showAppsInTossAdMob 호출
 
 if (IS_PRODUCTION) {
     console.log('[AIT] ========================================');
-    console.log('[AIT] 프로덕션 환경 - GoogleAdMob 확인');
+    console.log('[AIT] 프로덕션 환경 - AppsInToss.GoogleAdMob 확인 시작');
     console.log('[AIT] ========================================');
-    var hasGoogleAdMob = window.AppsInToss && window.AppsInToss.GoogleAdMob;
-    console.log('[AIT] AppsInToss.GoogleAdMob 존재:', hasGoogleAdMob ? 'YES ✅' : 'NO ❌');
 
-    if (hasGoogleAdMob) {
-        var adMob = window.AppsInToss.GoogleAdMob;
-        console.log('[AIT] GoogleAdMob.loadAppsInTossAdMob:', typeof adMob.loadAppsInTossAdMob === 'function' ? 'YES ✅' : 'NO ❌');
-        console.log('[AIT] GoogleAdMob.showAppsInTossAdMob:', typeof adMob.showAppsInTossAdMob === 'function' ? 'YES ✅' : 'NO ❌');
+    var aitAdMobCheckCount = 0;
+    var aitAdMobMaxChecks = 20; // 최대 20초 (1초 간격)
+    var aitAdMobFound = false;
 
-        if (adMob.loadAppsInTossAdMob && adMob.loadAppsInTossAdMob.isSupported) {
-            console.log('[AIT] loadAppsInTossAdMob.isSupported:', adMob.loadAppsInTossAdMob.isSupported() ? 'YES ✅' : 'NO ❌');
+    function checkAppsInTossGoogleAdMob() {
+        aitAdMobCheckCount++;
+        var hasGoogleAdMob = window.AppsInToss && window.AppsInToss.GoogleAdMob;
+
+        if (hasGoogleAdMob) {
+            aitAdMobFound = true;
+            var adMob = window.AppsInToss.GoogleAdMob;
+            console.log('[AIT] ✅ AppsInToss.GoogleAdMob 발견! (' + aitAdMobCheckCount + '초)');
+            console.log('[AIT]   loadAppsInTossAdMob:', typeof adMob.loadAppsInTossAdMob === 'function' ? 'YES ✅' : 'NO ❌');
+            console.log('[AIT]   showAppsInTossAdMob:', typeof adMob.showAppsInTossAdMob === 'function' ? 'YES ✅' : 'NO ❌');
+            window._aitEarlyLogs.push('✅ AppsInToss.GoogleAdMob 발견 (' + aitAdMobCheckCount + '초)');
+        } else if (aitAdMobCheckCount >= aitAdMobMaxChecks) {
+            console.warn('[AIT] ⚠️ AppsInToss.GoogleAdMob이 ' + aitAdMobMaxChecks + '초 후에도 발견되지 않음');
+            console.warn('[AIT] ⚠️ AdMob API 호출 시 동적으로 주입될 수 있습니다.');
+            window._aitEarlyLogs.push('⚠️ AppsInToss.GoogleAdMob 미발견 (' + aitAdMobMaxChecks + '초)');
+        } else {
+            console.log('[AIT] ⏳ AppsInToss.GoogleAdMob 대기 중... (' + aitAdMobCheckCount + '/' + aitAdMobMaxChecks + ')');
+            setTimeout(checkAppsInTossGoogleAdMob, 1000);
         }
-
-        console.log('[AIT] ✅ 프로덕션 AppsInToss.GoogleAdMob 준비 완료 - Unity .jslib에서 직접 호출 가능');
-    } else {
-        console.error('[AIT] ❌ 프로덕션 환경인데 AppsInToss.GoogleAdMob이 없습니다!');
-        console.error('[AIT] ❌ Apps in Toss 플랫폼에서 GoogleAdMob을 주입해야 합니다.');
-        window._aitEarlyLogs.push('❌ 프로덕션: AppsInToss.GoogleAdMob 없음');
     }
-    console.log('[AIT] ========================================');
+
+    // 첫 번째 체크 시작
+    checkAppsInTossGoogleAdMob();
 }
 
 // ===========================================
@@ -194,11 +203,9 @@ if (IS_PRODUCTION) {
 // ===========================================
 var hasAppsInTossGoogleAdMob = window.AppsInToss && window.AppsInToss.GoogleAdMob;
 if (!hasAppsInTossGoogleAdMob) {
-    // 🔥 프로덕션 환경에서는 Mock을 생성하지 않음
+    // 🔥 프로덕션 환경에서는 Mock을 생성하지 않음 (위에서 polling으로 체크)
     if (IS_PRODUCTION) {
-        console.error('[AIT] ❌ 프로덕션 환경인데 AppsInToss.GoogleAdMob이 없습니다!');
-        console.error('[AIT] Apps in Toss 플랫폼에서 GoogleAdMob을 주입해야 합니다.');
-        window._aitEarlyLogs.push('❌ 프로덕션: AppsInToss.GoogleAdMob 없음');
+        // polling에서 로그를 찍으므로 여기서는 아무것도 하지 않음
     }
     // ReactNativeWebView가 있는데 GoogleAdMob이 없으면 오류
     else if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {

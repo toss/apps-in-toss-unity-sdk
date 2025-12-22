@@ -104,6 +104,8 @@ logs/
 !sdk-runtime-generator~
 !**/Plugins~
 !**/Plugins~/**
+!**/BuildConfig~
+!**/BuildConfig~/**
 
 # Legacy folders (replaced with ~ suffix versions)
 BuildTemplate/
@@ -170,6 +172,6 @@ pnpm-lock.yaml.meta
 # SDK 생성기의 lockfile은 커밋 (버전 일관성 보장)
 !sdk-runtime-generator~/pnpm-lock.yaml
 
-# BuildConfig의 lockfile과 meta 파일은 커밋 (빠른 설치 + Unity 패키지 안정성)
-!WebGLTemplates/AITTemplate/BuildConfig/pnpm-lock.yaml
-!WebGLTemplates/AITTemplate/BuildConfig/pnpm-lock.yaml.meta
+# BuildConfig~의 lockfile과 meta 파일은 커밋 (빠른 설치 + Unity 패키지 안정성)
+!WebGLTemplates/AITTemplate/BuildConfig~/pnpm-lock.yaml
+!WebGLTemplates/AITTemplate/BuildConfig~/pnpm-lock.yaml.meta

@@ -151,7 +151,7 @@ jobs:
         if: steps.check.outputs.skip != 'true'
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          BUILDCONFIG_PKG="WebGLTemplates/AITTemplate/BuildConfig/package.json"
+          BUILDCONFIG_PKG="WebGLTemplates/AITTemplate/BuildConfig~/package.json"
 
           # BuildConfig의 web-framework 버전도 동기화
           jq --arg v "$VERSION" '.dependencies["@apps-in-toss/web-framework"] = $v' "$BUILDCONFIG_PKG" > tmp.json
@@ -164,7 +164,7 @@ jobs:
       - name: BuildConfig pnpm-lock.yaml 업데이트
         if: steps.check.outputs.skip != 'true'
         run: |
-          cd WebGLTemplates/AITTemplate/BuildConfig
+          cd WebGLTemplates/AITTemplate/BuildConfig~
           pnpm install --no-frozen-lockfile
           echo "BuildConfig pnpm-lock.yaml 업데이트 완료"
 

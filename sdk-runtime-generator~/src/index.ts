@@ -501,10 +501,10 @@ namespace AppsInToss
       console.log(picocolors.green(`  ✓ Plugins/${fileName}`));
     }
 
-    // 8. unity-bridge.ts 생성 (WebGLTemplates/AITTemplate/BuildConfig/)
+    // 8. unity-bridge.ts 생성 (WebGLTemplates/AITTemplate/BuildConfig~/)
     console.log(picocolors.cyan('\n🌉 Unity Bridge 생성 중...'));
     const unityBridgeContent = generateUnityBridge(apis);
-    const unityBridgePath = path.resolve(outputDir, '../../WebGLTemplates/AITTemplate/BuildConfig/unity-bridge.ts');
+    const unityBridgePath = path.resolve(outputDir, '../../WebGLTemplates/AITTemplate/BuildConfig~/unity-bridge.ts');
     await fs.writeFile(unityBridgePath, unityBridgeContent);
     console.log(picocolors.green(`  ✓ unity-bridge.ts`));
 

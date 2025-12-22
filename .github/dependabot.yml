@@ -23,7 +23,7 @@ updates:
 
   # WebGL 빌드 설정
   - package-ecosystem: "npm"
-    directory: "/WebGLTemplates/AITTemplate/BuildConfig"
+    directory: "/WebGLTemplates/AITTemplate/BuildConfig~"
     schedule:
       interval: "weekly"
     ignore:

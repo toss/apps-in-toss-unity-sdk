@@ -17,12 +17,17 @@ updates:
     directory: "/sdk-runtime-generator~"
     schedule:
       interval: "weekly"
+    ignore:
+      - dependency-name: "@apps-in-toss/web-framework"
+      - dependency-name: "@apps-in-toss/framework"
 
   # WebGL 빌드 설정
   - package-ecosystem: "npm"
     directory: "/WebGLTemplates/AITTemplate/BuildConfig"
     schedule:
       interval: "weekly"
+    ignore:
+      - dependency-name: "@apps-in-toss/web-framework"
 
   # E2E 테스트
   - package-ecosystem: "npm"

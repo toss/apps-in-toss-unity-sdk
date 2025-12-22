@@ -611,6 +611,9 @@ namespace AppsInToss
 
             var result = BuildPipeline.BuildPlayer(buildPlayerOptions);
 
+            // 빌드 리포트를 에러 리포터에 저장 (Issue 신고 시 사용)
+            AITErrorReporter.SetBuildReport(result);
+
             if (result.summary.result != UnityEditor.Build.Reporting.BuildResult.Succeeded)
             {
                 Debug.LogError("WebGL 빌드가 실패했습니다.");

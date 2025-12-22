@@ -336,7 +336,17 @@ namespace AppsInToss
                 {
                     string errorMessage = AITConvertCore.GetErrorMessage(result);
                     Debug.LogError($"AIT: 빌드 실패: {result}");
-                    EditorUtility.DisplayDialog("빌드 실패", errorMessage, "확인");
+                    int choice = EditorUtility.DisplayDialogComplex(
+                        "빌드 실패",
+                        errorMessage + "\n\n문제가 지속되면 'Issue 신고'를 클릭하세요.",
+                        "확인",
+                        "Issue 신고",
+                        null
+                    );
+                    if (choice == 1)
+                    {
+                        AppsInToss.Editor.AITErrorReporter.OpenIssueInBrowser(result, "Publish");
+                    }
                     return;
                 }
 
@@ -485,7 +495,17 @@ namespace AppsInToss
                 {
                     string errorMessage = AITConvertCore.GetErrorMessage(result);
                     Debug.LogError($"AIT: WebGL 빌드 실패: {result}");
-                    EditorUtility.DisplayDialog("빌드 실패", errorMessage, "확인");
+                    int choice = EditorUtility.DisplayDialogComplex(
+                        "빌드 실패",
+                        errorMessage + "\n\n문제가 지속되면 'Issue 신고'를 클릭하세요.",
+                        "확인",
+                        "Issue 신고",
+                        null
+                    );
+                    if (choice == 1)
+                    {
+                        AppsInToss.Editor.AITErrorReporter.OpenIssueInBrowser(result, "Build");
+                    }
                 }
             }
             catch (Exception e)
@@ -525,7 +545,17 @@ namespace AppsInToss
                 {
                     string errorMessage = AITConvertCore.GetErrorMessage(result);
                     Debug.LogError($"AIT: 패키징 실패: {result}");
-                    EditorUtility.DisplayDialog("패키징 실패", errorMessage, "확인");
+                    int choice = EditorUtility.DisplayDialogComplex(
+                        "패키징 실패",
+                        errorMessage + "\n\n문제가 지속되면 'Issue 신고'를 클릭하세요.",
+                        "확인",
+                        "Issue 신고",
+                        null
+                    );
+                    if (choice == 1)
+                    {
+                        AppsInToss.Editor.AITErrorReporter.OpenIssueInBrowser(result, "Package");
+                    }
                 }
             }
             catch (Exception e)
@@ -565,7 +595,17 @@ namespace AppsInToss
                 {
                     string errorMessage = AITConvertCore.GetErrorMessage(result);
                     Debug.LogError($"AIT: 빌드 실패: {result}");
-                    EditorUtility.DisplayDialog("빌드 실패", errorMessage, "확인");
+                    int choice = EditorUtility.DisplayDialogComplex(
+                        "빌드 실패",
+                        errorMessage + "\n\n문제가 지속되면 'Issue 신고'를 클릭하세요.",
+                        "확인",
+                        "Issue 신고",
+                        null
+                    );
+                    if (choice == 1)
+                    {
+                        AppsInToss.Editor.AITErrorReporter.OpenIssueInBrowser(result, "Build & Package");
+                    }
                 }
             }
             catch (Exception e)
@@ -650,8 +690,19 @@ namespace AppsInToss
                             dialogMessage += $"\n\n{errorDetail}";
                         }
                         dialogMessage += "\n\n자세한 내용은 Console 로그를 확인하세요.";
+                        dialogMessage += "\n\n문제가 지속되면 'Issue 신고'를 클릭하세요.";
 
-                        EditorUtility.DisplayDialog("배포 실패", dialogMessage, "확인");
+                        int choice = EditorUtility.DisplayDialogComplex(
+                            "배포 실패",
+                            dialogMessage,
+                            "확인",
+                            "Issue 신고",
+                            null
+                        );
+                        if (choice == 1)
+                        {
+                            AppsInToss.Editor.AITErrorReporter.OpenIssueInBrowser(AITConvertCore.AITExportError.NETWORK_ERROR, "Deploy");
+                        }
                     }
                 }
                 else
@@ -730,7 +781,17 @@ namespace AppsInToss
             {
                 string errorMessage = AITConvertCore.GetErrorMessage(result);
                 Debug.LogError($"AIT: 빌드 실패: {result}");
-                EditorUtility.DisplayDialog("빌드 실패", errorMessage, "확인");
+                int choice = EditorUtility.DisplayDialogComplex(
+                    "빌드 실패",
+                    errorMessage + "\n\n문제가 지속되면 'Issue 신고'를 클릭하세요.",
+                    "확인",
+                    "Issue 신고",
+                    null
+                );
+                if (choice == 1)
+                {
+                    AppsInToss.Editor.AITErrorReporter.OpenIssueInBrowser(result, "Dev Server");
+                }
                 return;
             }
 
@@ -990,7 +1051,17 @@ namespace AppsInToss
             {
                 string errorMessage = AITConvertCore.GetErrorMessage(result);
                 Debug.LogError($"AIT: 빌드 실패: {result}");
-                EditorUtility.DisplayDialog("빌드 실패", errorMessage, "확인");
+                int choice = EditorUtility.DisplayDialogComplex(
+                    "빌드 실패",
+                    errorMessage + "\n\n문제가 지속되면 'Issue 신고'를 클릭하세요.",
+                    "확인",
+                    "Issue 신고",
+                    null
+                );
+                if (choice == 1)
+                {
+                    AppsInToss.Editor.AITErrorReporter.OpenIssueInBrowser(result, "Production Server");
+                }
                 return;
             }
 

@@ -25,6 +25,9 @@ export interface ParsedAPI {
   // 콜백 기반 API 지원 (loadFullScreenAd, showFullScreenAd 등)
   isCallbackBased?: boolean; // 콜백 기반 API인지 (onEvent/onError 콜백 사용)
   isTopLevelExport?: boolean; // 최상위 export인지 (AppsInToss 네임스페이스 없이 호출)
+  // 네임스페이스 콜백 기반 API (GoogleAdMob.loadAppsInTossAdMob 패턴)
+  isNamespaceCallbackBased?: boolean; // 네임스페이스 내 콜백 기반 API인지
+  callbackEventType?: string; // 콜백 이벤트 타입 (예: LoadAdMobEvent)
   // 중첩 콜백 지원 (options.processProductGrant 등)
   nestedCallbacks?: NestedCallback[];
 }

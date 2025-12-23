@@ -397,12 +397,70 @@
         // 모바일 감지 및 최적화
         var isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
-        // 모든 환경에서 전체 화면 설정
+        // devicePixelRatio 설정: -1 = auto, 1/2/3 = 고정값
+        var aitDevicePixelRatioSetting = %AIT_DEVICE_PIXEL_RATIO%;
+
+        // 기기 성능에 따른 최적 devicePixelRatio 계산
+        function getOptimalDevicePixelRatio() {
+            var baseRatio = window.devicePixelRatio || 1;
+
+            // 고정값인 경우 (기기 기본값을 초과하지 않도록)
+            if (aitDevicePixelRatioSetting > 0) {
+                return Math.min(aitDevicePixelRatioSetting, baseRatio);
+            }
+
+            // auto: 기기 성능에 따라 결정
+            var deviceMemory = navigator.deviceMemory; // Android Chrome에서만 지원
+            var cores = navigator.hardwareConcurrency || 2;
+            var isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+
+            // GPU 정보 확인 (저사양 GPU 감지)
+            var isLowEndGPU = false;
+            try {
+                var testCanvas = document.createElement('canvas');
+                var gl = testCanvas.getContext('webgl2') || testCanvas.getContext('webgl');
+                if (gl) {
+                    var debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+                    if (debugInfo) {
+                        var renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
+                        isLowEndGPU = /Mali-4|Mali-T[0-6]|Adreno [0-4]|PowerVR SGX|Intel HD [0-5]/i.test(renderer);
+                    }
+                }
+            } catch (e) {}
+
+            // 저사양 판정: GPU 또는 코어 수 기준
+            if (isLowEndGPU || cores <= 2) {
+                return 1;
+            }
+
+            // Android: deviceMemory API 사용
+            if (deviceMemory !== undefined) {
+                if (deviceMemory <= 2) return 1;
+                if (deviceMemory <= 4) return Math.min(baseRatio, 2);
+                return baseRatio;
+            }
+
+            // iOS: 화면 크기 + 코어 수로 세대 추정
+            if (isIOS) {
+                var screenPixels = screen.width * screen.height;
+                // 구형 iPhone (6s/7/8 등): 낮은 해상도 + 적은 코어
+                if (screenPixels < 400000 || cores <= 4) {
+                    return Math.min(baseRatio, 2);
+                }
+                return baseRatio;
+            }
+
+            // 기타: 안전하게 최대 2로 제한
+            return Math.min(baseRatio, 2);
+        }
+
+        // 모바일에서만 devicePixelRatio 조정 적용
         if (isMobile) {
-            config.devicePixelRatio = 1;
-            console.log('[AIT] 모바일 환경 - 전체 화면 모드');
+            config.devicePixelRatio = getOptimalDevicePixelRatio();
+            console.log('[AIT] 모바일 환경 - devicePixelRatio:', config.devicePixelRatio,
+                        '(설정:', aitDevicePixelRatioSetting === -1 ? 'auto' : aitDevicePixelRatioSetting, ')');
         } else {
-            console.log('[AIT] 데스크톱 환경 - 전체 화면 모드');
+            console.log('[AIT] 데스크톱 환경 - devicePixelRatio: 기본값 사용');
         }
 
         // 로딩 진행률 업데이트

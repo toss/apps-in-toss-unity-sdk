@@ -159,6 +159,10 @@ namespace AppsInToss
 
         public bool nameFilesAsHashes = true;
 
+        [Header("렌더링 품질 설정")]
+        [Tooltip("devicePixelRatio 설정: -1 = auto (기기 성능에 따라 자동 결정), 1/2/3 = 고정값. 높을수록 고품질이지만 GPU 부하 증가")]
+        public int devicePixelRatio = -1;
+
         [Header("IL2CPP/Stripping 설정")]
         public bool stripEngineCode = true;
 

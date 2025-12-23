@@ -1,0 +1,1 @@
+"use strict";import{jsx as s}from"react/jsx-runtime";import{createContext as i,useContext as n}from"react";const t=i({listType:"ul"});export function PostListProvider({listType:o,typography:e,children:r}){return s(t.Provider,{value:{listType:o,typography:e},children:r})}export function usePostList(){return n(t)}

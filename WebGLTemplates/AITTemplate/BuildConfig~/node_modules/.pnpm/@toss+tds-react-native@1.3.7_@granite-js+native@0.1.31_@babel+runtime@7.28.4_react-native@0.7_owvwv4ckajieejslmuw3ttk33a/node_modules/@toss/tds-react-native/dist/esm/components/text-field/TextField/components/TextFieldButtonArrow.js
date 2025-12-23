@@ -1,0 +1,1 @@
+"use strict";import{jsx as r}from"react/jsx-runtime";import{useAdaptive as t}from"../../../../core";import{Icon as e}from"../../../icon";export function TextFieldButtonArrow(){const o=t();return r(e,{name:"icon-arrow-down-mono",color:o.grey400,size:24})}

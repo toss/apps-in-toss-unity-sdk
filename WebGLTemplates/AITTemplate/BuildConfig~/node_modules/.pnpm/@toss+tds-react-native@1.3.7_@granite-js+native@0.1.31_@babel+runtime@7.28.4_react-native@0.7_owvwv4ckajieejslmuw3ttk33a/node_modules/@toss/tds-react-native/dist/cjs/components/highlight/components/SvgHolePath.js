@@ -1,0 +1,4 @@
+"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.SvgHolePath=void 0;const jsx_runtime_1=require("react/jsx-runtime"),react_native_svg_1=require("@granite-js/native/react-native-svg"),animated_1=require("../../../interactions/animated"),utils_1=require("../utils"),getHoleAnimateVariants_1=require("./getHoleAnimateVariants"),AnimatedPath=animated_1.Animated.createAnimatedComponent(react_native_svg_1.Path),SvgHolePath=({step:e,layout:a})=>{const t=(0,getHoleAnimateVariants_1.getHoleAnimateVariants)(a),n=generateHolePath(t.initial),i=generateHolePath(t.default),r=generateHolePath(t.exit);return(0,jsx_runtime_1.jsx)(AnimatedPath,{clipRule:"evenodd",d:e.interpolate({inputRange:[0,1,2],outputRange:[n,i,r]})})};exports.SvgHolePath=SvgHolePath;const generateHolePath=e=>{const a=(0,utils_1.generateRadiusRectanglePath)(e);return`
+  ${(0,utils_1.generateWindowPath)()}
+  ${a}
+  `};

@@ -1,0 +1,1 @@
+"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.useWaitFor=useWaitFor;const react_1=require("react");function useWaitFor(e){const r=(0,react_1.useRef)(new Set).current,s=(0,react_1.useCallback)(async()=>{if(!e)return new Promise(t=>{r.add(t)})},[e,r]);return(0,react_1.useEffect)(()=>{if(e)for(const t of r)t()},[e,r]),{waitFor:s}}

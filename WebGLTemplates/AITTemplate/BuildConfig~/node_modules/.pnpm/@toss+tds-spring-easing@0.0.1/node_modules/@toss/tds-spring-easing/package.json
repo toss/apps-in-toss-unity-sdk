@@ -1,0 +1,32 @@
+{
+  "name": "@toss/tds-spring-easing",
+  "version": "0.0.1",
+  "description": "",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "require": {
+        "types": "./dist/cjs/index.d.ts",
+        "default": "./dist/cjs/index.js"
+      },
+      "import": {
+        "types": "./dist/esm/index.d.ts",
+        "default": "./dist/esm/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": ". scripts/build.sh",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "check-security": "check-security",
+    "attw": "attw --pack ."
+  }
+}

@@ -1,0 +1,1 @@
+export declare function AppRoot({ appName, context, container: Container, initialProps, initialScheme, router, setIosSwipeGestureEnabled, getInitialUrl, }: AppRootProps): import("react/jsx-runtime").JSX.Element;

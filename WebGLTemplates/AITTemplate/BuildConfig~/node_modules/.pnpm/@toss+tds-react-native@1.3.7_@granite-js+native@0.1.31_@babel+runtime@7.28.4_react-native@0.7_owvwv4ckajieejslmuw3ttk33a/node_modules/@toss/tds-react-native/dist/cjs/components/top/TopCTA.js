@@ -1,0 +1,1 @@
+"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.LowerCTA=LowerCTA;const jsx_runtime_1=require("react/jsx-runtime"),bottom_cta_1=require("../bottom-cta");function LowerCTA({...e}){return(0,jsx_runtime_1.jsx)(bottom_cta_1.BottomCTA.Double,{gradient:null,...e})}

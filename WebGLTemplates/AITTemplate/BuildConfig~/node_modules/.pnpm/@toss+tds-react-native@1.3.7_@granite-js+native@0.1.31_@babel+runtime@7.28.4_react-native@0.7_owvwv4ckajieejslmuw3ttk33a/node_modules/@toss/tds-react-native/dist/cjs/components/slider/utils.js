@@ -1,0 +1,1 @@
+"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.clamp=clamp,exports.getNearestSteppedValue=getNearestSteppedValue;function clamp(r,t=-1/0,o=1/0){return Math.min(Math.max(r,t),o)}function getNearestSteppedValue(r,t,o,e){const n=(r-t)%e,a=Math.sign(n)*(Math.abs(n)<e/2?0:e),s=Math.floor((r-t)/e)*e,u=t+s+a;return clamp(u,t,o)}

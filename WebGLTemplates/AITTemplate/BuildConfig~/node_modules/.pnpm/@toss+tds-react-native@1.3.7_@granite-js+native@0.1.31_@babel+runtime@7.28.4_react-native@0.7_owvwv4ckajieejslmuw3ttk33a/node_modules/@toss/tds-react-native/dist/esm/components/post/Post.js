@@ -1,0 +1,1 @@
+"use strict";import{PostH1 as o,PostH2 as r,PostH3 as t,PostH4 as m}from"./Header";import{PostHr as P}from"./Hr";import{PostLi as s}from"./List/PostLi";import{PostOl as H}from"./List/PostOl";import{PostUl as p}from"./List/PostUl";import{PostParagraph as i}from"./Paragraph";export const Post={H1:o,H2:r,H3:t,H4:m,Paragraph:i,Ol:H,Li:s,Ul:p,Hr:P};

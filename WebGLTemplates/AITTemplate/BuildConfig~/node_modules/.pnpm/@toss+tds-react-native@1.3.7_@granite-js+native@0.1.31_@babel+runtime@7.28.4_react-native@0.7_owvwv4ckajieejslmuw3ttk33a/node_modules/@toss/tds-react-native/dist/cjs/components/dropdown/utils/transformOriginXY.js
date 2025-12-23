@@ -1,0 +1,1 @@
+"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.transformOriginXY=transformOriginXY;function transformOriginXY({x:t,y:e,width:n,height:o}){const r={x:.5,y:.5};return{translateX:[n*(t-r.x),n*(r.x-t)],translateY:[o*(e-r.y),o*(r.y-e)]}}

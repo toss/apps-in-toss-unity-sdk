@@ -1,0 +1,1 @@
+"use strict";import{jsx as t}from"react/jsx-runtime";import{useAdaptive as e}from"../../core";import{Txt as p}from"../txt";export function AccessoryText(o){const r=e();return t(p,{typography:"t6",color:r.grey600,...o})}

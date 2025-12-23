@@ -1,0 +1,1 @@
+"use strict";import{jsx as e}from"react/jsx-runtime";import*as r from"../paragraph";function a({items:o}){return e(r.Root,{typography:"t5",children:o.map((t,p)=>e(r.Badge,{marginLeft:0,type:t.type,badgeStyle:t.style,children:t.label},`${p}-${t.label}`))})}const s=a,l=a;export{s as UpperBadges,l as SubtitleBadges};

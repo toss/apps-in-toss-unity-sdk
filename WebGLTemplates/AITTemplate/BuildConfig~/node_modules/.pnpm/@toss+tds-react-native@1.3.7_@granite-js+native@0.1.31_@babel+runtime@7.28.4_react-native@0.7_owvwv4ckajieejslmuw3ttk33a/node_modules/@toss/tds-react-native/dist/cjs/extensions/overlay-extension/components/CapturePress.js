@@ -1,0 +1,1 @@
+"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.CapturePress=CapturePress;const react_1=require("react");function CapturePress({children:r,onPress:s}){const e=react_1.Children.only(r);return(0,react_1.cloneElement)(e,{...e.props,onPress:(...o)=>{s(),e.props&&typeof e.props.onPress=="function"&&e.props.onPress(...o)}})}

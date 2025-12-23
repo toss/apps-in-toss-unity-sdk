@@ -1,0 +1,1 @@
+"use strict";import{useColorPreference as r}from"../../core";import{generateShadowStyle as t}from"./generateShadowStyle";export const useShadow=e=>{const{colorPreference:o}=r();return t({...e,colorPreference:o})};

@@ -1,0 +1,1 @@
+"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.usePreservedCallback=usePreservedCallback;const react_1=require("react");function usePreservedCallback(e){const r=(0,react_1.useRef)(e);return r.current!==e&&(r.current=e),(0,react_1.useMemo)(()=>(...t)=>r.current(...t),[])}

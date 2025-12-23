@@ -1,0 +1,53 @@
+{
+  "name": "@granite-js/image",
+  "version": "0.1.31",
+  "scripts": {
+    "prepack": "yarn build",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "build": "tsdown"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/toss/granite.git",
+    "directory": "packages/image"
+  },
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "devDependencies": {
+    "@granite-js/native": "0.1.31",
+    "@types/react": "18.3.3",
+    "eslint": "^9.7.0",
+    "react": "18.2.0",
+    "react-native": "0.72.6",
+    "tsdown": "^0.14.1",
+    "typescript": "5.8.3"
+  },
+  "peerDependencies": {
+    "@granite-js/native": "*",
+    "@types/react": "*",
+    "react": "*",
+    "react-native": "*"
+  },
+  "dependencies": {
+    "react-simplikit": "^0.0.40"
+  },
+  "sideEffects": false
+}

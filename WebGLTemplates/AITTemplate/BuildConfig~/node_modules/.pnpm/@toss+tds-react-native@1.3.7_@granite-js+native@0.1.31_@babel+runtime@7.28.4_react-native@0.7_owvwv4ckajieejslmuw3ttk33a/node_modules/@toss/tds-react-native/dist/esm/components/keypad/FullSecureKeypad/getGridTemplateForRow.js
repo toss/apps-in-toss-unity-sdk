@@ -1,0 +1,1 @@
+"use strict";const s=".";function r(e,n){if(n.length===0)return e;const t=e.slice();for(const o of n){const l=Math.floor(Math.random()*e.length);t.splice(l,0,o)}return t}export function withShuffledEmptyCells(e){const n=Array.from({length:e.emptyCellCount}).map((o,l)=>({label:"",templateKey:"",value:"."+l,width:1})),t=r([...e.keys],n);return{...e,keys:t}}

@@ -1,0 +1,1 @@
+"use strict";import{jsx as e}from"react/jsx-runtime";import{Txt as r}from"../../../txt";import{StyleSheet as n}from"react-native";export function TextFieldHelp({color:t,children:o}){return e(r,{color:t,typography:"t7",style:[i.container],children:o})}const i=n.create({container:{paddingTop:6,paddingBottom:0}});

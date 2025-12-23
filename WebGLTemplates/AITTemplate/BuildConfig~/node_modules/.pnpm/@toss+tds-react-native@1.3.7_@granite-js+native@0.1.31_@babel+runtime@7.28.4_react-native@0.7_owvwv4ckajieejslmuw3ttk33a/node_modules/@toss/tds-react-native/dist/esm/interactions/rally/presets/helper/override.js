@@ -1,0 +1,1 @@
+"use strict";import{isAllowedProperty as i}from"./propertyKeyValidator";const s=(r,e)=>{const n=Object.keys(r).map(o=>{const t=o,u=e[t];return i(t)?[t,{...r[t],...u}]:[t,r[t]]});return Object.fromEntries(n)},c=(r,e)=>r.map((n,o)=>{const t=e[o];return t==null?n:s(n,t)});export const overrideEffect=(r,e)=>e==null?r:c(r,e),overrideTransition=(r,e)=>e==null?r:s(r,e);

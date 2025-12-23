@@ -1,0 +1,1 @@
+"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.useTimer=void 0;const react_1=require("react"),useTimer=({duration:e,callback:t})=>{(0,react_1.useEffect)(()=>{const r=setTimeout(()=>{t()},e*1e3);return()=>{clearTimeout(r)}},[])};exports.useTimer=useTimer;

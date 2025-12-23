@@ -1,0 +1,1 @@
+"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.SPRING_CONFIG=exports.TIMING_CONFIG=void 0;const tds_easings_1=require("@toss/tds-easings");exports.TIMING_CONFIG={easeing:tds_easings_1.bezier.back,duration:150},exports.SPRING_CONFIG={stiffness:650,damping:35};

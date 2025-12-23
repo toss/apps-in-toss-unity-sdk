@@ -1,0 +1,1 @@
+"use strict";import{jsx as r}from"react/jsx-runtime";import{useAdaptive as e}from"../../core";import*as t from"../paragraph";export function ListHeaderDescriptionParagraph({...o}){const a=e();return r(t.Root,{typography:"t7",children:r(t.Text,{fontWeight:"regular",color:a.grey600,...o})})}

@@ -1,0 +1,1 @@
+"use strict";import{jsx as a}from"react/jsx-runtime";import{useAdaptive as m}from"../../core";import{View as n}from"react-native";function p({width:o,height:r,borderRadius:t=6,style:e}){const i=m();return a(n,{style:[{width:o,height:r,borderRadius:t,backgroundColor:i.grey200},e]})}export default p;

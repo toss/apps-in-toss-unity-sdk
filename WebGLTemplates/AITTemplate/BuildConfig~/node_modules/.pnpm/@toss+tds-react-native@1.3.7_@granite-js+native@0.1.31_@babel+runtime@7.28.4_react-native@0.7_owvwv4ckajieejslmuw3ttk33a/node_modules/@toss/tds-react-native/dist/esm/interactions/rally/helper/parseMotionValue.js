@@ -1,0 +1,1 @@
+"use strict";const o=/^(\+?=|-?=|\*=|\/=)?\s*(-?\d+(?:\.\d+)?)(px|%|deg)?$/;export function parseMotionValue(e){switch(typeof e){case"number":return{operator:void 0,number:e,unit:"number"};case"string":{const r=e.match(o);if(r==null)return;const[,t,u,n]=r;return{operator:t,number:parseFloat(u),unit:n??"number"}}}}

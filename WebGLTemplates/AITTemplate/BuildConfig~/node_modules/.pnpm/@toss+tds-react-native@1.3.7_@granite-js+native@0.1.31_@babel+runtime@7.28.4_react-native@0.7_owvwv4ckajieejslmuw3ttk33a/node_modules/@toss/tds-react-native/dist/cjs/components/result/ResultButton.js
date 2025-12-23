@@ -1,0 +1,1 @@
+"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.ResultButton=ResultButton;const jsx_runtime_1=require("react/jsx-runtime"),button_1=require("../button");function ResultButton({children:t,size:e="medium",...u}){return(0,jsx_runtime_1.jsx)(button_1.Button,{...u,size:e,children:t})}

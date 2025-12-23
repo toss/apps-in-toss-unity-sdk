@@ -1,0 +1,59 @@
+{
+  "name": "@granite-js/plugin-micro-frontend",
+  "type": "module",
+  "version": "0.1.31",
+  "description": "Plugin for micro frontend",
+  "scripts": {
+    "prepack": "yarn build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest --run",
+    "build": "tsdown"
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/toss/granite.git",
+    "directory": "packages/plugin-micro-frontend"
+  },
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./runtime": {
+      "import": {
+        "types": "./dist/runtime/index.d.ts",
+        "default": "./dist/runtime/index.js"
+      },
+      "require": {
+        "types": "./dist/runtime/index.d.cts",
+        "default": "./dist/runtime/index.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "*.d.ts"
+  ],
+  "devDependencies": {
+    "tsdown": "^0.11.11",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  },
+  "dependencies": {
+    "@granite-js/plugin-core": "0.1.31",
+    "@granite-js/utils": "0.1.31",
+    "es-toolkit": "^1.39.8",
+    "picocolors": "^1.1.1"
+  },
+  "sideEffects": false
+}

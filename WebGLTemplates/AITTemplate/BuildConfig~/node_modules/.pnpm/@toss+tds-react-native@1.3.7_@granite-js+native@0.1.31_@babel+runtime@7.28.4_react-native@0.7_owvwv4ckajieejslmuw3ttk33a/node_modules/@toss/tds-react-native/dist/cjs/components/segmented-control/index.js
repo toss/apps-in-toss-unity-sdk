@@ -1,0 +1,1 @@
+"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.SegmentedControl=void 0;const Item_1=require("./components/Item/Item"),Root_1=require("./components/Root");exports.SegmentedControl={Root:Root_1.RootBase,Item:Item_1.Item};

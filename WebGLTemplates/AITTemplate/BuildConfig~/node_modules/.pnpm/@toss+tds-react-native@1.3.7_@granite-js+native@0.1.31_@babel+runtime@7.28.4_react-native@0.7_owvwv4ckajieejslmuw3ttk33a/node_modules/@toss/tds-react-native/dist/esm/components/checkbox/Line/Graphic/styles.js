@@ -1,0 +1,1 @@
+"use strict";import{StyleSheet as e}from"react-native";export const styles=e.create({container:{flexDirection:"row",alignItems:"center"},checkContainer:{alignItems:"center",justifyContent:"center"}});

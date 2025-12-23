@@ -1,0 +1,67 @@
+{
+  "name": "react-native-devtools-standalone",
+  "version": "0.4.1",
+  "description": "Standalone React DevTools for integration with React Native",
+  "repository": "git@github.com:leegeunhyeok/react-native-devtools-standalone.git",
+  "license": "MIT",
+  "author": "leegeunhyeok <dev.ghlee@gmail.com>",
+  "exports": {
+    "./frontend": {
+      "import": "./esm/frontend/index.mjs",
+      "require": "./cjs/frontend/index.cjs",
+      "default": "./dist/frontend/index.js",
+      "types": "./dist/frontend/index.d.ts"
+    },
+    "./backend": {
+      "import": "./esm/backend/index.mjs",
+      "require": "./cjs/backend/index.cjs",
+      "default": "./dist/backend/index.js",
+      "types": "./dist/backend/index.d.ts"
+    }
+  },
+  "files": [
+    "esm",
+    "cjs",
+    "dist"
+  ],
+  "scripts": {
+    "build": "node -r @swc-node/register build.ts && tsc -p tsconfig.build.json",
+    "build:demo": "node -r @swc-node/register build-demo.ts",
+    "cleanup": "rm -rf dist && rm -rf cjs && rm -rf esm",
+    "prepack": "yarn cleanup && yarn build",
+    "release": "release-it",
+    "start": "yarn build:demo && node -r @swc-node/register demo/server.ts"
+  },
+  "prettier": "@vercel/style-guide/prettier",
+  "dependencies": {
+    "react": "^0.0.0-experimental-3da26163a3-20240704",
+    "react-devtools-inline": "^5.3.1",
+    "react-dom": "^0.0.0-experimental-3da26163a3-20240704",
+    "react-is": "^18.2.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@swc-node/register": "^1.8.0",
+    "@swc/core": "^1.4.2",
+    "@types/express": "^4.17.21",
+    "@types/react": "^18.2.61",
+    "@types/react-devtools-inline": "^4.24.8",
+    "@types/react-dom": "^18.2.19",
+    "@types/ws": "^8.5.10",
+    "@vercel/style-guide": "^6.0.0",
+    "esbuild": "^0.20.1",
+    "eslint": "^8.57.0",
+    "express": "^4.18.3",
+    "prettier": "^3.2.5",
+    "release-it": "^17.5.0",
+    "typescript": "^5.3.3"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org"
+  },
+  "release-it": {
+    "git": {
+      "commitMessage": "chore: release v${version}"
+    }
+  }
+}

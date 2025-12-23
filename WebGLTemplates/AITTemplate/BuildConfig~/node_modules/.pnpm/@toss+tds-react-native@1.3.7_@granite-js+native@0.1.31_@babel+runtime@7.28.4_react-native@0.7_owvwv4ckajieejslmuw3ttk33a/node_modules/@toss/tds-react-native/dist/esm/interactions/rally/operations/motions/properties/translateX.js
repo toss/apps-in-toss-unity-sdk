@@ -1,0 +1,1 @@
+"use strict";import{calcRelativeOperator as u,parseMotionValue as a}from"../../../helper";export function getTranslateX(n,{layout:o,beforeValue:t}){const r=a(n??0);if(r?.operator==null&&r?.unit==="number")return r.number;const e=r?.unit==="%"?r.number/100*o.width:r?.number??t;return r?.operator!=null?u(t,r.operator,e):e}

@@ -1,0 +1,1 @@
+"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.toAnimationController=toAnimationController;function toAnimationController(t,{progress:r,endProgress:o}){return{...t,start(){return new Promise(e=>{t.start(s=>{e(s.finished)})})},seekProgress(e){r.setValue(e*o)}}}

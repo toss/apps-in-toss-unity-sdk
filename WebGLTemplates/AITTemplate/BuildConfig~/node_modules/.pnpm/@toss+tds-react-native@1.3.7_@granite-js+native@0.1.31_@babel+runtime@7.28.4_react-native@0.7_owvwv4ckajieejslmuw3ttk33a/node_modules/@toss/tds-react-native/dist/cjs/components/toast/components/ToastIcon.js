@@ -1,0 +1,1 @@
+"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.ToastIcon=void 0;const jsx_runtime_1=require("react/jsx-runtime"),icon_1=require("../../icon"),ToastIcon=e=>(0,jsx_runtime_1.jsx)(icon_1.Icon,{type:"circle",size:24,...e});exports.ToastIcon=ToastIcon;

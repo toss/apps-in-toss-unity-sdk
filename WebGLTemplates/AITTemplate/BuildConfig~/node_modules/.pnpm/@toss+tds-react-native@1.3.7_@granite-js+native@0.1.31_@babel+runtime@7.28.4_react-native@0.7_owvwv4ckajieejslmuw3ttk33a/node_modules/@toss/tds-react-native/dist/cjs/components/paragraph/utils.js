@@ -1,0 +1,1 @@
+"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.get\uBCF4\uC815Top=void 0;const get\uBCF4\uC815Top=({targetHeight:e,fontSize:t})=>(e-t)/2;exports.get\uBCF4\uC815Top=get\uBCF4\uC815Top;

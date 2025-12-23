@@ -1,0 +1,1 @@
+"use strict";import{TransparentNavigationScreenOptions as r}from"./TransparentNavigationScreenOptions";import{TransparentNavigationScrollView as n}from"./TransparentNavigationScrollView";export const TransparentNavigation={ScrollView:n,screenOptions:r};

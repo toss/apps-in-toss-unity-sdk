@@ -1,0 +1,1 @@
+"use strict";import{jsx as r}from"react/jsx-runtime";import{Lottie as n}from"@granite-js/react-native";export function ContentLottie({scale:t=1,scaleType:o="fit",style:e,...i}){return r(n,{width:"100%",height:"100%",style:[{position:"absolute",flex:1,transform:[{scale:t}]},e],resizeMode:o==="fit"?"contain":"cover",...i})}

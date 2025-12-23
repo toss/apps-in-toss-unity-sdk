@@ -1,0 +1,1 @@
+"use strict";import{jsx as m}from"react/jsx-runtime";import{colors as p}from"@toss/tds-colors";import{Txt as f}from"../txt";export function ListFooterTitle({typography:o="t5",color:r=p.blue500,fontWeight:t="medium",children:i,...e}){return m(f,{typography:o,color:r,fontWeight:t,...e,children:i})}

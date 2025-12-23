@@ -1,0 +1,1 @@
+"use strict";import{FLUID_TAB_ITEM_HORIZONTAL_MARGIN as n,TAB_ITEM_HORIZONTAL_MARGIN as o,TAB_LIST_CONTAINER_PADDING as e,TAB_LIST_FLUID_CONTAINER_PADDING as D}from"../const";export function getIndicatorInterpolateOutput(I,T){const t=T?D:e,A=T?n:o;return I.reduce((r,L,_)=>{if(_===0)return[t+A];const N=r[_-1]+I[_-1]+A*2;return[...r,N]},[])}

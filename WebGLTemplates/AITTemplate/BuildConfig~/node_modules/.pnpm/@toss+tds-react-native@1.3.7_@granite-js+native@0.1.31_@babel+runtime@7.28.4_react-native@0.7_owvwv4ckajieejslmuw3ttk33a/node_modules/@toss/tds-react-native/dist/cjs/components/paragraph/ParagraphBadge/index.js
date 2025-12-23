@@ -1,0 +1,1 @@
+"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.ParagraphBadge=void 0;var ParagraphBadge_1=require("./ParagraphBadge");Object.defineProperty(exports,"ParagraphBadge",{enumerable:!0,get:function(){return ParagraphBadge_1.ParagraphBadge}});

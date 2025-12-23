@@ -1,0 +1,1 @@
+"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.shouldUseNativeDriver=shouldUseNativeDriver;function shouldUseNativeDriver(e){return!(e==="backgroundColor"||e==="color"||e==="width"||e==="height")}

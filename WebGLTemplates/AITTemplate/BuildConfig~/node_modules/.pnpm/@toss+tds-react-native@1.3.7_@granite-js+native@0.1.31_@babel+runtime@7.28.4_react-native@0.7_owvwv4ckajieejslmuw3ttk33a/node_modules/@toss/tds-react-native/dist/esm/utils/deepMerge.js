@@ -1,0 +1,1 @@
+"use strict";export function deepMerge(n,s){const r={...n};for(const[c,e]of Object.entries(s)){const o=c,t=r[o];typeof e=="object"&&e!==null&&!Array.isArray(e)&&typeof t=="object"&&t!==null&&!Array.isArray(t)?r[o]=deepMerge(t,e):r[o]=e}return r}

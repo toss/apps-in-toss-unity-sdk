@@ -1,0 +1,1 @@
+"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.AccessoryText=AccessoryText;const jsx_runtime_1=require("react/jsx-runtime"),core_1=require("../../core"),txt_1=require("../txt");function AccessoryText(e){const t=(0,core_1.useAdaptive)();return(0,jsx_runtime_1.jsx)(txt_1.Txt,{typography:"t6",color:t.grey600,...e})}

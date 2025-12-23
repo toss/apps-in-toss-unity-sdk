@@ -1,0 +1,1 @@
+"use strict";import{jsx as t}from"react/jsx-runtime";import{POST_LI as i}from"../constants";import{usePostList as m}from"./PostListProvider";import{PostOlLi as s}from"./PostOl";import{PostUlLi as f}from"./PostUl";export function PostLi(o){const{listType:r}=m();return r==="ol"?t(s,{...o}):t(f,{...o})}PostLi.displayName=i;

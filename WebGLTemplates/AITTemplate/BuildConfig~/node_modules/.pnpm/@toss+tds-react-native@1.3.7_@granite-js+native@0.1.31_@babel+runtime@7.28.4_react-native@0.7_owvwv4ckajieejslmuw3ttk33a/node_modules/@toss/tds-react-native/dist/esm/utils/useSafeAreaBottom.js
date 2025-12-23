@@ -1,0 +1,1 @@
+"use strict";import{useSafeAreaInsets as e}from"@granite-js/native/react-native-safe-area-context";export const IOS_NOTCH_SAFE_AREA_BOTTOM=34;export function useSafeAreaBottom(){const t=e();return Math.min(t.bottom,IOS_NOTCH_SAFE_AREA_BOTTOM)}

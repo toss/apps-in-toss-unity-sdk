@@ -1,0 +1,1 @@
+"use strict";import{jsx as n}from"react/jsx-runtime";import{Button as t}from"../button";function e({viewStyle:o,...r}){return n(t,{...r,viewStyle:[{marginLeft:24},o]})}const i=t;export{e as LowerButton,i as RightButton};

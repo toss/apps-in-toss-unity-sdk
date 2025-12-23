@@ -1,0 +1,1 @@
+"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.calculateOffset=void 0;const calculateOffset=({base:e,prevSize:t,nextSize:s})=>e-(s-t)/2;exports.calculateOffset=calculateOffset;

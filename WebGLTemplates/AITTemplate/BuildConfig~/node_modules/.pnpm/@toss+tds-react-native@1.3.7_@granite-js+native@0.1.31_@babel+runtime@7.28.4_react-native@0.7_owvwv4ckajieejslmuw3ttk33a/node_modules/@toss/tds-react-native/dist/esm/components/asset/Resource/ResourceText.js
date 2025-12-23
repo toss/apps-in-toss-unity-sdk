@@ -1,0 +1,1 @@
+"use strict";import{jsx as n}from"react/jsx-runtime";import{Txt as i}from"../../txt/index";export function ResourceText({children:t,color:o,size:e,style:r,...s}){return n(i,{fontWeight:"bold",typography:c[e],color:o,style:[{textAlign:"center"},r],...s,children:t})}const c={24:"st5",19:"st8",17:"t5",15:"t6",13:"t7",11:"st13"};

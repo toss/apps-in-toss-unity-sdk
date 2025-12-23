@@ -1,0 +1,32 @@
+import type { ValueOf } from '../types';
+export declare const fontWeightMap: {
+    readonly thin: "100";
+    readonly extralight: "200";
+    readonly extraLight: "200";
+    readonly light: "300";
+    readonly normal: "400";
+    readonly regular: "400";
+    readonly medium: "500";
+    readonly semibold: "600";
+    readonly semiBold: "600";
+    readonly bold: "700";
+    readonly extrabold: "800";
+    readonly extraBold: "800";
+    readonly heavy: "900";
+    readonly black: "900";
+};
+export declare const FontWeight: {
+    Thin: "thin";
+    ExtraLight: "extraLight";
+    Light: "light";
+    Normal: "normal";
+    Regular: "regular";
+    Medium: "medium";
+    Semibold: "semiBold";
+    Bold: "bold";
+    ExtraBold: "extraBold";
+    Heavy: "heavy";
+    Black: "black";
+};
+export type FontWeight = ValueOf<typeof fontWeightMap>;
+export type FontWeightKeys = keyof typeof fontWeightMap;

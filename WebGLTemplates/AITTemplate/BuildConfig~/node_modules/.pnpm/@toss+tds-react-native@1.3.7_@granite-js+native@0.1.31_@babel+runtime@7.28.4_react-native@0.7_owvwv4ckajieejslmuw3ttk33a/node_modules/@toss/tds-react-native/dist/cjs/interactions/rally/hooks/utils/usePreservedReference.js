@@ -1,0 +1,1 @@
+"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.usePreservedReference=usePreservedReference;const react_1=require("react");function usePreservedReference(e,r=areDeeplyEqual){const[t,n]=(0,react_1.useState)(e);return(0,react_1.useEffect)(()=>{r(e,t)||n(e)},[r,t,e]),t}function areDeeplyEqual(e,r){return JSON.stringify(e)===JSON.stringify(r)}

@@ -1,0 +1,1 @@
+"use strict";import{useCallback as r,useEffect as s,useRef as i}from"react";export function useTimeout(){const t=i(null),e=r(function(){t.current&&clearTimeout(t.current)},[]),u=r(function(n,o){e(),t.current=setTimeout(n,o)},[e]);return s(()=>e,[e]),{clear:e,set:u}}

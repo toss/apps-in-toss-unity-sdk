@@ -1,0 +1,1 @@
+"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.ListFooterRight=ListFooterRight;const jsx_runtime_1=require("react/jsx-runtime"),react_native_1=require("react-native");function ListFooterRight({children:e,style:t}){return(0,jsx_runtime_1.jsx)(react_native_1.View,{style:[{marginLeft:2},t],children:e})}

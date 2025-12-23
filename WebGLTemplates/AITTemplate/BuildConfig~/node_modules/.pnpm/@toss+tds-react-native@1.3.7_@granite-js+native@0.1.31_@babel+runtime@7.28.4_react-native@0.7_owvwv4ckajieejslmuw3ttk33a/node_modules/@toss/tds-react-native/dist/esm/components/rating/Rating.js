@@ -1,0 +1,1 @@
+"use strict";import{jsx as o}from"react/jsx-runtime";import{forwardRef as n}from"react";import{EditableRating as a}from"./EditableRating";import{ReadOnlyRating as i}from"./ReadOnlyRating";export const Rating=n((r,t)=>{if(r.readonly){const{readonly:f,...e}=r;return o(i,{ref:t,...e})}return o(a,{ref:t,...r})});

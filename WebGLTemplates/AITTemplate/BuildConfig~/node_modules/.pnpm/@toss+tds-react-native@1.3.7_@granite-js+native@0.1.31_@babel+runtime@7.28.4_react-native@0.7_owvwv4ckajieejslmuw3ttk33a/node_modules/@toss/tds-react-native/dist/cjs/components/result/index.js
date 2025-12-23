@@ -1,0 +1,1 @@
+"use strict";var __importDefault=this&&this.__importDefault||function(e){return e&&e.__esModule?e:{default:e}};Object.defineProperty(exports,"__esModule",{value:!0}),exports.Result=void 0;var Result_1=require("./Result");Object.defineProperty(exports,"Result",{enumerable:!0,get:function(){return __importDefault(Result_1).default}});

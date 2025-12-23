@@ -1,0 +1,1 @@
+"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.useTimestampRef=useTimestampRef;const react_1=require("react");function useTimestampRef({active:t}){const e=(0,react_1.useRef)(0);return(0,react_1.useEffect)(()=>{t?e.current=new Date().getTime():e.current=0},[t]),e}

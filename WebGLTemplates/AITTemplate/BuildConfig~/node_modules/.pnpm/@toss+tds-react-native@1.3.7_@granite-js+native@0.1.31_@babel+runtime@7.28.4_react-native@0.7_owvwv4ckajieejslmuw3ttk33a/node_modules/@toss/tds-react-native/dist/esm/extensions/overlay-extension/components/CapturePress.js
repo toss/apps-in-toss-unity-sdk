@@ -1,0 +1,1 @@
+"use strict";import{Children as e,cloneElement as p}from"react";export function CapturePress({children:r,onPress:n}){const o=e.only(r);return p(o,{...o.props,onPress:(...s)=>{n(),o.props&&typeof o.props.onPress=="function"&&o.props.onPress(...s)}})}

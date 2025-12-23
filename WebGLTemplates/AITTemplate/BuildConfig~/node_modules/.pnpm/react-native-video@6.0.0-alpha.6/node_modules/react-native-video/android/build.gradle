@@ -1,0 +1,78 @@
+apply plugin: 'com.android.library'
+
+def safeExtGet(prop, fallback) {
+    rootProject.ext.has(prop) ? rootProject.ext.get(prop) : fallback
+}
+
+def useExoplayerIMA = safeExtGet("RNVUseExoplayerIMA", false)
+
+println "useExoplayerIMA:" + useExoplayerIMA
+
+// This string is used to define build path.
+// As react native build output directory is react-native path of the module.
+// We need to force a new path on each configuration change.
+// If you add a new build parameter, please add the new value in this string
+def configStringPath = (
+        'useExoplayerIMA' + useExoplayerIMA \
+).md5()
+
+android {
+    compileSdkVersion safeExtGet('compileSdkVersion', 31)
+    buildToolsVersion safeExtGet('buildToolsVersion', '30.0.2')
+
+    compileOptions {
+        targetCompatibility JavaVersion.VERSION_1_8
+        sourceCompatibility JavaVersion.VERSION_1_8
+    }
+
+    defaultConfig {
+        minSdkVersion safeExtGet('minSdkVersion', 21)
+        targetSdkVersion safeExtGet('targetSdkVersion', 28)
+        versionCode 1
+        versionName "1.0"
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    buildDir 'buildOutput_' + configStringPath
+
+    sourceSets {
+        main {
+            java {
+                if (useExoplayerIMA) {
+                    exclude 'com/google/ads/interactivemedia/v3/api'
+                    exclude 'com/google/android/exoplayer2/ext/ima'
+                }
+            }
+        }
+    }
+}
+
+repositories {
+    google()
+}
+
+dependencies {
+    implementation "com.facebook.react:react-native:${safeExtGet('reactNativeVersion', '+')}"
+    implementation('com.google.android.exoplayer:exoplayer:2.18.1') {
+        exclude group: 'com.android.support'
+    }
+
+    // All support libs must use the same version
+    implementation "androidx.annotation:annotation:1.1.0"
+    implementation "androidx.core:core:1.1.0"
+    implementation "androidx.media:media:1.1.0"
+    implementation "androidx.activity:activity:1.4.0"
+
+    implementation('com.google.android.exoplayer:extension-okhttp:2.18.1') {
+        exclude group: 'com.squareup.okhttp3', module: 'okhttp'
+    }
+
+    if (useExoplayerIMA) {
+        implementation 'com.google.android.exoplayer:extension-ima:2.18.1'
+    }
+    implementation "com.squareup.okhttp3:okhttp:" + '$OKHTTP_VERSION'
+}

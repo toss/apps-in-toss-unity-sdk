@@ -1,0 +1,1 @@
+"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.ParagraphContext=void 0;const react_1=require("react");exports.ParagraphContext=(0,react_1.createContext)({typography:"t5"});

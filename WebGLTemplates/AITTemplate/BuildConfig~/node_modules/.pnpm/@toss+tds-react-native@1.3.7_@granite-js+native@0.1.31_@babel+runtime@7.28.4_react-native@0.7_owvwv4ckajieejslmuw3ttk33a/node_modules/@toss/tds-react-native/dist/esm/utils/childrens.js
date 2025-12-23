@@ -1,0 +1,1 @@
+"use strict";import{jsxs as i,Fragment as o,jsx as m}from"react/jsx-runtime";import{Children as s,Fragment as d}from"react";export const Childrens={Gap:p};function p({children:r,gap:t}){return m(o,{children:s.map(r,(e,n)=>{const a=n===s.count(r)-1;return i(d,{children:[e,a?void 0:t]},n)})})}

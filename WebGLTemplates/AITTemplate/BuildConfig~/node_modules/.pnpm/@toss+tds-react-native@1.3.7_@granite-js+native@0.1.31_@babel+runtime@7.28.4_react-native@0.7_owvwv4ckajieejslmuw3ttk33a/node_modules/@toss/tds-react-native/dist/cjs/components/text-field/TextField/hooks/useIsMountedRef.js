@@ -1,0 +1,1 @@
+"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.useIsMountedRef=useIsMountedRef;const react_1=require("react");function useIsMountedRef(){const e=(0,react_1.useRef)({mounted:!1}).current;return(0,react_1.useLayoutEffect)(()=>(e.mounted=!0,()=>{e.mounted=!1}),[e]),e}

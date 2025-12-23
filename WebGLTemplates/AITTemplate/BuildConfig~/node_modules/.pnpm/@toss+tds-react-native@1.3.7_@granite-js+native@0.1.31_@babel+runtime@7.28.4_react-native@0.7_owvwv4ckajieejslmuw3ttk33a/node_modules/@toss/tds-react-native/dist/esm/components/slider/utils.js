@@ -1,0 +1,1 @@
+"use strict";export function clamp(o,t=-1/0,r=1/0){return Math.min(Math.max(o,t),r)}export function getNearestSteppedValue(o,t,r,n){const a=(o-t)%n,e=Math.sign(a)*(Math.abs(a)<n/2?0:n),c=Math.floor((o-t)/n)*n,f=t+c+e;return clamp(f,t,r)}

@@ -1,0 +1,1 @@
+"use strict";import{jsx as o}from"react/jsx-runtime";import{useAdaptive as t}from"../../core";import{Icon as e}from"../icon";import{View as m}from"react-native";function n({style:r}){const i=t();return o(m,{style:r,children:o(e,{name:"icon-arrow-right-small-mono",size:24,color:i.grey600})})}export{n as RightArrow};

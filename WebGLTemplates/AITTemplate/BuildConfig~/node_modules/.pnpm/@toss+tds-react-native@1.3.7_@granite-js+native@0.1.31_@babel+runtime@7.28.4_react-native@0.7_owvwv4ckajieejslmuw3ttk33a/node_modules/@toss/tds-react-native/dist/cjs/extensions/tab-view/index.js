@@ -1,0 +1,1 @@
+"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.Tabs=void 0;var Tabs_1=require("./Tabs");Object.defineProperty(exports,"Tabs",{enumerable:!0,get:function(){return Tabs_1.Tabs}});

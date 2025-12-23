@@ -1,0 +1,1 @@
+"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.tdsEvent=void 0;const react_native_1=require("@granite-js/react-native");class NavigationAccessoryEvent extends react_native_1.GraniteEventDefinition{name="navigationAccessoryEvent";remove(){}listener(t,n){}}exports.tdsEvent=new react_native_1.GraniteEvent([new NavigationAccessoryEvent]);

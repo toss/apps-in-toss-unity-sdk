@@ -1,0 +1,1 @@
+"use strict";import{jsx as t}from"react/jsx-runtime";import{BottomSheetDoubleCTA as e}from"./DoubleCTA";import{BottomSheetSingleCTA as m}from"./SingleCTA";export const BottomSheetCTA=function(o){return t(m,{...o})};BottomSheetCTA.Double=e;

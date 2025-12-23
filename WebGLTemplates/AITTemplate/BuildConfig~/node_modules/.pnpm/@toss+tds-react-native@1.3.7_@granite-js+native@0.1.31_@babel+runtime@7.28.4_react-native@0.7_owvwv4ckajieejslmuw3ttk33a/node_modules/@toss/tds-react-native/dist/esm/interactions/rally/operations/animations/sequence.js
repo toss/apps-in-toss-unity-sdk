@@ -1,0 +1,1 @@
+"use strict";export function sequenceAnimation(e){return{start:()=>{async function t(){for(const o of e)if(await o.start()===!1)return!1;return!0}return t()},stop:()=>{for(const t of e)t.stop()},reset:()=>{for(const t of e)t.reset()},seekProgress:t=>{for(const o of e)o.seekProgress(t)}}}

@@ -1,0 +1,1 @@
+"use strict";import{useCallback as l}from"react";export function useTextFieldValueControls(t){const e=t.value??"",o=(t.format?.transform(e)??e).toString(),a=l(n=>{const r=t.format?.reset?.(n)??n;t.onChangeText?.(r.toString())},[t]);return{value:o,onChangeText:a}}

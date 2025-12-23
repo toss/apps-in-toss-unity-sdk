@@ -1,0 +1,1 @@
+"use strict";import{calcRelativeOperator as n,parseMotionValue as o}from"../../../helper";export function getScale(t,{beforeValue:e}){const r=o(t??0);return r?.operator==null&&r?.unit==="number"?r.number:r?.operator!=null?n(e,r.operator,r.number):e}

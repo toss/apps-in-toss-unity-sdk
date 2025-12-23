@@ -1,0 +1,1 @@
+"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.getRotate=getRotate;const helper_1=require("../../../helper");function getRotate(t,{beforeValue:r}){const e=(0,helper_1.parseMotionValue)(t??0);return e?.operator==null&&(e?.unit==="number"||e?.unit==="deg")?e.number:e?.operator!=null?(0,helper_1.calcRelativeOperator)(r,e.operator,e.number):r}

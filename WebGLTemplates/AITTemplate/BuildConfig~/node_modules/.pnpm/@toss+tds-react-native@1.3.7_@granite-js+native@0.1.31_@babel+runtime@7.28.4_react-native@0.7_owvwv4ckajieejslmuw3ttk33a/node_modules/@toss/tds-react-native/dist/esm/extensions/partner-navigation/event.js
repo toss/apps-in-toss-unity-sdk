@@ -1,0 +1,1 @@
+"use strict";import{GraniteEvent as e,GraniteEventDefinition as n}from"@granite-js/react-native";class t extends n{name="navigationAccessoryEvent";remove(){}listener(i,s){}}export const tdsEvent=new e([new t]);

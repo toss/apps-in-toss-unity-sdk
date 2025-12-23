@@ -1,0 +1,1 @@
+"use strict";import{jsx as l}from"react/jsx-runtime";import{Txt as s}from"../../../txt";export function TextFieldButtonText({color:o,placeholder:r,placeholderColor:n=o,children:t,...x}){const e=t==null||t.length===0;return l(s,{color:e?n:o,...x,children:e?r:t})}

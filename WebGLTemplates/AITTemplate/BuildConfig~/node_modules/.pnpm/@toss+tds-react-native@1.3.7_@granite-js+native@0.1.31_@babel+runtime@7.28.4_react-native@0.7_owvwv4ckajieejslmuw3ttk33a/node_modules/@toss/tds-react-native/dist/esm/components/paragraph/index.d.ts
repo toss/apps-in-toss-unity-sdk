@@ -1,0 +1,10 @@
+export { Paragraph as Root } from './Paragraph';
+export { ParagraphText as Text } from './ParagraphText';
+export { ParagraphIcon as Icon } from './ParagraphIcon';
+export { ParagraphLink as Link } from './ParagraphLink';
+export { ParagraphBadge as Badge } from './ParagraphBadge';
+export { ParagraphCode as Code } from './ParagraphCode';
+export type { ParagraphProps } from './Paragraph';
+export type { ParagraphTextProps } from './ParagraphText';
+export type { ParagraphBadgeProps } from './ParagraphBadge';
+export type { ParagraphIconProps } from './ParagraphIcon';

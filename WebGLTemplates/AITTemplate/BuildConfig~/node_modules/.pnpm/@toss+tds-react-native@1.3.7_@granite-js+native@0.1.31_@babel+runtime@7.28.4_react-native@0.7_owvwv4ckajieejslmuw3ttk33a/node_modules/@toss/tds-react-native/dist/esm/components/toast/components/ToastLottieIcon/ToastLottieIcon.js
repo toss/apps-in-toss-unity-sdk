@@ -1,0 +1,1 @@
+"use strict";import{jsx as o}from"react/jsx-runtime";import{CustomToastLottieIcon as e}from"./CustomToastLottieIcon";import{PresetToastLottieIcon as r}from"./PresetToastLottieIcon";export const ToastLottieIcon=t=>s(t)?o(r,{...t}):o(e,{...t});function s(t){return"type"in t&&t.preset===!0}

@@ -1,0 +1,1 @@
+"use strict";import{spring as e}from"@toss/tds-easings";import{useEffect as o}from"react";import{Animated as i}from"react-native";import{useIndicator as n}from"../IndicatorContext";export function useIndicatorOpacityAnimation(){const{opacity:r,isGestureSwiping:t}=n();o(()=>{t?.current!==!0&&i.sequence([i.spring(r,{toValue:1,...e.slow,useNativeDriver:!1})]).start()},[t,r])}

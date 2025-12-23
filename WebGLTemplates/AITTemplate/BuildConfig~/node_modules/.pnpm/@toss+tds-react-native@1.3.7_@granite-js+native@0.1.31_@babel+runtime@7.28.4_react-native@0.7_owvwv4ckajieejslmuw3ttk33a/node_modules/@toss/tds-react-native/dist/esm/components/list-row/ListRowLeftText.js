@@ -1,0 +1,1 @@
+"use strict";import{jsx as e}from"react/jsx-runtime";import{Txt as r}from"../txt";import{StyleSheet as i}from"react-native";function m({style:t,...o}){return e(r,{typography:"t6",fontWeight:"bold",style:[s.txt,t],...o})}const s=i.create({txt:{minWidth:47,marginRight:8}});export{m as ListRowLeftText};

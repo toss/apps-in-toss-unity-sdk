@@ -1,0 +1,1 @@
+"use strict";import{Fragment as d,jsx as e}from"react/jsx-runtime";import{View as n}from"react-native";import{generateShadowStyle as s}from"../../../components/shadow/generateShadowStyle";export function NestedShadow({shadows:r,children:t,...i}){if(r.length===0)return e(d,{children:t});const o=r.reduceRight((m,a)=>e(n,{style:s(a),children:m}),t);return e(n,{...i,children:o})}

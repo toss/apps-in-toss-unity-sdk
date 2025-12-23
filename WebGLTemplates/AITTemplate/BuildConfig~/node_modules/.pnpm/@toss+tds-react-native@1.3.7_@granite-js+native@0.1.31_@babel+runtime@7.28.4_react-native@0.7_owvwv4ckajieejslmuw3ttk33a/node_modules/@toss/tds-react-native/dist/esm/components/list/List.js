@@ -1,0 +1,1 @@
+"use strict";import{jsx as e}from"react/jsx-runtime";import{Border as r}from"../border";import{Childrens as l}from"../../utils";import{View as o}from"react-native";export function List({children:n,rowSeparator:i="indented",style:t,...d}){return e(o,{style:[t],...d,children:e(l.Gap,{children:n,gap:i==="full"?e(r,{type:"full"}):i==="indented"?e(r,{type:"padding24"}):null})})}

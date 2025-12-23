@@ -1,0 +1,1 @@
+"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.CollapsibleContext=void 0;const react_1=require("react");exports.CollapsibleContext=(0,react_1.createContext)({open:!1,onTrigger(){}});

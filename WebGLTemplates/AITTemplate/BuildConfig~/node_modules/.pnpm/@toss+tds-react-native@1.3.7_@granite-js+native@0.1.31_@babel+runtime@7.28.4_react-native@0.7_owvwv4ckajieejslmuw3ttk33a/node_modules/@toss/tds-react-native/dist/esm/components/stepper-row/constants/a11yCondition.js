@@ -1,0 +1,1 @@
+"use strict";export const a11yCondition={leftAsset:{biggerThanOrEqualTo:160},center:{biggerThanOrEqualTo:140},rightArrow:{biggerThanOrEqualTo:160},rightButtonAlign:{biggerThanOrEqualTo:200},rightButtonPaddingTop:{biggerThanOrEqualTo:120,smallerThan:200}};

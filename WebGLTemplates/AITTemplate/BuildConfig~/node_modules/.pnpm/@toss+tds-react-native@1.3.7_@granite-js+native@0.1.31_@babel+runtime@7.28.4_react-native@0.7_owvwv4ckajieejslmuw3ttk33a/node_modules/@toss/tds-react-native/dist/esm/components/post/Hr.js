@@ -1,0 +1,1 @@
+"use strict";import{jsx as t}from"react/jsx-runtime";import{Border as e}from"../border";export function PostHr({paddingBottom:r=24,style:o}){return t(e,{type:"padding24",style:[{paddingBottom:r},o]})}

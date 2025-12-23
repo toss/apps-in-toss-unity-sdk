@@ -1,0 +1,1 @@
+"use strict";import{useCallback as s}from"react";import{useAccelerateInterval as i}from"./useAccelerateInterval";export function useButtonLongPress({onPressStart:t,onPressing:o,onPressEnd:r}){const{startInterval:e,stopInterval:n}=i(o,{startMs:400,interval:.8,minMs:50}),a=s(()=>{t&&t(),e()},[t,e]),c=s(()=>{r&&r(),n()},[r,n]);return{onPressStart:a,onPressEnd:c}}

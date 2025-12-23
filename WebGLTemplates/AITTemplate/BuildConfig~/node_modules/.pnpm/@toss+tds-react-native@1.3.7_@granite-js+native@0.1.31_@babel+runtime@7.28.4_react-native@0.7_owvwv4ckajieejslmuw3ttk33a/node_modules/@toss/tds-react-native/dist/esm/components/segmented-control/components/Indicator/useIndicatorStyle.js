@@ -1,0 +1,1 @@
+"use strict";import{useContext as o}from"react";import{StyleSheet as e}from"react-native";import{SizeContext as i}from"../../contexts/SizeContext";const r={position:"absolute",zIndex:0,left:0},n={top:3,bottom:3,borderRadius:8},s={top:4,bottom:4,borderRadius:10};export function useIndicatorStyle(){const t=o(i)==="small"?n:s;return{indicatorStyle:e.compose(r,t)}}

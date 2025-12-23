@@ -1,0 +1,1 @@
+"use strict";import{bezier as t}from"@toss/tds-easings";export const defaultStyles={opacity:1,scale:1,scaleX:1,scaleY:1,rotate:0,rotateX:0,rotateY:0,rotateZ:0,translateX:0,translateY:0,transformOriginX:"center",transformOriginY:"center",color:"black",backgroundColor:"transparent"},defaultDuration=500,defaultEasing=t.out;

@@ -1,0 +1,1 @@
+"use strict";import{jsx as n}from"react/jsx-runtime";import{Platform as t}from"react-native";import{PreventFontScalingAndroid as i}from"./PreventFontScalingAndroid";import{PreventFontScalingIos as m}from"./PreventFontScalingIos";export function PreventFontScaling({limit:r,children:o}){return t.OS==="android"?n(i,{limit:r,children:o}):n(m,{limit:r,children:o})}

@@ -1,0 +1,1 @@
+"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.mockAccessibilityInfo=void 0;var mockAccessibilityInfo_1=require("./mockAccessibilityInfo");Object.defineProperty(exports,"mockAccessibilityInfo",{enumerable:!0,get:function(){return mockAccessibilityInfo_1.mockAccessibilityInfo}});

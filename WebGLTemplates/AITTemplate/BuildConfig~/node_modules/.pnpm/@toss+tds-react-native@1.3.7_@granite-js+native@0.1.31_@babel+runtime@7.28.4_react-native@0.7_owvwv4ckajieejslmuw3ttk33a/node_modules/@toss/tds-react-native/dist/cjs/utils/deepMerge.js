@@ -1,0 +1,1 @@
+"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.deepMerge=deepMerge;function deepMerge(s,u){const r={...s};for(const[c,e]of Object.entries(u)){const o=c,t=r[o];typeof e=="object"&&e!==null&&!Array.isArray(e)&&typeof t=="object"&&t!==null&&!Array.isArray(t)?r[o]=deepMerge(t,e):r[o]=e}return r}

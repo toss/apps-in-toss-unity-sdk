@@ -1,0 +1,1 @@
+"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.useIsMounted=useIsMounted;const react_1=require("react");function useIsMounted(){const[e,t]=(0,react_1.useState)(!1);return(0,react_1.useEffect)(()=>{t(!0)},[]),e}

@@ -1,0 +1,1 @@
+"use strict";import{jsx as o}from"react/jsx-runtime";import{useAdaptive as i}from"../../../../core";import{Icon as n}from"../../../icon";import{Pressable as m}from"react-native";export function TextFieldClearButton({size:r,onPress:e}){const t=i();return o(m,{onPress:e,children:o(n,{size:r,name:"icon-x-circle-mono",color:t.grey400})})}

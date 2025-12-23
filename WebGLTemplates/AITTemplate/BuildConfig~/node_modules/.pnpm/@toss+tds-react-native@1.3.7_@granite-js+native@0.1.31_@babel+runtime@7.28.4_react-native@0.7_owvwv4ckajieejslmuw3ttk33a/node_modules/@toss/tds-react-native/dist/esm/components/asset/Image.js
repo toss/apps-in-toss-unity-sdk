@@ -1,0 +1,1 @@
+"use strict";import{jsx as o}from"react/jsx-runtime";import{ContentImage as p}from"./blocks/ContentImage";import{Frame as s}from"./blocks/Frame";export function Image({frameShape:r={},backgroundColor:t="transparent",style:a,overlap:e,acc:n,accPosition:m,...c}){return o(s,{shape:r,backgroundColor:t,style:a,overlap:e,acc:n,accPosition:m,content:o(p,{...c})})}

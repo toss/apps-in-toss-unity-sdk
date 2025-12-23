@@ -1,0 +1,1 @@
+"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.token=token;const tokenMap={"line-height-xs":1.252,"line-height-s":1.35,"line-height-m":1.5};function token(e){return tokenMap[e]}

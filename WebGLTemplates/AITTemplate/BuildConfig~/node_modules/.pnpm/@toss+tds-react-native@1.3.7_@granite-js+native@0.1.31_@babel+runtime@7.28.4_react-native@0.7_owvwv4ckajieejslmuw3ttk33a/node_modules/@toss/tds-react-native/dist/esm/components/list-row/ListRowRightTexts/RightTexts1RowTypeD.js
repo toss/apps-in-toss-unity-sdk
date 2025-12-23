@@ -1,0 +1,1 @@
+"use strict";import{jsx as o}from"react/jsx-runtime";import{ListRowRightTxt as r}from"./ListRowRightTxt";import{RightTextsContainer as i}from"./RightTextsContainer";export function RightTexts1RowTypeD(t){return o(i,{children:typeof t.top=="string"?o(r,{typography:"t7",fontWeight:"regular",...t.topProps,children:t.top}):t.top})}

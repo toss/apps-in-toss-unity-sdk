@@ -1,0 +1,1 @@
+"use strict";import{useState as i}from"react";export const useTextLine=()=>{const[t,e]=i("single");return{textLine:t,updateTextLine:({nativeEvent:{lines:n}})=>{n.length>=2?e("multiple"):e("single")}}};

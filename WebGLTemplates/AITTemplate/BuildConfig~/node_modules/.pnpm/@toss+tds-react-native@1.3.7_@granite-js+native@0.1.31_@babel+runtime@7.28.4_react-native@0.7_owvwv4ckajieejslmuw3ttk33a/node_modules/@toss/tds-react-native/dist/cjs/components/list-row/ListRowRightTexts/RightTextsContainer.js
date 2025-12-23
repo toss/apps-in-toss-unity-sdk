@@ -1,0 +1,1 @@
+"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.RightTextsContainer=RightTextsContainer;const jsx_runtime_1=require("react/jsx-runtime"),react_native_1=require("react-native");function RightTextsContainer(e){return(0,jsx_runtime_1.jsx)(react_native_1.View,{style:{alignItems:"flex-end"},children:e.children})}

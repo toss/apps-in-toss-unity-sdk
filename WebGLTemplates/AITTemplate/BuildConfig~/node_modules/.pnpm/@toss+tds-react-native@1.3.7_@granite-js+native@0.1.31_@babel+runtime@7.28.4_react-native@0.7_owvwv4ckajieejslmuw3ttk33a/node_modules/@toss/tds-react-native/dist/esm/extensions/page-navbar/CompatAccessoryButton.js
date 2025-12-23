@@ -1,0 +1,1 @@
+"use strict";import{jsx as e}from"react/jsx-runtime";import{ReactNavigationNavbar as n}from"../../components/navbar";export function CompatAccessoryButton(t){return t.type==="text"?e(n.RightTextButton,{onPress:t.onClick,children:t.title}):e(n.RightIconButton,{onPress:t.onClick,type:t.iconType,name:t.name,accessibilityLabel:t.alt})}

@@ -1,0 +1,1 @@
+"use strict";export const addLayoutPadding=({layout:o,padding:t})=>{const{x:h,y:d,width:i,height:n}=o,e=i+t.paddingLeft+t.paddingRight,c=n+t.paddingTop+t.paddingBottom,g=h-t.paddingLeft,s=d-t.paddingTop;return{x:g,y:s,width:e,height:c}};

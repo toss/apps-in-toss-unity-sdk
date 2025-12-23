@@ -1,0 +1,1 @@
+"use strict";var __importDefault=this&&this.__importDefault||function(e){return e&&e.__esModule?e:{default:e}};Object.defineProperty(exports,"__esModule",{value:!0}),exports.ListFooter=void 0;var ListFooter_1=require("./ListFooter");Object.defineProperty(exports,"ListFooter",{enumerable:!0,get:function(){return __importDefault(ListFooter_1).default}});

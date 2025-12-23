@@ -28,13 +28,14 @@ jobs:
 
           for dir in $UNITY_DIRS; do
             if [ -d "$dir" ]; then
-              # .meta 파일, 숨김 파일, node_modules 제외하고 검사
+              # .meta 파일, 숨김 파일, node_modules, ~ 접미사 폴더 제외하고 검사
+              # ~ 접미사 폴더는 Unity가 무시하므로 .meta 파일이 필요하지 않음
               while IFS= read -r -d '' file; do
                 # .meta 파일 존재 확인
                 if [ ! -f "${file}.meta" ]; then
                   MISSING_FILES+=("$file")
                 fi
-              done < <(find "$dir" -type d -name "node_modules" -prune -o -type f ! -name ".*" ! -name "*.meta" ! -name ".DS_Store" ! -name "*.swp" ! -name "*.tmp" -print0)
+              done < <(find "$dir" -type d \( -name "node_modules" -o -name "*~" \) -prune -o -type f ! -name ".*" ! -name "*.meta" ! -name ".DS_Store" ! -name "*.swp" ! -name "*.tmp" -print0)
             fi
           done
 

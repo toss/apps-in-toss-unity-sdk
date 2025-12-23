@@ -240,7 +240,7 @@ jobs:
         shell: bash
         run: |
           VERSION="${{ inputs.web-framework-version }}"
-          BUILD_CONFIG_DIR="WebGLTemplates/AITTemplate/BuildConfig"
+          BUILD_CONFIG_DIR="WebGLTemplates/AITTemplate/BuildConfig~"
           BUILD_CONFIG="${BUILD_CONFIG_DIR}/package.json"
           LOCK_FILE="${BUILD_CONFIG_DIR}/pnpm-lock.yaml"
 

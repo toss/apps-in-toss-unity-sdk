@@ -33,10 +33,27 @@ export function generateUnityBridge(apis: ParsedAPI[]): string {
     .map(ns => `      ${ns}: typeof ${ns};`)
     .join('\n');
 
-  // 네임스페이스 노출 코드 생성
-  const namespaceExposures = sortedNamespaces
-    .map(ns => `window.AppsInToss.${ns} = ${ns};`)
-    .join('\n');
+  // 네임스페이스 노출 코드 생성 (Unity 6000.3+ Module 읽기 전용 속성 호환)
+  const namespaceList_code = sortedNamespaces.join(', ');
+  const namespaceExposures = `// 네임스페이스 API 안전한 노출 (Unity 6000.3+ Module 읽기 전용 속성 호환)
+const _aitNamespaces = { ${namespaceList_code} };
+for (const [_name, _value] of Object.entries(_aitNamespaces)) {
+  try {
+    // 이미 존재하고 값이 같으면 건너뛰기
+    if ((window.AppsInToss as any)[_name] === _value) continue;
+
+    // Object.defineProperty로 안전하게 속성 설정
+    Object.defineProperty(window.AppsInToss, _name, {
+      value: _value,
+      writable: true,
+      configurable: true,
+      enumerable: true
+    });
+  } catch (_err) {
+    // Unity 6000.3+에서 Module 객체가 읽기 전용이면 무시
+    console.warn(\`[Unity Bridge] \${_name} is read-only, skipping\`);
+  }
+}`;
 
   // 네임스페이스 목록 문자열 (로그용)
   const namespaceList = sortedNamespaces.join(', ');
@@ -68,7 +85,6 @@ window.AppsInToss = WebFramework as typeof WebFramework & {
 ${namespaceTypeProps.replace(/      /g, '  ')}
 };
 
-// 네임스페이스 API 명시적 노출 (ES module export 누락 방지)
 ${namespaceExposures}
 
 console.log('[Unity Bridge] AppsInToss bridge initialized with', Object.keys(WebFramework).length, 'exports');

@@ -276,8 +276,8 @@ namespace AppsInToss.Editor
                 packagePath = Path.Combine(Application.dataPath, "AppsInToss");
             }
 
-            // WebGLTemplates/AITTemplate/BuildConfig/package.json
-            string packageJsonPath = Path.Combine(packagePath, "WebGLTemplates", "AITTemplate", "BuildConfig", "package.json");
+            // WebGLTemplates/AITTemplate/BuildConfig~/package.json (Unity는 ~ 접미사 폴더 무시)
+            string packageJsonPath = Path.Combine(packagePath, "WebGLTemplates", "AITTemplate", "BuildConfig~", "package.json");
 
             if (File.Exists(packageJsonPath))
             {

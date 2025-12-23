@@ -62,14 +62,6 @@ namespace AppsInToss
         REFUNDED
     }
 
-    public enum AppsInTossGlobalsBrandBridgeColorMode
-    {
-        [EnumMember(Value = "basic")]
-        Basic,
-        [EnumMember(Value = "inverted")]
-        Inverted
-    }
-
     public enum OpenPermissionDialogPermissionName
     {
         [EnumMember(Value = "clipboard")]
@@ -892,9 +884,6 @@ namespace AppsInToss
         [Preserve]
         [JsonProperty("brandPrimaryColor")]
         public string BrandPrimaryColor;
-        [Preserve]
-        [JsonProperty("brandBridgeColorMode")]
-        public AppsInTossGlobalsBrandBridgeColorMode BrandBridgeColorMode;
         /// <summary>에러 발생 시 에러 메시지 (플랫폼 미지원 등)</summary>
         public string error;
     }

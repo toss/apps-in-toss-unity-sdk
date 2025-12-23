@@ -106,6 +106,7 @@ logs/
 !**/Plugins~/**
 !**/BuildConfig~
 !**/BuildConfig~/**
+**/BuildConfig~/node_modules/
 
 # Legacy folders (replaced with ~ suffix versions)
 BuildTemplate/

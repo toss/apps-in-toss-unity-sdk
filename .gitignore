@@ -17,6 +17,7 @@ sysinfo.txt
 *.apk
 *.unitypackage
 *.aab
+*.ait
 
 # WebGL Builds
 webgl/

@@ -1022,7 +1022,8 @@ namespace AppsInToss
                     .Replace("%UNITY_WEBGL_CODE_FILENAME%", wasmFile)
                     .Replace("%UNITY_WEBGL_SYMBOLS_FILENAME%", symbolsFile)
                     .Replace("%AIT_IS_PRODUCTION%", isProduction)
-                    .Replace("%AIT_ENABLE_DEBUG_CONSOLE%", enableDebugConsole);
+                    .Replace("%AIT_ENABLE_DEBUG_CONSOLE%", enableDebugConsole)
+                    .Replace("%AIT_DEVICE_PIXEL_RATIO%", config.devicePixelRatio.ToString());
 
                 File.WriteAllText(indexDest, indexContent, System.Text.Encoding.UTF8);
                 Debug.Log("[AIT] index.html → 프로젝트 루트에 생성");

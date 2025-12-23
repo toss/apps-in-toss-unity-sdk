@@ -1,1 +1,0 @@
-{"version":3,"file":"elementType.js","sourceRoot":"","sources":["../src/elementType.ts"],"names":[],"mappings":"","sourcesContent":["/** @tossdocs-ignore */\nexport type ElementType<Type extends readonly unknown[]> = Type[number];\n"]}

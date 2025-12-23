@@ -1,1 +1,0 @@
-"use strict";import{jsx as i}from"react/jsx-runtime";import{StyleSheet as o,View as a}from"react-native";export function TextFieldContainer({paddingTop:e,paddingBottom:t,style:n,children:r}){return i(a,{style:[c.container,{paddingTop:e,paddingBottom:t},n],children:r})}const c=o.create({container:{paddingVertical:16,paddingHorizontal:24}});

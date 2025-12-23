@@ -1,1 +1,0 @@
-"use strict";import{jsx as m}from"react/jsx-runtime";import{forwardRef as n}from"react";import{Animated as s}from"react-native";export const RallyView=n(function({rally:o,style:r,children:t,onLayout:a,...e},f){return m(s.View,{ref:f,style:[...Array.isArray(r)?r:[r],o.style],onLayout:i=>{o.onLayout(i),a?.(i)},...e,children:t})});

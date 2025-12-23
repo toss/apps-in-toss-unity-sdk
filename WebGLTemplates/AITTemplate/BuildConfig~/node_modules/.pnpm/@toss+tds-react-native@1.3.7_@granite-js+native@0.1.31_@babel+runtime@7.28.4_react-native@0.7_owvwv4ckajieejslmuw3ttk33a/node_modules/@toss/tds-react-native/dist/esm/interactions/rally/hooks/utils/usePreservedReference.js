@@ -1,1 +1,0 @@
-"use strict";import{useEffect as f,useState as i}from"react";export function usePreservedReference(e,r=c){const[t,n]=i(e);return f(()=>{r(e,t)||n(e)},[r,t,e]),t}function c(e,r){return JSON.stringify(e)===JSON.stringify(r)}

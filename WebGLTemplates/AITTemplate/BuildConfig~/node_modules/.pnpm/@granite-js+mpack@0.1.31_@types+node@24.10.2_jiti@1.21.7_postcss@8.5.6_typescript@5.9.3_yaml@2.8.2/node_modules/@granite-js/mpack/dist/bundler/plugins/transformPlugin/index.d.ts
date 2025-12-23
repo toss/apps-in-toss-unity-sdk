@@ -1,1 +1,0 @@
-export { transformPlugin } from './transformPlugin';

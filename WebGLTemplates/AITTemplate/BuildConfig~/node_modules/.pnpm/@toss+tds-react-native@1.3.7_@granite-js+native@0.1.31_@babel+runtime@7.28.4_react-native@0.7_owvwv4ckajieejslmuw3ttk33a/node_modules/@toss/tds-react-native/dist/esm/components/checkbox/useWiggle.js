@@ -1,1 +1,0 @@
-"use strict";import{useCallback as a,useRef as n}from"react";import{Animated as e}from"react-native";const s=[0,.2,-.2,.1,-.1,0];export default function u(){const t=n(new e.Value(0)).current;return{startWiggle:a(()=>{e.sequence(s.map(r=>e.timing(t,{toValue:r,duration:60,useNativeDriver:!0}))).start()},[]),style:{transform:[{translateX:t}]}}}

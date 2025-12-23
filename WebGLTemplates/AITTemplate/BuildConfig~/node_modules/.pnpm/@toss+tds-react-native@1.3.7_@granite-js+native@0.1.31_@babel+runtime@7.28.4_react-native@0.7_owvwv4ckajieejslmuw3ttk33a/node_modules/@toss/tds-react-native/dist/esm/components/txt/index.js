@@ -1,1 +1,0 @@
-"use strict";export{default as Txt,fontFamilyByFontWeightMap,toFontWeightStyle}from"./Txt";export{defaultTypographyMap,fontWeightMap,Typography,FontWeight}from"../../constants";export{default as Text}from"./Txt";

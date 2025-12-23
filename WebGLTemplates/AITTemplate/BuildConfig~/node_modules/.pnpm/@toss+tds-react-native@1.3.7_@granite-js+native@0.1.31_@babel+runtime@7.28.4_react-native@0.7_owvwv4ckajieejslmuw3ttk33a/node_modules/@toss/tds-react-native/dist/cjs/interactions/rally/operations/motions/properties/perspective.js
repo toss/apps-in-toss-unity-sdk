@@ -1,1 +1,0 @@
-"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.getPerspective=getPerspective;const helper_1=require("../../../helper");function getPerspective(e,{layout:t,beforeValue:r}){return(0,helper_1.parseMotionValue)((typeof e=="function"?e(t.width):e)??0)?.number??r}

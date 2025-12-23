@@ -1,1 +1,0 @@
-"use strict";import{jsx as r}from"react/jsx-runtime";import{useTypographyTheme as i}from"../../../core";import{token as y}from"../../../tokens/token";import{Txt as h}from"../../txt";export function ListRowRightTxt(t){const{typography:o}=i(),e=t.typography??"t5";return r(h,{...t,style:[t.style,{lineHeight:o[e].fontSize*y("line-height-s")}]})}

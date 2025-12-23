@@ -1,1 +1,0 @@
-"use strict";import{useAdaptive as s}from"../../../../core";import{useMemo as a}from"react";import{getTextFieldStatus as u}from"../utils/getTextFieldStatus";export function useTextFieldDefaultTextColor(t,o){const e=s(),r=u(t,o);return a(()=>{switch(r){case"normal":case"focused":case"error":return e.grey800;case"disabled":return e.grey400}},[e.grey400,e.grey800,r])}

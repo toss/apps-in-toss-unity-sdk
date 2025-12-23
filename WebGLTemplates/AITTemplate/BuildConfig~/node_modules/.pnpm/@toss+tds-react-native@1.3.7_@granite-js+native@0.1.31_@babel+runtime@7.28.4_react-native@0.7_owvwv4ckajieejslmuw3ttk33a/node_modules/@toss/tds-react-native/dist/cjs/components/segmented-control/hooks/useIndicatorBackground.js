@@ -1,1 +1,0 @@
-"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.useIndicatorBackground=useIndicatorBackground;const tds_colors_1=require("@toss/tds-colors"),core_1=require("../../../core");function useIndicatorBackground(){const{colorPreference:e}=(0,core_1.useColorPreference)();return e==="light"?tds_colors_1.colors.white:tds_colors_1.colors.inverseGrey300}

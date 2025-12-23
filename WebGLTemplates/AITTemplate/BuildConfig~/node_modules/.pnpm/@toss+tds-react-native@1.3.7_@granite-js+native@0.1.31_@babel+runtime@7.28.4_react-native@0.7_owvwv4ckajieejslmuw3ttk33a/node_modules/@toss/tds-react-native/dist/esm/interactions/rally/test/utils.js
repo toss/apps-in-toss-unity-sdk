@@ -1,1 +1,0 @@
-"use strict";export const MOCK_LAYOUT={width:100,height:100};const o={delay:0,duration:void 0,easing:void 0};export function toTestMotion(t,e=o){return Object.fromEntries(Object.entries(t).map(([n,r])=>[n,{...r,...e}]))}export function toTestMotions(t,e=o){return t.map(n=>toTestMotion(n,e))}

@@ -1,1 +1,0 @@
-"use strict";import{Children as e,isValidElement as n}from"react";import{TabsList as p}from"../TabsList";export function getTabData(t){return(e.map(t,r=>r)??[]).filter(r=>n(r)).filter(r=>r.type===p).map(r=>e.map(r.props.children,(a,i)=>({value:a.props.value,tabIndex:i}))).flatMap(r=>r)}

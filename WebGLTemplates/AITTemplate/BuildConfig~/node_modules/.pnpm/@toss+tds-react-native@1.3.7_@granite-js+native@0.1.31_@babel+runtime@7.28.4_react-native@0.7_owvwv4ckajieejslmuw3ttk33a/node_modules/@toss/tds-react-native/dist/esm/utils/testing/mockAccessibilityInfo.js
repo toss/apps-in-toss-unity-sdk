@@ -1,1 +1,0 @@
-"use strict";import{AccessibilityInfo as e}from"react-native";export function mockAccessibilityInfo(n){Object.entries(n).forEach(([t,c])=>{jest.spyOn(e,t).mockImplementationOnce(async()=>c)}),jest.spyOn(e,"addEventListener").mockReturnValueOnce({remove:()=>{}})}

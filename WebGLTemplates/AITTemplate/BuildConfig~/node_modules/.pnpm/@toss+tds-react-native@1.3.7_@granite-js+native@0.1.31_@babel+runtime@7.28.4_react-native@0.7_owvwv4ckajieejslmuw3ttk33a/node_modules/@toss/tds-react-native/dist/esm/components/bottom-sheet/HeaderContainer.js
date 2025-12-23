@@ -1,1 +1,0 @@
-"use strict";import{jsx as e}from"react/jsx-runtime";import{memo as o}from"react";import{StyleSheet as n,View as r}from"react-native";export const BottomSheetHeaderContainer=o(function({children:t}){return e(r,{style:i.container,children:t})});const i=n.create({container:{paddingTop:21,paddingBottom:13}});

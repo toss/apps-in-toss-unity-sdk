@@ -1,1 +1,0 @@
-"use strict";import{jsx as r}from"react/jsx-runtime";import{Frame as a}from"./blocks/Frame";import{ResourceText as c}from"./Resource/ResourceText";export function Text({frameShape:o,backgroundColor:e="transparent",color:t,size:n,children:m,...s}){return r(a,{...s,shape:o,backgroundColor:e,content:r(c,{size:n,color:t,children:m})})}

@@ -1,1 +1,0 @@
-export { resolvePlugin } from './resolvePlugin';

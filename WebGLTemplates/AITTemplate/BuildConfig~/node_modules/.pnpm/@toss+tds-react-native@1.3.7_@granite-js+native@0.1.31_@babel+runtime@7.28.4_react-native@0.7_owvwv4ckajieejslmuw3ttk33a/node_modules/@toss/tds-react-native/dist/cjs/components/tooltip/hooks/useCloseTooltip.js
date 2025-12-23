@@ -1,1 +1,0 @@
-"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.useCloseTooltip=useCloseTooltip;const react_1=require("react");function useCloseTooltip({open:r,duration:u,onClose:e}){const t=(0,react_1.useRef)();(0,react_1.useEffect)(()=>(r&&e&&(t.current=setTimeout(()=>{e()},u)),()=>{t.current&&clearTimeout(t.current)}),[e,u,r])}

@@ -1,1 +1,0 @@
-"use strict";import{colors as r}from"@toss/tds-colors";import{useColorPreference as o}from"../../../core";export function useIndicatorBackground(){const{colorPreference:e}=o();return e==="light"?r.white:r.inverseGrey300}

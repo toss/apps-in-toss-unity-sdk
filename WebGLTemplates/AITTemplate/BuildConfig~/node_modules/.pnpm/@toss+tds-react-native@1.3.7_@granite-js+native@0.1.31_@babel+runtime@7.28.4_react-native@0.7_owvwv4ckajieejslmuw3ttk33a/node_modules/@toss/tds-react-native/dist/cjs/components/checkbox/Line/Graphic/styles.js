@@ -1,1 +1,0 @@
-"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.styles=void 0;const react_native_1=require("react-native");exports.styles=react_native_1.StyleSheet.create({container:{flexDirection:"row",alignItems:"center"},checkContainer:{alignItems:"center",justifyContent:"center"}});

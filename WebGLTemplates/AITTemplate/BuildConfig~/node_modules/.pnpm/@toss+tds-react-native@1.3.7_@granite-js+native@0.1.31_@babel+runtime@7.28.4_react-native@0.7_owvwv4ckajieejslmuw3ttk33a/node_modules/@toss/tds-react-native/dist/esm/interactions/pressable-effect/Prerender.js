@@ -1,1 +1,0 @@
-"use strict";import{Fragment as s,jsx as a}from"react/jsx-runtime";import{useEffect as i,useState as m}from"react";export function Prerender({initial:e,children:r}){const[n,t]=m(!1);return i(()=>{const o=requestAnimationFrame(()=>{t(!0)});return()=>{cancelAnimationFrame(o)}},[]),a(s,{children:n?r:e})}

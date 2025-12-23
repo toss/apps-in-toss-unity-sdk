@@ -1,1 +1,0 @@
-"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.a11yCondition=void 0,exports.a11yCondition={leftAsset:{biggerThanOrEqualTo:160},center:{biggerThanOrEqualTo:140},rightArrow:{biggerThanOrEqualTo:160},rightButtonAlign:{biggerThanOrEqualTo:200},rightButtonPaddingTop:{biggerThanOrEqualTo:120,smallerThan:200}};

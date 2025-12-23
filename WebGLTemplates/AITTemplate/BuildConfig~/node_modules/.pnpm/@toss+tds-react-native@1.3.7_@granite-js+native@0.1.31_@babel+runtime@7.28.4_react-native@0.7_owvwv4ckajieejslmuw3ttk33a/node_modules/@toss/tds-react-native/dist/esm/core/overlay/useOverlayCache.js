@@ -1,1 +1,0 @@
-"use strict";import{useCallback as a,useState as l}from"react";export default function d(){const[u,o]=l(new Map),c=a((t,n)=>{o(e=>{const r=new Map(e);return r.set(t,n),r})},[]),s=a(t=>{o(n=>{const e=new Map(n);return e.delete(t),e})},[]);return{mount:c,unmount:s,overlayById:u}}

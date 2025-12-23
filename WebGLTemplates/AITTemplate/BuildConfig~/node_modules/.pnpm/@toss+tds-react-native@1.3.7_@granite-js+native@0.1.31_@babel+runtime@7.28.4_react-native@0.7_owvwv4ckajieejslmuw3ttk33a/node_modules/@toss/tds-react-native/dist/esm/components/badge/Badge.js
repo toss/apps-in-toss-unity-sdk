@@ -1,1 +1,0 @@
-"use strict";import{jsx as r}from"react/jsx-runtime";import{Badge as i}from"../paragraph";function n({size:t="small",fontWeight:a,...o}){const e=a??t==="tiny"?"semibold":"bold";return r(i,{typography:sizeVariant[t],fontWeight:e,...o})}export const sizeVariant={tiny:"t5",small:"t3",medium:"t2",large:"t1"};export default n;

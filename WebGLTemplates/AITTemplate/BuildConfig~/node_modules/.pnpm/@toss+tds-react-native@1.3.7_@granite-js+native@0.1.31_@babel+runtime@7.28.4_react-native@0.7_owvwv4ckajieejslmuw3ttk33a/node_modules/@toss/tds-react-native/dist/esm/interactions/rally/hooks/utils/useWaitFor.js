@@ -1,1 +1,0 @@
-"use strict";import{useCallback as s,useEffect as c,useRef as f}from"react";export function useWaitFor(e){const r=f(new Set).current,a=s(async()=>{if(!e)return new Promise(t=>{r.add(t)})},[e,r]);return c(()=>{if(e)for(const t of r)t()},[e,r]),{waitFor:a}}

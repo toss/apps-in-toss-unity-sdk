@@ -1,1 +1,0 @@
-"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.useForceRerender=useForceRerender;const react_1=require("react"),useIsMounted_1=require("./useIsMounted");function useForceRerender(){const e=(0,useIsMounted_1.useIsMounted)(),[,r]=(0,react_1.useState)(0);return{forceRerender:(0,react_1.useCallback)(()=>{e&&r(t=>t+1)},[e])}}

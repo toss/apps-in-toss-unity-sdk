@@ -1,1 +1,0 @@
-"use strict";import{calcRelativeOperator as n,parseMotionValue as o}from"../../../helper";export function getOpacity(e,{beforeValue:t}){const r=o(e??0);return r?.operator==null&&r?.unit==="number"?r.number:r?.operator!=null?n(t,r.operator,r.number):t}

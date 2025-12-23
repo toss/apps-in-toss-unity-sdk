@@ -1,1 +1,0 @@
-export { requireContextPlugin } from './requireContextPlugin';

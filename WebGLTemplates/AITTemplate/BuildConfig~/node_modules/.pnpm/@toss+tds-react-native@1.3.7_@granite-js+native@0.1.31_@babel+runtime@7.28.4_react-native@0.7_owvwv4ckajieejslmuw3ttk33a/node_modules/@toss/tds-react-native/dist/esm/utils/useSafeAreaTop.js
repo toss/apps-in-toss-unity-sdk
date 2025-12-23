@@ -1,1 +1,0 @@
-"use strict";import{useSafeAreaInsets as o}from"@granite-js/native/react-native-safe-area-context";import{Platform as s}from"react-native";export function useSafeAreaTop(){const a=o();return s.OS==="ios"&&a.top>50?a.top-5:a.top}

@@ -1,1 +1,0 @@
-"use strict";import{getSpringEasing as c}from"@toss/tds-spring-easing";import{Animated as f}from"react-native";export const spring=function(n,t){const{stiffness:i,damping:o,velocity:r,tolerance:s,mass:e,...a}=t,{duration:g,easeFunction:m}=c({stiffness:i,damping:o,velocity:r,tolerance:s,mass:e});return f.timing(n,{...a,easing:m,duration:g*1e3})};

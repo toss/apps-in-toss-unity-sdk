@@ -1,1 +1,0 @@
-"use strict";import{jsx as s}from"react/jsx-runtime";import{CustomToastLottieIcon as e}from"./CustomToastLottieIcon";export const PresetToastLottieIcon=({type:t,...o})=>s(e,{src:t==="complete"?"https://static.toss.im/lotties-common/check-green-spot.json":"https://static.toss.im/lotties-common/error-yellow-spot.json",...o});

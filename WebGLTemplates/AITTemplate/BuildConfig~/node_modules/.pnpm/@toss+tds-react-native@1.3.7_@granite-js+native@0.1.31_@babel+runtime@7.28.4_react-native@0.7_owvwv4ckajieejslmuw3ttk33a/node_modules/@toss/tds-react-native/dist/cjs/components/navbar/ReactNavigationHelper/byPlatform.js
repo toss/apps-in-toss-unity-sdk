@@ -1,1 +1,0 @@
-"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.byPlatform=byPlatform;const react_native_1=require("react-native");function byPlatform({...e}){return(e[react_native_1.Platform.OS]??e.fallback)()}

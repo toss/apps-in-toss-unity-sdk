@@ -1,1 +1,0 @@
-"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.getScale=getScale;const helper_1=require("../../../helper");function getScale(t,{beforeValue:r}){const e=(0,helper_1.parseMotionValue)(t??0);return e?.operator==null&&e?.unit==="number"?e.number:e?.operator!=null?(0,helper_1.calcRelativeOperator)(r,e.operator,e.number):r}

@@ -1,1 +1,0 @@
-"use strict";import{jsx as o}from"react/jsx-runtime";import{ContentIcon as p}from"./blocks/ContentIcon";import{Frame as s}from"./blocks/Frame";export function Icon({frameShape:r={},backgroundColor:t="transparent",style:n,overlap:a,acc:c,accPosition:e,...m}){return o(s,{shape:r,backgroundColor:t,style:n,overlap:a,acc:c,accPosition:e,content:o(p,{...m})})}

@@ -1,1 +1,0 @@
-"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.addLayoutPadding=void 0;const addLayoutPadding=({layout:d,padding:t})=>{const{x:o,y:e,width:i,height:n}=d,s=i+t.paddingLeft+t.paddingRight,a=n+t.paddingTop+t.paddingBottom,h=o-t.paddingLeft,r=e-t.paddingTop;return{x:h,y:r,width:s,height:a}};exports.addLayoutPadding=addLayoutPadding;

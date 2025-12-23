@@ -1,1 +1,0 @@
-"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.fontSizeToLineHeightMap=void 0;const typographyMap_1=require("./typographyMap");exports.fontSizeToLineHeightMap=Object.fromEntries(Object.values(typographyMap_1.defaultTypographyMap).map(({lineHeight:e,fontSize:t})=>[t,e]));

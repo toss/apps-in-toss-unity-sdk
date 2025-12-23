@@ -1,1 +1,0 @@
-"use strict";import{jsx as l}from"react/jsx-runtime";import{createContext as n,useRef as r}from"react";export const ScrollContext=n({ref:null,scrollHandlers:new Set});export function ScrollContextProvider({children:e}){const o=r(null),t=r(new Set).current;return l(ScrollContext.Provider,{value:{ref:o,scrollHandlers:t},children:e})}

@@ -1,1 +1,0 @@
-"use strict";import{useMemo as u,useRef as t}from"react";import{Animated as r}from"react-native";export function useScrollHandler({initialPosition:o=0}={}){const e=t(new r.Value(0)).current,n=t(new r.Value(o)).current,s=u(()=>r.event([{nativeEvent:{offset:e,position:n}}],{useNativeDriver:!1}),[e,n]);return{position:n,offset:e,scrollHandler:s}}

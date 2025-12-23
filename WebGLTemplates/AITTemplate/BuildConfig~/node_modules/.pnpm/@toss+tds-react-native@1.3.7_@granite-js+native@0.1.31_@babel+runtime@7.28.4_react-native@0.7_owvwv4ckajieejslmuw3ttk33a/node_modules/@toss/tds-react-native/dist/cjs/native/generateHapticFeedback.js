@@ -1,1 +1,0 @@
-"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.generateHapticFeedback=generateHapticFeedback;const react_native_1=require("react-native");function generateHapticFeedback(e){(react_native_1.NativeModules.GraniteModule??react_native_1.NativeModules.BedrockModule).generateHapticFeedback(e)}

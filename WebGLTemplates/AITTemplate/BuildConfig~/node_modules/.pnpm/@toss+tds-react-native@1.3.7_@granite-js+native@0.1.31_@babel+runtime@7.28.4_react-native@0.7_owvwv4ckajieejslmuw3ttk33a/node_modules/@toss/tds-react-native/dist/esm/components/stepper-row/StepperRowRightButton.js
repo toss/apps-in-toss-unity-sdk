@@ -1,1 +1,0 @@
-"use strict";import{jsx as p}from"react/jsx-runtime";import{Button as e}from"../button";import{useUpdateStepperRowRight as i}from"./StepperRowContext";export function StepperRowRightButton({size:t="tiny",type:o="primary",...r}){return i({type:"button"}),p(e,{size:t,type:o,...r})}

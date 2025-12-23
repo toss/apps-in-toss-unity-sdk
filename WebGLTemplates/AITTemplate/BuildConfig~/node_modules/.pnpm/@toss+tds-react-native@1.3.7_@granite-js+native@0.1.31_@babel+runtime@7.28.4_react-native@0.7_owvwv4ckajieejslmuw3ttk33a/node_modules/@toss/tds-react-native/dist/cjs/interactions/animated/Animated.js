@@ -1,1 +1,0 @@
-"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.Animated=void 0;const react_native_1=require("react-native"),spring_1=require("./spring");exports.Animated={...react_native_1.Animated,spring:spring_1.spring};

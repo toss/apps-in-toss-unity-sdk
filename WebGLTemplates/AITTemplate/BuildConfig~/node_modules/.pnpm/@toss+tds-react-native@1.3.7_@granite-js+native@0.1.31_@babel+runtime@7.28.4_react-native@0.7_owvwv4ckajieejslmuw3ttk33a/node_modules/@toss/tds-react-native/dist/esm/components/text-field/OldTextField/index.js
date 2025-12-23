@@ -1,1 +1,0 @@
-"use strict";import{TDSTextField as t}from"./TDSTextField";import{TDSTextFieldItem as e}from"./TDSTextFieldItem";import{TextFieldSelectButton as o}from"./TDSTextFieldSelectButton";const l=t,d=e,i=o;export{l as OldTextField,d as OldTextFieldItem,i as OldTextFieldSelectButton};

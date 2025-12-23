@@ -1,1 +1,0 @@
-"use strict";import{jsx as t}from"react/jsx-runtime";import{Path as n}from"@granite-js/native/react-native-svg";import{Animated as e}from"react-native";const r=e.createAnimatedComponent(n);export function Check(o){return t(r,{fill:"none",strokeWidth:"2.4",strokeLinecap:"round",strokeLinejoin:"round",d:"M 6,11.5 10.6,16 18,8.6",...o})}

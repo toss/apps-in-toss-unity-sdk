@@ -1,1 +1,0 @@
-"use strict";import{useEffect as d,useState as o}from"react";export function useCurrentProgressStyleIndex(e,{motionLength:r}){const[n,t]=o(0);return d(()=>{const a=e.addListener(u=>{const s=Math.floor(u.value);t(s===r?Math.max(0,r-1):Math.max(0,s))});return()=>{e.removeListener(a)}},[e,r]),n}

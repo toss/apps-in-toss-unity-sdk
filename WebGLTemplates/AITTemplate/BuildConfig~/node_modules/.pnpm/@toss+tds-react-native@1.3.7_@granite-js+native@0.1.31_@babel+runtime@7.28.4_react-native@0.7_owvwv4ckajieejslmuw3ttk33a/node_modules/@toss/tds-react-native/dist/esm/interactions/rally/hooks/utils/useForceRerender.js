@@ -1,1 +1,0 @@
-"use strict";import{useCallback as t,useState as n}from"react";import{useIsMounted as s}from"./useIsMounted";export function useForceRerender(){const e=s(),[,r]=n(0);return{forceRerender:t(()=>{e&&r(o=>o+1)},[e])}}

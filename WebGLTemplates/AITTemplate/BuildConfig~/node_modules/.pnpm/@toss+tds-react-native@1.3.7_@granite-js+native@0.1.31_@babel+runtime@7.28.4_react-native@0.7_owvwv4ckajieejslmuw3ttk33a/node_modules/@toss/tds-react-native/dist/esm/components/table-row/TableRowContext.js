@@ -1,1 +1,0 @@
-"use strict";import{createContext as t}from"react";export const TableRowContext=t({align:"left"});

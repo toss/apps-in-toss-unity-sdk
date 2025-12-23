@@ -1,1 +1,0 @@
-"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.repeatCycle=repeatCycle;function*repeatCycle(l,r,{gutter:t}={}){for(let e=0;e<r;e++)yield l[e%l.length],e<r-1&&t!=null&&(yield t)}

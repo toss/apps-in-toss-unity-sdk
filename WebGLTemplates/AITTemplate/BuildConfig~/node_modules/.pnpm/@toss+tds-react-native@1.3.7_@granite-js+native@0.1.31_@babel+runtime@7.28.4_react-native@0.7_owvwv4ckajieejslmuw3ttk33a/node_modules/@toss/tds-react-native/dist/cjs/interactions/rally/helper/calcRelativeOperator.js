@@ -1,1 +1,0 @@
-"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.calcRelativeOperator=calcRelativeOperator;function calcRelativeOperator(r,e,t){switch(e){case"-=":return r-t;case"+=":return r+t;case"*=":return r*t;case"/=":return r/t}}

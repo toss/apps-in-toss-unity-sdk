@@ -1,1 +1,0 @@
-"use strict";import{useEffect as c,useRef as f}from"react";export function useCloseTooltip({open:r,duration:u,onClose:t}){const e=f();c(()=>(r&&t&&(e.current=setTimeout(()=>{t()},u)),()=>{e.current&&clearTimeout(e.current)}),[t,u,r])}

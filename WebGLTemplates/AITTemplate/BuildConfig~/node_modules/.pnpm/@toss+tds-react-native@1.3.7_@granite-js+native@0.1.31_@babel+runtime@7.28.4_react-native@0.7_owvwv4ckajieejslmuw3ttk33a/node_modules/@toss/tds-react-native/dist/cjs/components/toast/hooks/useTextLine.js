@@ -1,1 +1,0 @@
-"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.useTextLine=void 0;const react_1=require("react"),useTextLine=()=>{const[t,e]=(0,react_1.useState)("single");return{textLine:t,updateTextLine:({nativeEvent:{lines:n}})=>{n.length>=2?e("multiple"):e("single")}}};exports.useTextLine=useTextLine;

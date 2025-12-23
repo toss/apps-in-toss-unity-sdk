@@ -1,1 +1,0 @@
-"use strict";import{jsx as o}from"react/jsx-runtime";import{ContentLottie as m}from"./blocks/ContentLottie";import{Frame as p}from"./blocks/Frame";export function Lottie({frameShape:t={},backgroundColor:r="transparent",style:e,overlap:n,acc:a,accPosition:i,...c}){return o(p,{shape:t,backgroundColor:r,style:e,overlap:n,acc:a,accPosition:i,content:o(m,{...c})})}

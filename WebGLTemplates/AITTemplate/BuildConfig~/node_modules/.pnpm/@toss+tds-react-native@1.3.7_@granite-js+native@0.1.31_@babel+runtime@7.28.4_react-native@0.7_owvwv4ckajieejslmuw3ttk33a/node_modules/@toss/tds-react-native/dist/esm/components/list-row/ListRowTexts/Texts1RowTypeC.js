@@ -1,1 +1,0 @@
-"use strict";import{jsx as o}from"react/jsx-runtime";import{ListRowTxt as r}from"./ListRowTxt";import{TextsContainer as e}from"./TextsContainer";export function Texts1RowTypeC(t){return o(e,{children:typeof t.top=="string"?o(r,{typography:"t5",fontWeight:"bold",...t.topProps,children:t.top}):t.top})}

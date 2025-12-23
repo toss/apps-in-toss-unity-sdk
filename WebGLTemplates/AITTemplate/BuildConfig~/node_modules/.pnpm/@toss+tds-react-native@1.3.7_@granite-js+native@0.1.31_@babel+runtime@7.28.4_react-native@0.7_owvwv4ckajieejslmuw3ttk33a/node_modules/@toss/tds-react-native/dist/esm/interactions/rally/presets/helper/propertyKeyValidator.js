@@ -1,1 +1,0 @@
-"use strict";const r=["backgroundColor","color","opacity","scale","scaleX","scaleY","translateX","translateY","rotate","rotateX","rotateY","rotateZ","transformOriginX","transformOriginY","width","height","perspective"];export function isAllowedProperty(t){return r.includes(t)}

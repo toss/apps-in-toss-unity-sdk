@@ -1,1 +1,0 @@
-"use strict";import{jsx as m}from"react/jsx-runtime";import{FullTab as t}from"./FullTab";import{FluidTab as i}from"./FluidTab";import{TabItem as f}from"./TabItem";export function Tab({fluid:o,...r}){return o?m(i,{...r}):m(t,{...r})}Tab.Item=f;

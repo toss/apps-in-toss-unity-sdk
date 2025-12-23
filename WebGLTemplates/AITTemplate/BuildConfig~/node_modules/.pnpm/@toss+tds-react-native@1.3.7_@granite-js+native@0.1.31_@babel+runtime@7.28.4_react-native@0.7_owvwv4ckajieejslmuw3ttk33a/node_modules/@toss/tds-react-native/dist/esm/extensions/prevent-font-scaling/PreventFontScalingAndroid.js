@@ -1,1 +1,0 @@
-"use strict";import{jsx as p}from"react/jsx-runtime";import{TypographyThemeProvider as t,useTypographyTheme as y}from"../../core";export function PreventFontScalingAndroid({limit:r,children:o}){const{typographyLevel:e}=y();return p(t,{typographyLevel:Math.min(typeof e=="number"?e:100,r),children:o})}

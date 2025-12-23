@@ -1,1 +1,0 @@
-"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.TransparentNavigationScreenOptions=void 0,exports.TransparentNavigationScreenOptions={headerTransparent:!0,headerStyle:{backgroundColor:"transparent"}};

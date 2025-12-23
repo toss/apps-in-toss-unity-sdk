@@ -1,1 +1,0 @@
-"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.TabsViewList=TabsViewList;const react_native_1=require("react-native");function TabsViewList({children:e}){return null}const styles=react_native_1.StyleSheet.create({pagerView:{flex:1}});

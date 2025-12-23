@@ -1,1 +1,0 @@
-"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.IndicatorContext=void 0;const react_1=require("react");exports.IndicatorContext=(0,react_1.createContext)({width:0,translateX:0,setWidth:()=>{},setTranslateX:()=>{}});

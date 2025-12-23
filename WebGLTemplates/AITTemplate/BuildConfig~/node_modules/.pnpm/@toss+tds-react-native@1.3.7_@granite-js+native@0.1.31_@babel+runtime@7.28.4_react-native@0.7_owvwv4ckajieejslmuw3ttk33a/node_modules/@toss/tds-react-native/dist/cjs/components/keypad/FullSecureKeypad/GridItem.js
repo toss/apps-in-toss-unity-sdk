@@ -1,1 +1,0 @@
-"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.GridItem=GridItem;const jsx_runtime_1=require("react/jsx-runtime"),react_native_1=require("react-native");function GridItem({style:e,children:t}){return(0,jsx_runtime_1.jsx)(react_native_1.View,{style:[{height:"100%",flex:1},e],children:t})}

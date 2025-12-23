@@ -1,1 +1,0 @@
-"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.TabContext=void 0;const react_1=require("react");exports.TabContext=(0,react_1.createContext)({fluid:!1,value:void 0,onChange:()=>{},size:"large"});

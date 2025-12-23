@@ -1,1 +1,0 @@
-"use strict";import{calcRelativeOperator as u,parseMotionValue as i}from"../../../helper";export function getHeight(n,{layout:o,beforeValue:t}){const r=i(n);if(r?.operator==null&&r?.unit==="number")return r.number;const e=r?.unit==="%"?r.number/100*o.height:r?.number??t;return r?.operator!=null?u(t,r.operator,e):e}

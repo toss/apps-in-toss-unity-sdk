@@ -1,1 +1,0 @@
-"use strict";import{calcRelativeOperator as u,parseMotionValue as i}from"../../../helper";export function getWidth(o,{layout:t,beforeValue:e}){const r=i(o??t.width);if(r?.operator==null&&r?.unit==="number")return r.number;const n=r?.unit==="%"?r.number/100*t.width:r?.number??e;return r?.operator!=null?u(e,r.operator,n):n}

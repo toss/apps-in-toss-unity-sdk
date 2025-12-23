@@ -1,1 +1,0 @@
-"use strict";import{useCallback as a,useRef as n}from"react";export function useScrollStateChangedHandler(){const e=n(!1),r=a(t=>{t.nativeEvent.pageScrollState==="dragging"?e.current=!0:t.nativeEvent.pageScrollState==="idle"&&(e.current=!1)},[e]);return{isGestureSwipingRef:e,scrollStateChangedHandler:r}}

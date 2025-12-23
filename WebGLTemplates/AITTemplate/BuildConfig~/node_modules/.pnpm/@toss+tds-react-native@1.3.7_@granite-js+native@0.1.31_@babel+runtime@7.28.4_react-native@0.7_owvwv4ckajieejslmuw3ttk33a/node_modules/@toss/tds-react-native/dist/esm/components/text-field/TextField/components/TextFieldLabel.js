@@ -1,1 +1,0 @@
-"use strict";import{jsx as n}from"react/jsx-runtime";import{StyleSheet as i}from"react-native";import{Txt as l}from"../../../txt";export function TextFieldLabel({color:e,opacity:r,children:t,style:o}){return t==null?null:n(l,{typography:"t7",style:[a.container,{color:e,opacity:r},o],children:t})}const a=i.create({container:{paddingBottom:6}});

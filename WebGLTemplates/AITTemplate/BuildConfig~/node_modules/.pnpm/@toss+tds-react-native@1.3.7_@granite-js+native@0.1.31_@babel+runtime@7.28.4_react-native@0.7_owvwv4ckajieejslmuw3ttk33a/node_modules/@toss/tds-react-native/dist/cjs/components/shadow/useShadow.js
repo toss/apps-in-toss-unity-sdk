@@ -1,1 +1,0 @@
-"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.useShadow=void 0;const core_1=require("../../core"),generateShadowStyle_1=require("./generateShadowStyle"),useShadow=e=>{const{colorPreference:o}=(0,core_1.useColorPreference)();return(0,generateShadowStyle_1.generateShadowStyle)({...e,colorPreference:o})};exports.useShadow=useShadow;

@@ -1,1 +1,0 @@
-"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.sequenceAnimation=sequenceAnimation;function sequenceAnimation(t){return{start:()=>{async function e(){for(const r of t)if(await r.start()===!1)return!1;return!0}return e()},stop:()=>{for(const e of t)e.stop()},reset:()=>{for(const e of t)e.reset()},seekProgress:e=>{for(const r of t)r.seekProgress(e)}}}

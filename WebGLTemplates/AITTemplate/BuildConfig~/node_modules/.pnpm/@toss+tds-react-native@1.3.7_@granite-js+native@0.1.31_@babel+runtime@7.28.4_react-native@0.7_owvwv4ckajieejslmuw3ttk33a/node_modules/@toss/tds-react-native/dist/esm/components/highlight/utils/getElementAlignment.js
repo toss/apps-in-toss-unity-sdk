@@ -1,1 +1,0 @@
-"use strict";export function getElementXAlignment({x:n,width:r,parentWidth:o}){const t=n+r/2,e=o/2;return Math.abs(t-e)<=10?"center":t<e?"left":"right"}export function getElementYAlignment({y:n,height:r,parentHeight:o}){const t=n+r/2,e=o/2;return t>=e?"top":"bottom"}

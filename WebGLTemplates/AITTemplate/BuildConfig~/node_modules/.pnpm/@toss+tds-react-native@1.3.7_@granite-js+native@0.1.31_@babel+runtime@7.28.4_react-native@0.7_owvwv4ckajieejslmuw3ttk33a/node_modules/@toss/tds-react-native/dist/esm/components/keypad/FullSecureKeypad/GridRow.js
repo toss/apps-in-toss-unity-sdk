@@ -1,1 +1,0 @@
-"use strict";import{jsx as n}from"react/jsx-runtime";import{View as t}from"react-native";export function GridRow({children:r,height:i,horizontalPadding:o=0}){return n(t,{style:{margin:0,height:i,paddingVertical:0,paddingHorizontal:o,flexDirection:"row"},children:r})}

@@ -1,1 +1,0 @@
-"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.default=useId;const react_uid_1=require("react-uid");function useId(e){const t=(0,react_uid_1.useUID)();return e!==void 0?`${e}-${t}`:t}

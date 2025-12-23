@@ -1,1 +1,0 @@
-"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.ListHeaderTitleTextButton=ListHeaderTitleTextButton;const jsx_runtime_1=require("react/jsx-runtime"),text_button_1=require("../text-button");function ListHeaderTitleTextButton({...t}){return(0,jsx_runtime_1.jsx)(text_button_1.TextButton,{variant:"underline",...t})}

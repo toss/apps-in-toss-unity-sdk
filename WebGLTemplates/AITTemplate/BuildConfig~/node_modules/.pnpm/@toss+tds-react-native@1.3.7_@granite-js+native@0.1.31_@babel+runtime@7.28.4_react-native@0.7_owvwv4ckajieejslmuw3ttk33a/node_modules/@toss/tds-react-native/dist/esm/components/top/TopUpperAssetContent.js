@@ -1,1 +1,0 @@
-"use strict";import{jsx as i}from"react/jsx-runtime";import{View as n}from"react-native";export function UpperAssetContent({content:r,style:t,...e}){return i(n,{style:[{marginVertical:0},t],...e,children:r})}

@@ -1,1 +1,0 @@
-"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.CarouselItem=CarouselItem;const jsx_runtime_1=require("react/jsx-runtime"),react_native_1=require("react-native");function CarouselItem({children:e}){return(0,jsx_runtime_1.jsx)(react_native_1.View,{style:[{borderRadius:20}],children:e})}

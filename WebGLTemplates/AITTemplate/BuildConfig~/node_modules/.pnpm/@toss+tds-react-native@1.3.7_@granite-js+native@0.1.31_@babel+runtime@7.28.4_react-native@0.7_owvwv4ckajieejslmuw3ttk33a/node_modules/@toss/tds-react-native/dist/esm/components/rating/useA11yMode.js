@@ -1,1 +1,0 @@
-"use strict";import{useState as o,useEffect as d}from"react";import{AccessibilityInfo as n}from"react-native";export function useScreenReaderMode(){const[t,r]=o(!1);return d(()=>{const s=n.addEventListener("screenReaderChanged",e=>{r(e)});return n.isScreenReaderEnabled().then(e=>{r(e)}),()=>{s.remove()}},[]),t}

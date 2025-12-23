@@ -1,1 +1,0 @@
-"use strict";import{jsx as t}from"react/jsx-runtime";import{Gesture as o,GestureDetector as n}from"@granite-js/native/react-native-gesture-handler";import{useMemo as s}from"react";export function BottomSheetGestureBoundary({children:e}){const r=s(()=>o.LongPress().minDuration(0),[]);return t(n,{gesture:r,children:e})}

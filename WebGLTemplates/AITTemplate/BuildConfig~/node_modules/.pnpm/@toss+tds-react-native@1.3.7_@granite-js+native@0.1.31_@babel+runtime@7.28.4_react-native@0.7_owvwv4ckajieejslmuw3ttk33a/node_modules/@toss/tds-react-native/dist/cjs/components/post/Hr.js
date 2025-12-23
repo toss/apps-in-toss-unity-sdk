@@ -1,1 +1,0 @@
-"use strict";Object.defineProperty(exports,"__esModule",{value:!0}),exports.PostHr=PostHr;const jsx_runtime_1=require("react/jsx-runtime"),border_1=require("../border");function PostHr({paddingBottom:e=24,style:r}){return(0,jsx_runtime_1.jsx)(border_1.Border,{type:"padding24",style:[{paddingBottom:e},r]})}

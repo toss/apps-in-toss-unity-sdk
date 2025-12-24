@@ -207,7 +207,8 @@ namespace AppsInToss.Editor
                 if (IsWindows)
                 {
                     shell = "cmd.exe";
-                    shellArgs = $"/c \"{command}\"";
+                    // chcp 65001: 코드 페이지를 UTF-8로 변경하여 한글 등 유니코드 문자가 깨지지 않도록 함
+                    shellArgs = $"/c \"chcp 65001 >nul && {command}\"";
                 }
                 else
                 {

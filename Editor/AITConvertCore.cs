@@ -303,12 +303,19 @@ namespace AppsInToss
 #endif
         }
 
-        private static void EnsureWebGLTemplatesExist()
+        /// <summary>
+        /// WebGL 템플릿을 SDK에서 프로젝트로 복사합니다.
+        /// 빌드 시마다 최신 SDK 템플릿으로 교체합니다.
+        /// </summary>
+        public static void EnsureWebGLTemplatesExist()
         {
             // 프로젝트의 Assets/WebGLTemplates 경로
             string projectTemplatesPath = Path.Combine(Application.dataPath, "WebGLTemplates");
             string projectTemplate = Path.Combine(projectTemplatesPath, "AITTemplate");
             string projectIndexHtml = Path.Combine(projectTemplate, "index.html");
+
+            // 항상 최신 SDK 템플릿으로 교체 (기존 조건 제거)
+            // SDK 업데이트 시 새 템플릿이 적용되도록 함
 
             // SDK의 WebGLTemplates 경로 찾기 (여러 가능한 경로 시도)
             string projectRoot = Directory.GetParent(Application.dataPath).FullName;
@@ -1521,12 +1528,19 @@ namespace AppsInToss
                     .Replace("%UNITY_COMPANY_NAME%", PlayerSettings.companyName)
                     .Replace("%UNITY_PRODUCT_NAME%", PlayerSettings.productName)
                     .Replace("%UNITY_PRODUCT_VERSION%", PlayerSettings.bundleVersion)
+                    // Unity 표준 URL 형식 (Unity가 치환하지 않은 경우 SDK가 처리)
                     .Replace("%UNITY_WEBGL_LOADER_URL%", $"Build/{loaderFile}")
+                    .Replace("%UNITY_WEBGL_DATA_URL%", $"Build/{dataFile}")
+                    .Replace("%UNITY_WEBGL_FRAMEWORK_URL%", $"Build/{frameworkFile}")
+                    .Replace("%UNITY_WEBGL_CODE_URL%", $"Build/{wasmFile}")
+                    .Replace("%UNITY_WEBGL_SYMBOLS_URL%", !string.IsNullOrEmpty(symbolsFile) ? $"Build/{symbolsFile}" : "")
+                    // 하위 호환성을 위한 FILENAME 형식 (레거시)
                     .Replace("%UNITY_WEBGL_LOADER_FILENAME%", loaderFile)
                     .Replace("%UNITY_WEBGL_DATA_FILENAME%", dataFile)
                     .Replace("%UNITY_WEBGL_FRAMEWORK_FILENAME%", frameworkFile)
                     .Replace("%UNITY_WEBGL_CODE_FILENAME%", wasmFile)
                     .Replace("%UNITY_WEBGL_SYMBOLS_FILENAME%", symbolsFile)
+                    // AIT 커스텀 플레이스홀더
                     .Replace("%AIT_IS_PRODUCTION%", isProduction)
                     .Replace("%AIT_ENABLE_DEBUG_CONSOLE%", enableDebugConsole)
                     .Replace("%AIT_DEVICE_PIXEL_RATIO%", config.devicePixelRatio.ToString());

@@ -380,17 +380,16 @@
             updateBannerVisibility();
         }
 
-        var buildUrl = "Build";
-        var loaderUrl = buildUrl + "/%UNITY_WEBGL_LOADER_FILENAME%";
+        var loaderUrl = "%UNITY_WEBGL_LOADER_URL%";
         var config = {
-            dataUrl: buildUrl + "/%UNITY_WEBGL_DATA_FILENAME%",
-            frameworkUrl: buildUrl + "/%UNITY_WEBGL_FRAMEWORK_FILENAME%",
-            codeUrl: buildUrl + "/%UNITY_WEBGL_CODE_FILENAME%",
+            dataUrl: "%UNITY_WEBGL_DATA_URL%",
+            frameworkUrl: "%UNITY_WEBGL_FRAMEWORK_URL%",
+            codeUrl: "%UNITY_WEBGL_CODE_URL%",
 #if MEMORY_FILENAME
-            memoryUrl: buildUrl + "/%UNITY_WEBGL_MEMORY_FILENAME%",
+            memoryUrl: "%UNITY_WEBGL_MEMORY_URL%",
 #endif
 #if SYMBOLS_FILENAME
-            symbolsUrl: buildUrl + "/%UNITY_WEBGL_SYMBOLS_FILENAME%",
+            symbolsUrl: "%UNITY_WEBGL_SYMBOLS_URL%",
 #endif
             streamingAssetsUrl: "StreamingAssets",
             companyName: "%UNITY_COMPANY_NAME%",

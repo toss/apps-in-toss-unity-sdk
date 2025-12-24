@@ -455,6 +455,41 @@ namespace AppsInToss
             }
         }
 
+        // ==================== Regenerate WebGL Templates ====================
+        [MenuItem("AIT/Regenerate WebGL Templates", false, 103)]
+        public static void RegenerateWebGLTemplates()
+        {
+            string projectTemplatesPath = Path.Combine(Application.dataPath, "WebGLTemplates");
+            string projectTemplate = Path.Combine(projectTemplatesPath, "AITTemplate");
+
+            // 기존 템플릿 삭제
+            if (Directory.Exists(projectTemplate))
+            {
+                try
+                {
+                    Directory.Delete(projectTemplate, true);
+                    Debug.Log("[AIT] 기존 WebGL 템플릿 삭제됨");
+                }
+                catch (Exception e)
+                {
+                    Debug.LogError($"[AIT] 템플릿 삭제 실패: {e.Message}");
+                    EditorUtility.DisplayDialog("오류", $"템플릿 삭제 실패: {e.Message}", "확인");
+                    return;
+                }
+            }
+
+            // 새 템플릿 복사
+            AITConvertCore.EnsureWebGLTemplatesExist();
+            AssetDatabase.Refresh();
+
+            Debug.Log("[AIT] ✓ WebGL 템플릿 재생성 완료");
+            EditorUtility.DisplayDialog(
+                "AIT",
+                "WebGL 템플릿이 재생성되었습니다.\n\n새 템플릿이 프로젝트에 적용되었습니다.",
+                "확인"
+            );
+        }
+
         // ==================== Configuration ====================
         [MenuItem("AIT/Configuration", false, 201)]
         public static void ShowConfiguration()

@@ -1,6 +1,7 @@
-import { defineConfig } from 'vite';
+import { defineConfig, mergeConfig } from 'vite';
 
-export default defineConfig({
+//// SDK_GENERATED_START - DO NOT EDIT THIS SECTION ////
+const sdkConfig = defineConfig({
   // Apps in Toss 플랫폼에서 서브 경로 호스팅을 위해 상대 경로 사용
   base: './',
   server: {
@@ -22,3 +23,13 @@ export default defineConfig({
     },
   },
 });
+//// SDK_GENERATED_END ////
+
+//// USER_CONFIG_START ////
+const userConfig = defineConfig({
+  // 여기에 사용자 커스텀 설정을 추가하세요
+  // 예: plugins: [vue()],
+});
+//// USER_CONFIG_END ////
+
+export default mergeConfig(sdkConfig, userConfig);

@@ -205,6 +205,94 @@ AIT_DEBUG_CONSOLE=true /Applications/Unity/Hub/Editor/2022.3.62f1/Unity.app/Cont
 [AIT] ========================================
 ```
 
+## WebGL 템플릿 커스터마이징
+
+SDK는 사용자가 WebGL 빌드의 다양한 측면을 커스터마이징할 수 있도록 지원합니다. 커스터마이징은 SDK 업데이트 시에도 자동으로 보존됩니다.
+
+### 커스터마이징 가능한 파일
+
+| 파일 | 위치 | 커스터마이징 방법 |
+|------|------|------------------|
+| `index.html` | `Assets/WebGLTemplates/AITTemplate/` | 마커 영역에 스크립트/스타일 추가 |
+| `vite.config.ts` | `Assets/WebGLTemplates/AITTemplate/BuildConfig~/` | `USER_CONFIG` 섹션에 플러그인 추가 |
+| `granite.config.ts` | `Assets/WebGLTemplates/AITTemplate/BuildConfig~/` | `USER_CONFIG` 섹션에 설정 추가 |
+| `package.json` | `Assets/WebGLTemplates/AITTemplate/BuildConfig~/` | dependencies에 npm 패키지 추가 |
+
+### index.html 커스터마이징
+
+`index.html`에서 `USER_HEAD`와 `USER_BODY_END` 마커 영역에 커스텀 스크립트나 스타일을 추가할 수 있습니다:
+
+```html
+<!-- USER_HEAD_START - 이 영역에 사용자 커스텀 스크립트/스타일을 추가하세요 -->
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-analytics-compat.js"></script>
+<link rel="stylesheet" href="custom-styles.css">
+<!-- USER_HEAD_END -->
+```
+
+```html
+<!-- USER_BODY_END_START - 이 영역에 사용자 커스텀 스크립트를 추가하세요 -->
+<script>
+    // Firebase 초기화
+    firebase.initializeApp({
+        apiKey: "your-api-key",
+        projectId: "your-project-id"
+    });
+    firebase.analytics();
+</script>
+<!-- USER_BODY_END_END -->
+```
+
+### npm 패키지 추가
+
+`BuildConfig~/package.json`의 `dependencies`에 필요한 패키지를 추가하세요:
+
+```json
+{
+  "dependencies": {
+    "@apps-in-toss/web-framework": "1.6.2",
+    "lodash-es": "^4.17.21",
+    "firebase": "^10.7.0"
+  }
+}
+```
+
+빌드 시 SDK 패키지와 사용자 패키지가 자동으로 머지됩니다.
+
+### Vite 플러그인 추가
+
+`BuildConfig~/vite.config.ts`의 `USER_CONFIG` 섹션에서 Vite 플러그인을 추가할 수 있습니다:
+
+```typescript
+//// USER_CONFIG_START ////
+const userConfig = defineConfig({
+  plugins: [
+    // 사용자 플러그인 추가
+  ],
+  define: {
+    __CUSTOM_FLAG__: JSON.stringify(true),
+  },
+});
+//// USER_CONFIG_END ////
+```
+
+### SDK 업데이트 시 동작
+
+SDK를 업데이트해도 사용자 커스터마이징은 자동으로 보존됩니다:
+
+| 상황 | 동작 |
+|------|------|
+| 마커가 있는 템플릿 | 사용자 영역 보존, SDK 영역만 업데이트 |
+| 마커가 없는 이전 템플릿 | 새 템플릿으로 교체 + 수동 마이그레이션 안내 |
+
+업데이트 시 콘솔에서 다음과 같은 로그를 확인할 수 있습니다:
+
+```
+[AIT] ✓ index.html 템플릿 업데이트 (사용자 커스텀 영역 보존)
+[AIT]   ✓ vite.config.ts (마커 기반 업데이트)
+[AIT]   ✓ granite.config.ts (마커 기반 업데이트)
+```
+
 ## 자주 묻는 질문
 
 ### Q1. 빌드 시 Node.js가 없다는 오류가 발생합니다

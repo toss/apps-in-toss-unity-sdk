@@ -1,6 +1,7 @@
 import { defineConfig } from '@apps-in-toss/web-framework/config';
 
-export default defineConfig({
+//// SDK_GENERATED_START - DO NOT EDIT THIS SECTION ////
+const sdkConfig = {
   appName: '%AIT_APP_NAME%',
   brand: {
     displayName: '%AIT_DISPLAY_NAME%',
@@ -22,4 +23,13 @@ export default defineConfig({
   },
   permissions: %AIT_PERMISSIONS%,
   outdir: '%AIT_OUTDIR%',
-});
+};
+//// SDK_GENERATED_END ////
+
+//// USER_CONFIG_START ////
+const userConfig = {
+  // 여기에 사용자 커스텀 설정을 추가하세요
+};
+//// USER_CONFIG_END ////
+
+export default defineConfig({ ...sdkConfig, ...userConfig });

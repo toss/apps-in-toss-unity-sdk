@@ -21,8 +21,8 @@ namespace AppsInToss.Editor
         private const int MAX_WARNING_LOGS = 30;
         private const int MAX_INFO_LOGS = 20;
 
-        // GitHub URL 길이 제한 (안전 마진 포함)
-        private const int MAX_URL_LENGTH = 7500;
+        // GitHub URL 길이 제한 (브라우저/서버 호환성을 위해 보수적으로 설정)
+        private const int MAX_URL_LENGTH = 2000;
 
         /// <summary>
         /// 로그 엔트리 저장용 구조체
@@ -114,24 +114,38 @@ namespace AppsInToss.Editor
         private static string GenerateIssueUrl(AITConvertCore.AITExportError errorCode, string profileName)
         {
             string title = $"[빌드 에러] {errorCode}";
+
+            // 초기 body 생성 (제한 없이)
             string body = GenerateIssueBody(errorCode, profileName);
+            string url = BuildIssueUrl(title, body);
 
-            // URL 인코딩
-            string encodedTitle = Uri.EscapeDataString(title);
-            string encodedBody = Uri.EscapeDataString(body);
+            // 인코딩된 URL이 제한 초과시 body를 점진적으로 줄임
+            int maxBodyChars = body.Length;
+            while (url.Length > MAX_URL_LENGTH && maxBodyChars > 100)
+            {
+                maxBodyChars = maxBodyChars * 2 / 3; // 33%씩 감소
+                body = GenerateIssueBody(errorCode, profileName, maxLength: maxBodyChars);
+                url = BuildIssueUrl(title, body);
+            }
 
-            string url = $"https://github.com/{GITHUB_REPO}/issues/new?title={encodedTitle}&body={encodedBody}&labels=bug";
-
-            // URL 길이 체크 및 조정
+            // 그래도 초과시 최소 body로 대체
             if (url.Length > MAX_URL_LENGTH)
             {
-                // body를 줄여서 다시 생성
-                body = GenerateIssueBody(errorCode, profileName, maxLength: MAX_URL_LENGTH - 200);
-                encodedBody = Uri.EscapeDataString(body);
-                url = $"https://github.com/{GITHUB_REPO}/issues/new?title={encodedTitle}&body={encodedBody}&labels=bug";
+                body = $"## 에러 정보\n- 에러 코드: `{errorCode}`\n\n환경 정보와 에러 내용은 Issue에 직접 작성해주세요.";
+                url = BuildIssueUrl(title, body);
             }
 
             return url;
+        }
+
+        /// <summary>
+        /// GitHub Issue URL 빌드 헬퍼
+        /// </summary>
+        private static string BuildIssueUrl(string title, string body)
+        {
+            string encodedTitle = Uri.EscapeDataString(title);
+            string encodedBody = Uri.EscapeDataString(body);
+            return $"https://github.com/{GITHUB_REPO}/issues/new?title={encodedTitle}&body={encodedBody}&labels=bug";
         }
 
         /// <summary>

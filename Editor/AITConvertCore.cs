@@ -308,12 +308,7 @@ namespace AppsInToss
             // 프로젝트의 Assets/WebGLTemplates 경로
             string projectTemplatesPath = Path.Combine(Application.dataPath, "WebGLTemplates");
             string projectTemplate = Path.Combine(projectTemplatesPath, "AITTemplate");
-
-            // 이미 존재하고 index.html이 있으면 복사 불필요
-            if (Directory.Exists(projectTemplate) && File.Exists(Path.Combine(projectTemplate, "index.html")))
-            {
-                return;
-            }
+            string projectIndexHtml = Path.Combine(projectTemplate, "index.html");
 
             // SDK의 WebGLTemplates 경로 찾기 (여러 가능한 경로 시도)
             string projectRoot = Directory.GetParent(Application.dataPath).FullName;
@@ -329,11 +324,9 @@ namespace AppsInToss
             string sdkTemplatesPath = null;
             foreach (string path in possibleSdkPaths)
             {
-                Debug.Log($"[AIT] SDK 경로 확인 중: {path}");
                 if (Directory.Exists(path))
                 {
                     sdkTemplatesPath = path;
-                    Debug.Log($"[AIT] SDK WebGLTemplates 발견: {path}");
                     break;
                 }
             }
@@ -344,14 +337,20 @@ namespace AppsInToss
                 return;
             }
 
-            // AITTemplate 복사
             string sdkTemplate = Path.Combine(sdkTemplatesPath, "AITTemplate");
+            string sdkIndexHtml = Path.Combine(sdkTemplate, "index.html");
 
-            if (Directory.Exists(sdkTemplate))
+            if (!Directory.Exists(sdkTemplate))
+            {
+                Debug.LogError($"[AIT] SDK 템플릿 폴더를 찾을 수 없습니다: {sdkTemplate}");
+                return;
+            }
+
+            // 프로젝트 템플릿이 없으면 전체 복사
+            if (!Directory.Exists(projectTemplate) || !File.Exists(projectIndexHtml))
             {
                 Debug.Log("[AIT] WebGLTemplates를 프로젝트로 복사 중...");
 
-                // 기존 폴더가 비어있으면 삭제
                 if (Directory.Exists(projectTemplate))
                 {
                     Directory.Delete(projectTemplate, true);
@@ -360,10 +359,141 @@ namespace AppsInToss
                 Directory.CreateDirectory(projectTemplatesPath);
                 UnityUtil.CopyDirectory(sdkTemplate, projectTemplate);
                 Debug.Log("[AIT] ✓ WebGLTemplates 복사 완료");
+                return;
             }
-            else
+
+            // 프로젝트 템플릿이 있으면 마커 기반으로 업데이트
+            UpdateProjectTemplate(projectTemplate, sdkTemplate);
+        }
+
+        /// <summary>
+        /// 기존 프로젝트 템플릿을 SDK 템플릿으로 마커 기반 업데이트
+        /// 사용자 커스텀 영역(USER_* 마커)은 보존하고 SDK 영역만 업데이트
+        /// </summary>
+        private static void UpdateProjectTemplate(string projectTemplate, string sdkTemplate)
+        {
+            // index.html 마커 기반 업데이트
+            string projectIndexHtml = Path.Combine(projectTemplate, "index.html");
+            string sdkIndexHtml = Path.Combine(sdkTemplate, "index.html");
+
+            if (File.Exists(sdkIndexHtml) && File.Exists(projectIndexHtml))
             {
-                Debug.LogError($"[AIT] SDK 템플릿 폴더를 찾을 수 없습니다: {sdkTemplate}");
+                string projectContent = File.ReadAllText(projectIndexHtml);
+                string sdkContent = File.ReadAllText(sdkIndexHtml);
+
+                // 프로젝트에 마커가 없으면 (이전 버전) SDK 템플릿으로 교체하되 경고
+                if (!projectContent.Contains(HTML_USER_HEAD_START))
+                {
+                    Debug.Log("[AIT] 템플릿 업데이트: 이전 버전 템플릿을 새 마커 기반 템플릿으로 교체합니다.");
+                    Debug.LogWarning("[AIT] ⚠️ 기존 index.html에 커스텀 수정이 있었다면 수동으로 USER_* 마커 영역에 재적용하세요.");
+                    File.WriteAllText(projectIndexHtml, sdkContent);
+                }
+                else
+                {
+                    // 마커가 있으면 사용자 영역 보존하고 SDK 영역만 업데이트
+                    string updatedContent = MergeHtmlTemplates(projectContent, sdkContent);
+                    if (updatedContent != projectContent)
+                    {
+                        File.WriteAllText(projectIndexHtml, updatedContent);
+                        Debug.Log("[AIT] ✓ index.html 템플릿 업데이트 (사용자 커스텀 영역 보존)");
+                    }
+                }
+            }
+
+            // vite.config.ts, granite.config.ts 마커 기반 업데이트
+            UpdateConfigFileWithMarkers(projectTemplate, sdkTemplate, "BuildConfig~/vite.config.ts");
+            UpdateConfigFileWithMarkers(projectTemplate, sdkTemplate, "BuildConfig~/granite.config.ts");
+
+            // Runtime 폴더는 항상 SDK 버전으로 덮어쓰기 (브릿지 코드)
+            string projectRuntime = Path.Combine(projectTemplate, "Runtime");
+            string sdkRuntime = Path.Combine(sdkTemplate, "Runtime");
+            if (Directory.Exists(sdkRuntime))
+            {
+                if (Directory.Exists(projectRuntime))
+                {
+                    Directory.Delete(projectRuntime, true);
+                }
+                UnityUtil.CopyDirectory(sdkRuntime, projectRuntime);
+            }
+
+            // TemplateData는 항상 SDK 버전으로 덮어쓰기
+            string projectTemplateData = Path.Combine(projectTemplate, "TemplateData");
+            string sdkTemplateData = Path.Combine(sdkTemplate, "TemplateData");
+            if (Directory.Exists(sdkTemplateData))
+            {
+                if (Directory.Exists(projectTemplateData))
+                {
+                    Directory.Delete(projectTemplateData, true);
+                }
+                UnityUtil.CopyDirectory(sdkTemplateData, projectTemplateData);
+            }
+        }
+
+        /// <summary>
+        /// HTML 템플릿 마커 기반 병합
+        /// SDK 템플릿의 전체 구조를 사용하되, 프로젝트의 USER_* 마커 영역 내용을 보존
+        /// </summary>
+        private static string MergeHtmlTemplates(string projectContent, string sdkContent)
+        {
+            string result = sdkContent;
+
+            // USER_HEAD 영역 보존
+            string projectUserHead = ExtractHtmlUserSection(projectContent, HTML_USER_HEAD_START, HTML_USER_HEAD_END);
+            if (!string.IsNullOrEmpty(projectUserHead))
+            {
+                result = ReplaceHtmlUserSection(result, HTML_USER_HEAD_START, HTML_USER_HEAD_END, projectUserHead);
+            }
+
+            // USER_BODY_END 영역 보존
+            string projectUserBodyEnd = ExtractHtmlUserSection(projectContent, HTML_USER_BODY_END_START, HTML_USER_BODY_END_END);
+            if (!string.IsNullOrEmpty(projectUserBodyEnd))
+            {
+                result = ReplaceHtmlUserSection(result, HTML_USER_BODY_END_START, HTML_USER_BODY_END_END, projectUserBodyEnd);
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Config 파일 마커 기반 업데이트 (vite.config.ts, granite.config.ts)
+        /// </summary>
+        private static void UpdateConfigFileWithMarkers(string projectTemplate, string sdkTemplate, string relativePath)
+        {
+            string projectFile = Path.Combine(projectTemplate, relativePath);
+            string sdkFile = Path.Combine(sdkTemplate, relativePath);
+
+            if (!File.Exists(sdkFile)) return;
+
+            // 프로젝트 파일이 없으면 SDK에서 복사
+            if (!File.Exists(projectFile))
+            {
+                string dir = Path.GetDirectoryName(projectFile);
+                if (!Directory.Exists(dir))
+                {
+                    Directory.CreateDirectory(dir);
+                }
+                File.Copy(sdkFile, projectFile);
+                return;
+            }
+
+            string projectContent = File.ReadAllText(projectFile);
+            string sdkContent = File.ReadAllText(sdkFile);
+
+            // 프로젝트에 마커가 없으면 (이전 버전) 그대로 유지
+            if (!projectContent.Contains(SDK_MARKER_START))
+            {
+                return;
+            }
+
+            // SDK 영역 추출 및 교체
+            string sdkSection = ExtractMarkerSection(sdkContent, "SDK_GENERATED");
+            if (!string.IsNullOrEmpty(sdkSection))
+            {
+                string updatedContent = ReplaceMarkerSection(projectContent, "SDK_GENERATED", sdkSection);
+                if (updatedContent != projectContent)
+                {
+                    File.WriteAllText(projectFile, updatedContent);
+                }
             }
         }
 
@@ -762,12 +892,25 @@ namespace AppsInToss
                 return AITExportError.FAIL_NPM_BUILD;
             }
 
+            // 먼저 --frozen-lockfile로 시도, 실패하면 lockfile 없이 재시도
+            // (사용자가 package.json에 새 패키지 추가 시 lockfile이 outdated 될 수 있음)
             var installResult = RunNpmCommandWithCache(buildProjectPath, pnpmPath, "install --frozen-lockfile", localCachePath, "pnpm install 실행 중...");
 
             if (installResult != AITExportError.SUCCEED)
             {
-                Debug.LogError("[AIT] pnpm install 실패");
-                return installResult;
+                Debug.LogWarning("[AIT] --frozen-lockfile 설치 실패, lockfile 갱신 모드로 재시도...");
+                Debug.LogWarning("[AIT] (사용자가 package.json에 새 패키지를 추가한 경우 정상 동작입니다)");
+
+                // lockfile 없이 재시도 (CI 환경에서도 lockfile 갱신 허용)
+                installResult = RunNpmCommandWithCache(buildProjectPath, pnpmPath, "install --no-frozen-lockfile", localCachePath, "pnpm install (lockfile 갱신)...");
+
+                if (installResult != AITExportError.SUCCEED)
+                {
+                    Debug.LogError("[AIT] pnpm install 실패");
+                    return installResult;
+                }
+
+                Debug.Log("[AIT] ✓ 새 패키지 설치 및 lockfile 갱신 완료");
             }
 
             // granite build 실행 (web 폴더를 dist로 복사)
@@ -791,8 +934,373 @@ namespace AppsInToss
             return AITExportError.SUCCEED;
         }
 
+        // 마커 상수 (TypeScript 설정 파일용)
+        private const string SDK_MARKER_START = "//// SDK_GENERATED_START";
+        private const string SDK_MARKER_END = "//// SDK_GENERATED_END ////";
+
+        // HTML 마커 상수 (index.html용)
+        private const string HTML_USER_HEAD_START = "<!-- USER_HEAD_START";
+        private const string HTML_USER_HEAD_END = "<!-- USER_HEAD_END -->";
+        private const string HTML_USER_BODY_END_START = "<!-- USER_BODY_END_START";
+        private const string HTML_USER_BODY_END_END = "<!-- USER_BODY_END_END -->";
+
+        /// <summary>
+        /// 마커 기반으로 SDK 섹션을 교체합니다.
+        /// </summary>
+        private static string ReplaceMarkerSection(string content, string newSdkSection)
+        {
+            int startIdx = content.IndexOf(SDK_MARKER_START);
+            int endIdx = content.IndexOf(SDK_MARKER_END);
+
+            if (startIdx == -1 || endIdx == -1)
+            {
+                Debug.LogWarning("[AIT] SDK 마커를 찾을 수 없습니다. 전체 파일을 SDK 버전으로 교체합니다.");
+                return newSdkSection;
+            }
+
+            // 마커 포함하여 교체
+            string before = content.Substring(0, startIdx);
+            string after = content.Substring(endIdx + SDK_MARKER_END.Length);
+
+            return before + newSdkSection + after;
+        }
+
+        /// <summary>
+        /// SDK 마커 섹션을 추출합니다.
+        /// </summary>
+        private static string ExtractSdkSection(string content)
+        {
+            int startIdx = content.IndexOf(SDK_MARKER_START);
+            int endIdx = content.IndexOf(SDK_MARKER_END);
+
+            if (startIdx == -1 || endIdx == -1)
+            {
+                return null;
+            }
+
+            return content.Substring(startIdx, endIdx + SDK_MARKER_END.Length - startIdx);
+        }
+
+        /// <summary>
+        /// 지정된 마커 이름으로 섹션을 추출합니다.
+        /// </summary>
+        private static string ExtractMarkerSection(string content, string markerName)
+        {
+            string startMarker = $"//// {markerName}_START";
+            string endMarker = $"//// {markerName}_END ////";
+
+            int startIdx = content.IndexOf(startMarker);
+            int endIdx = content.IndexOf(endMarker);
+
+            if (startIdx == -1 || endIdx == -1)
+            {
+                return null;
+            }
+
+            return content.Substring(startIdx, endIdx + endMarker.Length - startIdx);
+        }
+
+        /// <summary>
+        /// 지정된 마커 이름으로 섹션을 교체합니다.
+        /// </summary>
+        private static string ReplaceMarkerSection(string content, string markerName, string newSection)
+        {
+            string startMarker = $"//// {markerName}_START";
+            string endMarker = $"//// {markerName}_END ////";
+
+            int startIdx = content.IndexOf(startMarker);
+            int endIdx = content.IndexOf(endMarker);
+
+            if (startIdx == -1 || endIdx == -1)
+            {
+                Debug.LogWarning($"[AIT] 마커를 찾을 수 없습니다: {markerName}");
+                return content;
+            }
+
+            string before = content.Substring(0, startIdx);
+            string after = content.Substring(endIdx + endMarker.Length);
+
+            return before + newSection + after;
+        }
+
+        /// <summary>
+        /// HTML 마커 섹션을 추출합니다.
+        /// </summary>
+        private static string ExtractHtmlUserSection(string content, string startMarker, string endMarker)
+        {
+            int startIdx = content.IndexOf(startMarker);
+            int endIdx = content.IndexOf(endMarker);
+
+            if (startIdx == -1 || endIdx == -1)
+            {
+                return null;
+            }
+
+            return content.Substring(startIdx, endIdx + endMarker.Length - startIdx);
+        }
+
+        /// <summary>
+        /// HTML 마커 섹션을 교체합니다.
+        /// </summary>
+        private static string ReplaceHtmlUserSection(string content, string startMarker, string endMarker, string newSection)
+        {
+            int startIdx = content.IndexOf(startMarker);
+            int endIdx = content.IndexOf(endMarker);
+
+            if (startIdx == -1 || endIdx == -1)
+            {
+                Debug.LogWarning($"[AIT] HTML 마커를 찾을 수 없습니다: {startMarker}");
+                return content;
+            }
+
+            string before = content.Substring(0, startIdx);
+            string after = content.Substring(endIdx + endMarker.Length);
+
+            return before + newSection + after;
+        }
+
+        /// <summary>
+        /// package.json의 dependencies를 머지합니다.
+        /// </summary>
+        private static void MergePackageJson(string projectBuildConfigPath, string sdkBuildConfigPath, string destPath)
+        {
+            string projectFile = Path.Combine(projectBuildConfigPath, "package.json");
+            string sdkFile = Path.Combine(sdkBuildConfigPath, "package.json");
+            string destFile = Path.Combine(destPath, "package.json");
+
+            // 프로젝트 파일 없으면 SDK 복사
+            if (!File.Exists(projectFile))
+            {
+                File.Copy(sdkFile, destFile, true);
+                Debug.Log("[AIT]   ✓ package.json (SDK에서 복사)");
+                return;
+            }
+
+            try
+            {
+                string projectContent = File.ReadAllText(projectFile);
+                string sdkContent = File.ReadAllText(sdkFile);
+
+                // 간단한 JSON 머지 (dependencies와 devDependencies)
+                var projectJson = MiniJson.Deserialize(projectContent) as Dictionary<string, object>;
+                var sdkJson = MiniJson.Deserialize(sdkContent) as Dictionary<string, object>;
+
+                if (projectJson == null || sdkJson == null)
+                {
+                    Debug.LogWarning("[AIT] package.json 파싱 실패, SDK 버전 사용");
+                    File.Copy(sdkFile, destFile, true);
+                    return;
+                }
+
+                // SDK의 기본 구조를 사용하고 dependencies만 머지
+                var result = new Dictionary<string, object>(sdkJson);
+
+                // dependencies 머지
+                result["dependencies"] = MergeDependencies(
+                    projectJson.ContainsKey("dependencies") ? projectJson["dependencies"] as Dictionary<string, object> : null,
+                    sdkJson.ContainsKey("dependencies") ? sdkJson["dependencies"] as Dictionary<string, object> : null
+                );
+
+                // devDependencies 머지
+                result["devDependencies"] = MergeDependencies(
+                    projectJson.ContainsKey("devDependencies") ? projectJson["devDependencies"] as Dictionary<string, object> : null,
+                    sdkJson.ContainsKey("devDependencies") ? sdkJson["devDependencies"] as Dictionary<string, object> : null
+                );
+
+                string mergedJson = MiniJson.Serialize(result);
+                File.WriteAllText(destFile, mergedJson, new System.Text.UTF8Encoding(false));
+                Debug.Log("[AIT]   ✓ package.json (dependencies 머지됨)");
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[AIT] package.json 머지 실패: {e.Message}, SDK 버전 사용");
+                File.Copy(sdkFile, destFile, true);
+            }
+        }
+
+        /// <summary>
+        /// dependencies 딕셔너리를 머지합니다. SDK 패키지가 우선됩니다.
+        /// </summary>
+        private static Dictionary<string, object> MergeDependencies(Dictionary<string, object> project, Dictionary<string, object> sdk)
+        {
+            var result = new Dictionary<string, object>();
+
+            // 프로젝트 dependencies 먼저 추가
+            if (project != null)
+            {
+                foreach (var kvp in project)
+                {
+                    result[kvp.Key] = kvp.Value;
+                }
+            }
+
+            // SDK dependencies로 덮어쓰기 (SDK가 우선)
+            if (sdk != null)
+            {
+                foreach (var kvp in sdk)
+                {
+                    result[kvp.Key] = kvp.Value;
+                }
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// vite.config.ts를 마커 기반으로 업데이트합니다.
+        /// </summary>
+        private static void UpdateViteConfig(string projectBuildConfigPath, string sdkBuildConfigPath, string destPath, AITEditorScriptObject config)
+        {
+            string projectFile = Path.Combine(projectBuildConfigPath, "vite.config.ts");
+            string sdkFile = Path.Combine(sdkBuildConfigPath, "vite.config.ts");
+            string destFile = Path.Combine(destPath, "vite.config.ts");
+
+            // SDK 템플릿에서 SDK 섹션 생성
+            string sdkTemplate = File.ReadAllText(sdkFile);
+            string sdkSection = ExtractSdkSection(sdkTemplate);
+
+            if (sdkSection == null)
+            {
+                Debug.LogError("[AIT] vite.config.ts에서 SDK 마커를 찾을 수 없습니다.");
+                File.Copy(sdkFile, destFile, true);
+                return;
+            }
+
+            // 플레이스홀더 치환
+            sdkSection = sdkSection
+                .Replace("%AIT_VITE_HOST%", config.viteHost)
+                .Replace("%AIT_VITE_PORT%", config.vitePort.ToString());
+
+            string finalContent;
+
+            if (File.Exists(projectFile))
+            {
+                // 프로젝트 파일이 있으면 SDK 섹션만 교체
+                string projectContent = File.ReadAllText(projectFile);
+
+                // SDK 영역이 수정되었는지 확인
+                string projectSdkSection = ExtractSdkSection(projectContent);
+                if (projectSdkSection != null && projectSdkSection != ExtractSdkSection(sdkTemplate))
+                {
+                    Debug.LogWarning("[AIT] ⚠️ vite.config.ts의 SDK_GENERATED 영역이 수정되었습니다.");
+                    Debug.LogWarning("[AIT]    SDK 설정으로 덮어쓰기됩니다. 커스텀 설정은 USER_CONFIG 영역에 추가하세요.");
+                }
+
+                finalContent = ReplaceMarkerSection(projectContent, sdkSection);
+                Debug.Log("[AIT]   ✓ vite.config.ts (마커 기반 업데이트)");
+            }
+            else
+            {
+                // 프로젝트 파일이 없으면 SDK 템플릿 사용
+                finalContent = sdkTemplate
+                    .Replace("%AIT_VITE_HOST%", config.viteHost)
+                    .Replace("%AIT_VITE_PORT%", config.vitePort.ToString());
+                Debug.Log("[AIT]   ✓ vite.config.ts (SDK에서 생성)");
+            }
+
+            File.WriteAllText(destFile, finalContent, new System.Text.UTF8Encoding(false));
+        }
+
+        /// <summary>
+        /// granite.config.ts를 마커 기반으로 업데이트합니다.
+        /// </summary>
+        private static void UpdateGraniteConfig(string projectBuildConfigPath, string sdkBuildConfigPath, string destPath, AITEditorScriptObject config)
+        {
+            string projectFile = Path.Combine(projectBuildConfigPath, "granite.config.ts");
+            string sdkFile = Path.Combine(sdkBuildConfigPath, "granite.config.ts");
+            string destFile = Path.Combine(destPath, "granite.config.ts");
+
+            // SDK 템플릿에서 SDK 섹션 생성
+            string sdkTemplate = File.ReadAllText(sdkFile);
+            string sdkSection = ExtractSdkSection(sdkTemplate);
+
+            if (sdkSection == null)
+            {
+                Debug.LogError("[AIT] granite.config.ts에서 SDK 마커를 찾을 수 없습니다.");
+                return;
+            }
+
+            // 플레이스홀더 치환
+            Debug.Log("[AIT] granite.config.ts placeholder 치환 중...");
+            sdkSection = sdkSection
+                .Replace("%AIT_APP_NAME%", config.appName)
+                .Replace("%AIT_DISPLAY_NAME%", config.displayName)
+                .Replace("%AIT_PRIMARY_COLOR%", config.primaryColor)
+                .Replace("%AIT_ICON_URL%", config.iconUrl)
+                .Replace("%AIT_BRIDGE_COLOR_MODE%", config.GetBridgeColorModeString())
+                .Replace("%AIT_WEBVIEW_TYPE%", config.GetWebViewTypeString())
+                .Replace("%AIT_VITE_HOST%", config.viteHost)
+                .Replace("%AIT_VITE_PORT%", config.vitePort.ToString())
+                .Replace("%AIT_PERMISSIONS%", config.GetPermissionsJson())
+                .Replace("%AIT_OUTDIR%", config.outdir);
+
+            string finalContent;
+
+            if (File.Exists(projectFile))
+            {
+                // 프로젝트 파일이 있으면 SDK 섹션만 교체
+                string projectContent = File.ReadAllText(projectFile);
+
+                // SDK 영역이 수정되었는지 확인
+                string projectSdkSection = ExtractSdkSection(projectContent);
+                if (projectSdkSection != null && projectSdkSection != ExtractSdkSection(sdkTemplate))
+                {
+                    Debug.LogWarning("[AIT] ⚠️ granite.config.ts의 SDK_GENERATED 영역이 수정되었습니다.");
+                    Debug.LogWarning("[AIT]    SDK 설정으로 덮어쓰기됩니다. 커스텀 설정은 USER_CONFIG 영역에 추가하세요.");
+                }
+
+                finalContent = ReplaceMarkerSection(projectContent, sdkSection);
+                Debug.Log("[AIT]   ✓ granite.config.ts (마커 기반 업데이트)");
+            }
+            else
+            {
+                // 프로젝트 파일이 없으면 SDK 템플릿 사용
+                finalContent = sdkTemplate
+                    .Replace("%AIT_APP_NAME%", config.appName)
+                    .Replace("%AIT_DISPLAY_NAME%", config.displayName)
+                    .Replace("%AIT_PRIMARY_COLOR%", config.primaryColor)
+                    .Replace("%AIT_ICON_URL%", config.iconUrl)
+                    .Replace("%AIT_BRIDGE_COLOR_MODE%", config.GetBridgeColorModeString())
+                    .Replace("%AIT_WEBVIEW_TYPE%", config.GetWebViewTypeString())
+                    .Replace("%AIT_VITE_HOST%", config.viteHost)
+                    .Replace("%AIT_VITE_PORT%", config.vitePort.ToString())
+                    .Replace("%AIT_PERMISSIONS%", config.GetPermissionsJson())
+                    .Replace("%AIT_OUTDIR%", config.outdir);
+                Debug.Log("[AIT]   ✓ granite.config.ts (SDK에서 생성)");
+            }
+
+            File.WriteAllText(destFile, finalContent, new System.Text.UTF8Encoding(false));
+        }
+
+        /// <summary>
+        /// 프로젝트 BuildConfig의 추가 파일들을 복사합니다.
+        /// </summary>
+        private static void CopyAdditionalUserFiles(string projectBuildConfigPath, string destPath)
+        {
+            if (!Directory.Exists(projectBuildConfigPath)) return;
+
+            // 기본 파일 제외
+            var excludeFiles = new HashSet<string>
+            {
+                "package.json", "pnpm-lock.yaml", "vite.config.ts",
+                "tsconfig.json", "unity-bridge.ts", "granite.config.ts"
+            };
+
+            foreach (var file in Directory.GetFiles(projectBuildConfigPath))
+            {
+                string fileName = Path.GetFileName(file);
+                if (excludeFiles.Contains(fileName)) continue;
+
+                File.Copy(file, Path.Combine(destPath, fileName), true);
+                Debug.Log($"[AIT]   ✓ {fileName} (사용자 추가 파일)");
+            }
+        }
+
         private static void CopyBuildConfigFromTemplate(string buildProjectPath)
         {
+            // 프로젝트 BuildConfig 경로 (사용자 커스터마이징 가능)
+            string projectBuildConfigPath = Path.Combine(Application.dataPath, "WebGLTemplates/AITTemplate/BuildConfig~");
+
             // SDK의 BuildConfig 템플릿 경로 찾기
             Debug.Log("[AIT] SDK BuildConfig 템플릿 경로 검색 중...");
             string[] possibleSdkPaths = new string[]
@@ -824,95 +1332,70 @@ namespace AppsInToss
 
             Debug.Log($"[AIT] ✓ SDK BuildConfig 템플릿 발견: {sdkBuildConfigPath}");
 
-            var config = UnityUtil.GetEditorConf();
-
-            Debug.Log("[AIT] BuildConfig 파일 복사 중...");
-
-            // package.json 복사 (치환 없음)
-            string packageJsonSrc = Path.Combine(sdkBuildConfigPath, "package.json");
-            string packageJsonDst = Path.Combine(buildProjectPath, "package.json");
-            File.Copy(packageJsonSrc, packageJsonDst, true);
-            Debug.Log($"[AIT]   ✓ package.json 복사: {new FileInfo(packageJsonSrc).Length / 1024}KB");
-
-            // pnpm-lock.yaml 복사 (빠른 설치를 위해 lockfile 사용)
-            string pnpmLockSrc = Path.Combine(sdkBuildConfigPath, "pnpm-lock.yaml");
-            string pnpmLockDst = Path.Combine(buildProjectPath, "pnpm-lock.yaml");
-            if (File.Exists(pnpmLockSrc))
+            // 프로젝트 BuildConfig 존재 여부 확인
+            bool hasProjectBuildConfig = Directory.Exists(projectBuildConfigPath);
+            if (hasProjectBuildConfig)
             {
-                File.Copy(pnpmLockSrc, pnpmLockDst, true);
-                Debug.Log($"[AIT]   ✓ pnpm-lock.yaml 복사: {new FileInfo(pnpmLockSrc).Length / 1024}KB");
+                Debug.Log($"[AIT] ✓ 프로젝트 BuildConfig 발견: {projectBuildConfigPath}");
+            }
+            else
+            {
+                Debug.Log("[AIT] 프로젝트 BuildConfig 없음, SDK 버전 사용");
             }
 
-            // vite.config.ts 복사 (치환 없음)
-            string viteConfigSrc = Path.Combine(sdkBuildConfigPath, "vite.config.ts");
-            string viteConfigDst = Path.Combine(buildProjectPath, "vite.config.ts");
-            File.Copy(viteConfigSrc, viteConfigDst, true);
-            Debug.Log($"[AIT]   ✓ vite.config.ts 복사: {new FileInfo(viteConfigSrc).Length / 1024}KB");
+            var config = UnityUtil.GetEditorConf();
 
-            // tsconfig.json 복사 (치환 없음)
+            Debug.Log("[AIT] BuildConfig 파일 처리 중...");
+
+            // 1. package.json - dependencies 머지
+            MergePackageJson(projectBuildConfigPath, sdkBuildConfigPath, buildProjectPath);
+
+            // 2. pnpm-lock.yaml - 프로젝트 우선, 없으면 SDK
+            string pnpmLockProject = Path.Combine(projectBuildConfigPath, "pnpm-lock.yaml");
+            string pnpmLockSdk = Path.Combine(sdkBuildConfigPath, "pnpm-lock.yaml");
+            string pnpmLockDst = Path.Combine(buildProjectPath, "pnpm-lock.yaml");
+            if (File.Exists(pnpmLockProject))
+            {
+                File.Copy(pnpmLockProject, pnpmLockDst, true);
+                Debug.Log("[AIT]   ✓ pnpm-lock.yaml (프로젝트에서 복사)");
+            }
+            else if (File.Exists(pnpmLockSdk))
+            {
+                File.Copy(pnpmLockSdk, pnpmLockDst, true);
+                Debug.Log("[AIT]   ✓ pnpm-lock.yaml (SDK에서 복사)");
+            }
+
+            // 3. vite.config.ts - 마커 기반 업데이트
+            UpdateViteConfig(projectBuildConfigPath, sdkBuildConfigPath, buildProjectPath, config);
+
+            // 4. granite.config.ts - 마커 기반 업데이트
+            UpdateGraniteConfig(projectBuildConfigPath, sdkBuildConfigPath, buildProjectPath, config);
+
+            // 5. tsconfig.json - SDK 전용
             string tsconfigSrc = Path.Combine(sdkBuildConfigPath, "tsconfig.json");
             string tsconfigDst = Path.Combine(buildProjectPath, "tsconfig.json");
             File.Copy(tsconfigSrc, tsconfigDst, true);
-            Debug.Log($"[AIT]   ✓ tsconfig.json 복사: {new FileInfo(tsconfigSrc).Length / 1024}KB");
+            Debug.Log("[AIT]   ✓ tsconfig.json (SDK에서 복사)");
 
-            // unity-bridge.ts 복사 (치환 없음) - @apps-in-toss/web-framework 함수를 window.AppsInToss에 노출
-            string unityBridgeSrc = Path.Combine(sdkBuildConfigPath, "unity-bridge.ts");
+            // 6. unity-bridge.ts - 프로젝트 우선, 없으면 SDK
+            string unityBridgeProject = Path.Combine(projectBuildConfigPath, "unity-bridge.ts");
+            string unityBridgeSdk = Path.Combine(sdkBuildConfigPath, "unity-bridge.ts");
             string unityBridgeDst = Path.Combine(buildProjectPath, "unity-bridge.ts");
-            if (File.Exists(unityBridgeSrc))
+            if (File.Exists(unityBridgeProject))
             {
-                File.Copy(unityBridgeSrc, unityBridgeDst, true);
-                Debug.Log($"[AIT]   ✓ unity-bridge.ts 복사: {new FileInfo(unityBridgeSrc).Length / 1024}KB");
+                File.Copy(unityBridgeProject, unityBridgeDst, true);
+                Debug.Log("[AIT]   ✓ unity-bridge.ts (프로젝트에서 복사)");
+            }
+            else if (File.Exists(unityBridgeSdk))
+            {
+                File.Copy(unityBridgeSdk, unityBridgeDst, true);
+                Debug.Log("[AIT]   ✓ unity-bridge.ts (SDK에서 복사)");
             }
 
-            // granite.config.ts 복사 및 플레이스홀더 치환
-            Debug.Log("[AIT] granite.config.ts placeholder 치환 중...");
-            Debug.Log($"[AIT]   %AIT_APP_NAME% → '{config.appName}'");
-            Debug.Log($"[AIT]   %AIT_DISPLAY_NAME% → '{config.displayName}'");
-            Debug.Log($"[AIT]   %AIT_PRIMARY_COLOR% → '{config.primaryColor}'");
-            Debug.Log($"[AIT]   %AIT_ICON_URL% → '{config.iconUrl}'");
-            Debug.Log($"[AIT]   %AIT_BRIDGE_COLOR_MODE% → '{config.GetBridgeColorModeString()}'");
-            Debug.Log($"[AIT]   %AIT_WEBVIEW_TYPE% → '{config.GetWebViewTypeString()}'");
-            Debug.Log($"[AIT]   %AIT_VITE_HOST% → '{config.viteHost}'");
-            Debug.Log($"[AIT]   %AIT_VITE_PORT% → '{config.vitePort}'");
-            Debug.Log($"[AIT]   %AIT_PERMISSIONS% → {config.GetPermissionsJson()}");
-            Debug.Log($"[AIT]   %AIT_OUTDIR% → '{config.outdir}'");
+            // 7. 사용자 추가 파일 복사
+            CopyAdditionalUserFiles(projectBuildConfigPath, buildProjectPath);
 
-            string graniteConfigTemplate = File.ReadAllText(Path.Combine(sdkBuildConfigPath, "granite.config.ts"));
-            string graniteConfig = graniteConfigTemplate
-                .Replace("%AIT_APP_NAME%", config.appName)
-                .Replace("%AIT_DISPLAY_NAME%", config.displayName)
-                .Replace("%AIT_PRIMARY_COLOR%", config.primaryColor)
-                .Replace("%AIT_ICON_URL%", config.iconUrl)
-                .Replace("%AIT_BRIDGE_COLOR_MODE%", config.GetBridgeColorModeString())
-                .Replace("%AIT_WEBVIEW_TYPE%", config.GetWebViewTypeString())
-                .Replace("%AIT_VITE_HOST%", config.viteHost)
-                .Replace("%AIT_VITE_PORT%", config.vitePort.ToString())
-                .Replace("%AIT_PERMISSIONS%", config.GetPermissionsJson())
-                .Replace("%AIT_OUTDIR%", config.outdir);
-
-            File.WriteAllText(
-                Path.Combine(buildProjectPath, "granite.config.ts"),
-                graniteConfig,
-                new System.Text.UTF8Encoding(false)
-            );
-
-            // vite.config.ts 복사 및 플레이스홀더 치환
-            Debug.Log("[AIT] vite.config.ts placeholder 치환 중...");
-            Debug.Log($"[AIT]   %AIT_VITE_HOST% → '{config.viteHost}'");
-            Debug.Log($"[AIT]   %AIT_VITE_PORT% → '{config.vitePort}'");
-
-            string viteConfigTemplate = File.ReadAllText(Path.Combine(sdkBuildConfigPath, "vite.config.ts"));
-            string viteConfig = viteConfigTemplate
-                .Replace("%AIT_VITE_HOST%", config.viteHost)
-                .Replace("%AIT_VITE_PORT%", config.vitePort.ToString());
-
-            File.WriteAllText(
-                Path.Combine(buildProjectPath, "vite.config.ts"),
-                viteConfig,
-                new System.Text.UTF8Encoding(false)
-            );
-
-            Debug.Log("[AIT] ✓ 빌드 설정 파일 복사 및 치환 완료");
+            Debug.Log("[AIT] ✓ 빌드 설정 파일 처리 완료");
         }
 
         private static void CopyWebGLToPublic(string webglPath, string buildProjectPath, AITBuildProfile profile = null)
@@ -1006,6 +1489,29 @@ namespace AppsInToss
                 // 프로필 기반 설정값 (Mock 브릿지가 비활성화되면 프로덕션 모드로 간주)
                 string isProduction = profile.enableMockBridge ? "false" : "true";
                 string enableDebugConsole = profile.enableDebugConsole ? "true" : "false";
+
+                // 프로젝트의 index.html에서 사용자 커스텀 섹션 추출 (있는 경우)
+                string projectIndexPath = Path.Combine(Application.dataPath, "WebGLTemplates", "AITTemplate", "index.html");
+                if (File.Exists(projectIndexPath))
+                {
+                    string projectIndexContent = File.ReadAllText(projectIndexPath);
+
+                    // USER_HEAD 섹션 추출 및 교체
+                    string userHeadSection = ExtractHtmlUserSection(projectIndexContent, HTML_USER_HEAD_START, HTML_USER_HEAD_END);
+                    if (userHeadSection != null)
+                    {
+                        indexContent = ReplaceHtmlUserSection(indexContent, HTML_USER_HEAD_START, HTML_USER_HEAD_END, userHeadSection);
+                        Debug.Log("[AIT] index.html USER_HEAD 섹션 머지됨");
+                    }
+
+                    // USER_BODY_END 섹션 추출 및 교체
+                    string userBodyEndSection = ExtractHtmlUserSection(projectIndexContent, HTML_USER_BODY_END_START, HTML_USER_BODY_END_END);
+                    if (userBodyEndSection != null)
+                    {
+                        indexContent = ReplaceHtmlUserSection(indexContent, HTML_USER_BODY_END_START, HTML_USER_BODY_END_END, userBodyEndSection);
+                        Debug.Log("[AIT] index.html USER_BODY_END 섹션 머지됨");
+                    }
+                }
 
                 // Unity 플레이스홀더 치환
                 indexContent = indexContent
@@ -1587,6 +2093,210 @@ namespace AppsInToss
             catch { }
 
             return size;
+        }
+    }
+
+    /// <summary>
+    /// 간단한 JSON 파서/직렬화 유틸리티
+    /// package.json의 dependencies 머지에 사용
+    /// </summary>
+    public static class MiniJson
+    {
+        public static object Deserialize(string json)
+        {
+            if (string.IsNullOrEmpty(json)) return null;
+
+            int index = 0;
+            return ParseValue(json, ref index);
+        }
+
+        public static string Serialize(object obj)
+        {
+            var sb = new System.Text.StringBuilder();
+            SerializeValue(obj, sb, 0);
+            return sb.ToString();
+        }
+
+        private static object ParseValue(string json, ref int index)
+        {
+            SkipWhitespace(json, ref index);
+            if (index >= json.Length) return null;
+
+            char c = json[index];
+            if (c == '{') return ParseObject(json, ref index);
+            if (c == '[') return ParseArray(json, ref index);
+            if (c == '"') return ParseString(json, ref index);
+            if (c == 't' || c == 'f') return ParseBool(json, ref index);
+            if (c == 'n') return ParseNull(json, ref index);
+            if (char.IsDigit(c) || c == '-') return ParseNumber(json, ref index);
+
+            return null;
+        }
+
+        private static Dictionary<string, object> ParseObject(string json, ref int index)
+        {
+            var obj = new Dictionary<string, object>();
+            index++; // skip '{'
+            SkipWhitespace(json, ref index);
+
+            while (index < json.Length && json[index] != '}')
+            {
+                SkipWhitespace(json, ref index);
+                if (json[index] == '}') break;
+
+                string key = ParseString(json, ref index);
+                SkipWhitespace(json, ref index);
+                index++; // skip ':'
+                SkipWhitespace(json, ref index);
+                object value = ParseValue(json, ref index);
+                obj[key] = value;
+
+                SkipWhitespace(json, ref index);
+                if (index < json.Length && json[index] == ',') index++;
+            }
+
+            if (index < json.Length) index++; // skip '}'
+            return obj;
+        }
+
+        private static List<object> ParseArray(string json, ref int index)
+        {
+            var arr = new List<object>();
+            index++; // skip '['
+            SkipWhitespace(json, ref index);
+
+            while (index < json.Length && json[index] != ']')
+            {
+                arr.Add(ParseValue(json, ref index));
+                SkipWhitespace(json, ref index);
+                if (index < json.Length && json[index] == ',') index++;
+                SkipWhitespace(json, ref index);
+            }
+
+            if (index < json.Length) index++; // skip ']'
+            return arr;
+        }
+
+        private static string ParseString(string json, ref int index)
+        {
+            index++; // skip opening '"'
+            var sb = new System.Text.StringBuilder();
+
+            while (index < json.Length && json[index] != '"')
+            {
+                if (json[index] == '\\' && index + 1 < json.Length)
+                {
+                    index++;
+                    char escaped = json[index];
+                    if (escaped == 'n') sb.Append('\n');
+                    else if (escaped == 't') sb.Append('\t');
+                    else if (escaped == 'r') sb.Append('\r');
+                    else sb.Append(escaped);
+                }
+                else
+                {
+                    sb.Append(json[index]);
+                }
+                index++;
+            }
+
+            if (index < json.Length) index++; // skip closing '"'
+            return sb.ToString();
+        }
+
+        private static object ParseNumber(string json, ref int index)
+        {
+            int start = index;
+            while (index < json.Length && (char.IsDigit(json[index]) || json[index] == '.' || json[index] == '-' || json[index] == 'e' || json[index] == 'E' || json[index] == '+'))
+            {
+                index++;
+            }
+            string numStr = json.Substring(start, index - start);
+            if (numStr.Contains(".") || numStr.Contains("e") || numStr.Contains("E"))
+            {
+                double.TryParse(numStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double d);
+                return d;
+            }
+            long.TryParse(numStr, out long l);
+            return l;
+        }
+
+        private static bool ParseBool(string json, ref int index)
+        {
+            if (json.Substring(index, 4) == "true") { index += 4; return true; }
+            if (json.Substring(index, 5) == "false") { index += 5; return false; }
+            return false;
+        }
+
+        private static object ParseNull(string json, ref int index)
+        {
+            index += 4; // "null"
+            return null;
+        }
+
+        private static void SkipWhitespace(string json, ref int index)
+        {
+            while (index < json.Length && char.IsWhiteSpace(json[index])) index++;
+        }
+
+        private static void SerializeValue(object value, System.Text.StringBuilder sb, int indent)
+        {
+            if (value == null)
+            {
+                sb.Append("null");
+            }
+            else if (value is string str)
+            {
+                sb.Append('"');
+                sb.Append(str.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "\\r").Replace("\t", "\\t"));
+                sb.Append('"');
+            }
+            else if (value is bool b)
+            {
+                sb.Append(b ? "true" : "false");
+            }
+            else if (value is Dictionary<string, object> dict)
+            {
+                sb.AppendLine("{");
+                int i = 0;
+                foreach (var kvp in dict)
+                {
+                    sb.Append(new string(' ', (indent + 1) * 2));
+                    sb.Append('"');
+                    sb.Append(kvp.Key);
+                    sb.Append("\": ");
+                    SerializeValue(kvp.Value, sb, indent + 1);
+                    if (i < dict.Count - 1) sb.Append(',');
+                    sb.AppendLine();
+                    i++;
+                }
+                sb.Append(new string(' ', indent * 2));
+                sb.Append('}');
+            }
+            else if (value is List<object> list)
+            {
+                sb.Append('[');
+                for (int i = 0; i < list.Count; i++)
+                {
+                    SerializeValue(list[i], sb, indent);
+                    if (i < list.Count - 1) sb.Append(", ");
+                }
+                sb.Append(']');
+            }
+            else if (value is long || value is int)
+            {
+                sb.Append(value.ToString());
+            }
+            else if (value is double || value is float)
+            {
+                sb.Append(((double)value).ToString(System.Globalization.CultureInfo.InvariantCulture));
+            }
+            else
+            {
+                sb.Append('"');
+                sb.Append(value.ToString());
+                sb.Append('"');
+            }
         }
     }
 

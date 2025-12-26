@@ -1448,6 +1448,14 @@ namespace AppsInToss
                 UnityUtil.CopyDirectory(runtimeSrc, runtimeDest);
             }
 
+            // StreamingAssets 폴더 → public/StreamingAssets (있는 경우)
+            string streamingAssetsSrc = Path.Combine(webglPath, "StreamingAssets");
+            string streamingAssetsDest = Path.Combine(publicPath, "StreamingAssets");
+            if (Directory.Exists(streamingAssetsSrc))
+            {
+                UnityUtil.CopyDirectory(streamingAssetsSrc, streamingAssetsDest);
+            }
+
             // index.html → 프로젝트 루트 (Vite가 루트에서 index.html을 찾음)
             string indexSrc = Path.Combine(webglPath, "index.html");
             string indexDest = Path.Combine(buildProjectPath, "index.html");

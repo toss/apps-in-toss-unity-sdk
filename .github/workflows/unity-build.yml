@@ -3,6 +3,11 @@ name: Unity Build
 on:
   workflow_call:
     inputs:
+      repository:
+        description: 'Repository to checkout (for fork PRs)'
+        type: string
+        required: false
+        default: ''
       ref:
         description: 'Git ref to checkout'
         type: string
@@ -98,6 +103,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v6
         with:
+          repository: ${{ inputs.repository || github.repository }}
           ref: ${{ inputs.ref || github.ref }}
 
       # =====================================================

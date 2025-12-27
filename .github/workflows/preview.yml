@@ -23,6 +23,7 @@ jobs:
 
     outputs:
       targets: ${{ steps.parse.outputs.targets }}
+      repository: ${{ steps.resolve.outputs.repository }}
       ref: ${{ steps.resolve.outputs.ref }}
       pr_number: ${{ steps.resolve.outputs.pr_number }}
 
@@ -39,8 +40,8 @@ jobs:
             PR_NUMBER="$TARGET_REF"
             echo "PR 번호로 감지: #${PR_NUMBER}"
 
-            # PR에서 브랜치 가져오기
-            PR_DATA=$(gh api "repos/${{ github.repository }}/pulls/${PR_NUMBER}" --jq '{ref: .head.ref}' 2>/dev/null || echo "")
+            # PR에서 브랜치와 저장소 가져오기
+            PR_DATA=$(gh api "repos/${{ github.repository }}/pulls/${PR_NUMBER}" --jq '{ref: .head.ref, repo: .head.repo.full_name}' 2>/dev/null || echo "")
 
             if [ -z "$PR_DATA" ]; then
               echo "::error::PR #${PR_NUMBER}을(를) 찾을 수 없습니다"
@@ -48,14 +49,17 @@ jobs:
             fi
 
             REF=$(echo "$PR_DATA" | jq -r '.ref')
+            REPO=$(echo "$PR_DATA" | jq -r '.repo')
             echo "ref=${REF}" >> $GITHUB_OUTPUT
+            echo "repository=${REPO}" >> $GITHUB_OUTPUT
             echo "pr_number=${PR_NUMBER}" >> $GITHUB_OUTPUT
-            echo "브랜치: ${REF}"
+            echo "브랜치: ${REF} (저장소: ${REPO})"
           else
             # 브랜치 이름으로 간주
             REF="$TARGET_REF"
             echo "브랜치 이름으로 감지: ${REF}"
             echo "ref=${REF}" >> $GITHUB_OUTPUT
+            echo "repository=${{ github.repository }}" >> $GITHUB_OUTPUT
 
             # 브랜치에서 열린 PR 찾기
             PR_NUMBER=$(gh pr list --head "${REF}" --state open --json number --jq '.[0].number' 2>/dev/null || echo "")
@@ -136,10 +140,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           REF="${{ needs.parse-targets.outputs.ref }}"
-          SHA=$(gh api "repos/${{ github.repository }}/git/ref/heads/${REF}" --jq '.object.sha' 2>/dev/null || echo "")
+          REPO="${{ needs.parse-targets.outputs.repository }}"
+          SHA=$(gh api "repos/${REPO}/git/ref/heads/${REF}" --jq '.object.sha' 2>/dev/null || echo "")
 
           if [ -z "$SHA" ]; then
-            echo "::warning::Could not get SHA for ref ${REF}"
+            echo "::warning::Could not get SHA for ref ${REF} in ${REPO}"
             echo "skip=true" >> $GITHUB_OUTPUT
           else
             echo "sha=${SHA}" >> $GITHUB_OUTPUT
@@ -177,6 +182,7 @@ jobs:
 
     uses: ./.github/workflows/unity-build.yml
     with:
+      repository: ${{ needs.parse-targets.outputs.repository }}
       ref: ${{ needs.parse-targets.outputs.ref }}
       os: ${{ matrix.target.os }}
       unity-version: ${{ matrix.target.unity-version }}
@@ -435,10 +441,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           REF="${{ needs.parse-targets.outputs.ref }}"
-          SHA=$(gh api "repos/${{ github.repository }}/git/ref/heads/${REF}" --jq '.object.sha' 2>/dev/null || echo "")
+          REPO="${{ needs.parse-targets.outputs.repository }}"
+          SHA=$(gh api "repos/${REPO}/git/ref/heads/${REF}" --jq '.object.sha' 2>/dev/null || echo "")
 
           if [ -z "$SHA" ]; then
-            echo "::warning::Could not get SHA for ref ${REF}"
+            echo "::warning::Could not get SHA for ref ${REF} in ${REPO}"
             echo "skip=true" >> $GITHUB_OUTPUT
           else
             echo "sha=${SHA}" >> $GITHUB_OUTPUT

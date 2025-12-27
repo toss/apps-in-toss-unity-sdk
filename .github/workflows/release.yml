@@ -109,7 +109,8 @@ jobs:
         id: commit
         run: |
           VERSION="${{ needs.release.outputs.version }}"
-          BUILD_REF="refs/builds/release-v${VERSION}"
+          # refs/heads/ 경로 사용 (refs/builds/는 GitHub GC에 의해 삭제될 수 있음)
+          BUILD_REF="refs/heads/_build/release-v${VERSION}"
 
           echo "=== Orphan Commit 생성 ==="
 

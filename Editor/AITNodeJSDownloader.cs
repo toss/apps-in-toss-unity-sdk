@@ -431,12 +431,10 @@ namespace AppsInToss.Editor
         /// </summary>
         private static void ExtractWithPowerShell(string archivePath, string targetPath)
         {
-            // 드라이브 루트에 짧은 이름으로 임시 폴더 생성 (예: C:\AIT-a1b2c3d4)
-            // 이렇게 하면 node_modules의 깊은 경로도 260자 제한에 걸리지 않음
-            string driveRoot = Path.GetPathRoot(Path.GetTempPath()) ?? "C:\\";
-            string shortTempDir = Path.Combine(driveRoot, $"AIT-{Guid.NewGuid().ToString("N").Substring(0, 8)}");
+            // 짧은 임시 경로 생성 (권한 문제 시 폴백)
+            string shortTempDir = CreateShortTempDirectory();
 
-            Debug.Log($"[NodeJS] 짧은 임시 경로 사용: {shortTempDir}");
+            Debug.Log($"[NodeJS] 임시 경로 사용: {shortTempDir}");
 
             try
             {
@@ -495,6 +493,41 @@ namespace AppsInToss.Editor
                     }
                 }
             }
+        }
+
+        /// <summary>
+        /// 짧은 임시 디렉토리 생성 (권한 문제 시 폴백)
+        /// 1순위: 드라이브 루트 (예: C:\AIT-XXXX) - 가장 짧은 경로
+        /// 2순위: 표준 임시 디렉토리 (예: C:\Users\...\Temp\AIT-XXXX) - 권한 보장
+        /// </summary>
+        private static string CreateShortTempDirectory()
+        {
+            string uniqueId = Guid.NewGuid().ToString("N").Substring(0, 8);
+
+            // 1순위: 드라이브 루트에 생성 시도 (가장 짧은 경로)
+            string driveRoot = Path.GetPathRoot(Path.GetTempPath()) ?? "C:\\";
+            string shortPath = Path.Combine(driveRoot, $"AIT-{uniqueId}");
+
+            try
+            {
+                Directory.CreateDirectory(shortPath);
+                Debug.Log($"[NodeJS] 드라이브 루트에 임시 폴더 생성 성공: {shortPath}");
+                return shortPath;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                Debug.LogWarning($"[NodeJS] 드라이브 루트 접근 권한 없음 ({driveRoot}), 표준 임시 디렉토리로 폴백");
+            }
+            catch (IOException ex)
+            {
+                Debug.LogWarning($"[NodeJS] 드라이브 루트 접근 실패 ({ex.Message}), 표준 임시 디렉토리로 폴백");
+            }
+
+            // 2순위: 표준 임시 디렉토리 사용 (권한 보장)
+            string fallbackPath = Path.Combine(Path.GetTempPath(), $"AIT-{uniqueId}");
+            Directory.CreateDirectory(fallbackPath);
+            Debug.Log($"[NodeJS] 표준 임시 디렉토리 사용: {fallbackPath}");
+            return fallbackPath;
         }
         #endif
 

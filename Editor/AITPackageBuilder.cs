@@ -1,0 +1,687 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using UnityEditor;
+using UnityEngine;
+
+namespace AppsInToss.Editor
+{
+    /// <summary>
+    /// ait-build 패키징 담당 클래스
+    /// </summary>
+    internal static class AITPackageBuilder
+    {
+        /// <summary>
+        /// WebGL 빌드를 ait-build로 패키징
+        /// </summary>
+        internal static AITConvertCore.AITExportError PackageWebGLBuild(string projectPath, string webglPath, AITBuildProfile profile = null)
+        {
+            Debug.Log("[AIT] Vite 기반 빌드 패키징 시작...");
+
+            // 프로필이 없으면 기본 프로필 사용
+            if (profile == null)
+            {
+                profile = AITBuildProfile.CreateProductionProfile();
+            }
+
+            string buildProjectPath = Path.Combine(projectPath, "ait-build");
+
+            // ait-build 폴더가 없으면 생성
+            if (!Directory.Exists(buildProjectPath))
+            {
+                Directory.CreateDirectory(buildProjectPath);
+                Debug.Log("[AIT] ait-build 폴더 생성");
+            }
+            else
+            {
+                Debug.Log("[AIT] 기존 빌드 결과물 정리 중... (node_modules와 설정 파일은 유지)");
+
+                // 유지할 항목들
+                string[] itemsToKeep = new string[]
+                {
+                    "node_modules",
+                    ".npm-cache",
+                    "package.json",
+                    "package-lock.json",
+                    "pnpm-lock.yaml",
+                    "granite.config.ts",
+                    "vite.config.ts",
+                    "tsconfig.json"
+                };
+
+                // 모든 파일과 폴더를 순회하면서 유지 목록에 없는 것들 삭제
+                foreach (string item in Directory.GetFileSystemEntries(buildProjectPath))
+                {
+                    string itemName = Path.GetFileName(item);
+
+                    // 유지 목록에 있으면 스킵
+                    bool shouldKeep = false;
+                    foreach (string keepItem in itemsToKeep)
+                    {
+                        if (itemName == keepItem)
+                        {
+                            shouldKeep = true;
+                            break;
+                        }
+                    }
+
+                    if (shouldKeep)
+                    {
+                        continue;
+                    }
+
+                    // 삭제
+                    try
+                    {
+                        if (Directory.Exists(item))
+                        {
+                            AITFileUtils.DeleteDirectory(item);
+                            Debug.Log($"[AIT] 삭제됨: {itemName}/");
+                        }
+                        else if (File.Exists(item))
+                        {
+                            File.Delete(item);
+                            Debug.Log($"[AIT] 삭제됨: {itemName}");
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        Debug.LogWarning($"[AIT] 삭제 실패: {itemName} - {e.Message}");
+                    }
+                }
+            }
+
+            // npm 경로 찾기
+            string npmPath = AITNpmRunner.FindNpmPath();
+            if (string.IsNullOrEmpty(npmPath))
+            {
+                Debug.LogError("[AIT] npm을 찾을 수 없습니다. Node.js가 설치되어 있는지 확인하세요.");
+                return AITConvertCore.AITExportError.NODE_NOT_FOUND;
+            }
+
+            // 1. Vite 프로젝트 구조 생성 (템플릿에서 복사)
+            Debug.Log("[AIT] Step 1/3: Vite 프로젝트 구조 생성 중...");
+            CopyBuildConfigFromTemplate(buildProjectPath);
+
+            // 2. Unity WebGL 빌드를 public 폴더로 복사
+            Debug.Log("[AIT] Step 2/3: Unity WebGL 빌드 복사 중...");
+            CopyWebGLToPublic(webglPath, buildProjectPath, profile);
+
+            // 3. npm install 및 build 실행
+            Debug.Log("[AIT] Step 3/3: pnpm install & build 실행 중...");
+            string localCachePath = Path.Combine(buildProjectPath, ".npm-cache");
+
+            // pnpm install 실행 (의존성 동기화 - 이미 설치된 경우 빠르게 완료됨)
+            Debug.Log("[AIT] pnpm install 실행 중...");
+
+            // pnpm 경로 찾기 (없으면 자동 설치)
+            string pnpmPath = AITNpmRunner.FindPnpmPath();
+            if (string.IsNullOrEmpty(pnpmPath))
+            {
+                Debug.LogError("[AIT] pnpm 설치에 실패했습니다. Unity Console에서 에러를 확인해주세요.");
+                return AITConvertCore.AITExportError.FAIL_NPM_BUILD;
+            }
+
+            // 먼저 --frozen-lockfile로 시도, 실패하면 lockfile 없이 재시도
+            // (사용자가 package.json에 새 패키지 추가 시 lockfile이 outdated 될 수 있음)
+            var installResult = AITNpmRunner.RunNpmCommandWithCache(buildProjectPath, pnpmPath, "install --frozen-lockfile", localCachePath, "pnpm install 실행 중...");
+
+            if (installResult != AITConvertCore.AITExportError.SUCCEED)
+            {
+                Debug.LogWarning("[AIT] --frozen-lockfile 설치 실패, lockfile 갱신 모드로 재시도...");
+                Debug.LogWarning("[AIT] (사용자가 package.json에 새 패키지를 추가한 경우 정상 동작입니다)");
+
+                // lockfile 없이 재시도 (CI 환경에서도 lockfile 갱신 허용)
+                installResult = AITNpmRunner.RunNpmCommandWithCache(buildProjectPath, pnpmPath, "install --no-frozen-lockfile", localCachePath, "pnpm install (lockfile 갱신)...");
+
+                if (installResult != AITConvertCore.AITExportError.SUCCEED)
+                {
+                    Debug.LogError("[AIT] pnpm install 실패");
+                    return installResult;
+                }
+
+                Debug.Log("[AIT] ✓ 새 패키지 설치 및 lockfile 갱신 완료");
+            }
+
+            // granite build 실행 (web 폴더를 dist로 복사)
+            Debug.Log("[AIT] granite build 실행 중...");
+
+            var buildResult = AITNpmRunner.RunNpmCommandWithCache(buildProjectPath, pnpmPath, "run build", localCachePath, "granite build 실행 중...");
+
+            if (buildResult != AITConvertCore.AITExportError.SUCCEED)
+            {
+                Debug.LogError("[AIT] granite build 실패");
+                return buildResult;
+            }
+
+            string distPath = Path.Combine(buildProjectPath, "dist");
+
+            // 빌드 완료 리포트 출력
+            AITBuildValidator.PrintBuildReport(buildProjectPath, distPath);
+
+            Debug.Log($"[AIT] ✓ 패키징 완료: {distPath}");
+
+            return AITConvertCore.AITExportError.SUCCEED;
+        }
+
+        /// <summary>
+        /// package.json의 dependencies를 머지합니다.
+        /// </summary>
+        internal static void MergePackageJson(string projectBuildConfigPath, string sdkBuildConfigPath, string destPath)
+        {
+            string projectFile = Path.Combine(projectBuildConfigPath, "package.json");
+            string sdkFile = Path.Combine(sdkBuildConfigPath, "package.json");
+            string destFile = Path.Combine(destPath, "package.json");
+
+            // 프로젝트 파일 없으면 SDK 복사
+            if (!File.Exists(projectFile))
+            {
+                File.Copy(sdkFile, destFile, true);
+                Debug.Log("[AIT]   ✓ package.json (SDK에서 복사)");
+                return;
+            }
+
+            try
+            {
+                string projectContent = File.ReadAllText(projectFile);
+                string sdkContent = File.ReadAllText(sdkFile);
+
+                // 간단한 JSON 머지 (dependencies와 devDependencies)
+                var projectJson = MiniJson.Deserialize(projectContent) as Dictionary<string, object>;
+                var sdkJson = MiniJson.Deserialize(sdkContent) as Dictionary<string, object>;
+
+                if (projectJson == null || sdkJson == null)
+                {
+                    Debug.LogWarning("[AIT] package.json 파싱 실패, SDK 버전 사용");
+                    File.Copy(sdkFile, destFile, true);
+                    return;
+                }
+
+                // SDK의 기본 구조를 사용하고 dependencies만 머지
+                var result = new Dictionary<string, object>(sdkJson);
+
+                // dependencies 머지
+                result["dependencies"] = MergeDependencies(
+                    projectJson.ContainsKey("dependencies") ? projectJson["dependencies"] as Dictionary<string, object> : null,
+                    sdkJson.ContainsKey("dependencies") ? sdkJson["dependencies"] as Dictionary<string, object> : null
+                );
+
+                // devDependencies 머지
+                result["devDependencies"] = MergeDependencies(
+                    projectJson.ContainsKey("devDependencies") ? projectJson["devDependencies"] as Dictionary<string, object> : null,
+                    sdkJson.ContainsKey("devDependencies") ? sdkJson["devDependencies"] as Dictionary<string, object> : null
+                );
+
+                string mergedJson = MiniJson.Serialize(result);
+                File.WriteAllText(destFile, mergedJson, new System.Text.UTF8Encoding(false));
+                Debug.Log("[AIT]   ✓ package.json (dependencies 머지됨)");
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[AIT] package.json 머지 실패: {e.Message}, SDK 버전 사용");
+                File.Copy(sdkFile, destFile, true);
+            }
+        }
+
+        /// <summary>
+        /// dependencies 딕셔너리를 머지합니다. SDK 패키지가 우선됩니다.
+        /// </summary>
+        internal static Dictionary<string, object> MergeDependencies(Dictionary<string, object> project, Dictionary<string, object> sdk)
+        {
+            var result = new Dictionary<string, object>();
+
+            // 프로젝트 dependencies 먼저 추가
+            if (project != null)
+            {
+                foreach (var kvp in project)
+                {
+                    result[kvp.Key] = kvp.Value;
+                }
+            }
+
+            // SDK dependencies로 덮어쓰기 (SDK가 우선)
+            if (sdk != null)
+            {
+                foreach (var kvp in sdk)
+                {
+                    result[kvp.Key] = kvp.Value;
+                }
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// vite.config.ts를 마커 기반으로 업데이트합니다.
+        /// </summary>
+        internal static void UpdateViteConfig(string projectBuildConfigPath, string sdkBuildConfigPath, string destPath, AITEditorScriptObject config)
+        {
+            string projectFile = Path.Combine(projectBuildConfigPath, "vite.config.ts");
+            string sdkFile = Path.Combine(sdkBuildConfigPath, "vite.config.ts");
+            string destFile = Path.Combine(destPath, "vite.config.ts");
+
+            // SDK 템플릿에서 SDK 섹션 생성
+            string sdkTemplate = File.ReadAllText(sdkFile);
+            string sdkSection = AITTemplateManager.ExtractSdkSection(sdkTemplate);
+
+            if (sdkSection == null)
+            {
+                Debug.LogError("[AIT] vite.config.ts에서 SDK 마커를 찾을 수 없습니다.");
+                File.Copy(sdkFile, destFile, true);
+                return;
+            }
+
+            // 플레이스홀더 치환
+            sdkSection = sdkSection
+                .Replace("%AIT_VITE_HOST%", config.viteHost)
+                .Replace("%AIT_VITE_PORT%", config.vitePort.ToString());
+
+            string finalContent;
+
+            if (File.Exists(projectFile))
+            {
+                // 프로젝트 파일이 있으면 SDK 섹션만 교체
+                string projectContent = File.ReadAllText(projectFile);
+
+                // SDK 영역이 수정되었는지 확인
+                string projectSdkSection = AITTemplateManager.ExtractSdkSection(projectContent);
+                if (projectSdkSection != null && projectSdkSection != AITTemplateManager.ExtractSdkSection(sdkTemplate))
+                {
+                    Debug.LogWarning("[AIT] ⚠️ vite.config.ts의 SDK_GENERATED 영역이 수정되었습니다.");
+                    Debug.LogWarning("[AIT]    SDK 설정으로 덮어쓰기됩니다. 커스텀 설정은 USER_CONFIG 영역에 추가하세요.");
+                }
+
+                finalContent = AITTemplateManager.ReplaceMarkerSection(projectContent, sdkSection);
+                Debug.Log("[AIT]   ✓ vite.config.ts (마커 기반 업데이트)");
+            }
+            else
+            {
+                // 프로젝트 파일이 없으면 SDK 템플릿 사용
+                finalContent = sdkTemplate
+                    .Replace("%AIT_VITE_HOST%", config.viteHost)
+                    .Replace("%AIT_VITE_PORT%", config.vitePort.ToString());
+                Debug.Log("[AIT]   ✓ vite.config.ts (SDK에서 생성)");
+            }
+
+            File.WriteAllText(destFile, finalContent, new System.Text.UTF8Encoding(false));
+        }
+
+        /// <summary>
+        /// granite.config.ts를 마커 기반으로 업데이트합니다.
+        /// </summary>
+        internal static void UpdateGraniteConfig(string projectBuildConfigPath, string sdkBuildConfigPath, string destPath, AITEditorScriptObject config)
+        {
+            string projectFile = Path.Combine(projectBuildConfigPath, "granite.config.ts");
+            string sdkFile = Path.Combine(sdkBuildConfigPath, "granite.config.ts");
+            string destFile = Path.Combine(destPath, "granite.config.ts");
+
+            // SDK 템플릿에서 SDK 섹션 생성
+            string sdkTemplate = File.ReadAllText(sdkFile);
+            string sdkSection = AITTemplateManager.ExtractSdkSection(sdkTemplate);
+
+            if (sdkSection == null)
+            {
+                Debug.LogError("[AIT] granite.config.ts에서 SDK 마커를 찾을 수 없습니다.");
+                return;
+            }
+
+            // 플레이스홀더 치환
+            Debug.Log("[AIT] granite.config.ts placeholder 치환 중...");
+            sdkSection = sdkSection
+                .Replace("%AIT_APP_NAME%", config.appName)
+                .Replace("%AIT_DISPLAY_NAME%", config.displayName)
+                .Replace("%AIT_PRIMARY_COLOR%", config.primaryColor)
+                .Replace("%AIT_ICON_URL%", config.iconUrl)
+                .Replace("%AIT_BRIDGE_COLOR_MODE%", config.GetBridgeColorModeString())
+                .Replace("%AIT_WEBVIEW_TYPE%", config.GetWebViewTypeString())
+                .Replace("%AIT_VITE_HOST%", config.viteHost)
+                .Replace("%AIT_VITE_PORT%", config.vitePort.ToString())
+                .Replace("%AIT_PERMISSIONS%", config.GetPermissionsJson())
+                .Replace("%AIT_OUTDIR%", config.outdir);
+
+            string finalContent;
+
+            if (File.Exists(projectFile))
+            {
+                // 프로젝트 파일이 있으면 SDK 섹션만 교체
+                string projectContent = File.ReadAllText(projectFile);
+
+                // SDK 영역이 수정되었는지 확인
+                string projectSdkSection = AITTemplateManager.ExtractSdkSection(projectContent);
+                if (projectSdkSection != null && projectSdkSection != AITTemplateManager.ExtractSdkSection(sdkTemplate))
+                {
+                    Debug.LogWarning("[AIT] ⚠️ granite.config.ts의 SDK_GENERATED 영역이 수정되었습니다.");
+                    Debug.LogWarning("[AIT]    SDK 설정으로 덮어쓰기됩니다. 커스텀 설정은 USER_CONFIG 영역에 추가하세요.");
+                }
+
+                finalContent = AITTemplateManager.ReplaceMarkerSection(projectContent, sdkSection);
+                Debug.Log("[AIT]   ✓ granite.config.ts (마커 기반 업데이트)");
+            }
+            else
+            {
+                // 프로젝트 파일이 없으면 SDK 템플릿 사용
+                finalContent = sdkTemplate
+                    .Replace("%AIT_APP_NAME%", config.appName)
+                    .Replace("%AIT_DISPLAY_NAME%", config.displayName)
+                    .Replace("%AIT_PRIMARY_COLOR%", config.primaryColor)
+                    .Replace("%AIT_ICON_URL%", config.iconUrl)
+                    .Replace("%AIT_BRIDGE_COLOR_MODE%", config.GetBridgeColorModeString())
+                    .Replace("%AIT_WEBVIEW_TYPE%", config.GetWebViewTypeString())
+                    .Replace("%AIT_VITE_HOST%", config.viteHost)
+                    .Replace("%AIT_VITE_PORT%", config.vitePort.ToString())
+                    .Replace("%AIT_PERMISSIONS%", config.GetPermissionsJson())
+                    .Replace("%AIT_OUTDIR%", config.outdir);
+                Debug.Log("[AIT]   ✓ granite.config.ts (SDK에서 생성)");
+            }
+
+            File.WriteAllText(destFile, finalContent, new System.Text.UTF8Encoding(false));
+        }
+
+        /// <summary>
+        /// 프로젝트 BuildConfig의 추가 파일들을 복사합니다.
+        /// </summary>
+        internal static void CopyAdditionalUserFiles(string projectBuildConfigPath, string destPath)
+        {
+            if (!Directory.Exists(projectBuildConfigPath)) return;
+
+            // 기본 파일 제외
+            var excludeFiles = new HashSet<string>
+            {
+                "package.json", "pnpm-lock.yaml", "vite.config.ts",
+                "tsconfig.json", "unity-bridge.ts", "granite.config.ts"
+            };
+
+            foreach (var file in Directory.GetFiles(projectBuildConfigPath))
+            {
+                string fileName = Path.GetFileName(file);
+                if (excludeFiles.Contains(fileName)) continue;
+
+                File.Copy(file, Path.Combine(destPath, fileName), true);
+                Debug.Log($"[AIT]   ✓ {fileName} (사용자 추가 파일)");
+            }
+        }
+
+        /// <summary>
+        /// BuildConfig 템플릿에서 빌드 설정 파일들을 복사합니다.
+        /// </summary>
+        internal static void CopyBuildConfigFromTemplate(string buildProjectPath)
+        {
+            // 프로젝트 BuildConfig 경로 (사용자 커스터마이징 가능)
+            string projectBuildConfigPath = Path.Combine(Application.dataPath, "WebGLTemplates/AITTemplate/BuildConfig~");
+
+            // SDK의 BuildConfig 템플릿 경로 찾기
+            Debug.Log("[AIT] SDK BuildConfig 템플릿 경로 검색 중...");
+            string[] possibleSdkPaths = new string[]
+            {
+                Path.GetFullPath("Packages/im.toss.apps-in-toss-unity-sdk/WebGLTemplates/AITTemplate/BuildConfig~"),
+                Path.GetFullPath("Packages/com.appsintoss.miniapp/WebGLTemplates/AITTemplate/BuildConfig~"), // 레거시 호환성
+                Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(typeof(AITConvertCore).Assembly.Location)), "WebGLTemplates/AITTemplate/BuildConfig~")
+            };
+
+            string sdkBuildConfigPath = null;
+            for (int i = 0; i < possibleSdkPaths.Length; i++)
+            {
+                string path = possibleSdkPaths[i];
+                bool exists = Directory.Exists(path);
+                Debug.Log($"[AIT]   경로 {i + 1}/{possibleSdkPaths.Length}: {(exists ? "✓ 발견" : "✗ 없음")} - {path}");
+
+                if (exists && sdkBuildConfigPath == null)
+                {
+                    sdkBuildConfigPath = path;
+                }
+            }
+
+            if (sdkBuildConfigPath == null)
+            {
+                Debug.LogError("[AIT] SDK BuildConfig 폴더를 찾을 수 없습니다.");
+                Debug.LogError("[AIT] 위의 경로들을 확인해주세요. SDK가 올바르게 설치되었는지 확인하세요.");
+                return;
+            }
+
+            Debug.Log($"[AIT] ✓ SDK BuildConfig 템플릿 발견: {sdkBuildConfigPath}");
+
+            // 프로젝트 BuildConfig 존재 여부 확인
+            bool hasProjectBuildConfig = Directory.Exists(projectBuildConfigPath);
+            if (hasProjectBuildConfig)
+            {
+                Debug.Log($"[AIT] ✓ 프로젝트 BuildConfig 발견: {projectBuildConfigPath}");
+            }
+            else
+            {
+                Debug.Log("[AIT] 프로젝트 BuildConfig 없음, SDK 버전 사용");
+            }
+
+            var config = UnityUtil.GetEditorConf();
+
+            Debug.Log("[AIT] BuildConfig 파일 처리 중...");
+
+            // 1. package.json - dependencies 머지
+            MergePackageJson(projectBuildConfigPath, sdkBuildConfigPath, buildProjectPath);
+
+            // 2. pnpm-lock.yaml - 프로젝트 우선, 없으면 SDK
+            string pnpmLockProject = Path.Combine(projectBuildConfigPath, "pnpm-lock.yaml");
+            string pnpmLockSdk = Path.Combine(sdkBuildConfigPath, "pnpm-lock.yaml");
+            string pnpmLockDst = Path.Combine(buildProjectPath, "pnpm-lock.yaml");
+            if (File.Exists(pnpmLockProject))
+            {
+                File.Copy(pnpmLockProject, pnpmLockDst, true);
+                Debug.Log("[AIT]   ✓ pnpm-lock.yaml (프로젝트에서 복사)");
+            }
+            else if (File.Exists(pnpmLockSdk))
+            {
+                File.Copy(pnpmLockSdk, pnpmLockDst, true);
+                Debug.Log("[AIT]   ✓ pnpm-lock.yaml (SDK에서 복사)");
+            }
+
+            // 3. vite.config.ts - 마커 기반 업데이트
+            UpdateViteConfig(projectBuildConfigPath, sdkBuildConfigPath, buildProjectPath, config);
+
+            // 4. granite.config.ts - 마커 기반 업데이트
+            UpdateGraniteConfig(projectBuildConfigPath, sdkBuildConfigPath, buildProjectPath, config);
+
+            // 5. tsconfig.json - SDK 전용
+            string tsconfigSrc = Path.Combine(sdkBuildConfigPath, "tsconfig.json");
+            string tsconfigDst = Path.Combine(buildProjectPath, "tsconfig.json");
+            File.Copy(tsconfigSrc, tsconfigDst, true);
+            Debug.Log("[AIT]   ✓ tsconfig.json (SDK에서 복사)");
+
+            // 6. unity-bridge.ts - 프로젝트 우선, 없으면 SDK
+            string unityBridgeProject = Path.Combine(projectBuildConfigPath, "unity-bridge.ts");
+            string unityBridgeSdk = Path.Combine(sdkBuildConfigPath, "unity-bridge.ts");
+            string unityBridgeDst = Path.Combine(buildProjectPath, "unity-bridge.ts");
+            if (File.Exists(unityBridgeProject))
+            {
+                File.Copy(unityBridgeProject, unityBridgeDst, true);
+                Debug.Log("[AIT]   ✓ unity-bridge.ts (프로젝트에서 복사)");
+            }
+            else if (File.Exists(unityBridgeSdk))
+            {
+                File.Copy(unityBridgeSdk, unityBridgeDst, true);
+                Debug.Log("[AIT]   ✓ unity-bridge.ts (SDK에서 복사)");
+            }
+
+            // 7. 사용자 추가 파일 복사
+            CopyAdditionalUserFiles(projectBuildConfigPath, buildProjectPath);
+
+            Debug.Log("[AIT] ✓ 빌드 설정 파일 처리 완료");
+        }
+
+        /// <summary>
+        /// Unity WebGL 빌드를 public 폴더로 복사합니다.
+        /// </summary>
+        internal static void CopyWebGLToPublic(string webglPath, string buildProjectPath, AITBuildProfile profile = null)
+        {
+            // 프로필이 없으면 기본 프로필 사용
+            if (profile == null)
+            {
+                profile = AITBuildProfile.CreateProductionProfile();
+            }
+
+            var config = UnityUtil.GetEditorConf();
+
+            // Unity WebGL 빌드를 Vite 프로젝트에 복사
+            // - index.html: 프로젝트 루트 (Vite 요구사항)
+            // - Build, TemplateData, Runtime: public 폴더 (정적 자산)
+            string publicPath = Path.Combine(buildProjectPath, "public");
+
+            // public 폴더 생성
+            if (!Directory.Exists(publicPath))
+            {
+                Directory.CreateDirectory(publicPath);
+            }
+
+            // Build 폴더 → public/Build
+            string buildSrc = Path.Combine(webglPath, "Build");
+            string buildDest = Path.Combine(publicPath, "Build");
+            if (Directory.Exists(buildSrc))
+            {
+                UnityUtil.CopyDirectory(buildSrc, buildDest);
+            }
+
+            // TemplateData 폴더 → public/TemplateData
+            string templateDataSrc = Path.Combine(webglPath, "TemplateData");
+            string templateDataDest = Path.Combine(publicPath, "TemplateData");
+            if (Directory.Exists(templateDataSrc))
+            {
+                UnityUtil.CopyDirectory(templateDataSrc, templateDataDest);
+            }
+
+            // Runtime 폴더 → public/Runtime (있는 경우)
+            string runtimeSrc = Path.Combine(webglPath, "Runtime");
+            string runtimeDest = Path.Combine(publicPath, "Runtime");
+            if (Directory.Exists(runtimeSrc))
+            {
+                UnityUtil.CopyDirectory(runtimeSrc, runtimeDest);
+            }
+
+            // StreamingAssets 폴더 → public/StreamingAssets (있는 경우)
+            string streamingAssetsSrc = Path.Combine(webglPath, "StreamingAssets");
+            string streamingAssetsDest = Path.Combine(publicPath, "StreamingAssets");
+            if (Directory.Exists(streamingAssetsSrc))
+            {
+                UnityUtil.CopyDirectory(streamingAssetsSrc, streamingAssetsDest);
+            }
+
+            // index.html → 프로젝트 루트 (Vite가 루트에서 index.html을 찾음)
+            string indexSrc = Path.Combine(webglPath, "index.html");
+            string indexDest = Path.Combine(buildProjectPath, "index.html");
+            if (File.Exists(indexSrc))
+            {
+                string indexContent = File.ReadAllText(indexSrc);
+
+                // Build 폴더에서 실제 파일 이름 찾기
+                // Unity 압축 설정에 따라 .unityweb, .gz, .br 확장자가 붙을 수 있음
+                Debug.Log("[AIT] WebGL 빌드 파일 검색 중...");
+
+                // 필수 파일들 (isRequired = true)
+                string loaderFile = AITBuildValidator.FindFileInBuild(buildSrc, "*.loader.js", isRequired: true);
+                string dataFile = AITBuildValidator.FindFileInBuild(buildSrc, "*.data*", isRequired: true);
+                string frameworkFile = AITBuildValidator.FindFileInBuild(buildSrc, "*.framework.js*", isRequired: true);
+                string wasmFile = AITBuildValidator.FindFileInBuild(buildSrc, "*.wasm*", isRequired: true);
+
+                // 선택적 파일 (isRequired = false)
+                string symbolsFile = AITBuildValidator.FindFileInBuild(buildSrc, "*.symbols.json*", isRequired: false);
+
+                // 필수 파일 검증 경고
+                var missingFiles = new List<string>();
+                if (string.IsNullOrEmpty(loaderFile)) missingFiles.Add("*.loader.js");
+                if (string.IsNullOrEmpty(dataFile)) missingFiles.Add("*.data");
+                if (string.IsNullOrEmpty(frameworkFile)) missingFiles.Add("*.framework.js");
+                if (string.IsNullOrEmpty(wasmFile)) missingFiles.Add("*.wasm");
+
+                if (missingFiles.Count > 0)
+                {
+                    Debug.LogError("[AIT] ========================================");
+                    Debug.LogError("[AIT] ⚠ WebGL 빌드 파일 검증 경고!");
+                    Debug.LogError("[AIT] ========================================");
+                    Debug.LogError($"[AIT] 누락된 필수 파일: {string.Join(", ", missingFiles)}");
+                    Debug.LogError("[AIT] ");
+                    Debug.LogError("[AIT] 가능한 원인:");
+                    Debug.LogError("[AIT]   1. Unity WebGL 빌드가 완료되지 않았습니다.");
+                    Debug.LogError("[AIT]   2. WebGL 빌드가 실패했지만 부분 결과물만 남아있습니다.");
+                    Debug.LogError("[AIT]   3. 빌드 설정(압축 방식 등)이 예상과 다릅니다.");
+                    Debug.LogError("[AIT] ");
+                    Debug.LogError("[AIT] 해결 방법:");
+                    Debug.LogError("[AIT]   1. 'Clean Build' 옵션을 활성화하고 다시 빌드하세요.");
+                    Debug.LogError("[AIT]   2. Unity Console에서 빌드 에러를 확인하세요.");
+                    Debug.LogError("[AIT] ========================================");
+                }
+
+                // 프로필 기반 설정값 (Mock 브릿지가 비활성화되면 프로덕션 모드로 간주)
+                string isProduction = profile.enableMockBridge ? "false" : "true";
+                string enableDebugConsole = profile.enableDebugConsole ? "true" : "false";
+
+                // 프로젝트의 index.html에서 사용자 커스텀 섹션 추출 (있는 경우)
+                string projectIndexPath = Path.Combine(Application.dataPath, "WebGLTemplates", "AITTemplate", "index.html");
+                if (File.Exists(projectIndexPath))
+                {
+                    string projectIndexContent = File.ReadAllText(projectIndexPath);
+
+                    // USER_HEAD 섹션 추출 및 교체
+                    string userHeadSection = AITTemplateManager.ExtractHtmlUserSection(projectIndexContent, AITTemplateManager.HTML_USER_HEAD_START, AITTemplateManager.HTML_USER_HEAD_END);
+                    if (userHeadSection != null)
+                    {
+                        indexContent = AITTemplateManager.ReplaceHtmlUserSection(indexContent, AITTemplateManager.HTML_USER_HEAD_START, AITTemplateManager.HTML_USER_HEAD_END, userHeadSection);
+                        Debug.Log("[AIT] index.html USER_HEAD 섹션 머지됨");
+                    }
+
+                    // USER_BODY_END 섹션 추출 및 교체
+                    string userBodyEndSection = AITTemplateManager.ExtractHtmlUserSection(projectIndexContent, AITTemplateManager.HTML_USER_BODY_END_START, AITTemplateManager.HTML_USER_BODY_END_END);
+                    if (userBodyEndSection != null)
+                    {
+                        indexContent = AITTemplateManager.ReplaceHtmlUserSection(indexContent, AITTemplateManager.HTML_USER_BODY_END_START, AITTemplateManager.HTML_USER_BODY_END_END, userBodyEndSection);
+                        Debug.Log("[AIT] index.html USER_BODY_END 섹션 머지됨");
+                    }
+                }
+
+                // Unity 플레이스홀더 치환
+                indexContent = indexContent
+                    .Replace("%UNITY_WEB_NAME%", PlayerSettings.productName)
+                    .Replace("%UNITY_WIDTH%", PlayerSettings.defaultWebScreenWidth.ToString())
+                    .Replace("%UNITY_HEIGHT%", PlayerSettings.defaultWebScreenHeight.ToString())
+                    .Replace("%UNITY_COMPANY_NAME%", PlayerSettings.companyName)
+                    .Replace("%UNITY_PRODUCT_NAME%", PlayerSettings.productName)
+                    .Replace("%UNITY_PRODUCT_VERSION%", PlayerSettings.bundleVersion)
+                    // Unity 표준 URL 형식 (Unity가 치환하지 않은 경우 SDK가 처리)
+                    .Replace("%UNITY_WEBGL_LOADER_URL%", $"Build/{loaderFile}")
+                    .Replace("%UNITY_WEBGL_DATA_URL%", $"Build/{dataFile}")
+                    .Replace("%UNITY_WEBGL_FRAMEWORK_URL%", $"Build/{frameworkFile}")
+                    .Replace("%UNITY_WEBGL_CODE_URL%", $"Build/{wasmFile}")
+                    .Replace("%UNITY_WEBGL_SYMBOLS_URL%", !string.IsNullOrEmpty(symbolsFile) ? $"Build/{symbolsFile}" : "")
+                    // 하위 호환성을 위한 FILENAME 형식 (레거시)
+                    .Replace("%UNITY_WEBGL_LOADER_FILENAME%", loaderFile)
+                    .Replace("%UNITY_WEBGL_DATA_FILENAME%", dataFile)
+                    .Replace("%UNITY_WEBGL_FRAMEWORK_FILENAME%", frameworkFile)
+                    .Replace("%UNITY_WEBGL_CODE_FILENAME%", wasmFile)
+                    .Replace("%UNITY_WEBGL_SYMBOLS_FILENAME%", symbolsFile)
+                    // AIT 커스텀 플레이스홀더
+                    .Replace("%AIT_IS_PRODUCTION%", isProduction)
+                    .Replace("%AIT_ENABLE_DEBUG_CONSOLE%", enableDebugConsole)
+                    .Replace("%AIT_DEVICE_PIXEL_RATIO%", config.devicePixelRatio.ToString());
+
+                File.WriteAllText(indexDest, indexContent, System.Text.Encoding.UTF8);
+                Debug.Log("[AIT] index.html → 프로젝트 루트에 생성");
+
+                // 플레이스홀더 치환 결과 검증
+                AITBuildValidator.ValidatePlaceholderSubstitution(indexContent, indexDest);
+            }
+
+            // Runtime/appsintoss-unity-bridge.js 파일도 치환
+            string bridgeSrc = Path.Combine(publicPath, "Runtime", "appsintoss-unity-bridge.js");
+            if (File.Exists(bridgeSrc))
+            {
+                // 프로필 기반 설정값 (Mock 브릿지가 비활성화되면 프로덕션 모드로 간주)
+                string isProduction = profile.enableMockBridge ? "false" : "true";
+
+                string bridgeContent = File.ReadAllText(bridgeSrc);
+                bridgeContent = bridgeContent.Replace("%AIT_IS_PRODUCTION%", isProduction);
+                File.WriteAllText(bridgeSrc, bridgeContent, System.Text.Encoding.UTF8);
+                Debug.Log($"[AIT] appsintoss-unity-bridge.js Mock 브릿지 모드: {(profile.enableMockBridge ? "활성화" : "비활성화")}");
+            }
+
+            Debug.Log("[AIT] Unity WebGL 빌드 복사 완료");
+            Debug.Log("[AIT]   - index.html → 프로젝트 루트");
+            Debug.Log("[AIT]   - Build, TemplateData, Runtime → public/");
+        }
+    }
+}

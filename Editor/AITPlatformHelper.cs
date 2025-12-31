@@ -563,13 +563,14 @@ namespace AppsInToss.Editor
         /// <returns>PowerShell에서 안전하게 사용 가능한 문자열</returns>
         private static string EscapeForPowerShell(string command)
         {
-            // PowerShell에서 특수 문자 이스케이프
+            // PowerShell -Command에서 특수 문자 이스케이프
+            // 주의: 따옴표(")는 이스케이프하면 안 됨! 경로 인용에 필요한 유효한 구문임
             // $ → `$ (변수 확장 방지)
-            // " → `" (따옴표 이스케이프)
+            // ` → `` (백틱 이스케이프)
             return command
                 .Replace("`", "``")   // 백틱 먼저 이스케이프
-                .Replace("$", "`$")   // 변수 확장 방지
-                .Replace("\"", "`\""); // 따옴표 이스케이프
+                .Replace("$", "`$");  // 변수 확장 방지만
+            // 따옴표는 이스케이프하지 않음 - PowerShell 명령 구문의 일부
         }
 
         /// <summary>

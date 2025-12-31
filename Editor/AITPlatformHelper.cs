@@ -206,9 +206,13 @@ namespace AppsInToss.Editor
 
                 if (IsWindows)
                 {
-                    shell = "cmd.exe";
-                    // chcp 65001: 코드 페이지를 UTF-8로 변경하여 한글 등 유니코드 문자가 깨지지 않도록 함
-                    shellArgs = $"/c \"chcp 65001 >nul && {command}\"";
+                    shell = "powershell.exe";
+                    // -ExecutionPolicy Bypass: 스크립트 실행 정책 우회 (Unity에서 안전하게 실행)
+                    // -NoProfile: 빠른 시작을 위해 사용자 프로필 로드 안함
+                    // -NoLogo: 시작 배너 숨김
+                    // [Console]::OutputEncoding: UTF-8 출력 설정으로 한글 등 유니코드 지원
+                    string escapedCommand = EscapeForPowerShell(command);
+                    shellArgs = $"-ExecutionPolicy Bypass -NoProfile -NoLogo -Command \"[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; $env:CI = 'true'; {escapedCommand}\"";
                 }
                 else
                 {
@@ -245,16 +249,14 @@ namespace AppsInToss.Editor
                     processInfo.WorkingDirectory = workingDirectory;
                 }
 
-                // Windows에서는 환경변수로 PATH 및 CI 설정
-                if (IsWindows)
+                // 환경변수로 PATH 설정 (Windows와 Unix 모두)
+                if (additionalPaths != null && additionalPaths.Length > 0)
                 {
-                    if (additionalPaths != null)
-                    {
-                        processInfo.EnvironmentVariables["PATH"] = pathEnv;
-                    }
-                    // CI=true: pnpm이 비-TTY 환경에서 확인 프롬프트 없이 실행되도록 설정
-                    processInfo.EnvironmentVariables["CI"] = "true";
+                    processInfo.EnvironmentVariables["PATH"] = pathEnv;
                 }
+
+                // CI=true: pnpm이 비-TTY 환경에서 확인 프롬프트 없이 실행되도록 설정
+                processInfo.EnvironmentVariables["CI"] = "true";
 
                 using (var process = new Process { StartInfo = processInfo })
                 {
@@ -552,6 +554,22 @@ namespace AppsInToss.Editor
                 string directory = File.Exists(path) ? Path.GetDirectoryName(path) : path;
                 Process.Start("xdg-open", $"\"{directory}\"");
             }
+        }
+
+        /// <summary>
+        /// PowerShell 명령용 문자열 이스케이프 (Windows 전용)
+        /// </summary>
+        /// <param name="command">이스케이프할 명령</param>
+        /// <returns>PowerShell에서 안전하게 사용 가능한 문자열</returns>
+        private static string EscapeForPowerShell(string command)
+        {
+            // PowerShell에서 특수 문자 이스케이프
+            // $ → `$ (변수 확장 방지)
+            // " → `" (따옴표 이스케이프)
+            return command
+                .Replace("`", "``")   // 백틱 먼저 이스케이프
+                .Replace("$", "`$")   // 변수 확장 방지
+                .Replace("\"", "`\""); // 따옴표 이스케이프
         }
 
         /// <summary>

@@ -395,22 +395,8 @@ namespace AppsInToss.Editor
         private static void ExtractNodeJS(string archivePath, string targetPath, string platform)
         {
             #if UNITY_EDITOR_WIN
-                // Windows: ZIP 압축 해제
-                System.IO.Compression.ZipFile.ExtractToDirectory(archivePath, targetPath);
-
-                // node-v24.11.1-win-x64 폴더 내용을 상위로 이동
-                string extractedFolder = Path.Combine(targetPath, $"node-v{NODE_VERSION}-win-x64");
-                if (Directory.Exists(extractedFolder))
-                {
-                    foreach (string file in Directory.GetFiles(extractedFolder, "*", SearchOption.AllDirectories))
-                    {
-                        string relativePath = file.Substring(extractedFolder.Length + 1);
-                        string destPath = Path.Combine(targetPath, relativePath);
-                        Directory.CreateDirectory(Path.GetDirectoryName(destPath));
-                        File.Move(file, destPath);
-                    }
-                    Directory.Delete(extractedFolder, true);
-                }
+                // Windows: PowerShell을 사용한 ZIP 추출 (긴 경로 문제 우회)
+                ExtractWithPowerShell(archivePath, targetPath);
             #else
                 // macOS/Linux: tar.gz 압축 해제
                 var process = new Process
@@ -437,6 +423,80 @@ namespace AppsInToss.Editor
                 }
             #endif
         }
+
+        #if UNITY_EDITOR_WIN
+        /// <summary>
+        /// PowerShell을 사용한 Windows ZIP 추출 (긴 경로 문제 우회)
+        /// Windows MAX_PATH 260자 제한을 피하기 위해 짧은 임시 경로에 먼저 추출 후 복사
+        /// </summary>
+        private static void ExtractWithPowerShell(string archivePath, string targetPath)
+        {
+            // 드라이브 루트에 짧은 이름으로 임시 폴더 생성 (예: C:\AIT-a1b2c3d4)
+            // 이렇게 하면 node_modules의 깊은 경로도 260자 제한에 걸리지 않음
+            string driveRoot = Path.GetPathRoot(Path.GetTempPath()) ?? "C:\\";
+            string shortTempDir = Path.Combine(driveRoot, $"AIT-{Guid.NewGuid().ToString("N").Substring(0, 8)}");
+
+            Debug.Log($"[NodeJS] 짧은 임시 경로 사용: {shortTempDir}");
+
+            try
+            {
+                // 1. PowerShell Expand-Archive로 짧은 경로에 추출
+                Debug.Log("[NodeJS] PowerShell로 ZIP 압축 해제 중...");
+                string extractCmd = $"Expand-Archive -Path '{archivePath}' -DestinationPath '{shortTempDir}' -Force";
+
+                var extractResult = AITPlatformHelper.ExecuteCommand(extractCmd, timeoutMs: 300000, verbose: true);
+                if (!extractResult.Success)
+                {
+                    throw new Exception($"ZIP 추출 실패: {extractResult.Error}");
+                }
+
+                // 추출된 폴더 경로 (node-v24.11.1-win-x64)
+                string extractedFolder = Path.Combine(shortTempDir, $"node-v{NODE_VERSION}-win-x64");
+
+                if (!Directory.Exists(extractedFolder))
+                {
+                    // 추출된 내용 확인
+                    string[] contents = Directory.GetDirectories(shortTempDir);
+                    string contentList = contents.Length > 0 ? string.Join(", ", contents) : "(비어있음)";
+                    throw new Exception($"추출된 폴더를 찾을 수 없습니다: {extractedFolder}\n추출된 내용: {contentList}");
+                }
+
+                // 2. Copy-Item으로 타겟 경로로 복사
+                // PowerShell의 Copy-Item은 긴 경로를 더 잘 처리함
+                Debug.Log($"[NodeJS] 파일 복사 중: {extractedFolder} → {targetPath}");
+                string copyCmd = $"Copy-Item -Path '{extractedFolder}\\*' -Destination '{targetPath}' -Recurse -Force";
+
+                var copyResult = AITPlatformHelper.ExecuteCommand(copyCmd, timeoutMs: 300000, verbose: true);
+                if (!copyResult.Success)
+                {
+                    throw new Exception($"파일 복사 실패: {copyResult.Error}");
+                }
+
+                Debug.Log("[NodeJS] ✓ ZIP 추출 및 파일 복사 완료");
+            }
+            finally
+            {
+                // 임시 폴더 정리
+                if (Directory.Exists(shortTempDir))
+                {
+                    try
+                    {
+                        Debug.Log($"[NodeJS] 임시 폴더 정리: {shortTempDir}");
+                        // PowerShell로 삭제 (긴 경로도 처리 가능)
+                        AITPlatformHelper.ExecuteCommand(
+                            $"Remove-Item -Path '{shortTempDir}' -Recurse -Force -ErrorAction SilentlyContinue",
+                            timeoutMs: 60000,
+                            verbose: false
+                        );
+                    }
+                    catch (Exception e)
+                    {
+                        Debug.LogWarning($"[NodeJS] 임시 폴더 삭제 실패 (무시됨): {e.Message}");
+                    }
+                }
+            }
+        }
+        #endif
 
         /// <summary>
         /// pnpm 설치 (npm install -g pnpm)

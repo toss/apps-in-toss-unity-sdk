@@ -1546,7 +1546,7 @@ namespace AppsInToss
                 Debug.Log("AIT: node_modules가 없습니다. npm install을 실행합니다...");
 
                 string localCachePath = Path.Combine(buildPath, ".npm-cache");
-                var installResult = AITConvertCore.RunNpmCommandWithCache(
+                var installResult = AITNpmRunner.RunNpmCommandWithCache(
                     buildPath, npmPath, "install", localCachePath, "npm install 실행 중..."
                 );
 

@@ -128,11 +128,7 @@ namespace AppsInToss.Editor
 #endif
 #endif
 
-            // ===== Unity 로고 표시 (사용자 지정 또는 자동, Unity Pro 라이선스 필요) =====
-            bool showUnityLogo = editorConfig.showUnityLogo >= 0
-                ? editorConfig.showUnityLogo == 1
-                : AITDefaultSettings.GetDefaultShowUnityLogo();
-            PlayerSettings.SplashScreen.showUnityLogo = showUnityLogo;
+            // ===== Unity 로고 표시: 사용자의 PlayerSettings 설정을 그대로 유지 =====
 
             // ===== 디버그 심볼 (빌드 프로필에서 설정 - ApplyBuildProfileSettings 참조) =====
             // 프로필 기반 설정은 DoExport()에서 ApplyBuildProfileSettings()를 통해 적용됨
@@ -154,7 +150,6 @@ namespace AppsInToss.Editor
             Debug.Log($"[AIT]   - 예외 처리: {exceptionSupport}{(editorConfig.exceptionSupport < 0 ? " (자동)" : "")}");
             Debug.Log($"[AIT]   - Stripping Level: {strippingLevel}{(profile?.managedStrippingLevel < 0 || profile == null ? " (자동)" : " (프로필)")}");
             Debug.Log($"[AIT]   - IL2CPP 설정: {il2cppConfig}{(editorConfig.il2cppConfiguration < 0 ? " (자동)" : "")}");
-            Debug.Log($"[AIT]   - Unity 로고: {showUnityLogo}{(editorConfig.showUnityLogo < 0 ? " (자동)" : "")}");
             Debug.Log($"[AIT]   - Run In Background: {runInBackground}{(editorConfig.runInBackground < 0 ? " (자동)" : "")}");
             Debug.Log($"[AIT]   - Decompression Fallback: {decompressionFallback}{(editorConfig.decompressionFallback < 0 ? " (자동)" : "")}");
 #if UNITY_2023_3_OR_NEWER

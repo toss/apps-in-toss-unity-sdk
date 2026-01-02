@@ -788,18 +788,50 @@ export class CSharpGenerator {
         path: nc.path,
       })),
       nestedCallbackParamType: this.getNestedCallbackParamType(api),
+      nestedCallbackOptionsType: this.getNestedCallbackOptionsType(api),
       nestedCallbackEventType: this.getNestedCallbackEventType(api),
     };
   }
 
   /**
-   * 중첩 콜백 API의 파라미터 타입 추출
+   * 중첩 콜백 API의 파라미터 타입 추출 (래퍼 타입)
    */
   private getNestedCallbackParamType(api: ParsedAPI): string | undefined {
     if (!api.nestedCallbacks || api.nestedCallbacks.length === 0) return undefined;
     // 첫 번째 파라미터 타입 사용
     if (api.parameters.length > 0) {
       return mapToCSharpType(api.parameters[0].type);
+    }
+    return 'object';
+  }
+
+  /**
+   * 중첩 콜백 API의 내부 options 타입 추출
+   * 예: IapCreateOneTimePurchaseOrderOptions -> IapCreateOneTimePurchaseOrderOptionsOptions
+   */
+  private getNestedCallbackOptionsType(api: ParsedAPI): string | undefined {
+    if (!api.nestedCallbacks || api.nestedCallbacks.length === 0) return undefined;
+
+    // 첫 번째 파라미터의 options 프로퍼티 타입 사용
+    if (api.parameters.length > 0) {
+      const paramType = api.parameters[0].type;
+
+      // 1. 래퍼 타입명에서 내부 options 타입명 유도
+      // 예: IapCreateOneTimePurchaseOrderOptions -> IapCreateOneTimePurchaseOrderOptionsOptions
+      // TypeScript의 복잡한 union/intersection 타입은 mapToCSharpType이 처리하지 못하므로
+      // 래퍼 타입명 + "Options" 패턴으로 내부 타입명을 생성
+      if (paramType.kind === 'object' && paramType.name) {
+        const wrapperTypeName = paramType.name;
+        // 래퍼 타입명이 "Options"로 끝나면 "Options"를 추가 (예: XxxOptions -> XxxOptionsOptions)
+        // 그렇지 않으면 Options를 추가
+        return wrapperTypeName + 'Options';
+      }
+
+      // 2. 폴백: mapToCSharpType 사용
+      const wrapperType = mapToCSharpType(paramType);
+      if (wrapperType && wrapperType !== 'object') {
+        return wrapperType + 'Options';
+      }
     }
     return 'object';
   }
@@ -1577,14 +1609,14 @@ ${fields}${errorField}
   /**
    * 필드 선언을 생성 (JsonProperty 어트리뷰트 포함)
    * C# 필드명은 PascalCase, JSON 직렬화는 원본 camelCase 사용
-   * System.Action 타입은 직렬화할 수 없으므로 JsonIgnore 추가
+   * System.Action, System.Func 타입은 직렬화할 수 없으므로 JsonIgnore 추가
    */
   private generateFieldDeclaration(originalName: string, type: string, optional: boolean = false): string {
     const pascalName = this.capitalize(originalName);
     const optionalComment = optional ? ' // optional' : '';
 
-    // System.Action 타입은 직렬화 불가능하므로 JsonIgnore 사용
-    if (type.startsWith('System.Action')) {
+    // System.Action, System.Func 타입은 직렬화 불가능하므로 JsonIgnore 사용
+    if (type.startsWith('System.Action') || type.startsWith('System.Func')) {
       return `        [JsonIgnore]\n        public ${type} ${pascalName};${optionalComment}`;
     }
 

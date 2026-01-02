@@ -762,12 +762,13 @@ ${jsConversions ? '\n' + jsConversions + '\n' : ''}
     if (api.isEventSubscription) {
       return this.generateEventFunction(api);
     }
-    if (api.isCallbackBased) {
-      return this.generateCallbackBasedFunction(api);
-    }
-    // 중첩 콜백이 있는 API는 별도 처리
+    // 중첩 콜백이 있는 API는 별도 처리 (isCallbackBased보다 먼저 체크)
+    // 예: IAPCreateOneTimePurchaseOrder with processProductGrant callback
     if (api.nestedCallbacks && api.nestedCallbacks.length > 0) {
       return this.generateNestedCallbackFunction(api);
+    }
+    if (api.isCallbackBased) {
+      return this.generateCallbackBasedFunction(api);
     }
     return this.generateRegularFunction(api);
   }

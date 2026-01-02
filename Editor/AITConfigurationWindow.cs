@@ -169,6 +169,19 @@ namespace AppsInToss.Editor
                 MessageType.Info
             );
 
+            GUILayout.Space(5);
+
+            // 미디어 재생 설정
+            config.allowsInlineMediaPlayback = EditorGUILayout.Toggle(
+                new GUIContent("Inline Media Playback", "인라인 미디어 재생 허용"),
+                config.allowsInlineMediaPlayback
+            );
+
+            config.mediaPlaybackRequiresUserAction = EditorGUILayout.Toggle(
+                new GUIContent("Require User Action", "미디어 재생 시 사용자 액션 필요"),
+                config.mediaPlaybackRequiresUserAction
+            );
+
             EditorGUILayout.EndVertical();
         }
 

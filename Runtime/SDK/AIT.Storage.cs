@@ -9,6 +9,9 @@ using System;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using UnityEngine.Scripting;
+#if UNITY_6000_0_OR_NEWER
+using UnityEngine;
+#endif
 
 namespace AppsInToss
 {
@@ -24,7 +27,11 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Storage")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<string> StorageGetItem(string args_0)
+#else
         public static async Task<string> StorageGetItem(string args_0)
+#endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<string>();
@@ -52,7 +59,11 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Storage")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable StorageSetItem(string args_0, string args_1)
+#else
         public static async Task StorageSetItem(string args_0, string args_1)
+#endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<bool>();
@@ -80,7 +91,11 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Storage")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable StorageRemoveItem(string args_0)
+#else
         public static async Task StorageRemoveItem(string args_0)
+#endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<bool>();
@@ -108,7 +123,11 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Storage")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable StorageClearItems()
+#else
         public static async Task StorageClearItems()
+#endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<bool>();

@@ -30,13 +30,21 @@ namespace AppsInToss
 #endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<ImageResponse[]>();
+#else
             var tcs = new TaskCompletionSource<ImageResponse[]>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<ImageResponse[]>(
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
             __fetchAlbumPhotos_Internal(AITJsonSettings.Serialize(options), callbackId, "ImageResponse[]");
+#if UNITY_6000_0_OR_NEWER
+            return await tcs.Awaitable;
+#else
             return await tcs.Task;
+#endif
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] FetchAlbumPhotos called");
@@ -59,13 +67,21 @@ namespace AppsInToss
 #endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<ImageResponse>();
+#else
             var tcs = new TaskCompletionSource<ImageResponse>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<ImageResponse>(
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
             __openCamera_Internal(AITJsonSettings.Serialize(options), callbackId, "ImageResponse");
+#if UNITY_6000_0_OR_NEWER
+            return await tcs.Awaitable;
+#else
             return await tcs.Task;
+#endif
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] OpenCamera called");
@@ -83,24 +99,32 @@ namespace AppsInToss
         [Preserve]
         [APICategory("Media")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable SaveBase64Data(SaveBase64DataParams paramsParam)
+        public static async Awaitable<bool> SaveBase64Data(SaveBase64DataParams paramsParam)
 #else
-        public static async Task SaveBase64Data(SaveBase64DataParams paramsParam)
+        public static async Task<bool> SaveBase64Data(SaveBase64DataParams paramsParam)
 #endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<bool>();
+#else
             var tcs = new TaskCompletionSource<bool>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => tcs.TrySetResult(true),
                 error => tcs.TrySetException(error)
             );
             __saveBase64Data_Internal(AITJsonSettings.Serialize(paramsParam), callbackId, "void");
-            await tcs.Task;
+#if UNITY_6000_0_OR_NEWER
+            return await tcs.Awaitable;
+#else
+            return await tcs.Task;
+#endif
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] SaveBase64Data called");
             await Task.CompletedTask;
-            // void return - nothing to return
+            return true; // test return value
 #endif
         }
 

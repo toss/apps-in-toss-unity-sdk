@@ -26,24 +26,32 @@ namespace AppsInToss
         [Preserve]
         [APICategory("Events")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable EventLog(EventLogParams paramsParam)
+        public static async Awaitable<bool> EventLog(EventLogParams paramsParam)
 #else
-        public static async Task EventLog(EventLogParams paramsParam)
+        public static async Task<bool> EventLog(EventLogParams paramsParam)
 #endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<bool>();
+#else
             var tcs = new TaskCompletionSource<bool>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => tcs.TrySetResult(true),
                 error => tcs.TrySetException(error)
             );
             __eventLog_Internal(AITJsonSettings.Serialize(paramsParam), callbackId, "void");
-            await tcs.Task;
+#if UNITY_6000_0_OR_NEWER
+            return await tcs.Awaitable;
+#else
+            return await tcs.Task;
+#endif
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] EventLog called");
             await Task.CompletedTask;
-            // void return - nothing to return
+            return true; // test return value
 #endif
         }
 

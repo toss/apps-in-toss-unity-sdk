@@ -24,24 +24,32 @@ namespace AppsInToss
         [Preserve]
         [APICategory("Device")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable GenerateHapticFeedback(HapticFeedbackOptions options)
+        public static async Awaitable<bool> GenerateHapticFeedback(HapticFeedbackOptions options)
 #else
-        public static async Task GenerateHapticFeedback(HapticFeedbackOptions options)
+        public static async Task<bool> GenerateHapticFeedback(HapticFeedbackOptions options)
 #endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<bool>();
+#else
             var tcs = new TaskCompletionSource<bool>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => tcs.TrySetResult(true),
                 error => tcs.TrySetException(error)
             );
             __generateHapticFeedback_Internal(AITJsonSettings.Serialize(options), callbackId, "void");
-            await tcs.Task;
+#if UNITY_6000_0_OR_NEWER
+            return await tcs.Awaitable;
+#else
+            return await tcs.Task;
+#endif
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] GenerateHapticFeedback called");
             await Task.CompletedTask;
-            // void return - nothing to return
+            return true; // test return value
 #endif
         }
 
@@ -55,24 +63,32 @@ namespace AppsInToss
         [Preserve]
         [APICategory("Device")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable SetDeviceOrientation(SetDeviceOrientationOptions options)
+        public static async Awaitable<bool> SetDeviceOrientation(SetDeviceOrientationOptions options)
 #else
-        public static async Task SetDeviceOrientation(SetDeviceOrientationOptions options)
+        public static async Task<bool> SetDeviceOrientation(SetDeviceOrientationOptions options)
 #endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<bool>();
+#else
             var tcs = new TaskCompletionSource<bool>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => tcs.TrySetResult(true),
                 error => tcs.TrySetException(error)
             );
             __setDeviceOrientation_Internal(AITJsonSettings.Serialize(options), callbackId, "void");
-            await tcs.Task;
+#if UNITY_6000_0_OR_NEWER
+            return await tcs.Awaitable;
+#else
+            return await tcs.Task;
+#endif
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] SetDeviceOrientation called");
             await Task.CompletedTask;
-            // void return - nothing to return
+            return true; // test return value
 #endif
         }
 
@@ -85,24 +101,32 @@ namespace AppsInToss
         [Preserve]
         [APICategory("Device")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable SetIosSwipeGestureEnabled(SetIosSwipeGestureEnabledOptions options)
+        public static async Awaitable<bool> SetIosSwipeGestureEnabled(SetIosSwipeGestureEnabledOptions options)
 #else
-        public static async Task SetIosSwipeGestureEnabled(SetIosSwipeGestureEnabledOptions options)
+        public static async Task<bool> SetIosSwipeGestureEnabled(SetIosSwipeGestureEnabledOptions options)
 #endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<bool>();
+#else
             var tcs = new TaskCompletionSource<bool>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => tcs.TrySetResult(true),
                 error => tcs.TrySetException(error)
             );
             __setIosSwipeGestureEnabled_Internal(AITJsonSettings.Serialize(options), callbackId, "void");
-            await tcs.Task;
+#if UNITY_6000_0_OR_NEWER
+            return await tcs.Awaitable;
+#else
+            return await tcs.Task;
+#endif
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] SetIosSwipeGestureEnabled called");
             await Task.CompletedTask;
-            // void return - nothing to return
+            return true; // test return value
 #endif
         }
 
@@ -122,13 +146,21 @@ namespace AppsInToss
 #endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<SetScreenAwakeModeResult>();
+#else
             var tcs = new TaskCompletionSource<SetScreenAwakeModeResult>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<SetScreenAwakeModeResult>(
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
             __setScreenAwakeMode_Internal(AITJsonSettings.Serialize(options), callbackId, "SetScreenAwakeModeResult");
+#if UNITY_6000_0_OR_NEWER
+            return await tcs.Awaitable;
+#else
             return await tcs.Task;
+#endif
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] SetScreenAwakeMode called");
@@ -153,13 +185,21 @@ namespace AppsInToss
 #endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<SetSecureScreenResult>();
+#else
             var tcs = new TaskCompletionSource<SetSecureScreenResult>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<SetSecureScreenResult>(
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
-            );
+                );
             __setSecureScreen_Internal(AITJsonSettings.Serialize(options), callbackId, "SetSecureScreenResult");
+#if UNITY_6000_0_OR_NEWER
+            return await tcs.Awaitable;
+#else
             return await tcs.Task;
+#endif
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] SetSecureScreen called");

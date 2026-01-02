@@ -30,13 +30,21 @@ namespace AppsInToss
 #endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<Location>();
+#else
             var tcs = new TaskCompletionSource<Location>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<Location>(
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
             __getCurrentLocation_Internal(AITJsonSettings.Serialize(options), callbackId, "Location");
+#if UNITY_6000_0_OR_NEWER
+            return await tcs.Awaitable;
+#else
             return await tcs.Task;
+#endif
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] GetCurrentLocation called");
@@ -59,13 +67,21 @@ namespace AppsInToss
 #endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<System.Action>();
+#else
             var tcs = new TaskCompletionSource<System.Action>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<System.Action>(
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
             __startUpdateLocation_Internal(AITJsonSettings.Serialize(eventParams), callbackId, "System.Action");
+#if UNITY_6000_0_OR_NEWER
+            return await tcs.Awaitable;
+#else
             return await tcs.Task;
+#endif
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] StartUpdateLocation called");

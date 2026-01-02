@@ -32,13 +32,21 @@ namespace AppsInToss
 #endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<CheckoutPaymentResult>();
+#else
             var tcs = new TaskCompletionSource<CheckoutPaymentResult>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<CheckoutPaymentResult>(
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
             __checkoutPayment_Internal(AITJsonSettings.Serialize(options), callbackId, "CheckoutPaymentResult");
+#if UNITY_6000_0_OR_NEWER
+            return await tcs.Awaitable;
+#else
             return await tcs.Task;
+#endif
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] CheckoutPayment called");

@@ -29,14 +29,22 @@ namespace AppsInToss
         public static async Task<string> GetClipboardText()
 #endif
         {
-#if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_WEBGL// && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<string>();
+#else
             var tcs = new TaskCompletionSource<string>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<string>(
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
             __getClipboardText_Internal(callbackId, "string");
+#if UNITY_6000_0_OR_NEWER
+            return await tcs.Awaitable;
+#else
             return await tcs.Task;
+#endif
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] GetClipboardText called");
@@ -45,7 +53,7 @@ namespace AppsInToss
 #endif
         }
 
-#if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_WEBGL// && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __getClipboardText_Internal(string callbackId, string typeName);
 #endif
@@ -53,19 +61,27 @@ namespace AppsInToss
         [Preserve]
         [APICategory("Clipboard")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable SetClipboardText(string text)
+        public static async Awaitable<bool> SetClipboardText(string text)
 #else
-        public static async Task SetClipboardText(string text)
+        public static async Task<bool> SetClipboardText(string text)
 #endif
         {
-#if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_WEBGL// && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<bool>();
+#else
             var tcs = new TaskCompletionSource<bool>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => tcs.TrySetResult(true),
                 error => tcs.TrySetException(error)
             );
             __setClipboardText_Internal(text, callbackId, "void");
-            await tcs.Task;
+#if UNITY_6000_0_OR_NEWER
+            return await tcs.Awaitable;
+#else
+            return await tcs.Task;
+#endif
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] SetClipboardText called");
@@ -74,7 +90,7 @@ namespace AppsInToss
 #endif
         }
 
-#if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_WEBGL// && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __setClipboardText_Internal(string text, string callbackId, string typeName);
 #endif

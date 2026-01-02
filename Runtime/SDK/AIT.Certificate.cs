@@ -25,24 +25,32 @@ namespace AppsInToss
         [Preserve]
         [APICategory("Certificate")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable AppsInTossSignTossCert(AppsInTossSignTossCertParams paramsParam)
+        public static async Awaitable<bool> AppsInTossSignTossCert(AppsInTossSignTossCertParams paramsParam)
 #else
-        public static async Task AppsInTossSignTossCert(AppsInTossSignTossCertParams paramsParam)
+        public static async Task<bool> AppsInTossSignTossCert(AppsInTossSignTossCertParams paramsParam)
 #endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<bool>();
+#else
             var tcs = new TaskCompletionSource<bool>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => tcs.TrySetResult(true),
                 error => tcs.TrySetException(error)
             );
             __appsInTossSignTossCert_Internal(AITJsonSettings.Serialize(paramsParam), callbackId, "void");
-            await tcs.Task;
+#if UNITY_6000_0_OR_NEWER
+            return await tcs.Awaitable;
+#else
+            return await tcs.Task;
+#endif
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] AppsInTossSignTossCert called");
             await Task.CompletedTask;
-            // void return - nothing to return
+            return true; // test return value
 #endif
         }
 

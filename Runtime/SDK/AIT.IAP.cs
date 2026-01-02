@@ -84,13 +84,21 @@ namespace AppsInToss
 #endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<IAPGetProductItemListResult>();
+#else
             var tcs = new TaskCompletionSource<IAPGetProductItemListResult>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<IAPGetProductItemListResult>(
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
             __IAPGetProductItemList_Internal(callbackId, "IAPGetProductItemListResult");
+#if UNITY_6000_0_OR_NEWER
+            return await tcs.Awaitable;
+#else
             return await tcs.Task;
+#endif
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] IAPGetProductItemList called");
@@ -116,13 +124,21 @@ namespace AppsInToss
 #endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<IAPGetPendingOrdersResult>();
+#else
             var tcs = new TaskCompletionSource<IAPGetPendingOrdersResult>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<IAPGetPendingOrdersResult>(
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
             __IAPGetPendingOrders_Internal(callbackId, "IAPGetPendingOrdersResult");
+#if UNITY_6000_0_OR_NEWER
+            return await tcs.Awaitable;
+#else
             return await tcs.Task;
+#endif
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] IAPGetPendingOrders called");
@@ -148,13 +164,21 @@ namespace AppsInToss
 #endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<CompletedOrRefundedOrdersResult>();
+#else
             var tcs = new TaskCompletionSource<CompletedOrRefundedOrdersResult>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<CompletedOrRefundedOrdersResult>(
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
             __IAPGetCompletedOrRefundedOrders_Internal(callbackId, "CompletedOrRefundedOrdersResult");
+#if UNITY_6000_0_OR_NEWER
+            return await tcs.Awaitable;
+#else
             return await tcs.Task;
+#endif
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] IAPGetCompletedOrRefundedOrders called");
@@ -180,13 +204,21 @@ namespace AppsInToss
 #endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<bool>();
+#else
             var tcs = new TaskCompletionSource<bool>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<bool>(
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
             __IAPCompleteProductGrant_Internal(AITJsonSettings.Serialize(args_0), callbackId, "bool");
+#if UNITY_6000_0_OR_NEWER
+            return await tcs.Awaitable;
+#else
             return await tcs.Task;
+#endif
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] IAPCompleteProductGrant called");

@@ -30,13 +30,21 @@ namespace AppsInToss
 #endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<string>();
+#else
             var tcs = new TaskCompletionSource<string>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<string>(
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
             __envGetDeploymentId_Internal(callbackId, "string");
+#if UNITY_6000_0_OR_NEWER
+            return await tcs.Awaitable;
+#else
             return await tcs.Task;
+#endif
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] envGetDeploymentId called");
@@ -59,13 +67,21 @@ namespace AppsInToss
 #endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<AppsInTossGlobals>();
+#else
             var tcs = new TaskCompletionSource<AppsInTossGlobals>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<AppsInTossGlobals>(
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
             __getAppsInTossGlobals_Internal(callbackId, "AppsInTossGlobals");
+#if UNITY_6000_0_OR_NEWER
+            return await tcs.Awaitable;
+#else
             return await tcs.Task;
+#endif
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] GetAppsInTossGlobals called");
@@ -90,13 +106,21 @@ namespace AppsInToss
 #endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<bool>();
+#else
             var tcs = new TaskCompletionSource<bool>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<bool>(
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
             __isMinVersionSupported_Internal(AITJsonSettings.Serialize(minVersions), callbackId, "bool");
+#if UNITY_6000_0_OR_NEWER
+            return await tcs.Awaitable;
+#else
             return await tcs.Task;
+#endif
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] IsMinVersionSupported called");

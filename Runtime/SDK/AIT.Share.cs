@@ -32,13 +32,21 @@ namespace AppsInToss
 #endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<System.Action>();
+#else
             var tcs = new TaskCompletionSource<System.Action>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<System.Action>(
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
             __contactsViral_Internal(AITJsonSettings.Serialize(paramsParam), callbackId, "System.Action");
+#if UNITY_6000_0_OR_NEWER
+            return await tcs.Awaitable;
+#else
             return await tcs.Task;
+#endif
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] ContactsViral called");
@@ -61,13 +69,21 @@ namespace AppsInToss
 #endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<ContactResult>();
+#else
             var tcs = new TaskCompletionSource<ContactResult>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<ContactResult>(
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
             __fetchContacts_Internal(AITJsonSettings.Serialize(options), callbackId, "ContactResult");
+#if UNITY_6000_0_OR_NEWER
+            return await tcs.Awaitable;
+#else
             return await tcs.Task;
+#endif
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] FetchContacts called");
@@ -93,13 +109,21 @@ namespace AppsInToss
 #endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<string>();
+#else
             var tcs = new TaskCompletionSource<string>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<string>(
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
             __getTossShareLink_Internal(path, ogImageUrl, callbackId, "string");
+#if UNITY_6000_0_OR_NEWER
+            return await tcs.Awaitable;
+#else
             return await tcs.Task;
+#endif
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] GetTossShareLink called");
@@ -116,24 +140,32 @@ namespace AppsInToss
         [Preserve]
         [APICategory("Share")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable Share(ShareMessage message)
+        public static async Awaitable<bool> Share(ShareMessage message)
 #else
-        public static async Task Share(ShareMessage message)
+        public static async Task<bool> Share(ShareMessage message)
 #endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<bool>();
+#else
             var tcs = new TaskCompletionSource<bool>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => tcs.TrySetResult(true),
                 error => tcs.TrySetException(error)
             );
             __share_Internal(AITJsonSettings.Serialize(message), callbackId, "void");
-            await tcs.Task;
+#if UNITY_6000_0_OR_NEWER
+            return await tcs.Awaitable;
+#else
+            return await tcs.Task;
+#endif
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] Share called");
             await Task.CompletedTask;
-            // void return - nothing to return
+            return true; // test return value
 #endif
         }
 

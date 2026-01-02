@@ -34,13 +34,21 @@ namespace AppsInToss
 #endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<string>();
+#else
             var tcs = new TaskCompletionSource<string>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<string>(
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
             __StorageGetItem_Internal(args_0, callbackId, "string");
+#if UNITY_6000_0_OR_NEWER
+            return await tcs.Awaitable;
+#else
             return await tcs.Task;
+#endif
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] StorageGetItem called");
@@ -60,24 +68,32 @@ namespace AppsInToss
         [Preserve]
         [APICategory("Storage")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable StorageSetItem(string args_0, string args_1)
+        public static async Awaitable<bool> StorageSetItem(string args_0, string args_1)
 #else
-        public static async Task StorageSetItem(string args_0, string args_1)
+        public static async Task<bool> StorageSetItem(string args_0, string args_1)
 #endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<bool>();
+#else
             var tcs = new TaskCompletionSource<bool>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => tcs.TrySetResult(true),
                 error => tcs.TrySetException(error)
             );
             __StorageSetItem_Internal(args_0, args_1, callbackId, "void");
-            await tcs.Task;
+#if UNITY_6000_0_OR_NEWER
+            return await tcs.Awaitable;
+#else
+            return await tcs.Task;
+#endif
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] StorageSetItem called");
             await Task.CompletedTask;
-            // void return - nothing to return
+            return true; // test return value
 #endif
         }
 
@@ -92,24 +108,32 @@ namespace AppsInToss
         [Preserve]
         [APICategory("Storage")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable StorageRemoveItem(string args_0)
+        public static async Awaitable<bool> StorageRemoveItem(string args_0)
 #else
-        public static async Task StorageRemoveItem(string args_0)
+        public static async Task<bool> StorageRemoveItem(string args_0)
 #endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<bool>();
+#else
             var tcs = new TaskCompletionSource<bool>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => tcs.TrySetResult(true),
                 error => tcs.TrySetException(error)
             );
             __StorageRemoveItem_Internal(args_0, callbackId, "void");
-            await tcs.Task;
+#if UNITY_6000_0_OR_NEWER
+            return await tcs.Awaitable;
+#else
+            return await tcs.Task;
+#endif
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] StorageRemoveItem called");
             await Task.CompletedTask;
-            // void return - nothing to return
+            return true; // test return value
 #endif
         }
 
@@ -124,24 +148,32 @@ namespace AppsInToss
         [Preserve]
         [APICategory("Storage")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable StorageClearItems()
+        public static async Awaitable<bool> StorageClearItems()
 #else
-        public static async Task StorageClearItems()
+        public static async Task<bool> StorageClearItems()
 #endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<bool>();
+#else
             var tcs = new TaskCompletionSource<bool>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => tcs.TrySetResult(true),
                 error => tcs.TrySetException(error)
             );
             __StorageClearItems_Internal(callbackId, "void");
-            await tcs.Task;
+#if UNITY_6000_0_OR_NEWER
+            return await tcs.Awaitable;
+#else
+            return await tcs.Task;
+#endif
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] StorageClearItems called");
             await Task.CompletedTask;
-            // void return - nothing to return
+            return true; // test return value
 #endif
         }
 

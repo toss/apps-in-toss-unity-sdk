@@ -31,13 +31,21 @@ namespace AppsInToss
 #endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<string>();
+#else
             var tcs = new TaskCompletionSource<string>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<string>(
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
             __getDeviceId_Internal(callbackId, "string");
+#if UNITY_6000_0_OR_NEWER
+            return await tcs.Awaitable;
+#else
             return await tcs.Task;
+#endif
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] GetDeviceId called");
@@ -61,13 +69,21 @@ namespace AppsInToss
 #endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<string>();
+#else
             var tcs = new TaskCompletionSource<string>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<string>(
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
             __getLocale_Internal(callbackId, "string");
+#if UNITY_6000_0_OR_NEWER
+            return await tcs.Awaitable;
+#else
             return await tcs.Task;
+#endif
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] GetLocale called");
@@ -91,13 +107,21 @@ namespace AppsInToss
 #endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<NetworkStatus>();
+#else
             var tcs = new TaskCompletionSource<NetworkStatus>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<NetworkStatus>(
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
             __getNetworkStatus_Internal(callbackId, "NetworkStatus");
+#if UNITY_6000_0_OR_NEWER
+            return await tcs.Awaitable;
+#else
             return await tcs.Task;
+#endif
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] GetNetworkStatus called");
@@ -121,13 +145,21 @@ namespace AppsInToss
 #endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<string>();
+#else
             var tcs = new TaskCompletionSource<string>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<string>(
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
             __getOperationalEnvironment_Internal(callbackId, "string");
+#if UNITY_6000_0_OR_NEWER
+            return await tcs.Awaitable;
+#else
             return await tcs.Task;
+#endif
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] GetOperationalEnvironment called");
@@ -151,13 +183,21 @@ namespace AppsInToss
 #endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<string>();
+#else
             var tcs = new TaskCompletionSource<string>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<string>(
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
             __getPlatformOS_Internal(callbackId, "string");
+#if UNITY_6000_0_OR_NEWER
+            return await tcs.Awaitable;
+#else
             return await tcs.Task;
+#endif
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] GetPlatformOS called");
@@ -181,13 +221,21 @@ namespace AppsInToss
 #endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<string>();
+#else
             var tcs = new TaskCompletionSource<string>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<string>(
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
             __getSchemeUri_Internal(callbackId, "string");
+#if UNITY_6000_0_OR_NEWER
+            return await tcs.Awaitable;
+#else
             return await tcs.Task;
+#endif
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] GetSchemeUri called");
@@ -211,13 +259,21 @@ namespace AppsInToss
 #endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<string>();
+#else
             var tcs = new TaskCompletionSource<string>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<string>(
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
             __getTossAppVersion_Internal(callbackId, "string");
+#if UNITY_6000_0_OR_NEWER
+            return await tcs.Awaitable;
+#else
             return await tcs.Task;
+#endif
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] GetTossAppVersion called");

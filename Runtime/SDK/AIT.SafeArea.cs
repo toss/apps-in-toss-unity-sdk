@@ -30,13 +30,21 @@ namespace AppsInToss
 #endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<SafeAreaInsetsGetResult>();
+#else
             var tcs = new TaskCompletionSource<SafeAreaInsetsGetResult>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<SafeAreaInsetsGetResult>(
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
             __SafeAreaInsetsGet_Internal(callbackId, "SafeAreaInsetsGetResult");
+#if UNITY_6000_0_OR_NEWER
+            return await tcs.Awaitable;
+#else
             return await tcs.Task;
+#endif
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] SafeAreaInsetsGet called");
@@ -59,13 +67,21 @@ namespace AppsInToss
 #endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<System.Action>();
+#else
             var tcs = new TaskCompletionSource<System.Action>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<System.Action>(
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
             __SafeAreaInsetsSubscribe_Internal(AITJsonSettings.Serialize(__0), callbackId, "System.Action");
+#if UNITY_6000_0_OR_NEWER
+            return await tcs.Awaitable;
+#else
             return await tcs.Task;
+#endif
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] SafeAreaInsetsSubscribe called");

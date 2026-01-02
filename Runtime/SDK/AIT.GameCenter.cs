@@ -31,13 +31,21 @@ namespace AppsInToss
 #endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<GameCenterGameProfileResponse>();
+#else
             var tcs = new TaskCompletionSource<GameCenterGameProfileResponse>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<GameCenterGameProfileResponse>(
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
             __getGameCenterGameProfile_Internal(callbackId, "GameCenterGameProfileResponse");
+#if UNITY_6000_0_OR_NEWER
+            return await tcs.Awaitable;
+#else
             return await tcs.Task;
+#endif
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] GetGameCenterGameProfile called");
@@ -61,13 +69,21 @@ namespace AppsInToss
 #endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<GetUserKeyForGameResult>();
+#else
             var tcs = new TaskCompletionSource<GetUserKeyForGameResult>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<GetUserKeyForGameResult>(
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
             __getUserKeyForGame_Internal(callbackId, "GetUserKeyForGameResult");
+#if UNITY_6000_0_OR_NEWER
+            return await tcs.Awaitable;
+#else
             return await tcs.Task;
+#endif
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] GetUserKeyForGame called");
@@ -91,13 +107,21 @@ namespace AppsInToss
 #endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<GrantPromotionRewardForGameResult>();
+#else
             var tcs = new TaskCompletionSource<GrantPromotionRewardForGameResult>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<GrantPromotionRewardForGameResult>(
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
             __grantPromotionRewardForGame_Internal(AITJsonSettings.Serialize(options), callbackId, "GrantPromotionRewardForGameResult");
+#if UNITY_6000_0_OR_NEWER
+            return await tcs.Awaitable;
+#else
             return await tcs.Task;
+#endif
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] GrantPromotionRewardForGame called");
@@ -115,24 +139,32 @@ namespace AppsInToss
         [Preserve]
         [APICategory("GameCenter")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable OpenGameCenterLeaderboard()
+        public static async Awaitable<bool> OpenGameCenterLeaderboard()
 #else
-        public static async Task OpenGameCenterLeaderboard()
+        public static async Task<bool> OpenGameCenterLeaderboard()
 #endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<bool>();
+#else
             var tcs = new TaskCompletionSource<bool>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => tcs.TrySetResult(true),
                 error => tcs.TrySetException(error)
             );
             __openGameCenterLeaderboard_Internal(callbackId, "void");
-            await tcs.Task;
+#if UNITY_6000_0_OR_NEWER
+            return await tcs.Awaitable;
+#else
+            return await tcs.Task;
+#endif
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] OpenGameCenterLeaderboard called");
             await Task.CompletedTask;
-            // void return - nothing to return
+            return true; // test return value
 #endif
         }
 
@@ -151,13 +183,21 @@ namespace AppsInToss
 #endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<SubmitGameCenterLeaderBoardScoreResponse>();
+#else
             var tcs = new TaskCompletionSource<SubmitGameCenterLeaderBoardScoreResponse>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<SubmitGameCenterLeaderBoardScoreResponse>(
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
             __submitGameCenterLeaderBoardScore_Internal(AITJsonSettings.Serialize(paramsParam), callbackId, "SubmitGameCenterLeaderBoardScoreResponse");
+#if UNITY_6000_0_OR_NEWER
+            return await tcs.Awaitable;
+#else
             return await tcs.Task;
+#endif
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] SubmitGameCenterLeaderBoardScore called");

@@ -204,20 +204,28 @@ namespace AppsInToss
         [Preserve]
         [APICategory("Advertising")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable ToosAdsInitialize(InitializeOptions options)
+        public static async Awaitable TossAdsInitialize(InitializeOptions options)
 #else
         public static async Task TossAdsInitialize(InitializeOptions options)
 #endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<bool>();
+#else
             var tcs = new TaskCompletionSource<bool>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => tcs.TrySetResult(true),
                 error => tcs.TrySetException(error)
             );
             __TossAdsInitialize_Internal(AITJsonSettings.Serialize(options), callbackId, "void");
-            await tcs.Task;
+
+#if UNITY_6000_0_OR_NEWER
+            await tcs.Awaitable;
 #else
+            await tcs.Task;
+#endif
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] TossAdsInitialize called");
             await Task.CompletedTask;
@@ -233,19 +241,28 @@ namespace AppsInToss
         [Preserve]
         [APICategory("Advertising")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable ToosAdsAttach(string adGroupId, string target, TossAdsAttachOptions options = null)
+        public static async Awaitable TossAdsAttach(string adGroupId, string target, TossAdsAttachOptions options = null)
 #else
         public static async Task TossAdsAttach(string adGroupId, string target, TossAdsAttachOptions options = null)
 #endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<bool>();
+#else
             var tcs = new TaskCompletionSource<bool>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => tcs.TrySetResult(true),
                 error => tcs.TrySetException(error)
             );
             __TossAdsAttach_Internal(adGroupId, target, AITJsonSettings.Serialize(options), callbackId, "void");
+
+#if UNITY_6000_0_OR_NEWER
+            await tcs.Awaitable;
+#else
             await tcs.Task;
+#endif
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] TossAdsAttach called");
@@ -262,19 +279,28 @@ namespace AppsInToss
         [Preserve]
         [APICategory("Advertising")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable TossAdsDestroyAsync(string slotId)
+        public static async Awaitable TossAdsDestroy(string slotId)
 #else
         public static async Task TossAdsDestroy(string slotId)
 #endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<bool>();
+#else
             var tcs = new TaskCompletionSource<bool>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => tcs.TrySetResult(true),
                 error => tcs.TrySetException(error)
-            );
+                );
             __TossAdsDestroy_Internal(slotId, callbackId, "void");
+
+#if UNITY_6000_0_OR_NEWER
+            await tcs.Awaitable;
+#else
             await tcs.Task;
+#endif
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] TossAdsDestroy called");
@@ -291,19 +317,28 @@ namespace AppsInToss
         [Preserve]
         [APICategory("Advertising")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable TossAdsDestroyAllAsync()
+        public static async Awaitable TossAdsDestroyAll()
 #else
         public static async Task TossAdsDestroyAll()
 #endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<bool>();
+#else
             var tcs = new TaskCompletionSource<bool>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => tcs.TrySetResult(true),
                 error => tcs.TrySetException(error)
-            );
+                );
             __TossAdsDestroyAll_Internal(callbackId, "void");
+
+#if UNITY_6000_0_OR_NEWER
+            await tcs.Awaitable;
+#else
             await tcs.Task;
+#endif
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] TossAdsDestroyAll called");

@@ -30,13 +30,21 @@ namespace AppsInToss
 #endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<AppLoginResult>();
+#else
             var tcs = new TaskCompletionSource<AppLoginResult>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<AppLoginResult>(
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
             __appLogin_Internal(callbackId, "AppLoginResult");
+#if UNITY_6000_0_OR_NEWER
+            return await tcs.Awaitable;
+#else
             return await tcs.Task;
+#endif
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] AppLogin called");
@@ -60,13 +68,21 @@ namespace AppsInToss
 #endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<bool?>();
+#else
             var tcs = new TaskCompletionSource<bool?>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<bool?>(
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
-            );
+                );
             __getIsTossLoginIntegratedService_Internal(callbackId, "bool?");
+#if UNITY_6000_0_OR_NEWER
+            return await tcs.Awaitable;
+#else
             return await tcs.Task;
+#endif
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] GetIsTossLoginIntegratedService called");

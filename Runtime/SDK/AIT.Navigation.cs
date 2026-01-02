@@ -24,24 +24,32 @@ namespace AppsInToss
         [Preserve]
         [APICategory("Navigation")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable CloseView()
+        public static async Awaitable<bool> CloseView()
 #else
-        public static async Task CloseView()
+        public static async Task<bool> CloseView()
 #endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<bool>();
+#else
             var tcs = new TaskCompletionSource<bool>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => tcs.TrySetResult(true),
                 error => tcs.TrySetException(error)
             );
             __closeView_Internal(callbackId, "void");
-            await tcs.Task;
+#if UNITY_6000_0_OR_NEWER
+            return await tcs.Awaitable;
+#else
+            return await tcs.Task;
+#endif
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] CloseView called");
             await Task.CompletedTask;
-            // void return - nothing to return
+            return true; // test return value
 #endif
         }
 
@@ -55,24 +63,32 @@ namespace AppsInToss
         [Preserve]
         [APICategory("Navigation")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable OpenURL(string url)
+        public static async Awaitable<bool> OpenURL(string url)
 #else
-        public static async Task OpenURL(string url)
+        public static async Task<bool> OpenURL(string url)
 #endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_6000_0_OR_NEWER
+            var tcs = new AwaitableCompletionSource<bool>();
+#else
             var tcs = new TaskCompletionSource<bool>();
+#endif
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => tcs.TrySetResult(true),
                 error => tcs.TrySetException(error)
             );
             __openURL_Internal(url, callbackId, "void");
-            await tcs.Task;
+#if UNITY_6000_0_OR_NEWER
+            return await tcs.Awaitable;
+#else
+            return await tcs.Task;
+#endif
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] OpenURL called");
             await Task.CompletedTask;
-            // void return - nothing to return
+            return true; // test return value
 #endif
         }
 

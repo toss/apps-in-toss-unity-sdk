@@ -511,6 +511,30 @@ namespace AppsInToss.Editor
         }
 
         /// <summary>
+        /// SDK 템플릿의 Runtime 폴더 경로를 찾습니다.
+        /// Package Only 실행 시 webgl/ 폴더에 Runtime이 없을 경우 폴백으로 사용됩니다.
+        /// </summary>
+        private static string FindSdkRuntimePath()
+        {
+            string projectRoot = Directory.GetParent(Application.dataPath).FullName;
+            string[] possiblePaths = new string[]
+            {
+                Path.Combine(projectRoot, "Packages/im.toss.apps-in-toss-unity-sdk/WebGLTemplates/AITTemplate/Runtime"),
+                Path.Combine(projectRoot, "Packages/com.appsintoss.miniapp/WebGLTemplates/AITTemplate/Runtime"),
+                Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(typeof(AITConvertCore).Assembly.Location)), "WebGLTemplates/AITTemplate/Runtime")
+            };
+
+            foreach (string path in possiblePaths)
+            {
+                if (Directory.Exists(path))
+                {
+                    return path;
+                }
+            }
+            return null;
+        }
+
+        /// <summary>
         /// Unity WebGL 빌드를 public 폴더로 복사합니다.
         /// </summary>
         /// <returns>성공 시 SUCCEED, 실패 시 해당 에러 코드</returns>
@@ -551,12 +575,30 @@ namespace AppsInToss.Editor
                 UnityUtil.CopyDirectory(templateDataSrc, templateDataDest);
             }
 
-            // Runtime 폴더 → public/Runtime (있는 경우)
+            // Runtime 폴더 → public/Runtime
+            // 1순위: webgl/ 폴더에 Runtime이 있으면 사용 (AITTemplate 빌드)
+            // 2순위: webgl/ 폴더에 Runtime이 없으면 SDK 템플릿에서 복사 (Package Only 지원)
             string runtimeSrc = Path.Combine(webglPath, "Runtime");
             string runtimeDest = Path.Combine(publicPath, "Runtime");
             if (Directory.Exists(runtimeSrc))
             {
                 UnityUtil.CopyDirectory(runtimeSrc, runtimeDest);
+            }
+            else
+            {
+                // SDK 템플릿에서 Runtime 폴더 복사 (수동 WebGL 빌드 시 AITTemplate 미사용 대응)
+                Debug.LogWarning("[AIT] WebGL 빌드에 Runtime 폴더가 없습니다. SDK 템플릿에서 복사합니다.");
+                Debug.LogWarning("[AIT]    ⚠️ AITTemplate이 아닌 다른 템플릿으로 빌드되었을 수 있습니다.");
+                string sdkRuntimePath = FindSdkRuntimePath();
+                if (!string.IsNullOrEmpty(sdkRuntimePath) && Directory.Exists(sdkRuntimePath))
+                {
+                    UnityUtil.CopyDirectory(sdkRuntimePath, runtimeDest);
+                    Debug.Log("[AIT] ✓ Runtime 폴더: SDK 템플릿에서 복사 완료");
+                }
+                else
+                {
+                    Debug.LogError("[AIT] Runtime 폴더를 찾을 수 없습니다. 'Build And Package'를 사용하세요.");
+                }
             }
 
             // StreamingAssets 폴더 → public/StreamingAssets (있는 경우)

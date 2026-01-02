@@ -28,7 +28,6 @@ namespace AppsInToss.Editor
         public Vector2 cursorHotspot;
         public bool runInBackground;
         public bool stripEngineCode;
-        public bool showUnityLogo;
 
         // IL2CPP/Stripping 설정
         public ScriptingImplementation scriptingBackend;
@@ -69,7 +68,6 @@ namespace AppsInToss.Editor
                 cursorHotspot = PlayerSettings.cursorHotspot,
                 runInBackground = PlayerSettings.runInBackground,
                 stripEngineCode = PlayerSettings.stripEngineCode,
-                showUnityLogo = PlayerSettings.SplashScreen.showUnityLogo,
 
                 // IL2CPP/Stripping 설정
 #if UNITY_6000_0_OR_NEWER
@@ -118,7 +116,6 @@ namespace AppsInToss.Editor
             PlayerSettings.cursorHotspot = cursorHotspot;
             PlayerSettings.runInBackground = runInBackground;
             PlayerSettings.stripEngineCode = stripEngineCode;
-            PlayerSettings.SplashScreen.showUnityLogo = showUnityLogo;
 
             // IL2CPP/Stripping 설정
 #if UNITY_6000_0_OR_NEWER

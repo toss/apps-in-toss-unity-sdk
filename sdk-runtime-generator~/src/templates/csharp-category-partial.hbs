@@ -66,6 +66,62 @@ namespace AppsInToss
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __{{{this.name}}}_Internal(string subscriptionId, string typeName);
 #endif
+{{else if this.hasNestedCallbacks}}
+{{!-- Nested callback API (IAPCreateOneTimePurchaseOrder with processProductGrant pattern) --}}
+{{#if this.description}}
+        /// <summary>
+        /// {{{this.description}}}
+        /// </summary>
+{{/if}}
+{{#each this.parameters}}
+{{#if this.description}}
+        /// <param name="{{this.paramName}}">{{xmlSafe this.description}}</param>
+{{/if}}
+{{/each}}
+        /// <returns>구독 취소를 위한 Action</returns>
+        [Preserve]
+        [APICategory("{{../categoryName}}")]
+        public static Action {{{this.pascalName}}}({{{this.nestedCallbackParamType}}} options)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            string subscriptionId = Guid.NewGuid().ToString();
+
+            // 중첩 콜백 등록
+{{#each this.nestedCallbacks}}
+            if (options.Options?.{{this.pascalName}} != null)
+            {
+                AITCore.Instance.RegisterNestedCallback(
+                    subscriptionId,
+                    "{{this.name}}",
+                    options.Options.{{this.pascalName}}
+                );
+            }
+{{/each}}
+
+            // 이벤트 콜백 등록
+            AITCore.Instance.RegisterSubscriptionCallback<{{{this.nestedCallbackEventType}}}>(
+                subscriptionId,
+                options.OnEvent,
+                options.OnError
+            );
+
+            __{{{this.name}}}_Internal(AITJsonSettings.Serialize(options), subscriptionId, "{{{this.nestedCallbackEventType}}}");
+
+            return () => {
+                AITCore.Instance.Unsubscribe(subscriptionId);
+                AITCore.Instance.RemoveNestedCallbacks(subscriptionId);
+            };
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] {{{this.pascalName}}} called");
+            return () => UnityEngine.Debug.Log($"[AIT Mock] {{{this.pascalName}}} cancelled");
+#endif
+        }
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __{{{this.name}}}_Internal(string options, string subscriptionId, string typeName);
+#endif
 {{else if this.isNamespaceCallbackBased}}
 {{!-- Namespace callback-based API (GoogleAdMob.loadAppsInTossAdMob pattern) --}}
 {{!-- options 객체를 JSON으로 직렬화하여 전달 --}}
@@ -153,62 +209,6 @@ namespace AppsInToss
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __{{{this.name}}}_Internal({{#each this.parameters}}string {{this.paramName}}, {{/each}}string subscriptionId, string typeName);
-#endif
-{{else if this.hasNestedCallbacks}}
-{{!-- Nested callback API (IAPCreateOneTimePurchaseOrder with processProductGrant pattern) --}}
-{{#if this.description}}
-        /// <summary>
-        /// {{{this.description}}}
-        /// </summary>
-{{/if}}
-{{#each this.parameters}}
-{{#if this.description}}
-        /// <param name="{{this.paramName}}">{{xmlSafe this.description}}</param>
-{{/if}}
-{{/each}}
-        /// <returns>구독 취소를 위한 Action</returns>
-        [Preserve]
-        [APICategory("{{../categoryName}}")]
-        public static Action {{{this.pascalName}}}({{{this.nestedCallbackParamType}}} options)
-        {
-#if UNITY_WEBGL && !UNITY_EDITOR
-            string subscriptionId = Guid.NewGuid().ToString();
-
-            // 중첩 콜백 등록
-{{#each this.nestedCallbacks}}
-            if (options.Options?.{{this.pascalName}} != null)
-            {
-                AITCore.Instance.RegisterNestedCallback(
-                    subscriptionId,
-                    "{{this.name}}",
-                    options.Options.{{this.pascalName}}
-                );
-            }
-{{/each}}
-
-            // 이벤트 콜백 등록
-            AITCore.Instance.RegisterSubscriptionCallback<{{{this.nestedCallbackEventType}}}>(
-                subscriptionId,
-                options.OnEvent,
-                options.OnError
-            );
-
-            __{{{this.name}}}_Internal(AITJsonSettings.Serialize(options), subscriptionId, "{{{this.nestedCallbackEventType}}}");
-
-            return () => {
-                AITCore.Instance.Unsubscribe(subscriptionId);
-                AITCore.Instance.RemoveNestedCallbacks(subscriptionId);
-            };
-#else
-            // Unity Editor mock implementation
-            UnityEngine.Debug.Log($"[AIT Mock] {{{this.pascalName}}} called");
-            return () => UnityEngine.Debug.Log($"[AIT Mock] {{{this.pascalName}}} cancelled");
-#endif
-        }
-
-#if UNITY_WEBGL && !UNITY_EDITOR
-        [System.Runtime.InteropServices.DllImport("__Internal")]
-        private static extern void __{{{this.name}}}_Internal(string options, string subscriptionId, string typeName);
 #endif
 {{else}}
 {{!-- Regular API (one-time callback pattern) --}}

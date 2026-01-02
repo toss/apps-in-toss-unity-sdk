@@ -1577,14 +1577,14 @@ ${fields}${errorField}
   /**
    * 필드 선언을 생성 (JsonProperty 어트리뷰트 포함)
    * C# 필드명은 PascalCase, JSON 직렬화는 원본 camelCase 사용
-   * System.Action 타입은 직렬화할 수 없으므로 JsonIgnore 추가
+   * System.Action, System.Func 타입은 직렬화할 수 없으므로 JsonIgnore 추가
    */
   private generateFieldDeclaration(originalName: string, type: string, optional: boolean = false): string {
     const pascalName = this.capitalize(originalName);
     const optionalComment = optional ? ' // optional' : '';
 
-    // System.Action 타입은 직렬화 불가능하므로 JsonIgnore 사용
-    if (type.startsWith('System.Action')) {
+    // System.Action, System.Func 타입은 직렬화 불가능하므로 JsonIgnore 사용
+    if (type.startsWith('System.Action') || type.startsWith('System.Func')) {
       return `        [JsonIgnore]\n        public ${type} ${pascalName};${optionalComment}`;
     }
 

@@ -256,6 +256,106 @@ namespace AppsInToss.Editor
         }
 
         /// <summary>
+        /// tsconfig.json을 머지합니다.
+        /// SDK의 필수 옵션을 유지하면서 사용자 옵션을 추가합니다.
+        /// </summary>
+        internal static void MergeTsConfig(string projectBuildConfigPath, string sdkBuildConfigPath, string destPath)
+        {
+            string projectFile = Path.Combine(projectBuildConfigPath, "tsconfig.json");
+            string sdkFile = Path.Combine(sdkBuildConfigPath, "tsconfig.json");
+            string destFile = Path.Combine(destPath, "tsconfig.json");
+
+            // 프로젝트 파일 없으면 SDK 복사
+            if (!File.Exists(projectFile))
+            {
+                File.Copy(sdkFile, destFile, true);
+                Debug.Log("[AIT]   ✓ tsconfig.json (SDK에서 복사)");
+                return;
+            }
+
+            try
+            {
+                string projectContent = File.ReadAllText(projectFile);
+                string sdkContent = File.ReadAllText(sdkFile);
+
+                var projectJson = MiniJson.Deserialize(projectContent) as Dictionary<string, object>;
+                var sdkJson = MiniJson.Deserialize(sdkContent) as Dictionary<string, object>;
+
+                if (projectJson == null || sdkJson == null)
+                {
+                    Debug.LogWarning("[AIT] tsconfig.json 파싱 실패, SDK 버전 사용");
+                    File.Copy(sdkFile, destFile, true);
+                    return;
+                }
+
+                // SDK의 기본 구조를 사용
+                var result = new Dictionary<string, object>(sdkJson);
+
+                // compilerOptions 머지
+                var sdkCompilerOptions = sdkJson.ContainsKey("compilerOptions")
+                    ? sdkJson["compilerOptions"] as Dictionary<string, object>
+                    : new Dictionary<string, object>();
+                var projectCompilerOptions = projectJson.ContainsKey("compilerOptions")
+                    ? projectJson["compilerOptions"] as Dictionary<string, object>
+                    : new Dictionary<string, object>();
+
+                // SDK 필수 옵션 정의 (이 옵션들은 SDK 값으로 강제)
+                var sdkRequiredOptions = new HashSet<string>
+                {
+                    "moduleResolution",  // bundler 필수
+                    "esModuleInterop",   // 호환성 필수
+                };
+
+                // 머지된 compilerOptions 생성
+                var mergedCompilerOptions = new Dictionary<string, object>();
+
+                // 1. SDK 옵션 먼저 추가 (기본값)
+                if (sdkCompilerOptions != null)
+                {
+                    foreach (var kvp in sdkCompilerOptions)
+                    {
+                        mergedCompilerOptions[kvp.Key] = kvp.Value;
+                    }
+                }
+
+                // 2. 프로젝트 옵션으로 덮어쓰기 (SDK 필수 옵션 제외)
+                if (projectCompilerOptions != null)
+                {
+                    foreach (var kvp in projectCompilerOptions)
+                    {
+                        if (!sdkRequiredOptions.Contains(kvp.Key))
+                        {
+                            mergedCompilerOptions[kvp.Key] = kvp.Value;
+                        }
+                    }
+                }
+
+                result["compilerOptions"] = mergedCompilerOptions;
+
+                // include 배열 (프로젝트에 있으면 프로젝트 우선)
+                if (projectJson.ContainsKey("include"))
+                {
+                    result["include"] = projectJson["include"];
+                }
+
+                // exclude 배열 (프로젝트에 있으면 사용)
+                if (projectJson.ContainsKey("exclude"))
+                {
+                    result["exclude"] = projectJson["exclude"];
+                }
+
+                string mergedJson = MiniJson.Serialize(result);
+                File.WriteAllText(destFile, mergedJson, new System.Text.UTF8Encoding(false));
+                Debug.Log("[AIT]   ✓ tsconfig.json (compilerOptions 머지됨)");
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[AIT] tsconfig.json 머지 실패: {e.Message}, SDK 버전 사용");
+                File.Copy(sdkFile, destFile, true);
+            }
+        }
+
+        /// <summary>
         /// vite.config.ts를 마커 기반으로 업데이트합니다.
         /// </summary>
         internal static void UpdateViteConfig(string projectBuildConfigPath, string sdkBuildConfigPath, string destPath, AITEditorScriptObject config)
@@ -382,26 +482,85 @@ namespace AppsInToss.Editor
         }
 
         /// <summary>
-        /// 프로젝트 BuildConfig의 추가 파일들을 복사합니다.
+        /// 프로젝트 BuildConfig의 추가 파일들을 재귀적으로 복사합니다.
         /// </summary>
         internal static void CopyAdditionalUserFiles(string projectBuildConfigPath, string destPath)
         {
             if (!Directory.Exists(projectBuildConfigPath)) return;
 
-            // 기본 파일 제외
-            var excludeFiles = new HashSet<string>
+            // 루트 레벨에서 제외할 파일들
+            var excludeRootFiles = new HashSet<string>
             {
                 "package.json", "pnpm-lock.yaml", "vite.config.ts",
                 "tsconfig.json", "unity-bridge.ts", "granite.config.ts"
             };
 
-            foreach (var file in Directory.GetFiles(projectBuildConfigPath))
+            // 제외할 폴더들
+            var excludeFolders = new HashSet<string>
+            {
+                "node_modules",
+                ".npm-cache",
+                "dist"
+            };
+
+            CopyUserFilesRecursive(projectBuildConfigPath, destPath, excludeRootFiles, excludeFolders, isRoot: true);
+        }
+
+        /// <summary>
+        /// 재귀적으로 사용자 파일을 복사합니다.
+        /// </summary>
+        private static void CopyUserFilesRecursive(
+            string sourceDir,
+            string destDir,
+            HashSet<string> excludeRootFiles,
+            HashSet<string> excludeFolders,
+            bool isRoot)
+        {
+            // 대상 폴더 생성
+            if (!Directory.Exists(destDir))
+            {
+                Directory.CreateDirectory(destDir);
+            }
+
+            // 파일 복사
+            foreach (var file in Directory.GetFiles(sourceDir))
             {
                 string fileName = Path.GetFileName(file);
-                if (excludeFiles.Contains(fileName)) continue;
 
-                File.Copy(file, Path.Combine(destPath, fileName), true);
-                Debug.Log($"[AIT]   ✓ {fileName} (사용자 추가 파일)");
+                // 루트 레벨에서만 특정 파일 제외
+                if (isRoot && excludeRootFiles.Contains(fileName))
+                {
+                    continue;
+                }
+
+                string destFile = Path.Combine(destDir, fileName);
+                File.Copy(file, destFile, true);
+
+                // 의미 있는 파일만 로그 출력
+                if (fileName.EndsWith(".ts") || fileName.EndsWith(".tsx") ||
+                    fileName.EndsWith(".js") || fileName.EndsWith(".jsx") ||
+                    fileName.EndsWith(".css") || fileName.EndsWith(".scss"))
+                {
+                    Debug.Log($"[AIT]   ✓ {fileName} (사용자 추가 파일)");
+                }
+            }
+
+            // 하위 폴더 재귀 복사
+            foreach (var dir in Directory.GetDirectories(sourceDir))
+            {
+                string dirName = Path.GetFileName(dir);
+
+                // 제외 폴더 스킵
+                if (excludeFolders.Contains(dirName))
+                {
+                    continue;
+                }
+
+                string destSubDir = Path.Combine(destDir, dirName);
+                CopyUserFilesRecursive(dir, destSubDir, excludeRootFiles, excludeFolders, isRoot: false);
+
+                // 폴더 복사 완료 로그
+                Debug.Log($"[AIT]   ✓ {dirName}/ (사용자 추가 폴더)");
             }
         }
 
@@ -483,11 +642,8 @@ namespace AppsInToss.Editor
             // 4. granite.config.ts - 마커 기반 업데이트
             UpdateGraniteConfig(projectBuildConfigPath, sdkBuildConfigPath, buildProjectPath, config);
 
-            // 5. tsconfig.json - SDK 전용
-            string tsconfigSrc = Path.Combine(sdkBuildConfigPath, "tsconfig.json");
-            string tsconfigDst = Path.Combine(buildProjectPath, "tsconfig.json");
-            File.Copy(tsconfigSrc, tsconfigDst, true);
-            Debug.Log("[AIT]   ✓ tsconfig.json (SDK에서 복사)");
+            // 5. tsconfig.json - 머지 (프로젝트 옵션 + SDK 필수 옵션)
+            MergeTsConfig(projectBuildConfigPath, sdkBuildConfigPath, buildProjectPath);
 
             // 6. unity-bridge.ts - 프로젝트 우선, 없으면 SDK
             string unityBridgeProject = Path.Combine(projectBuildConfigPath, "unity-bridge.ts");

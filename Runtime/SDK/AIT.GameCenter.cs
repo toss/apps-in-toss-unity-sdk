@@ -9,6 +9,9 @@ using System;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using UnityEngine.Scripting;
+#if UNITY_6000_0_OR_NEWER
+using UnityEngine;
+#endif
 
 namespace AppsInToss
 {
@@ -21,7 +24,11 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("GameCenter")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<GameCenterGameProfileResponse> GetGameCenterGameProfile()
+#else
         public static async Task<GameCenterGameProfileResponse> GetGameCenterGameProfile()
+#endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<GameCenterGameProfileResponse>();
@@ -47,7 +54,11 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("GameCenter")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<GetUserKeyForGameResult> GetUserKeyForGame()
+#else
         public static async Task<GetUserKeyForGameResult> GetUserKeyForGame()
+#endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<GetUserKeyForGameResult>();
@@ -73,7 +84,11 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("GameCenter")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<GrantPromotionRewardForGameResult> GrantPromotionRewardForGame(GrantPromotionRewardForGameOptions options)
+#else
         public static async Task<GrantPromotionRewardForGameResult> GrantPromotionRewardForGame(GrantPromotionRewardForGameOptions options)
+#endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<GrantPromotionRewardForGameResult>();
@@ -99,7 +114,11 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("GameCenter")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable OpenGameCenterLeaderboard()
+#else
         public static async Task OpenGameCenterLeaderboard()
+#endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<bool>();
@@ -125,7 +144,11 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("GameCenter")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<SubmitGameCenterLeaderBoardScoreResponse> SubmitGameCenterLeaderBoardScore(SubmitGameCenterLeaderBoardScoreParams paramsParam)
+#else
         public static async Task<SubmitGameCenterLeaderBoardScoreResponse> SubmitGameCenterLeaderBoardScore(SubmitGameCenterLeaderBoardScoreParams paramsParam)
+#endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<SubmitGameCenterLeaderBoardScoreResponse>();

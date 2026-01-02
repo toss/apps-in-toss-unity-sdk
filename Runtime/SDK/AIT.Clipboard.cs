@@ -24,7 +24,7 @@ namespace AppsInToss
         [Preserve]
         [APICategory("Clipboard")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable<string> GetClipboardTextAsync()
+        public static async Awaitable<string> GetClipboardText()
 #else
         public static async Task<string> GetClipboardText()
 #endif
@@ -53,7 +53,7 @@ namespace AppsInToss
         [Preserve]
         [APICategory("Clipboard")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable SetClipboardTextAsync(string text)
+        public static async Awaitable SetClipboardText(string text)
 #else
         public static async Task SetClipboardText(string text)
 #endif

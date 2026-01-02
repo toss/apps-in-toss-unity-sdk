@@ -24,7 +24,7 @@ namespace AppsInToss
         [Preserve]
         [APICategory("Authentication")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable<AppLoginResult> AppLoginAsync()
+        public static async Awaitable<AppLoginResult> AppLogin()
 #else
         public static async Task<AppLoginResult> AppLogin()
 #endif
@@ -54,7 +54,7 @@ namespace AppsInToss
         [Preserve]
         [APICategory("Authentication")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable<bool?> GetIsTossLoginIntegratedServiceAsync()
+        public static async Awaitable<bool?> GetIsTossLoginIntegratedService()
 #else
         public static async Task<bool?> GetIsTossLoginIntegratedService()
 #endif

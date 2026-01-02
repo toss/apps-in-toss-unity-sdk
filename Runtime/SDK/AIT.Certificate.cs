@@ -25,7 +25,7 @@ namespace AppsInToss
         [Preserve]
         [APICategory("Certificate")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable AppsInTossSignTossCertAsync(AppsInTossSignTossCertParams paramsParam)
+        public static async Awaitable AppsInTossSignTossCert(AppsInTossSignTossCertParams paramsParam)
 #else
         public static async Task AppsInTossSignTossCert(AppsInTossSignTossCertParams paramsParam)
 #endif

@@ -24,7 +24,7 @@ namespace AppsInToss
         [Preserve]
         [APICategory("Device")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable GenerateHapticFeedbackAsync(HapticFeedbackOptions options)
+        public static async Awaitable GenerateHapticFeedback(HapticFeedbackOptions options)
 #else
         public static async Task GenerateHapticFeedback(HapticFeedbackOptions options)
 #endif
@@ -55,7 +55,7 @@ namespace AppsInToss
         [Preserve]
         [APICategory("Device")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable SetDeviceOrientationAsync(SetDeviceOrientationOptions options)
+        public static async Awaitable SetDeviceOrientation(SetDeviceOrientationOptions options)
 #else
         public static async Task SetDeviceOrientation(SetDeviceOrientationOptions options)
 #endif
@@ -85,7 +85,7 @@ namespace AppsInToss
         [Preserve]
         [APICategory("Device")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable SetIosSwipeGestureEnabledAsync(SetIosSwipeGestureEnabledOptions options)
+        public static async Awaitable SetIosSwipeGestureEnabled(SetIosSwipeGestureEnabledOptions options)
 #else
         public static async Task SetIosSwipeGestureEnabled(SetIosSwipeGestureEnabledOptions options)
 #endif
@@ -116,7 +116,7 @@ namespace AppsInToss
         [Preserve]
         [APICategory("Device")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable<SetScreenAwakeModeResult> SetScreenAwakeModeAsync(SetScreenAwakeModeOptions options)
+        public static async Awaitable<SetScreenAwakeModeResult> SetScreenAwakeMode(SetScreenAwakeModeOptions options)
 #else
         public static async Task<SetScreenAwakeModeResult> SetScreenAwakeMode(SetScreenAwakeModeOptions options)
 #endif
@@ -147,7 +147,7 @@ namespace AppsInToss
         [Preserve]
         [APICategory("Device")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable<SetSecureScreenResult> SetSecureScreenAsync(SetSecureScreenOptions options)
+        public static async Awaitable<SetSecureScreenResult> SetSecureScreen(SetSecureScreenOptions options)
 #else
         public static async Task<SetSecureScreenResult> SetSecureScreen(SetSecureScreenOptions options)
 #endif

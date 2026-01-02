@@ -203,9 +203,9 @@ namespace AppsInToss
         public static async Task TossAdsInitialize(InitializeOptions options)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            var tcs = new TaskCompletionSource<bool>();
+            var tcs = new TaskCompletionSource<object>();
             string callbackId = AITCore.Instance.RegisterCallback<object>(
-                result => tcs.TrySetResult(true),
+                result => tcs.TrySetResult(null),
                 error => tcs.TrySetException(error)
             );
             __TossAdsInitialize_Internal(AITJsonSettings.Serialize(options), callbackId, "void");
@@ -228,9 +228,9 @@ namespace AppsInToss
         public static async Task TossAdsAttach(string adGroupId, string target, TossAdsAttachOptions options = null)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            var tcs = new TaskCompletionSource<bool>();
+            var tcs = new TaskCompletionSource<object>();
             string callbackId = AITCore.Instance.RegisterCallback<object>(
-                result => tcs.TrySetResult(true),
+                result => tcs.TrySetResult(null),
                 error => tcs.TrySetException(error)
             );
             __TossAdsAttach_Internal(adGroupId, target, AITJsonSettings.Serialize(options), callbackId, "void");
@@ -253,9 +253,9 @@ namespace AppsInToss
         public static async Task TossAdsDestroy(string slotId)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            var tcs = new TaskCompletionSource<bool>();
+            var tcs = new TaskCompletionSource<object>();
             string callbackId = AITCore.Instance.RegisterCallback<object>(
-                result => tcs.TrySetResult(true),
+                result => tcs.TrySetResult(null),
                 error => tcs.TrySetException(error)
             );
             __TossAdsDestroy_Internal(slotId, callbackId, "void");
@@ -278,9 +278,9 @@ namespace AppsInToss
         public static async Task TossAdsDestroyAll()
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            var tcs = new TaskCompletionSource<bool>();
+            var tcs = new TaskCompletionSource<object>();
             string callbackId = AITCore.Instance.RegisterCallback<object>(
-                result => tcs.TrySetResult(true),
+                result => tcs.TrySetResult(null),
                 error => tcs.TrySetException(error)
             );
             __TossAdsDestroyAll_Internal(callbackId, "void");

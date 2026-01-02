@@ -55,9 +55,9 @@ namespace AppsInToss
         public static async Task StorageSetItem(string args_0, string args_1)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            var tcs = new TaskCompletionSource<bool>();
+            var tcs = new TaskCompletionSource<object>();
             string callbackId = AITCore.Instance.RegisterCallback<object>(
-                result => tcs.TrySetResult(true),
+                result => tcs.TrySetResult(null),
                 error => tcs.TrySetException(error)
             );
             __StorageSetItem_Internal(args_0, args_1, callbackId, "void");
@@ -83,9 +83,9 @@ namespace AppsInToss
         public static async Task StorageRemoveItem(string args_0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            var tcs = new TaskCompletionSource<bool>();
+            var tcs = new TaskCompletionSource<object>();
             string callbackId = AITCore.Instance.RegisterCallback<object>(
-                result => tcs.TrySetResult(true),
+                result => tcs.TrySetResult(null),
                 error => tcs.TrySetException(error)
             );
             __StorageRemoveItem_Internal(args_0, callbackId, "void");
@@ -111,9 +111,9 @@ namespace AppsInToss
         public static async Task StorageClearItems()
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            var tcs = new TaskCompletionSource<bool>();
+            var tcs = new TaskCompletionSource<object>();
             string callbackId = AITCore.Instance.RegisterCallback<object>(
-                result => tcs.TrySetResult(true),
+                result => tcs.TrySetResult(null),
                 error => tcs.TrySetException(error)
             );
             __StorageClearItems_Internal(callbackId, "void");

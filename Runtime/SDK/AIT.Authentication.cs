@@ -9,6 +9,9 @@ using System;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using UnityEngine.Scripting;
+#if UNITY_6000_0_OR_NEWER
+using UnityEngine;
+#endif
 
 namespace AppsInToss
 {
@@ -20,7 +23,11 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Authentication")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<AppLoginResult> AppLoginAsync()
+#else
         public static async Task<AppLoginResult> AppLogin()
+#endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<AppLoginResult>();
@@ -46,7 +53,11 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Authentication")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<bool?> GetIsTossLoginIntegratedServiceAsync()
+#else
         public static async Task<bool?> GetIsTossLoginIntegratedService()
+#endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<bool?>();

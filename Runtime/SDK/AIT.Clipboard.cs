@@ -9,6 +9,9 @@ using System;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using UnityEngine.Scripting;
+#if UNITY_6000_0_OR_NEWER
+using UnityEngine;
+#endif
 
 namespace AppsInToss
 {
@@ -20,7 +23,11 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Clipboard")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<string> GetClipboardTextAsync()
+#else
         public static async Task<string> GetClipboardText()
+#endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<string>();
@@ -45,7 +52,11 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Clipboard")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable SetClipboardTextAsync(string text)
+#else
         public static async Task SetClipboardText(string text)
+#endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<bool>();

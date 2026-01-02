@@ -123,6 +123,12 @@ namespace AppsInToss
         [Tooltip("WebView 타입. 게임앱은 'game' (투명배경), 일반앱은 'partner' (흰색배경)")]
         public int webViewType = 0; // 0=game, 1=partner
 
+        [Tooltip("인라인 미디어 재생 허용")]
+        public bool allowsInlineMediaPlayback = false;
+
+        [Tooltip("미디어 재생 시 사용자 액션 필요")]
+        public bool mediaPlaybackRequiresUserAction = false;
+
         [Header("서버 설정")]
         [Tooltip("Granite (Metro) 서버 호스트. 기본값: 0.0.0.0")]
         public string graniteHost = "0.0.0.0";

@@ -102,6 +102,7 @@ namespace AppsInToss
             NETWORK_ERROR = 4,
             CANCELLED = 5,
             FAIL_NPM_BUILD = 6,
+            WEBGL_BUILD_INCOMPLETE = 7,
         }
 
         /// <summary>
@@ -153,6 +154,15 @@ namespace AppsInToss
                            "2. ait-build 폴더에서 직접 pnpm install 시도\n" +
                            "3. package.json 파일이 올바른지 확인\n" +
                            "4. Tools~/NodeJS 폴더를 삭제 후 다시 빌드 시도";
+
+                case AITExportError.WEBGL_BUILD_INCOMPLETE:
+                    return "WebGL 빌드 결과물이 불완전합니다.\n\n" +
+                           "필수 파일(loader.js, data, framework.js, wasm 등)이 누락되었거나\n" +
+                           "index.html의 플레이스홀더가 치환되지 않았습니다.\n\n" +
+                           "해결 방법:\n" +
+                           "1. AIT > Clean 메뉴로 빌드 폴더 삭제\n" +
+                           "2. 'Clean Build' 옵션 활성화 후 재빌드\n" +
+                           "3. AIT > Regenerate WebGL Templates 실행";
 
                 default:
                     return $"알 수 없는 오류가 발생했습니다. (코드: {error})";

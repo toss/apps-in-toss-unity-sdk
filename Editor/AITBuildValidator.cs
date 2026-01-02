@@ -9,35 +9,82 @@ namespace AppsInToss.Editor
     /// </summary>
     internal static class AITBuildValidator
     {
+        // 치명적 플레이스홀더 목록 (이 플레이스홀더들이 미치환되면 빌드 실패)
+        private static readonly string[] CriticalPlaceholders = new[]
+        {
+            "%UNITY_WEBGL_LOADER_URL%",
+            "%UNITY_WEBGL_DATA_URL%",
+            "%UNITY_WEBGL_FRAMEWORK_URL%",
+            "%UNITY_WEBGL_CODE_URL%"
+        };
+
         /// <summary>
         /// index.html에서 미치환된 플레이스홀더가 있는지 검증합니다.
         /// </summary>
-        internal static void ValidatePlaceholderSubstitution(string content, string filePath)
+        /// <returns>검증 성공 시 true, 치명적 오류 발견 시 false</returns>
+        internal static bool ValidatePlaceholderSubstitution(string content, string filePath)
         {
+            bool hasError = false;
+
             // %로 시작하고 %로 끝나는 패턴 검색 (예: %UNITY_WEBGL_LOADER_URL%)
             var regex = new System.Text.RegularExpressions.Regex(@"%[A-Z_]+%");
             var matches = regex.Matches(content);
 
             if (matches.Count > 0)
             {
-                Debug.LogWarning("[AIT] ========================================");
-                Debug.LogWarning("[AIT] ⚠ 미치환된 플레이스홀더 발견!");
-                Debug.LogWarning("[AIT] ========================================");
-
                 var uniquePlaceholders = new HashSet<string>();
                 foreach (System.Text.RegularExpressions.Match match in matches)
                 {
                     uniquePlaceholders.Add(match.Value);
                 }
 
+                // 치명적 플레이스홀더 확인
+                var foundCritical = new List<string>();
                 foreach (var placeholder in uniquePlaceholders)
                 {
-                    Debug.LogWarning($"[AIT]   - {placeholder}");
+                    foreach (var critical in CriticalPlaceholders)
+                    {
+                        if (placeholder == critical)
+                        {
+                            foundCritical.Add(placeholder);
+                            break;
+                        }
+                    }
                 }
 
-                Debug.LogWarning($"[AIT] 파일: {filePath}");
-                Debug.LogWarning("[AIT] 이 플레이스홀더들이 치환되지 않으면 런타임 에러가 발생할 수 있습니다.");
-                Debug.LogWarning("[AIT] ========================================");
+                if (foundCritical.Count > 0)
+                {
+                    Debug.LogError("[AIT] ========================================");
+                    Debug.LogError("[AIT] ✗ 치명적: 필수 플레이스홀더 미치환!");
+                    Debug.LogError("[AIT] ========================================");
+                    foreach (var placeholder in foundCritical)
+                    {
+                        Debug.LogError($"[AIT]   - {placeholder}");
+                    }
+                    Debug.LogError($"[AIT] 파일: {filePath}");
+                    Debug.LogError("[AIT] ");
+                    Debug.LogError("[AIT] 이 플레이스홀더들이 치환되지 않으면 런타임에서");
+                    Debug.LogError("[AIT] 'createUnityInstance is not defined' 에러가 발생합니다.");
+                    Debug.LogError("[AIT] ");
+                    Debug.LogError("[AIT] 해결 방법:");
+                    Debug.LogError("[AIT]   1. 'Clean Build' 옵션을 활성화하고 다시 빌드하세요.");
+                    Debug.LogError("[AIT]   2. AIT > Clean 메뉴로 빌드 폴더 삭제 후 재빌드하세요.");
+                    Debug.LogError("[AIT] ========================================");
+                    hasError = true;
+                }
+                else
+                {
+                    // 비치명적 플레이스홀더 (경고만)
+                    Debug.LogWarning("[AIT] ========================================");
+                    Debug.LogWarning("[AIT] ⚠ 미치환된 플레이스홀더 발견 (비치명적)");
+                    Debug.LogWarning("[AIT] ========================================");
+                    foreach (var placeholder in uniquePlaceholders)
+                    {
+                        Debug.LogWarning($"[AIT]   - {placeholder}");
+                    }
+                    Debug.LogWarning($"[AIT] 파일: {filePath}");
+                    Debug.LogWarning("[AIT] ========================================");
+                }
             }
 
             // 잘못된 경로 패턴 검증 (예: Build/ 뒤에 파일명이 없는 경우)
@@ -52,7 +99,10 @@ namespace AppsInToss.Editor
                 Debug.LogError("[AIT] 원인: WebGL 빌드의 loader.js 파일을 찾지 못했습니다.");
                 Debug.LogError("[AIT] 해결: 위의 빌드 파일 검색 로그를 확인하세요.");
                 Debug.LogError("[AIT] ========================================");
+                hasError = true;
             }
+
+            return !hasError;
         }
 
         /// <summary>

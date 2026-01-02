@@ -105,7 +105,11 @@ namespace AppsInToss.Editor
 
             // 2. Unity WebGL 빌드를 public 폴더로 복사
             Debug.Log("[AIT] Step 2/3: Unity WebGL 빌드 복사 중...");
-            CopyWebGLToPublic(webglPath, buildProjectPath, profile);
+            var copyResult = CopyWebGLToPublic(webglPath, buildProjectPath, profile);
+            if (copyResult != AITConvertCore.AITExportError.SUCCEED)
+            {
+                return copyResult;
+            }
 
             // 3. npm install 및 build 실행
             Debug.Log("[AIT] Step 3/3: pnpm install & build 실행 중...");
@@ -509,7 +513,8 @@ namespace AppsInToss.Editor
         /// <summary>
         /// Unity WebGL 빌드를 public 폴더로 복사합니다.
         /// </summary>
-        internal static void CopyWebGLToPublic(string webglPath, string buildProjectPath, AITBuildProfile profile = null)
+        /// <returns>성공 시 SUCCEED, 실패 시 해당 에러 코드</returns>
+        internal static AITConvertCore.AITExportError CopyWebGLToPublic(string webglPath, string buildProjectPath, AITBuildProfile profile = null)
         {
             // 프로필이 없으면 기본 프로필 사용
             if (profile == null)
@@ -565,7 +570,28 @@ namespace AppsInToss.Editor
             // index.html → 프로젝트 루트 (Vite가 루트에서 index.html을 찾음)
             string indexSrc = Path.Combine(webglPath, "index.html");
             string indexDest = Path.Combine(buildProjectPath, "index.html");
-            if (File.Exists(indexSrc))
+
+            // index.html 필수 검증
+            if (!File.Exists(indexSrc))
+            {
+                Debug.LogError("[AIT] ========================================");
+                Debug.LogError("[AIT] ✗ 치명적: index.html을 찾을 수 없습니다!");
+                Debug.LogError("[AIT] ========================================");
+                Debug.LogError($"[AIT] 검색 경로: {indexSrc}");
+                Debug.LogError("[AIT] ");
+                Debug.LogError("[AIT] 가능한 원인:");
+                Debug.LogError("[AIT]   1. Unity WebGL 빌드가 완료되지 않았습니다.");
+                Debug.LogError("[AIT]   2. WebGL 템플릿이 올바르게 설정되지 않았습니다.");
+                Debug.LogError("[AIT]   3. 이전 빌드가 손상되었습니다.");
+                Debug.LogError("[AIT] ");
+                Debug.LogError("[AIT] 해결 방법:");
+                Debug.LogError("[AIT]   1. 'Clean Build' 옵션을 활성화하고 다시 빌드하세요.");
+                Debug.LogError("[AIT]   2. AIT > Clean 메뉴로 빌드 폴더를 삭제 후 재빌드하세요.");
+                Debug.LogError("[AIT]   3. AIT > Regenerate WebGL Templates 실행 후 재빌드하세요.");
+                Debug.LogError("[AIT] ========================================");
+                return AITConvertCore.AITExportError.WEBGL_BUILD_INCOMPLETE;
+            }
+
             {
                 string indexContent = File.ReadAllText(indexSrc);
 
@@ -592,7 +618,7 @@ namespace AppsInToss.Editor
                 if (missingFiles.Count > 0)
                 {
                     Debug.LogError("[AIT] ========================================");
-                    Debug.LogError("[AIT] ⚠ WebGL 빌드 파일 검증 경고!");
+                    Debug.LogError("[AIT] ✗ 치명적: WebGL 빌드 필수 파일 누락!");
                     Debug.LogError("[AIT] ========================================");
                     Debug.LogError($"[AIT] 누락된 필수 파일: {string.Join(", ", missingFiles)}");
                     Debug.LogError("[AIT] ");
@@ -605,6 +631,7 @@ namespace AppsInToss.Editor
                     Debug.LogError("[AIT]   1. 'Clean Build' 옵션을 활성화하고 다시 빌드하세요.");
                     Debug.LogError("[AIT]   2. Unity Console에서 빌드 에러를 확인하세요.");
                     Debug.LogError("[AIT] ========================================");
+                    return AITConvertCore.AITExportError.WEBGL_BUILD_INCOMPLETE;
                 }
 
                 // 프로필 기반 설정값 (Mock 브릿지가 비활성화되면 프로덕션 모드로 간주)
@@ -663,7 +690,10 @@ namespace AppsInToss.Editor
                 Debug.Log("[AIT] index.html → 프로젝트 루트에 생성");
 
                 // 플레이스홀더 치환 결과 검증
-                AITBuildValidator.ValidatePlaceholderSubstitution(indexContent, indexDest);
+                if (!AITBuildValidator.ValidatePlaceholderSubstitution(indexContent, indexDest))
+                {
+                    return AITConvertCore.AITExportError.WEBGL_BUILD_INCOMPLETE;
+                }
             }
 
             // Runtime/appsintoss-unity-bridge.js 파일도 치환
@@ -682,6 +712,8 @@ namespace AppsInToss.Editor
             Debug.Log("[AIT] Unity WebGL 빌드 복사 완료");
             Debug.Log("[AIT]   - index.html → 프로젝트 루트");
             Debug.Log("[AIT]   - Build, TemplateData, Runtime → public/");
+
+            return AITConvertCore.AITExportError.SUCCEED;
         }
     }
 }

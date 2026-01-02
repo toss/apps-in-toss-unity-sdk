@@ -30,7 +30,6 @@ namespace AppsInToss.Editor
             // ===== 기본 설정 (모든 버전 공통) =====
             PlayerSettings.WebGL.template = "PROJECT:AITTemplate";
             PlayerSettings.WebGL.linkerTarget = WebGLLinkerTarget.Wasm;
-            PlayerSettings.companyName = "Apps in Toss";
             PlayerSettings.defaultCursor = null;
             PlayerSettings.cursorHotspot = Vector2.zero;
 

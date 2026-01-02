@@ -226,36 +226,39 @@ namespace AppsInToss
             // 빌드 시작 전 취소 플래그 리셋
             ResetCancellation();
 
-            // 프로필이 지정되지 않으면 기본 프로필 사용
-            var editorConfig = UnityUtil.GetEditorConf();
-            if (profile == null)
-            {
-                profile = editorConfig.productionProfile;
-                profileName = profileName ?? "Production";
-            }
-
-            // Init()에 프로필 전달하여 프로필별 압축/스트리핑 설정 적용
-            Init(profile);
-
-            // 환경 변수로 프로필 오버라이드 적용
-            profile = AITBuildInitializer.ApplyEnvironmentVariableOverrides(profile);
-
-            // 빌드 프로필 로그 출력
-            AITBuildInitializer.LogBuildProfile(profile, profileName);
-
-            // 프로필 기반으로 PlayerSettings 설정
-            AITBuildInitializer.ApplyBuildProfileSettings(profile);
-
-            Debug.Log($"Apps in Toss 미니앱 변환을 시작합니다... (cleanBuild: {cleanBuild})");
-
-            if (editorConfig == null)
-            {
-                Debug.LogError("Apps in Toss 설정을 찾을 수 없습니다.");
-                return AITExportError.INVALID_APP_CONFIG;
-            }
+            // 빌드 전 PlayerSettings 백업 (빌드 완료 후 복원)
+            var settingsBackup = Editor.AITPlayerSettingsBackup.Capture();
 
             try
             {
+                // 프로필이 지정되지 않으면 기본 프로필 사용
+                var editorConfig = UnityUtil.GetEditorConf();
+                if (profile == null)
+                {
+                    profile = editorConfig.productionProfile;
+                    profileName = profileName ?? "Production";
+                }
+
+                // Init()에 프로필 전달하여 프로필별 압축/스트리핑 설정 적용
+                Init(profile);
+
+                // 환경 변수로 프로필 오버라이드 적용
+                profile = AITBuildInitializer.ApplyEnvironmentVariableOverrides(profile);
+
+                // 빌드 프로필 로그 출력
+                AITBuildInitializer.LogBuildProfile(profile, profileName);
+
+                // 프로필 기반으로 PlayerSettings 설정
+                AITBuildInitializer.ApplyBuildProfileSettings(profile);
+
+                Debug.Log($"Apps in Toss 미니앱 변환을 시작합니다... (cleanBuild: {cleanBuild})");
+
+                if (editorConfig == null)
+                {
+                    Debug.LogError("Apps in Toss 설정을 찾을 수 없습니다.");
+                    return AITExportError.INVALID_APP_CONFIG;
+                }
+
                 if (buildWebGL)
                 {
                     // 취소 확인
@@ -296,6 +299,11 @@ namespace AppsInToss
             {
                 Debug.LogError($"변환 중 오류가 발생했습니다: {e.Message}");
                 return AITExportError.BUILD_WEBGL_FAILED;
+            }
+            finally
+            {
+                // 빌드 완료 후 PlayerSettings 복원 (성공/실패 무관)
+                settingsBackup.Restore();
             }
         }
 

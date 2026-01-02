@@ -9,6 +9,9 @@ using System;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using UnityEngine.Scripting;
+#if UNITY_6000_0_OR_NEWER
+using UnityEngine;
+#endif
 
 namespace AppsInToss
 {
@@ -22,7 +25,11 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Share")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<System.Action> ContactsViral(ContactsViralParams paramsParam)
+#else
         public static async Task<System.Action> ContactsViral(ContactsViralParams paramsParam)
+#endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<System.Action>();
@@ -47,7 +54,11 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Share")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<ContactResult> FetchContacts(FetchContactsOptions options)
+#else
         public static async Task<ContactResult> FetchContacts(FetchContactsOptions options)
+#endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<ContactResult>();
@@ -75,7 +86,11 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Share")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<string> GetTossShareLink(string path, string ogImageUrl = null)
+#else
         public static async Task<string> GetTossShareLink(string path, string ogImageUrl = null)
+#endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<string>();
@@ -100,7 +115,11 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Share")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable Share(ShareMessage message)
+#else
         public static async Task Share(ShareMessage message)
+#endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<bool>();

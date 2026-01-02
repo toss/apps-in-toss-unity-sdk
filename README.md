@@ -217,6 +217,8 @@ SDK는 사용자가 WebGL 빌드의 다양한 측면을 커스터마이징할 �
 | `vite.config.ts` | `Assets/WebGLTemplates/AITTemplate/BuildConfig~/` | `USER_CONFIG` 섹션에 플러그인 추가 |
 | `granite.config.ts` | `Assets/WebGLTemplates/AITTemplate/BuildConfig~/` | `USER_CONFIG` 섹션에 설정 추가 |
 | `package.json` | `Assets/WebGLTemplates/AITTemplate/BuildConfig~/` | dependencies에 npm 패키지 추가 |
+| `tsconfig.json` | `Assets/WebGLTemplates/AITTemplate/BuildConfig~/` | compilerOptions 커스터마이징 (jsx, paths 등) |
+| `src/` 폴더 | `Assets/WebGLTemplates/AITTemplate/BuildConfig~/` | TypeScript/React 컴포넌트 구조화 |
 
 ### index.html 커스터마이징
 
@@ -274,6 +276,108 @@ const userConfig = defineConfig({
   },
 });
 //// USER_CONFIG_END ////
+```
+
+### tsconfig.json 커스터마이징
+
+`BuildConfig~/tsconfig.json`을 생성하여 TypeScript 컴파일러 옵션을 커스터마이징할 수 있습니다.
+프로젝트 옵션과 SDK 필수 옵션이 자동으로 머지됩니다:
+
+```json
+{
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "paths": {
+      "@/*": ["./src/*"]
+    },
+    "baseUrl": "."
+  },
+  "include": ["src", "*.ts", "*.tsx"]
+}
+```
+
+> **참고**: SDK 필수 옵션(`moduleResolution`, `esModuleInterop`)은 SDK 값으로 강제 적용되어 호환성이 보장됩니다.
+
+### React/TypeScript 컴포넌트 사용
+
+`BuildConfig~/` 폴더에 `src/` 등 하위 폴더 구조를 생성하여 TypeScript/React 컴포넌트를 구조화할 수 있습니다.
+
+#### 폴더 구조 예시
+
+```
+Assets/WebGLTemplates/AITTemplate/
+├── index.html                    ← USER_BODY_END에서 tsx 파일 참조
+└── BuildConfig~/
+    ├── package.json              ← React 의존성 추가
+    ├── tsconfig.json             ← jsx 옵션 추가
+    ├── vite.config.ts            ← React 플러그인 추가
+    └── src/
+        ├── main.tsx              ← 진입점
+        └── components/
+            └── GameUI.tsx        ← React 컴포넌트
+```
+
+#### 1. package.json에 React 의존성 추가
+
+```json
+{
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.0.0"
+  }
+}
+```
+
+#### 2. tsconfig.json 생성
+
+```json
+{
+  "compilerOptions": {
+    "jsx": "react-jsx"
+  },
+  "include": ["src"]
+}
+```
+
+#### 3. vite.config.ts에 플러그인 추가
+
+```typescript
+//// USER_CONFIG_START ////
+import react from '@vitejs/plugin-react';
+
+const userConfig = defineConfig({
+  plugins: [react()],
+});
+//// USER_CONFIG_END ////
+```
+
+#### 4. index.html에서 진입점 참조
+
+```html
+<!-- USER_BODY_END_START -->
+<script type="module" src="./src/main.tsx"></script>
+<!-- USER_BODY_END_END -->
+```
+
+#### 5. React 컴포넌트 작성
+
+`BuildConfig~/src/main.tsx`:
+
+```tsx
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+
+function GameUI() {
+  return <div id="game-ui">게임 UI</div>;
+}
+
+const container = document.getElementById('ui-root');
+if (container) {
+  createRoot(container).render(<GameUI />);
+}
 ```
 
 ### SDK 업데이트 시 동작

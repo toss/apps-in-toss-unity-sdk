@@ -11,6 +11,8 @@ const sdkConfig = {
   },
   webViewProps: {
     type: '%AIT_WEBVIEW_TYPE%',
+    allowsInlineMediaPlayback: %AIT_ALLOWS_INLINE_MEDIA_PLAYBACK%,
+    mediaPlaybackRequiresUserAction: %AIT_MEDIA_PLAYBACK_REQUIRES_USER_ACTION%,
   },
   web: {
     host: process.env.AIT_VITE_HOST || '%AIT_VITE_HOST%',

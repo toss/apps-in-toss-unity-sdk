@@ -9,6 +9,9 @@ using System;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using UnityEngine.Scripting;
+#if UNITY_6000_0_OR_NEWER
+using UnityEngine;
+#endif
 
 namespace AppsInToss
 {
@@ -20,7 +23,11 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Location")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<Location> GetCurrentLocation(GetCurrentLocationOptions options)
+#else
         public static async Task<Location> GetCurrentLocation(GetCurrentLocationOptions options)
+#endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<Location>();
@@ -45,7 +52,11 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Location")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<System.Action> StartUpdateLocation(StartUpdateLocationEventParams eventParams)
+#else
         public static async Task<System.Action> StartUpdateLocation(StartUpdateLocationEventParams eventParams)
+#endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<System.Action>();

@@ -240,9 +240,9 @@ namespace AppsInToss
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
 {{#if (eq this.callbackType "void")}}
-            var tcs = new TaskCompletionSource<bool>();
+            var tcs = new TaskCompletionSource<object>();
             string callbackId = AITCore.Instance.RegisterCallback<object>(
-                result => tcs.TrySetResult(true),
+                result => tcs.TrySetResult(null),
                 error => tcs.TrySetException(error)
             );
             __{{{this.name}}}_Internal({{#each this.parameters}}{{#if this.isPrimitive}}{{this.paramName}}{{else}}AITJsonSettings.Serialize({{this.paramName}}){{/if}}, {{/each}}callbackId, "{{{this.callbackType}}}");
@@ -293,9 +293,9 @@ namespace AppsInToss
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
 {{#if (eq this.callbackType "void")}}
-            var tcs = new TaskCompletionSource<bool>();
+            var tcs = new TaskCompletionSource<object>();
             string callbackId = AITCore.Instance.RegisterCallback<object>(
-                result => tcs.TrySetResult(true),
+                result => tcs.TrySetResult(null),
                 error => tcs.TrySetException(error)
             );
             __{{{this.name}}}_Internal({{#each this.parameters}}{{#if this.isPrimitive}}{{this.paramName}}{{else}}AITJsonSettings.Serialize({{this.paramName}}){{/if}}, {{/each}}callbackId, "{{{this.callbackType}}}");

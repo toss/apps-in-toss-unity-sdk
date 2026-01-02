@@ -23,9 +23,9 @@ namespace AppsInToss
         public static async Task GenerateHapticFeedback(HapticFeedbackOptions options)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            var tcs = new TaskCompletionSource<bool>();
+            var tcs = new TaskCompletionSource<object>();
             string callbackId = AITCore.Instance.RegisterCallback<object>(
-                result => tcs.TrySetResult(true),
+                result => tcs.TrySetResult(null),
                 error => tcs.TrySetException(error)
             );
             __generateHapticFeedback_Internal(AITJsonSettings.Serialize(options), callbackId, "void");
@@ -50,9 +50,9 @@ namespace AppsInToss
         public static async Task SetDeviceOrientation(SetDeviceOrientationOptions options)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            var tcs = new TaskCompletionSource<bool>();
+            var tcs = new TaskCompletionSource<object>();
             string callbackId = AITCore.Instance.RegisterCallback<object>(
-                result => tcs.TrySetResult(true),
+                result => tcs.TrySetResult(null),
                 error => tcs.TrySetException(error)
             );
             __setDeviceOrientation_Internal(AITJsonSettings.Serialize(options), callbackId, "void");
@@ -76,9 +76,9 @@ namespace AppsInToss
         public static async Task SetIosSwipeGestureEnabled(SetIosSwipeGestureEnabledOptions options)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            var tcs = new TaskCompletionSource<bool>();
+            var tcs = new TaskCompletionSource<object>();
             string callbackId = AITCore.Instance.RegisterCallback<object>(
-                result => tcs.TrySetResult(true),
+                result => tcs.TrySetResult(null),
                 error => tcs.TrySetException(error)
             );
             __setIosSwipeGestureEnabled_Internal(AITJsonSettings.Serialize(options), callbackId, "void");

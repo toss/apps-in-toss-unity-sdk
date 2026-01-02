@@ -4,6 +4,9 @@ using System.Reflection;
 using System.Threading.Tasks;
 using UnityEngine;
 using AppsInToss;
+#if UNITY_6000_0_OR_NEWER
+using UnityEngine;
+#endif
 
 /// <summary>
 /// 대화형 SDK API 테스터 - 사용자가 API를 선택하고 파라미터를 입력하여 실행할 수 있는 UI 제공
@@ -111,7 +114,11 @@ public class InteractiveAPITester : MonoBehaviour
     /// Apps in Toss 플랫폼에서 Safe Area Insets를 로드합니다.
     /// 플랫폼 미지원 시 Unity Screen.safeArea를 폴백으로 사용합니다.
     /// </summary>
+#if UNITY_6000_0_OR_NEWER
+    private async Awaitable LoadSafeAreaInsets()
+#else
     private async Task LoadSafeAreaInsets()
+#endif
     {
         // Unity Screen.safeArea 값 먼저 로깅 (비교용)
         Rect unitySafeArea = Screen.safeArea;

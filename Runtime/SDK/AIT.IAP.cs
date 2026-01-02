@@ -20,29 +20,35 @@ namespace AppsInToss
         /// <summary>
         /// * 특정 인앱결제 주문서 페이지로 이동해요. 사용자가 상품 구매 버튼을 누르는 상황 등에 사용할 수 있어요. 사용자의 결제는 이동한 페이지에서 진행돼요. 만약 결제 중에 에러가 발생하면 에러 유형에 따라 에러 페이지로 이동해요.
         /// </summary>
+        /// <param name="onEvent">이벤트 콜백</param>
+        /// <param name="options">옵션</param>
+        /// <param name="onError">에러 콜백</param>
         /// <returns>구독 취소를 위한 Action</returns>
         [Preserve]
         [APICategory("IAP")]
-        public static Action IAPCreateOneTimePurchaseOrder(IapCreateOneTimePurchaseOrderOptions options)
+        public static Action IAPCreateOneTimePurchaseOrder(
+            Action<SuccessEvent> onEvent,
+            IapCreateOneTimePurchaseOrderOptionsOptions options,
+            Action<AITException> onError = null)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             string subscriptionId = Guid.NewGuid().ToString();
 
             // 중첩 콜백 등록
-            if (options.Options?.ProcessProductGrant != null)
+            if (options?.ProcessProductGrant != null)
             {
                 AITCore.Instance.RegisterNestedCallback(
                     subscriptionId,
                     "processProductGrant",
-                    options.Options.ProcessProductGrant
+                    options.ProcessProductGrant
                 );
             }
 
             // 이벤트 콜백 등록
             AITCore.Instance.RegisterSubscriptionCallback<SuccessEvent>(
                 subscriptionId,
-                options.OnEvent,
-                options.OnError
+                onEvent,
+                onError
             );
 
             __IAPCreateOneTimePurchaseOrder_Internal(AITJsonSettings.Serialize(options), subscriptionId, "SuccessEvent");

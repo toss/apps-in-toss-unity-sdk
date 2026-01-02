@@ -9,6 +9,9 @@ using System;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using UnityEngine.Scripting;
+#if UNITY_6000_0_OR_NEWER
+using UnityEngine;
+#endif
 
 namespace AppsInToss
 {
@@ -22,7 +25,11 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Payment")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<CheckoutPaymentResult> CheckoutPayment(CheckoutPaymentOptions options)
+#else
         public static async Task<CheckoutPaymentResult> CheckoutPayment(CheckoutPaymentOptions options)
+#endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<CheckoutPaymentResult>();

@@ -9,6 +9,9 @@ using System;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using UnityEngine.Scripting;
+#if UNITY_6000_0_OR_NEWER
+using UnityEngine;
+#endif
 
 namespace AppsInToss
 {
@@ -200,7 +203,11 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Advertising")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable ToosAdsInitialize(InitializeOptions options)
+#else
         public static async Task TossAdsInitialize(InitializeOptions options)
+#endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<bool>();
@@ -225,7 +232,11 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Advertising")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable ToosAdsAttach(string adGroupId, string target, TossAdsAttachOptions options = null)
+#else
         public static async Task TossAdsAttach(string adGroupId, string target, TossAdsAttachOptions options = null)
+#endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<bool>();
@@ -250,7 +261,11 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Advertising")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable TossAdsDestroyAsync(string slotId)
+#else
         public static async Task TossAdsDestroy(string slotId)
+#endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<bool>();
@@ -275,7 +290,11 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Advertising")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable TossAdsDestroyAllAsync()
+#else
         public static async Task TossAdsDestroyAll()
+#endif
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<bool>();

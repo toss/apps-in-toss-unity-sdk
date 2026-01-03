@@ -9,6 +9,9 @@ using System;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using UnityEngine.Scripting;
+#if UNITY_6000_0_OR_NEWER
+using UnityEngine;
+#endif
 
 namespace AppsInToss
 {
@@ -22,6 +25,25 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Payment")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<CheckoutPaymentResult> CheckoutPayment(CheckoutPaymentOptions options)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<CheckoutPaymentResult>();
+            string callbackId = AITCore.Instance.RegisterCallback<CheckoutPaymentResult>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error)
+            );
+            __checkoutPayment_Internal(AITJsonSettings.Serialize(options), callbackId, "CheckoutPaymentResult");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] CheckoutPayment called");
+            await Awaitable.NextFrameAsync();
+            return default(CheckoutPaymentResult);
+#endif
+        }
+#else
         public static async Task<CheckoutPaymentResult> CheckoutPayment(CheckoutPaymentOptions options)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
@@ -39,6 +61,7 @@ namespace AppsInToss
             return default(CheckoutPaymentResult);
 #endif
         }
+#endif
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]

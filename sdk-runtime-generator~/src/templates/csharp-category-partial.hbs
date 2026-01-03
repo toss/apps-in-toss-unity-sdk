@@ -9,6 +9,9 @@ using System;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using UnityEngine.Scripting;
+#if UNITY_6000_0_OR_NEWER
+using UnityEngine;
+#endif
 
 namespace AppsInToss
 {
@@ -236,6 +239,49 @@ namespace AppsInToss
 {{/if}}
         [Preserve]
         [APICategory("{{../categoryName}}")]
+#if UNITY_6000_0_OR_NEWER
+        public static async {{#if (eq this.callbackType "void")}}Awaitable{{else}}Awaitable<{{{this.callbackType}}}>{{/if}} {{{this.pascalName}}}({{#each this.parameters}}{{{this.paramType}}} {{this.paramName}}{{#if this.optional}} = null{{/if}}{{#unless @last}}, {{/unless}}{{/each}})
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+{{#if (eq this.callbackType "void")}}
+            var acs = new AwaitableCompletionSource();
+            string callbackId = AITCore.Instance.RegisterCallback<object>(
+                result => acs.SetResult(),
+                error => acs.SetException(error)
+            );
+            __{{{this.name}}}_Internal({{#each this.parameters}}{{#if this.isPrimitive}}{{this.paramName}}{{else}}AITJsonSettings.Serialize({{this.paramName}}){{/if}}, {{/each}}callbackId, "{{{this.callbackType}}}");
+            await acs.Awaitable;
+{{else}}
+            var acs = new AwaitableCompletionSource<{{{this.callbackType}}}>();
+            string callbackId = AITCore.Instance.RegisterCallback<{{{this.callbackType}}}>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error)
+            );
+            __{{{this.name}}}_Internal({{#each this.parameters}}{{#if this.isPrimitive}}{{this.paramName}}{{else}}AITJsonSettings.Serialize({{this.paramName}}){{/if}}, {{/each}}callbackId, "{{{this.callbackType}}}");
+            return await acs.Awaitable;
+{{/if}}
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] {{{this.pascalName}}} called");
+            await Awaitable.NextFrameAsync();
+{{#if (eq this.callbackType "void")}}
+            // void return - nothing to return
+{{else if (isNullable this.callbackType)}}
+            return null;
+{{else if (isArray this.callbackType)}}
+            return new {{arrayElementType this.callbackType}}[0];
+{{else if (eq this.callbackType "string")}}
+            return "";
+{{else if (eq this.callbackType "bool")}}
+            return false;
+{{else if (or (eq this.callbackType "int") (eq this.callbackType "float") (eq this.callbackType "double"))}}
+            return 0;
+{{else}}
+            return default({{{this.callbackType}}});
+{{/if}}
+#endif
+        }
+#else
         public static async {{#if (eq this.callbackType "void")}}Task{{else}}Task<{{{this.callbackType}}}>{{/if}} {{{this.pascalName}}}({{#each this.parameters}}{{{this.paramType}}} {{this.paramName}}{{#if this.optional}} = null{{/if}}{{#unless @last}}, {{/unless}}{{/each}})
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
@@ -277,6 +323,7 @@ namespace AppsInToss
 {{/if}}
 #endif
         }
+#endif
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
@@ -289,6 +336,47 @@ namespace AppsInToss
 {{/if}}
         [Preserve]
         [APICategory("{{../categoryName}}")]
+#if UNITY_6000_0_OR_NEWER
+        public static async {{#if (eq this.callbackType "void")}}Awaitable{{else}}Awaitable<{{{this.callbackType}}}>{{/if}} {{{this.pascalName}}}({{#each this.parameters}}{{{this.paramType}}} {{this.paramName}}{{#if this.optional}} = null{{/if}}{{#unless @last}}, {{/unless}}{{/each}})
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+{{#if (eq this.callbackType "void")}}
+            var acs = new AwaitableCompletionSource();
+            string callbackId = AITCore.Instance.RegisterCallback<object>(
+                result => acs.SetResult(),
+                error => acs.SetException(error)
+            );
+            __{{{this.name}}}_Internal({{#each this.parameters}}{{#if this.isPrimitive}}{{this.paramName}}{{else}}AITJsonSettings.Serialize({{this.paramName}}){{/if}}, {{/each}}callbackId, "{{{this.callbackType}}}");
+            await acs.Awaitable;
+{{else}}
+            var acs = new AwaitableCompletionSource<{{{this.callbackType}}}>();
+            string callbackId = AITCore.Instance.RegisterCallback<{{{this.callbackType}}}>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error)
+            );
+            __{{{this.name}}}_Internal({{#each this.parameters}}{{#if this.isPrimitive}}{{this.paramName}}{{else}}AITJsonSettings.Serialize({{this.paramName}}){{/if}}, {{/each}}callbackId, "{{{this.callbackType}}}");
+            return await acs.Awaitable;
+{{/if}}
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] {{{this.pascalName}}} called");
+            await Awaitable.NextFrameAsync();
+{{#if (eq this.callbackType "void")}}
+            // void return - nothing to return
+{{else if (isNullable this.callbackType)}}
+            return null;
+{{else if (eq this.callbackType "string")}}
+            return "";
+{{else if (eq this.callbackType "bool")}}
+            return false;
+{{else if (or (eq this.callbackType "int") (eq this.callbackType "float") (eq this.callbackType "double"))}}
+            return 0;
+{{else}}
+            return default({{{this.callbackType}}});
+{{/if}}
+#endif
+        }
+#else
         public static async {{#if (eq this.callbackType "void")}}Task{{else}}Task<{{{this.callbackType}}}>{{/if}} {{{this.pascalName}}}({{#each this.parameters}}{{{this.paramType}}} {{this.paramName}}{{#if this.optional}} = null{{/if}}{{#unless @last}}, {{/unless}}{{/each}})
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
@@ -328,6 +416,7 @@ namespace AppsInToss
 {{/if}}
 #endif
         }
+#endif
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]

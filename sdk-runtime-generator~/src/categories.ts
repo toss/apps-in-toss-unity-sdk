@@ -76,8 +76,8 @@ export const API_CATEGORIES: Record<string, string[]> = {
     'SafeAreaInsetsSubscribe',
   ],
   Partner: [
-    'partnerAddAccessoryButton',
-    'partnerRemoveAccessoryButton',
+    'PartnerAddAccessoryButton',
+    'PartnerRemoveAccessoryButton',
   ],
   AppEvents: [
     'TdsEventSubscribeNavigationAccessoryEvent',
@@ -85,7 +85,7 @@ export const API_CATEGORIES: Record<string, string[]> = {
     'AppsInTossEventSubscribeEntryMessageExited',
   ],
   Environment: [
-    'envGetDeploymentId',
+    'EnvGetDeploymentId',
     'isMinVersionSupported',
     'getAppsInTossGlobals',
   ],

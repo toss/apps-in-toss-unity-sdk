@@ -1081,7 +1081,7 @@ export class TypeScriptParser {
 
       apis.push({
         name: fullName,
-        pascalName: fullName,
+        pascalName: this.toPascalCase(fullName),
         originalName: methodName,
         category,
         file: sourceFile.getFilePath(),

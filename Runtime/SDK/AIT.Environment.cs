@@ -20,7 +20,7 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Environment")]
-        public static async Task<string> envGetDeploymentId()
+        public static async Task<string> EnvGetDeploymentId()
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<string>();
@@ -32,7 +32,7 @@ namespace AppsInToss
             return await tcs.Task;
 #else
             // Unity Editor mock implementation
-            UnityEngine.Debug.Log($"[AIT Mock] envGetDeploymentId called");
+            UnityEngine.Debug.Log($"[AIT Mock] EnvGetDeploymentId called");
             await Task.CompletedTask;
             return "";
 #endif

@@ -23,9 +23,9 @@ namespace AppsInToss
         public static async Task CloseView()
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            var tcs = new TaskCompletionSource<bool>();
+            var tcs = new TaskCompletionSource<object>();
             string callbackId = AITCore.Instance.RegisterCallback<object>(
-                result => tcs.TrySetResult(true),
+                result => tcs.TrySetResult(null),
                 error => tcs.TrySetException(error)
             );
             __closeView_Internal(callbackId, "void");
@@ -50,9 +50,9 @@ namespace AppsInToss
         public static async Task OpenURL(string url)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            var tcs = new TaskCompletionSource<bool>();
+            var tcs = new TaskCompletionSource<object>();
             string callbackId = AITCore.Instance.RegisterCallback<object>(
-                result => tcs.TrySetResult(true),
+                result => tcs.TrySetResult(null),
                 error => tcs.TrySetException(error)
             );
             __openURL_Internal(url, callbackId, "void");

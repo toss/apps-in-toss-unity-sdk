@@ -34,9 +34,9 @@ namespace AppsInToss
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
 {{#if (eq callbackType "void")}}
-            var tcs = new TaskCompletionSource<bool>();
+            var tcs = new TaskCompletionSource<object>();
             string callbackId = AITCore.Instance.RegisterCallback<object>(
-                result => tcs.TrySetResult(true),
+                result => tcs.TrySetResult(null),
                 error => tcs.TrySetException(error)
             );
             __{{{originalName}}}_Internal({{#each parameters}}{{#if this.isPrimitive}}{{this.paramName}}{{else}}UnityEngine.JsonUtility.ToJson({{this.paramName}}){{/if}}, {{/each}}callbackId, "{{{callbackType}}}");

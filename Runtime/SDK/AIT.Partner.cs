@@ -23,19 +23,19 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Partner")]
-        public static async Task partnerAddAccessoryButton(AddAccessoryButtonOptions args_0)
+        public static async Task PartnerAddAccessoryButton(AddAccessoryButtonOptions args_0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            var tcs = new TaskCompletionSource<bool>();
+            var tcs = new TaskCompletionSource<object>();
             string callbackId = AITCore.Instance.RegisterCallback<object>(
-                result => tcs.TrySetResult(true),
+                result => tcs.TrySetResult(null),
                 error => tcs.TrySetException(error)
             );
             __partnerAddAccessoryButton_Internal(AITJsonSettings.Serialize(args_0), callbackId, "void");
             await tcs.Task;
 #else
             // Unity Editor mock implementation
-            UnityEngine.Debug.Log($"[AIT Mock] partnerAddAccessoryButton called");
+            UnityEngine.Debug.Log($"[AIT Mock] PartnerAddAccessoryButton called");
             await Task.CompletedTask;
             // void return - nothing to return
 #endif
@@ -51,19 +51,19 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Partner")]
-        public static async Task partnerRemoveAccessoryButton()
+        public static async Task PartnerRemoveAccessoryButton()
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            var tcs = new TaskCompletionSource<bool>();
+            var tcs = new TaskCompletionSource<object>();
             string callbackId = AITCore.Instance.RegisterCallback<object>(
-                result => tcs.TrySetResult(true),
+                result => tcs.TrySetResult(null),
                 error => tcs.TrySetException(error)
             );
             __partnerRemoveAccessoryButton_Internal(callbackId, "void");
             await tcs.Task;
 #else
             // Unity Editor mock implementation
-            UnityEngine.Debug.Log($"[AIT Mock] partnerRemoveAccessoryButton called");
+            UnityEngine.Debug.Log($"[AIT Mock] PartnerRemoveAccessoryButton called");
             await Task.CompletedTask;
             // void return - nothing to return
 #endif

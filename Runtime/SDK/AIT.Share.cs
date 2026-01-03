@@ -9,6 +9,9 @@ using System;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using UnityEngine.Scripting;
+#if UNITY_6000_0_OR_NEWER
+using UnityEngine;
+#endif
 
 namespace AppsInToss
 {
@@ -22,6 +25,25 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Share")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<System.Action> ContactsViral(ContactsViralParams paramsParam)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<System.Action>();
+            string callbackId = AITCore.Instance.RegisterCallback<System.Action>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error)
+            );
+            __contactsViral_Internal(AITJsonSettings.Serialize(paramsParam), callbackId, "System.Action");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] ContactsViral called");
+            await Awaitable.NextFrameAsync();
+            return default(System.Action);
+#endif
+        }
+#else
         public static async Task<System.Action> ContactsViral(ContactsViralParams paramsParam)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
@@ -39,6 +61,7 @@ namespace AppsInToss
             return default(System.Action);
 #endif
         }
+#endif
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
@@ -47,6 +70,25 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Share")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<ContactResult> FetchContacts(FetchContactsOptions options)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<ContactResult>();
+            string callbackId = AITCore.Instance.RegisterCallback<ContactResult>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error)
+            );
+            __fetchContacts_Internal(AITJsonSettings.Serialize(options), callbackId, "ContactResult");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] FetchContacts called");
+            await Awaitable.NextFrameAsync();
+            return default(ContactResult);
+#endif
+        }
+#else
         public static async Task<ContactResult> FetchContacts(FetchContactsOptions options)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
@@ -64,6 +106,7 @@ namespace AppsInToss
             return default(ContactResult);
 #endif
         }
+#endif
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
@@ -75,6 +118,25 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Share")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<string> GetTossShareLink(string path, string ogImageUrl = null)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<string>();
+            string callbackId = AITCore.Instance.RegisterCallback<string>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error)
+            );
+            __getTossShareLink_Internal(path, ogImageUrl, callbackId, "string");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] GetTossShareLink called");
+            await Awaitable.NextFrameAsync();
+            return "";
+#endif
+        }
+#else
         public static async Task<string> GetTossShareLink(string path, string ogImageUrl = null)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
@@ -92,6 +154,7 @@ namespace AppsInToss
             return "";
 #endif
         }
+#endif
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
@@ -100,6 +163,25 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Share")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable Share(ShareMessage message)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource();
+            string callbackId = AITCore.Instance.RegisterCallback<object>(
+                result => acs.SetResult(),
+                error => acs.SetException(error)
+            );
+            __share_Internal(AITJsonSettings.Serialize(message), callbackId, "void");
+            await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] Share called");
+            await Awaitable.NextFrameAsync();
+            // void return - nothing to return
+#endif
+        }
+#else
         public static async Task Share(ShareMessage message)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
@@ -117,6 +199,7 @@ namespace AppsInToss
             // void return - nothing to return
 #endif
         }
+#endif
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]

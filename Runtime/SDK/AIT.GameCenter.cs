@@ -9,6 +9,9 @@ using System;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using UnityEngine.Scripting;
+#if UNITY_6000_0_OR_NEWER
+using UnityEngine;
+#endif
 
 namespace AppsInToss
 {
@@ -21,6 +24,25 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("GameCenter")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<GameCenterGameProfileResponse> GetGameCenterGameProfile()
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<GameCenterGameProfileResponse>();
+            string callbackId = AITCore.Instance.RegisterCallback<GameCenterGameProfileResponse>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error)
+            );
+            __getGameCenterGameProfile_Internal(callbackId, "GameCenterGameProfileResponse");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] GetGameCenterGameProfile called");
+            await Awaitable.NextFrameAsync();
+            return default(GameCenterGameProfileResponse);
+#endif
+        }
+#else
         public static async Task<GameCenterGameProfileResponse> GetGameCenterGameProfile()
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
@@ -38,6 +60,7 @@ namespace AppsInToss
             return default(GameCenterGameProfileResponse);
 #endif
         }
+#endif
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
@@ -47,6 +70,25 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("GameCenter")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<GetUserKeyForGameResult> GetUserKeyForGame()
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<GetUserKeyForGameResult>();
+            string callbackId = AITCore.Instance.RegisterCallback<GetUserKeyForGameResult>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error)
+            );
+            __getUserKeyForGame_Internal(callbackId, "GetUserKeyForGameResult");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] GetUserKeyForGame called");
+            await Awaitable.NextFrameAsync();
+            return default(GetUserKeyForGameResult);
+#endif
+        }
+#else
         public static async Task<GetUserKeyForGameResult> GetUserKeyForGame()
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
@@ -64,6 +106,7 @@ namespace AppsInToss
             return default(GetUserKeyForGameResult);
 #endif
         }
+#endif
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
@@ -73,6 +116,25 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("GameCenter")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<GrantPromotionRewardForGameResult> GrantPromotionRewardForGame(GrantPromotionRewardForGameOptions options)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<GrantPromotionRewardForGameResult>();
+            string callbackId = AITCore.Instance.RegisterCallback<GrantPromotionRewardForGameResult>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error)
+            );
+            __grantPromotionRewardForGame_Internal(AITJsonSettings.Serialize(options), callbackId, "GrantPromotionRewardForGameResult");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] GrantPromotionRewardForGame called");
+            await Awaitable.NextFrameAsync();
+            return default(GrantPromotionRewardForGameResult);
+#endif
+        }
+#else
         public static async Task<GrantPromotionRewardForGameResult> GrantPromotionRewardForGame(GrantPromotionRewardForGameOptions options)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
@@ -90,6 +152,7 @@ namespace AppsInToss
             return default(GrantPromotionRewardForGameResult);
 #endif
         }
+#endif
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
@@ -99,6 +162,25 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("GameCenter")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable OpenGameCenterLeaderboard()
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource();
+            string callbackId = AITCore.Instance.RegisterCallback<object>(
+                result => acs.SetResult(),
+                error => acs.SetException(error)
+            );
+            __openGameCenterLeaderboard_Internal(callbackId, "void");
+            await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] OpenGameCenterLeaderboard called");
+            await Awaitable.NextFrameAsync();
+            // void return - nothing to return
+#endif
+        }
+#else
         public static async Task OpenGameCenterLeaderboard()
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
@@ -116,6 +198,7 @@ namespace AppsInToss
             // void return - nothing to return
 #endif
         }
+#endif
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
@@ -125,6 +208,25 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("GameCenter")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<SubmitGameCenterLeaderBoardScoreResponse> SubmitGameCenterLeaderBoardScore(SubmitGameCenterLeaderBoardScoreParams paramsParam)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<SubmitGameCenterLeaderBoardScoreResponse>();
+            string callbackId = AITCore.Instance.RegisterCallback<SubmitGameCenterLeaderBoardScoreResponse>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error)
+            );
+            __submitGameCenterLeaderBoardScore_Internal(AITJsonSettings.Serialize(paramsParam), callbackId, "SubmitGameCenterLeaderBoardScoreResponse");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] SubmitGameCenterLeaderBoardScore called");
+            await Awaitable.NextFrameAsync();
+            return default(SubmitGameCenterLeaderBoardScoreResponse);
+#endif
+        }
+#else
         public static async Task<SubmitGameCenterLeaderBoardScoreResponse> SubmitGameCenterLeaderBoardScore(SubmitGameCenterLeaderBoardScoreParams paramsParam)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
@@ -142,6 +244,7 @@ namespace AppsInToss
             return default(SubmitGameCenterLeaderBoardScoreResponse);
 #endif
         }
+#endif
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]

@@ -224,6 +224,12 @@ public class RuntimeAPITester : MonoBehaviour
             { await AIT.ContactsViral(new ContactsViralParams { OnEvent = (evt) => { } }); });
     }
 
+    // =========================================================================
+    // Unity 버전별 비동기 처리
+    // Unity 6+: Awaitable 사용 (GC 최적화)
+    // Unity 2021/2022: Task 사용
+    // =========================================================================
+#if UNITY_6000_0_OR_NEWER
     void TestAPICall(string apiName, APICallFunc apiCall)
     {
         string testName = $"API_{apiName}";
@@ -231,56 +237,23 @@ public class RuntimeAPITester : MonoBehaviour
 
         try
         {
-            var asyncOp = apiCall();
-#if UNITY_6000_0_OR_NEWER
-            StartCoroutine(WaitForAwaitable(testName, apiName, asyncOp));
-#else
-            StartCoroutine(WaitForTask(testName, apiName, asyncOp));
-#endif
+            var awaitable = apiCall();
+            StartCoroutine(WaitForAwaitable(testName, awaitable));
         }
         catch (Exception e)
         {
             _pendingAsyncTests--;
-            HandleSyncException(testName, apiName, e);
+            HandleException(testName, e);
         }
     }
 
-    void HandleSyncException(string testName, string apiName, Exception e)
+    IEnumerator WaitForAwaitable(string testName, Awaitable awaitable)
     {
-        var innerEx = e.InnerException ?? e;
-        string errorMessage = innerEx.Message;
-
-        // AITException인지 확인
-        bool isAITException = innerEx is AITException;
-        string errorCode = isAITException ? ((AITException)innerEx).ErrorCode : null;
-
-        // 상정된 에러인지 확인
-        bool isExpectedError = IsExpectedError(errorMessage);
-
-        if (isExpectedError)
-        {
-            // 상정된 에러: 정상 동작
-            RecordResult(testName, true, true, errorMessage, errorCode);
-            Debug.Log($"[RuntimeAPITester] {testName}: PASS (expected error: {TruncateError(errorMessage)})");
-        }
-        else
-        {
-            // 상정되지 않은 에러: 실패
-            RecordResult(testName, false, false, errorMessage, errorCode);
-            Debug.LogError($"[RuntimeAPITester] {testName}: FAIL (unexpected error: {errorMessage})");
-        }
-    }
-
-#if UNITY_6000_0_OR_NEWER
-    IEnumerator WaitForAwaitable(string testName, string apiName, Awaitable awaitable)
-    {
-        // Awaitable 완료 대기 (최대 10초)
         float timeout = 10f;
         float elapsed = 0f;
         bool completed = false;
         Exception caughtException = null;
 
-        // Awaitable을 async로 실행하고 결과를 캡처
         async void RunAwaitable()
         {
             try
@@ -305,52 +278,42 @@ public class RuntimeAPITester : MonoBehaviour
 
         if (!completed)
         {
-            // 타임아웃: 상정된 에러로 처리
             RecordResult(testName, true, true, "Timeout (platform not responding)", null);
             Debug.Log($"[RuntimeAPITester] {testName}: PASS (timeout - expected in dev environment)");
         }
         else if (caughtException != null)
         {
-            // 에러 발생
-            var innerEx = caughtException.InnerException ?? caughtException;
-            string errorMessage = innerEx?.Message ?? "Unknown error";
-
-            bool isAITException = innerEx is AITException;
-            string errorCode = isAITException ? ((AITException)innerEx).ErrorCode : null;
-            bool isPlatformUnavailable = isAITException && ((AITException)innerEx).IsPlatformUnavailable;
-
-            bool isExpectedError = IsExpectedError(errorMessage) || isPlatformUnavailable;
-
-            if (isExpectedError)
-            {
-                RecordResult(testName, true, true, errorMessage, errorCode);
-                Debug.Log($"[RuntimeAPITester] {testName}: PASS (expected error: {TruncateError(errorMessage)})");
-            }
-            else
-            {
-                RecordResult(testName, false, false, errorMessage, errorCode);
-                Debug.LogError($"[RuntimeAPITester] {testName}: FAIL (unexpected error: {errorMessage})");
-            }
+            HandleException(testName, caughtException);
         }
         else
         {
-            // 성공
             RecordResult(testName, true, false, null, null);
             Debug.Log($"[RuntimeAPITester] {testName}: PASS (completed successfully)");
         }
 
         _pendingAsyncTests--;
+        if (_allTestsQueued && _pendingAsyncTests == 0) SendResults();
+    }
+#else
+    void TestAPICall(string apiName, APICallFunc apiCall)
+    {
+        string testName = $"API_{apiName}";
+        _pendingAsyncTests++;
 
-        if (_allTestsQueued && _pendingAsyncTests == 0)
+        try
         {
-            SendResults();
+            var task = apiCall();
+            StartCoroutine(WaitForTask(testName, task));
+        }
+        catch (Exception e)
+        {
+            _pendingAsyncTests--;
+            HandleException(testName, e);
         }
     }
-#endif
 
-    IEnumerator WaitForTask(string testName, string apiName, Task task)
+    IEnumerator WaitForTask(string testName, Task task)
     {
-        // Task 완료 대기 (최대 10초)
         float timeout = 10f;
         float elapsed = 0f;
 
@@ -362,56 +325,49 @@ public class RuntimeAPITester : MonoBehaviour
 
         if (!task.IsCompleted)
         {
-            // 타임아웃: 상정된 에러로 처리 (플랫폼 미지원 시 응답 없음)
             RecordResult(testName, true, true, "Timeout (platform not responding)", null);
             Debug.Log($"[RuntimeAPITester] {testName}: PASS (timeout - expected in dev environment)");
         }
         else if (task.IsFaulted)
         {
-            // Task 실패: 에러 분석
-            var innerEx = task.Exception?.InnerException ?? task.Exception;
-            string errorMessage = innerEx?.Message ?? "Unknown error";
-
-            // AITException인지 확인
-            bool isAITException = innerEx is AITException;
-            string errorCode = isAITException ? ((AITException)innerEx).ErrorCode : null;
-            bool isPlatformUnavailable = isAITException && ((AITException)innerEx).IsPlatformUnavailable;
-
-            // 상정된 에러인지 확인
-            bool isExpectedError = IsExpectedError(errorMessage) || isPlatformUnavailable;
-
-            if (isExpectedError)
-            {
-                // 상정된 에러: 정상 동작 (개발 환경에서 예상되는 에러)
-                RecordResult(testName, true, true, errorMessage, errorCode);
-                Debug.Log($"[RuntimeAPITester] {testName}: PASS (expected error: {TruncateError(errorMessage)})");
-            }
-            else
-            {
-                // 상정되지 않은 에러: 테스트 실패
-                RecordResult(testName, false, false, errorMessage, errorCode);
-                Debug.LogError($"[RuntimeAPITester] {testName}: FAIL (unexpected error: {errorMessage})");
-            }
+            HandleException(testName, task.Exception);
         }
         else if (task.IsCanceled)
         {
-            // 취소: 상정된 에러로 처리
             RecordResult(testName, true, true, "Task canceled", null);
             Debug.Log($"[RuntimeAPITester] {testName}: PASS (canceled - expected in dev environment)");
         }
         else
         {
-            // Task 성공: 개발 환경에서 성공은 의외 (Mock이 동작한 경우)
             RecordResult(testName, true, false, null, null);
             Debug.Log($"[RuntimeAPITester] {testName}: PASS (completed successfully)");
         }
 
         _pendingAsyncTests--;
+        if (_allTestsQueued && _pendingAsyncTests == 0) SendResults();
+    }
+#endif
 
-        // 모든 테스트가 큐에 추가되고, 모든 비동기 테스트가 완료되면 결과 전송
-        if (_allTestsQueued && _pendingAsyncTests == 0)
+    void HandleException(string testName, Exception e)
+    {
+        var innerEx = e.InnerException ?? e;
+        string errorMessage = innerEx?.Message ?? "Unknown error";
+
+        bool isAITException = innerEx is AITException;
+        string errorCode = isAITException ? ((AITException)innerEx).ErrorCode : null;
+        bool isPlatformUnavailable = isAITException && ((AITException)innerEx).IsPlatformUnavailable;
+
+        bool isExpectedError = IsExpectedError(errorMessage) || isPlatformUnavailable;
+
+        if (isExpectedError)
         {
-            SendResults();
+            RecordResult(testName, true, true, errorMessage, errorCode);
+            Debug.Log($"[RuntimeAPITester] {testName}: PASS (expected error: {TruncateError(errorMessage)})");
+        }
+        else
+        {
+            RecordResult(testName, false, false, errorMessage, errorCode);
+            Debug.LogError($"[RuntimeAPITester] {testName}: FAIL (unexpected error: {errorMessage})");
         }
     }
 

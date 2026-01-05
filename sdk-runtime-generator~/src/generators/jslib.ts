@@ -814,7 +814,7 @@ ${jsConversions ? '\n' + jsConversions + '\n' : ''}
 
         try {
             var result = ${apiCallExpr}({
-                options: Object.assign({}, parsedParams.options, {
+                options: Object.assign({}, parsedParams, {
 ${nestedCallbacksCode}
                 }),
                 onEvent: function(event) {

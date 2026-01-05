@@ -1,4 +1,5 @@
 import { defineConfig, mergeConfig } from 'vite';
+import { unityBridgePlugin } from './vite-plugin-unity-bridge';
 
 //// SDK_GENERATED_START - DO NOT EDIT THIS SECTION ////
 const sdkConfig = defineConfig({
@@ -29,6 +30,13 @@ const sdkConfig = defineConfig({
 const userConfig = defineConfig({
   // 여기에 사용자 커스텀 설정을 추가하세요
   // 예: plugins: [vue()],
+  plugins: [
+    // 커스텀 브릿지 플러그인 (bridges/ 폴더에서 TypeScript → C# + jslib 자동 생성)
+    unityBridgePlugin({
+      bridgesDir: './bridges',
+      outputDir: './generated',
+    }),
+  ],
 });
 //// USER_CONFIG_END ////
 

@@ -15,7 +15,7 @@ mergeInto(LibraryManager.library, {
 
         try {
             var result = window.AppsInToss.IAP.createOneTimePurchaseOrder({
-                options: Object.assign({}, parsedParams.options, {
+                options: Object.assign({}, parsedParams, {
                 processProductGrant: function(data) {
                     return new Promise(function(resolve) {
                         var requestId = subId + '_processProductGrant_' + Date.now();

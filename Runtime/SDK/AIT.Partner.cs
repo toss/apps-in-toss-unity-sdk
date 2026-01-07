@@ -46,7 +46,7 @@ namespace AppsInToss
         private static extern void __partnerAddAccessoryButton_Internal(string args_0, string callbackId, string typeName);
 #endif
         /// <summary>
-        /// 상단 네비게이션의 악세서리 버튼을 추가해요. callback에 대한 정의는 `tdsEvent.addEventListener("navigationAccessoryEvent", callback)`를 참고해주세요.
+        /// 상단 네비게이션의 악세서리 버튼을 제거해요.
         /// </summary>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]

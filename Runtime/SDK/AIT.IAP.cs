@@ -69,7 +69,7 @@ namespace AppsInToss
         private static extern void __IAPCreateOneTimePurchaseOrder_Internal(string options, string subscriptionId, string typeName);
 #endif
         /// <summary>
-        /// * 특정 인앱결제 주문서 페이지로 이동해요. 사용자가 상품 구매 버튼을 누르는 상황 등에 사용할 수 있어요. 사용자의 결제는 이동한 페이지에서 진행돼요. 만약 결제 중에 에러가 발생하면 에러 유형에 따라 에러 페이지로 이동해요.
+        /// 인앱결제로 구매할 수 있는 상품 목록을 가져와요. 상품 목록 화면에 진입할 때 호출해요.
         /// </summary>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
@@ -97,7 +97,7 @@ namespace AppsInToss
         private static extern void __IAPGetProductItemList_Internal(string callbackId, string typeName);
 #endif
         /// <summary>
-        /// * 특정 인앱결제 주문서 페이지로 이동해요. 사용자가 상품 구매 버튼을 누르는 상황 등에 사용할 수 있어요. 사용자의 결제는 이동한 페이지에서 진행돼요. 만약 결제 중에 에러가 발생하면 에러 유형에 따라 에러 페이지로 이동해요.
+        /// 대기 중인 주문 목록을 가져와요. 이 함수를 사용하면 결제가 아직 완료되지 않은 주문 정보를 확인할 수 있어요.
         /// </summary>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
@@ -125,7 +125,7 @@ namespace AppsInToss
         private static extern void __IAPGetPendingOrders_Internal(string callbackId, string typeName);
 #endif
         /// <summary>
-        /// * 특정 인앱결제 주문서 페이지로 이동해요. 사용자가 상품 구매 버튼을 누르는 상황 등에 사용할 수 있어요. 사용자의 결제는 이동한 페이지에서 진행돼요. 만약 결제 중에 에러가 발생하면 에러 유형에 따라 에러 페이지로 이동해요.
+        /// 인앱결제로 구매하거나 환불한 주문 목록을 가져와요.
         /// </summary>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
@@ -153,7 +153,7 @@ namespace AppsInToss
         private static extern void __IAPGetCompletedOrRefundedOrders_Internal(string callbackId, string typeName);
 #endif
         /// <summary>
-        /// * 특정 인앱결제 주문서 페이지로 이동해요. 사용자가 상품 구매 버튼을 누르는 상황 등에 사용할 수 있어요. 사용자의 결제는 이동한 페이지에서 진행돼요. 만약 결제 중에 에러가 발생하면 에러 유형에 따라 에러 페이지로 이동해요.
+        /// 상품 지급 처리를 완료했다는 메시지를 앱에 전달해요. 이 함수를 사용하면 결제가 완료된 주문의 상품 지급이 정상적으로 완료되었음을 알릴 수 있어요.
         /// </summary>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]

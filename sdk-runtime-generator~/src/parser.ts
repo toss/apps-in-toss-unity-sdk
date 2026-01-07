@@ -1225,12 +1225,36 @@ export class TypeScriptParser {
 
   /**
    * 변수 선언의 텍스트에서 특정 프로퍼티의 JSDoc 추출
+   * 프로퍼티 직전의 JSDoc만 추출 (다른 프로퍼티 정의가 중간에 없어야 함)
    */
   private extractJsDocForProperty(varDeclText: string, propertyName: string): string {
-    // JSDoc 주석 패턴: /** ... */ propertyName:
-    const regex = new RegExp(`(\\/\\*\\*[\\s\\S]*?\\*\\/)\\s*(?:\\[?"?)?${propertyName}(?:"?\\])?\\s*:`, 'm');
-    const match = varDeclText.match(regex);
-    return match ? match[1] : '';
+    // 프로퍼티 정의 위치 찾기
+    const propRegex = new RegExp(`(?:\\[?"?)?${propertyName}(?:"?\\])?\\s*:`, 'g');
+    const propMatch = propRegex.exec(varDeclText);
+    if (!propMatch) return '';
+
+    const propIndex = propMatch.index;
+
+    // 프로퍼티 앞부분 텍스트
+    const textBefore = varDeclText.substring(0, propIndex);
+
+    // 마지막 JSDoc 주석 찾기
+    const jsDocMatches = textBefore.match(/\/\*\*[\s\S]*?\*\//g);
+    if (!jsDocMatches || jsDocMatches.length === 0) return '';
+
+    const lastJsDoc = jsDocMatches[jsDocMatches.length - 1];
+
+    // 마지막 JSDoc과 프로퍼티 사이에 다른 프로퍼티 정의가 없는지 확인
+    const lastJsDocIndex = textBefore.lastIndexOf(lastJsDoc);
+    const betweenText = textBefore.substring(lastJsDocIndex + lastJsDoc.length);
+
+    // 프로퍼티 정의 패턴 (다른 프로퍼티가 있으면 해당 JSDoc은 이 프로퍼티의 것이 아님)
+    // 패턴: identifier: 또는 "identifier": 또는 [identifier]:
+    if (/(?:\[?"?)?[a-zA-Z_$][a-zA-Z0-9_$]*(?:"?\])?\s*:/.test(betweenText.trim())) {
+      return '';
+    }
+
+    return lastJsDoc;
   }
 
   /**

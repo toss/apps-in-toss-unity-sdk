@@ -13,7 +13,7 @@ import { JSLibGenerator } from './generators/jslib.js';
 import { typeCheckBridgeCode, printTypeCheckResult, cleanupCache } from './generators/jslib-compiler.js';
 import { generateUnityBridge } from './generators/unity-bridge.js';
 import { formatCommand } from './commands/format.js';
-import { FRAMEWORK_APIS } from './categories.js';
+import { FRAMEWORK_APIS, EXCLUDED_APIS } from './categories.js';
 
 const program = new Command();
 
@@ -263,7 +263,11 @@ async function generate(options: {
     // 4. API 파싱
     console.log(picocolors.cyan('\n📊 web-framework 분석 중...'));
     const parser = new TypeScriptParser(typeDefinitionsPath);
-    const apis = await parser.parseAPIs(FRAMEWORK_APIS);
+    const allParsedApis = await parser.parseAPIs(FRAMEWORK_APIS);
+
+    // 제외 목록에 있는 API 필터링
+    const excludedSet = new Set(EXCLUDED_APIS);
+    const apis = allParsedApis.filter(api => !excludedSet.has(api.name));
 
     if (apis.length === 0) {
       console.error(picocolors.red('\n❌ web-framework에서 API를 발견하지 못했습니다.\n'));

@@ -271,6 +271,102 @@ async function startDevServer(aitBuildDir, defaultPort) {
 }
 
 /**
+ * 유틸리티: Granite Dev 서버 시작 (npm exec -- granite dev)
+ * Unity Editor의 Start Server 메뉴와 동일한 방식으로 서버 시작
+ * 환경 변수를 통해 host/port 전달 (granite.config.ts에서 읽음)
+ * @returns {Promise<{process: ChildProcess, port: number, startupOutput: string}>}
+ */
+async function startGraniteDevServer(aitBuildDir, viteHost, vitePort, graniteHost, granitePort) {
+  const isWindows = process.platform === 'win32';
+
+  // 포트 정리
+  const portsToClean = [vitePort, granitePort];
+  for (const port of portsToClean) {
+    try {
+      if (isWindows) {
+        execSync(`for /f "tokens=5" %a in ('netstat -ano ^| findstr :${port} ^| findstr LISTENING') do taskkill /F /PID %a 2>nul`, { stdio: 'ignore', shell: true });
+      } else {
+        execSync(`lsof -ti:${port} | xargs kill -9 2>/dev/null || true`, { stdio: 'ignore' });
+      }
+    } catch {
+      // 무시
+    }
+  }
+
+  await new Promise(r => setTimeout(r, 1000));
+
+  return new Promise((resolve, reject) => {
+    // npm exec -- granite dev 실행 (Unity Editor와 동일한 방식)
+    // 주의: "--" 구분자가 반드시 필요함 (npm 옵션과 패키지 옵션 분리)
+    const server = spawn('npm', ['exec', '--', 'granite', 'dev'], {
+      cwd: aitBuildDir,
+      stdio: 'pipe',
+      shell: true,
+      env: {
+        ...process.env,
+        NODE_OPTIONS: '',
+        // Unity Editor에서 설정하는 환경 변수와 동일
+        AIT_GRANITE_HOST: graniteHost,
+        AIT_GRANITE_PORT: String(granitePort),
+        AIT_VITE_HOST: viteHost,
+        AIT_VITE_PORT: String(vitePort)
+      }
+    });
+
+    let started = false;
+    let actualPort = vitePort;
+    let startupOutput = '';
+
+    server.stdout.on('data', (data) => {
+      const output = data.toString();
+      startupOutput += output;
+      console.log('[granite dev]', output);
+
+      // ANSI 색상 코드 제거 후 포트 파싱
+      const cleanOutput = output.replace(/\x1B\[[0-9;]*[mGKH]/g, '');
+
+      // Vite 포트 파싱
+      const portMatch = cleanOutput.match(/localhost:(\d+)/);
+      if (portMatch && !started) {
+        actualPort = parseInt(portMatch[1], 10);
+        console.log(`📍 Granite dev server running on port: ${actualPort}`);
+        started = true;
+        resolve({ process: server, port: actualPort, startupOutput });
+      }
+    });
+
+    server.stderr.on('data', (data) => {
+      const output = data.toString();
+      startupOutput += output;
+      console.error('[granite dev error]', output);
+
+      // npm 옵션 파싱 에러 감지 (버그 재발 시)
+      if (output.includes('Unknown cli config') || output.includes('Extraneous positional argument')) {
+        reject(new Error(`npm exec 명령어 파싱 에러 감지: ${output}`));
+      }
+    });
+
+    server.on('error', (err) => {
+      reject(new Error(`Granite dev server 시작 실패: ${err.message}`));
+    });
+
+    server.on('exit', (code) => {
+      if (!started && code !== 0) {
+        reject(new Error(`Granite dev server가 비정상 종료됨 (Exit Code: ${code})\n출력: ${startupOutput}`));
+      }
+    });
+
+    // 20초 타임아웃 (granite는 vite보다 시작이 느릴 수 있음)
+    setTimeout(() => {
+      if (!started) {
+        started = true;
+        resolve({ process: server, port: actualPort, startupOutput });
+      }
+    }, 20000);
+  });
+}
+
+/**
  * 유틸리티: Production 서버 시작 (npm run start = vite preview)
  * @returns {Promise<{process: ChildProcess, port: number}>}
  */
@@ -554,6 +650,123 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       passed: true,
       buildSizeMB: distSizeMB
     };
+  });
+
+
+  // -------------------------------------------------------------------------
+  // Test 1.5: Granite Dev Server Command Validation
+  // Unity Editor의 "Start Server" 메뉴와 동일한 방식으로 서버 시작 검증
+  // 버그 재발 방지: npm exec 명령어 파싱 에러 감지
+  // -------------------------------------------------------------------------
+  // Test 1.5: npm exec -- granite dev 명령어 파싱 검증
+  // 이 테스트는 서버가 완전히 시작될 때까지 기다리지 않고,
+  // npm exec 명령어가 올바르게 파싱되는지만 확인합니다.
+  // (포트 충돌 이슈를 피하기 위해 간소화됨)
+  test('1.5. Granite dev server command should work correctly', async () => {
+    test.setTimeout(30000); // 30초
+
+    // ait-build 디렉토리 확인
+    if (!directoryExists(AIT_BUILD)) {
+      console.log('⚠️ ait-build/ not found, skipping granite dev server test');
+      testResults.tests['1.5_granite_dev_command'] = {
+        passed: true,
+        skipped: true,
+        reason: 'ait-build not found'
+      };
+      return;
+    }
+
+    // node_modules 확인
+    const nodeModulesPath = path.join(AIT_BUILD, 'node_modules');
+    if (!directoryExists(nodeModulesPath)) {
+      console.log('⚠️ node_modules not found, skipping granite dev server test');
+      testResults.tests['1.5_granite_dev_command'] = {
+        passed: true,
+        skipped: true,
+        reason: 'node_modules not found'
+      };
+      return;
+    }
+
+    console.log('🚀 Testing granite dev command parsing (npm exec -- granite dev)...');
+    console.log('   This validates the fix for npm exec command parsing bug');
+
+    let graniteProcess = null;
+    try {
+      // npm exec -- granite dev 명령어 실행 (Unity Editor와 동일한 방식)
+      // 주의: "--" 구분자가 반드시 필요함 (npm 옵션과 패키지 옵션 분리)
+      graniteProcess = spawn('npm', ['exec', '--', 'granite', 'dev'], {
+        cwd: AIT_BUILD,
+        stdio: 'pipe',
+        shell: true,
+        env: { ...process.env, NODE_OPTIONS: '' }
+      });
+
+      let output = '';
+      let hasNpmParsingError = false;
+      let graniteStarted = false;
+
+      graniteProcess.stdout.on('data', (data) => {
+        const text = data.toString();
+        output += text;
+        console.log('[granite dev]', text);
+
+        // granite/vite가 시작되었는지 확인
+        if (text.includes('VITE') || text.includes('localhost:')) {
+          graniteStarted = true;
+        }
+      });
+
+      graniteProcess.stderr.on('data', (data) => {
+        const text = data.toString();
+        output += text;
+        console.log('[granite dev stderr]', text);
+
+        // npm 옵션 파싱 에러 감지 (버그 재발 시)
+        if (text.includes('Unknown cli config') ||
+            text.includes('Extraneous positional argument') ||
+            text.includes('is being parsed as a normal command line argument')) {
+          hasNpmParsingError = true;
+        }
+      });
+
+      // 5초간 출력 수집 (서버 완전 시작 안 기다림, 명령어 파싱만 확인)
+      await new Promise(r => setTimeout(r, 5000));
+
+      // npm 옵션 파싱 에러 확인
+      expect(hasNpmParsingError, 'npm exec 명령어 파싱 에러가 없어야 함').toBe(false);
+
+      // 출력에서 npm 파싱 에러 재확인
+      const hasParsingErrorInOutput =
+        output.includes('Unknown cli config') ||
+        output.includes('Extraneous positional argument');
+      expect(hasParsingErrorInOutput, '출력에 npm 파싱 에러가 없어야 함').toBe(false);
+
+      testResults.tests['1.5_granite_dev_command'] = {
+        passed: true,
+        npmParsingErrorDetected: false,
+        graniteStarted: graniteStarted
+      };
+
+      console.log(`✅ Granite dev command test passed`);
+      console.log(`   - npm exec parsing: OK`);
+      console.log(`   - granite started: ${graniteStarted}`);
+
+    } catch (error) {
+      console.error('❌ Granite dev command test failed:', error.message);
+
+      testResults.tests['1.5_granite_dev_command'] = {
+        passed: false,
+        error: error.message
+      };
+
+      throw error;
+    } finally {
+      // 프로세스 정리
+      if (graniteProcess) {
+        graniteProcess.kill();
+      }
+    }
   });
 
 

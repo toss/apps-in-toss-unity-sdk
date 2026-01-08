@@ -95,10 +95,12 @@ namespace AppsInToss.Editor
         {
             try
             {
+                // pnpmPath의 디렉토리를 additionalPaths로 전달 (workingDir이 아닌 실행파일 디렉토리)
+                string pnpmDir = Path.GetDirectoryName(pnpmPath);
                 var result = AITPlatformHelper.ExecuteCommand(
                     $"\"{pnpmPath}\" --version",
                     workingDir,
-                    new[] { workingDir },
+                    new[] { pnpmDir },
                     timeoutMs: 10000,
                     verbose: false
                 );
@@ -120,11 +122,13 @@ namespace AppsInToss.Editor
         /// </summary>
         internal static bool InstallPnpmWithNpm(string npmPath, string workingDir, string version)
         {
+            // npmPath의 디렉토리를 additionalPaths로 전달 (workingDir이 아닌 실행파일 디렉토리)
+            string npmDir = Path.GetDirectoryName(npmPath);
             string command = $"\"{npmPath}\" install -g pnpm@{version}";
             var result = AITPlatformHelper.ExecuteCommand(
                 command,
                 workingDir,
-                new[] { workingDir },
+                new[] { npmDir },
                 timeoutMs: 120000, // 2분
                 verbose: true
             );

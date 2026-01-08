@@ -866,7 +866,7 @@ namespace AppsInToss
                 };
 
                 // granite dev 명령어에 --host, --port 인자로 granite 서버 설정 전달
-                string graniteCommand = $"exec granite dev --host {graniteHost} --port {granitePort}";
+                string graniteCommand = "exec -- granite dev";
 
                 var processManager = new AITProcessTreeManager();
 
@@ -980,7 +980,7 @@ namespace AppsInToss
                 };
 
                 // granite dev 명령어에 --host, --port 인자로 granite 서버 설정 전달
-                string graniteCommand = $"exec granite dev --host {graniteHost} --port {granitePort}";
+                string graniteCommand = "exec -- granite dev";
 
                 var processManager = new AITProcessTreeManager();
 
@@ -1136,7 +1136,7 @@ namespace AppsInToss
                 };
 
                 // granite dev 명령어에 --host, --port 인자로 granite 서버 설정 전달
-                string graniteCommand = $"exec granite dev --host {graniteHost} --port {granitePort}";
+                string graniteCommand = "exec -- granite dev";
 
                 var processManager = new AITProcessTreeManager();
 
@@ -1250,7 +1250,7 @@ namespace AppsInToss
                 };
 
                 // granite dev 명령어에 --host, --port 인자로 granite 서버 설정 전달
-                string graniteCommand = $"exec granite dev --host {graniteHost} --port {granitePort}";
+                string graniteCommand = "exec -- granite dev";
 
                 var processManager = new AITProcessTreeManager();
 

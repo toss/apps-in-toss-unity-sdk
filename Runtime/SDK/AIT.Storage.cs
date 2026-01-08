@@ -47,7 +47,7 @@ namespace AppsInToss
         private static extern void __StorageGetItem_Internal(string args_0, string callbackId, string typeName);
 #endif
         /// <summary>
-        /// 모바일 앱의 로컬 저장소에서 문자열 데이터를 가져와요. 주로 앱이 종료되었다가 다시 시작해도 데이터가 유지되어야 하는 경우에 사용해요.
+        /// 모바일 앱의 로컬 저장소에 문자열 데이터를 저장해요. 주로 앱이 종료되었다가 다시 시작해도 데이터가 유지되어야 하는 경우에 사용해요.
         /// </summary>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
@@ -75,7 +75,7 @@ namespace AppsInToss
         private static extern void __StorageSetItem_Internal(string args_0, string args_1, string callbackId, string typeName);
 #endif
         /// <summary>
-        /// 모바일 앱의 로컬 저장소에서 문자열 데이터를 가져와요. 주로 앱이 종료되었다가 다시 시작해도 데이터가 유지되어야 하는 경우에 사용해요.
+        /// 모바일 앱의 로컬 저장소에서 특정 키에 해당하는 아이템을 삭제해요.
         /// </summary>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
@@ -103,7 +103,7 @@ namespace AppsInToss
         private static extern void __StorageRemoveItem_Internal(string args_0, string callbackId, string typeName);
 #endif
         /// <summary>
-        /// 모바일 앱의 로컬 저장소에서 문자열 데이터를 가져와요. 주로 앱이 종료되었다가 다시 시작해도 데이터가 유지되어야 하는 경우에 사용해요.
+        /// 모바일 앱의 로컬 저장소의 모든 아이템을 삭제해요.
         /// </summary>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]

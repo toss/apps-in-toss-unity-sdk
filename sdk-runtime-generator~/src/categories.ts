@@ -58,10 +58,6 @@ export const API_CATEGORIES: Record<string, string[]> = {
   Advertising: [
     'GoogleAdMobLoadAppsInTossAdMob',
     'GoogleAdMobShowAppsInTossAdMob',
-    'GoogleAdMobLoadAdMobInterstitialAd',
-    'GoogleAdMobShowAdMobInterstitialAd',
-    'GoogleAdMobLoadAdMobRewardedAd',
-    'GoogleAdMobShowAdMobRewardedAd',
     // TossAds (v1.6.0+)
     'TossAdsInitialize',
     'TossAdsAttach',
@@ -145,6 +141,18 @@ export function getCategory(apiName: string): string {
 export const FRAMEWORK_APIS: string[] = [
   'loadFullScreenAd',
   'showFullScreenAd',
+];
+
+/**
+ * SDK 생성에서 제외할 API 목록
+ * 이 API들은 파싱되더라도 SDK에 포함되지 않음
+ */
+export const EXCLUDED_APIS: string[] = [
+  // deprecated GoogleAdMob 인앱 광고 API (2026-01 제거)
+  'GoogleAdMobLoadAdMobInterstitialAd',
+  'GoogleAdMobShowAdMobInterstitialAd',
+  'GoogleAdMobLoadAdMobRewardedAd',
+  'GoogleAdMobShowAdMobRewardedAd',
 ];
 
 /**

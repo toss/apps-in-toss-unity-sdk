@@ -20,21 +20,21 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("SafeArea")]
-        public static async Task<SafeAreaInsetsGetResult> SafeAreaInsetsGet()
+        public static async Task<SafeAreaInsets> SafeAreaInsetsGet()
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            var tcs = new TaskCompletionSource<SafeAreaInsetsGetResult>();
-            string callbackId = AITCore.Instance.RegisterCallback<SafeAreaInsetsGetResult>(
+            var tcs = new TaskCompletionSource<SafeAreaInsets>();
+            string callbackId = AITCore.Instance.RegisterCallback<SafeAreaInsets>(
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __SafeAreaInsetsGet_Internal(callbackId, "SafeAreaInsetsGetResult");
+            __SafeAreaInsetsGet_Internal(callbackId, "SafeAreaInsets");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] SafeAreaInsetsGet called");
             await Task.CompletedTask;
-            return default(SafeAreaInsetsGetResult);
+            return default(SafeAreaInsets);
 #endif
         }
 

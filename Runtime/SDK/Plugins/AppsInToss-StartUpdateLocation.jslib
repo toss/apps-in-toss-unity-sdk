@@ -6,26 +6,63 @@
  */
 
 mergeInto(LibraryManager.library, {
-    __startUpdateLocation_Internal: function(eventParams, callbackId, typeName) {
-        // 동기 함수 (즉시 값 반환)
-        var callback = UTF8ToString(callbackId);
+    __startUpdateLocation_Internal: function(options, subscriptionId, typeName) {
+        var subId = UTF8ToString(subscriptionId);
         var typeNameStr = UTF8ToString(typeName);
+        var optionsObj = options ? JSON.parse(UTF8ToString(options)) : {};
+
+        console.log('[AIT jslib] startUpdateLocation called, id:', subId, 'options:', optionsObj);
 
         try {
-            var result = window.AppsInToss.startUpdateLocation(JSON.parse(UTF8ToString(eventParams)));
-            var payload = JSON.stringify({
-                CallbackId: callback,
-                TypeName: typeNameStr,
-                Result: JSON.stringify({ success: true, data: JSON.stringify(result), error: '' })
+            var unsubscribe = window.AppsInToss.startUpdateLocation({
+                options: optionsObj,
+                onEvent: function(data) {
+                    console.log('[AIT jslib] startUpdateLocation event:', data);
+                    var payload = JSON.stringify({
+                        CallbackId: subId,
+                        TypeName: typeNameStr,
+                        Result: JSON.stringify({
+                            success: true,
+                            data: JSON.stringify(data || {}),
+                            error: ''
+                        })
+                    });
+                    SendMessage('AITCore', 'OnAITEventCallback', payload);
+                },
+                onError: function(error) {
+                    console.log('[AIT jslib] startUpdateLocation error:', error);
+                    var errorMessage = error instanceof Error ? error.message : String(error);
+                    var payload = JSON.stringify({
+                        CallbackId: subId,
+                        TypeName: typeNameStr,
+                        Result: JSON.stringify({
+                            success: false,
+                            data: '',
+                            error: errorMessage
+                        })
+                    });
+                    SendMessage('AITCore', 'OnAITEventCallback', payload);
+                }
             });
-            SendMessage('AITCore', 'OnAITCallback', payload);
+
+            if (!window.__AIT_SUBSCRIPTIONS) {
+                window.__AIT_SUBSCRIPTIONS = {};
+            }
+            window.__AIT_SUBSCRIPTIONS[subId] = unsubscribe;
+
         } catch (error) {
+            console.error('[AIT jslib] startUpdateLocation error:', error);
+            var errorMessage = error instanceof Error ? error.message : String(error);
             var payload = JSON.stringify({
-                CallbackId: callback,
+                CallbackId: subId,
                 TypeName: typeNameStr,
-                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+                Result: JSON.stringify({
+                    success: false,
+                    data: '',
+                    error: errorMessage
+                })
             });
-            SendMessage('AITCore', 'OnAITCallback', payload);
+            SendMessage('AITCore', 'OnAITEventCallback', payload);
         }
     },
 

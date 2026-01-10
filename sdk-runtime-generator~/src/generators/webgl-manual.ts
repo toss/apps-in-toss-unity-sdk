@@ -1,20 +1,20 @@
 /**
- * WebGL 수동 API 생성기
+ * Screen 수동 API 생성기
  *
- * @apps-in-toss/web-framework에 포함되지 않은 브라우저 API를 위한
+ * @apps-in-toss/web-framework에 포함되지 않은 화면 관련 API를 위한
  * 수동 C# 및 jslib 코드를 생성합니다.
  */
 
 /**
- * AIT.WebGL.cs 파일 내용 생성
+ * AIT.Screen.cs 파일 내용 생성
  *
- * devicePixelRatio 등 WebGL 환경 전용 API를 제공합니다.
+ * devicePixelRatio 등 화면 관련 API를 제공합니다.
  */
-export function generateWebGLManualCs(): string {
+export function generateScreenManualCs(): string {
   return `// -----------------------------------------------------------------------
-// <copyright file="AIT.WebGL.cs" company="Toss">
+// <copyright file="AIT.Screen.cs" company="Toss">
 //     Copyright (c) Toss. All rights reserved.
-//     Apps in Toss Unity SDK - WebGL Manual APIs
+//     Apps in Toss Unity SDK - Screen APIs
 // </copyright>
 // -----------------------------------------------------------------------
 
@@ -24,8 +24,8 @@ using UnityEngine.Scripting;
 namespace AppsInToss
 {
     /// <summary>
-    /// Apps in Toss Platform API - WebGL
-    /// WebGL 환경 전용 유틸리티 API
+    /// Apps in Toss Platform API - Screen
+    /// 화면 관련 유틸리티 API
     /// </summary>
     public static partial class AIT
     {
@@ -47,7 +47,7 @@ namespace AppsInToss
         /// </remarks>
         /// <returns>devicePixelRatio 값 (Unity Editor에서는 항상 1.0)</returns>
         [Preserve]
-        [APICategory("WebGL")]
+        [APICategory("Screen")]
         public static double GetDevicePixelRatio()
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
@@ -69,13 +69,13 @@ namespace AppsInToss
 }
 
 /**
- * AppsInToss-WebGL.jslib 파일 내용 생성
+ * AppsInToss-Screen.jslib 파일 내용 생성
  */
-export function generateWebGLManualJslib(): string {
+export function generateScreenManualJslib(): string {
   return `/**
- * AppsInToss-WebGL.jslib
+ * AppsInToss-Screen.jslib
  *
- * WebGL 환경 전용 수동 API (브라우저 API)
+ * 화면 관련 수동 API (브라우저 API)
  * This file is auto-generated. Do not modify directly.
  * 이 파일은 자동 생성되었습니다. 직접 수정하지 마세요.
  */

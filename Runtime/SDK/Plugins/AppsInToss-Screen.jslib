@@ -1,7 +1,7 @@
 /**
- * AppsInToss-WebGL.jslib
+ * AppsInToss-Screen.jslib
  *
- * WebGL 환경 전용 수동 API (브라우저 API)
+ * 화면 관련 수동 API (브라우저 API)
  * This file is auto-generated. Do not modify directly.
  * 이 파일은 자동 생성되었습니다. 직접 수정하지 마세요.
  */

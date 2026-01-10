@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------
-// <copyright file="AIT.WebGL.cs" company="Toss">
+// <copyright file="AIT.Screen.cs" company="Toss">
 //     Copyright (c) Toss. All rights reserved.
-//     Apps in Toss Unity SDK - WebGL Manual APIs
+//     Apps in Toss Unity SDK - Screen APIs
 // </copyright>
 // -----------------------------------------------------------------------
 
@@ -11,8 +11,8 @@ using UnityEngine.Scripting;
 namespace AppsInToss
 {
     /// <summary>
-    /// Apps in Toss Platform API - WebGL
-    /// WebGL 환경 전용 유틸리티 API
+    /// Apps in Toss Platform API - Screen
+    /// 화면 관련 유틸리티 API
     /// </summary>
     public static partial class AIT
     {
@@ -34,7 +34,7 @@ namespace AppsInToss
         /// </remarks>
         /// <returns>devicePixelRatio 값 (Unity Editor에서는 항상 1.0)</returns>
         [Preserve]
-        [APICategory("WebGL")]
+        [APICategory("Screen")]
         public static double GetDevicePixelRatio()
         {
 #if UNITY_WEBGL && !UNITY_EDITOR

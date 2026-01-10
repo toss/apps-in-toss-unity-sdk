@@ -17,6 +17,7 @@ public class ContactsViralTester : MonoBehaviour
     private string status = "";
     private bool isActive = false;
     private List<string> eventLog = new List<string>();
+    private bool isPasting = false;
 
     // 구독 해제 액션
     private Action _unsubscribe;
@@ -63,9 +64,18 @@ public class ContactsViralTester : MonoBehaviour
 
         GUILayout.Space(10);
 
-        // moduleId 입력
-        GUILayout.Label("Module ID:", fieldLabelStyle);
-        moduleId = GUILayout.TextField(moduleId, textFieldStyle, GUILayout.Height(36));
+        // moduleId 입력 (PASTE 버튼 포함)
+        GUILayout.BeginHorizontal();
+        GUILayout.Label("Module ID:", fieldLabelStyle, GUILayout.Width(100));
+        moduleId = GUILayout.TextField(moduleId, textFieldStyle, GUILayout.Height(36), GUILayout.ExpandWidth(true));
+
+        GUI.enabled = !isPasting;
+        if (GUILayout.Button(isPasting ? "..." : "PASTE", buttonStyle, GUILayout.Width(70), GUILayout.Height(36)))
+        {
+            PasteFromClipboard();
+        }
+        GUI.enabled = true;
+        GUILayout.EndHorizontal();
 
         GUILayout.Space(10);
 
@@ -170,6 +180,29 @@ public class ContactsViralTester : MonoBehaviour
         }
         isActive = false;
         status = "구독 해제됨";
+    }
+
+    private async void PasteFromClipboard()
+    {
+        isPasting = true;
+        try
+        {
+            string text = await AIT.GetClipboardText();
+            if (!string.IsNullOrEmpty(text))
+            {
+                moduleId = text.Trim();
+                eventLog.Add($"[{DateTime.Now:HH:mm:ss}] 클립보드에서 붙여넣기: {moduleId}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[ContactsViralTester] Clipboard read failed: {ex.Message}");
+            eventLog.Add($"[{DateTime.Now:HH:mm:ss}] 클립보드 읽기 실패: {ex.Message}");
+        }
+        finally
+        {
+            isPasting = false;
+        }
     }
 
     private void OnDestroy()

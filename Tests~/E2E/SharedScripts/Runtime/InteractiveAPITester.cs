@@ -50,6 +50,7 @@ public class InteractiveAPITester : MonoBehaviour
     private OOMTester _oomTester;
     private IAPv2Tester _iapTester;
     private AdV2Tester _adV2Tester; // current LoadFullScreenAd/ShowFullScreenAd API
+    private ContactsViralTester _contactsViralTester; // ContactsViral API 테스터
     private TouchScrollHandler _scrollHandler;
     private ParameterInputRenderer _paramRenderer;
 
@@ -75,6 +76,11 @@ public class InteractiveAPITester : MonoBehaviour
         if (_adV2Tester == null)
         {
             _adV2Tester = gameObject.AddComponent<AdV2Tester>();
+        }
+        _contactsViralTester = GetComponent<ContactsViralTester>();
+        if (_contactsViralTester == null)
+        {
+            _contactsViralTester = gameObject.AddComponent<ContactsViralTester>();
         }
         _scrollHandler = new TouchScrollHandler();
         _paramRenderer = new ParameterInputRenderer();
@@ -305,6 +311,18 @@ public class InteractiveAPITester : MonoBehaviour
             // AdV2 테스터 섹션 (인앱광고v2 - 현재 API)
             GUILayout.Space(20);
             _adV2Tester?.DrawUI(
+                InteractiveAPITesterStyles.BoxStyle,
+                InteractiveAPITesterStyles.GroupHeaderStyle,
+                InteractiveAPITesterStyles.LabelStyle,
+                InteractiveAPITesterStyles.ButtonStyle,
+                InteractiveAPITesterStyles.TextFieldStyle,
+                InteractiveAPITesterStyles.FieldLabelStyle,
+                InteractiveAPITesterStyles.CallbackLabelStyle
+            );
+
+            // ContactsViral 테스터 섹션
+            GUILayout.Space(20);
+            _contactsViralTester?.DrawUI(
                 InteractiveAPITesterStyles.BoxStyle,
                 InteractiveAPITesterStyles.GroupHeaderStyle,
                 InteractiveAPITesterStyles.LabelStyle,

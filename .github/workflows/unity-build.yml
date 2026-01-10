@@ -66,6 +66,9 @@ jobs:
     name: Build (${{ inputs.os }}, Unity ${{ inputs.unity-version }})
     runs-on: ${{ inputs.os == 'macos' && fromJSON('["self-hosted", "macOS", "ARM64"]') || fromJSON('["self-hosted", "Windows", "X64", "enabled"]') }}
     timeout-minutes: 60
+    concurrency:
+      group: unity-build-${{ inputs.os }}-${{ inputs.unity-version }}
+      cancel-in-progress: false
 
     outputs:
       artifact-name: ${{ steps.artifact.outputs.name }}

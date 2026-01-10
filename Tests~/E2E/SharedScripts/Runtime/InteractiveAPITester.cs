@@ -122,15 +122,20 @@ public class InteractiveAPITester : MonoBehaviour
         {
             cachedSafeAreaInsets = await AIT.SafeAreaInsetsGet();
             safeAreaLoaded = true;
-            Debug.Log($"[InteractiveAPITester] AIT SafeAreaInsetsGet: top={cachedSafeAreaInsets.Top}, bottom={cachedSafeAreaInsets.Bottom}, left={cachedSafeAreaInsets.Left}, right={cachedSafeAreaInsets.Right}");
+            Debug.Log($"[InteractiveAPITester] AIT SafeAreaInsetsGet (CSS px): top={cachedSafeAreaInsets.Top}, bottom={cachedSafeAreaInsets.Bottom}, left={cachedSafeAreaInsets.Left}, right={cachedSafeAreaInsets.Right}");
 
-            // 최종 적용될 safeRect 계산 및 로깅
-            float top = (float)cachedSafeAreaInsets.Top;
-            float bottom = (float)cachedSafeAreaInsets.Bottom;
-            float left = (float)cachedSafeAreaInsets.Left;
-            float right = (float)cachedSafeAreaInsets.Right;
+            // devicePixelRatio 로깅
+            double dpr = AIT.GetDevicePixelRatio();
+            Debug.Log($"[InteractiveAPITester] DevicePixelRatio: {dpr}");
+
+            // 최종 적용될 safeRect 계산 및 로깅 (DPR 적용)
+            float top = (float)(cachedSafeAreaInsets.Top * dpr);
+            float bottom = (float)(cachedSafeAreaInsets.Bottom * dpr);
+            float left = (float)(cachedSafeAreaInsets.Left * dpr);
+            float right = (float)(cachedSafeAreaInsets.Right * dpr);
             Rect finalRect = new Rect(left, top, Screen.width - left - right, Screen.height - top - bottom);
-            Debug.Log($"[InteractiveAPITester] Final SafeArea Rect (using AIT): x={finalRect.x}, y={finalRect.y}, width={finalRect.width}, height={finalRect.height}");
+            Debug.Log($"[InteractiveAPITester] Final SafeArea Rect (device px): top={top}, bottom={bottom}, left={left}, right={right}");
+            Debug.Log($"[InteractiveAPITester] Final SafeArea Rect: x={finalRect.x}, y={finalRect.y}, width={finalRect.width}, height={finalRect.height}");
         }
         catch (AITException ex)
         {
@@ -160,10 +165,15 @@ public class InteractiveAPITester : MonoBehaviour
         // AIT API에서 로드된 값이 있으면 사용
         if (safeAreaLoaded && cachedSafeAreaInsets != null)
         {
-            float top = (float)cachedSafeAreaInsets.Top;
-            float bottom = (float)cachedSafeAreaInsets.Bottom;
-            float left = (float)cachedSafeAreaInsets.Left;
-            float right = (float)cachedSafeAreaInsets.Right;
+            // devicePixelRatio 적용 (CSS px → device px)
+            // SafeAreaInsets API는 CSS 픽셀 단위로 반환
+            // Unity Screen.width/height는 device 픽셀 단위이므로 스케일링 필요
+            float dpr = (float)AIT.GetDevicePixelRatio();
+
+            float top = (float)cachedSafeAreaInsets.Top * dpr;
+            float bottom = (float)cachedSafeAreaInsets.Bottom * dpr;
+            float left = (float)cachedSafeAreaInsets.Left * dpr;
+            float right = (float)cachedSafeAreaInsets.Right * dpr;
 
             // IMGUI 좌표계: 좌상단 원점
             // AIT API는 insets (여백)을 반환하므로 직접 사용

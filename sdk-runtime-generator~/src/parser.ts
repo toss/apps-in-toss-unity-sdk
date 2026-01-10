@@ -1498,6 +1498,9 @@ export class TypeScriptParser {
     const isAsync = returnType.kind === 'promise';
     const hasPermission = this.checkPermissionSupport(func);
 
+    // 콜백 기반 API 감지 (onEvent/onError 패턴)
+    const isCallbackBased = this.detectCallbackBasedPattern(parameters, returnType);
+
     // 항상 .d.ts 파일명에서 카테고리 추출 (@category JSDoc 태그 무시)
     // Emscripten이 한글 파일명을 처리하지 못하므로, 영어 파일명 기반 카테고리 사용
     return {
@@ -1511,8 +1514,9 @@ export class TypeScriptParser {
       examples,
       parameters,
       returnType,
-      isAsync,
+      isAsync: isCallbackBased ? false : isAsync, // 콜백 기반 API는 동기로 처리
       hasPermission,
+      isCallbackBased,
     };
   }
 
@@ -1564,6 +1568,9 @@ export class TypeScriptParser {
     const isAsync = returnType.kind === 'promise';
     const hasPermission = false; // TODO: 검증 로직 추가
 
+    // 콜백 기반 API 감지 (onEvent/onError 패턴)
+    const isCallbackBased = this.detectCallbackBasedPattern(parameters, returnType);
+
     // 항상 .d.ts 파일명에서 카테고리 추출 (@category JSDoc 태그 무시)
     // Emscripten이 한글 파일명을 처리하지 못하므로, 영어 파일명 기반 카테고리 사용
     return {
@@ -1577,8 +1584,9 @@ export class TypeScriptParser {
       examples,
       parameters,
       returnType,
-      isAsync,
+      isAsync: isCallbackBased ? false : isAsync, // 콜백 기반 API는 동기로 처리
       hasPermission,
+      isCallbackBased,
     };
   }
 

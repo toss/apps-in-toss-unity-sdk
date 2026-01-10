@@ -267,15 +267,21 @@ describe('Tier 2: C# ↔ jslib 일관성 검증', () => {
   });
 
   // =========================================
-  // 4. SendMessage 호출 검증 (64 tests - Unsubscribe 제외)
+  // 4. SendMessage 호출 검증 (64 tests - Unsubscribe, 동기 함수 제외)
   // =========================================
   describe('4. SendMessage 호출 검증', () => {
+    // 동기 함수 목록 (SendMessage 사용하지 않고 직접 값 반환)
+    const SYNC_FUNCTIONS = [
+      '__AITUnsubscribe_Internal',
+      '__GetDevicePixelRatio_Internal', // WebGL 수동 API - 동기 함수
+    ];
+
     test('각 jslib 함수별 SendMessage 호출 확인', async () => {
       await loadData();
 
       const violations: string[] = [];
       for (const [name, func] of jslibFunctions) {
-        if (name === '__AITUnsubscribe_Internal') continue;
+        if (SYNC_FUNCTIONS.includes(name)) continue;
 
         if (!func.hasSendMessage) {
           violations.push(`${name}: SendMessage 호출 없음`);
@@ -322,12 +328,18 @@ describe('Tier 2: C# ↔ jslib 일관성 검증', () => {
   // 6. 일반 API 콜백 타겟 검증 (61 tests)
   // =========================================
   describe('6. 일반 API 콜백 타겟 검증', () => {
+    // 동기 함수 목록 (SendMessage 사용하지 않고 직접 값 반환)
+    const SYNC_FUNCTIONS = [
+      '__AITUnsubscribe_Internal',
+      '__GetDevicePixelRatio_Internal', // WebGL 수동 API - 동기 함수
+    ];
+
     test('일반 API 함수는 OnAITCallback 사용', async () => {
       await loadData();
 
       const violations: string[] = [];
       for (const [name, func] of jslibFunctions) {
-        if (name === '__AITUnsubscribe_Internal') continue;
+        if (SYNC_FUNCTIONS.includes(name)) continue;
         if (isEventSubscription(name)) continue;
 
         if (func.sendMessageTarget !== 'OnAITCallback') {
@@ -390,19 +402,23 @@ describe('Tier 2: C# ↔ jslib 일관성 검증', () => {
   test('요약: C# ↔ jslib 매핑 현황', async () => {
     await loadData();
 
+    // jslib에만 있고 DllImport가 없는 함수 목록
+    // __AITUnsubscribe_Internal: C# 측에서 수동 구현, DllImport 없음
+    const JSLIB_ONLY_FUNCTIONS = ['__AITUnsubscribe_Internal'];
+
     const eventFunctions = Array.from(jslibFunctions.keys()).filter(isEventSubscription);
     const apiFunctions = Array.from(jslibFunctions.keys()).filter(name =>
-      !isEventSubscription(name) && name !== '__AITUnsubscribe_Internal'
+      !isEventSubscription(name) && !JSLIB_ONLY_FUNCTIONS.includes(name)
     );
 
     console.log('\n📊 C# ↔ jslib 매핑 요약:');
     console.log(`   - DllImport 메서드: ${dllImportMethods.length}개`);
     console.log(`   - jslib 함수: ${jslibFunctions.size}개`);
+    console.log(`   - jslib only (Unsubscribe 등): ${JSLIB_ONLY_FUNCTIONS.length}개`);
     console.log(`   - 이벤트 구독 (OnAITEventCallback): ${eventFunctions.length}개`);
     console.log(`   - 일반 API (OnAITCallback): ${apiFunctions.length}개`);
-    console.log(`   - Unsubscribe: ${jslibFunctions.has('__AITUnsubscribe_Internal') ? 1 : 0}개`);
 
-    // 검증 통과 확인
-    expect(dllImportMethods.length).toBe(jslibFunctions.size);
+    // 검증 통과 확인: jslib only 함수를 제외하면 수가 맞아야 함
+    expect(dllImportMethods.length).toBe(jslibFunctions.size - JSLIB_ONLY_FUNCTIONS.length);
   });
 });

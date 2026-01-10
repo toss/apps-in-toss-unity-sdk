@@ -12,6 +12,7 @@ import { CSharpGenerator, CSharpTypeGenerator } from './generators/csharp.js';
 import { JSLibGenerator } from './generators/jslib.js';
 import { typeCheckBridgeCode, printTypeCheckResult, cleanupCache } from './generators/jslib-compiler.js';
 import { generateUnityBridge } from './generators/unity-bridge.js';
+import { generateScreenManualCs, generateScreenManualJslib } from './generators/webgl-manual.js';
 import { formatCommand } from './commands/format.js';
 import { FRAMEWORK_APIS, EXCLUDED_APIS } from './categories.js';
 
@@ -420,11 +421,13 @@ namespace AppsInToss
       path.join(outputDir, 'AIT.cs'),
       path.join(outputDir, 'AITCore.cs'),
       path.join(outputDir, 'AIT.Types.cs'),
+      path.join(outputDir, 'AIT.Screen.cs'), // Screen 수동 API
       ...Array.from(categoryFiles.keys()).map(f => path.join(outputDir, f)),
     ]);
-    const newJslibFiles = new Set<string>(
-      Array.from(jslibFiles.keys()).map(f => path.join(pluginsDir, f))
-    );
+    const newJslibFiles = new Set<string>([
+      ...Array.from(jslibFiles.keys()).map(f => path.join(pluginsDir, f)),
+      path.join(pluginsDir, 'AppsInToss-Screen.jslib'), // Screen 수동 API
+    ]);
 
     // 1. 기존 .meta 파일 수집 (삭제 전에)
     console.log(picocolors.yellow('  📋 기존 .meta 파일 수집 중...'));
@@ -505,14 +508,26 @@ namespace AppsInToss
       console.log(picocolors.green(`  ✓ Plugins/${fileName}`));
     }
 
-    // 8. unity-bridge.ts 생성 (WebGLTemplates/AITTemplate/BuildConfig~/)
+    // 8. Screen 수동 API 파일 쓰기 (브라우저 API - web-framework 외부)
+    console.log(picocolors.cyan('\n🖥️  Screen 수동 API 생성 중...'));
+    const screenCsPath = path.join(outputDir, 'AIT.Screen.cs');
+    await fs.writeFile(screenCsPath, generateScreenManualCs());
+    await ensureMetaFile(screenCsPath, existingMetas, 'cs');
+    console.log(picocolors.green(`  ✓ AIT.Screen.cs`));
+
+    const screenJslibPath = path.join(pluginsDir, 'AppsInToss-Screen.jslib');
+    await fs.writeFile(screenJslibPath, generateScreenManualJslib());
+    await ensureMetaFile(screenJslibPath, existingMetas, 'jslib');
+    console.log(picocolors.green(`  ✓ Plugins/AppsInToss-Screen.jslib`));
+
+    // 9. unity-bridge.ts 생성 (WebGLTemplates/AITTemplate/BuildConfig~/)
     console.log(picocolors.cyan('\n🌉 Unity Bridge 생성 중...'));
     const unityBridgeContent = generateUnityBridge(apis);
     const unityBridgePath = path.resolve(outputDir, '../../WebGLTemplates/AITTemplate/BuildConfig~/unity-bridge.ts');
     await fs.writeFile(unityBridgePath, unityBridgeContent);
     console.log(picocolors.green(`  ✓ unity-bridge.ts`));
 
-    // 9. 요약 출력
+    // 10. 요약 출력
     printSummary(apis, generatedCodes);
 
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);

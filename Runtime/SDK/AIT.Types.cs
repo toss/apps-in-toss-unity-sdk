@@ -684,7 +684,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class SafeAreaInsetsGetResult
+    public class SafeAreaInsets
     {
         [Preserve]
         [JsonProperty("top")]
@@ -708,24 +708,6 @@ namespace AppsInToss
     {
         [JsonIgnore]
         public System.Action<SafeAreaInsets> OnEvent;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class SafeAreaInsets
-    {
-        [Preserve]
-        [JsonProperty("top")]
-        public double Top;
-        [Preserve]
-        [JsonProperty("bottom")]
-        public double Bottom;
-        [Preserve]
-        [JsonProperty("left")]
-        public double Left;
-        [Preserve]
-        [JsonProperty("right")]
-        public double Right;
     }
 
     [Serializable]

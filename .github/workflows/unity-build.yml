@@ -328,6 +328,12 @@ jobs:
         run: |
           AD_TESTER="Tests~/E2E/SharedScripts/Runtime/AdV2Tester.cs"
 
+          # SharedScripts가 없으면 스킵 (릴리즈 빌드에서는 제거됨)
+          if [ ! -f "$AD_TESTER" ]; then
+            echo "SharedScripts not found (release build), skipping ad ID injection"
+            exit 0
+          fi
+
           if [ -n "$AIT_AD_INTERSTITIAL_ID" ]; then
             echo "Injecting interstitial ad ID..."
             sed -i '' 's/ait-ad-test-interstitial-id/'"$AIT_AD_INTERSTITIAL_ID"'/g' "$AD_TESTER"
@@ -348,6 +354,13 @@ jobs:
           AIT_AD_REWARDED_ID: ${{ secrets.AIT_AD_REWARDED_ID }}
         run: |
           $adTester = "Tests~\E2E\SharedScripts\Runtime\AdV2Tester.cs"
+
+          # SharedScripts가 없으면 스킵 (릴리즈 빌드에서는 제거됨)
+          if (-not (Test-Path $adTester)) {
+            Write-Host "SharedScripts not found (release build), skipping ad ID injection"
+            exit 0
+          }
+
           $content = Get-Content $adTester -Raw
 
           if ($env:AIT_AD_INTERSTITIAL_ID) {

@@ -120,6 +120,28 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
+      - name: 릴리즈용 테스트 코드 제외
+        run: |
+          echo "=== 릴리즈 빌드용 테스트 코드 제외 ==="
+
+          # SharedScripts 패키지 참조 제거 (테스트 코드는 릴리즈에 불필요)
+          # 이 코드는 main 브랜치의 최신 API를 사용하므로 과거 SDK 버전과 호환되지 않음
+          for manifest in Tests~/E2E/SampleUnityProject-*/Packages/manifest.json; do
+            if [ -f "$manifest" ]; then
+              echo "패키지 참조 제거: $manifest"
+              # jq로 im.toss.sdk-test-scripts 의존성 제거
+              jq 'del(.dependencies["im.toss.sdk-test-scripts"])' "$manifest" > tmp.json && mv tmp.json "$manifest"
+            fi
+          done
+
+          # SharedScripts 디렉토리 제거
+          rm -rf Tests~/E2E/SharedScripts
+          echo "SharedScripts 디렉토리 제거됨"
+
+          # 확인
+          echo "manifest.json 확인:"
+          head -20 Tests~/E2E/SampleUnityProject-2021.3/Packages/manifest.json
+
       - name: Orphan Commit 생성 및 Push
         id: commit
         run: |

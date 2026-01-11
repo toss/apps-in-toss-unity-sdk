@@ -212,16 +212,31 @@ public class RuntimeAPITester : MonoBehaviour
         TestAPICall("AppsInTossSignTossCert", async () => { await AIT.AppsInTossSignTossCert(new AppsInTossSignTossCertParams { TxId = "test-tx" }); });
 
         // Visibility API (이벤트 기반)
+#if AIT_SDK_1_7_OR_LATER
+        TestAPICall("OnVisibilityChangedByTransparentServiceWeb", async () =>
+            { AIT.OnVisibilityChangedByTransparentServiceWeb((visible) => { }, null); await System.Threading.Tasks.Task.CompletedTask; });
+#else
         TestAPICall("OnVisibilityChangedByTransparentServiceWeb", async () =>
             { await AIT.OnVisibilityChangedByTransparentServiceWeb(new OnVisibilityChangedByTransparentServiceWebEventParams { OnEvent = (visible) => { } }); });
+#endif
 
         // Location 이벤트 API
+#if AIT_SDK_1_7_OR_LATER
+        TestAPICall("StartUpdateLocation", async () =>
+            { AIT.StartUpdateLocation((loc) => { }, new StartUpdateLocationOptions()); await System.Threading.Tasks.Task.CompletedTask; });
+#else
         TestAPICall("StartUpdateLocation", async () =>
             { await AIT.StartUpdateLocation(new StartUpdateLocationEventParams { OnEvent = (loc) => { } }); });
+#endif
 
         // ContactsViral API
+#if AIT_SDK_1_7_OR_LATER
+        TestAPICall("ContactsViral", async () =>
+            { AIT.ContactsViral((evt) => { }, new ContactsViralParamsOptions()); await System.Threading.Tasks.Task.CompletedTask; });
+#else
         TestAPICall("ContactsViral", async () =>
             { await AIT.ContactsViral(new ContactsViralParams { OnEvent = (evt) => { } }); });
+#endif
     }
 
     void TestAPICall(string apiName, APICallFunc apiCall)

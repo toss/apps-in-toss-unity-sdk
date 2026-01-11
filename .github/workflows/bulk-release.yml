@@ -64,7 +64,7 @@ jobs:
           echo ""
 
           # JSON 배열로 변환
-          JSON_VERSIONS=$(echo "$VERSIONS" | jq -R -s -c 'split("\n") | map(select(. != ""))')
+          JSON_VERSIONS=$(echo "$VERSIONS" | jq -R -s -c 'split("\n") | map(select(length > 0))')
           echo "JSON 배열: ${JSON_VERSIONS}"
 
           # 버전 개수
@@ -102,27 +102,10 @@ jobs:
   # =====================================================
   # 각 버전별 릴리즈 실행 (병렬)
   # =====================================================
-  # 테스트: matrix가 제대로 작동하는지 확인
-  test-matrix:
-    name: 테스트 v${{ matrix.version }}
-    needs: prepare-versions
-    runs-on: ubuntu-latest
-
-    strategy:
-      fail-fast: false
-      max-parallel: ${{ inputs.max_parallel || 2 }}
-      matrix:
-        version: ${{ fromJSON(needs.prepare-versions.outputs.versions) }}
-
-    steps:
-      - name: 버전 출력
-        run: |
-          echo "릴리즈 버전: ${{ matrix.version }}"
-          echo "versions output: ${{ needs.prepare-versions.outputs.versions }}"
-
   release-versions:
     name: 릴리즈 v${{ matrix.version }}
-    needs: [prepare-versions, test-matrix]
+    needs: prepare-versions
+    if: inputs.dry_run != true
 
     strategy:
       fail-fast: false
@@ -141,7 +124,7 @@ jobs:
   summary:
     name: 일괄 릴리즈 요약
     runs-on: ubuntu-latest
-    needs: [prepare-versions, test-matrix, release-versions]
+    needs: [prepare-versions, release-versions]
     if: always()
 
     steps:

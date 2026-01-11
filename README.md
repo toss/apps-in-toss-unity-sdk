@@ -38,7 +38,7 @@ Package Manager에서 Git URL로 설치하거나, Packages/manifest.json에 직�
 ```json
 {
   "dependencies": {
-    "im.toss.apps-in-toss-unity-sdk": "https://github.com/toss/apps-in-toss-unity-sdk.git#release/v1.7.0"
+    "im.toss.apps-in-toss-unity-sdk": "https://github.com/toss/apps-in-toss-unity-sdk.git#release/v1.7.1"
   }
 }
 ```

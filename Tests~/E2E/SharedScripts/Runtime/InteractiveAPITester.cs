@@ -817,20 +817,23 @@ public class InteractiveAPITester : MonoBehaviour
             // API 호출
             object result = selectedMethod.Method.Invoke(null, parameters);
 
-            // Task 대기 - await시 AITException이 발생하면 catch에서 처리됨
+            // Task 또는 Awaitable 대기
+            var resultType = result.GetType();
+            var resultTypeName = resultType.Name;
+            Debug.Log($"[InteractiveAPITester] Return type: {resultTypeName}");
+
             if (result is Task task)
             {
+                // Task 또는 Task<T> 처리
                 await task;
 
                 // Task<T>인 경우 결과 추출
-                var taskType = task.GetType();
-                Debug.Log($"[InteractiveAPITester] Task type: {taskType.FullName}");
+                Debug.Log($"[InteractiveAPITester] Task type: {resultType.FullName}");
 
-                // Task<T>인지 확인
-                if (taskType.IsGenericType && taskType.GetGenericTypeDefinition() == typeof(Task<>))
+                if (resultType.IsGenericType && resultType.GetGenericTypeDefinition() == typeof(Task<>))
                 {
                     // Task<T>에서 Result 가져오기
-                    var resultProperty = taskType.GetProperty("Result");
+                    var resultProperty = resultType.GetProperty("Result");
                     if (resultProperty != null)
                     {
                         object taskResult = resultProperty.GetValue(task);
@@ -840,7 +843,7 @@ public class InteractiveAPITester : MonoBehaviour
                     else
                     {
                         // GetAwaiter().GetResult() 사용
-                        var awaiter = taskType.GetMethod("GetAwaiter").Invoke(task, null);
+                        var awaiter = resultType.GetMethod("GetAwaiter").Invoke(task, null);
                         var getResultMethod = awaiter.GetType().GetMethod("GetResult");
                         var taskResult = getResultMethod.Invoke(awaiter, null);
                         Debug.Log($"[InteractiveAPITester] Task result via GetAwaiter: {taskResult}");
@@ -853,9 +856,30 @@ public class InteractiveAPITester : MonoBehaviour
                     ShowResult("Success (void)", true);
                 }
             }
+#if UNITY_6000_0_OR_NEWER
+            else if (resultTypeName.StartsWith("Awaitable"))
+            {
+                // Unity 6 Awaitable 또는 Awaitable<T> 처리
+                Debug.Log($"[InteractiveAPITester] Awaitable type: {resultType.FullName}");
+
+                // 리플렉션으로 Awaitable await 처리 (dynamic은 IL2CPP에서 미지원)
+                object awaitableResult = await AwaitAndGetResult(result, resultType);
+
+                // Awaitable<T>인 경우 결과 표시, Awaitable (void)인 경우 성공 메시지
+                if (resultType.IsGenericType)
+                {
+                    Debug.Log($"[InteractiveAPITester] Awaitable result: {awaitableResult}");
+                    ShowResult(awaitableResult, true);
+                }
+                else
+                {
+                    ShowResult("Success (void)", true);
+                }
+            }
+#endif
             else
             {
-                ShowResult("Unexpected return type", false);
+                ShowResult($"Unexpected return type: {resultTypeName}", false);
             }
         }
         catch (TargetInvocationException tie) when (tie.InnerException is AITException aitEx)
@@ -922,6 +946,37 @@ public class InteractiveAPITester : MonoBehaviour
 
         ShowResult(errorInfo, false);
     }
+
+#if UNITY_6000_0_OR_NEWER
+    /// <summary>
+    /// Awaitable 또는 Awaitable<T>를 await하고 결과를 반환 (IL2CPP 호환)
+    /// </summary>
+    private async Awaitable<object> AwaitAndGetResult(object awaitable, Type awaitableType)
+    {
+        // Awaitable (non-generic, void 반환)인 경우
+        if (!awaitableType.IsGenericType)
+        {
+            await (Awaitable)awaitable;
+            return null;
+        }
+
+        // Awaitable<T>인 경우 - GetAwaiter().GetResult() 패턴 사용
+        var getAwaiterMethod = awaitableType.GetMethod("GetAwaiter");
+        var awaiter = getAwaiterMethod.Invoke(awaitable, null);
+        var awaiterType = awaiter.GetType();
+
+        // IsCompleted 확인하며 대기
+        var isCompletedProperty = awaiterType.GetProperty("IsCompleted");
+        while (!(bool)isCompletedProperty.GetValue(awaiter))
+        {
+            await Awaitable.NextFrameAsync();
+        }
+
+        // GetResult() 호출하여 결과 반환
+        var getResultMethod = awaiterType.GetMethod("GetResult");
+        return getResultMethod.Invoke(awaiter, null);
+    }
+#endif
 
     private void ShowResult(object result, bool success)
     {

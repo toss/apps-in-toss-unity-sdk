@@ -9,6 +9,9 @@ using System;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using UnityEngine.Scripting;
+#if UNITY_6000_0_OR_NEWER
+using UnityEngine;
+#endif
 
 namespace AppsInToss
 {
@@ -20,6 +23,25 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Device")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable GenerateHapticFeedback(HapticFeedbackOptions options)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource();
+            string callbackId = AITCore.Instance.RegisterCallback<object>(
+                result => acs.SetResult(),
+                error => acs.SetException(error)
+            );
+            __generateHapticFeedback_Internal(AITJsonSettings.Serialize(options), callbackId, "void");
+            await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] GenerateHapticFeedback called");
+            await Awaitable.NextFrameAsync();
+            // void return - nothing to return
+#endif
+        }
+#else
         public static async Task GenerateHapticFeedback(HapticFeedbackOptions options)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
@@ -37,6 +59,7 @@ namespace AppsInToss
             // void return - nothing to return
 #endif
         }
+#endif
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
@@ -47,6 +70,25 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Device")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable SetDeviceOrientation(SetDeviceOrientationOptions options)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource();
+            string callbackId = AITCore.Instance.RegisterCallback<object>(
+                result => acs.SetResult(),
+                error => acs.SetException(error)
+            );
+            __setDeviceOrientation_Internal(AITJsonSettings.Serialize(options), callbackId, "void");
+            await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] SetDeviceOrientation called");
+            await Awaitable.NextFrameAsync();
+            // void return - nothing to return
+#endif
+        }
+#else
         public static async Task SetDeviceOrientation(SetDeviceOrientationOptions options)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
@@ -64,6 +106,7 @@ namespace AppsInToss
             // void return - nothing to return
 #endif
         }
+#endif
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
@@ -73,6 +116,25 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Device")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable SetIosSwipeGestureEnabled(SetIosSwipeGestureEnabledOptions options)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource();
+            string callbackId = AITCore.Instance.RegisterCallback<object>(
+                result => acs.SetResult(),
+                error => acs.SetException(error)
+            );
+            __setIosSwipeGestureEnabled_Internal(AITJsonSettings.Serialize(options), callbackId, "void");
+            await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] SetIosSwipeGestureEnabled called");
+            await Awaitable.NextFrameAsync();
+            // void return - nothing to return
+#endif
+        }
+#else
         public static async Task SetIosSwipeGestureEnabled(SetIosSwipeGestureEnabledOptions options)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
@@ -90,6 +152,7 @@ namespace AppsInToss
             // void return - nothing to return
 #endif
         }
+#endif
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
@@ -100,6 +163,25 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Device")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<SetScreenAwakeModeResult> SetScreenAwakeMode(SetScreenAwakeModeOptions options)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<SetScreenAwakeModeResult>();
+            string callbackId = AITCore.Instance.RegisterCallback<SetScreenAwakeModeResult>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error)
+            );
+            __setScreenAwakeMode_Internal(AITJsonSettings.Serialize(options), callbackId, "SetScreenAwakeModeResult");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] SetScreenAwakeMode called");
+            await Awaitable.NextFrameAsync();
+            return default(SetScreenAwakeModeResult);
+#endif
+        }
+#else
         public static async Task<SetScreenAwakeModeResult> SetScreenAwakeMode(SetScreenAwakeModeOptions options)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
@@ -117,6 +199,7 @@ namespace AppsInToss
             return default(SetScreenAwakeModeResult);
 #endif
         }
+#endif
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
@@ -127,6 +210,25 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Device")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<SetSecureScreenResult> SetSecureScreen(SetSecureScreenOptions options)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<SetSecureScreenResult>();
+            string callbackId = AITCore.Instance.RegisterCallback<SetSecureScreenResult>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error)
+            );
+            __setSecureScreen_Internal(AITJsonSettings.Serialize(options), callbackId, "SetSecureScreenResult");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] SetSecureScreen called");
+            await Awaitable.NextFrameAsync();
+            return default(SetSecureScreenResult);
+#endif
+        }
+#else
         public static async Task<SetSecureScreenResult> SetSecureScreen(SetSecureScreenOptions options)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
@@ -144,6 +246,7 @@ namespace AppsInToss
             return default(SetSecureScreenResult);
 #endif
         }
+#endif
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]

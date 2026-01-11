@@ -12,6 +12,12 @@ using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using AppsInToss;
 
+#if UNITY_6000_0_OR_NEWER
+using APICallFunc = System.Func<UnityEngine.Awaitable>;
+#else
+using APICallFunc = System.Func<System.Threading.Tasks.Task>;
+#endif
+
 /// <summary>
 /// Runtime API 테스트 실행기
 /// 모든 39개 SDK API를 호출하고, 개발 환경에서 올바른 에러가 발생하는지 검증
@@ -144,107 +150,94 @@ public class RuntimeAPITester : MonoBehaviour
         // =====================================================================
         // 파라미터 없는 API들 (14개) - 직접 호출
         // =====================================================================
-        TestAPICall("GetDeviceId", () => AIT.GetDeviceId());
-        TestAPICall("GetLocale", () => AIT.GetLocale());
-        TestAPICall("GetNetworkStatus", () => AIT.GetNetworkStatus());
-        TestAPICall("GetOperationalEnvironment", () => AIT.GetOperationalEnvironment());
-        TestAPICall("GetPlatformOS", () => AIT.GetPlatformOS());
-        TestAPICall("GetSchemeUri", () => AIT.GetSchemeUri());
-        TestAPICall("GetTossAppVersion", () => AIT.GetTossAppVersion());
-        TestAPICall("AppLogin", () => AIT.AppLogin());
-        TestAPICall("GetIsTossLoginIntegratedService", () => AIT.GetIsTossLoginIntegratedService());
-        TestAPICall("GetClipboardText", () => AIT.GetClipboardText());
-        TestAPICall("CloseView", () => AIT.CloseView());
-        TestAPICall("GetGameCenterGameProfile", () => AIT.GetGameCenterGameProfile());
-        TestAPICall("GetUserKeyForGame", () => AIT.GetUserKeyForGame());
-        TestAPICall("OpenGameCenterLeaderboard", () => AIT.OpenGameCenterLeaderboard());
+        TestAPICall("GetDeviceId", async () => { await AIT.GetDeviceId(); });
+        TestAPICall("GetLocale", async () => { await AIT.GetLocale(); });
+        TestAPICall("GetNetworkStatus", async () => { await AIT.GetNetworkStatus(); });
+        TestAPICall("GetOperationalEnvironment", async () => { await AIT.GetOperationalEnvironment(); });
+        TestAPICall("GetPlatformOS", async () => { await AIT.GetPlatformOS(); });
+        TestAPICall("GetSchemeUri", async () => { await AIT.GetSchemeUri(); });
+        TestAPICall("GetTossAppVersion", async () => { await AIT.GetTossAppVersion(); });
+        TestAPICall("AppLogin", async () => { await AIT.AppLogin(); });
+        TestAPICall("GetIsTossLoginIntegratedService", async () => { await AIT.GetIsTossLoginIntegratedService(); });
+        TestAPICall("GetClipboardText", async () => { await AIT.GetClipboardText(); });
+        TestAPICall("CloseView", async () => { await AIT.CloseView(); });
+        TestAPICall("GetGameCenterGameProfile", async () => { await AIT.GetGameCenterGameProfile(); });
+        TestAPICall("GetUserKeyForGame", async () => { await AIT.GetUserKeyForGame(); });
+        TestAPICall("OpenGameCenterLeaderboard", async () => { await AIT.OpenGameCenterLeaderboard(); });
 
         // =====================================================================
         // 파라미터 있는 API들 (25개) - SDK 타입에 맞는 더미값으로 호출
         // =====================================================================
 
         // Clipboard & Navigation APIs
-        TestAPICall("SetClipboardText", () => AIT.SetClipboardText("test"));
-        TestAPICall("OpenURL", () => AIT.OpenURL("https://example.com"));
+        TestAPICall("SetClipboardText", async () => { await AIT.SetClipboardText("test"); });
+        TestAPICall("OpenURL", async () => { await AIT.OpenURL("https://example.com"); });
 
         // Share APIs
-        TestAPICall("GetTossShareLink", () => AIT.GetTossShareLink("/test"));
-        TestAPICall("Share", () => AIT.Share(new ShareMessage { Message = "test" }));
-        TestAPICall("FetchContacts", () => AIT.FetchContacts(new FetchContactsOptions { Size = 10, Offset = 0 }));
+        TestAPICall("GetTossShareLink", async () => { await AIT.GetTossShareLink("/test"); });
+        TestAPICall("Share", async () => { await AIT.Share(new ShareMessage { Message = "test" }); });
+        TestAPICall("FetchContacts", async () => { await AIT.FetchContacts(new FetchContactsOptions { Size = 10, Offset = 0 }); });
 
         // Event API
-        TestAPICall("EventLog", () => AIT.EventLog(new EventLogParams { Log_name = "test", Log_type = "test" }));
+        TestAPICall("EventLog", async () => { await AIT.EventLog(new EventLogParams { Log_name = "test", Log_type = "test" }); });
 
         // Permission APIs (class 타입 파라미터) - inline enum 사용
-        TestAPICall("GetPermission", () => AIT.GetPermission(new GetPermissionPermission { Name = GetPermissionPermissionName.Camera, Access = GetPermissionPermissionAccess.Access }));
-        TestAPICall("RequestPermission", () => AIT.RequestPermission(new RequestPermissionPermission { Name = RequestPermissionPermissionName.Camera, Access = RequestPermissionPermissionAccess.Access }));
-        TestAPICall("OpenPermissionDialog", () => AIT.OpenPermissionDialog(new OpenPermissionDialogPermission { Name = OpenPermissionDialogPermissionName.Camera, Access = OpenPermissionDialogPermissionAccess.Access }));
+        TestAPICall("GetPermission", async () => { await AIT.GetPermission(new GetPermissionPermission { Name = GetPermissionPermissionName.Camera, Access = GetPermissionPermissionAccess.Access }); });
+        TestAPICall("RequestPermission", async () => { await AIT.RequestPermission(new RequestPermissionPermission { Name = RequestPermissionPermissionName.Camera, Access = RequestPermissionPermissionAccess.Access }); });
+        TestAPICall("OpenPermissionDialog", async () => { await AIT.OpenPermissionDialog(new OpenPermissionDialogPermission { Name = OpenPermissionDialogPermissionName.Camera, Access = OpenPermissionDialogPermissionAccess.Access }); });
 
         // Location APIs
-        TestAPICall("GetCurrentLocation", () => AIT.GetCurrentLocation(new GetCurrentLocationOptions { Accuracy = Accuracy.Balanced }));
+        TestAPICall("GetCurrentLocation", async () => { await AIT.GetCurrentLocation(new GetCurrentLocationOptions { Accuracy = Accuracy.Balanced }); });
 
         // Device APIs (SDK 타입 필드명 사용)
-        TestAPICall("GenerateHapticFeedback", () => AIT.GenerateHapticFeedback(new HapticFeedbackOptions { Type = HapticFeedbackType.Tap }));
-        TestAPICall("SetDeviceOrientation", () => AIT.SetDeviceOrientation(new SetDeviceOrientationOptions { Type = SetDeviceOrientationOptionsType.Portrait }));
-        TestAPICall("SetIosSwipeGestureEnabled", () => AIT.SetIosSwipeGestureEnabled(new SetIosSwipeGestureEnabledOptions { IsEnabled = true }));
-        TestAPICall("SetScreenAwakeMode", () => AIT.SetScreenAwakeMode(new SetScreenAwakeModeOptions { Enabled = true }));
-        TestAPICall("SetSecureScreen", () => AIT.SetSecureScreen(new SetSecureScreenOptions { Enabled = true }));
+        TestAPICall("GenerateHapticFeedback", async () => { await AIT.GenerateHapticFeedback(new HapticFeedbackOptions { Type = HapticFeedbackType.Tap }); });
+        TestAPICall("SetDeviceOrientation", async () => { await AIT.SetDeviceOrientation(new SetDeviceOrientationOptions { Type = SetDeviceOrientationOptionsType.Portrait }); });
+        TestAPICall("SetIosSwipeGestureEnabled", async () => { await AIT.SetIosSwipeGestureEnabled(new SetIosSwipeGestureEnabledOptions { IsEnabled = true }); });
+        TestAPICall("SetScreenAwakeMode", async () => { await AIT.SetScreenAwakeMode(new SetScreenAwakeModeOptions { Enabled = true }); });
+        TestAPICall("SetSecureScreen", async () => { await AIT.SetSecureScreen(new SetSecureScreenOptions { Enabled = true }); });
 
         // Payment API
-        TestAPICall("CheckoutPayment", () => AIT.CheckoutPayment(new CheckoutPaymentOptions { PayToken = "test-token" }));
+        TestAPICall("CheckoutPayment", async () => { await AIT.CheckoutPayment(new CheckoutPaymentOptions { PayToken = "test-token" }); });
 
         // Media APIs
-        TestAPICall("FetchAlbumPhotos", () => AIT.FetchAlbumPhotos(new FetchAlbumPhotosOptions { MaxCount = 1 }));
-        TestAPICall("OpenCamera", () => AIT.OpenCamera(new OpenCameraOptions { Base64 = false }));
-        TestAPICall("SaveBase64Data", () => AIT.SaveBase64Data(new SaveBase64DataParams { Data = "dGVzdA==", FileName = "test.txt", MimeType = "text/plain" }));
+        TestAPICall("FetchAlbumPhotos", async () => { await AIT.FetchAlbumPhotos(new FetchAlbumPhotosOptions { MaxCount = 1 }); });
+        TestAPICall("OpenCamera", async () => { await AIT.OpenCamera(new OpenCameraOptions { Base64 = false }); });
+        TestAPICall("SaveBase64Data", async () => { await AIT.SaveBase64Data(new SaveBase64DataParams { Data = "dGVzdA==", FileName = "test.txt", MimeType = "text/plain" }); });
 
         // GameCenter APIs
-        TestAPICall("SubmitGameCenterLeaderBoardScore", () => AIT.SubmitGameCenterLeaderBoardScore(new SubmitGameCenterLeaderBoardScoreParams { Score = "100" }));
-        TestAPICall("GrantPromotionRewardForGame", () => AIT.GrantPromotionRewardForGame(new GrantPromotionRewardForGameOptions()));
+        TestAPICall("SubmitGameCenterLeaderBoardScore", async () => { await AIT.SubmitGameCenterLeaderBoardScore(new SubmitGameCenterLeaderBoardScoreParams { Score = "100" }); });
+        TestAPICall("GrantPromotionRewardForGame", async () => { await AIT.GrantPromotionRewardForGame(new GrantPromotionRewardForGameOptions()); });
 
         // Certificate API
-        TestAPICall("AppsInTossSignTossCert", () => AIT.AppsInTossSignTossCert(new AppsInTossSignTossCertParams { TxId = "test-tx" }));
+        TestAPICall("AppsInTossSignTossCert", async () => { await AIT.AppsInTossSignTossCert(new AppsInTossSignTossCertParams { TxId = "test-tx" }); });
 
-        // Visibility API (이벤트 기반) - 콜백 기반 API (Action 반환)
-        TestAPICall("OnVisibilityChangedByTransparentServiceWeb", () =>
-        {
-            AIT.OnVisibilityChangedByTransparentServiceWeb(
-                onEvent: (visible) => { },
-                options: new { }
-            );
-            return Task.CompletedTask;
-        });
+        // Visibility API (이벤트 기반)
+        TestAPICall("OnVisibilityChangedByTransparentServiceWeb", async () =>
+            { await AIT.OnVisibilityChangedByTransparentServiceWeb(new OnVisibilityChangedByTransparentServiceWebEventParams { OnEvent = (visible) => { } }); });
 
-        // Location 이벤트 API - 콜백 기반 API (Action 반환)
-        TestAPICall("StartUpdateLocation", () =>
-        {
-            AIT.StartUpdateLocation(
-                onEvent: (loc) => { },
-                options: new StartUpdateLocationOptions { Accuracy = Accuracy.Balanced }
-            );
-            return Task.CompletedTask;
-        });
+        // Location 이벤트 API
+        TestAPICall("StartUpdateLocation", async () =>
+            { await AIT.StartUpdateLocation(new StartUpdateLocationEventParams { OnEvent = (loc) => { } }); });
 
-        // ContactsViral API - 콜백 기반 API (Action 반환)
-        TestAPICall("ContactsViral", () =>
-        {
-            AIT.ContactsViral(
-                onEvent: (evt) => { },
-                options: new ContactsViralParamsOptions { ModuleId = "test" }
-            );
-            return Task.CompletedTask;
-        });
+        // ContactsViral API
+        TestAPICall("ContactsViral", async () =>
+            { await AIT.ContactsViral(new ContactsViralParams { OnEvent = (evt) => { } }); });
     }
 
-    void TestAPICall(string apiName, Func<Task> apiCall)
+    void TestAPICall(string apiName, APICallFunc apiCall)
     {
         string testName = $"API_{apiName}";
         _pendingAsyncTests++;
 
         try
         {
+#if UNITY_6000_0_OR_NEWER
+            var awaitable = apiCall();
+            StartCoroutine(WaitForAwaitable(testName, apiName, awaitable));
+#else
             var task = apiCall();
             StartCoroutine(WaitForTask(testName, apiName, task));
+#endif
         }
         catch (Exception e)
         {
@@ -278,6 +271,81 @@ public class RuntimeAPITester : MonoBehaviour
             Debug.LogError($"[RuntimeAPITester] {testName}: FAIL (unexpected error: {errorMessage})");
         }
     }
+
+#if UNITY_6000_0_OR_NEWER
+    IEnumerator WaitForAwaitable(string testName, string apiName, Awaitable awaitable)
+    {
+        // Awaitable 완료 대기 (최대 10초)
+        float timeout = 10f;
+        float elapsed = 0f;
+        bool completed = false;
+        Exception caughtException = null;
+
+        // Awaitable을 async로 실행하고 완료 상태 추적
+        RunAwaitableAsync(awaitable, () => completed = true, ex => { completed = true; caughtException = ex; });
+
+        while (!completed && elapsed < timeout)
+        {
+            elapsed += Time.deltaTime;
+            yield return null;
+        }
+
+        if (!completed)
+        {
+            // 타임아웃: 상정된 에러로 처리
+            RecordResult(testName, true, true, "Timeout (platform not responding)", null);
+            Debug.Log($"[RuntimeAPITester] {testName}: PASS (timeout - expected in dev environment)");
+        }
+        else if (caughtException != null)
+        {
+            // 에러 발생: 분석
+            var innerEx = caughtException.InnerException ?? caughtException;
+            string errorMessage = innerEx?.Message ?? "Unknown error";
+
+            bool isAITException = innerEx is AITException;
+            string errorCode = isAITException ? ((AITException)innerEx).ErrorCode : null;
+            bool isPlatformUnavailable = isAITException && ((AITException)innerEx).IsPlatformUnavailable;
+            bool isExpectedError = IsExpectedError(errorMessage) || isPlatformUnavailable;
+
+            if (isExpectedError)
+            {
+                RecordResult(testName, true, true, errorMessage, errorCode);
+                Debug.Log($"[RuntimeAPITester] {testName}: PASS (expected error: {TruncateError(errorMessage)})");
+            }
+            else
+            {
+                RecordResult(testName, false, false, errorMessage, errorCode);
+                Debug.LogError($"[RuntimeAPITester] {testName}: FAIL (unexpected error: {errorMessage})");
+            }
+        }
+        else
+        {
+            // 성공
+            RecordResult(testName, true, false, null, null);
+            Debug.Log($"[RuntimeAPITester] {testName}: PASS (completed successfully)");
+        }
+
+        _pendingAsyncTests--;
+
+        if (_allTestsQueued && _pendingAsyncTests == 0)
+        {
+            SendResults();
+        }
+    }
+
+    async void RunAwaitableAsync(Awaitable awaitable, Action onComplete, Action<Exception> onError)
+    {
+        try
+        {
+            await awaitable;
+            onComplete?.Invoke();
+        }
+        catch (Exception ex)
+        {
+            onError?.Invoke(ex);
+        }
+    }
+#endif
 
     IEnumerator WaitForTask(string testName, string apiName, Task task)
     {

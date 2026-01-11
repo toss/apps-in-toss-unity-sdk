@@ -9,6 +9,9 @@ using System;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using UnityEngine.Scripting;
+#if UNITY_6000_0_OR_NEWER
+using UnityEngine;
+#endif
 
 namespace AppsInToss
 {
@@ -21,6 +24,25 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Permission")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<PermissionStatus> GetPermission(GetPermissionPermission permission)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<PermissionStatus>();
+            string callbackId = AITCore.Instance.RegisterCallback<PermissionStatus>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error)
+            );
+            __getPermission_Internal(AITJsonSettings.Serialize(permission), callbackId, "PermissionStatus");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] GetPermission called");
+            await Awaitable.NextFrameAsync();
+            return default(PermissionStatus);
+#endif
+        }
+#else
         public static async Task<PermissionStatus> GetPermission(GetPermissionPermission permission)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
@@ -38,6 +60,7 @@ namespace AppsInToss
             return default(PermissionStatus);
 #endif
         }
+#endif
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
@@ -47,6 +70,25 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Permission")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<string> OpenPermissionDialog(OpenPermissionDialogPermission permission)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<string>();
+            string callbackId = AITCore.Instance.RegisterCallback<string>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error)
+            );
+            __openPermissionDialog_Internal(AITJsonSettings.Serialize(permission), callbackId, "string");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] OpenPermissionDialog called");
+            await Awaitable.NextFrameAsync();
+            return "";
+#endif
+        }
+#else
         public static async Task<string> OpenPermissionDialog(OpenPermissionDialogPermission permission)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
@@ -64,6 +106,7 @@ namespace AppsInToss
             return "";
 #endif
         }
+#endif
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
@@ -73,6 +116,25 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Permission")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<string> RequestPermission(RequestPermissionPermission permission)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<string>();
+            string callbackId = AITCore.Instance.RegisterCallback<string>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error)
+            );
+            __requestPermission_Internal(AITJsonSettings.Serialize(permission), callbackId, "string");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] RequestPermission called");
+            await Awaitable.NextFrameAsync();
+            return "";
+#endif
+        }
+#else
         public static async Task<string> RequestPermission(RequestPermissionPermission permission)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
@@ -90,6 +152,7 @@ namespace AppsInToss
             return "";
 #endif
         }
+#endif
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]

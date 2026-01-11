@@ -9,6 +9,9 @@ using System;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using UnityEngine.Scripting;
+#if UNITY_6000_0_OR_NEWER
+using UnityEngine;
+#endif
 
 namespace AppsInToss
 {
@@ -20,6 +23,25 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Media")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<ImageResponse[]> FetchAlbumPhotos(FetchAlbumPhotosOptions options = null)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<ImageResponse[]>();
+            string callbackId = AITCore.Instance.RegisterCallback<ImageResponse[]>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error)
+            );
+            __fetchAlbumPhotos_Internal(AITJsonSettings.Serialize(options), callbackId, "ImageResponse[]");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] FetchAlbumPhotos called");
+            await Awaitable.NextFrameAsync();
+            return new ImageResponse[0];
+#endif
+        }
+#else
         public static async Task<ImageResponse[]> FetchAlbumPhotos(FetchAlbumPhotosOptions options = null)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
@@ -37,6 +59,7 @@ namespace AppsInToss
             return new ImageResponse[0];
 #endif
         }
+#endif
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
@@ -45,6 +68,25 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Media")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<ImageResponse> OpenCamera(OpenCameraOptions options = null)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<ImageResponse>();
+            string callbackId = AITCore.Instance.RegisterCallback<ImageResponse>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error)
+            );
+            __openCamera_Internal(AITJsonSettings.Serialize(options), callbackId, "ImageResponse");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] OpenCamera called");
+            await Awaitable.NextFrameAsync();
+            return default(ImageResponse);
+#endif
+        }
+#else
         public static async Task<ImageResponse> OpenCamera(OpenCameraOptions options = null)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
@@ -62,6 +104,7 @@ namespace AppsInToss
             return default(ImageResponse);
 #endif
         }
+#endif
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
@@ -71,6 +114,25 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Media")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable SaveBase64Data(SaveBase64DataParams paramsParam)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource();
+            string callbackId = AITCore.Instance.RegisterCallback<object>(
+                result => acs.SetResult(),
+                error => acs.SetException(error)
+            );
+            __saveBase64Data_Internal(AITJsonSettings.Serialize(paramsParam), callbackId, "void");
+            await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] SaveBase64Data called");
+            await Awaitable.NextFrameAsync();
+            // void return - nothing to return
+#endif
+        }
+#else
         public static async Task SaveBase64Data(SaveBase64DataParams paramsParam)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
@@ -88,6 +150,7 @@ namespace AppsInToss
             // void return - nothing to return
 #endif
         }
+#endif
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using AppsInToss;
 
 /// <summary>
 /// 파라미터 입력 UI 렌더러
@@ -16,6 +17,7 @@ public class ParameterInputRenderer
     private readonly Dictionary<string, int> _enumSelectedIndices = new Dictionary<string, int>();
     private readonly Dictionary<string, bool> _nestedFoldouts = new Dictionary<string, bool>();
     private readonly Dictionary<string, bool> _enumDropdownOpen = new Dictionary<string, bool>();
+    private readonly Dictionary<string, bool> _isPasting = new Dictionary<string, bool>();
 
     /// <summary>
     /// 모든 입력 상태 초기화
@@ -28,6 +30,7 @@ public class ParameterInputRenderer
         _enumSelectedIndices.Clear();
         _nestedFoldouts.Clear();
         _enumDropdownOpen.Clear();
+        _isPasting.Clear();
     }
 
     /// <summary>
@@ -231,12 +234,51 @@ public class ParameterInputRenderer
             _stringInputs[fieldPath] = value;
         }
 
+        if (!_isPasting.TryGetValue(fieldPath, out bool isPasting))
+        {
+            isPasting = false;
+            _isPasting[fieldPath] = isPasting;
+        }
+
         GUILayout.BeginHorizontal();
         GUILayout.Space(indentLevel * 20);
         GUILayout.Label($"{displayName}:", InteractiveAPITesterStyles.FieldLabelStyle, GUILayout.Width(120));
         _stringInputs[fieldPath] = GUILayout.TextField(value, InteractiveAPITesterStyles.TextFieldStyle, GUILayout.Height(36), GUILayout.ExpandWidth(true));
+
+        // PASTE 버튼
+        GUI.enabled = !isPasting;
+        if (GUILayout.Button(isPasting ? "..." : "PASTE", InteractiveAPITesterStyles.ButtonStyle, GUILayout.Width(70), GUILayout.Height(36)))
+        {
+            PasteFromClipboard(fieldPath);
+        }
+        GUI.enabled = true;
+
         GUILayout.EndHorizontal();
         GUILayout.Space(4);
+    }
+
+    /// <summary>
+    /// 클립보드에서 문자열 붙여넣기
+    /// </summary>
+    private async void PasteFromClipboard(string fieldPath)
+    {
+        _isPasting[fieldPath] = true;
+        try
+        {
+            string text = await AIT.GetClipboardText();
+            if (!string.IsNullOrEmpty(text))
+            {
+                _stringInputs[fieldPath] = text.Trim();
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[ParameterInputRenderer] Clipboard read failed: {ex.Message}");
+        }
+        finally
+        {
+            _isPasting[fieldPath] = false;
+        }
     }
 
     /// <summary>

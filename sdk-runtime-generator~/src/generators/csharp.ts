@@ -719,17 +719,43 @@ export class CSharpGenerator {
     }
 
     // 콜백 기반 API의 options 파라미터만 추출
-    // - top-level export: onEvent, onError 제외
-    // - namespace method: args 객체 내의 options 프로퍼티만 사용
+    // - args 객체 패턴 (namespace method 또는 단일 파라미터 top-level export): args 객체 내의 options 프로퍼티만 사용
+    // - 직접 파라미터 패턴: onEvent, onError 제외
     let callbackApiParameters = parameters;
     if (api.isCallbackBased) {
-      if (api.namespace && !api.isTopLevelExport && api.parameters.length === 1) {
-        // namespace method 패턴: args 객체 내의 options 프로퍼티 추출
+      // args 객체 패턴 감지: 파라미터가 1개이고, 그 타입이 object이며, options 프로퍼티가 있는 경우
+      const hasArgsObjectPattern = api.parameters.length === 1 &&
+        api.parameters[0].type.kind === 'object' &&
+        api.parameters[0].type.properties?.some(p => p.name === 'options');
+
+      if (hasArgsObjectPattern) {
+        // args 객체 패턴: args 객체 내의 options 프로퍼티 추출
         const argsType = api.parameters[0].type;
         if (argsType.kind === 'object' && argsType.properties) {
           const optionsProp = argsType.properties.find(p => p.name === 'options');
           if (optionsProp) {
-            const optionsTypeName = mapToCSharpType(optionsProp.type);
+            let optionsTypeName: string;
+
+            // 익명 객체 타입인지 확인
+            const isAnonymousObject = optionsProp.type.kind === 'object' &&
+              (optionsProp.type.name === '__type' || optionsProp.type.name === 'object' ||
+               optionsProp.type.name.startsWith('{'));
+
+            if (isAnonymousObject && argsType.name && argsType.name !== '__type') {
+              // 부모 타입명 + 'Options' 패턴으로 타입명 생성
+              // 예: ContactsViralParams + options -> ContactsViralParamsOptions
+              // 타입명 정리: import("...").TypeName -> TypeName, 특수문자 제거
+              let parentTypeName = argsType.name;
+              if (parentTypeName.includes('.')) {
+                parentTypeName = parentTypeName.split('.').pop() || parentTypeName;
+              }
+              parentTypeName = parentTypeName.replace(/["'{}(),|$<>]/g, '').trim();
+              optionsTypeName = `${parentTypeName}Options`;
+            } else {
+              // named type이면 mapToCSharpType 사용
+              optionsTypeName = mapToCSharpType(optionsProp.type);
+            }
+
             callbackApiParameters = [{
               paramName: 'options',
               paramType: optionsTypeName,
@@ -742,7 +768,7 @@ export class CSharpGenerator {
           }
         }
       } else {
-        // top-level export 패턴: onEvent, onError 제외
+        // 직접 파라미터 패턴: onEvent, onError 제외
         callbackApiParameters = parameters.filter(p => p.paramName !== 'onEvent' && p.paramName !== 'onError');
       }
     }
@@ -751,8 +777,12 @@ export class CSharpGenerator {
     const innerType = api.returnType.kind === 'promise' ? api.returnType.promiseType : api.returnType;
     const isNullableReturn = innerType?.isNullable === true && callbackType !== 'void';
 
-    // 네임스페이스 콜백 기반 API 여부 (args 객체 패턴)
-    const isNamespaceCallbackBased = api.isCallbackBased && api.namespace && !api.isTopLevelExport;
+    // args 객체 패턴 콜백 기반 API 여부 (네임스페이스 메서드 또는 단일 파라미터 top-level export)
+    // 파라미터가 1개이고, 그 타입이 object이며, options 프로퍼티가 있는 경우
+    const hasArgsObjectPattern = api.parameters.length === 1 &&
+      api.parameters[0].type.kind === 'object' &&
+      api.parameters[0].type.properties?.some(p => p.name === 'options');
+    const isNamespaceCallbackBased = api.isCallbackBased && hasArgsObjectPattern;
 
     return {
       name: api.name,

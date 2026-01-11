@@ -532,10 +532,13 @@ ${onEventHandler}
    * 이 API들은 onEvent/onError 콜백을 받고 unsubscribe 함수를 반환함
    */
   private generateTypescriptCallbackFunction(api: ParsedAPI): string {
-    // 네임스페이스 메서드인지 확인 (args 객체 패턴)
-    const isNamespaceMethod = api.namespace && !api.isTopLevelExport;
+    // args 객체 패턴 감지: 파라미터가 1개이고, 그 타입이 object이며, options 프로퍼티가 있는 경우
+    // 네임스페이스 메서드 또는 단일 파라미터 top-level export (예: contactsViral)
+    const hasArgsObjectPattern = api.parameters.length === 1 &&
+      api.parameters[0].type.kind === 'object' &&
+      api.parameters[0].type.properties?.some(p => p.name === 'options');
 
-    if (isNamespaceMethod) {
+    if (hasArgsObjectPattern) {
       return this.generateTypescriptNamespaceCallbackFunction(api);
     }
 
@@ -630,14 +633,17 @@ ${jsConversions ? '\n' + jsConversions + '\n' : ''}
   }
 
   /**
-   * 네임스페이스 메서드용 콜백 기반 TypeScript 함수 생성
+   * args 객체 패턴 콜백 기반 TypeScript 함수 생성
    *
-   * 패턴: GoogleAdMob.loadAppsInTossAdMob({ options, onEvent, onError })
+   * 패턴: GoogleAdMob.loadAppsInTossAdMob({ options, onEvent, onError }) 또는 contactsViral({ options, onEvent, onError })
    * - Unity에서 options 객체를 JSON으로 직렬화하여 전달
    * - JavaScript에서 파싱 후 onEvent/onError 콜백과 합쳐서 호출
    */
   private generateTypescriptNamespaceCallbackFunction(api: ParsedAPI): string {
-    const apiCallExpr = `window.AppsInToss.${api.namespace}.${api.originalName}`;
+    // API 호출 표현식: 네임스페이스가 있으면 AppsInToss.Namespace.method, 없으면 AppsInToss.method
+    const apiCallExpr = api.namespace
+      ? `window.AppsInToss.${api.namespace}.${api.originalName}`
+      : `window.AppsInToss.${api.originalName}`;
 
     return `export const __${api.name}_Internal = (options: number, subscriptionId: number, typeName: number): void => {
   const subId = UTF8ToString(subscriptionId);
@@ -877,10 +883,13 @@ ${nestedCallbacksCode}
    * 2. Namespace method: GoogleAdMob.loadAppsInTossAdMob({ options, onEvent, onError }) - args 객체
    */
   private generateCallbackBasedFunction(api: ParsedAPI): string {
-    // 네임스페이스 메서드인지 확인 (args 객체 패턴)
-    const isNamespaceMethod = api.namespace && !api.isTopLevelExport;
+    // args 객체 패턴 감지: 파라미터가 1개이고, 그 타입이 object이며, options 프로퍼티가 있는 경우
+    // 네임스페이스 메서드 또는 단일 파라미터 top-level export (예: contactsViral)
+    const hasArgsObjectPattern = api.parameters.length === 1 &&
+      api.parameters[0].type.kind === 'object' &&
+      api.parameters[0].type.properties?.some(p => p.name === 'options');
 
-    if (isNamespaceMethod) {
+    if (hasArgsObjectPattern) {
       return this.generateNamespaceCallbackBasedFunction(api);
     }
 
@@ -979,7 +988,10 @@ ${paramConversions ? '\n' + paramConversions + '\n' : ''}
    * - JavaScript에서 파싱 후 onEvent/onError 콜백과 합쳐서 호출
    */
   private generateNamespaceCallbackBasedFunction(api: ParsedAPI): string {
-    const apiCallExpr = `window.AppsInToss.${api.namespace}.${api.originalName}`;
+    // API 호출 표현식: 네임스페이스가 있으면 AppsInToss.Namespace.method, 없으면 AppsInToss.method
+    const apiCallExpr = api.namespace
+      ? `window.AppsInToss.${api.namespace}.${api.originalName}`
+      : `window.AppsInToss.${api.originalName}`;
 
     return `    __${api.name}_Internal: function(options, subscriptionId, typeName) {
         var subId = UTF8ToString(subscriptionId);

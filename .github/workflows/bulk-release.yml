@@ -1,0 +1,194 @@
+name: Bulk Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      versions:
+        description: '버전 목록 (콤마 구분, 예: 1.5.0,1.6.0,1.7.0) - 비어있으면 모든 release/v* 태그 대상'
+        required: false
+        type: string
+      max_parallel:
+        description: '동시 실행 버전 수 (기본: 2)'
+        required: false
+        type: number
+        default: 2
+      dry_run:
+        description: '테스트 모드 (버전 목록만 확인, 실제 릴리즈 안함)'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  # =====================================================
+  # 버전 목록 준비
+  # =====================================================
+  prepare-versions:
+    name: 버전 목록 준비
+    runs-on: ubuntu-latest
+
+    outputs:
+      versions: ${{ steps.extract.outputs.versions }}
+      version_count: ${{ steps.extract.outputs.count }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: 버전 추출
+        id: extract
+        run: |
+          INPUT_VERSIONS="${{ inputs.versions }}"
+
+          if [ -n "$INPUT_VERSIONS" ]; then
+            echo "=== 입력된 버전 사용 ==="
+            # 콤마로 구분된 버전을 줄바꿈으로 변환 후 정렬
+            VERSIONS=$(echo "$INPUT_VERSIONS" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sort -V)
+          else
+            echo "=== Git 태그에서 버전 추출 ==="
+            # release/v* 태그에서 버전 추출
+            VERSIONS=$(git tag -l 'release/v*' | sed 's/release\/v//' | sort -V)
+          fi
+
+          # 버전이 없으면 에러
+          if [ -z "$VERSIONS" ]; then
+            echo "::error::릴리즈할 버전이 없습니다"
+            exit 1
+          fi
+
+          # 버전 목록 출력
+          echo "발견된 버전:"
+          echo "$VERSIONS"
+          echo ""
+
+          # JSON 배열로 변환
+          JSON_VERSIONS=$(echo "$VERSIONS" | jq -R -s -c 'split("\n") | map(select(. != ""))')
+          echo "JSON 배열: ${JSON_VERSIONS}"
+
+          # 버전 개수
+          COUNT=$(echo "$VERSIONS" | grep -c .)
+          echo "총 ${COUNT}개 버전"
+
+          # 출력 설정
+          echo "versions=${JSON_VERSIONS}" >> $GITHUB_OUTPUT
+          echo "count=${COUNT}" >> $GITHUB_OUTPUT
+
+      - name: 버전 목록 요약
+        run: |
+          echo "## 일괄 릴리즈 대상 버전" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| # | 버전 |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|------|" >> $GITHUB_STEP_SUMMARY
+
+          VERSIONS='${{ steps.extract.outputs.versions }}'
+          INDEX=1
+          for VERSION in $(echo "$VERSIONS" | jq -r '.[]'); do
+            echo "| ${INDEX} | v${VERSION} |" >> $GITHUB_STEP_SUMMARY
+            INDEX=$((INDEX + 1))
+          done
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**총 ${{ steps.extract.outputs.count }}개 버전**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**동시 실행 수**: ${{ inputs.max_parallel || 2 }}" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "> **테스트 모드**: 실제 릴리즈가 실행되지 않습니다" >> $GITHUB_STEP_SUMMARY
+          fi
+
+  # =====================================================
+  # 각 버전별 릴리즈 실행 (병렬)
+  # =====================================================
+  release-versions:
+    name: 릴리즈 v${{ matrix.version }}
+    needs: prepare-versions
+    if: ${{ !inputs.dry_run && needs.prepare-versions.outputs.version_count > 0 }}
+
+    strategy:
+      fail-fast: false
+      max-parallel: ${{ inputs.max_parallel || 2 }}
+      matrix:
+        version: ${{ fromJSON(needs.prepare-versions.outputs.versions) }}
+
+    uses: ./.github/workflows/release.yml
+    with:
+      version: ${{ matrix.version }}
+    secrets: inherit
+
+  # =====================================================
+  # 결과 요약
+  # =====================================================
+  summary:
+    name: 일괄 릴리즈 요약
+    runs-on: ubuntu-latest
+    needs: [prepare-versions, release-versions]
+    if: always()
+
+    steps:
+      - name: 결과 수집
+        id: results
+        run: |
+          VERSIONS='${{ needs.prepare-versions.outputs.versions }}'
+          RELEASE_RESULT='${{ needs.release-versions.result }}'
+          DRY_RUN='${{ inputs.dry_run }}'
+
+          echo "release_result=${RELEASE_RESULT}" >> $GITHUB_OUTPUT
+          echo "dry_run=${DRY_RUN}" >> $GITHUB_OUTPUT
+
+      - name: 결과 요약 생성
+        run: |
+          echo "## 일괄 릴리즈 결과" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          DRY_RUN="${{ steps.results.outputs.dry_run }}"
+          RELEASE_RESULT="${{ steps.results.outputs.release_result }}"
+          VERSIONS='${{ needs.prepare-versions.outputs.versions }}'
+          VERSION_COUNT="${{ needs.prepare-versions.outputs.version_count }}"
+
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "### 테스트 모드" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "실제 릴리즈가 실행되지 않았습니다." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**대상 버전 (${VERSION_COUNT}개)**:" >> $GITHUB_STEP_SUMMARY
+            for VERSION in $(echo "$VERSIONS" | jq -r '.[]'); do
+              echo "- v${VERSION}" >> $GITHUB_STEP_SUMMARY
+            done
+            exit 0
+          fi
+
+          # 릴리즈 결과에 따른 상태 표시
+          case "$RELEASE_RESULT" in
+            success)
+              echo "### ✅ 모든 릴리즈 성공" >> $GITHUB_STEP_SUMMARY
+              ;;
+            failure)
+              echo "### ❌ 일부 릴리즈 실패" >> $GITHUB_STEP_SUMMARY
+              ;;
+            cancelled)
+              echo "### ⚠️ 릴리즈 취소됨" >> $GITHUB_STEP_SUMMARY
+              ;;
+            skipped)
+              echo "### ⏭️ 릴리즈 스킵됨" >> $GITHUB_STEP_SUMMARY
+              ;;
+            *)
+              echo "### ❓ 알 수 없는 상태: ${RELEASE_RESULT}" >> $GITHUB_STEP_SUMMARY
+              ;;
+          esac
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**처리된 버전 (${VERSION_COUNT}개)**:" >> $GITHUB_STEP_SUMMARY
+
+          for VERSION in $(echo "$VERSIONS" | jq -r '.[]'); do
+            TAG_NAME="release/v${VERSION}"
+            RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/${TAG_NAME}"
+            echo "- [v${VERSION}](${RELEASE_URL})" >> $GITHUB_STEP_SUMMARY
+          done
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "개별 릴리즈 상세 결과는 위의 각 job에서 확인하세요." >> $GITHUB_STEP_SUMMARY

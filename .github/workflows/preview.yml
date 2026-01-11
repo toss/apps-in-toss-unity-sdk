@@ -13,6 +13,10 @@ on:
         default: 'macos-6000.2'
         type: string
 
+concurrency:
+  group: preview-${{ inputs.target_ref }}
+  cancel-in-progress: false
+
 jobs:
   # =====================================================
   # 타겟 파싱

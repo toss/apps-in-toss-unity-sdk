@@ -17,7 +17,8 @@ missing_meta_files=()
 
 for dir in "${UNITY_DIRS[@]}"; do
     if [ -d "$dir" ]; then
-        # 디렉토리 내 모든 파일 검사 (숨김 파일, .meta 파일, node_modules 제외)
+        # 디렉토리 내 모든 파일 검사 (숨김 파일, .meta 파일, node_modules, ~ 접미사 폴더 제외)
+        # ~ 접미사 폴더는 Unity가 무시하는 특수 폴더이므로 .meta 파일이 필요 없음
         while IFS= read -r -d '' file; do
             # .meta 파일이 존재하는지 확인
             meta_file="${file}.meta"

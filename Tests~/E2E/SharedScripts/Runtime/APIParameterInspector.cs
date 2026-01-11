@@ -394,9 +394,11 @@ public static class APIParameterInspector
             // 특수 메서드 제외 (get_, set_, add_, remove_ 등)
             if (method.IsSpecialName) continue;
 
-            // Task, Task<T>, 또는 Action 반환 타입만 포함 (일반 void 메서드 제외)
+            // Task, Task<T>, Awaitable, Awaitable<T>, 또는 Action 반환 타입만 포함 (일반 void 메서드 제외)
             var returnTypeName = method.ReturnType.Name;
-            if (!returnTypeName.StartsWith("Task") && !returnTypeName.StartsWith("Action")) continue;
+            if (!returnTypeName.StartsWith("Task") &&
+                !returnTypeName.StartsWith("Awaitable") &&
+                !returnTypeName.StartsWith("Action")) continue;
 
             // 카테고리 추출 (APICategoryAttribute에서)
             string category = "Other";

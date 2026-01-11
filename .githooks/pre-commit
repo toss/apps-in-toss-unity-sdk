@@ -24,7 +24,7 @@ for dir in "${UNITY_DIRS[@]}"; do
             if [ ! -f "$meta_file" ]; then
                 missing_meta_files+=("$file")
             fi
-        done < <(find "$dir" -type d -name "node_modules" -prune -o -type f ! -name ".*" ! -name "*.meta" ! -name ".DS_Store" ! -name "*.swp" ! -name "*.tmp" -print0)
+        done < <(find "$dir" -type d -name "node_modules" -prune -o -type d -name "*~" -prune -o -type f ! -name ".*" ! -name "*.meta" ! -name ".DS_Store" ! -name "*.swp" ! -name "*.tmp" -print0)
     fi
 done
 

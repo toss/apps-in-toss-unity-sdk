@@ -12,6 +12,11 @@ on:
         description: 'Clean Unity Library cache'
         type: boolean
         default: false
+      sdk_version_override:
+        description: 'SDK 버전 오버라이드 (호환성 테스트용, 예: 1.5.0)'
+        type: string
+        required: false
+        default: ''
 
   # update.yml에서 호출
   workflow_call:
@@ -24,6 +29,11 @@ on:
         description: 'Clean Unity Library cache'
         type: boolean
         default: false
+      sdk_version_override:
+        description: 'Override SDK version for compatibility testing'
+        type: string
+        required: false
+        default: ''
 
 concurrency:
   group: e2e-test-${{ github.ref }}
@@ -202,6 +212,7 @@ jobs:
       run-e2e-test: true
       run-benchmark: true
       clean-library: ${{ inputs.clean_library || false }}
+      sdk-version-override: ${{ inputs.sdk_version_override || '' }}
 
   # =====================================================
   # E2E Tests - Windows (테스트 1-5만 실행)
@@ -225,6 +236,7 @@ jobs:
       run-e2e-test: true
       run-benchmark: false
       clean-library: ${{ inputs.clean_library || false }}
+      sdk-version-override: ${{ inputs.sdk_version_override || '' }}
 
   # =====================================================
   # Test Report Summary

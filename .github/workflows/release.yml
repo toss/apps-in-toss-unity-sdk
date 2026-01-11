@@ -393,10 +393,15 @@ jobs:
           # 기존 릴리즈가 있으면 삭제 (upsert) - 태그는 유지 (이미 푸시됨)
           gh release delete "${TAG_NAME}" --yes 2>/dev/null || true
 
-          # 태그 기반으로 릴리즈 생성 (태그가 이미 올바른 커밋을 가리킴)
+          # 태그 전파 대기 (GitHub API 동기화)
+          echo "태그 전파 대기 중 (5초)..."
+          sleep 5
+
+          # 태그 기반으로 릴리즈 생성 (--verify-tag로 태그 확인)
           gh release create "${TAG_NAME}" \
             --title "v${VERSION}" \
-            --notes "$RELEASE_BODY"
+            --notes "$RELEASE_BODY" \
+            --verify-tag
 
           echo "GitHub Release 생성 완료"
           echo "URL: https://github.com/${{ github.repository }}/releases/tag/${TAG_NAME}"

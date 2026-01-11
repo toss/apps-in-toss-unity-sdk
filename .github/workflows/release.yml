@@ -215,6 +215,7 @@ jobs:
       os: macos
       unity-version: ${{ matrix.unity-version }}
       web-framework-version: ${{ needs.release.outputs.version }}
+      sdk-version: ${{ needs.release.outputs.version }}
       run-build: true
       run-e2e-test: false
       run-benchmark: false
@@ -239,6 +240,7 @@ jobs:
       os: windows
       unity-version: ${{ matrix.unity-version }}
       web-framework-version: ${{ needs.release.outputs.version }}
+      sdk-version: ${{ needs.release.outputs.version }}
       run-build: true
       run-e2e-test: false
       run-benchmark: false

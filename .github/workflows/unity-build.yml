@@ -122,6 +122,18 @@ jobs:
       # =====================================================
       # SDK 버전 오버라이드 (호환성 테스트용)
       # =====================================================
+      - name: Setup Node.js (for SDK override)
+        if: inputs.sdk-version-override != ''
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Setup pnpm (for SDK override)
+        if: inputs.sdk-version-override != ''
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
       - name: Override SDK Version
         if: inputs.sdk-version-override != ''
         shell: bash
@@ -132,14 +144,31 @@ jobs:
           echo "=== SDK Version Override ==="
           echo "Original version: $(grep '"version"' $PACKAGE_JSON)"
 
-          # sed로 버전 변경 (macOS/Linux 호환)
+          # 1. package.json 버전 변경
           if [[ "$RUNNER_OS" == "macOS" ]]; then
             sed -i '' "s/\"version\": \"[^\"]*\"/\"version\": \"${OVERRIDE_VERSION}\"/" $PACKAGE_JSON
           else
             sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"${OVERRIDE_VERSION}\"/" $PACKAGE_JSON
           fi
-
           echo "Overridden version: $(grep '"version"' $PACKAGE_JSON)"
+
+          # 2. SDK Runtime Generator에서 해당 버전의 web-framework 설치 및 SDK 재생성
+          echo ""
+          echo "=== Regenerating SDK with @apps-in-toss/web-framework@${OVERRIDE_VERSION} ==="
+          cd sdk-runtime-generator~
+
+          # web-framework 버전 변경
+          pnpm add @apps-in-toss/web-framework@${OVERRIDE_VERSION}
+
+          # SDK 재생성
+          pnpm install
+          pnpm generate
+
+          echo ""
+          echo "=== SDK regeneration complete ==="
+          echo "Generated SDK files:"
+          ls -la ../Runtime/SDK/
+
           echo ""
           echo "This will affect Unity Version Defines:"
           echo "  - AIT_SDK_1_7_OR_LATER will be $([ $(echo \"$OVERRIDE_VERSION\" | cut -d. -f1,2 | tr -d .) -ge 17 ] && echo 'DEFINED' || echo 'NOT defined')"

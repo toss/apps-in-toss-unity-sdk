@@ -11,6 +11,12 @@
     "precompiledReferences": [],
     "autoReferenced": true,
     "defineConstraints": [],
-    "versionDefines": [],
+    "versionDefines": [
+        {
+            "name": "im.toss.apps-in-toss-unity-sdk",
+            "expression": "1.7.0",
+            "define": "AIT_SDK_1_7_OR_LATER"
+        }
+    ],
     "noEngineReferences": false
 }

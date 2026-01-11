@@ -118,38 +118,47 @@ public class ContactsViralTester : MonoBehaviour
 
         try
         {
-            // ContactsViral API 호출 (새 async API 사용)
+            // ContactsViral 이벤트 핸들러
+            Action<ContactsViralEvent> onEvent = (evt) =>
+            {
+                Debug.Log($"[ContactsViralTester] onEvent: {evt?.Type}");
+                eventLog.Add($"[{DateTime.Now:HH:mm:ss}] onEvent: Type={evt?.Type}");
+
+                if (evt?.Data != null)
+                {
+                    eventLog.Add($"[{DateTime.Now:HH:mm:ss}]   Data: {JsonUtility.ToJson(evt.Data)}");
+                }
+
+                // 특정 이벤트 타입에 따른 상태 업데이트
+                if (evt?.Type == "success" || evt?.Type == "completed")
+                {
+                    status = "공유 완료!";
+                    eventLog.Add($"[{DateTime.Now:HH:mm:ss}] ✓ 공유 완료 이벤트 수신됨");
+                }
+                else if (evt?.Type == "reward")
+                {
+                    status = "리워드 수신!";
+                    eventLog.Add($"[{DateTime.Now:HH:mm:ss}] ✓ 리워드 이벤트 수신됨");
+                }
+                else if (evt?.Type == "closed" || evt?.Type == "dismissed")
+                {
+                    status = "공유 창 닫힘";
+                    eventLog.Add($"[{DateTime.Now:HH:mm:ss}] 공유 창이 닫혔습니다");
+                }
+            };
+
+            // ContactsViral API 호출
+#if AIT_SDK_1_7_OR_LATER
+            // v1.7.0+ 콜백 패턴
+            _unsubscribe = AIT.ContactsViral(onEvent, new ContactsViralParamsOptions { ModuleId = moduleId });
+#else
+            // v1.6.x 이하 async params 패턴
             _unsubscribe = await AIT.ContactsViral(new ContactsViralParams
             {
                 Options = new ContactsViralParamsOptions { ModuleId = moduleId },
-                OnEvent = (evt) =>
-                {
-                    Debug.Log($"[ContactsViralTester] onEvent: {evt?.Type}");
-                    eventLog.Add($"[{DateTime.Now:HH:mm:ss}] onEvent: Type={evt?.Type}");
-
-                    if (evt?.Data != null)
-                    {
-                        eventLog.Add($"[{DateTime.Now:HH:mm:ss}]   Data: {JsonUtility.ToJson(evt.Data)}");
-                    }
-
-                    // 특정 이벤트 타입에 따른 상태 업데이트
-                    if (evt?.Type == "success" || evt?.Type == "completed")
-                    {
-                        status = "공유 완료!";
-                        eventLog.Add($"[{DateTime.Now:HH:mm:ss}] ✓ 공유 완료 이벤트 수신됨");
-                    }
-                    else if (evt?.Type == "reward")
-                    {
-                        status = "리워드 수신!";
-                        eventLog.Add($"[{DateTime.Now:HH:mm:ss}] ✓ 리워드 이벤트 수신됨");
-                    }
-                    else if (evt?.Type == "closed" || evt?.Type == "dismissed")
-                    {
-                        status = "공유 창 닫힘";
-                        eventLog.Add($"[{DateTime.Now:HH:mm:ss}] 공유 창이 닫혔습니다");
-                    }
-                }
+                OnEvent = onEvent
             });
+#endif
 
             isActive = true;
             status = "공유 창 열림 (이벤트 대기 중...)";

@@ -205,17 +205,35 @@ public class RuntimeAPITester : MonoBehaviour
         // Certificate API
         TestAPICall("AppsInTossSignTossCert", () => AIT.AppsInTossSignTossCert(new AppsInTossSignTossCertParams { TxId = "test-tx" }));
 
-        // Visibility API (이벤트 기반)
+        // Visibility API (이벤트 기반) - 콜백 기반 API (Action 반환)
         TestAPICall("OnVisibilityChangedByTransparentServiceWeb", () =>
-            AIT.OnVisibilityChangedByTransparentServiceWeb(new OnVisibilityChangedByTransparentServiceWebEventParams { OnEvent = (visible) => { } }));
+        {
+            AIT.OnVisibilityChangedByTransparentServiceWeb(
+                onEvent: (visible) => { },
+                options: new { }
+            );
+            return Task.CompletedTask;
+        });
 
-        // Location 이벤트 API
+        // Location 이벤트 API - 콜백 기반 API (Action 반환)
         TestAPICall("StartUpdateLocation", () =>
-            AIT.StartUpdateLocation(new StartUpdateLocationEventParams { OnEvent = (loc) => { } }));
+        {
+            AIT.StartUpdateLocation(
+                onEvent: (loc) => { },
+                options: new StartUpdateLocationOptions { Accuracy = Accuracy.Balanced }
+            );
+            return Task.CompletedTask;
+        });
 
-        // ContactsViral API
+        // ContactsViral API - 콜백 기반 API (Action 반환)
         TestAPICall("ContactsViral", () =>
-            AIT.ContactsViral(new ContactsViralParams { OnEvent = (evt) => { } }));
+        {
+            AIT.ContactsViral(
+                onEvent: (evt) => { },
+                options: new ContactsViralParamsOptions { ModuleId = "test" }
+            );
+            return Task.CompletedTask;
+        });
     }
 
     void TestAPICall(string apiName, Func<Task> apiCall)

@@ -46,6 +46,11 @@ on:
         type: string
         required: false
         default: ''
+      sdk-version-override:
+        description: 'Override SDK version in package.json (for compatibility testing)'
+        type: string
+        required: false
+        default: ''
       clean-library:
         description: 'Clean Unity Library cache'
         type: boolean
@@ -113,6 +118,31 @@ jobs:
         with:
           repository: ${{ inputs.repository || github.repository }}
           ref: ${{ inputs.ref || github.ref }}
+
+      # =====================================================
+      # SDK 버전 오버라이드 (호환성 테스트용)
+      # =====================================================
+      - name: Override SDK Version
+        if: inputs.sdk-version-override != ''
+        shell: bash
+        run: |
+          OVERRIDE_VERSION="${{ inputs.sdk-version-override }}"
+          PACKAGE_JSON="package.json"
+
+          echo "=== SDK Version Override ==="
+          echo "Original version: $(grep '"version"' $PACKAGE_JSON)"
+
+          # sed로 버전 변경 (macOS/Linux 호환)
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            sed -i '' "s/\"version\": \"[^\"]*\"/\"version\": \"${OVERRIDE_VERSION}\"/" $PACKAGE_JSON
+          else
+            sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"${OVERRIDE_VERSION}\"/" $PACKAGE_JSON
+          fi
+
+          echo "Overridden version: $(grep '"version"' $PACKAGE_JSON)"
+          echo ""
+          echo "This will affect Unity Version Defines:"
+          echo "  - AIT_SDK_1_7_OR_LATER will be $([ $(echo \"$OVERRIDE_VERSION\" | cut -d. -f1,2 | tr -d .) -ge 17 ] && echo 'DEFINED' || echo 'NOT defined')"
 
       # =====================================================
       # Windows Defender 제외 (Windows)

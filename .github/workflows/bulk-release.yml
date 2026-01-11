@@ -92,15 +92,16 @@ jobs:
   # =====================================================
   # 각 버전별 릴리즈 실행 (병렬)
   # =====================================================
+  # 테스트: 정적 matrix로 reusable workflow 호출
   release-versions:
     name: 릴리즈 v${{ matrix.version }}
     needs: prepare-versions
 
     strategy:
       fail-fast: false
-      max-parallel: ${{ inputs.max_parallel || 2 }}
+      max-parallel: 2
       matrix:
-        version: ${{ fromJSON(needs.prepare-versions.outputs.versions) }}
+        version: ["1.5.0"]
 
     uses: ./.github/workflows/release.yml
     with:

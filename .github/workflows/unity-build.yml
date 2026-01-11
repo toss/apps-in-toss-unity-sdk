@@ -41,6 +41,11 @@ on:
         type: boolean
         required: false
         default: false
+      sdk-version:
+        description: 'SDK version for artifact naming (bulk release)'
+        type: string
+        required: false
+        default: ''
       clean-library:
         description: 'Clean Unity Library cache'
         type: boolean
@@ -532,7 +537,12 @@ jobs:
         id: artifact
         shell: bash
         run: |
-          echo "name=ait-build-${{ inputs.os }}-${{ inputs.unity-version }}" >> $GITHUB_OUTPUT
+          SDK_VERSION="${{ inputs.sdk-version }}"
+          if [ -n "$SDK_VERSION" ]; then
+            echo "name=ait-build-${{ inputs.os }}-${{ inputs.unity-version }}-v${SDK_VERSION}" >> $GITHUB_OUTPUT
+          else
+            echo "name=ait-build-${{ inputs.os }}-${{ inputs.unity-version }}" >> $GITHUB_OUTPUT
+          fi
 
       - name: Upload AIT Build
         if: inputs.run-build

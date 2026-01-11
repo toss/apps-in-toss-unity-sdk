@@ -124,23 +124,27 @@ jobs:
         run: |
           echo "=== 릴리즈 빌드용 테스트 코드 제외 ==="
 
-          # SharedScripts 패키지 참조 제거 (테스트 코드는 릴리즈에 불필요)
-          # 이 코드는 main 브랜치의 최신 API를 사용하므로 과거 SDK 버전과 호환되지 않음
-          for manifest in Tests~/E2E/SampleUnityProject-*/Packages/manifest.json; do
-            if [ -f "$manifest" ]; then
-              echo "패키지 참조 제거: $manifest"
-              # jq로 im.toss.sdk-test-scripts 의존성 제거
-              jq 'del(.dependencies["im.toss.sdk-test-scripts"])' "$manifest" > tmp.json && mv tmp.json "$manifest"
-            fi
-          done
+          # SharedScripts/Runtime의 .cs 파일만 삭제 (API 호환성 문제가 있는 코드)
+          # Editor 폴더(E2EBuildRunner.cs)는 빌드에 필요하므로 유지
+          # asmdef와 .meta 파일은 Unity 프로젝트 구조를 위해 유지
+          SHARED_RUNTIME="Tests~/E2E/SharedScripts/Runtime"
+          if [ -d "$SHARED_RUNTIME" ]; then
+            echo "SharedScripts/Runtime .cs 파일 삭제 중..."
+            find "$SHARED_RUNTIME" -name "*.cs" -type f -delete
+            echo "삭제 완료. 남은 파일:"
+            ls -la "$SHARED_RUNTIME" || true
+          fi
 
-          # SharedScripts 디렉토리 제거
-          rm -rf Tests~/E2E/SharedScripts
-          echo "SharedScripts 디렉토리 제거됨"
+          # Plugins 폴더도 확인 (있다면 .cs 파일 삭제)
+          SHARED_PLUGINS="Tests~/E2E/SharedScripts/Plugins"
+          if [ -d "$SHARED_PLUGINS" ]; then
+            echo "SharedScripts/Plugins .cs 파일 삭제 중..."
+            find "$SHARED_PLUGINS" -name "*.cs" -type f -delete
+          fi
 
-          # 확인
-          echo "manifest.json 확인:"
-          head -20 Tests~/E2E/SampleUnityProject-2021.3/Packages/manifest.json
+          echo ""
+          echo "SharedScripts Editor 폴더 확인 (E2EBuildRunner.cs 유지됨):"
+          ls -la Tests~/E2E/SharedScripts/Editor/
 
       - name: Orphan Commit 생성 및 Push
         id: commit

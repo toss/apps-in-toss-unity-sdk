@@ -8,6 +8,21 @@ on:
         required: true
         type: string
 
+  # bulk-release.yml에서 호출용
+  workflow_call:
+    inputs:
+      version:
+        description: '릴리즈 버전'
+        required: true
+        type: string
+    secrets:
+      AIT_DEPLOY_KEY:
+        required: true
+      AIT_AD_INTERSTITIAL_ID:
+        required: false
+      AIT_AD_REWARDED_ID:
+        required: false
+
 jobs:
   # =====================================================
   # 버전 결정
@@ -24,7 +39,7 @@ jobs:
       - name: 버전 결정
         id: version
         run: |
-          VERSION="${{ github.event.inputs.version }}"
+          VERSION="${{ inputs.version }}"
           echo "입력된 버전: ${VERSION}"
 
           # Semver 형식 검증

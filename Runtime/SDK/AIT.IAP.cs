@@ -9,6 +9,9 @@ using System;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using UnityEngine.Scripting;
+#if UNITY_6000_0_OR_NEWER
+using UnityEngine;
+#endif
 
 namespace AppsInToss
 {
@@ -74,6 +77,25 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("IAP")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<IAPGetProductItemListResult> IAPGetProductItemList()
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<IAPGetProductItemListResult>();
+            string callbackId = AITCore.Instance.RegisterCallback<IAPGetProductItemListResult>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error)
+            );
+            __IAPGetProductItemList_Internal(callbackId, "IAPGetProductItemListResult");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] IAPGetProductItemList called");
+            await Awaitable.NextFrameAsync();
+            return default(IAPGetProductItemListResult);
+#endif
+        }
+#else
         public static async Task<IAPGetProductItemListResult> IAPGetProductItemList()
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
@@ -91,6 +113,7 @@ namespace AppsInToss
             return default(IAPGetProductItemListResult);
 #endif
         }
+#endif
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
@@ -102,6 +125,25 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("IAP")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<IAPGetPendingOrdersResult> IAPGetPendingOrders()
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<IAPGetPendingOrdersResult>();
+            string callbackId = AITCore.Instance.RegisterCallback<IAPGetPendingOrdersResult>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error)
+            );
+            __IAPGetPendingOrders_Internal(callbackId, "IAPGetPendingOrdersResult");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] IAPGetPendingOrders called");
+            await Awaitable.NextFrameAsync();
+            return default(IAPGetPendingOrdersResult);
+#endif
+        }
+#else
         public static async Task<IAPGetPendingOrdersResult> IAPGetPendingOrders()
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
@@ -119,6 +161,7 @@ namespace AppsInToss
             return default(IAPGetPendingOrdersResult);
 #endif
         }
+#endif
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
@@ -130,6 +173,25 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("IAP")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<CompletedOrRefundedOrdersResult> IAPGetCompletedOrRefundedOrders()
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<CompletedOrRefundedOrdersResult>();
+            string callbackId = AITCore.Instance.RegisterCallback<CompletedOrRefundedOrdersResult>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error)
+            );
+            __IAPGetCompletedOrRefundedOrders_Internal(callbackId, "CompletedOrRefundedOrdersResult");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] IAPGetCompletedOrRefundedOrders called");
+            await Awaitable.NextFrameAsync();
+            return default(CompletedOrRefundedOrdersResult);
+#endif
+        }
+#else
         public static async Task<CompletedOrRefundedOrdersResult> IAPGetCompletedOrRefundedOrders()
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
@@ -147,6 +209,7 @@ namespace AppsInToss
             return default(CompletedOrRefundedOrdersResult);
 #endif
         }
+#endif
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
@@ -158,6 +221,25 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("IAP")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<bool> IAPCompleteProductGrant(IAPCompleteProductGrantArgs_0 args_0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<bool>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error)
+            );
+            __IAPCompleteProductGrant_Internal(AITJsonSettings.Serialize(args_0), callbackId, "bool");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] IAPCompleteProductGrant called");
+            await Awaitable.NextFrameAsync();
+            return false;
+#endif
+        }
+#else
         public static async Task<bool> IAPCompleteProductGrant(IAPCompleteProductGrantArgs_0 args_0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
@@ -175,6 +257,7 @@ namespace AppsInToss
             return false;
 #endif
         }
+#endif
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]

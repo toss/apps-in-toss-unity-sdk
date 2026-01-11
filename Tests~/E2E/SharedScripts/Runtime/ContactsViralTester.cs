@@ -111,16 +111,18 @@ public class ContactsViralTester : MonoBehaviour
         GUILayout.EndVertical();
     }
 
-    private void ExecuteContactsViral()
+    private async void ExecuteContactsViral()
     {
         status = "공유 창 열기 중...";
         eventLog.Add($"[{DateTime.Now:HH:mm:ss}] contactsViral(moduleId: {moduleId}) 호출");
 
         try
         {
-            // ContactsViral API 호출
-            _unsubscribe = AIT.ContactsViral(
-                onEvent: (evt) =>
+            // ContactsViral API 호출 (새 async API 사용)
+            _unsubscribe = await AIT.ContactsViral(new ContactsViralParams
+            {
+                Options = new ContactsViralParamsOptions { ModuleId = moduleId },
+                OnEvent = (evt) =>
                 {
                     Debug.Log($"[ContactsViralTester] onEvent: {evt?.Type}");
                     eventLog.Add($"[{DateTime.Now:HH:mm:ss}] onEvent: Type={evt?.Type}");
@@ -146,16 +148,8 @@ public class ContactsViralTester : MonoBehaviour
                         status = "공유 창 닫힘";
                         eventLog.Add($"[{DateTime.Now:HH:mm:ss}] 공유 창이 닫혔습니다");
                     }
-                },
-                options: new ContactsViralParamsOptions { ModuleId = moduleId },
-                onError: (error) =>
-                {
-                    Debug.LogError($"[ContactsViralTester] onError: {error?.Message}");
-                    status = $"Error: {error?.Message}";
-                    eventLog.Add($"[{DateTime.Now:HH:mm:ss}] ✗ onError: {error?.ErrorCode} - {error?.Message}");
-                    isActive = false;
                 }
-            );
+            });
 
             isActive = true;
             status = "공유 창 열림 (이벤트 대기 중...)";

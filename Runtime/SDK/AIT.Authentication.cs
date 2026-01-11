@@ -9,6 +9,9 @@ using System;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using UnityEngine.Scripting;
+#if UNITY_6000_0_OR_NEWER
+using UnityEngine;
+#endif
 
 namespace AppsInToss
 {
@@ -20,6 +23,25 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Authentication")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<AppLoginResult> AppLogin()
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<AppLoginResult>();
+            string callbackId = AITCore.Instance.RegisterCallback<AppLoginResult>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error)
+            );
+            __appLogin_Internal(callbackId, "AppLoginResult");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] AppLogin called");
+            await Awaitable.NextFrameAsync();
+            return default(AppLoginResult);
+#endif
+        }
+#else
         public static async Task<AppLoginResult> AppLogin()
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
@@ -37,6 +59,7 @@ namespace AppsInToss
             return default(AppLoginResult);
 #endif
         }
+#endif
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
@@ -46,6 +69,25 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Authentication")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<bool?> GetIsTossLoginIntegratedService()
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<bool?>();
+            string callbackId = AITCore.Instance.RegisterCallback<bool?>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error)
+            );
+            __getIsTossLoginIntegratedService_Internal(callbackId, "bool?");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] GetIsTossLoginIntegratedService called");
+            await Awaitable.NextFrameAsync();
+            return null;
+#endif
+        }
+#else
         public static async Task<bool?> GetIsTossLoginIntegratedService()
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
@@ -63,6 +105,7 @@ namespace AppsInToss
             return null;
 #endif
         }
+#endif
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]

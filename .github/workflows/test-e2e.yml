@@ -25,6 +25,10 @@ on:
         type: boolean
         default: false
 
+concurrency:
+  group: e2e-test-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   # =====================================================
   # Ref 결정

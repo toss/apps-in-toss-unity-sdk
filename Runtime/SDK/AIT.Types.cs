@@ -684,7 +684,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class SafeAreaInsetsGetResult
+    public class SafeAreaInsets
     {
         [Preserve]
         [JsonProperty("top")]
@@ -702,30 +702,19 @@ namespace AppsInToss
         public string error;
     }
 
+    /// <summary>
+    /// 하위호환성을 위한 deprecated alias.
+    /// SafeAreaInsets를 대신 사용하세요.
+    /// </summary>
+    [Obsolete("SafeAreaInsetsGetResult는 deprecated되었습니다. SafeAreaInsets를 사용하세요.")]
+    public class SafeAreaInsetsGetResult : SafeAreaInsets { }
+
     [Serializable]
     [Preserve]
     public class SafeAreaInsetsSubscribe__0
     {
         [JsonIgnore]
         public System.Action<SafeAreaInsets> OnEvent;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class SafeAreaInsets
-    {
-        [Preserve]
-        [JsonProperty("top")]
-        public double Top;
-        [Preserve]
-        [JsonProperty("bottom")]
-        public double Bottom;
-        [Preserve]
-        [JsonProperty("left")]
-        public double Left;
-        [Preserve]
-        [JsonProperty("right")]
-        public double Right;
     }
 
     [Serializable]

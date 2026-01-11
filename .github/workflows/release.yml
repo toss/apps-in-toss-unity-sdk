@@ -124,26 +124,48 @@ jobs:
         run: |
           echo "=== 릴리즈 빌드용 테스트 코드 제외 ==="
 
-          # SharedScripts/Runtime의 .cs 파일만 삭제 (API 호환성 문제가 있는 코드)
-          # Editor 폴더(E2EBuildRunner.cs)는 빌드에 필요하므로 유지
-          # asmdef와 .meta 파일은 Unity 프로젝트 구조를 위해 유지
           SHARED_RUNTIME="Tests~/E2E/SharedScripts/Runtime"
+
+          # SharedScripts/Runtime의 .cs 파일 삭제 (API 호환성 문제가 있는 코드)
           if [ -d "$SHARED_RUNTIME" ]; then
             echo "SharedScripts/Runtime .cs 파일 삭제 중..."
             find "$SHARED_RUNTIME" -name "*.cs" -type f -delete
-            echo "삭제 완료. 남은 파일:"
-            ls -la "$SHARED_RUNTIME" || true
           fi
 
-          # Plugins 폴더도 확인 (있다면 .cs 파일 삭제)
+          # E2EBuildRunner.cs가 의존하는 최소 스텁 파일 생성
+          # E2EBootstrapperHelper.cs (E2EBuildRunner에서 AddComponent로 사용)
+          cat > "${SHARED_RUNTIME}/E2EBootstrapperHelper.cs" << 'STUB_EOF'
+          using UnityEngine;
+          // 릴리즈 빌드용 스텁 - 실제 기능 없음
+          public class E2EBootstrapperHelper : MonoBehaviour
+          {
+              void Start() { }
+          }
+          STUB_EOF
+
+          # E2EBootstrapper.cs (E2EBootstrapperHelper에서 호출)
+          cat > "${SHARED_RUNTIME}/E2EBootstrapper.cs" << 'STUB_EOF'
+          using UnityEngine;
+          // 릴리즈 빌드용 스텁 - 실제 기능 없음
+          public static class E2EBootstrapper
+          {
+              public static void Initialize() { }
+          }
+          STUB_EOF
+
+          echo "스텁 파일 생성 완료"
+          echo ""
+          echo "SharedScripts/Runtime 내용:"
+          ls -la "$SHARED_RUNTIME"
+
+          # Plugins 폴더 .cs 파일 삭제
           SHARED_PLUGINS="Tests~/E2E/SharedScripts/Plugins"
           if [ -d "$SHARED_PLUGINS" ]; then
-            echo "SharedScripts/Plugins .cs 파일 삭제 중..."
             find "$SHARED_PLUGINS" -name "*.cs" -type f -delete
           fi
 
           echo ""
-          echo "SharedScripts Editor 폴더 확인 (E2EBuildRunner.cs 유지됨):"
+          echo "SharedScripts Editor 폴더 확인:"
           ls -la Tests~/E2E/SharedScripts/Editor/
 
       - name: Orphan Commit 생성 및 Push

@@ -12,11 +12,6 @@ on:
         required: false
         type: number
         default: 2
-      dry_run:
-        description: '테스트 모드 (버전 목록만 확인, 실제 릴리즈 안함)'
-        required: false
-        type: boolean
-        default: false
 
 jobs:
   # =====================================================
@@ -94,18 +89,12 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**동시 실행 수**: ${{ inputs.max_parallel || 2 }}" >> $GITHUB_STEP_SUMMARY
 
-          if [ "${{ inputs.dry_run }}" = "true" ]; then
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "> **테스트 모드**: 실제 릴리즈가 실행되지 않습니다" >> $GITHUB_STEP_SUMMARY
-          fi
-
   # =====================================================
   # 각 버전별 릴리즈 실행 (병렬)
   # =====================================================
   release-versions:
     name: 릴리즈 v${{ matrix.version }}
     needs: prepare-versions
-    if: inputs.dry_run != true
 
     strategy:
       fail-fast: false
@@ -128,37 +117,14 @@ jobs:
     if: always()
 
     steps:
-      - name: 결과 수집
-        id: results
-        run: |
-          VERSIONS='${{ needs.prepare-versions.outputs.versions }}'
-          RELEASE_RESULT='${{ needs.release-versions.result }}'
-          DRY_RUN='${{ inputs.dry_run }}'
-
-          echo "release_result=${RELEASE_RESULT}" >> $GITHUB_OUTPUT
-          echo "dry_run=${DRY_RUN}" >> $GITHUB_OUTPUT
-
       - name: 결과 요약 생성
         run: |
           echo "## 일괄 릴리즈 결과" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          DRY_RUN="${{ steps.results.outputs.dry_run }}"
-          RELEASE_RESULT="${{ steps.results.outputs.release_result }}"
+          RELEASE_RESULT="${{ needs.release-versions.result }}"
           VERSIONS='${{ needs.prepare-versions.outputs.versions }}'
           VERSION_COUNT="${{ needs.prepare-versions.outputs.version_count }}"
-
-          if [ "$DRY_RUN" = "true" ]; then
-            echo "### 테스트 모드" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "실제 릴리즈가 실행되지 않았습니다." >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "**대상 버전 (${VERSION_COUNT}개)**:" >> $GITHUB_STEP_SUMMARY
-            for VERSION in $(echo "$VERSIONS" | jq -r '.[]'); do
-              echo "- v${VERSION}" >> $GITHUB_STEP_SUMMARY
-            done
-            exit 0
-          fi
 
           # 릴리즈 결과에 따른 상태 표시
           case "$RELEASE_RESULT" in

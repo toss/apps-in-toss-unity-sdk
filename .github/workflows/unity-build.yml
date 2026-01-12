@@ -147,20 +147,24 @@ jobs:
           echo "Target tag: ${TAG_NAME}"
           echo ""
 
-          # 1. 해당 버전 태그 존재 확인
+          # 1. 태그 가져오기 (shallow clone에서는 태그가 없을 수 있음)
+          echo "Fetching tags..."
+          git fetch --tags --quiet
+
+          # 2. 해당 버전 태그 존재 확인
           if ! git rev-parse "${TAG_NAME}" >/dev/null 2>&1; then
             echo "::error::Tag ${TAG_NAME} not found. Available release tags:"
             git tag | grep "^release/" | tail -10
             exit 1
           fi
 
-          # 2. 해당 버전의 생성기 코드 체크아웃
+          # 3. 해당 버전의 생성기 코드 체크아웃
           echo "=== Checking out generator from ${TAG_NAME} ==="
           git checkout "${TAG_NAME}" -- sdk-runtime-generator~
           git checkout "${TAG_NAME}" -- Runtime/SDK/
           echo "Generator and SDK checked out from ${TAG_NAME}"
 
-          # 3. package.json 버전 변경
+          # 4. package.json 버전 변경
           echo ""
           echo "=== Updating package.json version ==="
           echo "Original version: $(grep '"version"' $PACKAGE_JSON)"
@@ -171,7 +175,7 @@ jobs:
           fi
           echo "Overridden version: $(grep '"version"' $PACKAGE_JSON)"
 
-          # 4. SDK 재생성 (해당 버전의 생성기 사용)
+          # 5. SDK 재생성 (해당 버전의 생성기 사용)
           echo ""
           echo "=== Regenerating SDK with generator from ${TAG_NAME} ==="
           cd sdk-runtime-generator~

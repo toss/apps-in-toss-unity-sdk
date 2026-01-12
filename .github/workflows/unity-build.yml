@@ -140,29 +140,41 @@ jobs:
         run: |
           OVERRIDE_VERSION="${{ inputs.sdk-version-override }}"
           PACKAGE_JSON="package.json"
-          TAG_NAME="release/v${OVERRIDE_VERSION}"
 
           echo "=== SDK Version Override ==="
           echo "Target version: ${OVERRIDE_VERSION}"
-          echo "Target tag: ${TAG_NAME}"
           echo ""
 
-          # 1. 태그 가져오기 (shallow clone에서는 태그가 없을 수 있음)
-          echo "Fetching tags..."
-          git fetch --tags --quiet
+          # 1. 전체 히스토리 가져오기 (커밋 검색을 위해)
+          echo "Fetching full history..."
+          git fetch --unshallow --quiet 2>/dev/null || git fetch --all --quiet
 
-          # 2. 해당 버전 태그 존재 확인
-          if ! git rev-parse "${TAG_NAME}" >/dev/null 2>&1; then
-            echo "::error::Tag ${TAG_NAME} not found. Available release tags:"
-            git tag | grep "^release/" | tail -10
+          # 2. SDK 업데이트 커밋 찾기
+          # "SDK v{version}" 또는 "v{version}" 커밋 메시지 검색
+          echo "Searching for SDK v${OVERRIDE_VERSION} commit..."
+          SDK_COMMIT=$(git log --all --oneline --grep="SDK v${OVERRIDE_VERSION}" --format="%H" | head -1)
+
+          if [ -z "$SDK_COMMIT" ]; then
+            # 대체 검색: 버전 번호만으로 검색
+            SDK_COMMIT=$(git log --all --oneline --grep="v${OVERRIDE_VERSION}" --format="%H" | head -1)
+          fi
+
+          if [ -z "$SDK_COMMIT" ]; then
+            echo "::error::SDK v${OVERRIDE_VERSION} 커밋을 찾을 수 없습니다."
+            echo "사용 가능한 SDK 버전 커밋:"
+            git log --all --oneline --grep="SDK v" | head -10
             exit 1
           fi
 
-          # 3. 해당 버전의 생성기 코드 체크아웃
-          echo "=== Checking out generator from ${TAG_NAME} ==="
-          git checkout "${TAG_NAME}" -- sdk-runtime-generator~
-          git checkout "${TAG_NAME}" -- Runtime/SDK/
-          echo "Generator and SDK checked out from ${TAG_NAME}"
+          echo "Found SDK commit: ${SDK_COMMIT}"
+          echo "Commit message: $(git log -1 --format="%s" ${SDK_COMMIT})"
+
+          # 3. 해당 버전의 생성기 및 SDK 코드 체크아웃
+          echo ""
+          echo "=== Checking out generator and SDK from ${SDK_COMMIT} ==="
+          git checkout "${SDK_COMMIT}" -- sdk-runtime-generator~
+          git checkout "${SDK_COMMIT}" -- Runtime/SDK/
+          echo "Generator and SDK checked out successfully"
 
           # 4. package.json 버전 변경
           echo ""

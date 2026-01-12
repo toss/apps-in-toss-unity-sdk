@@ -140,11 +140,30 @@ jobs:
         run: |
           OVERRIDE_VERSION="${{ inputs.sdk-version-override }}"
           PACKAGE_JSON="package.json"
+          TAG_NAME="release/v${OVERRIDE_VERSION}"
 
           echo "=== SDK Version Override ==="
-          echo "Original version: $(grep '"version"' $PACKAGE_JSON)"
+          echo "Target version: ${OVERRIDE_VERSION}"
+          echo "Target tag: ${TAG_NAME}"
+          echo ""
 
-          # 1. package.json 버전 변경
+          # 1. 해당 버전 태그 존재 확인
+          if ! git rev-parse "${TAG_NAME}" >/dev/null 2>&1; then
+            echo "::error::Tag ${TAG_NAME} not found. Available release tags:"
+            git tag | grep "^release/" | tail -10
+            exit 1
+          fi
+
+          # 2. 해당 버전의 생성기 코드 체크아웃
+          echo "=== Checking out generator from ${TAG_NAME} ==="
+          git checkout "${TAG_NAME}" -- sdk-runtime-generator~
+          git checkout "${TAG_NAME}" -- Runtime/SDK/
+          echo "Generator and SDK checked out from ${TAG_NAME}"
+
+          # 3. package.json 버전 변경
+          echo ""
+          echo "=== Updating package.json version ==="
+          echo "Original version: $(grep '"version"' $PACKAGE_JSON)"
           if [[ "$RUNNER_OS" == "macOS" ]]; then
             sed -i '' "s/\"version\": \"[^\"]*\"/\"version\": \"${OVERRIDE_VERSION}\"/" $PACKAGE_JSON
           else
@@ -152,22 +171,17 @@ jobs:
           fi
           echo "Overridden version: $(grep '"version"' $PACKAGE_JSON)"
 
-          # 2. SDK Runtime Generator에서 해당 버전의 web-framework 설치 및 SDK 재생성
+          # 4. SDK 재생성 (해당 버전의 생성기 사용)
           echo ""
-          echo "=== Regenerating SDK with @apps-in-toss/web-framework@${OVERRIDE_VERSION} ==="
+          echo "=== Regenerating SDK with generator from ${TAG_NAME} ==="
           cd sdk-runtime-generator~
-
-          # web-framework 버전 변경
-          pnpm add @apps-in-toss/web-framework@${OVERRIDE_VERSION}
-
-          # SDK 재생성
           pnpm install
           pnpm generate
 
           echo ""
           echo "=== SDK regeneration complete ==="
           echo "Generated SDK files:"
-          ls -la ../Runtime/SDK/
+          ls -la ../Runtime/SDK/ | head -20
 
           echo ""
           echo "This will affect Unity Version Defines:"

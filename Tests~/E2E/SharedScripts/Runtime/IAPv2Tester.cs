@@ -292,25 +292,29 @@ public class IAPv2Tester : MonoBehaviour
     }
 
 #if !AIT_SDK_1_7_OR_LATER
-    private async void ExecuteIAPCreateOrderLegacy()
+    private void ExecuteIAPCreateOrderLegacy()
     {
         try
         {
-            var options = new IapCreateOneTimePurchaseOrderOptions
+            // SDK 1.6.x API: (onEvent, options, onError)
+            var options = new IapCreateOneTimePurchaseOrderOptionsOptions
             {
-                OnEvent = (successEvent) =>
+                Sku = iapSku
+            };
+
+            var cleanup = AIT.IAPCreateOneTimePurchaseOrder(
+                onEvent: (successEvent) =>
                 {
                     iapStatus = "Purchase completed (legacy)";
                     iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] OnEvent (legacy): success");
                 },
-                OnError = (error) =>
+                options: options,
+                onError: (error) =>
                 {
                     iapStatus = "Purchase failed (legacy)";
-                    iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] OnError (legacy)");
+                    iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] OnError (legacy): {error?.Message}");
                 }
-            };
-
-            await AIT.IAPCreateOneTimePurchaseOrder(options);
+            );
         }
         catch (Exception ex)
         {

@@ -122,20 +122,6 @@ jobs:
       # =====================================================
       # SDK 버전 오버라이드 (호환성 테스트용)
       # =====================================================
-      - name: Setup Node.js (for SDK override)
-        if: inputs.sdk-version-override != ''
-        uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-
-      - name: Install pnpm (for SDK override)
-        if: inputs.sdk-version-override != ''
-        shell: bash
-        run: |
-          # Install pnpm via npm to avoid pnpm/action-setup conflicts on self-hosted runners
-          npm install -g pnpm@10
-          pnpm --version
-
       - name: Override SDK Version
         if: inputs.sdk-version-override != ''
         shell: bash
@@ -190,22 +176,13 @@ jobs:
           fi
           echo "Overridden version: $(grep '"version"' $PACKAGE_JSON)"
 
-          # 5. SDK 재생성 (해당 버전의 생성기 사용)
+          # 5. SDK 파일 확인 (재생성하지 않음 - 커밋된 파일 사용)
+          # SDK 재생성은 npm 패키지 해상도 차이로 인해 커밋된 파일과 다른 결과를 생성할 수 있음
+          # 따라서 해당 버전 커밋에서 체크아웃한 파일을 그대로 사용
           echo ""
-          echo "=== Regenerating SDK with generator from ${SDK_COMMIT} ==="
-          cd sdk-runtime-generator~
-
-          # Use job-specific pnpm store to avoid conflicts between parallel jobs
-          export PNPM_STORE_DIR="${RUNNER_TEMP}/pnpm-store-${{ inputs.unity-version }}"
-          echo "Using pnpm store: ${PNPM_STORE_DIR}"
-
-          pnpm install --store-dir "$PNPM_STORE_DIR"
-          pnpm generate
-
-          echo ""
-          echo "=== SDK regeneration complete ==="
-          echo "Generated SDK files:"
-          ls -la ../Runtime/SDK/ | head -20
+          echo "=== Using SDK files from ${SDK_COMMIT} (no regeneration) ==="
+          echo "SDK files:"
+          ls -la Runtime/SDK/ | head -20
 
           echo ""
           echo "This will affect Unity Version Defines:"

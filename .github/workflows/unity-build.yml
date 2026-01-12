@@ -77,7 +77,7 @@ jobs:
     runs-on: ${{ inputs.os == 'macos' && fromJSON('["self-hosted", "macOS", "ARM64"]') || fromJSON('["self-hosted", "Windows", "X64", "enabled"]') }}
     timeout-minutes: 60
     concurrency:
-      group: unity-build-${{ inputs.os }}-${{ inputs.unity-version }}
+      group: unity-build-${{ inputs.os }}-${{ inputs.unity-version }}${{ inputs.sdk-version-override && format('-sdk{0}', inputs.sdk-version-override) || '' }}
       cancel-in-progress: false
 
     outputs:
@@ -127,6 +127,22 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '24'
+
+      - name: Clean pnpm home (for SDK override)
+        if: inputs.sdk-version-override != ''
+        shell: bash
+        run: |
+          # Clean up existing pnpm installation to avoid conflicts on self-hosted runners
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            PNPM_HOME="$USERPROFILE/setup-pnpm"
+          else
+            PNPM_HOME="$HOME/setup-pnpm"
+          fi
+          if [ -d "$PNPM_HOME" ]; then
+            echo "Cleaning existing pnpm directory: $PNPM_HOME"
+            rm -rf "$PNPM_HOME" 2>/dev/null || true
+          fi
+          echo "pnpm home cleaned"
 
       - name: Setup pnpm (for SDK override)
         if: inputs.sdk-version-override != ''
@@ -190,9 +206,14 @@ jobs:
 
           # 5. SDK 재생성 (해당 버전의 생성기 사용)
           echo ""
-          echo "=== Regenerating SDK with generator from ${TAG_NAME} ==="
+          echo "=== Regenerating SDK with generator from ${SDK_COMMIT} ==="
           cd sdk-runtime-generator~
-          pnpm install
+
+          # Use job-specific pnpm store to avoid conflicts between parallel jobs
+          export PNPM_STORE_DIR="${RUNNER_TEMP}/pnpm-store-${{ inputs.unity-version }}"
+          echo "Using pnpm store: ${PNPM_STORE_DIR}"
+
+          pnpm install --store-dir "$PNPM_STORE_DIR"
           pnpm generate
 
           echo ""

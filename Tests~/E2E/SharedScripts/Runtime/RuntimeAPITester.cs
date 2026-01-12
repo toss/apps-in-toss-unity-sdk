@@ -211,11 +211,11 @@ public class RuntimeAPITester : MonoBehaviour
         // Certificate API
         TestAPICall("AppsInTossSignTossCert", async () => { await AIT.AppsInTossSignTossCert(new AppsInTossSignTossCertParams { TxId = "test-tx" }); });
 
-        // Visibility API (이벤트 기반)
+        // Visibility API (이벤트 기반) - SDK 1.6.1+ 필요
 #if AIT_SDK_1_7_OR_LATER
         TestAPICall("OnVisibilityChangedByTransparentServiceWeb", async () =>
             { AIT.OnVisibilityChangedByTransparentServiceWeb((visible) => { }, null); await System.Threading.Tasks.Task.CompletedTask; });
-#else
+#elif AIT_SDK_1_6_1_OR_LATER
         TestAPICall("OnVisibilityChangedByTransparentServiceWeb", async () =>
             { await AIT.OnVisibilityChangedByTransparentServiceWeb(new OnVisibilityChangedByTransparentServiceWebEventParams { OnEvent = (visible) => { } }); });
 #endif

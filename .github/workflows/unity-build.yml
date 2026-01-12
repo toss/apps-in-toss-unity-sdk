@@ -128,27 +128,13 @@ jobs:
         with:
           node-version: '24'
 
-      - name: Clean pnpm home (for SDK override)
+      - name: Install pnpm (for SDK override)
         if: inputs.sdk-version-override != ''
         shell: bash
         run: |
-          # Clean up existing pnpm installation to avoid conflicts on self-hosted runners
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            PNPM_HOME="$USERPROFILE/setup-pnpm"
-          else
-            PNPM_HOME="$HOME/setup-pnpm"
-          fi
-          if [ -d "$PNPM_HOME" ]; then
-            echo "Cleaning existing pnpm directory: $PNPM_HOME"
-            rm -rf "$PNPM_HOME" 2>/dev/null || true
-          fi
-          echo "pnpm home cleaned"
-
-      - name: Setup pnpm (for SDK override)
-        if: inputs.sdk-version-override != ''
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10
+          # Install pnpm via npm to avoid pnpm/action-setup conflicts on self-hosted runners
+          npm install -g pnpm@10
+          pnpm --version
 
       - name: Override SDK Version
         if: inputs.sdk-version-override != ''

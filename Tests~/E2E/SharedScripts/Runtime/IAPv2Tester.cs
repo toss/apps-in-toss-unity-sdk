@@ -133,6 +133,7 @@ public class IAPv2Tester : MonoBehaviour
         }
 
         // Pending Orders 목록 표시 및 선택
+#if AIT_SDK_1_7_OR_LATER
         if (iapPendingOrders != null && iapPendingOrders.Orders != null && iapPendingOrders.Orders.Length > 0)
         {
             GUILayout.Label($"Pending Orders ({iapPendingOrders.Orders.Length}):", labelStyle);
@@ -148,6 +149,12 @@ public class IAPv2Tester : MonoBehaviour
                 }
             }
         }
+#else
+        if (iapPendingOrders != null && iapPendingOrders.Orders != null && iapPendingOrders.Orders.Length > 0)
+        {
+            GUILayout.Label($"Pending Orders ({iapPendingOrders.Orders.Length}) - SDK 1.7.0+ required for details", labelStyle);
+        }
+#endif
 
         GUILayout.Space(10);
 
@@ -159,6 +166,7 @@ public class IAPv2Tester : MonoBehaviour
         }
 
         // Completed/Refunded Orders 목록 표시 및 선택
+#if AIT_SDK_1_7_OR_LATER
         if (iapCompletedOrders != null && iapCompletedOrders.Orders != null && iapCompletedOrders.Orders.Length > 0)
         {
             GUILayout.Label($"Completed/Refunded Orders ({iapCompletedOrders.Orders.Length}):", labelStyle);
@@ -175,6 +183,12 @@ public class IAPv2Tester : MonoBehaviour
                 }
             }
         }
+#else
+        if (iapCompletedOrders != null && iapCompletedOrders.Orders != null && iapCompletedOrders.Orders.Length > 0)
+        {
+            GUILayout.Label($"Completed/Refunded Orders ({iapCompletedOrders.Orders.Length}) - SDK 1.7.0+ required for details", labelStyle);
+        }
+#endif
 
         GUILayout.Space(10);
 

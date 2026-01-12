@@ -147,22 +147,23 @@ jobs:
 
           # 1. 전체 히스토리 가져오기 (커밋 검색을 위해)
           echo "Fetching full history..."
-          git fetch --unshallow --quiet 2>/dev/null || git fetch --all --quiet
+          git fetch origin main --unshallow 2>/dev/null || git fetch origin main --depth=1000
+          git fetch origin --tags
 
           # 2. SDK 업데이트 커밋 찾기
-          # "SDK v{version}" 또는 "v{version}" 커밋 메시지 검색
+          # "SDK v{version}" 커밋 메시지 검색
           echo "Searching for SDK v${OVERRIDE_VERSION} commit..."
-          SDK_COMMIT=$(git log --all --oneline --grep="SDK v${OVERRIDE_VERSION}" --format="%H" | head -1)
+          SDK_COMMIT=$(git log origin/main --oneline --grep="SDK v${OVERRIDE_VERSION}" --format="%H" -1 || true)
 
           if [ -z "$SDK_COMMIT" ]; then
             # 대체 검색: 버전 번호만으로 검색
-            SDK_COMMIT=$(git log --all --oneline --grep="v${OVERRIDE_VERSION}" --format="%H" | head -1)
+            SDK_COMMIT=$(git log origin/main --oneline --grep="v${OVERRIDE_VERSION}" --format="%H" -1 || true)
           fi
 
           if [ -z "$SDK_COMMIT" ]; then
             echo "::error::SDK v${OVERRIDE_VERSION} 커밋을 찾을 수 없습니다."
             echo "사용 가능한 SDK 버전 커밋:"
-            git log --all --oneline --grep="SDK v" | head -10
+            git log origin/main --oneline --grep="SDK v" -10 || true
             exit 1
           fi
 

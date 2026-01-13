@@ -133,6 +133,7 @@ public class IAPv2Tester : MonoBehaviour
         }
 
         // Pending Orders 목록 표시 및 선택
+#if AIT_SDK_1_7_OR_LATER
         if (iapPendingOrders != null && iapPendingOrders.Orders != null && iapPendingOrders.Orders.Length > 0)
         {
             GUILayout.Label($"Pending Orders ({iapPendingOrders.Orders.Length}):", labelStyle);
@@ -148,6 +149,12 @@ public class IAPv2Tester : MonoBehaviour
                 }
             }
         }
+#else
+        if (iapPendingOrders != null && iapPendingOrders.Orders != null && iapPendingOrders.Orders.Length > 0)
+        {
+            GUILayout.Label($"Pending Orders ({iapPendingOrders.Orders.Length}) - SDK 1.7.0+ required for details", labelStyle);
+        }
+#endif
 
         GUILayout.Space(10);
 
@@ -159,6 +166,7 @@ public class IAPv2Tester : MonoBehaviour
         }
 
         // Completed/Refunded Orders 목록 표시 및 선택
+#if AIT_SDK_1_7_OR_LATER
         if (iapCompletedOrders != null && iapCompletedOrders.Orders != null && iapCompletedOrders.Orders.Length > 0)
         {
             GUILayout.Label($"Completed/Refunded Orders ({iapCompletedOrders.Orders.Length}):", labelStyle);
@@ -175,6 +183,12 @@ public class IAPv2Tester : MonoBehaviour
                 }
             }
         }
+#else
+        if (iapCompletedOrders != null && iapCompletedOrders.Orders != null && iapCompletedOrders.Orders.Length > 0)
+        {
+            GUILayout.Label($"Completed/Refunded Orders ({iapCompletedOrders.Orders.Length}) - SDK 1.7.0+ required for details", labelStyle);
+        }
+#endif
 
         GUILayout.Space(10);
 
@@ -229,30 +243,21 @@ public class IAPv2Tester : MonoBehaviour
 
         try
         {
-            // Options에 SKU와 processProductGrant 콜백 전달
+#if AIT_SDK_1_7_OR_LATER
+            // SDK 1.7.0+ 새 API: 콜백 패턴 (onEvent, options, onError)
             var options = new IapCreateOneTimePurchaseOrderOptionsOptions
             {
                 Sku = iapSku,
-                // processProductGrant 콜백 - 결제 완료 시 호출됨
-                // 여기서 상품 지급 후 true를 반환하면 SDK가 자동으로 CompleteProductGrant를 호출하여
-                // 주문을 완료 처리함. false 반환 시 주문이 미처리 상태로 남음.
                 ProcessProductGrant = (data) =>
                 {
                     iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] ProcessProductGrant called: {data}");
                     Debug.Log($"[IAPv2Tester] ProcessProductGrant called with data: {data}");
-
-                    // 여기서 실제 상품 지급 로직 수행
-                    // 예: 코인 추가, 아이템 지급 등
                     bool grantSuccess = GrantGameProduct(data);
-
-                    // true 반환 시 SDK가 자동으로 주문 완료 처리
                     iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] ProcessProductGrant result: {grantSuccess}");
                     return grantSuccess;
                 }
             };
 
-            // IAPCreateOneTimePurchaseOrder는 동기 함수로 cleanup Action을 반환
-            // 시그니처: (onEvent, options, onError)
             var disposer = AIT.IAPCreateOneTimePurchaseOrder(
                 onEvent: (successEvent) =>
                 {
@@ -267,6 +272,10 @@ public class IAPv2Tester : MonoBehaviour
                     iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] OnError: {error.ErrorCode} - {error.Message}");
                 }
             );
+#else
+            // SDK 1.6.x 이전 API: async 패턴
+            ExecuteIAPCreateOrderLegacy();
+#endif
             iapStatus = "Purchase order created";
             iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Order created successfully");
         }
@@ -281,6 +290,39 @@ public class IAPv2Tester : MonoBehaviour
             iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Exception: {ex.Message}");
         }
     }
+
+#if !AIT_SDK_1_7_OR_LATER
+    private void ExecuteIAPCreateOrderLegacy()
+    {
+        try
+        {
+            // SDK 1.6.x API: (onEvent, options, onError)
+            var options = new IapCreateOneTimePurchaseOrderOptionsOptions
+            {
+                Sku = iapSku
+            };
+
+            var cleanup = AIT.IAPCreateOneTimePurchaseOrder(
+                onEvent: (successEvent) =>
+                {
+                    iapStatus = "Purchase completed (legacy)";
+                    iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] OnEvent (legacy): success");
+                },
+                options: options,
+                onError: (error) =>
+                {
+                    iapStatus = "Purchase failed (legacy)";
+                    iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] OnError (legacy): {error?.Message}");
+                }
+            );
+        }
+        catch (Exception ex)
+        {
+            iapStatus = $"Error: {ex.Message}";
+            iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Exception (legacy): {ex.Message}");
+        }
+    }
+#endif
 
     private async void ExecuteIAPGetPendingOrders()
     {

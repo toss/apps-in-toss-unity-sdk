@@ -132,6 +132,7 @@ public class AdV2Tester : MonoBehaviour
 
     private void ExecuteLoadAd()
     {
+#if AIT_SDK_1_7_OR_LATER
         string adId = selectedAdType == "interstitial" ? TEST_INTERSTITIAL_AD_ID : TEST_REWARDED_AD_ID;
         adStatus = $"Loading {selectedAdType} ad...";
         adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] loadAppsInTossAdMob(adGroupId: {adId})");
@@ -164,12 +165,17 @@ public class AdV2Tester : MonoBehaviour
             }
         );
 #pragma warning restore CS0618
+#else
+        adStatus = "AdMob API requires SDK 1.7.0+";
+        adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] AdMob Load API not available in this SDK version");
+#endif
     }
 
     private Action _showUnsubscribe;
 
     private void ExecuteShowAd()
     {
+#if AIT_SDK_1_7_OR_LATER
         if (!isAdLoaded)
         {
             adStatus = "Please load ad first";
@@ -209,6 +215,10 @@ public class AdV2Tester : MonoBehaviour
             }
         );
 #pragma warning restore CS0618
+#else
+        adStatus = "AdMob API requires SDK 1.7.0+";
+        adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] AdMob Show API not available in this SDK version");
+#endif
     }
 
     private void OnDestroy()

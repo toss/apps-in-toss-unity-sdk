@@ -43,7 +43,11 @@ public class InteractiveAPITester : MonoBehaviour
     private ResultDisplayMode resultDisplayMode = ResultDisplayMode.Structured;
 
     // Safe Area (AIT API)
+#if AIT_SDK_1_7_OR_LATER
+    private SafeAreaInsets cachedSafeAreaInsets = null;
+#else
     private SafeAreaInsetsGetResult cachedSafeAreaInsets = null;
+#endif
     private bool safeAreaLoaded = false;
 
     // 분리된 컴포넌트 참조
@@ -131,8 +135,13 @@ public class InteractiveAPITester : MonoBehaviour
             Debug.Log($"[InteractiveAPITester] AIT SafeAreaInsetsGet (CSS px): top={cachedSafeAreaInsets.Top}, bottom={cachedSafeAreaInsets.Bottom}, left={cachedSafeAreaInsets.Left}, right={cachedSafeAreaInsets.Right}");
 
             // devicePixelRatio 로깅
+#if AIT_SDK_1_7_1_OR_LATER
             double dpr = AIT.GetDevicePixelRatio();
             Debug.Log($"[InteractiveAPITester] DevicePixelRatio: {dpr}");
+#else
+            double dpr = 1.0;
+            Debug.Log($"[InteractiveAPITester] DevicePixelRatio: {dpr} (SDK < 1.7.1, using default)");
+#endif
 
             // 최종 적용될 safeRect 계산 및 로깅 (DPR 적용)
             float top = (float)(cachedSafeAreaInsets.Top * dpr);
@@ -174,7 +183,11 @@ public class InteractiveAPITester : MonoBehaviour
             // devicePixelRatio 적용 (CSS px → device px)
             // SafeAreaInsets API는 CSS 픽셀 단위로 반환
             // Unity Screen.width/height는 device 픽셀 단위이므로 스케일링 필요
+#if AIT_SDK_1_7_1_OR_LATER
             float dpr = (float)AIT.GetDevicePixelRatio();
+#else
+            float dpr = 1.0f;
+#endif
 
             float top = (float)cachedSafeAreaInsets.Top * dpr;
             float bottom = (float)cachedSafeAreaInsets.Bottom * dpr;

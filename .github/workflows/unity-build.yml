@@ -121,7 +121,20 @@ jobs:
 
       # =====================================================
       # SDK 버전 오버라이드 (호환성 테스트용)
+      # 현재 브랜치의 테스트 코드 + 지정된 SDK 버전으로 재생성
       # =====================================================
+      - name: Setup pnpm (for SDK regeneration)
+        if: inputs.sdk-version-override != ''
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js (for SDK regeneration)
+        if: inputs.sdk-version-override != ''
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
       - name: Override SDK Version
         if: inputs.sdk-version-override != ''
         shell: bash
@@ -129,44 +142,12 @@ jobs:
           OVERRIDE_VERSION="${{ inputs.sdk-version-override }}"
           PACKAGE_JSON="package.json"
 
-          echo "=== SDK Version Override ==="
-          echo "Target version: ${OVERRIDE_VERSION}"
+          echo "=== SDK Version Override (Regeneration Mode) ==="
+          echo "Target SDK version: ${OVERRIDE_VERSION}"
+          echo "Using current branch's generator code"
           echo ""
 
-          # 1. 전체 히스토리 가져오기 (커밋 검색을 위해)
-          echo "Fetching full history..."
-          git fetch origin main --unshallow 2>/dev/null || git fetch origin main --depth=1000
-          git fetch origin --tags
-
-          # 2. SDK 업데이트 커밋 찾기
-          # "SDK v{version}" 커밋 메시지 검색
-          echo "Searching for SDK v${OVERRIDE_VERSION} commit..."
-          SDK_COMMIT=$(git log origin/main --oneline --grep="SDK v${OVERRIDE_VERSION}" --format="%H" -1 || true)
-
-          if [ -z "$SDK_COMMIT" ]; then
-            # 대체 검색: 버전 번호만으로 검색
-            SDK_COMMIT=$(git log origin/main --oneline --grep="v${OVERRIDE_VERSION}" --format="%H" -1 || true)
-          fi
-
-          if [ -z "$SDK_COMMIT" ]; then
-            echo "::error::SDK v${OVERRIDE_VERSION} 커밋을 찾을 수 없습니다."
-            echo "사용 가능한 SDK 버전 커밋:"
-            git log origin/main --oneline --grep="SDK v" -10 || true
-            exit 1
-          fi
-
-          echo "Found SDK commit: ${SDK_COMMIT}"
-          echo "Commit message: $(git log -1 --format="%s" ${SDK_COMMIT})"
-
-          # 3. 해당 버전의 생성기 및 SDK 코드 체크아웃
-          echo ""
-          echo "=== Checking out generator and SDK from ${SDK_COMMIT} ==="
-          git checkout "${SDK_COMMIT}" -- sdk-runtime-generator~
-          git checkout "${SDK_COMMIT}" -- Runtime/SDK/
-          echo "Generator and SDK checked out successfully"
-
-          # 4. package.json 버전 변경
-          echo ""
+          # 1. package.json 버전 변경
           echo "=== Updating package.json version ==="
           echo "Original version: $(grep '"version"' $PACKAGE_JSON)"
           if [[ "$RUNNER_OS" == "macOS" ]]; then
@@ -176,17 +157,61 @@ jobs:
           fi
           echo "Overridden version: $(grep '"version"' $PACKAGE_JSON)"
 
-          # 5. SDK 파일 확인 (재생성하지 않음 - 커밋된 파일 사용)
-          # SDK 재생성은 npm 패키지 해상도 차이로 인해 커밋된 파일과 다른 결과를 생성할 수 있음
-          # 따라서 해당 버전 커밋에서 체크아웃한 파일을 그대로 사용
+          # 2. SDK 생성기에서 web-framework 버전 업데이트
           echo ""
-          echo "=== Using SDK files from ${SDK_COMMIT} (no regeneration) ==="
-          echo "SDK files:"
+          echo "=== Updating @apps-in-toss/web-framework to v${OVERRIDE_VERSION} ==="
+          cd sdk-runtime-generator~
+
+          # 캐시 정리 후 특정 버전 설치
+          pnpm store prune 2>/dev/null || true
+          pnpm update "@apps-in-toss/web-framework@${OVERRIDE_VERSION}" --force --registry https://registry.npmjs.org
+
+          # 설치된 버전 검증
+          INSTALLED_VERSION=$(pnpm list @apps-in-toss/web-framework --json 2>/dev/null | jq -r '.[0].dependencies["@apps-in-toss/web-framework"].version' || echo "unknown")
+          echo "Requested version: ${OVERRIDE_VERSION}"
+          echo "Installed version: ${INSTALLED_VERSION}"
+
+          if [ "$INSTALLED_VERSION" != "$OVERRIDE_VERSION" ]; then
+            echo "::warning::Version mismatch - requested: ${OVERRIDE_VERSION}, installed: ${INSTALLED_VERSION}"
+            echo "Attempting direct install..."
+            pnpm add "@apps-in-toss/web-framework@${OVERRIDE_VERSION}" --force
+            INSTALLED_VERSION=$(pnpm list @apps-in-toss/web-framework --json 2>/dev/null | jq -r '.[0].dependencies["@apps-in-toss/web-framework"].version' || echo "unknown")
+            echo "After retry - installed version: ${INSTALLED_VERSION}"
+          fi
+
+          # 3. SDK 코드 재생성
+          echo ""
+          echo "=== Regenerating SDK code ==="
+          if pnpm generate; then
+            echo "SDK regeneration completed successfully"
+          else
+            echo "::warning::SDK regeneration had issues, continuing anyway..."
+          fi
+
+          cd ..
+
+          # 4. 생성된 SDK 파일 확인
+          echo ""
+          echo "=== Generated SDK files ==="
           ls -la Runtime/SDK/ | head -20
 
+          # 5. BuildConfig의 web-framework 버전도 동기화
           echo ""
-          echo "This will affect Unity Version Defines:"
-          echo "  - AIT_SDK_1_7_OR_LATER will be $([ $(echo \"$OVERRIDE_VERSION\" | cut -d. -f1,2 | tr -d .) -ge 17 ] && echo 'DEFINED' || echo 'NOT defined')"
+          echo "=== Syncing BuildConfig web-framework version ==="
+          BUILDCONFIG_PKG="WebGLTemplates/AITTemplate/BuildConfig~/package.json"
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            sed -i '' 's/"@apps-in-toss\/web-framework": "[^"]*"/"@apps-in-toss\/web-framework": "'"${OVERRIDE_VERSION}"'"/' "$BUILDCONFIG_PKG"
+          else
+            sed -i 's/"@apps-in-toss\/web-framework": "[^"]*"/"@apps-in-toss\/web-framework": "'"${OVERRIDE_VERSION}"'"/' "$BUILDCONFIG_PKG"
+          fi
+          echo "BuildConfig updated:"
+          grep "web-framework" "$BUILDCONFIG_PKG"
+
+          echo ""
+          echo "=== Version Defines Impact ==="
+          echo "Unity will define symbols based on package.json version: ${OVERRIDE_VERSION}"
+          echo "  - AIT_SDK_1_6_1_OR_LATER: $([ "$(printf '%s\n' "1.6.1" "${OVERRIDE_VERSION}" | sort -V | head -1)" = "1.6.1" ] && echo 'DEFINED' || echo 'NOT defined')"
+          echo "  - AIT_SDK_1_7_OR_LATER: $([ "$(printf '%s\n' "1.7.0" "${OVERRIDE_VERSION}" | sort -V | head -1)" = "1.7.0" ] && echo 'DEFINED' || echo 'NOT defined')"
 
       # =====================================================
       # Windows Defender 제외 (Windows)

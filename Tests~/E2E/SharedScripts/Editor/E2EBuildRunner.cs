@@ -9,9 +9,17 @@ using AppsInToss;
 /// </summary>
 public class E2EBuildRunner
 {
+    /// <summary>
+    /// SDK 버전별 스크립팅 정의 심볼 환경변수명
+    /// CI에서 SDK_VERSION_DEFINES 환경변수로 설정
+    /// </summary>
+    private const string SDK_DEFINES_ENV_VAR = "SDK_VERSION_DEFINES";
+
     [MenuItem("E2E/Build with SDK")]
     public static void BuildWithSDK()
     {
+        // SDK 버전별 스크립팅 정의 심볼 적용 (CI에서 환경변수로 설정)
+        ApplySDKVersionDefines();
         Debug.Log("========================================");
         Debug.Log("E2E Build with Apps in Toss SDK");
         Debug.Log("========================================");
@@ -259,6 +267,62 @@ public class E2EBuildRunner
             }
         }
         return null;
+    }
+
+    /// <summary>
+    /// SDK 버전별 스크립팅 정의 심볼을 환경변수에서 읽어 적용
+    /// CI에서 SDK 버전에 따라 환경변수를 설정하면, versionDefines 대신 이 방식으로 조건부 컴파일 제어
+    ///
+    /// 예시 환경변수:
+    /// SDK_VERSION_DEFINES=AIT_SDK_1_6_1_OR_LATER;AIT_SDK_1_7_OR_LATER
+    /// </summary>
+    private static void ApplySDKVersionDefines()
+    {
+        string sdkDefines = System.Environment.GetEnvironmentVariable(SDK_DEFINES_ENV_VAR);
+
+        if (string.IsNullOrEmpty(sdkDefines))
+        {
+            Debug.Log($"[E2EBuildRunner] {SDK_DEFINES_ENV_VAR} not set, using default versionDefines");
+            return;
+        }
+
+        Debug.Log($"[E2EBuildRunner] Applying SDK version defines from environment: {sdkDefines}");
+
+        // 현재 스크립팅 정의 가져오기
+        BuildTargetGroup targetGroup = BuildTargetGroup.WebGL;
+        string currentDefines = PlayerSettings.GetScriptingDefineSymbolsForGroup(targetGroup);
+
+        // 기존 AIT_SDK_* 심볼 제거 (중복 방지)
+        string[] currentSymbols = currentDefines.Split(';');
+        var filteredSymbols = new System.Collections.Generic.List<string>();
+        foreach (string symbol in currentSymbols)
+        {
+            string trimmed = symbol.Trim();
+            if (!string.IsNullOrEmpty(trimmed) && !trimmed.StartsWith("AIT_SDK_"))
+            {
+                filteredSymbols.Add(trimmed);
+            }
+        }
+
+        // 새 SDK 심볼 추가
+        string[] newSdkSymbols = sdkDefines.Split(';');
+        foreach (string symbol in newSdkSymbols)
+        {
+            string trimmed = symbol.Trim();
+            if (!string.IsNullOrEmpty(trimmed))
+            {
+                filteredSymbols.Add(trimmed);
+            }
+        }
+
+        // 적용
+        string newDefines = string.Join(";", filteredSymbols);
+        PlayerSettings.SetScriptingDefineSymbolsForGroup(targetGroup, newDefines);
+
+        Debug.Log($"[E2EBuildRunner] Updated scripting define symbols: {newDefines}");
+
+        // 변경사항 저장
+        AssetDatabase.SaveAssets();
     }
 
 #if UNITY_6000_0_OR_NEWER

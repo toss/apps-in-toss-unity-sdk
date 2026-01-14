@@ -1418,9 +1418,12 @@ export class CSharpTypeGenerator {
     }
 
     // Pending external types 해결: typeDefinitions와 native-modules에서 찾아서 클래스 생성
+    // 타입을 찾을 수 없는 경우 빈 stub 클래스 생성 (SDK 버전 호환성)
     if (this.pendingExternalTypes.size > 0) {
       // 재귀적으로 추가된 pending types 해결 (최대 10번 반복하여 무한 루프 방지)
       let iteration = 0;
+      const unresolvedTypes = new Set<string>(); // 찾을 수 없는 타입 추적
+
       while (this.pendingExternalTypes.size > 0 && iteration < 10) {
         const remainingTypes = new Set(this.pendingExternalTypes);
         this.pendingExternalTypes.clear();
@@ -1441,9 +1444,22 @@ export class CSharpTypeGenerator {
           if (typeDef && typeDef.kind === 'interface' && typeDef.properties && typeDef.properties.length > 0) {
             typeMap.set(typeName, this.generateClassType(typeName, typeDef.properties));
             this.collectReferencedTypes(typeDef.properties, typeMap, exclude, typeName);
+          } else {
+            // 타입을 찾을 수 없는 경우 추적
+            unresolvedTypes.add(typeName);
           }
         }
         iteration++;
+      }
+
+      // 찾을 수 없는 타입에 대해 빈 stub 클래스 생성 (SDK 버전 호환성)
+      // 이전 SDK 버전에 없는 타입이 참조되는 경우 컴파일 오류 방지
+      for (const typeName of unresolvedTypes) {
+        if (!typeMap.has(typeName) && !exclude.has(typeName)) {
+          const stubClass = this.generateStubClass(typeName);
+          typeMap.set(typeName, stubClass);
+          console.log(`  [Stub] Generated stub class for unresolved type: ${typeName}`);
+        }
       }
     }
 
@@ -1470,6 +1486,28 @@ export class CSharpTypeGenerator {
 
     // 헤더/푸터 없이 본문만 반환 (호출자가 합침)
     return allTypes.join('\n\n');
+  }
+
+  /**
+   * 찾을 수 없는 타입에 대한 빈 stub 클래스 생성
+   * SDK 버전 호환성: 이전 버전에 없는 타입이 참조될 때 컴파일 오류 방지
+   */
+  private generateStubClass(typeName: string): string {
+    const cleanName = this.extractCleanName(typeName);
+    const lines: string[] = [];
+
+    lines.push('/// <summary>');
+    lines.push(`/// Stub class for ${cleanName} (type definition not found in current SDK version)`);
+    lines.push('/// This class is auto-generated for SDK version compatibility');
+    lines.push('/// </summary>');
+    lines.push('[Serializable]');
+    lines.push(`public class ${cleanName}`);
+    lines.push('{');
+    lines.push('    // Stub class - no properties defined');
+    lines.push('    // This type may not be available in the current SDK version');
+    lines.push('}');
+
+    return lines.join('\n');
   }
 
   /**

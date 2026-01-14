@@ -129,8 +129,9 @@ jobs:
         with:
           version: 10
           run_install: false
-          # standalone 모드로 pnpm store 충돌 방지 (self-hosted runner에서 병렬 실행 시)
-          standalone: true
+          # 각 job별로 고유한 설치 경로 사용 (self-hosted runner에서 병렬 실행 시 충돌 방지)
+          # pnpm/action-setup#149: standalone은 효과 없음, dest로 경로 분리 필요
+          dest: ~/setup-pnpm-${{ inputs.os }}-${{ inputs.unity-version }}-${{ inputs.sdk-version-override }}
 
       - name: Setup Node.js (for SDK regeneration)
         if: inputs.sdk-version-override != ''

@@ -523,6 +523,79 @@ jobs:
           Write-Host "Ad IDs injected successfully"
 
       # =====================================================
+      # SDK 버전별 스크립팅 정의 적용 (Unity 빌드 전)
+      # Unity batchmode에서는 스크립트 컴파일이 -executeMethod 전에 발생하므로
+      # ProjectSettings.asset을 직접 수정해야 함
+      # =====================================================
+      - name: Apply SDK Scripting Defines (macOS)
+        if: inputs.os == 'macos' && inputs.sdk-version-override != '' && inputs.run-build
+        run: |
+          PROJECT_PATH="Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}"
+          SETTINGS_FILE="${PROJECT_PATH}/ProjectSettings/ProjectSettings.asset"
+          SDK_DEFINES="${SDK_VERSION_DEFINES}"
+
+          if [ -z "$SDK_DEFINES" ]; then
+            echo "No SDK_VERSION_DEFINES set, skipping"
+            exit 0
+          fi
+
+          echo "Applying scripting defines to ProjectSettings.asset: $SDK_DEFINES"
+
+          # Unity YAML 형식으로 scriptingDefineSymbols 업데이트
+          # 기존: scriptingDefineSymbols: {}
+          # 목표: scriptingDefineSymbols:
+          #         WebGL: AIT_SDK_1_6_1_OR_LATER
+          if grep -q "scriptingDefineSymbols: {}" "$SETTINGS_FILE"; then
+            # 빈 스크립팅 정의를 WebGL 정의로 교체
+            sed -i '' "s/scriptingDefineSymbols: {}/scriptingDefineSymbols:\\
+    WebGL: ${SDK_DEFINES}/" "$SETTINGS_FILE"
+            echo "✓ Added scripting defines for WebGL"
+          elif grep -q "scriptingDefineSymbols:" "$SETTINGS_FILE"; then
+            # 이미 존재하는 경우 WebGL 항목 추가/업데이트
+            if grep -A1 "scriptingDefineSymbols:" "$SETTINGS_FILE" | grep -q "WebGL:"; then
+              # WebGL 항목이 이미 있으면 업데이트
+              sed -i '' "/scriptingDefineSymbols:/,/^  [a-zA-Z]/ s/WebGL:.*/WebGL: ${SDK_DEFINES}/" "$SETTINGS_FILE"
+              echo "✓ Updated existing WebGL scripting defines"
+            else
+              # WebGL 항목 추가
+              sed -i '' "/scriptingDefineSymbols:/a\\
+    WebGL: ${SDK_DEFINES}" "$SETTINGS_FILE"
+              echo "✓ Added WebGL scripting defines"
+            fi
+          fi
+
+          echo "Verifying changes:"
+          grep -A2 "scriptingDefineSymbols:" "$SETTINGS_FILE"
+
+      - name: Apply SDK Scripting Defines (Windows)
+        if: inputs.os == 'windows' && inputs.sdk-version-override != '' && inputs.run-build
+        shell: powershell
+        run: |
+          $projectPath = "Tests~\E2E\SampleUnityProject-${{ inputs.unity-version }}"
+          $settingsFile = "$projectPath\ProjectSettings\ProjectSettings.asset"
+          $sdkDefines = $env:SDK_VERSION_DEFINES
+
+          if ([string]::IsNullOrEmpty($sdkDefines)) {
+            Write-Host "No SDK_VERSION_DEFINES set, skipping"
+            exit 0
+          }
+
+          Write-Host "Applying scripting defines to ProjectSettings.asset: $sdkDefines"
+
+          $content = Get-Content $settingsFile -Raw
+
+          # 빈 스크립팅 정의를 WebGL 정의로 교체
+          if ($content -match "scriptingDefineSymbols: \{\}") {
+            $replacement = "scriptingDefineSymbols:`n    WebGL: $sdkDefines"
+            $content = $content -replace "scriptingDefineSymbols: \{\}", $replacement
+            Write-Host "Added scripting defines for WebGL"
+          }
+
+          Set-Content $settingsFile -Value $content -NoNewline
+          Write-Host "Verifying changes:"
+          Get-Content $settingsFile | Select-String -Pattern "scriptingDefineSymbols" -Context 0,2
+
+      # =====================================================
       # Unity WebGL 빌드
       # =====================================================
       - name: Build Unity WebGL (macOS)

@@ -541,28 +541,15 @@ jobs:
 
           echo "Applying scripting defines to ProjectSettings.asset: $SDK_DEFINES"
 
-          # Unity YAML 형식으로 scriptingDefineSymbols 업데이트
-          # 기존: scriptingDefineSymbols: {}
-          # 목표: scriptingDefineSymbols:
-          #         WebGL: AIT_SDK_1_6_1_OR_LATER
-          if grep -q "scriptingDefineSymbols: {}" "$SETTINGS_FILE"; then
-            # 빈 스크립팅 정의를 WebGL 정의로 교체
-            sed -i '' "s/scriptingDefineSymbols: {}/scriptingDefineSymbols:\\
-    WebGL: ${SDK_DEFINES}/" "$SETTINGS_FILE"
-            echo "✓ Added scripting defines for WebGL"
-          elif grep -q "scriptingDefineSymbols:" "$SETTINGS_FILE"; then
-            # 이미 존재하는 경우 WebGL 항목 추가/업데이트
-            if grep -A1 "scriptingDefineSymbols:" "$SETTINGS_FILE" | grep -q "WebGL:"; then
-              # WebGL 항목이 이미 있으면 업데이트
-              sed -i '' "/scriptingDefineSymbols:/,/^  [a-zA-Z]/ s/WebGL:.*/WebGL: ${SDK_DEFINES}/" "$SETTINGS_FILE"
-              echo "✓ Updated existing WebGL scripting defines"
-            else
-              # WebGL 항목 추가
-              sed -i '' "/scriptingDefineSymbols:/a\\
-    WebGL: ${SDK_DEFINES}" "$SETTINGS_FILE"
-              echo "✓ Added WebGL scripting defines"
-            fi
-          fi
+          # awk로 YAML 파일 수정 (줄바꿈 포함 치환)
+          awk -v defines="$SDK_DEFINES" '
+            /scriptingDefineSymbols: \{\}/ {
+              print "  scriptingDefineSymbols:"
+              print "    WebGL: " defines
+              next
+            }
+            { print }
+          ' "$SETTINGS_FILE" > "${SETTINGS_FILE}.tmp" && mv "${SETTINGS_FILE}.tmp" "$SETTINGS_FILE"
 
           echo "Verifying changes:"
           grep -A2 "scriptingDefineSymbols:" "$SETTINGS_FILE"

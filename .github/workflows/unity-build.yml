@@ -120,25 +120,10 @@ jobs:
           ref: ${{ inputs.ref || github.ref }}
 
       # =====================================================
-      # SDK 버전 오버라이드 (호환성 테스트용)
-      # 현재 브랜치의 테스트 코드 + 지정된 SDK 버전으로 재생성
+      # SDK 버전 오버라이드 (런타임 호환성 테스트용)
+      # SDK 코드는 재생성하지 않고, BuildConfig의 web-framework 버전만 변경
+      # 이를 통해 현재 SDK 코드가 다른 버전의 web-framework와 호환되는지 테스트
       # =====================================================
-      - name: Setup pnpm (for SDK regeneration)
-        if: inputs.sdk-version-override != ''
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10
-          run_install: false
-          # 각 job별로 고유한 설치 경로 사용 (self-hosted runner에서 병렬 실행 시 충돌 방지)
-          # pnpm/action-setup#149: standalone은 효과 없음, dest로 경로 분리 필요
-          dest: ~/setup-pnpm-${{ inputs.os }}-${{ inputs.unity-version }}-${{ inputs.sdk-version-override }}
-
-      - name: Setup Node.js (for SDK regeneration)
-        if: inputs.sdk-version-override != ''
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24
-
       - name: Override SDK Version
         if: inputs.sdk-version-override != ''
         shell: bash
@@ -146,12 +131,14 @@ jobs:
           OVERRIDE_VERSION="${{ inputs.sdk-version-override }}"
           PACKAGE_JSON="package.json"
 
-          echo "=== SDK Version Override (Regeneration Mode) ==="
+          echo "=== SDK Version Override (BuildConfig Only) ==="
           echo "Target SDK version: ${OVERRIDE_VERSION}"
-          echo "Using current branch's generator code"
+          echo ""
+          echo "NOTE: SDK 코드는 재생성하지 않고 현재 저장소의 코드를 사용합니다."
+          echo "      BuildConfig의 web-framework 버전만 변경하여 런타임 호환성을 테스트합니다."
           echo ""
 
-          # 1. package.json 버전 변경
+          # 1. package.json 버전 변경 (메타데이터용)
           echo "=== Updating package.json version ==="
           echo "Original version: $(grep '"version"' $PACKAGE_JSON)"
           if [[ "$RUNNER_OS" == "macOS" ]]; then
@@ -161,45 +148,7 @@ jobs:
           fi
           echo "Overridden version: $(grep '"version"' $PACKAGE_JSON)"
 
-          # 2. SDK 생성기에서 web-framework 버전 업데이트
-          echo ""
-          echo "=== Updating @apps-in-toss/web-framework to v${OVERRIDE_VERSION} ==="
-          cd sdk-runtime-generator~
-
-          # 캐시 정리 후 특정 버전 설치
-          pnpm store prune 2>/dev/null || true
-          pnpm update "@apps-in-toss/web-framework@${OVERRIDE_VERSION}" --force --registry https://registry.npmjs.org
-
-          # 설치된 버전 검증
-          INSTALLED_VERSION=$(pnpm list @apps-in-toss/web-framework --json 2>/dev/null | jq -r '.[0].dependencies["@apps-in-toss/web-framework"].version' || echo "unknown")
-          echo "Requested version: ${OVERRIDE_VERSION}"
-          echo "Installed version: ${INSTALLED_VERSION}"
-
-          if [ "$INSTALLED_VERSION" != "$OVERRIDE_VERSION" ]; then
-            echo "::warning::Version mismatch - requested: ${OVERRIDE_VERSION}, installed: ${INSTALLED_VERSION}"
-            echo "Attempting direct install..."
-            pnpm add "@apps-in-toss/web-framework@${OVERRIDE_VERSION}" --force
-            INSTALLED_VERSION=$(pnpm list @apps-in-toss/web-framework --json 2>/dev/null | jq -r '.[0].dependencies["@apps-in-toss/web-framework"].version' || echo "unknown")
-            echo "After retry - installed version: ${INSTALLED_VERSION}"
-          fi
-
-          # 3. SDK 코드 재생성
-          echo ""
-          echo "=== Regenerating SDK code ==="
-          if pnpm generate; then
-            echo "SDK regeneration completed successfully"
-          else
-            echo "::warning::SDK regeneration had issues, continuing anyway..."
-          fi
-
-          cd ..
-
-          # 4. 생성된 SDK 파일 확인
-          echo ""
-          echo "=== Generated SDK files ==="
-          ls -la Runtime/SDK/ | head -20
-
-          # 5. BuildConfig의 web-framework 버전도 동기화
+          # 2. BuildConfig의 web-framework 버전 동기화
           echo ""
           echo "=== Syncing BuildConfig web-framework version ==="
           BUILDCONFIG_PKG="WebGLTemplates/AITTemplate/BuildConfig~/package.json"
@@ -211,49 +160,15 @@ jobs:
           echo "BuildConfig updated:"
           grep "web-framework" "$BUILDCONFIG_PKG"
 
+          # 3. 현재 SDK 파일 확인
           echo ""
-          echo "=== Version Defines Impact ==="
-          echo "SDK version: ${OVERRIDE_VERSION}"
+          echo "=== Current SDK files (not regenerated) ==="
+          ls -la Runtime/SDK/ | head -20
 
-          # SDK 버전에 따른 스크립팅 정의 심볼 설정
-          # Unity versionDefines가 batchmode에서 제대로 작동하지 않을 수 있어서
-          # 환경변수로 E2EBuildRunner에 전달하여 직접 적용
-          SDK_DEFINES=""
-
-          # 버전 비교: sort -V로 semver 정렬 후 비교
-          if [ "$(printf '%s\n' "1.6.1" "${OVERRIDE_VERSION}" | sort -V | head -1)" = "1.6.1" ]; then
-            SDK_DEFINES="AIT_SDK_1_6_1_OR_LATER"
-            echo "  - AIT_SDK_1_6_1_OR_LATER: DEFINED"
-          else
-            echo "  - AIT_SDK_1_6_1_OR_LATER: NOT defined"
-          fi
-
-          if [ "$(printf '%s\n' "1.7.0" "${OVERRIDE_VERSION}" | sort -V | head -1)" = "1.7.0" ]; then
-            if [ -n "$SDK_DEFINES" ]; then
-              SDK_DEFINES="${SDK_DEFINES};AIT_SDK_1_7_OR_LATER"
-            else
-              SDK_DEFINES="AIT_SDK_1_7_OR_LATER"
-            fi
-            echo "  - AIT_SDK_1_7_OR_LATER: DEFINED"
-          else
-            echo "  - AIT_SDK_1_7_OR_LATER: NOT defined"
-          fi
-
-          if [ "$(printf '%s\n' "1.7.1" "${OVERRIDE_VERSION}" | sort -V | head -1)" = "1.7.1" ]; then
-            if [ -n "$SDK_DEFINES" ]; then
-              SDK_DEFINES="${SDK_DEFINES};AIT_SDK_1_7_1_OR_LATER"
-            else
-              SDK_DEFINES="AIT_SDK_1_7_1_OR_LATER"
-            fi
-            echo "  - AIT_SDK_1_7_1_OR_LATER: DEFINED"
-          else
-            echo "  - AIT_SDK_1_7_1_OR_LATER: NOT defined"
-          fi
-
-          # 환경변수로 설정 (GitHub Actions의 $GITHUB_ENV로 다음 step에 전달)
-          echo "SDK_VERSION_DEFINES=${SDK_DEFINES}" >> $GITHUB_ENV
           echo ""
-          echo "SDK_VERSION_DEFINES=${SDK_DEFINES}"
+          echo "=== Version Info ==="
+          echo "SDK version override: ${OVERRIDE_VERSION}"
+          echo "SDK code: Using current repository version (not regenerated)"
 
       # =====================================================
       # Windows Defender 제외 (Windows)
@@ -521,66 +436,6 @@ jobs:
 
           Set-Content $adTester -Value $content -NoNewline
           Write-Host "Ad IDs injected successfully"
-
-      # =====================================================
-      # SDK 버전별 스크립팅 정의 적용 (Unity 빌드 전)
-      # Unity batchmode에서는 스크립트 컴파일이 -executeMethod 전에 발생하므로
-      # ProjectSettings.asset을 직접 수정해야 함
-      # =====================================================
-      - name: Apply SDK Scripting Defines (macOS)
-        if: inputs.os == 'macos' && inputs.sdk-version-override != '' && inputs.run-build
-        run: |
-          PROJECT_PATH="Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}"
-          SETTINGS_FILE="${PROJECT_PATH}/ProjectSettings/ProjectSettings.asset"
-          SDK_DEFINES="${SDK_VERSION_DEFINES}"
-
-          if [ -z "$SDK_DEFINES" ]; then
-            echo "No SDK_VERSION_DEFINES set, skipping"
-            exit 0
-          fi
-
-          echo "Applying scripting defines to ProjectSettings.asset: $SDK_DEFINES"
-
-          # awk로 YAML 파일 수정 (줄바꿈 포함 치환)
-          awk -v defines="$SDK_DEFINES" '
-            /scriptingDefineSymbols: \{\}/ {
-              print "  scriptingDefineSymbols:"
-              print "    WebGL: " defines
-              next
-            }
-            { print }
-          ' "$SETTINGS_FILE" > "${SETTINGS_FILE}.tmp" && mv "${SETTINGS_FILE}.tmp" "$SETTINGS_FILE"
-
-          echo "Verifying changes:"
-          grep -A2 "scriptingDefineSymbols:" "$SETTINGS_FILE"
-
-      - name: Apply SDK Scripting Defines (Windows)
-        if: inputs.os == 'windows' && inputs.sdk-version-override != '' && inputs.run-build
-        shell: powershell
-        run: |
-          $projectPath = "Tests~\E2E\SampleUnityProject-${{ inputs.unity-version }}"
-          $settingsFile = "$projectPath\ProjectSettings\ProjectSettings.asset"
-          $sdkDefines = $env:SDK_VERSION_DEFINES
-
-          if ([string]::IsNullOrEmpty($sdkDefines)) {
-            Write-Host "No SDK_VERSION_DEFINES set, skipping"
-            exit 0
-          }
-
-          Write-Host "Applying scripting defines to ProjectSettings.asset: $sdkDefines"
-
-          $content = Get-Content $settingsFile -Raw
-
-          # 빈 스크립팅 정의를 WebGL 정의로 교체
-          if ($content -match "scriptingDefineSymbols: \{\}") {
-            $replacement = "scriptingDefineSymbols:`n    WebGL: $sdkDefines"
-            $content = $content -replace "scriptingDefineSymbols: \{\}", $replacement
-            Write-Host "Added scripting defines for WebGL"
-          }
-
-          Set-Content $settingsFile -Value $content -NoNewline
-          Write-Host "Verifying changes:"
-          Get-Content $settingsFile | Select-String -Pattern "scriptingDefineSymbols" -Context 0,2
 
       # =====================================================
       # Unity WebGL 빌드

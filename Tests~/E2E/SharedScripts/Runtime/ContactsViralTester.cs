@@ -147,18 +147,12 @@ public class ContactsViralTester : MonoBehaviour
                 }
             };
 
-            // ContactsViral API 호출
-#if AIT_SDK_1_7_OR_LATER
-            // v1.7.0+ 콜백 패턴
-            _unsubscribe = AIT.ContactsViral(onEvent, new ContactsViralParamsOptions { ModuleId = moduleId });
-#else
-            // v1.6.x 이하 async params 패턴
+            // ContactsViral API 호출 (async params 패턴)
             _unsubscribe = await AIT.ContactsViral(new ContactsViralParams
             {
                 Options = new ContactsViralParamsOptions { ModuleId = moduleId },
                 OnEvent = onEvent
             });
-#endif
 
             isActive = true;
             status = "공유 창 열림 (이벤트 대기 중...)";

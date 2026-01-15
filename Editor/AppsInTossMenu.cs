@@ -289,14 +289,15 @@ namespace AppsInToss
             string projectPath = UnityUtil.GetProjectPath();
             string aitBuildPath = Path.Combine(projectPath, "ait-build");
             string distPath = Path.Combine(aitBuildPath, "dist");
+            PublishMode publishMode = config.publishMode; 
 
             // 기존 빌드가 있는지 확인
             bool hasExistingBuild = Directory.Exists(distPath) &&
                                     Directory.GetFiles(distPath, "*", SearchOption.AllDirectories).Length > 0;
 
-            bool shouldRebuild = true;
+            bool shouldRebuild = publishMode == PublishMode.RebuildAndDeploy;
 
-            if (hasExistingBuild)
+            if (hasExistingBuild && publishMode == PublishMode.Manual)
             {
                 // 기존 빌드가 있으면 사용자에게 선택권 부여
                 int choice = EditorUtility.DisplayDialogComplex(
@@ -655,6 +656,8 @@ namespace AppsInToss
         {
             var config = UnityUtil.GetEditorConf();
             if (!ValidateSettingsForPackage(config)) return;
+            PublishMode publishMode = config.publishMode; 
+
 
             // AITCredentials에서 배포 키 로드
             string deploymentKey = AITCredentialsUtil.GetDeploymentKey();
@@ -677,14 +680,17 @@ namespace AppsInToss
                 return;
             }
 
-            bool confirmed = EditorUtility.DisplayDialog(
-                "배포 확인",
-                $"Apps in Toss에 배포하시겠습니까?\n\n프로젝트: {config.appName}\n버전: {config.version}",
-                "배포",
-                "취소"
-            );
+            if (publishMode == PublishMode.Manual)
+            {
+                bool confirmed = EditorUtility.DisplayDialog(
+                    "배포 확인",
+                    $"Apps in Toss에 배포하시겠습니까?\n\n프로젝트: {config.appName}\n버전: {config.version}",
+                    "배포",
+                    "취소"
+                );
 
-            if (!confirmed) return;
+                if (!confirmed) return;
+            }
 
             Debug.Log("AIT: Apps in Toss 배포 시작...");
 

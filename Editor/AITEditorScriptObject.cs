@@ -206,6 +206,9 @@ namespace AppsInToss
 
         [Header("플러그인 설정")]
         public string[] plugins = new string[] { };
+        
+        [Header("Publish 설정")]
+        public PublishMode publishMode;
 
         /// <summary>
         /// 아이콘 URL 유효성 검사
@@ -323,6 +326,16 @@ namespace AppsInToss
         }
     }
 
+    /// <summary>
+    /// Publish 모드 설정
+    /// </summary>
+    public enum PublishMode
+    {
+        Manual,               // 수동 처리
+        RebuildAndDeploy,     // 다시 빌드 후 배포
+        DeployExistingBuild   // 기존 빌드로 배포
+    }
+    
     /// <summary>
     /// Unity 버전별 기본 설정값을 제공하는 클래스
     /// 출처: apps-in-toss-unity-docs/Design/UnityVersion.md

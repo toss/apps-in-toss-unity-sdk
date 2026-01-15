@@ -90,8 +90,8 @@ namespace AppsInToss.Editor
                 return;
             }
 
-            // 사용자에게 확인 후 패턴 추가
-            bool shouldAdd = EditorUtility.DisplayDialog(
+            // 사용자에게 확인 후 패턴 추가 (CI에서는 자동 승인 - 보안 기능이므로)
+            bool shouldAdd = AITPlatformHelper.ShowConfirmDialog(
                 "Apps in Toss SDK - 배포 키 보호",
                 "배포 키(deploymentKey)가 Git에 커밋되지 않도록 .gitignore에 보호 패턴을 추가합니다.\n\n" +
                 "추가될 패턴:\n" +
@@ -99,7 +99,8 @@ namespace AppsInToss.Editor
                 "• **/AITCredentials.asset.meta\n\n" +
                 "계속하시겠습니까?",
                 "추가",
-                "나중에"
+                "나중에",
+                autoApprove: true
             );
 
             if (shouldAdd)
@@ -154,7 +155,7 @@ namespace AppsInToss.Editor
 
                 Debug.Log("[AIT] .gitignore에 AITCredentials.asset 보호 패턴이 추가되었습니다.");
 
-                EditorUtility.DisplayDialog(
+                AITPlatformHelper.ShowInfoDialog(
                     "완료",
                     ".gitignore에 보호 패턴이 추가되었습니다.\n\n" +
                     "이제 배포 키가 Git에 커밋되지 않습니다.",
@@ -165,7 +166,7 @@ namespace AppsInToss.Editor
             {
                 Debug.LogError($"[AIT] .gitignore 업데이트 실패: {ex.Message}");
 
-                EditorUtility.DisplayDialog(
+                AITPlatformHelper.ShowInfoDialog(
                     "오류",
                     $".gitignore 업데이트에 실패했습니다.\n\n" +
                     $"수동으로 다음 패턴을 추가해주세요:\n" +
@@ -228,7 +229,8 @@ namespace AppsInToss.Editor
         /// </summary>
         private static void ShowTrackedWarning()
         {
-            bool shouldFix = EditorUtility.DisplayDialog(
+            // CI에서는 경고 로그만 출력하고 클립보드 복사는 스킵
+            bool shouldFix = AITPlatformHelper.ShowConfirmDialog(
                 "⚠️ 경고: 배포 키가 Git에 노출되어 있습니다!",
                 "AITCredentials.asset 파일이 이미 Git에 커밋되어 있습니다.\n\n" +
                 "배포 키가 저장소에 노출될 수 있으므로, Git에서 제거하는 것을 권장합니다.\n\n" +
@@ -238,7 +240,8 @@ namespace AppsInToss.Editor
                 "2. 변경사항 커밋\n\n" +
                 "클립보드에 명령어를 복사하시겠습니까?",
                 "명령어 복사",
-                "나중에"
+                "나중에",
+                autoApprove: false  // CI에서는 자동 스킵 (클립보드 복사 무의미)
             );
 
             if (shouldFix)

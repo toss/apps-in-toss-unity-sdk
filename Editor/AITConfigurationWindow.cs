@@ -262,7 +262,7 @@ namespace AppsInToss.Editor
             // 모든 프로필 초기화 버튼
             if (GUILayout.Button("모든 프로필 기본값으로 초기화"))
             {
-                if (EditorUtility.DisplayDialog("프로필 초기화", "모든 빌드 프로필을 기본값으로 초기화하시겠습니까?", "예", "아니오"))
+                if (AITPlatformHelper.ShowConfirmDialog("프로필 초기화", "모든 빌드 프로필을 기본값으로 초기화하시겠습니까?", "예", "아니오", autoApprove: true))
                 {
                     config.devServerProfile = AITBuildProfile.CreateDevServerProfile();
                     config.productionProfile = AITBuildProfile.CreateProductionProfile();

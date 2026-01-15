@@ -260,15 +260,12 @@ namespace AppsInToss.Editor
             {
                 Debug.LogError($"[NodeJS] 다운로드 실패: {e.Message}");
 
-                // 배치 모드에서는 다이얼로그 스킵
-                if (!Application.isBatchMode)
-                {
-                    EditorUtility.DisplayDialog("다운로드 실패",
-                        $"Node.js 다운로드에 실패했습니다:\n\n{e.Message}\n\n" +
-                        "수동으로 Node.js를 설치하시거나, 나중에 다시 시도해주세요.\n\n" +
-                        "공식 사이트: https://nodejs.org",
-                        "확인");
-                }
+                // CI/배치 모드에서는 다이얼로그 스킵
+                AITPlatformHelper.ShowInfoDialog("다운로드 실패",
+                    $"Node.js 다운로드에 실패했습니다:\n\n{e.Message}\n\n" +
+                    "수동으로 Node.js를 설치하시거나, 나중에 다시 시도해주세요.\n\n" +
+                    "공식 사이트: https://nodejs.org",
+                    "확인");
 
                 throw;
             }

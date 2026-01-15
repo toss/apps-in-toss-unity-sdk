@@ -1,3 +1,4 @@
+using AppsInToss.Editor;
 using UnityEditor;
 using UnityEngine;
 
@@ -85,11 +86,11 @@ namespace AppsInToss
                 var result = AITConvertCore.DoExport(true);
                 if (result == AITConvertCore.AITExportError.SUCCEED)
                 {
-                    EditorUtility.DisplayDialog("성공", "Apps in Toss 미니앱 변환이 완료되었습니다!", "확인");
+                    AITPlatformHelper.ShowInfoDialog("성공", "Apps in Toss 미니앱 변환이 완료되었습니다!", "확인");
                 }
                 else
                 {
-                    EditorUtility.DisplayDialog("실패", $"변환 중 오류가 발생했습니다: {result}", "확인");
+                    AITPlatformHelper.ShowInfoDialog("실패", $"변환 중 오류가 발생했습니다: {result}", "확인");
                 }
             }
 
@@ -98,11 +99,11 @@ namespace AppsInToss
                 var result = AITConvertCore.DoExport(false);
                 if (result == AITConvertCore.AITExportError.SUCCEED)
                 {
-                    EditorUtility.DisplayDialog("성공", "WebGL 빌드가 완료되었습니다!", "확인");
+                    AITPlatformHelper.ShowInfoDialog("성공", "WebGL 빌드가 완료되었습니다!", "확인");
                 }
                 else
                 {
-                    EditorUtility.DisplayDialog("실패", $"빌드 중 오류가 발생했습니다: {result}", "확인");
+                    AITPlatformHelper.ShowInfoDialog("실패", $"빌드 중 오류가 발생했습니다: {result}", "확인");
                 }
             }
 
@@ -110,7 +111,7 @@ namespace AppsInToss
 
             if (GUILayout.Button("설정 초기화"))
             {
-                if (EditorUtility.DisplayDialog("설정 초기화", "모든 설정을 초기화하시겠습니까?", "예", "아니오"))
+                if (AITPlatformHelper.ShowConfirmDialog("설정 초기화", "모든 설정을 초기화하시겠습니까?", "예", "아니오", autoApprove: true))
                 {
                     string configPath = "Assets/AppsInToss/Editor/AITConfig.asset";
                     AssetDatabase.DeleteAsset(configPath);

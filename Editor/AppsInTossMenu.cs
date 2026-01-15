@@ -298,14 +298,15 @@ namespace AppsInToss
 
             if (hasExistingBuild)
             {
-                // 기존 빌드가 있으면 사용자에게 선택권 부여
-                int choice = EditorUtility.DisplayDialogComplex(
+                // 기존 빌드가 있으면 사용자에게 선택권 부여 (CI에서는 재빌드)
+                int choice = AITPlatformHelper.ShowComplexDialog(
                     "Publish",
                     "기존 빌드가 존재합니다.\n\n" +
                     "코드나 에셋을 변경했다면 다시 빌드하는 것을 권장합니다.",
                     "다시 빌드 후 배포",  // 0: Alt (권장)
                     "취소",               // 1: Cancel
-                    "기존 빌드로 배포"    // 2: Other
+                    "기존 빌드로 배포",   // 2: Other
+                    defaultChoice: 0      // CI에서는 재빌드
                 );
 
                 if (choice == 1)
@@ -336,12 +337,13 @@ namespace AppsInToss
                 {
                     string errorMessage = AITConvertCore.GetErrorMessage(result);
                     Debug.LogError($"AIT: 빌드 실패: {result}");
-                    int choice = EditorUtility.DisplayDialogComplex(
+                    int choice = AITPlatformHelper.ShowComplexDialog(
                         "빌드 실패",
                         errorMessage + "\n\n문제가 지속되면 'Issue 신고'를 클릭하세요.",
                         "확인",
                         "Issue 신고",
-                        null
+                        null,
+                        defaultChoice: 0
                     );
                     if (choice == 1)
                     {
@@ -374,7 +376,7 @@ namespace AppsInToss
 
             if (!webglExists && !aitBuildExists)
             {
-                EditorUtility.DisplayDialog("정보", "삭제할 빌드 폴더가 없습니다.", "확인");
+                AITPlatformHelper.ShowInfoDialog("정보", "삭제할 빌드 폴더가 없습니다.", "확인");
                 return;
             }
 
@@ -383,11 +385,12 @@ namespace AppsInToss
             if (webglExists) foldersToDelete.Add("webgl/");
             if (aitBuildExists) foldersToDelete.Add("ait-build/");
 
-            bool confirmed = EditorUtility.DisplayDialog(
+            bool confirmed = AITPlatformHelper.ShowConfirmDialog(
                 "빌드 Clean",
                 $"다음 폴더를 삭제하시겠습니까?\n\n• {string.Join("\n• ", foldersToDelete)}\n\n이 작업은 되돌릴 수 없습니다.",
                 "삭제",
-                "취소"
+                "취소",
+                autoApprove: true
             );
 
             if (!confirmed) return;
@@ -427,7 +430,7 @@ namespace AppsInToss
             if (deletedCount > 0)
             {
                 Debug.Log($"AIT: Clean 완료! ({deletedCount}개 폴더 삭제됨)");
-                EditorUtility.DisplayDialog("완료", $"빌드 폴더 {deletedCount}개가 삭제되었습니다.", "확인");
+                AITPlatformHelper.ShowInfoDialog("완료", $"빌드 폴더 {deletedCount}개가 삭제되었습니다.", "확인");
             }
         }
 
@@ -451,7 +454,7 @@ namespace AppsInToss
             }
             else
             {
-                EditorUtility.DisplayDialog("오류", "빌드 폴더를 찾을 수 없습니다. 먼저 빌드를 실행하세요.", "확인");
+                AITPlatformHelper.ShowInfoDialog("오류", "빌드 폴더를 찾을 수 없습니다. 먼저 빌드를 실행하세요.", "확인");
             }
         }
 
@@ -473,7 +476,7 @@ namespace AppsInToss
                 catch (Exception e)
                 {
                     Debug.LogError($"[AIT] 템플릿 삭제 실패: {e.Message}");
-                    EditorUtility.DisplayDialog("오류", $"템플릿 삭제 실패: {e.Message}", "확인");
+                    AITPlatformHelper.ShowInfoDialog("오류", $"템플릿 삭제 실패: {e.Message}", "확인");
                     return;
                 }
             }
@@ -483,7 +486,7 @@ namespace AppsInToss
             AssetDatabase.Refresh();
 
             Debug.Log("[AIT] ✓ WebGL 템플릿 재생성 완료");
-            EditorUtility.DisplayDialog(
+            AITPlatformHelper.ShowInfoDialog(
                 "AIT",
                 "WebGL 템플릿이 재생성되었습니다.\n\n새 템플릿이 프로젝트에 적용되었습니다.",
                 "확인"
@@ -524,18 +527,19 @@ namespace AppsInToss
                 if (result == AITConvertCore.AITExportError.SUCCEED)
                 {
                     Debug.Log($"AIT: WebGL 빌드 완료! (소요 시간: {buildStopwatch.Elapsed.TotalSeconds:F1}초)");
-                    EditorUtility.DisplayDialog("성공", $"WebGL 빌드가 완료되었습니다!\n\n소요 시간: {buildStopwatch.Elapsed.TotalSeconds:F1}초", "확인");
+                    AITPlatformHelper.ShowInfoDialog("성공", $"WebGL 빌드가 완료되었습니다!\n\n소요 시간: {buildStopwatch.Elapsed.TotalSeconds:F1}초", "확인");
                 }
                 else
                 {
                     string errorMessage = AITConvertCore.GetErrorMessage(result);
                     Debug.LogError($"AIT: WebGL 빌드 실패: {result}");
-                    int choice = EditorUtility.DisplayDialogComplex(
+                    int choice = AITPlatformHelper.ShowComplexDialog(
                         "빌드 실패",
                         errorMessage + "\n\n문제가 지속되면 'Issue 신고'를 클릭하세요.",
                         "확인",
                         "Issue 신고",
-                        null
+                        null,
+                        defaultChoice: 0
                     );
                     if (choice == 1)
                     {
@@ -547,7 +551,7 @@ namespace AppsInToss
             {
                 buildStopwatch.Stop();
                 Debug.LogError($"AIT: 오류: {e.Message}");
-                EditorUtility.DisplayDialog("오류", e.Message, "확인");
+                AITPlatformHelper.ShowInfoDialog("오류", e.Message, "확인");
             }
         }
 
@@ -574,18 +578,19 @@ namespace AppsInToss
                 if (result == AITConvertCore.AITExportError.SUCCEED)
                 {
                     Debug.Log($"AIT: 패키징 완료! (소요 시간: {buildStopwatch.Elapsed.TotalSeconds:F1}초)");
-                    EditorUtility.DisplayDialog("성공", $"패키징이 완료되었습니다!\n\n소요 시간: {buildStopwatch.Elapsed.TotalSeconds:F1}초", "확인");
+                    AITPlatformHelper.ShowInfoDialog("성공", $"패키징이 완료되었습니다!\n\n소요 시간: {buildStopwatch.Elapsed.TotalSeconds:F1}초", "확인");
                 }
                 else
                 {
                     string errorMessage = AITConvertCore.GetErrorMessage(result);
                     Debug.LogError($"AIT: 패키징 실패: {result}");
-                    int choice = EditorUtility.DisplayDialogComplex(
+                    int choice = AITPlatformHelper.ShowComplexDialog(
                         "패키징 실패",
                         errorMessage + "\n\n문제가 지속되면 'Issue 신고'를 클릭하세요.",
                         "확인",
                         "Issue 신고",
-                        null
+                        null,
+                        defaultChoice: 0
                     );
                     if (choice == 1)
                     {
@@ -597,7 +602,7 @@ namespace AppsInToss
             {
                 buildStopwatch.Stop();
                 Debug.LogError($"AIT: 오류: {e.Message}");
-                EditorUtility.DisplayDialog("오류", e.Message, "확인");
+                AITPlatformHelper.ShowInfoDialog("오류", e.Message, "확인");
             }
         }
 
@@ -624,18 +629,19 @@ namespace AppsInToss
                 if (result == AITConvertCore.AITExportError.SUCCEED)
                 {
                     Debug.Log($"AIT: 전체 프로세스 완료! (총 소요 시간: {buildStopwatch.Elapsed.TotalSeconds:F1}초)");
-                    EditorUtility.DisplayDialog("성공", $"빌드 & 패키징이 완료되었습니다!\n\n총 소요 시간: {buildStopwatch.Elapsed.TotalSeconds:F1}초", "확인");
+                    AITPlatformHelper.ShowInfoDialog("성공", $"빌드 & 패키징이 완료되었습니다!\n\n총 소요 시간: {buildStopwatch.Elapsed.TotalSeconds:F1}초", "확인");
                 }
                 else
                 {
                     string errorMessage = AITConvertCore.GetErrorMessage(result);
                     Debug.LogError($"AIT: 빌드 실패: {result}");
-                    int choice = EditorUtility.DisplayDialogComplex(
+                    int choice = AITPlatformHelper.ShowComplexDialog(
                         "빌드 실패",
                         errorMessage + "\n\n문제가 지속되면 'Issue 신고'를 클릭하세요.",
                         "확인",
                         "Issue 신고",
-                        null
+                        null,
+                        defaultChoice: 0
                     );
                     if (choice == 1)
                     {
@@ -647,7 +653,7 @@ namespace AppsInToss
             {
                 buildStopwatch.Stop();
                 Debug.LogError($"AIT: 오류: {e.Message}");
-                EditorUtility.DisplayDialog("오류", e.Message, "확인");
+                AITPlatformHelper.ShowInfoDialog("오류", e.Message, "확인");
             }
         }
 
@@ -661,7 +667,7 @@ namespace AppsInToss
             if (string.IsNullOrWhiteSpace(deploymentKey))
             {
                 Debug.LogError("AIT: 배포 키가 설정되지 않았습니다.");
-                EditorUtility.DisplayDialog("오류", "배포 키가 설정되지 않았습니다.\n\nApps in Toss > Configuration에서 배포 키를 입력해주세요.", "확인");
+                AITPlatformHelper.ShowInfoDialog("오류", "배포 키가 설정되지 않았습니다.\n\nApps in Toss > Configuration에서 배포 키를 입력해주세요.", "확인");
                 return;
             }
 
@@ -673,15 +679,16 @@ namespace AppsInToss
             if (string.IsNullOrEmpty(npmPath))
             {
                 Debug.LogError("AIT: npm을 찾을 수 없습니다. Node.js가 설치되어 있는지 확인하세요.");
-                EditorUtility.DisplayDialog("오류", "npm을 찾을 수 없습니다.\n\nNode.js가 설치되어 있는지 확인하세요.", "확인");
+                AITPlatformHelper.ShowInfoDialog("오류", "npm을 찾을 수 없습니다.\n\nNode.js가 설치되어 있는지 확인하세요.", "확인");
                 return;
             }
 
-            bool confirmed = EditorUtility.DisplayDialog(
+            bool confirmed = AITPlatformHelper.ShowConfirmDialog(
                 "배포 확인",
                 $"Apps in Toss에 배포하시겠습니까?\n\n프로젝트: {config.appName}\n버전: {config.version}",
                 "배포",
-                "취소"
+                "취소",
+                autoApprove: true
             );
 
             if (!confirmed) return;
@@ -711,7 +718,7 @@ namespace AppsInToss
                     if (result.ExitCode == -1)
                     {
                         Debug.LogError("AIT: 배포 타임아웃 (5분 초과)");
-                        EditorUtility.DisplayDialog("타임아웃", "배포 시간이 초과되었습니다.", "확인");
+                        AITPlatformHelper.ShowInfoDialog("타임아웃", "배포 시간이 초과되었습니다.", "확인");
                     }
                     else
                     {
@@ -727,12 +734,13 @@ namespace AppsInToss
                         dialogMessage += "\n\n자세한 내용은 Console 로그를 확인하세요.";
                         dialogMessage += "\n\n문제가 지속되면 'Issue 신고'를 클릭하세요.";
 
-                        int choice = EditorUtility.DisplayDialogComplex(
+                        int choice = AITPlatformHelper.ShowComplexDialog(
                             "배포 실패",
                             dialogMessage,
                             "확인",
                             "Issue 신고",
-                            null
+                            null,
+                            defaultChoice: 0
                         );
                         if (choice == 1)
                         {
@@ -747,18 +755,21 @@ namespace AppsInToss
                     if (!string.IsNullOrEmpty(deployUrl))
                     {
                         Debug.Log($"AIT: 배포 URL: {deployUrl}");
-                        DeploySuccessWindow.Show(deployUrl);
+                        if (!AITPlatformHelper.IsNonInteractive)
+                        {
+                            DeploySuccessWindow.Show(deployUrl);
+                        }
                     }
                     else
                     {
-                        EditorUtility.DisplayDialog("성공", "Apps in Toss에 배포되었습니다!", "확인");
+                        AITPlatformHelper.ShowInfoDialog("성공", "Apps in Toss에 배포되었습니다!", "확인");
                     }
                 }
             }
             catch (Exception e)
             {
                 Debug.LogError($"AIT: 배포 오류: {e.Message}");
-                EditorUtility.DisplayDialog("오류", $"배포 오류:\n{e.Message}", "확인");
+                AITPlatformHelper.ShowInfoDialog("오류", $"배포 오류:\n{e.Message}", "확인");
             }
         }
 
@@ -780,10 +791,11 @@ namespace AppsInToss
             var prodState = prodServerState.ValidateState();
             if (prodState == ServerState.Running || prodState == ServerState.Starting)
             {
-                if (EditorUtility.DisplayDialog(
+                if (AITPlatformHelper.ShowConfirmDialog(
                     "서버 전환",
                     "Production 서버가 실행 중입니다.\nDev 서버로 전환하시겠습니까?",
-                    "예", "아니오"))
+                    "예", "아니오",
+                    autoApprove: true))
                 {
                     StopProdServer();
                 }
@@ -816,12 +828,13 @@ namespace AppsInToss
             {
                 string errorMessage = AITConvertCore.GetErrorMessage(result);
                 Debug.LogError($"AIT: 빌드 실패: {result}");
-                int choice = EditorUtility.DisplayDialogComplex(
+                int choice = AITPlatformHelper.ShowComplexDialog(
                     "빌드 실패",
                     errorMessage + "\n\n문제가 지속되면 'Issue 신고'를 클릭하세요.",
                     "확인",
                     "Issue 신고",
-                    null
+                    null,
+                    defaultChoice: 0
                 );
                 if (choice == 1)
                 {
@@ -887,7 +900,7 @@ namespace AppsInToss
                     onServerFailed: (reason) =>
                     {
                         Debug.LogError($"AIT: Dev 서버 시작 실패 - {reason}");
-                        EditorUtility.DisplayDialog("Dev 서버 시작 실패", reason, "확인");
+                        AITPlatformHelper.ShowInfoDialog("Dev 서버 시작 실패", reason, "확인");
                         devServerState.OnServerFailed();
                     }
                 );
@@ -895,7 +908,7 @@ namespace AppsInToss
             catch (Exception e)
             {
                 Debug.LogError($"AIT: Dev 서버 시작 실패: {e.Message}");
-                EditorUtility.DisplayDialog("오류", $"Dev 서버 시작 실패:\n{e.Message}", "확인");
+                AITPlatformHelper.ShowInfoDialog("오류", $"Dev 서버 시작 실패:\n{e.Message}", "확인");
                 devServerState.OnServerFailed();
             }
         }
@@ -918,10 +931,11 @@ namespace AppsInToss
             var prodState = prodServerState.ValidateState();
             if (prodState == ServerState.Running || prodState == ServerState.Starting)
             {
-                if (EditorUtility.DisplayDialog(
+                if (AITPlatformHelper.ShowConfirmDialog(
                     "서버 전환",
                     "Production 서버가 실행 중입니다.\nDev 서버로 전환하시겠습니까?",
-                    "예", "아니오"))
+                    "예", "아니오",
+                    autoApprove: true))
                 {
                     StopProdServer();
                 }
@@ -943,7 +957,7 @@ namespace AppsInToss
             if (!Directory.Exists(buildPath))
             {
                 Debug.LogError($"AIT: 빌드 결과물이 없습니다. 먼저 Build & Package를 실행하세요. ({buildPath})");
-                EditorUtility.DisplayDialog("빌드 필요", "빌드 결과물이 없습니다.\n먼저 Build & Package를 실행하세요.", "확인");
+                AITPlatformHelper.ShowInfoDialog("빌드 필요", "빌드 결과물이 없습니다.\n먼저 Build & Package를 실행하세요.", "확인");
                 return;
             }
 
@@ -1001,7 +1015,7 @@ namespace AppsInToss
                     onServerFailed: (reason) =>
                     {
                         Debug.LogError($"AIT: Dev 서버 시작 실패 - {reason}");
-                        EditorUtility.DisplayDialog("Dev 서버 시작 실패", reason, "확인");
+                        AITPlatformHelper.ShowInfoDialog("Dev 서버 시작 실패", reason, "확인");
                         devServerState.OnServerFailed();
                     }
                 );
@@ -1009,7 +1023,7 @@ namespace AppsInToss
             catch (Exception e)
             {
                 Debug.LogError($"AIT: Dev 서버 시작 실패: {e.Message}");
-                EditorUtility.DisplayDialog("오류", $"Dev 서버 시작 실패:\n{e.Message}", "확인");
+                AITPlatformHelper.ShowInfoDialog("오류", $"Dev 서버 시작 실패:\n{e.Message}", "확인");
                 devServerState.OnServerFailed();
             }
         }
@@ -1050,10 +1064,11 @@ namespace AppsInToss
             var devState = devServerState.ValidateState();
             if (devState == ServerState.Running || devState == ServerState.Starting)
             {
-                if (EditorUtility.DisplayDialog(
+                if (AITPlatformHelper.ShowConfirmDialog(
                     "서버 전환",
                     "Dev 서버가 실행 중입니다.\nProduction 서버로 전환하시겠습니까?",
-                    "예", "아니오"))
+                    "예", "아니오",
+                    autoApprove: true))
                 {
                     StopDevServer();
                 }
@@ -1086,12 +1101,13 @@ namespace AppsInToss
             {
                 string errorMessage = AITConvertCore.GetErrorMessage(result);
                 Debug.LogError($"AIT: 빌드 실패: {result}");
-                int choice = EditorUtility.DisplayDialogComplex(
+                int choice = AITPlatformHelper.ShowComplexDialog(
                     "빌드 실패",
                     errorMessage + "\n\n문제가 지속되면 'Issue 신고'를 클릭하세요.",
                     "확인",
                     "Issue 신고",
-                    null
+                    null,
+                    defaultChoice: 0
                 );
                 if (choice == 1)
                 {
@@ -1157,7 +1173,7 @@ namespace AppsInToss
                     onServerFailed: (reason) =>
                     {
                         Debug.LogError($"AIT: Production 서버 시작 실패 - {reason}");
-                        EditorUtility.DisplayDialog("Production 서버 시작 실패", reason, "확인");
+                        AITPlatformHelper.ShowInfoDialog("Production 서버 시작 실패", reason, "확인");
                         prodServerState.OnServerFailed();
                     }
                 );
@@ -1165,7 +1181,7 @@ namespace AppsInToss
             catch (Exception e)
             {
                 Debug.LogError($"AIT: Production 서버 시작 실패: {e.Message}");
-                EditorUtility.DisplayDialog("오류", $"Production 서버 시작 실패:\n{e.Message}", "확인");
+                AITPlatformHelper.ShowInfoDialog("오류", $"Production 서버 시작 실패:\n{e.Message}", "확인");
                 prodServerState.OnServerFailed();
             }
         }
@@ -1188,10 +1204,11 @@ namespace AppsInToss
             var devState = devServerState.ValidateState();
             if (devState == ServerState.Running || devState == ServerState.Starting)
             {
-                if (EditorUtility.DisplayDialog(
+                if (AITPlatformHelper.ShowConfirmDialog(
                     "서버 전환",
                     "Dev 서버가 실행 중입니다.\nProduction 서버로 전환하시겠습니까?",
-                    "예", "아니오"))
+                    "예", "아니오",
+                    autoApprove: true))
                 {
                     StopDevServer();
                 }
@@ -1213,7 +1230,7 @@ namespace AppsInToss
             if (!Directory.Exists(buildPath))
             {
                 Debug.LogError($"AIT: 빌드 결과물이 없습니다. 먼저 Build & Package를 실행하세요. ({buildPath})");
-                EditorUtility.DisplayDialog("빌드 필요", "빌드 결과물이 없습니다.\n먼저 Build & Package를 실행하세요.", "확인");
+                AITPlatformHelper.ShowInfoDialog("빌드 필요", "빌드 결과물이 없습니다.\n먼저 Build & Package를 실행하세요.", "확인");
                 return;
             }
 
@@ -1271,7 +1288,7 @@ namespace AppsInToss
                     onServerFailed: (reason) =>
                     {
                         Debug.LogError($"AIT: Production 서버 시작 실패 - {reason}");
-                        EditorUtility.DisplayDialog("Production 서버 시작 실패", reason, "확인");
+                        AITPlatformHelper.ShowInfoDialog("Production 서버 시작 실패", reason, "확인");
                         prodServerState.OnServerFailed();
                     }
                 );
@@ -1279,7 +1296,7 @@ namespace AppsInToss
             catch (Exception e)
             {
                 Debug.LogError($"AIT: Production 서버 시작 실패: {e.Message}");
-                EditorUtility.DisplayDialog("오류", $"Production 서버 시작 실패:\n{e.Message}", "확인");
+                AITPlatformHelper.ShowInfoDialog("오류", $"Production 서버 시작 실패:\n{e.Message}", "확인");
                 prodServerState.OnServerFailed();
             }
         }
@@ -1507,14 +1524,14 @@ namespace AppsInToss
         {
             if (!Directory.Exists(buildPath))
             {
-                EditorUtility.DisplayDialog("오류", "빌드 폴더를 찾을 수 없습니다.\n\n먼저 빌드를 실행하세요.", "확인");
+                AITPlatformHelper.ShowInfoDialog("오류", "빌드 폴더를 찾을 수 없습니다.\n\n먼저 빌드를 실행하세요.", "확인");
                 return false;
             }
 
             string indexPath = Path.Combine(buildPath, "index.html");
             if (!File.Exists(indexPath))
             {
-                EditorUtility.DisplayDialog("오류", "index.html을 찾을 수 없습니다.\n\n먼저 빌드를 실행하세요.", "확인");
+                AITPlatformHelper.ShowInfoDialog("오류", "index.html을 찾을 수 없습니다.\n\n먼저 빌드를 실행하세요.", "확인");
                 return false;
             }
 
@@ -1529,7 +1546,7 @@ namespace AppsInToss
             if (string.IsNullOrEmpty(npmPath))
             {
                 Debug.LogError("AIT: npm을 찾을 수 없습니다.");
-                EditorUtility.DisplayDialog("오류", "npm을 찾을 수 없습니다.\n\nNode.js가 설치되어 있는지 확인하세요.", "확인");
+                AITPlatformHelper.ShowInfoDialog("오류", "npm을 찾을 수 없습니다.\n\nNode.js가 설치되어 있는지 확인하세요.", "확인");
                 return false;
             }
             return true;
@@ -1553,7 +1570,7 @@ namespace AppsInToss
                 if (installResult != AITConvertCore.AITExportError.SUCCEED)
                 {
                     Debug.LogError("AIT: npm install 실패");
-                    EditorUtility.DisplayDialog("오류", "npm install 실패\n\nConsole 로그를 확인하세요.", "확인");
+                    AITPlatformHelper.ShowInfoDialog("오류", "npm install 실패\n\nConsole 로그를 확인하세요.", "확인");
                     return false;
                 }
 
@@ -1735,7 +1752,7 @@ namespace AppsInToss
         {
             if (config == null)
             {
-                EditorUtility.DisplayDialog("오류", "설정을 찾을 수 없습니다.", "확인");
+                AITPlatformHelper.ShowInfoDialog("오류", "설정을 찾을 수 없습니다.", "확인");
                 return false;
             }
 
@@ -1755,7 +1772,7 @@ namespace AppsInToss
             if (string.IsNullOrWhiteSpace(config.appName))
             {
                 Debug.LogError("AIT: App Name이 설정되지 않았습니다.");
-                EditorUtility.DisplayDialog("오류", "App Name이 설정되지 않았습니다.\n\nAIT > Configuration에서 App Name을 입력해주세요.", "확인");
+                AITPlatformHelper.ShowInfoDialog("오류", "App Name이 설정되지 않았습니다.\n\nAIT > Configuration에서 App Name을 입력해주세요.", "확인");
                 return false;
             }
 

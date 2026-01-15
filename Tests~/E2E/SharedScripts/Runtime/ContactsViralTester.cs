@@ -111,7 +111,7 @@ public class ContactsViralTester : MonoBehaviour
         GUILayout.EndVertical();
     }
 
-    private async void ExecuteContactsViral()
+    private void ExecuteContactsViral()
     {
         status = "공유 창 열기 중...";
         eventLog.Add($"[{DateTime.Now:HH:mm:ss}] contactsViral(moduleId: {moduleId}) 호출");
@@ -147,12 +147,8 @@ public class ContactsViralTester : MonoBehaviour
                 }
             };
 
-            // ContactsViral API 호출 (async params 패턴)
-            _unsubscribe = await AIT.ContactsViral(new ContactsViralParams
-            {
-                Options = new ContactsViralParamsOptions { ModuleId = moduleId },
-                OnEvent = onEvent
-            });
+            // ContactsViral API 호출 (콜백 분리 패턴)
+            _unsubscribe = AIT.ContactsViral(onEvent, new ContactsViralParamsOptions { ModuleId = moduleId });
 
             isActive = true;
             status = "공유 창 열림 (이벤트 대기 중...)";

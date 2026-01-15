@@ -43,7 +43,7 @@ public class InteractiveAPITester : MonoBehaviour
     private ResultDisplayMode resultDisplayMode = ResultDisplayMode.Structured;
 
     // Safe Area (AIT API)
-    private SafeAreaInsetsGetResult cachedSafeAreaInsets = null;
+    private SafeAreaInsets cachedSafeAreaInsets = null;
     private bool safeAreaLoaded = false;
 
     // 분리된 컴포넌트 참조

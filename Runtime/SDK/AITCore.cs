@@ -681,12 +681,12 @@ namespace AppsInToss
                         }
                     }
                     break;
-                case "SafeAreaInsetsGetResult":
+                case "SafeAreaInsets":
                     if (apiResponse.success)
                     {
-                        if (TryGetCallback<SafeAreaInsetsGetResult>(callbackId, out var callback13) && callback13 != null)
+                        if (TryGetCallback<SafeAreaInsets>(callbackId, out var callback13) && callback13 != null)
                         {
-                            var data13 = JsonConvert.DeserializeObject<SafeAreaInsetsGetResult>(apiResponse.data);
+                            var data13 = JsonConvert.DeserializeObject<SafeAreaInsets>(apiResponse.data);
                             callback13(data13);
                         }
                     }
@@ -694,7 +694,7 @@ namespace AppsInToss
                     {
                         if (TryGetErrorCallback(callbackId, out var errorCallback13) && errorCallback13 != null)
                         {
-                            errorCallback13(new AITException("SafeAreaInsetsGetResult", apiResponse.error));
+                            errorCallback13(new AITException("SafeAreaInsets", apiResponse.error));
                         }
                     }
                     break;

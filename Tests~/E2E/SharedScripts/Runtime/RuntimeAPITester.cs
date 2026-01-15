@@ -211,17 +211,17 @@ public class RuntimeAPITester : MonoBehaviour
         // Certificate API
         TestAPICall("AppsInTossSignTossCert", async () => { await AIT.AppsInTossSignTossCert(new AppsInTossSignTossCertParams { TxId = "test-tx" }); });
 
-        // Visibility API (이벤트 기반)
+        // Visibility API (이벤트 기반) - 콜백 분리 패턴
         TestAPICall("OnVisibilityChangedByTransparentServiceWeb", async () =>
-            { await AIT.OnVisibilityChangedByTransparentServiceWeb(new OnVisibilityChangedByTransparentServiceWebEventParams { OnEvent = (visible) => { } }); });
+            { AIT.OnVisibilityChangedByTransparentServiceWeb((visible) => { }, null); await System.Threading.Tasks.Task.CompletedTask; });
 
-        // Location 이벤트 API
+        // Location 이벤트 API - 콜백 분리 패턴
         TestAPICall("StartUpdateLocation", async () =>
-            { await AIT.StartUpdateLocation(new StartUpdateLocationEventParams { OnEvent = (loc) => { } }); });
+            { AIT.StartUpdateLocation((loc) => { }, null); await System.Threading.Tasks.Task.CompletedTask; });
 
-        // ContactsViral API
+        // ContactsViral API - 콜백 분리 패턴
         TestAPICall("ContactsViral", async () =>
-            { await AIT.ContactsViral(new ContactsViralParams { OnEvent = (evt) => { } }); });
+            { AIT.ContactsViral((evt) => { }, null); await System.Threading.Tasks.Task.CompletedTask; });
     }
 
     void TestAPICall(string apiName, APICallFunc apiCall)

@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Text.RegularExpressions;
+using UnityEditor;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
 
@@ -62,6 +63,89 @@ namespace AppsInToss.Editor
         /// Unix 계열 (macOS 또는 Linux) 여부
         /// </summary>
         public static bool IsUnix => IsMacOS || IsLinux;
+
+        /// <summary>
+        /// CI 환경 또는 배치 모드 여부 확인
+        /// CI=true/1 환경변수 또는 Unity -batchmode 실행 시 true 반환
+        /// non-interactive 모드에서는 사용자 확인 Dialog를 자동 처리함
+        /// </summary>
+        public static bool IsNonInteractive
+        {
+            get
+            {
+                // Unity 배치 모드 체크
+                if (Application.isBatchMode)
+                    return true;
+
+                // CI 환경변수 체크 (CI=true, CI=1 등)
+                string ciEnv = Environment.GetEnvironmentVariable("CI");
+                if (!string.IsNullOrEmpty(ciEnv))
+                {
+                    return ciEnv.Equals("true", StringComparison.OrdinalIgnoreCase) ||
+                           ciEnv.Equals("1", StringComparison.Ordinal);
+                }
+
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// CI 환경에서 자동 승인되는 확인 다이얼로그
+        /// 일반 환경에서는 EditorUtility.DisplayDialog 호출, CI에서는 자동 응답 반환
+        /// </summary>
+        /// <param name="title">다이얼로그 제목</param>
+        /// <param name="message">메시지</param>
+        /// <param name="ok">확인 버튼 텍스트</param>
+        /// <param name="cancel">취소 버튼 텍스트</param>
+        /// <param name="autoApprove">CI에서 자동 승인 여부 (false면 자동 취소)</param>
+        /// <returns>사용자 응답 또는 CI 자동 응답</returns>
+        public static bool ShowConfirmDialog(string title, string message, string ok, string cancel, bool autoApprove = true)
+        {
+            if (IsNonInteractive)
+            {
+                Debug.Log($"[AIT/CI] 자동 {(autoApprove ? "승인" : "취소")}: {title}");
+                return autoApprove;
+            }
+            return EditorUtility.DisplayDialog(title, message, ok, cancel);
+        }
+
+        /// <summary>
+        /// CI 환경에서 스킵되는 정보 다이얼로그
+        /// 일반 환경에서는 EditorUtility.DisplayDialog 호출, CI에서는 로그만 출력
+        /// </summary>
+        /// <param name="title">다이얼로그 제목</param>
+        /// <param name="message">메시지</param>
+        /// <param name="ok">확인 버튼 텍스트</param>
+        public static void ShowInfoDialog(string title, string message, string ok)
+        {
+            if (IsNonInteractive)
+            {
+                Debug.Log($"[AIT/CI] 정보: {title}");
+                return;
+            }
+            EditorUtility.DisplayDialog(title, message, ok);
+        }
+
+        /// <summary>
+        /// CI 환경에서 기본값을 반환하는 복합 선택 다이얼로그
+        /// 일반 환경에서는 EditorUtility.DisplayDialogComplex 호출, CI에서는 기본값 반환
+        /// </summary>
+        /// <param name="title">다이얼로그 제목</param>
+        /// <param name="message">메시지</param>
+        /// <param name="alt">첫 번째 버튼 텍스트 (반환값 0)</param>
+        /// <param name="cancel">두 번째 버튼 텍스트 (반환값 1)</param>
+        /// <param name="other">세 번째 버튼 텍스트 (반환값 2, null 가능)</param>
+        /// <param name="defaultChoice">CI에서 반환할 기본 선택값 (0, 1, 2)</param>
+        /// <returns>사용자 선택 또는 CI 기본값</returns>
+        public static int ShowComplexDialog(string title, string message, string alt, string cancel, string other, int defaultChoice = 0)
+        {
+            if (IsNonInteractive)
+            {
+                Debug.Log($"[AIT/CI] 자동 선택 ({defaultChoice}): {title}");
+                return defaultChoice;
+            }
+            return EditorUtility.DisplayDialogComplex(title, message, alt, cancel, other);
+        }
 
         /// <summary>
         /// 플랫폼별 실행 파일 확장자

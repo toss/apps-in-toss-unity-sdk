@@ -65,50 +65,33 @@ namespace AppsInToss
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __getCurrentLocation_Internal(string options, string callbackId, string typeName);
 #endif
-        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <param name="onEvent">이벤트 콜백</param>
+        /// <param name="onError">에러 콜백</param>
+        /// <returns>구독 취소를 위한 Action</returns>
         [Preserve]
         [APICategory("Location")]
-#if UNITY_6000_0_OR_NEWER
-        public static async Awaitable<System.Action> StartUpdateLocation(StartUpdateLocationEventParams eventParams)
+        public static Action StartUpdateLocation(
+            Action<Location> onEvent,
+            StartUpdateLocationOptions options,
+            Action<AITException> onError = null)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            var acs = new AwaitableCompletionSource<System.Action>();
-            string callbackId = AITCore.Instance.RegisterCallback<System.Action>(
-                result => acs.SetResult(result),
-                error => acs.SetException(error)
+            string subscriptionId = AITCore.Instance.RegisterSubscriptionCallback<Location>(
+                onEvent,
+                onError
             );
-            __startUpdateLocation_Internal(AITJsonSettings.Serialize(eventParams), callbackId, "System.Action");
-            return await acs.Awaitable;
-#else
-            // Unity Editor mock implementation (Unity 6+)
-            UnityEngine.Debug.Log($"[AIT Mock] StartUpdateLocation called");
-            await Awaitable.NextFrameAsync();
-            return default(System.Action);
-#endif
-        }
-#else
-        public static async Task<System.Action> StartUpdateLocation(StartUpdateLocationEventParams eventParams)
-        {
-#if UNITY_WEBGL && !UNITY_EDITOR
-            var tcs = new TaskCompletionSource<System.Action>();
-            string callbackId = AITCore.Instance.RegisterCallback<System.Action>(
-                result => tcs.TrySetResult(result),
-                error => tcs.TrySetException(error)
-            );
-            __startUpdateLocation_Internal(AITJsonSettings.Serialize(eventParams), callbackId, "System.Action");
-            return await tcs.Task;
+            __startUpdateLocation_Internal(AITJsonSettings.Serialize(options), subscriptionId, "Location");
+            return () => AITCore.Instance.Unsubscribe(subscriptionId);
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] StartUpdateLocation called");
-            await Task.CompletedTask;
-            return default(System.Action);
+            return () => UnityEngine.Debug.Log($"[AIT Mock] StartUpdateLocation cancelled");
 #endif
         }
-#endif
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
-        private static extern void __startUpdateLocation_Internal(string eventParams, string callbackId, string typeName);
+        private static extern void __startUpdateLocation_Internal(string options, string subscriptionId, string typeName);
 #endif
     }
 }

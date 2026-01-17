@@ -9,20 +9,15 @@
  */
 
 import * as WebFramework from '@apps-in-toss/web-framework';
-
-// 필수 네임스페이스 (모든 버전에서 지원)
 import { GoogleAdMob } from '@apps-in-toss/web-framework';
 import { IAP } from '@apps-in-toss/web-framework';
 import { SafeAreaInsets } from '@apps-in-toss/web-framework';
 import { Storage } from '@apps-in-toss/web-framework';
+import { TossAds } from '@apps-in-toss/web-framework';
 import { env } from '@apps-in-toss/web-framework';
 import { graniteEvent } from '@apps-in-toss/web-framework';
 import { partner } from '@apps-in-toss/web-framework';
 import { tdsEvent } from '@apps-in-toss/web-framework';
-
-// 선택적 네임스페이스 (SDK 1.6.0+ 에서만 지원)
-// rollup tree-shaking을 우회하기 위해 동적으로 접근
-const TossAds = (WebFramework as any).TossAds;
 
 // window.AppsInToss 타입 정의
 declare global {
@@ -32,7 +27,7 @@ declare global {
       IAP: typeof IAP;
       SafeAreaInsets: typeof SafeAreaInsets;
       Storage: typeof Storage;
-      TossAds?: any; // Optional - SDK 1.6.0+
+      TossAds: typeof TossAds;
       env: typeof env;
       graniteEvent: typeof graniteEvent;
       partner: typeof partner;
@@ -47,23 +42,15 @@ window.AppsInToss = WebFramework as typeof WebFramework & {
   IAP: typeof IAP;
   SafeAreaInsets: typeof SafeAreaInsets;
   Storage: typeof Storage;
-  TossAds?: any;
+  TossAds: typeof TossAds;
   env: typeof env;
   graniteEvent: typeof graniteEvent;
   partner: typeof partner;
   tdsEvent: typeof tdsEvent;
 };
 
-// 필수 네임스페이스
-const _requiredNamespaces: Record<string, any> = { GoogleAdMob, IAP, SafeAreaInsets, Storage, env, graniteEvent, partner, tdsEvent };
-
-// 선택적 네임스페이스 (존재하는 경우에만 추가)
-const _optionalNamespaces: Record<string, any> = {};
-if (TossAds) _optionalNamespaces.TossAds = TossAds;
-
-const _aitNamespaces = { ..._requiredNamespaces, ..._optionalNamespaces };
-
 // 네임스페이스 API 안전한 노출 (Unity 6000.3+ Module 읽기 전용 속성 호환)
+const _aitNamespaces = { GoogleAdMob, IAP, SafeAreaInsets, Storage, TossAds, env, graniteEvent, partner, tdsEvent };
 for (const [_name, _value] of Object.entries(_aitNamespaces)) {
   try {
     // 이미 존재하고 값이 같으면 건너뛰기
@@ -84,7 +71,6 @@ for (const [_name, _value] of Object.entries(_aitNamespaces)) {
 
 console.log('[Unity Bridge] AppsInToss bridge initialized with', Object.keys(WebFramework).length, 'exports');
 console.log('[Unity Bridge] Available:', Object.keys(WebFramework).join(', '));
-console.log('[Unity Bridge] Namespaces:', Object.keys(_aitNamespaces).join(', '));
-if (!TossAds) console.log('[Unity Bridge] Note: TossAds not available in this SDK version');
+console.log('[Unity Bridge] Namespaces: GoogleAdMob, IAP, SafeAreaInsets, Storage, TossAds, env, graniteEvent, partner, tdsEvent');
 
 export default WebFramework;

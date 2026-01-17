@@ -6,6 +6,8 @@
  * 이 파일은 자동 생성되었습니다. 직접 수정하지 마세요.
  */
 
+var __ait_last_dpr = null;
+
 mergeInto(LibraryManager.library, {
     __GetDevicePixelRatio_Internal: function() {
         // Unity config에서 설정된 devicePixelRatio 사용
@@ -26,7 +28,12 @@ mergeInto(LibraryManager.library, {
             dpr = window.devicePixelRatio || 1;
         }
 
-        console.log('[AIT jslib] GetDevicePixelRatio:', dpr);
+        // dpr이 변경되었을 때만 로깅
+        if (__ait_last_dpr !== dpr) {
+            console.log('[AIT jslib] GetDevicePixelRatio changed:', __ait_last_dpr, '->', dpr);
+            __ait_last_dpr = dpr;
+        }
+
         return dpr;
     },
 });

@@ -100,7 +100,12 @@ mergeInto(LibraryManager.library, {
             dpr = window.devicePixelRatio || 1;
         }
 
-        console.log('[AIT jslib] GetDevicePixelRatio:', dpr);
+        // dpr이 변경되었을 때만 로깅 (window 객체에 캐시)
+        if (window.__ait_last_dpr !== dpr) {
+            console.log('[AIT jslib] GetDevicePixelRatio changed:', window.__ait_last_dpr, '->', dpr);
+            window.__ait_last_dpr = dpr;
+        }
+
         return dpr;
     },
 });

@@ -702,13 +702,6 @@ namespace AppsInToss
         public string error;
     }
 
-    /// <summary>
-    /// 하위호환성을 위한 deprecated alias.
-    /// SafeAreaInsets를 대신 사용하세요.
-    /// </summary>
-    [Obsolete("SafeAreaInsetsGetResult는 deprecated되었습니다. SafeAreaInsets를 사용하세요.")]
-    public class SafeAreaInsetsGetResult : SafeAreaInsets { }
-
     [Serializable]
     [Preserve]
     public class SafeAreaInsetsSubscribe__0

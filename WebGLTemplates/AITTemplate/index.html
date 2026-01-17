@@ -808,6 +808,10 @@
                             entry.innerHTML = '<span class="debug-log-timestamp">[' + timestamp + ']</span>' +
                                              '<span class="debug-log-message">' + String(message) + '</span>';
 
+                            // 스크롤 위치 확인 (로그 추가 전)
+                            var scrollThreshold = 50;
+                            var wasAtBottom = (logsElement.scrollHeight - logsElement.scrollTop - logsElement.clientHeight) < scrollThreshold;
+
                             logsElement.appendChild(entry);
 
                             // 최대 로그 수 유지
@@ -816,8 +820,10 @@
                                 logsElement.removeChild(logs[0]);
                             }
 
-                            // 자동 스크롤
-                            logsElement.scrollTop = logsElement.scrollHeight;
+                            // 자동 스크롤 (사용자가 바닥에 있었을 때만)
+                            if (wasAtBottom) {
+                                logsElement.scrollTop = logsElement.scrollHeight;
+                            }
                         }
 
                         // console.log/warn/error 후킹

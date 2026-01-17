@@ -273,10 +273,11 @@ describe('Tier 2: C# ↔ jslib 일관성 검증', () => {
   // 4. SendMessage 호출 검증 (64 tests - Unsubscribe, 동기 함수 제외)
   // =========================================
   describe('4. SendMessage 호출 검증', () => {
-    // 동기 함수 목록 (SendMessage 사용하지 않고 직접 값 반환)
+    // 동기 함수 목록 (SendMessage 사용하지 않거나 특수 패턴 사용)
     const SYNC_FUNCTIONS = [
       '__AITUnsubscribe_Internal',
       '__GetDevicePixelRatio_Internal', // WebGL 수동 API - 동기 함수
+      '__AITVisibilityHelper_GetIsVisible_Internal', // VisibilityHelper - 특수 SendMessage 패턴 (OnVisibilityStateChanged)
     ];
 
     test('각 jslib 함수별 SendMessage 호출 확인', async () => {
@@ -331,10 +332,11 @@ describe('Tier 2: C# ↔ jslib 일관성 검증', () => {
   // 6. 일반 API 콜백 타겟 검증 (61 tests)
   // =========================================
   describe('6. 일반 API 콜백 타겟 검증', () => {
-    // 동기 함수 목록 (SendMessage 사용하지 않고 직접 값 반환)
+    // 동기 함수 목록 (SendMessage 사용하지 않거나 특수 패턴 사용)
     const SYNC_FUNCTIONS = [
       '__AITUnsubscribe_Internal',
       '__GetDevicePixelRatio_Internal', // WebGL 수동 API - 동기 함수
+      '__AITVisibilityHelper_GetIsVisible_Internal', // VisibilityHelper - 특수 SendMessage 패턴 (OnVisibilityStateChanged)
     ];
 
     test('일반 API 함수는 OnAITCallback 사용', async () => {
@@ -407,7 +409,10 @@ describe('Tier 2: C# ↔ jslib 일관성 검증', () => {
 
     // jslib에만 있고 DllImport가 없는 함수 목록
     // __AITUnsubscribe_Internal: C# 측에서 수동 구현, DllImport 없음
-    const JSLIB_ONLY_FUNCTIONS = ['__AITUnsubscribe_Internal'];
+    // 참고: __AITVisibilityHelper_GetIsVisible_Internal은 Runtime/Helpers/에 별도 위치함
+    const JSLIB_ONLY_FUNCTIONS = [
+      '__AITUnsubscribe_Internal',
+    ];
 
     const eventFunctions = Array.from(jslibFunctions.keys()).filter(isEventSubscription);
     const apiFunctions = Array.from(jslibFunctions.keys()).filter(name =>

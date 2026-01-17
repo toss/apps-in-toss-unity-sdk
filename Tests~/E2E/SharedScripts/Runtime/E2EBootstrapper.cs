@@ -170,7 +170,7 @@ public static class E2EBootstrapper
     {
         Debug.Log("[E2EBootstrapper] Initializing interactive test app components...");
 
-        // InteractiveAPITester 추가
+        // InteractiveAPITester 추가 (VisibilityBGMTester 등 하위 테스터 포함)
         if (benchmarkManager.GetComponent<InteractiveAPITester>() == null)
         {
             benchmarkManager.AddComponent<InteractiveAPITester>();

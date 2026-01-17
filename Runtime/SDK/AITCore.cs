@@ -8,11 +8,14 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 using UnityEngine;
 using UnityEngine.Scripting;
+
+[assembly: InternalsVisibleTo("AppsInToss.Helpers")]
 
 namespace AppsInToss
 {
@@ -356,6 +359,44 @@ namespace AppsInToss
             {
                 Debug.LogError($"[AITCore] Failed to process event callback: {ex.Message}");
             }
+        }
+
+        // ===================================================================
+        // Visibility State Change Handler
+        // ===================================================================
+
+        /// <summary>
+        /// Called by JavaScript when browser visibility state changes
+        /// </summary>
+        [Preserve]
+        public void OnVisibilityStateChanged(string jsonPayload)
+        {
+            Debug.Log($"[AITCore] OnVisibilityStateChanged received: {jsonPayload}");
+            try
+            {
+                var data = JsonConvert.DeserializeObject<VisibilityStateData>(jsonPayload);
+                OnVisibilityStateChangedInternal?.Invoke(data.isVisible);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[AITCore] Failed to process visibility state change: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 내부 가시성 상태 변경 이벤트 (AITVisibilityHelper에서 구독)
+        /// </summary>
+        internal static event Action<bool> OnVisibilityStateChangedInternal;
+
+        [Serializable]
+        [Preserve]
+        private class VisibilityStateData
+        {
+            [Preserve]
+            public bool isVisible { get; set; }
+
+            [Preserve]
+            public VisibilityStateData() { }
         }
 
         /// <summary>

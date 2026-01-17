@@ -51,6 +51,7 @@ public class InteractiveAPITester : MonoBehaviour
     private IAPv2Tester _iapTester;
     private AdV2Tester _adV2Tester; // current LoadFullScreenAd/ShowFullScreenAd API
     private ContactsViralTester _contactsViralTester; // ContactsViral API 테스터
+    private VisibilityBGMTester _visibilityBGMTester; // Visibility Helper BGM 테스터
     private TouchScrollHandler _scrollHandler;
     private ParameterInputRenderer _paramRenderer;
 
@@ -81,6 +82,11 @@ public class InteractiveAPITester : MonoBehaviour
         if (_contactsViralTester == null)
         {
             _contactsViralTester = gameObject.AddComponent<ContactsViralTester>();
+        }
+        _visibilityBGMTester = GetComponent<VisibilityBGMTester>();
+        if (_visibilityBGMTester == null)
+        {
+            _visibilityBGMTester = gameObject.AddComponent<VisibilityBGMTester>();
         }
         _scrollHandler = new TouchScrollHandler();
         _paramRenderer = new ParameterInputRenderer();
@@ -285,6 +291,15 @@ public class InteractiveAPITester : MonoBehaviour
                     GUILayout.Space(5);
                 }
             }
+
+            // Visibility BGM Tester 섹션
+            GUILayout.Space(20);
+            _visibilityBGMTester?.DrawUI(
+                InteractiveAPITesterStyles.BoxStyle,
+                InteractiveAPITesterStyles.GroupHeaderStyle,
+                InteractiveAPITesterStyles.LabelStyle,
+                InteractiveAPITesterStyles.ButtonStyle
+            );
 
             // OOM Tester 섹션 (API 목록 하단에 추가)
             GUILayout.Space(20);

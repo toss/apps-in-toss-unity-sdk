@@ -8,11 +8,14 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 using UnityEngine;
 using UnityEngine.Scripting;
+
+[assembly: InternalsVisibleTo("AppsInToss.Helpers")]
 
 namespace AppsInToss
 {
@@ -358,6 +361,44 @@ namespace AppsInToss
             }
         }
 
+        // ===================================================================
+        // Visibility State Change Handler
+        // ===================================================================
+
+        /// <summary>
+        /// Called by JavaScript when browser visibility state changes
+        /// </summary>
+        [Preserve]
+        public void OnVisibilityStateChanged(string jsonPayload)
+        {
+            Debug.Log($"[AITCore] OnVisibilityStateChanged received: {jsonPayload}");
+            try
+            {
+                var data = JsonConvert.DeserializeObject<VisibilityStateData>(jsonPayload);
+                OnVisibilityStateChangedInternal?.Invoke(data.isVisible);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[AITCore] Failed to process visibility state change: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 내부 가시성 상태 변경 이벤트 (AITVisibilityHelper에서 구독)
+        /// </summary>
+        internal static event Action<bool> OnVisibilityStateChangedInternal;
+
+        [Serializable]
+        [Preserve]
+        private class VisibilityStateData
+        {
+            [Preserve]
+            public bool isVisible { get; set; }
+
+            [Preserve]
+            public VisibilityStateData() { }
+        }
+
         /// <summary>
         /// Route subscription callback (does NOT remove after invocation)
         /// </summary>
@@ -681,12 +722,12 @@ namespace AppsInToss
                         }
                     }
                     break;
-                case "SafeAreaInsetsGetResult":
+                case "SafeAreaInsets":
                     if (apiResponse.success)
                     {
-                        if (TryGetCallback<SafeAreaInsetsGetResult>(callbackId, out var callback13) && callback13 != null)
+                        if (TryGetCallback<SafeAreaInsets>(callbackId, out var callback13) && callback13 != null)
                         {
-                            var data13 = JsonConvert.DeserializeObject<SafeAreaInsetsGetResult>(apiResponse.data);
+                            var data13 = JsonConvert.DeserializeObject<SafeAreaInsets>(apiResponse.data);
                             callback13(data13);
                         }
                     }
@@ -694,7 +735,7 @@ namespace AppsInToss
                     {
                         if (TryGetErrorCallback(callbackId, out var errorCallback13) && errorCallback13 != null)
                         {
-                            errorCallback13(new AITException("SafeAreaInsetsGetResult", apiResponse.error));
+                            errorCallback13(new AITException("SafeAreaInsets", apiResponse.error));
                         }
                     }
                     break;

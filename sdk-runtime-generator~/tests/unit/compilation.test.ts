@@ -91,6 +91,7 @@ describe('Tier 1: 컴파일 가능성 검증', () => {
 
     test('AITCore.cs가 컴파일 가능해야 함', async () => {
       // AITCore.cs는 AIT.Types.cs에 정의된 타입들을 사용하므로 함께 컴파일
+      // AITVisibilityHelper는 Runtime/Helpers/에 별도 위치하며 AITCore의 이벤트를 구독함
       const result = await compileCSharpFiles({
         'AITCore.cs': csharpFiles['AITCore.cs'],
         'AIT.Types.cs': csharpFiles['AIT.Types.cs'],

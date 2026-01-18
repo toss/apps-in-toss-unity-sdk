@@ -2,7 +2,8 @@
     "name": "AppsInTossTestScripts",
     "rootNamespace": "",
     "references": [
-        "AppsInTossSDK"
+        "AppsInTossSDK",
+        "AppsInToss.Helpers"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

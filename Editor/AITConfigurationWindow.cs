@@ -214,145 +214,171 @@ namespace AppsInToss.Editor
                 Directory.CreateDirectory(directory);
             }
 
-            // 기본 로딩 화면 템플릿 생성
-            string template = @"<style>
-    .custom-loading {
+            // 기본 로딩 화면 템플릿 생성 (TDS 스타일 기반)
+            string template = @"<!--
+    커스텀 로딩 화면 템플릿
+
+    이 파일을 수정하여 로딩 화면을 커스터마이징하세요.
+    CSS 변수를 수정하면 쉽게 색상과 크기를 변경할 수 있습니다.
+
+    사용 가능한 API:
+    - AITLoading.appInfo: 앱 정보 (iconUrl, displayName, primaryColor, loadingTitle)
+    - AITLoading.onProgress(callback): 진행률 업데이트 콜백 (0.0 ~ 1.0)
+    - AITLoading.onComplete(callback): 로딩 완료 콜백
+    - AITLoading.onError(callback): 에러 발생 콜백
+    - AITLoading.hide(): 로딩 화면 숨기기
+
+    자세한 내용은 Docs/LoadingScreenCustomization.md를 참조하세요.
+-->
+
+<style>
+    /* ===== 커스터마이징 가능한 CSS 변수 ===== */
+    :root {
+        /* 배경 및 색상 */
+        --loading-bg: #ffffff;
+        --title-color: #191f28;
+        --app-name-color: #333d4b;
+        --progress-bg: #e5e8eb;
+        --card-border: #e5e8eb;
+        --icon-bg: rgba(2, 32, 71, 0.05);
+
+        /* 크기 */
+        --title-size: 22px;
+        --app-name-size: 15px;
+        --icon-size: 30px;
+        --progress-height: 5px;
+        --card-radius: 16px;
+        --icon-radius: 8px;
+
+        /* 여백 */
+        --top-padding: 120px;
+        --side-padding: 20px;
+    }
+
+    /* ===== 로딩 화면 스타일 ===== */
+    .loading-container {
         position: fixed;
-        top: 0; left: 0; right: 0; bottom: 0;
-        background: #ffffff;
+        inset: 0;
+        background: var(--loading-bg);
         display: flex;
         flex-direction: column;
-        padding: 120px 20px 0 20px;
+        padding: var(--top-padding) var(--side-padding) 0;
         font-family: -apple-system, BlinkMacSystemFont, sans-serif;
     }
 
-    .custom-loading-title {
-        font-size: 22px;
+    .loading-title {
+        font-size: var(--title-size);
         font-weight: 600;
-        color: #191f28;
+        color: var(--title-color);
         line-height: 1.4;
         margin-bottom: 44px;
     }
 
-    .custom-loading-card {
+    .loading-card {
         display: flex;
         flex-direction: column;
         padding: 16px;
-        background: #ffffff;
-        border: 1px solid #e5e8eb;
-        border-radius: 16px;
+        background: var(--loading-bg);
+        border: 1px solid var(--card-border);
+        border-radius: var(--card-radius);
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
     }
 
-    .custom-loading-card-header {
+    .loading-header {
         display: flex;
         align-items: center;
         margin-bottom: 12px;
     }
 
-    .custom-loading-icon {
-        width: 30px;
-        height: 30px;
-        border-radius: 8px;
-        background-color: rgba(2,32,71,0.05);
+    .loading-icon {
+        width: var(--icon-size);
+        height: var(--icon-size);
+        border-radius: var(--icon-radius);
+        background: var(--icon-bg);
         overflow: hidden;
+        flex-shrink: 0;
     }
 
-    .custom-loading-icon img {
+    .loading-icon img {
         width: 100%;
         height: 100%;
         object-fit: cover;
     }
 
-    .custom-loading-app-name {
+    .loading-app-name {
         margin-left: 12px;
-        font-size: 15px;
+        font-size: var(--app-name-size);
         font-weight: 500;
-        color: #333d4b;
+        color: var(--app-name-color);
     }
 
-    .custom-loading-progress {
-        height: 5px;
-        background: #e5e8eb;
-        border-radius: 2.5px;
+    .loading-progress {
+        height: var(--progress-height);
+        background: var(--progress-bg);
+        border-radius: calc(var(--progress-height) / 2);
         overflow: hidden;
     }
 
-    .custom-loading-progress-bar {
+    .loading-progress-bar {
         height: 100%;
-        border-radius: 2.5px;
         width: 0%;
+        border-radius: inherit;
         transition: width 0.3s ease;
     }
 </style>
 
-<div class=""custom-loading"" id=""ait-loading"">
-    <div class=""custom-loading-title"" id=""loading-title""></div>
+<!-- ===== HTML 구조 ===== -->
+<div class=""loading-container"" id=""ait-loading"">
+    <div class=""loading-title"" id=""loading-title""></div>
 
-    <div class=""custom-loading-card"">
-        <div class=""custom-loading-card-header"">
-            <div class=""custom-loading-icon"">
+    <div class=""loading-card"">
+        <div class=""loading-header"">
+            <div class=""loading-icon"">
                 <img id=""app-icon"" src="""" alt="""" />
             </div>
-            <div class=""custom-loading-app-name"" id=""app-name""></div>
+            <div class=""loading-app-name"" id=""app-name""></div>
         </div>
-        <div class=""custom-loading-progress"">
-            <div class=""custom-loading-progress-bar"" id=""progress-bar""></div>
+        <div class=""loading-progress"">
+            <div class=""loading-progress-bar"" id=""progress-bar""></div>
         </div>
     </div>
 </div>
 
+<!-- ===== JavaScript ===== -->
 <script>
-    // AITLoading.appInfo에서 앱 정보 가져오기
-    function initLoadingScreen() {
-        var appInfo = window.AITLoading ? window.AITLoading.appInfo : {};
-
-        // 제목
-        var titleEl = document.getElementById('loading-title');
-        if (titleEl && appInfo.loadingTitle) {
-            titleEl.innerHTML = appInfo.loadingTitle.replace(/\\n/g, '<br>');
-        }
-
-        // 아이콘
-        var iconEl = document.getElementById('app-icon');
-        if (iconEl && appInfo.iconUrl) {
-            iconEl.src = appInfo.iconUrl;
-        }
-
-        // 앱 이름
-        var nameEl = document.getElementById('app-name');
-        if (nameEl && appInfo.displayName) {
-            nameEl.textContent = appInfo.displayName;
-        }
-
-        // 프로그레스 바 색상
-        var progressBar = document.getElementById('progress-bar');
-        if (progressBar && appInfo.primaryColor) {
-            progressBar.style.background = appInfo.primaryColor;
-        }
+(function() {
+    // 앱 정보로 UI 초기화
+    function initUI(appInfo) {
+        document.getElementById('loading-title').innerHTML =
+            (appInfo.loadingTitle || '').replace(/\n/g, '<br>');
+        document.getElementById('app-icon').src = appInfo.iconUrl || '';
+        document.getElementById('app-name').textContent = appInfo.displayName || '';
+        document.getElementById('progress-bar').style.background =
+            appInfo.primaryColor || '#3182f6';
     }
-
-    // 초기화 대기
-    var checkInit = setInterval(function() {
-        if (window.AITLoading && window.AITLoading._initialized) {
-            clearInterval(checkInit);
-            initLoadingScreen();
-        }
-    }, 50);
 
     // 진행률 업데이트
-    if (window.AITLoading) {
-        AITLoading.onProgress(function(progress) {
-            var progressBar = document.getElementById('progress-bar');
-            if (progressBar) {
-                progressBar.style.width = (progress * 100) + '%';
-            }
-        });
+    AITLoading.onProgress(function(progress) {
+        document.getElementById('progress-bar').style.width = (progress * 100) + '%';
+    });
 
-        AITLoading.onComplete(function() {
-            AITLoading.hide();
-        });
+    // 로딩 완료 시 화면 숨기기
+    AITLoading.onComplete(function() {
+        AITLoading.hide();
+    });
+
+    // SDK 초기화 완료 시 UI 업데이트
+    if (AITLoading._initialized) {
+        initUI(AITLoading.appInfo);
+    } else {
+        var check = setInterval(function() {
+            if (AITLoading._initialized) {
+                clearInterval(check);
+                initUI(AITLoading.appInfo);
+            }
+        }, 50);
     }
+})();
 </script>";
 
             File.WriteAllText(path, template, System.Text.Encoding.UTF8);

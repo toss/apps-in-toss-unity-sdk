@@ -187,16 +187,153 @@ AITLoading.hide();
 
 ## 예제
 
-### 커스텀 로딩 화면
+### 커스텀 로딩 화면 (기본 템플릿)
 
 `Assets/AppsInToss/loading.html`:
 
+> **Tip**: "커스텀 로딩 화면 생성" 버튼을 클릭하면 아래 템플릿이 자동으로 생성됩니다.
+
+```html
+<!--
+    CSS 변수를 수정하면 쉽게 색상과 크기를 변경할 수 있습니다.
+-->
+
+<style>
+    /* ===== 커스터마이징 가능한 CSS 변수 ===== */
+    :root {
+        --loading-bg: #ffffff;
+        --title-color: #191f28;
+        --app-name-color: #333d4b;
+        --progress-bg: #e5e8eb;
+        --icon-size: 30px;
+        --progress-height: 5px;
+    }
+
+    .loading-container {
+        position: fixed;
+        inset: 0;
+        background: var(--loading-bg);
+        display: flex;
+        flex-direction: column;
+        padding: 120px 20px 0;
+        font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    .loading-title {
+        font-size: 22px;
+        font-weight: 600;
+        color: var(--title-color);
+        line-height: 1.4;
+        margin-bottom: 44px;
+    }
+
+    .loading-card {
+        padding: 16px;
+        border: 1px solid #e5e8eb;
+        border-radius: 16px;
+    }
+
+    .loading-header {
+        display: flex;
+        align-items: center;
+        margin-bottom: 12px;
+    }
+
+    .loading-icon {
+        width: var(--icon-size);
+        height: var(--icon-size);
+        border-radius: 8px;
+        background: rgba(2, 32, 71, 0.05);
+        overflow: hidden;
+    }
+
+    .loading-icon img { width: 100%; height: 100%; object-fit: cover; }
+
+    .loading-app-name {
+        margin-left: 12px;
+        font-size: 15px;
+        font-weight: 500;
+        color: var(--app-name-color);
+    }
+
+    .loading-progress {
+        height: var(--progress-height);
+        background: var(--progress-bg);
+        border-radius: 2.5px;
+        overflow: hidden;
+    }
+
+    .loading-progress-bar {
+        height: 100%;
+        width: 0%;
+        transition: width 0.3s ease;
+    }
+</style>
+
+<div class="loading-container" id="ait-loading">
+    <div class="loading-title" id="loading-title"></div>
+    <div class="loading-card">
+        <div class="loading-header">
+            <div class="loading-icon"><img id="app-icon" src="" alt="" /></div>
+            <div class="loading-app-name" id="app-name"></div>
+        </div>
+        <div class="loading-progress">
+            <div class="loading-progress-bar" id="progress-bar"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    // 앱 정보로 UI 초기화
+    function initUI(appInfo) {
+        document.getElementById('loading-title').innerHTML =
+            (appInfo.loadingTitle || '').replace(/\n/g, '<br>');
+        document.getElementById('app-icon').src = appInfo.iconUrl || '';
+        document.getElementById('app-name').textContent = appInfo.displayName || '';
+        document.getElementById('progress-bar').style.background =
+            appInfo.primaryColor || '#3182f6';
+    }
+
+    // 진행률 업데이트
+    AITLoading.onProgress(function(progress) {
+        document.getElementById('progress-bar').style.width = (progress * 100) + '%';
+    });
+
+    // 로딩 완료 시 화면 숨기기
+    AITLoading.onComplete(function() {
+        AITLoading.hide();
+    });
+
+    // SDK 초기화 완료 시 UI 업데이트
+    if (AITLoading._initialized) {
+        initUI(AITLoading.appInfo);
+    } else {
+        var check = setInterval(function() {
+            if (AITLoading._initialized) {
+                clearInterval(check);
+                initUI(AITLoading.appInfo);
+            }
+        }, 50);
+    }
+})();
+</script>
+```
+
+### 퍼센트 표시가 있는 로딩 화면
+
 ```html
 <style>
-    .custom-loading {
+    :root {
+        --loading-bg: #ffffff;
+        --text-color: #191f28;
+        --sub-text-color: #6b7684;
+    }
+
+    .loading-container {
         position: fixed;
-        top: 0; left: 0; right: 0; bottom: 0;
-        background: #ffffff;
+        inset: 0;
+        background: var(--loading-bg);
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -204,102 +341,50 @@ AITLoading.hide();
         font-family: -apple-system, BlinkMacSystemFont, sans-serif;
     }
 
-    .custom-icon {
-        width: 80px;
-        height: 80px;
-        border-radius: 20px;
-        margin-bottom: 24px;
-    }
-
-    .custom-title {
-        font-size: 18px;
-        font-weight: 600;
-        color: #191f28;
-        margin-bottom: 8px;
-    }
-
-    .custom-progress-container {
-        width: 200px;
-        height: 6px;
-        background: #e5e8eb;
-        border-radius: 3px;
-        overflow: hidden;
-        margin-top: 24px;
-    }
-
-    .custom-progress-bar {
-        height: 100%;
-        width: 0%;
-        transition: width 0.3s ease;
-    }
-
-    .custom-percent {
-        margin-top: 12px;
-        font-size: 14px;
-        color: #6b7684;
-    }
+    .loading-icon { width: 80px; height: 80px; border-radius: 20px; margin-bottom: 24px; }
+    .loading-name { font-size: 18px; font-weight: 600; color: var(--text-color); }
+    .loading-progress { width: 200px; height: 6px; background: #e5e8eb; border-radius: 3px; margin-top: 24px; overflow: hidden; }
+    .loading-progress-bar { height: 100%; width: 0%; transition: width 0.3s ease; }
+    .loading-percent { margin-top: 12px; font-size: 14px; color: var(--sub-text-color); }
 </style>
 
-<div class="custom-loading" id="custom-loading">
-    <img class="custom-icon" id="app-icon" alt="앱 아이콘" />
-    <div class="custom-title" id="app-name"></div>
-    <div class="custom-progress-container">
-        <div class="custom-progress-bar" id="progressBar"></div>
-    </div>
-    <div class="custom-percent" id="percentText">0%</div>
+<div class="loading-container" id="ait-loading">
+    <img class="loading-icon" id="app-icon" alt="" />
+    <div class="loading-name" id="app-name"></div>
+    <div class="loading-progress"><div class="loading-progress-bar" id="progress-bar"></div></div>
+    <div class="loading-percent" id="percent-text">0%</div>
 </div>
 
 <script>
-    // 앱 정보로 UI 초기화 (AITLoading.appInfo 사용)
-    function initUI() {
-        var appInfo = window.AITLoading ? window.AITLoading.appInfo : {};
-
-        var iconEl = document.getElementById('app-icon');
-        var nameEl = document.getElementById('app-name');
-        var progressBar = document.getElementById('progressBar');
-
-        if (iconEl && appInfo.iconUrl) {
-            iconEl.src = appInfo.iconUrl;
-        }
-        if (nameEl && appInfo.displayName) {
-            nameEl.textContent = appInfo.displayName;
-        }
-        if (progressBar && appInfo.primaryColor) {
-            progressBar.style.background = appInfo.primaryColor;
-        }
+(function() {
+    function initUI(appInfo) {
+        document.getElementById('app-icon').src = appInfo.iconUrl || '';
+        document.getElementById('app-name').textContent = appInfo.displayName || '';
+        document.getElementById('progress-bar').style.background = appInfo.primaryColor || '#3182f6';
     }
 
-    // AITLoading이 초기화된 후 UI 업데이트
-    if (window.AITLoading && window.AITLoading._initialized) {
-        initUI();
-    } else {
-        // 초기화 대기
-        var checkInit = setInterval(function() {
-            if (window.AITLoading && window.AITLoading._initialized) {
-                clearInterval(checkInit);
-                initUI();
-            }
-        }, 50);
-    }
-
-    // 진행률 콜백
     AITLoading.onProgress(function(progress) {
         var percent = Math.round(progress * 100);
-        document.getElementById('progressBar').style.width = percent + '%';
-        document.getElementById('percentText').textContent = percent + '%';
+        document.getElementById('progress-bar').style.width = percent + '%';
+        document.getElementById('percent-text').textContent = percent + '%';
     });
 
-    // 완료 콜백
     AITLoading.onComplete(function() {
-        console.log('총 로딩 시간:', AITLoading.getTotalTime() + 'ms');
         AITLoading.hide();
     });
 
-    // 에러 콜백
     AITLoading.onError(function(error) {
-        document.getElementById('percentText').textContent = '로딩 실패';
-        document.getElementById('percentText').style.color = '#f04452';
+        document.getElementById('percent-text').textContent = '로딩 실패';
+        document.getElementById('percent-text').style.color = '#f04452';
     });
+
+    if (AITLoading._initialized) initUI(AITLoading.appInfo);
+    else {
+        var check = setInterval(function() {
+            if (AITLoading._initialized) { clearInterval(check); initUI(AITLoading.appInfo); }
+        }, 50);
+    }
+})();
 </script>
 ```
 

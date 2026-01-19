@@ -116,6 +116,10 @@ namespace AppsInToss
         public string primaryColor = "#3182F6";
         public string iconUrl = "";
 
+        [Header("로딩 화면 설정")]
+        [Tooltip("로딩 화면 제목 (줄바꿈: \\n 사용)")]
+        public string loadingTitle = "게임을 불러오고 있어요\n조금만 기다려주세요";
+
         [Header("WebView 설정")]
         [Tooltip("브릿지 색상 모드. 게임앱은 'inverted' (다크모드), 일반앱은 'basic'")]
         public int bridgeColorMode = 0; // 0=inverted (게임 기본), 1=basic

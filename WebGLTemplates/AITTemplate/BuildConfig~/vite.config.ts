@@ -1,7 +1,11 @@
 import { defineConfig, mergeConfig } from 'vite';
+import graniteConfig from './granite.config';
 
 //// SDK_GENERATED_START - DO NOT EDIT THIS SECTION ////
 const sdkConfig = defineConfig({
+  define: {
+    __AIT_BRAND__: JSON.stringify(graniteConfig.brand || {}),
+  },
   // Apps in Toss 플랫폼에서 서브 경로 호스팅을 위해 상대 경로 사용
   base: './',
   server: {

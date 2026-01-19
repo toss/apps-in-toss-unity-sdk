@@ -8,6 +8,7 @@ const sdkConfig = {
     primaryColor: '%AIT_PRIMARY_COLOR%',
     icon: '%AIT_ICON_URL%',
     bridgeColorMode: '%AIT_BRIDGE_COLOR_MODE%',
+    loadingTitle: '%AIT_LOADING_TITLE%',
   },
   webViewProps: {
     type: '%AIT_WEBVIEW_TYPE%',

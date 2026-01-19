@@ -443,7 +443,8 @@ namespace AppsInToss.Editor
                 .Replace("%AIT_VITE_HOST%", config.viteHost)
                 .Replace("%AIT_VITE_PORT%", config.vitePort.ToString())
                 .Replace("%AIT_PERMISSIONS%", config.GetPermissionsJson())
-                .Replace("%AIT_OUTDIR%", config.outdir);
+                .Replace("%AIT_OUTDIR%", config.outdir)
+                .Replace("%AIT_LOADING_TITLE%", config.loadingTitle.Replace("\n", "\\n"));
 
             string finalContent;
 
@@ -478,7 +479,8 @@ namespace AppsInToss.Editor
                     .Replace("%AIT_VITE_HOST%", config.viteHost)
                     .Replace("%AIT_VITE_PORT%", config.vitePort.ToString())
                     .Replace("%AIT_PERMISSIONS%", config.GetPermissionsJson())
-                    .Replace("%AIT_OUTDIR%", config.outdir);
+                    .Replace("%AIT_OUTDIR%", config.outdir)
+                    .Replace("%AIT_LOADING_TITLE%", config.loadingTitle.Replace("\n", "\\n"));
                 Debug.Log("[AIT]   ✓ granite.config.ts (SDK에서 생성)");
             }
 
@@ -887,6 +889,43 @@ namespace AppsInToss.Editor
                     .Replace("%AIT_IS_PRODUCTION%", isProduction)
                     .Replace("%AIT_ENABLE_DEBUG_CONSOLE%", enableDebugConsole)
                     .Replace("%AIT_DEVICE_PIXEL_RATIO%", config.devicePixelRatio.ToString());
+                    // 참고: 로딩 화면 정보(displayName, iconUrl, primaryColor, loadingTitle)는
+                    // granite.config.ts에서 관리되며, Vite 빌드 시 __AIT_BRAND__로 주입됩니다.
+
+                // 커스텀 로딩 화면 지원 (Assets/AppsInToss/loading.html 파일이 있으면 자동 적용)
+                string customLoadingPath = Path.Combine(Application.dataPath, "AppsInToss", "loading.html");
+                if (File.Exists(customLoadingPath))
+                {
+                    string customContent = File.ReadAllText(customLoadingPath);
+
+                    // 기본 로딩 화면 영역을 커스텀 로딩 화면으로 교체
+                    // <!-- Loading Screen - TDS Style --> 부터 해당 div가 닫히는 곳까지 교체
+                    string loadingScreenStart = "<!-- Loading Screen - TDS Style -->";
+                    string loadingScreenEnd = "</div><!-- /ait-loading -->";
+
+                    int startIndex = indexContent.IndexOf(loadingScreenStart);
+                    int endIndex = indexContent.IndexOf(loadingScreenEnd);
+
+                    if (startIndex >= 0 && endIndex >= 0)
+                    {
+                        endIndex += loadingScreenEnd.Length;
+                        string beforeLoading = indexContent.Substring(0, startIndex);
+                        string afterLoading = indexContent.Substring(endIndex);
+
+                        indexContent = beforeLoading +
+                            "<!-- Custom Loading Screen -->\n" +
+                            customContent +
+                            "\n<!-- /Custom Loading Screen -->" +
+                            afterLoading;
+
+                        Debug.Log("[AIT] ✓ 커스텀 로딩 화면 적용: " + customLoadingPath);
+                        Debug.Log("[AIT]    커스텀 로딩 화면에서 AITLoading.appInfo를 사용하여 앱 정보에 접근하세요.");
+                    }
+                    else
+                    {
+                        Debug.LogWarning("[AIT] 로딩 화면 마커를 찾을 수 없습니다. 기본 로딩 화면이 유지됩니다.");
+                    }
+                }
 
                 File.WriteAllText(indexDest, indexContent, System.Text.Encoding.UTF8);
                 Debug.Log("[AIT] index.html → 프로젝트 루트에 생성");

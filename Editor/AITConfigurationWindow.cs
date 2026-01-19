@@ -52,6 +52,8 @@ namespace AppsInToss.Editor
             GUILayout.Space(10);
             DrawBrandSettings();
             GUILayout.Space(10);
+            DrawLoadingScreenSettings();
+            GUILayout.Space(10);
             DrawWebViewSettings();
             GUILayout.Space(10);
             DrawDevServerSettings();
@@ -140,6 +142,233 @@ namespace AppsInToss.Editor
             }
 
             EditorGUILayout.EndVertical();
+        }
+
+        private void DrawLoadingScreenSettings()
+        {
+            EditorGUILayout.LabelField("로딩 화면 설정", EditorStyles.boldLabel);
+            EditorGUILayout.BeginVertical("box");
+
+            config.loadingTitle = EditorGUILayout.TextField("로딩 제목", config.loadingTitle);
+            EditorGUILayout.HelpBox(
+                "줄바꿈은 \\n을 사용합니다. 예: 게임을 불러오고 있어요\\n조금만 기다려주세요",
+                MessageType.Info
+            );
+
+            GUILayout.Space(10);
+
+            // 커스텀 로딩 화면 상태 표시
+            string customLoadingPath = Path.Combine(Application.dataPath, "AppsInToss", "loading.html");
+            bool hasCustomLoading = File.Exists(customLoadingPath);
+
+            if (hasCustomLoading)
+            {
+                EditorGUILayout.HelpBox(
+                    "커스텀 로딩 화면이 감지되었습니다.\n" + customLoadingPath,
+                    MessageType.Info
+                );
+
+                EditorGUILayout.BeginHorizontal();
+                if (GUILayout.Button("파일 열기", GUILayout.Width(100)))
+                {
+                    UnityEditorInternal.InternalEditorUtility.OpenFileAtLineExternal(customLoadingPath, 1);
+                }
+                if (GUILayout.Button("파일 삭제", GUILayout.Width(100)))
+                {
+                    if (EditorUtility.DisplayDialog(
+                        "커스텀 로딩 화면 삭제",
+                        "커스텀 로딩 화면을 삭제하시겠습니까?\n기본 TDS 스타일 로딩 화면이 사용됩니다.",
+                        "삭제", "취소"))
+                    {
+                        File.Delete(customLoadingPath);
+                        string metaPath = customLoadingPath + ".meta";
+                        if (File.Exists(metaPath)) File.Delete(metaPath);
+                        AssetDatabase.Refresh();
+                    }
+                }
+                EditorGUILayout.EndHorizontal();
+            }
+            else
+            {
+                EditorGUILayout.HelpBox(
+                    "기본 TDS 스타일 로딩 화면이 사용됩니다.\n" +
+                    "커스텀 로딩 화면을 사용하려면 아래 버튼을 클릭하세요.",
+                    MessageType.Info
+                );
+
+                if (GUILayout.Button("커스텀 로딩 화면 생성"))
+                {
+                    CreateCustomLoadingScreen(customLoadingPath);
+                }
+            }
+
+            EditorGUILayout.EndVertical();
+        }
+
+        private void CreateCustomLoadingScreen(string path)
+        {
+            // 디렉토리 생성
+            string directory = Path.GetDirectoryName(path);
+            if (!Directory.Exists(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            // 기본 로딩 화면 템플릿 생성
+            string template = @"<style>
+    .custom-loading {
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: #ffffff;
+        display: flex;
+        flex-direction: column;
+        padding: 120px 20px 0 20px;
+        font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    .custom-loading-title {
+        font-size: 22px;
+        font-weight: 600;
+        color: #191f28;
+        line-height: 1.4;
+        margin-bottom: 44px;
+    }
+
+    .custom-loading-card {
+        display: flex;
+        flex-direction: column;
+        padding: 16px;
+        background: #ffffff;
+        border: 1px solid #e5e8eb;
+        border-radius: 16px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    }
+
+    .custom-loading-card-header {
+        display: flex;
+        align-items: center;
+        margin-bottom: 12px;
+    }
+
+    .custom-loading-icon {
+        width: 30px;
+        height: 30px;
+        border-radius: 8px;
+        background-color: rgba(2,32,71,0.05);
+        overflow: hidden;
+    }
+
+    .custom-loading-icon img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    .custom-loading-app-name {
+        margin-left: 12px;
+        font-size: 15px;
+        font-weight: 500;
+        color: #333d4b;
+    }
+
+    .custom-loading-progress {
+        height: 5px;
+        background: #e5e8eb;
+        border-radius: 2.5px;
+        overflow: hidden;
+    }
+
+    .custom-loading-progress-bar {
+        height: 100%;
+        border-radius: 2.5px;
+        width: 0%;
+        transition: width 0.3s ease;
+    }
+</style>
+
+<div class=""custom-loading"" id=""ait-loading"">
+    <div class=""custom-loading-title"" id=""loading-title""></div>
+
+    <div class=""custom-loading-card"">
+        <div class=""custom-loading-card-header"">
+            <div class=""custom-loading-icon"">
+                <img id=""app-icon"" src="""" alt="""" />
+            </div>
+            <div class=""custom-loading-app-name"" id=""app-name""></div>
+        </div>
+        <div class=""custom-loading-progress"">
+            <div class=""custom-loading-progress-bar"" id=""progress-bar""></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // AITLoading.appInfo에서 앱 정보 가져오기
+    function initLoadingScreen() {
+        var appInfo = window.AITLoading ? window.AITLoading.appInfo : {};
+
+        // 제목
+        var titleEl = document.getElementById('loading-title');
+        if (titleEl && appInfo.loadingTitle) {
+            titleEl.innerHTML = appInfo.loadingTitle.replace(/\\n/g, '<br>');
+        }
+
+        // 아이콘
+        var iconEl = document.getElementById('app-icon');
+        if (iconEl && appInfo.iconUrl) {
+            iconEl.src = appInfo.iconUrl;
+        }
+
+        // 앱 이름
+        var nameEl = document.getElementById('app-name');
+        if (nameEl && appInfo.displayName) {
+            nameEl.textContent = appInfo.displayName;
+        }
+
+        // 프로그레스 바 색상
+        var progressBar = document.getElementById('progress-bar');
+        if (progressBar && appInfo.primaryColor) {
+            progressBar.style.background = appInfo.primaryColor;
+        }
+    }
+
+    // 초기화 대기
+    var checkInit = setInterval(function() {
+        if (window.AITLoading && window.AITLoading._initialized) {
+            clearInterval(checkInit);
+            initLoadingScreen();
+        }
+    }, 50);
+
+    // 진행률 업데이트
+    if (window.AITLoading) {
+        AITLoading.onProgress(function(progress) {
+            var progressBar = document.getElementById('progress-bar');
+            if (progressBar) {
+                progressBar.style.width = (progress * 100) + '%';
+            }
+        });
+
+        AITLoading.onComplete(function() {
+            AITLoading.hide();
+        });
+    }
+</script>";
+
+            File.WriteAllText(path, template, System.Text.Encoding.UTF8);
+            AssetDatabase.Refresh();
+
+            EditorUtility.DisplayDialog(
+                "커스텀 로딩 화면 생성 완료",
+                "커스텀 로딩 화면이 생성되었습니다.\n\n" +
+                "경로: Assets/AppsInToss/loading.html\n\n" +
+                "이 파일을 편집하여 로딩 화면을 커스터마이징하세요.\n" +
+                "AITLoading.appInfo를 사용하여 앱 정보에 접근할 수 있습니다.",
+                "확인"
+            );
+
+            // 파일 열기
+            UnityEditorInternal.InternalEditorUtility.OpenFileAtLineExternal(path, 1);
         }
 
         private void DrawWebViewSettings()

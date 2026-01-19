@@ -205,28 +205,39 @@
         }
     }
 
-    // 진행률 업데이트
-    AITLoading.onProgress(function(progress) {
-        if (progressBar) {
-            progressBar.style.width = (progress * 100) + '%';
-        }
-    });
-
-    // 로딩 완료 시 화면 숨기기
-    AITLoading.onComplete(function() {
-        AITLoading.hide();
-    });
-
-    // SDK 초기화 완료 대기 후 UI 업데이트
-    if (window.AITLoading && window.AITLoading._initialized) {
-        initUI(AITLoading.appInfo);
-    } else {
+    // AITLoading API가 로드될 때까지 대기 후 초기화
+    function waitForAPIAndInit() {
         var check = setInterval(function() {
-            if (window.AITLoading && window.AITLoading._initialized) {
+            if (window.AITLoading) {
                 clearInterval(check);
-                initUI(AITLoading.appInfo);
+
+                // 진행률 업데이트
+                AITLoading.onProgress(function(progress) {
+                    if (progressBar) {
+                        progressBar.style.width = (progress * 100) + '%';
+                    }
+                });
+
+                // 로딩 완료 시 화면 숨기기
+                AITLoading.onComplete(function() {
+                    AITLoading.hide();
+                });
+
+                // 초기화 완료 대기 후 UI 업데이트
+                if (AITLoading._initialized) {
+                    initUI(AITLoading.appInfo);
+                } else {
+                    var initCheck = setInterval(function() {
+                        if (AITLoading._initialized) {
+                            clearInterval(initCheck);
+                            initUI(AITLoading.appInfo);
+                        }
+                    }, 50);
+                }
             }
-        }, 50);
+        }, 10);
     }
+
+    waitForAPIAndInit();
 })();
 </script>

@@ -443,7 +443,8 @@ namespace AppsInToss.Editor
                 .Replace("%AIT_VITE_HOST%", config.viteHost)
                 .Replace("%AIT_VITE_PORT%", config.vitePort.ToString())
                 .Replace("%AIT_PERMISSIONS%", config.GetPermissionsJson())
-                .Replace("%AIT_OUTDIR%", config.outdir);
+                .Replace("%AIT_OUTDIR%", config.outdir)
+                .Replace("%AIT_LOADING_TITLE%", config.loadingTitle.Replace("\n", "\\n"));
 
             string finalContent;
 
@@ -478,7 +479,8 @@ namespace AppsInToss.Editor
                     .Replace("%AIT_VITE_HOST%", config.viteHost)
                     .Replace("%AIT_VITE_PORT%", config.vitePort.ToString())
                     .Replace("%AIT_PERMISSIONS%", config.GetPermissionsJson())
-                    .Replace("%AIT_OUTDIR%", config.outdir);
+                    .Replace("%AIT_OUTDIR%", config.outdir)
+                    .Replace("%AIT_LOADING_TITLE%", config.loadingTitle.Replace("\n", "\\n"));
                 Debug.Log("[AIT]   ✓ granite.config.ts (SDK에서 생성)");
             }
 
@@ -887,6 +889,47 @@ namespace AppsInToss.Editor
                     .Replace("%AIT_IS_PRODUCTION%", isProduction)
                     .Replace("%AIT_ENABLE_DEBUG_CONSOLE%", enableDebugConsole)
                     .Replace("%AIT_DEVICE_PIXEL_RATIO%", config.devicePixelRatio.ToString());
+                    // 참고: 로딩 화면 정보(displayName, iconUrl, primaryColor, loadingTitle)는
+                    // granite.config.ts에서 관리되며, Vite 빌드 시 __AIT_BRAND__로 주입됩니다.
+
+                // 로딩 화면 삽입 (%AIT_LOADING_SCREEN% 플레이스홀더)
+                string loadingContent = "";
+                string customLoadingPath = Path.Combine(Application.dataPath, "AppsInToss", "loading.html");
+
+                if (File.Exists(customLoadingPath))
+                {
+                    // 커스텀 로딩 화면 사용
+                    loadingContent = File.ReadAllText(customLoadingPath);
+                    Debug.Log("[AIT] ✓ 커스텀 로딩 화면 적용: " + customLoadingPath);
+                }
+                else
+                {
+                    // 기본 로딩 화면 사용 (SDK 패키지에서 로드)
+                    string[] defaultLoadingPaths = new string[]
+                    {
+                        Path.GetFullPath("Packages/im.toss.apps-in-toss-unity-sdk/WebGLTemplates/AITTemplate/loading.html"),
+                        Path.GetFullPath("Packages/com.appsintoss.miniapp/WebGLTemplates/AITTemplate/loading.html"),
+                        Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(typeof(AITConvertCore).Assembly.Location)), "WebGLTemplates/AITTemplate/loading.html")
+                    };
+
+                    foreach (string loadingPath in defaultLoadingPaths)
+                    {
+                        if (File.Exists(loadingPath))
+                        {
+                            loadingContent = File.ReadAllText(loadingPath);
+                            Debug.Log("[AIT] ✓ 기본 로딩 화면 적용: " + loadingPath);
+                            break;
+                        }
+                    }
+
+                    if (string.IsNullOrEmpty(loadingContent))
+                    {
+                        Debug.LogWarning("[AIT] 로딩 화면 파일을 찾을 수 없습니다. 빈 로딩 화면이 사용됩니다.");
+                    }
+                }
+
+                // %AIT_LOADING_SCREEN% 플레이스홀더 치환
+                indexContent = indexContent.Replace("%AIT_LOADING_SCREEN%", loadingContent);
 
                 File.WriteAllText(indexDest, indexContent, System.Text.Encoding.UTF8);
                 Debug.Log("[AIT] index.html → 프로젝트 루트에 생성");

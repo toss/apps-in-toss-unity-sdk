@@ -52,6 +52,8 @@ namespace AppsInToss.Editor
             GUILayout.Space(10);
             DrawBrandSettings();
             GUILayout.Space(10);
+            DrawLoadingScreenSettings();
+            GUILayout.Space(10);
             DrawWebViewSettings();
             GUILayout.Space(10);
             DrawDevServerSettings();
@@ -140,6 +142,122 @@ namespace AppsInToss.Editor
             }
 
             EditorGUILayout.EndVertical();
+        }
+
+        private void DrawLoadingScreenSettings()
+        {
+            EditorGUILayout.LabelField("로딩 화면 설정", EditorStyles.boldLabel);
+            EditorGUILayout.BeginVertical("box");
+
+            config.loadingTitle = EditorGUILayout.TextField("로딩 제목", config.loadingTitle);
+            EditorGUILayout.HelpBox(
+                "줄바꿈은 \\n을 사용합니다. 예: 게임을 불러오고 있어요\\n조금만 기다려주세요",
+                MessageType.Info
+            );
+
+            GUILayout.Space(10);
+
+            // 커스텀 로딩 화면 상태 표시
+            string customLoadingPath = Path.Combine(Application.dataPath, "AppsInToss", "loading.html");
+            bool hasCustomLoading = File.Exists(customLoadingPath);
+
+            if (hasCustomLoading)
+            {
+                EditorGUILayout.HelpBox(
+                    "커스텀 로딩 화면이 감지되었습니다.\n" + customLoadingPath,
+                    MessageType.Info
+                );
+
+                EditorGUILayout.BeginHorizontal();
+                if (GUILayout.Button("파일 열기", GUILayout.Width(100)))
+                {
+                    UnityEditorInternal.InternalEditorUtility.OpenFileAtLineExternal(customLoadingPath, 1);
+                }
+                if (GUILayout.Button("파일 삭제", GUILayout.Width(100)))
+                {
+                    if (EditorUtility.DisplayDialog(
+                        "커스텀 로딩 화면 삭제",
+                        "커스텀 로딩 화면을 삭제하시겠습니까?\n기본 TDS 스타일 로딩 화면이 사용됩니다.",
+                        "삭제", "취소"))
+                    {
+                        File.Delete(customLoadingPath);
+                        string metaPath = customLoadingPath + ".meta";
+                        if (File.Exists(metaPath)) File.Delete(metaPath);
+                        AssetDatabase.Refresh();
+                    }
+                }
+                EditorGUILayout.EndHorizontal();
+            }
+            else
+            {
+                EditorGUILayout.HelpBox(
+                    "기본 TDS 스타일 로딩 화면이 사용됩니다.\n" +
+                    "커스텀 로딩 화면을 사용하려면 아래 버튼을 클릭하세요.",
+                    MessageType.Info
+                );
+
+                if (GUILayout.Button("커스텀 로딩 화면 생성"))
+                {
+                    CreateCustomLoadingScreen(customLoadingPath);
+                }
+            }
+
+            EditorGUILayout.EndVertical();
+        }
+
+        private void CreateCustomLoadingScreen(string destPath)
+        {
+            // 디렉토리 생성
+            string directory = Path.GetDirectoryName(destPath);
+            if (!Directory.Exists(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            // SDK 패키지에서 기본 loading.html 찾기
+            string[] defaultLoadingPaths = new string[]
+            {
+                Path.GetFullPath("Packages/im.toss.apps-in-toss-unity-sdk/WebGLTemplates/AITTemplate/loading.html"),
+                Path.GetFullPath("Packages/com.appsintoss.miniapp/WebGLTemplates/AITTemplate/loading.html"),
+                Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(typeof(AITConvertCore).Assembly.Location)), "WebGLTemplates/AITTemplate/loading.html")
+            };
+
+            string sourcePath = null;
+            foreach (string loadingPath in defaultLoadingPaths)
+            {
+                if (File.Exists(loadingPath))
+                {
+                    sourcePath = loadingPath;
+                    break;
+                }
+            }
+
+            if (sourcePath == null)
+            {
+                EditorUtility.DisplayDialog(
+                    "오류",
+                    "기본 로딩 화면 파일을 찾을 수 없습니다.\n" +
+                    "SDK 패키지가 올바르게 설치되어 있는지 확인하세요.",
+                    "확인"
+                );
+                return;
+            }
+
+            // 기본 로딩 화면 복사
+            File.Copy(sourcePath, destPath, true);
+            AssetDatabase.Refresh();
+
+            EditorUtility.DisplayDialog(
+                "커스텀 로딩 화면 생성 완료",
+                "기본 로딩 화면이 복사되었습니다.\n\n" +
+                "경로: Assets/AppsInToss/loading.html\n\n" +
+                "이 파일을 수정하여 로딩 화면을 커스터마이징하세요.\n" +
+                "CSS 변수를 수정하면 쉽게 색상과 크기를 변경할 수 있습니다.",
+                "확인"
+            );
+
+            // 파일 열기
+            UnityEditorInternal.InternalEditorUtility.OpenFileAtLineExternal(destPath, 1);
         }
 
         private void DrawWebViewSettings()

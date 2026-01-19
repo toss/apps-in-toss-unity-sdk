@@ -177,21 +177,23 @@
             titleEl.innerHTML = (appInfo.loadingTitle || '').replace(/\n/g, '<br>');
         }
 
-        // 아이콘
+        // 아이콘: 먼저 CSS 폴백(첫 글자)을 표시하여 즉시 렌더링
+        // 이미지는 백그라운드에서 로드 후 교체 (로딩 지연 방지)
+        var firstChar = appInfo.displayName ? appInfo.displayName.charAt(0).toUpperCase() : '';
+        iconFallback.textContent = firstChar;
+        iconFallback.style.display = 'flex';
+        iconImg.style.display = 'none';
+
+        // 이미지 URL이 있으면 백그라운드에서 로드
         if (appInfo.iconUrl) {
-            iconImg.src = appInfo.iconUrl;
-            iconImg.style.display = '';
-            iconImg.onerror = function() {
-                iconImg.style.display = 'none';
-                iconFallback.style.display = 'flex';
-                iconFallback.textContent = appInfo.displayName ? appInfo.displayName.charAt(0) : '';
+            var img = new Image();
+            img.onload = function() {
+                iconImg.src = appInfo.iconUrl;
+                iconImg.style.display = '';
+                iconFallback.style.display = 'none';
             };
-            iconFallback.style.display = 'none';
-        } else {
-            // 아이콘 없으면 첫 글자로 폴백
-            iconImg.style.display = 'none';
-            iconFallback.style.display = 'flex';
-            iconFallback.textContent = appInfo.displayName ? appInfo.displayName.charAt(0) : '';
+            // 이미지 로드 실패해도 CSS 폴백 유지
+            img.src = appInfo.iconUrl;
         }
 
         // 앱 이름

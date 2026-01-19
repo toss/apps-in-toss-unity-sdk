@@ -205,196 +205,59 @@ namespace AppsInToss.Editor
             EditorGUILayout.EndVertical();
         }
 
-        private void CreateCustomLoadingScreen(string path)
+        private void CreateCustomLoadingScreen(string destPath)
         {
             // 디렉토리 생성
-            string directory = Path.GetDirectoryName(path);
+            string directory = Path.GetDirectoryName(destPath);
             if (!Directory.Exists(directory))
             {
                 Directory.CreateDirectory(directory);
             }
 
-            // 기본 로딩 화면 템플릿 생성 (TDS 스타일 기반)
-            string template = @"<!--
-    커스텀 로딩 화면 템플릿
+            // SDK 패키지에서 기본 loading.html 찾기
+            string[] defaultLoadingPaths = new string[]
+            {
+                Path.GetFullPath("Packages/im.toss.apps-in-toss-unity-sdk/WebGLTemplates/AITTemplate/loading.html"),
+                Path.GetFullPath("Packages/com.appsintoss.miniapp/WebGLTemplates/AITTemplate/loading.html"),
+                Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(typeof(AITConvertCore).Assembly.Location)), "WebGLTemplates/AITTemplate/loading.html")
+            };
 
-    이 파일을 수정하여 로딩 화면을 커스터마이징하세요.
-    CSS 변수를 수정하면 쉽게 색상과 크기를 변경할 수 있습니다.
-
-    사용 가능한 API:
-    - AITLoading.appInfo: 앱 정보 (iconUrl, displayName, primaryColor, loadingTitle)
-    - AITLoading.onProgress(callback): 진행률 업데이트 콜백 (0.0 ~ 1.0)
-    - AITLoading.onComplete(callback): 로딩 완료 콜백
-    - AITLoading.onError(callback): 에러 발생 콜백
-    - AITLoading.hide(): 로딩 화면 숨기기
-
-    자세한 내용은 Docs/LoadingScreenCustomization.md를 참조하세요.
--->
-
-<style>
-    /* ===== 커스터마이징 가능한 CSS 변수 ===== */
-    :root {
-        /* 배경 및 색상 */
-        --loading-bg: #ffffff;
-        --title-color: #191f28;
-        --app-name-color: #333d4b;
-        --progress-bg: #e5e8eb;
-        --card-border: #e5e8eb;
-        --icon-bg: rgba(2, 32, 71, 0.05);
-
-        /* 크기 */
-        --title-size: 22px;
-        --app-name-size: 15px;
-        --icon-size: 30px;
-        --progress-height: 5px;
-        --card-radius: 16px;
-        --icon-radius: 8px;
-
-        /* 여백 */
-        --top-padding: 120px;
-        --side-padding: 20px;
-    }
-
-    /* ===== 로딩 화면 스타일 ===== */
-    .loading-container {
-        position: fixed;
-        inset: 0;
-        background: var(--loading-bg);
-        display: flex;
-        flex-direction: column;
-        padding: var(--top-padding) var(--side-padding) 0;
-        font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-    }
-
-    .loading-title {
-        font-size: var(--title-size);
-        font-weight: 600;
-        color: var(--title-color);
-        line-height: 1.4;
-        margin-bottom: 44px;
-    }
-
-    .loading-card {
-        display: flex;
-        flex-direction: column;
-        padding: 16px;
-        background: var(--loading-bg);
-        border: 1px solid var(--card-border);
-        border-radius: var(--card-radius);
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-    }
-
-    .loading-header {
-        display: flex;
-        align-items: center;
-        margin-bottom: 12px;
-    }
-
-    .loading-icon {
-        width: var(--icon-size);
-        height: var(--icon-size);
-        border-radius: var(--icon-radius);
-        background: var(--icon-bg);
-        overflow: hidden;
-        flex-shrink: 0;
-    }
-
-    .loading-icon img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-    }
-
-    .loading-app-name {
-        margin-left: 12px;
-        font-size: var(--app-name-size);
-        font-weight: 500;
-        color: var(--app-name-color);
-    }
-
-    .loading-progress {
-        height: var(--progress-height);
-        background: var(--progress-bg);
-        border-radius: calc(var(--progress-height) / 2);
-        overflow: hidden;
-    }
-
-    .loading-progress-bar {
-        height: 100%;
-        width: 0%;
-        border-radius: inherit;
-        transition: width 0.3s ease;
-    }
-</style>
-
-<!-- ===== HTML 구조 ===== -->
-<div class=""loading-container"" id=""ait-loading"">
-    <div class=""loading-title"" id=""loading-title""></div>
-
-    <div class=""loading-card"">
-        <div class=""loading-header"">
-            <div class=""loading-icon"">
-                <img id=""app-icon"" src="""" alt="""" />
-            </div>
-            <div class=""loading-app-name"" id=""app-name""></div>
-        </div>
-        <div class=""loading-progress"">
-            <div class=""loading-progress-bar"" id=""progress-bar""></div>
-        </div>
-    </div>
-</div>
-
-<!-- ===== JavaScript ===== -->
-<script>
-(function() {
-    // 앱 정보로 UI 초기화
-    function initUI(appInfo) {
-        document.getElementById('loading-title').innerHTML =
-            (appInfo.loadingTitle || '').replace(/\n/g, '<br>');
-        document.getElementById('app-icon').src = appInfo.iconUrl || '';
-        document.getElementById('app-name').textContent = appInfo.displayName || '';
-        document.getElementById('progress-bar').style.background =
-            appInfo.primaryColor || '#3182f6';
-    }
-
-    // 진행률 업데이트
-    AITLoading.onProgress(function(progress) {
-        document.getElementById('progress-bar').style.width = (progress * 100) + '%';
-    });
-
-    // 로딩 완료 시 화면 숨기기
-    AITLoading.onComplete(function() {
-        AITLoading.hide();
-    });
-
-    // SDK 초기화 완료 시 UI 업데이트
-    if (AITLoading._initialized) {
-        initUI(AITLoading.appInfo);
-    } else {
-        var check = setInterval(function() {
-            if (AITLoading._initialized) {
-                clearInterval(check);
-                initUI(AITLoading.appInfo);
+            string sourcePath = null;
+            foreach (string loadingPath in defaultLoadingPaths)
+            {
+                if (File.Exists(loadingPath))
+                {
+                    sourcePath = loadingPath;
+                    break;
+                }
             }
-        }, 50);
-    }
-})();
-</script>";
 
-            File.WriteAllText(path, template, System.Text.Encoding.UTF8);
+            if (sourcePath == null)
+            {
+                EditorUtility.DisplayDialog(
+                    "오류",
+                    "기본 로딩 화면 파일을 찾을 수 없습니다.\n" +
+                    "SDK 패키지가 올바르게 설치되어 있는지 확인하세요.",
+                    "확인"
+                );
+                return;
+            }
+
+            // 기본 로딩 화면 복사
+            File.Copy(sourcePath, destPath, true);
             AssetDatabase.Refresh();
 
             EditorUtility.DisplayDialog(
                 "커스텀 로딩 화면 생성 완료",
-                "커스텀 로딩 화면이 생성되었습니다.\n\n" +
+                "기본 로딩 화면이 복사되었습니다.\n\n" +
                 "경로: Assets/AppsInToss/loading.html\n\n" +
-                "이 파일을 편집하여 로딩 화면을 커스터마이징하세요.\n" +
-                "AITLoading.appInfo를 사용하여 앱 정보에 접근할 수 있습니다.",
+                "이 파일을 수정하여 로딩 화면을 커스터마이징하세요.\n" +
+                "CSS 변수를 수정하면 쉽게 색상과 크기를 변경할 수 있습니다.",
                 "확인"
             );
 
             // 파일 열기
-            UnityEditorInternal.InternalEditorUtility.OpenFileAtLineExternal(path, 1);
+            UnityEditorInternal.InternalEditorUtility.OpenFileAtLineExternal(destPath, 1);
         }
 
         private void DrawWebViewSettings()

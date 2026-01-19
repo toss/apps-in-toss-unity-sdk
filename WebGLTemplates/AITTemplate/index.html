@@ -205,112 +205,6 @@
         .ait-modal-button.secondary:hover {
             background: #cbd5e0;
         }
-
-        /* Loading Screen - TDS Style */
-        .ait-loading {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            z-index: 9998;
-            background: #ffffff;
-            display: flex;
-            flex-direction: column;
-            font-family: 'Toss Product Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-        }
-
-        .ait-loading-content {
-            display: flex;
-            flex-direction: column;
-            padding: 120px 20px 0 20px;  /* 상단 여백: 네이티브 헤더 + 여유 공간 */
-        }
-
-        /* TopTitleParagraph size=22 */
-        .ait-loading-title {
-            font-size: 22px;
-            font-weight: 600;
-            color: #191f28;  /* grey900 */
-            line-height: 1.4;
-            margin-bottom: 44px;  /* Spacing size={44} */
-        }
-
-        /* ListRow 카드 - 둥근 테두리 컨테이너 */
-        .ait-loading-card {
-            display: flex;
-            flex-direction: column;
-            padding: 16px;
-            background: #ffffff;
-            border: 1px solid #e5e8eb;  /* grey200 */
-            border-radius: 16px;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-        }
-
-        .ait-loading-card-header {
-            display: flex;
-            align-items: center;
-            margin-bottom: 12px;
-        }
-
-        /* ListRowAssetImage: 30x30 squircle */
-        .ait-loading-icon {
-            width: 30px;
-            height: 30px;
-            border-radius: 8px;  /* squircle 근사값 */
-            background-color: rgba(2,32,71,0.05);  /* greyOpacity100 */
-            background-size: cover;
-            background-position: center;
-            flex-shrink: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            overflow: hidden;
-        }
-
-        .ait-loading-icon img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-
-        /* 아이콘 폴백 */
-        .ait-loading-icon-fallback {
-            width: 100%;
-            height: 100%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: linear-gradient(135deg, #3182f6 0%, #6b7684 100%);
-            color: white;
-            font-size: 14px;
-            font-weight: 600;
-        }
-
-        /* ListRowTexts */
-        .ait-loading-app-name {
-            margin-left: 12px;
-            font-size: 15px;
-            font-weight: 500;
-            color: #333d4b;  /* grey800 */
-            flex: 1;
-        }
-
-        /* ProgressBar size="normal" */
-        .ait-loading-progress {
-            height: 5px;
-            background: #e5e8eb;  /* grey200 */
-            border-radius: 2.5px;
-            overflow: hidden;
-        }
-
-        .ait-loading-progress-bar {
-            height: 100%;
-            background: var(--ait-primary-color, #3182f6);  /* blue500 또는 커스텀 */
-            border-radius: 2.5px;
-            width: 0%;
-            transform-origin: 0;
-            transition: width 0.3s ease;
-        }
     </style>
 
     <!-- USER_HEAD_START - 이 영역에 사용자 커스텀 스크립트/스타일을 추가하세요 -->
@@ -319,32 +213,8 @@
     <!-- USER_HEAD_END -->
 </head>
 <body>
-    <!-- Loading Screen - TDS Style -->
-    <div id="ait-loading" class="ait-loading" style="--ait-primary-color: #3182f6;">
-        <div class="ait-loading-content">
-            <!-- 제목 -->
-            <div class="ait-loading-title" id="ait-loading-title">
-                로딩 중...
-            </div>
-
-            <!-- 앱 정보 카드 -->
-            <div class="ait-loading-card">
-                <div class="ait-loading-card-header">
-                    <!-- 앱 아이콘 (30x30 squircle) -->
-                    <div class="ait-loading-icon" id="ait-loading-icon">
-                        <img src="" alt="" style="display: none;" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
-                        <div class="ait-loading-icon-fallback" style="display: flex;"></div>
-                    </div>
-                    <!-- 앱 이름 -->
-                    <div class="ait-loading-app-name" id="ait-loading-app-name"></div>
-                </div>
-                <!-- 진행률 바 -->
-                <div class="ait-loading-progress">
-                    <div class="ait-loading-progress-bar" id="ait-loading-progress-bar"></div>
-                </div>
-            </div>
-        </div>
-    </div><!-- /ait-loading -->
+    <!-- 로딩 화면 (loading.html에서 삽입됨) -->
+    %AIT_LOADING_SCREEN%
 
     <div id="unity-container" class="unity-desktop">
         <canvas id="unity-canvas" width="%UNITY_WIDTH%" height="%UNITY_HEIGHT%" tabindex="-1"></canvas>
@@ -632,47 +502,6 @@
             // 초기화 완료 여부
             _initialized: false,
 
-            // 로딩 화면 UI 업데이트
-            _updateLoadingScreenUI: function() {
-                // 제목 업데이트
-                var titleEl = document.getElementById('ait-loading-title');
-                if (titleEl && this.appInfo.loadingTitle) {
-                    titleEl.innerHTML = this.appInfo.loadingTitle.replace(/\n/g, '<br>');
-                }
-
-                // 아이콘 업데이트
-                var iconImg = document.querySelector('#ait-loading-icon img');
-                var iconFallback = document.querySelector('.ait-loading-icon-fallback');
-                if (this.appInfo.iconUrl) {
-                    if (iconImg) {
-                        iconImg.src = this.appInfo.iconUrl;
-                        iconImg.style.display = '';
-                    }
-                    if (iconFallback) {
-                        iconFallback.style.display = 'none';
-                    }
-                } else {
-                    // 아이콘 없으면 앱 이름 첫 글자로 폴백
-                    if (iconImg) iconImg.style.display = 'none';
-                    if (iconFallback) {
-                        iconFallback.style.display = 'flex';
-                        iconFallback.textContent = this.appInfo.displayName ? this.appInfo.displayName.charAt(0) : '';
-                    }
-                }
-
-                // 앱 이름 업데이트
-                var appNameEl = document.getElementById('ait-loading-app-name');
-                if (appNameEl && this.appInfo.displayName) {
-                    appNameEl.textContent = this.appInfo.displayName;
-                }
-
-                // 프로그레스 바 색상 업데이트
-                var loadingEl = document.getElementById('ait-loading');
-                if (loadingEl && this.appInfo.primaryColor) {
-                    loadingEl.style.setProperty('--ait-primary-color', this.appInfo.primaryColor);
-                }
-            },
-
             // 진행률 콜백 등록
             onProgress: function(callback) {
                 if (typeof callback === 'function') {
@@ -756,8 +585,7 @@
             console.log('[AIT Loading] 네이티브 앱 정보 없음, granite.config.ts 설정 사용');
         }
 
-        // UI 업데이트
-        window.AITLoading._updateLoadingScreenUI();
+        // 초기화 완료 표시 (loading.html이 이 플래그를 확인하여 UI 업데이트)
         window.AITLoading._initialized = true;
     </script>
 

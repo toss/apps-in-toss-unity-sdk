@@ -34,5 +34,11 @@
     "tsx": "^4.19.2",
     "typescript": "^5.8.3",
     "vitest": "^4.0.15"
+  },
+  "pnpm": {
+    "overrides": {
+      "find-my-way": ">=8.2.2",
+      "ip": ">=2.0.1"
+    }
   }
 }

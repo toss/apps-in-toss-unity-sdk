@@ -38,7 +38,7 @@ jobs:
 
       - name: Install Dependencies
         working-directory: sdk-runtime-generator~
-        run: pnpm install
+        run: pnpm install --no-frozen-lockfile
 
       - name: Run Unit Tests (Tier 1 - C# compilation)
         working-directory: sdk-runtime-generator~

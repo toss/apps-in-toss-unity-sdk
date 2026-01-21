@@ -201,6 +201,9 @@ namespace AppsInToss
         [Tooltip("프로덕션 빌드에서 디버그 콘솔을 활성화합니다. 개발/테스트 목적으로 사용하세요.")]
         public bool enableDebugConsole = false;
 
+        [Tooltip("Unity 진단 오버레이 활성화. Unity 메트릭(FPS, 메모리 등) 수집을 위해 필요합니다. Unity 2022.2+ 전용.")]
+        public int showDiagnostics = -1; // -1 = 자동 (true), 0 = false, 1 = true
+
         [Header("권한 설정")]
         public AITPermissionConfig permissionConfig = new AITPermissionConfig();
 

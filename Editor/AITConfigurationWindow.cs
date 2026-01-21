@@ -674,6 +674,15 @@ namespace AppsInToss.Editor
 #endif
 #endif
 
+#if UNITY_2022_2_OR_NEWER
+            GUILayout.Space(10);
+            EditorGUILayout.LabelField("진단 설정 (Unity 2022.2+)", EditorStyles.boldLabel);
+            GUILayout.Space(5);
+
+            // Show Diagnostics
+            DrawShowDiagnosticsSetting();
+#endif
+
             GUILayout.Space(10);
             EditorGUILayout.LabelField("기타 고급 설정", EditorStyles.boldLabel);
             EditorGUILayout.HelpBox(
@@ -785,6 +794,41 @@ namespace AppsInToss.Editor
             EditorGUILayout.EndHorizontal();
         }
 #endif
+#endif
+
+#if UNITY_2022_2_OR_NEWER
+        private void DrawShowDiagnosticsSetting()
+        {
+            // 기본값: true (Unity 메트릭 수집을 위해 활성화)
+            bool defaultValue = true;
+            bool isModified = config.showDiagnostics >= 0 && (config.showDiagnostics == 1) != defaultValue;
+
+            EditorGUILayout.BeginHorizontal();
+
+            DrawModifiedIndicator(isModified);
+
+            string label = config.showDiagnostics < 0
+                ? $"진단 오버레이 (자동: 활성화)"
+                : "진단 오버레이";
+
+            string[] options = { "자동 (활성화)", "비활성화", "활성화" };
+            int currentIndex = config.showDiagnostics < 0 ? 0 : config.showDiagnostics + 1;
+            int newIndex = EditorGUILayout.Popup(label, currentIndex, options);
+            config.showDiagnostics = newIndex == 0 ? -1 : newIndex - 1;
+
+            if (isModified && DrawResetButton())
+            {
+                config.showDiagnostics = -1;
+            }
+
+            EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.HelpBox(
+                "Unity 진단 오버레이를 활성화하면 런타임에서 FPS, 메모리 등\n" +
+                "Unity 메트릭을 수집할 수 있습니다. (getMetricsInfo API)",
+                MessageType.Info
+            );
+        }
 #endif
 
         private void DrawExceptionSupportSetting()
@@ -988,6 +1032,9 @@ namespace AppsInToss.Editor
             config.showUnityLogo = -1;
             config.decompressionFallback = -1;
             config.runInBackground = -1;
+#if UNITY_2022_2_OR_NEWER
+            config.showDiagnostics = -1;
+#endif
         }
 
         private void DrawDeploymentSettings()

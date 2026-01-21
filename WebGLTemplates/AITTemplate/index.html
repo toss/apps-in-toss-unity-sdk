@@ -1053,6 +1053,150 @@
                             #unity-debug-toggle-btn:active {
                                 transform: scale(0.95);
                             }
+
+                            /* Metric Explorer 스타일 */
+                            #metric-explorer {
+                                position: fixed;
+                                top: 0;
+                                left: 0;
+                                width: 100%;
+                                height: 100%;
+                                background: rgba(0, 0, 0, 0.98);
+                                color: white;
+                                font-family: "Courier New", monospace;
+                                font-size: 12px;
+                                z-index: 100000;
+                                display: none;
+                                flex-direction: column;
+                                padding-top: env(safe-area-inset-top, 0px);
+                                padding-bottom: env(safe-area-inset-bottom, 0px);
+                                padding-left: env(safe-area-inset-left, 0px);
+                                padding-right: env(safe-area-inset-right, 0px);
+                                box-sizing: border-box;
+                            }
+                            #metric-explorer.visible { display: flex; }
+                            #metric-explorer-header {
+                                background: rgba(50, 50, 50, 0.98);
+                                padding: 12px 16px;
+                                border-bottom: 2px solid #00aaff;
+                                display: flex;
+                                justify-content: space-between;
+                                align-items: center;
+                            }
+                            #metric-explorer-title {
+                                font-weight: bold;
+                                color: #00aaff;
+                                font-size: 16px;
+                            }
+                            #metric-explorer-controls {
+                                display: flex;
+                                gap: 10px;
+                            }
+                            #metric-explorer-controls button {
+                                background: #444;
+                                border: 1px solid #666;
+                                color: white;
+                                padding: 8px 16px;
+                                cursor: pointer;
+                                border-radius: 4px;
+                                font-size: 13px;
+                            }
+                            #metric-explorer-controls button:hover { background: #555; }
+                            #metric-explorer-tabs {
+                                display: flex;
+                                background: rgba(40, 40, 40, 0.98);
+                                border-bottom: 1px solid #444;
+                            }
+                            .metric-tab {
+                                padding: 12px 24px;
+                                cursor: pointer;
+                                border: none;
+                                background: transparent;
+                                color: #888;
+                                font-size: 14px;
+                                font-family: inherit;
+                                border-bottom: 3px solid transparent;
+                                transition: all 0.2s;
+                            }
+                            .metric-tab:hover { color: #ccc; background: rgba(255,255,255,0.05); }
+                            .metric-tab.active {
+                                color: #00aaff;
+                                border-bottom-color: #00aaff;
+                                background: rgba(0, 170, 255, 0.1);
+                            }
+                            #metric-explorer-content {
+                                flex: 1;
+                                overflow-y: auto;
+                                padding: 16px;
+                            }
+                            #metric-explorer-content::-webkit-scrollbar { width: 10px; }
+                            #metric-explorer-content::-webkit-scrollbar-track { background: #222; }
+                            #metric-explorer-content::-webkit-scrollbar-thumb { background: #555; border-radius: 5px; }
+                            .metric-section {
+                                margin-bottom: 24px;
+                                background: rgba(30, 30, 30, 0.8);
+                                border-radius: 8px;
+                                padding: 16px;
+                                border: 1px solid #333;
+                            }
+                            .metric-section-title {
+                                font-size: 14px;
+                                font-weight: bold;
+                                color: #00ff88;
+                                margin-bottom: 12px;
+                                padding-bottom: 8px;
+                                border-bottom: 1px solid #444;
+                            }
+                            .metric-table {
+                                width: 100%;
+                                border-collapse: collapse;
+                                table-layout: fixed;
+                            }
+                            .metric-table th {
+                                text-align: left;
+                                padding: 8px 12px;
+                                background: rgba(0, 0, 0, 0.3);
+                                color: #aaa;
+                                font-size: 11px;
+                                text-transform: uppercase;
+                                border-bottom: 1px solid #444;
+                            }
+                            .metric-table th:nth-child(1) { width: 35%; }
+                            .metric-table th:nth-child(2) { width: 50%; }
+                            .metric-table th:nth-child(3) { width: 15%; }
+                            .metric-table td {
+                                padding: 8px 12px;
+                                border-bottom: 1px solid #333;
+                                font-size: 12px;
+                                overflow-x: auto;
+                                overflow-y: hidden;
+                                max-width: 0;
+                                white-space: nowrap;
+                            }
+                            .metric-table td::-webkit-scrollbar { height: 4px; }
+                            .metric-table td::-webkit-scrollbar-track { background: transparent; }
+                            .metric-table td::-webkit-scrollbar-thumb { background: #555; border-radius: 2px; }
+                            .metric-table tr:hover { background: rgba(255, 255, 255, 0.03); }
+                            .metric-key { color: #ffcc00; word-break: break-all; white-space: normal; }
+                            .metric-value { color: #00ff88; font-family: monospace; }
+                            .metric-type { color: #888; font-size: 10px; }
+                            .metric-na { color: #666; font-style: italic; }
+                            .metric-refresh-btn {
+                                background: #0066aa;
+                                border: none;
+                                color: white;
+                                padding: 6px 12px;
+                                border-radius: 4px;
+                                cursor: pointer;
+                                font-size: 12px;
+                                margin-left: 10px;
+                            }
+                            .metric-refresh-btn:hover { background: #0088cc; }
+                            .metric-timestamp {
+                                color: #666;
+                                font-size: 11px;
+                                margin-left: auto;
+                            }
                         `;
                         document.head.appendChild(style);
 
@@ -1063,6 +1207,7 @@
                             <div id="unity-debug-console-header">
                                 <div id="unity-debug-console-title">Unity Debug Console</div>
                                 <div id="unity-debug-console-controls">
+                                    <button id="debug-metrics-btn" style="background: #0066aa;">Metrics</button>
                                     <button id="debug-copy-btn">Copy Logs</button>
                                     <button id="debug-clear-btn">Clear</button>
                                     <button id="debug-close-btn">Close</button>
@@ -1083,6 +1228,31 @@
                             <div id="unity-debug-console-logs"></div>
                         `;
                         document.body.appendChild(consoleDiv);
+
+                        // Metric Explorer HTML 생성
+                        var metricExplorer = document.createElement('div');
+                        metricExplorer.id = 'metric-explorer';
+                        metricExplorer.innerHTML = `
+                            <div id="metric-explorer-header">
+                                <div id="metric-explorer-title">Metric Explorer</div>
+                                <div id="metric-explorer-controls">
+                                    <button id="metric-refresh-btn">Refresh All</button>
+                                    <button id="metric-copy-btn">Copy JSON</button>
+                                    <button id="metric-close-btn">Close</button>
+                                </div>
+                            </div>
+                            <div id="metric-explorer-tabs">
+                                <button class="metric-tab active" data-tab="loading">Loading</button>
+                                <button class="metric-tab" data-tab="web">Web</button>
+                                <button class="metric-tab" data-tab="unity">Unity</button>
+                            </div>
+                            <div id="metric-explorer-content">
+                                <div id="metric-tab-loading" class="metric-tab-content"></div>
+                                <div id="metric-tab-web" class="metric-tab-content" style="display:none;"></div>
+                                <div id="metric-tab-unity" class="metric-tab-content" style="display:none;"></div>
+                            </div>
+                        `;
+                        document.body.appendChild(metricExplorer);
 
                         // Safe Area 동적 적용 (게임 앱에서 CSS env() 변수가 0일 수 있음)
                         async function applySafeAreaToDebugConsole() {
@@ -1286,6 +1456,457 @@
                             requestAnimationFrame(updateMetrics);
                         }
                         updateMetrics();
+
+                        // ============================================
+                        // Metric Explorer 기능
+                        // ============================================
+                        var metricsBtn = document.getElementById('debug-metrics-btn');
+                        var metricRefreshBtn = document.getElementById('metric-refresh-btn');
+                        var metricCopyBtn = document.getElementById('metric-copy-btn');
+                        var metricCloseBtn = document.getElementById('metric-close-btn');
+                        var metricTabs = document.querySelectorAll('.metric-tab');
+                        var currentTab = 'loading';
+                        var lastMetricData = {};
+
+                        // Metric Explorer 열기/닫기
+                        function toggleMetricExplorer() {
+                            var explorer = document.getElementById('metric-explorer');
+                            var isVisible = explorer.classList.toggle('visible');
+                            if (isVisible) {
+                                refreshCurrentTab();
+                            }
+                        }
+
+                        metricsBtn.onclick = toggleMetricExplorer;
+                        metricCloseBtn.onclick = toggleMetricExplorer;
+
+                        // 탭 전환
+                        metricTabs.forEach(function(tab) {
+                            tab.onclick = function() {
+                                metricTabs.forEach(function(t) { t.classList.remove('active'); });
+                                tab.classList.add('active');
+                                currentTab = tab.getAttribute('data-tab');
+                                document.querySelectorAll('.metric-tab-content').forEach(function(c) {
+                                    c.style.display = 'none';
+                                });
+                                document.getElementById('metric-tab-' + currentTab).style.display = 'block';
+                                refreshCurrentTab();
+                            };
+                        });
+
+                        // 현재 탭 새로고침
+                        function refreshCurrentTab() {
+                            switch(currentTab) {
+                                case 'loading': renderLoadingMetrics(); break;
+                                case 'web': renderWebMetrics(); break;
+                                case 'unity': renderUnityMetrics(); break;
+                            }
+                        }
+
+                        metricRefreshBtn.onclick = refreshCurrentTab;
+
+                        // JSON 복사
+                        metricCopyBtn.onclick = function() {
+                            var jsonStr = JSON.stringify(lastMetricData, null, 2);
+                            if (navigator.clipboard) {
+                                navigator.clipboard.writeText(jsonStr).then(function() {
+                                    alert('메트릭 JSON이 클립보드에 복사되었습니다!');
+                                });
+                            }
+                        };
+
+                        // 테이블 생성 헬퍼 (재귀적으로 object/array 펼침)
+                        function createMetricTable(data, title) {
+                            var html = '<div class="metric-section">';
+                            html += '<div class="metric-section-title">' + title + '</div>';
+                            html += '<table class="metric-table"><thead><tr>';
+                            html += '<th>Key</th><th>Value</th><th>Type</th>';
+                            html += '</tr></thead><tbody>';
+
+                            function renderValue(value, indent) {
+                                indent = indent || 0;
+                                var indentStr = indent > 0 ? '<span style="color:#555;margin-left:' + (indent * 12) + 'px">' : '';
+                                var indentEnd = indent > 0 ? '</span>' : '';
+
+                                if (value === null || value === undefined) {
+                                    return { html: '<span class="metric-na">N/A</span>', type: 'null' };
+                                } else if (typeof value === 'number') {
+                                    var numStr = Number.isInteger(value) ? value : value.toFixed(2);
+                                    return { html: '<span class="metric-value">' + numStr + '</span>', type: 'number' };
+                                } else if (typeof value === 'boolean') {
+                                    return { html: '<span class="metric-value">' + value + '</span>', type: 'boolean' };
+                                } else if (typeof value === 'string') {
+                                    var escaped = String(value).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                                    if (escaped.length > 80) escaped = escaped.substring(0, 80) + '...';
+                                    return { html: '<span class="metric-value">"' + escaped + '"</span>', type: 'string' };
+                                } else if (Array.isArray(value)) {
+                                    if (value.length === 0) {
+                                        return { html: '<span class="metric-value">[]</span>', type: 'array[0]' };
+                                    }
+                                    // 숫자 배열은 한 줄로 표시
+                                    if (value.every(function(v) { return typeof v === 'number'; })) {
+                                        var nums = value.map(function(v) { return Number.isInteger(v) ? v : v.toFixed(1); });
+                                        if (nums.join(', ').length < 60) {
+                                            return { html: '<span class="metric-value">[' + nums.join(', ') + ']</span>', type: 'array[' + value.length + ']' };
+                                        }
+                                    }
+                                    return { html: null, type: 'array[' + value.length + ']', expand: value, isArray: true };
+                                } else if (typeof value === 'object') {
+                                    var keys = Object.keys(value);
+                                    if (keys.length === 0) {
+                                        return { html: '<span class="metric-value">{}</span>', type: 'object' };
+                                    }
+                                    return { html: null, type: 'object', expand: value, isArray: false };
+                                }
+                                return { html: '<span class="metric-value">' + String(value) + '</span>', type: typeof value };
+                            }
+
+                            function renderRows(obj, prefix, indent) {
+                                var rows = '';
+                                var keys = Array.isArray(obj) ? obj.map(function(_, i) { return i; }) : Object.keys(obj);
+
+                                keys.forEach(function(key) {
+                                    var value = obj[key];
+                                    var fullKey = prefix ? prefix + '.' + key : String(key);
+                                    var displayKey = indent > 0 ?
+                                        '<span style="padding-left:' + (indent * 16) + 'px;color:#888;">' + key + '</span>' :
+                                        key;
+
+                                    var result = renderValue(value, indent);
+
+                                    if (result.html !== null) {
+                                        rows += '<tr>';
+                                        rows += '<td class="metric-key">' + displayKey + '</td>';
+                                        rows += '<td>' + result.html + '</td>';
+                                        rows += '<td class="metric-type">' + result.type + '</td>';
+                                        rows += '</tr>';
+                                    } else {
+                                        // object/array 헤더
+                                        rows += '<tr style="background:rgba(0,170,255,0.05);">';
+                                        rows += '<td class="metric-key">' + displayKey + '</td>';
+                                        rows += '<td><span style="color:#00aaff;">' + (result.isArray ? '[...]' : '{...}') + '</span></td>';
+                                        rows += '<td class="metric-type">' + result.type + '</td>';
+                                        rows += '</tr>';
+                                        // 재귀적으로 내부 렌더링
+                                        rows += renderRows(result.expand, fullKey, indent + 1);
+                                    }
+                                });
+                                return rows;
+                            }
+
+                            html += renderRows(data, '', 0);
+                            html += '</tbody></table></div>';
+                            return html;
+                        }
+
+                        // Loading Metrics 렌더링
+                        function renderLoadingMetrics() {
+                            var container = document.getElementById('metric-tab-loading');
+                            var html = '';
+                            var data = {};
+
+                            // AITLoadingLogger 데이터
+                            if (window.AITLoadingLogger) {
+                                var logger = window.AITLoadingLogger;
+
+                                // 이벤트 타이밍
+                                var events = {};
+                                Object.keys(logger.events).forEach(function(key) {
+                                    var evt = logger.events[key];
+                                    events[key] = {
+                                        elapsed_ms: Math.round(evt.elapsed),
+                                        data: evt.data
+                                    };
+                                });
+                                data.events = events;
+                                html += createMetricTable(events, 'Loading Events (Timing)');
+
+                                // 파일 다운로드 통계
+                                var fileStats = logger.getFileStats();
+                                if (fileStats.length > 0) {
+                                    fileStats.forEach(function(file) {
+                                        var fileData = {
+                                            url: file.url,
+                                            size_bytes: file.size,
+                                            size_MB: Math.round(file.size / 1024 / 1024 * 100) / 100,
+                                            duration_ms: file.duration,
+                                            startTime_ms: file.startTime,
+                                            responseEnd_ms: file.responseEnd,
+                                            avgSpeed_KBps: file.avgSpeed,
+                                            peakSpeed_KBps: file.peakSpeed,
+                                            minSpeed_KBps: file.minSpeed,
+                                            speedHistory: file.speedHistory
+                                        };
+                                        data['file_' + file.name] = fileData;
+                                        html += createMetricTable(fileData, 'File: ' + file.name);
+                                    });
+                                }
+
+                                // 요약
+                                var summary = {
+                                    totalTime_ms: logger.getTotalTime(),
+                                    totalFiles: fileStats.length,
+                                    totalSize_MB: fileStats.reduce(function(sum, f) { return sum + f.size; }, 0) / 1024 / 1024
+                                };
+                                data.summary = summary;
+                                html = createMetricTable(summary, 'Loading Summary') + html;
+                            } else {
+                                html = '<div class="metric-section"><div class="metric-section-title">AITLoadingLogger not available</div></div>';
+                            }
+
+                            lastMetricData.loading = data;
+                            container.innerHTML = html;
+                        }
+
+                        // Web Metrics 렌더링
+                        function renderWebMetrics() {
+                            var container = document.getElementById('metric-tab-web');
+                            var html = '';
+                            var data = {};
+
+                            // Performance Memory (Chrome only)
+                            if (performance.memory) {
+                                var memData = {
+                                    usedJSHeapSize_MB: (performance.memory.usedJSHeapSize / 1024 / 1024).toFixed(2),
+                                    totalJSHeapSize_MB: (performance.memory.totalJSHeapSize / 1024 / 1024).toFixed(2),
+                                    jsHeapSizeLimit_MB: (performance.memory.jsHeapSizeLimit / 1024 / 1024).toFixed(2)
+                                };
+                                data.memory = memData;
+                                html += createMetricTable(memData, 'JavaScript Memory (Chrome)');
+                            }
+
+                            // Navigator Info
+                            var navData = {
+                                userAgent: navigator.userAgent,
+                                platform: navigator.platform,
+                                language: navigator.language,
+                                cookieEnabled: navigator.cookieEnabled,
+                                onLine: navigator.onLine,
+                                hardwareConcurrency: navigator.hardwareConcurrency || 'N/A',
+                                deviceMemory: navigator.deviceMemory ? navigator.deviceMemory + ' GB' : 'N/A',
+                                maxTouchPoints: navigator.maxTouchPoints
+                            };
+                            data.navigator = navData;
+                            html += createMetricTable(navData, 'Navigator');
+
+                            // Screen Info
+                            var screenData = {
+                                width: screen.width,
+                                height: screen.height,
+                                availWidth: screen.availWidth,
+                                availHeight: screen.availHeight,
+                                colorDepth: screen.colorDepth,
+                                pixelDepth: screen.pixelDepth,
+                                devicePixelRatio: window.devicePixelRatio
+                            };
+                            data.screen = screenData;
+                            html += createMetricTable(screenData, 'Screen');
+
+                            // Window Info
+                            var windowData = {
+                                innerWidth: window.innerWidth,
+                                innerHeight: window.innerHeight,
+                                outerWidth: window.outerWidth,
+                                outerHeight: window.outerHeight,
+                                scrollX: window.scrollX,
+                                scrollY: window.scrollY
+                            };
+                            data.window = windowData;
+                            html += createMetricTable(windowData, 'Window');
+
+                            // Network Info (if available)
+                            if (navigator.connection) {
+                                var conn = navigator.connection;
+                                var netData = {
+                                    effectiveType: conn.effectiveType || 'N/A',
+                                    downlink: conn.downlink ? conn.downlink + ' Mbps' : 'N/A',
+                                    rtt: conn.rtt ? conn.rtt + ' ms' : 'N/A',
+                                    saveData: conn.saveData
+                                };
+                                data.network = netData;
+                                html += createMetricTable(netData, 'Network Connection');
+                            }
+
+                            // Performance Timing
+                            if (performance.timing) {
+                                var t = performance.timing;
+                                var timingData = {
+                                    navigationStart: t.navigationStart,
+                                    domContentLoaded_ms: t.domContentLoadedEventEnd - t.navigationStart,
+                                    domComplete_ms: t.domComplete - t.navigationStart,
+                                    loadEvent_ms: t.loadEventEnd - t.navigationStart,
+                                    dnsLookup_ms: t.domainLookupEnd - t.domainLookupStart,
+                                    tcpConnect_ms: t.connectEnd - t.connectStart,
+                                    ttfb_ms: t.responseStart - t.navigationStart,
+                                    responseTime_ms: t.responseEnd - t.responseStart
+                                };
+                                data.timing = timingData;
+                                html += createMetricTable(timingData, 'Performance Timing');
+                            }
+
+                            // WebGL Info
+                            if (gl) {
+                                var webglData = {
+                                    renderer: gl.getParameter(gl.RENDERER),
+                                    vendor: gl.getParameter(gl.VENDOR),
+                                    version: gl.getParameter(gl.VERSION),
+                                    shadingLanguageVersion: gl.getParameter(gl.SHADING_LANGUAGE_VERSION),
+                                    maxTextureSize: gl.getParameter(gl.MAX_TEXTURE_SIZE),
+                                    maxViewportDims: gl.getParameter(gl.MAX_VIEWPORT_DIMS),
+                                    maxRenderbufferSize: gl.getParameter(gl.MAX_RENDERBUFFER_SIZE)
+                                };
+                                // WEBGL_debug_renderer_info 확장
+                                var debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+                                if (debugInfo) {
+                                    webglData.unmaskedVendor = gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL);
+                                    webglData.unmaskedRenderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
+                                }
+                                data.webgl = webglData;
+                                html += createMetricTable(webglData, 'WebGL');
+                            }
+
+                            // Visibility
+                            var visData = {
+                                visibilityState: document.visibilityState,
+                                hidden: document.hidden
+                            };
+                            data.visibility = visData;
+                            html += createMetricTable(visData, 'Visibility');
+
+                            lastMetricData.web = data;
+                            container.innerHTML = html;
+                        }
+
+                        // Unity 버전 감지 함수
+                        // - Unity 6+: unityInstance.GetMetricsInfo (FPS, 메모리, 타이밍)
+                        // - Unity 2022.2+: unityInstance.GetMemoryInfo (메모리만)
+                        // - Unity 2021.3: API 없음
+                        function detectUnityVersion() {
+                            var inst = window.unityInstance;
+                            if (!inst) return { version: 'Unknown', api: 'none' };
+
+                            // API 기반 버전 추정 (unityInstance에서 직접 호출)
+                            if (typeof inst.GetMetricsInfo === 'function') {
+                                return { version: 'Unity 6+', api: 'GetMetricsInfo' };
+                            } else if (typeof inst.GetMemoryInfo === 'function') {
+                                return { version: 'Unity 2022.2+', api: 'GetMemoryInfo' };
+                            } else {
+                                return { version: 'Unity 2021.3 or earlier', api: 'none' };
+                            }
+                        }
+
+                        // Unity Metrics 렌더링
+                        function renderUnityMetrics() {
+                            var container = document.getElementById('metric-tab-unity');
+                            var html = '';
+                            var data = {};
+
+                            // Unity 버전 감지
+                            var versionInfo = detectUnityVersion();
+                            var mod = window.unityInstance && window.unityInstance.Module;
+
+                            // Unity Instance 정보
+                            if (window.unityInstance) {
+                                var unityData = {
+                                    unityVersion: versionInfo.version,
+                                    metricsAPI: versionInfo.api,
+                                    moduleAvailable: mod ? true : false
+                                };
+
+                                if (mod && mod.HEAPU8) {
+                                    unityData.wasmHeapSize_MB = Math.round(mod.HEAPU8.length / 1024 / 1024 * 100) / 100;
+                                }
+
+                                data.instance = unityData;
+                                html += createMetricTable(unityData, 'Unity Instance');
+                            } else {
+                                html += createMetricTable({ status: 'Unity 인스턴스 없음' }, 'Unity Instance');
+                            }
+
+                            // Unity Runtime Metrics - 버전별 API에 따라 표시
+                            var inst = window.unityInstance;
+                            if (versionInfo.api === 'GetMetricsInfo') {
+                                // Unity 6+ (GetMetricsInfo - 전체 메트릭)
+                                try {
+                                    var metrics = inst.GetMetricsInfo();
+                                    if (metrics) {
+                                        var runtimeMetrics = {
+                                            fps: metrics.fps ? Math.round(metrics.fps * 10) / 10 : 'N/A',
+                                            movingAverageFps: metrics.movingAverageFps ? Math.round(metrics.movingAverageFps * 10) / 10 : 'N/A',
+                                            numJankedFrames: metrics.numJankedFrames || 0
+                                        };
+                                        data.performance = runtimeMetrics;
+                                        html += createMetricTable(runtimeMetrics, 'Performance');
+
+                                        var memoryMetrics = {
+                                            totalJSHeapSize_MB: metrics.totalJSHeapSize ? Math.round(metrics.totalJSHeapSize / 1024 / 1024 * 100) / 100 : 'N/A',
+                                            usedJSHeapSize_MB: metrics.usedJSHeapSize ? Math.round(metrics.usedJSHeapSize / 1024 / 1024 * 100) / 100 : 'N/A',
+                                            totalWASMHeapSize_MB: metrics.totalWASMHeapSize ? Math.round(metrics.totalWASMHeapSize / 1024 / 1024 * 100) / 100 : 'N/A',
+                                            usedWASMHeapSize_MB: metrics.usedWASMHeapSize ? Math.round(metrics.usedWASMHeapSize / 1024 / 1024 * 100) / 100 : 'N/A'
+                                        };
+                                        data.memory = memoryMetrics;
+                                        html += createMetricTable(memoryMetrics, 'Memory');
+
+                                        var timingMetrics = {
+                                            pageLoadTime_sec: metrics.pageLoadTime ? Math.round(metrics.pageLoadTime / 10) / 100 : 'N/A',
+                                            pageLoadTimeToFrame1_sec: metrics.pageLoadTimeToFrame1 ? Math.round(metrics.pageLoadTimeToFrame1 / 10) / 100 : 'N/A',
+                                            codeDownloadTime_sec: metrics.codeDownloadTime ? Math.round(metrics.codeDownloadTime / 10) / 100 : 'N/A',
+                                            assetLoadTime_sec: metrics.assetLoadTime ? Math.round(metrics.assetLoadTime / 10) / 100 : 'N/A',
+                                            webAssemblyStartupTime_sec: metrics.webAssemblyStartupTime ? Math.round(metrics.webAssemblyStartupTime / 10) / 100 : 'N/A',
+                                            gameStartupTime_sec: metrics.gameStartupTime ? Math.round(metrics.gameStartupTime / 10) / 100 : 'N/A'
+                                        };
+                                        data.timing = timingMetrics;
+                                        html += createMetricTable(timingMetrics, 'Timing');
+                                    }
+                                } catch (e) {
+                                    html += createMetricTable({ error: e.message }, 'Runtime Metrics (Error)');
+                                }
+                            } else if (versionInfo.api === 'GetMemoryInfo') {
+                                // Unity 2022.2+ (GetMemoryInfo - 메모리만)
+                                try {
+                                    var memInfo = inst.GetMemoryInfo();
+                                    if (memInfo) {
+                                        var memoryMetrics = {
+                                            totalJSHeapSize_MB: memInfo.totalJSHeapSize ? Math.round(memInfo.totalJSHeapSize / 1024 / 1024 * 100) / 100 : 'N/A',
+                                            usedJSHeapSize_MB: memInfo.usedJSHeapSize ? Math.round(memInfo.usedJSHeapSize / 1024 / 1024 * 100) / 100 : 'N/A',
+                                            totalWASMHeapSize_MB: memInfo.totalWASMHeapSize ? Math.round(memInfo.totalWASMHeapSize / 1024 / 1024 * 100) / 100 : 'N/A',
+                                            usedWASMHeapSize_MB: memInfo.usedWASMHeapSize ? Math.round(memInfo.usedWASMHeapSize / 1024 / 1024 * 100) / 100 : 'N/A'
+                                        };
+                                        data.memory = memoryMetrics;
+                                        html += createMetricTable(memoryMetrics, 'Memory');
+                                    }
+                                } catch (e) {
+                                    html += createMetricTable({ error: e.message }, 'Memory Metrics (Error)');
+                                }
+                            }
+                            // versionInfo.api === 'none'인 경우 추가 테이블 없음
+
+                            // WASM Memory (alternative method)
+                            if (window.unityInstance && window.unityInstance.Module) {
+                                var mod = window.unityInstance.Module;
+                                var wasmData = {};
+
+                                if (mod.HEAPU8) wasmData.HEAPU8_length = mod.HEAPU8.length;
+                                if (mod.HEAP8) wasmData.HEAP8_length = mod.HEAP8.length;
+                                if (mod.HEAPU16) wasmData.HEAPU16_length = mod.HEAPU16.length;
+                                if (mod.HEAP16) wasmData.HEAP16_length = mod.HEAP16.length;
+                                if (mod.HEAPU32) wasmData.HEAPU32_length = mod.HEAPU32.length;
+                                if (mod.HEAP32) wasmData.HEAP32_length = mod.HEAP32.length;
+                                if (mod.HEAPF32) wasmData.HEAPF32_length = mod.HEAPF32.length;
+                                if (mod.HEAPF64) wasmData.HEAPF64_length = mod.HEAPF64.length;
+
+                                if (Object.keys(wasmData).length > 0) {
+                                    data.wasmHeaps = wasmData;
+                                    html += createMetricTable(wasmData, 'WASM Heap Arrays');
+                                }
+                            }
+
+                            lastMetricData.unity = data;
+                            container.innerHTML = html;
+                        }
+
+                        // 초기 로딩 메트릭 렌더링
+                        renderLoadingMetrics();
 
                         console.log('[AIT] Debug Console 초기화 완료 (오른쪽 하단 버튼으로 열기/닫기)');
                     } catch (e) {

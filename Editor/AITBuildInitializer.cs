@@ -140,6 +140,14 @@ namespace AppsInToss.Editor
                 : AITDefaultSettings.GetDefaultDecompressionFallback();
             PlayerSettings.WebGL.decompressionFallback = decompressionFallback;
 
+            // ===== Show Diagnostics (Unity 2022.2+, 기본 활성화) =====
+#if UNITY_2022_2_OR_NEWER
+            bool showDiagnostics = editorConfig.showDiagnostics >= 0
+                ? editorConfig.showDiagnostics == 1
+                : true; // 기본값: 활성화 (Unity 메트릭 수집을 위해)
+            PlayerSettings.WebGL.showDiagnostics = showDiagnostics;
+#endif
+
             // 설정 요약 로그
             Debug.Log($"[AIT] Unity {AITDefaultSettings.GetUnityVersionGroup()} 최적화 설정 적용:");
             Debug.Log($"[AIT]   - WebGL Template: {PlayerSettings.WebGL.template}");
@@ -157,6 +165,9 @@ namespace AppsInToss.Editor
 #if !UNITY_6000_0_OR_NEWER
             Debug.Log($"[AIT]   - WASM Streaming: {editorConfig.wasmStreaming}");
 #endif
+#endif
+#if UNITY_2022_2_OR_NEWER
+            Debug.Log($"[AIT]   - Show Diagnostics: {showDiagnostics}{(editorConfig.showDiagnostics < 0 ? " (자동)" : "")}");
 #endif
         }
 

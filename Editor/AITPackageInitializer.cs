@@ -61,37 +61,113 @@ namespace AppsInToss.Editor
                 return;
             }
 
-            // 마지막 체크 시간 확인 (너무 자주 체크하지 않도록)
-            string lastCheckStr = EditorPrefs.GetString(PREFS_KEY_LAST_CHECK, string.Empty);
-            if (!string.IsNullOrEmpty(lastCheckStr))
-            {
-                if (DateTime.TryParse(lastCheckStr, out DateTime lastCheck))
-                {
-                    double hoursSinceLastCheck = (DateTime.Now - lastCheck).TotalHours;
-                    if (hoursSinceLastCheck < CHECK_INTERVAL_HOURS)
-                    {
-                        // 24시간 이내에 이미 체크했으면 스킵
-                        return;
-                    }
-                }
-            }
-
-            // 백그라운드에서 비동기적으로 패키지 매니저 체크
+            // 백그라운드에서 비동기적으로 초기화 작업 수행
             EditorApplication.delayCall += () =>
             {
                 try
                 {
-                    CheckAndSetupPackageManager();
+                    // 로딩 화면 템플릿 자동 생성 (항상 체크)
+                    EnsureLoadingScreenTemplate();
 
-                    // 체크 시간 저장
-                    EditorPrefs.SetString(PREFS_KEY_LAST_CHECK, DateTime.Now.ToString("O"));
+                    // 패키지 매니저 체크 (24시간마다)
+                    string lastCheckStr = EditorPrefs.GetString(PREFS_KEY_LAST_CHECK, string.Empty);
+                    bool shouldCheckPackageManager = true;
+
+                    if (!string.IsNullOrEmpty(lastCheckStr))
+                    {
+                        if (DateTime.TryParse(lastCheckStr, out DateTime lastCheck))
+                        {
+                            double hoursSinceLastCheck = (DateTime.Now - lastCheck).TotalHours;
+                            if (hoursSinceLastCheck < CHECK_INTERVAL_HOURS)
+                            {
+                                shouldCheckPackageManager = false;
+                            }
+                        }
+                    }
+
+                    if (shouldCheckPackageManager)
+                    {
+                        CheckAndSetupPackageManager();
+                        EditorPrefs.SetString(PREFS_KEY_LAST_CHECK, DateTime.Now.ToString("O"));
+                    }
                 }
                 catch (Exception e)
                 {
                     // 초기화 실패해도 Unity는 정상 작동해야 함
-                    Debug.LogWarning($"[AIT] 패키지 매니저 초기화 중 예외 발생 (무시됨): {e.Message}");
+                    Debug.LogWarning($"[AIT] SDK 초기화 중 예외 발생 (무시됨): {e.Message}");
                 }
             };
+        }
+
+        /// <summary>
+        /// SDK 로딩 화면 템플릿 경로 반환
+        /// 여러 후보 경로 중 존재하는 첫 번째 경로를 반환합니다.
+        /// </summary>
+        /// <returns>존재하는 템플릿 경로, 또는 찾지 못한 경우 null</returns>
+        public static string GetSDKLoadingTemplatePath()
+        {
+            string[] sdkLoadingPaths = new string[]
+            {
+                Path.GetFullPath("Packages/im.toss.apps-in-toss-unity-sdk/WebGLTemplates/AITTemplate/loading.html"),
+                Path.GetFullPath("Packages/com.appsintoss.miniapp/WebGLTemplates/AITTemplate/loading.html"),
+                Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(typeof(AITPackageInitializer).Assembly.Location)), "WebGLTemplates/AITTemplate/loading.html")
+            };
+
+            foreach (string sdkPath in sdkLoadingPaths)
+            {
+                if (File.Exists(sdkPath))
+                {
+                    return sdkPath;
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// 프로젝트의 로딩 화면 경로 반환
+        /// </summary>
+        public static string GetProjectLoadingPath()
+        {
+            return Path.Combine(Application.dataPath, "AppsInToss", "loading.html");
+        }
+
+        /// <summary>
+        /// 로딩 화면 템플릿 자동 생성
+        /// Assets/AppsInToss/loading.html이 없으면 SDK 기본 템플릿을 복사합니다.
+        /// </summary>
+        private static void EnsureLoadingScreenTemplate()
+        {
+            string projectLoadingPath = GetProjectLoadingPath();
+
+            // 이미 존재하면 스킵
+            if (File.Exists(projectLoadingPath))
+            {
+                return;
+            }
+
+            string sdkTemplatePath = GetSDKLoadingTemplatePath();
+            if (sdkTemplatePath != null)
+            {
+                // AppsInToss 폴더가 없으면 생성
+                string appsInTossDir = Path.GetDirectoryName(projectLoadingPath);
+                if (!Directory.Exists(appsInTossDir))
+                {
+                    Directory.CreateDirectory(appsInTossDir);
+                }
+
+                // SDK 기본 템플릿을 프로젝트에 복사
+                File.Copy(sdkTemplatePath, projectLoadingPath);
+                AssetDatabase.Refresh();
+                Debug.Log("[AIT] ✓ 로딩 화면 템플릿 자동 생성: Assets/AppsInToss/loading.html");
+                Debug.Log("[AIT]   이 파일을 수정하면 커스텀 로딩 화면이 적용됩니다.");
+                Debug.Log("[AIT]   기본 템플릿으로 초기화하려면: AIT > Reset Loading Screen");
+            }
+            else
+            {
+                // SDK 템플릿을 찾지 못함 (경고만 출력, 빌드 시 다시 시도됨)
+                Debug.LogWarning("[AIT] SDK 로딩 화면 템플릿을 찾을 수 없습니다. 첫 빌드 시 다시 시도됩니다.");
+            }
         }
 
         /// <summary>

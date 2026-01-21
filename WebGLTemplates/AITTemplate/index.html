@@ -205,56 +205,6 @@
         .ait-modal-button.secondary:hover {
             background: #cbd5e0;
         }
-
-        /* Loading Screen */
-        .ait-loading {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            z-index: 9998;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            color: white;
-            font-size: 16px;
-        }
-        
-        .ait-loading-logo {
-            width: 80px;
-            height: 80px;
-            background: rgba(255, 255, 255, 0.2);
-            border-radius: 40px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            margin-bottom: 20px;
-            font-size: 32px;
-            font-weight: bold;
-        }
-        
-        .ait-loading-text {
-            margin-bottom: 30px;
-        }
-        
-        .ait-loading-progress {
-            width: 200px;
-            height: 4px;
-            background: rgba(255, 255, 255, 0.2);
-            border-radius: 2px;
-            overflow: hidden;
-        }
-        
-        .ait-loading-progress-bar {
-            height: 100%;
-            background: white;
-            border-radius: 2px;
-            width: 0%;
-            transition: width 0.3s ease;
-        }
     </style>
 
     <!-- USER_HEAD_START - 이 영역에 사용자 커스텀 스크립트/스타일을 추가하세요 -->
@@ -263,13 +213,10 @@
     <!-- USER_HEAD_END -->
 </head>
 <body>
-    <!-- Loading Screen -->
-    <div id="ait-loading" class="ait-loading">
-        <div class="ait-loading-logo">T</div>
-        <div class="ait-loading-text">Apps in Toss에서 게임을 불러오는 중...</div>
-        <div class="ait-loading-progress">
-            <div class="ait-loading-progress-bar"></div>
-        </div>
+    <!-- 로딩 화면 래퍼 (SDK가 이 래퍼를 통해 로딩 화면을 제어) -->
+    <div id="ait-loading-wrapper">
+        <!-- loading.html 내용이 여기에 삽입됨 -->
+        %AIT_LOADING_SCREEN%
     </div>
 
     <div id="unity-container" class="unity-desktop">
@@ -309,6 +256,407 @@
     <!-- Web Framework Bridge - @apps-in-toss/web-framework 함수를 window.AppsInToss에 노출 -->
     <script type="module" src="./unity-bridge.ts"></script>
 
+    <!-- AITLoadingLogger: 로딩 이벤트 로깅 및 파일별 다운로드 추적 -->
+    <script>
+        window.AITLoadingLogger = {
+            startTime: performance.now(),
+            events: {},
+            files: {},
+            progressCallbacks: [],
+            completeCallbacks: [],
+            errorCallbacks: [],
+            fileProgressCallbacks: [],
+            _isComplete: false,
+
+            // 이벤트 기록
+            logEvent: function(eventName, data) {
+                var now = performance.now();
+                var elapsed = now - this.startTime;
+                this.events[eventName] = {
+                    time: now,
+                    elapsed: elapsed,
+                    data: data || null
+                };
+                console.log('[AIT Loading] ' + eventName + ' @ ' + elapsed.toFixed(0) + 'ms');
+            },
+
+            // fetch 래핑으로 실시간 다운로드 속도 추적
+            wrapFetch: function() {
+                var originalFetch = window.fetch;
+                var self = this;
+
+                window.fetch = function(url, options) {
+                    var urlStr = typeof url === 'string' ? url : url.url || '';
+                    var fileName = urlStr.split('/').pop().split('?')[0];
+                    var isUnityFile = /\.(loader\.js|framework\.js|wasm|data)(\.(gz|br|unityweb))?$/i.test(fileName);
+
+                    if (!isUnityFile) {
+                        return originalFetch.call(window, url, options);
+                    }
+
+                    var fileInfo = {
+                        name: fileName,
+                        url: urlStr,
+                        size: 0,
+                        loaded: 0,
+                        startTime: performance.now(),
+                        responseEnd: 0,
+                        duration: 0,
+                        avgSpeed: 0,
+                        peakSpeed: 0,
+                        minSpeed: Infinity,
+                        speedHistory: [],
+                        lastLoaded: 0,
+                        lastTime: performance.now()
+                    };
+                    self.files[fileName] = fileInfo;
+                    self.logEvent('file_start_' + fileName.replace(/\./g, '_'));
+
+                    return originalFetch.call(window, url, options).then(function(response) {
+                        var contentLength = response.headers.get('content-length');
+                        fileInfo.size = parseInt(contentLength) || 0;
+
+                        // ReadableStream 지원 확인
+                        if (!response.body || !response.body.getReader) {
+                            fileInfo.responseEnd = performance.now();
+                            fileInfo.duration = fileInfo.responseEnd - fileInfo.startTime;
+                            return response;
+                        }
+
+                        var reader = response.body.getReader();
+                        var chunks = [];
+
+                        function pump() {
+                            return reader.read().then(function(result) {
+                                if (result.done) {
+                                    fileInfo.responseEnd = performance.now();
+                                    fileInfo.duration = fileInfo.responseEnd - fileInfo.startTime;
+                                    fileInfo.avgSpeed = fileInfo.loaded > 0
+                                        ? (fileInfo.loaded / 1024) / (fileInfo.duration / 1000)
+                                        : 0;
+                                    fileInfo.minSpeed = fileInfo.minSpeed === Infinity ? 0 : fileInfo.minSpeed;
+                                    self.logEvent('file_complete_' + fileName.replace(/\./g, '_'), {
+                                        size: fileInfo.loaded,
+                                        duration: fileInfo.duration,
+                                        avgSpeed: fileInfo.avgSpeed
+                                    });
+
+                                    // 스트림 재조립
+                                    var blob = new Blob(chunks);
+                                    return new Response(blob, {
+                                        headers: response.headers,
+                                        status: response.status,
+                                        statusText: response.statusText
+                                    });
+                                }
+
+                                chunks.push(result.value);
+                                fileInfo.loaded += result.value.length;
+
+                                // 속도 계산 (1초 간격)
+                                var now = performance.now();
+                                var timeDelta = now - fileInfo.lastTime;
+                                if (timeDelta >= 1000) {
+                                    var bytesDelta = fileInfo.loaded - fileInfo.lastLoaded;
+                                    var speed = (bytesDelta / 1024) / (timeDelta / 1000);
+
+                                    fileInfo.speedHistory.push(Math.round(speed));
+                                    fileInfo.peakSpeed = Math.max(fileInfo.peakSpeed, speed);
+                                    fileInfo.minSpeed = Math.min(fileInfo.minSpeed, speed);
+
+                                    fileInfo.lastLoaded = fileInfo.loaded;
+                                    fileInfo.lastTime = now;
+
+                                    // 파일 진행 콜백 호출
+                                    var percent = fileInfo.size > 0 ? (fileInfo.loaded / fileInfo.size) * 100 : 0;
+                                    self.notifyFileProgress({
+                                        name: fileName,
+                                        url: urlStr,
+                                        loaded: fileInfo.loaded,
+                                        total: fileInfo.size,
+                                        percent: percent,
+                                        speed: speed
+                                    });
+                                }
+
+                                return pump();
+                            });
+                        }
+
+                        return pump();
+                    }).catch(function(err) {
+                        self.logEvent('file_error_' + fileName.replace(/\./g, '_'), { error: err.message });
+                        throw err;
+                    });
+                };
+            },
+
+            // 파일 진행 콜백 통지
+            notifyFileProgress: function(fileInfo) {
+                for (var i = 0; i < this.fileProgressCallbacks.length; i++) {
+                    try {
+                        this.fileProgressCallbacks[i](fileInfo);
+                    } catch (e) {
+                        console.error('[AIT Loading] File progress callback error:', e);
+                    }
+                }
+            },
+
+            // 진행률 콜백 통지
+            notifyProgress: function(progress) {
+                for (var i = 0; i < this.progressCallbacks.length; i++) {
+                    try {
+                        this.progressCallbacks[i](progress);
+                    } catch (e) {
+                        console.error('[AIT Loading] Progress callback error:', e);
+                    }
+                }
+            },
+
+            // 완료 콜백 통지
+            notifyComplete: function() {
+                if (this._isComplete) return;
+                this._isComplete = true;
+                for (var i = 0; i < this.completeCallbacks.length; i++) {
+                    try {
+                        this.completeCallbacks[i]();
+                    } catch (e) {
+                        console.error('[AIT Loading] Complete callback error:', e);
+                    }
+                }
+            },
+
+            // 에러 콜백 통지
+            notifyError: function(error) {
+                for (var i = 0; i < this.errorCallbacks.length; i++) {
+                    try {
+                        this.errorCallbacks[i](error);
+                    } catch (e) {
+                        console.error('[AIT Loading] Error callback error:', e);
+                    }
+                }
+            },
+
+            // 총 로딩 시간 반환
+            getTotalTime: function() {
+                var completeEvent = this.events['loading_complete'];
+                if (completeEvent) {
+                    return Math.round(completeEvent.elapsed);
+                }
+                return Math.round(performance.now() - this.startTime);
+            },
+
+            // 파일별 통계 반환
+            getFileStats: function() {
+                var self = this;
+                var result = [];
+                Object.keys(this.files).forEach(function(name) {
+                    var f = self.files[name];
+                    result.push({
+                        name: f.name,
+                        url: f.url,
+                        size: f.loaded || f.size,
+                        duration: Math.round(f.duration),
+                        startTime: Math.round(f.startTime - self.startTime),
+                        responseEnd: Math.round(f.responseEnd - self.startTime),
+                        avgSpeed: Math.round(f.avgSpeed * 10) / 10,
+                        peakSpeed: Math.round(f.peakSpeed * 10) / 10,
+                        minSpeed: Math.round(f.minSpeed * 10) / 10,
+                        speedHistory: f.speedHistory.slice()
+                    });
+                });
+                return result;
+            },
+
+            // 콘솔 요약 출력
+            printSummary: function() {
+                var self = this;
+                console.log('[AIT Loading] ========== 로딩 완료 ==========');
+                console.log('[AIT Loading] 총 로딩 시간: ' + this.getTotalTime() + 'ms');
+                console.log('[AIT Loading] 파일별 다운로드:');
+
+                Object.keys(this.files).forEach(function(name) {
+                    var f = self.files[name];
+                    var sizeMB = ((f.loaded || f.size) / 1024 / 1024).toFixed(2);
+                    console.log('  - ' + f.name + ':');
+                    console.log('      크기: ' + sizeMB + 'MB');
+                    console.log('      시간: ' + Math.round(f.duration) + 'ms');
+                    console.log('      평균 속도: ' + f.avgSpeed.toFixed(1) + 'KB/s');
+                    if (f.speedHistory.length > 0) {
+                        console.log('      피크 속도: ' + f.peakSpeed.toFixed(1) + 'KB/s');
+                        console.log('      최저 속도: ' + f.minSpeed.toFixed(1) + 'KB/s');
+                        console.log('      속도 기록: [' + f.speedHistory.join(', ') + '] KB/s');
+                    }
+                });
+                console.log('[AIT Loading] ================================');
+            }
+        };
+
+        // AITLoading: 커스텀 로딩 화면 API
+        window.AITLoading = {
+            // 앱 정보 (초기화 전 기본값)
+            appInfo: {
+                iconUrl: '',
+                displayName: '',
+                primaryColor: '#3182f6'
+            },
+
+            // 초기화 완료 여부 (내부용)
+            _initialized: false,
+            _readyCallbacks: [],
+
+            // 초기화 완료 콜백 등록 (appInfo 사용 가능 시점)
+            // 콜백은 초기화 시 호출되고, 네이티브 앱 정보가 나중에 로드되면 다시 호출됨
+            onReady: function(callback) {
+                if (typeof callback === 'function') {
+                    // 항상 콜백 저장 (네이티브 정보 업데이트 시 다시 호출하기 위해)
+                    this._readyCallbacks.push(callback);
+                    // 이미 초기화된 경우 바로 호출
+                    if (this._initialized) {
+                        callback(this.appInfo);
+                    }
+                }
+            },
+
+            // 진행률 콜백 등록
+            onProgress: function(callback) {
+                if (typeof callback === 'function') {
+                    AITLoadingLogger.progressCallbacks.push(callback);
+                }
+            },
+
+            // 완료 콜백 등록
+            onComplete: function(callback) {
+                if (typeof callback === 'function') {
+                    if (AITLoadingLogger._isComplete) {
+                        callback();
+                    } else {
+                        AITLoadingLogger.completeCallbacks.push(callback);
+                    }
+                }
+            },
+
+            // 에러 콜백 등록
+            onError: function(callback) {
+                if (typeof callback === 'function') {
+                    AITLoadingLogger.errorCallbacks.push(callback);
+                }
+            },
+
+            // 파일별 진행 콜백 등록
+            onFileProgress: function(callback) {
+                if (typeof callback === 'function') {
+                    AITLoadingLogger.fileProgressCallbacks.push(callback);
+                }
+            },
+
+            // 파일별 다운로드 통계 반환
+            getFileStats: function() {
+                return AITLoadingLogger.getFileStats();
+            },
+
+            // 총 로딩 시간 반환
+            getTotalTime: function() {
+                return AITLoadingLogger.getTotalTime();
+            },
+
+            // 로딩 화면 숨기기
+            hide: function() {
+                var wrapper = document.getElementById('ait-loading-wrapper');
+                if (wrapper) {
+                    wrapper.style.display = 'none';
+                }
+            }
+        };
+
+        // fetch 래핑 초기화 (Unity 로더보다 먼저)
+        AITLoadingLogger.wrapFetch();
+        AITLoadingLogger.logEvent('loading_start');
+    </script>
+
+    <!-- 브랜드 정보 초기화 -->
+    <script>
+        // Unity 빌드 시 플레이스홀더가 치환됨 (기본값)
+        window.AITLoading.appInfo = {
+            iconUrl: '%AIT_ICON_URL%',
+            displayName: '%AIT_DISPLAY_NAME%',
+            primaryColor: '%AIT_PRIMARY_COLOR%'
+        };
+        console.log('[AIT Loading] 빌드 설정 appInfo:', JSON.stringify(window.AITLoading.appInfo));
+
+        // 네이티브 앱 정보로 업데이트하는 함수
+        function updateAppInfoFromNative() {
+            try {
+                console.log('[AIT Loading] AppsInToss 존재:', !!window.AppsInToss);
+                if (window.AppsInToss) {
+                    console.log('[AIT Loading] getAppsInTossGlobals 존재:', typeof window.AppsInToss.getAppsInTossGlobals);
+                }
+                if (window.AppsInToss && typeof window.AppsInToss.getAppsInTossGlobals === 'function') {
+                    var globals = window.AppsInToss.getAppsInTossGlobals();
+                    console.log('[AIT Loading] 네이티브 globals 원본:', JSON.stringify(globals));
+                    if (globals) {
+                        // brandIcon이 있으면 사용, 없으면 빌드 설정 유지
+                        if (globals.brandIcon) {
+                            window.AITLoading.appInfo.iconUrl = globals.brandIcon;
+                            console.log('[AIT Loading] 아이콘 URL 업데이트:', globals.brandIcon);
+                        } else {
+                            console.log('[AIT Loading] brandIcon 없음, 빌드 설정 유지:', window.AITLoading.appInfo.iconUrl);
+                        }
+                        if (globals.brandDisplayName) {
+                            window.AITLoading.appInfo.displayName = globals.brandDisplayName;
+                        }
+                        if (globals.brandPrimaryColor) {
+                            window.AITLoading.appInfo.primaryColor = globals.brandPrimaryColor;
+                        }
+                        console.log('[AIT Loading] 최종 appInfo:', JSON.stringify(window.AITLoading.appInfo));
+                        return true;
+                    }
+                }
+            } catch (e) {
+                console.warn('[AIT Loading] 네이티브 앱 정보 로드 실패:', e);
+            }
+            return false;
+        }
+
+        // 네이티브 브릿지 대기 및 초기화 완료 처리
+        function initializeAppInfo() {
+            // 먼저 동기적으로 시도
+            var nativeLoaded = updateAppInfoFromNative();
+
+            if (!nativeLoaded) {
+                // 네이티브 브릿지가 아직 없으면 짧은 시간 대기 후 재시도
+                // 토스 앱에서 브릿지 주입이 약간 지연될 수 있음
+                var maxAttempts = 10;
+                var attempt = 0;
+                var checkInterval = setInterval(function() {
+                    attempt++;
+                    if (updateAppInfoFromNative()) {
+                        clearInterval(checkInterval);
+                        console.log('[AIT Loading] 네이티브 브릿지 감지됨 (시도 ' + attempt + ')');
+                        // 이미 초기화된 경우 콜백 다시 호출하여 UI 업데이트
+                        if (window.AITLoading._initialized) {
+                            window.AITLoading._readyCallbacks.forEach(function(cb) {
+                                try { cb(window.AITLoading.appInfo); } catch(e) {}
+                            });
+                        }
+                    } else if (attempt >= maxAttempts) {
+                        clearInterval(checkInterval);
+                        console.log('[AIT Loading] 네이티브 브릿지 없음, 빌드 설정 사용');
+                    }
+                }, 50); // 50ms 간격으로 최대 500ms 대기
+            }
+
+            // 초기화 완료 표시 및 대기 중인 콜백 호출
+            window.AITLoading._initialized = true;
+            window.AITLoading._readyCallbacks.forEach(function(cb) {
+                try { cb(window.AITLoading.appInfo); } catch(e) { console.error('[AIT Loading] onReady callback error:', e); }
+            });
+            // 주의: _readyCallbacks를 비우지 않음 - 네이티브 정보가 나중에 로드될 때 다시 호출하기 위해
+        }
+
+        initializeAppInfo();
+    </script>
+
     <!-- 에러 표시 함수 (Unity Loader보다 먼저 정의) -->
     <script>
         // 에러 표시 함수
@@ -325,9 +673,9 @@
             }
 
             // 로딩 화면을 에러 화면으로 변경
-            var loadingElement = document.getElementById('ait-loading');
-            if (loadingElement) {
-                loadingElement.innerHTML =
+            var wrapper = document.getElementById('ait-loading-wrapper');
+            if (wrapper) {
+                wrapper.innerHTML =
                     '<div style="padding: 20px; text-align: center; max-width: 400px;">' +
                         '<div style="font-size: 48px; margin-bottom: 20px;">⚠️</div>' +
                         '<div style="font-size: 18px; font-weight: bold; margin-bottom: 10px; color: #ff6b6b;">' + title + '</div>' +
@@ -350,7 +698,7 @@
     </script>
 
     <!-- Unity Loader Script -->
-    <script src="%UNITY_WEBGL_LOADER_URL%" onerror="showLoadError('Unity Loader 스크립트 로드 실패', '게임을 시작하는 데 필요한 파일을 불러올 수 없습니다.', ['파일 경로: %UNITY_WEBGL_LOADER_URL%', '서버에서 파일이 제공되고 있는지 확인하세요.', '브라우저 개발자 도구의 Network 탭을 확인하세요.'], {url: '%UNITY_WEBGL_LOADER_URL%'});" onload="window._aitLoaderLoaded = true; console.log('[AIT] ✓ Unity Loader 스크립트 로드 완료');"></script>
+    <script src="%UNITY_WEBGL_LOADER_URL%" onerror="showLoadError('Unity Loader 스크립트 로드 실패', '게임을 시작하는 데 필요한 파일을 불러올 수 없습니다.', ['파일 경로: %UNITY_WEBGL_LOADER_URL%', '서버에서 파일이 제공되고 있는지 확인하세요.', '브라우저 개발자 도구의 Network 탭을 확인하세요.'], {url: '%UNITY_WEBGL_LOADER_URL%'}); if(window.AITLoadingLogger) AITLoadingLogger.logEvent('loader_error');" onload="window._aitLoaderLoaded = true; console.log('[AIT] ✓ Unity Loader 스크립트 로드 완료'); if(window.AITLoadingLogger) AITLoadingLogger.logEvent('loader_ready');"></script>
 
     <script>
         var container = document.querySelector("#unity-container");
@@ -359,7 +707,7 @@
         var progressBarFull = document.querySelector("#unity-progress-bar-full");
         var fullscreenButton = document.querySelector("#unity-fullscreen-button");
         var warningBanner = document.querySelector("#unity-warning");
-        var aitLoading = document.querySelector("#ait-loading");
+        var aitLoading = document.querySelector("#ait-loading-wrapper");
 
         // 배너 표시 함수
         function unityShowBanner(msg, type) {
@@ -468,15 +816,33 @@
         }
 
         // 로딩 진행률 업데이트
+        var lastLoggedProgress = 0;
         function updateLoadingProgress(progress) {
-            var progressBar = document.querySelector('.ait-loading-progress-bar');
-            if (progressBar) {
-                progressBar.style.width = (progress * 100) + '%';
+            // AITLoading 콜백 통지 (loading.html에서 UI 업데이트 처리)
+            if (window.AITLoadingLogger) {
+                AITLoadingLogger.notifyProgress(progress);
+
+                // 25%, 50%, 75%, 100% 이정표 로깅
+                if (progress >= 0.25 && lastLoggedProgress < 0.25) {
+                    AITLoadingLogger.logEvent('unity_progress_25');
+                } else if (progress >= 0.50 && lastLoggedProgress < 0.50) {
+                    AITLoadingLogger.logEvent('unity_progress_50');
+                } else if (progress >= 0.75 && lastLoggedProgress < 0.75) {
+                    AITLoadingLogger.logEvent('unity_progress_75');
+                } else if (progress >= 1.0 && lastLoggedProgress < 1.0) {
+                    AITLoadingLogger.logEvent('unity_progress_100');
+                }
+                lastLoggedProgress = progress;
             }
         }
 
         // 로딩 화면 숨기기
         function hideLoadingScreen() {
+            if (window.AITLoadingLogger) {
+                AITLoadingLogger.logEvent('loading_complete');
+                AITLoadingLogger.printSummary();
+                AITLoadingLogger.notifyComplete();
+            }
             aitLoading.style.display = 'none';
         }
 
@@ -484,6 +850,9 @@
 
         // Unity 로드 시작
         console.log('[AIT] Unity 로딩 시작...');
+        if (window.AITLoadingLogger) {
+            AITLoadingLogger.logEvent('unity_init_start');
+        }
         updateLoadingProgress(0.1);
 
         // createUnityInstance 존재 여부 확인
@@ -540,6 +909,11 @@
             // Unity 인스턴스를 글로벌로 저장
             window.unityInstance = unityInstance;
             console.log('[AIT] ✓ Unity 인스턴스 로드 완료');
+
+            // Unity 초기화 완료 이벤트
+            if (window.AITLoadingLogger) {
+                AITLoadingLogger.logEvent('unity_init_complete');
+            }
 
             // Apps in Toss Unity Bridge 초기화
             if (typeof AppsInTossUnityBridge !== 'undefined') {
@@ -928,6 +1302,13 @@
 
         }).catch((message) => {
             console.error('[AIT] ✗ Unity 로드 실패:', message);
+
+            // 에러 이벤트 로깅 및 콜백 호출
+            if (window.AITLoadingLogger) {
+                AITLoadingLogger.logEvent('loading_error', { message: message });
+                AITLoadingLogger.notifyError({ message: message });
+            }
+
             alert('게임 로드에 실패했습니다.\n\n오류: ' + message + '\n\n브라우저 콘솔을 확인하세요.');
             hideLoadingScreen();
         });

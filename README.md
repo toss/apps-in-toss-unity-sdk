@@ -209,6 +209,8 @@ AIT_DEBUG_CONSOLE=true /Applications/Unity/Hub/Editor/2022.3.62f1/Unity.app/Cont
 
 SDK는 사용자가 WebGL 빌드의 다양한 측면을 커스터마이징할 수 있도록 지원합니다. 커스터마이징은 SDK 업데이트 시에도 자동으로 보존됩니다.
 
+> **로딩 화면 커스터마이징**: 로딩 화면의 디자인이나 동작을 변경하려면 [로딩 화면 커스터마이징 가이드](Docs/LoadingScreenCustomization.md)를 참조하세요.
+
 ### 커스터마이징 가능한 파일
 
 | 파일 | 위치 | 커스터마이징 방법 |

@@ -886,7 +886,38 @@ namespace AppsInToss.Editor
                     // AIT 커스텀 플레이스홀더
                     .Replace("%AIT_IS_PRODUCTION%", isProduction)
                     .Replace("%AIT_ENABLE_DEBUG_CONSOLE%", enableDebugConsole)
-                    .Replace("%AIT_DEVICE_PIXEL_RATIO%", config.devicePixelRatio.ToString());
+                    .Replace("%AIT_DEVICE_PIXEL_RATIO%", config.devicePixelRatio.ToString())
+                    .Replace("%AIT_ICON_URL%", config.iconUrl ?? "")
+                    .Replace("%AIT_DISPLAY_NAME%", config.displayName ?? "")
+                    .Replace("%AIT_PRIMARY_COLOR%", config.primaryColor ?? "#3182f6");
+
+                // 로딩 화면 삽입 (%AIT_LOADING_SCREEN% 플레이스홀더)
+                string loadingContent = "";
+                string projectLoadingPath = AITPackageInitializer.GetProjectLoadingPath();
+
+                // 프로젝트의 loading.html 사용 (SDK 초기화 시 자동 생성됨)
+                if (File.Exists(projectLoadingPath))
+                {
+                    loadingContent = File.ReadAllText(projectLoadingPath);
+                    Debug.Log("[AIT] ✓ 로딩 화면 적용: " + projectLoadingPath);
+                }
+                else
+                {
+                    // 폴백: SDK 기본 템플릿 직접 사용 (초기화가 실행되지 않은 경우)
+                    string sdkTemplatePath = AITPackageInitializer.GetSDKLoadingTemplatePath();
+                    if (sdkTemplatePath != null)
+                    {
+                        loadingContent = File.ReadAllText(sdkTemplatePath);
+                        Debug.Log("[AIT] ✓ SDK 기본 로딩 화면 적용");
+                    }
+                    else
+                    {
+                        Debug.LogWarning("[AIT] 로딩 화면 파일을 찾을 수 없습니다. 빈 로딩 화면이 사용됩니다.");
+                    }
+                }
+
+                // %AIT_LOADING_SCREEN% 플레이스홀더 치환
+                indexContent = indexContent.Replace("%AIT_LOADING_SCREEN%", loadingContent);
 
                 File.WriteAllText(indexDest, indexContent, System.Text.Encoding.UTF8);
                 Debug.Log("[AIT] index.html → 프로젝트 루트에 생성");

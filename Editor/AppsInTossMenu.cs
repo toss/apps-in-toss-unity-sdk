@@ -493,6 +493,56 @@ namespace AppsInToss
             );
         }
 
+        // ==================== Reset Loading Screen ====================
+        [MenuItem("AIT/Reset Loading Screen", false, 104)]
+        public static void ResetLoadingScreen()
+        {
+            string projectLoadingPath = AITPackageInitializer.GetProjectLoadingPath();
+            string sdkLoadingPath = AITPackageInitializer.GetSDKLoadingTemplatePath();
+
+            if (sdkLoadingPath == null)
+            {
+                AITPlatformHelper.ShowInfoDialog("오류", "SDK 기본 로딩 화면 템플릿을 찾을 수 없습니다.", "확인");
+                return;
+            }
+
+            // 확인 다이얼로그
+            bool confirm = UnityEditor.EditorUtility.DisplayDialog(
+                "로딩 화면 초기화",
+                "로딩 화면을 기본 템플릿으로 초기화하시겠습니까?\n\n기존 커스터마이징 내용이 삭제됩니다.",
+                "초기화",
+                "취소"
+            );
+
+            if (!confirm) return;
+
+            try
+            {
+                // AppsInToss 폴더가 없으면 생성
+                string appsInTossDir = Path.GetDirectoryName(projectLoadingPath);
+                if (!Directory.Exists(appsInTossDir))
+                {
+                    Directory.CreateDirectory(appsInTossDir);
+                }
+
+                // SDK 기본 템플릿으로 덮어쓰기
+                File.Copy(sdkLoadingPath, projectLoadingPath, true);
+                AssetDatabase.Refresh();
+
+                Debug.Log("[AIT] ✓ 로딩 화면 초기화 완료: " + projectLoadingPath);
+                AITPlatformHelper.ShowInfoDialog(
+                    "AIT",
+                    "로딩 화면이 기본 템플릿으로 초기화되었습니다.\n\n파일 위치: Assets/AppsInToss/loading.html",
+                    "확인"
+                );
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[AIT] 로딩 화면 초기화 실패: {e.Message}");
+                AITPlatformHelper.ShowInfoDialog("오류", $"로딩 화면 초기화 실패: {e.Message}", "확인");
+            }
+        }
+
         // ==================== Configuration ====================
         [MenuItem("AIT/Configuration", false, 201)]
         public static void ShowConfiguration()

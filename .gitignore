@@ -168,12 +168,10 @@ Unity_v*.alf.meta
 *.slnx
 package-lock.json
 pnpm-lock.yaml
+yarn.lock
 package-lock.json.meta
 pnpm-lock.yaml.meta
+yarn.lock.meta
 
-# SDK 생성기의 lockfile은 커밋 (버전 일관성 보장)
-!sdk-runtime-generator~/pnpm-lock.yaml
-
-# BuildConfig~의 lockfile과 meta 파일은 커밋 (빠른 설치 + Unity 패키지 안정성)
-!WebGLTemplates/AITTemplate/BuildConfig~/pnpm-lock.yaml
-!WebGLTemplates/AITTemplate/BuildConfig~/pnpm-lock.yaml.meta
+# Lockfile은 커밋하지 않음 (사용자가 설치 시 최신 의존성 사용)
+# pnpm-lock.yaml, package-lock.json, yarn.lock은 위에서 전역으로 무시됨

@@ -55,6 +55,7 @@ MonoBehaviour:
   runInBackground: -1
   webAssemblyArithmeticExceptions: -1
   enableDebugConsole: 0
+  showDiagnostics: -1
   permissionConfig:
     clipboardRead: 1
     clipboardWrite: 1

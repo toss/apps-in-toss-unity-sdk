@@ -2,6 +2,7 @@ import { defineConfig, mergeConfig, type Plugin } from 'vite';
 import { openSync, readSync, closeSync } from 'fs';
 import { join } from 'path';
 
+//// SDK_PLUGINS_START - DO NOT EDIT THIS SECTION ////
 /**
  * Unity WebGL .unityweb 파일의 압축 방식을 헤더에서 감지
  * @param filePath 파일 경로
@@ -82,6 +83,7 @@ function unityWebContentEncodingPlugin(): Plugin {
     },
   };
 }
+//// SDK_PLUGINS_END ////
 
 //// SDK_GENERATED_START - DO NOT EDIT THIS SECTION ////
 const sdkConfig = defineConfig({

@@ -24,9 +24,7 @@ namespace AppsInToss.Editor
     {
         /// <summary>서버가 실행 중이지 않음</summary>
         NotRunning,
-        /// <summary>서버가 시작 중 (프로세스는 있지만 포트가 아직 열리지 않음)</summary>
-        Starting,
-        /// <summary>서버가 실행 중 (프로세스 존재 + 포트 열림)</summary>
+        /// <summary>서버가 실행 중 (포트 열림)</summary>
         Running
     }
 
@@ -37,8 +35,8 @@ namespace AppsInToss.Editor
     /// </summary>
     public class AITServerStateManager
     {
-        // 캐시 유효 시간 (MenuItem 검증이 빈번하므로 적절한 간격 필요)
-        private const double CACHE_VALIDITY_SECONDS = 2.0;
+        // 캐시 유효 시간 (짧게 설정하여 실시간에 가깝게 반영)
+        private const double CACHE_VALIDITY_SECONDS = 0.1;
 
         // EditorPrefs 키
         private readonly string pidPrefKey;
@@ -111,14 +109,8 @@ namespace AppsInToss.Editor
         /// 서버 시작/중지 등 액션 전에 호출
         /// </summary>
         /// <remarks>
-        /// 상태 판단 우선순위:
-        /// 1. 포트가 열려있으면 → Running (서버가 실제로 응답 중)
-        /// 2. 프로세스 관리자가 살아있으면 → Starting (아직 포트 대기 중)
-        /// 3. 둘 다 없으면 → NotRunning
-        ///
-        /// 참고: Unix에서 bash -l -c "..." 로 실행 시 bash 프로세스는 종료되고
-        /// 자식 프로세스(npm/node)만 남을 수 있어 PID 기반 확인이 불안정함.
-        /// 따라서 포트 기반 확인을 우선함.
+        /// 상태 판단: 포트가 열려있으면 Running, 아니면 NotRunning
+        /// 포트 기반 확인만 사용하여 단순하고 신뢰할 수 있는 상태 관리
         /// </remarks>
         public ServerState ValidateState()
         {
@@ -129,13 +121,7 @@ namespace AppsInToss.Editor
             // 포트 사용 확인 (가장 신뢰할 수 있는 지표)
             bool portInUse = savedPort > 0 && IsPortInUse(savedPort);
 
-            // 프로세스 관리자 존재 여부 확인 (메모리 내 참조)
-            bool hasProcessManager = processManager != null && !processManager.HasExited;
-
-            // PID 기반 프로세스 확인 (폴백)
-            bool processAlive = IsProcessAlive(savedPid);
-
-            // 상태 결정: 포트 우선 판단
+            // 상태 결정: 포트만으로 판단
             if (portInUse)
             {
                 // 포트가 열려있으면 서버가 실행 중
@@ -144,27 +130,14 @@ namespace AppsInToss.Editor
                 cachedPort = savedPort;
 
                 // 프로세스 관리자 복원 시도 (없는 경우, PID가 유효하면)
-                if (processManager == null && processAlive)
-                {
-                    RestoreProcessManager(savedPid);
-                }
-            }
-            else if (hasProcessManager || processAlive)
-            {
-                // 프로세스는 있지만 포트가 아직 열리지 않음 → Starting
-                cachedState = ServerState.Starting;
-                cachedPid = savedPid;
-                cachedPort = 0;
-
-                // 프로세스 관리자 복원 (없는 경우)
-                if (processManager == null && processAlive)
+                if (processManager == null && IsProcessAlive(savedPid))
                 {
                     RestoreProcessManager(savedPid);
                 }
             }
             else
             {
-                // 프로세스도 없고 포트도 없음 → NotRunning
+                // 포트가 열리지 않았으면 NotRunning
                 cachedState = ServerState.NotRunning;
                 ClearPersistedState();
             }
@@ -174,19 +147,20 @@ namespace AppsInToss.Editor
         }
 
         /// <summary>
-        /// 서버 시작 시 호출 - 상태를 Starting으로 설정하고 프로세스 관리자 저장
+        /// 서버 시작 전 호출 - 예상 포트와 프로세스 관리자 저장
+        /// 상태는 변경하지 않음 (포트가 열린 후에 Running으로 전환)
         /// </summary>
         /// <param name="manager">시작된 프로세스의 관리자</param>
         /// <param name="expectedPort">예상 포트 (서버가 열 포트)</param>
-        public void OnServerStarting(AITProcessTreeManager manager, int expectedPort)
+        public void SetExpectedPortAndProcess(AITProcessTreeManager manager, int expectedPort)
         {
             processManager = manager;
             cachedPid = manager.ProcessId;
             cachedPort = expectedPort;
-            cachedState = ServerState.Starting;
+            // 상태는 변경하지 않음 - 포트가 열린 후에 Running으로 전환됨
             lastValidationTime = EditorApplication.timeSinceStartup;
 
-            // EditorPrefs에 저장
+            // EditorPrefs에 저장 (포트 기반 복원용)
             EditorPrefs.SetInt(pidPrefKey, cachedPid);
             EditorPrefs.SetInt(portPrefKey, expectedPort);
         }
@@ -203,9 +177,6 @@ namespace AppsInToss.Editor
 
             // EditorPrefs 업데이트
             EditorPrefs.SetInt(portPrefKey, actualPort);
-
-            string serverName = serverType == ServerType.Dev ? "Dev" : "Production";
-            Debug.Log($"[AIT] {serverName} 서버 프로세스 복원됨 (PID: {cachedPid}, Port: {actualPort})");
         }
 
         /// <summary>

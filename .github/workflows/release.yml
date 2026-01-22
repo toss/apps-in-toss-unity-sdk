@@ -15,6 +15,11 @@ on:
         description: '릴리즈 버전'
         required: true
         type: string
+      skip_notification:
+        description: 'bulk-release에서 호출 시 개별 알림 스킵'
+        required: false
+        type: boolean
+        default: false
     secrets:
       AIT_DEPLOY_KEY:
         required: true
@@ -603,8 +608,31 @@ jobs:
             fi
           done
 
-      - name: 배포 알림 전송
+      - name: 배포 결과 아티팩트 저장
         if: always() && steps.check-packages.outputs.package_count > 0
+        run: |
+          VERSION="${{ needs.create-release-tag.outputs.version }}"
+          DEPLOY_RESULTS="${{ steps.deploy.outputs.deploy_results }}"
+          HAS_FAILURE="${{ steps.deploy.outputs.has_failure }}"
+
+          echo "version=${VERSION}" > deploy-results.txt
+          echo "has_failure=${HAS_FAILURE}" >> deploy-results.txt
+          echo "---RESULTS---" >> deploy-results.txt
+          echo -e "$DEPLOY_RESULTS" >> deploy-results.txt
+
+          echo "저장된 배포 결과:"
+          cat deploy-results.txt
+
+      - name: 배포 결과 아티팩트 업로드
+        if: always() && steps.check-packages.outputs.package_count > 0
+        uses: actions/upload-artifact@v4
+        with:
+          name: deploy-results-${{ needs.create-release-tag.outputs.version }}
+          path: deploy-results.txt
+          retention-days: 1
+
+      - name: 배포 알림 전송
+        if: always() && steps.check-packages.outputs.package_count > 0 && inputs.skip_notification != true
         env:
           DEPLOY_WEBHOOK_URL: "https://ipd-public-gateway.core.toss-internal.com/api-public/v3/ipd-public-gateway/webhooks/ipd-corp-core-automation-webhook/8b6db539-6cb4-4b99-b2a8-8981c43b2592"
         run: |

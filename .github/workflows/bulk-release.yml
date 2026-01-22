@@ -106,6 +106,7 @@ jobs:
     uses: ./.github/workflows/release.yml
     with:
       version: ${{ matrix.version }}
+      skip_notification: true
     secrets: inherit
 
   # =====================================================
@@ -118,6 +119,91 @@ jobs:
     if: always()
 
     steps:
+      - name: 배포 결과 아티팩트 다운로드
+        uses: actions/download-artifact@v4
+        with:
+          pattern: deploy-results-*
+          path: all-deploy-results/
+        continue-on-error: true
+
+      - name: 통합 배포 알림 전송
+        env:
+          DEPLOY_WEBHOOK_URL: "https://ipd-public-gateway.core.toss-internal.com/api-public/v3/ipd-public-gateway/webhooks/ipd-corp-core-automation-webhook/8b6db539-6cb4-4b99-b2a8-8981c43b2592"
+        run: |
+          VERSIONS='${{ needs.prepare-versions.outputs.versions }}'
+
+          # 최신 버전 확인 (배열의 마지막 요소)
+          LATEST_VERSION=$(echo "$VERSIONS" | jq -r '.[-1]')
+          echo "최신 버전: ${LATEST_VERSION}"
+
+          # 모든 배포 결과 수집
+          ALL_RESULTS=""
+          HAS_ANY_RESULT=false
+
+          if [ -d "all-deploy-results" ]; then
+            echo "=== 배포 결과 수집 ==="
+            for dir in all-deploy-results/deploy-results-*/; do
+              if [ -d "$dir" ] && [ -f "${dir}deploy-results.txt" ]; then
+                echo "처리 중: $dir"
+                HAS_ANY_RESULT=true
+
+                # 파일에서 버전과 결과 추출
+                FILE_VERSION=$(grep "^version=" "${dir}deploy-results.txt" | cut -d= -f2)
+                echo "  버전: ${FILE_VERSION}"
+
+                # RESULTS 섹션 이후의 내용 추출
+                RESULTS=$(sed -n '/^---RESULTS---$/,$ p' "${dir}deploy-results.txt" | tail -n +2)
+
+                if [ -n "$RESULTS" ]; then
+                  # 각 결과 줄에 버전 정보 추가
+                  while IFS= read -r line; do
+                    if [ -n "$line" ]; then
+                      # "macOS - 2021.3: URL" 형식을 "macOS - 2021.3-v1.5.0: URL" 형식으로 변환
+                      PLATFORM=$(echo "$line" | cut -d: -f1 | xargs)
+                      STATUS=$(echo "$line" | cut -d: -f2- | xargs)
+                      ALL_RESULTS="${ALL_RESULTS}${PLATFORM}-v${FILE_VERSION}: ${STATUS}\n"
+                    fi
+                  done <<< "$RESULTS"
+                fi
+              fi
+            done
+          fi
+
+          if [ "$HAS_ANY_RESULT" = false ]; then
+            echo "::warning::수집된 배포 결과가 없습니다"
+            ALL_RESULTS="배포 결과 없음"
+          fi
+
+          echo ""
+          echo "=== 통합 배포 결과 ==="
+          echo -e "$ALL_RESULTS"
+          echo ""
+
+          echo "=== 배포 알림 전송 ==="
+          echo "버전: ${LATEST_VERSION}"
+
+          # jq로 안전한 JSON 생성
+          JSON_PAYLOAD=$(jq -n \
+            --arg version "$LATEST_VERSION" \
+            --arg urls "$(echo -e "$ALL_RESULTS")" \
+            '{version: $version, urlsForEdition: $urls}')
+
+          echo "전송할 JSON:"
+          echo "$JSON_PAYLOAD"
+
+          # HTTP 상태 코드 확인하여 실패 처리
+          HTTP_STATUS=$(curl -s -o /tmp/webhook_response.txt -w "%{http_code}" -X POST "$DEPLOY_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d "$JSON_PAYLOAD")
+
+          if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
+            echo "✅ 통합 알림 전송 완료 (HTTP ${HTTP_STATUS})"
+          else
+            echo "::error::알림 전송 실패 (HTTP ${HTTP_STATUS})"
+            cat /tmp/webhook_response.txt
+            exit 1
+          fi
+
       - name: 결과 요약 생성
         run: |
           echo "## 일괄 릴리즈 결과" >> $GITHUB_STEP_SUMMARY

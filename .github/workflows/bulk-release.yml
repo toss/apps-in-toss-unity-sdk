@@ -158,10 +158,22 @@ jobs:
                   # 각 결과 줄에 버전 정보 추가
                   while IFS= read -r line; do
                     if [ -n "$line" ]; then
-                      # "macOS - 2021.3: URL" 형식을 "macOS - 2021.3-v1.5.0: URL" 형식으로 변환
+                      # 결과 라인이 해당 버전의 것인지 확인 (다른 버전 결과 필터링)
+                      # 형식: "macOS - 2021.3: URL" 또는 이미 버전이 포함된 경우 스킵
                       PLATFORM=$(echo "$line" | cut -d: -f1 | xargs)
                       STATUS=$(echo "$line" | cut -d: -f2- | xargs)
-                      ALL_RESULTS="${ALL_RESULTS}${PLATFORM}-v${FILE_VERSION}: ${STATUS}\n"
+
+                      # 이미 버전 정보가 포함되어 있는지 확인 (예: "macOS - 2021.3-v1.6.1")
+                      if echo "$PLATFORM" | grep -qE '\-v[0-9]+\.[0-9]+\.[0-9]+'; then
+                        # 이미 버전 정보 포함 - 해당 버전과 일치하는 경우만 추가
+                        if echo "$PLATFORM" | grep -q "\-v${FILE_VERSION}$"; then
+                          ALL_RESULTS="${ALL_RESULTS}${PLATFORM}: ${STATUS}\n"
+                        fi
+                        # 다른 버전의 결과는 무시
+                      else
+                        # 버전 정보 없음 - 버전 추가
+                        ALL_RESULTS="${ALL_RESULTS}${PLATFORM}-v${FILE_VERSION}: ${STATUS}\n"
+                      fi
                     fi
                   done <<< "$RESULTS"
                 fi

@@ -99,14 +99,20 @@ export class TypeScriptParser {
     }
 
     // 2. web-bridge에서도 찾기 (TossAds 관련 타입 등)
+    // v1.8.0+: dist/, v1.5.0~v1.7.x: built/
     let webBridgePath: string | null = null;
     for (const dir of pnpmDirs) {
       if (dir.startsWith('@apps-in-toss+web-bridge')) {
-        const indexPath = path.join(pnpmPath, dir, 'node_modules', '@apps-in-toss', 'web-bridge', 'built', 'index.d.ts');
-        if (fs.existsSync(indexPath)) {
-          webBridgePath = indexPath;
-          break;
+        const basePath = path.join(pnpmPath, dir, 'node_modules', '@apps-in-toss', 'web-bridge');
+        // dist 우선, built 폴백
+        for (const subdir of ['dist', 'built']) {
+          const indexPath = path.join(basePath, subdir, 'index.d.ts');
+          if (fs.existsSync(indexPath)) {
+            webBridgePath = indexPath;
+            break;
+          }
         }
+        if (webBridgePath) break;
       }
     }
 

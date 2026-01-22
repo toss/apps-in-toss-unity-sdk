@@ -58,6 +58,7 @@ export const API_CATEGORIES: Record<string, string[]> = {
   Advertising: [
     'GoogleAdMobLoadAppsInTossAdMob',
     'GoogleAdMobShowAppsInTossAdMob',
+    'GoogleAdMobIsAppsInTossAdMobLoaded', // v1.8.0+
     // TossAds (v1.6.0+)
     'TossAdsInitialize',
     'TossAdsAttach',
@@ -78,7 +79,7 @@ export const API_CATEGORIES: Record<string, string[]> = {
   AppEvents: [
     'TdsEventSubscribeNavigationAccessoryEvent',
     'GraniteEventSubscribeBackEvent',
-    'AppsInTossEventSubscribeEntryMessageExited',
+    // 'AppsInTossEventSubscribeEntryMessageExited', // v1.8.0에서 제거됨 (AppsInTossEvent = {})
   ],
   Environment: [
     'EnvGetDeploymentId',
@@ -153,6 +154,8 @@ export const EXCLUDED_APIS: string[] = [
   'GoogleAdMobShowAdMobInterstitialAd',
   'GoogleAdMobLoadAdMobRewardedAd',
   'GoogleAdMobShowAdMobRewardedAd',
+  // v1.8.0에서 제거된 API (AppsInTossEvent = {})
+  'AppsInTossEventSubscribeEntryMessageExited',
 ];
 
 /**

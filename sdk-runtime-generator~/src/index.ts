@@ -143,6 +143,7 @@ async function ensureMetaFile(
 
 /**
  * pnpm virtual store에서 web-bridge 패키지 동적 검색
+ * v1.8.0+: dist/ 디렉토리, v1.5.0~v1.7.x: built/ 디렉토리
  */
 async function findWebBridgeInPnpmStore(): Promise<string | null> {
   const pnpmDir = path.join(process.cwd(), 'node_modules/.pnpm');
@@ -155,12 +156,22 @@ async function findWebBridgeInPnpmStore(): Promise<string | null> {
     );
 
     if (webBridgeEntry) {
-      const builtPath = path.join(
+      const basePath = path.join(
         pnpmDir,
         webBridgeEntry,
-        'node_modules/@apps-in-toss/web-bridge/built'
+        'node_modules/@apps-in-toss/web-bridge'
       );
-      return builtPath;
+
+      // v1.8.0+: dist/, v1.5.0~v1.7.x: built/
+      for (const subdir of ['dist', 'built']) {
+        const candidatePath = path.join(basePath, subdir);
+        try {
+          await fs.access(candidatePath);
+          return candidatePath;
+        } catch {
+          continue;
+        }
+      }
     }
   } catch {
     // pnpm store가 없으면 null 반환
@@ -180,9 +191,11 @@ async function findTypeDefinitions(webFrameworkPath: string): Promise<string> {
   const possiblePaths = [
     // pnpm virtual store 경로 (동적 검색 결과)
     ...(pnpmStorePath ? [pnpmStorePath] : []),
-    // 일반 node_modules 경로
+    // 일반 node_modules 경로 (dist 우선, built 폴백)
+    path.join(process.cwd(), 'node_modules/@apps-in-toss/web-bridge/dist'),
     path.join(process.cwd(), 'node_modules/@apps-in-toss/web-bridge/built'),
-    // web-framework 내부 경로
+    // web-framework 내부 경로 (dist 우선, built 폴백)
+    path.join(webFrameworkPath, 'node_modules/@apps-in-toss/web-bridge/dist'),
     path.join(webFrameworkPath, 'node_modules/@apps-in-toss/web-bridge/built'),
     path.join(webFrameworkPath, 'dist-web'),
     path.join(webFrameworkPath, 'built'),

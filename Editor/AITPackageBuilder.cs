@@ -357,6 +357,7 @@ namespace AppsInToss.Editor
 
         /// <summary>
         /// vite.config.ts를 마커 기반으로 업데이트합니다.
+        /// SDK_PLUGINS 섹션과 SDK_GENERATED 섹션을 모두 업데이트합니다.
         /// </summary>
         internal static void UpdateViteConfig(string projectBuildConfigPath, string sdkBuildConfigPath, string destPath, AITEditorScriptObject config)
         {
@@ -364,18 +365,22 @@ namespace AppsInToss.Editor
             string sdkFile = Path.Combine(sdkBuildConfigPath, "vite.config.ts");
             string destFile = Path.Combine(destPath, "vite.config.ts");
 
-            // SDK 템플릿에서 SDK 섹션 생성
+            // SDK 템플릿 로드
             string sdkTemplate = File.ReadAllText(sdkFile);
-            string sdkSection = AITTemplateManager.ExtractSdkSection(sdkTemplate);
 
+            // SDK_GENERATED 섹션 추출
+            string sdkSection = AITTemplateManager.ExtractSdkSection(sdkTemplate);
             if (sdkSection == null)
             {
-                Debug.LogError("[AIT] vite.config.ts에서 SDK 마커를 찾을 수 없습니다.");
+                Debug.LogError("[AIT] vite.config.ts에서 SDK_GENERATED 마커를 찾을 수 없습니다.");
                 File.Copy(sdkFile, destFile, true);
                 return;
             }
 
-            // 플레이스홀더 치환
+            // SDK_PLUGINS 섹션 추출 (없을 수도 있음 - 구버전 호환)
+            string sdkPluginsSection = AITTemplateManager.ExtractMarkerSection(sdkTemplate, "SDK_PLUGINS");
+
+            // 플레이스홀더 치환 (SDK_GENERATED 섹션)
             sdkSection = sdkSection
                 .Replace("%AIT_VITE_HOST%", config.viteHost)
                 .Replace("%AIT_VITE_PORT%", config.vitePort.ToString());
@@ -384,10 +389,10 @@ namespace AppsInToss.Editor
 
             if (File.Exists(projectFile))
             {
-                // 프로젝트 파일이 있으면 SDK 섹션만 교체
+                // 프로젝트 파일이 있으면 SDK 섹션들을 교체
                 string projectContent = File.ReadAllText(projectFile);
 
-                // SDK 영역이 수정되었는지 확인
+                // SDK_GENERATED 영역이 수정되었는지 확인
                 string projectSdkSection = AITTemplateManager.ExtractSdkSection(projectContent);
                 if (projectSdkSection != null && projectSdkSection != AITTemplateManager.ExtractSdkSection(sdkTemplate))
                 {
@@ -395,7 +400,31 @@ namespace AppsInToss.Editor
                     Debug.LogWarning("[AIT]    SDK 설정으로 덮어쓰기됩니다. 커스텀 설정은 USER_CONFIG 영역에 추가하세요.");
                 }
 
+                // SDK_GENERATED 섹션 교체
                 finalContent = AITTemplateManager.ReplaceMarkerSection(projectContent, sdkSection);
+
+                // SDK_PLUGINS 섹션 교체 (있는 경우)
+                if (sdkPluginsSection != null)
+                {
+                    string projectPluginsSection = AITTemplateManager.ExtractMarkerSection(finalContent, "SDK_PLUGINS");
+                    if (projectPluginsSection != null)
+                    {
+                        // 기존 SDK_PLUGINS 섹션이 있으면 교체
+                        finalContent = AITTemplateManager.ReplaceMarkerSection(finalContent, "SDK_PLUGINS", sdkPluginsSection);
+                    }
+                    else
+                    {
+                        // 기존 SDK_PLUGINS 섹션이 없으면 import 문 뒤에 삽입
+                        // (구버전 vite.config.ts에서 업그레이드하는 경우)
+                        int insertPos = FindImportEndPosition(finalContent);
+                        if (insertPos > 0)
+                        {
+                            finalContent = finalContent.Insert(insertPos, "\n" + sdkPluginsSection + "\n");
+                            Debug.Log("[AIT]   ✓ SDK_PLUGINS 섹션 추가됨 (하위 호환성 업그레이드)");
+                        }
+                    }
+                }
+
                 Debug.Log("[AIT]   ✓ vite.config.ts (마커 기반 업데이트)");
             }
             else
@@ -408,6 +437,31 @@ namespace AppsInToss.Editor
             }
 
             File.WriteAllText(destFile, finalContent, new System.Text.UTF8Encoding(false));
+        }
+
+        /// <summary>
+        /// import 문이 끝나는 위치를 찾습니다.
+        /// </summary>
+        private static int FindImportEndPosition(string content)
+        {
+            // 마지막 import 문의 끝 위치 찾기
+            int lastImportIdx = -1;
+            int searchStart = 0;
+
+            while (true)
+            {
+                int importIdx = content.IndexOf("import ", searchStart);
+                if (importIdx == -1) break;
+
+                // import 문의 끝 (세미콜론 또는 줄바꿈) 찾기
+                int endOfLine = content.IndexOf('\n', importIdx);
+                if (endOfLine == -1) endOfLine = content.Length;
+
+                lastImportIdx = endOfLine;
+                searchStart = endOfLine + 1;
+            }
+
+            return lastImportIdx > 0 ? lastImportIdx + 1 : -1;
         }
 
         /// <summary>

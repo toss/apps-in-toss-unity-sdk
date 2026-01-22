@@ -178,6 +178,7 @@ namespace AppsInToss.Editor
 
         /// <summary>
         /// Config 파일 마커 기반 업데이트 (vite.config.ts, granite.config.ts)
+        /// SDK_GENERATED와 SDK_PLUGINS 섹션을 모두 업데이트합니다.
         /// </summary>
         internal static void UpdateConfigFileWithMarkers(string projectTemplate, string sdkTemplate, string relativePath)
         {
@@ -201,22 +202,72 @@ namespace AppsInToss.Editor
             string projectContent = File.ReadAllText(projectFile);
             string sdkContent = File.ReadAllText(sdkFile);
 
-            // 프로젝트에 마커가 없으면 (이전 버전) 그대로 유지
+            // 프로젝트에 SDK_GENERATED 마커가 없으면 (구버전) SDK 파일로 교체
             if (!projectContent.Contains(SDK_MARKER_START))
             {
+                Debug.Log($"[AIT] 템플릿 업데이트: {relativePath}를 새 마커 기반 버전으로 교체합니다.");
+                Debug.LogWarning($"[AIT] ⚠️ 기존 {relativePath}에 커스텀 수정이 있었다면 USER_CONFIG 영역에 재적용하세요.");
+                File.WriteAllText(projectFile, sdkContent);
                 return;
             }
 
-            // SDK 영역 추출 및 교체
-            string sdkSection = ExtractMarkerSection(sdkContent, "SDK_GENERATED");
-            if (!string.IsNullOrEmpty(sdkSection))
+            string updatedContent = projectContent;
+
+            // SDK_GENERATED 영역 업데이트
+            string sdkGeneratedSection = ExtractMarkerSection(sdkContent, "SDK_GENERATED");
+            if (!string.IsNullOrEmpty(sdkGeneratedSection))
             {
-                string updatedContent = ReplaceMarkerSection(projectContent, "SDK_GENERATED", sdkSection);
-                if (updatedContent != projectContent)
+                updatedContent = ReplaceMarkerSection(updatedContent, "SDK_GENERATED", sdkGeneratedSection);
+            }
+
+            // SDK_PLUGINS 영역 업데이트 (vite.config.ts용)
+            string sdkPluginsSection = ExtractMarkerSection(sdkContent, "SDK_PLUGINS");
+            if (!string.IsNullOrEmpty(sdkPluginsSection))
+            {
+                if (updatedContent.Contains("//// SDK_PLUGINS_START"))
                 {
-                    File.WriteAllText(projectFile, updatedContent);
+                    // 기존 SDK_PLUGINS 섹션이 있으면 교체
+                    updatedContent = ReplaceMarkerSection(updatedContent, "SDK_PLUGINS", sdkPluginsSection);
+                }
+                else
+                {
+                    // SDK_PLUGINS 섹션이 없으면 import 문 뒤에 삽입 (구버전 업그레이드)
+                    int insertPos = FindImportEndPosition(updatedContent);
+                    if (insertPos > 0)
+                    {
+                        updatedContent = updatedContent.Insert(insertPos, "\n" + sdkPluginsSection + "\n");
+                        Debug.Log($"[AIT] ✓ {relativePath}에 SDK_PLUGINS 섹션 추가됨 (하위 호환성 업그레이드)");
+                    }
                 }
             }
+
+            if (updatedContent != projectContent)
+            {
+                File.WriteAllText(projectFile, updatedContent);
+            }
+        }
+
+        /// <summary>
+        /// import 문이 끝나는 위치를 찾습니다.
+        /// </summary>
+        private static int FindImportEndPosition(string content)
+        {
+            int lastImportIdx = -1;
+            int searchStart = 0;
+
+            while (true)
+            {
+                int importIdx = content.IndexOf("import ", searchStart);
+                if (importIdx == -1) break;
+
+                int endOfLine = content.IndexOf('\n', importIdx);
+                if (endOfLine == -1) endOfLine = content.Length;
+
+                lastImportIdx = endOfLine;
+                searchStart = endOfLine + 1;
+            }
+
+            return lastImportIdx > 0 ? lastImportIdx + 1 : -1;
         }
 
         /// <summary>

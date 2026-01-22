@@ -462,7 +462,7 @@ jobs:
       - name: AIT 빌드 결과물 다운로드
         uses: actions/download-artifact@v7
         with:
-          pattern: ait-build-*
+          pattern: ait-build-*-v${{ needs.create-release-tag.outputs.version }}
           path: ait-builds/
 
       - name: 다운로드된 빌드 확인

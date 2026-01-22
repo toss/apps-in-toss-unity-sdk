@@ -294,6 +294,12 @@
                         return originalFetch.call(window, url, options);
                     }
 
+                    // 파일 압축 형식 감지
+                    var isBrotli = /\.br$/i.test(fileName);
+                    var isGzip = /\.gz$/i.test(fileName);
+                    var isUnityweb = /\.unityweb$/i.test(fileName);
+                    var compressionType = isBrotli ? 'brotli' : (isGzip ? 'gzip' : (isUnityweb ? 'unityweb' : 'none'));
+
                     var fileInfo = {
                         name: fileName,
                         url: urlStr,
@@ -307,14 +313,29 @@
                         minSpeed: Infinity,
                         speedHistory: [],
                         lastLoaded: 0,
-                        lastTime: performance.now()
+                        lastTime: performance.now(),
+                        // Decompression 관련 필드
+                        compressionType: compressionType,
+                        contentEncoding: null,
+                        decompressionFallback: false
                     };
                     self.files[fileName] = fileInfo;
                     self.logEvent('file_start_' + fileName.replace(/\./g, '_'));
 
                     return originalFetch.call(window, url, options).then(function(response) {
                         var contentLength = response.headers.get('content-length');
+                        var contentEncoding = response.headers.get('content-encoding');
                         fileInfo.size = parseInt(contentLength) || 0;
+                        fileInfo.contentEncoding = contentEncoding;
+
+                        // Decompression fallback 감지
+                        // 압축 파일인데 Content-Encoding 헤더가 없으면 JS fallback 발생
+                        var needsDecompression = isBrotli || isGzip || isUnityweb;
+                        if (needsDecompression && !contentEncoding) {
+                            fileInfo.decompressionFallback = true;
+                            console.warn('[AIT Loading] Decompression fallback detected for:', fileName,
+                                '(compression:', compressionType, ', Content-Encoding:', contentEncoding, ')');
+                        }
 
                         // ReadableStream 지원 확인
                         if (!response.body || !response.body.getReader) {
@@ -338,7 +359,10 @@
                                     self.logEvent('file_complete_' + fileName.replace(/\./g, '_'), {
                                         size: fileInfo.loaded,
                                         duration: fileInfo.duration,
-                                        avgSpeed: fileInfo.avgSpeed
+                                        avgSpeed: fileInfo.avgSpeed,
+                                        compressionType: fileInfo.compressionType,
+                                        contentEncoding: fileInfo.contentEncoding,
+                                        decompressionFallback: fileInfo.decompressionFallback
                                     });
 
                                     // 스트림 재조립
@@ -1623,8 +1647,10 @@
 
                                 // 파일 다운로드 통계
                                 var fileStats = logger.getFileStats();
+                                var decompressionFallbackCount = 0;
                                 if (fileStats.length > 0) {
                                     fileStats.forEach(function(file) {
+                                        if (file.decompressionFallback) decompressionFallbackCount++;
                                         var fileData = {
                                             url: file.url,
                                             size_bytes: file.size,
@@ -1635,7 +1661,10 @@
                                             avgSpeed_KBps: file.avgSpeed,
                                             peakSpeed_KBps: file.peakSpeed,
                                             minSpeed_KBps: file.minSpeed,
-                                            speedHistory: file.speedHistory
+                                            speedHistory: file.speedHistory,
+                                            compressionType: file.compressionType || 'none',
+                                            contentEncoding: file.contentEncoding || 'none',
+                                            decompressionFallback: file.decompressionFallback || false
                                         };
                                         data['file_' + file.name] = fileData;
                                         html += createMetricTable(fileData, 'File: ' + file.name);
@@ -1646,7 +1675,9 @@
                                 var summary = {
                                     totalTime_ms: logger.getTotalTime(),
                                     totalFiles: fileStats.length,
-                                    totalSize_MB: fileStats.reduce(function(sum, f) { return sum + f.size; }, 0) / 1024 / 1024
+                                    totalSize_MB: fileStats.reduce(function(sum, f) { return sum + f.size; }, 0) / 1024 / 1024,
+                                    decompressionFallbackCount: decompressionFallbackCount,
+                                    decompressionFallbackOccurred: decompressionFallbackCount > 0
                                 };
                                 data.summary = summary;
                                 html = createMetricTable(summary, 'Loading Summary') + html;

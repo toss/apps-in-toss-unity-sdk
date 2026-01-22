@@ -121,7 +121,7 @@ namespace AppsInToss
         public static bool ValidateMenuStopDevServer()
         {
             var state = devServerState?.GetCachedState() ?? ServerState.NotRunning;
-            return state == ServerState.Running || state == ServerState.Starting;
+            return state == ServerState.Running;
         }
 
         [MenuItem("AIT/Dev Server/Restart Server", false, 3)]
@@ -178,7 +178,7 @@ namespace AppsInToss
         public static bool ValidateMenuStopProdServer()
         {
             var state = prodServerState?.GetCachedState() ?? ServerState.NotRunning;
-            return state == ServerState.Running || state == ServerState.Starting;
+            return state == ServerState.Running;
         }
 
         [MenuItem("AIT/Production Server/Restart Server", false, 13)]
@@ -839,7 +839,7 @@ namespace AppsInToss
 
             // Production 서버가 실행 중이면 확인 후 전환
             var prodState = prodServerState.ValidateState();
-            if (prodState == ServerState.Running || prodState == ServerState.Starting)
+            if (prodState == ServerState.Running)
             {
                 if (AITPlatformHelper.ShowConfirmDialog(
                     "서버 전환",
@@ -913,9 +913,46 @@ namespace AppsInToss
             string viteHost = !string.IsNullOrEmpty(config.viteHost) ? config.viteHost : "localhost";
             int vitePort = config.vitePort > 0 ? config.vitePort : 5173;
 
+            // 포트 충돌 확인 및 자동 탐지
+            if (!IsPortAvailable(vitePort))
+            {
+                int availablePort = FindAvailablePort(vitePort);
+                if (availablePort > 0)
+                {
+                    Debug.Log($"[AIT] 포트 {vitePort}가 사용 중, {availablePort} 사용");
+                    vitePort = availablePort;
+                }
+                else
+                {
+                    Debug.LogError($"[AIT] 사용 가능한 포트를 찾을 수 없습니다 (시도: {vitePort}-{vitePort+9})");
+                    AITPlatformHelper.ShowInfoDialog("포트 오류", $"포트 {vitePort} 및 인근 포트가 모두 사용 중입니다.\n다른 포트를 Configuration에서 설정하거나, 사용 중인 프로세스를 종료하세요.", "확인");
+                    return;
+                }
+            }
+
+            if (!IsPortAvailable(granitePort))
+            {
+                int availablePort = FindAvailablePort(granitePort);
+                if (availablePort > 0)
+                {
+                    Debug.Log($"[AIT] Granite 포트 {granitePort}가 사용 중, {availablePort} 사용");
+                    granitePort = availablePort;
+                }
+                else
+                {
+                    Debug.LogError($"[AIT] 사용 가능한 Granite 포트를 찾을 수 없습니다 (시도: {granitePort}-{granitePort+9})");
+                    AITPlatformHelper.ShowInfoDialog("포트 오류", $"Granite 포트 {granitePort} 및 인근 포트가 모두 사용 중입니다.\n다른 포트를 Configuration에서 설정하거나, 사용 중인 프로세스를 종료하세요.", "확인");
+                    return;
+                }
+            }
+
             Debug.Log($"AIT: Dev 서버 시작 중 (granite dev)... ({buildPath})");
             Debug.Log($"AIT:   Granite: {graniteHost}:{granitePort}");
             Debug.Log($"AIT:   Vite: {viteHost}:{vitePort}");
+
+            // 캡처용 로컬 변수
+            int finalVitePort = vitePort;
+            int finalGranitePort = granitePort;
 
             try
             {
@@ -923,9 +960,9 @@ namespace AppsInToss
                 var envVars = new Dictionary<string, string>
                 {
                     { "AIT_GRANITE_HOST", graniteHost },
-                    { "AIT_GRANITE_PORT", granitePort.ToString() },
+                    { "AIT_GRANITE_PORT", finalGranitePort.ToString() },
                     { "AIT_VITE_HOST", viteHost },
-                    { "AIT_VITE_PORT", vitePort.ToString() }
+                    { "AIT_VITE_PORT", finalVitePort.ToString() }
                 };
 
                 // granite dev 명령어에 --host, --port 인자로 granite 서버 설정 전달
@@ -933,19 +970,19 @@ namespace AppsInToss
 
                 var processManager = new AITProcessTreeManager();
 
-                // 상태 관리자에 Starting 상태 알림
-                devServerState.OnServerStarting(processManager, vitePort);
+                // 포트와 프로세스 관리자 저장 (상태는 변경하지 않음)
+                devServerState.SetExpectedPortAndProcess(processManager, finalVitePort);
 
                 StartServerProcessWithPortDetection(
                     processManager,
-                    buildPath, npmPath, graniteCommand, "Dev Server", envVars,
+                    buildPath, npmPath, graniteCommand, "Dev Server", envVars, finalVitePort,
                     onServerStarted: (detectedPort) =>
                     {
-                        devServerState.OnServerStarted(vitePort);
+                        devServerState.OnServerStarted(finalVitePort);
                         Debug.Log($"AIT: Dev 서버가 시작되었습니다");
-                        Debug.Log($"AIT:   Granite (Metro): http://{graniteHost}:{granitePort}");
-                        Debug.Log($"AIT:   Vite: http://{viteHost}:{vitePort}");
-                        Application.OpenURL($"http://localhost:{vitePort}/index.html");
+                        Debug.Log($"AIT:   Granite (Metro): http://{graniteHost}:{finalGranitePort}");
+                        Debug.Log($"AIT:   Vite: http://{viteHost}:{finalVitePort}");
+                        Application.OpenURL($"http://localhost:{finalVitePort}/index.html");
                     },
                     onServerFailed: (reason) =>
                     {
@@ -979,7 +1016,7 @@ namespace AppsInToss
 
             // Production 서버가 실행 중이면 확인 후 전환
             var prodState = prodServerState.ValidateState();
-            if (prodState == ServerState.Running || prodState == ServerState.Starting)
+            if (prodState == ServerState.Running)
             {
                 if (AITPlatformHelper.ShowConfirmDialog(
                     "서버 전환",
@@ -1028,9 +1065,46 @@ namespace AppsInToss
             string viteHost = !string.IsNullOrEmpty(config.viteHost) ? config.viteHost : "localhost";
             int vitePort = config.vitePort > 0 ? config.vitePort : 5173;
 
+            // 포트 충돌 확인 및 자동 탐지
+            if (!IsPortAvailable(vitePort))
+            {
+                int availablePort = FindAvailablePort(vitePort);
+                if (availablePort > 0)
+                {
+                    Debug.Log($"[AIT] 포트 {vitePort}가 사용 중, {availablePort} 사용");
+                    vitePort = availablePort;
+                }
+                else
+                {
+                    Debug.LogError($"[AIT] 사용 가능한 포트를 찾을 수 없습니다 (시도: {vitePort}-{vitePort+9})");
+                    AITPlatformHelper.ShowInfoDialog("포트 오류", $"포트 {vitePort} 및 인근 포트가 모두 사용 중입니다.\n다른 포트를 Configuration에서 설정하거나, 사용 중인 프로세스를 종료하세요.", "확인");
+                    return;
+                }
+            }
+
+            if (!IsPortAvailable(granitePort))
+            {
+                int availablePort = FindAvailablePort(granitePort);
+                if (availablePort > 0)
+                {
+                    Debug.Log($"[AIT] Granite 포트 {granitePort}가 사용 중, {availablePort} 사용");
+                    granitePort = availablePort;
+                }
+                else
+                {
+                    Debug.LogError($"[AIT] 사용 가능한 Granite 포트를 찾을 수 없습니다 (시도: {granitePort}-{granitePort+9})");
+                    AITPlatformHelper.ShowInfoDialog("포트 오류", $"Granite 포트 {granitePort} 및 인근 포트가 모두 사용 중입니다.\n다른 포트를 Configuration에서 설정하거나, 사용 중인 프로세스를 종료하세요.", "확인");
+                    return;
+                }
+            }
+
             Debug.Log($"AIT: Dev 서버 시작 중 (서버만, granite dev)... ({buildPath})");
             Debug.Log($"AIT:   Granite: {graniteHost}:{granitePort}");
             Debug.Log($"AIT:   Vite: {viteHost}:{vitePort}");
+
+            // 캡처용 로컬 변수
+            int finalVitePort = vitePort;
+            int finalGranitePort = granitePort;
 
             try
             {
@@ -1038,9 +1112,9 @@ namespace AppsInToss
                 var envVars = new Dictionary<string, string>
                 {
                     { "AIT_GRANITE_HOST", graniteHost },
-                    { "AIT_GRANITE_PORT", granitePort.ToString() },
+                    { "AIT_GRANITE_PORT", finalGranitePort.ToString() },
                     { "AIT_VITE_HOST", viteHost },
-                    { "AIT_VITE_PORT", vitePort.ToString() }
+                    { "AIT_VITE_PORT", finalVitePort.ToString() }
                 };
 
                 // granite dev 명령어에 --host, --port 인자로 granite 서버 설정 전달
@@ -1048,18 +1122,18 @@ namespace AppsInToss
 
                 var processManager = new AITProcessTreeManager();
 
-                // 상태 관리자에 Starting 상태 알림
-                devServerState.OnServerStarting(processManager, vitePort);
+                // 포트와 프로세스 관리자 저장 (상태는 변경하지 않음)
+                devServerState.SetExpectedPortAndProcess(processManager, finalVitePort);
 
                 StartServerProcessWithPortDetection(
                     processManager,
-                    buildPath, npmPath, graniteCommand, "Dev Server", envVars,
+                    buildPath, npmPath, graniteCommand, "Dev Server", envVars, finalVitePort,
                     onServerStarted: (detectedPort) =>
                     {
-                        devServerState.OnServerStarted(vitePort);
+                        devServerState.OnServerStarted(finalVitePort);
                         Debug.Log($"AIT: Dev 서버가 시작되었습니다 (서버만)");
-                        Debug.Log($"AIT:   Granite (Metro): http://{graniteHost}:{granitePort}");
-                        Debug.Log($"AIT:   Vite: http://{viteHost}:{vitePort}");
+                        Debug.Log($"AIT:   Granite (Metro): http://{graniteHost}:{finalGranitePort}");
+                        Debug.Log($"AIT:   Vite: http://{viteHost}:{finalVitePort}");
                         // 서버만 재시작이므로 브라우저는 열지 않음
                     },
                     onServerFailed: (reason) =>
@@ -1112,7 +1186,7 @@ namespace AppsInToss
 
             // Dev 서버가 실행 중이면 확인 후 전환
             var devState = devServerState.ValidateState();
-            if (devState == ServerState.Running || devState == ServerState.Starting)
+            if (devState == ServerState.Running)
             {
                 if (AITPlatformHelper.ShowConfirmDialog(
                     "서버 전환",
@@ -1186,9 +1260,46 @@ namespace AppsInToss
             string viteHost = !string.IsNullOrEmpty(config.viteHost) ? config.viteHost : "localhost";
             int vitePort = config.vitePort > 0 ? config.vitePort : 5173;
 
+            // 포트 충돌 확인 및 자동 탐지
+            if (!IsPortAvailable(vitePort))
+            {
+                int availablePort = FindAvailablePort(vitePort);
+                if (availablePort > 0)
+                {
+                    Debug.Log($"[AIT] 포트 {vitePort}가 사용 중, {availablePort} 사용");
+                    vitePort = availablePort;
+                }
+                else
+                {
+                    Debug.LogError($"[AIT] 사용 가능한 포트를 찾을 수 없습니다 (시도: {vitePort}-{vitePort+9})");
+                    AITPlatformHelper.ShowInfoDialog("포트 오류", $"포트 {vitePort} 및 인근 포트가 모두 사용 중입니다.\n다른 포트를 Configuration에서 설정하거나, 사용 중인 프로세스를 종료하세요.", "확인");
+                    return;
+                }
+            }
+
+            if (!IsPortAvailable(granitePort))
+            {
+                int availablePort = FindAvailablePort(granitePort);
+                if (availablePort > 0)
+                {
+                    Debug.Log($"[AIT] Granite 포트 {granitePort}가 사용 중, {availablePort} 사용");
+                    granitePort = availablePort;
+                }
+                else
+                {
+                    Debug.LogError($"[AIT] 사용 가능한 Granite 포트를 찾을 수 없습니다 (시도: {granitePort}-{granitePort+9})");
+                    AITPlatformHelper.ShowInfoDialog("포트 오류", $"Granite 포트 {granitePort} 및 인근 포트가 모두 사용 중입니다.\n다른 포트를 Configuration에서 설정하거나, 사용 중인 프로세스를 종료하세요.", "확인");
+                    return;
+                }
+            }
+
             Debug.Log($"AIT: Production 서버 시작 중 (granite dev)... ({buildPath})");
             Debug.Log($"AIT:   Granite: {graniteHost}:{granitePort}");
             Debug.Log($"AIT:   Vite: {viteHost}:{vitePort}");
+
+            // 캡처용 로컬 변수
+            int finalVitePort = vitePort;
+            int finalGranitePort = granitePort;
 
             try
             {
@@ -1196,9 +1307,9 @@ namespace AppsInToss
                 var envVars = new Dictionary<string, string>
                 {
                     { "AIT_GRANITE_HOST", graniteHost },
-                    { "AIT_GRANITE_PORT", granitePort.ToString() },
+                    { "AIT_GRANITE_PORT", finalGranitePort.ToString() },
                     { "AIT_VITE_HOST", viteHost },
-                    { "AIT_VITE_PORT", vitePort.ToString() }
+                    { "AIT_VITE_PORT", finalVitePort.ToString() }
                 };
 
                 // granite dev 명령어에 --host, --port 인자로 granite 서버 설정 전달
@@ -1206,19 +1317,19 @@ namespace AppsInToss
 
                 var processManager = new AITProcessTreeManager();
 
-                // 상태 관리자에 Starting 상태 알림
-                prodServerState.OnServerStarting(processManager, vitePort);
+                // 포트와 프로세스 관리자 저장 (상태는 변경하지 않음)
+                prodServerState.SetExpectedPortAndProcess(processManager, finalVitePort);
 
                 StartServerProcessWithPortDetection(
                     processManager,
-                    buildPath, npmPath, graniteCommand, "Prod Server", envVars,
+                    buildPath, npmPath, graniteCommand, "Prod Server", envVars, finalVitePort,
                     onServerStarted: (detectedPort) =>
                     {
-                        prodServerState.OnServerStarted(vitePort);
+                        prodServerState.OnServerStarted(finalVitePort);
                         Debug.Log($"AIT: Production 서버가 시작되었습니다");
-                        Debug.Log($"AIT:   Granite (Metro): http://{graniteHost}:{granitePort}");
-                        Debug.Log($"AIT:   Vite: http://{viteHost}:{vitePort}");
-                        Application.OpenURL($"http://localhost:{vitePort}/");
+                        Debug.Log($"AIT:   Granite (Metro): http://{graniteHost}:{finalGranitePort}");
+                        Debug.Log($"AIT:   Vite: http://{viteHost}:{finalVitePort}");
+                        Application.OpenURL($"http://localhost:{finalVitePort}/");
                     },
                     onServerFailed: (reason) =>
                     {
@@ -1252,7 +1363,7 @@ namespace AppsInToss
 
             // Dev 서버가 실행 중이면 확인 후 전환
             var devState = devServerState.ValidateState();
-            if (devState == ServerState.Running || devState == ServerState.Starting)
+            if (devState == ServerState.Running)
             {
                 if (AITPlatformHelper.ShowConfirmDialog(
                     "서버 전환",
@@ -1301,9 +1412,46 @@ namespace AppsInToss
             string viteHost = !string.IsNullOrEmpty(config.viteHost) ? config.viteHost : "localhost";
             int vitePort = config.vitePort > 0 ? config.vitePort : 5173;
 
+            // 포트 충돌 확인 및 자동 탐지
+            if (!IsPortAvailable(vitePort))
+            {
+                int availablePort = FindAvailablePort(vitePort);
+                if (availablePort > 0)
+                {
+                    Debug.Log($"[AIT] 포트 {vitePort}가 사용 중, {availablePort} 사용");
+                    vitePort = availablePort;
+                }
+                else
+                {
+                    Debug.LogError($"[AIT] 사용 가능한 포트를 찾을 수 없습니다 (시도: {vitePort}-{vitePort+9})");
+                    AITPlatformHelper.ShowInfoDialog("포트 오류", $"포트 {vitePort} 및 인근 포트가 모두 사용 중입니다.\n다른 포트를 Configuration에서 설정하거나, 사용 중인 프로세스를 종료하세요.", "확인");
+                    return;
+                }
+            }
+
+            if (!IsPortAvailable(granitePort))
+            {
+                int availablePort = FindAvailablePort(granitePort);
+                if (availablePort > 0)
+                {
+                    Debug.Log($"[AIT] Granite 포트 {granitePort}가 사용 중, {availablePort} 사용");
+                    granitePort = availablePort;
+                }
+                else
+                {
+                    Debug.LogError($"[AIT] 사용 가능한 Granite 포트를 찾을 수 없습니다 (시도: {granitePort}-{granitePort+9})");
+                    AITPlatformHelper.ShowInfoDialog("포트 오류", $"Granite 포트 {granitePort} 및 인근 포트가 모두 사용 중입니다.\n다른 포트를 Configuration에서 설정하거나, 사용 중인 프로세스를 종료하세요.", "확인");
+                    return;
+                }
+            }
+
             Debug.Log($"AIT: Production 서버 시작 중 (서버만, granite dev)... ({buildPath})");
             Debug.Log($"AIT:   Granite: {graniteHost}:{granitePort}");
             Debug.Log($"AIT:   Vite: {viteHost}:{vitePort}");
+
+            // 캡처용 로컬 변수
+            int finalVitePort = vitePort;
+            int finalGranitePort = granitePort;
 
             try
             {
@@ -1311,9 +1459,9 @@ namespace AppsInToss
                 var envVars = new Dictionary<string, string>
                 {
                     { "AIT_GRANITE_HOST", graniteHost },
-                    { "AIT_GRANITE_PORT", granitePort.ToString() },
+                    { "AIT_GRANITE_PORT", finalGranitePort.ToString() },
                     { "AIT_VITE_HOST", viteHost },
-                    { "AIT_VITE_PORT", vitePort.ToString() }
+                    { "AIT_VITE_PORT", finalVitePort.ToString() }
                 };
 
                 // granite dev 명령어에 --host, --port 인자로 granite 서버 설정 전달
@@ -1321,18 +1469,18 @@ namespace AppsInToss
 
                 var processManager = new AITProcessTreeManager();
 
-                // 상태 관리자에 Starting 상태 알림
-                prodServerState.OnServerStarting(processManager, vitePort);
+                // 포트와 프로세스 관리자 저장 (상태는 변경하지 않음)
+                prodServerState.SetExpectedPortAndProcess(processManager, finalVitePort);
 
                 StartServerProcessWithPortDetection(
                     processManager,
-                    buildPath, npmPath, graniteCommand, "Prod Server", envVars,
+                    buildPath, npmPath, graniteCommand, "Prod Server", envVars, finalVitePort,
                     onServerStarted: (detectedPort) =>
                     {
-                        prodServerState.OnServerStarted(vitePort);
+                        prodServerState.OnServerStarted(finalVitePort);
                         Debug.Log($"AIT: Production 서버가 시작되었습니다 (서버만)");
-                        Debug.Log($"AIT:   Granite (Metro): http://{graniteHost}:{granitePort}");
-                        Debug.Log($"AIT:   Vite: http://{viteHost}:{vitePort}");
+                        Debug.Log($"AIT:   Granite (Metro): http://{graniteHost}:{finalGranitePort}");
+                        Debug.Log($"AIT:   Vite: http://{viteHost}:{finalVitePort}");
                         // 서버만 재시작이므로 브라우저는 열지 않음
                     },
                     onServerFailed: (reason) =>
@@ -1369,12 +1517,16 @@ namespace AppsInToss
             Debug.Log("AIT: Production 서버가 중지되었습니다.");
         }
 
+        // 서버 시작 타임아웃 (30초)
+        private const double SERVER_START_TIMEOUT_SECONDS = 30.0;
+
         /// <summary>
         /// 서버 프로세스 시작 (동적 포트 감지 포함) - 크로스 플랫폼
         /// AITProcessTreeManager를 사용하여 프로세스 트리 전체를 관리
         /// </summary>
         /// <param name="manager">프로세스 트리 관리자</param>
         /// <param name="envVars">환경 변수 (AIT_GRANITE_HOST, AIT_GRANITE_PORT, AIT_VITE_PORT 등)</param>
+        /// <param name="expectedPort">예상 포트 (타임아웃 시 확인용)</param>
         /// <param name="onServerStarted">서버가 성공적으로 시작되면 호출되는 콜백 (메인 스레드에서 실행)</param>
         /// <param name="onServerFailed">서버 시작에 실패하면 호출되는 콜백 (메인 스레드에서 실행)</param>
         private static void StartServerProcessWithPortDetection(
@@ -1384,6 +1536,7 @@ namespace AppsInToss
             string npmCommand,
             string logPrefix,
             Dictionary<string, string> envVars,
+            int expectedPort,
             Action<int> onServerStarted,
             Action<string> onServerFailed = null)
         {
@@ -1447,9 +1600,44 @@ namespace AppsInToss
             bool serverStarted = false;
             bool serverFailed = false;
             string failureReason = null;
+            double startTime = EditorApplication.timeSinceStartup;
 
             // AITProcessTreeManager를 통해 프로세스 시작 (프로세스 그룹 관리)
             var process = manager.StartProcess(startInfo);
+
+            // 타임아웃 체크를 위한 EditorApplication.update 콜백
+            EditorApplication.CallbackFunction timeoutCheck = null;
+            timeoutCheck = () =>
+            {
+                // 이미 성공 또는 실패한 경우 콜백 제거
+                if (serverStarted || serverFailed)
+                {
+                    EditorApplication.update -= timeoutCheck;
+                    return;
+                }
+
+                // 타임아웃 체크
+                if (EditorApplication.timeSinceStartup - startTime > SERVER_START_TIMEOUT_SECONDS)
+                {
+                    serverFailed = true;
+                    EditorApplication.update -= timeoutCheck;
+
+                    // 프로세스 종료 시도
+                    try
+                    {
+                        manager.KillProcessTree();
+                    }
+                    catch
+                    {
+                        // 무시
+                    }
+
+                    string reason = $"서버 시작 타임아웃 ({SERVER_START_TIMEOUT_SECONDS}초)";
+                    Debug.LogError($"[{logPrefix}] {reason}");
+                    onServerFailed?.Invoke(reason);
+                }
+            };
+            EditorApplication.update += timeoutCheck;
 
             // 프로세스 종료 감지
             process.EnableRaisingEvents = true;
@@ -1459,6 +1647,7 @@ namespace AppsInToss
                 if (!serverStarted && !serverFailed)
                 {
                     serverFailed = true;
+                    EditorApplication.update -= timeoutCheck;
                     int exitCode = process.ExitCode;
                     string reason = failureReason ?? $"프로세스가 비정상 종료되었습니다 (Exit Code: {exitCode})";
 
@@ -1500,6 +1689,7 @@ namespace AppsInToss
                         {
                             int port = int.Parse(portMatch.Groups[1].Value);
                             serverStarted = true;
+                            EditorApplication.update -= timeoutCheck;
 
                             // Unity 메인 스레드에서 콜백 실행
                             EditorApplication.delayCall += () => onServerStarted?.Invoke(port);

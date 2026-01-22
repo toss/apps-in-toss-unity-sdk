@@ -110,55 +110,61 @@ namespace AppsInToss.Editor
         /// 실제 상태 확인 및 캐시 갱신 (동기)
         /// 서버 시작/중지 등 액션 전에 호출
         /// </summary>
+        /// <remarks>
+        /// 상태 판단 우선순위:
+        /// 1. 포트가 열려있으면 → Running (서버가 실제로 응답 중)
+        /// 2. 프로세스 관리자가 살아있으면 → Starting (아직 포트 대기 중)
+        /// 3. 둘 다 없으면 → NotRunning
+        ///
+        /// 참고: Unix에서 bash -l -c "..." 로 실행 시 bash 프로세스는 종료되고
+        /// 자식 프로세스(npm/node)만 남을 수 있어 PID 기반 확인이 불안정함.
+        /// 따라서 포트 기반 확인을 우선함.
+        /// </remarks>
         public ServerState ValidateState()
         {
             // EditorPrefs에서 저장된 PID/Port 로드
             int savedPid = EditorPrefs.GetInt(pidPrefKey, 0);
             int savedPort = EditorPrefs.GetInt(portPrefKey, 0);
 
-            // 프로세스 존재 확인
-            bool processAlive = IsProcessAlive(savedPid);
-
-            // 포트 사용 확인
+            // 포트 사용 확인 (가장 신뢰할 수 있는 지표)
             bool portInUse = savedPort > 0 && IsPortInUse(savedPort);
 
-            // 상태 결정
-            if (processAlive && portInUse)
+            // 프로세스 관리자 존재 여부 확인 (메모리 내 참조)
+            bool hasProcessManager = processManager != null && !processManager.HasExited;
+
+            // PID 기반 프로세스 확인 (폴백)
+            bool processAlive = IsProcessAlive(savedPid);
+
+            // 상태 결정: 포트 우선 판단
+            if (portInUse)
             {
-                // 프로세스도 있고 포트도 열려있음 -> Running
+                // 포트가 열려있으면 서버가 실행 중
                 cachedState = ServerState.Running;
                 cachedPid = savedPid;
                 cachedPort = savedPort;
 
-                // 프로세스 관리자 복원 (없는 경우)
-                if (processManager == null)
+                // 프로세스 관리자 복원 시도 (없는 경우, PID가 유효하면)
+                if (processManager == null && processAlive)
                 {
                     RestoreProcessManager(savedPid);
                 }
             }
-            else if (processAlive && !portInUse)
+            else if (hasProcessManager || processAlive)
             {
-                // 프로세스는 있지만 포트가 열리지 않음 -> Starting
+                // 프로세스는 있지만 포트가 아직 열리지 않음 → Starting
                 cachedState = ServerState.Starting;
                 cachedPid = savedPid;
                 cachedPort = 0;
 
                 // 프로세스 관리자 복원 (없는 경우)
-                if (processManager == null)
+                if (processManager == null && processAlive)
                 {
                     RestoreProcessManager(savedPid);
                 }
             }
-            else if (!processAlive && portInUse)
-            {
-                // 고아 포트 - 프로세스는 없는데 포트가 사용 중
-                // 다른 프로그램이 사용 중일 수 있으므로 정리하지 않음
-                cachedState = ServerState.NotRunning;
-                ClearPersistedState();
-            }
             else
             {
-                // 프로세스도 없고 포트도 없음 -> NotRunning
+                // 프로세스도 없고 포트도 없음 → NotRunning
                 cachedState = ServerState.NotRunning;
                 ClearPersistedState();
             }

@@ -1682,10 +1682,11 @@ namespace AppsInToss
                     }
 
                     // 서버 시작 성공 감지 (포트 감지)
-                    // localhost:PORT (Vite), 0.0.0.0:PORT (Granite), 127.0.0.1:PORT 모두 매칭
+                    // IPv4: localhost:PORT, 0.0.0.0:PORT, 127.0.0.1:PORT
+                    // IPv6: [::1]:PORT, [::]:PORT
                     if (!serverStarted && !serverFailed)
                     {
-                        var portMatch = Regex.Match(cleanOutput, @"(?:localhost|0\.0\.0\.0|127\.0\.0\.1):(\d+)");
+                        var portMatch = Regex.Match(cleanOutput, @"(?:localhost|0\.0\.0\.0|127\.0\.0\.1|\[::1?\]):(\d+)");
                         if (portMatch.Success)
                         {
                             int port = int.Parse(portMatch.Groups[1].Value);

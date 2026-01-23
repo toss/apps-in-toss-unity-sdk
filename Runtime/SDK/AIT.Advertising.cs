@@ -82,6 +82,54 @@ namespace AppsInToss
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __GoogleAdMobShowAppsInTossAdMob_Internal(string options, string subscriptionId, string typeName);
 #endif
+        /// <summary>
+        /// 이 함수는 `loadAppsInTossAdMob` 로 광고가 잘 불러와졌는지 확인해요.
+        /// </summary>
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
+        [APICategory("Advertising")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<bool> GoogleAdMobIsAppsInTossAdMobLoaded(object args_0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<bool>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error)
+            );
+            __GoogleAdMobIsAppsInTossAdMobLoaded_Internal(AITJsonSettings.Serialize(args_0), callbackId, "bool");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] GoogleAdMobIsAppsInTossAdMobLoaded called");
+            await Awaitable.NextFrameAsync();
+            return false;
+#endif
+        }
+#else
+        public static async Task<bool> GoogleAdMobIsAppsInTossAdMobLoaded(object args_0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<bool>(
+                result => tcs.TrySetResult(result),
+                error => tcs.TrySetException(error)
+            );
+            __GoogleAdMobIsAppsInTossAdMobLoaded_Internal(AITJsonSettings.Serialize(args_0), callbackId, "bool");
+            return await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] GoogleAdMobIsAppsInTossAdMobLoaded called");
+            await Task.CompletedTask;
+            return false;
+#endif
+        }
+#endif
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __GoogleAdMobIsAppsInTossAdMobLoaded_Internal(string args_0, string callbackId, string typeName);
+#endif
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Advertising")]

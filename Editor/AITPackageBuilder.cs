@@ -357,7 +357,8 @@ namespace AppsInToss.Editor
 
         /// <summary>
         /// vite.config.ts를 마커 기반으로 업데이트합니다.
-        /// SDK_PLUGINS 섹션과 SDK_GENERATED 섹션을 모두 업데이트합니다.
+        /// SDK 템플릿을 기반으로 하고, USER_CONFIG 영역만 프로젝트에서 보존합니다.
+        /// import 문, SDK_PLUGINS, SDK_GENERATED는 항상 SDK 최신 버전으로 갱신됩니다.
         /// </summary>
         internal static void UpdateViteConfig(string projectBuildConfigPath, string sdkBuildConfigPath, string destPath, AITEditorScriptObject config)
         {
@@ -368,71 +369,31 @@ namespace AppsInToss.Editor
             // SDK 템플릿 로드
             string sdkTemplate = File.ReadAllText(sdkFile);
 
-            // SDK_GENERATED 섹션 추출
-            string sdkSection = AITTemplateManager.ExtractSdkSection(sdkTemplate);
-            if (sdkSection == null)
-            {
-                Debug.LogError("[AIT] vite.config.ts에서 SDK_GENERATED 마커를 찾을 수 없습니다.");
-                File.Copy(sdkFile, destFile, true);
-                return;
-            }
-
-            // SDK_PLUGINS 섹션 추출 (없을 수도 있음 - 구버전 호환)
-            string sdkPluginsSection = AITTemplateManager.ExtractMarkerSection(sdkTemplate, "SDK_PLUGINS");
-
-            // 플레이스홀더 치환 (SDK_GENERATED 섹션)
-            sdkSection = sdkSection
+            // 플레이스홀더 치환
+            string finalContent = sdkTemplate
                 .Replace("%AIT_VITE_HOST%", config.viteHost)
                 .Replace("%AIT_VITE_PORT%", config.vitePort.ToString());
 
-            string finalContent;
-
+            // 프로젝트 파일이 있으면 USER_CONFIG 영역만 보존
             if (File.Exists(projectFile))
             {
-                // 프로젝트 파일이 있으면 SDK 섹션들을 교체
                 string projectContent = File.ReadAllText(projectFile);
 
-                // SDK_GENERATED 영역이 수정되었는지 확인
-                string projectSdkSection = AITTemplateManager.ExtractSdkSection(projectContent);
-                if (projectSdkSection != null && projectSdkSection != AITTemplateManager.ExtractSdkSection(sdkTemplate))
+                // 프로젝트의 USER_CONFIG 영역 추출
+                string projectUserConfig = AITTemplateManager.ExtractMarkerSection(projectContent, "USER_CONFIG");
+                if (projectUserConfig != null)
                 {
-                    Debug.LogWarning("[AIT] ⚠️ vite.config.ts의 SDK_GENERATED 영역이 수정되었습니다.");
-                    Debug.LogWarning("[AIT]    SDK 설정으로 덮어쓰기됩니다. 커스텀 설정은 USER_CONFIG 영역에 추가하세요.");
+                    // SDK 템플릿의 USER_CONFIG를 프로젝트의 USER_CONFIG로 교체
+                    finalContent = AITTemplateManager.ReplaceMarkerSection(finalContent, "USER_CONFIG", projectUserConfig);
+                    Debug.Log("[AIT]   ✓ vite.config.ts (SDK 최신 버전 + USER_CONFIG 보존)");
                 }
-
-                // SDK_GENERATED 섹션 교체
-                finalContent = AITTemplateManager.ReplaceMarkerSection(projectContent, sdkSection);
-
-                // SDK_PLUGINS 섹션 교체 (있는 경우)
-                if (sdkPluginsSection != null)
+                else
                 {
-                    string projectPluginsSection = AITTemplateManager.ExtractMarkerSection(finalContent, "SDK_PLUGINS");
-                    if (projectPluginsSection != null)
-                    {
-                        // 기존 SDK_PLUGINS 섹션이 있으면 교체
-                        finalContent = AITTemplateManager.ReplaceMarkerSection(finalContent, "SDK_PLUGINS", sdkPluginsSection);
-                    }
-                    else
-                    {
-                        // 기존 SDK_PLUGINS 섹션이 없으면 import 문 뒤에 삽입
-                        // (구버전 vite.config.ts에서 업그레이드하는 경우)
-                        int insertPos = FindImportEndPosition(finalContent);
-                        if (insertPos > 0)
-                        {
-                            finalContent = finalContent.Insert(insertPos, "\n" + sdkPluginsSection + "\n");
-                            Debug.Log("[AIT]   ✓ SDK_PLUGINS 섹션 추가됨 (하위 호환성 업그레이드)");
-                        }
-                    }
+                    Debug.Log("[AIT]   ✓ vite.config.ts (SDK 최신 버전으로 갱신)");
                 }
-
-                Debug.Log("[AIT]   ✓ vite.config.ts (마커 기반 업데이트)");
             }
             else
             {
-                // 프로젝트 파일이 없으면 SDK 템플릿 사용
-                finalContent = sdkTemplate
-                    .Replace("%AIT_VITE_HOST%", config.viteHost)
-                    .Replace("%AIT_VITE_PORT%", config.vitePort.ToString());
                 Debug.Log("[AIT]   ✓ vite.config.ts (SDK에서 생성)");
             }
 
@@ -440,32 +401,9 @@ namespace AppsInToss.Editor
         }
 
         /// <summary>
-        /// import 문이 끝나는 위치를 찾습니다.
-        /// </summary>
-        private static int FindImportEndPosition(string content)
-        {
-            // 마지막 import 문의 끝 위치 찾기
-            int lastImportIdx = -1;
-            int searchStart = 0;
-
-            while (true)
-            {
-                int importIdx = content.IndexOf("import ", searchStart);
-                if (importIdx == -1) break;
-
-                // import 문의 끝 (세미콜론 또는 줄바꿈) 찾기
-                int endOfLine = content.IndexOf('\n', importIdx);
-                if (endOfLine == -1) endOfLine = content.Length;
-
-                lastImportIdx = endOfLine;
-                searchStart = endOfLine + 1;
-            }
-
-            return lastImportIdx > 0 ? lastImportIdx + 1 : -1;
-        }
-
-        /// <summary>
         /// granite.config.ts를 마커 기반으로 업데이트합니다.
+        /// SDK 템플릿을 기반으로 하고, USER_CONFIG 영역만 프로젝트에서 보존합니다.
+        /// import 문, SDK_GENERATED는 항상 SDK 최신 버전으로 갱신됩니다.
         /// </summary>
         internal static void UpdateGraniteConfig(string projectBuildConfigPath, string sdkBuildConfigPath, string destPath, AITEditorScriptObject config)
         {
@@ -473,19 +411,12 @@ namespace AppsInToss.Editor
             string sdkFile = Path.Combine(sdkBuildConfigPath, "granite.config.ts");
             string destFile = Path.Combine(destPath, "granite.config.ts");
 
-            // SDK 템플릿에서 SDK 섹션 생성
+            // SDK 템플릿 로드
             string sdkTemplate = File.ReadAllText(sdkFile);
-            string sdkSection = AITTemplateManager.ExtractSdkSection(sdkTemplate);
-
-            if (sdkSection == null)
-            {
-                Debug.LogError("[AIT] granite.config.ts에서 SDK 마커를 찾을 수 없습니다.");
-                return;
-            }
 
             // 플레이스홀더 치환
             Debug.Log("[AIT] granite.config.ts placeholder 치환 중...");
-            sdkSection = sdkSection
+            string finalContent = sdkTemplate
                 .Replace("%AIT_APP_NAME%", config.appName)
                 .Replace("%AIT_DISPLAY_NAME%", config.displayName)
                 .Replace("%AIT_PRIMARY_COLOR%", config.primaryColor)
@@ -499,40 +430,26 @@ namespace AppsInToss.Editor
                 .Replace("%AIT_PERMISSIONS%", config.GetPermissionsJson())
                 .Replace("%AIT_OUTDIR%", config.outdir);
 
-            string finalContent;
-
+            // 프로젝트 파일이 있으면 USER_CONFIG 영역만 보존
             if (File.Exists(projectFile))
             {
-                // 프로젝트 파일이 있으면 SDK 섹션만 교체
                 string projectContent = File.ReadAllText(projectFile);
 
-                // SDK 영역이 수정되었는지 확인
-                string projectSdkSection = AITTemplateManager.ExtractSdkSection(projectContent);
-                if (projectSdkSection != null && projectSdkSection != AITTemplateManager.ExtractSdkSection(sdkTemplate))
+                // 프로젝트의 USER_CONFIG 영역 추출
+                string projectUserConfig = AITTemplateManager.ExtractMarkerSection(projectContent, "USER_CONFIG");
+                if (projectUserConfig != null)
                 {
-                    Debug.LogWarning("[AIT] ⚠️ granite.config.ts의 SDK_GENERATED 영역이 수정되었습니다.");
-                    Debug.LogWarning("[AIT]    SDK 설정으로 덮어쓰기됩니다. 커스텀 설정은 USER_CONFIG 영역에 추가하세요.");
+                    // SDK 템플릿의 USER_CONFIG를 프로젝트의 USER_CONFIG로 교체
+                    finalContent = AITTemplateManager.ReplaceMarkerSection(finalContent, "USER_CONFIG", projectUserConfig);
+                    Debug.Log("[AIT]   ✓ granite.config.ts (SDK 최신 버전 + USER_CONFIG 보존)");
                 }
-
-                finalContent = AITTemplateManager.ReplaceMarkerSection(projectContent, sdkSection);
-                Debug.Log("[AIT]   ✓ granite.config.ts (마커 기반 업데이트)");
+                else
+                {
+                    Debug.Log("[AIT]   ✓ granite.config.ts (SDK 최신 버전으로 갱신)");
+                }
             }
             else
             {
-                // 프로젝트 파일이 없으면 SDK 템플릿 사용
-                finalContent = sdkTemplate
-                    .Replace("%AIT_APP_NAME%", config.appName)
-                    .Replace("%AIT_DISPLAY_NAME%", config.displayName)
-                    .Replace("%AIT_PRIMARY_COLOR%", config.primaryColor)
-                    .Replace("%AIT_ICON_URL%", config.iconUrl)
-                    .Replace("%AIT_BRIDGE_COLOR_MODE%", config.GetBridgeColorModeString())
-                    .Replace("%AIT_WEBVIEW_TYPE%", config.GetWebViewTypeString())
-                    .Replace("%AIT_ALLOWS_INLINE_MEDIA_PLAYBACK%", config.allowsInlineMediaPlayback.ToString().ToLower())
-                    .Replace("%AIT_MEDIA_PLAYBACK_REQUIRES_USER_ACTION%", config.mediaPlaybackRequiresUserAction.ToString().ToLower())
-                    .Replace("%AIT_VITE_HOST%", config.viteHost)
-                    .Replace("%AIT_VITE_PORT%", config.vitePort.ToString())
-                    .Replace("%AIT_PERMISSIONS%", config.GetPermissionsJson())
-                    .Replace("%AIT_OUTDIR%", config.outdir);
                 Debug.Log("[AIT]   ✓ granite.config.ts (SDK에서 생성)");
             }
 

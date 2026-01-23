@@ -59,8 +59,9 @@ async function startServer(aitBuildDir, vitePort) {
       console.log('[vite dev]', output);
 
       // ANSI 색상 코드 제거 후 포트 파싱
+      // localhost:PORT, 0.0.0.0:PORT, 127.0.0.1:PORT 모두 매칭
       const cleanOutput = output.replace(/\x1B\[[0-9;]*[mGKH]/g, '');
-      const portMatch = cleanOutput.match(/localhost:(\d+)/);
+      const portMatch = cleanOutput.match(/(?:localhost|0\.0\.0\.0|127\.0\.0\.1):(\d+)/);
       if (portMatch && !started) {
         actualPort = parseInt(portMatch[1], 10);
         console.log(`📍 Server running on port: ${actualPort}`);

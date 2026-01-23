@@ -242,8 +242,8 @@ async function startDevServer(aitBuildDir, defaultPort) {
       // ANSI 색상 코드 제거 후 포트 파싱
       const cleanOutput = output.replace(/\x1B\[[0-9;]*[mGKH]/g, '');
 
-      // Vite 포트 파싱 (Local: http://localhost:5173/ 또는 localhost:5173)
-      const portMatch = cleanOutput.match(/localhost:(\d+)/);
+      // 포트 파싱: localhost:PORT, 0.0.0.0:PORT, 127.0.0.1:PORT 모두 매칭
+      const portMatch = cleanOutput.match(/(?:localhost|0\.0\.0\.0|127\.0\.0\.1):(\d+)/);
       if (portMatch && !started) {
         actualPort = parseInt(portMatch[1], 10);
         console.log(`📍 Dev server running on port: ${actualPort}`);
@@ -325,8 +325,8 @@ async function startGraniteDevServer(aitBuildDir, viteHost, vitePort, graniteHos
       // ANSI 색상 코드 제거 후 포트 파싱
       const cleanOutput = output.replace(/\x1B\[[0-9;]*[mGKH]/g, '');
 
-      // Vite 포트 파싱
-      const portMatch = cleanOutput.match(/localhost:(\d+)/);
+      // 포트 파싱: localhost:PORT, 0.0.0.0:PORT, 127.0.0.1:PORT 모두 매칭
+      const portMatch = cleanOutput.match(/(?:localhost|0\.0\.0\.0|127\.0\.0\.1):(\d+)/);
       if (portMatch && !started) {
         actualPort = parseInt(portMatch[1], 10);
         console.log(`📍 Granite dev server running on port: ${actualPort}`);

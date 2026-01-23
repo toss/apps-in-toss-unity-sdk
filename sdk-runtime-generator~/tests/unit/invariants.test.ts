@@ -160,7 +160,9 @@ const eventSubscriptionPatterns = [
   '__showFullScreenAd',    // 광고 표시 이벤트 (여러 이벤트 발생)
   '__IAPCreateOneTimePurchaseOrder', // 인앱결제 (중첩 콜백 패턴)
   '__AITRespondToNestedCallback', // 중첩 콜백 응답 함수
-  '__GoogleAdMob', // 네임스페이스 콜백 기반 광고 API (여러 이벤트 발생)
+  '__GoogleAdMobLoadAppsInTossAdMob', // 광고 로드 이벤트 (여러 이벤트 발생)
+  '__GoogleAdMobShowAppsInTossAdMob', // 광고 표시 이벤트 (여러 이벤트 발생)
+  // 참고: __GoogleAdMobIsAppsInTossAdMobLoaded_Internal은 일반 Promise API (단순 응답)
   '__contactsViral', // 연락처 바이럴 공유 (콜백 기반 API)
   '__onVisibilityChangedByTransparentServiceWeb', // 투명 서비스 웹 가시성 변경 구독
   '__startUpdateLocation', // 위치 업데이트 구독

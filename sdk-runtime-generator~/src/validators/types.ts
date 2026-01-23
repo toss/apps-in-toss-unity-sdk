@@ -80,6 +80,11 @@ export function isTypeSupported(type: ParsedType): boolean {
       if (type.isNullable && type.name && !type.name.includes('|')) {
         return true;
       }
+      // Named type이면서 valid한 식별자인 경우 허용 (외부 타입 참조)
+      // 예: IsAdMobLoadedOptions, LoadAdMobOptions 등
+      if (type.name && /^[A-Z][a-zA-Z0-9_]*$/.test(type.name)) {
+        return true;
+      }
       return false;
 
     default:

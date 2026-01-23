@@ -59,6 +59,9 @@ namespace AppsInToss
             {
                 string targetFile = Path.Combine(targetDir, Path.GetFileName(file));
                 File.Copy(file, targetFile, true);
+                // Unity WebGL 빌드 파일(.unityweb)이 600 권한으로 생성되는 문제 해결
+                // 복사 후 읽기 권한 부여 (웹 서버에서 접근 가능하도록)
+                EnsureFileReadable(targetFile);
             }
 
             foreach (var dir in Directory.GetDirectories(sourceDir))
@@ -66,6 +69,45 @@ namespace AppsInToss
                 string targetSubDir = Path.Combine(targetDir, Path.GetFileName(dir));
                 CopyDirectory(dir, targetSubDir);
             }
+        }
+
+        /// <summary>
+        /// 파일에 읽기 권한 부여 (macOS/Linux에서 chmod 644 효과)
+        /// </summary>
+        private static void EnsureFileReadable(string filePath)
+        {
+            try
+            {
+                // Windows: 읽기 전용 속성 제거
+                var attributes = File.GetAttributes(filePath);
+                if ((attributes & FileAttributes.ReadOnly) == FileAttributes.ReadOnly)
+                {
+                    File.SetAttributes(filePath, attributes & ~FileAttributes.ReadOnly);
+                }
+
+                // macOS/Linux: Mono.Posix가 없어도 동작하도록 chmod 명령 사용
+#if UNITY_EDITOR_OSX || UNITY_EDITOR_LINUX
+                try
+                {
+                    var process = new System.Diagnostics.Process
+                    {
+                        StartInfo = new System.Diagnostics.ProcessStartInfo
+                        {
+                            FileName = "chmod",
+                            Arguments = $"644 \"{filePath}\"",
+                            UseShellExecute = false,
+                            CreateNoWindow = true,
+                            RedirectStandardOutput = true,
+                            RedirectStandardError = true
+                        }
+                    };
+                    process.Start();
+                    process.WaitForExit(1000);
+                }
+                catch { }
+#endif
+            }
+            catch { }
         }
     }
 }

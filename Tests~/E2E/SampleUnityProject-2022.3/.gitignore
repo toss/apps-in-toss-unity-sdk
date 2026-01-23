@@ -14,8 +14,8 @@ webgl/
 # WebGL Templates (copied from SDK during build)
 Assets/WebGLTemplates/
 
-# Scene files (Unity modifies on every build due to fileID regeneration)
-Assets/Scenes/BenchmarkScene.unity
+# Package lock files (auto-generated)
+Packages/packages-lock.json
 
 # Resources folder (fonts copied from SharedScripts during build)
 Assets/Resources/

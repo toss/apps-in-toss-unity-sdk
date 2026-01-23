@@ -120,7 +120,7 @@ jobs:
 
     steps:
       - name: 배포 결과 아티팩트 다운로드
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           pattern: deploy-results-*
           path: all-deploy-results/

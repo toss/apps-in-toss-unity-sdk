@@ -860,6 +860,176 @@
             }
         }
 
+        // ============================================
+        // EventLog 메트릭 전송 설정
+        // ============================================
+        // 메트릭 전송 간격 (10000~60000ms, 기본값: 10000)
+        var AIT_WEB_METRICS_INTERVAL_MS = Math.max(10000, Math.min(60000, parseInt('%AIT_WEB_METRICS_INTERVAL_MS%') || 10000));
+        var AIT_UNITY_METRICS_INTERVAL_MS = Math.max(10000, Math.min(60000, parseInt('%AIT_UNITY_METRICS_INTERVAL_MS%') || 10000));
+
+        // 메트릭 전송 상태
+        var _webMetricsIntervalId = null;
+        var _unityMetricsIntervalId = null;
+        var _loadingMetricsSent = false;
+
+        // Unity 버전 감지 함수 (Metric Explorer와 공유)
+        function detectUnityVersionForMetrics() {
+            var inst = window.unityInstance;
+            if (!inst) return { version: 'Unknown', api: 'none' };
+
+            if (typeof inst.GetMetricsInfo === 'function') {
+                return { version: 'Unity 6+', api: 'GetMetricsInfo' };
+            } else if (typeof inst.GetMemoryInfo === 'function') {
+                return { version: 'Unity 2022.2+', api: 'GetMemoryInfo' };
+            } else {
+                return { version: 'Unity 2021.3 or earlier', api: 'none' };
+            }
+        }
+
+        // 안전하게 값을 설정하는 헬퍼
+        function safeSet(params, key, fn) { try { params[key] = fn(); } catch (e) {} }
+
+        // 바이트를 KB로 변환
+        function toKB(bytes) { return Math.round((bytes || 0) / 1024); }
+
+        // 메트릭 전송 공통 함수 - 에러 시에도 interval 유지
+        function sendMetrics(logName, getParams) {
+            try {
+                if (!window.AppsInToss || typeof window.AppsInToss.eventLog !== 'function') return;
+                var params = getParams();
+                if (!params) return;
+                var result = window.AppsInToss.eventLog({ log_name: logName, log_type: 'event', params: params });
+                if (result && result.catch) result.catch(function() {});
+                console.log('[AIT Metrics] ' + logName + ' sent');
+            } catch (e) {}
+        }
+
+        // Loading 메트릭 수집 - 각 항목별 에러 격리
+        function collectLoadingMetrics() {
+            try {
+                if (!window.AITLoadingLogger) return null;
+                var logger = window.AITLoadingLogger;
+                var fileStats = [], events = {};
+                try { fileStats = logger.getFileStats() || []; } catch (e) {}
+                try { events = logger.events || {}; } catch (e) {}
+
+                var params = {};
+                safeSet(params, 'total_time_ms', function() { return logger.getTotalTime(); });
+                safeSet(params, 'total_files', function() { return fileStats.length; });
+                safeSet(params, 'total_size_kb', function() { return toKB(fileStats.reduce(function(s, f) { return s + (f.size || 0); }, 0)); });
+                safeSet(params, 'decompression_fallback', function() { return fileStats.some(function(f) { return f.decompressionFallback; }); });
+
+                // 이벤트 타이밍
+                ['loading_start', 'loader_ready', 'unity_init_start', 'unity_progress_25', 'unity_progress_50',
+                 'unity_progress_75', 'unity_progress_100', 'unity_init_complete', 'loading_complete'].forEach(function(key) {
+                    safeSet(params, 'event_' + key + '_ms', function() { return events[key] ? Math.round(events[key].elapsed) : null; });
+                });
+
+                // 파일별 메트릭
+                var fileTypes = { wasm: '.wasm', data: '.data', framework: 'framework', loader: 'loader', symbols: 'symbols' };
+                Object.keys(fileTypes).forEach(function(type) {
+                    try {
+                        fileStats.filter(function(f) { return f.name && f.name.includes(fileTypes[type]); }).forEach(function(file, i) {
+                            var p = type + '_' + i + '_';
+                            safeSet(params, p + 'size_kb', function() { return toKB(file.size); });
+                            safeSet(params, p + 'duration_ms', function() { return file.duration || 0; });
+                            safeSet(params, p + 'speed_kbps', function() { return Math.round(file.avgSpeed || 0); });
+                        });
+                    } catch (e) {}
+                });
+                return params;
+            } catch (e) { return null; }
+        }
+
+        // Web 메트릭 수집 - 각 항목별 에러 격리
+        function collectWebMetrics() {
+            try {
+                var params = {};
+                safeSet(params, 'platform', function() { return navigator.platform; });
+                safeSet(params, 'language', function() { return navigator.language; });
+                safeSet(params, 'hardware_concurrency', function() { return navigator.hardwareConcurrency || null; });
+                safeSet(params, 'device_memory_gb', function() { return navigator.deviceMemory || null; });
+                safeSet(params, 'screen_width_px', function() { return screen.width; });
+                safeSet(params, 'screen_height_px', function() { return screen.height; });
+                safeSet(params, 'device_pixel_ratio', function() { return window.devicePixelRatio; });
+
+                try {
+                    if (performance.memory) {
+                        safeSet(params, 'js_heap_used_kb', function() { return toKB(performance.memory.usedJSHeapSize); });
+                        safeSet(params, 'js_heap_total_kb', function() { return toKB(performance.memory.totalJSHeapSize); });
+                    }
+                } catch (e) {}
+
+                try {
+                    if (navigator.connection) {
+                        safeSet(params, 'net_type', function() { return navigator.connection.effectiveType; });
+                        safeSet(params, 'net_downlink_mbps', function() { return navigator.connection.downlink; });
+                        safeSet(params, 'net_rtt_ms', function() { return navigator.connection.rtt; });
+                    }
+                } catch (e) {}
+
+                return params;
+            } catch (e) { return {}; }
+        }
+
+        // Unity 메트릭 수집 - 각 항목별 에러 격리
+        function collectUnityMetrics() {
+            try {
+                var versionInfo;
+                try { versionInfo = detectUnityVersionForMetrics(); } catch (e) { versionInfo = { version: 'unknown', api: 'none' }; }
+                var params = { unity_version: versionInfo.version, unity_metrics_api: versionInfo.api };
+
+                var inst = window.unityInstance;
+                if (!inst) return params;
+
+                var m = null;
+                try {
+                    m = versionInfo.api === 'GetMetricsInfo' ? inst.GetMetricsInfo() :
+                        versionInfo.api === 'GetMemoryInfo' ? inst.GetMemoryInfo() : null;
+                } catch (e) {}
+
+                if (m) {
+                    if (m.fps !== undefined) {
+                        safeSet(params, 'fps', function() { return Math.round(m.fps * 10) / 10; });
+                        safeSet(params, 'fps_avg', function() { return Math.round(m.movingAverageFps * 10) / 10; });
+                        safeSet(params, 'janked_frames', function() { return m.numJankedFrames; });
+                        safeSet(params, 'page_load_ms', function() { return Math.round(m.pageLoadTime); });
+                        safeSet(params, 'code_download_ms', function() { return Math.round(m.codeDownloadTime); });
+                        safeSet(params, 'wasm_startup_ms', function() { return Math.round(m.webAssemblyStartupTime); });
+                    }
+                    safeSet(params, 'js_heap_total_kb', function() { return toKB(m.totalJSHeapSize); });
+                    safeSet(params, 'js_heap_used_kb', function() { return toKB(m.usedJSHeapSize); });
+                    safeSet(params, 'wasm_heap_total_kb', function() { return toKB(m.totalWASMHeapSize); });
+                    safeSet(params, 'wasm_heap_used_kb', function() { return toKB(m.usedWASMHeapSize); });
+                }
+                return params;
+            } catch (e) { return {}; }
+        }
+
+        // 메트릭 전송 함수들
+        function sendLoadingMetrics() {
+            if (_loadingMetricsSent) return;
+            _loadingMetricsSent = true;
+            sendMetrics('unity_loading_metrics', collectLoadingMetrics);
+        }
+
+        function sendWebMetrics() { sendMetrics('unity_web_metrics', collectWebMetrics); }
+        function sendUnityMetrics() { if (window.unityInstance) sendMetrics('unity_runtime_metrics', collectUnityMetrics); }
+
+        function startWebMetricsInterval(ms) {
+            if (_webMetricsIntervalId) return;
+            sendWebMetrics();
+            _webMetricsIntervalId = setInterval(sendWebMetrics, ms);
+            console.log('[AIT Metrics] Web metrics: periodic sending every ' + ms + 'ms');
+        }
+
+        function startUnityMetricsInterval(ms) {
+            if (_unityMetricsIntervalId) return;
+            sendUnityMetrics();
+            _unityMetricsIntervalId = setInterval(sendUnityMetrics, ms);
+            console.log('[AIT Metrics] Unity metrics: periodic sending every ' + ms + 'ms');
+        }
+
         // 로딩 화면 숨기기
         function hideLoadingScreen() {
             if (window.AITLoadingLogger) {
@@ -867,6 +1037,14 @@
                 AITLoadingLogger.printSummary();
                 AITLoadingLogger.notifyComplete();
             }
+
+            // 메트릭 전송 시작 (1초 후)
+            setTimeout(function() {
+                sendLoadingMetrics();
+                startWebMetricsInterval(AIT_WEB_METRICS_INTERVAL_MS);
+                startUnityMetricsInterval(AIT_UNITY_METRICS_INTERVAL_MS);
+            }, 1000);
+
             aitLoading.style.display = 'none';
         }
 

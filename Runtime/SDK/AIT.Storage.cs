@@ -1,0 +1,217 @@
+// -----------------------------------------------------------------------
+// <copyright file="AIT.Storage.cs" company="Toss">
+//     Copyright (c) Toss. All rights reserved.
+//     Apps in Toss Unity SDK - Storage APIs
+// </copyright>
+// -----------------------------------------------------------------------
+
+using System;
+using System.Threading.Tasks;
+using Newtonsoft.Json;
+using UnityEngine.Scripting;
+#if UNITY_6000_0_OR_NEWER
+using UnityEngine;
+#endif
+
+namespace AppsInToss
+{
+    /// <summary>
+    /// Apps in Toss Platform API - Storage
+    /// </summary>
+    public static partial class AIT
+    {
+        /// <summary>
+        /// 모바일 앱의 로컬 저장소에서 문자열 데이터를 가져와요. 주로 앱이 종료되었다가 다시 시작해도 데이터가 유지되어야 하는 경우에 사용해요.
+        /// </summary>
+        /// <returns>결과 값 또는 null</returns>
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
+        [APICategory("Storage")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<string> StorageGetItem(string args_0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<string>();
+            string callbackId = AITCore.Instance.RegisterCallback<string>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error)
+            );
+            __StorageGetItem_Internal(args_0, callbackId, "string");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] StorageGetItem called");
+            await Awaitable.NextFrameAsync();
+            return "";
+#endif
+        }
+#else
+        public static async Task<string> StorageGetItem(string args_0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<string>();
+            string callbackId = AITCore.Instance.RegisterCallback<string>(
+                result => tcs.TrySetResult(result),
+                error => tcs.TrySetException(error)
+            );
+            __StorageGetItem_Internal(args_0, callbackId, "string");
+            return await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] StorageGetItem called");
+            await Task.CompletedTask;
+            return "";
+#endif
+        }
+#endif
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __StorageGetItem_Internal(string args_0, string callbackId, string typeName);
+#endif
+        /// <summary>
+        /// 모바일 앱의 로컬 저장소에 문자열 데이터를 저장해요. 주로 앱이 종료되었다가 다시 시작해도 데이터가 유지되어야 하는 경우에 사용해요.
+        /// </summary>
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
+        [APICategory("Storage")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable StorageSetItem(string args_0, string args_1)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource();
+            string callbackId = AITCore.Instance.RegisterCallback<object>(
+                result => acs.SetResult(),
+                error => acs.SetException(error)
+            );
+            __StorageSetItem_Internal(args_0, args_1, callbackId, "void");
+            await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] StorageSetItem called");
+            await Awaitable.NextFrameAsync();
+            // void return - nothing to return
+#endif
+        }
+#else
+        public static async Task StorageSetItem(string args_0, string args_1)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<object>();
+            string callbackId = AITCore.Instance.RegisterCallback<object>(
+                result => tcs.TrySetResult(null),
+                error => tcs.TrySetException(error)
+            );
+            __StorageSetItem_Internal(args_0, args_1, callbackId, "void");
+            await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] StorageSetItem called");
+            await Task.CompletedTask;
+            // void return - nothing to return
+#endif
+        }
+#endif
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __StorageSetItem_Internal(string args_0, string args_1, string callbackId, string typeName);
+#endif
+        /// <summary>
+        /// 모바일 앱의 로컬 저장소에서 특정 키에 해당하는 아이템을 삭제해요.
+        /// </summary>
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
+        [APICategory("Storage")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable StorageRemoveItem(string args_0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource();
+            string callbackId = AITCore.Instance.RegisterCallback<object>(
+                result => acs.SetResult(),
+                error => acs.SetException(error)
+            );
+            __StorageRemoveItem_Internal(args_0, callbackId, "void");
+            await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] StorageRemoveItem called");
+            await Awaitable.NextFrameAsync();
+            // void return - nothing to return
+#endif
+        }
+#else
+        public static async Task StorageRemoveItem(string args_0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<object>();
+            string callbackId = AITCore.Instance.RegisterCallback<object>(
+                result => tcs.TrySetResult(null),
+                error => tcs.TrySetException(error)
+            );
+            __StorageRemoveItem_Internal(args_0, callbackId, "void");
+            await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] StorageRemoveItem called");
+            await Task.CompletedTask;
+            // void return - nothing to return
+#endif
+        }
+#endif
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __StorageRemoveItem_Internal(string args_0, string callbackId, string typeName);
+#endif
+        /// <summary>
+        /// 모바일 앱의 로컬 저장소의 모든 아이템을 삭제해요.
+        /// </summary>
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
+        [APICategory("Storage")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable StorageClearItems()
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource();
+            string callbackId = AITCore.Instance.RegisterCallback<object>(
+                result => acs.SetResult(),
+                error => acs.SetException(error)
+            );
+            __StorageClearItems_Internal(callbackId, "void");
+            await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] StorageClearItems called");
+            await Awaitable.NextFrameAsync();
+            // void return - nothing to return
+#endif
+        }
+#else
+        public static async Task StorageClearItems()
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<object>();
+            string callbackId = AITCore.Instance.RegisterCallback<object>(
+                result => tcs.TrySetResult(null),
+                error => tcs.TrySetException(error)
+            );
+            __StorageClearItems_Internal(callbackId, "void");
+            await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] StorageClearItems called");
+            await Task.CompletedTask;
+            // void return - nothing to return
+#endif
+        }
+#endif
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __StorageClearItems_Internal(string callbackId, string typeName);
+#endif
+    }
+}

@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: '릴리즈 버전 (예: 1.6.0) - 비워두면 web-framework 최신 버전 사용'
+        description: '릴리즈 버전 (예: 1.6.0) - 비워두면 누락된 모든 버전 감지'
         required: false
         type: string
       force:
@@ -16,15 +16,150 @@ on:
     - cron: '0 0 * * 1-5'  # 평일 오전 9시 KST (UTC 0시)
 
 jobs:
-  update:
-    name: SDK 업데이트 PR 생성
+  # =====================================================
+  # 누락된 버전 감지
+  # =====================================================
+  detect-versions:
+    name: 누락된 버전 감지
     runs-on: ubuntu-latest
+    outputs:
+      versions: ${{ steps.detect.outputs.versions }}
+      has_versions: ${{ steps.detect.outputs.has_versions }}
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: 누락된 버전 감지
+        id: detect
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # 입력된 버전이 있으면 해당 버전만 사용
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+            echo "입력된 버전 사용: ${VERSION}"
+            echo "versions=[\"${VERSION}\"]" >> $GITHUB_OUTPUT
+            echo "has_versions=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # npm에서 모든 버전 가져오기 (정식 릴리즈만, dev/alpha/beta 제외)
+          echo "=== npm에서 버전 목록 가져오기 ==="
+          ALL_NPM_VERSIONS=$(npm view @apps-in-toss/web-framework versions --json | jq -r '.[]' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V)
+          echo "npm 버전 목록:"
+          echo "$ALL_NPM_VERSIONS"
+
+          # 현재 SDK 버전 확인
+          CURRENT_VERSION=$(jq -r '.version' package.json)
+          echo ""
+          echo "현재 SDK 버전: ${CURRENT_VERSION}"
+
+          # 기존 릴리즈 태그 목록
+          echo ""
+          echo "=== 기존 릴리즈 태그 확인 ==="
+          EXISTING_TAGS=$(git tag -l 'release/v*' | sed 's/release\/v//' | sort -V)
+          echo "기존 태그:"
+          echo "$EXISTING_TAGS"
+
+          # 열린 PR 목록 (update/ 브랜치)
+          echo ""
+          echo "=== 열린 PR 확인 ==="
+          OPEN_PR_VERSIONS=$(gh pr list --state open --json headRefName --jq '.[].headRefName' 2>/dev/null | grep '^update/' | sed 's/update\/\([0-9.]*\).*/\1/' | sort -V || echo "")
+          echo "열린 PR 버전:"
+          echo "$OPEN_PR_VERSIONS"
+
+          # 누락된 버전 찾기
+          echo ""
+          echo "=== 누락된 버전 감지 ==="
+          MISSING_VERSIONS=""
+
+          for VERSION in $ALL_NPM_VERSIONS; do
+            # 현재 버전 이하는 스킵
+            if [ "$(printf '%s\n' "$CURRENT_VERSION" "$VERSION" | sort -V | head -n1)" = "$VERSION" ] && [ "$VERSION" != "$CURRENT_VERSION" ]; then
+              continue
+            fi
+
+            # 이미 릴리즈 태그가 있으면 스킵
+            if echo "$EXISTING_TAGS" | grep -qx "$VERSION"; then
+              echo "  ${VERSION}: 이미 릴리즈됨 (스킵)"
+              continue
+            fi
+
+            # 이미 열린 PR이 있으면 스킵
+            if echo "$OPEN_PR_VERSIONS" | grep -qx "$VERSION"; then
+              echo "  ${VERSION}: 열린 PR 존재 (스킵)"
+              continue
+            fi
+
+            echo "  ${VERSION}: 누락됨 (처리 대상)"
+            MISSING_VERSIONS="${MISSING_VERSIONS} ${VERSION}"
+          done
+
+          # 결과 정리
+          MISSING_VERSIONS=$(echo "$MISSING_VERSIONS" | xargs)
+
+          if [ -z "$MISSING_VERSIONS" ]; then
+            echo ""
+            echo "누락된 버전이 없습니다."
+            echo "versions=[]" >> $GITHUB_OUTPUT
+            echo "has_versions=false" >> $GITHUB_OUTPUT
+          else
+            echo ""
+            echo "누락된 버전 목록: ${MISSING_VERSIONS}"
+            # JSON 배열로 변환
+            JSON_VERSIONS=$(echo "$MISSING_VERSIONS" | tr ' ' '\n' | jq -R -s -c 'split("\n") | map(select(length > 0))')
+            echo "JSON: ${JSON_VERSIONS}"
+            echo "versions=${JSON_VERSIONS}" >> $GITHUB_OUTPUT
+            echo "has_versions=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 감지 결과 요약
+        run: |
+          echo "## SDK Update - 버전 감지 결과" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          VERSIONS='${{ steps.detect.outputs.versions }}'
+          HAS_VERSIONS='${{ steps.detect.outputs.has_versions }}'
+
+          if [ "$HAS_VERSIONS" = "true" ]; then
+            echo "### 처리 대상 버전" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "$VERSIONS" | jq -r '.[]' | while read v; do
+              echo "- v${v}" >> $GITHUB_STEP_SUMMARY
+            done
+          else
+            echo "✅ 누락된 버전이 없습니다." >> $GITHUB_STEP_SUMMARY
+          fi
+
+  # =====================================================
+  # 각 버전별 PR 생성
+  # =====================================================
+  update:
+    name: SDK 업데이트 v${{ matrix.version }}
+    runs-on: ubuntu-latest
+    needs: detect-versions
+    if: needs.detect-versions.outputs.has_versions == 'true'
+
+    strategy:
+      fail-fast: false
+      max-parallel: 1  # 순차 실행 (git 충돌 방지)
+      matrix:
+        version: ${{ fromJson(needs.detect-versions.outputs.versions) }}
+
     outputs:
       pr_created: ${{ steps.create-pr.outputs.pr_created }}
       pr_number: ${{ steps.create-pr.outputs.pr_number }}
-      branch_name: ${{ steps.version.outputs.branch_name }}
-      skip: ${{ steps.check.outputs.skip }}
-      no_changes: ${{ steps.commit.outputs.no_changes }}
 
     steps:
       - name: Checkout main
@@ -44,23 +179,10 @@ jobs:
         with:
           version: 9
 
-      - name: 버전 결정
+      - name: 버전 설정
         id: version
         run: |
-          # 입력된 버전 또는 web-framework 최신 버전
-          if [ -n "${{ github.event.inputs.version }}" ]; then
-            VERSION="${{ github.event.inputs.version }}"
-            echo "입력된 버전 사용: ${VERSION}"
-          else
-            # 공개 npm에서 최신 버전 확인
-            VERSION=$(npm view @apps-in-toss/web-framework version 2>/dev/null || echo "")
-            if [ -z "$VERSION" ]; then
-              echo "::error::web-framework 버전을 확인할 수 없습니다"
-              exit 1
-            fi
-            echo "web-framework 최신 버전: ${VERSION}"
-          fi
-
+          VERSION="${{ matrix.version }}"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
           # 타임스탬프 생성 (YYYYMMDD-HHmmss)
@@ -70,28 +192,17 @@ jobs:
           BRANCH_NAME="update/${VERSION}-${TIMESTAMP}"
           echo "branch_name=${BRANCH_NAME}" >> $GITHUB_OUTPUT
 
-      - name: 기존 버전 확인 및 스킵 판단
+      - name: 스킵 판단
         id: check
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
+          VERSION="${{ matrix.version }}"
           FORCE="${{ github.event.inputs.force }}"
-
-          # 현재 package.json 버전 확인
-          CURRENT_VERSION=$(jq -r '.version' package.json)
-          echo "현재 버전: ${CURRENT_VERSION}"
-          echo "대상 버전: ${VERSION}"
 
           SKIP="false"
 
-          # 이미 같은 버전이고 강제 업데이트가 아니면 스킵
-          if [ "$CURRENT_VERSION" = "$VERSION" ] && [ "$FORCE" != "true" ]; then
-            echo "이미 최신 버전입니다."
-            SKIP="true"
-          fi
-
-          # 이미 같은 버전의 열린 PR이 있는지 확인
+          # 이미 같은 버전의 열린 PR이 있는지 재확인
           EXISTING_PR=$(gh pr list --state open --search "head:update/${VERSION}" --json number --jq '.[0].number' 2>/dev/null || echo "")
           if [ -n "$EXISTING_PR" ] && [ "$FORCE" != "true" ]; then
             echo "::warning::이미 버전 ${VERSION}에 대한 열린 PR이 있습니다: #${EXISTING_PR}"

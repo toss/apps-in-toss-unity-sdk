@@ -36,15 +36,14 @@ let serverProcess = null;
 let actualServerPort = VITE_DEV_PORT;
 
 /**
- * Dev 서버 시작 (npx vite --host --port)
+ * Dev 서버 시작 (pnpx vite)
  */
 async function startServer(aitBuildDir, vitePort) {
   console.log(`🔌 Using vite port: ${vitePort} (offset: ${PORT_OFFSET})`);
 
   return new Promise((resolve, reject) => {
-    // npx vite 직접 실행 (granite는 --port 인자를 무시하므로 vite 직접 호출)
-    // Windows에서 spawn('npx', ...)이 ENOENT 에러 발생하므로 shell: true 사용
-    const server = spawn('npx', ['vite', '--host', '--port', String(vitePort)], {
+    // pnpx vite 사용 (pnpm exec)
+    const server = spawn('pnpx', ['vite', '--host', '--port', String(vitePort)], {
       cwd: aitBuildDir,
       stdio: 'pipe',
       shell: true,
@@ -56,7 +55,7 @@ async function startServer(aitBuildDir, vitePort) {
 
     server.stdout.on('data', (data) => {
       const output = data.toString();
-      console.log('[vite dev]', output);
+      console.log('[dev server]', output);
 
       // ANSI 색상 코드 제거 후 포트 파싱
       // IPv4 (localhost, 0.0.0.0, 127.0.0.1), IPv6 ([::], [::1])
@@ -71,17 +70,29 @@ async function startServer(aitBuildDir, vitePort) {
     });
 
     server.stderr.on('data', (data) => {
-      console.error('[vite dev error]', data.toString());
+      const output = data.toString();
+      console.error('[dev server stderr]', output);
+      // stderr에서도 포트 파싱 시도 (일부 출력이 stderr로 갈 수 있음)
+      const cleanOutput = output.replace(/\x1B\[[0-9;]*[mGKH]/g, '');
+      const portMatch = cleanOutput.match(/localhost:(\d+)/);
+      if (portMatch && !started) {
+        actualPort = parseInt(portMatch[1], 10);
+        console.log(`📍 Server running on port: ${actualPort}`);
+        started = true;
+        resolve({ process: server, port: actualPort });
+      }
     });
 
     server.on('error', reject);
 
+    // 30초 타임아웃 (granite/vite 초기화에 시간이 걸릴 수 있음)
     setTimeout(() => {
       if (!started) {
         started = true;
+        console.log(`⚠️ Server start timeout, assuming port: ${actualPort}`);
         resolve({ process: server, port: actualPort });
       }
-    }, 10000);
+    }, 30000);
   });
 }
 
@@ -92,8 +103,27 @@ test.describe('Interactive API Tester', () => {
     serverProcess = devServer.process;
     actualServerPort = devServer.port;
 
-    // 서버 준비 대기
-    await new Promise(r => setTimeout(r, 3000));
+    // 서버 준비 대기 및 확인 - 더 강력하게
+    console.log('⏳ Waiting for server to be ready...');
+    let serverReady = false;
+    for (let i = 0; i < 30; i++) {  // 최대 60초 대기
+      try {
+        const response = await fetch(`http://localhost:${actualServerPort}/`);
+        if (response.ok) {
+          console.log(`✅ Server ready on port ${actualServerPort}`);
+          serverReady = true;
+          break;
+        }
+      } catch (e) {
+        console.log(`⏳ Waiting... (attempt ${i + 1}/30)`);
+        await new Promise(r => setTimeout(r, 2000));
+      }
+    }
+    if (!serverReady) {
+      throw new Error(`Server failed to start on port ${actualServerPort}`);
+    }
+    // 추가 안정화 대기
+    await new Promise(r => setTimeout(r, 2000));
   });
 
   test.afterAll(async () => {

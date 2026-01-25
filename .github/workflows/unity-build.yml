@@ -330,7 +330,7 @@ jobs:
           rm -f "$LOCK_FILE"
           echo "Regenerating pnpm-lock.yaml..."
           cd "$BUILD_CONFIG_DIR"
-          npx pnpm@9 install --lockfile-only
+          pnpx pnpm@9 install --lockfile-only
           echo "pnpm-lock.yaml regenerated"
 
       # =====================================================
@@ -515,12 +515,13 @@ jobs:
               }
             }
 
-            if ($unityProcess.ExitCode -ne 0) {
-              Write-Host "::error::Unity build failed with exit code: $($unityProcess.ExitCode)"
-              exit $unityProcess.ExitCode
+            $exitCode = $unityProcess.ExitCode
+            if ($null -ne $exitCode -and $exitCode -ne 0) {
+              Write-Host "::error::Unity build failed with exit code: $exitCode"
+              exit $exitCode
             }
 
-            Write-Host "Unity build completed successfully"
+            Write-Host "Unity build completed successfully (exit code: $exitCode)"
 
       # =====================================================
       # 빌드 출력 검증
@@ -627,20 +628,33 @@ jobs:
         if: inputs.os == 'macos' && inputs.run-e2e-test
         working-directory: Tests~/E2E/tests
         run: |
-          rm -rf node_modules package-lock.json
-          npm install
-          npx playwright install chromium --with-deps
-          npx playwright --version
+          rm -rf node_modules package-lock.json pnpm-lock.yaml
+          pnpm install
+          pnpx playwright install chromium --with-deps
+          pnpx playwright --version
 
       - name: Install Playwright Dependencies (Windows)
         if: inputs.os == 'windows' && inputs.run-e2e-test
         working-directory: Tests~/E2E/tests
-        shell: cmd
+        shell: powershell
+        env:
+          # Use job-local Playwright cache to avoid race conditions between parallel runners
+          PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}\.playwright-browsers
         run: |
-          if exist node_modules rmdir /s /q node_modules
-          if exist package-lock.json del package-lock.json
-          npm install
-          npx playwright install chromium --with-deps
+          # Clean node_modules and lock files
+          if (Test-Path node_modules) { Remove-Item -Recurse -Force node_modules }
+          if (Test-Path package-lock.json) { Remove-Item -Force package-lock.json }
+          if (Test-Path pnpm-lock.yaml) { Remove-Item -Force pnpm-lock.yaml }
+
+          # Clean job-local Playwright cache
+          if (Test-Path $env:PLAYWRIGHT_BROWSERS_PATH) {
+            Write-Host "Cleaning job-local Playwright cache: $env:PLAYWRIGHT_BROWSERS_PATH"
+            Remove-Item -Recurse -Force $env:PLAYWRIGHT_BROWSERS_PATH
+          }
+
+          pnpm install
+          pnpx playwright install chromium --with-deps
+          pnpx playwright --version
 
       - name: Run E2E Tests (macOS - Full)
         if: inputs.os == 'macos' && inputs.run-e2e-test
@@ -648,7 +662,7 @@ jobs:
         env:
           UNITY_PROJECT_PATH: ${{ github.workspace }}/Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}
           MOBILE_EMULATION: "true"
-        run: npm test
+        run: pnpm test
 
       - name: Run E2E Tests (Windows - 1-5 only)
         if: inputs.os == 'windows' && inputs.run-e2e-test
@@ -656,7 +670,9 @@ jobs:
         shell: powershell
         env:
           UNITY_PROJECT_PATH: ${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ inputs.unity-version }}
-        run: npx playwright test --grep "[1-5]\. "
+          # Use job-local Playwright cache to avoid race conditions between parallel runners
+          PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}\.playwright-browsers
+        run: pnpx playwright test --grep "[1-5]\. "
 
       # =====================================================
       # 벤치마크 결과 업로드 (선택적)

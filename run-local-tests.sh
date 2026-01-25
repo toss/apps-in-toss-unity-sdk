@@ -427,14 +427,14 @@ test_e2e_playwright() {
     cd "$SCRIPT_DIR/Tests~/E2E/tests"
 
     echo "Installing dependencies..."
-    npm ci --silent
+    pnpm install --silent
 
     echo "Installing Playwright Chromium..."
-    npx playwright install chromium
+    pnpx playwright install chromium
 
     # 테스트 실행 시 프로젝트 경로를 환경변수로 전달
     echo "Running E2E tests..."
-    if UNITY_PROJECT_PATH="$project_path" npm test; then
+    if UNITY_PROJECT_PATH="$project_path" pnpm test; then
         print_success "E2E Playwright Tests ($version_pattern)"
 
         # 결과 출력
@@ -530,10 +530,10 @@ test_playwright_config() {
     cd "$SCRIPT_DIR/Tests~/E2E/tests"
 
     echo "Installing dependencies..."
-    npm install --silent 2>/dev/null || npm install
+    pnpm install --silent 2>/dev/null || pnpm install
 
     echo "Validating Playwright version..."
-    npx playwright --version 2>/dev/null
+    pnpx playwright --version 2>/dev/null
 
     echo "Checking test file exists..."
     if [ -f "e2e-full-pipeline.test.js" ]; then

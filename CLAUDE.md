@@ -327,3 +327,21 @@ npm test
 2. Playwright E2E 테스트 (9개 테스트)
 3. 벤치마크 결과 아티팩트로 업로드
 4. 성능 메트릭이 포함된 Job summary
+
+### 워크플로우 트리거 가이드라인
+
+**E2E Tests 및 Preview 워크플로우 트리거 시 PR 번호 사용 권장:**
+
+```bash
+# ✅ 권장: PR 번호로 트리거 (PR 코멘트에 결과가 자동 게시됨)
+gh workflow run "E2E Tests" --repo toss/apps-in-toss-unity-sdk -f pr_number=123
+gh workflow run "Preview" --repo toss/apps-in-toss-unity-sdk -f target_ref=123 -f targets="macos-6000.2"
+
+# ⚠️ 비권장: 브랜치명으로 트리거 (PR 코멘트 없음)
+gh workflow run "E2E Tests" --repo toss/apps-in-toss-unity-sdk --ref feature-branch
+```
+
+**이유:**
+- PR 번호로 트리거하면 워크플로우 결과가 PR 코멘트로 자동 게시됨
+- 브랜치명이나 커밋 해시로 트리거하면 PR과 연결되지 않아 결과 확인이 어려움
+- Preview 배포 URL도 PR 코멘트에 포함됨

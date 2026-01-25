@@ -13,7 +13,7 @@
     "test:tier2": "vitest run binding.test.ts",
     "test:tier3": "vitest run serialization.test.ts",
     "test:tier4": "vitest run differential.test.ts",
-    "test:update-golden": "npx tsx scripts/update-golden.ts"
+    "test:update-golden": "pnpx tsx scripts/update-golden.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

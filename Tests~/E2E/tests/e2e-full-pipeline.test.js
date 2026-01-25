@@ -223,9 +223,9 @@ async function startDevServer(aitBuildDir, defaultPort) {
   await new Promise(r => setTimeout(r, 1000));
 
   return new Promise((resolve, reject) => {
-    // npx vite 직접 실행 (granite는 --port 인자를 무시하므로 vite 직접 호출)
-    // Windows에서 spawn('npx', ...)이 ENOENT 에러 발생하므로 shell: true 사용
-    const server = spawn('npx', ['vite', '--host', '--port', String(vitePort)], {
+    // pnpx vite 직접 실행 (granite는 --port 인자를 무시하므로 vite 직접 호출)
+    // Windows에서 spawn('pnpx', ...)이 ENOENT 에러 발생하므로 shell: true 사용
+    const server = spawn('pnpx', ['vite', '--host', '--port', String(vitePort)], {
       cwd: aitBuildDir,
       stdio: 'pipe',
       shell: true,
@@ -296,9 +296,8 @@ async function startGraniteDevServer(aitBuildDir, viteHost, vitePort, graniteHos
   await new Promise(r => setTimeout(r, 1000));
 
   return new Promise((resolve, reject) => {
-    // npm exec -- granite dev 실행 (Unity Editor와 동일한 방식)
-    // 주의: "--" 구분자가 반드시 필요함 (npm 옵션과 패키지 옵션 분리)
-    const server = spawn('npm', ['exec', '--', 'granite', 'dev'], {
+    // pnpm exec granite dev 실행 (Unity Editor와 동일한 방식)
+    const server = spawn('pnpm', ['exec', 'granite', 'dev'], {
       cwd: aitBuildDir,
       stdio: 'pipe',
       shell: true,
@@ -340,9 +339,9 @@ async function startGraniteDevServer(aitBuildDir, viteHost, vitePort, graniteHos
       startupOutput += output;
       console.error('[granite dev error]', output);
 
-      // npm 옵션 파싱 에러 감지 (버그 재발 시)
+      // pnpm 옵션 파싱 에러 감지 (버그 재발 시)
       if (output.includes('Unknown cli config') || output.includes('Extraneous positional argument')) {
-        reject(new Error(`npm exec 명령어 파싱 에러 감지: ${output}`));
+        reject(new Error(`pnpm exec 명령어 파싱 에러 감지: ${output}`));
       }
     });
 
@@ -391,9 +390,9 @@ async function startProductionServer(aitBuildDir, defaultPort) {
 
   return new Promise((resolve, reject) => {
     // vite preview 직접 실행 (포트 지정 가능)
-    // npm run start는 포트 인자를 전달하기 어려우므로 npx vite preview 사용
-    // Windows에서 spawn('npx', ...)이 ENOENT 에러 발생하므로 shell: true 사용
-    const server = spawn('npx', ['vite', 'preview', '--outDir', 'dist/web', '--port', String(defaultPort)], {
+    // pnpm run start는 포트 인자를 전달하기 어려우므로 pnpx vite preview 사용
+    // Windows에서 spawn('pnpx', ...)이 ENOENT 에러 발생하므로 shell: true 사용
+    const server = spawn('pnpx', ['vite', 'preview', '--outDir', 'dist/web', '--port', String(defaultPort)], {
       cwd: aitBuildDir,
       stdio: 'pipe',
       shell: true,
@@ -656,11 +655,11 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
   // -------------------------------------------------------------------------
   // Test 1.5: Granite Dev Server Command Validation
   // Unity Editor의 "Start Server" 메뉴와 동일한 방식으로 서버 시작 검증
-  // 버그 재발 방지: npm exec 명령어 파싱 에러 감지
+  // 버그 재발 방지: pnpm exec 명령어 파싱 에러 감지
   // -------------------------------------------------------------------------
-  // Test 1.5: npm exec -- granite dev 명령어 파싱 검증
+  // Test 1.5: pnpm exec granite dev 명령어 파싱 검증
   // 이 테스트는 서버가 완전히 시작될 때까지 기다리지 않고,
-  // npm exec 명령어가 올바르게 파싱되는지만 확인합니다.
+  // pnpm exec 명령어가 올바르게 파싱되는지만 확인합니다.
   // (포트 충돌 이슈를 피하기 위해 간소화됨)
   test('1.5. Granite dev server command should work correctly', async () => {
     test.setTimeout(30000); // 30초
@@ -688,14 +687,13 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       return;
     }
 
-    console.log('🚀 Testing granite dev command parsing (npm exec -- granite dev)...');
-    console.log('   This validates the fix for npm exec command parsing bug');
+    console.log('🚀 Testing granite dev command parsing (pnpm exec granite dev)...');
+    console.log('   This validates the fix for pnpm exec command parsing bug');
 
     let graniteProcess = null;
     try {
-      // npm exec -- granite dev 명령어 실행 (Unity Editor와 동일한 방식)
-      // 주의: "--" 구분자가 반드시 필요함 (npm 옵션과 패키지 옵션 분리)
-      graniteProcess = spawn('npm', ['exec', '--', 'granite', 'dev'], {
+      // pnpm exec granite dev 명령어 실행 (Unity Editor와 동일한 방식)
+      graniteProcess = spawn('pnpm', ['exec', 'granite', 'dev'], {
         cwd: AIT_BUILD,
         stdio: 'pipe',
         shell: true,
@@ -703,7 +701,7 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       });
 
       let output = '';
-      let hasNpmParsingError = false;
+      let hasPnpmParsingError = false;
       let graniteStarted = false;
 
       graniteProcess.stdout.on('data', (data) => {
@@ -722,34 +720,34 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
         output += text;
         console.log('[granite dev stderr]', text);
 
-        // npm 옵션 파싱 에러 감지 (버그 재발 시)
+        // pnpm 옵션 파싱 에러 감지 (버그 재발 시)
         if (text.includes('Unknown cli config') ||
             text.includes('Extraneous positional argument') ||
             text.includes('is being parsed as a normal command line argument')) {
-          hasNpmParsingError = true;
+          hasPnpmParsingError = true;
         }
       });
 
       // 5초간 출력 수집 (서버 완전 시작 안 기다림, 명령어 파싱만 확인)
       await new Promise(r => setTimeout(r, 5000));
 
-      // npm 옵션 파싱 에러 확인
-      expect(hasNpmParsingError, 'npm exec 명령어 파싱 에러가 없어야 함').toBe(false);
+      // pnpm 옵션 파싱 에러 확인
+      expect(hasPnpmParsingError, 'pnpm exec 명령어 파싱 에러가 없어야 함').toBe(false);
 
-      // 출력에서 npm 파싱 에러 재확인
+      // 출력에서 pnpm 파싱 에러 재확인
       const hasParsingErrorInOutput =
         output.includes('Unknown cli config') ||
         output.includes('Extraneous positional argument');
-      expect(hasParsingErrorInOutput, '출력에 npm 파싱 에러가 없어야 함').toBe(false);
+      expect(hasParsingErrorInOutput, '출력에 pnpm 파싱 에러가 없어야 함').toBe(false);
 
       testResults.tests['1.5_granite_dev_command'] = {
         passed: true,
-        npmParsingErrorDetected: false,
+        pnpmParsingErrorDetected: false,
         graniteStarted: graniteStarted
       };
 
       console.log(`✅ Granite dev command test passed`);
-      console.log(`   - npm exec parsing: OK`);
+      console.log(`   - pnpm exec parsing: OK`);
       console.log(`   - granite started: ${graniteStarted}`);
 
     } catch (error) {

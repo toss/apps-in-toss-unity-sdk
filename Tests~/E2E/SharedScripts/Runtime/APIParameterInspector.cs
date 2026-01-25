@@ -356,8 +356,9 @@ public static class APIParameterInspector
         }
 
         // APICategoryAttribute 타입 찾기 (AIT와 같은 어셈블리에서)
+        // 참고: IL2CPP/WebGL에서는 reflection으로 attribute를 읽을 수 없으므로
+        // 실제 카테고리는 GetCategoryByName() 하드코딩 매핑을 사용함
         Type categoryAttrType = aitType.Assembly.GetType("AppsInToss.APICategoryAttribute");
-        Debug.Log($"[APIParameterInspector] APICategoryAttribute type: {(categoryAttrType != null ? categoryAttrType.FullName : "NOT FOUND")}");
 
         if (categoryAttrType == null)
         {
@@ -369,20 +370,13 @@ public static class APIParameterInspector
                     var types = assembly.GetTypes().Where(t => t.Name == "APICategoryAttribute").ToArray();
                     foreach (var t in types)
                     {
-                        Debug.Log($"[APIParameterInspector] Found APICategoryAttribute in: {assembly.GetName().Name} -> {t.FullName}");
                         categoryAttrType = t; // 찾으면 사용
                     }
                 }
-                catch (Exception ex)
+                catch
                 {
-                    // 일부 어셈블리는 GetTypes()가 실패할 수 있음
-                    Debug.LogWarning($"[APIParameterInspector] Cannot get types from {assembly.GetName().Name}: {ex.Message}");
+                    // 일부 어셈블리는 GetTypes()가 실패할 수 있음 - 무시
                 }
-            }
-
-            if (categoryAttrType == null)
-            {
-                Debug.LogWarning("[APIParameterInspector] Cannot find APICategoryAttribute type, all APIs will be categorized as 'Other'");
             }
         }
 

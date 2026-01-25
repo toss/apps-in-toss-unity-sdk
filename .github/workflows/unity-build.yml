@@ -330,7 +330,7 @@ jobs:
           rm -f "$LOCK_FILE"
           echo "Regenerating pnpm-lock.yaml..."
           cd "$BUILD_CONFIG_DIR"
-          pnpx pnpm@9 install --lockfile-only
+          npx pnpm@9 install --lockfile-only
           echo "pnpm-lock.yaml regenerated"
 
       # =====================================================

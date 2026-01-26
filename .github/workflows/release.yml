@@ -321,18 +321,20 @@ jobs:
              package.json > tmp.json && mv tmp.json package.json
 
           # AITVersionConstants.cs 업데이트
-          cat > Runtime/Helpers/AITVersionConstants.cs << EOF
-          // Auto-generated during release
-          // Released at: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          namespace AppsInToss
-          {
-              internal static class AITVersionConstants
-              {
-                  public const string Version = "${VERSION}";
-                  public const string ReleaseDateTime = "${RELEASE_DATETIME}";
-              }
-          }
-          EOF
+          cat > Runtime/Helpers/AITVersionConstants.cs << 'CSEOF'
+// Auto-generated during release
+namespace AppsInToss
+{
+    internal static class AITVersionConstants
+    {
+        public const string Version = "PLACEHOLDER_VERSION";
+        public const string ReleaseDateTime = "PLACEHOLDER_DATETIME";
+    }
+}
+CSEOF
+          # 플레이스홀더 치환
+          sed -i "s/PLACEHOLDER_VERSION/${VERSION}/g" Runtime/Helpers/AITVersionConstants.cs
+          sed -i "s/PLACEHOLDER_DATETIME/${RELEASE_DATETIME}/g" Runtime/Helpers/AITVersionConstants.cs
 
           echo "package.json description:"
           cat package.json | jq '.description'

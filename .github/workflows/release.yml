@@ -306,6 +306,37 @@ jobs:
           ref: ${{ needs.regenerate-sdk.outputs.ref }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: 릴리즈 정보 주입
+        run: |
+          VERSION="${{ needs.release.outputs.version }}"
+          RELEASE_DATETIME=$(date -u +"%Y%m%d_%H%M")
+
+          echo "=== 릴리즈 정보 주입 ==="
+          echo "버전: ${VERSION}"
+          echo "릴리즈 일시: ${RELEASE_DATETIME}"
+
+          # package.json description 업데이트
+          jq --arg dt "$RELEASE_DATETIME" \
+             '.description = "Apps in Toss Mini App Unity Engine Adapter SDK Package. (Released: " + $dt + ")"' \
+             package.json > tmp.json && mv tmp.json package.json
+
+          # AITVersionConstants.cs 업데이트
+          cat > Runtime/Helpers/AITVersionConstants.cs << EOF
+          // Auto-generated during release
+          // Released at: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          namespace AppsInToss
+          {
+              internal static class AITVersionConstants
+              {
+                  public const string Version = "${VERSION}";
+                  public const string ReleaseDateTime = "${RELEASE_DATETIME}";
+              }
+          }
+          EOF
+
+          echo "package.json description:"
+          cat package.json | jq '.description'
+
       - name: UPM 패키지 정리
         run: |
           echo "=== UPM 패키지 정리 ==="

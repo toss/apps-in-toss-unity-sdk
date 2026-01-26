@@ -1,0 +1,22 @@
+#!/usr/bin/env sh
+
+# AITVersionConstants.cs 업데이트
+DATETIME=$(date -u +"%Y%m%d_%H%M")
+VERSION=$(cat package.json | grep '"version"' | head -1 | sed 's/.*: *"\([^"]*\)".*/\1/')
+
+CONSTANTS_FILE="Runtime/Helpers/AITVersionConstants.cs"
+
+cat > "$CONSTANTS_FILE" << EOF
+// Auto-generated - DO NOT EDIT MANUALLY
+// Updated at: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+namespace AppsInToss
+{
+    internal static class AITVersionConstants
+    {
+        public const string Version = "${VERSION}";
+        public const string ReleaseDateTime = "${DATETIME}";
+    }
+}
+EOF
+
+git add "$CONSTANTS_FILE"

@@ -264,7 +264,7 @@ namespace AppsInToss.Editor
                 // npm 디렉토리 경로 구하기 (npm 실행 파일이 있는 bin 디렉토리)
                 string npmBinPath = Path.GetDirectoryName(npmPath);
 
-                if (verbose) Debug.Log($"[Package Manager] pnpm 로컬 설치 시작: npm install pnpm");
+                if (verbose) Debug.Log($"[Package Manager] pnpm 글로벌 설치 시작: npm install -g pnpm@{PNPM_VERSION}");
                 if (verbose) Debug.Log($"[Package Manager]   빌드 경로: {buildPath}");
                 if (verbose) Debug.Log($"[Package Manager]   npm 경로: {npmPath}");
 

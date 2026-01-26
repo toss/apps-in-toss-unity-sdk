@@ -12,10 +12,8 @@ namespace AppsInToss.Editor
     [InitializeOnLoad]
     public static class AITPackageInitializer
     {
-        private const string PREFS_KEY_LAST_CHECK = "AIT_LastPackageManagerCheck";
         private const string PREFS_KEY_INSTALLING = "AIT_PackageManagerInstalling";
         private const string PREFS_KEY_INSTALL_START_TIME = "AIT_InstallStartTime";
-        private const double CHECK_INTERVAL_HOURS = 24.0; // 24시간마다 체크
 
         /// <summary>
         /// 패키지 매니저 설치가 진행 중인지 확인
@@ -69,27 +67,8 @@ namespace AppsInToss.Editor
                     // 로딩 화면 템플릿 자동 생성 (항상 체크)
                     EnsureLoadingScreenTemplate();
 
-                    // 패키지 매니저 체크 (24시간마다)
-                    string lastCheckStr = EditorPrefs.GetString(PREFS_KEY_LAST_CHECK, string.Empty);
-                    bool shouldCheckPackageManager = true;
-
-                    if (!string.IsNullOrEmpty(lastCheckStr))
-                    {
-                        if (DateTime.TryParse(lastCheckStr, out DateTime lastCheck))
-                        {
-                            double hoursSinceLastCheck = (DateTime.Now - lastCheck).TotalHours;
-                            if (hoursSinceLastCheck < CHECK_INTERVAL_HOURS)
-                            {
-                                shouldCheckPackageManager = false;
-                            }
-                        }
-                    }
-
-                    if (shouldCheckPackageManager)
-                    {
-                        CheckAndSetupPackageManager();
-                        EditorPrefs.SetString(PREFS_KEY_LAST_CHECK, DateTime.Now.ToString("O"));
-                    }
+                    // 패키지 매니저 체크 (매번 확인 - pnpm 체크 비용이 낮으므로 throttle 불필요)
+                    CheckAndSetupPackageManager();
                 }
                 catch (Exception e)
                 {
@@ -172,6 +151,7 @@ namespace AppsInToss.Editor
 
         /// <summary>
         /// 패키지 매니저 체크 및 설정
+        /// Node.js가 없으면 백그라운드에서 자동 다운로드를 시작합니다.
         /// </summary>
         private static void CheckAndSetupPackageManager()
         {
@@ -180,11 +160,13 @@ namespace AppsInToss.Editor
             // AITPackageManagerHelper를 사용한 통합 체크
             string buildPath = GetBuildPath();
 
-            // 1. 패키지 매니저 찾기 (node → npm → pnpm 순서로 체크)
-            string packageManagerPath = AITPackageManagerHelper.FindPackageManager(buildPath, verbose: true);
+            // 1. 패키지 매니저 찾기 (내장 Node.js 자동 다운로드 포함)
+            // autoDownload: true로 Node.js가 없으면 백그라운드에서 자동 다운로드
+            string packageManagerPath = AITPackageManagerHelper.FindPackageManager(buildPath, verbose: false);
             if (string.IsNullOrEmpty(packageManagerPath))
             {
-                Debug.Log("[AIT] Node.js가 설치되어 있지 않습니다. 첫 빌드 시 자동으로 다운로드됩니다.");
+                // FindPackageManager가 이미 다운로드를 시도했지만 실패한 경우
+                Debug.LogWarning("[AIT] Node.js/pnpm 설치에 실패했습니다. 네트워크 연결을 확인하거나 첫 빌드 시 다시 시도됩니다.");
                 return;
             }
 
@@ -318,7 +300,6 @@ namespace AppsInToss.Editor
         [MenuItem("AIT/Debug/Force Package Manager Check")]
         public static void ForcePackageManagerCheck()
         {
-            EditorPrefs.DeleteKey(PREFS_KEY_LAST_CHECK);
             CheckAndSetupPackageManager();
             Debug.Log("[AIT] 패키지 매니저 체크 완료");
         }

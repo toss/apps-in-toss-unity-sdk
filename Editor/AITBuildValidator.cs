@@ -293,7 +293,7 @@ namespace AppsInToss.Editor
 
                     Debug.Log($"[AIT] ✓ 빌드 캐시 사용 중:");
                     Debug.Log($"[AIT]   - node_modules: {nodeModulesSize / 1024 / 1024}MB ({packageCount}개 패키지)");
-                    Debug.Log($"[AIT]   - npm install 건너뜀 → 약 1-2분 절약!");
+                    Debug.Log($"[AIT]   - pnpm install 건너뜀 → 약 1-2분 절약!");
                 }
 
                 if (Directory.Exists(npmCachePath))

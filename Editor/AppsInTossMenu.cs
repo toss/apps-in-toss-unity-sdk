@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Text.RegularExpressions;
+using System.Threading;
 using UnityEditor;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
@@ -21,6 +23,11 @@ namespace AppsInToss
         private static AITServerStateManager prodServerState;
         private static Stopwatch buildStopwatch = new Stopwatch();
 
+        // 스레드 안전한 메인 스레드 작업 큐
+        // ThreadPool에서 EditorApplication.update에 직접 접근하는 대신 이 큐를 사용
+        private static readonly ConcurrentQueue<Action> mainThreadActionQueue = new ConcurrentQueue<Action>();
+        private static int isMainThreadQueueProcessorRegistered = 0;
+
         /// <summary>
         /// 도메인 리로드 시 기존 서버 프로세스 복원 및 종료 이벤트 등록
         /// </summary>
@@ -34,8 +41,56 @@ namespace AppsInToss
             devServerState.ValidateState();
             prodServerState.ValidateState();
 
+            // 메인 스레드 작업 큐 프로세서 등록
+            EnsureMainThreadQueueProcessorRegistered();
+
             EditorApplication.quitting += OnEditorQuitting;
             UnityEditor.PackageManager.Events.registeredPackages += OnPackagesChanged;
+        }
+
+        /// <summary>
+        /// 메인 스레드 작업 큐 프로세서가 등록되어 있는지 확인하고, 없으면 등록
+        /// Domain reload 후에도 재등록됨
+        /// </summary>
+        private static void EnsureMainThreadQueueProcessorRegistered()
+        {
+            if (Interlocked.CompareExchange(ref isMainThreadQueueProcessorRegistered, 1, 0) == 0)
+            {
+                EditorApplication.update += ProcessMainThreadActionQueue;
+            }
+        }
+
+        /// <summary>
+        /// 메인 스레드 작업 큐를 처리
+        /// EditorApplication.update에서 매 프레임 호출됨
+        /// </summary>
+        private static void ProcessMainThreadActionQueue()
+        {
+            // 한 프레임에 최대 10개 작업 처리 (에디터 응답성 유지)
+            int processedCount = 0;
+            while (processedCount < 10 && mainThreadActionQueue.TryDequeue(out var action))
+            {
+                try
+                {
+                    action?.Invoke();
+                }
+                catch (Exception e)
+                {
+                    Debug.LogException(e);
+                }
+                processedCount++;
+            }
+        }
+
+        /// <summary>
+        /// 메인 스레드에서 실행할 작업을 큐에 추가
+        /// ThreadPool 스레드에서 안전하게 호출 가능
+        /// </summary>
+        /// <param name="action">메인 스레드에서 실행할 작업</param>
+        private static void EnqueueMainThreadAction(Action action)
+        {
+            if (action == null) return;
+            mainThreadActionQueue.Enqueue(action);
         }
 
         /// <summary>
@@ -971,14 +1026,16 @@ namespace AppsInToss
                 var processManager = new AITProcessTreeManager();
 
                 // 포트와 프로세스 관리자 저장 (상태는 변경하지 않음)
-                devServerState.SetExpectedPortAndProcess(processManager, finalVitePort);
+                devServerState.SetExpectedPortAndProcess(processManager, finalGranitePort);
 
                 StartServerProcessWithPortDetection(
                     processManager,
-                    buildPath, npmPath, graniteCommand, "Dev Server", envVars, finalVitePort,
+                    buildPath, npmPath, graniteCommand, "Dev Server", envVars, finalGranitePort,
                     onServerStarted: (detectedPort) =>
                     {
-                        devServerState.OnServerStarted(finalVitePort);
+                        // 감지된 포트(Granite)를 저장하여 ValidateState에서 올바르게 확인할 수 있도록 함
+                        // Vite 포트가 아닌 Granite 포트를 저장해야 상태 검증이 올바르게 동작
+                        devServerState.OnServerStarted(detectedPort);
                         Debug.Log($"AIT: Dev 서버가 시작되었습니다");
                         Debug.Log($"AIT:   Granite (Metro): http://{graniteHost}:{finalGranitePort}");
                         Debug.Log($"AIT:   Vite: http://{viteHost}:{finalVitePort}");
@@ -1123,14 +1180,15 @@ namespace AppsInToss
                 var processManager = new AITProcessTreeManager();
 
                 // 포트와 프로세스 관리자 저장 (상태는 변경하지 않음)
-                devServerState.SetExpectedPortAndProcess(processManager, finalVitePort);
+                devServerState.SetExpectedPortAndProcess(processManager, finalGranitePort);
 
                 StartServerProcessWithPortDetection(
                     processManager,
-                    buildPath, npmPath, graniteCommand, "Dev Server", envVars, finalVitePort,
+                    buildPath, npmPath, graniteCommand, "Dev Server", envVars, finalGranitePort,
                     onServerStarted: (detectedPort) =>
                     {
-                        devServerState.OnServerStarted(finalVitePort);
+                        // 감지된 포트(Granite)를 저장하여 ValidateState에서 올바르게 확인할 수 있도록 함
+                        devServerState.OnServerStarted(detectedPort);
                         Debug.Log($"AIT: Dev 서버가 시작되었습니다 (서버만)");
                         Debug.Log($"AIT:   Granite (Metro): http://{graniteHost}:{finalGranitePort}");
                         Debug.Log($"AIT:   Vite: http://{viteHost}:{finalVitePort}");
@@ -1318,14 +1376,15 @@ namespace AppsInToss
                 var processManager = new AITProcessTreeManager();
 
                 // 포트와 프로세스 관리자 저장 (상태는 변경하지 않음)
-                prodServerState.SetExpectedPortAndProcess(processManager, finalVitePort);
+                prodServerState.SetExpectedPortAndProcess(processManager, finalGranitePort);
 
                 StartServerProcessWithPortDetection(
                     processManager,
-                    buildPath, npmPath, graniteCommand, "Prod Server", envVars, finalVitePort,
+                    buildPath, npmPath, graniteCommand, "Prod Server", envVars, finalGranitePort,
                     onServerStarted: (detectedPort) =>
                     {
-                        prodServerState.OnServerStarted(finalVitePort);
+                        // 감지된 포트(Granite)를 저장하여 ValidateState에서 올바르게 확인할 수 있도록 함
+                        prodServerState.OnServerStarted(detectedPort);
                         Debug.Log($"AIT: Production 서버가 시작되었습니다");
                         Debug.Log($"AIT:   Granite (Metro): http://{graniteHost}:{finalGranitePort}");
                         Debug.Log($"AIT:   Vite: http://{viteHost}:{finalVitePort}");
@@ -1470,14 +1529,15 @@ namespace AppsInToss
                 var processManager = new AITProcessTreeManager();
 
                 // 포트와 프로세스 관리자 저장 (상태는 변경하지 않음)
-                prodServerState.SetExpectedPortAndProcess(processManager, finalVitePort);
+                prodServerState.SetExpectedPortAndProcess(processManager, finalGranitePort);
 
                 StartServerProcessWithPortDetection(
                     processManager,
-                    buildPath, npmPath, graniteCommand, "Prod Server", envVars, finalVitePort,
+                    buildPath, npmPath, graniteCommand, "Prod Server", envVars, finalGranitePort,
                     onServerStarted: (detectedPort) =>
                     {
-                        prodServerState.OnServerStarted(finalVitePort);
+                        // 감지된 포트(Granite)를 저장하여 ValidateState에서 올바르게 확인할 수 있도록 함
+                        prodServerState.OnServerStarted(detectedPort);
                         Debug.Log($"AIT: Production 서버가 시작되었습니다 (서버만)");
                         Debug.Log($"AIT:   Granite (Metro): http://{graniteHost}:{finalGranitePort}");
                         Debug.Log($"AIT:   Vite: http://{viteHost}:{finalVitePort}");
@@ -1519,6 +1579,10 @@ namespace AppsInToss
 
         // 서버 시작 타임아웃 (30초)
         private const double SERVER_START_TIMEOUT_SECONDS = 30.0;
+
+        // 포트 직접 확인 폴백 시작 시간 (5초 후부터)
+        // stdout 파싱이 실패해도 포트가 열려있으면 성공으로 처리
+        private const double PORT_FALLBACK_CHECK_START_SECONDS = 5.0;
 
         /// <summary>
         /// 서버 프로세스 시작 (동적 포트 감지 포함) - 크로스 플랫폼
@@ -1597,44 +1661,70 @@ namespace AppsInToss
                 };
             }
 
-            bool serverStarted = false;
-            bool serverFailed = false;
+            // 스레드 안전한 상태 플래그 (Interlocked 사용)
+            // OutputDataReceived는 ThreadPool 스레드에서 호출되므로 원자적 연산 필요
+            int serverStartedFlag = 0;  // 0 = false, 1 = true
+            int serverFailedFlag = 0;   // 0 = false, 1 = true
+            object failureReasonLock = new object();
             string failureReason = null;
             double startTime = EditorApplication.timeSinceStartup;
 
             // AITProcessTreeManager를 통해 프로세스 시작 (프로세스 그룹 관리)
             var process = manager.StartProcess(startInfo);
 
-            // 타임아웃 체크를 위한 EditorApplication.update 콜백
+            // 타임아웃 체크 및 포트 폴백 확인을 위한 EditorApplication.update 콜백
             EditorApplication.CallbackFunction timeoutCheck = null;
             timeoutCheck = () =>
             {
-                // 이미 성공 또는 실패한 경우 콜백 제거
-                if (serverStarted || serverFailed)
+                // 이미 성공 또는 실패한 경우 콜백 제거 (원자적 읽기)
+                if (Interlocked.CompareExchange(ref serverStartedFlag, 0, 0) == 1 ||
+                    Interlocked.CompareExchange(ref serverFailedFlag, 0, 0) == 1)
                 {
                     EditorApplication.update -= timeoutCheck;
                     return;
                 }
 
-                // 타임아웃 체크
-                if (EditorApplication.timeSinceStartup - startTime > SERVER_START_TIMEOUT_SECONDS)
+                double elapsed = EditorApplication.timeSinceStartup - startTime;
+
+                // 폴백 체크: stdout 파싱이 실패해도 포트가 열려있으면 성공으로 처리
+                // (일부 환경에서 stdout 버퍼링으로 인해 포트 정보가 지연될 수 있음)
+                if (elapsed > PORT_FALLBACK_CHECK_START_SECONDS && expectedPort > 0)
                 {
-                    serverFailed = true;
-                    EditorApplication.update -= timeoutCheck;
-
-                    // 프로세스 종료 시도
-                    try
+                    if (!IsPortAvailable(expectedPort))
                     {
-                        manager.KillProcessTree();
+                        // 포트가 사용 중 = 서버가 시작됨
+                        if (Interlocked.CompareExchange(ref serverStartedFlag, 1, 0) == 0)
+                        {
+                            EditorApplication.update -= timeoutCheck;
+                            Debug.Log($"[{logPrefix}] 포트 {expectedPort} 감지됨 (stdout 폴백)");
+                            onServerStarted?.Invoke(expectedPort);
+                            return;
+                        }
                     }
-                    catch
-                    {
-                        // 무시
-                    }
+                }
 
-                    string reason = $"서버 시작 타임아웃 ({SERVER_START_TIMEOUT_SECONDS}초)";
-                    Debug.LogError($"[{logPrefix}] {reason}");
-                    onServerFailed?.Invoke(reason);
+                // 타임아웃 체크
+                if (elapsed > SERVER_START_TIMEOUT_SECONDS)
+                {
+                    // 원자적으로 실패 플래그 설정 (중복 호출 방지)
+                    if (Interlocked.CompareExchange(ref serverFailedFlag, 1, 0) == 0)
+                    {
+                        EditorApplication.update -= timeoutCheck;
+
+                        // 프로세스 종료 시도
+                        try
+                        {
+                            manager.KillProcessTree();
+                        }
+                        catch
+                        {
+                            // 무시
+                        }
+
+                        string reason = $"서버 시작 타임아웃 ({SERVER_START_TIMEOUT_SECONDS}초)";
+                        Debug.LogError($"[{logPrefix}] {reason}");
+                        onServerFailed?.Invoke(reason);
+                    }
                 }
             };
             EditorApplication.update += timeoutCheck;
@@ -1644,18 +1734,24 @@ namespace AppsInToss
             process.Exited += (sender, args) =>
             {
                 // 서버가 아직 시작되지 않았는데 프로세스가 종료된 경우 = 실패
-                if (!serverStarted && !serverFailed)
+                // 원자적으로 플래그 확인 및 설정
+                if (Interlocked.CompareExchange(ref serverStartedFlag, 0, 0) == 0 &&
+                    Interlocked.CompareExchange(ref serverFailedFlag, 1, 0) == 0)
                 {
-                    serverFailed = true;
-                    EditorApplication.update -= timeoutCheck;
                     int exitCode = process.ExitCode;
-                    string reason = failureReason ?? $"프로세스가 비정상 종료되었습니다 (Exit Code: {exitCode})";
-
-                    EditorApplication.delayCall += () =>
+                    string reason;
+                    lock (failureReasonLock)
                     {
+                        reason = failureReason ?? $"프로세스가 비정상 종료되었습니다 (Exit Code: {exitCode})";
+                    }
+
+                    // 스레드 안전한 메인 스레드 큐를 통해 콜백 실행
+                    EnqueueMainThreadAction(() =>
+                    {
+                        EditorApplication.update -= timeoutCheck;
                         Debug.LogError($"[{logPrefix}] 서버 시작 실패: {reason}");
                         onServerFailed?.Invoke(reason);
-                    };
+                    });
                 }
             };
 
@@ -1673,7 +1769,10 @@ namespace AppsInToss
                         // 포트 충돌 에러 감지
                         if (IsPortConflictError(cleanOutput))
                         {
-                            failureReason = "포트가 이미 사용 중입니다. 다른 서버가 실행 중인지 확인하세요.";
+                            lock (failureReasonLock)
+                            {
+                                failureReason = "포트가 이미 사용 중입니다. 다른 서버가 실행 중인지 확인하세요.";
+                            }
                         }
                     }
                     else
@@ -1684,17 +1783,25 @@ namespace AppsInToss
                     // 서버 시작 성공 감지 (포트 감지)
                     // IPv4: localhost:PORT, 0.0.0.0:PORT, 127.0.0.1:PORT
                     // IPv6: [::1]:PORT, [::]:PORT
-                    if (!serverStarted && !serverFailed)
+                    // 원자적으로 플래그 확인 (ThreadPool 스레드에서 호출됨)
+                    if (Interlocked.CompareExchange(ref serverStartedFlag, 0, 0) == 0 &&
+                        Interlocked.CompareExchange(ref serverFailedFlag, 0, 0) == 0)
                     {
                         var portMatch = Regex.Match(cleanOutput, @"(?:localhost|0\.0\.0\.0|127\.0\.0\.1|\[::1?\]):(\d+)");
                         if (portMatch.Success)
                         {
                             int port = int.Parse(portMatch.Groups[1].Value);
-                            serverStarted = true;
-                            EditorApplication.update -= timeoutCheck;
 
-                            // Unity 메인 스레드에서 콜백 실행
-                            EditorApplication.delayCall += () => onServerStarted?.Invoke(port);
+                            // 원자적으로 성공 플래그 설정 (중복 호출 방지)
+                            if (Interlocked.CompareExchange(ref serverStartedFlag, 1, 0) == 0)
+                            {
+                                // 스레드 안전한 메인 스레드 큐를 통해 콜백 실행
+                                EnqueueMainThreadAction(() =>
+                                {
+                                    EditorApplication.update -= timeoutCheck;
+                                    onServerStarted?.Invoke(port);
+                                });
+                            }
                         }
                     }
                 }
@@ -1712,7 +1819,10 @@ namespace AppsInToss
                     // 포트 충돌 에러 감지
                     if (IsPortConflictError(cleanOutput))
                     {
-                        failureReason = "포트가 이미 사용 중입니다. 다른 서버가 실행 중인지 확인하세요.";
+                        lock (failureReasonLock)
+                        {
+                            failureReason = "포트가 이미 사용 중입니다. 다른 서버가 실행 중인지 확인하세요.";
+                        }
                     }
                 }
             };

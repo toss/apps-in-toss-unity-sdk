@@ -1802,21 +1802,21 @@ namespace AppsInToss
             string nodeModulesPath = Path.Combine(buildPath, "node_modules");
             if (!Directory.Exists(nodeModulesPath))
             {
-                Debug.Log("AIT: node_modules가 없습니다. npm install을 실행합니다...");
+                Debug.Log("AIT: node_modules가 없습니다. pnpm install을 실행합니다...");
 
                 string localCachePath = Path.Combine(buildPath, ".npm-cache");
                 var installResult = AITNpmRunner.RunNpmCommandWithCache(
-                    buildPath, npmPath, "install", localCachePath, "npm install 실행 중..."
+                    buildPath, npmPath, "install", localCachePath, "pnpm install 실행 중..."
                 );
 
                 if (installResult != AITConvertCore.AITExportError.SUCCEED)
                 {
-                    Debug.LogError("AIT: npm install 실패");
-                    AITPlatformHelper.ShowInfoDialog("오류", "npm install 실패\n\nConsole 로그를 확인하세요.", "확인");
+                    Debug.LogError("AIT: pnpm install 실패");
+                    AITPlatformHelper.ShowInfoDialog("오류", "pnpm install 실패\n\nConsole 로그를 확인하세요.", "확인");
                     return false;
                 }
 
-                Debug.Log("AIT: npm install 완료");
+                Debug.Log("AIT: pnpm install 완료");
             }
             return true;
         }

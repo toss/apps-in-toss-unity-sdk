@@ -1,0 +1,250 @@
+<!--
+    Apps in Toss Unity SDK - 로딩 화면
+
+    이 파일은 SDK 로드 시 Assets/AppsInToss/loading.html에 자동 생성됩니다.
+    이 파일을 수정하면 커스텀 로딩 화면이 적용됩니다.
+    기본 템플릿으로 초기화하려면: AIT > Reset Loading Screen
+
+    이 파일의 HTML, CSS, JavaScript를 자유롭게 수정하여
+    완전히 커스텀한 로딩 UI를 만들 수 있습니다.
+
+    사용 가능한 API:
+    - AITLoading.onReady(callback): 앱 정보 준비 완료 콜백 (UI 초기화용)
+    - AITLoading.onProgress(callback): 진행률 콜백 (0.0 ~ 1.0)
+    - AITLoading.onComplete(callback): 로딩 완료 콜백
+    - AITLoading.onError(callback): 에러 콜백
+    - AITLoading.appInfo: 앱 정보 (iconUrl, displayName, primaryColor)
+    - AITLoading.hide(): 로딩 화면 숨기기
+
+    자세한 내용: Docs/LoadingScreenCustomization.md
+-->
+
+<style>
+    /* ===== 커스터마이징 가능한 CSS 변수 ===== */
+    /* 반응형 단위 사용 (기준: 375px 화면, 16px = 1rem) */
+    .ait-loading {
+        /* 배경 및 색상 (다크 모드 - TDS adaptive[1]) */
+        --loading-bg: #17171c;           /* TDS: adaptiveBackground dark */
+        --title-color: #f2f4f6;          /* TDS: adaptiveGrey100 (밝은 텍스트) */
+        --app-name-color: rgba(255, 255, 255, 0.80);  /* TDS: 밝은 그레이 텍스트 */
+        --progress-bg: #2e2e33;          /* TDS: adaptiveGrey200 dark */
+        --card-bg: #25252a;              /* TDS: adaptiveGrey100 dark */
+        --icon-bg: rgba(255, 255, 255, 0.08);  /* TDS: adaptiveGreyOpacity100 dark */
+        --icon-fallback-bg: linear-gradient(135deg, #3182f6 0%, #6b7684 100%);
+
+        /* 크기 (rem 단위) */
+        --title-size: 1.375rem;      /* 22px */
+        --app-name-size: 0.9375rem;  /* 15px */
+        --icon-size: 2.5rem;         /* 40px */
+        --progress-height: 0.3125rem; /* 5px */
+        --card-radius: 1rem;         /* 16px */
+        --icon-radius: 0.625rem;     /* 10px */
+
+        /* 여백 (rem 및 % 단위) */
+        --top-padding: 6.75rem;      /* 108px - 네비게이션 바 + 상단 여백 */
+        --side-padding: 6.4%;        /* 24px / 375px = 6.4% */
+        --card-padding-top: 1.25rem; /* 20px */
+        --card-padding-x: 1.5rem;    /* 24px - ListRow 좌우 패딩 */
+        --title-margin-bottom: 2.75rem;  /* 44px */
+        --progress-margin-top: 1.75rem;  /* 28px - 아이콘과 진행률 바 사이 */
+        --progress-margin-bottom: 1.375rem; /* 22px */
+        --progress-margin-x: 1.5rem; /* 24px - 진행률 바 좌우 마진 (아이콘과 같은 라인) */
+        --icon-margin-right: 1rem;   /* 16px */
+        --listrow-height: 4.75rem;   /* 76px - ListRow 영역 높이 */
+        --listrow-padding-top: 1.25rem; /* 20px - ListRow 상단 패딩 */
+    }
+
+    /* ===== 로딩 화면 레이아웃 ===== */
+    .ait-loading {
+        position: fixed;
+        inset: 0;
+        z-index: 9998;
+        background: var(--loading-bg);
+        display: flex;
+        flex-direction: column;
+        font-family: 'Toss Product Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    .ait-loading-content {
+        display: flex;
+        flex-direction: column;
+        padding: var(--top-padding) var(--side-padding) 0;
+    }
+
+    /* ===== 제목 (TDS Mobile_Top) ===== */
+    .ait-loading-title {
+        font-size: var(--title-size);
+        font-weight: 600;
+        color: var(--title-color);
+        line-height: 1.4;
+        margin-bottom: var(--title-margin-bottom);
+    }
+
+    /* ===== 카드 (TDS ListRow + ProgressBar 스타일) ===== */
+    .ait-loading-card {
+        display: flex;
+        flex-direction: column;
+        background: var(--card-bg);
+        border-radius: var(--card-radius);
+        padding: 0;  /* ListRow가 자체 높이를 가짐 */
+        overflow: hidden;
+    }
+
+    /* ===== 카드 내부 ListRow 영역 ===== */
+    .ait-loading-list-row {
+        display: flex;
+        align-items: center;
+        padding: var(--listrow-padding-top) var(--card-padding-x) 0;  /* 상단 20px, 좌우 24px */
+    }
+
+    /* ===== 앱 아이콘 (TDS ListRowAssetImage 30x30 squircle) ===== */
+    .ait-loading-icon {
+        width: var(--icon-size);
+        height: var(--icon-size);
+        border-radius: var(--icon-radius);
+        background: var(--icon-bg);
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+    }
+
+    .ait-loading-icon img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    .ait-loading-icon-fallback {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--icon-fallback-bg);
+        color: white;
+        font-size: 14px;
+        font-weight: 600;
+    }
+
+    /* ===== 앱 이름 (TDS ListRowTexts) ===== */
+    .ait-loading-app-name {
+        margin-left: var(--icon-margin-right);
+        font-size: var(--app-name-size);
+        font-weight: 500;
+        color: var(--app-name-color);
+        flex: 1;
+    }
+
+    /* ===== 진행률 바 (TDS ProgressBar normal) ===== */
+    /* 카드 내부에 위치, 아이콘과 같은 좌우 라인에서 시작 */
+    .ait-loading-progress {
+        margin-top: var(--progress-margin-top);
+        margin-bottom: var(--progress-margin-bottom);
+        margin-left: var(--card-padding-x);   /* 24px - 아이콘과 정렬 */
+        margin-right: var(--card-padding-x);  /* 24px - 아이콘과 정렬 */
+        height: var(--progress-height);
+        background: var(--progress-bg);
+        border-radius: calc(var(--progress-height) / 2);  /* 2.5px - 둥근 끝 */
+        overflow: hidden;
+    }
+
+    .ait-loading-progress-bar {
+        height: 100%;
+        width: 0%;
+        border-radius: inherit;
+        transition: width 0.3s ease;
+    }
+</style>
+
+<!-- ===== HTML 구조 ===== -->
+<div class="ait-loading">
+    <div class="ait-loading-content">
+        <div class="ait-loading-title">게임을 불러오고 있어요<br>조금만 기다려주세요</div>
+
+        <div class="ait-loading-card">
+            <div class="ait-loading-list-row">
+                <div class="ait-loading-icon" id="ait-loading-icon">
+                    <img id="ait-loading-icon-img" src="" alt="" style="display: none;" />
+                    <div class="ait-loading-icon-fallback" id="ait-loading-icon-fallback"></div>
+                </div>
+                <div class="ait-loading-app-name" id="ait-loading-app-name"></div>
+            </div>
+            <div class="ait-loading-progress">
+                <div class="ait-loading-progress-bar" id="ait-loading-progress-bar"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== JavaScript ===== -->
+<script>
+(function() {
+    'use strict';
+
+    // DOM 요소
+    var iconImg = document.getElementById('ait-loading-icon-img');
+    var iconFallback = document.getElementById('ait-loading-icon-fallback');
+    var appNameEl = document.getElementById('ait-loading-app-name');
+    var progressBar = document.getElementById('ait-loading-progress-bar');
+
+    // 앱 정보로 UI 초기화
+    function initUI(appInfo) {
+        // 아이콘: 먼저 CSS 폴백(첫 글자)을 표시하여 즉시 렌더링
+        // 이미지는 백그라운드에서 로드 후 교체 (로딩 지연 방지)
+        var firstChar = appInfo.displayName ? appInfo.displayName.charAt(0).toUpperCase() : '';
+        iconFallback.textContent = firstChar;
+        iconFallback.style.display = 'flex';
+        iconImg.style.display = 'none';
+
+        // 이미지 URL이 있으면 백그라운드에서 로드
+        if (appInfo.iconUrl) {
+            var img = new Image();
+            img.onload = function() {
+                iconImg.src = appInfo.iconUrl;
+                iconImg.style.display = '';
+                iconFallback.style.display = 'none';
+            };
+            // 이미지 로드 실패해도 CSS 폴백 유지
+            img.src = appInfo.iconUrl;
+        }
+
+        // 앱 이름
+        if (appNameEl) {
+            appNameEl.textContent = appInfo.displayName || '';
+        }
+
+        // 진행률 바 색상
+        if (progressBar && appInfo.primaryColor) {
+            progressBar.style.background = appInfo.primaryColor;
+        }
+    }
+
+    // AITLoading API가 로드될 때까지 대기 후 초기화
+    function waitForAPIAndInit() {
+        var check = setInterval(function() {
+            if (window.AITLoading) {
+                clearInterval(check);
+
+                // 앱 정보로 UI 초기화 (onReady 사용)
+                AITLoading.onReady(initUI);
+
+                // 진행률 업데이트
+                AITLoading.onProgress(function(progress) {
+                    if (progressBar) {
+                        progressBar.style.width = (progress * 100) + '%';
+                    }
+                });
+
+                // 로딩 완료 시 화면 숨기기
+                AITLoading.onComplete(function() {
+                    AITLoading.hide();
+                });
+            }
+        }, 10);
+    }
+
+    waitForAPIAndInit();
+})();
+</script>

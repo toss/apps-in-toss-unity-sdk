@@ -630,8 +630,8 @@ jobs:
         run: |
           rm -rf node_modules package-lock.json pnpm-lock.yaml
           pnpm install
-          pnpx playwright install chromium --with-deps
-          pnpx playwright --version
+          pnpm exec playwright install chromium --with-deps
+          pnpm exec playwright --version
 
       - name: Install Playwright Dependencies (Windows)
         if: inputs.os == 'windows' && inputs.run-e2e-test
@@ -653,8 +653,8 @@ jobs:
           }
 
           pnpm install
-          pnpx playwright install chromium --with-deps
-          pnpx playwright --version
+          pnpm exec playwright install chromium --with-deps
+          pnpm exec playwright --version
 
       - name: Run E2E Tests (macOS - Full)
         if: inputs.os == 'macos' && inputs.run-e2e-test
@@ -672,7 +672,7 @@ jobs:
           UNITY_PROJECT_PATH: ${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ inputs.unity-version }}
           # Use job-local Playwright cache to avoid race conditions between parallel runners
           PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}\.playwright-browsers
-        run: pnpx playwright test --grep "[1-5]\. "
+        run: pnpm exec playwright test --grep "[1-5]\. "
 
       # =====================================================
       # 벤치마크 결과 업로드 (선택적)

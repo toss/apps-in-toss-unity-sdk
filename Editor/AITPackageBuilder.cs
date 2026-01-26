@@ -16,6 +16,17 @@ namespace AppsInToss.Editor
         /// </summary>
         internal static AITConvertCore.AITExportError PackageWebGLBuild(string projectPath, string webglPath, AITBuildProfile profile = null)
         {
+            // 백그라운드 Node.js/pnpm 설치가 진행 중이면 완료될 때까지 대기
+            if (AITPackageInitializer.IsInstalling)
+            {
+                Debug.Log("[AIT] Node.js/pnpm 설치가 진행 중입니다. 완료될 때까지 대기합니다...");
+                if (!AITPackageInitializer.WaitForInstallation())
+                {
+                    Debug.LogError("[AIT] 설치 대기 타임아웃. 빌드를 중단합니다.");
+                    return AITConvertCore.AITExportError.NODE_NOT_FOUND;
+                }
+            }
+
             Debug.Log("[AIT] Vite 기반 빌드 패키징 시작...");
 
             // 프로필이 없으면 기본 프로필 사용

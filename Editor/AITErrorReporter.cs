@@ -13,7 +13,6 @@ namespace AppsInToss.Editor
     [InitializeOnLoad]
     public static class AITErrorReporter
     {
-        private const string SDK_VERSION = "1.6.0";
         private const string GITHUB_REPO = "toss/apps-in-toss-unity-sdk";
 
         // 로그 타입별 최대 저장 개수
@@ -158,7 +157,7 @@ namespace AppsInToss.Editor
 
             // 환경 정보
             sb.AppendLine("## 환경 정보");
-            sb.AppendLine($"- **SDK 버전**: {SDK_VERSION}");
+            sb.AppendLine($"- **SDK 버전**: {AITVersion.FullVersion}");
             sb.AppendLine($"- **Unity 버전**: {Application.unityVersion}");
             sb.AppendLine($"- **에디터 플랫폼**: {SystemInfo.operatingSystem}");
             if (!string.IsNullOrEmpty(profileName))

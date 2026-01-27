@@ -863,7 +863,9 @@ namespace AppsInToss.Editor
                     .Replace("%AIT_PRIMARY_COLOR%", config.primaryColor ?? "#3182f6")
                     // 메트릭 전송 간격 (초 -> 밀리초 변환, 범위 제한 적용)
                     .Replace("%AIT_WEB_METRICS_INTERVAL_MS%", (Math.Max(10, Math.Min(60, config.webMetricsIntervalSec)) * 1000).ToString())
-                    .Replace("%AIT_UNITY_METRICS_INTERVAL_MS%", (Math.Max(10, Math.Min(60, config.unityMetricsIntervalSec)) * 1000).ToString());
+                    .Replace("%AIT_UNITY_METRICS_INTERVAL_MS%", (Math.Max(10, Math.Min(60, config.unityMetricsIntervalSec)) * 1000).ToString())
+                    // Unity 엔진 버전 (상세 정보: major.minor.patch.commit, 예: 6000.2.14f1)
+                    .Replace("%AIT_UNITY_VERSION%", Application.unityVersion);
 
                 // 로딩 화면 삽입 (%AIT_LOADING_SCREEN% 플레이스홀더)
                 string loadingContent = "";

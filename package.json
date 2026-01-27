@@ -29,7 +29,11 @@
     "com.unity.nuget.newtonsoft-json": "3.0.2"
   },
   "category": "Platform SDK",
+  "scripts": {
+    "prepare": "husky"
+  },
   "devDependencies": {
+    "husky": "^9.0.0",
     "typescript": "^5.9.3"
   }
 }

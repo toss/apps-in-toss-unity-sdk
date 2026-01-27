@@ -3,6 +3,7 @@
 # AITVersionConstants.cs 업데이트
 DATETIME=$(date -u +"%Y%m%d_%H%M")
 VERSION=$(cat package.json | grep '"version"' | head -1 | sed 's/.*: *"\([^"]*\)".*/\1/')
+COMMIT_HASH=$(git rev-parse --short=7 HEAD 2>/dev/null || echo "dev")
 
 CONSTANTS_FILE="Runtime/Helpers/AITVersionConstants.cs"
 
@@ -15,6 +16,7 @@ namespace AppsInToss
     {
         public const string Version = "${VERSION}";
         public const string ReleaseDateTime = "${DATETIME}";
+        public const string CommitHash = "${COMMIT_HASH}";
     }
 }
 EOF

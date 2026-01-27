@@ -21,12 +21,18 @@ namespace AppsInToss
         public static string ReleaseDateTime { get; private set; } = null;
 
         /// <summary>
-        /// 전체 버전 문자열 (예: "1.8.0 (20260126_1803)")
+        /// 릴리즈 커밋 해시 (예: "e89a387"), 없으면 null
+        /// </summary>
+        public static string CommitHash { get; private set; } = null;
+
+        /// <summary>
+        /// 전체 버전 문자열 (예: "1.8.0 (20260126_1803, e89a387)")
         /// </summary>
         public static string FullVersion =>
             string.IsNullOrEmpty(ReleaseDateTime)
                 ? Version
-                : $"{Version} ({ReleaseDateTime})";
+                : $"{Version} ({ReleaseDateTime}" +
+                  (string.IsNullOrEmpty(CommitHash) ? ")" : $", {CommitHash})");
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         private static void Initialize()
@@ -53,17 +59,20 @@ namespace AppsInToss
             if (packageInfo != null)
             {
                 Version = packageInfo.version;
+                // description 형식: "... (Released: 20260126_1204, e89a387)"
                 var match = Regex.Match(
                     packageInfo.description,
-                    @"\(Released:\s*(\d{8}_\d{4})\)"
+                    @"\(Released:\s*(\d{8}_\d{4})(?:,\s*([a-f0-9]+))?\)"
                 );
                 ReleaseDateTime = match.Success ? match.Groups[1].Value : null;
+                CommitHash = match.Success && match.Groups[2].Success ? match.Groups[2].Value : null;
             }
             else
             {
                 // 로컬 개발 환경에서 패키지를 찾지 못한 경우 상수 사용
                 Version = AITVersionConstants.Version ?? "unknown";
                 ReleaseDateTime = AITVersionConstants.ReleaseDateTime;
+                CommitHash = AITVersionConstants.CommitHash;
             }
         }
 #endif
@@ -72,6 +81,7 @@ namespace AppsInToss
         {
             Version = AITVersionConstants.Version ?? "unknown";
             ReleaseDateTime = AITVersionConstants.ReleaseDateTime;
+            CommitHash = AITVersionConstants.CommitHash;
         }
     }
 }

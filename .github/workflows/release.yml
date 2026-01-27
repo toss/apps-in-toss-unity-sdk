@@ -307,17 +307,26 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 릴리즈 정보 주입
+        id: release-info
         run: |
           VERSION="${{ needs.release.outputs.version }}"
           RELEASE_DATETIME=$(date -u +"%Y%m%d_%H%M")
+          COMMIT_HASH=$(git rev-parse --short=7 HEAD)
+          FULL_COMMIT_HASH=$(git rev-parse HEAD)
 
           echo "=== 릴리즈 정보 주입 ==="
           echo "버전: ${VERSION}"
           echo "릴리즈 일시: ${RELEASE_DATETIME}"
+          echo "커밋 해시: ${COMMIT_HASH}"
+
+          # outputs로 내보내기
+          echo "release_datetime=${RELEASE_DATETIME}" >> $GITHUB_OUTPUT
+          echo "commit_hash=${COMMIT_HASH}" >> $GITHUB_OUTPUT
+          echo "full_commit_hash=${FULL_COMMIT_HASH}" >> $GITHUB_OUTPUT
 
           # package.json description 업데이트
-          jq --arg dt "$RELEASE_DATETIME" \
-             '.description = "Apps in Toss Mini App Unity Engine Adapter SDK Package. (Released: " + $dt + ")"' \
+          jq --arg dt "$RELEASE_DATETIME" --arg hash "$COMMIT_HASH" \
+             '.description = "Apps in Toss Mini App Unity Engine Adapter SDK Package. (Released: " + $dt + ", " + $hash + ")"' \
              package.json > tmp.json && mv tmp.json package.json
 
           # AITVersionConstants.cs 업데이트
@@ -329,12 +338,14 @@ namespace AppsInToss
     {
         public const string Version = "PLACEHOLDER_VERSION";
         public const string ReleaseDateTime = "PLACEHOLDER_DATETIME";
+        public const string CommitHash = "PLACEHOLDER_HASH";
     }
 }
 CSEOF
           # 플레이스홀더 치환
           sed -i "s/PLACEHOLDER_VERSION/${VERSION}/g" Runtime/Helpers/AITVersionConstants.cs
           sed -i "s/PLACEHOLDER_DATETIME/${RELEASE_DATETIME}/g" Runtime/Helpers/AITVersionConstants.cs
+          sed -i "s/PLACEHOLDER_HASH/${COMMIT_HASH}/g" Runtime/Helpers/AITVersionConstants.cs
 
           echo "package.json description:"
           cat package.json | jq '.description'
@@ -421,9 +432,15 @@ CSEOF
         run: |
           VERSION="${{ needs.release.outputs.version }}"
           TAG_NAME="${{ needs.release.outputs.tag_name }}"
+          RELEASE_DATETIME="${{ steps.release-info.outputs.release_datetime }}"
+          COMMIT_HASH="${{ steps.release-info.outputs.commit_hash }}"
+          FULL_COMMIT_HASH="${{ steps.release-info.outputs.full_commit_hash }}"
 
           RELEASE_BODY=$(cat <<EOF
           ## Apps in Toss Unity SDK v${VERSION}
+
+          📅 **Released**: ${RELEASE_DATETIME} (UTC)
+          🔗 **Commit**: [\`${COMMIT_HASH}\`](https://github.com/${{ github.repository }}/commit/${FULL_COMMIT_HASH})
 
           \`@apps-in-toss/web-framework\` v${VERSION} 기반으로 생성된 Unity SDK입니다.
 

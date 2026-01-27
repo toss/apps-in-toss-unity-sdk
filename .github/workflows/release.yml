@@ -330,22 +330,18 @@ jobs:
              package.json > tmp.json && mv tmp.json package.json
 
           # AITVersionConstants.cs 업데이트
-          cat > Runtime/Helpers/AITVersionConstants.cs << 'CSEOF'
-// Auto-generated during release
-namespace AppsInToss
-{
-    internal static class AITVersionConstants
-    {
-        public const string Version = "PLACEHOLDER_VERSION";
-        public const string ReleaseDateTime = "PLACEHOLDER_DATETIME";
-        public const string CommitHash = "PLACEHOLDER_HASH";
-    }
-}
-CSEOF
-          # 플레이스홀더 치환
-          sed -i "s/PLACEHOLDER_VERSION/${VERSION}/g" Runtime/Helpers/AITVersionConstants.cs
-          sed -i "s/PLACEHOLDER_DATETIME/${RELEASE_DATETIME}/g" Runtime/Helpers/AITVersionConstants.cs
-          sed -i "s/PLACEHOLDER_HASH/${COMMIT_HASH}/g" Runtime/Helpers/AITVersionConstants.cs
+          printf '%s\n' \
+            '// Auto-generated during release' \
+            'namespace AppsInToss' \
+            '{' \
+            '    internal static class AITVersionConstants' \
+            '    {' \
+            "        public const string Version = \"${VERSION}\";" \
+            "        public const string ReleaseDateTime = \"${RELEASE_DATETIME}\";" \
+            "        public const string CommitHash = \"${COMMIT_HASH}\";" \
+            '    }' \
+            '}' \
+            > Runtime/Helpers/AITVersionConstants.cs
 
           echo "package.json description:"
           cat package.json | jq '.description'

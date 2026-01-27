@@ -35,8 +35,12 @@ namespace AppsInToss.Editor
     /// </summary>
     public class AITServerStateManager
     {
-        // 캐시 유효 시간 (짧게 설정하여 실시간에 가깝게 반영)
+        // 기본 캐시 유효 시간 (짧게 설정하여 실시간에 가깝게 반영)
         private const double CACHE_VALIDITY_SECONDS = 0.1;
+
+        // 서버 시작 직후 캐시 연장 시간 (서버 안정화 대기)
+        // OnServerStarted 호출 후 이 시간 동안은 포트 확인을 건너뛰고 캐시된 상태 유지
+        private const double STARTUP_GRACE_PERIOD_SECONDS = 5.0;
 
         // EditorPrefs 키
         private readonly string pidPrefKey;
@@ -45,6 +49,7 @@ namespace AppsInToss.Editor
         // 캐시된 상태
         private ServerState cachedState = ServerState.NotRunning;
         private double lastValidationTime = 0;
+        private double serverStartedTime = 0;  // OnServerStarted 호출 시간 (grace period용)
         private int cachedPort = 0;
         private int cachedPid = 0;
 
@@ -101,7 +106,21 @@ namespace AppsInToss.Editor
         /// </summary>
         private bool IsCacheExpired()
         {
-            return EditorApplication.timeSinceStartup - lastValidationTime > CACHE_VALIDITY_SECONDS;
+            double timeSinceLastValidation = EditorApplication.timeSinceStartup - lastValidationTime;
+
+            // 서버 시작 직후 grace period 동안은 캐시를 더 오래 유지
+            // 이 기간에는 포트 확인을 건너뛰고 OnServerStarted에서 설정한 상태를 신뢰
+            if (cachedState == ServerState.Running && serverStartedTime > 0)
+            {
+                double timeSinceStartup = EditorApplication.timeSinceStartup - serverStartedTime;
+                if (timeSinceStartup < STARTUP_GRACE_PERIOD_SECONDS)
+                {
+                    // Grace period 내에서는 1초 간격으로만 검증
+                    return timeSinceLastValidation > 1.0;
+                }
+            }
+
+            return timeSinceLastValidation > CACHE_VALIDITY_SECONDS;
         }
 
         /// <summary>
@@ -174,6 +193,7 @@ namespace AppsInToss.Editor
             cachedPort = actualPort;
             cachedState = ServerState.Running;
             lastValidationTime = EditorApplication.timeSinceStartup;
+            serverStartedTime = EditorApplication.timeSinceStartup;  // Grace period 시작
 
             // EditorPrefs 업데이트
             EditorPrefs.SetInt(portPrefKey, actualPort);
@@ -189,6 +209,7 @@ namespace AppsInToss.Editor
             cachedPort = 0;
             cachedState = ServerState.NotRunning;
             lastValidationTime = EditorApplication.timeSinceStartup;
+            serverStartedTime = 0;  // Grace period 초기화
 
             ClearPersistedState();
         }
@@ -216,6 +237,7 @@ namespace AppsInToss.Editor
             cachedPort = 0;
             cachedState = ServerState.NotRunning;
             lastValidationTime = EditorApplication.timeSinceStartup;
+            serverStartedTime = 0;  // Grace period 초기화
 
             ClearPersistedState();
         }
@@ -285,15 +307,34 @@ namespace AppsInToss.Editor
 
         /// <summary>
         /// 포트가 사용 중인지 확인 (열 수 없으면 사용 중)
+        /// Granite는 0.0.0.0에 바인딩하므로 Any와 Loopback 모두 확인
         /// </summary>
         private static bool IsPortInUse(int port)
         {
             if (port <= 0) return false;
 
+            // 먼저 Any (0.0.0.0) 주소로 확인
+            // Granite가 0.0.0.0에 바인딩하므로 이것이 더 정확
             TcpListener listener = null;
             try
             {
-                // Loopback 주소로 확인
+                listener = new TcpListener(IPAddress.Any, port);
+                listener.Start();
+                listener.Stop();
+            }
+            catch (SocketException)
+            {
+                return true; // 포트 사용 불가 = 사용 중
+            }
+            finally
+            {
+                listener?.Stop();
+            }
+
+            // 추가로 Loopback (127.0.0.1)도 확인
+            // 다른 프로세스가 127.0.0.1에만 바인딩한 경우를 위해
+            try
+            {
                 listener = new TcpListener(IPAddress.Loopback, port);
                 listener.Start();
                 listener.Stop();

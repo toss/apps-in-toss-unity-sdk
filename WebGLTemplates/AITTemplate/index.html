@@ -1074,56 +1074,78 @@
         // Unity 로드 시작
         console.log('[AIT] Unity 로딩 시작...');
         console.log('[AIT]   빌드 Unity 버전: ' + AIT_UNITY_VERSION);
-        if (window.AITLoadingLogger) {
-            AITLoadingLogger.logEvent('unity_init_start');
-        }
-        updateLoadingProgress(0.1);
 
-        // createUnityInstance 존재 여부 확인
-        if (typeof createUnityInstance === 'undefined') {
-            console.error('[AIT] ========================================');
-            console.error('[AIT] ✗ createUnityInstance is not defined!');
-            console.error('[AIT] ========================================');
-            console.error('[AIT] Unity Loader 스크립트가 정상적으로 로드되지 않았습니다.');
-            console.error('[AIT] ');
-            console.error('[AIT] 가능한 원인:');
-            console.error('[AIT]   1. loader.js 파일 경로가 잘못되었습니다.');
-            console.error('[AIT]   2. loader.js 파일이 서버에 존재하지 않습니다.');
-            console.error('[AIT]   3. 빌드 시 loader.js 파일을 찾지 못했습니다.');
-            console.error('[AIT] ');
-            console.error('[AIT] 확인할 사항:');
-            console.error('[AIT]   - 설정된 로더 URL: %UNITY_WEBGL_LOADER_URL%');
-            console.error('[AIT]   - Loader 스크립트 로드 상태: ' + (window._aitLoaderLoaded ? '성공' : '실패/대기중'));
-            console.error('[AIT] ========================================');
-
-            // 빌드 파일 정보 출력
-            console.error('[AIT] 현재 빌드 설정:');
-            console.error('[AIT]   - dataUrl:', config.dataUrl);
-            console.error('[AIT]   - frameworkUrl:', config.frameworkUrl);
-            console.error('[AIT]   - codeUrl:', config.codeUrl);
-
-            showLoadError(
-                'Unity 엔진 초기화 실패',
-                'createUnityInstance 함수를 찾을 수 없습니다.',
-                [
-                    'Unity WebGL 빌드가 손상되었을 수 있습니다.',
-                    '개발자에게 문의하거나, 잠시 후 다시 시도해 주세요.',
-                    '(개발자용) Unity Editor에서 Clean Build를 실행하세요.'
-                ],
-                {
-                    loaderUrl: '%UNITY_WEBGL_LOADER_URL%',
-                    loaderLoaded: window._aitLoaderLoaded || false,
-                    config: config
+        // Loader 스크립트 로드 완료 대기 함수
+        // Race condition 방지: loader 스크립트가 비동기로 로드되므로 완료를 기다림
+        function waitForLoader(callback, timeoutMs) {
+            var startTime = Date.now();
+            var checkInterval = setInterval(function() {
+                if (window._aitLoaderLoaded || typeof createUnityInstance !== 'undefined') {
+                    clearInterval(checkInterval);
+                    console.log('[AIT] ✓ Loader 스크립트 준비 완료 (' + (Date.now() - startTime) + 'ms)');
+                    callback(true);
+                } else if (Date.now() - startTime > timeoutMs) {
+                    clearInterval(checkInterval);
+                    console.error('[AIT] ✗ Loader 스크립트 로드 타임아웃 (' + timeoutMs + 'ms)');
+                    callback(false);
                 }
-            );
-        } else {
-            // 정상적으로 로드된 경우 실행
-            console.log('[AIT] ✓ createUnityInstance 함수 확인됨');
-            createUnityInstance(canvas, config, (progress) => {
-            var unityProgress = 0.1 + (progress * 0.9); // 10%부터 시작해서 100%까지
-            updateLoadingProgress(unityProgress);
-            progressBarFull.style.width = 100 * progress + "%";
-        }).then((unityInstance) => {
+            }, 50);
+        }
+
+        // Loader 로드 완료 대기 (최대 10초)
+        waitForLoader(function(loaderReady) {
+            if (window.AITLoadingLogger) {
+                AITLoadingLogger.logEvent('unity_init_start');
+            }
+            updateLoadingProgress(0.1);
+
+            // createUnityInstance 존재 여부 확인
+            if (!loaderReady || typeof createUnityInstance === 'undefined') {
+                console.error('[AIT] ========================================');
+                console.error('[AIT] ✗ createUnityInstance is not defined!');
+                console.error('[AIT] ========================================');
+                console.error('[AIT] Unity Loader 스크립트가 정상적으로 로드되지 않았습니다.');
+                console.error('[AIT] ');
+                console.error('[AIT] 가능한 원인:');
+                console.error('[AIT]   1. loader.js 파일 경로가 잘못되었습니다.');
+                console.error('[AIT]   2. loader.js 파일이 서버에 존재하지 않습니다.');
+                console.error('[AIT]   3. 빌드 시 loader.js 파일을 찾지 못했습니다.');
+                console.error('[AIT]   4. 네트워크가 느리거나 타임아웃되었습니다.');
+                console.error('[AIT] ');
+                console.error('[AIT] 확인할 사항:');
+                console.error('[AIT]   - 설정된 로더 URL: %UNITY_WEBGL_LOADER_URL%');
+                console.error('[AIT]   - Loader 스크립트 로드 상태: ' + (window._aitLoaderLoaded ? '성공' : '실패/대기중'));
+                console.error('[AIT] ========================================');
+
+                // 빌드 파일 정보 출력
+                console.error('[AIT] 현재 빌드 설정:');
+                console.error('[AIT]   - dataUrl:', config.dataUrl);
+                console.error('[AIT]   - frameworkUrl:', config.frameworkUrl);
+                console.error('[AIT]   - codeUrl:', config.codeUrl);
+
+                showLoadError(
+                    'Unity 엔진 초기화 실패',
+                    'createUnityInstance 함수를 찾을 수 없습니다.',
+                    [
+                        'Unity WebGL 빌드가 손상되었을 수 있습니다.',
+                        '개발자에게 문의하거나, 잠시 후 다시 시도해 주세요.',
+                        '(개발자용) Unity Editor에서 Clean Build를 실행하세요.'
+                    ],
+                    {
+                        loaderUrl: '%UNITY_WEBGL_LOADER_URL%',
+                        loaderLoaded: window._aitLoaderLoaded || false,
+                        loaderTimedOut: !loaderReady,
+                        config: config
+                    }
+                );
+            } else {
+                // 정상적으로 로드된 경우 실행
+                console.log('[AIT] ✓ createUnityInstance 함수 확인됨');
+                createUnityInstance(canvas, config, (progress) => {
+                    var unityProgress = 0.1 + (progress * 0.9); // 10%부터 시작해서 100%까지
+                    updateLoadingProgress(unityProgress);
+                    progressBarFull.style.width = 100 * progress + "%";
+                }).then((unityInstance) => {
             updateLoadingProgress(1.0);
             loadingBar.style.display = "none";
             fullscreenButton.onclick = () => {
@@ -2171,19 +2193,20 @@
             console.log('[AIT] ✓ 게임 로딩 완료!');
             setTimeout(hideLoadingScreen, 500);
 
-        }).catch((message) => {
-            console.error('[AIT] ✗ Unity 로드 실패:', message);
+                }).catch((message) => {
+                    console.error('[AIT] ✗ Unity 로드 실패:', message);
 
-            // 에러 이벤트 로깅 및 콜백 호출
-            if (window.AITLoadingLogger) {
-                AITLoadingLogger.logEvent('loading_error', { message: message });
-                AITLoadingLogger.notifyError({ message: message });
-            }
+                    // 에러 이벤트 로깅 및 콜백 호출
+                    if (window.AITLoadingLogger) {
+                        AITLoadingLogger.logEvent('loading_error', { message: message });
+                        AITLoadingLogger.notifyError({ message: message });
+                    }
 
-            alert('게임 로드에 실패했습니다.\n\n오류: ' + message + '\n\n브라우저 콘솔을 확인하세요.');
-            hideLoadingScreen();
-        });
-        } // end of else block for createUnityInstance check
+                    alert('게임 로드에 실패했습니다.\n\n오류: ' + message + '\n\n브라우저 콘솔을 확인하세요.');
+                    hideLoadingScreen();
+                });
+            } // end of else block for createUnityInstance check
+        }, 10000); // waitForLoader 타임아웃: 10초
     </script>
 
     <!-- USER_BODY_END_START - 이 영역에 사용자 커스텀 스크립트를 추가하세요 -->

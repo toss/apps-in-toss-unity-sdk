@@ -867,23 +867,41 @@
         var AIT_WEB_METRICS_INTERVAL_MS = Math.max(10000, Math.min(60000, parseInt('%AIT_WEB_METRICS_INTERVAL_MS%') || 10000));
         var AIT_UNITY_METRICS_INTERVAL_MS = Math.max(10000, Math.min(60000, parseInt('%AIT_UNITY_METRICS_INTERVAL_MS%') || 10000));
 
+        // Unity 엔진 버전 (빌드 시 주입, 예: 6000.2.14f1, 2022.3.62f3)
+        var AIT_UNITY_VERSION = '%AIT_UNITY_VERSION%';
+
         // 메트릭 전송 상태
         var _webMetricsIntervalId = null;
         var _unityMetricsIntervalId = null;
         var _loadingMetricsSent = false;
 
         // Unity 버전 감지 함수 (Metric Explorer와 공유)
+        // - 빌드 시 주입된 상세 버전 (major.minor.patch.commit) 사용
+        // - 메트릭 API 지원 여부 (GetMetricsInfo, GetMemoryInfo) 감지
         function detectUnityVersionForMetrics() {
             var inst = window.unityInstance;
-            if (!inst) return { version: 'Unknown', api: 'none' };
 
-            if (typeof inst.GetMetricsInfo === 'function') {
-                return { version: 'Unity 6+', api: 'GetMetricsInfo' };
-            } else if (typeof inst.GetMemoryInfo === 'function') {
-                return { version: 'Unity 2022.2+', api: 'GetMemoryInfo' };
-            } else {
-                return { version: 'Unity 2021.3 or earlier', api: 'none' };
+            // 메트릭 API 감지
+            var api = 'none';
+            if (inst) {
+                if (typeof inst.GetMetricsInfo === 'function') {
+                    api = 'GetMetricsInfo';
+                } else if (typeof inst.GetMemoryInfo === 'function') {
+                    api = 'GetMemoryInfo';
+                }
             }
+
+            // 빌드 시 주입된 상세 버전 사용
+            var unityVersion = AIT_UNITY_VERSION;
+            // 플레이스홀더가 치환되지 않은 경우 체크 (%로 시작하고 끝나는지)
+            if (!unityVersion || unityVersion === '' || (unityVersion.charAt(0) === '%' && unityVersion.charAt(unityVersion.length - 1) === '%')) {
+                unityVersion = 'unknown';
+            }
+
+            return {
+                unityVersion: unityVersion, // 상세 버전 (예: 6000.2.14f1)
+                api: api                    // 메트릭 API (GetMetricsInfo, GetMemoryInfo, none)
+            };
         }
 
         // 안전하게 값을 설정하는 헬퍼
@@ -976,8 +994,11 @@
         function collectUnityMetrics() {
             try {
                 var versionInfo;
-                try { versionInfo = detectUnityVersionForMetrics(); } catch (e) { versionInfo = { version: 'unknown', api: 'none' }; }
-                var params = { unity_version: versionInfo.version, unity_metrics_api: versionInfo.api };
+                try { versionInfo = detectUnityVersionForMetrics(); } catch (e) { versionInfo = { unityVersion: 'unknown', api: 'none' }; }
+                var params = {
+                    unity_version: versionInfo.unityVersion,       // 상세 버전 (예: 6000.2.14f1)
+                    unity_metrics_api: versionInfo.api             // 메트릭 API 종류
+                };
 
                 var inst = window.unityInstance;
                 if (!inst) return params;
@@ -1052,6 +1073,7 @@
 
         // Unity 로드 시작
         console.log('[AIT] Unity 로딩 시작...');
+        console.log('[AIT]   빌드 Unity 버전: ' + AIT_UNITY_VERSION);
         if (window.AITLoadingLogger) {
             AITLoadingLogger.logEvent('unity_init_start');
         }
@@ -1110,7 +1132,12 @@
 
             // Unity 인스턴스를 글로벌로 저장
             window.unityInstance = unityInstance;
+
+            // Unity 버전 정보 로깅
+            var versionInfo = detectUnityVersionForMetrics();
             console.log('[AIT] ✓ Unity 인스턴스 로드 완료');
+            console.log('[AIT]   Unity 버전: ' + versionInfo.unityVersion);
+            console.log('[AIT]   메트릭 API: ' + versionInfo.api);
 
             // Unity 초기화 완료 이벤트
             if (window.AITLoadingLogger) {
@@ -1987,21 +2014,35 @@
                         }
 
                         // Unity 버전 감지 함수
+                        // - 빌드 시 주입된 상세 버전 (AIT_UNITY_VERSION) 사용
+                        // API 지원:
                         // - Unity 6+: unityInstance.GetMetricsInfo (FPS, 메모리, 타이밍)
                         // - Unity 2022.2+: unityInstance.GetMemoryInfo (메모리만)
                         // - Unity 2021.3: API 없음
                         function detectUnityVersion() {
                             var inst = window.unityInstance;
-                            if (!inst) return { version: 'Unknown', api: 'none' };
 
-                            // API 기반 버전 추정 (unityInstance에서 직접 호출)
-                            if (typeof inst.GetMetricsInfo === 'function') {
-                                return { version: 'Unity 6+', api: 'GetMetricsInfo' };
-                            } else if (typeof inst.GetMemoryInfo === 'function') {
-                                return { version: 'Unity 2022.2+', api: 'GetMemoryInfo' };
-                            } else {
-                                return { version: 'Unity 2021.3 or earlier', api: 'none' };
+                            // 메트릭 API 감지
+                            var api = 'none';
+                            if (inst) {
+                                if (typeof inst.GetMetricsInfo === 'function') {
+                                    api = 'GetMetricsInfo';
+                                } else if (typeof inst.GetMemoryInfo === 'function') {
+                                    api = 'GetMemoryInfo';
+                                }
                             }
+
+                            // 빌드 시 주입된 상세 버전 사용 (AIT_UNITY_VERSION 변수)
+                            var unityVersion = (typeof AIT_UNITY_VERSION !== 'undefined') ? AIT_UNITY_VERSION : '';
+                            // 플레이스홀더가 치환되지 않은 경우 체크 (%로 시작하고 끝나는지)
+                            if (!unityVersion || unityVersion === '' || (unityVersion.charAt(0) === '%' && unityVersion.charAt(unityVersion.length - 1) === '%')) {
+                                unityVersion = 'unknown';
+                            }
+
+                            return {
+                                unityVersion: unityVersion, // 상세 버전 (예: 6000.2.14f1)
+                                api: api                    // 메트릭 API (GetMetricsInfo, GetMemoryInfo, none)
+                            };
                         }
 
                         // Unity Metrics 렌더링
@@ -2017,7 +2058,7 @@
                             // Unity Instance 정보
                             if (window.unityInstance) {
                                 var unityData = {
-                                    unityVersion: versionInfo.version,
+                                    unityVersion: versionInfo.unityVersion,   // 상세 버전 (예: 6000.2.14f1)
                                     metricsAPI: versionInfo.api,
                                     moduleAvailable: mod ? true : false
                                 };

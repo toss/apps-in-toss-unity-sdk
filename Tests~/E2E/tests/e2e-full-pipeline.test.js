@@ -439,26 +439,89 @@ async function startProductionServer(aitBuildDir, defaultPort) {
 }
 
 /**
+ * 유틸리티: 파일 헤더를 읽어 실제 압축 포맷 감지
+ * Magic bytes로 압축 포맷을 판별:
+ * - Gzip: 0x1f 0x8b (첫 2바이트)
+ * - Brotli: 다양한 패턴 (0xce 0xb2 0xcf 0x81 또는 스트림 헤더)
+ *
+ * @param {string} filePath - 파일 경로
+ * @returns {string} 압축 포맷 ('brotli' | 'gzip' | 'unknown')
+ */
+function detectCompressionFromHeader(filePath) {
+  try {
+    // 파일의 첫 16바이트 읽기
+    const fd = fs.openSync(filePath, 'r');
+    const buffer = Buffer.alloc(16);
+    fs.readSync(fd, buffer, 0, 16, 0);
+    fs.closeSync(fd);
+
+    // Gzip magic bytes: 0x1f 0x8b
+    if (buffer[0] === 0x1f && buffer[1] === 0x8b) {
+      return 'gzip';
+    }
+
+    // Brotli 감지: Brotli는 고정된 magic bytes가 없음
+    // Unity의 Brotli 압축 파일은 일반적으로 다음 패턴을 가짐:
+    // - 첫 바이트의 하위 4비트가 Brotli 윈도우 크기를 나타냄
+    // - Brotli 스트림은 WBITS (window bits) 값으로 시작
+    //
+    // Brotli 스트림 헤더 패턴:
+    // - 첫 바이트: WBITS (10-24 범위, 인코딩됨)
+    // - Unity는 보통 큰 윈도우 크기 사용
+    //
+    // 간단한 휴리스틱: Gzip이 아니고, 파일이 비어있지 않으면 Brotli로 가정
+    // (Unity WebGL 빌드에서 .unityweb은 Gzip 또는 Brotli만 사용)
+
+    // 더 정확한 Brotli 감지: 첫 바이트 분석
+    // Brotli 스트림의 첫 바이트는 보통 0x00-0x1e 범위가 아님 (Gzip 제외 후)
+    // 또는 특정 Brotli 패턴 확인
+
+    // Unity Brotli 파일의 일반적인 첫 바이트 패턴
+    // WBITS 인코딩: (WBITS - 10) << 4 | ISLAST << 0 | ...
+    // 보통 0x1b, 0x3b, 0x5b, 0x7b, 0x9b, 0xbb, 0xdb, 0xfb 등
+    const firstByte = buffer[0];
+
+    // Brotli 윈도우 크기 비트 패턴 확인 (하위 니블이 0xb인 경우가 많음)
+    // 또는 압축되지 않은 WASM 매직 넘버가 아닌 경우
+    const wasmMagic = buffer[0] === 0x00 && buffer[1] === 0x61 &&
+                      buffer[2] === 0x73 && buffer[3] === 0x6d; // \0asm
+
+    if (!wasmMagic && buffer.length > 0) {
+      // Gzip이 아니고 WASM raw도 아니면 Brotli로 추정
+      return 'brotli';
+    }
+
+    return 'unknown';
+  } catch (error) {
+    console.log(`⚠️ Failed to read file header: ${filePath}`, error.message);
+    return 'unknown';
+  }
+}
+
+/**
  * 유틸리티: 빌드 파일에서 압축 포맷 감지
- * Unity WebGL 빌드 파일의 확장자를 분석하여 적용된 압축 포맷을 반환
+ * Unity WebGL 빌드 파일의 확장자와 파일 헤더를 분석하여 적용된 압축 포맷을 반환
  *
  * 확장자 매핑:
  * - .wasm.br, .data.br, .framework.js.br → Brotli
  * - .wasm.gz, .data.gz, .framework.js.gz → Gzip
  * - .wasm, .data, .framework.js (압축 없음) → Disabled
- * - .unityweb → Decompression Fallback (내부 압축 포맷은 loader.js에서 확인)
+ * - .unityweb → Decompression Fallback (파일 헤더로 실제 압축 포맷 확인)
  *
  * @param {string[]} buildFiles - 빌드 디렉토리의 파일 목록
- * @returns {{format: string, hasDecompressionFallback: boolean, details: object}}
+ * @param {string} buildDir - 빌드 디렉토리 경로 (헤더 검사용)
+ * @returns {{format: string, hasDecompressionFallback: boolean, actualFormat: string|null, details: object}}
  */
-function detectCompressionFormat(buildFiles) {
+function detectCompressionFormat(buildFiles, buildDir = null) {
   const result = {
     format: 'unknown',
     hasDecompressionFallback: false,
+    actualFormat: null, // unityweb 파일의 실제 압축 포맷
     details: {
       wasm: null,
       data: null,
-      framework: null
+      framework: null,
+      wasmFile: null // 헤더 검사용 파일 경로
     }
   };
 
@@ -470,13 +533,17 @@ function detectCompressionFormat(buildFiles) {
     if (lowerFile.includes('.wasm')) {
       if (lowerFile.endsWith('.wasm.br')) {
         result.details.wasm = 'brotli';
+        result.details.wasmFile = file;
       } else if (lowerFile.endsWith('.wasm.gz')) {
         result.details.wasm = 'gzip';
+        result.details.wasmFile = file;
       } else if (lowerFile.endsWith('.wasm.unityweb')) {
         result.details.wasm = 'unityweb';
+        result.details.wasmFile = file;
         result.hasDecompressionFallback = true;
       } else if (lowerFile.endsWith('.wasm')) {
         result.details.wasm = 'disabled';
+        result.details.wasmFile = file;
       }
     }
 
@@ -511,12 +578,19 @@ function detectCompressionFormat(buildFiles) {
 
   // 전체 압축 포맷 결정 (WASM 파일 기준, 없으면 Data 파일 기준)
   const primaryFormat = result.details.wasm || result.details.data;
+
   if (primaryFormat === 'unityweb') {
-    // unityweb인 경우 실제 압축 포맷은 loader.js 내부에서 결정됨
-    // 일반적으로 Brotli 또는 Gzip
+    // unityweb인 경우 파일 헤더를 읽어 실제 압축 포맷 확인
     result.format = 'unityweb (decompression fallback)';
+
+    if (buildDir && result.details.wasmFile) {
+      const wasmFilePath = path.join(buildDir, result.details.wasmFile);
+      result.actualFormat = detectCompressionFromHeader(wasmFilePath);
+      console.log(`   📄 Detected actual format from .unityweb header: ${result.actualFormat}`);
+    }
   } else if (primaryFormat) {
     result.format = primaryFormat;
+    result.actualFormat = primaryFormat; // 확장자 기반 포맷 = 실제 포맷
   }
 
   return result;
@@ -690,10 +764,11 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
     const compressionValidation = tests['1_webgl_build']?.compressionValidation;
     if (compressionValidation) {
       const status = compressionValidation.formatMatches ? '✅' : '❌';
-      console.log(`\n  🗜️  Compression:     ${status} ${compressionValidation.detectedFormat}`);
+      const displayFormat = compressionValidation.actualFormat || compressionValidation.detectedFormat;
+      console.log(`\n  🗜️  Compression:     ${status} ${displayFormat}`);
       console.log(`     Expected:        ${compressionValidation.expectedFormat}`);
       if (compressionValidation.hasDecompressionFallback) {
-        console.log('     Fallback:        .unityweb (JS decompression)');
+        console.log(`     Fallback:        .unityweb (actual: ${compressionValidation.actualFormat || 'unknown'})`);
       }
     }
 
@@ -771,7 +846,8 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
 
     if (directoryExists(distBuildPath)) {
       const distBuildFiles = fs.readdirSync(distBuildPath);
-      const compressionInfo = detectCompressionFormat(distBuildFiles);
+      // buildDir를 전달하여 .unityweb 파일의 헤더 검사 활성화
+      const compressionInfo = detectCompressionFormat(distBuildFiles, distBuildPath);
       const expectedFormat = getExpectedCompressionFormat(SAMPLE_PROJECT);
 
       console.log('\n' + '─'.repeat(60));
@@ -780,6 +856,9 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       console.log(`   Project: ${path.basename(SAMPLE_PROJECT)}`);
       console.log(`   Expected Format: ${expectedFormat}`);
       console.log(`   Detected Format: ${compressionInfo.format}`);
+      if (compressionInfo.hasDecompressionFallback && compressionInfo.actualFormat) {
+        console.log(`   Actual Format (from header): ${compressionInfo.actualFormat}`);
+      }
       console.log(`   Decompression Fallback: ${compressionInfo.hasDecompressionFallback ? 'Yes (.unityweb)' : 'No'}`);
       console.log(`   Details:`);
       console.log(`     - WASM: ${compressionInfo.details.wasm || 'not found'}`);
@@ -787,18 +866,28 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       console.log(`     - Framework: ${compressionInfo.details.framework || 'not found'}`);
 
       // 압축 포맷 검증
-      // unityweb (decompression fallback)인 경우, 내부 압축은 예상 포맷과 일치해야 함
-      // 실제 압축 포맷은 wasm/data 파일의 확장자로 확인
+      // unityweb (decompression fallback)인 경우, 파일 헤더에서 읽은 actualFormat으로 검증
+      // 그 외에는 확장자 기반 포맷으로 검증
       let formatMatches = false;
       const detectedBase = compressionInfo.details.wasm || compressionInfo.details.data;
 
+      // 실제 검증에 사용할 포맷: unityweb인 경우 헤더에서 읽은 actualFormat, 아니면 확장자 기반
+      const formatToVerify = compressionInfo.actualFormat || detectedBase;
+
       if (detectedBase === 'unityweb') {
-        // unityweb 파일은 내부적으로 brotli 또는 gzip 압축됨
-        // loader.js에서 decompression fallback으로 처리
-        // Unity 2022.3+ with decompressionFallback=true → .unityweb (내부 Brotli)
-        // Unity 2021.3 with decompressionFallback=true → .unityweb (내부 Gzip)
-        console.log(`   ℹ️  unityweb files use ${expectedFormat} internally with JS decompression`);
-        formatMatches = true; // unityweb은 내부 압축이 올바르다고 가정
+        // unityweb 파일은 헤더에서 실제 압축 포맷을 확인
+        if (compressionInfo.actualFormat) {
+          formatMatches = compressionInfo.actualFormat === expectedFormat;
+          if (formatMatches) {
+            console.log(`   ✅ unityweb file uses ${compressionInfo.actualFormat} internally (matches expected)`);
+          } else {
+            console.log(`   ❌ unityweb file uses ${compressionInfo.actualFormat} internally (expected ${expectedFormat})`);
+          }
+        } else {
+          // 헤더 읽기 실패 시 경고만 출력
+          console.log(`   ⚠️  Could not detect actual format from unityweb header`);
+          formatMatches = true; // 헤더 읽기 실패 시 통과 (false positive 방지)
+        }
       } else if (detectedBase === expectedFormat) {
         formatMatches = true;
       } else if (detectedBase === 'disabled' && expectedFormat !== 'disabled') {
@@ -814,7 +903,7 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
         console.log(`   ✅ Compression format is correct`);
       } else {
         console.log(`   ❌ Compression format MISMATCH!`);
-        console.log(`   ❌ Expected: ${expectedFormat}, Got: ${detectedBase}`);
+        console.log(`   ❌ Expected: ${expectedFormat}, Got: ${formatToVerify}`);
         console.log(`   ❌ This indicates a compressionFormat mapping bug in AITBuildInitializer`);
       }
       console.log('─'.repeat(60) + '\n');
@@ -822,6 +911,7 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       compressionValidation = {
         expectedFormat,
         detectedFormat: compressionInfo.format,
+        actualFormat: compressionInfo.actualFormat,
         detectedBase,
         hasDecompressionFallback: compressionInfo.hasDecompressionFallback,
         details: compressionInfo.details,

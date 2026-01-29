@@ -140,45 +140,61 @@ jobs:
           ALL_RESULTS=""
           HAS_ANY_RESULT=false
 
+          # 결과 파일 처리 함수
+          process_results_file() {
+            local file="$1"
+            echo "처리 중: $file"
+
+            FILE_VERSION=$(grep "^version=" "$file" | cut -d= -f2)
+            echo "  버전: ${FILE_VERSION}"
+
+            # RESULTS 섹션 이후의 내용 추출
+            RESULTS=$(sed -n '/^---RESULTS---$/,$ p' "$file" | tail -n +2)
+
+            if [ -n "$RESULTS" ]; then
+              # 각 결과 줄에 버전 정보 추가
+              while IFS= read -r line; do
+                if [ -n "$line" ]; then
+                  # 결과 라인이 해당 버전의 것인지 확인 (다른 버전 결과 필터링)
+                  # 형식: "macOS - 2021.3: URL" 또는 이미 버전이 포함된 경우 스킵
+                  PLATFORM=$(echo "$line" | cut -d: -f1 | xargs)
+                  STATUS=$(echo "$line" | cut -d: -f2- | xargs)
+
+                  # 이미 버전 정보가 포함되어 있는지 확인 (예: "macOS - 2021.3-v1.6.1")
+                  if echo "$PLATFORM" | grep -qE '\-v[0-9]+\.[0-9]+\.[0-9]+'; then
+                    # 이미 버전 정보 포함 - 해당 버전과 일치하는 경우만 추가
+                    if echo "$PLATFORM" | grep -q "\-v${FILE_VERSION}$"; then
+                      ALL_RESULTS="${ALL_RESULTS}${PLATFORM}: ${STATUS}\n"
+                    fi
+                    # 다른 버전의 결과는 무시
+                  else
+                    # 버전 정보 없음 - 버전 추가
+                    ALL_RESULTS="${ALL_RESULTS}${PLATFORM}-v${FILE_VERSION}: ${STATUS}\n"
+                  fi
+                fi
+              done <<< "$RESULTS"
+            fi
+          }
+
           if [ -d "all-deploy-results" ]; then
             echo "=== 배포 결과 수집 ==="
+            echo "디렉토리 구조:"
+            ls -laR all-deploy-results/
+            echo ""
+
+            # Case 1: 서브디렉토리 구조 (여러 아티팩트 - download-artifact@v7)
             for dir in all-deploy-results/deploy-results-*/; do
               if [ -d "$dir" ] && [ -f "${dir}deploy-results.txt" ]; then
-                echo "처리 중: $dir"
                 HAS_ANY_RESULT=true
-
-                # 파일에서 버전과 결과 추출
-                FILE_VERSION=$(grep "^version=" "${dir}deploy-results.txt" | cut -d= -f2)
-                echo "  버전: ${FILE_VERSION}"
-
-                # RESULTS 섹션 이후의 내용 추출
-                RESULTS=$(sed -n '/^---RESULTS---$/,$ p' "${dir}deploy-results.txt" | tail -n +2)
-
-                if [ -n "$RESULTS" ]; then
-                  # 각 결과 줄에 버전 정보 추가
-                  while IFS= read -r line; do
-                    if [ -n "$line" ]; then
-                      # 결과 라인이 해당 버전의 것인지 확인 (다른 버전 결과 필터링)
-                      # 형식: "macOS - 2021.3: URL" 또는 이미 버전이 포함된 경우 스킵
-                      PLATFORM=$(echo "$line" | cut -d: -f1 | xargs)
-                      STATUS=$(echo "$line" | cut -d: -f2- | xargs)
-
-                      # 이미 버전 정보가 포함되어 있는지 확인 (예: "macOS - 2021.3-v1.6.1")
-                      if echo "$PLATFORM" | grep -qE '\-v[0-9]+\.[0-9]+\.[0-9]+'; then
-                        # 이미 버전 정보 포함 - 해당 버전과 일치하는 경우만 추가
-                        if echo "$PLATFORM" | grep -q "\-v${FILE_VERSION}$"; then
-                          ALL_RESULTS="${ALL_RESULTS}${PLATFORM}: ${STATUS}\n"
-                        fi
-                        # 다른 버전의 결과는 무시
-                      else
-                        # 버전 정보 없음 - 버전 추가
-                        ALL_RESULTS="${ALL_RESULTS}${PLATFORM}-v${FILE_VERSION}: ${STATUS}\n"
-                      fi
-                    fi
-                  done <<< "$RESULTS"
-                fi
+                process_results_file "${dir}deploy-results.txt"
               fi
             done
+
+            # Case 2: Flat 구조 (단일 아티팩트 - download-artifact@v7 동작)
+            if [ "$HAS_ANY_RESULT" = false ] && [ -f "all-deploy-results/deploy-results.txt" ]; then
+              HAS_ANY_RESULT=true
+              process_results_file "all-deploy-results/deploy-results.txt"
+            fi
           fi
 
           if [ "$HAS_ANY_RESULT" = false ]; then

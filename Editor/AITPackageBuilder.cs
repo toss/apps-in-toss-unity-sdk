@@ -876,7 +876,9 @@ namespace AppsInToss.Editor
                     .Replace("%AIT_WEB_METRICS_INTERVAL_MS%", (Math.Max(10, Math.Min(60, config.webMetricsIntervalSec)) * 1000).ToString())
                     .Replace("%AIT_UNITY_METRICS_INTERVAL_MS%", (Math.Max(10, Math.Min(60, config.unityMetricsIntervalSec)) * 1000).ToString())
                     // Unity 엔진 버전 (상세 정보: major.minor.patch.commit, 예: 6000.2.14f1)
-                    .Replace("%AIT_UNITY_VERSION%", Application.unityVersion);
+                    .Replace("%AIT_UNITY_VERSION%", Application.unityVersion)
+                    // HTML5 Preload 태그 (로딩 성능 개선)
+                    .Replace("%AIT_PRELOAD_TAGS%", GeneratePreloadTags(dataFile, wasmFile, frameworkFile));
 
                 // 로딩 화면 삽입 (%AIT_LOADING_SCREEN% 플레이스홀더)
                 string loadingContent = "";
@@ -934,6 +936,38 @@ namespace AppsInToss.Editor
             Debug.Log("[AIT]   - Build, TemplateData, Runtime → public/");
 
             return AITConvertCore.AITExportError.SUCCEED;
+        }
+
+        /// <summary>
+        /// Unity WebGL 리소스에 대한 preload 태그를 생성합니다.
+        /// HTML5 preload를 사용하면 HTML 파싱과 동시에 리소스 다운로드가 시작되어 로딩 성능이 개선됩니다.
+        /// </summary>
+        /// <param name="dataFile">data 파일명 (예: Build.data.br)</param>
+        /// <param name="wasmFile">wasm 파일명 (예: Build.wasm.br)</param>
+        /// <param name="frameworkFile">framework 파일명 (예: Build.framework.js.br)</param>
+        /// <returns>preload 태그 문자열 (줄바꿈 포함)</returns>
+        private static string GeneratePreloadTags(string dataFile, string wasmFile, string frameworkFile)
+        {
+            var sb = new System.Text.StringBuilder();
+
+            // 우선순위: data > wasm > framework (일반적으로 크기 순)
+            // as="fetch" + crossorigin="anonymous": Unity가 fetch() API로 로드하므로 동일한 캐시 키 사용
+            if (!string.IsNullOrEmpty(dataFile))
+            {
+                sb.AppendLine($"    <link rel=\"preload\" href=\"Build/{dataFile}\" as=\"fetch\" crossorigin=\"anonymous\">");
+            }
+
+            if (!string.IsNullOrEmpty(wasmFile))
+            {
+                sb.AppendLine($"    <link rel=\"preload\" href=\"Build/{wasmFile}\" as=\"fetch\" crossorigin=\"anonymous\">");
+            }
+
+            if (!string.IsNullOrEmpty(frameworkFile))
+            {
+                sb.AppendLine($"    <link rel=\"preload\" href=\"Build/{frameworkFile}\" as=\"fetch\" crossorigin=\"anonymous\">");
+            }
+
+            return sb.ToString().TrimEnd();
         }
     }
 }

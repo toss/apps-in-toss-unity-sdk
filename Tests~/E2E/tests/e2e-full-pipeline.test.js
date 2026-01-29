@@ -599,21 +599,13 @@ function detectCompressionFormat(buildFiles, buildDir = null) {
 /**
  * 유틸리티: Unity 버전에서 예상되는 압축 포맷 반환
  * AITDefaultSettings.GetDefaultCompressionFormat()와 동일한 로직
+ * decompressionFallback이 활성화되어 있으므로 모든 버전에서 Brotli 사용
  *
- * @param {string} projectPath - Unity 프로젝트 경로
- * @returns {string} 예상 압축 포맷 ('brotli' | 'gzip')
+ * @param {string} projectPath - Unity 프로젝트 경로 (현재 미사용, 향후 확장용)
+ * @returns {string} 예상 압축 포맷 ('brotli')
  */
 function getExpectedCompressionFormat(projectPath) {
-  const match = projectPath.match(/SampleUnityProject-(\d+)\.(\d+)/);
-  if (!match) return 'brotli'; // 기본값
-
-  const major = parseInt(match[1], 10);
-
-  // Unity 2021.x → Gzip, Unity 2022.3+ → Brotli
-  // AITDefaultSettings.GetDefaultCompressionFormat() 참조
-  if (major < 2022) {
-    return 'gzip';
-  }
+  // 모든 Unity 버전에서 Brotli 기본값 사용
   return 'brotli';
 }
 

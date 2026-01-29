@@ -46,8 +46,8 @@ namespace AppsInToss.Editor
             PlayerSettings.WebGL.memorySize = memorySize;
 
             // ===== 압축 설정 (프로필 → 자동) =====
-            WebGLCompressionFormat compressionFormat = profile?.compressionFormat >= 0
-                ? (WebGLCompressionFormat)profile.compressionFormat
+            WebGLCompressionFormat compressionFormat = profile != null
+                ? ConvertToCompressionFormat(profile.compressionFormat)
                 : AITDefaultSettings.GetDefaultCompressionFormat();
             PlayerSettings.WebGL.compressionFormat = compressionFormat;
 
@@ -169,6 +169,22 @@ namespace AppsInToss.Editor
 #if UNITY_2022_2_OR_NEWER
             Debug.Log($"[AIT]   - Show Diagnostics: {showDiagnostics}{(editorConfig.showDiagnostics < 0 ? " (자동)" : "")}");
 #endif
+        }
+
+        /// <summary>
+        /// 프로필 저장값을 WebGLCompressionFormat enum으로 변환
+        /// 저장값: -1=자동, 0=Disabled, 1=Gzip, 2=Brotli
+        /// enum값: 0=Brotli, 1=Gzip, 2=Disabled
+        /// </summary>
+        private static WebGLCompressionFormat ConvertToCompressionFormat(int storedValue)
+        {
+            return storedValue switch
+            {
+                0 => WebGLCompressionFormat.Disabled,
+                1 => WebGLCompressionFormat.Gzip,
+                2 => WebGLCompressionFormat.Brotli,
+                _ => AITDefaultSettings.GetDefaultCompressionFormat()
+            };
         }
 
         /// <summary>

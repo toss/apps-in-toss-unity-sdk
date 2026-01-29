@@ -1142,9 +1142,13 @@ namespace AppsInToss.Editor
             int effectiveMemory = config.memorySize > 0 ? config.memorySize : AITDefaultSettings.GetDefaultMemorySize();
             EditorGUILayout.LabelField($"  메모리: {effectiveMemory}MB");
 
-            WebGLCompressionFormat effectiveCompression = config.productionProfile.compressionFormat >= 0
-                ? (WebGLCompressionFormat)config.productionProfile.compressionFormat
-                : AITDefaultSettings.GetDefaultCompressionFormat();
+            WebGLCompressionFormat effectiveCompression = config.productionProfile.compressionFormat switch
+            {
+                0 => WebGLCompressionFormat.Disabled,
+                1 => WebGLCompressionFormat.Gzip,
+                2 => WebGLCompressionFormat.Brotli,
+                _ => AITDefaultSettings.GetDefaultCompressionFormat()
+            };
             EditorGUILayout.LabelField($"  압축: {effectiveCompression}");
 
             bool effectiveThreads = config.threadsSupport >= 0

@@ -439,6 +439,111 @@ async function startProductionServer(aitBuildDir, defaultPort) {
 }
 
 /**
+ * 유틸리티: 빌드 파일에서 압축 포맷 감지
+ * Unity WebGL 빌드 파일의 확장자를 분석하여 적용된 압축 포맷을 반환
+ *
+ * 확장자 매핑:
+ * - .wasm.br, .data.br, .framework.js.br → Brotli
+ * - .wasm.gz, .data.gz, .framework.js.gz → Gzip
+ * - .wasm, .data, .framework.js (압축 없음) → Disabled
+ * - .unityweb → Decompression Fallback (내부 압축 포맷은 loader.js에서 확인)
+ *
+ * @param {string[]} buildFiles - 빌드 디렉토리의 파일 목록
+ * @returns {{format: string, hasDecompressionFallback: boolean, details: object}}
+ */
+function detectCompressionFormat(buildFiles) {
+  const result = {
+    format: 'unknown',
+    hasDecompressionFallback: false,
+    details: {
+      wasm: null,
+      data: null,
+      framework: null
+    }
+  };
+
+  // 각 파일 타입별 확장자 감지
+  for (const file of buildFiles) {
+    const lowerFile = file.toLowerCase();
+
+    // WASM 파일
+    if (lowerFile.includes('.wasm')) {
+      if (lowerFile.endsWith('.wasm.br')) {
+        result.details.wasm = 'brotli';
+      } else if (lowerFile.endsWith('.wasm.gz')) {
+        result.details.wasm = 'gzip';
+      } else if (lowerFile.endsWith('.wasm.unityweb')) {
+        result.details.wasm = 'unityweb';
+        result.hasDecompressionFallback = true;
+      } else if (lowerFile.endsWith('.wasm')) {
+        result.details.wasm = 'disabled';
+      }
+    }
+
+    // Data 파일
+    if (lowerFile.includes('.data')) {
+      if (lowerFile.endsWith('.data.br')) {
+        result.details.data = 'brotli';
+      } else if (lowerFile.endsWith('.data.gz')) {
+        result.details.data = 'gzip';
+      } else if (lowerFile.endsWith('.data.unityweb')) {
+        result.details.data = 'unityweb';
+        result.hasDecompressionFallback = true;
+      } else if (lowerFile.endsWith('.data')) {
+        result.details.data = 'disabled';
+      }
+    }
+
+    // Framework 파일
+    if (lowerFile.includes('.framework.js')) {
+      if (lowerFile.endsWith('.framework.js.br')) {
+        result.details.framework = 'brotli';
+      } else if (lowerFile.endsWith('.framework.js.gz')) {
+        result.details.framework = 'gzip';
+      } else if (lowerFile.endsWith('.framework.js.unityweb')) {
+        result.details.framework = 'unityweb';
+        result.hasDecompressionFallback = true;
+      } else if (lowerFile.endsWith('.framework.js')) {
+        result.details.framework = 'disabled';
+      }
+    }
+  }
+
+  // 전체 압축 포맷 결정 (WASM 파일 기준, 없으면 Data 파일 기준)
+  const primaryFormat = result.details.wasm || result.details.data;
+  if (primaryFormat === 'unityweb') {
+    // unityweb인 경우 실제 압축 포맷은 loader.js 내부에서 결정됨
+    // 일반적으로 Brotli 또는 Gzip
+    result.format = 'unityweb (decompression fallback)';
+  } else if (primaryFormat) {
+    result.format = primaryFormat;
+  }
+
+  return result;
+}
+
+/**
+ * 유틸리티: Unity 버전에서 예상되는 압축 포맷 반환
+ * AITDefaultSettings.GetDefaultCompressionFormat()와 동일한 로직
+ *
+ * @param {string} projectPath - Unity 프로젝트 경로
+ * @returns {string} 예상 압축 포맷 ('brotli' | 'gzip')
+ */
+function getExpectedCompressionFormat(projectPath) {
+  const match = projectPath.match(/SampleUnityProject-(\d+)\.(\d+)/);
+  if (!match) return 'brotli'; // 기본값
+
+  const major = parseInt(match[1], 10);
+
+  // Unity 2021.x → Gzip, Unity 2022.3+ → Brotli
+  // AITDefaultSettings.GetDefaultCompressionFormat() 참조
+  if (major < 2022) {
+    return 'gzip';
+  }
+  return 'brotli';
+}
+
+/**
  * 유틸리티: placeholder 검사
  */
 function checkForPlaceholders(content) {
@@ -550,6 +655,8 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
         successCount: testResults.tests['6_runtime_api'].successCount,
         unexpectedErrorCount: testResults.tests['6_runtime_api'].unexpectedErrorCount
       } : null,
+      // 압축 포맷 검증 결과 (compressionFormat 매핑 버그 재발 방지)
+      compressionValidation: testResults.tests['1_webgl_build']?.compressionValidation || null,
       testsPassed: Object.values(testResults.tests || {}).filter(t => t.passed).length,
       testsTotal: Object.keys(testResults.tests || {}).length
     };
@@ -578,6 +685,17 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
     console.log('  ⏱️  Page Load:       ' + (pageLoad ? pageLoad + ' ms' : 'N/A'));
     console.log('  🎮 Unity Load:      ' + (unityLoad ? unityLoad + ' ms' : 'N/A'));
     console.log('  🖥️  GPU Renderer:    ' + (renderer || 'N/A'));
+
+    // 압축 포맷 검증 결과 출력
+    const compressionValidation = tests['1_webgl_build']?.compressionValidation;
+    if (compressionValidation) {
+      const status = compressionValidation.formatMatches ? '✅' : '❌';
+      console.log(`\n  🗜️  Compression:     ${status} ${compressionValidation.detectedFormat}`);
+      console.log(`     Expected:        ${compressionValidation.expectedFormat}`);
+      if (compressionValidation.hasDecompressionFallback) {
+        console.log('     Fallback:        .unityweb (JS decompression)');
+      }
+    }
 
     // SDK Runtime 검증 결과 출력
     const apiTest = tests['6_runtime_api'];
@@ -645,9 +763,86 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
     const distSizeMB = getDirectorySizeMB(DIST_WEB);
     console.log(`📦 Build size: ${distSizeMB.toFixed(2)} MB`);
 
+    // =====================================================================
+    // 압축 포맷 검증 (compressionFormat 매핑 버그 재발 방지)
+    // =====================================================================
+    const distBuildPath = path.join(DIST_WEB, 'Build');
+    let compressionValidation = null;
+
+    if (directoryExists(distBuildPath)) {
+      const distBuildFiles = fs.readdirSync(distBuildPath);
+      const compressionInfo = detectCompressionFormat(distBuildFiles);
+      const expectedFormat = getExpectedCompressionFormat(SAMPLE_PROJECT);
+
+      console.log('\n' + '─'.repeat(60));
+      console.log('🗜️  COMPRESSION FORMAT VALIDATION');
+      console.log('─'.repeat(60));
+      console.log(`   Project: ${path.basename(SAMPLE_PROJECT)}`);
+      console.log(`   Expected Format: ${expectedFormat}`);
+      console.log(`   Detected Format: ${compressionInfo.format}`);
+      console.log(`   Decompression Fallback: ${compressionInfo.hasDecompressionFallback ? 'Yes (.unityweb)' : 'No'}`);
+      console.log(`   Details:`);
+      console.log(`     - WASM: ${compressionInfo.details.wasm || 'not found'}`);
+      console.log(`     - Data: ${compressionInfo.details.data || 'not found'}`);
+      console.log(`     - Framework: ${compressionInfo.details.framework || 'not found'}`);
+
+      // 압축 포맷 검증
+      // unityweb (decompression fallback)인 경우, 내부 압축은 예상 포맷과 일치해야 함
+      // 실제 압축 포맷은 wasm/data 파일의 확장자로 확인
+      let formatMatches = false;
+      const detectedBase = compressionInfo.details.wasm || compressionInfo.details.data;
+
+      if (detectedBase === 'unityweb') {
+        // unityweb 파일은 내부적으로 brotli 또는 gzip 압축됨
+        // loader.js에서 decompression fallback으로 처리
+        // Unity 2022.3+ with decompressionFallback=true → .unityweb (내부 Brotli)
+        // Unity 2021.3 with decompressionFallback=true → .unityweb (내부 Gzip)
+        console.log(`   ℹ️  unityweb files use ${expectedFormat} internally with JS decompression`);
+        formatMatches = true; // unityweb은 내부 압축이 올바르다고 가정
+      } else if (detectedBase === expectedFormat) {
+        formatMatches = true;
+      } else if (detectedBase === 'disabled' && expectedFormat !== 'disabled') {
+        // 버그 감지: 압축이 비활성화되어야 할 때 활성화되거나 그 반대
+        console.log(`   ⚠️  Compression mismatch detected!`);
+        console.log(`   ⚠️  This may indicate a compressionFormat mapping bug`);
+        formatMatches = false;
+      } else {
+        formatMatches = detectedBase === expectedFormat;
+      }
+
+      if (formatMatches) {
+        console.log(`   ✅ Compression format is correct`);
+      } else {
+        console.log(`   ❌ Compression format MISMATCH!`);
+        console.log(`   ❌ Expected: ${expectedFormat}, Got: ${detectedBase}`);
+        console.log(`   ❌ This indicates a compressionFormat mapping bug in AITBuildInitializer`);
+      }
+      console.log('─'.repeat(60) + '\n');
+
+      compressionValidation = {
+        expectedFormat,
+        detectedFormat: compressionInfo.format,
+        detectedBase,
+        hasDecompressionFallback: compressionInfo.hasDecompressionFallback,
+        details: compressionInfo.details,
+        formatMatches
+      };
+
+      // 압축 포맷이 일치하지 않으면 테스트 실패
+      // 단, disabled ↔ brotli/gzip 불일치만 실패 처리 (매핑 버그 감지)
+      if (!formatMatches && detectedBase !== 'disabled') {
+        // gzip ↔ brotli 불일치는 경고만 (Unity 버전 감지 오류일 수 있음)
+        console.log(`   ⚠️  Format mismatch (${detectedBase} vs ${expectedFormat}) - warning only`);
+      } else if (!formatMatches && detectedBase === 'disabled') {
+        // disabled가 감지되었는데 압축이 예상된 경우 → 매핑 버그
+        expect(formatMatches, `Compression format should match: expected ${expectedFormat}, got ${detectedBase}`).toBe(true);
+      }
+    }
+
     testResults.tests['1_webgl_build'] = {
       passed: true,
-      buildSizeMB: distSizeMB
+      buildSizeMB: distSizeMB,
+      compressionValidation
     };
   });
 

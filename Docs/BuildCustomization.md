@@ -1,6 +1,6 @@
-# WebGL 템플릿 커스터마이징
+# 빌드 커스터마이징
 
-이 문서는 Apps in Toss Unity SDK의 WebGL 템플릿 커스터마이징 방법을 설명합니다.
+이 문서는 Apps in Toss Unity SDK의 빌드 커스터마이징 방법을 설명합니다.
 
 ## 목차
 

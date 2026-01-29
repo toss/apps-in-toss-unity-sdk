@@ -206,6 +206,6 @@ public class FeedbackManager : MonoBehaviour
 
 - [API 사용 패턴](APIUsagePatterns.md) - async/await 패턴, 에러 처리
 - [빌드 프로필](BuildProfiles.md) - 빌드 설정 상세 안내
-- [WebGL 커스터마이징](WebGLCustomization.md) - 템플릿 커스터마이징
+- [빌드 커스터마이징](BuildCustomization.md) - 템플릿 커스터마이징
 - [로딩 화면 커스터마이징](LoadingScreenCustomization.md) - 로딩 UI 변경
 - [문제 해결](Troubleshooting.md) - FAQ 및 트러블슈팅

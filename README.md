@@ -83,7 +83,7 @@ public class Example : MonoBehaviour
 | [시작하기](Docs/GettingStarted.md) | 상세 설치 및 초기 설정 |
 | [API 사용 패턴](Docs/APIUsagePatterns.md) | async/await, 에러 처리, Mock 브릿지 |
 | [빌드 프로필](Docs/BuildProfiles.md) | 빌드 설정, 환경 변수 |
-| [WebGL 커스터마이징](Docs/WebGLCustomization.md) | 템플릿 수정, React/TypeScript |
+| [빌드 커스터마이징](Docs/BuildCustomization.md) | 템플릿 수정, React/TypeScript |
 | [로딩 화면 커스터마이징](Docs/LoadingScreenCustomization.md) | 로딩 UI 변경 |
 | [메트릭](Docs/Metrics.md) | 성능 메트릭 확인 |
 | [문제 해결](Docs/Troubleshooting.md) | FAQ 및 트러블슈팅 |

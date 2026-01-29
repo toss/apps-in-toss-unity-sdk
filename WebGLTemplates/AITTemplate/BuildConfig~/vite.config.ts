@@ -39,47 +39,57 @@ function detectUnityWebCompression(filePath: string): 'br' | 'gzip' | null {
 function unityWebContentEncodingPlugin(): Plugin {
   const compressionCache = new Map<string, 'br' | 'gzip' | null>();
 
+  function createMiddleware(baseDir: string) {
+    return (
+      req: { url?: string },
+      res: { setHeader(name: string, value: string): void },
+      next: () => void,
+    ) => {
+      const url = req.url || '';
+
+      if (url.endsWith('.unityweb')) {
+        const filePath = join(process.cwd(), baseDir, url);
+
+        // 캐시 확인 또는 감지
+        let encoding = compressionCache.get(filePath);
+        if (encoding === undefined) {
+          encoding = detectUnityWebCompression(filePath);
+          compressionCache.set(filePath, encoding);
+        }
+
+        if (encoding) {
+          res.setHeader('Content-Encoding', encoding);
+        }
+
+        // Content-Type 설정
+        if (url.includes('.wasm.')) {
+          res.setHeader('Content-Type', 'application/wasm');
+        } else if (url.includes('.js.')) {
+          res.setHeader('Content-Type', 'application/javascript');
+        } else if (url.includes('.data.')) {
+          res.setHeader('Content-Type', 'application/octet-stream');
+        }
+      }
+      // 레거시 .br 파일 (Unity 2021/2022)
+      else if (url.endsWith('.br')) {
+        res.setHeader('Content-Encoding', 'br');
+      }
+      // 레거시 .gz 파일 (Unity 2021/2022)
+      else if (url.endsWith('.gz')) {
+        res.setHeader('Content-Encoding', 'gzip');
+      }
+
+      next();
+    };
+  }
+
   return {
     name: 'unity-web-content-encoding',
     configureServer(server) {
-      server.middlewares.use((req, res, next) => {
-        const url = req.url || '';
-
-        if (url.endsWith('.unityweb')) {
-          // public/ 폴더 기준으로 파일 경로 계산
-          const filePath = join(process.cwd(), 'public', url);
-
-          // 캐시 확인 또는 감지
-          let encoding = compressionCache.get(filePath);
-          if (encoding === undefined) {
-            encoding = detectUnityWebCompression(filePath);
-            compressionCache.set(filePath, encoding);
-          }
-
-          if (encoding) {
-            res.setHeader('Content-Encoding', encoding);
-          }
-
-          // Content-Type 설정
-          if (url.includes('.wasm.')) {
-            res.setHeader('Content-Type', 'application/wasm');
-          } else if (url.includes('.js.')) {
-            res.setHeader('Content-Type', 'application/javascript');
-          } else if (url.includes('.data.')) {
-            res.setHeader('Content-Type', 'application/octet-stream');
-          }
-        }
-        // 레거시 .br 파일 (Unity 2021/2022)
-        else if (url.endsWith('.br')) {
-          res.setHeader('Content-Encoding', 'br');
-        }
-        // 레거시 .gz 파일 (Unity 2021/2022)
-        else if (url.endsWith('.gz')) {
-          res.setHeader('Content-Encoding', 'gzip');
-        }
-
-        next();
-      });
+      server.middlewares.use(createMiddleware('public'));
+    },
+    configurePreviewServer(server) {
+      server.middlewares.use(createMiddleware('dist/web'));
     },
   };
 }

@@ -168,5 +168,5 @@ AIT_DEBUG_CONSOLE=true /Applications/Unity/Hub/Editor/2022.3.62f1/Unity.app/Cont
 
 - [시작하기](GettingStarted.md) - 설치 및 기본 설정
 - [API 사용 패턴](APIUsagePatterns.md) - async/await 패턴, 에러 처리
-- [WebGL 커스터마이징](WebGLCustomization.md) - 템플릿 커스터마이징
+- [빌드 커스터마이징](BuildCustomization.md) - 템플릿 커스터마이징
 - [문제 해결](Troubleshooting.md) - FAQ 및 트러블슈팅

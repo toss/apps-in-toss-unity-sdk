@@ -807,6 +807,23 @@ namespace AppsInToss
                         }
                     }
                     break;
+                case "double?":
+                    if (apiResponse.success)
+                    {
+                        if (TryGetCallback<double?>(callbackId, out var callback18) && callback18 != null)
+                        {
+                            var data18 = JsonConvert.DeserializeObject<double?>(apiResponse.data);
+                            callback18(data18);
+                        }
+                    }
+                    else
+                    {
+                        if (TryGetErrorCallback(callbackId, out var errorCallback18) && errorCallback18 != null)
+                        {
+                            errorCallback18(new AITException("double?", apiResponse.error));
+                        }
+                    }
+                    break;
                 case "NetworkStatus":
                     if (apiResponse.success)
                     {

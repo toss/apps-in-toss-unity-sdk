@@ -20,6 +20,8 @@ MonoBehaviour:
   iconUrl: https://via.placeholder.com/512
   bridgeColorMode: 0
   webViewType: 0
+  allowsInlineMediaPlayback: 0
+  mediaPlaybackRequiresUserAction: 0
   graniteHost: 0.0.0.0
   granitePort: 8084
   viteHost: localhost
@@ -45,6 +47,7 @@ MonoBehaviour:
   threadsSupport: -1
   dataCaching: -1
   nameFilesAsHashes: 1
+  devicePixelRatio: -1
   stripEngineCode: 1
   il2cppConfiguration: -1
   powerPreference: -1
@@ -56,6 +59,8 @@ MonoBehaviour:
   webAssemblyArithmeticExceptions: -1
   enableDebugConsole: 0
   showDiagnostics: -1
+  webMetricsIntervalSec: 10
+  unityMetricsIntervalSec: 10
   permissionConfig:
     clipboardRead: 1
     clipboardWrite: 1

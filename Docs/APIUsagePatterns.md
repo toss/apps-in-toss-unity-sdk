@@ -70,7 +70,7 @@ async void InitializeGame()
 {
     // 순차 호출
     string deviceId = await AIT.GetDeviceId();
-    PlatformOS platform = await AIT.GetPlatformOS();
+    string platform = await AIT.GetPlatformOS();
     string locale = await AIT.GetLocale();
 
     Debug.Log($"기기: {deviceId}, 플랫폼: {platform}, 언어: {locale}");
@@ -120,7 +120,7 @@ public class ErrorHandling : MonoBehaviour
         {
             // API 호출 실패
             Debug.LogError($"API 오류: {ex.Message}");
-            Debug.LogError($"오류 코드: {ex.Code}");
+            Debug.LogError($"오류 코드: {ex.ErrorCode}");
         }
         catch (System.Exception ex)
         {
@@ -136,7 +136,9 @@ public class ErrorHandling : MonoBehaviour
 | 속성 | 타입 | 설명 |
 |------|------|------|
 | `Message` | `string` | 사람이 읽을 수 있는 오류 메시지 |
-| `Code` | `string` | 오류 코드 (프로그래밍 방식 처리용) |
+| `ErrorCode` | `string` | 오류 코드 (프로그래밍 방식 처리용) |
+| `APIName` | `string` | 실패한 API 이름 |
+| `IsPlatformUnavailable` | `bool` | 플랫폼 미지원으로 인한 오류 여부 (브라우저 환경 등) |
 
 ### 오류 코드별 처리
 
@@ -149,7 +151,7 @@ async void HandlePayment()
     }
     catch (AITException ex)
     {
-        switch (ex.Code)
+        switch (ex.ErrorCode)
         {
             case "PAYMENT_CANCELLED":
                 Debug.Log("사용자가 결제를 취소했습니다.");
@@ -223,10 +225,10 @@ Mock 브릿지는 네이티브 API가 없는 환경(Unity Editor, 일반 브라�
 
 | API | Mock 반환값 |
 |-----|------------|
-| `GetDeviceId()` | 임의의 테스트 기기 ID |
-| `GetPlatformOS()` | `PlatformOS.Web` |
-| `GetNetworkStatus()` | `NetworkStatus.Wifi` |
-| `CheckoutPayment()` | 성공 시뮬레이션 또는 테스트 결과 |
+| `GetDeviceId()` | 빈 문자열 `""` |
+| `GetPlatformOS()` | 빈 문자열 `""` |
+| `GetNetworkStatus()` | `default(NetworkStatus)` |
+| `CheckoutPayment()` | `default(CheckoutPaymentResult)` |
 | `GenerateHapticFeedback()` | 로그 출력만 (실제 진동 없음) |
 
 ### Mock 로그
@@ -234,8 +236,8 @@ Mock 브릿지는 네이티브 API가 없는 환경(Unity Editor, 일반 브라�
 Mock 브릿지가 호출되면 Console에 로그가 출력됩니다:
 
 ```
-[AIT Mock] GetDeviceId() called - returning test value
-[AIT Mock] GetPlatformOS() called - returning Web
+[AIT Mock] GetDeviceId called
+[AIT Mock] GetPlatformOS called
 ```
 
 ### 빌드 프로필별 Mock 설정

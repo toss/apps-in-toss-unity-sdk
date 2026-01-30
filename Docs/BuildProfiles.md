@@ -119,28 +119,11 @@ CI/CD 환경이나 자동화 스크립트에서 환경 변수를 통해 빌드 �
 
 ### 사용 예시
 
-#### 로컬 테스트
-
-```bash
-AIT_DEBUG_CONSOLE=true ./run-local-tests.sh --all
-```
-
-#### Unity 직접 실행
+Unity Editor를 커맨드라인으로 실행할 때 환경 변수를 설정할 수 있습니다:
 
 ```bash
 AIT_DEBUG_CONSOLE=true /Applications/Unity/Hub/Editor/2022.3.62f1/Unity.app/Contents/MacOS/Unity \
-  -quit -batchmode -projectPath ./MyProject \
-  -executeMethod AITConvertCore.CommandLineBuild
-```
-
-#### GitHub Actions
-
-```yaml
-- name: Build with Debug Console
-  env:
-    AIT_DEBUG_CONSOLE: "true"
-  run: |
-    unity -executeMethod E2EBuildRunner.CommandLineBuild ...
+  -quit -batchmode -projectPath ./MyProject
 ```
 
 ---
@@ -154,9 +137,12 @@ AIT_DEBUG_CONSOLE=true /Applications/Unity/Hub/Editor/2022.3.62f1/Unity.app/Cont
 [AIT] 빌드 프로필: Dev Server
 [AIT] ========================================
 [AIT]   Mock 브릿지: 활성화
-[AIT]   디버그 심볼: Embedded
 [AIT]   디버그 콘솔: 활성화
+[AIT]   Development Build: 활성화
 [AIT]   LZ4 압축: 활성화
+[AIT]   압축 포맷: Disabled
+[AIT]   Stripping Level: 자동 (High)
+[AIT]   디버그 심볼: Embedded
 [AIT] ========================================
 ```
 

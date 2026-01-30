@@ -29,7 +29,7 @@
 **원인**: 앱 아이콘 URL은 필수 설정입니다.
 
 **해결 방법**:
-1. `Apps in Toss > Build & Deploy Window` 메뉴 열기
+1. `AIT > Configuration` 메뉴 열기
 2. "앱 아이콘 URL" 필드에 이미지 URL 입력
 3. 이 URL은 Apps in Toss 앱에서 미니앱 아이콘으로 표시됩니다.
 
@@ -119,7 +119,7 @@
 **증상**: SDK API 호출 시 `AITException` throw
 
 **해결 방법**:
-1. 예외의 `Code`와 `Message` 속성을 확인하세요.
+1. 예외의 `ErrorCode`와 `Message` 속성을 확인하세요.
 2. 네트워크 연결 상태를 확인하세요.
 3. Apps in Toss 앱이 최신 버전인지 확인하세요.
 
@@ -130,7 +130,7 @@ try
 }
 catch (AITException ex)
 {
-    Debug.LogError($"오류 코드: {ex.Code}, 메시지: {ex.Message}");
+    Debug.LogError($"오류 코드: {ex.ErrorCode}, 메시지: {ex.Message}");
 }
 ```
 
@@ -171,33 +171,9 @@ catch (AITException ex)
 
 ## 개발 환경 문제
 
-### Git hooks 설정 오류
-
-**증상**: pre-commit hook 관련 오류
-
-**해결 방법**:
-```bash
-# Git hooks 재설정
-./.githooks/setup.sh
-```
-
----
-
-### .meta 파일 누락 경고
-
-**증상**: 커밋 시 `.meta` 파일 누락 경고
-
-**해결 방법**:
-1. Unity Editor에서 프로젝트를 열어 자동 생성
-2. 또는 기존 `.meta` 파일을 참고하여 수동 생성 (고유 GUID 필요)
-
-> **중요**: Unity 패키지의 `Editor/`, `Runtime/`, `WebGLTemplates/` 디렉토리 내 모든 파일은 반드시 `.meta` 파일이 함께 있어야 합니다.
-
----
-
 ### Unity Editor에서 SDK 메뉴가 보이지 않음
 
-**증상**: `Apps in Toss` 메뉴가 Unity Editor에 표시되지 않음
+**증상**: `AIT` 메뉴가 Unity Editor에 표시되지 않음
 
 **가능한 원인 및 해결 방법**:
 

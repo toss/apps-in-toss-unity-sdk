@@ -29,7 +29,7 @@
 | 도구 | 용도 | 필수 여부 |
 |------|------|----------|
 | Unity 2021.3+ | SDK 개발 및 테스트 | 필수 |
-| Node.js 18+ | SDK Generator, E2E 테스트 | 선택 (내장 Node.js 사용 가능) |
+| Node.js 18+ | SDK Generator | 선택 (내장 Node.js 사용 가능) |
 | pnpm | SDK Generator 패키지 관리 | 선택 (Generator 작업 시) |
 
 ### SDK Generator 개발
@@ -56,7 +56,6 @@ Unity 패키지의 `Editor/`, `Runtime/`, `WebGLTemplates/` 디렉토리 내 모
 ### 검사 방법
 
 1. **pre-commit hook**: 커밋 시 자동으로 `.meta` 파일 누락 검사
-2. **CI 검사**: PR 생성 시 GitHub Actions에서 자동 검증
 
 ### .meta 파일 생성 방법
 
@@ -114,7 +113,7 @@ DefaultImporter:
 개선: 빌드 성능 최적화
 리팩토링: API 호출 코드 정리
 문서: 시작하기 가이드 추가
-테스트: E2E 테스트 케이스 추가
+테스트: 유닛 테스트 케이스 추가
 빌드: Unity 6 지원 추가
 ```
 
@@ -136,33 +135,6 @@ feat: Add user authentication API    ❌ 영어 사용
 - [ ] `.meta` 파일이 모두 포함되었는가?
 - [ ] 자동 생성 코드를 직접 수정하지 않았는가?
 - [ ] 테스트가 통과하는가?
-
-### CI 검사 항목
-
-PR 생성 시 다음 검사가 자동으로 실행됩니다:
-
-| 워크플로우 | 검사 내용 |
-|-----------|----------|
-| **Validate** | SDK Generator 유닛 테스트, Unity .meta 파일 검사 |
-| **Lint** | Unity .meta 파일 누락 검사 |
-| **E2E Tests** | Unity WebGL 빌드 + Playwright 테스트 (수동 트리거) |
-
-### E2E 테스트 실행
-
-PR에 대해 E2E 테스트를 실행하려면 담당자에게 요청하거나 직접 트리거하세요:
-
-```bash
-# PR 번호로 E2E 테스트 트리거
-gh api repos/toss/apps-in-toss-unity-sdk/actions/workflows/216286654/dispatches \
-  -X POST --input - <<EOF
-{
-  "ref": "main",
-  "inputs": {
-    "target_ref": "PR번호"
-  }
-}
-EOF
-```
 
 ---
 

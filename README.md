@@ -41,7 +41,7 @@ https://github.com/toss/apps-in-toss-unity-sdk.git#release/v1.9.0
 
 ### 1. 설정
 
-`Apps in Toss > Build & Deploy Window` 메뉴에서:
+`AIT > Configuration` 메뉴에서:
 - 앱 ID 입력
 - 아이콘 URL 입력 (필수)
 

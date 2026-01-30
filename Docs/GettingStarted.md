@@ -5,7 +5,7 @@
 ## 목차
 
 - [SDK 설치](#sdk-설치)
-- [Build & Deploy Window](#build--deploy-window)
+- [설정](#설정)
 - [첫 번째 빌드](#첫-번째-빌드)
 - [SDK 사용 예제](#sdk-사용-예제)
 
@@ -51,9 +51,9 @@ https://github.com/toss/apps-in-toss-unity-sdk.git#release/v1.9.0
 
 ---
 
-## Build & Deploy Window
+## 설정
 
-SDK 설치 후 Unity Editor 메뉴에서 `Apps in Toss` > `Build & Deploy Window`를 클릭하여 설정 패널을 엽니다.
+SDK 설치 후 Unity Editor 메뉴에서 `AIT` > `Configuration`을 클릭하여 설정 패널을 엽니다.
 
 ### 필수 설정
 
@@ -81,7 +81,7 @@ SDK 설치 후 Unity Editor 메뉴에서 `Apps in Toss` > `Build & Deploy Window
 
 ### 1. 설정 확인
 
-1. `Apps in Toss` > `Configuration` 메뉴에서 설정 확인
+1. `AIT` > `Configuration` 메뉴에서 설정 확인
 2. **앱 아이콘 URL**이 입력되어 있는지 확인 (필수)
 
 ### 2. 개발 서버 실행
@@ -130,7 +130,7 @@ public class GameManager : MonoBehaviour
             Debug.Log($"Device ID: {deviceId}");
 
             // 플랫폼 OS 조회
-            PlatformOS os = await AIT.GetPlatformOS();
+            string os = await AIT.GetPlatformOS();
             Debug.Log($"Platform: {os}");
 
             // 네트워크 상태 확인
@@ -139,7 +139,7 @@ public class GameManager : MonoBehaviour
         }
         catch (AITException ex)
         {
-            Debug.LogError($"API 호출 실패: {ex.Message} (code: {ex.Code})");
+            Debug.LogError($"API 호출 실패: {ex.Message} (code: {ex.ErrorCode})");
         }
     }
 }
@@ -159,11 +159,11 @@ public class PaymentManager : MonoBehaviour
         try
         {
             var options = new CheckoutPaymentOptions {
-                // 결제 옵션 설정
+                PayToken = "your-pay-token"
             };
 
             CheckoutPaymentResult result = await AIT.CheckoutPayment(options);
-            Debug.Log($"Payment result: {result.paymentKey}");
+            Debug.Log($"Payment success: {result.Success}");
         }
         catch (AITException ex)
         {
@@ -185,8 +185,8 @@ public class FeedbackManager : MonoBehaviour
     {
         try
         {
-            var options = new GenerateHapticFeedbackOptions {
-                style = "medium"
+            var options = new HapticFeedbackOptions {
+                Type = HapticFeedbackType.Tap
             };
 
             await AIT.GenerateHapticFeedback(options);

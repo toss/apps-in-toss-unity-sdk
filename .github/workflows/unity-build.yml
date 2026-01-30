@@ -361,16 +361,8 @@ jobs:
             $waited += $interval
           }
 
-          $otherClients = Get-Process -Name "Unity.Licensing.Client" -ErrorAction SilentlyContinue |
-            Where-Object { $_.Path -notlike "*$targetVersion*" }
-
-          if ($otherClients) {
-            Write-Host "::warning::Killing stale License Client processes after ${maxWait}s timeout..."
-            foreach ($proc in $otherClients) {
-              Write-Host "  Killing PID: $($proc.Id), Path: $($proc.Path)"
-              Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-            }
-            Start-Sleep -Seconds 2
+          if ($waited -ge $maxWait) {
+            Write-Host "::warning::License Client still running after ${maxWait}s, proceeding anyway (will retry on failure)"
           }
 
           Write-Host "License Client check completed"
@@ -603,6 +595,15 @@ jobs:
             if ($null -ne $exitCode -and $exitCode -ne 0) {
               Write-Host "::error::Unity build failed with exit code: $exitCode"
               exit $exitCode
+            }
+
+            # 라이선스 실패 감지 - retry 액션이 자동 재시도
+            if (Test-Path $logFile) {
+              $logContent = Get-Content $logFile -Raw -ErrorAction SilentlyContinue
+              if ($logContent -match "No valid Unity Editor license found|No ULF license found") {
+                Write-Host "::warning::Unity license activation failed, triggering retry..."
+                exit 1
+              }
             }
 
             Write-Host "Unity build completed successfully (exit code: $exitCode)"

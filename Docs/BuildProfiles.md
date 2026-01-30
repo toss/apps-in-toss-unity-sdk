@@ -116,6 +116,7 @@ CI/CD 환경이나 자동화 스크립트에서 환경 변수를 통해 빌드 �
 | 환경 변수 | 설명 | 값 |
 |----------|------|-----|
 | `AIT_DEBUG_CONSOLE` | 디버그 콘솔 활성화 | `true` / `false` |
+| `AIT_COMPRESSION_FORMAT` | 압축 포맷 오버라이드 | `-1` (자동) / `0` (Disabled) / `1` (Gzip) / `2` (Brotli) |
 
 ### 사용 예시
 

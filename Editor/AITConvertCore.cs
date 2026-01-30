@@ -239,11 +239,11 @@ namespace AppsInToss
                     profileName = profileName ?? "Production";
                 }
 
+                // 환경 변수로 프로필 오버라이드 적용 (Init 전에 적용하여 PlayerSettings에 반영)
+                profile = AITBuildInitializer.ApplyEnvironmentVariableOverrides(profile);
+
                 // Init()에 프로필 전달하여 프로필별 압축/스트리핑 설정 적용
                 Init(profile);
-
-                // 환경 변수로 프로필 오버라이드 적용
-                profile = AITBuildInitializer.ApplyEnvironmentVariableOverrides(profile);
 
                 // 빌드 프로필 로그 출력
                 AITBuildInitializer.LogBuildProfile(profile, profileName);

@@ -9,6 +9,7 @@
 #   --e2e                    E2E 테스트만 (빌드 결과물 필요)
 #   --unity-build            Unity WebGL 빌드 실행
 #   --unity-version <버전>   특정 Unity 버전 지정 (예: 2022.3, 6000.0)
+#   --compression <format>   압축 포맷 지정 (auto, disabled, gzip, brotli)
 #   --parallel               다른 모드와 조합하여 병렬 실행 (예: --unity-build --parallel)
 #   --list-unity             설치된 Unity 버전 목록 표시
 #   --help                   도움말
@@ -40,6 +41,7 @@ SKIPPED=0
 UNITY_VERSION=""
 UNITY_PATH=""
 PARALLEL_MODE=false
+COMPRESSION_FORMAT=""
 
 # 지원하는 Unity 버전 패턴 (우선순위 순)
 UNITY_VERSION_PATTERNS=(
@@ -260,6 +262,7 @@ show_help() {
     echo "│ 옵션                        │ 실행 내용                          │ 소요 시간    │"
     echo "├─────────────────────────────────────────────────────────────────────────────────────┤"
     echo "│ --validate                  │ 파일 검증 + SDK 유닛 테스트        │ ~30초        │"
+    echo "│ --compression <format>      │ 압축 포맷 지정 (auto/disabled/...) │ -            │"
     echo "│ --unity-build               │ Unity WebGL 빌드 (단일 버전)       │ ~20분        │"
     echo "│ --unity-build --parallel    │ 모든 버전 병렬 빌드                │ ~20분 (병렬) │"
     echo "│ --e2e                       │ Playwright 테스트 (빌드 필요)      │ ~5분         │"
@@ -432,9 +435,23 @@ test_e2e_playwright() {
     echo "Installing Playwright Chromium..."
     pnpx playwright install chromium
 
+    # EXPECTED_COMPRESSION 환경변수 설정 (압축 포맷 검증용)
+    local expected_compression=""
+    if [ -n "$COMPRESSION_FORMAT" ] && [ "$COMPRESSION_FORMAT" != "auto" ]; then
+        expected_compression="$COMPRESSION_FORMAT"
+        echo "Expected compression: $expected_compression"
+    elif [ -n "$COMPRESSION_FORMAT" ] && [ "$COMPRESSION_FORMAT" = "auto" ]; then
+        expected_compression="brotli"
+        echo "Expected compression: $expected_compression (auto → brotli)"
+    fi
+
     # 테스트 실행 시 프로젝트 경로를 환경변수로 전달
     echo "Running E2E tests..."
-    if UNITY_PROJECT_PATH="$project_path" pnpm test; then
+    local e2e_env="UNITY_PROJECT_PATH=$project_path"
+    if [ -n "$expected_compression" ]; then
+        e2e_env="$e2e_env EXPECTED_COMPRESSION=$expected_compression"
+    fi
+    if env $e2e_env pnpm test; then
         print_success "E2E Playwright Tests ($version_pattern)"
 
         # 결과 출력
@@ -489,6 +506,18 @@ test_unity_build() {
 
     local LOG_FILE="$project_path/unity-build.log"
 
+    # 압축 포맷 환경변수 설정
+    local compression_env=""
+    if [ -n "$COMPRESSION_FORMAT" ]; then
+        case "$COMPRESSION_FORMAT" in
+            auto)     compression_env="-1" ;;
+            disabled) compression_env="0" ;;
+            gzip)     compression_env="1" ;;
+            brotli)   compression_env="2" ;;
+        esac
+        echo "Compression format: $COMPRESSION_FORMAT (AIT_COMPRESSION_FORMAT=$compression_env)"
+    fi
+
     echo "Building WebGL..."
     echo "Log file: $LOG_FILE"
     echo "AIT_DEBUG_CONSOLE: true"
@@ -498,7 +527,11 @@ test_unity_build() {
     rm -rf "$project_path/Temp"
 
     # Unity 빌드 실행 (AIT_DEBUG_CONSOLE=true로 디버그 콘솔 활성화)
-    if AIT_DEBUG_CONSOLE=true "$unity_path" \
+    local env_vars="AIT_DEBUG_CONSOLE=true"
+    if [ -n "$compression_env" ]; then
+        env_vars="$env_vars AIT_COMPRESSION_FORMAT=$compression_env"
+    fi
+    if env $env_vars "$unity_path" \
         -quit -batchmode -nographics \
         -projectPath "$project_path" \
         -executeMethod E2EBuildRunner.CommandLineBuild \
@@ -651,9 +684,24 @@ run_parallel_unity_builds_only() {
         rm -rf "$project_path/ait-build"
         rm -rf "$project_path/Temp"
 
+        # 압축 포맷 환경변수 설정
+        local compression_env=""
+        if [ -n "$COMPRESSION_FORMAT" ]; then
+            case "$COMPRESSION_FORMAT" in
+                auto)     compression_env="-1" ;;
+                disabled) compression_env="0" ;;
+                gzip)     compression_env="1" ;;
+                brotli)   compression_env="2" ;;
+            esac
+        fi
+
         # 백그라운드로 빌드 실행 (AIT_DEBUG_CONSOLE=true로 디버그 콘솔 활성화)
         (
-            AIT_DEBUG_CONSOLE=true "$unity_path" \
+            local build_env="AIT_DEBUG_CONSOLE=true"
+            if [ -n "$compression_env" ]; then
+                build_env="$build_env AIT_COMPRESSION_FORMAT=$compression_env"
+            fi
+            env $build_env "$unity_path" \
                 -quit -batchmode -nographics \
                 -projectPath "$project_path" \
                 -executeMethod E2EBuildRunner.CommandLineBuild \
@@ -735,9 +783,24 @@ run_parallel_builds() {
         rm -rf "$project_path/ait-build"
         rm -rf "$project_path/Temp"
 
+        # 압축 포맷 환경변수 설정
+        local compression_env=""
+        if [ -n "$COMPRESSION_FORMAT" ]; then
+            case "$COMPRESSION_FORMAT" in
+                auto)     compression_env="-1" ;;
+                disabled) compression_env="0" ;;
+                gzip)     compression_env="1" ;;
+                brotli)   compression_env="2" ;;
+            esac
+        fi
+
         # 백그라운드로 빌드 실행 (AIT_DEBUG_CONSOLE=true로 디버그 콘솔 활성화)
         (
-            AIT_DEBUG_CONSOLE=true "$unity_path" \
+            local build_env="AIT_DEBUG_CONSOLE=true"
+            if [ -n "$compression_env" ]; then
+                build_env="$build_env AIT_COMPRESSION_FORMAT=$compression_env"
+            fi
+            env $build_env "$unity_path" \
                 -quit -batchmode -nographics \
                 -projectPath "$project_path" \
                 -executeMethod E2EBuildRunner.CommandLineBuild \
@@ -878,6 +941,25 @@ main() {
                     exit 1
                 fi
                 ;;
+            --compression)
+                i=$((i + 1))
+                if [ $i -lt ${#args[@]} ]; then
+                    COMPRESSION_FORMAT="${args[$i]}"
+                    case "$COMPRESSION_FORMAT" in
+                        auto|disabled|gzip|brotli)
+                            ;;
+                        *)
+                            echo -e "${RED}오류: --compression 값이 올바르지 않습니다: '$COMPRESSION_FORMAT'${NC}"
+                            echo "유효한 값: auto, disabled, gzip, brotli"
+                            exit 1
+                            ;;
+                    esac
+                else
+                    echo -e "${RED}오류: --compression 옵션에 포맷 값이 필요합니다.${NC}"
+                    echo "유효한 값: auto, disabled, gzip, brotli"
+                    exit 1
+                fi
+                ;;
             --parallel)
                 PARALLEL_MODE=true
                 # --parallel은 다른 모드와 조합 가능한 플래그 (모드 덮어쓰기 안함)
@@ -904,6 +986,9 @@ main() {
     echo "Mode: $mode"
     if [ -n "$UNITY_VERSION" ]; then
         echo "Unity Version: $UNITY_VERSION"
+    fi
+    if [ -n "$COMPRESSION_FORMAT" ]; then
+        echo "Compression: $COMPRESSION_FORMAT"
     fi
     echo "Directory: $SCRIPT_DIR"
 

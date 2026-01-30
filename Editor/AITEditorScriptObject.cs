@@ -388,17 +388,12 @@ namespace AppsInToss
         }
 
         /// <summary>
-        /// 버전별 기본 압축 포맷
-        /// - Unity 2021.3: Gzip (UnityVersion.md:438)
-        /// - Unity 2022.3+: Brotli (UnityVersion.md:391, 429)
+        /// 기본 압축 포맷: Brotli
+        /// decompressionFallback이 활성화되어 있으므로 모든 Unity 버전에서 Brotli 사용 가능
         /// </summary>
         public static WebGLCompressionFormat GetDefaultCompressionFormat()
         {
-#if UNITY_2022_3_OR_NEWER
             return WebGLCompressionFormat.Brotli;
-#else
-            return WebGLCompressionFormat.Gzip; // 2021.3 호환성
-#endif
         }
 
         /// <summary>

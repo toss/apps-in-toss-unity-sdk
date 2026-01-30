@@ -232,28 +232,55 @@ namespace AppsInToss.Editor
         {
             if (profile == null) return null;
 
+            // 환경 변수 읽기
             string debugConsoleEnv = System.Environment.GetEnvironmentVariable("AIT_DEBUG_CONSOLE");
-            if (string.IsNullOrEmpty(debugConsoleEnv))
-            {
-                return profile;
-            }
+            string compressionFormatEnv = System.Environment.GetEnvironmentVariable("AIT_COMPRESSION_FORMAT");
 
-            if (!bool.TryParse(debugConsoleEnv, out bool debugConsole))
-            {
-                Debug.LogWarning($"[AIT] AIT_DEBUG_CONSOLE 환경 변수 값이 올바르지 않습니다: '{debugConsoleEnv}' (true/false 필요)");
+            // 오버라이드할 항목이 없으면 원본 반환
+            if (string.IsNullOrEmpty(debugConsoleEnv) && string.IsNullOrEmpty(compressionFormatEnv))
                 return profile;
-            }
 
-            // 복사본 생성 (원본 프로필 보존)
+            // 복사본 생성 (모든 필드 복사)
             var overriddenProfile = new AITBuildProfile
             {
                 enableMockBridge = profile.enableMockBridge,
+                enableDebugConsole = profile.enableDebugConsole,
+                developmentBuild = profile.developmentBuild,
+                enableLZ4Compression = profile.enableLZ4Compression,
+                compressionFormat = profile.compressionFormat,
+                managedStrippingLevel = profile.managedStrippingLevel,
                 debugSymbolsExternal = profile.debugSymbolsExternal,
-                enableDebugConsole = debugConsole,
-                enableLZ4Compression = profile.enableLZ4Compression
             };
 
-            Debug.Log($"[AIT] 환경 변수 오버라이드: AIT_DEBUG_CONSOLE={debugConsole}");
+            // AIT_DEBUG_CONSOLE 오버라이드
+            if (!string.IsNullOrEmpty(debugConsoleEnv))
+            {
+                if (bool.TryParse(debugConsoleEnv, out bool debugConsole))
+                {
+                    overriddenProfile.enableDebugConsole = debugConsole;
+                    Debug.Log($"[AIT] 환경 변수 오버라이드: AIT_DEBUG_CONSOLE={debugConsole}");
+                }
+                else
+                {
+                    Debug.LogWarning($"[AIT] AIT_DEBUG_CONSOLE 환경 변수 값이 올바르지 않습니다: '{debugConsoleEnv}' (true/false 필요)");
+                }
+            }
+
+            // AIT_COMPRESSION_FORMAT 오버라이드
+            // 값: -1 = 자동, 0 = Disabled, 1 = Gzip, 2 = Brotli
+            if (!string.IsNullOrEmpty(compressionFormatEnv))
+            {
+                if (int.TryParse(compressionFormatEnv, out int compressionFormat) && compressionFormat >= -1 && compressionFormat <= 2)
+                {
+                    overriddenProfile.compressionFormat = compressionFormat;
+                    Debug.Log($"[AIT] 환경 변수 오버라이드: AIT_COMPRESSION_FORMAT={compressionFormat}");
+                }
+                else
+                {
+                    Debug.LogWarning($"[AIT] AIT_COMPRESSION_FORMAT 환경 변수 값이 올바르지 않습니다: '{compressionFormatEnv}' (-1/0/1/2 필요)");
+                }
+            }
+
             return overriddenProfile;
         }
 

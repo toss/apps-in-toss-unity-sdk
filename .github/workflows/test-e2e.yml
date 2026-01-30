@@ -38,7 +38,7 @@ on:
 
 concurrency:
   group: e2e-test-${{ github.ref }}-${{ inputs.target_ref || 'default' }}-${{ inputs.sdk_version_override || 'latest' }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   # =====================================================

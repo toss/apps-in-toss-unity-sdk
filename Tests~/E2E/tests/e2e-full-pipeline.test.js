@@ -605,7 +605,18 @@ function detectCompressionFormat(buildFiles, buildDir = null) {
  * @returns {string} 예상 압축 포맷 ('brotli')
  */
 function getExpectedCompressionFormat(projectPath) {
-  // 모든 Unity 버전에서 Brotli 기본값 사용
+  // 환경변수로 기대 포맷 직접 지정 가능 (CI에서 사용)
+  const envFormat = process.env.EXPECTED_COMPRESSION;
+  if (envFormat) {
+    const validFormats = ['disabled', 'gzip', 'brotli'];
+    const normalized = envFormat.toLowerCase();
+    if (validFormats.includes(normalized)) {
+      console.log(`   📋 Expected format from env: ${normalized}`);
+      return normalized;
+    }
+  }
+
+  // 기본값: 모든 Unity 버전에서 Brotli
   return 'brotli';
 }
 

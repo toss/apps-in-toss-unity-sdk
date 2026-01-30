@@ -8,6 +8,9 @@
     <link rel="stylesheet" href="TemplateData/style.css">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
 
+    <!-- Unity Resource Preloading (SDK Auto-generated) -->
+    %AIT_PRELOAD_TAGS%
+
     <style>
         body {
             margin: 0;
@@ -262,6 +265,7 @@
             startTime: performance.now(),
             events: {},
             files: {},
+            preloadMetrics: {},
             progressCallbacks: [],
             completeCallbacks: [],
             errorCallbacks: [],
@@ -513,6 +517,40 @@
                     }
                 });
                 console.log('[AIT Loading] ================================');
+            },
+
+            // PerformanceObserver로 preload 리소스 타이밍 추적
+            initPreloadObserver: function() {
+                if (!window.PerformanceObserver) return;
+
+                var self = this;
+                try {
+                    var observer = new PerformanceObserver(function(list) {
+                        list.getEntries().forEach(function(entry) {
+                            // Unity 파일만 필터링
+                            if (!/\.(loader\.js|framework\.js|wasm|data)(\.(gz|br|unityweb))?$/i.test(entry.name)) return;
+
+                            var fileName = entry.name.split('/').pop().split('?')[0];
+                            self.preloadMetrics[fileName] = {
+                                startTime: entry.startTime,
+                                responseEnd: entry.responseEnd,
+                                duration: entry.duration,
+                                transferSize: entry.transferSize,
+                                initiatorType: entry.initiatorType,  // 'link' = preload, 'fetch' = 일반
+                                cacheHit: entry.transferSize === 0 && entry.decodedBodySize > 0
+                            };
+
+                            self.logEvent('resource_timing_' + fileName.replace(/\./g, '_'), {
+                                initiator: entry.initiatorType,
+                                duration: Math.round(entry.duration)
+                            });
+                        });
+                    });
+
+                    observer.observe({ entryTypes: ['resource'] });
+                } catch (e) {
+                    console.warn('[AIT Loading] PerformanceObserver 초기화 실패:', e);
+                }
             }
         };
 
@@ -595,6 +633,7 @@
 
         // fetch 래핑 초기화 (Unity 로더보다 먼저)
         AITLoadingLogger.wrapFetch();
+        AITLoadingLogger.initPreloadObserver();
         AITLoadingLogger.logEvent('loading_start');
     </script>
 
@@ -955,6 +994,22 @@
                         });
                     } catch (e) {}
                 });
+
+                // Preload 효과 분석
+                try {
+                    var preloadMetrics = logger.preloadMetrics || {};
+                    var preloadedFiles = Object.keys(preloadMetrics).filter(function(k) {
+                        return preloadMetrics[k].initiatorType === 'link';
+                    });
+                    var cacheHits = Object.keys(preloadMetrics).filter(function(k) {
+                        return preloadMetrics[k].cacheHit;
+                    });
+
+                    safeSet(params, 'preload_enabled', function() { return preloadedFiles.length > 0; });
+                    safeSet(params, 'preload_file_count', function() { return preloadedFiles.length; });
+                    safeSet(params, 'preload_cache_hits', function() { return cacheHits.length; });
+                } catch (e) {}
+
                 return params;
             } catch (e) { return null; }
         }

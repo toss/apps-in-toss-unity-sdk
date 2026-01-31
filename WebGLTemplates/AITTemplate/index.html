@@ -359,6 +359,44 @@
                                     fileInfo.avgSpeed = fileInfo.loaded > 0
                                         ? (fileInfo.loaded / 1024) / (fileInfo.duration / 1000)
                                         : 0;
+
+                                    // Preload backfill: Resource Timing API에서 실제 네트워크 타이밍 가져오기
+                                    // preloadMetrics (PerformanceObserver) 또는 getEntriesByName (동기 fallback) 사용
+                                    var preloadData = self.preloadMetrics[fileName];
+                                    if (!preloadData && performance.getEntriesByName) {
+                                        var entries = performance.getEntriesByName(fileInfo.url, 'resource');
+                                        if (entries.length === 0) {
+                                            // 절대 URL로도 시도
+                                            try {
+                                                var absUrl = new URL(fileInfo.url, location.href).href;
+                                                entries = performance.getEntriesByName(absUrl, 'resource');
+                                            } catch (e) {}
+                                        }
+                                        for (var ei = 0; ei < entries.length; ei++) {
+                                            if (entries[ei].initiatorType === 'link') {
+                                                preloadData = {
+                                                    startTime: entries[ei].startTime,
+                                                    responseEnd: entries[ei].responseEnd,
+                                                    duration: entries[ei].duration,
+                                                    transferSize: entries[ei].transferSize,
+                                                    initiatorType: entries[ei].initiatorType
+                                                };
+                                                self.preloadMetrics[fileName] = preloadData;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                    if (preloadData && preloadData.initiatorType === 'link') {
+                                        fileInfo.startTime = preloadData.startTime;
+                                        fileInfo.duration = preloadData.duration;
+                                        fileInfo.responseEnd = preloadData.responseEnd;
+                                        fileInfo.size = preloadData.transferSize || fileInfo.size;
+                                        fileInfo.preloaded = true;
+                                        if (preloadData.duration > 0 && preloadData.transferSize > 0) {
+                                            fileInfo.avgSpeed = (preloadData.transferSize / 1024) / (preloadData.duration / 1000);
+                                        }
+                                    }
+
                                     fileInfo.minSpeed = fileInfo.minSpeed === Infinity ? 0 : fileInfo.minSpeed;
                                     self.logEvent('file_complete_' + fileName.replace(/\./g, '_'), {
                                         size: fileInfo.loaded,
@@ -490,7 +528,11 @@
                         avgSpeed: Math.round(f.avgSpeed * 10) / 10,
                         peakSpeed: Math.round(f.peakSpeed * 10) / 10,
                         minSpeed: Math.round(f.minSpeed * 10) / 10,
-                        speedHistory: f.speedHistory.slice()
+                        speedHistory: f.speedHistory.slice(),
+                        compressionType: f.compressionType,
+                        contentEncoding: f.contentEncoding,
+                        decompressionFallback: f.decompressionFallback,
+                        preloaded: f.preloaded || false
                     });
                 });
                 return result;
@@ -1112,6 +1154,17 @@
                 AITLoadingLogger.logEvent('loading_complete');
                 AITLoadingLogger.printSummary();
                 AITLoadingLogger.notifyComplete();
+            }
+
+            // E2E 테스트용 loading metric 노출
+            if (window.location.search.indexOf('e2e=true') !== -1) {
+                var logger = window.AITLoadingLogger;
+                window.__E2E_LOADING_METRICS__ = collectLoadingMetrics();
+                window.__E2E_LOADING_FILE_STATS__ = logger ? logger.getFileStats() : [];
+                window.__E2E_LOADING_PRELOAD_METRICS__ = logger ? logger.preloadMetrics : {};
+                window.dispatchEvent(new CustomEvent('e2e-loading-metrics-ready', {
+                    detail: window.__E2E_LOADING_METRICS__
+                }));
             }
 
             // 메트릭 전송 시작 (1초 후)

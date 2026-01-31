@@ -8,18 +8,19 @@ import { fileURLToPath } from 'url';
 /**
  * Apps in Toss Unity SDK - E2E Full Pipeline Tests
  *
- * 8개 테스트 케이스 (빠른 테스트 → 느린 테스트 순서):
+ * 9개 테스트 케이스 (빠른 테스트 → 느린 테스트 순서):
  * 1. Unity WebGL Build (Runtime 컴파일)
  * 2. AIT Dev Server
  * 3. AIT Build Directory
  * 4. AIT Packaging
- * 5-8. Production Tests (세션 공유로 ~6분 절약)
+ * 5-9. Production Tests (세션 공유로 ~6분 절약)
  *   5. Production Server (Unity 초기화 검증)
  *   6. Runtime API Error Validation (SDK API 에러 검증)
  *   7. Serialization Round-trip Tests (C# ↔ JavaScript 직렬화 검증)
  *   8. Comprehensive Performance (CPU/GPU + 500MB 메모리 압박 테스트)
+ *   9. Preload Metrics Backfill (Resource Timing API 기반 메트릭 검증)
  *
- * Test 5-8 세션 공유:
+ * Test 5-9 세션 공유:
  * - 서버 1회 시작, Unity 1회 초기화로 반복 초기화 방지
  * - JavaScript 트리거 함수로 테스트 실행 (TriggerAPITest, TriggerSerializationTest, TriggerPerformanceTest)
  *
@@ -734,6 +735,7 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       } : null,
       // 압축 포맷 검증 결과 (compressionFormat 매핑 버그 재발 방지)
       compressionValidation: testResults.tests['1_webgl_build']?.compressionValidation || null,
+      preloadBackfill: testResults.tests['9_preload_backfill'] || null,
       testsPassed: Object.values(testResults.tests || {}).filter(t => t.passed).length,
       testsTotal: Object.keys(testResults.tests || {}).length
     };
@@ -1772,6 +1774,88 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
         };
         expect(perfResults, 'ComprehensivePerfTester should return results').not.toBeNull();
       }
+    });
+
+
+    // -------------------------------------------------------------------------
+    // Test 9: Preload Metrics Backfill
+    // Preload가 wrapFetch보다 먼저 실행되었는지, backfill된 metric이
+    // Resource Timing API 값과 일치하는지 검증
+    // -------------------------------------------------------------------------
+    test('9. Preload metrics should be backfilled from Resource Timing API', async () => {
+      test.setTimeout(60000);
+
+      // loading metric 준비 대기
+      await sharedPage.waitForFunction(() => window.__E2E_LOADING_METRICS__ != null, {
+        timeout: 30000
+      });
+
+      const loadingMetrics = await sharedPage.evaluate(() => window.__E2E_LOADING_METRICS__);
+      const fileStats = await sharedPage.evaluate(() => window.__E2E_LOADING_FILE_STATS__);
+      const preloadMetrics = await sharedPage.evaluate(() => window.__E2E_LOADING_PRELOAD_METRICS__);
+
+      // --- 1. 기본 구조 검증 ---
+      expect(loadingMetrics).not.toBeNull();
+      expect(loadingMetrics.total_time_ms).toBeGreaterThan(0);
+      expect(loadingMetrics.total_files).toBeGreaterThanOrEqual(3); // wasm, data, framework
+
+      // 파일별 필드 존재 검증 (getFileStats 필드 누락 수정 확인)
+      for (const file of fileStats) {
+        expect(file.duration).toBeGreaterThan(0);
+        expect(file.size).toBeGreaterThan(0);
+        expect(file.compressionType).toBeDefined();
+        expect(typeof file.decompressionFallback).toBe('boolean');
+        expect(typeof file.preloaded).toBe('boolean');
+      }
+
+      // --- 2. Preload가 wrapFetch보다 먼저 실행되었는지 검증 ---
+      // preloadMetrics에 initiatorType === 'link' 엔트리가 있어야 함
+      const preloadedFileNames = Object.keys(preloadMetrics || {}).filter(
+        k => preloadMetrics[k].initiatorType === 'link'
+      );
+      expect(preloadedFileNames.length).toBeGreaterThan(0);
+      expect(loadingMetrics.preload_enabled).toBe(true);
+      expect(loadingMetrics.preload_file_count).toBeGreaterThan(0);
+
+      // --- 3. Backfill 검증: fileStats의 값이 Resource Timing API 값과 일치하는지 ---
+      for (const fileName of preloadedFileNames) {
+        const preload = preloadMetrics[fileName];
+        const fileStat = fileStats.find(f => f.name === fileName);
+
+        if (!fileStat) continue; // wrapFetch를 거치지 않은 파일은 스킵
+
+        // preloaded 플래그가 true여야 함
+        expect(fileStat.preloaded).toBe(true);
+
+        // Resource Timing API의 duration과 fileStats의 duration이 일치해야 함
+        expect(fileStat.duration).toBeCloseTo(Math.round(preload.duration), 0);
+      }
+
+      // --- 결과 기록 ---
+      testResults.tests['9_preload_backfill'] = {
+        passed: true,
+        preloadFileCount: preloadedFileNames.length,
+        totalTimeMs: loadingMetrics.total_time_ms,
+        totalFiles: loadingMetrics.total_files,
+        fileStats,
+        preloadMetrics
+      };
+
+      console.log('\n' + '='.repeat(70));
+      console.log('📊 PRELOAD METRIC BACKFILL RESULTS');
+      console.log('='.repeat(70));
+      console.log(`   Preloaded files: ${preloadedFileNames.length}`);
+      for (const fileName of preloadedFileNames) {
+        const preload = preloadMetrics[fileName];
+        const fileStat = fileStats.find(f => f.name === fileName);
+        if (fileStat) {
+          console.log(`   ${fileName}:`);
+          console.log(`     Resource Timing duration: ${Math.round(preload.duration)}ms`);
+          console.log(`     fileStats duration:       ${fileStat.duration}ms`);
+          console.log(`     Match: ${fileStat.duration === Math.round(preload.duration) ? '✅' : '❌'}`);
+        }
+      }
+      console.log('='.repeat(70) + '\n');
     });
 
   }); // end of test.describe.serial

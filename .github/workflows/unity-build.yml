@@ -556,17 +556,16 @@ jobs:
 
             $exitCode = $unityProcess.ExitCode
             if ($null -ne $exitCode -and $exitCode -ne 0) {
+              # 라이선스 실패 감지 - exit code != 0일 때만 검사 (retry 액션이 자동 재시도)
+              if (Test-Path $logFile) {
+                $logContent = Get-Content $logFile -Raw -ErrorAction SilentlyContinue
+                if ($logContent -match "No valid Unity Editor license found") {
+                  Write-Host "::warning::Unity license activation failed, triggering retry..."
+                  exit 1
+                }
+              }
               Write-Host "::error::Unity build failed with exit code: $exitCode"
               exit $exitCode
-            }
-
-            # 라이선스 실패 감지 - retry 액션이 자동 재시도
-            if (Test-Path $logFile) {
-              $logContent = Get-Content $logFile -Raw -ErrorAction SilentlyContinue
-              if ($logContent -match "No valid Unity Editor license found|No ULF license found") {
-                Write-Host "::warning::Unity license activation failed, triggering retry..."
-                exit 1
-              }
             }
 
             Write-Host "Unity build completed successfully (exit code: $exitCode)"

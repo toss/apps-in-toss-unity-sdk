@@ -697,8 +697,23 @@ jobs:
         if: inputs.os == 'macos' && inputs.run-e2e-test
         working-directory: Tests~/E2E/tests
         run: |
-          rm -rf node_modules package-lock.json pnpm-lock.yaml
-          pnpm install
+          # package.json 변경 시에만 node_modules 재설치 (self-hosted 캐시 활용)
+          EXPECTED_HASH=$(shasum -a 256 package.json | cut -d' ' -f1)
+          CACHED_HASH=""
+          if [ -f node_modules/.package-hash ]; then
+            CACHED_HASH=$(cat node_modules/.package-hash)
+          fi
+
+          if [ "$EXPECTED_HASH" != "$CACHED_HASH" ]; then
+            echo "package.json changed, reinstalling dependencies..."
+            rm -rf node_modules package-lock.json pnpm-lock.yaml
+            pnpm install
+            echo "$EXPECTED_HASH" > node_modules/.package-hash
+          else
+            echo "Dependencies up to date (cached)"
+          fi
+
+          # Playwright 브라우저 설치 (이미 설치된 버전이면 빠르게 스킵됨)
           pnpm exec playwright install chromium --with-deps
           pnpm exec playwright --version
 
@@ -710,18 +725,26 @@ jobs:
           # Use job-local Playwright cache to avoid race conditions between parallel runners
           PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}\.playwright-browsers
         run: |
-          # Clean node_modules and lock files
-          if (Test-Path node_modules) { Remove-Item -Recurse -Force node_modules }
-          if (Test-Path package-lock.json) { Remove-Item -Force package-lock.json }
-          if (Test-Path pnpm-lock.yaml) { Remove-Item -Force pnpm-lock.yaml }
-
-          # Clean job-local Playwright cache
-          if (Test-Path $env:PLAYWRIGHT_BROWSERS_PATH) {
-            Write-Host "Cleaning job-local Playwright cache: $env:PLAYWRIGHT_BROWSERS_PATH"
-            Remove-Item -Recurse -Force $env:PLAYWRIGHT_BROWSERS_PATH
+          # package.json 변경 시에만 node_modules 재설치 (self-hosted 캐시 활용)
+          $expectedHash = (Get-FileHash -Algorithm SHA256 package.json).Hash
+          $cachedHash = ""
+          if (Test-Path "node_modules\.package-hash") {
+            $cachedHash = Get-Content "node_modules\.package-hash" -Raw
+            $cachedHash = $cachedHash.Trim()
           }
 
-          pnpm install
+          if ($expectedHash -ne $cachedHash) {
+            Write-Host "package.json changed, reinstalling dependencies..."
+            if (Test-Path node_modules) { Remove-Item -Recurse -Force node_modules }
+            if (Test-Path package-lock.json) { Remove-Item -Force package-lock.json }
+            if (Test-Path pnpm-lock.yaml) { Remove-Item -Force pnpm-lock.yaml }
+            pnpm install
+            Set-Content "node_modules\.package-hash" -Value $expectedHash -NoNewline
+          } else {
+            Write-Host "Dependencies up to date (cached)"
+          }
+
+          # Playwright 브라우저: 캐시 유지 (버전 변경 시에만 재설치)
           pnpm exec playwright install chromium --with-deps
           pnpm exec playwright --version
 

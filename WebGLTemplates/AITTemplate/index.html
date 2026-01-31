@@ -327,24 +327,9 @@
                     self.logEvent('file_start_' + fileName.replace(/\./g, '_'));
 
                     return originalFetch.call(window, url, options).then(function(response) {
-                        // Preload backfill: preloadMetrics에서 실제 네트워크 타이밍 가져오기
-                        var preloadData = self.preloadMetrics[fileName];
-                        if (preloadData && preloadData.initiatorType === 'link') {
-                            fileInfo.startTime = preloadData.startTime;
-                            fileInfo.duration = preloadData.duration;
-                            fileInfo.responseEnd = preloadData.responseEnd;
-                            fileInfo.size = preloadData.transferSize || fileInfo.size;
-                            fileInfo.preloaded = true;
-                            if (preloadData.duration > 0 && preloadData.transferSize > 0) {
-                                fileInfo.avgSpeed = (preloadData.transferSize / 1024) / (preloadData.duration / 1000);
-                            }
-                        }
-
                         var contentLength = response.headers.get('content-length');
                         var contentEncoding = response.headers.get('content-encoding');
-                        if (!fileInfo.preloaded) {
-                            fileInfo.size = parseInt(contentLength) || 0;
-                        }
+                        fileInfo.size = parseInt(contentLength) || 0;
                         fileInfo.contentEncoding = contentEncoding;
 
                         // Decompression fallback 감지
@@ -358,10 +343,8 @@
 
                         // ReadableStream 지원 확인
                         if (!response.body || !response.body.getReader) {
-                            if (!fileInfo.preloaded) {
-                                fileInfo.responseEnd = performance.now();
-                                fileInfo.duration = fileInfo.responseEnd - fileInfo.startTime;
-                            }
+                            fileInfo.responseEnd = performance.now();
+                            fileInfo.duration = fileInfo.responseEnd - fileInfo.startTime;
                             return response;
                         }
 
@@ -371,13 +354,49 @@
                         function pump() {
                             return reader.read().then(function(result) {
                                 if (result.done) {
-                                    if (!fileInfo.preloaded) {
-                                        fileInfo.responseEnd = performance.now();
-                                        fileInfo.duration = fileInfo.responseEnd - fileInfo.startTime;
-                                        fileInfo.avgSpeed = fileInfo.loaded > 0
-                                            ? (fileInfo.loaded / 1024) / (fileInfo.duration / 1000)
-                                            : 0;
+                                    fileInfo.responseEnd = performance.now();
+                                    fileInfo.duration = fileInfo.responseEnd - fileInfo.startTime;
+                                    fileInfo.avgSpeed = fileInfo.loaded > 0
+                                        ? (fileInfo.loaded / 1024) / (fileInfo.duration / 1000)
+                                        : 0;
+
+                                    // Preload backfill: Resource Timing API에서 실제 네트워크 타이밍 가져오기
+                                    // preloadMetrics (PerformanceObserver) 또는 getEntriesByName (동기 fallback) 사용
+                                    var preloadData = self.preloadMetrics[fileName];
+                                    if (!preloadData && performance.getEntriesByName) {
+                                        var entries = performance.getEntriesByName(fileInfo.url, 'resource');
+                                        if (entries.length === 0) {
+                                            // 절대 URL로도 시도
+                                            try {
+                                                var absUrl = new URL(fileInfo.url, location.href).href;
+                                                entries = performance.getEntriesByName(absUrl, 'resource');
+                                            } catch (e) {}
+                                        }
+                                        for (var ei = 0; ei < entries.length; ei++) {
+                                            if (entries[ei].initiatorType === 'link') {
+                                                preloadData = {
+                                                    startTime: entries[ei].startTime,
+                                                    responseEnd: entries[ei].responseEnd,
+                                                    duration: entries[ei].duration,
+                                                    transferSize: entries[ei].transferSize,
+                                                    initiatorType: entries[ei].initiatorType
+                                                };
+                                                self.preloadMetrics[fileName] = preloadData;
+                                                break;
+                                            }
+                                        }
                                     }
+                                    if (preloadData && preloadData.initiatorType === 'link') {
+                                        fileInfo.startTime = preloadData.startTime;
+                                        fileInfo.duration = preloadData.duration;
+                                        fileInfo.responseEnd = preloadData.responseEnd;
+                                        fileInfo.size = preloadData.transferSize || fileInfo.size;
+                                        fileInfo.preloaded = true;
+                                        if (preloadData.duration > 0 && preloadData.transferSize > 0) {
+                                            fileInfo.avgSpeed = (preloadData.transferSize / 1024) / (preloadData.duration / 1000);
+                                        }
+                                    }
+
                                     fileInfo.minSpeed = fileInfo.minSpeed === Infinity ? 0 : fileInfo.minSpeed;
                                     self.logEvent('file_complete_' + fileName.replace(/\./g, '_'), {
                                         size: fileInfo.loaded,

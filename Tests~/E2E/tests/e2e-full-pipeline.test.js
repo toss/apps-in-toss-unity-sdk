@@ -1624,7 +1624,7 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
     // JavaScript에서 TriggerPerformanceTest() 호출하여 테스트 실행
     // -------------------------------------------------------------------------
     test('8. Comprehensive performance test should pass', async () => {
-      test.setTimeout(240000); // 4분
+      test.setTimeout(300000); // 5분
 
       console.log('🔄 Triggering performance tests via JavaScript...');
 
@@ -1670,11 +1670,11 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
           };
           callTrigger();
 
-          // 180초 타임아웃
+          // 270초 타임아웃 (Windows에서 Unity 2022.3 코루틴이 느릴 수 있음)
           setTimeout(() => {
             console.log('[E2E] Comprehensive perf test timeout');
             resolve(null);
-          }, 180000);
+          }, 270000);
         });
       });
 

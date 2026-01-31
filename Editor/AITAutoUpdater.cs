@@ -327,8 +327,15 @@ namespace AppsInToss.Editor
                     CreateNoWindow = true,
                 };
 
+                // 인증 프롬프트 차단 (백그라운드 실행 시 무한 대기 방지)
+                psi.EnvironmentVariables["GIT_TERMINAL_PROMPT"] = "0";
+
                 using (var process = Process.Start(psi))
                 {
+                    // stderr를 비동기로 읽어 파이프 버퍼 데드락 방지
+                    // (stdout은 ls-remote 출력이 1줄이므로 ReadToEnd 안전)
+                    process.BeginErrorReadLine();
+
                     string output = process.StandardOutput.ReadToEnd();
 
                     if (!process.WaitForExit(GIT_TIMEOUT_MS))

@@ -331,43 +331,6 @@ jobs:
           echo "pnpm-lock.yaml regenerated"
 
       # =====================================================
-      # Windows: Unity License Client 대기
-      # =====================================================
-      - name: Wait for Unity License Client (Windows)
-        if: inputs.os == 'windows' && inputs.run-build
-        shell: powershell -ExecutionPolicy Bypass -File {0}
-        run: |
-          $targetVersion = "${{ inputs.unity-version }}"
-          $maxWait = 60
-          $interval = 10
-          $waited = 0
-
-          Write-Host "Checking for conflicting Unity License Client processes..."
-
-          while ($waited -lt $maxWait) {
-            $otherClients = Get-Process -Name "Unity.Licensing.Client" -ErrorAction SilentlyContinue |
-              Where-Object { $_.Path -notlike "*$targetVersion*" }
-
-            if (-not $otherClients) {
-              Write-Host "No conflicting License Client found"
-              break
-            }
-
-            Write-Host "Found License Client from other Unity version, waiting... ($waited/$maxWait sec)"
-            foreach ($proc in $otherClients) {
-              Write-Host "  - PID: $($proc.Id), Path: $($proc.Path)"
-            }
-            Start-Sleep -Seconds $interval
-            $waited += $interval
-          }
-
-          if ($waited -ge $maxWait) {
-            Write-Host "::warning::License Client still running after ${maxWait}s, proceeding anyway (will retry on failure)"
-          }
-
-          Write-Host "License Client check completed"
-
-      # =====================================================
       # 광고 ID 치환 (빌드 전)
       # =====================================================
       - name: Inject Ad IDs (macOS)
@@ -771,21 +734,22 @@ jobs:
           MOBILE_EMULATION: "true"
         run: pnpm test
 
-      - name: Run E2E Tests (Windows - 1-5 only)
+      - name: Run E2E Tests (Windows - Full)
         if: inputs.os == 'windows' && inputs.run-e2e-test
         working-directory: Tests~/E2E/tests
         shell: powershell
         env:
           UNITY_PROJECT_PATH: ${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ inputs.unity-version }}
+          MOBILE_EMULATION: "true"
           # Use job-local Playwright cache to avoid race conditions between parallel runners
           PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}\.playwright-browsers
-        run: pnpm exec playwright test --grep "[1-5]\. "
+        run: pnpm test
 
       # =====================================================
       # 벤치마크 결과 업로드 (선택적)
       # =====================================================
       - name: Upload Benchmark Results
-        if: inputs.run-benchmark && inputs.os == 'macos'
+        if: inputs.run-benchmark
         uses: actions/upload-artifact@v6
         with:
           name: benchmark-results-${{ inputs.os }}-${{ inputs.unity-version }}

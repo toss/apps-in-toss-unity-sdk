@@ -327,9 +327,24 @@
                     self.logEvent('file_start_' + fileName.replace(/\./g, '_'));
 
                     return originalFetch.call(window, url, options).then(function(response) {
+                        // Preload backfill: preloadMetrics에서 실제 네트워크 타이밍 가져오기
+                        var preloadData = self.preloadMetrics[fileName];
+                        if (preloadData && preloadData.initiatorType === 'link') {
+                            fileInfo.startTime = preloadData.startTime;
+                            fileInfo.duration = preloadData.duration;
+                            fileInfo.responseEnd = preloadData.responseEnd;
+                            fileInfo.size = preloadData.transferSize || fileInfo.size;
+                            fileInfo.preloaded = true;
+                            if (preloadData.duration > 0 && preloadData.transferSize > 0) {
+                                fileInfo.avgSpeed = (preloadData.transferSize / 1024) / (preloadData.duration / 1000);
+                            }
+                        }
+
                         var contentLength = response.headers.get('content-length');
                         var contentEncoding = response.headers.get('content-encoding');
-                        fileInfo.size = parseInt(contentLength) || 0;
+                        if (!fileInfo.preloaded) {
+                            fileInfo.size = parseInt(contentLength) || 0;
+                        }
                         fileInfo.contentEncoding = contentEncoding;
 
                         // Decompression fallback 감지
@@ -343,8 +358,10 @@
 
                         // ReadableStream 지원 확인
                         if (!response.body || !response.body.getReader) {
-                            fileInfo.responseEnd = performance.now();
-                            fileInfo.duration = fileInfo.responseEnd - fileInfo.startTime;
+                            if (!fileInfo.preloaded) {
+                                fileInfo.responseEnd = performance.now();
+                                fileInfo.duration = fileInfo.responseEnd - fileInfo.startTime;
+                            }
                             return response;
                         }
 
@@ -354,11 +371,13 @@
                         function pump() {
                             return reader.read().then(function(result) {
                                 if (result.done) {
-                                    fileInfo.responseEnd = performance.now();
-                                    fileInfo.duration = fileInfo.responseEnd - fileInfo.startTime;
-                                    fileInfo.avgSpeed = fileInfo.loaded > 0
-                                        ? (fileInfo.loaded / 1024) / (fileInfo.duration / 1000)
-                                        : 0;
+                                    if (!fileInfo.preloaded) {
+                                        fileInfo.responseEnd = performance.now();
+                                        fileInfo.duration = fileInfo.responseEnd - fileInfo.startTime;
+                                        fileInfo.avgSpeed = fileInfo.loaded > 0
+                                            ? (fileInfo.loaded / 1024) / (fileInfo.duration / 1000)
+                                            : 0;
+                                    }
                                     fileInfo.minSpeed = fileInfo.minSpeed === Infinity ? 0 : fileInfo.minSpeed;
                                     self.logEvent('file_complete_' + fileName.replace(/\./g, '_'), {
                                         size: fileInfo.loaded,
@@ -490,7 +509,11 @@
                         avgSpeed: Math.round(f.avgSpeed * 10) / 10,
                         peakSpeed: Math.round(f.peakSpeed * 10) / 10,
                         minSpeed: Math.round(f.minSpeed * 10) / 10,
-                        speedHistory: f.speedHistory.slice()
+                        speedHistory: f.speedHistory.slice(),
+                        compressionType: f.compressionType,
+                        contentEncoding: f.contentEncoding,
+                        decompressionFallback: f.decompressionFallback,
+                        preloaded: f.preloaded || false
                     });
                 });
                 return result;
@@ -1112,6 +1135,17 @@
                 AITLoadingLogger.logEvent('loading_complete');
                 AITLoadingLogger.printSummary();
                 AITLoadingLogger.notifyComplete();
+            }
+
+            // E2E 테스트용 loading metric 노출
+            if (window.location.search.indexOf('e2e=true') !== -1) {
+                var logger = window.AITLoadingLogger;
+                window.__E2E_LOADING_METRICS__ = collectLoadingMetrics();
+                window.__E2E_LOADING_FILE_STATS__ = logger ? logger.getFileStats() : [];
+                window.__E2E_LOADING_PRELOAD_METRICS__ = logger ? logger.preloadMetrics : {};
+                window.dispatchEvent(new CustomEvent('e2e-loading-metrics-ready', {
+                    detail: window.__E2E_LOADING_METRICS__
+                }));
             }
 
             // 메트릭 전송 시작 (1초 후)

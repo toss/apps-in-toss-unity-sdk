@@ -1266,9 +1266,6 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
     let sharedPort = serverPort;
     let pageLoadTime = 0;
     let unityLoadTime = 0;
-    /** @type {import('@playwright/test').CDPSession} */
-    let cdpClient = null;
-
     test.beforeAll(async ({ browser }) => {
       console.log('\n' + '='.repeat(70));
       console.log('🚀 STARTING SHARED SESSION FOR TESTS 5-8');
@@ -1304,9 +1301,6 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
 
       // 2. 페이지 생성 + Unity 초기화 (1회만)
       sharedPage = await browser.newPage();
-
-      // CDP 세션 생성 (CPU 쓰로틀링용)
-      cdpClient = await sharedPage.context().newCDPSession(sharedPage);
 
       // 페이지 로딩 시간 측정 (E2E 모드 활성화)
       const startTime = Date.now();
@@ -1634,9 +1628,10 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
 
       console.log('🔄 Triggering performance tests via JavaScript...');
 
-      // CPU 쓰로틀링 6x 적용 (저사양 기기 시뮬레이션)
-      await cdpClient.send('Emulation.setCPUThrottlingRate', { rate: 6 });
-      console.log('🐢 CPU throttling 6x applied');
+      // CPU 쓰로틀링을 적용하지 않음:
+      // - Unity 내부에서 Physics(200개) + Rendering(20x20) + Memory(1.5GB) 부하를 이미 생성
+      // - 외부 CDP 쓰로틀링은 코루틴 셋업/클린업까지 느려뜨려 플랫폼별 타임아웃 편차 유발
+      // - FPS 임계값(baseline 20, full load 10)은 내부 부하만으로도 유의미한 측정
 
       // 이벤트 리스너 등록 + 트리거 호출
       const perfResults = await sharedPage.evaluate(() => {
@@ -1655,13 +1650,25 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
           };
           window.addEventListener('e2e-comprehensive-perf-complete', handler);
 
-          // 트리거 함수가 있으면 호출
-          if (typeof window['TriggerPerformanceTest'] === 'function') {
-            console.log('[E2E] Calling TriggerPerformanceTest()');
-            window['TriggerPerformanceTest']();
-          } else {
-            console.log('[E2E] TriggerPerformanceTest not found, waiting for auto-run...');
-          }
+          // 트리거 함수가 있으면 호출, unityInstance 없으면 재시도
+          const callTrigger = () => {
+            if (typeof window['TriggerPerformanceTest'] === 'function') {
+              const result = window['TriggerPerformanceTest']();
+              if (result) {
+                console.log('[E2E] TriggerPerformanceTest() called successfully');
+              } else {
+                console.log('[E2E] TriggerPerformanceTest() returned false (unityInstance not ready), retrying in 2s...');
+                setTimeout(callTrigger, 2000);
+              }
+            } else if (window['unityInstance']) {
+              console.log('[E2E] Calling SendMessage directly');
+              window['unityInstance'].SendMessage('BenchmarkManager', 'TriggerPerformanceTest');
+            } else {
+              console.log('[E2E] Neither TriggerPerformanceTest nor unityInstance available, retrying in 2s...');
+              setTimeout(callTrigger, 2000);
+            }
+          };
+          callTrigger();
 
           // 180초 타임아웃
           setTimeout(() => {
@@ -1670,9 +1677,6 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
           }, 180000);
         });
       });
-
-      // CPU 쓰로틀링 해제
-      await cdpClient.send('Emulation.setCPUThrottlingRate', { rate: 1 });
 
       // 빌드 크기 확인
       const buildSizeMB = getDirectorySizeMB(DIST_WEB);

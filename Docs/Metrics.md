@@ -43,6 +43,9 @@ Debug Console에서 **Metrics** 버튼을 클릭하면 Metric Explorer가 열립
 | Loading | Summary | `totalSize_MB` | 전체 다운로드 크기 | MB | ✅ | ✅ | - | - | - |
 | Loading | Summary | `decompressionFallbackCount` | JS 압축해제 fallback 발생 파일 수 | count | ✅ | ✅ | - | - | - |
 | Loading | Summary | `decompressionFallbackOccurred` | JS 압축해제 fallback 발생 여부 | bool | ✅ | ✅ | - | - | - |
+| Loading | Summary | `preload_enabled` | HTML5 Preload가 적용되었는지 여부 | bool | ✅ | ✅ | - | - | - |
+| Loading | Summary | `preload_file_count` | Preload로 로드된 파일 수 | count | ✅ | ✅ | - | - | - |
+| Loading | Summary | `preload_cache_hits` | Preload 캐시 히트 파일 수 | count | ✅ | ✅ | - | - | - |
 | Loading | Events | `loading_start` | 로딩 시작 시점 | ms | ✅ | ✅ | - | - | - |
 | Loading | Events | `loader_ready` | Unity Loader 스크립트 로드 완료 | ms | ✅ | ✅ | - | - | - |
 | Loading | Events | `loader_error` | Unity Loader 스크립트 로드 실패 | ms | ✅ | ✅ | - | - | - |
@@ -57,6 +60,7 @@ Debug Console에서 **Metrics** 버튼을 클릭하면 Metric Explorer가 열립
 | Loading | Events | `file_start_{filename}` | 파일 다운로드 시작 | ms | ✅ | ✅ | - | - | - |
 | Loading | Events | `file_complete_{filename}` | 파일 다운로드 완료 | ms | ✅ | ✅ | - | - | - |
 | Loading | Events | `file_error_{filename}` | 파일 다운로드 실패 | ms | ✅ | ✅ | - | - | - |
+| Loading | Events | `resource_timing_{filename}` | 리소스 타이밍 (initiator, duration) | ms | ✅ | ✅ | - | - | - |
 | Loading | File Download | `url` | 파일 URL | string | ✅ | ✅ | - | - | - |
 | Loading | File Download | `size_bytes` | 파일 크기 | bytes | ✅ | ✅ | - | - | - |
 | Loading | File Download | `size_MB` | 파일 크기 | MB | ✅ | ✅ | - | - | - |

@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Net.Http;
 using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEngine;
@@ -10,13 +11,24 @@ namespace AppsInToss.Editor
 {
     /// <summary>
     /// SDK 패키지 자동 업데이트 체크
-    /// Unity Editor 시작 시 git 원격 커밋을 확인하여, 새로운 커밋이 있으면 자동으로 업데이트합니다.
+    /// Unity Editor 시작 시 git 원격 커밋을 확인하여, 새로운 커밋이 있으면 사용자에게 알림을 표시합니다.
     /// </summary>
     [InitializeOnLoad]
     public static class AITAutoUpdater
     {
         private const string SESSION_KEY = "AIT_AutoUpdate_Checked_v1";
+        private const string DAILY_CHECK_KEY_PREFIX = "AIT_AutoUpdate_LastCheckDate_";
         private const int GIT_TIMEOUT_MS = 10000;
+
+        /// <summary>
+        /// 프로젝트별 고유 키 생성 (프로젝트 경로 해시 사용)
+        /// </summary>
+        private static string GetDailyCheckKey()
+        {
+            string projectPath = Application.dataPath;
+            int hash = projectPath.GetHashCode();
+            return $"{DAILY_CHECK_KEY_PREFIX}{hash:X8}";
+        }
 
         static AITAutoUpdater()
         {
@@ -45,6 +57,12 @@ namespace AppsInToss.Editor
 
             SessionState.SetBool(SESSION_KEY, true);
 
+            // 하루에 1번만 체크
+            if (!ShouldCheckToday())
+            {
+                return;
+            }
+
             try
             {
                 CheckForUpdate();
@@ -55,7 +73,25 @@ namespace AppsInToss.Editor
             }
         }
 
-        private static void CheckForUpdate()
+        /// <summary>
+        /// 오늘 이미 체크했는지 확인
+        /// </summary>
+        private static bool ShouldCheckToday()
+        {
+            string today = DateTime.Now.ToString("yyyy-MM-dd");
+            string key = GetDailyCheckKey();
+            string lastCheckDate = EditorPrefs.GetString(key, "");
+
+            if (lastCheckDate == today)
+            {
+                return false;
+            }
+
+            EditorPrefs.SetString(key, today);
+            return true;
+        }
+
+        private static void CheckForUpdate(bool isManualCheck = false)
         {
             // 1. 현재 패키지 정보 수집
             var packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssetPath(
@@ -64,11 +100,19 @@ namespace AppsInToss.Editor
 
             if (packageInfo == null)
             {
+                if (isManualCheck)
+                {
+                    Debug.Log("[AIT] SDK 패키지를 찾을 수 없습니다.");
+                }
                 return;
             }
 
             if (packageInfo.source != UnityEditor.PackageManager.PackageSource.Git)
             {
+                if (isManualCheck)
+                {
+                    Debug.Log("[AIT] Git 패키지가 아니므로 자동 업데이트 체크를 건너뜁니다.");
+                }
                 return;
             }
 
@@ -77,18 +121,24 @@ namespace AppsInToss.Editor
             string packageId = packageInfo.packageId;
             if (!TryParseGitPackageId(packageId, out string gitUrl, out string fragment))
             {
+                if (isManualCheck)
+                {
+                    Debug.Log("[AIT] 패키지 ID 파싱에 실패했습니다.");
+                }
                 return;
             }
 
             // fragment가 없으면 스킵
             if (string.IsNullOrEmpty(fragment))
             {
+                Debug.Log("[AIT] Git fragment(브랜치/태그)가 지정되지 않아 자동 업데이트 체크를 건너뜁니다.");
                 return;
             }
 
             // fragment가 40자 hex(커밋 SHA 직접 지정)이면 스킵
             if (Regex.IsMatch(fragment, "^[0-9a-fA-F]{40}$"))
             {
+                Debug.Log("[AIT] 커밋 SHA가 직접 지정되어 있어 자동 업데이트 체크를 건너뜁니다.");
                 return;
             }
 
@@ -96,6 +146,10 @@ namespace AppsInToss.Editor
             string installedHash = GetInstalledCommitHash(packageInfo);
             if (string.IsNullOrEmpty(installedHash))
             {
+                if (isManualCheck)
+                {
+                    Debug.Log("[AIT] 설치된 커밋 해시를 확인할 수 없습니다.");
+                }
                 return;
             }
 
@@ -404,17 +458,98 @@ namespace AppsInToss.Editor
             }
 
             Debug.Log($"[AIT] SDK 업데이트 발견: {shortInstalled} → {shortRemote}");
-            Debug.Log("[AIT] SDK 업데이트를 적용합니다...");
 
-            // 기존 packageId에서 이름 부분 추출하여 동일한 URL+fragment로 Add 호출
-            int atIndex = packageId.IndexOf('@');
-            if (atIndex < 0)
+            // 커밋 시간 정보 가져오기 (GitHub API)
+            string installedTime = GetCommitTime(gitUrl, installedHash);
+            string remoteTime = GetCommitTime(gitUrl, remoteHash);
+
+            // 다이얼로그 메시지 구성
+            string installedInfo = string.IsNullOrEmpty(installedTime)
+                ? shortInstalled
+                : $"{shortInstalled} ({installedTime})";
+            string remoteInfo = string.IsNullOrEmpty(remoteTime)
+                ? shortRemote
+                : $"{shortRemote} ({remoteTime})";
+
+            // 사용자에게 업데이트 확인 다이얼로그 표시
+            bool shouldUpdate = EditorUtility.DisplayDialog(
+                "Apps in Toss SDK 업데이트",
+                $"새로운 SDK 버전이 있습니다.\n\n" +
+                $"브랜치: {fragment}\n\n" +
+                $"현재: {installedInfo}\n" +
+                $"최신: {remoteInfo}\n\n" +
+                $"지금 업데이트하시겠습니까?",
+                "업데이트",
+                "나중에"
+            );
+
+            if (shouldUpdate)
             {
-                return;
+                Debug.Log("[AIT] SDK 업데이트를 적용합니다...");
+
+                // 기존 packageId에서 이름 부분 추출하여 동일한 URL+fragment로 Add 호출
+                int atIndex = packageId.IndexOf('@');
+                if (atIndex < 0)
+                {
+                    return;
+                }
+
+                string addUrl = packageId.Substring(atIndex + 1);
+                UnityEditor.PackageManager.Client.Add(addUrl);
+            }
+            else
+            {
+                Debug.Log("[AIT] SDK 업데이트를 건너뛰었습니다.");
+            }
+        }
+
+        /// <summary>
+        /// GitHub API를 통해 커밋 시간 가져오기
+        /// </summary>
+        private static string GetCommitTime(string gitUrl, string commitHash)
+        {
+            try
+            {
+                // git URL에서 owner/repo 추출
+                // 예: https://github.com/toss/apps-in-toss-unity-sdk.git -> toss/apps-in-toss-unity-sdk
+                var match = Regex.Match(gitUrl, @"github\.com[/:]([^/]+)/([^/]+?)(?:\.git)?$");
+                if (!match.Success)
+                {
+                    return null;
+                }
+
+                string owner = match.Groups[1].Value;
+                string repo = match.Groups[2].Value;
+
+                // GitHub API 호출
+                string apiUrl = $"https://api.github.com/repos/{owner}/{repo}/commits/{commitHash}";
+
+                using (var client = new HttpClient())
+                {
+                    client.DefaultRequestHeaders.Add("User-Agent", "Unity-AIT-SDK");
+                    client.Timeout = TimeSpan.FromSeconds(5);
+
+                    var response = client.GetStringAsync(apiUrl).Result;
+
+                    // 간단한 JSON 파싱으로 committer.date 추출
+                    // "committer":{"name":"...","email":"...","date":"2026-02-02T12:34:56Z"}
+                    var dateMatch = Regex.Match(response, @"""committer""[^}]*""date""\s*:\s*""([^""]+)""");
+                    if (dateMatch.Success)
+                    {
+                        string isoDate = dateMatch.Groups[1].Value;
+                        if (DateTime.TryParse(isoDate, out DateTime dt))
+                        {
+                            return dt.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
+                        }
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                // API 호출 실패 시 무시
             }
 
-            string addUrl = packageId.Substring(atIndex + 1);
-            UnityEditor.PackageManager.Client.Add(addUrl);
+            return null;
         }
 
         /// <summary>
@@ -423,17 +558,28 @@ namespace AppsInToss.Editor
         [MenuItem("AIT/Debug/Force Auto-Update Check")]
         public static void ForceAutoUpdateCheck()
         {
-            // 세션 상태 초기화 후 체크 실행
+            // 세션 상태 초기화 후 체크 실행 (수동 체크는 daily 제한 무시)
             SessionState.SetBool(SESSION_KEY, false);
 
             try
             {
-                CheckForUpdate();
+                CheckForUpdate(isManualCheck: true);
             }
             catch (Exception e)
             {
                 Debug.LogWarning($"[AIT] SDK 자동 업데이트 체크 중 예외 발생: {e.Message}");
             }
+        }
+
+        /// <summary>
+        /// 일일 체크 상태 초기화 (디버그용)
+        /// </summary>
+        [MenuItem("AIT/Debug/Reset Daily Update Check")]
+        public static void ResetDailyCheck()
+        {
+            EditorPrefs.DeleteKey(GetDailyCheckKey());
+            SessionState.SetBool(SESSION_KEY, false);
+            Debug.Log("[AIT] 일일 업데이트 체크 상태가 초기화되었습니다.");
         }
     }
 }

@@ -247,12 +247,56 @@ jobs:
           echo "버전: ${ALL_VERSIONS}"
           echo "Actions URL: ${ACTIONS_URL}"
 
+          # urlsForEdition을 3000자 미만으로 줄 단위 분할
+          # Slack section 블록 text 필드 최대 3000자 제한 대응
+          MAX_CHARS=2900
+          CHUNK_INDEX=1
+          CURRENT_CHUNK=""
+          CURRENT_LEN=0
+
+          while IFS= read -r line; do
+            LINE_LEN=${#line}
+            # 현재 청크에 줄을 추가하면 한도 초과하는 경우 새 청크 시작
+            if [ "$CURRENT_LEN" -gt 0 ] && [ $((CURRENT_LEN + LINE_LEN + 1)) -gt "$MAX_CHARS" ]; then
+              # 현재 청크 저장
+              eval "CHUNK_${CHUNK_INDEX}=\"\${CURRENT_CHUNK}\""
+              CHUNK_INDEX=$((CHUNK_INDEX + 1))
+              CURRENT_CHUNK="$line"
+              CURRENT_LEN=$LINE_LEN
+            else
+              if [ "$CURRENT_LEN" -gt 0 ]; then
+                CURRENT_CHUNK="${CURRENT_CHUNK}\n${line}"
+                CURRENT_LEN=$((CURRENT_LEN + LINE_LEN + 1))
+              else
+                CURRENT_CHUNK="$line"
+                CURRENT_LEN=$LINE_LEN
+              fi
+            fi
+          done <<< "$(echo -e "$URLS_FOR_EDITION")"
+
+          # 마지막 청크 저장
+          if [ "$CURRENT_LEN" -gt 0 ]; then
+            eval "CHUNK_${CHUNK_INDEX}=\"\${CURRENT_CHUNK}\""
+          fi
+
+          TOTAL_CHUNKS=$CHUNK_INDEX
+          echo "총 ${TOTAL_CHUNKS}개 청크로 분할"
+
           # jq로 안전한 JSON 생성
+          # urlsForEdition (첫 번째), urlsForEdition2, urlsForEdition3, ... 필드로 전송
           JSON_PAYLOAD=$(jq -n \
             --arg version "$ALL_VERSIONS" \
-            --arg urls "$(echo -e "$URLS_FOR_EDITION")" \
+            --arg urls "$(echo -e "$CHUNK_1")" \
             --arg actionsUrl "$ACTIONS_URL" \
             '{version: $version, urlsForEdition: $urls, actionsUrl: $actionsUrl}')
+
+          for i in $(seq 2 $TOTAL_CHUNKS); do
+            eval "CHUNK_VAL=\"\${CHUNK_${i}}\""
+            JSON_PAYLOAD=$(echo "$JSON_PAYLOAD" | jq \
+              --arg key "urlsForEdition${i}" \
+              --arg val "$(echo -e "$CHUNK_VAL")" \
+              '. + {($key): $val}')
+          done
 
           echo "전송할 JSON:"
           echo "$JSON_PAYLOAD"

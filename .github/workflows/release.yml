@@ -728,19 +728,45 @@ jobs:
           DEPLOY_RESULTS="${{ steps.deploy.outputs.deploy_results }}"
 
           if [ -z "$DEPLOY_RESULTS" ]; then
-            DEPLOY_RESULTS="배포 결과 없음"
+            URLS_FOR_EDITION="배포 결과 없음"
+          else
+            echo "=== markdown link 형식으로 변환 ==="
+            URLS_FOR_EDITION=""
+            while IFS= read -r line; do
+              if [ -n "$line" ]; then
+                # "macOS - 2021.3: URL" 형식에서 플랫폼과 URL 분리
+                PLATFORM=$(echo "$line" | cut -d: -f1 | xargs)
+                URL=$(echo "$line" | cut -d: -f2- | xargs)
+
+                if [ -n "$URL" ] && [ "$URL" != "FAILED" ] && [ "$URL" != "TIMEOUT" ]; then
+                  LINE="${PLATFORM}: <${URL}|${VERSION}>"
+                else
+                  LINE="${PLATFORM}: ${VERSION}(${URL})"
+                fi
+
+                if [ -n "$URLS_FOR_EDITION" ]; then
+                  URLS_FOR_EDITION="${URLS_FOR_EDITION}\n${LINE}"
+                else
+                  URLS_FOR_EDITION="${LINE}"
+                fi
+              fi
+            done <<< "$(echo -e "$DEPLOY_RESULTS")"
           fi
+
+          ACTIONS_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
 
           echo "=== 배포 알림 전송 ==="
           echo "버전: ${VERSION}"
+          echo "Actions URL: ${ACTIONS_URL}"
           echo "결과:"
-          echo -e "$DEPLOY_RESULTS"
+          echo -e "$URLS_FOR_EDITION"
 
           # jq로 안전한 JSON 생성
           JSON_PAYLOAD=$(jq -n \
             --arg version "$VERSION" \
-            --arg urls "$(echo -e "$DEPLOY_RESULTS")" \
-            '{version: $version, urlsForEdition: $urls}')
+            --arg urls "$(echo -e "$URLS_FOR_EDITION")" \
+            --arg actionsUrl "$ACTIONS_URL" \
+            '{version: $version, urlsForEdition: $urls, actionsUrl: $actionsUrl}')
 
           echo "전송할 JSON:"
           echo "$JSON_PAYLOAD"

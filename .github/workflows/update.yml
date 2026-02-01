@@ -1,0 +1,430 @@
+name: SDK Update
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '릴리즈 버전 (예: 1.6.0) - 비워두면 누락된 모든 버전 감지'
+        required: false
+        type: string
+      force:
+        description: '이미 같은 버전이 있어도 강제 업데이트'
+        required: false
+        type: boolean
+        default: false
+  schedule:
+    - cron: '0 0 * * 1-5'  # 평일 오전 9시 KST (UTC 0시)
+
+jobs:
+  # =====================================================
+  # 누락된 버전 감지
+  # =====================================================
+  detect-versions:
+    name: 누락된 버전 감지
+    runs-on: ubuntu-latest
+    outputs:
+      versions: ${{ steps.detect.outputs.versions }}
+      has_versions: ${{ steps.detect.outputs.has_versions }}
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: 누락된 버전 감지
+        id: detect
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # 입력된 버전이 있으면 해당 버전만 사용
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+            echo "입력된 버전 사용: ${VERSION}"
+            echo "versions=[\"${VERSION}\"]" >> $GITHUB_OUTPUT
+            echo "has_versions=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # npm에서 모든 버전 가져오기 (정식 릴리즈만, dev/alpha/beta 제외)
+          echo "=== npm에서 버전 목록 가져오기 ==="
+          ALL_NPM_VERSIONS=$(npm view @apps-in-toss/web-framework versions --json | jq -r '.[]' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V)
+          echo "npm 버전 목록:"
+          echo "$ALL_NPM_VERSIONS"
+
+          # 현재 SDK 버전 확인
+          CURRENT_VERSION=$(jq -r '.version' package.json)
+          echo ""
+          echo "현재 SDK 버전: ${CURRENT_VERSION}"
+
+          # 기존 릴리즈 태그 목록
+          echo ""
+          echo "=== 기존 릴리즈 태그 확인 ==="
+          EXISTING_TAGS=$(git tag -l 'release/v*' | sed 's/release\/v//' | sort -V)
+          echo "기존 태그:"
+          echo "$EXISTING_TAGS"
+
+          # 열린 PR 목록 (update/ 브랜치)
+          echo ""
+          echo "=== 열린 PR 확인 ==="
+          OPEN_PR_VERSIONS=$(gh pr list --state open --json headRefName --jq '.[].headRefName' 2>/dev/null | grep '^update/' | sed 's/update\/\([0-9.]*\).*/\1/' | sort -V || echo "")
+          echo "열린 PR 버전:"
+          echo "$OPEN_PR_VERSIONS"
+
+          # 누락된 버전 찾기
+          echo ""
+          echo "=== 누락된 버전 감지 ==="
+          MISSING_VERSIONS=""
+
+          for VERSION in $ALL_NPM_VERSIONS; do
+            # 현재 버전 이하는 스킵
+            if [ "$(printf '%s\n' "$CURRENT_VERSION" "$VERSION" | sort -V | head -n1)" = "$VERSION" ] && [ "$VERSION" != "$CURRENT_VERSION" ]; then
+              continue
+            fi
+
+            # 이미 릴리즈 태그가 있으면 스킵
+            if echo "$EXISTING_TAGS" | grep -qx "$VERSION"; then
+              echo "  ${VERSION}: 이미 릴리즈됨 (스킵)"
+              continue
+            fi
+
+            # 이미 열린 PR이 있으면 스킵
+            if echo "$OPEN_PR_VERSIONS" | grep -qx "$VERSION"; then
+              echo "  ${VERSION}: 열린 PR 존재 (스킵)"
+              continue
+            fi
+
+            echo "  ${VERSION}: 누락됨 (처리 대상)"
+            MISSING_VERSIONS="${MISSING_VERSIONS} ${VERSION}"
+          done
+
+          # 결과 정리
+          MISSING_VERSIONS=$(echo "$MISSING_VERSIONS" | xargs)
+
+          if [ -z "$MISSING_VERSIONS" ]; then
+            echo ""
+            echo "누락된 버전이 없습니다."
+            echo "versions=[]" >> $GITHUB_OUTPUT
+            echo "has_versions=false" >> $GITHUB_OUTPUT
+          else
+            echo ""
+            echo "누락된 버전 목록: ${MISSING_VERSIONS}"
+            # JSON 배열로 변환
+            JSON_VERSIONS=$(echo "$MISSING_VERSIONS" | tr ' ' '\n' | jq -R -s -c 'split("\n") | map(select(length > 0))')
+            echo "JSON: ${JSON_VERSIONS}"
+            echo "versions=${JSON_VERSIONS}" >> $GITHUB_OUTPUT
+            echo "has_versions=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 감지 결과 요약
+        run: |
+          echo "## SDK Update - 버전 감지 결과" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          VERSIONS='${{ steps.detect.outputs.versions }}'
+          HAS_VERSIONS='${{ steps.detect.outputs.has_versions }}'
+
+          if [ "$HAS_VERSIONS" = "true" ]; then
+            echo "### 처리 대상 버전" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "$VERSIONS" | jq -r '.[]' | while read v; do
+              echo "- v${v}" >> $GITHUB_STEP_SUMMARY
+            done
+          else
+            echo "✅ 누락된 버전이 없습니다." >> $GITHUB_STEP_SUMMARY
+          fi
+
+  # =====================================================
+  # 각 버전별 PR 생성
+  # =====================================================
+  update:
+    name: SDK 업데이트 v${{ matrix.version }}
+    runs-on: ubuntu-latest
+    needs: detect-versions
+    if: needs.detect-versions.outputs.has_versions == 'true'
+
+    strategy:
+      fail-fast: false
+      max-parallel: 1  # 순차 실행 (git 충돌 방지)
+      matrix:
+        version: ${{ fromJson(needs.detect-versions.outputs.versions) }}
+
+    outputs:
+      pr_created: ${{ steps.create-pr.outputs.pr_created }}
+      pr_number: ${{ steps.create-pr.outputs.pr_number }}
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: 버전 설정
+        id: version
+        run: |
+          VERSION="${{ matrix.version }}"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
+          # 타임스탬프 생성 (YYYYMMDD-HHmmss)
+          TIMESTAMP=$(date -u +%Y%m%d-%H%M%S)
+          echo "timestamp=${TIMESTAMP}" >> $GITHUB_OUTPUT
+
+          BRANCH_NAME="update/${VERSION}-${TIMESTAMP}"
+          echo "branch_name=${BRANCH_NAME}" >> $GITHUB_OUTPUT
+
+      - name: 스킵 판단
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ matrix.version }}"
+          FORCE="${{ github.event.inputs.force }}"
+
+          SKIP="false"
+
+          # 이미 같은 버전의 열린 PR이 있는지 재확인
+          EXISTING_PR=$(gh pr list --state open --search "head:update/${VERSION}" --json number --jq '.[0].number' 2>/dev/null || echo "")
+          if [ -n "$EXISTING_PR" ] && [ "$FORCE" != "true" ]; then
+            echo "::warning::이미 버전 ${VERSION}에 대한 열린 PR이 있습니다: #${EXISTING_PR}"
+            SKIP="true"
+          fi
+
+          echo "skip=${SKIP}" >> $GITHUB_OUTPUT
+
+      - name: Git 설정
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: web-framework 버전 업데이트 및 SDK 재생성
+        if: steps.check.outputs.skip != 'true'
+        id: generate
+        working-directory: sdk-runtime-generator~
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+
+          echo "=== web-framework v${VERSION} 업데이트 ==="
+
+          # 캐시 정리 후 강제 업데이트 (캐시로 인한 오래된 버전 문제 방지)
+          pnpm store prune
+          pnpm update "@apps-in-toss/web-framework@${VERSION}" --force --registry https://registry.npmjs.org
+
+          # 설치된 버전 검증
+          INSTALLED_VERSION=$(pnpm list @apps-in-toss/web-framework --json | jq -r '.[0].dependencies["@apps-in-toss/web-framework"].version')
+          echo "요청 버전: ${VERSION}"
+          echo "설치된 버전: ${INSTALLED_VERSION}"
+          if [ "$INSTALLED_VERSION" != "$VERSION" ]; then
+            echo "::error::버전 불일치! 요청: ${VERSION}, 설치됨: ${INSTALLED_VERSION}"
+            exit 1
+          fi
+          echo "✅ 버전 검증 완료: ${INSTALLED_VERSION}"
+
+          echo "SDK 코드 생성 중..."
+          # 타입 검사 실패해도 PR 생성을 위해 계속 진행
+          if pnpm generate; then
+            echo "generate_status=success" >> $GITHUB_OUTPUT
+            echo "SDK 코드 생성 완료"
+          else
+            echo "generate_status=failed" >> $GITHUB_OUTPUT
+            echo "::warning::SDK 코드 생성 실패 - PR 생성 후 수동 수정 필요"
+          fi
+
+      - name: 루트 package.json 버전 업데이트
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          jq --arg v "$VERSION" '.version = $v' package.json > tmp.json
+          mv tmp.json package.json
+          echo "package.json 버전: ${VERSION}"
+
+      - name: BuildConfig package.json 버전 동기화
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          BUILDCONFIG_PKG="WebGLTemplates/AITTemplate/BuildConfig~/package.json"
+
+          # BuildConfig의 web-framework 버전도 동기화
+          jq --arg v "$VERSION" '.dependencies["@apps-in-toss/web-framework"] = $v' "$BUILDCONFIG_PKG" > tmp.json
+          mv tmp.json "$BUILDCONFIG_PKG"
+          echo "BuildConfig web-framework 버전: ${VERSION}"
+
+          # 확인
+          cat "$BUILDCONFIG_PKG" | jq '.dependencies'
+
+      - name: BuildConfig pnpm-lock.yaml 업데이트
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          cd WebGLTemplates/AITTemplate/BuildConfig~
+          pnpm install --no-frozen-lockfile
+          echo "BuildConfig pnpm-lock.yaml 업데이트 완료"
+
+      - name: README.md 설치 가이드 업데이트
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          TAG_NAME="release/v${VERSION}"
+
+          # README.md의 Git URL을 최신 릴리즈 태그로 업데이트
+          # 패턴: https://github.com/toss/apps-in-toss-unity-sdk.git 또는
+          #       https://github.com/toss/apps-in-toss-unity-sdk.git#release/vX.X.X
+          sed -i 's|https://github.com/toss/apps-in-toss-unity-sdk\.git\(#[^"]*\)\?|https://github.com/toss/apps-in-toss-unity-sdk.git#'"${TAG_NAME}"'|g' README.md
+
+          echo "README.md 업데이트 완료: #${TAG_NAME}"
+          grep -n "apps-in-toss-unity-sdk.git" README.md || true
+
+      - name: 브랜치 생성 및 커밋
+        if: steps.check.outputs.skip != 'true'
+        id: commit
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          BRANCH_NAME="${{ steps.version.outputs.branch_name }}"
+
+          # 변경사항 확인
+          if git diff --quiet && git diff --staged --quiet; then
+            echo "변경사항이 없습니다."
+            echo "no_changes=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # 브랜치 생성 및 체크아웃
+          git checkout -b "${BRANCH_NAME}"
+
+          # 모든 변경사항 커밋
+          git add -A
+          git commit -m "기능: SDK v${VERSION} 업데이트
+
+          - @apps-in-toss/web-framework v${VERSION} 기반 SDK 코드 재생성
+          - package.json 버전 동기화
+          - BuildConfig package.json web-framework 버전 동기화
+          - unity-bridge.ts 자동 생성
+          - README.md 설치 가이드 업데이트
+
+          자동 생성: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+          # 원격에 푸시
+          git push -u origin "${BRANCH_NAME}"
+          echo "브랜치 푸시 완료: ${BRANCH_NAME}"
+          echo "no_changes=false" >> $GITHUB_OUTPUT
+
+      - name: PR 생성
+        if: steps.check.outputs.skip != 'true' && steps.commit.outputs.no_changes != 'true'
+        id: create-pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          BRANCH_NAME="${{ steps.version.outputs.branch_name }}"
+          GENERATE_STATUS="${{ steps.generate.outputs.generate_status }}"
+
+          # SDK 생성 실패 시 경고 메시지
+          if [ "$GENERATE_STATUS" = "failed" ]; then
+            GENERATE_WARNING="> ⚠️ **SDK 코드 생성 중 타입 검사 실패** - 수동 수정이 필요합니다.
+
+          "
+            TITLE_PREFIX="[타입 오류] "
+          else
+            GENERATE_WARNING=""
+            TITLE_PREFIX=""
+          fi
+
+          # PR 생성
+          PR_RESULT=$(gh pr create \
+            --title "${TITLE_PREFIX}SDK 업데이트: v${VERSION}" \
+            --body "## SDK 업데이트: v${VERSION}
+
+          ${GENERATE_WARNING}\`@apps-in-toss/web-framework\` v${VERSION} 기반으로 SDK 코드를 재생성했습니다.
+
+          ### 검토 사항
+          - [ ] E2E 테스트 통과 확인 (이 워크플로우에서 자동 실행)
+          - [ ] 생성된 SDK 코드 검토
+
+          ### 머지 후 자동 처리
+          이 PR이 머지되면 자동으로 릴리즈가 생성됩니다:
+          - 릴리즈 태그: \`release/v${VERSION}\`
+          - GitHub Release: https://github.com/${{ github.repository }}/releases/tag/release/v${VERSION}
+
+          ### UPM 설치 (머지 후)
+          \`\`\`
+          https://github.com/${{ github.repository }}.git#release/v${VERSION}
+          \`\`\`" \
+            --base main \
+            --head "${BRANCH_NAME}")
+
+          # PR 번호 추출
+          PR_NUMBER=$(echo "$PR_RESULT" | grep -oE '[0-9]+$')
+
+          echo "pr_url=${PR_RESULT}" >> $GITHUB_OUTPUT
+          echo "pr_number=${PR_NUMBER}" >> $GITHUB_OUTPUT
+          echo "pr_created=true" >> $GITHUB_OUTPUT
+          echo "PR 생성 완료: ${PR_RESULT} (번호: ${PR_NUMBER})"
+
+      - name: 업데이트 요약
+        if: always()
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          SKIP="${{ steps.check.outputs.skip }}"
+          NO_CHANGES="${{ steps.commit.outputs.no_changes }}"
+          PR_URL="${{ steps.create-pr.outputs.pr_url }}"
+
+          echo "## SDK 업데이트 결과" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "$SKIP" = "true" ]; then
+            echo "⏭️ **업데이트 스킵됨**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "이미 최신 버전이거나 동일 버전의 열린 PR이 존재합니다." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "> E2E 테스트가 스킵되었습니다 (변경사항 없음)" >> $GITHUB_STEP_SUMMARY
+          elif [ "$NO_CHANGES" = "true" ]; then
+            echo "⏭️ **변경사항 없음**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "SDK 재생성 결과 기존 코드와 동일합니다." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "> E2E 테스트가 스킵되었습니다 (변경사항 없음)" >> $GITHUB_STEP_SUMMARY
+          elif [ -n "$PR_URL" ]; then
+            echo "✅ **PR 생성 완료**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| 항목 | 값 |" >> $GITHUB_STEP_SUMMARY
+            echo "|------|-----|" >> $GITHUB_STEP_SUMMARY
+            echo "| 버전 | v${VERSION} |" >> $GITHUB_STEP_SUMMARY
+            echo "| PR | ${PR_URL} |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "E2E 테스트가 자동으로 실행됩니다." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **처리 실패**" >> $GITHUB_STEP_SUMMARY
+          fi
+
+  # =====================================================
+  # E2E 테스트 실행 (PR 생성 후)
+  # GITHUB_TOKEN으로 생성된 PR은 다른 워크플로우를 트리거하지 않으므로
+  # workflow_call을 통해 직접 test-e2e.yml을 호출
+  # =====================================================
+  run-tests:
+    name: E2E 테스트 실행
+    needs: update
+    if: needs.update.outputs.pr_created == 'true'
+    uses: ./.github/workflows/test-e2e.yml
+    with:
+      clean_library: false
+      target_ref: ${{ needs.update.outputs.pr_number }}

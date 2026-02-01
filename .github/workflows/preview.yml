@@ -1,0 +1,476 @@
+name: Preview
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_ref:
+        description: 'PR 번호 또는 브랜치 이름 (예: 23 또는 feature/my-branch)'
+        required: true
+        type: string
+      targets:
+        description: '빌드 타겟 - 쉼표로 구분 (예: macos-6000.2,windows-2021.3)'
+        required: false
+        default: 'macos-6000.2'
+        type: string
+
+concurrency:
+  group: preview-${{ inputs.target_ref }}
+  cancel-in-progress: true
+
+jobs:
+  # =====================================================
+  # 타겟 파싱
+  # =====================================================
+  parse-targets:
+    name: Parse Targets
+    runs-on: ubuntu-latest
+
+    outputs:
+      targets: ${{ steps.parse.outputs.targets }}
+      repository: ${{ steps.resolve.outputs.repository }}
+      ref: ${{ steps.resolve.outputs.ref }}
+      pr_number: ${{ steps.resolve.outputs.pr_number }}
+
+    steps:
+      - name: Resolve Target Ref
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TARGET_REF="${{ inputs.target_ref }}"
+
+          # 숫자만 있으면 PR 번호로 간주
+          if [[ "$TARGET_REF" =~ ^[0-9]+$ ]]; then
+            PR_NUMBER="$TARGET_REF"
+            echo "PR 번호로 감지: #${PR_NUMBER}"
+
+            # PR에서 브랜치와 저장소 가져오기
+            PR_DATA=$(gh api "repos/${{ github.repository }}/pulls/${PR_NUMBER}" --jq '{ref: .head.ref, repo: .head.repo.full_name}' 2>/dev/null || echo "")
+
+            if [ -z "$PR_DATA" ]; then
+              echo "::error::PR #${PR_NUMBER}을(를) 찾을 수 없습니다"
+              exit 1
+            fi
+
+            REF=$(echo "$PR_DATA" | jq -r '.ref')
+            REPO=$(echo "$PR_DATA" | jq -r '.repo')
+            echo "ref=${REF}" >> $GITHUB_OUTPUT
+            echo "repository=${REPO}" >> $GITHUB_OUTPUT
+            echo "pr_number=${PR_NUMBER}" >> $GITHUB_OUTPUT
+            echo "브랜치: ${REF} (저장소: ${REPO})"
+          else
+            # 브랜치 이름으로 간주
+            REF="$TARGET_REF"
+            echo "브랜치 이름으로 감지: ${REF}"
+            echo "ref=${REF}" >> $GITHUB_OUTPUT
+            echo "repository=${{ github.repository }}" >> $GITHUB_OUTPUT
+
+            # 브랜치에서 열린 PR 찾기
+            PR_NUMBER=$(gh pr list --head "${REF}" --state open --json number --jq '.[0].number' 2>/dev/null || echo "")
+
+            if [ -n "$PR_NUMBER" ]; then
+              echo "pr_number=${PR_NUMBER}" >> $GITHUB_OUTPUT
+              echo "열린 PR 발견: #${PR_NUMBER}"
+            else
+              echo "pr_number=" >> $GITHUB_OUTPUT
+              echo "열린 PR 없음 (코멘트 보고 스킵)"
+            fi
+          fi
+
+      - name: Parse Build Targets
+        id: parse
+        run: |
+          INPUT_TARGETS="${{ inputs.targets }}"
+          echo "Input targets: ${INPUT_TARGETS}"
+
+          # 쉼표로 분리하여 JSON 배열 생성
+          TARGETS="["
+          FIRST=true
+
+          IFS=',' read -ra TARGET_ARRAY <<< "$INPUT_TARGETS"
+          for TARGET in "${TARGET_ARRAY[@]}"; do
+            # 공백 제거
+            TARGET=$(echo "$TARGET" | xargs)
+
+            # os-version 형식 파싱
+            OS=$(echo "$TARGET" | cut -d'-' -f1)
+            VERSION=$(echo "$TARGET" | cut -d'-' -f2-)
+
+            # OS 검증
+            if [ "$OS" != "macos" ] && [ "$OS" != "windows" ]; then
+              echo "::warning::Invalid OS: ${OS}, skipping"
+              continue
+            fi
+
+            # 버전 검증
+            if ! echo "$VERSION" | grep -qE '^(2021\.3|2022\.3|6000\.0|6000\.2|6000\.3)$'; then
+              echo "::warning::Invalid Unity version: ${VERSION}, skipping"
+              continue
+            fi
+
+            if [ "$FIRST" = true ]; then
+              FIRST=false
+            else
+              TARGETS="${TARGETS},"
+            fi
+            TARGETS="${TARGETS}{\"os\":\"${OS}\",\"unity-version\":\"${VERSION}\"}"
+          done
+          TARGETS="${TARGETS}]"
+
+          echo "Parsed targets: ${TARGETS}"
+
+          # 유효한 타겟이 있는지 확인
+          TARGET_COUNT=$(echo "$TARGETS" | jq 'length')
+          if [ "$TARGET_COUNT" -eq 0 ]; then
+            echo "::error::No valid build targets found"
+            exit 1
+          fi
+
+          echo "targets=${TARGETS}" >> $GITHUB_OUTPUT
+
+  # =====================================================
+  # Pending Status 보고
+  # =====================================================
+  report-pending:
+    name: Report Pending Status
+    runs-on: ubuntu-latest
+    needs: parse-targets
+    if: needs.parse-targets.outputs.ref != ''
+
+    steps:
+      - name: Get Commit SHA
+        id: sha
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          REF="${{ needs.parse-targets.outputs.ref }}"
+          REPO="${{ needs.parse-targets.outputs.repository }}"
+          SHA=$(gh api "repos/${REPO}/git/ref/heads/${REF}" --jq '.object.sha' 2>/dev/null || echo "")
+
+          if [ -z "$SHA" ]; then
+            echo "::warning::Could not get SHA for ref ${REF} in ${REPO}"
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "sha=${SHA}" >> $GITHUB_OUTPUT
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Report Pending Status
+        if: steps.sha.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SHA="${{ steps.sha.outputs.sha }}"
+          TARGET_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          gh api "repos/${{ github.repository }}/statuses/${SHA}" \
+            -X POST \
+            -f state="pending" \
+            -f target_url="$TARGET_URL" \
+            -f description="Preview build & deploy running..." \
+            -f context="Preview"
+
+          echo "Reported pending status for commit $SHA"
+
+  # =====================================================
+  # 빌드 매트릭스
+  # =====================================================
+  build:
+    name: Build (${{ matrix.target.os }}, Unity ${{ matrix.target.unity-version }})
+    needs: parse-targets
+
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJson(needs.parse-targets.outputs.targets) }}
+
+    uses: ./.github/workflows/unity-build.yml
+    with:
+      repository: ${{ needs.parse-targets.outputs.repository }}
+      ref: ${{ needs.parse-targets.outputs.ref }}
+      os: ${{ matrix.target.os }}
+      unity-version: ${{ matrix.target.unity-version }}
+      run-build: true
+      run-e2e-test: false
+      run-benchmark: false
+    secrets:
+      AIT_AD_INTERSTITIAL_ID: ${{ secrets.AIT_AD_INTERSTITIAL_ID }}
+      AIT_AD_REWARDED_ID: ${{ secrets.AIT_AD_REWARDED_ID }}
+
+  # =====================================================
+  # 배포
+  # =====================================================
+  deploy:
+    name: Deploy Preview
+    runs-on: ubuntu-latest
+    needs: [parse-targets, build]
+    if: success()
+
+    steps:
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install AIT CLI
+        run: |
+          pnpm install -g @apps-in-toss/web-framework
+          ait --version || echo "AIT CLI installed"
+
+      - name: Download Build Artifacts
+        uses: actions/download-artifact@v7
+        with:
+          pattern: ait-build-*
+          path: ait-builds/
+
+      - name: List Downloaded Artifacts
+        run: |
+          echo "=== Downloaded Artifacts ==="
+          ls -la ait-builds/ || echo "No artifacts found"
+          for dir in ait-builds/*/; do
+            echo "--- ${dir} ---"
+            ls -la "$dir" 2>/dev/null || true
+          done
+
+      - name: Prepare Build Directories
+        id: prepare
+        run: |
+          # download-artifact@v7가 단일 아티팩트일 때 서브디렉토리를 생성하지 않는 문제 해결
+          # ait-build-* 디렉토리가 없으면 targets에서 정보를 가져와서 디렉토리 구조 생성
+
+          if compgen -G "ait-builds/ait-build-*/" > /dev/null 2>&1; then
+            echo "다중 아티팩트 구조 감지됨"
+            echo "structure=multi" >> $GITHUB_OUTPUT
+          else
+            echo "단일 아티팩트 구조 감지됨 - 디렉토리 재구성"
+            echo "structure=single" >> $GITHUB_OUTPUT
+
+            # targets JSON에서 빌드 정보 추출
+            TARGETS='${{ needs.parse-targets.outputs.targets }}'
+            FIRST_TARGET=$(echo "$TARGETS" | jq -r '.[0]')
+            OS=$(echo "$FIRST_TARGET" | jq -r '.os')
+            UNITY_VERSION=$(echo "$FIRST_TARGET" | jq -r '.["unity-version"]')
+
+            # 단일 아티팩트를 적절한 디렉토리로 이동
+            ARTIFACT_DIR="ait-builds/ait-build-${OS}-${UNITY_VERSION}"
+            mkdir -p "$ARTIFACT_DIR"
+
+            # ait-builds/ 내의 파일들을 새 디렉토리로 이동 (ait-build-* 제외)
+            for item in ait-builds/*; do
+              BASENAME=$(basename "$item")
+              if [[ ! "$BASENAME" =~ ^ait-build- ]]; then
+                mv "$item" "$ARTIFACT_DIR/"
+              fi
+            done
+
+            echo "재구성 완료: $ARTIFACT_DIR"
+            ls -la "$ARTIFACT_DIR"
+          fi
+
+      - name: Deploy All Builds
+        id: deploy
+        env:
+          AIT_DEPLOY_KEY: ${{ secrets.AIT_DEPLOY_KEY }}
+        run: |
+          if [ -z "$AIT_DEPLOY_KEY" ]; then
+            echo "::error::AIT_DEPLOY_KEY is not set"
+            exit 1
+          fi
+
+          DEPLOY_RESULTS=""
+          HAS_SUCCESS=false
+
+          for build_dir in ait-builds/ait-build-*/; do
+            if [ -d "$build_dir" ]; then
+              BUILD_NAME=$(basename "$build_dir")
+              OS=$(echo "$BUILD_NAME" | sed 's/ait-build-\([^-]*\)-.*/\1/')
+              UNITY_VERSION=$(echo "$BUILD_NAME" | sed 's/ait-build-[^-]*-//')
+
+              case "$OS" in
+                macos) OS_DISPLAY="macOS" ;;
+                windows) OS_DISPLAY="Windows" ;;
+                *) OS_DISPLAY="$OS" ;;
+              esac
+
+              echo ""
+              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+              echo "Deploying: ${OS_DISPLAY} - Unity ${UNITY_VERSION}"
+
+              DEPLOY_OUTPUT=$(cd "${build_dir}" && timeout 300 ait deploy --api-key "$AIT_DEPLOY_KEY" 2>&1) && DEPLOY_STATUS=0 || DEPLOY_STATUS=$?
+
+              echo "$DEPLOY_OUTPUT"
+
+              if [ $DEPLOY_STATUS -eq 0 ]; then
+                CLEANED_OUTPUT=$(echo "$DEPLOY_OUTPUT" | sed 's/\x1b\[[0-9;]*m//g' | tr -d '\r')
+                DEPLOY_URL=$(echo "$CLEANED_OUTPUT" | grep -oE 'intoss-private://[^[:space:]]+' | head -1 || true)
+
+                if [ -n "$DEPLOY_URL" ]; then
+                  echo "✅ Deploy success: ${DEPLOY_URL}"
+                  # URL 인코딩하여 QR 코드 API URL 생성
+                  ENCODED_URL=$(printf '%s' "$DEPLOY_URL" | jq -sRr @uri)
+                  QR_IMG="![QR](https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${ENCODED_URL})"
+                  DEPLOY_RESULTS="${DEPLOY_RESULTS}| ${OS_DISPLAY} | ${UNITY_VERSION} | ✅ | \`${DEPLOY_URL}\` | ${QR_IMG} |\n"
+                  HAS_SUCCESS=true
+                else
+                  DEPLOY_URL=$(echo "$CLEANED_OUTPUT" | grep -oE 'https?://[^[:space:]]+' | head -1 || echo "SUCCESS")
+                  DEPLOY_RESULTS="${DEPLOY_RESULTS}| ${OS_DISPLAY} | ${UNITY_VERSION} | ✅ | ${DEPLOY_URL} | - |\n"
+                  HAS_SUCCESS=true
+                fi
+              else
+                echo "❌ Deploy failed (exit code: $DEPLOY_STATUS)"
+                DEPLOY_RESULTS="${DEPLOY_RESULTS}| ${OS_DISPLAY} | ${UNITY_VERSION} | ❌ | Failed | - |\n"
+              fi
+            fi
+          done
+
+          # 결과 저장
+          echo "deploy_results<<EOF" >> $GITHUB_OUTPUT
+          echo -e "$DEPLOY_RESULTS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+          if [ "$HAS_SUCCESS" = true ]; then
+            echo "has_success=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_success=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Write Job Summary
+        run: |
+          REF="${{ needs.parse-targets.outputs.ref }}"
+          DEPLOY_RESULTS='${{ steps.deploy.outputs.deploy_results }}'
+
+          cat <<EOF >> $GITHUB_STEP_SUMMARY
+          ## 🎉 Preview Deploy Complete
+
+          **Branch:** \`${REF}\`
+
+          | OS | Unity | Status | URL | QR |
+          |----|-------|--------|-----|:--:|
+          $(echo -e "$DEPLOY_RESULTS")
+
+          ---
+          <details>
+          <summary>📱 How to test</summary>
+
+          1. Copy the \`intoss-private://\` URL above
+          2. Open Toss app on your device
+          3. Paste the URL in browser or use deep link
+
+          </details>
+          EOF
+
+      - name: Post PR Comment
+        if: needs.parse-targets.outputs.pr_number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PR_NUMBER="${{ needs.parse-targets.outputs.pr_number }}"
+          REF="${{ needs.parse-targets.outputs.ref }}"
+          DEPLOY_RESULTS='${{ steps.deploy.outputs.deploy_results }}'
+          HAS_SUCCESS="${{ steps.deploy.outputs.has_success }}"
+
+          if [ "$HAS_SUCCESS" = "true" ]; then
+            STATUS_EMOJI="🎉"
+            STATUS_TEXT="Preview deploy complete"
+          else
+            STATUS_EMOJI="❌"
+            STATUS_TEXT="Preview deploy failed"
+          fi
+
+          # HEREDOC에서 직접 변수 삽입 (플레이스홀더 치환 시 & 문자 문제 방지)
+          COMMENT_BODY=$(cat <<EOF
+          ## ${STATUS_EMOJI} ${STATUS_TEXT}
+
+          **Branch:** \`${REF}\`
+
+          | OS | Unity | Status | URL | QR |
+          |----|-------|--------|-----|:--:|
+          $(echo -e "$DEPLOY_RESULTS")
+
+          <details>
+          <summary>📱 How to test</summary>
+
+          1. Scan QR code with Toss app, or
+          2. Copy the \`intoss-private://\` URL and open in Toss app
+
+          </details>
+
+          ---
+          [View full run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          EOF
+          )
+
+          # gh api로 코멘트 작성 (git repo 불필요)
+          gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
+            -X POST \
+            -f body="$COMMENT_BODY"
+
+          echo "PR #${PR_NUMBER}에 배포 결과 코멘트 작성 완료"
+
+  # =====================================================
+  # Commit Status 보고
+  # =====================================================
+  report-status:
+    name: Report Status
+    runs-on: ubuntu-latest
+    needs: [parse-targets, build, deploy]
+    if: always() && needs.parse-targets.outputs.ref != ''
+
+    steps:
+      - name: Determine Status
+        id: status
+        run: |
+          BUILD_RESULT="${{ needs.build.result }}"
+          DEPLOY_RESULT="${{ needs.deploy.result }}"
+
+          if [ "$BUILD_RESULT" = "success" ] && [ "$DEPLOY_RESULT" = "success" ]; then
+            echo "state=success" >> $GITHUB_OUTPUT
+            echo "description=Preview build & deploy succeeded" >> $GITHUB_OUTPUT
+          elif [ "$BUILD_RESULT" = "cancelled" ] || [ "$DEPLOY_RESULT" = "cancelled" ]; then
+            echo "state=error" >> $GITHUB_OUTPUT
+            echo "description=Preview cancelled" >> $GITHUB_OUTPUT
+          else
+            echo "state=failure" >> $GITHUB_OUTPUT
+            echo "description=Preview failed (build: $BUILD_RESULT, deploy: $DEPLOY_RESULT)" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Get Commit SHA
+        id: sha
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          REF="${{ needs.parse-targets.outputs.ref }}"
+          REPO="${{ needs.parse-targets.outputs.repository }}"
+          SHA=$(gh api "repos/${REPO}/git/ref/heads/${REF}" --jq '.object.sha' 2>/dev/null || echo "")
+
+          if [ -z "$SHA" ]; then
+            echo "::warning::Could not get SHA for ref ${REF} in ${REPO}"
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "sha=${SHA}" >> $GITHUB_OUTPUT
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Report Commit Status
+        if: steps.sha.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SHA="${{ steps.sha.outputs.sha }}"
+          STATE="${{ steps.status.outputs.state }}"
+          DESCRIPTION="${{ steps.status.outputs.description }}"
+          TARGET_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          gh api "repos/${{ github.repository }}/statuses/${SHA}" \
+            -X POST \
+            -f state="$STATE" \
+            -f target_url="$TARGET_URL" \
+            -f description="$DESCRIPTION" \
+            -f context="Preview"
+
+          echo "Reported status: $STATE for commit $SHA"

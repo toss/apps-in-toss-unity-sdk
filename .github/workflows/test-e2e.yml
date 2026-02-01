@@ -1,0 +1,398 @@
+name: E2E Tests
+run-name: "E2E Tests${{ inputs.sdk_version_override && format(' (SDK {0})', inputs.sdk_version_override) || '' }}${{ inputs.target_ref && format(' - {0}', inputs.target_ref) || '' }}"
+
+on:
+  # 수동 실행
+  workflow_dispatch:
+    inputs:
+      target_ref:
+        description: 'PR 번호 또는 브랜치 이름 (예: 23 또는 feature/my-branch)'
+        type: string
+        required: false
+      clean_library:
+        description: 'Clean Unity Library cache'
+        type: boolean
+        default: false
+      sdk_version_override:
+        description: 'SDK 버전 오버라이드 (호환성 테스트용, 예: 1.5.0)'
+        type: string
+        required: false
+        default: ''
+
+  # update.yml에서 호출
+  workflow_call:
+    inputs:
+      target_ref:
+        description: 'PR number or branch name'
+        type: string
+        required: false
+      clean_library:
+        description: 'Clean Unity Library cache'
+        type: boolean
+        default: false
+      sdk_version_override:
+        description: 'Override SDK version for compatibility testing'
+        type: string
+        required: false
+        default: ''
+
+jobs:
+  # =====================================================
+  # Ref 결정
+  # =====================================================
+  setup:
+    name: Setup
+    runs-on: ubuntu-latest
+
+    outputs:
+      ref: ${{ steps.ref.outputs.ref }}
+      repository: ${{ steps.ref.outputs.repository }}
+      pr_number: ${{ steps.ref.outputs.pr_number }}
+
+    steps:
+      - name: Resolve Target Ref
+        id: ref
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TARGET_REF="${{ inputs.target_ref }}"
+
+          if [ -z "$TARGET_REF" ]; then
+            # 입력이 없으면 현재 브랜치 사용
+            REF="${{ github.ref_name }}"
+            echo "현재 ref 사용: ${REF}"
+          elif [[ "$TARGET_REF" =~ ^[0-9]+$ ]]; then
+            # 숫자만 있으면 PR 번호로 간주
+            PR_NUMBER="$TARGET_REF"
+            echo "PR 번호로 감지: #${PR_NUMBER}"
+
+            PR_DATA=$(gh api "repos/${{ github.repository }}/pulls/${PR_NUMBER}" --jq '{ref: .head.ref, repo: .head.repo.full_name}' 2>/dev/null || echo "")
+
+            if [ -z "$PR_DATA" ]; then
+              echo "::error::PR #${PR_NUMBER}을(를) 찾을 수 없습니다"
+              exit 1
+            fi
+
+            REF=$(echo "$PR_DATA" | jq -r '.ref')
+            REPO=$(echo "$PR_DATA" | jq -r '.repo')
+            echo "ref=${REF}" >> $GITHUB_OUTPUT
+            echo "repository=${REPO}" >> $GITHUB_OUTPUT
+            echo "pr_number=${PR_NUMBER}" >> $GITHUB_OUTPUT
+            echo "브랜치: ${REF} (저장소: ${REPO})"
+            exit 0
+          else
+            # 브랜치 이름으로 간주
+            REF="$TARGET_REF"
+            echo "브랜치 이름으로 감지: ${REF}"
+          fi
+
+          # 브랜치에서 열린 PR 찾기
+          echo "ref=${REF}" >> $GITHUB_OUTPUT
+          echo "repository=${{ github.repository }}" >> $GITHUB_OUTPUT
+          PR_NUMBER=$(gh pr list --head "${REF}" --state open --json number --jq '.[0].number' 2>/dev/null || echo "")
+
+          if [ -n "$PR_NUMBER" ]; then
+            echo "pr_number=${PR_NUMBER}" >> $GITHUB_OUTPUT
+            echo "열린 PR 발견: #${PR_NUMBER}"
+          else
+            echo "pr_number=" >> $GITHUB_OUTPUT
+            echo "열린 PR 없음 (코멘트 보고 스킵)"
+          fi
+
+  # =====================================================
+  # SDK Generator Unit Tests
+  # =====================================================
+  sdk-generator-tests:
+    name: SDK Generator Tests
+    runs-on: ubuntu-latest
+    needs: setup
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ needs.setup.outputs.repository }}
+          ref: ${{ needs.setup.outputs.ref }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install Mono (for C# compilation tests)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mono-mcs
+          mcs --version
+
+      - name: Install Dependencies
+        working-directory: sdk-runtime-generator~
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Run Unit Tests (Tier 1 - C# compilation)
+        working-directory: sdk-runtime-generator~
+        run: pnpm run test:tier1
+
+      - name: Run Unit Tests (Tier 2 - C#/jslib invariants)
+        working-directory: sdk-runtime-generator~
+        run: pnpm run test:tier2
+
+  # =====================================================
+  # Pending Status 보고
+  # =====================================================
+  report-pending:
+    name: Report Pending Status
+    runs-on: ubuntu-latest
+    needs: setup
+    if: needs.setup.outputs.ref != ''
+
+    steps:
+      - name: Get Commit SHA
+        id: sha
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          REF="${{ needs.setup.outputs.ref }}"
+          REPO="${{ needs.setup.outputs.repository }}"
+          SHA=$(gh api "repos/${REPO}/git/ref/heads/${REF}" --jq '.object.sha' 2>/dev/null || echo "")
+
+          if [ -z "$SHA" ]; then
+            echo "::warning::Could not get SHA for ref ${REF} in ${REPO}"
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "sha=${SHA}" >> $GITHUB_OUTPUT
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Report Pending Status
+        if: steps.sha.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SHA="${{ steps.sha.outputs.sha }}"
+          TARGET_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          gh api "repos/${{ github.repository }}/statuses/${SHA}" \
+            -X POST \
+            -f state="pending" \
+            -f target_url="$TARGET_URL" \
+            -f description="E2E tests running..." \
+            -f context="E2E Tests"
+
+          echo "Reported pending status for commit $SHA"
+
+  # =====================================================
+  # E2E Tests - macOS (모든 테스트 실행)
+  # =====================================================
+  e2e-test-macos:
+    name: E2E (macOS, Unity ${{ matrix.unity-version }})
+    needs: [setup, sdk-generator-tests]
+
+    strategy:
+      fail-fast: false
+      matrix:
+        unity-version: ["2021.3", "2022.3", "6000.0", "6000.2", "6000.3"]
+
+    uses: ./.github/workflows/unity-build.yml
+    with:
+      repository: ${{ needs.setup.outputs.repository }}
+      ref: ${{ needs.setup.outputs.ref }}
+      os: macos
+      unity-version: ${{ matrix.unity-version }}
+      run-build: true
+      run-e2e-test: true
+      run-benchmark: true
+      clean-library: ${{ inputs.clean_library || false }}
+      sdk-version-override: ${{ inputs.sdk_version_override || '' }}
+
+  # =====================================================
+  # E2E Tests - Windows (전체 테스트 실행)
+  # =====================================================
+  e2e-test-windows:
+    name: E2E (Windows, Unity ${{ matrix.unity-version }})
+    needs: [setup, sdk-generator-tests]
+
+    strategy:
+      fail-fast: false
+      matrix:
+        unity-version: ["2021.3", "2022.3", "6000.0", "6000.2", "6000.3"]
+
+    uses: ./.github/workflows/unity-build.yml
+    with:
+      repository: ${{ needs.setup.outputs.repository }}
+      ref: ${{ needs.setup.outputs.ref }}
+      os: windows
+      unity-version: ${{ matrix.unity-version }}
+      run-build: true
+      run-e2e-test: true
+      run-benchmark: true
+      clean-library: ${{ inputs.clean_library || false }}
+      sdk-version-override: ${{ inputs.sdk_version_override || '' }}
+
+  # =====================================================
+  # Test Report Summary
+  # =====================================================
+  test-report:
+    name: Test Report Summary
+    runs-on: ubuntu-latest
+    needs: [setup, sdk-generator-tests, e2e-test-macos, e2e-test-windows]
+    if: always()
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v7
+        with:
+          path: artifacts
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Generate Benchmark Report
+        run: node .github/scripts/generate-benchmark-report.js
+
+      - name: Write Job Summary
+        run: cat benchmark-report.md >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload Benchmark Report
+        uses: actions/upload-artifact@v6
+        with:
+          name: benchmark-report
+          path: benchmark-report.md
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Post PR Comment
+        if: needs.setup.outputs.pr_number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PR_NUMBER="${{ needs.setup.outputs.pr_number }}"
+
+          # 테스트 결과 상태 확인
+          SDK_RESULT="${{ needs.sdk-generator-tests.result }}"
+          MACOS_RESULT="${{ needs.e2e-test-macos.result }}"
+          WINDOWS_RESULT="${{ needs.e2e-test-windows.result }}"
+
+          if [ "$SDK_RESULT" = "success" ] && [ "$MACOS_RESULT" = "success" ] && [ "$WINDOWS_RESULT" = "success" ]; then
+            STATUS_EMOJI="✅"
+            STATUS_TEXT="All tests passed"
+          elif [ "$SDK_RESULT" = "cancelled" ] || [ "$MACOS_RESULT" = "cancelled" ] || [ "$WINDOWS_RESULT" = "cancelled" ]; then
+            STATUS_EMOJI="⚠️"
+            STATUS_TEXT="Tests cancelled"
+          else
+            STATUS_EMOJI="❌"
+            STATUS_TEXT="Tests failed"
+          fi
+
+          # 벤치마크 리포트 읽기 (있으면)
+          if [ -f "benchmark-report.md" ]; then
+            BENCHMARK_CONTENT=$(cat benchmark-report.md)
+          else
+            BENCHMARK_CONTENT="벤치마크 데이터 없음"
+          fi
+
+          # PR 코멘트 생성
+          COMMENT_BODY=$(cat <<EOF
+          ## ${STATUS_EMOJI} E2E Test Report
+
+          | Test | Result |
+          |------|--------|
+          | SDK Generator | ${SDK_RESULT} |
+          | E2E macOS | ${MACOS_RESULT} |
+          | E2E Windows | ${WINDOWS_RESULT} |
+
+          **Status**: ${STATUS_TEXT}
+
+          <details>
+          <summary>📊 Benchmark Report</summary>
+
+          ${BENCHMARK_CONTENT}
+
+          </details>
+
+          ---
+          [View full run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          EOF
+          )
+
+          # gh api로 코멘트 작성
+          gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
+            -X POST \
+            -f body="$COMMENT_BODY"
+
+          echo "PR #${PR_NUMBER}에 테스트 리포트 코멘트 작성 완료"
+
+  # =====================================================
+  # Commit Status 보고
+  # =====================================================
+  report-status:
+    name: Report Status
+    runs-on: ubuntu-latest
+    needs: [setup, sdk-generator-tests, e2e-test-macos, e2e-test-windows]
+    if: always() && needs.setup.outputs.ref != ''
+
+    steps:
+      - name: Determine Status
+        id: status
+        run: |
+          SDK_RESULT="${{ needs.sdk-generator-tests.result }}"
+          MACOS_RESULT="${{ needs.e2e-test-macos.result }}"
+          WINDOWS_RESULT="${{ needs.e2e-test-windows.result }}"
+
+          if [ "$SDK_RESULT" = "success" ] && [ "$MACOS_RESULT" = "success" ] && [ "$WINDOWS_RESULT" = "success" ]; then
+            echo "state=success" >> $GITHUB_OUTPUT
+            echo "description=All tests passed (SDK + E2E macOS + Windows)" >> $GITHUB_OUTPUT
+          elif [ "$SDK_RESULT" = "cancelled" ] || [ "$MACOS_RESULT" = "cancelled" ] || [ "$WINDOWS_RESULT" = "cancelled" ]; then
+            echo "state=error" >> $GITHUB_OUTPUT
+            echo "description=Tests cancelled" >> $GITHUB_OUTPUT
+          else
+            echo "state=failure" >> $GITHUB_OUTPUT
+            echo "description=Tests failed (SDK: $SDK_RESULT, macOS: $MACOS_RESULT, Windows: $WINDOWS_RESULT)" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Get Commit SHA
+        id: sha
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          REF="${{ needs.setup.outputs.ref }}"
+          REPO="${{ needs.setup.outputs.repository }}"
+          SHA=$(gh api "repos/${REPO}/git/ref/heads/${REF}" --jq '.object.sha' 2>/dev/null || echo "")
+
+          if [ -z "$SHA" ]; then
+            echo "::warning::Could not get SHA for ref ${REF} in ${REPO}"
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "sha=${SHA}" >> $GITHUB_OUTPUT
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Report Commit Status
+        if: steps.sha.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SHA="${{ steps.sha.outputs.sha }}"
+          STATE="${{ steps.status.outputs.state }}"
+          DESCRIPTION="${{ steps.status.outputs.description }}"
+          TARGET_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          gh api "repos/${{ github.repository }}/statuses/${SHA}" \
+            -X POST \
+            -f state="$STATE" \
+            -f target_url="$TARGET_URL" \
+            -f description="$DESCRIPTION" \
+            -f context="E2E Tests"
+
+          echo "Reported status: $STATE for commit $SHA"

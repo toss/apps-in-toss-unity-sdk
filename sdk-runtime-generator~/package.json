@@ -1,0 +1,44 @@
+{
+  "name": "@apps-in-toss/unity-sdk-generator",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "description": "Automatic Unity SDK generator from TypeScript definitions",
+  "scripts": {
+    "build": "pnpm exec tsc && pnpm run copy-templates",
+    "copy-templates": "cp -r src/templates dist/",
+    "generate": "pnpm run build && node dist/index.js generate",
+    "format": "pnpm run build && node dist/index.js format",
+    "validate": "vitest run",
+    "dev": "tsx src/index.ts generate",
+    "prebuild": "rm -rf dist",
+    "test": "vitest run",
+    "test:watch": "vitest watch",
+    "test:ui": "vitest --ui",
+    "test:tier1": "vitest run tests/unit/compilation.test.ts",
+    "test:tier2": "vitest run tests/unit/invariants.test.ts"
+  },
+  "dependencies": {
+    "@apps-in-toss/framework": "1.6.0",
+    "@apps-in-toss/web-framework": "1.5.1",
+    "commander": "^14.0.2",
+    "handlebars": "^4.7.8",
+    "picocolors": "^1.1.1",
+    "ts-morph": "^27.0.2"
+  },
+  "devDependencies": {
+    "@types/handlebars": "^4.1.0",
+    "@types/node": "^25.0.8",
+    "@vitest/ui": "^4.0.15",
+    "glob": "^13.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.8.3",
+    "vitest": "^4.0.15"
+  },
+  "pnpm": {
+    "overrides": {
+      "find-my-way": ">=8.2.2",
+      "ip": ">=2.0.1"
+    }
+  }
+}

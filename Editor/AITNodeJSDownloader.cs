@@ -50,8 +50,7 @@ namespace AppsInToss.Editor
                 return null;
             }
 
-            string packagePath = GetPackagePath();
-            string nodePath = Path.Combine(packagePath, "Tools~", "NodeJS", platform);
+            string nodePath = GetNodeInstallPath(platform);
             string npmPath = GetNpmExecutablePath(nodePath);
 
             // 이미 존재하면 반환
@@ -78,6 +77,23 @@ namespace AppsInToss.Editor
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// Node.js 설치 경로 (시스템 공용 위치)
+        /// macOS/Linux: ~/.ait-unity-sdk/nodejs/v{VERSION}/{platform}/
+        /// Windows: %LOCALAPPDATA%\ait-unity-sdk\nodejs\v{VERSION}\{platform}\
+        /// </summary>
+        private static string GetNodeInstallPath(string platform)
+        {
+            string basePath;
+            #if UNITY_EDITOR_WIN
+                basePath = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            #else
+                basePath = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            #endif
+
+            return Path.Combine(basePath, ".ait-unity-sdk", "nodejs", $"v{NODE_VERSION}", platform);
         }
 
         /// <summary>
@@ -445,7 +461,7 @@ namespace AppsInToss.Editor
                     throw new Exception($"ZIP 추출 실패: {extractResult.Error}");
                 }
 
-                // 추출된 폴더 경로 (node-v24.11.1-win-x64)
+                // 추출된 폴더 경로 (node-v{NODE_VERSION}-win-x64)
                 string extractedFolder = Path.Combine(shortTempDir, $"node-v{NODE_VERSION}-win-x64");
 
                 if (!Directory.Exists(extractedFolder))
@@ -687,30 +703,5 @@ namespace AppsInToss.Editor
             }
         }
 
-        /// <summary>
-        /// Unity Package 경로
-        /// </summary>
-        private static string GetPackagePath()
-        {
-            // PackageManager API로 경로 찾기
-            var packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssetPath("Packages/im.toss.apps-in-toss-unity-sdk");
-            if (packageInfo != null)
-            {
-                return packageInfo.resolvedPath;
-            }
-
-            // 폴백: Assets 내부에 있을 경우
-            string[] guids = AssetDatabase.FindAssets("t:Script AITConvertCore");
-            if (guids.Length > 0)
-            {
-                string scriptPath = AssetDatabase.GUIDToAssetPath(guids[0]);
-                // Assets/AppsInToss/Editor/AITConvertCore.cs → Assets/AppsInToss
-                string packagePath = Path.GetDirectoryName(Path.GetDirectoryName(scriptPath));
-                return packagePath;
-            }
-
-            // 최종 폴백
-            return Path.Combine(Application.dataPath, "AppsInToss");
-        }
     }
 }

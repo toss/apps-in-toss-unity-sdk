@@ -331,51 +331,6 @@ jobs:
           echo "pnpm-lock.yaml regenerated"
 
       # =====================================================
-      # Windows: Unity License Client 대기
-      # =====================================================
-      - name: Wait for Unity License Client (Windows)
-        if: inputs.os == 'windows' && inputs.run-build
-        shell: powershell -ExecutionPolicy Bypass -File {0}
-        run: |
-          $targetVersion = "${{ inputs.unity-version }}"
-          $maxWait = 60
-          $interval = 10
-          $waited = 0
-
-          Write-Host "Checking for conflicting Unity License Client processes..."
-
-          while ($waited -lt $maxWait) {
-            $otherClients = Get-Process -Name "Unity.Licensing.Client" -ErrorAction SilentlyContinue |
-              Where-Object { $_.Path -notlike "*$targetVersion*" }
-
-            if (-not $otherClients) {
-              Write-Host "No conflicting License Client found"
-              break
-            }
-
-            Write-Host "Found License Client from other Unity version, waiting... ($waited/$maxWait sec)"
-            foreach ($proc in $otherClients) {
-              Write-Host "  - PID: $($proc.Id), Path: $($proc.Path)"
-            }
-            Start-Sleep -Seconds $interval
-            $waited += $interval
-          }
-
-          $otherClients = Get-Process -Name "Unity.Licensing.Client" -ErrorAction SilentlyContinue |
-            Where-Object { $_.Path -notlike "*$targetVersion*" }
-
-          if ($otherClients) {
-            Write-Host "::warning::Killing stale License Client processes after ${maxWait}s timeout..."
-            foreach ($proc in $otherClients) {
-              Write-Host "  Killing PID: $($proc.Id), Path: $($proc.Path)"
-              Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-            }
-            Start-Sleep -Seconds 2
-          }
-
-          Write-Host "License Client check completed"
-
-      # =====================================================
       # 광고 ID 치환 (빌드 전)
       # =====================================================
       - name: Inject Ad IDs (macOS)
@@ -601,6 +556,14 @@ jobs:
 
             $exitCode = $unityProcess.ExitCode
             if ($null -ne $exitCode -and $exitCode -ne 0) {
+              # 라이선스 실패 감지 - exit code != 0일 때만 검사 (retry 액션이 자동 재시도)
+              if (Test-Path $logFile) {
+                $logContent = Get-Content $logFile -Raw -ErrorAction SilentlyContinue
+                if ($logContent -match "No valid Unity Editor license found") {
+                  Write-Host "::warning::Unity license activation failed, triggering retry..."
+                  exit 1
+                }
+              }
               Write-Host "::error::Unity build failed with exit code: $exitCode"
               exit $exitCode
             }

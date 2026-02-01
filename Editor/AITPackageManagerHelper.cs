@@ -160,7 +160,7 @@ namespace AppsInToss.Editor
             if (string.IsNullOrEmpty(embeddedNpm))
             {
                 Debug.LogError("[Package Manager] ✗ 내장 Node.js 다운로드 실패");
-                Debug.LogError("[Package Manager]   Tools~/NodeJS/ 디렉토리 확인 필요");
+                Debug.LogError("[Package Manager]   ~/.ait-unity-sdk/nodejs/ 디렉토리 확인 필요");
                 return null;
             }
 

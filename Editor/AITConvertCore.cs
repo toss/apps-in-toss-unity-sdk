@@ -153,7 +153,7 @@ namespace AppsInToss
                            "1. Unity Console 창에서 에러 메시지 확인\n" +
                            "2. ait-build 폴더에서 직접 pnpm install 시도\n" +
                            "3. package.json 파일이 올바른지 확인\n" +
-                           "4. Tools~/NodeJS 폴더를 삭제 후 다시 빌드 시도";
+                           "4. ~/.ait-unity-sdk/nodejs 폴더를 삭제 후 다시 빌드 시도";
 
                 case AITExportError.WEBGL_BUILD_INCOMPLETE:
                     return "WebGL 빌드 결과물이 불완전합니다.\n\n" +

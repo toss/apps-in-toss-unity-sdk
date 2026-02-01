@@ -36,10 +36,6 @@ on:
         required: false
         default: ''
 
-concurrency:
-  group: e2e-test-${{ github.ref }}-${{ inputs.target_ref || 'default' }}-${{ inputs.sdk_version_override || 'latest' }}
-  cancel-in-progress: true
-
 jobs:
   # =====================================================
   # Ref 결정

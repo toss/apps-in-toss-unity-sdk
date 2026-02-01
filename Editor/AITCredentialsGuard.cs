@@ -7,15 +7,25 @@ using Debug = UnityEngine.Debug;
 namespace AppsInToss.Editor
 {
     /// <summary>
-    /// AITCredentials.asset 파일이 Git에 커밋되지 않도록 보호하는 클래스
+    /// SDK 관련 파일들이 Git에 커밋되지 않도록 보호하는 클래스
     /// Editor 시작 시 자동으로 .gitignore를 체크하고, 필요시 패턴을 추가합니다.
     /// </summary>
     [InitializeOnLoad]
     public static class AITCredentialsGuard
     {
-        private const string CREDENTIALS_PATTERN = "**/AITCredentials.asset";
-        private const string CREDENTIALS_META_PATTERN = "**/AITCredentials.asset.meta";
-        private const string PREFS_KEY_GITIGNORE_CHECKED = "AIT_GitIgnore_Checked_v1";
+        /// <summary>
+        /// .gitignore에 추가할 패턴 목록
+        /// </summary>
+        private static readonly string[] GITIGNORE_PATTERNS = new[]
+        {
+            // 민감 정보
+            "**/AITCredentials.asset",
+            "**/AITCredentials.asset.meta",
+            // 빌드 산출물
+            "ait-build/",
+        };
+
+        private const string PREFS_KEY_GITIGNORE_CHECKED = "AIT_GitIgnore_Checked_v2";
 
         static AITCredentialsGuard()
         {
@@ -73,30 +83,44 @@ namespace AppsInToss.Editor
             string projectRoot = GetProjectRoot();
             string gitignorePath = Path.Combine(projectRoot, ".gitignore");
 
-            bool hasCredentialsPattern = false;
-            bool hasCredentialsMetaPattern = false;
+            // 누락된 패턴 수집
+            System.Collections.Generic.List<string> missingPatterns = new System.Collections.Generic.List<string>();
+            string existingContent = "";
 
-            // .gitignore 파일 존재 여부 및 패턴 확인
             if (File.Exists(gitignorePath))
             {
-                string content = File.ReadAllText(gitignorePath);
-                hasCredentialsPattern = ContainsPattern(content, "AITCredentials.asset");
-                hasCredentialsMetaPattern = ContainsPattern(content, "AITCredentials.asset.meta");
+                existingContent = File.ReadAllText(gitignorePath);
             }
 
-            // 패턴이 이미 있으면 종료
-            if (hasCredentialsPattern && hasCredentialsMetaPattern)
+            foreach (string pattern in GITIGNORE_PATTERNS)
+            {
+                // 패턴의 핵심 부분 추출 (예: "**/AITCredentials.asset" → "AITCredentials.asset")
+                string patternKey = pattern.TrimStart('*', '/');
+                if (!ContainsPattern(existingContent, patternKey))
+                {
+                    missingPatterns.Add(pattern);
+                }
+            }
+
+            // 모든 패턴이 있으면 종료
+            if (missingPatterns.Count == 0)
             {
                 return;
             }
 
+            // 다이얼로그 메시지 생성
+            string patternList = "";
+            foreach (string pattern in missingPatterns)
+            {
+                patternList += $"• {pattern}\n";
+            }
+
             // 사용자에게 확인 후 패턴 추가 (CI에서는 자동 승인 - 보안 기능이므로)
             bool shouldAdd = AITPlatformHelper.ShowConfirmDialog(
-                "Apps in Toss SDK - 배포 키 보호",
-                "배포 키(deploymentKey)가 Git에 커밋되지 않도록 .gitignore에 보호 패턴을 추가합니다.\n\n" +
+                "Apps in Toss SDK - .gitignore 설정",
+                "민감 정보와 빌드 결과물이 Git에 커밋되지 않도록 .gitignore에 패턴을 추가합니다.\n\n" +
                 "추가될 패턴:\n" +
-                "• **/AITCredentials.asset\n" +
-                "• **/AITCredentials.asset.meta\n\n" +
+                patternList + "\n" +
                 "계속하시겠습니까?",
                 "추가",
                 "나중에",
@@ -105,7 +129,7 @@ namespace AppsInToss.Editor
 
             if (shouldAdd)
             {
-                AddPatternsToGitIgnore(gitignorePath, hasCredentialsPattern, hasCredentialsMetaPattern);
+                AddPatternsToGitIgnore(gitignorePath, missingPatterns);
             }
         }
 
@@ -122,8 +146,28 @@ namespace AppsInToss.Editor
                 if (string.IsNullOrEmpty(trimmed) || trimmed.StartsWith("#"))
                     continue;
 
+                // 정확한 패턴 매치
                 if (trimmed.Contains(pattern))
                     return true;
+
+                // 디렉토리 패턴의 경우, 상위 디렉토리가 이미 무시되고 있는지 확인
+                // 예: "Assets/WebGLTemplates/"가 있으면 "Assets/WebGLTemplates/AITTemplate/"도 포함됨
+                if (pattern.EndsWith("/"))
+                {
+                    string trimmedPattern = trimmed.TrimEnd('/');
+                    string patternWithoutSlash = pattern.TrimEnd('/');
+                    if (patternWithoutSlash.StartsWith(trimmedPattern + "/") ||
+                        patternWithoutSlash.StartsWith(trimmedPattern))
+                    {
+                        // trimmed가 pattern의 상위 디렉토리인지 확인
+                        if (patternWithoutSlash.StartsWith(trimmedPattern) &&
+                            (patternWithoutSlash.Length == trimmedPattern.Length ||
+                             patternWithoutSlash[trimmedPattern.Length] == '/'))
+                        {
+                            return true;
+                        }
+                    }
+                }
             }
             return false;
         }
@@ -131,34 +175,25 @@ namespace AppsInToss.Editor
         /// <summary>
         /// .gitignore에 패턴 추가
         /// </summary>
-        private static void AddPatternsToGitIgnore(string gitignorePath, bool hasCredentialsPattern, bool hasCredentialsMetaPattern)
+        private static void AddPatternsToGitIgnore(string gitignorePath, System.Collections.Generic.List<string> missingPatterns)
         {
             try
             {
-                string patternsToAdd = "";
+                string patternsToAdd = "\n# Apps in Toss SDK - 자동 보호 패턴\n";
 
-                if (!hasCredentialsPattern || !hasCredentialsMetaPattern)
+                foreach (string pattern in missingPatterns)
                 {
-                    patternsToAdd += "\n# Apps in Toss SDK - 민감한 인증 정보 보호\n";
-
-                    if (!hasCredentialsPattern)
-                    {
-                        patternsToAdd += CREDENTIALS_PATTERN + "\n";
-                    }
-                    if (!hasCredentialsMetaPattern)
-                    {
-                        patternsToAdd += CREDENTIALS_META_PATTERN + "\n";
-                    }
+                    patternsToAdd += pattern + "\n";
                 }
 
                 File.AppendAllText(gitignorePath, patternsToAdd);
 
-                Debug.Log("[AIT] .gitignore에 AITCredentials.asset 보호 패턴이 추가되었습니다.");
+                Debug.Log("[AIT] .gitignore에 보호 패턴이 추가되었습니다: " + string.Join(", ", missingPatterns));
 
                 AITPlatformHelper.ShowInfoDialog(
                     "완료",
                     ".gitignore에 보호 패턴이 추가되었습니다.\n\n" +
-                    "이제 배포 키가 Git에 커밋되지 않습니다.",
+                    "민감 정보와 빌드 결과물이 Git에 커밋되지 않습니다.",
                     "확인"
                 );
             }
@@ -166,12 +201,17 @@ namespace AppsInToss.Editor
             {
                 Debug.LogError($"[AIT] .gitignore 업데이트 실패: {ex.Message}");
 
+                string patternList = "";
+                foreach (string pattern in missingPatterns)
+                {
+                    patternList += $"• {pattern}\n";
+                }
+
                 AITPlatformHelper.ShowInfoDialog(
                     "오류",
                     $".gitignore 업데이트에 실패했습니다.\n\n" +
                     $"수동으로 다음 패턴을 추가해주세요:\n" +
-                    $"• {CREDENTIALS_PATTERN}\n" +
-                    $"• {CREDENTIALS_META_PATTERN}\n\n" +
+                    patternList + "\n" +
                     $"오류: {ex.Message}",
                     "확인"
                 );

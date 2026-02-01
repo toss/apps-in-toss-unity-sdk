@@ -50,8 +50,7 @@ namespace AppsInToss.Editor
                 return null;
             }
 
-            string packagePath = GetPackagePath();
-            string nodePath = Path.Combine(packagePath, "Tools~", "NodeJS", platform);
+            string nodePath = GetNodeInstallPath(platform);
             string npmPath = GetNpmExecutablePath(nodePath);
 
             // 이미 존재하면 반환
@@ -81,23 +80,48 @@ namespace AppsInToss.Editor
         }
 
         /// <summary>
+        /// Node.js 설치 경로 (시스템 공용 위치)
+        /// macOS/Linux: ~/.ait-unity-sdk/nodejs/v{VERSION}/{platform}/
+        /// Windows: %LOCALAPPDATA%\ait-unity-sdk\nodejs\v{VERSION}\{platform}\
+        /// </summary>
+        private static string GetNodeInstallPath(string platform)
+        {
+            string basePath;
+            #if UNITY_EDITOR_WIN
+                basePath = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            #else
+                basePath = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            #endif
+
+            return Path.Combine(basePath, ".ait-unity-sdk", "nodejs", $"v{NODE_VERSION}", platform);
+        }
+
+        /// <summary>
         /// Node.js 다운로드 및 설치
+        /// atomic 설치: 임시 디렉토리에 먼저 설치 후 최종 경로로 이동하여
+        /// 여러 Unity 인스턴스가 동시에 실행될 때 race condition 방지
         /// </summary>
         private static void DownloadNodeJS(string platform, string targetPath)
         {
             string fileName = GetNodeJSFileName(platform);
-            // Application.temporaryCachePath는 공백이 포함될 수 있어 문제 발생 가능
-            // 시스템 임시 디렉토리 사용 (공백 없음)
             // 여러 Unity 버전이 동시 실행될 때 race condition 방지를 위해 고유 ID 추가
             string uniqueId = Guid.NewGuid().ToString("N").Substring(0, 8);
             string tempDir = Path.Combine(Path.GetTempPath(), $"AppsInTossSDK-{uniqueId}");
             Directory.CreateDirectory(tempDir);
             string tempFile = Path.Combine(tempDir, fileName);
 
+            // atomic 설치를 위한 임시 설치 경로 (최종 경로의 sibling)
+            string targetParent = Path.GetDirectoryName(targetPath);
+            if (!string.IsNullOrEmpty(targetParent))
+            {
+                Directory.CreateDirectory(targetParent);
+            }
+            string stagingPath = targetPath + $"-installing-{uniqueId}";
+
             try
             {
-                // 디렉토리 생성
-                Directory.CreateDirectory(targetPath);
+                // 스테이징 디렉토리 생성
+                Directory.CreateDirectory(stagingPath);
 
                 // 다운로드 URL 목록 (폴백)
                 string[] downloadUrls = GetDownloadUrls(platform, fileName);
@@ -227,21 +251,51 @@ namespace AppsInToss.Editor
                 EditorUtility.DisplayProgressBar("Node.js 다운로드",
                     "압축 해제 중...", 0.90f);
 
-                // 압축 해제
-                ExtractNodeJS(tempFile, targetPath, platform);
+                // 스테이징 경로에 압축 해제
+                ExtractNodeJS(tempFile, stagingPath, platform);
 
                 // 실행 권한 부여 (macOS/Linux)
                 #if UNITY_EDITOR_OSX || UNITY_EDITOR_LINUX
-                    SetExecutablePermissions(targetPath);
+                    SetExecutablePermissions(stagingPath);
                 #endif
 
                 EditorUtility.DisplayProgressBar("Node.js 다운로드",
                     "Node.js 설치 완료! pnpm 설치 중...", 0.95f);
 
-                Debug.Log($"[NodeJS] Node.js 다운로드 및 설치 완료: {targetPath}");
+                // pnpm 자동 설치 (스테이징 경로에서)
+                bool pnpmInstalled = InstallPnpm(stagingPath);
 
-                // pnpm 자동 설치
-                bool pnpmInstalled = InstallPnpm(targetPath);
+                // atomic 이동: 스테이징 → 최종 경로
+                // 다른 프로세스가 먼저 설치를 완료했을 수 있으므로 확인
+                if (Directory.Exists(targetPath))
+                {
+                    // 이미 설치됨 - 스테이징 삭제
+                    Debug.Log($"[NodeJS] 다른 프로세스가 이미 설치를 완료함. 스테이징 삭제: {stagingPath}");
+                    try { Directory.Delete(stagingPath, true); } catch { /* ignore */ }
+                }
+                else
+                {
+                    try
+                    {
+                        Directory.Move(stagingPath, targetPath);
+                        Debug.Log($"[NodeJS] Node.js 설치 완료 (atomic move): {targetPath}");
+                    }
+                    catch (IOException)
+                    {
+                        // Move 실패 = 다른 프로세스가 동시에 이동 성공
+                        if (Directory.Exists(targetPath))
+                        {
+                            Debug.Log($"[NodeJS] 다른 프로세스가 동시에 설치 완료함. 스테이징 삭제.");
+                            try { Directory.Delete(stagingPath, true); } catch { /* ignore */ }
+                        }
+                        else
+                        {
+                            throw;
+                        }
+                    }
+                }
+
+                Debug.Log($"[NodeJS] Node.js 다운로드 및 설치 완료: {targetPath}");
 
                 EditorUtility.DisplayProgressBar("Node.js 다운로드",
                     "완료!", 1.0f);
@@ -277,6 +331,13 @@ namespace AppsInToss.Editor
                 if (Directory.Exists(tempDir))
                 {
                     try { Directory.Delete(tempDir, true); }
+                    catch { /* ignore */ }
+                }
+
+                // 실패 시 스테이징 디렉토리 정리
+                if (Directory.Exists(stagingPath))
+                {
+                    try { Directory.Delete(stagingPath, true); }
                     catch { /* ignore */ }
                 }
             }
@@ -445,7 +506,7 @@ namespace AppsInToss.Editor
                     throw new Exception($"ZIP 추출 실패: {extractResult.Error}");
                 }
 
-                // 추출된 폴더 경로 (node-v24.11.1-win-x64)
+                // 추출된 폴더 경로 (node-v{NODE_VERSION}-win-x64)
                 string extractedFolder = Path.Combine(shortTempDir, $"node-v{NODE_VERSION}-win-x64");
 
                 if (!Directory.Exists(extractedFolder))
@@ -687,30 +748,5 @@ namespace AppsInToss.Editor
             }
         }
 
-        /// <summary>
-        /// Unity Package 경로
-        /// </summary>
-        private static string GetPackagePath()
-        {
-            // PackageManager API로 경로 찾기
-            var packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssetPath("Packages/im.toss.apps-in-toss-unity-sdk");
-            if (packageInfo != null)
-            {
-                return packageInfo.resolvedPath;
-            }
-
-            // 폴백: Assets 내부에 있을 경우
-            string[] guids = AssetDatabase.FindAssets("t:Script AITConvertCore");
-            if (guids.Length > 0)
-            {
-                string scriptPath = AssetDatabase.GUIDToAssetPath(guids[0]);
-                // Assets/AppsInToss/Editor/AITConvertCore.cs → Assets/AppsInToss
-                string packagePath = Path.GetDirectoryName(Path.GetDirectoryName(scriptPath));
-                return packagePath;
-            }
-
-            // 최종 폴백
-            return Path.Combine(Application.dataPath, "AppsInToss");
-        }
     }
 }

@@ -36,10 +36,6 @@ on:
         required: false
         default: ''
 
-concurrency:
-  group: e2e-test-${{ github.ref }}-${{ inputs.target_ref || 'default' }}-${{ inputs.sdk_version_override || 'latest' }}
-  cancel-in-progress: true
-
 jobs:
   # =====================================================
   # Ref 결정
@@ -216,10 +212,10 @@ jobs:
       sdk-version-override: ${{ inputs.sdk_version_override || '' }}
 
   # =====================================================
-  # E2E Tests - Windows (테스트 1-5만 실행)
+  # E2E Tests - Windows (전체 테스트 실행)
   # =====================================================
   e2e-test-windows:
-    name: E2E 1-5 (Windows, Unity ${{ matrix.unity-version }})
+    name: E2E (Windows, Unity ${{ matrix.unity-version }})
     needs: [setup, sdk-generator-tests]
 
     strategy:
@@ -235,7 +231,7 @@ jobs:
       unity-version: ${{ matrix.unity-version }}
       run-build: true
       run-e2e-test: true
-      run-benchmark: false
+      run-benchmark: true
       clean-library: ${{ inputs.clean_library || false }}
       sdk-version-override: ${{ inputs.sdk_version_override || '' }}
 
@@ -356,7 +352,7 @@ jobs:
 
           if [ "$SDK_RESULT" = "success" ] && [ "$MACOS_RESULT" = "success" ] && [ "$WINDOWS_RESULT" = "success" ]; then
             echo "state=success" >> $GITHUB_OUTPUT
-            echo "description=All tests passed (SDK + E2E macOS:1-9, Windows:1-5)" >> $GITHUB_OUTPUT
+            echo "description=All tests passed (SDK + E2E macOS + Windows)" >> $GITHUB_OUTPUT
           elif [ "$SDK_RESULT" = "cancelled" ] || [ "$MACOS_RESULT" = "cancelled" ] || [ "$WINDOWS_RESULT" = "cancelled" ]; then
             echo "state=error" >> $GITHUB_OUTPUT
             echo "description=Tests cancelled" >> $GITHUB_OUTPUT

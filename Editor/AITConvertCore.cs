@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 using UnityEditor;
 #if UNITY_6000_0_OR_NEWER
 using UnityEditor.Build;
@@ -40,6 +41,7 @@ namespace AppsInToss
         #region Build Cancellation
 
         private static bool isCancelled = false;
+        private static Editor.AITAsyncCommandRunner.CommandTask currentAsyncTask = null;
 
         static AITConvertCore() { }
 
@@ -50,6 +52,13 @@ namespace AppsInToss
         {
             isCancelled = true;
             Debug.Log("[AIT] 빌드 취소 요청됨");
+
+            // 현재 실행 중인 비동기 작업이 있으면 취소
+            if (currentAsyncTask != null)
+            {
+                Editor.AITAsyncCommandRunner.CancelTask(currentAsyncTask);
+                currentAsyncTask = null;
+            }
         }
 
         /// <summary>
@@ -58,6 +67,7 @@ namespace AppsInToss
         public static void ResetCancellation()
         {
             isCancelled = false;
+            currentAsyncTask = null;
         }
 
         /// <summary>
@@ -66,6 +76,14 @@ namespace AppsInToss
         public static bool IsCancelled()
         {
             return isCancelled;
+        }
+
+        /// <summary>
+        /// 현재 비동기 작업 설정 (취소용)
+        /// </summary>
+        internal static void SetCurrentAsyncTask(Editor.AITAsyncCommandRunner.CommandTask task)
+        {
+            currentAsyncTask = task;
         }
 
         #endregion
@@ -87,6 +105,26 @@ namespace AppsInToss
         public static void EnsureWebGLTemplatesExist()
         {
             AITTemplateManager.EnsureWebGLTemplatesExist();
+        }
+
+        #endregion
+
+        #region Build Phase
+
+        /// <summary>
+        /// 빌드 단계
+        /// </summary>
+        public enum BuildPhase
+        {
+            None,
+            Preparing,
+            WebGLBuild,
+            CopyingFiles,
+            PnpmInstall,
+            GraniteBuild,
+            Complete,
+            Failed,
+            Cancelled
         }
 
         #endregion
@@ -305,6 +343,168 @@ namespace AppsInToss
                 // 빌드 완료 후 PlayerSettings 복원 (성공/실패 무관)
                 settingsBackup.Restore();
             }
+        }
+
+        /// <summary>
+        /// Apps in Toss 미니앱으로 비동기 변환 실행 (non-blocking)
+        /// WebGL 빌드는 Unity API 제한으로 blocking이지만, npm/granite 명령은 non-blocking으로 실행됩니다.
+        /// </summary>
+        /// <param name="buildWebGL">WebGL 빌드 실행 여부</param>
+        /// <param name="doPackaging">패키징 실행 여부</param>
+        /// <param name="cleanBuild">클린 빌드 여부</param>
+        /// <param name="profile">빌드 프로필</param>
+        /// <param name="profileName">프로필 이름 (로그용)</param>
+        /// <param name="onComplete">완료 콜백</param>
+        /// <param name="onProgress">진행 상황 콜백 (phase, progress, status)</param>
+        public static void DoExportAsync(
+            bool buildWebGL,
+            bool doPackaging,
+            bool cleanBuild,
+            AITBuildProfile profile,
+            string profileName,
+            Action<AITExportError> onComplete,
+            Action<BuildPhase, float, string> onProgress = null)
+        {
+            // 배치 모드에서는 동기 실행
+            if (Application.isBatchMode)
+            {
+                var result = DoExport(buildWebGL, doPackaging, cleanBuild, profile, profileName);
+                onComplete?.Invoke(result);
+                return;
+            }
+
+            // 취소 플래그 리셋
+            ResetCancellation();
+
+            // PlayerSettings 백업
+            var settingsBackup = Editor.AITPlayerSettingsBackup.Capture();
+
+            try
+            {
+                // 프로필 설정
+                var editorConfig = UnityUtil.GetEditorConf();
+                if (profile == null)
+                {
+                    profile = editorConfig.productionProfile;
+                    profileName = profileName ?? "Production";
+                }
+
+                // 환경 변수 오버라이드 적용
+                profile = AITBuildInitializer.ApplyEnvironmentVariableOverrides(profile);
+
+                // 초기화
+                Init(profile);
+                AITBuildInitializer.LogBuildProfile(profile, profileName);
+                AITBuildInitializer.ApplyBuildProfileSettings(profile);
+
+                onProgress?.Invoke(BuildPhase.Preparing, 0.01f, "빌드 준비 중...");
+                Debug.Log($"[AIT] 비동기 미니앱 변환 시작... (cleanBuild: {cleanBuild})");
+
+                if (editorConfig == null)
+                {
+                    Debug.LogError("Apps in Toss 설정을 찾을 수 없습니다.");
+                    settingsBackup.Restore();
+                    onComplete?.Invoke(AITExportError.INVALID_APP_CONFIG);
+                    return;
+                }
+
+                // Phase 1: WebGL Build (BLOCKING - Unity 제한)
+                if (buildWebGL)
+                {
+                    if (IsCancelled())
+                    {
+                        Debug.LogWarning("[AIT] 빌드가 취소되었습니다.");
+                        settingsBackup.Restore();
+                        onComplete?.Invoke(AITExportError.CANCELLED);
+                        return;
+                    }
+
+                    onProgress?.Invoke(BuildPhase.WebGLBuild, 0.05f, "WebGL 빌드 중... (Unity 제한으로 에디터가 일시 정지됩니다)");
+
+                    var webglResult = BuildWebGL(cleanBuild, profile);
+                    if (webglResult != AITExportError.SUCCEED)
+                    {
+                        settingsBackup.Restore();
+                        onComplete?.Invoke(webglResult);
+                        return;
+                    }
+
+                    onProgress?.Invoke(BuildPhase.CopyingFiles, 0.15f, "WebGL 빌드 완료, 패키징 준비 중...");
+                }
+
+                // Phase 2: Async 패키징
+                if (doPackaging)
+                {
+                    if (IsCancelled())
+                    {
+                        Debug.LogWarning("[AIT] 빌드가 취소되었습니다.");
+                        settingsBackup.Restore();
+                        onComplete?.Invoke(AITExportError.CANCELLED);
+                        return;
+                    }
+
+                    GenerateMiniAppPackageAsync(profile, settingsBackup, onComplete, onProgress);
+                }
+                else
+                {
+                    Debug.Log("[AIT] 비동기 미니앱 변환이 완료되었습니다!");
+                    settingsBackup.Restore();
+                    onComplete?.Invoke(AITExportError.SUCCEED);
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[AIT] 변환 중 오류가 발생했습니다: {e.Message}");
+                settingsBackup.Restore();
+                onComplete?.Invoke(AITExportError.BUILD_WEBGL_FAILED);
+            }
+        }
+
+        /// <summary>
+        /// 미니앱 패키지 비동기 생성
+        /// </summary>
+        private static void GenerateMiniAppPackageAsync(
+            AITBuildProfile profile,
+            Editor.AITPlayerSettingsBackup settingsBackup,
+            Action<AITExportError> onComplete,
+            Action<BuildPhase, float, string> onProgress)
+        {
+            Debug.Log("[AIT] 비동기 미니앱 패키지 생성 시작...");
+
+            if (profile == null)
+            {
+                profile = AITBuildProfile.CreateProductionProfile();
+            }
+
+            string projectPath = UnityUtil.GetProjectPath();
+            string webglPath = Path.Combine(projectPath, webglDir);
+
+            if (!Directory.Exists(webglPath))
+            {
+                Debug.LogError("[AIT] WebGL 빌드 결과를 찾을 수 없습니다. WebGL 빌드를 먼저 실행하세요.");
+                settingsBackup.Restore();
+                onComplete?.Invoke(AITExportError.BUILD_WEBGL_FAILED);
+                return;
+            }
+
+            // 비동기 패키징 실행
+            AITPackageBuilder.PackageWebGLBuildAsync(
+                projectPath,
+                webglPath,
+                profile,
+                onComplete: (result) =>
+                {
+                    settingsBackup.Restore();
+
+                    if (result == AITExportError.SUCCEED)
+                    {
+                        Debug.Log("[AIT] 비동기 미니앱이 생성되었습니다!");
+                    }
+
+                    onComplete?.Invoke(result);
+                },
+                onProgress: onProgress
+            );
         }
 
         #endregion

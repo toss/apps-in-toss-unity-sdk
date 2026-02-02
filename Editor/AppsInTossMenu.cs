@@ -668,47 +668,63 @@ namespace AppsInToss
             Debug.Log("AIT: 패키징 시작...");
             buildStopwatch.Restart();
 
-            try
-            {
-                // Package 단독 실행은 productionProfile 사용
-                var result = AITConvertCore.DoExport(
-                    buildWebGL: false,
-                    doPackaging: true,
-                    cleanBuild: false,
-                    profile: config.productionProfile,
-                    profileName: "Package"
-                );
-                buildStopwatch.Stop();
+            // Package 단독 실행은 productionProfile 사용
+            AITConvertCore.DoExportAsync(
+                buildWebGL: false,
+                doPackaging: true,
+                cleanBuild: false,
+                profile: config.productionProfile,
+                profileName: "Package",
+                onComplete: (result) =>
+                {
+                    buildStopwatch.Stop();
+                    EditorUtility.ClearProgressBar();
 
-                if (result == AITConvertCore.AITExportError.SUCCEED)
-                {
-                    Debug.Log($"AIT: 패키징 완료! (소요 시간: {buildStopwatch.Elapsed.TotalSeconds:F1}초)");
-                    AITPlatformHelper.ShowInfoDialog("성공", $"패키징이 완료되었습니다!\n\n소요 시간: {buildStopwatch.Elapsed.TotalSeconds:F1}초", "확인");
-                }
-                else
-                {
-                    string errorMessage = AITConvertCore.GetErrorMessage(result);
-                    Debug.LogError($"AIT: 패키징 실패: {result}");
-                    int choice = AITPlatformHelper.ShowComplexDialog(
-                        "패키징 실패",
-                        errorMessage + "\n\n문제가 지속되면 'Issue 신고'를 클릭하세요.",
-                        "확인",
-                        "Issue 신고",
-                        null,
-                        defaultChoice: 0
-                    );
-                    if (choice == 1)
+                    if (result == AITConvertCore.AITExportError.SUCCEED)
                     {
-                        AppsInToss.Editor.AITErrorReporter.OpenIssueInBrowser(result, "Package");
+                        Debug.Log($"AIT: 패키징 완료! (소요 시간: {buildStopwatch.Elapsed.TotalSeconds:F1}초)");
+                        AITPlatformHelper.ShowInfoDialog("성공", $"패키징이 완료되었습니다!\n\n소요 시간: {buildStopwatch.Elapsed.TotalSeconds:F1}초", "확인");
+                    }
+                    else if (result == AITConvertCore.AITExportError.CANCELLED)
+                    {
+                        Debug.Log("AIT: 패키징이 사용자에 의해 취소되었습니다.");
+                        AITPlatformHelper.ShowInfoDialog("취소됨", "패키징이 취소되었습니다.", "확인");
+                    }
+                    else
+                    {
+                        string errorMessage = AITConvertCore.GetErrorMessage(result);
+                        Debug.LogError($"AIT: 패키징 실패: {result}");
+                        int choice = AITPlatformHelper.ShowComplexDialog(
+                            "패키징 실패",
+                            errorMessage + "\n\n문제가 지속되면 'Issue 신고'를 클릭하세요.",
+                            "확인",
+                            "Issue 신고",
+                            null,
+                            defaultChoice: 0
+                        );
+                        if (choice == 1)
+                        {
+                            AppsInToss.Editor.AITErrorReporter.OpenIssueInBrowser(result, "Package");
+                        }
+                    }
+                },
+                onProgress: (phase, progress, status) =>
+                {
+                    // DisplayCancelableProgressBar로 취소 가능한 진행률 표시
+                    string phaseText = GetPhaseText(phase);
+
+                    bool cancelled = EditorUtility.DisplayCancelableProgressBar(
+                        $"Apps in Toss - {phaseText}",
+                        status,
+                        progress
+                    );
+
+                    if (cancelled)
+                    {
+                        AITConvertCore.CancelBuild();
                     }
                 }
-            }
-            catch (Exception e)
-            {
-                buildStopwatch.Stop();
-                Debug.LogError($"AIT: 오류: {e.Message}");
-                AITPlatformHelper.ShowInfoDialog("오류", e.Message, "확인");
-            }
+            );
         }
 
         private static void ExecuteBuildAndPackage()
@@ -719,46 +735,76 @@ namespace AppsInToss
             Debug.Log("AIT: 전체 빌드 & 패키징 시작...");
             buildStopwatch.Restart();
 
-            try
-            {
-                // Build & Package 메뉴는 productionProfile 사용
-                var result = AITConvertCore.DoExport(
-                    buildWebGL: true,
-                    doPackaging: true,
-                    cleanBuild: false,
-                    profile: config.productionProfile,
-                    profileName: "Build & Package"
-                );
-                buildStopwatch.Stop();
+            // Build & Package 메뉴는 productionProfile 사용
+            AITConvertCore.DoExportAsync(
+                buildWebGL: true,
+                doPackaging: true,
+                cleanBuild: false,
+                profile: config.productionProfile,
+                profileName: "Build & Package",
+                onComplete: (result) =>
+                {
+                    buildStopwatch.Stop();
+                    EditorUtility.ClearProgressBar();
 
-                if (result == AITConvertCore.AITExportError.SUCCEED)
-                {
-                    Debug.Log($"AIT: 전체 프로세스 완료! (총 소요 시간: {buildStopwatch.Elapsed.TotalSeconds:F1}초)");
-                    AITPlatformHelper.ShowInfoDialog("성공", $"빌드 & 패키징이 완료되었습니다!\n\n총 소요 시간: {buildStopwatch.Elapsed.TotalSeconds:F1}초", "확인");
-                }
-                else
-                {
-                    string errorMessage = AITConvertCore.GetErrorMessage(result);
-                    Debug.LogError($"AIT: 빌드 실패: {result}");
-                    int choice = AITPlatformHelper.ShowComplexDialog(
-                        "빌드 실패",
-                        errorMessage + "\n\n문제가 지속되면 'Issue 신고'를 클릭하세요.",
-                        "확인",
-                        "Issue 신고",
-                        null,
-                        defaultChoice: 0
-                    );
-                    if (choice == 1)
+                    if (result == AITConvertCore.AITExportError.SUCCEED)
                     {
-                        AppsInToss.Editor.AITErrorReporter.OpenIssueInBrowser(result, "Build & Package");
+                        Debug.Log($"AIT: 전체 프로세스 완료! (총 소요 시간: {buildStopwatch.Elapsed.TotalSeconds:F1}초)");
+                        AITPlatformHelper.ShowInfoDialog("성공", $"빌드 & 패키징이 완료되었습니다!\n\n총 소요 시간: {buildStopwatch.Elapsed.TotalSeconds:F1}초", "확인");
+                    }
+                    else if (result == AITConvertCore.AITExportError.CANCELLED)
+                    {
+                        Debug.Log("AIT: 빌드가 사용자에 의해 취소되었습니다.");
+                        AITPlatformHelper.ShowInfoDialog("취소됨", "빌드가 취소되었습니다.", "확인");
+                    }
+                    else
+                    {
+                        string errorMessage = AITConvertCore.GetErrorMessage(result);
+                        Debug.LogError($"AIT: 빌드 실패: {result}");
+                        int choice = AITPlatformHelper.ShowComplexDialog(
+                            "빌드 실패",
+                            errorMessage + "\n\n문제가 지속되면 'Issue 신고'를 클릭하세요.",
+                            "확인",
+                            "Issue 신고",
+                            null,
+                            defaultChoice: 0
+                        );
+                        if (choice == 1)
+                        {
+                            AppsInToss.Editor.AITErrorReporter.OpenIssueInBrowser(result, "Build & Package");
+                        }
+                    }
+                },
+                onProgress: (phase, progress, status) =>
+                {
+                    // DisplayCancelableProgressBar로 취소 가능한 진행률 표시
+                    string phaseText = GetPhaseText(phase);
+
+                    bool cancelled = EditorUtility.DisplayCancelableProgressBar(
+                        $"Apps in Toss - {phaseText}",
+                        status,
+                        progress
+                    );
+
+                    if (cancelled)
+                    {
+                        AITConvertCore.CancelBuild();
                     }
                 }
-            }
-            catch (Exception e)
+            );
+        }
+
+        private static string GetPhaseText(AITConvertCore.BuildPhase phase)
+        {
+            switch (phase)
             {
-                buildStopwatch.Stop();
-                Debug.LogError($"AIT: 오류: {e.Message}");
-                AITPlatformHelper.ShowInfoDialog("오류", e.Message, "확인");
+                case AITConvertCore.BuildPhase.Preparing: return "준비 중";
+                case AITConvertCore.BuildPhase.WebGLBuild: return "WebGL 빌드";
+                case AITConvertCore.BuildPhase.CopyingFiles: return "파일 복사";
+                case AITConvertCore.BuildPhase.PnpmInstall: return "pnpm install";
+                case AITConvertCore.BuildPhase.GraniteBuild: return "granite build";
+                case AITConvertCore.BuildPhase.Complete: return "완료";
+                default: return "빌드 중";
             }
         }
 

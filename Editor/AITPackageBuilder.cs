@@ -12,6 +12,20 @@ namespace AppsInToss.Editor
     /// </summary>
     internal static class AITPackageBuilder
     {
+        // SDK BuildConfig 경로 캐시 (빌드 중 반복 검색 방지)
+        private static string _cachedSdkBuildConfigPath = null;
+        private static string _cachedSdkRuntimePath = null;
+
+        /// <summary>
+        /// 캐시된 SDK 경로를 초기화합니다.
+        /// Domain reload 시 자동으로 초기화됨
+        /// </summary>
+        internal static void ClearPathCache()
+        {
+            _cachedSdkBuildConfigPath = null;
+            _cachedSdkRuntimePath = null;
+        }
+
         /// <summary>
         /// WebGL 빌드를 ait-build로 패키징
         /// </summary>
@@ -593,36 +607,17 @@ namespace AppsInToss.Editor
             // 프로젝트 BuildConfig 경로 (사용자 커스터마이징 가능)
             string projectBuildConfigPath = Path.Combine(Application.dataPath, "WebGLTemplates/AITTemplate/BuildConfig~");
 
-            // SDK의 BuildConfig 템플릿 경로 찾기
-            Debug.Log("[AIT] SDK BuildConfig 템플릿 경로 검색 중...");
-            string[] possibleSdkPaths = new string[]
-            {
-                Path.GetFullPath("Packages/im.toss.apps-in-toss-unity-sdk/WebGLTemplates/AITTemplate/BuildConfig~"),
-                Path.GetFullPath("Packages/com.appsintoss.miniapp/WebGLTemplates/AITTemplate/BuildConfig~"), // 레거시 호환성
-                Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(typeof(AITConvertCore).Assembly.Location)), "WebGLTemplates/AITTemplate/BuildConfig~")
-            };
-
-            string sdkBuildConfigPath = null;
-            for (int i = 0; i < possibleSdkPaths.Length; i++)
-            {
-                string path = possibleSdkPaths[i];
-                bool exists = Directory.Exists(path);
-                Debug.Log($"[AIT]   경로 {i + 1}/{possibleSdkPaths.Length}: {(exists ? "✓ 발견" : "✗ 없음")} - {path}");
-
-                if (exists && sdkBuildConfigPath == null)
-                {
-                    sdkBuildConfigPath = path;
-                }
-            }
+            // SDK의 BuildConfig 템플릿 경로 찾기 (캐싱 사용)
+            string sdkBuildConfigPath = GetSdkBuildConfigPath();
 
             if (sdkBuildConfigPath == null)
             {
                 Debug.LogError("[AIT] SDK BuildConfig 폴더를 찾을 수 없습니다.");
-                Debug.LogError("[AIT] 위의 경로들을 확인해주세요. SDK가 올바르게 설치되었는지 확인하세요.");
+                Debug.LogError("[AIT] SDK가 올바르게 설치되었는지 확인하세요.");
                 return;
             }
 
-            Debug.Log($"[AIT] ✓ SDK BuildConfig 템플릿 발견: {sdkBuildConfigPath}");
+            Debug.Log($"[AIT] ✓ SDK BuildConfig 템플릿: {sdkBuildConfigPath}");
 
             // 프로젝트 BuildConfig 존재 여부 확인
             bool hasProjectBuildConfig = Directory.Exists(projectBuildConfigPath);
@@ -688,11 +683,49 @@ namespace AppsInToss.Editor
         }
 
         /// <summary>
-        /// SDK 템플릿의 Runtime 폴더 경로를 찾습니다.
+        /// SDK BuildConfig 템플릿 경로를 반환합니다. (캐싱 사용)
+        /// </summary>
+        private static string GetSdkBuildConfigPath()
+        {
+            // 캐시된 경로가 유효한지 확인
+            if (_cachedSdkBuildConfigPath != null && Directory.Exists(_cachedSdkBuildConfigPath))
+            {
+                return _cachedSdkBuildConfigPath;
+            }
+
+            // 경로 검색
+            string[] possiblePaths = new string[]
+            {
+                Path.GetFullPath("Packages/im.toss.apps-in-toss-unity-sdk/WebGLTemplates/AITTemplate/BuildConfig~"),
+                Path.GetFullPath("Packages/com.appsintoss.miniapp/WebGLTemplates/AITTemplate/BuildConfig~"),
+                Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(typeof(AITConvertCore).Assembly.Location)), "WebGLTemplates/AITTemplate/BuildConfig~")
+            };
+
+            foreach (string path in possiblePaths)
+            {
+                if (Directory.Exists(path))
+                {
+                    _cachedSdkBuildConfigPath = path;
+                    Debug.Log($"[AIT] SDK BuildConfig 경로 캐싱: {path}");
+                    return path;
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// SDK 템플릿의 Runtime 폴더 경로를 반환합니다. (캐싱 사용)
         /// Package Only 실행 시 webgl/ 폴더에 Runtime이 없을 경우 폴백으로 사용됩니다.
         /// </summary>
         private static string FindSdkRuntimePath()
         {
+            // 캐시된 경로가 유효한지 확인
+            if (_cachedSdkRuntimePath != null && Directory.Exists(_cachedSdkRuntimePath))
+            {
+                return _cachedSdkRuntimePath;
+            }
+
             string projectRoot = Directory.GetParent(Application.dataPath).FullName;
             string[] possiblePaths = new string[]
             {
@@ -705,6 +738,8 @@ namespace AppsInToss.Editor
             {
                 if (Directory.Exists(path))
                 {
+                    _cachedSdkRuntimePath = path;
+                    Debug.Log($"[AIT] SDK Runtime 경로 캐싱: {path}");
                     return path;
                 }
             }

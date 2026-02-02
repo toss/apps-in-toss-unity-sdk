@@ -1263,6 +1263,9 @@
             // Unity 인스턴스를 글로벌로 저장
             window.unityInstance = unityInstance;
 
+            // 로드 성공 시 재시도 카운터 초기화
+            try { sessionStorage.removeItem('__ait_reload_count__'); } catch (e) {}
+
             // Unity 버전 정보 로깅
             var versionInfo = detectUnityVersionForMetrics();
             console.log('[AIT] ✓ Unity 인스턴스 로드 완료');
@@ -2302,16 +2305,47 @@
             setTimeout(hideLoadingScreen, 500);
 
                 }).catch((message) => {
-                    console.error('[AIT] ✗ Unity 로드 실패:', message);
+                    var errorStr = typeof message === 'object' ? (message.message || String(message)) : String(message);
+                    console.error('[AIT] ✗ Unity 로드 실패:', errorStr);
 
                     // 에러 이벤트 로깅 및 콜백 호출
                     if (window.AITLoadingLogger) {
-                        AITLoadingLogger.logEvent('loading_error', { message: message });
-                        AITLoadingLogger.notifyError({ message: message });
+                        AITLoadingLogger.logEvent('loading_error', { message: errorStr });
+                        AITLoadingLogger.notifyError({ message: errorStr });
                     }
 
-                    alert('게임 로드에 실패했습니다.\n\n오류: ' + message + '\n\n브라우저 콘솔을 확인하세요.');
-                    hideLoadingScreen();
+                    // ASM_CONSTS 초기화 타이밍 오류 감지 시 자동 재시도
+                    // Unity WASM 런타임의 레이스 컨디션으로 ASM_CONSTS 배열이 아직 초기화되지 않은 상태에서
+                    // emscripten_asm_const_int_sync_on_main_thread가 호출될 수 있음
+                    var isAsmConstsError = /ASM_CONSTS/.test(errorStr);
+                    var retryKey = '__ait_reload_count__';
+                    var maxRetries = 2;
+                    var currentRetries = parseInt(sessionStorage.getItem(retryKey) || '0', 10);
+
+                    if (isAsmConstsError && currentRetries < maxRetries) {
+                        sessionStorage.setItem(retryKey, String(currentRetries + 1));
+                        console.warn('[AIT] ASM_CONSTS 초기화 오류 감지, 자동 재시도 (' + (currentRetries + 1) + '/' + maxRetries + ')');
+                        location.reload();
+                        return;
+                    }
+
+                    // 재시도 횟수 초기화 (다른 에러이거나 재시도 소진)
+                    sessionStorage.removeItem(retryKey);
+
+                    showLoadError(
+                        '게임 로드 실패',
+                        errorStr,
+                        [
+                            '네트워크 연결 상태를 확인해 주세요.',
+                            '잠시 후 다시 시도해 주세요.',
+                            '문제가 계속되면 앱을 재시작해 주세요.'
+                        ],
+                        {
+                            error: errorStr,
+                            retryCount: currentRetries,
+                            config: { dataUrl: config.dataUrl, frameworkUrl: config.frameworkUrl, codeUrl: config.codeUrl }
+                        }
+                    );
                 });
             } // end of else block for createUnityInstance check
         }, 10000); // waitForLoader 타임아웃: 10초

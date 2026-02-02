@@ -2,6 +2,7 @@
 import { test, expect } from '@playwright/test';
 import { execSync, spawn } from 'child_process';
 import * as fs from 'fs';
+import * as net from 'net';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -194,6 +195,104 @@ function getDirectorySizeMB(dirPath) {
 }
 
 /**
+ * 유틸리티: 포트가 사용 가능한지 확인
+ * net.createServer로 실제 바인딩을 시도하여 확인
+ * @param {number} port
+ * @returns {Promise<boolean>}
+ */
+function isPortAvailable(port) {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+    server.once('error', () => resolve(false));
+    server.once('listening', () => {
+      server.close(() => resolve(true));
+    });
+    server.listen(port, '127.0.0.1');
+  });
+}
+
+/**
+ * 유틸리티: 포트가 해제될 때까지 대기
+ * @param {number} port
+ * @param {number} timeoutMs - 최대 대기 시간 (기본 10초)
+ * @returns {Promise<boolean>} - 포트가 해제되면 true
+ */
+async function waitForPortRelease(port, timeoutMs = 10000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (await isPortAvailable(port)) {
+      return true;
+    }
+    await new Promise(r => setTimeout(r, 200));
+  }
+  console.warn(`⚠️ Port ${port} still occupied after ${timeoutMs}ms`);
+  return false;
+}
+
+/**
+ * 유틸리티: 프로세스 트리를 안전하게 종료
+ * shell: true로 spawn된 프로세스는 자식 프로세스가 있을 수 있으므로
+ * 포트 기반 kill로 확실하게 정리
+ * @param {import('child_process').ChildProcess} proc - 종료할 프로세스
+ * @param {number[]} ports - 해당 프로세스가 사용하는 포트 목록
+ * @returns {Promise<void>}
+ */
+async function killServerProcess(proc, ports = []) {
+  if (!proc) return;
+
+  const isWindows = process.platform === 'win32';
+
+  // 1단계: SIGTERM으로 graceful shutdown 시도
+  try {
+    proc.kill('SIGTERM');
+  } catch {
+    // 이미 종료됨
+  }
+
+  // 프로세스 종료 대기 (최대 3초)
+  const exited = await new Promise((resolve) => {
+    if (proc.exitCode !== null) {
+      resolve(true);
+      return;
+    }
+    const timer = setTimeout(() => resolve(false), 3000);
+    proc.once('exit', () => {
+      clearTimeout(timer);
+      resolve(true);
+    });
+  });
+
+  // 2단계: 아직 종료되지 않았으면 SIGKILL
+  if (!exited) {
+    try {
+      proc.kill('SIGKILL');
+    } catch {
+      // 무시
+    }
+    // SIGKILL 후 1초 대기
+    await new Promise(r => setTimeout(r, 1000));
+  }
+
+  // 3단계: 포트를 점유하는 잔여 프로세스 정리 (shell: true 자식 프로세스 대응)
+  for (const port of ports) {
+    try {
+      if (isWindows) {
+        execSync(`for /f "tokens=5" %a in ('netstat -ano ^| findstr :${port} ^| findstr LISTENING') do taskkill /F /PID %a 2>nul`, { stdio: 'ignore', shell: true });
+      } else {
+        execSync(`lsof -ti:${port} | xargs kill -9 2>/dev/null || true`, { stdio: 'ignore' });
+      }
+    } catch {
+      // 무시
+    }
+  }
+
+  // 4단계: 모든 포트가 실제로 해제될 때까지 대기
+  for (const port of ports) {
+    await waitForPortRelease(port, 5000);
+  }
+}
+
+/**
  * 유틸리티: Dev 서버 시작 (npx vite --host --port)
  * @returns {Promise<{process: ChildProcess, port: number}>}
  */
@@ -209,10 +308,8 @@ async function startDevServer(aitBuildDir, defaultPort) {
   for (const port of myPorts) {
     try {
       if (isWindows) {
-        // Windows: netstat + taskkill
         execSync(`for /f "tokens=5" %a in ('netstat -ano ^| findstr :${port} ^| findstr LISTENING') do taskkill /F /PID %a 2>nul`, { stdio: 'ignore', shell: true });
       } else {
-        // macOS/Linux: lsof + kill
         execSync(`lsof -ti:${port} | xargs kill -9 2>/dev/null || true`, { stdio: 'ignore' });
       }
     } catch {
@@ -220,8 +317,10 @@ async function startDevServer(aitBuildDir, defaultPort) {
     }
   }
 
-  // 포트가 해제될 때까지 대기
-  await new Promise(r => setTimeout(r, 1000));
+  // 포트가 실제로 해제될 때까지 대기 (고정 지연 대신 확인 기반 대기)
+  for (const port of myPorts) {
+    await waitForPortRelease(port, 5000);
+  }
 
   return new Promise((resolve, reject) => {
     // pnpx vite 직접 실행 (granite는 --port 인자를 무시하므로 vite 직접 호출)
@@ -294,7 +393,9 @@ async function startGraniteDevServer(aitBuildDir, viteHost, vitePort, graniteHos
     }
   }
 
-  await new Promise(r => setTimeout(r, 1000));
+  for (const port of portsToClean) {
+    await waitForPortRelease(port, 5000);
+  }
 
   return new Promise((resolve, reject) => {
     // pnpm exec granite dev 실행 (Unity Editor와 동일한 방식)
@@ -376,18 +477,16 @@ async function startProductionServer(aitBuildDir, defaultPort) {
   const myPort = serverPort;  // Unity 버전별 고유 포트
   try {
     if (isWindows) {
-      // Windows: netstat + taskkill
       execSync(`for /f "tokens=5" %a in ('netstat -ano ^| findstr :${myPort} ^| findstr LISTENING') do taskkill /F /PID %a 2>nul`, { stdio: 'ignore', shell: true });
     } else {
-      // macOS/Linux: lsof + kill
       execSync(`lsof -ti:${myPort} | xargs kill -9 2>/dev/null || true`, { stdio: 'ignore' });
     }
   } catch {
     // 무시
   }
 
-  // 포트가 해제될 때까지 대기
-  await new Promise(r => setTimeout(r, 1000));
+  // 포트가 실제로 해제될 때까지 대기
+  await waitForPortRelease(myPort, 5000);
 
   return new Promise((resolve, reject) => {
     // vite preview 직접 실행 (포트 지정 가능)
@@ -1050,10 +1149,9 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
 
       throw error;
     } finally {
-      // 프로세스 정리
-      if (graniteProcess) {
-        graniteProcess.kill();
-      }
+      // 프로세스 트리 정리 (shell: true 자식 프로세스 포함, 포트 해제 대기)
+      await killServerProcess(graniteProcess, [VITE_DEV_PORT, 8081 + PORT_OFFSET]);
+      graniteProcess = null;
     }
   });
 
@@ -1166,8 +1264,8 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
     const loadTime = Date.now() - startTime;
     console.log(`⏱️ Page load time: ${loadTime}ms`);
 
-    // 서버 종료
-    serverProcess.kill();
+    // 서버 종료 (프로세스 트리 정리 + 포트 해제 대기)
+    await killServerProcess(serverProcess, [VITE_DEV_PORT, serverPort]);
     serverProcess = null;
 
     testResults.tests['2_dev_server'] = {
@@ -1350,11 +1448,9 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
         sharedPage = null;
       }
 
-      // 서버 종료
-      if (sharedServerProcess) {
-        sharedServerProcess.kill();
-        sharedServerProcess = null;
-      }
+      // 서버 종료 (프로세스 트리 정리 + 포트 해제 대기)
+      await killServerProcess(sharedServerProcess, [sharedPort]);
+      sharedServerProcess = null;
 
       console.log('✅ Shared session closed\n');
     });

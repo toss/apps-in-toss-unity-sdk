@@ -179,14 +179,14 @@ namespace AppsInToss
             return state == ServerState.Running;
         }
 
-        [MenuItem("AIT/Dev Server/Restart Server", false, 3)]
+        [MenuItem("AIT/Dev Server/Restart Server (auto)", false, 3)]
         public static void MenuRestartDevServer()
         {
-            Debug.Log("AIT: Dev 서버 재시작...");
+            Debug.Log("AIT: Dev 서버 재시작 (자동 감지)...");
             RestartDevServer();
         }
 
-        [MenuItem("AIT/Dev Server/Restart Server", true)]
+        [MenuItem("AIT/Dev Server/Restart Server (auto)", true)]
         public static bool ValidateMenuRestartDevServer()
         {
             var state = devServerState?.GetCachedState() ?? ServerState.NotRunning;
@@ -250,14 +250,14 @@ namespace AppsInToss
             return state == ServerState.Running;
         }
 
-        [MenuItem("AIT/Production Server/Restart Server", false, 13)]
+        [MenuItem("AIT/Production Server/Restart Server (auto)", false, 13)]
         public static void MenuRestartProdServer()
         {
-            Debug.Log("AIT: Production 서버 재시작...");
+            Debug.Log("AIT: Production 서버 재시작 (자동 감지)...");
             RestartProdServer();
         }
 
-        [MenuItem("AIT/Production Server/Restart Server", true)]
+        [MenuItem("AIT/Production Server/Restart Server (auto)", true)]
         public static bool ValidateMenuRestartProdServer()
         {
             var state = prodServerState?.GetCachedState() ?? ServerState.NotRunning;
@@ -294,6 +294,107 @@ namespace AppsInToss
 
         // ==================== Helper Methods ====================
 
+        // Unity 빌드에 영향을 주는 에셋 확장자 목록
+        private static readonly string[] UnityAssetExtensions = new[]
+        {
+            // 스크립트
+            "*.cs",
+            // 씬, 프리팹, ScriptableObject
+            "*.unity", "*.prefab", "*.asset",
+            // 셰이더
+            "*.shader", "*.shadergraph", "*.shadersubgraph", "*.cginc", "*.hlsl",
+            // 머티리얼
+            "*.mat",
+            // 애니메이션
+            "*.anim", "*.controller", "*.overrideController",
+            // 텍스처/스프라이트
+            "*.png", "*.jpg", "*.jpeg", "*.psd", "*.tga", "*.exr", "*.hdr", "*.gif", "*.bmp",
+            // 오디오
+            "*.wav", "*.mp3", "*.ogg", "*.aiff",
+            // 모델
+            "*.fbx", "*.obj", "*.dae", "*.blend",
+            // 폰트
+            "*.ttf", "*.otf",
+            // 데이터 파일 (Resources 포함)
+            "*.json", "*.xml", "*.txt", "*.bytes",
+            // UI Toolkit
+            "*.uxml", "*.uss",
+            // Addressables/AssetBundle
+            "*.spriteatlas",
+        };
+
+        /// <summary>
+        /// Unity 에셋이 마지막 WebGL 빌드 이후에 변경되었는지 확인
+        /// </summary>
+        /// <returns>에셋이 변경되어 Unity 빌드가 필요하면 true</returns>
+        private static bool NeedUnityRebuild()
+        {
+            string projectPath = UnityUtil.GetProjectPath();
+            string webglPath = Path.Combine(projectPath, "webgl");
+
+            // WebGL 빌드가 없으면 빌드 필요
+            if (!Directory.Exists(webglPath))
+            {
+                Debug.Log("[AIT] WebGL 빌드 없음 - Unity 빌드 필요");
+                return true;
+            }
+
+            // WebGL 빌드의 index.html 수정 시간을 기준으로 사용
+            string indexPath = Path.Combine(webglPath, "index.html");
+            if (!File.Exists(indexPath))
+            {
+                Debug.Log("[AIT] WebGL index.html 없음 - Unity 빌드 필요");
+                return true;
+            }
+
+            DateTime lastBuildTime = File.GetLastWriteTime(indexPath);
+            Debug.Log($"[AIT] 마지막 WebGL 빌드 시간: {lastBuildTime:yyyy-MM-dd HH:mm:ss}");
+
+            // Assets/ 폴더 검사
+            string assetsPath = Path.Combine(projectPath, "Assets");
+            if (!Directory.Exists(assetsPath))
+            {
+                Debug.Log("[AIT] Assets 폴더 없음 - Unity 빌드 불필요");
+                return false;
+            }
+
+            // 모든 Unity 에셋 타입 검사
+            foreach (string pattern in UnityAssetExtensions)
+            {
+                string[] files = Directory.GetFiles(assetsPath, pattern, SearchOption.AllDirectories);
+                foreach (string file in files)
+                {
+                    DateTime fileTime = File.GetLastWriteTime(file);
+                    if (fileTime > lastBuildTime)
+                    {
+                        string relativePath = file.Substring(projectPath.Length + 1);
+                        Debug.Log($"[AIT] 에셋 변경 감지: {relativePath} ({fileTime:yyyy-MM-dd HH:mm:ss})");
+                        return true;
+                    }
+                }
+            }
+
+            // StreamingAssets 폴더 전체 검사 (모든 파일이 빌드에 그대로 포함됨)
+            string streamingAssetsPath = Path.Combine(assetsPath, "StreamingAssets");
+            if (Directory.Exists(streamingAssetsPath))
+            {
+                string[] streamingFiles = Directory.GetFiles(streamingAssetsPath, "*", SearchOption.AllDirectories);
+                foreach (string file in streamingFiles)
+                {
+                    DateTime fileTime = File.GetLastWriteTime(file);
+                    if (fileTime > lastBuildTime)
+                    {
+                        string relativePath = file.Substring(projectPath.Length + 1);
+                        Debug.Log($"[AIT] StreamingAssets 변경 감지: {relativePath} ({fileTime:yyyy-MM-dd HH:mm:ss})");
+                        return true;
+                    }
+                }
+            }
+
+            Debug.Log("[AIT] Unity 에셋 변경 없음 - Unity 빌드 스킵, 패키징만 수행");
+            return false;
+        }
+
         private static void RestartDevServer()
         {
             StopDevServer();
@@ -301,7 +402,18 @@ namespace AppsInToss
             EditorApplication.delayCall += () =>
             {
                 System.Threading.Thread.Sleep(500);
-                StartDevServer();
+
+                // C# 파일 변경 여부에 따라 빌드 또는 패키징만 수행
+                if (NeedUnityRebuild())
+                {
+                    Debug.Log("[AIT] C# 변경 감지 - 전체 빌드 수행");
+                    StartDevServer();
+                }
+                else
+                {
+                    Debug.Log("[AIT] C# 변경 없음 - 패키징만 수행");
+                    RepackageAndStartDevServer();
+                }
             };
         }
 
@@ -312,7 +424,18 @@ namespace AppsInToss
             EditorApplication.delayCall += () =>
             {
                 System.Threading.Thread.Sleep(500);
-                StartProdServer();
+
+                // C# 파일 변경 여부에 따라 빌드 또는 패키징만 수행
+                if (NeedUnityRebuild())
+                {
+                    Debug.Log("[AIT] C# 변경 감지 - 전체 빌드 수행");
+                    StartProdServer();
+                }
+                else
+                {
+                    Debug.Log("[AIT] C# 변경 없음 - 패키징만 수행");
+                    RepackageAndStartProdServer();
+                }
             };
         }
 

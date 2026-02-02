@@ -698,11 +698,11 @@ jobs:
 
       - name: 배포 결과 아티팩트 저장
         if: always() && steps.check-packages.outputs.package_count > 0
+        env:
+          VERSION: ${{ needs.create-release-tag.outputs.version }}
+          DEPLOY_RESULTS: ${{ steps.deploy.outputs.deploy_results }}
+          HAS_FAILURE: ${{ steps.deploy.outputs.has_failure }}
         run: |
-          VERSION="${{ needs.create-release-tag.outputs.version }}"
-          DEPLOY_RESULTS="${{ steps.deploy.outputs.deploy_results }}"
-          HAS_FAILURE="${{ steps.deploy.outputs.has_failure }}"
-
           echo "version=${VERSION}" > deploy-results.txt
           echo "has_failure=${HAS_FAILURE}" >> deploy-results.txt
           echo "---RESULTS---" >> deploy-results.txt
@@ -723,9 +723,9 @@ jobs:
         if: always() && steps.check-packages.outputs.package_count > 0 && inputs.skip_notification != true
         env:
           DEPLOY_WEBHOOK_URL: "https://ipd-public-gateway.core.toss-internal.com/api-public/v3/ipd-public-gateway/webhooks/ipd-corp-core-automation-webhook/8b6db539-6cb4-4b99-b2a8-8981c43b2592"
+          VERSION: ${{ needs.create-release-tag.outputs.version }}
+          DEPLOY_RESULTS: ${{ steps.deploy.outputs.deploy_results }}
         run: |
-          VERSION="${{ needs.create-release-tag.outputs.version }}"
-          DEPLOY_RESULTS="${{ steps.deploy.outputs.deploy_results }}"
 
           if [ -z "$DEPLOY_RESULTS" ]; then
             URLS_FOR_EDITION="배포 결과 없음"

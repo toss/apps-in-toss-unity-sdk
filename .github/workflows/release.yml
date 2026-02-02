@@ -674,17 +674,24 @@ jobs:
           # Step Summary 작성
           echo "## AIT 배포 결과" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| 플랫폼 | Unity 버전 | 상태 |" >> $GITHUB_STEP_SUMMARY
-          echo "|--------|-----------|------|" >> $GITHUB_STEP_SUMMARY
+          echo "| 플랫폼 | Unity 버전 | 상태 | URL | QR |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-----------|------|-----|:--:|" >> $GITHUB_STEP_SUMMARY
 
           echo -e "$DEPLOY_RESULTS" | while IFS= read -r line; do
             if [ -n "$line" ]; then
               PLATFORM=$(echo "$line" | cut -d: -f1 | xargs)
               STATUS=$(echo "$line" | cut -d: -f2- | xargs)
-              if [[ "$STATUS" == *"FAILED"* ]]; then
-                echo "| ${PLATFORM} | ❌ ${STATUS} |" >> $GITHUB_STEP_SUMMARY
+              # PLATFORM 형식: "macOS - 2021.3" → OS와 Unity 버전 분리
+              OS_NAME=$(echo "$PLATFORM" | cut -d'-' -f1 | xargs)
+              UV=$(echo "$PLATFORM" | cut -d'-' -f2- | xargs)
+              if [[ "$STATUS" == *"FAILED"* ]] || [[ "$STATUS" == *"TIMEOUT"* ]]; then
+                echo "| ${OS_NAME} | ${UV} | ❌ | ${STATUS} | - |" >> $GITHUB_STEP_SUMMARY
+              elif echo "$STATUS" | grep -qE '^intoss-private://'; then
+                ENCODED_URL=$(printf '%s' "$STATUS" | jq -sRr @uri)
+                QR_IMG="![QR](https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${ENCODED_URL})"
+                echo "| ${OS_NAME} | ${UV} | ✅ | \`${STATUS}\` | ${QR_IMG} |" >> $GITHUB_STEP_SUMMARY
               else
-                echo "| ${PLATFORM} | ✅ ${STATUS} |" >> $GITHUB_STEP_SUMMARY
+                echo "| ${OS_NAME} | ${UV} | ✅ | ${STATUS} | - |" >> $GITHUB_STEP_SUMMARY
               fi
             fi
           done

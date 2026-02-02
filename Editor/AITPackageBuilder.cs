@@ -963,10 +963,10 @@ namespace AppsInToss.Editor
                 sb.AppendLine($"    <link rel=\"preload\" href=\"Build/{wasmFile}\" as=\"fetch\" crossorigin=\"anonymous\">");
             }
 
-            if (!string.IsNullOrEmpty(frameworkFile))
-            {
-                sb.AppendLine($"    <link rel=\"preload\" href=\"Build/{frameworkFile}\" as=\"fetch\" crossorigin=\"anonymous\">");
-            }
+            // framework.js는 preload하지 않음
+            // Unity 로더가 framework.js를 <script> 태그로 로드하는 경우 as="fetch" preload와 캐시 키가 불일치하여
+            // 이중 다운로드가 발생할 수 있음. 이는 메모리 압박을 증가시켜 간헐적 초기화 실패(ASM_CONSTS 오류)의
+            // 확률을 높일 수 있으므로 framework.js preload를 제거함.
 
             return sb.ToString().TrimEnd();
         }

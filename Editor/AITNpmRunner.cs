@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 using UnityEditor;
 using UnityEngine;
 
@@ -242,6 +244,107 @@ namespace AppsInToss.Editor
                 Debug.LogError($"[{pmName}] 명령 실행 오류: {e.Message}");
                 return AITConvertCore.AITExportError.NODE_NOT_FOUND;
             }
+        }
+
+        /// <summary>
+        /// npm 명령 비동기 실행 (non-blocking)
+        /// </summary>
+        /// <param name="workingDirectory">작업 디렉토리</param>
+        /// <param name="npmPath">npm/pnpm 실행 파일 경로</param>
+        /// <param name="arguments">명령 인자</param>
+        /// <param name="cachePath">캐시 경로</param>
+        /// <param name="onComplete">완료 콜백</param>
+        /// <param name="onOutputReceived">출력 수신 콜백 (선택)</param>
+        /// <param name="cancellationToken">취소 토큰 (선택)</param>
+        /// <returns>비동기 명령 작업</returns>
+        internal static AITAsyncCommandRunner.CommandTask RunNpmCommandWithCacheAsync(
+            string workingDirectory,
+            string npmPath,
+            string arguments,
+            string cachePath,
+            Action<AITConvertCore.AITExportError> onComplete,
+            Action<string> onOutputReceived = null,
+            CancellationToken cancellationToken = default)
+        {
+            string npmDir = Path.GetDirectoryName(npmPath);
+
+            // node 실행 파일 경로 찾기
+            string nodePath = AITPackageManagerHelper.FindExecutable("node", verbose: false);
+            string nodeDir = "";
+
+            if (!string.IsNullOrEmpty(nodePath))
+            {
+                nodeDir = Path.GetDirectoryName(nodePath);
+            }
+            else
+            {
+                string nodeExeName = AITPlatformHelper.GetExecutableName("node");
+                string possibleNodePath = Path.Combine(npmDir, nodeExeName);
+                if (File.Exists(possibleNodePath))
+                {
+                    nodePath = possibleNodePath;
+                    nodeDir = npmDir;
+                }
+            }
+
+            // 패키지 매니저 이름 추출
+            string pmName = Path.GetFileNameWithoutExtension(npmPath);
+
+            // install 명령에만 --store-dir 적용
+            bool isInstallCommand = arguments.TrimStart().StartsWith("install");
+            string fullArguments = isInstallCommand
+                ? $"{arguments} --store-dir \"{cachePath}\""
+                : arguments;
+
+            // PATH 경로 수집
+            var additionalPaths = new List<string>();
+            if (!string.IsNullOrEmpty(npmDir)) additionalPaths.Add(npmDir);
+            if (!string.IsNullOrEmpty(nodeDir) && nodeDir != npmDir) additionalPaths.Add(nodeDir);
+
+            Debug.Log($"[{pmName}] 비동기 명령 실행:");
+            Debug.Log($"[{pmName}]   명령: {pmName} {arguments}");
+
+            // 전체 명령 구성
+            string command = $"\"{npmPath}\" {fullArguments}";
+
+            // 비동기 실행
+            var task = AITAsyncCommandRunner.RunAsync(
+                command: command,
+                workingDirectory: workingDirectory,
+                additionalPaths: additionalPaths.ToArray(),
+                onComplete: (result) =>
+                {
+                    // 취소된 경우
+                    if (result.ExitCode == -1 && AITConvertCore.IsCancelled())
+                    {
+                        Debug.Log($"[{pmName}] 명령이 취소되었습니다: {pmName} {arguments}");
+                        onComplete?.Invoke(AITConvertCore.AITExportError.CANCELLED);
+                        return;
+                    }
+
+                    if (result.Success)
+                    {
+                        Debug.Log($"[{pmName}] ✓ 비동기 명령 성공: {pmName} {arguments}");
+                        onComplete?.Invoke(AITConvertCore.AITExportError.SUCCEED);
+                    }
+                    else
+                    {
+                        Debug.LogError($"[{pmName}] 비동기 명령 실패 (Exit Code: {result.ExitCode}): {pmName} {arguments}");
+                        if (!string.IsNullOrEmpty(result.Error))
+                        {
+                            Debug.LogError($"[{pmName}] 오류:\n{result.Error}");
+                        }
+                        onComplete?.Invoke(AITConvertCore.AITExportError.FAIL_NPM_BUILD);
+                    }
+                },
+                onOutputReceived: onOutputReceived,
+                timeoutMs: 300000 // 5분
+            );
+
+            // 현재 작업 등록 (취소용)
+            AITConvertCore.SetCurrentAsyncTask(task);
+
+            return task;
         }
     }
 }

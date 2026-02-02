@@ -795,21 +795,34 @@ jobs:
 
           # jq로 안전한 JSON 생성
           # 마지막 청크를 제외한 모든 청크 끝에 \n 추가 (Slack 템플릿에서 이어붙일 때 줄바꿈 보장)
-          JSON_PAYLOAD=$(jq -n \
-            --arg version "$VERSION" \
-            --arg urls "$(if [ "$TOTAL_CHUNKS" -gt 1 ]; then echo -e "${CHUNK_1}\n"; else echo -e "$CHUNK_1"; fi)" \
-            --arg actionsUrl "$ACTIONS_URL" \
-            '{version: $version, urlsForEdition: $urls, actionsUrl: $actionsUrl}')
+          # 참고: $() 명령 치환은 trailing newline을 제거하므로 jq 내에서 + "\n" 처리
+          if [ "$TOTAL_CHUNKS" -gt 1 ]; then
+            JSON_PAYLOAD=$(jq -n \
+              --arg version "$VERSION" \
+              --arg urls "$(echo -e "$CHUNK_1")" \
+              --arg actionsUrl "$ACTIONS_URL" \
+              '{version: $version, urlsForEdition: ($urls + "\n"), actionsUrl: $actionsUrl}')
+          else
+            JSON_PAYLOAD=$(jq -n \
+              --arg version "$VERSION" \
+              --arg urls "$(echo -e "$CHUNK_1")" \
+              --arg actionsUrl "$ACTIONS_URL" \
+              '{version: $version, urlsForEdition: $urls, actionsUrl: $actionsUrl}')
+          fi
 
           for i in $(seq 2 $TOTAL_CHUNKS); do
             eval "CHUNK_VAL=\"\${CHUNK_${i}}\""
             if [ "$i" -lt "$TOTAL_CHUNKS" ]; then
-              CHUNK_VAL="${CHUNK_VAL}\n"
+              JSON_PAYLOAD=$(echo "$JSON_PAYLOAD" | jq \
+                --arg key "urlsForEdition${i}" \
+                --arg val "$(echo -e "$CHUNK_VAL")" \
+                '. + {($key): ($val + "\n")}')
+            else
+              JSON_PAYLOAD=$(echo "$JSON_PAYLOAD" | jq \
+                --arg key "urlsForEdition${i}" \
+                --arg val "$(echo -e "$CHUNK_VAL")" \
+                '. + {($key): $val}')
             fi
-            JSON_PAYLOAD=$(echo "$JSON_PAYLOAD" | jq \
-              --arg key "urlsForEdition${i}" \
-              --arg val "$(echo -e "$CHUNK_VAL")" \
-              '. + {($key): $val}')
           done
 
           echo "전송할 JSON:"

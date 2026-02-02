@@ -1,6 +1,7 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
-import { spawn } from 'child_process';
+import { execSync, spawn } from 'child_process';
+import * as net from 'net';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -36,10 +37,78 @@ let serverProcess = null;
 let actualServerPort = VITE_DEV_PORT;
 
 /**
+ * 유틸리티: 포트가 사용 가능한지 확인
+ */
+function isPortAvailable(port) {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+    server.once('error', () => resolve(false));
+    server.once('listening', () => {
+      server.close(() => resolve(true));
+    });
+    server.listen(port, '127.0.0.1');
+  });
+}
+
+/**
+ * 유틸리티: 포트가 해제될 때까지 대기
+ */
+async function waitForPortRelease(port, timeoutMs = 10000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (await isPortAvailable(port)) return true;
+    await new Promise(r => setTimeout(r, 200));
+  }
+  return false;
+}
+
+/**
+ * 유틸리티: 프로세스 트리를 안전하게 종료 후 포트 해제 대기
+ */
+async function killServerProcess(proc, ports = []) {
+  if (!proc) return;
+  try { proc.kill('SIGTERM'); } catch {}
+  const exited = await new Promise((resolve) => {
+    if (proc.exitCode !== null) { resolve(true); return; }
+    const timer = setTimeout(() => resolve(false), 3000);
+    proc.once('exit', () => { clearTimeout(timer); resolve(true); });
+  });
+  if (!exited) {
+    try { proc.kill('SIGKILL'); } catch {}
+    await new Promise(r => setTimeout(r, 1000));
+  }
+  const isWindows = process.platform === 'win32';
+  for (const port of ports) {
+    try {
+      if (isWindows) {
+        execSync(`for /f "tokens=5" %a in ('netstat -ano ^| findstr :${port} ^| findstr LISTENING') do taskkill /F /PID %a 2>nul`, { stdio: 'ignore', shell: true });
+      } else {
+        execSync(`lsof -ti:${port} | xargs kill -9 2>/dev/null || true`, { stdio: 'ignore' });
+      }
+    } catch {}
+  }
+  for (const port of ports) {
+    await waitForPortRelease(port, 5000);
+  }
+}
+
+/**
  * Dev 서버 시작 (pnpx vite)
  */
 async function startServer(aitBuildDir, vitePort) {
   console.log(`🔌 Using vite port: ${vitePort} (offset: ${PORT_OFFSET})`);
+
+  // 포트 정리 (이전 테스트에서 잔여 프로세스가 있을 수 있음)
+  const isWindows = process.platform === 'win32';
+  try {
+    if (isWindows) {
+      execSync(`for /f "tokens=5" %a in ('netstat -ano ^| findstr :${vitePort} ^| findstr LISTENING') do taskkill /F /PID %a 2>nul`, { stdio: 'ignore', shell: true });
+    } else {
+      execSync(`lsof -ti:${vitePort} | xargs kill -9 2>/dev/null || true`, { stdio: 'ignore' });
+    }
+  } catch {}
+
+  await waitForPortRelease(vitePort, 5000);
 
   return new Promise((resolve, reject) => {
     // pnpx vite 사용 (pnpm exec)
@@ -127,10 +196,8 @@ test.describe('Interactive API Tester', () => {
   });
 
   test.afterAll(async () => {
-    if (serverProcess) {
-      serverProcess.kill();
-      serverProcess = null;
-    }
+    await killServerProcess(serverProcess, [actualServerPort, VITE_DEV_PORT]);
+    serverProcess = null;
   });
 
   test('Interactive mode (without ?e2e=true) should load InteractiveAPITester', async ({ page }) => {

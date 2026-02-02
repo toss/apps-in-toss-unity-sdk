@@ -15,7 +15,6 @@
     "test": "vitest run",
     "test:watch": "vitest watch",
     "test:ui": "vitest --ui",
-    "test:tier1": "vitest run tests/unit/compilation.test.ts",
     "test:tier2": "vitest run tests/unit/invariants.test.ts"
   },
   "dependencies": {

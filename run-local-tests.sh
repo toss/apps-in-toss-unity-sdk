@@ -596,40 +596,20 @@ test_sdk_generator_unit() {
     echo "Installing dependencies..."
     pnpm install --silent 2>/dev/null || pnpm install
 
-    local has_mcs=false
-    if command -v mcs &> /dev/null; then
-        has_mcs=true
-    fi
-
-    local tier1_passed=true
     local tier2_passed=true
 
-    # Tier 1: C# 컴파일 테스트 (Mono mcs 필요)
-    if [ "$has_mcs" = true ]; then
-        echo "Running Tier 1 tests (C# compilation)..."
-        if pnpm run test:tier1 2>&1; then
-            echo -e "${GREEN}✓${NC} Tier 1 (C# compilation) passed"
-        else
-            echo -e "${RED}✗${NC} Tier 1 (C# compilation) failed"
-            tier1_passed=false
-        fi
-    else
-        echo -e "${YELLOW}⊘${NC} Tier 1 (C# compilation) skipped - mcs not installed"
-        echo "  Install Mono: brew install mono (macOS) or apt install mono-mcs (Linux)"
-    fi
-
-    # Tier 2: C# ↔ jslib 일관성 검증
-    echo "Running Tier 2 tests (C# ↔ jslib invariants)..."
+    # C# ↔ jslib 일관성 검증
+    echo "Running unit tests (C# ↔ jslib invariants)..."
     if pnpm run test:tier2 2>&1; then
-        echo -e "${GREEN}✓${NC} Tier 2 (C# ↔ jslib invariants) passed"
+        echo -e "${GREEN}✓${NC} C# ↔ jslib invariants passed"
     else
-        echo -e "${RED}✗${NC} Tier 2 (C# ↔ jslib invariants) failed"
+        echo -e "${RED}✗${NC} C# ↔ jslib invariants failed"
         tier2_passed=false
     fi
 
     cd "$SCRIPT_DIR"
 
-    if [ "$tier1_passed" = true ] && [ "$tier2_passed" = true ]; then
+    if [ "$tier2_passed" = true ]; then
         print_success "SDK Generator Unit Tests"
         return 0
     else

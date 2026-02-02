@@ -207,6 +207,20 @@ namespace AppsInToss
             return state == ServerState.Running;
         }
 
+        [MenuItem("AIT/Dev Server/Repackage & Restart", false, 5)]
+        public static void MenuRepackageDevServer()
+        {
+            Debug.Log("AIT: Dev 서버 재패키징 & 재시작 중...");
+            RepackageAndRestartDevServer();
+        }
+
+        [MenuItem("AIT/Dev Server/Repackage & Restart", true)]
+        public static bool ValidateMenuRepackageDevServer()
+        {
+            var state = devServerState?.GetCachedState() ?? ServerState.NotRunning;
+            return state == ServerState.Running;
+        }
+
         // ==================== Production Server ====================
 
         [MenuItem("AIT/Production Server/Start Server", false, 11)]
@@ -264,6 +278,20 @@ namespace AppsInToss
             return state == ServerState.Running;
         }
 
+        [MenuItem("AIT/Production Server/Repackage & Restart", false, 15)]
+        public static void MenuRepackageProdServer()
+        {
+            Debug.Log("AIT: Production 서버 재패키징 & 재시작 중...");
+            RepackageAndRestartProdServer();
+        }
+
+        [MenuItem("AIT/Production Server/Repackage & Restart", true)]
+        public static bool ValidateMenuRepackageProdServer()
+        {
+            var state = prodServerState?.GetCachedState() ?? ServerState.NotRunning;
+            return state == ServerState.Running;
+        }
+
         // ==================== Helper Methods ====================
 
         private static void RestartDevServer()
@@ -307,6 +335,34 @@ namespace AppsInToss
             {
                 System.Threading.Thread.Sleep(500);
                 StartProdServerOnly();
+            };
+        }
+
+        /// <summary>
+        /// Dev 서버 재패키징 & 재시작
+        /// Unity 빌드 없이 패키징만 수행 후 서버 재시작 (JS/HTML 변경 시 사용)
+        /// </summary>
+        private static void RepackageAndRestartDevServer()
+        {
+            StopDevServer();
+            EditorApplication.delayCall += () =>
+            {
+                System.Threading.Thread.Sleep(500);
+                RepackageAndStartDevServer();
+            };
+        }
+
+        /// <summary>
+        /// Production 서버 재패키징 & 재시작
+        /// Unity 빌드 없이 패키징만 수행 후 서버 재시작 (JS/HTML 변경 시 사용)
+        /// </summary>
+        private static void RepackageAndRestartProdServer()
+        {
+            StopProdServer();
+            EditorApplication.delayCall += () =>
+            {
+                System.Threading.Thread.Sleep(500);
+                RepackageAndStartProdServer();
             };
         }
 
@@ -1003,10 +1059,7 @@ namespace AppsInToss
                 return;
             }
 
-            if (!EnsureNodeModules(buildPath, npmPath))
-            {
-                return;
-            }
+            // Note: EnsureNodeModules 호출 제거 - PackageWebGLBuild에서 이미 pnpm install 실행됨
 
             // 서버 설정
             string graniteHost = !string.IsNullOrEmpty(config.graniteHost) ? config.graniteHost : "0.0.0.0";
@@ -1101,6 +1154,144 @@ namespace AppsInToss
                 AITPlatformHelper.ShowInfoDialog("오류", $"Dev 서버 시작 실패:\n{e.Message}", "확인");
                 devServerState.OnServerFailed();
             }
+        }
+
+        /// <summary>
+        /// Dev 서버 재패키징 후 시작
+        /// Unity 빌드 없이 패키징만 수행 후 서버 시작 (JS/HTML 변경 시 사용)
+        /// </summary>
+        private static void RepackageAndStartDevServer()
+        {
+            // 실제 상태 검증
+            var currentState = devServerState.ValidateState();
+            if (currentState == ServerState.Running)
+            {
+                Debug.LogWarning("AIT: Dev 서버가 이미 실행 중입니다.");
+                return;
+            }
+
+            var config = UnityUtil.GetEditorConf();
+            if (!ValidateSettingsForPackage(config))
+            {
+                return;
+            }
+
+            string projectPath = UnityUtil.GetProjectPath();
+            string webglPath = Path.Combine(projectPath, "webgl");
+
+            // 기존 WebGL 빌드가 있는지 확인
+            if (!Directory.Exists(webglPath))
+            {
+                Debug.LogError($"AIT: WebGL 빌드 결과물이 없습니다. 먼저 전체 빌드를 실행하세요. ({webglPath})");
+                AITPlatformHelper.ShowInfoDialog("빌드 필요", "WebGL 빌드 결과물이 없습니다.\n먼저 Start Server 또는 Build를 실행하세요.", "확인");
+                return;
+            }
+
+            // 패키징만 수행 (Unity 빌드 스킵)
+            Debug.Log("AIT: 패키징 수행 중 (Unity 빌드 스킵, Dev Server 프로필)...");
+            buildStopwatch.Restart();
+
+            var result = AITConvertCore.DoExport(
+                buildWebGL: false,
+                doPackaging: true,
+                cleanBuild: false,
+                profile: config.devServerProfile,
+                profileName: "Dev Server (Repackage)"
+            );
+            buildStopwatch.Stop();
+
+            if (result != AITConvertCore.AITExportError.SUCCEED)
+            {
+                string errorMessage = AITConvertCore.GetErrorMessage(result);
+                Debug.LogError($"AIT: 패키징 실패: {result}");
+                int choice = AITPlatformHelper.ShowComplexDialog(
+                    "패키징 실패",
+                    errorMessage + "\n\n문제가 지속되면 'Issue 신고'를 클릭하세요.",
+                    "확인",
+                    "Issue 신고",
+                    null,
+                    defaultChoice: 0
+                );
+                if (choice == 1)
+                {
+                    AppsInToss.Editor.AITErrorReporter.OpenIssueInBrowser(result, "Dev Server (Repackage)");
+                }
+                return;
+            }
+
+            Debug.Log($"AIT: 패키징 완료 (소요 시간: {buildStopwatch.Elapsed.TotalSeconds:F1}초)");
+
+            // 서버만 시작 (기존 StartDevServerOnly 로직 활용)
+            StartDevServerOnly();
+        }
+
+        /// <summary>
+        /// Production 서버 재패키징 후 시작
+        /// Unity 빌드 없이 패키징만 수행 후 서버 시작 (JS/HTML 변경 시 사용)
+        /// </summary>
+        private static void RepackageAndStartProdServer()
+        {
+            // 실제 상태 검증
+            var currentState = prodServerState.ValidateState();
+            if (currentState == ServerState.Running)
+            {
+                Debug.LogWarning("AIT: Production 서버가 이미 실행 중입니다.");
+                return;
+            }
+
+            var config = UnityUtil.GetEditorConf();
+            if (!ValidateSettingsForPackage(config))
+            {
+                return;
+            }
+
+            string projectPath = UnityUtil.GetProjectPath();
+            string webglPath = Path.Combine(projectPath, "webgl");
+
+            // 기존 WebGL 빌드가 있는지 확인
+            if (!Directory.Exists(webglPath))
+            {
+                Debug.LogError($"AIT: WebGL 빌드 결과물이 없습니다. 먼저 전체 빌드를 실행하세요. ({webglPath})");
+                AITPlatformHelper.ShowInfoDialog("빌드 필요", "WebGL 빌드 결과물이 없습니다.\n먼저 Start Server 또는 Build를 실행하세요.", "확인");
+                return;
+            }
+
+            // 패키징만 수행 (Unity 빌드 스킵)
+            Debug.Log("AIT: 패키징 수행 중 (Unity 빌드 스킵, Production 프로필)...");
+            buildStopwatch.Restart();
+
+            var result = AITConvertCore.DoExport(
+                buildWebGL: false,
+                doPackaging: true,
+                cleanBuild: false,
+                profile: config.productionProfile,
+                profileName: "Production Server (Repackage)"
+            );
+            buildStopwatch.Stop();
+
+            if (result != AITConvertCore.AITExportError.SUCCEED)
+            {
+                string errorMessage = AITConvertCore.GetErrorMessage(result);
+                Debug.LogError($"AIT: 패키징 실패: {result}");
+                int choice = AITPlatformHelper.ShowComplexDialog(
+                    "패키징 실패",
+                    errorMessage + "\n\n문제가 지속되면 'Issue 신고'를 클릭하세요.",
+                    "확인",
+                    "Issue 신고",
+                    null,
+                    defaultChoice: 0
+                );
+                if (choice == 1)
+                {
+                    AppsInToss.Editor.AITErrorReporter.OpenIssueInBrowser(result, "Production Server (Repackage)");
+                }
+                return;
+            }
+
+            Debug.Log($"AIT: 패키징 완료 (소요 시간: {buildStopwatch.Elapsed.TotalSeconds:F1}초)");
+
+            // 서버만 시작 (기존 StartProdServerOnly 로직 활용)
+            StartProdServerOnly();
         }
 
         /// <summary>
@@ -1312,14 +1503,14 @@ namespace AppsInToss
                 return;
             }
 
-            // 빌드 & 패키징 수행 (Production Server: productionProfile 사용, 클린 빌드로 깨끗한 결과물 보장)
-            Debug.Log("AIT: 빌드 & 패키징 수행 중 (클린 빌드, Production 프로필)...");
+            // 빌드 & 패키징 수행 (Production Server: productionProfile 사용, 증분 빌드로 빠른 반복)
+            Debug.Log("AIT: 빌드 & 패키징 수행 중 (증분 빌드, Production 프로필)...");
             buildStopwatch.Restart();
 
             var result = AITConvertCore.DoExport(
                 buildWebGL: true,
                 doPackaging: true,
-                cleanBuild: true,
+                cleanBuild: false,
                 profile: config.productionProfile,
                 profileName: "Production Server"
             );
@@ -1353,10 +1544,7 @@ namespace AppsInToss
                 return;
             }
 
-            if (!EnsureNodeModules(buildPath, npmPath))
-            {
-                return;
-            }
+            // Note: EnsureNodeModules 호출 제거 - PackageWebGLBuild에서 이미 pnpm install 실행됨
 
             // 서버 설정 (Dev 서버와 동일)
             string graniteHost = !string.IsNullOrEmpty(config.graniteHost) ? config.graniteHost : "0.0.0.0";

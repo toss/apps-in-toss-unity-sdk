@@ -15,16 +15,16 @@ namespace AppsInToss.Editor
     /// </summary>
     public static class AITNodeJSDownloader
     {
-        private const string NODE_VERSION = "24.11.1";
+        private const string NODE_VERSION = "24.13.0";
 
         // SHA256 체크섬 (Node.js 공식 SHASUMS256.txt에서 검증됨)
-        // 출처: https://nodejs.org/dist/v24.11.1/SHASUMS256.txt
+        // 출처: https://nodejs.org/dist/v24.13.0/SHASUMS256.txt
         private static readonly Dictionary<string, string> Checksums = new Dictionary<string, string>
         {
-            ["darwin-arm64"] = "b05aa3a66efe680023f930bd5af3fdbbd542794da5644ca2ad711d68cbd4dc35",
-            ["darwin-x64"] = "096081b6d6fcdd3f5ba0f5f1d44a47e83037ad2e78eada26671c252fe64dd111",
-            ["win-x64"] = "5355ae6d7c49eddcfde7d34ac3486820600a831bf81dc3bdca5c8db6a9bb0e76",
-            ["linux-x64"] = "58a5ff5cc8f2200e458bea22e329d5c1994aa1b111d499ca46ec2411d58239ca"
+            ["darwin-arm64"] = "d595961e563fcae057d4a0fb992f175a54d97fcc4a14dc2d474d92ddeea3b9f8",
+            ["darwin-x64"] = "6f03c1b48ddbe1b129a6f8038be08e0899f05f17185b4d3e4350180ab669a7f3",
+            ["win-x64"] = "ca2742695be8de44027d71b3f53a4bdb36009b95575fe1ae6f7f0b5ce091cb88",
+            ["linux-x64"] = "6223aad1a81f9d1e7b682c59d12e2de233f7b4c37475cd40d1c89c42b737ffa8"
         };
 
         // 예상 파일 크기 (bytes) - 불완전한 다운로드 감지용

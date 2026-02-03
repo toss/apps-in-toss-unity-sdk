@@ -16,7 +16,7 @@ namespace AppsInToss.Editor
         /// pnpm 버전 (내장 Node.js에 설치할 버전)
         /// 최신 버전 강제 방지를 위해 고정
         /// </summary>
-        public const string PNPM_VERSION = "10.20.0";
+        public const string PNPM_VERSION = "10.28.0";
 
         /// <summary>
         /// 표준 실행 파일 경로 (플랫폼별)

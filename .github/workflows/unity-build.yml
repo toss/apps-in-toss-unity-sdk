@@ -480,6 +480,77 @@ jobs:
           Write-Host "Lock acquired after ${waitSeconds}s"
 
       # =====================================================
+      # Licensing Client 프로세스 정리 (다른 Unity 버전 충돌 방지)
+      # 같은 머신에서 다른 Unity 버전의 Licensing Client가 실행 중이면
+      # 프로토콜 버전 불일치(505)로 빌드가 실패합니다.
+      # =====================================================
+      - name: Cleanup Licensing Client (macOS)
+        if: inputs.os == 'macos' && inputs.run-build
+        run: |
+          CURRENT_VERSION="${{ steps.unity.outputs.UNITY_VERSION }}"
+          echo "Current Unity version: ${CURRENT_VERSION}"
+          echo "Checking for Licensing Client processes from other Unity versions..."
+
+          KILLED=0
+          while IFS= read -r line; do
+            [ -z "$line" ] && continue
+            PID=$(echo "$line" | awk '{print $1}')
+            CMD=$(echo "$line" | awk '{$1=""; print $0}' | xargs)
+
+            # 현재 버전의 Licensing Client는 유지
+            if echo "$CMD" | grep -q "${CURRENT_VERSION}"; then
+              echo "  Keeping (same version): PID=$PID"
+              continue
+            fi
+
+            echo "  Killing (different version): PID=$PID CMD=$CMD"
+            kill "$PID" 2>/dev/null || true
+            KILLED=$((KILLED + 1))
+          done < <(pgrep -af "Unity.Licensing.Client" 2>/dev/null || true)
+
+          if [ $KILLED -gt 0 ]; then
+            echo "::warning::Killed $KILLED Licensing Client process(es) from other Unity versions"
+            sleep 2  # 프로세스 종료 대기
+          else
+            echo "No conflicting Licensing Client processes found"
+          fi
+          echo "Licensing Client cleanup complete"
+
+      - name: Cleanup Licensing Client (Windows)
+        if: inputs.os == 'windows' && inputs.run-build
+        shell: powershell
+        run: |
+          $currentVersion = "${{ steps.unity.outputs.UNITY_VERSION }}"
+          Write-Host "Current Unity version: $currentVersion"
+          Write-Host "Checking for Licensing Client processes from other Unity versions..."
+
+          $killed = 0
+          $processes = Get-CimInstance Win32_Process -Filter "Name = 'Unity.Licensing.Client.exe'" -ErrorAction SilentlyContinue
+
+          foreach ($proc in $processes) {
+            $cmdLine = $proc.CommandLine
+            if (-not $cmdLine) { continue }
+
+            # 현재 버전의 Licensing Client는 유지
+            if ($cmdLine -match [regex]::Escape($currentVersion)) {
+              Write-Host "  Keeping (same version): PID=$($proc.ProcessId)"
+              continue
+            }
+
+            Write-Host "  Killing (different version): PID=$($proc.ProcessId) CMD=$cmdLine"
+            Stop-Process -Id $proc.ProcessId -Force -ErrorAction SilentlyContinue
+            $killed++
+          }
+
+          if ($killed -gt 0) {
+            Write-Host "::warning::Killed $killed Licensing Client process(es) from other Unity versions"
+            Start-Sleep -Seconds 2  # 프로세스 종료 대기
+          } else {
+            Write-Host "No conflicting Licensing Client processes found"
+          }
+          Write-Host "Licensing Client cleanup complete"
+
+      # =====================================================
       # Unity WebGL 빌드
       # =====================================================
       - name: Build Unity WebGL (macOS)
@@ -495,6 +566,7 @@ jobs:
           command: |
             UNITY_PATH="${{ steps.unity.outputs.UNITY_PATH }}"
             PROJECT_PATH="${{ github.workspace }}/Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}"
+            LOG_FILE="/tmp/unity-build-${{ inputs.unity-version }}.log"
 
             echo "Unity Version: ${{ steps.unity.outputs.UNITY_VERSION }}"
             echo "Unity Path: ${UNITY_PATH}"
@@ -504,7 +576,26 @@ jobs:
               -projectPath "$PROJECT_PATH" \
               -executeMethod E2EBuildRunner.CommandLineBuild \
               -buildTarget WebGL \
-              -logFile -
+              -logFile - 2>&1 | tee "$LOG_FILE"
+            EXIT_CODE=${PIPESTATUS[0]}
+
+            echo "Unity exited with code: $EXIT_CODE"
+
+            if [ $EXIT_CODE -ne 0 ]; then
+              # 라이선스 관련 오류 감지 (retry 액션이 자동 재시도)
+              if grep -qE "No valid Unity Editor license found|Unsupported protocol version|ResponseCode: 505|LicensingClient has failed validation" "$LOG_FILE" 2>/dev/null; then
+                echo "::warning::Unity license conflict detected, triggering retry..."
+                exit 1
+              fi
+              if [ $EXIT_CODE -eq 199 ]; then
+                echo "::warning::Unity license error (exit code 199), triggering retry..."
+                exit 1
+              fi
+              echo "::error::Unity build failed with exit code: $EXIT_CODE"
+              exit $EXIT_CODE
+            fi
+
+            echo "Unity build completed successfully (exit code: $EXIT_CODE)"
 
       - name: Build Unity WebGL (Windows)
         if: inputs.os == 'windows' && inputs.run-build
@@ -550,6 +641,9 @@ jobs:
               }
             }
 
+            # WaitForExit()으로 ExitCode 설정 보장 (HasExited 후에도 즉시 설정되지 않을 수 있음)
+            $unityProcess.WaitForExit()
+
             if (Test-Path $logFile) {
               $content = Get-Content $logFile -Raw -ErrorAction SilentlyContinue
               if ($content -and $content.Length -gt $lastSize) {
@@ -558,14 +652,33 @@ jobs:
             }
 
             $exitCode = $unityProcess.ExitCode
-            if ($null -ne $exitCode -and $exitCode -ne 0) {
-              # 라이선스 실패 감지 - exit code != 0일 때만 검사 (retry 액션이 자동 재시도)
+            Write-Host "Unity exited with code: $exitCode"
+
+            # ExitCode가 null인 경우 방어 (빌드 출력 존재 여부로 판단)
+            if ($null -eq $exitCode) {
+              Write-Host "::warning::ExitCode is null, checking build output..."
+              $distPath = "${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ inputs.unity-version }}\ait-build\dist"
+              if (Test-Path $distPath) {
+                Write-Host "Build output exists, treating as success"
+                $exitCode = 0
+              } else {
+                Write-Host "::error::Build output missing and ExitCode null, treating as failure"
+                $exitCode = 1
+              }
+            }
+
+            if ($exitCode -ne 0) {
+              # 라이선스 관련 오류 감지 (retry 액션이 자동 재시도)
               if (Test-Path $logFile) {
                 $logContent = Get-Content $logFile -Raw -ErrorAction SilentlyContinue
-                if ($logContent -match "No valid Unity Editor license found") {
-                  Write-Host "::warning::Unity license activation failed, triggering retry..."
+                if ($logContent -match "No valid Unity Editor license found|Unsupported protocol version|ResponseCode: 505|LicensingClient has failed validation") {
+                  Write-Host "::warning::Unity license conflict detected, triggering retry..."
                   exit 1
                 }
+              }
+              if ($exitCode -eq 199) {
+                Write-Host "::warning::Unity license error (exit code 199), triggering retry..."
+                exit 1
               }
               Write-Host "::error::Unity build failed with exit code: $exitCode"
               exit $exitCode

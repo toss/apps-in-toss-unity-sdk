@@ -138,6 +138,13 @@ namespace AppsInToss.Editor
                 return AITConvertCore.AITExportError.FAIL_NPM_BUILD;
             }
 
+            // node_modules 무결성 검증 (web-framework 버전 일치 확인)
+            if (!ValidateNodeModulesIntegrity(buildProjectPath))
+            {
+                Debug.Log("[AIT] node_modules 무결성 검증 실패. 정리 후 재설치합니다.");
+                CleanNodeModules(buildProjectPath);
+            }
+
             // 먼저 --frozen-lockfile로 시도, 실패하면 lockfile 없이 재시도
             // (사용자가 package.json에 새 패키지 추가 시 lockfile이 outdated 될 수 있음)
             var installResult = AITNpmRunner.RunNpmCommandWithCache(buildProjectPath, pnpmPath, "install --frozen-lockfile", localCachePath, "pnpm install 실행 중...");
@@ -152,8 +159,16 @@ namespace AppsInToss.Editor
 
                 if (installResult != AITConvertCore.AITExportError.SUCCEED)
                 {
-                    Debug.LogError("[AIT] pnpm install 실패");
-                    return installResult;
+                    // 최종 재시도: node_modules 정리 후 clean install
+                    Debug.LogWarning("[AIT] pnpm install 재시도 실패. node_modules 정리 후 한 번 더 시도합니다...");
+                    CleanNodeModules(buildProjectPath);
+
+                    installResult = AITNpmRunner.RunNpmCommandWithCache(buildProjectPath, pnpmPath, "install --no-frozen-lockfile", localCachePath, "pnpm install (clean 재시도)...");
+                    if (installResult != AITConvertCore.AITExportError.SUCCEED)
+                    {
+                        Debug.LogError("[AIT] pnpm install 실패 (clean 재시도 후에도 실패)");
+                        return installResult;
+                    }
                 }
 
                 Debug.Log("[AIT] ✓ 새 패키지 설치 및 lockfile 갱신 완료");
@@ -166,8 +181,27 @@ namespace AppsInToss.Editor
 
             if (buildResult != AITConvertCore.AITExportError.SUCCEED)
             {
-                Debug.LogError("[AIT] granite build 실패");
-                return buildResult;
+                // MODULE_NOT_FOUND 등 런타임 에러 대응: node_modules 정리 후 install부터 재시도
+                Debug.LogWarning("[AIT] granite build 실패. node_modules 정리 후 install부터 재시도합니다...");
+                CleanNodeModules(buildProjectPath);
+
+                // install부터 다시 실행
+                var retryInstallResult = AITNpmRunner.RunNpmCommandWithCache(buildProjectPath, pnpmPath, "install --no-frozen-lockfile", localCachePath, "pnpm install (빌드 실패 후 재시도)...");
+                if (retryInstallResult != AITConvertCore.AITExportError.SUCCEED)
+                {
+                    Debug.LogError("[AIT] granite build 실패 후 pnpm install 재시도도 실패");
+                    return retryInstallResult;
+                }
+
+                // build 재시도
+                buildResult = AITNpmRunner.RunNpmCommandWithCache(buildProjectPath, pnpmPath, "run build", localCachePath, "granite build (재시도)...");
+                if (buildResult != AITConvertCore.AITExportError.SUCCEED)
+                {
+                    Debug.LogError("[AIT] granite build 재시도도 실패");
+                    return buildResult;
+                }
+
+                Debug.Log("[AIT] ✓ granite build 재시도 성공");
             }
 
             string distPath = Path.Combine(buildProjectPath, "dist");
@@ -1073,6 +1107,13 @@ namespace AppsInToss.Editor
             string localCachePath = Path.Combine(buildProjectPath, ".npm-cache");
             var finalProfile = profile; // 클로저용
 
+            // node_modules 무결성 검증 (web-framework 버전 일치 확인)
+            if (!ValidateNodeModulesIntegrity(buildProjectPath))
+            {
+                Debug.Log("[AIT] node_modules 무결성 검증 실패. 정리 후 재설치합니다.");
+                CleanNodeModules(buildProjectPath);
+            }
+
             // Step 3: pnpm install (비동기)
             onProgress?.Invoke(AITConvertCore.BuildPhase.PnpmInstall, 0.2f, "pnpm install 실행 중...");
             Debug.Log("[AIT] Step 3/3: pnpm install & build 실행 중...");
@@ -1108,22 +1149,78 @@ namespace AppsInToss.Editor
                         localCachePath,
                         onComplete: (buildResult) =>
                         {
-                            if (buildResult != AITConvertCore.AITExportError.SUCCEED)
+                            if (buildResult == AITConvertCore.AITExportError.SUCCEED)
                             {
-                                Debug.LogError("[AIT] granite build 실패");
-                                onComplete?.Invoke(buildResult);
+                                string distPath = Path.Combine(buildProjectPath, "dist");
+                                AITBuildValidator.PrintBuildReport(buildProjectPath, distPath);
+                                onProgress?.Invoke(AITConvertCore.BuildPhase.Complete, 1f, "패키징 완료!");
+                                Debug.Log($"[AIT] ✓ 비동기 패키징 완료: {distPath}");
+                                onComplete?.Invoke(AITConvertCore.AITExportError.SUCCEED);
                                 return;
                             }
 
-                            string distPath = Path.Combine(buildProjectPath, "dist");
+                            // 취소 확인
+                            if (cancellationToken.IsCancellationRequested)
+                            {
+                                onComplete?.Invoke(AITConvertCore.AITExportError.CANCELLED);
+                                return;
+                            }
 
-                            // 빌드 완료 리포트
-                            AITBuildValidator.PrintBuildReport(buildProjectPath, distPath);
+                            // MODULE_NOT_FOUND 등 런타임 에러 대응: node_modules 정리 후 install부터 재시도
+                            Debug.LogWarning("[AIT] granite build 실패. node_modules 정리 후 install부터 재시도합니다...");
+                            CleanNodeModules(buildProjectPath);
 
-                            onProgress?.Invoke(AITConvertCore.BuildPhase.Complete, 1f, "패키징 완료!");
-                            Debug.Log($"[AIT] ✓ 비동기 패키징 완료: {distPath}");
+                            onProgress?.Invoke(AITConvertCore.BuildPhase.PnpmInstall, 0.5f, "빌드 실패 후 재설치 중...");
 
-                            onComplete?.Invoke(AITConvertCore.AITExportError.SUCCEED);
+                            // install 재시도
+                            AITNpmRunner.RunNpmCommandWithCacheAsync(
+                                buildProjectPath,
+                                pnpmPath,
+                                "install --no-frozen-lockfile",
+                                localCachePath,
+                                onComplete: (retryInstallResult) =>
+                                {
+                                    if (retryInstallResult != AITConvertCore.AITExportError.SUCCEED)
+                                    {
+                                        Debug.LogError("[AIT] granite build 실패 후 pnpm install 재시도도 실패");
+                                        onComplete?.Invoke(retryInstallResult);
+                                        return;
+                                    }
+
+                                    // build 재시도
+                                    onProgress?.Invoke(AITConvertCore.BuildPhase.GraniteBuild, 0.7f, "granite build 재시도 중...");
+
+                                    AITNpmRunner.RunNpmCommandWithCacheAsync(
+                                        buildProjectPath,
+                                        pnpmPath,
+                                        "run build",
+                                        localCachePath,
+                                        onComplete: (retryBuildResult) =>
+                                        {
+                                            if (retryBuildResult == AITConvertCore.AITExportError.SUCCEED)
+                                            {
+                                                string distPath2 = Path.Combine(buildProjectPath, "dist");
+                                                AITBuildValidator.PrintBuildReport(buildProjectPath, distPath2);
+                                                onProgress?.Invoke(AITConvertCore.BuildPhase.Complete, 1f, "패키징 완료!");
+                                                Debug.Log($"[AIT] ✓ 비동기 패키징 완료 (재시도 성공): {distPath2}");
+                                            }
+                                            else
+                                            {
+                                                Debug.LogError("[AIT] granite build 재시도도 실패");
+                                            }
+                                            onComplete?.Invoke(retryBuildResult);
+                                        },
+                                        onOutputReceived: (line2) =>
+                                        {
+                                            onProgress?.Invoke(AITConvertCore.BuildPhase.GraniteBuild, 0.85f, line2);
+                                        }
+                                    );
+                                },
+                                onOutputReceived: (line2) =>
+                                {
+                                    onProgress?.Invoke(AITConvertCore.BuildPhase.PnpmInstall, 0.55f, line2);
+                                }
+                            );
                         },
                         onOutputReceived: (line) =>
                         {
@@ -1132,6 +1229,129 @@ namespace AppsInToss.Editor
                     );
                 }
             );
+        }
+
+        /// <summary>
+        /// node_modules 무결성 검증
+        /// package.json의 @apps-in-toss/web-framework 버전과 node_modules 내 설치 버전이 일치하는지 확인합니다.
+        /// pnpm의 node_modules/.pnpm/@apps-in-toss+web-framework@{version} 디렉토리 존재 여부로 판단합니다.
+        /// </summary>
+        /// <param name="buildProjectPath">빌드 프로젝트 경로</param>
+        /// <returns>true: 무결성 확인됨 또는 node_modules 없음, false: 버전 불일치로 정리 필요</returns>
+        private static bool ValidateNodeModulesIntegrity(string buildProjectPath)
+        {
+            string nodeModulesPath = Path.Combine(buildProjectPath, "node_modules");
+            if (!Directory.Exists(nodeModulesPath))
+            {
+                // node_modules가 없으면 검증 불필요 (install 시 새로 생성됨)
+                return true;
+            }
+
+            // package.json에서 web-framework 버전 읽기
+            string packageJsonPath = Path.Combine(buildProjectPath, "package.json");
+            if (!File.Exists(packageJsonPath))
+            {
+                return true;
+            }
+
+            try
+            {
+                string packageJsonContent = File.ReadAllText(packageJsonPath);
+                var packageJson = MiniJson.Deserialize(packageJsonContent) as Dictionary<string, object>;
+                if (packageJson == null) return true;
+
+                var dependencies = packageJson.ContainsKey("dependencies")
+                    ? packageJson["dependencies"] as Dictionary<string, object>
+                    : null;
+                if (dependencies == null) return true;
+
+                if (!dependencies.ContainsKey("@apps-in-toss/web-framework")) return true;
+
+                string expectedVersion = dependencies["@apps-in-toss/web-framework"] as string;
+                if (string.IsNullOrEmpty(expectedVersion)) return true;
+
+                // ^ 또는 ~ 접두사 제거 (정확한 버전만 비교)
+                expectedVersion = expectedVersion.TrimStart('^', '~');
+
+                // pnpm의 node_modules/.pnpm/@apps-in-toss+web-framework@{version} 확인
+                string pnpmDir = Path.Combine(nodeModulesPath, ".pnpm");
+                if (!Directory.Exists(pnpmDir))
+                {
+                    // .pnpm 디렉토리가 없으면 오염된 상태
+                    Debug.LogWarning("[AIT] node_modules/.pnpm 디렉토리가 없습니다. node_modules를 정리합니다.");
+                    return false;
+                }
+
+                // @apps-in-toss+web-framework@{version}으로 시작하는 디렉토리 검색
+                string expectedDirPrefix = $"@apps-in-toss+web-framework@{expectedVersion}";
+                string[] matchingDirs = Directory.GetDirectories(pnpmDir, $"{expectedDirPrefix}*");
+
+                if (matchingDirs.Length > 0)
+                {
+                    Debug.Log($"[AIT] ✓ node_modules 무결성 확인: web-framework@{expectedVersion}");
+                    return true;
+                }
+
+                // 현재 설치된 버전 찾기 (로그용)
+                string[] installedDirs = Directory.GetDirectories(pnpmDir, "@apps-in-toss+web-framework@*");
+                if (installedDirs.Length > 0)
+                {
+                    string installedDirName = Path.GetFileName(installedDirs[0]);
+                    Debug.LogWarning($"[AIT] web-framework 버전 불일치 감지!");
+                    Debug.LogWarning($"[AIT]   기대 버전: {expectedVersion}");
+                    Debug.LogWarning($"[AIT]   설치된 버전: {installedDirName}");
+                    Debug.LogWarning($"[AIT]   node_modules를 정리하고 재설치합니다.");
+                }
+                else
+                {
+                    Debug.LogWarning($"[AIT] web-framework가 node_modules에 없습니다. node_modules를 정리합니다.");
+                }
+
+                return false;
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[AIT] node_modules 무결성 검증 중 오류 (무시됨): {e.Message}");
+                return true; // 검증 실패 시 기존 동작 유지
+            }
+        }
+
+        /// <summary>
+        /// node_modules 및 캐시 정리
+        /// </summary>
+        /// <param name="buildProjectPath">빌드 프로젝트 경로</param>
+        private static void CleanNodeModules(string buildProjectPath)
+        {
+            string nodeModulesPath = Path.Combine(buildProjectPath, "node_modules");
+            string npmCachePath = Path.Combine(buildProjectPath, ".npm-cache");
+
+            if (Directory.Exists(nodeModulesPath))
+            {
+                Debug.Log("[AIT] node_modules 삭제 중...");
+                try
+                {
+                    AITFileUtils.DeleteDirectory(nodeModulesPath);
+                    Debug.Log("[AIT] ✓ node_modules 삭제 완료");
+                }
+                catch (Exception e)
+                {
+                    Debug.LogWarning($"[AIT] node_modules 삭제 실패: {e.Message}");
+                }
+            }
+
+            if (Directory.Exists(npmCachePath))
+            {
+                Debug.Log("[AIT] .npm-cache 삭제 중...");
+                try
+                {
+                    AITFileUtils.DeleteDirectory(npmCachePath);
+                    Debug.Log("[AIT] ✓ .npm-cache 삭제 완료");
+                }
+                catch (Exception e)
+                {
+                    Debug.LogWarning($"[AIT] .npm-cache 삭제 실패: {e.Message}");
+                }
+            }
         }
 
         /// <summary>
@@ -1241,12 +1461,40 @@ namespace AppsInToss.Editor
                             if (retryResult == AITConvertCore.AITExportError.SUCCEED)
                             {
                                 Debug.Log("[AIT] ✓ 새 패키지 설치 및 lockfile 갱신 완료");
+                                onComplete?.Invoke(retryResult);
+                                return;
                             }
-                            else
+
+                            // 취소 확인
+                            if (cancellationToken.IsCancellationRequested)
                             {
-                                Debug.LogError("[AIT] pnpm install 실패");
+                                onComplete?.Invoke(AITConvertCore.AITExportError.CANCELLED);
+                                return;
                             }
-                            onComplete?.Invoke(retryResult);
+
+                            // 최종 재시도: node_modules 정리 후 clean install
+                            Debug.LogWarning("[AIT] pnpm install 재시도 실패. node_modules 정리 후 한 번 더 시도합니다...");
+                            CleanNodeModules(buildProjectPath);
+
+                            AITNpmRunner.RunNpmCommandWithCacheAsync(
+                                buildProjectPath,
+                                pnpmPath,
+                                "install --no-frozen-lockfile",
+                                localCachePath,
+                                onComplete: (cleanRetryResult) =>
+                                {
+                                    if (cleanRetryResult == AITConvertCore.AITExportError.SUCCEED)
+                                    {
+                                        Debug.Log("[AIT] ✓ clean install 성공");
+                                    }
+                                    else
+                                    {
+                                        Debug.LogError("[AIT] pnpm install 실패 (clean 재시도 후에도 실패)");
+                                    }
+                                    onComplete?.Invoke(cleanRetryResult);
+                                },
+                                onOutputReceived: onOutputReceived
+                            );
                         },
                         onOutputReceived: onOutputReceived
                     );

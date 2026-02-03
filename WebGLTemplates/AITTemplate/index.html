@@ -1,0 +1,2359 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <title>Unity WebGL Player | %UNITY_WEB_NAME%</title>
+    <link rel="shortcut icon" href="TemplateData/favicon.ico">
+    <link rel="stylesheet" href="TemplateData/style.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+
+    <!-- Unity Resource Preloading (SDK Auto-generated) -->
+    %AIT_PRELOAD_TAGS%
+
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #ffffff;
+            font-family: 'Noto Sans KR', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            overflow: hidden;
+        }
+        
+        #unity-container {
+            position: fixed;
+            width: 100%;
+            height: 100%;
+            left: 0;
+            top: 0;
+        }
+
+        #unity-canvas {
+            width: 100%;
+            height: 100%;
+            background: #231F20;
+        }
+        
+        #unity-loading-bar {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            display: none;
+        }
+        
+        #unity-logo {
+            width: 154px;
+            height: 130px;
+            background: url('TemplateData/unity-logo-dark.png') no-repeat center;
+        }
+        
+        #unity-progress-bar-empty {
+            width: 141px;
+            height: 18px;
+            margin-top: 10px;
+            margin-left: 6.5px;
+            background: url('TemplateData/progress-bar-empty-dark.png') no-repeat center;
+        }
+        
+        #unity-progress-bar-full {
+            width: 0%;
+            height: 18px;
+            margin-top: 10px;
+            background: url('TemplateData/progress-bar-full-dark.png') no-repeat center;
+        }
+        
+        #unity-footer {
+            display: none;  /* 전체 화면 모드에서는 footer 숨김 */
+        }
+        
+        #unity-webgl-logo {
+            float: left;
+            width: 38px;
+            height: 38px;
+            background: url('TemplateData/webgl-logo.png') no-repeat center;
+        }
+        
+        #unity-build-title {
+            float: right;
+            margin-right: 10px;
+            line-height: 38px;
+            font-family: arial;
+            font-size: 18px;
+        }
+        
+        #unity-fullscreen-button {
+            cursor: pointer;
+            float: right;
+            width: 38px;
+            height: 38px;
+            background: url('TemplateData/fullscreen-button.png') no-repeat center;
+        }
+        
+        #unity-warning {
+            position: absolute;
+            left: 50%;
+            top: 5%;
+            transform: translate(-50%, 0);
+            background: white;
+            border: 2px solid red;
+            padding: 5px;
+            display: none;
+        }
+
+        /* Apps in Toss Toast */
+        .ait-toast {
+            position: fixed;
+            z-index: 9999;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 12px 20px;
+            border-radius: 20px;
+            font-size: 14px;
+            max-width: 300px;
+            text-align: center;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        
+        .ait-toast.show {
+            opacity: 1;
+        }
+        
+        .ait-toast.top {
+            top: 50px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+        
+        .ait-toast.center {
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+        
+        .ait-toast.bottom {
+            bottom: 50px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        /* Apps in Toss Modal */
+        .ait-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 10000;
+            background: rgba(0, 0, 0, 0.5);
+            display: none;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .ait-modal-content {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            max-width: 320px;
+            width: 90%;
+            text-align: center;
+        }
+        
+        .ait-modal-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #333;
+        }
+        
+        .ait-modal-message {
+            font-size: 14px;
+            line-height: 1.4;
+            margin-bottom: 20px;
+            color: #666;
+        }
+        
+        .ait-modal-buttons {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .ait-modal-button {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .ait-modal-button.primary {
+            background: #3182ce;
+            color: white;
+        }
+        
+        .ait-modal-button.primary:hover {
+            background: #2c5aa0;
+        }
+        
+        .ait-modal-button.secondary {
+            background: #e2e8f0;
+            color: #4a5568;
+        }
+        
+        .ait-modal-button.secondary:hover {
+            background: #cbd5e0;
+        }
+    </style>
+
+    <!-- USER_HEAD_START - 이 영역에 사용자 커스텀 스크립트/스타일을 추가하세요 -->
+    <!-- 예: <script src="https://cdn.example.com/library.js"></script> -->
+    <!-- 예: <link rel="stylesheet" href="custom.css"> -->
+    <!-- USER_HEAD_END -->
+</head>
+<body>
+    <!-- 로딩 화면 래퍼 (SDK가 이 래퍼를 통해 로딩 화면을 제어) -->
+    <div id="ait-loading-wrapper">
+        <!-- loading.html 내용이 여기에 삽입됨 -->
+        %AIT_LOADING_SCREEN%
+    </div>
+
+    <div id="unity-container" class="unity-desktop">
+        <canvas id="unity-canvas" width="%UNITY_WIDTH%" height="%UNITY_HEIGHT%" tabindex="-1"></canvas>
+        <div id="unity-loading-bar">
+            <div id="unity-logo"></div>
+            <div id="unity-progress-bar-empty">
+                <div id="unity-progress-bar-full"></div>
+            </div>
+        </div>
+        <div id="unity-warning"> </div>
+        <div id="unity-footer">
+            <div id="unity-webgl-logo"></div>
+            <div id="unity-build-title">%UNITY_WEB_NAME%</div>
+            <div id="unity-fullscreen-button" onclick="unityInstance.SetFullscreen(1)"></div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="ait-toast-container"></div>
+
+    <!-- Modal Container -->
+    <div id="ait-modal" class="ait-modal">
+        <div class="ait-modal-content">
+            <div id="ait-modal-title" class="ait-modal-title"></div>
+            <div id="ait-modal-message" class="ait-modal-message"></div>
+            <div class="ait-modal-buttons">
+                <button id="ait-modal-cancel" class="ait-modal-button secondary" style="display: none;">취소</button>
+                <button id="ait-modal-confirm" class="ait-modal-button primary">확인</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Apps in Toss Unity Bridge (Unity 로더보다 먼저!) -->
+    <!-- Legacy bridge for compatibility -->
+    <script src="Runtime/appsintoss-unity-bridge.js"></script>
+    <!-- Web Framework Bridge - @apps-in-toss/web-framework 함수를 window.AppsInToss에 노출 -->
+    <script type="module" src="./unity-bridge.ts"></script>
+
+    <!-- AITLoadingLogger: 로딩 이벤트 로깅 및 파일별 다운로드 추적 -->
+    <script>
+        window.AITLoadingLogger = {
+            startTime: performance.now(),
+            events: {},
+            files: {},
+            preloadMetrics: {},
+            progressCallbacks: [],
+            completeCallbacks: [],
+            errorCallbacks: [],
+            fileProgressCallbacks: [],
+            _isComplete: false,
+
+            // 이벤트 기록
+            logEvent: function(eventName, data) {
+                var now = performance.now();
+                var elapsed = now - this.startTime;
+                this.events[eventName] = {
+                    time: now,
+                    elapsed: elapsed,
+                    data: data || null
+                };
+                console.log('[AIT Loading] ' + eventName + ' @ ' + elapsed.toFixed(0) + 'ms');
+            },
+
+            // fetch 래핑으로 실시간 다운로드 속도 추적
+            wrapFetch: function() {
+                var originalFetch = window.fetch;
+                var self = this;
+
+                window.fetch = function(url, options) {
+                    var urlStr = typeof url === 'string' ? url : url.url || '';
+                    var fileName = urlStr.split('/').pop().split('?')[0];
+                    var isUnityFile = /\.(loader\.js|framework\.js|wasm|data)(\.(gz|br|unityweb))?$/i.test(fileName);
+
+                    if (!isUnityFile) {
+                        return originalFetch.call(window, url, options);
+                    }
+
+                    // 파일 압축 형식 감지
+                    var isBrotli = /\.br$/i.test(fileName);
+                    var isGzip = /\.gz$/i.test(fileName);
+                    var isUnityweb = /\.unityweb$/i.test(fileName);
+                    var compressionType = isBrotli ? 'brotli' : (isGzip ? 'gzip' : (isUnityweb ? 'unityweb' : 'none'));
+
+                    var fileInfo = {
+                        name: fileName,
+                        url: urlStr,
+                        size: 0,
+                        loaded: 0,
+                        startTime: performance.now(),
+                        responseEnd: 0,
+                        duration: 0,
+                        avgSpeed: 0,
+                        peakSpeed: 0,
+                        minSpeed: Infinity,
+                        speedHistory: [],
+                        lastLoaded: 0,
+                        lastTime: performance.now(),
+                        // Decompression 관련 필드
+                        compressionType: compressionType,
+                        contentEncoding: null,
+                        decompressionFallback: false
+                    };
+                    self.files[fileName] = fileInfo;
+                    self.logEvent('file_start_' + fileName.replace(/\./g, '_'));
+
+                    return originalFetch.call(window, url, options).then(function(response) {
+                        var contentLength = response.headers.get('content-length');
+                        var contentEncoding = response.headers.get('content-encoding');
+                        fileInfo.size = parseInt(contentLength) || 0;
+                        fileInfo.contentEncoding = contentEncoding;
+
+                        // Decompression fallback 감지
+                        // 압축 파일인데 Content-Encoding 헤더가 없으면 JS fallback 발생
+                        var needsDecompression = isBrotli || isGzip || isUnityweb;
+                        if (needsDecompression && !contentEncoding) {
+                            fileInfo.decompressionFallback = true;
+                            console.warn('[AIT Loading] Decompression fallback detected for:', fileName,
+                                '(compression:', compressionType, ', Content-Encoding:', contentEncoding, ')');
+                        }
+
+                        // ReadableStream 지원 확인
+                        if (!response.body || !response.body.getReader) {
+                            fileInfo.responseEnd = performance.now();
+                            fileInfo.duration = fileInfo.responseEnd - fileInfo.startTime;
+                            return response;
+                        }
+
+                        var reader = response.body.getReader();
+                        var chunks = [];
+
+                        function pump() {
+                            return reader.read().then(function(result) {
+                                if (result.done) {
+                                    fileInfo.responseEnd = performance.now();
+                                    fileInfo.duration = fileInfo.responseEnd - fileInfo.startTime;
+                                    fileInfo.avgSpeed = fileInfo.loaded > 0
+                                        ? (fileInfo.loaded / 1024) / (fileInfo.duration / 1000)
+                                        : 0;
+
+                                    // Preload backfill: Resource Timing API에서 실제 네트워크 타이밍 가져오기
+                                    // preloadMetrics (PerformanceObserver) 또는 getEntriesByName (동기 fallback) 사용
+                                    var preloadData = self.preloadMetrics[fileName];
+                                    if (!preloadData && performance.getEntriesByName) {
+                                        var entries = performance.getEntriesByName(fileInfo.url, 'resource');
+                                        if (entries.length === 0) {
+                                            // 절대 URL로도 시도
+                                            try {
+                                                var absUrl = new URL(fileInfo.url, location.href).href;
+                                                entries = performance.getEntriesByName(absUrl, 'resource');
+                                            } catch (e) {}
+                                        }
+                                        for (var ei = 0; ei < entries.length; ei++) {
+                                            if (entries[ei].initiatorType === 'link') {
+                                                preloadData = {
+                                                    startTime: entries[ei].startTime,
+                                                    responseEnd: entries[ei].responseEnd,
+                                                    duration: entries[ei].duration,
+                                                    transferSize: entries[ei].transferSize,
+                                                    initiatorType: entries[ei].initiatorType
+                                                };
+                                                self.preloadMetrics[fileName] = preloadData;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                    if (preloadData && preloadData.initiatorType === 'link') {
+                                        fileInfo.startTime = preloadData.startTime;
+                                        fileInfo.duration = preloadData.duration;
+                                        fileInfo.responseEnd = preloadData.responseEnd;
+                                        fileInfo.size = preloadData.transferSize || fileInfo.size;
+                                        fileInfo.preloaded = true;
+                                        if (preloadData.duration > 0 && preloadData.transferSize > 0) {
+                                            fileInfo.avgSpeed = (preloadData.transferSize / 1024) / (preloadData.duration / 1000);
+                                        }
+                                    }
+
+                                    fileInfo.minSpeed = fileInfo.minSpeed === Infinity ? 0 : fileInfo.minSpeed;
+                                    self.logEvent('file_complete_' + fileName.replace(/\./g, '_'), {
+                                        size: fileInfo.loaded,
+                                        duration: fileInfo.duration,
+                                        avgSpeed: fileInfo.avgSpeed,
+                                        compressionType: fileInfo.compressionType,
+                                        contentEncoding: fileInfo.contentEncoding,
+                                        decompressionFallback: fileInfo.decompressionFallback
+                                    });
+
+                                    // 스트림 재조립
+                                    var blob = new Blob(chunks);
+                                    return new Response(blob, {
+                                        headers: response.headers,
+                                        status: response.status,
+                                        statusText: response.statusText
+                                    });
+                                }
+
+                                chunks.push(result.value);
+                                fileInfo.loaded += result.value.length;
+
+                                // 속도 계산 (1초 간격)
+                                var now = performance.now();
+                                var timeDelta = now - fileInfo.lastTime;
+                                if (timeDelta >= 1000) {
+                                    var bytesDelta = fileInfo.loaded - fileInfo.lastLoaded;
+                                    var speed = (bytesDelta / 1024) / (timeDelta / 1000);
+
+                                    fileInfo.speedHistory.push(Math.round(speed));
+                                    fileInfo.peakSpeed = Math.max(fileInfo.peakSpeed, speed);
+                                    fileInfo.minSpeed = Math.min(fileInfo.minSpeed, speed);
+
+                                    fileInfo.lastLoaded = fileInfo.loaded;
+                                    fileInfo.lastTime = now;
+
+                                    // 파일 진행 콜백 호출
+                                    var percent = fileInfo.size > 0 ? (fileInfo.loaded / fileInfo.size) * 100 : 0;
+                                    self.notifyFileProgress({
+                                        name: fileName,
+                                        url: urlStr,
+                                        loaded: fileInfo.loaded,
+                                        total: fileInfo.size,
+                                        percent: percent,
+                                        speed: speed
+                                    });
+                                }
+
+                                return pump();
+                            });
+                        }
+
+                        return pump();
+                    }).catch(function(err) {
+                        self.logEvent('file_error_' + fileName.replace(/\./g, '_'), { error: err.message });
+                        throw err;
+                    });
+                };
+            },
+
+            // 파일 진행 콜백 통지
+            notifyFileProgress: function(fileInfo) {
+                for (var i = 0; i < this.fileProgressCallbacks.length; i++) {
+                    try {
+                        this.fileProgressCallbacks[i](fileInfo);
+                    } catch (e) {
+                        console.error('[AIT Loading] File progress callback error:', e);
+                    }
+                }
+            },
+
+            // 진행률 콜백 통지
+            notifyProgress: function(progress) {
+                for (var i = 0; i < this.progressCallbacks.length; i++) {
+                    try {
+                        this.progressCallbacks[i](progress);
+                    } catch (e) {
+                        console.error('[AIT Loading] Progress callback error:', e);
+                    }
+                }
+            },
+
+            // 완료 콜백 통지
+            notifyComplete: function() {
+                if (this._isComplete) return;
+                this._isComplete = true;
+                for (var i = 0; i < this.completeCallbacks.length; i++) {
+                    try {
+                        this.completeCallbacks[i]();
+                    } catch (e) {
+                        console.error('[AIT Loading] Complete callback error:', e);
+                    }
+                }
+            },
+
+            // 에러 콜백 통지
+            notifyError: function(error) {
+                for (var i = 0; i < this.errorCallbacks.length; i++) {
+                    try {
+                        this.errorCallbacks[i](error);
+                    } catch (e) {
+                        console.error('[AIT Loading] Error callback error:', e);
+                    }
+                }
+            },
+
+            // 총 로딩 시간 반환
+            getTotalTime: function() {
+                var completeEvent = this.events['loading_complete'];
+                if (completeEvent) {
+                    return Math.round(completeEvent.elapsed);
+                }
+                return Math.round(performance.now() - this.startTime);
+            },
+
+            // 파일별 통계 반환
+            getFileStats: function() {
+                var self = this;
+                var result = [];
+                Object.keys(this.files).forEach(function(name) {
+                    var f = self.files[name];
+                    result.push({
+                        name: f.name,
+                        url: f.url,
+                        size: f.loaded || f.size,
+                        duration: Math.round(f.duration),
+                        startTime: Math.round(f.startTime - self.startTime),
+                        responseEnd: Math.round(f.responseEnd - self.startTime),
+                        avgSpeed: Math.round(f.avgSpeed * 10) / 10,
+                        peakSpeed: Math.round(f.peakSpeed * 10) / 10,
+                        minSpeed: Math.round(f.minSpeed * 10) / 10,
+                        speedHistory: f.speedHistory.slice(),
+                        compressionType: f.compressionType,
+                        contentEncoding: f.contentEncoding,
+                        decompressionFallback: f.decompressionFallback,
+                        preloaded: f.preloaded || false
+                    });
+                });
+                return result;
+            },
+
+            // 콘솔 요약 출력
+            printSummary: function() {
+                var self = this;
+                console.log('[AIT Loading] ========== 로딩 완료 ==========');
+                console.log('[AIT Loading] 총 로딩 시간: ' + this.getTotalTime() + 'ms');
+                console.log('[AIT Loading] 파일별 다운로드:');
+
+                Object.keys(this.files).forEach(function(name) {
+                    var f = self.files[name];
+                    var sizeMB = ((f.loaded || f.size) / 1024 / 1024).toFixed(2);
+                    console.log('  - ' + f.name + ':');
+                    console.log('      크기: ' + sizeMB + 'MB');
+                    console.log('      시간: ' + Math.round(f.duration) + 'ms');
+                    console.log('      평균 속도: ' + f.avgSpeed.toFixed(1) + 'KB/s');
+                    if (f.speedHistory.length > 0) {
+                        console.log('      피크 속도: ' + f.peakSpeed.toFixed(1) + 'KB/s');
+                        console.log('      최저 속도: ' + f.minSpeed.toFixed(1) + 'KB/s');
+                        console.log('      속도 기록: [' + f.speedHistory.join(', ') + '] KB/s');
+                    }
+                });
+                console.log('[AIT Loading] ================================');
+            },
+
+            // PerformanceObserver로 preload 리소스 타이밍 추적
+            initPreloadObserver: function() {
+                if (!window.PerformanceObserver) return;
+
+                var self = this;
+                try {
+                    var observer = new PerformanceObserver(function(list) {
+                        list.getEntries().forEach(function(entry) {
+                            // Unity 파일만 필터링
+                            if (!/\.(loader\.js|framework\.js|wasm|data)(\.(gz|br|unityweb))?$/i.test(entry.name)) return;
+
+                            var fileName = entry.name.split('/').pop().split('?')[0];
+                            self.preloadMetrics[fileName] = {
+                                startTime: entry.startTime,
+                                responseEnd: entry.responseEnd,
+                                duration: entry.duration,
+                                transferSize: entry.transferSize,
+                                initiatorType: entry.initiatorType,  // 'link' = preload, 'fetch' = 일반
+                                cacheHit: entry.transferSize === 0 && entry.decodedBodySize > 0
+                            };
+
+                            self.logEvent('resource_timing_' + fileName.replace(/\./g, '_'), {
+                                initiator: entry.initiatorType,
+                                duration: Math.round(entry.duration)
+                            });
+                        });
+                    });
+
+                    observer.observe({ entryTypes: ['resource'] });
+                } catch (e) {
+                    console.warn('[AIT Loading] PerformanceObserver 초기화 실패:', e);
+                }
+            }
+        };
+
+        // AITLoading: 커스텀 로딩 화면 API
+        window.AITLoading = {
+            // 앱 정보 (초기화 전 기본값)
+            appInfo: {
+                iconUrl: '',
+                displayName: '',
+                primaryColor: '#3182f6'
+            },
+
+            // 초기화 완료 여부 (내부용)
+            _initialized: false,
+            _readyCallbacks: [],
+
+            // 초기화 완료 콜백 등록 (appInfo 사용 가능 시점)
+            // 콜백은 초기화 시 호출되고, 네이티브 앱 정보가 나중에 로드되면 다시 호출됨
+            onReady: function(callback) {
+                if (typeof callback === 'function') {
+                    // 항상 콜백 저장 (네이티브 정보 업데이트 시 다시 호출하기 위해)
+                    this._readyCallbacks.push(callback);
+                    // 이미 초기화된 경우 바로 호출
+                    if (this._initialized) {
+                        callback(this.appInfo);
+                    }
+                }
+            },
+
+            // 진행률 콜백 등록
+            onProgress: function(callback) {
+                if (typeof callback === 'function') {
+                    AITLoadingLogger.progressCallbacks.push(callback);
+                }
+            },
+
+            // 완료 콜백 등록
+            onComplete: function(callback) {
+                if (typeof callback === 'function') {
+                    if (AITLoadingLogger._isComplete) {
+                        callback();
+                    } else {
+                        AITLoadingLogger.completeCallbacks.push(callback);
+                    }
+                }
+            },
+
+            // 에러 콜백 등록
+            onError: function(callback) {
+                if (typeof callback === 'function') {
+                    AITLoadingLogger.errorCallbacks.push(callback);
+                }
+            },
+
+            // 파일별 진행 콜백 등록
+            onFileProgress: function(callback) {
+                if (typeof callback === 'function') {
+                    AITLoadingLogger.fileProgressCallbacks.push(callback);
+                }
+            },
+
+            // 파일별 다운로드 통계 반환
+            getFileStats: function() {
+                return AITLoadingLogger.getFileStats();
+            },
+
+            // 총 로딩 시간 반환
+            getTotalTime: function() {
+                return AITLoadingLogger.getTotalTime();
+            },
+
+            // 로딩 화면 숨기기
+            hide: function() {
+                var wrapper = document.getElementById('ait-loading-wrapper');
+                if (wrapper) {
+                    wrapper.style.display = 'none';
+                }
+            }
+        };
+
+        // fetch 래핑 초기화 (Unity 로더보다 먼저)
+        AITLoadingLogger.wrapFetch();
+        AITLoadingLogger.initPreloadObserver();
+        AITLoadingLogger.logEvent('loading_start');
+    </script>
+
+    <!-- 브랜드 정보 초기화 -->
+    <script>
+        // Unity 빌드 시 플레이스홀더가 치환됨 (기본값)
+        window.AITLoading.appInfo = {
+            iconUrl: '%AIT_ICON_URL%',
+            displayName: '%AIT_DISPLAY_NAME%',
+            primaryColor: '%AIT_PRIMARY_COLOR%'
+        };
+        console.log('[AIT Loading] 빌드 설정 appInfo:', JSON.stringify(window.AITLoading.appInfo));
+
+        // 네이티브 앱 정보로 업데이트하는 함수
+        function updateAppInfoFromNative() {
+            try {
+                console.log('[AIT Loading] AppsInToss 존재:', !!window.AppsInToss);
+                if (window.AppsInToss) {
+                    console.log('[AIT Loading] getAppsInTossGlobals 존재:', typeof window.AppsInToss.getAppsInTossGlobals);
+                }
+                if (window.AppsInToss && typeof window.AppsInToss.getAppsInTossGlobals === 'function') {
+                    var globals = window.AppsInToss.getAppsInTossGlobals();
+                    console.log('[AIT Loading] 네이티브 globals 원본:', JSON.stringify(globals));
+                    if (globals) {
+                        // brandIcon이 있으면 사용, 없으면 빌드 설정 유지
+                        if (globals.brandIcon) {
+                            window.AITLoading.appInfo.iconUrl = globals.brandIcon;
+                            console.log('[AIT Loading] 아이콘 URL 업데이트:', globals.brandIcon);
+                        } else {
+                            console.log('[AIT Loading] brandIcon 없음, 빌드 설정 유지:', window.AITLoading.appInfo.iconUrl);
+                        }
+                        if (globals.brandDisplayName) {
+                            window.AITLoading.appInfo.displayName = globals.brandDisplayName;
+                        }
+                        if (globals.brandPrimaryColor) {
+                            window.AITLoading.appInfo.primaryColor = globals.brandPrimaryColor;
+                        }
+                        console.log('[AIT Loading] 최종 appInfo:', JSON.stringify(window.AITLoading.appInfo));
+                        return true;
+                    }
+                }
+            } catch (e) {
+                console.warn('[AIT Loading] 네이티브 앱 정보 로드 실패:', e);
+            }
+            return false;
+        }
+
+        // 네이티브 브릿지 대기 및 초기화 완료 처리
+        function initializeAppInfo() {
+            // 먼저 동기적으로 시도
+            var nativeLoaded = updateAppInfoFromNative();
+
+            if (!nativeLoaded) {
+                // 네이티브 브릿지가 아직 없으면 짧은 시간 대기 후 재시도
+                // 토스 앱에서 브릿지 주입이 약간 지연될 수 있음
+                var maxAttempts = 10;
+                var attempt = 0;
+                var checkInterval = setInterval(function() {
+                    attempt++;
+                    if (updateAppInfoFromNative()) {
+                        clearInterval(checkInterval);
+                        console.log('[AIT Loading] 네이티브 브릿지 감지됨 (시도 ' + attempt + ')');
+                        // 이미 초기화된 경우 콜백 다시 호출하여 UI 업데이트
+                        if (window.AITLoading._initialized) {
+                            window.AITLoading._readyCallbacks.forEach(function(cb) {
+                                try { cb(window.AITLoading.appInfo); } catch(e) {}
+                            });
+                        }
+                    } else if (attempt >= maxAttempts) {
+                        clearInterval(checkInterval);
+                        console.log('[AIT Loading] 네이티브 브릿지 없음, 빌드 설정 사용');
+                    }
+                }, 50); // 50ms 간격으로 최대 500ms 대기
+            }
+
+            // 초기화 완료 표시 및 대기 중인 콜백 호출
+            window.AITLoading._initialized = true;
+            window.AITLoading._readyCallbacks.forEach(function(cb) {
+                try { cb(window.AITLoading.appInfo); } catch(e) { console.error('[AIT Loading] onReady callback error:', e); }
+            });
+            // 주의: _readyCallbacks를 비우지 않음 - 네이티브 정보가 나중에 로드될 때 다시 호출하기 위해
+        }
+
+        initializeAppInfo();
+    </script>
+
+    <!-- 에러 표시 함수 (Unity Loader보다 먼저 정의) -->
+    <script>
+        // 에러 표시 함수
+        function showLoadError(title, message, hints, debugInfo) {
+            console.error('[AIT] ' + title);
+            console.error('[AIT] ' + message);
+            if (hints) {
+                hints.forEach(function(hint) {
+                    console.error('[AIT]   - ' + hint);
+                });
+            }
+            if (debugInfo) {
+                console.error('[AIT] Debug info:', JSON.stringify(debugInfo, null, 2));
+            }
+
+            // 로딩 화면을 에러 화면으로 변경
+            var wrapper = document.getElementById('ait-loading-wrapper');
+            if (wrapper) {
+                wrapper.innerHTML =
+                    '<div style="padding: 20px; text-align: center; max-width: 400px;">' +
+                        '<div style="font-size: 48px; margin-bottom: 20px;">⚠️</div>' +
+                        '<div style="font-size: 18px; font-weight: bold; margin-bottom: 10px; color: #ff6b6b;">' + title + '</div>' +
+                        '<div style="font-size: 14px; margin-bottom: 20px; color: #ccc;">' + message + '</div>' +
+                        '<div style="font-size: 12px; text-align: left; background: rgba(0,0,0,0.3); padding: 15px; border-radius: 8px; color: #aaa;">' +
+                            '<div style="font-weight: bold; margin-bottom: 8px;">가능한 해결 방법:</div>' +
+                            '<ul style="margin: 0; padding-left: 20px;">' +
+                                (hints ? hints.map(function(h) { return '<li style="margin-bottom: 4px;">' + h + '</li>'; }).join('') : '') +
+                            '</ul>' +
+                        '</div>' +
+                        '<div style="margin-top: 20px;">' +
+                            '<button onclick="location.reload()" style="padding: 10px 20px; background: #4a90d9; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px;">다시 시도</button>' +
+                        '</div>' +
+                    '</div>';
+            }
+        }
+
+        // Loader 스크립트 로드 상태 추적
+        window._aitLoaderLoaded = false;
+    </script>
+
+    <!-- Unity Loader Script -->
+    <script src="%UNITY_WEBGL_LOADER_URL%" onerror="showLoadError('Unity Loader 스크립트 로드 실패', '게임을 시작하는 데 필요한 파일을 불러올 수 없습니다.', ['파일 경로: %UNITY_WEBGL_LOADER_URL%', '서버에서 파일이 제공되고 있는지 확인하세요.', '브라우저 개발자 도구의 Network 탭을 확인하세요.'], {url: '%UNITY_WEBGL_LOADER_URL%'}); if(window.AITLoadingLogger) AITLoadingLogger.logEvent('loader_error');" onload="window._aitLoaderLoaded = true; console.log('[AIT] ✓ Unity Loader 스크립트 로드 완료'); if(window.AITLoadingLogger) AITLoadingLogger.logEvent('loader_ready');"></script>
+
+    <script>
+        var container = document.querySelector("#unity-container");
+        var canvas = document.querySelector("#unity-canvas");
+        var loadingBar = document.querySelector("#unity-loading-bar");
+        var progressBarFull = document.querySelector("#unity-progress-bar-full");
+        var fullscreenButton = document.querySelector("#unity-fullscreen-button");
+        var warningBanner = document.querySelector("#unity-warning");
+        var aitLoading = document.querySelector("#ait-loading-wrapper");
+
+        // 배너 표시 함수
+        function unityShowBanner(msg, type) {
+            function updateBannerVisibility() {
+                warningBanner.style.display = warningBanner.children.length ? 'block' : 'none';
+            }
+            var div = document.createElement('div');
+            div.innerHTML = msg;
+            warningBanner.appendChild(div);
+            if (type == 'error') div.style = 'background: red; padding: 10px;';
+            else {
+                if (type == 'warning') div.style = 'background: yellow; padding: 10px;';
+                setTimeout(function() {
+                    warningBanner.removeChild(div);
+                    updateBannerVisibility();
+                }, 5000);
+            }
+            updateBannerVisibility();
+        }
+
+        var loaderUrl = "%UNITY_WEBGL_LOADER_URL%";
+        var config = {
+            dataUrl: "%UNITY_WEBGL_DATA_URL%",
+            frameworkUrl: "%UNITY_WEBGL_FRAMEWORK_URL%",
+            codeUrl: "%UNITY_WEBGL_CODE_URL%",
+#if MEMORY_FILENAME
+            memoryUrl: "%UNITY_WEBGL_MEMORY_URL%",
+#endif
+#if SYMBOLS_FILENAME
+            symbolsUrl: "%UNITY_WEBGL_SYMBOLS_URL%",
+#endif
+            streamingAssetsUrl: "StreamingAssets",
+            companyName: "%UNITY_COMPANY_NAME%",
+            productName: "%UNITY_PRODUCT_NAME%",
+            productVersion: "%UNITY_PRODUCT_VERSION%",
+            showBanner: unityShowBanner,
+        };
+
+        // 모바일 감지 및 최적화
+        var isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+        // devicePixelRatio 설정: -1 = auto, 1/2/3 = 고정값
+        var aitDevicePixelRatioSetting = %AIT_DEVICE_PIXEL_RATIO%;
+
+        // 기기 성능에 따른 최적 devicePixelRatio 계산
+        function getOptimalDevicePixelRatio() {
+            var baseRatio = window.devicePixelRatio || 1;
+
+            // 고정값인 경우 (기기 기본값을 초과하지 않도록)
+            if (aitDevicePixelRatioSetting > 0) {
+                return Math.min(aitDevicePixelRatioSetting, baseRatio);
+            }
+
+            // auto: 기기 성능에 따라 결정
+            var deviceMemory = navigator.deviceMemory; // Android Chrome에서만 지원
+            var cores = navigator.hardwareConcurrency || 2;
+            var isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+
+            // GPU 정보 확인 (저사양 GPU 감지)
+            var isLowEndGPU = false;
+            try {
+                var testCanvas = document.createElement('canvas');
+                var gl = testCanvas.getContext('webgl2') || testCanvas.getContext('webgl');
+                if (gl) {
+                    var debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+                    if (debugInfo) {
+                        var renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
+                        isLowEndGPU = /Mali-4|Mali-T[0-6]|Adreno [0-4]|PowerVR SGX|Intel HD [0-5]/i.test(renderer);
+                    }
+                }
+            } catch (e) {}
+
+            // 저사양 판정: GPU 또는 코어 수 기준
+            if (isLowEndGPU || cores <= 2) {
+                return 1;
+            }
+
+            // Android: deviceMemory API 사용
+            if (deviceMemory !== undefined) {
+                if (deviceMemory <= 2) return 1;
+                if (deviceMemory <= 4) return Math.min(baseRatio, 2);
+                return baseRatio;
+            }
+
+            // iOS: 화면 크기 + 코어 수로 세대 추정
+            if (isIOS) {
+                var screenPixels = screen.width * screen.height;
+                // 구형 iPhone (6s/7/8 등): 낮은 해상도 + 적은 코어
+                if (screenPixels < 400000 || cores <= 4) {
+                    return Math.min(baseRatio, 2);
+                }
+                return baseRatio;
+            }
+
+            // 기타: 안전하게 최대 2로 제한
+            return Math.min(baseRatio, 2);
+        }
+
+        // 모바일에서만 devicePixelRatio 조정 적용
+        if (isMobile) {
+            config.devicePixelRatio = getOptimalDevicePixelRatio();
+            console.log('[AIT] 모바일 환경 - devicePixelRatio:', config.devicePixelRatio,
+                        '(설정:', aitDevicePixelRatioSetting === -1 ? 'auto' : aitDevicePixelRatioSetting, ')');
+        } else {
+            console.log('[AIT] 데스크톱 환경 - devicePixelRatio: 기본값 사용');
+        }
+
+        // 로딩 진행률 업데이트
+        var lastLoggedProgress = 0;
+        function updateLoadingProgress(progress) {
+            // AITLoading 콜백 통지 (loading.html에서 UI 업데이트 처리)
+            if (window.AITLoadingLogger) {
+                AITLoadingLogger.notifyProgress(progress);
+
+                // 25%, 50%, 75%, 100% 이정표 로깅
+                if (progress >= 0.25 && lastLoggedProgress < 0.25) {
+                    AITLoadingLogger.logEvent('unity_progress_25');
+                } else if (progress >= 0.50 && lastLoggedProgress < 0.50) {
+                    AITLoadingLogger.logEvent('unity_progress_50');
+                } else if (progress >= 0.75 && lastLoggedProgress < 0.75) {
+                    AITLoadingLogger.logEvent('unity_progress_75');
+                } else if (progress >= 1.0 && lastLoggedProgress < 1.0) {
+                    AITLoadingLogger.logEvent('unity_progress_100');
+                }
+                lastLoggedProgress = progress;
+            }
+        }
+
+        // ============================================
+        // EventLog 메트릭 전송 설정
+        // ============================================
+        // 메트릭 전송 간격 (10000~60000ms, 기본값: 10000)
+        var AIT_WEB_METRICS_INTERVAL_MS = Math.max(10000, Math.min(60000, parseInt('%AIT_WEB_METRICS_INTERVAL_MS%') || 10000));
+        var AIT_UNITY_METRICS_INTERVAL_MS = Math.max(10000, Math.min(60000, parseInt('%AIT_UNITY_METRICS_INTERVAL_MS%') || 10000));
+
+        // Unity 엔진 버전 (빌드 시 주입, 예: 6000.2.14f1, 2022.3.62f3)
+        var AIT_UNITY_VERSION = '%AIT_UNITY_VERSION%';
+
+        // 메트릭 전송 상태
+        var _webMetricsIntervalId = null;
+        var _unityMetricsIntervalId = null;
+        var _loadingMetricsSent = false;
+
+        // Unity 버전 감지 함수 (Metric Explorer와 공유)
+        // - 빌드 시 주입된 상세 버전 (major.minor.patch.commit) 사용
+        // - 메트릭 API 지원 여부 (GetMetricsInfo, GetMemoryInfo) 감지
+        function detectUnityVersionForMetrics() {
+            var inst = window.unityInstance;
+
+            // 메트릭 API 감지
+            var api = 'none';
+            if (inst) {
+                if (typeof inst.GetMetricsInfo === 'function') {
+                    api = 'GetMetricsInfo';
+                } else if (typeof inst.GetMemoryInfo === 'function') {
+                    api = 'GetMemoryInfo';
+                }
+            }
+
+            // 빌드 시 주입된 상세 버전 사용
+            var unityVersion = AIT_UNITY_VERSION;
+            // 플레이스홀더가 치환되지 않은 경우 체크 (%로 시작하고 끝나는지)
+            if (!unityVersion || unityVersion === '' || (unityVersion.charAt(0) === '%' && unityVersion.charAt(unityVersion.length - 1) === '%')) {
+                unityVersion = 'unknown';
+            }
+
+            return {
+                unityVersion: unityVersion, // 상세 버전 (예: 6000.2.14f1)
+                api: api                    // 메트릭 API (GetMetricsInfo, GetMemoryInfo, none)
+            };
+        }
+
+        // 안전하게 값을 설정하는 헬퍼
+        function safeSet(params, key, fn) { try { params[key] = fn(); } catch (e) {} }
+
+        // 바이트를 KB로 변환
+        function toKB(bytes) { return Math.round((bytes || 0) / 1024); }
+
+        // 메트릭 전송 공통 함수 - 에러 시에도 interval 유지
+        function sendMetrics(logName, getParams) {
+            try {
+                if (!window.AppsInToss || typeof window.AppsInToss.eventLog !== 'function') return;
+                var params = getParams();
+                if (!params) return;
+                var result = window.AppsInToss.eventLog({ log_name: logName, log_type: 'event', params: params });
+                if (result && result.catch) result.catch(function() {});
+                console.log('[AIT Metrics] ' + logName + ' sent');
+            } catch (e) {}
+        }
+
+        // Loading 메트릭 수집 - 각 항목별 에러 격리
+        function collectLoadingMetrics() {
+            try {
+                if (!window.AITLoadingLogger) return null;
+                var logger = window.AITLoadingLogger;
+                var fileStats = [], events = {};
+                try { fileStats = logger.getFileStats() || []; } catch (e) {}
+                try { events = logger.events || {}; } catch (e) {}
+
+                var params = {};
+                safeSet(params, 'total_time_ms', function() { return logger.getTotalTime(); });
+                safeSet(params, 'total_files', function() { return fileStats.length; });
+                safeSet(params, 'total_size_kb', function() { return toKB(fileStats.reduce(function(s, f) { return s + (f.size || 0); }, 0)); });
+                safeSet(params, 'decompression_fallback', function() { return fileStats.some(function(f) { return f.decompressionFallback; }); });
+
+                // 이벤트 타이밍
+                ['loading_start', 'loader_ready', 'unity_init_start', 'unity_progress_25', 'unity_progress_50',
+                 'unity_progress_75', 'unity_progress_100', 'unity_init_complete', 'loading_complete'].forEach(function(key) {
+                    safeSet(params, 'event_' + key + '_ms', function() { return events[key] ? Math.round(events[key].elapsed) : null; });
+                });
+
+                // 파일별 메트릭
+                var fileTypes = { wasm: '.wasm', data: '.data', framework: 'framework', loader: 'loader', symbols: 'symbols' };
+                Object.keys(fileTypes).forEach(function(type) {
+                    try {
+                        fileStats.filter(function(f) { return f.name && f.name.includes(fileTypes[type]); }).forEach(function(file, i) {
+                            var p = type + '_' + i + '_';
+                            safeSet(params, p + 'size_kb', function() { return toKB(file.size); });
+                            safeSet(params, p + 'duration_ms', function() { return file.duration || 0; });
+                            safeSet(params, p + 'speed_kbps', function() { return Math.round(file.avgSpeed || 0); });
+                        });
+                    } catch (e) {}
+                });
+
+                // Preload 효과 분석
+                try {
+                    var preloadMetrics = logger.preloadMetrics || {};
+                    var preloadedFiles = Object.keys(preloadMetrics).filter(function(k) {
+                        return preloadMetrics[k].initiatorType === 'link';
+                    });
+                    var cacheHits = Object.keys(preloadMetrics).filter(function(k) {
+                        return preloadMetrics[k].cacheHit;
+                    });
+
+                    safeSet(params, 'preload_enabled', function() { return preloadedFiles.length > 0; });
+                    safeSet(params, 'preload_file_count', function() { return preloadedFiles.length; });
+                    safeSet(params, 'preload_cache_hits', function() { return cacheHits.length; });
+                } catch (e) {}
+
+                return params;
+            } catch (e) { return null; }
+        }
+
+        // Web 메트릭 수집 - 각 항목별 에러 격리
+        function collectWebMetrics() {
+            try {
+                var params = {};
+                safeSet(params, 'platform', function() { return navigator.platform; });
+                safeSet(params, 'language', function() { return navigator.language; });
+                safeSet(params, 'hardware_concurrency', function() { return navigator.hardwareConcurrency || null; });
+                safeSet(params, 'device_memory_gb', function() { return navigator.deviceMemory || null; });
+                safeSet(params, 'screen_width_px', function() { return screen.width; });
+                safeSet(params, 'screen_height_px', function() { return screen.height; });
+                safeSet(params, 'device_pixel_ratio', function() { return window.devicePixelRatio; });
+
+                try {
+                    if (performance.memory) {
+                        safeSet(params, 'js_heap_used_kb', function() { return toKB(performance.memory.usedJSHeapSize); });
+                        safeSet(params, 'js_heap_total_kb', function() { return toKB(performance.memory.totalJSHeapSize); });
+                    }
+                } catch (e) {}
+
+                try {
+                    if (navigator.connection) {
+                        safeSet(params, 'net_type', function() { return navigator.connection.effectiveType; });
+                        safeSet(params, 'net_downlink_mbps', function() { return navigator.connection.downlink; });
+                        safeSet(params, 'net_rtt_ms', function() { return navigator.connection.rtt; });
+                    }
+                } catch (e) {}
+
+                return params;
+            } catch (e) { return {}; }
+        }
+
+        // Unity 메트릭 수집 - 각 항목별 에러 격리
+        function collectUnityMetrics() {
+            try {
+                var versionInfo;
+                try { versionInfo = detectUnityVersionForMetrics(); } catch (e) { versionInfo = { unityVersion: 'unknown', api: 'none' }; }
+                var params = {
+                    unity_version: versionInfo.unityVersion,       // 상세 버전 (예: 6000.2.14f1)
+                    unity_metrics_api: versionInfo.api             // 메트릭 API 종류
+                };
+
+                var inst = window.unityInstance;
+                if (!inst) return params;
+
+                var m = null;
+                try {
+                    m = versionInfo.api === 'GetMetricsInfo' ? inst.GetMetricsInfo() :
+                        versionInfo.api === 'GetMemoryInfo' ? inst.GetMemoryInfo() : null;
+                } catch (e) {}
+
+                if (m) {
+                    if (m.fps !== undefined) {
+                        safeSet(params, 'fps', function() { return Math.round(m.fps * 10) / 10; });
+                        safeSet(params, 'fps_avg', function() { return Math.round(m.movingAverageFps * 10) / 10; });
+                        safeSet(params, 'janked_frames', function() { return m.numJankedFrames; });
+                        safeSet(params, 'page_load_ms', function() { return Math.round(m.pageLoadTime); });
+                        safeSet(params, 'code_download_ms', function() { return Math.round(m.codeDownloadTime); });
+                        safeSet(params, 'wasm_startup_ms', function() { return Math.round(m.webAssemblyStartupTime); });
+                    }
+                    safeSet(params, 'js_heap_total_kb', function() { return toKB(m.totalJSHeapSize); });
+                    safeSet(params, 'js_heap_used_kb', function() { return toKB(m.usedJSHeapSize); });
+                    safeSet(params, 'wasm_heap_total_kb', function() { return toKB(m.totalWASMHeapSize); });
+                    safeSet(params, 'wasm_heap_used_kb', function() { return toKB(m.usedWASMHeapSize); });
+                }
+                return params;
+            } catch (e) { return {}; }
+        }
+
+        // 메트릭 전송 함수들
+        function sendLoadingMetrics() {
+            if (_loadingMetricsSent) return;
+            _loadingMetricsSent = true;
+            sendMetrics('unity_loading_metrics', collectLoadingMetrics);
+        }
+
+        function sendWebMetrics() { sendMetrics('unity_web_metrics', collectWebMetrics); }
+        function sendUnityMetrics() { if (window.unityInstance) sendMetrics('unity_runtime_metrics', collectUnityMetrics); }
+
+        function startWebMetricsInterval(ms) {
+            if (_webMetricsIntervalId) return;
+            sendWebMetrics();
+            _webMetricsIntervalId = setInterval(sendWebMetrics, ms);
+            console.log('[AIT Metrics] Web metrics: periodic sending every ' + ms + 'ms');
+        }
+
+        function startUnityMetricsInterval(ms) {
+            if (_unityMetricsIntervalId) return;
+            sendUnityMetrics();
+            _unityMetricsIntervalId = setInterval(sendUnityMetrics, ms);
+            console.log('[AIT Metrics] Unity metrics: periodic sending every ' + ms + 'ms');
+        }
+
+        // 로딩 화면 숨기기
+        function hideLoadingScreen() {
+            if (window.AITLoadingLogger) {
+                AITLoadingLogger.logEvent('loading_complete');
+                AITLoadingLogger.printSummary();
+                AITLoadingLogger.notifyComplete();
+            }
+
+            // E2E 테스트용 loading metric 노출
+            if (window.location.search.indexOf('e2e=true') !== -1) {
+                var logger = window.AITLoadingLogger;
+                window.__E2E_LOADING_METRICS__ = collectLoadingMetrics();
+                window.__E2E_LOADING_FILE_STATS__ = logger ? logger.getFileStats() : [];
+                window.__E2E_LOADING_PRELOAD_METRICS__ = logger ? logger.preloadMetrics : {};
+                window.dispatchEvent(new CustomEvent('e2e-loading-metrics-ready', {
+                    detail: window.__E2E_LOADING_METRICS__
+                }));
+            }
+
+            // 메트릭 전송 시작 (1초 후)
+            setTimeout(function() {
+                sendLoadingMetrics();
+                startWebMetricsInterval(AIT_WEB_METRICS_INTERVAL_MS);
+                startUnityMetricsInterval(AIT_UNITY_METRICS_INTERVAL_MS);
+            }, 1000);
+
+            aitLoading.style.display = 'none';
+        }
+
+        loadingBar.style.display = "block";
+
+        // Unity 로드 시작
+        console.log('[AIT] Unity 로딩 시작...');
+        console.log('[AIT]   빌드 Unity 버전: ' + AIT_UNITY_VERSION);
+
+        // Loader 스크립트 로드 완료 대기 함수
+        // Race condition 방지: loader 스크립트가 비동기로 로드되므로 완료를 기다림
+        function waitForLoader(callback, timeoutMs) {
+            var startTime = Date.now();
+            var checkInterval = setInterval(function() {
+                if (window._aitLoaderLoaded || typeof createUnityInstance !== 'undefined') {
+                    clearInterval(checkInterval);
+                    console.log('[AIT] ✓ Loader 스크립트 준비 완료 (' + (Date.now() - startTime) + 'ms)');
+                    callback(true);
+                } else if (Date.now() - startTime > timeoutMs) {
+                    clearInterval(checkInterval);
+                    console.error('[AIT] ✗ Loader 스크립트 로드 타임아웃 (' + timeoutMs + 'ms)');
+                    callback(false);
+                }
+            }, 50);
+        }
+
+        // Loader 로드 완료 대기 (최대 10초)
+        waitForLoader(function(loaderReady) {
+            if (window.AITLoadingLogger) {
+                AITLoadingLogger.logEvent('unity_init_start');
+            }
+            updateLoadingProgress(0.1);
+
+            // createUnityInstance 존재 여부 확인
+            if (!loaderReady || typeof createUnityInstance === 'undefined') {
+                console.error('[AIT] ========================================');
+                console.error('[AIT] ✗ createUnityInstance is not defined!');
+                console.error('[AIT] ========================================');
+                console.error('[AIT] Unity Loader 스크립트가 정상적으로 로드되지 않았습니다.');
+                console.error('[AIT] ');
+                console.error('[AIT] 가능한 원인:');
+                console.error('[AIT]   1. loader.js 파일 경로가 잘못되었습니다.');
+                console.error('[AIT]   2. loader.js 파일이 서버에 존재하지 않습니다.');
+                console.error('[AIT]   3. 빌드 시 loader.js 파일을 찾지 못했습니다.');
+                console.error('[AIT]   4. 네트워크가 느리거나 타임아웃되었습니다.');
+                console.error('[AIT] ');
+                console.error('[AIT] 확인할 사항:');
+                console.error('[AIT]   - 설정된 로더 URL: %UNITY_WEBGL_LOADER_URL%');
+                console.error('[AIT]   - Loader 스크립트 로드 상태: ' + (window._aitLoaderLoaded ? '성공' : '실패/대기중'));
+                console.error('[AIT] ========================================');
+
+                // 빌드 파일 정보 출력
+                console.error('[AIT] 현재 빌드 설정:');
+                console.error('[AIT]   - dataUrl:', config.dataUrl);
+                console.error('[AIT]   - frameworkUrl:', config.frameworkUrl);
+                console.error('[AIT]   - codeUrl:', config.codeUrl);
+
+                showLoadError(
+                    'Unity 엔진 초기화 실패',
+                    'createUnityInstance 함수를 찾을 수 없습니다.',
+                    [
+                        'Unity WebGL 빌드가 손상되었을 수 있습니다.',
+                        '개발자에게 문의하거나, 잠시 후 다시 시도해 주세요.',
+                        '(개발자용) Unity Editor에서 Clean Build를 실행하세요.'
+                    ],
+                    {
+                        loaderUrl: '%UNITY_WEBGL_LOADER_URL%',
+                        loaderLoaded: window._aitLoaderLoaded || false,
+                        loaderTimedOut: !loaderReady,
+                        config: config
+                    }
+                );
+            } else {
+                // 정상적으로 로드된 경우 실행
+                console.log('[AIT] ✓ createUnityInstance 함수 확인됨');
+                createUnityInstance(canvas, config, (progress) => {
+                    var unityProgress = 0.1 + (progress * 0.9); // 10%부터 시작해서 100%까지
+                    updateLoadingProgress(unityProgress);
+                    progressBarFull.style.width = 100 * progress + "%";
+                }).then((unityInstance) => {
+            updateLoadingProgress(1.0);
+            loadingBar.style.display = "none";
+            fullscreenButton.onclick = () => {
+                unityInstance.SetFullscreen(1);
+            };
+
+            // Unity 인스턴스를 글로벌로 저장
+            window.unityInstance = unityInstance;
+
+            // 로드 성공 시 재시도 카운터 초기화
+            try { sessionStorage.removeItem('__ait_reload_count__'); } catch (e) {}
+
+            // Unity 버전 정보 로깅
+            var versionInfo = detectUnityVersionForMetrics();
+            console.log('[AIT] ✓ Unity 인스턴스 로드 완료');
+            console.log('[AIT]   Unity 버전: ' + versionInfo.unityVersion);
+            console.log('[AIT]   메트릭 API: ' + versionInfo.api);
+
+            // Unity 초기화 완료 이벤트
+            if (window.AITLoadingLogger) {
+                AITLoadingLogger.logEvent('unity_init_complete');
+            }
+
+            // Apps in Toss Unity Bridge 초기화
+            if (typeof AppsInTossUnityBridge !== 'undefined') {
+                AppsInTossUnityBridge.setUnityInstance(unityInstance);
+                console.log('[AIT] ✓ Apps in Toss Unity Bridge 초기화 완료');
+            }
+
+            // Debug Console 초기화 (옵션에 따라 활성화)
+            // %AIT_ENABLE_DEBUG_CONSOLE% 값이 'true'인 경우에만 디버그 콘솔 표시
+            var enableDebugConsole = '%AIT_ENABLE_DEBUG_CONSOLE%' === 'true';
+
+            if (enableDebugConsole) {
+                setTimeout(function() {
+                    try {
+                        console.log('[AIT] Debug Console 초기화 중...');
+
+                        // CSS 스타일 추가
+                        var style = document.createElement('style');
+                        style.textContent = `
+                            /* Debug Console 전체화면 오버레이 - Safe Area 지원 */
+                            #unity-debug-console {
+                                position: fixed;
+                                top: 0;
+                                left: 0;
+                                width: 100%;
+                                height: 100%;
+                                background: rgba(0, 0, 0, 0.95);
+                                color: white;
+                                font-family: "Courier New", monospace;
+                                font-size: 12px;
+                                z-index: 99999;
+                                display: none;
+                                flex-direction: column;
+                                pointer-events: auto;
+                                overflow: hidden;
+                                /* Safe Area padding for iOS notch/home indicator */
+                                padding-top: env(safe-area-inset-top, 0px);
+                                padding-bottom: env(safe-area-inset-bottom, 0px);
+                                padding-left: env(safe-area-inset-left, 0px);
+                                padding-right: env(safe-area-inset-right, 0px);
+                                box-sizing: border-box;
+                            }
+                            #unity-debug-console.visible { display: flex; }
+                            #unity-debug-console-header {
+                                background: rgba(50, 50, 50, 0.98);
+                                padding: 12px 16px;
+                                border-bottom: 2px solid #00ff00;
+                                display: flex;
+                                justify-content: space-between;
+                                align-items: center;
+                            }
+                            #unity-debug-console-title {
+                                font-weight: bold;
+                                color: #00ff00;
+                                font-size: 16px;
+                            }
+                            #unity-debug-console-controls {
+                                display: flex;
+                                gap: 10px;
+                            }
+                            #unity-debug-console-controls button {
+                                background: #444;
+                                border: 1px solid #666;
+                                color: white;
+                                padding: 8px 16px;
+                                cursor: pointer;
+                                border-radius: 4px;
+                                font-size: 13px;
+                                transition: background 0.2s;
+                            }
+                            #unity-debug-console-controls button:hover { background: #555; }
+                            #unity-debug-console-controls button:active { background: #333; }
+                            #unity-debug-console-metrics {
+                                background: rgba(30, 30, 30, 0.98);
+                                padding: 12px 16px;
+                                border-bottom: 1px solid #444;
+                                line-height: 1.8;
+                            }
+                            #unity-debug-console-metrics .metric {
+                                color: #00ff88;
+                                margin-right: 24px;
+                                display: inline-block;
+                                font-size: 13px;
+                            }
+                            #unity-debug-console-logs {
+                                flex: 1;
+                                overflow-y: auto;
+                                padding: 12px 16px;
+                            }
+                            #unity-debug-console-logs::-webkit-scrollbar { width: 10px; }
+                            #unity-debug-console-logs::-webkit-scrollbar-track { background: #222; }
+                            #unity-debug-console-logs::-webkit-scrollbar-thumb {
+                                background: #555;
+                                border-radius: 5px;
+                            }
+                            .debug-log-entry {
+                                padding: 4px 0;
+                                border-bottom: 1px solid #333;
+                                font-size: 13px;
+                                line-height: 1.5;
+                            }
+                            .debug-log-entry.log { color: #fff; }
+                            .debug-log-entry.warning { color: #ffcc00; }
+                            .debug-log-entry.error {
+                                color: #ff4444;
+                                font-weight: bold;
+                            }
+                            .debug-log-timestamp {
+                                color: #888;
+                                margin-right: 10px;
+                            }
+
+                            /* 왼쪽 하단 토글 버튼 - Safe Area 지원 */
+                            #unity-debug-toggle-btn {
+                                position: fixed;
+                                bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+                                left: calc(20px + env(safe-area-inset-left, 0px));
+                                width: 56px;
+                                height: 56px;
+                                background: rgba(0, 0, 0, 0.8);
+                                border: 2px solid #00ff00;
+                                border-radius: 50%;
+                                color: #00ff00;
+                                font-size: 24px;
+                                cursor: pointer;
+                                z-index: 99998;
+                                display: flex;
+                                align-items: center;
+                                justify-content: center;
+                                transition: all 0.2s;
+                                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+                            }
+                            #unity-debug-toggle-btn:hover {
+                                background: rgba(0, 255, 0, 0.2);
+                                transform: scale(1.1);
+                            }
+                            #unity-debug-toggle-btn:active {
+                                transform: scale(0.95);
+                            }
+
+                            /* Metric Explorer 스타일 */
+                            #metric-explorer {
+                                position: fixed;
+                                top: 0;
+                                left: 0;
+                                width: 100%;
+                                height: 100%;
+                                background: rgba(0, 0, 0, 0.98);
+                                color: white;
+                                font-family: "Courier New", monospace;
+                                font-size: 12px;
+                                z-index: 100000;
+                                display: none;
+                                flex-direction: column;
+                                padding-top: env(safe-area-inset-top, 0px);
+                                padding-bottom: env(safe-area-inset-bottom, 0px);
+                                padding-left: env(safe-area-inset-left, 0px);
+                                padding-right: env(safe-area-inset-right, 0px);
+                                box-sizing: border-box;
+                            }
+                            #metric-explorer.visible { display: flex; }
+                            #metric-explorer-header {
+                                background: rgba(50, 50, 50, 0.98);
+                                padding: 12px 16px;
+                                border-bottom: 2px solid #00aaff;
+                                display: flex;
+                                justify-content: space-between;
+                                align-items: center;
+                            }
+                            #metric-explorer-title {
+                                font-weight: bold;
+                                color: #00aaff;
+                                font-size: 16px;
+                            }
+                            #metric-explorer-controls {
+                                display: flex;
+                                gap: 10px;
+                            }
+                            #metric-explorer-controls button {
+                                background: #444;
+                                border: 1px solid #666;
+                                color: white;
+                                padding: 8px 16px;
+                                cursor: pointer;
+                                border-radius: 4px;
+                                font-size: 13px;
+                            }
+                            #metric-explorer-controls button:hover { background: #555; }
+                            #metric-explorer-tabs {
+                                display: flex;
+                                background: rgba(40, 40, 40, 0.98);
+                                border-bottom: 1px solid #444;
+                            }
+                            .metric-tab {
+                                padding: 12px 24px;
+                                cursor: pointer;
+                                border: none;
+                                background: transparent;
+                                color: #888;
+                                font-size: 14px;
+                                font-family: inherit;
+                                border-bottom: 3px solid transparent;
+                                transition: all 0.2s;
+                            }
+                            .metric-tab:hover { color: #ccc; background: rgba(255,255,255,0.05); }
+                            .metric-tab.active {
+                                color: #00aaff;
+                                border-bottom-color: #00aaff;
+                                background: rgba(0, 170, 255, 0.1);
+                            }
+                            #metric-explorer-content {
+                                flex: 1;
+                                overflow-y: auto;
+                                padding: 16px;
+                            }
+                            #metric-explorer-content::-webkit-scrollbar { width: 10px; }
+                            #metric-explorer-content::-webkit-scrollbar-track { background: #222; }
+                            #metric-explorer-content::-webkit-scrollbar-thumb { background: #555; border-radius: 5px; }
+                            .metric-section {
+                                margin-bottom: 24px;
+                                background: rgba(30, 30, 30, 0.8);
+                                border-radius: 8px;
+                                padding: 16px;
+                                border: 1px solid #333;
+                            }
+                            .metric-section-title {
+                                font-size: 14px;
+                                font-weight: bold;
+                                color: #00ff88;
+                                margin-bottom: 12px;
+                                padding-bottom: 8px;
+                                border-bottom: 1px solid #444;
+                            }
+                            .metric-table {
+                                width: 100%;
+                                border-collapse: collapse;
+                                table-layout: fixed;
+                            }
+                            .metric-table th {
+                                text-align: left;
+                                padding: 8px 12px;
+                                background: rgba(0, 0, 0, 0.3);
+                                color: #aaa;
+                                font-size: 11px;
+                                text-transform: uppercase;
+                                border-bottom: 1px solid #444;
+                            }
+                            .metric-table th:nth-child(1) { width: 35%; }
+                            .metric-table th:nth-child(2) { width: 50%; }
+                            .metric-table th:nth-child(3) { width: 15%; }
+                            .metric-table td {
+                                padding: 8px 12px;
+                                border-bottom: 1px solid #333;
+                                font-size: 12px;
+                                overflow-x: auto;
+                                overflow-y: hidden;
+                                max-width: 0;
+                                white-space: nowrap;
+                            }
+                            .metric-table td::-webkit-scrollbar { height: 4px; }
+                            .metric-table td::-webkit-scrollbar-track { background: transparent; }
+                            .metric-table td::-webkit-scrollbar-thumb { background: #555; border-radius: 2px; }
+                            .metric-table tr:hover { background: rgba(255, 255, 255, 0.03); }
+                            .metric-key { color: #ffcc00; word-break: break-all; white-space: normal; }
+                            .metric-value { color: #00ff88; font-family: monospace; }
+                            .metric-type { color: #888; font-size: 10px; }
+                            .metric-na { color: #666; font-style: italic; }
+                            .metric-refresh-btn {
+                                background: #0066aa;
+                                border: none;
+                                color: white;
+                                padding: 6px 12px;
+                                border-radius: 4px;
+                                cursor: pointer;
+                                font-size: 12px;
+                                margin-left: 10px;
+                            }
+                            .metric-refresh-btn:hover { background: #0088cc; }
+                            .metric-timestamp {
+                                color: #666;
+                                font-size: 11px;
+                                margin-left: auto;
+                            }
+                        `;
+                        document.head.appendChild(style);
+
+                        // 콘솔 HTML 생성
+                        var consoleDiv = document.createElement('div');
+                        consoleDiv.id = 'unity-debug-console';
+                        consoleDiv.innerHTML = `
+                            <div id="unity-debug-console-header">
+                                <div id="unity-debug-console-title">Unity Debug Console</div>
+                                <div id="unity-debug-console-controls">
+                                    <button id="debug-metrics-btn" style="background: #0066aa;">Metrics</button>
+                                    <button id="debug-copy-btn">Copy Logs</button>
+                                    <button id="debug-clear-btn">Clear</button>
+                                    <button id="debug-close-btn">Close</button>
+                                </div>
+                            </div>
+                            <div id="unity-debug-console-metrics">
+                                <div style="margin-bottom: 4px;">
+                                    <span class="metric">FPS: --</span>
+                                    <span class="metric">Frame: -- ms</span>
+                                    <span class="metric">JS Heap: -- / -- MB</span>
+                                    <span class="metric">Resolution: --</span>
+                                </div>
+                                <div>
+                                    <span class="metric">Device: -- GB RAM, -- Cores</span>
+                                    <span class="metric">GPU: --</span>
+                                </div>
+                            </div>
+                            <div id="unity-debug-console-logs"></div>
+                        `;
+                        document.body.appendChild(consoleDiv);
+
+                        // Metric Explorer HTML 생성
+                        var metricExplorer = document.createElement('div');
+                        metricExplorer.id = 'metric-explorer';
+                        metricExplorer.innerHTML = `
+                            <div id="metric-explorer-header">
+                                <div id="metric-explorer-title">Metric Explorer</div>
+                                <div id="metric-explorer-controls">
+                                    <button id="metric-refresh-btn">Refresh All</button>
+                                    <button id="metric-copy-btn">Copy JSON</button>
+                                    <button id="metric-close-btn">Close</button>
+                                </div>
+                            </div>
+                            <div id="metric-explorer-tabs">
+                                <button class="metric-tab active" data-tab="loading">Loading</button>
+                                <button class="metric-tab" data-tab="web">Web</button>
+                                <button class="metric-tab" data-tab="unity">Unity</button>
+                            </div>
+                            <div id="metric-explorer-content">
+                                <div id="metric-tab-loading" class="metric-tab-content"></div>
+                                <div id="metric-tab-web" class="metric-tab-content" style="display:none;"></div>
+                                <div id="metric-tab-unity" class="metric-tab-content" style="display:none;"></div>
+                            </div>
+                        `;
+                        document.body.appendChild(metricExplorer);
+
+                        // Safe Area 동적 적용 (게임 앱에서 CSS env() 변수가 0일 수 있음)
+                        async function applySafeAreaToDebugConsole() {
+                            try {
+                                // Apps in Toss API로 safe area 가져오기
+                                if (window.AppsInToss && window.AppsInToss.safeAreaInsetsGet) {
+                                    var insets = await window.AppsInToss.safeAreaInsetsGet();
+                                    console.log('[AIT] Debug Console safe area insets:', insets);
+
+                                    if (insets) {
+                                        consoleDiv.style.paddingTop = (insets.top || 0) + 'px';
+                                        consoleDiv.style.paddingBottom = (insets.bottom || 0) + 'px';
+                                        consoleDiv.style.paddingLeft = (insets.left || 0) + 'px';
+                                        consoleDiv.style.paddingRight = (insets.right || 0) + 'px';
+                                        console.log('[AIT] Debug Console safe area applied successfully');
+                                    }
+                                } else {
+                                    console.log('[AIT] AppsInToss.safeAreaInsetsGet not available, using CSS fallback');
+                                }
+                            } catch (err) {
+                                console.warn('[AIT] Safe area API failed, using CSS fallback:', err);
+                            }
+                        }
+                        applySafeAreaToDebugConsole();
+
+                        // 토글 버튼 생성
+                        var toggleBtn = document.createElement('button');
+                        toggleBtn.id = 'unity-debug-toggle-btn';
+                        toggleBtn.innerHTML = '&#128736;'; // 🛠️ 공구 아이콘
+                        toggleBtn.title = 'Debug Console 열기';
+                        document.body.appendChild(toggleBtn);
+
+                        // 버튼 이벤트 연결
+                        var copyBtn = document.getElementById('debug-copy-btn');
+                        var clearBtn = document.getElementById('debug-clear-btn');
+                        var closeBtn = document.getElementById('debug-close-btn');
+
+                        // 콘솔 열기/닫기 함수
+                        function toggleConsole() {
+                            var isVisible = consoleDiv.classList.toggle('visible');
+                            toggleBtn.innerHTML = isVisible ? '&#10006;' : '&#128736;'; // ✖ 또는 🛠️
+                            toggleBtn.title = isVisible ? 'Debug Console 닫기' : 'Debug Console 열기';
+                        }
+
+                        toggleBtn.onclick = toggleConsole;
+                        closeBtn.onclick = toggleConsole;
+
+                        copyBtn.onclick = function() {
+                            var logs = document.getElementById('unity-debug-console-logs').innerText;
+                            if (navigator.clipboard) {
+                                navigator.clipboard.writeText(logs).then(function() {
+                                    alert('로그가 클립보드에 복사되었습니다!');
+                                }).catch(function(err) {
+                                    alert('복사 실패: ' + err.message);
+                                });
+                            } else {
+                                var textArea = document.createElement('textarea');
+                                textArea.value = logs;
+                                textArea.style.position = 'fixed';
+                                textArea.style.opacity = '0';
+                                document.body.appendChild(textArea);
+                                textArea.select();
+                                try {
+                                    document.execCommand('copy');
+                                    alert('로그가 클립보드에 복사되었습니다!');
+                                } catch (err) {
+                                    alert('복사 실패: ' + err.message);
+                                }
+                                document.body.removeChild(textArea);
+                            }
+                        };
+
+                        clearBtn.onclick = function() {
+                            document.getElementById('unity-debug-console-logs').innerHTML = '';
+                        };
+
+                        // 백틱 키 토글
+                        document.addEventListener('keydown', function(e) {
+                            if (e.key === '`' || e.keyCode === 192) {
+                                toggleConsole();
+                                e.preventDefault();
+                            }
+                        });
+
+                        // 로그 추가 함수
+                        var logsElement = document.getElementById('unity-debug-console-logs');
+                        var maxLogs = 100;
+
+                        function addLog(message, type) {
+                            var now = new Date();
+                            var timestamp = now.getHours().toString().padStart(2, '0') + ':' +
+                                           now.getMinutes().toString().padStart(2, '0') + ':' +
+                                           now.getSeconds().toString().padStart(2, '0');
+
+                            var entry = document.createElement('div');
+                            entry.className = 'debug-log-entry ' + type;
+                            entry.innerHTML = '<span class="debug-log-timestamp">[' + timestamp + ']</span>' +
+                                             '<span class="debug-log-message">' + String(message) + '</span>';
+
+                            // 스크롤 위치 확인 (로그 추가 전)
+                            var scrollThreshold = 50;
+                            var wasAtBottom = (logsElement.scrollHeight - logsElement.scrollTop - logsElement.clientHeight) < scrollThreshold;
+
+                            logsElement.appendChild(entry);
+
+                            // 최대 로그 수 유지
+                            var logs = logsElement.children;
+                            if (logs.length > maxLogs) {
+                                logsElement.removeChild(logs[0]);
+                            }
+
+                            // 자동 스크롤 (사용자가 바닥에 있었을 때만)
+                            if (wasAtBottom) {
+                                logsElement.scrollTop = logsElement.scrollHeight;
+                            }
+                        }
+
+                        // console.log/warn/error 후킹
+                        var originalLog = console.log;
+                        var originalWarn = console.warn;
+                        var originalError = console.error;
+
+                        console.log = function() {
+                            originalLog.apply(console, arguments);
+                            var message = Array.prototype.slice.call(arguments).join(' ');
+                            addLog(message, 'log');
+                        };
+
+                        console.warn = function() {
+                            originalWarn.apply(console, arguments);
+                            var message = Array.prototype.slice.call(arguments).join(' ');
+                            addLog(message, 'warning');
+                        };
+
+                        console.error = function() {
+                            originalError.apply(console, arguments);
+                            var message = Array.prototype.slice.call(arguments).join(' ');
+                            addLog(message, 'error');
+                        };
+
+                        // 초기 메시지
+                        addLog('Debug Console initialized', 'log');
+
+                        // Early logs 출력 (bridge.js가 먼저 실행되어 저장한 로그들)
+                        if (window._aitEarlyLogs && window._aitEarlyLogs.length > 0) {
+                            addLog('=== Bridge Initialization Logs ===', 'log');
+                            window._aitEarlyLogs.forEach(function(log) {
+                                addLog('[Bridge] ' + log, 'log');
+                            });
+                            addLog('=== End Bridge Logs ===', 'log');
+                        }
+
+                        // FPS 및 메트릭 업데이트
+                        var frameCount = 0;
+                        var lastTime = performance.now();
+                        var startTime = lastTime;
+                        var metricsElement = document.getElementById('unity-debug-console-metrics');
+
+                        // 초기 시스템 정보 가져오기
+                        var deviceMemory = navigator.deviceMemory || '--';
+                        var cpuCores = navigator.hardwareConcurrency || '--';
+                        var gl = canvas ? canvas.getContext('webgl2') || canvas.getContext('webgl') : null;
+                        var gpuInfo = gl ? gl.getParameter(gl.RENDERER) : '--';
+
+                        function updateMetrics() {
+                            frameCount++;
+                            var currentTime = performance.now();
+                            var elapsed = currentTime - startTime;
+
+                            if (elapsed >= 500) { // 0.5초마다 업데이트
+                                // FPS 계산
+                                var fps = Math.round((frameCount * 1000) / elapsed);
+
+                                // 평균 프레임 타임 계산
+                                var avgFrameTime = (elapsed / frameCount).toFixed(2);
+
+                                // 메모리
+                                var memUsed = performance.memory ? (performance.memory.usedJSHeapSize / (1024 * 1024)).toFixed(1) : '--';
+                                var memTotal = performance.memory ? (performance.memory.totalJSHeapSize / (1024 * 1024)).toFixed(1) : '--';
+
+                                // 해상도
+                                var resolution = window.innerWidth + 'x' + window.innerHeight;
+                                var pixelRatio = window.devicePixelRatio ? ' @' + window.devicePixelRatio.toFixed(1) + 'x' : '';
+
+                                metricsElement.innerHTML =
+                                    '<div style="margin-bottom: 4px;">' +
+                                    '<span class="metric">FPS: ' + fps + '</span>' +
+                                    '<span class="metric">Frame: ' + avgFrameTime + ' ms</span>' +
+                                    '<span class="metric">JS Heap: ' + memUsed + ' / ' + memTotal + ' MB</span>' +
+                                    '<span class="metric">Resolution: ' + resolution + pixelRatio + '</span>' +
+                                    '</div>' +
+                                    '<div>' +
+                                    '<span class="metric">Device: ' + deviceMemory + ' GB RAM, ' + cpuCores + ' Cores</span>' +
+                                    '<span class="metric">GPU: ' + gpuInfo + '</span>' +
+                                    '</div>';
+
+                                frameCount = 0;
+                                startTime = currentTime;
+                            }
+
+                            requestAnimationFrame(updateMetrics);
+                        }
+                        updateMetrics();
+
+                        // ============================================
+                        // Metric Explorer 기능
+                        // ============================================
+                        var metricsBtn = document.getElementById('debug-metrics-btn');
+                        var metricRefreshBtn = document.getElementById('metric-refresh-btn');
+                        var metricCopyBtn = document.getElementById('metric-copy-btn');
+                        var metricCloseBtn = document.getElementById('metric-close-btn');
+                        var metricTabs = document.querySelectorAll('.metric-tab');
+                        var currentTab = 'loading';
+                        var lastMetricData = {};
+
+                        // Metric Explorer 열기/닫기
+                        function toggleMetricExplorer() {
+                            var explorer = document.getElementById('metric-explorer');
+                            var isVisible = explorer.classList.toggle('visible');
+                            if (isVisible) {
+                                refreshCurrentTab();
+                            }
+                        }
+
+                        metricsBtn.onclick = toggleMetricExplorer;
+                        metricCloseBtn.onclick = toggleMetricExplorer;
+
+                        // 탭 전환
+                        metricTabs.forEach(function(tab) {
+                            tab.onclick = function() {
+                                metricTabs.forEach(function(t) { t.classList.remove('active'); });
+                                tab.classList.add('active');
+                                currentTab = tab.getAttribute('data-tab');
+                                document.querySelectorAll('.metric-tab-content').forEach(function(c) {
+                                    c.style.display = 'none';
+                                });
+                                document.getElementById('metric-tab-' + currentTab).style.display = 'block';
+                                refreshCurrentTab();
+                            };
+                        });
+
+                        // 현재 탭 새로고침
+                        function refreshCurrentTab() {
+                            switch(currentTab) {
+                                case 'loading': renderLoadingMetrics(); break;
+                                case 'web': renderWebMetrics(); break;
+                                case 'unity': renderUnityMetrics(); break;
+                            }
+                        }
+
+                        metricRefreshBtn.onclick = refreshCurrentTab;
+
+                        // JSON 복사
+                        metricCopyBtn.onclick = function() {
+                            var jsonStr = JSON.stringify(lastMetricData, null, 2);
+                            if (navigator.clipboard) {
+                                navigator.clipboard.writeText(jsonStr).then(function() {
+                                    alert('메트릭 JSON이 클립보드에 복사되었습니다!');
+                                });
+                            }
+                        };
+
+                        // 테이블 생성 헬퍼 (재귀적으로 object/array 펼침)
+                        function createMetricTable(data, title) {
+                            var html = '<div class="metric-section">';
+                            html += '<div class="metric-section-title">' + title + '</div>';
+                            html += '<table class="metric-table"><thead><tr>';
+                            html += '<th>Key</th><th>Value</th><th>Type</th>';
+                            html += '</tr></thead><tbody>';
+
+                            function renderValue(value, indent) {
+                                indent = indent || 0;
+                                var indentStr = indent > 0 ? '<span style="color:#555;margin-left:' + (indent * 12) + 'px">' : '';
+                                var indentEnd = indent > 0 ? '</span>' : '';
+
+                                if (value === null || value === undefined) {
+                                    return { html: '<span class="metric-na">N/A</span>', type: 'null' };
+                                } else if (typeof value === 'number') {
+                                    var numStr = Number.isInteger(value) ? value : value.toFixed(2);
+                                    return { html: '<span class="metric-value">' + numStr + '</span>', type: 'number' };
+                                } else if (typeof value === 'boolean') {
+                                    return { html: '<span class="metric-value">' + value + '</span>', type: 'boolean' };
+                                } else if (typeof value === 'string') {
+                                    var escaped = String(value).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                                    if (escaped.length > 80) escaped = escaped.substring(0, 80) + '...';
+                                    return { html: '<span class="metric-value">"' + escaped + '"</span>', type: 'string' };
+                                } else if (Array.isArray(value)) {
+                                    if (value.length === 0) {
+                                        return { html: '<span class="metric-value">[]</span>', type: 'array[0]' };
+                                    }
+                                    // 숫자 배열은 한 줄로 표시
+                                    if (value.every(function(v) { return typeof v === 'number'; })) {
+                                        var nums = value.map(function(v) { return Number.isInteger(v) ? v : v.toFixed(1); });
+                                        if (nums.join(', ').length < 60) {
+                                            return { html: '<span class="metric-value">[' + nums.join(', ') + ']</span>', type: 'array[' + value.length + ']' };
+                                        }
+                                    }
+                                    return { html: null, type: 'array[' + value.length + ']', expand: value, isArray: true };
+                                } else if (typeof value === 'object') {
+                                    var keys = Object.keys(value);
+                                    if (keys.length === 0) {
+                                        return { html: '<span class="metric-value">{}</span>', type: 'object' };
+                                    }
+                                    return { html: null, type: 'object', expand: value, isArray: false };
+                                }
+                                return { html: '<span class="metric-value">' + String(value) + '</span>', type: typeof value };
+                            }
+
+                            function renderRows(obj, prefix, indent) {
+                                var rows = '';
+                                var keys = Array.isArray(obj) ? obj.map(function(_, i) { return i; }) : Object.keys(obj);
+
+                                keys.forEach(function(key) {
+                                    var value = obj[key];
+                                    var fullKey = prefix ? prefix + '.' + key : String(key);
+                                    var displayKey = indent > 0 ?
+                                        '<span style="padding-left:' + (indent * 16) + 'px;color:#888;">' + key + '</span>' :
+                                        key;
+
+                                    var result = renderValue(value, indent);
+
+                                    if (result.html !== null) {
+                                        rows += '<tr>';
+                                        rows += '<td class="metric-key">' + displayKey + '</td>';
+                                        rows += '<td>' + result.html + '</td>';
+                                        rows += '<td class="metric-type">' + result.type + '</td>';
+                                        rows += '</tr>';
+                                    } else {
+                                        // object/array 헤더
+                                        rows += '<tr style="background:rgba(0,170,255,0.05);">';
+                                        rows += '<td class="metric-key">' + displayKey + '</td>';
+                                        rows += '<td><span style="color:#00aaff;">' + (result.isArray ? '[...]' : '{...}') + '</span></td>';
+                                        rows += '<td class="metric-type">' + result.type + '</td>';
+                                        rows += '</tr>';
+                                        // 재귀적으로 내부 렌더링
+                                        rows += renderRows(result.expand, fullKey, indent + 1);
+                                    }
+                                });
+                                return rows;
+                            }
+
+                            html += renderRows(data, '', 0);
+                            html += '</tbody></table></div>';
+                            return html;
+                        }
+
+                        // Loading Metrics 렌더링
+                        function renderLoadingMetrics() {
+                            var container = document.getElementById('metric-tab-loading');
+                            var html = '';
+                            var data = {};
+
+                            // AITLoadingLogger 데이터
+                            if (window.AITLoadingLogger) {
+                                var logger = window.AITLoadingLogger;
+
+                                // 이벤트 타이밍
+                                var events = {};
+                                Object.keys(logger.events).forEach(function(key) {
+                                    var evt = logger.events[key];
+                                    events[key] = {
+                                        elapsed_ms: Math.round(evt.elapsed),
+                                        data: evt.data
+                                    };
+                                });
+                                data.events = events;
+                                html += createMetricTable(events, 'Loading Events (Timing)');
+
+                                // 파일 다운로드 통계
+                                var fileStats = logger.getFileStats();
+                                var decompressionFallbackCount = 0;
+                                if (fileStats.length > 0) {
+                                    fileStats.forEach(function(file) {
+                                        if (file.decompressionFallback) decompressionFallbackCount++;
+                                        var fileData = {
+                                            url: file.url,
+                                            size_bytes: file.size,
+                                            size_MB: Math.round(file.size / 1024 / 1024 * 100) / 100,
+                                            duration_ms: file.duration,
+                                            startTime_ms: file.startTime,
+                                            responseEnd_ms: file.responseEnd,
+                                            avgSpeed_KBps: file.avgSpeed,
+                                            peakSpeed_KBps: file.peakSpeed,
+                                            minSpeed_KBps: file.minSpeed,
+                                            speedHistory: file.speedHistory,
+                                            compressionType: file.compressionType || 'none',
+                                            contentEncoding: file.contentEncoding || 'none',
+                                            decompressionFallback: file.decompressionFallback || false
+                                        };
+                                        data['file_' + file.name] = fileData;
+                                        html += createMetricTable(fileData, 'File: ' + file.name);
+                                    });
+                                }
+
+                                // 요약
+                                var summary = {
+                                    totalTime_ms: logger.getTotalTime(),
+                                    totalFiles: fileStats.length,
+                                    totalSize_MB: fileStats.reduce(function(sum, f) { return sum + f.size; }, 0) / 1024 / 1024,
+                                    decompressionFallbackCount: decompressionFallbackCount,
+                                    decompressionFallbackOccurred: decompressionFallbackCount > 0
+                                };
+                                data.summary = summary;
+                                html = createMetricTable(summary, 'Loading Summary') + html;
+                            } else {
+                                html = '<div class="metric-section"><div class="metric-section-title">AITLoadingLogger not available</div></div>';
+                            }
+
+                            lastMetricData.loading = data;
+                            container.innerHTML = html;
+                        }
+
+                        // Web Metrics 렌더링
+                        function renderWebMetrics() {
+                            var container = document.getElementById('metric-tab-web');
+                            var html = '';
+                            var data = {};
+
+                            // Performance Memory (Chrome only)
+                            if (performance.memory) {
+                                var memData = {
+                                    usedJSHeapSize_MB: (performance.memory.usedJSHeapSize / 1024 / 1024).toFixed(2),
+                                    totalJSHeapSize_MB: (performance.memory.totalJSHeapSize / 1024 / 1024).toFixed(2),
+                                    jsHeapSizeLimit_MB: (performance.memory.jsHeapSizeLimit / 1024 / 1024).toFixed(2)
+                                };
+                                data.memory = memData;
+                                html += createMetricTable(memData, 'JavaScript Memory (Chrome)');
+                            }
+
+                            // Navigator Info
+                            var navData = {
+                                userAgent: navigator.userAgent,
+                                platform: navigator.platform,
+                                language: navigator.language,
+                                cookieEnabled: navigator.cookieEnabled,
+                                onLine: navigator.onLine,
+                                hardwareConcurrency: navigator.hardwareConcurrency || 'N/A',
+                                deviceMemory: navigator.deviceMemory ? navigator.deviceMemory + ' GB' : 'N/A',
+                                maxTouchPoints: navigator.maxTouchPoints
+                            };
+                            data.navigator = navData;
+                            html += createMetricTable(navData, 'Navigator');
+
+                            // Screen Info
+                            var screenData = {
+                                width: screen.width,
+                                height: screen.height,
+                                availWidth: screen.availWidth,
+                                availHeight: screen.availHeight,
+                                colorDepth: screen.colorDepth,
+                                pixelDepth: screen.pixelDepth,
+                                devicePixelRatio: window.devicePixelRatio
+                            };
+                            data.screen = screenData;
+                            html += createMetricTable(screenData, 'Screen');
+
+                            // Window Info
+                            var windowData = {
+                                innerWidth: window.innerWidth,
+                                innerHeight: window.innerHeight,
+                                outerWidth: window.outerWidth,
+                                outerHeight: window.outerHeight,
+                                scrollX: window.scrollX,
+                                scrollY: window.scrollY
+                            };
+                            data.window = windowData;
+                            html += createMetricTable(windowData, 'Window');
+
+                            // Network Info (if available)
+                            if (navigator.connection) {
+                                var conn = navigator.connection;
+                                var netData = {
+                                    effectiveType: conn.effectiveType || 'N/A',
+                                    downlink: conn.downlink ? conn.downlink + ' Mbps' : 'N/A',
+                                    rtt: conn.rtt ? conn.rtt + ' ms' : 'N/A',
+                                    saveData: conn.saveData
+                                };
+                                data.network = netData;
+                                html += createMetricTable(netData, 'Network Connection');
+                            }
+
+                            // Performance Timing
+                            if (performance.timing) {
+                                var t = performance.timing;
+                                var timingData = {
+                                    navigationStart: t.navigationStart,
+                                    domContentLoaded_ms: t.domContentLoadedEventEnd - t.navigationStart,
+                                    domComplete_ms: t.domComplete - t.navigationStart,
+                                    loadEvent_ms: t.loadEventEnd - t.navigationStart,
+                                    dnsLookup_ms: t.domainLookupEnd - t.domainLookupStart,
+                                    tcpConnect_ms: t.connectEnd - t.connectStart,
+                                    ttfb_ms: t.responseStart - t.navigationStart,
+                                    responseTime_ms: t.responseEnd - t.responseStart
+                                };
+                                data.timing = timingData;
+                                html += createMetricTable(timingData, 'Performance Timing');
+                            }
+
+                            // WebGL Info
+                            if (gl) {
+                                var webglData = {
+                                    renderer: gl.getParameter(gl.RENDERER),
+                                    vendor: gl.getParameter(gl.VENDOR),
+                                    version: gl.getParameter(gl.VERSION),
+                                    shadingLanguageVersion: gl.getParameter(gl.SHADING_LANGUAGE_VERSION),
+                                    maxTextureSize: gl.getParameter(gl.MAX_TEXTURE_SIZE),
+                                    maxViewportDims: gl.getParameter(gl.MAX_VIEWPORT_DIMS),
+                                    maxRenderbufferSize: gl.getParameter(gl.MAX_RENDERBUFFER_SIZE)
+                                };
+                                // WEBGL_debug_renderer_info 확장
+                                var debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+                                if (debugInfo) {
+                                    webglData.unmaskedVendor = gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL);
+                                    webglData.unmaskedRenderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
+                                }
+                                data.webgl = webglData;
+                                html += createMetricTable(webglData, 'WebGL');
+                            }
+
+                            // Visibility
+                            var visData = {
+                                visibilityState: document.visibilityState,
+                                hidden: document.hidden
+                            };
+                            data.visibility = visData;
+                            html += createMetricTable(visData, 'Visibility');
+
+                            lastMetricData.web = data;
+                            container.innerHTML = html;
+                        }
+
+                        // Unity 버전 감지 함수
+                        // - 빌드 시 주입된 상세 버전 (AIT_UNITY_VERSION) 사용
+                        // API 지원:
+                        // - Unity 6+: unityInstance.GetMetricsInfo (FPS, 메모리, 타이밍)
+                        // - Unity 2022.2+: unityInstance.GetMemoryInfo (메모리만)
+                        // - Unity 2021.3: API 없음
+                        function detectUnityVersion() {
+                            var inst = window.unityInstance;
+
+                            // 메트릭 API 감지
+                            var api = 'none';
+                            if (inst) {
+                                if (typeof inst.GetMetricsInfo === 'function') {
+                                    api = 'GetMetricsInfo';
+                                } else if (typeof inst.GetMemoryInfo === 'function') {
+                                    api = 'GetMemoryInfo';
+                                }
+                            }
+
+                            // 빌드 시 주입된 상세 버전 사용 (AIT_UNITY_VERSION 변수)
+                            var unityVersion = (typeof AIT_UNITY_VERSION !== 'undefined') ? AIT_UNITY_VERSION : '';
+                            // 플레이스홀더가 치환되지 않은 경우 체크 (%로 시작하고 끝나는지)
+                            if (!unityVersion || unityVersion === '' || (unityVersion.charAt(0) === '%' && unityVersion.charAt(unityVersion.length - 1) === '%')) {
+                                unityVersion = 'unknown';
+                            }
+
+                            return {
+                                unityVersion: unityVersion, // 상세 버전 (예: 6000.2.14f1)
+                                api: api                    // 메트릭 API (GetMetricsInfo, GetMemoryInfo, none)
+                            };
+                        }
+
+                        // Unity Metrics 렌더링
+                        function renderUnityMetrics() {
+                            var container = document.getElementById('metric-tab-unity');
+                            var html = '';
+                            var data = {};
+
+                            // Unity 버전 감지
+                            var versionInfo = detectUnityVersion();
+                            var mod = window.unityInstance && window.unityInstance.Module;
+
+                            // Unity Instance 정보
+                            if (window.unityInstance) {
+                                var unityData = {
+                                    unityVersion: versionInfo.unityVersion,   // 상세 버전 (예: 6000.2.14f1)
+                                    metricsAPI: versionInfo.api,
+                                    moduleAvailable: mod ? true : false
+                                };
+
+                                if (mod && mod.HEAPU8) {
+                                    unityData.wasmHeapSize_MB = Math.round(mod.HEAPU8.length / 1024 / 1024 * 100) / 100;
+                                }
+
+                                data.instance = unityData;
+                                html += createMetricTable(unityData, 'Unity Instance');
+                            } else {
+                                html += createMetricTable({ status: 'Unity 인스턴스 없음' }, 'Unity Instance');
+                            }
+
+                            // Unity Runtime Metrics - 버전별 API에 따라 표시
+                            var inst = window.unityInstance;
+                            if (versionInfo.api === 'GetMetricsInfo') {
+                                // Unity 6+ (GetMetricsInfo - 전체 메트릭)
+                                try {
+                                    var metrics = inst.GetMetricsInfo();
+                                    if (metrics) {
+                                        var runtimeMetrics = {
+                                            fps: metrics.fps ? Math.round(metrics.fps * 10) / 10 : 'N/A',
+                                            movingAverageFps: metrics.movingAverageFps ? Math.round(metrics.movingAverageFps * 10) / 10 : 'N/A',
+                                            numJankedFrames: metrics.numJankedFrames || 0
+                                        };
+                                        data.performance = runtimeMetrics;
+                                        html += createMetricTable(runtimeMetrics, 'Performance');
+
+                                        var memoryMetrics = {
+                                            totalJSHeapSize_MB: metrics.totalJSHeapSize ? Math.round(metrics.totalJSHeapSize / 1024 / 1024 * 100) / 100 : 'N/A',
+                                            usedJSHeapSize_MB: metrics.usedJSHeapSize ? Math.round(metrics.usedJSHeapSize / 1024 / 1024 * 100) / 100 : 'N/A',
+                                            totalWASMHeapSize_MB: metrics.totalWASMHeapSize ? Math.round(metrics.totalWASMHeapSize / 1024 / 1024 * 100) / 100 : 'N/A',
+                                            usedWASMHeapSize_MB: metrics.usedWASMHeapSize ? Math.round(metrics.usedWASMHeapSize / 1024 / 1024 * 100) / 100 : 'N/A'
+                                        };
+                                        data.memory = memoryMetrics;
+                                        html += createMetricTable(memoryMetrics, 'Memory');
+
+                                        var timingMetrics = {
+                                            pageLoadTime_sec: metrics.pageLoadTime ? Math.round(metrics.pageLoadTime / 10) / 100 : 'N/A',
+                                            pageLoadTimeToFrame1_sec: metrics.pageLoadTimeToFrame1 ? Math.round(metrics.pageLoadTimeToFrame1 / 10) / 100 : 'N/A',
+                                            codeDownloadTime_sec: metrics.codeDownloadTime ? Math.round(metrics.codeDownloadTime / 10) / 100 : 'N/A',
+                                            assetLoadTime_sec: metrics.assetLoadTime ? Math.round(metrics.assetLoadTime / 10) / 100 : 'N/A',
+                                            webAssemblyStartupTime_sec: metrics.webAssemblyStartupTime ? Math.round(metrics.webAssemblyStartupTime / 10) / 100 : 'N/A',
+                                            gameStartupTime_sec: metrics.gameStartupTime ? Math.round(metrics.gameStartupTime / 10) / 100 : 'N/A'
+                                        };
+                                        data.timing = timingMetrics;
+                                        html += createMetricTable(timingMetrics, 'Timing');
+                                    }
+                                } catch (e) {
+                                    html += createMetricTable({ error: e.message }, 'Runtime Metrics (Error)');
+                                }
+                            } else if (versionInfo.api === 'GetMemoryInfo') {
+                                // Unity 2022.2+ (GetMemoryInfo - 메모리만)
+                                try {
+                                    var memInfo = inst.GetMemoryInfo();
+                                    if (memInfo) {
+                                        var memoryMetrics = {
+                                            totalJSHeapSize_MB: memInfo.totalJSHeapSize ? Math.round(memInfo.totalJSHeapSize / 1024 / 1024 * 100) / 100 : 'N/A',
+                                            usedJSHeapSize_MB: memInfo.usedJSHeapSize ? Math.round(memInfo.usedJSHeapSize / 1024 / 1024 * 100) / 100 : 'N/A',
+                                            totalWASMHeapSize_MB: memInfo.totalWASMHeapSize ? Math.round(memInfo.totalWASMHeapSize / 1024 / 1024 * 100) / 100 : 'N/A',
+                                            usedWASMHeapSize_MB: memInfo.usedWASMHeapSize ? Math.round(memInfo.usedWASMHeapSize / 1024 / 1024 * 100) / 100 : 'N/A'
+                                        };
+                                        data.memory = memoryMetrics;
+                                        html += createMetricTable(memoryMetrics, 'Memory');
+                                    }
+                                } catch (e) {
+                                    html += createMetricTable({ error: e.message }, 'Memory Metrics (Error)');
+                                }
+                            }
+                            // versionInfo.api === 'none'인 경우 추가 테이블 없음
+
+                            // WASM Memory (alternative method)
+                            if (window.unityInstance && window.unityInstance.Module) {
+                                var mod = window.unityInstance.Module;
+                                var wasmData = {};
+
+                                if (mod.HEAPU8) wasmData.HEAPU8_length = mod.HEAPU8.length;
+                                if (mod.HEAP8) wasmData.HEAP8_length = mod.HEAP8.length;
+                                if (mod.HEAPU16) wasmData.HEAPU16_length = mod.HEAPU16.length;
+                                if (mod.HEAP16) wasmData.HEAP16_length = mod.HEAP16.length;
+                                if (mod.HEAPU32) wasmData.HEAPU32_length = mod.HEAPU32.length;
+                                if (mod.HEAP32) wasmData.HEAP32_length = mod.HEAP32.length;
+                                if (mod.HEAPF32) wasmData.HEAPF32_length = mod.HEAPF32.length;
+                                if (mod.HEAPF64) wasmData.HEAPF64_length = mod.HEAPF64.length;
+
+                                if (Object.keys(wasmData).length > 0) {
+                                    data.wasmHeaps = wasmData;
+                                    html += createMetricTable(wasmData, 'WASM Heap Arrays');
+                                }
+                            }
+
+                            lastMetricData.unity = data;
+                            container.innerHTML = html;
+                        }
+
+                        // 초기 로딩 메트릭 렌더링
+                        renderLoadingMetrics();
+
+                        console.log('[AIT] Debug Console 초기화 완료 (오른쪽 하단 버튼으로 열기/닫기)');
+                    } catch (e) {
+                        console.error('[AIT] Debug Console 초기화 실패:', e);
+                    }
+                }, 100);
+            } else {
+                console.log('[AIT] Debug Console 비활성화됨 (enableDebugConsole: false)');
+            }
+
+            // 로딩 화면 숨기기
+            console.log('[AIT] ✓ 게임 로딩 완료!');
+            setTimeout(hideLoadingScreen, 500);
+
+                }).catch((message) => {
+                    var errorStr = typeof message === 'object' ? (message.message || String(message)) : String(message);
+                    console.error('[AIT] ✗ Unity 로드 실패:', errorStr);
+
+                    // 에러 이벤트 로깅 및 콜백 호출
+                    if (window.AITLoadingLogger) {
+                        AITLoadingLogger.logEvent('loading_error', { message: errorStr });
+                        AITLoadingLogger.notifyError({ message: errorStr });
+                    }
+
+                    // ASM_CONSTS 초기화 타이밍 오류 감지 시 자동 재시도
+                    // Unity WASM 런타임의 레이스 컨디션으로 ASM_CONSTS 배열이 아직 초기화되지 않은 상태에서
+                    // emscripten_asm_const_int_sync_on_main_thread가 호출될 수 있음
+                    var isAsmConstsError = /ASM_CONSTS/.test(errorStr);
+                    var retryKey = '__ait_reload_count__';
+                    var maxRetries = 2;
+                    var currentRetries = parseInt(sessionStorage.getItem(retryKey) || '0', 10);
+
+                    if (isAsmConstsError && currentRetries < maxRetries) {
+                        sessionStorage.setItem(retryKey, String(currentRetries + 1));
+                        console.warn('[AIT] ASM_CONSTS 초기화 오류 감지, 자동 재시도 (' + (currentRetries + 1) + '/' + maxRetries + ')');
+                        location.reload();
+                        return;
+                    }
+
+                    // 재시도 횟수 초기화 (다른 에러이거나 재시도 소진)
+                    sessionStorage.removeItem(retryKey);
+
+                    showLoadError(
+                        '게임 로드 실패',
+                        errorStr,
+                        [
+                            '네트워크 연결 상태를 확인해 주세요.',
+                            '잠시 후 다시 시도해 주세요.',
+                            '문제가 계속되면 앱을 재시작해 주세요.'
+                        ],
+                        {
+                            error: errorStr,
+                            retryCount: currentRetries,
+                            config: { dataUrl: config.dataUrl, frameworkUrl: config.frameworkUrl, codeUrl: config.codeUrl }
+                        }
+                    );
+                });
+            } // end of else block for createUnityInstance check
+        }, 10000); // waitForLoader 타임아웃: 10초
+    </script>
+
+    <!-- USER_BODY_END_START - 이 영역에 사용자 커스텀 스크립트를 추가하세요 -->
+    <!-- 예: <script src="analytics.js"></script> -->
+    <!-- 예: <script>console.log('Custom initialization');</script> -->
+    <!-- USER_BODY_END_END -->
+</body>
+</html>

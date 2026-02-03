@@ -1,0 +1,39 @@
+{
+  "name": "im.toss.apps-in-toss-unity-sdk",
+  "displayName": "Apps in Toss SDK",
+  "description": "Apps in Toss Mini App Unity Engine Adapter SDK Package. (Released: 20260203_0718, 2fb0a36)",
+  "version": "1.9.1",
+  "unity": "2021.3",
+  "unityRelease": "45f1",
+  "keywords": [
+    "Unity",
+    "AppsInToss",
+    "MiniApp",
+    "WebGL",
+    "토스",
+    "Toss"
+  ],
+  "author": {
+    "name": "Apps in Toss Team",
+    "email": "dev@appsintoss.com"
+  },
+  "homepage": "https://appsintoss.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/toss/apps-in-toss-unity-sdk"
+  },
+  "engines": {
+    "unity": ">=2021.3"
+  },
+  "dependencies": {
+    "com.unity.nuget.newtonsoft-json": "3.0.2"
+  },
+  "category": "Platform SDK",
+  "scripts": {
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "husky": "^9.0.0",
+    "typescript": "^5.9.3"
+  }
+}

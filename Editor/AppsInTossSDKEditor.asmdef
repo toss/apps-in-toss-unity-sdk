@@ -1,0 +1,20 @@
+{
+    "name": "AppsInTossSDKEditor",
+    "rootNamespace": "AppsInToss.Editor",
+    "references": [
+        "GUID:343deaaf83e0cee4ca978e7df0b80d21",
+        "GUID:69448af7b92c7f342b298e06a37122aa",
+        "GUID:8b2c4f6a3d1e5a7890bcdef123456789"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

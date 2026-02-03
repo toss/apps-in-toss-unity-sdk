@@ -253,6 +253,53 @@ jobs:
             echo "- [v${VERSION}](${RELEASE_URL})" >> $GITHUB_STEP_SUMMARY
           done
 
+          # 배포 URL + QR 코드 테이블 추가
+          if [ -d "all-deploy-results" ]; then
+            HAS_DEPLOY_URL=false
+            DEPLOY_TABLE=""
+
+            for dir in all-deploy-results/deploy-results-*/; do
+              if [ -d "$dir" ] && [ -f "${dir}deploy-results.txt" ]; then
+                FILE_VERSION=$(grep "^version=" "${dir}deploy-results.txt" | cut -d= -f2)
+                RESULTS=$(sed -n '/^---RESULTS---$/,$ p' "${dir}deploy-results.txt" | tail -n +2)
+
+                if [ -n "$RESULTS" ]; then
+                  while IFS= read -r line; do
+                    if [ -n "$line" ]; then
+                      PLATFORM=$(echo "$line" | cut -d: -f1 | xargs)
+                      STATUS=$(echo "$line" | cut -d: -f2- | xargs)
+                      # PLATFORM 형식: "macOS - 2021.3"
+                      OS_NAME=$(echo "$PLATFORM" | cut -d'-' -f1 | xargs)
+                      UV=$(echo "$PLATFORM" | cut -d'-' -f2- | xargs)
+
+                      if echo "$STATUS" | grep -qE '^intoss-private://'; then
+                        HAS_DEPLOY_URL=true
+                        ENCODED_URL=$(printf '%s' "$STATUS" | jq -sRr @uri)
+                        QR_IMG="![QR](https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${ENCODED_URL})"
+                        DEPLOY_TABLE="${DEPLOY_TABLE}| v${FILE_VERSION} | ${OS_NAME} | ${UV} | ✅ | \`${STATUS}\` | ${QR_IMG} |\n"
+                      elif [[ "$STATUS" == *"FAILED"* ]] || [[ "$STATUS" == *"TIMEOUT"* ]]; then
+                        HAS_DEPLOY_URL=true
+                        DEPLOY_TABLE="${DEPLOY_TABLE}| v${FILE_VERSION} | ${OS_NAME} | ${UV} | ❌ | ${STATUS} | - |\n"
+                      elif [[ "$STATUS" != "SUCCESS" ]]; then
+                        HAS_DEPLOY_URL=true
+                        DEPLOY_TABLE="${DEPLOY_TABLE}| v${FILE_VERSION} | ${OS_NAME} | ${UV} | ✅ | ${STATUS} | - |\n"
+                      fi
+                    fi
+                  done <<< "$RESULTS"
+                fi
+              fi
+            done
+
+            if [ "$HAS_DEPLOY_URL" = true ]; then
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "### 배포 결과" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "| 버전 | 플랫폼 | Unity | 상태 | URL | QR |" >> $GITHUB_STEP_SUMMARY
+              echo "|------|--------|-------|------|-----|:--:|" >> $GITHUB_STEP_SUMMARY
+              echo -e "$DEPLOY_TABLE" >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
+
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "---" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY

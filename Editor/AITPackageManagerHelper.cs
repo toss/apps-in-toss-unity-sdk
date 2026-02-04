@@ -23,107 +23,6 @@ namespace AppsInToss.Editor
         /// </summary>
         private static string[] StandardPaths => AITPlatformHelper.StandardBinPaths;
 
-        /// <summary>
-        /// npm 실행 환경에서 node 경로 찾기
-        /// npm이 실행되는 환경에서는 node도 반드시 있어야 하므로, npm을 통해 node 찾기
-        /// </summary>
-        /// <param name="npmPath">npm 실행 파일 경로</param>
-        /// <param name="verbose">상세 로그 출력 여부</param>
-        /// <returns>node 실행 파일 절대 경로 또는 null</returns>
-        private static string FindNodeFromNpm(string npmPath, bool verbose = true)
-        {
-            string npmDir = Path.GetDirectoryName(npmPath);
-
-            if (verbose) Debug.Log($"[Package Manager] Finding node from npm path: {npmPath}");
-
-            // 1. npm과 같은 디렉토리에서 node 찾기 (가장 확실한 방법)
-            string nodeExeName = AITPlatformHelper.GetExecutableName("node");
-            string nodePath = Path.Combine(npmDir, nodeExeName);
-            if (verbose) Debug.Log($"[Package Manager] [1/4] Checking npm directory: {nodePath}");
-
-            if (File.Exists(nodePath))
-            {
-                if (verbose) Debug.Log($"[Package Manager] ✓ node found in npm directory: {nodePath}");
-                return nodePath;
-            }
-
-            // Windows에서는 node.exe도 확인
-            if (AITPlatformHelper.IsWindows)
-            {
-                nodePath = Path.Combine(npmDir, "node.exe");
-                if (File.Exists(nodePath))
-                {
-                    if (verbose) Debug.Log($"[Package Manager] ✓ node found in npm directory: {nodePath}");
-                    return nodePath;
-                }
-            }
-
-            if (verbose) Debug.Log($"[Package Manager] ✗ node not found in npm directory");
-
-            // 2. npm config get prefix 명령으로 prefix 경로 알아내기
-            try
-            {
-                if (verbose) Debug.Log($"[Package Manager] [2/4] Trying 'npm config get prefix'...");
-
-                string command = $"cd \"{npmDir}\" && \"{npmPath}\" config get prefix";
-                var result = AITPlatformHelper.ExecuteCommand(command, npmDir, new[] { npmDir }, verbose: false);
-
-                if (result.Success && !string.IsNullOrEmpty(result.Output))
-                {
-                    string prefix = result.Output.Trim();
-                    if (verbose) Debug.Log($"[Package Manager]   npm prefix: {prefix}");
-
-                    // 플랫폼별 bin 경로
-                    string binDir = AITPlatformHelper.IsWindows ? prefix : Path.Combine(prefix, "bin");
-                    string prefixNodePath = Path.Combine(binDir, nodeExeName);
-                    if (verbose) Debug.Log($"[Package Manager]   Checking: {prefixNodePath}");
-
-                    if (File.Exists(prefixNodePath))
-                    {
-                        if (verbose) Debug.Log($"[Package Manager] ✓ node found via npm prefix: {prefixNodePath}");
-                        return prefixNodePath;
-                    }
-                    else
-                    {
-                        if (verbose) Debug.Log($"[Package Manager] ✗ node not found at prefix path");
-                    }
-                }
-                else
-                {
-                    if (verbose) Debug.Log($"[Package Manager] ✗ npm config get prefix failed");
-                }
-            }
-            catch (Exception e)
-            {
-                if (verbose) Debug.LogWarning($"[Package Manager] ✗ npm config get prefix exception: {e.Message}");
-            }
-
-            // 3. 시스템 명령으로 node 찾기 (where/type -P)
-            if (verbose) Debug.Log($"[Package Manager] [3/4] Finding node via system command...");
-            string systemNodePath = AITPlatformHelper.FindExecutable("node", new[] { npmDir }, verbose: verbose);
-            if (!string.IsNullOrEmpty(systemNodePath))
-            {
-                if (verbose) Debug.Log($"[Package Manager] ✓ node found via system: {systemNodePath}");
-                return systemNodePath;
-            }
-
-            // 4. 일반적인 경로에서 찾기
-            if (verbose) Debug.Log($"[Package Manager] [4/4] Checking standard paths...");
-            string generalNodePath = FindExecutable("node", verbose: verbose);
-            if (!string.IsNullOrEmpty(generalNodePath))
-            {
-                if (verbose) Debug.Log($"[Package Manager] ✓ node found in standard paths: {generalNodePath}");
-                return generalNodePath;
-            }
-            else
-            {
-                if (verbose) Debug.Log($"[Package Manager] ✗ node not found in standard paths");
-            }
-
-            if (verbose) Debug.LogWarning("[Package Manager] ✗ Could not find node in any location (tried 4 methods)");
-            return null;
-        }
-
         // 마지막으로 탐지한 내장 Node.js 경로 (ExecutePackageManagerCommand에서 PATH 설정용)
         private static string _embeddedNodeBinPath = null;
 
@@ -159,17 +58,7 @@ namespace AppsInToss.Editor
 
             if (string.IsNullOrEmpty(embeddedNpm))
             {
-                Debug.LogError("[Package Manager] ========================================");
-                Debug.LogError("[Package Manager] ✗ 내장 Node.js 다운로드 실패");
-                Debug.LogError("[Package Manager] ========================================");
-                Debug.LogError("[Package Manager] ");
-                Debug.LogError("[Package Manager] 해결 방법:");
-                Debug.LogError("[Package Manager]   1. 네트워크 연결을 확인하세요.");
-                Debug.LogError(AITPlatformHelper.IsWindows
-                    ? "[Package Manager]   2. %LOCALAPPDATA%\\ait-unity-sdk\\nodejs\\ 폴더를 삭제 후 Unity를 재시작하세요."
-                    : "[Package Manager]   2. ~/.ait-unity-sdk/nodejs/ 폴더를 삭제 후 Unity를 재시작하세요.");
-                Debug.LogError("[Package Manager]   3. 방화벽/프록시가 nodejs.org를 차단하고 있는지 확인하세요.");
-                Debug.LogError("[Package Manager] ========================================");
+                LogInstallationFailure("Package Manager");
                 return null;
             }
 
@@ -213,35 +102,6 @@ namespace AppsInToss.Editor
         }
 
         /// <summary>
-        /// npm 찾기 (시스템 npm → Embedded Node.js)
-        /// </summary>
-        /// <param name="verbose">상세 로그 출력 여부</param>
-        /// <returns>npm 실행 파일 경로</returns>
-        public static string FindNpm(bool verbose = true)
-        {
-            // 1. 시스템 npm 찾기
-            string npmPath = FindExecutable("npm", verbose);
-            if (!string.IsNullOrEmpty(npmPath))
-            {
-                if (verbose) Debug.Log($"[npm] 시스템 npm 사용: {npmPath}");
-                return npmPath;
-            }
-
-            // 2. Embedded portable Node.js 사용 (자동 다운로드)
-            if (verbose) Debug.LogWarning("[npm] 시스템 npm 없음. Embedded Node.js 확인...");
-            string embeddedNpm = AITNodeJSDownloader.FindEmbeddedNpm(autoDownload: true);
-            if (!string.IsNullOrEmpty(embeddedNpm))
-            {
-                if (verbose) Debug.Log($"[npm] Embedded npm 사용: {embeddedNpm}");
-                return embeddedNpm;
-            }
-
-            // 3. 둘 다 없으면 에러
-            if (verbose) Debug.LogError("[npm] npm을 찾을 수 없습니다. Node.js가 설치되어 있는지 확인하세요.");
-            return null;
-        }
-
-        /// <summary>
         /// 실행 파일 경로 찾기 (크로스 플랫폼)
         /// </summary>
         /// <param name="executableName">실행 파일 이름 (예: "pnpm", "npm", "node")</param>
@@ -254,55 +114,48 @@ namespace AppsInToss.Editor
         }
 
         /// <summary>
-        /// npm을 사용하여 pnpm 로컬 설치 (ait-build 내부)
+        /// 플랫폼별 Node.js 설치 경로 문자열 반환
         /// </summary>
-        /// <param name="buildPath">빌드 디렉토리 경로</param>
-        /// <param name="npmPath">npm 실행 파일 경로</param>
-        /// <param name="verbose">상세 로그 출력 여부</param>
-        /// <returns>설치 성공 여부</returns>
-        private static bool InstallPnpmLocally(string buildPath, string npmPath, bool verbose = true)
+        public static string GetNodejsPathDescription()
         {
-            try
-            {
-                // buildPath 디렉토리 생성 (없으면)
-                if (!Directory.Exists(buildPath))
-                {
-                    Directory.CreateDirectory(buildPath);
-                }
+            return AITPlatformHelper.IsWindows
+                ? "%LOCALAPPDATA%\\ait-unity-sdk\\nodejs\\"
+                : "~/.ait-unity-sdk/nodejs/";
+        }
 
-                // npm 디렉토리 경로 구하기 (npm 실행 파일이 있는 bin 디렉토리)
-                string npmBinPath = Path.GetDirectoryName(npmPath);
+        /// <summary>
+        /// pnpm/Node.js 설치 실패 에러를 로그에 출력
+        /// </summary>
+        public static void LogInstallationFailure(string tag)
+        {
+            string nodejsPath = GetNodejsPathDescription();
+            Debug.LogError($"[{tag}] ========================================");
+            Debug.LogError($"[{tag}] ✗ pnpm을 설치할 수 없습니다.");
+            Debug.LogError($"[{tag}] ========================================");
+            Debug.LogError($"[{tag}] ");
+            Debug.LogError($"[{tag}] 내장 Node.js 다운로드 또는 pnpm 설치에 실패했습니다.");
+            Debug.LogError($"[{tag}] ");
+            Debug.LogError($"[{tag}] 해결 방법:");
+            Debug.LogError($"[{tag}]   1. 네트워크 연결을 확인하세요.");
+            Debug.LogError($"[{tag}]   2. {nodejsPath} 폴더를 삭제 후 Unity를 재시작하세요.");
+            Debug.LogError($"[{tag}]   3. 방화벽/프록시가 nodejs.org를 차단하고 있는지 확인하세요.");
+            Debug.LogError($"[{tag}] ========================================");
+        }
 
-                if (verbose) Debug.Log($"[Package Manager] pnpm 글로벌 설치 시작: npm install -g pnpm@{PNPM_VERSION}");
-                if (verbose) Debug.Log($"[Package Manager]   빌드 경로: {buildPath}");
-                if (verbose) Debug.Log($"[Package Manager]   npm 경로: {npmPath}");
-
-                // Progress bar 표시
-                EditorUtility.DisplayProgressBar("pnpm 설치", "pnpm을 로컬에 설치하고 있습니다...", 0.5f);
-
-                // 크로스 플랫폼 명령 실행
-                string command = $"\"{npmPath}\" install pnpm";
-                var result = AITPlatformHelper.ExecuteCommand(command, buildPath, new[] { npmBinPath }, verbose: verbose);
-
-                EditorUtility.ClearProgressBar();
-
-                if (result.Success)
-                {
-                    if (verbose) Debug.Log($"[Package Manager] ✓ pnpm 설치 성공");
-                    return true;
-                }
-                else
-                {
-                    if (verbose) Debug.LogWarning($"[Package Manager] ✗ pnpm 설치 실패 (exit code: {result.ExitCode})\nStderr: {result.Error}");
-                    return false;
-                }
-            }
-            catch (Exception e)
-            {
-                EditorUtility.ClearProgressBar();
-                if (verbose) Debug.LogError($"[Package Manager] pnpm 설치 중 예외 발생: {e.Message}");
-                return false;
-            }
+        /// <summary>
+        /// pnpm 설치 실패 다이얼로그 표시
+        /// </summary>
+        public static void ShowInstallationFailureDialog()
+        {
+            string nodejsPath = GetNodejsPathDescription();
+            AITPlatformHelper.ShowInfoDialog(
+                "빌드 실패",
+                "pnpm을 찾을 수 없습니다.\n\n" +
+                "해결 방법:\n" +
+                "1. 네트워크 연결을 확인하세요.\n" +
+                $"2. {nodejsPath} 폴더를 삭제 후 Unity를 재시작하세요.\n" +
+                "3. 방화벽/프록시가 nodejs.org를 차단하고 있는지 확인하세요.",
+                "확인");
         }
 
         /// <summary>
@@ -377,15 +230,7 @@ namespace AppsInToss.Editor
                     {
                         if (verbose) Debug.Log($"[Package Manager] pnpm이 없습니다. npm install -g pnpm@{PNPM_VERSION} 실행...");
 
-                        // npm install -g pnpm@버전 실행 (동기)
-                        bool pnpmInstallSuccess = ExecutePackageManagerCommand(
-                            packageManagerPath,
-                            $"install -g pnpm@{PNPM_VERSION}",
-                            buildPath,
-                            async: false,  // 글로벌 설치는 항상 동기
-                            verbose: verbose,
-                            showProgressBar: showProgressBar
-                        );
+                        bool pnpmInstallSuccess = AITNpmRunner.InstallPnpmWithNpm(packageManagerPath, npmDir, PNPM_VERSION);
 
                         if (!pnpmInstallSuccess)
                         {

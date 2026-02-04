@@ -87,19 +87,7 @@ namespace AppsInToss.Editor
             }
 
             // 3. 내장 Node.js/pnpm 설치 모두 실패 - 상세 에러 메시지
-            Debug.LogError("[AIT] ========================================");
-            Debug.LogError("[AIT] ✗ pnpm을 설치할 수 없습니다.");
-            Debug.LogError("[AIT] ========================================");
-            Debug.LogError("[AIT] ");
-            Debug.LogError("[AIT] 내장 Node.js 다운로드 또는 pnpm 설치에 실패했습니다.");
-            Debug.LogError("[AIT] ");
-            Debug.LogError("[AIT] 해결 방법:");
-            Debug.LogError("[AIT]   1. 네트워크 연결을 확인하세요.");
-            Debug.LogError(AITPlatformHelper.IsWindows
-                ? "[AIT]   2. %LOCALAPPDATA%\\ait-unity-sdk\\nodejs\\ 폴더를 삭제 후 Unity를 재시작하세요."
-                : "[AIT]   2. ~/.ait-unity-sdk/nodejs/ 폴더를 삭제 후 Unity를 재시작하세요.");
-            Debug.LogError("[AIT]   3. 방화벽/프록시가 nodejs.org를 차단하고 있는지 확인하세요.");
-            Debug.LogError("[AIT] ========================================");
+            AITPackageManagerHelper.LogInstallationFailure("AIT");
             return null;
         }
 
@@ -157,6 +145,36 @@ namespace AppsInToss.Editor
         }
 
         /// <summary>
+        /// pnpm 실행에 필요한 추가 PATH 경로 목록 구성
+        /// (npmPath 디렉토리 + 내장 node 실행 파일 디렉토리)
+        /// </summary>
+        private static List<string> BuildAdditionalPaths(string npmPath)
+        {
+            string npmDir = Path.GetDirectoryName(npmPath);
+            var paths = new List<string>();
+            if (!string.IsNullOrEmpty(npmDir)) paths.Add(npmDir);
+
+            string embeddedBinPath = AITPackageManagerHelper.GetEmbeddedNodeBinPath();
+            if (!string.IsNullOrEmpty(embeddedBinPath) && embeddedBinPath != npmDir)
+            {
+                paths.Add(embeddedBinPath);
+            }
+
+            return paths;
+        }
+
+        /// <summary>
+        /// install 명령어에 --store-dir 적용한 최종 arguments 구성
+        /// </summary>
+        private static string BuildFullArguments(string arguments, string cachePath)
+        {
+            bool isInstallCommand = arguments.TrimStart().StartsWith("install");
+            return isInstallCommand
+                ? $"{arguments} --store-dir \"{cachePath}\""
+                : arguments;
+        }
+
+        /// <summary>
         /// npm 명령 실행 (캐시 사용)
         /// </summary>
         internal static AITConvertCore.AITExportError RunNpmCommandWithCache(
@@ -166,48 +184,13 @@ namespace AppsInToss.Editor
             string cachePath,
             string progressTitle)
         {
-            string npmDir = Path.GetDirectoryName(npmPath);
-
-            // node 실행 파일 경로 찾기 (pnpm이 node를 찾을 수 있도록)
-            string nodePath = AITPackageManagerHelper.FindExecutable("node", verbose: false);
-            string nodeDir = "";
-
-            if (!string.IsNullOrEmpty(nodePath))
-            {
-                nodeDir = Path.GetDirectoryName(nodePath);
-            }
-            else
-            {
-                // node를 찾지 못한 경우, npmPath가 embedded Node.js인지 확인
-                string nodeExeName = AITPlatformHelper.GetExecutableName("node");
-                string possibleNodePath = Path.Combine(npmDir, nodeExeName);
-                if (File.Exists(possibleNodePath))
-                {
-                    nodePath = possibleNodePath;
-                    nodeDir = npmDir;
-                    Debug.Log($"[Package Manager] Embedded node 발견: {nodePath}");
-                }
-            }
-
-            // 패키지 매니저 이름 추출 (pnpm 또는 npm)
             string pmName = Path.GetFileNameWithoutExtension(npmPath);
-
-            // --store-dir는 install 명령어에만 적용 (run build에는 적용하지 않음)
-            // install, install --frozen-lockfile 등 모든 install 명령어에 적용
-            bool isInstallCommand = arguments.TrimStart().StartsWith("install");
-            string fullArguments = isInstallCommand
-                ? $"{arguments} --store-dir \"{cachePath}\""
-                : arguments;
-
-            // 추가 PATH 경로 수집
-            var additionalPaths = new System.Collections.Generic.List<string>();
-            if (!string.IsNullOrEmpty(npmDir)) additionalPaths.Add(npmDir);
-            if (!string.IsNullOrEmpty(nodeDir) && nodeDir != npmDir) additionalPaths.Add(nodeDir);
+            string fullArguments = BuildFullArguments(arguments, cachePath);
+            var additionalPaths = BuildAdditionalPaths(npmPath);
 
             Debug.Log($"[{pmName}] 명령 실행 준비:");
             Debug.Log($"[{pmName}]   작업 디렉토리: {workingDirectory}");
             Debug.Log($"[{pmName}]   {pmName} 경로: {npmPath}");
-            Debug.Log($"[{pmName}]   node 경로: {nodePath ?? "찾을 수 없음"}");
             Debug.Log($"[{pmName}]   명령: {pmName} {arguments}");
             Debug.Log($"[{pmName}]   캐시 경로: {cachePath}");
 
@@ -215,13 +198,9 @@ namespace AppsInToss.Editor
             {
                 Debug.Log($"[{pmName}] 프로세스 시작...");
 
-                // 크로스 플랫폼 명령 구성
                 string command = $"\"{npmPath}\" {fullArguments}";
-
-                // 프로세스 완료를 대기하되, 진행 상황을 업데이트
                 int maxWaitSeconds = 300; // 5분
 
-                // EditorUtility.DisplayProgressBar와 함께 명령 실행
                 EditorUtility.DisplayProgressBar("Apps in Toss", $"{progressTitle} (시작 중...)", 0);
 
                 var result = AITPlatformHelper.ExecuteCommand(
@@ -279,48 +258,15 @@ namespace AppsInToss.Editor
             Action<string> onOutputReceived = null,
             CancellationToken cancellationToken = default)
         {
-            string npmDir = Path.GetDirectoryName(npmPath);
-
-            // node 실행 파일 경로 찾기
-            string nodePath = AITPackageManagerHelper.FindExecutable("node", verbose: false);
-            string nodeDir = "";
-
-            if (!string.IsNullOrEmpty(nodePath))
-            {
-                nodeDir = Path.GetDirectoryName(nodePath);
-            }
-            else
-            {
-                string nodeExeName = AITPlatformHelper.GetExecutableName("node");
-                string possibleNodePath = Path.Combine(npmDir, nodeExeName);
-                if (File.Exists(possibleNodePath))
-                {
-                    nodePath = possibleNodePath;
-                    nodeDir = npmDir;
-                }
-            }
-
-            // 패키지 매니저 이름 추출
             string pmName = Path.GetFileNameWithoutExtension(npmPath);
-
-            // install 명령에만 --store-dir 적용
-            bool isInstallCommand = arguments.TrimStart().StartsWith("install");
-            string fullArguments = isInstallCommand
-                ? $"{arguments} --store-dir \"{cachePath}\""
-                : arguments;
-
-            // PATH 경로 수집
-            var additionalPaths = new List<string>();
-            if (!string.IsNullOrEmpty(npmDir)) additionalPaths.Add(npmDir);
-            if (!string.IsNullOrEmpty(nodeDir) && nodeDir != npmDir) additionalPaths.Add(nodeDir);
+            string fullArguments = BuildFullArguments(arguments, cachePath);
+            var additionalPaths = BuildAdditionalPaths(npmPath);
 
             Debug.Log($"[{pmName}] 비동기 명령 실행:");
             Debug.Log($"[{pmName}]   명령: {pmName} {arguments}");
 
-            // 전체 명령 구성
             string command = $"\"{npmPath}\" {fullArguments}";
 
-            // 비동기 실행
             var task = AITAsyncCommandRunner.RunAsync(
                 command: command,
                 workingDirectory: workingDirectory,

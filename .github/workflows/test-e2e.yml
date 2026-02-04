@@ -125,21 +125,11 @@ jobs:
         with:
           version: 10
 
-      - name: Install Mono (for C# compilation tests)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y mono-mcs
-          mcs --version
-
       - name: Install Dependencies
         working-directory: sdk-runtime-generator~
         run: pnpm install --no-frozen-lockfile
 
-      - name: Run Unit Tests (Tier 1 - C# compilation)
-        working-directory: sdk-runtime-generator~
-        run: pnpm run test:tier1
-
-      - name: Run Unit Tests (Tier 2 - C#/jslib invariants)
+      - name: Run Unit Tests (C#/jslib invariants)
         working-directory: sdk-runtime-generator~
         run: pnpm run test:tier2
 

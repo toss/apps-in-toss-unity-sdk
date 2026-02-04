@@ -180,14 +180,39 @@ jobs:
       # =====================================================
       - name: Exclude Project from Windows Defender (Windows)
         if: inputs.os == 'windows'
-        shell: cmd
+        shell: powershell
         continue-on-error: true
         run: |
-          @echo off
-          powershell -Command "Add-MpPreference -ExclusionPath '${{ github.workspace }}' -ErrorAction SilentlyContinue" 2>nul
-          powershell -Command "Add-MpPreference -ExclusionPath 'C:\Program Files\Unity' -ErrorAction SilentlyContinue" 2>nul
-          echo Windows Defender exclusions configured (or skipped if no admin rights)
-          exit /b 0
+          $paths = @(
+            '${{ github.workspace }}',
+            'C:\Program Files\Unity',
+            '${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ inputs.unity-version }}\ait-build',
+            '${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ inputs.unity-version }}\webgl',
+            '${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ inputs.unity-version }}\Library'
+          )
+
+          $successCount = 0
+          foreach ($path in $paths) {
+            try {
+              Add-MpPreference -ExclusionPath $path -ErrorAction Stop
+              $successCount++
+            } catch {
+              Write-Host "::warning::Failed to add exclusion for: $path - $_"
+            }
+          }
+
+          if ($successCount -eq 0) {
+            Write-Host "::warning::Windows Defender 제외 설정 실패 - 빌드 성능 저하 가능"
+          } else {
+            Write-Host "Defender exclusions configured: $successCount/$($paths.Count) paths"
+          }
+
+          try {
+            $exclusions = Get-MpPreference | Select-Object -ExpandProperty ExclusionPath
+            Write-Host "Current exclusion paths: $($exclusions -join ', ')"
+          } catch {
+            Write-Host "Cannot read Defender preferences"
+          }
 
       # =====================================================
       # 이전 빌드 정리
@@ -530,20 +555,20 @@ jobs:
           Write-Host "Checking for Licensing Client processes from other Unity versions..."
 
           $killed = 0
-          $processes = Get-CimInstance Win32_Process -Filter "Name = 'Unity.Licensing.Client.exe'" -ErrorAction SilentlyContinue
+          $processes = Get-Process -Name "Unity.Licensing.Client" -ErrorAction SilentlyContinue
 
           foreach ($proc in $processes) {
-            $cmdLine = $proc.CommandLine
-            if (-not $cmdLine) { continue }
+            $procPath = $proc.Path
+            if (-not $procPath) { continue }
 
             # 현재 버전의 Licensing Client는 유지
-            if ($cmdLine -match [regex]::Escape($currentVersion)) {
-              Write-Host "  Keeping (same version): PID=$($proc.ProcessId)"
+            if ($procPath -match [regex]::Escape($currentVersion)) {
+              Write-Host "  Keeping (same version): PID=$($proc.Id)"
               continue
             }
 
-            Write-Host "  Killing (different version): PID=$($proc.ProcessId) CMD=$cmdLine"
-            Stop-Process -Id $proc.ProcessId -Force -ErrorAction SilentlyContinue
+            Write-Host "  Killing (different version): PID=$($proc.Id) Path=$procPath"
+            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
             $killed++
           }
 
@@ -771,27 +796,28 @@ jobs:
             ) -PassThru -NoNewWindow
 
             Write-Host "Waiting for Unity build to complete..."
-            $lastSize = 0
+            $logReader = $null
             while (-not $unityProcess.HasExited) {
-              Start-Sleep -Seconds 2
-              if (Test-Path $logFile) {
-                $content = Get-Content $logFile -Raw -ErrorAction SilentlyContinue
-                if ($content -and $content.Length -gt $lastSize) {
-                  $newContent = $content.Substring($lastSize)
-                  Write-Host $newContent
-                  $lastSize = $content.Length
-                }
+              Start-Sleep -Seconds 5
+              if (-not $logReader -and (Test-Path $logFile)) {
+                $logReader = [System.IO.StreamReader]::new(
+                  [System.IO.FileStream]::new($logFile, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+                )
+              }
+              if ($logReader) {
+                $chunk = $logReader.ReadToEnd()
+                if ($chunk) { Write-Host $chunk -NoNewline }
               }
             }
 
             # WaitForExit()으로 ExitCode 설정 보장 (HasExited 후에도 즉시 설정되지 않을 수 있음)
             $unityProcess.WaitForExit()
 
-            if (Test-Path $logFile) {
-              $content = Get-Content $logFile -Raw -ErrorAction SilentlyContinue
-              if ($content -and $content.Length -gt $lastSize) {
-                Write-Host $content.Substring($lastSize)
-              }
+            # 남은 로그 읽기
+            if ($logReader) {
+              $chunk = $logReader.ReadToEnd()
+              if ($chunk) { Write-Host $chunk -NoNewline }
+              $logReader.Close()
             }
 
             $exitCode = $unityProcess.ExitCode

@@ -36,6 +36,10 @@ on:
         required: false
         default: ''
 
+concurrency:
+  group: e2e-tests-${{ inputs.target_ref || github.ref_name }}
+  cancel-in-progress: true
+
 jobs:
   # =====================================================
   # Ref 결정
@@ -182,7 +186,7 @@ jobs:
   # =====================================================
   e2e-test-macos:
     name: E2E (macOS, Unity ${{ matrix.unity-version }})
-    needs: [setup, sdk-generator-tests]
+    needs: [setup]
 
     strategy:
       fail-fast: false
@@ -207,7 +211,7 @@ jobs:
   # =====================================================
   e2e-test-windows:
     name: E2E (Windows, Unity ${{ matrix.unity-version }})
-    needs: [setup, sdk-generator-tests]
+    needs: [setup]
 
     strategy:
       fail-fast: false

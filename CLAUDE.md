@@ -294,7 +294,7 @@ Tests~/E2E/
 │   └── Editor/
 │       └── E2EBuildRunner.cs         # CLI 빌드 자동화
 └── tests/
-    ├── e2e-full-pipeline.test.js     # Playwright E2E 테스트 (9 tests)
+    ├── e2e-full-pipeline.test.js     # Playwright E2E 테스트 (10 tests)
     └── playwright.config.ts
 ```
 
@@ -322,9 +322,9 @@ npm test
 
 ### CI/CD 통합
 
-`.github/workflows/tests.yml` 실행 내용:
+`.github/workflows/test-e2e.yml` 실행 내용:
 1. game-ci/unity-builder를 통한 Unity WebGL 빌드
-2. Playwright E2E 테스트 (9개 테스트)
+2. Playwright E2E 테스트 (10개 테스트)
 3. 벤치마크 결과 아티팩트로 업로드
 4. 성능 메트릭이 포함된 Job summary
 

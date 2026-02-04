@@ -159,8 +159,17 @@ namespace AppsInToss.Editor
 
             if (string.IsNullOrEmpty(embeddedNpm))
             {
+                Debug.LogError("[Package Manager] ========================================");
                 Debug.LogError("[Package Manager] ✗ 내장 Node.js 다운로드 실패");
-                Debug.LogError("[Package Manager]   ~/.ait-unity-sdk/nodejs/ 디렉토리 확인 필요");
+                Debug.LogError("[Package Manager] ========================================");
+                Debug.LogError("[Package Manager] ");
+                Debug.LogError("[Package Manager] 해결 방법:");
+                Debug.LogError("[Package Manager]   1. 네트워크 연결을 확인하세요.");
+                Debug.LogError(AITPlatformHelper.IsWindows
+                    ? "[Package Manager]   2. %LOCALAPPDATA%\\ait-unity-sdk\\nodejs\\ 폴더를 삭제 후 Unity를 재시작하세요."
+                    : "[Package Manager]   2. ~/.ait-unity-sdk/nodejs/ 폴더를 삭제 후 Unity를 재시작하세요.");
+                Debug.LogError("[Package Manager]   3. 방화벽/프록시가 nodejs.org를 차단하고 있는지 확인하세요.");
+                Debug.LogError("[Package Manager] ========================================");
                 return null;
             }
 

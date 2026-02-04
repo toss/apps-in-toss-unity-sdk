@@ -149,6 +149,17 @@ namespace AppsInToss.Editor
             if (string.IsNullOrEmpty(pnpmPath))
             {
                 Debug.LogError("[AIT] pnpm 설치에 실패했습니다. Unity Console에서 에러를 확인해주세요.");
+                string nodejsPath = AITPlatformHelper.IsWindows
+                    ? "%LOCALAPPDATA%\\ait-unity-sdk\\nodejs\\"
+                    : "~/.ait-unity-sdk/nodejs/";
+                AITPlatformHelper.ShowInfoDialog(
+                    "빌드 실패",
+                    "pnpm을 찾을 수 없습니다.\n\n" +
+                    "해결 방법:\n" +
+                    "1. 네트워크 연결을 확인하세요.\n" +
+                    $"2. {nodejsPath} 폴더를 삭제 후 Unity를 재시작하세요.\n" +
+                    "3. 방화벽/프록시가 nodejs.org를 차단하고 있는지 확인하세요.",
+                    "확인");
                 return AITConvertCore.AITExportError.FAIL_NPM_BUILD;
             }
 
@@ -1135,6 +1146,17 @@ namespace AppsInToss.Editor
             if (string.IsNullOrEmpty(pnpmPath))
             {
                 Debug.LogError("[AIT] pnpm 설치에 실패했습니다. Unity Console에서 에러를 확인해주세요.");
+                string nodejsPath = AITPlatformHelper.IsWindows
+                    ? "%LOCALAPPDATA%\\ait-unity-sdk\\nodejs\\"
+                    : "~/.ait-unity-sdk/nodejs/";
+                AITPlatformHelper.ShowInfoDialog(
+                    "빌드 실패",
+                    "pnpm을 찾을 수 없습니다.\n\n" +
+                    "해결 방법:\n" +
+                    "1. 네트워크 연결을 확인하세요.\n" +
+                    $"2. {nodejsPath} 폴더를 삭제 후 Unity를 재시작하세요.\n" +
+                    "3. 방화벽/프록시가 nodejs.org를 차단하고 있는지 확인하세요.",
+                    "확인");
                 onComplete?.Invoke(AITConvertCore.AITExportError.FAIL_NPM_BUILD);
                 return;
             }

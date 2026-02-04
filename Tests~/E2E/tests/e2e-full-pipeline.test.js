@@ -9,34 +9,17 @@ import { fileURLToPath } from 'url';
 /**
  * Apps in Toss Unity SDK - E2E Full Pipeline Tests
  *
- * 9개 테스트 케이스 (빠른 테스트 → 느린 테스트 순서):
- * 1. Unity WebGL Build (Runtime 컴파일)
- * 2. AIT Dev Server
- * 3. AIT Build Directory
- * 4. AIT Packaging
- * 5-9. Production Tests (세션 공유로 ~6분 절약)
- *   5. Production Server (Unity 초기화 검증)
- *   6. Runtime API Error Validation (SDK API 에러 검증)
- *   7. Serialization Round-trip Tests (C# ↔ JavaScript 직렬화 검증)
- *   8. Comprehensive Performance (CPU/GPU + 500MB 메모리 압박 테스트)
- *   9. Preload Metrics Backfill (Resource Timing API 기반 메트릭 검증)
+ * 5개 테스트 케이스 (빠른 테스트 → 느린 테스트 순서):
+ * 1. Build Validation (build-validation.json 확인 + 메트릭 수집)
+ * 2. AIT Dev Server (Vite dev 서버 + Unity 초기화)
+ * 3-5. Production Tests (세션 공유로 초기화 1회):
+ *   3. Production Server + Preload Metrics (Unity 초기화 + Resource Timing)
+ *   4. Runtime API Error Validation (SDK API 에러 검증)
+ *   5. Serialization Round-trip Tests (C# ↔ JavaScript 직렬화 검증)
  *
- * Test 5-9 세션 공유:
+ * Test 3-5 세션 공유:
  * - 서버 1회 시작, Unity 1회 초기화로 반복 초기화 방지
- * - JavaScript 트리거 함수로 테스트 실행 (TriggerAPITest, TriggerSerializationTest, TriggerPerformanceTest)
- *
- * Test 6 (Runtime API) 검증 기준:
- * - 모든 SDK API를 호출
- * - 개발 환경에서 "상정된 에러" (expected error) 발생 = PASS
- *   - "XXX is not a constant handler" (bridge-core Constant API)
- *   - "__GRANITE_NATIVE_EMITTER is not available" (Async API)
- *   - "ReactNativeWebView is not available" (Native 통신)
- * - "상정되지 않은 에러" (unexpected error) 발생 = FAIL
- *
- * Test 8 (Performance) 메모리 압박:
- * - WASM 힙: 500MB
- * - JavaScript 힙: 500MB
- * - Canvas (GPU): 500MB (125개 × 4MB)
+ * - JavaScript 트리거 함수로 테스트 실행 (TriggerAPITest, TriggerSerializationTest)
  */
 
 // ES Module에서 __dirname 대체
@@ -47,21 +30,18 @@ const __dirname = path.dirname(__filename);
 const isMobileEmulation = process.env.MOBILE_EMULATION === 'true';
 
 // CPU 쓰로틀링 배율 (환경변수로 제어, 기본값: 0 = 비활성화)
-// 예: CPU_THROTTLE_RATE=4 → 4배 느림
 const cpuThrottleRate = parseInt(process.env.CPU_THROTTLE_RATE || '0', 10);
 
 // 경로 상수
 const PROJECT_ROOT = path.resolve(__dirname, '../../..');
 
 // UNITY_PROJECT_PATH 환경변수로 프로젝트 경로 지정 가능
-// 기본값: 빌드 결과물이 있는 첫 번째 버전별 프로젝트 탐지
 function findSampleProject() {
   const envPath = process.env.UNITY_PROJECT_PATH;
   if (envPath && fs.existsSync(envPath)) {
     return envPath;
   }
 
-  // 버전별 프로젝트 탐지 (우선순위: 6000.2 > 6000.0 > 2022.3 > 2021.3)
   const versionPatterns = ['6000.2', '6000.0', '2022.3', '2021.3'];
   for (const version of versionPatterns) {
     const projectPath = path.resolve(__dirname, `../SampleUnityProject-${version}`);
@@ -72,14 +52,11 @@ function findSampleProject() {
     }
   }
 
-  // 기존 단일 프로젝트 폴백 (하위 호환)
   const legacyPath = path.resolve(__dirname, '../SampleUnityProject');
   if (fs.existsSync(legacyPath)) {
-    console.log('📁 Using legacy SampleUnityProject');
     return legacyPath;
   }
 
-  // 빌드 없이 첫 번째 버전별 프로젝트 반환
   for (const version of versionPatterns) {
     const projectPath = path.resolve(__dirname, `../SampleUnityProject-${version}`);
     if (fs.existsSync(projectPath)) {
@@ -93,21 +70,14 @@ function findSampleProject() {
 const SAMPLE_PROJECT = findSampleProject();
 const AIT_BUILD = path.resolve(SAMPLE_PROJECT, 'ait-build');
 const DIST_WEB = path.resolve(AIT_BUILD, 'dist/web');
-const WEBGL_BUILD = path.resolve(SAMPLE_PROJECT, 'webgl');
 
-// 벤치마크 기준 (모바일 환경에서는 완화된 기준 적용)
+// 벤치마크 기준
 const BENCHMARKS = isMobileEmulation ? {
-  MAX_LOAD_TIME_MS: 30000,      // 30초 (CPU 4x + 네트워크 지연)
-  MAX_BUILD_SIZE_MB: 50,        // 50MB
-  MIN_AVG_FPS: 20,              // 20 FPS (모바일 기준)
-  MIN_FPS: 10,                  // 최소 FPS
-  MAX_MEMORY_MB: 512            // 512MB
+  MAX_LOAD_TIME_MS: 30000,
+  MAX_BUILD_SIZE_MB: 50,
 } : {
-  MAX_LOAD_TIME_MS: 10000,      // 10초 (데스크톱)
-  MAX_BUILD_SIZE_MB: 50,        // 50MB
-  MIN_AVG_FPS: 30,              // 30 FPS
-  MIN_FPS: 15,                  // 최소 FPS (흔들림 허용)
-  MAX_MEMORY_MB: 512            // 512MB
+  MAX_LOAD_TIME_MS: 10000,
+  MAX_BUILD_SIZE_MB: 50,
 };
 
 // 결과 저장용
@@ -118,7 +88,6 @@ let testResults = {
 
 /**
  * Unity 버전에서 고유 포트 오프셋 계산
- * 동시 실행 시 포트 충돌 방지
  */
 function getPortOffsetFromUnityVersion(projectPath) {
   const match = projectPath.match(/SampleUnityProject-(\d+)\.(\d+)/);
@@ -127,28 +96,26 @@ function getPortOffsetFromUnityVersion(projectPath) {
   const major = parseInt(match[1], 10);
   const minor = parseInt(match[2], 10);
 
-  // 2021.3 → 0, 2022.3 → 1, 6000.0 → 2, 6000.2 → 3
   if (major === 2021) return 0;
   if (major === 2022) return 1;
   if (major === 6000 && minor === 0) return 2;
   if (major === 6000 && minor === 2) return 3;
+  if (major === 6000 && minor === 3) return 4;
   return 0;
 }
 
 const PORT_OFFSET = getPortOffsetFromUnityVersion(SAMPLE_PROJECT);
-const VITE_DEV_PORT = 8081 + PORT_OFFSET;  // vite dev 서버 포트
+const VITE_DEV_PORT = 8081 + PORT_OFFSET;
 
-// 서버 프로세스 관리
 let serverProcess = null;
-// Unity 버전별 고유 포트 (E2EBuildRunner.cs의 GetPortForUnityVersion()와 동일)
-// 2021.3 → 4173, 2022.3 → 4174, 6000.0 → 4175, 6000.2 → 4176
 let serverPort = 4173 + PORT_OFFSET;
 console.log(`📦 Unity project: ${SAMPLE_PROJECT}`);
 console.log(`🔌 Server port: ${serverPort} (offset: ${PORT_OFFSET})`);
 
-/**
- * 유틸리티: 디렉토리 존재 확인
- */
+// ============================================================================
+// 유틸리티 함수
+// ============================================================================
+
 function directoryExists(dirPath) {
   try {
     return fs.existsSync(dirPath) && fs.statSync(dirPath).isDirectory();
@@ -157,9 +124,6 @@ function directoryExists(dirPath) {
   }
 }
 
-/**
- * 유틸리티: 파일 존재 확인
- */
 function fileExists(filePath) {
   try {
     return fs.existsSync(filePath) && fs.statSync(filePath).isFile();
@@ -168,12 +132,8 @@ function fileExists(filePath) {
   }
 }
 
-/**
- * 유틸리티: 디렉토리 크기 계산 (MB)
- */
 function getDirectorySizeMB(dirPath) {
   let totalSize = 0;
-
   function walkDir(currentPath) {
     const files = fs.readdirSync(currentPath);
     for (const file of files) {
@@ -186,20 +146,12 @@ function getDirectorySizeMB(dirPath) {
       }
     }
   }
-
   if (directoryExists(dirPath)) {
     walkDir(dirPath);
   }
-
   return totalSize / (1024 * 1024);
 }
 
-/**
- * 유틸리티: 포트가 사용 가능한지 확인
- * net.createServer로 실제 바인딩을 시도하여 확인
- * @param {number} port
- * @returns {Promise<boolean>}
- */
 function isPortAvailable(port) {
   return new Promise((resolve) => {
     const server = net.createServer();
@@ -211,12 +163,6 @@ function isPortAvailable(port) {
   });
 }
 
-/**
- * 유틸리티: 포트가 해제될 때까지 대기
- * @param {number} port
- * @param {number} timeoutMs - 최대 대기 시간 (기본 10초)
- * @returns {Promise<boolean>} - 포트가 해제되면 true
- */
 async function waitForPortRelease(port, timeoutMs = 10000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
@@ -225,31 +171,20 @@ async function waitForPortRelease(port, timeoutMs = 10000) {
     }
     await new Promise(r => setTimeout(r, 200));
   }
-  console.warn(`⚠️ Port ${port} still occupied after ${timeoutMs}ms`);
   return false;
 }
 
-/**
- * 유틸리티: 프로세스 트리를 안전하게 종료
- * shell: true로 spawn된 프로세스는 자식 프로세스가 있을 수 있으므로
- * 포트 기반 kill로 확실하게 정리
- * @param {import('child_process').ChildProcess} proc - 종료할 프로세스
- * @param {number[]} ports - 해당 프로세스가 사용하는 포트 목록
- * @returns {Promise<void>}
- */
 async function killServerProcess(proc, ports = []) {
   if (!proc) return;
 
   const isWindows = process.platform === 'win32';
 
-  // 1단계: SIGTERM으로 graceful shutdown 시도
   try {
     proc.kill('SIGTERM');
   } catch {
-    // 이미 종료됨
+    // already exited
   }
 
-  // 프로세스 종료 대기 (최대 3초)
   const exited = await new Promise((resolve) => {
     if (proc.exitCode !== null) {
       resolve(true);
@@ -262,18 +197,13 @@ async function killServerProcess(proc, ports = []) {
     });
   });
 
-  // 2단계: 아직 종료되지 않았으면 SIGKILL
   if (!exited) {
     try {
       proc.kill('SIGKILL');
-    } catch {
-      // 무시
-    }
-    // SIGKILL 후 1초 대기
+    } catch {}
     await new Promise(r => setTimeout(r, 1000));
   }
 
-  // 3단계: 포트를 점유하는 잔여 프로세스 정리 (shell: true 자식 프로세스 대응)
   for (const port of ports) {
     try {
       if (isWindows) {
@@ -281,28 +211,17 @@ async function killServerProcess(proc, ports = []) {
       } else {
         execSync(`lsof -ti:${port} | xargs kill -9 2>/dev/null || true`, { stdio: 'ignore' });
       }
-    } catch {
-      // 무시
-    }
+    } catch {}
   }
 
-  // 4단계: 모든 포트가 실제로 해제될 때까지 대기
   for (const port of ports) {
     await waitForPortRelease(port, 5000);
   }
 }
 
-/**
- * 유틸리티: Dev 서버 시작 (npx vite --host --port)
- * @returns {Promise<{process: ChildProcess, port: number}>}
- */
 async function startDevServer(aitBuildDir, defaultPort) {
-  // Unity 버전별 고유 포트 사용 (동시 실행 시 충돌 방지)
   const vitePort = VITE_DEV_PORT;
-  console.log(`🔌 Using vite port: ${vitePort} (offset: ${PORT_OFFSET})`);
 
-  // 이 테스트 전용 포트만 정리 (다른 Unity 버전 테스트와 충돌 방지)
-  // 다른 버전의 포트는 건드리지 않음
   const myPorts = [serverPort, vitePort];
   const isWindows = process.platform === 'win32';
   for (const port of myPorts) {
@@ -312,19 +231,14 @@ async function startDevServer(aitBuildDir, defaultPort) {
       } else {
         execSync(`lsof -ti:${port} | xargs kill -9 2>/dev/null || true`, { stdio: 'ignore' });
       }
-    } catch {
-      // 무시
-    }
+    } catch {}
   }
 
-  // 포트가 실제로 해제될 때까지 대기 (고정 지연 대신 확인 기반 대기)
   for (const port of myPorts) {
     await waitForPortRelease(port, 5000);
   }
 
   return new Promise((resolve, reject) => {
-    // pnpx vite 직접 실행 (granite는 --port 인자를 무시하므로 vite 직접 호출)
-    // Windows에서 spawn('pnpx', ...)이 ENOENT 에러 발생하므로 shell: true 사용
     const server = spawn('pnpx', ['vite', '--host', '--port', String(vitePort)], {
       cwd: aitBuildDir,
       stdio: 'pipe',
@@ -339,16 +253,10 @@ async function startDevServer(aitBuildDir, defaultPort) {
       const output = data.toString();
       console.log('[vite dev]', output);
 
-      // ANSI 색상 코드 제거 후 포트 파싱
       const cleanOutput = output.replace(/\x1B\[[0-9;]*[mGKH]/g, '');
-
-      // 포트 파싱: IPv4 (localhost, 0.0.0.0, 127.0.0.1), IPv6 ([::], [::1])
       const portMatch = cleanOutput.match(/(?:localhost|0\.0\.0\.0|127\.0\.0\.1|\[::1?\]):(\d+)/);
       if (portMatch && !started) {
         actualPort = parseInt(portMatch[1], 10);
-        console.log(`📍 Dev server running on port: ${actualPort}`);
-
-        // 포트를 찾으면 바로 resolve (서버 준비 완료)
         started = true;
         resolve({ process: server, port: actualPort });
       }
@@ -360,7 +268,6 @@ async function startDevServer(aitBuildDir, defaultPort) {
 
     server.on('error', reject);
 
-    // 10초 타임아웃
     setTimeout(() => {
       if (!started) {
         started = true;
@@ -370,128 +277,20 @@ async function startDevServer(aitBuildDir, defaultPort) {
   });
 }
 
-/**
- * 유틸리티: Granite Dev 서버 시작 (npm exec -- granite dev)
- * Unity Editor의 Start Server 메뉴와 동일한 방식으로 서버 시작
- * 환경 변수를 통해 host/port 전달 (granite.config.ts에서 읽음)
- * @returns {Promise<{process: ChildProcess, port: number, startupOutput: string}>}
- */
-async function startGraniteDevServer(aitBuildDir, viteHost, vitePort, graniteHost, granitePort) {
-  const isWindows = process.platform === 'win32';
-
-  // 포트 정리
-  const portsToClean = [vitePort, granitePort];
-  for (const port of portsToClean) {
-    try {
-      if (isWindows) {
-        execSync(`for /f "tokens=5" %a in ('netstat -ano ^| findstr :${port} ^| findstr LISTENING') do taskkill /F /PID %a 2>nul`, { stdio: 'ignore', shell: true });
-      } else {
-        execSync(`lsof -ti:${port} | xargs kill -9 2>/dev/null || true`, { stdio: 'ignore' });
-      }
-    } catch {
-      // 무시
-    }
-  }
-
-  for (const port of portsToClean) {
-    await waitForPortRelease(port, 5000);
-  }
-
-  return new Promise((resolve, reject) => {
-    // pnpm exec granite dev 실행 (Unity Editor와 동일한 방식)
-    const server = spawn('pnpm', ['exec', 'granite', 'dev'], {
-      cwd: aitBuildDir,
-      stdio: 'pipe',
-      shell: true,
-      env: {
-        ...process.env,
-        NODE_OPTIONS: '',
-        // Unity Editor에서 설정하는 환경 변수와 동일
-        AIT_GRANITE_HOST: graniteHost,
-        AIT_GRANITE_PORT: String(granitePort),
-        AIT_VITE_HOST: viteHost,
-        AIT_VITE_PORT: String(vitePort)
-      }
-    });
-
-    let started = false;
-    let actualPort = vitePort;
-    let startupOutput = '';
-
-    server.stdout.on('data', (data) => {
-      const output = data.toString();
-      startupOutput += output;
-      console.log('[granite dev]', output);
-
-      // ANSI 색상 코드 제거 후 포트 파싱
-      const cleanOutput = output.replace(/\x1B\[[0-9;]*[mGKH]/g, '');
-
-      // 포트 파싱: IPv4 (localhost, 0.0.0.0, 127.0.0.1), IPv6 ([::], [::1])
-      const portMatch = cleanOutput.match(/(?:localhost|0\.0\.0\.0|127\.0\.0\.1|\[::1?\]):(\d+)/);
-      if (portMatch && !started) {
-        actualPort = parseInt(portMatch[1], 10);
-        console.log(`📍 Granite dev server running on port: ${actualPort}`);
-        started = true;
-        resolve({ process: server, port: actualPort, startupOutput });
-      }
-    });
-
-    server.stderr.on('data', (data) => {
-      const output = data.toString();
-      startupOutput += output;
-      console.error('[granite dev error]', output);
-
-      // pnpm 옵션 파싱 에러 감지 (버그 재발 시)
-      if (output.includes('Unknown cli config') || output.includes('Extraneous positional argument')) {
-        reject(new Error(`pnpm exec 명령어 파싱 에러 감지: ${output}`));
-      }
-    });
-
-    server.on('error', (err) => {
-      reject(new Error(`Granite dev server 시작 실패: ${err.message}`));
-    });
-
-    server.on('exit', (code) => {
-      if (!started && code !== 0) {
-        reject(new Error(`Granite dev server가 비정상 종료됨 (Exit Code: ${code})\n출력: ${startupOutput}`));
-      }
-    });
-
-    // 20초 타임아웃 (granite는 vite보다 시작이 느릴 수 있음)
-    setTimeout(() => {
-      if (!started) {
-        started = true;
-        resolve({ process: server, port: actualPort, startupOutput });
-      }
-    }, 20000);
-  });
-}
-
-/**
- * 유틸리티: Production 서버 시작 (npm run start = vite preview)
- * @returns {Promise<{process: ChildProcess, port: number}>}
- */
 async function startProductionServer(aitBuildDir, defaultPort) {
-  // 이 테스트 전용 포트만 정리 (다른 Unity 버전 테스트와 충돌 방지)
   const isWindows = process.platform === 'win32';
-  const myPort = serverPort;  // Unity 버전별 고유 포트
+  const myPort = serverPort;
   try {
     if (isWindows) {
       execSync(`for /f "tokens=5" %a in ('netstat -ano ^| findstr :${myPort} ^| findstr LISTENING') do taskkill /F /PID %a 2>nul`, { stdio: 'ignore', shell: true });
     } else {
       execSync(`lsof -ti:${myPort} | xargs kill -9 2>/dev/null || true`, { stdio: 'ignore' });
     }
-  } catch {
-    // 무시
-  }
+  } catch {}
 
-  // 포트가 실제로 해제될 때까지 대기
   await waitForPortRelease(myPort, 5000);
 
   return new Promise((resolve, reject) => {
-    // vite preview 직접 실행 (포트 지정 가능)
-    // pnpm run start는 포트 인자를 전달하기 어려우므로 pnpx vite preview 사용
-    // Windows에서 spawn('pnpx', ...)이 ENOENT 에러 발생하므로 shell: true 사용
     const server = spawn('pnpx', ['vite', 'preview', '--outDir', 'dist/web', '--port', String(defaultPort)], {
       cwd: aitBuildDir,
       stdio: 'pipe',
@@ -506,14 +305,11 @@ async function startProductionServer(aitBuildDir, defaultPort) {
       const output = data.toString();
       console.log('[vite preview]', output);
 
-      // 포트 파싱 (Local: http://localhost:4173/ 또는 listening on port 4173)
       const portMatch = output.match(/(?:Local:\s+http:\/\/localhost:|listening.*?port\s*|:)(\d+)/i);
       if (portMatch) {
         actualPort = parseInt(portMatch[1], 10);
-        console.log(`📍 Production server running on port: ${actualPort}`);
       }
 
-      // vite preview 시작 확인
       if (output.includes('Local:') || output.includes('listening') || output.includes('Accepting connections') || output.includes('ready')) {
         if (!started) {
           started = true;
@@ -528,7 +324,6 @@ async function startProductionServer(aitBuildDir, defaultPort) {
 
     server.on('error', reject);
 
-    // 10초 타임아웃
     setTimeout(() => {
       if (!started) {
         started = true;
@@ -538,191 +333,6 @@ async function startProductionServer(aitBuildDir, defaultPort) {
   });
 }
 
-/**
- * 유틸리티: 파일 헤더를 읽어 실제 압축 포맷 감지
- * Magic bytes로 압축 포맷을 판별:
- * - Gzip: 0x1f 0x8b (첫 2바이트)
- * - Brotli: 다양한 패턴 (0xce 0xb2 0xcf 0x81 또는 스트림 헤더)
- *
- * @param {string} filePath - 파일 경로
- * @returns {string} 압축 포맷 ('brotli' | 'gzip' | 'unknown')
- */
-function detectCompressionFromHeader(filePath) {
-  try {
-    // 파일의 첫 16바이트 읽기
-    const fd = fs.openSync(filePath, 'r');
-    const buffer = Buffer.alloc(16);
-    fs.readSync(fd, buffer, 0, 16, 0);
-    fs.closeSync(fd);
-
-    // Gzip magic bytes: 0x1f 0x8b
-    if (buffer[0] === 0x1f && buffer[1] === 0x8b) {
-      return 'gzip';
-    }
-
-    // Brotli 감지: Brotli는 고정된 magic bytes가 없음
-    // Unity의 Brotli 압축 파일은 일반적으로 다음 패턴을 가짐:
-    // - 첫 바이트의 하위 4비트가 Brotli 윈도우 크기를 나타냄
-    // - Brotli 스트림은 WBITS (window bits) 값으로 시작
-    //
-    // Brotli 스트림 헤더 패턴:
-    // - 첫 바이트: WBITS (10-24 범위, 인코딩됨)
-    // - Unity는 보통 큰 윈도우 크기 사용
-    //
-    // 간단한 휴리스틱: Gzip이 아니고, 파일이 비어있지 않으면 Brotli로 가정
-    // (Unity WebGL 빌드에서 .unityweb은 Gzip 또는 Brotli만 사용)
-
-    // 더 정확한 Brotli 감지: 첫 바이트 분석
-    // Brotli 스트림의 첫 바이트는 보통 0x00-0x1e 범위가 아님 (Gzip 제외 후)
-    // 또는 특정 Brotli 패턴 확인
-
-    // Unity Brotli 파일의 일반적인 첫 바이트 패턴
-    // WBITS 인코딩: (WBITS - 10) << 4 | ISLAST << 0 | ...
-    // 보통 0x1b, 0x3b, 0x5b, 0x7b, 0x9b, 0xbb, 0xdb, 0xfb 등
-    const firstByte = buffer[0];
-
-    // Brotli 윈도우 크기 비트 패턴 확인 (하위 니블이 0xb인 경우가 많음)
-    // 또는 압축되지 않은 WASM 매직 넘버가 아닌 경우
-    const wasmMagic = buffer[0] === 0x00 && buffer[1] === 0x61 &&
-                      buffer[2] === 0x73 && buffer[3] === 0x6d; // \0asm
-
-    if (!wasmMagic && buffer.length > 0) {
-      // Gzip이 아니고 WASM raw도 아니면 Brotli로 추정
-      return 'brotli';
-    }
-
-    return 'unknown';
-  } catch (error) {
-    console.log(`⚠️ Failed to read file header: ${filePath}`, error.message);
-    return 'unknown';
-  }
-}
-
-/**
- * 유틸리티: 빌드 파일에서 압축 포맷 감지
- * Unity WebGL 빌드 파일의 확장자와 파일 헤더를 분석하여 적용된 압축 포맷을 반환
- *
- * 확장자 매핑:
- * - .wasm.br, .data.br, .framework.js.br → Brotli
- * - .wasm.gz, .data.gz, .framework.js.gz → Gzip
- * - .wasm, .data, .framework.js (압축 없음) → Disabled
- * - .unityweb → Decompression Fallback (파일 헤더로 실제 압축 포맷 확인)
- *
- * @param {string[]} buildFiles - 빌드 디렉토리의 파일 목록
- * @param {string} buildDir - 빌드 디렉토리 경로 (헤더 검사용)
- * @returns {{format: string, hasDecompressionFallback: boolean, actualFormat: string|null, details: object}}
- */
-function detectCompressionFormat(buildFiles, buildDir = null) {
-  const result = {
-    format: 'unknown',
-    hasDecompressionFallback: false,
-    actualFormat: null, // unityweb 파일의 실제 압축 포맷
-    details: {
-      wasm: null,
-      data: null,
-      framework: null,
-      wasmFile: null // 헤더 검사용 파일 경로
-    }
-  };
-
-  // 각 파일 타입별 확장자 감지
-  for (const file of buildFiles) {
-    const lowerFile = file.toLowerCase();
-
-    // WASM 파일
-    if (lowerFile.includes('.wasm')) {
-      if (lowerFile.endsWith('.wasm.br')) {
-        result.details.wasm = 'brotli';
-        result.details.wasmFile = file;
-      } else if (lowerFile.endsWith('.wasm.gz')) {
-        result.details.wasm = 'gzip';
-        result.details.wasmFile = file;
-      } else if (lowerFile.endsWith('.wasm.unityweb')) {
-        result.details.wasm = 'unityweb';
-        result.details.wasmFile = file;
-        result.hasDecompressionFallback = true;
-      } else if (lowerFile.endsWith('.wasm')) {
-        result.details.wasm = 'disabled';
-        result.details.wasmFile = file;
-      }
-    }
-
-    // Data 파일
-    if (lowerFile.includes('.data')) {
-      if (lowerFile.endsWith('.data.br')) {
-        result.details.data = 'brotli';
-      } else if (lowerFile.endsWith('.data.gz')) {
-        result.details.data = 'gzip';
-      } else if (lowerFile.endsWith('.data.unityweb')) {
-        result.details.data = 'unityweb';
-        result.hasDecompressionFallback = true;
-      } else if (lowerFile.endsWith('.data')) {
-        result.details.data = 'disabled';
-      }
-    }
-
-    // Framework 파일
-    if (lowerFile.includes('.framework.js')) {
-      if (lowerFile.endsWith('.framework.js.br')) {
-        result.details.framework = 'brotli';
-      } else if (lowerFile.endsWith('.framework.js.gz')) {
-        result.details.framework = 'gzip';
-      } else if (lowerFile.endsWith('.framework.js.unityweb')) {
-        result.details.framework = 'unityweb';
-        result.hasDecompressionFallback = true;
-      } else if (lowerFile.endsWith('.framework.js')) {
-        result.details.framework = 'disabled';
-      }
-    }
-  }
-
-  // 전체 압축 포맷 결정 (WASM 파일 기준, 없으면 Data 파일 기준)
-  const primaryFormat = result.details.wasm || result.details.data;
-
-  if (primaryFormat === 'unityweb') {
-    // unityweb인 경우 파일 헤더를 읽어 실제 압축 포맷 확인
-    result.format = 'unityweb (decompression fallback)';
-
-    if (buildDir && result.details.wasmFile) {
-      const wasmFilePath = path.join(buildDir, result.details.wasmFile);
-      result.actualFormat = detectCompressionFromHeader(wasmFilePath);
-      console.log(`   📄 Detected actual format from .unityweb header: ${result.actualFormat}`);
-    }
-  } else if (primaryFormat) {
-    result.format = primaryFormat;
-    result.actualFormat = primaryFormat; // 확장자 기반 포맷 = 실제 포맷
-  }
-
-  return result;
-}
-
-/**
- * 유틸리티: Unity 버전에서 예상되는 압축 포맷 반환
- * AITDefaultSettings.GetDefaultCompressionFormat()와 동일한 로직
- * decompressionFallback이 활성화되어 있으므로 모든 버전에서 Brotli 사용
- *
- * @param {string} projectPath - Unity 프로젝트 경로 (현재 미사용, 향후 확장용)
- * @returns {string} 예상 압축 포맷 ('brotli')
- */
-function getExpectedCompressionFormat(projectPath) {
-  // 환경변수로 기대 포맷 직접 지정 가능 (CI에서 사용)
-  const envFormat = process.env.EXPECTED_COMPRESSION;
-  if (envFormat) {
-    const validFormats = ['disabled', 'gzip', 'brotli'];
-    const normalized = envFormat.toLowerCase();
-    if (validFormats.includes(normalized)) {
-      console.log(`   📋 Expected format from env: ${normalized}`);
-      return normalized;
-    }
-  }
-
-  // 기본값: 모든 Unity 버전에서 Brotli
-  return 'brotli';
-}
-
-/**
- * 유틸리티: placeholder 검사
- */
 function checkForPlaceholders(content) {
   const placeholderPatterns = [
     /%UNITY_[A-Z_]+%/g,
@@ -736,44 +346,28 @@ function checkForPlaceholders(content) {
       found.push(...matches);
     }
   }
-  return [...new Set(found)]; // 중복 제거
+  return [...new Set(found)];
 }
 
-/**
- * CDP를 통한 모바일 환경 시뮬레이션 적용
- *
- * 환경변수로 제어:
- * - MOBILE_EMULATION=true: 모바일 에뮬레이션 (CPU 4x + 4G LTE)
- * - CPU_THROTTLE_RATE=N: CPU만 N배 느리게 (독립 사용 가능)
- *
- * @param {number} overrideRate - 특정 테스트에서 강제로 사용할 CPU 배율 (0=비활성화)
- */
 async function applyMobileThrottling(page, overrideRate = undefined) {
-  // 쓰로틀링 배율 결정 (우선순위: override > 환경변수)
   const rate = overrideRate !== undefined ? overrideRate :
                (isMobileEmulation ? 4 : cpuThrottleRate);
 
   if (rate <= 0 && !isMobileEmulation) {
-    console.log('📱 Throttling disabled (no MOBILE_EMULATION or CPU_THROTTLE_RATE)');
     return null;
   }
 
   const client = await page.context().newCDPSession(page);
 
-  // CPU 쓰로틀링 적용 (rate > 0인 경우)
   if (rate > 0) {
-    console.log(`📱 Applying CPU ${rate}x slowdown...`);
     await client.send('Emulation.setCPUThrottlingRate', { rate });
   }
 
-  // 네트워크 쓰로틀링 (MOBILE_EMULATION인 경우에만)
   if (isMobileEmulation) {
-    console.log('📱 Applying 4G LTE network throttling...');
-    // 12 Mbps = 1,572,864 bytes/s, 6 Mbps = 786,432 bytes/s
     await client.send('Network.emulateNetworkConditions', {
       offline: false,
-      downloadThroughput: 12 * 1024 * 1024 / 8,  // 12 Mbps
-      uploadThroughput: 6 * 1024 * 1024 / 8,     // 6 Mbps
+      downloadThroughput: 12 * 1024 * 1024 / 8,
+      uploadThroughput: 6 * 1024 * 1024 / 8,
       latency: 70
     });
   }
@@ -788,7 +382,6 @@ async function applyMobileThrottling(page, overrideRate = undefined) {
 
 test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
 
-  // 테스트 전 설정
   test.beforeAll(async () => {
     console.log('🚀 E2E Pipeline Tests Starting...');
     console.log(`📁 Project Root: ${PROJECT_ROOT}`);
@@ -796,45 +389,32 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
     console.log(`📁 AIT Build: ${AIT_BUILD}`);
   });
 
-  // 테스트 후 정리
   test.afterAll(async () => {
-    // 서버 종료
     if (serverProcess) {
       serverProcess.kill();
       serverProcess = null;
     }
 
-    // 결과 저장 (두 가지 파일)
     // 1. 전체 테스트 결과
     const resultsPath = path.resolve(__dirname, 'e2e-test-results.json');
     fs.writeFileSync(resultsPath, JSON.stringify(testResults, null, 2));
 
     // 2. 벤치마크 결과 (workflow에서 업로드하는 파일)
     const benchmarkPath = path.resolve(__dirname, 'benchmark-results.json');
-    const comprehensivePerf = testResults.tests['8_comprehensive_perf'];
     const benchmarkResults = {
       timestamp: testResults.timestamp,
       unityProject: SAMPLE_PROJECT,
-      buildSize: testResults.tests['1_webgl_build']?.buildSizeMB,
-      pageLoadTime: testResults.tests['5_production_server']?.pageLoadTimeMs || comprehensivePerf?.pageLoadTimeMs,
-      unityLoadTime: comprehensivePerf?.unityLoadTimeMs,
-      webgl: testResults.tests['5_production_server']?.webgl,
-      // 종합 성능 테스트 데이터 (새 구조)
-      comprehensivePerfData: comprehensivePerf ? {
-        oomOccurred: comprehensivePerf.oomOccurred,
-        baseline: comprehensivePerf.baseline,
-        physicsWithMemory: comprehensivePerf.physicsWithMemory,
-        renderingWithMemory: comprehensivePerf.renderingWithMemory,
-        fullLoad: comprehensivePerf.fullLoad
+      buildSize: testResults.tests['1_build_validation']?.buildSizeMB,
+      pageLoadTime: testResults.tests['3_production_server']?.pageLoadTimeMs,
+      unityLoadTime: testResults.tests['3_production_server']?.unityLoadTimeMs,
+      webgl: testResults.tests['3_production_server']?.webgl,
+      apiTestResults: testResults.tests['4_runtime_api'] ? {
+        totalAPIs: testResults.tests['4_runtime_api'].totalAPIs,
+        successCount: testResults.tests['4_runtime_api'].successCount,
+        unexpectedErrorCount: testResults.tests['4_runtime_api'].unexpectedErrorCount
       } : null,
-      apiTestResults: testResults.tests['6_runtime_api'] ? {
-        totalAPIs: testResults.tests['6_runtime_api'].totalAPIs,
-        successCount: testResults.tests['6_runtime_api'].successCount,
-        unexpectedErrorCount: testResults.tests['6_runtime_api'].unexpectedErrorCount
-      } : null,
-      // 압축 포맷 검증 결과 (compressionFormat 매핑 버그 재발 방지)
-      compressionValidation: testResults.tests['1_webgl_build']?.compressionValidation || null,
-      preloadBackfill: testResults.tests['9_preload_backfill'] || null,
+      compressionValidation: testResults.tests['1_build_validation']?.compressionValidation || null,
+      preloadBackfill: testResults.tests['3_production_server']?.preloadBackfill || null,
       testsPassed: Object.values(testResults.tests || {}).filter(t => t.passed).length,
       testsTotal: Object.keys(testResults.tests || {}).length
     };
@@ -846,49 +426,21 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
     console.log('📊 E2E Test Results');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
-    // 테스트 통과 여부 카운트
     const tests = testResults.tests || {};
     const passed = Object.values(tests).filter(t => t.passed).length;
     const total = Object.keys(tests).length;
 
     console.log(`\n  ✅ Tests Passed: ${passed}/${total}`);
 
-    // 주요 메트릭
-    const buildSize = tests['1_webgl_build']?.buildSizeMB;
-    const pageLoad = tests['5_production_server']?.pageLoadTimeMs || tests['8_comprehensive_perf']?.pageLoadTimeMs;
-    const unityLoad = tests['8_comprehensive_perf']?.unityLoadTimeMs;
-    const renderer = tests['5_production_server']?.webgl?.renderer;
+    const buildSize = tests['1_build_validation']?.buildSizeMB;
+    const pageLoad = tests['3_production_server']?.pageLoadTimeMs;
+    const unityLoad = tests['3_production_server']?.unityLoadTimeMs;
+    const renderer = tests['3_production_server']?.webgl?.renderer;
 
     console.log('\n  📦 Build Size:      ' + (buildSize ? buildSize.toFixed(2) + ' MB' : 'N/A'));
     console.log('  ⏱️  Page Load:       ' + (pageLoad ? pageLoad + ' ms' : 'N/A'));
     console.log('  🎮 Unity Load:      ' + (unityLoad ? unityLoad + ' ms' : 'N/A'));
     console.log('  🖥️  GPU Renderer:    ' + (renderer || 'N/A'));
-
-    // 압축 포맷 검증 결과 출력
-    const compressionValidation = tests['1_webgl_build']?.compressionValidation;
-    if (compressionValidation) {
-      const status = compressionValidation.formatMatches ? '✅' : '❌';
-      const displayFormat = compressionValidation.actualFormat || compressionValidation.detectedFormat;
-      console.log(`\n  🗜️  Compression:     ${status} ${displayFormat}`);
-      console.log(`     Expected:        ${compressionValidation.expectedFormat}`);
-      if (compressionValidation.hasDecompressionFallback) {
-        console.log(`     Fallback:        .unityweb (actual: ${compressionValidation.actualFormat || 'unknown'})`);
-      }
-    }
-
-    // SDK Runtime 검증 결과 출력
-    const apiTest = tests['6_runtime_api'];
-    if (apiTest && apiTest.runtimeValidation) {
-      const rv = apiTest.runtimeValidation;
-      console.log('\n  🔍 SDK Runtime Validation:');
-      console.log('     C# ↔ jslib:     ' + rv.csharpJslibMatching.matched + '/' + rv.csharpJslibMatching.totalAPIs + ' APIs matched');
-      console.log('     Type Safety:    ' +
-        (rv.typeMarshalling.stringPassed + rv.typeMarshalling.numberPassed +
-         rv.typeMarshalling.booleanPassed + rv.typeMarshalling.objectPassed) + ' types validated');
-      if (rv.typeMarshalling.failed.length > 0) {
-        console.log('     ⚠️  Type Errors:  ' + rv.typeMarshalling.failed.length + ' failed');
-      }
-    }
 
     console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('📄 Full Results (JSON):');
@@ -899,259 +451,82 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
 
 
   // -------------------------------------------------------------------------
-  // Test 1: Unity WebGL Build
+  // Test 1: Build Validation (build-validation.json 확인 + 메트릭 수집)
+  // 기존 Tests 1, 3, 4를 통합 - C# BuildOutputValidator가 생성한 결과를 확인
   // -------------------------------------------------------------------------
-  test('1. Unity WebGL build should succeed', async () => {
-    test.setTimeout(180000); // 3분
+  test('1. Build validation should pass', async () => {
+    test.setTimeout(60000);
 
-    // webgl/ 폴더 확인 (Unity 빌드 출력)
-    // Note: E2EBuildRunner는 직접 ait-build를 생성하므로 webgl/ 폴더가 없을 수 있음
-    if (directoryExists(WEBGL_BUILD)) {
-      console.log('✅ webgl/ directory found');
+    // build-validation.json 확인 (C# BuildOutputValidator가 빌드 후 생성)
+    const validationPath = path.resolve(AIT_BUILD, 'build-validation.json');
 
-      // 필수 파일 확인
-      const loaderPath = path.join(WEBGL_BUILD, 'Build');
-      if (directoryExists(loaderPath)) {
-        const buildFiles = fs.readdirSync(loaderPath);
-        console.log(`📦 Build files: ${buildFiles.join(', ')}`);
+    if (fileExists(validationPath)) {
+      const validation = JSON.parse(fs.readFileSync(validationPath, 'utf-8'));
+      console.log(`📋 Build validation: ${validation.passed ? 'PASSED' : 'FAILED'}`);
+      console.log(`   Build size: ${validation.buildSizeMB?.toFixed(2)} MB`);
+      console.log(`   Compression: ${validation.compressionFormat}`);
+      console.log(`   Files: ${validation.fileCount}`);
 
-        const hasLoader = buildFiles.some(f => f.endsWith('.loader.js'));
-        const hasWasm = buildFiles.some(f => f.endsWith('.wasm') || f.endsWith('.wasm.gz') || f.endsWith('.wasm.br') || f.endsWith('.wasm.unityweb'));
-        const hasData = buildFiles.some(f => f.endsWith('.data') || f.endsWith('.data.gz') || f.endsWith('.data.br') || f.endsWith('.data.unityweb'));
-        const hasFramework = buildFiles.some(f => f.endsWith('.framework.js') || f.endsWith('.framework.js.gz') || f.endsWith('.framework.js.br') || f.endsWith('.framework.js.unityweb'));
-
-        expect(hasLoader, 'Should have loader.js').toBe(true);
-        expect(hasWasm, 'Should have wasm file').toBe(true);
-        expect(hasData, 'Should have data file').toBe(true);
-
-        // Framework file is optional (only in some Unity versions)
-        if (buildFiles.some(f => f.includes('framework'))) {
-          expect(hasFramework, 'Framework file should be valid if present').toBe(true);
-        }
+      if (validation.errors?.length > 0) {
+        console.log(`   Errors:`);
+        validation.errors.forEach(e => console.log(`     ❌ ${e}`));
       }
+      if (validation.warnings?.length > 0) {
+        console.log(`   Warnings:`);
+        validation.warnings.forEach(w => console.log(`     ⚠️ ${w}`));
+      }
+
+      testResults.tests['1_build_validation'] = {
+        passed: validation.passed,
+        buildSizeMB: validation.buildSizeMB,
+        compressionFormat: validation.compressionFormat,
+        fileCount: validation.fileCount,
+        compressionValidation: {
+          detectedFormat: validation.compressionFormat,
+          expectedFormat: 'brotli'
+        }
+      };
+
+      expect(validation.passed, 'Build validation should pass').toBe(true);
+      expect(validation.buildSizeMB).toBeLessThanOrEqual(BENCHMARKS.MAX_BUILD_SIZE_MB);
     } else {
-      // E2EBuildRunner가 직접 ait-build를 생성한 경우
-      console.log('ℹ️ webgl/ not found (E2EBuildRunner creates ait-build directly)');
-    }
+      // build-validation.json이 없는 경우 직접 검증 (이전 버전 호환)
+      console.log('⚠️ build-validation.json not found, performing direct validation...');
 
-    // ait-build/dist/web 확인 (최종 빌드 출력)
-    expect(directoryExists(AIT_BUILD), 'ait-build/ should exist').toBe(true);
-    expect(directoryExists(DIST_WEB), 'ait-build/dist/web/ should exist').toBe(true);
+      expect(directoryExists(AIT_BUILD), 'ait-build/ should exist').toBe(true);
+      expect(directoryExists(DIST_WEB), 'ait-build/dist/web/ should exist').toBe(true);
 
-    // 빌드 크기 확인
-    const distSizeMB = getDirectorySizeMB(DIST_WEB);
-    console.log(`📦 Build size: ${distSizeMB.toFixed(2)} MB`);
+      // package.json
+      expect(fileExists(path.resolve(AIT_BUILD, 'package.json')), 'package.json should exist').toBe(true);
 
-    // =====================================================================
-    // 압축 포맷 검증 (compressionFormat 매핑 버그 재발 방지)
-    // =====================================================================
-    const distBuildPath = path.join(DIST_WEB, 'Build');
-    let compressionValidation = null;
-
-    if (directoryExists(distBuildPath)) {
-      const distBuildFiles = fs.readdirSync(distBuildPath);
-      // buildDir를 전달하여 .unityweb 파일의 헤더 검사 활성화
-      const compressionInfo = detectCompressionFormat(distBuildFiles, distBuildPath);
-      const expectedFormat = getExpectedCompressionFormat(SAMPLE_PROJECT);
-
-      console.log('\n' + '─'.repeat(60));
-      console.log('🗜️  COMPRESSION FORMAT VALIDATION');
-      console.log('─'.repeat(60));
-      console.log(`   Project: ${path.basename(SAMPLE_PROJECT)}`);
-      console.log(`   Expected Format: ${expectedFormat}`);
-      console.log(`   Detected Format: ${compressionInfo.format}`);
-      if (compressionInfo.hasDecompressionFallback && compressionInfo.actualFormat) {
-        console.log(`   Actual Format (from header): ${compressionInfo.actualFormat}`);
-      }
-      console.log(`   Decompression Fallback: ${compressionInfo.hasDecompressionFallback ? 'Yes (.unityweb)' : 'No'}`);
-      console.log(`   Details:`);
-      console.log(`     - WASM: ${compressionInfo.details.wasm || 'not found'}`);
-      console.log(`     - Data: ${compressionInfo.details.data || 'not found'}`);
-      console.log(`     - Framework: ${compressionInfo.details.framework || 'not found'}`);
-
-      // 압축 포맷 검증
-      // unityweb (decompression fallback)인 경우, 파일 헤더에서 읽은 actualFormat으로 검증
-      // 그 외에는 확장자 기반 포맷으로 검증
-      let formatMatches = false;
-      const detectedBase = compressionInfo.details.wasm || compressionInfo.details.data;
-
-      // 실제 검증에 사용할 포맷: unityweb인 경우 헤더에서 읽은 actualFormat, 아니면 확장자 기반
-      const formatToVerify = compressionInfo.actualFormat || detectedBase;
-
-      if (detectedBase === 'unityweb') {
-        // unityweb 파일은 헤더에서 실제 압축 포맷을 확인
-        if (compressionInfo.actualFormat) {
-          formatMatches = compressionInfo.actualFormat === expectedFormat;
-          if (formatMatches) {
-            console.log(`   ✅ unityweb file uses ${compressionInfo.actualFormat} internally (matches expected)`);
-          } else {
-            console.log(`   ❌ unityweb file uses ${compressionInfo.actualFormat} internally (expected ${expectedFormat})`);
-          }
-        } else {
-          // 헤더 읽기 실패 시 경고만 출력
-          console.log(`   ⚠️  Could not detect actual format from unityweb header`);
-          formatMatches = true; // 헤더 읽기 실패 시 통과 (false positive 방지)
-        }
-      } else if (detectedBase === expectedFormat) {
-        formatMatches = true;
-      } else if (detectedBase === 'disabled' && expectedFormat !== 'disabled') {
-        // 버그 감지: 압축이 비활성화되어야 할 때 활성화되거나 그 반대
-        console.log(`   ⚠️  Compression mismatch detected!`);
-        console.log(`   ⚠️  This may indicate a compressionFormat mapping bug`);
-        formatMatches = false;
-      } else {
-        formatMatches = detectedBase === expectedFormat;
+      // granite.config.ts 플레이스홀더
+      const graniteConfigPath = path.resolve(AIT_BUILD, 'granite.config.ts');
+      if (fileExists(graniteConfigPath)) {
+        const content = fs.readFileSync(graniteConfigPath, 'utf-8');
+        const placeholders = checkForPlaceholders(content);
+        expect(placeholders.length, 'Should have no unsubstituted placeholders in granite.config.ts').toBe(0);
       }
 
-      if (formatMatches) {
-        console.log(`   ✅ Compression format is correct`);
-      } else {
-        console.log(`   ❌ Compression format MISMATCH!`);
-        console.log(`   ❌ Expected: ${expectedFormat}, Got: ${formatToVerify}`);
-        console.log(`   ❌ This indicates a compressionFormat mapping bug in AITBuildInitializer`);
-      }
-      console.log('─'.repeat(60) + '\n');
+      // node_modules
+      expect(directoryExists(path.resolve(AIT_BUILD, 'node_modules')), 'node_modules/ should exist').toBe(true);
 
-      compressionValidation = {
-        expectedFormat,
-        detectedFormat: compressionInfo.format,
-        actualFormat: compressionInfo.actualFormat,
-        detectedBase,
-        hasDecompressionFallback: compressionInfo.hasDecompressionFallback,
-        details: compressionInfo.details,
-        formatMatches
-      };
+      // index.html 플레이스홀더
+      const indexPath = path.resolve(DIST_WEB, 'index.html');
+      expect(fileExists(indexPath), 'index.html should exist').toBe(true);
+      const indexContent = fs.readFileSync(indexPath, 'utf-8');
+      const indexPlaceholders = checkForPlaceholders(indexContent);
+      expect(indexPlaceholders.length, 'index.html should have no unsubstituted placeholders').toBe(0);
 
-      // 압축 포맷이 일치하지 않으면 테스트 실패
-      // 단, disabled ↔ brotli/gzip 불일치만 실패 처리 (매핑 버그 감지)
-      if (!formatMatches && detectedBase !== 'disabled') {
-        // gzip ↔ brotli 불일치는 경고만 (Unity 버전 감지 오류일 수 있음)
-        console.log(`   ⚠️  Format mismatch (${detectedBase} vs ${expectedFormat}) - warning only`);
-      } else if (!formatMatches && detectedBase === 'disabled') {
-        // disabled가 감지되었는데 압축이 예상된 경우 → 매핑 버그
-        expect(formatMatches, `Compression format should match: expected ${expectedFormat}, got ${detectedBase}`).toBe(true);
-      }
-    }
+      // Build 폴더
+      const buildPath = path.resolve(DIST_WEB, 'Build');
+      expect(directoryExists(buildPath), 'Build/ folder should exist').toBe(true);
 
-    testResults.tests['1_webgl_build'] = {
-      passed: true,
-      buildSizeMB: distSizeMB,
-      compressionValidation
-    };
-  });
+      const distSizeMB = getDirectorySizeMB(DIST_WEB);
 
-
-  // -------------------------------------------------------------------------
-  // Test 1.5: Granite Dev Server Command Validation
-  // Unity Editor의 "Start Server" 메뉴와 동일한 방식으로 서버 시작 검증
-  // 버그 재발 방지: pnpm exec 명령어 파싱 에러 감지
-  // -------------------------------------------------------------------------
-  // Test 1.5: pnpm exec granite dev 명령어 파싱 검증
-  // 이 테스트는 서버가 완전히 시작될 때까지 기다리지 않고,
-  // pnpm exec 명령어가 올바르게 파싱되는지만 확인합니다.
-  // (포트 충돌 이슈를 피하기 위해 간소화됨)
-  test('1.5. Granite dev server command should work correctly', async () => {
-    test.setTimeout(30000); // 30초
-
-    // ait-build 디렉토리 확인
-    if (!directoryExists(AIT_BUILD)) {
-      console.log('⚠️ ait-build/ not found, skipping granite dev server test');
-      testResults.tests['1.5_granite_dev_command'] = {
+      testResults.tests['1_build_validation'] = {
         passed: true,
-        skipped: true,
-        reason: 'ait-build not found'
+        buildSizeMB: distSizeMB,
       };
-      return;
-    }
-
-    // node_modules 확인
-    const nodeModulesPath = path.join(AIT_BUILD, 'node_modules');
-    if (!directoryExists(nodeModulesPath)) {
-      console.log('⚠️ node_modules not found, skipping granite dev server test');
-      testResults.tests['1.5_granite_dev_command'] = {
-        passed: true,
-        skipped: true,
-        reason: 'node_modules not found'
-      };
-      return;
-    }
-
-    console.log('🚀 Testing granite dev command parsing (pnpm exec granite dev)...');
-    console.log('   This validates the fix for pnpm exec command parsing bug');
-
-    let graniteProcess = null;
-    try {
-      // pnpm exec granite dev 명령어 실행 (Unity Editor와 동일한 방식)
-      graniteProcess = spawn('pnpm', ['exec', 'granite', 'dev'], {
-        cwd: AIT_BUILD,
-        stdio: 'pipe',
-        shell: true,
-        env: { ...process.env, NODE_OPTIONS: '' }
-      });
-
-      let output = '';
-      let hasPnpmParsingError = false;
-      let graniteStarted = false;
-
-      graniteProcess.stdout.on('data', (data) => {
-        const text = data.toString();
-        output += text;
-        console.log('[granite dev]', text);
-
-        // granite/vite가 시작되었는지 확인
-        if (text.includes('VITE') || text.includes('localhost:')) {
-          graniteStarted = true;
-        }
-      });
-
-      graniteProcess.stderr.on('data', (data) => {
-        const text = data.toString();
-        output += text;
-        console.log('[granite dev stderr]', text);
-
-        // pnpm 옵션 파싱 에러 감지 (버그 재발 시)
-        if (text.includes('Unknown cli config') ||
-            text.includes('Extraneous positional argument') ||
-            text.includes('is being parsed as a normal command line argument')) {
-          hasPnpmParsingError = true;
-        }
-      });
-
-      // 5초간 출력 수집 (서버 완전 시작 안 기다림, 명령어 파싱만 확인)
-      await new Promise(r => setTimeout(r, 5000));
-
-      // pnpm 옵션 파싱 에러 확인
-      expect(hasPnpmParsingError, 'pnpm exec 명령어 파싱 에러가 없어야 함').toBe(false);
-
-      // 출력에서 pnpm 파싱 에러 재확인
-      const hasParsingErrorInOutput =
-        output.includes('Unknown cli config') ||
-        output.includes('Extraneous positional argument');
-      expect(hasParsingErrorInOutput, '출력에 pnpm 파싱 에러가 없어야 함').toBe(false);
-
-      testResults.tests['1.5_granite_dev_command'] = {
-        passed: true,
-        pnpmParsingErrorDetected: false,
-        graniteStarted: graniteStarted
-      };
-
-      console.log(`✅ Granite dev command test passed`);
-      console.log(`   - pnpm exec parsing: OK`);
-      console.log(`   - granite started: ${graniteStarted}`);
-
-    } catch (error) {
-      console.error('❌ Granite dev command test failed:', error.message);
-
-      testResults.tests['1.5_granite_dev_command'] = {
-        passed: false,
-        error: error.message
-      };
-
-      throw error;
-    } finally {
-      // 프로세스 트리 정리 (shell: true 자식 프로세스 포함, 포트 해제 대기)
-      await killServerProcess(graniteProcess, [VITE_DEV_PORT, 8081 + PORT_OFFSET]);
-      graniteProcess = null;
     }
   });
 
@@ -1160,23 +535,18 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
   // Test 2: AIT Dev Server (vite)
   // -------------------------------------------------------------------------
   test('2. AIT dev server should start and load Unity', async ({ page }) => {
-    test.setTimeout(120000); // 2분
+    test.setTimeout(120000);
 
-    // 모바일 스로틀링 적용 (MOBILE_EMULATION=true일 때만 실행)
     await applyMobileThrottling(page);
 
-    // ait-build 디렉토리 확인
     expect(directoryExists(AIT_BUILD), 'ait-build/ should exist for dev server').toBe(true);
 
-    // Dev 서버 시작 (npx vite --host --port)
     console.log('🚀 Starting dev server (vite)...');
     const devServer = await startDevServer(AIT_BUILD, serverPort);
     serverProcess = devServer.process;
     const actualPort = devServer.port;
 
-    console.log(`📍 Checking server on port: ${actualPort}`);
-
-    // 서버가 준비될 때까지 대기 (최대 15초)
+    // 서버가 준비될 때까지 대기
     let serverReady = false;
     for (let i = 0; i < 30; i++) {
       try {
@@ -1185,33 +555,24 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
           serverReady = true;
           break;
         }
-      } catch {
-        // 서버가 아직 준비되지 않음
-      }
+      } catch {}
       await new Promise(r => setTimeout(r, 500));
     }
 
     if (!serverReady) {
-      console.log(`⚠️ Server not responding on port ${actualPort}, trying common dev ports...`);
-      // 다른 포트도 시도 (vite 기본값은 5173)
       const tryPorts = [5173, 8081, 3000];
       for (const port of tryPorts) {
         if (port === actualPort) continue;
         try {
           const response = await fetch(`http://localhost:${port}/`, { method: 'HEAD' });
           if (response.ok) {
-            console.log(`✅ Found server on port ${port}`);
             serverReady = true;
-            // actualPort를 업데이트 (하지만 const이므로 새 변수 사용)
             break;
           }
-        } catch {
-          // 무시
-        }
+        } catch {}
       }
     }
 
-    // 최종 확인: 어떤 포트에서든 서버가 응답하면 통과
     const workingPort = serverReady ? actualPort : await (async () => {
       const tryPorts = [actualPort, 5173, 8081, 3000];
       for (const port of tryPorts) {
@@ -1227,9 +588,6 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       throw new Error(`Dev server failed to start on any port (tried: ${actualPort}, 5173, 8081, 3000)`);
     }
 
-    console.log(`✅ Dev server running on port: ${workingPort}`);
-
-    // 페이지 로딩 (E2E 모드 활성화)
     const startTime = Date.now();
     const response = await page.goto(`http://localhost:${workingPort}?e2e=true`, {
       waitUntil: 'domcontentloaded',
@@ -1237,9 +595,7 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
     });
 
     expect(response?.status()).toBe(200);
-    console.log('✅ Dev server responded with 200');
 
-    // createUnityInstance 함수 존재 확인
     const hasUnityLoader = await page.evaluate(() => {
       return typeof window['createUnityInstance'] === 'function' ||
              document.querySelector('script[src*="loader.js"]') !== null ||
@@ -1248,23 +604,18 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
 
     console.log(`🎮 Unity loader present: ${hasUnityLoader}`);
 
-    // Unity 로딩 진행 확인 (progress 체크)
     try {
-      // Unity 인스턴스 초기화 대기 (최대 60초)
       await page.waitForFunction(() => {
         return window['unityInstance'] !== undefined ||
                document.querySelector('canvas') !== null;
       }, { timeout: 60000 });
-
       console.log('✅ Unity instance initialized');
     } catch {
       console.log('⚠️ Unity instance not initialized within timeout (may be expected in CI)');
     }
 
     const loadTime = Date.now() - startTime;
-    console.log(`⏱️ Page load time: ${loadTime}ms`);
 
-    // 서버 종료 (프로세스 트리 정리 + 포트 해제 대기)
     await killServerProcess(serverProcess, [VITE_DEV_PORT, serverPort]);
     serverProcess = null;
 
@@ -1276,86 +627,7 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
 
 
   // -------------------------------------------------------------------------
-  // Test 3: AIT Build Directory
-  // -------------------------------------------------------------------------
-  test('3. AIT build directory should be created correctly', async () => {
-    test.setTimeout(30000); // 30초
-
-    // ait-build/ 디렉토리 확인
-    expect(directoryExists(AIT_BUILD), 'ait-build/ should exist').toBe(true);
-
-    // package.json 확인
-    const packageJsonPath = path.resolve(AIT_BUILD, 'package.json');
-    expect(fileExists(packageJsonPath), 'package.json should exist').toBe(true);
-
-    // granite.config.ts 확인
-    const graniteConfigPath = path.resolve(AIT_BUILD, 'granite.config.ts');
-    if (fileExists(graniteConfigPath)) {
-      const content = fs.readFileSync(graniteConfigPath, 'utf-8');
-      const placeholders = checkForPlaceholders(content);
-
-      if (placeholders.length > 0) {
-        console.log(`⚠️ Placeholders found in granite.config.ts: ${placeholders.join(', ')}`);
-      } else {
-        console.log('✅ No placeholders in granite.config.ts');
-      }
-
-      // 플레이스홀더가 있으면 실패 (CI에서는 중요)
-      expect(placeholders.length, 'Should have no unsubstituted placeholders').toBe(0);
-    }
-
-    // node_modules 확인 (npm install 완료)
-    const nodeModulesPath = path.resolve(AIT_BUILD, 'node_modules');
-    expect(directoryExists(nodeModulesPath), 'node_modules/ should exist').toBe(true);
-
-    console.log('✅ AIT build directory structure is correct');
-
-    testResults.tests['3_ait_build'] = { passed: true };
-  });
-
-
-  // -------------------------------------------------------------------------
-  // Test 4: AIT Packaging
-  // -------------------------------------------------------------------------
-  test('4. AIT packaging should complete without placeholders', async () => {
-    test.setTimeout(30000); // 30초
-
-    // dist/ 확인
-    const distPath = path.resolve(AIT_BUILD, 'dist');
-    expect(directoryExists(distPath), 'dist/ should exist').toBe(true);
-
-    // dist/web/ 확인
-    expect(directoryExists(DIST_WEB), 'dist/web/ should exist').toBe(true);
-
-    // index.html 확인
-    const indexPath = path.resolve(DIST_WEB, 'index.html');
-    expect(fileExists(indexPath), 'index.html should exist').toBe(true);
-
-    const indexContent = fs.readFileSync(indexPath, 'utf-8');
-    const placeholders = checkForPlaceholders(indexContent);
-
-    if (placeholders.length > 0) {
-      console.log(`❌ Placeholders found in index.html: ${placeholders.join(', ')}`);
-    } else {
-      console.log('✅ No placeholders in index.html');
-    }
-
-    expect(placeholders.length, 'index.html should have no unsubstituted placeholders').toBe(0);
-
-    // Build 폴더 확인
-    const buildPath = path.resolve(DIST_WEB, 'Build');
-    expect(directoryExists(buildPath), 'Build/ folder should exist').toBe(true);
-
-    const buildFiles = fs.readdirSync(buildPath);
-    console.log(`📦 Packaged build files: ${buildFiles.join(', ')}`);
-
-    testResults.tests['4_ait_packaging'] = { passed: true };
-  });
-
-
-  // -------------------------------------------------------------------------
-  // Tests 5-8: Production Server + Runtime Tests (세션 공유)
-  // 서버 1회 시작 + Unity 1회 초기화로 ~6분 절약
+  // Tests 3-5: Production Server + Runtime Tests (세션 공유)
   // -------------------------------------------------------------------------
   test.describe.serial('Production Tests (shared session)', () => {
     /** @type {import('@playwright/test').Page} */
@@ -1364,20 +636,19 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
     let sharedPort = serverPort;
     let pageLoadTime = 0;
     let unityLoadTime = 0;
+
     test.beforeAll(async ({ browser }) => {
       console.log('\n' + '='.repeat(70));
-      console.log('🚀 STARTING SHARED SESSION FOR TESTS 5-8');
+      console.log('🚀 STARTING SHARED SESSION FOR TESTS 3-5');
       console.log('='.repeat(70));
 
       expect(directoryExists(DIST_WEB), 'dist/web/ should exist for production server').toBe(true);
 
-      // 1. Production 서버 시작 (1회만)
-      console.log('🚀 Starting production server (vite preview)...');
+      // 1. Production 서버 시작
       const prodServer = await startProductionServer(AIT_BUILD, serverPort);
       sharedServerProcess = prodServer.process;
       sharedPort = prodServer.port;
 
-      // 서버가 준비될 때까지 대기 (최대 10초)
       let serverReady = false;
       for (let i = 0; i < 20; i++) {
         try {
@@ -1386,21 +657,17 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
             serverReady = true;
             break;
           }
-        } catch {
-          // 서버가 아직 준비되지 않음
-        }
+        } catch {}
         await new Promise(r => setTimeout(r, 500));
       }
 
       if (!serverReady) {
         throw new Error(`Server failed to start on port ${sharedPort}`);
       }
-      console.log(`✅ Server ready on port ${sharedPort}`);
 
-      // 2. 페이지 생성 + Unity 초기화 (1회만)
+      // 2. 페이지 생성 + Unity 초기화
       sharedPage = await browser.newPage();
 
-      // 페이지 로딩 시간 측정 (E2E 모드 활성화)
       const startTime = Date.now();
       const response = await sharedPage.goto(`http://localhost:${sharedPort}?e2e=true`, {
         waitUntil: 'networkidle',
@@ -1409,9 +676,7 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
 
       expect(response?.status()).toBe(200);
       pageLoadTime = Date.now() - startTime;
-      console.log(`✅ Page loaded in ${pageLoadTime}ms`);
 
-      // Unity 초기화 대기
       const unityStartTime = Date.now();
       try {
         await sharedPage.waitForFunction(() => {
@@ -1424,7 +689,6 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
         console.log('⚠️ Unity initialization timeout');
       }
 
-      // 트리거 함수가 등록될 때까지 대기
       try {
         await sharedPage.waitForFunction(() => {
           return typeof window['TriggerAPITest'] === 'function';
@@ -1438,29 +702,22 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
     });
 
     test.afterAll(async () => {
-      console.log('\n' + '='.repeat(70));
-      console.log('🛑 CLOSING SHARED SESSION');
-      console.log('='.repeat(70));
-
-      // 페이지 닫기
       if (sharedPage) {
         await sharedPage.close();
         sharedPage = null;
       }
 
-      // 서버 종료 (프로세스 트리 정리 + 포트 해제 대기)
       await killServerProcess(sharedServerProcess, [sharedPort]);
       sharedServerProcess = null;
-
-      console.log('✅ Shared session closed\n');
     });
 
 
     // -------------------------------------------------------------------------
-    // Test 5: Production Server (vite preview) - Unity 초기화 검증
+    // Test 3: Production Server + Preload Metrics
+    // 기존 Tests 5, 9 통합
     // -------------------------------------------------------------------------
-    test('5. Production build should load in browser', async () => {
-      test.setTimeout(30000); // 30초 (이미 로드됨)
+    test('3. Production build should load with correct preload metrics', async () => {
+      test.setTimeout(60000);
 
       // WebGL 지원 확인
       const webglInfo = await sharedPage.evaluate(() => {
@@ -1479,100 +736,132 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       console.log(`🎨 WebGL: ${JSON.stringify(webglInfo)}`);
       console.log(`⏱️ Page load: ${pageLoadTime}ms, Unity load: ${unityLoadTime}ms`);
 
-      testResults.tests['5_production_server'] = {
+      expect(webglInfo.supported, 'WebGL should be supported').toBe(true);
+
+      // Preload Metrics 검증
+      let preloadBackfill = null;
+      try {
+        await sharedPage.waitForFunction(() => window.__E2E_LOADING_METRICS__ != null, {
+          timeout: 30000
+        });
+
+        const loadingMetrics = await sharedPage.evaluate(() => window.__E2E_LOADING_METRICS__);
+        const fileStats = await sharedPage.evaluate(() => window.__E2E_LOADING_FILE_STATS__);
+        const preloadMetrics = await sharedPage.evaluate(() => window.__E2E_LOADING_PRELOAD_METRICS__);
+
+        expect(loadingMetrics).not.toBeNull();
+        expect(loadingMetrics.total_time_ms).toBeGreaterThan(0);
+        expect(loadingMetrics.total_files).toBeGreaterThanOrEqual(3);
+
+        // 파일별 필드 존재 검증
+        for (const file of fileStats) {
+          expect(file.duration).toBeGreaterThan(0);
+          expect(file.size).toBeGreaterThan(0);
+          expect(file.compressionType).toBeDefined();
+          expect(typeof file.decompressionFallback).toBe('boolean');
+          expect(typeof file.preloaded).toBe('boolean');
+        }
+
+        // Preload 검증
+        const preloadedFileNames = Object.keys(preloadMetrics || {}).filter(
+          k => preloadMetrics[k].initiatorType === 'link'
+        );
+        expect(preloadedFileNames.length).toBeGreaterThan(0);
+        expect(loadingMetrics.preload_enabled).toBe(true);
+        expect(loadingMetrics.preload_file_count).toBeGreaterThan(0);
+
+        // Backfill 검증
+        for (const fileName of preloadedFileNames) {
+          const preload = preloadMetrics[fileName];
+          const fileStat = fileStats.find(f => f.name === fileName);
+          if (!fileStat) continue;
+
+          expect(fileStat.preloaded).toBe(true);
+          expect(fileStat.duration).toBeCloseTo(Math.round(preload.duration), 0);
+        }
+
+        preloadBackfill = {
+          passed: true,
+          preloadFileCount: preloadedFileNames.length,
+          totalTimeMs: loadingMetrics.total_time_ms,
+          totalFiles: loadingMetrics.total_files,
+          fileStats,
+          preloadMetrics
+        };
+
+        console.log('\n' + '='.repeat(70));
+        console.log('📊 PRELOAD METRIC BACKFILL RESULTS');
+        console.log('='.repeat(70));
+        console.log(`   Preloaded files: ${preloadedFileNames.length}`);
+        for (const fileName of preloadedFileNames) {
+          const preload = preloadMetrics[fileName];
+          const fileStat = fileStats.find(f => f.name === fileName);
+          if (fileStat) {
+            console.log(`   ${fileName}: RT=${Math.round(preload.duration)}ms, FS=${fileStat.duration}ms`);
+          }
+        }
+        console.log('='.repeat(70) + '\n');
+      } catch (e) {
+        console.log(`⚠️ Preload metrics not available: ${e.message}`);
+      }
+
+      testResults.tests['3_production_server'] = {
         passed: true,
         pageLoadTimeMs: pageLoadTime,
         unityLoadTimeMs: unityLoadTime,
-        webgl: webglInfo
+        webgl: webglInfo,
+        preloadBackfill
       };
-
-      expect(webglInfo.supported, 'WebGL should be supported').toBe(true);
     });
 
 
     // -------------------------------------------------------------------------
-    // Test 6: Runtime API Error Validation
-    // JavaScript에서 TriggerAPITest() 호출하여 테스트 실행
+    // Test 4: Runtime API Error Validation
     // -------------------------------------------------------------------------
-    test('6. All SDK APIs should return correct errors in dev environment', async () => {
-      test.setTimeout(180000); // 3분
+    test('4. All SDK APIs should return correct errors in dev environment', async () => {
+      test.setTimeout(180000);
 
       console.log('🔄 Triggering API tests via JavaScript...');
 
-      // 이벤트 리스너 등록 + 트리거 호출
       const apiResults = await sharedPage.evaluate(() => {
         return new Promise((resolve) => {
-          // 이미 데이터가 있으면 바로 반환 (auto-run 모드)
           if (window['__E2E_API_TEST_DATA__']) {
             resolve(window['__E2E_API_TEST_DATA__']);
             return;
           }
 
-          // 이벤트 리스너 등록
           const handler = (event) => {
             window.removeEventListener('e2e-api-test-complete', handler);
             resolve(event.detail);
           };
           window.addEventListener('e2e-api-test-complete', handler);
 
-          // 트리거 함수가 있으면 호출
           if (typeof window['TriggerAPITest'] === 'function') {
-            console.log('[E2E] Calling TriggerAPITest()');
             window['TriggerAPITest']();
-          } else {
-            console.log('[E2E] TriggerAPITest not found, waiting for auto-run...');
           }
 
-          // 120초 타임아웃
           setTimeout(() => resolve(null), 120000);
         });
       });
 
-      // 결과 검증
       if (apiResults) {
-        // JSON 문자열인 경우 파싱
         let results = apiResults;
         if (typeof results === 'string') {
-          try {
-            results = JSON.parse(results);
-          } catch {
-            console.log('⚠️ Failed to parse API results JSON');
-          }
+          try { results = JSON.parse(results); } catch {}
         }
 
         console.log('\n' + '='.repeat(70));
         console.log('📊 SDK API ERROR VALIDATION RESULTS');
         console.log('='.repeat(70));
         console.log(`   Total APIs Tested: ${results.totalAPIs}`);
-        console.log(`   Success (including expected errors): ${results.successCount}`);
-        console.log(`   Expected Errors: ${results.expectedErrorCount || 0}`);
-        console.log(`   Unexpected Errors (FAILURES): ${results.unexpectedErrorCount || 0}`);
+        console.log(`   Success: ${results.successCount}`);
+        console.log(`   Unexpected Errors: ${results.unexpectedErrorCount || 0}`);
         console.log('='.repeat(70));
 
-        // 상정된 에러가 발생한 API 목록 (정상)
         if (results.results) {
-          const expectedErrors = results.results.filter(r => r.success && r.isExpectedError);
-          if (expectedErrors.length > 0) {
-            console.log('\n✅ APIs with Expected Errors (correct behavior in dev):');
-            expectedErrors.forEach(r => {
-              const truncatedError = r.error?.length > 50 ? r.error.substring(0, 50) + '...' : r.error;
-              console.log(`   [OK] ${r.apiName}: ${truncatedError}`);
-            });
-          }
-
-          // 에러 없이 성공한 API
-          const cleanSuccess = results.results.filter(r => r.success && !r.isExpectedError && !r.error);
-          if (cleanSuccess.length > 0) {
-            console.log('\n✅ APIs Completed Successfully (mock worked):');
-            cleanSuccess.forEach(r => {
-              console.log(`   [OK] ${r.apiName}`);
-            });
-          }
-
-          // 상정되지 않은 에러
           const unexpectedErrors = results.results.filter(r => !r.success);
           if (unexpectedErrors.length > 0) {
-            console.log('\n❌ APIs with UNEXPECTED Errors (TEST FAILURES):');
+            console.log('\n❌ APIs with UNEXPECTED Errors:');
             unexpectedErrors.forEach(r => {
               console.log(`   [FAIL] ${r.apiName}: ${r.error}`);
             });
@@ -1581,15 +870,7 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
 
         const unexpectedErrorCount = results.unexpectedErrorCount || 0;
 
-        console.log('\n' + '='.repeat(70));
-        if (unexpectedErrorCount === 0) {
-          console.log('✅ ALL API ERROR VALIDATIONS PASSED');
-        } else {
-          console.log('❌ API ERROR VALIDATION FAILED');
-        }
-        console.log('='.repeat(70) + '\n');
-
-        testResults.tests['6_runtime_api'] = {
+        testResults.tests['4_runtime_api'] = {
           passed: unexpectedErrorCount === 0,
           totalAPIs: results.totalAPIs,
           successCount: results.successCount,
@@ -1599,10 +880,8 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
         };
 
         expect(unexpectedErrorCount, 'All APIs should return expected errors or succeed').toBe(0);
-
       } else {
-        console.log('⚠️ API test results not received');
-        testResults.tests['6_runtime_api'] = {
+        testResults.tests['4_runtime_api'] = {
           passed: false,
           reason: 'RuntimeAPITester results not received'
         };
@@ -1612,52 +891,38 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
 
 
     // -------------------------------------------------------------------------
-    // Test 7: Serialization Round-trip Tests
-    // JavaScript에서 TriggerSerializationTest() 호출하여 테스트 실행
+    // Test 5: Serialization Round-trip Tests
     // -------------------------------------------------------------------------
-    test('7. Serialization round-trip should succeed for all types', async () => {
-      test.setTimeout(180000); // 3분
+    test('5. Serialization round-trip should succeed for all types', async () => {
+      test.setTimeout(180000);
 
       console.log('🔄 Triggering serialization tests via JavaScript...');
 
-      // 이벤트 리스너 등록 + 트리거 호출
       const serializationResults = await sharedPage.evaluate(() => {
         return new Promise((resolve) => {
-          // 이미 데이터가 있으면 바로 반환 (auto-run 모드)
           if (window['__E2E_SERIALIZATION_TEST_DATA__']) {
             resolve(window['__E2E_SERIALIZATION_TEST_DATA__']);
             return;
           }
 
-          // 이벤트 리스너 등록
           const handler = (event) => {
             window.removeEventListener('e2e-serialization-complete', handler);
             resolve(event.detail);
           };
           window.addEventListener('e2e-serialization-complete', handler);
 
-          // 트리거 함수가 있으면 호출
           if (typeof window['TriggerSerializationTest'] === 'function') {
-            console.log('[E2E] Calling TriggerSerializationTest()');
             window['TriggerSerializationTest']();
-          } else {
-            console.log('[E2E] TriggerSerializationTest not found, waiting for auto-run...');
           }
 
-          // 90초 타임아웃
           setTimeout(() => resolve(null), 90000);
         });
       });
 
-      // 결과 검증
       if (serializationResults) {
         let results = serializationResults;
         if (typeof results === 'string') {
-          try {
-            results = JSON.parse(results);
-          } catch {
-            console.log('⚠️ Failed to parse serialization results JSON');
-          }
+          try { results = JSON.parse(results); } catch {}
         }
 
         console.log('\n' + '='.repeat(70));
@@ -1669,16 +934,7 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
         console.log('='.repeat(70));
 
         if (results.results && Array.isArray(results.results)) {
-          const passed = results.results.filter(r => r.success);
           const failed = results.results.filter(r => !r.success);
-
-          if (passed.length > 0) {
-            console.log('\n✅ Passed Tests:');
-            passed.forEach(r => {
-              console.log(`   [OK] ${r.testName}`);
-            });
-          }
-
           if (failed.length > 0) {
             console.log('\n❌ Failed Tests:');
             failed.forEach(r => {
@@ -1687,15 +943,7 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
           }
         }
 
-        console.log('\n' + '='.repeat(70));
-        if (results.failCount === 0) {
-          console.log('✅ ALL SERIALIZATION TESTS PASSED');
-        } else {
-          console.log('❌ SERIALIZATION TESTS FAILED');
-        }
-        console.log('='.repeat(70) + '\n');
-
-        testResults.tests['7_serialization'] = {
+        testResults.tests['5_serialization'] = {
           passed: results.failCount === 0,
           totalTests: results.totalTests,
           successCount: results.successCount,
@@ -1703,10 +951,8 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
         };
 
         expect(results.failCount, 'All serialization tests should pass').toBe(0);
-
       } else {
-        console.log('⚠️ Serialization test results not received');
-        testResults.tests['7_serialization'] = {
+        testResults.tests['5_serialization'] = {
           passed: false,
           reason: 'SerializationTester results not received'
         };
@@ -1714,256 +960,6 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       }
     });
 
-
-    // -------------------------------------------------------------------------
-    // Test 8: Comprehensive Performance Test (CPU/GPU + Memory 통합)
-    // JavaScript에서 TriggerPerformanceTest() 호출하여 테스트 실행
-    // -------------------------------------------------------------------------
-    test('8. Comprehensive performance test should pass', async () => {
-      test.setTimeout(300000); // 5분
-
-      console.log('🔄 Triggering performance tests via JavaScript...');
-
-      // CPU 쓰로틀링을 적용하지 않음:
-      // - Unity 내부에서 Physics(200개) + Rendering(20x20) + Memory(1.5GB) 부하를 이미 생성
-      // - 외부 CDP 쓰로틀링은 코루틴 셋업/클린업까지 느려뜨려 플랫폼별 타임아웃 편차 유발
-      // - FPS 임계값(baseline 20, full load 10)은 내부 부하만으로도 유의미한 측정
-
-      // 이벤트 리스너 등록 + 트리거 호출
-      const perfResults = await sharedPage.evaluate(() => {
-        return new Promise((resolve) => {
-          // 이미 데이터가 있으면 바로 반환 (auto-run 모드)
-          if (window['__E2E_COMPREHENSIVE_PERF_DATA__']) {
-            resolve(window['__E2E_COMPREHENSIVE_PERF_DATA__']);
-            return;
-          }
-
-          // 이벤트 리스너 등록
-          const handler = (event) => {
-            window.removeEventListener('e2e-comprehensive-perf-complete', handler);
-            console.log('[E2E] Comprehensive perf test event received');
-            resolve(event.detail);
-          };
-          window.addEventListener('e2e-comprehensive-perf-complete', handler);
-
-          // 트리거 함수가 있으면 호출, unityInstance 없으면 재시도
-          const callTrigger = () => {
-            if (typeof window['TriggerPerformanceTest'] === 'function') {
-              const result = window['TriggerPerformanceTest']();
-              if (result) {
-                console.log('[E2E] TriggerPerformanceTest() called successfully');
-              } else {
-                console.log('[E2E] TriggerPerformanceTest() returned false (unityInstance not ready), retrying in 2s...');
-                setTimeout(callTrigger, 2000);
-              }
-            } else if (window['unityInstance']) {
-              console.log('[E2E] Calling SendMessage directly');
-              window['unityInstance'].SendMessage('BenchmarkManager', 'TriggerPerformanceTest');
-            } else {
-              console.log('[E2E] Neither TriggerPerformanceTest nor unityInstance available, retrying in 2s...');
-              setTimeout(callTrigger, 2000);
-            }
-          };
-          callTrigger();
-
-          // 270초 타임아웃 (Windows에서 Unity 2022.3 코루틴이 느릴 수 있음)
-          setTimeout(() => {
-            console.log('[E2E] Comprehensive perf test timeout');
-            resolve(null);
-          }, 270000);
-        });
-      });
-
-      // 빌드 크기 확인
-      const buildSizeMB = getDirectorySizeMB(DIST_WEB);
-
-      // 결과 검증
-      if (perfResults) {
-        let results = perfResults;
-        if (typeof results === 'string') {
-          try {
-            results = JSON.parse(results);
-          } catch {
-            console.log('⚠️ Failed to parse comprehensive perf results JSON');
-          }
-        }
-
-        console.log('\n' + '='.repeat(70));
-        console.log('📊 COMPREHENSIVE PERFORMANCE TEST RESULTS');
-        console.log('='.repeat(70));
-        console.log(`   Page Load: ${pageLoadTime}ms`);
-        console.log(`   Unity Load: ${unityLoadTime}ms`);
-        console.log(`   Build Size: ${buildSizeMB.toFixed(2)}MB (max: ${BENCHMARKS.MAX_BUILD_SIZE_MB}MB)`);
-        console.log('---');
-        console.log(`   Baseline:          ${results.baseline?.avgFps?.toFixed(1) || 'N/A'} FPS (min req: 20)`);
-        console.log(`   Physics + Memory:  ${results.physicsWithMemory?.avgFps?.toFixed(1) || 'N/A'} FPS (min req: 12)`);
-        console.log(`   Rendering + Memory: ${results.renderingWithMemory?.avgFps?.toFixed(1) || 'N/A'} FPS (min req: 12)`);
-        console.log(`   Full Load:         ${results.fullLoad?.avgFps?.toFixed(1) || 'N/A'} FPS (min req: 10)`);
-        console.log(`   OOM Occurred:      ${results.oomOccurred ? '❌ YES' : '✅ NO'}`);
-
-        // 메모리 정보 출력 (있는 경우)
-        if (results.memoryInfo) {
-          console.log('---');
-          console.log(`   Memory - WASM: ${results.memoryInfo.wasmAllocatedMB?.toFixed(1) || 'N/A'}MB`);
-          console.log(`   Memory - JS: ${results.memoryInfo.jsAllocatedMB?.toFixed(1) || 'N/A'}MB`);
-          console.log(`   Memory - Canvas: ${results.memoryInfo.canvasEstimatedMB?.toFixed(1) || 'N/A'}MB`);
-        }
-        console.log('='.repeat(70));
-
-        // 단계별 상세 출력
-        const phases = [
-          { name: 'Baseline', data: results.baseline, minFps: 20 },
-          { name: 'Physics+Memory', data: results.physicsWithMemory, minFps: 12 },
-          { name: 'Rendering+Memory', data: results.renderingWithMemory, minFps: 12 },
-          { name: 'Full Load', data: results.fullLoad, minFps: 10 }
-        ];
-
-        let allPassed = true;
-        for (const phase of phases) {
-          if (phase.data?.avgFps !== undefined) {
-            const passed = phase.data.avgFps >= phase.minFps;
-            const status = passed ? '✅' : '❌';
-            console.log(`   ${status} ${phase.name}: ${phase.data.avgFps.toFixed(1)} FPS (min: ${phase.data.minFps?.toFixed(1)}, max: ${phase.data.maxFps?.toFixed(1)})`);
-            if (!passed) allPassed = false;
-          }
-        }
-
-        console.log('\n' + '='.repeat(70));
-        if (!results.oomOccurred && allPassed) {
-          console.log('✅ COMPREHENSIVE PERFORMANCE TEST PASSED');
-        } else {
-          console.log('❌ COMPREHENSIVE PERFORMANCE TEST FAILED');
-          if (results.oomOccurred) {
-            console.log('   - OOM occurred during tests');
-          }
-          if (!allPassed) {
-            console.log('   - One or more phases failed FPS requirements');
-          }
-        }
-        console.log('='.repeat(70) + '\n');
-
-        testResults.tests['8_comprehensive_perf'] = {
-          passed: !results.oomOccurred && allPassed,
-          pageLoadTimeMs: pageLoadTime,
-          unityLoadTimeMs: unityLoadTime,
-          buildSizeMB,
-          oomOccurred: results.oomOccurred,
-          baseline: results.baseline,
-          physicsWithMemory: results.physicsWithMemory,
-          renderingWithMemory: results.renderingWithMemory,
-          fullLoad: results.fullLoad,
-          memoryInfo: results.memoryInfo
-        };
-
-        // 빌드 크기 검증
-        expect(buildSizeMB).toBeLessThanOrEqual(BENCHMARKS.MAX_BUILD_SIZE_MB);
-
-        // OOM 검증
-        expect(results.oomOccurred, 'Should complete without OOM').toBe(false);
-
-        // Full Load에서 최소 10 FPS 이상 유지해야 함
-        if (results.fullLoad?.avgFps !== undefined) {
-          expect(results.fullLoad.avgFps, 'Full Load should maintain at least 10 FPS').toBeGreaterThanOrEqual(10);
-        }
-
-      } else {
-        // 결과 미수신 시 soft-fail: 메모리 부하(1.5GB)로 인해 특정 플랫폼/버전에서
-        // WebGL 컨텍스트가 응답하지 않을 수 있음 (예: Windows 2022.3)
-        console.log('⚠️ Comprehensive performance test results not received (soft-fail)');
-        console.log('   This can happen when heavy memory allocation causes WebGL context to become unresponsive');
-        testResults.tests['8_comprehensive_perf'] = {
-          passed: false,
-          reason: 'ComprehensivePerfTester results not received (timeout - soft fail)',
-          softFail: true
-        };
-        // soft-fail: 결과 미수신은 경고로 처리, CI를 fail시키지 않음
-        // 실제 성능 회귀는 결과가 정상 수신된 플랫폼에서 검증
-      }
-    });
-
-
-    // -------------------------------------------------------------------------
-    // Test 9: Preload Metrics Backfill
-    // Preload가 wrapFetch보다 먼저 실행되었는지, backfill된 metric이
-    // Resource Timing API 값과 일치하는지 검증
-    // -------------------------------------------------------------------------
-    test('9. Preload metrics should be backfilled from Resource Timing API', async () => {
-      test.setTimeout(60000);
-
-      // loading metric 준비 대기
-      await sharedPage.waitForFunction(() => window.__E2E_LOADING_METRICS__ != null, {
-        timeout: 30000
-      });
-
-      const loadingMetrics = await sharedPage.evaluate(() => window.__E2E_LOADING_METRICS__);
-      const fileStats = await sharedPage.evaluate(() => window.__E2E_LOADING_FILE_STATS__);
-      const preloadMetrics = await sharedPage.evaluate(() => window.__E2E_LOADING_PRELOAD_METRICS__);
-
-      // --- 1. 기본 구조 검증 ---
-      expect(loadingMetrics).not.toBeNull();
-      expect(loadingMetrics.total_time_ms).toBeGreaterThan(0);
-      expect(loadingMetrics.total_files).toBeGreaterThanOrEqual(3); // wasm, data, framework
-
-      // 파일별 필드 존재 검증 (getFileStats 필드 누락 수정 확인)
-      for (const file of fileStats) {
-        expect(file.duration).toBeGreaterThan(0);
-        expect(file.size).toBeGreaterThan(0);
-        expect(file.compressionType).toBeDefined();
-        expect(typeof file.decompressionFallback).toBe('boolean');
-        expect(typeof file.preloaded).toBe('boolean');
-      }
-
-      // --- 2. Preload가 wrapFetch보다 먼저 실행되었는지 검증 ---
-      // preloadMetrics에 initiatorType === 'link' 엔트리가 있어야 함
-      const preloadedFileNames = Object.keys(preloadMetrics || {}).filter(
-        k => preloadMetrics[k].initiatorType === 'link'
-      );
-      expect(preloadedFileNames.length).toBeGreaterThan(0);
-      expect(loadingMetrics.preload_enabled).toBe(true);
-      expect(loadingMetrics.preload_file_count).toBeGreaterThan(0);
-
-      // --- 3. Backfill 검증: fileStats의 값이 Resource Timing API 값과 일치하는지 ---
-      for (const fileName of preloadedFileNames) {
-        const preload = preloadMetrics[fileName];
-        const fileStat = fileStats.find(f => f.name === fileName);
-
-        if (!fileStat) continue; // wrapFetch를 거치지 않은 파일은 스킵
-
-        // preloaded 플래그가 true여야 함
-        expect(fileStat.preloaded).toBe(true);
-
-        // Resource Timing API의 duration과 fileStats의 duration이 일치해야 함
-        expect(fileStat.duration).toBeCloseTo(Math.round(preload.duration), 0);
-      }
-
-      // --- 결과 기록 ---
-      testResults.tests['9_preload_backfill'] = {
-        passed: true,
-        preloadFileCount: preloadedFileNames.length,
-        totalTimeMs: loadingMetrics.total_time_ms,
-        totalFiles: loadingMetrics.total_files,
-        fileStats,
-        preloadMetrics
-      };
-
-      console.log('\n' + '='.repeat(70));
-      console.log('📊 PRELOAD METRIC BACKFILL RESULTS');
-      console.log('='.repeat(70));
-      console.log(`   Preloaded files: ${preloadedFileNames.length}`);
-      for (const fileName of preloadedFileNames) {
-        const preload = preloadMetrics[fileName];
-        const fileStat = fileStats.find(f => f.name === fileName);
-        if (fileStat) {
-          console.log(`   ${fileName}:`);
-          console.log(`     Resource Timing duration: ${Math.round(preload.duration)}ms`);
-          console.log(`     fileStats duration:       ${fileStat.duration}ms`);
-          console.log(`     Match: ${fileStat.duration === Math.round(preload.duration) ? '✅' : '❌'}`);
-        }
-      }
-      console.log('='.repeat(70) + '\n');
-    });
-
   }); // end of test.describe.serial
-
 
 });

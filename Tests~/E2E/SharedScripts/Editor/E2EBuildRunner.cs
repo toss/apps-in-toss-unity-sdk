@@ -114,7 +114,31 @@ public class E2EBuildRunner
         if (result == AITConvertCore.AITExportError.SUCCEED)
         {
             Debug.Log("✓ SDK build succeeded!");
-            Debug.Log("[5/5] Build artifacts should be in ait-build/dist/");
+
+            // 빌드 산출물 검증 (Level 1 - 기존 Playwright Tests 1, 3, 4 대체)
+            Debug.Log("[5/6] Validating build output...");
+            string projectPath = Path.GetDirectoryName(Application.dataPath);
+            var validation = BuildOutputValidator.ValidateAll(projectPath);
+            string jsonPath = Path.Combine(projectPath, "ait-build", "build-validation.json");
+            File.WriteAllText(jsonPath, JsonUtility.ToJson(validation, true));
+            Debug.Log($"✓ Build validation written to: {jsonPath}");
+
+            if (!validation.passed)
+            {
+                foreach (var err in validation.errors)
+                    Debug.LogError($"[Validation] {err}");
+                Debug.LogError("========================================");
+                Debug.LogError("E2E Build Complete - VALIDATION FAILED");
+                Debug.LogError("========================================");
+                EditorApplication.Exit(2);
+                return;
+            }
+
+            foreach (var warn in validation.warnings)
+                Debug.LogWarning($"[Validation] {warn}");
+
+            Debug.Log($"✓ Build validation passed (size: {validation.buildSizeMB:F2} MB, files: {validation.fileCount}, compression: {validation.compressionFormat})");
+            Debug.Log("[6/6] Build artifacts verified in ait-build/dist/");
             Debug.Log("========================================");
             Debug.Log("E2E Build Complete - SUCCESS");
             Debug.Log("========================================");

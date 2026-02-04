@@ -2,6 +2,7 @@
   "dependencies": {
     "im.toss.apps-in-toss-unity-sdk": "file:../../../..",
     "im.toss.sdk-test-scripts": "file:../../SharedScripts",
+    "com.unity.test-framework": "1.1.33",
     "com.unity.ide.rider": "3.0.36",
     "com.unity.ide.visualstudio": "2.0.22",
     "com.unity.ide.vscode": "1.2.5",

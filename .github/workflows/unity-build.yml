@@ -51,6 +51,11 @@ on:
         type: string
         required: false
         default: ''
+      run-unit-test:
+        description: 'Run Unity EditMode unit tests before build'
+        type: boolean
+        required: false
+        default: false
       clean-library:
         description: 'Clean Unity Library cache'
         type: boolean
@@ -549,6 +554,144 @@ jobs:
             Write-Host "No conflicting Licensing Client processes found"
           }
           Write-Host "Licensing Client cleanup complete"
+
+      # =====================================================
+      # Unity EditMode 유닛 테스트 (선택적)
+      # =====================================================
+      - name: Run Unity EditMode Tests (macOS)
+        if: inputs.os == 'macos' && inputs.run-unit-test
+        run: |
+          UNITY_PATH="${{ steps.unity.outputs.UNITY_PATH }}"
+          PROJECT_PATH="${{ github.workspace }}/Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}"
+          LOG_FILE="/tmp/unity-test-${{ inputs.unity-version }}.log"
+          RESULTS_FILE="/tmp/unity-test-results-${{ inputs.unity-version }}.xml"
+
+          echo "Running Unity EditMode tests..."
+          echo "Unity: ${UNITY_PATH}"
+          echo "Project: ${PROJECT_PATH}"
+
+          "$UNITY_PATH" -quit -batchmode -nographics \
+            -projectPath "$PROJECT_PATH" \
+            -runTests \
+            -testPlatform EditMode \
+            -testResults "$RESULTS_FILE" \
+            -logFile - 2>&1 | tee "$LOG_FILE"
+          EXIT_CODE=${PIPESTATUS[0]}
+
+          echo "Unity Test Runner exited with code: $EXIT_CODE"
+
+          if [ -f "$RESULTS_FILE" ]; then
+            echo "=== Test Results ==="
+            cat "$RESULTS_FILE"
+          fi
+
+          if [ $EXIT_CODE -ne 0 ]; then
+            # 라이선스 오류는 무시하고 재시도하지 않음 (빌드 단계에서 처리)
+            if grep -qE "No valid Unity Editor license found|Unsupported protocol version|ResponseCode: 505" "$LOG_FILE" 2>/dev/null; then
+              echo "::warning::Unity license issue during tests, skipping test failure..."
+            else
+              echo "::error::Unity EditMode tests failed with exit code: $EXIT_CODE"
+              exit $EXIT_CODE
+            fi
+          fi
+
+          echo "Unity EditMode tests completed"
+
+      - name: Run Unity EditMode Tests (Windows)
+        if: inputs.os == 'windows' && inputs.run-unit-test
+        shell: powershell
+        run: |
+          $unityPath = "${{ steps.unity.outputs.UNITY_PATH }}"
+          $projectPath = "${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ inputs.unity-version }}"
+          $logFile = "$env:TEMP\unity-test-${{ inputs.unity-version }}.log"
+          $resultsFile = "$env:TEMP\unity-test-results-${{ inputs.unity-version }}.xml"
+
+          Write-Host "Running Unity EditMode tests..."
+          Write-Host "Unity: $unityPath"
+          Write-Host "Project: $projectPath"
+
+          $unityProcess = Start-Process -FilePath $unityPath -ArgumentList @(
+            "-quit", "-batchmode", "-nographics",
+            "-projectPath", $projectPath,
+            "-runTests",
+            "-testPlatform", "EditMode",
+            "-testResults", $resultsFile,
+            "-logFile", $logFile
+          ) -PassThru -NoNewWindow
+
+          Write-Host "Waiting for Unity tests to complete..."
+          $lastSize = 0
+          while (-not $unityProcess.HasExited) {
+            Start-Sleep -Seconds 2
+            if (Test-Path $logFile) {
+              $content = Get-Content $logFile -Raw -ErrorAction SilentlyContinue
+              if ($content -and $content.Length -gt $lastSize) {
+                $newContent = $content.Substring($lastSize)
+                Write-Host $newContent
+                $lastSize = $content.Length
+              }
+            }
+          }
+
+          $unityProcess.WaitForExit()
+
+          if (Test-Path $logFile) {
+            $content = Get-Content $logFile -Raw -ErrorAction SilentlyContinue
+            if ($content -and $content.Length -gt $lastSize) {
+              Write-Host $content.Substring($lastSize)
+            }
+          }
+
+          if (Test-Path $resultsFile) {
+            Write-Host "=== Test Results ==="
+            Get-Content $resultsFile
+          }
+
+          $exitCode = $unityProcess.ExitCode
+
+          if ($null -eq $exitCode) {
+            Write-Host "::warning::ExitCode is null, checking test results..."
+            if (Test-Path $resultsFile) {
+              $resultsContent = Get-Content $resultsFile -Raw
+              if ($resultsContent -match 'result="Passed"') {
+                Write-Host "Test results indicate pass"
+                $exitCode = 0
+              } else {
+                Write-Host "::error::Test results indicate failure"
+                $exitCode = 1
+              }
+            } else {
+              $exitCode = 1
+            }
+          }
+
+          Write-Host "Unity Test Runner exited with code: $exitCode"
+
+          if ($exitCode -ne 0) {
+            # 라이선스 오류 확인
+            if (Test-Path $logFile) {
+              $logContent = Get-Content $logFile -Raw -ErrorAction SilentlyContinue
+              if ($logContent -match "No valid Unity Editor license found|Unsupported protocol version|ResponseCode: 505") {
+                Write-Host "::warning::Unity license issue during tests, skipping test failure..."
+                exit 0
+              }
+            }
+            Write-Host "::error::Unity EditMode tests failed with exit code: $exitCode"
+            exit $exitCode
+          }
+
+          Write-Host "Unity EditMode tests completed"
+
+      - name: Upload Test Results
+        if: inputs.run-unit-test && always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: unit-test-results-${{ inputs.os }}-${{ inputs.unity-version }}
+          path: |
+            /tmp/unity-test-results-${{ inputs.unity-version }}.xml
+            ${{ runner.temp }}/unity-test-results-${{ inputs.unity-version }}.xml
+          if-no-files-found: ignore
+          retention-days: 7
 
       # =====================================================
       # Unity WebGL 빌드

@@ -698,11 +698,11 @@ jobs:
 
       - name: 배포 결과 아티팩트 저장
         if: always() && steps.check-packages.outputs.package_count > 0
+        env:
+          VERSION: ${{ needs.create-release-tag.outputs.version }}
+          DEPLOY_RESULTS: ${{ steps.deploy.outputs.deploy_results }}
+          HAS_FAILURE: ${{ steps.deploy.outputs.has_failure }}
         run: |
-          VERSION="${{ needs.create-release-tag.outputs.version }}"
-          DEPLOY_RESULTS="${{ steps.deploy.outputs.deploy_results }}"
-          HAS_FAILURE="${{ steps.deploy.outputs.has_failure }}"
-
           echo "version=${VERSION}" > deploy-results.txt
           echo "has_failure=${HAS_FAILURE}" >> deploy-results.txt
           echo "---RESULTS---" >> deploy-results.txt
@@ -723,24 +723,74 @@ jobs:
         if: always() && steps.check-packages.outputs.package_count > 0 && inputs.skip_notification != true
         env:
           DEPLOY_WEBHOOK_URL: "https://ipd-public-gateway.core.toss-internal.com/api-public/v3/ipd-public-gateway/webhooks/ipd-corp-core-automation-webhook/8b6db539-6cb4-4b99-b2a8-8981c43b2592"
+          VERSION: ${{ needs.create-release-tag.outputs.version }}
+          DEPLOY_RESULTS: ${{ steps.deploy.outputs.deploy_results }}
         run: |
-          VERSION="${{ needs.create-release-tag.outputs.version }}"
-          DEPLOY_RESULTS="${{ steps.deploy.outputs.deploy_results }}"
 
           if [ -z "$DEPLOY_RESULTS" ]; then
-            DEPLOY_RESULTS="배포 결과 없음"
+            URLS_FOR_EDITION="배포 결과 없음"
+          else
+            echo "=== markdown link 형식으로 변환 ==="
+            URLS_FOR_EDITION=""
+            while IFS= read -r line; do
+              if [ -n "$line" ]; then
+                # "macOS - 2021.3: URL" 형식에서 플랫폼과 URL 분리
+                PLATFORM=$(echo "$line" | cut -d: -f1 | xargs)
+                URL=$(echo "$line" | cut -d: -f2- | xargs)
+
+                if [ -n "$URL" ] && [ "$URL" != "FAILED" ] && [ "$URL" != "TIMEOUT" ]; then
+                  LINE="${PLATFORM}: <${URL}|${VERSION}>"
+                else
+                  LINE="${PLATFORM}: ${VERSION}(${URL})"
+                fi
+
+                if [ -n "$URLS_FOR_EDITION" ]; then
+                  URLS_FOR_EDITION="${URLS_FOR_EDITION}\n${LINE}"
+                else
+                  URLS_FOR_EDITION="${LINE}"
+                fi
+              fi
+            done <<< "$(echo -e "$DEPLOY_RESULTS")"
           fi
+
+          ACTIONS_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
 
           echo "=== 배포 알림 전송 ==="
           echo "버전: ${VERSION}"
+          echo "Actions URL: ${ACTIONS_URL}"
           echo "결과:"
-          echo -e "$DEPLOY_RESULTS"
+          echo -e "$URLS_FOR_EDITION"
+
+          # 1줄(1플랫폼)당 1필드로 분할
+          # Slack section block에서 여러 링크가 한 필드에 있으면 렌더링 버그 발생하므로 분리
+          LINE_INDEX=1
+          while IFS= read -r line; do
+            if [ -z "$line" ]; then continue; fi
+            eval "LINE_${LINE_INDEX}=\"\${line}\""
+            LINE_INDEX=$((LINE_INDEX + 1))
+          done <<< "$(echo -e "$URLS_FOR_EDITION")"
+
+          TOTAL_LINES=$((LINE_INDEX - 1))
+          echo "총 ${TOTAL_LINES}개 줄(플랫폼)로 분할"
 
           # jq로 안전한 JSON 생성
+          # urlsForEdition (첫 번째), urlsForEdition2, ..., urlsForEditionN 필드로 전송
+          # lineCount 필드로 총 줄 수 전달 (Slack 템플릿에서 반복 범위로 사용)
           JSON_PAYLOAD=$(jq -n \
             --arg version "$VERSION" \
-            --arg urls "$(echo -e "$DEPLOY_RESULTS")" \
-            '{version: $version, urlsForEdition: $urls}')
+            --arg urls "$LINE_1" \
+            --arg actionsUrl "$ACTIONS_URL" \
+            --argjson lineCount "$TOTAL_LINES" \
+            '{version: $version, urlsForEdition: $urls, actionsUrl: $actionsUrl, lineCount: $lineCount}')
+
+          for i in $(seq 2 $TOTAL_LINES); do
+            [ "$i" -gt "$TOTAL_LINES" ] && break
+            eval "LINE_VAL=\"\${LINE_${i}}\""
+            JSON_PAYLOAD=$(echo "$JSON_PAYLOAD" | jq \
+              --arg key "urlsForEdition${i}" \
+              --arg val "$LINE_VAL" \
+              '. + {($key): $val}')
+          done
 
           echo "전송할 JSON:"
           echo "$JSON_PAYLOAD"

@@ -248,7 +248,7 @@ test.describe('Interactive API Tester', () => {
     consoleLogs.forEach(log => console.log('  ', log));
   });
 
-  test('E2E mode (with ?e2e=true) should load AutoBenchmarkRunner', async ({ page }) => {
+  test('E2E mode (with ?e2e=true) should initialize E2E components', async ({ page }) => {
     test.setTimeout(180000);  // 3분 (Unity 6000.x는 초기화가 더 오래 걸릴 수 있음)
 
     const consoleLogs = [];
@@ -279,7 +279,7 @@ test.describe('Interactive API Tester', () => {
     console.log('🔍 Mode log:', modeLog);
 
     const e2eLogs = consoleLogs.filter(log =>
-      log.includes('AutoBenchmarkRunner') ||
+      log.includes('E2EBootstrapper') ||
       log.includes('E2E Test')
     );
     console.log('🔍 E2E logs:', e2eLogs);

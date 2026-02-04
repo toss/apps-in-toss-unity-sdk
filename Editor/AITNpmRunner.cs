@@ -86,8 +86,21 @@ namespace AppsInToss.Editor
                 }
             }
 
-            // 3. 시스템 pnpm 검색 (fallback)
-            return AITPackageManagerHelper.FindExecutable("pnpm", verbose: true);
+            // 3. 내장 Node.js/pnpm 설치 모두 실패 - 상세 에러 메시지
+            Debug.LogError("[AIT] ========================================");
+            Debug.LogError("[AIT] ✗ pnpm을 설치할 수 없습니다.");
+            Debug.LogError("[AIT] ========================================");
+            Debug.LogError("[AIT] ");
+            Debug.LogError("[AIT] 내장 Node.js 다운로드 또는 pnpm 설치에 실패했습니다.");
+            Debug.LogError("[AIT] ");
+            Debug.LogError("[AIT] 해결 방법:");
+            Debug.LogError("[AIT]   1. 네트워크 연결을 확인하세요.");
+            Debug.LogError(AITPlatformHelper.IsWindows
+                ? "[AIT]   2. %LOCALAPPDATA%\\ait-unity-sdk\\nodejs\\ 폴더를 삭제 후 Unity를 재시작하세요."
+                : "[AIT]   2. ~/.ait-unity-sdk/nodejs/ 폴더를 삭제 후 Unity를 재시작하세요.");
+            Debug.LogError("[AIT]   3. 방화벽/프록시가 nodejs.org를 차단하고 있는지 확인하세요.");
+            Debug.LogError("[AIT] ========================================");
+            return null;
         }
 
         /// <summary>

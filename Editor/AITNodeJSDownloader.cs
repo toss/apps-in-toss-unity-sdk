@@ -610,8 +610,8 @@ namespace AppsInToss.Editor
                 // npm 실행을 위한 PATH 설정
                 string binPath = AITPlatformHelper.IsWindows ? nodePath : Path.Combine(nodePath, "bin");
 
-                // npm install -g pnpm 실행
-                string command = $"\"{npmPath}\" install -g pnpm";
+                // npm install -g pnpm@VERSION 실행
+                string command = $"\"{npmPath}\" install -g pnpm@{AITPackageManagerHelper.PNPM_VERSION}";
                 var result = AITPlatformHelper.ExecuteCommand(
                     command,
                     workingDirectory: nodePath,

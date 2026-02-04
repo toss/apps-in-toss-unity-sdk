@@ -289,12 +289,15 @@ Tests~/E2E/
 │   │   ├── InteractiveAPITester.cs   # 대화형 API 테스터 (WebGL UI)
 │   │   ├── RuntimeAPITester.cs       # 자동 API 테스트 러너
 │   │   ├── APIParameterInspector.cs  # API 리플렉션 유틸리티
-│   │   ├── AutoBenchmarkRunner.cs    # 벤치마크 수집기
 │   │   └── E2EBootstrapper.cs        # 런타임 컴포넌트 초기화
-│   └── Editor/
-│       └── E2EBuildRunner.cs         # CLI 빌드 자동화
+│   ├── Editor/
+│   │   ├── E2EBuildRunner.cs         # CLI 빌드 자동화
+│   │   ├── BuildOutputValidator.cs   # 빌드 산출물 검증 (Level 1)
+│   │   └── EditModeTests/            # EditMode 테스트 (Level 0)
+│   └── Plugins/
+│       └── E2ETestBridge.jslib       # WebGL JS↔C# 브릿지
 └── tests/
-    ├── e2e-full-pipeline.test.js     # Playwright E2E 테스트 (10 tests)
+    ├── e2e-full-pipeline.test.js     # Playwright E2E 테스트 (5 tests)
     └── playwright.config.ts
 ```
 
@@ -322,11 +325,17 @@ npm test
 
 ### CI/CD 통합
 
-`.github/workflows/test-e2e.yml` 실행 내용:
-1. game-ci/unity-builder를 통한 Unity WebGL 빌드
-2. Playwright E2E 테스트 (10개 테스트)
-3. 벤치마크 결과 아티팩트로 업로드
-4. 성능 메트릭이 포함된 Job summary
+`.github/workflows/test-e2e.yml` 실행 내용 (3-Level 테스트 구조):
+1. EditMode 테스트 (Level 0: C# 순수 로직 검증, 빌드 없이 ~10초)
+2. Unity WebGL 빌드 + C# 빌드 산출물 검증 (Level 1)
+3. Playwright E2E 테스트 (Level 2: 5개 테스트)
+4. 벤치마크 결과 아티팩트로 업로드
+5. 성능 메트릭이 포함된 Job summary
+
+`test-level` 파라미터로 실행 범위 제어:
+- `0`: EditMode만 (~10초)
+- `1`: 빌드+검증, Playwright 스킵 (~8분)
+- `2`: 전체 실행 (~14분, 기본값)
 
 ## GitHub Actions 워크플로우
 

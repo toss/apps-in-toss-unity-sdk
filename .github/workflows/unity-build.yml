@@ -61,6 +61,11 @@ on:
         type: boolean
         required: false
         default: false
+      test-level:
+        description: 'Test level: 0=editmode, 1=build+validation, 2=full-e2e'
+        type: string
+        required: false
+        default: '2'
     secrets:
       AIT_AD_INTERSTITIAL_ID:
         description: 'Interstitial ad ID for testing'
@@ -218,7 +223,7 @@ jobs:
       # 이전 빌드 정리
       # =====================================================
       - name: Clean Previous Build Artifacts (macOS)
-        if: inputs.os == 'macos'
+        if: inputs.os == 'macos' && (inputs.test-level || '2') != '0'
         run: |
           PROJECT_PATH="Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}"
           echo "Cleaning previous build artifacts..."
@@ -231,7 +236,7 @@ jobs:
           echo "Done."
 
       - name: Clean Previous Build Artifacts (Windows)
-        if: inputs.os == 'windows'
+        if: inputs.os == 'windows' && (inputs.test-level || '2') != '0'
         shell: cmd
         run: |
           @echo off
@@ -367,7 +372,7 @@ jobs:
       # 광고 ID 치환 (빌드 전)
       # =====================================================
       - name: Inject Ad IDs (macOS)
-        if: inputs.os == 'macos' && inputs.run-build
+        if: inputs.os == 'macos' && inputs.run-build && (inputs.test-level || '2') != '0'
         env:
           AIT_AD_INTERSTITIAL_ID: ${{ secrets.AIT_AD_INTERSTITIAL_ID }}
           AIT_AD_REWARDED_ID: ${{ secrets.AIT_AD_REWARDED_ID }}
@@ -393,7 +398,7 @@ jobs:
           echo "Ad IDs injected successfully"
 
       - name: Inject Ad IDs (Windows)
-        if: inputs.os == 'windows' && inputs.run-build
+        if: inputs.os == 'windows' && inputs.run-build && (inputs.test-level || '2') != '0'
         shell: powershell
         env:
           AIT_AD_INTERSTITIAL_ID: ${{ secrets.AIT_AD_INTERSTITIAL_ID }}
@@ -423,12 +428,112 @@ jobs:
           Write-Host "Ad IDs injected successfully"
 
       # =====================================================
+      # EditMode 테스트 (Level 0+, 빌드 없이 C# 순수 로직 검증)
+      # =====================================================
+      - name: Run EditMode Tests (macOS)
+        if: inputs.os == 'macos' && inputs.run-e2e-test
+        run: |
+          UNITY_PATH="${{ steps.unity.outputs.UNITY_PATH }}"
+          PROJECT_PATH="${{ github.workspace }}/Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}"
+
+          echo "Running EditMode Tests..."
+          echo "Unity Version: ${{ steps.unity.outputs.UNITY_VERSION }}"
+
+          "$UNITY_PATH" -batchmode -nographics \
+            -projectPath "$PROJECT_PATH" \
+            -runTests -testPlatform EditMode \
+            -testResults "$PROJECT_PATH/editmode-results.xml" \
+            -logFile - 2>&1 || true
+
+          # Unity Test Runner는 테스트 실패 시 exit code 2를 반환
+          # editmode-results.xml을 파싱하여 실제 실패 여부 확인
+          if [ -f "$PROJECT_PATH/editmode-results.xml" ]; then
+            echo "EditMode test results:"
+            if grep -q 'result="Failed"' "$PROJECT_PATH/editmode-results.xml"; then
+              echo "::error::EditMode tests failed"
+              grep 'result="Failed"' "$PROJECT_PATH/editmode-results.xml" | head -20
+              exit 1
+            else
+              PASSED=$(grep -o 'result="Passed"' "$PROJECT_PATH/editmode-results.xml" | wc -l | tr -d ' ')
+              echo "✓ EditMode tests passed (${PASSED} tests)"
+            fi
+          else
+            echo "::warning::EditMode test results file not found (tests may not have run)"
+          fi
+
+      - name: Run EditMode Tests (Windows)
+        if: inputs.os == 'windows' && inputs.run-e2e-test
+        shell: powershell
+        run: |
+          $unityPath = "${{ steps.unity.outputs.UNITY_PATH }}"
+          $projectPath = "${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ inputs.unity-version }}"
+
+          Write-Host "Running EditMode Tests..."
+          Write-Host "Unity Version: ${{ steps.unity.outputs.UNITY_VERSION }}"
+
+          $logFile = "$env:TEMP\unity-editmode-${{ inputs.unity-version }}.log"
+
+          $proc = Start-Process -FilePath $unityPath -ArgumentList @(
+            "-batchmode", "-nographics",
+            "-projectPath", $projectPath,
+            "-runTests", "-testPlatform", "EditMode",
+            "-testResults", "$projectPath\editmode-results.xml",
+            "-logFile", $logFile
+          ) -PassThru -NoNewWindow
+
+          # 로그 실시간 출력
+          $logReader = $null
+          while (-not $proc.HasExited) {
+            Start-Sleep -Seconds 3
+            if (-not $logReader -and (Test-Path $logFile)) {
+              $logReader = [System.IO.StreamReader]::new(
+                [System.IO.FileStream]::new($logFile, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+              )
+            }
+            if ($logReader) {
+              $chunk = $logReader.ReadToEnd()
+              if ($chunk) { Write-Host $chunk -NoNewline }
+            }
+          }
+          $proc.WaitForExit()
+
+          if ($logReader) {
+            $chunk = $logReader.ReadToEnd()
+            if ($chunk) { Write-Host $chunk -NoNewline }
+            $logReader.Close()
+          }
+
+          # 결과 확인
+          $resultsFile = "$projectPath\editmode-results.xml"
+          if (Test-Path $resultsFile) {
+            $content = Get-Content $resultsFile -Raw
+            if ($content -match 'result="Failed"') {
+              Write-Host "::error::EditMode tests failed"
+              exit 1
+            } else {
+              $passed = ([regex]::Matches($content, 'result="Passed"')).Count
+              Write-Host "EditMode tests passed ($passed tests)"
+            }
+          } else {
+            Write-Host "::warning::EditMode test results file not found"
+          }
+
+      - name: Upload EditMode Test Results
+        if: inputs.run-e2e-test && always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: editmode-results-${{ inputs.os }}-${{ inputs.unity-version }}
+          path: Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}/editmode-results.xml
+          if-no-files-found: ignore
+          retention-days: 7
+
+      # =====================================================
       # Unity 빌드 락 획득 (같은 Unity 버전 동시 빌드 방지)
       # 같은 물리 머신에서 여러 Runner가 동일 Unity 버전을 빌드하면
       # 라이선스 충돌이 발생하므로, 파일 락으로 직렬화합니다.
       # =====================================================
       - name: Acquire Unity Build Lock (macOS)
-        if: inputs.os == 'macos' && inputs.run-build
+        if: inputs.os == 'macos' && inputs.run-build && (inputs.test-level || '2') != '0'
         id: lock-macos
         run: |
           LOCK_DIR="/tmp/unity-build-lock-${{ inputs.unity-version }}"
@@ -464,7 +569,7 @@ jobs:
           echo "Lock acquired after ${WAIT_SECONDS}s"
 
       - name: Acquire Unity Build Lock (Windows)
-        if: inputs.os == 'windows' && inputs.run-build
+        if: inputs.os == 'windows' && inputs.run-build && (inputs.test-level || '2') != '0'
         id: lock-windows
         shell: powershell
         run: |
@@ -515,7 +620,7 @@ jobs:
       # 프로토콜 버전 불일치(505)로 빌드가 실패합니다.
       # =====================================================
       - name: Cleanup Licensing Client (macOS)
-        if: inputs.os == 'macos' && inputs.run-build
+        if: inputs.os == 'macos' && inputs.run-build && (inputs.test-level || '2') != '0'
         run: |
           CURRENT_VERSION="${{ steps.unity.outputs.UNITY_VERSION }}"
           echo "Current Unity version: ${CURRENT_VERSION}"
@@ -547,7 +652,7 @@ jobs:
           echo "Licensing Client cleanup complete"
 
       - name: Cleanup Licensing Client (Windows)
-        if: inputs.os == 'windows' && inputs.run-build
+        if: inputs.os == 'windows' && inputs.run-build && (inputs.test-level || '2') != '0'
         shell: powershell
         run: |
           $currentVersion = "${{ steps.unity.outputs.UNITY_VERSION }}"
@@ -722,7 +827,7 @@ jobs:
       # Unity WebGL 빌드
       # =====================================================
       - name: Build Unity WebGL (macOS)
-        if: inputs.os == 'macos' && inputs.run-build
+        if: inputs.os == 'macos' && inputs.run-build && (inputs.test-level || '2') != '0'
         uses: nick-invision/retry@v3
         env:
           AIT_DEBUG_CONSOLE: "true"
@@ -766,7 +871,7 @@ jobs:
             echo "Unity build completed successfully (exit code: $EXIT_CODE)"
 
       - name: Build Unity WebGL (Windows)
-        if: inputs.os == 'windows' && inputs.run-build
+        if: inputs.os == 'windows' && inputs.run-build && (inputs.test-level || '2') != '0'
         uses: nick-invision/retry@v3
         env:
           AIT_DEBUG_CONSOLE: "true"
@@ -859,7 +964,7 @@ jobs:
       # Unity 빌드 락 해제
       # =====================================================
       - name: Release Unity Build Lock (macOS)
-        if: always() && inputs.os == 'macos' && inputs.run-build && steps.lock-macos.outputs.LOCK_DIR
+        if: always() && inputs.os == 'macos' && inputs.run-build && (inputs.test-level || '2') != '0' && steps.lock-macos.outputs.LOCK_DIR
         run: |
           LOCK_DIR="${{ steps.lock-macos.outputs.LOCK_DIR }}"
           if [ -d "${LOCK_DIR}" ]; then
@@ -868,7 +973,7 @@ jobs:
           fi
 
       - name: Release Unity Build Lock (Windows)
-        if: always() && inputs.os == 'windows' && inputs.run-build && steps.lock-windows.outputs.LOCK_FILE
+        if: always() && inputs.os == 'windows' && inputs.run-build && (inputs.test-level || '2') != '0' && steps.lock-windows.outputs.LOCK_FILE
         shell: powershell
         run: |
           $lockFile = "${{ steps.lock-windows.outputs.LOCK_FILE }}"
@@ -881,7 +986,7 @@ jobs:
       # 빌드 출력 검증
       # =====================================================
       - name: Verify Build Output (macOS)
-        if: inputs.os == 'macos' && inputs.run-build
+        if: inputs.os == 'macos' && inputs.run-build && (inputs.test-level || '2') != '0'
         run: |
           DIST_PATH="Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}/ait-build/dist"
           AIT_BUILD_PATH="Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}/ait-build"
@@ -908,7 +1013,7 @@ jobs:
           echo ".ait file verified: $AIT_FILE"
 
       - name: Verify Build Output (Windows)
-        if: inputs.os == 'windows' && inputs.run-build
+        if: inputs.os == 'windows' && inputs.run-build && (inputs.test-level || '2') != '0'
         shell: cmd
         run: |
           @echo off
@@ -956,7 +1061,7 @@ jobs:
           fi
 
       - name: Upload AIT Build
-        if: inputs.run-build
+        if: inputs.run-build && (inputs.test-level || '2') != '0'
         uses: actions/upload-artifact@v6
         with:
           name: ${{ steps.artifact.outputs.name }}
@@ -966,6 +1071,7 @@ jobs:
             Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}/ait-build/package.json
             Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}/ait-build/pnpm-lock.yaml
             Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}/ait-build/granite.config.ts
+            Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}/ait-build/build-validation.json
           if-no-files-found: error
           retention-days: 7
 
@@ -973,13 +1079,13 @@ jobs:
       # E2E 테스트 (선택적)
       # =====================================================
       - name: Setup Node.js
-        if: inputs.run-e2e-test
+        if: inputs.run-e2e-test && (inputs.test-level || '2') == '2'
         uses: actions/setup-node@v6
         with:
           node-version: 24
 
       - name: Install Playwright Dependencies (macOS)
-        if: inputs.os == 'macos' && inputs.run-e2e-test
+        if: inputs.os == 'macos' && inputs.run-e2e-test && (inputs.test-level || '2') == '2'
         working-directory: Tests~/E2E/tests
         run: |
           # package.json 변경 시에만 node_modules 재설치 (self-hosted 캐시 활용)
@@ -1003,7 +1109,7 @@ jobs:
           pnpm exec playwright --version
 
       - name: Install Playwright Dependencies (Windows)
-        if: inputs.os == 'windows' && inputs.run-e2e-test
+        if: inputs.os == 'windows' && inputs.run-e2e-test && (inputs.test-level || '2') == '2'
         working-directory: Tests~/E2E/tests
         shell: powershell
         env:
@@ -1034,20 +1140,22 @@ jobs:
           pnpm exec playwright --version
 
       - name: Run E2E Tests (macOS - Full)
-        if: inputs.os == 'macos' && inputs.run-e2e-test
+        if: inputs.os == 'macos' && inputs.run-e2e-test && (inputs.test-level || '2') == '2'
         working-directory: Tests~/E2E/tests
         env:
           UNITY_PROJECT_PATH: ${{ github.workspace }}/Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}
           MOBILE_EMULATION: "true"
+          TEST_LEVEL: ${{ inputs.test-level || '2' }}
         run: pnpm test
 
       - name: Run E2E Tests (Windows - Full)
-        if: inputs.os == 'windows' && inputs.run-e2e-test
+        if: inputs.os == 'windows' && inputs.run-e2e-test && (inputs.test-level || '2') == '2'
         working-directory: Tests~/E2E/tests
         shell: powershell
         env:
           UNITY_PROJECT_PATH: ${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ inputs.unity-version }}
           MOBILE_EMULATION: "true"
+          TEST_LEVEL: ${{ inputs.test-level || '2' }}
           # Use job-local Playwright cache to avoid race conditions between parallel runners
           PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}\.playwright-browsers
         run: pnpm test
@@ -1056,7 +1164,7 @@ jobs:
       # 벤치마크 결과 업로드 (선택적)
       # =====================================================
       - name: Upload Benchmark Results
-        if: inputs.run-benchmark
+        if: inputs.run-benchmark && (inputs.test-level || '2') == '2'
         uses: actions/upload-artifact@v6
         with:
           name: benchmark-results-${{ inputs.os }}-${{ inputs.unity-version }}
@@ -1064,7 +1172,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Upload Playwright Report
-        if: inputs.run-e2e-test && always()
+        if: inputs.run-e2e-test && (inputs.test-level || '2') == '2' && always()
         uses: actions/upload-artifact@v6
         with:
           name: playwright-report-${{ inputs.os }}-${{ inputs.unity-version }}

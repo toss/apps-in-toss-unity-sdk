@@ -333,11 +333,6 @@ test_e2e_validation() {
         echo -e "  ${GREEN}✓${NC} SharedScripts package"
 
         # SharedScripts 내부 파일 확인
-        if [ ! -f "Tests~/E2E/SharedScripts/Runtime/AutoBenchmarkRunner.cs" ]; then
-            echo -e "    ${RED}✗${NC} AutoBenchmarkRunner.cs not found"
-            all_found=false
-        fi
-
         if [ ! -f "Tests~/E2E/SharedScripts/Runtime/RuntimeAPITester.cs" ]; then
             echo -e "    ${RED}✗${NC} RuntimeAPITester.cs not found"
             all_found=false

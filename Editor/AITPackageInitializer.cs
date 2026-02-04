@@ -357,17 +357,15 @@ namespace AppsInToss.Editor
 
                 Debug.Log($"[AIT] pnpm@{pnpmVersion} 글로벌 설치 시작...");
 
-                // npm install -g pnpm@버전 실행
-                string command = $"\"{npmPath}\" install -g pnpm@{pnpmVersion}";
-                var result = AITPlatformHelper.ExecuteCommand(command, npmDir, new[] { npmDir }, verbose: true);
+                bool success = AITNpmRunner.InstallPnpmWithNpm(npmPath, npmDir, pnpmVersion);
 
-                if (result.Success)
+                if (success)
                 {
                     Debug.Log($"[AIT] ✓ pnpm@{pnpmVersion} 글로벌 설치 완료");
                 }
                 else
                 {
-                    Debug.LogWarning($"[AIT] pnpm 글로벌 설치 실패 (exit code: {result.ExitCode}). 첫 빌드 시 다시 시도됩니다.");
+                    Debug.LogWarning("[AIT] pnpm 글로벌 설치 실패. 첫 빌드 시 다시 시도됩니다.");
                 }
             }
             catch (Exception e)

@@ -591,6 +591,7 @@ namespace AppsInToss.Editor
 
         /// <summary>
         /// pnpm 설치 (npm install -g pnpm)
+        /// AITNpmRunner.InstallPnpmWithNpm()에 위임하며, 설치 후 Unix에서 실행 권한을 부여합니다.
         /// </summary>
         /// <param name="nodePath">Node.js 설치 경로</param>
         /// <returns>설치 성공 여부</returns>
@@ -607,20 +608,12 @@ namespace AppsInToss.Editor
                     return false;
                 }
 
-                // npm 실행을 위한 PATH 설정
+                // npm 실행을 위한 PATH용 bin 디렉토리
                 string binPath = AITPlatformHelper.IsWindows ? nodePath : Path.Combine(nodePath, "bin");
 
-                // npm install -g pnpm@VERSION 실행
-                string command = $"\"{npmPath}\" install -g pnpm@{AITPackageManagerHelper.PNPM_VERSION}";
-                var result = AITPlatformHelper.ExecuteCommand(
-                    command,
-                    workingDirectory: nodePath,
-                    additionalPaths: new[] { binPath },
-                    timeoutMs: 120000,  // 2분 타임아웃
-                    verbose: true
-                );
+                bool success = AITNpmRunner.InstallPnpmWithNpm(npmPath, binPath, AITPackageManagerHelper.PNPM_VERSION);
 
-                if (result.Success)
+                if (success)
                 {
                     Debug.Log("[NodeJS] ✓ pnpm 설치 완료!");
 
@@ -633,18 +626,13 @@ namespace AppsInToss.Editor
                             AITPlatformHelper.SetExecutablePermission(pnpmPath, verbose: true);
                         }
                     }
-
-                    return true;
                 }
                 else
                 {
-                    Debug.LogWarning($"[NodeJS] pnpm 설치 실패 (Exit Code: {result.ExitCode})");
-                    if (!string.IsNullOrEmpty(result.Error))
-                    {
-                        Debug.LogWarning($"[NodeJS] 에러: {result.Error}");
-                    }
-                    return false;
+                    Debug.LogWarning("[NodeJS] pnpm 설치 실패");
                 }
+
+                return success;
             }
             catch (Exception e)
             {

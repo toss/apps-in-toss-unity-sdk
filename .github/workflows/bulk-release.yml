@@ -132,73 +132,151 @@ jobs:
         run: |
           VERSIONS='${{ needs.prepare-versions.outputs.versions }}'
 
-          # 최신 버전 확인 (배열의 마지막 요소)
-          LATEST_VERSION=$(echo "$VERSIONS" | jq -r '.[-1]')
-          echo "최신 버전: ${LATEST_VERSION}"
+          # 모든 버전을 콤마로 구분한 문자열 생성
+          ALL_VERSIONS=$(echo "$VERSIONS" | jq -r 'join(", ")')
+          echo "배포 버전: ${ALL_VERSIONS}"
 
-          # 모든 배포 결과 수집
-          ALL_RESULTS=""
+          # 버전별 배포 결과를 임시 파일에 수집
+          # 형식: /tmp/deploy-results-{version}.txt에 "플랫폼=URL" 줄 단위 저장
           HAS_ANY_RESULT=false
+
+          process_results_file() {
+            local file="$1"
+            echo "처리 중: $file"
+
+            FILE_VERSION=$(grep "^version=" "$file" | cut -d= -f2)
+            echo "  버전: ${FILE_VERSION}"
+
+            RESULTS=$(sed -n '/^---RESULTS---$/,$ p' "$file" | tail -n +2)
+
+            if [ -n "$RESULTS" ]; then
+              while IFS= read -r line; do
+                if [ -n "$line" ]; then
+                  # "macOS - 2021.3: URL" 형식에서 플랫폼과 URL 분리
+                  PLATFORM=$(echo "$line" | cut -d: -f1 | xargs)
+                  URL=$(echo "$line" | cut -d: -f2- | xargs)
+
+                  # 이미 버전 정보가 포함된 플랫폼명에서 버전 제거 (예: "macOS - 2021.3-v1.6.1" → "macOS - 2021.3")
+                  if echo "$PLATFORM" | grep -qE '\-v[0-9]+\.[0-9]+\.[0-9]+'; then
+                    # 해당 버전과 일치하는 경우만 처리
+                    if echo "$PLATFORM" | grep -q "\-v${FILE_VERSION}$"; then
+                      PLATFORM=$(echo "$PLATFORM" | sed "s/-v${FILE_VERSION}$//")
+                    else
+                      continue
+                    fi
+                  fi
+
+                  # 버전별 임시 파일에 저장
+                  echo "${PLATFORM}=${URL}" >> "/tmp/deploy-results-${FILE_VERSION}.txt"
+                fi
+              done <<< "$RESULTS"
+            fi
+          }
 
           if [ -d "all-deploy-results" ]; then
             echo "=== 배포 결과 수집 ==="
+            echo "디렉토리 구조:"
+            ls -laR all-deploy-results/
+            echo ""
+
+            # Case 1: 서브디렉토리 구조 (여러 아티팩트 - download-artifact@v7)
             for dir in all-deploy-results/deploy-results-*/; do
               if [ -d "$dir" ] && [ -f "${dir}deploy-results.txt" ]; then
-                echo "처리 중: $dir"
                 HAS_ANY_RESULT=true
-
-                # 파일에서 버전과 결과 추출
-                FILE_VERSION=$(grep "^version=" "${dir}deploy-results.txt" | cut -d= -f2)
-                echo "  버전: ${FILE_VERSION}"
-
-                # RESULTS 섹션 이후의 내용 추출
-                RESULTS=$(sed -n '/^---RESULTS---$/,$ p' "${dir}deploy-results.txt" | tail -n +2)
-
-                if [ -n "$RESULTS" ]; then
-                  # 각 결과 줄에 버전 정보 추가
-                  while IFS= read -r line; do
-                    if [ -n "$line" ]; then
-                      # 결과 라인이 해당 버전의 것인지 확인 (다른 버전 결과 필터링)
-                      # 형식: "macOS - 2021.3: URL" 또는 이미 버전이 포함된 경우 스킵
-                      PLATFORM=$(echo "$line" | cut -d: -f1 | xargs)
-                      STATUS=$(echo "$line" | cut -d: -f2- | xargs)
-
-                      # 이미 버전 정보가 포함되어 있는지 확인 (예: "macOS - 2021.3-v1.6.1")
-                      if echo "$PLATFORM" | grep -qE '\-v[0-9]+\.[0-9]+\.[0-9]+'; then
-                        # 이미 버전 정보 포함 - 해당 버전과 일치하는 경우만 추가
-                        if echo "$PLATFORM" | grep -q "\-v${FILE_VERSION}$"; then
-                          ALL_RESULTS="${ALL_RESULTS}${PLATFORM}: ${STATUS}\n"
-                        fi
-                        # 다른 버전의 결과는 무시
-                      else
-                        # 버전 정보 없음 - 버전 추가
-                        ALL_RESULTS="${ALL_RESULTS}${PLATFORM}-v${FILE_VERSION}: ${STATUS}\n"
-                      fi
-                    fi
-                  done <<< "$RESULTS"
-                fi
+                process_results_file "${dir}deploy-results.txt"
               fi
             done
+
+            # Case 2: Flat 구조 (단일 아티팩트 - download-artifact@v7 동작)
+            if [ "$HAS_ANY_RESULT" = false ] && [ -f "all-deploy-results/deploy-results.txt" ]; then
+              HAS_ANY_RESULT=true
+              process_results_file "all-deploy-results/deploy-results.txt"
+            fi
           fi
 
           if [ "$HAS_ANY_RESULT" = false ]; then
             echo "::warning::수집된 배포 결과가 없습니다"
-            ALL_RESULTS="배포 결과 없음"
+            URLS_FOR_EDITION="배포 결과 없음"
+          else
+            # 모든 플랫폼 목록 추출 (정렬: macOS 먼저, 그 다음 Windows, Unity 버전순)
+            ALL_PLATFORMS=$(cat /tmp/deploy-results-*.txt 2>/dev/null | cut -d= -f1 | sort -u | sort -t'-' -k1,1 -k2,2V)
+
+            echo ""
+            echo "=== 플랫폼별 markdown link 조합 ==="
+
+            URLS_FOR_EDITION=""
+            while IFS= read -r platform; do
+              if [ -z "$platform" ]; then continue; fi
+
+              LINKS=""
+              # 각 버전에 대해 해당 플랫폼의 URL을 markdown link로 조합
+              for version in $(echo "$VERSIONS" | jq -r '.[]'); do
+                RESULT_FILE="/tmp/deploy-results-${version}.txt"
+                if [ -f "$RESULT_FILE" ]; then
+                  URL=$(grep "^${platform}=" "$RESULT_FILE" | head -1 | cut -d= -f2-)
+                  if [ -n "$URL" ] && [ "$URL" != "FAILED" ] && [ "$URL" != "TIMEOUT" ]; then
+                    LINKS="${LINKS}  <${URL}|${version}>"
+                  elif [ -n "$URL" ]; then
+                    LINKS="${LINKS}  ${version}(${URL})"
+                  fi
+                fi
+              done
+
+              if [ -n "$LINKS" ]; then
+                # 선행 공백 제거
+                LINKS=$(echo "$LINKS" | sed 's/^  //')
+                LINE="${platform}: ${LINKS}"
+                echo "$LINE"
+                if [ -n "$URLS_FOR_EDITION" ]; then
+                  URLS_FOR_EDITION="${URLS_FOR_EDITION}\n${LINE}"
+                else
+                  URLS_FOR_EDITION="${LINE}"
+                fi
+              fi
+            done <<< "$ALL_PLATFORMS"
           fi
 
           echo ""
           echo "=== 통합 배포 결과 ==="
-          echo -e "$ALL_RESULTS"
+          echo -e "$URLS_FOR_EDITION"
           echo ""
 
+          ACTIONS_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
           echo "=== 배포 알림 전송 ==="
-          echo "버전: ${LATEST_VERSION}"
+          echo "버전: ${ALL_VERSIONS}"
+          echo "Actions URL: ${ACTIONS_URL}"
+
+          # 1줄(1플랫폼)당 1필드로 분할
+          # Slack section block에서 여러 링크가 한 필드에 있으면 렌더링 버그 발생하므로 분리
+          LINE_INDEX=1
+          while IFS= read -r line; do
+            if [ -z "$line" ]; then continue; fi
+            eval "LINE_${LINE_INDEX}=\"\${line}\""
+            LINE_INDEX=$((LINE_INDEX + 1))
+          done <<< "$(echo -e "$URLS_FOR_EDITION")"
+
+          TOTAL_LINES=$((LINE_INDEX - 1))
+          echo "총 ${TOTAL_LINES}개 줄(플랫폼)로 분할"
 
           # jq로 안전한 JSON 생성
+          # urlsForEdition (첫 번째), urlsForEdition2, ..., urlsForEditionN 필드로 전송
+          # lineCount 필드로 총 줄 수 전달 (Slack 템플릿에서 반복 범위로 사용)
           JSON_PAYLOAD=$(jq -n \
-            --arg version "$LATEST_VERSION" \
-            --arg urls "$(echo -e "$ALL_RESULTS")" \
-            '{version: $version, urlsForEdition: $urls}')
+            --arg version "$ALL_VERSIONS" \
+            --arg urls "$LINE_1" \
+            --arg actionsUrl "$ACTIONS_URL" \
+            --argjson lineCount "$TOTAL_LINES" \
+            '{version: $version, urlsForEdition: $urls, actionsUrl: $actionsUrl, lineCount: $lineCount}')
+
+          for i in $(seq 2 $TOTAL_LINES); do
+            [ "$i" -gt "$TOTAL_LINES" ] && break
+            eval "LINE_VAL=\"\${LINE_${i}}\""
+            JSON_PAYLOAD=$(echo "$JSON_PAYLOAD" | jq \
+              --arg key "urlsForEdition${i}" \
+              --arg val "$LINE_VAL" \
+              '. + {($key): $val}')
+          done
 
           echo "전송할 JSON:"
           echo "$JSON_PAYLOAD"

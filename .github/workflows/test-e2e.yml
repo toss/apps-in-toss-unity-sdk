@@ -18,6 +18,14 @@ on:
         type: string
         required: false
         default: ''
+      test_level:
+        description: 'Test level: 0=editmode, 1=build+validation, 2=full-e2e'
+        type: choice
+        options:
+          - '2'
+          - '1'
+          - '0'
+        default: '2'
 
   # update.yml에서 호출
   workflow_call:
@@ -35,6 +43,15 @@ on:
         type: string
         required: false
         default: ''
+      test_level:
+        description: 'Test level: 0=editmode, 1=build+validation, 2=full-e2e'
+        type: string
+        required: false
+        default: '2'
+
+concurrency:
+  group: e2e-tests-${{ inputs.target_ref || github.ref_name }}
+  cancel-in-progress: true
 
 jobs:
   # =====================================================
@@ -182,7 +199,7 @@ jobs:
   # =====================================================
   e2e-test-macos:
     name: E2E (macOS, Unity ${{ matrix.unity-version }})
-    needs: [setup, sdk-generator-tests]
+    needs: [setup]
 
     strategy:
       fail-fast: false
@@ -201,13 +218,14 @@ jobs:
       run-unit-test: true
       clean-library: ${{ inputs.clean_library || false }}
       sdk-version-override: ${{ inputs.sdk_version_override || '' }}
+      test-level: ${{ inputs.test_level || '2' }}
 
   # =====================================================
   # E2E Tests - Windows (전체 테스트 실행)
   # =====================================================
   e2e-test-windows:
     name: E2E (Windows, Unity ${{ matrix.unity-version }})
-    needs: [setup, sdk-generator-tests]
+    needs: [setup]
 
     strategy:
       fail-fast: false
@@ -226,6 +244,7 @@ jobs:
       run-unit-test: true
       clean-library: ${{ inputs.clean_library || false }}
       sdk-version-override: ${{ inputs.sdk_version_override || '' }}
+      test-level: ${{ inputs.test_level || '2' }}
 
   # =====================================================
   # Test Report Summary

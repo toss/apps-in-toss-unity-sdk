@@ -197,7 +197,11 @@ AITLoading.onComplete(function() {
     avgSpeed: 1564.5,            // 평균 속도 (KB/s)
     peakSpeed: 2341.8,           // 피크 속도 (KB/s)
     minSpeed: 892.1,             // 최저 속도 (KB/s)
-    speedHistory: [892, 1234, 2341, 1876, 1423]  // 1초 간격 속도 기록
+    speedHistory: [892, 1234, 2341, 1876, 1423],  // 1초 간격 속도 기록
+    compressionType: 'brotli',   // 압축 형식 (brotli, gzip, unityweb, none)
+    contentEncoding: 'br',       // 서버 Content-Encoding 헤더 값
+    decompressionFallback: false, // JS 압축해제 fallback 발생 여부
+    preloaded: false             // HTML5 Preload로 미리 로드되었는지 여부
 }, ...]
 ```
 

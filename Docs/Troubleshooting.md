@@ -20,7 +20,7 @@
 **해결 방법**:
 - SDK는 시스템에 Node.js가 설치되어 있지 않아도 자동으로 내장 Node.js를 다운로드합니다.
 - 다운로드 다이얼로그가 표시되면 "다운로드"를 선택하세요.
-- 내장 Node.js는 `Tools~/NodeJS/{platform}/` 폴더에 저장됩니다.
+- 내장 Node.js는 `~/.ait-unity-sdk/nodejs/` 폴더에 저장됩니다.
 
 ---
 

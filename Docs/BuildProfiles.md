@@ -142,7 +142,7 @@ AIT_DEBUG_CONSOLE=true /Applications/Unity/Hub/Editor/2022.3.62f1/Unity.app/Cont
 [AIT]   Development Build: 활성화
 [AIT]   LZ4 압축: 활성화
 [AIT]   압축 포맷: Disabled
-[AIT]   Stripping Level: 자동 (High)
+[AIT]   Stripping Level: Minimal
 [AIT]   디버그 심볼: Embedded
 [AIT] ========================================
 ```

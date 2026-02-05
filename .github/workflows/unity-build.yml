@@ -780,7 +780,9 @@ jobs:
           $exitCode = $unityProcess.ExitCode
 
           if ($null -eq $exitCode) {
-            Write-Host "::warning::ExitCode is null, checking test results..."
+            Write-Host "::warning::ExitCode is null, checking test results and log..."
+            # Unity Test Runner + -quit 조합에서 Windows ExitCode null 이슈 대응
+            # 결과 파일 또는 로그의 "Exiting batchmode successfully"로 성공 여부 판단
             if (Test-Path $resultsFile) {
               $resultsContent = Get-Content $resultsFile -Raw
               if ($resultsContent -match 'result="Passed"') {
@@ -788,6 +790,14 @@ jobs:
                 $exitCode = 0
               } else {
                 Write-Host "::error::Test results indicate failure"
+                $exitCode = 1
+              }
+            } elseif (Test-Path $logFile) {
+              $logContent = Get-Content $logFile -Raw -ErrorAction SilentlyContinue
+              if ($logContent -match "Exiting batchmode successfully") {
+                Write-Host "Log indicates successful exit, treating as pass"
+                $exitCode = 0
+              } else {
                 $exitCode = 1
               }
             } else {

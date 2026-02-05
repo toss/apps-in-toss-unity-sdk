@@ -149,6 +149,7 @@ namespace AppsInToss.Editor
             if (string.IsNullOrEmpty(pnpmPath))
             {
                 Debug.LogError("[AIT] pnpm 설치에 실패했습니다. Unity Console에서 에러를 확인해주세요.");
+                AITPackageManagerHelper.ShowInstallationFailureDialog();
                 return AITConvertCore.AITExportError.FAIL_NPM_BUILD;
             }
 
@@ -1135,6 +1136,7 @@ namespace AppsInToss.Editor
             if (string.IsNullOrEmpty(pnpmPath))
             {
                 Debug.LogError("[AIT] pnpm 설치에 실패했습니다. Unity Console에서 에러를 확인해주세요.");
+                AITPackageManagerHelper.ShowInstallationFailureDialog();
                 onComplete?.Invoke(AITConvertCore.AITExportError.FAIL_NPM_BUILD);
                 return;
             }

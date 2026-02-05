@@ -7,7 +7,7 @@ Apps in Toss 플랫폼을 위한 Unity/Tuanjie 엔진 SDK입니다. Unity 프로
 Unity Editor에서 `Window` > `Package Manager` > `+` > `Add package from git URL...`을 선택하고 다음 URL을 입력하세요:
 
 ```
-https://github.com/toss/apps-in-toss-unity-sdk.git#release/v1.9.2
+https://github.com/toss/apps-in-toss-unity-sdk.git#main
 ```
 
 또는 `Packages/manifest.json`에 직접 추가:
@@ -15,10 +15,12 @@ https://github.com/toss/apps-in-toss-unity-sdk.git#release/v1.9.2
 ```json
 {
   "dependencies": {
-    "im.toss.apps-in-toss-unity-sdk": "https://github.com/toss/apps-in-toss-unity-sdk.git#release/v1.9.2"
+    "im.toss.apps-in-toss-unity-sdk": "https://github.com/toss/apps-in-toss-unity-sdk.git#main"
   }
 }
 ```
+
+> 특정 버전을 고정하려면 `#main` 대신 `#release/v1.9.2`와 같이 릴리즈 태그를 사용하세요.
 
 ## 지원 Unity 버전
 

@@ -21,7 +21,7 @@
 4. Git URL 입력:
 
 ```
-https://github.com/toss/apps-in-toss-unity-sdk.git#release/v1.9.2
+https://github.com/toss/apps-in-toss-unity-sdk.git#main
 ```
 
 ### 방법 2: manifest.json 직접 수정
@@ -31,12 +31,12 @@ https://github.com/toss/apps-in-toss-unity-sdk.git#release/v1.9.2
 ```json
 {
   "dependencies": {
-    "im.toss.apps-in-toss-unity-sdk": "https://github.com/toss/apps-in-toss-unity-sdk.git#release/v1.9.2"
+    "im.toss.apps-in-toss-unity-sdk": "https://github.com/toss/apps-in-toss-unity-sdk.git#main"
   }
 }
 ```
 
-> **버전 선택**: `#release/v1.9.2` 부분을 원하는 버전으로 변경하세요. 최신 버전은 [GitHub Releases](https://github.com/toss/apps-in-toss-unity-sdk/releases)에서 확인할 수 있습니다.
+> **버전 고정**: 특정 버전을 고정하려면 `#main` 대신 `#release/v1.9.2`와 같이 릴리즈 태그를 사용하세요. 릴리즈 목록은 [GitHub Releases](https://github.com/toss/apps-in-toss-unity-sdk/releases)에서 확인할 수 있습니다.
 
 ### 지원 Unity 버전
 

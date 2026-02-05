@@ -83,47 +83,7 @@ public static class E2EBootstrapper
     {
         Debug.Log("[E2EBootstrapper] Initializing E2E test components...");
 
-        // ComprehensivePerfTester 추가 (Test 8용 - 통합 성능 테스트)
-        // AutoBenchmarkRunner + MemoryPressureTester를 대체
-        if (benchmarkManager.GetComponent<ComprehensivePerfTester>() == null)
-        {
-            var perfTester = benchmarkManager.AddComponent<ComprehensivePerfTester>();
-            perfTester.autoRunOnStart = false;  // JavaScript에서 트리거
-            perfTester.startDelay = 0f;
-            perfTester.showUI = true;
-            // 강화된 부하 설정 (500MB 메모리 압박)
-            perfTester.physicsObjectCount = 200;
-            perfTester.renderingGridSize = 20;
-            perfTester.wasmMemoryMB = 500;
-            perfTester.jsMemoryMB = 500;
-            perfTester.canvasCount = 125;  // 125 × 4MB ≈ 500MB
-            Debug.Log("[E2EBootstrapper] Added ComprehensivePerfTester component (waiting for trigger)");
-        }
-
-        // PerformanceBenchmark 추가 (FPS 표시용)
-        if (benchmarkManager.GetComponent<PerformanceBenchmark>() == null)
-        {
-            benchmarkManager.AddComponent<PerformanceBenchmark>();
-            Debug.Log("[E2EBootstrapper] Added PerformanceBenchmark component");
-        }
-
-        // PhysicsStressTest 추가 (ComprehensivePerfTester가 사용)
-        if (benchmarkManager.GetComponent<PhysicsStressTest>() == null)
-        {
-            var physicsTest = benchmarkManager.AddComponent<PhysicsStressTest>();
-            physicsTest.autoStart = false;
-            Debug.Log("[E2EBootstrapper] Added PhysicsStressTest component");
-        }
-
-        // RenderingBenchmark 추가 (ComprehensivePerfTester가 사용)
-        if (benchmarkManager.GetComponent<RenderingBenchmark>() == null)
-        {
-            var renderingBenchmark = benchmarkManager.AddComponent<RenderingBenchmark>();
-            renderingBenchmark.enabled = false;
-            Debug.Log("[E2EBootstrapper] Added RenderingBenchmark component");
-        }
-
-        // RuntimeAPITester 추가 (Test 6용)
+        // RuntimeAPITester 추가 (Test 4용)
         if (benchmarkManager.GetComponent<RuntimeAPITester>() == null)
         {
             var runtimeTester = benchmarkManager.AddComponent<RuntimeAPITester>();
@@ -134,7 +94,7 @@ public static class E2EBootstrapper
             Debug.Log("[E2EBootstrapper] Added RuntimeAPITester component (waiting for trigger)");
         }
 
-        // SerializationTester 추가 (Test 7용)
+        // SerializationTester 추가 (Test 5용)
         if (benchmarkManager.GetComponent<SerializationTester>() == null)
         {
             var serializationTester = benchmarkManager.AddComponent<SerializationTester>();
@@ -250,20 +210,4 @@ public class E2ETestTrigger : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// JavaScript에서 호출: window.TriggerPerformanceTest()
-    /// </summary>
-    public void TriggerPerformanceTest()
-    {
-        Debug.Log("[E2ETestTrigger] Performance Test triggered from JavaScript");
-        var tester = GetComponent<ComprehensivePerfTester>();
-        if (tester != null)
-        {
-            tester.RunTests();
-        }
-        else
-        {
-            Debug.LogError("[E2ETestTrigger] ComprehensivePerfTester component not found!");
-        }
-    }
 }

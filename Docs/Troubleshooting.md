@@ -66,8 +66,8 @@
 **가능한 원인 및 해결 방법**:
 
 1. **지원되지 않는 Unity 버전**
-   - 최소 Unity 2021.3 LTS 이상이 필요합니다.
-   - 권장 버전: Unity 2022.3 LTS 또는 Unity 6000.2
+   - 최소 Unity 2021.3 이상이 필요합니다.
+   - 권장 버전: Unity 6 이상
 
 2. **WebGL 모듈 미설치**
    - Unity Hub에서 WebGL Build Support 모듈을 설치하세요.
@@ -186,7 +186,7 @@ catch (AITException ex)
    - 모든 오류를 해결한 후 Unity를 재시작
 
 3. **Unity 버전 호환성**
-   - Unity 2021.3 LTS 이상인지 확인
+   - Unity 2021.3 이상인지 확인
 
 ---
 

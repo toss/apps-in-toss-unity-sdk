@@ -40,10 +40,9 @@ https://github.com/toss/apps-in-toss-unity-sdk.git#main
 
 ### 지원 Unity 버전
 
-- **최소 버전**: Unity 2021.3 LTS
-- **권장 버전**: Unity 2022.3 LTS 또는 Unity 6000.2 LTS
-- Unity 2021.3 LTS 이후의 모든 버전을 지원합니다.
-- Tuanjie Engine은 코드 레벨에서 호환되지만, 별도 테스트를 진행하지 않았습니다.
+- **최소 버전**: Unity 2021.3
+- **권장 버전**: Unity 6 이상
+- Unity 2021.3 이후의 모든 버전을 지원합니다.
 
 ---
 

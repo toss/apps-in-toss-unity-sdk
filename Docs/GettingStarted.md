@@ -64,7 +64,7 @@ SDK 설치 후 Unity Editor 메뉴에서 `AIT` > `Configuration`을 클릭하여
 | 옵션 | 설명 |
 |------|------|
 | **Dev Server** | 로컬 개발 서버 실행 (Mock 브릿지 활성화) |
-| **Production Server** | 프로덕션 환경 로컬 확인 |
+| **Production Server** | 프로덕션 설정으로 로컬 서버 실행 (샌드박스 앱 연동 가능) |
 | **Build & Package** | 배포용 패키지 생성 |
 | **Publish** | Apps in Toss에 배포 |
 

@@ -20,7 +20,9 @@
 **해결 방법**:
 - SDK는 시스템에 Node.js가 설치되어 있지 않아도 자동으로 내장 Node.js를 다운로드합니다.
 - 다운로드 다이얼로그가 표시되면 "다운로드"를 선택하세요.
-- 내장 Node.js는 `~/.ait-unity-sdk/nodejs/` 폴더에 저장됩니다.
+- 내장 Node.js 저장 위치:
+  - macOS/Linux: `~/.ait-unity-sdk/nodejs/`
+  - Windows: `%LOCALAPPDATA%\ait-unity-sdk\nodejs\`
 
 ---
 
@@ -52,7 +54,9 @@
 
 **해결 방법**:
 - Production 빌드는 Apps in Toss 앱 내에서 테스트해야 합니다.
-- 로컬에서 Production 환경을 시뮬레이션하려면 `Production Server` 모드를 사용하세요.
+- 로컬에서 Production 환경을 테스트하려면 `Production Server` 모드를 사용하세요:
+  1. `AIT > Production Server > Start Server`로 로컬 서버 실행
+  2. [샌드박스 앱(테스트앱)](https://developers-apps-in-toss.toss.im/development/test/sandbox)에서 로컬 서버에 연결하여 실제 환경과 동일하게 테스트
 - 자세한 내용은 [빌드 프로필](BuildProfiles.md)을 참조하세요.
 
 ---
@@ -66,8 +70,7 @@
 **가능한 원인 및 해결 방법**:
 
 1. **지원되지 않는 Unity 버전**
-   - 최소 Unity 2021.3 이상이 필요합니다.
-   - 권장 버전: Unity 6 이상
+   - 최소 Unity 2021.3 이상이 필요합니다 (권장: Unity 6 이상).
 
 2. **WebGL 모듈 미설치**
    - Unity Hub에서 WebGL Build Support 모듈을 설치하세요.
@@ -196,7 +199,8 @@ catch (AITException ex)
 
 1. Unity Console의 전체 오류 메시지를 확인하세요.
 2. 브라우저 개발자 도구의 Console과 Network 탭을 확인하세요.
-3. 팀 내 담당자에게 문의하세요.
+3. [GitHub 저장소](https://github.com/toss/apps-in-toss-unity-sdk/issues)에 이슈를 등록하세요.
+4. [TechChat](https://techchat-apps-in-toss.toss.im)에서 문의하세요.
 
 ---
 

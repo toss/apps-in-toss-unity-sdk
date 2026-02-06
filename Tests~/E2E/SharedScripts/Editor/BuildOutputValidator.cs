@@ -22,6 +22,12 @@ public static class BuildOutputValidator
         public string[] errors;
         public string[] warnings;
         public FileDetail[] files;
+
+        // Asset Streaming 관련 필드
+        public bool hasStreamingAssets;
+        public int streamingAssetBundleCount;
+        public float streamingAssetsSizeMB;
+        public float dataSizeMB;
     }
 
     [Serializable]
@@ -153,8 +159,46 @@ public static class BuildOutputValidator
         float buildSizeMB = GetDirectorySizeMB(distWebPath);
         int fileCount = files.Count;
 
+        // 10. .data 파일 크기 측정
+        float dataSizeMB = 0f;
+        foreach (var file in files)
+        {
+            if (file.type == "data")
+            {
+                dataSizeMB += file.sizeBytes / (1024f * 1024f);
+            }
+        }
+
+        // 11. StreamingAssets 검증
+        bool hasStreamingAssets = false;
+        int streamingAssetBundleCount = 0;
+        float streamingAssetsSizeMB = 0f;
+
+        string streamingAssetsPath = Path.Combine(distWebPath, "StreamingAssets");
+        if (Directory.Exists(streamingAssetsPath))
+        {
+            hasStreamingAssets = true;
+            string[] bundleFiles = Directory.GetFiles(streamingAssetsPath, "*", SearchOption.AllDirectories);
+            foreach (string bundleFile in bundleFiles)
+            {
+                string ext = Path.GetExtension(bundleFile).ToLower();
+                // .meta 파일 등 제외, 번들 파일만 카운트
+                if (ext != ".meta" && ext != ".json")
+                {
+                    streamingAssetBundleCount++;
+                    streamingAssetsSizeMB += new FileInfo(bundleFile).Length / (1024f * 1024f);
+                }
+            }
+            Debug.Log($"[BuildOutputValidator] StreamingAssets: {streamingAssetBundleCount} bundles, {streamingAssetsSizeMB:F2} MB");
+        }
+
         bool passed = errors.Count == 0;
-        return BuildResult(passed, buildSizeMB, compressionFormat, fileCount, errors, warnings, files);
+        var result = BuildResult(passed, buildSizeMB, compressionFormat, fileCount, errors, warnings, files);
+        result.hasStreamingAssets = hasStreamingAssets;
+        result.streamingAssetBundleCount = streamingAssetBundleCount;
+        result.streamingAssetsSizeMB = streamingAssetsSizeMB;
+        result.dataSizeMB = dataSizeMB;
+        return result;
     }
 
     private static ValidationResult BuildResult(bool passed, float buildSizeMB, string compressionFormat,

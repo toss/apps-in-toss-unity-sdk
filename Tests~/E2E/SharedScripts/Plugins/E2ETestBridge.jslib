@@ -86,6 +86,22 @@ mergeInto(LibraryManager.library, {
         }
     },
 
+    /**
+     * 스트리밍 테스트 결과를 window 객체에 저장하고 콘솔에 출력
+     * @param {string} jsonPtr - JSON 문자열 포인터
+     */
+    SendStreamingTestResults: function(jsonPtr) {
+        var json = UTF8ToString(jsonPtr);
+        console.log('[E2E-STREAMING-TEST] ' + json);
+
+        // window 객체에 저장하여 Playwright에서 접근 가능하도록 함
+        window.__E2E_STREAMING_TEST_DATA__ = json;
+
+        // CustomEvent 발생
+        var event = new CustomEvent('e2e-streaming-test-complete', { detail: json });
+        window.dispatchEvent(event);
+    },
+
     // =====================================================
     // JavaScript → Unity 테스트 트리거 함수들
     // Playwright에서 Unity SendMessage를 호출하기 위한 헬퍼
@@ -111,6 +127,16 @@ mergeInto(LibraryManager.library, {
             console.log('[E2E-TRIGGER] Triggering Serialization Test...');
             if (window.unityInstance) {
                 window.unityInstance.SendMessage('BenchmarkManager', 'TriggerSerializationTest');
+                return true;
+            }
+            console.error('[E2E-TRIGGER] Unity instance not available');
+            return false;
+        };
+
+        window.TriggerStreamingTest = function() {
+            console.log('[E2E-TRIGGER] Triggering Streaming Test...');
+            if (window.unityInstance) {
+                window.unityInstance.SendMessage('BenchmarkManager', 'TriggerStreamingTest');
                 return true;
             }
             console.error('[E2E-TRIGGER] Unity instance not available');

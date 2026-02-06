@@ -297,6 +297,12 @@ namespace AppsInToss
                     return AITExportError.INVALID_APP_CONFIG;
                 }
 
+                // 에셋 스트리밍 분석 (pre-build check)
+                if (!Application.isBatchMode && !Editor.AssetStreaming.AITPreBuildAssetCheck.RunPreBuildCheck())
+                {
+                    return AITExportError.CANCELLED;
+                }
+
                 if (buildWebGL)
                 {
                     // 취소 확인
@@ -405,6 +411,14 @@ namespace AppsInToss
                     Debug.LogError("Apps in Toss 설정을 찾을 수 없습니다.");
                     settingsBackup.Restore();
                     onComplete?.Invoke(AITExportError.INVALID_APP_CONFIG);
+                    return;
+                }
+
+                // 에셋 스트리밍 분석 (pre-build check)
+                if (!Application.isBatchMode && !Editor.AssetStreaming.AITPreBuildAssetCheck.RunPreBuildCheck())
+                {
+                    settingsBackup.Restore();
+                    onComplete?.Invoke(AITExportError.CANCELLED);
                     return;
                 }
 

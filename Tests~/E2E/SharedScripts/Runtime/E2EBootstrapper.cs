@@ -112,6 +112,15 @@ public static class E2EBootstrapper
             Debug.Log("[E2EBootstrapper] Added E2ETestTrigger component");
         }
 
+#if AIT_ADDRESSABLES_INSTALLED
+        // AddressableStreamingTester 추가 (Streaming Test용)
+        if (benchmarkManager.GetComponent<AddressableStreamingTester>() == null)
+        {
+            benchmarkManager.AddComponent<AddressableStreamingTester>();
+            Debug.Log("[E2EBootstrapper] Added AddressableStreamingTester component");
+        }
+#endif
+
         // CameraController 추가
         Camera mainCamera = Camera.main;
         if (mainCamera != null && mainCamera.GetComponent<CameraController>() == null)
@@ -208,6 +217,27 @@ public class E2ETestTrigger : MonoBehaviour
         {
             Debug.LogError("[E2ETestTrigger] SerializationTester component not found!");
         }
+    }
+
+    /// <summary>
+    /// JavaScript에서 호출: window.TriggerStreamingTest()
+    /// </summary>
+    public void TriggerStreamingTest()
+    {
+        Debug.Log("[E2ETestTrigger] Streaming Test triggered from JavaScript");
+#if AIT_ADDRESSABLES_INSTALLED
+        var tester = GetComponent<AddressableStreamingTester>();
+        if (tester != null)
+        {
+            tester.RunStreamingTests();
+        }
+        else
+        {
+            Debug.LogError("[E2ETestTrigger] AddressableStreamingTester component not found!");
+        }
+#else
+        Debug.LogWarning("[E2ETestTrigger] Addressables not installed, streaming test skipped");
+#endif
     }
 
 }

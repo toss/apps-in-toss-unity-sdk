@@ -2,7 +2,9 @@ using UnityEngine;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using System.IO;
+using System.Collections.Generic;
 using AppsInToss;
+using AppsInToss.Editor.AssetStreaming;
 
 /// <summary>
 /// E2E 테스트용 빌드 스크립트 - SDK API를 직접 호출
@@ -91,13 +93,53 @@ public class E2EBuildRunner
         AssetDatabase.SaveAssets();
         Debug.Log("✓ SDK config updated");
 
-        // 3. SDK의 Init 호출
-        Debug.Log("[3/5] Initializing SDK...");
+        // 3. 테스트 에셋 생성 + 에셋 스트리밍 분석
+        Debug.Log("[3/8] Creating test assets and analyzing for streaming...");
+        CreateTestStreamingAssets();
+        AssetDatabase.Refresh();
+
+        var analysisReport = AITAssetAnalyzer.Analyze(forceRefresh: true);
+        Debug.Log($"✓ Asset analysis: {analysisReport.assets.Count} assets, estimated savings: {analysisReport.totalEstimatedSavingsBytes / (1024f * 1024f):F2} MB");
+
+#if AIT_ADDRESSABLES_INSTALLED
+        // 4. Addressable 변환
+        Debug.Log("[4/8] Converting assets to Addressables...");
+        var guidsToConvert = new List<string>();
+        foreach (var asset in analysisReport.assets)
+        {
+            if (!asset.isAlreadyAddressable)
+            {
+                guidsToConvert.Add(asset.guid);
+            }
+        }
+
+        if (guidsToConvert.Count > 0)
+        {
+            AITAddressablesConverter.ConvertAssets(guidsToConvert);
+            Debug.Log($"✓ {guidsToConvert.Count} assets converted to Addressables");
+
+            // 5. Addressable 빌드
+            Debug.Log("[5/8] Building Addressable content...");
+            AITAddressablesConverter.BuildAddressableContent();
+            Debug.Log("✓ Addressable content built");
+        }
+        else
+        {
+            Debug.Log("[4/8] No assets to convert, skipping Addressable steps");
+            Debug.Log("[5/8] Skipped (no Addressable content)");
+        }
+#else
+        Debug.Log("[4/8] Addressables not installed, skipping conversion");
+        Debug.Log("[5/8] Skipped (Addressables not installed)");
+#endif
+
+        // 6. SDK의 Init 호출
+        Debug.Log("[6/8] Initializing SDK...");
         AITConvertCore.Init();
         Debug.Log("✓ SDK initialized");
 
-        // 4. SDK의 빌드 & 패키징 실행
-        Debug.Log("[4/5] Building WebGL and packaging with SDK...");
+        // 7. SDK의 빌드 & 패키징 실행
+        Debug.Log("[7/8] Building WebGL and packaging with SDK...");
 
         // Library/Bee 캐시를 유지하여 증분 빌드 활용 (self-hosted runner 성능 최적화)
         // cleanBuild: false로 설정하여 이전 빌드 캐시 재사용
@@ -116,7 +158,7 @@ public class E2EBuildRunner
             Debug.Log("✓ SDK build succeeded!");
 
             // 빌드 산출물 검증 (Level 1 - 기존 Playwright Tests 1, 3, 4 대체)
-            Debug.Log("[5/6] Validating build output...");
+            Debug.Log("[8/8] Validating build output...");
             string projectPath = Path.GetDirectoryName(Application.dataPath);
             var validation = BuildOutputValidator.ValidateAll(projectPath);
             string jsonPath = Path.Combine(projectPath, "ait-build", "build-validation.json");
@@ -138,7 +180,12 @@ public class E2EBuildRunner
                 Debug.LogWarning($"[Validation] {warn}");
 
             Debug.Log($"✓ Build validation passed (size: {validation.buildSizeMB:F2} MB, files: {validation.fileCount}, compression: {validation.compressionFormat})");
-            Debug.Log("[6/6] Build artifacts verified in ait-build/dist/");
+            if (validation.hasStreamingAssets)
+            {
+                Debug.Log($"✓ StreamingAssets: {validation.streamingAssetBundleCount} bundles, {validation.streamingAssetsSizeMB:F2} MB");
+                Debug.Log($"✓ .data file size: {validation.dataSizeMB:F2} MB");
+            }
+            Debug.Log("Build artifacts verified in ait-build/dist/");
             Debug.Log("========================================");
             Debug.Log("E2E Build Complete - SUCCESS");
             Debug.Log("========================================");
@@ -266,6 +313,58 @@ public class E2EBuildRunner
         }
 
         Debug.Log("Benchmark scene setup complete (scripts will be added at runtime by E2EBootstrapper)");
+    }
+
+    /// <summary>
+    /// 테스트용 대용량 에셋 생성 (Addressable 마이그레이션 테스트용)
+    /// </summary>
+    private static void CreateTestStreamingAssets()
+    {
+        string testDir = "Assets/TestStreamingAssets";
+        if (!Directory.Exists(testDir))
+        {
+            Directory.CreateDirectory(testDir);
+        }
+
+        // 대용량 텍스처 생성 (2048x2048 = ~16MB 비압축)
+        string texturePath = Path.Combine(testDir, "LargeTexture.png");
+        if (!File.Exists(texturePath))
+        {
+            var texture = new Texture2D(2048, 2048, TextureFormat.RGBA32, false);
+            // 패턴 채우기 (완전히 빈 텍스처보다 더 현실적)
+            Color[] pixels = new Color[2048 * 2048];
+            for (int i = 0; i < pixels.Length; i++)
+            {
+                float x = (i % 2048) / 2048f;
+                float y = (i / 2048) / 2048f;
+                pixels[i] = new Color(x, y, (x + y) * 0.5f, 1f);
+            }
+            texture.SetPixels(pixels);
+            texture.Apply();
+            byte[] pngBytes = texture.EncodeToPNG();
+            File.WriteAllBytes(texturePath, pngBytes);
+            Object.DestroyImmediate(texture);
+            Debug.Log($"✓ Created test texture: {texturePath} ({pngBytes.Length / (1024f * 1024f):F2} MB)");
+        }
+        else
+        {
+            Debug.Log($"✓ Test texture already exists: {texturePath}");
+        }
+
+        // 대용량 바이너리 데이터 파일 생성 (1MB .bytes)
+        string dataPath = Path.Combine(testDir, "LargeData.bytes");
+        if (!File.Exists(dataPath))
+        {
+            byte[] data = new byte[1024 * 1024]; // 1MB
+            var rng = new System.Random(42); // 재현 가능한 시드
+            rng.NextBytes(data);
+            File.WriteAllBytes(dataPath, data);
+            Debug.Log($"✓ Created test data: {dataPath} (1 MB)");
+        }
+        else
+        {
+            Debug.Log($"✓ Test data already exists: {dataPath}");
+        }
     }
 
     private static Light FindLight()

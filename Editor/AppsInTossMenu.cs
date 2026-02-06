@@ -784,6 +784,13 @@ namespace AppsInToss
             AITConfigurationWindow.ShowWindow();
         }
 
+        // ==================== Asset Streaming Advisor ====================
+        [MenuItem("AIT/Asset Streaming Advisor", false, 202)]
+        public static void ShowAssetStreamingAdvisor()
+        {
+            Editor.AssetStreaming.AITAssetStreamingAdvisorWindow.ShowWindow();
+        }
+
         // ============================================
         // 빌드 실행 메서드들
         // ============================================

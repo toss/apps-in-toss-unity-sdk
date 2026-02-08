@@ -841,19 +841,9 @@ namespace AppsInToss.Editor
             GUILayout.Space(5);
 
             EditorGUILayout.HelpBox(
-                "Apps in Toss eventLog API를 통해 메트릭을 주기적으로 전송합니다.\n" +
-                "Loading 메트릭은 로딩 완료 시 1회, Web/Unity 메트릭은 주기적으로 전송됩니다.",
+                "Apps in Toss eventLog API를 통해 Unity 런타임 메트릭을 주기적으로 전송합니다.",
                 MessageType.Info
             );
-
-            // Web 메트릭 간격
-            EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField(
-                new GUIContent("Web 메트릭 간격 (초)", "브라우저/시스템 정보 전송 간격 (10~60초)"),
-                GUILayout.Width(EditorGUIUtility.labelWidth)
-            );
-            config.webMetricsIntervalSec = EditorGUILayout.IntSlider(config.webMetricsIntervalSec, 10, 60);
-            EditorGUILayout.EndHorizontal();
 
             // Unity 메트릭 간격
             EditorGUILayout.BeginHorizontal();
@@ -865,12 +855,11 @@ namespace AppsInToss.Editor
             EditorGUILayout.EndHorizontal();
 
             // 기본값과 다른 경우 리셋 버튼
-            if (config.webMetricsIntervalSec != 10 || config.unityMetricsIntervalSec != 10)
+            if (config.unityMetricsIntervalSec != 10)
             {
                 GUILayout.Space(5);
                 if (GUILayout.Button("메트릭 설정 기본값으로 복원", GUILayout.Height(20)))
                 {
-                    config.webMetricsIntervalSec = 10;
                     config.unityMetricsIntervalSec = 10;
                 }
             }

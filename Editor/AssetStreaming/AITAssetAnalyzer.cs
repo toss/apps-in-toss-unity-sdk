@@ -201,9 +201,9 @@ namespace AppsInToss.Editor.AssetStreaming
                 if (File.Exists(fullPath))
                     return new FileInfo(fullPath).Length;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // 파일 접근 실패 시 0 반환
+                Debug.LogWarning($"[AIT] Failed to get file size for '{assetPath}': {ex.Message}");
             }
             return 0;
         }
@@ -266,9 +266,9 @@ namespace AppsInToss.Editor.AssetStreaming
                         return fileSize;
                 }
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // 임포터 접근 실패 시 원본 크기 반환
+                Debug.LogWarning($"[AIT] Failed to estimate build contribution for '{path}': {ex.Message}");
                 return fileSize;
             }
         }
@@ -337,8 +337,9 @@ namespace AppsInToss.Editor.AssetStreaming
                 var entry = settings.FindAssetEntry(guid);
                 return entry != null;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                Debug.LogWarning($"[AIT] Failed to check addressable status for guid '{guid}': {ex.Message}");
                 return false;
             }
 #else

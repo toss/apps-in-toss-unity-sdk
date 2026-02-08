@@ -1,19 +1,19 @@
 {
   "dependencies": {
-    "im.toss.apps-in-toss-unity-sdk": "file:../../../..",
-    "im.toss.sdk-test-scripts": "file:../../SharedScripts",
-    "com.unity.test-framework": "1.1.33",
     "com.unity.ide.rider": "3.0.38",
     "com.unity.ide.visualstudio": "2.0.25",
+    "com.unity.test-framework": "1.6.0",
     "com.unity.ugui": "2.0.0",
+    "im.toss.apps-in-toss-unity-sdk": "file:../../../..",
+    "im.toss.sdk-test-scripts": "file:../../SharedScripts",
     "com.unity.modules.animation": "1.0.0",
+    "com.unity.modules.audio": "1.0.0",
     "com.unity.modules.imageconversion": "1.0.0",
     "com.unity.modules.imgui": "1.0.0",
     "com.unity.modules.jsonserialize": "1.0.0",
     "com.unity.modules.physics": "1.0.0",
     "com.unity.modules.ui": "1.0.0",
     "com.unity.modules.uielements": "1.0.0",
-    "com.unity.modules.unitywebrequest": "1.0.0",
-    "com.unity.modules.audio": "1.0.0"
+    "com.unity.modules.unitywebrequest": "1.0.0"
   }
 }

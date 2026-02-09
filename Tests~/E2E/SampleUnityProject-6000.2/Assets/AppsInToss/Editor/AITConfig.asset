@@ -59,7 +59,6 @@ MonoBehaviour:
   webAssemblyArithmeticExceptions: -1
   enableDebugConsole: 0
   showDiagnostics: -1
-  webMetricsIntervalSec: 10
   unityMetricsIntervalSec: 10
   permissionConfig:
     clipboardRead: 1

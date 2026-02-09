@@ -205,10 +205,6 @@ namespace AppsInToss
         public int showDiagnostics = -1; // -1 = 자동 (true), 0 = false, 1 = true
 
         [Header("메트릭 전송 설정")]
-        [Tooltip("Web 메트릭 전송 간격 (초). 10~60초 범위. 기본값: 10초")]
-        [Range(10, 60)]
-        public int webMetricsIntervalSec = 10;
-
         [Tooltip("Unity 메트릭 전송 간격 (초). 10~60초 범위. 기본값: 10초")]
         [Range(10, 60)]
         public int unityMetricsIntervalSec = 10;

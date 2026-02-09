@@ -414,7 +414,6 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
         unexpectedErrorCount: testResults.tests['4_runtime_api'].unexpectedErrorCount
       } : null,
       compressionValidation: testResults.tests['1_build_validation']?.compressionValidation || null,
-      preloadBackfill: testResults.tests['3_production_server']?.preloadBackfill || null,
       testsPassed: Object.values(testResults.tests || {}).filter(t => t.passed).length,
       testsTotal: Object.keys(testResults.tests || {}).length
     };
@@ -738,79 +737,11 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
 
       expect(webglInfo.supported, 'WebGL should be supported').toBe(true);
 
-      // Preload Metrics 검증
-      let preloadBackfill = null;
-      try {
-        await sharedPage.waitForFunction(() => window.__E2E_LOADING_METRICS__ != null, {
-          timeout: 30000
-        });
-
-        const loadingMetrics = await sharedPage.evaluate(() => window.__E2E_LOADING_METRICS__);
-        const fileStats = await sharedPage.evaluate(() => window.__E2E_LOADING_FILE_STATS__);
-        const preloadMetrics = await sharedPage.evaluate(() => window.__E2E_LOADING_PRELOAD_METRICS__);
-
-        expect(loadingMetrics).not.toBeNull();
-        expect(loadingMetrics.total_time_ms).toBeGreaterThan(0);
-        expect(loadingMetrics.total_files).toBeGreaterThanOrEqual(3);
-
-        // 파일별 필드 존재 검증
-        for (const file of fileStats) {
-          expect(file.duration).toBeGreaterThan(0);
-          expect(file.size).toBeGreaterThan(0);
-          expect(file.compressionType).toBeDefined();
-          expect(typeof file.decompressionFallback).toBe('boolean');
-          expect(typeof file.preloaded).toBe('boolean');
-        }
-
-        // Preload 검증
-        const preloadedFileNames = Object.keys(preloadMetrics || {}).filter(
-          k => preloadMetrics[k].initiatorType === 'link'
-        );
-        expect(preloadedFileNames.length).toBeGreaterThan(0);
-        expect(loadingMetrics.preload_enabled).toBe(true);
-        expect(loadingMetrics.preload_file_count).toBeGreaterThan(0);
-
-        // Backfill 검증
-        for (const fileName of preloadedFileNames) {
-          const preload = preloadMetrics[fileName];
-          const fileStat = fileStats.find(f => f.name === fileName);
-          if (!fileStat) continue;
-
-          expect(fileStat.preloaded).toBe(true);
-          expect(fileStat.duration).toBeCloseTo(Math.round(preload.duration), 0);
-        }
-
-        preloadBackfill = {
-          passed: true,
-          preloadFileCount: preloadedFileNames.length,
-          totalTimeMs: loadingMetrics.total_time_ms,
-          totalFiles: loadingMetrics.total_files,
-          fileStats,
-          preloadMetrics
-        };
-
-        console.log('\n' + '='.repeat(70));
-        console.log('📊 PRELOAD METRIC BACKFILL RESULTS');
-        console.log('='.repeat(70));
-        console.log(`   Preloaded files: ${preloadedFileNames.length}`);
-        for (const fileName of preloadedFileNames) {
-          const preload = preloadMetrics[fileName];
-          const fileStat = fileStats.find(f => f.name === fileName);
-          if (fileStat) {
-            console.log(`   ${fileName}: RT=${Math.round(preload.duration)}ms, FS=${fileStat.duration}ms`);
-          }
-        }
-        console.log('='.repeat(70) + '\n');
-      } catch (e) {
-        console.log(`⚠️ Preload metrics not available: ${e.message}`);
-      }
-
       testResults.tests['3_production_server'] = {
         passed: true,
         pageLoadTimeMs: pageLoadTime,
         unityLoadTimeMs: unityLoadTime,
-        webgl: webglInfo,
-        preloadBackfill
+        webgl: webglInfo
       };
     });
 

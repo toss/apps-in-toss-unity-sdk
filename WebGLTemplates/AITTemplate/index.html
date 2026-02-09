@@ -945,16 +945,13 @@
         // EventLog 메트릭 전송 설정
         // ============================================
         // 메트릭 전송 간격 (10000~60000ms, 기본값: 10000)
-        var AIT_WEB_METRICS_INTERVAL_MS = Math.max(10000, Math.min(60000, parseInt('%AIT_WEB_METRICS_INTERVAL_MS%') || 10000));
         var AIT_UNITY_METRICS_INTERVAL_MS = Math.max(10000, Math.min(60000, parseInt('%AIT_UNITY_METRICS_INTERVAL_MS%') || 10000));
 
         // Unity 엔진 버전 (빌드 시 주입, 예: 6000.2.14f1, 2022.3.62f3)
         var AIT_UNITY_VERSION = '%AIT_UNITY_VERSION%';
 
         // 메트릭 전송 상태
-        var _webMetricsIntervalId = null;
         var _unityMetricsIntervalId = null;
-        var _loadingMetricsSent = false;
 
         // Unity 버전 감지 함수 (Metric Explorer와 공유)
         // - 빌드 시 주입된 상세 버전 (major.minor.patch.commit) 사용
@@ -1003,90 +1000,6 @@
             } catch (e) {}
         }
 
-        // Loading 메트릭 수집 - 각 항목별 에러 격리
-        function collectLoadingMetrics() {
-            try {
-                if (!window.AITLoadingLogger) return null;
-                var logger = window.AITLoadingLogger;
-                var fileStats = [], events = {};
-                try { fileStats = logger.getFileStats() || []; } catch (e) {}
-                try { events = logger.events || {}; } catch (e) {}
-
-                var params = {};
-                safeSet(params, 'total_time_ms', function() { return logger.getTotalTime(); });
-                safeSet(params, 'total_files', function() { return fileStats.length; });
-                safeSet(params, 'total_size_kb', function() { return toKB(fileStats.reduce(function(s, f) { return s + (f.size || 0); }, 0)); });
-                safeSet(params, 'decompression_fallback', function() { return fileStats.some(function(f) { return f.decompressionFallback; }); });
-
-                // 이벤트 타이밍
-                ['loading_start', 'loader_ready', 'unity_init_start', 'unity_progress_25', 'unity_progress_50',
-                 'unity_progress_75', 'unity_progress_100', 'unity_init_complete', 'loading_complete'].forEach(function(key) {
-                    safeSet(params, 'event_' + key + '_ms', function() { return events[key] ? Math.round(events[key].elapsed) : null; });
-                });
-
-                // 파일별 메트릭
-                var fileTypes = { wasm: '.wasm', data: '.data', framework: 'framework', loader: 'loader', symbols: 'symbols' };
-                Object.keys(fileTypes).forEach(function(type) {
-                    try {
-                        fileStats.filter(function(f) { return f.name && f.name.includes(fileTypes[type]); }).forEach(function(file, i) {
-                            var p = type + '_' + i + '_';
-                            safeSet(params, p + 'size_kb', function() { return toKB(file.size); });
-                            safeSet(params, p + 'duration_ms', function() { return file.duration || 0; });
-                            safeSet(params, p + 'speed_kbps', function() { return Math.round(file.avgSpeed || 0); });
-                        });
-                    } catch (e) {}
-                });
-
-                // Preload 효과 분석
-                try {
-                    var preloadMetrics = logger.preloadMetrics || {};
-                    var preloadedFiles = Object.keys(preloadMetrics).filter(function(k) {
-                        return preloadMetrics[k].initiatorType === 'link';
-                    });
-                    var cacheHits = Object.keys(preloadMetrics).filter(function(k) {
-                        return preloadMetrics[k].cacheHit;
-                    });
-
-                    safeSet(params, 'preload_enabled', function() { return preloadedFiles.length > 0; });
-                    safeSet(params, 'preload_file_count', function() { return preloadedFiles.length; });
-                    safeSet(params, 'preload_cache_hits', function() { return cacheHits.length; });
-                } catch (e) {}
-
-                return params;
-            } catch (e) { return null; }
-        }
-
-        // Web 메트릭 수집 - 각 항목별 에러 격리
-        function collectWebMetrics() {
-            try {
-                var params = {};
-                safeSet(params, 'platform', function() { return navigator.platform; });
-                safeSet(params, 'language', function() { return navigator.language; });
-                safeSet(params, 'hardware_concurrency', function() { return navigator.hardwareConcurrency || null; });
-                safeSet(params, 'device_memory_gb', function() { return navigator.deviceMemory || null; });
-                safeSet(params, 'screen_width_px', function() { return screen.width; });
-                safeSet(params, 'screen_height_px', function() { return screen.height; });
-                safeSet(params, 'device_pixel_ratio', function() { return window.devicePixelRatio; });
-
-                try {
-                    if (performance.memory) {
-                        safeSet(params, 'js_heap_used_kb', function() { return toKB(performance.memory.usedJSHeapSize); });
-                        safeSet(params, 'js_heap_total_kb', function() { return toKB(performance.memory.totalJSHeapSize); });
-                    }
-                } catch (e) {}
-
-                try {
-                    if (navigator.connection) {
-                        safeSet(params, 'net_type', function() { return navigator.connection.effectiveType; });
-                        safeSet(params, 'net_downlink_mbps', function() { return navigator.connection.downlink; });
-                        safeSet(params, 'net_rtt_ms', function() { return navigator.connection.rtt; });
-                    }
-                } catch (e) {}
-
-                return params;
-            } catch (e) { return {}; }
-        }
-
         // Unity 메트릭 수집 - 각 항목별 에러 격리
         function collectUnityMetrics() {
             try {
@@ -1125,21 +1038,7 @@
         }
 
         // 메트릭 전송 함수들
-        function sendLoadingMetrics() {
-            if (_loadingMetricsSent) return;
-            _loadingMetricsSent = true;
-            sendMetrics('unity_loading_metrics', collectLoadingMetrics);
-        }
-
-        function sendWebMetrics() { sendMetrics('unity_web_metrics', collectWebMetrics); }
         function sendUnityMetrics() { if (window.unityInstance) sendMetrics('unity_runtime_metrics', collectUnityMetrics); }
-
-        function startWebMetricsInterval(ms) {
-            if (_webMetricsIntervalId) return;
-            sendWebMetrics();
-            _webMetricsIntervalId = setInterval(sendWebMetrics, ms);
-            console.log('[AIT Metrics] Web metrics: periodic sending every ' + ms + 'ms');
-        }
 
         function startUnityMetricsInterval(ms) {
             if (_unityMetricsIntervalId) return;
@@ -1156,21 +1055,8 @@
                 AITLoadingLogger.notifyComplete();
             }
 
-            // E2E 테스트용 loading metric 노출
-            if (window.location.search.indexOf('e2e=true') !== -1) {
-                var logger = window.AITLoadingLogger;
-                window.__E2E_LOADING_METRICS__ = collectLoadingMetrics();
-                window.__E2E_LOADING_FILE_STATS__ = logger ? logger.getFileStats() : [];
-                window.__E2E_LOADING_PRELOAD_METRICS__ = logger ? logger.preloadMetrics : {};
-                window.dispatchEvent(new CustomEvent('e2e-loading-metrics-ready', {
-                    detail: window.__E2E_LOADING_METRICS__
-                }));
-            }
-
             // 메트릭 전송 시작 (1초 후)
             setTimeout(function() {
-                sendLoadingMetrics();
-                startWebMetricsInterval(AIT_WEB_METRICS_INTERVAL_MS);
                 startUnityMetricsInterval(AIT_UNITY_METRICS_INTERVAL_MS);
             }, 1000);
 
@@ -1464,28 +1350,6 @@
                                 font-size: 13px;
                             }
                             #metric-explorer-controls button:hover { background: #555; }
-                            #metric-explorer-tabs {
-                                display: flex;
-                                background: rgba(40, 40, 40, 0.98);
-                                border-bottom: 1px solid #444;
-                            }
-                            .metric-tab {
-                                padding: 12px 24px;
-                                cursor: pointer;
-                                border: none;
-                                background: transparent;
-                                color: #888;
-                                font-size: 14px;
-                                font-family: inherit;
-                                border-bottom: 3px solid transparent;
-                                transition: all 0.2s;
-                            }
-                            .metric-tab:hover { color: #ccc; background: rgba(255,255,255,0.05); }
-                            .metric-tab.active {
-                                color: #00aaff;
-                                border-bottom-color: #00aaff;
-                                background: rgba(0, 170, 255, 0.1);
-                            }
                             #metric-explorer-content {
                                 flex: 1;
                                 overflow-y: auto;
@@ -1603,15 +1467,8 @@
                                     <button id="metric-close-btn">Close</button>
                                 </div>
                             </div>
-                            <div id="metric-explorer-tabs">
-                                <button class="metric-tab active" data-tab="loading">Loading</button>
-                                <button class="metric-tab" data-tab="web">Web</button>
-                                <button class="metric-tab" data-tab="unity">Unity</button>
-                            </div>
                             <div id="metric-explorer-content">
-                                <div id="metric-tab-loading" class="metric-tab-content"></div>
-                                <div id="metric-tab-web" class="metric-tab-content" style="display:none;"></div>
-                                <div id="metric-tab-unity" class="metric-tab-content" style="display:none;"></div>
+                                <div id="metric-tab-unity" class="metric-tab-content"></div>
                             </div>
                         `;
                         document.body.appendChild(metricExplorer);
@@ -1826,8 +1683,6 @@
                         var metricRefreshBtn = document.getElementById('metric-refresh-btn');
                         var metricCopyBtn = document.getElementById('metric-copy-btn');
                         var metricCloseBtn = document.getElementById('metric-close-btn');
-                        var metricTabs = document.querySelectorAll('.metric-tab');
-                        var currentTab = 'loading';
                         var lastMetricData = {};
 
                         // Metric Explorer 열기/닫기
@@ -1835,37 +1690,14 @@
                             var explorer = document.getElementById('metric-explorer');
                             var isVisible = explorer.classList.toggle('visible');
                             if (isVisible) {
-                                refreshCurrentTab();
+                                renderUnityMetrics();
                             }
                         }
 
                         metricsBtn.onclick = toggleMetricExplorer;
                         metricCloseBtn.onclick = toggleMetricExplorer;
 
-                        // 탭 전환
-                        metricTabs.forEach(function(tab) {
-                            tab.onclick = function() {
-                                metricTabs.forEach(function(t) { t.classList.remove('active'); });
-                                tab.classList.add('active');
-                                currentTab = tab.getAttribute('data-tab');
-                                document.querySelectorAll('.metric-tab-content').forEach(function(c) {
-                                    c.style.display = 'none';
-                                });
-                                document.getElementById('metric-tab-' + currentTab).style.display = 'block';
-                                refreshCurrentTab();
-                            };
-                        });
-
-                        // 현재 탭 새로고침
-                        function refreshCurrentTab() {
-                            switch(currentTab) {
-                                case 'loading': renderLoadingMetrics(); break;
-                                case 'web': renderWebMetrics(); break;
-                                case 'unity': renderUnityMetrics(); break;
-                            }
-                        }
-
-                        metricRefreshBtn.onclick = refreshCurrentTab;
+                        metricRefreshBtn.onclick = function() { renderUnityMetrics(); };
 
                         // JSON 복사
                         metricCopyBtn.onclick = function() {
@@ -1959,191 +1791,6 @@
                             html += renderRows(data, '', 0);
                             html += '</tbody></table></div>';
                             return html;
-                        }
-
-                        // Loading Metrics 렌더링
-                        function renderLoadingMetrics() {
-                            var container = document.getElementById('metric-tab-loading');
-                            var html = '';
-                            var data = {};
-
-                            // AITLoadingLogger 데이터
-                            if (window.AITLoadingLogger) {
-                                var logger = window.AITLoadingLogger;
-
-                                // 이벤트 타이밍
-                                var events = {};
-                                Object.keys(logger.events).forEach(function(key) {
-                                    var evt = logger.events[key];
-                                    events[key] = {
-                                        elapsed_ms: Math.round(evt.elapsed),
-                                        data: evt.data
-                                    };
-                                });
-                                data.events = events;
-                                html += createMetricTable(events, 'Loading Events (Timing)');
-
-                                // 파일 다운로드 통계
-                                var fileStats = logger.getFileStats();
-                                var decompressionFallbackCount = 0;
-                                if (fileStats.length > 0) {
-                                    fileStats.forEach(function(file) {
-                                        if (file.decompressionFallback) decompressionFallbackCount++;
-                                        var fileData = {
-                                            url: file.url,
-                                            size_bytes: file.size,
-                                            size_MB: Math.round(file.size / 1024 / 1024 * 100) / 100,
-                                            duration_ms: file.duration,
-                                            startTime_ms: file.startTime,
-                                            responseEnd_ms: file.responseEnd,
-                                            avgSpeed_KBps: file.avgSpeed,
-                                            peakSpeed_KBps: file.peakSpeed,
-                                            minSpeed_KBps: file.minSpeed,
-                                            speedHistory: file.speedHistory,
-                                            compressionType: file.compressionType || 'none',
-                                            contentEncoding: file.contentEncoding || 'none',
-                                            decompressionFallback: file.decompressionFallback || false
-                                        };
-                                        data['file_' + file.name] = fileData;
-                                        html += createMetricTable(fileData, 'File: ' + file.name);
-                                    });
-                                }
-
-                                // 요약
-                                var summary = {
-                                    totalTime_ms: logger.getTotalTime(),
-                                    totalFiles: fileStats.length,
-                                    totalSize_MB: fileStats.reduce(function(sum, f) { return sum + f.size; }, 0) / 1024 / 1024,
-                                    decompressionFallbackCount: decompressionFallbackCount,
-                                    decompressionFallbackOccurred: decompressionFallbackCount > 0
-                                };
-                                data.summary = summary;
-                                html = createMetricTable(summary, 'Loading Summary') + html;
-                            } else {
-                                html = '<div class="metric-section"><div class="metric-section-title">AITLoadingLogger not available</div></div>';
-                            }
-
-                            lastMetricData.loading = data;
-                            container.innerHTML = html;
-                        }
-
-                        // Web Metrics 렌더링
-                        function renderWebMetrics() {
-                            var container = document.getElementById('metric-tab-web');
-                            var html = '';
-                            var data = {};
-
-                            // Performance Memory (Chrome only)
-                            if (performance.memory) {
-                                var memData = {
-                                    usedJSHeapSize_MB: (performance.memory.usedJSHeapSize / 1024 / 1024).toFixed(2),
-                                    totalJSHeapSize_MB: (performance.memory.totalJSHeapSize / 1024 / 1024).toFixed(2),
-                                    jsHeapSizeLimit_MB: (performance.memory.jsHeapSizeLimit / 1024 / 1024).toFixed(2)
-                                };
-                                data.memory = memData;
-                                html += createMetricTable(memData, 'JavaScript Memory (Chrome)');
-                            }
-
-                            // Navigator Info
-                            var navData = {
-                                userAgent: navigator.userAgent,
-                                platform: navigator.platform,
-                                language: navigator.language,
-                                cookieEnabled: navigator.cookieEnabled,
-                                onLine: navigator.onLine,
-                                hardwareConcurrency: navigator.hardwareConcurrency || 'N/A',
-                                deviceMemory: navigator.deviceMemory ? navigator.deviceMemory + ' GB' : 'N/A',
-                                maxTouchPoints: navigator.maxTouchPoints
-                            };
-                            data.navigator = navData;
-                            html += createMetricTable(navData, 'Navigator');
-
-                            // Screen Info
-                            var screenData = {
-                                width: screen.width,
-                                height: screen.height,
-                                availWidth: screen.availWidth,
-                                availHeight: screen.availHeight,
-                                colorDepth: screen.colorDepth,
-                                pixelDepth: screen.pixelDepth,
-                                devicePixelRatio: window.devicePixelRatio
-                            };
-                            data.screen = screenData;
-                            html += createMetricTable(screenData, 'Screen');
-
-                            // Window Info
-                            var windowData = {
-                                innerWidth: window.innerWidth,
-                                innerHeight: window.innerHeight,
-                                outerWidth: window.outerWidth,
-                                outerHeight: window.outerHeight,
-                                scrollX: window.scrollX,
-                                scrollY: window.scrollY
-                            };
-                            data.window = windowData;
-                            html += createMetricTable(windowData, 'Window');
-
-                            // Network Info (if available)
-                            if (navigator.connection) {
-                                var conn = navigator.connection;
-                                var netData = {
-                                    effectiveType: conn.effectiveType || 'N/A',
-                                    downlink: conn.downlink ? conn.downlink + ' Mbps' : 'N/A',
-                                    rtt: conn.rtt ? conn.rtt + ' ms' : 'N/A',
-                                    saveData: conn.saveData
-                                };
-                                data.network = netData;
-                                html += createMetricTable(netData, 'Network Connection');
-                            }
-
-                            // Performance Timing
-                            if (performance.timing) {
-                                var t = performance.timing;
-                                var timingData = {
-                                    navigationStart: t.navigationStart,
-                                    domContentLoaded_ms: t.domContentLoadedEventEnd - t.navigationStart,
-                                    domComplete_ms: t.domComplete - t.navigationStart,
-                                    loadEvent_ms: t.loadEventEnd - t.navigationStart,
-                                    dnsLookup_ms: t.domainLookupEnd - t.domainLookupStart,
-                                    tcpConnect_ms: t.connectEnd - t.connectStart,
-                                    ttfb_ms: t.responseStart - t.navigationStart,
-                                    responseTime_ms: t.responseEnd - t.responseStart
-                                };
-                                data.timing = timingData;
-                                html += createMetricTable(timingData, 'Performance Timing');
-                            }
-
-                            // WebGL Info
-                            if (gl) {
-                                var webglData = {
-                                    renderer: gl.getParameter(gl.RENDERER),
-                                    vendor: gl.getParameter(gl.VENDOR),
-                                    version: gl.getParameter(gl.VERSION),
-                                    shadingLanguageVersion: gl.getParameter(gl.SHADING_LANGUAGE_VERSION),
-                                    maxTextureSize: gl.getParameter(gl.MAX_TEXTURE_SIZE),
-                                    maxViewportDims: gl.getParameter(gl.MAX_VIEWPORT_DIMS),
-                                    maxRenderbufferSize: gl.getParameter(gl.MAX_RENDERBUFFER_SIZE)
-                                };
-                                // WEBGL_debug_renderer_info 확장
-                                var debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
-                                if (debugInfo) {
-                                    webglData.unmaskedVendor = gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL);
-                                    webglData.unmaskedRenderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
-                                }
-                                data.webgl = webglData;
-                                html += createMetricTable(webglData, 'WebGL');
-                            }
-
-                            // Visibility
-                            var visData = {
-                                visibilityState: document.visibilityState,
-                                hidden: document.hidden
-                            };
-                            data.visibility = visData;
-                            html += createMetricTable(visData, 'Visibility');
-
-                            lastMetricData.web = data;
-                            container.innerHTML = html;
                         }
 
                         // Unity 버전 감지 함수
@@ -2288,8 +1935,8 @@
                             container.innerHTML = html;
                         }
 
-                        // 초기 로딩 메트릭 렌더링
-                        renderLoadingMetrics();
+                        // 초기 Unity 메트릭 렌더링
+                        renderUnityMetrics();
 
                         console.log('[AIT] Debug Console 초기화 완료 (오른쪽 하단 버튼으로 열기/닫기)');
                     } catch (e) {

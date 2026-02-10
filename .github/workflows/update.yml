@@ -279,19 +279,19 @@ jobs:
           pnpm install --no-frozen-lockfile
           echo "BuildConfig pnpm-lock.yaml 업데이트 완료"
 
-      - name: README.md 설치 가이드 업데이트
+      - name: Docs/GettingStarted.md 설치 가이드 업데이트
         if: steps.check.outputs.skip != 'true'
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           TAG_NAME="release/v${VERSION}"
 
-          # README.md의 Git URL을 최신 릴리즈 태그로 업데이트
+          # Docs/GettingStarted.md의 Git URL을 최신 릴리즈 태그로 업데이트
           # 패턴: https://github.com/toss/apps-in-toss-unity-sdk.git 또는
           #       https://github.com/toss/apps-in-toss-unity-sdk.git#release/vX.X.X
-          sed -i 's|https://github.com/toss/apps-in-toss-unity-sdk\.git\(#[^"]*\)\?|https://github.com/toss/apps-in-toss-unity-sdk.git#'"${TAG_NAME}"'|g' README.md
+          sed -i 's|https://github.com/toss/apps-in-toss-unity-sdk\.git\(#[^"]*\)\?|https://github.com/toss/apps-in-toss-unity-sdk.git#'"${TAG_NAME}"'|g' Docs/GettingStarted.md
 
-          echo "README.md 업데이트 완료: #${TAG_NAME}"
-          grep -n "apps-in-toss-unity-sdk.git" README.md || true
+          echo "Docs/GettingStarted.md 업데이트 완료: #${TAG_NAME}"
+          grep -n "apps-in-toss-unity-sdk.git" Docs/GettingStarted.md || true
 
       - name: 브랜치 생성 및 커밋
         if: steps.check.outputs.skip != 'true'
@@ -318,7 +318,7 @@ jobs:
           - package.json 버전 동기화
           - BuildConfig package.json web-framework 버전 동기화
           - unity-bridge.ts 자동 생성
-          - README.md 설치 가이드 업데이트
+          - Docs/GettingStarted.md 설치 가이드 업데이트
 
           자동 생성: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 

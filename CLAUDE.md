@@ -45,6 +45,35 @@
   - IDE: `.idea/`, `.vscode/`, `*.swp`
 - 커밋하면 안 되는 추적되지 않은 파일 발견 시 적절한 `.gitignore` 파일에 추가
 
+## 자주 하는 실수 방지
+
+### SDK 생성기 관련
+- `Runtime/SDK/` 파일을 직접 수정하면 다음 `pnpm generate` 시 덮어씌워짐
+- SDK API 변경이 필요하면 반드시 `sdk-runtime-generator~/` 내 코드를 수정할 것
+- 생성기 수정 후 검증 순서: `pnpm generate` → `pnpm validate` → `pnpm test`
+
+### GitHub Actions 관련
+- `gh workflow run` 명령어 사용 불가 (GraphQL 차단) — REST API 사용 필수
+- 워크플로우 트리거 시 반드시 아래 워크플로우 ID 참조 테이블 확인
+- PR 번호 사용 시 `target_ref`에 숫자만 입력 (# 접두사 불필요)
+
+### 테스트 관련
+- E2E 테스트 전 빌드가 필요함: `./run-local-tests.sh --all` (빌드+테스트) vs `--e2e` (테스트만)
+- Playwright 테스트는 `Tests~/E2E/tests/` 디렉토리에서 실행
+- Level 0 테스트(EditMode)는 빌드 없이 ~10초만에 실행 가능
+
+## 빠른 참조: 주요 명령어
+
+| 작업 | 명령어 |
+|------|--------|
+| SDK 재생성 | `cd sdk-runtime-generator~ && pnpm generate` |
+| SDK 검증 | `cd sdk-runtime-generator~ && pnpm validate` |
+| SDK 테스트 | `cd sdk-runtime-generator~ && pnpm test` |
+| 전체 로컬 테스트 | `./run-local-tests.sh --all` |
+| 빠른 검증만 | `./run-local-tests.sh --validate` |
+| E2E만 | `./run-local-tests.sh --e2e` |
+| CI 트리거 (E2E) | 아래 GitHub Actions 섹션 참조 |
+
 ## 개요
 
 **Apps in Toss Unity SDK** - Unity/Tuanjie 엔진 게임 프로젝트를 Apps in Toss 플랫폼의 미니앱으로 변환하고 배포할 수 있게 해주는 Unity 패키지입니다. SDK 제공 기능:

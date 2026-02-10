@@ -120,8 +120,6 @@ tools/
 tools.meta
 
 # AI Assistant files
-.claude/
-CLAUDE.md
 CLAUDE.md.meta
 
 # Unity License files (sensitive)

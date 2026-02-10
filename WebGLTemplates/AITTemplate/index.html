@@ -755,18 +755,6 @@
                             }
                             #unity-debug-console-controls button:hover { background: #555; }
                             #unity-debug-console-controls button:active { background: #333; }
-                            #unity-debug-console-metrics {
-                                background: rgba(30, 30, 30, 0.98);
-                                padding: 12px 16px;
-                                border-bottom: 1px solid #444;
-                                line-height: 1.8;
-                            }
-                            #unity-debug-console-metrics .metric {
-                                color: #00ff88;
-                                margin-right: 24px;
-                                display: inline-block;
-                                font-size: 13px;
-                            }
                             #unity-debug-console-logs {
                                 flex: 1;
                                 overflow-y: auto;
@@ -836,18 +824,6 @@
                                     <button id="debug-copy-btn">Copy Logs</button>
                                     <button id="debug-clear-btn">Clear</button>
                                     <button id="debug-close-btn">Close</button>
-                                </div>
-                            </div>
-                            <div id="unity-debug-console-metrics">
-                                <div style="margin-bottom: 4px;">
-                                    <span class="metric">FPS: --</span>
-                                    <span class="metric">Frame: -- ms</span>
-                                    <span class="metric">JS Heap: -- / -- MB</span>
-                                    <span class="metric">Resolution: --</span>
-                                </div>
-                                <div>
-                                    <span class="metric">Device: -- GB RAM, -- Cores</span>
-                                    <span class="metric">GPU: --</span>
                                 </div>
                             </div>
                             <div id="unity-debug-console-logs"></div>
@@ -1004,58 +980,6 @@
                             });
                             addLog('=== End Bridge Logs ===', 'log');
                         }
-
-                        // FPS 및 메트릭 업데이트
-                        var frameCount = 0;
-                        var lastTime = performance.now();
-                        var startTime = lastTime;
-                        var metricsElement = document.getElementById('unity-debug-console-metrics');
-
-                        // 초기 시스템 정보 가져오기
-                        var deviceMemory = navigator.deviceMemory || '--';
-                        var cpuCores = navigator.hardwareConcurrency || '--';
-                        var gl = canvas ? canvas.getContext('webgl2') || canvas.getContext('webgl') : null;
-                        var gpuInfo = gl ? gl.getParameter(gl.RENDERER) : '--';
-
-                        function updateMetrics() {
-                            frameCount++;
-                            var currentTime = performance.now();
-                            var elapsed = currentTime - startTime;
-
-                            if (elapsed >= 500) { // 0.5초마다 업데이트
-                                // FPS 계산
-                                var fps = Math.round((frameCount * 1000) / elapsed);
-
-                                // 평균 프레임 타임 계산
-                                var avgFrameTime = (elapsed / frameCount).toFixed(2);
-
-                                // 메모리
-                                var memUsed = performance.memory ? (performance.memory.usedJSHeapSize / (1024 * 1024)).toFixed(1) : '--';
-                                var memTotal = performance.memory ? (performance.memory.totalJSHeapSize / (1024 * 1024)).toFixed(1) : '--';
-
-                                // 해상도
-                                var resolution = window.innerWidth + 'x' + window.innerHeight;
-                                var pixelRatio = window.devicePixelRatio ? ' @' + window.devicePixelRatio.toFixed(1) + 'x' : '';
-
-                                metricsElement.innerHTML =
-                                    '<div style="margin-bottom: 4px;">' +
-                                    '<span class="metric">FPS: ' + fps + '</span>' +
-                                    '<span class="metric">Frame: ' + avgFrameTime + ' ms</span>' +
-                                    '<span class="metric">JS Heap: ' + memUsed + ' / ' + memTotal + ' MB</span>' +
-                                    '<span class="metric">Resolution: ' + resolution + pixelRatio + '</span>' +
-                                    '</div>' +
-                                    '<div>' +
-                                    '<span class="metric">Device: ' + deviceMemory + ' GB RAM, ' + cpuCores + ' Cores</span>' +
-                                    '<span class="metric">GPU: ' + gpuInfo + '</span>' +
-                                    '</div>';
-
-                                frameCount = 0;
-                                startTime = currentTime;
-                            }
-
-                            requestAnimationFrame(updateMetrics);
-                        }
-                        updateMetrics();
 
                         console.log('[AIT] Debug Console 초기화 완료 (오른쪽 하단 버튼으로 열기/닫기)');
                     } catch (e) {

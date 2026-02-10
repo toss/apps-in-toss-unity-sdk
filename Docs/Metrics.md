@@ -1,44 +1,8 @@
-# SDK 메트릭 및 이벤트 로깅
+# SDK 이벤트 로깅
 
-이 문서는 Apps in Toss Unity SDK에서 수집하는 모든 메트릭과 이벤트를 정리합니다.
+이 문서는 Apps in Toss Unity SDK에서 자동 수집하는 런타임 이벤트를 정리합니다.
 
-## 목차
-
-1. [Debug Console](#1-debug-console)
-2. [이벤트 로깅](#2-이벤트-로깅)
-
----
-
-## 1. Debug Console
-
-**소스**: JS (`index.html`) — 화면 표시 전용, EventLog 전송 없음
-
-빌드 설정에서 `enableDebugConsole: true` 설정 시 활성화됩니다. 게임 실행 후 왼쪽 하단 🛠️ 버튼으로 열 수 있습니다.
-
-### 표시 메트릭
-
-0.5초마다 갱신되며, Debug Console 패널 상단에 표시됩니다.
-
-| 메트릭 | 설명 | 단위 |
-|--------|------|------|
-| FPS | 현재 프레임 속도 | fps |
-| Frame | 평균 프레임 시간 | ms |
-| JS Heap | 사용 중 / 전체 JavaScript 힙 크기 | MB |
-| Resolution | 윈도우 해상도 + 픽셀 비율 | px |
-| Device | 디바이스 메모리 + CPU 코어 수 | GB, cores |
-| GPU | WebGL 렌더러 정보 | string |
-
-### 기능
-
-| 버튼 | 설명 |
-|------|------|
-| **Copy Logs** | 콘솔 로그를 클립보드에 복사 |
-| **Clear** | 콘솔 로그 초기화 |
-| **Close** | Debug Console 닫기 |
-
----
-
-## 2. 이벤트 로깅
+## 개요
 
 **소스**: C# (`Runtime/Helpers/AIT.EventLogger.cs`, `AITEventLogger`) — 이벤트 발생 시 `AIT.EventLog()`로 전송
 
@@ -46,7 +10,7 @@
 
 모든 이벤트의 `log_type`은 `"unity_runtime"`입니다.
 
-### 이벤트 카테고리 요약
+## 이벤트 카테고리
 
 | # | log_name | 트리거 | Rate Limit |
 |---|----------|--------|------------|
@@ -59,9 +23,9 @@
 | 7 | `unity_gc_collection` | GC.CollectionCount() 변화 감지 | 60초당 5회 |
 | 8 | `unity_timescale_change` | Time.timeScale 변경 감지 | 5초당 1회 |
 
-### 이벤트별 파라미터
+## 이벤트별 파라미터
 
-#### 1. Scene 전환 (`unity_scene_transition`)
+### 1. Scene 전환 (`unity_scene_transition`)
 
 ```json
 {
@@ -85,7 +49,7 @@
 | `total_loaded_scenes` | 현재 로드된 Scene 수 | 전체 |
 | `time_since_start_sec` | 앱 시작 이후 경과 시간 | 전체 |
 
-#### 2. Low Memory (`unity_low_memory`)
+### 2. Low Memory (`unity_low_memory`)
 
 ```json
 {
@@ -94,7 +58,7 @@
 }
 ```
 
-#### 3. 에러/예외 (`unity_error`)
+### 3. 에러/예외 (`unity_error`)
 
 ```json
 {
@@ -113,14 +77,14 @@
 | `stack_trace` | 스택 트레이스 (최대 200자) |
 | `log_type` | Unity LogType (`Error`, `Exception`, `Assert`) |
 
-#### 4. 앱 라이프사이클 (`unity_lifecycle`)
+### 4. 앱 라이프사이클 (`unity_lifecycle`)
 
 ```json
 { "event_type": "focus_changed", "has_focus": true, "time_since_start_sec": 120.5 }
 { "event_type": "quitting", "session_duration_sec": 300.5, "total_scenes_loaded": 5 }
 ```
 
-#### 5. 프레임 스톨 (`unity_frame_stall`)
+### 5. 프레임 스톨 (`unity_frame_stall`)
 
 ```json
 {
@@ -131,14 +95,14 @@
 }
 ```
 
-#### 6. 화면 변경 (`unity_screen_change`)
+### 6. 화면 변경 (`unity_screen_change`)
 
 ```json
 { "event_type": "screen_resize", "width": 1920, "height": 1080, "previous_width": 1280, "previous_height": 720, "time_since_start_sec": 30.0 }
 { "event_type": "orientation_change", "width": 1080, "height": 1920, "orientation": "Portrait", "previous_orientation": "LandscapeLeft", "time_since_start_sec": 30.0 }
 ```
 
-#### 7. GC 수집 (`unity_gc_collection`)
+### 7. GC 수집 (`unity_gc_collection`)
 
 ```json
 {
@@ -151,7 +115,7 @@
 }
 ```
 
-#### 8. TimeScale 변경 (`unity_timescale_change`)
+### 8. TimeScale 변경 (`unity_timescale_change`)
 
 ```json
 {
@@ -162,7 +126,7 @@
 }
 ```
 
-### 안전장치
+## 안전장치
 
 | 항목 | 설명 |
 |------|------|
@@ -177,14 +141,4 @@
 
 | 파일 | 설명 |
 |------|------|
-| `WebGLTemplates/AITTemplate/index.html` | Debug Console (화면 표시 전용) |
 | `Runtime/Helpers/AIT.EventLogger.cs` | 이벤트 로거 (C#) |
-
----
-
-## 요약
-
-| 카테고리 | 수집 방식 | 화면 표시 | EventLog 전송 |
-|----------|-----------|-----------|---------------|
-| Debug Console 메트릭 | JS, 0.5초 폴링 | ✅ | ❌ |
-| 이벤트 로깅 (8개 카테고리) | C#, 발생 시 | ❌ | ✅ |

@@ -18,7 +18,7 @@ Apps in Toss Unity SDK는 WebGL 로딩 화면의 다양한 커스터마이징 �
 로딩 화면에 표시되는 앱 정보는 다음 순서로 결정됩니다:
 
 1. **네이티브 앱 환경** (토스 앱 내): SDK가 네이티브 API (`getAppsInTossGlobals`)를 통해 자동으로 앱 정보를 가져옵니다.
-2. **폴백** (웹 브라우저 등): Build & Deploy Window에서 설정한 값이 사용됩니다.
+2. **폴백** (웹 브라우저 등): AIT Configuration에서 설정한 값이 사용됩니다.
 
 ### 폴백 설정 항목
 
@@ -102,7 +102,7 @@ Assets/
 
 #### `AITLoading.appInfo`
 
-Build & Deploy Window에서 설정한 앱 정보입니다.
+AIT Configuration에서 설정한 앱 정보입니다.
 
 ```javascript
 console.log(AITLoading.appInfo.iconUrl);       // 앱 아이콘 URL
@@ -197,7 +197,11 @@ AITLoading.onComplete(function() {
     avgSpeed: 1564.5,            // 평균 속도 (KB/s)
     peakSpeed: 2341.8,           // 피크 속도 (KB/s)
     minSpeed: 892.1,             // 최저 속도 (KB/s)
-    speedHistory: [892, 1234, 2341, 1876, 1423]  // 1초 간격 속도 기록
+    speedHistory: [892, 1234, 2341, 1876, 1423],  // 1초 간격 속도 기록
+    compressionType: 'brotli',   // 압축 형식 (brotli, gzip, unityweb, none)
+    contentEncoding: 'br',       // 서버 Content-Encoding 헤더 값
+    decompressionFallback: false, // JS 압축해제 fallback 발생 여부
+    preloaded: false             // HTML5 Preload로 미리 로드되었는지 여부
 }, ...]
 ```
 
@@ -494,7 +498,7 @@ AITLoading.hide();
 
 ### 아이콘이 표시되지 않음
 
-1. Build & Deploy Window에서 `iconUrl`이 설정되어 있는지 확인
+1. AIT Configuration에서 `iconUrl`이 설정되어 있는지 확인
 2. CORS 정책으로 외부 이미지가 차단될 수 있음 → 같은 도메인의 이미지 사용 권장
 3. 네이티브 앱 환경에서는 자동으로 앱 아이콘이 로드됨
 

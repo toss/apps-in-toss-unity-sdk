@@ -45,9 +45,6 @@ namespace AppsInToss.Editor
 #endif
 #endif
 
-#if UNITY_2022_2_OR_NEWER
-        public bool showDiagnostics;
-#endif
 
         /// <summary>
         /// 현재 PlayerSettings를 캡처하여 백업 생성
@@ -96,9 +93,6 @@ namespace AppsInToss.Editor
 #endif
 #endif
 
-#if UNITY_2022_2_OR_NEWER
-            backup.showDiagnostics = PlayerSettings.WebGL.showDiagnostics;
-#endif
 
             return backup;
         }
@@ -147,9 +141,6 @@ namespace AppsInToss.Editor
 #endif
 #endif
 
-#if UNITY_2022_2_OR_NEWER
-            PlayerSettings.WebGL.showDiagnostics = showDiagnostics;
-#endif
 
             Debug.Log("[AIT] PlayerSettings가 원래 상태로 복원되었습니다.");
         }

@@ -2501,6 +2501,13 @@ namespace AppsInToss
                 return false;
             }
 
+            if (!config.IsFirebaseConfigValid())
+            {
+                Debug.LogError("AIT: Firebase가 활성화되었지만 필수 설정값이 누락되었습니다.");
+                AITPlatformHelper.ShowInfoDialog("오류", "Firebase가 활성화되었지만 필수 설정값이 누락되었습니다.\n\nAIT > Configuration의 Firebase 설정에서 API Key, Project ID, App ID를 입력해주세요.", "확인");
+                return false;
+            }
+
             return true;
         }
 

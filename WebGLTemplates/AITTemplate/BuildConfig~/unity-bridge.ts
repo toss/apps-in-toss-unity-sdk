@@ -73,4 +73,7 @@ console.log('[Unity Bridge] AppsInToss bridge initialized with', Object.keys(Web
 console.log('[Unity Bridge] Available:', Object.keys(WebFramework).join(', '));
 console.log('[Unity Bridge] Namespaces: GoogleAdMob, IAP, SafeAreaInsets, Storage, TossAds, env, graniteEvent, partner, tdsEvent');
 
+// Firebase bridge (빌드 시 enableFirebase에 따라 활성/비활성)
+import './firebase-bridge';
+
 export default WebFramework;

@@ -207,6 +207,34 @@ namespace AppsInToss
         [Header("플러그인 설정")]
         public string[] plugins = new string[] { };
 
+        [Header("Firebase 설정")]
+        [Tooltip("Firebase를 사용하려면 체크하세요. 비활성화 시 firebase npm 패키지가 설치되지 않습니다.")]
+        public bool enableFirebase = false;
+
+        // 필수 설정
+        public string firebaseApiKey = "";
+        public string firebaseProjectId = "";
+        public string firebaseAppId = "";
+
+        // 선택 설정
+        public string firebaseAuthDomain = "";
+        public string firebaseStorageBucket = "";
+        public string firebaseMessagingSenderId = "";
+        public string firebaseMeasurementId = "";
+        public string firebaseDatabaseURL = "";
+
+        /// <summary>
+        /// Firebase 설정 유효성 검사
+        /// enableFirebase가 false이면 항상 true 반환
+        /// </summary>
+        public bool IsFirebaseConfigValid()
+        {
+            if (!enableFirebase) return true;
+            return !string.IsNullOrWhiteSpace(firebaseApiKey) &&
+                   !string.IsNullOrWhiteSpace(firebaseProjectId) &&
+                   !string.IsNullOrWhiteSpace(firebaseAppId);
+        }
+
         /// <summary>
         /// 아이콘 URL 유효성 검사
         /// </summary>

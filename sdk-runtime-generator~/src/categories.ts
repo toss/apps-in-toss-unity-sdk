@@ -216,6 +216,16 @@ export const FRAMEWORK_APIS: string[] = [
  * SDK 생성에서 제외할 API 목록
  * 이 API들은 파싱되더라도 SDK에 포함되지 않음
  */
+/**
+ * Firebase SDK 카테고리 매핑
+ * Firebase API를 카테고리별로 그룹핑하여 AITFirebase partial class 파일 생성
+ */
+export const FIREBASE_CATEGORIES: Record<string, string[]> = {
+  'Firebase.Init': ['initializeApp'],
+  'Firebase.Analytics': ['logEvent', 'setUserId', 'setUserProperties', 'setAnalyticsCollectionEnabled'],
+  'Firebase.Auth': ['signInAnonymously', 'signInWithCustomToken', 'signOut', 'onAuthStateChanged'],
+};
+
 export const EXCLUDED_APIS: string[] = [
   // deprecated GoogleAdMob 인앱 광고 API (2026-01 제거)
   'GoogleAdMobLoadAdMobInterstitialAd',

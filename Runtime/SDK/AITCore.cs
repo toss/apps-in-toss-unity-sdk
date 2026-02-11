@@ -217,6 +217,44 @@ namespace AppsInToss
             }
         }
 
+        // External callback routers (Firebase 등 외부 모듈 확장 포인트)
+        private static readonly List<Func<string, string, string, AITCore, bool>> _externalRouters = new List<Func<string, string, string, AITCore, bool>>();
+        private static readonly List<Func<string, string, string, AITCore, bool>> _externalSubscriptionRouters = new List<Func<string, string, string, AITCore, bool>>();
+
+        /// <summary>
+        /// 외부 콜백 라우터 등록 (Firebase 등)
+        /// </summary>
+        public static void RegisterExternalRouter(Func<string, string, string, AITCore, bool> router)
+        {
+            _externalRouters.Add(router);
+        }
+
+        /// <summary>
+        /// 외부 구독 콜백 라우터 등록 (Firebase 등)
+        /// </summary>
+        public static void RegisterExternalSubscriptionRouter(Func<string, string, string, AITCore, bool> router)
+        {
+            _externalSubscriptionRouters.Add(router);
+        }
+
+        private bool TryRouteExternalCallback(string callbackId, string typeName, string resultJson)
+        {
+            foreach (var router in _externalRouters)
+            {
+                if (router(callbackId, typeName, resultJson, this)) return true;
+            }
+            return false;
+        }
+
+        private bool TryRouteExternalSubscriptionCallback(string callbackId, string typeName, string resultJson)
+        {
+            foreach (var router in _externalSubscriptionRouters)
+            {
+                if (router(callbackId, typeName, resultJson, this)) return true;
+            }
+            return false;
+        }
+
         // Callback storage: success callbacks and error callbacks
         private int _callbackIdCounter = 0;
         private Dictionary<string, Delegate> _callbacks = new Dictionary<string, Delegate>();
@@ -323,6 +361,35 @@ namespace AppsInToss
             _subscriptionCallbacks[id] = onEvent;
             if (onError != null) _subscriptionErrorCallbacks[id] = onError;
             return id;
+        }
+
+        /// <summary>
+        /// Try to get a subscription callback by ID (does NOT remove it)
+        /// Used by external routers (Firebase etc.)
+        /// </summary>
+        public bool TryGetSubscriptionCallback<T>(string subscriptionId, out Action<T> callback)
+        {
+            if (_subscriptionCallbacks.TryGetValue(subscriptionId, out var rawCallback))
+            {
+                callback = rawCallback as Action<T>;
+                return callback != null;
+            }
+            callback = null;
+            return false;
+        }
+
+        /// <summary>
+        /// Try to get a subscription error callback by ID (does NOT remove it)
+        /// Used by external routers (Firebase etc.)
+        /// </summary>
+        public bool TryGetSubscriptionErrorCallback(string subscriptionId, out Action<AITException> callback)
+        {
+            if (_subscriptionErrorCallbacks.TryGetValue(subscriptionId, out callback))
+            {
+                return callback != null;
+            }
+            callback = null;
+            return false;
         }
 
         /// <summary>
@@ -449,7 +516,10 @@ namespace AppsInToss
                         (rawCallback as Action)?.Invoke();
                         break;
                     default:
-                        Debug.LogWarning($"[AITCore] Unknown subscription type: {typeName}");
+                        if (!TryRouteExternalSubscriptionCallback(callbackId, typeName, resultJson))
+                        {
+                            Debug.LogWarning($"[AITCore] Unknown subscription type: {typeName}");
+                        }
                         break;
                 }
             }
@@ -998,7 +1068,10 @@ namespace AppsInToss
                     break;
 
                 default:
-                    Debug.LogWarning($"[AITCore] Unknown callback type: {typeName}");
+                    if (!TryRouteExternalCallback(callbackId, typeName, resultJson))
+                    {
+                        Debug.LogWarning($"[AITCore] Unknown callback type: {typeName}");
+                    }
                     break;
             }
         }

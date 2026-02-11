@@ -21,6 +21,7 @@
     "@apps-in-toss/framework": "1.6.0",
     "@apps-in-toss/web-framework": "1.11.2",
     "commander": "^14.0.2",
+    "firebase": "12.9.0",
     "handlebars": "^4.7.8",
     "picocolors": "^1.1.1",
     "ts-morph": "^27.0.2"

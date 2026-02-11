@@ -532,7 +532,8 @@ namespace AppsInToss.Editor
             var excludeRootFiles = new HashSet<string>
             {
                 "package.json", "pnpm-lock.yaml", "vite.config.ts",
-                "tsconfig.json", "unity-bridge.ts", "granite.config.ts"
+                "tsconfig.json", "unity-bridge.ts", "granite.config.ts",
+                "firebase-bridge.ts"
             };
 
             // 제외할 폴더들
@@ -601,6 +602,69 @@ namespace AppsInToss.Editor
 
                 // 폴더 복사 완료 로그
                 Debug.Log($"[AIT]   ✓ {dirName}/ (사용자 추가 폴더)");
+            }
+        }
+
+        /// <summary>
+        /// firebase-bridge.ts를 처리합니다.
+        /// enableFirebase=true: 플레이스홀더를 실제 config 값으로 치환
+        /// enableFirebase=false: 빈 파일로 대체 (tree-shaking으로 제거됨)
+        /// </summary>
+        internal static void UpdateFirebaseBridge(string sdkBuildConfigPath, string destPath, AITEditorScriptObject config)
+        {
+            string sdkFile = Path.Combine(sdkBuildConfigPath, "firebase-bridge.ts");
+            string destFile = Path.Combine(destPath, "firebase-bridge.ts");
+
+            if (!config.enableFirebase || !File.Exists(sdkFile))
+            {
+                // Firebase 비활성화 → 빈 파일
+                File.WriteAllText(destFile, "// Firebase disabled\nexport {};", new System.Text.UTF8Encoding(false));
+                Debug.Log("[AIT]   ✓ firebase-bridge.ts (비활성화)");
+                return;
+            }
+
+            string content = File.ReadAllText(sdkFile);
+            content = content
+                .Replace("%AIT_FIREBASE_API_KEY%", config.firebaseApiKey ?? "")
+                .Replace("%AIT_FIREBASE_AUTH_DOMAIN%", config.firebaseAuthDomain ?? "")
+                .Replace("%AIT_FIREBASE_PROJECT_ID%", config.firebaseProjectId ?? "")
+                .Replace("%AIT_FIREBASE_STORAGE_BUCKET%", config.firebaseStorageBucket ?? "")
+                .Replace("%AIT_FIREBASE_MESSAGING_SENDER_ID%", config.firebaseMessagingSenderId ?? "")
+                .Replace("%AIT_FIREBASE_APP_ID%", config.firebaseAppId ?? "")
+                .Replace("%AIT_FIREBASE_MEASUREMENT_ID%", config.firebaseMeasurementId ?? "")
+                .Replace("%AIT_FIREBASE_DATABASE_URL%", config.firebaseDatabaseURL ?? "");
+
+            File.WriteAllText(destFile, content, new System.Text.UTF8Encoding(false));
+            Debug.Log("[AIT]   ✓ firebase-bridge.ts (Firebase config 주입됨)");
+        }
+
+        /// <summary>
+        /// package.json에 Firebase npm 의존성을 주입합니다.
+        /// </summary>
+        internal static void InjectFirebaseDependency(string buildProjectPath)
+        {
+            string packageJsonPath = Path.Combine(buildProjectPath, "package.json");
+            if (!File.Exists(packageJsonPath)) return;
+
+            string content = File.ReadAllText(packageJsonPath);
+            var json = MiniJson.Deserialize(content) as Dictionary<string, object>;
+            if (json == null) return;
+
+            var deps = json.ContainsKey("dependencies")
+                ? json["dependencies"] as Dictionary<string, object>
+                : new Dictionary<string, object>();
+
+            if (deps == null)
+            {
+                deps = new Dictionary<string, object>();
+                json["dependencies"] = deps;
+            }
+
+            if (!deps.ContainsKey("firebase"))
+            {
+                deps["firebase"] = "12.9.0";
+                File.WriteAllText(packageJsonPath, MiniJson.Serialize(json), new System.Text.UTF8Encoding(false));
+                Debug.Log("[AIT]   ✓ firebase 12.9.0 의존성 추가됨");
             }
         }
 
@@ -681,7 +745,16 @@ namespace AppsInToss.Editor
                 Debug.Log("[AIT]   ✓ unity-bridge.ts (SDK에서 복사)");
             }
 
-            // 7. 사용자 추가 파일 복사
+            // 7. firebase-bridge.ts — Firebase config 주입 (조건부)
+            UpdateFirebaseBridge(sdkBuildConfigPath, buildProjectPath, config);
+
+            // 8. Firebase 의존성 조건부 주입
+            if (config.enableFirebase)
+            {
+                InjectFirebaseDependency(buildProjectPath);
+            }
+
+            // 9. 사용자 추가 파일 복사
             CopyAdditionalUserFiles(projectBuildConfigPath, buildProjectPath);
 
             Debug.Log("[AIT] ✓ 빌드 설정 파일 처리 완료");

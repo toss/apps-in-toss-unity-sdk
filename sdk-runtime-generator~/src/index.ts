@@ -15,6 +15,7 @@ import { generateUnityBridge } from './generators/unity-bridge.js';
 import { generateScreenManualCs, generateScreenManualJslib } from './generators/webgl-manual.js';
 import { formatCommand } from './commands/format.js';
 import { FRAMEWORK_APIS, EXCLUDED_APIS } from './categories.js';
+import { generateFirebaseSDK } from './generators/firebase/index.js';
 
 const program = new Command();
 
@@ -540,7 +541,12 @@ namespace AppsInToss
     await fs.writeFile(unityBridgePath, unityBridgeContent);
     console.log(picocolors.green(`  ✓ unity-bridge.ts`));
 
-    // 10. 요약 출력
+    // 10. Firebase SDK 생성
+    console.log(picocolors.cyan('\n🔥 Firebase SDK 생성 중...'));
+    const firebaseOutputDir = path.resolve(process.cwd(), '../Runtime/Firebase');
+    await generateFirebaseSDK(firebaseOutputDir, existingMetas);
+
+    // 11. 요약 출력
     printSummary(apis, generatedCodes);
 
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);

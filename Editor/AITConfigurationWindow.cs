@@ -18,6 +18,7 @@ namespace AppsInToss.Editor
         private bool showBuildProfiles = true;
         private bool showDevServerProfile = false;
         private bool showProductionProfile = false;
+        private bool showFirebaseSettings = false;
 
         // 하이라이트 색상
         private static readonly Color ModifiedColor = new Color(1f, 0.6f, 0f); // 주황색
@@ -63,6 +64,8 @@ namespace AppsInToss.Editor
             DrawWebGLOptimizationSettings();
             GUILayout.Space(10);
             DrawPermissionSettings();
+            GUILayout.Space(10);
+            DrawFirebaseSettings();
             GUILayout.Space(10);
             DrawAdvancedSettings();
             GUILayout.Space(10);
@@ -635,6 +638,101 @@ namespace AppsInToss.Editor
             else
             {
                 EditorGUILayout.HelpBox("선택된 권한이 없습니다.", MessageType.Warning);
+            }
+
+            EditorGUILayout.EndVertical();
+        }
+
+        private void DrawFirebaseSettings()
+        {
+            showFirebaseSettings = EditorGUILayout.Foldout(showFirebaseSettings, "Firebase 설정", true);
+
+            if (!showFirebaseSettings) return;
+
+            EditorGUILayout.BeginVertical("box");
+
+            config.enableFirebase = EditorGUILayout.Toggle(
+                new GUIContent("Firebase 활성화", "활성화 시 빌드에 Firebase JS SDK가 포함됩니다."),
+                config.enableFirebase
+            );
+
+            if (config.enableFirebase)
+            {
+                GUILayout.Space(5);
+                EditorGUILayout.LabelField("필수 설정", EditorStyles.boldLabel);
+
+                // API Key (필수)
+                var prevColor = GUI.color;
+                if (string.IsNullOrWhiteSpace(config.firebaseApiKey))
+                    GUI.color = RequiredFieldColor;
+                config.firebaseApiKey = EditorGUILayout.TextField(
+                    new GUIContent("API Key *", "Firebase 프로젝트의 API Key"),
+                    config.firebaseApiKey
+                );
+                GUI.color = prevColor;
+
+                // Project ID (필수)
+                if (string.IsNullOrWhiteSpace(config.firebaseProjectId))
+                    GUI.color = RequiredFieldColor;
+                config.firebaseProjectId = EditorGUILayout.TextField(
+                    new GUIContent("Project ID *", "Firebase 프로젝트 ID"),
+                    config.firebaseProjectId
+                );
+                GUI.color = prevColor;
+
+                // App ID (필수)
+                if (string.IsNullOrWhiteSpace(config.firebaseAppId))
+                    GUI.color = RequiredFieldColor;
+                config.firebaseAppId = EditorGUILayout.TextField(
+                    new GUIContent("App ID *", "Firebase 웹 앱 ID"),
+                    config.firebaseAppId
+                );
+                GUI.color = prevColor;
+
+                if (!config.IsFirebaseConfigValid())
+                {
+                    EditorGUILayout.HelpBox(
+                        "필수 설정값(API Key, Project ID, App ID)을 모두 입력해야 빌드할 수 있습니다.",
+                        MessageType.Error
+                    );
+                }
+
+                GUILayout.Space(10);
+                EditorGUILayout.LabelField("선택 설정", EditorStyles.boldLabel);
+
+                config.firebaseAuthDomain = EditorGUILayout.TextField(
+                    new GUIContent("Auth Domain", "인증 도메인 (예: project-id.firebaseapp.com)"),
+                    config.firebaseAuthDomain
+                );
+                config.firebaseStorageBucket = EditorGUILayout.TextField(
+                    new GUIContent("Storage Bucket", "스토리지 버킷 (예: project-id.appspot.com)"),
+                    config.firebaseStorageBucket
+                );
+                config.firebaseMessagingSenderId = EditorGUILayout.TextField(
+                    new GUIContent("Messaging Sender ID", "FCM 발신자 ID"),
+                    config.firebaseMessagingSenderId
+                );
+                config.firebaseMeasurementId = EditorGUILayout.TextField(
+                    new GUIContent("Measurement ID", "Google Analytics 측정 ID (예: G-XXXXXXXXXX)"),
+                    config.firebaseMeasurementId
+                );
+                config.firebaseDatabaseURL = EditorGUILayout.TextField(
+                    new GUIContent("Database URL", "Realtime Database URL"),
+                    config.firebaseDatabaseURL
+                );
+
+                GUILayout.Space(5);
+                EditorGUILayout.HelpBox(
+                    "Firebase Console > 프로젝트 설정 > 일반 > 내 앱 > Firebase SDK snippet에서 설정값을 확인할 수 있습니다.",
+                    MessageType.Info
+                );
+            }
+            else
+            {
+                EditorGUILayout.HelpBox(
+                    "Firebase가 비활성화되어 있습니다. 활성화하면 빌드 시 Firebase JS SDK가 포함됩니다.",
+                    MessageType.Info
+                );
             }
 
             EditorGUILayout.EndVertical();

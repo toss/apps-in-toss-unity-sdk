@@ -8,11 +8,14 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 using UnityEngine;
 using UnityEngine.Scripting;
+
+[assembly: InternalsVisibleTo("AppsInToss.Helpers")]
 
 namespace AppsInToss
 {
@@ -214,6 +217,44 @@ namespace AppsInToss
             }
         }
 
+        // External callback routers (Firebase 등 외부 모듈 확장 포인트)
+        private static readonly List<Func<string, string, string, AITCore, bool>> _externalRouters = new List<Func<string, string, string, AITCore, bool>>();
+        private static readonly List<Func<string, string, string, AITCore, bool>> _externalSubscriptionRouters = new List<Func<string, string, string, AITCore, bool>>();
+
+        /// <summary>
+        /// 외부 콜백 라우터 등록 (Firebase 등)
+        /// </summary>
+        public static void RegisterExternalRouter(Func<string, string, string, AITCore, bool> router)
+        {
+            _externalRouters.Add(router);
+        }
+
+        /// <summary>
+        /// 외부 구독 콜백 라우터 등록 (Firebase 등)
+        /// </summary>
+        public static void RegisterExternalSubscriptionRouter(Func<string, string, string, AITCore, bool> router)
+        {
+            _externalSubscriptionRouters.Add(router);
+        }
+
+        private bool TryRouteExternalCallback(string callbackId, string typeName, string resultJson)
+        {
+            foreach (var router in _externalRouters)
+            {
+                if (router(callbackId, typeName, resultJson, this)) return true;
+            }
+            return false;
+        }
+
+        private bool TryRouteExternalSubscriptionCallback(string callbackId, string typeName, string resultJson)
+        {
+            foreach (var router in _externalSubscriptionRouters)
+            {
+                if (router(callbackId, typeName, resultJson, this)) return true;
+            }
+            return false;
+        }
+
         // Callback storage: success callbacks and error callbacks
         private int _callbackIdCounter = 0;
         private Dictionary<string, Delegate> _callbacks = new Dictionary<string, Delegate>();
@@ -323,6 +364,35 @@ namespace AppsInToss
         }
 
         /// <summary>
+        /// Try to get a subscription callback by ID (does NOT remove it)
+        /// Used by external routers (Firebase etc.)
+        /// </summary>
+        public bool TryGetSubscriptionCallback<T>(string subscriptionId, out Action<T> callback)
+        {
+            if (_subscriptionCallbacks.TryGetValue(subscriptionId, out var rawCallback))
+            {
+                callback = rawCallback as Action<T>;
+                return callback != null;
+            }
+            callback = null;
+            return false;
+        }
+
+        /// <summary>
+        /// Try to get a subscription error callback by ID (does NOT remove it)
+        /// Used by external routers (Firebase etc.)
+        /// </summary>
+        public bool TryGetSubscriptionErrorCallback(string subscriptionId, out Action<AITException> callback)
+        {
+            if (_subscriptionErrorCallbacks.TryGetValue(subscriptionId, out callback))
+            {
+                return callback != null;
+            }
+            callback = null;
+            return false;
+        }
+
+        /// <summary>
         /// Unsubscribe from an event
         /// </summary>
         public void Unsubscribe(string subscriptionId)
@@ -358,6 +428,44 @@ namespace AppsInToss
             }
         }
 
+        // ===================================================================
+        // Visibility State Change Handler
+        // ===================================================================
+
+        /// <summary>
+        /// Called by JavaScript when browser visibility state changes
+        /// </summary>
+        [Preserve]
+        public void OnVisibilityStateChanged(string jsonPayload)
+        {
+            Debug.Log($"[AITCore] OnVisibilityStateChanged received: {jsonPayload}");
+            try
+            {
+                var data = JsonConvert.DeserializeObject<VisibilityStateData>(jsonPayload);
+                OnVisibilityStateChangedInternal?.Invoke(data.isVisible);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[AITCore] Failed to process visibility state change: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 내부 가시성 상태 변경 이벤트 (AITVisibilityHelper에서 구독)
+        /// </summary>
+        internal static event Action<bool> OnVisibilityStateChangedInternal;
+
+        [Serializable]
+        [Preserve]
+        private class VisibilityStateData
+        {
+            [Preserve]
+            public bool isVisible { get; set; }
+
+            [Preserve]
+            public VisibilityStateData() { }
+        }
+
         /// <summary>
         /// Route subscription callback (does NOT remove after invocation)
         /// </summary>
@@ -375,16 +483,51 @@ namespace AppsInToss
             {
                 switch (typeName)
                 {
+                    case "ContactsViralEvent":
+                        var data_0 = JsonConvert.DeserializeObject<ContactsViralEvent>(apiResponse.data);
+                        (rawCallback as Action<ContactsViralEvent>)?.Invoke(data_0);
+                        break;
+                    case "LoadAdMobEvent":
+                        var data_1 = JsonConvert.DeserializeObject<LoadAdMobEvent>(apiResponse.data);
+                        (rawCallback as Action<LoadAdMobEvent>)?.Invoke(data_1);
+                        break;
+                    case "LoadFullScreenAdEvent":
+                        var data_2 = JsonConvert.DeserializeObject<LoadFullScreenAdEvent>(apiResponse.data);
+                        (rawCallback as Action<LoadFullScreenAdEvent>)?.Invoke(data_2);
+                        break;
+                    case "Location":
+                        var data_3 = JsonConvert.DeserializeObject<Location>(apiResponse.data);
+                        (rawCallback as Action<Location>)?.Invoke(data_3);
+                        break;
+                    case "ShowAdMobEvent":
+                        var data_4 = JsonConvert.DeserializeObject<ShowAdMobEvent>(apiResponse.data);
+                        (rawCallback as Action<ShowAdMobEvent>)?.Invoke(data_4);
+                        break;
+                    case "ShowFullScreenAdEvent":
+                        var data_5 = JsonConvert.DeserializeObject<ShowFullScreenAdEvent>(apiResponse.data);
+                        (rawCallback as Action<ShowFullScreenAdEvent>)?.Invoke(data_5);
+                        break;
+                    case "SuccessEvent":
+                        var data_6 = JsonConvert.DeserializeObject<SuccessEvent>(apiResponse.data);
+                        (rawCallback as Action<SuccessEvent>)?.Invoke(data_6);
+                        break;
                     case "TdsNavigationAccessoryEventData":
-                        var data_0 = JsonConvert.DeserializeObject<TdsNavigationAccessoryEventData>(apiResponse.data);
-                        (rawCallback as Action<TdsNavigationAccessoryEventData>)?.Invoke(data_0);
+                        var data_7 = JsonConvert.DeserializeObject<TdsNavigationAccessoryEventData>(apiResponse.data);
+                        (rawCallback as Action<TdsNavigationAccessoryEventData>)?.Invoke(data_7);
+                        break;
+                    case "bool":
+                        var data_8 = JsonConvert.DeserializeObject<bool>(apiResponse.data);
+                        (rawCallback as Action<bool>)?.Invoke(data_8);
                         break;
                     case "void":
                         // Void event - call Action directly
                         (rawCallback as Action)?.Invoke();
                         break;
                     default:
-                        Debug.LogWarning($"[AITCore] Unknown subscription type: {typeName}");
+                        if (!TryRouteExternalSubscriptionCallback(callbackId, typeName, resultJson))
+                        {
+                            Debug.LogWarning($"[AITCore] Unknown subscription type: {typeName}");
+                        }
                         break;
                 }
             }
@@ -649,12 +792,12 @@ namespace AppsInToss
                         }
                     }
                     break;
-                case "SafeAreaInsetsGetResult":
+                case "SafeAreaInsets":
                     if (apiResponse.success)
                     {
-                        if (TryGetCallback<SafeAreaInsetsGetResult>(callbackId, out var callback13) && callback13 != null)
+                        if (TryGetCallback<SafeAreaInsets>(callbackId, out var callback13) && callback13 != null)
                         {
-                            var data13 = JsonConvert.DeserializeObject<SafeAreaInsetsGetResult>(apiResponse.data);
+                            var data13 = JsonConvert.DeserializeObject<SafeAreaInsets>(apiResponse.data);
                             callback13(data13);
                         }
                     }
@@ -662,7 +805,7 @@ namespace AppsInToss
                     {
                         if (TryGetErrorCallback(callbackId, out var errorCallback13) && errorCallback13 != null)
                         {
-                            errorCallback13(new AITException("SafeAreaInsetsGetResult", apiResponse.error));
+                            errorCallback13(new AITException("SafeAreaInsets", apiResponse.error));
                         }
                     }
                     break;
@@ -731,6 +874,23 @@ namespace AppsInToss
                         if (TryGetErrorCallback(callbackId, out var errorCallback17) && errorCallback17 != null)
                         {
                             errorCallback17(new AITException("bool?", apiResponse.error));
+                        }
+                    }
+                    break;
+                case "double?":
+                    if (apiResponse.success)
+                    {
+                        if (TryGetCallback<double?>(callbackId, out var callback18) && callback18 != null)
+                        {
+                            var data18 = JsonConvert.DeserializeObject<double?>(apiResponse.data);
+                            callback18(data18);
+                        }
+                    }
+                    else
+                    {
+                        if (TryGetErrorCallback(callbackId, out var errorCallback18) && errorCallback18 != null)
+                        {
+                            errorCallback18(new AITException("double?", apiResponse.error));
                         }
                     }
                     break;
@@ -889,156 +1049,160 @@ namespace AppsInToss
                     break;
 
                 default:
-                    Debug.LogWarning($"[AITCore] Unknown callback type: {typeName}");
+                    if (!TryRouteExternalCallback(callbackId, typeName, resultJson))
+                    {
+                        Debug.LogWarning($"[AITCore] Unknown callback type: {typeName}");
+                    }
                     break;
             }
         }
-    }
 
-    /// <summary>
-    /// Callback payload from JavaScript
-    /// </summary>
-    [Serializable]
-    [Preserve]
-    public class CallbackData
-    {
+        /// <summary>
+        /// Callback payload from JavaScript
+        /// </summary>
+        [Serializable]
         [Preserve]
-        public string CallbackId = "";
-        [Preserve]
-        public string TypeName = "";
-        [Preserve]
-        public string Result = "";
-    }
+        public class CallbackData
+        {
+            [Preserve]
+            public string CallbackId = "";
+            [Preserve]
+            public string TypeName = "";
+            [Preserve]
+            public string Result = "";
+        }
 
-    // ===================================================================
-    // Nested Callback System (processProductGrant 등 options 내부 콜백)
-    // ===================================================================
+        // ===================================================================
+        // Nested Callback System (processProductGrant 등 options 내부 콜백)
+        // ===================================================================
 
-    private Dictionary<string, Delegate> _nestedCallbacks = new Dictionary<string, Delegate>();
+        private Dictionary<string, Delegate> _nestedCallbacks = new Dictionary<string, Delegate>();
 
-    /// <summary>
-    /// Register a nested callback (e.g., processProductGrant in IAPCreateOneTimePurchaseOrder)
-    /// </summary>
-    /// <param name="subscriptionId">Parent subscription ID</param>
-    /// <param name="callbackName">Callback name (e.g., "processProductGrant")</param>
-    /// <param name="callback">Callback function (Func&lt;T, bool&gt; or similar)</param>
-    public void RegisterNestedCallback<TParam, TResult>(string subscriptionId, string callbackName, Func<TParam, TResult> callback)
-    {
-        var key = $"{subscriptionId}_{callbackName}";
-        // Wrap the callback to accept JSON string and return bool
-        Func<string, bool> wrapper = (string jsonData) => {
+        /// <summary>
+        /// Register a nested callback (e.g., processProductGrant in IAPCreateOneTimePurchaseOrder)
+        /// </summary>
+        /// <param name="subscriptionId">Parent subscription ID</param>
+        /// <param name="callbackName">Callback name (e.g., "processProductGrant")</param>
+        /// <param name="callback">Callback function (Func&lt;T, bool&gt; or similar)</param>
+        public void RegisterNestedCallback<TParam, TResult>(string subscriptionId, string callbackName, Func<TParam, TResult> callback)
+        {
+            var key = $"{subscriptionId}_{callbackName}";
+            // Wrap the callback to accept JSON string and return bool
+            Func<string, bool> wrapper = (string jsonData) => {
+                try
+                {
+                    var param = JsonConvert.DeserializeObject<TParam>(jsonData);
+                    var result = callback(param);
+                    // Convert result to bool (handles bool, object, etc.)
+                    if (result is bool boolResult) return boolResult;
+                    return result != null;
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogError($"[AITCore] Nested callback error: {ex.Message}");
+                    return false;
+                }
+            };
+            _nestedCallbacks[key] = wrapper;
+            Debug.Log($"[AITCore] Registered nested callback: {key}");
+        }
+
+        /// <summary>
+        /// Remove all nested callbacks for a subscription
+        /// </summary>
+        public void RemoveNestedCallbacks(string subscriptionId)
+        {
+            var keysToRemove = new List<string>();
+            foreach (var key in _nestedCallbacks.Keys)
+            {
+                if (key.StartsWith(subscriptionId + "_"))
+                {
+                    keysToRemove.Add(key);
+                }
+            }
+            foreach (var key in keysToRemove)
+            {
+                _nestedCallbacks.Remove(key);
+                Debug.Log($"[AITCore] Removed nested callback: {key}");
+            }
+        }
+
+        /// <summary>
+        /// Called by JavaScript when a nested callback is triggered.
+        /// JavaScript waits for the result via RespondToNestedCallback.
+        /// </summary>
+        public void OnNestedCallback(string jsonPayload)
+        {
+            Debug.Log($"[AITCore] OnNestedCallback received: {jsonPayload}");
             try
             {
-                var param = JsonConvert.DeserializeObject<TParam>(jsonData);
-                var result = callback(param);
-                // Convert result to bool (handles bool, object, etc.)
-                if (result is bool boolResult) return boolResult;
-                return result != null;
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError($"[AITCore] Nested callback error: {ex.Message}");
-                return false;
-            }
-        };
-        _nestedCallbacks[key] = wrapper;
-        Debug.Log($"[AITCore] Registered nested callback: {key}");
-    }
+                var request = JsonConvert.DeserializeObject<NestedCallbackRequest>(jsonPayload);
+                var key = $"{request.CallbackId}_{request.CallbackName}";
 
-    /// <summary>
-    /// Remove all nested callbacks for a subscription
-    /// </summary>
-    public void RemoveNestedCallbacks(string subscriptionId)
-    {
-        var keysToRemove = new List<string>();
-        foreach (var key in _nestedCallbacks.Keys)
-        {
-            if (key.StartsWith(subscriptionId + "_"))
-            {
-                keysToRemove.Add(key);
-            }
-        }
-        foreach (var key in keysToRemove)
-        {
-            _nestedCallbacks.Remove(key);
-            Debug.Log($"[AITCore] Removed nested callback: {key}");
-        }
-    }
-
-    /// <summary>
-    /// Called by JavaScript when a nested callback is triggered.
-    /// JavaScript waits for the result via RespondToNestedCallback.
-    /// </summary>
-    public void OnNestedCallback(string jsonPayload)
-    {
-        Debug.Log($"[AITCore] OnNestedCallback received: {jsonPayload}");
-        try
-        {
-            var request = JsonConvert.DeserializeObject<NestedCallbackRequest>(jsonPayload);
-            var key = $"{request.CallbackId}_{request.CallbackName}";
-
-            if (_nestedCallbacks.TryGetValue(key, out var rawCallback))
-            {
-                // The stored callback is already a Func<string, bool> wrapper
-                if (rawCallback is Func<string, bool> callback)
+                if (_nestedCallbacks.TryGetValue(key, out var rawCallback))
                 {
-                    bool result = callback(request.Data);
-                    RespondToNestedCallback(request.RequestId, result);
+                    // The stored callback is already a Func<string, bool> wrapper
+                    if (rawCallback is Func<string, bool> callback)
+                    {
+                        bool result = callback(request.Data);
+                        RespondToNestedCallback(request.RequestId, result);
+                    }
+                    else
+                    {
+                        Debug.LogError($"[AITCore] Callback is not a Func<string, bool>: {rawCallback.GetType()}");
+                        RespondToNestedCallback(request.RequestId, false);
+                    }
                 }
                 else
                 {
-                    Debug.LogError($"[AITCore] Callback is not a Func<string, bool>: {rawCallback.GetType()}");
+                    Debug.LogWarning($"[AITCore] Unknown nested callback: {key}");
+                    // Return false if callback not found
                     RespondToNestedCallback(request.RequestId, false);
                 }
             }
-            else
+            catch (Exception ex)
             {
-                Debug.LogWarning($"[AITCore] Unknown nested callback: {key}");
-                // Return false if callback not found
-                RespondToNestedCallback(request.RequestId, false);
+                Debug.LogError($"[AITCore] Failed to process nested callback: {ex.Message}");
             }
         }
-        catch (Exception ex)
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __AITRespondToNestedCallback(string requestId, int result);
+#endif
+
+        /// <summary>
+        /// Send result back to JavaScript for a nested callback
+        /// </summary>
+        private void RespondToNestedCallback(string requestId, bool result)
         {
-            Debug.LogError($"[AITCore] Failed to process nested callback: {ex.Message}");
+            Debug.Log($"[AITCore] RespondToNestedCallback: {requestId} = {result}");
+#if UNITY_WEBGL && !UNITY_EDITOR
+            __AITRespondToNestedCallback(requestId, result ? 1 : 0);
+#endif
         }
-    }
 
-#if UNITY_WEBGL && !UNITY_EDITOR
-    [System.Runtime.InteropServices.DllImport("__Internal")]
-    private static extern void __AITRespondToNestedCallback(string requestId, int result);
-#endif
+        /// <summary>
+        /// Nested callback request from JavaScript
+        /// </summary>
+        [Serializable]
+        [Preserve]
+        public class NestedCallbackRequest
+        {
+            [Preserve]
+            [JsonProperty("requestId")]
+            public string RequestId = "";
+            [Preserve]
+            [JsonProperty("callbackId")]
+            public string CallbackId = "";
+            [Preserve]
+            [JsonProperty("callbackName")]
+            public string CallbackName = "";
+            [Preserve]
+            [JsonProperty("data")]
+            public string Data = "";
+        }
 
-    /// <summary>
-    /// Send result back to JavaScript for a nested callback
-    /// </summary>
-    private void RespondToNestedCallback(string requestId, bool result)
-    {
-        Debug.Log($"[AITCore] RespondToNestedCallback: {requestId} = {result}");
-#if UNITY_WEBGL && !UNITY_EDITOR
-        __AITRespondToNestedCallback(requestId, result ? 1 : 0);
-#endif
-    }
-
-    /// <summary>
-    /// Nested callback request from JavaScript
-    /// </summary>
-    [Serializable]
-    [Preserve]
-    public class NestedCallbackRequest
-    {
-        [Preserve]
-        [JsonProperty("requestId")]
-        public string RequestId = "";
-        [Preserve]
-        [JsonProperty("callbackId")]
-        public string CallbackId = "";
-        [Preserve]
-        [JsonProperty("callbackName")]
-        public string CallbackName = "";
-        [Preserve]
-        [JsonProperty("data")]
-        public string Data = "";
     }
 
     // ===================================================================

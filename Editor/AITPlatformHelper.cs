@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Text.RegularExpressions;
@@ -279,7 +280,8 @@ namespace AppsInToss.Editor
             string workingDirectory = null,
             string[] additionalPaths = null,
             int timeoutMs = 300000,
-            bool verbose = true)
+            bool verbose = true,
+            Dictionary<string, string> additionalEnvVars = null)
         {
             var result = new CommandResult();
 
@@ -296,14 +298,32 @@ namespace AppsInToss.Editor
                     // -NoLogo: 시작 배너 숨김
                     // [Console]::OutputEncoding: UTF-8 출력 설정으로 한글 등 유니코드 지원
                     string escapedCommand = EscapeForPowerShell(command);
-                    shellArgs = $"-ExecutionPolicy Bypass -NoProfile -NoLogo -Command \"[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; $env:CI = 'true'; {escapedCommand}\"";
+                    string envSetup = "$env:CI = 'true';";
+                    if (additionalEnvVars != null)
+                    {
+                        foreach (var kvp in additionalEnvVars)
+                        {
+                            string escapedValue = kvp.Value.Replace("'", "''");
+                            envSetup += $" $env:{kvp.Key} = '{escapedValue}';";
+                        }
+                    }
+                    shellArgs = $"-ExecutionPolicy Bypass -NoProfile -NoLogo -Command \"[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; {envSetup} {escapedCommand}\"";
                 }
                 else
                 {
                     shell = "/bin/bash";
                     // -l 옵션으로 로그인 셸로 실행하여 .bashrc, .bash_profile 등을 로드
                     // CI=true: pnpm이 비-TTY 환경에서 확인 프롬프트 없이 실행되도록 설정
-                    shellArgs = $"-l -c \"export CI=true && export PATH='{pathEnv}' && {command}\"";
+                    string envExports = "export CI=true";
+                    if (additionalEnvVars != null)
+                    {
+                        foreach (var kvp in additionalEnvVars)
+                        {
+                            string escapedValue = kvp.Value.Replace("'", "'\\''");
+                            envExports += $" && export {kvp.Key}='{escapedValue}'";
+                        }
+                    }
+                    shellArgs = $"-l -c \"{envExports} && export PATH='{pathEnv}' && {command}\"";
                 }
 
                 if (verbose)
@@ -341,6 +361,15 @@ namespace AppsInToss.Editor
 
                 // CI=true: pnpm이 비-TTY 환경에서 확인 프롬프트 없이 실행되도록 설정
                 processInfo.EnvironmentVariables["CI"] = "true";
+
+                // 추가 환경변수 설정
+                if (additionalEnvVars != null)
+                {
+                    foreach (var kvp in additionalEnvVars)
+                    {
+                        processInfo.EnvironmentVariables[kvp.Key] = kvp.Value;
+                    }
+                }
 
                 using (var process = new Process { StartInfo = processInfo })
                 {

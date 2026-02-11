@@ -1,6 +1,6 @@
 {
   "hooks": {
-    "preToolUse": [
+    "PreToolUse": [
       {
         "matcher": "Edit|Write",
         "hooks": [

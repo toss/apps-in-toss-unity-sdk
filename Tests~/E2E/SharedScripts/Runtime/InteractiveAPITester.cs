@@ -857,6 +857,14 @@ public class InteractiveAPITester : MonoBehaviour
             // API 호출
             object result = selectedMethod.Method.Invoke(null, parameters);
 
+            // void 반환 메서드 처리 (Firebase Analytics 등)
+            if (result == null)
+            {
+                ShowResult("Success (void)", true);
+                currentState = UIState.Result;
+                return;
+            }
+
             // Task 또는 Awaitable 대기
             var resultType = result.GetType();
             var resultTypeName = resultType.Name;

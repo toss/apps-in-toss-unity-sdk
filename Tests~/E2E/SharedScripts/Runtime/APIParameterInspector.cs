@@ -193,6 +193,9 @@ public static class APIParameterInspector
         "SafeArea",
         "Partner",
         "AppEvents",
+        "Firebase",
+        "Firebase Analytics",
+        "Firebase Auth",
         "Other"
     };
 
@@ -306,6 +309,21 @@ public static class APIParameterInspector
         { "AppsInTossEventSubscribeEntryMessageExited", "AppEvents" },
         { "GraniteEventSubscribeBackEvent", "AppEvents" },
         { "TdsEventSubscribeNavigationAccessoryEvent", "AppEvents" },
+
+        // Firebase
+        { "Initialize", "Firebase" },
+
+        // Firebase Analytics
+        { "LogEvent", "Firebase Analytics" },
+        { "SetUserId", "Firebase Analytics" },
+        { "SetUserProperties", "Firebase Analytics" },
+        { "SetAnalyticsCollectionEnabled", "Firebase Analytics" },
+
+        // Firebase Auth
+        { "SignInAnonymously", "Firebase Auth" },
+        { "SignInWithCustomToken", "Firebase Auth" },
+        { "SignOut", "Firebase Auth" },
+        { "OnAuthStateChanged", "Firebase Auth" },
     };
 
     /// <summary>
@@ -321,133 +339,139 @@ public static class APIParameterInspector
     }
 
     /// <summary>
-    /// AIT 클래스의 모든 공개 정적 메서드 정보 반환
+    /// AIT 및 AITFirebase 클래스의 모든 공개 정적 메서드 정보 반환
     /// </summary>
     public static List<APIMethodInfo> GetAllAPIMethods()
     {
         var methods = new List<APIMethodInfo>();
 
-        // AppsInToss.AIT 타입 찾기 (AppsInTossSDK 어셈블리에서)
-        Type aitType = Type.GetType("AppsInToss.AIT, AppsInTossSDK");
-        if (aitType == null)
+        // 탐색할 타입 목록 (타입명, 어셈블리명)
+        var targetTypes = new (string typeName, string assemblyName)[]
         {
-            // Fallback: 어셈블리에서 직접 검색
-            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            ("AppsInToss.AIT", "AppsInTossSDK"),
+            ("AppsInToss.Firebase.AITFirebase", "AppsInToss.Firebase"),
+        };
+
+        // APICategoryAttribute 타입 찾기
+        Type categoryAttrType = null;
+
+        foreach (var (typeName, assemblyName) in targetTypes)
+        {
+            // 타입 찾기 (지정 어셈블리에서 먼저 시도)
+            Type targetType = Type.GetType($"{typeName}, {assemblyName}");
+            if (targetType == null)
             {
-                aitType = assembly.GetType("AppsInToss.AIT");
-                if (aitType != null) break;
-            }
-        }
-
-        if (aitType == null)
-        {
-            Debug.LogError("[APIParameterInspector] Cannot find AppsInToss.AIT type");
-            return methods;
-        }
-
-        Debug.Log($"[APIParameterInspector] AIT Assembly: {aitType.Assembly.GetName().Name}");
-
-        // AIT와 같은 어셈블리에서 모든 타입 나열 (디버깅용)
-        var allTypesInAssembly = aitType.Assembly.GetTypes();
-        Debug.Log($"[APIParameterInspector] Total types in AIT assembly: {allTypesInAssembly.Length}");
-        foreach (var t in allTypesInAssembly.Where(t => t.Namespace == "AppsInToss").Take(10))
-        {
-            Debug.Log($"[APIParameterInspector]   Type: {t.FullName}");
-        }
-
-        // APICategoryAttribute 타입 찾기 (AIT와 같은 어셈블리에서)
-        // 참고: IL2CPP/WebGL에서는 reflection으로 attribute를 읽을 수 없으므로
-        // 실제 카테고리는 GetCategoryByName() 하드코딩 매핑을 사용함
-        Type categoryAttrType = aitType.Assembly.GetType("AppsInToss.APICategoryAttribute");
-
-        if (categoryAttrType == null)
-        {
-            // 모든 어셈블리에서 찾아보기
-            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
-            {
-                try
+                // Fallback: 모든 어셈블리에서 검색
+                foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
                 {
-                    var types = assembly.GetTypes().Where(t => t.Name == "APICategoryAttribute").ToArray();
-                    foreach (var t in types)
-                    {
-                        categoryAttrType = t; // 찾으면 사용
-                    }
-                }
-                catch
-                {
-                    // 일부 어셈블리는 GetTypes()가 실패할 수 있음 - 무시
+                    targetType = assembly.GetType(typeName);
+                    if (targetType != null) break;
                 }
             }
-        }
 
-        // 공개 정적 메서드만 가져오기
-        var publicMethods = aitType.GetMethods(BindingFlags.Public | BindingFlags.Static);
-
-        foreach (var method in publicMethods)
-        {
-            // 특수 메서드 제외 (get_, set_, add_, remove_ 등)
-            if (method.IsSpecialName) continue;
-
-            // Task, Task<T>, Awaitable, Awaitable<T>, 또는 Action 반환 타입만 포함 (일반 void 메서드 제외)
-            var returnTypeName = method.ReturnType.Name;
-            if (!returnTypeName.StartsWith("Task") &&
-                !returnTypeName.StartsWith("Awaitable") &&
-                !returnTypeName.StartsWith("Action")) continue;
-
-            // 카테고리 추출 (APICategoryAttribute에서)
-            string category = "Other";
-            if (categoryAttrType != null)
+            if (targetType == null)
             {
-                var attrs = method.GetCustomAttributes(categoryAttrType, false);
-                if (attrs.Length > 0)
+                // Firebase 모듈이 없는 프로젝트에서는 정상적으로 스킵
+                if (typeName.Contains("Firebase"))
                 {
-                    var categoryProp = categoryAttrType.GetProperty("Category");
-                    if (categoryProp != null)
-                    {
-                        category = categoryProp.GetValue(attrs[0]) as string ?? "Other";
-                    }
+                    Debug.Log($"[APIParameterInspector] {typeName} not found (Firebase module not installed), skipping");
                 }
                 else
                 {
-                    // 첫 번째 메서드에서만 디버그 출력
-                    if (methods.Count == 0)
+                    Debug.LogError($"[APIParameterInspector] Cannot find {typeName} type");
+                }
+                continue;
+            }
+
+            Debug.Log($"[APIParameterInspector] {typeName} Assembly: {targetType.Assembly.GetName().Name}");
+
+            bool isFirebaseType = typeName.Contains("Firebase");
+
+            // APICategoryAttribute 타입 찾기 (최초 1회)
+            if (categoryAttrType == null)
+            {
+                categoryAttrType = targetType.Assembly.GetType("AppsInToss.APICategoryAttribute");
+                if (categoryAttrType == null)
+                {
+                    foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
                     {
-                        var allAttrs = method.GetCustomAttributes(false);
-                        Debug.Log($"[APIParameterInspector] {method.Name} has {allAttrs.Length} attributes:");
-                        foreach (var attr in allAttrs)
+                        try
                         {
-                            Debug.Log($"  - {attr.GetType().FullName}");
+                            var types = assembly.GetTypes().Where(t => t.Name == "APICategoryAttribute").ToArray();
+                            foreach (var t in types)
+                            {
+                                categoryAttrType = t;
+                            }
+                        }
+                        catch
+                        {
+                            // 일부 어셈블리는 GetTypes()가 실패할 수 있음 - 무시
                         }
                     }
                 }
             }
 
-            // IL2CPP/WebGL에서는 reflection으로 attribute를 읽을 수 없으므로
-            // 항상 hardcoded 매핑 사용
-            string finalCategory = GetCategoryByName(method.Name);
+            // 공개 정적 메서드만 가져오기
+            var publicMethods = targetType.GetMethods(BindingFlags.Public | BindingFlags.Static);
 
-            var methodInfo = new APIMethodInfo
+            foreach (var method in publicMethods)
             {
-                Name = method.Name,
-                Method = method,
-                Category = finalCategory,
-                Parameters = method.GetParameters()
-                    .Select(p => new APIParameterInfo
-                    {
-                        Name = p.Name,
-                        Type = p.ParameterType,
-                        IsOptional = p.IsOptional,
-                        DefaultValue = p.DefaultValue
-                    })
-                    .ToList(),
-                ReturnType = method.ReturnType
-            };
+                // 특수 메서드 제외 (get_, set_, add_, remove_ 등)
+                if (method.IsSpecialName) continue;
 
-            methods.Add(methodInfo);
+                // 반환 타입 필터: Task, Awaitable, Action 또는 Firebase void 메서드
+                var returnTypeName = method.ReturnType.Name;
+                bool isAllowedReturnType = returnTypeName.StartsWith("Task") ||
+                                           returnTypeName.StartsWith("Awaitable") ||
+                                           returnTypeName.StartsWith("Action");
+                bool isVoidFirebaseMethod = (returnTypeName == "Void" && isFirebaseType);
+
+                if (!isAllowedReturnType && !isVoidFirebaseMethod) continue;
+
+                // 카테고리 추출 (APICategoryAttribute에서)
+                string category = "Other";
+                if (categoryAttrType != null)
+                {
+                    var attrs = method.GetCustomAttributes(categoryAttrType, false);
+                    if (attrs.Length > 0)
+                    {
+                        var categoryProp = categoryAttrType.GetProperty("Category");
+                        if (categoryProp != null)
+                        {
+                            category = categoryProp.GetValue(attrs[0]) as string ?? "Other";
+                        }
+                    }
+                }
+
+                // IL2CPP/WebGL에서는 reflection으로 attribute를 읽을 수 없으므로
+                // 항상 hardcoded 매핑 사용
+                string finalCategory = GetCategoryByName(method.Name);
+
+                var methodInfo = new APIMethodInfo
+                {
+                    Name = method.Name,
+                    Method = method,
+                    Category = finalCategory,
+                    Parameters = method.GetParameters()
+                        .Select(p => new APIParameterInfo
+                        {
+                            Name = p.Name,
+                            Type = p.ParameterType,
+                            IsOptional = p.IsOptional,
+                            DefaultValue = p.DefaultValue
+                        })
+                        .ToList(),
+                    ReturnType = method.ReturnType
+                };
+
+                methods.Add(methodInfo);
+            }
         }
 
         // 이름순 정렬
         methods.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.Ordinal));
+
+        Debug.Log($"[APIParameterInspector] Total API methods found: {methods.Count}");
 
         return methods;
     }

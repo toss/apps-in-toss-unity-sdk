@@ -1009,27 +1009,29 @@ namespace AppsInToss
         public object Error;
     }
 
-/// <summary>
-/// Stub class for LoadAdMobOptions (type definition not found in current SDK version)
-/// This class is auto-generated for SDK version compatibility
-/// </summary>
-[Serializable]
-public class LoadAdMobOptions
-{
-    // Stub class - no properties defined
-    // This type may not be available in the current SDK version
-}
+    /// <summary>
+    /// Stub class for LoadAdMobOptions (type definition not found in current SDK version)
+    /// This class is auto-generated for SDK version compatibility
+    /// </summary>
+    [Serializable]
+    [Preserve]
+    public class LoadAdMobOptions
+    {
+        // Stub class - no properties defined
+        // This type may not be available in the current SDK version
+    }
 
-/// <summary>
-/// Stub class for ShowAdMobOptions (type definition not found in current SDK version)
-/// This class is auto-generated for SDK version compatibility
-/// </summary>
-[Serializable]
-public class ShowAdMobOptions
-{
-    // Stub class - no properties defined
-    // This type may not be available in the current SDK version
-}
+    /// <summary>
+    /// Stub class for ShowAdMobOptions (type definition not found in current SDK version)
+    /// This class is auto-generated for SDK version compatibility
+    /// </summary>
+    [Serializable]
+    [Preserve]
+    public class ShowAdMobOptions
+    {
+        // Stub class - no properties defined
+        // This type may not be available in the current SDK version
+    }
 
     [Serializable]
     [Preserve]

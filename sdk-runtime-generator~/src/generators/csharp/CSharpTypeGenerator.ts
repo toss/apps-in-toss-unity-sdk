@@ -283,16 +283,17 @@ ${fields}${errorField}
     const cleanName = extractCleanName(typeName);
     const lines: string[] = [];
 
-    lines.push('/// <summary>');
-    lines.push(`/// Stub class for ${cleanName} (type definition not found in current SDK version)`);
-    lines.push('/// This class is auto-generated for SDK version compatibility');
-    lines.push('/// </summary>');
-    lines.push('[Serializable]');
-    lines.push(`public class ${cleanName}`);
-    lines.push('{');
-    lines.push('    // Stub class - no properties defined');
-    lines.push('    // This type may not be available in the current SDK version');
-    lines.push('}');
+    lines.push('    /// <summary>');
+    lines.push(`    /// Stub class for ${cleanName} (type definition not found in current SDK version)`);
+    lines.push('    /// This class is auto-generated for SDK version compatibility');
+    lines.push('    /// </summary>');
+    lines.push('    [Serializable]');
+    lines.push('    [Preserve]');
+    lines.push(`    public class ${cleanName}`);
+    lines.push('    {');
+    lines.push('        // Stub class - no properties defined');
+    lines.push('        // This type may not be available in the current SDK version');
+    lines.push('    }');
 
     return lines.join('\n');
   }

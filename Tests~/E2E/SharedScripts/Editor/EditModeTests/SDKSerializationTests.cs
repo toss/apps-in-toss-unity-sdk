@@ -31,6 +31,14 @@ public class SDKSerializationTests
     [TestCase(typeof(SetDeviceOrientationOptionsType), "Landscape")]
     [TestCase(typeof(HapticFeedbackType), "Tap")]
     [TestCase(typeof(Accuracy), "Balanced")]
+    [TestCase(typeof(NetworkStatus), "_4G")]
+    [TestCase(typeof(NetworkStatus), "_3G")]
+    [TestCase(typeof(NetworkStatus), "_2G")]
+    [TestCase(typeof(NetworkStatus), "_5G")]
+    [TestCase(typeof(NetworkStatus), "WIFI")]
+    [TestCase(typeof(NetworkStatus), "OFFLINE")]
+    [TestCase(typeof(NetworkStatus), "WWAN")]
+    [TestCase(typeof(NetworkStatus), "UNKNOWN")]
     public void EnumSerialization_RoundTrip(Type enumType, string valueName)
     {
         var enumValue = Enum.Parse(enumType, valueName);
@@ -44,6 +52,29 @@ public class SDKSerializationTests
         var deserialized = JsonConvert.DeserializeObject(json, enumType, settings);
         Assert.AreEqual(enumValue, deserialized,
             $"Round-trip failed for {enumType.Name}.{valueName}: serialized={json}");
+    }
+
+    // =====================================================
+    // JS 브릿지 응답 값으로 직접 역직렬화 테스트 (EnumMember Value 기반)
+    // =====================================================
+
+    [TestCase(typeof(NetworkStatus), "4G")]
+    [TestCase(typeof(NetworkStatus), "3G")]
+    [TestCase(typeof(NetworkStatus), "2G")]
+    [TestCase(typeof(NetworkStatus), "5G")]
+    [TestCase(typeof(NetworkStatus), "WIFI")]
+    [TestCase(typeof(NetworkStatus), "OFFLINE")]
+    [TestCase(typeof(NetworkStatus), "WWAN")]
+    [TestCase(typeof(NetworkStatus), "UNKNOWN")]
+    [TestCase(typeof(PermissionStatus), "notDetermined")]
+    [TestCase(typeof(PermissionStatus), "denied")]
+    [TestCase(typeof(PermissionStatus), "allowed")]
+    public void EnumDeserialization_FromEnumMemberValue(Type enumType, string jsonValue)
+    {
+        // JS 브릿지가 보내는 실제 문자열(예: "4G")로 역직렬화 가능한지 검증
+        var json = $"\"{jsonValue}\"";
+        var result = JsonConvert.DeserializeObject(json, enumType, settings);
+        Assert.IsNotNull(result, $"Failed to deserialize \"{jsonValue}\" to {enumType.Name}");
     }
 
     // =====================================================

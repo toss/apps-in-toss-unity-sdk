@@ -535,9 +535,19 @@ jobs:
         with:
           version: 9
 
+      - name: Checkout (버전 참조용)
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.create-release-tag.outputs.tag_name }}
+          sparse-checkout: |
+            WebGLTemplates/AITTemplate/BuildConfig~/package.json
+          sparse-checkout-cone-mode: false
+
       - name: Install AIT CLI
         run: |
-          pnpm install -g @apps-in-toss/web-framework
+          WF_VERSION=$(node -p "require('./WebGLTemplates/AITTemplate/BuildConfig~/package.json').dependencies['@apps-in-toss/web-framework']")
+          echo "Installing @apps-in-toss/web-framework@${WF_VERSION}"
+          pnpm install -g "@apps-in-toss/web-framework@${WF_VERSION}"
           ait --version || echo "AIT CLI installed"
 
       - name: AIT 빌드 결과물 다운로드

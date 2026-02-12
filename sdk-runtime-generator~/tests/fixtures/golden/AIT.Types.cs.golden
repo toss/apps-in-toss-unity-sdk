@@ -945,6 +945,24 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
+    public class LoadAdMobOptions
+    {
+        [Preserve]
+        [JsonProperty("adGroupId")]
+        public string AdGroupId;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class ShowAdMobOptions
+    {
+        [Preserve]
+        [JsonProperty("adGroupId")]
+        public string AdGroupId;
+    }
+
+    [Serializable]
+    [Preserve]
     public class TossAdsAttachOptions
     {
         [Preserve]
@@ -1007,30 +1025,6 @@ namespace AppsInToss
         [Preserve]
         [JsonProperty("error")]
         public object Error;
-    }
-
-    /// <summary>
-    /// Stub class for LoadAdMobOptions (type definition not found in current SDK version)
-    /// This class is auto-generated for SDK version compatibility
-    /// </summary>
-    [Serializable]
-    [Preserve]
-    public class LoadAdMobOptions
-    {
-        // Stub class - no properties defined
-        // This type may not be available in the current SDK version
-    }
-
-    /// <summary>
-    /// Stub class for ShowAdMobOptions (type definition not found in current SDK version)
-    /// This class is auto-generated for SDK version compatibility
-    /// </summary>
-    [Serializable]
-    [Preserve]
-    public class ShowAdMobOptions
-    {
-        // Stub class - no properties defined
-        // This type may not be available in the current SDK version
     }
 
     [Serializable]

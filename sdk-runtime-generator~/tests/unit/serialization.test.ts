@@ -309,6 +309,44 @@ describe('Tier 3: JSON 스키마 일치성 검증', () => {
     });
   });
 
+  describe('Enum 콜백 역직렬화 안전성', () => {
+    test('EnumMember Value와 C# 식별자가 다른 enum이 있으면 enum 콜백에서 Enum.TryParse를 사용하면 안 됨', () => {
+      // 1. AIT.Types.cs에서 [EnumMember(Value = "X")] Y 패턴 추출
+      const enumMemberRegex = /\[EnumMember\(Value\s*=\s*"([^"]+)"\)\]\s*(\w+)/g;
+      const matches = [...typesFileContent.matchAll(enumMemberRegex)];
+      expect(matches.length).toBeGreaterThan(0);
+
+      // 2. Value ≠ C# 식별자인 케이스 탐지 (예: "4G" vs _4G)
+      const mismatchedEnums = matches.filter(
+        ([_, value, identifier]) => value !== identifier
+      );
+
+      console.log(`✅ EnumMember 총 ${matches.length}개, Value≠식별자: ${mismatchedEnums.length}개`);
+      if (mismatchedEnums.length > 0) {
+        console.log(
+          `   불일치 목록: ${mismatchedEnums.map(([_, v, id]) => `"${v}" → ${id}`).join(', ')}`
+        );
+      }
+
+      // 3. 불일치 케이스가 존재하면, AITCore.cs에서 Enum.TryParse 사용 여부 검사
+      if (mismatchedEnums.length > 0) {
+        const coreFile = allCSharpFiles.get('AITCore.cs');
+        expect(coreFile).toBeDefined();
+
+        const usesEnumTryParse = coreFile!.includes('Enum.TryParse');
+        if (usesEnumTryParse) {
+          throw new Error(
+            'AITCore.cs에서 Enum.TryParse를 사용하고 있습니다.\n' +
+              'Enum.TryParse는 C# 멤버 이름만 인식하고 [EnumMember] 어트리뷰트를 무시하므로,\n' +
+              `Value≠식별자인 enum(${mismatchedEnums.map(([_, v, id]) => `"${v}"→${id}`).join(', ')})에서 파싱이 실패합니다.\n` +
+              'JsonConvert.DeserializeObject를 사용하세요.'
+          );
+        }
+        console.log('✅ AITCore.cs에서 Enum.TryParse 미사용 확인');
+      }
+    });
+  });
+
   describe('JSON 직렬화 옵션', () => {
     test('AITCore.cs에 JsonSerializerSettings가 정의되어야 함', () => {
       const coreFile = allCSharpFiles.get('AITCore.cs');

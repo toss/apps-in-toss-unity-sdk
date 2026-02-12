@@ -135,7 +135,7 @@ mergeInto(LibraryManager.library, {
         console.log('[AIT jslib] GoogleAdMobIsAppsInTossAdMobLoaded raw param args_0:', UTF8ToString(args_0));
 
         try {
-            var promiseResult = window.AppsInToss.GoogleAdMob.isAppsInTossAdMobLoaded(args_0);
+            var promiseResult = window.AppsInToss.GoogleAdMob.isAppsInTossAdMobLoaded(JSON.parse(UTF8ToString(args_0)));
             console.log('[AIT jslib] isAppsInTossAdMobLoaded returned:', promiseResult, 'isPromise:', promiseResult && typeof promiseResult.then === 'function');
 
             if (!promiseResult || typeof promiseResult.then !== 'function') {
@@ -177,128 +177,6 @@ mergeInto(LibraryManager.library, {
                 Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
             });
             SendMessage('AITCore', 'OnAITCallback', payload);
-        }
-    },
-
-    __loadFullScreenAd_Internal: function(adGroupId, subscriptionId, typeName) {
-        var subId = UTF8ToString(subscriptionId);
-        var typeNameStr = UTF8ToString(typeName);
-
-        var adGroupIdVal = UTF8ToString(adGroupId);
-
-        console.log('[AIT jslib] loadFullScreenAd called, id:', subId);
-
-        try {
-            var unsubscribe = window.AppsInToss.loadFullScreenAd({
-                options: { adGroupId: adGroupIdVal },
-                onEvent: function(data) {
-                    console.log('[AIT jslib] loadFullScreenAd event:', data);
-                    var payload = JSON.stringify({
-                        CallbackId: subId,
-                        TypeName: typeNameStr,
-                        Result: JSON.stringify({
-                            success: true,
-                            data: JSON.stringify(data || {}),
-                            error: ''
-                        })
-                    });
-                    SendMessage('AITCore', 'OnAITEventCallback', payload);
-                },
-                onError: function(error) {
-                    console.log('[AIT jslib] loadFullScreenAd error:', error);
-                    var errorMessage = error instanceof Error ? error.message : String(error);
-                    var payload = JSON.stringify({
-                        CallbackId: subId,
-                        TypeName: typeNameStr,
-                        Result: JSON.stringify({
-                            success: false,
-                            data: '',
-                            error: errorMessage
-                        })
-                    });
-                    SendMessage('AITCore', 'OnAITEventCallback', payload);
-                }
-            });
-
-            if (!window.__AIT_SUBSCRIPTIONS) {
-                window.__AIT_SUBSCRIPTIONS = {};
-            }
-            window.__AIT_SUBSCRIPTIONS[subId] = unsubscribe;
-
-        } catch (error) {
-            console.error('[AIT jslib] loadFullScreenAd error:', error);
-            var errorMessage = error instanceof Error ? error.message : String(error);
-            var payload = JSON.stringify({
-                CallbackId: subId,
-                TypeName: typeNameStr,
-                Result: JSON.stringify({
-                    success: false,
-                    data: '',
-                    error: errorMessage
-                })
-            });
-            SendMessage('AITCore', 'OnAITEventCallback', payload);
-        }
-    },
-
-    __showFullScreenAd_Internal: function(adGroupId, subscriptionId, typeName) {
-        var subId = UTF8ToString(subscriptionId);
-        var typeNameStr = UTF8ToString(typeName);
-
-        var adGroupIdVal = UTF8ToString(adGroupId);
-
-        console.log('[AIT jslib] showFullScreenAd called, id:', subId);
-
-        try {
-            var unsubscribe = window.AppsInToss.showFullScreenAd({
-                options: { adGroupId: adGroupIdVal },
-                onEvent: function(data) {
-                    console.log('[AIT jslib] showFullScreenAd event:', data);
-                    var payload = JSON.stringify({
-                        CallbackId: subId,
-                        TypeName: typeNameStr,
-                        Result: JSON.stringify({
-                            success: true,
-                            data: JSON.stringify(data || {}),
-                            error: ''
-                        })
-                    });
-                    SendMessage('AITCore', 'OnAITEventCallback', payload);
-                },
-                onError: function(error) {
-                    console.log('[AIT jslib] showFullScreenAd error:', error);
-                    var errorMessage = error instanceof Error ? error.message : String(error);
-                    var payload = JSON.stringify({
-                        CallbackId: subId,
-                        TypeName: typeNameStr,
-                        Result: JSON.stringify({
-                            success: false,
-                            data: '',
-                            error: errorMessage
-                        })
-                    });
-                    SendMessage('AITCore', 'OnAITEventCallback', payload);
-                }
-            });
-
-            if (!window.__AIT_SUBSCRIPTIONS) {
-                window.__AIT_SUBSCRIPTIONS = {};
-            }
-            window.__AIT_SUBSCRIPTIONS[subId] = unsubscribe;
-
-        } catch (error) {
-            console.error('[AIT jslib] showFullScreenAd error:', error);
-            var errorMessage = error instanceof Error ? error.message : String(error);
-            var payload = JSON.stringify({
-                CallbackId: subId,
-                TypeName: typeNameStr,
-                Result: JSON.stringify({
-                    success: false,
-                    data: '',
-                    error: errorMessage
-                })
-            });
-            SendMessage('AITCore', 'OnAITEventCallback', payload);
         }
     },
 

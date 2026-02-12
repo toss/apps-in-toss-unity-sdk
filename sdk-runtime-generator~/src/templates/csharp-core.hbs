@@ -496,19 +496,24 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<{{this}}>(callbackId, out var enumCb_{{this}}) && enumCb_{{this}} != null)
                         {
-                            // enum 파싱: 문자열에서 따옴표 제거 후 Enum.TryParse
-                            var enumStr_{{this}} = apiResponse.data.Trim().Trim('"');
-                            if (Enum.TryParse<{{this}}>(enumStr_{{this}}, true, out var enumVal_{{this}}))
+                            try
                             {
+                                // enum 파싱: JsonConvert로 EnumMember 어트리뷰트 인식 (숫자 시작 enum 지원)
+                                var enumStr_{{this}} = apiResponse.data.Trim();
+                                if (!enumStr_{{this}}.StartsWith("\""))
+                                {
+                                    enumStr_{{this}} = "\"" + enumStr_{{this}} + "\"";
+                                }
+                                var enumVal_{{this}} = JsonConvert.DeserializeObject<{{this}}>(enumStr_{{this}}, AITJsonSettings.Default);
                                 enumCb_{{this}}(enumVal_{{this}});
                             }
-                            else
+                            catch (Exception ex_{{this}})
                             {
-                                Debug.LogWarning("[AITCore] Failed to parse enum {{this}}: " + enumStr_{{this}});
+                                Debug.LogWarning("[AITCore] Failed to parse enum {{this}}: " + apiResponse.data + " (" + ex_{{this}}.Message + ")");
                                 // 파싱 실패 시 에러 콜백 호출하여 Task 완료
                                 if (TryGetErrorCallback(callbackId, out var parseErrCb_{{this}}) && parseErrCb_{{this}} != null)
                                 {
-                                    parseErrCb_{{this}}(new AITException("{{this}}", "Failed to parse enum value: " + enumStr_{{this}}));
+                                    parseErrCb_{{this}}(new AITException("{{this}}", "Failed to parse enum value: " + apiResponse.data));
                                 }
                             }
                         }

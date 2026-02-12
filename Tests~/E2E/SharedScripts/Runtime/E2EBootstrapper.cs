@@ -105,6 +105,17 @@ public static class E2EBootstrapper
             Debug.Log("[E2EBootstrapper] Added SerializationTester component (waiting for trigger)");
         }
 
+        // FirebaseAPITester 추가 (Test 6용)
+        if (benchmarkManager.GetComponent<FirebaseAPITester>() == null)
+        {
+            var firebaseTester = benchmarkManager.AddComponent<FirebaseAPITester>();
+            firebaseTester.autoRunOnStart = false;  // JavaScript에서 트리거
+            firebaseTester.startDelay = 0f;
+            firebaseTester.showUI = true;
+            firebaseTester.showDetailedResults = false;
+            Debug.Log("[E2EBootstrapper] Added FirebaseAPITester component");
+        }
+
         // E2ETestTrigger 추가 (JavaScript → Unity 테스트 트리거용)
         if (benchmarkManager.GetComponent<E2ETestTrigger>() == null)
         {
@@ -207,6 +218,23 @@ public class E2ETestTrigger : MonoBehaviour
         else
         {
             Debug.LogError("[E2ETestTrigger] SerializationTester component not found!");
+        }
+    }
+
+    /// <summary>
+    /// JavaScript에서 호출: window.TriggerFirebaseTest()
+    /// </summary>
+    public void TriggerFirebaseTest()
+    {
+        Debug.Log("[E2ETestTrigger] Firebase Test triggered from JavaScript");
+        var tester = GetComponent<FirebaseAPITester>();
+        if (tester != null)
+        {
+            tester.RunFirebaseTests();
+        }
+        else
+        {
+            Debug.LogError("[E2ETestTrigger] FirebaseAPITester component not found!");
         }
     }
 

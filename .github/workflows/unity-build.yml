@@ -66,6 +66,11 @@ on:
         type: string
         required: false
         default: '2'
+      enable-firebase:
+        description: 'Enable Firebase integration testing'
+        type: boolean
+        required: false
+        default: false
     secrets:
       AIT_AD_INTERSTITIAL_ID:
         description: 'Interstitial ad ID for testing'
@@ -75,6 +80,30 @@ on:
         required: false
       SENTRY_DSN:
         description: 'Sentry DSN for error reporting'
+        required: false
+      AIT_FIREBASE_API_KEY:
+        description: 'Firebase API key'
+        required: false
+      AIT_FIREBASE_PROJECT_ID:
+        description: 'Firebase project ID'
+        required: false
+      AIT_FIREBASE_APP_ID:
+        description: 'Firebase app ID'
+        required: false
+      AIT_FIREBASE_AUTH_DOMAIN:
+        description: 'Firebase auth domain'
+        required: false
+      AIT_FIREBASE_STORAGE_BUCKET:
+        description: 'Firebase storage bucket'
+        required: false
+      AIT_FIREBASE_MESSAGING_SENDER_ID:
+        description: 'Firebase messaging sender ID'
+        required: false
+      AIT_FIREBASE_MEASUREMENT_ID:
+        description: 'Firebase measurement ID'
+        required: false
+      AIT_FIREBASE_DATABASE_URL:
+        description: 'Firebase database URL'
         required: false
     outputs:
       artifact-name:
@@ -845,6 +874,15 @@ jobs:
         env:
           AIT_DEBUG_CONSOLE: "true"
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          AIT_ENABLE_FIREBASE: ${{ inputs.enable-firebase && 'true' || 'false' }}
+          AIT_FIREBASE_API_KEY: ${{ secrets.AIT_FIREBASE_API_KEY }}
+          AIT_FIREBASE_PROJECT_ID: ${{ secrets.AIT_FIREBASE_PROJECT_ID }}
+          AIT_FIREBASE_APP_ID: ${{ secrets.AIT_FIREBASE_APP_ID }}
+          AIT_FIREBASE_AUTH_DOMAIN: ${{ secrets.AIT_FIREBASE_AUTH_DOMAIN }}
+          AIT_FIREBASE_STORAGE_BUCKET: ${{ secrets.AIT_FIREBASE_STORAGE_BUCKET }}
+          AIT_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.AIT_FIREBASE_MESSAGING_SENDER_ID }}
+          AIT_FIREBASE_MEASUREMENT_ID: ${{ secrets.AIT_FIREBASE_MEASUREMENT_ID }}
+          AIT_FIREBASE_DATABASE_URL: ${{ secrets.AIT_FIREBASE_DATABASE_URL }}
         with:
           timeout_minutes: 30
           max_attempts: 3
@@ -890,6 +928,15 @@ jobs:
         env:
           AIT_DEBUG_CONSOLE: "true"
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          AIT_ENABLE_FIREBASE: ${{ inputs.enable-firebase && 'true' || 'false' }}
+          AIT_FIREBASE_API_KEY: ${{ secrets.AIT_FIREBASE_API_KEY }}
+          AIT_FIREBASE_PROJECT_ID: ${{ secrets.AIT_FIREBASE_PROJECT_ID }}
+          AIT_FIREBASE_APP_ID: ${{ secrets.AIT_FIREBASE_APP_ID }}
+          AIT_FIREBASE_AUTH_DOMAIN: ${{ secrets.AIT_FIREBASE_AUTH_DOMAIN }}
+          AIT_FIREBASE_STORAGE_BUCKET: ${{ secrets.AIT_FIREBASE_STORAGE_BUCKET }}
+          AIT_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.AIT_FIREBASE_MESSAGING_SENDER_ID }}
+          AIT_FIREBASE_MEASUREMENT_ID: ${{ secrets.AIT_FIREBASE_MEASUREMENT_ID }}
+          AIT_FIREBASE_DATABASE_URL: ${{ secrets.AIT_FIREBASE_DATABASE_URL }}
         with:
           timeout_minutes: 30
           max_attempts: 3
@@ -1161,6 +1208,7 @@ jobs:
           UNITY_PROJECT_PATH: ${{ github.workspace }}/Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}
           MOBILE_EMULATION: "true"
           TEST_LEVEL: ${{ inputs.test-level || '2' }}
+          AIT_ENABLE_FIREBASE: ${{ inputs.enable-firebase && 'true' || 'false' }}
         run: pnpm test
 
       - name: Run E2E Tests (Windows - Full)
@@ -1171,6 +1219,7 @@ jobs:
           UNITY_PROJECT_PATH: ${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ inputs.unity-version }}
           MOBILE_EMULATION: "true"
           TEST_LEVEL: ${{ inputs.test-level || '2' }}
+          AIT_ENABLE_FIREBASE: ${{ inputs.enable-firebase && 'true' || 'false' }}
           # Use job-local Playwright cache to avoid race conditions between parallel runners
           PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}\.playwright-browsers
         run: pnpm test

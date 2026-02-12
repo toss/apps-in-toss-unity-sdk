@@ -3,7 +3,8 @@
     "rootNamespace": "",
     "references": [
         "AppsInTossSDK",
-        "AppsInToss.Helpers"
+        "AppsInToss.Helpers",
+        "AppsInToss.Firebase"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

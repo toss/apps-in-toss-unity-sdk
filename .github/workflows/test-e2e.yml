@@ -26,6 +26,10 @@ on:
           - '1'
           - '0'
         default: '2'
+      enable_firebase:
+        description: 'Enable Firebase integration testing'
+        type: boolean
+        default: false
 
   # update.yml에서 호출
   workflow_call:
@@ -48,6 +52,11 @@ on:
         type: string
         required: false
         default: '2'
+      enable_firebase:
+        description: 'Enable Firebase integration testing'
+        type: boolean
+        required: false
+        default: false
 
 concurrency:
   group: e2e-tests-${{ inputs.target_ref || github.ref_name }}
@@ -219,8 +228,17 @@ jobs:
       clean-library: ${{ inputs.clean_library || false }}
       sdk-version-override: ${{ inputs.sdk_version_override || '' }}
       test-level: ${{ inputs.test_level || '2' }}
+      enable-firebase: ${{ inputs.enable_firebase || false }}
     secrets:
       SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+      AIT_FIREBASE_API_KEY: ${{ secrets.AIT_FIREBASE_API_KEY }}
+      AIT_FIREBASE_PROJECT_ID: ${{ secrets.AIT_FIREBASE_PROJECT_ID }}
+      AIT_FIREBASE_APP_ID: ${{ secrets.AIT_FIREBASE_APP_ID }}
+      AIT_FIREBASE_AUTH_DOMAIN: ${{ secrets.AIT_FIREBASE_AUTH_DOMAIN }}
+      AIT_FIREBASE_STORAGE_BUCKET: ${{ secrets.AIT_FIREBASE_STORAGE_BUCKET }}
+      AIT_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.AIT_FIREBASE_MESSAGING_SENDER_ID }}
+      AIT_FIREBASE_MEASUREMENT_ID: ${{ secrets.AIT_FIREBASE_MEASUREMENT_ID }}
+      AIT_FIREBASE_DATABASE_URL: ${{ secrets.AIT_FIREBASE_DATABASE_URL }}
 
   # =====================================================
   # E2E Tests - Windows (전체 테스트 실행)
@@ -247,8 +265,17 @@ jobs:
       clean-library: ${{ inputs.clean_library || false }}
       sdk-version-override: ${{ inputs.sdk_version_override || '' }}
       test-level: ${{ inputs.test_level || '2' }}
+      enable-firebase: ${{ inputs.enable_firebase || false }}
     secrets:
       SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+      AIT_FIREBASE_API_KEY: ${{ secrets.AIT_FIREBASE_API_KEY }}
+      AIT_FIREBASE_PROJECT_ID: ${{ secrets.AIT_FIREBASE_PROJECT_ID }}
+      AIT_FIREBASE_APP_ID: ${{ secrets.AIT_FIREBASE_APP_ID }}
+      AIT_FIREBASE_AUTH_DOMAIN: ${{ secrets.AIT_FIREBASE_AUTH_DOMAIN }}
+      AIT_FIREBASE_STORAGE_BUCKET: ${{ secrets.AIT_FIREBASE_STORAGE_BUCKET }}
+      AIT_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.AIT_FIREBASE_MESSAGING_SENDER_ID }}
+      AIT_FIREBASE_MEASUREMENT_ID: ${{ secrets.AIT_FIREBASE_MEASUREMENT_ID }}
+      AIT_FIREBASE_DATABASE_URL: ${{ secrets.AIT_FIREBASE_DATABASE_URL }}
 
   # =====================================================
   # Test Report Summary

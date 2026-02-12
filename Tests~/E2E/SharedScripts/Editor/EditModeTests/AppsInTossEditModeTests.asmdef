@@ -4,6 +4,7 @@
     "references": [
         "AppsInTossSDK",
         "AppsInToss.Helpers",
+        "AppsInToss.Firebase",
         "AppsInTossTestScripts"
     ],
     "includePlatforms": [

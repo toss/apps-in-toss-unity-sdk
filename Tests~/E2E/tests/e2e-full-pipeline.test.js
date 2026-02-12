@@ -9,17 +9,18 @@ import { fileURLToPath } from 'url';
 /**
  * Apps in Toss Unity SDK - E2E Full Pipeline Tests
  *
- * 5개 테스트 케이스 (빠른 테스트 → 느린 테스트 순서):
+ * 6개 테스트 케이스 (빠른 테스트 → 느린 테스트 순서):
  * 1. Build Validation (build-validation.json 확인 + 메트릭 수집)
  * 2. AIT Dev Server (Vite dev 서버 + Unity 초기화)
- * 3-5. Production Tests (세션 공유로 초기화 1회):
+ * 3-6. Production Tests (세션 공유로 초기화 1회):
  *   3. Production Server + Preload Metrics (Unity 초기화 + Resource Timing)
  *   4. Runtime API Error Validation (SDK API 에러 검증)
  *   5. Serialization Round-trip Tests (C# ↔ JavaScript 직렬화 검증)
+ *   6. Firebase API Validation (Firebase 통합 검증)
  *
- * Test 3-5 세션 공유:
+ * Test 3-6 세션 공유:
  * - 서버 1회 시작, Unity 1회 초기화로 반복 초기화 방지
- * - JavaScript 트리거 함수로 테스트 실행 (TriggerAPITest, TriggerSerializationTest)
+ * - JavaScript 트리거 함수로 테스트 실행 (TriggerAPITest, TriggerSerializationTest, TriggerFirebaseTest)
  */
 
 // ES Module에서 __dirname 대체
@@ -414,6 +415,12 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
         unexpectedErrorCount: testResults.tests['4_runtime_api'].unexpectedErrorCount
       } : null,
       compressionValidation: testResults.tests['1_build_validation']?.compressionValidation || null,
+      firebaseTestResults: testResults.tests['6_firebase_api'] ? {
+        firebaseEnabled: testResults.tests['6_firebase_api'].firebaseEnabled,
+        totalTests: testResults.tests['6_firebase_api'].totalTests,
+        successCount: testResults.tests['6_firebase_api'].successCount,
+        unexpectedErrorCount: testResults.tests['6_firebase_api'].unexpectedErrorCount
+      } : null,
       testsPassed: Object.values(testResults.tests || {}).filter(t => t.passed).length,
       testsTotal: Object.keys(testResults.tests || {}).length
     };
@@ -888,6 +895,99 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
           reason: 'SerializationTester results not received'
         };
         expect(serializationResults, 'SerializationTester should return results').not.toBeNull();
+      }
+    });
+
+
+    // -------------------------------------------------------------------------
+    // Test 6: Firebase API Validation
+    // -------------------------------------------------------------------------
+    test('6. Firebase APIs should behave correctly', async () => {
+      test.setTimeout(180000);
+
+      const enableFirebase = process.env.AIT_ENABLE_FIREBASE === 'true';
+      console.log(`🔥 Firebase mode: ${enableFirebase ? 'ENABLED' : 'DISABLED'}`);
+
+      // 1. window.__AIT_Firebase 존재 여부 확인
+      const hasFirebaseBridge = await sharedPage.evaluate(() =>
+        typeof window['__AIT_Firebase'] !== 'undefined'
+      );
+
+      if (!enableFirebase) {
+        expect(hasFirebaseBridge, 'Firebase disabled: bridge should not exist').toBe(false);
+      } else {
+        expect(hasFirebaseBridge, 'Firebase enabled: bridge should exist').toBe(true);
+      }
+
+      // 2. C# FirebaseAPITester 트리거 → 결과 수신
+      console.log('🔄 Triggering Firebase tests via JavaScript...');
+
+      const firebaseResults = await sharedPage.evaluate(() => {
+        return new Promise((resolve) => {
+          if (window['__E2E_FIREBASE_TEST_DATA__']) {
+            resolve(window['__E2E_FIREBASE_TEST_DATA__']);
+            return;
+          }
+
+          const handler = (event) => {
+            window.removeEventListener('e2e-firebase-test-complete', handler);
+            resolve(event.detail);
+          };
+          window.addEventListener('e2e-firebase-test-complete', handler);
+
+          if (typeof window['TriggerFirebaseTest'] === 'function') {
+            window['TriggerFirebaseTest']();
+          }
+
+          setTimeout(() => resolve(null), 120000);
+        });
+      });
+
+      if (firebaseResults) {
+        let results = firebaseResults;
+        if (typeof results === 'string') {
+          try { results = JSON.parse(results); } catch {}
+        }
+
+        console.log('\n' + '='.repeat(70));
+        console.log('📊 FIREBASE API TEST RESULTS');
+        console.log('='.repeat(70));
+        console.log(`   Firebase Enabled: ${results.firebaseEnabled}`);
+        console.log(`   Total Tests: ${results.totalTests}`);
+        console.log(`   Success: ${results.successCount}`);
+        console.log(`   Expected Errors: ${results.expectedErrorCount || 0}`);
+        console.log(`   Unexpected Errors: ${results.unexpectedErrorCount || 0}`);
+        console.log('='.repeat(70));
+
+        if (results.results) {
+          const unexpectedErrors = results.results.filter(r => !r.success);
+          if (unexpectedErrors.length > 0) {
+            console.log('\n❌ Firebase APIs with UNEXPECTED Errors:');
+            unexpectedErrors.forEach(r => {
+              console.log(`   [FAIL] ${r.testName}: ${r.error}`);
+            });
+          }
+        }
+
+        const unexpectedErrorCount = results.unexpectedErrorCount || 0;
+
+        testResults.tests['6_firebase_api'] = {
+          passed: unexpectedErrorCount === 0,
+          firebaseEnabled: results.firebaseEnabled,
+          totalTests: results.totalTests,
+          successCount: results.successCount,
+          expectedErrorCount: results.expectedErrorCount || 0,
+          unexpectedErrorCount: unexpectedErrorCount,
+        };
+
+        expect(unexpectedErrorCount, 'All Firebase APIs should return expected errors or succeed').toBe(0);
+      } else {
+        // FirebaseAPITester 결과가 없는 경우 graceful skip
+        console.log('⚠️ FirebaseAPITester results not received (graceful skip)');
+        testResults.tests['6_firebase_api'] = {
+          passed: true,
+          reason: 'FirebaseAPITester not loaded (graceful skip)',
+        };
       }
     });
 

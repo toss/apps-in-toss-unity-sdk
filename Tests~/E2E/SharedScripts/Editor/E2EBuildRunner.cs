@@ -87,6 +87,26 @@ public class E2EBuildRunner
         config.viteHost = GetEnvString("AIT_VITE_HOST", "localhost");
         config.vitePort = GetEnvInt("AIT_VITE_PORT", 5173 + portOffset);
         Debug.Log($"✓ Server config: Granite={config.graniteHost}:{config.granitePort}, Vite={config.viteHost}:{config.vitePort}");
+        // Firebase 환경변수 처리
+        string enableFirebaseEnv = System.Environment.GetEnvironmentVariable("AIT_ENABLE_FIREBASE");
+        if (enableFirebaseEnv?.ToLower() == "true")
+        {
+            config.enableFirebase = true;
+            config.firebaseApiKey = GetEnvString("AIT_FIREBASE_API_KEY", "");
+            config.firebaseProjectId = GetEnvString("AIT_FIREBASE_PROJECT_ID", "");
+            config.firebaseAppId = GetEnvString("AIT_FIREBASE_APP_ID", "");
+            config.firebaseAuthDomain = GetEnvString("AIT_FIREBASE_AUTH_DOMAIN", "");
+            config.firebaseStorageBucket = GetEnvString("AIT_FIREBASE_STORAGE_BUCKET", "");
+            config.firebaseMessagingSenderId = GetEnvString("AIT_FIREBASE_MESSAGING_SENDER_ID", "");
+            config.firebaseMeasurementId = GetEnvString("AIT_FIREBASE_MEASUREMENT_ID", "");
+            config.firebaseDatabaseURL = GetEnvString("AIT_FIREBASE_DATABASE_URL", "");
+            Debug.Log($"✓ Firebase enabled (project: {config.firebaseProjectId})");
+        }
+        else
+        {
+            Debug.Log("✓ Firebase disabled (default)");
+        }
+
         EditorUtility.SetDirty(config);
         AssetDatabase.SaveAssets();
         Debug.Log("✓ SDK config updated");

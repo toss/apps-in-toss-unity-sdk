@@ -441,6 +441,24 @@ export function parseNativeModulesType(typeName: string): ParsedTypeDefinition |
     if (result) return result;
   }
 
+  // 3. @apps-in-toss/types에서도 찾기 (SDK 하위호환성: web-framework에서 제거된 타입)
+  let typesPath: string | null = null;
+  for (const dir of pnpmDirs) {
+    if (dir.startsWith('@apps-in-toss+types')) {
+      const basePath = path.join(pnpmPath, dir, 'node_modules', '@apps-in-toss', 'types', 'dist');
+      const indexPath = path.join(basePath, 'index.d.ts');
+      if (fs.existsSync(indexPath)) {
+        typesPath = indexPath;
+        break;
+      }
+    }
+  }
+
+  if (typesPath) {
+    const result = parseTypeFromFile(typesPath, actualTypeName, typeName);
+    if (result) return result;
+  }
+
   return null;
 }
 

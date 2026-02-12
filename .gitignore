@@ -122,6 +122,9 @@ tools.meta
 # AI Assistant files
 CLAUDE.md.meta
 
+# Docs meta files (문서는 GUID 안정성 불필요)
+Docs/*.meta
+
 # Unity License files (sensitive)
 *.alf
 *.ulf

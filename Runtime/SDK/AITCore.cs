@@ -829,19 +829,24 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<NetworkStatus>(callbackId, out var enumCb_NetworkStatus) && enumCb_NetworkStatus != null)
                         {
-                            // enum 파싱: 문자열에서 따옴표 제거 후 Enum.TryParse
-                            var enumStr_NetworkStatus = apiResponse.data.Trim().Trim('"');
-                            if (Enum.TryParse<NetworkStatus>(enumStr_NetworkStatus, true, out var enumVal_NetworkStatus))
+                            try
                             {
+                                // enum 파싱: JsonConvert로 EnumMember 어트리뷰트 인식 (숫자 시작 enum 지원)
+                                var enumStr_NetworkStatus = apiResponse.data.Trim();
+                                if (!enumStr_NetworkStatus.StartsWith("\""))
+                                {
+                                    enumStr_NetworkStatus = "\"" + enumStr_NetworkStatus + "\"";
+                                }
+                                var enumVal_NetworkStatus = JsonConvert.DeserializeObject<NetworkStatus>(enumStr_NetworkStatus, AITJsonSettings.Default);
                                 enumCb_NetworkStatus(enumVal_NetworkStatus);
                             }
-                            else
+                            catch (Exception ex_NetworkStatus)
                             {
-                                Debug.LogWarning("[AITCore] Failed to parse enum NetworkStatus: " + enumStr_NetworkStatus);
+                                Debug.LogWarning("[AITCore] Failed to parse enum NetworkStatus: " + apiResponse.data + " (" + ex_NetworkStatus.Message + ")");
                                 // 파싱 실패 시 에러 콜백 호출하여 Task 완료
                                 if (TryGetErrorCallback(callbackId, out var parseErrCb_NetworkStatus) && parseErrCb_NetworkStatus != null)
                                 {
-                                    parseErrCb_NetworkStatus(new AITException("NetworkStatus", "Failed to parse enum value: " + enumStr_NetworkStatus));
+                                    parseErrCb_NetworkStatus(new AITException("NetworkStatus", "Failed to parse enum value: " + apiResponse.data));
                                 }
                             }
                         }
@@ -859,19 +864,24 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<PermissionStatus>(callbackId, out var enumCb_PermissionStatus) && enumCb_PermissionStatus != null)
                         {
-                            // enum 파싱: 문자열에서 따옴표 제거 후 Enum.TryParse
-                            var enumStr_PermissionStatus = apiResponse.data.Trim().Trim('"');
-                            if (Enum.TryParse<PermissionStatus>(enumStr_PermissionStatus, true, out var enumVal_PermissionStatus))
+                            try
                             {
+                                // enum 파싱: JsonConvert로 EnumMember 어트리뷰트 인식 (숫자 시작 enum 지원)
+                                var enumStr_PermissionStatus = apiResponse.data.Trim();
+                                if (!enumStr_PermissionStatus.StartsWith("\""))
+                                {
+                                    enumStr_PermissionStatus = "\"" + enumStr_PermissionStatus + "\"";
+                                }
+                                var enumVal_PermissionStatus = JsonConvert.DeserializeObject<PermissionStatus>(enumStr_PermissionStatus, AITJsonSettings.Default);
                                 enumCb_PermissionStatus(enumVal_PermissionStatus);
                             }
-                            else
+                            catch (Exception ex_PermissionStatus)
                             {
-                                Debug.LogWarning("[AITCore] Failed to parse enum PermissionStatus: " + enumStr_PermissionStatus);
+                                Debug.LogWarning("[AITCore] Failed to parse enum PermissionStatus: " + apiResponse.data + " (" + ex_PermissionStatus.Message + ")");
                                 // 파싱 실패 시 에러 콜백 호출하여 Task 완료
                                 if (TryGetErrorCallback(callbackId, out var parseErrCb_PermissionStatus) && parseErrCb_PermissionStatus != null)
                                 {
-                                    parseErrCb_PermissionStatus(new AITException("PermissionStatus", "Failed to parse enum value: " + enumStr_PermissionStatus));
+                                    parseErrCb_PermissionStatus(new AITException("PermissionStatus", "Failed to parse enum value: " + apiResponse.data));
                                 }
                             }
                         }

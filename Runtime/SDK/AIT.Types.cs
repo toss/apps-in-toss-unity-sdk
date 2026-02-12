@@ -414,7 +414,7 @@ namespace AppsInToss
         public AdNetworkResponseInfo[] AdNetworkInfoArray;
         [Preserve]
         [JsonProperty("loadedAdNetworkInfo")]
-        public object LoadedAdNetworkInfo;
+        public AdNetworkResponseInfo LoadedAdNetworkInfo;
         [Preserve]
         [JsonProperty("responseId")]
         public string ResponseId;
@@ -495,7 +495,19 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class DataType
+    public class AdUserEarnedReward
+    {
+        [Preserve]
+        [JsonProperty("type")]
+        public string Type;
+        [Preserve]
+        [JsonProperty("data")]
+        public AdUserEarnedRewardData Data;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class AdUserEarnedRewardData
     {
         [Preserve]
         [JsonProperty("unitType")]
@@ -503,6 +515,15 @@ namespace AppsInToss
         [Preserve]
         [JsonProperty("unitAmount")]
         public double UnitAmount;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class IsAdMobLoadedOptions
+    {
+        [Preserve]
+        [JsonProperty("adGroupId")]
+        public string AdGroupId;
     }
 
     [Serializable]
@@ -924,24 +945,6 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class LoadAdMobOptions
-    {
-        [Preserve]
-        [JsonProperty("adGroupId")]
-        public string AdGroupId;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class ShowAdMobOptions
-    {
-        [Preserve]
-        [JsonProperty("adGroupId")]
-        public string AdGroupId;
-    }
-
-    [Serializable]
-    [Preserve]
     public class TossAdsAttachOptions
     {
         [Preserve]
@@ -1005,6 +1008,28 @@ namespace AppsInToss
         [JsonProperty("error")]
         public object Error;
     }
+
+/// <summary>
+/// Stub class for LoadAdMobOptions (type definition not found in current SDK version)
+/// This class is auto-generated for SDK version compatibility
+/// </summary>
+[Serializable]
+public class LoadAdMobOptions
+{
+    // Stub class - no properties defined
+    // This type may not be available in the current SDK version
+}
+
+/// <summary>
+/// Stub class for ShowAdMobOptions (type definition not found in current SDK version)
+/// This class is auto-generated for SDK version compatibility
+/// </summary>
+[Serializable]
+public class ShowAdMobOptions
+{
+    // Stub class - no properties defined
+    // This type may not be available in the current SDK version
+}
 
     [Serializable]
     [Preserve]
@@ -1432,33 +1457,6 @@ namespace AppsInToss
         public string StatusCode;
     }
 
-    [Serializable]
-    [Preserve]
-    public class LoadFullScreenAdOptions
-    {
-        [Preserve]
-        [JsonProperty("adGroupId")]
-        public string AdGroupId;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class LoadFullScreenAdEvent
-    {
-        [Preserve]
-        [JsonProperty("type")]
-        public string Type;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class ShowFullScreenAdOptions
-    {
-        [Preserve]
-        [JsonProperty("adGroupId")]
-        public string AdGroupId;
-    }
-
     /// <summary>
     /// Data for userEarnedReward event
     /// </summary>
@@ -1472,22 +1470,5 @@ namespace AppsInToss
         [Preserve]
         [JsonProperty("unitAmount")]
         public double UnitAmount;
-    }
-
-    /// <summary>
-    /// Full screen ad event (discriminated union)
-    /// </summary>
-    [Serializable]
-    [Preserve]
-    public class ShowFullScreenAdEvent
-    {
-        /// <summary>Event type: clicked, dismissed, failedToShow, impression, show, userEarnedReward, requested</summary>
-        [Preserve]
-        [JsonProperty("type")]
-        public string Type;
-        /// <summary>Event data (only for userEarnedReward)</summary>
-        [Preserve]
-        [JsonProperty("data")]
-        public ShowFullScreenAdEventData Data; // optional
     }
 }

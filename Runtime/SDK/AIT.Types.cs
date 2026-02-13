@@ -754,6 +754,16 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
+    public class AttachBannerResult
+    {
+        [JsonIgnore]
+        public System.Action Destroy;
+        /// <summary>에러 발생 시 에러 메시지 (플랫폼 미지원 등)</summary>
+        public string error;
+    }
+
+    [Serializable]
+    [Preserve]
     public class AppsInTossGlobals
     {
         [Preserve]
@@ -1025,6 +1035,18 @@ namespace AppsInToss
         [Preserve]
         [JsonProperty("error")]
         public object Error;
+    }
+
+    /// <summary>
+    /// Stub class for TossAdsAttachBannerOptions (type definition not found in current SDK version)
+    /// This class is auto-generated for SDK version compatibility
+    /// </summary>
+    [Serializable]
+    [Preserve]
+    public class TossAdsAttachBannerOptions
+    {
+        // Stub class - no properties defined
+        // This type may not be available in the current SDK version
     }
 
     [Serializable]

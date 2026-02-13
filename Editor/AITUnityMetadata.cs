@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using AppsInToss;
 using UnityEditor;
 using UnityEngine;
 
@@ -13,21 +12,33 @@ namespace AppsInToss.Editor
     internal static class AITUnityMetadata
     {
         /// <summary>
-        /// Unity 빌드 메타데이터를 JSON 문자열로 반환합니다.
+        /// Unity 빌드 메타데이터를 compact JSON 문자열로 반환합니다.
+        /// 환경변수로 전달되므로 줄바꿈 없는 single-line JSON이어야 합니다.
+        /// (MiniJson.Serialize는 pretty-print하여 PowerShell 이스케이프 문제 발생)
         /// </summary>
         internal static string BuildMetadataJson()
         {
-            var metadata = new Dictionary<string, object>
+            var pairs = new string[]
             {
-                { "unityVersion", Application.unityVersion },
-                { "bundleVersion", PlayerSettings.bundleVersion },
-                { "sdkVersion", AITVersion.Version },
-                { "sdkCommitHash", AITVersion.CommitHash ?? "" },
-                { "productName", PlayerSettings.productName },
-                { "companyName", PlayerSettings.companyName },
-                { "buildTimestamp", DateTime.UtcNow.ToString("o") },
+                $"\"unityVersion\":{JsonEscape(Application.unityVersion)}",
+                $"\"bundleVersion\":{JsonEscape(PlayerSettings.bundleVersion)}",
+                $"\"sdkVersion\":{JsonEscape(AITVersion.Version)}",
+                $"\"sdkCommitHash\":{JsonEscape(AITVersion.CommitHash ?? "")}",
+                $"\"productName\":{JsonEscape(PlayerSettings.productName)}",
+                $"\"companyName\":{JsonEscape(PlayerSettings.companyName)}",
+                $"\"buildTimestamp\":{JsonEscape(DateTime.UtcNow.ToString("o"))}",
             };
-            return MiniJson.Serialize(metadata);
+            return "{" + string.Join(",", pairs) + "}";
+        }
+
+        private static string JsonEscape(string value)
+        {
+            return "\"" + value
+                .Replace("\\", "\\\\")
+                .Replace("\"", "\\\"")
+                .Replace("\n", "\\n")
+                .Replace("\r", "\\r")
+                .Replace("\t", "\\t") + "\"";
         }
 
         /// <summary>

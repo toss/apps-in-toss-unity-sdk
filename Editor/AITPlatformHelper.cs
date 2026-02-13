@@ -298,15 +298,10 @@ namespace AppsInToss.Editor
                     // -NoLogo: 시작 배너 숨김
                     // [Console]::OutputEncoding: UTF-8 출력 설정으로 한글 등 유니코드 지원
                     string escapedCommand = EscapeForPowerShell(command);
+                    // 환경변수는 ProcessStartInfo.EnvironmentVariables로 설정 (line 362~372)
+                    // PowerShell -Command "..." 안에서 $env: 할당 시 JSON 등의 큰따옴표가
+                    // 바깥 큰따옴표와 충돌하므로, 셸 명령에서는 CI만 설정
                     string envSetup = "$env:CI = 'true';";
-                    if (additionalEnvVars != null)
-                    {
-                        foreach (var kvp in additionalEnvVars)
-                        {
-                            string escapedValue = kvp.Value.Replace("'", "''");
-                            envSetup += $" $env:{kvp.Key} = '{escapedValue}';";
-                        }
-                    }
                     shellArgs = $"-ExecutionPolicy Bypass -NoProfile -NoLogo -Command \"[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; {envSetup} {escapedCommand}\"";
                 }
                 else

@@ -224,6 +224,51 @@ namespace AppsInToss
         [Preserve]
         [APICategory("Advertising")]
 #if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<AttachBannerResult> TossAdsAttachBanner(string adGroupId, string target, TossAdsAttachBannerOptions options = null)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<AttachBannerResult>();
+            string callbackId = AITCore.Instance.RegisterCallback<AttachBannerResult>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error)
+            );
+            __TossAdsAttachBanner_Internal(adGroupId, target, AITJsonSettings.Serialize(options), callbackId, "AttachBannerResult");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] TossAdsAttachBanner called");
+            await Awaitable.NextFrameAsync();
+            return default(AttachBannerResult);
+#endif
+        }
+#else
+        public static async Task<AttachBannerResult> TossAdsAttachBanner(string adGroupId, string target, TossAdsAttachBannerOptions options = null)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<AttachBannerResult>();
+            string callbackId = AITCore.Instance.RegisterCallback<AttachBannerResult>(
+                result => tcs.TrySetResult(result),
+                error => tcs.TrySetException(error)
+            );
+            __TossAdsAttachBanner_Internal(adGroupId, target, AITJsonSettings.Serialize(options), callbackId, "AttachBannerResult");
+            return await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] TossAdsAttachBanner called");
+            await Task.CompletedTask;
+            return default(AttachBannerResult);
+#endif
+        }
+#endif
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __TossAdsAttachBanner_Internal(string adGroupId, string target, string options, string callbackId, string typeName);
+#endif
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
+        [APICategory("Advertising")]
+#if UNITY_6000_0_OR_NEWER
         public static async Awaitable TossAdsDestroy(string slotId)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR

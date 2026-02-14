@@ -114,15 +114,15 @@ public class OOMTester : MonoBehaviour
 
         // WASM 힙 할당 버튼들 (세로 배치)
         GUILayout.Label("WASM 힙 (C# byte[])", labelStyle);
-        if (GUILayout.Button("+50MB WASM", dangerButtonStyle, GUILayout.Height(40)))
+        if (GUILayout.Button("+50MB WASM", dangerButtonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(40))))
         {
             AllocateWasm(50);
         }
-        if (GUILayout.Button("+100MB WASM", dangerButtonStyle, GUILayout.Height(40)))
+        if (GUILayout.Button("+100MB WASM", dangerButtonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(40))))
         {
             AllocateWasm(100);
         }
-        if (GUILayout.Button("+500MB WASM", dangerButtonStyle, GUILayout.Height(40)))
+        if (GUILayout.Button("+500MB WASM", dangerButtonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(40))))
         {
             AllocateWasm(500);
         }
@@ -131,15 +131,15 @@ public class OOMTester : MonoBehaviour
 
         // WebView (JS) 할당 버튼들 (세로 배치)
         GUILayout.Label("WebView (JS ArrayBuffer)", labelStyle);
-        if (GUILayout.Button("+50MB WebView", dangerButtonStyle, GUILayout.Height(40)))
+        if (GUILayout.Button("+50MB WebView", dangerButtonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(40))))
         {
             AllocateWebView(50);
         }
-        if (GUILayout.Button("+100MB WebView", dangerButtonStyle, GUILayout.Height(40)))
+        if (GUILayout.Button("+100MB WebView", dangerButtonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(40))))
         {
             AllocateWebView(100);
         }
-        if (GUILayout.Button("+500MB WebView", dangerButtonStyle, GUILayout.Height(40)))
+        if (GUILayout.Button("+500MB WebView", dangerButtonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(40))))
         {
             AllocateWebView(500);
         }
@@ -156,7 +156,7 @@ public class OOMTester : MonoBehaviour
 
             if (hasWasmMemory)
             {
-                if (GUILayout.Button("WASM 해제", buttonStyle, GUILayout.Height(36)))
+                if (GUILayout.Button("WASM 해제", buttonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(36))))
                 {
                     ClearWasmAllocations();
                 }
@@ -164,7 +164,7 @@ public class OOMTester : MonoBehaviour
 
             if (hasJsMemory)
             {
-                if (GUILayout.Button("WebView 해제", buttonStyle, GUILayout.Height(36)))
+                if (GUILayout.Button("WebView 해제", buttonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(36))))
                 {
                     ClearJSAllocations();
                 }
@@ -172,7 +172,7 @@ public class OOMTester : MonoBehaviour
 
             if (hasWasmMemory && hasJsMemory)
             {
-                if (GUILayout.Button("전체 해제", buttonStyle, GUILayout.Height(36)))
+                if (GUILayout.Button("전체 해제", buttonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(36))))
                 {
                     ClearAllAllocations();
                 }

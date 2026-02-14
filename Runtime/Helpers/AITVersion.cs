@@ -10,20 +10,37 @@ namespace AppsInToss
     [Preserve]
     public static class AITVersion
     {
+        private static bool _loaded;
+        private static string _version = "unknown";
+        private static string _releaseDateTime;
+        private static string _commitHash;
+
         /// <summary>
         /// SDK 버전 (예: "1.8.0")
         /// </summary>
-        public static string Version { get; private set; } = "unknown";
+        public static string Version
+        {
+            get { EnsureLoaded(); return _version; }
+            private set { _version = value; }
+        }
 
         /// <summary>
         /// 릴리즈 일시 (예: "20260126_1803"), 없으면 null
         /// </summary>
-        public static string ReleaseDateTime { get; private set; } = null;
+        public static string ReleaseDateTime
+        {
+            get { EnsureLoaded(); return _releaseDateTime; }
+            private set { _releaseDateTime = value; }
+        }
 
         /// <summary>
         /// 릴리즈 커밋 해시 (예: "e89a387"), 없으면 null
         /// </summary>
-        public static string CommitHash { get; private set; } = null;
+        public static string CommitHash
+        {
+            get { EnsureLoaded(); return _commitHash; }
+            private set { _commitHash = value; }
+        }
 
         /// <summary>
         /// 전체 버전 문자열 (예: "1.8.0 (20260126_1803, e89a387)")
@@ -34,10 +51,17 @@ namespace AppsInToss
                 : $"{Version} ({ReleaseDateTime}" +
                   (string.IsNullOrEmpty(CommitHash) ? ")" : $", {CommitHash})");
 
+        private static void EnsureLoaded()
+        {
+            if (_loaded) return;
+            _loaded = true;
+            LoadVersionInfo();
+        }
+
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         private static void Initialize()
         {
-            LoadVersionInfo();
+            EnsureLoaded();
             Debug.Log($"[AIT] Apps in Toss Unity SDK v{FullVersion}");
         }
 

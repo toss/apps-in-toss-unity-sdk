@@ -159,7 +159,7 @@ public class ParameterInputRenderer
 
         // 기타 타입 (폴백)
         GUILayout.BeginHorizontal();
-        GUILayout.Space(indentLevel * 20);
+        GUILayout.Space(indentLevel * InteractiveAPITesterStyles.ScaledInt(20));
         GUILayout.Label($"{displayName}: (지원하지 않는 타입: {type.Name})", InteractiveAPITesterStyles.CallbackLabelStyle);
         GUILayout.EndHorizontal();
     }
@@ -192,11 +192,11 @@ public class ParameterInputRenderer
         GUILayout.BeginVertical();
 
         GUILayout.BeginHorizontal();
-        GUILayout.Space(indentLevel * 20);
-        GUILayout.Label($"{displayName}:", InteractiveAPITesterStyles.FieldLabelStyle, GUILayout.Width(120));
+        GUILayout.Space(indentLevel * InteractiveAPITesterStyles.ScaledInt(20));
+        GUILayout.Label($"{displayName}:", InteractiveAPITesterStyles.FieldLabelStyle, GUILayout.Width(InteractiveAPITesterStyles.ScaledInt(120)));
 
         string buttonLabel = isOpen ? $"▲ {enumNames[selectedIndex]}" : $"▼ {enumNames[selectedIndex]}";
-        if (GUILayout.Button(buttonLabel, InteractiveAPITesterStyles.EnumButtonStyle, GUILayout.Height(36), GUILayout.ExpandWidth(true)))
+        if (GUILayout.Button(buttonLabel, InteractiveAPITesterStyles.EnumButtonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(36)), GUILayout.ExpandWidth(true)))
         {
             _enumDropdownOpen[fieldPath] = !isOpen;
         }
@@ -207,10 +207,10 @@ public class ParameterInputRenderer
             for (int i = 0; i < enumNames.Length; i++)
             {
                 GUILayout.BeginHorizontal();
-                GUILayout.Space(indentLevel * 20 + 120);
+                GUILayout.Space(indentLevel * InteractiveAPITesterStyles.ScaledInt(20) + InteractiveAPITesterStyles.ScaledInt(120));
 
                 string optionLabel = i == selectedIndex ? $"✓ {enumNames[i]}" : $"   {enumNames[i]}";
-                if (GUILayout.Button(optionLabel, InteractiveAPITesterStyles.EnumOptionStyle, GUILayout.Height(32)))
+                if (GUILayout.Button(optionLabel, InteractiveAPITesterStyles.EnumOptionStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(32))))
                 {
                     _enumSelectedIndices[fieldPath] = i;
                     _enumDropdownOpen[fieldPath] = false;
@@ -241,13 +241,13 @@ public class ParameterInputRenderer
         }
 
         GUILayout.BeginHorizontal();
-        GUILayout.Space(indentLevel * 20);
-        GUILayout.Label($"{displayName}:", InteractiveAPITesterStyles.FieldLabelStyle, GUILayout.Width(120));
-        _stringInputs[fieldPath] = GUILayout.TextField(value, InteractiveAPITesterStyles.TextFieldStyle, GUILayout.Height(36), GUILayout.ExpandWidth(true));
+        GUILayout.Space(indentLevel * InteractiveAPITesterStyles.ScaledInt(20));
+        GUILayout.Label($"{displayName}:", InteractiveAPITesterStyles.FieldLabelStyle, GUILayout.Width(InteractiveAPITesterStyles.ScaledInt(120)));
+        _stringInputs[fieldPath] = GUILayout.TextField(value, InteractiveAPITesterStyles.TextFieldStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(36)), GUILayout.ExpandWidth(true));
 
         // PASTE 버튼
         GUI.enabled = !isPasting;
-        if (GUILayout.Button(isPasting ? "..." : "PASTE", InteractiveAPITesterStyles.ButtonStyle, GUILayout.Width(70), GUILayout.Height(36)))
+        if (GUILayout.Button(isPasting ? "..." : "PASTE", InteractiveAPITesterStyles.ButtonStyle, GUILayout.Width(InteractiveAPITesterStyles.ScaledInt(70)), GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(36))))
         {
             PasteFromClipboard(fieldPath);
         }
@@ -293,11 +293,11 @@ public class ParameterInputRenderer
         }
 
         GUILayout.BeginHorizontal();
-        GUILayout.Space(indentLevel * 20);
-        GUILayout.Label($"{displayName}:", InteractiveAPITesterStyles.FieldLabelStyle, GUILayout.Width(120));
+        GUILayout.Space(indentLevel * InteractiveAPITesterStyles.ScaledInt(20));
+        GUILayout.Label($"{displayName}:", InteractiveAPITesterStyles.FieldLabelStyle, GUILayout.Width(InteractiveAPITesterStyles.ScaledInt(120)));
 
         string strValue = value.ToString();
-        string newStrValue = GUILayout.TextField(strValue, InteractiveAPITesterStyles.TextFieldStyle, GUILayout.Height(36), GUILayout.ExpandWidth(true));
+        string newStrValue = GUILayout.TextField(strValue, InteractiveAPITesterStyles.TextFieldStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(36)), GUILayout.ExpandWidth(true));
 
         if (newStrValue != strValue)
         {
@@ -327,14 +327,14 @@ public class ParameterInputRenderer
         }
 
         GUILayout.BeginHorizontal();
-        GUILayout.Space(indentLevel * 20);
-        GUILayout.Label($"{displayName}:", InteractiveAPITesterStyles.FieldLabelStyle, GUILayout.Width(120));
+        GUILayout.Space(indentLevel * InteractiveAPITesterStyles.ScaledInt(20));
+        GUILayout.Label($"{displayName}:", InteractiveAPITesterStyles.FieldLabelStyle, GUILayout.Width(InteractiveAPITesterStyles.ScaledInt(120)));
 
         string btnLabel = value ? "✓ true" : "✗ false";
         Color originalColor = GUI.backgroundColor;
         GUI.backgroundColor = value ? new Color(0.4f, 0.7f, 0.4f) : new Color(0.5f, 0.5f, 0.5f);
 
-        if (GUILayout.Button(btnLabel, InteractiveAPITesterStyles.ToggleButtonStyle, GUILayout.Height(36), GUILayout.Width(100)))
+        if (GUILayout.Button(btnLabel, InteractiveAPITesterStyles.ToggleButtonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(36)), GUILayout.Width(InteractiveAPITesterStyles.ScaledInt(100))))
         {
             _boolInputs[fieldPath] = !value;
         }
@@ -357,7 +357,7 @@ public class ParameterInputRenderer
         if (!hasEditableFields)
         {
             GUILayout.BeginHorizontal();
-            GUILayout.Space(indentLevel * 20);
+            GUILayout.Space(indentLevel * InteractiveAPITesterStyles.ScaledInt(20));
             GUILayout.Label($"{displayName}: (콜백 전용 - 편집 불가)", InteractiveAPITesterStyles.CallbackLabelStyle);
             GUILayout.EndHorizontal();
             GUILayout.Space(4);
@@ -371,10 +371,10 @@ public class ParameterInputRenderer
         }
 
         GUILayout.BeginHorizontal();
-        GUILayout.Space(indentLevel * 20);
+        GUILayout.Space(indentLevel * InteractiveAPITesterStyles.ScaledInt(20));
 
         string icon = isExpanded ? "▼" : "▶";
-        if (GUILayout.Button($"{icon} {displayName} ({type.Name})", InteractiveAPITesterStyles.NestedHeaderStyle, GUILayout.Height(36), GUILayout.ExpandWidth(true)))
+        if (GUILayout.Button($"{icon} {displayName} ({type.Name})", InteractiveAPITesterStyles.NestedHeaderStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(36)), GUILayout.ExpandWidth(true)))
         {
             _nestedFoldouts[fieldPath] = !isExpanded;
         }
@@ -388,7 +388,7 @@ public class ParameterInputRenderer
                 if (APIParameterInspector.IsCallbackField(field))
                 {
                     GUILayout.BeginHorizontal();
-                    GUILayout.Space((indentLevel + 1) * 20);
+                    GUILayout.Space((indentLevel + 1) * InteractiveAPITesterStyles.ScaledInt(20));
                     GUILayout.Label($"{field.Name}: (콜백 - 편집 불가)", InteractiveAPITesterStyles.CallbackLabelStyle);
                     GUILayout.EndHorizontal();
                     GUILayout.Space(2);

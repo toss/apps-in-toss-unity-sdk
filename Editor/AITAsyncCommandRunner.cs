@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text;
 using System.Threading;
@@ -75,7 +76,8 @@ namespace AppsInToss.Editor
             string[] additionalPaths,
             Action<AITPlatformHelper.CommandResult> onComplete,
             Action<string> onOutputReceived = null,
-            int timeoutMs = 300000)
+            int timeoutMs = 300000,
+            Dictionary<string, string> additionalEnvVars = null)
         {
             EnsureQueueProcessorRegistered();
 
@@ -86,7 +88,7 @@ namespace AppsInToss.Editor
             };
 
             // 백그라운드 스레드에서 명령 실행
-            ThreadPool.QueueUserWorkItem(_ => ExecuteCommandAsync(task, command, workingDirectory, additionalPaths, timeoutMs));
+            ThreadPool.QueueUserWorkItem(_ => ExecuteCommandAsync(task, command, workingDirectory, additionalPaths, timeoutMs, additionalEnvVars));
 
             return task;
         }
@@ -126,7 +128,8 @@ namespace AppsInToss.Editor
             string command,
             string workingDirectory,
             string[] additionalPaths,
-            int timeoutMs)
+            int timeoutMs,
+            Dictionary<string, string> additionalEnvVars = null)
         {
             task.State = CommandState.Running;
             var result = new AITPlatformHelper.CommandResult();
@@ -140,12 +143,30 @@ namespace AppsInToss.Editor
                 {
                     shell = "powershell.exe";
                     string escapedCommand = EscapeForPowerShell(command);
-                    shellArgs = $"-ExecutionPolicy Bypass -NoProfile -NoLogo -Command \"[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; $env:CI = 'true'; {escapedCommand}\"";
+                    string envSetup = "$env:CI = 'true';";
+                    if (additionalEnvVars != null)
+                    {
+                        foreach (var kvp in additionalEnvVars)
+                        {
+                            string escapedValue = kvp.Value.Replace("'", "''");
+                            envSetup += $" $env:{kvp.Key} = '{escapedValue}';";
+                        }
+                    }
+                    shellArgs = $"-ExecutionPolicy Bypass -NoProfile -NoLogo -Command \"[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; {envSetup} {escapedCommand}\"";
                 }
                 else
                 {
                     shell = "/bin/bash";
-                    shellArgs = $"-l -c \"export CI=true && export PATH='{pathEnv}' && {command}\"";
+                    string envExports = "export CI=true";
+                    if (additionalEnvVars != null)
+                    {
+                        foreach (var kvp in additionalEnvVars)
+                        {
+                            string escapedValue = kvp.Value.Replace("'", "'\\''");
+                            envExports += $" && export {kvp.Key}='{escapedValue}'";
+                        }
+                    }
+                    shellArgs = $"-l -c \"{envExports} && export PATH='{pathEnv}' && {command}\"";
                 }
 
                 EnqueueMainThread(() => Debug.Log($"[AIT Async] 명령 시작: {command}"));
@@ -172,6 +193,15 @@ namespace AppsInToss.Editor
                     processInfo.EnvironmentVariables["PATH"] = pathEnv;
                 }
                 processInfo.EnvironmentVariables["CI"] = "true";
+
+                // 추가 환경변수 설정
+                if (additionalEnvVars != null)
+                {
+                    foreach (var kvp in additionalEnvVars)
+                    {
+                        processInfo.EnvironmentVariables[kvp.Key] = kvp.Value;
+                    }
+                }
 
                 using (var process = new Process { StartInfo = processInfo })
                 {

@@ -1,4 +1,5 @@
 name: Preview
+run-name: "Preview - ${{ inputs.target_ref }}${{ inputs.targets != 'macos-6000.2' && format(' ({0})', inputs.targets) || '' }}"
 
 on:
   workflow_dispatch:

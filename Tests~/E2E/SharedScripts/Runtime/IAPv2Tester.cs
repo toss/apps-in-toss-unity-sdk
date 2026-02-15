@@ -79,7 +79,7 @@ public class IAPv2Tester : MonoBehaviour
 
         // Step 1: 상품 목록 조회
         GUILayout.Label("Step 1: Get Product List", fieldLabelStyle);
-        if (GUILayout.Button("IAPGetProductItemList()", buttonStyle, GUILayout.Height(40)))
+        if (GUILayout.Button("IAPGetProductItemList()", buttonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(40))))
         {
             ExecuteIAPGetProductList();
         }
@@ -101,8 +101,8 @@ public class IAPv2Tester : MonoBehaviour
         // Step 2: 구매 주문 생성
         GUILayout.Label("Step 2: Create Purchase Order", fieldLabelStyle);
         GUILayout.BeginHorizontal();
-        GUILayout.Label("SKU:", fieldLabelStyle, GUILayout.Width(50));
-        iapSku = GUILayout.TextField(iapSku, textFieldStyle, GUILayout.Height(36), GUILayout.ExpandWidth(true));
+        GUILayout.Label("SKU:", fieldLabelStyle, GUILayout.Width(InteractiveAPITesterStyles.ScaledInt(50)));
+        iapSku = GUILayout.TextField(iapSku, textFieldStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(36)), GUILayout.ExpandWidth(true));
         GUILayout.EndHorizontal();
 
         // 상품 목록에서 빠른 선택 버튼
@@ -111,14 +111,14 @@ public class IAPv2Tester : MonoBehaviour
             GUILayout.Label("Quick Select:", labelStyle);
             foreach (var product in iapProducts.Products)
             {
-                if (GUILayout.Button($"{product.DisplayName} ({product.Sku})", buttonStyle, GUILayout.Height(32)))
+                if (GUILayout.Button($"{product.DisplayName} ({product.Sku})", buttonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(32))))
                 {
                     iapSku = product.Sku;
                 }
             }
         }
 
-        if (GUILayout.Button("IAPCreateOneTimePurchaseOrder(...)", buttonStyle, GUILayout.Height(40)))
+        if (GUILayout.Button("IAPCreateOneTimePurchaseOrder(...)", buttonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(40))))
         {
             ExecuteIAPCreateOrder();
         }
@@ -127,7 +127,7 @@ public class IAPv2Tester : MonoBehaviour
 
         // Step 3: 대기 중인 주문 조회
         GUILayout.Label("Step 3: Get Pending Orders", fieldLabelStyle);
-        if (GUILayout.Button("IAPGetPendingOrders()", buttonStyle, GUILayout.Height(40)))
+        if (GUILayout.Button("IAPGetPendingOrders()", buttonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(40))))
         {
             ExecuteIAPGetPendingOrders();
         }
@@ -142,7 +142,7 @@ public class IAPv2Tester : MonoBehaviour
             {
                 if (!string.IsNullOrEmpty(order.OrderId))
                 {
-                    if (GUILayout.Button($"→ {order.OrderId} ({order.Sku})", buttonStyle, GUILayout.Height(32)))
+                    if (GUILayout.Button($"→ {order.OrderId} ({order.Sku})", buttonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(32))))
                     {
                         iapOrderId = order.OrderId;
                     }
@@ -160,7 +160,7 @@ public class IAPv2Tester : MonoBehaviour
 
         // Step 4: 완료/환불 주문 조회 (복구 플로우용)
         GUILayout.Label("Step 4: Get Completed/Refunded Orders (복구용)", fieldLabelStyle);
-        if (GUILayout.Button("IAPGetCompletedOrRefundedOrders()", buttonStyle, GUILayout.Height(40)))
+        if (GUILayout.Button("IAPGetCompletedOrRefundedOrders()", buttonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(40))))
         {
             ExecuteIAPGetCompletedOrRefundedOrders();
         }
@@ -176,7 +176,7 @@ public class IAPv2Tester : MonoBehaviour
                 if (!string.IsNullOrEmpty(order.OrderId))
                 {
                     string status = order.Status == CompletedOrRefundedOrdersResultOrderStatus.REFUNDED ? "Refunded" : "Completed";
-                    if (GUILayout.Button($"→ {order.OrderId} ({order.Sku}, {status})", buttonStyle, GUILayout.Height(32)))
+                    if (GUILayout.Button($"→ {order.OrderId} ({order.Sku}, {status})", buttonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(32))))
                     {
                         iapOrderId = order.OrderId;
                     }
@@ -195,10 +195,10 @@ public class IAPv2Tester : MonoBehaviour
         // Step 5: 상품 지급 완료 처리 (복구 플로우용 - 정상 플로우에서는 processProductGrant 콜백에서 자동 처리됨)
         GUILayout.Label("Step 5: Complete Product Grant (복구용)", fieldLabelStyle);
         GUILayout.BeginHorizontal();
-        GUILayout.Label("Order ID:", fieldLabelStyle, GUILayout.Width(80));
-        iapOrderId = GUILayout.TextField(iapOrderId, textFieldStyle, GUILayout.Height(36), GUILayout.ExpandWidth(true));
+        GUILayout.Label("Order ID:", fieldLabelStyle, GUILayout.Width(InteractiveAPITesterStyles.ScaledInt(80)));
+        iapOrderId = GUILayout.TextField(iapOrderId, textFieldStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(36)), GUILayout.ExpandWidth(true));
         GUILayout.EndHorizontal();
-        if (GUILayout.Button("IAPCompleteProductGrant(...)", buttonStyle, GUILayout.Height(40)))
+        if (GUILayout.Button("IAPCompleteProductGrant(...)", buttonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(40))))
         {
             ExecuteIAPCompleteGrant();
         }

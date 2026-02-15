@@ -152,14 +152,14 @@ public class VisibilityBGMTester : MonoBehaviour
         // 컨트롤 버튼
         if (!isPlaying)
         {
-            if (GUILayout.Button("▶ BGM 재생", buttonStyle, GUILayout.Height(40)))
+            if (GUILayout.Button("▶ BGM 재생", buttonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(40))))
             {
                 StartBGM();
             }
         }
         else
         {
-            if (GUILayout.Button("⏹ BGM 정지", buttonStyle, GUILayout.Height(40)))
+            if (GUILayout.Button("⏹ BGM 정지", buttonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(40))))
             {
                 StopBGM();
             }

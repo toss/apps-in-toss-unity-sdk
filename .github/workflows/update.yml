@@ -1,4 +1,5 @@
 name: SDK Update
+run-name: "SDK Update${{ inputs.version && format(' - v{0}', inputs.version) || '' }}${{ inputs.force && ' (force)' || '' }}"
 
 on:
   workflow_dispatch:

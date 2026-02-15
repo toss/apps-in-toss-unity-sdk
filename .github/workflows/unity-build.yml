@@ -866,7 +866,7 @@ jobs:
 
             if [ $EXIT_CODE -ne 0 ]; then
               # 라이선스 관련 오류 감지 (retry 액션이 자동 재시도)
-              if grep -qE "No valid Unity Editor license found|Unsupported protocol version|ResponseCode: 505|LicensingClient has failed validation" "$LOG_FILE" 2>/dev/null; then
+              if grep -qE "No valid Unity Editor license found|Unsupported protocol version|ResponseCode: 505" "$LOG_FILE" 2>/dev/null; then
                 echo "::warning::Unity license conflict detected, triggering retry..."
                 exit 1
               fi
@@ -955,7 +955,7 @@ jobs:
               # 라이선스 관련 오류 감지 (retry 액션이 자동 재시도)
               if (Test-Path $logFile) {
                 $logContent = Get-Content $logFile -Raw -ErrorAction SilentlyContinue
-                if ($logContent -match "No valid Unity Editor license found|Unsupported protocol version|ResponseCode: 505|LicensingClient has failed validation") {
+                if ($logContent -match "No valid Unity Editor license found|Unsupported protocol version|ResponseCode: 505") {
                   Write-Host "::warning::Unity license conflict detected, triggering retry..."
                   exit 1
                 }

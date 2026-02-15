@@ -731,6 +731,7 @@
                                 padding: 12px 16px;
                                 border-bottom: 2px solid #00ff00;
                                 display: flex;
+                                flex-direction: row-reverse;
                                 justify-content: space-between;
                                 align-items: center;
                             }
@@ -738,6 +739,8 @@
                                 font-weight: bold;
                                 color: #00ff00;
                                 font-size: 16px;
+                                text-align: right;
+                                white-space: nowrap;
                             }
                             #unity-debug-console-controls {
                                 display: flex;
@@ -767,20 +770,127 @@
                                 border-radius: 5px;
                             }
                             .debug-log-entry {
-                                padding: 4px 0;
+                                padding: 6px 8px;
                                 border-bottom: 1px solid #333;
                                 font-size: 13px;
                                 line-height: 1.5;
+                                cursor: pointer;
+                                border-radius: 3px;
+                                transition: background 0.15s;
                             }
+                            .debug-log-entry:hover { background: rgba(255,255,255,0.05); }
                             .debug-log-entry.log { color: #fff; }
                             .debug-log-entry.warning { color: #ffcc00; }
                             .debug-log-entry.error {
                                 color: #ff4444;
                                 font-weight: bold;
                             }
+                            .debug-log-entry.has-stack { cursor: pointer; }
+                            .debug-log-entry.has-stack .debug-log-expand-icon { display: inline; }
+                            .debug-log-expand-icon {
+                                display: none;
+                                margin-right: 4px;
+                                font-size: 11px;
+                                transition: transform 0.2s;
+                            }
+                            .debug-log-entry.expanded .debug-log-expand-icon {
+                                transform: rotate(90deg);
+                            }
+                            .debug-log-stacktrace {
+                                display: none;
+                                margin-top: 4px;
+                                padding: 6px 8px;
+                                background: rgba(0,0,0,0.4);
+                                border-left: 2px solid #555;
+                                font-size: 11px;
+                                line-height: 1.6;
+                                color: #aaa;
+                                white-space: pre-wrap;
+                                word-break: break-all;
+                            }
+                            .debug-log-entry.expanded .debug-log-stacktrace { display: block; }
                             .debug-log-timestamp {
                                 color: #888;
                                 margin-right: 10px;
+                            }
+
+                            /* 검색바 */
+                            #unity-debug-console-search {
+                                display: flex;
+                                align-items: center;
+                                padding: 8px 16px;
+                                background: rgba(40, 40, 40, 0.98);
+                                gap: 8px;
+                            }
+                            #unity-debug-console-search input {
+                                flex: 1;
+                                background: #222;
+                                border: 1px solid #555;
+                                color: #fff;
+                                padding: 8px 12px;
+                                border-radius: 4px;
+                                font-family: "Courier New", monospace;
+                                font-size: 13px;
+                                outline: none;
+                                transition: border-color 0.2s;
+                            }
+                            #unity-debug-console-search input:focus { border-color: #00ff00; }
+                            #unity-debug-console-search input::placeholder { color: #666; }
+                            #debug-search-clear-btn {
+                                background: transparent;
+                                border: none;
+                                color: #888;
+                                font-size: 18px;
+                                cursor: pointer;
+                                padding: 4px 8px;
+                                line-height: 1;
+                                transition: color 0.2s;
+                            }
+                            #debug-search-clear-btn:hover { color: #fff; }
+
+                            /* 타입 필터 버튼 */
+                            #unity-debug-console-filters {
+                                display: flex;
+                                padding: 6px 16px 8px;
+                                background: rgba(40, 40, 40, 0.98);
+                                gap: 8px;
+                                border-bottom: 1px solid #444;
+                            }
+                            .debug-filter-btn {
+                                background: rgba(255,255,255,0.1);
+                                border: 1px solid #666;
+                                color: #fff;
+                                padding: 4px 12px;
+                                cursor: pointer;
+                                border-radius: 12px;
+                                font-size: 12px;
+                                font-family: "Courier New", monospace;
+                                transition: all 0.2s;
+                                user-select: none;
+                            }
+                            .debug-filter-btn.active { background: rgba(255,255,255,0.2); }
+                            .debug-filter-btn:not(.active) { opacity: 0.4; }
+                            .debug-filter-btn.filter-log { border-color: #aaa; }
+                            .debug-filter-btn.filter-log.active { border-color: #fff; color: #fff; }
+                            .debug-filter-btn.filter-warning { border-color: #aa8800; }
+                            .debug-filter-btn.filter-warning.active { border-color: #ffcc00; color: #ffcc00; }
+                            .debug-filter-btn.filter-error { border-color: #aa2222; }
+                            .debug-filter-btn.filter-error.active { border-color: #ff4444; color: #ff4444; }
+
+                            /* 상태 바 */
+                            #unity-debug-console-status {
+                                padding: 6px 16px;
+                                background: rgba(50, 50, 50, 0.98);
+                                border-top: 1px solid #444;
+                                font-size: 11px;
+                                color: #888;
+                                text-align: right;
+                            }
+
+                            /* 검색 하이라이트 */
+                            .debug-search-highlight {
+                                background: rgba(255, 255, 0, 0.3);
+                                border-radius: 2px;
                             }
 
                             /* 왼쪽 하단 토글 버튼 - Safe Area 지원 */
@@ -819,14 +929,24 @@
                         consoleDiv.id = 'unity-debug-console';
                         consoleDiv.innerHTML = `
                             <div id="unity-debug-console-header">
-                                <div id="unity-debug-console-title">Unity Debug Console</div>
                                 <div id="unity-debug-console-controls">
-                                    <button id="debug-copy-btn">Copy Logs</button>
+                                    <button id="debug-copy-btn">Copy</button>
                                     <button id="debug-clear-btn">Clear</button>
                                     <button id="debug-close-btn">Close</button>
                                 </div>
                             </div>
+                            <div id="unity-debug-console-search">
+                                <span style="color:#888;">&#128269;</span>
+                                <input type="text" id="debug-search-input" placeholder="검색어 입력..." autocomplete="off" />
+                                <button id="debug-search-clear-btn" title="검색어 지우기">&#10005;</button>
+                            </div>
+                            <div id="unity-debug-console-filters">
+                                <button class="debug-filter-btn filter-log active" data-type="log">Log <span class="debug-filter-count">0</span></button>
+                                <button class="debug-filter-btn filter-warning active" data-type="warning">&#9888; Warn <span class="debug-filter-count">0</span></button>
+                                <button class="debug-filter-btn filter-error active" data-type="error">&#10005; Error <span class="debug-filter-count">0</span></button>
+                            </div>
                             <div id="unity-debug-console-logs"></div>
+                            <div id="unity-debug-console-status">Showing 0 / 0</div>
                         `;
                         document.body.appendChild(consoleDiv);
 
@@ -865,35 +985,143 @@
                         var copyBtn = document.getElementById('debug-copy-btn');
                         var clearBtn = document.getElementById('debug-clear-btn');
                         var closeBtn = document.getElementById('debug-close-btn');
+                        var searchInput = document.getElementById('debug-search-input');
+                        var searchClearBtn = document.getElementById('debug-search-clear-btn');
+                        var statusBar = document.getElementById('unity-debug-console-status');
+                        var filterBtns = document.querySelectorAll('.debug-filter-btn');
 
                         // 콘솔 열기/닫기 함수
                         function toggleConsole() {
                             var isVisible = consoleDiv.classList.toggle('visible');
                             toggleBtn.innerHTML = isVisible ? '&#10006;' : '&#128736;'; // ✖ 또는 🛠️
                             toggleBtn.title = isVisible ? 'Debug Console 닫기' : 'Debug Console 열기';
+                            if (isVisible) searchInput.focus();
                         }
 
                         toggleBtn.onclick = toggleConsole;
                         closeBtn.onclick = toggleConsole;
 
+                        // --- 데이터 구조 ---
+                        var logsElement = document.getElementById('unity-debug-console-logs');
+                        var allLogs = [];      // { message, type, timestamp, element, firstLine, stacktrace }
+                        var maxLogs = 500;
+                        var searchQuery = '';
+                        var activeFilters = { log: true, warning: true, error: true };
+                        var typeCounts = { log: 0, warning: 0, error: 0 };
+
+                        // --- 필터링 로직 ---
+                        function escapeHtml(str) {
+                            return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+                        }
+
+                        function highlightText(text, query) {
+                            if (!query) return escapeHtml(text);
+                            var escaped = escapeHtml(text);
+                            var escapedQuery = escapeHtml(query);
+                            var lowerEscaped = escaped.toLowerCase();
+                            var lowerQuery = escapedQuery.toLowerCase();
+                            var result = '';
+                            var pos = 0;
+                            while (pos < lowerEscaped.length) {
+                                var idx = lowerEscaped.indexOf(lowerQuery, pos);
+                                if (idx === -1) { result += escaped.substring(pos); break; }
+                                result += escaped.substring(pos, idx);
+                                result += '<span class="debug-search-highlight">' + escaped.substring(idx, idx + escapedQuery.length) + '</span>';
+                                pos = idx + escapedQuery.length;
+                            }
+                            return result;
+                        }
+
+                        function matchesFilter(logEntry) {
+                            if (!activeFilters[logEntry.type]) return false;
+                            if (searchQuery && logEntry.message.toLowerCase().indexOf(searchQuery.toLowerCase()) === -1) return false;
+                            return true;
+                        }
+
+                        function renderLogContent(logEntry) {
+                            var messageSpan = logEntry.element.querySelector('.debug-log-message');
+                            if (messageSpan) {
+                                messageSpan.innerHTML = highlightText(logEntry.firstLine, searchQuery);
+                            }
+                            var stackEl = logEntry.element.querySelector('.debug-log-stacktrace');
+                            if (stackEl) {
+                                stackEl.innerHTML = highlightText(logEntry.stacktrace, searchQuery);
+                            }
+                        }
+
+                        function applyFilters() {
+                            var showing = 0;
+                            for (var i = 0; i < allLogs.length; i++) {
+                                var log = allLogs[i];
+                                var visible = matchesFilter(log);
+                                log.element.style.display = visible ? '' : 'none';
+                                if (visible) {
+                                    renderLogContent(log);
+                                    showing++;
+                                }
+                            }
+                            statusBar.textContent = 'Showing ' + showing + ' / ' + allLogs.length;
+                        }
+
+                        function updateFilterCounts() {
+                            filterBtns.forEach(function(btn) {
+                                var type = btn.getAttribute('data-type');
+                                var countSpan = btn.querySelector('.debug-filter-count');
+                                if (countSpan) countSpan.textContent = typeCounts[type] || 0;
+                            });
+                        }
+
+                        // --- 검색 (debounced) ---
+                        var searchTimer = null;
+                        searchInput.addEventListener('input', function() {
+                            clearTimeout(searchTimer);
+                            searchTimer = setTimeout(function() {
+                                searchQuery = searchInput.value;
+                                applyFilters();
+                            }, 150);
+                        });
+                        searchClearBtn.onclick = function() {
+                            searchInput.value = '';
+                            searchQuery = '';
+                            applyFilters();
+                            searchInput.focus();
+                        };
+
+                        // --- 타입 필터 토글 ---
+                        filterBtns.forEach(function(btn) {
+                            btn.addEventListener('click', function() {
+                                var type = btn.getAttribute('data-type');
+                                activeFilters[type] = !activeFilters[type];
+                                btn.classList.toggle('active', activeFilters[type]);
+                                applyFilters();
+                            });
+                        });
+
+                        // --- Copy (필터된 로그만 복사) ---
                         copyBtn.onclick = function() {
-                            var logs = document.getElementById('unity-debug-console-logs').innerText;
+                            var lines = [];
+                            for (var i = 0; i < allLogs.length; i++) {
+                                if (allLogs[i].element.style.display !== 'none') {
+                                    lines.push('[' + allLogs[i].timestamp + '] [' + allLogs[i].type + '] ' + allLogs[i].message);
+                                }
+                            }
+                            var text = lines.join('\n');
                             if (navigator.clipboard) {
-                                navigator.clipboard.writeText(logs).then(function() {
-                                    alert('로그가 클립보드에 복사되었습니다!');
+                                navigator.clipboard.writeText(text).then(function() {
+                                    alert('로그가 클립보드에 복사되었습니다! (' + lines.length + '건)');
                                 }).catch(function(err) {
                                     alert('복사 실패: ' + err.message);
                                 });
                             } else {
                                 var textArea = document.createElement('textarea');
-                                textArea.value = logs;
+                                textArea.value = text;
                                 textArea.style.position = 'fixed';
                                 textArea.style.opacity = '0';
                                 document.body.appendChild(textArea);
                                 textArea.select();
                                 try {
                                     document.execCommand('copy');
-                                    alert('로그가 클립보드에 복사되었습니다!');
+                                    alert('로그가 클립보드에 복사되었습니다! (' + lines.length + '건)');
                                 } catch (err) {
                                     alert('복사 실패: ' + err.message);
                                 }
@@ -901,8 +1129,13 @@
                             }
                         };
 
+                        // --- Clear ---
                         clearBtn.onclick = function() {
-                            document.getElementById('unity-debug-console-logs').innerHTML = '';
+                            logsElement.innerHTML = '';
+                            allLogs = [];
+                            typeCounts = { log: 0, warning: 0, error: 0 };
+                            updateFilterCounts();
+                            statusBar.textContent = 'Showing 0 / 0';
                         };
 
                         // 백틱 키 토글
@@ -913,32 +1146,74 @@
                             }
                         });
 
-                        // 로그 추가 함수
-                        var logsElement = document.getElementById('unity-debug-console-logs');
-                        var maxLogs = 100;
-
+                        // --- 로그 추가 함수 ---
                         function addLog(message, type) {
                             var now = new Date();
                             var timestamp = now.getHours().toString().padStart(2, '0') + ':' +
                                            now.getMinutes().toString().padStart(2, '0') + ':' +
                                            now.getSeconds().toString().padStart(2, '0');
 
+                            var msgStr = String(message);
+                            var lines = msgStr.split('\n');
+                            var firstLine = lines[0];
+                            var stacktrace = lines.length > 1 ? lines.slice(1).join('\n') : '';
+                            var hasStack = stacktrace.length > 0;
+
                             var entry = document.createElement('div');
-                            entry.className = 'debug-log-entry ' + type;
+                            entry.className = 'debug-log-entry ' + type + (hasStack ? ' has-stack' : '');
+
+                            var expandIcon = hasStack ? '<span class="debug-log-expand-icon">&#9654;</span>' : '';
+                            var stackHtml = hasStack ? '<div class="debug-log-stacktrace">' + escapeHtml(stacktrace) + '</div>' : '';
                             entry.innerHTML = '<span class="debug-log-timestamp">[' + timestamp + ']</span>' +
-                                             '<span class="debug-log-message">' + String(message) + '</span>';
+                                             expandIcon +
+                                             '<span class="debug-log-message">' + escapeHtml(firstLine) + '</span>' +
+                                             stackHtml;
+
+                            // 스택트레이스 클릭 펼침/접힘
+                            if (hasStack) {
+                                entry.addEventListener('click', function() {
+                                    entry.classList.toggle('expanded');
+                                });
+                            }
+
+                            var logEntry = {
+                                message: msgStr,
+                                type: type,
+                                timestamp: timestamp,
+                                element: entry,
+                                firstLine: firstLine,
+                                stacktrace: stacktrace
+                            };
 
                             // 스크롤 위치 확인 (로그 추가 전)
                             var scrollThreshold = 50;
                             var wasAtBottom = (logsElement.scrollHeight - logsElement.scrollTop - logsElement.clientHeight) < scrollThreshold;
 
-                            logsElement.appendChild(entry);
+                            allLogs.push(logEntry);
+                            typeCounts[type] = (typeCounts[type] || 0) + 1;
 
                             // 최대 로그 수 유지
-                            var logs = logsElement.children;
-                            if (logs.length > maxLogs) {
-                                logsElement.removeChild(logs[0]);
+                            while (allLogs.length > maxLogs) {
+                                var removed = allLogs.shift();
+                                typeCounts[removed.type]--;
+                                if (removed.element.parentNode) {
+                                    logsElement.removeChild(removed.element);
+                                }
                             }
+
+                            // 필터 매칭 확인 후 DOM에 추가
+                            var visible = matchesFilter(logEntry);
+                            entry.style.display = visible ? '' : 'none';
+                            if (visible) renderLogContent(logEntry);
+                            logsElement.appendChild(entry);
+
+                            // 카운트 업데이트
+                            updateFilterCounts();
+                            var showCount = 0;
+                            for (var i = 0; i < allLogs.length; i++) {
+                                if (allLogs[i].element.style.display !== 'none') showCount++;
+                            }
+                            statusBar.textContent = 'Showing ' + showCount + ' / ' + allLogs.length;
 
                             // 자동 스크롤 (사용자가 바닥에 있었을 때만)
                             if (wasAtBottom) {

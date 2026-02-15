@@ -27,6 +27,7 @@ function getPortOffsetFromUnityVersion(projectPath) {
   if (projectPath.includes('2022.3')) return 1;
   if (projectPath.includes('6000.0')) return 2;
   if (projectPath.includes('6000.2')) return 3;
+  if (projectPath.includes('6000.3')) return 4;
   return 0;
 }
 

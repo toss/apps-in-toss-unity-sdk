@@ -58,8 +58,6 @@ MonoBehaviour:
   runInBackground: -1
   webAssemblyArithmeticExceptions: -1
   enableDebugConsole: 0
-  showDiagnostics: -1
-  unityMetricsIntervalSec: 10
   permissionConfig:
     clipboardRead: 1
     clipboardWrite: 1

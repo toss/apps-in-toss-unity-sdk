@@ -182,7 +182,8 @@ namespace AppsInToss.Editor
             string npmPath,
             string arguments,
             string cachePath,
-            string progressTitle)
+            string progressTitle,
+            Dictionary<string, string> additionalEnvVars = null)
         {
             string pmName = Path.GetFileNameWithoutExtension(npmPath);
             string fullArguments = BuildFullArguments(arguments, cachePath);
@@ -208,7 +209,8 @@ namespace AppsInToss.Editor
                     workingDirectory,
                     additionalPaths.ToArray(),
                     timeoutMs: maxWaitSeconds * 1000,
-                    verbose: true
+                    verbose: true,
+                    additionalEnvVars: additionalEnvVars
                 );
 
                 EditorUtility.ClearProgressBar();
@@ -256,7 +258,8 @@ namespace AppsInToss.Editor
             string cachePath,
             Action<AITConvertCore.AITExportError> onComplete,
             Action<string> onOutputReceived = null,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            Dictionary<string, string> additionalEnvVars = null)
         {
             string pmName = Path.GetFileNameWithoutExtension(npmPath);
             string fullArguments = BuildFullArguments(arguments, cachePath);
@@ -297,7 +300,8 @@ namespace AppsInToss.Editor
                     }
                 },
                 onOutputReceived: onOutputReceived,
-                timeoutMs: 300000 // 5분
+                timeoutMs: 300000, // 5분
+                additionalEnvVars: additionalEnvVars
             );
 
             // 현재 작업 등록 (취소용)

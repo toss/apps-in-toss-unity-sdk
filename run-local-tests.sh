@@ -629,7 +629,17 @@ run_parallel_unity_builds_only() {
             if [[ "$version" == "$pattern"* ]]; then
                 local project_path=$(get_project_path_for_version "$pattern")
                 if [ -d "$project_path" ]; then
-                    versions_to_build+=("$pattern")
+                    # 중복 패턴 방지 (같은 major.minor에 여러 버전이 설치된 경우)
+                    local already_added=false
+                    for existing in "${versions_to_build[@]}"; do
+                        if [ "$existing" = "$pattern" ]; then
+                            already_added=true
+                            break
+                        fi
+                    done
+                    if [ "$already_added" = false ]; then
+                        versions_to_build+=("$pattern")
+                    fi
                 fi
                 break
             fi
@@ -728,7 +738,17 @@ run_parallel_builds() {
             if [[ "$version" == "$pattern"* ]]; then
                 local project_path=$(get_project_path_for_version "$pattern")
                 if [ -d "$project_path" ]; then
-                    versions_to_build+=("$pattern")
+                    # 중복 패턴 방지 (같은 major.minor에 여러 버전이 설치된 경우)
+                    local already_added=false
+                    for existing in "${versions_to_build[@]}"; do
+                        if [ "$existing" = "$pattern" ]; then
+                            already_added=true
+                            break
+                        fi
+                    done
+                    if [ "$already_added" = false ]; then
+                        versions_to_build+=("$pattern")
+                    fi
                 fi
                 break
             fi

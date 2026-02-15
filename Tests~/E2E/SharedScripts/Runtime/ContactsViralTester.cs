@@ -66,11 +66,11 @@ public class ContactsViralTester : MonoBehaviour
 
         // moduleId 입력 (PASTE 버튼 포함)
         GUILayout.BeginHorizontal();
-        GUILayout.Label("Module ID:", fieldLabelStyle, GUILayout.Width(100));
-        moduleId = GUILayout.TextField(moduleId, textFieldStyle, GUILayout.Height(36), GUILayout.ExpandWidth(true));
+        GUILayout.Label("Module ID:", fieldLabelStyle, GUILayout.Width(InteractiveAPITesterStyles.ScaledInt(100)));
+        moduleId = GUILayout.TextField(moduleId, textFieldStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(36)), GUILayout.ExpandWidth(true));
 
         GUI.enabled = !isPasting;
-        if (GUILayout.Button(isPasting ? "..." : "PASTE", buttonStyle, GUILayout.Width(70), GUILayout.Height(36)))
+        if (GUILayout.Button(isPasting ? "..." : "PASTE", buttonStyle, GUILayout.Width(InteractiveAPITesterStyles.ScaledInt(70)), GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(36))))
         {
             PasteFromClipboard();
         }
@@ -82,7 +82,7 @@ public class ContactsViralTester : MonoBehaviour
         // ContactsViral 호출 버튼
         if (!isActive)
         {
-            if (GUILayout.Button("contactsViral(...) 호출", buttonStyle, GUILayout.Height(44)))
+            if (GUILayout.Button("contactsViral(...) 호출", buttonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(44))))
             {
                 ExecuteContactsViral();
             }
@@ -90,7 +90,7 @@ public class ContactsViralTester : MonoBehaviour
         else
         {
             // 구독 해제 버튼
-            if (GUILayout.Button("구독 해제 (Unsubscribe)", buttonStyle, GUILayout.Height(44)))
+            if (GUILayout.Button("구독 해제 (Unsubscribe)", buttonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(44))))
             {
                 Unsubscribe();
             }
@@ -101,7 +101,7 @@ public class ContactsViralTester : MonoBehaviour
         // 로그 초기화
         if (eventLog.Count > 0)
         {
-            if (GUILayout.Button("Clear Log", buttonStyle, GUILayout.Height(32)))
+            if (GUILayout.Button("Clear Log", buttonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(32))))
             {
                 eventLog.Clear();
                 status = "";

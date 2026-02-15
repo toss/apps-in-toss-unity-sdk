@@ -72,13 +72,13 @@ public class AdV2Tester : MonoBehaviour
         GUILayout.BeginHorizontal();
         if (GUILayout.Button(
             selectedAdType == "interstitial" ? "[Interstitial]" : "Interstitial",
-            buttonStyle, GUILayout.Height(36), GUILayout.ExpandWidth(true)))
+            buttonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(36)), GUILayout.ExpandWidth(true)))
         {
             selectedAdType = "interstitial";
         }
         if (GUILayout.Button(
             selectedAdType == "rewarded" ? "[Rewarded]" : "Rewarded",
-            buttonStyle, GUILayout.Height(36), GUILayout.ExpandWidth(true)))
+            buttonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(36)), GUILayout.ExpandWidth(true)))
         {
             selectedAdType = "rewarded";
         }
@@ -92,7 +92,7 @@ public class AdV2Tester : MonoBehaviour
 
         // Step 1: 광고 로드
         GUILayout.Label("Step 1: Load Ad", fieldLabelStyle);
-        if (GUILayout.Button("loadAppsInTossAdMob(...)", buttonStyle, GUILayout.Height(40)))
+        if (GUILayout.Button("loadAppsInTossAdMob(...)", buttonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(40))))
         {
             ExecuteLoadAd();
         }
@@ -102,7 +102,7 @@ public class AdV2Tester : MonoBehaviour
         // Step 2: 광고 표시
         GUILayout.Label("Step 2: Show Ad", fieldLabelStyle);
         GUI.enabled = isAdLoaded;
-        if (GUILayout.Button("showAppsInTossAdMob(...)", buttonStyle, GUILayout.Height(40)))
+        if (GUILayout.Button("showAppsInTossAdMob(...)", buttonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(40))))
         {
             ExecuteShowAd();
         }
@@ -118,7 +118,7 @@ public class AdV2Tester : MonoBehaviour
         // 로그 초기화
         if (adEventLog.Count > 0)
         {
-            if (GUILayout.Button("Clear Log", buttonStyle, GUILayout.Height(32)))
+            if (GUILayout.Button("Clear Log", buttonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(32))))
             {
                 adEventLog.Clear();
                 adStatus = "";

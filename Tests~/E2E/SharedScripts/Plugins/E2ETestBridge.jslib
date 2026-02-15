@@ -118,5 +118,14 @@ mergeInto(LibraryManager.library, {
         };
 
         console.log('[E2E-TRIGGER] Trigger functions registered');
+    },
+
+    /**
+     * window.devicePixelRatio 반환
+     * Unity WebGL에서 Screen.dpi가 항상 0을 반환하므로 직접 브라우저 API 사용
+     * @returns {number} devicePixelRatio (보통 1.0 ~ 3.0)
+     */
+    E2E_GetDevicePixelRatio: function() {
+        return window.devicePixelRatio || 1.0;
     }
 });

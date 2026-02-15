@@ -237,6 +237,9 @@ public class InteractiveAPITester : MonoBehaviour
         GUILayout.BeginArea(safeRect);
         GUILayout.BeginVertical(InteractiveAPITesterStyles.BoxStyle);
 
+        // DPI 디버그 정보
+        GUILayout.Label($"Screen: {Screen.width}x{Screen.height} | dpi:{Screen.dpi} | dpiScale:{InteractiveAPITesterStyles.DpiScale:F2}", InteractiveAPITesterStyles.LabelStyle);
+
         switch (currentState)
         {
             case UIState.APIList:
@@ -358,10 +361,10 @@ public class InteractiveAPITester : MonoBehaviour
         GUILayout.BeginHorizontal();
 
         // 검색 아이콘/레이블
-        GUILayout.Label("🔍", InteractiveAPITesterStyles.LabelStyle, GUILayout.Width(24));
+        GUILayout.Label("🔍", InteractiveAPITesterStyles.LabelStyle, GUILayout.Width(InteractiveAPITesterStyles.ScaledInt(24)));
 
         // 검색 입력 필드
-        string newQuery = GUILayout.TextField(searchQuery, InteractiveAPITesterStyles.TextFieldStyle, GUILayout.Height(36), GUILayout.ExpandWidth(true));
+        string newQuery = GUILayout.TextField(searchQuery, InteractiveAPITesterStyles.TextFieldStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(36)), GUILayout.ExpandWidth(true));
 
         // 검색어가 변경되면 검색 수행
         if (newQuery != searchQuery)
@@ -373,7 +376,7 @@ public class InteractiveAPITester : MonoBehaviour
         // 검색어 지우기 버튼
         if (!string.IsNullOrEmpty(searchQuery))
         {
-            if (GUILayout.Button("✕", InteractiveAPITesterStyles.ButtonStyle, GUILayout.Width(40), GUILayout.Height(36)))
+            if (GUILayout.Button("✕", InteractiveAPITesterStyles.ButtonStyle, GUILayout.Width(InteractiveAPITesterStyles.ScaledInt(40)), GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(36))))
             {
                 searchQuery = "";
                 searchResults.Clear();
@@ -521,10 +524,10 @@ public class InteractiveAPITester : MonoBehaviour
         GUILayout.BeginHorizontal();
 
         // 카테고리 라벨
-        GUILayout.Label($"[{method.Category}]", InteractiveAPITesterStyles.LabelStyle, GUILayout.Width(100));
+        GUILayout.Label($"[{method.Category}]", InteractiveAPITesterStyles.LabelStyle, GUILayout.Width(InteractiveAPITesterStyles.ScaledInt(100)));
 
         // API 버튼
-        if (ScrollAreaButton(method.Name, InteractiveAPITesterStyles.ApiButtonStyle, GUILayout.Height(44), GUILayout.ExpandWidth(true)))
+        if (ScrollAreaButton(method.Name, InteractiveAPITesterStyles.ApiButtonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(44)), GUILayout.ExpandWidth(true)))
         {
             SelectAPI(method);
         }
@@ -538,7 +541,7 @@ public class InteractiveAPITester : MonoBehaviour
         string icon = isExpanded ? "▼" : "▶";
         string label = $"{icon}  {categoryName} ({apiCount})";
 
-        if (ScrollAreaButton(label, InteractiveAPITesterStyles.GroupHeaderStyle, GUILayout.Height(44)))
+        if (ScrollAreaButton(label, InteractiveAPITesterStyles.GroupHeaderStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(44))))
         {
             groupFoldouts[categoryName] = !isExpanded;
         }
@@ -550,7 +553,7 @@ public class InteractiveAPITester : MonoBehaviour
         GUILayout.Space(20); // 들여쓰기
 
         // API 버튼 - 반응형으로 남은 공간 채우기
-        if (ScrollAreaButton(method.Name, InteractiveAPITesterStyles.ApiButtonStyle, GUILayout.Height(44), GUILayout.ExpandWidth(true)))
+        if (ScrollAreaButton(method.Name, InteractiveAPITesterStyles.ApiButtonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(44)), GUILayout.ExpandWidth(true)))
         {
             SelectAPI(method);
         }
@@ -590,14 +593,14 @@ public class InteractiveAPITester : MonoBehaviour
         GUILayout.Space(10);
         GUILayout.BeginHorizontal();
 
-        if (GUILayout.Button("← Back", InteractiveAPITesterStyles.ButtonStyle, GUILayout.Height(48), GUILayout.Width(120)))
+        if (GUILayout.Button("← Back", InteractiveAPITesterStyles.ButtonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(48)), GUILayout.Width(InteractiveAPITesterStyles.ScaledInt(120))))
         {
             BackToList();
         }
 
         GUILayout.FlexibleSpace();
 
-        if (GUILayout.Button("Execute →", InteractiveAPITesterStyles.ButtonStyle, GUILayout.Height(48), GUILayout.Width(140)))
+        if (GUILayout.Button("Execute →", InteractiveAPITesterStyles.ButtonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(48)), GUILayout.Width(InteractiveAPITesterStyles.ScaledInt(140))))
         {
             ExecuteAPI();
         }
@@ -622,14 +625,14 @@ public class InteractiveAPITester : MonoBehaviour
         if (lastResultSuccess && lastResultObject != null)
         {
             GUILayout.BeginHorizontal();
-            GUILayout.Label("표시 모드:", InteractiveAPITesterStyles.LabelStyle, GUILayout.Width(80));
+            GUILayout.Label("표시 모드:", InteractiveAPITesterStyles.LabelStyle, GUILayout.Width(InteractiveAPITesterStyles.ScaledInt(80)));
 
             Color origBg = GUI.backgroundColor;
 
             GUI.backgroundColor = resultDisplayMode == ResultDisplayMode.Structured
                 ? new Color(0.3f, 0.6f, 0.3f)
                 : new Color(0.3f, 0.3f, 0.3f);
-            if (GUILayout.Button("구조화", InteractiveAPITesterStyles.ToggleButtonStyle, GUILayout.Height(32), GUILayout.Width(80)))
+            if (GUILayout.Button("구조화", InteractiveAPITesterStyles.ToggleButtonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(32)), GUILayout.Width(InteractiveAPITesterStyles.ScaledInt(80))))
             {
                 resultDisplayMode = ResultDisplayMode.Structured;
             }
@@ -637,7 +640,7 @@ public class InteractiveAPITester : MonoBehaviour
             GUI.backgroundColor = resultDisplayMode == ResultDisplayMode.RawJson
                 ? new Color(0.3f, 0.6f, 0.3f)
                 : new Color(0.3f, 0.3f, 0.3f);
-            if (GUILayout.Button("JSON", InteractiveAPITesterStyles.ToggleButtonStyle, GUILayout.Height(32), GUILayout.Width(80)))
+            if (GUILayout.Button("JSON", InteractiveAPITesterStyles.ToggleButtonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(32)), GUILayout.Width(InteractiveAPITesterStyles.ScaledInt(80))))
             {
                 resultDisplayMode = ResultDisplayMode.RawJson;
             }
@@ -672,14 +675,14 @@ public class InteractiveAPITester : MonoBehaviour
         GUILayout.Space(10);
         GUILayout.BeginHorizontal();
 
-        if (GUILayout.Button("← Back to List", InteractiveAPITesterStyles.ButtonStyle, GUILayout.Height(48), GUILayout.Width(160)))
+        if (GUILayout.Button("← Back to List", InteractiveAPITesterStyles.ButtonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(48)), GUILayout.Width(InteractiveAPITesterStyles.ScaledInt(160))))
         {
             BackToList();
         }
 
         GUILayout.FlexibleSpace();
 
-        if (GUILayout.Button("Retry", InteractiveAPITesterStyles.ButtonStyle, GUILayout.Height(48), GUILayout.Width(120)))
+        if (GUILayout.Button("Retry", InteractiveAPITesterStyles.ButtonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(48)), GUILayout.Width(InteractiveAPITesterStyles.ScaledInt(120))))
         {
             currentState = UIState.ParameterInput;
             _scrollHandler.ResetScroll();
@@ -729,8 +732,8 @@ public class InteractiveAPITester : MonoBehaviour
             for (int i = 0; i < array.Length; i++)
             {
                 GUILayout.BeginHorizontal();
-                GUILayout.Space(indentLevel * 20);
-                GUILayout.Label($"[{i}]:", InteractiveAPITesterStyles.ResultKeyStyle, GUILayout.Width(60));
+                GUILayout.Space(indentLevel * InteractiveAPITesterStyles.ScaledInt(20));
+                GUILayout.Label($"[{i}]:", InteractiveAPITesterStyles.ResultKeyStyle, GUILayout.Width(InteractiveAPITesterStyles.ScaledInt(60)));
                 GUILayout.EndHorizontal();
                 DrawStructuredResult(array.GetValue(i), indentLevel + 1);
             }
@@ -760,8 +763,8 @@ public class InteractiveAPITester : MonoBehaviour
             if (APIParameterInspector.IsSimpleType(fieldType) || fieldType.IsEnum)
             {
                 GUILayout.BeginHorizontal();
-                GUILayout.Space(indentLevel * 20);
-                GUILayout.Label($"{field.Name}:", InteractiveAPITesterStyles.ResultKeyStyle, GUILayout.Width(150));
+                GUILayout.Space(indentLevel * InteractiveAPITesterStyles.ScaledInt(20));
+                GUILayout.Label($"{field.Name}:", InteractiveAPITesterStyles.ResultKeyStyle, GUILayout.Width(InteractiveAPITesterStyles.ScaledInt(150)));
                 string displayValue = value == null ? "null" :
                     (fieldType == typeof(string) ? $"\"{value}\"" : value.ToString());
                 GUILayout.Label(displayValue, InteractiveAPITesterStyles.ResultValueStyle, GUILayout.ExpandWidth(true));
@@ -772,7 +775,7 @@ public class InteractiveAPITester : MonoBehaviour
             {
                 // 중첩 객체
                 GUILayout.BeginHorizontal();
-                GUILayout.Space(indentLevel * 20);
+                GUILayout.Space(indentLevel * InteractiveAPITesterStyles.ScaledInt(20));
                 GUILayout.Label($"{field.Name}:", InteractiveAPITesterStyles.ResultKeyStyle);
                 GUILayout.EndHorizontal();
                 DrawStructuredResult(value, indentLevel + 1);
@@ -783,7 +786,7 @@ public class InteractiveAPITester : MonoBehaviour
     private void DrawResultValue(string value, int indentLevel)
     {
         GUILayout.BeginHorizontal();
-        GUILayout.Space(indentLevel * 20);
+        GUILayout.Space(indentLevel * InteractiveAPITesterStyles.ScaledInt(20));
         GUILayout.Label(value, InteractiveAPITesterStyles.ResultValueStyle);
         GUILayout.EndHorizontal();
     }

@@ -192,7 +192,11 @@ namespace AppsInToss.Editor
             // granite build 실행 (web 폴더를 dist로 복사)
             Debug.Log("[AIT] granite build 실행 중...");
 
-            var buildResult = AITNpmRunner.RunNpmCommandWithCache(buildProjectPath, pnpmPath, "run build", localCachePath, "granite build 실행 중...");
+            // UNITY_METADATA 환경변수를 통해 빌드 메타데이터를 granite build에 전달
+            var unityMetadataEnv = AITUnityMetadata.BuildEnvironmentVariables();
+            Debug.Log($"[AIT] UNITY_METADATA: {unityMetadataEnv["UNITY_METADATA"]}");
+
+            var buildResult = AITNpmRunner.RunNpmCommandWithCache(buildProjectPath, pnpmPath, "run build", localCachePath, "granite build 실행 중...", additionalEnvVars: unityMetadataEnv);
 
             if (buildResult != AITConvertCore.AITExportError.SUCCEED)
             {
@@ -209,7 +213,7 @@ namespace AppsInToss.Editor
                 }
 
                 // build 재시도
-                buildResult = AITNpmRunner.RunNpmCommandWithCache(buildProjectPath, pnpmPath, "run build", localCachePath, "granite build (재시도)...");
+                buildResult = AITNpmRunner.RunNpmCommandWithCache(buildProjectPath, pnpmPath, "run build", localCachePath, "granite build (재시도)...", additionalEnvVars: unityMetadataEnv);
                 if (buildResult != AITConvertCore.AITExportError.SUCCEED)
                 {
                     Debug.LogError("[AIT] granite build 재시도도 실패");
@@ -1174,6 +1178,10 @@ namespace AppsInToss.Editor
                     onProgress?.Invoke(AITConvertCore.BuildPhase.GraniteBuild, 0.5f, "granite build 실행 중...");
                     Debug.Log("[AIT] granite build 실행 중...");
 
+                    // UNITY_METADATA 환경변수를 통해 빌드 메타데이터를 granite build에 전달
+                    var unityMetadataEnv = AITUnityMetadata.BuildEnvironmentVariables();
+                    Debug.Log($"[AIT] UNITY_METADATA: {unityMetadataEnv["UNITY_METADATA"]}");
+
                     AITNpmRunner.RunNpmCommandWithCacheAsync(
                         buildProjectPath,
                         pnpmPath,
@@ -1245,7 +1253,8 @@ namespace AppsInToss.Editor
                                         onOutputReceived: (line2) =>
                                         {
                                             onProgress?.Invoke(AITConvertCore.BuildPhase.GraniteBuild, 0.85f, line2);
-                                        }
+                                        },
+                                        additionalEnvVars: unityMetadataEnv
                                     );
                                 },
                                 onOutputReceived: (line2) =>
@@ -1257,7 +1266,8 @@ namespace AppsInToss.Editor
                         onOutputReceived: (line) =>
                         {
                             onProgress?.Invoke(AITConvertCore.BuildPhase.GraniteBuild, 0.75f, line);
-                        }
+                        },
+                        additionalEnvVars: unityMetadataEnv
                     );
                 }
             );

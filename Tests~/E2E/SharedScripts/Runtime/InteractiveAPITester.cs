@@ -52,6 +52,7 @@ public class InteractiveAPITester : MonoBehaviour
     private AdV2Tester _adV2Tester; // current LoadFullScreenAd/ShowFullScreenAd API
     private ContactsViralTester _contactsViralTester; // ContactsViral API 테스터
     private VisibilityBGMTester _visibilityBGMTester; // Visibility Helper BGM 테스터
+    private MetricEventTester _metricEventTester; // Metric Explorer 이벤트 트리거 테스터
     private TouchScrollHandler _scrollHandler;
     private ParameterInputRenderer _paramRenderer;
 
@@ -87,6 +88,11 @@ public class InteractiveAPITester : MonoBehaviour
         if (_visibilityBGMTester == null)
         {
             _visibilityBGMTester = gameObject.AddComponent<VisibilityBGMTester>();
+        }
+        _metricEventTester = GetComponent<MetricEventTester>();
+        if (_metricEventTester == null)
+        {
+            _metricEventTester = gameObject.AddComponent<MetricEventTester>();
         }
         _scrollHandler = new TouchScrollHandler();
         _paramRenderer = new ParameterInputRenderer();
@@ -348,6 +354,15 @@ public class InteractiveAPITester : MonoBehaviour
                 InteractiveAPITesterStyles.TextFieldStyle,
                 InteractiveAPITesterStyles.FieldLabelStyle,
                 InteractiveAPITesterStyles.CallbackLabelStyle
+            );
+
+            // Metric Event Tester 섹션
+            GUILayout.Space(20);
+            _metricEventTester?.DrawUI(
+                InteractiveAPITesterStyles.BoxStyle,
+                InteractiveAPITesterStyles.GroupHeaderStyle,
+                InteractiveAPITesterStyles.LabelStyle,
+                InteractiveAPITesterStyles.ButtonStyle
             );
         }
 

@@ -784,6 +784,22 @@ namespace AppsInToss
             AITConfigurationWindow.ShowWindow();
         }
 
+        // ==================== Sentry ====================
+        [MenuItem("AIT/Install Sentry SDK", false, 211)]
+        public static void InstallSentry()
+        {
+            UnityEditor.PackageManager.Client.Add("https://github.com/getsentry/unity.git#4.1.0");
+            Debug.Log("[AIT] Sentry Unity SDK 설치를 시작합니다...");
+        }
+
+        [MenuItem("AIT/Install Sentry SDK", true)]
+        public static bool InstallSentryValidate()
+        {
+            // io.sentry.unity가 이미 설치되어 있으면 비활성화
+            var info = UnityEditor.PackageManager.PackageInfo.FindForAssetPath("Packages/io.sentry.unity");
+            return info == null;
+        }
+
         // ============================================
         // 빌드 실행 메서드들
         // ============================================

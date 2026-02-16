@@ -86,9 +86,9 @@ namespace AppsInToss
             SceneManager.sceneUnloaded += OnSceneUnloaded;
             Application.lowMemory += OnLowMemory;
             Application.logMessageReceived += OnLogMessage;
-#if UNITY_2021_1_OR_NEWER
-            Application.focusChanged += OnFocusChanged;
-#endif
+            // jslib lazy init 강제 트리거 + VisibilityHelper 구독
+            _ = AITVisibilityHelper.IsVisible;
+            AITVisibilityHelper.OnVisibilityChanged += OnVisibilityChanged;
             Application.quitting += OnQuitting;
 
             // Create polling MonoBehaviour
@@ -244,8 +244,7 @@ namespace AppsInToss
         }
 
         // ---- 4. App Lifecycle ----
-#if UNITY_2021_1_OR_NEWER
-        private static void OnFocusChanged(bool hasFocus)
+        private static void OnVisibilityChanged(bool isVisible)
         {
             try
             {
@@ -256,16 +255,15 @@ namespace AppsInToss
                 SendLog("unity_lifecycle", new Dictionary<string, object>
                 {
                     { "event_type", "focus_changed" },
-                    { "has_focus", hasFocus },
+                    { "has_focus", isVisible },
                     { "time_since_start_sec", Math.Round(now, 1) }
                 });
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"{Tag} OnFocusChanged error: {ex.Message}");
+                Debug.LogWarning($"{Tag} OnVisibilityChanged error: {ex.Message}");
             }
         }
-#endif
 
         private static void OnQuitting()
         {

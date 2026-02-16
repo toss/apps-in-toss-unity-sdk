@@ -219,6 +219,8 @@ jobs:
       clean-library: ${{ inputs.clean_library || false }}
       sdk-version-override: ${{ inputs.sdk_version_override || '' }}
       test-level: ${{ inputs.test_level || '2' }}
+    secrets:
+      SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
 
   # =====================================================
   # E2E Tests - Windows (전체 테스트 실행)
@@ -245,6 +247,8 @@ jobs:
       clean-library: ${{ inputs.clean_library || false }}
       sdk-version-override: ${{ inputs.sdk_version_override || '' }}
       test-level: ${{ inputs.test_level || '2' }}
+    secrets:
+      SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
 
   # =====================================================
   # Test Report Summary

@@ -73,6 +73,9 @@ on:
       AIT_AD_REWARDED_ID:
         description: 'Rewarded ad ID for testing'
         required: false
+      SENTRY_DSN:
+        description: 'Sentry DSN for error reporting'
+        required: false
     outputs:
       artifact-name:
         description: 'Uploaded artifact name'
@@ -841,6 +844,7 @@ jobs:
         uses: nick-invision/retry@v3
         env:
           AIT_DEBUG_CONSOLE: "true"
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         with:
           timeout_minutes: 30
           max_attempts: 3
@@ -885,6 +889,7 @@ jobs:
         uses: nick-invision/retry@v3
         env:
           AIT_DEBUG_CONSOLE: "true"
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         with:
           timeout_minutes: 30
           max_attempts: 3

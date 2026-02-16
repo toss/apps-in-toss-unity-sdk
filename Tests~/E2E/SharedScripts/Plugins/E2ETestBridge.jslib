@@ -127,5 +127,46 @@ mergeInto(LibraryManager.library, {
      */
     E2E_GetDevicePixelRatio: function() {
         return window.devicePixelRatio || 1.0;
+    },
+
+    /**
+     * 브라우저 visibilitychange + blur/focus 이벤트를 시뮬레이션하여
+     * Unity의 Application.focusChanged 트리거
+     * Metric Explorer에서 unity_lifecycle 이벤트 검증용
+     * @param {number} delayMs - blur 후 focus까지 대기 시간 (밀리초)
+     */
+    E2E_SimulateFocusChange: function(delayMs) {
+        console.log('[E2E] Simulating focus change (hidden → visible, delay: ' + delayMs + 'ms)');
+
+        // 원본 descriptor 백업 (브라우저 네이티브 getter 보존)
+        var proto = Object.getPrototypeOf(document);
+        var origVisibilityState = Object.getOwnPropertyDescriptor(proto, 'visibilityState');
+        var origHidden = Object.getOwnPropertyDescriptor(proto, 'hidden');
+
+        // visibilityState를 hidden으로 오버라이드
+        Object.defineProperty(document, 'visibilityState', {
+            value: 'hidden', writable: true, configurable: true
+        });
+        Object.defineProperty(document, 'hidden', {
+            value: true, writable: true, configurable: true
+        });
+        document.dispatchEvent(new Event('visibilitychange'));
+        window.dispatchEvent(new Event('blur'));
+
+        setTimeout(function() {
+            // 원본 getter 복원 (브라우저가 다시 실제 값을 관리하도록)
+            delete document.visibilityState;
+            delete document.hidden;
+            // prototype descriptor가 사라진 경우 안전하게 복원
+            if (origVisibilityState && !Object.getOwnPropertyDescriptor(proto, 'visibilityState')) {
+                Object.defineProperty(proto, 'visibilityState', origVisibilityState);
+            }
+            if (origHidden && !Object.getOwnPropertyDescriptor(proto, 'hidden')) {
+                Object.defineProperty(proto, 'hidden', origHidden);
+            }
+            document.dispatchEvent(new Event('visibilitychange'));
+            window.dispatchEvent(new Event('focus'));
+            console.log('[E2E] Focus restored (native getters restored)');
+        }, delayMs);
     }
 });

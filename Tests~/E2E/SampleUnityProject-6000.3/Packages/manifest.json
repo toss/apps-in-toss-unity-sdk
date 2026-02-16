@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "io.sentry.unity": "https://github.com/getsentry/unity.git#4.1.0",
     "com.unity.ide.rider": "3.0.38",
     "com.unity.ide.visualstudio": "2.0.25",
     "com.unity.test-framework": "1.6.0",

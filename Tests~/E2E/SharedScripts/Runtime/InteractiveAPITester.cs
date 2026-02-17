@@ -48,11 +48,12 @@ public class InteractiveAPITester : MonoBehaviour
 
     // 분리된 컴포넌트 참조
     private OOMTester _oomTester;
+    private Component _sentryTester;
+    private System.Reflection.MethodInfo _sentryDrawUI;
     private IAPv2Tester _iapTester;
     private AdV2Tester _adV2Tester; // current LoadFullScreenAd/ShowFullScreenAd API
     private ContactsViralTester _contactsViralTester; // ContactsViral API 테스터
     private VisibilityBGMTester _visibilityBGMTester; // Visibility Helper BGM 테스터
-    private MetricEventTester _metricEventTester; // Metric Explorer 이벤트 트리거 테스터
     private TouchScrollHandler _scrollHandler;
     private ParameterInputRenderer _paramRenderer;
 
@@ -68,6 +69,13 @@ public class InteractiveAPITester : MonoBehaviour
         if (_oomTester == null)
         {
             _oomTester = gameObject.AddComponent<OOMTester>();
+        }
+        // SentryTester는 별도 어셈블리(AppsInTossTestScripts.Sentry)에 있으므로 리플렉션으로 로드
+        var sentryTesterType = Type.GetType("SentryTester, AppsInTossTestScripts.Sentry");
+        if (sentryTesterType != null)
+        {
+            _sentryTester = GetComponent(sentryTesterType) ?? gameObject.AddComponent(sentryTesterType);
+            _sentryDrawUI = sentryTesterType.GetMethod("DrawUI");
         }
         _iapTester = GetComponent<IAPv2Tester>();
         if (_iapTester == null)
@@ -88,11 +96,6 @@ public class InteractiveAPITester : MonoBehaviour
         if (_visibilityBGMTester == null)
         {
             _visibilityBGMTester = gameObject.AddComponent<VisibilityBGMTester>();
-        }
-        _metricEventTester = GetComponent<MetricEventTester>();
-        if (_metricEventTester == null)
-        {
-            _metricEventTester = gameObject.AddComponent<MetricEventTester>();
         }
         _scrollHandler = new TouchScrollHandler();
         _paramRenderer = new ParameterInputRenderer();
@@ -320,6 +323,19 @@ public class InteractiveAPITester : MonoBehaviour
                 InteractiveAPITesterStyles.ButtonStyle
             );
 
+            // Sentry Tester 섹션 (별도 어셈블리 — 리플렉션으로 호출)
+            if (_sentryTester != null && _sentryDrawUI != null)
+            {
+                GUILayout.Space(20);
+                _sentryDrawUI.Invoke(_sentryTester, new object[] {
+                    InteractiveAPITesterStyles.BoxStyle,
+                    InteractiveAPITesterStyles.GroupHeaderStyle,
+                    InteractiveAPITesterStyles.LabelStyle,
+                    InteractiveAPITesterStyles.ButtonStyle,
+                    InteractiveAPITesterStyles.DangerButtonStyle
+                });
+            }
+
             // IAP 테스터 섹션
             GUILayout.Space(20);
             _iapTester?.DrawUI(
@@ -354,15 +370,6 @@ public class InteractiveAPITester : MonoBehaviour
                 InteractiveAPITesterStyles.TextFieldStyle,
                 InteractiveAPITesterStyles.FieldLabelStyle,
                 InteractiveAPITesterStyles.CallbackLabelStyle
-            );
-
-            // Metric Event Tester 섹션
-            GUILayout.Space(20);
-            _metricEventTester?.DrawUI(
-                InteractiveAPITesterStyles.BoxStyle,
-                InteractiveAPITesterStyles.GroupHeaderStyle,
-                InteractiveAPITesterStyles.LabelStyle,
-                InteractiveAPITesterStyles.ButtonStyle
             );
         }
 

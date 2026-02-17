@@ -6,6 +6,7 @@
     "com.unity.ugui": "2.0.0",
     "im.toss.apps-in-toss-unity-sdk": "file:../../../..",
     "im.toss.sdk-test-scripts": "file:../../SharedScripts",
+    "io.sentry.unity": "https://github.com/getsentry/unity.git#4.1.0",
     "com.unity.modules.animation": "1.0.0",
     "com.unity.modules.audio": "1.0.0",
     "com.unity.modules.imageconversion": "1.0.0",

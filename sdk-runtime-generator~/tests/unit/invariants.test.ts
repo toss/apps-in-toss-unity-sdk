@@ -152,24 +152,11 @@ async function loadData() {
 // Constants
 // =================================================================
 
-const eventSubscriptionPatterns = [
-  '__AppsInTossEventSubscribe',
-  '__GraniteEventSubscribe',
-  '__TdsEventSubscribe',
-  '__loadFullScreenAd',    // 광고 로드 이벤트 (여러 이벤트 발생)
-  '__showFullScreenAd',    // 광고 표시 이벤트 (여러 이벤트 발생)
-  '__IAPCreateOneTimePurchaseOrder', // 인앱결제 (중첩 콜백 패턴)
-  '__AITRespondToNestedCallback', // 중첩 콜백 응답 함수
-  '__GoogleAdMobLoadAppsInTossAdMob', // 광고 로드 이벤트 (여러 이벤트 발생)
-  '__GoogleAdMobShowAppsInTossAdMob', // 광고 표시 이벤트 (여러 이벤트 발생)
-  // 참고: __GoogleAdMobIsAppsInTossAdMobLoaded_Internal은 일반 Promise API (단순 응답)
-  '__contactsViral', // 연락처 바이럴 공유 (콜백 기반 API)
-  '__onVisibilityChangedByTransparentServiceWeb', // 투명 서비스 웹 가시성 변경 구독
-  '__startUpdateLocation', // 위치 업데이트 구독
-];
-
+// 이벤트 구독 여부를 jslib의 sendMessageTarget으로 자동 감지
+// 하드코딩 목록 대신 생성된 코드에서 직접 판별
 function isEventSubscription(name: string): boolean {
-  return eventSubscriptionPatterns.some(pattern => name.startsWith(pattern));
+  const func = jslibFunctions.get(name);
+  return func?.sendMessageTarget === 'OnAITEventCallback';
 }
 
 // =================================================================
@@ -306,23 +293,36 @@ describe('Tier 2: C# ↔ jslib 일관성 검증', () => {
   });
 
   // =========================================
-  // 5. 이벤트 구독 콜백 타겟 검증 (3 tests)
+  // 5. jslib ↔ C# 콜백 파라미터 교차 일관성 검증
   // =========================================
-  describe('5. 이벤트 구독 콜백 타겟 검증', () => {
-    test('이벤트 구독 함수는 OnAITEventCallback 사용', async () => {
+  describe('5. jslib ↔ C# 콜백 파라미터 교차 일관성 검증', () => {
+    test('OnAITEventCallback 함수는 C#에 subscriptionId, OnAITCallback 함수는 callbackId 사용', async () => {
       await loadData();
+
+      const SYNC_FUNCTIONS = [
+        '__AITUnsubscribe_Internal',
+        '__GetDevicePixelRatio_Internal',
+        '__AITVisibilityHelper_GetIsVisible_Internal',
+      ];
 
       const violations: string[] = [];
       for (const [name, func] of jslibFunctions) {
-        if (!isEventSubscription(name)) continue;
+        if (SYNC_FUNCTIONS.includes(name)) continue;
 
-        if (func.sendMessageTarget !== 'OnAITEventCallback') {
-          violations.push(`${name}: got ${func.sendMessageTarget}`);
+        const method = dllImportMethods.find(m => m.name === name);
+        if (!method || method.parameters.length < 2) continue;
+
+        const secondLast = method.parameters[method.parameters.length - 2];
+
+        if (func.sendMessageTarget === 'OnAITEventCallback' && secondLast !== 'subscriptionId') {
+          violations.push(`${name}: OnAITEventCallback이지만 C#에 subscriptionId 없음 (got ${secondLast})`);
+        } else if (func.sendMessageTarget === 'OnAITCallback' && secondLast !== 'callbackId') {
+          violations.push(`${name}: OnAITCallback이지만 C#에 callbackId 없음 (got ${secondLast})`);
         }
       }
 
       if (violations.length > 0) {
-        console.error('❌ 이벤트 콜백 타겟 위반:');
+        console.error('❌ jslib ↔ C# 콜백 파라미터 불일치:');
         violations.forEach(v => console.error(`   - ${v}`));
       }
 
@@ -331,31 +331,30 @@ describe('Tier 2: C# ↔ jslib 일관성 검증', () => {
   });
 
   // =========================================
-  // 6. 일반 API 콜백 타겟 검증 (61 tests)
+  // 6. 비동기 함수 콜백 타겟 유효성 검증
   // =========================================
-  describe('6. 일반 API 콜백 타겟 검증', () => {
-    // 동기 함수 목록 (SendMessage 사용하지 않거나 특수 패턴 사용)
+  describe('6. 비동기 함수 콜백 타겟 유효성 검증', () => {
     const SYNC_FUNCTIONS = [
       '__AITUnsubscribe_Internal',
-      '__GetDevicePixelRatio_Internal', // WebGL 수동 API - 동기 함수
-      '__AITVisibilityHelper_GetIsVisible_Internal', // VisibilityHelper - 특수 SendMessage 패턴 (OnVisibilityStateChanged)
+      '__GetDevicePixelRatio_Internal',
+      '__AITVisibilityHelper_GetIsVisible_Internal',
     ];
 
-    test('일반 API 함수는 OnAITCallback 사용', async () => {
+    test('모든 비동기 함수는 OnAITCallback 또는 OnAITEventCallback 사용', async () => {
       await loadData();
 
+      const VALID_TARGETS = ['OnAITCallback', 'OnAITEventCallback'];
       const violations: string[] = [];
       for (const [name, func] of jslibFunctions) {
         if (SYNC_FUNCTIONS.includes(name)) continue;
-        if (isEventSubscription(name)) continue;
 
-        if (func.sendMessageTarget !== 'OnAITCallback') {
-          violations.push(`${name}: got ${func.sendMessageTarget}`);
+        if (!func.sendMessageTarget || !VALID_TARGETS.includes(func.sendMessageTarget)) {
+          violations.push(`${name}: 유효하지 않은 콜백 타겟 (got ${func.sendMessageTarget})`);
         }
       }
 
       if (violations.length > 0) {
-        console.error('❌ API 콜백 타겟 위반:');
+        console.error('❌ 유효하지 않은 콜백 타겟:');
         violations.forEach(v => console.error(`   - ${v}`));
       }
 

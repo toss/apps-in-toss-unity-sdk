@@ -262,6 +262,18 @@ export function collectReferencedTypes(
           collectReferencedTypes(elementType.properties, typeMap, exclude, tracker, generateClassType, typeName);
         }
       }
+      // Named type reference without inline properties (예: IapProductListItem[])
+      // → 외부 타입으로 큐잉하여 type definitions에서 해결
+      else if (elementType.kind === 'object' &&
+               elementType.name &&
+               elementType.name !== '__type' &&
+               elementType.name !== 'object' &&
+               !elementType.name.startsWith('{')) {
+        const typeName = extractCleanName(elementType.name);
+        if (typeName && !typeMap.has(typeName) && !exclude.has(typeName)) {
+          tracker.pendingExternalTypes.add(typeName);
+        }
+      }
     }
     // Union 타입의 멤버가 intersection/익명 객체인 경우
     // 모든 멤버의 프로퍼티를 병합하여 단일 클래스 생성

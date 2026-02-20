@@ -714,12 +714,12 @@ namespace AppsInToss
                         }
                     }
                     break;
-                case "SafeAreaInsets":
+                case "SafeAreaInsetsGetResult":
                     if (apiResponse.success)
                     {
-                        if (TryGetCallback<SafeAreaInsets>(callbackId, out var callback13) && callback13 != null)
+                        if (TryGetCallback<SafeAreaInsetsGetResult>(callbackId, out var callback13) && callback13 != null)
                         {
-                            var data13 = JsonConvert.DeserializeObject<SafeAreaInsets>(apiResponse.data);
+                            var data13 = JsonConvert.DeserializeObject<SafeAreaInsetsGetResult>(apiResponse.data);
                             callback13(data13);
                         }
                     }
@@ -727,7 +727,7 @@ namespace AppsInToss
                     {
                         if (TryGetErrorCallback(callbackId, out var errorCallback13) && errorCallback13 != null)
                         {
-                            errorCallback13(new AITException("SafeAreaInsets", apiResponse.error));
+                            errorCallback13(new AITException("SafeAreaInsetsGetResult", apiResponse.error));
                         }
                     }
                     break;
@@ -796,23 +796,6 @@ namespace AppsInToss
                         if (TryGetErrorCallback(callbackId, out var errorCallback17) && errorCallback17 != null)
                         {
                             errorCallback17(new AITException("bool?", apiResponse.error));
-                        }
-                    }
-                    break;
-                case "double?":
-                    if (apiResponse.success)
-                    {
-                        if (TryGetCallback<double?>(callbackId, out var callback18) && callback18 != null)
-                        {
-                            var data18 = JsonConvert.DeserializeObject<double?>(apiResponse.data);
-                            callback18(data18);
-                        }
-                    }
-                    else
-                    {
-                        if (TryGetErrorCallback(callbackId, out var errorCallback18) && errorCallback18 != null)
-                        {
-                            errorCallback18(new AITException("double?", apiResponse.error));
                         }
                     }
                     break;

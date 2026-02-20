@@ -24,39 +24,39 @@ namespace AppsInToss
         [Preserve]
         [APICategory("SafeArea")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable<SafeAreaInsets> SafeAreaInsetsGet()
+        public static async Awaitable<SafeAreaInsetsGetResult> SafeAreaInsetsGet()
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            var acs = new AwaitableCompletionSource<SafeAreaInsets>();
-            string callbackId = AITCore.Instance.RegisterCallback<SafeAreaInsets>(
+            var acs = new AwaitableCompletionSource<SafeAreaInsetsGetResult>();
+            string callbackId = AITCore.Instance.RegisterCallback<SafeAreaInsetsGetResult>(
                 result => acs.SetResult(result),
                 error => acs.SetException(error)
             );
-            __SafeAreaInsetsGet_Internal(callbackId, "SafeAreaInsets");
+            __SafeAreaInsetsGet_Internal(callbackId, "SafeAreaInsetsGetResult");
             return await acs.Awaitable;
 #else
             // Unity Editor mock implementation (Unity 6+)
             UnityEngine.Debug.Log($"[AIT Mock] SafeAreaInsetsGet called");
             await Awaitable.NextFrameAsync();
-            return default(SafeAreaInsets);
+            return default(SafeAreaInsetsGetResult);
 #endif
         }
 #else
-        public static async Task<SafeAreaInsets> SafeAreaInsetsGet()
+        public static async Task<SafeAreaInsetsGetResult> SafeAreaInsetsGet()
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            var tcs = new TaskCompletionSource<SafeAreaInsets>();
-            string callbackId = AITCore.Instance.RegisterCallback<SafeAreaInsets>(
+            var tcs = new TaskCompletionSource<SafeAreaInsetsGetResult>();
+            string callbackId = AITCore.Instance.RegisterCallback<SafeAreaInsetsGetResult>(
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __SafeAreaInsetsGet_Internal(callbackId, "SafeAreaInsets");
+            __SafeAreaInsetsGet_Internal(callbackId, "SafeAreaInsetsGetResult");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] SafeAreaInsetsGet called");
             await Task.CompletedTask;
-            return default(SafeAreaInsets);
+            return default(SafeAreaInsetsGetResult);
 #endif
         }
 #endif

@@ -83,6 +83,83 @@ mergeInto(LibraryManager.library, {
         }
     },
 
+    __IAPCreateSubscriptionPurchaseOrder_Internal: function(params, subscriptionId, typeName) {
+        var subId = UTF8ToString(subscriptionId);
+        var typeNameStr = UTF8ToString(typeName);
+        var parsedParams = JSON.parse(UTF8ToString(params));
+
+        console.log('[AIT jslib] IAPCreateSubscriptionPurchaseOrder called, id:', subId);
+
+        try {
+            var result = window.AppsInToss.IAP.createSubscriptionPurchaseOrder({
+                options: Object.assign({}, parsedParams, {
+                processProductGrant: function(data) {
+                    return new Promise(function(resolve) {
+                        var requestId = subId + '_processProductGrant_' + Date.now();
+                        window.__AIT_NESTED_CALLBACKS = window.__AIT_NESTED_CALLBACKS || {};
+                        window.__AIT_NESTED_CALLBACKS[requestId] = resolve;
+
+                        var payload = JSON.stringify({
+                            RequestId: requestId,
+                            CallbackId: subId,
+                            CallbackName: 'processProductGrant',
+                            Data: JSON.stringify(data)
+                        });
+                        SendMessage('AITCore', 'OnNestedCallback', payload);
+                    });
+                }
+                }),
+                onEvent: function(event) {
+                    console.log('[AIT jslib] IAPCreateSubscriptionPurchaseOrder event:', event);
+                    var payload = JSON.stringify({
+                        CallbackId: subId,
+                        TypeName: typeNameStr,
+                        Result: JSON.stringify({
+                            success: true,
+                            data: JSON.stringify(event || {}),
+                            error: ''
+                        })
+                    });
+                    SendMessage('AITCore', 'OnAITEventCallback', payload);
+                },
+                onError: function(error) {
+                    console.log('[AIT jslib] IAPCreateSubscriptionPurchaseOrder error:', error);
+                    var errorMessage = error instanceof Error ? error.message : String(error);
+                    var payload = JSON.stringify({
+                        CallbackId: subId,
+                        TypeName: typeNameStr,
+                        Result: JSON.stringify({
+                            success: false,
+                            data: '',
+                            error: errorMessage
+                        })
+                    });
+                    SendMessage('AITCore', 'OnAITEventCallback', payload);
+                }
+            });
+
+            // cleanup 함수 저장
+            if (!window.__AIT_SUBSCRIPTIONS) {
+                window.__AIT_SUBSCRIPTIONS = {};
+            }
+            window.__AIT_SUBSCRIPTIONS[subId] = result;
+
+        } catch (error) {
+            console.error('[AIT jslib] IAPCreateSubscriptionPurchaseOrder error:', error);
+            var errorMessage = error instanceof Error ? error.message : String(error);
+            var payload = JSON.stringify({
+                CallbackId: subId,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({
+                    success: false,
+                    data: '',
+                    error: errorMessage
+                })
+            });
+            SendMessage('AITCore', 'OnAITEventCallback', payload);
+        }
+    },
+
     __IAPGetProductItemList_Internal: function(callbackId, typeName) {
         // 비동기 함수 (Promise 반환)
         var callback = UTF8ToString(callbackId);

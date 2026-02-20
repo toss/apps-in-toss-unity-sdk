@@ -432,17 +432,21 @@ namespace AppsInToss
                         var data_3 = JsonConvert.DeserializeObject<ShowAdMobEvent>(apiResponse.data);
                         (rawCallback as Action<ShowAdMobEvent>)?.Invoke(data_3);
                         break;
+                    case "SubscriptionSuccessEvent":
+                        var data_4 = JsonConvert.DeserializeObject<SubscriptionSuccessEvent>(apiResponse.data);
+                        (rawCallback as Action<SubscriptionSuccessEvent>)?.Invoke(data_4);
+                        break;
                     case "SuccessEvent":
-                        var data_4 = JsonConvert.DeserializeObject<SuccessEvent>(apiResponse.data);
-                        (rawCallback as Action<SuccessEvent>)?.Invoke(data_4);
+                        var data_5 = JsonConvert.DeserializeObject<SuccessEvent>(apiResponse.data);
+                        (rawCallback as Action<SuccessEvent>)?.Invoke(data_5);
                         break;
                     case "TdsNavigationAccessoryEventData":
-                        var data_5 = JsonConvert.DeserializeObject<TdsNavigationAccessoryEventData>(apiResponse.data);
-                        (rawCallback as Action<TdsNavigationAccessoryEventData>)?.Invoke(data_5);
+                        var data_6 = JsonConvert.DeserializeObject<TdsNavigationAccessoryEventData>(apiResponse.data);
+                        (rawCallback as Action<TdsNavigationAccessoryEventData>)?.Invoke(data_6);
                         break;
                     case "bool":
-                        var data_6 = JsonConvert.DeserializeObject<bool>(apiResponse.data);
-                        (rawCallback as Action<bool>)?.Invoke(data_6);
+                        var data_7 = JsonConvert.DeserializeObject<bool>(apiResponse.data);
+                        (rawCallback as Action<bool>)?.Invoke(data_7);
                         break;
                     case "void":
                         // Void event - call Action directly

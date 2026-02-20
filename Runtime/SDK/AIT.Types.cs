@@ -62,6 +62,14 @@ namespace AppsInToss
         REFUNDED
     }
 
+    public enum AppsInTossGlobalsBrandBridgeColorMode
+    {
+        [EnumMember(Value = "basic")]
+        Basic,
+        [EnumMember(Value = "inverted")]
+        Inverted
+    }
+
     public enum OpenPermissionDialogPermissionName
     {
         [EnumMember(Value = "clipboard")]
@@ -414,7 +422,7 @@ namespace AppsInToss
         public AdNetworkResponseInfo[] AdNetworkInfoArray;
         [Preserve]
         [JsonProperty("loadedAdNetworkInfo")]
-        public AdNetworkResponseInfo LoadedAdNetworkInfo;
+        public object LoadedAdNetworkInfo;
         [Preserve]
         [JsonProperty("responseId")]
         public string ResponseId;
@@ -495,19 +503,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class AdUserEarnedReward
-    {
-        [Preserve]
-        [JsonProperty("type")]
-        public string Type;
-        [Preserve]
-        [JsonProperty("data")]
-        public AdUserEarnedRewardData Data;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class AdUserEarnedRewardData
+    public class DataType
     {
         [Preserve]
         [JsonProperty("unitType")]
@@ -515,15 +511,6 @@ namespace AppsInToss
         [Preserve]
         [JsonProperty("unitAmount")]
         public double UnitAmount;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class IsAdMobLoadedOptions
-    {
-        [Preserve]
-        [JsonProperty("adGroupId")]
-        public string AdGroupId;
     }
 
     [Serializable]
@@ -705,7 +692,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class SafeAreaInsets
+    public class SafeAreaInsetsGetResult
     {
         [Preserve]
         [JsonProperty("top")]
@@ -733,33 +720,20 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class InitializeOptions
+    public class SafeAreaInsets
     {
         [Preserve]
-        [JsonProperty("callbacks")]
-        public InitializeOptionsCallbacks Callbacks; // optional
-    }
-
-    [Serializable]
-    [Preserve]
-    public class InitializeOptionsCallbacks
-    {
+        [JsonProperty("top")]
+        public double Top;
         [Preserve]
-        [JsonProperty("onInitialized")]
-        public object OnInitialized; // optional
+        [JsonProperty("bottom")]
+        public double Bottom;
         [Preserve]
-        [JsonProperty("onInitializationFailed")]
-        public object OnInitializationFailed; // optional
-    }
-
-    [Serializable]
-    [Preserve]
-    public class AttachBannerResult
-    {
-        [JsonIgnore]
-        public System.Action Destroy;
-        /// <summary>에러 발생 시 에러 메시지 (플랫폼 미지원 등)</summary>
-        public string error;
+        [JsonProperty("left")]
+        public double Left;
+        [Preserve]
+        [JsonProperty("right")]
+        public double Right;
     }
 
     [Serializable]
@@ -778,6 +752,9 @@ namespace AppsInToss
         [Preserve]
         [JsonProperty("brandPrimaryColor")]
         public string BrandPrimaryColor;
+        [Preserve]
+        [JsonProperty("brandBridgeColorMode")]
+        public AppsInTossGlobalsBrandBridgeColorMode BrandBridgeColorMode;
         /// <summary>에러 발생 시 에러 메시지 (플랫폼 미지원 등)</summary>
         public string error;
     }
@@ -969,84 +946,6 @@ namespace AppsInToss
         [Preserve]
         [JsonProperty("adGroupId")]
         public string AdGroupId;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class TossAdsAttachOptions
-    {
-        [Preserve]
-        [JsonProperty("theme")]
-        public string Theme; // optional
-        [Preserve]
-        [JsonProperty("padding")]
-        public string Padding; // optional
-        [Preserve]
-        [JsonProperty("callbacks")]
-        public BannerSlotCallbacks Callbacks; // optional
-    }
-
-    [Serializable]
-    [Preserve]
-    public class BannerSlotCallbacks
-    {
-        [JsonIgnore]
-        public System.Action<BannerSlotEventPayload> OnAdRendered; // optional
-        [JsonIgnore]
-        public System.Action<BannerSlotEventPayload> OnAdViewable; // optional
-        [JsonIgnore]
-        public System.Action<BannerSlotEventPayload> OnAdClicked; // optional
-        [JsonIgnore]
-        public System.Action<BannerSlotEventPayload> OnAdImpression; // optional
-        [JsonIgnore]
-        public System.Action<BannerSlotErrorPayload> OnAdFailedToRender; // optional
-        [JsonIgnore]
-        public System.Action<object> OnNoFill; // optional
-    }
-
-    [Serializable]
-    [Preserve]
-    public class BannerSlotEventPayload
-    {
-        [Preserve]
-        [JsonProperty("slotId")]
-        public string SlotId;
-        [Preserve]
-        [JsonProperty("adGroupId")]
-        public string AdGroupId;
-        [Preserve]
-        [JsonProperty("adMetadata")]
-        public object AdMetadata;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class BannerSlotErrorPayload
-    {
-        [Preserve]
-        [JsonProperty("slotId")]
-        public string SlotId;
-        [Preserve]
-        [JsonProperty("adGroupId")]
-        public string AdGroupId;
-        [Preserve]
-        [JsonProperty("adMetadata")]
-        public Dictionary<string, object> AdMetadata;
-        [Preserve]
-        [JsonProperty("error")]
-        public object Error;
-    }
-
-    /// <summary>
-    /// Stub class for TossAdsAttachBannerOptions (type definition not found in current SDK version)
-    /// This class is auto-generated for SDK version compatibility
-    /// </summary>
-    [Serializable]
-    [Preserve]
-    public class TossAdsAttachBannerOptions
-    {
-        // Stub class - no properties defined
-        // This type may not be available in the current SDK version
     }
 
     [Serializable]

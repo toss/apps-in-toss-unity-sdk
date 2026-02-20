@@ -296,6 +296,52 @@ namespace AppsInToss
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __getSchemeUri_Internal(string callbackId, string typeName);
 #endif
+        /// <returns>서버 시간을 Unix timestamp 밀리초 단위로 반환해요. (예: 1705123456789) 지원하지 않는 버전에서는 undefined를 반환해요. 값이 없으면 null을 반환합니다.</returns>
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
+        [APICategory("SystemInfo")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<double?> GetServerTime()
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<double?>();
+            string callbackId = AITCore.Instance.RegisterCallback<double?>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error)
+            );
+            __getServerTime_Internal(callbackId, "double?");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] GetServerTime called");
+            await Awaitable.NextFrameAsync();
+            return null;
+#endif
+        }
+#else
+        public static async Task<double?> GetServerTime()
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<double?>();
+            string callbackId = AITCore.Instance.RegisterCallback<double?>(
+                result => tcs.TrySetResult(result),
+                error => tcs.TrySetException(error)
+            );
+            __getServerTime_Internal(callbackId, "double?");
+            return await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] GetServerTime called");
+            await Task.CompletedTask;
+            return null;
+#endif
+        }
+#endif
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __getServerTime_Internal(string callbackId, string typeName);
+#endif
         /// <returns>토스 앱 버전</returns>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]

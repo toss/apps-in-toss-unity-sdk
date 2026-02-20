@@ -264,8 +264,8 @@ export function collectReferencedTypes(
       }
       // Named type reference without inline properties (예: IapProductListItem[])
       // → 외부 타입으로 큐잉하여 type definitions에서 해결
-      else if (elementType.kind === 'object' &&
-               elementType.name &&
+      // kind 조건 없음: 'object', 'union', 'unknown' 등 어떤 kind든 named reference면 큐잉
+      else if (elementType.name &&
                elementType.name !== '__type' &&
                elementType.name !== 'object' &&
                !elementType.name.startsWith('{')) {

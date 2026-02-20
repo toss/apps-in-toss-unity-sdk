@@ -93,6 +93,9 @@ export function parseTypeDefinitionsFromFile(
                 enumValues,
               });
             }
+          } else {
+            // Non-exported TypeReference union (예: IapProductListItem = A | B | C)
+            parseDiscriminatedUnion(typeAlias, members, name, fileName, typeMap, sourceFile);
           }
         }
       }
@@ -145,7 +148,8 @@ export function parseTypeDefinitionsFromFile(
                   }
                 } else {
                   // Discriminated Union: 모든 멤버가 객체 리터럴이고 공통 discriminator 필드를 가진 경우
-                  parseDiscriminatedUnion(typeAlias, members, name, fileName, typeMap);
+                  // 또는 TypeReference union (예: IapProductListItem = A | B | C)
+                  parseDiscriminatedUnion(typeAlias, members, name, fileName, typeMap, sourceFile);
                 }
               }
             }
@@ -245,13 +249,18 @@ function parseDiscriminatedUnion(
   members: any[],
   name: string,
   fileName: string,
-  typeMap: Map<string, ParsedTypeDefinition>
+  typeMap: Map<string, ParsedTypeDefinition>,
+  sourceFile?: SourceFile
 ): void {
   const allTypeLiterals = members.every(
     m => m.getKind() === SyntaxKind.TypeLiteral
   );
 
-  if (!allTypeLiterals) return;
+  if (!allTypeLiterals) {
+    // TypeReference 멤버 union 처리 (예: IapProductListItem = A | B | C)
+    parseTypeReferenceUnion(typeAlias, members, name, fileName, typeMap, sourceFile);
+    return;
+  }
 
   // 각 멤버의 첫 번째 프로퍼티를 추출하여 discriminator 후보로 사용
   const memberProperties: ParsedProperty[][] = [];
@@ -350,4 +359,196 @@ function parseDiscriminatedUnion(
       });
     }
   }
+}
+
+/**
+ * TypeReference 멤버 union 파싱
+ * 예: type IapProductListItem = ConsumableProductListItem | NonConsumableProductListItem | SubscriptionProductListItem
+ * 각 멤버가 TypeReference인 경우, sourceFile에서 interface/type을 찾아 프로퍼티를 병합
+ */
+function parseTypeReferenceUnion(
+  typeAlias: any,
+  members: any[],
+  name: string,
+  fileName: string,
+  typeMap: Map<string, ParsedTypeDefinition>,
+  sourceFile?: SourceFile
+): void {
+  if (!sourceFile) return;
+
+  // 모든 멤버가 TypeReference인지 확인
+  const allTypeReferences = members.every(
+    m => m.getKind() === SyntaxKind.TypeReference
+  );
+  if (!allTypeReferences) return;
+
+  // 각 TypeReference에서 이름 추출 후 interface/type 찾기
+  const allPropertyNames = new Set<string>();
+  const propertyOccurrences = new Map<string, number>();
+  const memberProperties: ParsedProperty[][] = [];
+
+  for (const member of members) {
+    const typeRef = member.asKind(SyntaxKind.TypeReference);
+    if (!typeRef) continue;
+
+    const refName = typeRef.getTypeName().getText();
+    const props = resolveInterfaceProperties(refName, sourceFile);
+    memberProperties.push(props);
+
+    for (const prop of props) {
+      allPropertyNames.add(prop.name);
+      propertyOccurrences.set(
+        prop.name,
+        (propertyOccurrences.get(prop.name) || 0) + 1
+      );
+    }
+  }
+
+  if (memberProperties.length === 0 || allPropertyNames.size === 0) return;
+
+  // 프로퍼티 병합: 모든 멤버에 있으면 필수, 아니면 optional
+  const mergedProperties: ParsedProperty[] = [];
+  for (const propName of allPropertyNames) {
+    const isInAll = propertyOccurrences.get(propName) === memberProperties.length;
+
+    // 첫 번째로 발견된 타입 정보 사용
+    let propType: ParsedType = { name: 'string', kind: 'primitive', raw: 'string' };
+    let propDescription: string | undefined;
+    let isOptional = false;
+
+    for (const props of memberProperties) {
+      const found = props.find(p => p.name === propName);
+      if (found) {
+        // 문자열 리터럴 union 감지: 각 멤버에서 같은 필드가 다른 리터럴 값이면 string으로 처리
+        const allLiteralValues: string[] = [];
+        for (const mp of memberProperties) {
+          const f = mp.find(p => p.name === propName);
+          if (f && f.type.kind === 'primitive' && f.type.name === 'string' && f.type.raw.startsWith('"')) {
+            allLiteralValues.push(f.type.raw);
+          }
+        }
+        if (allLiteralValues.length > 0) {
+          propType = { name: 'string', kind: 'primitive', raw: 'string' };
+        } else {
+          propType = found.type;
+        }
+        propDescription = found.description;
+        isOptional = found.optional;
+        break;
+      }
+    }
+
+    mergedProperties.push({
+      name: propName,
+      type: propType,
+      optional: !isInAll || isOptional,
+      description: propDescription,
+    });
+  }
+
+  // JSDoc에서 description 추출
+  const jsDocs = typeAlias.getJsDocs();
+  const description = jsDocs.length > 0
+    ? jsDocs[0].getDescription().trim()
+    : undefined;
+
+  if (!typeMap.has(name)) {
+    typeMap.set(name, {
+      name,
+      kind: 'interface',
+      file: fileName,
+      description,
+      properties: mergedProperties,
+    });
+  }
+}
+
+/**
+ * interface 이름에서 프로퍼티를 재귀적으로 resolve (extends 체인 포함)
+ */
+function resolveInterfaceProperties(
+  name: string,
+  sourceFile: SourceFile
+): ParsedProperty[] {
+  const properties: ParsedProperty[] = [];
+  const seenProps = new Set<string>();
+
+  // sourceFile에서 interface 찾기
+  const interfaceDecl = sourceFile.getInterface(name);
+  if (interfaceDecl) {
+    // extends 체인의 base interface 프로퍼티 먼저 수집
+    const baseTypes = interfaceDecl.getExtends();
+    for (const baseType of baseTypes) {
+      const baseName = baseType.getExpression().getText();
+      const baseProps = resolveInterfaceProperties(baseName, sourceFile);
+      for (const prop of baseProps) {
+        if (!seenProps.has(prop.name)) {
+          seenProps.add(prop.name);
+          properties.push(prop);
+        }
+      }
+    }
+
+    // 이 interface의 프로퍼티 수집
+    const members = interfaceDecl.getMembers();
+    for (const member of members) {
+      if (member.getKind() === SyntaxKind.PropertySignature) {
+        const propSig = member.asKind(SyntaxKind.PropertySignature);
+        if (propSig) {
+          const propName = propSig.getName();
+          if (!seenProps.has(propName)) {
+            seenProps.add(propName);
+            const propType = propSig.getType();
+            const isOptional = propSig.hasQuestionToken();
+
+            // JSDoc에서 description 추출
+            const jsDocs = propSig.getJsDocs();
+            const propDescription = jsDocs.length > 0
+              ? jsDocs[0].getDescription().trim()
+              : undefined;
+
+            properties.push({
+              name: propName,
+              type: parseType(propType),
+              optional: isOptional,
+              description: propDescription,
+            });
+          }
+        }
+      }
+    }
+    return properties;
+  }
+
+  // type alias 찾기 (interface가 아닌 경우)
+  const typeAliasDecl = sourceFile.getTypeAlias(name);
+  if (typeAliasDecl) {
+    const typeNode = typeAliasDecl.getTypeNode();
+    if (typeNode && typeNode.getKind() === SyntaxKind.TypeLiteral) {
+      const typeLiteral = typeNode.asKind(SyntaxKind.TypeLiteral);
+      if (typeLiteral) {
+        const members = typeLiteral.getMembers();
+        for (const member of members) {
+          if (member.getKind() === SyntaxKind.PropertySignature) {
+            const propSig = member.asKind(SyntaxKind.PropertySignature);
+            if (propSig) {
+              const propName = propSig.getName();
+              if (!seenProps.has(propName)) {
+                seenProps.add(propName);
+                const propType = propSig.getType();
+                const isOptional = propSig.hasQuestionToken();
+                properties.push({
+                  name: propName,
+                  type: parseType(propType),
+                  optional: isOptional,
+                });
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return properties;
 }

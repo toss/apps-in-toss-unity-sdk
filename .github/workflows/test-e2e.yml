@@ -50,7 +50,7 @@ on:
         default: '2'
 
 concurrency:
-  group: e2e-tests-${{ inputs.target_ref || github.ref_name }}
+  group: e2e-tests-${{ inputs.target_ref || github.ref_name }}-${{ inputs.sdk_version_override || 'default' }}
   cancel-in-progress: true
 
 jobs:

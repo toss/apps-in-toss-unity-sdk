@@ -184,12 +184,43 @@ async function findWebBridgeInPnpmStore(): Promise<string | null> {
  * TypeScript 정의 파일 경로 찾기
  */
 async function findTypeDefinitions(webFrameworkPath: string): Promise<string> {
-  // pnpm virtual store에서 동적으로 검색
+  // web-framework의 실제 경로를 resolve하여 pnpm 의존성 그래프에 따른 web-bridge 찾기
+  // pnpm 구조: .pnpm/...web-framework@X.Y.Z/node_modules/@apps-in-toss/web-framework
+  //          → .pnpm/...web-framework@X.Y.Z/node_modules/@apps-in-toss/web-bridge (symlink → 올바른 버전)
+  let webBridgeFromDeps: string | null = null;
+  try {
+    const realWebFrameworkPath = await fs.realpath(webFrameworkPath);
+    const siblingWebBridge = path.join(path.dirname(realWebFrameworkPath), 'web-bridge');
+    try {
+      const realWebBridge = await fs.realpath(siblingWebBridge);
+      for (const subdir of ['dist', 'built']) {
+        const candidatePath = path.join(realWebBridge, subdir);
+        try {
+          const stat = await fs.stat(candidatePath);
+          if (stat.isDirectory()) {
+            webBridgeFromDeps = candidatePath;
+            console.log(picocolors.gray(`  web-framework 의존성 그래프에서 web-bridge 발견: ${candidatePath}`));
+            break;
+          }
+        } catch {
+          continue;
+        }
+      }
+    } catch {
+      // sibling web-bridge가 없으면 스킵
+    }
+  } catch {
+    // realpath 실패 시 스킵
+  }
+
+  // pnpm virtual store에서 동적으로 검색 (폴백)
   const pnpmStorePath = await findWebBridgeInPnpmStore();
 
-  // 가능한 경로들 확인
+  // 가능한 경로들 확인 (의존성 그래프 기반 > pnpm store > node_modules > 기타)
   const possiblePaths = [
-    // pnpm virtual store 경로 (동적 검색 결과)
+    // 의존성 그래프에서 찾은 경로 (가장 정확 - 올바른 버전 보장)
+    ...(webBridgeFromDeps ? [webBridgeFromDeps] : []),
+    // pnpm virtual store 경로 (동적 검색 결과 - 여러 버전이 있을 수 있음)
     ...(pnpmStorePath ? [pnpmStorePath] : []),
     // 일반 node_modules 경로 (dist 우선, built 폴백)
     path.join(process.cwd(), 'node_modules/@apps-in-toss/web-bridge/dist'),

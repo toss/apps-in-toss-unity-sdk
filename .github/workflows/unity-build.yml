@@ -175,7 +175,7 @@ jobs:
           echo "=== SDK 코드 재생성 ==="
           cd sdk-runtime-generator~
           npx -y pnpm@10 install
-          npx -y pnpm@10 store prune
+          npx -y pnpm@10 store prune || true
           npx -y pnpm@10 update "@apps-in-toss/web-framework@${OVERRIDE_VERSION}" --force --registry https://registry.npmjs.org
 
           # 설치된 버전 검증

@@ -174,13 +174,12 @@ jobs:
           echo ""
           echo "=== SDK 코드 재생성 ==="
           cd sdk-runtime-generator~
-          npm install -g pnpm@10
-          pnpm install
-          pnpm store prune
-          pnpm update "@apps-in-toss/web-framework@${OVERRIDE_VERSION}" --force --registry https://registry.npmjs.org
+          npx -y pnpm@10 install
+          npx -y pnpm@10 store prune
+          npx -y pnpm@10 update "@apps-in-toss/web-framework@${OVERRIDE_VERSION}" --force --registry https://registry.npmjs.org
 
           # 설치된 버전 검증
-          INSTALLED_VERSION=$(pnpm list @apps-in-toss/web-framework --json | jq -r '.[0].dependencies["@apps-in-toss/web-framework"].version')
+          INSTALLED_VERSION=$(npx -y pnpm@10 list @apps-in-toss/web-framework --json | jq -r '.[0].dependencies["@apps-in-toss/web-framework"].version')
           echo "요청 버전: ${OVERRIDE_VERSION}"
           echo "설치된 버전: ${INSTALLED_VERSION}"
           if [ "$INSTALLED_VERSION" != "$OVERRIDE_VERSION" ]; then
@@ -188,7 +187,7 @@ jobs:
           fi
 
           echo "SDK 코드 생성 중..."
-          pnpm generate
+          npx -y pnpm@10 generate
           echo "SDK 코드 생성 완료"
           cd ..
 

@@ -133,9 +133,9 @@ jobs:
           ref: ${{ inputs.ref || github.ref }}
 
       # =====================================================
-      # SDK 버전 오버라이드 (런타임 호환성 테스트용)
-      # SDK 코드는 재생성하지 않고, BuildConfig의 web-framework 버전만 변경
-      # 이를 통해 현재 SDK 코드가 다른 버전의 web-framework와 호환되는지 테스트
+      # SDK 버전 오버라이드 (호환성 테스트용)
+      # SDK 코드를 해당 버전의 web-framework로 재생성하여
+      # 생성기의 하위호환성까지 검증
       # =====================================================
       - name: Override SDK Version
         if: inputs.sdk-version-override != ''
@@ -144,11 +144,8 @@ jobs:
           OVERRIDE_VERSION="${{ inputs.sdk-version-override }}"
           PACKAGE_JSON="package.json"
 
-          echo "=== SDK Version Override (BuildConfig Only) ==="
+          echo "=== SDK Version Override ==="
           echo "Target SDK version: ${OVERRIDE_VERSION}"
-          echo ""
-          echo "NOTE: SDK 코드는 재생성하지 않고 현재 저장소의 코드를 사용합니다."
-          echo "      BuildConfig의 web-framework 버전만 변경하여 런타임 호환성을 테스트합니다."
           echo ""
 
           # 1. package.json 버전 변경 (메타데이터용)
@@ -173,15 +170,32 @@ jobs:
           echo "BuildConfig updated:"
           grep "web-framework" "$BUILDCONFIG_PKG"
 
-          # 3. 현재 SDK 파일 확인
+          # 3. SDK 코드 재생성
           echo ""
-          echo "=== Current SDK files (not regenerated) ==="
-          ls -la Runtime/SDK/ | head -20
+          echo "=== SDK 코드 재생성 ==="
+          cd sdk-runtime-generator~
+          npm install -g pnpm@10
+          pnpm install
+          pnpm store prune
+          pnpm update "@apps-in-toss/web-framework@${OVERRIDE_VERSION}" --force --registry https://registry.npmjs.org
 
+          # 설치된 버전 검증
+          INSTALLED_VERSION=$(pnpm list @apps-in-toss/web-framework --json | jq -r '.[0].dependencies["@apps-in-toss/web-framework"].version')
+          echo "요청 버전: ${OVERRIDE_VERSION}"
+          echo "설치된 버전: ${INSTALLED_VERSION}"
+          if [ "$INSTALLED_VERSION" != "$OVERRIDE_VERSION" ]; then
+            echo "::warning::버전 불일치 - 요청: ${OVERRIDE_VERSION}, 설치됨: ${INSTALLED_VERSION}"
+          fi
+
+          echo "SDK 코드 생성 중..."
+          pnpm generate
+          echo "SDK 코드 생성 완료"
+          cd ..
+
+          # 4. 재생성된 SDK 파일 확인
           echo ""
-          echo "=== Version Info ==="
-          echo "SDK version override: ${OVERRIDE_VERSION}"
-          echo "SDK code: Using current repository version (not regenerated)"
+          echo "=== Regenerated SDK files ==="
+          ls -la Runtime/SDK/ | head -20
 
       # =====================================================
       # Windows Defender 제외 (Windows)

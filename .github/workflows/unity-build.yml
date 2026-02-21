@@ -171,12 +171,13 @@ jobs:
           grep "web-framework" "$BUILDCONFIG_PKG"
 
           # 3. SDK 코드 재생성
+          # 잡별 격리된 pnpm store 사용 (동시 실행 시 공유 store 충돌 방지)
           echo ""
           echo "=== SDK 코드 재생성 ==="
+          ISOLATED_STORE="${RUNNER_TEMP}/pnpm-store-$$"
           cd sdk-runtime-generator~
-          npx -y pnpm@10 install
-          npx -y pnpm@10 store prune || true
-          npx -y pnpm@10 update "@apps-in-toss/web-framework@${OVERRIDE_VERSION}" --force --registry https://registry.npmjs.org
+          npx -y pnpm@10 install --store-dir "$ISOLATED_STORE"
+          npx -y pnpm@10 update "@apps-in-toss/web-framework@${OVERRIDE_VERSION}" --force --registry https://registry.npmjs.org --store-dir "$ISOLATED_STORE"
 
           # 설치된 버전 검증
           INSTALLED_VERSION=$(npx -y pnpm@10 list @apps-in-toss/web-framework --json | jq -r '.[0].dependencies["@apps-in-toss/web-framework"].version')
@@ -190,6 +191,9 @@ jobs:
           npx -y pnpm@10 generate
           echo "SDK 코드 생성 완료"
           cd ..
+
+          # 격리된 store 정리
+          rm -rf "$ISOLATED_STORE" 2>/dev/null || true
 
           # 4. 재생성된 SDK 파일 확인
           echo ""

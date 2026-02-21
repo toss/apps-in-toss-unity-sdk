@@ -52,6 +52,29 @@ mergeInto(LibraryManager.library, {
         }
     },
 
+    __TossAdsAttachBanner_Internal: function(adGroupId, target, options, callbackId, typeName) {
+        // 동기 함수 (즉시 값 반환)
+        var callback = UTF8ToString(callbackId);
+        var typeNameStr = UTF8ToString(typeName);
+
+        try {
+            var result = window.AppsInToss.TossAds.attachBanner(UTF8ToString(adGroupId), target, options);
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: true, data: JSON.stringify(result), error: '' })
+            });
+            SendMessage('AITCore', 'OnAITCallback', payload);
+        } catch (error) {
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+            });
+            SendMessage('AITCore', 'OnAITCallback', payload);
+        }
+    },
+
     __TossAdsDestroy_Internal: function(slotId, callbackId, typeName) {
         // 동기 함수 (즉시 값 반환)
         var callback = UTF8ToString(callbackId);

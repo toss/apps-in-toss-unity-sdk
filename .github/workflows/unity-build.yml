@@ -179,8 +179,8 @@ jobs:
           npx -y pnpm@10 install --store-dir "$ISOLATED_STORE"
           npx -y pnpm@10 update "@apps-in-toss/web-framework@${OVERRIDE_VERSION}" --force --registry https://registry.npmjs.org --store-dir "$ISOLATED_STORE"
 
-          # 설치된 버전 검증
-          INSTALLED_VERSION=$(npx -y pnpm@10 list @apps-in-toss/web-framework --json | jq -r '.[0].dependencies["@apps-in-toss/web-framework"].version')
+          # 설치된 버전 검증 (jq 대신 node 사용 - Windows 호환)
+          INSTALLED_VERSION=$(npx -y pnpm@10 list @apps-in-toss/web-framework --json | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>console.log(JSON.parse(d)[0].dependencies['@apps-in-toss/web-framework'].version))")
           echo "요청 버전: ${OVERRIDE_VERSION}"
           echo "설치된 버전: ${INSTALLED_VERSION}"
           if [ "$INSTALLED_VERSION" != "$OVERRIDE_VERSION" ]; then

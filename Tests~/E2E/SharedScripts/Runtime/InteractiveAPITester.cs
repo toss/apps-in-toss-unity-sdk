@@ -43,8 +43,10 @@ public class InteractiveAPITester : MonoBehaviour
     private ResultDisplayMode resultDisplayMode = ResultDisplayMode.Structured;
 
     // Safe Area (AIT API)
-    private SafeAreaInsetsGetResult cachedSafeAreaInsets = null;
+#if AIT_SDK_1_7_1_OR_LATER
+    private SafeAreaInsets cachedSafeAreaInsets = null;
     private bool safeAreaLoaded = false;
+#endif
 
     // 분리된 컴포넌트 참조
     private OOMTester _oomTester;
@@ -125,9 +127,12 @@ public class InteractiveAPITester : MonoBehaviour
         Debug.Log($"[InteractiveAPITester] Found {allMethods.Count} API methods in {groupedMethods.Count} categories");
 
         // Safe Area Insets 로드 (Apps in Toss 플랫폼)
+#if AIT_SDK_1_7_1_OR_LATER
         await LoadSafeAreaInsets();
+#endif
     }
 
+#if AIT_SDK_1_7_1_OR_LATER
     /// <summary>
     /// Apps in Toss 플랫폼에서 Safe Area Insets를 로드합니다.
     /// 플랫폼 미지원 시 Unity Screen.safeArea를 폴백으로 사용합니다.
@@ -171,6 +176,7 @@ public class InteractiveAPITester : MonoBehaviour
             safeAreaLoaded = false;
         }
     }
+#endif
 
     void Update()
     {
@@ -183,6 +189,7 @@ public class InteractiveAPITester : MonoBehaviour
     /// </summary>
     private Rect GetSafeAreaRect()
     {
+#if AIT_SDK_1_7_1_OR_LATER
         // AIT API에서 로드된 값이 있으면 사용
         if (safeAreaLoaded && cachedSafeAreaInsets != null)
         {
@@ -205,6 +212,7 @@ public class InteractiveAPITester : MonoBehaviour
                 Screen.height - top - bottom
             );
         }
+#endif
 
         // 폴백: Unity Screen.safeArea 사용
         Rect safeArea = Screen.safeArea;

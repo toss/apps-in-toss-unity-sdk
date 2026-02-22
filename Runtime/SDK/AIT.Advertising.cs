@@ -82,5 +82,278 @@ namespace AppsInToss
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __GoogleAdMobShowAppsInTossAdMob_Internal(string options, string subscriptionId, string typeName);
 #endif
+        /// <summary>
+        /// 이 함수는 `loadAppsInTossAdMob` 로 광고가 잘 불러와졌는지 확인해요.
+        /// </summary>
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
+        [APICategory("Advertising")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<bool> GoogleAdMobIsAppsInTossAdMobLoaded(IsAdMobLoadedOptions args_0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<bool>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error)
+            );
+            __GoogleAdMobIsAppsInTossAdMobLoaded_Internal(AITJsonSettings.Serialize(args_0), callbackId, "bool");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] GoogleAdMobIsAppsInTossAdMobLoaded called");
+            await Awaitable.NextFrameAsync();
+            return false;
+#endif
+        }
+#else
+        public static async Task<bool> GoogleAdMobIsAppsInTossAdMobLoaded(IsAdMobLoadedOptions args_0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<bool>(
+                result => tcs.TrySetResult(result),
+                error => tcs.TrySetException(error)
+            );
+            __GoogleAdMobIsAppsInTossAdMobLoaded_Internal(AITJsonSettings.Serialize(args_0), callbackId, "bool");
+            return await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] GoogleAdMobIsAppsInTossAdMobLoaded called");
+            await Task.CompletedTask;
+            return false;
+#endif
+        }
+#endif
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __GoogleAdMobIsAppsInTossAdMobLoaded_Internal(string args_0, string callbackId, string typeName);
+#endif
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
+        [APICategory("Advertising")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable TossAdsInitialize(InitializeOptions options)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource();
+            string callbackId = AITCore.Instance.RegisterCallback<object>(
+                result => acs.SetResult(),
+                error => acs.SetException(error)
+            );
+            __TossAdsInitialize_Internal(AITJsonSettings.Serialize(options), callbackId, "void");
+            await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] TossAdsInitialize called");
+            await Awaitable.NextFrameAsync();
+            // void return - nothing to return
+#endif
+        }
+#else
+        public static async Task TossAdsInitialize(InitializeOptions options)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<object>();
+            string callbackId = AITCore.Instance.RegisterCallback<object>(
+                result => tcs.TrySetResult(null),
+                error => tcs.TrySetException(error)
+            );
+            __TossAdsInitialize_Internal(AITJsonSettings.Serialize(options), callbackId, "void");
+            await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] TossAdsInitialize called");
+            await Task.CompletedTask;
+            // void return - nothing to return
+#endif
+        }
+#endif
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __TossAdsInitialize_Internal(string options, string callbackId, string typeName);
+#endif
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
+        [APICategory("Advertising")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable TossAdsAttach(string adGroupId, string target, TossAdsAttachOptions options = null)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource();
+            string callbackId = AITCore.Instance.RegisterCallback<object>(
+                result => acs.SetResult(),
+                error => acs.SetException(error)
+            );
+            __TossAdsAttach_Internal(adGroupId, target, AITJsonSettings.Serialize(options), callbackId, "void");
+            await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] TossAdsAttach called");
+            await Awaitable.NextFrameAsync();
+            // void return - nothing to return
+#endif
+        }
+#else
+        public static async Task TossAdsAttach(string adGroupId, string target, TossAdsAttachOptions options = null)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<object>();
+            string callbackId = AITCore.Instance.RegisterCallback<object>(
+                result => tcs.TrySetResult(null),
+                error => tcs.TrySetException(error)
+            );
+            __TossAdsAttach_Internal(adGroupId, target, AITJsonSettings.Serialize(options), callbackId, "void");
+            await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] TossAdsAttach called");
+            await Task.CompletedTask;
+            // void return - nothing to return
+#endif
+        }
+#endif
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __TossAdsAttach_Internal(string adGroupId, string target, string options, string callbackId, string typeName);
+#endif
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
+        [APICategory("Advertising")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<AttachBannerResult> TossAdsAttachBanner(string adGroupId, string target, TossAdsAttachBannerOptions options = null)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<AttachBannerResult>();
+            string callbackId = AITCore.Instance.RegisterCallback<AttachBannerResult>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error)
+            );
+            __TossAdsAttachBanner_Internal(adGroupId, target, AITJsonSettings.Serialize(options), callbackId, "AttachBannerResult");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] TossAdsAttachBanner called");
+            await Awaitable.NextFrameAsync();
+            return default(AttachBannerResult);
+#endif
+        }
+#else
+        public static async Task<AttachBannerResult> TossAdsAttachBanner(string adGroupId, string target, TossAdsAttachBannerOptions options = null)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<AttachBannerResult>();
+            string callbackId = AITCore.Instance.RegisterCallback<AttachBannerResult>(
+                result => tcs.TrySetResult(result),
+                error => tcs.TrySetException(error)
+            );
+            __TossAdsAttachBanner_Internal(adGroupId, target, AITJsonSettings.Serialize(options), callbackId, "AttachBannerResult");
+            return await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] TossAdsAttachBanner called");
+            await Task.CompletedTask;
+            return default(AttachBannerResult);
+#endif
+        }
+#endif
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __TossAdsAttachBanner_Internal(string adGroupId, string target, string options, string callbackId, string typeName);
+#endif
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
+        [APICategory("Advertising")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable TossAdsDestroy(string slotId)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource();
+            string callbackId = AITCore.Instance.RegisterCallback<object>(
+                result => acs.SetResult(),
+                error => acs.SetException(error)
+            );
+            __TossAdsDestroy_Internal(slotId, callbackId, "void");
+            await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] TossAdsDestroy called");
+            await Awaitable.NextFrameAsync();
+            // void return - nothing to return
+#endif
+        }
+#else
+        public static async Task TossAdsDestroy(string slotId)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<object>();
+            string callbackId = AITCore.Instance.RegisterCallback<object>(
+                result => tcs.TrySetResult(null),
+                error => tcs.TrySetException(error)
+            );
+            __TossAdsDestroy_Internal(slotId, callbackId, "void");
+            await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] TossAdsDestroy called");
+            await Task.CompletedTask;
+            // void return - nothing to return
+#endif
+        }
+#endif
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __TossAdsDestroy_Internal(string slotId, string callbackId, string typeName);
+#endif
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
+        [APICategory("Advertising")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable TossAdsDestroyAll()
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource();
+            string callbackId = AITCore.Instance.RegisterCallback<object>(
+                result => acs.SetResult(),
+                error => acs.SetException(error)
+            );
+            __TossAdsDestroyAll_Internal(callbackId, "void");
+            await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] TossAdsDestroyAll called");
+            await Awaitable.NextFrameAsync();
+            // void return - nothing to return
+#endif
+        }
+#else
+        public static async Task TossAdsDestroyAll()
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<object>();
+            string callbackId = AITCore.Instance.RegisterCallback<object>(
+                result => tcs.TrySetResult(null),
+                error => tcs.TrySetException(error)
+            );
+            __TossAdsDestroyAll_Internal(callbackId, "void");
+            await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] TossAdsDestroyAll called");
+            await Task.CompletedTask;
+            // void return - nothing to return
+#endif
+        }
+#endif
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __TossAdsDestroyAll_Internal(string callbackId, string typeName);
+#endif
     }
 }

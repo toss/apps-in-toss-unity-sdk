@@ -504,6 +504,8 @@ function parseTypeFromFile(
 
   if (targetTypeAlias) {
     const typeNode = targetTypeAlias.getTypeNode();
+
+    // 2a. TypeLiteral: type Foo = { ... }
     if (typeNode && typeNode.getKind() === SyntaxKind.TypeLiteral) {
       const typeLiteral = typeNode.asKind(SyntaxKind.TypeLiteral);
       if (typeLiteral) {
@@ -521,6 +523,129 @@ function parseTypeFromFile(
           description: undefined,
           properties,
         };
+      }
+    }
+
+    // 2b. UnionType: type Foo = A | B | C (TypeReference union → merge properties)
+    if (typeNode && typeNode.getKind() === SyntaxKind.UnionType) {
+      const unionType = typeNode.asKind(SyntaxKind.UnionType);
+      if (unionType) {
+        const memberNodes = unionType.getTypeNodes();
+        const allTypeRefs = memberNodes.every(m => m.getKind() === SyntaxKind.TypeReference);
+
+        if (allTypeRefs && memberNodes.length > 0) {
+          // 각 TypeReference의 interface/type을 찾아 프로퍼티를 merge
+          const mergedProperties = new Map<string, ParsedProperty>();
+
+          for (const memberNode of memberNodes) {
+            const typeRef = memberNode.asKind(SyntaxKind.TypeReference);
+            if (!typeRef) continue;
+
+            const refName = typeRef.getTypeName().getText();
+            // 같은 소스 파일에서 해당 interface 찾기
+            const refInterface = interfaces.find(i => i.getName() === refName);
+            if (refInterface) {
+              const props = parseTypeMembers(refInterface.getMembers());
+              for (const prop of props) {
+                if (!mergedProperties.has(prop.name)) {
+                  mergedProperties.set(prop.name, prop);
+                } else {
+                  // 이미 있으면 optional로 마킹 (다른 variant에만 있을 수 있으므로)
+                  const existing = mergedProperties.get(prop.name)!;
+                  if (existing.type !== prop.type) {
+                    existing.optional = true;
+                  }
+                }
+              }
+              continue;
+            }
+
+            // interface 못 찾으면 type alias에서 찾기 (extends 포함)
+            const refTypeAlias = typeAliases.find(t => t.getName() === refName);
+            if (refTypeAlias) {
+              const refTypeNode = refTypeAlias.getTypeNode();
+              if (refTypeNode && refTypeNode.getKind() === SyntaxKind.TypeLiteral) {
+                const lit = refTypeNode.asKind(SyntaxKind.TypeLiteral);
+                if (lit) {
+                  const props = parseTypeMembers(lit.getMembers());
+                  for (const prop of props) {
+                    if (!mergedProperties.has(prop.name)) {
+                      mergedProperties.set(prop.name, prop);
+                    }
+                  }
+                }
+              }
+            }
+          }
+
+          // 멤버 interface의 extends도 탐색 (BasicProductListItem 등)
+          for (const memberNode of memberNodes) {
+            const typeRef = memberNode.asKind(SyntaxKind.TypeReference);
+            if (!typeRef) continue;
+
+            const refName = typeRef.getTypeName().getText();
+            const refInterface = interfaces.find(i => i.getName() === refName);
+            if (refInterface) {
+              // extends 처리
+              for (const ext of refInterface.getExtends()) {
+                const baseName = ext.getExpression().getText();
+                const baseInterface = interfaces.find(i => i.getName() === baseName);
+                if (baseInterface) {
+                  const baseProps = parseTypeMembers(baseInterface.getMembers());
+                  for (const prop of baseProps) {
+                    if (!mergedProperties.has(prop.name)) {
+                      mergedProperties.set(prop.name, prop);
+                    }
+                  }
+                }
+              }
+            }
+          }
+
+          const properties = Array.from(mergedProperties.values());
+
+          if (properties.length === 0) {
+            return null;
+          }
+
+          // union의 각 variant에만 있는 프로퍼티는 optional로 마킹
+          for (const prop of properties) {
+            let presentCount = 0;
+            for (const memberNode of memberNodes) {
+              const typeRef = memberNode.asKind(SyntaxKind.TypeReference);
+              if (!typeRef) continue;
+              const refName = typeRef.getTypeName().getText();
+              const refInterface = interfaces.find(i => i.getName() === refName);
+              if (refInterface) {
+                const allMembers = [
+                  ...refInterface.getMembers(),
+                  ...refInterface.getExtends().flatMap(ext => {
+                    const baseName = ext.getExpression().getText();
+                    const baseIf = interfaces.find(i => i.getName() === baseName);
+                    return baseIf ? baseIf.getMembers() : [];
+                  }),
+                ];
+                if (allMembers.some(m => {
+                  const propSig = m.asKind(SyntaxKind.PropertySignature);
+                  return propSig && propSig.getName() === prop.name;
+                })) {
+                  presentCount++;
+                }
+              }
+            }
+            if (presentCount < memberNodes.length) {
+              prop.optional = true;
+            }
+          }
+
+          return {
+            name: outputTypeName,
+            kind: 'interface',
+            file: fileName,
+            description: undefined,
+            properties,
+          };
+        }
       }
     }
   }

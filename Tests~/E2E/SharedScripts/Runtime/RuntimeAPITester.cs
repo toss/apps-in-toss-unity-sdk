@@ -153,7 +153,9 @@ public class RuntimeAPITester : MonoBehaviour
         TestAPICall("GetDeviceId", async () => { await AIT.GetDeviceId(); });
         TestAPICall("GetLocale", async () => { await AIT.GetLocale(); });
         TestAPICall("GetNetworkStatus", async () => { await AIT.GetNetworkStatus(); });
+#if AIT_SDK_1_7_1_OR_LATER
         TestAPICall("GetOperationalEnvironment", async () => { await AIT.GetOperationalEnvironment(); });
+#endif
         TestAPICall("GetPlatformOS", async () => { await AIT.GetPlatformOS(); });
         TestAPICall("GetSchemeUri", async () => { await AIT.GetSchemeUri(); });
         TestAPICall("GetTossAppVersion", async () => { await AIT.GetTossAppVersion(); });
@@ -193,8 +195,10 @@ public class RuntimeAPITester : MonoBehaviour
         TestAPICall("GenerateHapticFeedback", async () => { await AIT.GenerateHapticFeedback(new HapticFeedbackOptions { Type = HapticFeedbackType.Tap }); });
         TestAPICall("SetDeviceOrientation", async () => { await AIT.SetDeviceOrientation(new SetDeviceOrientationOptions { Type = SetDeviceOrientationOptionsType.Portrait }); });
         TestAPICall("SetIosSwipeGestureEnabled", async () => { await AIT.SetIosSwipeGestureEnabled(new SetIosSwipeGestureEnabledOptions { IsEnabled = true }); });
+#if AIT_SDK_1_7_1_OR_LATER
         TestAPICall("SetScreenAwakeMode", async () => { await AIT.SetScreenAwakeMode(new SetScreenAwakeModeOptions { Enabled = true }); });
         TestAPICall("SetSecureScreen", async () => { await AIT.SetSecureScreen(new SetSecureScreenOptions { Enabled = true }); });
+#endif
 
         // Payment API
         TestAPICall("CheckoutPayment", async () => { await AIT.CheckoutPayment(new CheckoutPaymentOptions { PayToken = "test-token" }); });

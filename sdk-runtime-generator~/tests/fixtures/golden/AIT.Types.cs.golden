@@ -570,6 +570,45 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
+    public class CreateSubscriptionPurchaseOrderOptions
+    {
+        [Preserve]
+        [JsonProperty("options")]
+        public CreateSubscriptionPurchaseOrderOptionsOptions Options;
+        [JsonIgnore]
+        public System.Action<SubscriptionSuccessEvent> OnEvent;
+        [JsonIgnore]
+        public System.Action<object> OnError;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class CreateSubscriptionPurchaseOrderOptionsOptions
+    {
+        [Preserve]
+        [JsonProperty("sku")]
+        public string Sku;
+        [Preserve]
+        [JsonProperty("offerId")]
+        public string OfferId; // optional
+        [JsonIgnore]
+        public System.Func<object, object> ProcessProductGrant;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class SubscriptionSuccessEvent
+    {
+        [Preserve]
+        [JsonProperty("type")]
+        public string Type;
+        [Preserve]
+        [JsonProperty("data")]
+        public IapCreateOneTimePurchaseOrderResult Data;
+    }
+
+    [Serializable]
+    [Preserve]
     public class IAPGetProductItemListResult
     {
         [Preserve]
@@ -577,27 +616,6 @@ namespace AppsInToss
         public IapProductListItem[] Products;
         /// <summary>에러 발생 시 에러 메시지 (플랫폼 미지원 등)</summary>
         public string error;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class IapProductListItem
-    {
-        [Preserve]
-        [JsonProperty("sku")]
-        public string Sku;
-        [Preserve]
-        [JsonProperty("displayAmount")]
-        public string DisplayAmount;
-        [Preserve]
-        [JsonProperty("displayName")]
-        public string DisplayName;
-        [Preserve]
-        [JsonProperty("iconUrl")]
-        public string IconUrl;
-        [Preserve]
-        [JsonProperty("description")]
-        public string Description;
     }
 
     [Serializable]
@@ -726,6 +744,16 @@ namespace AppsInToss
         [Preserve]
         [JsonProperty("onInitializationFailed")]
         public object OnInitializationFailed; // optional
+    }
+
+    [Serializable]
+    [Preserve]
+    public class AttachBannerResult
+    {
+        [JsonIgnore]
+        public System.Action Destroy;
+        /// <summary>에러 발생 시 에러 메시지 (플랫폼 미지원 등)</summary>
+        public string error;
     }
 
     [Serializable]
@@ -939,6 +967,27 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
+    public class IapProductListItem
+    {
+        [Preserve]
+        [JsonProperty("sku")]
+        public string Sku;
+        [Preserve]
+        [JsonProperty("displayAmount")]
+        public string DisplayAmount;
+        [Preserve]
+        [JsonProperty("displayName")]
+        public string DisplayName;
+        [Preserve]
+        [JsonProperty("iconUrl")]
+        public string IconUrl;
+        [Preserve]
+        [JsonProperty("description")]
+        public string Description;
+    }
+
+    [Serializable]
+    [Preserve]
     public class TossAdsAttachOptions
     {
         [Preserve]
@@ -1001,6 +1050,18 @@ namespace AppsInToss
         [Preserve]
         [JsonProperty("error")]
         public object Error;
+    }
+
+    /// <summary>
+    /// Stub class for TossAdsAttachBannerOptions (type definition not found in current SDK version)
+    /// This class is auto-generated for SDK version compatibility
+    /// </summary>
+    [Serializable]
+    [Preserve]
+    public class TossAdsAttachBannerOptions
+    {
+        // Stub class - no properties defined
+        // This type may not be available in the current SDK version
     }
 
     [Serializable]

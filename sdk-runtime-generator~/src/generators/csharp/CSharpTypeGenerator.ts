@@ -152,7 +152,7 @@ export class CSharpTypeGenerator {
       ? `    /// <summary>\n    /// ${typeDef.description}\n    /// </summary>\n`
       : '';
 
-    return `${description}    [Serializable]\n    [Preserve]\n    public class ${typeDef.name}\n    {\n${fields}\n    }`;
+    return `${description}    [Serializable]\n    [Preserve]\n    public partial class ${typeDef.name}\n    {\n${fields}\n    }`;
   }
 
   /**
@@ -269,7 +269,7 @@ export class CSharpTypeGenerator {
 
     return `    [Serializable]
     [Preserve]
-    public class ${cleanName}
+    public partial class ${cleanName}
     {
 ${fields}${errorField}
     }`;
@@ -289,7 +289,7 @@ ${fields}${errorField}
     lines.push('    /// </summary>');
     lines.push('    [Serializable]');
     lines.push('    [Preserve]');
-    lines.push(`    public class ${cleanName}`);
+    lines.push(`    public partial class ${cleanName}`);
     lines.push('    {');
     lines.push('        // Stub class - no properties defined');
     lines.push('        // This type may not be available in the current SDK version');

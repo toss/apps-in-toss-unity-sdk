@@ -313,7 +313,9 @@ namespace AppsInToss.Editor
                     // bash -c "..." 안에서 export 할당 시 JSON 등의 큰따옴표가
                     // 바깥 큰따옴표와 충돌하므로, 셸 명령에서는 CI만 설정
                     string envExports = "export CI=true";
-                    shellArgs = $"-l -c \"{envExports} && export PATH='{pathEnv}' && {command}\"";
+                    string escapedCommand = EscapeForBashDoubleQuotes(command);
+                    string escapedPathEnv = pathEnv.Replace("'", "'\\''");
+                    shellArgs = $"-l -c \"{envExports} && export PATH='{escapedPathEnv}' && {escapedCommand}\"";
                 }
 
                 if (verbose)
@@ -674,6 +676,19 @@ namespace AppsInToss.Editor
                 .Replace("`", "``")   // 백틱 먼저 이스케이프
                 .Replace("$", "`$");  // 변수 확장 방지만
             // 따옴표는 이스케이프하지 않음 - PowerShell 명령 구문의 일부
+        }
+
+        /// <summary>
+        /// Bash -c "..." 내부에서 사용할 문자열의 특수 문자 이스케이프
+        /// </summary>
+        private static string EscapeForBashDoubleQuotes(string input)
+        {
+            if (string.IsNullOrEmpty(input)) return input;
+            return input
+                .Replace("\\", "\\\\")
+                .Replace("\"", "\\\"")
+                .Replace("$", "\\$")
+                .Replace("`", "\\`");
         }
 
         /// <summary>

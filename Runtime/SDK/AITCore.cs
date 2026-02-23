@@ -24,7 +24,7 @@ namespace AppsInToss
     /// - Enums with [EnumMember] attributes: serialize as string (using EnumMember value)
     /// - Enums without [EnumMember] attributes: serialize as number (for numeric enums like Accuracy)
     /// </summary>
-    public class SmartEnumConverter : JsonConverter
+    public partial class SmartEnumConverter : JsonConverter
     {
         private readonly StringEnumConverter _stringConverter = new StringEnumConverter();
 
@@ -111,7 +111,7 @@ namespace AppsInToss
     /// Attribute to mark API methods with their category for grouping in UI.
     /// </summary>
     [AttributeUsage(AttributeTargets.Method)]
-    public class APICategoryAttribute : Attribute
+    public partial class APICategoryAttribute : Attribute
     {
         /// <summary>
         /// The category name (e.g., "Authentication", "Payment", "Location")
@@ -128,7 +128,7 @@ namespace AppsInToss
     /// Exception thrown when an Apps in Toss API call fails.
     /// Use try-catch to handle API errors in a C#-idiomatic way.
     /// </summary>
-    public class AITException : Exception
+    public partial class AITException : Exception
     {
         /// <summary>The API name that failed</summary>
         public string APIName { get; }
@@ -182,7 +182,7 @@ namespace AppsInToss
     /// </summary>
     [Serializable]
     [Preserve]
-    public class APIResponse
+    public partial class APIResponse
     {
         [Preserve]
         public bool success;
@@ -196,7 +196,7 @@ namespace AppsInToss
     /// Apps in Toss SDK Core Infrastructure
     /// Callback management and JavaScript bridge
     /// </summary>
-    public class AITCore : MonoBehaviour
+    public partial class AITCore : MonoBehaviour
     {
         private static AITCore _instance;
 
@@ -1012,7 +1012,7 @@ namespace AppsInToss
         /// </summary>
         [Serializable]
         [Preserve]
-        public class CallbackData
+        public partial class CallbackData
         {
             [Preserve]
             public string CallbackId = "";
@@ -1137,7 +1137,7 @@ namespace AppsInToss
         /// </summary>
         [Serializable]
         [Preserve]
-        public class NestedCallbackRequest
+        public partial class NestedCallbackRequest
         {
             [Preserve]
             [JsonProperty("requestId")]
@@ -1164,7 +1164,7 @@ namespace AppsInToss
     /// </summary>
     [Serializable]
     [Preserve]
-    public class TdsNavigationAccessoryEventData
+    public partial class TdsNavigationAccessoryEventData
     {
         [Preserve]
         [JsonProperty("id")]

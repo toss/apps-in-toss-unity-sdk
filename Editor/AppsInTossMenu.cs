@@ -1987,7 +1987,7 @@ namespace AppsInToss
                 var exports = new List<string>();
                 foreach (var kv in envVars)
                 {
-                    exports.Add($"export {kv.Key}='{kv.Value}'");
+                    exports.Add($"export {kv.Key}='{kv.Value.Replace("'", "'\\''")}'");
                 }
                 envExports = string.Join(" && ", exports) + " && ";
             }
@@ -2024,7 +2024,7 @@ namespace AppsInToss
                 startInfo = new ProcessStartInfo
                 {
                     FileName = "/bin/bash",
-                    Arguments = $"-l -c \"{envExports}export PATH='{pathEnv}' && cd '{buildPath}' && '{npmPath}' {npmCommand}\"",
+                    Arguments = $"-l -c \"{envExports}export PATH='{pathEnv.Replace("'", "'\\''")}' && cd '{buildPath.Replace("'", "'\\''")}' && '{npmPath.Replace("'", "'\\''")}' {npmCommand}\"",
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,

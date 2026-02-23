@@ -119,9 +119,6 @@ sdk-runtime-generator.meta
 tools/
 tools.meta
 
-# AI Assistant files
-CLAUDE.md.meta
-
 # Docs~ 폴더 (Unity에서 무시되므로 meta 불필요)
 !Docs~
 

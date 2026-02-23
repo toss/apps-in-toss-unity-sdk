@@ -970,6 +970,15 @@ namespace AppsInToss
     public class IapProductListItem
     {
         [Preserve]
+        [JsonProperty("type")]
+        public CONSUMABLE Type; // optional
+        [Preserve]
+        [JsonProperty("renewalCycle")]
+        public string RenewalCycle; // optional
+        [Preserve]
+        [JsonProperty("offers")]
+        public Offer[] Offers; // optional
+        [Preserve]
         [JsonProperty("sku")]
         public string Sku;
         [Preserve]
@@ -1059,6 +1068,30 @@ namespace AppsInToss
     [Serializable]
     [Preserve]
     public class TossAdsAttachBannerOptions
+    {
+        // Stub class - no properties defined
+        // This type may not be available in the current SDK version
+    }
+
+    /// <summary>
+    /// Stub class for CONSUMABLE (type definition not found in current SDK version)
+    /// This class is auto-generated for SDK version compatibility
+    /// </summary>
+    [Serializable]
+    [Preserve]
+    public class CONSUMABLE
+    {
+        // Stub class - no properties defined
+        // This type may not be available in the current SDK version
+    }
+
+    /// <summary>
+    /// Stub class for Offer (type definition not found in current SDK version)
+    /// This class is auto-generated for SDK version compatibility
+    /// </summary>
+    [Serializable]
+    [Preserve]
+    public class Offer
     {
         // Stub class - no properties defined
         // This type may not be available in the current SDK version

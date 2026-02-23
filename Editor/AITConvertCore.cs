@@ -32,6 +32,16 @@ namespace AppsInToss
         public string[] plugins;
     }
 
+    [System.Serializable]
+    internal class AITBuildInfo
+    {
+        public string sdkVersion;
+        public string buildTime;
+        public int compressionFormat;
+        public string profileName;
+        public string unityVersion;
+    }
+
     /// <summary>
     /// Apps in Toss 미니앱 변환 핵심 클래스 (파사드)
     /// 빌드 파이프라인의 진입점으로서 내부 헬퍼 클래스들을 조율합니다.
@@ -141,6 +151,7 @@ namespace AppsInToss
             CANCELLED = 5,
             FAIL_NPM_BUILD = 6,
             WEBGL_BUILD_INCOMPLETE = 7,
+            REQUIRES_FULL_BUILD = 8,
         }
 
         /// <summary>
@@ -202,10 +213,22 @@ namespace AppsInToss
                            "2. 'Clean Build' 옵션 활성화 후 재빌드\n" +
                            "3. AIT > Regenerate WebGL Templates 실행";
 
+                case AITExportError.REQUIRES_FULL_BUILD:
+                    return "현재 WebGL 빌드가 AIT SDK를 통해 생성되지 않았습니다.\n\n" +
+                           "AIT SDK의 빌드 설정(압축, 템플릿, 최적화 등)이 적용되지 않아\n" +
+                           "토스 앱에서 로딩 오류가 발생할 수 있습니다.\n\n" +
+                           "'Build & Package'를 사용하면 SDK 설정이 올바르게 적용됩니다.";
+
                 default:
                     return $"알 수 없는 오류가 발생했습니다. (코드: {error})";
             }
         }
+
+        #endregion
+
+        #region Build Marker
+
+        public const string BUILD_MARKER_FILENAME = ".ait-build-info.json";
 
         #endregion
 
@@ -590,6 +613,27 @@ namespace AppsInToss
             }
 
             Debug.Log("WebGL 빌드가 완료되었습니다.");
+
+            // AIT 빌드 마커 파일 생성 (Package Only 시 검증용)
+            try
+            {
+                var buildInfo = new AITBuildInfo
+                {
+                    sdkVersion = AITVersion.Version,
+                    buildTime = DateTime.UtcNow.ToString("o"),
+                    compressionFormat = (int)PlayerSettings.WebGL.compressionFormat,
+                    profileName = profile?.developmentBuild == true ? "Development" : "Production",
+                    unityVersion = Application.unityVersion
+                };
+                string markerPath = Path.Combine(outputPath, BUILD_MARKER_FILENAME);
+                File.WriteAllText(markerPath, JsonUtility.ToJson(buildInfo, true));
+                Debug.Log($"[AIT] 빌드 마커 생성: {markerPath}");
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[AIT] 빌드 마커 생성 실패 (무시됨): {e.Message}");
+            }
+
             return AITExportError.SUCCEED;
         }
 

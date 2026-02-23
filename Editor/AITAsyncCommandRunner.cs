@@ -166,7 +166,9 @@ namespace AppsInToss.Editor
                             envExports += $" && export {kvp.Key}='{escapedValue}'";
                         }
                     }
-                    shellArgs = $"-l -c \"{envExports} && export PATH='{pathEnv}' && {command}\"";
+                    string escapedCommand = EscapeForBashDoubleQuotes(command);
+                    string escapedPathEnv = pathEnv.Replace("'", "'\\''");
+                    shellArgs = $"-l -c \"{envExports} && export PATH='{escapedPathEnv}' && {escapedCommand}\"";
                 }
 
                 EnqueueMainThread(() => Debug.Log($"[AIT Async] 명령 시작: {command}"));
@@ -330,6 +332,19 @@ namespace AppsInToss.Editor
             return command
                 .Replace("`", "``")
                 .Replace("$", "`$");
+        }
+
+        /// <summary>
+        /// Bash -c "..." 내부에서 사용할 문자열의 특수 문자 이스케이프
+        /// </summary>
+        private static string EscapeForBashDoubleQuotes(string input)
+        {
+            if (string.IsNullOrEmpty(input)) return input;
+            return input
+                .Replace("\\", "\\\\")
+                .Replace("\"", "\\\"")
+                .Replace("$", "\\$")
+                .Replace("`", "\\`");
         }
 
         /// <summary>

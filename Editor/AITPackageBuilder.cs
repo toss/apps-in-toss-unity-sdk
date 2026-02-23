@@ -763,6 +763,13 @@ namespace AppsInToss.Editor
                 profile = AITBuildProfile.CreateProductionProfile();
             }
 
+            // AIT 빌드 마커 검증 (Package Only 시 AIT Build 결과물인지 확인)
+            var markerValidation = ValidateBuildMarker(webglPath, profile);
+            if (markerValidation != AITConvertCore.AITExportError.SUCCEED)
+            {
+                return markerValidation;
+            }
+
             var config = UnityUtil.GetEditorConf();
 
             // Unity WebGL 빌드를 Vite 프로젝트에 복사
@@ -1004,6 +1011,74 @@ namespace AppsInToss.Editor
             Debug.Log("[AIT] Unity WebGL 빌드 복사 완료");
             Debug.Log("[AIT]   - index.html → 프로젝트 루트");
             Debug.Log("[AIT]   - Build, TemplateData, Runtime → public/");
+
+            return AITConvertCore.AITExportError.SUCCEED;
+        }
+
+        /// <summary>
+        /// AIT 빌드 마커 파일을 검증합니다.
+        /// 마커가 없으면 AIT Build가 아닌 결과물이므로 사용자에게 선택지를 제공합니다.
+        /// </summary>
+        private static AITConvertCore.AITExportError ValidateBuildMarker(string webglPath, AITBuildProfile profile)
+        {
+            string markerPath = Path.Combine(webglPath, AITConvertCore.BUILD_MARKER_FILENAME);
+
+            if (!File.Exists(markerPath))
+            {
+                Debug.LogWarning("[AIT] AIT 빌드 마커 파일이 없습니다. AIT SDK를 통해 빌드되지 않은 결과물입니다.");
+
+                int choice = AITPlatformHelper.ShowComplexDialog(
+                    "AIT 빌드 결과물이 아닙니다",
+                    "현재 WebGL 빌드가 AIT SDK를 통해 생성되지 않았습니다.\n\n" +
+                    "AIT SDK의 빌드 설정(압축, 템플릿, 최적화 등)이 적용되지 않아\n" +
+                    "토스 앱에서 로딩 오류가 발생할 수 있습니다.\n\n" +
+                    "Build & Package로 실행하면 SDK 설정이 올바르게 적용됩니다.",
+                    "Build & Package로 실행",
+                    "취소",
+                    null,
+                    defaultChoice: 1
+                );
+
+                if (choice == 0)
+                {
+                    Debug.Log("[AIT] 사용자가 Build & Package 실행을 선택했습니다.");
+                    return AITConvertCore.AITExportError.REQUIRES_FULL_BUILD;
+                }
+                else
+                {
+                    Debug.Log("[AIT] 사용자가 패키징을 취소했습니다.");
+                    return AITConvertCore.AITExportError.CANCELLED;
+                }
+            }
+
+            // 마커가 있으면 압축 설정 불일치 검사
+            try
+            {
+                string markerJson = File.ReadAllText(markerPath);
+                var buildInfo = JsonUtility.FromJson<AITBuildInfo>(markerJson);
+
+                if (buildInfo != null)
+                {
+                    int currentCompression = profile.compressionFormat;
+                    // compressionFormat이 -1(자동)이면 AITDefaultSettings의 기본값 사용
+                    if (currentCompression == -1)
+                        currentCompression = (int)AITDefaultSettings.GetDefaultCompressionFormat();
+
+                    if (buildInfo.compressionFormat != currentCompression)
+                    {
+                        Debug.LogWarning($"[AIT] 빌드 시 압축 설정({buildInfo.compressionFormat})과 " +
+                                       $"현재 프로필 압축 설정({currentCompression})이 다릅니다. " +
+                                       "빌드 시점의 설정이 적용된 결과물입니다.");
+                    }
+
+                    Debug.Log($"[AIT] 빌드 마커 확인: SDK v{buildInfo.sdkVersion}, " +
+                             $"빌드 시각 {buildInfo.buildTime}, Unity {buildInfo.unityVersion}");
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[AIT] 빌드 마커 읽기 실패 (무시됨): {e.Message}");
+            }
 
             return AITConvertCore.AITExportError.SUCCEED;
         }

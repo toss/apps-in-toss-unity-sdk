@@ -880,6 +880,11 @@ namespace AppsInToss
                         Debug.Log($"AIT: 패키징 완료! (소요 시간: {buildStopwatch.Elapsed.TotalSeconds:F1}초)");
                         AITPlatformHelper.ShowInfoDialog("성공", $"패키징이 완료되었습니다!\n\n소요 시간: {buildStopwatch.Elapsed.TotalSeconds:F1}초", "확인");
                     }
+                    else if (result == AITConvertCore.AITExportError.REQUIRES_FULL_BUILD)
+                    {
+                        Debug.Log("AIT: Build & Package로 전환 실행합니다.");
+                        EditorApplication.delayCall += ExecuteBuildAndPackage;
+                    }
                     else if (result == AITConvertCore.AITExportError.CANCELLED)
                     {
                         Debug.Log("AIT: 패키징이 사용자에 의해 취소되었습니다.");

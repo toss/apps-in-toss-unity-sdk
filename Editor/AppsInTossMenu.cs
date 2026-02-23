@@ -1987,7 +1987,9 @@ namespace AppsInToss
                 var exports = new List<string>();
                 foreach (var kv in envVars)
                 {
-                    exports.Add($"export {kv.Key}='{kv.Value.Replace("'", "'\\''")}'");
+                    string escapedKey = AITPlatformHelper.EscapeForBashDoubleQuotes(kv.Key);
+                    string escapedVal = AITPlatformHelper.EscapeForBashDoubleQuotes(kv.Value);
+                    exports.Add($"export {escapedKey}=\\\"{escapedVal}\\\"");
                 }
                 envExports = string.Join(" && ", exports) + " && ";
             }
@@ -2021,10 +2023,13 @@ namespace AppsInToss
             }
             else
             {
+                string escapedPathEnv = AITPlatformHelper.EscapeForBashDoubleQuotes(pathEnv);
+                string escapedBuildPath = AITPlatformHelper.EscapeForBashDoubleQuotes(buildPath);
+                string escapedNpmPath = AITPlatformHelper.EscapeForBashDoubleQuotes(npmPath);
                 startInfo = new ProcessStartInfo
                 {
                     FileName = "/bin/bash",
-                    Arguments = $"-l -c \"{envExports}export PATH='{pathEnv.Replace("'", "'\\''")}' && cd '{buildPath.Replace("'", "'\\''")}' && '{npmPath.Replace("'", "'\\''")}' {npmCommand}\"",
+                    Arguments = $"-l -c \"{envExports}export PATH=\\\"{escapedPathEnv}\\\" && cd \\\"{escapedBuildPath}\\\" && \\\"{escapedNpmPath}\\\" {npmCommand}\"",
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,

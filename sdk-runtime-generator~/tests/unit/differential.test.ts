@@ -22,6 +22,9 @@ import * as fs from 'fs/promises';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// public class 또는 public partial class를 매칭하는 공통 패턴
+const CLASS_PATTERN = `public (?:partial )?class`;
+
 // Golden file 경로
 const GOLDEN_DIR = path.resolve(__dirname, '../fixtures/golden');
 const SDK_GENERATED_DIR = path.resolve(__dirname, '../../..', 'Runtime/SDK');
@@ -164,8 +167,9 @@ describe('Tier 4: Golden File 비교 (회귀 테스트)', () => {
       }
 
       // 클래스 수 비교
-      const genClassCount = (generatedContent.match(/public class \w+/g) || []).length;
-      const goldClassCount = (goldenContent.match(/public class \w+/g) || []).length;
+      const classRegex = new RegExp(`${CLASS_PATTERN} \\w+`, 'g');
+      const genClassCount = (generatedContent.match(classRegex) || []).length;
+      const goldClassCount = (goldenContent.match(classRegex) || []).length;
 
       console.log(`📊 클래스 수: Generated=${genClassCount}, Golden=${goldClassCount}`);
 

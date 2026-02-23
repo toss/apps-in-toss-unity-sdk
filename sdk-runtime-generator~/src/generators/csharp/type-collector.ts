@@ -135,7 +135,7 @@ export function generateNestedClassType(
 
   return `    [Serializable]
     [Preserve]
-    public class ${name}
+    public partial class ${name}
     {
 ${fields}
     }`;

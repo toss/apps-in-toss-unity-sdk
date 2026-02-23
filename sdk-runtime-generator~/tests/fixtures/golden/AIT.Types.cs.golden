@@ -124,7 +124,7 @@ namespace AppsInToss
     /// </summary>
     [Serializable]
     [Preserve]
-    public class GetUserKeyForGameResult
+    public partial class GetUserKeyForGameResult
     {
         [Preserve]
         [JsonProperty("_type")]
@@ -204,7 +204,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class AppLoginResult
+    public partial class AppLoginResult
     {
         [Preserve]
         [JsonProperty("authorizationCode")]
@@ -218,7 +218,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class RewardFromContactsViralEvent
+    public partial class RewardFromContactsViralEvent
     {
         [Preserve]
         [JsonProperty("type")]
@@ -230,7 +230,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class RewardFromContactsViralEventData
+    public partial class RewardFromContactsViralEventData
     {
         [Preserve]
         [JsonProperty("rewardAmount")]
@@ -242,7 +242,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class ContactsViralSuccessEvent
+    public partial class ContactsViralSuccessEvent
     {
         [Preserve]
         [JsonProperty("type")]
@@ -254,7 +254,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class ContactsViralSuccessEventData
+    public partial class ContactsViralSuccessEventData
     {
         [Preserve]
         [JsonProperty("closeReason")]
@@ -275,7 +275,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class Location
+    public partial class Location
     {
         [Preserve]
         [JsonProperty("accessLocation")]
@@ -292,7 +292,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class GetPermissionPermission
+    public partial class GetPermissionPermission
     {
         [Preserve]
         [JsonProperty("name")]
@@ -304,7 +304,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class GrantPromotionRewardForGameOptions
+    public partial class GrantPromotionRewardForGameOptions
     {
         [Preserve]
         [JsonProperty("params")]
@@ -313,7 +313,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class GrantPromotionRewardForGameOptionsParams
+    public partial class GrantPromotionRewardForGameOptionsParams
     {
         [Preserve]
         [JsonProperty("promotionCode")]
@@ -325,7 +325,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class GrantPromotionRewardForGameResult
+    public partial class GrantPromotionRewardForGameResult
     {
         [Preserve]
         [JsonProperty("key")]
@@ -343,7 +343,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class GoogleAdMobLoadAppsInTossAdMobArgs
+    public partial class GoogleAdMobLoadAppsInTossAdMobArgs
     {
         [JsonIgnore]
         public System.Action<LoadAdMobEvent> OnEvent;
@@ -356,7 +356,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class LoadAdMobEvent
+    public partial class LoadAdMobEvent
     {
         [Preserve]
         [JsonProperty("type")]
@@ -368,7 +368,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class AdMobLoadResult
+    public partial class AdMobLoadResult
     {
         [Preserve]
         [JsonProperty("adGroupId")]
@@ -383,7 +383,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class ResponseInfo
+    public partial class ResponseInfo
     {
         [Preserve]
         [JsonProperty("adNetworkInfoArray")]
@@ -398,7 +398,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class AdNetworkResponseInfo
+    public partial class AdNetworkResponseInfo
     {
         [Preserve]
         [JsonProperty("adSourceId")]
@@ -419,7 +419,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class Error
+    public partial class Error
     {
         [Preserve]
         [JsonProperty("name")]
@@ -434,7 +434,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class GoogleAdMobShowAppsInTossAdMobArgs
+    public partial class GoogleAdMobShowAppsInTossAdMobArgs
     {
         [JsonIgnore]
         public System.Action<ShowAdMobEvent> OnEvent;
@@ -447,7 +447,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class ShowAdMobEvent
+    public partial class ShowAdMobEvent
     {
         [Preserve]
         [JsonProperty("type")]
@@ -459,7 +459,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class ShowAdMobEventData
+    public partial class ShowAdMobEventData
     {
         [Preserve]
         [JsonProperty("unitType")]
@@ -471,7 +471,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class AdUserEarnedReward
+    public partial class AdUserEarnedReward
     {
         [Preserve]
         [JsonProperty("type")]
@@ -483,7 +483,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class AdUserEarnedRewardData
+    public partial class AdUserEarnedRewardData
     {
         [Preserve]
         [JsonProperty("unitType")]
@@ -495,7 +495,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class IsAdMobLoadedOptions
+    public partial class IsAdMobLoadedOptions
     {
         [Preserve]
         [JsonProperty("adGroupId")]
@@ -504,7 +504,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class IapCreateOneTimePurchaseOrderOptions
+    public partial class IapCreateOneTimePurchaseOrderOptions
     {
         [Preserve]
         [JsonProperty("options")]
@@ -517,7 +517,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class IapCreateOneTimePurchaseOrderOptionsOptions
+    public partial class IapCreateOneTimePurchaseOrderOptionsOptions
     {
         [Preserve]
         [JsonProperty("productId")]
@@ -531,7 +531,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class SuccessEvent
+    public partial class SuccessEvent
     {
         [Preserve]
         [JsonProperty("type")]
@@ -543,7 +543,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class IapCreateOneTimePurchaseOrderResult
+    public partial class IapCreateOneTimePurchaseOrderResult
     {
         [Preserve]
         [JsonProperty("orderId")]
@@ -570,7 +570,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class CreateSubscriptionPurchaseOrderOptions
+    public partial class CreateSubscriptionPurchaseOrderOptions
     {
         [Preserve]
         [JsonProperty("options")]
@@ -583,7 +583,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class CreateSubscriptionPurchaseOrderOptionsOptions
+    public partial class CreateSubscriptionPurchaseOrderOptionsOptions
     {
         [Preserve]
         [JsonProperty("sku")]
@@ -597,7 +597,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class SubscriptionSuccessEvent
+    public partial class SubscriptionSuccessEvent
     {
         [Preserve]
         [JsonProperty("type")]
@@ -609,7 +609,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class IAPGetProductItemListResult
+    public partial class IAPGetProductItemListResult
     {
         [Preserve]
         [JsonProperty("products")]
@@ -620,7 +620,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class IAPGetPendingOrdersResult
+    public partial class IAPGetPendingOrdersResult
     {
         [Preserve]
         [JsonProperty("orders")]
@@ -631,7 +631,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class IAPGetPendingOrdersResultOrder
+    public partial class IAPGetPendingOrdersResultOrder
     {
         [Preserve]
         [JsonProperty("orderId")]
@@ -646,7 +646,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class CompletedOrRefundedOrdersResult
+    public partial class CompletedOrRefundedOrdersResult
     {
         [Preserve]
         [JsonProperty("hasNext")]
@@ -663,7 +663,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class CompletedOrRefundedOrdersResultOrder
+    public partial class CompletedOrRefundedOrdersResultOrder
     {
         [Preserve]
         [JsonProperty("orderId")]
@@ -681,7 +681,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class IAPCompleteProductGrantArgs_0
+    public partial class IAPCompleteProductGrantArgs_0
     {
         [Preserve]
         [JsonProperty("params")]
@@ -690,7 +690,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class IAPCompleteProductGrantArgs_0Params
+    public partial class IAPCompleteProductGrantArgs_0Params
     {
         [Preserve]
         [JsonProperty("orderId")]
@@ -699,7 +699,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class SafeAreaInsets
+    public partial class SafeAreaInsets
     {
         [Preserve]
         [JsonProperty("top")]
@@ -719,7 +719,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class SafeAreaInsetsSubscribe__0
+    public partial class SafeAreaInsetsSubscribe__0
     {
         [JsonIgnore]
         public System.Action<SafeAreaInsets> OnEvent;
@@ -727,7 +727,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class InitializeOptions
+    public partial class InitializeOptions
     {
         [Preserve]
         [JsonProperty("callbacks")]
@@ -736,7 +736,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class InitializeOptionsCallbacks
+    public partial class InitializeOptionsCallbacks
     {
         [Preserve]
         [JsonProperty("onInitialized")]
@@ -748,7 +748,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class AttachBannerResult
+    public partial class AttachBannerResult
     {
         [JsonIgnore]
         public System.Action Destroy;
@@ -758,7 +758,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class AppsInTossGlobals
+    public partial class AppsInTossGlobals
     {
         [Preserve]
         [JsonProperty("deploymentId")]
@@ -778,7 +778,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class IsMinVersionSupportedMinVersions
+    public partial class IsMinVersionSupportedMinVersions
     {
         [Preserve]
         [JsonProperty("android")]
@@ -790,7 +790,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class AddAccessoryButtonOptions
+    public partial class AddAccessoryButtonOptions
     {
         [Preserve]
         [JsonProperty("id")]
@@ -805,7 +805,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class AddAccessoryButtonOptionsIcon
+    public partial class AddAccessoryButtonOptionsIcon
     {
         [Preserve]
         [JsonProperty("name")]
@@ -814,7 +814,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class OnVisibilityChangedByTransparentServiceWebEventParams
+    public partial class OnVisibilityChangedByTransparentServiceWebEventParams
     {
         [Preserve]
         [JsonProperty("options")]
@@ -827,7 +827,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class OnVisibilityChangedByTransparentServiceWebEventParamsOptions
+    public partial class OnVisibilityChangedByTransparentServiceWebEventParamsOptions
     {
         [Preserve]
         [JsonProperty("callbackId")]
@@ -836,7 +836,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class OpenPermissionDialogPermission
+    public partial class OpenPermissionDialogPermission
     {
         [Preserve]
         [JsonProperty("name")]
@@ -848,7 +848,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class RequestPermissionPermission
+    public partial class RequestPermissionPermission
     {
         [Preserve]
         [JsonProperty("name")]
@@ -860,7 +860,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class SetDeviceOrientationOptions
+    public partial class SetDeviceOrientationOptions
     {
         [Preserve]
         [JsonProperty("type")]
@@ -869,7 +869,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class SetIosSwipeGestureEnabledOptions
+    public partial class SetIosSwipeGestureEnabledOptions
     {
         [Preserve]
         [JsonProperty("isEnabled")]
@@ -878,7 +878,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class SetScreenAwakeModeOptions
+    public partial class SetScreenAwakeModeOptions
     {
         [Preserve]
         [JsonProperty("enabled")]
@@ -887,27 +887,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class SetScreenAwakeModeResult
-    {
-        [Preserve]
-        [JsonProperty("enabled")]
-        public bool Enabled;
-        /// <summary>에러 발생 시 에러 메시지 (플랫폼 미지원 등)</summary>
-        public string error;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class SetSecureScreenOptions
-    {
-        [Preserve]
-        [JsonProperty("enabled")]
-        public bool Enabled;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class SetSecureScreenResult
+    public partial class SetScreenAwakeModeResult
     {
         [Preserve]
         [JsonProperty("enabled")]
@@ -918,7 +898,27 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class ShareMessage
+    public partial class SetSecureScreenOptions
+    {
+        [Preserve]
+        [JsonProperty("enabled")]
+        public bool Enabled;
+    }
+
+    [Serializable]
+    [Preserve]
+    public partial class SetSecureScreenResult
+    {
+        [Preserve]
+        [JsonProperty("enabled")]
+        public bool Enabled;
+        /// <summary>에러 발생 시 에러 메시지 (플랫폼 미지원 등)</summary>
+        public string error;
+    }
+
+    [Serializable]
+    [Preserve]
+    public partial class ShareMessage
     {
         [Preserve]
         [JsonProperty("message")]
@@ -927,7 +927,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class StartUpdateLocationEventParams
+    public partial class StartUpdateLocationEventParams
     {
         [JsonIgnore]
         public System.Action<Location> OnEvent;
@@ -940,7 +940,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class SubmitGameCenterLeaderBoardScoreParams
+    public partial class SubmitGameCenterLeaderBoardScoreParams
     {
         [Preserve]
         [JsonProperty("score")]
@@ -949,7 +949,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class LoadAdMobOptions
+    public partial class LoadAdMobOptions
     {
         [Preserve]
         [JsonProperty("adGroupId")]
@@ -958,7 +958,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class ShowAdMobOptions
+    public partial class ShowAdMobOptions
     {
         [Preserve]
         [JsonProperty("adGroupId")]
@@ -967,8 +967,17 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class IapProductListItem
+    public partial class IapProductListItem
     {
+        [Preserve]
+        [JsonProperty("type")]
+        public CONSUMABLE Type; // optional
+        [Preserve]
+        [JsonProperty("renewalCycle")]
+        public string RenewalCycle; // optional
+        [Preserve]
+        [JsonProperty("offers")]
+        public Offer[] Offers; // optional
         [Preserve]
         [JsonProperty("sku")]
         public string Sku;
@@ -988,7 +997,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class TossAdsAttachOptions
+    public partial class TossAdsAttachOptions
     {
         [Preserve]
         [JsonProperty("theme")]
@@ -1003,7 +1012,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class BannerSlotCallbacks
+    public partial class BannerSlotCallbacks
     {
         [JsonIgnore]
         public System.Action<BannerSlotEventPayload> OnAdRendered; // optional
@@ -1021,7 +1030,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class BannerSlotEventPayload
+    public partial class BannerSlotEventPayload
     {
         [Preserve]
         [JsonProperty("slotId")]
@@ -1036,7 +1045,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class BannerSlotErrorPayload
+    public partial class BannerSlotErrorPayload
     {
         [Preserve]
         [JsonProperty("slotId")]
@@ -1058,7 +1067,31 @@ namespace AppsInToss
     /// </summary>
     [Serializable]
     [Preserve]
-    public class TossAdsAttachBannerOptions
+    public partial class TossAdsAttachBannerOptions
+    {
+        // Stub class - no properties defined
+        // This type may not be available in the current SDK version
+    }
+
+    /// <summary>
+    /// Stub class for CONSUMABLE (type definition not found in current SDK version)
+    /// This class is auto-generated for SDK version compatibility
+    /// </summary>
+    [Serializable]
+    [Preserve]
+    public partial class CONSUMABLE
+    {
+        // Stub class - no properties defined
+        // This type may not be available in the current SDK version
+    }
+
+    /// <summary>
+    /// Stub class for Offer (type definition not found in current SDK version)
+    /// This class is auto-generated for SDK version compatibility
+    /// </summary>
+    [Serializable]
+    [Preserve]
+    public partial class Offer
     {
         // Stub class - no properties defined
         // This type may not be available in the current SDK version
@@ -1066,7 +1099,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class AppsInTossSignTossCertParams
+    public partial class AppsInTossSignTossCertParams
     {
         [Preserve]
         [JsonProperty("txId")]
@@ -1078,7 +1111,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class CheckoutPaymentOptions
+    public partial class CheckoutPaymentOptions
     {
         /// <summary>결제 토큰이에요.</summary>
         [Preserve]
@@ -1088,7 +1121,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class CheckoutPaymentResult
+    public partial class CheckoutPaymentResult
     {
         /// <summary>인증이 성공했는지 여부예요.</summary>
         [Preserve]
@@ -1102,7 +1135,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class ContactsViralEvent
+    public partial class ContactsViralEvent
     {
         [Preserve]
         [JsonProperty("type")]
@@ -1114,7 +1147,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class ContactsViralEventData
+    public partial class ContactsViralEventData
     {
         [Preserve]
         [JsonProperty("rewardAmount")]
@@ -1126,7 +1159,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class ContactsViralParams
+    public partial class ContactsViralParams
     {
         [Preserve]
         [JsonProperty("options")]
@@ -1139,7 +1172,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class ContactsViralParamsOptions
+    public partial class ContactsViralParamsOptions
     {
         [Preserve]
         [JsonProperty("moduleId")]
@@ -1148,7 +1181,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class EventLogParams
+    public partial class EventLogParams
     {
         [Preserve]
         [JsonProperty("log_name")]
@@ -1176,7 +1209,7 @@ namespace AppsInToss
     /// </summary>
     [Serializable]
     [Preserve]
-    public class FetchAlbumPhotosOptions
+    public partial class FetchAlbumPhotosOptions
     {
         /// <summary>가져올 사진의 최대 개수를 설정해요. 숫자를 입력하고 기본값은 10이에요.</summary>
         [Preserve]
@@ -1197,7 +1230,7 @@ namespace AppsInToss
     /// </summary>
     [Serializable]
     [Preserve]
-    public class ImageResponse
+    public partial class ImageResponse
     {
         /// <summary>가져온 사진의 고유 ID예요.</summary>
         [Preserve]
@@ -1211,7 +1244,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class FetchContactsOptions
+    public partial class FetchContactsOptions
     {
         [Preserve]
         [JsonProperty("size")]
@@ -1226,7 +1259,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class FetchContactsOptionsQuery
+    public partial class FetchContactsOptionsQuery
     {
         [Preserve]
         [JsonProperty("contains")]
@@ -1238,7 +1271,7 @@ namespace AppsInToss
     /// </summary>
     [Serializable]
     [Preserve]
-    public class ContactEntity
+    public partial class ContactEntity
     {
         /// <summary>연락처 이름이에요.</summary>
         [Preserve]
@@ -1252,7 +1285,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class ContactResult
+    public partial class ContactResult
     {
         [Preserve]
         [JsonProperty("result")]
@@ -1291,7 +1324,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class HapticFeedbackOptions
+    public partial class HapticFeedbackOptions
     {
         [Preserve]
         [JsonProperty("type")]
@@ -1310,7 +1343,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class GetCurrentLocationOptions
+    public partial class GetCurrentLocationOptions
     {
         /// <summary>위치 정보를 가져올 정확도 수준이에요.</summary>
         [Preserve]
@@ -1320,7 +1353,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class LocationCoords
+    public partial class LocationCoords
     {
         /// <summary>위도</summary>
         [Preserve]
@@ -1350,7 +1383,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class GameCenterGameProfileResponse
+    public partial class GameCenterGameProfileResponse
     {
         [Preserve]
         [JsonProperty("statusCode")]
@@ -1409,7 +1442,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class GetUserKeyForGameResponse
+    public partial class GetUserKeyForGameResponse
     {
         [Preserve]
         [JsonProperty("hash")]
@@ -1421,7 +1454,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class GetUserKeyForGameSuccessResponse
+    public partial class GetUserKeyForGameSuccessResponse
     {
         [Preserve]
         [JsonProperty("hash")]
@@ -1433,7 +1466,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class GetUserKeyForGameErrorResponse
+    public partial class GetUserKeyForGameErrorResponse
     {
         [Preserve]
         [JsonProperty("type")]
@@ -1442,7 +1475,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class GrantPromotionRewardForGameResponse
+    public partial class GrantPromotionRewardForGameResponse
     {
         [Preserve]
         [JsonProperty("key")]
@@ -1454,7 +1487,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class GrantPromotionRewardForGameSuccessResponse
+    public partial class GrantPromotionRewardForGameSuccessResponse
     {
         [Preserve]
         [JsonProperty("key")]
@@ -1463,7 +1496,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class GrantPromotionRewardForGameErrorResponse
+    public partial class GrantPromotionRewardForGameErrorResponse
     {
         [Preserve]
         [JsonProperty("code")]
@@ -1472,7 +1505,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class GrantPromotionRewardForGameErrorResult
+    public partial class GrantPromotionRewardForGameErrorResult
     {
         [Preserve]
         [JsonProperty("errorCode")]
@@ -1484,7 +1517,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class OpenCameraOptions
+    public partial class OpenCameraOptions
     {
         /// <summary>이미지를 Base64 형식으로 반환할지 여부를 나타내는 불리언 값이에요. 기본값: false.</summary>
         [Preserve]
@@ -1498,7 +1531,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class SaveBase64DataParams
+    public partial class SaveBase64DataParams
     {
         [Preserve]
         [JsonProperty("data")]
@@ -1513,7 +1546,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class StartUpdateLocationOptions
+    public partial class StartUpdateLocationOptions
     {
         /// <summary>위치 정확도를 설정해요.</summary>
         [Preserve]
@@ -1531,7 +1564,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class SubmitGameCenterLeaderBoardScoreResponse
+    public partial class SubmitGameCenterLeaderBoardScoreResponse
     {
         [Preserve]
         [JsonProperty("statusCode")]
@@ -1543,7 +1576,7 @@ namespace AppsInToss
     /// </summary>
     [Serializable]
     [Preserve]
-    public class ShowFullScreenAdEventData
+    public partial class ShowFullScreenAdEventData
     {
         [Preserve]
         [JsonProperty("unitType")]

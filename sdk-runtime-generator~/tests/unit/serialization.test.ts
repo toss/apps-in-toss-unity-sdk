@@ -20,6 +20,9 @@ import { glob } from 'glob';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// public class 또는 public partial class를 매칭하는 공통 패턴
+const CLASS_PATTERN = `public (?:partial )?class`;
+
 describe('Tier 3: JSON 스키마 일치성 검증', () => {
   let typesFileContent: string;
   let allCSharpFiles: Map<string, string>;
@@ -130,7 +133,7 @@ describe('Tier 3: JSON 스키마 일치성 검증', () => {
   describe('Discriminated Union 타입', () => {
     test('Result 타입이 올바른 discriminator 필드를 가져야 함', () => {
       // Result 클래스 찾기 (GetUserKeyForGameResult 등)
-      const resultClassRegex = /public class (\w+Result)\s*\{([^}]+(?:\{[^}]*\}[^}]*)*)\}/gs;
+      const resultClassRegex = new RegExp(`${CLASS_PATTERN} (\\w+Result)\\s*\\{([^}]+(?:\\{[^}]*\\}[^}]*)*)\\}`, 'gs');
       const matches = [...typesFileContent.matchAll(resultClassRegex)];
 
       const resultsWithoutDiscriminator: string[] = [];
@@ -161,7 +164,7 @@ describe('Tier 3: JSON 스키마 일치성 검증', () => {
     });
 
     test('Result 타입이 IsSuccess/IsError 프로퍼티를 가져야 함', () => {
-      const resultClassRegex = /public class (\w+Result)\s*\{([^}]+(?:\{[^}]*\}[^}]*)*)\}/gs;
+      const resultClassRegex = new RegExp(`${CLASS_PATTERN} (\\w+Result)\\s*\\{([^}]+(?:\\{[^}]*\\}[^}]*)*)\\}`, 'gs');
       const matches = [...typesFileContent.matchAll(resultClassRegex)];
 
       const resultsWithoutHelpers: string[] = [];
@@ -187,7 +190,7 @@ describe('Tier 3: JSON 스키마 일치성 검증', () => {
     });
 
     test('Result 타입이 Match 메서드를 가져야 함', () => {
-      const resultClassRegex = /public class (\w+Result)\s*\{([^}]+(?:\{[^}]*\}[^}]*)*)\}/gs;
+      const resultClassRegex = new RegExp(`${CLASS_PATTERN} (\\w+Result)\\s*\\{([^}]+(?:\\{[^}]*\\}[^}]*)*)\\}`, 'gs');
       const matches = [...typesFileContent.matchAll(resultClassRegex)];
 
       let matchMethodCount = 0;
@@ -209,7 +212,7 @@ describe('Tier 3: JSON 스키마 일치성 검증', () => {
   describe('[Preserve] 어트리뷰트 (IL2CPP 스트리핑 방지)', () => {
     test('모든 public class가 [Preserve] 어트리뷰트를 가져야 함', () => {
       // Serializable 클래스 찾기
-      const serializableClassRegex = /\[Serializable\]\s*(?:\[Preserve\])?\s*public class (\w+)/g;
+      const serializableClassRegex = new RegExp(`\\[Serializable\\]\\s*(?:\\[Preserve\\])?\\s*${CLASS_PATTERN} (\\w+)`, 'g');
       const matches = [...typesFileContent.matchAll(serializableClassRegex)];
 
       const classesWithoutPreserve: string[] = [];

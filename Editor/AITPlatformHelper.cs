@@ -314,8 +314,8 @@ namespace AppsInToss.Editor
                     // 바깥 큰따옴표와 충돌하므로, 셸 명령에서는 CI만 설정
                     string envExports = "export CI=true";
                     string escapedCommand = EscapeForBashDoubleQuotes(command);
-                    string escapedPathEnv = pathEnv.Replace("'", "'\\''");
-                    shellArgs = $"-l -c \"{envExports} && export PATH='{escapedPathEnv}' && {escapedCommand}\"";
+                    string escapedPathEnv = EscapeForBashDoubleQuotes(pathEnv);
+                    shellArgs = $"-l -c \"{envExports} && export PATH=\\\"{escapedPathEnv}\\\" && {escapedCommand}\"";
                 }
 
                 if (verbose)
@@ -680,8 +680,9 @@ namespace AppsInToss.Editor
 
         /// <summary>
         /// Bash -c "..." 내부에서 사용할 문자열의 특수 문자 이스케이프
+        /// AITAsyncCommandRunner, AppsInTossMenu에서도 공유하여 사용
         /// </summary>
-        private static string EscapeForBashDoubleQuotes(string input)
+        internal static string EscapeForBashDoubleQuotes(string input)
         {
             if (string.IsNullOrEmpty(input)) return input;
             return input

@@ -19,7 +19,7 @@
   },
   "dependencies": {
     "@apps-in-toss/framework": "1.6.0",
-    "@apps-in-toss/web-framework": "1.12.0",
+    "@apps-in-toss/web-framework": "1.13.0",
     "commander": "^14.0.2",
     "handlebars": "^4.7.8",
     "picocolors": "^1.1.1",

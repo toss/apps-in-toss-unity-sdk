@@ -4,3 +4,4 @@ node_modules/
 .cache/
 debug-parse-output.ts
 tests/unit/fixtures/
+reports/

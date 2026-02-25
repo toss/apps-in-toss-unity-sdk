@@ -309,7 +309,7 @@ namespace AppsInToss.Editor
                     shell = "/bin/bash";
                     // -l 옵션으로 로그인 셸로 실행하여 .bashrc, .bash_profile 등을 로드
                     // CI=true: pnpm이 비-TTY 환경에서 확인 프롬프트 없이 실행되도록 설정
-                    // 환경변수는 ProcessStartInfo.EnvironmentVariables로 설정 (line 360~367)
+                    // 환경변수는 아래 ProcessStartInfo.EnvironmentVariables 블록에서 설정
                     // bash -c "..." 안에서 export 할당 시 JSON 등의 큰따옴표가
                     // 바깥 큰따옴표와 충돌하므로, 셸 명령에서는 CI만 설정
                     string envExports = "export CI=true";

@@ -9,14 +9,15 @@ on:
         required: true
         type: string
       build_strategy:
-        description: '빌드 전략: full (10빌드), standard (4빌드), minimal (1빌드)'
+        description: '빌드 전략: full (10빌드), standard (5빌드), minimal (1빌드), skip-build (0빌드)'
         required: false
         type: choice
         options:
           - full
           - standard
           - minimal
-        default: full
+          - skip-build
+        default: minimal
 
   # update/ 브랜치가 main에 머지되면 자동 릴리즈
   push:
@@ -38,10 +39,10 @@ on:
         type: boolean
         default: false
       build_strategy:
-        description: '빌드 전략: full, standard, minimal'
+        description: '빌드 전략: full, standard, minimal, skip-build'
         required: false
         type: string
-        default: full
+        default: minimal
     secrets:
       AIT_DEPLOY_KEY:
         required: true
@@ -264,12 +265,18 @@ jobs:
       macos-versions: ${{ steps.matrix.outputs.macos_versions }}
       windows-versions: ${{ steps.matrix.outputs.windows_versions }}
       skip-windows: ${{ steps.matrix.outputs.skip_windows }}
+      skip-build: ${{ steps.matrix.outputs.skip_build }}
 
     steps:
       - name: 빌드 매트릭스 결정
         id: matrix
         run: |
-          STRATEGY="${{ inputs.build_strategy || 'full' }}"
+          # push 이벤트(update/ 브랜치 머지)는 자동 릴리즈이므로 full 빌드로 검증
+          if [ "${{ github.event_name }}" = "push" ]; then
+            STRATEGY="full"
+          else
+            STRATEGY="${{ inputs.build_strategy || 'minimal' }}"
+          fi
           echo "빌드 전략: ${STRATEGY}"
 
           case "$STRATEGY" in
@@ -277,17 +284,26 @@ jobs:
               MACOS='["2021.3","2022.3","6000.0","6000.2","6000.3"]'
               WINDOWS='["2021.3","2022.3","6000.0","6000.2","6000.3"]'
               SKIP_WIN=false
+              SKIP_BUILD=false
               ;;
             standard)
-              MACOS='["2021.3","6000.2"]'
-              WINDOWS='["2021.3","6000.2"]'
+              MACOS='["2021.3","6000.0","6000.3"]'
+              WINDOWS='["2022.3","6000.2"]'
               SKIP_WIN=false
+              SKIP_BUILD=false
               ;;
             minimal)
-              MACOS='["6000.2"]'
-              # 빈 배열은 GitHub Actions 매트릭스 파싱 에러 유발 — placeholder 사용, job은 skip-windows=true로 스킵됨
-              WINDOWS='["6000.2"]'
+              MACOS='["2021.3"]'
+              # Windows placeholder — 빈 배열은 매트릭스 파싱 에러 유발, skip-windows=true로 실제 실행은 스킵됨
+              WINDOWS='["2021.3"]'
               SKIP_WIN=true
+              SKIP_BUILD=false
+              ;;
+            skip-build)
+              MACOS='["2021.3"]'
+              WINDOWS='["2021.3"]'
+              SKIP_WIN=true
+              SKIP_BUILD=true
               ;;
             *)
               echo "::error::알 수 없는 빌드 전략: ${STRATEGY}"
@@ -298,17 +314,23 @@ jobs:
           echo "macos_versions=${MACOS}" >> $GITHUB_OUTPUT
           echo "windows_versions=${WINDOWS}" >> $GITHUB_OUTPUT
           echo "skip_windows=${SKIP_WIN}" >> $GITHUB_OUTPUT
+          echo "skip_build=${SKIP_BUILD}" >> $GITHUB_OUTPUT
 
-          echo "${STRATEGY}: macOS=${MACOS}, Windows=${WINDOWS}, skip_windows=${SKIP_WIN}"
+          echo "${STRATEGY}: macOS=${MACOS}, Windows=${WINDOWS}, skip_windows=${SKIP_WIN}, skip_build=${SKIP_BUILD}"
 
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 빌드 매트릭스" >> $GITHUB_STEP_SUMMARY
           echo "- **전략**: ${STRATEGY}" >> $GITHUB_STEP_SUMMARY
-          echo "- **macOS**: ${MACOS}" >> $GITHUB_STEP_SUMMARY
-          if [ "$SKIP_WIN" = "true" ]; then
+          if [ "$SKIP_BUILD" = "true" ]; then
+            echo "- **macOS**: 스킵" >> $GITHUB_STEP_SUMMARY
             echo "- **Windows**: 스킵" >> $GITHUB_STEP_SUMMARY
           else
-            echo "- **Windows**: ${WINDOWS}" >> $GITHUB_STEP_SUMMARY
+            echo "- **macOS**: ${MACOS}" >> $GITHUB_STEP_SUMMARY
+            if [ "$SKIP_WIN" = "true" ]; then
+              echo "- **Windows**: 스킵" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "- **Windows**: ${WINDOWS}" >> $GITHUB_STEP_SUMMARY
+            fi
           fi
 
   # =====================================================
@@ -317,7 +339,7 @@ jobs:
   build-ait-macos:
     name: AIT 빌드 (macOS)
     needs: [release, regenerate-sdk, prepare-build-matrix]
-    if: needs.release.outputs.skip != 'true'
+    if: needs.release.outputs.skip != 'true' && needs.prepare-build-matrix.outputs.skip-build != 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -376,7 +398,7 @@ jobs:
       always() &&
       needs.release.outputs.skip != 'true' &&
       needs.regenerate-sdk.result == 'success' &&
-      needs.build-ait-macos.result == 'success' &&
+      (needs.build-ait-macos.result == 'success' || needs.build-ait-macos.result == 'skipped') &&
       (needs.build-ait-windows.result == 'success' || needs.build-ait-windows.result == 'skipped')
 
     steps:
@@ -604,8 +626,7 @@ jobs:
     if: |
       always() &&
       needs.create-release-tag.result == 'success' &&
-      needs.build-ait-macos.result == 'success' &&
-      (needs.build-ait-windows.result == 'success' || needs.build-ait-windows.result == 'skipped')
+      (needs.build-ait-macos.result == 'success' || needs.build-ait-windows.result == 'success')
     timeout-minutes: 30
 
     steps:

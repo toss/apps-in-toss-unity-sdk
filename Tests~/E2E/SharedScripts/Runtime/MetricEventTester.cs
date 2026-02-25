@@ -6,7 +6,7 @@ using UnityEngine.SceneManagement;
 
 /// <summary>
 /// Metric Explorer 검증용 이벤트 트리거 컴포넌트
-/// AITEventLogger가 자동 캡처하는 이벤트를 수동으로 발생시켜 테스트
+/// AITPerformanceLogger가 자동 캡처하는 이벤트를 수동으로 발생시켜 테스트
 /// InteractiveAPITester의 섹션으로 표시됨
 /// </summary>
 public class MetricEventTester : MonoBehaviour
@@ -41,7 +41,7 @@ public class MetricEventTester : MonoBehaviour
 
         UIBuilder.CreateText(section, "Metric Event Tester",
             UIBuilder.Theme.FontLarge, UIBuilder.Theme.TextAccent, fontStyle: FontStyle.Bold);
-        UIBuilder.CreateText(section, "AITEventLogger 자동 캡처 이벤트 트리거",
+        UIBuilder.CreateText(section, "AITPerformanceLogger 자동 캡처 이벤트 트리거",
             UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary);
 
         _statusText = UIBuilder.CreateText(section, "",

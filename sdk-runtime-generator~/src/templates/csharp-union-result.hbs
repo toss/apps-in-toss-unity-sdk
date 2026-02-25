@@ -4,7 +4,7 @@
     /// </summary>
     [Serializable]
     [Preserve]
-    public partial class {{resultClassName}}
+    public class {{resultClassName}}
     {
         [Preserve]
         [JsonProperty("_type")]
@@ -79,4 +79,6 @@
             if (IsError) action(GetErrorCode());
             return this;
         }
+
+{{{extensionDataField}}}
     }

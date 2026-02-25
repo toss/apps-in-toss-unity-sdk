@@ -39,20 +39,16 @@ jobs:
         run: pnpm run test:tier2
 
   # =====================================================
-  # API Changelog Report → GitHub Pages
+  # API Changelog Report → Docs~/changelog/ (GitHub Pages)
   # =====================================================
-  deploy-report:
-    name: Deploy API Changelog Report
+  update-changelog:
+    name: Update API Changelog Report
     needs: sdk-generator-tests
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      contents: write
 
     steps:
       - name: Checkout Repository
@@ -76,16 +72,11 @@ jobs:
         working-directory: sdk-runtime-generator~
         run: pnpm test:versions
 
-      - name: Prepare Pages
+      - name: Commit Report
         run: |
-          mkdir -p _pages
-          cp sdk-runtime-generator~/reports/api-changelog.html _pages/index.html
-
-      - name: Upload Pages Artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: _pages
-
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+          mkdir -p Docs~/changelog
+          cp sdk-runtime-generator~/reports/api-changelog.html Docs~/changelog/index.html
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Docs~/changelog/index.html
+          git diff --staged --quiet && echo "No changes to commit" || git commit -m "문서: API Changelog 리포트 자동 갱신" && git push

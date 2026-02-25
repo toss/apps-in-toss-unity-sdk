@@ -5,7 +5,7 @@
  * 타입 안전한 jslib 브릿지 코드를 생성합니다.
  */
 
-import { ParsedAPI, ParsedType } from '../types.js';
+import { ParsedAPI, ParsedType, getApiImportSource } from '../types.js';
 
 /**
  * jslib 생성 결과
@@ -167,9 +167,9 @@ ${functions}
 
     for (const api of apis) {
       if (api.namespace) {
-        // 네임스페이스 API (Storage, IAP 등)
+        // 네임스페이스 API (Storage, IAP, Analytics 등)
         if (!seenNamespaces.has(api.namespace)) {
-          imports.push(`import type { ${api.namespace} } from '@apps-in-toss/web-framework';`);
+          imports.push(`import type { ${api.namespace} } from '${getApiImportSource(api)}';`);
           seenNamespaces.add(api.namespace);
         }
       } else if (api.isTopLevelExport) {
@@ -1294,6 +1294,8 @@ ${onEventHandler}
 
       case 'object':
       case 'array':
+      case 'unknown':
+        // unknown 타입도 JSON.parse로 처리 (intersection 타입 등 파서가 해결하지 못한 타입)
         return `JSON.parse(UTF8ToString(${paramName}))`;
 
       default:

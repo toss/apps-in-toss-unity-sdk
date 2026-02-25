@@ -260,6 +260,83 @@ async function findTypeDefinitions(webFrameworkPath: string): Promise<string> {
 }
 
 /**
+ * web-analytics 패키지의 .d.ts 디렉토리 경로 찾기
+ * web-framework의 sibling 패턴을 재사용하여 탐색
+ */
+async function findWebAnalyticsPath(webFrameworkPath: string): Promise<string | null> {
+  // 전략 1: web-framework의 sibling에서 찾기 (가장 정확)
+  try {
+    const realWebFrameworkPath = await fs.realpath(webFrameworkPath);
+    const siblingAnalytics = path.join(path.dirname(realWebFrameworkPath), 'web-analytics');
+    try {
+      const realAnalytics = await fs.realpath(siblingAnalytics);
+      for (const subdir of ['dist', 'built']) {
+        const candidate = path.join(realAnalytics, subdir);
+        try {
+          const stat = await fs.stat(candidate);
+          if (stat.isDirectory()) {
+            return candidate;
+          }
+        } catch {
+          continue;
+        }
+      }
+    } catch {
+      // sibling web-analytics가 없으면 스킵
+    }
+  } catch {
+    // realpath 실패 시 스킵
+  }
+
+  // 전략 2: 일반 node_modules 경로
+  const directPaths = [
+    path.join(process.cwd(), 'node_modules/@apps-in-toss/web-analytics/dist'),
+    path.join(process.cwd(), 'node_modules/@apps-in-toss/web-analytics/built'),
+  ];
+  for (const p of directPaths) {
+    try {
+      const stat = await fs.stat(p);
+      if (stat.isDirectory()) {
+        return p;
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  // 전략 3: pnpm virtual store에서 동적 검색
+  try {
+    const pnpmDir = path.join(process.cwd(), 'node_modules/.pnpm');
+    const entries = await fs.readdir(pnpmDir);
+    const webAnalyticsEntry = entries.find(e =>
+      e.startsWith('@apps-in-toss+web-analytics@')
+    );
+    if (webAnalyticsEntry) {
+      const basePath = path.join(
+        pnpmDir,
+        webAnalyticsEntry,
+        'node_modules/@apps-in-toss/web-analytics'
+      );
+      for (const subdir of ['dist', 'built']) {
+        const candidate = path.join(basePath, subdir);
+        try {
+          const stat = await fs.stat(candidate);
+          if (stat.isDirectory()) {
+            return candidate;
+          }
+        } catch {
+          continue;
+        }
+      }
+    }
+  } catch {
+    // pnpm store가 없으면 무시
+  }
+
+  return null;
+}
+
+/**
  * node_modules에서 web-framework 찾기 (버전 일치 검증 포함)
  */
 async function findWebFrameworkInNodeModules(): Promise<string> {
@@ -338,9 +415,20 @@ async function generate(options: {
     // 2. TypeScript 정의 파일 찾기
     const typeDefinitionsPath = await findTypeDefinitions(webFrameworkPath);
 
+    // 3. web-analytics 패키지 탐색 (선택적)
+    const webAnalyticsPath = await findWebAnalyticsPath(webFrameworkPath);
+    if (webAnalyticsPath) {
+      console.log(picocolors.green(`✅ web-analytics 발견: ${webAnalyticsPath}`));
+    } else {
+      console.log(picocolors.yellow(`⚠️  web-analytics를 찾을 수 없습니다. Analytics API 생성을 건너뜁니다.`));
+    }
+
     // 4. API 파싱
     console.log(picocolors.cyan('\n📊 web-framework 분석 중...'));
     const parser = new TypeScriptParser(typeDefinitionsPath, webFrameworkPath);
+    if (webAnalyticsPath) {
+      parser.addSourceDirectory(webAnalyticsPath);
+    }
     const allParsedApis = await parser.parseAPIs(FRAMEWORK_APIS);
 
     // 제외 목록에 있는 API 필터링

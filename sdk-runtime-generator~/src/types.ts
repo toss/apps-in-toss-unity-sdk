@@ -122,6 +122,29 @@ export interface GeneratedCode {
 }
 
 /**
+ * API의 소스 파일 경로로부터 @apps-in-toss/web-analytics 패키지 소속 여부를 판별.
+ * 판별 기준: api.file 경로에 'web-analytics' 문자열이 포함되어 있는지 확인.
+ *
+ * 이 방식은 node_modules 경로 구조(symlink 해소 후 realpath 포함)에 의존하며,
+ * web-analytics 패키지의 .d.ts 파일이 항상 'web-analytics' 경로 세그먼트를
+ * 포함한다는 가정 하에 동작합니다.
+ */
+export function isFromWebAnalytics(api: ParsedAPI): boolean {
+  return api.file.includes('web-analytics');
+}
+
+/**
+ * API의 소스 패키지에 대응하는 npm import 경로를 반환.
+ * web-analytics 소속 API는 '@apps-in-toss/web-analytics',
+ * 그 외는 '@apps-in-toss/web-framework'에서 import합니다.
+ */
+export function getApiImportSource(api: ParsedAPI): string {
+  return isFromWebAnalytics(api)
+    ? '@apps-in-toss/web-analytics'
+    : '@apps-in-toss/web-framework';
+}
+
+/**
  * 검증 결과
  */
 export interface ValidationResult {

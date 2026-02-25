@@ -18,11 +18,13 @@ import { env } from '@apps-in-toss/web-framework';
 import { graniteEvent } from '@apps-in-toss/web-framework';
 import { partner } from '@apps-in-toss/web-framework';
 import { tdsEvent } from '@apps-in-toss/web-framework';
+import { Analytics } from '@apps-in-toss/web-analytics';
 
 // window.AppsInToss 타입 정의
 declare global {
   interface Window {
     AppsInToss: typeof WebFramework & {
+      Analytics: typeof Analytics;
       GoogleAdMob: typeof GoogleAdMob;
       IAP: typeof IAP;
       SafeAreaInsets: typeof SafeAreaInsets;
@@ -38,6 +40,7 @@ declare global {
 
 // 모듈 전체를 window.AppsInToss에 노출
 window.AppsInToss = WebFramework as typeof WebFramework & {
+  Analytics: typeof Analytics;
   GoogleAdMob: typeof GoogleAdMob;
   IAP: typeof IAP;
   SafeAreaInsets: typeof SafeAreaInsets;
@@ -50,7 +53,7 @@ window.AppsInToss = WebFramework as typeof WebFramework & {
 };
 
 // 네임스페이스 API 안전한 노출 (Unity 6000.3+ Module 읽기 전용 속성 호환)
-const _aitNamespaces = { GoogleAdMob, IAP, SafeAreaInsets, Storage, TossAds, env, graniteEvent, partner, tdsEvent };
+const _aitNamespaces = { Analytics, GoogleAdMob, IAP, SafeAreaInsets, Storage, TossAds, env, graniteEvent, partner, tdsEvent };
 for (const [_name, _value] of Object.entries(_aitNamespaces)) {
   try {
     // 이미 존재하고 값이 같으면 건너뛰기
@@ -71,6 +74,6 @@ for (const [_name, _value] of Object.entries(_aitNamespaces)) {
 
 console.log('[Unity Bridge] AppsInToss bridge initialized with', Object.keys(WebFramework).length, 'exports');
 console.log('[Unity Bridge] Available:', Object.keys(WebFramework).join(', '));
-console.log('[Unity Bridge] Namespaces: GoogleAdMob, IAP, SafeAreaInsets, Storage, TossAds, env, graniteEvent, partner, tdsEvent');
+console.log('[Unity Bridge] Namespaces: Analytics, GoogleAdMob, IAP, SafeAreaInsets, Storage, TossAds, env, graniteEvent, partner, tdsEvent');
 
 export default WebFramework;

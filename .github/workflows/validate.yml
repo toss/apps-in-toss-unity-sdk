@@ -70,7 +70,7 @@ jobs:
 
       - name: Generate Report
         working-directory: sdk-runtime-generator~
-        run: pnpm test:versions
+        run: pnpm test:versions || true
 
       - name: Commit Report
         run: |

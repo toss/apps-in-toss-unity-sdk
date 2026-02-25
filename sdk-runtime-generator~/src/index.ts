@@ -307,7 +307,7 @@ async function generate(options: {
 
     // 4. API 파싱
     console.log(picocolors.cyan('\n📊 web-framework 분석 중...'));
-    const parser = new TypeScriptParser(typeDefinitionsPath);
+    const parser = new TypeScriptParser(typeDefinitionsPath, webFrameworkPath);
     const allParsedApis = await parser.parseAPIs(FRAMEWORK_APIS);
 
     // 제외 목록에 있는 API 필터링
@@ -320,6 +320,16 @@ async function generate(options: {
       console.error(picocolors.yellow(`  1. TypeScript 정의 경로: ${typeDefinitionsPath}`));
       console.error(picocolors.yellow(`  2. web-framework 버전: ${webFrameworkPath}`));
       console.error(picocolors.yellow(`  3. .d.ts 파일에 export된 함수가 있는지 확인`));
+      process.exit(1);
+    }
+
+    // FRAMEWORK_APIS 파싱 완전성 검증
+    const parsedApiNames = new Set(allParsedApis.map(a => a.name));
+    const missingFrameworkApis = FRAMEWORK_APIS.filter(name => !parsedApiNames.has(name));
+    if (missingFrameworkApis.length > 0) {
+      console.error(picocolors.red(`\n❌ FRAMEWORK_APIS 파싱 실패: ${missingFrameworkApis.join(', ')}`));
+      console.error(picocolors.yellow(`   findFrameworkPath()가 올바른 버전을 찾고 있는지 확인하세요.`));
+      console.error(picocolors.yellow(`   현재 framework 경로: ${parser.frameworkDtsPath ?? '찾을 수 없음'}`));
       process.exit(1);
     }
 
@@ -342,7 +352,7 @@ async function generate(options: {
     const typeDefinitions = await parser.parseTypeDefinitions();
 
     // @apps-in-toss/framework 타입 정의 추가 (loadFullScreenAd, showFullScreenAd 관련)
-    const frameworkTypeDefinitions = parser.parseFrameworkTypeDefinitions(FRAMEWORK_APIS);
+    const frameworkTypeDefinitions = parser.parseFrameworkTypeDefinitions(FRAMEWORK_APIS, parser.frameworkDtsPath);
     typeDefinitions.push(...frameworkTypeDefinitions);
 
     console.log(picocolors.green(`✓ ${typeDefinitions.length}개 타입 정의 발견`));

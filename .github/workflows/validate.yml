@@ -37,3 +37,55 @@ jobs:
       - name: Run Unit Tests (C#/jslib invariants)
         working-directory: sdk-runtime-generator~
         run: pnpm run test:tier2
+
+  # =====================================================
+  # API Changelog Report → GitHub Pages
+  # =====================================================
+  deploy-report:
+    name: Deploy API Changelog Report
+    needs: sdk-generator-tests
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install Dependencies
+        working-directory: sdk-runtime-generator~
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Generate Report
+        working-directory: sdk-runtime-generator~
+        run: pnpm test:versions
+
+      - name: Prepare Pages
+        run: |
+          mkdir -p _pages
+          cp sdk-runtime-generator~/reports/api-changelog.html _pages/index.html
+
+      - name: Upload Pages Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _pages
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

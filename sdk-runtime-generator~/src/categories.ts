@@ -90,6 +90,11 @@ export const API_CATEGORIES: Record<string, string[]> = {
     'isMinVersionSupported',
     'getAppsInTossGlobals',
   ],
+  Analytics: [
+    'AnalyticsScreen',
+    'AnalyticsImpression',
+    'AnalyticsClick',
+  ],
 };
 
 /**
@@ -114,6 +119,7 @@ export const CATEGORY_INFERENCE_RULES: CategoryInferenceRule[] = [
   { pattern: /^SafeArea/, category: 'SafeArea' },
   { pattern: /^Partner/, category: 'Partner' },
   { pattern: /^Env[A-Z]/, category: 'Environment' },
+  { pattern: /^Analytics[A-Z]/, category: 'Analytics' },
   { pattern: /^(Tds|Granite|AppsInToss)Event/, category: 'AppEvents' },
 
   // 의미 기반 패턴
@@ -158,6 +164,7 @@ export const CATEGORY_ORDER: string[] = [
   'Device',
   'Navigation',
   'Events',
+  'Analytics',
   'Certificate',
   'Visibility',
   'Storage',

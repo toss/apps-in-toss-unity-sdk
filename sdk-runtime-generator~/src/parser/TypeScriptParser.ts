@@ -55,6 +55,14 @@ export class TypeScriptParser {
   }
 
   /**
+   * 추가 소스 디렉토리의 .d.ts 파일들을 프로젝트에 등록
+   * web-analytics 등 별도 패키지의 타입 정의를 파싱 대상에 추가할 때 사용
+   */
+  addSourceDirectory(dir: string): void {
+    this.project.addSourceFilesAtPaths(path.join(dir, '**', '*.d.ts'));
+  }
+
+  /**
    * framework .d.ts 경로를 한 번 resolve하고 캐시
    */
   get frameworkDtsPath(): string | undefined {

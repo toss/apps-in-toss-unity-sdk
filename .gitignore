@@ -68,6 +68,9 @@ Desktop.ini
 *.swp
 *.swo
 
+# Claude Code (로컬 설정은 커밋 제외)
+.claude/settings.local.json
+
 # Node modules
 node_modules/
 node_modules.meta

@@ -65,65 +65,6 @@ mergeInto(LibraryManager.library, {
         }
     },
 
-    __GraniteEventSubscribeHomeEvent_Internal: function(subscriptionId, typeName) {
-        var subId = UTF8ToString(subscriptionId);
-        var typeNameStr = UTF8ToString(typeName);
-
-        console.log('[AIT jslib] GraniteEventSubscribeHomeEvent subscribing, id:', subId);
-
-        try {
-            // Subscribe to event
-            var unsubscribe = window.AppsInToss.graniteEvent.addEventListener('homeEvent', {
-                onEvent: function() {
-                    console.log('[AIT jslib] homeEvent fired (void)');
-                    var payload = JSON.stringify({
-                        CallbackId: subId,
-                        TypeName: typeNameStr,
-                        Result: JSON.stringify({
-                            success: true,
-                            data: null,
-                            error: ''
-                        })
-                    });
-                    // Event callbacks go to OnAITEventCallback (persistent)
-                    SendMessage('AITCore', 'OnAITEventCallback', payload);
-                },
-                onError: function(error) {
-                    console.log('[AIT jslib] homeEvent error:', error);
-                    var payload = JSON.stringify({
-                        CallbackId: subId,
-                        TypeName: typeNameStr,
-                        Result: JSON.stringify({
-                            success: false,
-                            data: '',
-                            error: error.message || String(error)
-                        })
-                    });
-                    SendMessage('AITCore', 'OnAITEventCallback', payload);
-                }
-            });
-
-            // Store unsubscribe function for later cleanup
-            if (!window.__AIT_SUBSCRIPTIONS) {
-                window.__AIT_SUBSCRIPTIONS = {};
-            }
-            window.__AIT_SUBSCRIPTIONS[subId] = unsubscribe;
-
-        } catch (error) {
-            console.error('[AIT jslib] GraniteEventSubscribeHomeEvent subscribe error:', error);
-            var payload = JSON.stringify({
-                CallbackId: subId,
-                TypeName: typeNameStr,
-                Result: JSON.stringify({
-                    success: false,
-                    data: '',
-                    error: error.message || String(error)
-                })
-            });
-            SendMessage('AITCore', 'OnAITEventCallback', payload);
-        }
-    },
-
     __TdsEventSubscribeNavigationAccessoryEvent_Internal: function(subscriptionId, typeName) {
         var subId = UTF8ToString(subscriptionId);
         var typeNameStr = UTF8ToString(typeName);

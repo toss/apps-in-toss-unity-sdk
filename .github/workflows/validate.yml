@@ -74,9 +74,9 @@ jobs:
 
       - name: Commit Report
         run: |
-          mkdir -p Docs~/changelog
-          cp sdk-runtime-generator~/reports/api-changelog.html Docs~/changelog/index.html
+          mkdir -p docs/changelog
+          cp sdk-runtime-generator~/reports/api-changelog.html docs/changelog/index.html
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add Docs~/changelog/index.html
+          git add docs/changelog/index.html
           git diff --staged --quiet && echo "No changes to commit" || git commit -m "문서: API Changelog 리포트 자동 갱신" && git push

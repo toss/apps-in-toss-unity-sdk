@@ -1,5 +1,5 @@
 // -----------------------------------------------------------------------
-// <copyright file="AIT.EventLogger.cs" company="Toss">
+// <copyright file="AIT.PerformanceLogger.cs" company="Toss">
 //     Copyright (c) Toss. All rights reserved.
 //     Apps in Toss Unity SDK - Runtime Event Logger
 // </copyright>
@@ -22,9 +22,14 @@ namespace AppsInToss
     /// 프레임 스톨, 화면 변경, GC 수집, TimeScale 변경
     /// </remarks>
     [Preserve]
-    internal static class AITEventLogger
+    internal static class AITPerformanceLogger
     {
-        private const string Tag = "[AITEventLogger]";
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __AITDebugLog_Send(string jsonStr);
+#endif
+
+        private const string Tag = "[AITPerformanceLogger]";
 
         // Rate limit constants
         private const float LowMemoryIntervalSec = 30f;
@@ -92,16 +97,19 @@ namespace AppsInToss
             Application.quitting += OnQuitting;
 
             // Create polling MonoBehaviour
-            var go = new GameObject("AITEventLoggerMonitor");
+            var go = new GameObject("AITPerformanceLoggerMonitor");
             go.hideFlags = HideFlags.HideAndDontSave;
             UnityEngine.Object.DontDestroyOnLoad(go);
-            go.AddComponent<AITEventLoggerMonitor>();
+            go.AddComponent<AITPerformanceLoggerMonitor>();
 
             Debug.Log($"{Tag} Initialized");
         }
 
         private static void SendLog(string logName, Dictionary<string, object> parameters)
         {
+#if !UNITY_WEBGL || UNITY_EDITOR
+            return;
+#else
             if (_isSending) return;
             _isSending = true;
 
@@ -113,9 +121,7 @@ namespace AppsInToss
                     Log_type = "unity_runtime",
                     Params = parameters
                 };
-
-                // fire-and-forget: discarding the Task/Awaitable intentionally
-                _ = AIT.EventLog(eventLogParams);
+                __AITDebugLog_Send(AITJsonSettings.Serialize(eventLogParams));
             }
             catch (Exception ex)
             {
@@ -125,6 +131,7 @@ namespace AppsInToss
             {
                 _isSending = false;
             }
+#endif
         }
 
         // ---- 1. Scene Transition ----
@@ -500,11 +507,11 @@ namespace AppsInToss
     /// Update() 루프에서 폴링 기반 이벤트를 감지하는 내부 MonoBehaviour
     /// </summary>
     [Preserve]
-    internal class AITEventLoggerMonitor : MonoBehaviour
+    internal class AITPerformanceLoggerMonitor : MonoBehaviour
     {
         private void Update()
         {
-            AITEventLogger.OnUpdate();
+            AITPerformanceLogger.OnUpdate();
         }
     }
 }

@@ -4,7 +4,7 @@
 
 ## 개요
 
-**소스**: C# (`Runtime/Helpers/AIT.EventLogger.cs`, `AITEventLogger`) — 이벤트 발생 시 `AIT.EventLog()`로 전송
+**소스**: C# (`Runtime/Helpers/AIT.PerformanceLogger.cs`, `AITPerformanceLogger`)
 
 `[RuntimeInitializeOnLoadMethod]`로 자동 초기화되어 사용자 코드 작성이 불필요합니다.
 
@@ -131,8 +131,7 @@
 | 항목 | 설명 |
 |------|------|
 | try-catch | 모든 핸들러를 감싸서 로깅이 게임을 크래시하지 않음 |
-| 재진입 방지 | `_isSending` guard로 `logMessageReceived` → `EventLog` 무한루프 방지 |
-| fire-and-forget | `_ = AIT.EventLog(...)` 패턴으로 Task/Awaitable 양쪽 호환 |
+| 재진입 방지 | `_isSending` guard로 `logMessageReceived` 무한루프 방지 |
 | Rate Limiting | 카테고리별 고정 rate limit으로 과도한 전송 방지 |
 
 ---
@@ -141,4 +140,4 @@
 
 | 파일 | 설명 |
 |------|------|
-| `Runtime/Helpers/AIT.EventLogger.cs` | 이벤트 로거 (C#) |
+| `Runtime/Helpers/AIT.PerformanceLogger.cs` | 이벤트 로거 (C#) |

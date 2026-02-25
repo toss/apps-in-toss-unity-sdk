@@ -325,12 +325,20 @@ async function generate(options: {
 
     // FRAMEWORK_APIS 파싱 완전성 검증
     const parsedApiNames = new Set(allParsedApis.map(a => a.name));
+    const parsedFrameworkApiCount = FRAMEWORK_APIS.filter(name => parsedApiNames.has(name)).length;
     const missingFrameworkApis = FRAMEWORK_APIS.filter(name => !parsedApiNames.has(name));
+
     if (missingFrameworkApis.length > 0) {
-      console.error(picocolors.red(`\n❌ FRAMEWORK_APIS 파싱 실패: ${missingFrameworkApis.join(', ')}`));
-      console.error(picocolors.yellow(`   findFrameworkPath()가 올바른 버전을 찾고 있는지 확인하세요.`));
-      console.error(picocolors.yellow(`   현재 framework 경로: ${parser.frameworkDtsPath ?? '찾을 수 없음'}`));
-      process.exit(1);
+      if (parsedFrameworkApiCount > 0) {
+        // 일부만 파싱됨 → 비정상 (부분 파싱은 버그)
+        console.error(picocolors.red(`\n❌ FRAMEWORK_APIS 일부 파싱 실패: ${missingFrameworkApis.join(', ')}`));
+        console.error(picocolors.yellow(`   findFrameworkPath()가 올바른 버전을 찾고 있는지 확인하세요.`));
+        console.error(picocolors.yellow(`   현재 framework 경로: ${parser.frameworkDtsPath ?? '찾을 수 없음'}`));
+        process.exit(1);
+      } else {
+        // 모두 missing → 이 web-framework 버전에 해당 API 없음 (정상)
+        console.log(picocolors.yellow(`⚠️  FRAMEWORK_APIS 스킵: ${missingFrameworkApis.join(', ')} (이 web-framework 버전에 해당 API 없음)`));
+      }
     }
 
     console.log(picocolors.green(`✓ ${apis.length}개 API 발견`));
@@ -352,7 +360,10 @@ async function generate(options: {
     const typeDefinitions = await parser.parseTypeDefinitions();
 
     // @apps-in-toss/framework 타입 정의 추가 (loadFullScreenAd, showFullScreenAd 관련)
-    const frameworkTypeDefinitions = parser.parseFrameworkTypeDefinitions(FRAMEWORK_APIS, parser.frameworkDtsPath);
+    // framework 패키지가 없으면 스킵 (v1.5.x에는 해당 API 없음)
+    const frameworkTypeDefinitions = parser.frameworkDtsPath
+      ? parser.parseFrameworkTypeDefinitions(FRAMEWORK_APIS, parser.frameworkDtsPath)
+      : [];
     typeDefinitions.push(...frameworkTypeDefinitions);
 
     console.log(picocolors.green(`✓ ${typeDefinitions.length}개 타입 정의 발견`));

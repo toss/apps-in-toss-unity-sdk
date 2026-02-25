@@ -21,30 +21,75 @@ jobs:
           echo "Unity .meta 파일 누락 검사 중..."
           echo ""
 
-          # 체크할 디렉토리
-          UNITY_DIRS="Editor Runtime WebGLTemplates"
+          MISSING=()
 
-          MISSING_FILES=()
+          # -------------------------------------------------------
+          # 1) 루트 레벨: 숨김/~접미사/node_modules 제외한 모든 파일과 폴더에 .meta 확인
+          # -------------------------------------------------------
+          for item in *; do
+            # 숨김 파일/폴더 제외 (. 으로 시작)
+            case "$item" in
+              .*) continue ;;
+            esac
+            # ~ 접미사 제외 (Unity가 무시)
+            case "$item" in
+              *~) continue ;;
+            esac
+            # node_modules 제외
+            [ "$item" = "node_modules" ] && continue
+            # .meta 파일 자체 제외
+            case "$item" in
+              *.meta) continue ;;
+            esac
 
-          for dir in $UNITY_DIRS; do
-            if [ -d "$dir" ]; then
-              # .meta 파일, 숨김 파일, node_modules, ~ 접미사 폴더 제외하고 검사
-              # ~ 접미사 폴더는 Unity가 무시하므로 .meta 파일이 필요하지 않음
-              while IFS= read -r -d '' file; do
-                # .meta 파일 존재 확인
-                if [ ! -f "${file}.meta" ]; then
-                  MISSING_FILES+=("$file")
-                fi
-              done < <(find "$dir" -type d \( -name "node_modules" -o -name "*~" \) -prune -o -type f ! -name ".*" ! -name "*.meta" ! -name ".DS_Store" ! -name "*.swp" ! -name "*.tmp" -print0)
+            if [ ! -f "${item}.meta" ]; then
+              MISSING+=("$item")
             fi
           done
 
-          if [ ${#MISSING_FILES[@]} -gt 0 ]; then
+          # -------------------------------------------------------
+          # 2) 하위 디렉토리: 재귀적으로 모든 파일과 폴더에 .meta 확인
+          # -------------------------------------------------------
+          # 검사 대상 디렉토리 수집 (루트에서 숨김/~접미사/node_modules 제외)
+          ROOT_DIRS=()
+          for item in */; do
+            item="${item%/}"
+            case "$item" in
+              .*) continue ;;
+              *~) continue ;;
+              node_modules) continue ;;
+            esac
+            ROOT_DIRS+=("$item")
+          done
+
+          for dir in "${ROOT_DIRS[@]}"; do
+            # find로 하위 파일 및 폴더 검사
+            # - ~접미사 디렉토리는 prune
+            # - node_modules는 prune
+            # - 숨김 파일/폴더 제외
+            # - .meta 파일 자체 제외
+            while IFS= read -r -d '' entry; do
+              if [ ! -e "${entry}.meta" ]; then
+                MISSING+=("$entry")
+              fi
+            done < <(find "$dir" \
+              -mindepth 1 \
+              \( -type d -name "node_modules" -prune \) -o \
+              \( -type d -name "*~" -prune \) -o \
+              \( -name ".*" -prune \) -o \
+              -not -name "*.meta" \
+              -print0)
+          done
+
+          # -------------------------------------------------------
+          # 결과 출력
+          # -------------------------------------------------------
+          if [ ${#MISSING[@]} -gt 0 ]; then
             echo "::error::Unity .meta 파일이 누락되었습니다!"
             echo ""
-            echo "다음 파일들에 대한 .meta 파일이 없습니다:"
-            for file in "${MISSING_FILES[@]}"; do
-              echo "  - $file"
+            echo "다음 항목에 대한 .meta 파일이 없습니다:"
+            for item in "${MISSING[@]}"; do
+              echo "  - $item"
             done
             echo ""
             echo "해결 방법:"

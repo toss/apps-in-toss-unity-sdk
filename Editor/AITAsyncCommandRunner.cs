@@ -157,16 +157,10 @@ namespace AppsInToss.Editor
                 else
                 {
                     shell = "/bin/bash";
+                    // 환경변수는 아래 ProcessStartInfo.EnvironmentVariables 블록에서 설정
+                    // bash -c "..." 안에서 export 할당 시 JSON 등의 큰따옴표가
+                    // 바깥 큰따옴표와 충돌하므로, 셸 명령에서는 CI만 설정
                     string envExports = "export CI=true";
-                    if (additionalEnvVars != null)
-                    {
-                        foreach (var kvp in additionalEnvVars)
-                        {
-                            string escapedKey = AITPlatformHelper.EscapeForBashDoubleQuotes(kvp.Key);
-                            string escapedValue = AITPlatformHelper.EscapeForBashDoubleQuotes(kvp.Value);
-                            envExports += $" && export {escapedKey}=\\\"{escapedValue}\\\"";
-                        }
-                    }
                     string escapedCommand = AITPlatformHelper.EscapeForBashDoubleQuotes(command);
                     string escapedPathEnv = AITPlatformHelper.EscapeForBashDoubleQuotes(pathEnv);
                     shellArgs = $"-l -c \"{envExports} && export PATH=\\\"{escapedPathEnv}\\\" && {escapedCommand}\"";

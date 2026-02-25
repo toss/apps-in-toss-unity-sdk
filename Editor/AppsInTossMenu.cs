@@ -1985,20 +1985,6 @@ namespace AppsInToss
             string npmDir = Path.GetDirectoryName(npmPath);
             string pathEnv = AITPlatformHelper.BuildPathEnv(npmDir);
 
-            // 환경 변수 export 문자열 생성 (Unix용)
-            string envExports = "";
-            if (envVars != null && envVars.Count > 0)
-            {
-                var exports = new List<string>();
-                foreach (var kv in envVars)
-                {
-                    string escapedKey = AITPlatformHelper.EscapeForBashDoubleQuotes(kv.Key);
-                    string escapedVal = AITPlatformHelper.EscapeForBashDoubleQuotes(kv.Value);
-                    exports.Add($"export {escapedKey}=\\\"{escapedVal}\\\"");
-                }
-                envExports = string.Join(" && ", exports) + " && ";
-            }
-
             ProcessStartInfo startInfo;
 
             if (AITPlatformHelper.IsWindows)
@@ -2034,7 +2020,7 @@ namespace AppsInToss
                 startInfo = new ProcessStartInfo
                 {
                     FileName = "/bin/bash",
-                    Arguments = $"-l -c \"{envExports}export PATH=\\\"{escapedPathEnv}\\\" && cd \\\"{escapedBuildPath}\\\" && \\\"{escapedNpmPath}\\\" {npmCommand}\"",
+                    Arguments = $"-l -c \"export PATH=\\\"{escapedPathEnv}\\\" && cd \\\"{escapedBuildPath}\\\" && \\\"{escapedNpmPath}\\\" {npmCommand}\"",
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
@@ -2042,6 +2028,17 @@ namespace AppsInToss
                     StandardOutputEncoding = System.Text.Encoding.UTF8,
                     StandardErrorEncoding = System.Text.Encoding.UTF8
                 };
+
+                // 환경변수는 ProcessStartInfo.EnvironmentVariables로 설정
+                // bash -c "..." 안에서 export 할당 시 JSON 등의 큰따옴표가
+                // 바깥 큰따옴표와 충돌하므로, 셸 명령에서는 export하지 않음
+                if (envVars != null)
+                {
+                    foreach (var kv in envVars)
+                    {
+                        startInfo.EnvironmentVariables[kv.Key] = kv.Value;
+                    }
+                }
             }
 
             // 스레드 안전한 상태 플래그 (Interlocked 사용)

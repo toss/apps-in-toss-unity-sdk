@@ -260,20 +260,53 @@ async function findTypeDefinitions(webFrameworkPath: string): Promise<string> {
 }
 
 /**
- * node_modules에서 web-framework 찾기
+ * node_modules에서 web-framework 찾기 (버전 일치 검증 포함)
  */
 async function findWebFrameworkInNodeModules(): Promise<string> {
   const webFrameworkPath = path.join(process.cwd(), 'node_modules/@apps-in-toss/web-framework');
 
   try {
     await fs.access(webFrameworkPath);
-    console.log(picocolors.green(`✅ web-framework 발견: ${webFrameworkPath}`));
-    return webFrameworkPath;
   } catch {
     throw new Error(
       'web-framework를 찾을 수 없습니다.\n' +
       '다음 명령을 실행하세요: pnpm install'
     );
+  }
+
+  // package.json에 명시된 버전과 실제 설치된 버전 비교
+  const expectedVersion = await getExpectedWebFrameworkVersion();
+  const installedVersion = await getInstalledWebFrameworkVersion(webFrameworkPath);
+
+  if (expectedVersion && installedVersion && expectedVersion !== installedVersion) {
+    throw new Error(
+      `web-framework 버전 불일치!\n` +
+      `  package.json: ${expectedVersion}\n` +
+      `  node_modules: ${installedVersion}\n\n` +
+      `pnpm-lock.yaml가 오래되었을 수 있습니다. 다음 명령을 실행하세요:\n` +
+      `  rm pnpm-lock.yaml && pnpm install`
+    );
+  }
+
+  console.log(picocolors.green(`✅ web-framework 발견: ${webFrameworkPath} (v${installedVersion})`));
+  return webFrameworkPath;
+}
+
+async function getExpectedWebFrameworkVersion(): Promise<string | null> {
+  try {
+    const pkgJson = JSON.parse(await fs.readFile(path.join(process.cwd(), 'package.json'), 'utf-8'));
+    return pkgJson.dependencies?.['@apps-in-toss/web-framework'] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function getInstalledWebFrameworkVersion(webFrameworkPath: string): Promise<string | null> {
+  try {
+    const pkgJson = JSON.parse(await fs.readFile(path.join(webFrameworkPath, 'package.json'), 'utf-8'));
+    return pkgJson.version ?? null;
+  } catch {
+    return null;
   }
 }
 

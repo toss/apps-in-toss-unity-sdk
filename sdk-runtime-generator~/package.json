@@ -15,7 +15,8 @@
     "test": "vitest run",
     "test:watch": "vitest watch",
     "test:ui": "vitest --ui",
-    "test:tier2": "vitest run tests/unit/invariants.test.ts"
+    "test:tier2": "vitest run tests/unit/invariants.test.ts",
+    "test:versions": "vitest run tests/unit/multi-version.test.ts"
   },
   "dependencies": {
     "@apps-in-toss/framework": "1.6.0",
@@ -32,7 +33,29 @@
     "glob": "^13.0.0",
     "tsx": "^4.19.2",
     "typescript": "^5.8.3",
-    "vitest": "^4.0.15"
+    "vitest": "^4.0.15",
+    "web-framework-1.5.0": "npm:@apps-in-toss/web-framework@1.5.0",
+    "web-framework-1.5.2": "npm:@apps-in-toss/web-framework@1.5.2",
+    "web-framework-1.5.3": "npm:@apps-in-toss/web-framework@1.5.3",
+    "web-framework-1.6.0": "npm:@apps-in-toss/web-framework@1.6.0",
+    "web-framework-1.6.1": "npm:@apps-in-toss/web-framework@1.6.1",
+    "web-framework-1.6.2": "npm:@apps-in-toss/web-framework@1.6.2",
+    "web-framework-1.7.0": "npm:@apps-in-toss/web-framework@1.7.0",
+    "web-framework-1.7.1": "npm:@apps-in-toss/web-framework@1.7.1",
+    "web-framework-1.8.0": "npm:@apps-in-toss/web-framework@1.8.0",
+    "web-framework-1.8.1": "npm:@apps-in-toss/web-framework@1.8.1",
+    "web-framework-1.9.0": "npm:@apps-in-toss/web-framework@1.9.0",
+    "web-framework-1.9.1": "npm:@apps-in-toss/web-framework@1.9.1",
+    "web-framework-1.9.2": "npm:@apps-in-toss/web-framework@1.9.2",
+    "web-framework-1.9.3": "npm:@apps-in-toss/web-framework@1.9.3",
+    "web-framework-1.9.4": "npm:@apps-in-toss/web-framework@1.9.4",
+    "web-framework-1.10.0": "npm:@apps-in-toss/web-framework@1.10.0",
+    "web-framework-1.10.1": "npm:@apps-in-toss/web-framework@1.10.1",
+    "web-framework-1.11.0": "npm:@apps-in-toss/web-framework@1.11.0",
+    "web-framework-1.11.1": "npm:@apps-in-toss/web-framework@1.11.1",
+    "web-framework-1.11.2": "npm:@apps-in-toss/web-framework@1.11.2",
+    "web-framework-1.12.0": "npm:@apps-in-toss/web-framework@1.12.0",
+    "web-framework-1.13.0": "npm:@apps-in-toss/web-framework@1.13.0"
   },
   "pnpm": {
     "overrides": {

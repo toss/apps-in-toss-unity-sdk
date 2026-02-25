@@ -774,32 +774,34 @@ jobs:
 
           # 1줄(1플랫폼)당 1필드로 분할
           # Slack section block에서 여러 링크가 한 필드에 있으면 렌더링 버그 발생하므로 분리
-          LINE_INDEX=1
+          LINES=()
           while IFS= read -r line; do
             if [ -z "$line" ]; then continue; fi
-            eval "LINE_${LINE_INDEX}=\"\${line}\""
-            LINE_INDEX=$((LINE_INDEX + 1))
+            LINES+=("$line")
           done <<< "$(echo -e "$URLS_FOR_EDITION")"
 
-          TOTAL_LINES=$((LINE_INDEX - 1))
+          TOTAL_LINES=${#LINES[@]}
           echo "총 ${TOTAL_LINES}개 줄(플랫폼)로 분할"
+
+          # 최대 에디션 수 (macOS/Windows x 5 Unity 버전 = 10)
+          MAX_EDITION_LINES=10
 
           # jq로 안전한 JSON 생성
           # urlsForEdition (첫 번째), urlsForEdition2, ..., urlsForEditionN 필드로 전송
           # lineCount 필드로 총 줄 수 전달 (Slack 템플릿에서 반복 범위로 사용)
           JSON_PAYLOAD=$(jq -n \
             --arg version "$VERSION" \
-            --arg urls "$LINE_1" \
+            --arg urls "${LINES[0]:-}" \
             --arg actionsUrl "$ACTIONS_URL" \
             --argjson lineCount "$TOTAL_LINES" \
             '{version: $version, urlsForEdition: $urls, actionsUrl: $actionsUrl, lineCount: $lineCount}')
 
-          for i in $(seq 2 $TOTAL_LINES); do
-            [ "$i" -gt "$TOTAL_LINES" ] && break
-            eval "LINE_VAL=\"\${LINE_${i}}\""
+          # urlsForEdition2 ~ urlsForEdition{MAX} 키를 항상 포함 (빈 문자열로 패딩)
+          # 웹훅 수신 템플릿이 모든 키의 존재를 요구하므로, 실제 데이터 유무와 관계없이 전송
+          for i in $(seq 2 $MAX_EDITION_LINES); do
             JSON_PAYLOAD=$(echo "$JSON_PAYLOAD" | jq \
               --arg key "urlsForEdition${i}" \
-              --arg val "$LINE_VAL" \
+              --arg val "${LINES[$((i-1))]:-}" \
               '. + {($key): $val}')
           done
 

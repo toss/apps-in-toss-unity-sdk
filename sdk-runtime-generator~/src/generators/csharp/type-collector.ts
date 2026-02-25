@@ -3,6 +3,14 @@ import { mapToCSharpType } from '../../validators/types.js';
 import { extractCleanName, capitalize, xmlSafe } from './utils.js';
 
 /**
+ * [JsonExtensionData] 필드 선언 (JSON 역직렬화 시 매핑되지 않는 추가 필드를 자동 캡처)
+ */
+export const JSON_EXTENSION_DATA_FIELD =
+  '        [Preserve]\n' +
+  '        [Newtonsoft.Json.JsonExtensionData]\n' +
+  '        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;';
+
+/**
  * 인라인 타입 추적을 위한 상태 클래스
  */
 export class InlineTypeTracker {
@@ -135,9 +143,11 @@ export function generateNestedClassType(
 
   return `    [Serializable]
     [Preserve]
-    public partial class ${name}
+    public class ${name}
     {
 ${fields}
+
+${JSON_EXTENSION_DATA_FIELD}
     }`;
 }
 

@@ -8,6 +8,15 @@ on:
         description: '릴리즈 버전 (예: 1.6.0) - 필수'
         required: true
         type: string
+      build_strategy:
+        description: '빌드 전략: full (10빌드), standard (4빌드), minimal (1빌드)'
+        required: false
+        type: choice
+        options:
+          - full
+          - standard
+          - minimal
+        default: full
 
   # update/ 브랜치가 main에 머지되면 자동 릴리즈
   push:
@@ -28,6 +37,11 @@ on:
         required: false
         type: boolean
         default: false
+      build_strategy:
+        description: '빌드 전략: full, standard, minimal'
+        required: false
+        type: string
+        default: full
     secrets:
       AIT_DEPLOY_KEY:
         required: true
@@ -238,16 +252,76 @@ jobs:
           echo "Orphan commit push 완료: ${BUILD_REF}"
 
   # =====================================================
+  # 빌드 매트릭스 준비
+  # =====================================================
+  prepare-build-matrix:
+    name: 빌드 매트릭스 준비
+    runs-on: ubuntu-latest
+    needs: release
+    if: needs.release.outputs.skip != 'true'
+
+    outputs:
+      macos-versions: ${{ steps.matrix.outputs.macos_versions }}
+      windows-versions: ${{ steps.matrix.outputs.windows_versions }}
+      skip-windows: ${{ steps.matrix.outputs.skip_windows }}
+
+    steps:
+      - name: 빌드 매트릭스 결정
+        id: matrix
+        run: |
+          STRATEGY="${{ inputs.build_strategy || 'full' }}"
+          echo "빌드 전략: ${STRATEGY}"
+
+          case "$STRATEGY" in
+            full)
+              MACOS='["2021.3","2022.3","6000.0","6000.2","6000.3"]'
+              WINDOWS='["2021.3","2022.3","6000.0","6000.2","6000.3"]'
+              SKIP_WIN=false
+              ;;
+            standard)
+              MACOS='["2021.3","6000.2"]'
+              WINDOWS='["2021.3","6000.2"]'
+              SKIP_WIN=false
+              ;;
+            minimal)
+              MACOS='["6000.2"]'
+              # 빈 배열은 GitHub Actions 매트릭스 파싱 에러 유발 — placeholder 사용, job은 skip-windows=true로 스킵됨
+              WINDOWS='["6000.2"]'
+              SKIP_WIN=true
+              ;;
+            *)
+              echo "::error::알 수 없는 빌드 전략: ${STRATEGY}"
+              exit 1
+              ;;
+          esac
+
+          echo "macos_versions=${MACOS}" >> $GITHUB_OUTPUT
+          echo "windows_versions=${WINDOWS}" >> $GITHUB_OUTPUT
+          echo "skip_windows=${SKIP_WIN}" >> $GITHUB_OUTPUT
+
+          echo "${STRATEGY}: macOS=${MACOS}, Windows=${WINDOWS}, skip_windows=${SKIP_WIN}"
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 빌드 매트릭스" >> $GITHUB_STEP_SUMMARY
+          echo "- **전략**: ${STRATEGY}" >> $GITHUB_STEP_SUMMARY
+          echo "- **macOS**: ${MACOS}" >> $GITHUB_STEP_SUMMARY
+          if [ "$SKIP_WIN" = "true" ]; then
+            echo "- **Windows**: 스킵" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- **Windows**: ${WINDOWS}" >> $GITHUB_STEP_SUMMARY
+          fi
+
+  # =====================================================
   # AIT 빌드 - macOS
   # =====================================================
   build-ait-macos:
     name: AIT 빌드 (macOS)
-    needs: [release, regenerate-sdk]
+    needs: [release, regenerate-sdk, prepare-build-matrix]
     if: needs.release.outputs.skip != 'true'
     strategy:
       fail-fast: false
       matrix:
-        unity-version: ["2021.3", "2022.3", "6000.0", "6000.2", "6000.3"]
+        unity-version: ${{ fromJSON(needs.prepare-build-matrix.outputs.macos-versions) }}
 
     uses: ./.github/workflows/unity-build.yml
     with:
@@ -268,12 +342,12 @@ jobs:
   # =====================================================
   build-ait-windows:
     name: AIT 빌드 (Windows)
-    needs: [release, regenerate-sdk]
-    if: needs.release.outputs.skip != 'true'
+    needs: [release, regenerate-sdk, prepare-build-matrix]
+    if: needs.release.outputs.skip != 'true' && needs.prepare-build-matrix.outputs.skip-windows != 'true'
     strategy:
       fail-fast: false
       matrix:
-        unity-version: ["2021.3", "2022.3", "6000.0", "6000.2", "6000.3"]
+        unity-version: ${{ fromJSON(needs.prepare-build-matrix.outputs.windows-versions) }}
 
     uses: ./.github/workflows/unity-build.yml
     with:
@@ -298,7 +372,12 @@ jobs:
     name: 릴리즈 태그 생성
     runs-on: ubuntu-latest
     needs: [release, regenerate-sdk, build-ait-macos, build-ait-windows]
-    if: success()
+    if: |
+      always() &&
+      needs.release.outputs.skip != 'true' &&
+      needs.regenerate-sdk.result == 'success' &&
+      needs.build-ait-macos.result == 'success' &&
+      (needs.build-ait-windows.result == 'success' || needs.build-ait-windows.result == 'skipped')
 
     steps:
       - name: Checkout (Orphan Ref)
@@ -522,7 +601,11 @@ jobs:
     name: AIT 패키지 배포
     runs-on: ubuntu-latest
     needs: [build-ait-macos, build-ait-windows, create-release-tag]
-    if: success()
+    if: |
+      always() &&
+      needs.create-release-tag.result == 'success' &&
+      needs.build-ait-macos.result == 'success' &&
+      (needs.build-ait-windows.result == 'success' || needs.build-ait-windows.result == 'skipped')
     timeout-minutes: 30
 
     steps:

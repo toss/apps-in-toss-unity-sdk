@@ -4,6 +4,7 @@ import { loadUnionResultTemplate } from './templates.js';
 import { extractCleanName, capitalize, xmlSafe } from './utils.js';
 import {
   InlineTypeTracker,
+  JSON_EXTENSION_DATA_FIELD,
   isInlineStringLiteralUnion,
   extractEnumValues,
   generateFieldDeclaration,
@@ -57,6 +58,7 @@ export class CSharpTypeGenerator {
       resultClassName,
       successTypeName,
       errorCodes,
+      extensionDataField: JSON_EXTENSION_DATA_FIELD,
     });
   }
 
@@ -152,7 +154,7 @@ export class CSharpTypeGenerator {
       ? `    /// <summary>\n    /// ${typeDef.description}\n    /// </summary>\n`
       : '';
 
-    return `${description}    [Serializable]\n    [Preserve]\n    public partial class ${typeDef.name}\n    {\n${fields}\n    }`;
+    return `${description}    [Serializable]\n    [Preserve]\n    public class ${typeDef.name}\n    {\n${fields}\n\n${JSON_EXTENSION_DATA_FIELD}\n    }`;
   }
 
   /**
@@ -269,9 +271,11 @@ export class CSharpTypeGenerator {
 
     return `    [Serializable]
     [Preserve]
-    public partial class ${cleanName}
+    public class ${cleanName}
     {
 ${fields}${errorField}
+
+${JSON_EXTENSION_DATA_FIELD}
     }`;
   }
 
@@ -289,7 +293,7 @@ ${fields}${errorField}
     lines.push('    /// </summary>');
     lines.push('    [Serializable]');
     lines.push('    [Preserve]');
-    lines.push(`    public partial class ${cleanName}`);
+    lines.push(`    public class ${cleanName}`);
     lines.push('    {');
     lines.push('        // Stub class - no properties defined');
     lines.push('        // This type may not be available in the current SDK version');

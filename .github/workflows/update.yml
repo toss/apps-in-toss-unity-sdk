@@ -251,6 +251,27 @@ jobs:
             echo "::warning::SDK 코드 생성 실패 - PR 생성 후 수동 수정 필요"
           fi
 
+      # 다중 버전 호환성 테스트용 pnpm alias 추가
+      # 이 alias는 SDK 생성에는 사용되지 않으며, 이후 CI에서 multi-version 테스트 시 사용됨
+      - name: 다중 버전 테스트 alias 추가
+        if: steps.check.outputs.skip != 'true'
+        working-directory: sdk-runtime-generator~
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          ALIAS_KEY="web-framework-${VERSION}"
+
+          # package.json devDependencies에 alias가 없으면 추가
+          if ! jq -e ".devDependencies[\"${ALIAS_KEY}\"]" package.json > /dev/null 2>&1; then
+            jq --arg key "$ALIAS_KEY" \
+               --arg val "npm:@apps-in-toss/web-framework@${VERSION}" \
+               '.devDependencies[$key] = $val' package.json > tmp.json
+            mv tmp.json package.json
+            echo "✅ 테스트 alias 추가: ${ALIAS_KEY}"
+            pnpm install --no-frozen-lockfile
+          else
+            echo "⏭️ alias 이미 존재: ${ALIAS_KEY}"
+          fi
+
       - name: 루트 package.json 버전 업데이트
         if: steps.check.outputs.skip != 'true'
         run: |

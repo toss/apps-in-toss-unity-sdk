@@ -116,8 +116,8 @@ function diffAPIs(prev: SerializedAPI, curr: SerializedAPI): APIChange[] {
   // Compare flags
   const flags = ['isAsync', 'isDeprecated', 'isCallbackBased', 'isEventSubscription', 'hasPermission'] as const;
   for (const flag of flags) {
-    if (prev[flag] !== curr[flag]) {
-      changes.push({ kind: 'flag-changed', description: `${flag}: ${prev[flag]} → ${curr[flag]}` });
+    if ((prev[flag] ?? false) !== (curr[flag] ?? false)) {
+      changes.push({ kind: 'flag-changed', description: `${flag}: ${prev[flag] ?? false} → ${curr[flag] ?? false}` });
     }
   }
 

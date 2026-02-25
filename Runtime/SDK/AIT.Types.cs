@@ -970,15 +970,6 @@ namespace AppsInToss
     public partial class IapProductListItem
     {
         [Preserve]
-        [JsonProperty("type")]
-        public CONSUMABLE Type; // optional
-        [Preserve]
-        [JsonProperty("renewalCycle")]
-        public string RenewalCycle; // optional
-        [Preserve]
-        [JsonProperty("offers")]
-        public Offer[] Offers; // optional
-        [Preserve]
         [JsonProperty("sku")]
         public string Sku;
         [Preserve]
@@ -1068,30 +1059,6 @@ namespace AppsInToss
     [Serializable]
     [Preserve]
     public partial class TossAdsAttachBannerOptions
-    {
-        // Stub class - no properties defined
-        // This type may not be available in the current SDK version
-    }
-
-    /// <summary>
-    /// Stub class for CONSUMABLE (type definition not found in current SDK version)
-    /// This class is auto-generated for SDK version compatibility
-    /// </summary>
-    [Serializable]
-    [Preserve]
-    public partial class CONSUMABLE
-    {
-        // Stub class - no properties defined
-        // This type may not be available in the current SDK version
-    }
-
-    /// <summary>
-    /// Stub class for Offer (type definition not found in current SDK version)
-    /// This class is auto-generated for SDK version compatibility
-    /// </summary>
-    [Serializable]
-    [Preserve]
-    public partial class Offer
     {
         // Stub class - no properties defined
         // This type may not be available in the current SDK version
@@ -1571,6 +1538,33 @@ namespace AppsInToss
         public string StatusCode;
     }
 
+    [Serializable]
+    [Preserve]
+    public partial class LoadFullScreenAdOptions
+    {
+        [Preserve]
+        [JsonProperty("adGroupId")]
+        public string AdGroupId;
+    }
+
+    [Serializable]
+    [Preserve]
+    public partial class LoadFullScreenAdEvent
+    {
+        [Preserve]
+        [JsonProperty("type")]
+        public string Type;
+    }
+
+    [Serializable]
+    [Preserve]
+    public partial class ShowFullScreenAdOptions
+    {
+        [Preserve]
+        [JsonProperty("adGroupId")]
+        public string AdGroupId;
+    }
+
     /// <summary>
     /// Data for userEarnedReward event
     /// </summary>
@@ -1584,5 +1578,22 @@ namespace AppsInToss
         [Preserve]
         [JsonProperty("unitAmount")]
         public double UnitAmount;
+    }
+
+    /// <summary>
+    /// Full screen ad event (discriminated union)
+    /// </summary>
+    [Serializable]
+    [Preserve]
+    public partial class ShowFullScreenAdEvent
+    {
+        /// <summary>Event type: clicked, dismissed, failedToShow, impression, show, userEarnedReward, requested</summary>
+        [Preserve]
+        [JsonProperty("type")]
+        public string Type;
+        /// <summary>Event data (only for userEarnedReward)</summary>
+        [Preserve]
+        [JsonProperty("data")]
+        public ShowFullScreenAdEventData Data; // optional
     }
 }

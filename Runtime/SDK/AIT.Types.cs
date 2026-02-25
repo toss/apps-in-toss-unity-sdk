@@ -202,7 +202,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
 
@@ -221,7 +221,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -237,7 +237,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -253,7 +253,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -269,7 +269,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -294,7 +294,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -315,7 +315,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -331,7 +331,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -344,7 +344,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -360,7 +360,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -382,7 +382,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -399,7 +399,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -415,7 +415,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -434,7 +434,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -453,7 +453,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -478,7 +478,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -497,7 +497,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -514,7 +514,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -530,7 +530,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -546,7 +546,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -562,7 +562,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -578,7 +578,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -591,7 +591,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -608,7 +608,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -626,7 +626,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -642,7 +642,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -673,7 +673,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -690,7 +690,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -708,7 +708,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -724,7 +724,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -739,7 +739,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -754,7 +754,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -773,7 +773,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -794,7 +794,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -816,7 +816,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -829,7 +829,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -842,7 +842,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -866,7 +866,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -878,7 +878,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -891,7 +891,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -907,7 +907,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -921,7 +921,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -945,7 +945,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -961,7 +961,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -980,7 +980,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -993,7 +993,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -1010,7 +1010,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -1023,7 +1023,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -1039,7 +1039,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -1055,7 +1055,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -1068,7 +1068,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -1081,7 +1081,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -1094,7 +1094,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -1109,7 +1109,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -1122,7 +1122,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -1137,7 +1137,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -1150,7 +1150,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -1167,7 +1167,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -1180,7 +1180,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -1193,7 +1193,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -1206,7 +1206,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -1231,7 +1231,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -1250,7 +1250,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -1272,7 +1272,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -1291,7 +1291,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -1313,7 +1313,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     /// <summary>
@@ -1341,7 +1341,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -1355,7 +1355,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -1373,7 +1373,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -1389,7 +1389,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -1405,7 +1405,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -1422,7 +1422,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -1435,7 +1435,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -1454,7 +1454,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     public enum PermissionStatus
@@ -1489,7 +1489,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     /// <summary>
@@ -1510,7 +1510,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -1529,7 +1529,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -1542,7 +1542,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     /// <summary>
@@ -1563,7 +1563,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -1582,7 +1582,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     public enum HapticFeedbackType
@@ -1619,7 +1619,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     public enum Accuracy
@@ -1643,7 +1643,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -1677,7 +1677,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -1696,7 +1696,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     public enum NetworkStatus
@@ -1756,7 +1756,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -1772,7 +1772,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -1785,7 +1785,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -1801,7 +1801,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -1814,7 +1814,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -1827,7 +1827,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -1843,7 +1843,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -1861,7 +1861,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -1880,7 +1880,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -1902,7 +1902,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -1915,7 +1915,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -1928,7 +1928,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -1941,7 +1941,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -1954,7 +1954,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     /// <summary>
@@ -1973,7 +1973,7 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     /// <summary>
@@ -1994,6 +1994,6 @@ namespace AppsInToss
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
-        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 }

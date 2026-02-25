@@ -23,6 +23,7 @@ interface SerializedAPI {
   pascalName: string;
   displayName: string;
   category: string;
+  file: string;
   description?: string;
   returnDescription?: string;
   examples?: string[];
@@ -38,11 +39,13 @@ interface SerializedAPI {
 }
 
 function serializeAPI(api: ParsedAPI, versions: string[]): SerializedAPI {
+  const category = getCategory(api.name);
   return {
     name: api.name,
     pascalName: api.pascalName,
-    displayName: api.pascalName,
-    category: getCategory(api.name),
+    displayName: 'AIT.' + api.pascalName,
+    category,
+    file: 'AIT.' + category + '.cs',
     description: api.description,
     returnDescription: api.returnDescription,
     examples: api.examples,
@@ -681,6 +684,28 @@ body {
   color: var(--color-text-secondary);
 }
 
+.file-location a {
+  text-decoration: none;
+}
+
+.file-location a:hover code {
+  background: var(--color-accent-bg);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.file-location code {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  padding: 4px 10px;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border-light);
+  border-radius: 4px;
+  color: var(--color-text);
+  display: inline-block;
+  transition: all 0.15s;
+}
+
 /* Summary */
 .summary-bar {
   display: flex;
@@ -818,6 +843,12 @@ ${apis.map(a => `          <div class="api-item" data-api="${escapeAttr(a)}">${e
     if (api.isDeprecated) badges.push('<span class="badge deprecated">deprecated</span>');
     if (api.hasPermission) badges.push('<span class="badge permission">permission</span>');
     html += '<div class="badges">' + badges.join('') + '</div>';
+
+    // File location (GitHub link)
+    if (api.file) {
+      const ghUrl = 'https://github.com/toss/apps-in-toss-unity-sdk/blob/main/Runtime/SDK/' + encodeURIComponent(api.file);
+      html += '<div class="detail-section"><h3>File</h3><div class="file-location"><a href="' + ghUrl + '" target="_blank" rel="noopener"><code>' + esc(api.file) + '</code></a></div></div>';
+    }
 
     // Deprecated message
     if (api.isDeprecated && api.deprecatedMessage) {

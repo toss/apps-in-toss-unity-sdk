@@ -324,20 +324,20 @@ async function generate(options: {
     }
 
     // FRAMEWORK_APIS 파싱 완전성 검증
-    // framework 패키지가 존재하는 경우에만 검증 (v1.5.x에는 해당 API 없음)
     const parsedApiNames = new Set(allParsedApis.map(a => a.name));
-    if (parser.frameworkDtsPath) {
-      const missingFrameworkApis = FRAMEWORK_APIS.filter(name => !parsedApiNames.has(name));
-      if (missingFrameworkApis.length > 0) {
-        console.error(picocolors.red(`\n❌ FRAMEWORK_APIS 파싱 실패: ${missingFrameworkApis.join(', ')}`));
+    const parsedFrameworkApiCount = FRAMEWORK_APIS.filter(name => parsedApiNames.has(name)).length;
+    const missingFrameworkApis = FRAMEWORK_APIS.filter(name => !parsedApiNames.has(name));
+
+    if (missingFrameworkApis.length > 0) {
+      if (parsedFrameworkApiCount > 0) {
+        // 일부만 파싱됨 → 비정상 (부분 파싱은 버그)
+        console.error(picocolors.red(`\n❌ FRAMEWORK_APIS 일부 파싱 실패: ${missingFrameworkApis.join(', ')}`));
         console.error(picocolors.yellow(`   findFrameworkPath()가 올바른 버전을 찾고 있는지 확인하세요.`));
-        console.error(picocolors.yellow(`   현재 framework 경로: ${parser.frameworkDtsPath}`));
+        console.error(picocolors.yellow(`   현재 framework 경로: ${parser.frameworkDtsPath ?? '찾을 수 없음'}`));
         process.exit(1);
-      }
-    } else {
-      const frameworkApiCount = FRAMEWORK_APIS.filter(name => parsedApiNames.has(name)).length;
-      if (frameworkApiCount === 0) {
-        console.log(picocolors.yellow(`⚠️  framework 패키지 미발견 — FRAMEWORK_APIS 스킵 (이 web-framework 버전에 해당 API 없음)`));
+      } else {
+        // 모두 missing → 이 web-framework 버전에 해당 API 없음 (정상)
+        console.log(picocolors.yellow(`⚠️  FRAMEWORK_APIS 스킵: ${missingFrameworkApis.join(', ')} (이 web-framework 버전에 해당 API 없음)`));
       }
     }
 

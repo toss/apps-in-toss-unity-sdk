@@ -5,15 +5,16 @@ import { ParsedAPI, ParsedTypeDefinition } from '../types.js';
 import { parseSourceFile } from './api-parser.js';
 import { parseNamespaceObjects } from './namespace-parser.js';
 import { parseTypeDefinitionsFromFile } from './type-definition-parser.js';
-import { parseFrameworkAPIs, parseFrameworkTypeDefinitions, parseNativeModulesType } from './framework-parser.js';
+import { findFrameworkPath, parseFrameworkAPIs, parseFrameworkTypeDefinitions, parseNativeModulesType } from './framework-parser.js';
 
 /**
  * TypeScript 소스 파일들을 파싱하여 API 정보 추출
  */
 export class TypeScriptParser {
   private project: Project;
+  private _frameworkDtsPath?: string;
 
-  constructor(private sourceDir: string) {
+  constructor(private sourceDir: string, private webFrameworkPath?: string) {
     // tsconfig.json 경로 찾기 (상위 디렉토리도 확인)
     const possibleConfigs = [
       path.join(sourceDir, 'tsconfig.json'),
@@ -54,6 +55,16 @@ export class TypeScriptParser {
   }
 
   /**
+   * framework .d.ts 경로를 한 번 resolve하고 캐시
+   */
+  get frameworkDtsPath(): string | undefined {
+    if (this._frameworkDtsPath === undefined) {
+      this._frameworkDtsPath = findFrameworkPath(this.webFrameworkPath) ?? '';
+    }
+    return this._frameworkDtsPath || undefined;
+  }
+
+  /**
    * native-modules에서 특정 타입 정의 파싱 (on-demand)
    * 순환 참조로 인한 스택 오버플로우를 방지하기 위해 별도 메서드로 분리
    */
@@ -65,16 +76,16 @@ export class TypeScriptParser {
    * @apps-in-toss/framework에서 특정 API 파싱 (loadFullScreenAd, showFullScreenAd 등)
    * 이 API들은 web-framework에서 re-export되지 않으므로 직접 파싱
    */
-  parseFrameworkAPIs(apiNames: string[]): ParsedAPI[] {
-    return parseFrameworkAPIs(apiNames);
+  parseFrameworkAPIs(apiNames: string[], frameworkDtsPath?: string): ParsedAPI[] {
+    return parseFrameworkAPIs(apiNames, frameworkDtsPath, this.webFrameworkPath);
   }
 
   /**
    * @apps-in-toss/framework에서 특정 API 관련 타입 정의 파싱
    * (LoadFullScreenAdEvent, ShowFullScreenAdEvent, Options 등)
    */
-  parseFrameworkTypeDefinitions(apiNames: string[]): ParsedTypeDefinition[] {
-    return parseFrameworkTypeDefinitions(apiNames);
+  parseFrameworkTypeDefinitions(apiNames: string[], frameworkDtsPath?: string): ParsedTypeDefinition[] {
+    return parseFrameworkTypeDefinitions(apiNames, frameworkDtsPath, this.webFrameworkPath);
   }
 
   /**
@@ -107,7 +118,7 @@ export class TypeScriptParser {
 
     // @apps-in-toss/framework에서 추가 API 파싱 (web-framework에서 re-export되지 않는 API)
     if (frameworkApiNames && frameworkApiNames.length > 0) {
-      const frameworkAPIs = this.parseFrameworkAPIs(frameworkApiNames);
+      const frameworkAPIs = this.parseFrameworkAPIs(frameworkApiNames, this.frameworkDtsPath);
       apis.push(...frameworkAPIs);
     }
 

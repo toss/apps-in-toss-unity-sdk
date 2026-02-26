@@ -108,6 +108,8 @@ namespace AppsInToss
         private static void SendLog(string logName, Dictionary<string, object> parameters)
         {
 #if !UNITY_WEBGL || UNITY_EDITOR
+            // jslib bridge는 WebGL 빌드에서만 사용 가능하므로 그 외 환경에서는 무시
+            // Debug.LogWarning 사용 불가: logMessageReceived → SendLog 재귀 호출 위험
             return;
 #else
             if (_isSending) return;

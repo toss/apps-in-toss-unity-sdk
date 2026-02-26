@@ -8,7 +8,7 @@ import { extractCleanName, capitalize, xmlSafe } from './utils.js';
 export const JSON_EXTENSION_DATA_FIELD =
   '        [Preserve]\n' +
   '        [Newtonsoft.Json.JsonExtensionData]\n' +
-  '        private System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;';
+  '        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;';
 
 /**
  * 인라인 타입 추적을 위한 상태 클래스

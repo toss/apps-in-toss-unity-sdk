@@ -10,7 +10,7 @@ mergeInto(LibraryManager.library, {
                 window.AppsInToss.debugLog(data);
             }
         } catch (e) {
-            // fire-and-forget
+            console.warn('[AIT] debugLog failed', e);
         }
     }
 });

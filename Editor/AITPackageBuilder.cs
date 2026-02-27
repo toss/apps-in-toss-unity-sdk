@@ -783,12 +783,94 @@ namespace AppsInToss.Editor
                 Directory.CreateDirectory(publicPath);
             }
 
-            // Build 폴더 → public/Build
+            // Build 폴더 → public/Build (필수 파일만 선별 복사)
             string buildSrc = Path.Combine(webglPath, "Build");
             string buildDest = Path.Combine(publicPath, "Build");
-            if (Directory.Exists(buildSrc))
+
+            if (!Directory.Exists(buildSrc))
             {
-                UnityUtil.CopyDirectory(buildSrc, buildDest);
+                Debug.LogError("[AIT] ========================================");
+                Debug.LogError("[AIT] ✗ 치명적: Build 폴더를 찾을 수 없습니다!");
+                Debug.LogError("[AIT] ========================================");
+                Debug.LogError($"[AIT] 검색 경로: {buildSrc}");
+                return AITConvertCore.AITExportError.WEBGL_BUILD_INCOMPLETE;
+            }
+
+            // Build 폴더에서 실제 파일 이름 찾기
+            // Unity 압축 설정에 따라 .unityweb, .gz, .br 확장자가 붙을 수 있음
+            Debug.Log("[AIT] WebGL 빌드 파일 검색 중...");
+
+            // 필수 파일들 (isRequired = true)
+            string loaderFile = AITBuildValidator.FindFileInBuild(buildSrc, "*.loader.js", isRequired: true);
+            string dataFile = AITBuildValidator.FindFileInBuild(buildSrc, "*.data*", isRequired: true);
+            string frameworkFile = AITBuildValidator.FindFileInBuild(buildSrc, "*.framework.js*", isRequired: true);
+            string wasmFile = AITBuildValidator.FindFileInBuild(buildSrc, "*.wasm*", isRequired: true);
+
+            // 선택적 파일 (isRequired = false)
+            string symbolsFile = AITBuildValidator.FindFileInBuild(buildSrc, "*.symbols.json*", isRequired: false);
+
+            // 필수 파일 검증
+            var missingFiles = new List<string>();
+            if (string.IsNullOrEmpty(loaderFile)) missingFiles.Add("*.loader.js");
+            if (string.IsNullOrEmpty(dataFile)) missingFiles.Add("*.data");
+            if (string.IsNullOrEmpty(frameworkFile)) missingFiles.Add("*.framework.js");
+            if (string.IsNullOrEmpty(wasmFile)) missingFiles.Add("*.wasm");
+
+            if (missingFiles.Count > 0)
+            {
+                Debug.LogError("[AIT] ========================================");
+                Debug.LogError("[AIT] ✗ 치명적: WebGL 빌드 필수 파일 누락!");
+                Debug.LogError("[AIT] ========================================");
+                Debug.LogError($"[AIT] 누락된 필수 파일: {string.Join(", ", missingFiles)}");
+                Debug.LogError("[AIT] ");
+                Debug.LogError("[AIT] 가능한 원인:");
+                Debug.LogError("[AIT]   1. Unity WebGL 빌드가 완료되지 않았습니다.");
+                Debug.LogError("[AIT]   2. WebGL 빌드가 실패했지만 부분 결과물만 남아있습니다.");
+                Debug.LogError("[AIT]   3. 빌드 설정(압축 방식 등)이 예상과 다릅니다.");
+                Debug.LogError("[AIT] ");
+                Debug.LogError("[AIT] 해결 방법:");
+                Debug.LogError("[AIT]   1. 'Clean Build' 옵션을 활성화하고 다시 빌드하세요.");
+                Debug.LogError("[AIT]   2. Unity Console에서 빌드 에러를 확인하세요.");
+                Debug.LogError("[AIT] ========================================");
+                return AITConvertCore.AITExportError.WEBGL_BUILD_INCOMPLETE;
+            }
+
+            // Build 대상 폴더 정리 후 재생성
+            if (Directory.Exists(buildDest))
+            {
+                AITFileUtils.DeleteDirectory(buildDest);
+            }
+            Directory.CreateDirectory(buildDest);
+
+            // 필수 파일만 선별 복사
+            var filesToCopy = new List<string> { loaderFile, dataFile, frameworkFile, wasmFile };
+            if (!string.IsNullOrEmpty(symbolsFile))
+            {
+                filesToCopy.Add(symbolsFile);
+            }
+
+            long totalBytes = 0;
+            foreach (var fileName in filesToCopy)
+            {
+                string src = Path.Combine(buildSrc, fileName);
+                string dest = Path.Combine(buildDest, fileName);
+                File.Copy(src, dest, true);
+                UnityUtil.EnsureFileReadable(dest);
+                totalBytes += new FileInfo(src).Length;
+            }
+
+            Debug.Log($"[AIT] ✓ Build 파일 {filesToCopy.Count}개 선별 복사 완료 ({totalBytes / 1024.0 / 1024.0:0.#}MB)");
+
+            // 안전장치: Build/ 폴더에 인식되지 않은 파일이 있으면 경고
+            var allBuildFiles = Directory.GetFiles(buildSrc);
+            var copiedFileNames = new HashSet<string>(filesToCopy);
+            foreach (var file in allBuildFiles)
+            {
+                string name = Path.GetFileName(file);
+                if (!copiedFileNames.Contains(name))
+                {
+                    Debug.LogWarning($"[AIT] ⚠️ Build 폴더에 복사되지 않은 파일: {name}");
+                }
             }
 
             // TemplateData 폴더 → public/TemplateData
@@ -858,150 +940,106 @@ namespace AppsInToss.Editor
                 return AITConvertCore.AITExportError.WEBGL_BUILD_INCOMPLETE;
             }
 
+            string indexContent = File.ReadAllText(indexSrc);
+
+            // 프로필 기반 설정값 (Mock 브릿지가 비활성화되면 프로덕션 모드로 간주)
+            string isProduction = profile.enableMockBridge ? "false" : "true";
+            string enableDebugConsole = profile.enableDebugConsole ? "true" : "false";
+
+            // 프로젝트의 index.html에서 사용자 커스텀 섹션 추출 (있는 경우)
+            string projectIndexPath = Path.Combine(Application.dataPath, "WebGLTemplates", "AITTemplate", "index.html");
+            if (File.Exists(projectIndexPath))
             {
-                string indexContent = File.ReadAllText(indexSrc);
+                string projectIndexContent = File.ReadAllText(projectIndexPath);
 
-                // Build 폴더에서 실제 파일 이름 찾기
-                // Unity 압축 설정에 따라 .unityweb, .gz, .br 확장자가 붙을 수 있음
-                Debug.Log("[AIT] WebGL 빌드 파일 검색 중...");
-
-                // 필수 파일들 (isRequired = true)
-                string loaderFile = AITBuildValidator.FindFileInBuild(buildSrc, "*.loader.js", isRequired: true);
-                string dataFile = AITBuildValidator.FindFileInBuild(buildSrc, "*.data*", isRequired: true);
-                string frameworkFile = AITBuildValidator.FindFileInBuild(buildSrc, "*.framework.js*", isRequired: true);
-                string wasmFile = AITBuildValidator.FindFileInBuild(buildSrc, "*.wasm*", isRequired: true);
-
-                // 선택적 파일 (isRequired = false)
-                string symbolsFile = AITBuildValidator.FindFileInBuild(buildSrc, "*.symbols.json*", isRequired: false);
-
-                // 필수 파일 검증 경고
-                var missingFiles = new List<string>();
-                if (string.IsNullOrEmpty(loaderFile)) missingFiles.Add("*.loader.js");
-                if (string.IsNullOrEmpty(dataFile)) missingFiles.Add("*.data");
-                if (string.IsNullOrEmpty(frameworkFile)) missingFiles.Add("*.framework.js");
-                if (string.IsNullOrEmpty(wasmFile)) missingFiles.Add("*.wasm");
-
-                if (missingFiles.Count > 0)
+                // USER_HEAD 섹션 추출 및 교체
+                string userHeadSection = AITTemplateManager.ExtractHtmlUserSection(projectIndexContent, AITTemplateManager.HTML_USER_HEAD_START, AITTemplateManager.HTML_USER_HEAD_END);
+                if (userHeadSection != null)
                 {
-                    Debug.LogError("[AIT] ========================================");
-                    Debug.LogError("[AIT] ✗ 치명적: WebGL 빌드 필수 파일 누락!");
-                    Debug.LogError("[AIT] ========================================");
-                    Debug.LogError($"[AIT] 누락된 필수 파일: {string.Join(", ", missingFiles)}");
-                    Debug.LogError("[AIT] ");
-                    Debug.LogError("[AIT] 가능한 원인:");
-                    Debug.LogError("[AIT]   1. Unity WebGL 빌드가 완료되지 않았습니다.");
-                    Debug.LogError("[AIT]   2. WebGL 빌드가 실패했지만 부분 결과물만 남아있습니다.");
-                    Debug.LogError("[AIT]   3. 빌드 설정(압축 방식 등)이 예상과 다릅니다.");
-                    Debug.LogError("[AIT] ");
-                    Debug.LogError("[AIT] 해결 방법:");
-                    Debug.LogError("[AIT]   1. 'Clean Build' 옵션을 활성화하고 다시 빌드하세요.");
-                    Debug.LogError("[AIT]   2. Unity Console에서 빌드 에러를 확인하세요.");
-                    Debug.LogError("[AIT] ========================================");
-                    return AITConvertCore.AITExportError.WEBGL_BUILD_INCOMPLETE;
+                    indexContent = AITTemplateManager.ReplaceHtmlUserSection(indexContent, AITTemplateManager.HTML_USER_HEAD_START, AITTemplateManager.HTML_USER_HEAD_END, userHeadSection);
+                    Debug.Log("[AIT] index.html USER_HEAD 섹션 머지됨");
                 }
 
-                // 프로필 기반 설정값 (Mock 브릿지가 비활성화되면 프로덕션 모드로 간주)
-                string isProduction = profile.enableMockBridge ? "false" : "true";
-                string enableDebugConsole = profile.enableDebugConsole ? "true" : "false";
-
-                // 프로젝트의 index.html에서 사용자 커스텀 섹션 추출 (있는 경우)
-                string projectIndexPath = Path.Combine(Application.dataPath, "WebGLTemplates", "AITTemplate", "index.html");
-                if (File.Exists(projectIndexPath))
+                // USER_BODY_END 섹션 추출 및 교체
+                string userBodyEndSection = AITTemplateManager.ExtractHtmlUserSection(projectIndexContent, AITTemplateManager.HTML_USER_BODY_END_START, AITTemplateManager.HTML_USER_BODY_END_END);
+                if (userBodyEndSection != null)
                 {
-                    string projectIndexContent = File.ReadAllText(projectIndexPath);
-
-                    // USER_HEAD 섹션 추출 및 교체
-                    string userHeadSection = AITTemplateManager.ExtractHtmlUserSection(projectIndexContent, AITTemplateManager.HTML_USER_HEAD_START, AITTemplateManager.HTML_USER_HEAD_END);
-                    if (userHeadSection != null)
-                    {
-                        indexContent = AITTemplateManager.ReplaceHtmlUserSection(indexContent, AITTemplateManager.HTML_USER_HEAD_START, AITTemplateManager.HTML_USER_HEAD_END, userHeadSection);
-                        Debug.Log("[AIT] index.html USER_HEAD 섹션 머지됨");
-                    }
-
-                    // USER_BODY_END 섹션 추출 및 교체
-                    string userBodyEndSection = AITTemplateManager.ExtractHtmlUserSection(projectIndexContent, AITTemplateManager.HTML_USER_BODY_END_START, AITTemplateManager.HTML_USER_BODY_END_END);
-                    if (userBodyEndSection != null)
-                    {
-                        indexContent = AITTemplateManager.ReplaceHtmlUserSection(indexContent, AITTemplateManager.HTML_USER_BODY_END_START, AITTemplateManager.HTML_USER_BODY_END_END, userBodyEndSection);
-                        Debug.Log("[AIT] index.html USER_BODY_END 섹션 머지됨");
-                    }
+                    indexContent = AITTemplateManager.ReplaceHtmlUserSection(indexContent, AITTemplateManager.HTML_USER_BODY_END_START, AITTemplateManager.HTML_USER_BODY_END_END, userBodyEndSection);
+                    Debug.Log("[AIT] index.html USER_BODY_END 섹션 머지됨");
                 }
+            }
 
-                // Unity 플레이스홀더 치환
-                indexContent = indexContent
-                    .Replace("%UNITY_WEB_NAME%", PlayerSettings.productName)
-                    .Replace("%UNITY_WIDTH%", PlayerSettings.defaultWebScreenWidth.ToString())
-                    .Replace("%UNITY_HEIGHT%", PlayerSettings.defaultWebScreenHeight.ToString())
-                    .Replace("%UNITY_COMPANY_NAME%", PlayerSettings.companyName)
-                    .Replace("%UNITY_PRODUCT_NAME%", PlayerSettings.productName)
-                    .Replace("%UNITY_PRODUCT_VERSION%", PlayerSettings.bundleVersion)
-                    // Unity 표준 URL 형식 (Unity가 치환하지 않은 경우 SDK가 처리)
-                    .Replace("%UNITY_WEBGL_LOADER_URL%", $"Build/{loaderFile}")
-                    .Replace("%UNITY_WEBGL_DATA_URL%", $"Build/{dataFile}")
-                    .Replace("%UNITY_WEBGL_FRAMEWORK_URL%", $"Build/{frameworkFile}")
-                    .Replace("%UNITY_WEBGL_CODE_URL%", $"Build/{wasmFile}")
-                    .Replace("%UNITY_WEBGL_SYMBOLS_URL%", !string.IsNullOrEmpty(symbolsFile) ? $"Build/{symbolsFile}" : "")
-                    // 하위 호환성을 위한 FILENAME 형식 (레거시)
-                    .Replace("%UNITY_WEBGL_LOADER_FILENAME%", loaderFile)
-                    .Replace("%UNITY_WEBGL_DATA_FILENAME%", dataFile)
-                    .Replace("%UNITY_WEBGL_FRAMEWORK_FILENAME%", frameworkFile)
-                    .Replace("%UNITY_WEBGL_CODE_FILENAME%", wasmFile)
-                    .Replace("%UNITY_WEBGL_SYMBOLS_FILENAME%", symbolsFile)
-                    // AIT 커스텀 플레이스홀더
-                    .Replace("%AIT_IS_PRODUCTION%", isProduction)
-                    .Replace("%AIT_ENABLE_DEBUG_CONSOLE%", enableDebugConsole)
-                    .Replace("%AIT_DEVICE_PIXEL_RATIO%", config.devicePixelRatio.ToString())
-                    .Replace("%AIT_ICON_URL%", config.iconUrl ?? "")
-                    .Replace("%AIT_DISPLAY_NAME%", config.displayName ?? "")
-                    .Replace("%AIT_PRIMARY_COLOR%", config.primaryColor ?? "#3182f6")
-                    // HTML5 Preload 태그 (로딩 성능 개선)
-                    .Replace("%AIT_PRELOAD_TAGS%", GeneratePreloadTags(dataFile, wasmFile, frameworkFile));
+            // Unity 플레이스홀더 치환
+            indexContent = indexContent
+                .Replace("%UNITY_WEB_NAME%", PlayerSettings.productName)
+                .Replace("%UNITY_WIDTH%", PlayerSettings.defaultWebScreenWidth.ToString())
+                .Replace("%UNITY_HEIGHT%", PlayerSettings.defaultWebScreenHeight.ToString())
+                .Replace("%UNITY_COMPANY_NAME%", PlayerSettings.companyName)
+                .Replace("%UNITY_PRODUCT_NAME%", PlayerSettings.productName)
+                .Replace("%UNITY_PRODUCT_VERSION%", PlayerSettings.bundleVersion)
+                // Unity 표준 URL 형식 (Unity가 치환하지 않은 경우 SDK가 처리)
+                .Replace("%UNITY_WEBGL_LOADER_URL%", $"Build/{loaderFile}")
+                .Replace("%UNITY_WEBGL_DATA_URL%", $"Build/{dataFile}")
+                .Replace("%UNITY_WEBGL_FRAMEWORK_URL%", $"Build/{frameworkFile}")
+                .Replace("%UNITY_WEBGL_CODE_URL%", $"Build/{wasmFile}")
+                .Replace("%UNITY_WEBGL_SYMBOLS_URL%", !string.IsNullOrEmpty(symbolsFile) ? $"Build/{symbolsFile}" : "")
+                // 하위 호환성을 위한 FILENAME 형식 (레거시)
+                .Replace("%UNITY_WEBGL_LOADER_FILENAME%", loaderFile)
+                .Replace("%UNITY_WEBGL_DATA_FILENAME%", dataFile)
+                .Replace("%UNITY_WEBGL_FRAMEWORK_FILENAME%", frameworkFile)
+                .Replace("%UNITY_WEBGL_CODE_FILENAME%", wasmFile)
+                .Replace("%UNITY_WEBGL_SYMBOLS_FILENAME%", symbolsFile)
+                // AIT 커스텀 플레이스홀더
+                .Replace("%AIT_IS_PRODUCTION%", isProduction)
+                .Replace("%AIT_ENABLE_DEBUG_CONSOLE%", enableDebugConsole)
+                .Replace("%AIT_DEVICE_PIXEL_RATIO%", config.devicePixelRatio.ToString())
+                .Replace("%AIT_ICON_URL%", config.iconUrl ?? "")
+                .Replace("%AIT_DISPLAY_NAME%", config.displayName ?? "")
+                .Replace("%AIT_PRIMARY_COLOR%", config.primaryColor ?? "#3182f6")
+                // HTML5 Preload 태그 (로딩 성능 개선)
+                .Replace("%AIT_PRELOAD_TAGS%", GeneratePreloadTags(dataFile, wasmFile, frameworkFile));
 
-                // 로딩 화면 삽입 (%AIT_LOADING_SCREEN% 플레이스홀더)
-                string loadingContent = "";
-                string projectLoadingPath = AITPackageInitializer.GetProjectLoadingPath();
+            // 로딩 화면 삽입 (%AIT_LOADING_SCREEN% 플레이스홀더)
+            string loadingContent = "";
+            string projectLoadingPath = AITPackageInitializer.GetProjectLoadingPath();
 
-                // 프로젝트의 loading.html 사용 (SDK 초기화 시 자동 생성됨)
-                if (File.Exists(projectLoadingPath))
+            // 프로젝트의 loading.html 사용 (SDK 초기화 시 자동 생성됨)
+            if (File.Exists(projectLoadingPath))
+            {
+                loadingContent = File.ReadAllText(projectLoadingPath);
+                Debug.Log("[AIT] ✓ 로딩 화면 적용: " + projectLoadingPath);
+            }
+            else
+            {
+                // 폴백: SDK 기본 템플릿 직접 사용 (초기화가 실행되지 않은 경우)
+                string sdkTemplatePath = AITPackageInitializer.GetSDKLoadingTemplatePath();
+                if (sdkTemplatePath != null)
                 {
-                    loadingContent = File.ReadAllText(projectLoadingPath);
-                    Debug.Log("[AIT] ✓ 로딩 화면 적용: " + projectLoadingPath);
+                    loadingContent = File.ReadAllText(sdkTemplatePath);
+                    Debug.Log("[AIT] ✓ SDK 기본 로딩 화면 적용");
                 }
                 else
                 {
-                    // 폴백: SDK 기본 템플릿 직접 사용 (초기화가 실행되지 않은 경우)
-                    string sdkTemplatePath = AITPackageInitializer.GetSDKLoadingTemplatePath();
-                    if (sdkTemplatePath != null)
-                    {
-                        loadingContent = File.ReadAllText(sdkTemplatePath);
-                        Debug.Log("[AIT] ✓ SDK 기본 로딩 화면 적용");
-                    }
-                    else
-                    {
-                        Debug.LogWarning("[AIT] 로딩 화면 파일을 찾을 수 없습니다. 빈 로딩 화면이 사용됩니다.");
-                    }
+                    Debug.LogWarning("[AIT] 로딩 화면 파일을 찾을 수 없습니다. 빈 로딩 화면이 사용됩니다.");
                 }
+            }
 
-                // %AIT_LOADING_SCREEN% 플레이스홀더 치환
-                indexContent = indexContent.Replace("%AIT_LOADING_SCREEN%", loadingContent);
+            // %AIT_LOADING_SCREEN% 플레이스홀더 치환
+            indexContent = indexContent.Replace("%AIT_LOADING_SCREEN%", loadingContent);
 
-                File.WriteAllText(indexDest, indexContent, System.Text.Encoding.UTF8);
-                Debug.Log("[AIT] index.html → 프로젝트 루트에 생성");
+            File.WriteAllText(indexDest, indexContent, System.Text.Encoding.UTF8);
+            Debug.Log("[AIT] index.html → 프로젝트 루트에 생성");
 
-                // 플레이스홀더 치환 결과 검증
-                if (!AITBuildValidator.ValidatePlaceholderSubstitution(indexContent, indexDest))
-                {
-                    return AITConvertCore.AITExportError.WEBGL_BUILD_INCOMPLETE;
-                }
+            // 플레이스홀더 치환 결과 검증
+            if (!AITBuildValidator.ValidatePlaceholderSubstitution(indexContent, indexDest))
+            {
+                return AITConvertCore.AITExportError.WEBGL_BUILD_INCOMPLETE;
             }
 
             // Runtime/appsintoss-unity-bridge.js 파일도 치환
             string bridgeSrc = Path.Combine(publicPath, "Runtime", "appsintoss-unity-bridge.js");
             if (File.Exists(bridgeSrc))
             {
-                // 프로필 기반 설정값 (Mock 브릿지가 비활성화되면 프로덕션 모드로 간주)
-                string isProduction = profile.enableMockBridge ? "false" : "true";
-
                 string bridgeContent = File.ReadAllText(bridgeSrc);
                 bridgeContent = bridgeContent.Replace("%AIT_IS_PRODUCTION%", isProduction);
                 File.WriteAllText(bridgeSrc, bridgeContent, System.Text.Encoding.UTF8);

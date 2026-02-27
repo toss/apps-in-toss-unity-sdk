@@ -149,7 +149,23 @@ public static class BuildOutputValidator
         if (!hasWasm) errors.Add("Missing .wasm file in Build/");
         if (!hasData) errors.Add("Missing .data file in Build/");
 
-        // 9. 빌드 크기 계산
+        // 9. Build/ 파일 수 검증 — 선별 복사 회귀 감지
+        int expectedMaxFiles = 6; // loader, data, framework, wasm + symbols + 여유 1
+        if (buildFiles.Length > expectedMaxFiles)
+        {
+            warnings.Add($"Build/ contains {buildFiles.Length} files (expected ≤{expectedMaxFiles}). Possible orphaned files from previous builds.");
+        }
+
+        // 허용된 파일 타입만 있는지 검증
+        foreach (var detail in files)
+        {
+            if (detail.type == "other")
+            {
+                warnings.Add($"Unexpected file in Build/: {detail.name}");
+            }
+        }
+
+        // 10. 빌드 크기 계산
         float buildSizeMB = GetDirectorySizeMB(distWebPath);
         int fileCount = files.Count;
 

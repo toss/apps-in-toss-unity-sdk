@@ -3,6 +3,7 @@
     "rootNamespace": "",
     "references": [
         "AppsInTossSDK",
+        "AppsInTossSDKEditor",
         "AppsInToss.Helpers",
         "AppsInTossTestScripts"
     ],

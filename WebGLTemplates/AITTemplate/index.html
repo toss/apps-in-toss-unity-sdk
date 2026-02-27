@@ -1684,17 +1684,28 @@
                                 // 기존 프로퍼티를 getter로 위임 (live binding 유지)
                                 var keys = Object.keys(target);
                                 keys.forEach(function(key) {
-                                    if (key === 'eventLog') return; // eventLog는 별도 처리
+                                    if (key === 'eventLog' || key === 'debugLog') return; // 별도 처리
                                     Object.defineProperty(wrapper, key, {
                                         get: function() { return target[key]; },
                                         enumerable: true,
                                         configurable: true
                                     });
                                 });
-                                // eventLog만 래핑
+                                // eventLog 래핑
                                 wrapper.eventLog = function(params) {
                                     captureMetricEvent(params);
                                     return origEventLog.apply(target, arguments);
+                                };
+                                // debugLog 래핑: 원본에 있으면 래핑, 없으면 캡처 전용 stub 생성
+                                // (debugLog는 @apps-in-toss/web-framework 번들에 없을 수 있음)
+                                var origDebugLog = target.debugLog;
+                                wrapper.debugLog = function(params) {
+                                    captureMetricEvent(params);
+                                    // 원본에 debugLog가 있으면 위임, 없으면 캡처만
+                                    var fn = origDebugLog || target.debugLog;
+                                    if (typeof fn === 'function') {
+                                        return fn.apply(target, arguments);
+                                    }
                                 };
 
                                 return wrapper;

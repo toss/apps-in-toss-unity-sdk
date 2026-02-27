@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
@@ -243,6 +244,20 @@ namespace AppsInToss.Editor
             var files = Directory.GetFiles(buildPath, pattern);
             if (files.Length > 0)
             {
+                // 중복 파일 감지 시 경고 + 최신 파일 우선 선택
+                if (files.Length > 1)
+                {
+                    Debug.LogWarning($"[AIT] ⚠️ '{pattern}'에 {files.Length}개 파일이 일치합니다. 최신 파일을 사용합니다.");
+                    Array.Sort(files, (a, b) => File.GetLastWriteTime(b).CompareTo(File.GetLastWriteTime(a)));
+                    foreach (var file in files)
+                    {
+                        var time = File.GetLastWriteTime(file);
+                        var selected = file == files[0] ? " ← 선택됨" : "";
+                        Debug.LogWarning($"[AIT]    - {Path.GetFileName(file)} ({time:yyyy-MM-dd HH:mm:ss}){selected}");
+                    }
+                    Debug.LogWarning("[AIT]    이전 빌드 잔여물일 수 있습니다. 'Clean Build' 사용을 권장합니다.");
+                }
+
                 string fileName = Path.GetFileName(files[0]);
                 if (isRequired)
                 {

@@ -74,7 +74,7 @@ namespace AppsInToss
         /// <summary>
         /// 파일에 읽기 권한 부여 (macOS/Linux에서 chmod 644 효과)
         /// </summary>
-        private static void EnsureFileReadable(string filePath)
+        internal static void EnsureFileReadable(string filePath)
         {
             try
             {

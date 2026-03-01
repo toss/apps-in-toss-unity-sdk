@@ -763,27 +763,33 @@ jobs:
             done
           done
 
-          if [ -z "$DONOR_APP" ]; then
-            echo "::warning::No valid LicensingClient.app found in other Unity versions"
-            exit 0
+          if [ -n "$DONOR_APP" ]; then
+            DONOR_LC_VERSION=$("${DONOR_APP}/Contents/MacOS/Unity.Licensing.Client" --version 2>&1 || echo "unknown")
+            TARGET_LC_VERSION=$("${TARGET_APP}/Contents/MacOS/Unity.Licensing.Client" --version 2>&1 || echo "unknown")
+            echo "Replacing invalid LicensingClient (${TARGET_LC_VERSION}) with valid one from ${DONOR_VERSION} (${DONOR_LC_VERSION})"
+
+            mv "$TARGET_APP" "${TARGET_APP}.bak"
+            cp -R "$DONOR_APP" "$TARGET_APP"
+
+            if codesign --verify --deep --strict "$TARGET_APP" 2>/dev/null; then
+              echo "LicensingClient replaced and verified successfully"
+              rm -rf "${TARGET_APP}.bak"
+              exit 0
+            else
+              echo "Replacement also failed, restoring backup and trying re-sign"
+              rm -rf "$TARGET_APP"
+              mv "${TARGET_APP}.bak" "$TARGET_APP"
+            fi
           fi
 
-          DONOR_LC_VERSION=$("${DONOR_APP}/Contents/MacOS/Unity.Licensing.Client" --version 2>&1 || echo "unknown")
-          TARGET_LC_VERSION=$("${TARGET_APP}/Contents/MacOS/Unity.Licensing.Client" --version 2>&1 || echo "unknown")
-          echo "Replacing invalid LicensingClient (${TARGET_LC_VERSION}) with valid one from ${DONOR_VERSION} (${DONOR_LC_VERSION})"
+          # 다른 Unity 버전이 없거나 교체도 실패한 경우: ad-hoc 재서명
+          echo "Attempting ad-hoc re-sign of LicensingClient.app..."
+          codesign --force --deep --sign - "$TARGET_APP" 2>&1 || true
 
-          # 백업 후 교체
-          mv "$TARGET_APP" "${TARGET_APP}.bak"
-          cp -R "$DONOR_APP" "$TARGET_APP"
-
-          # 교체 결과 검증
           if codesign --verify --deep --strict "$TARGET_APP" 2>/dev/null; then
-            echo "LicensingClient replaced and verified successfully"
-            rm -rf "${TARGET_APP}.bak"
+            echo "LicensingClient re-signed successfully"
           else
-            echo "::error::Replacement LicensingClient also failed verification, restoring backup"
-            rm -rf "$TARGET_APP"
-            mv "${TARGET_APP}.bak" "$TARGET_APP"
+            echo "::warning::LicensingClient re-sign failed, build may fail due to license issues"
           fi
 
       # =====================================================

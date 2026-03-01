@@ -746,22 +746,39 @@ jobs:
           VERIFY_MSG=$(codesign --verify --deep --strict "$TARGET_APP" 2>&1 || true)
           echo "::warning::LicensingClient code signature invalid: ${VERIFY_MSG}"
 
-          # 다른 Unity 버전에서 서명이 유효한 LicensingClient.app 찾기
+          # 서명이 유효한 LicensingClient.app 찾기
+          # 탐색 순서: Unity Hub 내장 → 다른 Unity 버전
           DONOR_APP=""
-          for dir in $(ls -d "${UNITY_BASE}"/*/ 2>/dev/null | sort -rV); do
-            version=$(basename "$dir")
-            [ "$version" = "$CURRENT_VERSION" ] && continue
+          DONOR_VERSION=""
 
-            for candidate in \
-              "${dir}Unity.app/Contents/Helpers/UnityLicensingClient.app" \
-              "${dir}Unity.app/Contents/Frameworks/UnityLicensingClient.app"; do
-              if [ -d "$candidate" ] && codesign --verify --deep --strict "$candidate" 2>/dev/null; then
-                DONOR_APP="$candidate"
-                DONOR_VERSION="$version"
-                break 2
-              fi
-            done
+          # 1) Unity Hub 내장 LicensingClient (Hub가 설치되어 있으면 항상 최신 서명)
+          for hub_candidate in \
+            "/Applications/Unity Hub.app/Contents/Frameworks/UnityLicensingClient_V1.app" \
+            "/Applications/Unity Hub.app/Contents/Frameworks/UnityLicensingClient.app"; do
+            if [ -d "$hub_candidate" ] && codesign --verify --deep --strict "$hub_candidate" 2>/dev/null; then
+              DONOR_APP="$hub_candidate"
+              DONOR_VERSION="Unity Hub"
+              break
+            fi
           done
+
+          # 2) 다른 Unity 버전
+          if [ -z "$DONOR_APP" ]; then
+            for dir in $(ls -d "${UNITY_BASE}"/*/ 2>/dev/null | sort -rV); do
+              version=$(basename "$dir")
+              [ "$version" = "$CURRENT_VERSION" ] && continue
+
+              for candidate in \
+                "${dir}Unity.app/Contents/Helpers/UnityLicensingClient.app" \
+                "${dir}Unity.app/Contents/Frameworks/UnityLicensingClient.app"; do
+                if [ -d "$candidate" ] && codesign --verify --deep --strict "$candidate" 2>/dev/null; then
+                  DONOR_APP="$candidate"
+                  DONOR_VERSION="$version"
+                  break 2
+                fi
+              done
+            done
+          fi
 
           if [ -n "$DONOR_APP" ]; then
             DONOR_LC_VERSION=$("${DONOR_APP}/Contents/MacOS/Unity.Licensing.Client" --version 2>&1 || echo "unknown")

@@ -2,6 +2,7 @@ using System;
 using Sentry;
 using Sentry.Unity;
 using UnityEngine;
+using UnityEngine.UI;
 
 using SentrySdk = Sentry.Unity.SentrySdk;
 
@@ -14,6 +15,11 @@ public class SentryTester : MonoBehaviour
 {
     private string _status = "";
     private bool _throwNextFrame;
+    private bool _sentryStateResolved = false;
+
+    // uGUI 참조
+    private Text _statusTextUI;
+    private Text _sentryStateUI;
 
     private void Update()
     {
@@ -22,55 +28,80 @@ public class SentryTester : MonoBehaviour
             _throwNextFrame = false;
             throw new InvalidOperationException("SentryTester: Unhandled Exception 테스트");
         }
+
+        // Sentry 비동기 초기화 완료 감지
+        if (!_sentryStateResolved && _sentryStateUI != null && SentrySdk.IsEnabled)
+        {
+            _sentryStateResolved = true;
+            _sentryStateUI.text = "Sentry: 활성";
+        }
     }
 
-    public void DrawUI(GUIStyle boxStyle, GUIStyle headerStyle,
-                       GUIStyle labelStyle, GUIStyle buttonStyle,
-                       GUIStyle dangerButtonStyle)
+    /// <summary>
+    /// uGUI 기반 UI를 생성합니다.
+    /// </summary>
+    public void SetupUI(Transform parent)
     {
-        GUILayout.BeginVertical(boxStyle);
-        GUILayout.Label("🔴 Sentry Tester", headerStyle);
+        var section = UIBuilder.CreatePanel(parent, UIBuilder.Theme.SectionBg);
+        var vlg = section.gameObject.AddComponent<VerticalLayoutGroup>();
+        vlg.spacing = UIBuilder.Theme.SpacingSmall;
+        vlg.childForceExpandWidth = true;
+        vlg.childForceExpandHeight = false;
+        vlg.childControlWidth = true;
+        vlg.childControlHeight = true;
+        vlg.padding = new RectOffset(12, 12, 12, 12);
+        section.gameObject.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+        UIBuilder.CreateText(section, "Sentry Tester",
+            UIBuilder.Theme.FontLarge, UIBuilder.Theme.TextAccent, fontStyle: FontStyle.Bold);
 
         bool isEnabled = SentrySdk.IsEnabled;
-        GUILayout.Label($"Sentry: {(isEnabled ? "활성" : "비활성")}", labelStyle);
+        _sentryStateResolved = isEnabled;
+        _sentryStateUI = UIBuilder.CreateText(section, $"Sentry: {(isEnabled ? "활성" : "비활성")}",
+            UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary);
 
-        if (!string.IsNullOrEmpty(_status))
-        {
-            GUILayout.Label(_status, labelStyle);
-        }
+        _statusTextUI = UIBuilder.CreateText(section, "",
+            UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextPrimary);
+        _statusTextUI.gameObject.SetActive(false);
 
-        GUILayout.Space(10);
-
-        if (GUILayout.Button("CaptureException", dangerButtonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(40))))
+        UIBuilder.CreateButton(section, "CaptureException", onClick: () =>
         {
             var ex = new Exception("SentryTester: 테스트 예외 (CaptureException)");
             SentrySdk.CaptureException(ex);
-            _status = "✓ CaptureException 전송됨";
-        }
+            SetStatus("CaptureException 전송됨");
+        }, style: UIBuilder.ButtonStyle.Danger);
 
-        if (GUILayout.Button("CaptureMessage", dangerButtonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(40))))
+        UIBuilder.CreateButton(section, "CaptureMessage", onClick: () =>
         {
             SentrySdk.CaptureMessage("SentryTester: 테스트 메시지");
-            _status = "✓ CaptureMessage 전송됨";
-        }
+            SetStatus("CaptureMessage 전송됨");
+        }, style: UIBuilder.ButtonStyle.Danger);
 
-        if (GUILayout.Button("Debug.LogException", dangerButtonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(40))))
+        UIBuilder.CreateButton(section, "Debug.LogException", onClick: () =>
         {
             Debug.LogException(new Exception("SentryTester: Debug.LogException 테스트"));
-            _status = "✓ Debug.LogException 호출됨";
-        }
+            SetStatus("Debug.LogException 호출됨");
+        }, style: UIBuilder.ButtonStyle.Danger);
 
-        if (GUILayout.Button("Debug.LogError", buttonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(40))))
+        UIBuilder.CreateButton(section, "Debug.LogError", onClick: () =>
         {
             Debug.LogError("SentryTester: Debug.LogError 테스트");
-            _status = "✓ Debug.LogError 호출됨";
-        }
+            SetStatus("Debug.LogError 호출됨");
+        });
 
-        if (GUILayout.Button("Unhandled Exception", dangerButtonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(40))))
+        UIBuilder.CreateButton(section, "Unhandled Exception", onClick: () =>
         {
             _throwNextFrame = true;
-        }
+        }, style: UIBuilder.ButtonStyle.Danger);
+    }
 
-        GUILayout.EndVertical();
+    private void SetStatus(string status)
+    {
+        _status = status;
+        if (_statusTextUI != null)
+        {
+            _statusTextUI.gameObject.SetActive(true);
+            _statusTextUI.text = status;
+        }
     }
 }

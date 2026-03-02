@@ -47,6 +47,14 @@ function unityWebContentEncodingPlugin(): Plugin {
     ) => {
       const url = req.url || '';
 
+      // 로컬 개발 시 Unity Build 파일 캐시 방지
+      // Unity WebGL은 IndexedDB(UnityCache)에 빌드 파일을 해시 기반으로 캐시함.
+      // 빌드가 바뀌면 캐시된 해시와 불일치하여 "Unknown data format" 에러 발생.
+      // no-store로 항상 서버에서 새로 받도록 강제.
+      if (url.includes('/Build/')) {
+        res.setHeader('Cache-Control', 'no-store');
+      }
+
       if (url.endsWith('.unityweb')) {
         const filePath = join(process.cwd(), baseDir, url);
 

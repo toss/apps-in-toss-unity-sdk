@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using UnityEngine;
+using UnityEngine.UI;
 
 /// <summary>
 /// OOM (Out of Memory) 테스터 컴포넌트
@@ -41,6 +42,16 @@ public class OOMTester : MonoBehaviour
     private string _status = "";
     private double _jsAllocatedBytes = 0;
 
+    // uGUI 참조
+    private Text _wasmInfoText;
+    private Text _jsInfoText;
+    private Text _totalInfoText;
+    private Text _statusTextUI;
+    private GameObject _releaseSection;
+    private Button _wasmReleaseBtn;
+    private Button _jsReleaseBtn;
+    private Button _allReleaseBtn;
+
     /// <summary>
     /// 현재 WASM 힙에 할당된 총 바이트 수
     /// </summary>
@@ -73,113 +84,96 @@ public class OOMTester : MonoBehaviour
     public int AllocationCount => _allocations.Count;
 
     /// <summary>
-    /// OOM 테스터 UI를 렌더링합니다.
+    /// uGUI 기반 UI를 생성합니다.
     /// </summary>
-    /// <param name="boxStyle">외곽 박스 스타일</param>
-    /// <param name="groupHeaderStyle">그룹 헤더 스타일</param>
-    /// <param name="labelStyle">라벨 스타일</param>
-    /// <param name="dangerButtonStyle">위험 버튼 스타일 (할당)</param>
-    /// <param name="buttonStyle">일반 버튼 스타일 (해제)</param>
-    public void DrawUI(GUIStyle boxStyle, GUIStyle groupHeaderStyle, GUIStyle labelStyle, GUIStyle dangerButtonStyle, GUIStyle buttonStyle)
+    public void SetupUI(Transform parent)
     {
-        GUILayout.BeginVertical(boxStyle);
+        var section = UIBuilder.CreatePanel(parent, UIBuilder.Theme.SectionBg);
+        var vlg = section.gameObject.AddComponent<VerticalLayoutGroup>();
+        vlg.spacing = UIBuilder.Theme.SpacingSmall;
+        vlg.childForceExpandWidth = true;
+        vlg.childForceExpandHeight = false;
+        vlg.childControlWidth = true;
+        vlg.childControlHeight = true;
+        vlg.padding = new RectOffset(12, 12, 12, 12);
+        section.gameObject.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
-        // 섹션 헤더
-        GUILayout.Label("⚠️ OOM Tester", groupHeaderStyle);
-        GUILayout.Label("iOS WebView 메모리 부족 상황을 재현합니다.", labelStyle);
+        UIBuilder.CreateText(section, "OOM Tester",
+            UIBuilder.Theme.FontLarge, UIBuilder.Theme.TextAccent, fontStyle: FontStyle.Bold);
+        UIBuilder.CreateText(section, "iOS WebView 메모리 부족 상황을 재현합니다.",
+            UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary);
 
-        GUILayout.Space(10);
+        // 메모리 정보
+        _wasmInfoText = UIBuilder.CreateText(section, "",
+            UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextPrimary);
+        _jsInfoText = UIBuilder.CreateText(section, "",
+            UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextPrimary);
+        _totalInfoText = UIBuilder.CreateText(section, "",
+            UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextPrimary);
+        _statusTextUI = UIBuilder.CreateText(section, "",
+            UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary);
 
-        // 현재 메모리 상태 표시
+        // WASM 힙 할당 버튼
+        UIBuilder.CreateText(section, "WASM 힙 (C# byte[])",
+            UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary);
+        UIBuilder.CreateButton(section, "+50MB WASM", onClick: () => { AllocateWasm(50); UpdateUI(); }, style: UIBuilder.ButtonStyle.Danger);
+        UIBuilder.CreateButton(section, "+100MB WASM", onClick: () => { AllocateWasm(100); UpdateUI(); }, style: UIBuilder.ButtonStyle.Danger);
+        UIBuilder.CreateButton(section, "+500MB WASM", onClick: () => { AllocateWasm(500); UpdateUI(); }, style: UIBuilder.ButtonStyle.Danger);
+
+        // WebView 할당 버튼
+        UIBuilder.CreateText(section, "WebView (JS ArrayBuffer)",
+            UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary);
+        UIBuilder.CreateButton(section, "+50MB WebView", onClick: () => { AllocateWebView(50); UpdateUI(); }, style: UIBuilder.ButtonStyle.Danger);
+        UIBuilder.CreateButton(section, "+100MB WebView", onClick: () => { AllocateWebView(100); UpdateUI(); }, style: UIBuilder.ButtonStyle.Danger);
+        UIBuilder.CreateButton(section, "+500MB WebView", onClick: () => { AllocateWebView(500); UpdateUI(); }, style: UIBuilder.ButtonStyle.Danger);
+
+        // 해제 버튼들
+        _releaseSection = new GameObject("ReleaseSection");
+        _releaseSection.AddComponent<RectTransform>().SetParent(section, false);
+        var rvlg = _releaseSection.AddComponent<VerticalLayoutGroup>();
+        rvlg.spacing = UIBuilder.Theme.SpacingSmall;
+        rvlg.childForceExpandWidth = true;
+        rvlg.childForceExpandHeight = false;
+        rvlg.childControlWidth = true;
+        rvlg.childControlHeight = true;
+        _releaseSection.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+        UIBuilder.CreateText(_releaseSection.transform, "메모리 해제",
+            UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary);
+        _wasmReleaseBtn = UIBuilder.CreateButton(_releaseSection.transform, "WASM 해제", onClick: () => { ClearWasmAllocations(); UpdateUI(); });
+        _jsReleaseBtn = UIBuilder.CreateButton(_releaseSection.transform, "WebView 해제", onClick: () => { ClearJSAllocations(); UpdateUI(); });
+        _allReleaseBtn = UIBuilder.CreateButton(_releaseSection.transform, "전체 해제", onClick: () => { ClearAllAllocations(); UpdateUI(); });
+
+        UpdateUI();
+    }
+
+    private void UpdateUI()
+    {
         long wasmAllocated = WasmAllocatedBytes;
-
-        // JS 메모리 상태 업데이트
         _jsAllocatedBytes = OOMTester_GetTotalJSAllocated();
 
-        string memoryInfo = $"WASM 힙: {wasmAllocated / (1024 * 1024)}MB ({_allocations.Count}개 블록)";
-        GUILayout.Label(memoryInfo, labelStyle);
-
-        string jsMemoryInfo = $"WebView (JS): {_jsAllocatedBytes / (1024 * 1024):F0}MB";
-        GUILayout.Label(jsMemoryInfo, labelStyle);
-
-        string totalInfo = $"총 할당: {(wasmAllocated + _jsAllocatedBytes) / (1024 * 1024):F0}MB";
-        GUILayout.Label(totalInfo, labelStyle);
-
-        if (!string.IsNullOrEmpty(_status))
+        if (_wasmInfoText != null)
+            _wasmInfoText.text = $"WASM 힙: {wasmAllocated / (1024 * 1024)}MB ({_allocations.Count}개 블록)";
+        if (_jsInfoText != null)
+            _jsInfoText.text = $"WebView (JS): {_jsAllocatedBytes / (1024 * 1024):F0}MB";
+        if (_totalInfoText != null)
+            _totalInfoText.text = $"총 할당: {(wasmAllocated + _jsAllocatedBytes) / (1024 * 1024):F0}MB";
+        if (_statusTextUI != null)
         {
-            GUILayout.Label(_status, labelStyle);
+            _statusTextUI.text = _status;
+            _statusTextUI.gameObject.SetActive(!string.IsNullOrEmpty(_status));
         }
 
-        GUILayout.Space(10);
-
-        // WASM 힙 할당 버튼들 (세로 배치)
-        GUILayout.Label("WASM 힙 (C# byte[])", labelStyle);
-        if (GUILayout.Button("+50MB WASM", dangerButtonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(40))))
-        {
-            AllocateWasm(50);
-        }
-        if (GUILayout.Button("+100MB WASM", dangerButtonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(40))))
-        {
-            AllocateWasm(100);
-        }
-        if (GUILayout.Button("+500MB WASM", dangerButtonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(40))))
-        {
-            AllocateWasm(500);
-        }
-
-        GUILayout.Space(10);
-
-        // WebView (JS) 할당 버튼들 (세로 배치)
-        GUILayout.Label("WebView (JS ArrayBuffer)", labelStyle);
-        if (GUILayout.Button("+50MB WebView", dangerButtonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(40))))
-        {
-            AllocateWebView(50);
-        }
-        if (GUILayout.Button("+100MB WebView", dangerButtonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(40))))
-        {
-            AllocateWebView(100);
-        }
-        if (GUILayout.Button("+500MB WebView", dangerButtonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(40))))
-        {
-            AllocateWebView(500);
-        }
-
-        GUILayout.Space(10);
-
-        // 메모리 해제 버튼 (세로 배치)
-        bool hasWasmMemory = _allocations.Count > 0;
-        bool hasJsMemory = _jsAllocatedBytes > 0;
-
-        if (hasWasmMemory || hasJsMemory)
-        {
-            GUILayout.Label("메모리 해제", labelStyle);
-
-            if (hasWasmMemory)
-            {
-                if (GUILayout.Button("WASM 해제", buttonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(36))))
-                {
-                    ClearWasmAllocations();
-                }
-            }
-
-            if (hasJsMemory)
-            {
-                if (GUILayout.Button("WebView 해제", buttonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(36))))
-                {
-                    ClearJSAllocations();
-                }
-            }
-
-            if (hasWasmMemory && hasJsMemory)
-            {
-                if (GUILayout.Button("전체 해제", buttonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(36))))
-                {
-                    ClearAllAllocations();
-                }
-            }
-        }
-
-        GUILayout.EndVertical();
+        bool hasWasm = _allocations.Count > 0;
+        bool hasJs = _jsAllocatedBytes > 0;
+        if (_releaseSection != null)
+            _releaseSection.SetActive(hasWasm || hasJs);
+        if (_wasmReleaseBtn != null)
+            _wasmReleaseBtn.gameObject.SetActive(hasWasm);
+        if (_jsReleaseBtn != null)
+            _jsReleaseBtn.gameObject.SetActive(hasJs);
+        if (_allReleaseBtn != null)
+            _allReleaseBtn.gameObject.SetActive(hasWasm && hasJs);
     }
 
     /// <summary>
@@ -192,8 +186,6 @@ public class OOMTester : MonoBehaviour
             int bytes = megabytes * 1024 * 1024;
             byte[] chunk = new byte[bytes];
 
-            // 실제 데이터를 쓰면서 메모리가 실제로 할당되도록 합니다.
-            // (Lazy allocation 방지)
             for (int i = 0; i < bytes; i += 4096)
             {
                 chunk[i] = (byte)(i % 256);
@@ -264,7 +256,6 @@ public class OOMTester : MonoBehaviour
     /// </summary>
     public void ClearAllAllocations()
     {
-        // WASM 해제
         int wasmCount = _allocations.Count;
         long wasmSize = 0;
         foreach (var alloc in _allocations)
@@ -274,7 +265,6 @@ public class OOMTester : MonoBehaviour
         _allocations.Clear();
         GC.Collect();
 
-        // JS 해제
         double jsFreed = OOMTester_ClearJSMemory();
         _jsAllocatedBytes = 0;
 

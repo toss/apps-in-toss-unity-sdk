@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.UI;
 using AppsInToss;
 
 /// <summary>
@@ -17,98 +18,171 @@ public class ContactsViralTester : MonoBehaviour
     private string status = "";
     private bool isActive = false;
     private List<string> eventLog = new List<string>();
+    private int _lastRenderedLogCount = 0;
     private bool isPasting = false;
 
     // 구독 해제 액션
     private Action _unsubscribe;
 
+    // uGUI 참조
+    private Text _activeStatusText;
+    private Text _statusDetailText;
+    private InputField _moduleIdInput;
+    private GameObject _eventLogContainer;
+    private Button _actionButton;
+    private Text _actionButtonText;
+    private Button _clearLogBtn;
+
     /// <summary>
-    /// ContactsViral 테스터 UI를 렌더링합니다.
+    /// uGUI 기반 UI를 생성합니다.
     /// </summary>
-    public void DrawUI(
-        GUIStyle boxStyle,
-        GUIStyle groupHeaderStyle,
-        GUIStyle labelStyle,
-        GUIStyle buttonStyle,
-        GUIStyle textFieldStyle,
-        GUIStyle fieldLabelStyle,
-        GUIStyle callbackLabelStyle)
+    public void SetupUI(Transform parent)
     {
-        GUILayout.BeginVertical(boxStyle);
+        var section = UIBuilder.CreatePanel(parent, UIBuilder.Theme.SectionBg);
+        var vlg = section.gameObject.AddComponent<VerticalLayoutGroup>();
+        vlg.spacing = UIBuilder.Theme.SpacingSmall;
+        vlg.childForceExpandWidth = true;
+        vlg.childForceExpandHeight = false;
+        vlg.childControlWidth = true;
+        vlg.childControlHeight = true;
+        vlg.padding = new RectOffset(12, 12, 12, 12);
+        section.gameObject.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
-        // 섹션 헤더
-        GUILayout.Label("ContactsViral Tester", groupHeaderStyle);
-        GUILayout.Label("contactsViral API를 테스트합니다.", labelStyle);
-        GUILayout.Label("공유 창에서 공유 완료 후 콜백 이벤트를 확인합니다.", labelStyle);
-
-        GUILayout.Space(10);
+        UIBuilder.CreateText(section, "ContactsViral Tester",
+            UIBuilder.Theme.FontLarge, UIBuilder.Theme.TextAccent, fontStyle: FontStyle.Bold);
+        UIBuilder.CreateText(section, "contactsViral API를 테스트합니다.",
+            UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary);
+        UIBuilder.CreateText(section, "공유 창에서 공유 완료 후 콜백 이벤트를 확인합니다.",
+            UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary);
 
         // 상태 표시
-        string activeStatus = isActive ? "Active (구독 중)" : "Inactive";
-        GUILayout.Label($"Status: {activeStatus}", labelStyle);
-        if (!string.IsNullOrEmpty(status))
+        _activeStatusText = UIBuilder.CreateText(section, "Status: Inactive",
+            UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextPrimary);
+        _statusDetailText = UIBuilder.CreateText(section, "",
+            UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextCallback);
+        _statusDetailText.gameObject.SetActive(false);
+
+        // 이벤트 로그 컨테이너
+        _eventLogContainer = new GameObject("EventLog");
+        _eventLogContainer.AddComponent<RectTransform>().SetParent(section, false);
+        var elVlg = _eventLogContainer.AddComponent<VerticalLayoutGroup>();
+        elVlg.spacing = 2;
+        elVlg.childForceExpandWidth = true;
+        elVlg.childForceExpandHeight = false;
+        elVlg.childControlWidth = true;
+        elVlg.childControlHeight = true;
+        _eventLogContainer.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+        _eventLogContainer.SetActive(false);
+
+        // Module ID 입력
+        var idRow = UIBuilder.CreateHorizontalLayout(section, 8);
+        idRow.gameObject.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+        var idLabel = UIBuilder.CreateText(idRow, "Module ID:",
+            UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary);
+        UIBuilder.SetLayout(idLabel.gameObject, minWidth: 90, preferredWidth: 90);
+
+        _moduleIdInput = UIBuilder.CreateInputField(idRow, "test-module-id",
+            onValueChanged: (v) => moduleId = v);
+        _moduleIdInput.text = moduleId;
+        UIBuilder.SetLayout(_moduleIdInput.gameObject, flexibleWidth: 1);
+
+        var pasteBtn = UIBuilder.CreateButton(idRow, "PASTE", onClick: PasteFromClipboard);
+        UIBuilder.SetLayout(pasteBtn.gameObject, minWidth: 70, preferredWidth: 70);
+
+        // 액션 버튼
+        _actionButton = UIBuilder.CreateButton(section, "contactsViral(...) 호출",
+            onClick: OnActionButtonClick);
+        _actionButtonText = _actionButton.GetComponentInChildren<Text>();
+
+        // Clear Log
+        _clearLogBtn = UIBuilder.CreateButton(section, "Clear Log", onClick: () =>
         {
-            GUILayout.Label($"  {status}", callbackLabelStyle);
+            eventLog.Clear();
+            _lastRenderedLogCount = 0;
+            status = "";
+            UpdateUI();
+        });
+        _clearLogBtn.gameObject.SetActive(false);
+
+        UpdateUI();
+    }
+
+    private void OnActionButtonClick()
+    {
+        if (isActive) Unsubscribe(); else ExecuteContactsViral();
+        UpdateUI();
+    }
+
+    private void UpdateEventLog()
+    {
+        if (_eventLogContainer == null) return;
+
+        if (eventLog.Count == 0)
+        {
+            _eventLogContainer.SetActive(false);
+            _lastRenderedLogCount = 0;
+            // 기존 자식 제거
+            for (int i = _eventLogContainer.transform.childCount - 1; i >= 0; i--)
+                Destroy(_eventLogContainer.transform.GetChild(i).gameObject);
+            if (_clearLogBtn != null) _clearLogBtn.gameObject.SetActive(false);
+            return;
         }
 
-        // 이벤트 로그 표시 (최근 10개)
-        if (eventLog.Count > 0)
+        _eventLogContainer.SetActive(true);
+
+        // 최근 10개만 표시하므로, 표시 시작 인덱스가 변경되면 전체 재구축
+        int displayStart = Math.Max(0, eventLog.Count - 10);
+        int prevDisplayStart = Math.Max(0, _lastRenderedLogCount - 10);
+
+        if (_lastRenderedLogCount == 0 || displayStart != prevDisplayStart)
         {
-            GUILayout.Label("Event Log:", labelStyle);
-            int startIndex = Math.Max(0, eventLog.Count - 10);
-            for (int i = startIndex; i < eventLog.Count; i++)
+            // 전체 재구축
+            for (int i = _eventLogContainer.transform.childCount - 1; i >= 0; i--)
+                Destroy(_eventLogContainer.transform.GetChild(i).gameObject);
+
+            UIBuilder.CreateText(_eventLogContainer.transform, "Event Log:",
+                UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary);
+            for (int i = displayStart; i < eventLog.Count; i++)
             {
-                GUILayout.Label($"  {eventLog[i]}", callbackLabelStyle);
-            }
-        }
-
-        GUILayout.Space(10);
-
-        // moduleId 입력 (PASTE 버튼 포함)
-        GUILayout.BeginHorizontal();
-        GUILayout.Label("Module ID:", fieldLabelStyle, GUILayout.Width(InteractiveAPITesterStyles.ScaledInt(100)));
-        moduleId = GUILayout.TextField(moduleId, textFieldStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(36)), GUILayout.ExpandWidth(true));
-
-        GUI.enabled = !isPasting;
-        if (GUILayout.Button(isPasting ? "..." : "PASTE", buttonStyle, GUILayout.Width(InteractiveAPITesterStyles.ScaledInt(70)), GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(36))))
-        {
-            PasteFromClipboard();
-        }
-        GUI.enabled = true;
-        GUILayout.EndHorizontal();
-
-        GUILayout.Space(10);
-
-        // ContactsViral 호출 버튼
-        if (!isActive)
-        {
-            if (GUILayout.Button("contactsViral(...) 호출", buttonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(44))))
-            {
-                ExecuteContactsViral();
+                UIBuilder.CreateText(_eventLogContainer.transform, $"  {eventLog[i]}",
+                    UIBuilder.Theme.FontTiny, UIBuilder.Theme.TextCallback);
             }
         }
         else
         {
-            // 구독 해제 버튼
-            if (GUILayout.Button("구독 해제 (Unsubscribe)", buttonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(44))))
+            // 새 항목만 추가
+            for (int i = _lastRenderedLogCount; i < eventLog.Count; i++)
             {
-                Unsubscribe();
+                UIBuilder.CreateText(_eventLogContainer.transform, $"  {eventLog[i]}",
+                    UIBuilder.Theme.FontTiny, UIBuilder.Theme.TextCallback);
             }
         }
 
-        GUILayout.Space(10);
+        _lastRenderedLogCount = eventLog.Count;
+        if (_clearLogBtn != null) _clearLogBtn.gameObject.SetActive(true);
+    }
 
-        // 로그 초기화
-        if (eventLog.Count > 0)
+    private void UpdateUI()
+    {
+        if (_activeStatusText != null)
         {
-            if (GUILayout.Button("Clear Log", buttonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(32))))
-            {
-                eventLog.Clear();
-                status = "";
-            }
+            string activeStatus = isActive ? "Active (구독 중)" : "Inactive";
+            _activeStatusText.text = $"Status: {activeStatus}";
         }
 
-        GUILayout.EndVertical();
+        if (_statusDetailText != null)
+        {
+            _statusDetailText.text = status;
+            _statusDetailText.gameObject.SetActive(!string.IsNullOrEmpty(status));
+        }
+
+        if (_actionButtonText != null)
+        {
+            _actionButtonText.text = isActive ? "구독 해제 (Unsubscribe)" : "contactsViral(...) 호출";
+        }
+
+        UpdateEventLog();
     }
 
     private void ExecuteContactsViral()
@@ -118,7 +192,6 @@ public class ContactsViralTester : MonoBehaviour
 
         try
         {
-            // ContactsViral 이벤트 핸들러
             Action<ContactsViralEvent> onEvent = (evt) =>
             {
                 Debug.Log($"[ContactsViralTester] onEvent: {evt?.Type}");
@@ -129,25 +202,24 @@ public class ContactsViralTester : MonoBehaviour
                     eventLog.Add($"[{DateTime.Now:HH:mm:ss}]   Data: {JsonUtility.ToJson(evt.Data)}");
                 }
 
-                // 특정 이벤트 타입에 따른 상태 업데이트
                 if (evt?.Type == "success" || evt?.Type == "completed")
                 {
                     status = "공유 완료!";
-                    eventLog.Add($"[{DateTime.Now:HH:mm:ss}] ✓ 공유 완료 이벤트 수신됨");
+                    eventLog.Add($"[{DateTime.Now:HH:mm:ss}] 공유 완료 이벤트 수신됨");
                 }
                 else if (evt?.Type == "reward")
                 {
                     status = "리워드 수신!";
-                    eventLog.Add($"[{DateTime.Now:HH:mm:ss}] ✓ 리워드 이벤트 수신됨");
+                    eventLog.Add($"[{DateTime.Now:HH:mm:ss}] 리워드 이벤트 수신됨");
                 }
                 else if (evt?.Type == "closed" || evt?.Type == "dismissed")
                 {
                     status = "공유 창 닫힘";
                     eventLog.Add($"[{DateTime.Now:HH:mm:ss}] 공유 창이 닫혔습니다");
                 }
+                UpdateUI();
             };
 
-            // ContactsViral API 호출 (콜백 분리 패턴)
             _unsubscribe = AIT.ContactsViral(onEvent, new ContactsViralParamsOptions { ModuleId = moduleId });
 
             isActive = true;
@@ -158,9 +230,10 @@ public class ContactsViralTester : MonoBehaviour
         {
             Debug.LogError($"[ContactsViralTester] Exception: {ex}");
             status = $"Exception: {ex.Message}";
-            eventLog.Add($"[{DateTime.Now:HH:mm:ss}] ✗ Exception: {ex.Message}");
+            eventLog.Add($"[{DateTime.Now:HH:mm:ss}] Exception: {ex.Message}");
             isActive = false;
         }
+        UpdateUI();
     }
 
     private void Unsubscribe()
@@ -177,6 +250,7 @@ public class ContactsViralTester : MonoBehaviour
 
     private async void PasteFromClipboard()
     {
+        if (isPasting) return;
         isPasting = true;
         try
         {
@@ -184,13 +258,16 @@ public class ContactsViralTester : MonoBehaviour
             if (!string.IsNullOrEmpty(text))
             {
                 moduleId = text.Trim();
+                if (_moduleIdInput != null) _moduleIdInput.text = moduleId;
                 eventLog.Add($"[{DateTime.Now:HH:mm:ss}] 클립보드에서 붙여넣기: {moduleId}");
+                UpdateUI();
             }
         }
         catch (Exception ex)
         {
             Debug.LogWarning($"[ContactsViralTester] Clipboard read failed: {ex.Message}");
             eventLog.Add($"[{DateTime.Now:HH:mm:ss}] 클립보드 읽기 실패: {ex.Message}");
+            UpdateUI();
         }
         finally
         {
@@ -200,7 +277,6 @@ public class ContactsViralTester : MonoBehaviour
 
     private void OnDestroy()
     {
-        // 컴포넌트 제거 시 구독 해제
         _unsubscribe?.Invoke();
     }
 }

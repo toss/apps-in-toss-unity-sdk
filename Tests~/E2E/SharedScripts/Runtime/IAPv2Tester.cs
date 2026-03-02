@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.UI;
 using AppsInToss;
 
 /// <summary>
@@ -32,6 +33,20 @@ public class IAPv2Tester : MonoBehaviour
     private IAPGetPendingOrdersResult iapPendingOrders = null;
     private CompletedOrRefundedOrdersResult iapCompletedOrders = null;
     private List<string> iapEventLog = new List<string>();
+    private int _lastRenderedLogCount = 0;
+
+    // 구독 해제 액션
+    private Action _purchaseDisposer;
+
+    // uGUI 참조
+    private Text _statusText;
+    private InputField _skuInput;
+    private InputField _orderIdInput;
+    private GameObject _eventLogContainer;
+    private GameObject _productListContainer;
+    private GameObject _quickSelectContainer;
+    private GameObject _pendingOrdersContainer;
+    private GameObject _completedOrdersContainer;
 
     /// <summary>
     /// 마지막 작업 상태 메시지
@@ -39,177 +54,318 @@ public class IAPv2Tester : MonoBehaviour
     public string Status => iapStatus;
 
     /// <summary>
-    /// IAP 테스터 UI를 렌더링합니다.
+    /// uGUI 기반 UI를 생성합니다.
     /// </summary>
-    public void DrawUI(
-        GUIStyle boxStyle,
-        GUIStyle groupHeaderStyle,
-        GUIStyle labelStyle,
-        GUIStyle buttonStyle,
-        GUIStyle textFieldStyle,
-        GUIStyle fieldLabelStyle,
-        GUIStyle callbackLabelStyle)
+    public void SetupUI(Transform parent)
     {
-        GUILayout.BeginVertical(boxStyle);
+        var section = UIBuilder.CreatePanel(parent, UIBuilder.Theme.SectionBg);
+        var vlg = section.gameObject.AddComponent<VerticalLayoutGroup>();
+        vlg.spacing = UIBuilder.Theme.SpacingSmall;
+        vlg.childForceExpandWidth = true;
+        vlg.childForceExpandHeight = false;
+        vlg.childControlWidth = true;
+        vlg.childControlHeight = true;
+        vlg.padding = new RectOffset(12, 12, 12, 12);
+        section.gameObject.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
-        // 섹션 헤더
-        GUILayout.Label("IAPv2 Tester (인앱결제v2)", groupHeaderStyle);
-        GUILayout.Label("인앱결제 v2 API 워크플로우 예제입니다.", labelStyle);
+        UIBuilder.CreateText(section, "IAPv2 Tester (인앱결제v2)",
+            UIBuilder.Theme.FontLarge, UIBuilder.Theme.TextAccent, fontStyle: FontStyle.Bold);
+        UIBuilder.CreateText(section, "인앱결제 v2 API 워크플로우 예제입니다.",
+            UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary);
 
-        GUILayout.Space(10);
+        // 상태
+        _statusText = UIBuilder.CreateText(section, "",
+            UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextPrimary);
+        _statusText.gameObject.SetActive(false);
 
-        // 상태 표시
-        if (!string.IsNullOrEmpty(iapStatus))
+        // 이벤트 로그
+        _eventLogContainer = CreateEventLogContainer(section);
+
+        // Step 1: 상품 목록
+        UIBuilder.CreateText(section, "Step 1: Get Product List",
+            UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary, fontStyle: FontStyle.Bold);
+        UIBuilder.CreateButton(section, "IAPGetProductItemList()", onClick: ExecuteIAPGetProductList);
+
+        _productListContainer = CreateDynamicContainer(section, "ProductList");
+        _productListContainer.SetActive(false);
+
+        // Step 2: 구매 주문 생성
+        UIBuilder.CreateText(section, "Step 2: Create Purchase Order",
+            UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary, fontStyle: FontStyle.Bold);
+
+        var skuRow = UIBuilder.CreateHorizontalLayout(section, 8);
+        skuRow.gameObject.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+        var skuLabel = UIBuilder.CreateText(skuRow, "SKU:",
+            UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary);
+        UIBuilder.SetLayout(skuLabel.gameObject, minWidth: 50, preferredWidth: 50);
+        _skuInput = UIBuilder.CreateInputField(skuRow, "",
+            onValueChanged: (v) => iapSku = v);
+        UIBuilder.SetLayout(_skuInput.gameObject, flexibleWidth: 1);
+
+        _quickSelectContainer = CreateDynamicContainer(section, "QuickSelect");
+        _quickSelectContainer.SetActive(false);
+
+        UIBuilder.CreateButton(section, "IAPCreateOneTimePurchaseOrder(...)", onClick: ExecuteIAPCreateOrder);
+
+        // Step 3: Pending Orders
+        UIBuilder.CreateText(section, "Step 3: Get Pending Orders",
+            UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary, fontStyle: FontStyle.Bold);
+        UIBuilder.CreateButton(section, "IAPGetPendingOrders()", onClick: ExecuteIAPGetPendingOrders);
+
+        _pendingOrdersContainer = CreateDynamicContainer(section, "PendingOrders");
+        _pendingOrdersContainer.SetActive(false);
+
+        // Step 4: Completed/Refunded Orders
+        UIBuilder.CreateText(section, "Step 4: Get Completed/Refunded Orders (복구용)",
+            UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary, fontStyle: FontStyle.Bold);
+        UIBuilder.CreateButton(section, "IAPGetCompletedOrRefundedOrders()", onClick: ExecuteIAPGetCompletedOrRefundedOrders);
+
+        _completedOrdersContainer = CreateDynamicContainer(section, "CompletedOrders");
+        _completedOrdersContainer.SetActive(false);
+
+        // Step 5: Complete Product Grant
+        UIBuilder.CreateText(section, "Step 5: Complete Product Grant (복구용)",
+            UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary, fontStyle: FontStyle.Bold);
+
+        var orderIdRow = UIBuilder.CreateHorizontalLayout(section, 8);
+        orderIdRow.gameObject.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+        var orderIdLabel = UIBuilder.CreateText(orderIdRow, "Order ID:",
+            UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary);
+        UIBuilder.SetLayout(orderIdLabel.gameObject, minWidth: 80, preferredWidth: 80);
+        _orderIdInput = UIBuilder.CreateInputField(orderIdRow, "",
+            onValueChanged: (v) => iapOrderId = v);
+        UIBuilder.SetLayout(_orderIdInput.gameObject, flexibleWidth: 1);
+
+        UIBuilder.CreateButton(section, "IAPCompleteProductGrant(...)", onClick: ExecuteIAPCompleteGrant);
+    }
+
+    private GameObject CreateDynamicContainer(Transform parent, string name)
+    {
+        var go = new GameObject(name);
+        go.AddComponent<RectTransform>().SetParent(parent, false);
+        var vlg = go.AddComponent<VerticalLayoutGroup>();
+        vlg.spacing = 2;
+        vlg.childForceExpandWidth = true;
+        vlg.childForceExpandHeight = false;
+        vlg.childControlWidth = true;
+        vlg.childControlHeight = true;
+        go.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+        return go;
+    }
+
+    private GameObject CreateEventLogContainer(Transform parent)
+    {
+        var go = CreateDynamicContainer(parent, "EventLog");
+        go.SetActive(false);
+        return go;
+    }
+
+    private void ClearContainer(GameObject container)
+    {
+        for (int i = container.transform.childCount - 1; i >= 0; i--)
+            Destroy(container.transform.GetChild(i).gameObject);
+    }
+
+    private void UpdateStatus()
+    {
+        if (_statusText != null)
         {
-            GUILayout.Label($"Status: {iapStatus}", labelStyle);
+            _statusText.text = $"Status: {iapStatus}";
+            _statusText.gameObject.SetActive(!string.IsNullOrEmpty(iapStatus));
+        }
+    }
+
+    private void UpdateEventLog()
+    {
+        if (_eventLogContainer == null) return;
+
+        if (iapEventLog.Count == 0)
+        {
+            _eventLogContainer.SetActive(false);
+            _lastRenderedLogCount = 0;
+            ClearContainer(_eventLogContainer);
+            return;
         }
 
-        // 이벤트 로그 표시 (최근 5개)
-        if (iapEventLog.Count > 0)
+        _eventLogContainer.SetActive(true);
+
+        int displayStart = Math.Max(0, iapEventLog.Count - 5);
+        int prevDisplayStart = Math.Max(0, _lastRenderedLogCount - 5);
+
+        if (_lastRenderedLogCount == 0 || displayStart != prevDisplayStart)
         {
-            GUILayout.Label("Event Log:", labelStyle);
-            int startIndex = Math.Max(0, iapEventLog.Count - 5);
-            for (int i = startIndex; i < iapEventLog.Count; i++)
+            // 전체 재구축
+            ClearContainer(_eventLogContainer);
+            UIBuilder.CreateText(_eventLogContainer.transform, "Event Log:",
+                UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary);
+            for (int i = displayStart; i < iapEventLog.Count; i++)
             {
-                GUILayout.Label($"  {iapEventLog[i]}", callbackLabelStyle);
+                UIBuilder.CreateText(_eventLogContainer.transform, $"  {iapEventLog[i]}",
+                    UIBuilder.Theme.FontTiny, UIBuilder.Theme.TextCallback);
+            }
+        }
+        else
+        {
+            // 새 항목만 추가
+            for (int i = _lastRenderedLogCount; i < iapEventLog.Count; i++)
+            {
+                UIBuilder.CreateText(_eventLogContainer.transform, $"  {iapEventLog[i]}",
+                    UIBuilder.Theme.FontTiny, UIBuilder.Theme.TextCallback);
             }
         }
 
-        GUILayout.Space(10);
+        _lastRenderedLogCount = iapEventLog.Count;
+    }
 
-        // Step 1: 상품 목록 조회
-        GUILayout.Label("Step 1: Get Product List", fieldLabelStyle);
-        if (GUILayout.Button("IAPGetProductItemList()", buttonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(40))))
-        {
-            ExecuteIAPGetProductList();
-        }
+    private void UpdateProductList()
+    {
+        if (_productListContainer == null) return;
+        ClearContainer(_productListContainer);
 
-        // 상품 목록 표시
         if (iapProducts != null && iapProducts.Products != null && iapProducts.Products.Length > 0)
         {
-            GUILayout.Label($"Products ({iapProducts.Products.Length}):", labelStyle);
+            _productListContainer.SetActive(true);
+            UIBuilder.CreateText(_productListContainer.transform,
+                $"Products ({iapProducts.Products.Length}):",
+                UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextPrimary);
             int displayCount = Math.Min(3, iapProducts.Products.Length);
             for (int i = 0; i < displayCount; i++)
             {
                 var product = iapProducts.Products[i];
-                GUILayout.Label($"  - {product.DisplayName} ({product.DisplayAmount})", callbackLabelStyle);
+                UIBuilder.CreateText(_productListContainer.transform,
+                    $"  - {product.DisplayName} ({product.DisplayAmount})",
+                    UIBuilder.Theme.FontTiny, UIBuilder.Theme.TextCallback);
             }
-        }
 
-        GUILayout.Space(10);
-
-        // Step 2: 구매 주문 생성
-        GUILayout.Label("Step 2: Create Purchase Order", fieldLabelStyle);
-        GUILayout.BeginHorizontal();
-        GUILayout.Label("SKU:", fieldLabelStyle, GUILayout.Width(InteractiveAPITesterStyles.ScaledInt(50)));
-        iapSku = GUILayout.TextField(iapSku, textFieldStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(36)), GUILayout.ExpandWidth(true));
-        GUILayout.EndHorizontal();
-
-        // 상품 목록에서 빠른 선택 버튼
-        if (iapProducts != null && iapProducts.Products != null && iapProducts.Products.Length > 0)
-        {
-            GUILayout.Label("Quick Select:", labelStyle);
+            // Quick select 버튼
+            ClearContainer(_quickSelectContainer);
+            _quickSelectContainer.SetActive(true);
+            UIBuilder.CreateText(_quickSelectContainer.transform, "Quick Select:",
+                UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary);
             foreach (var product in iapProducts.Products)
             {
-                if (GUILayout.Button($"{product.DisplayName} ({product.Sku})", buttonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(32))))
-                {
-                    iapSku = product.Sku;
-                }
+                var sku = product.Sku;
+                UIBuilder.CreateButton(_quickSelectContainer.transform,
+                    $"{product.DisplayName} ({product.Sku})",
+                    onClick: () =>
+                    {
+                        iapSku = sku;
+                        if (_skuInput != null) _skuInput.text = sku;
+                    });
             }
         }
-
-        if (GUILayout.Button("IAPCreateOneTimePurchaseOrder(...)", buttonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(40))))
+        else
         {
-            ExecuteIAPCreateOrder();
+            _productListContainer.SetActive(false);
+            _quickSelectContainer.SetActive(false);
         }
+    }
 
-        GUILayout.Space(10);
+    private void UpdatePendingOrders()
+    {
+        if (_pendingOrdersContainer == null) return;
+        ClearContainer(_pendingOrdersContainer);
 
-        // Step 3: 대기 중인 주문 조회
-        GUILayout.Label("Step 3: Get Pending Orders", fieldLabelStyle);
-        if (GUILayout.Button("IAPGetPendingOrders()", buttonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(40))))
-        {
-            ExecuteIAPGetPendingOrders();
-        }
-
-        // Pending Orders 목록 표시 및 선택
 #if AIT_SDK_1_7_OR_LATER
         if (iapPendingOrders != null && iapPendingOrders.Orders != null && iapPendingOrders.Orders.Length > 0)
         {
-            GUILayout.Label($"Pending Orders ({iapPendingOrders.Orders.Length}):", labelStyle);
-            GUILayout.Label("Select to fill Order ID:", callbackLabelStyle);
+            _pendingOrdersContainer.SetActive(true);
+            UIBuilder.CreateText(_pendingOrdersContainer.transform,
+                $"Pending Orders ({iapPendingOrders.Orders.Length}):",
+                UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextPrimary);
+            UIBuilder.CreateText(_pendingOrdersContainer.transform,
+                "Select to fill Order ID:",
+                UIBuilder.Theme.FontTiny, UIBuilder.Theme.TextCallback);
             foreach (var order in iapPendingOrders.Orders)
             {
                 if (!string.IsNullOrEmpty(order.OrderId))
                 {
-                    if (GUILayout.Button($"→ {order.OrderId} ({order.Sku})", buttonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(32))))
-                    {
-                        iapOrderId = order.OrderId;
-                    }
+                    var orderId = order.OrderId;
+                    UIBuilder.CreateButton(_pendingOrdersContainer.transform,
+                        $"→ {order.OrderId} ({order.Sku})",
+                        onClick: () =>
+                        {
+                            iapOrderId = orderId;
+                            if (_orderIdInput != null) _orderIdInput.text = orderId;
+                        });
                 }
             }
+        }
+        else
+        {
+            _pendingOrdersContainer.SetActive(false);
         }
 #else
         if (iapPendingOrders != null && iapPendingOrders.Orders != null && iapPendingOrders.Orders.Length > 0)
         {
-            GUILayout.Label($"Pending Orders ({iapPendingOrders.Orders.Length}) - SDK 1.7.0+ required for details", labelStyle);
+            _pendingOrdersContainer.SetActive(true);
+            UIBuilder.CreateText(_pendingOrdersContainer.transform,
+                $"Pending Orders ({iapPendingOrders.Orders.Length}) - SDK 1.7.0+ required for details",
+                UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextPrimary);
+        }
+        else
+        {
+            _pendingOrdersContainer.SetActive(false);
         }
 #endif
+    }
 
-        GUILayout.Space(10);
+    private void UpdateCompletedOrders()
+    {
+        if (_completedOrdersContainer == null) return;
+        ClearContainer(_completedOrdersContainer);
 
-        // Step 4: 완료/환불 주문 조회 (복구 플로우용)
-        GUILayout.Label("Step 4: Get Completed/Refunded Orders (복구용)", fieldLabelStyle);
-        if (GUILayout.Button("IAPGetCompletedOrRefundedOrders()", buttonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(40))))
-        {
-            ExecuteIAPGetCompletedOrRefundedOrders();
-        }
-
-        // Completed/Refunded Orders 목록 표시 및 선택
 #if AIT_SDK_1_7_OR_LATER
         if (iapCompletedOrders != null && iapCompletedOrders.Orders != null && iapCompletedOrders.Orders.Length > 0)
         {
-            GUILayout.Label($"Completed/Refunded Orders ({iapCompletedOrders.Orders.Length}):", labelStyle);
-            GUILayout.Label("Select to fill Order ID:", callbackLabelStyle);
+            _completedOrdersContainer.SetActive(true);
+            UIBuilder.CreateText(_completedOrdersContainer.transform,
+                $"Completed/Refunded Orders ({iapCompletedOrders.Orders.Length}):",
+                UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextPrimary);
+            UIBuilder.CreateText(_completedOrdersContainer.transform,
+                "Select to fill Order ID:",
+                UIBuilder.Theme.FontTiny, UIBuilder.Theme.TextCallback);
             foreach (var order in iapCompletedOrders.Orders)
             {
                 if (!string.IsNullOrEmpty(order.OrderId))
                 {
-                    string status = order.Status == CompletedOrRefundedOrdersResultOrderStatus.REFUNDED ? "Refunded" : "Completed";
-                    if (GUILayout.Button($"→ {order.OrderId} ({order.Sku}, {status})", buttonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(32))))
-                    {
-                        iapOrderId = order.OrderId;
-                    }
+                    var orderId = order.OrderId;
+                    string orderStatus = order.Status == CompletedOrRefundedOrdersResultOrderStatus.REFUNDED ? "Refunded" : "Completed";
+                    UIBuilder.CreateButton(_completedOrdersContainer.transform,
+                        $"→ {order.OrderId} ({order.Sku}, {orderStatus})",
+                        onClick: () =>
+                        {
+                            iapOrderId = orderId;
+                            if (_orderIdInput != null) _orderIdInput.text = orderId;
+                        });
                 }
             }
+        }
+        else
+        {
+            _completedOrdersContainer.SetActive(false);
         }
 #else
         if (iapCompletedOrders != null && iapCompletedOrders.Orders != null && iapCompletedOrders.Orders.Length > 0)
         {
-            GUILayout.Label($"Completed/Refunded Orders ({iapCompletedOrders.Orders.Length}) - SDK 1.7.0+ required for details", labelStyle);
+            _completedOrdersContainer.SetActive(true);
+            UIBuilder.CreateText(_completedOrdersContainer.transform,
+                $"Completed/Refunded Orders ({iapCompletedOrders.Orders.Length}) - SDK 1.7.0+ required for details",
+                UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextPrimary);
+        }
+        else
+        {
+            _completedOrdersContainer.SetActive(false);
         }
 #endif
-
-        GUILayout.Space(10);
-
-        // Step 5: 상품 지급 완료 처리 (복구 플로우용 - 정상 플로우에서는 processProductGrant 콜백에서 자동 처리됨)
-        GUILayout.Label("Step 5: Complete Product Grant (복구용)", fieldLabelStyle);
-        GUILayout.BeginHorizontal();
-        GUILayout.Label("Order ID:", fieldLabelStyle, GUILayout.Width(InteractiveAPITesterStyles.ScaledInt(80)));
-        iapOrderId = GUILayout.TextField(iapOrderId, textFieldStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(36)), GUILayout.ExpandWidth(true));
-        GUILayout.EndHorizontal();
-        if (GUILayout.Button("IAPCompleteProductGrant(...)", buttonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(40))))
-        {
-            ExecuteIAPCompleteGrant();
-        }
-
-        GUILayout.EndVertical();
     }
 
     private async void ExecuteIAPGetProductList()
     {
         iapStatus = "Loading products...";
         iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] IAPGetProductItemList()");
+        UpdateStatus();
+        UpdateEventLog();
 
         try
         {
@@ -228,6 +384,10 @@ public class IAPv2Tester : MonoBehaviour
             iapStatus = $"Error: {ex.Message}";
             iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Exception: {ex.Message}");
         }
+
+        UpdateStatus();
+        UpdateEventLog();
+        UpdateProductList();
     }
 
     private void ExecuteIAPCreateOrder()
@@ -235,16 +395,18 @@ public class IAPv2Tester : MonoBehaviour
         if (string.IsNullOrEmpty(iapSku))
         {
             iapStatus = "Please enter or select a SKU";
+            UpdateStatus();
             return;
         }
 
         iapStatus = "Creating purchase order...";
         iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] IAPCreateOneTimePurchaseOrder(sku: {iapSku})");
+        UpdateStatus();
+        UpdateEventLog();
 
         try
         {
 #if AIT_SDK_1_7_OR_LATER
-            // SDK 1.7.0+ 새 API: 콜백 패턴 (onEvent, options, onError)
             var options = new IapCreateOneTimePurchaseOrderOptionsOptions
             {
                 Sku = iapSku,
@@ -254,26 +416,32 @@ public class IAPv2Tester : MonoBehaviour
                     Debug.Log($"[IAPv2Tester] ProcessProductGrant called with data: {data}");
                     bool grantSuccess = GrantGameProduct(data);
                     iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] ProcessProductGrant result: {grantSuccess}");
+                    UpdateEventLog();
                     return grantSuccess;
                 }
             };
 
-            var disposer = AIT.IAPCreateOneTimePurchaseOrder(
+            _purchaseDisposer?.Invoke();
+            _purchaseDisposer = AIT.IAPCreateOneTimePurchaseOrder(
                 onEvent: (successEvent) =>
                 {
                     iapStatus = "Purchase completed";
                     iapOrderId = successEvent.Data?.OrderId ?? "";
+                    if (_orderIdInput != null) _orderIdInput.text = iapOrderId;
                     iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] OnEvent: orderId={successEvent.Data?.OrderId}, amount={successEvent.Data?.DisplayAmount}");
+                    UpdateStatus();
+                    UpdateEventLog();
                 },
                 options: options,
                 onError: (error) =>
                 {
                     iapStatus = "Purchase failed";
                     iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] OnError: {error.ErrorCode} - {error.Message}");
+                    UpdateStatus();
+                    UpdateEventLog();
                 }
             );
 #else
-            // SDK 1.6.x 이전 API: async 패턴
             ExecuteIAPCreateOrderLegacy();
 #endif
             iapStatus = "Purchase order created";
@@ -289,6 +457,9 @@ public class IAPv2Tester : MonoBehaviour
             iapStatus = $"Error: {ex.Message}";
             iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Exception: {ex.Message}");
         }
+
+        UpdateStatus();
+        UpdateEventLog();
     }
 
 #if !AIT_SDK_1_7_OR_LATER
@@ -296,23 +467,27 @@ public class IAPv2Tester : MonoBehaviour
     {
         try
         {
-            // SDK 1.6.x API: (onEvent, options, onError)
             var options = new IapCreateOneTimePurchaseOrderOptionsOptions
             {
                 Sku = iapSku
             };
 
-            var cleanup = AIT.IAPCreateOneTimePurchaseOrder(
+            _purchaseDisposer?.Invoke();
+            _purchaseDisposer = AIT.IAPCreateOneTimePurchaseOrder(
                 onEvent: (successEvent) =>
                 {
                     iapStatus = "Purchase completed (legacy)";
                     iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] OnEvent (legacy): success");
+                    UpdateStatus();
+                    UpdateEventLog();
                 },
                 options: options,
                 onError: (error) =>
                 {
                     iapStatus = "Purchase failed (legacy)";
                     iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] OnError (legacy): {error?.Message}");
+                    UpdateStatus();
+                    UpdateEventLog();
                 }
             );
         }
@@ -328,6 +503,8 @@ public class IAPv2Tester : MonoBehaviour
     {
         iapStatus = "Loading pending orders...";
         iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] IAPGetPendingOrders()");
+        UpdateStatus();
+        UpdateEventLog();
 
         try
         {
@@ -348,12 +525,18 @@ public class IAPv2Tester : MonoBehaviour
             iapStatus = $"Error: {ex.Message}";
             iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Exception: {ex.Message}");
         }
+
+        UpdateStatus();
+        UpdateEventLog();
+        UpdatePendingOrders();
     }
 
     private async void ExecuteIAPGetCompletedOrRefundedOrders()
     {
         iapStatus = "Loading completed/refunded orders...";
         iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] IAPGetCompletedOrRefundedOrders()");
+        UpdateStatus();
+        UpdateEventLog();
 
         try
         {
@@ -374,6 +557,10 @@ public class IAPv2Tester : MonoBehaviour
             iapStatus = $"Error: {ex.Message}";
             iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Exception: {ex.Message}");
         }
+
+        UpdateStatus();
+        UpdateEventLog();
+        UpdateCompletedOrders();
     }
 
     private async void ExecuteIAPCompleteGrant()
@@ -381,11 +568,14 @@ public class IAPv2Tester : MonoBehaviour
         if (string.IsNullOrEmpty(iapOrderId))
         {
             iapStatus = "Please enter Order ID";
+            UpdateStatus();
             return;
         }
 
         iapStatus = "Processing product grant...";
         iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] IAPCompleteProductGrant(orderId: {iapOrderId})");
+        UpdateStatus();
+        UpdateEventLog();
 
         try
         {
@@ -411,25 +601,22 @@ public class IAPv2Tester : MonoBehaviour
             iapStatus = $"Error: {ex.Message}";
             iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Exception: {ex.Message}");
         }
+
+        UpdateStatus();
+        UpdateEventLog();
+    }
+
+    private void OnDestroy()
+    {
+        _purchaseDisposer?.Invoke();
     }
 
     /// <summary>
     /// 실제 게임 상품 지급 로직 (데모용)
-    /// 실제 게임에서는 여기서 코인, 아이템 등을 플레이어에게 지급합니다.
     /// </summary>
-    /// <param name="data">결제 데이터 (orderId 등 포함)</param>
-    /// <returns>지급 성공 여부</returns>
     private bool GrantGameProduct(object data)
     {
         Debug.Log($"[IAPv2Tester] Granting product: {data}");
-
-        // 실제 게임에서는 여기서 상품 지급 로직 수행
-        // 예:
-        // - 코인 추가: PlayerData.AddCoins(100);
-        // - 아이템 추가: Inventory.AddItem("premium_sword");
-        // - 레벨업: PlayerData.SetLevel(10);
-
-        // 데모에서는 항상 성공 반환
         return true;
     }
 }

@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.UI;
 using AppsInToss;
 
 /// <summary>
@@ -17,11 +18,23 @@ public class VisibilityBGMTester : MonoBehaviour
     private int visibilityChangeCount = 0;
     private bool lastVisibilityState = true;
 
+    // uGUI 참조
+    private Text _statusTextUI;
+    private Text _infoTextUI;
+    private Button _toggleButton;
+    private Text _toggleButtonText;
+
     void Start()
     {
         Debug.Log("[VisibilityBGMTester] Initializing...");
-        InitializeAudio();
+        EnsureInitialized();
         RegisterVisibilityCallback();
+    }
+
+    private void EnsureInitialized()
+    {
+        if (isInitialized) return;
+        InitializeAudio();
     }
 
     void OnDestroy()
@@ -109,6 +122,7 @@ public class VisibilityBGMTester : MonoBehaviour
         }
 
         UpdateStatus();
+        UpdateUI();
     }
 
     private void UpdateStatus()
@@ -124,48 +138,62 @@ public class VisibilityBGMTester : MonoBehaviour
     }
 
     /// <summary>
-    /// Visibility BGM 테스터 UI를 렌더링합니다.
+    /// uGUI 기반 UI를 생성합니다.
     /// </summary>
-    public void DrawUI(GUIStyle boxStyle, GUIStyle groupHeaderStyle, GUIStyle labelStyle, GUIStyle buttonStyle)
+    public void SetupUI(Transform parent)
     {
-        if (!isInitialized) return;
+        EnsureInitialized();
 
-        GUILayout.BeginVertical(boxStyle);
+        var section = UIBuilder.CreatePanel(parent, UIBuilder.Theme.SectionBg);
+        var vlg = section.gameObject.AddComponent<VerticalLayoutGroup>();
+        vlg.spacing = UIBuilder.Theme.SpacingNormal;
+        vlg.childForceExpandWidth = true;
+        vlg.childForceExpandHeight = false;
+        vlg.childControlWidth = true;
+        vlg.childControlHeight = true;
+        vlg.padding = new RectOffset(12, 12, 12, 12);
+        section.gameObject.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
-        // 섹션 헤더
-        GUILayout.Label("🎵 Visibility BGM Tester", groupHeaderStyle);
-        GUILayout.Label("백그라운드 전환 시 BGM 일시정지/재생 테스트", labelStyle);
+        UIBuilder.CreateText(section, "Visibility BGM Tester",
+            UIBuilder.Theme.FontLarge, UIBuilder.Theme.TextAccent, fontStyle: FontStyle.Bold);
+        UIBuilder.CreateText(section, "백그라운드 전환 시 BGM 일시정지/재생 테스트",
+            UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary);
 
-        GUILayout.Space(10);
+        _statusTextUI = UIBuilder.CreateText(section, statusText,
+            UIBuilder.Theme.FontNormal, lastVisibilityState ? Color.green : Color.yellow, fontStyle: FontStyle.Bold);
 
-        // 상태 표시
-        GUIStyle statusStyle = new GUIStyle(labelStyle);
-        statusStyle.fontStyle = FontStyle.Bold;
-        statusStyle.normal.textColor = lastVisibilityState ? Color.green : Color.yellow;
-        GUILayout.Label(statusText, statusStyle);
+        _infoTextUI = UIBuilder.CreateText(section, "",
+            UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary);
 
-        string infoText = $"IsVisible: {AITVisibilityHelper.IsVisible} | 이벤트 수신: {visibilityChangeCount}회";
-        GUILayout.Label(infoText, labelStyle);
+        _toggleButton = UIBuilder.CreateButton(section, "", onClick: ToggleBGM);
+        _toggleButtonText = _toggleButton.GetComponentInChildren<Text>();
 
-        GUILayout.Space(10);
+        UpdateUI();
+    }
 
-        // 컨트롤 버튼
-        if (!isPlaying)
+    private void UpdateUI()
+    {
+        if (_statusTextUI != null)
         {
-            if (GUILayout.Button("▶ BGM 재생", buttonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(40))))
-            {
-                StartBGM();
-            }
-        }
-        else
-        {
-            if (GUILayout.Button("⏹ BGM 정지", buttonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(40))))
-            {
-                StopBGM();
-            }
+            _statusTextUI.text = statusText;
+            _statusTextUI.color = lastVisibilityState ? Color.green : Color.yellow;
         }
 
-        GUILayout.EndVertical();
+        if (_infoTextUI != null)
+        {
+            _infoTextUI.text = $"IsVisible: {AITVisibilityHelper.IsVisible} | 이벤트 수신: {visibilityChangeCount}회";
+        }
+
+        if (_toggleButtonText != null)
+        {
+            _toggleButtonText.text = isPlaying ? "BGM 정지" : "BGM 재생";
+        }
+    }
+
+    private void ToggleBGM()
+    {
+        if (isPlaying) StopBGM(); else StartBGM();
+        UpdateUI();
     }
 
     private void StartBGM()

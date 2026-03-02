@@ -829,7 +829,7 @@
                                 padding: 8px 12px;
                                 border-radius: 4px;
                                 font-family: "Courier New", monospace;
-                                font-size: 13px;
+                                font-size: 16px; /* iOS Safari 자동 줌 방지 (16px 미만 시 줌) */
                                 outline: none;
                                 transition: border-color 0.2s;
                             }
@@ -1155,8 +1155,8 @@
                             </div>
                             <div id="unity-debug-console-search">
                                 <span style="color:#888;">&#128269;</span>
-                                <input type="text" id="debug-search-input" placeholder="검색어 입력..." autocomplete="off" />
-                                <button id="debug-search-clear-btn" title="검색어 지우기">&#10005;</button>
+                                <input type="text" id="debug-search-input" placeholder="Search..." autocomplete="off" />
+                                <button id="debug-search-clear-btn" title="Clear search">&#10005;</button>
                             </div>
                             <div id="unity-debug-console-filters">
                                 <button class="debug-filter-btn filter-log active" data-type="log">Log <span class="debug-filter-count">0</span></button>
@@ -1209,7 +1209,7 @@
                         var toggleBtn = document.createElement('button');
                         toggleBtn.id = 'unity-debug-toggle-btn';
                         toggleBtn.innerHTML = '&#128736;'; // 🛠️ 공구 아이콘
-                        toggleBtn.title = 'Debug Console 열기';
+                        toggleBtn.title = 'Open Debug Console';
                         document.body.appendChild(toggleBtn);
 
                         // 버튼 이벤트 연결
@@ -1225,12 +1225,40 @@
                         function toggleConsole() {
                             var isVisible = consoleDiv.classList.toggle('visible');
                             toggleBtn.innerHTML = isVisible ? '&#10006;' : '&#128736;'; // ✖ 또는 🛠️
-                            toggleBtn.title = isVisible ? 'Debug Console 닫기' : 'Debug Console 열기';
+                            toggleBtn.title = isVisible ? 'Close Debug Console' : 'Open Debug Console';
+
+                            // Unity 키보드 캡처 제어: 콘솔 열림 시 canvas 입력 비활성화
+                            var canvas = document.querySelector('#unity-canvas');
+                            if (canvas) {
+                                canvas.style.pointerEvents = isVisible ? 'none' : 'auto';
+                            }
+
                             if (isVisible) searchInput.focus();
                         }
 
                         toggleBtn.onclick = toggleConsole;
                         closeBtn.onclick = toggleConsole;
+
+                        // Unity WebGL 키보드 입력 차단 해제
+                        // Unity 프레임워크가 window/document capture phase에서 keypress의 preventDefault()를 호출하여
+                        // HTML input 요소에 문자 삽입을 방지함. 이를 우회하기 위해 preventDefault를 오버라이드.
+                        var debugConsoleEl = document.getElementById('unity-debug-console');
+                        var origPreventDefault = Event.prototype.preventDefault;
+                        Event.prototype.preventDefault = function() {
+                            if (this instanceof KeyboardEvent && this.target && debugConsoleEl.contains(this.target)) {
+                                return; // Debug Console 내부 입력은 preventDefault 무시
+                            }
+                            return origPreventDefault.call(this);
+                        };
+
+                        // 검색 input에서 키보드 이벤트가 Unity로 전파되지 않도록 차단
+                        // stopImmediatePropagation: Unity WebGL이 키 입력을 게임 입력으로 처리하는 것을 방지
+                        ['keydown', 'keyup', 'keypress'].forEach(function(eventType) {
+                            searchInput.addEventListener(eventType, function(e) {
+                                e.stopPropagation();
+                                e.stopImmediatePropagation();
+                            }, true);
+                        });
 
                         // --- 데이터 구조 ---
                         var logsElement = document.getElementById('unity-debug-console-logs');
@@ -1336,7 +1364,7 @@
                             var copyMsg;
                             if (isMetrics) {
                                 text = document.getElementById('unity-debug-console-metrics').innerText;
-                                copyMsg = '메트릭이 클립보드에 복사되었습니다!';
+                                copyMsg = 'Metrics copied to clipboard!';
                             } else {
                                 var lines = [];
                                 for (var i = 0; i < allLogs.length; i++) {
@@ -1345,13 +1373,13 @@
                                     }
                                 }
                                 text = lines.join('\n');
-                                copyMsg = '로그가 클립보드에 복사되었습니다! (' + lines.length + '건)';
+                                copyMsg = 'Logs copied to clipboard! (' + lines.length + ' entries)';
                             }
                             if (navigator.clipboard) {
                                 navigator.clipboard.writeText(text).then(function() {
                                     alert(copyMsg);
                                 }).catch(function(err) {
-                                    alert('복사 실패: ' + err.message);
+                                    alert('Copy failed: ' + err.message);
                                 });
                             } else {
                                 var textArea = document.createElement('textarea');
@@ -1364,7 +1392,7 @@
                                     document.execCommand('copy');
                                     alert(copyMsg);
                                 } catch (err) {
-                                    alert('복사 실패: ' + err.message);
+                                    alert('Copy failed: ' + err.message);
                                 }
                                 document.body.removeChild(textArea);
                             }

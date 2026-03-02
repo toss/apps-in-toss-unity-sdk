@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 using UnityEngine;
+using UnityEngine.UI;
 using UnityEngine.SceneManagement;
 
 /// <summary>
@@ -20,116 +21,76 @@ public class MetricEventTester : MonoBehaviour
     private string lastResult = "";
     private Color resultColor = Color.white;
 
+    // uGUI 참조
+    private Text _statusText;
+
     /// <summary>
-    /// Metric Event Tester UI를 렌더링합니다.
+    /// uGUI 기반 UI를 생성합니다.
     /// </summary>
-    public void DrawUI(GUIStyle boxStyle, GUIStyle groupHeaderStyle, GUIStyle labelStyle, GUIStyle buttonStyle)
+    public void SetupUI(Transform parent)
     {
-        GUILayout.BeginVertical(boxStyle);
+        var section = UIBuilder.CreatePanel(parent, UIBuilder.Theme.SectionBg);
+        var vlg = section.gameObject.AddComponent<VerticalLayoutGroup>();
+        vlg.spacing = UIBuilder.Theme.SpacingSmall;
+        vlg.childForceExpandWidth = true;
+        vlg.childForceExpandHeight = false;
+        vlg.childControlWidth = true;
+        vlg.childControlHeight = true;
+        vlg.padding = new RectOffset(12, 12, 12, 12);
+        section.gameObject.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
-        // 섹션 헤더
-        GUILayout.Label("\ud83d\udcca Metric Event Tester", groupHeaderStyle);
-        GUILayout.Label("AITEventLogger 자동 캡처 이벤트 트리거", labelStyle);
+        UIBuilder.CreateText(section, "Metric Event Tester",
+            UIBuilder.Theme.FontLarge, UIBuilder.Theme.TextAccent, fontStyle: FontStyle.Bold);
+        UIBuilder.CreateText(section, "AITEventLogger 자동 캡처 이벤트 트리거",
+            UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary);
 
-        GUILayout.Space(10);
+        _statusText = UIBuilder.CreateText(section, "",
+            UIBuilder.Theme.FontSmall, resultColor, fontStyle: FontStyle.Bold);
+        _statusText.gameObject.SetActive(false);
 
-        // 상태 표시
-        if (!string.IsNullOrEmpty(lastAction))
+        UIBuilder.CreateButton(section, "Scene Load/Unload", onClick: TriggerSceneTransition);
+        UIBuilder.CreateButton(section, "Frame Stall (700ms)", onClick: TriggerFrameStall);
+        UIBuilder.CreateButton(section, "GC Collect", onClick: TriggerGCCollect);
+
+        // TimeScale 버튼 행
+        var tsRow = UIBuilder.CreateHorizontalLayout(section, UIBuilder.Theme.SpacingSmall);
+        tsRow.gameObject.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+        var ts0 = UIBuilder.CreateButton(tsRow, "TimeScale 0x", onClick: () => SetTimeScale(0f));
+        UIBuilder.SetLayout(ts0.gameObject, flexibleWidth: 1);
+        var ts2 = UIBuilder.CreateButton(tsRow, "TimeScale 2x", onClick: () => SetTimeScale(2f));
+        UIBuilder.SetLayout(ts2.gameObject, flexibleWidth: 1);
+        var ts1 = UIBuilder.CreateButton(tsRow, "TimeScale 1x", onClick: () => SetTimeScale(1f));
+        UIBuilder.SetLayout(ts1.gameObject, flexibleWidth: 1);
+
+        UIBuilder.CreateButton(section, "LogError", onClick: TriggerLogError);
+        UIBuilder.CreateButton(section, "Exception", onClick: TriggerException);
+        UIBuilder.CreateButton(section, "Screen Resize", onClick: TriggerScreenChange);
+        UIBuilder.CreateButton(section, "Focus Blur/Restore", onClick: TriggerFocusChange);
+    }
+
+    private void UpdateUI()
+    {
+        if (_statusText != null)
         {
-            GUIStyle statusStyle = new GUIStyle(labelStyle);
-            statusStyle.fontStyle = FontStyle.Bold;
-            statusStyle.normal.textColor = resultColor;
-            GUILayout.Label($"{lastAction}: {lastResult}", statusStyle);
-            GUILayout.Space(5);
+            if (!string.IsNullOrEmpty(lastAction))
+            {
+                _statusText.gameObject.SetActive(true);
+                _statusText.text = $"{lastAction}: {lastResult}";
+                _statusText.color = resultColor;
+            }
         }
-
-        // Scene Transition 버튼
-        if (GUILayout.Button("\ud83c\udfac Scene Load/Unload", buttonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(40))))
-        {
-            TriggerSceneTransition();
-        }
-
-        GUILayout.Space(3);
-
-        // Frame Stall 버튼
-        if (GUILayout.Button("\ud83d\udc0c Frame Stall (700ms)", buttonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(40))))
-        {
-            TriggerFrameStall();
-        }
-
-        GUILayout.Space(3);
-
-        // GC Collect 버튼
-        if (GUILayout.Button("\u267b\ufe0f GC Collect", buttonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(40))))
-        {
-            TriggerGCCollect();
-        }
-
-        GUILayout.Space(3);
-
-        // TimeScale 버튼들
-        GUILayout.BeginHorizontal();
-        if (GUILayout.Button("\u23f1 TimeScale 0x", buttonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(40))))
-        {
-            SetTimeScale(0f);
-        }
-        if (GUILayout.Button("\u23f1 TimeScale 2x", buttonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(40))))
-        {
-            SetTimeScale(2f);
-        }
-        if (GUILayout.Button("\u23f1 TimeScale 1x", buttonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(40))))
-        {
-            SetTimeScale(1f);
-        }
-        GUILayout.EndHorizontal();
-
-        GUILayout.Space(3);
-
-        // LogError 버튼
-        if (GUILayout.Button("\u26a0\ufe0f LogError", buttonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(40))))
-        {
-            TriggerLogError();
-        }
-
-        GUILayout.Space(3);
-
-        // Exception 버튼
-        if (GUILayout.Button("\ud83d\udca5 Exception", buttonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(40))))
-        {
-            TriggerException();
-        }
-
-        GUILayout.Space(3);
-
-        // Screen Change 버튼
-        if (GUILayout.Button("\ud83d\udcf1 Screen Resize", buttonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(40))))
-        {
-            TriggerScreenChange();
-        }
-
-        GUILayout.Space(3);
-
-        // Focus Change 버튼
-        if (GUILayout.Button("\ud83d\udd0d Focus Blur/Restore", buttonStyle, GUILayout.Height(InteractiveAPITesterStyles.ScaledInt(40))))
-        {
-            TriggerFocusChange();
-        }
-
-        GUILayout.EndVertical();
     }
 
     private void TriggerSceneTransition()
     {
-        lastAction = "\ud83c\udfac Scene Transition";
+        lastAction = "Scene Transition";
         Debug.Log("[MetricEventTester] Triggering scene load/unload...");
 
         try
         {
-            // 런타임에 빈 씬을 Additive로 생성 (추가 에셋 불필요)
             Scene tempScene = SceneManager.CreateScene("MetricTest_TempScene");
             Debug.Log($"[MetricEventTester] Created temp scene: {tempScene.name}");
 
-            // 즉시 언로드하여 scene_unloaded 이벤트도 발생
             SceneManager.UnloadSceneAsync(tempScene);
 
             lastResult = "완료 (생성 + 언로드)";
@@ -142,14 +103,14 @@ public class MetricEventTester : MonoBehaviour
             resultColor = Color.red;
             Debug.LogWarning($"[MetricEventTester] Scene transition failed: {ex.Message}");
         }
+        UpdateUI();
     }
 
     private void TriggerFrameStall()
     {
-        lastAction = "\ud83d\udc0c Frame Stall";
+        lastAction = "Frame Stall";
         Debug.Log("[MetricEventTester] Triggering frame stall (700ms)...");
 
-        // CPU-bound 루프로 메인 스레드 블로킹 (Thread.Sleep보다 확실한 프레임 스톨)
         var sw = System.Diagnostics.Stopwatch.StartNew();
         while (sw.ElapsedMilliseconds < 700)
         {
@@ -160,11 +121,12 @@ public class MetricEventTester : MonoBehaviour
         lastResult = $"완료 ({sw.ElapsedMilliseconds}ms 블로킹)";
         resultColor = Color.green;
         Debug.Log($"[MetricEventTester] Frame stall done ({sw.ElapsedMilliseconds}ms)");
+        UpdateUI();
     }
 
     private void TriggerGCCollect()
     {
-        lastAction = "\u267b\ufe0f GC Collect";
+        lastAction = "GC Collect";
         Debug.Log("[MetricEventTester] Triggering GC.Collect()...");
 
         int gen0Before = GC.CollectionCount(0);
@@ -174,38 +136,40 @@ public class MetricEventTester : MonoBehaviour
         lastResult = $"완료 (Gen0: {gen0Before} → {gen0After})";
         resultColor = Color.green;
         Debug.Log($"[MetricEventTester] GC.Collect done (Gen0: {gen0Before} → {gen0After})");
+        UpdateUI();
     }
 
     private void SetTimeScale(float scale)
     {
-        lastAction = $"\u23f1 TimeScale {scale}x";
+        lastAction = $"TimeScale {scale}x";
         float previousScale = Time.timeScale;
         Time.timeScale = scale;
 
         lastResult = $"완료 ({previousScale} → {scale})";
         resultColor = Color.green;
         Debug.Log($"[MetricEventTester] TimeScale changed: {previousScale} → {scale}");
+        UpdateUI();
     }
 
     private void TriggerLogError()
     {
-        lastAction = "\u26a0\ufe0f LogError";
+        lastAction = "LogError";
         Debug.LogError("[MetricEventTester] Test error for Metric Explorer verification");
 
         lastResult = "완료 (Debug.LogError 발생)";
         resultColor = Color.green;
         Debug.Log("[MetricEventTester] LogError triggered");
+        UpdateUI();
     }
 
     private void TriggerScreenChange()
     {
-        lastAction = "\ud83d\udcf1 Screen Resize";
+        lastAction = "Screen Resize";
         Debug.Log("[MetricEventTester] Triggering screen resize...");
 
         int currentWidth = Screen.width;
         int currentHeight = Screen.height;
 
-        // 해상도를 살짝 변경하여 screen_change 이벤트 발생
         int newWidth = currentWidth - 2;
         int newHeight = currentHeight - 2;
         Screen.SetResolution(newWidth, newHeight, Screen.fullScreen);
@@ -213,15 +177,15 @@ public class MetricEventTester : MonoBehaviour
         lastResult = $"완료 ({currentWidth}x{currentHeight} → {newWidth}x{newHeight})";
         resultColor = Color.green;
         Debug.Log($"[MetricEventTester] Screen resize: {currentWidth}x{currentHeight} → {newWidth}x{newHeight}");
+        UpdateUI();
     }
 
     private void TriggerFocusChange()
     {
-        lastAction = "\ud83d\udd0d Focus Change";
+        lastAction = "Focus Change";
         Debug.Log("[MetricEventTester] Triggering focus blur/restore...");
 
 #if UNITY_WEBGL && !UNITY_EDITOR
-        // JS blur → 1초 후 focus 복원
         E2E_SimulateFocusChange(1000);
         lastResult = "완료 (blur → 1초 후 focus)";
         resultColor = Color.green;
@@ -230,11 +194,12 @@ public class MetricEventTester : MonoBehaviour
         resultColor = Color.yellow;
 #endif
         Debug.Log("[MetricEventTester] Focus change triggered");
+        UpdateUI();
     }
 
     private void TriggerException()
     {
-        lastAction = "\ud83d\udca5 Exception";
+        lastAction = "Exception";
 
         try
         {
@@ -248,5 +213,6 @@ public class MetricEventTester : MonoBehaviour
         lastResult = "완료 (Exception → LogException)";
         resultColor = Color.green;
         Debug.Log("[MetricEventTester] Exception triggered and logged");
+        UpdateUI();
     }
 }

@@ -80,9 +80,9 @@ public class InteractiveAPITester : MonoBehaviour
         _contactsViralTester?.SetupUI(subTesterContainer);
         _metricEventTester?.SetupUI(subTesterContainer);
 
-        // Safe Area Insets 로드 (Apps in Toss 플랫폼) - 로깅 목적
+        // Safe Area Insets 적용 (Apps in Toss 플랫폼)
 #if AIT_SDK_1_7_1_OR_LATER
-        LogSafeAreaInsetsAsync();
+        ApplySafeAreaInsetsAsync();
 #endif
     }
 
@@ -98,7 +98,7 @@ public class InteractiveAPITester : MonoBehaviour
     }
 
 #if AIT_SDK_1_7_1_OR_LATER
-    private async void LogSafeAreaInsetsAsync()
+    private async void ApplySafeAreaInsetsAsync()
     {
         Rect unitySafeArea = Screen.safeArea;
         Debug.Log($"[InteractiveAPITester] Unity Screen.safeArea: x={unitySafeArea.x}, y={unitySafeArea.y}, width={unitySafeArea.width}, height={unitySafeArea.height}");
@@ -107,13 +107,20 @@ public class InteractiveAPITester : MonoBehaviour
         try
         {
             var insets = await AIT.SafeAreaInsetsGet();
+
+            // await 이후 오브젝트가 Destroy되었을 수 있음
+            if (this == null) return;
+
             Debug.Log($"[InteractiveAPITester] AIT SafeAreaInsetsGet (CSS px): top={insets.Top}, bottom={insets.Bottom}, left={insets.Left}, right={insets.Right}");
 
             double dpr = AIT.GetDevicePixelRatio();
             Debug.Log($"[InteractiveAPITester] DevicePixelRatio: {dpr}");
+
+            _ui.ApplySafeAreaInsets(new AITSafeAreaInsets(insets.Top, insets.Bottom, insets.Left, insets.Right, dpr));
         }
         catch (Exception ex)
         {
+            if (this == null) return;
             Debug.LogWarning($"[InteractiveAPITester] SafeAreaInsetsGet failed: {ex.Message}, using Unity Screen.safeArea as fallback");
         }
     }

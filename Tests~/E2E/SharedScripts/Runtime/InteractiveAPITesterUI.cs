@@ -452,7 +452,7 @@ public class InteractiveAPITesterUI
         vlg.childControlHeight = true;
         vlg.padding = new RectOffset(
             (int)UIBuilder.Theme.Padding, (int)UIBuilder.Theme.Padding,
-            (int)UIBuilder.Theme.Padding, (int)UIBuilder.Theme.Padding);
+            (int)UIBuilder.Theme.Padding, 60);
 
         // 헤더
         _paramHeaderText = UIBuilder.CreateText(_paramInputView.transform, "API: ",
@@ -511,7 +511,7 @@ public class InteractiveAPITesterUI
         vlg.childControlHeight = true;
         vlg.padding = new RectOffset(
             (int)UIBuilder.Theme.Padding, (int)UIBuilder.Theme.Padding,
-            (int)UIBuilder.Theme.Padding, (int)UIBuilder.Theme.Padding);
+            (int)UIBuilder.Theme.Padding, 60);
 
         // 헤더
         _resultHeaderText = UIBuilder.CreateText(_resultView.transform, "Result: ",
@@ -1143,6 +1143,21 @@ public class InteractiveAPITesterUI
 
         UIBuilder.CreateText(container.transform, value,
             UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextPrimary);
+    }
+
+    // ─── Safe Area ───
+
+    /// <summary>
+    /// AIT SafeAreaInsetsGet 결과를 SafeAreaUpdater에 전달합니다.
+    /// </summary>
+    public void ApplySafeAreaInsets(AITSafeAreaInsets insets)
+    {
+        if (_safeArea == null) return;
+        var updater = _safeArea.GetComponent<SafeAreaUpdater>();
+        if (updater != null)
+        {
+            updater.SetAITInsets(insets);
+        }
     }
 
     // ─── 정리 ───

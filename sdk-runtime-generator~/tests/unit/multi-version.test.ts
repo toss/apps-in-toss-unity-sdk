@@ -49,6 +49,7 @@ interface VersionPaths {
   dtsDir: string | null;
   frameworkDts: string | null;
   webFrameworkPath: string;
+  webAnalyticsDtsDir: string | null;
 }
 
 function resolveVersionPaths(version: string): VersionPaths {
@@ -80,7 +81,29 @@ function resolveVersionPaths(version: string): VersionPaths {
   const frameworkDtsPath = path.join(siblingDir, 'framework', 'dist', 'index.d.cts');
   const frameworkDts = fs.existsSync(frameworkDtsPath) ? frameworkDtsPath : null;
 
-  return { dtsDir, frameworkDts, webFrameworkPath: realPath };
+  // web-analytics .d.ts 디렉토리 (sibling에 존재하는 경우)
+  let webAnalyticsDtsDir: string | null = null;
+  const webAnalyticsBase = path.join(siblingDir, 'web-analytics');
+  for (const subdir of ['dist', 'built']) {
+    const candidate = path.join(webAnalyticsBase, subdir);
+    if (fs.existsSync(candidate)) {
+      webAnalyticsDtsDir = candidate;
+      break;
+    }
+  }
+
+  return { dtsDir, frameworkDts, webFrameworkPath: realPath, webAnalyticsDtsDir };
+}
+
+/**
+ * 버전 경로에서 파서를 생성하고 web-analytics 소스가 있으면 추가
+ */
+function createParser(paths: VersionPaths): TypeScriptParser {
+  const parser = new TypeScriptParser(paths.dtsDir!, paths.webFrameworkPath);
+  if (paths.webAnalyticsDtsDir) {
+    parser.addSourceDirectory(paths.webAnalyticsDtsDir);
+  }
+  return parser;
 }
 
 // =================================================================
@@ -103,8 +126,7 @@ describe('다중 버전 호환성 테스트', () => {
       if (!paths.dtsDir) return;
 
       const frameworkApiNames = hasFrameworkApis(version) ? FRAMEWORK_APIS : [];
-      const parser = new TypeScriptParser(paths.dtsDir, paths.webFrameworkPath);
-      apis = await parser.parseAPIs(frameworkApiNames);
+      apis = await createParser(paths).parseAPIs(frameworkApiNames);
     });
 
     test('TypeScript 정의 파일 디렉토리를 찾을 수 있어야 함', () => {
@@ -168,11 +190,8 @@ describe('다중 버전 호환성 테스트', () => {
     const lastPaths = resolveVersionPaths(last);
     if (!firstPaths.dtsDir || !lastPaths.dtsDir) return;
 
-    const firstParser = new TypeScriptParser(firstPaths.dtsDir, firstPaths.webFrameworkPath);
-    const firstApis = await firstParser.parseAPIs(hasFrameworkApis(first) ? FRAMEWORK_APIS : []);
-
-    const lastParser = new TypeScriptParser(lastPaths.dtsDir, lastPaths.webFrameworkPath);
-    const lastApis = await lastParser.parseAPIs(hasFrameworkApis(last) ? FRAMEWORK_APIS : []);
+    const firstApis = await createParser(firstPaths).parseAPIs(hasFrameworkApis(first) ? FRAMEWORK_APIS : []);
+    const lastApis = await createParser(lastPaths).parseAPIs(hasFrameworkApis(last) ? FRAMEWORK_APIS : []);
 
     expect(
       lastApis.length,
@@ -198,8 +217,7 @@ describe('다중 버전 호환성 테스트', () => {
     for (const version of installedVersions) {
       const paths = resolveVersionPaths(version);
       if (!paths.dtsDir) continue;
-      const parser = new TypeScriptParser(paths.dtsDir, paths.webFrameworkPath);
-      const apis = await parser.parseAPIs(hasFrameworkApis(version) ? FRAMEWORK_APIS : []);
+      const apis = await createParser(paths).parseAPIs(hasFrameworkApis(version) ? FRAMEWORK_APIS : []);
       versionApis.set(version, apis);
     }
 

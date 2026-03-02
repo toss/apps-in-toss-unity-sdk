@@ -5,7 +5,7 @@
  * unity-bridge.ts 파일을 생성합니다.
  */
 
-import { ParsedAPI } from '../types.js';
+import { ParsedAPI, isFromWebAnalytics } from '../types.js';
 
 /**
  * Unity Bridge TypeScript 코드 생성
@@ -13,20 +13,32 @@ import { ParsedAPI } from '../types.js';
  * @returns 생성된 unity-bridge.ts 코드
  */
 export function generateUnityBridge(apis: ParsedAPI[]): string {
-  // 사용되는 네임스페이스 수집 (중복 제거)
-  const namespaces = new Set<string>();
+  // 사용되는 네임스페이스 수집 (중복 제거) + 패키지별 분류
+  const frameworkNamespaces = new Set<string>();
+  const analyticsNamespaces = new Set<string>();
+
   for (const api of apis) {
     if (api.namespace) {
-      namespaces.add(api.namespace);
+      if (isFromWebAnalytics(api)) {
+        analyticsNamespaces.add(api.namespace);
+      } else {
+        frameworkNamespaces.add(api.namespace);
+      }
     }
   }
 
-  const sortedNamespaces = Array.from(namespaces).sort();
+  const sortedFrameworkNs = Array.from(frameworkNamespaces).sort();
+  const sortedAnalyticsNs = Array.from(analyticsNamespaces).sort();
+  const sortedNamespaces = [...sortedFrameworkNs, ...sortedAnalyticsNs].sort();
 
-  // 네임스페이스 import 문 생성
-  const namespaceImports = sortedNamespaces
+  // 네임스페이스 import 문 생성 (패키지별 분리)
+  const frameworkImports = sortedFrameworkNs
     .map(ns => `import { ${ns} } from '@apps-in-toss/web-framework';`)
     .join('\n');
+  const analyticsImports = sortedAnalyticsNs
+    .map(ns => `import { ${ns} } from '@apps-in-toss/web-analytics';`)
+    .join('\n');
+  const allImports = [frameworkImports, analyticsImports].filter(Boolean).join('\n');
 
   // 네임스페이스 타입 정의 생성
   const namespaceTypeProps = sortedNamespaces
@@ -69,7 +81,7 @@ for (const [_name, _value] of Object.entries(_aitNamespaces)) {
  */
 
 import * as WebFramework from '@apps-in-toss/web-framework';
-${namespaceImports}
+${allImports}
 
 // window.AppsInToss 타입 정의
 declare global {

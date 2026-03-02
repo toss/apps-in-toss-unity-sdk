@@ -90,7 +90,7 @@ public static class UIBuilder
 
         var scaler = go.AddComponent<CanvasScaler>();
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-        scaler.referenceResolution = new Vector2(1080, 1920);
+        scaler.referenceResolution = new Vector2(390, 844);
         scaler.matchWidthOrHeight = 0.5f;
 
         go.AddComponent<GraphicRaycaster>();
@@ -122,6 +122,9 @@ public static class UIBuilder
         rt.anchorMax = Vector2.one;
         rt.offsetMin = Vector2.zero;
         rt.offsetMax = Vector2.zero;
+
+        // Safe area 밖 콘텐츠 클리핑 (스크롤 시 콘텐츠가 safe area 밖으로 보이는 현상 방지)
+        go.AddComponent<UnityEngine.UI.RectMask2D>();
 
         // SafeAreaUpdater를 통해 매 프레임 업데이트
         go.AddComponent<SafeAreaUpdater>();
@@ -763,12 +766,37 @@ public static class UIBuilder
 }
 
 /// <summary>
+/// AIT SafeAreaInsetsGet에서 받은 CSS px 단위의 insets와 devicePixelRatio를 담는 구조체.
+/// </summary>
+public struct AITSafeAreaInsets
+{
+    public double TopCss;
+    public double BottomCss;
+    public double LeftCss;
+    public double RightCss;
+    public double Dpr;
+
+    public AITSafeAreaInsets(double topCss, double bottomCss, double leftCss, double rightCss, double dpr)
+    {
+        TopCss = topCss;
+        BottomCss = bottomCss;
+        LeftCss = leftCss;
+        RightCss = rightCss;
+        Dpr = dpr;
+    }
+}
+
+/// <summary>
 /// Screen.safeArea 변경을 감시하고 RectTransform 앵커를 업데이트합니다.
 /// </summary>
 public class SafeAreaUpdater : MonoBehaviour
 {
     private RectTransform _rt;
     private Rect _lastSafeArea;
+    private bool _useAITInsets;
+    private AITSafeAreaInsets _aitInsets;
+    private int _lastScreenWidth;
+    private int _lastScreenHeight;
 
     void Awake()
     {
@@ -778,9 +806,53 @@ public class SafeAreaUpdater : MonoBehaviour
 
     void Update()
     {
-        if (_lastSafeArea != Screen.safeArea)
+        if (_useAITInsets)
+        {
+            if (Screen.width != _lastScreenWidth || Screen.height != _lastScreenHeight)
+            {
+                ApplyAITInsets();
+            }
+        }
+        else if (_lastSafeArea != Screen.safeArea)
         {
             ApplySafeArea();
+        }
+    }
+
+    /// <summary>
+    /// AIT SafeAreaInsetsGet 결과를 적용합니다.
+    /// CSS px 단위의 insets를 dpr로 변환하여 Unity 앵커에 반영합니다.
+    /// 호출 후 Screen.safeArea 폴링을 중지합니다.
+    /// </summary>
+    public void SetAITInsets(AITSafeAreaInsets insets)
+    {
+        _aitInsets = insets;
+        _useAITInsets = true;
+        ApplyAITInsets(log: true);
+    }
+
+    private void ApplyAITInsets(bool log = false)
+    {
+        if (_rt == null) _rt = GetComponent<RectTransform>();
+
+        float top = (float)(_aitInsets.TopCss * _aitInsets.Dpr);
+        float bottom = (float)(_aitInsets.BottomCss * _aitInsets.Dpr);
+        float left = (float)(_aitInsets.LeftCss * _aitInsets.Dpr);
+        float right = (float)(_aitInsets.RightCss * _aitInsets.Dpr);
+
+        float screenW = Screen.width;
+        float screenH = Screen.height;
+        if (screenW <= 0 || screenH <= 0) return;
+
+        _rt.anchorMin = new Vector2(left / screenW, bottom / screenH);
+        _rt.anchorMax = new Vector2(1f - right / screenW, 1f - top / screenH);
+
+        _lastScreenWidth = (int)screenW;
+        _lastScreenHeight = (int)screenH;
+
+        if (log)
+        {
+            Debug.Log($"[SafeAreaUpdater] Applied AIT insets: top={top}px, bottom={bottom}px, left={left}px, right={right}px (screen={screenW}x{screenH})");
         }
     }
 

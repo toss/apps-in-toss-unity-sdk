@@ -21,8 +21,9 @@ public class InteractiveAPITester : MonoBehaviour
 
     // 분리된 컴포넌트 참조
     private OOMTester _oomTester;
-    private Component _sentryTester;
-    private MethodInfo _sentrySetupUI;
+#if AIT_SENTRY_AVAILABLE
+    private SentryTester _sentryTester;
+#endif
     private IAPv2Tester _iapTester;
     private AdV2Tester _adV2Tester;
     private ContactsViralTester _contactsViralTester;
@@ -36,13 +37,10 @@ public class InteractiveAPITester : MonoBehaviour
         // 서브 테스터 컴포넌트 초기화
         _oomTester = GetComponent<OOMTester>() ?? gameObject.AddComponent<OOMTester>();
 
-        // SentryTester는 별도 어셈블리(AppsInTossTestScripts.Sentry)에 있으므로 리플렉션으로 로드
-        var sentryTesterType = Type.GetType("SentryTester, AppsInTossTestScripts.Sentry");
-        if (sentryTesterType != null)
-        {
-            _sentryTester = GetComponent(sentryTesterType) ?? gameObject.AddComponent(sentryTesterType);
-            _sentrySetupUI = sentryTesterType.GetMethod("SetupUI");
-        }
+        // SentryTester — AIT_SENTRY_AVAILABLE 매크로로 직접 참조
+#if AIT_SENTRY_AVAILABLE
+        _sentryTester = GetComponent<SentryTester>() ?? gameObject.AddComponent<SentryTester>();
+#endif
 
         _iapTester = GetComponent<IAPv2Tester>() ?? gameObject.AddComponent<IAPv2Tester>();
         _adV2Tester = GetComponent<AdV2Tester>() ?? gameObject.AddComponent<AdV2Tester>();
@@ -69,11 +67,9 @@ public class InteractiveAPITester : MonoBehaviour
         _visibilityBGMTester?.SetupUI(subTesterContainer);
         _oomTester?.SetupUI(subTesterContainer);
 
-        // SentryTester - 리플렉션으로 SetupUI 호출
-        if (_sentryTester != null && _sentrySetupUI != null)
-        {
-            _sentrySetupUI.Invoke(_sentryTester, new object[] { subTesterContainer });
-        }
+#if AIT_SENTRY_AVAILABLE
+        _sentryTester?.SetupUI(subTesterContainer);
+#endif
 
         _iapTester?.SetupUI(subTesterContainer);
         _adV2Tester?.SetupUI(subTesterContainer);

@@ -113,17 +113,17 @@ Unity 씬이 로드될 때마다 breadcrumb가 자동 기록됩니다:
 
 ## CI/CD 환경변수
 
-### Sentry SDK 핵심 (런타임)
+### Sentry SDK 핵심 (빌드타임 자동 주입)
 
-`SentryOptions.asset`에 값이 설정되지 않은 경우, Sentry SDK가 환경변수를 자동으로 읽습니다.
+AIT SDK는 WebGL 빌드 시 `SENTRY_DSN` 환경변수에서 `SentryOptions.asset`을 자동 생성합니다. 브라우저 샌드박스에서는 런타임에 환경변수를 읽을 수 없으므로, 빌드 시점에 asset으로 bake하는 방식입니다.
 
 | 변수 | 용도 | 예시 |
 |------|------|------|
-| `SENTRY_DSN` | DSN (에셋에 없으면 이 값 사용) | `https://key@sentry.io/123` |
-| `SENTRY_ENVIRONMENT` | 환경 식별자 | `production`, `staging` |
-| `SENTRY_RELEASE` | 릴리즈 버전 | `my-app@1.0.0` |
+| `SENTRY_DSN` | DSN → `SentryOptions.asset` 자동 생성 | `https://key@sentry.io/123` |
+| `SENTRY_ENVIRONMENT` | 환경 식별자 (자동 주입) | `production`, `staging` |
+| `SENTRY_RELEASE` | 릴리즈 버전 (자동 주입) | `my-app@1.0.0` |
 
-> **WebGL 주의**: WebGL 빌드에서는 환경변수가 런타임에 접근 불가합니다. 반드시 `SentryOptions.asset`에 DSN을 직접 설정하세요.
+> **자동 주입 동작**: WebGL 빌드 시 `AITSentryDsnInjector`(`IPreprocessBuildWithReport`, callbackOrder=0)가 `SENTRY_DSN` 환경변수를 감지하면 `SentryOptions.asset`을 Unity API로 생성합니다. 이미 asset이 존재하면 사용자 설정을 보호하기 위해 건너뜁니다.
 
 ### sentry-cli (빌드 타임)
 
@@ -198,7 +198,7 @@ PlayerSettings.SetIl2CppStacktraceInformation(WebGL, MethodFileLineNumber)
 
 1. **DSN 확인**: `Tools > Sentry`에서 DSN이 올바르게 설정되어 있는지 확인
 2. **로그 확인**: 콘솔에 `[AIT:Sentry] Sentry is not enabled` 메시지가 있으면 Sentry SDK가 비활성 상태
-3. **WebGL**: 환경변수로 DSN을 설정한 경우 WebGL에서는 작동하지 않음 → `SentryOptions.asset`에 직접 설정 필요
+3. **WebGL CI/CD**: `SENTRY_DSN` 환경변수를 설정하면 빌드 시 `SentryOptions.asset`이 자동 생성됩니다. 빌드 로그에서 `[AITSentry] SentryOptions.asset을 환경변수에서 생성했습니다`를 확인하세요.
 
 ### IL2CPP 빌드에서 AIT 태그가 없음
 

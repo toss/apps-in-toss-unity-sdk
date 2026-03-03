@@ -51,6 +51,7 @@ namespace AppsInToss.Sentry
             SetStaticTags();
             SubscribeSceneEvents();
             AITSentryContextEnricher.EnrichAsync();
+            AITSentryAnalytics.Initialize();
 
             Debug.Log($"{Tag} Initialized - AIT 컨텍스트가 Sentry 이벤트에 자동으로 추가됩니다.");
         }

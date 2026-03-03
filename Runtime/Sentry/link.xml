@@ -4,5 +4,6 @@
     <assembly fullname="AppsInToss.Sentry" preserve="all">
         <type fullname="AppsInToss.Sentry.AITSentryIntegration" preserve="all"/>
         <type fullname="AppsInToss.Sentry.AITSentryContextEnricher" preserve="all"/>
+        <type fullname="AppsInToss.Sentry.AITSentryAnalytics" preserve="all"/>
     </assembly>
 </linker>

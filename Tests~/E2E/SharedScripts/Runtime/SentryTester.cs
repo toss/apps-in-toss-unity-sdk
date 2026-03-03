@@ -1,3 +1,4 @@
+#if AIT_SENTRY_AVAILABLE
 using System;
 using Sentry;
 using Sentry.Unity;
@@ -9,7 +10,7 @@ using SentrySdk = Sentry.Unity.SentrySdk;
 /// <summary>
 /// Sentry 에러 캡처 테스트 컴포넌트
 /// Preview 빌드에서 Sentry 에러 캡처가 실제로 동작하는지 확인용
-/// defineConstraints로 Sentry 미설치 시 컴파일 제외됨
+/// AIT_SENTRY_AVAILABLE 매크로로 Sentry 미설치 시 컴파일 제외됨
 /// </summary>
 public class SentryTester : MonoBehaviour
 {
@@ -105,3 +106,4 @@ public class SentryTester : MonoBehaviour
         }
     }
 }
+#endif

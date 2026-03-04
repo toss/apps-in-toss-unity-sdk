@@ -21,7 +21,7 @@
   "dependencies": {
     "@apps-in-toss/framework": "1.6.0",
     "@apps-in-toss/web-analytics": "1.14.0",
-    "@apps-in-toss/web-framework": "1.14.1",
+    "@apps-in-toss/web-framework": "2.0.0",
     "commander": "^14.0.2",
     "handlebars": "^4.7.8",
     "picocolors": "^1.1.1",
@@ -43,6 +43,7 @@
     "web-framework-1.12.0": "npm:@apps-in-toss/web-framework@1.12.0",
     "web-framework-1.13.0": "npm:@apps-in-toss/web-framework@1.13.0",
     "web-framework-1.14.0": "npm:@apps-in-toss/web-framework@1.14.0",
+    "web-framework-1.14.1": "npm:@apps-in-toss/web-framework@1.14.1",
     "web-framework-1.5.0": "npm:@apps-in-toss/web-framework@1.5.0",
     "web-framework-1.5.2": "npm:@apps-in-toss/web-framework@1.5.2",
     "web-framework-1.5.3": "npm:@apps-in-toss/web-framework@1.5.3",
@@ -58,7 +59,7 @@
     "web-framework-1.9.2": "npm:@apps-in-toss/web-framework@1.9.2",
     "web-framework-1.9.3": "npm:@apps-in-toss/web-framework@1.9.3",
     "web-framework-1.9.4": "npm:@apps-in-toss/web-framework@1.9.4",
-    "web-framework-1.14.1": "npm:@apps-in-toss/web-framework@1.14.1"
+    "web-framework-2.0.0": "npm:@apps-in-toss/web-framework@2.0.0"
   },
   "pnpm": {
     "overrides": {

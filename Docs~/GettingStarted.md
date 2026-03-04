@@ -21,7 +21,7 @@
 4. Git URL 입력:
 
 ```
-https://github.com/toss/apps-in-toss-unity-sdk.git#release/v1.14.1
+https://github.com/toss/apps-in-toss-unity-sdk.git#release/v2.0.0
 ```
 
 ### 방법 2: manifest.json 직접 수정
@@ -31,7 +31,7 @@ https://github.com/toss/apps-in-toss-unity-sdk.git#release/v1.14.1
 ```json
 {
   "dependencies": {
-    "im.toss.apps-in-toss-unity-sdk": "https://github.com/toss/apps-in-toss-unity-sdk.git#release/v1.14.1"
+    "im.toss.apps-in-toss-unity-sdk": "https://github.com/toss/apps-in-toss-unity-sdk.git#release/v2.0.0"
   }
 }
 ```

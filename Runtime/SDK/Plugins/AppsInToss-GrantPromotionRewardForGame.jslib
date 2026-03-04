@@ -6,16 +6,16 @@
  */
 
 mergeInto(LibraryManager.library, {
-    __grantPromotionRewardForGame_Internal: function(options, callbackId, typeName) {
+    __grantPromotionRewardForGame_Internal: function(params, callbackId, typeName) {
         // 비동기 함수 (Promise 반환)
         var callback = UTF8ToString(callbackId);
         var typeNameStr = UTF8ToString(typeName);
 
         console.log('[AIT jslib] grantPromotionRewardForGame called, callbackId:', callback);
-        console.log('[AIT jslib] grantPromotionRewardForGame raw param options:', UTF8ToString(options));
+        console.log('[AIT jslib] grantPromotionRewardForGame raw param params:', UTF8ToString(params));
 
         try {
-            var promiseResult = window.AppsInToss.grantPromotionRewardForGame(JSON.parse(UTF8ToString(options)));
+            var promiseResult = window.AppsInToss.grantPromotionRewardForGame(JSON.parse(UTF8ToString(params)));
             console.log('[AIT jslib] grantPromotionRewardForGame returned:', promiseResult, 'isPromise:', promiseResult && typeof promiseResult.then === 'function');
 
             if (!promiseResult || typeof promiseResult.then !== 'function') {

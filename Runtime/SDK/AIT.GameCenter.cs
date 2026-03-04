@@ -112,12 +112,13 @@ namespace AppsInToss
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __getUserKeyForGame_Internal(string callbackId, string typeName);
 #endif
+        /// <param name="paramsParam">포인트를 지급하기 위해 필요한 정보예요.</param>
         /// <returns>포인트 지급 결과를 반환해요. { key: string }: 포인트 지급에 성공했어요. key는 리워드 키를 의미해요. { errorCode: string, message: string }: 포인트 지급에 실패했어요. 에러 코드는 다음과 같아요. "40000": 게임이 아닌 미니앱에서 호출했을 때 "4100": 프로모션 정보를 찾을 수 없을 때 "4104": 프로모션이 중지되었을 때 "4105": 프로모션이 종료되었을 때 "4108": 프로모션이 승인되지 않았을 때 "4109": 프로모션이 실행중이 아닐 때 "4110": 리워드를 지급/회수할 수 없을 때 "4112": 프로모션 머니가 부족할 때 "4113": 이미 지급/회수된 내역일 때 "4114": 프로모션에 설정된 1회 지급 금액을 초과할 때 'ERROR': 알 수 없는 오류가 발생했어요. undefined: 앱 버전이 최소 지원 버전보다 낮아요.</returns>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("GameCenter")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable<GrantPromotionRewardForGameResult> GrantPromotionRewardForGame(GrantPromotionRewardForGameOptions options)
+        public static async Awaitable<GrantPromotionRewardForGameResult> GrantPromotionRewardForGame(GrantPromotionRewardForGameParams paramsParam)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var acs = new AwaitableCompletionSource<GrantPromotionRewardForGameResult>();
@@ -125,7 +126,7 @@ namespace AppsInToss
                 result => acs.SetResult(result),
                 error => acs.SetException(error)
             );
-            __grantPromotionRewardForGame_Internal(AITJsonSettings.Serialize(options), callbackId, "GrantPromotionRewardForGameResult");
+            __grantPromotionRewardForGame_Internal(AITJsonSettings.Serialize(paramsParam), callbackId, "GrantPromotionRewardForGameResult");
             return await acs.Awaitable;
 #else
             // Unity Editor mock implementation (Unity 6+)
@@ -135,7 +136,7 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async Task<GrantPromotionRewardForGameResult> GrantPromotionRewardForGame(GrantPromotionRewardForGameOptions options)
+        public static async Task<GrantPromotionRewardForGameResult> GrantPromotionRewardForGame(GrantPromotionRewardForGameParams paramsParam)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<GrantPromotionRewardForGameResult>();
@@ -143,7 +144,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __grantPromotionRewardForGame_Internal(AITJsonSettings.Serialize(options), callbackId, "GrantPromotionRewardForGameResult");
+            __grantPromotionRewardForGame_Internal(AITJsonSettings.Serialize(paramsParam), callbackId, "GrantPromotionRewardForGameResult");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation
@@ -156,7 +157,7 @@ namespace AppsInToss
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
-        private static extern void __grantPromotionRewardForGame_Internal(string options, string callbackId, string typeName);
+        private static extern void __grantPromotionRewardForGame_Internal(string paramsParam, string callbackId, string typeName);
 #endif
         /// <returns>리더보드 웹뷰를 호출해요. 앱 버전이 낮으면 아무 동작도 하지 않고 undefined를 반환해요.</returns>
         /// <exception cref="AITException">Thrown when the API call fails</exception>

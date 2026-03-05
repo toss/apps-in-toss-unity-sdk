@@ -540,7 +540,7 @@ jobs:
 
       - name: Upload EditMode Test Results
         if: inputs.run-e2e-test && always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: editmode-results-${{ inputs.os }}-${{ inputs.unity-version }}
           path: Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}/editmode-results.xml
@@ -948,7 +948,7 @@ jobs:
 
       - name: Upload Test Results
         if: inputs.run-unit-test && always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: unit-test-results-${{ inputs.os }}-${{ inputs.unity-version }}
           path: |
@@ -1198,7 +1198,7 @@ jobs:
 
       - name: Upload AIT Build
         if: inputs.run-build && (inputs.test-level || '2') != '0'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.artifact.outputs.name }}
           path: |
@@ -1301,7 +1301,7 @@ jobs:
       # =====================================================
       - name: Upload Benchmark Results
         if: inputs.run-benchmark && (inputs.test-level || '2') == '2'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: benchmark-results-${{ inputs.os }}-${{ inputs.unity-version }}
           path: Tests~/E2E/tests/benchmark-results.json
@@ -1309,7 +1309,7 @@ jobs:
 
       - name: Upload Playwright Report
         if: inputs.run-e2e-test && (inputs.test-level || '2') == '2' && always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-report-${{ inputs.os }}-${{ inputs.unity-version }}
           path: Tests~/E2E/tests/playwright-report/

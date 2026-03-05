@@ -828,7 +828,7 @@ jobs:
 
       - name: 배포 결과 아티팩트 업로드
         if: always() && steps.check-packages.outputs.package_count > 0
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: deploy-results-${{ needs.create-release-tag.outputs.version }}
           path: deploy-results.txt

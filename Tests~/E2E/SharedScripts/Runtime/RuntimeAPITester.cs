@@ -210,7 +210,10 @@ public class RuntimeAPITester : MonoBehaviour
 
         // GameCenter APIs
         TestAPICall("SubmitGameCenterLeaderBoardScore", async () => { await AIT.SubmitGameCenterLeaderBoardScore(new SubmitGameCenterLeaderBoardScoreParams { Score = "100" }); });
-        TestAPICall("GrantPromotionRewardForGame", async () => { await AIT.GrantPromotionRewardForGame(new GrantPromotionRewardForGameOptions()); });
+        TestAPICall("GrantPromotionRewardForGame", async () => { await AIT.GrantPromotionRewardForGame(new GrantPromotionRewardForGameParams()); });
+
+        // Other APIs
+        TestAPICall("GetGroupId", async () => { await AIT.GetGroupId(); });
 
         // Certificate API
         TestAPICall("AppsInTossSignTossCert", async () => { await AIT.AppsInTossSignTossCert(new AppsInTossSignTossCertParams { TxId = "test-tx" }); });

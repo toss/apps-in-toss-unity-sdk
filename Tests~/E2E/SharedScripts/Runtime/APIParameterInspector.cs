@@ -302,6 +302,9 @@ public static class APIParameterInspector
         { "partnerAddAccessoryButton", "Partner" },
         { "partnerRemoveAccessoryButton", "Partner" },
 
+        // Other
+        { "GetGroupId", "Other" },
+
         // AppEvents
         { "AppsInTossEventSubscribeEntryMessageExited", "AppEvents" },
         { "GraniteEventSubscribeBackEvent", "AppEvents" },

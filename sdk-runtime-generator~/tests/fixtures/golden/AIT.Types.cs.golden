@@ -336,11 +336,11 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class GrantPromotionRewardForGameOptions
+    public class GrantPromotionRewardForGameParams
     {
         [Preserve]
         [JsonProperty("params")]
-        public GrantPromotionRewardForGameOptionsParams Params;
+        public GrantPromotionRewardForGameParamsParams Params;
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
@@ -349,7 +349,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class GrantPromotionRewardForGameOptionsParams
+    public class GrantPromotionRewardForGameParamsParams
     {
         [Preserve]
         [JsonProperty("promotionCode")]
@@ -1335,9 +1335,6 @@ namespace AppsInToss
         [Preserve]
         [JsonProperty("txId")]
         public string TxId;
-        [Preserve]
-        [JsonProperty("skipConfirmDoc")]
-        public bool? SkipConfirmDoc; // optional
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]

@@ -63,6 +63,7 @@ public class SDKAPIReflectionTests
     [TestCase("OnVisibilityChangedByTransparentServiceWeb")]
     [TestCase("StartUpdateLocation")]
     [TestCase("ContactsViral")]
+    [TestCase("GetGroupId")]
     public void AIT_API_Exists(string methodName)
     {
         var methods = aitType.GetMethods(BindingFlags.Public | BindingFlags.Static);

@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "granite dev",
-    "build": "granite build",
-    "start": "granite dev",
+    "dev": "ait dev",
+    "build": "ait build",
+    "start": "ait dev",
     "deploy": "ait deploy"
   },
   "dependencies": {

@@ -635,6 +635,7 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
     let sharedPort = serverPort;
     let pageLoadTime = 0;
     let unityLoadTime = 0;
+    const preloadWarnings = [];
 
     test.beforeAll(async ({ browser }) => {
       console.log('\n' + '='.repeat(70));
@@ -666,6 +667,12 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
 
       // 2. 페이지 생성 + Unity 초기화
       sharedPage = await browser.newPage();
+
+      sharedPage.on('console', msg => {
+        if (msg.type() === 'warning' && msg.text().includes('credentials mode')) {
+          preloadWarnings.push(msg.text());
+        }
+      });
 
       const startTime = Date.now();
       const response = await sharedPage.goto(`http://localhost:${sharedPort}?e2e=true`, {
@@ -737,12 +744,40 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
 
       expect(webglInfo.supported, 'WebGL should be supported').toBe(true);
 
+      expect(preloadWarnings.length,
+        'Preload tags should not cause credentials mode mismatch warnings').toBe(0);
+
       testResults.tests['3_production_server'] = {
         passed: true,
         pageLoadTimeMs: pageLoadTime,
         unityLoadTimeMs: unityLoadTime,
         webgl: webglInfo
       };
+    });
+
+
+    // -------------------------------------------------------------------------
+    // Test 3-1: Page Reload Crash Test (cache warm)
+    // -------------------------------------------------------------------------
+    test('3-1. Page reload should not crash (cache warm)', async () => {
+      test.setTimeout(120000);
+      const reloadErrors = [];
+      const handler = err => reloadErrors.push(err.message);
+      sharedPage.on('pageerror', handler);
+
+      try {
+        const resp = await sharedPage.reload({ waitUntil: 'networkidle', timeout: 90000 });
+        expect(resp?.status()).toBe(200);
+
+        await sharedPage.waitForFunction(
+          () => window['unityInstance'] !== undefined, { timeout: 120000 });
+
+        const abortErrors = reloadErrors.filter(e => e.includes('ERR_ABORTED'));
+        expect(abortErrors.length, 'No ERR_ABORTED errors on reload').toBe(0);
+        testResults.tests['3_1_reload'] = { passed: true };
+      } finally {
+        sharedPage.off('pageerror', handler);
+      }
     });
 
 

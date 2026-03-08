@@ -224,6 +224,57 @@ namespace AppsInToss.Editor
         }
 
         /// <summary>
+        /// 압축 포맷에 따른 파일 검색 패턴을 반환합니다.
+        /// </summary>
+        /// <param name="compressionFormat">압축 포맷 (0=Disabled, 1=Gzip, 2=Brotli, -1=와일드카드 폴백)</param>
+        /// <param name="decompressionFallback">Decompression Fallback 활성 시 .unityweb 확장자 사용</param>
+        internal static Dictionary<string, string> GetFilePatterns(int compressionFormat, bool decompressionFallback = false)
+        {
+            // decompressionFallback이 활성화되면 모든 파일이 .unityweb 확장자를 가짐 (loader 제외)
+            if (decompressionFallback)
+            {
+                return new Dictionary<string, string>
+                {
+                    { "loader", "*.loader.js" },
+                    { "data", "*.data.unityweb" },
+                    { "framework", "*.framework.js.unityweb" },
+                    { "wasm", "*.wasm.unityweb" },
+                    { "symbols", "*.symbols.json.unityweb" }
+                };
+            }
+
+            string ext;
+            switch (compressionFormat)
+            {
+                case 0: ext = ""; break;       // Disabled
+                case 1: ext = ".gz"; break;    // Gzip
+                case 2: ext = ".br"; break;    // Brotli
+                default: ext = null; break;    // Unknown → 와일드카드 폴백
+            }
+
+            if (ext == null) // 폴백: 기존 와일드카드
+            {
+                return new Dictionary<string, string>
+                {
+                    { "loader", "*.loader.js" },
+                    { "data", "*.data*" },
+                    { "framework", "*.framework.js*" },
+                    { "wasm", "*.wasm*" },
+                    { "symbols", "*.symbols.json*" }
+                };
+            }
+
+            return new Dictionary<string, string>
+            {
+                { "loader", "*.loader.js" },  // loader는 압축되지 않음
+                { "data", $"*.data{ext}" },
+                { "framework", $"*.framework.js{ext}" },
+                { "wasm", $"*.wasm{ext}" },
+                { "symbols", $"*.symbols.json{ext}" }
+            };
+        }
+
+        /// <summary>
         /// Build 폴더에서 패턴에 맞는 파일을 찾습니다.
         /// </summary>
         /// <param name="buildPath">검색할 빌드 경로</param>

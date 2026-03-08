@@ -665,6 +665,50 @@
             } else {
                 // 정상적으로 로드된 경우 실행
                 console.log('[AIT] ✓ createUnityInstance 함수 확인됨');
+
+                // GLctx 에러 근본 수정: GL.deleteContext에 null-check 패치
+                // Unity가 존재하지 않는 WebGL context를 삭제하려 할 때 크래시 방지
+                (function() {
+                    var patchAttempts = 0;
+                    var maxAttempts = 200; // 10초 (50ms * 200)
+                    var patchInterval = setInterval(function() {
+                        patchAttempts++;
+                        if (typeof GL !== 'undefined' && GL.deleteContext) {
+                            clearInterval(patchInterval);
+                            var originalDeleteContext = GL.deleteContext;
+                            GL.deleteContext = function(contextHandle) {
+                                if (!GL.contexts[contextHandle]) {
+                                    console.warn('[AIT] GL.deleteContext: context ' + contextHandle + ' already freed, skipping');
+                                    return;
+                                }
+                                return originalDeleteContext.call(this, contextHandle);
+                            };
+                            console.log('[AIT] GL.deleteContext 방어 패치 적용됨');
+                        } else if (patchAttempts >= maxAttempts) {
+                            clearInterval(patchInterval);
+                        }
+                    }, 50);
+                })();
+
+                // GLctx 에러 방어: Emscripten 내부에서 throw된 동기 예외는
+                // Promise .catch를 통과하지 못하므로 window error 이벤트로 감지
+                function _aitGLErrorHandler(e) {
+                    if (e.message && (e.message.indexOf('GLctx') !== -1 || e.message.indexOf('WebGL context') !== -1)) {
+                        window.removeEventListener('error', _aitGLErrorHandler);
+                        console.error('[AIT] WebGL context 에러 감지:', e.message);
+                        showLoadError(
+                            'WebGL 초기화 실패',
+                            '기기 메모리가 부족하여 게임을 시작할 수 없습니다.',
+                            [
+                                '다른 앱을 종료한 후 다시 시도해 주세요.',
+                                '기기를 재시작하면 도움이 될 수 있습니다.'
+                            ],
+                            { error: e.message }
+                        );
+                    }
+                }
+                window.addEventListener('error', _aitGLErrorHandler);
+
                 createUnityInstance(canvas, config, (progress) => {
                     var unityProgress = 0.1 + (progress * 0.9); // 10%부터 시작해서 100%까지
                     updateLoadingProgress(unityProgress);

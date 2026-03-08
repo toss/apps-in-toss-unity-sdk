@@ -11,33 +11,13 @@ using AppsInToss.Editor;
 
 namespace AppsInToss
 {
-    // JsonUtility를 위한 직렬화 가능한 설정 클래스들
-    [System.Serializable]
-    public class AppConfigWindow
-    {
-        public string navigationBarTitleText;
-        public string backgroundColor;
-    }
-
-    [System.Serializable]
-    public class AppConfigData
-    {
-        public string appId;
-        public string appName;
-        public string version;
-        public string description;
-        public string[] pages;
-        public AppConfigWindow window;
-        public string[] permissions;
-        public string[] plugins;
-    }
-
     [System.Serializable]
     internal class AITBuildInfo
     {
         public string sdkVersion;
         public string buildTime;
         public int compressionFormat;
+        public bool decompressionFallback;
         public string profileName;
         public string unityVersion;
     }
@@ -52,6 +32,7 @@ namespace AppsInToss
 
         private static bool isCancelled = false;
         private static Editor.AITAsyncCommandRunner.CommandTask currentAsyncTask = null;
+        private static Editor.AITPackageBuilder.EarlyPackageContext currentEarlyContext = null;
 
         static AITConvertCore() { }
 
@@ -62,6 +43,14 @@ namespace AppsInToss
         {
             isCancelled = true;
             Debug.Log("[AIT] 빌드 취소 요청됨");
+
+            // 병렬 pnpm install 취소
+            if (currentEarlyContext != null)
+            {
+                currentEarlyContext.PnpmCancellation.Cancel();
+                currentEarlyContext.PnpmCancellation.Dispose();
+                currentEarlyContext = null;
+            }
 
             // 현재 실행 중인 비동기 작업이 있으면 취소
             if (currentAsyncTask != null)
@@ -78,6 +67,7 @@ namespace AppsInToss
         {
             isCancelled = false;
             currentAsyncTask = null;
+            currentEarlyContext = null;
         }
 
         /// <summary>
@@ -86,6 +76,14 @@ namespace AppsInToss
         public static bool IsCancelled()
         {
             return isCancelled;
+        }
+
+        /// <summary>
+        /// 비동기 빌드 작업이 진행 중인지 확인
+        /// </summary>
+        public static bool HasRunningAsyncTask()
+        {
+            return currentAsyncTask != null;
         }
 
         /// <summary>
@@ -112,9 +110,10 @@ namespace AppsInToss
         /// WebGL 템플릿을 SDK에서 프로젝트로 복사합니다.
         /// 빌드 시마다 최신 SDK 템플릿으로 교체합니다.
         /// </summary>
-        public static void EnsureWebGLTemplatesExist()
+        /// <returns>파일이 실제로 변경된 경우 true</returns>
+        public static bool EnsureWebGLTemplatesExist()
         {
-            AITTemplateManager.EnsureWebGLTemplatesExist();
+            return AITTemplateManager.EnsureWebGLTemplatesExist();
         }
 
         #endregion
@@ -150,8 +149,13 @@ namespace AppsInToss
             NETWORK_ERROR = 4,
             CANCELLED = 5,
             FAIL_NPM_BUILD = 6,
-            WEBGL_BUILD_INCOMPLETE = 7,
-            REQUIRES_FULL_BUILD = 8,
+            // 7은 이전 WEBGL_BUILD_INCOMPLETE (아래 세분화 코드로 대체됨)
+
+            // 세분화된 에러 코드
+            BUILD_FOLDER_MISSING = 10,
+            REQUIRED_FILE_MISSING = 11,
+            INDEX_HTML_MISSING = 12,
+            PLACEHOLDER_SUBSTITUTION_FAILED = 13,
         }
 
         /// <summary>
@@ -204,20 +208,33 @@ namespace AppsInToss
                            "3. package.json 파일이 올바른지 확인\n" +
                            "4. ~/.ait-unity-sdk/nodejs 폴더를 삭제 후 다시 빌드 시도";
 
-                case AITExportError.WEBGL_BUILD_INCOMPLETE:
-                    return "WebGL 빌드 결과물이 불완전합니다.\n\n" +
-                           "필수 파일(loader.js, data, framework.js, wasm 등)이 누락되었거나\n" +
-                           "index.html의 플레이스홀더가 치환되지 않았습니다.\n\n" +
+                case AITExportError.BUILD_FOLDER_MISSING:
+                    return "WebGL 빌드의 Build 폴더를 찾을 수 없습니다.\n\n" +
+                           "WebGL 빌드가 실행되지 않았거나 빌드 결과물이 삭제되었습니다.\n\n" +
                            "해결 방법:\n" +
-                           "1. AIT > Clean 메뉴로 빌드 폴더 삭제\n" +
-                           "2. 'Clean Build' 옵션 활성화 후 재빌드\n" +
-                           "3. AIT > Regenerate WebGL Templates 실행";
+                           "1. 'Build & Package' 메뉴로 전체 빌드를 실행하세요.\n" +
+                           "2. webgl/ 폴더가 존재하는지 확인하세요.";
 
-                case AITExportError.REQUIRES_FULL_BUILD:
-                    return "현재 WebGL 빌드가 AIT SDK를 통해 생성되지 않았습니다.\n\n" +
-                           "AIT SDK의 빌드 설정(압축, 템플릿, 최적화 등)이 적용되지 않아\n" +
-                           "토스 앱에서 로딩 오류가 발생할 수 있습니다.\n\n" +
-                           "'Build & Package'를 사용하면 SDK 설정이 올바르게 적용됩니다.";
+                case AITExportError.REQUIRED_FILE_MISSING:
+                    return "WebGL 빌드 필수 파일이 누락되었습니다.\n\n" +
+                           "loader.js, data, framework.js, wasm 파일 중 일부가 없습니다.\n\n" +
+                           "해결 방법:\n" +
+                           "1. 'Clean Build' 옵션을 활성화하고 다시 빌드하세요.\n" +
+                           "2. Unity Console에서 빌드 에러를 확인하세요.";
+
+                case AITExportError.INDEX_HTML_MISSING:
+                    return "WebGL 빌드의 index.html을 찾을 수 없습니다.\n\n" +
+                           "WebGL 템플릿이 올바르게 설정되지 않았을 수 있습니다.\n\n" +
+                           "해결 방법:\n" +
+                           "1. AIT > Clean 메뉴로 빌드 폴더 삭제 후 재빌드\n" +
+                           "2. 'Clean Build' 옵션 활성화 후 재빌드";
+
+                case AITExportError.PLACEHOLDER_SUBSTITUTION_FAILED:
+                    return "index.html의 필수 플레이스홀더가 치환되지 않았습니다.\n\n" +
+                           "이 상태로 배포하면 'createUnityInstance is not defined' 에러가 발생합니다.\n\n" +
+                           "해결 방법:\n" +
+                           "1. 'Clean Build' 옵션을 활성화하고 다시 빌드하세요.\n" +
+                           "2. AIT > Clean 메뉴로 빌드 폴더 삭제 후 재빌드하세요.";
 
                 default:
                     return $"알 수 없는 오류가 발생했습니다. (코드: {error})";
@@ -230,6 +247,26 @@ namespace AppsInToss
 
         public const string BUILD_MARKER_FILENAME = ".ait-build-info.json";
 
+        /// <summary>
+        /// 빌드 마커를 읽어 AITBuildInfo를 반환합니다.
+        /// 파일이 없거나 파싱 실패 시 null을 반환합니다.
+        /// </summary>
+        internal static AITBuildInfo ReadBuildMarker(string webglPath)
+        {
+            string markerPath = Path.Combine(webglPath, BUILD_MARKER_FILENAME);
+            if (!File.Exists(markerPath)) return null;
+            try
+            {
+                string json = File.ReadAllText(markerPath);
+                return JsonUtility.FromJson<AITBuildInfo>(json);
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[AIT] 빌드 마커 읽기 실패: {e.Message}");
+                return null;
+            }
+        }
+
         #endregion
 
         #region Public Static Fields
@@ -238,23 +275,6 @@ namespace AppsInToss
 
         public static string defaultTemplateDir => "appsintoss-default";
         public static string webglDir = "webgl";
-        public static string miniGameDir = "miniapp";
-        public static string audioDir = "Assets";
-        public static string frameworkDir = "framework";
-        public static string dataFileSize = string.Empty;
-        public static string codeMd5 = string.Empty;
-        public static string dataMd5 = string.Empty;
-        public static string defaultImgSrc = "Assets/AppsInToss-SDK/Runtime/appsintoss-default/images/background.jpg";
-
-        public static bool UseIL2CPP
-        {
-            get
-            {
-#pragma warning disable CS0618
-                return PlayerSettings.GetScriptingBackend(BuildTargetGroup.WebGL) == ScriptingImplementation.IL2CPP;
-#pragma warning restore CS0618
-            }
-        }
 
         #endregion
 
@@ -271,6 +291,31 @@ namespace AppsInToss
 
         #endregion
 
+        #region Export Setup
+
+        /// <summary>
+        /// DoExport/DoExportAsync 공통 셋업: 프로필 폴백, 환경 변수 오버라이드, Init, 로그, PlayerSettings 적용
+        /// </summary>
+        /// <returns>editorConfig (null이면 설정 오류)</returns>
+        private static AITEditorScriptObject PrepareExport(ref AITBuildProfile profile, ref string profileName)
+        {
+            var editorConfig = UnityUtil.GetEditorConf();
+            if (profile == null)
+            {
+                profile = editorConfig.productionProfile;
+                profileName = profileName ?? "Production";
+            }
+
+            profile = AITBuildInitializer.ApplyEnvironmentVariableOverrides(profile);
+            Init(profile);
+            AITBuildInitializer.LogBuildProfile(profile, profileName);
+            AITBuildInitializer.ApplyBuildProfileSettings(profile);
+
+            return editorConfig;
+        }
+
+        #endregion
+
         #region Main Export Pipeline
 
         /// <summary>
@@ -282,7 +327,7 @@ namespace AppsInToss
         /// <param name="profile">적용할 빌드 프로필 (null이면 productionProfile 사용)</param>
         /// <param name="profileName">빌드 프로필 이름 (로그 출력용)</param>
         /// <returns>변환 결과</returns>
-        public static AITExportError DoExport(bool buildWebGL = true, bool doPackaging = true, bool cleanBuild = false, AITBuildProfile profile = null, string profileName = null)
+        public static AITExportError DoExport(bool buildWebGL = true, bool doPackaging = true, bool cleanBuild = false, AITBuildProfile profile = null, string profileName = null, bool skipGraniteBuild = false)
         {
             // 빌드 시작 전 취소 플래그 리셋
             ResetCancellation();
@@ -292,25 +337,7 @@ namespace AppsInToss
 
             try
             {
-                // 프로필이 지정되지 않으면 기본 프로필 사용
-                var editorConfig = UnityUtil.GetEditorConf();
-                if (profile == null)
-                {
-                    profile = editorConfig.productionProfile;
-                    profileName = profileName ?? "Production";
-                }
-
-                // 환경 변수로 프로필 오버라이드 적용 (Init 전에 적용하여 PlayerSettings에 반영)
-                profile = AITBuildInitializer.ApplyEnvironmentVariableOverrides(profile);
-
-                // Init()에 프로필 전달하여 프로필별 압축/스트리핑 설정 적용
-                Init(profile);
-
-                // 빌드 프로필 로그 출력
-                AITBuildInitializer.LogBuildProfile(profile, profileName);
-
-                // 프로필 기반으로 PlayerSettings 설정
-                AITBuildInitializer.ApplyBuildProfileSettings(profile);
+                var editorConfig = PrepareExport(ref profile, ref profileName);
 
                 Debug.Log($"Apps in Toss 미니앱 변환을 시작합니다... (cleanBuild: {cleanBuild})");
 
@@ -346,7 +373,7 @@ namespace AppsInToss
                         return AITExportError.CANCELLED;
                     }
 
-                    var exportResult = GenerateMiniAppPackage(profile);
+                    var exportResult = GenerateMiniAppPackage(profile, skipGraniteBuild);
                     if (exportResult != AITExportError.SUCCEED)
                     {
                         return exportResult;
@@ -386,12 +413,13 @@ namespace AppsInToss
             AITBuildProfile profile,
             string profileName,
             Action<AITExportError> onComplete,
-            Action<BuildPhase, float, string> onProgress = null)
+            Action<BuildPhase, float, string> onProgress = null,
+            bool skipGraniteBuild = false)
         {
             // 배치 모드에서는 동기 실행
             if (Application.isBatchMode)
             {
-                var result = DoExport(buildWebGL, doPackaging, cleanBuild, profile, profileName);
+                var result = DoExport(buildWebGL, doPackaging, cleanBuild, profile, profileName, skipGraniteBuild);
                 onComplete?.Invoke(result);
                 return;
             }
@@ -404,21 +432,7 @@ namespace AppsInToss
 
             try
             {
-                // 프로필 설정
-                var editorConfig = UnityUtil.GetEditorConf();
-                if (profile == null)
-                {
-                    profile = editorConfig.productionProfile;
-                    profileName = profileName ?? "Production";
-                }
-
-                // 환경 변수 오버라이드 적용
-                profile = AITBuildInitializer.ApplyEnvironmentVariableOverrides(profile);
-
-                // 초기화
-                Init(profile);
-                AITBuildInitializer.LogBuildProfile(profile, profileName);
-                AITBuildInitializer.ApplyBuildProfileSettings(profile);
+                var editorConfig = PrepareExport(ref profile, ref profileName);
 
                 onProgress?.Invoke(BuildPhase.Preparing, 0.01f, "빌드 준비 중...");
                 Debug.Log($"[AIT] 비동기 미니앱 변환 시작... (cleanBuild: {cleanBuild})");
@@ -431,9 +445,67 @@ namespace AppsInToss
                     return;
                 }
 
-                // Phase 1: WebGL Build (BLOCKING - Unity 제한)
-                if (buildWebGL)
+                // 병렬 경로: WebGL 빌드 + pnpm install 동시 실행
+                if (buildWebGL && doPackaging)
                 {
+                    if (IsCancelled())
+                    {
+                        Debug.LogWarning("[AIT] 빌드가 취소되었습니다.");
+                        settingsBackup.Restore();
+                        onComplete?.Invoke(AITExportError.CANCELLED);
+                        return;
+                    }
+
+                    // Phase 0: BuildConfig 복사 + pnpm install 백그라운드 시작
+                    onProgress?.Invoke(BuildPhase.Preparing, 0.02f, "빌드 설정 파일 복사 및 pnpm install 준비 중...");
+                    string projectPath = UnityUtil.GetProjectPath();
+
+                    var (earlyCtx, earlyError) = Editor.AITPackageBuilder.PrepareEarlyPackaging(projectPath, profile);
+                    if (earlyCtx == null)
+                    {
+                        settingsBackup.Restore();
+                        onComplete?.Invoke(earlyError);
+                        return;
+                    }
+
+                    currentEarlyContext = earlyCtx;
+                    Editor.AITPackageBuilder.StartPnpmInstallInBackground(earlyCtx);
+
+                    // Phase 1: WebGL Build (BLOCKING - 메인 스레드)
+                    // 백그라운드 pnpm install은 독립 OS 프로세스이므로 이 동안 병렬 실행됨
+                    onProgress?.Invoke(BuildPhase.WebGLBuild, 0.05f, "WebGL 빌드 중... (pnpm install 병렬 실행 중)");
+
+                    var webglResult = BuildWebGL(cleanBuild, profile);
+                    if (webglResult != AITExportError.SUCCEED)
+                    {
+                        earlyCtx.PnpmCancellation.Cancel();
+                        earlyCtx.PnpmCancellation.Dispose();
+                        currentEarlyContext = null;
+                        settingsBackup.Restore();
+                        onComplete?.Invoke(webglResult);
+                        return;
+                    }
+
+                    if (IsCancelled())
+                    {
+                        earlyCtx.PnpmCancellation.Cancel();
+                        earlyCtx.PnpmCancellation.Dispose();
+                        currentEarlyContext = null;
+                        Debug.LogWarning("[AIT] 빌드가 취소되었습니다.");
+                        settingsBackup.Restore();
+                        onComplete?.Invoke(AITExportError.CANCELLED);
+                        return;
+                    }
+
+                    // Phase 2: WebGL 출력 복사 + pnpm install 완료 대기 + granite build
+                    string webglPath = Path.Combine(projectPath, webglDir);
+                    currentEarlyContext = null;
+                    Editor.AITPackageBuilder.CompletePackagingAfterWebGLBuild(
+                        earlyCtx, webglPath, profile, settingsBackup, onComplete, onProgress, skipGraniteBuild);
+                }
+                else if (buildWebGL)
+                {
+                    // WebGL 빌드만 (패키징 없음)
                     if (IsCancelled())
                     {
                         Debug.LogWarning("[AIT] 빌드가 취소되었습니다.");
@@ -452,12 +524,13 @@ namespace AppsInToss
                         return;
                     }
 
-                    onProgress?.Invoke(BuildPhase.CopyingFiles, 0.15f, "WebGL 빌드 완료, 패키징 준비 중...");
+                    Debug.Log("[AIT] 비동기 미니앱 변환이 완료되었습니다!");
+                    settingsBackup.Restore();
+                    onComplete?.Invoke(AITExportError.SUCCEED);
                 }
-
-                // Phase 2: Async 패키징
-                if (doPackaging)
+                else if (doPackaging)
                 {
+                    // 패키징만 (buildWebGL: false) — 기존 순차 경로 사용
                     if (IsCancelled())
                     {
                         Debug.LogWarning("[AIT] 빌드가 취소되었습니다.");
@@ -466,7 +539,7 @@ namespace AppsInToss
                         return;
                     }
 
-                    GenerateMiniAppPackageAsync(profile, settingsBackup, onComplete, onProgress);
+                    GenerateMiniAppPackageAsync(profile, settingsBackup, onComplete, onProgress, skipGraniteBuild);
                 }
                 else
                 {
@@ -490,7 +563,8 @@ namespace AppsInToss
             AITBuildProfile profile,
             Editor.AITPlayerSettingsBackup settingsBackup,
             Action<AITExportError> onComplete,
-            Action<BuildPhase, float, string> onProgress)
+            Action<BuildPhase, float, string> onProgress,
+            bool skipGraniteBuild = false)
         {
             Debug.Log("[AIT] 비동기 미니앱 패키지 생성 시작...");
 
@@ -517,6 +591,7 @@ namespace AppsInToss
                 profile,
                 onComplete: (result) =>
                 {
+                    currentAsyncTask = null;
                     settingsBackup.Restore();
 
                     if (result == AITExportError.SUCCEED)
@@ -526,7 +601,8 @@ namespace AppsInToss
 
                     onComplete?.Invoke(result);
                 },
-                onProgress: onProgress
+                onProgress: onProgress,
+                skipGraniteBuild: skipGraniteBuild
             );
         }
 
@@ -534,12 +610,74 @@ namespace AppsInToss
 
         #region WebGL Build
 
+        /// <summary>
+        /// 기존 빌드 캐시가 유효한지 검증하여 clean build 필요 여부를 판단합니다.
+        /// 빌드 마커 없음, Unity 버전 불일치, 필수 파일 누락 시 true를 반환합니다.
+        /// </summary>
+        private static bool ShouldForceCleanBuild(string outputPath, bool cleanBuild)
+        {
+            if (cleanBuild) return true;
+            if (!Directory.Exists(outputPath)) return false;
+
+            var buildInfo = ReadBuildMarker(outputPath);
+            if (buildInfo == null)
+            {
+                Debug.LogWarning("[AIT] 빌드 마커가 없습니다. Clean build를 수행합니다.");
+                return true;
+            }
+            if (buildInfo.unityVersion != Application.unityVersion)
+            {
+                Debug.LogWarning($"[AIT] Unity 버전 불일치: 빌드 {buildInfo.unityVersion} vs 현재 {Application.unityVersion}. Clean build를 수행합니다.");
+                return true;
+            }
+
+            string buildDir = Path.Combine(outputPath, "Build");
+            if (!Directory.Exists(buildDir) || Directory.GetFiles(buildDir, "*.loader.js").Length == 0)
+            {
+                Debug.LogWarning("[AIT] 빌드 필수 파일이 없습니다. Clean build를 수행합니다.");
+                return true;
+            }
+
+            return false;
+        }
+
         private static AITExportError BuildWebGL(bool cleanBuild = false, AITBuildProfile profile = null)
         {
-            Debug.Log($"WebGL 빌드를 시작합니다... ({(cleanBuild ? "클린 빌드" : "증분 빌드")})");
+            if (EditorUserBuildSettings.activeBuildTarget != BuildTarget.WebGL)
+            {
+                bool confirm = AITPlatformHelper.ShowConfirmDialog(
+                    "빌드 타겟 전환 필요",
+                    $"현재 빌드 타겟이 {EditorUserBuildSettings.activeBuildTarget}입니다.\n" +
+                    "WebGL 빌드를 위해 빌드 타겟을 WebGL로 전환해야 합니다.",
+                    "전환",
+                    "취소");
+
+                if (!confirm)
+                {
+                    Debug.Log("[AIT] 사용자가 빌드 타겟 전환을 취소했습니다.");
+                    return AITExportError.CANCELLED;
+                }
+
+                Debug.Log($"[AIT] 빌드 타겟을 {EditorUserBuildSettings.activeBuildTarget}에서 WebGL로 전환합니다...");
+                if (!EditorUserBuildSettings.SwitchActiveBuildTarget(BuildTargetGroup.WebGL, BuildTarget.WebGL))
+                {
+                    Debug.LogError("[AIT] WebGL 빌드 타겟으로 전환할 수 없습니다. WebGL Build Support 모듈이 설치되어 있는지 확인하세요.");
+                    return AITExportError.BUILD_WEBGL_FAILED;
+                }
+            }
 
             string[] scenes = UnityUtil.GetBuildScenes();
             string outputPath = Path.Combine(UnityUtil.GetProjectPath(), webglDir);
+
+            // 빌드 캐시 유효성 검증
+            if (ShouldForceCleanBuild(outputPath, cleanBuild))
+            {
+                if (!cleanBuild)
+                    Debug.Log("[AIT] 빌드 캐시 검증 실패. 자동으로 clean build를 수행합니다.");
+                cleanBuild = true;
+            }
+
+            Debug.Log($"WebGL 빌드를 시작합니다... ({(cleanBuild ? "클린 빌드" : "증분 빌드")})");
 
             // 클린 빌드 시에만 기존 빌드 폴더 삭제
             if (cleanBuild && Directory.Exists(outputPath))
@@ -614,7 +752,7 @@ namespace AppsInToss
 
             Debug.Log("WebGL 빌드가 완료되었습니다.");
 
-            // AIT 빌드 마커 파일 생성 (Package Only 시 검증용)
+            // AIT 빌드 마커 파일 생성 (빌드 정보 기록용)
             try
             {
                 var buildInfo = new AITBuildInfo
@@ -622,6 +760,7 @@ namespace AppsInToss
                     sdkVersion = AITVersion.Version,
                     buildTime = DateTime.UtcNow.ToString("o"),
                     compressionFormat = (int)PlayerSettings.WebGL.compressionFormat,
+                    decompressionFallback = PlayerSettings.WebGL.decompressionFallback,
                     profileName = profile?.developmentBuild == true ? "Development" : "Production",
                     unityVersion = Application.unityVersion
                 };
@@ -641,7 +780,7 @@ namespace AppsInToss
 
         #region Package Generation
 
-        private static AITExportError GenerateMiniAppPackage(AITBuildProfile profile = null)
+        private static AITExportError GenerateMiniAppPackage(AITBuildProfile profile = null, bool skipGraniteBuild = false)
         {
             Debug.Log("Apps in Toss 미니앱 패키지를 생성합니다...");
 
@@ -661,7 +800,7 @@ namespace AppsInToss
             }
 
             // AITPackageBuilder에 패키징 위임
-            var packageResult = AITPackageBuilder.PackageWebGLBuild(projectPath, webglPath, profile);
+            var packageResult = AITPackageBuilder.PackageWebGLBuild(projectPath, webglPath, profile, skipGraniteBuild);
             if (packageResult != AITExportError.SUCCEED)
             {
                 return packageResult;

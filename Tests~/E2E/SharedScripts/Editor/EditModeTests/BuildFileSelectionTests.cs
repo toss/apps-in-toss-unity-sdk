@@ -94,6 +94,10 @@ public class BuildFileSelectionTests
     [TestCase("build.wasm.gz", "*.wasm*")]
     [TestCase("build.data.unityweb", "*.data*")]
     [TestCase("build.framework.js.br", "*.framework.js*")]
+    [TestCase("build.wasm.unityweb", "*.wasm.unityweb")]
+    [TestCase("build.data.unityweb", "*.data.unityweb")]
+    [TestCase("build.framework.js.unityweb", "*.framework.js.unityweb")]
+    [TestCase("build.symbols.json.unityweb", "*.symbols.json.unityweb")]
     public void FindFileInBuild_CompressedExtensions_Matches(string fileName, string pattern)
     {
         File.WriteAllText(Path.Combine(tempDir, fileName), "compressed");
@@ -116,6 +120,46 @@ public class BuildFileSelectionTests
         string result = AITBuildValidator.FindFileInBuild(fakePath, "*.loader.js");
 
         Assert.AreEqual("", result);
+    }
+
+    // =====================================================
+    // GetFilePatterns — decompressionFallback=true 시 .unityweb 패턴 반환
+    // =====================================================
+
+    [Test]
+    public void GetFilePatterns_DecompressionFallback_ReturnsUnitywebPatterns()
+    {
+        var patterns = AITBuildValidator.GetFilePatterns(0, decompressionFallback: true);
+
+        Assert.AreEqual("*.loader.js", patterns["loader"]);
+        Assert.AreEqual("*.data.unityweb", patterns["data"]);
+        Assert.AreEqual("*.framework.js.unityweb", patterns["framework"]);
+        Assert.AreEqual("*.wasm.unityweb", patterns["wasm"]);
+        Assert.AreEqual("*.symbols.json.unityweb", patterns["symbols"]);
+    }
+
+    [Test]
+    public void GetFilePatterns_DecompressionFallback_OverridesCompressionFormat()
+    {
+        // Brotli(2) + decompressionFallback=true → .unityweb가 우선
+        var patterns = AITBuildValidator.GetFilePatterns(2, decompressionFallback: true);
+
+        Assert.AreEqual("*.data.unityweb", patterns["data"],
+            "decompressionFallback should override compressionFormat (Brotli)");
+        Assert.AreEqual("*.wasm.unityweb", patterns["wasm"]);
+        Assert.AreEqual("*.framework.js.unityweb", patterns["framework"]);
+    }
+
+    [Test]
+    public void GetFilePatterns_NoDecompressionFallback_ReturnsStandardPatterns()
+    {
+        var patterns = AITBuildValidator.GetFilePatterns(0, decompressionFallback: false);
+
+        Assert.AreEqual("*.loader.js", patterns["loader"]);
+        Assert.AreEqual("*.data", patterns["data"]);
+        Assert.AreEqual("*.framework.js", patterns["framework"]);
+        Assert.AreEqual("*.wasm", patterns["wasm"]);
+        Assert.AreEqual("*.symbols.json", patterns["symbols"]);
     }
 
     // =====================================================

@@ -397,7 +397,7 @@ ${resultHandling}
           TypeName: typeNameStr,
           Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
         });
-        SendMessage('AITCore', 'OnAITCallback', payload);
+        setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
       });
   } catch (error: unknown) {
     console.log('[AIT jslib] ${api.originalName} sync error:', error);
@@ -407,7 +407,7 @@ ${resultHandling}
       TypeName: typeNameStr,
       Result: JSON.stringify({ success: false, data: '', error: errorMessage })
     });
-    SendMessage('AITCore', 'OnAITCallback', payload);
+    setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
   }
 };`;
   }
@@ -440,7 +440,7 @@ ${jsConversions ? '\n' + jsConversions + '\n' : ''}
       TypeName: typeNameStr,
       Result: JSON.stringify({ success: false, data: '', error: errorMessage })
     });
-    SendMessage('AITCore', 'OnAITCallback', payload);
+    setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
   }
 };`;
   }
@@ -501,7 +501,7 @@ ${onEventHandler}
               error: error.message || String(error)
             })
           });
-          SendMessage('AITCore', 'OnAITEventCallback', payload);
+          setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
         }
       });
 
@@ -522,7 +522,7 @@ ${onEventHandler}
         error: errorMessage
       })
     });
-    SendMessage('AITCore', 'OnAITEventCallback', payload);
+    setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
   }
 };`;
   }
@@ -606,7 +606,7 @@ ${jsConversions ? '\n' + jsConversions + '\n' : ''}
             error: errorMessage
           })
         });
-        SendMessage('AITCore', 'OnAITEventCallback', payload);
+        setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
       }
     });
 
@@ -627,7 +627,7 @@ ${jsConversions ? '\n' + jsConversions + '\n' : ''}
         error: errorMessage
       })
     });
-    SendMessage('AITCore', 'OnAITEventCallback', payload);
+    setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
   }
 };`;
   }
@@ -680,7 +680,7 @@ ${jsConversions ? '\n' + jsConversions + '\n' : ''}
             error: errorMessage
           })
         });
-        SendMessage('AITCore', 'OnAITEventCallback', payload);
+        setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
       }
     });
 
@@ -701,7 +701,7 @@ ${jsConversions ? '\n' + jsConversions + '\n' : ''}
         error: errorMessage
       })
     });
-    SendMessage('AITCore', 'OnAITEventCallback', payload);
+    setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
   }
 };`;
   }
@@ -848,7 +848,7 @@ ${nestedCallbacksCode}
                             error: errorMessage
                         })
                     });
-                    SendMessage('AITCore', 'OnAITEventCallback', payload);
+                    setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
                 }
             });
 
@@ -870,7 +870,7 @@ ${nestedCallbacksCode}
                     error: errorMessage
                 })
             });
-            SendMessage('AITCore', 'OnAITEventCallback', payload);
+            setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
         }
     },`;
   }
@@ -954,7 +954,7 @@ ${paramConversions ? '\n' + paramConversions + '\n' : ''}
                             error: errorMessage
                         })
                     });
-                    SendMessage('AITCore', 'OnAITEventCallback', payload);
+                    setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
                 }
             });
 
@@ -975,7 +975,7 @@ ${paramConversions ? '\n' + paramConversions + '\n' : ''}
                     error: errorMessage
                 })
             });
-            SendMessage('AITCore', 'OnAITEventCallback', payload);
+            setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
         }
     },`;
   }
@@ -1028,7 +1028,7 @@ ${paramConversions ? '\n' + paramConversions + '\n' : ''}
                             error: errorMessage
                         })
                     });
-                    SendMessage('AITCore', 'OnAITEventCallback', payload);
+                    setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
                 }
             });
 
@@ -1049,7 +1049,7 @@ ${paramConversions ? '\n' + paramConversions + '\n' : ''}
                     error: errorMessage
                 })
             });
-            SendMessage('AITCore', 'OnAITEventCallback', payload);
+            setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
         }
     },`;
   }
@@ -1150,7 +1150,7 @@ ${resultHandling}
                         TypeName: typeNameStr,
                         Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
                     });
-                    SendMessage('AITCore', 'OnAITCallback', payload);
+                    setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
                 });
         } catch (error) {
             console.log('[AIT jslib] ${api.originalName} sync error:', error);
@@ -1159,7 +1159,7 @@ ${resultHandling}
                 TypeName: typeNameStr,
                 Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
             });
-            SendMessage('AITCore', 'OnAITCallback', payload);
+            setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
         }
     },`;
   }
@@ -1191,7 +1191,7 @@ ${resultHandling}
                 TypeName: typeNameStr,
                 Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
             });
-            SendMessage('AITCore', 'OnAITCallback', payload);
+            setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
         }
     },`;
   }
@@ -1255,7 +1255,7 @@ ${onEventHandler}
                             error: error.message || String(error)
                         })
                     });
-                    SendMessage('AITCore', 'OnAITEventCallback', payload);
+                    setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
                 }
             });
 
@@ -1276,7 +1276,7 @@ ${onEventHandler}
                     error: error.message || String(error)
                 })
             });
-            SendMessage('AITCore', 'OnAITEventCallback', payload);
+            setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
         }
     },`;
   }

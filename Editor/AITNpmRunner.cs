@@ -148,7 +148,7 @@ namespace AppsInToss.Editor
         /// pnpm 실행에 필요한 추가 PATH 경로 목록 구성
         /// (npmPath 디렉토리 + 내장 node 실행 파일 디렉토리)
         /// </summary>
-        private static List<string> BuildAdditionalPaths(string npmPath)
+        internal static List<string> BuildAdditionalPaths(string npmPath)
         {
             string npmDir = Path.GetDirectoryName(npmPath);
             var paths = new List<string>();
@@ -166,7 +166,7 @@ namespace AppsInToss.Editor
         /// <summary>
         /// install 명령어에 --store-dir 적용한 최종 arguments 구성
         /// </summary>
-        private static string BuildFullArguments(string arguments, string cachePath)
+        internal static string BuildFullArguments(string arguments, string cachePath)
         {
             bool isInstallCommand = arguments.TrimStart().StartsWith("install");
             return isInstallCommand
@@ -175,7 +175,8 @@ namespace AppsInToss.Editor
         }
 
         /// <summary>
-        /// npm 명령 실행 (캐시 사용)
+        /// npm 명령 실행 (캐시 사용, 취소 가능한 프로그레스바)
+        /// process.WaitForExit() 대신 HasExited 폴링으로 UI 응답성 유지
         /// </summary>
         internal static AITConvertCore.AITExportError RunNpmCommandWithCache(
             string workingDirectory,
@@ -200,33 +201,125 @@ namespace AppsInToss.Editor
                 Debug.Log($"[{pmName}] 프로세스 시작...");
 
                 string command = $"\"{npmPath}\" {fullArguments}";
-                int maxWaitSeconds = 300; // 5분
+                int maxWaitMs = 300000; // 5분
 
-                EditorUtility.DisplayProgressBar("Apps in Toss", $"{progressTitle} (시작 중...)", 0);
+                var processInfo = AITPlatformHelper.CreateProcessStartInfo(
+                    command, workingDirectory, additionalPaths.ToArray(), additionalEnvVars);
 
-                var result = AITPlatformHelper.ExecuteCommand(
-                    command,
-                    workingDirectory,
-                    additionalPaths.ToArray(),
-                    timeoutMs: maxWaitSeconds * 1000,
-                    verbose: true,
-                    additionalEnvVars: additionalEnvVars
-                );
-
-                EditorUtility.ClearProgressBar();
-
-                if (!result.Success)
+                Debug.Log($"[Platform] 명령 실행: {command}");
+                Debug.Log($"[Platform] 셸: {processInfo.FileName} {processInfo.Arguments}");
+                if (!string.IsNullOrEmpty(workingDirectory))
                 {
-                    Debug.LogError($"[{pmName}] 명령 실패 (Exit Code: {result.ExitCode}): {pmName} {arguments}");
-                    if (!string.IsNullOrEmpty(result.Output))
+                    Debug.Log($"[Platform] 작업 디렉토리: {workingDirectory}");
+                }
+
+                using (var process = new System.Diagnostics.Process { StartInfo = processInfo })
+                {
+                    var outputBuilder = new System.Text.StringBuilder();
+                    var errorBuilder = new System.Text.StringBuilder();
+                    // OutputDataReceived 콜백에서 쓰이고 메인 스레드에서 읽힘
+                    // string 참조 대입은 atomic이므로 프로그레스바 표시 용도로 안전
+                    string lastOutputLine = "";
+
+                    // 비동기 출력 수신 (실시간 로그 + 프로그레스바 표시용)
+                    process.OutputDataReceived += (sender, e) =>
                     {
-                        Debug.LogError($"[{pmName}] 출력:\n{result.Output}");
-                    }
-                    if (!string.IsNullOrEmpty(result.Error))
+                        if (e.Data != null)
+                        {
+                            string line = AITPlatformHelper.StripAnsiCodes(e.Data);
+                            outputBuilder.AppendLine(line);
+                            lastOutputLine = line;
+                        }
+                    };
+                    process.ErrorDataReceived += (sender, e) =>
                     {
-                        Debug.LogError($"[{pmName}] 오류:\n{result.Error}");
+                        if (e.Data != null)
+                        {
+                            string line = AITPlatformHelper.StripAnsiCodes(e.Data);
+                            errorBuilder.AppendLine(line);
+                        }
+                    };
+
+                    process.Start();
+                    process.BeginOutputReadLine();
+                    process.BeginErrorReadLine();
+
+                    // HasExited 폴링 — UI 응답성 유지 + Cancel 가능
+                    var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+                    bool cancelled = false;
+
+                    while (!process.HasExited)
+                    {
+                        // 타임아웃 체크
+                        if (stopwatch.ElapsedMilliseconds > maxWaitMs)
+                        {
+                            process.Kill();
+                            process.WaitForExit(5000); // 출력 버퍼 플러시 (최대 5초)
+                            EditorUtility.ClearProgressBar();
+                            string timeoutOutput = outputBuilder.ToString();
+                            string timeoutError = errorBuilder.ToString();
+                            Debug.LogError($"[{pmName}] 명령 시간 초과 ({maxWaitMs / 1000}초): {pmName} {arguments}");
+                            if (!string.IsNullOrEmpty(timeoutOutput))
+                                Debug.LogError($"[{pmName}] 출력:\n{timeoutOutput.Trim()}");
+                            if (!string.IsNullOrEmpty(timeoutError))
+                                Debug.LogError($"[{pmName}] 오류:\n{timeoutError.Trim()}");
+                            return AITConvertCore.AITExportError.FAIL_NPM_BUILD;
+                        }
+
+                        // 취소 가능한 프로그레스바 표시
+                        float elapsed = (float)stopwatch.ElapsedMilliseconds / maxWaitMs;
+                        string statusText = string.IsNullOrEmpty(lastOutputLine)
+                            ? $"{progressTitle}"
+                            : $"{progressTitle}\n{lastOutputLine}";
+                        cancelled = EditorUtility.DisplayCancelableProgressBar("Apps in Toss", statusText, elapsed);
+
+                        if (cancelled)
+                        {
+                            Debug.Log($"[{pmName}] 사용자가 취소했습니다: {pmName} {arguments}");
+                            process.Kill();
+                            process.WaitForExit(5000); // 프로세스 종료 대기 (최대 5초)
+                            break;
+                        }
+
+                        // 짧은 대기 (UI 응답성 유지)
+                        Thread.Sleep(200);
                     }
-                    return AITConvertCore.AITExportError.BUILD_WEBGL_FAILED;
+
+                    EditorUtility.ClearProgressBar();
+
+                    if (cancelled)
+                    {
+                        return AITConvertCore.AITExportError.CANCELLED;
+                    }
+
+                    // 출력 버퍼 플러시 대기 (프로세스는 이미 종료됨)
+                    process.WaitForExit(5000);
+
+                    string output = AITPlatformHelper.StripAnsiCodes(outputBuilder.ToString());
+                    string error = AITPlatformHelper.StripAnsiCodes(errorBuilder.ToString());
+                    bool success = process.ExitCode == 0;
+
+                    if (success)
+                    {
+                        Debug.Log($"[Platform] ✓ 명령 성공 (Exit Code: {process.ExitCode})");
+                        if (!string.IsNullOrEmpty(output))
+                        {
+                            Debug.Log($"[Platform] 출력:\n{output.Trim()}");
+                        }
+                    }
+                    else
+                    {
+                        Debug.LogError($"[{pmName}] 명령 실패 (Exit Code: {process.ExitCode}): {pmName} {arguments}");
+                        if (!string.IsNullOrEmpty(output))
+                        {
+                            Debug.LogError($"[{pmName}] 출력:\n{output}");
+                        }
+                        if (!string.IsNullOrEmpty(error))
+                        {
+                            Debug.LogError($"[{pmName}] 오류:\n{error}");
+                        }
+                        return AITConvertCore.AITExportError.FAIL_NPM_BUILD;
+                    }
                 }
 
                 Debug.Log($"[{pmName}] ✓ 명령 성공 완료: {pmName} {arguments}");
@@ -291,10 +384,10 @@ namespace AppsInToss.Editor
                     }
                     else
                     {
-                        Debug.LogError($"[{pmName}] 비동기 명령 실패 (Exit Code: {result.ExitCode}): {pmName} {arguments}");
+                        Debug.LogWarning($"[{pmName}] 비동기 명령 실패 (Exit Code: {result.ExitCode}): {pmName} {arguments}");
                         if (!string.IsNullOrEmpty(result.Error))
                         {
-                            Debug.LogError($"[{pmName}] 오류:\n{result.Error}");
+                            Debug.LogWarning($"[{pmName}] 오류:\n{result.Error}");
                         }
                         onComplete?.Invoke(AITConvertCore.AITExportError.FAIL_NPM_BUILD);
                     }

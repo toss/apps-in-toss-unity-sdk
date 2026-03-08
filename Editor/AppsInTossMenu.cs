@@ -105,13 +105,13 @@ namespace AppsInToss
             if (devState != ServerState.NotRunning)
             {
                 Debug.Log("[AIT] Editor 종료 - Dev 서버 프로세스 정리 중...");
-                StopDevServer();
+                StopServer(ServerType.Dev);
             }
 
             if (prodState != ServerState.NotRunning)
             {
                 Debug.Log("[AIT] Editor 종료 - Prod 서버 프로세스 정리 중...");
-                StopProdServer();
+                StopServer(ServerType.Prod);
             }
 
             if (hadRunningServers)
@@ -137,12 +137,12 @@ namespace AppsInToss
 
                     if (devState != ServerState.NotRunning)
                     {
-                        StopDevServer();
+                        StopServer(ServerType.Dev);
                     }
 
                     if (prodState != ServerState.NotRunning)
                     {
-                        StopProdServer();
+                        StopServer(ServerType.Prod);
                     }
 
                     break;
@@ -155,7 +155,7 @@ namespace AppsInToss
         [MenuItem("AIT/Dev Server/Start Server", false, 1)]
         public static void MenuStartDevServer()
         {
-            StartDevServer();
+            StartServer(ServerType.Dev);
         }
 
         [MenuItem("AIT/Dev Server/Start Server", true)]
@@ -169,7 +169,7 @@ namespace AppsInToss
         public static void MenuStopDevServer()
         {
             Debug.Log("AIT: Dev 서버 중지...");
-            StopDevServer();
+            StopServer(ServerType.Dev);
         }
 
         [MenuItem("AIT/Dev Server/Stop Server", true)]
@@ -179,14 +179,14 @@ namespace AppsInToss
             return state == ServerState.Running;
         }
 
-        [MenuItem("AIT/Dev Server/Restart Server (auto)", false, 3)]
+        [MenuItem("AIT/Dev Server/Restart Server", false, 3)]
         public static void MenuRestartDevServer()
         {
-            Debug.Log("AIT: Dev 서버 재시작 (자동 감지)...");
+            Debug.Log("AIT: Dev 서버 재시작...");
             RestartDevServer();
         }
 
-        [MenuItem("AIT/Dev Server/Restart Server (auto)", true)]
+        [MenuItem("AIT/Dev Server/Restart Server", true)]
         public static bool ValidateMenuRestartDevServer()
         {
             var state = devServerState?.GetCachedState() ?? ServerState.NotRunning;
@@ -207,26 +207,12 @@ namespace AppsInToss
             return state == ServerState.Running;
         }
 
-        [MenuItem("AIT/Dev Server/Repackage & Restart", false, 5)]
-        public static void MenuRepackageDevServer()
-        {
-            Debug.Log("AIT: Dev 서버 재패키징 & 재시작 중...");
-            RepackageAndRestartDevServer();
-        }
-
-        [MenuItem("AIT/Dev Server/Repackage & Restart", true)]
-        public static bool ValidateMenuRepackageDevServer()
-        {
-            var state = devServerState?.GetCachedState() ?? ServerState.NotRunning;
-            return state == ServerState.Running;
-        }
-
         // ==================== Production Server ====================
 
         [MenuItem("AIT/Production Server/Start Server", false, 11)]
         public static void MenuStartProdServer()
         {
-            StartProdServer();
+            StartServer(ServerType.Prod);
         }
 
         [MenuItem("AIT/Production Server/Start Server", true)]
@@ -240,7 +226,7 @@ namespace AppsInToss
         public static void MenuStopProdServer()
         {
             Debug.Log("AIT: Production 서버 중지...");
-            StopProdServer();
+            StopServer(ServerType.Prod);
         }
 
         [MenuItem("AIT/Production Server/Stop Server", true)]
@@ -250,14 +236,14 @@ namespace AppsInToss
             return state == ServerState.Running;
         }
 
-        [MenuItem("AIT/Production Server/Restart Server (auto)", false, 13)]
+        [MenuItem("AIT/Production Server/Restart Server", false, 13)]
         public static void MenuRestartProdServer()
         {
-            Debug.Log("AIT: Production 서버 재시작 (자동 감지)...");
+            Debug.Log("AIT: Production 서버 재시작...");
             RestartProdServer();
         }
 
-        [MenuItem("AIT/Production Server/Restart Server (auto)", true)]
+        [MenuItem("AIT/Production Server/Restart Server", true)]
         public static bool ValidateMenuRestartProdServer()
         {
             var state = prodServerState?.GetCachedState() ?? ServerState.NotRunning;
@@ -278,232 +264,29 @@ namespace AppsInToss
             return state == ServerState.Running;
         }
 
-        [MenuItem("AIT/Production Server/Repackage & Restart", false, 15)]
-        public static void MenuRepackageProdServer()
-        {
-            Debug.Log("AIT: Production 서버 재패키징 & 재시작 중...");
-            RepackageAndRestartProdServer();
-        }
-
-        [MenuItem("AIT/Production Server/Repackage & Restart", true)]
-        public static bool ValidateMenuRepackageProdServer()
-        {
-            var state = prodServerState?.GetCachedState() ?? ServerState.NotRunning;
-            return state == ServerState.Running;
-        }
-
         // ==================== Helper Methods ====================
 
-        // Unity 빌드에 영향을 주는 에셋 확장자 목록
-        private static readonly string[] UnityAssetExtensions = new[]
+        private static void RestartServer(ServerType type, bool serverOnly)
         {
-            // 스크립트
-            "*.cs",
-            // 씬, 프리팹, ScriptableObject
-            "*.unity", "*.prefab", "*.asset",
-            // 셰이더
-            "*.shader", "*.shadergraph", "*.shadersubgraph", "*.cginc", "*.hlsl",
-            // 머티리얼
-            "*.mat",
-            // 애니메이션
-            "*.anim", "*.controller", "*.overrideController",
-            // 텍스처/스프라이트
-            "*.png", "*.jpg", "*.jpeg", "*.psd", "*.tga", "*.exr", "*.hdr", "*.gif", "*.bmp",
-            // 오디오
-            "*.wav", "*.mp3", "*.ogg", "*.aiff",
-            // 모델
-            "*.fbx", "*.obj", "*.dae", "*.blend",
-            // 폰트
-            "*.ttf", "*.otf",
-            // 데이터 파일 (Resources 포함)
-            "*.json", "*.xml", "*.txt", "*.bytes",
-            // UI Toolkit
-            "*.uxml", "*.uss",
-            // Addressables/AssetBundle
-            "*.spriteatlas",
-        };
-
-        /// <summary>
-        /// Unity 에셋이 마지막 WebGL 빌드 이후에 변경되었는지 확인
-        /// </summary>
-        /// <returns>에셋이 변경되어 Unity 빌드가 필요하면 true</returns>
-        private static bool NeedUnityRebuild()
-        {
-            string projectPath = UnityUtil.GetProjectPath();
-            string webglPath = Path.Combine(projectPath, "webgl");
-
-            // WebGL 빌드가 없으면 빌드 필요
-            if (!Directory.Exists(webglPath))
+            StopServer(type);
+            // 프로세스 종료 대기 후 서버 재시작 (메인 스레드 블로킹 방지)
+            double startTime = EditorApplication.timeSinceStartup;
+            void WaitAndRestart()
             {
-                Debug.Log("[AIT] WebGL 빌드 없음 - Unity 빌드 필요");
-                return true;
-            }
-
-            // WebGL 빌드의 index.html 수정 시간을 기준으로 사용
-            string indexPath = Path.Combine(webglPath, "index.html");
-            if (!File.Exists(indexPath))
-            {
-                Debug.Log("[AIT] WebGL index.html 없음 - Unity 빌드 필요");
-                return true;
-            }
-
-            DateTime lastBuildTime = File.GetLastWriteTime(indexPath);
-            Debug.Log($"[AIT] 마지막 WebGL 빌드 시간: {lastBuildTime:yyyy-MM-dd HH:mm:ss}");
-
-            // Assets/ 폴더 검사
-            string assetsPath = Path.Combine(projectPath, "Assets");
-            if (!Directory.Exists(assetsPath))
-            {
-                Debug.Log("[AIT] Assets 폴더 없음 - Unity 빌드 불필요");
-                return false;
-            }
-
-            // 모든 Unity 에셋 타입 검사
-            foreach (string pattern in UnityAssetExtensions)
-            {
-                string[] files = Directory.GetFiles(assetsPath, pattern, SearchOption.AllDirectories);
-                foreach (string file in files)
-                {
-                    DateTime fileTime = File.GetLastWriteTime(file);
-                    if (fileTime > lastBuildTime)
-                    {
-                        string relativePath = file.Substring(projectPath.Length + 1);
-                        Debug.Log($"[AIT] 에셋 변경 감지: {relativePath} ({fileTime:yyyy-MM-dd HH:mm:ss})");
-                        return true;
-                    }
-                }
-            }
-
-            // StreamingAssets 폴더 전체 검사 (모든 파일이 빌드에 그대로 포함됨)
-            string streamingAssetsPath = Path.Combine(assetsPath, "StreamingAssets");
-            if (Directory.Exists(streamingAssetsPath))
-            {
-                string[] streamingFiles = Directory.GetFiles(streamingAssetsPath, "*", SearchOption.AllDirectories);
-                foreach (string file in streamingFiles)
-                {
-                    DateTime fileTime = File.GetLastWriteTime(file);
-                    if (fileTime > lastBuildTime)
-                    {
-                        string relativePath = file.Substring(projectPath.Length + 1);
-                        Debug.Log($"[AIT] StreamingAssets 변경 감지: {relativePath} ({fileTime:yyyy-MM-dd HH:mm:ss})");
-                        return true;
-                    }
-                }
-            }
-
-            Debug.Log("[AIT] Unity 에셋 변경 없음 - Unity 빌드 스킵, 패키징만 수행");
-            return false;
-        }
-
-        private static void RestartDevServer()
-        {
-            StopDevServer();
-            // 짧은 딜레이 후 시작 (프로세스 종료 대기)
-            EditorApplication.delayCall += () =>
-            {
-                System.Threading.Thread.Sleep(500);
-
-                // C# 파일 변경 여부에 따라 빌드 또는 패키징만 수행
-                if (NeedUnityRebuild())
-                {
-                    Debug.Log("[AIT] C# 변경 감지 - 전체 빌드 수행");
-                    StartDevServer();
-                }
+                if (EditorApplication.timeSinceStartup - startTime < 0.5) return;
+                EditorApplication.update -= WaitAndRestart;
+                if (serverOnly)
+                    StartServerOnly(type);
                 else
-                {
-                    Debug.Log("[AIT] C# 변경 없음 - 패키징만 수행");
-                    RepackageAndStartDevServer();
-                }
-            };
+                    StartServer(type);
+            }
+            EditorApplication.update += WaitAndRestart;
         }
 
-        private static void RestartProdServer()
-        {
-            StopProdServer();
-            // 짧은 딜레이 후 시작 (프로세스 종료 대기)
-            EditorApplication.delayCall += () =>
-            {
-                System.Threading.Thread.Sleep(500);
-
-                // C# 파일 변경 여부에 따라 빌드 또는 패키징만 수행
-                if (NeedUnityRebuild())
-                {
-                    Debug.Log("[AIT] C# 변경 감지 - 전체 빌드 수행");
-                    StartProdServer();
-                }
-                else
-                {
-                    Debug.Log("[AIT] C# 변경 없음 - 패키징만 수행");
-                    RepackageAndStartProdServer();
-                }
-            };
-        }
-
-        private static void RestartDevServerOnly()
-        {
-            StopDevServer();
-            // 짧은 딜레이 후 시작 (프로세스 종료 대기)
-            EditorApplication.delayCall += () =>
-            {
-                System.Threading.Thread.Sleep(500);
-                StartDevServerOnly();
-            };
-        }
-
-        private static void RestartProdServerOnly()
-        {
-            StopProdServer();
-            // 짧은 딜레이 후 시작 (프로세스 종료 대기)
-            EditorApplication.delayCall += () =>
-            {
-                System.Threading.Thread.Sleep(500);
-                StartProdServerOnly();
-            };
-        }
-
-        /// <summary>
-        /// Dev 서버 재패키징 & 재시작
-        /// Unity 빌드 없이 패키징만 수행 후 서버 재시작 (JS/HTML 변경 시 사용)
-        /// </summary>
-        private static void RepackageAndRestartDevServer()
-        {
-            StopDevServer();
-            EditorApplication.delayCall += () =>
-            {
-                System.Threading.Thread.Sleep(500);
-                RepackageAndStartDevServer();
-            };
-        }
-
-        /// <summary>
-        /// Production 서버 재패키징 & 재시작
-        /// Unity 빌드 없이 패키징만 수행 후 서버 재시작 (JS/HTML 변경 시 사용)
-        /// </summary>
-        private static void RepackageAndRestartProdServer()
-        {
-            StopProdServer();
-            EditorApplication.delayCall += () =>
-            {
-                System.Threading.Thread.Sleep(500);
-                RepackageAndStartProdServer();
-            };
-        }
-
-        // ==================== Build ====================
-        [MenuItem("AIT/Build", false, 21)]
-        public static void Build()
-        {
-            Debug.Log("AIT: WebGL 빌드 시작...");
-            ExecuteWebGLBuildOnly();
-        }
-
-        // ==================== Package ====================
-        [MenuItem("AIT/Package", false, 22)]
-        public static void Package()
-        {
-            Debug.Log("AIT: 패키징 시작...");
-            ExecutePackageOnly();
-        }
+        private static void RestartDevServer() => RestartServer(ServerType.Dev, serverOnly: false);
+        private static void RestartProdServer() => RestartServer(ServerType.Prod, serverOnly: false);
+        private static void RestartDevServerOnly() => RestartServer(ServerType.Dev, serverOnly: true);
+        private static void RestartProdServerOnly() => RestartServer(ServerType.Prod, serverOnly: true);
 
         // ==================== Build & Package ====================
         [MenuItem("AIT/Build & Package", false, 23)]
@@ -569,20 +352,7 @@ namespace AppsInToss
 
                 if (result != AITConvertCore.AITExportError.SUCCEED)
                 {
-                    string errorMessage = AITConvertCore.GetErrorMessage(result);
-                    Debug.LogError($"AIT: 빌드 실패: {result}");
-                    int choice = AITPlatformHelper.ShowComplexDialog(
-                        "빌드 실패",
-                        errorMessage + "\n\n문제가 지속되면 'Issue 신고'를 클릭하세요.",
-                        "확인",
-                        "Issue 신고",
-                        null,
-                        defaultChoice: 0
-                    );
-                    if (choice == 1)
-                    {
-                        AppsInToss.Editor.AITErrorReporter.OpenIssueInBrowser(result, "Publish");
-                    }
+                    ShowBuildFailedDialog(result, "Publish");
                     return;
                 }
 
@@ -692,41 +462,6 @@ namespace AppsInToss
             }
         }
 
-        // ==================== Regenerate WebGL Templates ====================
-        [MenuItem("AIT/Regenerate WebGL Templates", false, 103)]
-        public static void RegenerateWebGLTemplates()
-        {
-            string projectTemplatesPath = Path.Combine(Application.dataPath, "WebGLTemplates");
-            string projectTemplate = Path.Combine(projectTemplatesPath, "AITTemplate");
-
-            // 기존 템플릿 삭제
-            if (Directory.Exists(projectTemplate))
-            {
-                try
-                {
-                    Directory.Delete(projectTemplate, true);
-                    Debug.Log("[AIT] 기존 WebGL 템플릿 삭제됨");
-                }
-                catch (Exception e)
-                {
-                    Debug.LogError($"[AIT] 템플릿 삭제 실패: {e.Message}");
-                    AITPlatformHelper.ShowInfoDialog("오류", $"템플릿 삭제 실패: {e.Message}", "확인");
-                    return;
-                }
-            }
-
-            // 새 템플릿 복사
-            AITConvertCore.EnsureWebGLTemplatesExist();
-            AssetDatabase.Refresh();
-
-            Debug.Log("[AIT] ✓ WebGL 템플릿 재생성 완료");
-            AITPlatformHelper.ShowInfoDialog(
-                "AIT",
-                "WebGL 템플릿이 재생성되었습니다.\n\n새 템플릿이 프로젝트에 적용되었습니다.",
-                "확인"
-            );
-        }
-
         // ==================== Reset Loading Screen ====================
         [MenuItem("AIT/Reset Loading Screen", false, 104)]
         public static void ResetLoadingScreen()
@@ -761,7 +496,9 @@ namespace AppsInToss
 
                 // SDK 기본 템플릿으로 덮어쓰기
                 File.Copy(sdkLoadingPath, projectLoadingPath, true);
-                AssetDatabase.Refresh();
+                // .html 파일만 변경되므로 개별 임포트 (Domain Reload 방지)
+                string assetPath = "Assets/AppsInToss/loading.html";
+                AssetDatabase.ImportAsset(assetPath, ImportAssetOptions.ForceSynchronousImport);
 
                 Debug.Log("[AIT] ✓ 로딩 화면 초기화 완료: " + projectLoadingPath);
                 AITPlatformHelper.ShowInfoDialog(
@@ -800,132 +537,36 @@ namespace AppsInToss
             return info == null;
         }
 
+        // ==================== Debug ====================
+        [MenuItem("AIT/Debug/Reset All SDK State", false)]
+        public static void ResetAllSDKState()
+        {
+            bool confirm = EditorUtility.DisplayDialog(
+                "SDK 상태 초기화",
+                "모든 SDK 내부 상태를 초기화합니다.\n\n" +
+                "• .gitignore 체크 상태\n" +
+                "• 업데이트 체크 상태\n" +
+                "• 패키지 매니저 설치 상태\n\n" +
+                "다음 Editor 시작 시 모든 초기화가 다시 실행됩니다.",
+                "초기화",
+                "취소"
+            );
+            if (!confirm) return;
+
+            // SessionState (세션 범위)
+            AITGitGuard.ResetSessionState();
+
+            // EditorPrefs (영구) + SessionState
+            AITAutoUpdater.ResetDailyCheck();
+            AITPackageInitializer.ResetInstallationState();
+
+            Debug.Log("[AIT] ✓ 모든 SDK 상태가 초기화되었습니다.");
+            EditorUtility.DisplayDialog("완료", "SDK 상태가 초기화되었습니다.\nEditor를 재시작하면 모든 초기화가 다시 실행됩니다.", "확인");
+        }
+
         // ============================================
         // 빌드 실행 메서드들
         // ============================================
-
-        private static void ExecuteWebGLBuildOnly()
-        {
-            var config = UnityUtil.GetEditorConf();
-            if (!ValidateSettings(config)) return;
-
-            Debug.Log("AIT: WebGL 빌드 시작...");
-            buildStopwatch.Restart();
-
-            try
-            {
-                // Build 단독 실행은 productionProfile 사용
-                var result = AITConvertCore.DoExport(
-                    buildWebGL: true,
-                    doPackaging: false,
-                    cleanBuild: false,
-                    profile: config.productionProfile,
-                    profileName: "Build"
-                );
-                buildStopwatch.Stop();
-
-                if (result == AITConvertCore.AITExportError.SUCCEED)
-                {
-                    Debug.Log($"AIT: WebGL 빌드 완료! (소요 시간: {buildStopwatch.Elapsed.TotalSeconds:F1}초)");
-                    AITPlatformHelper.ShowInfoDialog("성공", $"WebGL 빌드가 완료되었습니다!\n\n소요 시간: {buildStopwatch.Elapsed.TotalSeconds:F1}초", "확인");
-                }
-                else
-                {
-                    string errorMessage = AITConvertCore.GetErrorMessage(result);
-                    Debug.LogError($"AIT: WebGL 빌드 실패: {result}");
-                    int choice = AITPlatformHelper.ShowComplexDialog(
-                        "빌드 실패",
-                        errorMessage + "\n\n문제가 지속되면 'Issue 신고'를 클릭하세요.",
-                        "확인",
-                        "Issue 신고",
-                        null,
-                        defaultChoice: 0
-                    );
-                    if (choice == 1)
-                    {
-                        AppsInToss.Editor.AITErrorReporter.OpenIssueInBrowser(result, "Build");
-                    }
-                }
-            }
-            catch (Exception e)
-            {
-                buildStopwatch.Stop();
-                Debug.LogError($"AIT: 오류: {e.Message}");
-                AITPlatformHelper.ShowInfoDialog("오류", e.Message, "확인");
-            }
-        }
-
-        private static void ExecutePackageOnly()
-        {
-            var config = UnityUtil.GetEditorConf();
-            if (!ValidateSettingsForPackage(config)) return;
-
-            Debug.Log("AIT: 패키징 시작...");
-            buildStopwatch.Restart();
-
-            // Package 단독 실행은 productionProfile 사용
-            AITConvertCore.DoExportAsync(
-                buildWebGL: false,
-                doPackaging: true,
-                cleanBuild: false,
-                profile: config.productionProfile,
-                profileName: "Package",
-                onComplete: (result) =>
-                {
-                    buildStopwatch.Stop();
-                    EditorUtility.ClearProgressBar();
-
-                    if (result == AITConvertCore.AITExportError.SUCCEED)
-                    {
-                        Debug.Log($"AIT: 패키징 완료! (소요 시간: {buildStopwatch.Elapsed.TotalSeconds:F1}초)");
-                        AITPlatformHelper.ShowInfoDialog("성공", $"패키징이 완료되었습니다!\n\n소요 시간: {buildStopwatch.Elapsed.TotalSeconds:F1}초", "확인");
-                    }
-                    else if (result == AITConvertCore.AITExportError.REQUIRES_FULL_BUILD)
-                    {
-                        Debug.Log("AIT: Build & Package로 전환 실행합니다.");
-                        EditorApplication.delayCall += ExecuteBuildAndPackage;
-                    }
-                    else if (result == AITConvertCore.AITExportError.CANCELLED)
-                    {
-                        Debug.Log("AIT: 패키징이 사용자에 의해 취소되었습니다.");
-                        AITPlatformHelper.ShowInfoDialog("취소됨", "패키징이 취소되었습니다.", "확인");
-                    }
-                    else
-                    {
-                        string errorMessage = AITConvertCore.GetErrorMessage(result);
-                        Debug.LogError($"AIT: 패키징 실패: {result}");
-                        int choice = AITPlatformHelper.ShowComplexDialog(
-                            "패키징 실패",
-                            errorMessage + "\n\n문제가 지속되면 'Issue 신고'를 클릭하세요.",
-                            "확인",
-                            "Issue 신고",
-                            null,
-                            defaultChoice: 0
-                        );
-                        if (choice == 1)
-                        {
-                            AppsInToss.Editor.AITErrorReporter.OpenIssueInBrowser(result, "Package");
-                        }
-                    }
-                },
-                onProgress: (phase, progress, status) =>
-                {
-                    // DisplayCancelableProgressBar로 취소 가능한 진행률 표시
-                    string phaseText = GetPhaseText(phase);
-
-                    bool cancelled = EditorUtility.DisplayCancelableProgressBar(
-                        $"Apps in Toss - {phaseText}",
-                        status,
-                        progress
-                    );
-
-                    if (cancelled)
-                    {
-                        AITConvertCore.CancelBuild();
-                    }
-                }
-            );
-        }
 
         private static void ExecuteBuildAndPackage()
         {
@@ -959,20 +600,7 @@ namespace AppsInToss
                     }
                     else
                     {
-                        string errorMessage = AITConvertCore.GetErrorMessage(result);
-                        Debug.LogError($"AIT: 빌드 실패: {result}");
-                        int choice = AITPlatformHelper.ShowComplexDialog(
-                            "빌드 실패",
-                            errorMessage + "\n\n문제가 지속되면 'Issue 신고'를 클릭하세요.",
-                            "확인",
-                            "Issue 신고",
-                            null,
-                            defaultChoice: 0
-                        );
-                        if (choice == 1)
-                        {
-                            AppsInToss.Editor.AITErrorReporter.OpenIssueInBrowser(result, "Build & Package");
-                        }
+                        ShowBuildFailedDialog(result, "Build & Package");
                     }
                 },
                 onProgress: (phase, progress, status) =>
@@ -1124,73 +752,106 @@ namespace AppsInToss
             }
         }
 
+        // ==================== 서버 타입별 헬퍼 ====================
+
+        private static ServerType OppositeType(ServerType type) =>
+            type == ServerType.Dev ? ServerType.Prod : ServerType.Dev;
+
+        private static AITServerStateManager GetServerState(ServerType type) =>
+            type == ServerType.Dev ? devServerState : prodServerState;
+
+        private static string GetServerLabel(ServerType type) =>
+            type == ServerType.Dev ? "Dev" : "Production";
+
+        private static AITBuildProfile GetBuildProfile(AITEditorScriptObject config, ServerType type) =>
+            type == ServerType.Dev ? config.devServerProfile : config.productionProfile;
+
+        private static string GetProfileName(ServerType type) =>
+            type == ServerType.Dev ? "Dev Server" : "Production Server";
+
+        /// <summary>Dev는 /index.html, Prod는 /</summary>
+        private static string GetBrowserPath(ServerType type) =>
+            type == ServerType.Dev ? "/index.html" : "/";
+
         /// <summary>
-        /// Dev 서버 시작 (granite dev 사용)
-        /// 자동으로 빌드 & 패키징 수행 후 서버 시작
+        /// 서버 시작 전 공통 검증: 이미 실행 중인지 확인하고, 반대편 서버 전환을 처리
         /// </summary>
-        private static void StartDevServer()
+        /// <returns>검증 통과 시 config, 실패 시 null</returns>
+        private static AITEditorScriptObject ValidateAndSwitchServer(ServerType type)
         {
+            var stateManager = GetServerState(type);
+            string label = GetServerLabel(type);
+
             // 실제 상태 검증
-            var currentState = devServerState.ValidateState();
+            var currentState = stateManager.ValidateState();
             if (currentState == ServerState.Running)
             {
-                Debug.LogWarning("AIT: Dev 서버가 이미 실행 중입니다.");
-                return;
+                Debug.LogWarning($"AIT: {label} 서버가 이미 실행 중입니다.");
+                return null;
             }
 
-            // Production 서버가 실행 중이면 확인 후 전환
-            var prodState = prodServerState.ValidateState();
-            if (prodState == ServerState.Running)
+            // 반대편 서버가 실행 중이면 확인 후 전환
+            var oppositeType = OppositeType(type);
+            var otherState = GetServerState(oppositeType).ValidateState();
+            if (otherState == ServerState.Running)
             {
+                string oppositeLabel = GetServerLabel(oppositeType);
                 if (AITPlatformHelper.ShowConfirmDialog(
                     "서버 전환",
-                    "Production 서버가 실행 중입니다.\nDev 서버로 전환하시겠습니까?",
+                    $"{oppositeLabel} 서버가 실행 중입니다.\n{label} 서버로 전환하시겠습니까?",
                     "예", "아니오",
                     autoApprove: true))
                 {
-                    StopProdServer();
+                    StopServer(oppositeType);
                 }
                 else
                 {
-                    return;
+                    return null;
                 }
             }
 
             var config = UnityUtil.GetEditorConf();
             if (!ValidateSettings(config))
             {
-                return;
+                return null;
             }
 
-            // 빌드 & 패키징 수행 (Dev Server: devServerProfile 사용, 증분 빌드로 빠른 반복)
-            Debug.Log("AIT: 빌드 & 패키징 수행 중 (증분 빌드, Dev Server 프로필)...");
+            return config;
+        }
+
+        // ==================== 통합 서버 메서드 ====================
+
+        /// <summary>
+        /// 서버 시작 (빌드 & 패키징 수행 후 granite dev 실행)
+        /// </summary>
+        private static void StartServer(ServerType type)
+        {
+            var config = ValidateAndSwitchServer(type);
+            if (config == null) return;
+
+            string profileName = GetProfileName(type);
+            var profile = GetBuildProfile(config, type);
+
+            // Dev Server는 granite build(production build)를 스킵하여 시작 속도 개선
+            bool skipGraniteBuild = (type == ServerType.Dev);
+
+            // 빌드 & 패키징 수행 (증분 빌드로 빠른 반복)
+            Debug.Log($"AIT: 빌드 & 패키징 수행 중 (증분 빌드, {profileName} 프로필{(skipGraniteBuild ? ", granite build 스킵" : "")})...");
             buildStopwatch.Restart();
 
             var result = AITConvertCore.DoExport(
                 buildWebGL: true,
                 doPackaging: true,
                 cleanBuild: false,
-                profile: config.devServerProfile,
-                profileName: "Dev Server"
+                profile: profile,
+                profileName: profileName,
+                skipGraniteBuild: skipGraniteBuild
             );
             buildStopwatch.Stop();
 
             if (result != AITConvertCore.AITExportError.SUCCEED)
             {
-                string errorMessage = AITConvertCore.GetErrorMessage(result);
-                Debug.LogError($"AIT: 빌드 실패: {result}");
-                int choice = AITPlatformHelper.ShowComplexDialog(
-                    "빌드 실패",
-                    errorMessage + "\n\n문제가 지속되면 'Issue 신고'를 클릭하세요.",
-                    "확인",
-                    "Issue 신고",
-                    null,
-                    defaultChoice: 0
-                );
-                if (choice == 1)
-                {
-                    AppsInToss.Editor.AITErrorReporter.OpenIssueInBrowser(result, "Dev Server");
-                }
+                ShowBuildFailedDialog(result, profileName);
                 return;
             }
 
@@ -1205,276 +866,17 @@ namespace AppsInToss
 
             // Note: EnsureNodeModules 호출 제거 - PackageWebGLBuild에서 이미 pnpm install 실행됨
 
-            // 서버 설정
-            string graniteHost = !string.IsNullOrEmpty(config.graniteHost) ? config.graniteHost : "0.0.0.0";
-            int granitePort = config.granitePort > 0 ? config.granitePort : 8081;
-            string viteHost = !string.IsNullOrEmpty(config.viteHost) ? config.viteHost : "localhost";
-            int vitePort = config.vitePort > 0 ? config.vitePort : 5173;
-
-            // 포트 충돌 확인 및 자동 탐지
-            if (!IsPortAvailable(vitePort))
-            {
-                int availablePort = FindAvailablePort(vitePort);
-                if (availablePort > 0)
-                {
-                    Debug.Log($"[AIT] 포트 {vitePort}가 사용 중, {availablePort} 사용");
-                    vitePort = availablePort;
-                }
-                else
-                {
-                    Debug.LogError($"[AIT] 사용 가능한 포트를 찾을 수 없습니다 (시도: {vitePort}-{vitePort+9})");
-                    AITPlatformHelper.ShowInfoDialog("포트 오류", $"포트 {vitePort} 및 인근 포트가 모두 사용 중입니다.\n다른 포트를 Configuration에서 설정하거나, 사용 중인 프로세스를 종료하세요.", "확인");
-                    return;
-                }
-            }
-
-            if (!IsPortAvailable(granitePort))
-            {
-                int availablePort = FindAvailablePort(granitePort);
-                if (availablePort > 0)
-                {
-                    Debug.Log($"[AIT] Granite 포트 {granitePort}가 사용 중, {availablePort} 사용");
-                    granitePort = availablePort;
-                }
-                else
-                {
-                    Debug.LogError($"[AIT] 사용 가능한 Granite 포트를 찾을 수 없습니다 (시도: {granitePort}-{granitePort+9})");
-                    AITPlatformHelper.ShowInfoDialog("포트 오류", $"Granite 포트 {granitePort} 및 인근 포트가 모두 사용 중입니다.\n다른 포트를 Configuration에서 설정하거나, 사용 중인 프로세스를 종료하세요.", "확인");
-                    return;
-                }
-            }
-
-            Debug.Log($"AIT: Dev 서버 시작 중 (granite dev)... ({buildPath})");
-            Debug.Log($"AIT:   Granite: {graniteHost}:{granitePort}");
-            Debug.Log($"AIT:   Vite: {viteHost}:{vitePort}");
-
-            // 캡처용 로컬 변수
-            int finalVitePort = vitePort;
-            int finalGranitePort = granitePort;
-
-            try
-            {
-                // 환경 변수로 Vite 설정 전달 (granite.config.ts, vite.config.ts에서 사용)
-                var envVars = new Dictionary<string, string>
-                {
-                    { "AIT_GRANITE_HOST", graniteHost },
-                    { "AIT_GRANITE_PORT", finalGranitePort.ToString() },
-                    { "AIT_VITE_HOST", viteHost },
-                    { "AIT_VITE_PORT", finalVitePort.ToString() }
-                };
-
-                // granite dev 명령어에 --host, --port 인자로 granite 서버 설정 전달
-                string graniteCommand = "exec -- granite dev";
-
-                var processManager = new AITProcessTreeManager();
-
-                // 포트와 프로세스 관리자 저장 (상태는 변경하지 않음)
-                devServerState.SetExpectedPortAndProcess(processManager, finalGranitePort);
-
-                StartServerProcessWithPortDetection(
-                    processManager,
-                    buildPath, npmPath, graniteCommand, "Dev Server", envVars, finalGranitePort,
-                    onServerStarted: (detectedPort) =>
-                    {
-                        // 감지된 포트(Granite)를 저장하여 ValidateState에서 올바르게 확인할 수 있도록 함
-                        // Vite 포트가 아닌 Granite 포트를 저장해야 상태 검증이 올바르게 동작
-                        devServerState.OnServerStarted(detectedPort);
-                        Debug.Log($"AIT: Dev 서버가 시작되었습니다");
-                        Debug.Log($"AIT:   Granite (Metro): http://{graniteHost}:{finalGranitePort}");
-                        Debug.Log($"AIT:   Vite: http://{viteHost}:{finalVitePort}");
-                        Application.OpenURL($"http://localhost:{finalVitePort}/index.html");
-                    },
-                    onServerFailed: (reason) =>
-                    {
-                        Debug.LogError($"AIT: Dev 서버 시작 실패 - {reason}");
-                        AITPlatformHelper.ShowInfoDialog("Dev 서버 시작 실패", reason, "확인");
-                        devServerState.OnServerFailed();
-                    }
-                );
-            }
-            catch (Exception e)
-            {
-                Debug.LogError($"AIT: Dev 서버 시작 실패: {e.Message}");
-                AITPlatformHelper.ShowInfoDialog("오류", $"Dev 서버 시작 실패:\n{e.Message}", "확인");
-                devServerState.OnServerFailed();
-            }
+            LaunchServerProcess(type, config, buildPath, npmPath, openBrowser: true);
         }
 
         /// <summary>
-        /// Dev 서버 재패키징 후 시작
-        /// Unity 빌드 없이 패키징만 수행 후 서버 시작 (JS/HTML 변경 시 사용)
-        /// </summary>
-        private static void RepackageAndStartDevServer()
-        {
-            // 실제 상태 검증
-            var currentState = devServerState.ValidateState();
-            if (currentState == ServerState.Running)
-            {
-                Debug.LogWarning("AIT: Dev 서버가 이미 실행 중입니다.");
-                return;
-            }
-
-            var config = UnityUtil.GetEditorConf();
-            if (!ValidateSettingsForPackage(config))
-            {
-                return;
-            }
-
-            string projectPath = UnityUtil.GetProjectPath();
-            string webglPath = Path.Combine(projectPath, "webgl");
-
-            // 기존 WebGL 빌드가 있는지 확인
-            if (!Directory.Exists(webglPath))
-            {
-                Debug.LogError($"AIT: WebGL 빌드 결과물이 없습니다. 먼저 전체 빌드를 실행하세요. ({webglPath})");
-                AITPlatformHelper.ShowInfoDialog("빌드 필요", "WebGL 빌드 결과물이 없습니다.\n먼저 Start Server 또는 Build를 실행하세요.", "확인");
-                return;
-            }
-
-            // 패키징만 수행 (Unity 빌드 스킵)
-            Debug.Log("AIT: 패키징 수행 중 (Unity 빌드 스킵, Dev Server 프로필)...");
-            buildStopwatch.Restart();
-
-            var result = AITConvertCore.DoExport(
-                buildWebGL: false,
-                doPackaging: true,
-                cleanBuild: false,
-                profile: config.devServerProfile,
-                profileName: "Dev Server (Repackage)"
-            );
-            buildStopwatch.Stop();
-
-            if (result != AITConvertCore.AITExportError.SUCCEED)
-            {
-                string errorMessage = AITConvertCore.GetErrorMessage(result);
-                Debug.LogError($"AIT: 패키징 실패: {result}");
-                int choice = AITPlatformHelper.ShowComplexDialog(
-                    "패키징 실패",
-                    errorMessage + "\n\n문제가 지속되면 'Issue 신고'를 클릭하세요.",
-                    "확인",
-                    "Issue 신고",
-                    null,
-                    defaultChoice: 0
-                );
-                if (choice == 1)
-                {
-                    AppsInToss.Editor.AITErrorReporter.OpenIssueInBrowser(result, "Dev Server (Repackage)");
-                }
-                return;
-            }
-
-            Debug.Log($"AIT: 패키징 완료 (소요 시간: {buildStopwatch.Elapsed.TotalSeconds:F1}초)");
-
-            // 서버만 시작 (기존 StartDevServerOnly 로직 활용)
-            StartDevServerOnly();
-        }
-
-        /// <summary>
-        /// Production 서버 재패키징 후 시작
-        /// Unity 빌드 없이 패키징만 수행 후 서버 시작 (JS/HTML 변경 시 사용)
-        /// </summary>
-        private static void RepackageAndStartProdServer()
-        {
-            // 실제 상태 검증
-            var currentState = prodServerState.ValidateState();
-            if (currentState == ServerState.Running)
-            {
-                Debug.LogWarning("AIT: Production 서버가 이미 실행 중입니다.");
-                return;
-            }
-
-            var config = UnityUtil.GetEditorConf();
-            if (!ValidateSettingsForPackage(config))
-            {
-                return;
-            }
-
-            string projectPath = UnityUtil.GetProjectPath();
-            string webglPath = Path.Combine(projectPath, "webgl");
-
-            // 기존 WebGL 빌드가 있는지 확인
-            if (!Directory.Exists(webglPath))
-            {
-                Debug.LogError($"AIT: WebGL 빌드 결과물이 없습니다. 먼저 전체 빌드를 실행하세요. ({webglPath})");
-                AITPlatformHelper.ShowInfoDialog("빌드 필요", "WebGL 빌드 결과물이 없습니다.\n먼저 Start Server 또는 Build를 실행하세요.", "확인");
-                return;
-            }
-
-            // 패키징만 수행 (Unity 빌드 스킵)
-            Debug.Log("AIT: 패키징 수행 중 (Unity 빌드 스킵, Production 프로필)...");
-            buildStopwatch.Restart();
-
-            var result = AITConvertCore.DoExport(
-                buildWebGL: false,
-                doPackaging: true,
-                cleanBuild: false,
-                profile: config.productionProfile,
-                profileName: "Production Server (Repackage)"
-            );
-            buildStopwatch.Stop();
-
-            if (result != AITConvertCore.AITExportError.SUCCEED)
-            {
-                string errorMessage = AITConvertCore.GetErrorMessage(result);
-                Debug.LogError($"AIT: 패키징 실패: {result}");
-                int choice = AITPlatformHelper.ShowComplexDialog(
-                    "패키징 실패",
-                    errorMessage + "\n\n문제가 지속되면 'Issue 신고'를 클릭하세요.",
-                    "확인",
-                    "Issue 신고",
-                    null,
-                    defaultChoice: 0
-                );
-                if (choice == 1)
-                {
-                    AppsInToss.Editor.AITErrorReporter.OpenIssueInBrowser(result, "Production Server (Repackage)");
-                }
-                return;
-            }
-
-            Debug.Log($"AIT: 패키징 완료 (소요 시간: {buildStopwatch.Elapsed.TotalSeconds:F1}초)");
-
-            // 서버만 시작 (기존 StartProdServerOnly 로직 활용)
-            StartProdServerOnly();
-        }
-
-        /// <summary>
-        /// Dev 서버 시작 (서버만, 빌드 없음)
+        /// 서버 시작 (서버만, 빌드 없음)
         /// 기존 빌드 결과물을 사용하여 granite dev 서버만 재시작
         /// </summary>
-        private static void StartDevServerOnly()
+        private static void StartServerOnly(ServerType type)
         {
-            // 실제 상태 검증
-            var currentState = devServerState.ValidateState();
-            if (currentState == ServerState.Running)
-            {
-                Debug.LogWarning("AIT: Dev 서버가 이미 실행 중입니다.");
-                return;
-            }
-
-            // Production 서버가 실행 중이면 확인 후 전환
-            var prodState = prodServerState.ValidateState();
-            if (prodState == ServerState.Running)
-            {
-                if (AITPlatformHelper.ShowConfirmDialog(
-                    "서버 전환",
-                    "Production 서버가 실행 중입니다.\nDev 서버로 전환하시겠습니까?",
-                    "예", "아니오",
-                    autoApprove: true))
-                {
-                    StopProdServer();
-                }
-                else
-                {
-                    return;
-                }
-            }
-
-            var config = UnityUtil.GetEditorConf();
-            if (!ValidateSettings(config))
-            {
-                return;
-            }
+            var config = ValidateAndSwitchServer(type);
+            if (config == null) return;
 
             string buildPath = GetBuildTemplatePath();
 
@@ -1497,46 +899,30 @@ namespace AppsInToss
                 return;
             }
 
-            // 서버 설정
-            string graniteHost = !string.IsNullOrEmpty(config.graniteHost) ? config.graniteHost : "0.0.0.0";
-            int granitePort = config.granitePort > 0 ? config.granitePort : 8081;
-            string viteHost = !string.IsNullOrEmpty(config.viteHost) ? config.viteHost : "localhost";
-            int vitePort = config.vitePort > 0 ? config.vitePort : 5173;
+            LaunchServerProcess(type, config, buildPath, npmPath, openBrowser: false);
+        }
 
-            // 포트 충돌 확인 및 자동 탐지
-            if (!IsPortAvailable(vitePort))
+        /// <summary>
+        /// 서버 프로세스 실행 공통 로직 (포트 해석 → 프로세스 시작)
+        /// </summary>
+        private static void LaunchServerProcess(
+            ServerType type, AITEditorScriptObject config,
+            string buildPath, string npmPath, bool openBrowser)
+        {
+            var stateManager = GetServerState(type);
+            string label = GetServerLabel(type);
+            string logPrefix = GetProfileName(type);
+            string suffix = openBrowser ? "" : " (서버만)";
+
+            // 서버 포트 해석 및 충돌 검사
+            if (!TryResolveServerPorts(config,
+                out string graniteHost, out int granitePort,
+                out string viteHost, out int vitePort))
             {
-                int availablePort = FindAvailablePort(vitePort);
-                if (availablePort > 0)
-                {
-                    Debug.Log($"[AIT] 포트 {vitePort}가 사용 중, {availablePort} 사용");
-                    vitePort = availablePort;
-                }
-                else
-                {
-                    Debug.LogError($"[AIT] 사용 가능한 포트를 찾을 수 없습니다 (시도: {vitePort}-{vitePort+9})");
-                    AITPlatformHelper.ShowInfoDialog("포트 오류", $"포트 {vitePort} 및 인근 포트가 모두 사용 중입니다.\n다른 포트를 Configuration에서 설정하거나, 사용 중인 프로세스를 종료하세요.", "확인");
-                    return;
-                }
+                return;
             }
 
-            if (!IsPortAvailable(granitePort))
-            {
-                int availablePort = FindAvailablePort(granitePort);
-                if (availablePort > 0)
-                {
-                    Debug.Log($"[AIT] Granite 포트 {granitePort}가 사용 중, {availablePort} 사용");
-                    granitePort = availablePort;
-                }
-                else
-                {
-                    Debug.LogError($"[AIT] 사용 가능한 Granite 포트를 찾을 수 없습니다 (시도: {granitePort}-{granitePort+9})");
-                    AITPlatformHelper.ShowInfoDialog("포트 오류", $"Granite 포트 {granitePort} 및 인근 포트가 모두 사용 중입니다.\n다른 포트를 Configuration에서 설정하거나, 사용 중인 프로세스를 종료하세요.", "확인");
-                    return;
-                }
-            }
-
-            Debug.Log($"AIT: Dev 서버 시작 중 (서버만, granite dev)... ({buildPath})");
+            Debug.Log($"AIT: {label} 서버 시작 중{suffix} (granite dev)... ({buildPath})");
             Debug.Log($"AIT:   Granite: {graniteHost}:{granitePort}");
             Debug.Log($"AIT:   Vite: {viteHost}:{vitePort}");
 
@@ -1561,398 +947,56 @@ namespace AppsInToss
                 var processManager = new AITProcessTreeManager();
 
                 // 포트와 프로세스 관리자 저장 (상태는 변경하지 않음)
-                devServerState.SetExpectedPortAndProcess(processManager, finalGranitePort);
+                stateManager.SetExpectedPortAndProcess(processManager, finalGranitePort);
 
                 StartServerProcessWithPortDetection(
                     processManager,
-                    buildPath, npmPath, graniteCommand, "Dev Server", envVars, finalGranitePort,
+                    buildPath, npmPath, graniteCommand, logPrefix, envVars, finalGranitePort,
                     onServerStarted: (detectedPort) =>
                     {
                         // 감지된 포트(Granite)를 저장하여 ValidateState에서 올바르게 확인할 수 있도록 함
-                        devServerState.OnServerStarted(detectedPort);
-                        Debug.Log($"AIT: Dev 서버가 시작되었습니다 (서버만)");
+                        stateManager.OnServerStarted(detectedPort);
+                        Debug.Log($"AIT: {label} 서버가 시작되었습니다{suffix}");
                         Debug.Log($"AIT:   Granite (Metro): http://{graniteHost}:{finalGranitePort}");
                         Debug.Log($"AIT:   Vite: http://{viteHost}:{finalVitePort}");
-                        // 서버만 재시작이므로 브라우저는 열지 않음
+                        if (openBrowser)
+                            WaitForPortAndOpenBrowser(finalVitePort, $"http://localhost:{finalVitePort}{GetBrowserPath(type)}");
                     },
                     onServerFailed: (reason) =>
                     {
-                        Debug.LogError($"AIT: Dev 서버 시작 실패 - {reason}");
-                        AITPlatformHelper.ShowInfoDialog("Dev 서버 시작 실패", reason, "확인");
-                        devServerState.OnServerFailed();
+                        Debug.LogError($"AIT: {label} 서버 시작 실패 - {reason}");
+                        AITPlatformHelper.ShowInfoDialog($"{label} 서버 시작 실패", reason, "확인");
+                        stateManager.OnServerFailed();
                     }
                 );
             }
             catch (Exception e)
             {
-                Debug.LogError($"AIT: Dev 서버 시작 실패: {e.Message}");
-                AITPlatformHelper.ShowInfoDialog("오류", $"Dev 서버 시작 실패:\n{e.Message}", "확인");
-                devServerState.OnServerFailed();
+                Debug.LogError($"AIT: {label} 서버 시작 실패: {e.Message}");
+                AITPlatformHelper.ShowInfoDialog("오류", $"{label} 서버 시작 실패:\n{e.Message}", "확인");
+                stateManager.OnServerFailed();
             }
         }
 
         /// <summary>
-        /// Dev 서버 중지
+        /// 서버 중지
         /// </summary>
-        private static void StopDevServer()
+        private static void StopServer(ServerType type)
         {
+            var stateManager = GetServerState(type);
+            string label = GetServerLabel(type);
+
             // 백업: 포트에서 실행 중인 프로세스도 종료 (혹시 남아있는 경우)
-            int port = devServerState?.Port ?? 0;
+            int port = stateManager?.Port ?? 0;
             if (port > 0)
             {
                 KillProcessOnPort(port);
             }
 
             // 상태 관리자에 중지 알림
-            devServerState?.OnServerStopped();
+            stateManager?.OnServerStopped();
 
-            Debug.Log("AIT: Dev 서버가 중지되었습니다.");
-        }
-
-        /// <summary>
-        /// Production 서버 시작 (vite preview 사용)
-        /// 자동으로 빌드 & 패키징 수행 후 서버 시작
-        /// </summary>
-        private static void StartProdServer()
-        {
-            // 실제 상태 검증
-            var currentState = prodServerState.ValidateState();
-            if (currentState == ServerState.Running)
-            {
-                Debug.LogWarning("AIT: Production 서버가 이미 실행 중입니다.");
-                return;
-            }
-
-            // Dev 서버가 실행 중이면 확인 후 전환
-            var devState = devServerState.ValidateState();
-            if (devState == ServerState.Running)
-            {
-                if (AITPlatformHelper.ShowConfirmDialog(
-                    "서버 전환",
-                    "Dev 서버가 실행 중입니다.\nProduction 서버로 전환하시겠습니까?",
-                    "예", "아니오",
-                    autoApprove: true))
-                {
-                    StopDevServer();
-                }
-                else
-                {
-                    return;
-                }
-            }
-
-            var config = UnityUtil.GetEditorConf();
-            if (!ValidateSettings(config))
-            {
-                return;
-            }
-
-            // 빌드 & 패키징 수행 (Production Server: productionProfile 사용, 증분 빌드로 빠른 반복)
-            Debug.Log("AIT: 빌드 & 패키징 수행 중 (증분 빌드, Production 프로필)...");
-            buildStopwatch.Restart();
-
-            var result = AITConvertCore.DoExport(
-                buildWebGL: true,
-                doPackaging: true,
-                cleanBuild: false,
-                profile: config.productionProfile,
-                profileName: "Production Server"
-            );
-            buildStopwatch.Stop();
-
-            if (result != AITConvertCore.AITExportError.SUCCEED)
-            {
-                string errorMessage = AITConvertCore.GetErrorMessage(result);
-                Debug.LogError($"AIT: 빌드 실패: {result}");
-                int choice = AITPlatformHelper.ShowComplexDialog(
-                    "빌드 실패",
-                    errorMessage + "\n\n문제가 지속되면 'Issue 신고'를 클릭하세요.",
-                    "확인",
-                    "Issue 신고",
-                    null,
-                    defaultChoice: 0
-                );
-                if (choice == 1)
-                {
-                    AppsInToss.Editor.AITErrorReporter.OpenIssueInBrowser(result, "Production Server");
-                }
-                return;
-            }
-
-            Debug.Log($"AIT: 빌드 & 패키징 완료 (소요 시간: {buildStopwatch.Elapsed.TotalSeconds:F1}초)");
-
-            string buildPath = GetBuildTemplatePath();
-            string npmPath = FindNpmPath();
-            if (!ValidateNpmPath(npmPath))
-            {
-                return;
-            }
-
-            // Note: EnsureNodeModules 호출 제거 - PackageWebGLBuild에서 이미 pnpm install 실행됨
-
-            // 서버 설정 (Dev 서버와 동일)
-            string graniteHost = !string.IsNullOrEmpty(config.graniteHost) ? config.graniteHost : "0.0.0.0";
-            int granitePort = config.granitePort > 0 ? config.granitePort : 8081;
-            string viteHost = !string.IsNullOrEmpty(config.viteHost) ? config.viteHost : "localhost";
-            int vitePort = config.vitePort > 0 ? config.vitePort : 5173;
-
-            // 포트 충돌 확인 및 자동 탐지
-            if (!IsPortAvailable(vitePort))
-            {
-                int availablePort = FindAvailablePort(vitePort);
-                if (availablePort > 0)
-                {
-                    Debug.Log($"[AIT] 포트 {vitePort}가 사용 중, {availablePort} 사용");
-                    vitePort = availablePort;
-                }
-                else
-                {
-                    Debug.LogError($"[AIT] 사용 가능한 포트를 찾을 수 없습니다 (시도: {vitePort}-{vitePort+9})");
-                    AITPlatformHelper.ShowInfoDialog("포트 오류", $"포트 {vitePort} 및 인근 포트가 모두 사용 중입니다.\n다른 포트를 Configuration에서 설정하거나, 사용 중인 프로세스를 종료하세요.", "확인");
-                    return;
-                }
-            }
-
-            if (!IsPortAvailable(granitePort))
-            {
-                int availablePort = FindAvailablePort(granitePort);
-                if (availablePort > 0)
-                {
-                    Debug.Log($"[AIT] Granite 포트 {granitePort}가 사용 중, {availablePort} 사용");
-                    granitePort = availablePort;
-                }
-                else
-                {
-                    Debug.LogError($"[AIT] 사용 가능한 Granite 포트를 찾을 수 없습니다 (시도: {granitePort}-{granitePort+9})");
-                    AITPlatformHelper.ShowInfoDialog("포트 오류", $"Granite 포트 {granitePort} 및 인근 포트가 모두 사용 중입니다.\n다른 포트를 Configuration에서 설정하거나, 사용 중인 프로세스를 종료하세요.", "확인");
-                    return;
-                }
-            }
-
-            Debug.Log($"AIT: Production 서버 시작 중 (granite dev)... ({buildPath})");
-            Debug.Log($"AIT:   Granite: {graniteHost}:{granitePort}");
-            Debug.Log($"AIT:   Vite: {viteHost}:{vitePort}");
-
-            // 캡처용 로컬 변수
-            int finalVitePort = vitePort;
-            int finalGranitePort = granitePort;
-
-            try
-            {
-                // 환경 변수로 Vite 설정 전달 (granite.config.ts, vite.config.ts에서 사용)
-                var envVars = new Dictionary<string, string>
-                {
-                    { "AIT_GRANITE_HOST", graniteHost },
-                    { "AIT_GRANITE_PORT", finalGranitePort.ToString() },
-                    { "AIT_VITE_HOST", viteHost },
-                    { "AIT_VITE_PORT", finalVitePort.ToString() }
-                };
-
-                // granite dev 명령어에 --host, --port 인자로 granite 서버 설정 전달
-                string graniteCommand = "exec -- granite dev";
-
-                var processManager = new AITProcessTreeManager();
-
-                // 포트와 프로세스 관리자 저장 (상태는 변경하지 않음)
-                prodServerState.SetExpectedPortAndProcess(processManager, finalGranitePort);
-
-                StartServerProcessWithPortDetection(
-                    processManager,
-                    buildPath, npmPath, graniteCommand, "Prod Server", envVars, finalGranitePort,
-                    onServerStarted: (detectedPort) =>
-                    {
-                        // 감지된 포트(Granite)를 저장하여 ValidateState에서 올바르게 확인할 수 있도록 함
-                        prodServerState.OnServerStarted(detectedPort);
-                        Debug.Log($"AIT: Production 서버가 시작되었습니다");
-                        Debug.Log($"AIT:   Granite (Metro): http://{graniteHost}:{finalGranitePort}");
-                        Debug.Log($"AIT:   Vite: http://{viteHost}:{finalVitePort}");
-                        Application.OpenURL($"http://localhost:{finalVitePort}/");
-                    },
-                    onServerFailed: (reason) =>
-                    {
-                        Debug.LogError($"AIT: Production 서버 시작 실패 - {reason}");
-                        AITPlatformHelper.ShowInfoDialog("Production 서버 시작 실패", reason, "확인");
-                        prodServerState.OnServerFailed();
-                    }
-                );
-            }
-            catch (Exception e)
-            {
-                Debug.LogError($"AIT: Production 서버 시작 실패: {e.Message}");
-                AITPlatformHelper.ShowInfoDialog("오류", $"Production 서버 시작 실패:\n{e.Message}", "확인");
-                prodServerState.OnServerFailed();
-            }
-        }
-
-        /// <summary>
-        /// Production 서버 시작 (서버만, 빌드 없음)
-        /// 기존 빌드 결과물을 사용하여 granite dev 서버만 재시작
-        /// </summary>
-        private static void StartProdServerOnly()
-        {
-            // 실제 상태 검증
-            var currentState = prodServerState.ValidateState();
-            if (currentState == ServerState.Running)
-            {
-                Debug.LogWarning("AIT: Production 서버가 이미 실행 중입니다.");
-                return;
-            }
-
-            // Dev 서버가 실행 중이면 확인 후 전환
-            var devState = devServerState.ValidateState();
-            if (devState == ServerState.Running)
-            {
-                if (AITPlatformHelper.ShowConfirmDialog(
-                    "서버 전환",
-                    "Dev 서버가 실행 중입니다.\nProduction 서버로 전환하시겠습니까?",
-                    "예", "아니오",
-                    autoApprove: true))
-                {
-                    StopDevServer();
-                }
-                else
-                {
-                    return;
-                }
-            }
-
-            var config = UnityUtil.GetEditorConf();
-            if (!ValidateSettings(config))
-            {
-                return;
-            }
-
-            string buildPath = GetBuildTemplatePath();
-
-            // 빌드 결과물이 있는지 확인
-            if (!Directory.Exists(buildPath))
-            {
-                Debug.LogError($"AIT: 빌드 결과물이 없습니다. 먼저 Build & Package를 실행하세요. ({buildPath})");
-                AITPlatformHelper.ShowInfoDialog("빌드 필요", "빌드 결과물이 없습니다.\n먼저 Build & Package를 실행하세요.", "확인");
-                return;
-            }
-
-            string npmPath = FindNpmPath();
-            if (!ValidateNpmPath(npmPath))
-            {
-                return;
-            }
-
-            if (!EnsureNodeModules(buildPath, npmPath))
-            {
-                return;
-            }
-
-            // 서버 설정 (Dev 서버와 동일)
-            string graniteHost = !string.IsNullOrEmpty(config.graniteHost) ? config.graniteHost : "0.0.0.0";
-            int granitePort = config.granitePort > 0 ? config.granitePort : 8081;
-            string viteHost = !string.IsNullOrEmpty(config.viteHost) ? config.viteHost : "localhost";
-            int vitePort = config.vitePort > 0 ? config.vitePort : 5173;
-
-            // 포트 충돌 확인 및 자동 탐지
-            if (!IsPortAvailable(vitePort))
-            {
-                int availablePort = FindAvailablePort(vitePort);
-                if (availablePort > 0)
-                {
-                    Debug.Log($"[AIT] 포트 {vitePort}가 사용 중, {availablePort} 사용");
-                    vitePort = availablePort;
-                }
-                else
-                {
-                    Debug.LogError($"[AIT] 사용 가능한 포트를 찾을 수 없습니다 (시도: {vitePort}-{vitePort+9})");
-                    AITPlatformHelper.ShowInfoDialog("포트 오류", $"포트 {vitePort} 및 인근 포트가 모두 사용 중입니다.\n다른 포트를 Configuration에서 설정하거나, 사용 중인 프로세스를 종료하세요.", "확인");
-                    return;
-                }
-            }
-
-            if (!IsPortAvailable(granitePort))
-            {
-                int availablePort = FindAvailablePort(granitePort);
-                if (availablePort > 0)
-                {
-                    Debug.Log($"[AIT] Granite 포트 {granitePort}가 사용 중, {availablePort} 사용");
-                    granitePort = availablePort;
-                }
-                else
-                {
-                    Debug.LogError($"[AIT] 사용 가능한 Granite 포트를 찾을 수 없습니다 (시도: {granitePort}-{granitePort+9})");
-                    AITPlatformHelper.ShowInfoDialog("포트 오류", $"Granite 포트 {granitePort} 및 인근 포트가 모두 사용 중입니다.\n다른 포트를 Configuration에서 설정하거나, 사용 중인 프로세스를 종료하세요.", "확인");
-                    return;
-                }
-            }
-
-            Debug.Log($"AIT: Production 서버 시작 중 (서버만, granite dev)... ({buildPath})");
-            Debug.Log($"AIT:   Granite: {graniteHost}:{granitePort}");
-            Debug.Log($"AIT:   Vite: {viteHost}:{vitePort}");
-
-            // 캡처용 로컬 변수
-            int finalVitePort = vitePort;
-            int finalGranitePort = granitePort;
-
-            try
-            {
-                // 환경 변수로 Vite 설정 전달 (granite.config.ts, vite.config.ts에서 사용)
-                var envVars = new Dictionary<string, string>
-                {
-                    { "AIT_GRANITE_HOST", graniteHost },
-                    { "AIT_GRANITE_PORT", finalGranitePort.ToString() },
-                    { "AIT_VITE_HOST", viteHost },
-                    { "AIT_VITE_PORT", finalVitePort.ToString() }
-                };
-
-                // granite dev 명령어에 --host, --port 인자로 granite 서버 설정 전달
-                string graniteCommand = "exec -- granite dev";
-
-                var processManager = new AITProcessTreeManager();
-
-                // 포트와 프로세스 관리자 저장 (상태는 변경하지 않음)
-                prodServerState.SetExpectedPortAndProcess(processManager, finalGranitePort);
-
-                StartServerProcessWithPortDetection(
-                    processManager,
-                    buildPath, npmPath, graniteCommand, "Prod Server", envVars, finalGranitePort,
-                    onServerStarted: (detectedPort) =>
-                    {
-                        // 감지된 포트(Granite)를 저장하여 ValidateState에서 올바르게 확인할 수 있도록 함
-                        prodServerState.OnServerStarted(detectedPort);
-                        Debug.Log($"AIT: Production 서버가 시작되었습니다 (서버만)");
-                        Debug.Log($"AIT:   Granite (Metro): http://{graniteHost}:{finalGranitePort}");
-                        Debug.Log($"AIT:   Vite: http://{viteHost}:{finalVitePort}");
-                        // 서버만 재시작이므로 브라우저는 열지 않음
-                    },
-                    onServerFailed: (reason) =>
-                    {
-                        Debug.LogError($"AIT: Production 서버 시작 실패 - {reason}");
-                        AITPlatformHelper.ShowInfoDialog("Production 서버 시작 실패", reason, "확인");
-                        prodServerState.OnServerFailed();
-                    }
-                );
-            }
-            catch (Exception e)
-            {
-                Debug.LogError($"AIT: Production 서버 시작 실패: {e.Message}");
-                AITPlatformHelper.ShowInfoDialog("오류", $"Production 서버 시작 실패:\n{e.Message}", "확인");
-                prodServerState.OnServerFailed();
-            }
-        }
-
-        /// <summary>
-        /// Production 서버 중지
-        /// </summary>
-        private static void StopProdServer()
-        {
-            // 백업: 포트에서 실행 중인 프로세스도 종료 (혹시 남아있는 경우)
-            int port = prodServerState?.Port ?? 0;
-            if (port > 0)
-            {
-                KillProcessOnPort(port);
-            }
-
-            // 상태 관리자에 중지 알림
-            prodServerState?.OnServerStopped();
-
-            Debug.Log("AIT: Production 서버가 중지되었습니다.");
+            Debug.Log($"AIT: {label} 서버가 중지되었습니다.");
         }
 
         // 서버 시작 타임아웃 (30초)
@@ -2193,8 +1237,11 @@ namespace AppsInToss
                 {
                     string cleanOutput = Regex.Replace(args.Data, @"\x1B\[[0-9;]*[mGKH]", "");
 
-                    // stderr는 기본적으로 에러로 처리
-                    Debug.LogError($"[{logPrefix}] {cleanOutput}");
+                    // stderr 출력을 실제 에러와 경고로 분류
+                    if (IsErrorOutput(cleanOutput))
+                        Debug.LogError($"[{logPrefix}] {cleanOutput}");
+                    else
+                        Debug.LogWarning($"[{logPrefix}] {cleanOutput}");
 
                     // 포트 충돌 에러 감지
                     if (IsPortConflictError(cleanOutput))
@@ -2222,13 +1269,16 @@ namespace AppsInToss
 
             // 명확한 에러 패턴
             if (lower.Contains("error:") ||
-                lower.Contains("failed") ||
+                lower.Contains("fatal:") ||
                 lower.Contains("eaddrinuse") ||
                 lower.Contains("port is already in use") ||
                 lower.Contains("address already in use") ||
                 lower.Contains("cannot find module") ||
                 lower.Contains("command not found") ||
-                lower.Contains("permission denied"))
+                lower.Contains("permission denied") ||
+                lower.Contains("build failed") ||
+                lower.Contains("deploy failed") ||
+                lower.Contains("install failed"))
             {
                 return true;
             }
@@ -2369,6 +1419,57 @@ namespace AppsInToss
         }
 
         /// <summary>
+        /// Vite 포트가 열릴 때까지 대기한 후 브라우저를 엽니다.
+        /// Granite 포트가 먼저 감지되지만 Vite는 아직 준비되지 않았을 수 있으므로
+        /// EditorApplication.update 폴링으로 최대 15초 대기합니다.
+        /// </summary>
+        private static void WaitForPortAndOpenBrowser(int port, string url)
+        {
+            // 이미 포트가 열려있으면 즉시 열기
+            if (!IsPortAvailable(port))
+            {
+                Debug.Log($"[AIT] Vite 포트 {port} 준비 완료, 브라우저 열기");
+                Application.OpenURL(url);
+                return;
+            }
+
+            Debug.Log($"[AIT] Vite 포트 {port} 대기 중...");
+            double startTime = EditorApplication.timeSinceStartup;
+            double lastCheckTime = 0;
+            const double maxWaitSeconds = 15.0;
+            const double checkIntervalSeconds = 0.5;
+
+            void PollVitePort()
+            {
+                double elapsed = EditorApplication.timeSinceStartup - startTime;
+
+                // TCP bind/unbind 부하 방지: 0.5초 간격으로 체크
+                if (elapsed - lastCheckTime < checkIntervalSeconds)
+                    return;
+                lastCheckTime = elapsed;
+
+                if (!IsPortAvailable(port))
+                {
+                    // 포트가 사용 중 = Vite 서버 준비됨
+                    EditorApplication.update -= PollVitePort;
+                    Debug.Log($"[AIT] Vite 포트 {port} 준비 완료 ({elapsed:F1}초 대기), 브라우저 열기");
+                    Application.OpenURL(url);
+                    return;
+                }
+
+                if (elapsed > maxWaitSeconds)
+                {
+                    // 타임아웃 — 그래도 브라우저 열기 (사용자가 직접 새로고침 가능)
+                    EditorApplication.update -= PollVitePort;
+                    Debug.LogWarning($"[AIT] Vite 포트 {port} 대기 타임아웃 ({maxWaitSeconds}초), 브라우저를 엽니다");
+                    Application.OpenURL(url);
+                }
+            }
+
+            EditorApplication.update += PollVitePort;
+        }
+
+        /// <summary>
         /// 사용 가능한 포트 찾기 (시작 포트부터 최대 10개 시도)
         /// </summary>
         private static int FindAvailablePort(int startPort, int maxAttempts = 10)
@@ -2478,6 +1579,77 @@ namespace AppsInToss
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// 서버 포트 설정 해석 및 충돌 검사
+        /// </summary>
+        private static bool TryResolveServerPorts(
+            AITEditorScriptObject config,
+            out string graniteHost, out int granitePort,
+            out string viteHost, out int vitePort)
+        {
+            graniteHost = !string.IsNullOrEmpty(config.graniteHost) ? config.graniteHost : "0.0.0.0";
+            granitePort = config.granitePort > 0 ? config.granitePort : 8081;
+            viteHost = !string.IsNullOrEmpty(config.viteHost) ? config.viteHost : "localhost";
+            vitePort = config.vitePort > 0 ? config.vitePort : 5173;
+
+            // Vite 포트 충돌 확인 및 자동 탐지
+            if (!IsPortAvailable(vitePort))
+            {
+                int availablePort = FindAvailablePort(vitePort);
+                if (availablePort > 0)
+                {
+                    Debug.Log($"[AIT] 포트 {vitePort}가 사용 중, {availablePort} 사용");
+                    vitePort = availablePort;
+                }
+                else
+                {
+                    Debug.LogError($"[AIT] 사용 가능한 포트를 찾을 수 없습니다 (시도: {vitePort}-{vitePort+9})");
+                    AITPlatformHelper.ShowInfoDialog("포트 오류", $"포트 {vitePort} 및 인근 포트가 모두 사용 중입니다.\n다른 포트를 Configuration에서 설정하거나, 사용 중인 프로세스를 종료하세요.", "확인");
+                    return false;
+                }
+            }
+
+            // Granite 포트 충돌 확인 및 자동 탐지
+            if (!IsPortAvailable(granitePort))
+            {
+                int availablePort = FindAvailablePort(granitePort);
+                if (availablePort > 0)
+                {
+                    Debug.Log($"[AIT] Granite 포트 {granitePort}가 사용 중, {availablePort} 사용");
+                    granitePort = availablePort;
+                }
+                else
+                {
+                    Debug.LogError($"[AIT] 사용 가능한 Granite 포트를 찾을 수 없습니다 (시도: {granitePort}-{granitePort+9})");
+                    AITPlatformHelper.ShowInfoDialog("포트 오류", $"Granite 포트 {granitePort} 및 인근 포트가 모두 사용 중입니다.\n다른 포트를 Configuration에서 설정하거나, 사용 중인 프로세스를 종료하세요.", "확인");
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// 빌드 실패 시 사용자에게 에러 다이얼로그를 표시하고 Issue 신고 옵션을 제공
+        /// </summary>
+        private static void ShowBuildFailedDialog(AITConvertCore.AITExportError result, string callerName)
+        {
+            string errorMessage = AITConvertCore.GetErrorMessage(result);
+            Debug.LogError($"AIT: 빌드 실패: {result}");
+            int choice = AITPlatformHelper.ShowComplexDialog(
+                "빌드 실패",
+                errorMessage + "\n\n문제가 지속되면 'Issue 신고'를 클릭하세요.",
+                "확인",
+                "Issue 신고",
+                null,
+                defaultChoice: 0
+            );
+            if (choice == 1)
+            {
+                AppsInToss.Editor.AITErrorReporter.OpenIssueInBrowser(result, callerName);
+            }
         }
 
         private static bool ValidateSettings(AITEditorScriptObject config)

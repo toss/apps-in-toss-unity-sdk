@@ -303,6 +303,15 @@ namespace AppsInToss
             var config = UnityUtil.GetEditorConf();
             if (!ValidateSettingsForPackage(config)) return;
 
+            // 빌드 전 배포 키 사전 체크 (fail-fast)
+            string deploymentKey = AITCredentialsUtil.GetDeploymentKey();
+            if (string.IsNullOrWhiteSpace(deploymentKey))
+            {
+                Debug.LogError("AIT: 배포 키가 설정되지 않았습니다.");
+                AITPlatformHelper.ShowInfoDialog("오류", "배포 키가 설정되지 않았습니다.\n\nApps in Toss > Configuration에서 배포 키를 입력해주세요.", "확인");
+                return;
+            }
+
             string projectPath = UnityUtil.GetProjectPath();
             string aitBuildPath = Path.Combine(projectPath, "ait-build");
             string distPath = Path.Combine(aitBuildPath, "dist");

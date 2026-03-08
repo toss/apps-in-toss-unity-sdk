@@ -1040,7 +1040,7 @@ namespace AppsInToss.Editor
 
             EditorGUILayout.LabelField("프로젝트 이름:", PlayerSettings.productName);
             EditorGUILayout.LabelField("Unity 버전:", $"{Application.unityVersion} ({AITDefaultSettings.GetUnityVersionGroup()})");
-            EditorGUILayout.LabelField("SDK 버전:", "1.0.0");
+            EditorGUILayout.LabelField("SDK 버전:", AITVersion.FullVersion);
 
             GUILayout.Space(10);
 

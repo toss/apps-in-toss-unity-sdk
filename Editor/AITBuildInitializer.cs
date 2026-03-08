@@ -17,10 +17,26 @@ namespace AppsInToss.Editor
         internal static void Init(AITBuildProfile profile = null)
         {
             // WebGL 템플릿 복사 (필요한 경우)
-            AITTemplateManager.EnsureWebGLTemplatesExist();
+            bool templatesChanged = AITTemplateManager.EnsureWebGLTemplatesExist();
+            Debug.Log($"[AIT] 빌드 초기화: 템플릿 변경={templatesChanged}");
 
-            // 템플릿이 복사되었을 경우 Unity가 인식하도록 강제 리프레시
-            AssetDatabase.Refresh();
+            // 템플릿이 변경된 경우에만 Unity가 인식하도록 리프레시
+            // Domain Reload 방지: 빌드 중 Assembly 리로드를 잠금하여
+            // 비-스크립트 파일 변경으로 인한 불필요한 Domain Reload를 차단
+            if (templatesChanged)
+            {
+                Debug.Log("[AIT] AssetDatabase.Refresh 시작 (LockReloadAssemblies 적용)");
+                EditorApplication.LockReloadAssemblies();
+                try
+                {
+                    AssetDatabase.Refresh();
+                }
+                finally
+                {
+                    EditorApplication.UnlockReloadAssemblies();
+                }
+                Debug.Log("[AIT] AssetDatabase.Refresh 완료");
+            }
 
             var editorConfig = UnityUtil.GetEditorConf();
 
@@ -229,17 +245,8 @@ namespace AppsInToss.Editor
             if (string.IsNullOrEmpty(debugConsoleEnv) && string.IsNullOrEmpty(compressionFormatEnv))
                 return profile;
 
-            // 복사본 생성 (모든 필드 복사)
-            var overriddenProfile = new AITBuildProfile
-            {
-                enableMockBridge = profile.enableMockBridge,
-                enableDebugConsole = profile.enableDebugConsole,
-                developmentBuild = profile.developmentBuild,
-                enableLZ4Compression = profile.enableLZ4Compression,
-                compressionFormat = profile.compressionFormat,
-                managedStrippingLevel = profile.managedStrippingLevel,
-                debugSymbolsExternal = profile.debugSymbolsExternal,
-            };
+            // 복사본 생성 (새 필드 추가 시 누락 방지)
+            var overriddenProfile = profile.Clone();
 
             // AIT_DEBUG_CONSOLE 오버라이드
             if (!string.IsNullOrEmpty(debugConsoleEnv))

@@ -47,7 +47,7 @@ mergeInto(LibraryManager.library, {
                         TypeName: typeNameStr,
                         Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
                     });
-                    SendMessage('AITCore', 'OnAITCallback', payload);
+                    setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
                 });
         } catch (error) {
             console.log('[AIT jslib] checkoutPayment sync error:', error);
@@ -56,7 +56,7 @@ mergeInto(LibraryManager.library, {
                 TypeName: typeNameStr,
                 Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
             });
-            SendMessage('AITCore', 'OnAITCallback', payload);
+            setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
         }
     },
 

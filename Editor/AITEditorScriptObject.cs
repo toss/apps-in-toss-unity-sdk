@@ -34,6 +34,11 @@ namespace AppsInToss
         public bool debugSymbolsExternal = true;
 
         /// <summary>
+        /// 프로필의 얕은 복사본 생성 (모든 필드가 값 타입이므로 안전)
+        /// </summary>
+        public AITBuildProfile Clone() => (AITBuildProfile)MemberwiseClone();
+
+        /// <summary>
         /// Dev Server 기본 프로필 생성 (빌드 속도 우선)
         /// </summary>
         public static AITBuildProfile CreateDevServerProfile()
@@ -197,15 +202,8 @@ namespace AppsInToss
         [Tooltip("-1 = 자동 (false, Unity 6+)")]
         public int webAssemblyArithmeticExceptions = -1;
 
-        [Header("디버그 설정")]
-        [Tooltip("프로덕션 빌드에서 디버그 콘솔을 활성화합니다. 개발/테스트 목적으로 사용하세요.")]
-        public bool enableDebugConsole = false;
-
         [Header("권한 설정")]
         public AITPermissionConfig permissionConfig = new AITPermissionConfig();
-
-        [Header("플러그인 설정")]
-        public string[] plugins = new string[] { };
 
         /// <summary>
         /// 아이콘 URL 유효성 검사

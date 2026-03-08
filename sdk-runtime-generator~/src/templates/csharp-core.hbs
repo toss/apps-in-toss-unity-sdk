@@ -210,6 +210,7 @@ namespace AppsInToss
                 if (_instance == null)
                 {
                     var go = new GameObject("AITCore");
+                    go.hideFlags = HideFlags.HideAndDontSave;
                     _instance = go.AddComponent<AITCore>();
                     UnityEngine.Object.DontDestroyOnLoad(go);
                 }

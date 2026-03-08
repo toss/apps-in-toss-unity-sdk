@@ -1422,15 +1422,15 @@ namespace AppsInToss.Editor
             var sb = new System.Text.StringBuilder();
 
             // 우선순위: data > wasm > framework (일반적으로 크기 순)
-            // as="fetch": same-origin 리소스이므로 crossorigin 불필요 (Unity loader와 동일한 credentials mode 유지)
+            // as="fetch" + crossorigin="anonymous": Unity loader가 CORS mode로 fetch하므로 credentials mode를 일치시킴
             if (!string.IsNullOrEmpty(dataFile))
             {
-                sb.AppendLine($"    <link rel=\"preload\" href=\"Build/{dataFile}\" as=\"fetch\">");
+                sb.AppendLine($"    <link rel=\"preload\" href=\"Build/{dataFile}\" as=\"fetch\" crossorigin=\"anonymous\">");
             }
 
             if (!string.IsNullOrEmpty(wasmFile))
             {
-                sb.AppendLine($"    <link rel=\"preload\" href=\"Build/{wasmFile}\" as=\"fetch\">");
+                sb.AppendLine($"    <link rel=\"preload\" href=\"Build/{wasmFile}\" as=\"fetch\" crossorigin=\"anonymous\">");
             }
 
             // framework.js는 preload하지 않음

@@ -102,6 +102,26 @@ namespace AppsInToss.Editor
         /// </summary>
         public void Restore()
         {
+            // Domain Reload 방지: PlayerSettings 대량 변경 시
+            // Assembly 리로드를 잠금하여 불필요한 Domain Reload를 차단
+            EditorApplication.LockReloadAssemblies();
+            try
+            {
+                RestoreInternal();
+            }
+            finally
+            {
+                EditorApplication.UnlockReloadAssemblies();
+            }
+
+            Debug.Log("[AIT] PlayerSettings가 원래 상태로 복원되었습니다.");
+        }
+
+        /// <summary>
+        /// PlayerSettings 실제 복원 (LockReloadAssemblies 내부에서 호출)
+        /// </summary>
+        private void RestoreInternal()
+        {
             // WebGL 설정
             PlayerSettings.WebGL.template = webGLTemplate;
             PlayerSettings.WebGL.linkerTarget = linkerTarget;
@@ -140,9 +160,6 @@ namespace AppsInToss.Editor
             PlayerSettings.WebGL.wasmStreaming = wasmStreaming;
 #endif
 #endif
-
-
-            Debug.Log("[AIT] PlayerSettings가 원래 상태로 복원되었습니다.");
         }
     }
 }

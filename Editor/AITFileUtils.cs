@@ -72,6 +72,44 @@ namespace AppsInToss
         }
 
         /// <summary>
+        /// 두 디렉토리의 내용이 동일한지 비교 (파일명, 크기 기준)
+        /// </summary>
+        public static bool DirectoriesEqual(string dir1, string dir2)
+        {
+            if (!Directory.Exists(dir1) || !Directory.Exists(dir2))
+                return false;
+
+            var files1 = Directory.GetFiles(dir1, "*", SearchOption.AllDirectories);
+            var files2 = Directory.GetFiles(dir2, "*", SearchOption.AllDirectories);
+
+            if (files1.Length != files2.Length)
+                return false;
+
+            // 상대 경로 기준으로 비교
+            var set = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
+            foreach (var f in files1)
+            {
+                string rel = f.Substring(dir1.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                set.Add(rel);
+            }
+
+            foreach (var f in files2)
+            {
+                string rel = f.Substring(dir2.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                if (!set.Contains(rel))
+                    return false;
+
+                string f1 = Path.Combine(dir1, rel);
+                var info1 = new FileInfo(f1);
+                var info2 = new FileInfo(f);
+                if (info1.Length != info2.Length)
+                    return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>
         /// 파일에 읽기 권한 부여 (macOS/Linux에서 chmod 644 효과)
         /// </summary>
         internal static void EnsureFileReadable(string filePath)

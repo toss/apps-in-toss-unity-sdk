@@ -159,7 +159,7 @@ namespace AppsInToss
         public AITBuildProfile productionProfile = AITBuildProfile.CreateProductionProfile();
 
         [Header("WebGL 최적화 설정")]
-        [Tooltip("-1 = 자동 (Unity 버전별 권장값)")]
+        [Tooltip("WebGL 초기 힙 메모리 크기(MB). 런타임에 필요 시 자동 확장됩니다. -1 = 자동 (Unity 버전별 권장값)")]
         public int memorySize = -1;
 
         [Tooltip("-1 = 자동, 0 = false, 1 = true")]

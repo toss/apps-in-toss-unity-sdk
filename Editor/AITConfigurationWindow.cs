@@ -479,8 +479,8 @@ namespace AppsInToss.Editor
             DrawModifiedIndicator(isModified);
 
             string label = config.memorySize <= 0
-                ? $"메모리 크기 (자동: {defaultMemory}MB)"
-                : "메모리 크기";
+                ? $"초기 메모리 크기 (자동: {defaultMemory}MB)"
+                : "초기 메모리 크기";
 
             string[] options = { $"자동 ({defaultMemory}MB)", "256MB", "512MB", "768MB", "1024MB", "1536MB" };
             int currentIndex = GetMemorySizeIndex(config.memorySize, defaultMemory);

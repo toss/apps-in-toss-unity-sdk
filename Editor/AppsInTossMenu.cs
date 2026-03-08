@@ -7,6 +7,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.Networking;
 using Debug = UnityEngine.Debug;
 using AppsInToss.Editor;
 
@@ -1723,12 +1724,14 @@ namespace AppsInToss
     }
 
     /// <summary>
-    /// 배포 성공 시 URL을 표시하고 복사할 수 있는 창
+    /// 배포 성공 시 URL과 QR 코드를 표시하고 복사할 수 있는 창
     /// </summary>
     public class DeploySuccessWindow : EditorWindow
     {
         private string deployUrl;
         private bool copied = false;
+        private Texture2D qrTexture;
+        private bool qrFailed = false;
         private GUIStyle urlStyle;
         private GUIStyle buttonStyle;
         private GUIStyle copiedLabelStyle;
@@ -1738,10 +1741,62 @@ namespace AppsInToss
             var window = GetWindow<DeploySuccessWindow>(true, "배포 완료", true);
             window.deployUrl = url;
             window.copied = false;
-            window.minSize = new Vector2(500, 160);
-            window.maxSize = new Vector2(700, 200);
+            window.qrFailed = false;
+
+            // 기존 QR 텍스처 정리
+            if (window.qrTexture != null)
+            {
+                DestroyImmediate(window.qrTexture);
+                window.qrTexture = null;
+            }
+
+            window.minSize = new Vector2(500, 400);
+            window.maxSize = new Vector2(700, 500);
             window.ShowUtility();
             window.CenterOnMainWin();
+
+            // QR 코드 비동기 다운로드
+            DownloadQRCode(url, tex =>
+            {
+                if (window == null) return;
+
+                if (tex != null)
+                {
+                    window.qrTexture = tex;
+                }
+                else
+                {
+                    window.qrFailed = true;
+                    // QR 실패 시 윈도우 크기 축소
+                    window.minSize = new Vector2(500, 160);
+                    window.maxSize = new Vector2(700, 200);
+                    window.CenterOnMainWin();
+                }
+                window.Repaint();
+            });
+        }
+
+        private static void DownloadQRCode(string url, Action<Texture2D> onComplete)
+        {
+            string qrUrl = "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data="
+                           + Uri.EscapeDataString(url);
+            var request = UnityWebRequest.Get(qrUrl);
+            request.timeout = 5;
+            var operation = request.SendWebRequest();
+            operation.completed += _ =>
+            {
+                if (request.result == UnityWebRequest.Result.Success)
+                {
+                    var tex = new Texture2D(2, 2);
+                    tex.LoadImage(request.downloadHandler.data);
+                    onComplete(tex);
+                }
+                else
+                {
+                    onComplete(null);
+                }
+                request.Dispose();
+            };
         }
 
         private void CenterOnMainWin()
@@ -1794,6 +1849,24 @@ namespace AppsInToss
 
             GUILayout.Space(10);
 
+            // QR 코드 표시
+            if (qrTexture != null)
+            {
+                EditorGUILayout.LabelField("모바일에서 QR 코드를 스캔하여 테스트하세요:", EditorStyles.miniLabel);
+                GUILayout.Space(5);
+                EditorGUILayout.BeginHorizontal();
+                GUILayout.FlexibleSpace();
+                GUILayout.Label(qrTexture, GUILayout.Width(200), GUILayout.Height(200));
+                GUILayout.FlexibleSpace();
+                EditorGUILayout.EndHorizontal();
+                GUILayout.Space(10);
+            }
+            else if (!qrFailed)
+            {
+                EditorGUILayout.LabelField("QR 코드 로딩 중...", EditorStyles.miniLabel);
+                GUILayout.Space(210);
+            }
+
             // URL 표시
             EditorGUILayout.LabelField("배포 URL:", EditorStyles.miniLabel);
             EditorGUILayout.SelectableLabel(deployUrl, urlStyle, GUILayout.Height(30));
@@ -1829,6 +1902,15 @@ namespace AppsInToss
             }
 
             GUILayout.Space(10);
+        }
+
+        private void OnDestroy()
+        {
+            if (qrTexture != null)
+            {
+                DestroyImmediate(qrTexture);
+                qrTexture = null;
+            }
         }
     }
 }

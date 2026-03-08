@@ -643,6 +643,29 @@ namespace AppsInToss
 
         private static AITExportError BuildWebGL(bool cleanBuild = false, AITBuildProfile profile = null)
         {
+            if (EditorUserBuildSettings.activeBuildTarget != BuildTarget.WebGL)
+            {
+                bool confirm = AITPlatformHelper.ShowConfirmDialog(
+                    "빌드 타겟 전환 필요",
+                    $"현재 빌드 타겟이 {EditorUserBuildSettings.activeBuildTarget}입니다.\n" +
+                    "WebGL 빌드를 위해 빌드 타겟을 WebGL로 전환해야 합니다.",
+                    "전환",
+                    "취소");
+
+                if (!confirm)
+                {
+                    Debug.Log("[AIT] 사용자가 빌드 타겟 전환을 취소했습니다.");
+                    return AITExportError.CANCELLED;
+                }
+
+                Debug.Log($"[AIT] 빌드 타겟을 {EditorUserBuildSettings.activeBuildTarget}에서 WebGL로 전환합니다...");
+                if (!EditorUserBuildSettings.SwitchActiveBuildTarget(BuildTargetGroup.WebGL, BuildTarget.WebGL))
+                {
+                    Debug.LogError("[AIT] WebGL 빌드 타겟으로 전환할 수 없습니다. WebGL Build Support 모듈이 설치되어 있는지 확인하세요.");
+                    return AITExportError.BUILD_WEBGL_FAILED;
+                }
+            }
+
             string[] scenes = UnityUtil.GetBuildScenes();
             string outputPath = Path.Combine(UnityUtil.GetProjectPath(), webglDir);
 

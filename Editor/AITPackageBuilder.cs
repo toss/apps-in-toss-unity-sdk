@@ -1352,8 +1352,8 @@ namespace AppsInToss.Editor
                 .Replace("%AIT_ICON_URL%", config.iconUrl ?? "")
                 .Replace("%AIT_DISPLAY_NAME%", config.displayName ?? "")
                 .Replace("%AIT_PRIMARY_COLOR%", config.primaryColor ?? "#3182f6")
-                // HTML5 Preload 태그 (로딩 성능 개선)
-                .Replace("%AIT_PRELOAD_TAGS%", GeneratePreloadTags(dataFile, wasmFile, frameworkFile));
+                // Early Fetch 스크립트 (로딩 성능 개선)
+                .Replace("%AIT_EARLY_FETCH_SCRIPT%", GenerateEarlyFetchScript(dataFile, wasmFile));
 
             // 로딩 화면 삽입 (%AIT_LOADING_SCREEN% 플레이스홀더)
             string loadingContent = "";
@@ -1410,35 +1410,55 @@ namespace AppsInToss.Editor
         }
 
         /// <summary>
-        /// Unity WebGL 리소스에 대한 preload 태그를 생성합니다.
-        /// HTML5 preload를 사용하면 HTML 파싱과 동시에 리소스 다운로드가 시작되어 로딩 성능이 개선됩니다.
+        /// Unity WebGL 리소스를 조기 fetch하고 Unity loader의 fetch를 인터셉트하는 스크립트를 생성합니다.
+        ///
+        /// 배경: &lt;link rel="preload"&gt;는 CDN의 cache-control: max-age=0 환경에서 동작하지 않습니다.
+        /// preload로 받은 리소스가 즉시 stale 처리되어 Unity loader가 재사용하지 못하고 revalidation 요청을 보내며,
+        /// 이는 이중 로딩과 "preload is found, but is not used" 경고를 유발합니다.
+        ///
+        /// 해결: head에서 JS fetch()를 즉시 시작하고, window.fetch를 일회성으로 인터셉트하여
+        /// Unity loader가 같은 URL을 요청할 때 이미 받은 Response를 반환합니다.
         /// </summary>
-        /// <param name="dataFile">data 파일명 (예: Build.data.br)</param>
-        /// <param name="wasmFile">wasm 파일명 (예: Build.wasm.br)</param>
-        /// <param name="frameworkFile">framework 파일명 (예: Build.framework.js.br)</param>
-        /// <returns>preload 태그 문자열 (줄바꿈 포함)</returns>
-        private static string GeneratePreloadTags(string dataFile, string wasmFile, string frameworkFile)
+        private static string GenerateEarlyFetchScript(string dataFile, string wasmFile)
         {
-            var sb = new System.Text.StringBuilder();
+            var urls = new System.Collections.Generic.List<string>();
+            if (!string.IsNullOrEmpty(dataFile)) urls.Add($"Build/{dataFile}");
+            if (!string.IsNullOrEmpty(wasmFile)) urls.Add($"Build/{wasmFile}");
 
-            // 우선순위: data > wasm > framework (일반적으로 크기 순)
-            // as="fetch" + crossorigin="anonymous": Unity loader가 CORS mode로 fetch하므로 credentials mode를 일치시킴
-            if (!string.IsNullOrEmpty(dataFile))
-            {
-                sb.AppendLine($"    <link rel=\"preload\" href=\"Build/{dataFile}\" as=\"fetch\" crossorigin=\"anonymous\">");
-            }
+            if (urls.Count == 0) return "";
 
-            if (!string.IsNullOrEmpty(wasmFile))
-            {
-                sb.AppendLine($"    <link rel=\"preload\" href=\"Build/{wasmFile}\" as=\"fetch\" crossorigin=\"anonymous\">");
-            }
+            // JSON 배열로 URL 목록 생성
+            var urlsJson = "[" + string.Join(",", urls.ConvertAll(u => $"\"{u}\"")) + "]";
 
-            // framework.js는 preload하지 않음
-            // Unity 로더가 framework.js를 <script> 태그로 로드하는 경우 as="fetch" preload와 캐시 키가 불일치하여
-            // 이중 다운로드가 발생할 수 있음. 이는 메모리 압박을 증가시켜 간헐적 초기화 실패(ASM_CONSTS 오류)의
-            // 확률을 높일 수 있으므로 framework.js preload를 제거함.
-
-            return sb.ToString().TrimEnd();
+            return $@"<script>
+    // Early Fetch: HTML 파싱과 동시에 리소스 다운로드를 시작하고,
+    // Unity loader가 같은 URL을 요청할 때 이미 받은 Response를 반환합니다.
+    (function() {{
+        var earlyFetchMap = {{}};
+        var urls = {urlsJson};
+        for (var i = 0; i < urls.length; i++) {{
+            (function(href, fetchUrl) {{
+                var p = fetch(fetchUrl).catch(function() {{ delete earlyFetchMap[href]; return null; }});
+                earlyFetchMap[href] = p;
+            }})(new URL(urls[i], location.href).href, urls[i]);
+        }}
+        var originalFetch = window.fetch;
+        window.fetch = function(resource, init) {{
+            var url = (typeof resource === 'string') ? new URL(resource, location.href).href : resource.url;
+            var pending = earlyFetchMap[url];
+            if (pending) {{
+                delete earlyFetchMap[url];
+                if (Object.keys(earlyFetchMap).length === 0) {{
+                    window.fetch = originalFetch;
+                }}
+                // early fetch 실패 시 null이 반환되므로 원본 fetch로 재시도
+                var self = this, args = arguments;
+                return pending.then(function(r) {{ return r || originalFetch.apply(self, args); }});
+            }}
+            return originalFetch.apply(this, arguments);
+        }};
+    }})();
+    </script>";
         }
 
         #region Async Packaging

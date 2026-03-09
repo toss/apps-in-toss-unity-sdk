@@ -719,10 +719,10 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
 
 
     // -------------------------------------------------------------------------
-    // Test 3: Production Server + Preload Metrics
+    // Test 3: Production Server + Load Metrics
     // 기존 Tests 5, 9 통합
     // -------------------------------------------------------------------------
-    test('3. Production build should load with correct preload metrics', async () => {
+    test('3. Production build should load with correct metrics', async () => {
       test.setTimeout(60000);
 
       // WebGL 지원 확인
@@ -745,7 +745,7 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       expect(webglInfo.supported, 'WebGL should be supported').toBe(true);
 
       expect(preloadWarnings.length,
-        'Preload tags should not cause credentials mode mismatch warnings').toBe(0);
+        'Early fetch should not cause credentials mode mismatch warnings').toBe(0);
 
       testResults.tests['3_production_server'] = {
         passed: true,

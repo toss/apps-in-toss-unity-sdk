@@ -439,8 +439,8 @@ namespace AppsInToss.Editor
             int bits = FormatBitsL[mask];
 
             // Around top-left finder
-            int[] rowPositions = { 0, 1, 2, 3, 4, 5, 7, 8, 8, 8, 8, 8, 8, 8, 8 };
-            int[] colPositions = { 8, 8, 8, 8, 8, 8, 8, 8, 7, 5, 4, 3, 2, 1, 0 };
+            int[] rowPositions = { 8, 8, 8, 8, 8, 8, 8, 8, 7, 5, 4, 3, 2, 1, 0 };
+            int[] colPositions = { 0, 1, 2, 3, 4, 5, 7, 8, 8, 8, 8, 8, 8, 8, 8 };
 
             for (int i = 0; i < 15; i++)
             {
@@ -451,12 +451,12 @@ namespace AppsInToss.Editor
             // Around top-right and bottom-left finders
             for (int i = 0; i < 8; i++)
             {
-                bool dark = ((bits >> (14 - i)) & 1) == 1;
+                bool dark = ((bits >> i) & 1) == 1;
                 m[8, size - 1 - i] = dark;
             }
             for (int i = 8; i < 15; i++)
             {
-                bool dark = ((bits >> (14 - i)) & 1) == 1;
+                bool dark = ((bits >> i) & 1) == 1;
                 m[size - 15 + i, 8] = dark;
             }
         }

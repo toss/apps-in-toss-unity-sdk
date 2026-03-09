@@ -573,6 +573,23 @@ namespace AppsInToss
             EditorUtility.DisplayDialog("완료", "SDK 상태가 초기화되었습니다.\nEditor를 재시작하면 모든 초기화가 다시 실행됩니다.", "확인");
         }
 
+        [MenuItem("AIT/Debug/Force Update WebGL Template", false)]
+        public static void ForceUpdateWebGLTemplate()
+        {
+            bool changed = AITTemplateManager.EnsureWebGLTemplatesExist();
+            if (changed)
+            {
+                AssetDatabase.Refresh();
+                Debug.Log("[AIT] ✓ WebGL 템플릿이 최신 SDK 버전으로 갱신되었습니다.");
+                EditorUtility.DisplayDialog("완료", "WebGL 템플릿이 최신 SDK 버전으로 갱신되었습니다.", "확인");
+            }
+            else
+            {
+                Debug.Log("[AIT] WebGL 템플릿이 이미 최신 상태입니다.");
+                EditorUtility.DisplayDialog("확인", "WebGL 템플릿이 이미 최신 상태입니다.", "확인");
+            }
+        }
+
         // ============================================
         // 빌드 실행 메서드들
         // ============================================

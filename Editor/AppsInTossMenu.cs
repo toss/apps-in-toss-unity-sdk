@@ -7,7 +7,6 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using UnityEditor;
 using UnityEngine;
-using UnityEngine.Networking;
 using Debug = UnityEngine.Debug;
 using AppsInToss.Editor;
 
@@ -1755,48 +1754,20 @@ namespace AppsInToss
             window.ShowUtility();
             window.CenterOnMainWin();
 
-            // QR 코드 비동기 다운로드
-            DownloadQRCode(url, tex =>
+            // QR 코드 로컬 생성 (외부 서비스 미사용)
+            var qrTex = Editor.AITQRCodeGenerator.Generate(url, 200);
+            if (qrTex != null)
             {
-                if (window == null) return;
-
-                if (tex != null)
-                {
-                    window.qrTexture = tex;
-                }
-                else
-                {
-                    window.qrFailed = true;
-                    // QR 실패 시 윈도우 크기 축소
-                    window.minSize = new Vector2(500, 160);
-                    window.maxSize = new Vector2(700, 200);
-                    window.CenterOnMainWin();
-                }
-                window.Repaint();
-            });
-        }
-
-        private static void DownloadQRCode(string url, Action<Texture2D> onComplete)
-        {
-            string qrUrl = "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data="
-                           + Uri.EscapeDataString(url);
-            var request = UnityWebRequest.Get(qrUrl);
-            request.timeout = 5;
-            var operation = request.SendWebRequest();
-            operation.completed += _ =>
+                window.qrTexture = qrTex;
+            }
+            else
             {
-                if (request.result == UnityWebRequest.Result.Success)
-                {
-                    var tex = new Texture2D(2, 2);
-                    tex.LoadImage(request.downloadHandler.data);
-                    onComplete(tex);
-                }
-                else
-                {
-                    onComplete(null);
-                }
-                request.Dispose();
-            };
+                window.qrFailed = true;
+                window.minSize = new Vector2(500, 160);
+                window.maxSize = new Vector2(700, 200);
+                window.CenterOnMainWin();
+            }
+            window.Repaint();
         }
 
         private void CenterOnMainWin()

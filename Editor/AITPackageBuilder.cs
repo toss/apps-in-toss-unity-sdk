@@ -59,7 +59,22 @@ namespace AppsInToss.Editor
                 get { return _pnpmInstallResultCode < 0 ? (AITConvertCore.AITExportError?)null : (AITConvertCore.AITExportError)_pnpmInstallResultCode; }
                 set { _pnpmInstallResultCode = value.HasValue ? (int)value.Value : -1; }
             }
-            public CancellationTokenSource PnpmCancellation = new CancellationTokenSource();
+            private CancellationTokenSource _pnpmCancellation = new CancellationTokenSource();
+            private volatile bool _pnpmCancellationDisposed;
+
+            public CancellationToken PnpmCancellationToken => _pnpmCancellation.Token;
+
+            /// <summary>
+            /// pnpm install을 안전하게 취소하고 CTS를 정리합니다.
+            /// 여러 번 호출해도 안전합니다 (double-dispose 방지).
+            /// </summary>
+            public void CancelAndDisposePnpm()
+            {
+                if (_pnpmCancellationDisposed) return;
+                _pnpmCancellationDisposed = true;
+                try { _pnpmCancellation.Cancel(); } catch (ObjectDisposedException) { }
+                try { _pnpmCancellation.Dispose(); } catch (ObjectDisposedException) { }
+            }
         }
 
         /// <summary>
@@ -235,7 +250,7 @@ namespace AppsInToss.Editor
         /// </summary>
         private static AITConvertCore.AITExportError RunPnpmInstallInThread(EarlyPackageContext earlyCtx)
         {
-            var ct = earlyCtx.PnpmCancellation.Token;
+            var ct = earlyCtx.PnpmCancellationToken;
             var additionalPaths = AITNpmRunner.BuildAdditionalPaths(earlyCtx.PnpmPath);
 
             foreach (var (args, label, cleanFirst) in PnpmInstallStages)
@@ -355,8 +370,7 @@ namespace AppsInToss.Editor
             var copyResult = CopyWebGLToPublic(webglPath, earlyCtx.BuildProjectPath, profile);
             if (copyResult != AITConvertCore.AITExportError.SUCCEED)
             {
-                earlyCtx.PnpmCancellation.Cancel();
-                earlyCtx.PnpmCancellation.Dispose();
+                earlyCtx.CancelAndDisposePnpm();
                 settingsBackup.Restore();
                 onComplete?.Invoke(copyResult);
                 return;
@@ -380,8 +394,7 @@ namespace AppsInToss.Editor
                     if (AITConvertCore.IsCancelled())
                     {
                         EditorApplication.update -= PollPnpmCompletion;
-                        earlyCtx.PnpmCancellation.Cancel();
-                        earlyCtx.PnpmCancellation.Dispose();
+                        earlyCtx.CancelAndDisposePnpm();
                         settingsBackup.Restore();
                         onComplete?.Invoke(AITConvertCore.AITExportError.CANCELLED);
                         return;
@@ -412,7 +425,7 @@ namespace AppsInToss.Editor
             if (installResult != AITConvertCore.AITExportError.SUCCEED)
             {
                 Debug.LogError($"[AIT] [병렬] pnpm install 실패: {installResult}");
-                earlyCtx.PnpmCancellation.Dispose();
+                earlyCtx.CancelAndDisposePnpm();
                 settingsBackup.Restore();
                 onComplete?.Invoke(installResult);
                 return;
@@ -420,7 +433,7 @@ namespace AppsInToss.Editor
 
             if (AITConvertCore.IsCancelled())
             {
-                earlyCtx.PnpmCancellation.Dispose();
+                earlyCtx.CancelAndDisposePnpm();
                 settingsBackup.Restore();
                 onComplete?.Invoke(AITConvertCore.AITExportError.CANCELLED);
                 return;
@@ -429,7 +442,7 @@ namespace AppsInToss.Editor
             if (skipGraniteBuild)
             {
                 Debug.Log("[AIT] [병렬] granite build 스킵 (Dev Server 모드)");
-                earlyCtx.PnpmCancellation.Dispose();
+                earlyCtx.CancelAndDisposePnpm();
                 AITConvertCore.SetCurrentAsyncTask(null);
                 settingsBackup.Restore();
                 onComplete?.Invoke(AITConvertCore.AITExportError.SUCCEED);
@@ -446,11 +459,11 @@ namespace AppsInToss.Editor
             };
 
             // granite build 실행 (비동기)
-            var cancellationToken = earlyCtx.PnpmCancellation.Token;
+            var cancellationToken = earlyCtx.PnpmCancellationToken;
             RunGraniteBuildAsync(ctx, cancellationToken, onProgress,
                 (buildResult) =>
                 {
-                    earlyCtx.PnpmCancellation.Dispose();
+                    earlyCtx.CancelAndDisposePnpm();
                     AITConvertCore.SetCurrentAsyncTask(null);
                     settingsBackup.Restore();
 

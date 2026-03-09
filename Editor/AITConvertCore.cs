@@ -47,8 +47,7 @@ namespace AppsInToss
             // 병렬 pnpm install 취소
             if (currentEarlyContext != null)
             {
-                currentEarlyContext.PnpmCancellation.Cancel();
-                currentEarlyContext.PnpmCancellation.Dispose();
+                currentEarlyContext.CancelAndDisposePnpm();
                 currentEarlyContext = null;
             }
 
@@ -478,8 +477,7 @@ namespace AppsInToss
                     var webglResult = BuildWebGL(cleanBuild, profile);
                     if (webglResult != AITExportError.SUCCEED)
                     {
-                        earlyCtx.PnpmCancellation.Cancel();
-                        earlyCtx.PnpmCancellation.Dispose();
+                        earlyCtx.CancelAndDisposePnpm();
                         currentEarlyContext = null;
                         settingsBackup.Restore();
                         onComplete?.Invoke(webglResult);
@@ -488,8 +486,7 @@ namespace AppsInToss
 
                     if (IsCancelled())
                     {
-                        earlyCtx.PnpmCancellation.Cancel();
-                        earlyCtx.PnpmCancellation.Dispose();
+                        earlyCtx.CancelAndDisposePnpm();
                         currentEarlyContext = null;
                         Debug.LogWarning("[AIT] 빌드가 취소되었습니다.");
                         settingsBackup.Restore();

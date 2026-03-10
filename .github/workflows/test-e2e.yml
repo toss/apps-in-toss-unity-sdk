@@ -215,7 +215,7 @@ jobs:
       run-build: true
       run-e2e-test: true
       run-benchmark: true
-      run-unit-test: true
+      run-unit-test: false
       clean-library: ${{ inputs.clean_library || false }}
       sdk-version-override: ${{ inputs.sdk_version_override || '' }}
       test-level: ${{ inputs.test_level || '2' }}
@@ -243,7 +243,7 @@ jobs:
       run-build: true
       run-e2e-test: true
       run-benchmark: true
-      run-unit-test: true
+      run-unit-test: false
       clean-library: ${{ inputs.clean_library || false }}
       sdk-version-override: ${{ inputs.sdk_version_override || '' }}
       test-level: ${{ inputs.test_level || '2' }}

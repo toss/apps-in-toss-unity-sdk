@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@apps-in-toss/web-analytics": "1.14.1",
-    "@apps-in-toss/web-framework": "2.0.3"
+    "@apps-in-toss/web-framework": "2.0.4"
   },
   "devDependencies": {
     "vite": "^7.3.1",

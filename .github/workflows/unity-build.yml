@@ -595,6 +595,20 @@ jobs:
           retention-days: 7
 
       # =====================================================
+      # macOS Keychain 잠금 해제
+      # 화면 잠금 상태에서 Unity Licensing Client가 Keychain에 접근하지
+      # 못해 라이선스 인증이 실패하는 문제를 방지합니다.
+      # =====================================================
+      - name: Unlock Keychain (macOS)
+        if: inputs.os == 'macos' && inputs.run-build && (inputs.test-level || '2') != '0'
+        run: |
+          if security unlock-keychain -p "${{ secrets.KEYCHAIN_PASSWORD }}" ~/Library/Keychains/login.keychain-db 2>/dev/null; then
+            echo "Keychain unlocked successfully"
+          else
+            echo "::warning::Keychain unlock failed (secret may not be set), continuing anyway..."
+          fi
+
+      # =====================================================
       # Licensing Client 프로세스 정리 (다른 Unity 버전 충돌 방지)
       # 같은 머신에서 다른 Unity 버전의 Licensing Client가 실행 중이면
       # 프로토콜 버전 불일치(505)로 빌드가 실패합니다.

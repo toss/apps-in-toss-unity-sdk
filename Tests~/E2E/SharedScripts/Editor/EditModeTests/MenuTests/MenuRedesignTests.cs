@@ -1,6 +1,6 @@
 // -----------------------------------------------------------------------
 // MenuRedesignTests.cs - EditMode 빌드 메뉴 재설계 검증 테스트
-// Level 0: Unity Editor 리플렉션을 통해 메뉴 구조 및 deprecated 동작 검증
+// Level 0: Unity Editor 리플렉션을 통해 메뉴 구조 및 제거된 메서드 검증
 // -----------------------------------------------------------------------
 
 using NUnit.Framework;
@@ -23,39 +23,25 @@ public class MenuRedesignTests
     }
 
     // =====================================================
-    // Test 1: AIT/Build (deprecated) 메뉴 존재 및 경고 다이얼로그
+    // Test 1: AIT/Build 메서드 제거 확인 (BuildAndPackage로 대체됨)
     // =====================================================
 
     [Test]
-    public void Build_MenuItem_Should_Be_Deprecated()
+    public void Build_MenuItem_Should_Not_Exist()
     {
         var method = menuType.GetMethod("Build", BindingFlags.Public | BindingFlags.Static);
-        Assert.IsNotNull(method, "Build() method should exist");
-
-        var menuItemAttr = method.GetCustomAttributes(typeof(MenuItem), false)
-            .Cast<MenuItem>()
-            .FirstOrDefault();
-        Assert.IsNotNull(menuItemAttr, "Build() should have MenuItem attribute");
-        Assert.IsTrue(menuItemAttr.menuItem.Contains("deprecated"),
-            $"Build menu should contain 'deprecated', got: {menuItemAttr.menuItem}");
+        Assert.IsNull(method, "Build() method should have been removed (replaced by BuildAndPackage)");
     }
 
     // =====================================================
-    // Test 2: AIT/Package (deprecated) 메뉴 존재 및 경고 다이얼로그
+    // Test 2: AIT/Package 메서드 제거 확인 (BuildAndPackage로 대체됨)
     // =====================================================
 
     [Test]
-    public void Package_MenuItem_Should_Be_Deprecated()
+    public void Package_MenuItem_Should_Not_Exist()
     {
         var method = menuType.GetMethod("Package", BindingFlags.Public | BindingFlags.Static);
-        Assert.IsNotNull(method, "Package() method should exist");
-
-        var menuItemAttr = method.GetCustomAttributes(typeof(MenuItem), false)
-            .Cast<MenuItem>()
-            .FirstOrDefault();
-        Assert.IsNotNull(menuItemAttr, "Package() should have MenuItem attribute");
-        Assert.IsTrue(menuItemAttr.menuItem.Contains("deprecated"),
-            $"Package menu should contain 'deprecated', got: {menuItemAttr.menuItem}");
+        Assert.IsNull(method, "Package() method should have been removed (replaced by BuildAndPackage)");
     }
 
     // =====================================================

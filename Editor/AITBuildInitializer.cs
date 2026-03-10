@@ -49,6 +49,25 @@ namespace AppsInToss.Editor
             PlayerSettings.defaultCursor = null;
             PlayerSettings.cursorHotspot = Vector2.zero;
 
+            // ===== Graphics API: WebGL 2.0 전용 =====
+            // WebGL 1 + WebGL 2 동시 설정 시, Emscripten이 WebGL 1 context를 먼저 생성한 후
+            // WebGL 2를 시도하면 "Canvas has an existing context of a different type" 크래시 발생.
+            // Apps in Toss는 Toss 앱 WebView(Android Chrome, iOS Safari)에서만 실행되므로
+            // WebGL 2.0만 지원하면 충분함.
+            var currentAPIs = PlayerSettings.GetGraphicsAPIs(BuildTarget.WebGL);
+            bool needsGraphicsAPIUpdate = PlayerSettings.GetUseDefaultGraphicsAPIs(BuildTarget.WebGL)
+                || currentAPIs.Length != 1
+                || currentAPIs[0] != UnityEngine.Rendering.GraphicsDeviceType.OpenGLES3;
+
+            if (needsGraphicsAPIUpdate)
+            {
+                var previousAPIs = string.Join(", ", currentAPIs);
+                PlayerSettings.SetUseDefaultGraphicsAPIs(BuildTarget.WebGL, false);
+                PlayerSettings.SetGraphicsAPIs(BuildTarget.WebGL,
+                    new[] { UnityEngine.Rendering.GraphicsDeviceType.OpenGLES3 });
+                Debug.LogWarning($"[AIT] Graphics API를 WebGL 2.0 전용으로 변경했습니다. (이전: {previousAPIs})");
+            }
+
             // ===== Run In Background (사용자 지정 또는 자동) =====
             bool runInBackground = editorConfig.runInBackground >= 0
                 ? editorConfig.runInBackground == 1
@@ -159,6 +178,7 @@ namespace AppsInToss.Editor
             // 설정 요약 로그
             Debug.Log($"[AIT] Unity {AITDefaultSettings.GetUnityVersionGroup()} 최적화 설정 적용:");
             Debug.Log($"[AIT]   - WebGL Template: {PlayerSettings.WebGL.template}");
+            Debug.Log($"[AIT]   - Graphics API: {string.Join(", ", PlayerSettings.GetGraphicsAPIs(BuildTarget.WebGL))}");
             Debug.Log($"[AIT]   - 메모리: {memorySize}MB{(editorConfig.memorySize <= 0 ? " (자동)" : "")}");
             Debug.Log($"[AIT]   - 압축: {compressionFormat}{(profile?.compressionFormat < 0 || profile == null ? " (자동)" : " (프로필)")}");
             Debug.Log($"[AIT]   - 스레딩: {threadsSupport}{(editorConfig.threadsSupport < 0 ? " (자동)" : "")}");

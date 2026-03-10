@@ -17,10 +17,26 @@ namespace AppsInToss.Editor
         internal static void Init(AITBuildProfile profile = null)
         {
             // WebGL 템플릿 복사 (필요한 경우)
-            AITTemplateManager.EnsureWebGLTemplatesExist();
+            bool templatesChanged = AITTemplateManager.EnsureWebGLTemplatesExist();
+            Debug.Log($"[AIT] 빌드 초기화: 템플릿 변경={templatesChanged}");
 
-            // 템플릿이 복사되었을 경우 Unity가 인식하도록 강제 리프레시
-            AssetDatabase.Refresh();
+            // 템플릿이 변경된 경우에만 Unity가 인식하도록 리프레시
+            // Domain Reload 방지: 빌드 중 Assembly 리로드를 잠금하여
+            // 비-스크립트 파일 변경으로 인한 불필요한 Domain Reload를 차단
+            if (templatesChanged)
+            {
+                Debug.Log("[AIT] AssetDatabase.Refresh 시작 (LockReloadAssemblies 적용)");
+                EditorApplication.LockReloadAssemblies();
+                try
+                {
+                    AssetDatabase.Refresh();
+                }
+                finally
+                {
+                    EditorApplication.UnlockReloadAssemblies();
+                }
+                Debug.Log("[AIT] AssetDatabase.Refresh 완료");
+            }
 
             var editorConfig = UnityUtil.GetEditorConf();
 
@@ -32,6 +48,25 @@ namespace AppsInToss.Editor
             PlayerSettings.WebGL.linkerTarget = WebGLLinkerTarget.Wasm;
             PlayerSettings.defaultCursor = null;
             PlayerSettings.cursorHotspot = Vector2.zero;
+
+            // ===== Graphics API: WebGL 2.0 전용 =====
+            // WebGL 1 + WebGL 2 동시 설정 시, Emscripten이 WebGL 1 context를 먼저 생성한 후
+            // WebGL 2를 시도하면 "Canvas has an existing context of a different type" 크래시 발생.
+            // Apps in Toss는 Toss 앱 WebView(Android Chrome, iOS Safari)에서만 실행되므로
+            // WebGL 2.0만 지원하면 충분함.
+            var currentAPIs = PlayerSettings.GetGraphicsAPIs(BuildTarget.WebGL);
+            bool needsGraphicsAPIUpdate = PlayerSettings.GetUseDefaultGraphicsAPIs(BuildTarget.WebGL)
+                || currentAPIs.Length != 1
+                || currentAPIs[0] != UnityEngine.Rendering.GraphicsDeviceType.OpenGLES3;
+
+            if (needsGraphicsAPIUpdate)
+            {
+                var previousAPIs = string.Join(", ", currentAPIs);
+                PlayerSettings.SetUseDefaultGraphicsAPIs(BuildTarget.WebGL, false);
+                PlayerSettings.SetGraphicsAPIs(BuildTarget.WebGL,
+                    new[] { UnityEngine.Rendering.GraphicsDeviceType.OpenGLES3 });
+                Debug.LogWarning($"[AIT] Graphics API를 WebGL 2.0 전용으로 변경했습니다. (이전: {previousAPIs})");
+            }
 
             // ===== Run In Background (사용자 지정 또는 자동) =====
             bool runInBackground = editorConfig.runInBackground >= 0
@@ -143,6 +178,7 @@ namespace AppsInToss.Editor
             // 설정 요약 로그
             Debug.Log($"[AIT] Unity {AITDefaultSettings.GetUnityVersionGroup()} 최적화 설정 적용:");
             Debug.Log($"[AIT]   - WebGL Template: {PlayerSettings.WebGL.template}");
+            Debug.Log($"[AIT]   - Graphics API: {string.Join(", ", PlayerSettings.GetGraphicsAPIs(BuildTarget.WebGL))}");
             Debug.Log($"[AIT]   - 메모리: {memorySize}MB{(editorConfig.memorySize <= 0 ? " (자동)" : "")}");
             Debug.Log($"[AIT]   - 압축: {compressionFormat}{(profile?.compressionFormat < 0 || profile == null ? " (자동)" : " (프로필)")}");
             Debug.Log($"[AIT]   - 스레딩: {threadsSupport}{(editorConfig.threadsSupport < 0 ? " (자동)" : "")}");
@@ -229,17 +265,8 @@ namespace AppsInToss.Editor
             if (string.IsNullOrEmpty(debugConsoleEnv) && string.IsNullOrEmpty(compressionFormatEnv))
                 return profile;
 
-            // 복사본 생성 (모든 필드 복사)
-            var overriddenProfile = new AITBuildProfile
-            {
-                enableMockBridge = profile.enableMockBridge,
-                enableDebugConsole = profile.enableDebugConsole,
-                developmentBuild = profile.developmentBuild,
-                enableLZ4Compression = profile.enableLZ4Compression,
-                compressionFormat = profile.compressionFormat,
-                managedStrippingLevel = profile.managedStrippingLevel,
-                debugSymbolsExternal = profile.debugSymbolsExternal,
-            };
+            // 복사본 생성 (새 필드 추가 시 누락 방지)
+            var overriddenProfile = profile.Clone();
 
             // AIT_DEBUG_CONSOLE 오버라이드
             if (!string.IsNullOrEmpty(debugConsoleEnv))

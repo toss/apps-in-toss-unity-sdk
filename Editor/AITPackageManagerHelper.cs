@@ -43,11 +43,11 @@ namespace AppsInToss.Editor
         /// <returns>pnpm 실행 파일 경로</returns>
         public static string FindPackageManager(string buildPath = null, bool verbose = true)
         {
-            // 백그라운드 설치 진행 중이면 대기
+            // 백그라운드 설치 진행 중이면 확인 (non-blocking)
             if (AITPackageInitializer.IsInstalling)
             {
-                if (verbose) Debug.Log("[Package Manager] 백그라운드 설치 감지. 대기합니다...");
-                AITPackageInitializer.WaitForInstallation();
+                if (verbose) Debug.Log("[Package Manager] 백그라운드 설치 감지. 설치 상태를 확인합니다...");
+                AITPackageInitializer.WaitForInstallation(); // stale 상태 자동 리셋용
             }
 
             if (verbose) Debug.Log("[Package Manager] === 패키지 매니저 탐지 시작 (내장 Node.js + pnpm 강제 사용) ===");
@@ -290,17 +290,20 @@ namespace AppsInToss.Editor
                         }
                     }
 
-                    // install 먼저 실행 (동기 모드로 강제, lockfile이 있으면 --frozen-lockfile 사용)
+                    // install 먼저 실행 (lockfile이 있으면 --frozen-lockfile 사용)
                     string lockfileInBuild = Path.Combine(buildPath, "pnpm-lock.yaml");
                     string installCommand = File.Exists(lockfileInBuild) ? "install --frozen-lockfile" : "install";
                     bool installSuccess = ExecutePackageManagerCommand(
                         packageManagerPath,
                         installCommand,
                         buildPath,
-                        async: false,  // install은 항상 동기로
+                        async: async,  // 호출자의 async 플래그 존중
                         verbose: verbose,
-                        showProgressBar: showProgressBar
+                        showProgressBar: showProgressBar && !async
                     );
+
+                    // 비동기 모드면 즉시 반환 (백그라운드에서 실행 중)
+                    if (async) return true;
 
                     if (!installSuccess)
                     {
@@ -312,19 +315,16 @@ namespace AppsInToss.Editor
                 }
 
                 // 4. 실제 명령 실행 (install이 아닌 경우에만)
-                if (command != "install")
-                {
-                    return ExecutePackageManagerCommand(
-                        packageManagerPath,
-                        command,
-                        buildPath,
-                        async: async,
-                        verbose: verbose,
-                        showProgressBar: showProgressBar
-                    );
-                }
+                if (command == "install") return true;
 
-                return true;
+                return ExecutePackageManagerCommand(
+                    packageManagerPath,
+                    command,
+                    buildPath,
+                    async: async,
+                    verbose: verbose,
+                    showProgressBar: showProgressBar
+                );
             }
             catch (Exception e)
             {

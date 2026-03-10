@@ -150,6 +150,7 @@ Tests~/E2E/SampleUnityProject*/ait-build/
 Tests~/E2E/SampleUnityProject*/webgl/
 Tests~/E2E/SampleUnityProject*/WebGLBuild/
 Tests~/E2E/SampleUnityProject*/Builds/
+Tests~/E2E/SampleUnityProject*/editmode-results.xml
 Tests~/E2E/SampleUnityProject*/Assets/Plugins/E2ETestBridge.jslib*
 Tests~/E2E/SampleUnityProject*/Assets/WebGLTemplates.meta
 Tests~/E2E/SampleUnityProject*/Assets/WebGLTemplates/

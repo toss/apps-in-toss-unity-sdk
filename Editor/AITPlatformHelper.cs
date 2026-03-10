@@ -267,6 +267,70 @@ namespace AppsInToss.Editor
         }
 
         /// <summary>
+        /// 크로스 플랫폼 프로세스 시작 정보 생성
+        /// ExecuteCommand, AITNpmRunner, AITAsyncCommandRunner에서 공유
+        /// </summary>
+        internal static ProcessStartInfo CreateProcessStartInfo(
+            string command,
+            string workingDirectory,
+            string[] additionalPaths,
+            Dictionary<string, string> additionalEnvVars = null)
+        {
+            string pathEnv = BuildPathEnv(additionalPaths ?? new string[0]);
+            string shell, shellArgs;
+
+            if (IsWindows)
+            {
+                shell = "powershell.exe";
+                string escapedCommand = EscapeForPowerShell(command);
+                string envSetup = "$env:CI = 'true';";
+                shellArgs = $"-ExecutionPolicy Bypass -NoProfile -NoLogo -Command \"[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; {envSetup} {escapedCommand}\"";
+            }
+            else
+            {
+                shell = "/bin/bash";
+                string envExports = "export CI=true";
+                string escapedCommand = EscapeForBashDoubleQuotes(command);
+                string escapedPathEnv = EscapeForBashDoubleQuotes(pathEnv);
+                shellArgs = $"-l -c \"{envExports} && export PATH=\\\"{escapedPathEnv}\\\" && {escapedCommand}\"";
+            }
+
+            var processInfo = new ProcessStartInfo
+            {
+                FileName = shell,
+                Arguments = shellArgs,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+                StandardOutputEncoding = System.Text.Encoding.UTF8,
+                StandardErrorEncoding = System.Text.Encoding.UTF8
+            };
+
+            if (!string.IsNullOrEmpty(workingDirectory) && Directory.Exists(workingDirectory))
+            {
+                processInfo.WorkingDirectory = workingDirectory;
+            }
+
+            if (additionalPaths != null && additionalPaths.Length > 0)
+            {
+                processInfo.EnvironmentVariables["PATH"] = pathEnv;
+            }
+
+            processInfo.EnvironmentVariables["CI"] = "true";
+
+            if (additionalEnvVars != null)
+            {
+                foreach (var kvp in additionalEnvVars)
+                {
+                    processInfo.EnvironmentVariables[kvp.Key] = kvp.Value;
+                }
+            }
+
+            return processInfo;
+        }
+
+        /// <summary>
         /// 셸 명령 실행 (크로스 플랫폼)
         /// </summary>
         /// <param name="command">실행할 명령</param>
@@ -287,80 +351,20 @@ namespace AppsInToss.Editor
 
             try
             {
-                string shell, shellArgs;
-                string pathEnv = BuildPathEnv(additionalPaths ?? new string[0]);
-
-                if (IsWindows)
-                {
-                    shell = "powershell.exe";
-                    // -ExecutionPolicy Bypass: 스크립트 실행 정책 우회 (Unity에서 안전하게 실행)
-                    // -NoProfile: 빠른 시작을 위해 사용자 프로필 로드 안함
-                    // -NoLogo: 시작 배너 숨김
-                    // [Console]::OutputEncoding: UTF-8 출력 설정으로 한글 등 유니코드 지원
-                    string escapedCommand = EscapeForPowerShell(command);
-                    // 환경변수는 ProcessStartInfo.EnvironmentVariables로 설정 (line 362~372)
-                    // PowerShell -Command "..." 안에서 $env: 할당 시 JSON 등의 큰따옴표가
-                    // 바깥 큰따옴표와 충돌하므로, 셸 명령에서는 CI만 설정
-                    string envSetup = "$env:CI = 'true';";
-                    shellArgs = $"-ExecutionPolicy Bypass -NoProfile -NoLogo -Command \"[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; {envSetup} {escapedCommand}\"";
-                }
-                else
-                {
-                    shell = "/bin/bash";
-                    // -l 옵션으로 로그인 셸로 실행하여 .bashrc, .bash_profile 등을 로드
-                    // CI=true: pnpm이 비-TTY 환경에서 확인 프롬프트 없이 실행되도록 설정
-                    // 환경변수는 아래 ProcessStartInfo.EnvironmentVariables 블록에서 설정
-                    // bash -c "..." 안에서 export 할당 시 JSON 등의 큰따옴표가
-                    // 바깥 큰따옴표와 충돌하므로, 셸 명령에서는 CI만 설정
-                    string envExports = "export CI=true";
-                    string escapedCommand = EscapeForBashDoubleQuotes(command);
-                    string escapedPathEnv = EscapeForBashDoubleQuotes(pathEnv);
-                    shellArgs = $"-l -c \"{envExports} && export PATH=\\\"{escapedPathEnv}\\\" && {escapedCommand}\"";
-                }
-
                 if (verbose)
                 {
                     Debug.Log($"[Platform] 명령 실행: {command}");
-                    Debug.Log($"[Platform] 셸: {shell} {shellArgs}");
                     if (!string.IsNullOrEmpty(workingDirectory))
                     {
                         Debug.Log($"[Platform] 작업 디렉토리: {workingDirectory}");
                     }
                 }
 
-                var processInfo = new ProcessStartInfo
-                {
-                    FileName = shell,
-                    Arguments = shellArgs,
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    CreateNoWindow = true,
-                    StandardOutputEncoding = System.Text.Encoding.UTF8,
-                    StandardErrorEncoding = System.Text.Encoding.UTF8
-                };
+                var processInfo = CreateProcessStartInfo(command, workingDirectory, additionalPaths, additionalEnvVars);
 
-                if (!string.IsNullOrEmpty(workingDirectory) && Directory.Exists(workingDirectory))
+                if (verbose)
                 {
-                    processInfo.WorkingDirectory = workingDirectory;
-                }
-
-                // 환경변수로 PATH 설정 (Windows와 Unix 모두)
-                if (additionalPaths != null && additionalPaths.Length > 0)
-                {
-                    processInfo.EnvironmentVariables["PATH"] = pathEnv;
-                }
-
-                // CI=true: pnpm이 비-TTY 환경에서 확인 프롬프트 없이 실행되도록 설정
-                processInfo.EnvironmentVariables["CI"] = "true";
-
-                // 추가 환경변수 설정
-                if (additionalEnvVars != null)
-                {
-                    foreach (var kvp in additionalEnvVars)
-                    {
-                        processInfo.EnvironmentVariables[kvp.Key] = kvp.Value;
-                    }
+                    Debug.Log($"[Platform] 셸: {processInfo.FileName} {processInfo.Arguments}");
                 }
 
                 using (var process = new Process { StartInfo = processInfo })

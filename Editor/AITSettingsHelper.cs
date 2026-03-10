@@ -83,7 +83,7 @@ namespace AppsInToss
 
             if (GUILayout.Button("미니앱으로 변환", GUILayout.Height(40)))
             {
-                var result = AITConvertCore.DoExport(true);
+                var result = AITConvertCore.DoExport(buildWebGL: true, doPackaging: true);
                 if (result == AITConvertCore.AITExportError.SUCCEED)
                 {
                     AITPlatformHelper.ShowInfoDialog("성공", "Apps in Toss 미니앱 변환이 완료되었습니다!", "확인");
@@ -96,7 +96,7 @@ namespace AppsInToss
 
             if (GUILayout.Button("WebGL 빌드만 실행"))
             {
-                var result = AITConvertCore.DoExport(false);
+                var result = AITConvertCore.DoExport(buildWebGL: true, doPackaging: false);
                 if (result == AITConvertCore.AITExportError.SUCCEED)
                 {
                     AITPlatformHelper.ShowInfoDialog("성공", "WebGL 빌드가 완료되었습니다!", "확인");

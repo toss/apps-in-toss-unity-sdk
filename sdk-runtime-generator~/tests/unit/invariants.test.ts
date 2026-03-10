@@ -33,6 +33,10 @@ interface JslibFunction {
   file: string;
   hasSendMessage: boolean;
   sendMessageTarget: string | null;
+  /** 에러 경로의 SendMessage가 모두 setTimeout으로 감싸져 있는지 */
+  errorPathsUseSetTimeout: boolean;
+  /** 에러 경로에서 setTimeout 없이 직접 호출하는 SendMessage 수 */
+  bareErrorSendMessageCount: number;
 }
 
 // =================================================================
@@ -103,7 +107,34 @@ function extractJslibFunctions(jslibContent: string, fileName: string): JslibFun
       }
     }
 
-    functions.push({ name: funcName, parameters, file: fileName, hasSendMessage, sendMessageTarget });
+    // 에러 경로 SendMessage 분석: success: false 페이로드 뒤의 SendMessage가 setTimeout으로 감싸져 있는지 검증
+    // 패턴: error: ... }) 이후 SendMessage 호출이 setTimeout 안에 있어야 함
+    let bareErrorSendMessageCount = 0;
+    const lines = funcBody.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      // SendMessage가 있는 라인 찾기
+      if (line.includes("SendMessage('AITCore'")) {
+        // 이 SendMessage가 에러 경로인지 판별: 위로 올라가며 success: false 확인
+        let isErrorPath = false;
+        for (let j = i - 1; j >= Math.max(0, i - 8); j--) {
+          if (lines[j].includes('success: false')) {
+            isErrorPath = true;
+            break;
+          }
+          if (lines[j].includes('success: true')) {
+            break;
+          }
+        }
+        if (isErrorPath && !line.includes('setTimeout')) {
+          bareErrorSendMessageCount++;
+        }
+      }
+    }
+
+    const errorPathsUseSetTimeout = bareErrorSendMessageCount === 0;
+
+    functions.push({ name: funcName, parameters, file: fileName, hasSendMessage, sendMessageTarget, errorPathsUseSetTimeout, bareErrorSendMessageCount });
   }
 
   return functions;
@@ -363,9 +394,45 @@ describe('Tier 2: C# ↔ jslib 일관성 검증', () => {
   });
 
   // =========================================
-  // 7. 개별 메서드 상세 검증
+  // 7. 에러 경로 SendMessage 비동기화 검증 (재귀 방지)
   // =========================================
-  describe('7. 개별 메서드 상세 검증', () => {
+  describe('7. 에러 경로 SendMessage 비동기화 검증', () => {
+    const SYNC_FUNCTIONS = [
+      '__AITUnsubscribe_Internal',
+      '__GetDevicePixelRatio_Internal',
+      '__AITVisibilityHelper_GetIsVisible_Internal',
+      '__AITRespondToNestedCallback',
+    ];
+
+    test('모든 에러 경로의 SendMessage는 setTimeout으로 감싸야 함 (재귀 방지)', async () => {
+      await loadData();
+
+      const violations: string[] = [];
+      for (const [name, func] of jslibFunctions) {
+        if (SYNC_FUNCTIONS.includes(name)) continue;
+        if (!func.hasSendMessage) continue;
+
+        if (!func.errorPathsUseSetTimeout) {
+          violations.push(
+            `${name} (${func.file}): 에러 경로에 setTimeout 없는 SendMessage ${func.bareErrorSendMessageCount}개`
+          );
+        }
+      }
+
+      if (violations.length > 0) {
+        console.error('❌ 에러 경로 SendMessage가 setTimeout으로 감싸지지 않음 (동기 재귀 위험):');
+        violations.forEach(v => console.error(`   - ${v}`));
+        console.error('\n💡 jslib.ts의 에러 경로에서 SendMessage를 setTimeout(function() { SendMessage(...) }, 0)으로 감싸세요.');
+      }
+
+      expect(violations).toHaveLength(0);
+    });
+  });
+
+  // =========================================
+  // 8. 개별 메서드 상세 검증
+  // =========================================
+  describe('8. 개별 메서드 상세 검증', () => {
     test.concurrent.each([
       // 인증
       ['__appLogin_Internal', 2, 'OnAITCallback'],
@@ -403,7 +470,7 @@ describe('Tier 2: C# ↔ jslib 일관성 검증', () => {
   });
 
   // =========================================
-  // 8. 요약 출력
+  // 9. 요약 출력
   // =========================================
   test('요약: C# ↔ jslib 매핑 현황', async () => {
     await loadData();

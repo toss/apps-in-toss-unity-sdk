@@ -161,6 +161,8 @@ namespace AppsInToss.Editor
             string capturedInstalledHash = installedHash;
             string capturedPackageId = packageId;
 
+            bool capturedIsManualCheck = isManualCheck;
+
             System.Threading.Tasks.Task.Run(() =>
             {
                 try
@@ -176,7 +178,8 @@ namespace AppsInToss.Editor
                                 capturedInstalledHash,
                                 capturedPackageId,
                                 capturedGitUrl,
-                                capturedFragment
+                                capturedFragment,
+                                capturedIsManualCheck
                             );
                         }
                         catch (Exception e)
@@ -265,74 +268,7 @@ namespace AppsInToss.Editor
             }
 #endif
             // Unity 2021.3 폴백: packages-lock.json 파싱
-            return GetHashFromPackagesLock(packageInfo.name);
-        }
-
-        /// <summary>
-        /// packages-lock.json에서 패키지의 hash 필드를 추출
-        /// </summary>
-        private static string GetHashFromPackagesLock(string packageName)
-        {
-            try
-            {
-                string projectRoot = Directory.GetParent(Application.dataPath).FullName;
-                string lockFilePath = Path.Combine(projectRoot, "Packages", "packages-lock.json");
-
-                if (!File.Exists(lockFilePath))
-                {
-                    return null;
-                }
-
-                string content = File.ReadAllText(lockFilePath);
-
-                // 간단한 문자열 파싱으로 hash 추출 (JSON 라이브러리 의존성 없이)
-                // "패키지명": { ... "hash": "abc123" ... }
-                int pkgIndex = content.IndexOf($"\"{packageName}\"");
-                if (pkgIndex < 0)
-                {
-                    return null;
-                }
-
-                // 패키지 블록 내에서 hash 필드 찾기
-                int hashIndex = content.IndexOf("\"hash\"", pkgIndex);
-                if (hashIndex < 0)
-                {
-                    return null;
-                }
-
-                // 다음 패키지 블록 시작 전인지 확인 (안전 범위 제한)
-                int nextPkgIndex = content.IndexOf("\n    }", pkgIndex);
-                if (nextPkgIndex >= 0 && hashIndex > nextPkgIndex)
-                {
-                    return null;
-                }
-
-                // "hash": "값" 에서 값 추출
-                int colonIndex = content.IndexOf(':', hashIndex);
-                if (colonIndex < 0)
-                {
-                    return null;
-                }
-
-                int quoteStart = content.IndexOf('"', colonIndex + 1);
-                if (quoteStart < 0)
-                {
-                    return null;
-                }
-
-                int quoteEnd = content.IndexOf('"', quoteStart + 1);
-                if (quoteEnd < 0)
-                {
-                    return null;
-                }
-
-                string hash = content.Substring(quoteStart + 1, quoteEnd - quoteStart - 1);
-                return string.IsNullOrEmpty(hash) ? null : hash;
-            }
-            catch (Exception)
-            {
-                return null;
-            }
+            return AITVersion.GetHashFromPackagesLock(packageInfo.name);
         }
 
         /// <summary>
@@ -435,12 +371,21 @@ namespace AppsInToss.Editor
             string installedHash,
             string packageId,
             string gitUrl,
-            string fragment
+            string fragment,
+            bool isManualCheck = false
         )
         {
             if (string.IsNullOrEmpty(remoteHash))
             {
                 Debug.LogWarning("[AIT] SDK 원격 버전을 확인할 수 없습니다. 네트워크 연결을 확인하세요.");
+                if (isManualCheck)
+                {
+                    EditorUtility.DisplayDialog(
+                        "Apps in Toss SDK",
+                        "원격 버전을 확인할 수 없습니다.\n네트워크 연결을 확인하세요.",
+                        "확인"
+                    );
+                }
                 return;
             }
 
@@ -454,6 +399,14 @@ namespace AppsInToss.Editor
             if (string.Equals(remoteHash, installedHash, StringComparison.OrdinalIgnoreCase))
             {
                 Debug.Log("[AIT] SDK가 최신 상태입니다.");
+                if (isManualCheck)
+                {
+                    EditorUtility.DisplayDialog(
+                        "Apps in Toss SDK",
+                        "SDK가 최신 상태입니다.",
+                        "확인"
+                    );
+                }
                 return;
             }
 
@@ -553,9 +506,17 @@ namespace AppsInToss.Editor
         }
 
         /// <summary>
+        /// 수동으로 업데이트 체크 (메뉴)
+        /// </summary>
+        [MenuItem("AIT/Check for Updates...", false, 301)]
+        public static void MenuCheckForUpdates()
+        {
+            ForceAutoUpdateCheck();
+        }
+
+        /// <summary>
         /// 수동으로 업데이트 체크 강제 실행 (디버그용)
         /// </summary>
-        [MenuItem("AIT/Debug/Force Auto-Update Check")]
         public static void ForceAutoUpdateCheck()
         {
             // 세션 상태 초기화 후 체크 실행 (수동 체크는 daily 제한 무시)
@@ -574,7 +535,6 @@ namespace AppsInToss.Editor
         /// <summary>
         /// 일일 체크 상태 초기화 (디버그용)
         /// </summary>
-        [MenuItem("AIT/Debug/Reset Daily Update Check")]
         public static void ResetDailyCheck()
         {
             EditorPrefs.DeleteKey(GetDailyCheckKey());

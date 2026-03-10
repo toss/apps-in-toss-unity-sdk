@@ -26,212 +26,549 @@ namespace AppsInToss.Editor
             _cachedSdkRuntimePath = null;
         }
 
+        #region Packaging Common
+
         /// <summary>
-        /// WebGL 빌드를 ait-build로 패키징
+        /// 동기/비동기 패키징 공통 준비 컨텍스트
         /// </summary>
-        internal static AITConvertCore.AITExportError PackageWebGLBuild(string projectPath, string webglPath, AITBuildProfile profile = null)
+        private class PackageContext
         {
-            // 백그라운드 Node.js/pnpm 설치가 진행 중이면 완료될 때까지 대기
+            public string BuildProjectPath;
+            public string PnpmPath;
+            public string LocalCachePath;
+            public Dictionary<string, string> UnityMetadataEnv;
+        }
+
+        /// <summary>
+        /// 병렬 pnpm install 상태를 추적하는 컨텍스트.
+        /// WebGL 빌드 전에 pnpm install을 백그라운드에서 시작하고,
+        /// WebGL 빌드 완료 후 결과를 확인하는 데 사용합니다.
+        /// </summary>
+        internal class EarlyPackageContext
+        {
+            public string BuildProjectPath;
+            public string PnpmPath;
+            public string LocalCachePath;
+            public Dictionary<string, string> UnityMetadataEnv;
+            // PnpmInstallResult에 값이 설정되면 완료로 간주 (단일 volatile 필드로 원자적 시그널링)
+            // volatile int: -1 = 미완료, 0+ = AITExportError 값
+            private volatile int _pnpmInstallResultCode = -1;
+            public bool PnpmInstallCompleted => _pnpmInstallResultCode >= 0;
+            public AITConvertCore.AITExportError? PnpmInstallResult
+            {
+                get { return _pnpmInstallResultCode < 0 ? (AITConvertCore.AITExportError?)null : (AITConvertCore.AITExportError)_pnpmInstallResultCode; }
+                set { _pnpmInstallResultCode = value.HasValue ? (int)value.Value : -1; }
+            }
+            private CancellationTokenSource _pnpmCancellation = new CancellationTokenSource();
+            private volatile bool _pnpmCancellationDisposed;
+
+            public CancellationToken PnpmCancellationToken => _pnpmCancellation.Token;
+
+            /// <summary>
+            /// pnpm install을 안전하게 취소하고 CTS를 정리합니다.
+            /// 여러 번 호출해도 안전합니다 (double-dispose 방지).
+            /// </summary>
+            public void CancelAndDisposePnpm()
+            {
+                if (_pnpmCancellationDisposed) return;
+                _pnpmCancellationDisposed = true;
+                try { _pnpmCancellation.Cancel(); } catch (ObjectDisposedException) { }
+                try { _pnpmCancellation.Dispose(); } catch (ObjectDisposedException) { }
+            }
+        }
+
+        /// <summary>
+        /// pnpm install 재시도 정책 (args, label, cleanFirst)
+        /// </summary>
+        private static readonly (string args, string label, bool cleanFirst)[] PnpmInstallStages =
+        {
+            ("install --frozen-lockfile", "frozen-lockfile", false),
+            ("install --no-frozen-lockfile", "lockfile 갱신", false),
+            ("install --no-frozen-lockfile", "clean 재시도", true),
+        };
+
+        /// <summary>
+        /// 동기/비동기 경로의 공통 준비 로직을 수행합니다.
+        /// Node.js 대기, 프로필 폴백, 폴더 정리, 파일 복사, pnpm 경로 확인, node_modules 검증.
+        /// </summary>
+        private static (PackageContext ctx, AITConvertCore.AITExportError error) PreparePackaging(
+            string projectPath, string webglPath, AITBuildProfile profile)
+        {
+            // 백그라운드 Node.js/pnpm 설치 대기 (빌드 경로이므로 blocking으로 대기)
             if (AITPackageInitializer.IsInstalling)
             {
                 Debug.Log("[AIT] Node.js/pnpm 설치가 진행 중입니다. 완료될 때까지 대기합니다...");
-                if (!AITPackageInitializer.WaitForInstallation())
+                if (!AITPackageInitializer.WaitForInstallation(blocking: true))
                 {
                     Debug.LogError("[AIT] 설치 대기 타임아웃. 빌드를 중단합니다.");
-                    return AITConvertCore.AITExportError.NODE_NOT_FOUND;
+                    return (null, AITConvertCore.AITExportError.NODE_NOT_FOUND);
                 }
             }
 
-            Debug.Log("[AIT] Vite 기반 빌드 패키징 시작...");
-
-            // 프로필이 없으면 기본 프로필 사용
-            if (profile == null)
-            {
-                profile = AITBuildProfile.CreateProductionProfile();
-            }
+            if (profile == null) profile = AITBuildProfile.CreateProductionProfile();
 
             string buildProjectPath = Path.Combine(projectPath, "ait-build");
+            PrepareAitBuildFolder(buildProjectPath);
 
-            // ait-build 폴더가 없으면 생성
-            if (!Directory.Exists(buildProjectPath))
-            {
-                Directory.CreateDirectory(buildProjectPath);
-                Debug.Log("[AIT] ait-build 폴더 생성");
-            }
-            else
-            {
-                Debug.Log("[AIT] 기존 빌드 결과물 정리 중... (node_modules와 설정 파일은 유지)");
-
-                // 유지할 항목들
-                string[] itemsToKeep = new string[]
-                {
-                    "node_modules",
-                    ".npm-cache",
-                    "package.json",
-                    "package-lock.json",
-                    "pnpm-lock.yaml",
-                    "granite.config.ts",
-                    "vite.config.ts",
-                    "tsconfig.json"
-                };
-
-                // 모든 파일과 폴더를 순회하면서 유지 목록에 없는 것들 삭제
-                foreach (string item in Directory.GetFileSystemEntries(buildProjectPath))
-                {
-                    string itemName = Path.GetFileName(item);
-
-                    // 유지 목록에 있으면 스킵
-                    bool shouldKeep = false;
-                    foreach (string keepItem in itemsToKeep)
-                    {
-                        if (itemName == keepItem)
-                        {
-                            shouldKeep = true;
-                            break;
-                        }
-                    }
-
-                    if (shouldKeep)
-                    {
-                        continue;
-                    }
-
-                    // 삭제
-                    try
-                    {
-                        if (Directory.Exists(item))
-                        {
-                            AITFileUtils.DeleteDirectory(item);
-                            Debug.Log($"[AIT] 삭제됨: {itemName}/");
-                        }
-                        else if (File.Exists(item))
-                        {
-                            File.Delete(item);
-                            Debug.Log($"[AIT] 삭제됨: {itemName}");
-                        }
-                    }
-                    catch (Exception e)
-                    {
-                        Debug.LogWarning($"[AIT] 삭제 실패: {itemName} - {e.Message}");
-                    }
-                }
-            }
-
-            // npm 경로 찾기
+            // npm 경로 확인
             string npmPath = AITNpmRunner.FindNpmPath();
             if (string.IsNullOrEmpty(npmPath))
             {
                 Debug.LogError("[AIT] npm을 찾을 수 없습니다. Node.js가 설치되어 있는지 확인하세요.");
-                return AITConvertCore.AITExportError.NODE_NOT_FOUND;
+                return (null, AITConvertCore.AITExportError.NODE_NOT_FOUND);
             }
 
-            // 1. Vite 프로젝트 구조 생성 (템플릿에서 복사)
+            // Step 1-2: 파일 복사
             Debug.Log("[AIT] Step 1/3: Vite 프로젝트 구조 생성 중...");
             CopyBuildConfigFromTemplate(buildProjectPath);
 
-            // 2. Unity WebGL 빌드를 public 폴더로 복사
             Debug.Log("[AIT] Step 2/3: Unity WebGL 빌드 복사 중...");
             var copyResult = CopyWebGLToPublic(webglPath, buildProjectPath, profile);
             if (copyResult != AITConvertCore.AITExportError.SUCCEED)
-            {
-                return copyResult;
-            }
+                return (null, copyResult);
 
-            // 3. npm install 및 build 실행
-            Debug.Log("[AIT] Step 3/3: pnpm install & build 실행 중...");
-            string localCachePath = Path.Combine(buildProjectPath, ".npm-cache");
-
-            // pnpm install 실행 (의존성 동기화 - 이미 설치된 경우 빠르게 완료됨)
-            Debug.Log("[AIT] pnpm install 실행 중...");
-
-            // pnpm 경로 찾기 (없으면 자동 설치)
+            // pnpm 경로 확인
             string pnpmPath = AITNpmRunner.FindPnpmPath();
             if (string.IsNullOrEmpty(pnpmPath))
             {
                 Debug.LogError("[AIT] pnpm 설치에 실패했습니다. Unity Console에서 에러를 확인해주세요.");
                 AITPackageManagerHelper.ShowInstallationFailureDialog();
-                return AITConvertCore.AITExportError.FAIL_NPM_BUILD;
+                return (null, AITConvertCore.AITExportError.FAIL_NPM_BUILD);
             }
 
-            // node_modules 무결성 검증 (web-framework 버전 일치 확인)
+            // node_modules 무결성 검증
+            string localCachePath = Path.Combine(buildProjectPath, ".npm-cache");
             if (!ValidateNodeModulesIntegrity(buildProjectPath))
             {
                 Debug.Log("[AIT] node_modules 무결성 검증 실패. 정리 후 재설치합니다.");
                 CleanNodeModules(buildProjectPath);
             }
 
-            // 먼저 --frozen-lockfile로 시도, 실패하면 lockfile 없이 재시도
-            // (사용자가 package.json에 새 패키지 추가 시 lockfile이 outdated 될 수 있음)
-            var installResult = AITNpmRunner.RunNpmCommandWithCache(buildProjectPath, pnpmPath, "install --frozen-lockfile", localCachePath, "pnpm install 실행 중...");
-
-            if (installResult != AITConvertCore.AITExportError.SUCCEED)
+            return (new PackageContext
             {
-                Debug.LogWarning("[AIT] --frozen-lockfile 설치 실패, lockfile 갱신 모드로 재시도...");
-                Debug.LogWarning("[AIT] (사용자가 package.json에 새 패키지를 추가한 경우 정상 동작입니다)");
+                BuildProjectPath = buildProjectPath,
+                PnpmPath = pnpmPath,
+                LocalCachePath = localCachePath,
+                UnityMetadataEnv = AITUnityMetadata.BuildEnvironmentVariables()
+            }, AITConvertCore.AITExportError.SUCCEED);
+        }
 
-                // lockfile 없이 재시도 (CI 환경에서도 lockfile 갱신 허용)
-                installResult = AITNpmRunner.RunNpmCommandWithCache(buildProjectPath, pnpmPath, "install --no-frozen-lockfile", localCachePath, "pnpm install (lockfile 갱신)...");
+        #endregion
 
-                if (installResult != AITConvertCore.AITExportError.SUCCEED)
+        #region Parallel pnpm install (WebGL 빌드와 병렬 실행)
+
+        /// <summary>
+        /// WebGL 빌드 전에 실행 가능한 사전 준비를 수행합니다.
+        /// BuildConfig 복사와 node_modules 무결성 검증까지 완료하여
+        /// pnpm install을 즉시 시작할 수 있는 상태를 만듭니다.
+        /// </summary>
+        internal static (EarlyPackageContext ctx, AITConvertCore.AITExportError error) PrepareEarlyPackaging(
+            string projectPath, AITBuildProfile profile)
+        {
+            // 백그라운드 Node.js/pnpm 설치 대기
+            if (AITPackageInitializer.IsInstalling)
+            {
+                Debug.Log("[AIT] [병렬] Node.js/pnpm 설치가 진행 중입니다. 완료될 때까지 대기합니다...");
+                if (!AITPackageInitializer.WaitForInstallation(blocking: true))
                 {
-                    // 최종 재시도: node_modules 정리 후 clean install
-                    Debug.LogWarning("[AIT] pnpm install 재시도 실패. node_modules 정리 후 한 번 더 시도합니다...");
-                    CleanNodeModules(buildProjectPath);
+                    Debug.LogError("[AIT] [병렬] 설치 대기 타임아웃. 빌드를 중단합니다.");
+                    return (null, AITConvertCore.AITExportError.NODE_NOT_FOUND);
+                }
+            }
 
-                    installResult = AITNpmRunner.RunNpmCommandWithCache(buildProjectPath, pnpmPath, "install --no-frozen-lockfile", localCachePath, "pnpm install (clean 재시도)...");
-                    if (installResult != AITConvertCore.AITExportError.SUCCEED)
+            if (profile == null) profile = AITBuildProfile.CreateProductionProfile();
+
+            string buildProjectPath = Path.Combine(projectPath, "ait-build");
+            PrepareAitBuildFolder(buildProjectPath);
+
+            // BuildConfig 복사 (WebGL 출력 불필요 — package.json, lockfile 등만)
+            Debug.Log("[AIT] [병렬] BuildConfig 파일 복사 중...");
+            CopyBuildConfigFromTemplate(buildProjectPath);
+
+            // pnpm 경로 확인
+            string pnpmPath = AITNpmRunner.FindPnpmPath();
+            if (string.IsNullOrEmpty(pnpmPath))
+            {
+                Debug.LogError("[AIT] [병렬] pnpm 설치에 실패했습니다.");
+                AITPackageManagerHelper.ShowInstallationFailureDialog();
+                return (null, AITConvertCore.AITExportError.FAIL_NPM_BUILD);
+            }
+
+            // node_modules 무결성 검증
+            string localCachePath = Path.Combine(buildProjectPath, ".npm-cache");
+            if (!ValidateNodeModulesIntegrity(buildProjectPath))
+            {
+                Debug.Log("[AIT] [병렬] node_modules 무결성 검증 실패. 정리 후 재설치합니다.");
+                CleanNodeModules(buildProjectPath);
+            }
+
+            return (new EarlyPackageContext
+            {
+                BuildProjectPath = buildProjectPath,
+                PnpmPath = pnpmPath,
+                LocalCachePath = localCachePath,
+                UnityMetadataEnv = AITUnityMetadata.BuildEnvironmentVariables(),
+                PnpmInstallResult = null,
+            }, AITConvertCore.AITExportError.SUCCEED);
+        }
+
+        /// <summary>
+        /// ThreadPool에서 pnpm install을 백그라운드 OS 프로세스로 실행합니다.
+        /// WebGL 빌드가 메인 스레드를 블로킹하는 동안 독립적으로 실행됩니다.
+        /// EditorUtility 등 메인 스레드 전용 API를 사용하지 않습니다.
+        /// </summary>
+        internal static void StartPnpmInstallInBackground(EarlyPackageContext earlyCtx)
+        {
+            Debug.Log("[AIT] [병렬] pnpm install을 백그라운드에서 시작합니다...");
+
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                try
+                {
+                    var result = RunPnpmInstallInThread(earlyCtx);
+
+                    if (result == AITConvertCore.AITExportError.SUCCEED)
+                        Debug.Log("[AIT] [병렬] ✓ 백그라운드 pnpm install 완료");
+                    else
+                        Debug.LogWarning($"[AIT] [병렬] 백그라운드 pnpm install 결과: {result}");
+
+                    // Result 설정이 곧 완료 시그널 (PnpmInstallCompleted는 이 값으로 판단)
+                    earlyCtx.PnpmInstallResult = result;
+                }
+                catch (Exception e)
+                {
+                    Debug.LogError($"[AIT] [병렬] 백그라운드 pnpm install 예외: {e.Message}");
+                    earlyCtx.PnpmInstallResult = AITConvertCore.AITExportError.FAIL_NPM_BUILD;
+                }
+            });
+        }
+
+        /// <summary>
+        /// 백그라운드 스레드에서 pnpm install 3단계 재시도를 실행합니다.
+        /// 메인 스레드 전용 API(EditorUtility 등)를 사용하지 않으며,
+        /// Process.HasExited 폴링 + CancellationToken으로 취소를 지원합니다.
+        /// </summary>
+        private static AITConvertCore.AITExportError RunPnpmInstallInThread(EarlyPackageContext earlyCtx)
+        {
+            var ct = earlyCtx.PnpmCancellationToken;
+            var additionalPaths = AITNpmRunner.BuildAdditionalPaths(earlyCtx.PnpmPath);
+
+            foreach (var (args, label, cleanFirst) in PnpmInstallStages)
+            {
+                if (ct.IsCancellationRequested)
+                    return AITConvertCore.AITExportError.CANCELLED;
+
+                if (cleanFirst) CleanNodeModules(earlyCtx.BuildProjectPath);
+
+                string fullArguments = AITNpmRunner.BuildFullArguments(args, earlyCtx.LocalCachePath);
+                string command = $"\"{earlyCtx.PnpmPath}\" {fullArguments}";
+
+                Debug.Log($"[AIT] [병렬] pnpm {label} 실행 중...");
+                Debug.Log($"[AIT] [병렬] 명령: {command}");
+
+                try
+                {
+                    var processInfo = AITPlatformHelper.CreateProcessStartInfo(
+                        command, earlyCtx.BuildProjectPath, additionalPaths.ToArray());
+
+                    using (var process = new System.Diagnostics.Process { StartInfo = processInfo })
                     {
-                        Debug.LogError("[AIT] pnpm install 실패 (clean 재시도 후에도 실패)");
-                        return installResult;
+                        var outputBuilder = new System.Text.StringBuilder();
+                        var errorBuilder = new System.Text.StringBuilder();
+
+                        process.OutputDataReceived += (sender, e) =>
+                        {
+                            if (e.Data != null)
+                                outputBuilder.AppendLine(AITPlatformHelper.StripAnsiCodes(e.Data));
+                        };
+                        process.ErrorDataReceived += (sender, e) =>
+                        {
+                            if (e.Data != null)
+                                errorBuilder.AppendLine(AITPlatformHelper.StripAnsiCodes(e.Data));
+                        };
+
+                        process.Start();
+                        process.BeginOutputReadLine();
+                        process.BeginErrorReadLine();
+
+                        // HasExited 폴링 + CancellationToken 체크
+                        int maxWaitMs = 300000; // 5분
+                        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+                        while (!process.HasExited)
+                        {
+                            if (ct.IsCancellationRequested)
+                            {
+                                Debug.Log($"[AIT] [병렬] pnpm install 취소 요청. 프로세스를 종료합니다.");
+                                process.Kill();
+                                process.WaitForExit(5000);
+                                return AITConvertCore.AITExportError.CANCELLED;
+                            }
+
+                            if (stopwatch.ElapsedMilliseconds > maxWaitMs)
+                            {
+                                process.Kill();
+                                process.WaitForExit(5000);
+                                Debug.LogError($"[AIT] [병렬] pnpm {label} 시간 초과 ({maxWaitMs / 1000}초)");
+                                break; // 다음 단계로
+                            }
+
+                            Thread.Sleep(200);
+                        }
+
+                        // 아직 종료 안 된 경우 (타임아웃으로 빠져나온 경우) → 다음 단계
+                        if (!process.HasExited) continue;
+
+                        process.WaitForExit(5000); // 출력 버퍼 플러시
+
+                        if (process.ExitCode == 0)
+                        {
+                            Debug.Log($"[AIT] [병렬] ✓ pnpm {label} 성공");
+                            return AITConvertCore.AITExportError.SUCCEED;
+                        }
+
+                        string output = outputBuilder.ToString();
+                        string error = errorBuilder.ToString();
+                        Debug.LogWarning($"[AIT] [병렬] pnpm {label} 실패 (Exit Code: {process.ExitCode})");
+                        if (!string.IsNullOrEmpty(output))
+                            Debug.LogWarning($"[AIT] [병렬] 출력:\n{output.Trim()}");
+                        if (!string.IsNullOrEmpty(error))
+                            Debug.LogWarning($"[AIT] [병렬] 오류:\n{error.Trim()}");
                     }
                 }
+                catch (Exception e)
+                {
+                    Debug.LogError($"[AIT] [병렬] pnpm {label} 실행 오류: {e.Message}");
+                }
 
-                Debug.Log("[AIT] ✓ 새 패키지 설치 및 lockfile 갱신 완료");
+                Debug.LogWarning($"[AIT] [병렬] pnpm install ({label}) 실패, 다음 단계로...");
             }
 
-            // granite build 실행 (web 폴더를 dist로 복사)
-            Debug.Log("[AIT] granite build 실행 중...");
+            Debug.LogError("[AIT] [병렬] pnpm install 실패 (모든 재시도 후에도 실패)");
+            return AITConvertCore.AITExportError.FAIL_NPM_BUILD;
+        }
 
-            // UNITY_METADATA 환경변수를 통해 빌드 메타데이터를 granite build에 전달
-            var unityMetadataEnv = AITUnityMetadata.BuildEnvironmentVariables();
-            Debug.Log($"[AIT] UNITY_METADATA: {unityMetadataEnv["UNITY_METADATA"]}");
+        /// <summary>
+        /// WebGL 빌드 완료 후 나머지 패키징을 수행합니다.
+        /// 1. WebGL 출력을 public/ 폴더로 복사
+        /// 2. 백그라운드 pnpm install 완료 대기
+        /// 3. granite build 실행
+        /// </summary>
+        internal static void CompletePackagingAfterWebGLBuild(
+            EarlyPackageContext earlyCtx,
+            string webglPath,
+            AITBuildProfile profile,
+            Editor.AITPlayerSettingsBackup settingsBackup,
+            Action<AITConvertCore.AITExportError> onComplete,
+            Action<AITConvertCore.BuildPhase, float, string> onProgress,
+            bool skipGraniteBuild = false)
+        {
+            // Step 1: WebGL 출력을 public/ 폴더로 복사
+            onProgress?.Invoke(AITConvertCore.BuildPhase.CopyingFiles, 0.15f, "WebGL 빌드 파일 복사 중...");
+            Debug.Log("[AIT] [병렬] WebGL 빌드를 ait-build/public으로 복사 중...");
 
-            var buildResult = AITNpmRunner.RunNpmCommandWithCache(buildProjectPath, pnpmPath, "run build", localCachePath, "granite build 실행 중...", additionalEnvVars: unityMetadataEnv);
-
-            if (buildResult != AITConvertCore.AITExportError.SUCCEED)
+            var copyResult = CopyWebGLToPublic(webglPath, earlyCtx.BuildProjectPath, profile);
+            if (copyResult != AITConvertCore.AITExportError.SUCCEED)
             {
-                // MODULE_NOT_FOUND 등 런타임 에러 대응: node_modules 정리 후 install부터 재시도
-                Debug.LogWarning("[AIT] granite build 실패. node_modules 정리 후 install부터 재시도합니다...");
-                CleanNodeModules(buildProjectPath);
-
-                // install부터 다시 실행
-                var retryInstallResult = AITNpmRunner.RunNpmCommandWithCache(buildProjectPath, pnpmPath, "install --no-frozen-lockfile", localCachePath, "pnpm install (빌드 실패 후 재시도)...");
-                if (retryInstallResult != AITConvertCore.AITExportError.SUCCEED)
-                {
-                    Debug.LogError("[AIT] granite build 실패 후 pnpm install 재시도도 실패");
-                    return retryInstallResult;
-                }
-
-                // build 재시도
-                buildResult = AITNpmRunner.RunNpmCommandWithCache(buildProjectPath, pnpmPath, "run build", localCachePath, "granite build (재시도)...", additionalEnvVars: unityMetadataEnv);
-                if (buildResult != AITConvertCore.AITExportError.SUCCEED)
-                {
-                    Debug.LogError("[AIT] granite build 재시도도 실패");
-                    return buildResult;
-                }
-
-                Debug.Log("[AIT] ✓ granite build 재시도 성공");
+                earlyCtx.CancelAndDisposePnpm();
+                settingsBackup.Restore();
+                onComplete?.Invoke(copyResult);
+                return;
             }
 
-            string distPath = Path.Combine(buildProjectPath, "dist");
+            // Step 2: 백그라운드 pnpm install 완료 확인
+            if (earlyCtx.PnpmInstallCompleted)
+            {
+                // 이미 완료됨 — 즉시 진행
+                Debug.Log("[AIT] [병렬] ✓ pnpm install 이미 완료 (WebGL 빌드 시간에 숨겨짐)");
+                OnPnpmInstallReady(earlyCtx, settingsBackup, onComplete, onProgress, skipGraniteBuild);
+            }
+            else
+            {
+                // 아직 진행 중 — EditorApplication.update로 폴링
+                Debug.Log("[AIT] [병렬] pnpm install 진행 중. 완료를 대기합니다...");
+                onProgress?.Invoke(AITConvertCore.BuildPhase.PnpmInstall, 0.3f, "pnpm install 완료 대기 중...");
 
-            // 빌드 완료 리포트 출력
-            AITBuildValidator.PrintBuildReport(buildProjectPath, distPath);
+                void PollPnpmCompletion()
+                {
+                    if (AITConvertCore.IsCancelled())
+                    {
+                        EditorApplication.update -= PollPnpmCompletion;
+                        earlyCtx.CancelAndDisposePnpm();
+                        settingsBackup.Restore();
+                        onComplete?.Invoke(AITConvertCore.AITExportError.CANCELLED);
+                        return;
+                    }
 
+                    if (!earlyCtx.PnpmInstallCompleted) return;
+
+                    EditorApplication.update -= PollPnpmCompletion;
+                    Debug.Log("[AIT] [병렬] ✓ pnpm install 완료 확인");
+                    OnPnpmInstallReady(earlyCtx, settingsBackup, onComplete, onProgress, skipGraniteBuild);
+                }
+
+                EditorApplication.update += PollPnpmCompletion;
+            }
+        }
+
+        /// <summary>
+        /// pnpm install이 완료된 후 결과를 확인하고 granite build를 실행합니다.
+        /// </summary>
+        private static void OnPnpmInstallReady(
+            EarlyPackageContext earlyCtx,
+            Editor.AITPlayerSettingsBackup settingsBackup,
+            Action<AITConvertCore.AITExportError> onComplete,
+            Action<AITConvertCore.BuildPhase, float, string> onProgress,
+            bool skipGraniteBuild = false)
+        {
+            var installResult = earlyCtx.PnpmInstallResult ?? AITConvertCore.AITExportError.FAIL_NPM_BUILD;
+            if (installResult != AITConvertCore.AITExportError.SUCCEED)
+            {
+                Debug.LogError($"[AIT] [병렬] pnpm install 실패: {installResult}");
+                earlyCtx.CancelAndDisposePnpm();
+                settingsBackup.Restore();
+                onComplete?.Invoke(installResult);
+                return;
+            }
+
+            if (AITConvertCore.IsCancelled())
+            {
+                earlyCtx.CancelAndDisposePnpm();
+                settingsBackup.Restore();
+                onComplete?.Invoke(AITConvertCore.AITExportError.CANCELLED);
+                return;
+            }
+
+            if (skipGraniteBuild)
+            {
+                Debug.Log("[AIT] [병렬] granite build 스킵 (Dev Server 모드)");
+                earlyCtx.CancelAndDisposePnpm();
+                AITConvertCore.SetCurrentAsyncTask(null);
+                settingsBackup.Restore();
+                onComplete?.Invoke(AITConvertCore.AITExportError.SUCCEED);
+                return;
+            }
+
+            // PackageContext로 변환하여 기존 granite build 로직 재사용
+            var ctx = new PackageContext
+            {
+                BuildProjectPath = earlyCtx.BuildProjectPath,
+                PnpmPath = earlyCtx.PnpmPath,
+                LocalCachePath = earlyCtx.LocalCachePath,
+                UnityMetadataEnv = earlyCtx.UnityMetadataEnv,
+            };
+
+            // granite build 실행 (비동기)
+            var cancellationToken = earlyCtx.PnpmCancellationToken;
+            RunGraniteBuildAsync(ctx, cancellationToken, onProgress,
+                (buildResult) =>
+                {
+                    earlyCtx.CancelAndDisposePnpm();
+                    AITConvertCore.SetCurrentAsyncTask(null);
+                    settingsBackup.Restore();
+
+                    if (buildResult == AITConvertCore.AITExportError.SUCCEED)
+                    {
+                        Debug.Log("[AIT] [병렬] ✓ 비동기 미니앱 생성 완료!");
+                    }
+
+                    onComplete?.Invoke(buildResult);
+                });
+        }
+
+        #endregion
+
+        #region Sync Packaging
+
+        /// <summary>
+        /// WebGL 빌드를 ait-build로 패키징
+        /// </summary>
+        internal static AITConvertCore.AITExportError PackageWebGLBuild(string projectPath, string webglPath, AITBuildProfile profile = null, bool skipGraniteBuild = false)
+        {
+            Debug.Log("[AIT] Vite 기반 빌드 패키징 시작...");
+
+            var (ctx, prepError) = PreparePackaging(projectPath, webglPath, profile);
+            if (ctx == null) return prepError;
+
+            // Step 3: pnpm install & build
+            Debug.Log("[AIT] Step 3/3: pnpm install & build 실행 중...");
+
+            var installResult = RunPnpmInstallSync(ctx);
+            if (installResult != AITConvertCore.AITExportError.SUCCEED) return installResult;
+
+            if (skipGraniteBuild)
+            {
+                Debug.Log("[AIT] granite build 스킵 (Dev Server 모드)");
+                return AITConvertCore.AITExportError.SUCCEED;
+            }
+
+            var buildResult = RunGraniteBuildSync(ctx);
+            if (buildResult != AITConvertCore.AITExportError.SUCCEED) return buildResult;
+
+            string distPath = Path.Combine(ctx.BuildProjectPath, "dist");
+            AITBuildValidator.PrintBuildReport(ctx.BuildProjectPath, distPath);
             Debug.Log($"[AIT] ✓ 패키징 완료: {distPath}");
 
             return AITConvertCore.AITExportError.SUCCEED;
         }
+
+        /// <summary>
+        /// pnpm install 3단계 재시도 (동기)
+        /// </summary>
+        private static AITConvertCore.AITExportError RunPnpmInstallSync(PackageContext ctx)
+        {
+            foreach (var (args, label, cleanFirst) in PnpmInstallStages)
+            {
+                if (cleanFirst) CleanNodeModules(ctx.BuildProjectPath);
+                var result = AITNpmRunner.RunNpmCommandWithCache(
+                    ctx.BuildProjectPath, ctx.PnpmPath, args, ctx.LocalCachePath,
+                    $"pnpm {label}...");
+                if (result == AITConvertCore.AITExportError.SUCCEED) return result;
+                if (result == AITConvertCore.AITExportError.CANCELLED) return result;
+                Debug.LogWarning($"[AIT] pnpm install ({label}) 실패, 다음 단계로...");
+            }
+            Debug.LogError("[AIT] pnpm install 실패 (모든 재시도 후에도 실패)");
+            return AITConvertCore.AITExportError.FAIL_NPM_BUILD;
+        }
+
+        /// <summary>
+        /// granite build 실행 + 실패 시 1회 재시도 (동기)
+        /// </summary>
+        private static AITConvertCore.AITExportError RunGraniteBuildSync(PackageContext ctx)
+        {
+            Debug.Log("[AIT] granite build 실행 중...");
+            Debug.Log($"[AIT] UNITY_METADATA: {ctx.UnityMetadataEnv["UNITY_METADATA"]}");
+
+            var result = AITNpmRunner.RunNpmCommandWithCache(
+                ctx.BuildProjectPath, ctx.PnpmPath, "run build", ctx.LocalCachePath,
+                "granite build...", additionalEnvVars: ctx.UnityMetadataEnv);
+            if (result == AITConvertCore.AITExportError.SUCCEED) return result;
+            if (result == AITConvertCore.AITExportError.CANCELLED) return result;
+
+            // 재시도: clean → install → build
+            Debug.LogWarning("[AIT] granite build 실패. node_modules 정리 후 install부터 재시도합니다...");
+            CleanNodeModules(ctx.BuildProjectPath);
+
+            var installResult = AITNpmRunner.RunNpmCommandWithCache(
+                ctx.BuildProjectPath, ctx.PnpmPath, "install --no-frozen-lockfile",
+                ctx.LocalCachePath, "pnpm install (빌드 실패 후)...");
+            if (installResult != AITConvertCore.AITExportError.SUCCEED) return installResult;
+
+            result = AITNpmRunner.RunNpmCommandWithCache(
+                ctx.BuildProjectPath, ctx.PnpmPath, "run build", ctx.LocalCachePath,
+                "granite build (재시도)...", additionalEnvVars: ctx.UnityMetadataEnv);
+            if (result == AITConvertCore.AITExportError.SUCCEED)
+            {
+                Debug.Log("[AIT] ✓ granite build 재시도 성공");
+            }
+            else
+            {
+                Debug.LogError("[AIT] granite build 재시도도 실패");
+            }
+            return result;
+        }
+
+        #endregion
 
         /// <summary>
         /// package.json의 dependencies를 머지합니다.
@@ -721,7 +1058,7 @@ namespace AppsInToss.Editor
 
         /// <summary>
         /// SDK 템플릿의 Runtime 폴더 경로를 반환합니다. (캐싱 사용)
-        /// Package Only 실행 시 webgl/ 폴더에 Runtime이 없을 경우 폴백으로 사용됩니다.
+        /// webgl/ 폴더에 Runtime이 없을 경우 폴백으로 사용됩니다.
         /// </summary>
         private static string FindSdkRuntimePath()
         {
@@ -763,13 +1100,6 @@ namespace AppsInToss.Editor
                 profile = AITBuildProfile.CreateProductionProfile();
             }
 
-            // AIT 빌드 마커 검증 (Package Only 시 AIT Build 결과물인지 확인)
-            var markerValidation = ValidateBuildMarker(webglPath, profile);
-            if (markerValidation != AITConvertCore.AITExportError.SUCCEED)
-            {
-                return markerValidation;
-            }
-
             var config = UnityUtil.GetEditorConf();
 
             // Unity WebGL 빌드를 Vite 프로젝트에 복사
@@ -793,21 +1123,48 @@ namespace AppsInToss.Editor
                 Debug.LogError("[AIT] ✗ 치명적: Build 폴더를 찾을 수 없습니다!");
                 Debug.LogError("[AIT] ========================================");
                 Debug.LogError($"[AIT] 검색 경로: {buildSrc}");
-                return AITConvertCore.AITExportError.WEBGL_BUILD_INCOMPLETE;
+                return AITConvertCore.AITExportError.BUILD_FOLDER_MISSING;
             }
 
             // Build 폴더에서 실제 파일 이름 찾기
-            // Unity 압축 설정에 따라 .unityweb, .gz, .br 확장자가 붙을 수 있음
+            // 빌드 마커에서 압축 포맷 정보를 읽어 정확한 확장자로 탐지
             Debug.Log("[AIT] WebGL 빌드 파일 검색 중...");
 
-            // 필수 파일들 (isRequired = true)
-            string loaderFile = AITBuildValidator.FindFileInBuild(buildSrc, "*.loader.js", isRequired: true);
-            string dataFile = AITBuildValidator.FindFileInBuild(buildSrc, "*.data*", isRequired: true);
-            string frameworkFile = AITBuildValidator.FindFileInBuild(buildSrc, "*.framework.js*", isRequired: true);
-            string wasmFile = AITBuildValidator.FindFileInBuild(buildSrc, "*.wasm*", isRequired: true);
+            var buildInfo = AITConvertCore.ReadBuildMarker(webglPath);
+            int compressionFormat = buildInfo?.compressionFormat ?? -1;
+            bool decompressionFallback = buildInfo?.decompressionFallback ?? false;
+            var patterns = AITBuildValidator.GetFilePatterns(compressionFormat, decompressionFallback);
 
-            // 선택적 파일 (isRequired = false)
-            string symbolsFile = AITBuildValidator.FindFileInBuild(buildSrc, "*.symbols.json*", isRequired: false);
+            // 폴백 경로 존재 여부: 정확한 패턴(압축 포맷 또는 .unityweb)이 있을 때만 와일드카드 폴백 가능
+            bool hasFallbackPath = compressionFormat >= 0 || decompressionFallback;
+
+            if (buildInfo != null)
+            {
+                string[] formatNames = { "Disabled", "Gzip", "Brotli" };
+                string formatName = compressionFormat >= 0 && compressionFormat < formatNames.Length ? formatNames[compressionFormat] : "Unknown";
+                Debug.Log($"[AIT] 빌드 마커 감지: 압축 포맷 = {formatName} ({compressionFormat}), Decompression Fallback = {decompressionFallback}");
+            }
+
+            // 정확한 패턴으로 시도
+            // 폴백 경로가 있으면 isRequired: false (와일드카드에서 에러 보고)
+            // 폴백 경로가 없으면 isRequired: true (여기서 바로 에러 보고)
+            string loaderFile = AITBuildValidator.FindFileInBuild(buildSrc, patterns["loader"], isRequired: true);
+            string dataFile = AITBuildValidator.FindFileInBuild(buildSrc, patterns["data"], isRequired: !hasFallbackPath);
+            string frameworkFile = AITBuildValidator.FindFileInBuild(buildSrc, patterns["framework"], isRequired: !hasFallbackPath);
+            string wasmFile = AITBuildValidator.FindFileInBuild(buildSrc, patterns["wasm"], isRequired: !hasFallbackPath);
+
+            // 선택적 파일
+            string symbolsFile = AITBuildValidator.FindFileInBuild(buildSrc, patterns["symbols"]);
+
+            // 정확한 패턴으로 못 찾으면 와일드카드로 폴백 (loader는 압축 무관하므로 제외)
+            if (hasFallbackPath)
+            {
+                var fallback = AITBuildValidator.GetFilePatterns(-1);
+                if (string.IsNullOrEmpty(dataFile)) dataFile = AITBuildValidator.FindFileInBuild(buildSrc, fallback["data"], isRequired: true);
+                if (string.IsNullOrEmpty(frameworkFile)) frameworkFile = AITBuildValidator.FindFileInBuild(buildSrc, fallback["framework"], isRequired: true);
+                if (string.IsNullOrEmpty(wasmFile)) wasmFile = AITBuildValidator.FindFileInBuild(buildSrc, fallback["wasm"], isRequired: true);
+                if (string.IsNullOrEmpty(symbolsFile)) symbolsFile = AITBuildValidator.FindFileInBuild(buildSrc, fallback["symbols"]);
+            }
 
             // 필수 파일 검증
             var missingFiles = new List<string>();
@@ -832,7 +1189,7 @@ namespace AppsInToss.Editor
                 Debug.LogError("[AIT]   1. 'Clean Build' 옵션을 활성화하고 다시 빌드하세요.");
                 Debug.LogError("[AIT]   2. Unity Console에서 빌드 에러를 확인하세요.");
                 Debug.LogError("[AIT] ========================================");
-                return AITConvertCore.AITExportError.WEBGL_BUILD_INCOMPLETE;
+                return AITConvertCore.AITExportError.REQUIRED_FILE_MISSING;
             }
 
             // Build 대상 폴더 정리 후 재생성
@@ -883,7 +1240,7 @@ namespace AppsInToss.Editor
 
             // Runtime 폴더 → public/Runtime
             // 1순위: webgl/ 폴더에 Runtime이 있으면 사용 (AITTemplate 빌드)
-            // 2순위: webgl/ 폴더에 Runtime이 없으면 SDK 템플릿에서 복사 (Package Only 지원)
+            // 2순위: webgl/ 폴더에 Runtime이 없으면 SDK 템플릿에서 복사
             string runtimeSrc = Path.Combine(webglPath, "Runtime");
             string runtimeDest = Path.Combine(publicPath, "Runtime");
             if (Directory.Exists(runtimeSrc))
@@ -935,9 +1292,8 @@ namespace AppsInToss.Editor
                 Debug.LogError("[AIT] 해결 방법:");
                 Debug.LogError("[AIT]   1. 'Clean Build' 옵션을 활성화하고 다시 빌드하세요.");
                 Debug.LogError("[AIT]   2. AIT > Clean 메뉴로 빌드 폴더를 삭제 후 재빌드하세요.");
-                Debug.LogError("[AIT]   3. AIT > Regenerate WebGL Templates 실행 후 재빌드하세요.");
                 Debug.LogError("[AIT] ========================================");
-                return AITConvertCore.AITExportError.WEBGL_BUILD_INCOMPLETE;
+                return AITConvertCore.AITExportError.INDEX_HTML_MISSING;
             }
 
             string indexContent = File.ReadAllText(indexSrc);
@@ -996,8 +1352,8 @@ namespace AppsInToss.Editor
                 .Replace("%AIT_ICON_URL%", config.iconUrl ?? "")
                 .Replace("%AIT_DISPLAY_NAME%", config.displayName ?? "")
                 .Replace("%AIT_PRIMARY_COLOR%", config.primaryColor ?? "#3182f6")
-                // HTML5 Preload 태그 (로딩 성능 개선)
-                .Replace("%AIT_PRELOAD_TAGS%", GeneratePreloadTags(dataFile, wasmFile, frameworkFile));
+                // Early Fetch 스크립트 (로딩 성능 개선)
+                .Replace("%AIT_EARLY_FETCH_SCRIPT%", GenerateEarlyFetchScript(dataFile, wasmFile));
 
             // 로딩 화면 삽입 (%AIT_LOADING_SCREEN% 플레이스홀더)
             string loadingContent = "";
@@ -1033,7 +1389,7 @@ namespace AppsInToss.Editor
             // 플레이스홀더 치환 결과 검증
             if (!AITBuildValidator.ValidatePlaceholderSubstitution(indexContent, indexDest))
             {
-                return AITConvertCore.AITExportError.WEBGL_BUILD_INCOMPLETE;
+                return AITConvertCore.AITExportError.PLACEHOLDER_SUBSTITUTION_FAILED;
             }
 
             // Runtime/appsintoss-unity-bridge.js 파일도 치환
@@ -1054,137 +1410,74 @@ namespace AppsInToss.Editor
         }
 
         /// <summary>
-        /// AIT 빌드 마커 파일을 검증합니다.
-        /// 마커가 없으면 AIT Build가 아닌 결과물이므로 사용자에게 선택지를 제공합니다.
+        /// Unity WebGL 리소스를 조기 fetch하고 Unity loader의 fetch를 인터셉트하는 스크립트를 생성합니다.
+        ///
+        /// 배경: &lt;link rel="preload"&gt;는 CDN의 cache-control: max-age=0 환경에서 동작하지 않습니다.
+        /// preload로 받은 리소스가 즉시 stale 처리되어 Unity loader가 재사용하지 못하고 revalidation 요청을 보내며,
+        /// 이는 이중 로딩과 "preload is found, but is not used" 경고를 유발합니다.
+        ///
+        /// 해결: head에서 JS fetch()를 즉시 시작하고, window.fetch를 일회성으로 인터셉트하여
+        /// Unity loader가 같은 URL을 요청할 때 이미 받은 Response를 반환합니다.
         /// </summary>
-        private static AITConvertCore.AITExportError ValidateBuildMarker(string webglPath, AITBuildProfile profile)
+        private static string GenerateEarlyFetchScript(string dataFile, string wasmFile)
         {
-            string markerPath = Path.Combine(webglPath, AITConvertCore.BUILD_MARKER_FILENAME);
+            var urls = new System.Collections.Generic.List<string>();
+            if (!string.IsNullOrEmpty(dataFile)) urls.Add($"Build/{dataFile}");
+            if (!string.IsNullOrEmpty(wasmFile)) urls.Add($"Build/{wasmFile}");
 
-            if (!File.Exists(markerPath))
-            {
-                Debug.LogWarning("[AIT] AIT 빌드 마커 파일이 없습니다. AIT SDK를 통해 빌드되지 않은 결과물입니다.");
+            if (urls.Count == 0) return "";
 
-                int choice = AITPlatformHelper.ShowComplexDialog(
-                    "AIT 빌드 결과물이 아닙니다",
-                    "현재 WebGL 빌드가 AIT SDK를 통해 생성되지 않았습니다.\n\n" +
-                    "AIT SDK의 빌드 설정(압축, 템플릿, 최적화 등)이 적용되지 않아\n" +
-                    "토스 앱에서 로딩 오류가 발생할 수 있습니다.\n\n" +
-                    "Build & Package로 실행하면 SDK 설정이 올바르게 적용됩니다.",
-                    "Build & Package로 실행",
-                    "취소",
-                    null,
-                    defaultChoice: 1
-                );
+            // JSON 배열로 URL 목록 생성
+            var urlsJson = "[" + string.Join(",", urls.ConvertAll(u => $"\"{u}\"")) + "]";
 
-                if (choice == 0)
-                {
-                    Debug.Log("[AIT] 사용자가 Build & Package 실행을 선택했습니다.");
-                    return AITConvertCore.AITExportError.REQUIRES_FULL_BUILD;
-                }
-                else
-                {
-                    Debug.Log("[AIT] 사용자가 패키징을 취소했습니다.");
-                    return AITConvertCore.AITExportError.CANCELLED;
-                }
-            }
-
-            // 마커가 있으면 압축 설정 불일치 검사
-            try
-            {
-                string markerJson = File.ReadAllText(markerPath);
-                var buildInfo = JsonUtility.FromJson<AITBuildInfo>(markerJson);
-
-                if (buildInfo != null)
-                {
-                    int currentCompression = profile.compressionFormat;
-                    // compressionFormat이 -1(자동)이면 AITDefaultSettings의 기본값 사용
-                    if (currentCompression == -1)
-                        currentCompression = (int)AITDefaultSettings.GetDefaultCompressionFormat();
-
-                    if (buildInfo.compressionFormat != currentCompression)
-                    {
-                        Debug.LogWarning($"[AIT] 빌드 시 압축 설정({buildInfo.compressionFormat})과 " +
-                                       $"현재 프로필 압축 설정({currentCompression})이 다릅니다. " +
-                                       "빌드 시점의 설정이 적용된 결과물입니다.");
-                    }
-
-                    Debug.Log($"[AIT] 빌드 마커 확인: SDK v{buildInfo.sdkVersion}, " +
-                             $"빌드 시각 {buildInfo.buildTime}, Unity {buildInfo.unityVersion}");
-                }
-            }
-            catch (Exception e)
-            {
-                Debug.LogWarning($"[AIT] 빌드 마커 읽기 실패 (무시됨): {e.Message}");
-            }
-
-            return AITConvertCore.AITExportError.SUCCEED;
+            return $@"<script>
+    // Early Fetch: HTML 파싱과 동시에 리소스 다운로드를 시작하고,
+    // Unity loader가 같은 URL을 요청할 때 이미 받은 Response를 반환합니다.
+    (function() {{
+        var earlyFetchMap = {{}};
+        var urls = {urlsJson};
+        for (var i = 0; i < urls.length; i++) {{
+            (function(href, fetchUrl) {{
+                var p = fetch(fetchUrl).catch(function() {{ delete earlyFetchMap[href]; return null; }});
+                earlyFetchMap[href] = p;
+            }})(new URL(urls[i], location.href).href, urls[i]);
+        }}
+        var originalFetch = window.fetch;
+        window.fetch = function(resource, init) {{
+            var url = (typeof resource === 'string') ? new URL(resource, location.href).href : resource.url;
+            var pending = earlyFetchMap[url];
+            if (pending) {{
+                delete earlyFetchMap[url];
+                if (Object.keys(earlyFetchMap).length === 0) {{
+                    window.fetch = originalFetch;
+                }}
+                // early fetch 실패 시 null이 반환되므로 원본 fetch로 재시도
+                var self = this, args = arguments;
+                return pending.then(function(r) {{ return r || originalFetch.apply(self, args); }});
+            }}
+            return originalFetch.apply(this, arguments);
+        }};
+    }})();
+    </script>";
         }
 
-        /// <summary>
-        /// Unity WebGL 리소스에 대한 preload 태그를 생성합니다.
-        /// HTML5 preload를 사용하면 HTML 파싱과 동시에 리소스 다운로드가 시작되어 로딩 성능이 개선됩니다.
-        /// </summary>
-        /// <param name="dataFile">data 파일명 (예: Build.data.br)</param>
-        /// <param name="wasmFile">wasm 파일명 (예: Build.wasm.br)</param>
-        /// <param name="frameworkFile">framework 파일명 (예: Build.framework.js.br)</param>
-        /// <returns>preload 태그 문자열 (줄바꿈 포함)</returns>
-        private static string GeneratePreloadTags(string dataFile, string wasmFile, string frameworkFile)
-        {
-            var sb = new System.Text.StringBuilder();
-
-            // 우선순위: data > wasm > framework (일반적으로 크기 순)
-            // as="fetch" + crossorigin="anonymous": Unity가 fetch() API로 로드하므로 동일한 캐시 키 사용
-            if (!string.IsNullOrEmpty(dataFile))
-            {
-                sb.AppendLine($"    <link rel=\"preload\" href=\"Build/{dataFile}\" as=\"fetch\" crossorigin=\"anonymous\">");
-            }
-
-            if (!string.IsNullOrEmpty(wasmFile))
-            {
-                sb.AppendLine($"    <link rel=\"preload\" href=\"Build/{wasmFile}\" as=\"fetch\" crossorigin=\"anonymous\">");
-            }
-
-            // framework.js는 preload하지 않음
-            // Unity 로더가 framework.js를 <script> 태그로 로드하는 경우 as="fetch" preload와 캐시 키가 불일치하여
-            // 이중 다운로드가 발생할 수 있음. 이는 메모리 압박을 증가시켜 간헐적 초기화 실패(ASM_CONSTS 오류)의
-            // 확률을 높일 수 있으므로 framework.js preload를 제거함.
-
-            return sb.ToString().TrimEnd();
-        }
+        #region Async Packaging
 
         /// <summary>
         /// WebGL 빌드를 ait-build로 비동기 패키징 (non-blocking)
         /// Unity Editor를 차단하지 않고 pnpm install/build를 실행합니다.
         /// </summary>
-        /// <param name="projectPath">Unity 프로젝트 경로</param>
-        /// <param name="webglPath">WebGL 빌드 경로</param>
-        /// <param name="profile">빌드 프로필</param>
-        /// <param name="onComplete">완료 콜백</param>
-        /// <param name="onProgress">진행 상황 콜백 (phase, progress, status)</param>
-        /// <param name="cancellationToken">취소 토큰</param>
         internal static void PackageWebGLBuildAsync(
             string projectPath,
             string webglPath,
             AITBuildProfile profile,
             Action<AITConvertCore.AITExportError> onComplete,
             Action<AITConvertCore.BuildPhase, float, string> onProgress = null,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            bool skipGraniteBuild = false)
         {
-            // 백그라운드 Node.js/pnpm 설치가 진행 중이면 완료될 때까지 대기
-            if (AITPackageInitializer.IsInstalling)
-            {
-                onProgress?.Invoke(AITConvertCore.BuildPhase.Preparing, 0.01f, "Node.js/pnpm 설치 대기 중...");
-                Debug.Log("[AIT] Node.js/pnpm 설치가 진행 중입니다. 완료될 때까지 대기합니다...");
-                if (!AITPackageInitializer.WaitForInstallation())
-                {
-                    Debug.LogError("[AIT] 설치 대기 타임아웃. 빌드를 중단합니다.");
-                    onComplete?.Invoke(AITConvertCore.AITExportError.NODE_NOT_FOUND);
-                    return;
-                }
-            }
+            onProgress?.Invoke(AITConvertCore.BuildPhase.Preparing, 0.01f, "패키징 준비 중...");
 
-            // 취소 확인
             if (cancellationToken.IsCancellationRequested)
             {
                 onComplete?.Invoke(AITConvertCore.AITExportError.CANCELLED);
@@ -1192,83 +1485,29 @@ namespace AppsInToss.Editor
             }
 
             Debug.Log("[AIT] Vite 기반 비동기 패키징 시작...");
-            onProgress?.Invoke(AITConvertCore.BuildPhase.CopyingFiles, 0.05f, "패키징 준비 중...");
+            onProgress?.Invoke(AITConvertCore.BuildPhase.CopyingFiles, 0.05f, "빌드 설정 파일 복사 중...");
 
-            // 프로필이 없으면 기본 프로필 사용
-            if (profile == null)
+            var (ctx, prepError) = PreparePackaging(projectPath, webglPath, profile);
+            if (ctx == null)
             {
-                profile = AITBuildProfile.CreateProductionProfile();
-            }
-
-            string buildProjectPath = Path.Combine(projectPath, "ait-build");
-
-            // ait-build 폴더 정리
-            PrepareAitBuildFolder(buildProjectPath);
-
-            // npm 경로 찾기
-            string npmPath = AITNpmRunner.FindNpmPath();
-            if (string.IsNullOrEmpty(npmPath))
-            {
-                Debug.LogError("[AIT] npm을 찾을 수 없습니다. Node.js가 설치되어 있는지 확인하세요.");
-                onComplete?.Invoke(AITConvertCore.AITExportError.NODE_NOT_FOUND);
+                onComplete?.Invoke(prepError);
                 return;
             }
 
-            // 취소 확인
+            onProgress?.Invoke(AITConvertCore.BuildPhase.CopyingFiles, 0.15f, "파일 복사 완료");
+
             if (cancellationToken.IsCancellationRequested)
             {
                 onComplete?.Invoke(AITConvertCore.AITExportError.CANCELLED);
                 return;
-            }
-
-            // Step 1: 파일 복사 (동기, 빠름)
-            onProgress?.Invoke(AITConvertCore.BuildPhase.CopyingFiles, 0.1f, "빌드 설정 파일 복사 중...");
-            Debug.Log("[AIT] Step 1/3: Vite 프로젝트 구조 생성 중...");
-            CopyBuildConfigFromTemplate(buildProjectPath);
-
-            // Step 2: Unity WebGL 빌드 복사
-            onProgress?.Invoke(AITConvertCore.BuildPhase.CopyingFiles, 0.15f, "WebGL 빌드 복사 중...");
-            Debug.Log("[AIT] Step 2/3: Unity WebGL 빌드 복사 중...");
-            var copyResult = CopyWebGLToPublic(webglPath, buildProjectPath, profile);
-            if (copyResult != AITConvertCore.AITExportError.SUCCEED)
-            {
-                onComplete?.Invoke(copyResult);
-                return;
-            }
-
-            // 취소 확인
-            if (cancellationToken.IsCancellationRequested)
-            {
-                onComplete?.Invoke(AITConvertCore.AITExportError.CANCELLED);
-                return;
-            }
-
-            // pnpm 경로 찾기
-            string pnpmPath = AITNpmRunner.FindPnpmPath();
-            if (string.IsNullOrEmpty(pnpmPath))
-            {
-                Debug.LogError("[AIT] pnpm 설치에 실패했습니다. Unity Console에서 에러를 확인해주세요.");
-                AITPackageManagerHelper.ShowInstallationFailureDialog();
-                onComplete?.Invoke(AITConvertCore.AITExportError.FAIL_NPM_BUILD);
-                return;
-            }
-
-            string localCachePath = Path.Combine(buildProjectPath, ".npm-cache");
-            var finalProfile = profile; // 클로저용
-
-            // node_modules 무결성 검증 (web-framework 버전 일치 확인)
-            if (!ValidateNodeModulesIntegrity(buildProjectPath))
-            {
-                Debug.Log("[AIT] node_modules 무결성 검증 실패. 정리 후 재설치합니다.");
-                CleanNodeModules(buildProjectPath);
             }
 
             // Step 3: pnpm install (비동기)
             onProgress?.Invoke(AITConvertCore.BuildPhase.PnpmInstall, 0.2f, "pnpm install 실행 중...");
             Debug.Log("[AIT] Step 3/3: pnpm install & build 실행 중...");
 
-            RunPnpmInstallAsync(buildProjectPath, pnpmPath, localCachePath, cancellationToken,
-                onOutputReceived: (line) =>
+            RunPnpmInstallAsync(ctx.BuildProjectPath, ctx.PnpmPath, ctx.LocalCachePath, cancellationToken,
+                onOutput: (line) =>
                 {
                     onProgress?.Invoke(AITConvertCore.BuildPhase.PnpmInstall, 0.35f, line);
                 },
@@ -1280,7 +1519,6 @@ namespace AppsInToss.Editor
                         return;
                     }
 
-                    // 취소 확인
                     if (cancellationToken.IsCancellationRequested)
                     {
                         onComplete?.Invoke(AITConvertCore.AITExportError.CANCELLED);
@@ -1288,103 +1526,119 @@ namespace AppsInToss.Editor
                     }
 
                     // Step 4: granite build (비동기)
-                    onProgress?.Invoke(AITConvertCore.BuildPhase.GraniteBuild, 0.5f, "granite build 실행 중...");
-                    Debug.Log("[AIT] granite build 실행 중...");
-
-                    // UNITY_METADATA 환경변수를 통해 빌드 메타데이터를 granite build에 전달
-                    var unityMetadataEnv = AITUnityMetadata.BuildEnvironmentVariables();
-                    Debug.Log($"[AIT] UNITY_METADATA: {unityMetadataEnv["UNITY_METADATA"]}");
-
-                    AITNpmRunner.RunNpmCommandWithCacheAsync(
-                        buildProjectPath,
-                        pnpmPath,
-                        "run build",
-                        localCachePath,
-                        onComplete: (buildResult) =>
-                        {
-                            if (buildResult == AITConvertCore.AITExportError.SUCCEED)
-                            {
-                                string distPath = Path.Combine(buildProjectPath, "dist");
-                                AITBuildValidator.PrintBuildReport(buildProjectPath, distPath);
-                                onProgress?.Invoke(AITConvertCore.BuildPhase.Complete, 1f, "패키징 완료!");
-                                Debug.Log($"[AIT] ✓ 비동기 패키징 완료: {distPath}");
-                                onComplete?.Invoke(AITConvertCore.AITExportError.SUCCEED);
-                                return;
-                            }
-
-                            // 취소 확인
-                            if (cancellationToken.IsCancellationRequested)
-                            {
-                                onComplete?.Invoke(AITConvertCore.AITExportError.CANCELLED);
-                                return;
-                            }
-
-                            // MODULE_NOT_FOUND 등 런타임 에러 대응: node_modules 정리 후 install부터 재시도
-                            Debug.LogWarning("[AIT] granite build 실패. node_modules 정리 후 install부터 재시도합니다...");
-                            CleanNodeModules(buildProjectPath);
-
-                            onProgress?.Invoke(AITConvertCore.BuildPhase.PnpmInstall, 0.5f, "빌드 실패 후 재설치 중...");
-
-                            // install 재시도
-                            AITNpmRunner.RunNpmCommandWithCacheAsync(
-                                buildProjectPath,
-                                pnpmPath,
-                                "install --no-frozen-lockfile",
-                                localCachePath,
-                                onComplete: (retryInstallResult) =>
-                                {
-                                    if (retryInstallResult != AITConvertCore.AITExportError.SUCCEED)
-                                    {
-                                        Debug.LogError("[AIT] granite build 실패 후 pnpm install 재시도도 실패");
-                                        onComplete?.Invoke(retryInstallResult);
-                                        return;
-                                    }
-
-                                    // build 재시도
-                                    onProgress?.Invoke(AITConvertCore.BuildPhase.GraniteBuild, 0.7f, "granite build 재시도 중...");
-
-                                    AITNpmRunner.RunNpmCommandWithCacheAsync(
-                                        buildProjectPath,
-                                        pnpmPath,
-                                        "run build",
-                                        localCachePath,
-                                        onComplete: (retryBuildResult) =>
-                                        {
-                                            if (retryBuildResult == AITConvertCore.AITExportError.SUCCEED)
-                                            {
-                                                string distPath2 = Path.Combine(buildProjectPath, "dist");
-                                                AITBuildValidator.PrintBuildReport(buildProjectPath, distPath2);
-                                                onProgress?.Invoke(AITConvertCore.BuildPhase.Complete, 1f, "패키징 완료!");
-                                                Debug.Log($"[AIT] ✓ 비동기 패키징 완료 (재시도 성공): {distPath2}");
-                                            }
-                                            else
-                                            {
-                                                Debug.LogError("[AIT] granite build 재시도도 실패");
-                                            }
-                                            onComplete?.Invoke(retryBuildResult);
-                                        },
-                                        onOutputReceived: (line2) =>
-                                        {
-                                            onProgress?.Invoke(AITConvertCore.BuildPhase.GraniteBuild, 0.85f, line2);
-                                        },
-                                        additionalEnvVars: unityMetadataEnv
-                                    );
-                                },
-                                onOutputReceived: (line2) =>
-                                {
-                                    onProgress?.Invoke(AITConvertCore.BuildPhase.PnpmInstall, 0.55f, line2);
-                                }
-                            );
-                        },
-                        onOutputReceived: (line) =>
-                        {
-                            onProgress?.Invoke(AITConvertCore.BuildPhase.GraniteBuild, 0.75f, line);
-                        },
-                        additionalEnvVars: unityMetadataEnv
-                    );
+                    if (skipGraniteBuild)
+                    {
+                        Debug.Log("[AIT] granite build 스킵 (Dev Server 모드)");
+                        onComplete?.Invoke(AITConvertCore.AITExportError.SUCCEED);
+                        return;
+                    }
+                    RunGraniteBuildAsync(ctx, cancellationToken, onProgress, onComplete);
                 }
             );
         }
+
+        /// <summary>
+        /// granite build 비동기 실행 + 실패 시 1회 재시도
+        /// </summary>
+        private static void RunGraniteBuildAsync(
+            PackageContext ctx,
+            CancellationToken ct,
+            Action<AITConvertCore.BuildPhase, float, string> onProgress,
+            Action<AITConvertCore.AITExportError> onComplete)
+        {
+            onProgress?.Invoke(AITConvertCore.BuildPhase.GraniteBuild, 0.5f, "granite build 실행 중...");
+            Debug.Log("[AIT] granite build 실행 중...");
+            Debug.Log($"[AIT] UNITY_METADATA: {ctx.UnityMetadataEnv["UNITY_METADATA"]}");
+
+            AITNpmRunner.RunNpmCommandWithCacheAsync(
+                ctx.BuildProjectPath, ctx.PnpmPath, "run build", ctx.LocalCachePath,
+                onComplete: (buildResult) =>
+                {
+                    if (buildResult == AITConvertCore.AITExportError.SUCCEED)
+                    {
+                        string distPath = Path.Combine(ctx.BuildProjectPath, "dist");
+                        AITBuildValidator.PrintBuildReport(ctx.BuildProjectPath, distPath);
+                        onProgress?.Invoke(AITConvertCore.BuildPhase.Complete, 1f, "패키징 완료!");
+                        Debug.Log($"[AIT] ✓ 비동기 패키징 완료: {distPath}");
+                        onComplete?.Invoke(AITConvertCore.AITExportError.SUCCEED);
+                        return;
+                    }
+
+                    if (ct.IsCancellationRequested)
+                    {
+                        onComplete?.Invoke(AITConvertCore.AITExportError.CANCELLED);
+                        return;
+                    }
+
+                    // 재시도: clean → install → build
+                    RetryGraniteBuildAsync(ctx, ct, onProgress, onComplete);
+                },
+                onOutputReceived: (line) =>
+                {
+                    onProgress?.Invoke(AITConvertCore.BuildPhase.GraniteBuild, 0.75f, line);
+                },
+                additionalEnvVars: ctx.UnityMetadataEnv
+            );
+        }
+
+        /// <summary>
+        /// granite build 실패 후 clean install → build 재시도 (비동기)
+        /// </summary>
+        private static void RetryGraniteBuildAsync(
+            PackageContext ctx,
+            CancellationToken ct,
+            Action<AITConvertCore.BuildPhase, float, string> onProgress,
+            Action<AITConvertCore.AITExportError> onComplete)
+        {
+            Debug.LogWarning("[AIT] granite build 실패. node_modules 정리 후 install부터 재시도합니다...");
+            CleanNodeModules(ctx.BuildProjectPath);
+            onProgress?.Invoke(AITConvertCore.BuildPhase.PnpmInstall, 0.5f, "빌드 실패 후 재설치 중...");
+
+            AITNpmRunner.RunNpmCommandWithCacheAsync(
+                ctx.BuildProjectPath, ctx.PnpmPath, "install --no-frozen-lockfile", ctx.LocalCachePath,
+                onComplete: (retryInstallResult) =>
+                {
+                    if (retryInstallResult != AITConvertCore.AITExportError.SUCCEED)
+                    {
+                        Debug.LogError("[AIT] granite build 실패 후 pnpm install 재시도도 실패");
+                        onComplete?.Invoke(retryInstallResult);
+                        return;
+                    }
+
+                    onProgress?.Invoke(AITConvertCore.BuildPhase.GraniteBuild, 0.7f, "granite build 재시도 중...");
+
+                    AITNpmRunner.RunNpmCommandWithCacheAsync(
+                        ctx.BuildProjectPath, ctx.PnpmPath, "run build", ctx.LocalCachePath,
+                        onComplete: (retryBuildResult) =>
+                        {
+                            if (retryBuildResult == AITConvertCore.AITExportError.SUCCEED)
+                            {
+                                string distPath = Path.Combine(ctx.BuildProjectPath, "dist");
+                                AITBuildValidator.PrintBuildReport(ctx.BuildProjectPath, distPath);
+                                onProgress?.Invoke(AITConvertCore.BuildPhase.Complete, 1f, "패키징 완료!");
+                                Debug.Log($"[AIT] ✓ 비동기 패키징 완료 (재시도 성공): {distPath}");
+                            }
+                            else
+                            {
+                                Debug.LogError("[AIT] granite build 재시도도 실패");
+                            }
+                            onComplete?.Invoke(retryBuildResult);
+                        },
+                        onOutputReceived: (line) =>
+                        {
+                            onProgress?.Invoke(AITConvertCore.BuildPhase.GraniteBuild, 0.85f, line);
+                        },
+                        additionalEnvVars: ctx.UnityMetadataEnv
+                    );
+                },
+                onOutputReceived: (line) =>
+                {
+                    onProgress?.Invoke(AITConvertCore.BuildPhase.PnpmInstall, 0.55f, line);
+                }
+            );
+        }
+
+        #endregion
 
         /// <summary>
         /// node_modules 무결성 검증
@@ -1571,90 +1825,49 @@ namespace AppsInToss.Editor
         }
 
         /// <summary>
-        /// pnpm install 비동기 실행 (frozen-lockfile 실패 시 재시도)
+        /// pnpm install 비동기 실행 (PnpmInstallStages 배열 기반 재귀 재시도)
         /// </summary>
         private static void RunPnpmInstallAsync(
             string buildProjectPath,
             string pnpmPath,
             string localCachePath,
-            CancellationToken cancellationToken,
-            Action<string> onOutputReceived,
-            Action<AITConvertCore.AITExportError> onComplete)
+            CancellationToken ct,
+            Action<string> onOutput,
+            Action<AITConvertCore.AITExportError> onComplete,
+            int stageIndex = 0)
         {
-            Debug.Log("[AIT] pnpm install --frozen-lockfile 실행 중...");
+            if (stageIndex >= PnpmInstallStages.Length)
+            {
+                Debug.LogError("[AIT] pnpm install 실패 (모든 재시도 후에도 실패)");
+                onComplete?.Invoke(AITConvertCore.AITExportError.FAIL_NPM_BUILD);
+                return;
+            }
+
+            var (args, label, cleanFirst) = PnpmInstallStages[stageIndex];
+            if (cleanFirst) CleanNodeModules(buildProjectPath);
+
+            Debug.Log($"[AIT] pnpm {label} 실행 중...");
 
             AITNpmRunner.RunNpmCommandWithCacheAsync(
-                buildProjectPath,
-                pnpmPath,
-                "install --frozen-lockfile",
-                localCachePath,
+                buildProjectPath, pnpmPath, args, localCachePath,
                 onComplete: (result) =>
                 {
                     if (result == AITConvertCore.AITExportError.SUCCEED)
                     {
-                        onComplete?.Invoke(AITConvertCore.AITExportError.SUCCEED);
+                        onComplete?.Invoke(result);
                         return;
                     }
 
-                    // 취소 확인
-                    if (cancellationToken.IsCancellationRequested)
+                    if (ct.IsCancellationRequested)
                     {
                         onComplete?.Invoke(AITConvertCore.AITExportError.CANCELLED);
                         return;
                     }
 
-                    // frozen-lockfile 실패 시 재시도
-                    Debug.LogWarning("[AIT] --frozen-lockfile 설치 실패, lockfile 갱신 모드로 재시도...");
-
-                    AITNpmRunner.RunNpmCommandWithCacheAsync(
-                        buildProjectPath,
-                        pnpmPath,
-                        "install --no-frozen-lockfile",
-                        localCachePath,
-                        onComplete: (retryResult) =>
-                        {
-                            if (retryResult == AITConvertCore.AITExportError.SUCCEED)
-                            {
-                                Debug.Log("[AIT] ✓ 새 패키지 설치 및 lockfile 갱신 완료");
-                                onComplete?.Invoke(retryResult);
-                                return;
-                            }
-
-                            // 취소 확인
-                            if (cancellationToken.IsCancellationRequested)
-                            {
-                                onComplete?.Invoke(AITConvertCore.AITExportError.CANCELLED);
-                                return;
-                            }
-
-                            // 최종 재시도: node_modules 정리 후 clean install
-                            Debug.LogWarning("[AIT] pnpm install 재시도 실패. node_modules 정리 후 한 번 더 시도합니다...");
-                            CleanNodeModules(buildProjectPath);
-
-                            AITNpmRunner.RunNpmCommandWithCacheAsync(
-                                buildProjectPath,
-                                pnpmPath,
-                                "install --no-frozen-lockfile",
-                                localCachePath,
-                                onComplete: (cleanRetryResult) =>
-                                {
-                                    if (cleanRetryResult == AITConvertCore.AITExportError.SUCCEED)
-                                    {
-                                        Debug.Log("[AIT] ✓ clean install 성공");
-                                    }
-                                    else
-                                    {
-                                        Debug.LogError("[AIT] pnpm install 실패 (clean 재시도 후에도 실패)");
-                                    }
-                                    onComplete?.Invoke(cleanRetryResult);
-                                },
-                                onOutputReceived: onOutputReceived
-                            );
-                        },
-                        onOutputReceived: onOutputReceived
-                    );
+                    Debug.LogWarning($"[AIT] pnpm install ({label}) 실패, 다음 단계로...");
+                    RunPnpmInstallAsync(buildProjectPath, pnpmPath, localCachePath, ct, onOutput, onComplete, stageIndex + 1);
                 },
-                onOutputReceived: onOutputReceived
+                onOutputReceived: onOutput
             );
         }
     }

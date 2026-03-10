@@ -22,7 +22,8 @@ namespace AppsInToss.Editor
         /// WebGL 템플릿을 SDK에서 프로젝트로 복사합니다.
         /// 빌드 시마다 최신 SDK 템플릿으로 교체합니다.
         /// </summary>
-        internal static void EnsureWebGLTemplatesExist()
+        /// <returns>파일이 실제로 변경된 경우 true</returns>
+        internal static bool EnsureWebGLTemplatesExist()
         {
             // 프로젝트의 Assets/WebGLTemplates 경로
             string projectTemplatesPath = Path.Combine(Application.dataPath, "WebGLTemplates");
@@ -56,7 +57,7 @@ namespace AppsInToss.Editor
             if (sdkTemplatesPath == null)
             {
                 Debug.LogError($"[AIT] SDK WebGLTemplates 폴더를 찾을 수 없습니다.");
-                return;
+                return false;
             }
 
             string sdkTemplate = Path.Combine(sdkTemplatesPath, "AITTemplate");
@@ -65,7 +66,7 @@ namespace AppsInToss.Editor
             if (!Directory.Exists(sdkTemplate))
             {
                 Debug.LogError($"[AIT] SDK 템플릿 폴더를 찾을 수 없습니다: {sdkTemplate}");
-                return;
+                return false;
             }
 
             // 프로젝트 템플릿이 없으면 전체 복사
@@ -81,19 +82,21 @@ namespace AppsInToss.Editor
                 Directory.CreateDirectory(projectTemplatesPath);
                 UnityUtil.CopyDirectory(sdkTemplate, projectTemplate);
                 Debug.Log("[AIT] ✓ WebGLTemplates 복사 완료");
-                return;
+                return true;
             }
 
             // 프로젝트 템플릿이 있으면 마커 기반으로 업데이트
-            UpdateProjectTemplate(projectTemplate, sdkTemplate);
+            return UpdateProjectTemplate(projectTemplate, sdkTemplate);
         }
 
         /// <summary>
         /// 기존 프로젝트 템플릿을 SDK 템플릿으로 마커 기반 업데이트
         /// 사용자 커스텀 영역(USER_* 마커)은 보존하고 SDK 영역만 업데이트
         /// </summary>
-        internal static void UpdateProjectTemplate(string projectTemplate, string sdkTemplate)
+        internal static bool UpdateProjectTemplate(string projectTemplate, string sdkTemplate)
         {
+            bool changed = false;
+
             // index.html 마커 기반 업데이트
             string projectIndexHtml = Path.Combine(projectTemplate, "index.html");
             string sdkIndexHtml = Path.Combine(sdkTemplate, "index.html");
@@ -109,6 +112,7 @@ namespace AppsInToss.Editor
                     Debug.Log("[AIT] 템플릿 업데이트: 이전 버전 템플릿을 새 마커 기반 템플릿으로 교체합니다.");
                     Debug.LogWarning("[AIT] ⚠️ 기존 index.html에 커스텀 수정이 있었다면 수동으로 USER_* 마커 영역에 재적용하세요.");
                     File.WriteAllText(projectIndexHtml, sdkContent);
+                    changed = true;
                 }
                 else
                 {
@@ -118,6 +122,7 @@ namespace AppsInToss.Editor
                     {
                         File.WriteAllText(projectIndexHtml, updatedContent);
                         Debug.Log("[AIT] ✓ index.html 템플릿 업데이트 (사용자 커스텀 영역 보존)");
+                        changed = true;
                     }
                 }
             }
@@ -126,29 +131,39 @@ namespace AppsInToss.Editor
             UpdateConfigFileWithMarkers(projectTemplate, sdkTemplate, "BuildConfig~/vite.config.ts");
             UpdateConfigFileWithMarkers(projectTemplate, sdkTemplate, "BuildConfig~/granite.config.ts");
 
-            // Runtime 폴더는 항상 SDK 버전으로 덮어쓰기 (브릿지 코드)
+            // Runtime 폴더는 SDK 버전과 다를 때만 덮어쓰기 (브릿지 코드)
             string projectRuntime = Path.Combine(projectTemplate, "Runtime");
             string sdkRuntime = Path.Combine(sdkTemplate, "Runtime");
             if (Directory.Exists(sdkRuntime))
             {
-                if (Directory.Exists(projectRuntime))
+                if (!UnityUtil.DirectoriesEqual(sdkRuntime, projectRuntime))
                 {
-                    Directory.Delete(projectRuntime, true);
+                    if (Directory.Exists(projectRuntime))
+                    {
+                        Directory.Delete(projectRuntime, true);
+                    }
+                    UnityUtil.CopyDirectory(sdkRuntime, projectRuntime);
+                    changed = true;
                 }
-                UnityUtil.CopyDirectory(sdkRuntime, projectRuntime);
             }
 
-            // TemplateData는 항상 SDK 버전으로 덮어쓰기
+            // TemplateData는 SDK 버전과 다를 때만 덮어쓰기
             string projectTemplateData = Path.Combine(projectTemplate, "TemplateData");
             string sdkTemplateData = Path.Combine(sdkTemplate, "TemplateData");
             if (Directory.Exists(sdkTemplateData))
             {
-                if (Directory.Exists(projectTemplateData))
+                if (!UnityUtil.DirectoriesEqual(sdkTemplateData, projectTemplateData))
                 {
-                    Directory.Delete(projectTemplateData, true);
+                    if (Directory.Exists(projectTemplateData))
+                    {
+                        Directory.Delete(projectTemplateData, true);
+                    }
+                    UnityUtil.CopyDirectory(sdkTemplateData, projectTemplateData);
+                    changed = true;
                 }
-                UnityUtil.CopyDirectory(sdkTemplateData, projectTemplateData);
             }
+
+            return changed;
         }
 
         /// <summary>

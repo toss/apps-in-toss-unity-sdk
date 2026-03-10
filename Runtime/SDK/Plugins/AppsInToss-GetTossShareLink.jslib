@@ -6,16 +6,17 @@
  */
 
 mergeInto(LibraryManager.library, {
-    __getTossShareLink_Internal: function(path, callbackId, typeName) {
+    __getTossShareLink_Internal: function(path, ogImageUrl, callbackId, typeName) {
         // 비동기 함수 (Promise 반환)
         var callback = UTF8ToString(callbackId);
         var typeNameStr = UTF8ToString(typeName);
 
         console.log('[AIT jslib] getTossShareLink called, callbackId:', callback);
         console.log('[AIT jslib] getTossShareLink raw param path:', UTF8ToString(path));
+        console.log('[AIT jslib] getTossShareLink raw param ogImageUrl:', UTF8ToString(ogImageUrl));
 
         try {
-            var promiseResult = window.AppsInToss.getTossShareLink(UTF8ToString(path));
+            var promiseResult = window.AppsInToss.getTossShareLink(UTF8ToString(path), UTF8ToString(ogImageUrl));
             console.log('[AIT jslib] getTossShareLink returned:', promiseResult, 'isPromise:', promiseResult && typeof promiseResult.then === 'function');
 
             if (!promiseResult || typeof promiseResult.then !== 'function') {

@@ -76,6 +76,9 @@ on:
       SENTRY_DSN:
         description: 'Sentry DSN for error reporting'
         required: false
+      KEYCHAIN_PASSWORD:
+        description: 'macOS Keychain password for license access'
+        required: false
     outputs:
       artifact-name:
         description: 'Uploaded artifact name'

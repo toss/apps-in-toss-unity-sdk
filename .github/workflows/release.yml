@@ -50,6 +50,8 @@ on:
         required: false
       AIT_AD_REWARDED_ID:
         required: false
+      KEYCHAIN_PASSWORD:
+        required: false
 
 jobs:
   # =====================================================
@@ -358,6 +360,7 @@ jobs:
     secrets:
       AIT_AD_INTERSTITIAL_ID: ${{ secrets.AIT_AD_INTERSTITIAL_ID }}
       AIT_AD_REWARDED_ID: ${{ secrets.AIT_AD_REWARDED_ID }}
+      KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
 
   # =====================================================
   # AIT 빌드 - Windows
@@ -384,6 +387,7 @@ jobs:
     secrets:
       AIT_AD_INTERSTITIAL_ID: ${{ secrets.AIT_AD_INTERSTITIAL_ID }}
       AIT_AD_REWARDED_ID: ${{ secrets.AIT_AD_REWARDED_ID }}
+      KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
 
   # =====================================================
   # 릴리즈 태그 생성 (UPM 패키지 정리 포함)

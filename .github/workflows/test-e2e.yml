@@ -221,6 +221,7 @@ jobs:
       test-level: ${{ inputs.test_level || '2' }}
     secrets:
       SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+      KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
 
   # =====================================================
   # E2E Tests - Windows (전체 테스트 실행)
@@ -249,6 +250,7 @@ jobs:
       test-level: ${{ inputs.test_level || '2' }}
     secrets:
       SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+      KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
 
   # =====================================================
   # Test Report Summary

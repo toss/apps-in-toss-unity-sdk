@@ -25,7 +25,7 @@ mergeInto(LibraryManager.library, {
                 TypeName: typeNameStr,
                 Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
             });
-            SendMessage('AITCore', 'OnAITCallback', payload);
+            setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
         }
     },
 

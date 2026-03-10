@@ -40,7 +40,7 @@ mergeInto(LibraryManager.library, {
                             error: error.message || String(error)
                         })
                     });
-                    SendMessage('AITCore', 'OnAITEventCallback', payload);
+                    setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
                 }
             });
 
@@ -61,7 +61,7 @@ mergeInto(LibraryManager.library, {
                     error: error.message || String(error)
                 })
             });
-            SendMessage('AITCore', 'OnAITEventCallback', payload);
+            setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
         }
     },
 
@@ -99,7 +99,7 @@ mergeInto(LibraryManager.library, {
                             error: error.message || String(error)
                         })
                     });
-                    SendMessage('AITCore', 'OnAITEventCallback', payload);
+                    setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
                 }
             });
 
@@ -120,7 +120,7 @@ mergeInto(LibraryManager.library, {
                     error: error.message || String(error)
                 })
             });
-            SendMessage('AITCore', 'OnAITEventCallback', payload);
+            setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
         }
     },
 
@@ -158,7 +158,7 @@ mergeInto(LibraryManager.library, {
                             error: error.message || String(error)
                         })
                     });
-                    SendMessage('AITCore', 'OnAITEventCallback', payload);
+                    setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
                 }
             });
 
@@ -179,7 +179,7 @@ mergeInto(LibraryManager.library, {
                     error: error.message || String(error)
                 })
             });
-            SendMessage('AITCore', 'OnAITEventCallback', payload);
+            setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
         }
     },
 

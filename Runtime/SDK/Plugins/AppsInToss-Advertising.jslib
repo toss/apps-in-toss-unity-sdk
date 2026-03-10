@@ -41,7 +41,7 @@ mergeInto(LibraryManager.library, {
                             error: errorMessage
                         })
                     });
-                    SendMessage('AITCore', 'OnAITEventCallback', payload);
+                    setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
                 }
             });
 
@@ -62,7 +62,7 @@ mergeInto(LibraryManager.library, {
                     error: errorMessage
                 })
             });
-            SendMessage('AITCore', 'OnAITEventCallback', payload);
+            setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
         }
     },
 
@@ -101,7 +101,7 @@ mergeInto(LibraryManager.library, {
                             error: errorMessage
                         })
                     });
-                    SendMessage('AITCore', 'OnAITEventCallback', payload);
+                    setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
                 }
             });
 
@@ -122,7 +122,7 @@ mergeInto(LibraryManager.library, {
                     error: errorMessage
                 })
             });
-            SendMessage('AITCore', 'OnAITEventCallback', payload);
+            setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
         }
     },
 
@@ -167,7 +167,7 @@ mergeInto(LibraryManager.library, {
                         TypeName: typeNameStr,
                         Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
                     });
-                    SendMessage('AITCore', 'OnAITCallback', payload);
+                    setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
                 });
         } catch (error) {
             console.log('[AIT jslib] isAppsInTossAdMobLoaded sync error:', error);
@@ -176,7 +176,7 @@ mergeInto(LibraryManager.library, {
                 TypeName: typeNameStr,
                 Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
             });
-            SendMessage('AITCore', 'OnAITCallback', payload);
+            setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
         }
     },
 
@@ -216,7 +216,7 @@ mergeInto(LibraryManager.library, {
                             error: errorMessage
                         })
                     });
-                    SendMessage('AITCore', 'OnAITEventCallback', payload);
+                    setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
                 }
             });
 
@@ -237,7 +237,7 @@ mergeInto(LibraryManager.library, {
                     error: errorMessage
                 })
             });
-            SendMessage('AITCore', 'OnAITEventCallback', payload);
+            setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
         }
     },
 
@@ -277,7 +277,7 @@ mergeInto(LibraryManager.library, {
                             error: errorMessage
                         })
                     });
-                    SendMessage('AITCore', 'OnAITEventCallback', payload);
+                    setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
                 }
             });
 
@@ -298,7 +298,7 @@ mergeInto(LibraryManager.library, {
                     error: errorMessage
                 })
             });
-            SendMessage('AITCore', 'OnAITEventCallback', payload);
+            setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
         }
     },
 

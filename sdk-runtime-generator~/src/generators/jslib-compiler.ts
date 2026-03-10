@@ -6,12 +6,54 @@
  */
 
 import * as fs from 'fs/promises';
+import * as fsSync from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import picocolors from 'picocolors';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+/**
+ * pnpm의 flat node_modules 구조에서 패키지 경로를 해석합니다.
+ * 직접 node_modules에 없으면 .pnpm 스토어에서 최신 버전을 찾습니다.
+ */
+function resolvePackagePath(packageName: string): string {
+  const nodeModulesDir = path.resolve(__dirname, '../../node_modules');
+  const directPath = path.join(nodeModulesDir, packageName);
+
+  if (fsSync.existsSync(directPath)) {
+    return directPath;
+  }
+
+  // pnpm .pnpm 스토어에서 찾기
+  const pnpmDir = path.join(nodeModulesDir, '.pnpm');
+  const escapedName = packageName.replace('/', '+');
+  try {
+    const entries = fsSync.readdirSync(pnpmDir).filter((e: string) =>
+      e.startsWith(escapedName + '@')
+    );
+    if (entries.length > 0) {
+      // 최신 버전 선택 (semver 역순 — 숫자 부분 비교)
+      entries.sort((a, b) => {
+        const verA = a.slice(escapedName.length + 1).split('.').map(Number);
+        const verB = b.slice(escapedName.length + 1).split('.').map(Number);
+        for (let i = 0; i < Math.max(verA.length, verB.length); i++) {
+          const diff = (verB[i] || 0) - (verA[i] || 0);
+          if (diff !== 0) return diff;
+        }
+        return 0;
+      });
+      const resolved = path.join(pnpmDir, entries[0], 'node_modules', packageName);
+      if (fsSync.existsSync(resolved)) {
+        return resolved;
+      }
+    }
+  } catch {}
+
+  // 폴백: 원래 경로 반환
+  return directPath;
+}
 
 /**
  * TypeScript 타입 검사 결과
@@ -77,13 +119,13 @@ export async function typeCheckBridgeCode(
         ],
         paths: {
           '@apps-in-toss/web-framework': [
-            path.resolve(__dirname, '../../node_modules/@apps-in-toss/web-framework'),
+            resolvePackagePath('@apps-in-toss/web-framework'),
           ],
           '@apps-in-toss/framework': [
-            path.resolve(__dirname, '../../node_modules/@apps-in-toss/framework'),
+            resolvePackagePath('@apps-in-toss/framework'),
           ],
           '@apps-in-toss/web-analytics': [
-            path.resolve(__dirname, '../../node_modules/@apps-in-toss/web-analytics'),
+            resolvePackagePath('@apps-in-toss/web-analytics'),
           ],
         },
       },

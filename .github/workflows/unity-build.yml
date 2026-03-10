@@ -969,14 +969,35 @@ jobs:
 
             if [ $EXIT_CODE -ne 0 ]; then
               # 라이선스 관련 오류 감지 (retry 액션이 자동 재시도)
-              if grep -qE "No valid Unity Editor license found|Unsupported protocol version|ResponseCode: 505" "$LOG_FILE" 2>/dev/null; then
-                echo "::warning::Unity license conflict detected, triggering retry..."
-                exit 1
+              LICENSE_ERROR=false
+              if grep -qE "No valid Unity Editor license found|Unsupported protocol version|ResponseCode: 505|Token not found in cache|Access token is unavailable" "$LOG_FILE" 2>/dev/null; then
+                LICENSE_ERROR=true
               fi
               if [ $EXIT_CODE -eq 199 ]; then
-                echo "::warning::Unity license error (exit code 199), triggering retry..."
+                LICENSE_ERROR=true
+              fi
+
+              if [ "$LICENSE_ERROR" = true ]; then
+                echo "::warning::Unity license error detected, attempting recovery via Unity Hub..."
+
+                # Unity Hub를 잠시 실행하여 라이선스 토큰 갱신
+                UNITY_HUB="/Applications/Unity Hub.app/Contents/MacOS/Unity Hub"
+                if [ -f "$UNITY_HUB" ]; then
+                  # Hub를 headless로 실행하여 라이선스 갱신 유도
+                  "$UNITY_HUB" -- --headless editors --installed 2>&1 || true
+                  echo "Unity Hub license refresh attempted"
+                  sleep 3
+
+                  # 기존 Licensing Client 프로세스 정리 (갱신된 토큰으로 재시작하도록)
+                  pkill -f "Unity.Licensing.Client" 2>/dev/null || true
+                  sleep 2
+                  echo "Licensing Client processes cleared for fresh start"
+                fi
+
+                echo "::warning::Triggering retry after license recovery..."
                 exit 1
               fi
+
               echo "::error::Unity build failed with exit code: $EXIT_CODE"
               exit $EXIT_CODE
             fi
@@ -1057,17 +1078,41 @@ jobs:
 
             if ($exitCode -ne 0) {
               # 라이선스 관련 오류 감지 (retry 액션이 자동 재시도)
+              $licenseError = $false
               if (Test-Path $logFile) {
                 $logContent = Get-Content $logFile -Raw -ErrorAction SilentlyContinue
-                if ($logContent -match "No valid Unity Editor license found|Unsupported protocol version|ResponseCode: 505") {
-                  Write-Host "::warning::Unity license conflict detected, triggering retry..."
-                  exit 1
+                if ($logContent -match "No valid Unity Editor license found|Unsupported protocol version|ResponseCode: 505|Token not found in cache|Access token is unavailable") {
+                  $licenseError = $true
                 }
               }
               if ($exitCode -eq 199) {
-                Write-Host "::warning::Unity license error (exit code 199), triggering retry..."
+                $licenseError = $true
+              }
+
+              if ($licenseError) {
+                Write-Host "::warning::Unity license error detected, attempting recovery via Unity Hub..."
+
+                # Unity Hub를 headless로 실행하여 라이선스 토큰 갱신 유도
+                $hubPath = "C:\Program Files\Unity Hub\Unity Hub.exe"
+                if (Test-Path $hubPath) {
+                  try {
+                    & $hubPath -- --headless editors --installed 2>&1 | Out-Null
+                    Write-Host "Unity Hub license refresh attempted"
+                  } catch {
+                    Write-Host "Unity Hub refresh failed: $_"
+                  }
+                  Start-Sleep -Seconds 3
+
+                  # 기존 Licensing Client 프로세스 정리
+                  Get-Process -Name "Unity.Licensing.Client" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+                  Start-Sleep -Seconds 2
+                  Write-Host "Licensing Client processes cleared for fresh start"
+                }
+
+                Write-Host "::warning::Triggering retry after license recovery..."
                 exit 1
               }
+
               Write-Host "::error::Unity build failed with exit code: $exitCode"
               exit $exitCode
             }

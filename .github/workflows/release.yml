@@ -271,9 +271,9 @@ jobs:
       - name: 빌드 매트릭스 결정
         id: matrix
         run: |
-          # push 이벤트(update/ 브랜치 머지)는 자동 릴리즈이므로 full 빌드로 검증
+          # push 이벤트(update/ 브랜치 머지)는 E2E에서 이미 검증되었으므로 minimal 빌드
           if [ "${{ github.event_name }}" = "push" ]; then
-            STRATEGY="full"
+            STRATEGY="minimal"
           else
             STRATEGY="${{ inputs.build_strategy || 'minimal' }}"
           fi

@@ -99,7 +99,7 @@ namespace AppsInToss
         [Preserve]
         [APICategory("Share")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable<string> GetTossShareLink(string path)
+        public static async Awaitable<string> GetTossShareLink(string path, string ogImageUrl = null)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var acs = new AwaitableCompletionSource<string>();
@@ -107,7 +107,7 @@ namespace AppsInToss
                 result => acs.SetResult(result),
                 error => acs.SetException(error)
             );
-            __getTossShareLink_Internal(path, callbackId, "string");
+            __getTossShareLink_Internal(path, ogImageUrl, callbackId, "string");
             return await acs.Awaitable;
 #else
             // Unity Editor mock implementation (Unity 6+)
@@ -117,7 +117,7 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async Task<string> GetTossShareLink(string path)
+        public static async Task<string> GetTossShareLink(string path, string ogImageUrl = null)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<string>();
@@ -125,7 +125,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __getTossShareLink_Internal(path, callbackId, "string");
+            __getTossShareLink_Internal(path, ogImageUrl, callbackId, "string");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation
@@ -138,7 +138,7 @@ namespace AppsInToss
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
-        private static extern void __getTossShareLink_Internal(string path, string callbackId, string typeName);
+        private static extern void __getTossShareLink_Internal(string path, string ogImageUrl, string callbackId, string typeName);
 #endif
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]

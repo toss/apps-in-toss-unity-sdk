@@ -748,15 +748,34 @@
                     }
                     console.error('[AIT] WebGL 진단 정보:', JSON.stringify(diag, null, 2));
 
-                    showLoadError(
-                        'WebGL 초기화 실패',
-                        '기기의 메모리가 부족하거나 WebGL을 지원하지 않습니다.',
-                        [
-                            '다른 앱을 종료한 후 다시 시도해 주세요.',
-                            '기기를 재시작하면 도움이 될 수 있습니다.'
-                        ],
-                        { error: errorStr, creationError: creationError || null, webglDiag: diag }
-                    );
+                    // 에러 유형별 분류
+                    var isContextTypeConflict = creationError && creationError.indexOf('existing context') !== -1;
+
+                    if (isContextTypeConflict) {
+                        console.error('[AIT] ⚠️ WebGL context 타입 충돌 감지');
+                        console.error('[AIT]   원인: 동일 canvas에 서로 다른 WebGL 버전의 context가 생성됨');
+                        console.error('[AIT]   해결: Unity Player Settings > Graphics APIs에서 OpenGLES2를 제거하고 OpenGLES3(WebGL 2.0)만 남기세요');
+                        showLoadError(
+                            'WebGL 초기화 실패',
+                            'WebGL context 타입이 충돌합니다. 빌드 설정을 확인해 주세요.',
+                            [
+                                '(개발자용) Player Settings > Graphics APIs에서 OpenGLES2를 제거해 주세요.',
+                                '앱을 종료하고 다시 시도해 주세요.',
+                                '문제가 지속되면 개발자에게 문의해 주세요.'
+                            ],
+                            { error: errorStr, creationError: creationError, webglDiag: diag }
+                        );
+                    } else {
+                        showLoadError(
+                            'WebGL 초기화 실패',
+                            '기기의 메모리가 부족하거나 WebGL을 지원하지 않습니다.',
+                            [
+                                '다른 앱을 종료한 후 다시 시도해 주세요.',
+                                '기기를 재시작하면 도움이 될 수 있습니다.'
+                            ],
+                            { error: errorStr, creationError: creationError || null, webglDiag: diag }
+                        );
+                    }
                 }
 
                 function _aitGLErrorHandler(e) {

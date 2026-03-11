@@ -14,6 +14,7 @@ import * as fs from 'fs';
 import { TypeScriptParser } from '../../src/parser/TypeScriptParser.js';
 import { FRAMEWORK_APIS, API_CATEGORIES, CATEGORY_ORDER } from '../../src/categories.js';
 import type { ParsedAPI } from '../../src/types.js';
+import { prepareParameters } from '../../src/generators/csharp/api-data-preparer.js';
 import { generateChangelogHTML } from './report/changelog-html.js';
 
 // =================================================================
@@ -209,6 +210,47 @@ describe('다중 버전 호환성 테스트', () => {
     for (const name of FRAMEWORK_APIS) {
       expect(allMappedApis.has(name), `FRAMEWORK_API '${name}'이(가) API_CATEGORIES에 없음`).toBe(true);
     }
+  });
+
+  // Record<string, object/unknown> 파라미터가 object로 매핑되는지 검증
+  // (하위 호환성: 수동 작성 파일이 object 타입으로 호출하므로 Dictionary<string, object>가 되면 안 됨)
+  describe.each(installedVersions.map(v => ({ version: v })))('v$version Record→object 파라미터 호환성', ({ version }) => {
+    let apis: ParsedAPI[] = [];
+
+    beforeAll(async () => {
+      const paths = resolveVersionPaths(version);
+      if (!paths.dtsDir) return;
+      const frameworkApiNames = hasFrameworkApis(version) ? FRAMEWORK_APIS : [];
+      apis = await createParser(paths).parseAPIs(frameworkApiNames);
+    });
+
+    test('모든 API 파라미터에서 Dictionary<string, object>가 생성되지 않아야 함', () => {
+      for (const api of apis) {
+        const prepared = prepareParameters(api);
+        for (const param of prepared) {
+          expect(
+            param.paramType,
+            `API '${api.name}'의 파라미터 '${param.paramName}'이 Dictionary<string, object>로 매핑됨 (object여야 함)`
+          ).not.toBe('Dictionary<string, object>');
+        }
+      }
+    });
+
+    test('Analytics API 파라미터가 object 타입이어야 함 (수동 파일 호환성)', () => {
+      const analyticsApis = apis.filter(a =>
+        a.name === 'analyticsScreen' || a.name === 'analyticsImpression' || a.name === 'analyticsClick'
+      );
+
+      for (const api of analyticsApis) {
+        const prepared = prepareParameters(api);
+        for (const param of prepared) {
+          expect(
+            param.paramType,
+            `Analytics API '${api.name}'의 파라미터 '${param.paramName}'이 '${param.paramType}'이지만 'object'여야 함`
+          ).toBe('object');
+        }
+      }
+    });
   });
 
   // 버전별 API 변화 HTML 리포트 생성

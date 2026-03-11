@@ -65,6 +65,13 @@ export function prepareParameters(api: ParsedAPI): PreparedParameter[] {
     .map(param => {
       let paramType = mapToCSharpType(param.type);
 
+      // Record<string, object/unknown> → object (하위 호환성)
+      // API 파라미터에서 Dictionary<string, object>는 object와 동일하게 직렬화되므로
+      // 더 넓은 타입인 object를 사용하여 수동 작성 코드의 호환성 보장
+      if (paramType === 'Dictionary<string, object>') {
+        paramType = 'object';
+      }
+
       // 파라미터가 익명 객체(__type, object)인 경우 의미있는 이름 생성
       if ((paramType === '__type' || paramType === 'object') && param.type.kind === 'object' && param.type.properties && param.type.properties.length > 0) {
         const capitalize = (str: string) => str.charAt(0).toUpperCase() + str.slice(1);

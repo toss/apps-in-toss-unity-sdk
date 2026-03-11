@@ -337,6 +337,7 @@ jobs:
 
   # =====================================================
   # AIT 빌드 - macOS
+  # macOS runner 라이선스 문제 시 Windows로 폴백
   # =====================================================
   build-ait-macos:
     name: AIT 빌드 (macOS)
@@ -350,7 +351,7 @@ jobs:
     uses: ./.github/workflows/unity-build.yml
     with:
       ref: ${{ needs.regenerate-sdk.outputs.ref }}
-      os: macos
+      os: windows
       unity-version: ${{ matrix.unity-version }}
       web-framework-version: ${{ needs.release.outputs.version }}
       sdk-version: ${{ needs.release.outputs.version }}

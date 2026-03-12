@@ -787,133 +787,6 @@ jobs:
           fi
 
       # =====================================================
-      # LicensingClient 서명 검증 수리 (Windows)
-      # macOS와 동일한 문제: LicensingClient.exe 서명이 만료/손상되면
-      # batchmode에서 "Code 10 while verifying Licensing Client signature" 에러 발생.
-      # 서명이 유효한 다른 Unity 버전 또는 Unity Hub에서 복사하여 수리.
-      # =====================================================
-      - name: Fix LicensingClient Signature (Windows)
-        if: inputs.os == 'windows' && inputs.run-build && (inputs.test-level || '2') != '0'
-        shell: powershell
-        continue-on-error: true
-        run: |
-          $UNITY_BASE = "C:\Program Files\Unity\Hub\Editor"
-          $CURRENT_VERSION = "${{ steps.unity.outputs.UNITY_VERSION }}"
-          $CURRENT_DIR = Join-Path $UNITY_BASE $CURRENT_VERSION
-
-          # LicensingClient.exe 경로 탐색
-          $targetExe = $null
-          $candidates = @(
-            (Join-Path $CURRENT_DIR "Editor\Data\Resources\Licensing\Client\Unity.Licensing.Client.exe"),
-            (Join-Path $CURRENT_DIR "Editor\Data\Resources\Licensing\Client\UnityLicensingClient.exe")
-          )
-          foreach ($c in $candidates) {
-            if (Test-Path $c) { $targetExe = $c; break }
-          }
-
-          if (-not $targetExe) {
-            Write-Host "LicensingClient not found, skipping"
-            exit 0
-          }
-
-          $targetDir = Split-Path $targetExe
-          Write-Host "Verifying signature: $targetExe"
-
-          # 서명 검증 — 정상이면 아무것도 하지 않음
-          $sig = Get-AuthenticodeSignature $targetExe
-          if ($sig.Status -eq "Valid") {
-            Write-Host "Signature is valid, no action needed"
-            exit 0
-          }
-
-          Write-Host "::warning::LicensingClient signature invalid: $($sig.Status) - $($sig.StatusMessage)"
-
-          # 서명이 유효한 donor 찾기
-          # 탐색 순서: Unity Hub 내장 → 다른 Unity 버전
-          $donorDir = $null
-          $donorSource = ""
-
-          # 1) Unity Hub 내장 LicensingClient
-          $hubBase = "C:\Program Files\Unity Hub"
-          $hubCandidates = @(
-            (Join-Path $hubBase "resources\Unity.Licensing.Client.exe"),
-            (Join-Path $hubBase "Unity.Licensing.Client.exe")
-          )
-          foreach ($hc in $hubCandidates) {
-            if (Test-Path $hc) {
-              $hSig = Get-AuthenticodeSignature $hc
-              if ($hSig.Status -eq "Valid") {
-                $donorDir = Split-Path $hc
-                $donorSource = "Unity Hub"
-                break
-              }
-            }
-          }
-
-          # 2) 다른 Unity 버전
-          if (-not $donorDir) {
-            $otherVersions = Get-ChildItem -Path $UNITY_BASE -Directory |
-              Where-Object { $_.Name -ne $CURRENT_VERSION } |
-              Sort-Object Name -Descending
-            foreach ($ver in $otherVersions) {
-              $otherCandidates = @(
-                (Join-Path $ver.FullName "Editor\Data\Resources\Licensing\Client\Unity.Licensing.Client.exe"),
-                (Join-Path $ver.FullName "Editor\Data\Resources\Licensing\Client\UnityLicensingClient.exe")
-              )
-              foreach ($oc in $otherCandidates) {
-                if (Test-Path $oc) {
-                  $oSig = Get-AuthenticodeSignature $oc
-                  if ($oSig.Status -eq "Valid") {
-                    $donorDir = Split-Path $oc
-                    $donorSource = "Unity $($ver.Name)"
-                    break
-                  }
-                }
-              }
-              if ($donorDir) { break }
-            }
-          }
-
-          if (-not $donorDir) {
-            Write-Host "::warning::No valid LicensingClient found as donor, build may fail"
-            exit 0
-          }
-
-          Write-Host "Donor source: $donorSource ($donorDir)"
-
-          # Licensing Client 프로세스 종료
-          Get-Process -Name "Unity.Licensing.Client" -ErrorAction SilentlyContinue |
-            Stop-Process -Force -ErrorAction SilentlyContinue
-          Start-Sleep -Seconds 2
-
-          # 백업 후 교체
-          $backupDir = "$targetDir.bak"
-          if (Test-Path $backupDir) { Remove-Item -Recurse -Force $backupDir }
-          Copy-Item -Recurse -Force $targetDir $backupDir
-
-          Get-ChildItem -Path $donorDir -File | ForEach-Object {
-            Copy-Item -Force $_.FullName (Join-Path $targetDir $_.Name)
-            Write-Host "  Copied: $($_.Name)"
-          }
-
-          # 검증
-          $newExe = $null
-          foreach ($c in $candidates) {
-            if (Test-Path $c) { $newExe = $c; break }
-          }
-          if ($newExe) {
-            $newSig = Get-AuthenticodeSignature $newExe
-            if ($newSig.Status -eq "Valid") {
-              Write-Host "LicensingClient replaced and verified successfully"
-              Remove-Item -Recurse -Force $backupDir
-            } else {
-              Write-Host "::warning::Replacement still invalid, restoring backup"
-              Remove-Item -Recurse -Force $targetDir
-              Rename-Item $backupDir $targetDir
-            }
-          }
-
-      # =====================================================
       # Unity EditMode 유닛 테스트 (선택적)
       # =====================================================
       - name: Run Unity EditMode Tests (macOS)
@@ -1112,9 +985,21 @@ jobs:
             echo "Unity exited with code: $EXIT_CODE"
 
             if [ $EXIT_CODE -ne 0 ]; then
+              # 빌드 도구 에러 우선 감지 (라이선스 오분류 방지)
+              BUILD_TOOL_ERROR=false
+              if grep -qE "Unknown Syntax Error|FAIL_NPM_BUILD|FAIL_NPM_INSTALL|Command not found.*ait|npm ERR!" "$LOG_FILE" 2>/dev/null; then
+                BUILD_TOOL_ERROR=true
+              fi
+
+              if [ "$BUILD_TOOL_ERROR" = true ]; then
+                echo "::error::Build tool error detected (not a license issue), failing immediately"
+                grep -E "Unknown Syntax Error|FAIL_NPM|Command not found|npm ERR!" "$LOG_FILE" 2>/dev/null | tail -5
+                exit $EXIT_CODE
+              fi
+
               # 라이선스 관련 오류 감지 (retry 액션이 자동 재시도)
               LICENSE_ERROR=false
-              if grep -qE "No valid Unity Editor license found|Unsupported protocol version|ResponseCode: 505|Token not found in cache|Access token is unavailable" "$LOG_FILE" 2>/dev/null; then
+              if grep -qE "No valid Unity Editor license found|Unsupported protocol version|ResponseCode: 505|Access token is unavailable" "$LOG_FILE" 2>/dev/null; then
                 LICENSE_ERROR=true
               fi
               if [ $EXIT_CODE -eq 199 ]; then
@@ -1221,11 +1106,25 @@ jobs:
             }
 
             if ($exitCode -ne 0) {
+              # 빌드 도구 에러 우선 감지 (라이선스 오분류 방지)
+              $buildToolError = $false
+              if (Test-Path $logFile) {
+                $logContent = Get-Content $logFile -Raw -ErrorAction SilentlyContinue
+                if ($logContent -match "Unknown Syntax Error|FAIL_NPM_BUILD|FAIL_NPM_INSTALL|Command not found.*ait|npm ERR!") {
+                  $buildToolError = $true
+                }
+              }
+
+              if ($buildToolError) {
+                Write-Host "::error::Build tool error detected (not a license issue), failing immediately"
+                exit $exitCode
+              }
+
               # 라이선스 관련 오류 감지 (retry 액션이 자동 재시도)
               $licenseError = $false
               if (Test-Path $logFile) {
                 $logContent = Get-Content $logFile -Raw -ErrorAction SilentlyContinue
-                if ($logContent -match "No valid Unity Editor license found|Unsupported protocol version|ResponseCode: 505|Token not found in cache|Access token is unavailable") {
+                if ($logContent -match "No valid Unity Editor license found|Unsupported protocol version|ResponseCode: 505|Access token is unavailable") {
                   $licenseError = $true
                 }
               }

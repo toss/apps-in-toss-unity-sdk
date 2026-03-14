@@ -969,6 +969,7 @@ jobs:
           timeout_minutes: 30
           max_attempts: 3
           retry_wait_seconds: 30
+          retry_on_exit_code: 42
           shell: bash
           command: |
             UNITY_PATH="${{ steps.unity.outputs.UNITY_PATH }}"
@@ -1028,7 +1029,7 @@ jobs:
                 fi
 
                 echo "::warning::Triggering retry after license recovery..."
-                exit 1
+                exit 42
               fi
 
               echo "::error::Unity build failed with exit code: $EXIT_CODE"
@@ -1047,6 +1048,7 @@ jobs:
           timeout_minutes: 30
           max_attempts: 3
           retry_wait_seconds: 30
+          retry_on_exit_code: 42
           shell: powershell
           command: |
             $unityPath = "${{ steps.unity.outputs.UNITY_PATH }}"
@@ -1157,7 +1159,7 @@ jobs:
                 }
 
                 Write-Host "::warning::Triggering retry after license recovery..."
-                exit 1
+                exit 42
               }
 
               Write-Host "::error::Unity build failed with exit code: $exitCode"

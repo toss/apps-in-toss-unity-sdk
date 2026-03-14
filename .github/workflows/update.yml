@@ -287,9 +287,12 @@ jobs:
           BUILDCONFIG_PKG="WebGLTemplates/AITTemplate/BuildConfig~/package.json"
 
           # BuildConfig의 web-framework 버전도 동기화
-          jq --arg v "$VERSION" '.dependencies["@apps-in-toss/web-framework"] = $v' "$BUILDCONFIG_PKG" > tmp.json
+          jq --arg v "$VERSION" '
+            .dependencies["@apps-in-toss/web-framework"] = $v |
+            .dependencies["@apps-in-toss/web-analytics"] = $v
+          ' "$BUILDCONFIG_PKG" > tmp.json
           mv tmp.json "$BUILDCONFIG_PKG"
-          echo "BuildConfig web-framework 버전: ${VERSION}"
+          echo "BuildConfig web-framework/web-analytics 버전: ${VERSION}"
 
           # 확인
           cat "$BUILDCONFIG_PKG" | jq '.dependencies'
@@ -338,7 +341,7 @@ jobs:
 
           - @apps-in-toss/web-framework v${VERSION} 기반 SDK 코드 재생성
           - package.json 버전 동기화
-          - BuildConfig package.json web-framework 버전 동기화
+          - BuildConfig package.json web-framework/web-analytics 버전 동기화
           - unity-bridge.ts 자동 생성
           - Docs~/GettingStarted.md 설치 가이드 업데이트
 

@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "ait dev",
-    "build": "ait build || npx vite build",
+    "build": "ait build || npx vite build --outDir dist/web",
     "start": "ait dev",
     "deploy": "ait deploy"
   },

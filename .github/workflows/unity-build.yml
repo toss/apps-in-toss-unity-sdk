@@ -167,11 +167,13 @@ jobs:
           BUILDCONFIG_PKG="WebGLTemplates/AITTemplate/BuildConfig~/package.json"
           if [[ "$RUNNER_OS" == "macOS" ]]; then
             sed -i '' 's/"@apps-in-toss\/web-framework": "[^"]*"/"@apps-in-toss\/web-framework": "'"${OVERRIDE_VERSION}"'"/' "$BUILDCONFIG_PKG"
+            sed -i '' 's/"@apps-in-toss\/web-analytics": "[^"]*"/"@apps-in-toss\/web-analytics": "'"${OVERRIDE_VERSION}"'"/' "$BUILDCONFIG_PKG"
           else
             sed -i 's/"@apps-in-toss\/web-framework": "[^"]*"/"@apps-in-toss\/web-framework": "'"${OVERRIDE_VERSION}"'"/' "$BUILDCONFIG_PKG"
+            sed -i 's/"@apps-in-toss\/web-analytics": "[^"]*"/"@apps-in-toss\/web-analytics": "'"${OVERRIDE_VERSION}"'"/' "$BUILDCONFIG_PKG"
           fi
           echo "BuildConfig updated:"
-          grep "web-framework" "$BUILDCONFIG_PKG"
+          grep -E "web-framework|web-analytics" "$BUILDCONFIG_PKG"
 
           # 3. SDK 코드 재생성
           # 잡별 격리된 pnpm store 사용 (동시 실행 시 공유 store 충돌 방지)
@@ -377,8 +379,10 @@ jobs:
           # sed로 버전 업데이트 (macOS/Windows 호환)
           if [ "${{ inputs.os }}" = "macos" ]; then
             sed -i '' 's/"@apps-in-toss\/web-framework": "[^"]*"/"@apps-in-toss\/web-framework": "'"$VERSION"'"/' "$BUILD_CONFIG"
+            sed -i '' 's/"@apps-in-toss\/web-analytics": "[^"]*"/"@apps-in-toss\/web-analytics": "'"$VERSION"'"/' "$BUILD_CONFIG"
           else
             sed -i 's/"@apps-in-toss\/web-framework": "[^"]*"/"@apps-in-toss\/web-framework": "'"$VERSION"'"/' "$BUILD_CONFIG"
+            sed -i 's/"@apps-in-toss\/web-analytics": "[^"]*"/"@apps-in-toss\/web-analytics": "'"$VERSION"'"/' "$BUILD_CONFIG"
           fi
 
           echo "Updated BuildConfig:"

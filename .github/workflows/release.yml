@@ -351,7 +351,7 @@ jobs:
     uses: ./.github/workflows/unity-build.yml
     with:
       ref: ${{ needs.regenerate-sdk.outputs.ref }}
-      os: windows
+      os: macos
       unity-version: ${{ matrix.unity-version }}
       web-framework-version: ${{ needs.release.outputs.version }}
       sdk-version: ${{ needs.release.outputs.version }}

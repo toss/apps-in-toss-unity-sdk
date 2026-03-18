@@ -980,32 +980,25 @@ jobs:
             echo "Unity Path: ${UNITY_PATH}"
             echo "Project Path: ${PROJECT_PATH}"
 
-            # Unity 프로세스를 백그라운드로 실행하고 로그를 파일에 기록
-            # 참고: `-logFile - | tee`는 Unity 자식 프로세스(websockify 등)가
-            # stdout fd를 상속받아 Unity 종료 후에도 파이프가 닫히지 않아
-            # tee가 무한 대기하는 문제가 있음 (30분 타임아웃 유발)
-            "$UNITY_PATH" -quit -batchmode -nographics \
-              -projectPath "$PROJECT_PATH" \
-              -executeMethod E2EBuildRunner.CommandLineBuild \
-              -buildTarget WebGL \
-              -logFile "$LOG_FILE" &
-            UNITY_PID=$!
-
-            # Unity 프로세스 실행 중 로그를 실시간 출력
+            # Unity를 foreground로 실행하되, `-logFile -`의 파이프 hang 문제를 회피
+            # 문제: `-logFile - | tee`는 Unity 자식 프로세스(websockify 등)가
+            # stdout fd를 상속받아 Unity 종료 후에도 파이프가 닫히지 않음
+            # 해결: 로그를 파일에 기록하고 tail -f로 실시간 출력, Unity는 foreground 실행
+            rm -f "$LOG_FILE"
             touch "$LOG_FILE"
             tail -f "$LOG_FILE" &
             TAIL_PID=$!
 
-            # Unity 프로세스 종료 대기
-            wait $UNITY_PID
+            "$UNITY_PATH" -quit -batchmode -nographics \
+              -projectPath "$PROJECT_PATH" \
+              -executeMethod E2EBuildRunner.CommandLineBuild \
+              -buildTarget WebGL \
+              -logFile "$LOG_FILE"
             EXIT_CODE=$?
 
             # tail 프로세스 정리
             kill $TAIL_PID 2>/dev/null || true
             wait $TAIL_PID 2>/dev/null || true
-
-            # 남은 로그 출력
-            cat "$LOG_FILE" | tail -5
 
             echo "Unity exited with code: $EXIT_CODE"
 

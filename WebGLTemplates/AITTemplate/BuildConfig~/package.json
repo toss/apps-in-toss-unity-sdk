@@ -9,8 +9,8 @@
     "deploy": "ait deploy"
   },
   "dependencies": {
-    "@apps-in-toss/web-analytics": "2.0.5",
-    "@apps-in-toss/web-framework": "2.0.5"
+    "@apps-in-toss/web-analytics": "2.0.7",
+    "@apps-in-toss/web-framework": "2.0.7"
   },
   "devDependencies": {
     "vite": "^7.3.1",

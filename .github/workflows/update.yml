@@ -225,11 +225,11 @@ jobs:
         run: |
           VERSION="${{ steps.version.outputs.version }}"
 
-          echo "=== web-framework v${VERSION} 업데이트 ==="
+          echo "=== web-framework, web-analytics v${VERSION} 업데이트 ==="
 
           # 캐시 정리 후 강제 업데이트 (캐시로 인한 오래된 버전 문제 방지)
           pnpm store prune
-          pnpm update "@apps-in-toss/web-framework@${VERSION}" --force --registry https://registry.npmjs.org
+          pnpm update "@apps-in-toss/web-framework@${VERSION}" "@apps-in-toss/web-analytics@${VERSION}" --force --registry https://registry.npmjs.org
 
           # 설치된 버전 검증
           INSTALLED_VERSION=$(pnpm list @apps-in-toss/web-framework --json | jq -r '.[0].dependencies["@apps-in-toss/web-framework"].version')

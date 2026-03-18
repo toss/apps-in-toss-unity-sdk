@@ -980,14 +980,11 @@ jobs:
             echo "Unity Path: ${UNITY_PATH}"
             echo "Project Path: ${PROJECT_PATH}"
 
-            # Unity를 백그라운드로 실행하고 로그 감시로 종료 감지
+            # Unity 빌드 실행 및 hang 방지
             # 문제: Unity가 "Exiting batchmode successfully now!" 출력 후에도
             # 자식 프로세스(websockify, Licensing Client 등) 때문에 프로세스가 종료되지 않음
-            # 해결: 로그에서 종료 메시지를 감지하면 일정 시간 후 Unity를 강제 종료
+            # 해결: 로그 파일을 폴링하면서 종료 메시지 감지 시 Unity 프로세스 트리를 강제 종료
             rm -f "$LOG_FILE"
-            touch "$LOG_FILE"
-            tail -f "$LOG_FILE" &
-            TAIL_PID=$!
 
             "$UNITY_PATH" -quit -batchmode -nographics \
               -projectPath "$PROJECT_PATH" \
@@ -995,34 +992,67 @@ jobs:
               -buildTarget WebGL \
               -logFile "$LOG_FILE" &
             UNITY_PID=$!
+            echo "Unity started with PID: $UNITY_PID"
 
-            # Unity 로그 감시: "Exiting batchmode" 감지 후 30초 대기 → 강제 종료
-            EXIT_CODE=0
-            while kill -0 $UNITY_PID 2>/dev/null; do
-              if grep -q "Exiting batchmode successfully now!" "$LOG_FILE" 2>/dev/null; then
-                echo "Unity batchmode exit detected, waiting 30s for graceful shutdown..."
-                sleep 30
-                if kill -0 $UNITY_PID 2>/dev/null; then
-                  echo "::warning::Unity process still alive after graceful period, force killing (pid: $UNITY_PID)"
-                  kill -9 $UNITY_PID 2>/dev/null || true
+            # 로그 폴링: 5초마다 새 내용 출력 + 종료 감지
+            LOG_OFFSET=0
+            MAX_WAIT=1500  # 25분 (retry 타임아웃 30분보다 짧게)
+            ELAPSED=0
+            EXIT_CODE=""
+
+            while [ $ELAPSED -lt $MAX_WAIT ]; do
+              sleep 5
+              ELAPSED=$((ELAPSED + 5))
+
+              # 새 로그 내용 출력
+              if [ -f "$LOG_FILE" ]; then
+                FILE_SIZE=$(wc -c < "$LOG_FILE" | tr -d ' ')
+                if [ "$FILE_SIZE" -gt "$LOG_OFFSET" ]; then
+                  dd if="$LOG_FILE" bs=1 skip=$LOG_OFFSET count=$((FILE_SIZE - LOG_OFFSET)) 2>/dev/null
+                  LOG_OFFSET=$FILE_SIZE
                 fi
+              fi
+
+              # Unity 프로세스가 자연 종료된 경우
+              if ! kill -0 $UNITY_PID 2>/dev/null; then
+                wait $UNITY_PID 2>/dev/null || true
+                EXIT_CODE=$?
+                echo "Unity process exited naturally with code: $EXIT_CODE"
                 break
               fi
-              sleep 5
+
+              # 로그에서 정상 종료 메시지 감지 → 강제 종료
+              if [ -f "$LOG_FILE" ] && grep -q "Exiting batchmode successfully now!" "$LOG_FILE" 2>/dev/null; then
+                echo "Unity batchmode exit detected but process still alive, waiting 30s..."
+                sleep 30
+                if kill -0 $UNITY_PID 2>/dev/null; then
+                  echo "::warning::Force killing Unity process tree (pid: $UNITY_PID)"
+                  pkill -9 -P $UNITY_PID 2>/dev/null || true
+                  kill -9 $UNITY_PID 2>/dev/null || true
+                fi
+                wait $UNITY_PID 2>/dev/null || true
+                EXIT_CODE=0
+                echo "Unity force-killed after successful batchmode exit"
+                break
+              fi
             done
 
-            wait $UNITY_PID 2>/dev/null || true
-            # exit code 137 = killed by SIGKILL (정상 종료 후 강제 kill한 경우)
-            WAIT_EXIT=$?
-            if [ $WAIT_EXIT -eq 137 ] && grep -q "Exiting batchmode successfully now!" "$LOG_FILE" 2>/dev/null; then
-              EXIT_CODE=0
-            else
-              EXIT_CODE=$WAIT_EXIT
+            # 타임아웃 처리
+            if [ -z "$EXIT_CODE" ]; then
+              echo "::error::Unity build timed out after ${MAX_WAIT}s"
+              pkill -9 -P $UNITY_PID 2>/dev/null || true
+              kill -9 $UNITY_PID 2>/dev/null || true
+              wait $UNITY_PID 2>/dev/null || true
+              EXIT_CODE=1
             fi
 
-            # tail 프로세스 정리
-            kill $TAIL_PID 2>/dev/null || true
-            wait $TAIL_PID 2>/dev/null || true
+            # 남은 로그 출력
+            if [ -f "$LOG_FILE" ]; then
+              FILE_SIZE=$(wc -c < "$LOG_FILE" | tr -d ' ')
+              if [ "$FILE_SIZE" -gt "$LOG_OFFSET" ]; then
+                dd if="$LOG_FILE" bs=1 skip=$LOG_OFFSET count=$((FILE_SIZE - LOG_OFFSET)) 2>/dev/null
+              fi
+            fi
 
             echo "Unity exited with code: $EXIT_CODE"
 

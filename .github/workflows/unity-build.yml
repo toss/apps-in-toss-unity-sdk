@@ -980,19 +980,39 @@ jobs:
             echo "Unity Path: ${UNITY_PATH}"
             echo "Project Path: ${PROJECT_PATH}"
 
-            # Unity 빌드 실행 (timeout으로 hang 방지)
+            # Unity 빌드 실행 (백그라운드 + watchdog으로 hang 방지)
             # 문제: Unity가 "Exiting batchmode successfully now!" 출력 후에도
             # 자식 프로세스 때문에 메인 프로세스가 종료되지 않음
-            # 해결: timeout 명령으로 25분 제한, 로그는 파일 기록 후 사후 출력
+            # 해결: 백그라운드 실행 + watchdog 서브쉘이 25분 후 프로세스 트리 kill
             rm -f "$LOG_FILE"
             touch "$LOG_FILE"
 
-            timeout 1500 "$UNITY_PATH" -quit -batchmode -nographics \
+            "$UNITY_PATH" -quit -batchmode -nographics \
               -projectPath "$PROJECT_PATH" \
               -executeMethod E2EBuildRunner.CommandLineBuild \
               -buildTarget WebGL \
-              -logFile "$LOG_FILE" || true
+              -logFile "$LOG_FILE" &
+            UNITY_PID=$!
+            echo "Unity started with PID: $UNITY_PID"
+
+            # Watchdog: 25분 후 Unity 프로세스 트리 강제 종료
+            (
+              sleep 1500
+              if kill -0 $UNITY_PID 2>/dev/null; then
+                echo "::warning::Watchdog: killing Unity after 25min (pid: $UNITY_PID)"
+                pkill -9 -P $UNITY_PID 2>/dev/null || true
+                kill -9 $UNITY_PID 2>/dev/null || true
+              fi
+            ) &
+            WATCHDOG_PID=$!
+
+            # Unity 종료 대기
+            wait $UNITY_PID 2>/dev/null
             RAW_EXIT=$?
+
+            # Watchdog 정리
+            kill $WATCHDOG_PID 2>/dev/null || true
+            wait $WATCHDOG_PID 2>/dev/null || true
 
             # 로그 출력
             echo "=== Unity Build Log (last 200 lines) ==="
@@ -1000,17 +1020,15 @@ jobs:
             echo "=== End of Unity Build Log ==="
 
             # exit code 판정
-            # timeout 종료 시: macOS에서 exit code 124
-            # Unity 정상 종료: exit code 0
             if [ $RAW_EXIT -eq 0 ]; then
               EXIT_CODE=0
-            elif [ $RAW_EXIT -eq 124 ] || [ $RAW_EXIT -eq 137 ]; then
-              # timeout에 의한 종료 — 로그에서 성공 여부 판단
+            elif [ $RAW_EXIT -eq 137 ] || [ $RAW_EXIT -eq 143 ]; then
+              # kill에 의한 종료 — 로그에서 성공 여부 판단
               if grep -q "Exiting batchmode successfully now!" "$LOG_FILE" 2>/dev/null; then
-                echo "::warning::Unity process was killed by timeout but build completed successfully"
+                echo "::warning::Unity was killed but build had completed successfully"
                 EXIT_CODE=0
               else
-                echo "::error::Unity build timed out without completing"
+                echo "::error::Unity was killed before build completed"
                 EXIT_CODE=1
               fi
             else

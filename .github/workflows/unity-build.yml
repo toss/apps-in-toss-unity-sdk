@@ -959,158 +959,71 @@ jobs:
       # =====================================================
       # Unity WebGL 빌드
       # =====================================================
+      # Unity 빌드 실행 (macOS)
+      # `-logFile - | tee`로 실시간 로그 출력
+      # Unity가 빌드 완료 후 자식 프로세스(websockify 등) 때문에 hang하면
+      # timeout-minutes에 의해 step이 취소되고, 다음 step에서 로그 기반 성공 판정
       - name: Build Unity WebGL (macOS)
+        id: unity-build-macos
         if: inputs.os == 'macos' && inputs.run-build && (inputs.test-level || '2') != '0'
-        uses: nick-invision/retry@v3
+        timeout-minutes: 20
+        continue-on-error: true
         env:
           AIT_DEBUG_CONSOLE: "true"
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
-        with:
-          timeout_minutes: 30
-          max_attempts: 3
-          retry_wait_seconds: 30
-          retry_on_exit_code: 42
-          shell: bash
-          command: |
-            UNITY_PATH="${{ steps.unity.outputs.UNITY_PATH }}"
-            PROJECT_PATH="${{ github.workspace }}/Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}"
-            LOG_FILE="/tmp/unity-build-${{ inputs.unity-version }}.log"
+        run: |
+          UNITY_PATH="${{ steps.unity.outputs.UNITY_PATH }}"
+          PROJECT_PATH="${{ github.workspace }}/Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}"
+          LOG_FILE="/tmp/unity-build-${{ inputs.unity-version }}.log"
 
-            echo "Unity Version: ${{ steps.unity.outputs.UNITY_VERSION }}"
-            echo "Unity Path: ${UNITY_PATH}"
-            echo "Project Path: ${PROJECT_PATH}"
+          echo "Unity Version: ${{ steps.unity.outputs.UNITY_VERSION }}"
+          echo "Unity Path: ${UNITY_PATH}"
+          echo "Project Path: ${PROJECT_PATH}"
 
-            # Unity 빌드 실행 (폴링으로 hang 방지)
-            # 문제: Unity가 "Exiting batchmode successfully now!" 출력 후에도
-            # 자식 프로세스 때문에 메인 프로세스가 종료되지 않음
-            # 해결: Unity를 백그라운드로 실행하고 10초 간격 폴링으로 상태 감시
-            rm -f "$LOG_FILE"
+          "$UNITY_PATH" -quit -batchmode -nographics \
+            -projectPath "$PROJECT_PATH" \
+            -executeMethod E2EBuildRunner.CommandLineBuild \
+            -buildTarget WebGL \
+            -logFile - 2>&1 | tee "$LOG_FILE"
+          EXIT_CODE=${PIPESTATUS[0]}
 
-            # Unity를 setsid로 새 세션에서 실행 (프로세스 그룹 분리)
-            # stdout/stderr를 /dev/null로 리다이렉트하여 셸 블로킹 방지
-            "$UNITY_PATH" -quit -batchmode -nographics \
-              -projectPath "$PROJECT_PATH" \
-              -executeMethod E2EBuildRunner.CommandLineBuild \
-              -buildTarget WebGL \
-              -logFile "$LOG_FILE" </dev/null >/dev/null 2>&1 &
-            UNITY_PID=$!
-            echo "Unity started with PID: $UNITY_PID"
+          echo "Unity exited with code: $EXIT_CODE"
+          echo "unity_exit_code=$EXIT_CODE" >> $GITHUB_OUTPUT
 
-            # 폴링으로 Unity 종료 또는 빌드 완료 감지
-            POLL_INTERVAL=10
-            MAX_WAIT=1500
-            ELAPSED=0
-            BATCHMODE_EXIT_AT=""
+      # 빌드 결과 판정: 타임아웃으로 취소되었더라도 로그에서 성공 확인
+      - name: Verify Unity Build Result (macOS)
+        if: inputs.os == 'macos' && inputs.run-build && (inputs.test-level || '2') != '0'
+        run: |
+          LOG_FILE="/tmp/unity-build-${{ inputs.unity-version }}.log"
+          BUILD_OUTCOME="${{ steps.unity-build-macos.outcome }}"
+          EXIT_CODE="${{ steps.unity-build-macos.outputs.unity_exit_code }}"
 
-            while [ $ELAPSED -lt $MAX_WAIT ]; do
-              sleep $POLL_INTERVAL
-              ELAPSED=$((ELAPSED + POLL_INTERVAL))
+          echo "Build step outcome: $BUILD_OUTCOME"
+          echo "Unity exit code: $EXIT_CODE"
 
-              # Unity 프로세스가 종료된 경우
-              if ! kill -0 $UNITY_PID 2>/dev/null; then
-                echo "Unity process exited after ${ELAPSED}s"
-                break
-              fi
+          # 정상 완료
+          if [ "$BUILD_OUTCOME" = "success" ] && [ "$EXIT_CODE" = "0" ]; then
+            echo "Unity build completed successfully"
+            exit 0
+          fi
 
-              # 로그에서 빌드 완료 감지
-              if [ -z "$BATCHMODE_EXIT_AT" ] && [ -f "$LOG_FILE" ] && grep -q "Exiting batchmode successfully now!" "$LOG_FILE" 2>/dev/null; then
-                BATCHMODE_EXIT_AT=$ELAPSED
-                echo "Batchmode exit detected at ${ELAPSED}s, waiting 60s for graceful shutdown..."
-              fi
+          # 타임아웃 또는 실패 — 로그에서 성공 여부 확인
+          if [ -f "$LOG_FILE" ] && grep -q "Exiting batchmode successfully now!" "$LOG_FILE"; then
+            echo "::warning::Build step was cancelled/failed but Unity build completed successfully (log confirms batchmode exit)"
+            exit 0
+          fi
 
-              # 빌드 완료 후 60초 경과했는데 프로세스 미종료 → 강제 kill
-              if [ -n "$BATCHMODE_EXIT_AT" ]; then
-                SINCE_EXIT=$((ELAPSED - BATCHMODE_EXIT_AT))
-                if [ $SINCE_EXIT -ge 60 ]; then
-                  echo "::warning::Unity still alive ${SINCE_EXIT}s after batchmode exit, force killing"
-                  kill -9 $UNITY_PID 2>/dev/null || true
-                  sleep 2
-                  break
-                fi
-              fi
+          # 라이선스 에러 확인
+          if [ -f "$LOG_FILE" ] && grep -qE "No valid Unity Editor license found|Access token is unavailable" "$LOG_FILE"; then
+            echo "::error::Unity license error detected"
+          fi
 
-              # 진행 상황 (60초마다)
-              if [ $((ELAPSED % 60)) -eq 0 ]; then
-                echo "Waiting for Unity... ${ELAPSED}s elapsed"
-              fi
-            done
-
-            # 타임아웃
-            if [ $ELAPSED -ge $MAX_WAIT ] && kill -0 $UNITY_PID 2>/dev/null; then
-              echo "::error::Unity build timed out after ${MAX_WAIT}s"
-              kill -9 $UNITY_PID 2>/dev/null || true
-              sleep 2
-            fi
-
-            # wait으로 exit code 수집 (이미 종료된 프로세스이므로 즉시 반환)
-            wait $UNITY_PID 2>/dev/null || true
-            RAW_EXIT=$?
-
-            # 로그 출력
-            echo "=== Unity Build Log (last 200 lines) ==="
-            tail -200 "$LOG_FILE" 2>/dev/null || true
-            echo "=== End of Unity Build Log ==="
-
-            # exit code 판정
-            if [ $RAW_EXIT -eq 0 ]; then
-              EXIT_CODE=0
-            elif grep -q "Exiting batchmode successfully now!" "$LOG_FILE" 2>/dev/null; then
-              echo "::warning::Unity exited with code $RAW_EXIT but build completed successfully"
-              EXIT_CODE=0
-            else
-              EXIT_CODE=$RAW_EXIT
-            fi
-
-            echo "Unity exited with code: $EXIT_CODE"
-
-            if [ $EXIT_CODE -ne 0 ]; then
-              # 빌드 도구 에러 우선 감지 (라이선스 오분류 방지)
-              BUILD_TOOL_ERROR=false
-              if grep -qE "Unknown Syntax Error|FAIL_NPM_BUILD|FAIL_NPM_INSTALL|Command not found.*ait|npm ERR!" "$LOG_FILE" 2>/dev/null; then
-                BUILD_TOOL_ERROR=true
-              fi
-
-              if [ "$BUILD_TOOL_ERROR" = true ]; then
-                echo "::error::Build tool error detected (not a license issue), failing immediately"
-                grep -E "Unknown Syntax Error|FAIL_NPM|Command not found|npm ERR!" "$LOG_FILE" 2>/dev/null | tail -5
-                exit $EXIT_CODE
-              fi
-
-              # 라이선스 관련 오류 감지 (retry 액션이 자동 재시도)
-              LICENSE_ERROR=false
-              if grep -qE "No valid Unity Editor license found|Unsupported protocol version|ResponseCode: 505|Access token is unavailable" "$LOG_FILE" 2>/dev/null; then
-                LICENSE_ERROR=true
-              fi
-              if [ $EXIT_CODE -eq 199 ]; then
-                LICENSE_ERROR=true
-              fi
-
-              if [ "$LICENSE_ERROR" = true ]; then
-                echo "::warning::Unity license error detected, attempting recovery via Unity Hub..."
-
-                # Unity Hub를 잠시 실행하여 라이선스 토큰 갱신
-                UNITY_HUB="/Applications/Unity Hub.app/Contents/MacOS/Unity Hub"
-                if [ -f "$UNITY_HUB" ]; then
-                  # Hub를 headless로 실행하여 라이선스 갱신 유도
-                  "$UNITY_HUB" -- --headless editors --installed 2>&1 || true
-                  echo "Unity Hub license refresh attempted"
-                  sleep 3
-
-                  # 기존 Licensing Client 프로세스 정리 (갱신된 토큰으로 재시작하도록)
-                  pkill -f "Unity.Licensing.Client" 2>/dev/null || true
-                  sleep 2
-                  echo "Licensing Client processes cleared for fresh start"
-                fi
-
-                echo "::warning::Triggering retry after license recovery..."
-                exit 42
-              fi
-
-              echo "::error::Unity build failed with exit code: $EXIT_CODE"
-              exit $EXIT_CODE
-            fi
-
-            echo "Unity build completed successfully (exit code: $EXIT_CODE)"
+          echo "::error::Unity build failed (outcome: $BUILD_OUTCOME, exit_code: $EXIT_CODE)"
+          if [ -f "$LOG_FILE" ]; then
+            echo "=== Last 50 lines of Unity log ==="
+            tail -50 "$LOG_FILE"
+          fi
+          exit 1
 
       - name: Build Unity WebGL (Windows)
         if: inputs.os == 'windows' && inputs.run-build && (inputs.test-level || '2') != '0'

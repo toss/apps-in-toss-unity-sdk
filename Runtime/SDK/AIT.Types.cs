@@ -336,6 +336,57 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
+    public class GrantPromotionRewardParams
+    {
+        [Preserve]
+        [JsonProperty("params")]
+        public GrantPromotionRewardParamsParams Params;
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class GrantPromotionRewardParamsParams
+    {
+        [Preserve]
+        [JsonProperty("promotionCode")]
+        public string PromotionCode;
+        [Preserve]
+        [JsonProperty("amount")]
+        public double Amount;
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class GrantPromotionRewardResult
+    {
+        [Preserve]
+        [JsonProperty("key")]
+        public string Key;
+        [Preserve]
+        [JsonProperty("code")]
+        public string Code;
+        [Preserve]
+        [JsonProperty("errorCode")]
+        public string ErrorCode;
+        [Preserve]
+        [JsonProperty("message")]
+        public string Message;
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
     public class GrantPromotionRewardForGameParams
     {
         [Preserve]
@@ -357,28 +408,6 @@ namespace AppsInToss
         [Preserve]
         [JsonProperty("amount")]
         public double Amount;
-
-        [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class GrantPromotionRewardForGameResult
-    {
-        [Preserve]
-        [JsonProperty("key")]
-        public string Key;
-        [Preserve]
-        [JsonProperty("code")]
-        public string Code;
-        [Preserve]
-        [JsonProperty("errorCode")]
-        public string ErrorCode;
-        [Preserve]
-        [JsonProperty("message")]
-        public string Message;
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
@@ -1787,22 +1816,6 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class GrantPromotionRewardForGameResponse
-    {
-        [Preserve]
-        [JsonProperty("key")]
-        public string Key; // optional
-        [Preserve]
-        [JsonProperty("code")]
-        public string Code; // optional
-
-        [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
-    }
-
-    [Serializable]
-    [Preserve]
     public class GrantPromotionRewardForGameSuccessResponse
     {
         [Preserve]
@@ -1837,6 +1850,22 @@ namespace AppsInToss
         [Preserve]
         [JsonProperty("message")]
         public string Message;
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class GrantPromotionRewardForGameResponse
+    {
+        [Preserve]
+        [JsonProperty("key")]
+        public string Key; // optional
+        [Preserve]
+        [JsonProperty("code")]
+        public string Code; // optional
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]

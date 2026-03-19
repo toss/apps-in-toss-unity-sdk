@@ -119,39 +119,39 @@ namespace AppsInToss
         [Preserve]
         [APICategory("GameCenter")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable<GrantPromotionRewardForGameResult> GrantPromotionRewardForGame(GrantPromotionRewardForGameParams paramsParam)
+        public static async Awaitable<GrantPromotionRewardResult> GrantPromotionRewardForGame(GrantPromotionRewardForGameParams paramsParam)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            var acs = new AwaitableCompletionSource<GrantPromotionRewardForGameResult>();
-            string callbackId = AITCore.Instance.RegisterCallback<GrantPromotionRewardForGameResult>(
+            var acs = new AwaitableCompletionSource<GrantPromotionRewardResult>();
+            string callbackId = AITCore.Instance.RegisterCallback<GrantPromotionRewardResult>(
                 result => acs.SetResult(result),
                 error => acs.SetException(error)
             );
-            __grantPromotionRewardForGame_Internal(AITJsonSettings.Serialize(paramsParam), callbackId, "GrantPromotionRewardForGameResult");
+            __grantPromotionRewardForGame_Internal(AITJsonSettings.Serialize(paramsParam), callbackId, "GrantPromotionRewardResult");
             return await acs.Awaitable;
 #else
             // Unity Editor mock implementation (Unity 6+)
             UnityEngine.Debug.Log($"[AIT Mock] GrantPromotionRewardForGame called");
             await Awaitable.NextFrameAsync();
-            return default(GrantPromotionRewardForGameResult);
+            return default(GrantPromotionRewardResult);
 #endif
         }
 #else
-        public static async Task<GrantPromotionRewardForGameResult> GrantPromotionRewardForGame(GrantPromotionRewardForGameParams paramsParam)
+        public static async Task<GrantPromotionRewardResult> GrantPromotionRewardForGame(GrantPromotionRewardForGameParams paramsParam)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            var tcs = new TaskCompletionSource<GrantPromotionRewardForGameResult>();
-            string callbackId = AITCore.Instance.RegisterCallback<GrantPromotionRewardForGameResult>(
+            var tcs = new TaskCompletionSource<GrantPromotionRewardResult>();
+            string callbackId = AITCore.Instance.RegisterCallback<GrantPromotionRewardResult>(
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error)
             );
-            __grantPromotionRewardForGame_Internal(AITJsonSettings.Serialize(paramsParam), callbackId, "GrantPromotionRewardForGameResult");
+            __grantPromotionRewardForGame_Internal(AITJsonSettings.Serialize(paramsParam), callbackId, "GrantPromotionRewardResult");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] GrantPromotionRewardForGame called");
             await Task.CompletedTask;
-            return default(GrantPromotionRewardForGameResult);
+            return default(GrantPromotionRewardResult);
 #endif
         }
 #endif

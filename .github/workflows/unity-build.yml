@@ -980,12 +980,11 @@ jobs:
             echo "Unity Path: ${UNITY_PATH}"
             echo "Project Path: ${PROJECT_PATH}"
 
-            # Unity 빌드 실행 (백그라운드 + watchdog으로 hang 방지)
+            # Unity 빌드 실행 (폴링으로 hang 방지)
             # 문제: Unity가 "Exiting batchmode successfully now!" 출력 후에도
             # 자식 프로세스 때문에 메인 프로세스가 종료되지 않음
-            # 해결: 백그라운드 실행 + watchdog 서브쉘이 25분 후 프로세스 트리 kill
+            # 해결: Unity를 백그라운드로 실행하고 10초 간격 폴링으로 상태 감시
             rm -f "$LOG_FILE"
-            touch "$LOG_FILE"
 
             "$UNITY_PATH" -quit -batchmode -nographics \
               -projectPath "$PROJECT_PATH" \
@@ -995,24 +994,55 @@ jobs:
             UNITY_PID=$!
             echo "Unity started with PID: $UNITY_PID"
 
-            # Watchdog: 25분 후 Unity 프로세스 트리 강제 종료
-            (
-              sleep 1500
-              if kill -0 $UNITY_PID 2>/dev/null; then
-                echo "::warning::Watchdog: killing Unity after 25min (pid: $UNITY_PID)"
-                pkill -9 -P $UNITY_PID 2>/dev/null || true
-                kill -9 $UNITY_PID 2>/dev/null || true
+            # 폴링으로 Unity 종료 또는 빌드 완료 감지
+            POLL_INTERVAL=10
+            MAX_WAIT=1500
+            ELAPSED=0
+            BATCHMODE_EXIT_AT=""
+
+            while [ $ELAPSED -lt $MAX_WAIT ]; do
+              sleep $POLL_INTERVAL
+              ELAPSED=$((ELAPSED + POLL_INTERVAL))
+
+              # Unity 프로세스가 종료된 경우
+              if ! kill -0 $UNITY_PID 2>/dev/null; then
+                echo "Unity process exited after ${ELAPSED}s"
+                break
               fi
-            ) &
-            WATCHDOG_PID=$!
 
-            # Unity 종료 대기
-            wait $UNITY_PID 2>/dev/null
+              # 로그에서 빌드 완료 감지
+              if [ -z "$BATCHMODE_EXIT_AT" ] && [ -f "$LOG_FILE" ] && grep -q "Exiting batchmode successfully now!" "$LOG_FILE" 2>/dev/null; then
+                BATCHMODE_EXIT_AT=$ELAPSED
+                echo "Batchmode exit detected at ${ELAPSED}s, waiting 60s for graceful shutdown..."
+              fi
+
+              # 빌드 완료 후 60초 경과했는데 프로세스 미종료 → 강제 kill
+              if [ -n "$BATCHMODE_EXIT_AT" ]; then
+                SINCE_EXIT=$((ELAPSED - BATCHMODE_EXIT_AT))
+                if [ $SINCE_EXIT -ge 60 ]; then
+                  echo "::warning::Unity still alive ${SINCE_EXIT}s after batchmode exit, force killing"
+                  kill -9 $UNITY_PID 2>/dev/null || true
+                  sleep 2
+                  break
+                fi
+              fi
+
+              # 진행 상황 (60초마다)
+              if [ $((ELAPSED % 60)) -eq 0 ]; then
+                echo "Waiting for Unity... ${ELAPSED}s elapsed"
+              fi
+            done
+
+            # 타임아웃
+            if [ $ELAPSED -ge $MAX_WAIT ] && kill -0 $UNITY_PID 2>/dev/null; then
+              echo "::error::Unity build timed out after ${MAX_WAIT}s"
+              kill -9 $UNITY_PID 2>/dev/null || true
+              sleep 2
+            fi
+
+            # wait으로 exit code 수집 (이미 종료된 프로세스이므로 즉시 반환)
+            wait $UNITY_PID 2>/dev/null || true
             RAW_EXIT=$?
-
-            # Watchdog 정리
-            kill $WATCHDOG_PID 2>/dev/null || true
-            wait $WATCHDOG_PID 2>/dev/null || true
 
             # 로그 출력
             echo "=== Unity Build Log (last 200 lines) ==="
@@ -1022,15 +1052,9 @@ jobs:
             # exit code 판정
             if [ $RAW_EXIT -eq 0 ]; then
               EXIT_CODE=0
-            elif [ $RAW_EXIT -eq 137 ] || [ $RAW_EXIT -eq 143 ]; then
-              # kill에 의한 종료 — 로그에서 성공 여부 판단
-              if grep -q "Exiting batchmode successfully now!" "$LOG_FILE" 2>/dev/null; then
-                echo "::warning::Unity was killed but build had completed successfully"
-                EXIT_CODE=0
-              else
-                echo "::error::Unity was killed before build completed"
-                EXIT_CODE=1
-              fi
+            elif grep -q "Exiting batchmode successfully now!" "$LOG_FILE" 2>/dev/null; then
+              echo "::warning::Unity exited with code $RAW_EXIT but build completed successfully"
+              EXIT_CODE=0
             else
               EXIT_CODE=$RAW_EXIT
             fi

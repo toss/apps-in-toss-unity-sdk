@@ -986,11 +986,13 @@ jobs:
             # 해결: Unity를 백그라운드로 실행하고 10초 간격 폴링으로 상태 감시
             rm -f "$LOG_FILE"
 
+            # Unity를 setsid로 새 세션에서 실행 (프로세스 그룹 분리)
+            # stdout/stderr를 /dev/null로 리다이렉트하여 셸 블로킹 방지
             "$UNITY_PATH" -quit -batchmode -nographics \
               -projectPath "$PROJECT_PATH" \
               -executeMethod E2EBuildRunner.CommandLineBuild \
               -buildTarget WebGL \
-              -logFile "$LOG_FILE" &
+              -logFile "$LOG_FILE" </dev/null >/dev/null 2>&1 &
             UNITY_PID=$!
             echo "Unity started with PID: $UNITY_PID"
 

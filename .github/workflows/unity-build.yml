@@ -959,84 +959,71 @@ jobs:
       # =====================================================
       # Unity WebGL 빌드
       # =====================================================
+      # Unity 빌드 실행 (macOS)
+      # `-logFile - | tee`로 실시간 로그 출력
+      # Unity가 빌드 완료 후 자식 프로세스(websockify 등) 때문에 hang하면
+      # timeout-minutes에 의해 step이 취소되고, 다음 step에서 로그 기반 성공 판정
       - name: Build Unity WebGL (macOS)
+        id: unity-build-macos
         if: inputs.os == 'macos' && inputs.run-build && (inputs.test-level || '2') != '0'
-        uses: nick-invision/retry@v3
+        timeout-minutes: 20
+        continue-on-error: true
         env:
           AIT_DEBUG_CONSOLE: "true"
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
-        with:
-          timeout_minutes: 30
-          max_attempts: 3
-          retry_wait_seconds: 30
-          retry_on_exit_code: 42
-          shell: bash
-          command: |
-            UNITY_PATH="${{ steps.unity.outputs.UNITY_PATH }}"
-            PROJECT_PATH="${{ github.workspace }}/Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}"
-            LOG_FILE="/tmp/unity-build-${{ inputs.unity-version }}.log"
+        run: |
+          UNITY_PATH="${{ steps.unity.outputs.UNITY_PATH }}"
+          PROJECT_PATH="${{ github.workspace }}/Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}"
+          LOG_FILE="/tmp/unity-build-${{ inputs.unity-version }}.log"
 
-            echo "Unity Version: ${{ steps.unity.outputs.UNITY_VERSION }}"
-            echo "Unity Path: ${UNITY_PATH}"
-            echo "Project Path: ${PROJECT_PATH}"
+          echo "Unity Version: ${{ steps.unity.outputs.UNITY_VERSION }}"
+          echo "Unity Path: ${UNITY_PATH}"
+          echo "Project Path: ${PROJECT_PATH}"
 
-            "$UNITY_PATH" -quit -batchmode -nographics \
-              -projectPath "$PROJECT_PATH" \
-              -executeMethod E2EBuildRunner.CommandLineBuild \
-              -buildTarget WebGL \
-              -logFile - 2>&1 | tee "$LOG_FILE"
-            EXIT_CODE=${PIPESTATUS[0]}
+          "$UNITY_PATH" -quit -batchmode -nographics \
+            -projectPath "$PROJECT_PATH" \
+            -executeMethod E2EBuildRunner.CommandLineBuild \
+            -buildTarget WebGL \
+            -logFile - 2>&1 | tee "$LOG_FILE"
+          EXIT_CODE=${PIPESTATUS[0]}
 
-            echo "Unity exited with code: $EXIT_CODE"
+          echo "Unity exited with code: $EXIT_CODE"
+          echo "unity_exit_code=$EXIT_CODE" >> $GITHUB_OUTPUT
 
-            if [ $EXIT_CODE -ne 0 ]; then
-              # 빌드 도구 에러 우선 감지 (라이선스 오분류 방지)
-              BUILD_TOOL_ERROR=false
-              if grep -qE "Unknown Syntax Error|FAIL_NPM_BUILD|FAIL_NPM_INSTALL|Command not found.*ait|npm ERR!" "$LOG_FILE" 2>/dev/null; then
-                BUILD_TOOL_ERROR=true
-              fi
+      # 빌드 결과 판정: 타임아웃으로 취소되었더라도 로그에서 성공 확인
+      - name: Verify Unity Build Result (macOS)
+        if: inputs.os == 'macos' && inputs.run-build && (inputs.test-level || '2') != '0'
+        run: |
+          LOG_FILE="/tmp/unity-build-${{ inputs.unity-version }}.log"
+          BUILD_OUTCOME="${{ steps.unity-build-macos.outcome }}"
+          EXIT_CODE="${{ steps.unity-build-macos.outputs.unity_exit_code }}"
 
-              if [ "$BUILD_TOOL_ERROR" = true ]; then
-                echo "::error::Build tool error detected (not a license issue), failing immediately"
-                grep -E "Unknown Syntax Error|FAIL_NPM|Command not found|npm ERR!" "$LOG_FILE" 2>/dev/null | tail -5
-                exit $EXIT_CODE
-              fi
+          echo "Build step outcome: $BUILD_OUTCOME"
+          echo "Unity exit code: $EXIT_CODE"
 
-              # 라이선스 관련 오류 감지 (retry 액션이 자동 재시도)
-              LICENSE_ERROR=false
-              if grep -qE "No valid Unity Editor license found|Unsupported protocol version|ResponseCode: 505|Access token is unavailable" "$LOG_FILE" 2>/dev/null; then
-                LICENSE_ERROR=true
-              fi
-              if [ $EXIT_CODE -eq 199 ]; then
-                LICENSE_ERROR=true
-              fi
+          # 정상 완료
+          if [ "$BUILD_OUTCOME" = "success" ] && [ "$EXIT_CODE" = "0" ]; then
+            echo "Unity build completed successfully"
+            exit 0
+          fi
 
-              if [ "$LICENSE_ERROR" = true ]; then
-                echo "::warning::Unity license error detected, attempting recovery via Unity Hub..."
+          # 타임아웃 또는 실패 — 로그에서 성공 여부 확인
+          if [ -f "$LOG_FILE" ] && grep -q "Exiting batchmode successfully now!" "$LOG_FILE"; then
+            echo "::warning::Build step was cancelled/failed but Unity build completed successfully (log confirms batchmode exit)"
+            exit 0
+          fi
 
-                # Unity Hub를 잠시 실행하여 라이선스 토큰 갱신
-                UNITY_HUB="/Applications/Unity Hub.app/Contents/MacOS/Unity Hub"
-                if [ -f "$UNITY_HUB" ]; then
-                  # Hub를 headless로 실행하여 라이선스 갱신 유도
-                  "$UNITY_HUB" -- --headless editors --installed 2>&1 || true
-                  echo "Unity Hub license refresh attempted"
-                  sleep 3
+          # 라이선스 에러 확인
+          if [ -f "$LOG_FILE" ] && grep -qE "No valid Unity Editor license found|Access token is unavailable" "$LOG_FILE"; then
+            echo "::error::Unity license error detected"
+          fi
 
-                  # 기존 Licensing Client 프로세스 정리 (갱신된 토큰으로 재시작하도록)
-                  pkill -f "Unity.Licensing.Client" 2>/dev/null || true
-                  sleep 2
-                  echo "Licensing Client processes cleared for fresh start"
-                fi
-
-                echo "::warning::Triggering retry after license recovery..."
-                exit 42
-              fi
-
-              echo "::error::Unity build failed with exit code: $EXIT_CODE"
-              exit $EXIT_CODE
-            fi
-
-            echo "Unity build completed successfully (exit code: $EXIT_CODE)"
+          echo "::error::Unity build failed (outcome: $BUILD_OUTCOME, exit_code: $EXIT_CODE)"
+          if [ -f "$LOG_FILE" ]; then
+            echo "=== Last 50 lines of Unity log ==="
+            tail -50 "$LOG_FILE"
+          fi
+          exit 1
 
       - name: Build Unity WebGL (Windows)
         if: inputs.os == 'windows' && inputs.run-build && (inputs.test-level || '2') != '0'

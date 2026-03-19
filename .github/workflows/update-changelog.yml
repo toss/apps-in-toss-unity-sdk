@@ -12,6 +12,7 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write
+      pull-requests: write
 
     steps:
       - name: Checkout Repository
@@ -36,6 +37,8 @@ jobs:
         run: pnpm test:versions || true
 
       - name: Commit Report
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p docs/changelog
           cp sdk-runtime-generator~/reports/api-changelog.html docs/changelog/index.html
@@ -45,6 +48,14 @@ jobs:
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
+            BRANCH="docs/update-changelog-$(date +%s)"
+            git checkout -b "$BRANCH"
             git commit -m "문서: API Changelog 리포트 자동 갱신"
-            git push
+            git push -u origin "$BRANCH"
+            gh pr create \
+              --title "문서: API Changelog 리포트 자동 갱신" \
+              --body "API Changelog 리포트를 자동 갱신합니다." \
+              --base main \
+              --head "$BRANCH"
+            gh pr merge --merge --delete-branch
           fi

@@ -997,12 +997,37 @@ jobs:
             echo "Unity Path: ${UNITY_PATH}"
             echo "Project Path: ${PROJECT_PATH}"
 
+            # 파일에 직접 로그 기록 (파이프 hang 방지 - websockify 자식 프로세스가 stdout fd 유지 문제)
             "$UNITY_PATH" -quit -batchmode -nographics \
               -projectPath "$PROJECT_PATH" \
               -executeMethod E2EBuildRunner.CommandLineBuild \
               -buildTarget WebGL \
-              -logFile - 2>&1 | tee "$LOG_FILE"
-            EXIT_CODE=${PIPESTATUS[0]}
+              -logFile "$LOG_FILE" &
+            UNITY_PID=$!
+
+            # 로그 파일 생성 대기
+            for i in $(seq 1 30); do
+              [ -f "$LOG_FILE" ] && break
+              sleep 1
+            done
+
+            # 실시간 로그 스트리밍 (CI 출력용)
+            tail -f "$LOG_FILE" 2>/dev/null &
+            TAIL_PID=$!
+
+            # Unity 종료 대기 (자식 프로세스와 무관하게 즉시 반환)
+            wait $UNITY_PID
+            EXIT_CODE=$?
+
+            # 마지막 로그 플러시 대기
+            sleep 2
+
+            # tail 정리
+            kill $TAIL_PID 2>/dev/null || true
+            wait $TAIL_PID 2>/dev/null || true
+
+            # 고아 websockify 프로세스 정리
+            pkill -f "websockify" 2>/dev/null || true
 
             echo "Unity exited with code: $EXIT_CODE"
 

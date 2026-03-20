@@ -642,12 +642,12 @@ namespace AppsInToss
                         }
                     }
                     break;
-                case "GrantPromotionRewardForGameResult":
+                case "GrantPromotionRewardResult":
                     if (apiResponse.success)
                     {
-                        if (TryGetCallback<GrantPromotionRewardForGameResult>(callbackId, out var callback8) && callback8 != null)
+                        if (TryGetCallback<GrantPromotionRewardResult>(callbackId, out var callback8) && callback8 != null)
                         {
-                            var data8 = JsonConvert.DeserializeObject<GrantPromotionRewardForGameResult>(apiResponse.data);
+                            var data8 = JsonConvert.DeserializeObject<GrantPromotionRewardResult>(apiResponse.data);
                             callback8(data8);
                         }
                     }
@@ -655,7 +655,7 @@ namespace AppsInToss
                     {
                         if (TryGetErrorCallback(callbackId, out var errorCallback8) && errorCallback8 != null)
                         {
-                            errorCallback8(new AITException("GrantPromotionRewardForGameResult", apiResponse.error));
+                            errorCallback8(new AITException("GrantPromotionRewardResult", apiResponse.error));
                         }
                     }
                     break;

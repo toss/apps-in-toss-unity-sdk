@@ -623,34 +623,9 @@ jobs:
       - name: Cleanup Licensing Client (macOS)
         if: inputs.os == 'macos' && inputs.run-build && (inputs.test-level || '2') != '0'
         run: |
-          CURRENT_VERSION="${{ steps.unity.outputs.UNITY_VERSION }}"
-          echo "Current Unity version: ${CURRENT_VERSION}"
-          echo "Checking for Licensing Client processes from other Unity versions..."
-
-          KILLED=0
-          while IFS= read -r line; do
-            [ -z "$line" ] && continue
-            PID=$(echo "$line" | awk '{print $1}')
-            CMD=$(echo "$line" | awk '{$1=""; print $0}' | xargs)
-
-            # 현재 버전의 Licensing Client는 유지
-            if echo "$CMD" | grep -q "${CURRENT_VERSION}"; then
-              echo "  Keeping (same version): PID=$PID"
-              continue
-            fi
-
-            echo "  Killing (different version): PID=$PID CMD=$CMD"
-            kill "$PID" 2>/dev/null || true
-            KILLED=$((KILLED + 1))
-          done < <(pgrep -af "Unity.Licensing.Client" 2>/dev/null || true)
-
-          if [ $KILLED -gt 0 ]; then
-            echo "::warning::Killed $KILLED Licensing Client process(es) from other Unity versions"
-            sleep 2  # 프로세스 종료 대기
-          else
-            echo "No conflicting Licensing Client processes found"
-          fi
-          echo "Licensing Client cleanup complete"
+          # 비활성화: 5개 러너가 동시에 다른 버전의 LC를 kill하면
+          # 서로의 라이선스를 파괴하는 순환 학살 문제 발생
+          echo "Licensing Client cleanup skipped (parallel runner conflict prevention)"
 
       - name: Cleanup Licensing Client (Windows)
         if: inputs.os == 'windows' && inputs.run-build && (inputs.test-level || '2') != '0'
@@ -983,27 +958,40 @@ jobs:
             echo "::warning::Retry #${ATTEMPT}: waiting ${DELAY}s (base=${BASE_DELAY}s + jitter=${JITTER}s) before next attempt..."
             sleep $DELAY
           command: |
-            # attempt 카운터 초기화 (첫 실행 시)
+            # attempt 카운터 초기화 (매번 — self-hosted 러너 잔존 파일 방지)
             ATTEMPT_FILE="/tmp/retry-attempt-${{ inputs.unity-version }}"
-            if [ ! -f "$ATTEMPT_FILE" ]; then
-              echo "0" > "$ATTEMPT_FILE"
-            fi
+            echo "0" > "$ATTEMPT_FILE"
 
             UNITY_PATH="${{ steps.unity.outputs.UNITY_PATH }}"
             PROJECT_PATH="${{ github.workspace }}/Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}"
             LOG_FILE="/tmp/unity-build-${{ inputs.unity-version }}.log"
 
+            # Unity 프로세스 트리 강제 종료 (SIGKILL)
+            # websockify가 retry 액션의 pipe fd를 상속받으면 EOF가 안 되어 hang
+            cleanup_unity() {
+              [ -n "$UNITY_PID" ] && kill -9 $UNITY_PID 2>/dev/null || true
+              # Unity 프로세스 그룹의 자식만 정리 (다른 프로세스 영향 방지)
+              [ -n "$UNITY_PID" ] && pkill -9 -P $UNITY_PID 2>/dev/null || true
+              pkill -9 -P $$ 2>/dev/null || true
+            }
+            trap cleanup_unity EXIT
+
             echo "Unity Version: ${{ steps.unity.outputs.UNITY_VERSION }}"
             echo "Unity Path: ${UNITY_PATH}"
             echo "Project Path: ${PROJECT_PATH}"
 
-            # 파일에 직접 로그 기록 (파이프 hang 방지 - websockify 자식 프로세스가 stdout fd 유지 문제)
+            # self-hosted 러너 잔존 로그 파일 정리
+            rm -f "$LOG_FILE"
+
+            # Unity 실행 (로그는 -logFile로 파일에 기록)
+            # 주의: >/dev/null 사용 불가 — Unity의 -logFile이 stdout fd에 의존함
             "$UNITY_PATH" -quit -batchmode -nographics \
               -projectPath "$PROJECT_PATH" \
               -executeMethod E2EBuildRunner.CommandLineBuild \
               -buildTarget WebGL \
               -logFile "$LOG_FILE" &
             UNITY_PID=$!
+            echo "Unity started (PID: $UNITY_PID, log: $LOG_FILE)"
 
             # 로그 파일 생성 대기
             for i in $(seq 1 30); do
@@ -1011,25 +999,43 @@ jobs:
               sleep 1
             done
 
-            # 실시간 로그 스트리밍 (CI 출력용)
-            tail -f "$LOG_FILE" 2>/dev/null &
-            TAIL_PID=$!
+            # 로그 시그널 기반 대기 + 증분 로그 출력
+            # 증분 출력 헬퍼 (tail -f 대신 — 백그라운드 프로세스 0개 유지)
+            flush_log() {
+              [ -f "$LOG_FILE" ] || return
+              CURRENT_SIZE=$(stat -f%z "$LOG_FILE" 2>/dev/null || echo "0")
+              CURRENT_SIZE=${CURRENT_SIZE:-0}
+              if [ "$CURRENT_SIZE" -gt "$LOG_OFFSET" ]; then
+                tail -c +$((LOG_OFFSET + 1)) "$LOG_FILE" 2>/dev/null | head -c $((CURRENT_SIZE - LOG_OFFSET))
+                LOG_OFFSET=$CURRENT_SIZE
+              fi
+            }
+            LOG_OFFSET=0
+            MAX_WAIT=1500
+            WAIT_SECONDS=0
+            while [ $WAIT_SECONDS -lt $MAX_WAIT ]; do
+              sleep 5
+              WAIT_SECONDS=$((WAIT_SECONDS + 5))
+              flush_log
+              if [ -f "$LOG_FILE" ]; then
+                if grep -q "Exiting batchmode successfully now!" "$LOG_FILE" 2>/dev/null; then break; fi
+                if grep -qE "FAIL_NPM_BUILD|FAIL_NPM_INSTALL|No valid Unity Editor license found|batch mode failed" "$LOG_FILE" 2>/dev/null; then break; fi
+              fi
+              if ! kill -0 $UNITY_PID 2>/dev/null; then break; fi
+            done
+            flush_log
 
-            # Unity 종료 대기 (자식 프로세스와 무관하게 즉시 반환)
-            wait $UNITY_PID
-            EXIT_CODE=$?
+            # 로그 기반 성공 판정 (exit code 대신 — websockify가 exit code를 왜곡할 수 있음)
+            EXIT_CODE=0
+            if ! grep -q "Exiting batchmode successfully now!" "$LOG_FILE" 2>/dev/null; then
+              EXIT_CODE=1
+            fi
 
-            # 마지막 로그 플러시 대기
-            sleep 2
+            # Unity 프로세스 트리 강제 종료
+            cleanup_unity
+            sleep 1
 
-            # tail 정리
-            kill $TAIL_PID 2>/dev/null || true
-            wait $TAIL_PID 2>/dev/null || true
-
-            # 고아 websockify 프로세스 정리
-            pkill -f "websockify" 2>/dev/null || true
-
-            echo "Unity exited with code: $EXIT_CODE"
+            echo "Unity build finished (log-based exit code: $EXIT_CODE)"
 
             if [ $EXIT_CODE -ne 0 ]; then
               # 빌드 도구 에러 우선 감지 (라이선스 오분류 방지)
@@ -1044,15 +1050,9 @@ jobs:
                 exit $EXIT_CODE
               fi
 
-              # 타임아웃/hang으로 빌드 step이 실패했지만 실제 빌드는 성공한 경우
-              if grep -q "Exiting batchmode successfully now!" "$LOG_FILE" 2>/dev/null; then
-                echo "::warning::Unity exited with code $EXIT_CODE but build completed successfully (log confirms batchmode exit)"
-                exit 0
-              fi
-
               # 라이선스 관련 오류 감지 (retry 액션이 자동 재시도)
               LICENSE_ERROR=false
-              if grep -qE "No valid Unity Editor license found|Unsupported protocol version|ResponseCode: 505|Access token is unavailable" "$LOG_FILE" 2>/dev/null; then
+              if grep -qE "No valid Unity Editor license found|Unsupported protocol version|ResponseCode: 505" "$LOG_FILE" 2>/dev/null; then
                 LICENSE_ERROR=true
               fi
               if [ $EXIT_CODE -eq 199 ]; then
@@ -1060,22 +1060,7 @@ jobs:
               fi
 
               if [ "$LICENSE_ERROR" = true ]; then
-                echo "::warning::Unity license error detected, attempting recovery via Unity Hub..."
-
-                # Unity Hub를 잠시 실행하여 라이선스 토큰 갱신
-                UNITY_HUB="/Applications/Unity Hub.app/Contents/MacOS/Unity Hub"
-                if [ -f "$UNITY_HUB" ]; then
-                  "$UNITY_HUB" -- --headless editors --installed 2>&1 || true
-                  echo "Unity Hub license refresh attempted"
-                  sleep 3
-
-                  # 기존 Licensing Client 프로세스 정리 (갱신된 토큰으로 재시작하도록)
-                  pkill -f "Unity.Licensing.Client" 2>/dev/null || true
-                  sleep 2
-                  echo "Licensing Client processes cleared for fresh start"
-                fi
-
-                echo "::warning::Triggering retry after license recovery..."
+                echo "::warning::Unity license error detected, triggering retry..."
                 exit 42
               fi
 
@@ -1085,7 +1070,7 @@ jobs:
 
             # 성공 시 attempt 카운터 정리
             rm -f "$ATTEMPT_FILE"
-            echo "Unity build completed successfully (exit code: $EXIT_CODE)"
+            echo "Unity build completed successfully"
 
       - name: Build Unity WebGL (Windows)
         if: inputs.os == 'windows' && inputs.run-build && (inputs.test-level || '2') != '0'

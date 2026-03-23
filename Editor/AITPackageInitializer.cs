@@ -76,6 +76,13 @@ namespace AppsInToss.Editor
                 return;
             }
 
+            // Batchmode에서는 초기화 스킵 (빌드 패키징의 동기 pnpm install과 충돌 방지)
+            if (Application.isBatchMode)
+            {
+                Debug.Log("[AIT] Batchmode 감지 - 패키지 초기화 스킵 (빌드 시 자동 실행됨)");
+                return;
+            }
+
             // 빌드 중이면 실행하지 않음 (Domain Reload로 인한 중복 실행 방지)
             if (BuildPipeline.isBuildingPlayer || AITConvertCore.HasRunningAsyncTask())
             {

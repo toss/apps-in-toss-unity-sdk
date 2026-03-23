@@ -350,8 +350,6 @@ namespace AppsInToss.Editor
             try
             {
                 var nodeModulesPath = Path.Combine(buildProjectPath, "node_modules");
-                var npmCachePath = Path.Combine(buildProjectPath, ".npm-cache");
-
                 if (Directory.Exists(nodeModulesPath))
                 {
                     long nodeModulesSize = AITFileUtils.GetDirectorySize(nodeModulesPath);
@@ -360,12 +358,6 @@ namespace AppsInToss.Editor
                     Debug.Log($"[AIT] ✓ 빌드 캐시 사용 중:");
                     Debug.Log($"[AIT]   - node_modules: {nodeModulesSize / 1024 / 1024}MB ({packageCount}개 패키지)");
                     Debug.Log($"[AIT]   - pnpm install 건너뜀 → 약 1-2분 절약!");
-                }
-
-                if (Directory.Exists(npmCachePath))
-                {
-                    long npmCacheSize = AITFileUtils.GetDirectorySize(npmCachePath);
-                    Debug.Log($"[AIT]   - npm 캐시: {npmCacheSize / 1024 / 1024}MB");
                 }
             }
             catch (System.Exception e)

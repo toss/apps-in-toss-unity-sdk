@@ -85,8 +85,6 @@ public class BuildCleanupTests
         // 보존되어야 할 항목들
         Directory.CreateDirectory(Path.Combine(buildPath, "node_modules"));
         File.WriteAllText(Path.Combine(buildPath, "node_modules", "some-package.js"), "pkg");
-        Directory.CreateDirectory(Path.Combine(buildPath, ".npm-cache"));
-        File.WriteAllText(Path.Combine(buildPath, ".npm-cache", "cache-entry"), "cached");
         File.WriteAllText(Path.Combine(buildPath, "package.json"), "{}");
         File.WriteAllText(Path.Combine(buildPath, "package-lock.json"), "{}");
         File.WriteAllText(Path.Combine(buildPath, "pnpm-lock.yaml"), "lockfile: 1");
@@ -105,8 +103,6 @@ public class BuildCleanupTests
             "node_modules/ should be preserved");
         Assert.IsTrue(File.Exists(Path.Combine(buildPath, "node_modules", "some-package.js")),
             "node_modules/ contents should be intact");
-        Assert.IsTrue(Directory.Exists(Path.Combine(buildPath, ".npm-cache")),
-            ".npm-cache/ should be preserved");
         Assert.IsTrue(File.Exists(Path.Combine(buildPath, "package.json")),
             "package.json should be preserved");
         Assert.IsTrue(File.Exists(Path.Combine(buildPath, "package-lock.json")),

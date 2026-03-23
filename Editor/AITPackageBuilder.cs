@@ -26,6 +26,24 @@ namespace AppsInToss.Editor
             _cachedSdkRuntimePath = null;
         }
 
+        /// <summary>
+        /// 머신 공유 pnpm content-addressable store 경로.
+        /// 같은 머신의 여러 프로젝트/러너가 패키지를 공유하여
+        /// 중복 다운로드를 방지합니다 (하드링크 사용).
+        /// macOS/Linux: ~/.ait-unity-sdk/pnpm-store/
+        /// Windows: %LOCALAPPDATA%\ait-unity-sdk\pnpm-store\
+        /// </summary>
+        internal static string GetSharedPnpmStorePath()
+        {
+            string basePath;
+            #if UNITY_EDITOR_WIN
+                basePath = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            #else
+                basePath = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            #endif
+            return Path.Combine(basePath, ".ait-unity-sdk", "pnpm-store");
+        }
+
         #region Packaging Common
 
         /// <summary>
@@ -137,7 +155,7 @@ namespace AppsInToss.Editor
             }
 
             // node_modules 무결성 검증
-            string localCachePath = Path.Combine(buildProjectPath, ".npm-cache");
+            string storePath = GetSharedPnpmStorePath();
             if (!ValidateNodeModulesIntegrity(buildProjectPath))
             {
                 Debug.Log("[AIT] node_modules 무결성 검증 실패. 정리 후 재설치합니다.");
@@ -148,7 +166,7 @@ namespace AppsInToss.Editor
             {
                 BuildProjectPath = buildProjectPath,
                 PnpmPath = pnpmPath,
-                LocalCachePath = localCachePath,
+                LocalCachePath = storePath,
                 UnityMetadataEnv = AITUnityMetadata.BuildEnvironmentVariables()
             }, AITConvertCore.AITExportError.SUCCEED);
         }
@@ -195,7 +213,7 @@ namespace AppsInToss.Editor
             }
 
             // node_modules 무결성 검증
-            string localCachePath = Path.Combine(buildProjectPath, ".npm-cache");
+            string storePath = GetSharedPnpmStorePath();
             if (!ValidateNodeModulesIntegrity(buildProjectPath))
             {
                 Debug.Log("[AIT] [병렬] node_modules 무결성 검증 실패. 정리 후 재설치합니다.");
@@ -206,7 +224,7 @@ namespace AppsInToss.Editor
             {
                 BuildProjectPath = buildProjectPath,
                 PnpmPath = pnpmPath,
-                LocalCachePath = localCachePath,
+                LocalCachePath = storePath,
                 UnityMetadataEnv = AITUnityMetadata.BuildEnvironmentVariables(),
                 PnpmInstallResult = null,
             }, AITConvertCore.AITExportError.SUCCEED);
@@ -1748,13 +1766,14 @@ namespace AppsInToss.Editor
                 }
             }
 
+            // 레거시 로컬 캐시 정리 (공유 store로 이전됨)
             if (Directory.Exists(npmCachePath))
             {
-                Debug.Log("[AIT] .npm-cache 삭제 중...");
+                Debug.Log("[AIT] 레거시 .npm-cache 삭제 중...");
                 try
                 {
                     AITFileUtils.DeleteDirectory(npmCachePath);
-                    Debug.Log("[AIT] ✓ .npm-cache 삭제 완료");
+                    Debug.Log("[AIT] ✓ 레거시 .npm-cache 삭제 완료");
                 }
                 catch (Exception e)
                 {
@@ -1780,7 +1799,6 @@ namespace AppsInToss.Editor
                 string[] itemsToKeep = new string[]
                 {
                     "node_modules",
-                    ".npm-cache",
                     "package.json",
                     "package-lock.json",
                     "pnpm-lock.yaml",

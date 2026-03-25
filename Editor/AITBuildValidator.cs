@@ -343,6 +343,50 @@ namespace AppsInToss.Editor
         }
 
         /// <summary>
+        /// granite build 결과물(dist/ 및 .ait 파일) 존재를 검증합니다.
+        /// </summary>
+        internal static AITConvertCore.AITExportError ValidateDistOutput(string buildProjectPath)
+        {
+            string distPath = Path.Combine(buildProjectPath, "dist");
+
+            if (!Directory.Exists(distPath))
+            {
+                Debug.LogError("[AIT] ========================================");
+                Debug.LogError("[AIT] ✗ granite build 완료되었으나 dist/ 폴더가 없습니다!");
+                Debug.LogError($"[AIT]   예상 경로: {distPath}");
+                Debug.LogError("[AIT]   pnpm run build가 정상 종료되었으나 출력물을 생성하지 못했습니다.");
+                Debug.LogError("[AIT] ========================================");
+                return AITConvertCore.AITExportError.DIST_FOLDER_MISSING;
+            }
+
+            var aitFiles = Directory.GetFiles(distPath, "*.ait");
+            if (aitFiles.Length == 0)
+            {
+                Debug.LogError("[AIT] ========================================");
+                Debug.LogError("[AIT] ✗ dist/ 폴더에 .ait 파일이 없습니다!");
+                Debug.LogError($"[AIT]   dist 경로: {distPath}");
+                var existingFiles = Directory.GetFiles(distPath);
+                if (existingFiles.Length > 0)
+                {
+                    Debug.LogError("[AIT]   dist/ 폴더의 실제 파일들:");
+                    foreach (var file in existingFiles)
+                    {
+                        Debug.LogError($"[AIT]     - {Path.GetFileName(file)}");
+                    }
+                }
+                else
+                {
+                    Debug.LogError("[AIT]   dist/ 폴더가 비어 있습니다!");
+                }
+                Debug.LogError("[AIT] ========================================");
+                return AITConvertCore.AITExportError.AIT_FILE_MISSING;
+            }
+
+            Debug.Log($"[AIT] ✓ dist/ 검증 통과: .ait 파일 {aitFiles.Length}개 발견");
+            return AITConvertCore.AITExportError.SUCCEED;
+        }
+
+        /// <summary>
         /// 빌드 캐시 통계 출력
         /// </summary>
         internal static void LogBuildCacheStats(string buildProjectPath)

@@ -343,46 +343,48 @@ namespace AppsInToss.Editor
         }
 
         /// <summary>
-        /// granite build 결과물(dist/ 및 .ait 파일) 존재를 검증합니다.
+        /// granite build 결과물(.ait 파일) 존재를 검증합니다.
+        /// .ait 파일은 빌드 루트 또는 dist/ 폴더에 생성될 수 있습니다.
         /// </summary>
         internal static AITConvertCore.AITExportError ValidateDistOutput(string buildProjectPath)
         {
+            // .ait 파일은 ait build CLI 버전에 따라 빌드 루트 또는 dist/에 생성될 수 있음
+            var aitFiles = Directory.GetFiles(buildProjectPath, "*.ait");
             string distPath = Path.Combine(buildProjectPath, "dist");
-
-            if (!Directory.Exists(distPath))
+            if (aitFiles.Length == 0 && Directory.Exists(distPath))
             {
-                Debug.LogError("[AIT] ========================================");
-                Debug.LogError("[AIT] ✗ granite build 완료되었으나 dist/ 폴더가 없습니다!");
-                Debug.LogError($"[AIT]   예상 경로: {distPath}");
-                Debug.LogError("[AIT]   pnpm run build가 정상 종료되었으나 출력물을 생성하지 못했습니다.");
-                Debug.LogError("[AIT] ========================================");
-                return AITConvertCore.AITExportError.DIST_FOLDER_MISSING;
+                aitFiles = Directory.GetFiles(distPath, "*.ait");
             }
 
-            var aitFiles = Directory.GetFiles(distPath, "*.ait");
             if (aitFiles.Length == 0)
             {
                 Debug.LogError("[AIT] ========================================");
-                Debug.LogError("[AIT] ✗ dist/ 폴더에 .ait 파일이 없습니다!");
-                Debug.LogError($"[AIT]   dist 경로: {distPath}");
-                var existingFiles = Directory.GetFiles(distPath);
-                if (existingFiles.Length > 0)
+                Debug.LogError("[AIT] ✗ .ait 파일이 생성되지 않았습니다!");
+                Debug.LogError($"[AIT]   빌드 경로: {buildProjectPath}");
+                if (Directory.Exists(distPath))
                 {
-                    Debug.LogError("[AIT]   dist/ 폴더의 실제 파일들:");
-                    foreach (var file in existingFiles)
+                    var distFiles = Directory.GetFiles(distPath);
+                    if (distFiles.Length > 0)
                     {
-                        Debug.LogError($"[AIT]     - {Path.GetFileName(file)}");
+                        Debug.LogError("[AIT]   dist/ 폴더의 실제 파일들:");
+                        foreach (var file in distFiles)
+                        {
+                            Debug.LogError($"[AIT]     - {Path.GetFileName(file)}");
+                        }
                     }
                 }
                 else
                 {
-                    Debug.LogError("[AIT]   dist/ 폴더가 비어 있습니다!");
+                    Debug.LogError("[AIT]   dist/ 폴더도 존재하지 않습니다.");
                 }
                 Debug.LogError("[AIT] ========================================");
                 return AITConvertCore.AITExportError.AIT_FILE_MISSING;
             }
 
-            Debug.Log($"[AIT] ✓ dist/ 검증 통과: .ait 파일 {aitFiles.Length}개 발견");
+            foreach (var aitFile in aitFiles)
+            {
+                Debug.Log($"[AIT] ✓ .ait 파일 발견: {Path.GetFileName(aitFile)}");
+            }
             return AITConvertCore.AITExportError.SUCCEED;
         }
 

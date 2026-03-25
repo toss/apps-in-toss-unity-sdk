@@ -155,6 +155,8 @@ namespace AppsInToss
             REQUIRED_FILE_MISSING = 11,
             INDEX_HTML_MISSING = 12,
             PLACEHOLDER_SUBSTITUTION_FAILED = 13,
+            DIST_FOLDER_MISSING = 14,
+            AIT_FILE_MISSING = 15,
         }
 
         /// <summary>
@@ -234,6 +236,20 @@ namespace AppsInToss
                            "해결 방법:\n" +
                            "1. 'Clean Build' 옵션을 활성화하고 다시 빌드하세요.\n" +
                            "2. AIT > Clean 메뉴로 빌드 폴더 삭제 후 재빌드하세요.";
+
+                case AITExportError.DIST_FOLDER_MISSING:
+                    return "granite build가 완료되었으나 dist 폴더가 생성되지 않았습니다.\n\n" +
+                           "해결 방법:\n" +
+                           "1. ait-build/ 폴더에서 수동으로 'npm run build' 실행하여 오류 확인\n" +
+                           "2. granite.config.ts의 플레이스홀더가 올바르게 치환되었는지 확인\n" +
+                           "3. AIT > Clean 메뉴 실행 후 Clean Build 재시도";
+
+                case AITExportError.AIT_FILE_MISSING:
+                    return "dist/ 폴더에 .ait 파일이 생성되지 않았습니다.\n\n" +
+                           "해결 방법:\n" +
+                           "1. ait-build/dist/ 폴더의 내용을 확인하세요\n" +
+                           "2. granite.config.ts 설정을 확인하세요\n" +
+                           "3. AIT > Clean 메뉴 실행 후 Clean Build 재시도";
 
                 default:
                     return $"알 수 없는 오류가 발생했습니다. (코드: {error})";

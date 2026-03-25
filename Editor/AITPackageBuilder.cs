@@ -525,6 +525,10 @@ namespace AppsInToss.Editor
 
             string distPath = Path.Combine(ctx.BuildProjectPath, "dist");
             AITBuildValidator.PrintBuildReport(ctx.BuildProjectPath, distPath);
+
+            var distValidation = AITBuildValidator.ValidateDistOutput(ctx.BuildProjectPath);
+            if (distValidation != AITConvertCore.AITExportError.SUCCEED) return distValidation;
+
             Debug.Log($"[AIT] ✓ 패키징 완료: {distPath}");
 
             return AITConvertCore.AITExportError.SUCCEED;
@@ -1576,6 +1580,15 @@ namespace AppsInToss.Editor
                     {
                         string distPath = Path.Combine(ctx.BuildProjectPath, "dist");
                         AITBuildValidator.PrintBuildReport(ctx.BuildProjectPath, distPath);
+
+                        var distValidation = AITBuildValidator.ValidateDistOutput(ctx.BuildProjectPath);
+                        if (distValidation != AITConvertCore.AITExportError.SUCCEED)
+                        {
+                            Debug.LogError("[AIT] granite build가 exit code 0으로 완료되었으나 출력물 검증 실패. 재시도합니다...");
+                            RetryGraniteBuildAsync(ctx, ct, onProgress, onComplete);
+                            return;
+                        }
+
                         onProgress?.Invoke(AITConvertCore.BuildPhase.Complete, 1f, "패키징 완료!");
                         Debug.Log($"[AIT] ✓ 비동기 패키징 완료: {distPath}");
                         onComplete?.Invoke(AITConvertCore.AITExportError.SUCCEED);
@@ -1633,6 +1646,15 @@ namespace AppsInToss.Editor
                             {
                                 string distPath = Path.Combine(ctx.BuildProjectPath, "dist");
                                 AITBuildValidator.PrintBuildReport(ctx.BuildProjectPath, distPath);
+
+                                var distValidation = AITBuildValidator.ValidateDistOutput(ctx.BuildProjectPath);
+                                if (distValidation != AITConvertCore.AITExportError.SUCCEED)
+                                {
+                                    Debug.LogError("[AIT] granite build 재시도도 출력물 검증 실패");
+                                    onComplete?.Invoke(distValidation);
+                                    return;
+                                }
+
                                 onProgress?.Invoke(AITConvertCore.BuildPhase.Complete, 1f, "패키징 완료!");
                                 Debug.Log($"[AIT] ✓ 비동기 패키징 완료 (재시도 성공): {distPath}");
                             }

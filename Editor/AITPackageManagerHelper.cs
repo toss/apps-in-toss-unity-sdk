@@ -31,6 +31,15 @@ namespace AppsInToss.Editor
         /// </summary>
         public static string GetEmbeddedNodeBinPath()
         {
+            if (_embeddedNodeBinPath == null)
+            {
+                // Domain Reload 후 경로 자동 복구 (다운로드 없이 기존 경로만 확인)
+                string embeddedNpm = AITNodeJSDownloader.FindEmbeddedNpm(autoDownload: false);
+                if (!string.IsNullOrEmpty(embeddedNpm))
+                {
+                    _embeddedNodeBinPath = System.IO.Path.GetDirectoryName(embeddedNpm);
+                }
+            }
             return _embeddedNodeBinPath;
         }
 

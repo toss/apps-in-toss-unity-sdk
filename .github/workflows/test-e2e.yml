@@ -26,6 +26,10 @@ on:
           - '1'
           - '0'
         default: '2'
+      debug_runner:
+        description: 'Kill Unity processes and log system diagnostics before build'
+        type: boolean
+        default: false
 
   # update.yml에서 호출
   workflow_call:
@@ -48,6 +52,11 @@ on:
         type: string
         required: false
         default: '2'
+      debug_runner:
+        description: 'Kill Unity processes and log system diagnostics before build'
+        type: boolean
+        required: false
+        default: false
 
 concurrency:
   group: e2e-tests-${{ inputs.target_ref || github.ref_name }}-${{ inputs.sdk_version_override || 'default' }}
@@ -220,6 +229,7 @@ jobs:
       clean-library: ${{ inputs.clean_library || false }}
       sdk-version-override: ${{ inputs.sdk_version_override || '' }}
       test-level: ${{ inputs.test_level || '2' }}
+      debug-runner: ${{ inputs.debug_runner || false }}
     secrets:
       SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
       KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
@@ -249,6 +259,7 @@ jobs:
       clean-library: ${{ inputs.clean_library || false }}
       sdk-version-override: ${{ inputs.sdk_version_override || '' }}
       test-level: ${{ inputs.test_level || '2' }}
+      debug-runner: ${{ inputs.debug_runner || false }}
     secrets:
       SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
       KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}

@@ -61,6 +61,11 @@ on:
         type: boolean
         required: false
         default: false
+      debug-runner:
+        description: 'Kill Unity processes and log system diagnostics before build'
+        type: boolean
+        required: false
+        default: false
       test-level:
         description: 'Test level: 0=editmode, 1=build+validation, 2=full-e2e'
         type: string
@@ -90,7 +95,7 @@ on:
 jobs:
   build:
     name: Build (${{ inputs.os }}, Unity ${{ inputs.unity-version }})
-    runs-on: ${{ inputs.os == 'macos' && fromJSON('["self-hosted", "macOS", "ARM64"]') || fromJSON('["self-hosted", "Windows", "X64", "enabled"]') }}
+    runs-on: ${{ inputs.os == 'macos' && fromJSON('["self-hosted", "macOS", "ARM64", "enabled"]') || fromJSON('["self-hosted", "Windows", "X64", "enabled"]') }}
     timeout-minutes: 60
     concurrency:
       group: unity-build-${{ inputs.ref || github.sha }}-${{ inputs.os }}-${{ inputs.unity-version }}-${{ inputs.sdk-version-override || 'default' }}
@@ -134,6 +139,147 @@ jobs:
         with:
           repository: ${{ inputs.repository || github.repository }}
           ref: ${{ inputs.ref || github.ref }}
+
+      # =====================================================
+      # Runner 진단 (debug-runner 플래그 활성화 시)
+      # Unity 관련 프로세스를 모두 kill하고 시스템 상태를 로깅
+      # =====================================================
+      - name: Debug Runner - Kill Unity Processes & Log System Info (macOS)
+        if: inputs.debug-runner && inputs.os == 'macos'
+        run: |
+          echo "=== Runner Diagnostics ==="
+          echo "Hostname: $(hostname)"
+          echo "Date: $(date)"
+          echo ""
+
+          echo "=== CPU Info ==="
+          sysctl -n machdep.cpu.brand_string
+          echo "CPU cores: $(sysctl -n hw.ncpu)"
+          echo ""
+
+          echo "=== Memory Usage ==="
+          vm_stat | head -10
+          echo "Total RAM: $(sysctl -n hw.memsize | awk '{printf "%.1f GB", $1/1073741824}')"
+          echo ""
+
+          echo "=== Disk Usage ==="
+          df -h / | tail -1
+          echo ""
+
+          echo "=== Top 20 Processes by CPU ==="
+          ps aux --sort=-%cpu | head -21
+          echo ""
+
+          echo "=== Top 20 Processes by Memory ==="
+          ps aux --sort=-%mem | head -21
+          echo ""
+
+          echo "=== Unity-related Processes ==="
+          ps aux | grep -i -E "unity|Unity.Licensing|UnityHelper|UnityShaderCompiler|UnityPackageManager" | grep -v grep || echo "No Unity processes found"
+          echo ""
+
+          echo "=== Killing Unity-related Processes ==="
+          KILLED=0
+          for PROC_NAME in Unity Unity.Licensing.Client UnityHelper UnityShaderCompiler UnityPackageManager; do
+            PIDS=$(pgrep -x "$PROC_NAME" 2>/dev/null || true)
+            if [ -n "$PIDS" ]; then
+              echo "Killing $PROC_NAME (PIDs: $PIDS)..."
+              kill -9 $PIDS 2>/dev/null || true
+              KILLED=$((KILLED + 1))
+            fi
+          done
+          # 패턴으로도 추가 정리
+          UNITY_PIDS=$(pgrep -if "unity" 2>/dev/null || true)
+          if [ -n "$UNITY_PIDS" ]; then
+            echo "Killing remaining Unity-related processes (PIDs: $UNITY_PIDS)..."
+            kill -9 $UNITY_PIDS 2>/dev/null || true
+            KILLED=$((KILLED + 1))
+          fi
+          if [ $KILLED -eq 0 ]; then
+            echo "No Unity processes to kill"
+          fi
+          sleep 2
+          echo ""
+
+          echo "=== Post-cleanup Process Check ==="
+          ps aux | grep -i unity | grep -v grep || echo "No Unity processes remaining"
+          echo ""
+
+          echo "=== Memory After Cleanup ==="
+          vm_stat | head -10
+
+      - name: Debug Runner - Kill Unity Processes & Log System Info (Windows)
+        if: inputs.debug-runner && inputs.os == 'windows'
+        shell: powershell
+        run: |
+          Write-Host "=== Runner Diagnostics ==="
+          Write-Host "Hostname: $env:COMPUTERNAME"
+          Write-Host "Date: $(Get-Date)"
+          Write-Host ""
+
+          Write-Host "=== CPU Info ==="
+          Get-CimInstance Win32_Processor | Select-Object Name, NumberOfCores, NumberOfLogicalProcessors | Format-List
+          Write-Host ""
+
+          Write-Host "=== Memory Usage ==="
+          $os = Get-CimInstance Win32_OperatingSystem
+          $totalGB = [math]::Round($os.TotalVisibleMemorySize / 1MB, 1)
+          $freeGB = [math]::Round($os.FreePhysicalMemory / 1MB, 1)
+          $usedGB = [math]::Round(($os.TotalVisibleMemorySize - $os.FreePhysicalMemory) / 1MB, 1)
+          Write-Host "Total: ${totalGB} GB / Used: ${usedGB} GB / Free: ${freeGB} GB"
+          Write-Host ""
+
+          Write-Host "=== Disk Usage ==="
+          Get-PSDrive -PSProvider FileSystem | Format-Table Name, @{L='Used(GB)';E={[math]::Round($_.Used/1GB,1)}}, @{L='Free(GB)';E={[math]::Round($_.Free/1GB,1)}}
+          Write-Host ""
+
+          Write-Host "=== Top 20 Processes by CPU ==="
+          Get-Process | Sort-Object CPU -Descending | Select-Object -First 20 Name, Id, CPU, @{L='Mem(MB)';E={[math]::Round($_.WorkingSet64/1MB,1)}} | Format-Table
+          Write-Host ""
+
+          Write-Host "=== Top 20 Processes by Memory ==="
+          Get-Process | Sort-Object WorkingSet64 -Descending | Select-Object -First 20 Name, Id, CPU, @{L='Mem(MB)';E={[math]::Round($_.WorkingSet64/1MB,1)}} | Format-Table
+          Write-Host ""
+
+          Write-Host "=== Unity-related Processes ==="
+          $unityProcs = Get-Process | Where-Object { $_.Name -match "Unity|UnityHelper|UnityShaderCompiler|UnityPackageManager" }
+          if ($unityProcs) {
+            $unityProcs | Format-Table Name, Id, CPU, @{L='Mem(MB)';E={[math]::Round($_.WorkingSet64/1MB,1)}}, Path
+          } else {
+            Write-Host "No Unity processes found"
+          }
+          Write-Host ""
+
+          Write-Host "=== Killing Unity-related Processes ==="
+          $killed = 0
+          $unityProcs = Get-Process | Where-Object { $_.Name -match "Unity|UnityHelper|UnityShaderCompiler|UnityPackageManager" }
+          foreach ($proc in $unityProcs) {
+            Write-Host "Killing $($proc.Name) (PID: $($proc.Id))..."
+            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+            $killed++
+          }
+          if ($killed -eq 0) {
+            Write-Host "No Unity processes to kill"
+          } else {
+            Write-Host "Killed $killed process(es)"
+            Start-Sleep -Seconds 2
+          }
+          Write-Host ""
+
+          Write-Host "=== Post-cleanup Process Check ==="
+          $remaining = Get-Process | Where-Object { $_.Name -match "Unity" }
+          if ($remaining) {
+            $remaining | Format-Table Name, Id
+          } else {
+            Write-Host "No Unity processes remaining"
+          }
+          Write-Host ""
+
+          Write-Host "=== Memory After Cleanup ==="
+          $os = Get-CimInstance Win32_OperatingSystem
+          $freeGB = [math]::Round($os.FreePhysicalMemory / 1MB, 1)
+          $usedGB = [math]::Round(($os.TotalVisibleMemorySize - $os.FreePhysicalMemory) / 1MB, 1)
+          Write-Host "Used: ${usedGB} GB / Free: ${freeGB} GB"
 
       # =====================================================
       # SDK 버전 오버라이드 (호환성 테스트용)

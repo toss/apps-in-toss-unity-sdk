@@ -730,12 +730,30 @@ namespace AppsInToss
                         // 에러 메시지 추출 (stdout과 stderr에서)
                         string errorDetail = ExtractDeployErrorMessage(result.Output, result.Error);
                         Debug.LogError($"AIT: 배포 실패 (Exit Code: {result.ExitCode})");
+                        if (!string.IsNullOrEmpty(result.Output))
+                            Debug.LogError($"AIT: [stdout] {result.Output}");
+                        if (!string.IsNullOrEmpty(result.Error))
+                            Debug.LogError($"AIT: [stderr] {result.Error}");
 
                         string dialogMessage = "배포에 실패했습니다.";
                         if (!string.IsNullOrEmpty(errorDetail))
                         {
                             dialogMessage += $"\n\n{errorDetail}";
                         }
+
+                        // 403/401 에러 시 트러블슈팅 가이드 추가
+                        bool isAuthError = !string.IsNullOrEmpty(errorDetail) &&
+                            (errorDetail.Contains("403") || errorDetail.Contains("401") ||
+                             errorDetail.Contains("Forbidden") || errorDetail.Contains("Unauthorized"));
+                        if (isAuthError)
+                        {
+                            dialogMessage += $"\n\n다음 항목을 확인해주세요:";
+                            dialogMessage += $"\n• 배포 키가 올바른지 확인 (Apps in Toss 콘솔 > 워크스페이스 > 키 관리)";
+                            dialogMessage += $"\n• 앱 이름(appName)이 콘솔에 등록된 이름과 일치하는지 확인";
+                            dialogMessage += $"\n  현재 설정된 appName: {config.appName}";
+                            dialogMessage += $"\n• 배포 키가 해당 앱의 워크스페이스에서 발급되었는지 확인";
+                        }
+
                         dialogMessage += "\n\n자세한 내용은 Console 로그를 확인하세요.";
                         dialogMessage += "\n\n문제가 지속되면 'Issue 신고'를 클릭하세요.";
 

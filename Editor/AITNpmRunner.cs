@@ -146,12 +146,23 @@ namespace AppsInToss.Editor
 
         /// <summary>
         /// pnpm 실행에 필요한 추가 PATH 경로 목록 구성
-        /// (npmPath 디렉토리 + 내장 node 실행 파일 디렉토리)
+        /// (node_modules/.bin + npmPath 디렉토리 + 내장 node 실행 파일 디렉토리)
         /// </summary>
-        internal static List<string> BuildAdditionalPaths(string npmPath)
+        internal static List<string> BuildAdditionalPaths(string npmPath, string workingDirectory = null)
         {
-            string npmDir = Path.GetDirectoryName(npmPath);
             var paths = new List<string>();
+
+            // node_modules/.bin을 최우선으로 추가 (pnpm exec로 CLI 직접 호출 시 필요)
+            if (!string.IsNullOrEmpty(workingDirectory))
+            {
+                string nodeModulesBin = Path.Combine(workingDirectory, "node_modules", ".bin");
+                if (Directory.Exists(nodeModulesBin))
+                {
+                    paths.Add(nodeModulesBin);
+                }
+            }
+
+            string npmDir = Path.GetDirectoryName(npmPath);
             if (!string.IsNullOrEmpty(npmDir)) paths.Add(npmDir);
 
             string embeddedBinPath = AITPackageManagerHelper.GetEmbeddedNodeBinPath();
@@ -188,7 +199,7 @@ namespace AppsInToss.Editor
         {
             string pmName = Path.GetFileNameWithoutExtension(npmPath);
             string fullArguments = BuildFullArguments(arguments, cachePath);
-            var additionalPaths = BuildAdditionalPaths(npmPath);
+            var additionalPaths = BuildAdditionalPaths(npmPath, workingDirectory);
 
             Debug.Log($"[{pmName}] 명령 실행 준비:");
             Debug.Log($"[{pmName}]   작업 디렉토리: {workingDirectory}");
@@ -356,7 +367,7 @@ namespace AppsInToss.Editor
         {
             string pmName = Path.GetFileNameWithoutExtension(npmPath);
             string fullArguments = BuildFullArguments(arguments, cachePath);
-            var additionalPaths = BuildAdditionalPaths(npmPath);
+            var additionalPaths = BuildAdditionalPaths(npmPath, workingDirectory);
 
             Debug.Log($"[{pmName}] 비동기 명령 실행:");
             Debug.Log($"[{pmName}]   명령: {pmName} {arguments}");

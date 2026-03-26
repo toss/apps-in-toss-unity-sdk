@@ -1,5 +1,5 @@
 name: Bulk Release
-run-name: "Bulk Release${{ inputs.versions && format(' - {0}', inputs.versions) || '' }}"
+run-name: "Bulk Release${{ inputs.versions && format(' - {0}', inputs.versions) || '' }}${{ inputs.min_version && inputs.min_version != '2.0.0' && format(' (min: v{0})', inputs.min_version) || '' }}"
 
 on:
   workflow_dispatch:
@@ -13,6 +13,11 @@ on:
         required: false
         type: number
         default: 2
+      min_version:
+        description: '최소 버전 (기본: 2.0.0). SDK 1.x 배포가 필요하면 1.5.0으로 지정'
+        required: false
+        type: string
+        default: '2.0.0'
       build_strategy:
         description: '빌드 전략: full (10빌드), standard (5빌드), minimal (1빌드), skip-build (0빌드) - 기본: minimal'
         required: false
@@ -47,16 +52,27 @@ jobs:
         id: extract
         run: |
           INPUT_VERSIONS="${{ inputs.versions }}"
+          MIN_VERSION="${{ inputs.min_version || '2.0.0' }}"
+          echo "최소 버전: ${MIN_VERSION}"
 
           if [ -n "$INPUT_VERSIONS" ]; then
             echo "=== 입력된 버전 사용 ==="
-            # 콤마로 구분된 버전을 줄바꿈으로 변환 후 정렬
-            VERSIONS=$(echo "$INPUT_VERSIONS" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sort -V)
+            ALL_INPUT=$(echo "$INPUT_VERSIONS" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sort -V)
           else
             echo "=== Git 태그에서 버전 추출 ==="
-            # release/v* 태그에서 버전 추출
-            VERSIONS=$(git tag -l 'release/v*' | sed 's/release\/v//' | sort -V)
+            ALL_INPUT=$(git tag -l 'release/v*' | sed 's/release\/v//' | sort -V)
           fi
+
+          # min_version 이상만 필터링
+          VERSIONS=""
+          for V in $ALL_INPUT; do
+            if [ "$(printf '%s\n' "$MIN_VERSION" "$V" | sort -V | head -n1)" = "$MIN_VERSION" ] || [ "$V" = "$MIN_VERSION" ]; then
+              VERSIONS="${VERSIONS}${V}"$'\n'
+            else
+              echo "  v${V}: min_version(${MIN_VERSION}) 미만으로 스킵"
+            fi
+          done
+          VERSIONS=$(echo "$VERSIONS" | sed '/^$/d')
 
           # 버전이 없으면 에러
           if [ -z "$VERSIONS" ]; then
@@ -98,6 +114,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**총 ${{ steps.extract.outputs.count }}개 버전**" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**최소 버전**: ${{ inputs.min_version || '2.0.0' }}" >> $GITHUB_STEP_SUMMARY
           echo "**동시 실행 수**: ${{ inputs.max_parallel || 2 }}" >> $GITHUB_STEP_SUMMARY
           echo "**빌드 전략**: ${{ inputs.build_strategy || 'minimal' }}" >> $GITHUB_STEP_SUMMARY
 

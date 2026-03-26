@@ -155,6 +155,7 @@ namespace AppsInToss
         [MenuItem("AIT/Dev Server/Start Server", false, 1)]
         public static void MenuStartDevServer()
         {
+            if (AITDeprecationChecker.BlockIfDeprecated()) return;
             StartServer(ServerType.Dev);
         }
 
@@ -212,6 +213,7 @@ namespace AppsInToss
         [MenuItem("AIT/Production Server/Start Server", false, 11)]
         public static void MenuStartProdServer()
         {
+            if (AITDeprecationChecker.BlockIfDeprecated()) return;
             StartServer(ServerType.Prod);
         }
 
@@ -292,6 +294,7 @@ namespace AppsInToss
         [MenuItem("AIT/Build & Package", false, 23)]
         public static void BuildAndPackage()
         {
+            if (AITDeprecationChecker.BlockIfDeprecated()) return;
             Debug.Log("AIT: Build & Package 시작...");
             ExecuteBuildAndPackage();
         }
@@ -300,6 +303,7 @@ namespace AppsInToss
         [MenuItem("AIT/Publish", false, 31)]
         public static void Publish()
         {
+            if (AITDeprecationChecker.BlockIfDeprecated()) return;
             var config = UnityUtil.GetEditorConf();
             if (!ValidateSettingsForPackage(config)) return;
 

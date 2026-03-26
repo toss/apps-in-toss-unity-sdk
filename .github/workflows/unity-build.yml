@@ -1082,7 +1082,7 @@ jobs:
       # =====================================================
       - name: Build Unity WebGL (macOS)
         if: inputs.os == 'macos' && inputs.run-build && (inputs.test-level || '2') != '0'
-        uses: nick-invision/retry@v3
+        uses: nick-invision/retry@v4
         env:
           AIT_DEBUG_CONSOLE: "true"
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
@@ -1220,7 +1220,7 @@ jobs:
 
       - name: Build Unity WebGL (Windows)
         if: inputs.os == 'windows' && inputs.run-build && (inputs.test-level || '2') != '0'
-        uses: nick-invision/retry@v3
+        uses: nick-invision/retry@v4
         env:
           AIT_DEBUG_CONSOLE: "true"
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}

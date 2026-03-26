@@ -33,7 +33,7 @@
     "@vitest/ui": "^4.0.15",
     "glob": "^13.0.0",
     "tsx": "^4.19.2",
-    "typescript": "^5.8.3",
+    "typescript": "^6.0.2",
     "vitest": "^4.0.15",
     "web-framework-1.10.0": "npm:@apps-in-toss/web-framework@1.10.0",
     "web-framework-1.10.1": "npm:@apps-in-toss/web-framework@1.10.1",

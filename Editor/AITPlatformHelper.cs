@@ -283,7 +283,8 @@ namespace AppsInToss.Editor
             {
                 shell = "powershell.exe";
                 string escapedCommand = EscapeForPowerShell(command);
-                string envSetup = "$env:CI = 'true';";
+                string escapedPathEnv = pathEnv.Replace("'", "''");
+                string envSetup = $"$env:CI = 'true'; $env:PATH = '{escapedPathEnv}';";
                 shellArgs = $"-ExecutionPolicy Bypass -NoProfile -NoLogo -Command \"[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; {envSetup} {escapedCommand}\"";
             }
             else

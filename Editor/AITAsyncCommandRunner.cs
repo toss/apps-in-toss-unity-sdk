@@ -143,7 +143,8 @@ namespace AppsInToss.Editor
                 {
                     shell = "powershell.exe";
                     string escapedCommand = EscapeForPowerShell(command);
-                    string envSetup = "$env:CI = 'true';";
+                    string escapedPathEnv = pathEnv.Replace("'", "''");
+                    string envSetup = $"$env:CI = 'true'; $env:PATH = '{escapedPathEnv}';";
                     if (additionalEnvVars != null)
                     {
                         foreach (var kvp in additionalEnvVars)

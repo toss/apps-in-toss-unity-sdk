@@ -525,6 +525,10 @@ namespace AppsInToss.Editor
 
             string distPath = Path.Combine(ctx.BuildProjectPath, "dist");
             AITBuildValidator.PrintBuildReport(ctx.BuildProjectPath, distPath);
+
+            var distValidation = AITBuildValidator.ValidateDistOutput(ctx.BuildProjectPath);
+            if (distValidation != AITConvertCore.AITExportError.SUCCEED) return distValidation;
+
             Debug.Log($"[AIT] ✓ 패키징 완료: {distPath}");
 
             return AITConvertCore.AITExportError.SUCCEED;
@@ -551,15 +555,14 @@ namespace AppsInToss.Editor
 
         /// <summary>
         /// granite build 실행 + 실패 시 1회 재시도 (동기)
+        /// ait build → granite build 순으로 시도합니다.
         /// </summary>
         private static AITConvertCore.AITExportError RunGraniteBuildSync(PackageContext ctx)
         {
             Debug.Log("[AIT] granite build 실행 중...");
             Debug.Log($"[AIT] UNITY_METADATA: {ctx.UnityMetadataEnv["UNITY_METADATA"]}");
 
-            var result = AITNpmRunner.RunNpmCommandWithCache(
-                ctx.BuildProjectPath, ctx.PnpmPath, "run build", ctx.LocalCachePath,
-                "granite build...", additionalEnvVars: ctx.UnityMetadataEnv);
+            var result = RunAitOrGraniteBuildSync(ctx, "ait build");
             if (result == AITConvertCore.AITExportError.SUCCEED) return result;
             if (result == AITConvertCore.AITExportError.CANCELLED) return result;
 
@@ -572,9 +575,7 @@ namespace AppsInToss.Editor
                 ctx.LocalCachePath, "pnpm install (빌드 실패 후)...");
             if (installResult != AITConvertCore.AITExportError.SUCCEED) return installResult;
 
-            result = AITNpmRunner.RunNpmCommandWithCache(
-                ctx.BuildProjectPath, ctx.PnpmPath, "run build", ctx.LocalCachePath,
-                "granite build (재시도)...", additionalEnvVars: ctx.UnityMetadataEnv);
+            result = RunAitOrGraniteBuildSync(ctx, "ait build (재시도)");
             if (result == AITConvertCore.AITExportError.SUCCEED)
             {
                 Debug.Log("[AIT] ✓ granite build 재시도 성공");
@@ -584,6 +585,25 @@ namespace AppsInToss.Editor
                 Debug.LogError("[AIT] granite build 재시도도 실패");
             }
             return result;
+        }
+
+        /// <summary>
+        /// ait build를 먼저 시도하고, 실패 시 granite build로 폴백합니다 (동기).
+        /// package.json scripts에 의존하지 않고 CLI를 직접 호출합니다.
+        /// </summary>
+        private static AITConvertCore.AITExportError RunAitOrGraniteBuildSync(PackageContext ctx, string label)
+        {
+            Debug.Log($"[AIT] {label}: ait build 시도 중...");
+            var result = AITNpmRunner.RunNpmCommandWithCache(
+                ctx.BuildProjectPath, ctx.PnpmPath, "exec ait build", ctx.LocalCachePath,
+                $"{label} (ait build)...", additionalEnvVars: ctx.UnityMetadataEnv);
+            if (result == AITConvertCore.AITExportError.SUCCEED) return result;
+            if (result == AITConvertCore.AITExportError.CANCELLED) return result;
+
+            Debug.LogWarning($"[AIT] {label}: ait build 실패, granite build로 폴백합니다...");
+            return AITNpmRunner.RunNpmCommandWithCache(
+                ctx.BuildProjectPath, ctx.PnpmPath, "exec granite build", ctx.LocalCachePath,
+                $"{label} (granite build)...", additionalEnvVars: ctx.UnityMetadataEnv);
         }
 
         #endregion
@@ -1557,6 +1577,7 @@ namespace AppsInToss.Editor
 
         /// <summary>
         /// granite build 비동기 실행 + 실패 시 1회 재시도
+        /// ait build → granite build 순으로 시도합니다.
         /// </summary>
         private static void RunGraniteBuildAsync(
             PackageContext ctx,
@@ -1568,14 +1589,22 @@ namespace AppsInToss.Editor
             Debug.Log("[AIT] granite build 실행 중...");
             Debug.Log($"[AIT] UNITY_METADATA: {ctx.UnityMetadataEnv["UNITY_METADATA"]}");
 
-            AITNpmRunner.RunNpmCommandWithCacheAsync(
-                ctx.BuildProjectPath, ctx.PnpmPath, "run build", ctx.LocalCachePath,
+            RunAitOrGraniteBuildAsync(ctx, onProgress,
                 onComplete: (buildResult) =>
                 {
                     if (buildResult == AITConvertCore.AITExportError.SUCCEED)
                     {
                         string distPath = Path.Combine(ctx.BuildProjectPath, "dist");
                         AITBuildValidator.PrintBuildReport(ctx.BuildProjectPath, distPath);
+
+                        var distValidation = AITBuildValidator.ValidateDistOutput(ctx.BuildProjectPath);
+                        if (distValidation != AITConvertCore.AITExportError.SUCCEED)
+                        {
+                            Debug.LogError("[AIT] granite build가 exit code 0으로 완료되었으나 출력물 검증 실패. 재시도합니다...");
+                            RetryGraniteBuildAsync(ctx, ct, onProgress, onComplete);
+                            return;
+                        }
+
                         onProgress?.Invoke(AITConvertCore.BuildPhase.Complete, 1f, "패키징 완료!");
                         Debug.Log($"[AIT] ✓ 비동기 패키징 완료: {distPath}");
                         onComplete?.Invoke(AITConvertCore.AITExportError.SUCCEED);
@@ -1590,10 +1619,57 @@ namespace AppsInToss.Editor
 
                     // 재시도: clean → install → build
                     RetryGraniteBuildAsync(ctx, ct, onProgress, onComplete);
+                }
+            );
+        }
+
+        /// <summary>
+        /// ait build를 먼저 시도하고, 실패 시 granite build로 폴백합니다 (비동기).
+        /// package.json scripts에 의존하지 않고 CLI를 직접 호출합니다.
+        /// </summary>
+        private static void RunAitOrGraniteBuildAsync(
+            PackageContext ctx,
+            Action<AITConvertCore.BuildPhase, float, string> onProgress,
+            Action<AITConvertCore.AITExportError> onComplete)
+        {
+            Debug.Log("[AIT] ait build 시도 중...");
+            AITNpmRunner.RunNpmCommandWithCacheAsync(
+                ctx.BuildProjectPath, ctx.PnpmPath, "exec ait build", ctx.LocalCachePath,
+                onComplete: (aitResult) =>
+                {
+                    if (aitResult == AITConvertCore.AITExportError.SUCCEED)
+                    {
+                        Debug.Log("[AIT] ✓ ait build 성공");
+                        onComplete?.Invoke(aitResult);
+                        return;
+                    }
+
+                    if (aitResult == AITConvertCore.AITExportError.CANCELLED)
+                    {
+                        onComplete?.Invoke(aitResult);
+                        return;
+                    }
+
+                    // ait build 실패 → granite build 폴백
+                    Debug.LogWarning("[AIT] ait build 실패, granite build로 폴백합니다...");
+                    AITNpmRunner.RunNpmCommandWithCacheAsync(
+                        ctx.BuildProjectPath, ctx.PnpmPath, "exec granite build", ctx.LocalCachePath,
+                        onComplete: (graniteResult) =>
+                        {
+                            if (graniteResult == AITConvertCore.AITExportError.SUCCEED)
+                                Debug.Log("[AIT] ✓ granite build 폴백 성공");
+                            onComplete?.Invoke(graniteResult);
+                        },
+                        onOutputReceived: (line) =>
+                        {
+                            onProgress?.Invoke(AITConvertCore.BuildPhase.GraniteBuild, 0.75f, line);
+                        },
+                        additionalEnvVars: ctx.UnityMetadataEnv
+                    );
                 },
                 onOutputReceived: (line) =>
                 {
-                    onProgress?.Invoke(AITConvertCore.BuildPhase.GraniteBuild, 0.75f, line);
+                    onProgress?.Invoke(AITConvertCore.BuildPhase.GraniteBuild, 0.6f, line);
                 },
                 additionalEnvVars: ctx.UnityMetadataEnv
             );
@@ -1625,14 +1701,22 @@ namespace AppsInToss.Editor
 
                     onProgress?.Invoke(AITConvertCore.BuildPhase.GraniteBuild, 0.7f, "granite build 재시도 중...");
 
-                    AITNpmRunner.RunNpmCommandWithCacheAsync(
-                        ctx.BuildProjectPath, ctx.PnpmPath, "run build", ctx.LocalCachePath,
+                    RunAitOrGraniteBuildAsync(ctx, onProgress,
                         onComplete: (retryBuildResult) =>
                         {
                             if (retryBuildResult == AITConvertCore.AITExportError.SUCCEED)
                             {
                                 string distPath = Path.Combine(ctx.BuildProjectPath, "dist");
                                 AITBuildValidator.PrintBuildReport(ctx.BuildProjectPath, distPath);
+
+                                var distValidation = AITBuildValidator.ValidateDistOutput(ctx.BuildProjectPath);
+                                if (distValidation != AITConvertCore.AITExportError.SUCCEED)
+                                {
+                                    Debug.LogError("[AIT] granite build 재시도도 출력물 검증 실패");
+                                    onComplete?.Invoke(distValidation);
+                                    return;
+                                }
+
                                 onProgress?.Invoke(AITConvertCore.BuildPhase.Complete, 1f, "패키징 완료!");
                                 Debug.Log($"[AIT] ✓ 비동기 패키징 완료 (재시도 성공): {distPath}");
                             }
@@ -1641,12 +1725,7 @@ namespace AppsInToss.Editor
                                 Debug.LogError("[AIT] granite build 재시도도 실패");
                             }
                             onComplete?.Invoke(retryBuildResult);
-                        },
-                        onOutputReceived: (line) =>
-                        {
-                            onProgress?.Invoke(AITConvertCore.BuildPhase.GraniteBuild, 0.85f, line);
-                        },
-                        additionalEnvVars: ctx.UnityMetadataEnv
+                        }
                     );
                 },
                 onOutputReceived: (line) =>

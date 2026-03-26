@@ -343,6 +343,52 @@ namespace AppsInToss.Editor
         }
 
         /// <summary>
+        /// granite build 결과물(.ait 파일) 존재를 검증합니다.
+        /// .ait 파일은 빌드 루트 또는 dist/ 폴더에 생성될 수 있습니다.
+        /// </summary>
+        internal static AITConvertCore.AITExportError ValidateDistOutput(string buildProjectPath)
+        {
+            // .ait 파일은 ait build CLI 버전에 따라 빌드 루트 또는 dist/에 생성될 수 있음
+            var aitFiles = Directory.GetFiles(buildProjectPath, "*.ait");
+            string distPath = Path.Combine(buildProjectPath, "dist");
+            if (aitFiles.Length == 0 && Directory.Exists(distPath))
+            {
+                aitFiles = Directory.GetFiles(distPath, "*.ait");
+            }
+
+            if (aitFiles.Length == 0)
+            {
+                Debug.LogError("[AIT] ========================================");
+                Debug.LogError("[AIT] ✗ .ait 파일이 생성되지 않았습니다!");
+                Debug.LogError($"[AIT]   빌드 경로: {buildProjectPath}");
+                if (Directory.Exists(distPath))
+                {
+                    var distFiles = Directory.GetFiles(distPath);
+                    if (distFiles.Length > 0)
+                    {
+                        Debug.LogError("[AIT]   dist/ 폴더의 실제 파일들:");
+                        foreach (var file in distFiles)
+                        {
+                            Debug.LogError($"[AIT]     - {Path.GetFileName(file)}");
+                        }
+                    }
+                }
+                else
+                {
+                    Debug.LogError("[AIT]   dist/ 폴더도 존재하지 않습니다.");
+                }
+                Debug.LogError("[AIT] ========================================");
+                return AITConvertCore.AITExportError.AIT_FILE_MISSING;
+            }
+
+            foreach (var aitFile in aitFiles)
+            {
+                Debug.Log($"[AIT] ✓ .ait 파일 발견: {Path.GetFileName(aitFile)}");
+            }
+            return AITConvertCore.AITExportError.SUCCEED;
+        }
+
+        /// <summary>
         /// 빌드 캐시 통계 출력
         /// </summary>
         internal static void LogBuildCacheStats(string buildProjectPath)

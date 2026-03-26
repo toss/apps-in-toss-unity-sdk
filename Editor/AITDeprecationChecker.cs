@@ -20,9 +20,44 @@ namespace AppsInToss.Editor
         private const string SESSION_KEY = "AIT_Deprecation_Checked_v1";
         private const int GIT_TIMEOUT_MS = 10000;
 
+        // 최신 태그 캐시 (세션 중 1회만 조회)
+        private static string _cachedLatestTag;
+        private static bool _tagLookupDone;
+
         static AITDeprecationChecker()
         {
             EditorApplication.delayCall += OnEditorReady;
+        }
+
+        /// <summary>
+        /// 최신 2.x 태그를 조회하고 캐싱합니다. 이미 조회한 경우 캐시를 반환합니다.
+        /// </summary>
+        private static string GetLatestV2TagCached()
+        {
+            if (_tagLookupDone) return _cachedLatestTag;
+            _tagLookupDone = true;
+
+            EditorUtility.DisplayProgressBar("SDK 업그레이드", "최신 2.x 버전을 확인하는 중...", 0.3f);
+            try
+            {
+                _cachedLatestTag = FindLatestV2Tag();
+            }
+            finally
+            {
+                EditorUtility.ClearProgressBar();
+            }
+
+            return _cachedLatestTag;
+        }
+
+        /// <summary>
+        /// 캐시된 태그에서 버전 문자열을 추출합니다 (예: "release/v2.0.5" → "2.0.5").
+        /// </summary>
+        private static string GetLatestVersionDisplay()
+        {
+            string tag = GetLatestV2TagCached() ?? FALLBACK_UPGRADE_TAG;
+            var match = Regex.Match(tag, @"release/v(.+)$");
+            return match.Success ? match.Groups[1].Value : "2.x";
         }
 
         /// <summary>
@@ -63,14 +98,15 @@ namespace AppsInToss.Editor
         /// </summary>
         public static void ShowDeprecationDialog()
         {
+            string latestVersion = GetLatestVersionDisplay();
             bool shouldUpdate = EditorUtility.DisplayDialog(
                 "SDK 지원 종료 안내",
                 $"현재 사용 중인 Apps in Toss Unity SDK v{AITVersion.Version}은 " +
                 "지원이 종료되었습니다.\n\n" +
                 "SDK 1.x 버전으로는 더 이상 빌드 및 배포가 불가능합니다.\n" +
                 "앱인토스 콘솔에서도 2.0.0 미만 번들은 거부됩니다.\n\n" +
-                "최신 SDK 2.x로 업그레이드해 주세요.",
-                "최신 SDK로 업데이트",
+                $"최신 SDK v{latestVersion}으로 업그레이드해 주세요.",
+                $"v{latestVersion}으로 업데이트",
                 "닫기"
             );
 
@@ -85,20 +121,11 @@ namespace AppsInToss.Editor
         /// </summary>
         public static void UpgradeToLatest()
         {
-            EditorUtility.DisplayProgressBar("SDK 업그레이드", "최신 2.x 버전을 확인하는 중...", 0.3f);
-            string tag;
-            try
+            string tag = GetLatestV2TagCached();
+            if (string.IsNullOrEmpty(tag))
             {
-                tag = FindLatestV2Tag();
-                if (string.IsNullOrEmpty(tag))
-                {
-                    tag = FALLBACK_UPGRADE_TAG;
-                    Debug.LogWarning($"[AIT] 최신 2.x 태그를 자동 감지하지 못했습니다. 기본값 사용: {tag}");
-                }
-            }
-            finally
-            {
-                EditorUtility.ClearProgressBar();
+                tag = FALLBACK_UPGRADE_TAG;
+                Debug.LogWarning($"[AIT] 최신 2.x 태그를 자동 감지하지 못했습니다. 기본값 사용: {tag}");
             }
 
             string url = $"{GIT_REPO_URL}#{tag}";
@@ -114,13 +141,14 @@ namespace AppsInToss.Editor
         {
             if (!IsDeprecated()) return;
 
+            string latestVersion = GetLatestVersionDisplay();
             EditorGUILayout.HelpBox(
                 $"이 SDK 버전(v{AITVersion.Version})은 지원이 종료되었습니다.\n" +
-                "빌드 및 배포가 차단됩니다. 최신 SDK 2.x로 업그레이드해 주세요.",
+                $"빌드 및 배포가 차단됩니다. 최신 SDK v{latestVersion}으로 업그레이드해 주세요.",
                 MessageType.Error
             );
 
-            if (GUILayout.Button("최신 SDK로 업데이트"))
+            if (GUILayout.Button($"v{latestVersion}으로 업데이트"))
             {
                 UpgradeToLatest();
             }

@@ -224,25 +224,15 @@ public class DeprecationCheckerTests
     }
 
     // =====================================================
-    // AITAutoUpdater 세션 키 충돌 방지 검증
+    // 지속적 다이얼로그 메서드 존재 검증
     // =====================================================
 
     [Test]
-    public void SessionKey_IsDifferentFromAutoUpdater()
+    public void ShowDeprecationDialogPersistent_MethodExists()
     {
-        var deprecationKey = checkerType.GetField("SESSION_KEY",
+        var method = checkerType.GetMethod("ShowDeprecationDialogPersistent",
             BindingFlags.NonPublic | BindingFlags.Static);
-        Assert.IsNotNull(deprecationKey);
-
-        var autoUpdaterType = typeof(AITAutoUpdater);
-        var autoUpdaterKey = autoUpdaterType.GetField("SESSION_KEY",
-            BindingFlags.NonPublic | BindingFlags.Static);
-        Assert.IsNotNull(autoUpdaterKey);
-
-        string depKey = (string)deprecationKey.GetValue(null);
-        string autoKey = (string)autoUpdaterKey.GetValue(null);
-
-        Assert.AreNotEqual(depKey, autoKey,
-            "AITDeprecationChecker and AITAutoUpdater should have different session keys");
+        Assert.IsNotNull(method,
+            "ShowDeprecationDialogPersistent should exist for persistent dialog behavior");
     }
 }

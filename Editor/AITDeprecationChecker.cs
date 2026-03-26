@@ -17,7 +17,6 @@ namespace AppsInToss.Editor
         private const string GIT_REPO_URL = "https://github.com/toss/apps-in-toss-unity-sdk.git";
         // git ls-remote 실패 시 사용할 폴백 태그. 새 2.x 릴리즈 시 갱신 필요.
         private const string FALLBACK_UPGRADE_TAG = "release/v2.0.5";
-        private const string SESSION_KEY = "AIT_Deprecation_Checked_v1";
         private const int GIT_TIMEOUT_MS = 10000;
 
         // 최신 태그 캐시 (세션 중 1회만 조회)
@@ -160,15 +159,26 @@ namespace AppsInToss.Editor
         {
             if (Application.isBatchMode) return;
             if (EditorApplication.isPlayingOrWillChangePlaymode) return;
-            if (SessionState.GetBool(SESSION_KEY, false)) return;
-
-            SessionState.SetBool(SESSION_KEY, true);
 
             if (IsDeprecated())
             {
                 // AITAutoUpdater의 업데이트 다이얼로그와 중복 표시 방지
                 SessionState.SetBool("AIT_AutoUpdate_Checked_v1", true);
-                ShowDeprecationDialog();
+                ShowDeprecationDialogPersistent();
+            }
+        }
+
+        /// <summary>
+        /// "닫기"를 눌러도 다시 표시되는 다이얼로그.
+        /// 업데이트를 선택할 때까지 반복합니다.
+        /// </summary>
+        private static void ShowDeprecationDialogPersistent()
+        {
+            ShowDeprecationDialog();
+            // 사용자가 "닫기"를 눌렀고 아직 deprecated면 다음 프레임에 다시 표시
+            if (IsDeprecated())
+            {
+                EditorApplication.delayCall += ShowDeprecationDialogPersistent;
             }
         }
 

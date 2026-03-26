@@ -23,6 +23,9 @@ namespace AppsInToss.Editor
         private static string _cachedLatestTag;
         private static bool _tagLookupDone;
 
+        // 업그레이드 시작 후 다이얼로그 반복을 멈추기 위한 플래그
+        private static bool _upgradeInProgress;
+
         static AITDeprecationChecker()
         {
             EditorApplication.delayCall += OnEditorReady;
@@ -87,7 +90,7 @@ namespace AppsInToss.Editor
         /// </summary>
         public static bool BlockIfDeprecated()
         {
-            if (!IsDeprecated()) return false;
+            if (_upgradeInProgress || !IsDeprecated()) return false;
             ShowDeprecationDialog();
             return true;
         }
@@ -120,6 +123,7 @@ namespace AppsInToss.Editor
         /// </summary>
         public static void UpgradeToLatest()
         {
+            _upgradeInProgress = true;
             string tag = GetLatestV2TagCached();
             if (string.IsNullOrEmpty(tag))
             {
@@ -174,9 +178,10 @@ namespace AppsInToss.Editor
         /// </summary>
         private static void ShowDeprecationDialogPersistent()
         {
+            if (_upgradeInProgress) return;
             ShowDeprecationDialog();
-            // 사용자가 "닫기"를 눌렀고 아직 deprecated면 다음 프레임에 다시 표시
-            if (IsDeprecated())
+            // 사용자가 "닫기"를 눌렀고 업그레이드가 시작되지 않았으면 다음 프레임에 다시 표시
+            if (!_upgradeInProgress)
             {
                 EditorApplication.delayCall += ShowDeprecationDialogPersistent;
             }

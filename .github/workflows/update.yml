@@ -86,6 +86,12 @@ jobs:
           MISSING_VERSIONS=""
 
           for VERSION in $ALL_NPM_VERSIONS; do
+            # 2.0.0 미만 버전은 스킵 (SDK 1.x 지원 종료)
+            if [ "$(printf '%s\n' "2.0.0" "$VERSION" | sort -V | head -n1)" = "$VERSION" ] && [ "$VERSION" != "2.0.0" ]; then
+              echo "  ${VERSION}: SDK 1.x 지원 종료 (스킵)"
+              continue
+            fi
+
             # 현재 버전 이하는 스킵
             if [ "$(printf '%s\n' "$CURRENT_VERSION" "$VERSION" | sort -V | head -n1)" = "$VERSION" ] && [ "$VERSION" != "$CURRENT_VERSION" ]; then
               continue

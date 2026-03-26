@@ -48,6 +48,7 @@ namespace AppsInToss.Editor
             GUILayout.Space(10);
             DrawHeader();
             GUILayout.Space(10);
+            AITDeprecationChecker.DrawDeprecationBanner();
             DrawAppInfo();
             GUILayout.Space(10);
             DrawBrandSettings();

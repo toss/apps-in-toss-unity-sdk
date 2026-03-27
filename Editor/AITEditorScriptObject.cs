@@ -202,6 +202,10 @@ namespace AppsInToss
         [Tooltip("-1 = 자동 (false, Unity 6+)")]
         public int webAssemblyArithmeticExceptions = -1;
 
+        [Header("빌드 전 검사 설정")]
+        [Tooltip("빌드 전 에셋 최적화 검사를 건너뜁니다")]
+        public bool skipBuildOptimizationCheck = false;
+
         [Header("권한 설정")]
         public AITPermissionConfig permissionConfig = new AITPermissionConfig();
 

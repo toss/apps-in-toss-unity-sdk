@@ -696,6 +696,14 @@ namespace AppsInToss.Editor
             DrawRunInBackgroundSetting();
 
             GUILayout.Space(10);
+            EditorGUILayout.LabelField("빌드 전 검사", EditorStyles.boldLabel);
+
+            // 빌드 전 최적화 검사
+            config.skipBuildOptimizationCheck = !EditorGUILayout.Toggle(
+                "빌드 전 에셋 최적화 검사",
+                !config.skipBuildOptimizationCheck);
+
+            GUILayout.Space(10);
 
             // 고급 설정 초기화
             if (GUILayout.Button("고급 설정 기본값으로 복원"))
@@ -989,6 +997,7 @@ namespace AppsInToss.Editor
             config.showUnityLogo = -1;
             config.decompressionFallback = -1;
             config.runInBackground = -1;
+            config.skipBuildOptimizationCheck = false;
         }
 
         private void DrawDeploymentSettings()

@@ -101,8 +101,16 @@ namespace AppsInToss.Editor
 
                 var platformSettings = importer.GetPlatformTextureSettings("WebGL");
 
-                if (!platformSettings.overridden || IsUncompressedTextureFormat(platformSettings.format))
+                if (!platformSettings.overridden)
                 {
+                    // WebGL 플랫폼 오버라이드 없음 → 최적화 대상
+                    issue.assetPaths.Add(path);
+                }
+                else if (platformSettings.format != TextureImporterFormat.Automatic &&
+                         IsUncompressedTextureFormat(platformSettings.format))
+                {
+                    // 오버라이드 있지만 비압축 포맷 → 최적화 대상
+                    // Automatic은 Unity가 플랫폼별 최적 포맷을 자동 선택하므로 제외
                     issue.assetPaths.Add(path);
                 }
             }
@@ -299,8 +307,7 @@ namespace AppsInToss.Editor
 
         private static bool IsUncompressedTextureFormat(TextureImporterFormat format)
         {
-            return format == TextureImporterFormat.Automatic ||
-                   format == TextureImporterFormat.RGBA32 ||
+            return format == TextureImporterFormat.RGBA32 ||
                    format == TextureImporterFormat.ARGB32 ||
                    format == TextureImporterFormat.RGB24 ||
                    format == TextureImporterFormat.Alpha8 ||

@@ -186,27 +186,38 @@ namespace AppsInToss.Editor
 
             try
             {
-                AssetDatabase.StartAssetEditing();
-
                 var format = GetRecommendedTextureFormat();
                 int fixed_ = 0;
 
+                // 설정 변경 단계 (reimport 억제)
+                AssetDatabase.StartAssetEditing();
+                try
+                {
+                    for (int i = 0; i < assetPaths.Count; i++)
+                    {
+                        var importer = AssetImporter.GetAtPath(assetPaths[i]) as TextureImporter;
+                        if (importer == null) continue;
+
+                        var platformSettings = importer.GetPlatformTextureSettings("WebGL");
+                        platformSettings.overridden = true;
+                        platformSettings.format = format;
+                        importer.SetPlatformTextureSettings(platformSettings);
+                        fixed_++;
+                    }
+                }
+                finally
+                {
+                    AssetDatabase.StopAssetEditing();
+                }
+
+                // 일괄 reimport
                 for (int i = 0; i < assetPaths.Count; i++)
                 {
                     EditorUtility.DisplayProgressBar(
-                        "텍스처 최적화 적용 중",
+                        "텍스처 reimport 중",
                         $"{assetPaths[i]} ({i + 1}/{assetPaths.Count})",
                         (float)i / assetPaths.Count);
-
-                    var importer = AssetImporter.GetAtPath(assetPaths[i]) as TextureImporter;
-                    if (importer == null) continue;
-
-                    var platformSettings = importer.GetPlatformTextureSettings("WebGL");
-                    platformSettings.overridden = true;
-                    platformSettings.format = format;
-                    importer.SetPlatformTextureSettings(platformSettings);
-                    importer.SaveAndReimport();
-                    fixed_++;
+                    AssetDatabase.ImportAsset(assetPaths[i]);
                 }
 
                 result.success = true;
@@ -220,7 +231,6 @@ namespace AppsInToss.Editor
             }
             finally
             {
-                AssetDatabase.StopAssetEditing();
                 EditorUtility.ClearProgressBar();
             }
 
@@ -237,26 +247,37 @@ namespace AppsInToss.Editor
 
             try
             {
-                AssetDatabase.StartAssetEditing();
-
                 int fixed_ = 0;
 
+                // 설정 변경 단계 (reimport 억제)
+                AssetDatabase.StartAssetEditing();
+                try
+                {
+                    for (int i = 0; i < assetPaths.Count; i++)
+                    {
+                        var importer = AssetImporter.GetAtPath(assetPaths[i]) as AudioImporter;
+                        if (importer == null) continue;
+
+                        var sampleSettings = importer.GetOverrideSampleSettings("WebGL");
+                        sampleSettings.compressionFormat = AudioCompressionFormat.Vorbis;
+                        sampleSettings.quality = 0.5f;
+                        importer.SetOverrideSampleSettings("WebGL", sampleSettings);
+                        fixed_++;
+                    }
+                }
+                finally
+                {
+                    AssetDatabase.StopAssetEditing();
+                }
+
+                // 일괄 reimport
                 for (int i = 0; i < assetPaths.Count; i++)
                 {
                     EditorUtility.DisplayProgressBar(
-                        "오디오 최적화 적용 중",
+                        "오디오 reimport 중",
                         $"{assetPaths[i]} ({i + 1}/{assetPaths.Count})",
                         (float)i / assetPaths.Count);
-
-                    var importer = AssetImporter.GetAtPath(assetPaths[i]) as AudioImporter;
-                    if (importer == null) continue;
-
-                    var sampleSettings = importer.GetOverrideSampleSettings("WebGL");
-                    sampleSettings.compressionFormat = AudioCompressionFormat.Vorbis;
-                    sampleSettings.quality = 0.5f;
-                    importer.SetOverrideSampleSettings("WebGL", sampleSettings);
-                    importer.SaveAndReimport();
-                    fixed_++;
+                    AssetDatabase.ImportAsset(assetPaths[i]);
                 }
 
                 result.success = true;
@@ -270,7 +291,6 @@ namespace AppsInToss.Editor
             }
             finally
             {
-                AssetDatabase.StopAssetEditing();
                 EditorUtility.ClearProgressBar();
             }
 
@@ -279,11 +299,17 @@ namespace AppsInToss.Editor
 
         private static bool IsUncompressedTextureFormat(TextureImporterFormat format)
         {
-            return format == TextureImporterFormat.RGBA32 ||
+            return format == TextureImporterFormat.Automatic ||
+                   format == TextureImporterFormat.RGBA32 ||
                    format == TextureImporterFormat.ARGB32 ||
                    format == TextureImporterFormat.RGB24 ||
                    format == TextureImporterFormat.Alpha8 ||
-                   format == TextureImporterFormat.RGBA16;
+                   format == TextureImporterFormat.RGBA16 ||
+                   format == TextureImporterFormat.R8 ||
+                   format == TextureImporterFormat.R16 ||
+                   format == TextureImporterFormat.RG16 ||
+                   format == TextureImporterFormat.RGB48 ||
+                   format == TextureImporterFormat.RGBA64;
         }
 
         private static TextureImporterFormat GetRecommendedTextureFormat()

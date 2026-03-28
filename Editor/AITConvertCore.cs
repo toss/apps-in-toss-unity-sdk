@@ -337,7 +337,7 @@ namespace AppsInToss
         {
             if (Application.isBatchMode) return true;
             if (editorConfig == null) return true;
-            if (editorConfig.skipBuildOptimizationCheck) return true;
+            if (!editorConfig.enableBuildOptimizationCheck) return true;
 
             var issues = AITBuildOptimizationScanner.Scan();
 

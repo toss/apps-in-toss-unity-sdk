@@ -21,7 +21,7 @@ namespace AppsInToss.Editor
         private Vector2 scrollPos;
 
         /// <summary>
-        /// 최적화 이슈 다이얼로그를 모달로 표시하고 결과를 반환
+        /// 최적화 이슈 다이얼로그를 표시하고 결과를 반환
         /// </summary>
         /// <returns>true = 빌드 진행, false = 빌드 취소</returns>
         public static bool ShowAndWait(List<OptimizationIssue> issues, AITEditorScriptObject editorConfig)
@@ -51,10 +51,23 @@ namespace AppsInToss.Editor
                 height);
             window.position = pos;
 
-            window.ShowModal();
+            window.ShowUtility();
 
-            // 모달이 닫힌 후 결정 반환
-            return window.decision != UserDecision.Cancel;
+            // ShowUtility는 논블로킹이므로 이벤트 루프로 대기
+            while (window != null && window.decision == UserDecision.Pending)
+            {
+                UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
+                System.Threading.Thread.Sleep(50);
+            }
+
+            var result = window != null && window.decision != UserDecision.Cancel;
+
+            if (window != null)
+            {
+                DestroyImmediate(window);
+            }
+
+            return result;
         }
 
         private void OnGUI()
@@ -145,15 +158,15 @@ namespace AppsInToss.Editor
             if (GUILayout.Button("자동 수정", GUILayout.Width(100), GUILayout.Height(28)))
             {
                 ApplySkipSetting();
-                results = AITBuildOptimizationScanner.ApplyFixes(issues);
-                viewState = ViewState.Results;
 
-                // 결과 뷰에 맞게 크기 조정
-                float height = 160 + results.Count * 50;
-                height = Mathf.Clamp(height, 250, 500);
-                var pos = position;
-                pos.height = height;
-                position = pos;
+                // 윈도우를 닫고 프로그레스바와 충돌하지 않도록 처리
+                Close();
+                results = AITBuildOptimizationScanner.ApplyFixes(issues);
+
+                // 결과 다이얼로그 다시 표시
+                viewState = ViewState.Results;
+                ShowUtility();
+                CenterOnMainWin();
             }
             GUI.enabled = true;
 
@@ -218,13 +231,31 @@ namespace AppsInToss.Editor
             EditorGUILayout.Space(8);
         }
 
+        private void CenterOnMainWin()
+        {
+            var mainWindow = EditorGUIUtility.GetMainWindowPosition();
+            var pos = position;
+            pos.x = mainWindow.x + (mainWindow.width - pos.width) / 2;
+            pos.y = mainWindow.y + (mainWindow.height - pos.height) / 2;
+            position = pos;
+        }
+
         private void ApplySkipSetting()
         {
             if (skipNextTime && editorConfig != null)
             {
-                editorConfig.skipBuildOptimizationCheck = true;
+                editorConfig.enableBuildOptimizationCheck = false;
                 EditorUtility.SetDirty(editorConfig);
                 AssetDatabase.SaveAssets();
+            }
+        }
+
+        private void OnDestroy()
+        {
+            // 윈도우가 X 버튼으로 닫힌 경우 취소 처리
+            if (decision == UserDecision.Pending)
+            {
+                decision = UserDecision.Cancel;
             }
         }
     }

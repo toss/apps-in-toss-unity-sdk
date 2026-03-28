@@ -9,13 +9,10 @@ namespace AppsInToss.Editor
     /// </summary>
     public class AITBuildOptimizationWindow : EditorWindow
     {
-        private enum ViewState { IssueList, Results }
-        private enum UserDecision { Pending, Proceed, Cancel }
+        private enum UserDecision { Pending, Proceed, FixThenProceed, Cancel }
 
-        private ViewState viewState = ViewState.IssueList;
         private UserDecision decision = UserDecision.Pending;
         private List<OptimizationIssue> issues;
-        private List<OptimizationFixResult> results;
         private AITEditorScriptObject editorConfig;
         private bool skipNextTime = false;
         private Vector2 scrollPos;
@@ -26,48 +23,83 @@ namespace AppsInToss.Editor
         /// <returns>true = 빌드 진행, false = 빌드 취소</returns>
         public static bool ShowAndWait(List<OptimizationIssue> issues, AITEditorScriptObject editorConfig)
         {
+            // 1단계: 이슈 목록 모달 표시
             var window = CreateInstance<AITBuildOptimizationWindow>();
             window.titleContent = new GUIContent("Apps in Toss - 빌드 최적화 제안");
             window.issues = issues;
             window.editorConfig = editorConfig;
-            window.results = null;
-            window.viewState = ViewState.IssueList;
             window.decision = UserDecision.Pending;
             window.skipNextTime = false;
             window.scrollPos = Vector2.zero;
 
+            ConfigureWindowSize(window, 160 + issues.Count * 70);
+            window.ShowModal();
+
+            // ShowModal()은 Close() 호출 시 반환됨
+            var userDecision = window.decision;
+            DestroyImmediate(window);
+
+            if (userDecision == UserDecision.Cancel)
+                return false;
+
+            if (userDecision == UserDecision.Proceed)
+                return true;
+
+            // 2단계: 자동 수정 실행 (모달 밖에서 프로그레스바 표시 가능)
+            var fixResults = AITBuildOptimizationScanner.ApplyFixes(issues);
+
+            // 3단계: 결과 모달 표시
+            return ShowResultsDialog(fixResults);
+        }
+
+        /// <summary>
+        /// 자동 수정 결과를 별도 모달로 표시
+        /// </summary>
+        private static bool ShowResultsDialog(List<OptimizationFixResult> fixResults)
+        {
+            // EditorUtility.DisplayDialog로 간결하게 결과 표시
+            var sb = new System.Text.StringBuilder();
+            bool allSuccess = true;
+
+            foreach (var result in fixResults)
+            {
+                string icon = result.success ? "\u2705" : "\u274c";
+                sb.AppendLine($"{icon} {result.label}: {result.message}");
+                if (!result.success) allSuccess = false;
+            }
+
+            if (allSuccess)
+            {
+                sb.AppendLine();
+                sb.AppendLine("빌드를 진행하시겠습니까?");
+            }
+            else
+            {
+                sb.AppendLine();
+                sb.AppendLine("일부 수정에 실패했습니다. 빌드를 진행하시겠습니까?");
+            }
+
+            return EditorUtility.DisplayDialog(
+                "Apps in Toss - 최적화 결과",
+                sb.ToString(),
+                "빌드 진행",
+                "취소");
+        }
+
+        private static void ConfigureWindowSize(EditorWindow window, float contentHeight)
+        {
             window.minSize = new Vector2(480, 200);
             window.maxSize = new Vector2(600, 700);
 
-            float height = 160 + issues.Count * 70;
-            height = Mathf.Clamp(height, 250, 500);
+            float height = Mathf.Clamp(contentHeight, 250, 500);
+            float width = 520;
 
             var mainWindow = EditorGUIUtility.GetMainWindowPosition();
-            float width = 520;
-            var pos = new Rect(
+            window.position = new Rect(
                 mainWindow.x + (mainWindow.width - width) / 2,
                 mainWindow.y + (mainWindow.height - height) / 2,
                 width,
                 height);
-            window.position = pos;
-
-            window.ShowUtility();
-
-            // ShowUtility는 논블로킹이므로 이벤트 루프로 대기
-            while (window != null && window.decision == UserDecision.Pending)
-            {
-                UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
-                System.Threading.Thread.Sleep(50);
-            }
-
-            var result = window != null && window.decision != UserDecision.Cancel;
-
-            if (window != null)
-            {
-                DestroyImmediate(window);
-            }
-
-            return result;
         }
 
         private void OnGUI()
@@ -79,16 +111,7 @@ namespace AppsInToss.Editor
             }
 
             scrollPos = EditorGUILayout.BeginScrollView(scrollPos);
-
-            if (viewState == ViewState.IssueList)
-            {
-                DrawIssueList();
-            }
-            else
-            {
-                DrawResults();
-            }
-
+            DrawIssueList();
             EditorGUILayout.EndScrollView();
         }
 
@@ -104,7 +127,6 @@ namespace AppsInToss.Editor
 
                 if (issue.status == OptimizationStatus.AlreadyOptimal)
                 {
-                    // 최적화 완료 항목은 비활성화 표시
                     GUI.enabled = false;
                     EditorGUILayout.ToggleLeft($"\u2705 {issue.label}", false, EditorStyles.boldLabel);
                     GUI.enabled = true;
@@ -115,7 +137,6 @@ namespace AppsInToss.Editor
                 }
                 else
                 {
-                    // 이슈 항목은 체크박스로 선택 가능
                     issue.isSelected = EditorGUILayout.ToggleLeft(
                         $"\u26a0 {issue.label} ({issue.assetPaths.Count}건)",
                         issue.isSelected,
@@ -135,7 +156,6 @@ namespace AppsInToss.Editor
 
             EditorGUILayout.Space(8);
 
-            // 다음부터 건너뛰기 체크박스
             skipNextTime = EditorGUILayout.ToggleLeft("다음부터 이 검사 건너뛰기", skipNextTime);
 
             EditorGUILayout.Space(8);
@@ -158,15 +178,8 @@ namespace AppsInToss.Editor
             if (GUILayout.Button("자동 수정", GUILayout.Width(100), GUILayout.Height(28)))
             {
                 ApplySkipSetting();
-
-                // 윈도우를 닫고 프로그레스바와 충돌하지 않도록 처리
+                decision = UserDecision.FixThenProceed;
                 Close();
-                results = AITBuildOptimizationScanner.ApplyFixes(issues);
-
-                // 결과 다이얼로그 다시 표시
-                viewState = ViewState.Results;
-                ShowUtility();
-                CenterOnMainWin();
             }
             GUI.enabled = true;
 
@@ -189,57 +202,6 @@ namespace AppsInToss.Editor
             EditorGUILayout.Space(8);
         }
 
-        private void DrawResults()
-        {
-            if (results == null) return;
-
-            EditorGUILayout.Space(8);
-            EditorGUILayout.LabelField("최적화 적용 결과:", EditorStyles.boldLabel);
-            EditorGUILayout.Space(4);
-
-            foreach (var result in results)
-            {
-                EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-
-                string icon = result.success ? "\u2705" : "\u274c";
-                EditorGUILayout.LabelField($"{icon} {result.label}", EditorStyles.boldLabel);
-
-                EditorGUI.indentLevel++;
-                EditorGUILayout.LabelField(result.message, EditorStyles.wordWrappedMiniLabel);
-                EditorGUI.indentLevel--;
-
-                EditorGUILayout.EndVertical();
-            }
-
-            EditorGUILayout.Space(8);
-
-            EditorGUILayout.BeginHorizontal();
-            GUILayout.FlexibleSpace();
-            if (GUILayout.Button("빌드 진행", GUILayout.Width(100), GUILayout.Height(28)))
-            {
-                decision = UserDecision.Proceed;
-                Close();
-            }
-            if (GUILayout.Button("취소", GUILayout.Width(60), GUILayout.Height(28)))
-            {
-                decision = UserDecision.Cancel;
-                Close();
-            }
-            GUILayout.FlexibleSpace();
-            EditorGUILayout.EndHorizontal();
-
-            EditorGUILayout.Space(8);
-        }
-
-        private void CenterOnMainWin()
-        {
-            var mainWindow = EditorGUIUtility.GetMainWindowPosition();
-            var pos = position;
-            pos.x = mainWindow.x + (mainWindow.width - pos.width) / 2;
-            pos.y = mainWindow.y + (mainWindow.height - pos.height) / 2;
-            position = pos;
-        }
-
         private void ApplySkipSetting()
         {
             if (skipNextTime && editorConfig != null)
@@ -252,7 +214,7 @@ namespace AppsInToss.Editor
 
         private void OnDestroy()
         {
-            // 윈도우가 X 버튼으로 닫힌 경우 취소 처리
+            // X 버튼으로 닫힌 경우 취소 처리
             if (decision == UserDecision.Pending)
             {
                 decision = UserDecision.Cancel;

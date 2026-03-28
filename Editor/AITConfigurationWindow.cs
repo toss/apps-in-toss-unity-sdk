@@ -699,9 +699,9 @@ namespace AppsInToss.Editor
             EditorGUILayout.LabelField("빌드 전 검사", EditorStyles.boldLabel);
 
             // 빌드 전 최적화 검사
-            config.skipBuildOptimizationCheck = !EditorGUILayout.Toggle(
+            config.enableBuildOptimizationCheck = EditorGUILayout.Toggle(
                 "빌드 전 에셋 최적화 검사",
-                !config.skipBuildOptimizationCheck);
+                config.enableBuildOptimizationCheck);
 
             GUILayout.Space(10);
 
@@ -997,7 +997,7 @@ namespace AppsInToss.Editor
             config.showUnityLogo = -1;
             config.decompressionFallback = -1;
             config.runInBackground = -1;
-            config.skipBuildOptimizationCheck = false;
+            config.enableBuildOptimizationCheck = true;
         }
 
         private void DrawDeploymentSettings()

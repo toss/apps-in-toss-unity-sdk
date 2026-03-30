@@ -882,6 +882,75 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
+    public class IAPGetSubscriptionInfoArgs_0
+    {
+        [Preserve]
+        [JsonProperty("params")]
+        public IAPGetSubscriptionInfoArgs_0Params Params;
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class IAPGetSubscriptionInfoArgs_0Params
+    {
+        [Preserve]
+        [JsonProperty("orderId")]
+        public string OrderId;
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class IapSubscriptionInfoResponse
+    {
+        [Preserve]
+        [JsonProperty("subscription")]
+        public IapSubscriptionInfoResult Subscription;
+        /// <summary>에러 발생 시 에러 메시지 (플랫폼 미지원 등)</summary>
+        public string error;
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class IapSubscriptionInfoResult
+    {
+        [Preserve]
+        [JsonProperty("catalogId")]
+        public double CatalogId;
+        [Preserve]
+        [JsonProperty("status")]
+        public string Status;
+        [Preserve]
+        [JsonProperty("expiresAt")]
+        public string ExpiresAt;
+        [Preserve]
+        [JsonProperty("isAutoRenew")]
+        public bool IsAutoRenew;
+        [Preserve]
+        [JsonProperty("gracePeriodExpiresAt")]
+        public string GracePeriodExpiresAt;
+        [Preserve]
+        [JsonProperty("isAccessible")]
+        public bool IsAccessible;
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
     public class SafeAreaInsets
     {
         [Preserve]

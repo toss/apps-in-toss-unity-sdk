@@ -315,5 +315,50 @@ namespace AppsInToss
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __IAPCompleteProductGrant_Internal(string args_0, string callbackId, string typeName);
 #endif
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
+        [APICategory("IAP")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<IapSubscriptionInfoResponse> IAPGetSubscriptionInfo(IAPGetSubscriptionInfoArgs_0 args_0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<IapSubscriptionInfoResponse>();
+            string callbackId = AITCore.Instance.RegisterCallback<IapSubscriptionInfoResponse>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error)
+            );
+            __IAPGetSubscriptionInfo_Internal(AITJsonSettings.Serialize(args_0), callbackId, "IapSubscriptionInfoResponse");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] IAPGetSubscriptionInfo called");
+            await Awaitable.NextFrameAsync();
+            return default(IapSubscriptionInfoResponse);
+#endif
+        }
+#else
+        public static async Task<IapSubscriptionInfoResponse> IAPGetSubscriptionInfo(IAPGetSubscriptionInfoArgs_0 args_0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<IapSubscriptionInfoResponse>();
+            string callbackId = AITCore.Instance.RegisterCallback<IapSubscriptionInfoResponse>(
+                result => tcs.TrySetResult(result),
+                error => tcs.TrySetException(error)
+            );
+            __IAPGetSubscriptionInfo_Internal(AITJsonSettings.Serialize(args_0), callbackId, "IapSubscriptionInfoResponse");
+            return await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] IAPGetSubscriptionInfo called");
+            await Task.CompletedTask;
+            return default(IapSubscriptionInfoResponse);
+#endif
+        }
+#endif
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __IAPGetSubscriptionInfo_Internal(string args_0, string callbackId, string typeName);
+#endif
     }
 }

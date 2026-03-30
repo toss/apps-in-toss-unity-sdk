@@ -41,7 +41,9 @@ namespace AppsInToss
         [EnumMember(Value = "geolocation")]
         Geolocation,
         [EnumMember(Value = "camera")]
-        Camera
+        Camera,
+        [EnumMember(Value = "microphone")]
+        Microphone
     }
 
     public enum GetPermissionPermissionAccess
@@ -73,7 +75,9 @@ namespace AppsInToss
         [EnumMember(Value = "geolocation")]
         Geolocation,
         [EnumMember(Value = "camera")]
-        Camera
+        Camera,
+        [EnumMember(Value = "microphone")]
+        Microphone
     }
 
     public enum OpenPermissionDialogPermissionAccess
@@ -97,7 +101,9 @@ namespace AppsInToss
         [EnumMember(Value = "geolocation")]
         Geolocation,
         [EnumMember(Value = "camera")]
-        Camera
+        Camera,
+        [EnumMember(Value = "microphone")]
+        Microphone
     }
 
     public enum RequestPermissionPermissionAccess
@@ -1766,7 +1772,9 @@ namespace AppsInToss
         [EnumMember(Value = "geolocation")]
         Geolocation,
         [EnumMember(Value = "camera")]
-        Camera
+        Camera,
+        [EnumMember(Value = "microphone")]
+        Microphone
     }
 
     [Serializable]

@@ -114,5 +114,50 @@ namespace AppsInToss
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __grantPromotionReward_Internal(string paramsParam, string callbackId, string typeName);
 #endif
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
+        [APICategory("Other")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable RequestReview()
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource();
+            string callbackId = AITCore.Instance.RegisterCallback<object>(
+                result => acs.SetResult(),
+                error => acs.SetException(error)
+            );
+            __requestReview_Internal(callbackId, "void");
+            await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] RequestReview called");
+            await Awaitable.NextFrameAsync();
+            // void return - nothing to return
+#endif
+        }
+#else
+        public static async Task RequestReview()
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<object>();
+            string callbackId = AITCore.Instance.RegisterCallback<object>(
+                result => tcs.TrySetResult(null),
+                error => tcs.TrySetException(error)
+            );
+            __requestReview_Internal(callbackId, "void");
+            await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] RequestReview called");
+            await Task.CompletedTask;
+            // void return - nothing to return
+#endif
+        }
+#endif
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __requestReview_Internal(string callbackId, string typeName);
+#endif
     }
 }

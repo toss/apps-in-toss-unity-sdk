@@ -2,9 +2,9 @@ name: SDK Update Auto Rebase
 run-name: "SDK Update Auto Rebase"
 
 on:
-  pull_request:
-    types: [closed]
-    branches: [main]
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -23,10 +23,6 @@ jobs:
   detect-conflicts:
     name: Conflict PR 감지
     runs-on: ubuntu-latest
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.pull_request.merged == true &&
-      startsWith(github.event.pull_request.head.ref, 'update/'))
     outputs:
       has_conflicts: ${{ steps.detect.outputs.has_conflicts }}
       conflict_prs: ${{ steps.detect.outputs.conflict_prs }}
@@ -37,7 +33,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          echo "=== 머지된 PR: #${{ github.event.pull_request.number }} (${{ github.event.pull_request.head.ref }}) ==="
+          echo "=== main 변경 감지: open update/ PR 리베이스 확인 ==="
 
           # REST API로 open PR 목록 조회 (per_page=100으로 페이지네이션 대응)
           OPEN_PRS=$(gh api 'repos/${{ github.repository }}/pulls?state=open&per_page=100' \

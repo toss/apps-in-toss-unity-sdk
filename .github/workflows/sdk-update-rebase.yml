@@ -1,0 +1,414 @@
+name: SDK Update Auto Rebase
+run-name: "SDK Update Auto Rebase"
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+concurrency:
+  group: sdk-update-rebase
+  cancel-in-progress: false
+
+jobs:
+  # =====================================================
+  # Conflict가 있는 open update/ PR 감지
+  # =====================================================
+  detect-conflicts:
+    name: Conflict PR 감지
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.merged == true &&
+      startsWith(github.event.pull_request.head.ref, 'update/'))
+    outputs:
+      has_conflicts: ${{ steps.detect.outputs.has_conflicts }}
+      conflict_prs: ${{ steps.detect.outputs.conflict_prs }}
+
+    steps:
+      - name: Open update/ PR 중 conflict 감지
+        id: detect
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "=== 머지된 PR: #${{ github.event.pull_request.number }} (${{ github.event.pull_request.head.ref }}) ==="
+
+          # REST API로 open PR 목록 조회 (per_page=100으로 페이지네이션 대응)
+          OPEN_PRS=$(gh api 'repos/${{ github.repository }}/pulls?state=open&per_page=100' \
+            --jq '[.[] | select(.head.ref | startswith("update/")) | {number: .number, branch: .head.ref, author: .user.login}]')
+          echo "Open update/ PRs: ${OPEN_PRS}"
+
+          PR_COUNT=$(echo "$OPEN_PRS" | jq 'length')
+          if [ "$PR_COUNT" -eq 0 ]; then
+            echo "열린 update/ PR이 없습니다"
+            echo "has_conflicts=false" >> $GITHUB_OUTPUT
+            echo "conflict_prs=[]" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # 임시 파일로 서브셸 문제 회피
+          TMPFILE=$(mktemp)
+          echo "[]" > "$TMPFILE"
+
+          for idx in $(seq 0 $((PR_COUNT - 1))); do
+            PR_NUMBER=$(echo "$OPEN_PRS" | jq -r ".[$idx].number")
+            PR_BRANCH=$(echo "$OPEN_PRS" | jq -r ".[$idx].branch")
+            PR_AUTHOR=$(echo "$OPEN_PRS" | jq -r ".[$idx].author")
+
+            # 버전 추출: update/{VERSION}-{TIMESTAMP}
+            VERSION=$(echo "$PR_BRANCH" | sed 's|update/\([0-9]*\.[0-9]*\.[0-9]*\)-.*|\1|')
+            if [ -z "$VERSION" ] || [ "$VERSION" = "$PR_BRANCH" ]; then
+              echo "  PR #${PR_NUMBER}: 버전 추출 실패 (브랜치: ${PR_BRANCH}) - 스킵"
+              continue
+            fi
+
+            # mergeable 상태 확인 (null이면 재시도)
+            MERGEABLE="null"
+            for i in 1 2 3; do
+              MERGEABLE=$(gh api "repos/${{ github.repository }}/pulls/${PR_NUMBER}" --jq '.mergeable')
+              if [ "$MERGEABLE" != "null" ]; then
+                break
+              fi
+              echo "  PR #${PR_NUMBER}: mergeable 상태 대기 중... (${i}/3)"
+              sleep 5
+            done
+
+            echo "  PR #${PR_NUMBER} (v${VERSION}): mergeable=${MERGEABLE}, author=${PR_AUTHOR}"
+
+            # mergeable이 true이면 conflict 없음 - 스킵
+            if [ "$MERGEABLE" = "true" ]; then
+              echo "    → conflict 없음, 스킵"
+              continue
+            fi
+
+            # conflict가 있거나 판단 불가(null) → 재생성 대상
+            jq -c --arg num "$PR_NUMBER" --arg branch "$PR_BRANCH" --arg version "$VERSION" --arg author "$PR_AUTHOR" \
+              '. + [{"number": ($num | tonumber), "branch": $branch, "version": $version, "author": $author}]' \
+              "$TMPFILE" > "${TMPFILE}.tmp" && mv "${TMPFILE}.tmp" "$TMPFILE"
+          done
+
+          CONFLICT_PRS=$(cat "$TMPFILE")
+          rm -f "$TMPFILE"
+
+          echo ""
+          echo "Conflict PRs: ${CONFLICT_PRS}"
+          COUNT=$(echo "$CONFLICT_PRS" | jq 'length')
+
+          if [ "$COUNT" -gt 0 ]; then
+            echo "has_conflicts=true" >> $GITHUB_OUTPUT
+            # heredoc으로 multi-line safe하게 저장
+            echo "conflict_prs<<CONFLICT_EOF" >> $GITHUB_OUTPUT
+            echo "$CONFLICT_PRS" >> $GITHUB_OUTPUT
+            echo "CONFLICT_EOF" >> $GITHUB_OUTPUT
+            echo "✅ ${COUNT}개의 PR에 대해 리베이스 필요"
+          else
+            echo "has_conflicts=false" >> $GITHUB_OUTPUT
+            echo "conflict_prs=[]" >> $GITHUB_OUTPUT
+            echo "✅ 리베이스가 필요한 PR이 없습니다"
+          fi
+
+      - name: 감지 결과 요약
+        env:
+          CONFLICT_PRS: ${{ steps.detect.outputs.conflict_prs }}
+          HAS_CONFLICTS: ${{ steps.detect.outputs.has_conflicts }}
+        run: |
+          echo "## SDK Update Auto Rebase - 감지 결과" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "$HAS_CONFLICTS" = "true" ]; then
+            echo "### 리베이스 대상 PR" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| PR | 버전 | 브랜치 |" >> $GITHUB_STEP_SUMMARY
+            echo "|-----|------|--------|" >> $GITHUB_STEP_SUMMARY
+            echo "$CONFLICT_PRS" | jq -r '.[] | "| #\(.number) | v\(.version) | \(.branch) |"' >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✅ 리베이스가 필요한 PR이 없습니다." >> $GITHUB_STEP_SUMMARY
+          fi
+
+  # =====================================================
+  # SDK 재생성 및 force-push
+  # =====================================================
+  rebase:
+    name: 리베이스 v${{ matrix.pr.version }} (PR #${{ matrix.pr.number }})
+    runs-on: ubuntu-latest
+    needs: detect-conflicts
+    if: needs.detect-conflicts.outputs.has_conflicts == 'true'
+
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        pr: ${{ fromJson(needs.detect-conflicts.outputs.conflict_prs) }}
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v5
+        with:
+          version: 10
+
+      - name: 버전 설정
+        id: version
+        env:
+          PR_VERSION: ${{ matrix.pr.version }}
+          PR_BRANCH: ${{ matrix.pr.branch }}
+          PR_NUMBER: ${{ matrix.pr.number }}
+        run: |
+          echo "version=${PR_VERSION}" >> $GITHUB_OUTPUT
+          echo "branch=${PR_BRANCH}" >> $GITHUB_OUTPUT
+          echo "SDK v${PR_VERSION} 리베이스 시작 (PR #${PR_NUMBER}, 브랜치: ${PR_BRANCH})"
+
+      - name: PR author 확인
+        id: author-check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_AUTHOR: ${{ matrix.pr.author }}
+          PR_NUMBER: ${{ matrix.pr.number }}
+        run: |
+          AUTHOR="${PR_AUTHOR}"
+          if [ "$AUTHOR" != "github-actions[bot]" ]; then
+            echo "::warning::PR #${PR_NUMBER}은 ${AUTHOR}가 생성한 PR입니다. 자동 리베이스를 스킵합니다."
+            echo "skip=true" >> $GITHUB_OUTPUT
+
+            # 경고 코멘트 게시
+            gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
+              -X POST -f body="⚠️ **자동 리베이스 스킵**: 이 PR은 \`${AUTHOR}\`가 생성했으므로 자동 리베이스 대상이 아닙니다. 수동으로 rebase해주세요."
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Git 설정
+        if: steps.author-check.outputs.skip != 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: web-framework 버전 업데이트 및 SDK 재생성
+        if: steps.author-check.outputs.skip != 'true'
+        id: generate
+        working-directory: sdk-runtime-generator~
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+
+          echo "=== web-framework, web-analytics v${VERSION} 업데이트 ==="
+
+          # 캐시 정리 후 강제 업데이트 (캐시로 인한 오래된 버전 문제 방지)
+          pnpm store prune
+          pnpm update "@apps-in-toss/web-framework@${VERSION}" "@apps-in-toss/web-analytics@${VERSION}" --force --registry https://registry.npmjs.org
+
+          # 설치된 버전 검증
+          INSTALLED_VERSION=$(pnpm list @apps-in-toss/web-framework --json | jq -r '.[0].dependencies["@apps-in-toss/web-framework"].version')
+          echo "요청 버전: ${VERSION}"
+          echo "설치된 버전: ${INSTALLED_VERSION}"
+          if [ "$INSTALLED_VERSION" != "$VERSION" ]; then
+            echo "::error::버전 불일치! 요청: ${VERSION}, 설치됨: ${INSTALLED_VERSION}"
+            exit 1
+          fi
+          echo "✅ 버전 검증 완료: ${INSTALLED_VERSION}"
+
+          echo "SDK 코드 생성 중..."
+          # 타입 검사 실패해도 계속 진행
+          if pnpm generate; then
+            echo "generate_status=success" >> $GITHUB_OUTPUT
+            echo "SDK 코드 생성 완료"
+          else
+            echo "generate_status=failed" >> $GITHUB_OUTPUT
+            echo "::warning::SDK 코드 생성 실패 - 수동 수정 필요"
+          fi
+
+      - name: 다중 버전 테스트 alias 추가
+        if: steps.author-check.outputs.skip != 'true'
+        working-directory: sdk-runtime-generator~
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          ALIAS_KEY="web-framework-${VERSION}"
+
+          # package.json devDependencies에 alias가 없으면 추가
+          if ! jq -e ".devDependencies[\"${ALIAS_KEY}\"]" package.json > /dev/null 2>&1; then
+            jq --arg key "$ALIAS_KEY" \
+               --arg val "npm:@apps-in-toss/web-framework@${VERSION}" \
+               '.devDependencies[$key] = $val' package.json > tmp.json
+            mv tmp.json package.json
+            echo "✅ 테스트 alias 추가: ${ALIAS_KEY}"
+            pnpm install --no-frozen-lockfile
+          else
+            echo "⏭️ alias 이미 존재: ${ALIAS_KEY}"
+          fi
+
+      - name: 루트 package.json 버전 업데이트
+        if: steps.author-check.outputs.skip != 'true'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          jq --arg v "$VERSION" '.version = $v' package.json > tmp.json
+          mv tmp.json package.json
+          echo "package.json 버전: ${VERSION}"
+
+      - name: BuildConfig package.json 버전 동기화
+        if: steps.author-check.outputs.skip != 'true'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          BUILDCONFIG_PKG="WebGLTemplates/AITTemplate/BuildConfig~/package.json"
+
+          # BuildConfig의 web-framework 버전도 동기화
+          jq --arg v "$VERSION" '
+            .dependencies["@apps-in-toss/web-framework"] = $v |
+            .dependencies["@apps-in-toss/web-analytics"] = $v
+          ' "$BUILDCONFIG_PKG" > tmp.json
+          mv tmp.json "$BUILDCONFIG_PKG"
+          echo "BuildConfig web-framework/web-analytics 버전: ${VERSION}"
+
+          # 확인
+          cat "$BUILDCONFIG_PKG" | jq '.dependencies'
+
+      - name: BuildConfig pnpm-lock.yaml 업데이트
+        if: steps.author-check.outputs.skip != 'true'
+        run: |
+          cd WebGLTemplates/AITTemplate/BuildConfig~
+          pnpm install --no-frozen-lockfile
+          echo "BuildConfig pnpm-lock.yaml 업데이트 완료"
+
+      - name: Docs~/GettingStarted.md 설치 가이드 업데이트
+        if: steps.author-check.outputs.skip != 'true'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          TAG_NAME="release/v${VERSION}"
+
+          # Docs~/GettingStarted.md의 Git URL을 최신 릴리즈 태그로 업데이트
+          sed -i 's|https://github.com/toss/apps-in-toss-unity-sdk\.git\(#[^"]*\)\?|https://github.com/toss/apps-in-toss-unity-sdk.git#'"${TAG_NAME}"'|g' Docs~/GettingStarted.md
+
+          echo "Docs~/GettingStarted.md 업데이트 완료: #${TAG_NAME}"
+          grep -n "apps-in-toss-unity-sdk.git" Docs~/GettingStarted.md || true
+
+      - name: 기존 브랜치에 force-push
+        if: steps.author-check.outputs.skip != 'true'
+        id: push
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          BRANCH="${{ steps.version.outputs.branch }}"
+          GENERATE_STATUS="${{ steps.generate.outputs.generate_status }}"
+
+          # 변경사항 확인
+          if git diff --quiet && git diff --staged --quiet; then
+            echo "변경사항이 없습니다."
+            echo "pushed=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # 기존 PR 브랜치 이름으로 새 브랜치 생성
+          git checkout -b "${BRANCH}"
+
+          # 모든 변경사항 커밋
+          git add -A
+
+          if [ "$GENERATE_STATUS" = "failed" ]; then
+            SUFFIX=" (타입 오류 포함)"
+          else
+            SUFFIX=""
+          fi
+
+          git commit -m "기능: SDK v${VERSION} 업데이트 (리베이스)${SUFFIX}
+
+          - @apps-in-toss/web-framework v${VERSION} 기반 SDK 코드 재생성
+          - main 브랜치 최신 상태 기반 리베이스
+          - package.json 버전 동기화
+          - BuildConfig package.json web-framework/web-analytics 버전 동기화
+          - Docs~/GettingStarted.md 설치 가이드 업데이트
+
+          자동 생성: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+          # 기존 브랜치에 force-push
+          git push origin "${BRANCH}" --force
+          echo "pushed=true" >> $GITHUB_OUTPUT
+          echo "✅ force-push 완료: ${BRANCH}"
+
+      - name: PR에 리베이스 완료 코멘트
+        if: steps.author-check.outputs.skip != 'true' && steps.push.outputs.pushed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ matrix.pr.number }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          GENERATE_STATUS="${{ steps.generate.outputs.generate_status }}"
+
+          if [ "$GENERATE_STATUS" = "failed" ]; then
+            GENERATE_NOTE="
+          > ⚠️ SDK 코드 생성 중 타입 검사 실패 — 수동 수정이 필요합니다."
+          else
+            GENERATE_NOTE=""
+          fi
+
+          gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
+            -X POST -f body="♻️ **자동 리베이스 완료**: main 브랜치 최신 상태 기반으로 SDK v${VERSION} 코드를 재생성했습니다.${GENERATE_NOTE}"
+
+      - name: E2E 테스트 트리거
+        if: steps.author-check.outputs.skip != 'true' && steps.push.outputs.pushed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ matrix.pr.number }}
+        run: |
+          echo "E2E 테스트 트리거: PR #${PR_NUMBER}"
+
+          gh api "repos/${{ github.repository }}/actions/workflows/216286654/dispatches" \
+            -X POST --input - <<EOF
+          {
+            "ref": "main",
+            "inputs": {
+              "target_ref": "${PR_NUMBER}"
+            }
+          }
+          EOF
+
+          echo "✅ E2E 테스트 트리거 완료"
+
+      - name: 실패 시 PR 코멘트
+        if: failure() && steps.author-check.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ matrix.pr.number }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
+            -X POST -f body="❌ **자동 리베이스 실패**: SDK v${VERSION} 재생성 중 오류가 발생했습니다. 수동으로 리베이스해주세요.
+
+          [워크플로우 로그 확인](${RUN_URL})"
+
+      - name: 리베이스 결과 요약
+        if: always()
+        env:
+          PR_NUMBER: ${{ matrix.pr.number }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          SKIP="${{ steps.author-check.outputs.skip }}"
+          PUSHED="${{ steps.push.outputs.pushed }}"
+
+          echo "## SDK Update Auto Rebase - v${VERSION}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "$SKIP" = "true" ]; then
+            echo "⏭️ **스킵됨**: bot이 아닌 사용자가 생성한 PR" >> $GITHUB_STEP_SUMMARY
+          elif [ "$PUSHED" = "true" ]; then
+            echo "✅ **리베이스 완료**: PR #${PR_NUMBER}" >> $GITHUB_STEP_SUMMARY
+          elif [ "$PUSHED" = "false" ]; then
+            echo "⏭️ **변경사항 없음**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **실패**" >> $GITHUB_STEP_SUMMARY
+          fi

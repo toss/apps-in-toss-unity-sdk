@@ -14,8 +14,8 @@ importers:
   .:
     dependencies:
       '@apps-in-toss/web-analytics':
-        specifier: 2.4.0
-        version: 2.4.0(@apps-in-toss/web-bridge@2.4.0)
+        specifier: 2.4.1
+        version: 2.4.1(@apps-in-toss/web-bridge@2.4.0)
       '@apps-in-toss/web-framework':
         specifier: 2.4.0
         version: 2.4.0(4d7ceab338ae9e82bfe8f993ace41c79)
@@ -90,6 +90,11 @@ packages:
 
   '@apps-in-toss/web-analytics@2.4.0':
     resolution: {integrity: sha512-byiRMWCl95tsOVYXEmbBPFA1oH1Vw20YPNsjD1A/kv/4xGdMGMz5HaHNCZTGP4fjrsTO1M6j9CjM9YIMFa4pxw==}
+    peerDependencies:
+      '@apps-in-toss/web-bridge': '*'
+
+  '@apps-in-toss/web-analytics@2.4.1':
+    resolution: {integrity: sha512-8ZkBxgYlJDaknt0PsZ7VjeWrk6BEDhwf5AhG50dNL8bjXUnSDpnpGPCB53oUuZ+Sc9X7e4YMkkStlaxtAU+L7g==}
     peerDependencies:
       '@apps-in-toss/web-bridge': '*'
 
@@ -4536,6 +4541,9 @@ packages:
   lodash@4.18.1:
     resolution: {integrity: sha512-dMInicTPVE8d1e5otfwmmjlxkZoUpiVLwyeTdUsi/Caj/gfzzblBcCE5sRHV/AsjuCmxWrte2TNGSYuCeCq+0Q==}
 
+  lodash@4.18.1:
+    resolution: {integrity: sha512-dMInicTPVE8d1e5otfwmmjlxkZoUpiVLwyeTdUsi/Caj/gfzzblBcCE5sRHV/AsjuCmxWrte2TNGSYuCeCq+0Q==}
+
   log-symbols@4.1.0:
     resolution: {integrity: sha512-8XPvpAA8uyhfteu8pIvQxpJZ7SYYdpUivZpGy6sFsBuKRY/7rQGavedeB8aK+Zkyq6upMFVL/9AW6vOYzfRyLg==}
     engines: {node: '>=10'}
@@ -6436,6 +6444,10 @@ snapshots:
   '@apps-in-toss/user-scripts@2.4.0': {}
 
   '@apps-in-toss/web-analytics@2.4.0(@apps-in-toss/web-bridge@2.4.0)':
+    dependencies:
+      '@apps-in-toss/web-bridge': 2.4.0
+
+  '@apps-in-toss/web-analytics@2.4.1(@apps-in-toss/web-bridge@2.4.0)':
     dependencies:
       '@apps-in-toss/web-bridge': 2.4.0
 
@@ -12927,6 +12939,8 @@ snapshots:
   lodash.sortby@4.7.0: {}
 
   lodash.throttle@4.1.1: {}
+
+  lodash@4.18.1: {}
 
   lodash@4.18.1: {}
 

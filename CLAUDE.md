@@ -66,6 +66,18 @@
 - 워크플로우 트리거 시 반드시 아래 워크플로우 ID 참조 테이블 확인
 - PR 번호 사용 시 `target_ref`에 숫자만 입력 (# 접두사 불필요)
 
+### E2E 테스트 실패 대응
+- E2E 테스트 실패 시, 먼저 **실패 원인이 코드 변경과 무관한 인프라 이슈인지** 판별할 것:
+  1. 실패한 job의 로그를 다운로드하여 분석
+  2. 동일한 job이 다른 PR에서는 성공했는지 확인
+  3. 코드 변경과 무관한 빌드 실패(Brotli 크래시, 라이선스 오류, 타임아웃 등)인 경우 → **실패한 job만 재실행**
+- **인프라 기인 실패 시**: `rerun-failed-jobs`로 실패한 job만 재실행 — 전체 워크플로우 재실행보다 성공 확률 높음 (self-hosted runner 리소스 경합 감소)
+  ```bash
+  gh api repos/{owner}/{repo}/actions/runs/{run_id}/rerun-failed-jobs -X POST
+  ```
+- **알려진 flaky 패턴**:
+  - Unity WebGL Brotli 크래시: `[BUSY Ns] Brotli webgl/Build/...unityweb` 직후 `Unity build finished (log-based exit code: 1)` — self-hosted runner 동시 빌드 시 리소스 경합으로 발생
+
 ### 테스트 관련
 - E2E 테스트 전 빌드가 필요함: `./run-local-tests.sh --all` (빌드+테스트) vs `--e2e` (테스트만)
 - Playwright 테스트는 `Tests~/E2E/tests/` 디렉토리에서 실행

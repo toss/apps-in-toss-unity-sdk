@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
   update-changelog:
@@ -57,5 +58,21 @@ jobs:
               --body "API Changelog 리포트를 자동 갱신합니다." \
               --base main \
               --head "$BRANCH"
-            gh pr merge --merge --delete-branch
+
+            # 머지 재시도 (PR 생성 직후 GitHub 내부 merge ref 계산 대기)
+            MERGED=false
+            for attempt in 1 2 3; do
+              sleep 3
+              echo "머지 시도 ${attempt}/3..."
+              if gh pr merge --merge --delete-branch; then
+                MERGED=true
+                break
+              fi
+              echo "머지 시도 ${attempt}/3 실패"
+            done
+
+            if [ "$MERGED" != "true" ]; then
+              echo "::warning::자동 머지 실패 - PR을 수동으로 머지해주세요"
+              exit 1
+            fi
           fi

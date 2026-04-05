@@ -66,6 +66,14 @@
 - 워크플로우 트리거 시 반드시 아래 워크플로우 ID 참조 테이블 확인
 - PR 번호 사용 시 `target_ref`에 숫자만 입력 (# 접두사 불필요)
 
+### E2E 테스트 실패 대응
+- **macOS Unity 6000.3 Brotli 크래시**: self-hosted runner에서 동시 빌드 시 리소스 경합으로 Brotli 압축 단계에서 크래시 발생 가능 (flaky)
+  - 증상: `[BUSY Ns] Brotli webgl/Build/...wasm.unityweb` 직후 `Unity build finished (log-based exit code: 1)`
+  - **대응: 실패한 job만 재실행** (`rerun-failed-jobs`) — 전체 워크플로우 재실행보다 성공 확률 높음 (리소스 경합 감소)
+  ```bash
+  gh api repos/{owner}/{repo}/actions/runs/{run_id}/rerun-failed-jobs -X POST
+  ```
+
 ### 테스트 관련
 - E2E 테스트 전 빌드가 필요함: `./run-local-tests.sh --all` (빌드+테스트) vs `--e2e` (테스트만)
 - Playwright 테스트는 `Tests~/E2E/tests/` 디렉토리에서 실행

@@ -466,13 +466,11 @@ jobs:
 
           # 불필요한 파일 제거
           rm -f .gitignore
-          rm -f .mcp.json
           rm -f CLAUDE.md
           rm -f run-local-tests.sh
 
           # 해당 .meta 파일도 제거
           rm -f .gitignore.meta
-          rm -f .mcp.json.meta
           rm -f CLAUDE.md.meta
           rm -f run-local-tests.sh.meta
 

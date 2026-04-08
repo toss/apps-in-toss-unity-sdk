@@ -16,6 +16,11 @@ on:
   schedule:
     - cron: '0 0 * * 1-5'  # 평일 오전 9시 KST (UTC 0시)
 
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
 jobs:
   # =====================================================
   # 누락된 버전 감지
@@ -163,10 +168,6 @@ jobs:
       max-parallel: 1  # 순차 실행 (git 충돌 방지)
       matrix:
         version: ${{ fromJson(needs.detect-versions.outputs.versions) }}
-
-    outputs:
-      pr_created: ${{ steps.create-pr.outputs.pr_created }}
-      pr_number: ${{ steps.create-pr.outputs.pr_number }}
 
     steps:
       - name: Checkout main
@@ -410,6 +411,22 @@ jobs:
           echo "pr_created=true" >> $GITHUB_OUTPUT
           echo "PR 생성 완료: ${PR_RESULT} (번호: ${PR_NUMBER})"
 
+      # GITHUB_TOKEN으로 생성된 PR은 다른 워크플로우를 자동 트리거하지 않으므로
+      # matrix 각 entry에서 직접 E2E 테스트를 workflow_dispatch로 트리거
+      # (별도 run-tests job은 matrix outputs가 마지막 entry만 전달하는 문제가 있어 제거)
+      - name: E2E 테스트 트리거
+        if: steps.create-pr.outputs.pr_created == 'true' && steps.create-pr.outputs.pr_number != ''
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.create-pr.outputs.pr_number }}
+        run: |
+          echo "E2E 테스트 트리거: PR #${PR_NUMBER}"
+          jq -n --arg pr "${PR_NUMBER}" '{"ref":"main","inputs":{"target_ref":$pr}}' | \
+            gh api "repos/${{ github.repository }}/actions/workflows/216286654/dispatches" \
+            -X POST --input -
+          echo "✅ E2E 테스트 트리거 완료: PR #${PR_NUMBER}"
+
       - name: 업데이트 요약
         if: always()
         run: |
@@ -445,17 +462,3 @@ jobs:
           else
             echo "❌ **처리 실패**" >> $GITHUB_STEP_SUMMARY
           fi
-
-  # =====================================================
-  # E2E 테스트 실행 (PR 생성 후)
-  # GITHUB_TOKEN으로 생성된 PR은 다른 워크플로우를 트리거하지 않으므로
-  # workflow_call을 통해 직접 test-e2e.yml을 호출
-  # =====================================================
-  run-tests:
-    name: E2E 테스트 실행
-    needs: update
-    if: needs.update.outputs.pr_created == 'true'
-    uses: ./.github/workflows/test-e2e.yml
-    with:
-      clean_library: false
-      target_ref: ${{ needs.update.outputs.pr_number }}

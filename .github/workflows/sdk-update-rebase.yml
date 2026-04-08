@@ -355,23 +355,16 @@ jobs:
 
       - name: E2E 테스트 트리거
         if: steps.author-check.outputs.skip != 'true' && steps.push.outputs.pushed == 'true'
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ matrix.pr.number }}
         run: |
           echo "E2E 테스트 트리거: PR #${PR_NUMBER}"
-
-          gh api "repos/${{ github.repository }}/actions/workflows/216286654/dispatches" \
-            -X POST --input - <<EOF
-          {
-            "ref": "main",
-            "inputs": {
-              "target_ref": "${PR_NUMBER}"
-            }
-          }
-          EOF
-
-          echo "✅ E2E 테스트 트리거 완료"
+          jq -n --arg pr "${PR_NUMBER}" '{"ref":"main","inputs":{"target_ref":$pr}}' | \
+            gh api "repos/${{ github.repository }}/actions/workflows/216286654/dispatches" \
+            -X POST --input -
+          echo "✅ E2E 테스트 트리거 완료: PR #${PR_NUMBER}"
 
       - name: 실패 시 PR 코멘트
         if: failure() && steps.author-check.outputs.skip != 'true'

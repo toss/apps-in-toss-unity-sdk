@@ -350,6 +350,17 @@ namespace AppsInToss
             // 빌드 전 PlayerSettings 백업 (빌드 완료 후 복원)
             var settingsBackup = Editor.AITPlayerSettingsBackup.Capture();
 
+            // 에러 트래커 초기화 (DSN이 설정된 경우에만)
+            Editor.ErrorTracker.AITBuildTransaction transaction = null;
+            if (Editor.ErrorTracker.AITEditorErrorTracker.IsDsnConfigured)
+            {
+                Editor.ErrorTracker.AITErrorTrackerConsent.ShowNoticeIfNeeded();
+                transaction = new Editor.ErrorTracker.AITBuildTransaction(profileName ?? "Build");
+                transaction.SetTag("clean_build", cleanBuild.ToString());
+                transaction.SetTag("build_webgl", buildWebGL.ToString());
+                transaction.SetTag("do_packaging", doPackaging.ToString());
+            }
+
             try
             {
                 var editorConfig = PrepareExport(ref profile, ref profileName);
@@ -359,6 +370,7 @@ namespace AppsInToss
                 if (editorConfig == null)
                 {
                     Debug.LogError("Apps in Toss 설정을 찾을 수 없습니다.");
+                    transaction?.Finish("internal_error");
                     return AITExportError.INVALID_APP_CONFIG;
                 }
 
@@ -368,12 +380,19 @@ namespace AppsInToss
                     if (IsCancelled())
                     {
                         Debug.LogWarning("[AIT] 빌드가 취소되었습니다.");
+                        transaction?.Finish("cancelled");
                         return AITExportError.CANCELLED;
                     }
 
+                    if (transaction != null)
+                        Editor.ErrorTracker.AITEditorErrorTracker.AddBreadcrumb("build", "WebGL 빌드 시작");
+                    var webglSpan = transaction?.StartSpan("webgl.build", "Unity WebGL Build");
                     var webglResult = BuildWebGL(cleanBuild, profile);
+                    webglSpan?.Finish(webglResult == AITExportError.SUCCEED ? "ok" : "internal_error");
+
                     if (webglResult != AITExportError.SUCCEED)
                     {
+                        transaction?.Finish("internal_error");
                         return webglResult;
                     }
                 }
@@ -385,22 +404,31 @@ namespace AppsInToss
                     if (IsCancelled())
                     {
                         Debug.LogWarning("[AIT] 빌드가 취소되었습니다.");
+                        transaction?.Finish("cancelled");
                         return AITExportError.CANCELLED;
                     }
 
+                    if (transaction != null)
+                        Editor.ErrorTracker.AITEditorErrorTracker.AddBreadcrumb("build", "패키징 시작");
+                    var packageSpan = transaction?.StartSpan("packaging", "Generate MiniApp Package");
                     var exportResult = GenerateMiniAppPackage(profile, skipGraniteBuild);
+                    packageSpan?.Finish(exportResult == AITExportError.SUCCEED ? "ok" : "internal_error");
+
                     if (exportResult != AITExportError.SUCCEED)
                     {
+                        transaction?.Finish("internal_error");
                         return exportResult;
                     }
                 }
 
                 Debug.Log("Apps in Toss 미니앱 변환이 완료되었습니다!");
+                transaction?.Finish("ok");
                 return AITExportError.SUCCEED;
             }
             catch (Exception e)
             {
                 Debug.LogError($"변환 중 오류가 발생했습니다: {e.Message}");
+                transaction?.Finish("internal_error");
                 return AITExportError.BUILD_WEBGL_FAILED;
             }
             finally

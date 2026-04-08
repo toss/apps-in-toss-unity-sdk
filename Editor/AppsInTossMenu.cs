@@ -1685,7 +1685,12 @@ namespace AppsInToss
         private static void ShowBuildFailedDialog(AITConvertCore.AITExportError result, string callerName)
         {
             string errorMessage = AITConvertCore.GetErrorMessage(result);
+
+            // 자동 에러 전송 (Debug.LogError보다 먼저 호출하여 로그 핸들러 이중 캡처 방지)
+            AppsInToss.Editor.ErrorTracker.AITEditorErrorTracker.CaptureBuildError(result, callerName);
+
             Debug.LogError($"AIT: 빌드 실패: {result}");
+
             int choice = AITPlatformHelper.ShowComplexDialog(
                 "빌드 실패",
                 errorMessage + "\n\n문제가 지속되면 'Issue 신고'를 클릭하세요.",

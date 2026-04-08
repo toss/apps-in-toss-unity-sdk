@@ -234,9 +234,9 @@ npm run deploy
 ### Unity 버전 요구사항
 
 **우선 지원 버전:**
-- Unity 6000.3.0f1 (Unity 6.3)
-- Unity 6000.2.14f1 (Unity 6 LTS)
-- Unity 6000.0.63f1 (Unity 6)
+- Unity 6000.3.3f1 (Unity 6.3)
+- Unity 6000.2.15f1 (Unity 6 LTS)
+- Unity 6000.0.66f2 (Unity 6)
 - Unity 2022.3.62f3 (LTS)
 - Unity 2021.3.45f2 (LTS - 최소 지원 버전)
 

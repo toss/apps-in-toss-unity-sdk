@@ -404,9 +404,9 @@ jobs:
             echo "Cleaning Library cache (requested via input)..."
             rm -rf "${PROJECT_PATH}/Library" 2>/dev/null || true
           else
-            echo "Cleaning Bee artifacts cache to prevent stale ref.dll issues..."
-            echo "Removing: ${PROJECT_PATH}/Library/Bee/artifacts"
-            rm -rf "${PROJECT_PATH}/Library/Bee/artifacts" 2>/dev/null || true
+            echo "Cleaning Bee build cache to prevent stale ref.dll issues..."
+            echo "Removing: ${PROJECT_PATH}/Library/Bee"
+            rm -rf "${PROJECT_PATH}/Library/Bee" 2>/dev/null || true
           fi
           echo "Done."
 
@@ -424,9 +424,9 @@ jobs:
             echo Cleaning Library cache requested via input...
             if exist "%PROJECT_PATH%\Library" rmdir /s /q "%PROJECT_PATH%\Library"
           ) else (
-            echo Cleaning Bee artifacts cache to prevent stale ref.dll issues...
-            echo Removing: %PROJECT_PATH%\Library\Bee\artifacts
-            if exist "%PROJECT_PATH%\Library\Bee\artifacts" rmdir /s /q "%PROJECT_PATH%\Library\Bee\artifacts"
+            echo Cleaning Bee build cache to prevent stale ref.dll issues...
+            echo Removing: %PROJECT_PATH%\Library\Bee
+            if exist "%PROJECT_PATH%\Library\Bee" rmdir /s /q "%PROJECT_PATH%\Library\Bee"
           )
           echo Done.
 

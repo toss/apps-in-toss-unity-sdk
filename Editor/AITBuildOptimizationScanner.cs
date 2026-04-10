@@ -299,8 +299,6 @@ namespace AppsInToss.Editor
                    format == TextureImporterFormat.RGB24 ||
                    format == TextureImporterFormat.Alpha8 ||
                    format == TextureImporterFormat.RGBA16 ||
-                   format == TextureImporterFormat.RGBA4444 ||
-                   format == TextureImporterFormat.RGB16 ||
                    format == TextureImporterFormat.R8 ||
                    format == TextureImporterFormat.R16 ||
                    format == TextureImporterFormat.RG16 ||

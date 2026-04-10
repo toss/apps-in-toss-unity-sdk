@@ -211,7 +211,7 @@ namespace AppsInToss.Editor
                     EditorUtility.DisplayProgressBar(
                         "텍스처 reimport 중",
                         $"{assetPaths[i]} ({i + 1}/{assetPaths.Count})",
-                        (float)i / assetPaths.Count);
+                        (float)(i + 1) / assetPaths.Count);
                     AssetDatabase.ImportAsset(assetPaths[i]);
                 }
 
@@ -271,7 +271,7 @@ namespace AppsInToss.Editor
                     EditorUtility.DisplayProgressBar(
                         "오디오 reimport 중",
                         $"{assetPaths[i]} ({i + 1}/{assetPaths.Count})",
-                        (float)i / assetPaths.Count);
+                        (float)(i + 1) / assetPaths.Count);
                     AssetDatabase.ImportAsset(assetPaths[i]);
                 }
 
@@ -300,6 +300,7 @@ namespace AppsInToss.Editor
                    format == TextureImporterFormat.Alpha8 ||
                    format == TextureImporterFormat.RGBA16 ||
                    format == TextureImporterFormat.RGBA4444 ||
+                   format == TextureImporterFormat.RGB16 ||
                    format == TextureImporterFormat.R8 ||
                    format == TextureImporterFormat.R16 ||
                    format == TextureImporterFormat.RG16 ||
@@ -309,7 +310,7 @@ namespace AppsInToss.Editor
 
         private static TextureImporterFormat GetRecommendedTextureFormat()
         {
-#if UNITY_2023_3_OR_NEWER
+#if UNITY_6000_0_OR_NEWER
             return TextureImporterFormat.ASTC_6x6;
 #else
             return TextureImporterFormat.ETC2_RGBA8;
@@ -318,7 +319,7 @@ namespace AppsInToss.Editor
 
         private static string GetRecommendedTextureFormatName()
         {
-#if UNITY_2023_3_OR_NEWER
+#if UNITY_6000_0_OR_NEWER
             return "ASTC 6x6";
 #else
             return "ETC2";

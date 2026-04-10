@@ -15,10 +15,13 @@ namespace AppsInToss.Editor.ErrorTracker
         #region Constants
 
         // 빈 문자열이면 에러 트래킹이 비활성화됩니다.
+        // DSN의 public key는 클라이언트 측에서 사용하도록 설계되어 있으며 (Sentry 공식 문서 참조),
+        // Sentry 측 inbound filter와 rate limiting으로 보호됩니다.
         private const string DEFAULT_DSN = "https://af6caf8b80107bc41edf37baff728a5d@o89496.ingest.us.sentry.io/4511182309359616";
         private const string RELEASE_PREFIX = "apps-in-toss.unity";
         private const string ENVIRONMENT = "editor";
         private const int MAX_BREADCRUMBS = 20;
+        private const int MAX_DEDUP_ENTRIES = 200;
         private static readonly TimeSpan DedupWindow = TimeSpan.FromMinutes(1);
 
         #endregion
@@ -54,15 +57,15 @@ namespace AppsInToss.Editor.ErrorTracker
         private static readonly Dictionary<int, DateTime> _recentErrors = new Dictionary<int, DateTime>();
 
         // CaptureBuildError 호출 직후 로그 핸들러의 이중 캡처를 방지하기 위한 억제 플래그
-        // Application.logMessageReceived와 CaptureBuildError 모두 메인 스레드에서 실행됨
-        private static bool _suppressLogCapture;
+        // 주로 메인 스레드에서 사용되지만, 백그라운드 스레드의 로그 콜백에 대비하여 volatile 선언
+        private static volatile bool _suppressLogCapture;
 
         #endregion
 
         #region Breadcrumbs
 
-        private static readonly List<AITSentryEnvelope.Breadcrumb> _breadcrumbs =
-            new List<AITSentryEnvelope.Breadcrumb>();
+        private static readonly Queue<AITSentryEnvelope.Breadcrumb> _breadcrumbs =
+            new Queue<AITSentryEnvelope.Breadcrumb>();
 
         #endregion
 
@@ -73,6 +76,9 @@ namespace AppsInToss.Editor.ErrorTracker
             string dsn = GetDsn();
             if (string.IsNullOrEmpty(dsn))
                 return;
+
+            // 데이터 전송 전에 사용자에게 고지
+            AITErrorTrackerConsent.ShowNoticeIfNeeded();
 
             if (!AITErrorTrackerConsent.IsEnabled())
                 return;
@@ -231,8 +237,8 @@ namespace AppsInToss.Editor.ErrorTracker
             if (_recentErrors.ContainsKey(dedupKey))
                 return;
 
-            // 딕셔너리 크기 제한 (이론적 무한 증가 방지)
-            if (_recentErrors.Count >= 200)
+            // 딕셔너리 크기 제한 — 만료 정리 후에도 초과 시 전체 리셋
+            if (_recentErrors.Count >= MAX_DEDUP_ENTRIES)
                 _recentErrors.Clear();
 
             _recentErrors[dedupKey] = now;
@@ -270,7 +276,7 @@ namespace AppsInToss.Editor.ErrorTracker
                 stackTrace: stackTrace,
                 level: level,
                 tags: tags,
-                breadcrumbs: _breadcrumbs.Count > 0 ? _breadcrumbs : null,
+                breadcrumbs: _breadcrumbs.Count > 0 ? new List<AITSentryEnvelope.Breadcrumb>(_breadcrumbs) : null,
                 fingerprint: fingerprint,
                 release: GetRelease(),
                 environment: ENVIRONMENT
@@ -344,10 +350,10 @@ namespace AppsInToss.Editor.ErrorTracker
         {
             if (_breadcrumbs.Count >= MAX_BREADCRUMBS)
             {
-                _breadcrumbs.RemoveAt(0);
+                _breadcrumbs.Dequeue();
             }
 
-            _breadcrumbs.Add(new AITSentryEnvelope.Breadcrumb
+            _breadcrumbs.Enqueue(new AITSentryEnvelope.Breadcrumb
             {
                 Timestamp = DateTime.UtcNow,
                 Category = category,
@@ -392,6 +398,8 @@ namespace AppsInToss.Editor.ErrorTracker
             return "Exception";
         }
 
+        // 세션 내 중복 검출용 — GetHashCode()는 Mono 런타임에서 프로세스 내 결정적이며,
+        // CoreCLR 전환 시 프로세스 간 비결정적이 되지만, 세션 스코프이므로 문제 없음
         private static int GetDedupKey(string exceptionType, string message)
         {
             string truncated = message != null && message.Length > 100

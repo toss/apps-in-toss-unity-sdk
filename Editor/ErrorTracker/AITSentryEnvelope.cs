@@ -121,7 +121,8 @@ namespace AppsInToss.Editor.ErrorTracker
 
             var sb = new StringBuilder(4096);
 
-            // Envelope header
+            // Envelope header (에러 이벤트는 독립적으로 전송되므로 trace context 생략 —
+            // Transaction과의 상관관계가 필요하면 추후 trace_id 파라미터 추가)
             BuildEnvelopeHeader(sb, eventId, dsnComponents, now);
             sb.Append('\n');
 
@@ -601,6 +602,7 @@ namespace AppsInToss.Editor.ErrorTracker
 
         #region JSON Helpers
 
+        // BMP 범위(U+0000~U+FFFF)만 처리 — 에러 메시지/스택 트레이스에서 surrogate pair는 실질적으로 발생하지 않음
         internal static string EscapeJson(string value)
         {
             if (string.IsNullOrEmpty(value))
@@ -649,9 +651,10 @@ namespace AppsInToss.Editor.ErrorTracker
 
         private static readonly DateTime UnixEpoch = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
+        // 호출자는 반드시 DateTime.UtcNow 또는 DateTimeKind.Utc 값을 전달해야 합니다
         private static string FormatTimestampUnix(DateTime utcTime)
         {
-            var seconds = (utcTime.ToUniversalTime() - UnixEpoch).TotalSeconds;
+            var seconds = (utcTime - UnixEpoch).TotalSeconds;
             return seconds.ToString("F3", System.Globalization.CultureInfo.InvariantCulture);
         }
 

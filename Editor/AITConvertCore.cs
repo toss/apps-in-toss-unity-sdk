@@ -354,7 +354,6 @@ namespace AppsInToss
             Editor.ErrorTracker.AITBuildTransaction transaction = null;
             if (Editor.ErrorTracker.AITEditorErrorTracker.IsDsnConfigured)
             {
-                Editor.ErrorTracker.AITErrorTrackerConsent.ShowNoticeIfNeeded();
                 transaction = new Editor.ErrorTracker.AITBuildTransaction(profileName ?? "Build");
                 transaction.SetTag("clean_build", cleanBuild.ToString());
                 transaction.SetTag("build_webgl", buildWebGL.ToString());

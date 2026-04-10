@@ -1071,7 +1071,7 @@ namespace AppsInToss.Editor
                     }
                 }
                 EditorGUILayout.EndHorizontal();
-                EditorGUILayout.HelpBox("변경 사항은 에디터 재시작 또는 도메인 리로드 후 적용됩니다.", MessageType.Info);
+                EditorGUILayout.HelpBox("에러 수집은 즉시 중단/재개됩니다. 세션 추적은 도메인 리로드 후 적용됩니다.", MessageType.Info);
             }
 
             GUILayout.Space(10);

@@ -159,7 +159,11 @@ namespace AppsInToss.Editor.ErrorTracker
                 return;
 
             var operation = request.SendWebRequest();
-            operation.completed += _ => HandleResponse(request);
+            operation.completed += op =>
+            {
+                _activeRequests.Remove((UnityWebRequestAsyncOperation)op);
+                HandleResponse(request);
+            };
             _activeRequests.Add(operation);
         }
 

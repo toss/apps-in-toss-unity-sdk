@@ -17,6 +17,7 @@ using Breadcrumb = AppsInToss.Editor.ErrorTracker.AITSentryEnvelope.Breadcrumb;
 using SpanData = AppsInToss.Editor.ErrorTracker.AITSentryEnvelope.SpanData;
 
 [TestFixture]
+[Category("Integration")]
 public class ErrorTrackerIntegrationTests
 {
     private string _dsn;
@@ -28,6 +29,13 @@ public class ErrorTrackerIntegrationTests
         _dsn = AITEditorErrorTracker.GetDsn();
         Assert.IsNotNull(_dsn, "DSN이 설정되어 있어야 합니다");
         _dsnComponents = AITSentryEnvelope.ParseDsn(_dsn);
+    }
+
+    [TearDown]
+    public void TearDown()
+    {
+        _dsn = null;
+        _dsnComponents = default;
     }
 
     /// <summary>

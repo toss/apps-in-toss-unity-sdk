@@ -250,7 +250,6 @@ namespace AppsInToss.Editor.ErrorTracker
             string release = null,
             string environment = null)
         {
-            var dsnComponents = ParseDsn(dsn);
             var now = DateTime.UtcNow;
 
             if (string.IsNullOrEmpty(release))

@@ -20,7 +20,6 @@ namespace AppsInToss.Editor.ErrorTracker
         private const double FlushIntervalSeconds = 5.0;
         private const double DefaultRateLimitSeconds = 60.0;
 
-        private static string _dsn;
         private static AITSentryEnvelope.DsnComponents _dsnComponents;
         private static bool _dsnSet;
 
@@ -54,11 +53,9 @@ namespace AppsInToss.Editor.ErrorTracker
             if (string.IsNullOrEmpty(dsn))
             {
                 _dsnSet = false;
-                _dsn = null;
                 return;
             }
 
-            _dsn = dsn;
             _dsnComponents = AITSentryEnvelope.ParseDsn(dsn);
             _dsnSet = true;
         }

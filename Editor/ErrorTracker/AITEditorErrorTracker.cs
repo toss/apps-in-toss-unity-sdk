@@ -298,6 +298,7 @@ namespace AppsInToss.Editor.ErrorTracker
                 errorCode == AITConvertCore.AITExportError.CANCELLED)
                 return;
 
+            // 내부 캡처 도중의 로그도 억제됨 — 호출자가 EndSuppressLogCapture()로 해제
             _suppressLogCapture = true;
             CaptureBuildErrorInternal(errorCode, profileName);
         }

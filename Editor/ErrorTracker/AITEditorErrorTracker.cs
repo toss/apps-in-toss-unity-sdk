@@ -286,9 +286,6 @@ namespace AppsInToss.Editor.ErrorTracker
         }
 
         /// <summary>
-        /// 빌드 에러를 캡처합니다.
-        /// </summary>
-        /// <summary>
         /// 빌드 에러를 캡처하고, 직후의 Debug.LogError 이중 캡처를 방지하기 위해
         /// 로그 핸들러를 일시 억제합니다. 호출자는 Debug.LogError 후에
         /// EndSuppressLogCapture()를 호출해야 합니다.

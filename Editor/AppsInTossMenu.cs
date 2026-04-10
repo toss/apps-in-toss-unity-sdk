@@ -1689,8 +1689,8 @@ namespace AppsInToss
             // 자동 에러 전송 — CaptureBuildError가 로그 억제를 시작하고,
             // Debug.LogError 후에 EndSuppressLogCapture로 해제하여 이중 캡처 방지
             AppsInToss.Editor.ErrorTracker.AITEditorErrorTracker.CaptureBuildError(result, callerName);
-            Debug.LogError($"AIT: 빌드 실패: {result}");
-            AppsInToss.Editor.ErrorTracker.AITEditorErrorTracker.EndSuppressLogCapture();
+            try { Debug.LogError($"AIT: 빌드 실패: {result}"); }
+            finally { AppsInToss.Editor.ErrorTracker.AITEditorErrorTracker.EndSuppressLogCapture(); }
 
             int choice = AITPlatformHelper.ShowComplexDialog(
                 "빌드 실패",

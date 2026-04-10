@@ -179,3 +179,6 @@ yarn.lock.meta
 !**/BuildConfig~/pnpm-lock.yaml
 
 # Lockfile은 일반적으로 커밋하지 않음 (BuildConfig~ 제외)
+
+# Superpowers 플랜 문서 (Claude Code 작업용, 커밋 불필요)
+docs/superpowers/

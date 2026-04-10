@@ -1043,6 +1043,37 @@ namespace AppsInToss.Editor
             EditorGUILayout.LabelField("Unity 버전:", $"{Application.unityVersion} ({AITDefaultSettings.GetUnityVersionGroup()})");
             EditorGUILayout.LabelField("SDK 버전:", AITVersion.FullVersion);
 
+            // 에러 트래커 설정 (DSN이 설정된 경우에만 표시)
+            if (ErrorTracker.AITEditorErrorTracker.IsDsnConfigured)
+            {
+                EditorGUILayout.Space(10);
+                EditorGUILayout.LabelField("에러 트래커", EditorStyles.boldLabel);
+
+                bool isTrackerEnabled = ErrorTracker.AITErrorTrackerConsent.IsEnabled();
+                string statusText = isTrackerEnabled
+                    ? "활성 (익명 에러 리포트 전송 중)"
+                    : "비활성";
+                EditorGUILayout.LabelField("상태:", statusText);
+
+                EditorGUILayout.BeginHorizontal();
+                if (!isTrackerEnabled)
+                {
+                    if (GUILayout.Button("에러 리포트 활성화"))
+                    {
+                        ErrorTracker.AITErrorTrackerConsent.SetEnabled(true);
+                    }
+                }
+                else
+                {
+                    if (GUILayout.Button("에러 리포트 비활성화"))
+                    {
+                        ErrorTracker.AITErrorTrackerConsent.SetEnabled(false);
+                    }
+                }
+                EditorGUILayout.EndHorizontal();
+                EditorGUILayout.HelpBox("에러 수집은 즉시 중단/재개됩니다. 세션 추적은 도메인 리로드 후 적용됩니다.", MessageType.Info);
+            }
+
             GUILayout.Space(10);
 
             // 적용될 WebGL 설정 요약

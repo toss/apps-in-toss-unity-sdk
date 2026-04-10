@@ -403,6 +403,9 @@ jobs:
           if [ "${{ inputs.clean-library }}" = "true" ]; then
             echo "Cleaning Library cache (requested via input)..."
             rm -rf "${PROJECT_PATH}/Library" 2>/dev/null || true
+          else
+            echo "Cleaning Bee build cache to prevent stale ref.dll issues..."
+            rm -rf "${PROJECT_PATH}/Library/Bee" 2>/dev/null || true
           fi
           echo "Done."
 
@@ -419,6 +422,9 @@ jobs:
           if "%CLEAN_LIBRARY%"=="true" (
             echo Cleaning Library cache requested via input...
             if exist "%PROJECT_PATH%\Library" rmdir /s /q "%PROJECT_PATH%\Library"
+          ) else (
+            echo Cleaning Bee build cache to prevent stale ref.dll issues...
+            if exist "%PROJECT_PATH%\Library\Bee" rmdir /s /q "%PROJECT_PATH%\Library\Bee"
           )
           echo Done.
 

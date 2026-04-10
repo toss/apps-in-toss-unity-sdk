@@ -66,7 +66,7 @@ public class ErrorTrackerIntegrationTests
                 request.Abort();
                 request.Dispose();
                 Assert.Fail("Sentry 전송 타임아웃 (10초)");
-                return -1;
+                return -1; // Assert.Fail이 예외를 던지므로 도달하지 않지만 컴파일러 요구
             }
             System.Threading.Thread.Sleep(50);
         }

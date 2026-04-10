@@ -78,7 +78,7 @@ namespace AppsInToss.Editor.ErrorTracker
             using (SHA256 sha256 = SHA256.Create())
             {
                 byte[] hash = sha256.ComputeHash(Encoding.UTF8.GetBytes(deviceId));
-                StringBuilder sb = new StringBuilder(32);
+                StringBuilder sb = new StringBuilder(64);
                 for (int i = 0; i < hash.Length; i++)
                 {
                     sb.Append(hash[i].ToString("x2"));

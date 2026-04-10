@@ -57,7 +57,9 @@ namespace AppsInToss.Editor
         /// </summary>
         private static bool ShowResultsDialog(List<OptimizationFixResult> fixResults)
         {
-            // EditorUtility.DisplayDialog로 간결하게 결과 표시
+            if (fixResults == null || fixResults.Count == 0)
+                return true;
+
             var sb = new System.Text.StringBuilder();
             bool allSuccess = true;
 

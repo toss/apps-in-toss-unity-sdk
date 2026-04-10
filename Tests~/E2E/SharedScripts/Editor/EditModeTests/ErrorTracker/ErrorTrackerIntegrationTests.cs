@@ -5,7 +5,6 @@
 
 using NUnit.Framework;
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Text;
 using AppsInToss;
@@ -244,7 +243,8 @@ public class ErrorTrackerIntegrationTests
             release: AITEditorErrorTracker.GetRelease(),
             environment: "test"
         );
-        SendEnvelopeSync(initEnvelope);
+        var initStatus = SendEnvelopeSync(initEnvelope);
+        Assert.AreEqual(200, initStatus, $"Session init 전송 실패 (HTTP {initStatus})");
 
         // Close 전송
         var closeEnvelope = AITSentryEnvelope.BuildSessionEnvelope(

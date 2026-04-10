@@ -7,8 +7,7 @@ namespace AppsInToss.Editor
     public enum OptimizationIssueType
     {
         TextureCompression,
-        AudioCompression,
-        IL2CPP
+        AudioCompression
     }
 
     public enum OptimizationStatus
@@ -51,7 +50,6 @@ namespace AppsInToss.Editor
 
             issues.Add(ScanTextures());
             issues.Add(ScanAudio());
-            issues.Add(CheckIL2CPP());
 
             return issues;
         }
@@ -149,9 +147,10 @@ namespace AppsInToss.Editor
 
                 var sampleSettings = importer.GetOverrideSampleSettings("WebGL");
 
-                // WebGL 오버라이드가 없거나 PCM인 경우
+                // WebGL 오버라이드가 없거나 비압축/경량압축 포맷인 경우
                 if (!importer.ContainsSampleSettingsOverride("WebGL") ||
-                    sampleSettings.compressionFormat == AudioCompressionFormat.PCM)
+                    sampleSettings.compressionFormat == AudioCompressionFormat.PCM ||
+                    sampleSettings.compressionFormat == AudioCompressionFormat.ADPCM)
                 {
                     issue.assetPaths.Add(path);
                 }
@@ -160,7 +159,7 @@ namespace AppsInToss.Editor
             if (issue.assetPaths.Count > 0)
             {
                 issue.status = OptimizationStatus.Issue;
-                issue.description = $"{issue.assetPaths.Count}개 오디오가 비압축(PCM) 포맷 사용 중";
+                issue.description = $"{issue.assetPaths.Count}개 오디오가 비압축/경량압축(PCM/ADPCM) 포맷 사용 중";
             }
             else
             {
@@ -170,18 +169,6 @@ namespace AppsInToss.Editor
             }
 
             return issue;
-        }
-
-        private static OptimizationIssue CheckIL2CPP()
-        {
-            return new OptimizationIssue
-            {
-                type = OptimizationIssueType.IL2CPP,
-                status = OptimizationStatus.AlreadyOptimal,
-                label = "IL2CPP 빌드",
-                description = "SDK가 자동으로 IL2CPP를 설정합니다",
-                isSelected = false
-            };
         }
 
         private static OptimizationFixResult FixTextures(List<string> assetPaths)
@@ -312,6 +299,7 @@ namespace AppsInToss.Editor
                    format == TextureImporterFormat.RGB24 ||
                    format == TextureImporterFormat.Alpha8 ||
                    format == TextureImporterFormat.RGBA16 ||
+                   format == TextureImporterFormat.RGBA4444 ||
                    format == TextureImporterFormat.R8 ||
                    format == TextureImporterFormat.R16 ||
                    format == TextureImporterFormat.RG16 ||

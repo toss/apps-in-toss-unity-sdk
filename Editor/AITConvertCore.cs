@@ -329,6 +329,32 @@ namespace AppsInToss
             return editorConfig;
         }
 
+        /// <summary>
+        /// 빌드 전 에셋 최적화 검사 (배치 모드에서는 스킵)
+        /// </summary>
+        /// <returns>true = 빌드 진행, false = 빌드 취소</returns>
+        private static bool RunPreBuildOptimizationCheck(AITEditorScriptObject editorConfig)
+        {
+            if (Application.isBatchMode) return true;
+            if (editorConfig == null) return true;
+            if (!editorConfig.enableBuildOptimizationCheck) return true;
+
+            var issues = AITBuildOptimizationScanner.Scan();
+
+            bool hasIssues = false;
+            foreach (var issue in issues)
+            {
+                if (issue.status == OptimizationStatus.Issue)
+                {
+                    hasIssues = true;
+                    break;
+                }
+            }
+            if (!hasIssues) return true;
+
+            return AITBuildOptimizationWindow.ShowAndWait(issues, editorConfig);
+        }
+
         #endregion
 
         #region Main Export Pipeline
@@ -371,6 +397,12 @@ namespace AppsInToss
                     Debug.LogError("Apps in Toss 설정을 찾을 수 없습니다.");
                     transaction?.Finish("internal_error");
                     return AITExportError.INVALID_APP_CONFIG;
+                }
+
+                // 빌드 전 에셋 최적화 검사
+                if (buildWebGL && !RunPreBuildOptimizationCheck(editorConfig))
+                {
+                    return AITExportError.CANCELLED;
                 }
 
                 if (buildWebGL)
@@ -484,6 +516,14 @@ namespace AppsInToss
                     Debug.LogError("Apps in Toss 설정을 찾을 수 없습니다.");
                     settingsBackup.Restore();
                     onComplete?.Invoke(AITExportError.INVALID_APP_CONFIG);
+                    return;
+                }
+
+                // 빌드 전 에셋 최적화 검사
+                if (buildWebGL && !RunPreBuildOptimizationCheck(editorConfig))
+                {
+                    settingsBackup.Restore();
+                    onComplete?.Invoke(AITExportError.CANCELLED);
                     return;
                 }
 

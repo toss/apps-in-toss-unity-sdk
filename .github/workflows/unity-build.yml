@@ -425,7 +425,7 @@ jobs:
             if exist "%PROJECT_PATH%\Library" rmdir /s /q "%PROJECT_PATH%\Library"
           ) else (
             echo Cleaning Bee artifacts cache to prevent stale ref.dll issues...
-            echo (Other Bee caches like shader/import are preserved for incremental builds)
+            echo Other Bee caches like shader/import are preserved for incremental builds.
             if exist "%PROJECT_PATH%\Library\Bee\artifacts" rmdir /s /q "%PROJECT_PATH%\Library\Bee\artifacts"
           )
           echo Done.

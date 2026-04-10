@@ -71,6 +71,10 @@ namespace AppsInToss.Editor.ErrorTracker
                 return cached;
 
             string deviceId = SystemInfo.deviceUniqueIdentifier;
+            if (string.IsNullOrEmpty(deviceId) || deviceId == "n/a" || deviceId == SystemInfo.unsupportedIdentifier)
+            {
+                deviceId = System.Guid.NewGuid().ToString("N");
+            }
             using (SHA256 sha256 = SHA256.Create())
             {
                 byte[] hash = sha256.ComputeHash(Encoding.UTF8.GetBytes(deviceId));

@@ -125,7 +125,7 @@ public class SDKSerializationTests
     {
         var successJson = @"{""_type"":""success"",""_successJson"":{""hash"":""test-hash-123"",""type"":""test-type""},""_errorCode"":null}";
 
-        var result = JsonConvert.DeserializeObject<SerializationTester.MockDiscriminatedUnionResult>(successJson, settings);
+        var result = JsonConvert.DeserializeObject<MockUnionResult>(successJson, settings);
         Assert.IsNotNull(result, "Deserialization should succeed");
         Assert.IsTrue(result.IsSuccess, "Should be a success result");
         Assert.AreEqual("test-hash-123", result.GetSuccess()?.Hash, "Hash should match");
@@ -136,10 +136,34 @@ public class SDKSerializationTests
     {
         var errorJson = @"{""_type"":""error"",""_successJson"":null,""_errorCode"":""INVALID_CATEGORY""}";
 
-        var result = JsonConvert.DeserializeObject<SerializationTester.MockDiscriminatedUnionResult>(errorJson, settings);
+        var result = JsonConvert.DeserializeObject<MockUnionResult>(errorJson, settings);
         Assert.IsNotNull(result, "Deserialization should succeed");
         Assert.IsTrue(result.IsError, "Should be an error result");
         Assert.AreEqual("INVALID_CATEGORY", result.GetErrorCode(), "Error code should match");
+    }
+
+    // =====================================================
+    // 테스트 전용 mock discriminated union 타입
+    // =====================================================
+
+    [System.Serializable]
+    private class MockUnionResult
+    {
+        [JsonProperty("_type")] public string _type;
+        [JsonProperty("_successJson")] public MockSuccessData _successData;
+        [JsonProperty("_errorCode")] public string _errorCode;
+
+        public bool IsSuccess => _type == "success";
+        public bool IsError => _type == "error";
+        public MockSuccessData GetSuccess() => IsSuccess ? _successData : null;
+        public string GetErrorCode() => IsError ? _errorCode : null;
+    }
+
+    [System.Serializable]
+    private class MockSuccessData
+    {
+        [JsonProperty("hash")] public string Hash;
+        [JsonProperty("type")] public string Type;
     }
 
     // =====================================================

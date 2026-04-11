@@ -125,12 +125,12 @@ namespace AppsInToss
     }
 
     /// <summary>
-    /// Result type for GetUserKey (Discriminated Union)
-    /// Success: GetUserKeySuccessResponse | Error: ERROR
+    /// Result type for GetAnonymousKey (Discriminated Union)
+    /// Success: GetAnonymousKeySuccessResponse | Error: ERROR
     /// </summary>
     [Serializable]
     [Preserve]
-    public class GetUserKeyResult
+    public class GetAnonymousKeyResult
     {
         [Preserve]
         [JsonProperty("_type")]
@@ -138,7 +138,7 @@ namespace AppsInToss
 
         [Preserve]
         [JsonProperty("_successJson")]
-        public GetUserKeySuccessResponse _successData;
+        public GetAnonymousKeySuccessResponse _successData;
 
         [Preserve]
         [JsonProperty("_errorCode")]
@@ -153,7 +153,7 @@ namespace AppsInToss
         /// <summary>
         /// 성공 데이터를 가져옵니다.
         /// </summary>
-        public GetUserKeySuccessResponse GetSuccess()
+        public GetAnonymousKeySuccessResponse GetSuccess()
             => IsSuccess ? _successData : null;
 
         /// <summary>
@@ -167,7 +167,7 @@ namespace AppsInToss
         /// Pattern matching을 사용하여 결과를 처리합니다.
         /// </summary>
         public void Match(
-            Action<GetUserKeySuccessResponse> onSuccess,
+            Action<GetAnonymousKeySuccessResponse> onSuccess,
             Action<string> onError
         )
         {
@@ -181,7 +181,7 @@ namespace AppsInToss
         /// Pattern matching을 사용하여 결과를 처리하고 값을 반환합니다.
         /// </summary>
         public T Match<T>(
-            Func<GetUserKeySuccessResponse, T> onSuccess,
+            Func<GetAnonymousKeySuccessResponse, T> onSuccess,
             Func<string, T> onError
         )
         {
@@ -191,7 +191,7 @@ namespace AppsInToss
         /// <summary>
         /// Fluent API: 성공 시 액션을 실행합니다.
         /// </summary>
-        public GetUserKeyResult OnSuccess(Action<GetUserKeySuccessResponse> action)
+        public GetAnonymousKeyResult OnSuccess(Action<GetAnonymousKeySuccessResponse> action)
         {
             if (IsSuccess) action(GetSuccess());
             return this;
@@ -200,7 +200,7 @@ namespace AppsInToss
         /// <summary>
         /// Fluent API: 에러 시 액션을 실행합니다.
         /// </summary>
-        public GetUserKeyResult OnError(Action<string> action)
+        public GetAnonymousKeyResult OnError(Action<string> action)
         {
             if (IsError) action(GetErrorCode());
             return this;
@@ -1723,6 +1723,22 @@ namespace AppsInToss
         public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
+    [Serializable]
+    [Preserve]
+    public class GetAnonymousKeySuccessResponse
+    {
+        [Preserve]
+        [JsonProperty("hash")]
+        public string Hash;
+        [Preserve]
+        [JsonProperty("type")]
+        public string Type;
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
     public enum Accuracy
     {
         Lowest = 1,
@@ -1848,43 +1864,11 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class GetUserKeyResponse
-    {
-        [Preserve]
-        [JsonProperty("hash")]
-        public string Hash; // optional
-        [Preserve]
-        [JsonProperty("type")]
-        public string Type;
-
-        [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class GetUserKeySuccessResponse
-    {
-        [Preserve]
-        [JsonProperty("hash")]
-        public string Hash;
-        [Preserve]
-        [JsonProperty("type")]
-        public string Type;
-
-        [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class GetUserKeyErrorResponse
+    public class GetUserKeyForGameResponse
     {
         [Preserve]
         [JsonProperty("type")]
-        public string Type;
+        public string Type; // optional
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]

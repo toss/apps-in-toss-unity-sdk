@@ -264,9 +264,9 @@ public class SerializationTester : MonoBehaviour
         TestResultDeserialization<GetUserKeyResult>("GetUserKeyResult.Success", successJson, result =>
             result.IsSuccess && result.GetSuccess()?.Hash == "test-hash-123");
 
-        var errorJson = @"{""_type"":""error"",""_successJson"":null,""_errorCode"":""ERROR""}";
+        var errorJson = @"{""_type"":""error"",""_successJson"":null,""_errorCode"":""INVALID_CATEGORY""}";
         TestResultDeserialization<GetUserKeyResult>("GetUserKeyResult.Error", errorJson, result =>
-            result.IsError && result.GetErrorCode() == "ERROR");
+            result.IsError && result.GetErrorCode() == "INVALID_CATEGORY");
 #else
         // v2.4.3 이하: GetUserKeyForGameResult
         var successJson = @"{""_type"":""success"",""_successJson"":{""hash"":""test-hash-123"",""type"":""test-type""},""_errorCode"":null}";

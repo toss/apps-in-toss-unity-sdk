@@ -20,8 +20,8 @@
   },
   "dependencies": {
     "@apps-in-toss/framework": "1.6.0",
-    "@apps-in-toss/web-analytics": "2.4.3",
-    "@apps-in-toss/web-framework": "2.4.3",
+    "@apps-in-toss/web-analytics": "2.4.4",
+    "@apps-in-toss/web-framework": "2.4.4",
     "commander": "^14.0.2",
     "handlebars": "^4.7.8",
     "picocolors": "^1.1.1",
@@ -74,7 +74,8 @@
     "web-framework-2.4.0": "npm:@apps-in-toss/web-framework@2.4.0",
     "web-framework-2.4.1": "npm:@apps-in-toss/web-framework@2.4.1",
     "web-framework-2.4.2": "npm:@apps-in-toss/web-framework@2.4.2",
-    "web-framework-2.4.3": "npm:@apps-in-toss/web-framework@2.4.3"
+    "web-framework-2.4.3": "npm:@apps-in-toss/web-framework@2.4.3",
+    "web-framework-2.4.4": "npm:@apps-in-toss/web-framework@2.4.4"
   },
   "pnpm": {
     "overrides": {

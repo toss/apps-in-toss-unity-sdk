@@ -125,7 +125,7 @@ public class SDKSerializationTests
     {
         var successJson = @"{""_type"":""success"",""_successJson"":{""hash"":""test-hash-123"",""type"":""test-type""},""_errorCode"":null}";
 
-        var result = JsonConvert.DeserializeObject<GetUserKeyForGameResult>(successJson, settings);
+        var result = JsonConvert.DeserializeObject<SerializationTester.MockDiscriminatedUnionResult>(successJson, settings);
         Assert.IsNotNull(result, "Deserialization should succeed");
         Assert.IsTrue(result.IsSuccess, "Should be a success result");
         Assert.AreEqual("test-hash-123", result.GetSuccess()?.Hash, "Hash should match");
@@ -136,7 +136,7 @@ public class SDKSerializationTests
     {
         var errorJson = @"{""_type"":""error"",""_successJson"":null,""_errorCode"":""INVALID_CATEGORY""}";
 
-        var result = JsonConvert.DeserializeObject<GetUserKeyForGameResult>(errorJson, settings);
+        var result = JsonConvert.DeserializeObject<SerializationTester.MockDiscriminatedUnionResult>(errorJson, settings);
         Assert.IsNotNull(result, "Deserialization should succeed");
         Assert.IsTrue(result.IsError, "Should be an error result");
         Assert.AreEqual("INVALID_CATEGORY", result.GetErrorCode(), "Error code should match");

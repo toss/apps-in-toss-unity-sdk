@@ -625,12 +625,12 @@ namespace AppsInToss
                         }
                     }
                     break;
-                case "GetUserKeyResult":
+                case "GetAnonymousKeyResult":
                     if (apiResponse.success)
                     {
-                        if (TryGetCallback<GetUserKeyResult>(callbackId, out var callback7) && callback7 != null)
+                        if (TryGetCallback<GetAnonymousKeyResult>(callbackId, out var callback7) && callback7 != null)
                         {
-                            var data7 = JsonConvert.DeserializeObject<GetUserKeyResult>(apiResponse.data);
+                            var data7 = JsonConvert.DeserializeObject<GetAnonymousKeyResult>(apiResponse.data);
                             callback7(data7);
                         }
                     }
@@ -638,7 +638,7 @@ namespace AppsInToss
                     {
                         if (TryGetErrorCallback(callbackId, out var errorCallback7) && errorCallback7 != null)
                         {
-                            errorCallback7(new AITException("GetUserKeyResult", apiResponse.error));
+                            errorCallback7(new AITException("GetAnonymousKeyResult", apiResponse.error));
                         }
                     }
                     break;

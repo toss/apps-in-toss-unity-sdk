@@ -125,12 +125,12 @@ namespace AppsInToss
     }
 
     /// <summary>
-    /// Result type for GetUserKeyForGame (Discriminated Union)
-    /// Success: GetUserKeyForGameSuccessResponse | Error: INVALID_CATEGORY,ERROR
+    /// Result type for GetUserKey (Discriminated Union)
+    /// Success: GetUserKeySuccessResponse | Error: ERROR
     /// </summary>
     [Serializable]
     [Preserve]
-    public class GetUserKeyForGameResult
+    public class GetUserKeyResult
     {
         [Preserve]
         [JsonProperty("_type")]
@@ -138,7 +138,7 @@ namespace AppsInToss
 
         [Preserve]
         [JsonProperty("_successJson")]
-        public GetUserKeyForGameSuccessResponse _successData;
+        public GetUserKeySuccessResponse _successData;
 
         [Preserve]
         [JsonProperty("_errorCode")]
@@ -153,12 +153,12 @@ namespace AppsInToss
         /// <summary>
         /// 성공 데이터를 가져옵니다.
         /// </summary>
-        public GetUserKeyForGameSuccessResponse GetSuccess()
+        public GetUserKeySuccessResponse GetSuccess()
             => IsSuccess ? _successData : null;
 
         /// <summary>
         /// 에러 코드를 가져옵니다.
-        /// Possible values: "INVALID_CATEGORY", "ERROR"
+        /// Possible values: "ERROR"
         /// </summary>
         public string GetErrorCode()
             => IsError ? _errorCode : null;
@@ -167,7 +167,7 @@ namespace AppsInToss
         /// Pattern matching을 사용하여 결과를 처리합니다.
         /// </summary>
         public void Match(
-            Action<GetUserKeyForGameSuccessResponse> onSuccess,
+            Action<GetUserKeySuccessResponse> onSuccess,
             Action<string> onError
         )
         {
@@ -181,7 +181,7 @@ namespace AppsInToss
         /// Pattern matching을 사용하여 결과를 처리하고 값을 반환합니다.
         /// </summary>
         public T Match<T>(
-            Func<GetUserKeyForGameSuccessResponse, T> onSuccess,
+            Func<GetUserKeySuccessResponse, T> onSuccess,
             Func<string, T> onError
         )
         {
@@ -191,7 +191,7 @@ namespace AppsInToss
         /// <summary>
         /// Fluent API: 성공 시 액션을 실행합니다.
         /// </summary>
-        public GetUserKeyForGameResult OnSuccess(Action<GetUserKeyForGameSuccessResponse> action)
+        public GetUserKeyResult OnSuccess(Action<GetUserKeySuccessResponse> action)
         {
             if (IsSuccess) action(GetSuccess());
             return this;
@@ -200,7 +200,7 @@ namespace AppsInToss
         /// <summary>
         /// Fluent API: 에러 시 액션을 실행합니다.
         /// </summary>
-        public GetUserKeyForGameResult OnError(Action<string> action)
+        public GetUserKeyResult OnError(Action<string> action)
         {
             if (IsError) action(GetErrorCode());
             return this;
@@ -1848,7 +1848,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class GetUserKeyForGameResponse
+    public class GetUserKeyResponse
     {
         [Preserve]
         [JsonProperty("hash")]
@@ -1864,7 +1864,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class GetUserKeyForGameSuccessResponse
+    public class GetUserKeySuccessResponse
     {
         [Preserve]
         [JsonProperty("hash")]
@@ -1880,7 +1880,7 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class GetUserKeyForGameErrorResponse
+    public class GetUserKeyErrorResponse
     {
         [Preserve]
         [JsonProperty("type")]

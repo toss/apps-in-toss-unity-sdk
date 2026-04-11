@@ -259,21 +259,12 @@ public class SerializationTester : MonoBehaviour
         Debug.Log("[SerializationTester] Testing Result type (discriminated union) serialization...");
 
         var successJson = @"{""_type"":""success"",""_successJson"":{""hash"":""test-hash-123"",""type"":""test-type""},""_errorCode"":null}";
-        var errorJson = @"{""_type"":""error"",""_successJson"":null,""_errorCode"":""INVALID_CATEGORY""}";
+        TestResultDeserialization<MockDiscriminatedUnionResult>("DiscriminatedUnion.Success", successJson, result =>
+            result.IsSuccess && result.GetSuccess()?.Hash == "test-hash-123");
 
-#if AIT_SDK_2_4_4_OR_LATER
-        // v2.4.4+: GetUserKeyForGameResult → GetUserKeyResult로 변경됨
-        TestResultDeserialization<GetUserKeyResult>("GetUserKeyResult.Success", successJson, result =>
-            result.IsSuccess && result.GetSuccess()?.Hash == "test-hash-123");
-        TestResultDeserialization<GetUserKeyResult>("GetUserKeyResult.Error", errorJson, result =>
+        var errorJson = @"{""_type"":""error"",""_successJson"":null,""_errorCode"":""INVALID_CATEGORY""}";
+        TestResultDeserialization<MockDiscriminatedUnionResult>("DiscriminatedUnion.Error", errorJson, result =>
             result.IsError && result.GetErrorCode() == "INVALID_CATEGORY");
-#else
-        // v2.4.3 이하: GetUserKeyForGameResult
-        TestResultDeserialization<GetUserKeyForGameResult>("GetUserKeyForGameResult.Success", successJson, result =>
-            result.IsSuccess && result.GetSuccess()?.Hash == "test-hash-123");
-        TestResultDeserialization<GetUserKeyForGameResult>("GetUserKeyForGameResult.Error", errorJson, result =>
-            result.IsError && result.GetErrorCode() == "INVALID_CATEGORY");
-#endif
     }
 
     void TestResultDeserialization<T>(string testName, string inputJson, Func<T, bool> validate) where T : class
@@ -493,5 +484,33 @@ public class SerializationTester : MonoBehaviour
         public int successCount;
         public int failCount;
         public List<SerializationTestResult> results;
+    }
+
+    [Serializable]
+    public class MockDiscriminatedUnionResult
+    {
+        [JsonProperty("_type")]
+        public string _type;
+
+        [JsonProperty("_successJson")]
+        public MockSuccessData _successData;
+
+        [JsonProperty("_errorCode")]
+        public string _errorCode;
+
+        public bool IsSuccess => _type == "success";
+        public bool IsError => _type == "error";
+        public MockSuccessData GetSuccess() => IsSuccess ? _successData : null;
+        public string GetErrorCode() => IsError ? _errorCode : null;
+    }
+
+    [Serializable]
+    public class MockSuccessData
+    {
+        [JsonProperty("hash")]
+        public string Hash;
+
+        [JsonProperty("type")]
+        public string Type;
     }
 }

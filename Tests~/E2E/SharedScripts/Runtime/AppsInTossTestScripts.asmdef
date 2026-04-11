@@ -31,6 +31,11 @@
             "define": "AIT_SDK_1_7_1_OR_LATER"
         },
         {
+            "name": "im.toss.apps-in-toss-unity-sdk",
+            "expression": "2.4.4",
+            "define": "AIT_SDK_2_4_4_OR_LATER"
+        },
+        {
             "name": "io.sentry.unity",
             "expression": "4.0.0",
             "define": "AIT_SENTRY_AVAILABLE"

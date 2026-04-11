@@ -258,15 +258,22 @@ public class SerializationTester : MonoBehaviour
     {
         Debug.Log("[SerializationTester] Testing Result type (discriminated union) serialization...");
 
-        // GetUserKeyForGameResult 성공 케이스 시뮬레이션
         var successJson = @"{""_type"":""success"",""_successJson"":{""hash"":""test-hash-123"",""type"":""test-type""},""_errorCode"":null}";
+        var errorJson = @"{""_type"":""error"",""_successJson"":null,""_errorCode"":""INVALID_CATEGORY""}";
+
+#if AIT_SDK_2_4_4_OR_LATER
+        // v2.4.4+: GetUserKeyForGameResult → GetUserKeyResult로 변경됨
+        TestResultDeserialization<GetUserKeyResult>("GetUserKeyResult.Success", successJson, result =>
+            result.IsSuccess && result.GetSuccess()?.Hash == "test-hash-123");
+        TestResultDeserialization<GetUserKeyResult>("GetUserKeyResult.Error", errorJson, result =>
+            result.IsError && result.GetErrorCode() == "INVALID_CATEGORY");
+#else
+        // v2.4.3 이하: GetUserKeyForGameResult
         TestResultDeserialization<GetUserKeyForGameResult>("GetUserKeyForGameResult.Success", successJson, result =>
             result.IsSuccess && result.GetSuccess()?.Hash == "test-hash-123");
-
-        // GetUserKeyForGameResult 에러 케이스 시뮬레이션
-        var errorJson = @"{""_type"":""error"",""_successJson"":null,""_errorCode"":""INVALID_CATEGORY""}";
         TestResultDeserialization<GetUserKeyForGameResult>("GetUserKeyForGameResult.Error", errorJson, result =>
             result.IsError && result.GetErrorCode() == "INVALID_CATEGORY");
+#endif
     }
 
     void TestResultDeserialization<T>(string testName, string inputJson, Func<T, bool> validate) where T : class

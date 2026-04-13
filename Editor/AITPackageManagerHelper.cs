@@ -138,17 +138,14 @@ namespace AppsInToss.Editor
         public static void LogInstallationFailure(string tag)
         {
             string nodejsPath = GetNodejsPathDescription();
-            Debug.LogError($"[{tag}] ========================================");
-            Debug.LogError($"[{tag}] ✗ pnpm을 설치할 수 없습니다.");
-            Debug.LogError($"[{tag}] ========================================");
-            Debug.LogError($"[{tag}] ");
-            Debug.LogError($"[{tag}] 내장 Node.js 다운로드 또는 pnpm 설치에 실패했습니다.");
-            Debug.LogError($"[{tag}] ");
-            Debug.LogError($"[{tag}] 해결 방법:");
-            Debug.LogError($"[{tag}]   1. 네트워크 연결을 확인하세요.");
-            Debug.LogError($"[{tag}]   2. {nodejsPath} 폴더를 삭제 후 Unity를 재시작하세요.");
-            Debug.LogError($"[{tag}]   3. 방화벽/프록시가 nodejs.org를 차단하고 있는지 확인하세요.");
-            Debug.LogError($"[{tag}] ========================================");
+            Debug.LogError(
+                $"[{tag}] ✗ pnpm을 설치할 수 없습니다.\n"
+                + $"내장 Node.js 다운로드 또는 pnpm 설치에 실패했습니다.\n"
+                + $"해결 방법:\n"
+                + $"  1. 네트워크 연결을 확인하세요.\n"
+                + $"  2. {nodejsPath} 폴더를 삭제 후 Unity를 재시작하세요.\n"
+                + $"  3. 방화벽/프록시가 nodejs.org를 차단하고 있는지 확인하세요."
+            );
         }
 
         /// <summary>

@@ -83,6 +83,23 @@
 - Playwright 테스트는 `Tests~/E2E/tests/` 디렉토리에서 실행
 - Level 0 테스트(EditMode)는 빌드 없이 ~10초만에 실행 가능
 
+### Sentry 이슈 관련
+- **무시해도 되는 이슈 패턴** (EditMode 통합 테스트에서 의도적으로 발생시키는 이벤트):
+  - `EditMode 통합 테스트: pnpm build 실패 시뮬레이션` (SDK-9)
+  - `EditMode 통합 테스트: 에러 이벤트 전송 확인` (SDK-B)
+  - `EditMode 통합 테스트: WebGL 빌드 실패 시뮬레이션` (SDK-C)
+  - `시뮬레이션: FAIL_NPM_BUILD` (SDK-8)
+  - `테스트 예외: Error Tracker 전송 확인용` (SDK-3)
+  - `테스트 에러: Error Tracker 전송 확인용` (SDK-2)
+  - `AITNpmRunner: pnpm install 실패 — ENOENT` (SDK-A) — 테스트 환경(`test: true`)에서만 78회 발생
+- 이 이슈들은 `ErrorTrackerIntegrationTests.cs`에서 Sentry 전송 기능을 검증하기 위해 의도적으로 생성됨
+- Sentry에서 이미 **ignored** 처리되어 있으므로, 새로 발생해도 별도 조치 불필요
+- **SDK 문제가 아닌 사용자 프로젝트/환경 이슈** (resolve 처리됨, 재발 시 모니터링):
+  - FMOD 오디오 오류 — 사용자 프로젝트의 WebGL 오디오 포맷 설정 문제
+  - GUI Layer/tk2dCamera 경고 — 레거시 Unity 컴포넌트 호환성 문제
+  - `Failed to compile player scripts` — 사용자 프로젝트 스크립트 컴파일 오류
+  - `FAIL_NPM_BUILD` — 사용자 빌드 환경(Node.js/pnpm) 문제
+
 ## 빠른 참조: 주요 명령어
 
 | 작업 | 명령어 |

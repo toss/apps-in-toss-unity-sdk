@@ -1157,10 +1157,10 @@ namespace AppsInToss.Editor
 
             if (!Directory.Exists(buildSrc))
             {
-                Debug.LogError("[AIT] ========================================");
-                Debug.LogError("[AIT] ✗ 치명적: Build 폴더를 찾을 수 없습니다!");
-                Debug.LogError("[AIT] ========================================");
-                Debug.LogError($"[AIT] 검색 경로: {buildSrc}");
+                Debug.LogError(
+                    "[AIT] ✗ 치명적: Build 폴더를 찾을 수 없습니다!\n"
+                    + $"검색 경로: {buildSrc}"
+                );
                 return AITConvertCore.AITExportError.BUILD_FOLDER_MISSING;
             }
 
@@ -1213,20 +1213,17 @@ namespace AppsInToss.Editor
 
             if (missingFiles.Count > 0)
             {
-                Debug.LogError("[AIT] ========================================");
-                Debug.LogError("[AIT] ✗ 치명적: WebGL 빌드 필수 파일 누락!");
-                Debug.LogError("[AIT] ========================================");
-                Debug.LogError($"[AIT] 누락된 필수 파일: {string.Join(", ", missingFiles)}");
-                Debug.LogError("[AIT] ");
-                Debug.LogError("[AIT] 가능한 원인:");
-                Debug.LogError("[AIT]   1. Unity WebGL 빌드가 완료되지 않았습니다.");
-                Debug.LogError("[AIT]   2. WebGL 빌드가 실패했지만 부분 결과물만 남아있습니다.");
-                Debug.LogError("[AIT]   3. 빌드 설정(압축 방식 등)이 예상과 다릅니다.");
-                Debug.LogError("[AIT] ");
-                Debug.LogError("[AIT] 해결 방법:");
-                Debug.LogError("[AIT]   1. 'Clean Build' 옵션을 활성화하고 다시 빌드하세요.");
-                Debug.LogError("[AIT]   2. Unity Console에서 빌드 에러를 확인하세요.");
-                Debug.LogError("[AIT] ========================================");
+                Debug.LogError(
+                    $"[AIT] ✗ 치명적: WebGL 빌드 필수 파일 누락!\n"
+                    + $"누락된 필수 파일: {string.Join(", ", missingFiles)}\n"
+                    + "가능한 원인:\n"
+                    + "  1. Unity WebGL 빌드가 완료되지 않았습니다.\n"
+                    + "  2. WebGL 빌드가 실패했지만 부분 결과물만 남아있습니다.\n"
+                    + "  3. 빌드 설정(압축 방식 등)이 예상과 다릅니다.\n"
+                    + "해결 방법:\n"
+                    + "  1. 'Clean Build' 옵션을 활성화하고 다시 빌드하세요.\n"
+                    + "  2. Unity Console에서 빌드 에러를 확인하세요."
+                );
                 return AITConvertCore.AITExportError.REQUIRED_FILE_MISSING;
             }
 
@@ -1317,20 +1314,17 @@ namespace AppsInToss.Editor
             // index.html 필수 검증
             if (!File.Exists(indexSrc))
             {
-                Debug.LogError("[AIT] ========================================");
-                Debug.LogError("[AIT] ✗ 치명적: index.html을 찾을 수 없습니다!");
-                Debug.LogError("[AIT] ========================================");
-                Debug.LogError($"[AIT] 검색 경로: {indexSrc}");
-                Debug.LogError("[AIT] ");
-                Debug.LogError("[AIT] 가능한 원인:");
-                Debug.LogError("[AIT]   1. Unity WebGL 빌드가 완료되지 않았습니다.");
-                Debug.LogError("[AIT]   2. WebGL 템플릿이 올바르게 설정되지 않았습니다.");
-                Debug.LogError("[AIT]   3. 이전 빌드가 손상되었습니다.");
-                Debug.LogError("[AIT] ");
-                Debug.LogError("[AIT] 해결 방법:");
-                Debug.LogError("[AIT]   1. 'Clean Build' 옵션을 활성화하고 다시 빌드하세요.");
-                Debug.LogError("[AIT]   2. AIT > Clean 메뉴로 빌드 폴더를 삭제 후 재빌드하세요.");
-                Debug.LogError("[AIT] ========================================");
+                Debug.LogError(
+                    "[AIT] ✗ 치명적: index.html을 찾을 수 없습니다!\n"
+                    + $"검색 경로: {indexSrc}\n"
+                    + "가능한 원인:\n"
+                    + "  1. Unity WebGL 빌드가 완료되지 않았습니다.\n"
+                    + "  2. WebGL 템플릿이 올바르게 설정되지 않았습니다.\n"
+                    + "  3. 이전 빌드가 손상되었습니다.\n"
+                    + "해결 방법:\n"
+                    + "  1. 'Clean Build' 옵션을 활성화하고 다시 빌드하세요.\n"
+                    + "  2. AIT > Clean 메뉴로 빌드 폴더를 삭제 후 재빌드하세요."
+                );
                 return AITConvertCore.AITExportError.INDEX_HTML_MISSING;
             }
 

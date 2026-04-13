@@ -55,22 +55,16 @@ namespace AppsInToss.Editor
 
                 if (foundCritical.Count > 0)
                 {
-                    Debug.LogError("[AIT] ========================================");
-                    Debug.LogError("[AIT] ✗ 치명적: 필수 플레이스홀더 미치환!");
-                    Debug.LogError("[AIT] ========================================");
-                    foreach (var placeholder in foundCritical)
-                    {
-                        Debug.LogError($"[AIT]   - {placeholder}");
-                    }
-                    Debug.LogError($"[AIT] 파일: {filePath}");
-                    Debug.LogError("[AIT] ");
-                    Debug.LogError("[AIT] 이 플레이스홀더들이 치환되지 않으면 런타임에서");
-                    Debug.LogError("[AIT] 'createUnityInstance is not defined' 에러가 발생합니다.");
-                    Debug.LogError("[AIT] ");
-                    Debug.LogError("[AIT] 해결 방법:");
-                    Debug.LogError("[AIT]   1. 'Clean Build' 옵션을 활성화하고 다시 빌드하세요.");
-                    Debug.LogError("[AIT]   2. AIT > Clean 메뉴로 빌드 폴더 삭제 후 재빌드하세요.");
-                    Debug.LogError("[AIT] ========================================");
+                    var placeholderList = string.Join("\n", foundCritical.ConvertAll(p => $"  - {p}"));
+                    Debug.LogError(
+                        "[AIT] ✗ 치명적: 필수 플레이스홀더 미치환!\n"
+                        + placeholderList + "\n"
+                        + $"파일: {filePath}\n"
+                        + "이 플레이스홀더들이 치환되지 않으면 런타임에서 'createUnityInstance is not defined' 에러가 발생합니다.\n"
+                        + "해결 방법:\n"
+                        + "  1. 'Clean Build' 옵션을 활성화하고 다시 빌드하세요.\n"
+                        + "  2. AIT > Clean 메뉴로 빌드 폴더 삭제 후 재빌드하세요."
+                    );
                     hasError = true;
                 }
                 else
@@ -91,15 +85,13 @@ namespace AppsInToss.Editor
             // 잘못된 경로 패턴 검증 (예: Build/ 뒤에 파일명이 없는 경우)
             if (content.Contains("src=\"Build/\"") || content.Contains("\"Build/\"") || content.Contains("Build/\","))
             {
-                Debug.LogError("[AIT] ========================================");
-                Debug.LogError("[AIT] ✗ 치명적: 빈 파일 경로 발견!");
-                Debug.LogError("[AIT] ========================================");
-                Debug.LogError("[AIT] index.html에 'Build/' 뒤에 파일명이 없는 경로가 있습니다.");
-                Debug.LogError("[AIT] 이로 인해 'createUnityInstance is not defined' 에러가 발생합니다.");
-                Debug.LogError("[AIT] ");
-                Debug.LogError("[AIT] 원인: WebGL 빌드의 loader.js 파일을 찾지 못했습니다.");
-                Debug.LogError("[AIT] 해결: 위의 빌드 파일 검색 로그를 확인하세요.");
-                Debug.LogError("[AIT] ========================================");
+                Debug.LogError(
+                    "[AIT] ✗ 치명적: 빈 파일 경로 발견!\n"
+                    + "index.html에 'Build/' 뒤에 파일명이 없는 경로가 있습니다.\n"
+                    + "이로 인해 'createUnityInstance is not defined' 에러가 발생합니다.\n"
+                    + "원인: WebGL 빌드의 loader.js 파일을 찾지 못했습니다.\n"
+                    + "해결: 위의 빌드 파일 검색 로그를 확인하세요."
+                );
                 hasError = true;
             }
 
@@ -358,26 +350,24 @@ namespace AppsInToss.Editor
 
             if (aitFiles.Length == 0)
             {
-                Debug.LogError("[AIT] ========================================");
-                Debug.LogError("[AIT] ✗ .ait 파일이 생성되지 않았습니다!");
-                Debug.LogError($"[AIT]   빌드 경로: {buildProjectPath}");
+                var msg = $"[AIT] ✗ .ait 파일이 생성되지 않았습니다!\n빌드 경로: {buildProjectPath}";
                 if (Directory.Exists(distPath))
                 {
                     var distFiles = Directory.GetFiles(distPath);
                     if (distFiles.Length > 0)
                     {
-                        Debug.LogError("[AIT]   dist/ 폴더의 실제 파일들:");
+                        msg += "\ndist/ 폴더의 실제 파일들:";
                         foreach (var file in distFiles)
                         {
-                            Debug.LogError($"[AIT]     - {Path.GetFileName(file)}");
+                            msg += $"\n  - {Path.GetFileName(file)}";
                         }
                     }
                 }
                 else
                 {
-                    Debug.LogError("[AIT]   dist/ 폴더도 존재하지 않습니다.");
+                    msg += "\ndist/ 폴더도 존재하지 않습니다.";
                 }
-                Debug.LogError("[AIT] ========================================");
+                Debug.LogError(msg);
                 return AITConvertCore.AITExportError.AIT_FILE_MISSING;
             }
 

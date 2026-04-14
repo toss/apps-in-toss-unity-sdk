@@ -62,6 +62,11 @@ namespace AppsInToss.Sentry
             {
                 scope.SetTag("ait.sdk_version", AITVersion.FullVersion);
                 scope.SetTag("ait.unity_version", Application.unityVersion);
+
+                if (!string.IsNullOrEmpty(AITVersion.CommitHash))
+                {
+                    scope.SetTag("ait.commit_hash", AITVersion.CommitHash);
+                }
             });
         }
 

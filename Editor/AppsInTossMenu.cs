@@ -311,7 +311,7 @@ namespace AppsInToss
             string deploymentKey = AITCredentialsUtil.GetDeploymentKey();
             if (string.IsNullOrWhiteSpace(deploymentKey))
             {
-                Debug.LogError("AIT: 배포 키가 설정되지 않았습니다.");
+                AITLog.Error("AIT: 배포 키가 설정되지 않았습니다.", sentryCapture: false);
                 AITPlatformHelper.ShowInfoDialog("오류", "배포 키가 설정되지 않았습니다.\n\nApps in Toss > Configuration에서 배포 키를 입력해주세요.", "확인");
                 return;
             }
@@ -675,7 +675,7 @@ namespace AppsInToss
             string deploymentKey = AITCredentialsUtil.GetDeploymentKey();
             if (string.IsNullOrWhiteSpace(deploymentKey))
             {
-                Debug.LogError("AIT: 배포 키가 설정되지 않았습니다.");
+                AITLog.Error("AIT: 배포 키가 설정되지 않았습니다.", sentryCapture: false);
                 AITPlatformHelper.ShowInfoDialog("오류", "배포 키가 설정되지 않았습니다.\n\nApps in Toss > Configuration에서 배포 키를 입력해주세요.", "확인");
                 return;
             }
@@ -687,7 +687,7 @@ namespace AppsInToss
             string npmPath = FindNpmPath();
             if (string.IsNullOrEmpty(npmPath))
             {
-                Debug.LogError("AIT: npm을 찾을 수 없습니다. Node.js가 설치되어 있는지 확인하세요.");
+                AITLog.Error("AIT: npm을 찾을 수 없습니다. Node.js가 설치되어 있는지 확인하세요.", sentryCapture: false);
                 AITPlatformHelper.ShowInfoDialog("오류", "npm을 찾을 수 없습니다.\n\nNode.js가 설치되어 있는지 확인하세요.", "확인");
                 return;
             }
@@ -931,7 +931,7 @@ namespace AppsInToss
             // 빌드 결과물이 있는지 확인
             if (!Directory.Exists(buildPath))
             {
-                Debug.LogError($"AIT: 빌드 결과물이 없습니다. 먼저 Build & Package를 실행하세요. ({buildPath})");
+                AITLog.Error($"AIT: 빌드 결과물이 없습니다. 먼저 Build & Package를 실행하세요. ({buildPath})", sentryCapture: false);
                 AITPlatformHelper.ShowInfoDialog("빌드 필요", "빌드 결과물이 없습니다.\n먼저 Build & Package를 실행하세요.", "확인");
                 return;
             }
@@ -1375,7 +1375,7 @@ namespace AppsInToss
         {
             if (string.IsNullOrEmpty(npmPath))
             {
-                Debug.LogError("AIT: npm을 찾을 수 없습니다.");
+                AITLog.Error("AIT: npm을 찾을 수 없습니다.", sentryCapture: false);
                 AITPlatformHelper.ShowInfoDialog("오류", "npm을 찾을 수 없습니다.\n\nNode.js가 설치되어 있는지 확인하세요.", "확인");
                 return false;
             }
@@ -1399,7 +1399,7 @@ namespace AppsInToss
 
                 if (installResult != AITConvertCore.AITExportError.SUCCEED)
                 {
-                    Debug.LogError("AIT: pnpm install 실패");
+                    AITLog.Error("AIT: pnpm install 실패", sentryCapture: false);
                     AITPlatformHelper.ShowInfoDialog("오류", "pnpm install 실패\n\nConsole 로그를 확인하세요.", "확인");
                     return false;
                 }
@@ -1653,7 +1653,7 @@ namespace AppsInToss
                 }
                 else
                 {
-                    Debug.LogError($"[AIT] 사용 가능한 포트를 찾을 수 없습니다 (시도: {vitePort}-{vitePort+9})");
+                    AITLog.Error($"[AIT] 사용 가능한 포트를 찾을 수 없습니다 (시도: {vitePort}-{vitePort+9})", sentryCapture: false);
                     AITPlatformHelper.ShowInfoDialog("포트 오류", $"포트 {vitePort} 및 인근 포트가 모두 사용 중입니다.\n다른 포트를 Configuration에서 설정하거나, 사용 중인 프로세스를 종료하세요.", "확인");
                     return false;
                 }
@@ -1670,7 +1670,7 @@ namespace AppsInToss
                 }
                 else
                 {
-                    Debug.LogError($"[AIT] 사용 가능한 Granite 포트를 찾을 수 없습니다 (시도: {granitePort}-{granitePort+9})");
+                    AITLog.Error($"[AIT] 사용 가능한 Granite 포트를 찾을 수 없습니다 (시도: {granitePort}-{granitePort+9})", sentryCapture: false);
                     AITPlatformHelper.ShowInfoDialog("포트 오류", $"Granite 포트 {granitePort} 및 인근 포트가 모두 사용 중입니다.\n다른 포트를 Configuration에서 설정하거나, 사용 중인 프로세스를 종료하세요.", "확인");
                     return false;
                 }
@@ -1686,11 +1686,8 @@ namespace AppsInToss
         {
             string errorMessage = AITConvertCore.GetErrorMessage(result);
 
-            // 자동 에러 전송 — CaptureBuildError가 로그 억제를 시작하고,
-            // Debug.LogError 후에 EndSuppressLogCapture로 해제하여 이중 캡처 방지
-            AppsInToss.Editor.ErrorTracker.AITEditorErrorTracker.CaptureBuildError(result, callerName);
-            try { Debug.LogError($"AIT: 빌드 실패: {result}"); }
-            finally { AppsInToss.Editor.ErrorTracker.AITEditorErrorTracker.EndSuppressLogCapture(); }
+            // 자동 에러 전송 — Sentry에 빌드 에러 캡처 + Console에 로그 출력 (이중 캡처 방지 내장)
+            AppsInToss.Editor.ErrorTracker.AITEditorErrorTracker.CaptureBuildError(result, $"AIT: 빌드 실패: {result}", callerName);
 
             int choice = AITPlatformHelper.ShowComplexDialog(
                 "빌드 실패",
@@ -1729,7 +1726,7 @@ namespace AppsInToss
 
             if (string.IsNullOrWhiteSpace(config.appName))
             {
-                Debug.LogError("AIT: App Name이 설정되지 않았습니다.");
+                AITLog.Error("AIT: App Name이 설정되지 않았습니다.", sentryCapture: false);
                 AITPlatformHelper.ShowInfoDialog("오류", "App Name이 설정되지 않았습니다.\n\nAIT > Configuration에서 App Name을 입력해주세요.", "확인");
                 return false;
             }

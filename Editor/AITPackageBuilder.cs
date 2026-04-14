@@ -132,7 +132,7 @@ namespace AppsInToss.Editor
             string npmPath = AITNpmRunner.FindNpmPath();
             if (string.IsNullOrEmpty(npmPath))
             {
-                Debug.LogError("[AIT] npm을 찾을 수 없습니다. Node.js가 설치되어 있는지 확인하세요.");
+                AITLog.Error("[AIT] npm을 찾을 수 없습니다. Node.js가 설치되어 있는지 확인하세요.", sentryCapture: false);
                 return (null, AITConvertCore.AITExportError.NODE_NOT_FOUND);
             }
 

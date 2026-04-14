@@ -68,10 +68,10 @@
 
 ## 비동기/스레딩 개선
 
-### P1 — AITNodeJSDownloader.cs: Thread.Sleep 블로킹
+### P2 — AITNodeJSDownloader.cs: Thread.Sleep 블로킹
 - **파일**: `Editor/AITNodeJSDownloader.cs` (143행)
-- **현상**: `Thread.Sleep(1000 * retry)` — 최대 3초까지 Unity Editor 메인 스레드 블로킹
-- **조치**: `Task.Delay()` + async/await 패턴으로 전환
+- **현상**: `Thread.Sleep(1000 * retry)` — 최대 3초까지 블로킹 (호출 컨텍스트의 스레딩 모델 확인 필요)
+- **조치**: 메인 스레드 호출 확인 후, 필요 시 `Task.Delay()` + async/await 패턴으로 전환
 
 ### P2 — .Result 동기 블로킹 호출
 - **파일/행**:
@@ -96,10 +96,11 @@
 
 ### P2 — 빈 catch 블록 (20+ 곳)
 - **주요 파일**:
-  - `Editor/AITFileUtils.cs` — 7개 빈 catch 블록 (145, 148, 176, 186, 194, 216, 219행)
+  - `Editor/AITFileUtils.cs` — 5개 빈 catch 블록 (176, 186, 194, 216, 219행)
+  - `Editor/AITFileUtils.cs` 내 `AITUnixPermission` 클래스 — 2개 빈 catch 블록 (145, 148행)
   - `Editor/AITNodeJSDownloader.cs` — 5개 빈 catch 블록 (168, 274, 289, 334, 341행)
   - `Editor/AITGitGuard.cs:386-387`
-  - `Editor/AITPackageBuilder.cs:93-94`
+  - `Editor/AITPackageBuilder.cs:93-94` (ObjectDisposedException 한정 catch — 의도적 패턴이나 로깅 부재)
   - `Editor/AITDeprecationChecker.cs:215`
 - **현상**: `catch (Exception) { }` — 오류가 완전히 숨겨짐
 - **조치**: 최소한 `Debug.LogWarning`으로 로깅 추가. `FileSystemHelper.SafeDelete()` 같은 공통 유틸리티 추출
@@ -110,8 +111,8 @@
 
 ### P2 — BuildConfig~/package.json의 floating versions
 - **파일**: `WebGLTemplates/AITTemplate/BuildConfig~/package.json`
-- **현상**: `vite: "^8.0.8"`, `typescript: "^6.0.2"` — 메이저 업데이트 시 빌드 깨질 수 있음
-- **조치**: 정확한 버전 고정 또는 `~` (틸드) 사용
+- **현상**: `vite: "^8.0.8"`, `typescript: "^6.0.2"` — caret(^)은 마이너/패치 업데이트를 허용하므로 예기치 않은 마이너 버전 변경으로 빌드가 깨질 수 있음
+- **조치**: 정확한 버전 고정 또는 `~` (틸드, 패치만 허용) 사용
 
 ### P2 — sdk-runtime-generator~/package.json의 floating versions
 - **현상**: `commander: "^14.0.2"`, `ts-morph: "^27.0.2"` 등 다수 caret 버전
@@ -121,10 +122,10 @@
 
 ## 보안
 
-### P2 — Sentry DSN 하드코딩
+### P3 — Sentry DSN 하드코딩
 - **파일**: `Editor/ErrorTracker/AITEditorErrorTracker.cs` (20행)
-- **현상**: DSN이 소스코드에 직접 내장 (Sentry public key이므로 기술적으로는 안전)
-- **조치**: 환경변수 또는 설정 파일 주입 방식으로 전환 검토
+- **현상**: DSN이 소스코드에 직접 내장 (Sentry public key이므로 기술적으로는 안전 — 보안 위험 낮음)
+- **조치**: 환경변수 또는 설정 파일 주입 방식으로 전환 검토 (낮은 우선순위)
 
 ---
 
@@ -161,6 +162,6 @@
 ## 테스트 커버리지
 
 ### P2 — Editor 코드 유닛 테스트 부족
-- **현상**: 50+ Editor 클래스 중 유닛 테스트는 EditMode 테스트 7개뿐
+- **현상**: 31개 Editor 소스 파일 중 유닛 테스트는 7개 테스트 파일 (62개 테스트 메서드)뿐
 - **미테스트 핵심 클래스**: `AITPackageBuilder`, `AITConvertCore`, `AITPackageManagerHelper`, `AITPlatformHelper`
 - **조치**: 빌드 검증 로직, pnpm install 폴백 시나리오, 권한 오류 등에 대한 테스트 추가

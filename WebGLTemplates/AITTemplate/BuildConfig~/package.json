@@ -1,0 +1,26 @@
+{
+  "name": "unity-miniapp",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "ait dev",
+    "build": "ait build || granite build",
+    "start": "ait dev",
+    "deploy": "ait deploy"
+  },
+  "dependencies": {
+    "@apps-in-toss/web-analytics": "2.4.6",
+    "@apps-in-toss/web-framework": "2.4.6"
+  },
+  "devDependencies": {
+    "vite": "^8.0.8",
+    "typescript": "^6.0.2"
+  },
+  "pnpm": {
+    "overrides": {
+      "@granite-js/plugin-core": "0.1.30",
+      "find-my-way": ">=8.2.2",
+      "ip": ">=2.0.1"
+    }
+  }
+}

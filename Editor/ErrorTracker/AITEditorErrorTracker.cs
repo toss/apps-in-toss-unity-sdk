@@ -56,9 +56,9 @@ namespace AppsInToss.Editor.ErrorTracker
 
         private static readonly Dictionary<int, DateTime> _recentErrors = new Dictionary<int, DateTime>();
 
-        // CaptureBuildError 호출 직후 로그 핸들러의 이중 캡처를 방지하기 위한 억제 플래그
-        // 주로 메인 스레드에서 사용되지만, 백그라운드 스레드의 로그 콜백에 대비하여 volatile 선언
-        private static volatile bool _suppressLogCapture;
+        // CaptureBuildError/AITLog에서 로그 핸들러의 Sentry 캡처를 억제하기 위한 카운터
+        // 중첩 호출을 지원하며, Interlocked으로 스레드 안전성 보장
+        private static volatile int _suppressLogCaptureCount;
 
         #endregion
 
@@ -197,18 +197,36 @@ namespace AppsInToss.Editor.ErrorTracker
 
         private static void OnLogMessageReceived(string message, string stackTrace, LogType type)
         {
-            if (type != LogType.Error && type != LogType.Exception)
+            if (type != LogType.Error && type != LogType.Exception && type != LogType.Warning)
                 return;
 
-            // CaptureBuildError에서 이미 명시적으로 캡처한 에러의 이중 전송 방지
-            if (_suppressLogCapture)
+            // CaptureBuildError 또는 AITLog에서 억제된 로그의 이중 전송 방지
+            if (_suppressLogCaptureCount > 0)
                 return;
 
             if (!IsAitRelated(message, stackTrace))
                 return;
 
-            string exceptionType = type == LogType.Exception ? ExtractExceptionType(message) : "UnityError";
-            CaptureError(exceptionType, message, stackTrace, "error");
+            string level;
+            string exceptionType;
+
+            if (type == LogType.Exception)
+            {
+                exceptionType = ExtractExceptionType(message);
+                level = "error";
+            }
+            else if (type == LogType.Error)
+            {
+                exceptionType = "UnityError";
+                level = "error";
+            }
+            else
+            {
+                exceptionType = "UnityWarning";
+                level = "warning";
+            }
+
+            CaptureError(exceptionType, message, stackTrace, level);
         }
 
         /// <summary>
@@ -286,29 +304,54 @@ namespace AppsInToss.Editor.ErrorTracker
         }
 
         /// <summary>
-        /// 빌드 에러를 캡처하고, 직후의 Debug.LogError 이중 캡처를 방지하기 위해
-        /// 로그 핸들러를 일시 억제합니다. 호출자는 Debug.LogError 후에
-        /// EndSuppressLogCapture()를 호출해야 합니다.
+        /// 빌드 에러를 Sentry에 캡처하고, Console에 에러 로그를 출력합니다.
+        /// 로그 핸들러의 이중 캡처를 내부적으로 방지하므로 호출자가 suppress를 관리할 필요 없습니다.
         /// </summary>
         internal static void CaptureBuildError(
             AITConvertCore.AITExportError errorCode,
+            string logMessage,
             string profileName = null)
         {
             if (errorCode == AITConvertCore.AITExportError.SUCCEED ||
                 errorCode == AITConvertCore.AITExportError.CANCELLED)
                 return;
 
-            // 내부 캡처 도중의 로그도 억제됨 — 호출자가 EndSuppressLogCapture()로 해제
-            _suppressLogCapture = true;
-            CaptureBuildErrorInternal(errorCode, profileName);
+            BeginSuppressLogCapture();
+            try
+            {
+                CaptureBuildErrorInternal(errorCode, profileName);
+                UnityEngine.Debug.LogError(logMessage);
+            }
+            finally
+            {
+                EndSuppressLogCapture();
+            }
         }
 
         /// <summary>
-        /// CaptureBuildError 후 로그 억제를 해제합니다.
+        /// 로그 핸들러의 Sentry 캡처를 일시 억제합니다.
+        /// 반드시 EndSuppressLogCapture()와 쌍으로 사용해야 합니다.
+        /// </summary>
+        internal static void BeginSuppressLogCapture()
+        {
+            System.Threading.Interlocked.Increment(ref _suppressLogCaptureCount);
+        }
+
+        /// <summary>
+        /// BeginSuppressLogCapture 후 로그 억제를 해제합니다.
         /// </summary>
         internal static void EndSuppressLogCapture()
         {
-            _suppressLogCapture = false;
+            // 원자적 underflow 방지: 0 이하로 내려가지 않도록 CAS 루프
+            int current;
+            do
+            {
+                current = _suppressLogCaptureCount;
+                if (current <= 0)
+                    return;
+            }
+            while (System.Threading.Interlocked.CompareExchange(
+                ref _suppressLogCaptureCount, current - 1, current) != current);
         }
 
         private static void CaptureBuildErrorInternal(

@@ -394,7 +394,7 @@ namespace AppsInToss
 
                 if (editorConfig == null)
                 {
-                    Debug.LogError("Apps in Toss 설정을 찾을 수 없습니다.");
+                    AITLog.Error("Apps in Toss 설정을 찾을 수 없습니다.", sentryCapture: false);
                     transaction?.Finish("internal_error");
                     return AITExportError.INVALID_APP_CONFIG;
                 }
@@ -513,7 +513,7 @@ namespace AppsInToss
 
                 if (editorConfig == null)
                 {
-                    Debug.LogError("Apps in Toss 설정을 찾을 수 없습니다.");
+                    AITLog.Error("Apps in Toss 설정을 찾을 수 없습니다.", sentryCapture: false);
                     settingsBackup.Restore();
                     onComplete?.Invoke(AITExportError.INVALID_APP_CONFIG);
                     return;
@@ -658,7 +658,7 @@ namespace AppsInToss
 
             if (!Directory.Exists(webglPath))
             {
-                Debug.LogError("[AIT] WebGL 빌드 결과를 찾을 수 없습니다. WebGL 빌드를 먼저 실행하세요.");
+                AITLog.Error("[AIT] WebGL 빌드 결과를 찾을 수 없습니다. WebGL 빌드를 먼저 실행하세요.", sentryCapture: false);
                 settingsBackup.Restore();
                 onComplete?.Invoke(AITExportError.BUILD_WEBGL_FAILED);
                 return;
@@ -741,7 +741,7 @@ namespace AppsInToss
                 Debug.Log($"[AIT] 빌드 타겟을 {EditorUserBuildSettings.activeBuildTarget}에서 WebGL로 전환합니다...");
                 if (!EditorUserBuildSettings.SwitchActiveBuildTarget(BuildTargetGroup.WebGL, BuildTarget.WebGL))
                 {
-                    Debug.LogError("[AIT] WebGL 빌드 타겟으로 전환할 수 없습니다. WebGL Build Support 모듈이 설치되어 있는지 확인하세요.");
+                    AITLog.Error("[AIT] WebGL 빌드 타겟으로 전환할 수 없습니다. WebGL Build Support 모듈이 설치되어 있는지 확인하세요.", sentryCapture: false);
                     return AITExportError.BUILD_WEBGL_FAILED;
                 }
             }
@@ -875,7 +875,7 @@ namespace AppsInToss
 
             if (!Directory.Exists(webglPath))
             {
-                Debug.LogError("WebGL 빌드 결과를 찾을 수 없습니다. WebGL 빌드를 먼저 실행하세요.");
+                AITLog.Error("WebGL 빌드 결과를 찾을 수 없습니다. WebGL 빌드를 먼저 실행하세요.", sentryCapture: false);
                 return AITExportError.BUILD_WEBGL_FAILED;
             }
 

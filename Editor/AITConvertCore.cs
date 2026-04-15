@@ -826,7 +826,54 @@ namespace AppsInToss
 
             if (result.summary.result != UnityEditor.Build.Reporting.BuildResult.Succeeded)
             {
-                Debug.LogError("WebGL 빌드가 실패했습니다.");
+                var sb = new System.Text.StringBuilder();
+                sb.AppendLine("WebGL 빌드가 실패했습니다.");
+                sb.AppendLine($"  결과: {result.summary.result}");
+                sb.AppendLine($"  총 에러: {result.summary.totalErrors}, 총 경고: {result.summary.totalWarnings}");
+
+                int messageCount = 0;
+                const int maxMessages = 10;
+
+                // 에러 메시지를 먼저 출력 (실패 원인 우선)
+                foreach (var step in result.steps)
+                {
+                    foreach (var message in step.messages)
+                    {
+                        if (message.type == LogType.Error ||
+                            message.type == LogType.Exception ||
+                            message.type == LogType.Assert)
+                        {
+                            if (messageCount < maxMessages)
+                            {
+                                sb.AppendLine($"  [{message.type}] {message.content}");
+                            }
+                            messageCount++;
+                        }
+                    }
+                }
+
+                // 경고 메시지는 남은 슬롯에 출력
+                foreach (var step in result.steps)
+                {
+                    foreach (var message in step.messages)
+                    {
+                        if (message.type == LogType.Warning)
+                        {
+                            if (messageCount < maxMessages)
+                            {
+                                sb.AppendLine($"  [{message.type}] {message.content}");
+                            }
+                            messageCount++;
+                        }
+                    }
+                }
+
+                if (messageCount > maxMessages)
+                {
+                    sb.Append($"  ... 외 {messageCount - maxMessages}개 메시지 생략");
+                }
+
+                Debug.LogError(sb.ToString().TrimEnd());
                 return AITExportError.BUILD_WEBGL_FAILED;
             }
 

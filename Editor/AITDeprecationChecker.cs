@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Net;
 using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEngine;
@@ -8,41 +9,205 @@ using Debug = UnityEngine.Debug;
 namespace AppsInToss.Editor
 {
     /// <summary>
-    /// SDK 2.0.0 미만 버전 감지 시 빌드를 차단하고 최신 버전으로 업그레이드를 유도합니다.
+    /// SDK 최소 버전 미만 감지 시 빌드를 차단하고 최신 버전으로 업그레이드를 유도합니다.
+    /// 최소 버전은 GitHub의 sdk-policy.json에서 동적으로 가져오며, 실패 시 하드코딩 폴백을 사용합니다.
     /// </summary>
     [InitializeOnLoad]
     public static class AITDeprecationChecker
     {
-        private static readonly Version DeprecationThreshold = new Version(2, 0, 0);
+        private static readonly Version FallbackDeprecationThreshold = new Version(2, 4, 1);
         private const string GIT_REPO_URL = "https://github.com/toss/apps-in-toss-unity-sdk.git";
-        // git ls-remote 실패 시 사용할 폴백 태그. 새 2.x 릴리즈 시 갱신 필요.
-        private const string FALLBACK_UPGRADE_TAG = "release/v2.0.5";
+        // SDK는 main 브랜치의 sdk-policy.json을 런타임에 fetch합니다.
+        // 로컬 패키지에도 같은 파일이 포함되어 있으나, 정책의 정본(source of truth)은 main 브랜치입니다.
+        private const string POLICY_URL = "https://raw.githubusercontent.com/toss/apps-in-toss-unity-sdk/main/sdk-policy.json";
+        // git ls-remote 실패 시 사용할 폴백 태그.
+        // 불변 조건: 이 태그의 버전은 반드시 FallbackDeprecationThreshold 이상이어야 합니다.
+        private const string FALLBACK_UPGRADE_TAG = "release/v2.4.1";
         private const int GIT_TIMEOUT_MS = 10000;
+        private const int SUPPORTED_SCHEMA_VERSION = 1;
+
+        // 동적으로 가져온 minVersion이 이 값을 초과하면 무시합니다.
+        // 손상된 정책 파일이 모든 사용자를 차단하는 것을 방지합니다.
+        private static readonly Version MaxReasonableMinVersion = new Version(10, 0, 0);
 
         // 최신 태그 캐시 (세션 중 1회만 조회)
         private static string _cachedLatestTag;
         private static bool _tagLookupDone;
 
-        // 업그레이드 시작 후 다이얼로그 반복을 멈추기 위한 플래그
+        // 동적 최소 버전 캐시 (세션 중 1회만 조회)
+        private static Version _cachedMinVersion;
+        private static bool _minVersionLookupDone;
+
+        // 업그레이드 시작 후 다이얼로그 반복을 멈추기 위한 플래그.
+        // PackageManager.Client.Add() 호출 후 리셋되지 않으며, 세션 동안 유지됩니다.
+        // 업그레이드가 실패해도 다이얼로그가 다시 표시되려면 Unity를 재시작해야 합니다.
         private static bool _upgradeInProgress;
+
+        /// <summary>
+        /// WebClient에 timeout을 지정하기 위한 서브클래스.
+        /// WebClient는 직접 timeout 프로퍼티를 노출하지 않으므로 GetWebRequest를 오버라이드합니다.
+        /// </summary>
+        private class TimeoutWebClient : WebClient
+        {
+            private readonly int _timeoutMs;
+
+            public TimeoutWebClient(int timeoutMs = GIT_TIMEOUT_MS)
+            {
+                _timeoutMs = timeoutMs;
+            }
+
+            protected override WebRequest GetWebRequest(Uri uri)
+            {
+                var request = base.GetWebRequest(uri);
+                request.Timeout = _timeoutMs;
+                return request;
+            }
+        }
 
         static AITDeprecationChecker()
         {
-            EditorApplication.delayCall += OnEditorReady;
+            // delayCall에서 캐시를 미리 프라이밍하여 GUI repaint 중 네트워크 호출 방지
+            EditorApplication.delayCall += () =>
+            {
+                GetMinVersionCached();
+                OnEditorReady();
+            };
         }
 
         /// <summary>
-        /// 최신 2.x 태그를 조회하고 캐싱합니다. 이미 조회한 경우 캐시를 반환합니다.
+        /// 동적 최소 버전을 조회하고 캐싱합니다. 이미 조회한 경우 캐시를 반환합니다.
         /// </summary>
-        private static string GetLatestV2TagCached()
+        internal static Version GetMinVersionCached()
+        {
+            if (_minVersionLookupDone) return _cachedMinVersion;
+            _minVersionLookupDone = true;
+
+            try
+            {
+                _cachedMinVersion = FetchMinVersion();
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[AIT] 최소 버전 조회 실패, 폴백 사용: {e.Message}");
+                _cachedMinVersion = FallbackDeprecationThreshold;
+            }
+
+            if (_cachedMinVersion == null)
+            {
+                _cachedMinVersion = FallbackDeprecationThreshold;
+            }
+
+            Debug.Log($"[AIT] SDK 최소 버전 정책: v{_cachedMinVersion}");
+            return _cachedMinVersion;
+        }
+
+        /// <summary>
+        /// GitHub raw content에서 sdk-policy.json을 가져와 minVersion을 파싱합니다.
+        /// System.Net.WebClient를 사용하여 동기적으로 처리합니다 (UnityWebRequest는 메인 스레드에서
+        /// busy-wait 시 이벤트 루프 의존성으로 인해 교착 상태가 발생할 수 있음).
+        /// TimeoutWebClient로 GIT_TIMEOUT_MS(10초) timeout을 적용합니다.
+        /// 참고: delayCall에서 호출되므로 메인 스레드를 최대 10초간 차단할 수 있습니다.
+        /// 비동기 처리로 이를 완전히 해결할 수 있으나, 복잡도 대비 10초 worst-case가 수용 가능하다고 판단했습니다.
+        /// </summary>
+        private static Version FetchMinVersion()
+        {
+            string json;
+            try
+            {
+#pragma warning disable SYSLIB0014 // WebClient is obsolete in .NET 6+ but Unity still uses .NET Standard 2.1
+                using (var client = new TimeoutWebClient())
+                {
+                    client.Headers.Add("User-Agent", "AppsInTossUnitySDK");
+                    json = client.DownloadString(POLICY_URL);
+                }
+#pragma warning restore SYSLIB0014
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[AIT] sdk-policy.json fetch 실패: {e.Message}");
+                return null;
+            }
+
+            return ParseMinVersionFromJson(json);
+        }
+
+        /// <summary>
+        /// sdk-policy.json 문자열에서 minVersion을 파싱합니다.
+        /// 2-part 버전(예: "2.4")은 3-part(예: "2.4.0")로 정규화합니다.
+        /// </summary>
+        internal static Version ParseMinVersionFromJson(string json)
+        {
+            if (string.IsNullOrEmpty(json))
+            {
+                Debug.LogWarning("[AIT] sdk-policy.json이 비어 있습니다");
+                return null;
+            }
+
+            // JsonUtility.FromJson은 malformed JSON에서 null이 아닌 기본값 객체를 반환합니다.
+            // policy == null 체크는 방어적 코딩이며, 실제로는 schemaVersion=0, minVersion=null이 됩니다.
+            var policy = JsonUtility.FromJson<SdkPolicy>(json);
+            if (policy == null || string.IsNullOrEmpty(policy.minVersion))
+            {
+                Debug.LogWarning("[AIT] sdk-policy.json 파싱 실패: minVersion이 없습니다");
+                return null;
+            }
+
+            if (policy.schemaVersion != SUPPORTED_SCHEMA_VERSION)
+            {
+                Debug.LogWarning($"[AIT] 지원하지 않는 sdk-policy.json schemaVersion: {policy.schemaVersion} (지원: {SUPPORTED_SCHEMA_VERSION})");
+                return null;
+            }
+
+            try
+            {
+                var version = new Version(policy.minVersion);
+
+                // 3-part로 정규화 (System.Version에서 2.4 < 2.4.0, 2.4.1 < 2.4.1.0이므로)
+                // sdk-policy.json의 minVersion은 반드시 x.y.z 형식이어야 하지만, 방어적으로 정규화합니다.
+                if (version.Build < 0)
+                {
+                    version = new Version(version.Major, version.Minor, 0);
+                }
+                else if (version.Revision >= 0)
+                {
+                    version = new Version(version.Major, version.Minor, version.Build);
+                }
+
+                // 비정상적으로 높은 minVersion은 정책 파일 손상으로 간주
+                if (version > MaxReasonableMinVersion)
+                {
+                    Debug.LogWarning($"[AIT] minVersion {version}이 비정상적으로 높습니다. 폴백 사용.");
+                    return null;
+                }
+
+                return version;
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[AIT] minVersion 파싱 실패: {policy.minVersion} — {e.Message}");
+                return null;
+            }
+        }
+
+        [Serializable]
+        private class SdkPolicy
+        {
+            public int schemaVersion;
+            public string minVersion;
+        }
+
+        /// <summary>
+        /// 최신 태그를 조회하고 캐싱합니다. 이미 조회한 경우 캐시를 반환합니다.
+        /// </summary>
+        private static string GetLatestTagCached()
         {
             if (_tagLookupDone) return _cachedLatestTag;
             _tagLookupDone = true;
 
-            EditorUtility.DisplayProgressBar("SDK 업그레이드", "최신 2.x 버전을 확인하는 중...", 0.3f);
+            EditorUtility.DisplayProgressBar("SDK 업그레이드", "최신 버전을 확인하는 중...", 0.3f);
             try
             {
-                _cachedLatestTag = FindLatestV2Tag();
+                _cachedLatestTag = FindLatestTag();
             }
             finally
             {
@@ -53,13 +218,13 @@ namespace AppsInToss.Editor
         }
 
         /// <summary>
-        /// 캐시된 태그에서 버전 문자열을 추출합니다 (예: "release/v2.0.5" → "2.0.5").
+        /// 캐시된 태그에서 버전 문자열을 추출합니다 (예: "release/v2.4.1" → "2.4.1").
         /// </summary>
         private static string GetLatestVersionDisplay()
         {
-            string tag = GetLatestV2TagCached() ?? FALLBACK_UPGRADE_TAG;
+            string tag = GetLatestTagCached() ?? FALLBACK_UPGRADE_TAG;
             var match = Regex.Match(tag, @"release/v(.+)$");
-            return match.Success ? match.Groups[1].Value : "2.x";
+            return match.Success ? match.Groups[1].Value : "최신 버전";
         }
 
         /// <summary>
@@ -76,7 +241,8 @@ namespace AppsInToss.Editor
             try
             {
                 var current = new Version(versionStr);
-                return current < DeprecationThreshold;
+                var minVersion = GetMinVersionCached();
+                return current < minVersion;
             }
             catch (Exception)
             {
@@ -101,14 +267,16 @@ namespace AppsInToss.Editor
         public static void ShowDeprecationDialog()
         {
             string latestVersion = GetLatestVersionDisplay();
+            var minVersion = GetMinVersionCached();
+            // Version(2,4,1).ToString() → "2.4.1" (3-part 보장: ParseMinVersionFromJson에서 정규화)
             bool shouldUpdate = EditorUtility.DisplayDialog(
                 "SDK 지원 종료 안내",
                 $"현재 사용 중인 Apps in Toss Unity SDK v{AITVersion.Version}은 " +
                 "지원이 종료되었습니다.\n\n" +
-                "SDK 1.x 버전으로는 더 이상 빌드 및 배포가 불가능합니다.\n" +
-                "앱인토스 콘솔에서도 2.0.0 미만 번들은 거부됩니다.\n\n" +
-                $"최신 SDK v{latestVersion}으로 업그레이드해 주세요.",
-                $"v{latestVersion}으로 업데이트",
+                $"SDK v{minVersion} 미만 버전으로는 더 이상 빌드 및 배포가 불가능합니다.\n" +
+                $"앱인토스 콘솔에서도 v{minVersion} 미만 번들은 거부됩니다.\n\n" +
+                $"SDK {latestVersion}으로 업그레이드해 주세요.",
+                $"{latestVersion}으로 업데이트",
                 "닫기"
             );
 
@@ -119,16 +287,16 @@ namespace AppsInToss.Editor
         }
 
         /// <summary>
-        /// 최신 2.x 태그를 찾아 UPM으로 업그레이드합니다.
+        /// 최신 태그를 찾아 UPM으로 업그레이드합니다.
         /// </summary>
         public static void UpgradeToLatest()
         {
             _upgradeInProgress = true;
-            string tag = GetLatestV2TagCached();
+            string tag = GetLatestTagCached();
             if (string.IsNullOrEmpty(tag))
             {
                 tag = FALLBACK_UPGRADE_TAG;
-                Debug.LogWarning($"[AIT] 최신 2.x 태그를 자동 감지하지 못했습니다. 기본값 사용: {tag}");
+                Debug.LogWarning($"[AIT] 최신 태그를 자동 감지하지 못했습니다. 기본값 사용: {tag}");
             }
 
             string url = $"{GIT_REPO_URL}#{tag}";
@@ -147,11 +315,11 @@ namespace AppsInToss.Editor
             string latestVersion = GetLatestVersionDisplay();
             EditorGUILayout.HelpBox(
                 $"이 SDK 버전(v{AITVersion.Version})은 지원이 종료되었습니다.\n" +
-                $"빌드 및 배포가 차단됩니다. 최신 SDK v{latestVersion}으로 업그레이드해 주세요.",
+                $"빌드 및 배포가 차단됩니다. SDK {latestVersion}으로 업그레이드해 주세요.",
                 MessageType.Error
             );
 
-            if (GUILayout.Button($"v{latestVersion}으로 업데이트"))
+            if (GUILayout.Button($"{latestVersion}으로 업데이트"))
             {
                 UpgradeToLatest();
             }
@@ -188,16 +356,19 @@ namespace AppsInToss.Editor
         }
 
         /// <summary>
-        /// git ls-remote로 최신 release/v2.* 태그를 찾습니다.
+        /// git ls-remote로 최신 release/v* 태그 중 minVersion 이상인 최신 태그를 찾습니다.
+        /// release/v* 전체를 조회하여 동적 minVersion에 따라 클라이언트 측에서 필터링합니다.
+        /// 참고: 릴리즈 태그가 많아지면 네트워크 페이로드가 증가할 수 있습니다.
+        /// git glob이 범위 필터를 지원하지 않아 서버 측 필터링이 불가능합니다.
         /// </summary>
-        private static string FindLatestV2Tag()
+        private static string FindLatestTag()
         {
             try
             {
                 var psi = new ProcessStartInfo
                 {
                     FileName = "git",
-                    Arguments = $"ls-remote --tags \"{GIT_REPO_URL}\" \"refs/tags/release/v2.*\"",
+                    Arguments = $"ls-remote --tags \"{GIT_REPO_URL}\" \"refs/tags/release/v*\"",
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
@@ -208,6 +379,9 @@ namespace AppsInToss.Editor
                 using (var process = Process.Start(psi))
                 {
                     process.BeginErrorReadLine();
+                    // ReadToEnd()는 프로세스가 stdout을 닫을 때까지 블로킹됩니다.
+                    // 따라서 아래 WaitForExit timeout은 ReadToEnd 완료 후에만 도달합니다.
+                    // git ls-remote의 응답이 작으므로 실질적 문제는 없으나, 알려진 제한사항입니다.
                     string output = process.StandardOutput.ReadToEnd();
 
                     if (!process.WaitForExit(GIT_TIMEOUT_MS))
@@ -221,7 +395,7 @@ namespace AppsInToss.Editor
                         return null;
                     }
 
-                    return ParseLatestTag(output);
+                    return ParseLatestTag(output, GetMinVersionCached());
                 }
             }
             catch (Exception e)
@@ -232,9 +406,10 @@ namespace AppsInToss.Editor
         }
 
         /// <summary>
-        /// git ls-remote 출력에서 가장 높은 버전의 태그를 추출합니다.
+        /// git ls-remote 출력에서 minVersion 이상인 가장 높은 버전의 태그를 추출합니다.
+        /// minVersion 필터링은 업그레이드 대상으로 deprecated 버전을 제시하지 않기 위함입니다.
         /// </summary>
-        private static string ParseLatestTag(string output)
+        internal static string ParseLatestTag(string output, Version minVersion)
         {
             Version bestVersion = null;
             string bestTag = null;
@@ -259,6 +434,7 @@ namespace AppsInToss.Editor
                 try
                 {
                     var version = new Version(versionStr);
+                    if (version < minVersion) continue;
                     if (bestVersion == null || version > bestVersion)
                     {
                         bestVersion = version;
@@ -272,6 +448,27 @@ namespace AppsInToss.Editor
             }
 
             return bestTag;
+        }
+
+        /// <summary>
+        /// 테스트용: 캐시를 초기화합니다.
+        /// </summary>
+        internal static void ResetCache()
+        {
+            _cachedLatestTag = null;
+            _tagLookupDone = false;
+            _cachedMinVersion = null;
+            _minVersionLookupDone = false;
+            _upgradeInProgress = false;
+        }
+
+        /// <summary>
+        /// 테스트용: 최소 버전 캐시를 직접 설정합니다.
+        /// </summary>
+        internal static void SetMinVersionForTesting(Version version)
+        {
+            _cachedMinVersion = version;
+            _minVersionLookupDone = true;
         }
     }
 }

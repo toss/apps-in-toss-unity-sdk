@@ -746,6 +746,16 @@ namespace AppsInToss
                 }
             }
 
+            // WebGL Build Support 모듈 설치 여부 사전 체크
+            if (!BuildPipeline.IsBuildTargetSupported(BuildTargetGroup.WebGL, BuildTarget.WebGL))
+            {
+                Debug.LogError(
+                    "[AIT] ✗ WebGL Build Support 모듈이 설치되지 않았습니다.\n" +
+                    "Unity Hub를 열고 현재 Unity 버전(" + Application.unityVersion + ")에 WebGL Build Support를 추가 설치하세요.\n" +
+                    "Unity Hub > Installs > Unity " + Application.unityVersion + " > Add Modules > WebGL Build Support");
+                return AITExportError.BUILD_WEBGL_FAILED;
+            }
+
             string[] scenes = UnityUtil.GetBuildScenes();
             string outputPath = Path.Combine(UnityUtil.GetProjectPath(), webglDir);
 
@@ -827,7 +837,7 @@ namespace AppsInToss
             if (result.summary.result != UnityEditor.Build.Reporting.BuildResult.Succeeded)
             {
                 var sb = new System.Text.StringBuilder();
-                sb.AppendLine("WebGL 빌드가 실패했습니다.");
+                sb.AppendLine("[AIT] WebGL 빌드가 실패했습니다.");
                 sb.AppendLine($"  결과: {result.summary.result}");
                 sb.AppendLine($"  총 에러: {result.summary.totalErrors}, 총 경고: {result.summary.totalWarnings}");
 

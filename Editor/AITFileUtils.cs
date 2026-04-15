@@ -57,6 +57,9 @@ namespace AppsInToss
 
             foreach (var file in Directory.GetFiles(sourceDir))
             {
+                if (file.EndsWith(".meta"))
+                    continue;
+
                 string targetFile = Path.Combine(targetDir, Path.GetFileName(file));
                 File.Copy(file, targetFile, true);
                 // Unity WebGL 빌드 파일(.unityweb)이 600 권한으로 생성되는 문제 해결

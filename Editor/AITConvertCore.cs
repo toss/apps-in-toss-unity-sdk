@@ -723,6 +723,16 @@ namespace AppsInToss
 
         private static AITExportError BuildWebGL(bool cleanBuild = false, AITBuildProfile profile = null)
         {
+            // WebGL Build Support 모듈 설치 여부 사전 체크
+            if (!BuildPipeline.IsBuildTargetSupported(BuildTargetGroup.WebGL, BuildTarget.WebGL))
+            {
+                Debug.LogError(
+                    "[AIT] ✗ WebGL Build Support 모듈이 설치되지 않았습니다.\n" +
+                    "Unity Hub를 열고 현재 Unity 버전(" + Application.unityVersion + ")에 WebGL Build Support를 추가 설치하세요.\n" +
+                    "Unity Hub > Installs > Unity " + Application.unityVersion + " > Add Modules > WebGL Build Support");
+                return AITExportError.BUILD_WEBGL_FAILED;
+            }
+
             if (EditorUserBuildSettings.activeBuildTarget != BuildTarget.WebGL)
             {
                 bool confirm = AITPlatformHelper.ShowConfirmDialog(
@@ -741,7 +751,7 @@ namespace AppsInToss
                 Debug.Log($"[AIT] 빌드 타겟을 {EditorUserBuildSettings.activeBuildTarget}에서 WebGL로 전환합니다...");
                 if (!EditorUserBuildSettings.SwitchActiveBuildTarget(BuildTargetGroup.WebGL, BuildTarget.WebGL))
                 {
-                    AITLog.Error("[AIT] WebGL 빌드 타겟으로 전환할 수 없습니다. WebGL Build Support 모듈이 설치되어 있는지 확인하세요.", sentryCapture: false);
+                    AITLog.Error("[AIT] ✗ WebGL 빌드 타겟으로 전환할 수 없습니다.", sentryCapture: false);
                     return AITExportError.BUILD_WEBGL_FAILED;
                 }
             }
@@ -757,7 +767,7 @@ namespace AppsInToss
                 cleanBuild = true;
             }
 
-            Debug.Log($"WebGL 빌드를 시작합니다... ({(cleanBuild ? "클린 빌드" : "증분 빌드")})");
+            Debug.Log($"[AIT] WebGL 빌드를 시작합니다... ({(cleanBuild ? "클린 빌드" : "증분 빌드")})");
 
             // 클린 빌드 시에만 기존 빌드 폴더 삭제
             if (cleanBuild && Directory.Exists(outputPath))
@@ -827,7 +837,7 @@ namespace AppsInToss
             if (result.summary.result != UnityEditor.Build.Reporting.BuildResult.Succeeded)
             {
                 var sb = new System.Text.StringBuilder();
-                sb.AppendLine("WebGL 빌드가 실패했습니다.");
+                sb.AppendLine("[AIT] WebGL 빌드가 실패했습니다.");
                 sb.AppendLine($"  결과: {result.summary.result}");
                 sb.AppendLine($"  총 에러: {result.summary.totalErrors}, 총 경고: {result.summary.totalWarnings}");
 
@@ -877,7 +887,7 @@ namespace AppsInToss
                 return AITExportError.BUILD_WEBGL_FAILED;
             }
 
-            Debug.Log("WebGL 빌드가 완료되었습니다.");
+            Debug.Log("[AIT] WebGL 빌드가 완료되었습니다.");
 
             // AIT 빌드 마커 파일 생성 (빌드 정보 기록용)
             try

@@ -115,7 +115,7 @@ namespace AppsInToss.Editor
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"[AIT] pnpm 버전 확인 실패: {ex.Message}");
+                Debug.LogWarning($"[AIT] pnpm 버전 확인 실패: {ex}");
             }
             return null;
         }
@@ -339,7 +339,7 @@ namespace AppsInToss.Editor
             catch (Exception e)
             {
                 EditorUtility.ClearProgressBar();
-                Debug.LogError($"[{pmName}] 명령 실행 오류: {e.Message}");
+                Debug.LogError($"[{pmName}] 명령 실행 오류: {e}");
                 return AITConvertCore.AITExportError.NODE_NOT_FOUND;
             }
         }

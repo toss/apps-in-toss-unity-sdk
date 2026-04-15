@@ -277,7 +277,7 @@ namespace AppsInToss
             }
             catch (Exception e)
             {
-                Debug.LogWarning($"[AIT] 빌드 마커 읽기 실패: {e.Message}");
+                Debug.LogWarning($"[AIT] 빌드 마커 읽기 실패: {e}");
                 return null;
             }
         }
@@ -458,7 +458,7 @@ namespace AppsInToss
             }
             catch (Exception e)
             {
-                Debug.LogError($"변환 중 오류가 발생했습니다: {e.Message}");
+                Debug.LogError($"변환 중 오류가 발생했습니다: {e}");
                 transaction?.Finish("internal_error");
                 return AITExportError.BUILD_WEBGL_FAILED;
             }
@@ -630,7 +630,7 @@ namespace AppsInToss
             }
             catch (Exception e)
             {
-                Debug.LogError($"[AIT] 변환 중 오류가 발생했습니다: {e.Message}");
+                Debug.LogError($"[AIT] 변환 중 오류가 발생했습니다: {e}");
                 settingsBackup.Restore();
                 onComplete?.Invoke(AITExportError.BUILD_WEBGL_FAILED);
             }
@@ -907,7 +907,7 @@ namespace AppsInToss
             }
             catch (Exception e)
             {
-                Debug.LogWarning($"[AIT] 빌드 마커 생성 실패 (무시됨): {e.Message}");
+                Debug.LogWarning($"[AIT] 빌드 마커 생성 실패 (무시됨): {e}");
             }
 
             return AITExportError.SUCCEED;

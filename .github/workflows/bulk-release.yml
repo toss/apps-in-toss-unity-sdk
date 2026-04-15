@@ -1,5 +1,5 @@
 name: Bulk Release
-run-name: "Bulk Release${{ inputs.versions && format(' - {0}', inputs.versions) || '' }}${{ inputs.min_version && inputs.min_version != '2.0.0' && format(' (min: v{0})', inputs.min_version) || '' }}"
+run-name: "Bulk Release${{ inputs.versions && format(' - {0}', inputs.versions) || '' }}${{ inputs.min_version && format(' (min: v{0})', inputs.min_version) || '' }}"
 
 on:
   workflow_dispatch:
@@ -14,10 +14,9 @@ on:
         type: number
         default: 2
       min_version:
-        description: '최소 버전 (기본: 2.0.0). SDK 1.x 배포가 필요하면 1.5.0으로 지정'
+        description: '최소 버전 (비워두면 sdk-policy.json에서 읽음). 이전 버전 배포가 필요하면 낮은 버전으로 지정'
         required: false
         type: string
-        default: '2.0.0'
       build_strategy:
         description: '빌드 전략: full (10빌드), standard (5빌드), minimal (1빌드), skip-build (0빌드) - 기본: minimal'
         required: false
@@ -40,6 +39,7 @@ jobs:
     outputs:
       versions: ${{ steps.extract.outputs.versions }}
       version_count: ${{ steps.extract.outputs.count }}
+      min_version: ${{ steps.extract.outputs.min_version }}
 
     steps:
       - name: Checkout
@@ -52,8 +52,21 @@ jobs:
         id: extract
         run: |
           INPUT_VERSIONS="${{ inputs.versions }}"
-          MIN_VERSION="${{ inputs.min_version || '2.0.0' }}"
+
+          # sdk-policy.json에서 기본 최소 버전을 읽어옴 (수동 입력이 없을 경우)
+          POLICY_MIN_VERSION=$(jq -r '.minVersion // empty' sdk-policy.json 2>/dev/null || echo "")
+          if [ -z "$POLICY_MIN_VERSION" ]; then
+            # 이 값은 AITDeprecationChecker.cs의 FallbackDeprecationThreshold와 일치해야 합니다.
+            POLICY_MIN_VERSION="2.4.1"
+            echo "sdk-policy.json에서 minVersion을 읽지 못해 폴백 사용: ${POLICY_MIN_VERSION}"
+          fi
+
+          MIN_VERSION="${{ inputs.min_version || '' }}"
+          if [ -z "$MIN_VERSION" ]; then
+            MIN_VERSION="$POLICY_MIN_VERSION"
+          fi
           echo "최소 버전: ${MIN_VERSION}"
+          echo "min_version=${MIN_VERSION}" >> $GITHUB_OUTPUT
 
           if [ -n "$INPUT_VERSIONS" ]; then
             echo "=== 입력된 버전 사용 ==="
@@ -114,7 +127,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**총 ${{ steps.extract.outputs.count }}개 버전**" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**최소 버전**: ${{ inputs.min_version || '2.0.0' }}" >> $GITHUB_STEP_SUMMARY
+          echo "**최소 버전**: ${{ steps.extract.outputs.min_version }}" >> $GITHUB_STEP_SUMMARY
           echo "**동시 실행 수**: ${{ inputs.max_parallel || 2 }}" >> $GITHUB_STEP_SUMMARY
           echo "**빌드 전략**: ${{ inputs.build_strategy || 'minimal' }}" >> $GITHUB_STEP_SUMMARY
 

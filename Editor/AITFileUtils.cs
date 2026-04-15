@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using UnityEditor;
 using UnityEngine;
 
@@ -51,12 +52,19 @@ namespace AppsInToss
             return config;
         }
 
+        /// <summary>
+        /// 소스 디렉토리를 대상 디렉토리로 재귀 복사 (.meta 파일 제외)
+        /// </summary>
         public static void CopyDirectory(string sourceDir, string targetDir)
         {
             Directory.CreateDirectory(targetDir);
 
             foreach (var file in Directory.GetFiles(sourceDir))
             {
+                // .meta 파일은 SDK GUID 충돌 방지를 위해 복사하지 않음 (Unity가 대상 위치에 새로 생성)
+                if (IsMetaFile(file))
+                    continue;
+
                 string targetFile = Path.Combine(targetDir, Path.GetFileName(file));
                 File.Copy(file, targetFile, true);
                 // Unity WebGL 빌드 파일(.unityweb)이 600 권한으로 생성되는 문제 해결
@@ -72,15 +80,17 @@ namespace AppsInToss
         }
 
         /// <summary>
-        /// 두 디렉토리의 내용이 동일한지 비교 (파일명, 크기 기준)
+        /// 두 디렉토리의 내용이 동일한지 비교 (파일명, 크기 기준, .meta 파일 제외)
         /// </summary>
         public static bool DirectoriesEqual(string dir1, string dir2)
         {
             if (!Directory.Exists(dir1) || !Directory.Exists(dir2))
                 return false;
 
-            var files1 = Directory.GetFiles(dir1, "*", SearchOption.AllDirectories);
-            var files2 = Directory.GetFiles(dir2, "*", SearchOption.AllDirectories);
+            var files1 = Directory.GetFiles(dir1, "*", SearchOption.AllDirectories)
+                .Where(f => !IsMetaFile(f)).ToArray();
+            var files2 = Directory.GetFiles(dir2, "*", SearchOption.AllDirectories)
+                .Where(f => !IsMetaFile(f)).ToArray();
 
             if (files1.Length != files2.Length)
                 return false;
@@ -108,6 +118,9 @@ namespace AppsInToss
 
             return true;
         }
+
+        private static bool IsMetaFile(string path)
+            => path.EndsWith(".meta", System.StringComparison.OrdinalIgnoreCase);
 
         /// <summary>
         /// 파일에 읽기 권한 부여 (macOS/Linux에서 chmod 644 효과)

@@ -767,7 +767,7 @@ namespace AppsInToss
                 cleanBuild = true;
             }
 
-            Debug.Log($"WebGL 빌드를 시작합니다... ({(cleanBuild ? "클린 빌드" : "증분 빌드")})");
+            Debug.Log($"[AIT] WebGL 빌드를 시작합니다... ({(cleanBuild ? "클린 빌드" : "증분 빌드")})");
 
             // 클린 빌드 시에만 기존 빌드 폴더 삭제
             if (cleanBuild && Directory.Exists(outputPath))
@@ -887,7 +887,7 @@ namespace AppsInToss
                 return AITExportError.BUILD_WEBGL_FAILED;
             }
 
-            Debug.Log("WebGL 빌드가 완료되었습니다.");
+            Debug.Log("[AIT] WebGL 빌드가 완료되었습니다.");
 
             // AIT 빌드 마커 파일 생성 (빌드 정보 기록용)
             try

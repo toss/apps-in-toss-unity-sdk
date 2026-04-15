@@ -826,7 +826,35 @@ namespace AppsInToss
 
             if (result.summary.result != UnityEditor.Build.Reporting.BuildResult.Succeeded)
             {
-                Debug.LogError("WebGL 빌드가 실패했습니다.");
+                var sb = new System.Text.StringBuilder();
+                sb.AppendLine("WebGL 빌드가 실패했습니다.");
+                sb.AppendLine($"  결과: {result.summary.result}");
+                sb.AppendLine($"  총 에러: {result.summary.totalErrors}, 총 경고: {result.summary.totalWarnings}");
+
+                int errorCount = 0;
+                const int maxErrors = 10;
+                foreach (var step in result.steps)
+                {
+                    foreach (var message in step.messages)
+                    {
+                        if (message.type == LogType.Error ||
+                            message.type == LogType.Warning)
+                        {
+                            if (errorCount < maxErrors)
+                            {
+                                sb.AppendLine($"  [{message.type}] {message.content}");
+                            }
+                            errorCount++;
+                        }
+                    }
+                }
+
+                if (errorCount > maxErrors)
+                {
+                    sb.AppendLine($"  ... 외 {errorCount - maxErrors}개 메시지 생략");
+                }
+
+                Debug.LogError(sb.ToString());
                 return AITExportError.BUILD_WEBGL_FAILED;
             }
 

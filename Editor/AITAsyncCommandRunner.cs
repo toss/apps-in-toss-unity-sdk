@@ -116,7 +116,7 @@ namespace AppsInToss.Editor
             }
             catch (Exception e)
             {
-                Debug.LogWarning($"[AIT Async] 프로세스 종료 실패: {e.Message}");
+                Debug.LogWarning($"[AIT Async] 프로세스 종료 실패: {e}");
             }
         }
 
@@ -314,7 +314,7 @@ namespace AppsInToss.Editor
 
                 EnqueueMainThread(() =>
                 {
-                    Debug.LogError($"[AIT Async] 명령 실행 예외: {e.Message}");
+                    Debug.LogError($"[AIT Async] 명령 실행 예외: {e}");
                     task.OnComplete?.Invoke(result);
                 });
             }

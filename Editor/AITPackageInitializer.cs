@@ -104,7 +104,7 @@ namespace AppsInToss.Editor
                 catch (Exception e)
                 {
                     // 초기화 실패해도 Unity는 정상 작동해야 함
-                    Debug.LogWarning($"[AIT] SDK 초기화 중 예외 발생 (무시됨): {e.Message}");
+                    Debug.LogWarning($"[AIT] SDK 초기화 중 예외 발생 (무시됨): {e}");
                 }
             };
         }
@@ -263,7 +263,7 @@ namespace AppsInToss.Editor
             }
             catch (Exception e)
             {
-                Debug.LogError($"[AIT] 패키지 매니저 체크 중 예외 발생: {e.Message}");
+                Debug.LogError($"[AIT] 패키지 매니저 체크 중 예외 발생: {e}");
             }
             finally
             {
@@ -453,7 +453,7 @@ namespace AppsInToss.Editor
             catch (Exception e)
             {
                 MarkInstallationCompleted();
-                Debug.LogWarning($"[AIT] pnpm 글로벌 설치 중 예외 발생: {e.Message}");
+                Debug.LogWarning($"[AIT] pnpm 글로벌 설치 중 예외 발생: {e}");
             }
         }
     }

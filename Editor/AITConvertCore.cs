@@ -723,6 +723,16 @@ namespace AppsInToss
 
         private static AITExportError BuildWebGL(bool cleanBuild = false, AITBuildProfile profile = null)
         {
+            // WebGL Build Support 모듈 설치 여부 사전 체크
+            if (!BuildPipeline.IsBuildTargetSupported(BuildTargetGroup.WebGL, BuildTarget.WebGL))
+            {
+                Debug.LogError(
+                    "[AIT] ✗ WebGL Build Support 모듈이 설치되지 않았습니다.\n" +
+                    "Unity Hub를 열고 현재 Unity 버전(" + Application.unityVersion + ")에 WebGL Build Support를 추가 설치하세요.\n" +
+                    "Unity Hub > Installs > Unity " + Application.unityVersion + " > Add Modules > WebGL Build Support");
+                return AITExportError.BUILD_WEBGL_FAILED;
+            }
+
             if (EditorUserBuildSettings.activeBuildTarget != BuildTarget.WebGL)
             {
                 bool confirm = AITPlatformHelper.ShowConfirmDialog(
@@ -744,16 +754,6 @@ namespace AppsInToss
                     AITLog.Error("[AIT] ✗ WebGL 빌드 타겟으로 전환할 수 없습니다.", sentryCapture: false);
                     return AITExportError.BUILD_WEBGL_FAILED;
                 }
-            }
-
-            // WebGL Build Support 모듈 설치 여부 사전 체크
-            if (!BuildPipeline.IsBuildTargetSupported(BuildTargetGroup.WebGL, BuildTarget.WebGL))
-            {
-                Debug.LogError(
-                    "[AIT] ✗ WebGL Build Support 모듈이 설치되지 않았습니다.\n" +
-                    "Unity Hub를 열고 현재 Unity 버전(" + Application.unityVersion + ")에 WebGL Build Support를 추가 설치하세요.\n" +
-                    "Unity Hub > Installs > Unity " + Application.unityVersion + " > Add Modules > WebGL Build Support");
-                return AITExportError.BUILD_WEBGL_FAILED;
             }
 
             string[] scenes = UnityUtil.GetBuildScenes();

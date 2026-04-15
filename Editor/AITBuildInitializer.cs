@@ -65,7 +65,7 @@ namespace AppsInToss.Editor
                 PlayerSettings.SetUseDefaultGraphicsAPIs(BuildTarget.WebGL, false);
                 PlayerSettings.SetGraphicsAPIs(BuildTarget.WebGL,
                     new[] { UnityEngine.Rendering.GraphicsDeviceType.OpenGLES3 });
-                Debug.LogWarning($"[AIT] Graphics API를 WebGL 2.0 전용으로 변경했습니다. (이전: {previousAPIs})");
+                Debug.Log($"[AIT] Graphics API를 WebGL 2.0 전용으로 변경했습니다. (이전: {previousAPIs})");
             }
 
             // ===== Run In Background (사용자 지정 또는 자동) =====
@@ -115,7 +115,7 @@ namespace AppsInToss.Editor
             PlayerSettings.WebGL.nameFilesAsHashes = false;
             if (editorConfig.nameFilesAsHashes)
             {
-                Debug.LogWarning("[AIT] Unity 2021.x에서는 '파일명 해싱' 옵션이 빌드 오류를 유발하여 자동으로 비활성화됩니다. Unity 2022.3 이상으로 업그레이드를 권장합니다.");
+                Debug.Log("[AIT] Unity 2021.x에서는 '파일명 해싱' 옵션이 빌드 오류를 유발하여 자동으로 비활성화됩니다. Unity 2022.3 이상으로 업그레이드를 권장합니다.");
             }
 #endif
 

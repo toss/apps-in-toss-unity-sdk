@@ -41,6 +41,15 @@ namespace AppsInToss.Editor.ErrorTracker
             "AITNpmRunner"
         };
 
+        // Dev/Production Server 프로세스에서 리디렉션된 로그의 prefix 패턴.
+        // 이 로그는 granite dev 프로세스의 stdout/stderr를 Unity Console로 전달한 것이며,
+        // SDK 자체 에러가 아니므로 Sentry 캡처에서 제외해야 합니다.
+        private static readonly string[] ServerLogPrefixes =
+        {
+            "[Dev Server]",
+            "[Production Server]"
+        };
+
         #endregion
 
         #region Session State
@@ -202,6 +211,11 @@ namespace AppsInToss.Editor.ErrorTracker
 
             // CaptureBuildError 또는 AITLog에서 억제된 로그의 이중 전송 방지
             if (_suppressLogCaptureCount > 0)
+                return;
+
+            // Dev/Production Server 프로세스에서 리디렉션된 로그는 Sentry에서 제외
+            // (granite dev의 stdout/stderr가 Debug.Log/LogError/LogWarning으로 전달된 것)
+            if (IsServerRedirectedLog(message))
                 return;
 
             if (!IsAitRelated(message, stackTrace))
@@ -410,6 +424,20 @@ namespace AppsInToss.Editor.ErrorTracker
         #endregion
 
         #region Private Helpers
+
+        private static bool IsServerRedirectedLog(string message)
+        {
+            if (string.IsNullOrEmpty(message))
+                return false;
+
+            for (int i = 0; i < ServerLogPrefixes.Length; i++)
+            {
+                if (message.StartsWith(ServerLogPrefixes[i], StringComparison.Ordinal))
+                    return true;
+            }
+
+            return false;
+        }
 
         private static bool IsAitRelated(string message, string stackTrace)
         {

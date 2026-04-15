@@ -5,7 +5,7 @@ namespace AppsInToss
     internal static class AITVersionConstants
     {
         public const string Version = "2.4.6";
-        public const string ReleaseDateTime = "20260415_0910";
-        public const string CommitHash = "d8ac5e0";
+        public const string ReleaseDateTime = "20260415_0913";
+        public const string CommitHash = "63d13aa";
     }
 }

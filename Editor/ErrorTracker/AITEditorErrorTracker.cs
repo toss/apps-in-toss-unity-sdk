@@ -379,7 +379,8 @@ namespace AppsInToss.Editor.ErrorTracker
             var extraTags = new Dictionary<string, string>
             {
                 { "error_code", errorCode.ToString() },
-                { "error_code_int", ((int)errorCode).ToString() }
+                { "error_code_int", ((int)errorCode).ToString() },
+                { "error_source", "sdk" }
             };
 
             if (!string.IsNullOrEmpty(profileName))
@@ -472,14 +473,15 @@ namespace AppsInToss.Editor.ErrorTracker
             return "Exception";
         }
 
-        #region Error Source Detection
-
         private const string SdkPackagePath = "Packages/im.toss.apps-in-toss-unity-sdk/";
         private const string SdkPackageCachePath = "Library/PackageCache/im.toss.apps-in-toss-unity-sdk@";
+        private const string SdkPackageCachePathNoVersion = "Library/PackageCache/im.toss.apps-in-toss-unity-sdk/";
         private const string UserProjectPathPrefix = "Assets/";
 
         /// <summary>
         /// 스택트레이스와 메시지를 분석하여 에러의 출처를 결정합니다.
+        /// "에러가 throw된 위치" 기준으로 판별합니다 (최상위 프레임 우선).
+        /// 누가 호출했는지(trigger)가 아닌 어디서 발생했는지(origin)를 반환합니다.
         /// </summary>
         internal static string DetermineErrorSource(string stackTrace, string message)
         {
@@ -497,7 +499,8 @@ namespace AppsInToss.Editor.ErrorTracker
                             continue;
 
                         if (filename.StartsWith(SdkPackagePath, StringComparison.Ordinal) ||
-                            filename.StartsWith(SdkPackageCachePath, StringComparison.Ordinal))
+                            filename.StartsWith(SdkPackageCachePath, StringComparison.Ordinal) ||
+                            filename.StartsWith(SdkPackageCachePathNoVersion, StringComparison.Ordinal))
                             return "sdk";
 
                         if (filename.StartsWith(UserProjectPathPrefix, StringComparison.Ordinal))
@@ -512,8 +515,6 @@ namespace AppsInToss.Editor.ErrorTracker
 
             return "unknown";
         }
-
-        #endregion
 
         // 세션 내 중복 검출용 — GetHashCode()는 Mono 런타임에서 프로세스 내 결정적이며,
         // CoreCLR 전환 시 프로세스 간 비결정적이 되지만, 세션 스코프이므로 문제 없음

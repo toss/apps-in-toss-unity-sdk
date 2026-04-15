@@ -282,7 +282,8 @@ namespace AppsInToss.Editor.ErrorTracker
                 { "sdk_version", AITVersion.Version },
                 { "unity_version", Application.unityVersion },
                 { "os", SystemInfo.operatingSystem },
-                { "editor_platform", Application.platform.ToString() }
+                { "editor_platform", Application.platform.ToString() },
+                { "error_source", DetermineErrorSource(stackTrace, message) }
             };
 
             if (extraTags != null)
@@ -470,6 +471,49 @@ namespace AppsInToss.Editor.ErrorTracker
 
             return "Exception";
         }
+
+        #region Error Source Detection
+
+        private const string SdkPackagePath = "Packages/im.toss.apps-in-toss-unity-sdk/";
+        private const string SdkPackageCachePath = "Library/PackageCache/im.toss.apps-in-toss-unity-sdk@";
+        private const string UserProjectPathPrefix = "Assets/";
+
+        /// <summary>
+        /// 스택트레이스와 메시지를 분석하여 에러의 출처를 결정합니다.
+        /// </summary>
+        internal static string DetermineErrorSource(string stackTrace, string message)
+        {
+            if (!string.IsNullOrEmpty(stackTrace))
+            {
+                var frames = AITSentryEnvelope.ParseStackTrace(stackTrace);
+                if (frames.Count > 0)
+                {
+                    // ParseStackTrace는 Sentry 컨벤션(oldest first)으로 reverse되어 있으므로,
+                    // 최상위 프레임(호출 스택 최상단)은 리스트의 마지막 요소
+                    for (int i = frames.Count - 1; i >= 0; i--)
+                    {
+                        string filename = frames[i].Filename;
+                        if (string.IsNullOrEmpty(filename))
+                            continue;
+
+                        if (filename.StartsWith(SdkPackagePath, StringComparison.Ordinal) ||
+                            filename.StartsWith(SdkPackageCachePath, StringComparison.Ordinal))
+                            return "sdk";
+
+                        if (filename.StartsWith(UserProjectPathPrefix, StringComparison.Ordinal))
+                            return "user_project";
+                    }
+                }
+            }
+
+            // 스택트레이스가 없거나 판별 불가한 경우, 메시지의 [AIT] 접두사로 판단
+            if (!string.IsNullOrEmpty(message) && message.StartsWith("[AIT]", StringComparison.Ordinal))
+                return "sdk";
+
+            return "unknown";
+        }
+
+        #endregion
 
         // 세션 내 중복 검출용 — GetHashCode()는 Mono 런타임에서 프로세스 내 결정적이며,
         // CoreCLR 전환 시 프로세스 간 비결정적이 되지만, 세션 스코프이므로 문제 없음

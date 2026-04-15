@@ -831,27 +831,44 @@ namespace AppsInToss
                 sb.AppendLine($"  결과: {result.summary.result}");
                 sb.AppendLine($"  총 에러: {result.summary.totalErrors}, 총 경고: {result.summary.totalWarnings}");
 
-                int errorCount = 0;
-                const int maxErrors = 10;
+                int messageCount = 0;
+                const int maxMessages = 10;
+
+                // 에러 메시지를 먼저 출력 (실패 원인 우선)
                 foreach (var step in result.steps)
                 {
                     foreach (var message in step.messages)
                     {
-                        if (message.type == LogType.Error ||
-                            message.type == LogType.Warning)
+                        if (message.type == LogType.Error)
                         {
-                            if (errorCount < maxErrors)
+                            if (messageCount < maxMessages)
                             {
                                 sb.AppendLine($"  [{message.type}] {message.content}");
                             }
-                            errorCount++;
+                            messageCount++;
                         }
                     }
                 }
 
-                if (errorCount > maxErrors)
+                // 경고 메시지는 남은 슬롯에 출력
+                foreach (var step in result.steps)
                 {
-                    sb.AppendLine($"  ... 외 {errorCount - maxErrors}개 메시지 생략");
+                    foreach (var message in step.messages)
+                    {
+                        if (message.type == LogType.Warning)
+                        {
+                            if (messageCount < maxMessages)
+                            {
+                                sb.AppendLine($"  [{message.type}] {message.content}");
+                            }
+                            messageCount++;
+                        }
+                    }
+                }
+
+                if (messageCount > maxMessages)
+                {
+                    sb.AppendLine($"  ... 외 {messageCount - maxMessages}개 메시지 생략");
                 }
 
                 Debug.LogError(sb.ToString());

@@ -52,6 +52,9 @@ namespace AppsInToss
             return config;
         }
 
+        /// <summary>
+        /// 소스 디렉토리를 대상 디렉토리로 재귀 복사 (.meta 파일 제외)
+        /// </summary>
         public static void CopyDirectory(string sourceDir, string targetDir)
         {
             Directory.CreateDirectory(targetDir);
@@ -77,7 +80,7 @@ namespace AppsInToss
         }
 
         /// <summary>
-        /// 두 디렉토리의 내용이 동일한지 비교 (파일명, 크기 기준)
+        /// 두 디렉토리의 내용이 동일한지 비교 (파일명, 크기 기준, .meta 파일 제외)
         /// </summary>
         public static bool DirectoriesEqual(string dir1, string dir2)
         {

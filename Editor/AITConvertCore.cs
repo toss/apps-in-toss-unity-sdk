@@ -839,7 +839,9 @@ namespace AppsInToss
                 {
                     foreach (var message in step.messages)
                     {
-                        if (message.type == LogType.Error)
+                        if (message.type == LogType.Error ||
+                            message.type == LogType.Exception ||
+                            message.type == LogType.Assert)
                         {
                             if (messageCount < maxMessages)
                             {
@@ -868,10 +870,10 @@ namespace AppsInToss
 
                 if (messageCount > maxMessages)
                 {
-                    sb.AppendLine($"  ... 외 {messageCount - maxMessages}개 메시지 생략");
+                    sb.Append($"  ... 외 {messageCount - maxMessages}개 메시지 생략");
                 }
 
-                Debug.LogError(sb.ToString());
+                Debug.LogError(sb.ToString().TrimEnd());
                 return AITExportError.BUILD_WEBGL_FAILED;
             }
 

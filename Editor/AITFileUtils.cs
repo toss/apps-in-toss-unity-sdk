@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using UnityEditor;
 using UnityEngine;
 
@@ -57,7 +58,8 @@ namespace AppsInToss
 
             foreach (var file in Directory.GetFiles(sourceDir))
             {
-                if (file.EndsWith(".meta"))
+                // .meta 파일은 SDK GUID 충돌 방지를 위해 복사하지 않음 (Unity가 대상 위치에 새로 생성)
+                if (file.EndsWith(".meta", System.StringComparison.OrdinalIgnoreCase))
                     continue;
 
                 string targetFile = Path.Combine(targetDir, Path.GetFileName(file));
@@ -82,8 +84,10 @@ namespace AppsInToss
             if (!Directory.Exists(dir1) || !Directory.Exists(dir2))
                 return false;
 
-            var files1 = Directory.GetFiles(dir1, "*", SearchOption.AllDirectories);
-            var files2 = Directory.GetFiles(dir2, "*", SearchOption.AllDirectories);
+            var files1 = Directory.GetFiles(dir1, "*", SearchOption.AllDirectories)
+                .Where(f => !f.EndsWith(".meta", System.StringComparison.OrdinalIgnoreCase)).ToArray();
+            var files2 = Directory.GetFiles(dir2, "*", SearchOption.AllDirectories)
+                .Where(f => !f.EndsWith(".meta", System.StringComparison.OrdinalIgnoreCase)).ToArray();
 
             if (files1.Length != files2.Length)
                 return false;

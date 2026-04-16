@@ -83,6 +83,7 @@ namespace AppsInToss
 #if UNITY_EDITOR
         private static void LoadVersionInfoEditor()
         {
+            // Keep in sync with AITPackagePathResolver.PackageAssetPath (Editor assembly)
             var packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssetPath(
                 "Packages/im.toss.apps-in-toss-unity-sdk"
             );

@@ -86,6 +86,13 @@ namespace AppsInToss
             var packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssetPath(
                 "Packages/im.toss.apps-in-toss-unity-sdk"
             );
+            // 폴백: Git UPM 패키지에서 경로가 다를 수 있으므로 어셈블리 기반 탐색
+            if (packageInfo == null)
+            {
+                packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssembly(
+                    typeof(AITVersion).Assembly
+                );
+            }
             if (packageInfo != null)
             {
                 Version = packageInfo.version;

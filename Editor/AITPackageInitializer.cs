@@ -385,7 +385,7 @@ namespace AppsInToss.Editor
         private static string FindPackageJsonTemplate()
         {
             // SDK 패키지 경로 찾기
-            var packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssetPath("Packages/im.toss.apps-in-toss-unity-sdk");
+            var packageInfo = AITPackagePathResolver.FindSDKPackageInfo();
             string packagePath;
 
             if (packageInfo != null)

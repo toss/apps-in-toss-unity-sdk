@@ -116,18 +116,10 @@ namespace AppsInToss.Editor
         /// <returns>존재하는 템플릿 경로, 또는 찾지 못한 경우 null</returns>
         public static string GetSDKLoadingTemplatePath()
         {
-            string[] sdkLoadingPaths = AITPackagePathResolver.GetCandidatePaths(
-                "WebGLTemplates/AITTemplate/loading.html", typeof(AITPackageInitializer));
-
-            foreach (string sdkPath in sdkLoadingPaths)
-            {
-                if (File.Exists(sdkPath))
-                {
-                    return sdkPath;
-                }
-            }
-
-            return null;
+            return AITPackagePathResolver.TryResolveFile(
+                "WebGLTemplates/AITTemplate/loading.html", out string path, typeof(AITPackageInitializer))
+                ? path
+                : null;
         }
 
         /// <summary>

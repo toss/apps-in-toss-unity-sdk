@@ -46,7 +46,10 @@ namespace AppsInToss.Editor
             else if (!_warningLogged)
             {
                 _warningLogged = true;
-                Debug.LogWarning("[AIT] SDK 패키지를 찾을 수 없습니다. 패키지 설치 상태를 확인하세요.");
+                Debug.LogWarning(
+                    $"[AIT] SDK 패키지를 찾을 수 없습니다. " +
+                    $"시도한 경로: {AITVersion.PackageAssetPath}, {AITVersion.LegacyPackageAssetPath}. " +
+                    "패키지 설치 상태를 확인하세요.");
             }
 
             return info;
@@ -76,7 +79,9 @@ namespace AppsInToss.Editor
                 return new string[] { Path.Combine(resolvedPath, relativePath) };
             }
 
-            // 폴백: 프로젝트 루트 기준 경로 사용 (로컬/임베디드 패키지 개발 환경용)
+            // 폴백: 프로젝트 루트 기준 물리 경로 사용.
+            // Unity 가상 Packages/ 경로와 달리 실제 디스크 경로를 구성하므로
+            // 로컬(file:) 또는 임베디드 패키지 개발 환경에서만 유효함.
             string projectRoot = Directory.GetParent(Application.dataPath).FullName;
             var paths = new List<string>
             {
@@ -95,6 +100,42 @@ namespace AppsInToss.Editor
             }
 
             return paths.ToArray();
+        }
+
+        /// <summary>
+        /// GetCandidatePaths의 결과에서 존재하는 첫 번째 디렉토리를 반환합니다.
+        /// </summary>
+        internal static bool TryResolveDirectory(string relativePath, out string resolvedPath, System.Type assemblyAnchor = null)
+        {
+            foreach (string path in GetCandidatePaths(relativePath, assemblyAnchor))
+            {
+                if (Directory.Exists(path))
+                {
+                    resolvedPath = path;
+                    return true;
+                }
+            }
+
+            resolvedPath = null;
+            return false;
+        }
+
+        /// <summary>
+        /// GetCandidatePaths의 결과에서 존재하는 첫 번째 파일을 반환합니다.
+        /// </summary>
+        internal static bool TryResolveFile(string relativePath, out string resolvedPath, System.Type assemblyAnchor = null)
+        {
+            foreach (string path in GetCandidatePaths(relativePath, assemblyAnchor))
+            {
+                if (File.Exists(path))
+                {
+                    resolvedPath = path;
+                    return true;
+                }
+            }
+
+            resolvedPath = null;
+            return false;
         }
     }
 }

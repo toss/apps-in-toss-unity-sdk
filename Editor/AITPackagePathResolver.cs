@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.IO;
 using UnityEditor.PackageManager;
 using UnityEngine;
+using Debug = UnityEngine.Debug;
 
 namespace AppsInToss.Editor
 {
@@ -13,9 +14,6 @@ namespace AppsInToss.Editor
     /// </summary>
     internal static class AITPackagePathResolver
     {
-        private const string PackageAssetPath = "Packages/im.toss.apps-in-toss-unity-sdk";
-        private const string LegacyPackageAssetPath = "Packages/com.appsintoss.miniapp";
-
         private static PackageInfo _cachedInfo;
         private static bool _cacheInitialized;
 
@@ -25,8 +23,8 @@ namespace AppsInToss.Editor
         /// 성공한 결과만 도메인 리로드까지 캐싱됩니다.
         /// </summary>
         /// <remarks>
-        /// 폴백 체인(PackageAssetPath → LegacyPackageAssetPath → FindForAssembly)을
-        /// 변경할 경우 AITVersion.LoadVersionInfoEditor()도 동기화할 것.
+        /// 폴백 체인을 변경할 경우 AITVersion.LoadVersionInfoEditor()도 동기화할 것.
+        /// 패키지 ID 상수는 AITVersion.PackageAssetPath / LegacyPackageAssetPath를 참조.
         /// </remarks>
         internal static PackageInfo FindSDKPackageInfo()
         {
@@ -35,14 +33,18 @@ namespace AppsInToss.Editor
                 return _cachedInfo;
             }
 
-            var info = PackageInfo.FindForAssetPath(PackageAssetPath)
-                       ?? PackageInfo.FindForAssetPath(LegacyPackageAssetPath)
+            var info = PackageInfo.FindForAssetPath(AITVersion.PackageAssetPath)
+                       ?? PackageInfo.FindForAssetPath(AITVersion.LegacyPackageAssetPath)
                        ?? PackageInfo.FindForAssembly(typeof(AITPackagePathResolver).Assembly);
 
             if (info != null)
             {
                 _cachedInfo = info;
                 _cacheInitialized = true;
+            }
+            else
+            {
+                Debug.LogWarning("[AIT] SDK 패키지를 찾을 수 없습니다. 패키지 설치 상태를 확인하세요.");
             }
 
             return info;
@@ -76,8 +78,8 @@ namespace AppsInToss.Editor
             string projectRoot = Directory.GetParent(Application.dataPath).FullName;
             var paths = new List<string>
             {
-                Path.Combine(projectRoot, PackageAssetPath, relativePath),
-                Path.Combine(projectRoot, LegacyPackageAssetPath, relativePath)
+                Path.Combine(projectRoot, AITVersion.PackageAssetPath, relativePath),
+                Path.Combine(projectRoot, AITVersion.LegacyPackageAssetPath, relativePath)
             };
 
             if (assemblyAnchor != null)
@@ -85,6 +87,7 @@ namespace AppsInToss.Editor
                 string loc = assemblyAnchor.Assembly.Location;
                 if (!string.IsNullOrEmpty(loc))
                 {
+                    // Assembly DLL은 {package-root}/Editor/ 또는 유사 하위 폴더에 위치한다고 가정
                     paths.Add(Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(loc)), relativePath));
                 }
             }

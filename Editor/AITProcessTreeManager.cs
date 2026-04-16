@@ -225,7 +225,7 @@ namespace AppsInToss.Editor
                 }
                 catch (Exception ex)
                 {
-                    Debug.LogWarning($"[AITProcessTreeManager] Job Object 종료 실패: {ex.Message}");
+                    Debug.LogWarning($"[AITProcessTreeManager] Job Object 종료 실패: {ex}");
                 }
             }
 
@@ -292,7 +292,7 @@ namespace AppsInToss.Editor
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"[AITProcessTreeManager] 자식 프로세스 종료 실패: {ex.Message}");
+                Debug.LogWarning($"[AITProcessTreeManager] 자식 프로세스 종료 실패: {ex}");
             }
 
             // 부모 프로세스도 종료

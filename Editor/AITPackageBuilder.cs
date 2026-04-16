@@ -255,7 +255,7 @@ namespace AppsInToss.Editor
                 }
                 catch (Exception e)
                 {
-                    Debug.LogError($"[AIT] [병렬] 백그라운드 pnpm install 예외: {e.Message}");
+                    Debug.LogError($"[AIT] [병렬] 백그라운드 pnpm install 예외: {e}");
                     earlyCtx.PnpmInstallResult = AITConvertCore.AITExportError.FAIL_NPM_BUILD;
                 }
             });
@@ -356,7 +356,7 @@ namespace AppsInToss.Editor
                 }
                 catch (Exception e)
                 {
-                    Debug.LogError($"[AIT] [병렬] pnpm {label} 실행 오류: {e.Message}");
+                    Debug.LogError($"[AIT] [병렬] pnpm {label} 실행 오류: {e}");
                 }
 
                 Debug.LogWarning($"[AIT] [병렬] pnpm install ({label}) 실패, 다음 단계로...");
@@ -662,7 +662,7 @@ namespace AppsInToss.Editor
             }
             catch (Exception e)
             {
-                Debug.LogWarning($"[AIT] package.json 머지 실패: {e.Message}, SDK 버전 사용");
+                Debug.LogWarning($"[AIT] package.json 머지 실패: {e}, SDK 버전 사용");
                 File.Copy(sdkFile, destFile, true);
             }
         }
@@ -790,7 +790,7 @@ namespace AppsInToss.Editor
             }
             catch (Exception e)
             {
-                Debug.LogWarning($"[AIT] tsconfig.json 머지 실패: {e.Message}, SDK 버전 사용");
+                Debug.LogWarning($"[AIT] tsconfig.json 머지 실패: {e}, SDK 버전 사용");
                 File.Copy(sdkFile, destFile, true);
             }
         }
@@ -1811,7 +1811,7 @@ namespace AppsInToss.Editor
             }
             catch (Exception e)
             {
-                Debug.LogWarning($"[AIT] node_modules 무결성 검증 중 오류 (무시됨): {e.Message}");
+                Debug.LogWarning($"[AIT] node_modules 무결성 검증 중 오류 (무시됨): {e}");
                 return true; // 검증 실패 시 기존 동작 유지
             }
         }
@@ -1835,7 +1835,7 @@ namespace AppsInToss.Editor
                 }
                 catch (Exception e)
                 {
-                    Debug.LogWarning($"[AIT] node_modules 삭제 실패: {e.Message}");
+                    Debug.LogWarning($"[AIT] node_modules 삭제 실패: {e}");
                 }
             }
 
@@ -1850,7 +1850,7 @@ namespace AppsInToss.Editor
                 }
                 catch (Exception e)
                 {
-                    Debug.LogWarning($"[AIT] .npm-cache 삭제 실패: {e.Message}");
+                    Debug.LogWarning($"[AIT] .npm-cache 삭제 실패: {e}");
                 }
             }
         }
@@ -1909,7 +1909,7 @@ namespace AppsInToss.Editor
                     }
                     catch (Exception e)
                     {
-                        Debug.LogWarning($"[AIT] 삭제 실패: {itemName} - {e.Message}");
+                        Debug.LogWarning($"[AIT] 삭제 실패: {itemName} - {e}");
                     }
                 }
             }

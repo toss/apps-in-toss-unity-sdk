@@ -159,7 +159,7 @@ namespace AppsInToss.Editor
                         }
                         catch (Exception e)
                         {
-                            Debug.LogWarning($"[NodeJS] 다운로드 실패 ({url}): {e.Message}");
+                            Debug.LogWarning($"[NodeJS] 다운로드 실패 ({url}): {e}");
                             lastException = e;
 
                             // 다운로드 실패 시 임시 파일 삭제
@@ -227,7 +227,7 @@ namespace AppsInToss.Editor
                         }
                         catch (Exception e)
                         {
-                            Debug.LogWarning($"[NodeJS] 대체 미러 다운로드 실패: {e.Message}");
+                            Debug.LogWarning($"[NodeJS] 대체 미러 다운로드 실패: {e}");
                             if (File.Exists(tempFile)) File.Delete(tempFile);
                         }
                     }
@@ -312,7 +312,7 @@ namespace AppsInToss.Editor
             }
             catch (Exception e)
             {
-                Debug.LogError($"[NodeJS] 다운로드 실패: {e.Message}");
+                Debug.LogError($"[NodeJS] 다운로드 실패: {e}");
 
                 // CI/배치 모드에서는 다이얼로그 스킵
                 AITPlatformHelper.ShowInfoDialog("다운로드 실패",
@@ -547,7 +547,7 @@ namespace AppsInToss.Editor
                     }
                     catch (Exception e)
                     {
-                        Debug.LogWarning($"[NodeJS] 임시 폴더 삭제 실패 (무시됨): {e.Message}");
+                        Debug.LogWarning($"[NodeJS] 임시 폴더 삭제 실패 (무시됨): {e}");
                     }
                 }
             }
@@ -578,7 +578,7 @@ namespace AppsInToss.Editor
             }
             catch (IOException ex)
             {
-                Debug.LogWarning($"[NodeJS] 드라이브 루트 접근 실패 ({ex.Message}), 표준 임시 디렉토리로 폴백");
+                Debug.LogWarning($"[NodeJS] 드라이브 루트 접근 실패 ({ex}), 표준 임시 디렉토리로 폴백");
             }
 
             // 2순위: 표준 임시 디렉토리 사용 (권한 보장)
@@ -636,7 +636,7 @@ namespace AppsInToss.Editor
             }
             catch (Exception e)
             {
-                Debug.LogWarning($"[NodeJS] pnpm 설치 중 예외 발생: {e.Message}");
+                Debug.LogWarning($"[NodeJS] pnpm 설치 중 예외 발생: {e}");
                 return false;
             }
         }

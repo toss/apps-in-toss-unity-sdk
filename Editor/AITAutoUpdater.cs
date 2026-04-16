@@ -69,7 +69,7 @@ namespace AppsInToss.Editor
             }
             catch (Exception e)
             {
-                Debug.LogWarning($"[AIT] SDK 자동 업데이트 체크 중 예외 발생 (무시됨): {e.Message}");
+                Debug.LogWarning($"[AIT] SDK 자동 업데이트 체크 중 예외 발생 (무시됨): {e}");
             }
         }
 
@@ -185,7 +185,7 @@ namespace AppsInToss.Editor
                         catch (Exception e)
                         {
                             Debug.LogWarning(
-                                $"[AIT] SDK 업데이트 적용 중 예외 발생 (무시됨): {e.Message}"
+                                $"[AIT] SDK 업데이트 적용 중 예외 발생 (무시됨): {e}"
                             );
                         }
                     };
@@ -195,7 +195,7 @@ namespace AppsInToss.Editor
                     EditorApplication.delayCall += () =>
                     {
                         Debug.LogWarning(
-                            $"[AIT] SDK 원격 버전 확인 실패 (무시됨): {e.Message}"
+                            $"[AIT] SDK 원격 버전 확인 실패 (무시됨): {e}"
                         );
                     };
                 }
@@ -528,7 +528,7 @@ namespace AppsInToss.Editor
             }
             catch (Exception e)
             {
-                Debug.LogWarning($"[AIT] SDK 자동 업데이트 체크 중 예외 발생: {e.Message}");
+                Debug.LogWarning($"[AIT] SDK 자동 업데이트 체크 중 예외 발생: {e}");
             }
         }
 

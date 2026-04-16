@@ -621,7 +621,8 @@ namespace AppsInToss.Editor.ErrorTracker
             }
 
             // 스택트레이스로 판별 불가한 경우, 메시지의 SDK 키워드로 분류
-            // (AitKeywords: [AIT, AIT:, AppsInToss, apps-in-toss, AITNpmRunner 등 — IsKnownNonSdkMessage와 동일한 source)
+            // AitKeywords의 "[AIT", "AIT:", "AppsInToss", "apps-in-toss", "AITNpmRunner" 등 —
+            // IsKnownNonSdkMessage의 SDK 보호 가드와 동일한 source를 사용
             if (MessageContainsSdkKeyword(message))
                 return "sdk";
 

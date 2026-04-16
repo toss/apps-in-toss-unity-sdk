@@ -440,15 +440,27 @@ namespace AppsInToss.Editor
             {
                 Debug.Log("[AIT] SDK 업데이트를 적용합니다...");
 
-                // 기존 packageId에서 이름 부분 추출하여 동일한 URL+fragment로 Add 호출
+                // 기존 packageId에서 이름과 URL 부분 추출
                 int atIndex = packageId.IndexOf('@');
                 if (atIndex < 0)
                 {
                     return;
                 }
 
+                string packageName = packageId.Substring(0, atIndex);
                 string addUrl = packageId.Substring(atIndex + 1);
-                UnityEditor.PackageManager.Client.Add(addUrl);
+
+                // manifest.json 직접 수정 방식 사용
+                // PackageManager.Client.Add()는 기존 immutable 패키지를 교체하는 과정에서
+                // 'immutable packages were unexpectedly altered' 경고를 유발할 수 있음.
+                // manifest.json을 직접 수정하면 Unity가 패키지를 처음부터 다시 resolve하여
+                // 이 경고를 방지할 수 있음.
+                if (!UpdateManifestAndResolve(packageName, addUrl))
+                {
+                    // manifest.json 수정 실패 시 기존 방식으로 폴백
+                    Debug.LogWarning("[AIT] manifest.json 수정에 실패하여 기존 방식으로 업데이트합니다.");
+                    UnityEditor.PackageManager.Client.Add(addUrl);
+                }
             }
             else
             {
@@ -540,6 +552,80 @@ namespace AppsInToss.Editor
             EditorPrefs.DeleteKey(GetDailyCheckKey());
             SessionState.SetBool(SESSION_KEY, false);
             Debug.Log("[AIT] 일일 업데이트 체크 상태가 초기화되었습니다.");
+        }
+
+        /// <summary>
+        /// manifest.json을 직접 수정하여 패키지 업데이트를 트리거합니다.
+        /// PackageManager.Client.Add()와 달리 immutable 패키지 변경 경고가 발생하지 않습니다.
+        /// </summary>
+        private static bool UpdateManifestAndResolve(string packageName, string newUrl)
+        {
+            try
+            {
+                string projectRoot = Directory.GetParent(Application.dataPath).FullName;
+                string manifestPath = Path.Combine(projectRoot, "Packages", "manifest.json");
+
+                if (!File.Exists(manifestPath))
+                {
+                    Debug.LogWarning("[AIT] manifest.json을 찾을 수 없습니다.");
+                    return false;
+                }
+
+                var utf8NoBom = new System.Text.UTF8Encoding(false);
+                string content = File.ReadAllText(manifestPath, utf8NoBom);
+
+                // manifest.json에서 패키지 항목 교체
+                // 형식: "패키지이름": "git URL"
+                string escapedName = Regex.Escape(packageName);
+                var pattern = new Regex(
+                    $@"(""{escapedName}""\s*:\s*"")([^""]*)("")",
+                    RegexOptions.None
+                );
+
+                // JSON 값 내에서 안전하도록 이스케이프 (일반적인 git URL에는 해당하지 않지만 방어적 처리)
+                string escapedUrl = newUrl
+                    .Replace("\\", "\\\\")
+                    .Replace("\"", "\\\"")
+                    .Replace("\n", "\\n")
+                    .Replace("\r", "\\r")
+                    .Replace("\t", "\\t");
+
+                bool matched = false;
+                string newContent = pattern.Replace(content, m =>
+                {
+                    matched = true;
+                    return m.Groups[1].Value + escapedUrl + m.Groups[3].Value;
+                }, 1);
+
+                if (!matched)
+                {
+                    Debug.LogWarning($"[AIT] manifest.json에서 패키지 '{packageName}'을 찾을 수 없습니다.");
+                    return false;
+                }
+
+                if (newContent != content)
+                {
+                    File.WriteAllText(manifestPath, newContent, utf8NoBom);
+                    Debug.Log("[AIT] manifest.json을 업데이트했습니다. 패키지를 다시 resolve합니다...");
+                    UnityEditor.PackageManager.Client.Resolve();
+                }
+                else
+                {
+                    // 브랜치/태그 기반 참조는 URL이 동일하지만 원격 커밋이 변경된 경우.
+                    // Client.Resolve()만으로는 캐시된 패키지를 re-fetch하지 않을 수 있으므로
+                    // 이 경우에는 manifest.json 방식의 이점이 없음 — false 반환하여
+                    // 폴백(Client.Add)을 사용하도록 함.
+                    Debug.Log("[AIT] manifest.json URL이 동일합니다. 기존 방식으로 업데이트합니다.");
+                    return false;
+                }
+
+                return true;
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[AIT] manifest.json 업데이트 중 오류 발생: {e.Message}");
+                return false;
+            }
         }
     }
 }

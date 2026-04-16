@@ -70,7 +70,8 @@ namespace AppsInToss.Editor
         /// 실패 시 프로젝트 루트 기준 경로들과 Assembly.Location 폴백을 반환합니다.
         /// </summary>
         /// <param name="relativePath">SDK 루트로부터의 상대 경로 (예: "WebGLTemplates/AITTemplate/Runtime")</param>
-        /// <param name="assemblyAnchor">Assembly.Location 폴백에 사용할 타입 (resolver 실패 시에만 사용, null이면 생략)</param>
+        /// <param name="assemblyAnchor">Assembly.Location 폴백에 사용할 타입 (resolver 실패 시에만 사용, null이면 생략).
+        /// 호출자와 같은 asmdef에 속한 타입을 전달해야 올바른 Assembly DLL 경로를 얻을 수 있음.</param>
         internal static string[] GetCandidatePaths(string relativePath, System.Type assemblyAnchor = null)
         {
             string resolvedPath = GetSDKResolvedPath();

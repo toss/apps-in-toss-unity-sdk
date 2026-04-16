@@ -52,6 +52,14 @@ namespace AppsInToss.Editor.ErrorTracker
 
         // 100% SDK와 무관한 Unity 내부/사용자 프로젝트 메시지 패턴.
         // IsAitRelated를 통과한 메시지 중에서도 이 패턴이 매칭되면 캡처 대상에서 제외.
+        //
+        // 새 노이즈 패턴 추가 워크플로우:
+        //   1. Sentry에서 해당 이슈가 SDK 변경 없이 재현되는지 확인 (사용자 프로젝트/Unity 내부)
+        //   2. Sentry에서 해당 이슈를 ignored 처리
+        //   3. 여기 NonSdkMessagePatterns에 메시지의 불변 핵심 문구를 부분 문자열로 추가
+        //      (Unity 버전/환경 차이에 민감한 부분은 피할 것)
+        //   4. IsKnownNonSdkMessageTests.cs에 positive/negative 테스트 추가
+        //      (특히 AIT 키워드가 섞여도 필터링되지 않는지 negative 케이스 필수)
         private static readonly string[] NonSdkMessagePatterns =
         {
             // Unity 내부 경고
@@ -70,22 +78,21 @@ namespace AppsInToss.Editor.ErrorTracker
             "Localization-String-Tables-",
             "Warning in Graph at Packages/com.unity",
 
-            // 사용자 프로젝트 직렬화
-            "Fields serialized in",
+            // 사용자 프로젝트 직렬화 ([Assembly-CSharp] 한정 — SDK 어셈블리의 직렬화 경고는 보호)
+            "Fields serialized in [Assembly-CSharp]",
 
-            // 외부 패키지
-            ".meta) exists but its folder",
+            // 외부 패키지 (Unity 버전별 괄호 유무에 관계없이 매칭되도록 핵심 문구만 추출)
+            "exists but its folder",
 
             // Unity URP 내부
             "exceeds previous array size",
         };
 
-        // DetermineErrorSource에서 메시지를 SDK로 분류하는 패턴.
-        // 스택트레이스로 출처 판별이 안 될 때 사용.
+        // DetermineErrorSource에서 메시지를 SDK로 분류하는 추가 패턴.
+        // 스택트레이스로 출처 판별이 안 될 때, AitKeywords 및 "Sentry:" prefix와 함께 검사됩니다.
+        // AitKeywords와 중복되는 키워드는 제외 — drift 방지.
         private static readonly string[] SdkMessagePatterns =
         {
-            "AppsInToss",
-            "apps-in-toss",
             "[Validation]",
             "[pnpm]",
             "webgl/Build/",
@@ -507,20 +514,32 @@ namespace AppsInToss.Editor.ErrorTracker
         }
 
         /// <summary>
+        /// 메시지가 SDK 자체 로그임을 식별할 수 있는 키워드를 포함하는지 검사합니다.
+        /// <see cref="IsKnownNonSdkMessage"/>의 SDK 보호 가드 및 <see cref="DetermineErrorSource"/>의
+        /// 메시지 기반 분류에서 단일 source로 재사용됩니다.
+        /// </summary>
+        private static bool MessageContainsSdkKeyword(string message)
+        {
+            // AitKeywords를 그대로 재사용하여 IsAitRelated와 가드의 키워드 set drift를 방지
+            for (int i = 0; i < AitKeywords.Length; i++)
+            {
+                if (message.IndexOf(AitKeywords[i], StringComparison.OrdinalIgnoreCase) >= 0)
+                    return true;
+            }
+            return false;
+        }
+
+        /// <summary>
         /// 메시지가 확실히 SDK와 무관한 Unity 내부/사용자 프로젝트 패턴인지 판별합니다.
-        /// AIT 키워드(`[AIT`, `AppsInToss`, `apps-in-toss`)가 포함되면 절대 필터링하지 않습니다.
+        /// AIT 키워드(<see cref="AitKeywords"/>)가 포함되면 절대 필터링하지 않습니다.
         /// </summary>
         internal static bool IsKnownNonSdkMessage(string message)
         {
             if (string.IsNullOrEmpty(message))
                 return false;
 
-            // SDK 자체 로그는 절대 필터링하지 않음
-            if (message.StartsWith("[AIT", StringComparison.Ordinal))
-                return false;
-            if (message.IndexOf("AppsInToss", StringComparison.Ordinal) >= 0)
-                return false;
-            if (message.IndexOf("apps-in-toss", StringComparison.Ordinal) >= 0)
+            // SDK 자체 로그는 절대 필터링하지 않음 — AitKeywords 전체를 가드로 사용
+            if (MessageContainsSdkKeyword(message))
                 return false;
 
             for (int i = 0; i < NonSdkMessagePatterns.Length; i++)
@@ -602,12 +621,18 @@ namespace AppsInToss.Editor.ErrorTracker
             if (!string.IsNullOrEmpty(message) && message.StartsWith("[AIT]", StringComparison.Ordinal))
                 return "sdk";
 
-            // 메시지 내 SDK 관련 키워드로 추가 분류 (Sentry/AIT/AppsInToss/pnpm/Validation 등)
+            // 메시지 내 SDK 관련 키워드로 추가 분류
             if (!string.IsNullOrEmpty(message))
             {
+                // AIT 키워드 (AppsInToss, apps-in-toss, [AIT, AITNpmRunner 등) — IsKnownNonSdkMessage와 동일한 source
+                if (MessageContainsSdkKeyword(message))
+                    return "sdk";
+
+                // Sentry transport 자체 에러
                 if (message.StartsWith("Sentry:", StringComparison.Ordinal))
                     return "sdk";
 
+                // SDK 빌드 파이프라인 관련 추가 패턴
                 for (int i = 0; i < SdkMessagePatterns.Length; i++)
                 {
                     if (message.IndexOf(SdkMessagePatterns[i], StringComparison.Ordinal) >= 0)

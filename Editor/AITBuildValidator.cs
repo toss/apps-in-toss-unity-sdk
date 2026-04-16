@@ -398,7 +398,7 @@ namespace AppsInToss.Editor
             }
             catch (System.Exception e)
             {
-                Debug.LogWarning($"[AIT] 캐시 통계 출력 실패: {e.Message}");
+                Debug.LogWarning($"[AIT] 캐시 통계 출력 실패: {e}");
             }
         }
     }

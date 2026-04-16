@@ -334,7 +334,7 @@ namespace AppsInToss.Editor
             }
             catch (Exception e)
             {
-                if (verbose) Debug.LogError($"[Package Manager] 명령 실행 중 예외 발생: {e.Message}");
+                if (verbose) Debug.LogError($"[Package Manager] 명령 실행 중 예외 발생: {e}");
                 return false;
             }
         }
@@ -455,7 +455,7 @@ namespace AppsInToss.Editor
                 {
                     EditorUtility.ClearProgressBar();
                 }
-                if (verbose) Debug.LogError($"[Package Manager] 명령 실행 중 예외 발생: {e.Message}");
+                if (verbose) Debug.LogError($"[Package Manager] 명령 실행 중 예외 발생: {e}");
                 return false;
             }
         }

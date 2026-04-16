@@ -188,7 +188,7 @@ namespace AppsInToss.Editor.ErrorTracker
             }
             catch (Exception e)
             {
-                Debug.LogWarning($"[AITSentryTransport] 동기 전송 실패: {e.Message}");
+                Debug.LogWarning($"[AITSentryTransport] 동기 전송 실패: {e}");
                 request.Dispose();
             }
         }

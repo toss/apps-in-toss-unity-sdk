@@ -16,6 +16,9 @@ namespace AppsInToss
     [Preserve]
     public static class AITVersion
     {
+        private const string PackageAssetPath = "Packages/im.toss.apps-in-toss-unity-sdk";
+        private const string LegacyPackageAssetPath = "Packages/com.appsintoss.miniapp";
+
         private static bool _loaded;
         private static string _version = "unknown";
         private static string _releaseDateTime;
@@ -83,15 +86,15 @@ namespace AppsInToss
 #if UNITY_EDITOR
         private static void LoadVersionInfoEditor()
         {
-            // Keep in sync with AITPackagePathResolver (Editor assembly)
+            // Keep in sync with AITPackagePathResolver.FindSDKPackageInfo() (Editor assembly)
             var packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssetPath(
-                "Packages/im.toss.apps-in-toss-unity-sdk"
+                PackageAssetPath
             );
             // 레거시 패키지 ID 폴백
             if (packageInfo == null)
             {
                 packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssetPath(
-                    "Packages/com.appsintoss.miniapp"
+                    LegacyPackageAssetPath
                 );
             }
             // 어셈블리 기반 폴백 (Git UPM 패키지에서 경로가 다를 수 있음)

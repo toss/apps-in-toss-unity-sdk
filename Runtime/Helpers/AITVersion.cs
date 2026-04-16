@@ -83,11 +83,18 @@ namespace AppsInToss
 #if UNITY_EDITOR
         private static void LoadVersionInfoEditor()
         {
-            // Keep in sync with AITPackagePathResolver.PackageAssetPath (Editor assembly)
+            // Keep in sync with AITPackagePathResolver (Editor assembly)
             var packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssetPath(
                 "Packages/im.toss.apps-in-toss-unity-sdk"
             );
-            // 폴백: Git UPM 패키지에서 경로가 다를 수 있으므로 어셈블리 기반 탐색
+            // 레거시 패키지 ID 폴백
+            if (packageInfo == null)
+            {
+                packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssetPath(
+                    "Packages/com.appsintoss.miniapp"
+                );
+            }
+            // 어셈블리 기반 폴백 (Git UPM 패키지에서 경로가 다를 수 있음)
             if (packageInfo == null)
             {
                 packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssembly(

@@ -86,7 +86,8 @@ namespace AppsInToss
 #if UNITY_EDITOR
         private static void LoadVersionInfoEditor()
         {
-            // Keep in sync with AITPackagePathResolver.FindSDKPackageInfo() (Editor assembly)
+            // AITPackagePathResolver (Editor assembly)와 동일한 폴백 체인을 인라인으로 구현.
+            // Runtime asmdef에서 Editor assembly를 참조할 수 없으므로 직접 호출 불가.
             // 폴백 체인: PackageAssetPath → LegacyPackageAssetPath → FindForAssembly
             var packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssetPath(
                 PackageAssetPath

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text.RegularExpressions;
 using System.Threading;
 using UnityEditor;
 #if UNITY_6000_0_OR_NEWER
@@ -829,7 +830,19 @@ namespace AppsInToss
 #endif
             };
 
-            var result = BuildPipeline.BuildPlayer(buildPlayerOptions);
+            // 빌드 직전: AITVersionConstants.cs에 CommitHash, ReleaseDateTime 주입
+            string originalConstants = InjectVersionConstants();
+
+            UnityEditor.Build.Reporting.BuildReport result;
+            try
+            {
+                result = BuildPipeline.BuildPlayer(buildPlayerOptions);
+            }
+            finally
+            {
+                // 빌드 완료 후 (성공/실패 무관) 원본으로 복원
+                RestoreVersionConstants(originalConstants);
+            }
 
             // 빌드 리포트를 에러 리포터에 저장 (Issue 신고 시 사용)
             AITErrorReporter.SetBuildReport(result);
@@ -911,6 +924,113 @@ namespace AppsInToss
             }
 
             return AITExportError.SUCCEED;
+        }
+
+        private const string VersionConstantsRelativePath = "Runtime/Helpers/AITVersionConstants.cs";
+
+        /// <summary>
+        /// 빌드 직전 AITVersionConstants.cs에 CommitHash와 ReleaseDateTime을 주입합니다.
+        /// </summary>
+        /// <returns>복원용 원본 파일 내용 (null이면 복원 불필요)</returns>
+        private static string InjectVersionConstants()
+        {
+            try
+            {
+                if (!AITPackagePathResolver.TryResolveFile(VersionConstantsRelativePath, out string constantsPath))
+                {
+                    Debug.LogWarning("[AIT] AITVersionConstants.cs를 찾을 수 없어 버전 상수 주입을 건너뜁니다.");
+                    return null;
+                }
+
+                string original = File.ReadAllText(constantsPath);
+
+                string commitHash = GetGitCommitHash();
+                string releaseDateTime = DateTime.UtcNow.ToString("yyyyMMdd_HHmm");
+
+                string injected = original;
+                injected = Regex.Replace(
+                    injected,
+                    @"public const string CommitHash = [^;]+;",
+                    $"public const string CommitHash = \"{commitHash}\";");
+                injected = Regex.Replace(
+                    injected,
+                    @"public const string ReleaseDateTime = [^;]+;",
+                    $"public const string ReleaseDateTime = \"{releaseDateTime}\";");
+
+                if (injected != original)
+                {
+                    File.WriteAllText(constantsPath, injected);
+                    EditorApplication.LockReloadAssemblies();
+                    try { AssetDatabase.Refresh(); }
+                    finally { EditorApplication.UnlockReloadAssemblies(); }
+                    Debug.Log($"[AIT] 버전 상수 주입 완료: CommitHash={commitHash}, ReleaseDateTime={releaseDateTime}");
+                }
+
+                return original;
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[AIT] 버전 상수 주입 실패 (무시됨): {e.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// 빌드 후 AITVersionConstants.cs를 원본으로 복원합니다.
+        /// </summary>
+        private static void RestoreVersionConstants(string originalContent)
+        {
+            if (originalContent == null) return;
+
+            try
+            {
+                if (!AITPackagePathResolver.TryResolveFile(VersionConstantsRelativePath, out string constantsPath))
+                    return;
+
+                File.WriteAllText(constantsPath, originalContent);
+                EditorApplication.LockReloadAssemblies();
+                try { AssetDatabase.Refresh(); }
+                finally { EditorApplication.UnlockReloadAssemblies(); }
+                Debug.Log("[AIT] 버전 상수 복원 완료");
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[AIT] 버전 상수 복원 실패: {e.Message}");
+            }
+        }
+
+        /// <summary>
+        /// git rev-parse --short=7 HEAD로 현재 커밋 해시를 가져옵니다.
+        /// Unity 프로젝트 루트에서 실행하여 프로젝트 커밋 해시를 반환합니다.
+        /// (SDK가 UPM git 패키지로 설치된 경우에도 프로젝트의 커밋 해시를 사용)
+        /// </summary>
+        private static string GetGitCommitHash()
+        {
+            try
+            {
+                using (var process = new System.Diagnostics.Process
+                {
+                    StartInfo = new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = "git",
+                        Arguments = "rev-parse --short=7 HEAD",
+                        UseShellExecute = false,
+                        RedirectStandardOutput = true,
+                        CreateNoWindow = true,
+                        WorkingDirectory = UnityUtil.GetProjectPath()
+                    }
+                })
+                {
+                    process.Start();
+                    string output = process.StandardOutput.ReadToEnd().Trim();
+                    bool exited = process.WaitForExit(5000);
+                    return exited && process.ExitCode == 0 && !string.IsNullOrEmpty(output) ? output : "unknown";
+                }
+            }
+            catch
+            {
+                return "unknown";
+            }
         }
 
         #endregion

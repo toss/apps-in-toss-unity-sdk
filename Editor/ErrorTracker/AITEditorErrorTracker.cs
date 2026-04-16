@@ -479,9 +479,12 @@ namespace AppsInToss.Editor.ErrorTracker
             return "Exception";
         }
 
-        private const string SdkPackagePath = "Packages/im.toss.apps-in-toss-unity-sdk/";
-        private const string SdkPackageCachePath = "Library/PackageCache/im.toss.apps-in-toss-unity-sdk@";
-        private const string SdkPackageCachePathNoVersion = "Library/PackageCache/im.toss.apps-in-toss-unity-sdk/";
+        private const string SdkPackagePath = AITVersion.PackageAssetPath + "/";
+        private const string SdkPackageCachePath = "Library/PackageCache/" + AITVersion.PackageName + "@";
+        private const string SdkPackageCachePathNoVersion = "Library/PackageCache/" + AITVersion.PackageName + "/";
+        private const string LegacySdkPackagePath = AITVersion.LegacyPackageAssetPath + "/";
+        private const string LegacySdkPackageCachePath = "Library/PackageCache/" + AITVersion.LegacyPackageName + "@";
+        private const string LegacySdkPackageCachePathNoVersion = "Library/PackageCache/" + AITVersion.LegacyPackageName + "/";
         private const string UserProjectPathPrefix = "Assets/";
 
         /// <summary>
@@ -506,7 +509,10 @@ namespace AppsInToss.Editor.ErrorTracker
 
                         if (filename.StartsWith(SdkPackagePath, StringComparison.Ordinal) ||
                             filename.StartsWith(SdkPackageCachePath, StringComparison.Ordinal) ||
-                            filename.StartsWith(SdkPackageCachePathNoVersion, StringComparison.Ordinal))
+                            filename.StartsWith(SdkPackageCachePathNoVersion, StringComparison.Ordinal) ||
+                            filename.StartsWith(LegacySdkPackagePath, StringComparison.Ordinal) ||
+                            filename.StartsWith(LegacySdkPackageCachePath, StringComparison.Ordinal) ||
+                            filename.StartsWith(LegacySdkPackageCachePathNoVersion, StringComparison.Ordinal))
                             return "sdk";
 
                         if (filename.StartsWith(UserProjectPathPrefix, StringComparison.Ordinal))

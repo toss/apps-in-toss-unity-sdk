@@ -16,8 +16,10 @@ namespace AppsInToss
     [Preserve]
     public static class AITVersion
     {
-        internal const string PackageAssetPath = "Packages/im.toss.apps-in-toss-unity-sdk";
-        internal const string LegacyPackageAssetPath = "Packages/com.appsintoss.miniapp";
+        internal const string PackageName = "im.toss.apps-in-toss-unity-sdk";
+        internal const string LegacyPackageName = "com.appsintoss.miniapp";
+        internal const string PackageAssetPath = "Packages/" + PackageName;
+        internal const string LegacyPackageAssetPath = "Packages/" + LegacyPackageName;
 
         private static bool _loaded;
         private static string _version = "unknown";

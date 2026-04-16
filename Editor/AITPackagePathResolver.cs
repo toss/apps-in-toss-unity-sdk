@@ -25,5 +25,14 @@ namespace AppsInToss.Editor
             // 폴백: 어셈블리 기반 탐색 (Git UPM 패키지에서 경로가 다를 수 있음)
             return PackageInfo.FindForAssembly(typeof(AITPackagePathResolver).Assembly);
         }
+
+        /// <summary>
+        /// SDK 패키지의 파일시스템 경로를 반환합니다.
+        /// PackageInfo를 찾지 못하면 null을 반환합니다.
+        /// </summary>
+        internal static string GetSDKResolvedPath()
+        {
+            return FindSDKPackageInfo()?.resolvedPath;
+        }
     }
 }

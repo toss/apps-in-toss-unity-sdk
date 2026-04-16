@@ -1074,12 +1074,19 @@ namespace AppsInToss.Editor
             }
 
             // 경로 검색
-            string[] possiblePaths = new string[]
-            {
-                Path.GetFullPath("Packages/im.toss.apps-in-toss-unity-sdk/WebGLTemplates/AITTemplate/BuildConfig~"),
-                Path.GetFullPath("Packages/com.appsintoss.miniapp/WebGLTemplates/AITTemplate/BuildConfig~"),
-                Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(typeof(AITConvertCore).Assembly.Location)), "WebGLTemplates/AITTemplate/BuildConfig~")
-            };
+            string resolvedPath = AITPackagePathResolver.GetSDKResolvedPath();
+            string[] possiblePaths = resolvedPath != null
+                ? new string[]
+                {
+                    Path.Combine(resolvedPath, "WebGLTemplates/AITTemplate/BuildConfig~"),
+                    Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(typeof(AITConvertCore).Assembly.Location)), "WebGLTemplates/AITTemplate/BuildConfig~")
+                }
+                : new string[]
+                {
+                    Path.GetFullPath("Packages/im.toss.apps-in-toss-unity-sdk/WebGLTemplates/AITTemplate/BuildConfig~"),
+                    Path.GetFullPath("Packages/com.appsintoss.miniapp/WebGLTemplates/AITTemplate/BuildConfig~"),
+                    Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(typeof(AITConvertCore).Assembly.Location)), "WebGLTemplates/AITTemplate/BuildConfig~")
+                };
 
             foreach (string path in possiblePaths)
             {
@@ -1106,13 +1113,19 @@ namespace AppsInToss.Editor
                 return _cachedSdkRuntimePath;
             }
 
-            string projectRoot = Directory.GetParent(Application.dataPath).FullName;
-            string[] possiblePaths = new string[]
-            {
-                Path.Combine(projectRoot, "Packages/im.toss.apps-in-toss-unity-sdk/WebGLTemplates/AITTemplate/Runtime"),
-                Path.Combine(projectRoot, "Packages/com.appsintoss.miniapp/WebGLTemplates/AITTemplate/Runtime"),
-                Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(typeof(AITConvertCore).Assembly.Location)), "WebGLTemplates/AITTemplate/Runtime")
-            };
+            string sdkPath = AITPackagePathResolver.GetSDKResolvedPath();
+            string[] possiblePaths = sdkPath != null
+                ? new string[]
+                {
+                    Path.Combine(sdkPath, "WebGLTemplates/AITTemplate/Runtime"),
+                    Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(typeof(AITConvertCore).Assembly.Location)), "WebGLTemplates/AITTemplate/Runtime")
+                }
+                : new string[]
+                {
+                    Path.Combine(Directory.GetParent(Application.dataPath).FullName, "Packages/im.toss.apps-in-toss-unity-sdk/WebGLTemplates/AITTemplate/Runtime"),
+                    Path.Combine(Directory.GetParent(Application.dataPath).FullName, "Packages/com.appsintoss.miniapp/WebGLTemplates/AITTemplate/Runtime"),
+                    Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(typeof(AITConvertCore).Assembly.Location)), "WebGLTemplates/AITTemplate/Runtime")
+                };
 
             foreach (string path in possiblePaths)
             {

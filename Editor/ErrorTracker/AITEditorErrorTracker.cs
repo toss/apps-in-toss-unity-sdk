@@ -520,6 +520,9 @@ namespace AppsInToss.Editor.ErrorTracker
         /// </summary>
         private static bool MessageContainsSdkKeyword(string message)
         {
+            if (string.IsNullOrEmpty(message))
+                return false;
+
             // AitKeywords를 그대로 재사용하여 IsAitRelated와 가드의 키워드 set drift를 방지
             for (int i = 0; i < AitKeywords.Length; i++)
             {
@@ -617,17 +620,14 @@ namespace AppsInToss.Editor.ErrorTracker
                 }
             }
 
-            // 스택트레이스가 없거나 판별 불가한 경우, 메시지의 [AIT] 접두사로 판단
-            if (!string.IsNullOrEmpty(message) && message.StartsWith("[AIT]", StringComparison.Ordinal))
+            // 스택트레이스로 판별 불가한 경우, 메시지의 SDK 키워드로 분류
+            // (AitKeywords: [AIT, AIT:, AppsInToss, apps-in-toss, AITNpmRunner 등 — IsKnownNonSdkMessage와 동일한 source)
+            if (MessageContainsSdkKeyword(message))
                 return "sdk";
 
-            // 메시지 내 SDK 관련 키워드로 추가 분류
+            // 메시지 내 SDK 관련 추가 패턴
             if (!string.IsNullOrEmpty(message))
             {
-                // AIT 키워드 (AppsInToss, apps-in-toss, [AIT, AITNpmRunner 등) — IsKnownNonSdkMessage와 동일한 source
-                if (MessageContainsSdkKeyword(message))
-                    return "sdk";
-
                 // Sentry transport 자체 에러
                 if (message.StartsWith("Sentry:", StringComparison.Ordinal))
                     return "sdk";

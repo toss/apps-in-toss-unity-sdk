@@ -432,7 +432,7 @@ namespace AppsInToss.Editor
 
                 if (verbose)
                 {
-                    Debug.LogError($"[Platform] 명령 실행 예외: {e.Message}");
+                    Debug.LogError($"[Platform] 명령 실행 예외: {e}");
                 }
             }
 
@@ -590,7 +590,7 @@ namespace AppsInToss.Editor
             {
                 if (verbose)
                 {
-                    Debug.LogWarning($"[Platform] 시스템 검색 실패: {e.Message}");
+                    Debug.LogWarning($"[Platform] 시스템 검색 실패: {e}");
                 }
             }
 
@@ -639,7 +639,7 @@ namespace AppsInToss.Editor
             {
                 if (verbose)
                 {
-                    Debug.LogWarning($"[Platform] 실행 권한 부여 실패: {e.Message}");
+                    Debug.LogWarning($"[Platform] 실행 권한 부여 실패: {e}");
                 }
             }
         }

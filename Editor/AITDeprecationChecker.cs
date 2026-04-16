@@ -88,7 +88,7 @@ namespace AppsInToss.Editor
             }
             catch (Exception e)
             {
-                Debug.LogWarning($"[AIT] 최소 버전 조회 실패, 폴백 사용: {e.Message}");
+                Debug.LogWarning($"[AIT] 최소 버전 조회 실패, 폴백 사용: {e}");
                 _cachedMinVersion = FallbackDeprecationThreshold;
             }
 
@@ -124,7 +124,7 @@ namespace AppsInToss.Editor
             }
             catch (Exception e)
             {
-                Debug.LogWarning($"[AIT] sdk-policy.json fetch 실패: {e.Message}");
+                Debug.LogWarning($"[AIT] sdk-policy.json fetch 실패: {e}");
                 return null;
             }
 
@@ -184,7 +184,7 @@ namespace AppsInToss.Editor
             }
             catch (Exception e)
             {
-                Debug.LogWarning($"[AIT] minVersion 파싱 실패: {policy.minVersion} — {e.Message}");
+                Debug.LogWarning($"[AIT] minVersion 파싱 실패: {policy.minVersion} — {e}");
                 return null;
             }
         }
@@ -400,7 +400,7 @@ namespace AppsInToss.Editor
             }
             catch (Exception e)
             {
-                Debug.LogWarning($"[AIT] 최신 태그 조회 실패: {e.Message}");
+                Debug.LogWarning($"[AIT] 최신 태그 조회 실패: {e}");
                 return null;
             }
         }

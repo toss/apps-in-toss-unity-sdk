@@ -1253,7 +1253,7 @@ namespace AppsInToss.Editor
 
             Debug.Log($"[AIT] ✓ Build 파일 {filesToCopy.Count}개 선별 복사 완료 ({totalBytes / 1024.0 / 1024.0:0.#}MB)");
 
-            // 안전장치: Build/ 폴더에 인식되지 않은 파일이 있으면 경고
+            // 안전장치: Build/ 폴더에 인식되지 않은 파일이 있으면 로그 출력
             var allBuildFiles = Directory.GetFiles(buildSrc);
             var copiedFileNames = new HashSet<string>(filesToCopy);
             foreach (var file in allBuildFiles)
@@ -1261,7 +1261,7 @@ namespace AppsInToss.Editor
                 string name = Path.GetFileName(file);
                 if (!copiedFileNames.Contains(name))
                 {
-                    Debug.LogWarning($"[AIT] ⚠️ Build 폴더에 복사되지 않은 파일: {name}");
+                    Debug.Log($"[AIT] Build 폴더에 복사되지 않은 파일: {name}");
                 }
             }
 

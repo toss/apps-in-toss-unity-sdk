@@ -426,7 +426,7 @@ namespace AppsInToss
                 }
                 catch (Exception e)
                 {
-                    Debug.LogError($"AIT: webgl/ 폴더 삭제 실패: {e.Message}");
+                    Debug.LogError($"AIT: webgl/ 폴더 삭제 실패: {e}");
                 }
             }
 
@@ -440,7 +440,7 @@ namespace AppsInToss
                 }
                 catch (Exception e)
                 {
-                    Debug.LogError($"AIT: ait-build/ 폴더 삭제 실패: {e.Message}");
+                    Debug.LogError($"AIT: ait-build/ 폴더 삭제 실패: {e}");
                 }
             }
 
@@ -522,7 +522,7 @@ namespace AppsInToss
             }
             catch (Exception e)
             {
-                Debug.LogError($"[AIT] 로딩 화면 초기화 실패: {e.Message}");
+                Debug.LogError($"[AIT] 로딩 화면 초기화 실패: {e}");
                 AITPlatformHelper.ShowInfoDialog("오류", $"로딩 화면 초기화 실패: {e.Message}", "확인");
             }
         }
@@ -795,7 +795,7 @@ namespace AppsInToss
             }
             catch (Exception e)
             {
-                Debug.LogError($"AIT: 배포 오류: {e.Message}");
+                Debug.LogError($"AIT: 배포 오류: {e}");
                 AITPlatformHelper.ShowInfoDialog("오류", $"배포 오류:\n{e.Message}", "확인");
             }
         }
@@ -1020,7 +1020,7 @@ namespace AppsInToss
             }
             catch (Exception e)
             {
-                Debug.LogError($"AIT: {label} 서버 시작 실패: {e.Message}");
+                Debug.LogError($"AIT: {label} 서버 시작 실패: {e}");
                 AITPlatformHelper.ShowInfoDialog("오류", $"{label} 서버 시작 실패:\n{e.Message}", "확인");
                 stateManager.OnServerFailed();
             }

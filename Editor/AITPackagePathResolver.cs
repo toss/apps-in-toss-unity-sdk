@@ -16,6 +16,7 @@ namespace AppsInToss.Editor
     {
         private static PackageInfo _cachedInfo;
         private static bool _cacheInitialized;
+        private static bool _warningLogged;
 
         /// <summary>
         /// SDK의 PackageInfo를 찾습니다.
@@ -42,8 +43,9 @@ namespace AppsInToss.Editor
                 _cachedInfo = info;
                 _cacheInitialized = true;
             }
-            else
+            else if (!_warningLogged)
             {
+                _warningLogged = true;
                 Debug.LogWarning("[AIT] SDK 패키지를 찾을 수 없습니다. 패키지 설치 상태를 확인하세요.");
             }
 

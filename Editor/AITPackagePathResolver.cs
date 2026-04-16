@@ -23,6 +23,9 @@ namespace AppsInToss.Editor
         /// FindForAssetPath 실패 시 FindForAssembly를 폴백으로 사용합니다.
         /// 결과는 도메인 리로드까지 캐싱됩니다.
         /// </summary>
+        /// <remarks>
+        /// 폴백 체인을 변경할 경우 AITVersion.LoadVersionInfoEditor()도 동기화할 것.
+        /// </remarks>
         internal static PackageInfo FindSDKPackageInfo()
         {
             if (_cacheInitialized)

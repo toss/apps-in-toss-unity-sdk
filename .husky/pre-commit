@@ -1,22 +1,25 @@
 #!/usr/bin/env sh
 
-# AITVersionConstants.cs 업데이트
-DATETIME=$(date -u +"%Y%m%d_%H%M")
+# AITVersionConstants.cs - Version만 package.json과 동기화
+# CommitHash, ReleaseDateTime은 빌드 시점(AITConvertCore)과 릴리즈 시점(release.yml)에서 주입됨
 VERSION=$(cat package.json | grep '"version"' | head -1 | sed 's/.*: *"\([^"]*\)".*/\1/')
-COMMIT_HASH=$(git rev-parse --short=7 HEAD 2>/dev/null || echo "dev")
+
+if [ -z "$VERSION" ]; then
+  echo "Error: Failed to extract version from package.json"
+  exit 1
+fi
 
 CONSTANTS_FILE="Runtime/Helpers/AITVersionConstants.cs"
 
 cat > "$CONSTANTS_FILE" << EOF
 // Auto-generated - DO NOT EDIT MANUALLY
-// Updated at: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
 namespace AppsInToss
 {
     internal static class AITVersionConstants
     {
         public const string Version = "${VERSION}";
-        public const string ReleaseDateTime = "${DATETIME}";
-        public const string CommitHash = "${COMMIT_HASH}";
+        public const string ReleaseDateTime = null;
+        public const string CommitHash = null;
     }
 }
 EOF

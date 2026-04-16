@@ -87,6 +87,7 @@ namespace AppsInToss
         private static void LoadVersionInfoEditor()
         {
             // Keep in sync with AITPackagePathResolver.FindSDKPackageInfo() (Editor assembly)
+            // 폴백 체인: PackageAssetPath → LegacyPackageAssetPath → FindForAssembly
             var packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssetPath(
                 PackageAssetPath
             );

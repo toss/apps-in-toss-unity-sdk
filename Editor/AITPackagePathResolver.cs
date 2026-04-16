@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.IO;
 using UnityEditor.PackageManager;
+using UnityEngine;
 
 namespace AppsInToss.Editor
 {
@@ -21,10 +22,11 @@ namespace AppsInToss.Editor
         /// <summary>
         /// SDK의 PackageInfo를 찾습니다.
         /// FindForAssetPath 실패 시 FindForAssembly를 폴백으로 사용합니다.
-        /// 결과는 도메인 리로드까지 캐싱됩니다.
+        /// 성공한 결과만 도메인 리로드까지 캐싱됩니다.
         /// </summary>
         /// <remarks>
-        /// 폴백 체인을 변경할 경우 AITVersion.LoadVersionInfoEditor()도 동기화할 것.
+        /// 폴백 체인(PackageAssetPath → LegacyPackageAssetPath → FindForAssembly)을
+        /// 변경할 경우 AITVersion.LoadVersionInfoEditor()도 동기화할 것.
         /// </remarks>
         internal static PackageInfo FindSDKPackageInfo()
         {
@@ -33,11 +35,17 @@ namespace AppsInToss.Editor
                 return _cachedInfo;
             }
 
-            _cacheInitialized = true;
-            _cachedInfo = PackageInfo.FindForAssetPath(PackageAssetPath)
-                          ?? PackageInfo.FindForAssetPath(LegacyPackageAssetPath)
-                          ?? PackageInfo.FindForAssembly(typeof(AITPackagePathResolver).Assembly);
-            return _cachedInfo;
+            var info = PackageInfo.FindForAssetPath(PackageAssetPath)
+                       ?? PackageInfo.FindForAssetPath(LegacyPackageAssetPath)
+                       ?? PackageInfo.FindForAssembly(typeof(AITPackagePathResolver).Assembly);
+
+            if (info != null)
+            {
+                _cachedInfo = info;
+                _cacheInitialized = true;
+            }
+
+            return info;
         }
 
         /// <summary>
@@ -52,7 +60,7 @@ namespace AppsInToss.Editor
         /// <summary>
         /// SDK 내부의 상대 경로에 대한 후보 경로 배열을 반환합니다.
         /// resolver가 성공하면 resolvedPath 기반 단일 경로를 반환하고,
-        /// 실패 시 하드코딩된 경로들과 Assembly.Location 폴백을 반환합니다.
+        /// 실패 시 프로젝트 루트 기준 경로들과 Assembly.Location 폴백을 반환합니다.
         /// </summary>
         /// <param name="relativePath">SDK 루트로부터의 상대 경로 (예: "WebGLTemplates/AITTemplate/Runtime")</param>
         /// <param name="assemblyAnchor">Assembly.Location 폴백에 사용할 타입 (resolver 실패 시에만 사용, null이면 생략)</param>
@@ -64,11 +72,12 @@ namespace AppsInToss.Editor
                 return new string[] { Path.Combine(resolvedPath, relativePath) };
             }
 
-            // 폴백: 하드코딩된 경로 사용
+            // 폴백: 프로젝트 루트 기준 경로 사용
+            string projectRoot = Directory.GetParent(Application.dataPath).FullName;
             var paths = new List<string>
             {
-                Path.GetFullPath(Path.Combine(PackageAssetPath, relativePath)),
-                Path.GetFullPath(Path.Combine(LegacyPackageAssetPath, relativePath))
+                Path.Combine(projectRoot, PackageAssetPath, relativePath),
+                Path.Combine(projectRoot, LegacyPackageAssetPath, relativePath)
             };
 
             if (assemblyAnchor != null)

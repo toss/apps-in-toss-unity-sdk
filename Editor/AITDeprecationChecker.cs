@@ -143,9 +143,17 @@ namespace AppsInToss.Editor
                 return null;
             }
 
-            // JsonUtility.FromJson은 malformed JSON에서 null이 아닌 기본값 객체를 반환합니다.
-            // policy == null 체크는 방어적 코딩이며, 실제로는 schemaVersion=0, minVersion=null이 됩니다.
-            var policy = JsonUtility.FromJson<SdkPolicy>(json);
+            SdkPolicy policy;
+            try
+            {
+                policy = JsonUtility.FromJson<SdkPolicy>(json);
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[AIT] sdk-policy.json 파싱 실패: {e}");
+                return null;
+            }
+
             if (policy == null || string.IsNullOrEmpty(policy.minVersion))
             {
                 Debug.LogWarning("[AIT] sdk-policy.json 파싱 실패: minVersion이 없습니다");

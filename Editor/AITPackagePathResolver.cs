@@ -6,6 +6,7 @@ namespace AppsInToss.Editor
     /// <summary>
     /// SDK 패키지 경로를 안정적으로 찾기 위한 유틸리티.
     /// FindForAssetPath가 실패할 수 있는 Git UPM 패키지 환경에서 폴백을 제공합니다.
+    /// 캐시는 도메인 리로드(스크립트 재컴파일) 시 자동으로 무효화됩니다.
     /// </summary>
     internal static class AITPackagePathResolver
     {
@@ -18,7 +19,7 @@ namespace AppsInToss.Editor
         /// <summary>
         /// SDK의 PackageInfo를 찾습니다.
         /// FindForAssetPath 실패 시 FindForAssembly를 폴백으로 사용합니다.
-        /// 결과는 세션 내에서 캐싱됩니다.
+        /// 결과는 도메인 리로드까지 캐싱됩니다.
         /// </summary>
         internal static PackageInfo FindSDKPackageInfo()
         {
@@ -75,16 +76,16 @@ namespace AppsInToss.Editor
             {
                 return new string[]
                 {
-                    Path.GetFullPath(PackageAssetPath + "/" + relativePath),
-                    Path.GetFullPath(LegacyPackageAssetPath + "/" + relativePath),
+                    Path.GetFullPath(Path.Combine(PackageAssetPath, relativePath)),
+                    Path.GetFullPath(Path.Combine(LegacyPackageAssetPath, relativePath)),
                     Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(assemblyAnchor.Assembly.Location)), relativePath)
                 };
             }
 
             return new string[]
             {
-                Path.GetFullPath(PackageAssetPath + "/" + relativePath),
-                Path.GetFullPath(LegacyPackageAssetPath + "/" + relativePath)
+                Path.GetFullPath(Path.Combine(PackageAssetPath, relativePath)),
+                Path.GetFullPath(Path.Combine(LegacyPackageAssetPath, relativePath))
             };
         }
     }

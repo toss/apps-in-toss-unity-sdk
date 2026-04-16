@@ -372,26 +372,18 @@ namespace AppsInToss.Editor
         /// </summary>
         private static string FindPackageJsonTemplate()
         {
-            // SDK 패키지 경로 찾기
-            var packageInfo = AITPackagePathResolver.FindSDKPackageInfo();
-            string packagePath;
-
-            if (packageInfo != null)
+            // SDK 패키지 경로 기반 탐색 (resolver + Assembly.Location 폴백 포함)
+            const string relativePath = "WebGLTemplates/AITTemplate/BuildConfig~/package.json";
+            if (AITPackagePathResolver.TryResolveFile(relativePath, out string found, typeof(AITPackageInitializer)))
             {
-                packagePath = packageInfo.resolvedPath;
-            }
-            else
-            {
-                // Fallback: Assets/AppsInToss 경로
-                packagePath = Path.Combine(Application.dataPath, "AppsInToss");
+                return found;
             }
 
-            // WebGLTemplates/AITTemplate/BuildConfig~/package.json (Unity는 ~ 접미사 폴더 무시)
-            string packageJsonPath = Path.Combine(packagePath, "WebGLTemplates", "AITTemplate", "BuildConfig~", "package.json");
-
-            if (File.Exists(packageJsonPath))
+            // 최종 폴백: Assets/AppsInToss 경로 (임베디드 개발 환경)
+            string legacyPath = Path.Combine(Application.dataPath, "AppsInToss", relativePath);
+            if (File.Exists(legacyPath))
             {
-                return packageJsonPath;
+                return legacyPath;
             }
 
             return null;

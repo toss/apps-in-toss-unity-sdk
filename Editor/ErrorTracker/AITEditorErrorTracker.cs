@@ -50,6 +50,47 @@ namespace AppsInToss.Editor.ErrorTracker
             "[Production Server]"
         };
 
+        // 100% SDK와 무관한 Unity 내부/사용자 프로젝트 메시지 패턴.
+        // IsAitRelated를 통과한 메시지 중에서도 이 패턴이 매칭되면 캡처 대상에서 제외.
+        private static readonly string[] NonSdkMessagePatterns =
+        {
+            // Unity 내부 경고
+            "GfxDevice renderer is null",
+            "Ignoring locale ",
+            "Unable to load build report at Library/",
+            "Cannot read BuildLayout header",
+            "[ServicesCore]",
+            "ProfileValueReference: GetValue called with empty id",
+            "The Editor does not support 32-bit plugins",
+
+            // 사용자 프로젝트 에셋 문제
+            "matches more than one built-in atlases",
+
+            // Unity 패키지 내부
+            "Localization-String-Tables-",
+            "Warning in Graph at Packages/com.unity",
+
+            // 사용자 프로젝트 직렬화
+            "Fields serialized in",
+
+            // 외부 패키지
+            ".meta) exists but its folder",
+
+            // Unity URP 내부
+            "exceeds previous array size",
+        };
+
+        // DetermineErrorSource에서 메시지를 SDK로 분류하는 패턴.
+        // 스택트레이스로 출처 판별이 안 될 때 사용.
+        private static readonly string[] SdkMessagePatterns =
+        {
+            "AppsInToss",
+            "apps-in-toss",
+            "[Validation]",
+            "[pnpm]",
+            "webgl/Build/",
+        };
+
         #endregion
 
         #region Session State
@@ -219,6 +260,10 @@ namespace AppsInToss.Editor.ErrorTracker
                 return;
 
             if (!IsAitRelated(message, stackTrace))
+                return;
+
+            // 확실한 사용자 프로젝트/Unity 내부 메시지는 IsAitRelated를 통과해도 제외
+            if (IsKnownNonSdkMessage(message))
                 return;
 
             // Unity PackageManager가 Git 패키지 업데이트 시 발생시키는 immutable 패키지 경고는 무시
@@ -461,6 +506,38 @@ namespace AppsInToss.Editor.ErrorTracker
             return false;
         }
 
+        /// <summary>
+        /// 메시지가 확실히 SDK와 무관한 Unity 내부/사용자 프로젝트 패턴인지 판별합니다.
+        /// AIT 키워드(`[AIT`, `AppsInToss`, `apps-in-toss`)가 포함되면 절대 필터링하지 않습니다.
+        /// </summary>
+        internal static bool IsKnownNonSdkMessage(string message)
+        {
+            if (string.IsNullOrEmpty(message))
+                return false;
+
+            // SDK 자체 로그는 절대 필터링하지 않음
+            if (message.StartsWith("[AIT", StringComparison.Ordinal))
+                return false;
+            if (message.IndexOf("AppsInToss", StringComparison.Ordinal) >= 0)
+                return false;
+            if (message.IndexOf("apps-in-toss", StringComparison.Ordinal) >= 0)
+                return false;
+
+            for (int i = 0; i < NonSdkMessagePatterns.Length; i++)
+            {
+                if (message.IndexOf(NonSdkMessagePatterns[i], StringComparison.Ordinal) >= 0)
+                    return true;
+            }
+
+            // "Script attached to ... is missing" 패턴은 Assets/ 경로가 포함된 경우에만 사용자 프로젝트로 분류
+            if (message.IndexOf("Script attached to", StringComparison.Ordinal) >= 0
+                && message.IndexOf("is missing", StringComparison.Ordinal) >= 0
+                && message.IndexOf("Assets/", StringComparison.Ordinal) >= 0)
+                return true;
+
+            return false;
+        }
+
         private static string ExtractExceptionType(string message)
         {
             // Unity exception format: "ExceptionType: message"
@@ -524,6 +601,19 @@ namespace AppsInToss.Editor.ErrorTracker
             // 스택트레이스가 없거나 판별 불가한 경우, 메시지의 [AIT] 접두사로 판단
             if (!string.IsNullOrEmpty(message) && message.StartsWith("[AIT]", StringComparison.Ordinal))
                 return "sdk";
+
+            // 메시지 내 SDK 관련 키워드로 추가 분류 (Sentry/AIT/AppsInToss/pnpm/Validation 등)
+            if (!string.IsNullOrEmpty(message))
+            {
+                if (message.StartsWith("Sentry:", StringComparison.Ordinal))
+                    return "sdk";
+
+                for (int i = 0; i < SdkMessagePatterns.Length; i++)
+                {
+                    if (message.IndexOf(SdkMessagePatterns[i], StringComparison.Ordinal) >= 0)
+                        return "sdk";
+                }
+            }
 
             return "unknown";
         }

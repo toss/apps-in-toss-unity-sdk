@@ -34,26 +34,8 @@ namespace AppsInToss.Editor
             // SDK 업데이트 시 새 템플릿이 적용되도록 함
 
             // SDK의 WebGLTemplates 경로 찾기 (여러 가능한 경로 시도)
-            string sdkResolvedPath = AITPackagePathResolver.GetSDKResolvedPath();
-            string[] possibleSdkPaths;
-            if (sdkResolvedPath != null)
-            {
-                possibleSdkPaths = new string[]
-                {
-                    Path.Combine(sdkResolvedPath, "WebGLTemplates"),
-                    Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(typeof(AITConvertCore).Assembly.Location)), "WebGLTemplates")
-                };
-            }
-            else
-            {
-                string projectRoot = Directory.GetParent(Application.dataPath).FullName;
-                possibleSdkPaths = new string[]
-                {
-                    Path.Combine(projectRoot, "Packages/im.toss.apps-in-toss-unity-sdk/WebGLTemplates"),
-                    Path.Combine(projectRoot, "Packages/com.appsintoss.miniapp/WebGLTemplates"),
-                    Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(typeof(AITConvertCore).Assembly.Location)), "WebGLTemplates")
-                };
-            }
+            string[] possibleSdkPaths = AITPackagePathResolver.GetCandidatePaths(
+                "WebGLTemplates", typeof(AITConvertCore));
 
             string sdkTemplatesPath = null;
             foreach (string path in possibleSdkPaths)

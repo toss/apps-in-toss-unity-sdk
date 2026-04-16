@@ -116,19 +116,8 @@ namespace AppsInToss.Editor
         /// <returns>존재하는 템플릿 경로, 또는 찾지 못한 경우 null</returns>
         public static string GetSDKLoadingTemplatePath()
         {
-            string resolvedPath = AITPackagePathResolver.GetSDKResolvedPath();
-            string[] sdkLoadingPaths = resolvedPath != null
-                ? new string[]
-                {
-                    Path.Combine(resolvedPath, "WebGLTemplates/AITTemplate/loading.html"),
-                    Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(typeof(AITPackageInitializer).Assembly.Location)), "WebGLTemplates/AITTemplate/loading.html")
-                }
-                : new string[]
-                {
-                    Path.GetFullPath("Packages/im.toss.apps-in-toss-unity-sdk/WebGLTemplates/AITTemplate/loading.html"),
-                    Path.GetFullPath("Packages/com.appsintoss.miniapp/WebGLTemplates/AITTemplate/loading.html"),
-                    Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(typeof(AITPackageInitializer).Assembly.Location)), "WebGLTemplates/AITTemplate/loading.html")
-                };
+            string[] sdkLoadingPaths = AITPackagePathResolver.GetCandidatePaths(
+                "WebGLTemplates/AITTemplate/loading.html", typeof(AITPackageInitializer));
 
             foreach (string sdkPath in sdkLoadingPaths)
             {

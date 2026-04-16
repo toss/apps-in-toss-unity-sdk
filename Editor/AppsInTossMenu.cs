@@ -128,7 +128,8 @@ namespace AppsInToss
             foreach (var package in args.removed)
             {
                 // 이 SDK 패키지가 제거되었는지 확인
-                if (package.name == "im.toss.apps-in-toss-unity-sdk")
+                if (package.name == AITVersion.PackageName ||
+                    package.name == AITVersion.LegacyPackageName)
                 {
                     Debug.Log("[AIT] SDK 패키지가 제거됨 - 서버 프로세스 정리 중...");
 

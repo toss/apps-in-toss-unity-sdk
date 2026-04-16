@@ -1074,21 +1074,12 @@ namespace AppsInToss.Editor
             }
 
             // 경로 검색
-            string[] possiblePaths = new string[]
+            if (AITPackagePathResolver.TryResolveDirectory(
+                "WebGLTemplates/AITTemplate/BuildConfig~", out string found, typeof(AITConvertCore)))
             {
-                Path.GetFullPath("Packages/im.toss.apps-in-toss-unity-sdk/WebGLTemplates/AITTemplate/BuildConfig~"),
-                Path.GetFullPath("Packages/com.appsintoss.miniapp/WebGLTemplates/AITTemplate/BuildConfig~"),
-                Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(typeof(AITConvertCore).Assembly.Location)), "WebGLTemplates/AITTemplate/BuildConfig~")
-            };
-
-            foreach (string path in possiblePaths)
-            {
-                if (Directory.Exists(path))
-                {
-                    _cachedSdkBuildConfigPath = path;
-                    Debug.Log($"[AIT] SDK BuildConfig 경로 캐싱: {path}");
-                    return path;
-                }
+                _cachedSdkBuildConfigPath = found;
+                Debug.Log($"[AIT] SDK BuildConfig 경로 캐싱: {found}");
+                return found;
             }
 
             return null;
@@ -1106,23 +1097,14 @@ namespace AppsInToss.Editor
                 return _cachedSdkRuntimePath;
             }
 
-            string projectRoot = Directory.GetParent(Application.dataPath).FullName;
-            string[] possiblePaths = new string[]
+            if (AITPackagePathResolver.TryResolveDirectory(
+                "WebGLTemplates/AITTemplate/Runtime", out string found, typeof(AITConvertCore)))
             {
-                Path.Combine(projectRoot, "Packages/im.toss.apps-in-toss-unity-sdk/WebGLTemplates/AITTemplate/Runtime"),
-                Path.Combine(projectRoot, "Packages/com.appsintoss.miniapp/WebGLTemplates/AITTemplate/Runtime"),
-                Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(typeof(AITConvertCore).Assembly.Location)), "WebGLTemplates/AITTemplate/Runtime")
-            };
-
-            foreach (string path in possiblePaths)
-            {
-                if (Directory.Exists(path))
-                {
-                    _cachedSdkRuntimePath = path;
-                    Debug.Log($"[AIT] SDK Runtime 경로 캐싱: {path}");
-                    return path;
-                }
+                _cachedSdkRuntimePath = found;
+                Debug.Log($"[AIT] SDK Runtime 경로 캐싱: {found}");
+                return found;
             }
+
             return null;
         }
 

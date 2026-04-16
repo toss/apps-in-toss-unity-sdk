@@ -76,7 +76,7 @@ namespace AppsInToss.Editor
                 return new string[] { Path.Combine(resolvedPath, relativePath) };
             }
 
-            // 폴백: 프로젝트 루트 기준 경로 사용
+            // 폴백: 프로젝트 루트 기준 경로 사용 (로컬/임베디드 패키지 개발 환경용)
             string projectRoot = Directory.GetParent(Application.dataPath).FullName;
             var paths = new List<string>
             {

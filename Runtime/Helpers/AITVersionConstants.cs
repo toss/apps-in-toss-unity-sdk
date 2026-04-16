@@ -1,11 +1,11 @@
 // Auto-generated - DO NOT EDIT MANUALLY
-// Updated at: 2026-04-16T04:49:25Z
+// Updated at: 2026-04-16T06:26:38Z
 namespace AppsInToss
 {
     internal static class AITVersionConstants
     {
         public const string Version = "2.4.6";
-        public const string ReleaseDateTime = "20260416_0449";
-        public const string CommitHash = "ea52642";
+        public const string ReleaseDateTime = "20260416_0626";
+        public const string CommitHash = "dc8736c";
     }
 }

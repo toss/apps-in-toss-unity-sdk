@@ -221,6 +221,12 @@ namespace AppsInToss.Editor.ErrorTracker
             if (!IsAitRelated(message, stackTrace))
                 return;
 
+            // Unity PackageManager가 Git 패키지 업데이트 시 발생시키는 immutable 패키지 경고는 무시
+            // (SDK 자동 업데이트 과정에서 정상적으로 발생할 수 있는 경고)
+            if (type == LogType.Warning && message != null
+                && message.IndexOf("immutable packages", StringComparison.OrdinalIgnoreCase) >= 0)
+                return;
+
             string level;
             string exceptionType;
 

@@ -16,6 +16,11 @@ namespace AppsInToss
     [Preserve]
     public static class AITVersion
     {
+        internal const string PackageName = "im.toss.apps-in-toss-unity-sdk";
+        internal const string LegacyPackageName = "com.appsintoss.miniapp";
+        internal const string PackageAssetPath = "Packages/" + PackageName;
+        internal const string LegacyPackageAssetPath = "Packages/" + LegacyPackageName;
+
         private static bool _loaded;
         private static string _version = "unknown";
         private static string _releaseDateTime;
@@ -83,9 +88,26 @@ namespace AppsInToss
 #if UNITY_EDITOR
         private static void LoadVersionInfoEditor()
         {
+            // AITPackagePathResolver.FindSDKPackageInfo()의 null-coalescing 체인과 동일한 로직.
+            // Runtime asmdef에서 Editor assembly를 참조할 수 없으므로 인라인 if-null 형태로 구현.
+            // 폴백 체인: PackageAssetPath → LegacyPackageAssetPath → FindForAssembly
             var packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssetPath(
-                "Packages/im.toss.apps-in-toss-unity-sdk"
+                PackageAssetPath
             );
+            // 레거시 패키지 ID 폴백
+            if (packageInfo == null)
+            {
+                packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssetPath(
+                    LegacyPackageAssetPath
+                );
+            }
+            // 어셈블리 기반 폴백 (Git UPM 패키지에서 경로가 다를 수 있음)
+            if (packageInfo == null)
+            {
+                packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssembly(
+                    typeof(AITVersion).Assembly
+                );
+            }
             if (packageInfo != null)
             {
                 Version = packageInfo.version;

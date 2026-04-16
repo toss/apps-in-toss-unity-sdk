@@ -95,7 +95,11 @@ namespace AppsInToss.Editor
                 if (!string.IsNullOrEmpty(loc))
                 {
                     // Assembly DLL은 {package-root}/Editor/ 또는 유사 하위 폴더에 위치한다고 가정
-                    paths.Add(Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(loc)), relativePath));
+                    string packageRoot = Path.GetDirectoryName(Path.GetDirectoryName(loc));
+                    if (!string.IsNullOrEmpty(packageRoot))
+                    {
+                        paths.Add(Path.Combine(packageRoot, relativePath));
+                    }
                 }
             }
 

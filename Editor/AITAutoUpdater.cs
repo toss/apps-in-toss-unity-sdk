@@ -94,9 +94,7 @@ namespace AppsInToss.Editor
         private static void CheckForUpdate(bool isManualCheck = false)
         {
             // 1. 현재 패키지 정보 수집
-            var packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssetPath(
-                "Packages/im.toss.apps-in-toss-unity-sdk"
-            );
+            var packageInfo = AITPackagePathResolver.FindSDKPackageInfo();
 
             if (packageInfo == null)
             {

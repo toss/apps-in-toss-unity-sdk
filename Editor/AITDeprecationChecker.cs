@@ -143,14 +143,15 @@ namespace AppsInToss.Editor
                 return null;
             }
 
+            // JsonUtility.FromJson은 malformed JSON에서 ArgumentException을 throw할 수 있습니다.
             SdkPolicy policy;
             try
             {
                 policy = JsonUtility.FromJson<SdkPolicy>(json);
             }
-            catch (Exception e)
+            catch (ArgumentException e)
             {
-                Debug.LogWarning($"[AIT] sdk-policy.json 파싱 실패: {e}");
+                Debug.LogWarning($"[AIT] sdk-policy.json 파싱 실패: {e.Message}");
                 return null;
             }
 

@@ -1074,17 +1074,12 @@ namespace AppsInToss.Editor
             }
 
             // 경로 검색
-            string[] possiblePaths = AITPackagePathResolver.GetCandidatePaths(
-                "WebGLTemplates/AITTemplate/BuildConfig~", typeof(AITConvertCore));
-
-            foreach (string path in possiblePaths)
+            if (AITPackagePathResolver.TryResolveDirectory(
+                "WebGLTemplates/AITTemplate/BuildConfig~", out string found, typeof(AITConvertCore)))
             {
-                if (Directory.Exists(path))
-                {
-                    _cachedSdkBuildConfigPath = path;
-                    Debug.Log($"[AIT] SDK BuildConfig 경로 캐싱: {path}");
-                    return path;
-                }
+                _cachedSdkBuildConfigPath = found;
+                Debug.Log($"[AIT] SDK BuildConfig 경로 캐싱: {found}");
+                return found;
             }
 
             return null;
@@ -1102,18 +1097,14 @@ namespace AppsInToss.Editor
                 return _cachedSdkRuntimePath;
             }
 
-            string[] possiblePaths = AITPackagePathResolver.GetCandidatePaths(
-                "WebGLTemplates/AITTemplate/Runtime", typeof(AITConvertCore));
-
-            foreach (string path in possiblePaths)
+            if (AITPackagePathResolver.TryResolveDirectory(
+                "WebGLTemplates/AITTemplate/Runtime", out string found, typeof(AITConvertCore)))
             {
-                if (Directory.Exists(path))
-                {
-                    _cachedSdkRuntimePath = path;
-                    Debug.Log($"[AIT] SDK Runtime 경로 캐싱: {path}");
-                    return path;
-                }
+                _cachedSdkRuntimePath = found;
+                Debug.Log($"[AIT] SDK Runtime 경로 캐싱: {found}");
+                return found;
             }
+
             return null;
         }
 

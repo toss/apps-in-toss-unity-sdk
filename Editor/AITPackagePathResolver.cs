@@ -48,7 +48,7 @@ namespace AppsInToss.Editor
                 _warningLogged = true;
                 Debug.LogWarning(
                     $"[AIT] SDK 패키지를 찾을 수 없습니다. " +
-                    $"시도한 경로: {AITVersion.PackageAssetPath}, {AITVersion.LegacyPackageAssetPath}. " +
+                    $"시도: FindForAssetPath({AITVersion.PackageAssetPath}, {AITVersion.LegacyPackageAssetPath}), FindForAssembly. " +
                     "패키지 설치 상태를 확인하세요.");
             }
 
@@ -83,7 +83,7 @@ namespace AppsInToss.Editor
             // Unity 가상 Packages/ 경로와 달리 실제 디스크 경로를 구성하므로
             // 로컬(file:) 또는 임베디드 패키지 개발 환경에서만 유효함.
             string projectRoot = Directory.GetParent(Application.dataPath).FullName;
-            var paths = new List<string>
+            var paths = new List<string>(3)
             {
                 Path.Combine(projectRoot, AITVersion.PackageAssetPath, relativePath),
                 Path.Combine(projectRoot, AITVersion.LegacyPackageAssetPath, relativePath)

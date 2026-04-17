@@ -50,6 +50,54 @@ namespace AppsInToss.Editor.ErrorTracker
             "[Production Server]"
         };
 
+        // 100% SDK와 무관한 Unity 내부/사용자 프로젝트 메시지 패턴.
+        // IsAitRelated를 통과한 메시지 중에서도 이 패턴이 매칭되면 캡처 대상에서 제외.
+        //
+        // 새 노이즈 패턴 추가 워크플로우:
+        //   1. Sentry에서 해당 이슈가 SDK 변경 없이 재현되는지 확인 (사용자 프로젝트/Unity 내부)
+        //   2. Sentry에서 해당 이슈를 ignored 처리
+        //   3. 여기 NonSdkMessagePatterns에 메시지의 불변 핵심 문구를 부분 문자열로 추가
+        //      (Unity 버전/환경 차이에 민감한 부분은 피할 것)
+        //   4. IsKnownNonSdkMessageTests.cs에 positive/negative 테스트 추가
+        //      (특히 AIT 키워드가 섞여도 필터링되지 않는지 negative 케이스 필수)
+        private static readonly string[] NonSdkMessagePatterns =
+        {
+            // Unity 내부 경고
+            "GfxDevice renderer is null",
+            "Ignoring locale ",
+            "Unable to load build report at Library/",
+            "Cannot read BuildLayout header",
+            "[ServicesCore]",
+            "ProfileValueReference: GetValue called with empty id",
+            "The Editor does not support 32-bit plugins",
+
+            // 사용자 프로젝트 에셋 문제
+            "matches more than one built-in atlases",
+
+            // Unity 패키지 내부
+            "Localization-String-Tables-",
+            "Warning in Graph at Packages/com.unity",
+
+            // 사용자 프로젝트 직렬화 ([Assembly-CSharp] 한정 — SDK 어셈블리의 직렬화 경고는 보호)
+            "Fields serialized in [Assembly-CSharp]",
+
+            // 외부 패키지 (Unity 버전별 괄호 유무에 관계없이 매칭되도록 핵심 문구만 추출)
+            "exists but its folder",
+
+            // Unity URP 내부
+            "exceeds previous array size",
+        };
+
+        // DetermineErrorSource에서 메시지를 SDK로 분류하는 추가 패턴.
+        // 스택트레이스로 출처 판별이 안 될 때, AitKeywords 및 "Sentry:" prefix와 함께 검사됩니다.
+        // AitKeywords와 중복되는 키워드는 제외 — drift 방지.
+        private static readonly string[] SdkMessagePatterns =
+        {
+            "[Validation]",
+            "[pnpm]",
+            "webgl/Build/",
+        };
+
         #endregion
 
         #region Session State
@@ -219,6 +267,10 @@ namespace AppsInToss.Editor.ErrorTracker
                 return;
 
             if (!IsAitRelated(message, stackTrace))
+                return;
+
+            // 확실한 사용자 프로젝트/Unity 내부 메시지는 IsAitRelated를 통과해도 제외
+            if (IsKnownNonSdkMessage(message))
                 return;
 
             // Unity PackageManager가 Git 패키지 업데이트 시 발생시키는 immutable 패키지 경고는 무시
@@ -461,6 +513,53 @@ namespace AppsInToss.Editor.ErrorTracker
             return false;
         }
 
+        /// <summary>
+        /// 메시지가 SDK 자체 로그임을 식별할 수 있는 키워드를 포함하는지 검사합니다.
+        /// <see cref="IsKnownNonSdkMessage"/>의 SDK 보호 가드 및 <see cref="DetermineErrorSource"/>의
+        /// 메시지 기반 분류에서 단일 source로 재사용됩니다.
+        /// </summary>
+        private static bool MessageContainsSdkKeyword(string message)
+        {
+            if (string.IsNullOrEmpty(message))
+                return false;
+
+            // AitKeywords를 그대로 재사용하여 IsAitRelated와 가드의 키워드 set drift를 방지
+            for (int i = 0; i < AitKeywords.Length; i++)
+            {
+                if (message.IndexOf(AitKeywords[i], StringComparison.OrdinalIgnoreCase) >= 0)
+                    return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// 메시지가 확실히 SDK와 무관한 Unity 내부/사용자 프로젝트 패턴인지 판별합니다.
+        /// AIT 키워드(<see cref="AitKeywords"/>)가 포함되면 절대 필터링하지 않습니다.
+        /// </summary>
+        internal static bool IsKnownNonSdkMessage(string message)
+        {
+            if (string.IsNullOrEmpty(message))
+                return false;
+
+            // SDK 자체 로그는 절대 필터링하지 않음 — AitKeywords 전체를 가드로 사용
+            if (MessageContainsSdkKeyword(message))
+                return false;
+
+            for (int i = 0; i < NonSdkMessagePatterns.Length; i++)
+            {
+                if (message.IndexOf(NonSdkMessagePatterns[i], StringComparison.Ordinal) >= 0)
+                    return true;
+            }
+
+            // "Script attached to ... is missing" 패턴은 Assets/ 경로가 포함된 경우에만 사용자 프로젝트로 분류
+            if (message.IndexOf("Script attached to", StringComparison.Ordinal) >= 0
+                && message.IndexOf("is missing", StringComparison.Ordinal) >= 0
+                && message.IndexOf("Assets/", StringComparison.Ordinal) >= 0)
+                return true;
+
+            return false;
+        }
+
         private static string ExtractExceptionType(string message)
         {
             // Unity exception format: "ExceptionType: message"
@@ -521,9 +620,26 @@ namespace AppsInToss.Editor.ErrorTracker
                 }
             }
 
-            // 스택트레이스가 없거나 판별 불가한 경우, 메시지의 [AIT] 접두사로 판단
-            if (!string.IsNullOrEmpty(message) && message.StartsWith("[AIT]", StringComparison.Ordinal))
+            // 스택트레이스로 판별 불가한 경우, 메시지의 SDK 키워드로 분류
+            // AitKeywords의 "[AIT", "AIT:", "AppsInToss", "apps-in-toss", "AITNpmRunner" 등 —
+            // IsKnownNonSdkMessage의 SDK 보호 가드와 동일한 source를 사용
+            if (MessageContainsSdkKeyword(message))
                 return "sdk";
+
+            // 메시지 내 SDK 관련 추가 패턴
+            if (!string.IsNullOrEmpty(message))
+            {
+                // Sentry transport 자체 에러
+                if (message.StartsWith("Sentry:", StringComparison.Ordinal))
+                    return "sdk";
+
+                // SDK 빌드 파이프라인 관련 추가 패턴
+                for (int i = 0; i < SdkMessagePatterns.Length; i++)
+                {
+                    if (message.IndexOf(SdkMessagePatterns[i], StringComparison.Ordinal) >= 0)
+                        return "sdk";
+                }
+            }
 
             return "unknown";
         }

@@ -155,4 +155,44 @@ public class ErrorSourceTests
     }
 
     #endregion
+
+    #region SDK Message Pattern Classification
+
+    [Test]
+    public void Message_AppsInTossKeyword_ReturnsSdk()
+    {
+        Assert.AreEqual("sdk", AITEditorErrorTracker.DetermineErrorSource(null, "AppsInToss something failed"));
+    }
+
+    [Test]
+    public void Message_AppsInTossPackageId_ReturnsSdk()
+    {
+        Assert.AreEqual("sdk", AITEditorErrorTracker.DetermineErrorSource(null, "Error in apps-in-toss build"));
+    }
+
+    [Test]
+    public void Message_ValidationTag_ReturnsSdk()
+    {
+        Assert.AreEqual("sdk", AITEditorErrorTracker.DetermineErrorSource(null, "[Validation] missing icon URL"));
+    }
+
+    [Test]
+    public void Message_SentryPrefix_ReturnsSdk()
+    {
+        Assert.AreEqual("sdk", AITEditorErrorTracker.DetermineErrorSource(null, "Sentry: Failed to send envelope"));
+    }
+
+    [Test]
+    public void Message_PnpmTag_ReturnsSdk()
+    {
+        Assert.AreEqual("sdk", AITEditorErrorTracker.DetermineErrorSource(null, "[pnpm] install failed"));
+    }
+
+    [Test]
+    public void Message_WebglBuildPath_ReturnsSdk()
+    {
+        Assert.AreEqual("sdk", AITEditorErrorTracker.DetermineErrorSource(null, "Brotli webgl/Build/main.unityweb crashed"));
+    }
+
+    #endregion
 }

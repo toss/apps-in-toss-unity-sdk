@@ -161,11 +161,6 @@
 
 ## Sentry / ErrorTracker 개선 (2026-04-18 Sentry 이슈 전수 조사 기반)
 
-### P0 — 테스트 이벤트 ignored 처리
-- **이슈**: SDK-86, 87, 88, 89 — EditMode 통합 테스트에서 의도적으로 발생시키는 이벤트가 새 SDK 버전 배포마다 새 이슈 ID로 재생성됨
-- **현상**: 이전에 ignored 처리해도 Bulk Release 후 새 이벤트가 들어오면서 새 이슈로 생성
-- **조치**: ErrorTracker에서 테스트 환경(`test: true` 또는 batchmode + 특정 테스트 메서드)에서 발생한 이벤트는 Sentry로 전송하지 않도록 필터 추가
-
 ### P1 — SDK 설정 경고를 자동 적용으로 전환
 - **이슈**: SDK-8A (Sentry Exception Support 설정 필요, 31건), SDK-8B (IL2CPP stack traces WebGL 미지원, 19건)
 - **현상**: SDK가 매 빌드마다 경고만 출력하고, 사용자가 수동으로 설정해야 함

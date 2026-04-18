@@ -4,6 +4,8 @@
 // ---------------------------------------------------------------------------
 
 using NUnit.Framework;
+using UnityEngine;
+using UnityEngine.TestTools;
 using AppsInToss.Editor.ErrorTracker;
 
 [TestFixture]
@@ -192,6 +194,41 @@ public class ErrorSourceTests
     public void Message_WebglBuildPath_ReturnsSdk()
     {
         Assert.AreEqual("sdk", AITEditorErrorTracker.DetermineErrorSource(null, "Brotli webgl/Build/main.unityweb crashed"));
+    }
+
+    #endregion
+
+    #region AITLog sentryCapture=false 회귀 테스트
+
+    [Test]
+    public void AITLog_SentryCaptureFalse_SuppressesEnvelope()
+    {
+        LogAssert.Expect(LogType.Error, "[AIT] TEST: sentryCapture=false 경로 검증");
+
+        AITEditorErrorTracker.BeginSuppressLogCapture();
+        try
+        {
+            Debug.LogError("[AIT] TEST: sentryCapture=false 경로 검증");
+        }
+        finally
+        {
+            AITEditorErrorTracker.EndSuppressLogCapture();
+        }
+
+        Assert.Pass("Suppress scope 정상 종료");
+    }
+
+    [Test]
+    public void AITLog_Error_WithSentryCaptureFalse_DoesNotThrow()
+    {
+        LogAssert.Expect(LogType.Error, "[AIT] TEST: sentryCapture=false 스모크");
+
+        Assert.DoesNotThrow(() =>
+        {
+            AppsInToss.Editor.AITLog.Error(
+                "[AIT] TEST: sentryCapture=false 스모크",
+                sentryCapture: false);
+        });
     }
 
     #endregion

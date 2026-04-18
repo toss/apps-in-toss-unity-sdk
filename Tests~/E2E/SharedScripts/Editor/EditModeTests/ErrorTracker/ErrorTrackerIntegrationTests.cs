@@ -89,7 +89,7 @@ public class ErrorTrackerIntegrationTests
         var envelope = AITSentryEnvelope.BuildErrorEventEnvelope(
             dsn: _dsn,
             exceptionType: "TestException",
-            exceptionValue: "[AIT] EditMode 통합 테스트: 에러 이벤트 전송 확인",
+            exceptionValue: "[AIT-TEST] EditMode 통합 테스트: 에러 이벤트 전송 확인",
             stackTrace: "  at ErrorTrackerIntegrationTests.SendErrorEvent_ReturnsHttp200 () in Tests/ErrorTrackerIntegrationTests.cs:1",
             level: "error",
             tags: new Dictionary<string, string>
@@ -99,8 +99,12 @@ public class ErrorTrackerIntegrationTests
                 { "unity_version", Application.unityVersion }
             },
             release: AITEditorErrorTracker.GetRelease(),
-            environment: "test"
+            environment: "edit-mode-test"
         );
+
+        const string expectedEnv = "edit-mode-test";
+        StringAssert.Contains($"\"environment\":\"{expectedEnv}\"", envelope,
+            $"통합 테스트는 environment='{expectedEnv}' 로 전송되어야 합니다");
 
         var statusCode = SendEnvelopeSync(envelope);
         Assert.AreEqual(200, statusCode, $"Sentry가 200을 반환해야 합니다 (실제: {statusCode})");
@@ -130,7 +134,7 @@ public class ErrorTrackerIntegrationTests
         var envelope = AITSentryEnvelope.BuildErrorEventEnvelope(
             dsn: _dsn,
             exceptionType: "AITBuildError.FAIL_NPM_BUILD",
-            exceptionValue: "[AIT] EditMode 통합 테스트: pnpm build 실패 시뮬레이션",
+            exceptionValue: "[AIT-TEST] EditMode 통합 테스트: pnpm build 실패 시뮬레이션",
             stackTrace: null,
             level: "error",
             tags: new Dictionary<string, string>
@@ -141,7 +145,7 @@ public class ErrorTrackerIntegrationTests
             breadcrumbs: breadcrumbs,
             fingerprint: new[] { "{{ default }}", "FAIL_NPM_BUILD" },
             release: AITEditorErrorTracker.GetRelease(),
-            environment: "test"
+            environment: "edit-mode-test"
         );
 
         var statusCode = SendEnvelopeSync(envelope);
@@ -158,7 +162,7 @@ public class ErrorTrackerIntegrationTests
         var envelope = AITSentryEnvelope.BuildErrorEventEnvelope(
             dsn: _dsn,
             exceptionType: "AITBuildError.BUILD_WEBGL_FAILED",
-            exceptionValue: "[AIT] EditMode 통합 테스트: WebGL 빌드 실패 시뮬레이션",
+            exceptionValue: "[AIT-TEST] EditMode 통합 테스트: WebGL 빌드 실패 시뮬레이션",
             stackTrace: null,
             level: "error",
             tags: new Dictionary<string, string>
@@ -170,7 +174,7 @@ public class ErrorTrackerIntegrationTests
             },
             fingerprint: new[] { "{{ default }}", "BUILD_WEBGL_FAILED" },
             release: AITEditorErrorTracker.GetRelease(),
-            environment: "test"
+            environment: "edit-mode-test"
         );
 
         var statusCode = SendEnvelopeSync(envelope);
@@ -183,7 +187,7 @@ public class ErrorTrackerIntegrationTests
         var envelope = AITSentryEnvelope.BuildErrorEventEnvelope(
             dsn: _dsn,
             exceptionType: "UnityError",
-            exceptionValue: "[AIT] AITNpmRunner: pnpm install 실패 — ENOENT: no such file or directory",
+            exceptionValue: "[AIT-TEST] AITNpmRunner: pnpm install 실패 — ENOENT: no such file or directory",
             stackTrace: null,
             level: "error",
             tags: new Dictionary<string, string>
@@ -193,7 +197,7 @@ public class ErrorTrackerIntegrationTests
                 { "unity_version", Application.unityVersion }
             },
             release: AITEditorErrorTracker.GetRelease(),
-            environment: "test"
+            environment: "edit-mode-test"
         );
 
         var statusCode = SendEnvelopeSync(envelope);
@@ -217,7 +221,7 @@ public class ErrorTrackerIntegrationTests
             errorCount: 0,
             duration: 0,
             release: AITEditorErrorTracker.GetRelease(),
-            environment: "test"
+            environment: "edit-mode-test"
         );
 
         var statusCode = SendEnvelopeSync(envelope);
@@ -241,7 +245,7 @@ public class ErrorTrackerIntegrationTests
             errorCount: 0,
             duration: 0,
             release: AITEditorErrorTracker.GetRelease(),
-            environment: "test"
+            environment: "edit-mode-test"
         );
         var initStatus = SendEnvelopeSync(initEnvelope);
         Assert.AreEqual(200, initStatus, $"Session init 전송 실패 (HTTP {initStatus})");
@@ -257,7 +261,7 @@ public class ErrorTrackerIntegrationTests
             errorCount: 2,
             duration: 300.0,
             release: AITEditorErrorTracker.GetRelease(),
-            environment: "test"
+            environment: "edit-mode-test"
         );
 
         var statusCode = SendEnvelopeSync(closeEnvelope);
@@ -326,7 +330,7 @@ public class ErrorTrackerIntegrationTests
             tags: tags,
             measurements: measurements,
             release: AITEditorErrorTracker.GetRelease(),
-            environment: "test"
+            environment: "edit-mode-test"
         );
 
         var statusCode = SendEnvelopeSync(envelope);
@@ -377,7 +381,7 @@ public class ErrorTrackerIntegrationTests
             spans: spans,
             tags: new Dictionary<string, string> { { "test", "true" } },
             release: AITEditorErrorTracker.GetRelease(),
-            environment: "test"
+            environment: "edit-mode-test"
         );
 
         var statusCode = SendEnvelopeSync(envelope);

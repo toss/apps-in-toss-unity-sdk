@@ -411,14 +411,18 @@ namespace AppsInToss.Editor
                         else
                         {
                             Debug.LogError($"[Platform] ✗ 명령 실패 (Exit Code: {result.ExitCode})");
-                            // 실패 시 stdout과 stderr 모두 출력 (에러 정보가 stdout에 있을 수 있음)
+                            // stdout/stderr는 Console에만 출력 (Sentry에는 최종 실패 메시지만 전송되도록)
                             if (!string.IsNullOrEmpty(result.Output))
                             {
-                                Debug.LogError($"[Platform] stdout:\n{result.Output.Trim()}");
+                                AppsInToss.Editor.AITLog.Error(
+                                    $"[Platform] stdout:\n{result.Output.Trim()}",
+                                    sentryCapture: false);
                             }
                             if (!string.IsNullOrEmpty(result.Error))
                             {
-                                Debug.LogError($"[Platform] stderr:\n{result.Error.Trim()}");
+                                AppsInToss.Editor.AITLog.Error(
+                                    $"[Platform] stderr:\n{result.Error.Trim()}",
+                                    sentryCapture: false);
                             }
                         }
                     }

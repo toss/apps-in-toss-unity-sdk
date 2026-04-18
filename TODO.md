@@ -6,12 +6,6 @@
 
 ## 문서 정합성 이슈
 
-### P0 — GettingStarted.md: 존재하지 않는 release 태그 참조
-- **파일**: `Docs~/GettingStarted.md` (24, 34행)
-- **현상**: `release/v2.4.6` 태그를 참조하지만, 실제 최신 태그는 `release/v2.0.5`
-- **영향**: 사용자가 SDK 설치 시 즉시 실패
-- **조치**: 실제 존재하는 태그로 업데이트하거나, 릴리즈 파이프라인에서 태그 생성 확인
-
 ### P1 — SDK Generator 테스트 README: 삭제된 파일 참조
 - **파일**: `sdk-runtime-generator~/tests/unit/README.md` (8, 83, 126행)
 - **현상**: `compilation.test.ts`를 Tier 1 테스트로 참조하지만, 이 파일은 `cc95357` 커밋에서 삭제됨
@@ -31,9 +25,6 @@
 - **파일**: `Docs~/SentryIntegration.md` (69, 89, 95행)
 - **현상**: 예시에서 SDK 버전 `1.11.2` 사용 — 현재 `2.4.6`
 - **조치**: 현재 버전으로 예시 갱신
-
-### P2 — CLAUDE.md: 이미 PR #391에서 수정 중
-- **상태**: `chore/fix-claude-md-accuracy` 브랜치에서 13건 불일치 수정 완료, 머지 대기
 
 ---
 
@@ -175,43 +166,10 @@
 - **현상**: 이전에 ignored 처리해도 Bulk Release 후 새 이벤트가 들어오면서 새 이슈로 생성
 - **조치**: ErrorTracker에서 테스트 환경(`test: true` 또는 batchmode + 특정 테스트 메서드)에서 발생한 이벤트는 Sentry로 전송하지 않도록 필터 추가
 
-### P0 — Node.js/pnpm 설치 실패 에러 메시지가 줄별로 별도 이슈로 분리됨
-- **이슈**: SDK-AY~B7 (약 10개 이슈가 하나의 에러 상황에서 발생)
-- **현상**: `Debug.LogError`로 각 줄을 별도로 출력하여 Sentry에서 각각 다른 이슈로 그룹핑됨
-  - `[AIT] ========================================`
-  - `[AIT] ✗ pnpm을 설치할 수 없습니다.`
-  - `[AIT] `
-  - `[AIT] 해결 방법:`
-  - `[AIT]   1. 네트워크 연결을 확인하세요.`
-  - `[AIT]   2. %LOCALAPPDATA%\...`
-  - `[AIT]   3. 방화벽/프록시...`
-  - `[AIT] 내장 Node.js 다운로드 또는 pnpm 설치에 실패했습니다.`
-  - `[AIT] [병렬] pnpm 설치에 실패했습니다.`
-- **조치**: 여러 줄의 안내 메시지를 `\n`으로 연결하여 단일 `Debug.LogError` 호출로 통합. 또는 주요 에러만 `LogError`로, 안내 메시지는 `Debug.Log`로 변경
-
-### P1 — 빌드 파일 중복 경고가 CI에서 대량 발생
-- **이슈**: SDK-7F~7N (107건씩 발생)
-- **현상**: CI E2E 테스트에서 Build 폴더에 이전 빌드 잔여물이 남아있어 `*.loader.js`에 2개 파일 일치 등의 경고가 반복 발생
-- **조치**: CI 환경에서 빌드 전 Build 폴더 정리를 확실히 하거나, 이 경고의 로그 레벨을 `Debug.Log`로 변경
-
 ### P1 — SDK 설정 경고를 자동 적용으로 전환
 - **이슈**: SDK-8A (Sentry Exception Support 설정 필요, 31건), SDK-8B (IL2CPP stack traces WebGL 미지원, 19건)
 - **현상**: SDK가 매 빌드마다 경고만 출력하고, 사용자가 수동으로 설정해야 함
 - **조치**: `AITBuildInitializer.Init()`에서 해당 설정을 자동으로 적용하도록 변경 (Graphics API 변경과 동일 패턴)
-
-### P1 — 배포(deploy) 실패 시 에러 메시지 개선
-- **이슈**: SDK-BB (배포 실패), SDK-B9~BC ([Platform] 명령 실패), SDK-BD~BE (터미널 제어문자, UV_HANDLE_CLOSING)
-- **현상**: `ait deploy` 실패 시 stdout/stderr가 그대로 Sentry에 올라옴. 터미널 제어문자(`[?25l│`)까지 별도 이슈로 잡힘
-- **조치**: 배포 프로세스의 stdout/stderr 로그를 정리(터미널 제어문자 제거)하고, 에러 메시지를 하나로 통합
-
-### P2 — pnpm install frozen-lockfile 실패 → 일반 install 폴백 경고
-- **이슈**: SDK-BG (frozen-lockfile 실패), SDK-BF~BH ([pnpm] 명령 실패/출력)
-- **현상**: `pnpm install --frozen-lockfile` 실패 후 일반 `pnpm install`로 폴백하는 과정의 중간 로그가 Sentry에 올라옴
-- **조치**: 폴백 동작은 정상 프로세스이므로, 중간 실패 로그를 `Debug.Log`로 변경하고 최종 실패 시에만 `Debug.LogError` 사용
-
-### P2 — `error_source` 분류 정확도 개선
-- **현상**: `DetermineErrorSource()`에서 `[AIT]` 접두사와 스택트레이스 경로만으로 분류. `AppsInToss`, `[pnpm]`, `[Platform]`, `[Validation]`, `Sentry:`, `webgl/Build/` 등 SDK 관련 메시지가 `unknown`으로 분류됨
-- **조치**: `DetermineErrorSource()`의 메시지 패턴 매칭 확장 — `AppsInToss`, `apps-in-toss`, `[pnpm]`, `[Platform]`, `[Validation]`, `Sentry:`, `webgl/Build/`, `ait-build/` 포함 시 `sdk`로 분류
 
 ### P2 — 사용자 SDK API 변경으로 인한 컴파일 에러 모니터링
 - **이슈**: SDK-80, 81 (AppsInTossMenu.Build/Package 정의 없음), SDK-7Z (namespace AppsInToss not found)

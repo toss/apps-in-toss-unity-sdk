@@ -298,7 +298,9 @@ namespace AppsInToss.Editor
                             Debug.LogError($"[AIT Async] ✗ 명령 실패 (Exit: {result.ExitCode}): {task.Id}");
                             if (!string.IsNullOrEmpty(result.Error))
                             {
-                                Debug.LogError($"[AIT Async] stderr:\n{result.Error.Trim()}");
+                                AppsInToss.Editor.AITLog.Error(
+                                    $"[AIT Async] stderr:\n{result.Error.Trim()}",
+                                    sentryCapture: false);
                             }
                         }
                         task.OnComplete?.Invoke(result);

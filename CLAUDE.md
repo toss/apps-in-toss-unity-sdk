@@ -106,6 +106,15 @@
   - `Failed to compile player scripts` — 사용자 프로젝트 스크립트 컴파일 오류
   - `FAIL_NPM_BUILD` — 사용자 빌드 환경(Node.js/pnpm) 문제
 
+### 통합 테스트 environment 분리
+- `ErrorTrackerIntegrationTests.cs`는 실제 Sentry DSN에 envelope을 POST해 HTTP 200을 검증
+- 이 테스트는 `environment: "edit-mode-test"` 로 전송됨 (프로덕션 `editor` 환경과 구분)
+- **Sentry 대시보드에서 Inbound Filter 설정 필요** (수동, 1회성):
+  - Sentry → `apps-in-toss-unity-sdk` Project → Settings → Inbound Filters
+  - "Filter by environment" 활성화 → `edit-mode-test` 차단
+  - 추가 안전망: "Filter by error message" → `[AIT-TEST]` prefix 포함 메시지 차단
+- 이 필터 설정 없이는 CI에서 통합 테스트가 돌 때마다 프로덕션 Sentry에 이벤트가 유입됨
+
 ## 빠른 참조: 주요 명령어
 
 | 작업 | 명령어 |

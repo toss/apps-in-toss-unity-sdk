@@ -104,8 +104,8 @@ export async function typeCheckBridgeCode(
     const tsconfigContent = {
       compilerOptions: {
         target: 'ES2020',
-        module: 'ES2020',
-        moduleResolution: 'node',
+        module: 'ESNext',
+        moduleResolution: 'bundler',
         strict: true,
         noEmit: true,
         skipLibCheck: true,
@@ -144,7 +144,7 @@ export async function typeCheckBridgeCode(
     }
 
     // tsc 실행 (ts-morph 사용)
-    const { Project } = await import('ts-morph');
+    const { Project, ts } = await import('ts-morph');
 
     const project = new Project({
       tsConfigFilePath: tsconfigPath,
@@ -169,11 +169,19 @@ export async function typeCheckBridgeCode(
         file = path.basename(sourceFile.getFilePath());
       }
 
+      // getMessageText()는 string 또는 DiagnosticMessageChain을 반환.
+      // chain일 때 toString()은 "[object Object]"가 되므로 flattenDiagnosticMessageText로 풀어냄.
+      const rawMessage = diagnostic.getMessageText();
+      const message =
+        typeof rawMessage === 'string'
+          ? rawMessage
+          : ts.flattenDiagnosticMessageText(diagnostic.compilerObject.messageText, '\n');
+
       errors.push({
         file,
         line,
         column,
-        message: diagnostic.getMessageText().toString(),
+        message,
         code: diagnostic.getCode(),
       });
     }

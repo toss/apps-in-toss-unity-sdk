@@ -128,6 +128,15 @@ namespace AppsInToss.Editor
             PlayerSettings.SetScriptingBackend(BuildTargetGroup.WebGL, ScriptingImplementation.IL2CPP);
 #endif
 
+            // ===== WebGL Stack Trace Log Type =====
+            // 경고 방지: "The 'Method Name, File Name, and Line Number' option for IL2CPP stack traces is not supported on WebGL."
+            // WebGL에서는 Full(Method Name/File Name/Line Number)이 지원되지 않음. ScriptOnly로 설정.
+            PlayerSettings.SetStackTraceLogType(LogType.Error,     StackTraceLogType.ScriptOnly);
+            PlayerSettings.SetStackTraceLogType(LogType.Assert,    StackTraceLogType.ScriptOnly);
+            PlayerSettings.SetStackTraceLogType(LogType.Warning,   StackTraceLogType.ScriptOnly);
+            PlayerSettings.SetStackTraceLogType(LogType.Log,       StackTraceLogType.ScriptOnly);
+            PlayerSettings.SetStackTraceLogType(LogType.Exception, StackTraceLogType.ScriptOnly);
+
             PlayerSettings.stripEngineCode = editorConfig.stripEngineCode;
 
             // ===== Managed Stripping Level (프로필 → 자동) =====
@@ -184,6 +193,7 @@ namespace AppsInToss.Editor
             Debug.Log($"[AIT]   - 스레딩: {threadsSupport}{(editorConfig.threadsSupport < 0 ? " (자동)" : "")}");
             Debug.Log($"[AIT]   - 데이터 캐싱: {dataCaching}{(editorConfig.dataCaching < 0 ? " (자동)" : "")}");
             Debug.Log($"[AIT]   - 예외 처리: {exceptionSupport}{(editorConfig.exceptionSupport < 0 ? " (자동)" : "")}");
+            Debug.Log($"[AIT]   - Stack Trace Log Type: ScriptOnly (WebGL 자동)");
             Debug.Log($"[AIT]   - Stripping Level: {strippingLevel}{(profile?.managedStrippingLevel < 0 || profile == null ? " (자동)" : " (프로필)")}");
             Debug.Log($"[AIT]   - IL2CPP 설정: {il2cppConfig}{(editorConfig.il2cppConfiguration < 0 ? " (자동)" : "")}");
             Debug.Log($"[AIT]   - Run In Background: {runInBackground}{(editorConfig.runInBackground < 0 ? " (자동)" : "")}");

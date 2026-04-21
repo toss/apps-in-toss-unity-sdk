@@ -161,11 +161,6 @@
 
 ## Sentry / ErrorTracker 개선 (2026-04-18 Sentry 이슈 전수 조사 기반)
 
-### P1 — SDK 설정 경고를 자동 적용으로 전환
-- **이슈**: SDK-8A (Sentry Exception Support 설정 필요, 31건), SDK-8B (IL2CPP stack traces WebGL 미지원, 19건)
-- **현상**: SDK가 매 빌드마다 경고만 출력하고, 사용자가 수동으로 설정해야 함
-- **조치**: `AITBuildInitializer.Init()`에서 해당 설정을 자동으로 적용하도록 변경 (Graphics API 변경과 동일 패턴)
-
 ### P2 — 사용자 SDK API 변경으로 인한 컴파일 에러 모니터링
 - **이슈**: SDK-80, 81 (AppsInTossMenu.Build/Package 정의 없음), SDK-7Z (namespace AppsInToss not found)
 - **현상**: SDK 업데이트 후 API 변경으로 사용자 프로젝트에서 컴파일 에러 발생. SDK breaking change의 영향을 파악할 수 있는 귀중한 데이터

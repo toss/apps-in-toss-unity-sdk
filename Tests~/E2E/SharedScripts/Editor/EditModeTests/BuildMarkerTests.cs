@@ -6,33 +6,17 @@
 using NUnit.Framework;
 using System;
 using System.IO;
-using System.Reflection;
 using AppsInToss;
 
 [TestFixture]
 public class BuildMarkerTests
 {
     private string tempDir;
-    private MethodInfo writeMarkerMethod;
-    private MethodInfo readMarkerMethod;
-    private Type buildInfoType;
 
     [SetUp]
     public void Setup()
     {
         tempDir = Path.Combine(Path.GetTempPath(), "ait-test-marker-" + Guid.NewGuid().ToString("N").Substring(0, 8));
-
-        var convertType = typeof(AITConvertCore);
-        buildInfoType = convertType.Assembly.GetType("AppsInToss.AITBuildInfo");
-        Assert.IsNotNull(buildInfoType, "AITBuildInfo type should exist in assembly");
-
-        writeMarkerMethod = convertType.GetMethod("WriteBuildMarker",
-            BindingFlags.NonPublic | BindingFlags.Static);
-        Assert.IsNotNull(writeMarkerMethod, "WriteBuildMarker method should exist");
-
-        readMarkerMethod = convertType.GetMethod("ReadBuildMarker",
-            BindingFlags.NonPublic | BindingFlags.Static);
-        Assert.IsNotNull(readMarkerMethod, "ReadBuildMarker method should exist");
     }
 
     [TearDown]
@@ -44,16 +28,17 @@ public class BuildMarkerTests
         }
     }
 
-    private object MakeBuildInfo()
+    private static AITBuildInfo MakeBuildInfo(string sdkVersion = "test-version")
     {
-        var info = Activator.CreateInstance(buildInfoType);
-        buildInfoType.GetField("sdkVersion").SetValue(info, "test-version");
-        buildInfoType.GetField("buildTime").SetValue(info, "2026-01-01T00:00:00Z");
-        buildInfoType.GetField("compressionFormat").SetValue(info, 0);
-        buildInfoType.GetField("decompressionFallback").SetValue(info, false);
-        buildInfoType.GetField("profileName").SetValue(info, "Production");
-        buildInfoType.GetField("unityVersion").SetValue(info, "2021.3.45f2");
-        return info;
+        return new AITBuildInfo
+        {
+            sdkVersion = sdkVersion,
+            buildTime = "2026-01-01T00:00:00Z",
+            compressionFormat = 0,
+            decompressionFallback = false,
+            profileName = "Production",
+            unityVersion = "2021.3.45f2"
+        };
     }
 
     // =====================================================
@@ -67,12 +52,10 @@ public class BuildMarkerTests
         Assert.IsFalse(Directory.Exists(missingOutputPath),
             "Precondition: webgl/ should not exist");
 
-        var buildInfo = MakeBuildInfo();
-
         // DirectoryNotFoundException이 발생하지 않아야 함
         Assert.DoesNotThrow(() =>
         {
-            writeMarkerMethod.Invoke(null, new object[] { missingOutputPath, buildInfo });
+            AITConvertCore.WriteBuildMarker(missingOutputPath, MakeBuildInfo());
         }, "WriteBuildMarker should not throw when parent directory is missing");
 
         string markerPath = Path.Combine(missingOutputPath, AITConvertCore.BUILD_MARKER_FILENAME);
@@ -90,8 +73,7 @@ public class BuildMarkerTests
         string existingOutputPath = Path.Combine(tempDir, "webgl");
         Directory.CreateDirectory(existingOutputPath);
 
-        var buildInfo = MakeBuildInfo();
-        writeMarkerMethod.Invoke(null, new object[] { existingOutputPath, buildInfo });
+        AITConvertCore.WriteBuildMarker(existingOutputPath, MakeBuildInfo());
 
         string markerPath = Path.Combine(existingOutputPath, AITConvertCore.BUILD_MARKER_FILENAME);
         Assert.IsTrue(File.Exists(markerPath),
@@ -106,19 +88,13 @@ public class BuildMarkerTests
     public void WriteBuildMarker_RoundTripsThroughReadBuildMarker()
     {
         string outputPath = Path.Combine(tempDir, "webgl");
-        var written = MakeBuildInfo();
 
-        writeMarkerMethod.Invoke(null, new object[] { outputPath, written });
+        AITConvertCore.WriteBuildMarker(outputPath, MakeBuildInfo());
 
-        object read = readMarkerMethod.Invoke(null, new object[] { outputPath });
+        AITBuildInfo read = AITConvertCore.ReadBuildMarker(outputPath);
         Assert.IsNotNull(read, "ReadBuildMarker should return a value after WriteBuildMarker");
-
-        Assert.AreEqual("test-version",
-            buildInfoType.GetField("sdkVersion").GetValue(read),
-            "sdkVersion should round-trip");
-        Assert.AreEqual("Production",
-            buildInfoType.GetField("profileName").GetValue(read),
-            "profileName should round-trip");
+        Assert.AreEqual("test-version", read.sdkVersion, "sdkVersion should round-trip");
+        Assert.AreEqual("Production", read.profileName, "profileName should round-trip");
     }
 
     // =====================================================
@@ -130,16 +106,12 @@ public class BuildMarkerTests
     {
         string outputPath = Path.Combine(tempDir, "webgl");
 
-        var first = MakeBuildInfo();
-        writeMarkerMethod.Invoke(null, new object[] { outputPath, first });
+        AITConvertCore.WriteBuildMarker(outputPath, MakeBuildInfo("first-version"));
+        AITConvertCore.WriteBuildMarker(outputPath, MakeBuildInfo("second-version"));
 
-        var second = MakeBuildInfo();
-        buildInfoType.GetField("sdkVersion").SetValue(second, "second-version");
-        writeMarkerMethod.Invoke(null, new object[] { outputPath, second });
-
-        object read = readMarkerMethod.Invoke(null, new object[] { outputPath });
-        Assert.AreEqual("second-version",
-            buildInfoType.GetField("sdkVersion").GetValue(read),
+        AITBuildInfo read = AITConvertCore.ReadBuildMarker(outputPath);
+        Assert.IsNotNull(read);
+        Assert.AreEqual("second-version", read.sdkVersion,
             "Second WriteBuildMarker should overwrite the first");
     }
 }

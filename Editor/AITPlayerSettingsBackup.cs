@@ -34,6 +34,13 @@ namespace AppsInToss.Editor
         public ManagedStrippingLevel managedStrippingLevel;
         public Il2CppCompilerConfiguration il2cppCompilerConfiguration;
 
+        // Stack Trace Log Type (LogType별)
+        public StackTraceLogType stackTraceLogTypeError;
+        public StackTraceLogType stackTraceLogTypeAssert;
+        public StackTraceLogType stackTraceLogTypeWarning;
+        public StackTraceLogType stackTraceLogTypeLog;
+        public StackTraceLogType stackTraceLogTypeException;
+
 #if UNITY_2022_3_OR_NEWER
         public WebGLDebugSymbolMode debugSymbolMode;
 #endif
@@ -80,6 +87,13 @@ namespace AppsInToss.Editor
                 managedStrippingLevel = PlayerSettings.GetManagedStrippingLevel(BuildTargetGroup.WebGL),
                 il2cppCompilerConfiguration = PlayerSettings.GetIl2CppCompilerConfiguration(BuildTargetGroup.WebGL),
 #endif
+
+                // Stack Trace Log Type (LogType별)
+                stackTraceLogTypeError     = PlayerSettings.GetStackTraceLogType(LogType.Error),
+                stackTraceLogTypeAssert    = PlayerSettings.GetStackTraceLogType(LogType.Assert),
+                stackTraceLogTypeWarning   = PlayerSettings.GetStackTraceLogType(LogType.Warning),
+                stackTraceLogTypeLog       = PlayerSettings.GetStackTraceLogType(LogType.Log),
+                stackTraceLogTypeException = PlayerSettings.GetStackTraceLogType(LogType.Exception),
             };
 
 #if UNITY_2022_3_OR_NEWER
@@ -149,6 +163,13 @@ namespace AppsInToss.Editor
             PlayerSettings.SetManagedStrippingLevel(BuildTargetGroup.WebGL, managedStrippingLevel);
             PlayerSettings.SetIl2CppCompilerConfiguration(BuildTargetGroup.WebGL, il2cppCompilerConfiguration);
 #endif
+
+            // Stack Trace Log Type (LogType별)
+            PlayerSettings.SetStackTraceLogType(LogType.Error,     stackTraceLogTypeError);
+            PlayerSettings.SetStackTraceLogType(LogType.Assert,    stackTraceLogTypeAssert);
+            PlayerSettings.SetStackTraceLogType(LogType.Warning,   stackTraceLogTypeWarning);
+            PlayerSettings.SetStackTraceLogType(LogType.Log,       stackTraceLogTypeLog);
+            PlayerSettings.SetStackTraceLogType(LogType.Exception, stackTraceLogTypeException);
 
 #if UNITY_2022_3_OR_NEWER
             PlayerSettings.WebGL.debugSymbolMode = debugSymbolMode;

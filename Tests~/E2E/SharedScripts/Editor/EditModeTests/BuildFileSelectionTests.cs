@@ -320,7 +320,7 @@ public class BuildFileSelectionTests
     }
 
     // =====================================================
-    // 로그 레벨 검증 — 자동 정리 성공 시 Warning/Error 0건
+    // 로그 레벨 검증 — 성공 시 Debug.Log 1건만 발생, Warning/Error 없음
     // Sentry 노이즈 제거의 핵심 목적 회귀 방지.
     // LogAssert.NoUnexpectedReceived는 Error/Assert/Exception만 감시하므로
     // Warning까지 확실히 막으려면 logMessageReceived 훅으로 직접 수집.
@@ -337,12 +337,24 @@ public class BuildFileSelectionTests
         File.WriteAllText(newFile, "// new");
         File.SetLastWriteTime(newFile, new DateTime(2026, 2, 1));
 
-        var noisy = CollectNoisyLogs(() =>
+        var logs = CollectLogs(() =>
             AITBuildValidator.FindFileInBuild(tempDir, "*.loader.js"));
 
+        // 양성 검증: 성공 메시지가 실제로 발생해야 함 (기능이 조용히 사라지지 않도록)
+        bool emittedSuccess = logs.Exists(l =>
+            l.type == LogType.Log &&
+            Regex.IsMatch(l.message, @"이전 빌드 잔여물 \d+개 자동 정리"));
+        Assert.IsTrue(emittedSuccess,
+            "성공 경로에서 자동 정리 확인 Debug.Log가 발생해야 함: " +
+            string.Join(" | ", logs.ConvertAll(l => $"[{l.type}] {l.message}")));
+
+        // 음성 검증: Warning/Error/Exception/Assert 없음 (Sentry 노이즈 방지)
+        var noisy = logs.FindAll(l =>
+            l.type == LogType.Warning || l.type == LogType.Error ||
+            l.type == LogType.Exception || l.type == LogType.Assert);
         Assert.IsEmpty(noisy,
             "성공 경로는 Warning/Error 로그를 발생시키면 안 됨: " +
-            string.Join(" | ", noisy));
+            string.Join(" | ", noisy.ConvertAll(l => $"[{l.type}] {l.message}")));
     }
 
     // =====================================================
@@ -373,7 +385,7 @@ public class BuildFileSelectionTests
             Assume.That(IsDirectoryWriteBlocked(tempDir),
                 "현재 사용자는 0555 디렉토리에도 쓸 수 있음 (root?) — 테스트 의미 없음");
 
-            LogAssert.Expect(LogType.Warning, new Regex(@"\[AIT\].+중복 파일 \d+개 정리 실패"));
+            LogAssert.Expect(LogType.Warning, new Regex(@"\[AIT\].+이전 빌드 잔여물 \d+개 정리 실패"));
             LogAssert.Expect(LogType.Warning, new Regex(@"\[AIT\].+Clean Build"));
 
             string result = AITBuildValidator.FindFileInBuild(tempDir, "*.loader.js");
@@ -386,7 +398,16 @@ public class BuildFileSelectionTests
         finally
         {
             // TearDown이 tempDir을 지우려면 쓰기 권한 복구 필요
-            try { Syscall_Chmod(tempDir, "0755"); } catch { /* best-effort */ }
+            try
+            {
+                Syscall_Chmod(tempDir, "0755");
+            }
+            catch (Exception ex)
+            {
+                // 진단 정보는 TestContext.Error로 — Debug.LogError는 AITEditorErrorTracker
+                // 가 다시 Sentry로 보낼 수 있어 회귀 방지 목적에 역행
+                TestContext.Error.WriteLine($"chmod 0755 restore failed: {ex.Message}");
+            }
         }
     }
 
@@ -410,39 +431,44 @@ public class BuildFileSelectionTests
         File.SetLastWriteTime(newFile, new DateTime(2026, 2, 1));
 
         // Windows에서 FileShare.Read로 열면 다른 프로세스의 Delete가 sharing violation 발생
+        string result;
         using (File.Open(oldFile, FileMode.Open, FileAccess.Read, FileShare.Read))
         {
-            LogAssert.Expect(LogType.Warning, new Regex(@"\[AIT\].+중복 파일 \d+개 정리 실패"));
+            LogAssert.Expect(LogType.Warning, new Regex(@"\[AIT\].+이전 빌드 잔여물 \d+개 정리 실패"));
             LogAssert.Expect(LogType.Warning, new Regex(@"\[AIT\].+Clean Build"));
 
-            string result = AITBuildValidator.FindFileInBuild(tempDir, "*.loader.js");
+            result = AITBuildValidator.FindFileInBuild(tempDir, "*.loader.js");
 
-            Assert.AreEqual("new.loader.js", result,
-                "삭제 실패 시에도 최신 파일명은 정상 반환되어야 함");
             Assert.IsTrue(File.Exists(oldFile),
-                "파일이 열려있어 삭제 실패 → oldFile은 남아있어야 함");
+                "락이 걸려있는 동안 oldFile은 남아있어야 함");
         }
+
+        Assert.AreEqual("new.loader.js", result,
+            "삭제 실패 시에도 최신 파일명은 정상 반환되어야 함");
     }
 
     // -----------------------------------------------------------------
-    // 유틸리티: 동작 중 Warning/Error 로그를 수집 (LogAssert 보강)
+    // 유틸리티: 동작 중 발생한 모든 로그를 타입과 함께 수집
+    // LogAssert.NoUnexpectedReceived가 Warning을 감시하지 않는 한계 보완.
     // -----------------------------------------------------------------
-    private static List<string> CollectNoisyLogs(Action action)
+    private struct LogEntry
     {
-        var noisy = new List<string>();
+        public LogType type;
+        public string message;
+    }
+
+    private static List<LogEntry> CollectLogs(Action action)
+    {
+        var logs = new List<LogEntry>();
         Application.LogCallback handler = null;
         handler = (msg, _, type) =>
         {
-            if (type == LogType.Warning || type == LogType.Error ||
-                type == LogType.Exception || type == LogType.Assert)
-            {
-                noisy.Add($"[{type}] {msg}");
-            }
+            logs.Add(new LogEntry { type = type, message = msg });
         };
         Application.logMessageReceived += handler;
         try { action(); }
         finally { Application.logMessageReceived -= handler; }
-        return noisy;
+        return logs;
     }
 
     private static bool IsDirectoryWriteBlocked(string dir)

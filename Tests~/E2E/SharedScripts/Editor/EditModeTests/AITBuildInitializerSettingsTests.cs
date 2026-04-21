@@ -97,6 +97,11 @@ public class AITBuildInitializerSettingsTests
         PlayerSettings.SetStackTraceLogType(LogType.Error, StackTraceLogType.ScriptOnly);
         PlayerSettings.SetStackTraceLogType(LogType.Log, StackTraceLogType.ScriptOnly);
 
+        // 덮어쓰기가 실제로 snapshot 값과 다른지 확인해 Restore가 fixed-point가 아니라 round-trip임을 보장
+        Assert.AreNotEqual(StackTraceLogType.Full,
+            PlayerSettings.GetStackTraceLogType(LogType.Error),
+            "Sanity: overwrite must actually change LogType.Error value before Restore");
+
         snapshot.Restore();
 
         Assert.AreEqual(StackTraceLogType.Full,

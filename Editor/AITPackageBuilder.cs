@@ -1212,7 +1212,12 @@ namespace AppsInToss.Editor
             // Build 대상 폴더 정리 후 재생성
             if (Directory.Exists(buildDest))
             {
-                AITFileUtils.DeleteDirectory(buildDest);
+                // 실패 시 DeleteDirectory가 내부 경고를 남기지만, 잔존 파일이 이후 복사 단계에
+                // 섞일 수 있으므로 상위 레벨에서도 한 번 더 사용자에게 알림
+                if (!AITFileUtils.DeleteDirectory(buildDest))
+                {
+                    Debug.LogWarning($"[AIT] 이전 빌드 잔여물 정리 실패: {buildDest} — 새 빌드에 오래된 파일이 섞일 수 있습니다");
+                }
             }
             Directory.CreateDirectory(buildDest);
 
@@ -1810,14 +1815,10 @@ namespace AppsInToss.Editor
             if (Directory.Exists(nodeModulesPath))
             {
                 Debug.Log("[AIT] node_modules 삭제 중...");
-                try
+                // DeleteDirectory는 내부적으로 실패 시 경고 로그를 남기고 false를 반환
+                if (AITFileUtils.DeleteDirectory(nodeModulesPath))
                 {
-                    AITFileUtils.DeleteDirectory(nodeModulesPath);
                     Debug.Log("[AIT] ✓ node_modules 삭제 완료");
-                }
-                catch (Exception e)
-                {
-                    Debug.LogWarning($"[AIT] node_modules 삭제 실패: {e}");
                 }
             }
 
@@ -1825,14 +1826,9 @@ namespace AppsInToss.Editor
             if (Directory.Exists(npmCachePath))
             {
                 Debug.Log("[AIT] 레거시 .npm-cache 삭제 중...");
-                try
+                if (AITFileUtils.DeleteDirectory(npmCachePath))
                 {
-                    AITFileUtils.DeleteDirectory(npmCachePath);
                     Debug.Log("[AIT] ✓ 레거시 .npm-cache 삭제 완료");
-                }
-                catch (Exception e)
-                {
-                    Debug.LogWarning($"[AIT] .npm-cache 삭제 실패: {e}");
                 }
             }
         }
@@ -1878,20 +1874,14 @@ namespace AppsInToss.Editor
 
                     if (shouldKeep) continue;
 
-                    try
+                    // SafeDelete/DeleteDirectory는 예외를 던지지 않고 실패 시 내부에서 경고 로그를 남김
+                    if (Directory.Exists(item))
                     {
-                        if (Directory.Exists(item))
-                        {
-                            AITFileUtils.DeleteDirectory(item);
-                        }
-                        else if (File.Exists(item))
-                        {
-                            File.Delete(item);
-                        }
+                        AITFileUtils.DeleteDirectory(item);
                     }
-                    catch (Exception e)
+                    else if (File.Exists(item))
                     {
-                        Debug.LogWarning($"[AIT] 삭제 실패: {itemName} - {e}");
+                        AITFileSystemHelper.SafeDelete(item);
                     }
                 }
             }

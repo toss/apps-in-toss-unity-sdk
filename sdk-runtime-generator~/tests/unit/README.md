@@ -1,23 +1,23 @@
-# SDK Generator 문법 검증 테스트
+# SDK Generator 속성 검증 테스트
 
-Unity SDK Generator가 생성한 코드의 문법 오류를 **실제 컴파일러**로 검증합니다.
+Unity SDK Generator가 생성한 코드를 **속성(property) 기반**으로 검증합니다. 정규식이나 스냅샷 대신 TypeScript Compiler API / ts-morph로 구조적 불변식을 확인합니다.
 
 ## 📋 테스트 범위
 
-### 문법 검증 (Syntax Validation)
-**파일**: `compilation.test.ts`
-
-**검증 내용**:
-- ✅ C# 컴파일 가능 여부 (Roslyn/Mono mcs)
-- ✅ JavaScript 문법 오류 검사 (TypeScript Compiler API)
-- ✅ jslib mergeInto 패턴 정합성
+| 파일 | 검증 내용 |
+|------|-----------|
+| `binding.test.ts` | C# API ↔ jslib 함수 시그니처/이름 정합성 |
+| `invariants.test.ts` | 생성 코드 전반의 구조적 불변식 (네이밍, 타입 매핑 등) |
+| `serialization.test.ts` | JSON 직렬화/역직렬화 경로의 안전성 |
+| `differential.test.ts` | 생성기 수정 전후 산출물의 의미 있는 차이 감지 |
+| `multi-version.test.ts` | 여러 `@apps-in-toss/web-framework` 버전에 대한 호환성 |
 
 **실행**:
 ```bash
 npm test
 ```
 
-**목적**: SDK 생성 직후 빠른 문법 검증 (~10초)
+**목적**: SDK 생성 직후 빠른 구조 검증 (~수 초)
 
 **언제 실행?**
 - SDK Generator 코드 수정 후
@@ -55,32 +55,22 @@ cat Tests~/E2E/tests/benchmark-results.json
 ### 1. 의존성 설치
 
 ```bash
-cd sdk-runtime-generator/tests/unit
-npm install
+cd sdk-runtime-generator~/tests/unit
+pnpm install
 ```
 
-### 2. 컴파일러 설치
-
-#### macOS/Linux
-```bash
-# Mono C# Compiler 설치
-brew install mono
-```
-
-#### Windows
-```bash
-# .NET SDK 설치 (Roslyn 포함)
-# https://dotnet.microsoft.com/download
-```
-
-### 3. 테스트 실행
+### 2. 테스트 실행
 
 ```bash
 # 모든 테스트 실행
 npm test
 
-# Tier 1만 실행
-npm run test:tier1
+# 개별 테스트 스위트 실행
+npm run test:binding
+npm run test:invariants
+npm run test:serialization
+npm run test:differential
+npm run test:multi-version
 
 # Watch 모드
 npm run test:watch
@@ -100,9 +90,9 @@ npm run test:ui
 
 ### ✅ 사용하는 것
 
-**실제 컴파일러**:
-- C#: Roslyn/Mono mcs (실제 빌드)
-- JavaScript: TypeScript Compiler API (AST 기반)
+**AST 기반 구조 검증**:
+- TypeScript Compiler API / ts-morph로 생성 코드 파싱
+- 외부 컴파일러 설치 불필요 (Node.js만 있으면 됨)
 
 **속성 기반 검증**:
 - "출력이 뭐냐"가 아니라 "출력이 올바른가"
@@ -116,46 +106,29 @@ GitHub Actions에서 자동 실행:
 ```yaml
 - name: Run SDK Generator Tests
   run: |
-    cd sdk-runtime-generator/tests/unit
-    npm ci
+    cd sdk-runtime-generator~/tests/unit
+    pnpm install
     npm test
 ```
 
 ## 📝 새 테스트 추가하기
 
-1. `compilation.test.ts`를 참고하여 새 파일 생성
-2. 실제 컴파일러 사용 (정규식 금지)
-3. 의미 있는 검증만 수행
+1. 기존 테스트 파일(`invariants.test.ts` 등)을 참고하여 새 파일 생성
+2. TypeScript Compiler API / ts-morph 사용 (정규식 금지)
+3. 의미 있는 구조적 불변식만 검증
 
 ## 🐛 트러블슈팅
-
-### 에러: `mcs` or `csc.exe` not found
-
-**해결**:
-```bash
-# macOS
-brew install mono
-
-# Windows
-# .NET SDK 설치
-```
-
-### 에러: Unity DLL을 찾을 수 없습니다
-
-**해결**:
-- Unity를 설치하거나
-- 테스트가 시스템 C# 라이브러리로 대체하도록 수정
 
 ### 에러: TypeScript 정의 파일을 찾을 수 없습니다
 
 **해결**:
 ```bash
-cd ../../../sdk-runtime-generator
+cd ../../../sdk-runtime-generator~
 pnpm install
 ```
 
 ## 📚 참고 자료
 
-- [Roslyn Compiler API](https://github.com/dotnet/roslyn)
 - [TypeScript Compiler API](https://github.com/microsoft/TypeScript/wiki/Using-the-Compiler-API)
+- [ts-morph](https://ts-morph.com/)
 - [Property-Based Testing](https://en.wikipedia.org/wiki/QuickCheck)

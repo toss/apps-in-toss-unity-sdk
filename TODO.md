@@ -4,30 +4,6 @@
 
 ---
 
-## 문서 정합성 이슈
-
-### P1 — SDK Generator 테스트 README: 삭제된 파일 참조
-- **파일**: `sdk-runtime-generator~/tests/unit/README.md` (8, 83, 126행)
-- **현상**: `compilation.test.ts`를 Tier 1 테스트로 참조하지만, 이 파일은 `cc95357` 커밋에서 삭제됨
-- **조치**: README에서 Tier 1 참조 제거 또는 현재 테스트 구조에 맞게 갱신
-
-### P1 — SDK Generator tests/unit/package.json: 존재하지 않는 스크립트
-- **파일**: `sdk-runtime-generator~/tests/unit/package.json` (12행)
-- **현상**: `"test:tier1": "vitest run compilation.test.ts"` — 파일 없음
-- **조치**: 삭제된 tier1 스크립트 제거, 부모 package.json의 tier 스크립트와 정합성 확보
-
-### P2 — Contributing.md: 삭제된 Mono mcs 검증 참조
-- **파일**: `Docs~/Contributing.md` (44행)
-- **현상**: `pnpm validate # Mono mcs로 컴파일 검사` — Mono mcs 의존성은 이미 제거됨
-- **조치**: `pnpm validate` 설명을 현재 동작("vitest run")에 맞게 수정
-
-### P2 — SentryIntegration.md: 예시 버전 번호 오래됨
-- **파일**: `Docs~/SentryIntegration.md` (69, 89, 95행)
-- **현상**: 예시에서 SDK 버전 `1.11.2` 사용 — 현재 `2.4.6`
-- **조치**: 현재 버전으로 예시 갱신
-
----
-
 ## 코드 구조 개선 (리팩토링)
 
 ### P1 — AIT.Types.cs (2,086행): 자동 생성 타입 파일 분할

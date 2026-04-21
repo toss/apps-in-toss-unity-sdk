@@ -806,10 +806,10 @@ namespace AppsInToss.Editor
             DrawModifiedIndicator(isModified);
 
             string label = config.exceptionSupport < 0
-                ? $"예외 처리 모드 (자동: ExplicitlyThrown)"
+                ? $"예외 처리 모드 (자동: {defaultValue})"
                 : "예외 처리 모드";
 
-            string[] options = { "자동 (ExplicitlyThrown)", "None", "ExplicitlyThrownOnly", "FullWithStacktrace", "FullWithoutStacktrace" };
+            string[] options = { $"자동 ({defaultValue})", "None", "ExplicitlyThrownOnly", "FullWithStacktrace", "FullWithoutStacktrace" };
             int currentIndex = config.exceptionSupport < 0 ? 0 : config.exceptionSupport + 1;
             int newIndex = EditorGUILayout.Popup(label, currentIndex, options);
             config.exceptionSupport = newIndex == 0 ? -1 : newIndex - 1;

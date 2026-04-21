@@ -291,17 +291,22 @@ namespace AppsInToss.Editor
                 // (경고 로그만으로는 매 빌드마다 반복 발생 → Sentry 노이즈 누적)
                 if (files.Length > 1)
                 {
-                    Array.Sort(files, (a, b) => File.GetLastWriteTime(b).CompareTo(File.GetLastWriteTime(a)));
+                    // LastWriteTime 동률 시 파일명 내림차순으로 고정(Array.Sort는 불안정)
+                    Array.Sort(files, (a, b) =>
+                    {
+                        int byTime = File.GetLastWriteTime(b).CompareTo(File.GetLastWriteTime(a));
+                        return byTime != 0 ? byTime : string.CompareOrdinal(b, a);
+                    });
 
                     var deleted = new List<string>();
                     var failed = new List<string>();
                     for (int i = 1; i < files.Length; i++)
                     {
-                        var stalePath = files[i];
+                        string stalePath = files[i];
                         try
                         {
                             File.Delete(stalePath);
-                            var metaPath = stalePath + ".meta";
+                            string metaPath = stalePath + ".meta";
                             if (File.Exists(metaPath))
                             {
                                 File.Delete(metaPath);
@@ -320,18 +325,12 @@ namespace AppsInToss.Editor
 
                     if (failed.Count == 0)
                     {
-                        Debug.Log($"[AIT] ✓ '{pattern}' 중복 {deleted.Count}개 자동 정리: {string.Join(", ", deleted.ToArray())}");
+                        Debug.Log($"[AIT] ✓ '{pattern}' 이전 빌드 잔여물 {deleted.Count}개 자동 정리: {string.Join(", ", deleted)}");
                     }
                     else
                     {
-                        // 삭제 실패 시에만 기존 경고 로그 유지 (수동 Clean Build 유도)
-                        Debug.LogWarning($"[AIT] ⚠️ '{pattern}'에 {files.Length}개 파일이 일치합니다. 최신 파일을 사용합니다.");
-                        foreach (var file in files)
-                        {
-                            var time = File.GetLastWriteTime(file);
-                            var selected = file == files[0] ? " ← 선택됨" : "";
-                            Debug.LogWarning($"[AIT]    - {Path.GetFileName(file)} ({time:yyyy-MM-dd HH:mm:ss}){selected}");
-                        }
+                        // 삭제 실패 시 Clean Build 유도 (삭제 성공한 파일은 이미 없으므로 실패 목록만 표시)
+                        Debug.LogWarning($"[AIT] ⚠️ '{pattern}' 중복 파일 {failed.Count}개 정리 실패: {string.Join(", ", failed)}");
                         Debug.LogWarning("[AIT]    이전 빌드 잔여물일 수 있습니다. 'Clean Build' 사용을 권장합니다.");
                     }
                 }

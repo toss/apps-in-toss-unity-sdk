@@ -6,6 +6,9 @@
 using NUnit.Framework;
 using System;
 using System.IO;
+using System.Text.RegularExpressions;
+using UnityEngine;
+using UnityEngine.TestTools;
 using AppsInToss.Editor;
 
 [TestFixture]
@@ -275,5 +278,120 @@ public class BuildFileSelectionTests
         Assert.AreEqual("build.loader.js", result);
         Assert.IsTrue(File.Exists(file),
             "Single match should never be deleted");
+    }
+
+    // =====================================================
+    // LastWriteTime 동률 — 파일명 내림차순 타이브레이크로 결정적 선택
+    // Array.Sort가 불안정하므로 명시적 이차 정렬 키가 필요
+    // =====================================================
+
+    [Test]
+    public void FindFileInBuild_SameTimestamp_DeterministicByName()
+    {
+        var time = new DateTime(2026, 1, 1, 12, 0, 0);
+
+        string fileA = Path.Combine(tempDir, "aaa.loader.js");
+        File.WriteAllText(fileA, "// a");
+        File.SetLastWriteTime(fileA, time);
+
+        string fileZ = Path.Combine(tempDir, "zzz.loader.js");
+        File.WriteAllText(fileZ, "// z");
+        File.SetLastWriteTime(fileZ, time);
+
+        string result = AITBuildValidator.FindFileInBuild(tempDir, "*.loader.js");
+
+        // CompareOrdinal 내림차순 → "zzz" > "aaa" → zzz 선택
+        Assert.AreEqual("zzz.loader.js", result,
+            "Tie on LastWriteTime should break deterministically by filename (descending)");
+        Assert.IsFalse(File.Exists(fileA), "Tie loser should be deleted");
+        Assert.IsTrue(File.Exists(fileZ), "Tie winner should remain");
+    }
+
+    // =====================================================
+    // 로그 레벨 검증 — 자동 정리 성공 시 Warning 없이 Log 1줄
+    // Sentry 노이즈 제거의 핵심 목적 회귀 방지
+    // =====================================================
+
+    [Test]
+    public void FindFileInBuild_DuplicateCleanup_EmitsInfoLogNotWarning()
+    {
+        string oldFile = Path.Combine(tempDir, "old.loader.js");
+        File.WriteAllText(oldFile, "// old");
+        File.SetLastWriteTime(oldFile, new DateTime(2025, 1, 1));
+
+        string newFile = Path.Combine(tempDir, "new.loader.js");
+        File.WriteAllText(newFile, "// new");
+        File.SetLastWriteTime(newFile, new DateTime(2026, 2, 1));
+
+        LogAssert.Expect(LogType.Log, new Regex(@"\[AIT\] ✓ .+ 이전 빌드 잔여물 1개 자동 정리"));
+
+        AITBuildValidator.FindFileInBuild(tempDir, "*.loader.js");
+
+        // NoUnexpectedReceived가 Warning/Error가 같이 찍히지 않았음을 보장
+        LogAssert.NoUnexpectedReceived();
+    }
+
+    // =====================================================
+    // Fallback 경로 검증 — 삭제 실패 시에도 최신 파일 반환 + 경고
+    // 부모 디렉토리 권한 제어로 UnauthorizedAccessException 유도 (Unix 계열)
+    // Windows는 POSIX 권한 모델과 달라 동일하게 실패하지 않으므로 스킵
+    // =====================================================
+
+    [Test]
+    public void FindFileInBuild_DeleteFails_FallsBackToWarning()
+    {
+        Assume.That(Application.platform != RuntimePlatform.WindowsEditor,
+            "Unix-only: chmod-based directory permission manipulation");
+
+        string oldFile = Path.Combine(tempDir, "old.loader.js");
+        File.WriteAllText(oldFile, "// old");
+        File.SetLastWriteTime(oldFile, new DateTime(2025, 1, 1));
+
+        string newFile = Path.Combine(tempDir, "new.loader.js");
+        File.WriteAllText(newFile, "// new");
+        File.SetLastWriteTime(newFile, new DateTime(2026, 2, 1));
+
+        // 부모 디렉토리를 r-xr-xr-x(0555)로 변경 — 삭제 불가 → UnauthorizedAccessException
+        var originalAttrs = File.GetAttributes(tempDir);
+        try
+        {
+            Syscall_Chmod(tempDir, "0555");
+
+            LogAssert.Expect(LogType.Warning, new Regex(@"중복 파일 1개 정리 실패"));
+            LogAssert.Expect(LogType.Warning, new Regex(@"Clean Build"));
+
+            string result = AITBuildValidator.FindFileInBuild(tempDir, "*.loader.js");
+
+            Assert.AreEqual("new.loader.js", result,
+                "Even when cleanup fails, newest file must still be returned");
+            Assert.IsTrue(File.Exists(oldFile),
+                "Delete should have failed, file must still exist");
+        }
+        finally
+        {
+            // TearDown이 tempDir을 지우려면 쓰기 권한 복구 필요
+            Syscall_Chmod(tempDir, "0755");
+            File.SetAttributes(tempDir, originalAttrs);
+        }
+    }
+
+    private static void Syscall_Chmod(string path, string mode)
+    {
+        var psi = new System.Diagnostics.ProcessStartInfo("chmod", $"{mode} \"{path}\"")
+        {
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+        };
+        using (var proc = System.Diagnostics.Process.Start(psi))
+        {
+            proc.WaitForExit(3000);
+            if (proc.ExitCode != 0)
+            {
+                throw new InvalidOperationException(
+                    $"chmod {mode} {path} failed: {proc.StandardError.ReadToEnd()}");
+            }
+        }
     }
 }

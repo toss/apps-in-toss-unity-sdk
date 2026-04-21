@@ -314,17 +314,13 @@ namespace AppsInToss.Editor
                             }
                             deleted.Add(Path.GetFileName(stalePath));
                         }
-                        catch (IOException)
+                        catch (Exception ex) when (
+                            ex is IOException ||
+                            ex is UnauthorizedAccessException ||
+                            ex is PathTooLongException ||
+                            ex is NotSupportedException ||
+                            ex is System.Security.SecurityException)
                         {
-                            failed.Add(Path.GetFileName(stalePath));
-                        }
-                        catch (UnauthorizedAccessException)
-                        {
-                            failed.Add(Path.GetFileName(stalePath));
-                        }
-                        catch (Exception)
-                        {
-                            // PathTooLongException 등 플랫폼별 예외도 fallback 처리
                             failed.Add(Path.GetFileName(stalePath));
                         }
                     }
@@ -336,8 +332,8 @@ namespace AppsInToss.Editor
                     else
                     {
                         // 삭제 실패 시 Clean Build 유도 (삭제 성공한 파일은 이미 없으므로 실패 목록만 표시)
-                        Debug.LogWarning($"[AIT] ⚠️ '{pattern}' 중복 파일 {failed.Count}개 정리 실패: {string.Join(", ", failed)}");
-                        Debug.LogWarning("[AIT]    이전 빌드 잔여물일 수 있습니다. 'Clean Build' 사용을 권장합니다.");
+                        Debug.LogWarning($"[AIT] ⚠️ '{pattern}' 이전 빌드 잔여물 {failed.Count}개 정리 실패: {string.Join(", ", failed)}");
+                        Debug.LogWarning("[AIT]    'Clean Build' 사용을 권장합니다.");
                     }
                 }
 

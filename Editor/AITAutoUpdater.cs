@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using UnityEditor;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
@@ -161,17 +162,20 @@ namespace AppsInToss.Editor
 
             bool capturedIsManualCheck = isManualCheck;
 
-            System.Threading.Tasks.Task.Run(() =>
+            Task.Run(() =>
             {
                 try
                 {
                     string remoteHash = GetRemoteCommitHash(capturedGitUrl, capturedFragment);
 
-                    EditorApplication.delayCall += () =>
+                    // delayCall은 Action 델리게이트이므로 아래는 async void 람다로 추론됨.
+                    // 내부 예외는 반드시 이 try/catch에서 삼켜야 함
+                    // (async void의 throw는 SynchronizationContext로 올라가 Editor를 크래시시킬 수 있음).
+                    EditorApplication.delayCall += async () =>
                     {
                         try
                         {
-                            OnRemoteHashResolved(
+                            await OnRemoteHashResolved(
                                 remoteHash,
                                 capturedInstalledHash,
                                 capturedPackageId,
@@ -362,9 +366,15 @@ namespace AppsInToss.Editor
         }
 
         /// <summary>
-        /// 원격 해시 결과 처리 (메인 스레드에서 호출)
+        /// 원격 해시 결과 처리 (메인 스레드의 async 컨텍스트에서 await 기반으로 실행됨)
         /// </summary>
-        private static void OnRemoteHashResolved(
+        /// <remarks>
+        /// 이 메서드는 네트워크/Unity API 예외를 내부에서 삼키지 않고 throw할 수 있음.
+        /// EditorApplication.delayCall의 async void 람다에서 호출되므로 호출 측은
+        /// 반드시 try/catch로 예외를 삼켜야 함 (async void의 미처리 예외는
+        /// SynchronizationContext로 올라가 Editor를 크래시시킬 수 있음).
+        /// </remarks>
+        private static async Task OnRemoteHashResolved(
             string remoteHash,
             string installedHash,
             string packageId,
@@ -411,8 +421,8 @@ namespace AppsInToss.Editor
             Debug.Log($"[AIT] SDK 업데이트 발견: {shortInstalled} → {shortRemote}");
 
             // 커밋 시간 정보 가져오기 (GitHub API)
-            string installedTime = GetCommitTime(gitUrl, installedHash);
-            string remoteTime = GetCommitTime(gitUrl, remoteHash);
+            string installedTime = await GetCommitTime(gitUrl, installedHash);
+            string remoteTime = await GetCommitTime(gitUrl, remoteHash);
 
             // 다이얼로그 메시지 구성
             string installedInfo = string.IsNullOrEmpty(installedTime)
@@ -469,7 +479,7 @@ namespace AppsInToss.Editor
         /// <summary>
         /// GitHub API를 통해 커밋 시간 가져오기
         /// </summary>
-        private static string GetCommitTime(string gitUrl, string commitHash)
+        private static async Task<string> GetCommitTime(string gitUrl, string commitHash)
         {
             try
             {
@@ -492,7 +502,9 @@ namespace AppsInToss.Editor
                     client.DefaultRequestHeaders.Add("User-Agent", "Unity-AIT-SDK");
                     client.Timeout = TimeSpan.FromSeconds(5);
 
-                    var response = client.GetStringAsync(apiUrl).Result;
+                    // await 사용: 메인 스레드에서 .Result로 블로킹하면
+                    // Unity SynchronizationContext와 상호작용해 데드락 가능.
+                    string response = await client.GetStringAsync(apiUrl);
 
                     // 간단한 JSON 파싱으로 committer.date 추출
                     // "committer":{"name":"...","email":"...","date":"2026-02-02T12:34:56Z"}
@@ -509,7 +521,9 @@ namespace AppsInToss.Editor
             }
             catch (Exception)
             {
-                // API 호출 실패 시 무시
+                // API 호출 실패 시 무시 — 커밋 시간은 보조 정보이므로 실패해도
+                // 업데이트 체크 흐름 자체는 계속 진행되어야 함. 이 메서드는 null을
+                // 반환하고, 호출 측(OnRemoteHashResolved)은 short hash만 표시함.
             }
 
             return null;

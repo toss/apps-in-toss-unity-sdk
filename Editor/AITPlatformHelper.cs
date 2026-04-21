@@ -395,6 +395,7 @@ namespace AppsInToss.Editor
 
                     // 타임아웃 오버로드 WaitForExit(int)은 stdout/stderr 비동기 리더 배수(drain)를
                     // 보장하지 않음. 파라미터 없는 오버로드를 한 번 더 호출해 리더 완료를 확정함.
+                    // (이 시점에서 프로세스는 이미 exit 상태이므로 리더가 EOF로 곧 완료됨.)
                     process.WaitForExit();
 
                     // 이 시점에서 두 리더 Task는 완료 상태이므로 동기 접근에 데드락 위험 없음.

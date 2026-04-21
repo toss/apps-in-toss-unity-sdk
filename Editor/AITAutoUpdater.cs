@@ -368,6 +368,10 @@ namespace AppsInToss.Editor
         /// <summary>
         /// 원격 해시 결과 처리 (메인 스레드의 async 컨텍스트에서 await 기반으로 실행됨)
         /// </summary>
+        /// <remarks>
+        /// EditorApplication.delayCall의 async void 람다에서 await 됨.
+        /// 예외는 호출 측 try/catch에서 반드시 삼켜야 함 (async void 크래시 방지).
+        /// </remarks>
         private static async Task OnRemoteHashResolved(
             string remoteHash,
             string installedHash,

@@ -1,12 +1,13 @@
 // -----------------------------------------------------------------------
 // AITBuildInitializerSettingsTests.cs - Sentry/Stack Trace 설정 자동 적용 검증
-// Level 0: GetDefaultExceptionSupport, Init()가 적용하는 WebGL Stack Trace 설정 검증
+// Level 0: AITBuildInitializer.ApplySentryFriendlyWebGLSettings 및 백업/복원 순수 로직 검증
 // Sentry 이슈 APPS-IN-TOSS-UNITY-SDK-8A / 8B 재발 방지용 회귀 테스트
 // -----------------------------------------------------------------------
 
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
+using AppsInToss;
 using AppsInToss.Editor;
 
 [TestFixture]
@@ -43,24 +44,23 @@ public class AITBuildInitializerSettingsTests
     }
 
     // =====================================================
-    // Init() 동작 검증 (SDK-8A 회귀 방지)
+    // ApplySentryFriendlyWebGLSettings 동작 검증 (SDK-8A 회귀 방지)
     // =====================================================
 
     [Test]
-    public void Init_Sets_WebGLExceptionSupport_FullWithStacktrace()
+    public void ApplySentryFriendlyWebGLSettings_Sets_ExceptionSupport()
     {
-        // 초기 상태를 낮춰놓고 Init()가 올려주는지 확인
         PlayerSettings.WebGL.exceptionSupport = WebGLExceptionSupport.None;
 
-        AITBuildInitializer.Init();
+        AITBuildInitializer.ApplySentryFriendlyWebGLSettings(WebGLExceptionSupport.FullWithStacktrace);
 
         Assert.AreEqual(WebGLExceptionSupport.FullWithStacktrace,
             PlayerSettings.WebGL.exceptionSupport,
-            "Init() must set WebGL exceptionSupport to FullWithStacktrace");
+            "ApplySentryFriendlyWebGLSettings must set WebGL exceptionSupport to the requested value");
     }
 
     // =====================================================
-    // Init() Stack Trace 설정 검증 (SDK-8B 회귀 방지)
+    // ApplySentryFriendlyWebGLSettings Stack Trace 설정 검증 (SDK-8B 회귀 방지)
     // =====================================================
 
     [TestCase(LogType.Error)]
@@ -68,16 +68,16 @@ public class AITBuildInitializerSettingsTests
     [TestCase(LogType.Warning)]
     [TestCase(LogType.Log)]
     [TestCase(LogType.Exception)]
-    public void Init_Sets_StackTraceLogType_ScriptOnly_For_All_LogTypes(LogType logType)
+    public void ApplySentryFriendlyWebGLSettings_Sets_StackTraceLogType_ScriptOnly(LogType logType)
     {
-        // WebGL에서 지원되지 않는 Full로 먼저 설정 → Init()가 ScriptOnly로 내려야 함
+        // WebGL에서 지원되지 않는 Full로 먼저 설정 → 헬퍼가 ScriptOnly로 내려야 함
         PlayerSettings.SetStackTraceLogType(logType, StackTraceLogType.Full);
 
-        AITBuildInitializer.Init();
+        AITBuildInitializer.ApplySentryFriendlyWebGLSettings(WebGLExceptionSupport.FullWithStacktrace);
 
         Assert.AreEqual(StackTraceLogType.ScriptOnly,
             PlayerSettings.GetStackTraceLogType(logType),
-            $"Init() must set stack trace log type for {logType} to ScriptOnly (WebGL does not support Full)");
+            $"ApplySentryFriendlyWebGLSettings must set stack trace log type for {logType} to ScriptOnly (WebGL does not support Full)");
     }
 
     // =====================================================

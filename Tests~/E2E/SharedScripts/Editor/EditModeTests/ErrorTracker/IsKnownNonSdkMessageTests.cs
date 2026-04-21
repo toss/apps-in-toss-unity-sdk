@@ -154,6 +154,26 @@ public class IsKnownNonSdkMessageTests
     }
 
     [Test]
+    public void SpriteAtlasDuplicate_FullSentryMessage_ReturnsTrue()
+    {
+        // Sentry에서 실제 관찰된 원문 — 마침표와 "Default to use..." 후행 문구 포함
+        // 리그레션 방지: 패턴이 끝부분 변화에 영향받지 않는지 검증
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Sprite object_19_01 matches more than one built-in atlases. Default to use the first available atlas."));
+    }
+
+    [TestCase("object_04_02")]
+    [TestCase("cloud")]
+    [TestCase("BG-main_01")]
+    [TestCase("player idle frame")]
+    public void SpriteAtlasDuplicate_VariousSpriteNames_ReturnsTrue(string spriteName)
+    {
+        // Sprite 이름 변형(숫자, 하이픈, 공백)에 관계없이 핵심 문구가 매칭되는지 검증
+        string message = $"Sprite {spriteName} matches more than one built-in atlases. Default to use the first available atlas.";
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(message));
+    }
+
+    [Test]
     public void ScriptMissingInUserAssets_ReturnsTrue()
     {
         Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(

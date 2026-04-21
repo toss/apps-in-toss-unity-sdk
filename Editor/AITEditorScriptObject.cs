@@ -187,7 +187,7 @@ namespace AppsInToss
         public bool wasmStreaming = true;
 
         [Header("고급 설정 (주의: 변경 시 호환성 문제 발생 가능)")]
-        [Tooltip("-1 = 자동 (ExplicitlyThrownExceptionsOnly)")]
+        [Tooltip("-1 = 자동 (FullWithStacktrace, Sentry 경고 방지)")]
         public int exceptionSupport = -1;
 
         [Tooltip("-1 = 자동 (false), Unity Pro 라이선스 필요")]
@@ -421,7 +421,9 @@ namespace AppsInToss
         /// </summary>
         public static WebGLExceptionSupport GetDefaultExceptionSupport()
         {
-            return WebGLExceptionSupport.ExplicitlyThrownExceptionsOnly;
+            // Sentry/에러 추적 SDK가 stack trace를 캡처하려면 FullWithStacktrace 필요.
+            // Unity 기본값(ExplicitlyThrownExceptionsOnly)을 올려서 Sentry의 런타임 경고 제거.
+            return WebGLExceptionSupport.FullWithStacktrace;
         }
 
         /// <summary>

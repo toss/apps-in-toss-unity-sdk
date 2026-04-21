@@ -162,7 +162,7 @@ namespace AppsInToss.Editor
 
             bool capturedIsManualCheck = isManualCheck;
 
-            System.Threading.Tasks.Task.Run(() =>
+            Task.Run(() =>
             {
                 try
                 {

@@ -168,6 +168,9 @@ namespace AppsInToss.Editor
                 {
                     string remoteHash = GetRemoteCommitHash(capturedGitUrl, capturedFragment);
 
+                    // delayCall은 Action 델리게이트이므로 아래는 async void 람다로 추론됨.
+                    // 내부 예외는 반드시 이 try/catch에서 삼켜야 함
+                    // (async void의 throw는 SynchronizationContext로 올라가 Editor를 크래시시킬 수 있음).
                     EditorApplication.delayCall += async () =>
                     {
                         try
@@ -363,7 +366,7 @@ namespace AppsInToss.Editor
         }
 
         /// <summary>
-        /// 원격 해시 결과 처리 (메인 스레드에서 호출)
+        /// 원격 해시 결과 처리 (메인 스레드의 async 컨텍스트에서 await 기반으로 실행됨)
         /// </summary>
         private static async Task OnRemoteHashResolved(
             string remoteHash,

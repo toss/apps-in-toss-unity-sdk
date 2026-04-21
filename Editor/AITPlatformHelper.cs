@@ -393,7 +393,11 @@ namespace AppsInToss.Editor
                         return result;
                     }
 
-                    // WaitForExit 이후 Task는 이미 완료된 상태이므로 동기 접근은 데드락 위험 없음.
+                    // 타임아웃 오버로드 WaitForExit(int)은 stdout/stderr 비동기 리더 배수(drain)를
+                    // 보장하지 않음. 파라미터 없는 오버로드를 한 번 더 호출해 리더 완료를 확정함.
+                    process.WaitForExit();
+
+                    // 이 시점에서 두 리더 Task는 완료 상태이므로 동기 접근에 데드락 위험 없음.
                     // .Result 대신 GetAwaiter().GetResult()를 사용해 예외 래핑(AggregateException)을 피함.
                     result.Output = StripAnsiCodes(outputTask.GetAwaiter().GetResult());
                     result.Error = StripAnsiCodes(errorTask.GetAwaiter().GetResult());

@@ -213,8 +213,13 @@ public class ErrorSourceTests
     [Test]
     public void Message_SpriteAtlasWarning_NoAitInStack_ReturnsUnknown()
     {
-        // 스택이 있더라도 AIT 경로가 없으면 SDK가 아님
-        string stackTrace = "at UnityEngine.Sprite.GetBuiltinAtlas () [0x00000]";
+        // 프레임이 파일명까지 파싱되지만(in <path>:<line> 절 포함) SDK/사용자 경로 prefix와
+        // 일치하지 않는 경우 — 파일명 prefix 매칭 루프(AITEditorErrorTracker.cs:609-619)가
+        // 실제로 실행되어 어느 경로에도 매칭 안 되는지 검증. 이후 메시지에도 SDK 키워드가
+        // 없으므로 최종 fallback으로 "unknown"이 반환되어야 함.
+        string stackTrace =
+            "at UnityEngine.Sprite.GetBuiltinAtlas () [0x00000] in <unknown>:0\n" +
+            "at UnityEngine.CoreModule.Sprites.LoadAtlas () [0x00000] in /build/UnityCsReference/sprites.cs:42";
         Assert.AreEqual("unknown", AITEditorErrorTracker.DetermineErrorSource(
             stackTrace,
             "Sprite cloud matches more than one built-in atlases. Default to use the first available atlas."));

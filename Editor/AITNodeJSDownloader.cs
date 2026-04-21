@@ -163,10 +163,7 @@ namespace AppsInToss.Editor
                             lastException = e;
 
                             // 다운로드 실패 시 임시 파일 삭제
-                            if (File.Exists(tempFile))
-                            {
-                                try { File.Delete(tempFile); } catch { /* ignore */ }
-                            }
+                            AITFileSystemHelper.SafeDelete(tempFile, logPrefix: "[NodeJS]");
                         }
                     }
                 }
@@ -200,7 +197,7 @@ namespace AppsInToss.Editor
                 {
                     // 체크섬 실패 시 다른 미러에서 재시도
                     Debug.LogWarning("[NodeJS] 체크섬 불일치! 다른 미러에서 재다운로드를 시도합니다...");
-                    File.Delete(tempFile);
+                    AITFileSystemHelper.SafeDelete(tempFile, logPrefix: "[NodeJS]");
 
                     // 나머지 미러들로 재시도
                     for (int mirrorIdx = 1; mirrorIdx < downloadUrls.Length && !checksumValid; mirrorIdx++)
@@ -222,13 +219,13 @@ namespace AppsInToss.Editor
                             else
                             {
                                 Debug.LogWarning($"[NodeJS] 대체 미러도 체크섬 실패: {mirrorUrl}");
-                                File.Delete(tempFile);
+                                AITFileSystemHelper.SafeDelete(tempFile, logPrefix: "[NodeJS]");
                             }
                         }
                         catch (Exception e)
                         {
                             Debug.LogWarning($"[NodeJS] 대체 미러 다운로드 실패: {e}");
-                            if (File.Exists(tempFile)) File.Delete(tempFile);
+                            AITFileSystemHelper.SafeDelete(tempFile, logPrefix: "[NodeJS]");
                         }
                     }
                 }
@@ -271,7 +268,7 @@ namespace AppsInToss.Editor
                 {
                     // 이미 설치됨 - 스테이징 삭제
                     Debug.Log($"[NodeJS] 다른 프로세스가 이미 설치를 완료함. 스테이징 삭제: {stagingPath}");
-                    try { Directory.Delete(stagingPath, true); } catch { /* ignore */ }
+                    AITFileSystemHelper.SafeDeleteDirectory(stagingPath, logPrefix: "[NodeJS]");
                 }
                 else
                 {
@@ -286,7 +283,7 @@ namespace AppsInToss.Editor
                         if (Directory.Exists(targetPath))
                         {
                             Debug.Log($"[NodeJS] 다른 프로세스가 동시에 설치 완료함. 스테이징 삭제.");
-                            try { Directory.Delete(stagingPath, true); } catch { /* ignore */ }
+                            AITFileSystemHelper.SafeDeleteDirectory(stagingPath, logPrefix: "[NodeJS]");
                         }
                         else
                         {
@@ -328,18 +325,10 @@ namespace AppsInToss.Editor
                 EditorUtility.ClearProgressBar();
 
                 // 임시 디렉토리 전체 삭제 (고유 ID로 생성했으므로 안전)
-                if (Directory.Exists(tempDir))
-                {
-                    try { Directory.Delete(tempDir, true); }
-                    catch { /* ignore */ }
-                }
+                AITFileSystemHelper.SafeDeleteDirectory(tempDir, logPrefix: "[NodeJS]");
 
                 // 실패 시 스테이징 디렉토리 정리
-                if (Directory.Exists(stagingPath))
-                {
-                    try { Directory.Delete(stagingPath, true); }
-                    catch { /* ignore */ }
-                }
+                AITFileSystemHelper.SafeDeleteDirectory(stagingPath, logPrefix: "[NodeJS]");
             }
         }
 
@@ -348,7 +337,7 @@ namespace AppsInToss.Editor
         /// </summary>
         private static void DownloadFile(string url, string targetPath, string platform)
         {
-            // 기존 파일 삭제
+            // 기존 파일 삭제 (cleanup이 아닌 prepare 단계이므로 실패는 호출자 catch로 전파되어야 함 — SafeDelete 사용하지 않음)
             if (File.Exists(targetPath))
             {
                 File.Delete(targetPath);

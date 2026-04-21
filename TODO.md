@@ -51,21 +51,6 @@
 
 ---
 
-## 에러 처리 개선
-
-### P2 — 빈 catch 블록 (20+ 곳)
-- **주요 파일**:
-  - `Editor/AITFileUtils.cs` — 5개 빈 catch 블록 (176, 186, 194, 216, 219행)
-  - `Editor/AITFileUtils.cs` 내 `AITUnixPermission` 클래스 — 2개 빈 catch 블록 (145, 148행)
-  - `Editor/AITNodeJSDownloader.cs` — 5개 빈 catch 블록 (168, 274, 289, 334, 341행)
-  - `Editor/AITGitGuard.cs:386-387`
-  - `Editor/AITPackageBuilder.cs:93-94` (ObjectDisposedException 한정 catch — 의도적 패턴이나 로깅 부재)
-  - `Editor/AITDeprecationChecker.cs:215`
-- **현상**: `catch (Exception) { }` — 오류가 완전히 숨겨짐
-- **조치**: 최소한 `Debug.LogWarning`으로 로깅 추가. `FileSystemHelper.SafeDelete()` 같은 공통 유틸리티 추출
-
----
-
 ## 의존성 관리
 
 ### P2 — sdk-runtime-generator~/pnpm-lock.yaml이 gitignored
@@ -90,11 +75,6 @@
 - **파일**: `AITGitGuard.cs`, `AITPlatformHelper.cs`, `AITAsyncCommandRunner.cs`
 - **현상**: "프로세스 생성 → 타임아웃 대기 → 출력 캡처" 패턴이 3곳 이상에서 반복
 - **조치**: `ProcessExecutor` 유틸리티 클래스 추출
-
-### P2 — 파일 삭제 + 예외 무시 패턴 중복 (15+ 곳)
-- **파일**: `AITNodeJSDownloader.cs`, `AITPackageBuilder.cs`, `AITFileUtils.cs`
-- **현상**: `try { File.Delete(x); } catch { }` 반복
-- **조치**: `FileSystemHelper.SafeDelete()` 공통 메서드 추출
 
 ### P1 — Permission enum 3중 중복
 - **파일**: `Runtime/SDK/AIT.Types.cs` (33, 67, 93행)

@@ -395,7 +395,11 @@ namespace AppsInToss.Editor
 
                     if (!process.WaitForExit(GIT_TIMEOUT_MS))
                     {
-                        try { process.Kill(); } catch (Exception) { }
+                        try { process.Kill(); }
+                        catch (Exception ex)
+                        {
+                            Debug.LogWarning($"[AIT] git ls-remote 프로세스 kill 실패: {ex.GetType().Name}: {ex.Message}");
+                        }
                         return null;
                     }
 

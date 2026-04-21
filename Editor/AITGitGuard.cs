@@ -384,8 +384,16 @@ namespace AppsInToss.Editor
 
                     if (!process.WaitForExit(timeoutMs))
                     {
-                        try { process.Kill(); } catch (System.Exception) { }
-                        try { Task.WaitAll(stdoutTask, stderrTask); } catch (System.Exception) { }
+                        try { process.Kill(); }
+                        catch (System.Exception ex)
+                        {
+                            Debug.LogWarning($"[AIT] Git 프로세스 kill 실패: {ex.GetType().Name}: {ex.Message}");
+                        }
+                        try { Task.WaitAll(stdoutTask, stderrTask); }
+                        catch (System.Exception ex)
+                        {
+                            Debug.LogWarning($"[AIT] Git stdout/stderr 수집 실패: {ex.GetType().Name}: {ex.Message}");
+                        }
                         Debug.LogWarning($"[AIT] Git 명령 타임아웃 ({timeoutMs / 1000}초): git {arguments}");
                         return null;
                     }
@@ -402,8 +410,11 @@ namespace AppsInToss.Editor
                     return (process.ExitCode, stdoutTask.GetAwaiter().GetResult(), stderrTask.GetAwaiter().GetResult());
                 }
             }
-            catch (System.Exception)
+            catch (System.Exception ex)
             {
+                // git 바이너리 부재 / 프로세스 생성 실패 등 — 호출자는 null을 "git 실행 불가" 신호로 해석하므로
+                // 여기선 경고만 남기고 null을 반환
+                Debug.LogWarning($"[AIT] Git 명령 실행 실패 (git {arguments}): {ex.GetType().Name}: {ex.Message}");
                 return null;
             }
         }

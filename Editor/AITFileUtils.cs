@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using UnityEditor;
 using UnityEngine;
+using AppsInToss.Editor;
 
 namespace AppsInToss
 {
@@ -155,10 +156,18 @@ namespace AppsInToss
                     process.Start();
                     process.WaitForExit(1000);
                 }
-                catch { }
+                catch (System.Exception ex)
+                {
+                    // best-effort 권한 조정이므로 Sentry 전송 억제
+                    AITLog.Warning($"[AIT] chmod 실행 실패: {filePath} ({ex.GetType().Name}: {ex.Message})", sentryCapture: false);
+                }
 #endif
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                // best-effort 권한 조정이므로 Sentry 전송 억제
+                AITLog.Warning($"[AIT] 파일 권한 설정 실패: {filePath} ({ex.GetType().Name}: {ex.Message})", sentryCapture: false);
+            }
         }
     }
 }
@@ -171,40 +180,13 @@ namespace AppsInToss.Editor
     internal static class AITFileUtils
     {
         /// <summary>
-        /// 디렉토리 안전 삭제 (읽기 전용 속성 제거 후 삭제)
+        /// 디렉토리 안전 삭제 (읽기 전용 속성 제거 후 재귀 삭제).
+        /// 내부적으로 <see cref="AITFileSystemHelper.SafeDeleteDirectory"/>에 위임합니다.
         /// </summary>
-        internal static void DeleteDirectory(string path)
+        /// <returns>삭제 성공 또는 디렉토리 부재 시 true, 실패 시 false</returns>
+        internal static bool DeleteDirectory(string path)
         {
-            if (!Directory.Exists(path))
-                return;
-
-            // 모든 파일의 읽기 전용 속성 제거
-            foreach (string file in Directory.GetFiles(path, "*", SearchOption.AllDirectories))
-            {
-                try
-                {
-                    File.SetAttributes(file, FileAttributes.Normal);
-                    File.Delete(file);
-                }
-                catch { }
-            }
-
-            // 모든 하위 폴더 삭제
-            foreach (string dir in Directory.GetDirectories(path, "*", SearchOption.AllDirectories))
-            {
-                try
-                {
-                    Directory.Delete(dir, false);
-                }
-                catch { }
-            }
-
-            // 최상위 폴더 삭제
-            try
-            {
-                Directory.Delete(path, true);
-            }
-            catch { }
+            return AITFileSystemHelper.SafeDeleteDirectory(path);
         }
 
         /// <summary>
@@ -226,10 +208,17 @@ namespace AppsInToss.Editor
                         var fileInfo = new FileInfo(file);
                         size += fileInfo.Length;
                     }
-                    catch { }
+                    catch (System.Exception ex)
+                    {
+                        // 크기 조회 실패는 통계 집계 정확도만 떨어뜨리므로 Sentry 전송 억제
+                        AITLog.Warning($"[AIT] 파일 크기 조회 실패: {file} ({ex.GetType().Name}: {ex.Message})", sentryCapture: false);
+                    }
                 }
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                AITLog.Warning($"[AIT] 디렉토리 열람 실패: {path} ({ex.GetType().Name}: {ex.Message})", sentryCapture: false);
+            }
 
             return size;
         }

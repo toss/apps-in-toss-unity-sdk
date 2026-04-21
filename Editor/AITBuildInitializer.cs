@@ -100,10 +100,10 @@ namespace AppsInToss.Editor
 
             // ===== 예외 처리 (사용자 지정 또는 자동) =====
             // 출처: UnityVersion.md:393, 431
+            // 실제 적용은 아래 ApplySentryFriendlyWebGLSettings에서 수행 (stack trace와 함께 관리)
             WebGLExceptionSupport exceptionSupport = editorConfig.exceptionSupport >= 0
                 ? (WebGLExceptionSupport)editorConfig.exceptionSupport
                 : AITDefaultSettings.GetDefaultExceptionSupport();
-            PlayerSettings.WebGL.exceptionSupport = exceptionSupport;
 
             // ===== 파일 해싱 =====
             // Unity 2021.3에서 nameFilesAsHashes = true 시 Bee 빌드 루프 버그 발생
@@ -128,14 +128,9 @@ namespace AppsInToss.Editor
             PlayerSettings.SetScriptingBackend(BuildTargetGroup.WebGL, ScriptingImplementation.IL2CPP);
 #endif
 
-            // ===== WebGL Stack Trace Log Type =====
-            // 경고 방지: "The 'Method Name, File Name, and Line Number' option for IL2CPP stack traces is not supported on WebGL."
-            // WebGL에서는 Full(Method Name/File Name/Line Number)이 지원되지 않음. ScriptOnly로 설정.
-            PlayerSettings.SetStackTraceLogType(LogType.Error,     StackTraceLogType.ScriptOnly);
-            PlayerSettings.SetStackTraceLogType(LogType.Assert,    StackTraceLogType.ScriptOnly);
-            PlayerSettings.SetStackTraceLogType(LogType.Warning,   StackTraceLogType.ScriptOnly);
-            PlayerSettings.SetStackTraceLogType(LogType.Log,       StackTraceLogType.ScriptOnly);
-            PlayerSettings.SetStackTraceLogType(LogType.Exception, StackTraceLogType.ScriptOnly);
+            // ===== Sentry 친화 설정 (WebGL exception support + stack trace) =====
+            // Capture() 스냅샷이 반드시 이보다 먼저 찍혀야 Restore()가 의미 있음 (DoExport 참조).
+            ApplySentryFriendlyWebGLSettings(exceptionSupport);
 
             PlayerSettings.stripEngineCode = editorConfig.stripEngineCode;
 
@@ -193,7 +188,7 @@ namespace AppsInToss.Editor
             Debug.Log($"[AIT]   - 스레딩: {threadsSupport}{(editorConfig.threadsSupport < 0 ? " (자동)" : "")}");
             Debug.Log($"[AIT]   - 데이터 캐싱: {dataCaching}{(editorConfig.dataCaching < 0 ? " (자동)" : "")}");
             Debug.Log($"[AIT]   - 예외 처리: {exceptionSupport}{(editorConfig.exceptionSupport < 0 ? " (자동)" : "")}");
-            Debug.Log($"[AIT]   - Stack Trace Log Type: ScriptOnly (WebGL 자동)");
+            Debug.Log($"[AIT]   - Stack Trace Log Type (Error/Assert/Warning/Log/Exception): {PlayerSettings.GetStackTraceLogType(LogType.Error)} (WebGL 자동)");
             Debug.Log($"[AIT]   - Stripping Level: {strippingLevel}{(profile?.managedStrippingLevel < 0 || profile == null ? " (자동)" : " (프로필)")}");
             Debug.Log($"[AIT]   - IL2CPP 설정: {il2cppConfig}{(editorConfig.il2cppConfiguration < 0 ? " (자동)" : "")}");
             Debug.Log($"[AIT]   - Run In Background: {runInBackground}{(editorConfig.runInBackground < 0 ? " (자동)" : "")}");
@@ -204,6 +199,28 @@ namespace AppsInToss.Editor
             Debug.Log($"[AIT]   - WASM Streaming: {editorConfig.wasmStreaming}");
 #endif
 #endif
+        }
+
+        /// <summary>
+        /// Sentry/에러 추적 SDK가 요구하는 WebGL 설정을 적용한다.
+        /// - WebGL exceptionSupport를 지정 값으로 설정 (기본 FullWithStacktrace — stack trace 캡처 가능)
+        /// - Stack Trace Log Type은 WebGL에서 지원되는 ScriptOnly로 고정 (Full은 IL2CPP/WebGL 조합 미지원)
+        ///
+        /// 주의: PlayerSettings.SetStackTraceLogType은 플랫폼별이 아닌 프로젝트 전역 설정이다.
+        /// 사용자 PlayerSettings가 영구 변경되지 않도록, 호출 직전에 AITPlayerSettingsBackup.Capture()가
+        /// 실행되어 있어야 한다 (AITConvertCore.DoExport 참조). 이 메서드는 Init() 외부에서도
+        /// 테스트가 부수 효과(AssetDatabase.Refresh 등) 없이 설정만 검증할 수 있도록 분리되었다.
+        /// </summary>
+        internal static void ApplySentryFriendlyWebGLSettings(WebGLExceptionSupport exceptionSupport)
+        {
+            PlayerSettings.WebGL.exceptionSupport = exceptionSupport;
+
+            // 경고 방지: "The 'Method Name, File Name, and Line Number' option for IL2CPP stack traces is not supported on WebGL."
+            PlayerSettings.SetStackTraceLogType(LogType.Error, StackTraceLogType.ScriptOnly);
+            PlayerSettings.SetStackTraceLogType(LogType.Assert, StackTraceLogType.ScriptOnly);
+            PlayerSettings.SetStackTraceLogType(LogType.Warning, StackTraceLogType.ScriptOnly);
+            PlayerSettings.SetStackTraceLogType(LogType.Log, StackTraceLogType.ScriptOnly);
+            PlayerSettings.SetStackTraceLogType(LogType.Exception, StackTraceLogType.ScriptOnly);
         }
 
         /// <summary>

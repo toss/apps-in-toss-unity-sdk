@@ -5,7 +5,11 @@
 
 using NUnit.Framework;
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Text.RegularExpressions;
+using UnityEngine;
+using UnityEngine.TestTools;
 using AppsInToss.Editor;
 
 [TestFixture]
@@ -23,9 +27,20 @@ public class BuildFileSelectionTests
     [TearDown]
     public void TearDown()
     {
-        if (Directory.Exists(tempDir))
+        try
         {
-            Directory.Delete(tempDir, true);
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, true);
+            }
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // fallback 테스트가 권한을 복구하지 못한 경우 임시 디렉토리 누수 허용
+        }
+        catch (IOException)
+        {
+            // 다른 테스트가 파일을 잡고 있는 경우 best-effort
         }
     }
 
@@ -189,5 +204,307 @@ public class BuildFileSelectionTests
 
         Assert.AreEqual("ccc.data", result,
             "FindFileInBuild should select the newest among 3+ matching files");
+    }
+
+    // =====================================================
+    // 중복 파일 자동 정리 — 최신 외 오래된 파일 삭제
+    // Sentry 이슈 SDK-7F/7G/7H/7J 대응:
+    // 중복 감지 시 경고만 출력 → 자동 삭제로 전환하여 반복 경고 제거
+    // =====================================================
+
+    [Test]
+    public void FindFileInBuild_MultipleMatches_DeletesStaleFiles()
+    {
+        // 오래된 파일 (이전 빌드 잔여물)
+        string oldFile = Path.Combine(tempDir, "old_hash.loader.js");
+        File.WriteAllText(oldFile, "// old loader");
+        File.SetLastWriteTime(oldFile, new DateTime(2025, 1, 1, 0, 0, 0));
+
+        // 최신 파일 (현재 빌드)
+        string newFile = Path.Combine(tempDir, "new_hash.loader.js");
+        File.WriteAllText(newFile, "// new loader");
+        File.SetLastWriteTime(newFile, new DateTime(2026, 2, 1, 0, 0, 0));
+
+        string result = AITBuildValidator.FindFileInBuild(tempDir, "*.loader.js");
+
+        Assert.AreEqual("new_hash.loader.js", result);
+        Assert.IsFalse(File.Exists(oldFile),
+            "Stale duplicate should be deleted to prevent repeated Sentry warnings");
+        Assert.IsTrue(File.Exists(newFile),
+            "Newest file must remain after cleanup");
+    }
+
+    [Test]
+    public void FindFileInBuild_MultipleMatches_DeletesMetaFiles()
+    {
+        // Unity .meta 파일도 함께 정리해야 중복 asset 경고 방지
+        string oldFile = Path.Combine(tempDir, "old_hash.loader.js");
+        File.WriteAllText(oldFile, "// old");
+        File.SetLastWriteTime(oldFile, new DateTime(2025, 1, 1));
+
+        string oldMeta = oldFile + ".meta";
+        File.WriteAllText(oldMeta, "fileFormatVersion: 2\nguid: deadbeef\n");
+
+        string newFile = Path.Combine(tempDir, "new_hash.loader.js");
+        File.WriteAllText(newFile, "// new");
+        File.SetLastWriteTime(newFile, new DateTime(2026, 2, 1));
+
+        AITBuildValidator.FindFileInBuild(tempDir, "*.loader.js");
+
+        Assert.IsFalse(File.Exists(oldFile), "stale file should be deleted");
+        Assert.IsFalse(File.Exists(oldMeta), "stale .meta should be deleted");
+    }
+
+    [Test]
+    public void FindFileInBuild_ThreeMatches_DeletesAllButNewest()
+    {
+        string file1 = Path.Combine(tempDir, "aaa.data");
+        File.WriteAllText(file1, "old1");
+        File.SetLastWriteTime(file1, new DateTime(2025, 1, 1));
+
+        string file2 = Path.Combine(tempDir, "bbb.data");
+        File.WriteAllText(file2, "old2");
+        File.SetLastWriteTime(file2, new DateTime(2025, 6, 1));
+
+        string file3 = Path.Combine(tempDir, "ccc.data");
+        File.WriteAllText(file3, "newest");
+        File.SetLastWriteTime(file3, new DateTime(2026, 2, 1));
+
+        string result = AITBuildValidator.FindFileInBuild(tempDir, "*.data*");
+
+        Assert.AreEqual("ccc.data", result);
+        Assert.IsFalse(File.Exists(file1), "oldest should be deleted");
+        Assert.IsFalse(File.Exists(file2), "middle should be deleted");
+        Assert.IsTrue(File.Exists(file3), "newest should remain");
+    }
+
+    [Test]
+    public void FindFileInBuild_SingleFile_NotDeleted()
+    {
+        // 단일 파일은 삭제 로직을 거치지 않아야 함 (회귀 방지)
+        string file = Path.Combine(tempDir, "build.loader.js");
+        File.WriteAllText(file, "// only");
+
+        string result = AITBuildValidator.FindFileInBuild(tempDir, "*.loader.js");
+
+        Assert.AreEqual("build.loader.js", result);
+        Assert.IsTrue(File.Exists(file),
+            "Single match should never be deleted");
+    }
+
+    // =====================================================
+    // LastWriteTime 동률 — 파일명 내림차순 타이브레이크로 결정적 선택
+    // Array.Sort가 불안정하므로 명시적 이차 정렬 키가 필요
+    // =====================================================
+
+    [Test]
+    public void FindFileInBuild_SameTimestamp_DeterministicByName()
+    {
+        var time = new DateTime(2026, 1, 1, 12, 0, 0);
+
+        string fileA = Path.Combine(tempDir, "aaa.loader.js");
+        File.WriteAllText(fileA, "// a");
+        File.SetLastWriteTime(fileA, time);
+
+        string fileZ = Path.Combine(tempDir, "zzz.loader.js");
+        File.WriteAllText(fileZ, "// z");
+        File.SetLastWriteTime(fileZ, time);
+
+        string result = AITBuildValidator.FindFileInBuild(tempDir, "*.loader.js");
+
+        // CompareOrdinal 내림차순 → "zzz" > "aaa" → zzz 선택
+        Assert.AreEqual("zzz.loader.js", result,
+            "Tie on LastWriteTime should break deterministically by filename (descending)");
+        Assert.IsFalse(File.Exists(fileA), "Tie loser should be deleted");
+        Assert.IsTrue(File.Exists(fileZ), "Tie winner should remain");
+    }
+
+    // =====================================================
+    // 로그 레벨 검증 — 성공 시 Debug.Log 1건만 발생, Warning/Error 없음
+    // Sentry 노이즈 제거의 핵심 목적 회귀 방지.
+    // LogAssert.NoUnexpectedReceived는 Error/Assert/Exception만 감시하므로
+    // Warning까지 확실히 막으려면 logMessageReceived 훅으로 직접 수집.
+    // =====================================================
+
+    [Test]
+    public void FindFileInBuild_DuplicateCleanup_EmitsInfoLogNotWarning()
+    {
+        string oldFile = Path.Combine(tempDir, "old.loader.js");
+        File.WriteAllText(oldFile, "// old");
+        File.SetLastWriteTime(oldFile, new DateTime(2025, 1, 1));
+
+        string newFile = Path.Combine(tempDir, "new.loader.js");
+        File.WriteAllText(newFile, "// new");
+        File.SetLastWriteTime(newFile, new DateTime(2026, 2, 1));
+
+        var logs = CollectLogs(() =>
+            AITBuildValidator.FindFileInBuild(tempDir, "*.loader.js"));
+
+        // 양성 검증: 성공 메시지가 실제로 발생해야 함 (기능이 조용히 사라지지 않도록)
+        bool emittedSuccess = logs.Exists(l =>
+            l.type == LogType.Log &&
+            Regex.IsMatch(l.message, @"이전 빌드 잔여물 \d+개 자동 정리"));
+        Assert.IsTrue(emittedSuccess,
+            "성공 경로에서 자동 정리 확인 Debug.Log가 발생해야 함: " +
+            string.Join(" | ", logs.ConvertAll(l => $"[{l.type}] {l.message}")));
+
+        // 음성 검증: Warning/Error/Exception/Assert 없음 (Sentry 노이즈 방지)
+        var noisy = logs.FindAll(l =>
+            l.type == LogType.Warning || l.type == LogType.Error ||
+            l.type == LogType.Exception || l.type == LogType.Assert);
+        Assert.IsEmpty(noisy,
+            "성공 경로는 Warning/Error 로그를 발생시키면 안 됨: " +
+            string.Join(" | ", noisy.ConvertAll(l => $"[{l.type}] {l.message}")));
+    }
+
+    // =====================================================
+    // Fallback 경로 검증 (Unix) — chmod로 삭제 실패 유도
+    // Windows는 POSIX 권한 모델이 달라 별도 테스트 (file lock)에서 커버
+    // =====================================================
+
+    [Test]
+    public void FindFileInBuild_DeleteFails_FallsBackToWarning_Unix()
+    {
+        Assume.That(Application.platform != RuntimePlatform.WindowsEditor,
+            "Unix-only: chmod-based directory permission manipulation");
+
+        string oldFile = Path.Combine(tempDir, "old.loader.js");
+        File.WriteAllText(oldFile, "// old");
+        File.SetLastWriteTime(oldFile, new DateTime(2025, 1, 1));
+
+        string newFile = Path.Combine(tempDir, "new.loader.js");
+        File.WriteAllText(newFile, "// new");
+        File.SetLastWriteTime(newFile, new DateTime(2026, 2, 1));
+
+        try
+        {
+            Syscall_Chmod(tempDir, "0555");
+
+            // root 사용자면 0555가 무시되어 삭제가 성공 → false positive
+            // 실제로 쓰기 불가한지 선검증
+            Assume.That(IsDirectoryWriteBlocked(tempDir),
+                "현재 사용자는 0555 디렉토리에도 쓸 수 있음 (root?) — 테스트 의미 없음");
+
+            LogAssert.Expect(LogType.Warning, new Regex(@"\[AIT\].+이전 빌드 잔여물 \d+개 정리 실패"));
+            LogAssert.Expect(LogType.Warning, new Regex(@"\[AIT\].+Clean Build"));
+
+            string result = AITBuildValidator.FindFileInBuild(tempDir, "*.loader.js");
+
+            Assert.AreEqual("new.loader.js", result,
+                "삭제 실패 시에도 최신 파일명은 정상 반환되어야 함");
+            Assert.IsTrue(File.Exists(oldFile),
+                "chmod로 삭제를 막았으므로 oldFile은 남아있어야 함");
+        }
+        finally
+        {
+            // TearDown이 tempDir을 지우려면 쓰기 권한 복구 필요
+            try
+            {
+                Syscall_Chmod(tempDir, "0755");
+            }
+            catch (Exception ex)
+            {
+                // 진단 정보는 TestContext.Error로 — Debug.LogError는 AITEditorErrorTracker
+                // 가 다시 Sentry로 보낼 수 있어 회귀 방지 목적에 역행
+                TestContext.Error.WriteLine($"chmod 0755 restore failed: {ex.Message}");
+            }
+        }
+    }
+
+    // =====================================================
+    // Fallback 경로 검증 (Windows) — FileStream 락으로 IOException 유도
+    // Windows는 열린 파일을 다른 핸들에서 삭제 불가(sharing violation)
+    // =====================================================
+
+    [Test]
+    public void FindFileInBuild_DeleteFails_FallsBackToWarning_Windows()
+    {
+        Assume.That(Application.platform == RuntimePlatform.WindowsEditor,
+            "Windows-only: file lock semantics differ on Unix");
+
+        string oldFile = Path.Combine(tempDir, "old.loader.js");
+        File.WriteAllText(oldFile, "// old");
+        File.SetLastWriteTime(oldFile, new DateTime(2025, 1, 1));
+
+        string newFile = Path.Combine(tempDir, "new.loader.js");
+        File.WriteAllText(newFile, "// new");
+        File.SetLastWriteTime(newFile, new DateTime(2026, 2, 1));
+
+        // Windows에서 FileShare.Read로 열면 다른 프로세스의 Delete가 sharing violation 발생
+        string result;
+        using (File.Open(oldFile, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            LogAssert.Expect(LogType.Warning, new Regex(@"\[AIT\].+이전 빌드 잔여물 \d+개 정리 실패"));
+            LogAssert.Expect(LogType.Warning, new Regex(@"\[AIT\].+Clean Build"));
+
+            result = AITBuildValidator.FindFileInBuild(tempDir, "*.loader.js");
+
+            Assert.IsTrue(File.Exists(oldFile),
+                "락이 걸려있는 동안 oldFile은 남아있어야 함");
+        }
+
+        Assert.AreEqual("new.loader.js", result,
+            "삭제 실패 시에도 최신 파일명은 정상 반환되어야 함");
+    }
+
+    // -----------------------------------------------------------------
+    // 유틸리티: 동작 중 발생한 모든 로그를 타입과 함께 수집
+    // LogAssert.NoUnexpectedReceived가 Warning을 감시하지 않는 한계 보완.
+    // -----------------------------------------------------------------
+    private struct LogEntry
+    {
+        public LogType type;
+        public string message;
+    }
+
+    private static List<LogEntry> CollectLogs(Action action)
+    {
+        var logs = new List<LogEntry>();
+        Application.LogCallback handler = null;
+        handler = (msg, _, type) =>
+        {
+            logs.Add(new LogEntry { type = type, message = msg });
+        };
+        Application.logMessageReceived += handler;
+        try { action(); }
+        finally { Application.logMessageReceived -= handler; }
+        return logs;
+    }
+
+    private static bool IsDirectoryWriteBlocked(string dir)
+    {
+        string probe = Path.Combine(dir, "probe-" + Guid.NewGuid().ToString("N").Substring(0, 6));
+        try
+        {
+            File.WriteAllText(probe, "x");
+            File.Delete(probe);
+            return false;
+        }
+        catch (UnauthorizedAccessException) { return true; }
+        catch (IOException) { return true; }
+    }
+
+    private static void Syscall_Chmod(string path, string mode)
+    {
+        var psi = new System.Diagnostics.ProcessStartInfo("chmod", $"{mode} \"{path}\"")
+        {
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+        };
+        using (var proc = System.Diagnostics.Process.Start(psi))
+        {
+            if (!proc.WaitForExit(3000))
+            {
+                try { proc.Kill(); } catch { /* best-effort */ }
+                throw new InvalidOperationException($"chmod {mode} {path} timed out");
+            }
+            if (proc.ExitCode != 0)
+            {
+                throw new InvalidOperationException(
+                    $"chmod {mode} {path} failed: {proc.StandardError.ReadToEnd()}");
+            }
+        }
     }
 }

@@ -287,18 +287,53 @@ namespace AppsInToss.Editor
             var files = Directory.GetFiles(buildPath, pattern);
             if (files.Length > 0)
             {
-                // 중복 파일 감지 시 경고 + 최신 파일 우선 선택
+                // 중복 파일 감지 시 최신 파일만 남기고 오래된 잔여물 자동 삭제
+                // (경고 로그만으로는 매 빌드마다 반복 발생 → Sentry 노이즈 누적)
                 if (files.Length > 1)
                 {
-                    Debug.LogWarning($"[AIT] ⚠️ '{pattern}'에 {files.Length}개 파일이 일치합니다. 최신 파일을 사용합니다.");
                     Array.Sort(files, (a, b) => File.GetLastWriteTime(b).CompareTo(File.GetLastWriteTime(a)));
-                    foreach (var file in files)
+
+                    var deleted = new List<string>();
+                    var failed = new List<string>();
+                    for (int i = 1; i < files.Length; i++)
                     {
-                        var time = File.GetLastWriteTime(file);
-                        var selected = file == files[0] ? " ← 선택됨" : "";
-                        Debug.LogWarning($"[AIT]    - {Path.GetFileName(file)} ({time:yyyy-MM-dd HH:mm:ss}){selected}");
+                        var stalePath = files[i];
+                        try
+                        {
+                            File.Delete(stalePath);
+                            var metaPath = stalePath + ".meta";
+                            if (File.Exists(metaPath))
+                            {
+                                File.Delete(metaPath);
+                            }
+                            deleted.Add(Path.GetFileName(stalePath));
+                        }
+                        catch (IOException)
+                        {
+                            failed.Add(Path.GetFileName(stalePath));
+                        }
+                        catch (UnauthorizedAccessException)
+                        {
+                            failed.Add(Path.GetFileName(stalePath));
+                        }
                     }
-                    Debug.LogWarning("[AIT]    이전 빌드 잔여물일 수 있습니다. 'Clean Build' 사용을 권장합니다.");
+
+                    if (failed.Count == 0)
+                    {
+                        Debug.Log($"[AIT] ✓ '{pattern}' 중복 {deleted.Count}개 자동 정리: {string.Join(", ", deleted.ToArray())}");
+                    }
+                    else
+                    {
+                        // 삭제 실패 시에만 기존 경고 로그 유지 (수동 Clean Build 유도)
+                        Debug.LogWarning($"[AIT] ⚠️ '{pattern}'에 {files.Length}개 파일이 일치합니다. 최신 파일을 사용합니다.");
+                        foreach (var file in files)
+                        {
+                            var time = File.GetLastWriteTime(file);
+                            var selected = file == files[0] ? " ← 선택됨" : "";
+                            Debug.LogWarning($"[AIT]    - {Path.GetFileName(file)} ({time:yyyy-MM-dd HH:mm:ss}){selected}");
+                        }
+                        Debug.LogWarning("[AIT]    이전 빌드 잔여물일 수 있습니다. 'Clean Build' 사용을 권장합니다.");
+                    }
                 }
 
                 string fileName = Path.GetFileName(files[0]);

@@ -190,4 +190,90 @@ public class BuildFileSelectionTests
         Assert.AreEqual("ccc.data", result,
             "FindFileInBuild should select the newest among 3+ matching files");
     }
+
+    // =====================================================
+    // 중복 파일 자동 정리 — 최신 외 오래된 파일 삭제
+    // Sentry 이슈 SDK-7F/7G/7H/7J 대응:
+    // 중복 감지 시 경고만 출력 → 자동 삭제로 전환하여 반복 경고 제거
+    // =====================================================
+
+    [Test]
+    public void FindFileInBuild_MultipleMatches_DeletesStaleFiles()
+    {
+        // 오래된 파일 (이전 빌드 잔여물)
+        string oldFile = Path.Combine(tempDir, "old_hash.loader.js");
+        File.WriteAllText(oldFile, "// old loader");
+        File.SetLastWriteTime(oldFile, new DateTime(2025, 1, 1, 0, 0, 0));
+
+        // 최신 파일 (현재 빌드)
+        string newFile = Path.Combine(tempDir, "new_hash.loader.js");
+        File.WriteAllText(newFile, "// new loader");
+        File.SetLastWriteTime(newFile, new DateTime(2026, 2, 1, 0, 0, 0));
+
+        string result = AITBuildValidator.FindFileInBuild(tempDir, "*.loader.js");
+
+        Assert.AreEqual("new_hash.loader.js", result);
+        Assert.IsFalse(File.Exists(oldFile),
+            "Stale duplicate should be deleted to prevent repeated Sentry warnings");
+        Assert.IsTrue(File.Exists(newFile),
+            "Newest file must remain after cleanup");
+    }
+
+    [Test]
+    public void FindFileInBuild_MultipleMatches_DeletesMetaFiles()
+    {
+        // Unity .meta 파일도 함께 정리해야 중복 asset 경고 방지
+        string oldFile = Path.Combine(tempDir, "old_hash.loader.js");
+        File.WriteAllText(oldFile, "// old");
+        File.SetLastWriteTime(oldFile, new DateTime(2025, 1, 1));
+
+        string oldMeta = oldFile + ".meta";
+        File.WriteAllText(oldMeta, "fileFormatVersion: 2\nguid: deadbeef\n");
+
+        string newFile = Path.Combine(tempDir, "new_hash.loader.js");
+        File.WriteAllText(newFile, "// new");
+        File.SetLastWriteTime(newFile, new DateTime(2026, 2, 1));
+
+        AITBuildValidator.FindFileInBuild(tempDir, "*.loader.js");
+
+        Assert.IsFalse(File.Exists(oldFile), "stale file should be deleted");
+        Assert.IsFalse(File.Exists(oldMeta), "stale .meta should be deleted");
+    }
+
+    [Test]
+    public void FindFileInBuild_ThreeMatches_DeletesAllButNewest()
+    {
+        string file1 = Path.Combine(tempDir, "aaa.data");
+        File.WriteAllText(file1, "old1");
+        File.SetLastWriteTime(file1, new DateTime(2025, 1, 1));
+
+        string file2 = Path.Combine(tempDir, "bbb.data");
+        File.WriteAllText(file2, "old2");
+        File.SetLastWriteTime(file2, new DateTime(2025, 6, 1));
+
+        string file3 = Path.Combine(tempDir, "ccc.data");
+        File.WriteAllText(file3, "newest");
+        File.SetLastWriteTime(file3, new DateTime(2026, 2, 1));
+
+        string result = AITBuildValidator.FindFileInBuild(tempDir, "*.data*");
+
+        Assert.AreEqual("ccc.data", result);
+        Assert.IsFalse(File.Exists(file1), "oldest should be deleted");
+        Assert.IsFalse(File.Exists(file2), "middle should be deleted");
+        Assert.IsTrue(File.Exists(file3), "newest should remain");
+    }
+
+    [Test]
+    public void FindFileInBuild_SingleFile_NotDeleted()
+    {
+        // 단일 파일은 삭제 로직을 거치지 않아야 함 (회귀 방지)
+        string file = Path.Combine(tempDir, "build.loader.js");
+        File.WriteAllText(file, "// only");
+
+        string result = AITBuildValidator.FindFileInBuild(tempDir, "*.loader.js");
+
+        Assert.AreEqual("build.loader.js", result);
+        Assert.IsTrue(File.Exists(file),
+            "Single match should never be deleted");
+    }
 }

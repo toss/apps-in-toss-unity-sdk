@@ -198,6 +198,30 @@ public class ErrorSourceTests
 
     #endregion
 
+    #region Non-SDK 메시지 분류 회귀 테스트
+
+    [Test]
+    public void Message_SpriteAtlasWarning_NoStack_ReturnsUnknown()
+    {
+        // Sprite atlas 중복 경고는 Unity 내부 메시지 — SDK로 분류되면 안 됨.
+        // Sentry 관찰 이벤트에서도 error_source: unknown으로 태그되어 있음 (APPS-IN-TOSS-UNITY-SDK-DW).
+        Assert.AreEqual("unknown", AITEditorErrorTracker.DetermineErrorSource(
+            null,
+            "Sprite object_19_01 matches more than one built-in atlases. Default to use the first available atlas."));
+    }
+
+    [Test]
+    public void Message_SpriteAtlasWarning_NoAitInStack_ReturnsUnknown()
+    {
+        // 스택이 있더라도 AIT 경로가 없으면 SDK가 아님
+        string stackTrace = "at UnityEngine.Sprite.GetBuiltinAtlas () [0x00000]";
+        Assert.AreEqual("unknown", AITEditorErrorTracker.DetermineErrorSource(
+            stackTrace,
+            "Sprite cloud matches more than one built-in atlases. Default to use the first available atlas."));
+    }
+
+    #endregion
+
     #region AITLog sentryCapture=false 회귀 테스트
 
     [Test]

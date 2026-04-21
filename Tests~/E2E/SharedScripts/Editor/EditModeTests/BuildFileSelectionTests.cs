@@ -300,6 +300,10 @@ public class BuildFileSelectionTests
     // 자동 정리를 받는지 명시적으로 고정한다.
     // 비압축(.data), Brotli(.wasm.br), Gzip(.framework.js.gz), decompressionFallback
     // (.data.unityweb, .symbols.json.unityweb) 케이스를 전부 포함.
+    //
+    // 비고: FindFileInBuild_CompressedExtensions_Matches(:108)는 단일 파일에 대한
+    // 패턴 매칭만 검증하지만, 이 테스트는 동일 조합에 '중복 시 자동 정리'와
+    // '반환값 = 최신 파일명' 계약을 추가로 고정한다.
     // =====================================================
 
     // pattern: AITBuildValidator.GetFilePatterns가 생성하는 실제 패턴
@@ -318,6 +322,7 @@ public class BuildFileSelectionTests
     [TestCase("*.wasm.unityweb", ".wasm.unityweb")]
     [TestCase("*.symbols.json*", ".symbols.json")]
     [TestCase("*.symbols.json*", ".symbols.json.br")]
+    [TestCase("*.symbols.json*", ".symbols.json.gz")]
     [TestCase("*.symbols.json.unityweb", ".symbols.json.unityweb")]
     public void FindFileInBuild_AllProductPatterns_DuplicateCleanup(string pattern, string suffix)
     {
@@ -332,9 +337,12 @@ public class BuildFileSelectionTests
         File.WriteAllText(newFile, "new");
         File.SetLastWriteTime(newFile, new DateTime(2026, 2, 1));
 
+        string result = null;
         var logs = CollectLogs(() =>
-            AITBuildValidator.FindFileInBuild(tempDir, pattern));
+            result = AITBuildValidator.FindFileInBuild(tempDir, pattern));
 
+        Assert.AreEqual("new_hash" + suffix, result,
+            $"[{pattern} / {suffix}] 최신 파일명이 반환되어야 함");
         Assert.IsFalse(File.Exists(oldFile),
             $"[{pattern} / {suffix}] 이전 빌드 잔여물이 자동 삭제되어야 함");
         Assert.IsFalse(File.Exists(oldMeta),

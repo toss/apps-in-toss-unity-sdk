@@ -283,6 +283,23 @@ namespace AppsInToss
             }
         }
 
+        /// <summary>
+        /// 빌드 마커 파일을 지정된 디렉토리에 생성합니다.
+        /// 부모 디렉토리가 없으면 자동 생성합니다 (Sentry SDK-DC 대응).
+        /// </summary>
+        internal static void WriteBuildMarker(string webglPath, AITBuildInfo buildInfo)
+        {
+            string markerPath = Path.Combine(webglPath, BUILD_MARKER_FILENAME);
+            string markerDir = Path.GetDirectoryName(markerPath);
+            if (!string.IsNullOrEmpty(markerDir) && !Directory.Exists(markerDir))
+            {
+                Directory.CreateDirectory(markerDir);
+                Debug.Log($"[AIT] 빌드 마커 디렉토리 생성: {markerDir}");
+            }
+            File.WriteAllText(markerPath, JsonUtility.ToJson(buildInfo, true));
+            Debug.Log($"[AIT] 빌드 마커 생성: {markerPath}");
+        }
+
         #endregion
 
         #region Public Static Fields
@@ -914,14 +931,7 @@ namespace AppsInToss
                     profileName = profile?.developmentBuild == true ? "Development" : "Production",
                     unityVersion = Application.unityVersion
                 };
-                string markerPath = Path.Combine(outputPath, BUILD_MARKER_FILENAME);
-                var markerDir = Path.GetDirectoryName(markerPath);
-                if (!string.IsNullOrEmpty(markerDir))
-                {
-                    Directory.CreateDirectory(markerDir);
-                }
-                File.WriteAllText(markerPath, JsonUtility.ToJson(buildInfo, true));
-                Debug.Log($"[AIT] 빌드 마커 생성: {markerPath}");
+                WriteBuildMarker(outputPath, buildInfo);
             }
             catch (Exception e)
             {

@@ -1,5 +1,5 @@
 /**
- * Tier 2: C# ↔ jslib 일관성 검증
+ * C# ↔ jslib 일관성 검증
  *
  * 생성된 C# DllImport 메서드와 jslib 함수 간의 일관성을 검증합니다.
  * - 함수 존재 여부
@@ -194,7 +194,7 @@ function isEventSubscription(name: string): boolean {
 // Tests
 // =================================================================
 
-describe('Tier 2: C# ↔ jslib 일관성 검증', () => {
+describe('C# ↔ jslib 일관성 검증', () => {
   beforeAll(async () => {
     console.log('\n📂 C# 및 jslib 파일 분석 중...\n');
     await loadData();

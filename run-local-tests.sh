@@ -597,20 +597,20 @@ test_sdk_generator_unit() {
     echo "Installing dependencies..."
     pnpm install --silent 2>/dev/null || pnpm install
 
-    local tier2_passed=true
+    local invariants_passed=true
 
     # C# ↔ jslib 일관성 검증
     echo "Running unit tests (C# ↔ jslib invariants)..."
-    if pnpm run test:tier2 2>&1; then
+    if pnpm run test:invariants 2>&1; then
         echo -e "${GREEN}✓${NC} C# ↔ jslib invariants passed"
     else
         echo -e "${RED}✗${NC} C# ↔ jslib invariants failed"
-        tier2_passed=false
+        invariants_passed=false
     fi
 
     cd "$SCRIPT_DIR"
 
-    if [ "$tier2_passed" = true ]; then
+    if [ "$invariants_passed" = true ]; then
         print_success "SDK Generator Unit Tests"
         return 0
     else

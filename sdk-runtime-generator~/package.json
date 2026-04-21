@@ -15,8 +15,11 @@
     "test": "vitest run",
     "test:watch": "vitest watch",
     "test:ui": "vitest --ui",
-    "test:tier2": "vitest run tests/unit/invariants.test.ts",
-    "test:versions": "vitest run tests/unit/multi-version.test.ts"
+    "test:binding": "vitest run tests/unit/binding.test.ts",
+    "test:invariants": "vitest run tests/unit/invariants.test.ts",
+    "test:serialization": "vitest run tests/unit/serialization.test.ts",
+    "test:differential": "vitest run tests/unit/differential.test.ts",
+    "test:multi-version": "vitest run tests/unit/multi-version.test.ts"
   },
   "dependencies": {
     "@apps-in-toss/framework": "1.6.0",

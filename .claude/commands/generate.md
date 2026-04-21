@@ -6,7 +6,7 @@ SDK 런타임 코드를 재생성하고 검증합니다.
 
 1. `cd sdk-runtime-generator~`
 2. `pnpm generate` 실행하여 TypeScript → C# + jslib 브릿지 생성
-3. `pnpm validate` 실행하여 Mono mcs 컴파일 검사
+3. `pnpm validate` 실행하여 vitest로 생성 코드 속성 검증
 4. `pnpm test` 실행하여 유닛 테스트
 5. 생성된 파일 변경사항 요약: `git diff --stat Runtime/SDK/`
 6. 결과 보고

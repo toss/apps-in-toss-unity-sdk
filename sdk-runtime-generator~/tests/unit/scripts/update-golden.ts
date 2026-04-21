@@ -58,7 +58,7 @@ async function main() {
   }
 
   console.log('✅ Golden files 업데이트 완료\n');
-  console.log('💡 이제 "pnpm test:tier4"로 회귀 테스트를 실행할 수 있습니다.\n');
+  console.log('💡 이제 "pnpm test:differential"로 회귀 테스트를 실행할 수 있습니다.\n');
 }
 
 main().catch(console.error);

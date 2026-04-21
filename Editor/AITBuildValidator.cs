@@ -298,6 +298,7 @@ namespace AppsInToss.Editor
                         return byTime != 0 ? byTime : string.CompareOrdinal(b, a);
                     });
 
+                    string kept = Path.GetFileName(files[0]);
                     var deleted = new List<string>();
                     var failed = new List<string>();
                     for (int i = 1; i < files.Length; i++)
@@ -321,11 +322,16 @@ namespace AppsInToss.Editor
                         {
                             failed.Add(Path.GetFileName(stalePath));
                         }
+                        catch (Exception)
+                        {
+                            // PathTooLongException 등 플랫폼별 예외도 fallback 처리
+                            failed.Add(Path.GetFileName(stalePath));
+                        }
                     }
 
                     if (failed.Count == 0)
                     {
-                        Debug.Log($"[AIT] ✓ '{pattern}' 이전 빌드 잔여물 {deleted.Count}개 자동 정리: {string.Join(", ", deleted)}");
+                        Debug.Log($"[AIT] ✓ '{pattern}' 이전 빌드 잔여물 {deleted.Count}개 자동 정리: {string.Join(", ", deleted)} (남김: {kept})");
                     }
                     else
                     {

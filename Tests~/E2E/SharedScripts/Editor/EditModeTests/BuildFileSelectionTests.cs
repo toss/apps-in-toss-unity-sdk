@@ -5,6 +5,7 @@
 
 using NUnit.Framework;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.RegularExpressions;
 using UnityEngine;
@@ -26,9 +27,20 @@ public class BuildFileSelectionTests
     [TearDown]
     public void TearDown()
     {
-        if (Directory.Exists(tempDir))
+        try
         {
-            Directory.Delete(tempDir, true);
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, true);
+            }
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // fallback 테스트가 권한을 복구하지 못한 경우 임시 디렉토리 누수 허용
+        }
+        catch (IOException)
+        {
+            // 다른 테스트가 파일을 잡고 있는 경우 best-effort
         }
     }
 
@@ -308,8 +320,10 @@ public class BuildFileSelectionTests
     }
 
     // =====================================================
-    // 로그 레벨 검증 — 자동 정리 성공 시 Warning 없이 Log 1줄
-    // Sentry 노이즈 제거의 핵심 목적 회귀 방지
+    // 로그 레벨 검증 — 자동 정리 성공 시 Warning/Error 0건
+    // Sentry 노이즈 제거의 핵심 목적 회귀 방지.
+    // LogAssert.NoUnexpectedReceived는 Error/Assert/Exception만 감시하므로
+    // Warning까지 확실히 막으려면 logMessageReceived 훅으로 직접 수집.
     // =====================================================
 
     [Test]
@@ -323,22 +337,21 @@ public class BuildFileSelectionTests
         File.WriteAllText(newFile, "// new");
         File.SetLastWriteTime(newFile, new DateTime(2026, 2, 1));
 
-        LogAssert.Expect(LogType.Log, new Regex(@"\[AIT\] ✓ .+ 이전 빌드 잔여물 1개 자동 정리"));
+        var noisy = CollectNoisyLogs(() =>
+            AITBuildValidator.FindFileInBuild(tempDir, "*.loader.js"));
 
-        AITBuildValidator.FindFileInBuild(tempDir, "*.loader.js");
-
-        // NoUnexpectedReceived가 Warning/Error가 같이 찍히지 않았음을 보장
-        LogAssert.NoUnexpectedReceived();
+        Assert.IsEmpty(noisy,
+            "성공 경로는 Warning/Error 로그를 발생시키면 안 됨: " +
+            string.Join(" | ", noisy));
     }
 
     // =====================================================
-    // Fallback 경로 검증 — 삭제 실패 시에도 최신 파일 반환 + 경고
-    // 부모 디렉토리 권한 제어로 UnauthorizedAccessException 유도 (Unix 계열)
-    // Windows는 POSIX 권한 모델과 달라 동일하게 실패하지 않으므로 스킵
+    // Fallback 경로 검증 (Unix) — chmod로 삭제 실패 유도
+    // Windows는 POSIX 권한 모델이 달라 별도 테스트 (file lock)에서 커버
     // =====================================================
 
     [Test]
-    public void FindFileInBuild_DeleteFails_FallsBackToWarning()
+    public void FindFileInBuild_DeleteFails_FallsBackToWarning_Unix()
     {
         Assume.That(Application.platform != RuntimePlatform.WindowsEditor,
             "Unix-only: chmod-based directory permission manipulation");
@@ -351,28 +364,98 @@ public class BuildFileSelectionTests
         File.WriteAllText(newFile, "// new");
         File.SetLastWriteTime(newFile, new DateTime(2026, 2, 1));
 
-        // 부모 디렉토리를 r-xr-xr-x(0555)로 변경 — 삭제 불가 → UnauthorizedAccessException
-        var originalAttrs = File.GetAttributes(tempDir);
         try
         {
             Syscall_Chmod(tempDir, "0555");
 
-            LogAssert.Expect(LogType.Warning, new Regex(@"중복 파일 1개 정리 실패"));
-            LogAssert.Expect(LogType.Warning, new Regex(@"Clean Build"));
+            // root 사용자면 0555가 무시되어 삭제가 성공 → false positive
+            // 실제로 쓰기 불가한지 선검증
+            Assume.That(IsDirectoryWriteBlocked(tempDir),
+                "현재 사용자는 0555 디렉토리에도 쓸 수 있음 (root?) — 테스트 의미 없음");
+
+            LogAssert.Expect(LogType.Warning, new Regex(@"\[AIT\].+중복 파일 \d+개 정리 실패"));
+            LogAssert.Expect(LogType.Warning, new Regex(@"\[AIT\].+Clean Build"));
 
             string result = AITBuildValidator.FindFileInBuild(tempDir, "*.loader.js");
 
             Assert.AreEqual("new.loader.js", result,
-                "Even when cleanup fails, newest file must still be returned");
+                "삭제 실패 시에도 최신 파일명은 정상 반환되어야 함");
             Assert.IsTrue(File.Exists(oldFile),
-                "Delete should have failed, file must still exist");
+                "chmod로 삭제를 막았으므로 oldFile은 남아있어야 함");
         }
         finally
         {
             // TearDown이 tempDir을 지우려면 쓰기 권한 복구 필요
-            Syscall_Chmod(tempDir, "0755");
-            File.SetAttributes(tempDir, originalAttrs);
+            try { Syscall_Chmod(tempDir, "0755"); } catch { /* best-effort */ }
         }
+    }
+
+    // =====================================================
+    // Fallback 경로 검증 (Windows) — FileStream 락으로 IOException 유도
+    // Windows는 열린 파일을 다른 핸들에서 삭제 불가(sharing violation)
+    // =====================================================
+
+    [Test]
+    public void FindFileInBuild_DeleteFails_FallsBackToWarning_Windows()
+    {
+        Assume.That(Application.platform == RuntimePlatform.WindowsEditor,
+            "Windows-only: file lock semantics differ on Unix");
+
+        string oldFile = Path.Combine(tempDir, "old.loader.js");
+        File.WriteAllText(oldFile, "// old");
+        File.SetLastWriteTime(oldFile, new DateTime(2025, 1, 1));
+
+        string newFile = Path.Combine(tempDir, "new.loader.js");
+        File.WriteAllText(newFile, "// new");
+        File.SetLastWriteTime(newFile, new DateTime(2026, 2, 1));
+
+        // Windows에서 FileShare.Read로 열면 다른 프로세스의 Delete가 sharing violation 발생
+        using (File.Open(oldFile, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            LogAssert.Expect(LogType.Warning, new Regex(@"\[AIT\].+중복 파일 \d+개 정리 실패"));
+            LogAssert.Expect(LogType.Warning, new Regex(@"\[AIT\].+Clean Build"));
+
+            string result = AITBuildValidator.FindFileInBuild(tempDir, "*.loader.js");
+
+            Assert.AreEqual("new.loader.js", result,
+                "삭제 실패 시에도 최신 파일명은 정상 반환되어야 함");
+            Assert.IsTrue(File.Exists(oldFile),
+                "파일이 열려있어 삭제 실패 → oldFile은 남아있어야 함");
+        }
+    }
+
+    // -----------------------------------------------------------------
+    // 유틸리티: 동작 중 Warning/Error 로그를 수집 (LogAssert 보강)
+    // -----------------------------------------------------------------
+    private static List<string> CollectNoisyLogs(Action action)
+    {
+        var noisy = new List<string>();
+        Application.LogCallback handler = null;
+        handler = (msg, _, type) =>
+        {
+            if (type == LogType.Warning || type == LogType.Error ||
+                type == LogType.Exception || type == LogType.Assert)
+            {
+                noisy.Add($"[{type}] {msg}");
+            }
+        };
+        Application.logMessageReceived += handler;
+        try { action(); }
+        finally { Application.logMessageReceived -= handler; }
+        return noisy;
+    }
+
+    private static bool IsDirectoryWriteBlocked(string dir)
+    {
+        string probe = Path.Combine(dir, "probe-" + Guid.NewGuid().ToString("N").Substring(0, 6));
+        try
+        {
+            File.WriteAllText(probe, "x");
+            File.Delete(probe);
+            return false;
+        }
+        catch (UnauthorizedAccessException) { return true; }
+        catch (IOException) { return true; }
     }
 
     private static void Syscall_Chmod(string path, string mode)
@@ -386,7 +469,11 @@ public class BuildFileSelectionTests
         };
         using (var proc = System.Diagnostics.Process.Start(psi))
         {
-            proc.WaitForExit(3000);
+            if (!proc.WaitForExit(3000))
+            {
+                try { proc.Kill(); } catch { /* best-effort */ }
+                throw new InvalidOperationException($"chmod {mode} {path} timed out");
+            }
             if (proc.ExitCode != 0)
             {
                 throw new InvalidOperationException(

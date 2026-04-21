@@ -35,7 +35,7 @@ jobs:
 
       - name: Generate Report
         working-directory: sdk-runtime-generator~
-        run: pnpm test:versions || true
+        run: pnpm test:multi-version || true
 
       - name: Commit Report
         env:

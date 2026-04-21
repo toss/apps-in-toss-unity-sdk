@@ -104,11 +104,11 @@ npm run test:ui
 GitHub Actions에서 자동 실행:
 
 ```yaml
-- name: Run SDK Generator Tests
+- name: Run Unit Tests (C#/jslib invariants)
+  working-directory: sdk-runtime-generator~
   run: |
-    cd sdk-runtime-generator~/tests/unit
-    pnpm install
-    npm test
+    pnpm install --no-frozen-lockfile
+    pnpm run test:invariants
 ```
 
 ## 📝 새 테스트 추가하기

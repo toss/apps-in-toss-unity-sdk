@@ -92,14 +92,10 @@
 
 ## 의존성 관리
 
-### P2 — BuildConfig~/package.json의 floating versions
-- **파일**: `WebGLTemplates/AITTemplate/BuildConfig~/package.json`
-- **현상**: `vite: "^8.0.8"`, `typescript: "^6.0.2"` — caret(^)은 마이너/패치 업데이트를 허용하므로 예기치 않은 마이너 버전 변경으로 빌드가 깨질 수 있음
-- **조치**: 정확한 버전 고정 또는 `~` (틸드, 패치만 허용) 사용
-
-### P2 — sdk-runtime-generator~/package.json의 floating versions
-- **현상**: `commander: "^14.0.2"`, `ts-morph: "^27.0.2"` 등 다수 caret 버전
-- **조치**: 핵심 의존성은 정확한 버전 고정
+### P2 — sdk-runtime-generator~/pnpm-lock.yaml이 gitignored
+- **파일**: `.gitignore:173`
+- **현상**: `sdk-runtime-generator~/pnpm-lock.yaml`이 gitignore에 포함되어 있어, package.json에서 핵심 의존성을 고정 버전으로 pin했어도 transitive dependency는 개발자/CI 간에 drift 가능
+- **조치**: 런타임 산출물이 아닌 개발용 코드젠 도구라 gitignored가 의도적인지 확인. 재현성 목표를 달성하려면 lockfile 커밋 검토
 
 ---
 

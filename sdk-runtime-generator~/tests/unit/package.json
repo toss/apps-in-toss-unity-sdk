@@ -9,10 +9,11 @@
     "test:watch": "vitest watch",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest run --coverage",
-    "test:tier1": "vitest run compilation.test.ts",
-    "test:tier2": "vitest run binding.test.ts",
-    "test:tier3": "vitest run serialization.test.ts",
-    "test:tier4": "vitest run differential.test.ts",
+    "test:binding": "vitest run binding.test.ts",
+    "test:invariants": "vitest run invariants.test.ts",
+    "test:serialization": "vitest run serialization.test.ts",
+    "test:differential": "vitest run differential.test.ts",
+    "test:multi-version": "vitest run multi-version.test.ts",
     "test:update-golden": "pnpx tsx scripts/update-golden.ts"
   },
   "devDependencies": {

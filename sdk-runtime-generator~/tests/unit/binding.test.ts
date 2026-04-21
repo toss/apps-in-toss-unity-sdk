@@ -1,5 +1,5 @@
 /**
- * Tier 2: Binding 일관성 검증
+ * Binding 일관성 검증
  *
  * C# extern 선언과 jslib 함수 간의 바인딩 일관성을 검증합니다.
  *
@@ -35,7 +35,7 @@ interface JslibFunction {
   usesSendMessage: boolean;
 }
 
-describe('Tier 2: C# ↔ jslib 바인딩 일관성 검증', () => {
+describe('C# ↔ jslib 바인딩 일관성 검증', () => {
   let csharpExterns: CSharpExtern[] = [];
   let jslibFunctions: JslibFunction[] = [];
 

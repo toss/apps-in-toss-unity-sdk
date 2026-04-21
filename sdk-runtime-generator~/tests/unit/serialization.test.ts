@@ -1,5 +1,5 @@
 /**
- * Tier 3: 직렬화/역직렬화 검증
+ * 직렬화/역직렬화 검증
  *
  * TypeScript ↔ C# 타입 매핑의 JSON 스키마 일치성을 검증합니다.
  * C# JsonSerializer의 실제 동작은 E2E 테스트(SerializationTester.cs)에서 검증합니다.
@@ -23,7 +23,7 @@ const __dirname = path.dirname(__filename);
 // public class 또는 public partial class를 매칭하는 공통 패턴
 const CLASS_PATTERN = `public (?:partial )?class`;
 
-describe('Tier 3: JSON 스키마 일치성 검증', () => {
+describe('JSON 스키마 일치성 검증', () => {
   let typesFileContent: string;
   let allCSharpFiles: Map<string, string>;
 

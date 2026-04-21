@@ -915,6 +915,11 @@ namespace AppsInToss
                     unityVersion = Application.unityVersion
                 };
                 string markerPath = Path.Combine(outputPath, BUILD_MARKER_FILENAME);
+                var markerDir = Path.GetDirectoryName(markerPath);
+                if (!string.IsNullOrEmpty(markerDir))
+                {
+                    Directory.CreateDirectory(markerDir);
+                }
                 File.WriteAllText(markerPath, JsonUtility.ToJson(buildInfo, true));
                 Debug.Log($"[AIT] 빌드 마커 생성: {markerPath}");
             }

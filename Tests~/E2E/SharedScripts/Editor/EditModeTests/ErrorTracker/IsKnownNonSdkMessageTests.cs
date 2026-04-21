@@ -156,20 +156,27 @@ public class IsKnownNonSdkMessageTests
     [Test]
     public void SpriteAtlasDuplicate_FullSentryMessage_ReturnsTrue()
     {
-        // Sentry에서 실제 관찰된 원문 — 마침표와 "Default to use..." 후행 문구 포함
-        // 리그레션 방지: 패턴이 끝부분 변화에 영향받지 않는지 검증
+        // Sentry APPS-IN-TOSS-UNITY-SDK-DW에서 실제 관찰된 원문 fixture.
+        // 현재 필터는 IndexOf 부분 매칭이라 후행 문구 유무는 결과에 영향 없지만,
+        // 실제 입력 예시를 테스트로 박아두면 향후 필터가 anchored/regex로 바뀔 때
+        // 이 실측 메시지를 놓치지 않도록 방어한다.
         Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
             "Sprite object_19_01 matches more than one built-in atlases. Default to use the first available atlas."));
     }
 
-    [TestCase("object_04_02")]
-    [TestCase("cloud")]
-    [TestCase("BG-main_01")]
-    [TestCase("player idle frame")]
-    public void SpriteAtlasDuplicate_VariousSpriteNames_ReturnsTrue(string spriteName)
+    // 필터가 향후 anchored/regex로 tightening되어도 실제 Unity 출력 변형을 놓치지 않도록
+    // 구조적으로 서로 다른 리스크 프로파일의 변형만 선별해 검증 (단순 이름 swap은 제외).
+    [TestCase(
+        "Sprite object_04_02 matches more than one built-in atlases. Default to use the first available atlas.",
+        TestName = "SpriteAtlas_StandardLayout_ReturnsTrue")]
+    [TestCase(
+        "[Warn]  Sprite cloud matches more than one built-in atlases.",
+        TestName = "SpriteAtlas_WithPrefixAndWhitespace_ReturnsTrue")]
+    [TestCase(
+        "Sprite 'player idle frame' matches more than one built-in atlases (fallback applied).",
+        TestName = "SpriteAtlas_QuotedNameAndTrailingParen_ReturnsTrue")]
+    public void SpriteAtlasDuplicate_RealisticVariants_ReturnsTrue(string message)
     {
-        // Sprite 이름 변형(숫자, 하이픈, 공백)에 관계없이 핵심 문구가 매칭되는지 검증
-        string message = $"Sprite {spriteName} matches more than one built-in atlases. Default to use the first available atlas.";
         Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(message));
     }
 

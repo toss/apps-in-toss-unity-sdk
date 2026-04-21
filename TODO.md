@@ -64,14 +64,6 @@
 - **현상**: `Thread.Sleep(1000 * retry)` — 최대 3초까지 블로킹 (호출 컨텍스트의 스레딩 모델 확인 필요)
 - **조치**: 메인 스레드 호출 확인 후, 필요 시 `Task.Delay()` + async/await 패턴으로 전환
 
-### P2 — .Result 동기 블로킹 호출
-- **파일/행**:
-  - `Editor/AITAutoUpdater.cs:485` — `client.GetStringAsync(apiUrl).Result`
-  - `Editor/AITGitGuard.cs:392` — `stdoutTask.Result`, `stderrTask.Result`
-  - `Editor/AITPlatformHelper.cs:396-397` — `outputTask.Result`, `errorTask.Result`
-- **현상**: `.Result` 호출은 데드락 가능성
-- **조치**: async/await 체인으로 리팩토링
-
 ### P2 — 기타 Thread.Sleep 호출 (6곳)
 - `AITProcessTreeManager.cs:283` (300ms)
 - `AITNpmRunner.cs:296` (200ms)

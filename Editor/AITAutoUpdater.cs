@@ -369,8 +369,10 @@ namespace AppsInToss.Editor
         /// 원격 해시 결과 처리 (메인 스레드의 async 컨텍스트에서 await 기반으로 실행됨)
         /// </summary>
         /// <remarks>
-        /// EditorApplication.delayCall의 async void 람다에서 await 됨.
-        /// 예외는 호출 측 try/catch에서 반드시 삼켜야 함 (async void 크래시 방지).
+        /// 이 메서드는 네트워크/Unity API 예외를 내부에서 삼키지 않고 throw할 수 있음.
+        /// EditorApplication.delayCall의 async void 람다에서 호출되므로 호출 측은
+        /// 반드시 try/catch로 예외를 삼켜야 함 (async void의 미처리 예외는
+        /// SynchronizationContext로 올라가 Editor를 크래시시킬 수 있음).
         /// </remarks>
         private static async Task OnRemoteHashResolved(
             string remoteHash,
@@ -519,7 +521,9 @@ namespace AppsInToss.Editor
             }
             catch (Exception)
             {
-                // API 호출 실패 시 무시
+                // API 호출 실패 시 무시 — 커밋 시간은 보조 정보이므로 실패해도
+                // 업데이트 체크 흐름 자체는 계속 진행되어야 함. 이 메서드는 null을
+                // 반환하고, 호출 측(OnRemoteHashResolved)은 short hash만 표시함.
             }
 
             return null;

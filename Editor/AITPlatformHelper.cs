@@ -393,9 +393,11 @@ namespace AppsInToss.Editor
                         return result;
                     }
 
+                    // 타임아웃 강제(WaitForExit(int)) + 리더 drain 확정(WaitForExit())의 2단계 패턴.
                     // 타임아웃 오버로드 WaitForExit(int)은 stdout/stderr 비동기 리더 배수(drain)를
                     // 보장하지 않음. 파라미터 없는 오버로드를 한 번 더 호출해 리더 완료를 확정함.
-                    // (이 시점에서 프로세스는 이미 exit 상태이므로 리더가 EOF로 곧 완료됨.)
+                    // (이 시점에서 프로세스는 이미 exit 상태이므로 리더가 EOF로 곧 완료됨.
+                    //  둘 중 한 호출만 남기지 말 것 — 하나만 있으면 hang 또는 drain 누락 발생.)
                     process.WaitForExit();
 
                     // 이 시점에서 두 리더 Task는 완료 상태이므로 동기 접근에 데드락 위험 없음.

@@ -293,6 +293,73 @@ public class BuildFileSelectionTests
     }
 
     // =====================================================
+    // 중복 자동 정리 — 모든 WebGL 산출물 패턴 회귀 방지
+    // Sentry SDK-7J(213ev), SDK-7T(3ev): loader.js 외 .data/.wasm/.framework.js/
+    // .symbols.json 파일에 대해서도 같은 "이전 빌드 잔여물" 경고가 반복 수집됨.
+    // FindFileInBuild는 패턴 독립적으로 동작하므로 호출부가 모든 패턴에 대해
+    // 자동 정리를 받는지 명시적으로 고정한다.
+    // 비압축(.data), Brotli(.wasm.br), Gzip(.framework.js.gz), decompressionFallback
+    // (.data.unityweb, .symbols.json.unityweb) 케이스를 전부 포함.
+    //
+    // 비고: FindFileInBuild_CompressedExtensions_Matches(:108)는 단일 파일에 대한
+    // 패턴 매칭만 검증하지만, 이 테스트는 동일 조합에 '중복 시 자동 정리'와
+    // '반환값 = 최신 파일명' 계약을 추가로 고정한다.
+    // =====================================================
+
+    // pattern: AITBuildValidator.GetFilePatterns가 생성하는 실제 패턴
+    // suffix: 생성할 파일 확장자 (pattern과 매칭되어야 함)
+    [TestCase("*.data*", ".data")]
+    [TestCase("*.data*", ".data.br")]
+    [TestCase("*.data*", ".data.gz")]
+    [TestCase("*.data.unityweb", ".data.unityweb")]
+    [TestCase("*.framework.js*", ".framework.js")]
+    [TestCase("*.framework.js*", ".framework.js.br")]
+    [TestCase("*.framework.js*", ".framework.js.gz")]
+    [TestCase("*.framework.js.unityweb", ".framework.js.unityweb")]
+    [TestCase("*.wasm*", ".wasm")]
+    [TestCase("*.wasm*", ".wasm.br")]
+    [TestCase("*.wasm*", ".wasm.gz")]
+    [TestCase("*.wasm.unityweb", ".wasm.unityweb")]
+    [TestCase("*.symbols.json*", ".symbols.json")]
+    [TestCase("*.symbols.json*", ".symbols.json.br")]
+    [TestCase("*.symbols.json*", ".symbols.json.gz")]
+    [TestCase("*.symbols.json.unityweb", ".symbols.json.unityweb")]
+    public void FindFileInBuild_AllProductPatterns_DuplicateCleanup(string pattern, string suffix)
+    {
+        string oldFile = Path.Combine(tempDir, "old_hash" + suffix);
+        File.WriteAllText(oldFile, "old");
+        File.SetLastWriteTime(oldFile, new DateTime(2025, 1, 1));
+
+        string oldMeta = oldFile + ".meta";
+        File.WriteAllText(oldMeta, "fileFormatVersion: 2\nguid: deadbeef\n");
+
+        string newFile = Path.Combine(tempDir, "new_hash" + suffix);
+        File.WriteAllText(newFile, "new");
+        File.SetLastWriteTime(newFile, new DateTime(2026, 2, 1));
+
+        string result = null;
+        var logs = CollectLogs(() =>
+            result = AITBuildValidator.FindFileInBuild(tempDir, pattern));
+
+        Assert.AreEqual("new_hash" + suffix, result,
+            $"[{pattern} / {suffix}] 최신 파일명이 반환되어야 함");
+        Assert.IsFalse(File.Exists(oldFile),
+            $"[{pattern} / {suffix}] 이전 빌드 잔여물이 자동 삭제되어야 함");
+        Assert.IsFalse(File.Exists(oldMeta),
+            $"[{pattern} / {suffix}] 잔여물의 .meta 파일도 함께 삭제되어야 함");
+        Assert.IsTrue(File.Exists(newFile),
+            $"[{pattern} / {suffix}] 최신 파일은 유지되어야 함");
+
+        // Sentry 노이즈 방지: 성공 경로에서는 Warning/Error 없이 Debug.Log만 발생
+        var noisy = logs.FindAll(l =>
+            l.type == LogType.Warning || l.type == LogType.Error ||
+            l.type == LogType.Exception || l.type == LogType.Assert);
+        Assert.IsEmpty(noisy,
+            $"[{pattern} / {suffix}] 정상 자동 정리는 Warning/Error를 발생시키면 안 됨: " +
+            string.Join(" | ", noisy.ConvertAll(l => $"[{l.type}] {l.message}")));
+    }
+
+    // =====================================================
     // LastWriteTime 동률 — 파일명 내림차순 타이브레이크로 결정적 선택
     // Array.Sort가 불안정하므로 명시적 이차 정렬 키가 필요
     // =====================================================

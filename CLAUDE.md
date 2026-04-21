@@ -7,11 +7,12 @@
 ### 브랜치 보호 규칙
 - **main 브랜치에 직접 push 불가** — 반드시 PR을 통해 머지
 - main 브랜치 규칙 (Repository Rulesets):
-  - PR 필수 (승인 없이 머지 가능, merge 방식만 허용)
+  - PR 필수 (승인 없이 머지 가능)
+  - **머지 방식: squash merge만 허용** (merge commit, rebase 불가)
   - 커밋 서명 필수 (`required_signatures`)
   - 삭제 불가, force push 불가
   - bypass 권한자 없음 (`current_user_can_bypass: never`)
-- **작업 시**: 항상 feature 브랜치 생성 → PR 제출
+- **작업 시**: 항상 feature 브랜치 생성 → PR 제출 → squash merge로 병합
 
 ### Git 커밋 가이드라인
 - **모든 커밋 메시지는 반드시 한국어로 작성**

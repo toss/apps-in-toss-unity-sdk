@@ -389,7 +389,9 @@ namespace AppsInToss.Editor
                         return null;
                     }
 
-                    return (process.ExitCode, stdoutTask.Result, stderrTask.Result);
+                    // WaitForExit 이후 Task는 이미 완료된 상태이므로 동기 접근은 데드락 위험 없음.
+                    // .Result 대신 GetAwaiter().GetResult()를 사용해 예외 래핑(AggregateException)을 피함.
+                    return (process.ExitCode, stdoutTask.GetAwaiter().GetResult(), stderrTask.GetAwaiter().GetResult());
                 }
             }
             catch (System.Exception)

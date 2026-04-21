@@ -393,8 +393,10 @@ namespace AppsInToss.Editor
                         return result;
                     }
 
-                    result.Output = StripAnsiCodes(outputTask.Result);
-                    result.Error = StripAnsiCodes(errorTask.Result);
+                    // WaitForExit 이후 Task는 이미 완료된 상태이므로 동기 접근은 데드락 위험 없음.
+                    // .Result 대신 GetAwaiter().GetResult()를 사용해 예외 래핑(AggregateException)을 피함.
+                    result.Output = StripAnsiCodes(outputTask.GetAwaiter().GetResult());
+                    result.Error = StripAnsiCodes(errorTask.GetAwaiter().GetResult());
                     result.ExitCode = process.ExitCode;
                     result.Success = process.ExitCode == 0;
 

@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using UnityEditor;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
@@ -167,11 +168,11 @@ namespace AppsInToss.Editor
                 {
                     string remoteHash = GetRemoteCommitHash(capturedGitUrl, capturedFragment);
 
-                    EditorApplication.delayCall += () =>
+                    EditorApplication.delayCall += async () =>
                     {
                         try
                         {
-                            OnRemoteHashResolved(
+                            await OnRemoteHashResolved(
                                 remoteHash,
                                 capturedInstalledHash,
                                 capturedPackageId,
@@ -364,7 +365,7 @@ namespace AppsInToss.Editor
         /// <summary>
         /// 원격 해시 결과 처리 (메인 스레드에서 호출)
         /// </summary>
-        private static void OnRemoteHashResolved(
+        private static async Task OnRemoteHashResolved(
             string remoteHash,
             string installedHash,
             string packageId,
@@ -411,8 +412,8 @@ namespace AppsInToss.Editor
             Debug.Log($"[AIT] SDK 업데이트 발견: {shortInstalled} → {shortRemote}");
 
             // 커밋 시간 정보 가져오기 (GitHub API)
-            string installedTime = GetCommitTime(gitUrl, installedHash);
-            string remoteTime = GetCommitTime(gitUrl, remoteHash);
+            string installedTime = await GetCommitTime(gitUrl, installedHash);
+            string remoteTime = await GetCommitTime(gitUrl, remoteHash);
 
             // 다이얼로그 메시지 구성
             string installedInfo = string.IsNullOrEmpty(installedTime)
@@ -469,7 +470,7 @@ namespace AppsInToss.Editor
         /// <summary>
         /// GitHub API를 통해 커밋 시간 가져오기
         /// </summary>
-        private static string GetCommitTime(string gitUrl, string commitHash)
+        private static async Task<string> GetCommitTime(string gitUrl, string commitHash)
         {
             try
             {
@@ -492,7 +493,9 @@ namespace AppsInToss.Editor
                     client.DefaultRequestHeaders.Add("User-Agent", "Unity-AIT-SDK");
                     client.Timeout = TimeSpan.FromSeconds(5);
 
-                    var response = client.GetStringAsync(apiUrl).Result;
+                    // await 사용: 메인 스레드에서 .Result로 블로킹하면
+                    // Unity SynchronizationContext와 상호작용해 데드락 가능.
+                    string response = await client.GetStringAsync(apiUrl);
 
                     // 간단한 JSON 파싱으로 committer.date 추출
                     // "committer":{"name":"...","email":"...","date":"2026-02-02T12:34:56Z"}

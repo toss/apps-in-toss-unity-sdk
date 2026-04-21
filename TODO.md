@@ -90,6 +90,15 @@
 
 ---
 
+## 의존성 관리
+
+### P2 — sdk-runtime-generator~/pnpm-lock.yaml이 gitignored
+- **파일**: `.gitignore:173`
+- **현상**: `sdk-runtime-generator~/pnpm-lock.yaml`이 gitignore에 포함되어 있어, package.json에서 핵심 의존성을 고정 버전으로 pin했어도 transitive dependency는 개발자/CI 간에 drift 가능
+- **조치**: 런타임 산출물이 아닌 개발용 코드젠 도구라 gitignored가 의도적인지 확인. 재현성 목표를 달성하려면 lockfile 커밋 검토
+
+---
+
 ## 보안
 
 ### P3 — Sentry DSN 하드코딩

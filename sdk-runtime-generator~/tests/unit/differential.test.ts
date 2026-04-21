@@ -1,11 +1,11 @@
 /**
- * Tier 4: Differential Testing (Golden Files)
+ * Differential Testing (Golden Files)
  *
  * 생성된 SDK 코드가 이전 버전과 동일한지 검증합니다.
- * 의도치 않은 변경(regression)을 방지하기 위한 스냅샷 테스트입니다.
+ * 의도치 않은 변경(regression)을 방지하기 위한 골든 파일 기반 회귀 테스트입니다.
  *
  * 사용법:
- * - pnpm test:tier4      - golden file과 비교
+ * - pnpm test:differential  - golden file과 비교
  * - pnpm test:update-golden - golden file 업데이트 (의도적 변경 시)
  *
  * 검증 항목:
@@ -36,7 +36,7 @@ const GOLDEN_FILES = [
   // jslib 파일은 자주 변경되므로 선택적으로 포함
 ];
 
-describe('Tier 4: Golden File 비교 (회귀 테스트)', () => {
+describe('Golden File 비교 (회귀 테스트)', () => {
   let goldenFilesExist = false;
 
   beforeAll(async () => {

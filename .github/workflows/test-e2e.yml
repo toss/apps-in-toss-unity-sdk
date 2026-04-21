@@ -157,7 +157,7 @@ jobs:
 
       - name: Run Unit Tests (C#/jslib invariants)
         working-directory: sdk-runtime-generator~
-        run: pnpm run test:tier2
+        run: pnpm run test:invariants
 
   # =====================================================
   # Pending Status 보고

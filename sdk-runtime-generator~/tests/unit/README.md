@@ -1,15 +1,15 @@
 # SDK Generator 속성 검증 테스트
 
-Unity SDK Generator가 생성한 코드를 **속성(property) 기반**으로 검증합니다. 정규식이나 스냅샷 대신 TypeScript Compiler API / ts-morph로 구조적 불변식을 확인합니다.
+Unity SDK Generator가 생성한 코드를 **속성(property) 기반**으로 검증합니다. 정규식 매칭 대신 TypeScript Compiler API / ts-morph와 golden 파일을 조합해 구조적 불변식과 회귀를 검증합니다.
 
 ## 📋 테스트 범위
 
 | 파일 | 검증 내용 |
 |------|-----------|
-| `binding.test.ts` | C# API ↔ jslib 함수 시그니처/이름 정합성 |
-| `invariants.test.ts` | 생성 코드 전반의 구조적 불변식 (네이밍, 타입 매핑 등) |
+| `binding.test.ts` | C# extern 선언 ↔ jslib 함수의 양방향 매핑 및 파라미터 개수 일치 |
+| `invariants.test.ts` | 생성 코드 전반의 구조적 불변식 (DllImport ↔ jslib 일관성, 콜백 파라미터 위치, SendMessage 패턴 등) |
 | `serialization.test.ts` | JSON 직렬화/역직렬화 경로의 안전성 |
-| `differential.test.ts` | 생성기 수정 전후 산출물의 의미 있는 차이 감지 |
+| `differential.test.ts` | Golden 파일 기반 회귀 검증 (의도치 않은 생성 결과 변경 감지) |
 | `multi-version.test.ts` | 여러 `@apps-in-toss/web-framework` 버전에 대한 호환성 |
 
 **실행**:
@@ -17,7 +17,7 @@ Unity SDK Generator가 생성한 코드를 **속성(property) 기반**으로 검
 npm test
 ```
 
-**목적**: SDK 생성 직후 빠른 구조 검증 (~수 초)
+**목적**: SDK 생성 직후 구조 검증
 
 **언제 실행?**
 - SDK Generator 코드 수정 후

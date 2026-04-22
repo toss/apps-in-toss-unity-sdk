@@ -6,6 +6,7 @@ namespace AppsInToss.Editor.Package
     /// <summary>
     /// SDK 내부 BuildConfig 템플릿 및 Runtime 폴더 경로 해석 + 캐시.
     /// 빌드 중 반복 검색을 방지하기 위해 내부 static 필드로 캐싱한다.
+    /// internal 멤버는 Editor/AssemblyInfo.cs 의 InternalsVisibleTo 를 통해 테스트 어셈블리에서 접근됩니다.
     /// </summary>
     internal static class SdkPathResolver
     {

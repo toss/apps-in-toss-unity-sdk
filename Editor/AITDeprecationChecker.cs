@@ -15,7 +15,7 @@ namespace AppsInToss.Editor
     [InitializeOnLoad]
     public static class AITDeprecationChecker
     {
-        private static readonly Version FallbackDeprecationThreshold = new Version(2, 4, 1);
+        private static readonly Version FallbackDeprecationThreshold = new Version(2, 4, 0);
         private const string GIT_REPO_URL = "https://github.com/toss/apps-in-toss-unity-sdk.git";
         // SDK는 main 브랜치의 sdk-policy.json을 런타임에 fetch합니다.
         // 로컬 패키지에도 같은 파일이 포함되어 있으나, 정책의 정본(source of truth)은 main 브랜치입니다.

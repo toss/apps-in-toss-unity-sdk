@@ -315,15 +315,15 @@ public class DeprecationCheckerTests
     // =====================================================
 
     [Test]
-    public void FallbackDeprecationThreshold_Is_v2_4_1()
+    public void FallbackDeprecationThreshold_Is_v2_4_0()
     {
         var field = checkerType.GetField("FallbackDeprecationThreshold",
             BindingFlags.NonPublic | BindingFlags.Static);
         Assert.IsNotNull(field, "FallbackDeprecationThreshold field should exist");
 
         var threshold = (Version)field.GetValue(null);
-        Assert.AreEqual(new Version(2, 4, 1), threshold,
-            "Fallback deprecation threshold should be 2.4.1");
+        Assert.AreEqual(new Version(2, 4, 0), threshold,
+            "Fallback deprecation threshold should be 2.4.0");
     }
 
     [Test]

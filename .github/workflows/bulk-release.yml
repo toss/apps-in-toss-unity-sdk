@@ -57,7 +57,7 @@ jobs:
           POLICY_MIN_VERSION=$(jq -r '.minVersion // empty' sdk-policy.json 2>/dev/null || echo "")
           if [ -z "$POLICY_MIN_VERSION" ]; then
             # 이 값은 AITDeprecationChecker.cs의 FallbackDeprecationThreshold와 일치해야 합니다.
-            POLICY_MIN_VERSION="2.4.1"
+            POLICY_MIN_VERSION="2.4.0"
             echo "sdk-policy.json에서 minVersion을 읽지 못해 폴백 사용: ${POLICY_MIN_VERSION}"
           fi
 

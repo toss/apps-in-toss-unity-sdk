@@ -252,7 +252,7 @@ namespace AppsInToss
         {
             if (AITDeprecationChecker.BlockIfDeprecated()) return;
             var config = UnityUtil.GetEditorConf();
-            if (!ValidateSettingsForPackage(config)) return;
+            if (!PathValidator.ValidateSettingsForPackage(config)) return;
 
             // 빌드 전 배포 키 사전 체크 (fail-fast)
             string deploymentKey = AITCredentialsUtil.GetDeploymentKey();
@@ -402,7 +402,7 @@ namespace AppsInToss
         [MenuItem("AIT/Open Build Output", false, 102)]
         public static void OpenBuildOutput()
         {
-            string buildPath = GetBuildTemplatePath();
+            string buildPath = PathValidator.GetBuildTemplatePath();
             if (Directory.Exists(buildPath))
             {
                 // EditorUtility.RevealInFinder는 폴더를 "선택"하므로 부모 폴더가 열림
@@ -548,7 +548,7 @@ namespace AppsInToss
         private static void ExecuteBuildAndPackage()
         {
             var config = UnityUtil.GetEditorConf();
-            if (!ValidateSettingsForPackage(config)) return;
+            if (!PathValidator.ValidateSettingsForPackage(config)) return;
 
             Debug.Log("AIT: 전체 빌드 & 패키징 시작...");
             buildStopwatch.Restart();
@@ -616,7 +616,7 @@ namespace AppsInToss
         private static void ExecuteDeploy()
         {
             var config = UnityUtil.GetEditorConf();
-            if (!ValidateSettingsForPackage(config)) return;
+            if (!PathValidator.ValidateSettingsForPackage(config)) return;
 
             // AITCredentials에서 배포 키 로드
             string deploymentKey = AITCredentialsUtil.GetDeploymentKey();
@@ -627,11 +627,11 @@ namespace AppsInToss
                 return;
             }
 
-            string buildPath = GetBuildTemplatePath();
+            string buildPath = PathValidator.GetBuildTemplatePath();
             string distPath = Path.Combine(buildPath, "dist");
 
             // npm 경로 찾기
-            string npmPath = FindNpmPath();
+            string npmPath = PathValidator.FindNpmPath();
             if (string.IsNullOrEmpty(npmPath))
             {
                 AITLog.Error("AIT: npm을 찾을 수 없습니다. Node.js가 설치되어 있는지 확인하세요.", sentryCapture: false);
@@ -806,7 +806,7 @@ namespace AppsInToss
             }
 
             var config = UnityUtil.GetEditorConf();
-            if (!ValidateSettings(config))
+            if (!PathValidator.ValidateSettings(config))
             {
                 return null;
             }
@@ -852,9 +852,9 @@ namespace AppsInToss
 
             Debug.Log($"AIT: 빌드 & 패키징 완료 (소요 시간: {buildStopwatch.Elapsed.TotalSeconds:F1}초)");
 
-            string buildPath = GetBuildTemplatePath();
-            string npmPath = FindNpmPath();
-            if (!ValidateNpmPath(npmPath))
+            string buildPath = PathValidator.GetBuildTemplatePath();
+            string npmPath = PathValidator.FindNpmPath();
+            if (!PathValidator.ValidateNpmPath(npmPath))
             {
                 return;
             }
@@ -873,7 +873,7 @@ namespace AppsInToss
             var config = ValidateAndSwitchServer(type);
             if (config == null) return;
 
-            string buildPath = GetBuildTemplatePath();
+            string buildPath = PathValidator.GetBuildTemplatePath();
 
             // 빌드 결과물이 있는지 확인
             if (!Directory.Exists(buildPath))
@@ -883,13 +883,13 @@ namespace AppsInToss
                 return;
             }
 
-            string npmPath = FindNpmPath();
-            if (!ValidateNpmPath(npmPath))
+            string npmPath = PathValidator.FindNpmPath();
+            if (!PathValidator.ValidateNpmPath(npmPath))
             {
                 return;
             }
 
-            if (!EnsureNodeModules(buildPath, npmPath))
+            if (!PathValidator.EnsureNodeModules(buildPath, npmPath))
             {
                 return;
             }
@@ -1181,7 +1181,7 @@ namespace AppsInToss
                     string cleanOutput = Regex.Replace(args.Data, @"\x1B\[[0-9;]*[mGKH]", "");
 
                     // 에러 패턴 감지 (stdout에도 에러가 출력될 수 있음)
-                    if (IsErrorOutput(cleanOutput))
+                    if (PathValidator.IsErrorOutput(cleanOutput))
                     {
                         Debug.LogError($"[{logPrefix}] {cleanOutput}");
 
@@ -1233,7 +1233,7 @@ namespace AppsInToss
                     string cleanOutput = Regex.Replace(args.Data, @"\x1B\[[0-9;]*[mGKH]", "");
 
                     // stderr 출력을 실제 에러와 경고로 분류
-                    if (IsErrorOutput(cleanOutput))
+                    if (PathValidator.IsErrorOutput(cleanOutput))
                         Debug.LogError($"[{logPrefix}] {cleanOutput}");
                     else
                         Debug.LogWarning($"[{logPrefix}] {cleanOutput}");
@@ -1254,34 +1254,6 @@ namespace AppsInToss
         }
 
         /// <summary>
-        /// 출력이 에러인지 판단
-        /// </summary>
-        private static bool IsErrorOutput(string output)
-        {
-            if (string.IsNullOrEmpty(output)) return false;
-
-            string lower = output.ToLowerInvariant();
-
-            // 명확한 에러 패턴
-            if (lower.Contains("error:") ||
-                lower.Contains("fatal:") ||
-                lower.Contains("eaddrinuse") ||
-                lower.Contains("port is already in use") ||
-                lower.Contains("address already in use") ||
-                lower.Contains("cannot find module") ||
-                lower.Contains("command not found") ||
-                lower.Contains("permission denied") ||
-                lower.Contains("build failed") ||
-                lower.Contains("deploy failed") ||
-                lower.Contains("install failed"))
-            {
-                return true;
-            }
-
-            return false;
-        }
-
-        /// <summary>
         /// 포트 충돌 에러인지 판단
         /// </summary>
         private static bool IsPortConflictError(string output)
@@ -1292,68 +1264,6 @@ namespace AppsInToss
             return lower.Contains("eaddrinuse") ||
                    lower.Contains("port is already in use") ||
                    lower.Contains("address already in use");
-        }
-
-        /// <summary>
-        /// 빌드 경로 유효성 검사
-        /// </summary>
-        private static bool ValidateBuildPath(string buildPath)
-        {
-            if (!Directory.Exists(buildPath))
-            {
-                AITPlatformHelper.ShowInfoDialog("오류", "빌드 폴더를 찾을 수 없습니다.\n\n먼저 빌드를 실행하세요.", "확인");
-                return false;
-            }
-
-            string indexPath = Path.Combine(buildPath, "index.html");
-            if (!File.Exists(indexPath))
-            {
-                AITPlatformHelper.ShowInfoDialog("오류", "index.html을 찾을 수 없습니다.\n\n먼저 빌드를 실행하세요.", "확인");
-                return false;
-            }
-
-            return true;
-        }
-
-        /// <summary>
-        /// npm 경로 유효성 검사
-        /// </summary>
-        private static bool ValidateNpmPath(string npmPath)
-        {
-            if (string.IsNullOrEmpty(npmPath))
-            {
-                AITLog.Error("AIT: npm을 찾을 수 없습니다.", sentryCapture: false);
-                AITPlatformHelper.ShowInfoDialog("오류", "npm을 찾을 수 없습니다.\n\nNode.js가 설치되어 있는지 확인하세요.", "확인");
-                return false;
-            }
-            return true;
-        }
-
-        /// <summary>
-        /// node_modules 확인 및 설치
-        /// </summary>
-        private static bool EnsureNodeModules(string buildPath, string npmPath)
-        {
-            string nodeModulesPath = Path.Combine(buildPath, "node_modules");
-            if (!Directory.Exists(nodeModulesPath))
-            {
-                Debug.Log("AIT: node_modules가 없습니다. pnpm install을 실행합니다...");
-
-                string localCachePath = AITPackageBuilder.GetSharedPnpmStorePath();
-                var installResult = AITNpmRunner.RunNpmCommandWithCache(
-                    buildPath, npmPath, "install", localCachePath, "pnpm install 실행 중..."
-                );
-
-                if (installResult != AITConvertCore.AITExportError.SUCCEED)
-                {
-                    AITLog.Error("AIT: pnpm install 실패", sentryCapture: false);
-                    AITPlatformHelper.ShowInfoDialog("오류", "pnpm install 실패\n\nConsole 로그를 확인하세요.", "확인");
-                    return false;
-                }
-
-                Debug.Log("AIT: pnpm install 완료");
-            }
-            return true;
         }
 
         private static void KillProcessOnPort(int port)
@@ -1650,48 +1560,6 @@ namespace AppsInToss
             }
         }
 
-        private static bool ValidateSettings(AITEditorScriptObject config)
-        {
-            if (config == null)
-            {
-                AITPlatformHelper.ShowInfoDialog("오류", "설정을 찾을 수 없습니다.", "확인");
-                return false;
-            }
-
-            return true;
-        }
-
-        /// <summary>
-        /// 패키징/배포용 설정 검증 (appName 필수)
-        /// </summary>
-        private static bool ValidateSettingsForPackage(AITEditorScriptObject config)
-        {
-            if (!ValidateSettings(config))
-            {
-                return false;
-            }
-
-            if (string.IsNullOrWhiteSpace(config.appName))
-            {
-                AITLog.Error("AIT: App Name이 설정되지 않았습니다.", sentryCapture: false);
-                AITPlatformHelper.ShowInfoDialog("오류", "App Name이 설정되지 않았습니다.\n\nAIT > Configuration에서 App Name을 입력해주세요.", "확인");
-                return false;
-            }
-
-            return true;
-        }
-
-        private static string GetBuildTemplatePath()
-        {
-            string projectPath = UnityUtil.GetProjectPath();
-            return Path.Combine(projectPath, "ait-build");
-        }
-
-        private static string FindNpmPath()
-        {
-            // AITConvertCore의 FindNpm 사용 (pnpm 우선, 로컬 설치 지원)
-            return AITConvertCore.FindNpm();
-        }
     }
 
     /// <summary>

@@ -378,7 +378,7 @@ jobs:
           }
 
           if ($successCount -eq 0) {
-            Write-Host "::warning::Windows Defender 제외 설정 실패 - 빌드 성능 저하 가능"
+            Write-Host "::warning::Failed to configure Windows Defender exclusions - build performance may degrade"
           } else {
             Write-Host "Defender exclusions configured: $successCount/$($paths.Count) paths"
           }
@@ -506,36 +506,51 @@ jobs:
 
       # =====================================================
       # BuildConfig 버전 업데이트 (선택적)
+      #
+      # 주의: shell: bash 는 Windows 러너에서 WSL bash(C:\WINDOWS\system32\bash.EXE)
+      # 또는 Git-bash 중 PATH 해석에 따라 달라짐. WSL bash 가 선택되면 Windows
+      # temp 스크립트 파일 경로가 백슬래시 이스케이프로 깨져 실패함
+      # (예: "/bin/bash: C:Users...work_temp...sh: No such file or directory").
+      # 따라서 node 로 직접 파일을 조작하여 shell 의존성을 완전히 제거한다.
+      # node 는 setup-node 없이도 self-hosted 러너에 이미 존재함.
       # =====================================================
       - name: Update BuildConfig SDK Version
         if: inputs.web-framework-version != ''
-        shell: bash
+        shell: node {0}
+        env:
+          WEB_FRAMEWORK_VERSION: ${{ inputs.web-framework-version }}
         run: |
-          VERSION="${{ inputs.web-framework-version }}"
-          BUILD_CONFIG_DIR="WebGLTemplates/AITTemplate/BuildConfig~"
-          BUILD_CONFIG="${BUILD_CONFIG_DIR}/package.json"
-          LOCK_FILE="${BUILD_CONFIG_DIR}/pnpm-lock.yaml"
+          const fs = require('fs');
+          const path = require('path');
+          const { execFileSync } = require('child_process');
 
-          echo "Updating @apps-in-toss/web-framework to ${VERSION}"
+          const version = process.env.WEB_FRAMEWORK_VERSION;
+          const buildConfigDir = 'WebGLTemplates/AITTemplate/BuildConfig~';
+          const buildConfig = path.join(buildConfigDir, 'package.json');
+          const lockFile = path.join(buildConfigDir, 'pnpm-lock.yaml');
 
-          # sed로 버전 업데이트 (macOS/Windows 호환)
-          if [ "${{ inputs.os }}" = "macos" ]; then
-            sed -i '' 's/"@apps-in-toss\/web-framework": "[^"]*"/"@apps-in-toss\/web-framework": "'"$VERSION"'"/' "$BUILD_CONFIG"
-            sed -i '' 's/"@apps-in-toss\/web-analytics": "[^"]*"/"@apps-in-toss\/web-analytics": "'"$VERSION"'"/' "$BUILD_CONFIG"
-          else
-            sed -i 's/"@apps-in-toss\/web-framework": "[^"]*"/"@apps-in-toss\/web-framework": "'"$VERSION"'"/' "$BUILD_CONFIG"
-            sed -i 's/"@apps-in-toss\/web-analytics": "[^"]*"/"@apps-in-toss\/web-analytics": "'"$VERSION"'"/' "$BUILD_CONFIG"
-          fi
+          console.log(`Updating @apps-in-toss/web-framework to ${version}`);
 
-          echo "Updated BuildConfig:"
-          cat "$BUILD_CONFIG"
+          const pkg = JSON.parse(fs.readFileSync(buildConfig, 'utf8'));
+          for (const section of ['dependencies', 'devDependencies']) {
+            if (!pkg[section]) continue;
+            for (const name of ['@apps-in-toss/web-framework', '@apps-in-toss/web-analytics']) {
+              if (pkg[section][name]) pkg[section][name] = version;
+            }
+          }
+          fs.writeFileSync(buildConfig, JSON.stringify(pkg, null, 2) + '\n');
 
-          # pnpm-lock.yaml 삭제 후 재생성 (frozen-lockfile 호환성 유지)
-          rm -f "$LOCK_FILE"
-          echo "Regenerating pnpm-lock.yaml..."
-          cd "$BUILD_CONFIG_DIR"
-          npx pnpm@10 install --lockfile-only
-          echo "pnpm-lock.yaml regenerated"
+          console.log('Updated BuildConfig:');
+          console.log(fs.readFileSync(buildConfig, 'utf8'));
+
+          if (fs.existsSync(lockFile)) fs.unlinkSync(lockFile);
+          console.log('Regenerating pnpm-lock.yaml...');
+          execFileSync('npx', ['pnpm@10', 'install', '--lockfile-only'], {
+            cwd: buildConfigDir,
+            stdio: 'inherit',
+            shell: process.platform === 'win32'
+          });
+          console.log('pnpm-lock.yaml regenerated');
 
       # =====================================================
       # 광고 ID 치환 (빌드 전)

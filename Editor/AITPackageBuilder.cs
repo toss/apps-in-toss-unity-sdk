@@ -18,22 +18,9 @@ namespace AppsInToss.Editor
         internal static void ClearPathCache() => Package.SdkPathResolver.ClearPathCache();
 
         /// <summary>
-        /// 머신 공유 pnpm content-addressable store 경로.
-        /// 같은 머신의 여러 프로젝트/러너가 패키지를 공유하여
-        /// 중복 다운로드를 방지합니다 (하드링크 사용).
-        /// macOS/Linux: ~/.ait-unity-sdk/pnpm-store/
-        /// Windows: %LOCALAPPDATA%\ait-unity-sdk\pnpm-store\
+        /// 머신 공유 pnpm store 경로 (PnpmStoreManager에 위임).
         /// </summary>
-        internal static string GetSharedPnpmStorePath()
-        {
-            string basePath;
-            #if UNITY_EDITOR_WIN
-                basePath = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            #else
-                basePath = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-            #endif
-            return Path.Combine(basePath, ".ait-unity-sdk", "pnpm-store");
-        }
+        internal static string GetSharedPnpmStorePath() => Package.PnpmStoreManager.GetSharedPnpmStorePath();
 
         #region Packaging Common
 
@@ -85,16 +72,6 @@ namespace AppsInToss.Editor
                 try { _pnpmCancellation.Dispose(); } catch (ObjectDisposedException) { }
             }
         }
-
-        /// <summary>
-        /// pnpm install 재시도 정책 (args, label, cleanFirst)
-        /// </summary>
-        private static readonly (string args, string label, bool cleanFirst)[] PnpmInstallStages =
-        {
-            ("install --frozen-lockfile", "frozen-lockfile", false),
-            ("install --no-frozen-lockfile", "lockfile 갱신", false),
-            ("install --no-frozen-lockfile", "clean 재시도", true),
-        };
 
         /// <summary>
         /// 동기/비동기 경로의 공통 준비 로직을 수행합니다.
@@ -262,7 +239,7 @@ namespace AppsInToss.Editor
             var ct = earlyCtx.PnpmCancellationToken;
             var additionalPaths = AITNpmRunner.BuildAdditionalPaths(earlyCtx.PnpmPath);
 
-            foreach (var (args, label, cleanFirst) in PnpmInstallStages)
+            foreach (var (args, label, cleanFirst) in Package.PnpmStoreManager.InstallStages)
             {
                 if (ct.IsCancellationRequested)
                     return AITConvertCore.AITExportError.CANCELLED;
@@ -530,7 +507,7 @@ namespace AppsInToss.Editor
         /// </summary>
         private static AITConvertCore.AITExportError RunPnpmInstallSync(PackageContext ctx)
         {
-            foreach (var (args, label, cleanFirst) in PnpmInstallStages)
+            foreach (var (args, label, cleanFirst) in Package.PnpmStoreManager.InstallStages)
             {
                 if (cleanFirst) Package.NodeModulesValidator.CleanNodeModules(ctx.BuildProjectPath);
                 var result = AITNpmRunner.RunNpmCommandWithCache(
@@ -1721,7 +1698,7 @@ namespace AppsInToss.Editor
         }
 
         /// <summary>
-        /// pnpm install 비동기 실행 (PnpmInstallStages 배열 기반 재귀 재시도)
+        /// pnpm install 비동기 실행 (Package.PnpmStoreManager.InstallStages 배열 기반 재귀 재시도)
         /// </summary>
         private static void RunPnpmInstallAsync(
             string buildProjectPath,
@@ -1732,14 +1709,14 @@ namespace AppsInToss.Editor
             Action<AITConvertCore.AITExportError> onComplete,
             int stageIndex = 0)
         {
-            if (stageIndex >= PnpmInstallStages.Length)
+            if (stageIndex >= Package.PnpmStoreManager.InstallStages.Count)
             {
                 Debug.LogError("[AIT] pnpm install 실패 (모든 재시도 후에도 실패)");
                 onComplete?.Invoke(AITConvertCore.AITExportError.FAIL_NPM_BUILD);
                 return;
             }
 
-            var (args, label, cleanFirst) = PnpmInstallStages[stageIndex];
+            var (args, label, cleanFirst) = Package.PnpmStoreManager.InstallStages[stageIndex];
             if (cleanFirst) Package.NodeModulesValidator.CleanNodeModules(buildProjectPath);
 
             Debug.Log($"[AIT] pnpm {label} 실행 중...");

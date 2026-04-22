@@ -225,7 +225,7 @@ public class IsKnownNonSdkMessageTests
     }
 
     [Test]
-    public void FieldsSerializedInSdkAssembly_NotFiltered()
+    public void FieldsSerializedInSdkAssembly_NeverFiltered()
     {
         // SDK 어셈블리(AppsInTossSDKEditor 등)의 직렬화 경고는 보호되어야 함
         Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
@@ -321,7 +321,7 @@ public class IsKnownNonSdkMessageTests
     [Test]
     public void BuildTargetWebGLNotSupported_WithAitPrefix_NeverFiltered()
     {
-        // AITKeyword 가드 회귀 방지: [AIT] prefix가 붙은 동일 메시지는 SDK 자체 로그로 간주되어야 함
+        // AitKeywords 가드 회귀 방지: [AIT] prefix가 붙은 동일 메시지는 SDK 자체 로그로 간주되어야 함
         Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
             "[AIT] Build target 'WebGL' not supported"));
     }
@@ -329,7 +329,7 @@ public class IsKnownNonSdkMessageTests
     [Test]
     public void GuidConflict_WithAitPrefix_NeverFiltered()
     {
-        // AITKeyword 가드 회귀 방지: [AIT] prefix가 붙은 GUID 충돌 메시지는 SDK가 직접 출력한 것으로 간주되어야 함
+        // AitKeywords 가드 회귀 방지: [AIT] prefix가 붙은 GUID 충돌 메시지는 SDK가 직접 출력한 것으로 간주되어야 함
         Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
             "[AIT] GUID [abc123] for asset 'Assets/Foo/bar.png' conflicts with: 'Assets/Baz/bar.png'"));
     }

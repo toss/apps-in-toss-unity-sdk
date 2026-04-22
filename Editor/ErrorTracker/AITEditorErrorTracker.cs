@@ -59,7 +59,7 @@ namespace AppsInToss.Editor.ErrorTracker
         //   3. 여기 NonSdkMessagePatterns에 메시지의 불변 핵심 문구를 부분 문자열로 추가
         //      (Unity 버전/환경 차이에 민감한 부분은 피할 것)
         //      단, 단일 부분 문자열이 SDK 자체 로그와 충돌할 위험이 있으면
-        //      IsKnownNonSdkMessage 하단에 composite AND 조건(예: "GUID [" && "conflicts with:")을 추가
+        //      IsKnownNonSdkMessage 내에 composite AND 조건(예: "GUID [" && "conflicts with:")을 추가
         //   4. IsKnownNonSdkMessageTests.cs에 positive/negative 테스트 추가
         //      (특히 AIT 키워드가 섞여도 필터링되지 않는지 negative 케이스 필수)
         private static readonly string[] NonSdkMessagePatterns =

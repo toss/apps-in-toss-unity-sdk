@@ -359,7 +359,7 @@ namespace AppsInToss.Editor
                     Debug.LogError($"[AIT] [병렬] pnpm {label} 실행 오류: {e}");
                 }
 
-                Debug.LogWarning($"[AIT] [병렬] pnpm install ({label}) 실패, 다음 단계로...");
+                Debug.Log($"[AIT] [병렬] pnpm install ({label}) 실패, 다음 단계로...");
             }
 
             Debug.LogError("[AIT] [병렬] pnpm install 실패 (모든 재시도 후에도 실패)");
@@ -547,7 +547,7 @@ namespace AppsInToss.Editor
                     $"pnpm {label}...");
                 if (result == AITConvertCore.AITExportError.SUCCEED) return result;
                 if (result == AITConvertCore.AITExportError.CANCELLED) return result;
-                Debug.LogWarning($"[AIT] pnpm install ({label}) 실패, 다음 단계로...");
+                Debug.Log($"[AIT] pnpm install ({label}) 실패, 다음 단계로...");
             }
             Debug.LogError("[AIT] pnpm install 실패 (모든 재시도 후에도 실패)");
             return AITConvertCore.AITExportError.FAIL_NPM_BUILD;
@@ -1791,7 +1791,7 @@ namespace AppsInToss.Editor
                 }
                 else
                 {
-                    Debug.LogWarning($"[AIT] web-framework가 node_modules에 없습니다. node_modules를 정리합니다.");
+                    Debug.Log($"[AIT] web-framework가 node_modules에 없습니다. node_modules를 정리합니다.");
                 }
 
                 return false;
@@ -1927,7 +1927,7 @@ namespace AppsInToss.Editor
                         return;
                     }
 
-                    Debug.LogWarning($"[AIT] pnpm install ({label}) 실패, 다음 단계로...");
+                    Debug.Log($"[AIT] pnpm install ({label}) 실패, 다음 단계로...");
                     RunPnpmInstallAsync(buildProjectPath, pnpmPath, localCachePath, ct, onOutput, onComplete, stageIndex + 1);
                 },
                 onOutputReceived: onOutput

@@ -430,7 +430,7 @@ public class BuildFileSelectionTests
     // =====================================================
 
     [Test]
-    public void FindFileInBuild_DeleteFails_FallsBackToWarning_Unix()
+    public void FindFileInBuild_DeleteFails_FallsBackToInfoLog_Unix()
     {
         Assume.That(Application.platform != RuntimePlatform.WindowsEditor,
             "Unix-only: chmod-based directory permission manipulation");
@@ -452,8 +452,8 @@ public class BuildFileSelectionTests
             Assume.That(IsDirectoryWriteBlocked(tempDir),
                 "현재 사용자는 0555 디렉토리에도 쓸 수 있음 (root?) — 테스트 의미 없음");
 
-            LogAssert.Expect(LogType.Warning, new Regex(@"\[AIT\].+이전 빌드 잔여물 \d+개 정리 실패"));
-            LogAssert.Expect(LogType.Warning, new Regex(@"\[AIT\].+Clean Build"));
+            LogAssert.Expect(LogType.Log, new Regex(@"\[AIT\].+이전 빌드 잔여물 \d+개 정리 실패"));
+            LogAssert.Expect(LogType.Log, new Regex(@"\[AIT\].+Clean Build"));
 
             string result = AITBuildValidator.FindFileInBuild(tempDir, "*.loader.js");
 
@@ -484,7 +484,7 @@ public class BuildFileSelectionTests
     // =====================================================
 
     [Test]
-    public void FindFileInBuild_DeleteFails_FallsBackToWarning_Windows()
+    public void FindFileInBuild_DeleteFails_FallsBackToInfoLog_Windows()
     {
         Assume.That(Application.platform == RuntimePlatform.WindowsEditor,
             "Windows-only: file lock semantics differ on Unix");
@@ -501,8 +501,8 @@ public class BuildFileSelectionTests
         string result;
         using (File.Open(oldFile, FileMode.Open, FileAccess.Read, FileShare.Read))
         {
-            LogAssert.Expect(LogType.Warning, new Regex(@"\[AIT\].+이전 빌드 잔여물 \d+개 정리 실패"));
-            LogAssert.Expect(LogType.Warning, new Regex(@"\[AIT\].+Clean Build"));
+            LogAssert.Expect(LogType.Log, new Regex(@"\[AIT\].+이전 빌드 잔여물 \d+개 정리 실패"));
+            LogAssert.Expect(LogType.Log, new Regex(@"\[AIT\].+Clean Build"));
 
             result = AITBuildValidator.FindFileInBuild(tempDir, "*.loader.js");
 

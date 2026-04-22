@@ -432,6 +432,15 @@ jobs:
 
       # =====================================================
       # Unity 설치 감지
+      #
+      # 주의: Windows Unity 경로(C:\Program Files\...)는 반드시 shell: cmd 또는
+      # shell: powershell 스텝에서만 소비할 것. shell: bash 스텝에서 GitHub Actions
+      # 표현식으로 보간하면 Git-bash가 백슬래시를 이스케이프 문자로 해석해
+      # 임시 스크립트 파일 경로 자체가 깨지며 실패함
+      # (예: "/bin/bash: C:Users...work_temp...sh: No such file or directory").
+      # 예전 "Set Unity Outputs" 어댑터 스텝이 이 문제로 제거됨.
+      # 후속 스텝은 OS별로 steps.unity-macos의 outputs 또는
+      # steps.unity-windows의 outputs를 직접 참조할 것.
       # =====================================================
       - name: Detect Unity Installation (macOS)
         if: inputs.os == 'macos'

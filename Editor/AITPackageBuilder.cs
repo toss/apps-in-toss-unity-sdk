@@ -636,7 +636,7 @@ namespace AppsInToss.Editor
 
                 if (projectJson == null || sdkJson == null)
                 {
-                    Debug.LogWarning("[AIT] package.json 파싱 실패, SDK 버전 사용");
+                    Debug.Log("[AIT] package.json 파싱 실패, SDK 버전 사용");
                     File.Copy(sdkFile, destFile, true);
                     return;
                 }
@@ -662,7 +662,7 @@ namespace AppsInToss.Editor
             }
             catch (Exception e)
             {
-                Debug.LogWarning($"[AIT] package.json 머지 실패: {e}, SDK 버전 사용");
+                Debug.Log($"[AIT] package.json 머지 실패: {e}, SDK 버전 사용");
                 File.Copy(sdkFile, destFile, true);
             }
         }
@@ -723,7 +723,7 @@ namespace AppsInToss.Editor
 
                 if (projectJson == null || sdkJson == null)
                 {
-                    Debug.LogWarning("[AIT] tsconfig.json 파싱 실패, SDK 버전 사용");
+                    Debug.Log("[AIT] tsconfig.json 파싱 실패, SDK 버전 사용");
                     File.Copy(sdkFile, destFile, true);
                     return;
                 }
@@ -790,7 +790,7 @@ namespace AppsInToss.Editor
             }
             catch (Exception e)
             {
-                Debug.LogWarning($"[AIT] tsconfig.json 머지 실패: {e}, SDK 버전 사용");
+                Debug.Log($"[AIT] tsconfig.json 머지 실패: {e}, SDK 버전 사용");
                 File.Copy(sdkFile, destFile, true);
             }
         }

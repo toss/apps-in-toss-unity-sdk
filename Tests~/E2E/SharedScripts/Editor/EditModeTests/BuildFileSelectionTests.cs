@@ -430,7 +430,7 @@ public class BuildFileSelectionTests
     // =====================================================
 
     [Test]
-    public void FindFileInBuild_DeleteFails_FallsBackToInfoLog_Unix()
+    public void FindFileInBuild_DeleteFails_FallsBackAndLogs_Unix()
     {
         Assume.That(Application.platform != RuntimePlatform.WindowsEditor,
             "Unix-only: chmod-based directory permission manipulation");
@@ -484,7 +484,7 @@ public class BuildFileSelectionTests
     // =====================================================
 
     [Test]
-    public void FindFileInBuild_DeleteFails_FallsBackToInfoLog_Windows()
+    public void FindFileInBuild_DeleteFails_FallsBackAndLogs_Windows()
     {
         Assume.That(Application.platform == RuntimePlatform.WindowsEditor,
             "Windows-only: file lock semantics differ on Unix");

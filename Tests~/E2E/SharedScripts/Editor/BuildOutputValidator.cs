@@ -220,6 +220,7 @@ public static class BuildOutputValidator
 
     private static string DetectFileType(string fileName)
     {
+        if (fileName.Contains(".symbols.json")) return "symbols";
         if (fileName.Contains(".wasm")) return "wasm";
         if (fileName.Contains(".data")) return "data";
         if (fileName.Contains(".framework.js")) return "framework";

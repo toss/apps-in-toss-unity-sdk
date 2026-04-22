@@ -16,14 +16,14 @@ namespace AppsInToss.Editor.Menu
         {
             if (string.IsNullOrEmpty(output)) return false;
 
+            // 포트 충돌은 PortResolver에 단일 진실 공급원이 있음
+            if (PortResolver.IsPortConflictError(output)) return true;
+
             string lower = output.ToLowerInvariant();
 
-            // 명확한 에러 패턴
+            // 그 외 명확한 에러 패턴
             if (lower.Contains("error:") ||
                 lower.Contains("fatal:") ||
-                lower.Contains("eaddrinuse") ||
-                lower.Contains("port is already in use") ||
-                lower.Contains("address already in use") ||
                 lower.Contains("cannot find module") ||
                 lower.Contains("command not found") ||
                 lower.Contains("permission denied") ||

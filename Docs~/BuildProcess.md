@@ -507,7 +507,7 @@ Build/",         ← 구분자 뒤 빈 파일명
 
 ### granite.config.ts 치환
 
-`AITPackageBuilder.UpdateGraniteConfig()` 에서 수행됩니다.
+`Package.BuildConfigMerger.UpdateGraniteConfig()` 에서 수행됩니다.
 
 | 플레이스홀더 | 치환 값 | 소스 |
 |-------------|---------|------|

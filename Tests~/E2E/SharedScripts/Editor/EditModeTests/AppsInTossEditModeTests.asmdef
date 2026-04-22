@@ -5,7 +5,8 @@
         "AppsInTossSDK",
         "AppsInTossSDKEditor",
         "AppsInToss.Helpers",
-        "AppsInTossTestScripts"
+        "AppsInTossTestScripts",
+        "AppsInTossTestScripts.Editor"
     ],
     "includePlatforms": [
         "Editor"

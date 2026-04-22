@@ -156,10 +156,10 @@ namespace AppsInToss.Editor
 
             // node_modules 무결성 검증
             string storePath = GetSharedPnpmStorePath();
-            if (!ValidateNodeModulesIntegrity(buildProjectPath))
+            if (!Package.NodeModulesValidator.ValidateIntegrity(buildProjectPath))
             {
                 Debug.Log("[AIT] node_modules 무결성 검증 실패. 정리 후 재설치합니다.");
-                CleanNodeModules(buildProjectPath);
+                Package.NodeModulesValidator.CleanNodeModules(buildProjectPath);
             }
 
             return (new PackageContext
@@ -214,10 +214,10 @@ namespace AppsInToss.Editor
 
             // node_modules 무결성 검증
             string storePath = GetSharedPnpmStorePath();
-            if (!ValidateNodeModulesIntegrity(buildProjectPath))
+            if (!Package.NodeModulesValidator.ValidateIntegrity(buildProjectPath))
             {
                 Debug.Log("[AIT] [병렬] node_modules 무결성 검증 실패. 정리 후 재설치합니다.");
-                CleanNodeModules(buildProjectPath);
+                Package.NodeModulesValidator.CleanNodeModules(buildProjectPath);
             }
 
             return (new EarlyPackageContext
@@ -276,7 +276,7 @@ namespace AppsInToss.Editor
                 if (ct.IsCancellationRequested)
                     return AITConvertCore.AITExportError.CANCELLED;
 
-                if (cleanFirst) CleanNodeModules(earlyCtx.BuildProjectPath);
+                if (cleanFirst) Package.NodeModulesValidator.CleanNodeModules(earlyCtx.BuildProjectPath);
 
                 string fullArguments = AITNpmRunner.BuildFullArguments(args, earlyCtx.LocalCachePath);
                 string command = $"\"{earlyCtx.PnpmPath}\" {fullArguments}";
@@ -541,7 +541,7 @@ namespace AppsInToss.Editor
         {
             foreach (var (args, label, cleanFirst) in PnpmInstallStages)
             {
-                if (cleanFirst) CleanNodeModules(ctx.BuildProjectPath);
+                if (cleanFirst) Package.NodeModulesValidator.CleanNodeModules(ctx.BuildProjectPath);
                 var result = AITNpmRunner.RunNpmCommandWithCache(
                     ctx.BuildProjectPath, ctx.PnpmPath, args, ctx.LocalCachePath,
                     $"pnpm {label}...");
@@ -568,7 +568,7 @@ namespace AppsInToss.Editor
 
             // 재시도: clean → install → build
             Debug.Log("[AIT] granite build 실패. node_modules 정리 후 install부터 재시도합니다...");
-            CleanNodeModules(ctx.BuildProjectPath);
+            Package.NodeModulesValidator.CleanNodeModules(ctx.BuildProjectPath);
 
             var installResult = AITNpmRunner.RunNpmCommandWithCache(
                 ctx.BuildProjectPath, ctx.PnpmPath, "install --no-frozen-lockfile",
@@ -1669,7 +1669,7 @@ namespace AppsInToss.Editor
             Action<AITConvertCore.AITExportError> onComplete)
         {
             Debug.Log("[AIT] granite build 실패. node_modules 정리 후 install부터 재시도합니다...");
-            CleanNodeModules(ctx.BuildProjectPath);
+            Package.NodeModulesValidator.CleanNodeModules(ctx.BuildProjectPath);
             onProgress?.Invoke(AITConvertCore.BuildPhase.PnpmInstall, 0.5f, "빌드 실패 후 재설치 중...");
 
             AITNpmRunner.RunNpmCommandWithCacheAsync(
@@ -1720,121 +1720,6 @@ namespace AppsInToss.Editor
         }
 
         #endregion
-
-        /// <summary>
-        /// node_modules 무결성 검증
-        /// package.json의 @apps-in-toss/web-framework 버전과 node_modules 내 설치 버전이 일치하는지 확인합니다.
-        /// pnpm의 node_modules/.pnpm/@apps-in-toss+web-framework@{version} 디렉토리 존재 여부로 판단합니다.
-        /// </summary>
-        /// <param name="buildProjectPath">빌드 프로젝트 경로</param>
-        /// <returns>true: 무결성 확인됨 또는 node_modules 없음, false: 버전 불일치로 정리 필요</returns>
-        private static bool ValidateNodeModulesIntegrity(string buildProjectPath)
-        {
-            string nodeModulesPath = Path.Combine(buildProjectPath, "node_modules");
-            if (!Directory.Exists(nodeModulesPath))
-            {
-                // node_modules가 없으면 검증 불필요 (install 시 새로 생성됨)
-                return true;
-            }
-
-            // package.json에서 web-framework 버전 읽기
-            string packageJsonPath = Path.Combine(buildProjectPath, "package.json");
-            if (!File.Exists(packageJsonPath))
-            {
-                return true;
-            }
-
-            try
-            {
-                string packageJsonContent = File.ReadAllText(packageJsonPath);
-                var packageJson = MiniJson.Deserialize(packageJsonContent) as Dictionary<string, object>;
-                if (packageJson == null) return true;
-
-                var dependencies = packageJson.ContainsKey("dependencies")
-                    ? packageJson["dependencies"] as Dictionary<string, object>
-                    : null;
-                if (dependencies == null) return true;
-
-                if (!dependencies.ContainsKey("@apps-in-toss/web-framework")) return true;
-
-                string expectedVersion = dependencies["@apps-in-toss/web-framework"] as string;
-                if (string.IsNullOrEmpty(expectedVersion)) return true;
-
-                // ^ 또는 ~ 접두사 제거 (정확한 버전만 비교)
-                expectedVersion = expectedVersion.TrimStart('^', '~');
-
-                // pnpm의 node_modules/.pnpm/@apps-in-toss+web-framework@{version} 확인
-                string pnpmDir = Path.Combine(nodeModulesPath, ".pnpm");
-                if (!Directory.Exists(pnpmDir))
-                {
-                    // .pnpm 디렉토리가 없으면 오염된 상태
-                    Debug.Log("[AIT] node_modules/.pnpm 디렉토리가 없습니다. node_modules를 정리합니다.");
-                    return false;
-                }
-
-                // @apps-in-toss+web-framework@{version}으로 시작하는 디렉토리 검색
-                string expectedDirPrefix = $"@apps-in-toss+web-framework@{expectedVersion}";
-                string[] matchingDirs = Directory.GetDirectories(pnpmDir, $"{expectedDirPrefix}*");
-
-                if (matchingDirs.Length > 0)
-                {
-                    Debug.Log($"[AIT] ✓ node_modules 무결성 확인: web-framework@{expectedVersion}");
-                    return true;
-                }
-
-                // 현재 설치된 버전 찾기 (로그용)
-                string[] installedDirs = Directory.GetDirectories(pnpmDir, "@apps-in-toss+web-framework@*");
-                if (installedDirs.Length > 0)
-                {
-                    string installedDirName = Path.GetFileName(installedDirs[0]);
-                    Debug.Log($"[AIT] web-framework 버전 불일치 감지!");
-                    Debug.Log($"[AIT]   기대 버전: {expectedVersion}");
-                    Debug.Log($"[AIT]   설치된 버전: {installedDirName}");
-                    Debug.Log($"[AIT]   node_modules를 정리하고 재설치합니다.");
-                }
-                else
-                {
-                    Debug.Log($"[AIT] web-framework가 node_modules에 없습니다. node_modules를 정리합니다.");
-                }
-
-                return false;
-            }
-            catch (Exception e)
-            {
-                Debug.Log($"[AIT] node_modules 무결성 검증 중 오류 (무시됨): {e}");
-                return true; // 검증 실패 시 기존 동작 유지
-            }
-        }
-
-        /// <summary>
-        /// node_modules 및 캐시 정리
-        /// </summary>
-        /// <param name="buildProjectPath">빌드 프로젝트 경로</param>
-        private static void CleanNodeModules(string buildProjectPath)
-        {
-            string nodeModulesPath = Path.Combine(buildProjectPath, "node_modules");
-            string npmCachePath = Path.Combine(buildProjectPath, ".npm-cache");
-
-            if (Directory.Exists(nodeModulesPath))
-            {
-                Debug.Log("[AIT] node_modules 삭제 중...");
-                // DeleteDirectory는 내부적으로 실패 시 경고 로그를 남기고 false를 반환
-                if (AITFileUtils.DeleteDirectory(nodeModulesPath))
-                {
-                    Debug.Log("[AIT] ✓ node_modules 삭제 완료");
-                }
-            }
-
-            // 레거시 로컬 캐시 정리 (공유 store로 이전됨)
-            if (Directory.Exists(npmCachePath))
-            {
-                Debug.Log("[AIT] 레거시 .npm-cache 삭제 중...");
-                if (AITFileUtils.DeleteDirectory(npmCachePath))
-                {
-                    Debug.Log("[AIT] ✓ 레거시 .npm-cache 삭제 완료");
-                }
-            }
-        }
 
         /// <summary>
         /// ait-build 폴더 준비 (기존 결과물 정리)
@@ -1910,7 +1795,7 @@ namespace AppsInToss.Editor
             }
 
             var (args, label, cleanFirst) = PnpmInstallStages[stageIndex];
-            if (cleanFirst) CleanNodeModules(buildProjectPath);
+            if (cleanFirst) Package.NodeModulesValidator.CleanNodeModules(buildProjectPath);
 
             Debug.Log($"[AIT] pnpm {label} 실행 중...");
 

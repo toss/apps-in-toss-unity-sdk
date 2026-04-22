@@ -265,6 +265,59 @@ public class IsKnownNonSdkMessageTests
 
     #endregion
 
+    #region 사용자 환경 문제 (WebGL 모듈 미설치, GUID 충돌)
+
+    [Test]
+    public void BuildTargetWebGLNotSupported_ReturnsTrue()
+    {
+        // 사용자 Unity 설치에 WebGL 모듈이 없어서 발생 — SDK-DD
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Build target 'WebGL' not supported"));
+    }
+
+    [Test]
+    public void BuildTargetWebGLNotSupported_FullMessage_ReturnsTrue()
+    {
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Build target 'WebGL' not supported. Please install it via Unity Hub."));
+    }
+
+    [Test]
+    public void GuidConflict_ReturnsTrue()
+    {
+        // 사용자 프로젝트에 동일 GUID의 에셋이 남아있어 AITTemplate 파일과 충돌 — SDK-BQ
+        // 주의: AITTemplate 경로가 메시지에 등장하지만 AitKeywords(`[AIT`, `AIT:`, ...)와는 매칭되지 않으므로
+        // SDK 가드를 통과하지 않고 정상 필터링됨
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "GUID [abc123def456] for asset 'Assets/WebGLTemplates/AITTemplate/TemplateData/diagnostics.css' conflicts with: 'Assets/OldCopy/diagnostics.css'"));
+    }
+
+    [Test]
+    public void GuidConflict_WithoutAitTemplate_ReturnsTrue()
+    {
+        // AITTemplate 경로가 없어도 일반 GUID 충돌 메시지라면 사용자 프로젝트 문제
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "GUID [deadbeef] for asset 'Assets/Foo/bar.png' conflicts with: 'Assets/Baz/bar.png'"));
+    }
+
+    [Test]
+    public void GuidWithoutConflictsWith_ReturnsFalse()
+    {
+        // "GUID [" 만 있고 "conflicts with:" 가 없으면 다른 종류의 메시지일 수 있으므로 필터링 안 함
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "GUID [abc123] for asset 'Assets/Foo/bar.png' updated"));
+    }
+
+    [Test]
+    public void ConflictsWithoutGuid_ReturnsFalse()
+    {
+        // "conflicts with:" 만 있고 "GUID [" 가 없으면 SDK 자체 충돌 메시지일 수 있으므로 필터링 안 함
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Package version conflicts with: older version"));
+    }
+
+    #endregion
+
     #region SDK 관련 메시지는 통과 (negative cases)
 
     [Test]

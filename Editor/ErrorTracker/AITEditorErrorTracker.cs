@@ -86,6 +86,9 @@ namespace AppsInToss.Editor.ErrorTracker
 
             // Unity URP 내부
             "exceeds previous array size",
+
+            // 사용자 Unity 설치에 WebGL 모듈 미설치 — SDK-DD
+            "Build target 'WebGL' not supported",
         };
 
         // DetermineErrorSource에서 메시지를 SDK로 분류하는 추가 패턴.
@@ -555,6 +558,12 @@ namespace AppsInToss.Editor.ErrorTracker
             if (message.IndexOf("Script attached to", StringComparison.Ordinal) >= 0
                 && message.IndexOf("is missing", StringComparison.Ordinal) >= 0
                 && message.IndexOf("Assets/", StringComparison.Ordinal) >= 0)
+                return true;
+
+            // "GUID [...] ... conflicts with:" 패턴 — 사용자 프로젝트에 동일 GUID 에셋 잔존 (SDK-BQ)
+            // AITTemplate 경로가 포함되더라도 SDK가 제공한 파일을 사용자가 복사해둔 경우이므로 필터 대상
+            if (message.IndexOf("GUID [", StringComparison.Ordinal) >= 0
+                && message.IndexOf("conflicts with:", StringComparison.Ordinal) >= 0)
                 return true;
 
             return false;

@@ -218,7 +218,7 @@ public static class BuildOutputValidator
         return "disabled";
     }
 
-    private static string DetectFileType(string fileName)
+    internal static string DetectFileType(string fileName)
     {
         if (fileName.Contains(".symbols.json")) return "symbols";
         if (fileName.Contains(".wasm")) return "wasm";

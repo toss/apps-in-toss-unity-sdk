@@ -284,7 +284,11 @@ namespace AppsInToss.Editor
                 return "";
             }
 
-            var files = Directory.GetFiles(buildPath, pattern);
+            // *.data* 같은 와일드카드 꼬리 패턴은 *.data.meta 도 매칭하므로 .meta 는 제외해야 한다.
+            // 그렇지 않으면 LastWriteTime 정렬 결과 .meta 가 최신으로 선택되어 잘못된 파일명을 반환한다.
+            var files = Array.FindAll(
+                Directory.GetFiles(buildPath, pattern),
+                p => !p.EndsWith(".meta", StringComparison.Ordinal));
             if (files.Length > 0)
             {
                 // 중복 파일 감지 시 최신 파일만 남기고 오래된 잔여물 자동 삭제

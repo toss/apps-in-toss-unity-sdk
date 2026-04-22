@@ -5,7 +5,6 @@
 
 using System.IO;
 using NUnit.Framework;
-using AppsInToss.Editor.Package;
 
 namespace AppsInToss.Editor.Package.Tests
 {
@@ -84,6 +83,55 @@ namespace AppsInToss.Editor.Package.Tests
             File.WriteAllText(Path.Combine(_tempDir, "package.json"),
                 "{\"dependencies\":{\"@apps-in-toss/web-framework\":\"^2.4.7\"}}");
             Assert.IsTrue(NodeModulesValidator.ValidateIntegrity(_tempDir));
+        }
+
+        [Test]
+        public void ValidateIntegrity_StripsTildePrefix_WhenComparingVersions()
+        {
+            string pnpmDir = Path.Combine(_tempDir, "node_modules", ".pnpm");
+            Directory.CreateDirectory(pnpmDir);
+            Directory.CreateDirectory(Path.Combine(pnpmDir, "@apps-in-toss+web-framework@2.4.7"));
+            File.WriteAllText(Path.Combine(_tempDir, "package.json"),
+                "{\"dependencies\":{\"@apps-in-toss/web-framework\":\"~2.4.7\"}}");
+            Assert.IsTrue(NodeModulesValidator.ValidateIntegrity(_tempDir));
+        }
+
+        [Test]
+        public void ValidateIntegrity_ReturnsTrue_WhenPackageJsonIsMalformed()
+        {
+            // MiniJson이 파싱 실패 시 null 반환 → 검증 불가이므로 true (기존 동작 유지)
+            Directory.CreateDirectory(Path.Combine(_tempDir, "node_modules"));
+            File.WriteAllText(Path.Combine(_tempDir, "package.json"), "{ this is not json ");
+            Assert.IsTrue(NodeModulesValidator.ValidateIntegrity(_tempDir));
+        }
+
+        [Test]
+        public void ValidateIntegrity_ReturnsTrue_WhenDependenciesKeyMissing()
+        {
+            Directory.CreateDirectory(Path.Combine(_tempDir, "node_modules"));
+            File.WriteAllText(Path.Combine(_tempDir, "package.json"), "{\"name\":\"x\"}");
+            Assert.IsTrue(NodeModulesValidator.ValidateIntegrity(_tempDir));
+        }
+
+        [Test]
+        public void ValidateIntegrity_ReturnsTrue_WhenVersionStringEmpty()
+        {
+            Directory.CreateDirectory(Path.Combine(_tempDir, "node_modules"));
+            File.WriteAllText(Path.Combine(_tempDir, "package.json"),
+                "{\"dependencies\":{\"@apps-in-toss/web-framework\":\"\"}}");
+            Assert.IsTrue(NodeModulesValidator.ValidateIntegrity(_tempDir));
+        }
+
+        [Test]
+        public void ValidateIntegrity_ReturnsFalse_WhenPnpmDirHasOtherPackagesOnly()
+        {
+            // .pnpm이 존재하지만 web-framework는 없음 → 정리 필요
+            string pnpmDir = Path.Combine(_tempDir, "node_modules", ".pnpm");
+            Directory.CreateDirectory(pnpmDir);
+            Directory.CreateDirectory(Path.Combine(pnpmDir, "some-other-pkg@1.0.0"));
+            File.WriteAllText(Path.Combine(_tempDir, "package.json"),
+                "{\"dependencies\":{\"@apps-in-toss/web-framework\":\"2.4.7\"}}");
+            Assert.IsFalse(NodeModulesValidator.ValidateIntegrity(_tempDir));
         }
 
         [Test]

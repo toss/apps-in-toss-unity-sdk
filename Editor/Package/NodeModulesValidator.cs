@@ -8,6 +8,8 @@ namespace AppsInToss.Editor.Package
     /// <summary>
     /// 빌드 프로젝트의 node_modules 디렉토리 무결성 검증 및 정리.
     /// pnpm이 설치한 web-framework 버전이 package.json 선언 버전과 일치하는지 확인한다.
+    /// 검증은 best-effort: 판별이 불가능한 모든 케이스(파일 없음, 파싱 실패, 예외 등)는
+    /// true를 반환해 불필요한 재설치를 피한다. false는 "정리가 확실히 필요하다"고 판단될 때만 반환된다.
     /// </summary>
     internal static class NodeModulesValidator
     {

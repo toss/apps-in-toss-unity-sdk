@@ -199,7 +199,7 @@ namespace AppsInToss.Editor
         }
 
         /// <summary>
-        /// pnpm install 백그라운드 실행. (PnpmRunner 위임 — AITConvertCore 외부 호환)
+        /// pnpm install 백그라운드 실행 (PnpmRunner에 위임). AITConvertCore 외부 호출 호환용.
         /// </summary>
         internal static void StartPnpmInstallInBackground(EarlyPackageContext earlyCtx)
             => Package.PnpmRunner.StartPnpmInstallInBackground(earlyCtx);

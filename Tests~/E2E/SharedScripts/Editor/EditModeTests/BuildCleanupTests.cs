@@ -22,10 +22,10 @@ public class BuildCleanupTests
         tempDir = Path.Combine(Path.GetTempPath(), "ait-test-cleanup-" + Guid.NewGuid().ToString("N").Substring(0, 8));
         Directory.CreateDirectory(tempDir);
 
-        // PrepareAitBuildFolder은 private static이므로 리플렉션으로 접근
+        // PrepareAitBuildFolder은 internal static이지만 외부 어셈블리에서 리플렉션으로 접근
         var builderType = typeof(AITBuildValidator).Assembly
-            .GetType("AppsInToss.Editor.AITPackageBuilder");
-        Assert.IsNotNull(builderType, "AITPackageBuilder type should exist in AppsInTossSDKEditor assembly");
+            .GetType("AppsInToss.Editor.Package.WebGLBuildCopier");
+        Assert.IsNotNull(builderType, "WebGLBuildCopier type should exist in AppsInTossSDKEditor assembly");
 
         prepareMethod = builderType.GetMethod("PrepareAitBuildFolder",
             BindingFlags.NonPublic | BindingFlags.Static);
@@ -149,7 +149,7 @@ public class BuildCleanupTests
     [Test]
     public void CopyWebGLToPublic_DeletesExistingBuildFolder()
     {
-        // CopyWebGLToPublic의 핵심 정리 로직 (lines 820-825):
+        // CopyWebGLToPublic의 핵심 정리 로직:
         //   if (Directory.Exists(buildDest)) AITFileUtils.DeleteDirectory(buildDest);
         //   Directory.CreateDirectory(buildDest);
         // 이를 직접 시뮬레이션하여 stale 파일이 제거되는 구조임을 검증
@@ -198,7 +198,7 @@ public class BuildCleanupTests
         File.WriteAllText(Path.Combine(buildSrc, "build.framework.js.br"), "stale brotli fw");
         File.WriteAllText(Path.Combine(buildSrc, "build.wasm.br"), "stale brotli wasm");
 
-        // CopyWebGLToPublic의 선별 복사 로직 재현 (lines 776-842)
+        // CopyWebGLToPublic의 선별 복사 로직 재현
         // FindFileInBuild → 패턴으로 파일 찾기 → 해당 파일만 복사
         var patterns = AITBuildValidator.GetFilePatterns(0); // compressionFormat=0 (Disabled)
         string loaderFile = AITBuildValidator.FindFileInBuild(buildSrc, patterns["loader"], isRequired: true);
@@ -256,7 +256,7 @@ public class BuildCleanupTests
         File.WriteAllText(Path.Combine(buildSrc, "unknown-file.txt"), "mystery");
         File.WriteAllText(Path.Combine(buildSrc, "leftover.map"), "sourcemap");
 
-        // CopyWebGLToPublic의 경고 로직 재현 (lines 846-856)
+        // CopyWebGLToPublic의 경고 로직 재현
         var patterns = AITBuildValidator.GetFilePatterns(0);
         string loaderFile = AITBuildValidator.FindFileInBuild(buildSrc, patterns["loader"]);
         string dataFile = AITBuildValidator.FindFileInBuild(buildSrc, patterns["data"]);

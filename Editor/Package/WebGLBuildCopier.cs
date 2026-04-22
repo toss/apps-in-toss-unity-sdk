@@ -6,12 +6,14 @@ using UnityEngine;
 namespace AppsInToss.Editor.Package
 {
     /// <summary>
-    /// Unity WebGL 빌드 결과물을 Vite 기반 ait-build 프로젝트 구조로 복사.
-    /// - index.html은 프로젝트 루트로 (Vite 요구)
-    /// - Build/TemplateData/Runtime은 public/ 하위로
-    /// - 추가 사용자 BuildConfig 파일 복사
+    /// Unity WebGL 빌드 결과물을 Vite 기반 ait-build 프로젝트 구조로 복사/가공.
+    /// - index.html은 프로젝트 루트로 (Vite 요구); Unity/AIT 플레이스홀더 치환, 사용자 커스텀 섹션 머지, 로딩 화면 삽입 포함
+    /// - Build/TemplateData/Runtime은 public/ 하위로 (필수 파일 선별 복사)
+    /// - Runtime/appsintoss-unity-bridge.js의 Mock 브릿지 플래그 치환
+    /// - 추가 사용자 BuildConfig 파일 복사 (재귀)
     /// - ait-build 폴더의 이전 결과물 정리 (node_modules/설정 파일은 유지)
     /// - Early fetch 스크립트 생성
+    /// internal 멤버는 Editor/AssemblyInfo.cs 의 InternalsVisibleTo 를 통해 테스트 어셈블리에서 접근됩니다.
     /// </summary>
     internal static class WebGLBuildCopier
     {
@@ -340,6 +342,7 @@ namespace AppsInToss.Editor.Package
 
         /// <summary>
         /// 프로젝트 BuildConfig의 추가 파일들을 재귀적으로 복사합니다.
+        /// internal 승격: facade(AITPackageBuilder.CopyBuildConfigFromTemplate)에서 호출하기 위함.
         /// </summary>
         internal static void CopyAdditionalUserFiles(string projectBuildConfigPath, string destPath)
         {
@@ -433,7 +436,7 @@ namespace AppsInToss.Editor.Package
         /// </summary>
         private static string GenerateEarlyFetchScript(string dataFile, string wasmFile)
         {
-            var urls = new System.Collections.Generic.List<string>();
+            var urls = new List<string>();
             if (!string.IsNullOrEmpty(dataFile)) urls.Add($"Build/{dataFile}");
             if (!string.IsNullOrEmpty(wasmFile)) urls.Add($"Build/{wasmFile}");
 
@@ -475,6 +478,7 @@ namespace AppsInToss.Editor.Package
 
         /// <summary>
         /// ait-build 폴더 준비 (기존 결과물 정리)
+        /// internal 승격: facade(AITPackageBuilder) 및 EditMode 테스트(리플렉션)에서 호출하기 위함.
         /// </summary>
         internal static void PrepareAitBuildFolder(string buildProjectPath)
         {

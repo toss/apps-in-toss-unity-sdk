@@ -103,7 +103,7 @@ jobs:
 
     outputs:
       artifact-name: ${{ steps.artifact.outputs.name }}
-      unity-version-full: ${{ steps.unity.outputs.UNITY_VERSION }}
+      unity-version-full: ${{ inputs.os == 'macos' && steps.unity-macos.outputs.UNITY_VERSION || steps.unity-windows.outputs.UNITY_VERSION }}
 
     steps:
       # =====================================================
@@ -504,18 +504,6 @@ jobs:
           echo UNITY_PATH=%UNITY_PATH%>> %GITHUB_OUTPUT%
           echo UNITY_VERSION=%DETECTED_VERSION%>> %GITHUB_OUTPUT%
 
-      - name: Set Unity Outputs
-        id: unity
-        shell: bash
-        run: |
-          if [ "${{ inputs.os }}" = "macos" ]; then
-            echo "UNITY_PATH=${{ steps.unity-macos.outputs.UNITY_PATH }}" >> $GITHUB_OUTPUT
-            echo "UNITY_VERSION=${{ steps.unity-macos.outputs.UNITY_VERSION }}" >> $GITHUB_OUTPUT
-          else
-            echo "UNITY_PATH=${{ steps.unity-windows.outputs.UNITY_PATH }}" >> $GITHUB_OUTPUT
-            echo "UNITY_VERSION=${{ steps.unity-windows.outputs.UNITY_VERSION }}" >> $GITHUB_OUTPUT
-          fi
-
       # =====================================================
       # BuildConfig 버전 업데이트 (선택적)
       # =====================================================
@@ -614,13 +602,13 @@ jobs:
       - name: Run EditMode Tests (macOS)
         if: inputs.os == 'macos' && inputs.run-e2e-test
         run: |
-          UNITY_PATH="${{ steps.unity.outputs.UNITY_PATH }}"
+          UNITY_PATH="${{ steps.unity-macos.outputs.UNITY_PATH }}"
           PROJECT_PATH="${{ github.workspace }}/Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}"
           RESULTS_FILE="$PROJECT_PATH/editmode-results.xml"
           MAX_WAIT=600  # Unity 프로세스 최대 대기 시간 (10분)
 
           echo "Running EditMode Tests..."
-          echo "Unity Version: ${{ steps.unity.outputs.UNITY_VERSION }}"
+          echo "Unity Version: ${{ steps.unity-macos.outputs.UNITY_VERSION }}"
 
           "$UNITY_PATH" -batchmode -nographics \
             -projectPath "$PROJECT_PATH" \
@@ -673,13 +661,13 @@ jobs:
         if: inputs.os == 'windows' && inputs.run-e2e-test
         shell: powershell
         run: |
-          $unityPath = "${{ steps.unity.outputs.UNITY_PATH }}"
+          $unityPath = "${{ steps.unity-windows.outputs.UNITY_PATH }}"
           $projectPath = "${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ inputs.unity-version }}"
           $resultsFile = "$projectPath\editmode-results.xml"
           $maxWaitSeconds = 600  # Unity 프로세스 최대 대기 시간 (10분)
 
           Write-Host "Running EditMode Tests..."
-          Write-Host "Unity Version: ${{ steps.unity.outputs.UNITY_VERSION }}"
+          Write-Host "Unity Version: ${{ steps.unity-windows.outputs.UNITY_VERSION }}"
 
           $logFile = "$env:TEMP\unity-editmode-${{ inputs.unity-version }}.log"
 
@@ -785,7 +773,7 @@ jobs:
         if: inputs.os == 'windows' && inputs.run-build && (inputs.test-level || '2') != '0'
         shell: powershell
         run: |
-          $currentVersion = "${{ steps.unity.outputs.UNITY_VERSION }}"
+          $currentVersion = "${{ steps.unity-windows.outputs.UNITY_VERSION }}"
           Write-Host "Current Unity version: $currentVersion"
           Write-Host "Checking for Licensing Client processes from other Unity versions..."
 
@@ -826,7 +814,7 @@ jobs:
         if: inputs.os == 'macos' && inputs.run-build && (inputs.test-level || '2') != '0'
         run: |
           UNITY_BASE="/Applications/Unity/Hub/Editor"
-          CURRENT_VERSION="${{ steps.unity.outputs.UNITY_VERSION }}"
+          CURRENT_VERSION="${{ steps.unity-macos.outputs.UNITY_VERSION }}"
           CURRENT_DIR="${UNITY_BASE}/${CURRENT_VERSION}"
 
           # LicensingClient.app 경로 탐색 (버전별로 위치가 다를 수 있음)
@@ -925,7 +913,7 @@ jobs:
       - name: Run Unity EditMode Tests (macOS)
         if: inputs.os == 'macos' && inputs.run-unit-test
         run: |
-          UNITY_PATH="${{ steps.unity.outputs.UNITY_PATH }}"
+          UNITY_PATH="${{ steps.unity-macos.outputs.UNITY_PATH }}"
           PROJECT_PATH="${{ github.workspace }}/Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}"
           LOG_FILE="/tmp/unity-test-${{ inputs.unity-version }}.log"
           RESULTS_FILE="/tmp/unity-test-results-${{ inputs.unity-version }}.xml"
@@ -965,7 +953,7 @@ jobs:
         if: inputs.os == 'windows' && inputs.run-unit-test
         shell: powershell
         run: |
-          $unityPath = "${{ steps.unity.outputs.UNITY_PATH }}"
+          $unityPath = "${{ steps.unity-windows.outputs.UNITY_PATH }}"
           $projectPath = "${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ inputs.unity-version }}"
           $logFile = "$env:TEMP\unity-test-${{ inputs.unity-version }}.log"
           $resultsFile = "$env:TEMP\unity-test-results-${{ inputs.unity-version }}.xml"
@@ -1116,7 +1104,7 @@ jobs:
             ATTEMPT_FILE="/tmp/retry-attempt-${{ inputs.unity-version }}"
             echo "0" > "$ATTEMPT_FILE"
 
-            UNITY_PATH="${{ steps.unity.outputs.UNITY_PATH }}"
+            UNITY_PATH="${{ steps.unity-macos.outputs.UNITY_PATH }}"
             PROJECT_PATH="${{ github.workspace }}/Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}"
             LOG_FILE="/tmp/unity-build-${{ inputs.unity-version }}.log"
 
@@ -1130,7 +1118,7 @@ jobs:
             }
             trap cleanup_unity EXIT
 
-            echo "Unity Version: ${{ steps.unity.outputs.UNITY_VERSION }}"
+            echo "Unity Version: ${{ steps.unity-macos.outputs.UNITY_VERSION }}"
             echo "Unity Path: ${UNITY_PATH}"
             echo "Project Path: ${PROJECT_PATH}"
 
@@ -1259,10 +1247,10 @@ jobs:
               Set-Content -Path $attemptFile -Value "0"
             }
 
-            $unityPath = "${{ steps.unity.outputs.UNITY_PATH }}"
+            $unityPath = "${{ steps.unity-windows.outputs.UNITY_PATH }}"
             $projectPath = "${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ inputs.unity-version }}"
 
-            Write-Host "Unity Version: ${{ steps.unity.outputs.UNITY_VERSION }}"
+            Write-Host "Unity Version: ${{ steps.unity-windows.outputs.UNITY_VERSION }}"
             Write-Host "Unity Path: $unityPath"
             Write-Host "Project Path: $projectPath"
 

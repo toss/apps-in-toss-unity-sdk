@@ -332,8 +332,8 @@ namespace AppsInToss.Editor
                     else
                     {
                         // 삭제 실패 시 Clean Build 유도 (삭제 성공한 파일은 이미 없으므로 실패 목록만 표시)
-                        Debug.LogWarning($"[AIT] ⚠️ '{pattern}' 이전 빌드 잔여물 {failed.Count}개 정리 실패: {string.Join(", ", failed)}");
-                        Debug.LogWarning("[AIT]    'Clean Build' 사용을 권장합니다.");
+                        Debug.Log($"[AIT] ℹ️ '{pattern}' 이전 빌드 잔여물 {failed.Count}개 정리 실패: {string.Join(", ", failed)}");
+                        Debug.Log("[AIT]    'Clean Build' 사용을 권장합니다.");
                     }
                 }
 

@@ -248,7 +248,7 @@ namespace AppsInToss.Editor
                     if (result == AITConvertCore.AITExportError.SUCCEED)
                         Debug.Log("[AIT] [병렬] ✓ 백그라운드 pnpm install 완료");
                     else
-                        Debug.LogWarning($"[AIT] [병렬] 백그라운드 pnpm install 결과: {result}");
+                        Debug.Log($"[AIT] [병렬] 백그라운드 pnpm install 결과: {result}");
 
                     // Result 설정이 곧 완료 시그널 (PnpmInstallCompleted는 이 값으로 판단)
                     earlyCtx.PnpmInstallResult = result;
@@ -1215,8 +1215,8 @@ namespace AppsInToss.Editor
                 // 실패 시 DeleteDirectory가 내부 경고를 남기지만, 잔존 파일이 이후 복사 단계에
                 // 섞일 수 있으므로 상위 레벨에서도 한 번 더 사용자에게 알림.
                 // 주의: 이 LogWarning은 단순 폴백이 아니라 실제 빌드 오염 위험 신호이므로 Sentry로
-                // 캡처되도록 Warning 레벨을 유지한다. (File.Copy는 덮어쓰지만 src에 없는 잔존 파일은
-                // 패키지에 섞여 런타임 오류를 유발할 수 있음)
+                // 캡처되도록 Warning 레벨을 유지한다. (File.Copy는 덮어쓰지만 복사 대상 목록
+                // (filesToCopy)에 포함되지 않은 잔존 파일은 패키지에 섞여 런타임 오류를 유발할 수 있음)
                 if (!AITFileUtils.DeleteDirectory(buildDest))
                 {
                     Debug.LogWarning($"[AIT] 이전 빌드 잔여물 정리 실패: {buildDest} — 새 빌드에 오래된 파일이 섞일 수 있습니다");

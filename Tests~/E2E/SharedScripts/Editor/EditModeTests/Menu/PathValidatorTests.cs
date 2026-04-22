@@ -1,6 +1,9 @@
 using System;
 using System.IO;
 using NUnit.Framework;
+using UnityEngine;
+using UnityEngine.TestTools;
+using AppsInToss;
 using AppsInToss.Editor.Menu;
 
 namespace AppsInToss.Editor.Menu.Tests
@@ -74,16 +77,93 @@ namespace AppsInToss.Editor.Menu.Tests
         }
 
         [Test]
-        public void ValidateNpmPath_EmptyPath_ReturnsFalse()
+        public void ValidateNpmPath_EmptyOrNullPath_ReturnsFalse()
         {
+            // AITLog.Error → Debug.LogError 를 호출하므로 LogAssert.Expect 필요
+            LogAssert.Expect(LogType.Error, "AIT: npm을 찾을 수 없습니다.");
             Assert.IsFalse(PathValidator.ValidateNpmPath(""));
+
+            LogAssert.Expect(LogType.Error, "AIT: npm을 찾을 수 없습니다.");
             Assert.IsFalse(PathValidator.ValidateNpmPath(null));
         }
 
         [Test]
-        public void ValidateNpmPath_NonEmptyPath_ReturnsTrue()
+        public void ValidateNpmPath_AnyNonEmptyString_ReturnsTrue()
         {
+            // ValidateNpmPath는 string.IsNullOrEmpty만 검사 — 실제 파일 존재 검증은 하지 않음
             Assert.IsTrue(PathValidator.ValidateNpmPath("/usr/local/bin/npm"));
+        }
+
+        [Test]
+        public void ValidateSettings_NullConfig_ReturnsFalse()
+        {
+            bool result = PathValidator.ValidateSettings(null);
+            Assert.IsFalse(result);
+        }
+
+        [Test]
+        public void ValidateSettings_NonNullConfig_ReturnsTrue()
+        {
+            var config = ScriptableObject.CreateInstance<AITEditorScriptObject>();
+            try
+            {
+                bool result = PathValidator.ValidateSettings(config);
+                Assert.IsTrue(result);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(config);
+            }
+        }
+
+        [Test]
+        public void ValidateSettingsForPackage_NullConfig_ReturnsFalse()
+        {
+            bool result = PathValidator.ValidateSettingsForPackage(null);
+            Assert.IsFalse(result);
+        }
+
+        [Test]
+        public void ValidateSettingsForPackage_EmptyAppName_ReturnsFalse()
+        {
+            var config = ScriptableObject.CreateInstance<AITEditorScriptObject>();
+            try
+            {
+                config.appName = "";
+                // appName 비어있으면 AITLog.Error 경로 → LogAssert.Expect 필요
+                LogAssert.Expect(LogType.Error, "AIT: App Name이 설정되지 않았습니다.");
+                bool result = PathValidator.ValidateSettingsForPackage(config);
+                Assert.IsFalse(result);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(config);
+            }
+        }
+
+        [Test]
+        public void ValidateSettingsForPackage_ValidAppName_ReturnsTrue()
+        {
+            var config = ScriptableObject.CreateInstance<AITEditorScriptObject>();
+            try
+            {
+                config.appName = "test-app";
+                bool result = PathValidator.ValidateSettingsForPackage(config);
+                Assert.IsTrue(result);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(config);
+            }
+        }
+
+        [Test]
+        public void GetBuildTemplatePath_ReturnsProjectRelativeAitBuildPath()
+        {
+            string projectPath = UnityUtil.GetProjectPath();
+            string expected = Path.Combine(projectPath, "ait-build");
+            string actual = PathValidator.GetBuildTemplatePath();
+            Assert.AreEqual(expected, actual);
         }
     }
 }

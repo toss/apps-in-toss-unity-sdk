@@ -99,7 +99,7 @@ namespace AppsInToss.Editor.Package.Tests
         [Test]
         public void ValidateIntegrity_ReturnsTrue_WhenPackageJsonIsMalformed()
         {
-            // MiniJson이 파싱 실패 시 null 반환 → 검증 불가이므로 true (기존 동작 유지)
+            // 파싱 실패/부분 파싱/예외 어느 경로든 best-effort 계약에 따라 true를 반환해야 한다.
             Directory.CreateDirectory(Path.Combine(_tempDir, "node_modules"));
             File.WriteAllText(Path.Combine(_tempDir, "package.json"), "{ this is not json ");
             Assert.IsTrue(NodeModulesValidator.ValidateIntegrity(_tempDir));

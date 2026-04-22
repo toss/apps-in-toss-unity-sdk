@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -9,6 +8,7 @@ using UnityEditor;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
 using AppsInToss.Editor;
+using AppsInToss.Editor.Menu;
 
 namespace AppsInToss
 {
@@ -23,11 +23,6 @@ namespace AppsInToss
         private static AITServerStateManager prodServerState;
         private static Stopwatch buildStopwatch = new Stopwatch();
 
-        // 스레드 안전한 메인 스레드 작업 큐
-        // ThreadPool에서 EditorApplication.update에 직접 접근하는 대신 이 큐를 사용
-        private static readonly ConcurrentQueue<Action> mainThreadActionQueue = new ConcurrentQueue<Action>();
-        private static int isMainThreadQueueProcessorRegistered = 0;
-
         /// <summary>
         /// 도메인 리로드 시 기존 서버 프로세스 복원 및 종료 이벤트 등록
         /// </summary>
@@ -40,63 +35,13 @@ namespace AppsInToss
             // 즉시 실제 상태 검증 (domain reload 후 복원)
             devServerState.ValidateState();
             prodServerState.ValidateState();
-
-            // 메인 스레드 작업 큐 프로세서 등록
-            EnsureMainThreadQueueProcessorRegistered();
-
-            EditorApplication.quitting += OnEditorQuitting;
-            UnityEditor.PackageManager.Events.registeredPackages += OnPackagesChanged;
-        }
-
-        /// <summary>
-        /// 메인 스레드 작업 큐 프로세서가 등록되어 있는지 확인하고, 없으면 등록
-        /// Domain reload 후에도 재등록됨
-        /// </summary>
-        private static void EnsureMainThreadQueueProcessorRegistered()
-        {
-            if (Interlocked.CompareExchange(ref isMainThreadQueueProcessorRegistered, 1, 0) == 0)
-            {
-                EditorApplication.update += ProcessMainThreadActionQueue;
-            }
-        }
-
-        /// <summary>
-        /// 메인 스레드 작업 큐를 처리
-        /// EditorApplication.update에서 매 프레임 호출됨
-        /// </summary>
-        private static void ProcessMainThreadActionQueue()
-        {
-            // 한 프레임에 최대 10개 작업 처리 (에디터 응답성 유지)
-            int processedCount = 0;
-            while (processedCount < 10 && mainThreadActionQueue.TryDequeue(out var action))
-            {
-                try
-                {
-                    action?.Invoke();
-                }
-                catch (Exception e)
-                {
-                    Debug.LogException(e);
-                }
-                processedCount++;
-            }
-        }
-
-        /// <summary>
-        /// 메인 스레드에서 실행할 작업을 큐에 추가
-        /// ThreadPool 스레드에서 안전하게 호출 가능
-        /// </summary>
-        /// <param name="action">메인 스레드에서 실행할 작업</param>
-        private static void EnqueueMainThreadAction(Action action)
-        {
-            if (action == null) return;
-            mainThreadActionQueue.Enqueue(action);
         }
 
         /// <summary>
         /// Unity Editor 종료 시 모든 서버 프로세스 정리
+        /// MainThreadDispatcher의 EditorApplication.quitting 구독을 통해 호출됨.
         /// </summary>
-        private static void OnEditorQuitting()
+        internal static void HandleEditorQuitting()
         {
             var devState = devServerState?.GetCachedState() ?? ServerState.NotRunning;
             var prodState = prodServerState?.GetCachedState() ?? ServerState.NotRunning;
@@ -122,8 +67,9 @@ namespace AppsInToss
 
         /// <summary>
         /// 패키지 등록 변경 시 SDK 패키지 제거 감지
+        /// MainThreadDispatcher의 PackageManager.Events.registeredPackages 구독을 통해 호출됨.
         /// </summary>
-        private static void OnPackagesChanged(UnityEditor.PackageManager.PackageRegistrationEventArgs args)
+        internal static void HandlePackagesChanged(UnityEditor.PackageManager.PackageRegistrationEventArgs args)
         {
             foreach (var package in args.removed)
             {
@@ -1219,7 +1165,7 @@ namespace AppsInToss
                     }
 
                     // 스레드 안전한 메인 스레드 큐를 통해 콜백 실행
-                    EnqueueMainThreadAction(() =>
+                    MainThreadDispatcher.Enqueue(() =>
                     {
                         EditorApplication.update -= timeoutCheck;
                         Debug.LogError($"[{logPrefix}] 서버 시작 실패: {reason}");
@@ -1269,7 +1215,7 @@ namespace AppsInToss
                             if (Interlocked.CompareExchange(ref serverStartedFlag, 1, 0) == 0)
                             {
                                 // 스레드 안전한 메인 스레드 큐를 통해 콜백 실행
-                                EnqueueMainThreadAction(() =>
+                                MainThreadDispatcher.Enqueue(() =>
                                 {
                                     EditorApplication.update -= timeoutCheck;
                                     onServerStarted?.Invoke(port);

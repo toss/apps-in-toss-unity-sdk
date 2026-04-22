@@ -39,7 +39,7 @@
 - `AITProcessTreeManager.cs:283` (300ms)
 - `AITNpmRunner.cs:296` (200ms)
 - `AITSentryTransport.cs:185` (10ms 반복)
-- `AITPackageInitializer.cs:343`
+- `AITPackageInitializer.cs` `WaitForInstallation` (설치 완료 폴링, 500ms)
 - `AITAsyncCommandRunner.cs:261` (100ms)
 - `AITPackageBuilder.cs` `RunPnpmInstallInThread` (pnpm 프로세스 폴링, 200ms)
 - **조치**: 가능한 곳부터 비동기 패턴 전환

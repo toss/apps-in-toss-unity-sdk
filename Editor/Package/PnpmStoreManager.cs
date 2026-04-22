@@ -6,6 +6,7 @@ namespace AppsInToss.Editor.Package
 {
     /// <summary>
     /// pnpm 공유 store 관리 (경로 + install 재시도 정책).
+    /// internal 멤버는 Editor/AssemblyInfo.cs 의 InternalsVisibleTo 를 통해 테스트 어셈블리에서 접근됩니다.
     /// </summary>
     internal static class PnpmStoreManager
     {

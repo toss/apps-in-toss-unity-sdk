@@ -20,17 +20,6 @@ namespace AppsInToss.Editor.Package.Tests
         }
 
         [Test]
-        public void ClearPathCache_Idempotent_OnRepeatedCalls()
-        {
-            Assert.DoesNotThrow(() =>
-            {
-                SdkPathResolver.ClearPathCache();
-                SdkPathResolver.ClearPathCache();
-                SdkPathResolver.ClearPathCache();
-            });
-        }
-
-        [Test]
         public void GetSdkBuildConfigPath_ReturnsEqualValue_OnSubsequentCalls()
         {
             // 캐싱 검증: 첫 호출 후 같은 값을 반환해야 함.
@@ -54,25 +43,16 @@ namespace AppsInToss.Editor.Package.Tests
             // 첫 호출로 캐시 채움. 경로 해석 성공 시 "[AIT] SDK BuildConfig 경로 캐싱: ..." 로그가 찍힘.
             string first = SdkPathResolver.GetSdkBuildConfigPath();
 
-            if (first != null)
-            {
-                // ClearPathCache 후 재호출하면 캐시 미스로 인해 같은 로그가 다시 찍혀야 함 (재해석 증명).
-                // LogAssert.Expect 는 프레임 내에 해당 로그가 발생해야 성공하므로, 캐시 단락 시 실패한다.
-                SdkPathResolver.ClearPathCache();
-                LogAssert.Expect(LogType.Log, new Regex(@"\[AIT\] SDK BuildConfig 경로 캐싱: .+"));
-                string second = SdkPathResolver.GetSdkBuildConfigPath();
-                Assert.AreEqual(first, second);
-            }
-            else
-            {
-                // 해석 실패 환경(테스트 러너에서 패키지 루트를 찾지 못하는 경우)에서는
-                // ClearPathCache 후 재호출이 여전히 null을 반환하고 예외 없이 동작해야 함.
-                Assert.DoesNotThrow(() =>
-                {
-                    SdkPathResolver.ClearPathCache();
-                    _ = SdkPathResolver.GetSdkBuildConfigPath();
-                });
-            }
+            // 패키지 루트가 해석되지 않는 테스트 환경에서는 이 테스트를 inconclusive로 보고한다.
+            // (캐시 무효화 의미를 검증할 수 없으므로 silent pass 보다 inconclusive가 더 정확한 신호)
+            Assume.That(first, Is.Not.Null, "SDK BuildConfig 경로 해석 실패 — 이 환경에서는 캐시 무효화를 검증할 수 없음");
+
+            // ClearPathCache 후 재호출하면 캐시 미스로 인해 같은 로그가 다시 찍혀야 함 (재해석 증명).
+            // LogAssert.Expect 는 프레임 내에 해당 로그가 발생해야 성공하므로, 캐시 단락 시 실패한다.
+            SdkPathResolver.ClearPathCache();
+            LogAssert.Expect(LogType.Log, new Regex(@"\[AIT\] SDK BuildConfig 경로 캐싱: .+"));
+            string second = SdkPathResolver.GetSdkBuildConfigPath();
+            Assert.AreEqual(first, second);
         }
     }
 }

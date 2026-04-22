@@ -1,11 +1,11 @@
 using UnityEditor;
 using UnityEngine;
-using AppsInToss.Editor;
 
 namespace AppsInToss.Editor.Menu
 {
     /// <summary>
-    /// 서버 포트 해석 및 충돌 처리 유틸리티
+    /// 서버 포트 해석 및 충돌 처리 유틸리티.
+    /// internal 멤버는 Editor/AssemblyInfo.cs 의 InternalsVisibleTo 를 통해 테스트 어셈블리에서 접근됩니다.
     /// </summary>
     internal static class PortResolver
     {

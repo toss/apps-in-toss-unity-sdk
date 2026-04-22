@@ -600,7 +600,7 @@ namespace AppsInToss.Editor
             if (result == AITConvertCore.AITExportError.SUCCEED) return result;
             if (result == AITConvertCore.AITExportError.CANCELLED) return result;
 
-            Debug.LogWarning($"[AIT] {label}: ait build 실패, granite build로 폴백합니다...");
+            Debug.Log($"[AIT] {label}: ait build 실패, granite build로 폴백합니다...");
             return AITNpmRunner.RunNpmCommandWithCache(
                 ctx.BuildProjectPath, ctx.PnpmPath, "exec granite build", ctx.LocalCachePath,
                 $"{label} (granite build)...", additionalEnvVars: ctx.UnityMetadataEnv);
@@ -1635,7 +1635,7 @@ namespace AppsInToss.Editor
                     }
 
                     // ait build 실패 → granite build 폴백
-                    Debug.LogWarning("[AIT] ait build 실패, granite build로 폴백합니다...");
+                    Debug.Log("[AIT] ait build 실패, granite build로 폴백합니다...");
                     AITNpmRunner.RunNpmCommandWithCacheAsync(
                         ctx.BuildProjectPath, ctx.PnpmPath, "exec granite build", ctx.LocalCachePath,
                         onComplete: (graniteResult) =>

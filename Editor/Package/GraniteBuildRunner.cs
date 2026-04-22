@@ -8,6 +8,7 @@ namespace AppsInToss.Editor.Package
     /// <summary>
     /// Granite / AIT 빌드 실행 (동기 & 비동기) + 실패 시 재시도.
     /// granite build 실패 시 node_modules 정리 후 pnpm install 재시도 경로로 위임.
+    /// internal 멤버는 Editor/AssemblyInfo.cs 의 InternalsVisibleTo 를 통해 테스트 어셈블리에서 접근됩니다.
     /// </summary>
     internal static class GraniteBuildRunner
     {

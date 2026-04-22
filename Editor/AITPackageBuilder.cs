@@ -25,7 +25,8 @@ namespace AppsInToss.Editor
         #region Packaging Common
 
         /// <summary>
-        /// 동기/비동기 패키징 공통 준비 컨텍스트
+        /// 동기/비동기 패키징 공통 준비 컨텍스트.
+        /// internal: AppsInToss.Editor.Package.GraniteBuildRunner에서 참조하기 위한 승격.
         /// </summary>
         internal class PackageContext
         {

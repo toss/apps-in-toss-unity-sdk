@@ -41,7 +41,7 @@
 - `AITSentryTransport.cs:185` (10ms 반복)
 - `AITPackageInitializer.cs:343`
 - `AITAsyncCommandRunner.cs:261` (100ms)
-- `AITPackageBuilder.cs:334` (200ms)
+- `AITPackageBuilder.cs` `PrepareAitBuildFolder` (200ms)
 - **조치**: 가능한 곳부터 비동기 패턴 전환
 
 ---
@@ -84,7 +84,7 @@
 - **파일/행**:
   - `Editor/AppsInTossMenu.cs:22-29` — `devServerState`, `prodServerState` 등
   - `Editor/AITConvertCore.cs:33-35` — `isCancelled`, `currentAsyncTask`
-  - `Editor/AITPackageBuilder.cs:73,81` — volatile 사용 중이나 문서화 부족
+  - `Editor/AITPackageBuilder.cs` `EarlyPackageContext._pnpmInstallResultCode`, `_pnpmCancellationDisposed` — volatile 사용 중이나 문서화 부족
 - **조치**: `Interlocked` 또는 `lock` 사용, 스레드 안전성 보장 명시
 
 ---

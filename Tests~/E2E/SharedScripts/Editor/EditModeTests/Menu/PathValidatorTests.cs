@@ -4,7 +4,6 @@ using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
 using AppsInToss;
-using AppsInToss.Editor.Menu;
 
 namespace AppsInToss.Editor.Menu.Tests
 {

@@ -6,75 +6,75 @@
 using NUnit.Framework;
 using AppsInToss.Editor.Menu;
 
-namespace AppsInToss.Editor.Menu.Tests
+[TestFixture]
+public class PortResolverParserTests
 {
-    [TestFixture]
-    public class PortResolverParserTests
+    [Test]
+    public void IsPortConflictError_EaddrInUse_ReturnsTrue()
     {
-        [Test]
-        public void IsPortConflictError_EaddrInUse_ReturnsTrue()
-        {
-            Assert.IsTrue(PortResolver.IsPortConflictError("Error: listen EADDRINUSE: address already in use :::5173"));
-        }
+        Assert.IsTrue(PortResolver.IsPortConflictError("Error: listen EADDRINUSE: address already in use :::5173"));
+    }
 
-        [Test]
-        public void IsPortConflictError_PortIsAlreadyInUseMessage_ReturnsTrue()
-        {
-            Assert.IsTrue(PortResolver.IsPortConflictError("Port is already in use"));
-        }
+    [Test]
+    public void IsPortConflictError_PortIsAlreadyInUseMessage_ReturnsTrue()
+    {
+        Assert.IsTrue(PortResolver.IsPortConflictError("Port is already in use"));
+    }
 
-        [Test]
-        public void IsPortConflictError_AddressAlreadyInUseMessage_ReturnsTrue()
-        {
-            Assert.IsTrue(PortResolver.IsPortConflictError("bind: address already in use"));
-        }
+    [Test]
+    public void IsPortConflictError_AddressAlreadyInUseMessage_ReturnsTrue()
+    {
+        Assert.IsTrue(PortResolver.IsPortConflictError("bind: address already in use"));
+    }
 
-        [Test]
-        public void IsPortConflictError_NormalOutput_ReturnsFalse()
-        {
-            Assert.IsFalse(PortResolver.IsPortConflictError("Build succeeded in 1.2s"));
-        }
+    [Test]
+    public void IsPortConflictError_NormalOutput_ReturnsFalse()
+    {
+        Assert.IsFalse(PortResolver.IsPortConflictError("Build succeeded in 1.2s"));
+    }
 
-        [Test]
-        public void IsPortConflictError_EmptyString_ReturnsFalse()
-        {
-            Assert.IsFalse(PortResolver.IsPortConflictError(string.Empty));
-        }
+    [Test]
+    public void IsPortConflictError_EmptyString_ReturnsFalse()
+    {
+        Assert.IsFalse(PortResolver.IsPortConflictError(string.Empty));
+    }
 
-        [Test]
-        public void IsPortConflictError_Null_ReturnsFalse()
-        {
-            Assert.IsFalse(PortResolver.IsPortConflictError(null));
-        }
+    [Test]
+    public void IsPortConflictError_Null_ReturnsFalse()
+    {
+        Assert.IsFalse(PortResolver.IsPortConflictError(null));
+    }
 
-        [Test]
-        public void IsPortConflictError_AllUppercase_ReturnsTrue()
-        {
-            // ToLowerInvariant() 계약 고정: 완전 대문자 입력도 매칭되어야 함
-            Assert.IsTrue(PortResolver.IsPortConflictError("PORT IS ALREADY IN USE"));
-        }
+    // ToLowerInvariant() 계약 고정: 3개 패턴 모두 완전 대문자 입력도 매칭되어야 함
+    [TestCase("EADDRINUSE")]
+    [TestCase("PORT IS ALREADY IN USE")]
+    [TestCase("ADDRESS ALREADY IN USE")]
+    public void IsPortConflictError_AllUppercase_ReturnsTrue(string input)
+    {
+        Assert.IsTrue(PortResolver.IsPortConflictError(input));
+    }
 
-        [Test]
-        public void IsPortConflictError_SubstringInMultiLineOutput_ReturnsTrue()
-        {
-            // 실제 툴 출력은 다중 라인 스택트레이스일 수 있음
-            string output = "Starting dev server...\n  at node (internal)\nError: listen EADDRINUSE on :::5173\n  at Server.listen";
-            Assert.IsTrue(PortResolver.IsPortConflictError(output));
-        }
+    [Test]
+    public void IsPortConflictError_SubstringInMultiLineOutput_ReturnsTrue()
+    {
+        // 실제 툴 출력은 다중 라인 스택트레이스일 수 있음. 트리거가 중간 라인에 있어도 감지되어야 함.
+        string output = "Starting dev server...\n  at node (internal)\nError: listen EADDRINUSE on :::5173\n  at Server.listen";
+        Assert.IsTrue(PortResolver.IsPortConflictError(output));
+    }
 
-        [Test]
-        public void IsPortConflictError_NearMissPhrase_ReturnsFalse()
-        {
-            // 느슨한 문구 매칭으로 false positive가 생기지 않아야 함
-            Assert.IsFalse(PortResolver.IsPortConflictError("the address has already been used"));
-        }
+    // 느슨한 문구 매칭으로 false positive가 생기지 않아야 함
+    [TestCase("the address has already been used")]
+    [TestCase("port already in use")] // "is" 누락
+    public void IsPortConflictError_NearMissPhrase_ReturnsFalse(string input)
+    {
+        Assert.IsFalse(PortResolver.IsPortConflictError(input));
+    }
 
-        [Test]
-        public void IsPortConflictError_WhitespaceOnly_ReturnsFalse()
-        {
-            Assert.IsFalse(PortResolver.IsPortConflictError("   "));
-            Assert.IsFalse(PortResolver.IsPortConflictError("\n"));
-            Assert.IsFalse(PortResolver.IsPortConflictError("\t"));
-        }
+    [Test]
+    public void IsPortConflictError_WhitespaceOnly_ReturnsFalse()
+    {
+        Assert.IsFalse(PortResolver.IsPortConflictError("   "));
+        Assert.IsFalse(PortResolver.IsPortConflictError("\n"));
+        Assert.IsFalse(PortResolver.IsPortConflictError("\t"));
     }
 }

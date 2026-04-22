@@ -22,6 +22,9 @@ namespace AppsInToss.Editor.Menu
                    lower.Contains("address already in use");
         }
 
+        /// <summary>
+        /// 지정된 포트를 점유 중인 프로세스를 강제 종료
+        /// </summary>
         internal static void KillProcessOnPort(int port)
         {
             if (port <= 0) return;

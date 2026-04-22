@@ -58,6 +58,8 @@ namespace AppsInToss.Editor.ErrorTracker
         //   2. Sentry에서 해당 이슈를 ignored 처리
         //   3. 여기 NonSdkMessagePatterns에 메시지의 불변 핵심 문구를 부분 문자열로 추가
         //      (Unity 버전/환경 차이에 민감한 부분은 피할 것)
+        //      단, 단일 부분 문자열이 SDK 자체 로그와 충돌할 위험이 있으면
+        //      IsKnownNonSdkMessage 내에 composite AND 조건(예: "GUID [" && "conflicts with:")을 추가
         //   4. IsKnownNonSdkMessageTests.cs에 positive/negative 테스트 추가
         //      (특히 AIT 키워드가 섞여도 필터링되지 않는지 negative 케이스 필수)
         private static readonly string[] NonSdkMessagePatterns =
@@ -86,6 +88,9 @@ namespace AppsInToss.Editor.ErrorTracker
 
             // Unity URP 내부
             "exceeds previous array size",
+
+            // 사용자 Unity 설치에 WebGL 모듈 미설치 — SDK-DD
+            "Build target 'WebGL' not supported",
         };
 
         // DetermineErrorSource에서 메시지를 SDK로 분류하는 추가 패턴.
@@ -555,6 +560,12 @@ namespace AppsInToss.Editor.ErrorTracker
             if (message.IndexOf("Script attached to", StringComparison.Ordinal) >= 0
                 && message.IndexOf("is missing", StringComparison.Ordinal) >= 0
                 && message.IndexOf("Assets/", StringComparison.Ordinal) >= 0)
+                return true;
+
+            // "GUID [...] ... conflicts with:" 패턴 — 사용자 프로젝트에 동일 GUID 에셋 잔존 (SDK-BQ)
+            // AITTemplate 경로가 포함되더라도 SDK가 제공한 파일을 사용자가 복사해둔 경우이므로 필터 대상
+            if (message.IndexOf("GUID [", StringComparison.Ordinal) >= 0
+                && message.IndexOf("conflicts with:", StringComparison.Ordinal) >= 0)
                 return true;
 
             return false;

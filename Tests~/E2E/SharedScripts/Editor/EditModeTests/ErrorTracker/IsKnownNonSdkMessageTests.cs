@@ -225,7 +225,7 @@ public class IsKnownNonSdkMessageTests
     }
 
     [Test]
-    public void FieldsSerializedInSdkAssembly_NotFiltered()
+    public void FieldsSerializedInSdkAssembly_NeverFiltered()
     {
         // SDK 어셈블리(AppsInTossSDKEditor 등)의 직렬화 경고는 보호되어야 함
         Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
@@ -261,6 +261,77 @@ public class IsKnownNonSdkMessageTests
     {
         Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
             "Index 5 exceeds previous array size 3"));
+    }
+
+    #endregion
+
+    #region 사용자 환경 문제 (WebGL 모듈 미설치, GUID 충돌)
+
+    [Test]
+    public void BuildTargetWebGLNotSupported_ReturnsTrue()
+    {
+        // 사용자 Unity 설치에 WebGL 모듈이 없어서 발생 — SDK-DD
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Build target 'WebGL' not supported"));
+    }
+
+    [Test]
+    public void BuildTargetWebGLNotSupported_FullMessage_ReturnsTrue()
+    {
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Build target 'WebGL' not supported. Please install it via Unity Hub."));
+    }
+
+    [Test]
+    public void GuidConflict_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-BQ에서 실제 관찰된 메시지 형태를 반영한 fixture.
+        // 사용자 프로젝트에 동일 GUID의 에셋이 남아있어 AITTemplate 파일과 충돌.
+        // AITTemplate 경로가 메시지에 포함되어도 AitKeywords(`[AIT`, `AIT:` 등) 중 어느 것의 부분 문자열도 아니므로
+        // SDK 보호 가드가 발동하지 않아 일반 필터 흐름으로 내려가 정상 필터링됨.
+        // 필터가 향후 anchored/regex로 tightening되더라도 이 실측 경로를 놓치지 않도록 fixture로 박아둠.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "GUID [abc123def456] for asset 'Assets/WebGLTemplates/AITTemplate/TemplateData/diagnostics.css' conflicts with: 'Assets/OldCopy/diagnostics.css'"));
+    }
+
+    [Test]
+    public void GuidConflict_WithoutAitTemplate_ReturnsTrue()
+    {
+        // AITTemplate 경로가 없어도 일반 GUID 충돌 메시지라면 사용자 프로젝트 문제
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "GUID [deadbeef] for asset 'Assets/Foo/bar.png' conflicts with: 'Assets/Baz/bar.png'"));
+    }
+
+    [Test]
+    public void GuidWithoutConflictsWith_ReturnsFalse()
+    {
+        // "GUID ["만 있고 "conflicts with:"가 없으면 composite AND의 한쪽만 충족되어 필터링 안 됨
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "GUID [abc123] for asset 'Assets/Foo/bar.png' updated"));
+    }
+
+    [Test]
+    public void ConflictsWithoutGuid_ReturnsFalse()
+    {
+        // "conflicts with:"만 있고 "GUID ["가 없으면 composite AND의 한쪽만 충족되어 필터링 안 됨
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Package version conflicts with: older version"));
+    }
+
+    [Test]
+    public void BuildTargetWebGLNotSupported_WithAitPrefix_NeverFiltered()
+    {
+        // AitKeywords 가드 회귀 방지: [AIT] prefix가 붙은 동일 메시지는 SDK 자체 로그로 간주되어야 함
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] Build target 'WebGL' not supported"));
+    }
+
+    [Test]
+    public void GuidConflict_WithAitPrefix_NeverFiltered()
+    {
+        // AitKeywords 가드 회귀 방지: [AIT] prefix가 붙은 GUID 충돌 메시지는 SDK가 직접 출력한 것으로 간주되어야 함
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] GUID [abc123] for asset 'Assets/Foo/bar.png' conflicts with: 'Assets/Baz/bar.png'"));
     }
 
     #endregion

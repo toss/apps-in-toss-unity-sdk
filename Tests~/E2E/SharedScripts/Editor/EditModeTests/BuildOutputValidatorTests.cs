@@ -48,9 +48,9 @@ public class BuildOutputValidatorTests
     // 다른 타입은 Contains 매칭이라는 비대칭성을 고정
     // =====================================================
 
-    [TestCase("build.loader.js.br", "other")]
-    [TestCase("build.loader.js.gz", "other")]
-    [TestCase("build.loader.js.unityweb", "other")]
+    [TestCase("build.loader.js.br")]
+    [TestCase("build.loader.js.gz")]
+    [TestCase("build.loader.js.unityweb")]
     public void DetectFileType_CompressedLoader_ReturnsOther(string fileName)
     {
         Assert.AreEqual("other", BuildOutputValidator.DetectFileType(fileName));

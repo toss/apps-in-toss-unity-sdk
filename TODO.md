@@ -11,11 +11,6 @@
 - **현상**: 100+ enum/class 정의가 단일 파일에 집중. Permission 관련 enum 3개 중복 (`GetPermissionPermissionName`, `OpenPermissionDialogPermissionName`, `RequestPermissionPermissionName` — 동일 값)
 - **조치**: sdk-runtime-generator에서 카테고리별 타입 파일 분할 생성 검토, Permission enum 통합
 
-### P1 — AITPackageBuilder.cs (1,965행): God class 분할
-- **파일**: `Editor/AITPackageBuilder.cs`
-- **현상**: pnpm 패키징, WebGL 빌드 복사, HTML 템플릿 생성, early fetch 스크립트, node_modules 검증 등 다수 책임
-- **조치**: `PnpmPackageManager`, `WebGLBuildCopier`, `TemplateProcessor` 등으로 분리
-
 ### P1 — AppsInTossMenu.cs (1,915행): 모놀리식 메뉴 컨트롤러
 - **파일**: `Editor/AppsInTossMenu.cs`
 - **현상**: Dev/Prod 서버 관리, 포트 해석, 브라우저 실행, 배포, 플러그인 설치가 하나의 파일에 혼재

@@ -11,11 +11,6 @@
 - **현상**: 100+ enum/class 정의가 단일 파일에 집중. Permission 관련 enum 3개 중복 (`GetPermissionPermissionName`, `OpenPermissionDialogPermissionName`, `RequestPermissionPermissionName` — 동일 값)
 - **조치**: sdk-runtime-generator에서 카테고리별 타입 파일 분할 생성 검토, Permission enum 통합
 
-### P1 — AITPackageBuilder.cs (1,965행): God class 분할
-- **파일**: `Editor/AITPackageBuilder.cs`
-- **현상**: pnpm 패키징, WebGL 빌드 복사, HTML 템플릿 생성, early fetch 스크립트, node_modules 검증 등 다수 책임
-- **조치**: `PnpmPackageManager`, `WebGLBuildCopier`, `TemplateProcessor` 등으로 분리
-
 ### P1 — AppsInTossMenu.cs (1,915행): 모놀리식 메뉴 컨트롤러
 - **파일**: `Editor/AppsInTossMenu.cs`
 - **현상**: Dev/Prod 서버 관리, 포트 해석, 브라우저 실행, 배포, 플러그인 설치가 하나의 파일에 혼재
@@ -44,9 +39,9 @@
 - `AITProcessTreeManager.cs:283` (300ms)
 - `AITNpmRunner.cs:296` (200ms)
 - `AITSentryTransport.cs:185` (10ms 반복)
-- `AITPackageInitializer.cs:343`
+- `AITPackageInitializer.cs` `WaitForInstallation` (설치 완료 폴링, 500ms)
 - `AITAsyncCommandRunner.cs:261` (100ms)
-- `AITPackageBuilder.cs:334` (200ms)
+- `AITPackageBuilder.cs` `RunPnpmInstallInThread` (pnpm 프로세스 폴링, 200ms)
 - **조치**: 가능한 곳부터 비동기 패턴 전환
 
 ---
@@ -89,7 +84,7 @@
 - **파일/행**:
   - `Editor/AppsInTossMenu.cs:22-29` — `devServerState`, `prodServerState` 등
   - `Editor/AITConvertCore.cs:33-35` — `isCancelled`, `currentAsyncTask`
-  - `Editor/AITPackageBuilder.cs:73,81` — volatile 사용 중이나 문서화 부족
+  - `Editor/AITPackageBuilder.cs` `EarlyPackageContext._pnpmInstallResultCode`, `EarlyPackageContext._pnpmCancellationDisposed` — volatile 사용 중이나 문서화 부족
 - **조치**: `Interlocked` 또는 `lock` 사용, 스레드 안전성 보장 명시
 
 ---

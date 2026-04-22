@@ -1457,16 +1457,22 @@ jobs:
       # =====================================================
       # 아티팩트 업로드
       # =====================================================
+      # shell: bash 가 Windows 러너에서 WSL bash 로 해석되면 temp 스크립트 경로가
+      # 깨지므로(자세한 설명은 위 Update BuildConfig 주석 참고) node shell 사용.
       - name: Set Artifact Name
         id: artifact
-        shell: bash
+        shell: node {0}
+        env:
+          OS: ${{ inputs.os }}
+          UNITY_VERSION: ${{ inputs.unity-version }}
+          SDK_VERSION: ${{ inputs.sdk-version }}
         run: |
-          SDK_VERSION="${{ inputs.sdk-version }}"
-          if [ -n "$SDK_VERSION" ]; then
-            echo "name=ait-build-${{ inputs.os }}-${{ inputs.unity-version }}-v${SDK_VERSION}" >> $GITHUB_OUTPUT
-          else
-            echo "name=ait-build-${{ inputs.os }}-${{ inputs.unity-version }}" >> $GITHUB_OUTPUT
-          fi
+          const fs = require('fs');
+          const { OS, UNITY_VERSION, SDK_VERSION } = process.env;
+          const suffix = SDK_VERSION ? `-v${SDK_VERSION}` : '';
+          const name = `ait-build-${OS}-${UNITY_VERSION}${suffix}`;
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `name=${name}\n`);
+          console.log(`Artifact name: ${name}`);
 
       - name: Upload AIT Build
         if: inputs.run-build && (inputs.test-level || '2') != '0'

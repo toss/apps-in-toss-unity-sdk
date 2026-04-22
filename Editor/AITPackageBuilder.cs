@@ -347,11 +347,11 @@ namespace AppsInToss.Editor
 
                         string output = outputBuilder.ToString();
                         string error = errorBuilder.ToString();
-                        Debug.LogWarning($"[AIT] [병렬] pnpm {label} 실패 (Exit Code: {process.ExitCode})");
+                        Debug.Log($"[AIT] [병렬] pnpm {label} 실패 (Exit Code: {process.ExitCode})");
                         if (!string.IsNullOrEmpty(output))
-                            Debug.LogWarning($"[AIT] [병렬] 출력:\n{output.Trim()}");
+                            Debug.Log($"[AIT] [병렬] 출력:\n{output.Trim()}");
                         if (!string.IsNullOrEmpty(error))
-                            Debug.LogWarning($"[AIT] [병렬] 오류:\n{error.Trim()}");
+                            Debug.Log($"[AIT] [병렬] 오류:\n{error.Trim()}");
                     }
                 }
                 catch (Exception e)
@@ -1213,7 +1213,10 @@ namespace AppsInToss.Editor
             if (Directory.Exists(buildDest))
             {
                 // 실패 시 DeleteDirectory가 내부 경고를 남기지만, 잔존 파일이 이후 복사 단계에
-                // 섞일 수 있으므로 상위 레벨에서도 한 번 더 사용자에게 알림
+                // 섞일 수 있으므로 상위 레벨에서도 한 번 더 사용자에게 알림.
+                // 주의: 이 LogWarning은 단순 폴백이 아니라 실제 빌드 오염 위험 신호이므로 Sentry로
+                // 캡처되도록 Warning 레벨을 유지한다. (File.Copy는 덮어쓰지만 src에 없는 잔존 파일은
+                // 패키지에 섞여 런타임 오류를 유발할 수 있음)
                 if (!AITFileUtils.DeleteDirectory(buildDest))
                 {
                     Debug.LogWarning($"[AIT] 이전 빌드 잔여물 정리 실패: {buildDest} — 새 빌드에 오래된 파일이 섞일 수 있습니다");
@@ -1765,7 +1768,7 @@ namespace AppsInToss.Editor
                 if (!Directory.Exists(pnpmDir))
                 {
                     // .pnpm 디렉토리가 없으면 오염된 상태
-                    Debug.LogWarning("[AIT] node_modules/.pnpm 디렉토리가 없습니다. node_modules를 정리합니다.");
+                    Debug.Log("[AIT] node_modules/.pnpm 디렉토리가 없습니다. node_modules를 정리합니다.");
                     return false;
                 }
 
@@ -1784,10 +1787,10 @@ namespace AppsInToss.Editor
                 if (installedDirs.Length > 0)
                 {
                     string installedDirName = Path.GetFileName(installedDirs[0]);
-                    Debug.LogWarning($"[AIT] web-framework 버전 불일치 감지!");
-                    Debug.LogWarning($"[AIT]   기대 버전: {expectedVersion}");
-                    Debug.LogWarning($"[AIT]   설치된 버전: {installedDirName}");
-                    Debug.LogWarning($"[AIT]   node_modules를 정리하고 재설치합니다.");
+                    Debug.Log($"[AIT] web-framework 버전 불일치 감지!");
+                    Debug.Log($"[AIT]   기대 버전: {expectedVersion}");
+                    Debug.Log($"[AIT]   설치된 버전: {installedDirName}");
+                    Debug.Log($"[AIT]   node_modules를 정리하고 재설치합니다.");
                 }
                 else
                 {
@@ -1798,7 +1801,7 @@ namespace AppsInToss.Editor
             }
             catch (Exception e)
             {
-                Debug.LogWarning($"[AIT] node_modules 무결성 검증 중 오류 (무시됨): {e}");
+                Debug.Log($"[AIT] node_modules 무결성 검증 중 오류 (무시됨): {e}");
                 return true; // 검증 실패 시 기존 동작 유지
             }
         }

@@ -567,7 +567,7 @@ namespace AppsInToss.Editor
             if (result == AITConvertCore.AITExportError.CANCELLED) return result;
 
             // 재시도: clean → install → build
-            Debug.LogWarning("[AIT] granite build 실패. node_modules 정리 후 install부터 재시도합니다...");
+            Debug.Log("[AIT] granite build 실패. node_modules 정리 후 install부터 재시도합니다...");
             CleanNodeModules(ctx.BuildProjectPath);
 
             var installResult = AITNpmRunner.RunNpmCommandWithCache(
@@ -1668,7 +1668,7 @@ namespace AppsInToss.Editor
             Action<AITConvertCore.BuildPhase, float, string> onProgress,
             Action<AITConvertCore.AITExportError> onComplete)
         {
-            Debug.LogWarning("[AIT] granite build 실패. node_modules 정리 후 install부터 재시도합니다...");
+            Debug.Log("[AIT] granite build 실패. node_modules 정리 후 install부터 재시도합니다...");
             CleanNodeModules(ctx.BuildProjectPath);
             onProgress?.Invoke(AITConvertCore.BuildPhase.PnpmInstall, 0.5f, "빌드 실패 후 재설치 중...");
 

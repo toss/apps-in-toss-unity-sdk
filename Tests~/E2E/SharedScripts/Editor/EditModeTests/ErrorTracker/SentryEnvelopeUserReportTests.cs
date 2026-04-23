@@ -38,4 +38,23 @@ public class SentryEnvelopeUserReportTests
 
         StringAssert.Contains("\\\"hi\\\"", item);
     }
+
+    [Test]
+    public void BuildAttachmentItem_ContainsBinaryPayload()
+    {
+        byte[] data = new byte[] { 0x89, 0x50, 0x4E, 0x47 }; // PNG magic
+        string item = AITSentryEnvelope.BuildAttachmentItem(
+            data: data,
+            filename: "screenshot.png",
+            contentType: "image/png");
+
+        int newlineIdx = item.IndexOf('\n');
+        Assert.Greater(newlineIdx, 0, "header와 payload가 \\n으로 구분되어야 함");
+
+        string header = item.Substring(0, newlineIdx);
+        StringAssert.Contains("\"type\":\"attachment\"", header);
+        StringAssert.Contains("\"length\":4", header);
+        StringAssert.Contains("\"filename\":\"screenshot.png\"", header);
+        StringAssert.Contains("\"content_type\":\"image/png\"", header);
+    }
 }

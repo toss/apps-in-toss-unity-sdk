@@ -272,6 +272,35 @@ namespace AppsInToss.Editor.ErrorTracker
 
         #endregion
 
+        #region Attachment Item
+
+        /// <summary>
+        /// Sentry Envelope 의 attachment 아이템을 생성합니다.
+        /// header 줄과 바이너리 payload를 개행으로 연결한 문자열을 반환합니다.
+        /// 바이너리 안전성을 위해 payload는 ISO-8859-1 (Latin-1) 1:1 매핑으로 문자열화 합니다.
+        /// 실제 UTF-8 기반 전송 파이프라인에서 byte 깨짐 방지를 위해서는 바이트 기반 envelope 경로가 필요하며,
+        /// 이는 Task 7 (보류)에서 다룹니다. 이 helper는 계약만 제공합니다.
+        /// </summary>
+        internal static string BuildAttachmentItem(byte[] data, string filename, string contentType)
+        {
+            if (data == null) data = System.Array.Empty<byte>();
+
+            var header = new StringBuilder(128);
+            header.Append("{\"type\":\"attachment\",\"length\":");
+            header.Append(data.Length);
+            header.Append(",\"filename\":\"");
+            header.Append(EscapeJson(filename ?? "attachment.bin"));
+            header.Append("\",\"content_type\":\"");
+            header.Append(EscapeJson(contentType ?? "application/octet-stream"));
+            header.Append("\"}");
+
+            string payload = Encoding.GetEncoding("ISO-8859-1").GetString(data);
+
+            return header.ToString() + "\n" + payload;
+        }
+
+        #endregion
+
         #region Session Envelope
 
         internal static string BuildSessionEnvelope(

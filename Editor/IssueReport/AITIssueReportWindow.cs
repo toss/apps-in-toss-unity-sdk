@@ -11,6 +11,8 @@ namespace AppsInToss.Editor.IssueReport
     /// </summary>
     internal sealed class AITIssueReportWindow : EditorWindow
     {
+        // Done 은 콜백이 돌아온 직후의 과도 상태. 성공/실패 다이얼로그 표시와
+        // Close()/재귀 Submit() 사이의 짧은 구간에서만 유지되므로 OnGUI 가 관찰할 일은 거의 없다.
         private enum State { Idle, Sending, Done }
 
         private AITIssueReportContext _context;
@@ -117,13 +119,21 @@ namespace AppsInToss.Editor.IssueReport
                 Title = _title,
                 Body = _body,
                 Email = _email,
+                // TODO(Task 7a): 스크린샷 첨부가 Transport 에 연결되면 _includeScreenshot 로 교체.
                 IncludeScreenshot = false,
                 LinkedEventId = _linkedEventId,
             };
 
             AITIssueReportService.SendAsync(request, result =>
             {
+                // 사용자가 전송 중 OS 창 닫기로 윈도우를 파괴한 경우, 콜백이 좀비 인스턴스에 접근하지 않도록 가드.
+                if (this == null)
+                {
+                    return;
+                }
+
                 _state = State.Done;
+                Repaint();
 
                 if (result.Success)
                 {

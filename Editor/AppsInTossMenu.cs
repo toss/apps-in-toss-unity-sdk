@@ -254,6 +254,9 @@ namespace AppsInToss
             var config = UnityUtil.GetEditorConf();
             if (!PathValidator.ValidateSettingsForPackage(config)) return;
 
+            // Configuration Window 미flush 변경분을 빌드 진입 전 디스크에 강제 기록 (유실 방지)
+            AssetDatabase.SaveAssets();
+
             // 빌드 전 배포 키 사전 체크 (fail-fast)
             string deploymentKey = AITCredentialsUtil.GetDeploymentKey();
             if (string.IsNullOrWhiteSpace(deploymentKey))
@@ -549,6 +552,10 @@ namespace AppsInToss
         {
             var config = UnityUtil.GetEditorConf();
             if (!PathValidator.ValidateSettingsForPackage(config)) return;
+
+            // Configuration Window에서 방금 입력한 변경이 디스크에 flush되기 전 상태일 수 있다.
+            // 빌드 중 도메인 리로드 또는 Editor 강제 종료 시 유실을 방지하기 위해 강제 flush.
+            AssetDatabase.SaveAssets();
 
             Debug.Log("AIT: 전체 빌드 & 패키징 시작...");
             buildStopwatch.Restart();

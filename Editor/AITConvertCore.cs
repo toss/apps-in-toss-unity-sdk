@@ -390,8 +390,10 @@ namespace AppsInToss
             // 빌드 시작 전 취소 플래그 리셋
             ResetCancellation();
 
-            // 빌드 전 PlayerSettings 백업 (빌드 완료 후 복원)
-            var settingsBackup = Editor.AITPlayerSettingsBackup.Capture();
+            // 빌드 세션 시작 + PlayerSettings 스냅샷 (리로드/강종 대비)
+            AITBuildSession.BeginBuild(profileName ?? "Build");
+            var snapshot = PlayerSettingsSnapshot.Capture();
+            AITBuildSession.RecordPlayerSettingsSnapshot(snapshot);
 
             // 에러 트래커 초기화 (DSN이 설정된 경우에만)
             Editor.ErrorTracker.AITBuildTransaction transaction = null;
@@ -435,6 +437,7 @@ namespace AppsInToss
                     if (transaction != null)
                         Editor.ErrorTracker.AITEditorErrorTracker.AddBreadcrumb("build", "WebGL 빌드 시작");
                     var webglSpan = transaction?.StartSpan("webgl.build", "Unity WebGL Build");
+                    AITBuildSession.SetStage(BuildStage.WebGLBuild);
                     var webglResult = BuildWebGL(cleanBuild, profile);
                     webglSpan?.Finish(webglResult == AITExportError.SUCCEED ? "ok" : "internal_error");
 
@@ -459,6 +462,7 @@ namespace AppsInToss
                     if (transaction != null)
                         Editor.ErrorTracker.AITEditorErrorTracker.AddBreadcrumb("build", "패키징 시작");
                     var packageSpan = transaction?.StartSpan("packaging", "Generate MiniApp Package");
+                    AITBuildSession.SetStage(BuildStage.Packaging);
                     var exportResult = GenerateMiniAppPackage(profile, skipGraniteBuild);
                     packageSpan?.Finish(exportResult == AITExportError.SUCCEED ? "ok" : "internal_error");
 
@@ -469,6 +473,7 @@ namespace AppsInToss
                     }
                 }
 
+                AITBuildSession.SetStage(BuildStage.Completing);
                 Debug.Log("Apps in Toss 미니앱 변환이 완료되었습니다!");
                 transaction?.Finish("ok");
                 return AITExportError.SUCCEED;
@@ -482,7 +487,8 @@ namespace AppsInToss
             finally
             {
                 // 빌드 완료 후 PlayerSettings 복원 (성공/실패 무관)
-                settingsBackup.Restore();
+                try { snapshot.Restore(); }
+                finally { AITBuildSession.EndBuild(); }
             }
         }
 
@@ -518,8 +524,10 @@ namespace AppsInToss
             // 취소 플래그 리셋
             ResetCancellation();
 
-            // PlayerSettings 백업
-            var settingsBackup = Editor.AITPlayerSettingsBackup.Capture();
+            // 빌드 세션 시작 + PlayerSettings 스냅샷 (리로드/강종 대비)
+            AITBuildSession.BeginBuild(profileName ?? "Build");
+            var snapshot = PlayerSettingsSnapshot.Capture();
+            AITBuildSession.RecordPlayerSettingsSnapshot(snapshot);
 
             try
             {
@@ -531,7 +539,8 @@ namespace AppsInToss
                 if (editorConfig == null)
                 {
                     AITLog.Error("Apps in Toss 설정을 찾을 수 없습니다.", sentryCapture: false);
-                    settingsBackup.Restore();
+                    try { snapshot.Restore(); }
+                    finally { AITBuildSession.EndBuild(); }
                     onComplete?.Invoke(AITExportError.INVALID_APP_CONFIG);
                     return;
                 }
@@ -539,7 +548,8 @@ namespace AppsInToss
                 // 빌드 전 에셋 최적화 검사
                 if (buildWebGL && !RunPreBuildOptimizationCheck(editorConfig))
                 {
-                    settingsBackup.Restore();
+                    try { snapshot.Restore(); }
+                    finally { AITBuildSession.EndBuild(); }
                     onComplete?.Invoke(AITExportError.CANCELLED);
                     return;
                 }
@@ -550,7 +560,8 @@ namespace AppsInToss
                     if (IsCancelled())
                     {
                         Debug.LogWarning("[AIT] 빌드가 취소되었습니다.");
-                        settingsBackup.Restore();
+                        try { snapshot.Restore(); }
+                        finally { AITBuildSession.EndBuild(); }
                         onComplete?.Invoke(AITExportError.CANCELLED);
                         return;
                     }
@@ -562,7 +573,8 @@ namespace AppsInToss
                     var (earlyCtx, earlyError) = Editor.AITPackageBuilder.PrepareEarlyPackaging(projectPath, profile);
                     if (earlyCtx == null)
                     {
-                        settingsBackup.Restore();
+                        try { snapshot.Restore(); }
+                        finally { AITBuildSession.EndBuild(); }
                         onComplete?.Invoke(earlyError);
                         return;
                     }
@@ -574,12 +586,14 @@ namespace AppsInToss
                     // 백그라운드 pnpm install은 독립 OS 프로세스이므로 이 동안 병렬 실행됨
                     onProgress?.Invoke(BuildPhase.WebGLBuild, 0.05f, "WebGL 빌드 중... (pnpm install 병렬 실행 중)");
 
+                    AITBuildSession.SetStage(BuildStage.WebGLBuild);
                     var webglResult = BuildWebGL(cleanBuild, profile);
                     if (webglResult != AITExportError.SUCCEED)
                     {
                         earlyCtx.CancelAndDisposePnpm();
                         currentEarlyContext = null;
-                        settingsBackup.Restore();
+                        try { snapshot.Restore(); }
+                        finally { AITBuildSession.EndBuild(); }
                         onComplete?.Invoke(webglResult);
                         return;
                     }
@@ -589,7 +603,8 @@ namespace AppsInToss
                         earlyCtx.CancelAndDisposePnpm();
                         currentEarlyContext = null;
                         Debug.LogWarning("[AIT] 빌드가 취소되었습니다.");
-                        settingsBackup.Restore();
+                        try { snapshot.Restore(); }
+                        finally { AITBuildSession.EndBuild(); }
                         onComplete?.Invoke(AITExportError.CANCELLED);
                         return;
                     }
@@ -597,8 +612,9 @@ namespace AppsInToss
                     // Phase 2: WebGL 출력 복사 + pnpm install 완료 대기 + granite build
                     string webglPath = Path.Combine(projectPath, webglDir);
                     currentEarlyContext = null;
+                    AITBuildSession.SetStage(BuildStage.Packaging);
                     Editor.AITPackageBuilder.CompletePackagingAfterWebGLBuild(
-                        earlyCtx, webglPath, profile, settingsBackup, onComplete, onProgress, skipGraniteBuild);
+                        earlyCtx, webglPath, profile, snapshot, onComplete, onProgress, skipGraniteBuild);
                 }
                 else if (buildWebGL)
                 {
@@ -606,23 +622,28 @@ namespace AppsInToss
                     if (IsCancelled())
                     {
                         Debug.LogWarning("[AIT] 빌드가 취소되었습니다.");
-                        settingsBackup.Restore();
+                        try { snapshot.Restore(); }
+                        finally { AITBuildSession.EndBuild(); }
                         onComplete?.Invoke(AITExportError.CANCELLED);
                         return;
                     }
 
                     onProgress?.Invoke(BuildPhase.WebGLBuild, 0.05f, "WebGL 빌드 중... (Unity 제한으로 에디터가 일시 정지됩니다)");
 
+                    AITBuildSession.SetStage(BuildStage.WebGLBuild);
                     var webglResult = BuildWebGL(cleanBuild, profile);
                     if (webglResult != AITExportError.SUCCEED)
                     {
-                        settingsBackup.Restore();
+                        try { snapshot.Restore(); }
+                        finally { AITBuildSession.EndBuild(); }
                         onComplete?.Invoke(webglResult);
                         return;
                     }
 
+                    AITBuildSession.SetStage(BuildStage.Completing);
                     Debug.Log("[AIT] 비동기 미니앱 변환이 완료되었습니다!");
-                    settingsBackup.Restore();
+                    try { snapshot.Restore(); }
+                    finally { AITBuildSession.EndBuild(); }
                     onComplete?.Invoke(AITExportError.SUCCEED);
                 }
                 else if (doPackaging)
@@ -631,24 +652,29 @@ namespace AppsInToss
                     if (IsCancelled())
                     {
                         Debug.LogWarning("[AIT] 빌드가 취소되었습니다.");
-                        settingsBackup.Restore();
+                        try { snapshot.Restore(); }
+                        finally { AITBuildSession.EndBuild(); }
                         onComplete?.Invoke(AITExportError.CANCELLED);
                         return;
                     }
 
-                    GenerateMiniAppPackageAsync(profile, settingsBackup, onComplete, onProgress, skipGraniteBuild);
+                    AITBuildSession.SetStage(BuildStage.Packaging);
+                    GenerateMiniAppPackageAsync(profile, snapshot, onComplete, onProgress, skipGraniteBuild);
                 }
                 else
                 {
+                    AITBuildSession.SetStage(BuildStage.Completing);
                     Debug.Log("[AIT] 비동기 미니앱 변환이 완료되었습니다!");
-                    settingsBackup.Restore();
+                    try { snapshot.Restore(); }
+                    finally { AITBuildSession.EndBuild(); }
                     onComplete?.Invoke(AITExportError.SUCCEED);
                 }
             }
             catch (Exception e)
             {
                 Debug.LogError($"[AIT] 변환 중 오류가 발생했습니다: {e}");
-                settingsBackup.Restore();
+                try { snapshot.Restore(); }
+                finally { AITBuildSession.EndBuild(); }
                 onComplete?.Invoke(AITExportError.BUILD_WEBGL_FAILED);
             }
         }
@@ -658,7 +684,7 @@ namespace AppsInToss
         /// </summary>
         private static void GenerateMiniAppPackageAsync(
             AITBuildProfile profile,
-            Editor.AITPlayerSettingsBackup settingsBackup,
+            PlayerSettingsSnapshot snapshot,
             Action<AITExportError> onComplete,
             Action<BuildPhase, float, string> onProgress,
             bool skipGraniteBuild = false)
@@ -676,7 +702,8 @@ namespace AppsInToss
             if (!Directory.Exists(webglPath))
             {
                 AITLog.Error("[AIT] WebGL 빌드 결과를 찾을 수 없습니다. WebGL 빌드를 먼저 실행하세요.", sentryCapture: false);
-                settingsBackup.Restore();
+                try { snapshot.Restore(); }
+                finally { AITBuildSession.EndBuild(); }
                 onComplete?.Invoke(AITExportError.BUILD_WEBGL_FAILED);
                 return;
             }
@@ -689,7 +716,8 @@ namespace AppsInToss
                 onComplete: (result) =>
                 {
                     currentAsyncTask = null;
-                    settingsBackup.Restore();
+                    try { snapshot.Restore(); }
+                    finally { AITBuildSession.EndBuild(); }
 
                     if (result == AITExportError.SUCCEED)
                     {

@@ -215,7 +215,7 @@ namespace AppsInToss.Editor
             EarlyPackageContext earlyCtx,
             string webglPath,
             AITBuildProfile profile,
-            Editor.AITPlayerSettingsBackup settingsBackup,
+            PlayerSettingsSnapshot snapshot,
             Action<AITConvertCore.AITExportError> onComplete,
             Action<AITConvertCore.BuildPhase, float, string> onProgress,
             bool skipGraniteBuild = false)
@@ -228,7 +228,8 @@ namespace AppsInToss.Editor
             if (copyResult != AITConvertCore.AITExportError.SUCCEED)
             {
                 earlyCtx.CancelAndDisposePnpm();
-                settingsBackup.Restore();
+                try { snapshot.Restore(); }
+                finally { AITBuildSession.EndBuild(); }
                 onComplete?.Invoke(copyResult);
                 return;
             }
@@ -238,7 +239,7 @@ namespace AppsInToss.Editor
             {
                 // 이미 완료됨 — 즉시 진행
                 Debug.Log("[AIT] [병렬] ✓ pnpm install 이미 완료 (WebGL 빌드 시간에 숨겨짐)");
-                OnPnpmInstallReady(earlyCtx, settingsBackup, onComplete, onProgress, skipGraniteBuild);
+                OnPnpmInstallReady(earlyCtx, snapshot, onComplete, onProgress, skipGraniteBuild);
             }
             else
             {
@@ -252,7 +253,8 @@ namespace AppsInToss.Editor
                     {
                         EditorApplication.update -= PollPnpmCompletion;
                         earlyCtx.CancelAndDisposePnpm();
-                        settingsBackup.Restore();
+                        try { snapshot.Restore(); }
+                        finally { AITBuildSession.EndBuild(); }
                         onComplete?.Invoke(AITConvertCore.AITExportError.CANCELLED);
                         return;
                     }
@@ -261,7 +263,7 @@ namespace AppsInToss.Editor
 
                     EditorApplication.update -= PollPnpmCompletion;
                     Debug.Log("[AIT] [병렬] ✓ pnpm install 완료 확인");
-                    OnPnpmInstallReady(earlyCtx, settingsBackup, onComplete, onProgress, skipGraniteBuild);
+                    OnPnpmInstallReady(earlyCtx, snapshot, onComplete, onProgress, skipGraniteBuild);
                 }
 
                 EditorApplication.update += PollPnpmCompletion;
@@ -273,7 +275,7 @@ namespace AppsInToss.Editor
         /// </summary>
         private static void OnPnpmInstallReady(
             EarlyPackageContext earlyCtx,
-            Editor.AITPlayerSettingsBackup settingsBackup,
+            PlayerSettingsSnapshot snapshot,
             Action<AITConvertCore.AITExportError> onComplete,
             Action<AITConvertCore.BuildPhase, float, string> onProgress,
             bool skipGraniteBuild = false)
@@ -283,7 +285,8 @@ namespace AppsInToss.Editor
             {
                 Debug.LogError($"[AIT] [병렬] pnpm install 실패: {installResult}");
                 earlyCtx.CancelAndDisposePnpm();
-                settingsBackup.Restore();
+                try { snapshot.Restore(); }
+                finally { AITBuildSession.EndBuild(); }
                 onComplete?.Invoke(installResult);
                 return;
             }
@@ -291,7 +294,8 @@ namespace AppsInToss.Editor
             if (AITConvertCore.IsCancelled())
             {
                 earlyCtx.CancelAndDisposePnpm();
-                settingsBackup.Restore();
+                try { snapshot.Restore(); }
+                finally { AITBuildSession.EndBuild(); }
                 onComplete?.Invoke(AITConvertCore.AITExportError.CANCELLED);
                 return;
             }
@@ -301,7 +305,8 @@ namespace AppsInToss.Editor
                 Debug.Log("[AIT] [병렬] granite build 스킵 (Dev Server 모드)");
                 earlyCtx.CancelAndDisposePnpm();
                 AITConvertCore.SetCurrentAsyncTask(null);
-                settingsBackup.Restore();
+                try { snapshot.Restore(); }
+                finally { AITBuildSession.EndBuild(); }
                 onComplete?.Invoke(AITConvertCore.AITExportError.SUCCEED);
                 return;
             }
@@ -322,7 +327,8 @@ namespace AppsInToss.Editor
                 {
                     earlyCtx.CancelAndDisposePnpm();
                     AITConvertCore.SetCurrentAsyncTask(null);
-                    settingsBackup.Restore();
+                    try { snapshot.Restore(); }
+                    finally { AITBuildSession.EndBuild(); }
 
                     if (buildResult == AITConvertCore.AITExportError.SUCCEED)
                     {

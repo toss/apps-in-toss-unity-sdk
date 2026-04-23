@@ -161,4 +161,156 @@ namespace AppsInToss.Editor
 #endif
         }
     }
+
+    internal enum BuildStage
+    {
+        None = 0,
+        Preparing,
+        WebGLBuild,
+        Packaging,
+        Completing,
+    }
+
+    /// <summary>
+    /// 빌드 진행 상태를 리로드/강제종료 이후에도 생존시키는 저장소.
+    /// Library/ScriptableSingleton/AITBuildSession.asset 로 Unity 가 자동 직렬화.
+    /// </summary>
+    internal sealed class AITBuildSession : ScriptableSingleton<AITBuildSession>
+    {
+        [SerializeField] public string sessionId;
+        [SerializeField] public long startedAtUnixSec;
+        [SerializeField] public string unityVersion;
+        [SerializeField] public string sdkVersion;
+        [SerializeField] public PlayerSettingsSnapshot playerSettings;
+        [SerializeField] public System.Collections.Generic.List<int> childPids
+            = new System.Collections.Generic.List<int>();
+        [SerializeField] public BuildStage stage = BuildStage.None;
+        [SerializeField] public string entrypoint;
+
+        private const long StaleThresholdSec = 24 * 3600;
+
+        public static void BeginBuild(string entrypoint)
+        {
+            try
+            {
+                var s = instance;
+                s.sessionId = System.Guid.NewGuid().ToString("N");
+                s.startedAtUnixSec = System.DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                s.unityVersion = Application.unityVersion;
+                s.sdkVersion = AppsInToss.AITVersion.Version;
+                s.playerSettings = default;
+                s.childPids.Clear();
+                s.stage = BuildStage.Preparing;
+                s.entrypoint = entrypoint ?? "Unknown";
+                s.Save(true);
+            }
+            catch (System.Exception e)
+            {
+                AITLog.Warning($"[AIT] BuildSession.BeginBuild 저장 실패 (무시됨): {e.Message}",
+                    sentryCapture: false);
+            }
+        }
+
+        public static void RecordPlayerSettingsSnapshot(PlayerSettingsSnapshot snapshot)
+        {
+            var s = instance;
+            if (string.IsNullOrEmpty(s.sessionId)) return; // Begin 실패 상태: no-op
+            try { s.playerSettings = snapshot; s.Save(true); }
+            catch (System.Exception e)
+            {
+                AITLog.Warning($"[AIT] BuildSession.Snapshot 저장 실패 (무시됨): {e.Message}",
+                    sentryCapture: false);
+            }
+        }
+
+        public static void SetStage(BuildStage stage)
+        {
+            var s = instance;
+            if (string.IsNullOrEmpty(s.sessionId)) return;
+            try { s.stage = stage; s.Save(true); }
+            catch (System.Exception e)
+            {
+                AITLog.Warning($"[AIT] BuildSession.SetStage 저장 실패 (무시됨): {e.Message}",
+                    sentryCapture: false);
+            }
+        }
+
+        public static void RecordPid(int pid)
+        {
+            var s = instance;
+            if (string.IsNullOrEmpty(s.sessionId)) return;
+            try { s.childPids.Add(pid); s.Save(true); }
+            catch (System.Exception e)
+            {
+                AITLog.Warning($"[AIT] BuildSession.RecordPid 저장 실패 (무시됨): {e.Message}",
+                    sentryCapture: false);
+            }
+        }
+
+        public static void ClearPid(int pid)
+        {
+            var s = instance;
+            if (string.IsNullOrEmpty(s.sessionId)) return;
+            try { s.childPids.Remove(pid); s.Save(true); }
+            catch (System.Exception e)
+            {
+                AITLog.Warning($"[AIT] BuildSession.ClearPid 저장 실패 (무시됨): {e.Message}",
+                    sentryCapture: false);
+            }
+        }
+
+        public static void EndBuild()
+        {
+            try
+            {
+                var s = instance;
+                s.sessionId = null;
+                s.startedAtUnixSec = 0;
+                s.unityVersion = null;
+                s.sdkVersion = null;
+                s.playerSettings = default;
+                s.childPids.Clear();
+                s.stage = BuildStage.None;
+                s.entrypoint = null;
+                s.Save(true);
+            }
+            catch (System.Exception e)
+            {
+                AITLog.Warning($"[AIT] BuildSession.EndBuild 저장 실패 (무시됨): {e.Message}",
+                    sentryCapture: false);
+            }
+        }
+
+        public static bool TryLoadPendingSession(out AITBuildSession session)
+        {
+            session = instance;
+            return !string.IsNullOrEmpty(session.sessionId);
+        }
+
+        public static bool IsStale(AITBuildSession session)
+        {
+            if (session == null || string.IsNullOrEmpty(session.sessionId)) return true;
+            if (session.startedAtUnixSec <= 0) return true;
+            long now = System.DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            if (now - session.startedAtUnixSec > StaleThresholdSec) return true;
+            if (session.unityVersion != Application.unityVersion) return true;
+            if (session.sdkVersion != AppsInToss.AITVersion.Version) return true;
+            return false;
+        }
+
+#if UNITY_INCLUDE_TESTS
+        /// <summary>Test-only: directly mutate fields without re-initializing.</summary>
+        internal static void ForceTestOverride(
+            long? startedAtUnixSec = null,
+            string unityVersion = null,
+            string sdkVersion = null)
+        {
+            var s = instance;
+            if (startedAtUnixSec.HasValue) s.startedAtUnixSec = startedAtUnixSec.Value;
+            if (unityVersion != null) s.unityVersion = unityVersion;
+            if (sdkVersion != null) s.sdkVersion = sdkVersion;
+            s.Save(true);
+        }
+#endif
+    }
 }

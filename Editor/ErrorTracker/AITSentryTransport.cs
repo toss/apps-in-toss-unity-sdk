@@ -139,6 +139,7 @@ namespace AppsInToss.Editor.ErrorTracker
                 }
             }
 
+            // envelope 키 고유성: Sentry envelope 헤더의 event_id가 GUID이므로 현실적 사용에서 중복 없음
             _pendingCallbacks[envelope] = onComplete;
             _queue.Enqueue(envelope);
         }
@@ -205,6 +206,7 @@ namespace AppsInToss.Editor.ErrorTracker
             {
                 if (IsRateLimited())
                 {
+                    DrainQueueCallbacks(SubmitResult.Fail("요청이 Rate Limit으로 거부되었습니다", 429));
                     _queue.Clear();
                     return;
                 }
@@ -241,7 +243,15 @@ namespace AppsInToss.Editor.ErrorTracker
         {
             var request = CreateRequest(envelope);
             if (request == null)
+            {
+                InvokeCallback(envelope, SubmitResult.Fail("요청 생성 실패"));
                 return;
+            }
+
+            // 등록 필요: HandleResponse의 finally 블록이 이 매핑으로 콜백을 조회함
+            // 참고: InvokeCallback은 EditorApplication.delayCall을 사용하므로,
+            //       에디터 완전 종료 후에는 delayCall이 실행되지 않을 수 있음 (허용된 한계)
+            _requestEnvelopes[request] = envelope;
 
             try
             {
@@ -262,6 +272,11 @@ namespace AppsInToss.Editor.ErrorTracker
             catch (Exception e)
             {
                 Debug.LogWarning($"[AITSentryTransport] 동기 전송 실패: {e}");
+                if (_requestEnvelopes.TryGetValue(request, out var env))
+                {
+                    _requestEnvelopes.Remove(request);
+                    InvokeCallback(env, SubmitResult.Fail($"동기 전송 실패: {e.Message}"));
+                }
                 request.Dispose();
             }
         }

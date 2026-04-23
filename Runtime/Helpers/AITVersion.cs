@@ -21,6 +21,22 @@ namespace AppsInToss
         internal const string PackageAssetPath = "Packages/" + PackageName;
         internal const string LegacyPackageAssetPath = "Packages/" + LegacyPackageName;
 
+        /// <summary>
+        /// 플레이어 빌드에 포함되는 버전 정보 JSON 리소스 이름 (확장자 제외).
+        /// Editor가 빌드 직전 Assets/Resources/AITVersionInfo.json 에 기록하고,
+        /// 런타임이 Resources.Load<TextAsset>로 읽음. .cs가 아니므로 쓰기 시
+        /// 도메인 리로드가 발생하지 않음.
+        /// </summary>
+        internal const string VersionInfoResourceName = "AITVersionInfo";
+
+        [Serializable]
+        internal sealed class VersionInfoPayload
+        {
+            public string version;
+            public string releaseDateTime;
+            public string commitHash;
+        }
+
         private static bool _loaded;
         private static string _version = "unknown";
         private static string _releaseDateTime;
@@ -121,10 +137,8 @@ namespace AppsInToss
             }
             else
             {
-                // 로컬 개발 환경에서 패키지를 찾지 못한 경우 상수 사용
-                Version = AITVersionConstants.Version ?? "unknown";
-                ReleaseDateTime = AITVersionConstants.ReleaseDateTime;
-                CommitHash = AITVersionConstants.CommitHash;
+                // PackageInfo를 못 찾은 경우 Resources JSON 폴백 (플레이어 런타임과 동일 경로)
+                LoadVersionInfoRuntime();
             }
 
             // CommitHash가 비어있으면 UPM 패키지 정보에서 조회
@@ -227,9 +241,30 @@ namespace AppsInToss
 
         private static void LoadVersionInfoRuntime()
         {
-            Version = AITVersionConstants.Version ?? "unknown";
-            ReleaseDateTime = AITVersionConstants.ReleaseDateTime;
-            CommitHash = AITVersionConstants.CommitHash;
+            // Resources/AITVersionInfo.json (Editor가 빌드 직전에 생성) 을 읽어 버전 정보 설정.
+            // JSON이 없으면 (Editor를 한 번도 거치지 않은 raw clone 등) Version="unknown" 폴백.
+            var asset = Resources.Load<TextAsset>(VersionInfoResourceName);
+            if (asset == null || string.IsNullOrEmpty(asset.text))
+            {
+                return;
+            }
+
+            try
+            {
+                var payload = JsonUtility.FromJson<VersionInfoPayload>(asset.text);
+                if (payload == null) return;
+
+                if (!string.IsNullOrEmpty(payload.version))
+                {
+                    Version = payload.version;
+                }
+                ReleaseDateTime = string.IsNullOrEmpty(payload.releaseDateTime) ? null : payload.releaseDateTime;
+                CommitHash = string.IsNullOrEmpty(payload.commitHash) ? null : payload.commitHash;
+            }
+            catch (Exception)
+            {
+                // 파싱 실패는 무시하고 "unknown" 폴백 유지
+            }
         }
     }
 }

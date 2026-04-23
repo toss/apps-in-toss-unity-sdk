@@ -1135,11 +1135,13 @@ namespace AppsInToss.Editor
 
         private void SaveSettings()
         {
-            if (config != null)
-            {
-                EditorUtility.SetDirty(config);
-                AssetDatabase.SaveAssets();
-            }
+            if (config == null) return;
+
+            EditorUtility.SetDirty(config);
+            // SaveAssets는 디스크 flush를 Unity 내부 스케줄링에 맡기므로, 도메인 리로드나
+            // Editor 강제 종료가 발생하면 변경분이 유실될 수 있다. SaveAssetIfDirty는 해당
+            // 에셋만 동기적으로 기록해 유실을 방지한다 (Unity 2020.1+).
+            AssetDatabase.SaveAssetIfDirty(config);
         }
     }
 }

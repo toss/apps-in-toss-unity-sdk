@@ -465,8 +465,10 @@ namespace AppsInToss.Editor
                 // 이 경고를 방지할 수 있음.
                 if (!UpdateManifestAndResolve(packageName, addUrl))
                 {
-                    // manifest.json 수정 실패 시 기존 방식으로 폴백
-                    Debug.LogWarning("[AIT] manifest.json 수정에 실패하여 기존 방식으로 업데이트합니다.");
+                    // URL이 동일하거나 manifest 구조가 달라지면 정상적으로 폴백됩니다.
+                    // 실제 오류는 UpdateManifestAndResolve 내부에서 LogWarning으로 이미 기록되므로
+                    // 호출부는 정보성 로그로만 남깁니다.
+                    Debug.Log("[AIT] PackageManager.Client.Add로 업데이트합니다.");
                     UnityEditor.PackageManager.Client.Add(addUrl);
                 }
             }

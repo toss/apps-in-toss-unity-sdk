@@ -266,6 +266,11 @@ namespace AppsInToss.Editor.ErrorTracker
             if (_suppressLogCaptureCount > 0)
                 return;
 
+            // EditMode 테스트가 SUT를 호출하며 발생시키는 의도된 LogWarning/LogError는 Sentry에서 제외
+            // (테스트는 invalid input을 일부러 주입하므로 그 로그는 프로덕션 에러가 아님)
+            if (IsInvokedFromTestRunner(stackTrace))
+                return;
+
             // Dev/Production Server 프로세스에서 리디렉션된 로그는 Sentry에서 제외
             // (granite dev의 stdout/stderr가 Debug.Log/LogError/LogWarning으로 전달된 것)
             if (IsServerRedirectedLog(message))
@@ -532,6 +537,35 @@ namespace AppsInToss.Editor.ErrorTracker
             for (int i = 0; i < AitKeywords.Length; i++)
             {
                 if (message.IndexOf(AitKeywords[i], StringComparison.OrdinalIgnoreCase) >= 0)
+                    return true;
+            }
+            return false;
+        }
+
+        // Unity EditMode 테스트 러너 실행을 감지하는 스택트레이스 마커.
+        // NUnit 프레임워크 호출부 또는 Unity가 주입한 TestTools/TestRunner 프레임이
+        // 스택에 포함되면 테스트 실행 컨텍스트로 간주합니다.
+        // 메시지 본문이 아닌 stackTrace 인자만 검사하여 사용자 프로젝트에 'NUnit' 문자열이
+        // 포함된 로그가 잘못 필터링되는 것을 방지합니다.
+        private static readonly string[] TestRunnerStackMarkers =
+        {
+            "NUnit.Framework.",
+            "UnityEngine.TestRunner.",
+            "UnityEditor.TestTools."
+        };
+
+        /// <summary>
+        /// 호출 스택이 Unity 테스트 러너 내부에서 비롯된 것인지 판별합니다.
+        /// true일 경우 해당 로그는 Sentry 캡처 대상에서 제외됩니다.
+        /// </summary>
+        internal static bool IsInvokedFromTestRunner(string stackTrace)
+        {
+            if (string.IsNullOrEmpty(stackTrace))
+                return false;
+
+            for (int i = 0; i < TestRunnerStackMarkers.Length; i++)
+            {
+                if (stackTrace.IndexOf(TestRunnerStackMarkers[i], StringComparison.Ordinal) >= 0)
                     return true;
             }
             return false;

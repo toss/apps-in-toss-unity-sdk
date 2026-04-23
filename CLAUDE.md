@@ -144,6 +144,16 @@ self-hosted runner에서만 재현되는 Brotli 크래시를 로컬에서 좁히
 | E2E만 | `./run-local-tests.sh --e2e` |
 | CI 트리거 (E2E) | `docs/claude/github-actions.md` 참조 |
 
+## Verification Commands
+
+review-fix-loop 등 자동화 skill이 파싱하는 규약 섹션. 각 항목은 실제 명령 또는 `none` 리터럴.
+
+- **Typecheck**: `./run-local-tests.sh --validate`
+- **Test**: none
+- **Lint**: none
+
+`--validate`(~30초)는 파일 구조 검증 + Playwright 설정 + SDK 유닛 테스트(vitest invariants 포함)를 묶어서 실행하므로 별도 Test 항목을 두지 않는다. Unity E2E(`--all`)는 비용이 크고 매 패스 실행에 부적합해 제외한다 — 변경이 E2E에 영향을 주면 `./run-local-tests.sh --e2e`를 수동 호출한다. Lint(`.meta` 체크, 포맷 등)는 GitHub Actions `lint` 워크플로우가 담당한다.
+
 ## 상세 문서
 
 필요할 때 Read로 가져가서 참조:

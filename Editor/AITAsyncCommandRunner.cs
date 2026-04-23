@@ -133,6 +133,7 @@ namespace AppsInToss.Editor
         {
             task.State = CommandState.Running;
             var result = new AITPlatformHelper.CommandResult();
+            int pid = -1;
 
             try
             {
@@ -236,6 +237,8 @@ namespace AppsInToss.Editor
                     };
 
                     process.Start();
+                    pid = process.Id;
+                    AITBuildSession.RecordPid(pid);
                     process.BeginOutputReadLine();
                     process.BeginErrorReadLine();
 
@@ -319,6 +322,10 @@ namespace AppsInToss.Editor
                     Debug.LogError($"[AIT Async] 명령 실행 예외: {e}");
                     task.OnComplete?.Invoke(result);
                 });
+            }
+            finally
+            {
+                if (pid > 0) AITBuildSession.ClearPid(pid);
             }
         }
 

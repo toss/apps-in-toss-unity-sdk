@@ -18,6 +18,13 @@ namespace AppsInToss.Editor
         // 폴링 간격 — 테스트에서는 짧게, 실제에서는 200ms
         private static int _pollIntervalMs = 200;
 
+        /// <summary>
+        /// 주의: 이 메서드는 Unity Editor 의 SynchronizationContext 가 설정된 메인 스레드에서
+        /// 호출된다고 가정한다(메뉴 클릭 경로 보장). Task.Delay 뒤 재개가 메인 스레드로
+        /// 돌아오는 것은 Unity Editor 의 SyncContext 동작에 의존. 백그라운드 스레드에서 호출 시
+        /// _isCompilingProbe / _isUpdatingProbe (EditorApplication.isCompiling/isUpdating) 는
+        /// 메인 스레드 전용이므로 예외를 던질 수 있다.
+        /// </summary>
         public static async Task<bool> WaitAsync(int timeoutSeconds = 60)
         {
             var start = DateTime.UtcNow;

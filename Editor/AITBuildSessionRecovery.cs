@@ -33,10 +33,15 @@ namespace AppsInToss.Editor
                     return;
                 }
 
+                // PlayerSettings.Restore 는 내부적으로 LockReloadAssemblies/Unlock 쌍을 사용한다.
+                // [InitializeOnLoad] 콜백 내부에서 호출해도 안전 — Unity 가 이 시점에는 이미
+                // 새 도메인을 로드한 상태라 Lock 카운트가 깨끗하다.
+                // 부분 실패(일부 필드만 복원 후 예외) 시 사용자는 수동으로 PlayerSettings 를
+                // 확인해야 한다 (finally 에서 세션 파일은 삭제되므로 다음 진입 시 재복원 없음).
                 try { session.playerSettings.Restore(); }
                 catch (Exception ex)
                 {
-                    AITLog.Error($"[AIT] 세션 복원 중 PlayerSettings 복원 실패: {ex.Message}",
+                    AITLog.Error($"[AIT] 세션 복원 중 PlayerSettings 복원 실패 (부분 복원 가능): {ex.Message}",
                         sentryCapture: true);
                 }
 
@@ -65,6 +70,8 @@ namespace AppsInToss.Editor
                 using var p = Process.GetProcessById(pid);
                 string name = (p.ProcessName ?? string.Empty).ToLowerInvariant();
                 // PID 재사용 오검출 방어 — name 이 pnpm/node/npm 계열일 때만 kill.
+                // PID 재사용 창이 열려 있을 때(예: 재부팅 후) 사용자의 다른 node 프로세스를
+                // 잘못 kill 할 가능성은 남으므로, kill 전에 반드시 PID+name 을 로그로 남긴다.
                 bool matchesBuildProcess =
                     name.Contains("node") || name.Contains("pnpm") || name.Contains("npm");
                 if (!matchesBuildProcess)
@@ -72,6 +79,7 @@ namespace AppsInToss.Editor
                     Debug.Log($"[AIT] PID {pid} 은 빌드 프로세스가 아님 (name={name}). Skip.");
                     return false;
                 }
+                Debug.Log($"[AIT] 이전 빌드의 자식 프로세스 종료 중: PID {pid} (name={name}).");
                 p.Kill();
                 return true;
             }

@@ -174,6 +174,17 @@ namespace AppsInToss.Editor
     /// <summary>
     /// 빌드 진행 상태를 리로드/강제종료 이후에도 생존시키는 저장소.
     /// Library/ScriptableSingleton/AITBuildSession.asset 로 Unity 가 자동 직렬화.
+    ///
+    /// 스레드 안전성:
+    /// - BeginBuild 는 반드시 메인 스레드에서 호출되어야 한다 (Unity 메뉴 클릭 경로 보장).
+    ///   이때 instance 가 워밍업되고 mainThreadId 가 캡처된다.
+    /// - 이후 RecordPid / ClearPid / SetStage / RecordPlayerSettingsSnapshot 은
+    ///   PnpmRunner.RunPnpmInstallInThread 같은 백그라운드 스레드에서 호출될 수 있으므로
+    ///   _lock 으로 필드 변경을 직렬화한다.
+    /// - Save(true) 는 UnityEngine.Object 디스크 쓰기이므로 메인 스레드 전용.
+    ///   백그라운드에서 호출된 경우 MainThreadDispatcher.Enqueue 로 마샬링.
+    ///   리로드가 Save 직전에 발생하면 마지막 변경이 디스크에 반영되지 못할 수 있으나,
+    ///   이는 "자식 PID 하나 누락" 정도의 손실이고 asset corruption 은 방지된다.
     /// </summary>
     internal sealed class AITBuildSession : ScriptableSingleton<AITBuildSession>
     {
@@ -189,33 +200,84 @@ namespace AppsInToss.Editor
 
         private const long StaleThresholdSec = 24 * 3600;
 
+        // 모든 필드 변경 + Save 호출은 이 lock 으로 직렬화.
+        private static readonly object _lock = new object();
+
+        // BeginBuild 시 캡처한 메인 스레드 ID. 이후 mutation 호출이 메인/백그라운드인지 판정.
+        private static int _mainThreadId;
+
+        private static bool IsMainThread()
+            => _mainThreadId != 0 && System.Threading.Thread.CurrentThread.ManagedThreadId == _mainThreadId;
+
+        /// <summary>
+        /// Save 를 메인 스레드에서 수행한다. 백그라운드에서 호출된 경우 MainThreadDispatcher 로
+        /// 디스패치 — 한 프레임 지연이 발생하지만 asset corruption 은 방지됨.
+        /// </summary>
+        private static void InvokeSaveOnMainThread()
+        {
+            if (IsMainThread())
+            {
+                try { instance.Save(true); }
+                catch (System.Exception e)
+                {
+                    AITLog.Warning($"[AIT] BuildSession.Save 실패 (무시됨): {e.Message}",
+                        sentryCapture: false);
+                }
+                return;
+            }
+
+            Menu.MainThreadDispatcher.Enqueue(() =>
+            {
+                try { instance.Save(true); }
+                catch (System.Exception e)
+                {
+                    AITLog.Warning($"[AIT] BuildSession.Save (디스패치) 실패 (무시됨): {e.Message}",
+                        sentryCapture: false);
+                }
+            });
+        }
+
         public static void BeginBuild(string entrypoint)
         {
+            // BeginBuild 는 항상 메인 스레드에서 호출됨 (메뉴 클릭 경로).
+            _mainThreadId = System.Threading.Thread.CurrentThread.ManagedThreadId;
+
             try
             {
-                var s = instance;
-                s.sessionId = System.Guid.NewGuid().ToString("N");
-                s.startedAtUnixSec = System.DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-                s.unityVersion = Application.unityVersion;
-                s.sdkVersion = AppsInToss.AITVersion.Version;
-                s.playerSettings = default;
-                s.childPids.Clear();
-                s.stage = BuildStage.Preparing;
-                s.entrypoint = entrypoint ?? "Unknown";
-                s.Save(true);
+                lock (_lock)
+                {
+                    var s = instance;
+                    s.sessionId = System.Guid.NewGuid().ToString("N");
+                    s.startedAtUnixSec = System.DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                    s.unityVersion = Application.unityVersion;
+                    s.sdkVersion = AppsInToss.AITVersion.Version;
+                    s.playerSettings = default;
+                    s.childPids.Clear();
+                    s.stage = BuildStage.Preparing;
+                    s.entrypoint = entrypoint ?? "Unknown";
+                    s.Save(true);
+                }
             }
             catch (System.Exception e)
             {
-                AITLog.Warning($"[AIT] BuildSession.BeginBuild 저장 실패 (무시됨): {e.Message}",
-                    sentryCapture: false);
+                // Begin 이 실패하면 복구가 아예 작동 불가 — Sentry 로 알림.
+                AITLog.Error($"[AIT] BuildSession.BeginBuild 저장 실패: {e.Message}",
+                    sentryCapture: true);
             }
         }
 
         public static void RecordPlayerSettingsSnapshot(PlayerSettingsSnapshot snapshot)
         {
-            var s = instance;
-            if (string.IsNullOrEmpty(s.sessionId)) return; // Begin 실패 상태: no-op
-            try { s.playerSettings = snapshot; s.Save(true); }
+            try
+            {
+                lock (_lock)
+                {
+                    var s = instance;
+                    if (string.IsNullOrEmpty(s.sessionId)) return;
+                    s.playerSettings = snapshot;
+                }
+                InvokeSaveOnMainThread();
+            }
             catch (System.Exception e)
             {
                 AITLog.Warning($"[AIT] BuildSession.Snapshot 저장 실패 (무시됨): {e.Message}",
@@ -225,9 +287,16 @@ namespace AppsInToss.Editor
 
         public static void SetStage(BuildStage stage)
         {
-            var s = instance;
-            if (string.IsNullOrEmpty(s.sessionId)) return;
-            try { s.stage = stage; s.Save(true); }
+            try
+            {
+                lock (_lock)
+                {
+                    var s = instance;
+                    if (string.IsNullOrEmpty(s.sessionId)) return;
+                    s.stage = stage;
+                }
+                InvokeSaveOnMainThread();
+            }
             catch (System.Exception e)
             {
                 AITLog.Warning($"[AIT] BuildSession.SetStage 저장 실패 (무시됨): {e.Message}",
@@ -237,9 +306,16 @@ namespace AppsInToss.Editor
 
         public static void RecordPid(int pid)
         {
-            var s = instance;
-            if (string.IsNullOrEmpty(s.sessionId)) return;
-            try { s.childPids.Add(pid); s.Save(true); }
+            try
+            {
+                lock (_lock)
+                {
+                    var s = instance;
+                    if (string.IsNullOrEmpty(s.sessionId)) return;
+                    s.childPids.Add(pid);
+                }
+                InvokeSaveOnMainThread();
+            }
             catch (System.Exception e)
             {
                 AITLog.Warning($"[AIT] BuildSession.RecordPid 저장 실패 (무시됨): {e.Message}",
@@ -249,9 +325,16 @@ namespace AppsInToss.Editor
 
         public static void ClearPid(int pid)
         {
-            var s = instance;
-            if (string.IsNullOrEmpty(s.sessionId)) return;
-            try { s.childPids.Remove(pid); s.Save(true); }
+            try
+            {
+                lock (_lock)
+                {
+                    var s = instance;
+                    if (string.IsNullOrEmpty(s.sessionId)) return;
+                    s.childPids.Remove(pid);
+                }
+                InvokeSaveOnMainThread();
+            }
             catch (System.Exception e)
             {
                 AITLog.Warning($"[AIT] BuildSession.ClearPid 저장 실패 (무시됨): {e.Message}",
@@ -263,21 +346,25 @@ namespace AppsInToss.Editor
         {
             try
             {
-                var s = instance;
-                s.sessionId = null;
-                s.startedAtUnixSec = 0;
-                s.unityVersion = null;
-                s.sdkVersion = null;
-                s.playerSettings = default;
-                s.childPids.Clear();
-                s.stage = BuildStage.None;
-                s.entrypoint = null;
-                s.Save(true);
+                lock (_lock)
+                {
+                    var s = instance;
+                    s.sessionId = null;
+                    s.startedAtUnixSec = 0;
+                    s.unityVersion = null;
+                    s.sdkVersion = null;
+                    s.playerSettings = default;
+                    s.childPids.Clear();
+                    s.stage = BuildStage.None;
+                    s.entrypoint = null;
+                    s.Save(true);
+                }
             }
             catch (System.Exception e)
             {
-                AITLog.Warning($"[AIT] BuildSession.EndBuild 저장 실패 (무시됨): {e.Message}",
-                    sentryCapture: false);
+                // End 가 실패하면 stale session 이 남아 오동작 가능 — Sentry 로 알림.
+                AITLog.Error($"[AIT] BuildSession.EndBuild 저장 실패: {e.Message}",
+                    sentryCapture: true);
             }
         }
 

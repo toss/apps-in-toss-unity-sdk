@@ -374,7 +374,7 @@ namespace AppsInToss.Editor.ErrorTracker
             header.Append(EscapeJson(contentType ?? "application/octet-stream"));
             header.Append("\"}");
 
-            string payload = Encoding.GetEncoding("ISO-8859-1").GetString(data);
+            string payload = Encoding.GetEncoding(28591).GetString(data);
 
             return header.ToString() + "\n" + payload;
         }

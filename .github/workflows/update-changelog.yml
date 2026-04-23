@@ -64,7 +64,7 @@ jobs:
             for attempt in 1 2 3; do
               sleep 3
               echo "머지 시도 ${attempt}/3..."
-              if gh pr merge --merge --delete-branch; then
+              if gh pr merge --squash --delete-branch; then
                 MERGED=true
                 break
               fi

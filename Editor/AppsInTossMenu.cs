@@ -776,7 +776,7 @@ namespace AppsInToss
                         if (choice == 1)
                         {
                             // TODO (Task 10): AITIssueReportWindow.Open(...) 으로 교체 예정
-                            UnityEngine.Debug.Log("[AIT] 이슈 제보 UI는 현재 리팩터링 중입니다. Task 10에서 연결됩니다.");
+                            UnityEngine.Debug.LogWarning("[AIT] 이슈 제보 UI는 현재 리팩터링 중입니다. Task 10에서 연결됩니다.");
                         }
                     }
                 }
@@ -1427,7 +1427,7 @@ namespace AppsInToss
             if (choice == 1)
             {
                 // TODO (Task 10): AITIssueReportWindow.Open(...) 으로 교체 예정
-                UnityEngine.Debug.Log("[AIT] 이슈 제보 UI는 현재 리팩터링 중입니다. Task 10에서 연결됩니다.");
+                UnityEngine.Debug.LogWarning("[AIT] 이슈 제보 UI는 현재 리팩터링 중입니다. Task 10에서 연결됩니다.");
             }
         }
 

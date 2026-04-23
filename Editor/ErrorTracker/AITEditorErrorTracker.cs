@@ -133,8 +133,14 @@ namespace AppsInToss.Editor.ErrorTracker
 
         #region Last Event ID
 
-        private static string _lastEventId;
+        private static volatile string _lastEventId;
 
+        /// <summary>
+        /// 가장 최근에 빌드·전송된 에러 이벤트의 event_id (32자 소문자 hex).
+        /// 주의: 실제 Sentry 전송 성공 여부와 무관하게, 엔벨로프가 빌드되어 Transport 큐에 넣어진 시점에 할당됩니다.
+        /// 네트워크 실패·rate-limit·드롭 등으로 전송되지 않았을 수 있지만, user_report는 동일 event_id로 별도 전송되면
+        /// Sentry 서버에서 관계가 복원됩니다. consent 미동의·DSN 미설정·dedup 캐시 적중 시에는 null이 유지됩니다.
+        /// </summary>
         internal static string LastEventId => _lastEventId;
 
         #endregion

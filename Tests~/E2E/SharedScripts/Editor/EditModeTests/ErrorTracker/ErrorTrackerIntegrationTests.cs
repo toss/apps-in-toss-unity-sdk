@@ -289,6 +289,8 @@ public class ErrorTrackerIntegrationTests
         string id = AITEditorErrorTracker.LastEventId;
         Assert.IsNotNull(id);
         Assert.AreEqual(32, id.Length);
+        Assert.IsTrue(System.Text.RegularExpressions.Regex.IsMatch(id, "^[0-9a-f]{32}$"),
+            $"Event id must be 32 lowercase hex chars, got: {id}");
     }
 
     #endregion

@@ -22,12 +22,12 @@ namespace AppsInToss.Editor
         /// <summary>
         /// 로그 엔트리 저장용 구조체
         /// </summary>
-        internal struct LogEntry
+        internal readonly struct LogEntry
         {
-            public string Message;
-            public string StackTrace;
-            public LogType Type;
-            public DateTime Timestamp;
+            public readonly string Message;
+            public readonly string StackTrace;
+            public readonly LogType Type;
+            public readonly DateTime Timestamp;
 
             public LogEntry(string message, string stackTrace, LogType type)
             {
@@ -96,7 +96,7 @@ namespace AppsInToss.Editor
         /// <summary>
         /// BuildReport에서 에러 정보 추출
         /// </summary>
-        public static string FormatBuildErrors()
+        internal static string FormatBuildErrors()
         {
             if (lastBuildReport == null)
             {
@@ -161,7 +161,10 @@ namespace AppsInToss.Editor
         }
 
         /// <summary>
-        /// 최근 콘솔 로그를 에러 → 경고 → 인포 순으로 반환합니다.
+        /// 최근 로그 스냅샷을 반환합니다. 각 버킷은 에러 → 경고 → 인포 순으로 이어지며,
+        /// 각 버킷 내부에서는 오래된 순으로 정렬됩니다.
+        /// 반환 리스트는 호출 시점의 스냅샷이므로 이후 버퍼 변경에 영향받지 않습니다.
+        /// 각 인자가 0이면 해당 타입 로그는 결과에서 제외됩니다.
         /// </summary>
         internal static IReadOnlyList<LogEntry> GetRecentLogs(
             int maxErrors = MAX_ERROR_LOGS,
@@ -177,8 +180,11 @@ namespace AppsInToss.Editor
 
         private static void TakeTail(List<LogEntry> src, int count, List<LogEntry> dest)
         {
-            int start = System.Math.Max(0, src.Count - count);
-            for (int i = start; i < src.Count; i++) dest.Add(src[i]);
+            int start = Math.Max(0, src.Count - count);
+            for (int i = start; i < src.Count; i++)
+            {
+                dest.Add(src[i]);
+            }
         }
 
         /// <summary>

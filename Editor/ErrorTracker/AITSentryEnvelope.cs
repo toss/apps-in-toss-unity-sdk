@@ -339,6 +339,28 @@ namespace AppsInToss.Editor.ErrorTracker
         #region User Report Item
 
         /// <summary>
+        /// 기존 에러 이벤트(eventId)에 user_report만 추가로 붙이기 위한 독립 envelope을 생성합니다.
+        /// envelope header + user_report item 으로 구성됩니다 (event item 없음).
+        /// Build 실패 다이얼로그 등에서 직전에 캡처된 에러 이벤트에 사용자 의견을 연결할 때 사용합니다.
+        /// </summary>
+        internal static string BuildStandaloneUserReportEnvelope(
+            string dsn,
+            string eventId,
+            string email,
+            string name,
+            string comments)
+        {
+            var dsnComponents = ParseDsn(dsn);
+            var now = DateTime.UtcNow;
+
+            var sb = new StringBuilder(512);
+            BuildEnvelopeHeader(sb, eventId, dsnComponents, now);
+            sb.Append('\n');
+            sb.Append(BuildUserReportItem(eventId, email, name, comments));
+            return sb.ToString();
+        }
+
+        /// <summary>
         /// Sentry Envelope 의 user_report 아이템을 문자열로 생성합니다.
         /// header + payload 두 줄 구성. 반환값은 개행(\n)으로 구분되어 있습니다.
         /// </summary>

@@ -8,6 +8,8 @@ using UnityEditor;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
 using AppsInToss.Editor;
+using AppsInToss.Editor.ErrorTracker;
+using AppsInToss.Editor.IssueReport;
 using AppsInToss.Editor.Menu;
 
 namespace AppsInToss
@@ -510,6 +512,14 @@ namespace AppsInToss
             AITConfigurationWindow.ShowWindow();
         }
 
+        // ==================== 이슈 제보 ====================
+
+        [MenuItem("AIT/이슈 제보하기", false, 209)]
+        public static void OpenIssueReport()
+        {
+            AITIssueReportWindow.Open(AITIssueReportContext.Manual);
+        }
+
         // ==================== Sentry ====================
         [MenuItem("AIT/Install Sentry SDK", false, 211)]
         public static void InstallSentry()
@@ -775,8 +785,10 @@ namespace AppsInToss
                         );
                         if (choice == 1)
                         {
-                            // TODO (Task 10): AITIssueReportWindow.Open(...) 으로 교체 예정
-                            UnityEngine.Debug.LogWarning("[AIT] 이슈 제보 UI는 현재 리팩터링 중입니다. Task 10에서 연결됩니다.");
+                            AITIssueReportWindow.Open(
+                                AITIssueReportContext.BuildFailure,
+                                linkedEventId: AITEditorErrorTracker.LastEventId,
+                                prefilledTitle: "배포 실패");
                         }
                     }
                 }
@@ -1426,8 +1438,10 @@ namespace AppsInToss
             );
             if (choice == 1)
             {
-                // TODO (Task 10): AITIssueReportWindow.Open(...) 으로 교체 예정
-                UnityEngine.Debug.LogWarning("[AIT] 이슈 제보 UI는 현재 리팩터링 중입니다. Task 10에서 연결됩니다.");
+                AITIssueReportWindow.Open(
+                    AITIssueReportContext.BuildFailure,
+                    linkedEventId: AITEditorErrorTracker.LastEventId,
+                    prefilledTitle: $"빌드 실패: {result}");
             }
         }
 

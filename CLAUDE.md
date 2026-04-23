@@ -83,6 +83,38 @@
 - Playwright 테스트는 `Tests~/E2E/tests/` 디렉토리에서 실행
 - Level 0 테스트(EditMode)는 빌드 없이 ~10초만에 실행 가능
 
+### Push 직전 검증 체크리스트
+
+SDK 생성기 작업을 포함하는 변경사항을 커밋/푸시하기 전, **순서대로** 확인:
+
+1. **생성물 상태 확인**: `sdk-runtime-generator~/` 또는 `Runtime/SDK/` 근처를 수정했다면 먼저
+   ```bash
+   cd sdk-runtime-generator~ && pnpm generate && cd ..
+   git status --short
+   ```
+   `Runtime/SDK/` 하위에 예상치 못한 변경이 보이면 생성기 수정 의도와 맞는지 확인. 의도하지 않은 산출물은 커밋 전 조치.
+2. **.gitignore 적용 확인**: `webgl/`, `ait-build/dist/`, `ait-build/node_modules/`, `Library/`, `Temp/`, `*.log` 등이 `git status`에 나타나면 `.gitignore`에 빠진 항목이 있는지 검토 (기존 `.gitignore` 참조).
+3. **로컬 검증 실행**: 빠른 경로는 `./run-local-tests.sh --validate` (~30초) — 파일 구조 + SDK 유닛 테스트. 생성기 변경에는 `--editmode`(~10초)도 병행 권장.
+4. **스테이지 최종 리뷰**: `git diff --cached`로 정확히 어떤 파일이 커밋되는지 한 번 더 확인. 특히 다음을 체크:
+   - 의도하지 않은 `Runtime/SDK/` 재생성 산출물 포함 여부
+   - `.meta` 파일 누락/추가 여부 (Lint 워크플로우에서 검출)
+   - 대용량 바이너리/빌드 산출물 혼입 여부
+
+### 로컬 CI 재현 (WebGL Brotli flaky)
+
+self-hosted runner에서만 재현되는 Brotli 크래시를 로컬에서 좁히려면 `run-local-tests.sh`의 `--compression`과 `--parallel`을 조합:
+
+```bash
+# Brotli 압축 강제로 빌드 (CI와 동일 경로)
+./run-local-tests.sh --unity-build --compression brotli --unity-version 6000.2
+
+# 동시 빌드로 리소스 경합 재현 (모든 버전 병렬)
+./run-local-tests.sh --unity-build --parallel --compression brotli
+```
+
+**압축 포맷 값**: `auto` | `disabled` | `gzip` | `brotli` (`run-local-tests.sh` 참조).
+**주의**: self-hosted runner의 리소스 경합 자체(CPU/메모리/디스크 경합)는 로컬 머신 스펙에 따라 재현이 보장되지 않음. 로컬에서 통과해도 CI flaky가 재현되지 않을 수 있으며, 이 경우 `rerun-failed-jobs` 경로를 사용 (위 "E2E 테스트 실패 대응" 참조).
+
 ## 빠른 참조: 주요 명령어
 
 | 작업 | 명령어 |

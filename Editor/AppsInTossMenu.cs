@@ -514,7 +514,8 @@ namespace AppsInToss
 
         // ==================== 이슈 제보 ====================
 
-        [MenuItem("AIT/이슈 제보하기", false, 209)]
+        // priority 300: Configuration/Sentry 블록에서 11 이상 떨어져 있어 Unity 가 자동으로 구분선을 넣어준다.
+        [MenuItem("AIT/이슈 제보하기", false, 300)]
         public static void OpenIssueReport()
         {
             AITIssueReportWindow.Open(AITIssueReportContext.Manual);

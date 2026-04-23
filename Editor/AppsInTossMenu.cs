@@ -766,7 +766,6 @@ namespace AppsInToss
                         string title = $"배포 실패 ({shortReason})";
                         string dialogMessage =
                             "앱인토스 미니앱 배포에 실패했습니다.\n\n" +
-                            $"{shortReason}\n\n" +
                             $"{cause}";
 
                         if (isAuthError)
@@ -1433,7 +1432,6 @@ namespace AppsInToss
             string title = $"빌드 실패 ({shortReason})";
             string message =
                 "앱인토스 미니앱 빌드에 실패했습니다.\n\n" +
-                $"{shortReason}\n\n" +
                 $"{cause}\n\n" +
                 "문제를 공유하려면 'Issue 신고'를 눌러주세요.";
 

@@ -282,7 +282,7 @@ namespace AppsInToss
         }
 
         /// <summary>
-        /// 다이얼로그 본문에 사용할 원인 한 문단을 반환합니다. 해결 방법은 포함하지 않습니다.
+        /// 다이얼로그 본문에 사용할 원인 한 단락을 반환합니다. 해결 방법은 포함하지 않습니다.
         /// </summary>
         public static string GetErrorCause(AITExportError error)
         {
@@ -291,29 +291,41 @@ namespace AppsInToss
                 case AITExportError.SUCCEED:
                     return "성공";
                 case AITExportError.NODE_NOT_FOUND:
-                    return "Node.js 실행 파일을 찾을 수 없어 빌드 파이프라인을 실행하지 못했습니다.";
+                    return "SDK 가 사용할 Node.js 실행 파일을 찾을 수 없습니다.\n" +
+                           "내장 Node 바이너리(~/.ait-unity-sdk/nodejs) 또는 시스템 PATH에서 node를 찾지 못했습니다.";
                 case AITExportError.BUILD_WEBGL_FAILED:
-                    return "Unity WebGL 빌드 단계에서 오류가 발생했습니다. Unity Console 로그를 확인해주세요.";
+                    return "Unity WebGL 빌드 중 오류가 발생했습니다.\n" +
+                           "Console 창에서 컴파일 오류나 스택 트레이스를 확인해주세요.";
                 case AITExportError.INVALID_APP_CONFIG:
-                    return "앱 설정이 올바르지 않거나 필수 필드가 누락되었습니다.";
+                    return "앱 설정이 올바르지 않거나 필수 필드(App ID, 아이콘 URL 등)가 누락되었습니다.\n" +
+                           "AIT > Configuration 창에서 설정을 확인해주세요.";
                 case AITExportError.NETWORK_ERROR:
-                    return "빌드 과정에서 네트워크 요청에 실패했습니다. 인터넷 연결 또는 프록시 설정을 확인해주세요.";
+                    return "빌드 과정에서 네트워크 요청에 실패했습니다.\n" +
+                           "인터넷 연결 또는 프록시/방화벽 설정을 확인해주세요.";
                 case AITExportError.CANCELLED:
                     return "사용자에 의해 빌드가 취소되었습니다.";
                 case AITExportError.FAIL_NPM_BUILD:
-                    return "pnpm (granite) 빌드 단계에서 오류가 발생했습니다. Unity Console 로그를 확인해주세요.";
+                    return "ait-build 디렉터리의 pnpm/granite 빌드 단계에서 오류가 발생했습니다.\n" +
+                           "Console 창에서 빌드 로그를 확인해주세요.";
                 case AITExportError.BUILD_FOLDER_MISSING:
-                    return "WebGL 빌드 결과물의 Build 폴더가 존재하지 않습니다. WebGL 빌드가 완료되지 않았을 수 있습니다.";
+                    return "WebGL 빌드 결과물의 Build 폴더가 존재하지 않습니다.\n" +
+                           "WebGL 빌드가 완료되지 않았거나 결과물이 삭제되었을 수 있습니다.";
                 case AITExportError.REQUIRED_FILE_MISSING:
-                    return "WebGL 빌드 결과물(loader.js, data, framework.js, wasm) 중 일부가 누락되었습니다.";
+                    return "WebGL 빌드 결과물(loader.js, data, framework.js, wasm) 중 일부가 누락되었습니다.\n" +
+                           "Clean Build 옵션을 켜고 다시 빌드해보세요.";
                 case AITExportError.INDEX_HTML_MISSING:
-                    return "WebGL 빌드의 index.html 이 생성되지 않았습니다. WebGL 템플릿 설정을 확인해주세요.";
+                    return "WebGL 빌드의 index.html 이 생성되지 않았습니다.\n" +
+                           "WebGL 템플릿(AITTemplate) 설정이 올바른지 확인해주세요.";
                 case AITExportError.PLACEHOLDER_SUBSTITUTION_FAILED:
-                    return "index.html 의 필수 플레이스홀더가 치환되지 않았습니다. 이 상태로 배포하면 'createUnityInstance is not defined' 오류가 발생합니다.";
+                    return "index.html 의 필수 플레이스홀더가 치환되지 않은 채 저장되었습니다.\n" +
+                           "이 상태로 배포하면 런타임에 'createUnityInstance is not defined' 오류가 발생합니다.\n" +
+                           "Clean Build 옵션으로 재빌드해보세요.";
                 case AITExportError.DIST_FOLDER_MISSING:
-                    return "granite 빌드가 완료되었지만 dist 폴더가 생성되지 않았습니다.";
+                    return "granite 빌드가 완료되었지만 dist 폴더가 생성되지 않았습니다.\n" +
+                           "granite.config.ts 의 플레이스홀더가 올바르게 치환되었는지 확인해주세요.";
                 case AITExportError.AIT_FILE_MISSING:
-                    return "dist/ 폴더에 .ait 파일이 생성되지 않았습니다.";
+                    return "dist/ 폴더에 .ait 파일이 생성되지 않았습니다.\n" +
+                           "granite 빌드 설정을 확인한 뒤 Clean Build 로 재시도해주세요.";
                 default:
                     return $"알 수 없는 오류 (코드: {error}).";
             }

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using AppsInToss.Editor.ErrorTracker;
+using UnityEditor;
 using UnityEngine;
 
 namespace AppsInToss.Editor.IssueReport
@@ -10,7 +11,7 @@ namespace AppsInToss.Editor.IssueReport
     /// - Manual: 새 message event + user_report 두 아이템을 한 envelope에 묶어 전송
     /// - BuildFailure with LinkedEventId: 기존 에러 이벤트에 user_report만 추가 연결
     /// - BuildFailure without LinkedEventId: Manual fallback (경고 후 새 이벤트 생성)
-    /// 전송은 <see cref="AITSentryTransport.SendEnvelope(string, Action{AITSentryTransport.SubmitResult})"/> 경로를 재사용합니다.
+    /// 전송은 <see cref="AITSentryTransport.SendEnvelope"/> 경로를 재사용합니다.
     /// </summary>
     internal static class AITIssueReportService
     {
@@ -31,7 +32,7 @@ namespace AppsInToss.Editor.IssueReport
             public string LinkedEventId;
         }
 
-        internal struct SubmitResult
+        internal struct SendResult
         {
             public bool Success;
             public string ErrorMessage;
@@ -39,14 +40,19 @@ namespace AppsInToss.Editor.IssueReport
 
         /// <summary>
         /// 요청을 비동기 전송합니다. DSN이 설정되어 있지 않거나 envelope 빌드 중 예외가
-        /// 발생하면 즉시 실패 콜백을 동기 호출합니다.
+        /// 발생하면 다음 에디터 프레임에서 실패 콜백을 호출합니다.
         /// </summary>
-        internal static void SendAsync(SubmitRequest request, Action<SubmitResult> onComplete)
+        /// <remarks>
+        /// Unity 메인 스레드에서만 호출해야 합니다. 내부적으로 <c>Application.unityVersion</c>,
+        /// <c>Application.platform</c>, <c>SystemInfo.deviceName</c> 등 메인 스레드 전용 API를
+        /// 참조합니다. 백그라운드 스레드에서 호출하면 <c>UnityException</c>이 발생할 수 있습니다.
+        /// </remarks>
+        internal static void SendAsync(SubmitRequest request, Action<SendResult> onComplete)
         {
             string dsn = AITEditorErrorTracker.GetDsn();
             if (string.IsNullOrEmpty(dsn))
             {
-                onComplete?.Invoke(new SubmitResult
+                EditorApplication.delayCall += () => onComplete?.Invoke(new SendResult
                 {
                     Success = false,
                     ErrorMessage = "DSN이 설정되지 않았습니다",
@@ -61,7 +67,7 @@ namespace AppsInToss.Editor.IssueReport
             }
             catch (Exception e)
             {
-                onComplete?.Invoke(new SubmitResult
+                EditorApplication.delayCall += () => onComplete?.Invoke(new SendResult
                 {
                     Success = false,
                     ErrorMessage = $"전송 준비 중 오류: {e.Message}",
@@ -71,7 +77,7 @@ namespace AppsInToss.Editor.IssueReport
 
             AITSentryTransport.SendEnvelope(envelope, result =>
             {
-                onComplete?.Invoke(new SubmitResult
+                onComplete?.Invoke(new SendResult
                 {
                     Success = result.Success,
                     ErrorMessage = result.ErrorMessage,
@@ -86,7 +92,7 @@ namespace AppsInToss.Editor.IssueReport
         internal static string BuildEnvelopeForTest(SubmitRequest request, string dsn)
         {
             string email = string.IsNullOrWhiteSpace(request.Email)
-                ? $"{Environment.UserName}@{SystemInfo.deviceName}"
+                ? BuildAutoEmail()
                 : request.Email;
             string name = Environment.UserName;
 
@@ -163,7 +169,19 @@ namespace AppsInToss.Editor.IssueReport
                     Level = MapLogTypeToSentryLevel(log.Type),
                 });
             }
+            result.Sort((a, b) => a.Timestamp.CompareTo(b.Timestamp));
             return result;
+        }
+
+        private static string BuildAutoEmail()
+        {
+            string user = System.Text.RegularExpressions.Regex.Replace(
+                Environment.UserName ?? "unknown", @"[^a-zA-Z0-9\-_.]", "-");
+            string host = System.Text.RegularExpressions.Regex.Replace(
+                SystemInfo.deviceName ?? "unity", @"[^a-zA-Z0-9\-_.]", "-");
+            if (string.IsNullOrEmpty(user)) user = "unknown";
+            if (string.IsNullOrEmpty(host)) host = "unity";
+            return $"{user}@{host}";
         }
 
         private static string MapLogTypeToSentryLevel(LogType type)

@@ -236,6 +236,86 @@ namespace AppsInToss.Editor.ErrorTracker
 
         #endregion
 
+        #region Message Event Envelope
+
+        /// <summary>
+        /// 메시지 기반 이벤트 envelope을 생성하고 event_id를 반환합니다.
+        /// 예외 없이 단순 메시지로 이벤트를 만들고 싶을 때 사용합니다 (User Feedback 수동 제보 등).
+        /// </summary>
+        internal static string BuildMessageEventEnvelope(
+            string dsn,
+            string message,
+            string level,
+            Dictionary<string, string> tags,
+            List<Breadcrumb> breadcrumbs,
+            string release,
+            string environment,
+            out string eventId)
+        {
+            var dsnComponents = ParseDsn(dsn);
+            eventId = GenerateEventId();
+            var now = DateTime.UtcNow;
+            var timestamp = FormatTimestamp(now);
+
+            if (string.IsNullOrEmpty(release))
+            {
+                release = $"{SdkName}@{AITVersion.Version}";
+            }
+
+            var sb = new StringBuilder(2048);
+            BuildEnvelopeHeader(sb, eventId, dsnComponents, now);
+            sb.Append('\n');
+            sb.Append("{\"type\":\"event\"}");
+            sb.Append('\n');
+
+            sb.Append('{');
+            AppendJsonKeyValue(sb, "event_id", eventId, false);
+            AppendJsonKeyValue(sb, "timestamp", timestamp);
+            AppendJsonKeyValue(sb, "platform", Platform);
+            AppendJsonKeyValue(sb, "level", string.IsNullOrEmpty(level) ? "info" : level);
+            if (!string.IsNullOrEmpty(release))
+                AppendJsonKeyValue(sb, "release", release);
+            if (!string.IsNullOrEmpty(environment))
+                AppendJsonKeyValue(sb, "environment", environment);
+
+            // Sentry spec: message field is an object { "formatted": "..." }
+            sb.Append(",\"message\":{");
+            AppendJsonKeyValue(sb, "formatted", message ?? string.Empty, false);
+            sb.Append('}');
+
+            if (tags != null && tags.Count > 0)
+            {
+                sb.Append(",\"tags\":{");
+                AppendDictionary(sb, tags);
+                sb.Append('}');
+            }
+
+            if (breadcrumbs != null && breadcrumbs.Count > 0)
+            {
+                sb.Append(",\"breadcrumbs\":{\"values\":[");
+                for (int i = 0; i < breadcrumbs.Count; i++)
+                {
+                    if (i > 0) sb.Append(',');
+                    var bc = breadcrumbs[i];
+                    sb.Append('{');
+                    AppendJsonKeyValue(sb, "timestamp", FormatTimestamp(bc.Timestamp), false);
+                    if (!string.IsNullOrEmpty(bc.Category)) AppendJsonKeyValue(sb, "category", bc.Category);
+                    if (!string.IsNullOrEmpty(bc.Message)) AppendJsonKeyValue(sb, "message", bc.Message);
+                    if (!string.IsNullOrEmpty(bc.Level)) AppendJsonKeyValue(sb, "level", bc.Level);
+                    sb.Append('}');
+                }
+                sb.Append("]}");
+            }
+
+            AppendContexts(sb);
+            AppendSdkInfoObject(sb, true);
+            sb.Append('}');
+
+            return sb.ToString();
+        }
+
+        #endregion
+
         #region User Report Item
 
         /// <summary>

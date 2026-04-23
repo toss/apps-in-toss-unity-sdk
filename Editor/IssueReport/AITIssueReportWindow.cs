@@ -7,7 +7,6 @@ namespace AppsInToss.Editor.IssueReport
     /// <summary>
     /// 이슈 제보 입력 폼을 제공하는 에디터 윈도우.
     /// 제목/내용/이메일을 수집해 <see cref="AITIssueReportService.SendAsync"/>를 호출합니다.
-    /// 스크린샷 포함 토글은 Task 7a 보류 상태로, 비활성화되어 있습니다.
     /// </summary>
     internal sealed class AITIssueReportWindow : EditorWindow
     {
@@ -20,7 +19,6 @@ namespace AppsInToss.Editor.IssueReport
         private string _title;
         private string _body;
         private string _email;
-        private bool _includeScreenshot;
         private State _state;
         private Vector2 _bodyScroll;
 
@@ -42,7 +40,6 @@ namespace AppsInToss.Editor.IssueReport
             window._title = prefilledTitle ?? string.Empty;
             window._body = string.Empty;
             window._email = string.Empty;
-            window._includeScreenshot = false;
             window._state = State.Idle;
             window._bodyScroll = Vector2.zero;
             window.Focus();
@@ -64,12 +61,6 @@ namespace AppsInToss.Editor.IssueReport
                 EditorGUILayout.Space();
                 EditorGUILayout.LabelField("이메일 (선택)", EditorStyles.boldLabel);
                 _email = EditorGUILayout.TextField(_email);
-
-                using (new EditorGUI.DisabledScope(true))
-                {
-                    _includeScreenshot = EditorGUILayout.ToggleLeft(
-                        "스크린샷 포함 (준비 중)", _includeScreenshot);
-                }
             }
 
             EditorGUILayout.Space();
@@ -119,8 +110,6 @@ namespace AppsInToss.Editor.IssueReport
                 Title = _title,
                 Body = _body,
                 Email = _email,
-                // TODO(Task 7a): 스크린샷 첨부가 Transport 에 연결되면 _includeScreenshot 로 교체.
-                IncludeScreenshot = false,
                 LinkedEventId = _linkedEventId,
             };
 

@@ -27,8 +27,6 @@ namespace AppsInToss.Editor.IssueReport
             public string Title;
             public string Body;
             public string Email;
-            /// <summary>Task 7a 스크린샷 연결은 보류. 현재 값은 무시됩니다.</summary>
-            public bool IncludeScreenshot;
             public string LinkedEventId;
         }
 

@@ -236,6 +236,42 @@ namespace AppsInToss.Editor.ErrorTracker
 
         #endregion
 
+        #region User Report Item
+
+        /// <summary>
+        /// Sentry Envelope 의 user_report 아이템을 문자열로 생성합니다.
+        /// header + payload 두 줄 구성. 반환값은 개행(\n)으로 구분되어 있습니다.
+        /// </summary>
+        internal static string BuildUserReportItem(
+            string eventId,
+            string email,
+            string name,
+            string comments)
+        {
+            var payload = new StringBuilder(256);
+            payload.Append('{');
+            AppendJsonKeyValue(payload, "event_id", eventId, false);
+            if (!string.IsNullOrEmpty(email))
+                AppendJsonKeyValue(payload, "email", email);
+            if (!string.IsNullOrEmpty(name))
+                AppendJsonKeyValue(payload, "name", name);
+            if (!string.IsNullOrEmpty(comments))
+                AppendJsonKeyValue(payload, "comments", comments);
+            payload.Append('}');
+
+            string payloadStr = payload.ToString();
+            int length = System.Text.Encoding.UTF8.GetByteCount(payloadStr);
+
+            var sb = new StringBuilder(payloadStr.Length + 64);
+            sb.Append("{\"type\":\"user_report\",\"length\":");
+            sb.Append(length);
+            sb.Append("}\n");
+            sb.Append(payloadStr);
+            return sb.ToString();
+        }
+
+        #endregion
+
         #region Session Envelope
 
         internal static string BuildSessionEnvelope(

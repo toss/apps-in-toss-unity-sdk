@@ -256,6 +256,69 @@ namespace AppsInToss
             }
         }
 
+        /// <summary>
+        /// 다이얼로그 제목에 붙일 짧은 사유 라벨을 반환합니다.
+        /// 예: "빌드 실패 ({shortReason})" 형태로 조합됩니다.
+        /// </summary>
+        public static string GetErrorShortReason(AITExportError error)
+        {
+            switch (error)
+            {
+                case AITExportError.SUCCEED: return "성공";
+                case AITExportError.NODE_NOT_FOUND: return "Node.js 없음";
+                case AITExportError.BUILD_WEBGL_FAILED: return "WebGL 빌드 오류";
+                case AITExportError.INVALID_APP_CONFIG: return "앱 설정 오류";
+                case AITExportError.NETWORK_ERROR: return "네트워크 오류";
+                case AITExportError.CANCELLED: return "사용자 취소";
+                case AITExportError.FAIL_NPM_BUILD: return "pnpm 빌드 오류";
+                case AITExportError.BUILD_FOLDER_MISSING: return "Build 폴더 없음";
+                case AITExportError.REQUIRED_FILE_MISSING: return "필수 파일 누락";
+                case AITExportError.INDEX_HTML_MISSING: return "index.html 없음";
+                case AITExportError.PLACEHOLDER_SUBSTITUTION_FAILED: return "플레이스홀더 미치환";
+                case AITExportError.DIST_FOLDER_MISSING: return "dist 폴더 없음";
+                case AITExportError.AIT_FILE_MISSING: return ".ait 파일 없음";
+                default: return error.ToString();
+            }
+        }
+
+        /// <summary>
+        /// 다이얼로그 본문에 사용할 원인 한 문단을 반환합니다. 해결 방법은 포함하지 않습니다.
+        /// </summary>
+        public static string GetErrorCause(AITExportError error)
+        {
+            switch (error)
+            {
+                case AITExportError.SUCCEED:
+                    return "성공";
+                case AITExportError.NODE_NOT_FOUND:
+                    return "Node.js 실행 파일을 찾을 수 없어 빌드 파이프라인을 실행하지 못했습니다.";
+                case AITExportError.BUILD_WEBGL_FAILED:
+                    return "Unity WebGL 빌드 단계에서 오류가 발생했습니다. Unity Console 로그를 확인해주세요.";
+                case AITExportError.INVALID_APP_CONFIG:
+                    return "앱 설정이 올바르지 않거나 필수 필드가 누락되었습니다.";
+                case AITExportError.NETWORK_ERROR:
+                    return "빌드 과정에서 네트워크 요청에 실패했습니다. 인터넷 연결 또는 프록시 설정을 확인해주세요.";
+                case AITExportError.CANCELLED:
+                    return "사용자에 의해 빌드가 취소되었습니다.";
+                case AITExportError.FAIL_NPM_BUILD:
+                    return "pnpm (granite) 빌드 단계에서 오류가 발생했습니다. Unity Console 로그를 확인해주세요.";
+                case AITExportError.BUILD_FOLDER_MISSING:
+                    return "WebGL 빌드 결과물의 Build 폴더가 존재하지 않습니다. WebGL 빌드가 완료되지 않았을 수 있습니다.";
+                case AITExportError.REQUIRED_FILE_MISSING:
+                    return "WebGL 빌드 결과물(loader.js, data, framework.js, wasm) 중 일부가 누락되었습니다.";
+                case AITExportError.INDEX_HTML_MISSING:
+                    return "WebGL 빌드의 index.html 이 생성되지 않았습니다. WebGL 템플릿 설정을 확인해주세요.";
+                case AITExportError.PLACEHOLDER_SUBSTITUTION_FAILED:
+                    return "index.html 의 필수 플레이스홀더가 치환되지 않았습니다. 이 상태로 배포하면 'createUnityInstance is not defined' 오류가 발생합니다.";
+                case AITExportError.DIST_FOLDER_MISSING:
+                    return "granite 빌드가 완료되었지만 dist 폴더가 생성되지 않았습니다.";
+                case AITExportError.AIT_FILE_MISSING:
+                    return "dist/ 폴더에 .ait 파일이 생성되지 않았습니다.";
+                default:
+                    return $"알 수 없는 오류 (코드: {error}).";
+            }
+        }
+
         #endregion
 
         #region Build Marker

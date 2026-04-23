@@ -109,8 +109,28 @@ namespace AppsInToss.Editor.ErrorTracker
             string release = null,
             string environment = null)
         {
+            return BuildErrorEventEnvelope(
+                dsn, exceptionType, exceptionValue, stackTrace,
+                out _,
+                level, tags, extra, breadcrumbs, fingerprint, release, environment);
+        }
+
+        internal static string BuildErrorEventEnvelope(
+            string dsn,
+            string exceptionType,
+            string exceptionValue,
+            string stackTrace,
+            out string eventId,
+            string level = "error",
+            Dictionary<string, string> tags = null,
+            Dictionary<string, string> extra = null,
+            List<Breadcrumb> breadcrumbs = null,
+            string[] fingerprint = null,
+            string release = null,
+            string environment = null)
+        {
             var dsnComponents = ParseDsn(dsn);
-            var eventId = GenerateEventId();
+            eventId = GenerateEventId();
             var now = DateTime.UtcNow;
             var timestamp = FormatTimestamp(now);
 

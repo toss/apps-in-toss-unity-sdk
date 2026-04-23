@@ -270,6 +270,29 @@ public class ErrorTrackerIntegrationTests
 
     #endregion
 
+    #region LastEventId 검증
+
+    [Test]
+    public void CaptureError_UpdatesLastEventId()
+    {
+        if (!AppsInToss.Editor.ErrorTracker.AITErrorTrackerConsent.IsEnabled())
+        {
+            Assert.Ignore("Consent disabled in test env; LastEventId 검증 스킵");
+        }
+
+        AITEditorErrorTracker.CaptureError(
+            exceptionType: "TestException_" + System.Guid.NewGuid().ToString("N"),
+            message: "test message",
+            stackTrace: null,
+            level: "error");
+
+        string id = AITEditorErrorTracker.LastEventId;
+        Assert.IsNotNull(id);
+        Assert.AreEqual(32, id.Length);
+    }
+
+    #endregion
+
     #region Transaction 전송
 
     [Test]

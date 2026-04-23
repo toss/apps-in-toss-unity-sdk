@@ -131,6 +131,14 @@ namespace AppsInToss.Editor.ErrorTracker
 
         #endregion
 
+        #region Last Event ID
+
+        private static string _lastEventId;
+
+        internal static string LastEventId => _lastEventId;
+
+        #endregion
+
         #region Static Constructor
 
         static AITEditorErrorTracker()
@@ -375,6 +383,7 @@ namespace AppsInToss.Editor.ErrorTracker
                 exceptionType: exceptionType,
                 exceptionValue: truncatedMessage,
                 stackTrace: stackTrace,
+                eventId: out string capturedEventId,
                 level: level,
                 tags: tags,
                 breadcrumbs: _breadcrumbs.Count > 0 ? new List<AITSentryEnvelope.Breadcrumb>(_breadcrumbs) : null,
@@ -383,6 +392,7 @@ namespace AppsInToss.Editor.ErrorTracker
                 environment: ENVIRONMENT
             );
 
+            _lastEventId = capturedEventId;
             AITSentryTransport.SendEnvelope(envelope);
         }
 

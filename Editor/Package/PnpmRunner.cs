@@ -72,67 +72,77 @@ namespace AppsInToss.Editor.Package
 
                     using (var process = new System.Diagnostics.Process { StartInfo = processInfo })
                     {
-                        var outputBuilder = new System.Text.StringBuilder();
-                        var errorBuilder = new System.Text.StringBuilder();
-
-                        process.OutputDataReceived += (sender, e) =>
+                        int pid = -1;
+                        try
                         {
-                            if (e.Data != null)
-                                outputBuilder.AppendLine(AITPlatformHelper.StripAnsiCodes(e.Data));
-                        };
-                        process.ErrorDataReceived += (sender, e) =>
-                        {
-                            if (e.Data != null)
-                                errorBuilder.AppendLine(AITPlatformHelper.StripAnsiCodes(e.Data));
-                        };
+                            var outputBuilder = new System.Text.StringBuilder();
+                            var errorBuilder = new System.Text.StringBuilder();
 
-                        process.Start();
-                        process.BeginOutputReadLine();
-                        process.BeginErrorReadLine();
-
-                        // HasExited 폴링 + CancellationToken 체크
-                        int maxWaitMs = 300000; // 5분
-                        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-
-                        while (!process.HasExited)
-                        {
-                            if (ct.IsCancellationRequested)
+                            process.OutputDataReceived += (sender, e) =>
                             {
-                                Debug.Log($"[AIT] [병렬] pnpm install 취소 요청. 프로세스를 종료합니다.");
-                                process.Kill();
-                                process.WaitForExit(5000);
-                                return AITConvertCore.AITExportError.CANCELLED;
+                                if (e.Data != null)
+                                    outputBuilder.AppendLine(AITPlatformHelper.StripAnsiCodes(e.Data));
+                            };
+                            process.ErrorDataReceived += (sender, e) =>
+                            {
+                                if (e.Data != null)
+                                    errorBuilder.AppendLine(AITPlatformHelper.StripAnsiCodes(e.Data));
+                            };
+
+                            process.Start();
+                            pid = process.Id;
+                            AITBuildSession.RecordPid(pid);
+                            process.BeginOutputReadLine();
+                            process.BeginErrorReadLine();
+
+                            // HasExited 폴링 + CancellationToken 체크
+                            int maxWaitMs = 300000; // 5분
+                            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+                            while (!process.HasExited)
+                            {
+                                if (ct.IsCancellationRequested)
+                                {
+                                    Debug.Log($"[AIT] [병렬] pnpm install 취소 요청. 프로세스를 종료합니다.");
+                                    process.Kill();
+                                    process.WaitForExit(5000);
+                                    return AITConvertCore.AITExportError.CANCELLED;
+                                }
+
+                                if (stopwatch.ElapsedMilliseconds > maxWaitMs)
+                                {
+                                    process.Kill();
+                                    process.WaitForExit(5000);
+                                    Debug.LogError($"[AIT] [병렬] pnpm {label} 시간 초과 ({maxWaitMs / 1000}초)");
+                                    break; // 다음 단계로
+                                }
+
+                                Thread.Sleep(200);
                             }
 
-                            if (stopwatch.ElapsedMilliseconds > maxWaitMs)
+                            // 아직 종료 안 된 경우 (타임아웃으로 빠져나온 경우) → 다음 단계
+                            if (!process.HasExited) continue;
+
+                            process.WaitForExit(5000); // 출력 버퍼 플러시
+
+                            if (process.ExitCode == 0)
                             {
-                                process.Kill();
-                                process.WaitForExit(5000);
-                                Debug.LogError($"[AIT] [병렬] pnpm {label} 시간 초과 ({maxWaitMs / 1000}초)");
-                                break; // 다음 단계로
+                                Debug.Log($"[AIT] [병렬] ✓ pnpm {label} 성공");
+                                return AITConvertCore.AITExportError.SUCCEED;
                             }
 
-                            Thread.Sleep(200);
+                            string output = outputBuilder.ToString();
+                            string error = errorBuilder.ToString();
+                            Debug.Log($"[AIT] [병렬] pnpm {label} 실패 (Exit Code: {process.ExitCode})");
+                            if (!string.IsNullOrEmpty(output))
+                                Debug.Log($"[AIT] [병렬] 출력:\n{output.Trim()}");
+                            if (!string.IsNullOrEmpty(error))
+                                Debug.Log($"[AIT] [병렬] 오류:\n{error.Trim()}");
                         }
-
-                        // 아직 종료 안 된 경우 (타임아웃으로 빠져나온 경우) → 다음 단계
-                        if (!process.HasExited) continue;
-
-                        process.WaitForExit(5000); // 출력 버퍼 플러시
-
-                        if (process.ExitCode == 0)
+                        finally
                         {
-                            Debug.Log($"[AIT] [병렬] ✓ pnpm {label} 성공");
-                            return AITConvertCore.AITExportError.SUCCEED;
+                            if (pid > 0) AITBuildSession.ClearPid(pid);
                         }
-
-                        string output = outputBuilder.ToString();
-                        string error = errorBuilder.ToString();
-                        Debug.Log($"[AIT] [병렬] pnpm {label} 실패 (Exit Code: {process.ExitCode})");
-                        if (!string.IsNullOrEmpty(output))
-                            Debug.Log($"[AIT] [병렬] 출력:\n{output.Trim()}");
-                        if (!string.IsNullOrEmpty(error))
-                            Debug.Log($"[AIT] [병렬] 오류:\n{error.Trim()}");
                     }
                 }
                 catch (Exception e)

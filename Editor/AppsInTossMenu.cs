@@ -247,15 +247,29 @@ namespace AppsInToss
         }
 
         // ==================== Publish ====================
+        // 재진입 가드 — ExecuteBuildAndPackage / Publish 가 await 대기 중일 때 중복 클릭 차단.
+        private static bool _buildEntryInProgress;
+
         [MenuItem("AIT/Publish", false, 31)]
-        public static void Publish()
+        public static async void Publish()
         {
             if (AITDeprecationChecker.BlockIfDeprecated()) return;
+            if (_buildEntryInProgress)
+            {
+                AITLog.Warning("AIT: 이미 빌드/배포 준비가 진행 중입니다.", sentryCapture: false);
+                return;
+            }
+            _buildEntryInProgress = true;
+            try
+            {
             var config = UnityUtil.GetEditorConf();
             if (!PathValidator.ValidateSettingsForPackage(config)) return;
 
             // Configuration Window 미flush 변경분을 빌드 진입 전 디스크에 강제 기록 (유실 방지)
             AssetDatabase.SaveAssets();
+
+            // 리로드를 유발할 수 있는 컴파일/업데이트가 끝난 뒤 빌드 진입.
+            if (!await AITEditorIdleWaiter.WaitAsync()) return;
 
             // 빌드 전 배포 키 사전 체크 (fail-fast)
             string deploymentKey = AITCredentialsUtil.GetDeploymentKey();
@@ -328,6 +342,18 @@ namespace AppsInToss
 
             // 배포 실행
             ExecuteDeploy();
+            }
+            catch (Exception e)
+            {
+                // async void 의 미처리 예외는 SynchronizationContext 로 터져 Editor 전체에
+                // 영향을 주므로 여기서 삼키고 사용자에게 다이얼로그로 알린다.
+                AITLog.Error($"AIT: Publish 중 예외: {e.Message}", sentryCapture: true);
+                AITPlatformHelper.ShowInfoDialog("오류", $"배포 중 오류가 발생했습니다.\n\n{e.Message}", "확인");
+            }
+            finally
+            {
+                _buildEntryInProgress = false;
+            }
         }
 
         // ==================== Clean ====================
@@ -548,14 +574,25 @@ namespace AppsInToss
         // 빌드 실행 메서드들
         // ============================================
 
-        private static void ExecuteBuildAndPackage()
+        private static async void ExecuteBuildAndPackage()
         {
+            if (_buildEntryInProgress)
+            {
+                AITLog.Warning("AIT: 이미 빌드/배포 준비가 진행 중입니다.", sentryCapture: false);
+                return;
+            }
+            _buildEntryInProgress = true;
+            try
+            {
             var config = UnityUtil.GetEditorConf();
             if (!PathValidator.ValidateSettingsForPackage(config)) return;
 
             // Configuration Window에서 방금 입력한 변경이 디스크에 flush되기 전 상태일 수 있다.
             // 빌드 중 도메인 리로드 또는 Editor 강제 종료 시 유실을 방지하기 위해 강제 flush.
             AssetDatabase.SaveAssets();
+
+            // 리로드를 유발할 수 있는 컴파일/업데이트가 끝난 뒤 빌드 진입.
+            if (!await AITEditorIdleWaiter.WaitAsync()) return;
 
             Debug.Log("AIT: 전체 빌드 & 패키징 시작...");
             buildStopwatch.Restart();
@@ -604,6 +641,19 @@ namespace AppsInToss
                     }
                 }
             );
+            }
+            catch (Exception e)
+            {
+                AITLog.Error($"AIT: Build & Package 중 예외: {e.Message}", sentryCapture: true);
+                AITPlatformHelper.ShowInfoDialog("오류", $"빌드 준비 중 오류가 발생했습니다.\n\n{e.Message}", "확인");
+            }
+            finally
+            {
+                // 재진입 가드 해제 — DoExportAsync 는 fire-and-forget 이므로 여기 도달 시점에는
+                // 실제 빌드는 이미 시작되었다 (중복 실제 빌드는 AITConvertCore 내부의 별도
+                // 상태로 차단된다). 이 플래그는 "WaitAsync 대기 중 중복 클릭" 만 차단.
+                _buildEntryInProgress = false;
+            }
         }
 
         private static string GetPhaseText(AITConvertCore.BuildPhase phase)

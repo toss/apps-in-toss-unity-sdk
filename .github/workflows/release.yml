@@ -432,23 +432,13 @@ jobs:
           echo "full_commit_hash=${FULL_COMMIT_HASH}" >> $GITHUB_OUTPUT
 
           # package.json description 업데이트
+          # 런타임은 AITVersion.LoadVersionInfoEditor 가 이 description 을 정규식으로
+          # 파싱해 ReleaseDateTime/CommitHash 를 읽는다 (UPM 설치 환경에서의 채널).
+          # 로컬/임베디드/플레이어 경로는 빌드 시 Editor 가 Assets/Resources/AITVersionInfo.json
+          # 을 생성하는 방식(Resources) 으로 분리되어 있어 이 워크플로우는 .cs 를 건드리지 않는다.
           jq --arg dt "$RELEASE_DATETIME" --arg hash "$COMMIT_HASH" \
              '.description = "Apps in Toss Mini App Unity Engine Adapter SDK Package. (Released: " + $dt + ", " + $hash + ")"' \
              package.json > tmp.json && mv tmp.json package.json
-
-          # AITVersionConstants.cs 업데이트
-          printf '%s\n' \
-            '// Auto-generated during release' \
-            'namespace AppsInToss' \
-            '{' \
-            '    internal static class AITVersionConstants' \
-            '    {' \
-            "        public const string Version = \"${VERSION}\";" \
-            "        public const string ReleaseDateTime = \"${RELEASE_DATETIME}\";" \
-            "        public const string CommitHash = \"${COMMIT_HASH}\";" \
-            '    }' \
-            '}' \
-            > Runtime/Helpers/AITVersionConstants.cs
 
           echo "package.json description:"
           cat package.json | jq '.description'

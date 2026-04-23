@@ -55,10 +55,14 @@ namespace AppsInToss.Editor.IssueReport
                 EditorApplication.delayCall += () => onComplete?.Invoke(new SendResult
                 {
                     Success = false,
-                    ErrorMessage = "DSN이 설정되지 않았습니다",
+                    ErrorMessage = "Sentry DSN 이 구성되어 있지 않습니다. SDK 내부 설정을 확인해주세요.",
                 });
                 return;
             }
+
+            // 이슈 제보는 사용자 능동 행위이므로 consent 미동의 상태여도 전송을 허용한다.
+            // Transport 의 DSN 세팅은 consent 가 켜질 때만 수행되므로, 여기서 한 번 더 보장한다.
+            AITSentryTransport.SetDsn(dsn);
 
             string envelope;
             try

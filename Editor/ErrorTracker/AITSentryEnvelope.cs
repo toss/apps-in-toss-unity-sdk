@@ -260,7 +260,7 @@ namespace AppsInToss.Editor.ErrorTracker
             payload.Append('}');
 
             string payloadStr = payload.ToString();
-            int length = System.Text.Encoding.UTF8.GetByteCount(payloadStr);
+            int length = Encoding.UTF8.GetByteCount(payloadStr);
 
             var sb = new StringBuilder(payloadStr.Length + 64);
             sb.Append("{\"type\":\"user_report\",\"length\":");

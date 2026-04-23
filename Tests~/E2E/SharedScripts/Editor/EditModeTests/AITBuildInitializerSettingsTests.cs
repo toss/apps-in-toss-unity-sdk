@@ -13,13 +13,13 @@ using AppsInToss.Editor;
 [TestFixture]
 public class AITBuildInitializerSettingsTests
 {
-    private AITPlayerSettingsBackup backup;
+    private PlayerSettingsSnapshot backup;
 
     [SetUp]
     public void Setup()
     {
         // 테스트 실행 중 PlayerSettings를 변경하므로 미리 백업
-        backup = AITPlayerSettingsBackup.Capture();
+        backup = PlayerSettingsSnapshot.Capture();
     }
 
     [TearDown]
@@ -91,7 +91,7 @@ public class AITBuildInitializerSettingsTests
         PlayerSettings.SetStackTraceLogType(LogType.Error, StackTraceLogType.Full);
         PlayerSettings.SetStackTraceLogType(LogType.Log, StackTraceLogType.None);
 
-        var snapshot = AITPlayerSettingsBackup.Capture();
+        var snapshot = PlayerSettingsSnapshot.Capture();
 
         // SDK가 값을 덮어씀
         PlayerSettings.SetStackTraceLogType(LogType.Error, StackTraceLogType.ScriptOnly);

@@ -208,7 +208,7 @@ namespace AppsInToss.Editor
         /// - Stack Trace Log Type은 WebGL에서 지원되는 ScriptOnly로 고정 (Full은 IL2CPP/WebGL 조합 미지원)
         ///
         /// 주의: PlayerSettings.SetStackTraceLogType은 플랫폼별이 아닌 프로젝트 전역 설정이다.
-        /// 사용자 PlayerSettings가 영구 변경되지 않도록, 호출 직전에 AITPlayerSettingsBackup.Capture()가
+        /// 사용자 PlayerSettings가 영구 변경되지 않도록, 호출 직전에 PlayerSettingsSnapshot.Capture()가
         /// 실행되어 있어야 한다 (AITConvertCore.DoExport 참조). 이 메서드는 Init() 외부에서도
         /// 테스트가 부수 효과(AssetDatabase.Refresh 등) 없이 설정만 검증할 수 있도록 분리되었다.
         /// </summary>

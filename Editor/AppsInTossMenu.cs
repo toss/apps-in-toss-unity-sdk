@@ -248,7 +248,7 @@ namespace AppsInToss
 
         // ==================== Publish ====================
         [MenuItem("AIT/Publish", false, 31)]
-        public static void Publish()
+        public static async void Publish()
         {
             if (AITDeprecationChecker.BlockIfDeprecated()) return;
             var config = UnityUtil.GetEditorConf();
@@ -256,6 +256,9 @@ namespace AppsInToss
 
             // Configuration Window 미flush 변경분을 빌드 진입 전 디스크에 강제 기록 (유실 방지)
             AssetDatabase.SaveAssets();
+
+            // 리로드를 유발할 수 있는 컴파일/업데이트가 끝난 뒤 빌드 진입.
+            if (!await AITEditorIdleWaiter.WaitAsync()) return;
 
             // 빌드 전 배포 키 사전 체크 (fail-fast)
             string deploymentKey = AITCredentialsUtil.GetDeploymentKey();
@@ -548,7 +551,7 @@ namespace AppsInToss
         // 빌드 실행 메서드들
         // ============================================
 
-        private static void ExecuteBuildAndPackage()
+        private static async void ExecuteBuildAndPackage()
         {
             var config = UnityUtil.GetEditorConf();
             if (!PathValidator.ValidateSettingsForPackage(config)) return;
@@ -556,6 +559,9 @@ namespace AppsInToss
             // Configuration Window에서 방금 입력한 변경이 디스크에 flush되기 전 상태일 수 있다.
             // 빌드 중 도메인 리로드 또는 Editor 강제 종료 시 유실을 방지하기 위해 강제 flush.
             AssetDatabase.SaveAssets();
+
+            // 리로드를 유발할 수 있는 컴파일/업데이트가 끝난 뒤 빌드 진입.
+            if (!await AITEditorIdleWaiter.WaitAsync()) return;
 
             Debug.Log("AIT: 전체 빌드 & 패키징 시작...");
             buildStopwatch.Restart();

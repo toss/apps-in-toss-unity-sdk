@@ -948,6 +948,10 @@ namespace AppsInToss
         // 여기에 쓰면 설치 방식에 무관하게 쓰기 가능. 플레이어 번들은 Resources/ 를 자동 포함함.
         private const string VersionInfoAssetPath = "Assets/Resources/AITVersionInfo.json";
 
+        // Resources 폴더를 우리가 생성했는지 추적 — cleanup 시 빈 폴더만 삭제하고
+        // 사용자가 이미 사용 중이던 Resources/ 는 건드리지 않기 위함.
+        private static bool _createdResourcesDir;
+
         /// <summary>
         /// 빌드 직전 Assets/Resources/AITVersionInfo.json 에 Version/CommitHash/ReleaseDateTime 기록.
         /// .cs 파일 수정과 달리 .json은 스크립트 컴파일/도메인 리로드를 유발하지 않는다.
@@ -957,19 +961,18 @@ namespace AppsInToss
         {
             try
             {
-                string commitHash = GetGitCommitHash();
-                string releaseDateTime = DateTime.UtcNow.ToString("yyyyMMdd_HHmm");
                 // AITVersion.Version은 EnsureLoaded 경로에 따라 "unknown"으로 초기화될 수 있어
                 // 패키지의 권위 있는 소스인 package.json 에서 직접 읽는다.
-                string version = ResolveSdkVersion();
+                var payload = new AITVersion.VersionInfoPayload
+                {
+                    version = ResolveSdkVersion(),
+                    releaseDateTime = DateTime.UtcNow.ToString("yyyyMMdd_HHmm"),
+                    commitHash = GetGitCommitHash(),
+                };
 
-                // AITVersion.VersionInfoPayload와 필드명 일치 (JsonUtility는 필드명 기반 매칭)
-                string json =
-                    "{\n" +
-                    $"  \"version\": \"{version}\",\n" +
-                    $"  \"releaseDateTime\": \"{releaseDateTime}\",\n" +
-                    $"  \"commitHash\": \"{commitHash}\"\n" +
-                    "}\n";
+                // JsonUtility.ToJson 으로 직렬화 — 수동 문자열 보간의 이스케이프 누락을 방지.
+                // 필드명은 VersionInfoPayload 의 public field 이름과 런타임 read 경로가 공유.
+                string json = JsonUtility.ToJson(payload, prettyPrint: true);
 
                 string projectPath = UnityUtil.GetProjectPath();
                 string absolutePath = Path.Combine(projectPath, VersionInfoAssetPath);
@@ -977,12 +980,13 @@ namespace AppsInToss
                 if (!Directory.Exists(directory))
                 {
                     Directory.CreateDirectory(directory);
+                    _createdResourcesDir = true;
                 }
 
                 File.WriteAllText(absolutePath, json);
                 // Resources로 인식시키기 위해 임포트 (스크립트가 아니므로 도메인 리로드 없음)
                 AssetDatabase.ImportAsset(VersionInfoAssetPath, ImportAssetOptions.ForceSynchronousImport);
-                Debug.Log($"[AIT] 버전 정보 JSON 기록: Version={version}, CommitHash={commitHash}, ReleaseDateTime={releaseDateTime}");
+                Debug.Log($"[AIT] 버전 정보 JSON 기록: Version={payload.version}, CommitHash={payload.commitHash}, ReleaseDateTime={payload.releaseDateTime}");
                 return true;
             }
             catch (Exception e)
@@ -1021,16 +1025,32 @@ namespace AppsInToss
 
         /// <summary>
         /// 빌드 후 Assets/Resources/AITVersionInfo.json 및 .meta 파일을 제거해
-        /// 사용자 프로젝트에 산출물이 남지 않도록 한다.
+        /// 사용자 프로젝트에 산출물이 남지 않도록 한다. 우리가 새로 만든 Resources/ 폴더가
+        /// 비어 있다면 폴더 자체도 정리한다 (사용자가 원래 사용 중이던 Resources/ 는 보존).
         /// </summary>
         private static void RemoveVersionInfoJson()
         {
             try
             {
                 // AssetDatabase.DeleteAsset이 파일과 .meta를 함께 삭제 (스크립트 아님 → 리로드 없음)
-                if (AssetDatabase.DeleteAsset(VersionInfoAssetPath))
+                if (!AssetDatabase.DeleteAsset(VersionInfoAssetPath))
                 {
-                    Debug.Log("[AIT] 버전 정보 JSON 제거 완료");
+                    return;
+                }
+
+                Debug.Log("[AIT] 버전 정보 JSON 제거 완료");
+
+                // 우리가 생성한 빈 Resources/ 폴더 정리
+                if (_createdResourcesDir)
+                {
+                    _createdResourcesDir = false;
+                    string projectPath = UnityUtil.GetProjectPath();
+                    string resourcesAbs = Path.Combine(projectPath, "Assets/Resources");
+                    if (Directory.Exists(resourcesAbs)
+                        && Directory.GetFileSystemEntries(resourcesAbs).Length == 0)
+                    {
+                        AssetDatabase.DeleteAsset("Assets/Resources");
+                    }
                 }
             }
             catch (Exception e)

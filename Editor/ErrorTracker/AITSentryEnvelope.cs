@@ -109,8 +109,28 @@ namespace AppsInToss.Editor.ErrorTracker
             string release = null,
             string environment = null)
         {
+            return BuildErrorEventEnvelope(
+                dsn, exceptionType, exceptionValue, stackTrace,
+                out _,
+                level, tags, extra, breadcrumbs, fingerprint, release, environment);
+        }
+
+        internal static string BuildErrorEventEnvelope(
+            string dsn,
+            string exceptionType,
+            string exceptionValue,
+            string stackTrace,
+            out string eventId,
+            string level = "error",
+            Dictionary<string, string> tags = null,
+            Dictionary<string, string> extra = null,
+            List<Breadcrumb> breadcrumbs = null,
+            string[] fingerprint = null,
+            string release = null,
+            string environment = null)
+        {
             var dsnComponents = ParseDsn(dsn);
-            var eventId = GenerateEventId();
+            eventId = GenerateEventId();
             var now = DateTime.UtcNow;
             var timestamp = FormatTimestamp(now);
 
@@ -231,6 +251,144 @@ namespace AppsInToss.Editor.ErrorTracker
 
             sb.Append('}');
 
+            return sb.ToString();
+        }
+
+        #endregion
+
+        #region Message Event Envelope
+
+        /// <summary>
+        /// 메시지 기반 이벤트 envelope을 생성하고 event_id를 반환합니다.
+        /// 예외 없이 단순 메시지로 이벤트를 만들고 싶을 때 사용합니다 (User Feedback 수동 제보 등).
+        /// </summary>
+        internal static string BuildMessageEventEnvelope(
+            string dsn,
+            string message,
+            string level,
+            Dictionary<string, string> tags,
+            List<Breadcrumb> breadcrumbs,
+            string release,
+            string environment,
+            out string eventId)
+        {
+            var dsnComponents = ParseDsn(dsn);
+            eventId = GenerateEventId();
+            var now = DateTime.UtcNow;
+            var timestamp = FormatTimestamp(now);
+
+            if (string.IsNullOrEmpty(release))
+            {
+                release = $"{SdkName}@{AITVersion.Version}";
+            }
+
+            var sb = new StringBuilder(2048);
+            BuildEnvelopeHeader(sb, eventId, dsnComponents, now);
+            sb.Append('\n');
+            sb.Append("{\"type\":\"event\"}");
+            sb.Append('\n');
+
+            sb.Append('{');
+            AppendJsonKeyValue(sb, "event_id", eventId, false);
+            AppendJsonKeyValue(sb, "timestamp", timestamp);
+            AppendJsonKeyValue(sb, "platform", Platform);
+            AppendJsonKeyValue(sb, "level", string.IsNullOrEmpty(level) ? "info" : level);
+            if (!string.IsNullOrEmpty(release))
+                AppendJsonKeyValue(sb, "release", release);
+            if (!string.IsNullOrEmpty(environment))
+                AppendJsonKeyValue(sb, "environment", environment);
+
+            // Sentry spec: message field is an object { "formatted": "..." }
+            sb.Append(",\"message\":{");
+            AppendJsonKeyValue(sb, "formatted", message ?? string.Empty, false);
+            sb.Append('}');
+
+            if (tags != null && tags.Count > 0)
+            {
+                sb.Append(",\"tags\":{");
+                AppendDictionary(sb, tags);
+                sb.Append('}');
+            }
+
+            if (breadcrumbs != null && breadcrumbs.Count > 0)
+            {
+                sb.Append(",\"breadcrumbs\":{\"values\":[");
+                for (int i = 0; i < breadcrumbs.Count; i++)
+                {
+                    if (i > 0) sb.Append(',');
+                    var bc = breadcrumbs[i];
+                    sb.Append('{');
+                    AppendJsonKeyValue(sb, "timestamp", FormatTimestamp(bc.Timestamp), false);
+                    if (!string.IsNullOrEmpty(bc.Category)) AppendJsonKeyValue(sb, "category", bc.Category);
+                    if (!string.IsNullOrEmpty(bc.Message)) AppendJsonKeyValue(sb, "message", bc.Message);
+                    if (!string.IsNullOrEmpty(bc.Level)) AppendJsonKeyValue(sb, "level", bc.Level);
+                    sb.Append('}');
+                }
+                sb.Append("]}");
+            }
+
+            AppendContexts(sb);
+            AppendSdkInfoObject(sb, true);
+            sb.Append('}');
+
+            return sb.ToString();
+        }
+
+        #endregion
+
+        #region User Report Item
+
+        /// <summary>
+        /// 기존 에러 이벤트(eventId)에 user_report만 추가로 붙이기 위한 독립 envelope을 생성합니다.
+        /// envelope header + user_report item 으로 구성됩니다 (event item 없음).
+        /// Build 실패 다이얼로그 등에서 직전에 캡처된 에러 이벤트에 사용자 의견을 연결할 때 사용합니다.
+        /// </summary>
+        internal static string BuildStandaloneUserReportEnvelope(
+            string dsn,
+            string eventId,
+            string email,
+            string name,
+            string comments)
+        {
+            var dsnComponents = ParseDsn(dsn);
+            var now = DateTime.UtcNow;
+
+            var sb = new StringBuilder(512);
+            BuildEnvelopeHeader(sb, eventId, dsnComponents, now);
+            sb.Append('\n');
+            sb.Append(BuildUserReportItem(eventId, email, name, comments));
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Sentry Envelope 의 user_report 아이템을 문자열로 생성합니다.
+        /// header + payload 두 줄 구성. 반환값은 개행(\n)으로 구분되어 있습니다.
+        /// </summary>
+        internal static string BuildUserReportItem(
+            string eventId,
+            string email,
+            string name,
+            string comments)
+        {
+            var payload = new StringBuilder(256);
+            payload.Append('{');
+            AppendJsonKeyValue(payload, "event_id", eventId, false);
+            if (!string.IsNullOrEmpty(email))
+                AppendJsonKeyValue(payload, "email", email);
+            if (!string.IsNullOrEmpty(name))
+                AppendJsonKeyValue(payload, "name", name);
+            if (!string.IsNullOrEmpty(comments))
+                AppendJsonKeyValue(payload, "comments", comments);
+            payload.Append('}');
+
+            string payloadStr = payload.ToString();
+            int length = Encoding.UTF8.GetByteCount(payloadStr);
+
+            var sb = new StringBuilder(payloadStr.Length + 64);
+            sb.Append("{\"type\":\"user_report\",\"length\":");
+            sb.Append(length);
+            sb.Append("}\n");
+            sb.Append(payloadStr);
             return sb.ToString();
         }
 

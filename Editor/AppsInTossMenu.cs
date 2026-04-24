@@ -8,6 +8,8 @@ using UnityEditor;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
 using AppsInToss.Editor;
+using AppsInToss.Editor.ErrorTracker;
+using AppsInToss.Editor.IssueReport;
 using AppsInToss.Editor.Menu;
 
 namespace AppsInToss
@@ -510,6 +512,15 @@ namespace AppsInToss
             AITConfigurationWindow.ShowWindow();
         }
 
+        // ==================== 이슈 제보 ====================
+
+        // priority 300: Configuration/Sentry 블록에서 11 이상 떨어져 있어 Unity 가 자동으로 구분선을 넣어준다.
+        [MenuItem("AIT/이슈 제보하기", false, 300)]
+        public static void OpenIssueReport()
+        {
+            AITIssueReportWindow.Open(AITIssueReportContext.Manual);
+        }
+
         // ==================== Sentry ====================
         [MenuItem("AIT/Install Sentry SDK", false, 211)]
         public static void InstallSentry()
@@ -743,30 +754,33 @@ namespace AppsInToss
                         if (!string.IsNullOrEmpty(result.Error))
                             Debug.LogError($"AIT: [stderr] {result.Error}");
 
-                        string dialogMessage = "배포에 실패했습니다.";
-                        if (!string.IsNullOrEmpty(errorDetail))
-                        {
-                            dialogMessage += $"\n\n{errorDetail}";
-                        }
-
-                        // 403/401 에러 시 트러블슈팅 가이드 추가
                         bool isAuthError = !string.IsNullOrEmpty(errorDetail) &&
                             (errorDetail.Contains("403") || errorDetail.Contains("401") ||
                              errorDetail.Contains("Forbidden") || errorDetail.Contains("Unauthorized"));
+
+                        string shortReason = isAuthError ? "인증 실패" : "서버 오류";
+                        string cause = !string.IsNullOrEmpty(errorDetail)
+                            ? errorDetail
+                            : "배포 서버로부터 오류 응답을 받았습니다. Console 로그에서 상세 내용을 확인해주세요.";
+
+                        string title = $"배포 실패 ({shortReason})";
+                        string dialogMessage =
+                            "앱인토스 미니앱 배포에 실패했습니다.\n\n" +
+                            $"{cause}";
+
                         if (isAuthError)
                         {
-                            dialogMessage += $"\n\n다음 항목을 확인해주세요:";
-                            dialogMessage += $"\n• 배포 키가 올바른지 확인 (Apps in Toss 콘솔 > 워크스페이스 > 키 관리)";
-                            dialogMessage += $"\n• 앱 이름(appName)이 콘솔에 등록된 이름과 일치하는지 확인";
+                            dialogMessage += "\n\n다음 항목을 확인해주세요:";
+                            dialogMessage += "\n• 배포 키가 올바른지 확인 (Apps in Toss 콘솔 > 워크스페이스 > 키 관리)";
+                            dialogMessage += "\n• 앱 이름(appName)이 콘솔에 등록된 이름과 일치하는지 확인";
                             dialogMessage += $"\n  현재 설정된 appName: {config.appName}";
-                            dialogMessage += $"\n• 배포 키가 해당 앱의 워크스페이스에서 발급되었는지 확인";
+                            dialogMessage += "\n• 배포 키가 해당 앱의 워크스페이스에서 발급되었는지 확인";
                         }
 
-                        dialogMessage += "\n\n자세한 내용은 Console 로그를 확인하세요.";
-                        dialogMessage += "\n\n문제가 지속되면 'Issue 신고'를 클릭하세요.";
+                        dialogMessage += "\n\n문제를 공유하려면 'Issue 신고'를 눌러주세요.";
 
                         int choice = AITPlatformHelper.ShowComplexDialog(
-                            "배포 실패",
+                            title,
                             dialogMessage,
                             "확인",
                             "Issue 신고",
@@ -775,7 +789,10 @@ namespace AppsInToss
                         );
                         if (choice == 1)
                         {
-                            AppsInToss.Editor.AITErrorReporter.OpenIssueInBrowser(AITConvertCore.AITExportError.NETWORK_ERROR, "Deploy");
+                            AITIssueReportWindow.Open(
+                                AITIssueReportContext.BuildFailure,
+                                linkedEventId: AITEditorErrorTracker.LastEventId,
+                                prefilledTitle: title);
                         }
                     }
                 }
@@ -1410,14 +1427,20 @@ namespace AppsInToss
         /// </summary>
         private static void ShowBuildFailedDialog(AITConvertCore.AITExportError result, string callerName)
         {
-            string errorMessage = AITConvertCore.GetErrorMessage(result);
+            string shortReason = AITConvertCore.GetErrorShortReason(result);
+            string cause = AITConvertCore.GetErrorCause(result);
+            string title = $"빌드 실패 ({shortReason})";
+            string message =
+                "앱인토스 미니앱 빌드에 실패했습니다.\n\n" +
+                $"{cause}\n\n" +
+                "문제를 공유하려면 'Issue 신고'를 눌러주세요.";
 
             // 자동 에러 전송 — Sentry에 빌드 에러 캡처 + Console에 로그 출력 (이중 캡처 방지 내장)
             AppsInToss.Editor.ErrorTracker.AITEditorErrorTracker.CaptureBuildError(result, $"AIT: 빌드 실패: {result}", callerName);
 
             int choice = AITPlatformHelper.ShowComplexDialog(
-                "빌드 실패",
-                errorMessage + "\n\n문제가 지속되면 'Issue 신고'를 클릭하세요.",
+                title,
+                message,
                 "확인",
                 "Issue 신고",
                 null,
@@ -1425,7 +1448,10 @@ namespace AppsInToss
             );
             if (choice == 1)
             {
-                AppsInToss.Editor.AITErrorReporter.OpenIssueInBrowser(result, callerName);
+                AITIssueReportWindow.Open(
+                    AITIssueReportContext.BuildFailure,
+                    linkedEventId: AITEditorErrorTracker.LastEventId,
+                    prefilledTitle: title);
             }
         }
 

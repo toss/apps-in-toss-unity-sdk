@@ -8,30 +8,26 @@ using UnityEngine;
 namespace AppsInToss.Editor
 {
     /// <summary>
-    /// 에러 리포트 유틸리티 - GitHub Issue로 빌드 에러를 쉽게 리포트
+    /// 이슈 제보용 컨텍스트 수집 유틸리티 - 콘솔 로그 버퍼와 빌드 리포트 포맷팅을 제공합니다.
+    /// 에디터 로그를 순환 버퍼에 저장하고, 이슈 제보 시 breadcrumb 또는 본문으로 변환할 수 있습니다.
     /// </summary>
     [InitializeOnLoad]
     public static class AITErrorReporter
     {
-        private const string GITHUB_REPO = "toss/apps-in-toss-unity-sdk";
-
         // 로그 타입별 최대 저장 개수
-        private const int MAX_ERROR_LOGS = 50;
-        private const int MAX_WARNING_LOGS = 30;
-        private const int MAX_INFO_LOGS = 20;
-
-        // GitHub URL 길이 제한 (브라우저/서버 호환성을 위해 보수적으로 설정)
-        private const int MAX_URL_LENGTH = 2000;
+        internal const int MAX_ERROR_LOGS = 50;
+        internal const int MAX_WARNING_LOGS = 30;
+        internal const int MAX_INFO_LOGS = 20;
 
         /// <summary>
         /// 로그 엔트리 저장용 구조체
         /// </summary>
-        private struct LogEntry
+        internal readonly struct LogEntry
         {
-            public string Message;
-            public string StackTrace;
-            public LogType Type;
-            public DateTime Timestamp;
+            public readonly string Message;
+            public readonly string StackTrace;
+            public readonly LogType Type;
+            public readonly DateTime Timestamp;
 
             public LogEntry(string message, string stackTrace, LogType type)
             {
@@ -98,130 +94,9 @@ namespace AppsInToss.Editor
         }
 
         /// <summary>
-        /// GitHub Issue URL 생성 및 브라우저에서 열기
-        /// </summary>
-        public static void OpenIssueInBrowser(AITConvertCore.AITExportError errorCode, string profileName = null)
-        {
-            string issueUrl = GenerateIssueUrl(errorCode, profileName);
-            Application.OpenURL(issueUrl);
-            Debug.Log($"[AIT] GitHub Issue 페이지를 열었습니다: {issueUrl}");
-        }
-
-        /// <summary>
-        /// GitHub Issue URL 생성
-        /// </summary>
-        private static string GenerateIssueUrl(AITConvertCore.AITExportError errorCode, string profileName)
-        {
-            string title = $"[빌드 에러] {errorCode}";
-
-            // 초기 body 생성 (제한 없이)
-            string body = GenerateIssueBody(errorCode, profileName);
-            string url = BuildIssueUrl(title, body);
-
-            // 인코딩된 URL이 제한 초과시 body를 점진적으로 줄임
-            int maxBodyChars = body.Length;
-            while (url.Length > MAX_URL_LENGTH && maxBodyChars > 100)
-            {
-                maxBodyChars = maxBodyChars * 2 / 3; // 33%씩 감소
-                body = GenerateIssueBody(errorCode, profileName, maxLength: maxBodyChars);
-                url = BuildIssueUrl(title, body);
-            }
-
-            // 그래도 초과시 최소 body로 대체
-            if (url.Length > MAX_URL_LENGTH)
-            {
-                body = $"## 에러 정보\n- 에러 코드: `{errorCode}`\n\n환경 정보와 에러 내용은 Issue에 직접 작성해주세요.";
-                url = BuildIssueUrl(title, body);
-            }
-
-            return url;
-        }
-
-        /// <summary>
-        /// GitHub Issue URL 빌드 헬퍼
-        /// </summary>
-        private static string BuildIssueUrl(string title, string body)
-        {
-            string encodedTitle = Uri.EscapeDataString(title);
-            string encodedBody = Uri.EscapeDataString(body);
-            return $"https://github.com/{GITHUB_REPO}/issues/new?title={encodedTitle}&body={encodedBody}&labels=bug";
-        }
-
-        /// <summary>
-        /// Issue body 생성
-        /// </summary>
-        private static string GenerateIssueBody(AITConvertCore.AITExportError errorCode, string profileName, int maxLength = 0)
-        {
-            var sb = new StringBuilder();
-            var config = UnityUtil.GetEditorConf();
-
-            // 환경 정보
-            sb.AppendLine("## 환경 정보");
-            sb.AppendLine($"- **SDK 버전**: {AITVersion.FullVersion}");
-            sb.AppendLine($"- **Unity 버전**: {Application.unityVersion}");
-            sb.AppendLine($"- **에디터 플랫폼**: {SystemInfo.operatingSystem}");
-            if (!string.IsNullOrEmpty(profileName))
-            {
-                sb.AppendLine($"- **빌드 프로필**: {profileName}");
-            }
-            sb.AppendLine();
-
-            // 에러 정보
-            sb.AppendLine("## 에러 정보");
-            sb.AppendLine($"- **에러 코드**: `{errorCode}`");
-            sb.AppendLine($"- **에러 메시지**: {AITConvertCore.GetErrorMessage(errorCode)}");
-            sb.AppendLine();
-
-            // 앱 설정
-            if (config != null)
-            {
-                sb.AppendLine("## 앱 설정");
-                if (!string.IsNullOrEmpty(config.appName))
-                {
-                    sb.AppendLine($"- **앱 ID**: {config.appName}");
-                }
-                if (!string.IsNullOrEmpty(config.version))
-                {
-                    sb.AppendLine($"- **버전**: {config.version}");
-                }
-                sb.AppendLine();
-            }
-
-            // 빌드 에러 (BuildReport)
-            string buildErrors = FormatBuildErrors();
-            if (!string.IsNullOrEmpty(buildErrors))
-            {
-                sb.AppendLine("## 빌드 에러 (BuildReport)");
-                sb.AppendLine("```");
-                sb.AppendLine(buildErrors);
-                sb.AppendLine("```");
-                sb.AppendLine();
-            }
-
-            // 콘솔 로그 (길이 제한 고려)
-            int remainingLength = maxLength > 0 ? maxLength - sb.Length - 200 : int.MaxValue;
-            string consoleLogs = FormatLogsForIssue(remainingLength);
-            if (!string.IsNullOrEmpty(consoleLogs))
-            {
-                sb.AppendLine("## 최근 콘솔 로그");
-                sb.AppendLine("```");
-                sb.AppendLine(consoleLogs);
-                sb.AppendLine("```");
-                sb.AppendLine();
-            }
-
-            // 추가 컨텍스트
-            sb.AppendLine("## 추가 컨텍스트");
-            sb.AppendLine("<!-- 여기에 추가 정보를 입력해주세요 -->");
-            sb.AppendLine();
-
-            return sb.ToString();
-        }
-
-        /// <summary>
         /// BuildReport에서 에러 정보 추출
         /// </summary>
-        private static string FormatBuildErrors()
+        internal static string FormatBuildErrors()
         {
             if (lastBuildReport == null)
             {
@@ -251,63 +126,9 @@ namespace AppsInToss.Editor
         }
 
         /// <summary>
-        /// 콘솔 로그 포맷팅 (URL 길이에 맞춰 조정)
-        /// </summary>
-        private static string FormatLogsForIssue(int remainingChars)
-        {
-            var sb = new StringBuilder();
-            int currentLength = 0;
-
-            // 1. Error 로그 우선 (모두 포함 시도)
-            foreach (var log in errorLogs)
-            {
-                string formatted = FormatLogEntry(log);
-                if (remainingChars > 0 && currentLength + formatted.Length > remainingChars)
-                {
-                    sb.AppendLine("... (로그가 너무 길어 일부 생략됨)");
-                    break;
-                }
-                sb.AppendLine(formatted);
-                currentLength += formatted.Length;
-            }
-
-            // 2. Warning 로그 (남은 공간에 맞춰)
-            if (remainingChars <= 0 || currentLength < remainingChars - 100)
-            {
-                foreach (var log in warningLogs)
-                {
-                    string formatted = FormatLogEntry(log);
-                    if (remainingChars > 0 && currentLength + formatted.Length > remainingChars)
-                    {
-                        break;
-                    }
-                    sb.AppendLine(formatted);
-                    currentLength += formatted.Length;
-                }
-            }
-
-            // 3. Info 로그 (남은 공간에 맞춰)
-            if (remainingChars <= 0 || currentLength < remainingChars - 100)
-            {
-                foreach (var log in infoLogs)
-                {
-                    string formatted = FormatLogEntry(log);
-                    if (remainingChars > 0 && currentLength + formatted.Length > remainingChars)
-                    {
-                        break;
-                    }
-                    sb.AppendLine(formatted);
-                    currentLength += formatted.Length;
-                }
-            }
-
-            return sb.Length > 0 ? sb.ToString().TrimEnd() : null;
-        }
-
-        /// <summary>
         /// 단일 로그 엔트리 포맷팅
         /// </summary>
-        private static string FormatLogEntry(LogEntry entry)
+        internal static string FormatLogEntry(LogEntry entry)
         {
             string typeTag = entry.Type switch
             {
@@ -337,6 +158,33 @@ namespace AppsInToss.Editor
             }
 
             return $"{typeTag} {message}";
+        }
+
+        /// <summary>
+        /// 최근 로그 스냅샷을 반환합니다. 각 버킷은 에러 → 경고 → 인포 순으로 이어지며,
+        /// 각 버킷 내부에서는 오래된 순으로 정렬됩니다.
+        /// 반환 리스트는 호출 시점의 스냅샷이므로 이후 버퍼 변경에 영향받지 않습니다.
+        /// 각 인자가 0이면 해당 타입 로그는 결과에서 제외됩니다.
+        /// </summary>
+        internal static IReadOnlyList<LogEntry> GetRecentLogs(
+            int maxErrors = MAX_ERROR_LOGS,
+            int maxWarnings = MAX_WARNING_LOGS,
+            int maxInfo = MAX_INFO_LOGS)
+        {
+            var result = new List<LogEntry>(maxErrors + maxWarnings + maxInfo);
+            TakeTail(errorLogs, maxErrors, result);
+            TakeTail(warningLogs, maxWarnings, result);
+            TakeTail(infoLogs, maxInfo, result);
+            return result;
+        }
+
+        private static void TakeTail(List<LogEntry> src, int count, List<LogEntry> dest)
+        {
+            int start = Math.Max(0, src.Count - count);
+            for (int i = start; i < src.Count; i++)
+            {
+                dest.Add(src[i]);
+            }
         }
 
         /// <summary>

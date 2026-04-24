@@ -30,6 +30,11 @@ namespace AppsInToss.Editor.ErrorTracker
         private static double _lastFlushTime;
         private static double _rateLimitedUntil;
 
+        private static readonly Dictionary<string, Action<SubmitResult>> _pendingCallbacks
+            = new Dictionary<string, Action<SubmitResult>>();
+        private static readonly Dictionary<UnityWebRequest, string> _requestEnvelopes
+            = new Dictionary<UnityWebRequest, string>();
+
         // 참고: AITEditorErrorTracker의 static constructor가 SetDsn()을 호출합니다.
         // _queue, _activeRequests 등은 인라인 초기화로 선언되어 있어
         // static constructor 실행 순서에 관계없이 안전합니다.
@@ -42,6 +47,21 @@ namespace AppsInToss.Editor.ErrorTracker
             // FlushSync는 AITEditorErrorTracker.EndSession()에서 호출됨
             // 이중 등록하면 실행 순서에 따라 세션 종료 envelope이 플러시되지 않을 수 있음
         }
+
+        #region Result Type
+
+        internal struct SubmitResult
+        {
+            public bool Success;
+            public string ErrorMessage;
+            public int? HttpStatusCode;
+
+            public static SubmitResult Ok() => new SubmitResult { Success = true };
+            public static SubmitResult Fail(string msg, int? code = null)
+                => new SubmitResult { Success = false, ErrorMessage = msg, HttpStatusCode = code };
+        }
+
+        #endregion
 
         #region Public API
 
@@ -82,6 +102,49 @@ namespace AppsInToss.Editor.ErrorTracker
         }
 
         /// <summary>
+        /// Envelope을 전송 큐에 추가하고, 전송 완료 시 콜백을 호출합니다.
+        /// 즉시 실패(DSN 미설정, 빈 envelope, Rate Limit)는 동기적으로 콜백을 호출합니다.
+        /// </summary>
+        internal static void SendEnvelope(string envelope, Action<SubmitResult> onComplete)
+        {
+            if (onComplete == null)
+            {
+                SendEnvelope(envelope);
+                return;
+            }
+
+            if (string.IsNullOrEmpty(envelope))
+            {
+                onComplete(SubmitResult.Fail("빈 envelope"));
+                return;
+            }
+            if (!_dsnSet)
+            {
+                onComplete(SubmitResult.Fail("DSN이 설정되지 않았습니다"));
+                return;
+            }
+            if (IsRateLimited())
+            {
+                onComplete(SubmitResult.Fail("요청이 Rate Limit으로 거부되었습니다", 429));
+                return;
+            }
+            if (_queue.Count >= MaxQueueSize)
+            {
+                // 가장 오래된 envelope이 드롭됨 — 해당 콜백에 실패 통보
+                var dropped = _queue.Dequeue();
+                if (_pendingCallbacks.TryGetValue(dropped, out var droppedCb))
+                {
+                    _pendingCallbacks.Remove(dropped);
+                    droppedCb(SubmitResult.Fail("전송 큐가 가득 차 이전 요청이 드롭되었습니다"));
+                }
+            }
+
+            // envelope 키 고유성: Sentry envelope 헤더의 event_id가 GUID이므로 현실적 사용에서 중복 없음
+            _pendingCallbacks[envelope] = onComplete;
+            _queue.Enqueue(envelope);
+        }
+
+        /// <summary>
         /// 큐에 있는 모든 Envelope을 동기적으로 전송합니다.
         /// 에디터 종료 시 호출됩니다.
         /// </summary>
@@ -102,6 +165,8 @@ namespace AppsInToss.Editor.ErrorTracker
             {
                 if (IsRateLimited())
                 {
+                    // Rate Limit 상태에서 남은 큐 항목의 콜백에 실패 통보
+                    DrainQueueCallbacks(SubmitResult.Fail("요청이 Rate Limit으로 거부되었습니다", 429));
                     _queue.Clear();
                     return;
                 }
@@ -111,6 +176,11 @@ namespace AppsInToss.Editor.ErrorTracker
                 flushed++;
             }
 
+            // 타임아웃 또는 maxFlushCount 초과로 남은 큐 항목의 콜백에 실패 통보
+            if (_queue.Count > 0)
+            {
+                DrainQueueCallbacks(SubmitResult.Fail("에디터 종료 중 전송 실패"));
+            }
             _queue.Clear();
         }
 
@@ -136,6 +206,7 @@ namespace AppsInToss.Editor.ErrorTracker
             {
                 if (IsRateLimited())
                 {
+                    DrainQueueCallbacks(SubmitResult.Fail("요청이 Rate Limit으로 거부되었습니다", 429));
                     _queue.Clear();
                     return;
                 }
@@ -153,8 +224,12 @@ namespace AppsInToss.Editor.ErrorTracker
         {
             var request = CreateRequest(envelope);
             if (request == null)
+            {
+                InvokeCallback(envelope, SubmitResult.Fail("요청 생성 실패"));
                 return;
+            }
 
+            _requestEnvelopes[request] = envelope;
             var operation = request.SendWebRequest();
             operation.completed += op =>
             {
@@ -168,7 +243,15 @@ namespace AppsInToss.Editor.ErrorTracker
         {
             var request = CreateRequest(envelope);
             if (request == null)
+            {
+                InvokeCallback(envelope, SubmitResult.Fail("요청 생성 실패"));
                 return;
+            }
+
+            // 등록 필요: HandleResponse의 finally 블록이 이 매핑으로 콜백을 조회함
+            // 참고: InvokeCallback은 EditorApplication.delayCall을 사용하므로,
+            //       에디터 완전 종료 후에는 delayCall이 실행되지 않을 수 있음 (허용된 한계)
+            _requestEnvelopes[request] = envelope;
 
             try
             {
@@ -189,6 +272,11 @@ namespace AppsInToss.Editor.ErrorTracker
             catch (Exception e)
             {
                 Debug.LogWarning($"[AITSentryTransport] 동기 전송 실패: {e}");
+                if (_requestEnvelopes.TryGetValue(request, out var env))
+                {
+                    _requestEnvelopes.Remove(request);
+                    InvokeCallback(env, SubmitResult.Fail($"동기 전송 실패: {e.Message}"));
+                }
                 request.Dispose();
             }
         }
@@ -216,6 +304,8 @@ namespace AppsInToss.Editor.ErrorTracker
 
         private static void HandleResponse(UnityWebRequest request)
         {
+            // result를 try 블록 밖에서 초기화하여 finally에서 확실하게 할당되도록 함
+            var result = SubmitResult.Fail("알 수 없는 오류");
             try
             {
                 // 연결 에러를 먼저 확인 (responseCode가 0일 수 있음)
@@ -228,6 +318,7 @@ namespace AppsInToss.Editor.ErrorTracker
                     Debug.LogWarning(
                         $"[AITSentryTransport] 네트워크 오류: {request.error}"
                     );
+                    result = SubmitResult.Fail(request.error ?? "네트워크 오류");
                     return;
                 }
 
@@ -236,6 +327,7 @@ namespace AppsInToss.Editor.ErrorTracker
                 if (statusCode == 429)
                 {
                     ApplyRateLimitFromHeaders(request);
+                    result = SubmitResult.Fail("Rate Limit", 429);
                     return;
                 }
 
@@ -244,10 +336,19 @@ namespace AppsInToss.Editor.ErrorTracker
                     Debug.LogWarning(
                         $"[AITSentryTransport] Sentry 전송 실패 (HTTP {statusCode})"
                     );
+                    result = SubmitResult.Fail($"HTTP {statusCode}", (int)statusCode);
+                    return;
                 }
+
+                result = SubmitResult.Ok();
             }
             finally
             {
+                if (_requestEnvelopes.TryGetValue(request, out var env))
+                {
+                    _requestEnvelopes.Remove(request);
+                    InvokeCallback(env, result);
+                }
                 request.Dispose();
             }
         }
@@ -316,6 +417,32 @@ namespace AppsInToss.Editor.ErrorTracker
 
             // 기본값: 60초
             _rateLimitedUntil = now + DefaultRateLimitSeconds;
+        }
+
+        #endregion
+
+        #region Callback Helpers
+
+        private static void InvokeCallback(string envelope, SubmitResult result)
+        {
+            if (_pendingCallbacks.TryGetValue(envelope, out var cb))
+            {
+                _pendingCallbacks.Remove(envelope);
+                EditorApplication.delayCall += () => cb(result);
+            }
+        }
+
+        private static void DrainQueueCallbacks(SubmitResult result)
+        {
+            foreach (var envelope in _queue)
+            {
+                if (_pendingCallbacks.TryGetValue(envelope, out var cb))
+                {
+                    _pendingCallbacks.Remove(envelope);
+                    var capturedResult = result;
+                    EditorApplication.delayCall += () => cb(capturedResult);
+                }
+            }
         }
 
         #endregion

@@ -1,9 +1,52 @@
 import { SourceFile, FunctionDeclaration, SyntaxKind } from 'ts-morph';
-import { ParsedAPI, ParsedParameter } from '../types.js';
+import { ParsedAPI, ParsedParameter, ParsedType } from '../types.js';
 import { toPascalCase, getCategoryFromPath } from './utils.js';
 import { parseType } from './type-parser.js';
 import { extractParamDescriptions, extractReturnsDescription, extractExamples } from './jsdoc-extractor.js';
 import { detectCallbackBasedPattern } from './namespace-parser.js';
+import { recordDomViolation } from './dom-violations.js';
+
+/**
+ * DOM 전용 타입 위반을 감지하고 collector에 기록.
+ * 위반이 하나라도 있으면 true를 반환한다.
+ */
+function checkAndRecordDomViolations(
+  functionName: string,
+  parameters: { name: string; type: ParsedType }[],
+  returnType: ParsedType,
+  sourceFile: SourceFile,
+): boolean {
+  const file = sourceFile.getFilePath();
+  const category = getCategoryFromPath(file);
+  let hasViolation = false;
+
+  for (const param of parameters) {
+    if (param.type.kind === 'dom-only') {
+      recordDomViolation({
+        functionName,
+        category,
+        location: 'parameter',
+        paramName: param.name,
+        rawType: param.type.raw ?? param.type.name,
+        file,
+      });
+      hasViolation = true;
+    }
+  }
+
+  if (returnType.kind === 'dom-only') {
+    recordDomViolation({
+      functionName,
+      category,
+      location: 'return',
+      rawType: returnType.raw ?? returnType.name,
+      file,
+    });
+    hasViolation = true;
+  }
+
+  return hasViolation;
+}
 
 /**
  * Permission 지원 여부 확인
@@ -53,6 +96,10 @@ export function parseFunctionDeclaration(
   });
 
   const returnType = parseType(func.getReturnType());
+
+  if (checkAndRecordDomViolations(name, parameters, returnType, sourceFile)) {
+    return null;
+  }
 
   // returnType이 Promise인지 확인하여 동기/비동기 구분
   const isAsync = returnType.kind === 'promise';
@@ -124,6 +171,11 @@ export function parseVariableFunction(
   });
 
   const returnType = parseType(signature.getReturnType());
+
+  if (checkAndRecordDomViolations(name, parameters, returnType, sourceFile)) {
+    return null;
+  }
+
   // returnType이 Promise인지 확인하여 동기/비동기 구분
   const isAsync = returnType.kind === 'promise';
   const hasPermission = false; // TODO: 검증 로직 추가

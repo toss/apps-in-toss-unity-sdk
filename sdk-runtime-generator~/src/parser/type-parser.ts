@@ -9,12 +9,12 @@ import { cleanTypeName } from './utils.js';
 export function parseType(typeNode: any): ParsedType {
   const typeText = typeNode.getText?.() || typeNode.toString();
 
-  // DOM/브라우저 전용 타입 감지 (순환 참조로 인한 스택 오버플로우 방지)
-  // Unity에서는 DOM 타입을 사용할 수 없으므로 'object'로 처리
+  // DOM/브라우저 전용 타입 감지 — Unity에서는 사용 불가하므로 sentinel로 표시.
+  // 단일 DOM 타입 또는 union 잔여 0개일 때만 sentinel이 외부로 새어 나간다 (api-parser에서 위반으로 검출됨).
   if (DOM_TYPES.has(typeText)) {
     return {
-      name: 'object',
-      kind: 'primitive',
+      name: typeText,
+      kind: 'dom-only',
       raw: typeText,
     };
   }
@@ -173,19 +173,34 @@ export function parseType(typeNode: any): ParsedType {
       t.name !== 'null' && t.name !== 'undefined'
     );
 
-    // 단일 타입 + null/undefined = nullable 타입
-    if (nullTypes.length > 0 && nonNullTypes.length === 1) {
+    // DOM 타입 필터링: non-null 멤버에서 DOM-only 타입 제거
+    const nonDomTypes = nonNullTypes.filter((t: ParsedType) => t.kind !== 'dom-only');
+
+    // DOM 타입만 남은 경우 (non-DOM 멤버가 0개): dom-only sentinel 반환
+    if (nonDomTypes.length === 0) {
       return {
-        ...nonNullTypes[0],
-        isNullable: true,
+        name: typeText,
+        kind: 'dom-only',
         raw: typeText,
       };
     }
 
+    // DOM 제거 후 단일 타입만 남은 경우: 해당 타입 반환 (nullable 여부 보존)
+    if (nonDomTypes.length === 1) {
+      const result: ParsedType = {
+        ...nonDomTypes[0],
+        raw: typeText,
+      };
+      if (nullTypes.length > 0) {
+        result.isNullable = true;
+      }
+      return result;
+    }
+
     // Discriminated Union 감지: 객체 1개 + 문자열 리터럴 N개
     // undefined가 포함된 경우 제외하고 검사 (T | "error1" | "error2" | undefined)
-    const objectTypes = nonNullTypes.filter((t: ParsedType) => t.kind === 'object');
-    const stringLiterals = nonNullTypes.filter((t: ParsedType) =>
+    const objectTypes = nonDomTypes.filter((t: ParsedType) => t.kind === 'object');
+    const stringLiterals = nonDomTypes.filter((t: ParsedType) =>
       t.kind === 'primitive' && t.name === 'string' && t.raw.startsWith('"')
     );
 
@@ -195,7 +210,7 @@ export function parseType(typeNode: any): ParsedType {
       const result: ParsedType = {
         name: typeText,
         kind: 'union',
-        unionTypes: nonNullTypes, // undefined 제외
+        unionTypes: nonDomTypes, // undefined 및 DOM 타입 제외
         raw: typeText,
         isDiscriminatedUnion: true,
         successType: objectTypes[0],
@@ -208,12 +223,16 @@ export function parseType(typeNode: any): ParsedType {
       return result;
     }
 
-    return {
+    const finalResult: ParsedType = {
       name: typeText,
       kind: 'union',
-      unionTypes: parsedUnionTypes,
+      unionTypes: nonDomTypes,
       raw: typeText,
     };
+    if (nullTypes.length > 0) {
+      finalResult.isNullable = true;
+    }
+    return finalResult;
   }
 
   // Intersection 타입 (예: Sku & { processProductGrant: ... })

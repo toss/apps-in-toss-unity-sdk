@@ -2,6 +2,7 @@ import { SourceFile, FunctionDeclaration, SyntaxKind } from 'ts-morph';
 import { ParsedAPI, ParsedParameter, ParsedType, NestedCallback } from '../types.js';
 import { toPascalCase, getNamespaceCategory, getCategoryFromPath } from './utils.js';
 import { parseType } from './type-parser.js';
+import { recordDomViolation } from './dom-violations.js';
 import { extractJsDocForProperty, extractParamDescriptions, extractReturnsDescription, extractExamples } from './jsdoc-extractor.js';
 import {
   detectEventNamespaces,
@@ -189,15 +190,20 @@ export function parseNamespaceObject(
     }) || [];
 
     const returnType = parseType(signature.getReturnType());
-    const isAsync = returnType.kind === 'promise';
+
+    // 네임스페이스를 카테고리로 사용
+    const category = getNamespaceCategory(namespaceName);
 
     // C# 메서드 이름: 네임스페이스 + PascalCase 메서드명
     // 예: IAP.getProductItemList -> IAPGetProductItemList
     const pascalMethodName = toPascalCase(methodName);
     const fullName = `${namespaceName}${pascalMethodName}`;
 
-    // 네임스페이스를 카테고리로 사용
-    const category = getNamespaceCategory(namespaceName);
+    if (checkAndRecordDomViolationsNs(fullName, parameters, returnType, sourceFile, category)) {
+      continue;
+    }
+
+    const isAsync = returnType.kind === 'promise';
 
     // 중첩 콜백 감지 (options 파라미터 내부의 함수 타입)
     const nestedCallbacks = detectNestedCallbacks(parameters);
@@ -335,6 +341,10 @@ function parseFunctionDeclarationForNamespace(
 
   const returnType = parseType(func.getReturnType());
 
+  if (checkAndRecordDomViolationsNs(name, parameters, returnType, sourceFile, getCategoryFromPath(sourceFile.getFilePath()))) {
+    return null;
+  }
+
   // returnType이 Promise인지 확인하여 동기/비동기 구분
   const isAsync = returnType.kind === 'promise';
   const hasPermission = checkPermissionSupport(func);
@@ -403,6 +413,11 @@ function parseVariableFunctionForNamespace(
   });
 
   const returnType = parseType(signature.getReturnType());
+
+  if (checkAndRecordDomViolationsNs(name, parameters, returnType, sourceFile, getCategoryFromPath(sourceFile.getFilePath()))) {
+    return null;
+  }
+
   // returnType이 Promise인지 확인하여 동기/비동기 구분
   const isAsync = returnType.kind === 'promise';
 
@@ -436,4 +451,43 @@ function checkPermissionSupport(func: FunctionDeclaration): boolean {
   return properties.some(
     prop => prop.getName() === 'getPermission' || prop.getName() === 'openPermissionDialog'
   );
+}
+
+/**
+ * DOM 전용 타입 위반을 감지하고 collector에 기록 (네임스페이스 파서용).
+ * 위반이 하나라도 있으면 true를 반환한다.
+ */
+function checkAndRecordDomViolationsNs(
+  functionName: string,
+  parameters: { name: string; type: ParsedType }[],
+  returnType: ParsedType,
+  sourceFile: SourceFile,
+  category: string,
+): boolean {
+  const file = sourceFile.getFilePath();
+  let hasViolation = false;
+  for (const p of parameters) {
+    if (p.type.kind === 'dom-only') {
+      recordDomViolation({
+        functionName,
+        category,
+        location: 'parameter',
+        paramName: p.name,
+        rawType: p.type.raw ?? p.type.name,
+        file,
+      });
+      hasViolation = true;
+    }
+  }
+  if (returnType.kind === 'dom-only') {
+    recordDomViolation({
+      functionName,
+      category,
+      location: 'return',
+      rawType: returnType.raw ?? returnType.name,
+      file,
+    });
+    hasViolation = true;
+  }
+  return hasViolation;
 }

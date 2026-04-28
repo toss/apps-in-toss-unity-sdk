@@ -58,7 +58,7 @@ export interface ParsedParameter {
  */
 export interface ParsedType {
   name: string;
-  kind: 'primitive' | 'object' | 'array' | 'promise' | 'function' | 'union' | 'record' | 'unknown';
+  kind: 'primitive' | 'object' | 'array' | 'promise' | 'function' | 'union' | 'record' | 'unknown' | 'dom-only';
   properties?: ParsedProperty[];
   elementType?: ParsedType;
   promiseType?: ParsedType;

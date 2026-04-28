@@ -80,6 +80,12 @@ namespace AppsInToss.Editor.ErrorTracker
             // 사용자 프로젝트 에셋 문제
             "matches more than one built-in atlases",
             "Warnings during import of AudioClip",
+            // FMOD/오디오 — 사용자 에셋 import/포맷 문제
+            "Cannot create FMOD::Sound instance for clip",
+            "Failed getting load state of FSB for audio clip",
+            "Cannot load audio data for audio clip",
+            // Animator — 사용자 컨트롤러 설정 누락
+            "doesn't have an Exit Time or any condition",
 
             // Unity 패키지 내부
             "Localization-String-Tables-",
@@ -87,6 +93,10 @@ namespace AppsInToss.Editor.ErrorTracker
 
             // 사용자 프로젝트 직렬화 ([Assembly-CSharp] 한정 — SDK 어셈블리의 직렬화 경고는 보호)
             "Fields serialized in [Assembly-CSharp]",
+            // [Assembly-CSharp] 타입의 player/editor 직렬화 mismatch (AdSwitcher 등 사용자 코드)
+            "Type '[Assembly-CSharp]",
+            // 사용자 게임 코드의 player script 컴파일 실패 (스택 없이 메시지만 도착)
+            "Failed to compile player scripts",
 
             // 외부 패키지 (Unity 버전별 괄호 유무에 관계없이 매칭되도록 핵심 문구만 추출)
             "exists but its folder",
@@ -109,6 +119,17 @@ namespace AppsInToss.Editor.ErrorTracker
             "[Validation]",
             "[pnpm]",
             "webgl/Build/",
+        };
+
+        // 외부(샘플/사용자 게임 코드)에서 AIT prefix를 사용하지만 SDK가 출력하지 않는 메시지.
+        // AitKeywords 가드보다 먼저 매칭되어 SDK 보호 가드를 우회하고 노이즈로 분류된다.
+        // 새 prefix 추가 시: SDK 코드에서 grep으로 해당 문자열이 출력되지 않음을 반드시 확인.
+        // 대상 Sentry 이슈:
+        //   - SDK-D2: [AIT Login][src=AIT_MOCK_OR_TIMEOUT] ...
+        //   - SDK-D3: [AIT Login] InitSession failed: FORBIDDEN_ORIGIN
+        private static readonly string[] ExternalAitPrefixes =
+        {
+            "[AIT Login]",
         };
 
         #endregion
@@ -602,11 +623,21 @@ namespace AppsInToss.Editor.ErrorTracker
         /// <summary>
         /// 메시지가 확실히 SDK와 무관한 Unity 내부/사용자 프로젝트 패턴인지 판별합니다.
         /// AIT 키워드(<see cref="AitKeywords"/>)가 포함되면 절대 필터링하지 않습니다.
+        /// 단, <see cref="ExternalAitPrefixes"/>는 SDK가 출력하지 않는 외부 코드 prefix로
+        /// AitKeywords 가드보다 먼저 매칭되어 노이즈로 드롭됩니다.
         /// </summary>
         internal static bool IsKnownNonSdkMessage(string message)
         {
             if (string.IsNullOrEmpty(message))
                 return false;
+
+            // 외부 코드가 사용하는 AIT prefix는 SDK 가드를 우회하여 먼저 드롭한다.
+            // SDK 코드는 이 prefix를 출력하지 않음이 보장되므로 안전.
+            for (int i = 0; i < ExternalAitPrefixes.Length; i++)
+            {
+                if (message.IndexOf(ExternalAitPrefixes[i], StringComparison.Ordinal) >= 0)
+                    return true;
+            }
 
             // SDK 자체 로그는 절대 필터링하지 않음 — AitKeywords 전체를 가드로 사용
             if (MessageContainsSdkKeyword(message))

@@ -26,6 +26,35 @@ public class IsKnownNonSdkMessageTests
 
     #endregion
 
+    #region 외부 AIT prefix (SDK가 출력하지 않는 prefix) — 가드 우회 드롭
+
+    [Test]
+    public void ExternalAitLoginPrefix_AitMockOrTimeout_ReturnsTrue()
+    {
+        // Sentry SDK-D2 — 외부 코드가 [AIT Login] prefix로 출력한 fallback 경고.
+        // SDK 코드에는 "[AIT Login]" 문자열이 존재하지 않으므로 노이즈로 드롭한다.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT Login][src=AIT_MOCK_OR_TIMEOUT] status=RanToCompletion, len=0 → device fallback"));
+    }
+
+    [Test]
+    public void ExternalAitLoginPrefix_ForbiddenOrigin_ReturnsTrue()
+    {
+        // Sentry SDK-D3
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT Login] InitSession failed: FORBIDDEN_ORIGIN"));
+    }
+
+    [Test]
+    public void RegularAitPrefix_NotMatchingExternal_StillProtected()
+    {
+        // "[AIT Login]"이 아닌 일반 [AIT] prefix는 SDK 보호 가드로 필터링되지 않아야 함
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] InitSession started"));
+    }
+
+    #endregion
+
     #region SDK 보호: AIT 키워드 포함 시 절대 필터링 안 함
 
     [Test]
@@ -241,6 +270,45 @@ public class IsKnownNonSdkMessageTests
             "[AIT] Warnings during import of AudioClip Assets/Sounds/bgm.wav"));
     }
 
+    [Test]
+    public void FmodSoundCreateError_ReturnsTrue()
+    {
+        // Sentry NM/NK/N9/CJ 등 — 사용자 프로젝트의 FMOD 오디오 에셋 문제
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Error: Cannot create FMOD::Sound instance for clip \"button_tick\" (FMOD error: Couldn't perform seek operation. ...)"));
+    }
+
+    [Test]
+    public void FmodSoundCreateError_WithAitPrefix_NeverFiltered()
+    {
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] Cannot create FMOD::Sound instance for clip \"foo\""));
+    }
+
+    [Test]
+    public void FmodFsbLoadStateError_ReturnsTrue()
+    {
+        // Sentry CX/N5/N7/N8 — FSB 로드 실패
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Failed getting load state of FSB for audio clip \"bensound-ukulele\""));
+    }
+
+    [Test]
+    public void AudioClipLoadError_ReturnsTrue()
+    {
+        // Sentry P2/P3 — 오디오 데이터 로드 실패
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Error: Cannot load audio data for audio clip \"button_tick\""));
+    }
+
+    [Test]
+    public void AnimatorTransitionMissingExitTime_ReturnsTrue()
+    {
+        // Sentry NY — 사용자 Animator 컨트롤러 설정 누락
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Asset 'Machine': Transition 'Spin -> Exit' in state 'Spin' doesn't have an Exit Time or any condition, transition will be ignored"));
+    }
+
     #endregion
 
     #region Unity 패키지 내부
@@ -276,6 +344,37 @@ public class IsKnownNonSdkMessageTests
         // SDK 어셈블리(AppsInTossSDKEditor 등)의 직렬화 경고는 보호되어야 함
         Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
             "Fields serialized in [AppsInTossSDKEditor] AITConfig changed"));
+    }
+
+    [Test]
+    public void AssemblyCSharpTypeMismatch_ReturnsTrue()
+    {
+        // Sentry NG/NF — 사용자 코드 타입의 player/editor 직렬화 mismatch
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Type '[Assembly-CSharp]AdSwitcher' has an extra field 'adGoogleAdPlacementManager' of type 'AdGoogleAdPlacementManager' in the player and thus can't be serialized"));
+    }
+
+    [Test]
+    public void SdkAssemblyTypeMismatch_NeverFiltered()
+    {
+        // SDK 어셈블리의 동일 패턴은 필터링되지 않아야 함
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Type '[AppsInTossSDKEditor]AITConfig' has an extra field 'foo'"));
+    }
+
+    [Test]
+    public void FailedToCompilePlayerScripts_ReturnsTrue()
+    {
+        // Sentry H3 — 사용자 게임 코드 컴파일 실패 (스택 없이 메시지만 도착)
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Failed to compile player scripts"));
+    }
+
+    [Test]
+    public void FailedToCompilePlayerScripts_WithAitPrefix_NeverFiltered()
+    {
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] Failed to compile player scripts"));
     }
 
     #endregion

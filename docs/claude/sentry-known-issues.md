@@ -38,7 +38,7 @@ resolve 처리됨, 재발 시 모니터링합니다.
 ## 정상 흐름 fallback warning 컨벤션
 
 SDK 정상 흐름의 fallback / timeout / 예측된 분기에서 발생하는 warning은
-`Debug.LogWarning(...)`이 아닌 `AITLog.Warning(msg, sentryCapture: false)`을
+`Debug.LogWarning(...)`이 아닌 `AITLog.Warning(msg, sentryCapture: false)`를
 사용한다 (`Editor/AITLog.cs`).
 
 **판정 기준**: "이 메시지가 Sentry 이슈로 등록되었을 때 SDK 결함 조사가 필요한가?"

@@ -34,3 +34,32 @@ resolve 처리됨, 재발 시 모니터링합니다.
   - "Filter by environment" 활성화 → `edit-mode-test` 차단
   - 추가 안전망: "Filter by error message" → `[AIT-TEST]` prefix 포함 메시지 차단
 - 이 필터 설정 없이는 CI에서 통합 테스트가 돌 때마다 프로덕션 Sentry에 이벤트가 유입됨
+
+## 정상 흐름 fallback warning 컨벤션
+
+SDK 정상 흐름의 fallback / timeout / 예측된 분기에서 발생하는 warning은
+`Debug.LogWarning(...)`이 아닌 `AITLog.Warning(msg, sentryCapture: false)`을
+사용한다 (`Editor/AITLog.cs`).
+
+**판정 기준**: "이 메시지가 Sentry 이슈로 등록되었을 때 SDK 결함 조사가 필요한가?"
+필요 없으면(예: 네트워크 timeout, 사용자 환경 차이로 인한 분기) `sentryCapture: false`.
+
+**예시 (현재 적용)**:
+- `Editor/Menu/PortResolver.cs` — Vite 포트 polling timeout 후 브라우저 직접 열기
+- `Editor/AITDeprecationChecker.cs` — sdk-policy.json fetch 실패 시 호환성 검사 스킵
+
+**리뷰 항목**: 새 PR에서 `Debug.LogWarning(` 추가 시 — 진짜 결함 조사가 필요한지
+호출 지점 컨텍스트로 판정. 불필요하면 `AITLog.Warning(..., sentryCapture: false)` 권고.
+
+## 이중 안전망: strict 게이트 + NonSdkMessagePatterns
+
+`AITEditorErrorTracker.cs`의 필터 체인은 두 메커니즘으로 노이즈를 차단한다.
+
+1. **`NonSdkMessagePatterns`** (`AITEditorErrorTracker.cs:65-`): 알려진 Unity/사용자
+   메시지의 부분 문자열 매칭. 명시적이라 코드 리뷰로 의도 확인 가능.
+2. **strict error_source 게이트** (`ShouldDropAsNonSdkSource`): `DetermineErrorSource()`가
+   `"sdk"`로 분류하지 않은 메시지를 모두 드롭. 새 노이즈가 등장해도 패턴 추가 없이 차단.
+
+두 메커니즘은 독립적이라 한쪽이 실패해도 다른 쪽이 보완한다. strict 게이트가
+SDK 결함을 false negative로 드롭하면 §"무시해도 되는 이슈 패턴" 모니터링에서
+포착 → `IsAitRelated` 화이트리스트 또는 `SdkMessagePatterns` 키워드 추가로 복구.

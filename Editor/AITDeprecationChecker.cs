@@ -124,7 +124,8 @@ namespace AppsInToss.Editor
             }
             catch (Exception e)
             {
-                Debug.LogWarning($"[AIT] sdk-policy.json fetch 실패: {e}");
+                // 네트워크/접근 실패 fallback — SDK 결함 아니므로 Sentry 전송 억제
+                AITLog.Warning($"[AIT] sdk-policy.json fetch 실패: {e}", sentryCapture: false);
                 return null;
             }
 

@@ -153,8 +153,13 @@ Tests~/E2E/SampleUnityProject*/WebGLBuild/
 Tests~/E2E/SampleUnityProject*/Builds/
 Tests~/E2E/SampleUnityProject*/editmode-results.xml
 Tests~/E2E/SampleUnityProject*/Assets/Plugins/E2ETestBridge.jslib*
-Tests~/E2E/SampleUnityProject*/Assets/WebGLTemplates.meta
-Tests~/E2E/SampleUnityProject*/Assets/WebGLTemplates/
+# WebGLTemplates: SDK 자동 생성 부분만 무시. AITTemplate(튜토리얼 자산)은 커밋.
+Tests~/E2E/SampleUnityProject*/Assets/WebGLTemplates/AITTemplate/Runtime/
+Tests~/E2E/SampleUnityProject*/Assets/WebGLTemplates/AITTemplate/Runtime.meta
+Tests~/E2E/SampleUnityProject*/Assets/WebGLTemplates/AITTemplate/TemplateData/
+Tests~/E2E/SampleUnityProject*/Assets/WebGLTemplates/AITTemplate/TemplateData.meta
+Tests~/E2E/SampleUnityProject*/Assets/WebGLTemplates/AITTemplate/loading.html
+Tests~/E2E/SampleUnityProject*/Assets/WebGLTemplates/AITTemplate/loading.html.meta
 Tests~/E2E/build.log
 Tests~/E2E/benchmark*.log
 Tests~/E2E/temp/

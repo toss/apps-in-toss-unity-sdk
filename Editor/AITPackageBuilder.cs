@@ -419,46 +419,8 @@ namespace AppsInToss.Editor
             // 1. package.json - dependencies 머지
             Package.BuildConfigMerger.MergePackageJson(projectBuildConfigPath, sdkBuildConfigPath, buildProjectPath);
 
-            // 2. pnpm-lock.yaml - 프로젝트 lockfile + package.json이 정합 상태일 때만 사용,
-            //    아니면 SDK lockfile로 폴백 (stale lockfile 회귀 방지).
-            string pnpmLockProject = Path.Combine(projectBuildConfigPath, "pnpm-lock.yaml");
-            string pnpmLockSdk = Path.Combine(sdkBuildConfigPath, "pnpm-lock.yaml");
-            string pnpmLockDst = Path.Combine(buildProjectPath, "pnpm-lock.yaml");
-            string projectPackageJson = Path.Combine(projectBuildConfigPath, "package.json");
-
-            bool useProjectLockfile = false;
-            if (File.Exists(pnpmLockProject))
-            {
-                if (File.Exists(projectPackageJson))
-                {
-                    if (Package.LockfileValidator.IsLockfileInSync(projectPackageJson, pnpmLockProject, out string mismatchSummary))
-                    {
-                        useProjectLockfile = true;
-                    }
-                    else
-                    {
-                        Debug.LogWarning(
-                            "[AIT]   ⚠ 프로젝트 pnpm-lock.yaml이 package.json과 정합되지 않아 SDK lockfile로 폴백합니다. " +
-                            "불일치: " + mismatchSummary);
-                    }
-                }
-                else
-                {
-                    Debug.LogWarning(
-                        "[AIT]   ⚠ 프로젝트 pnpm-lock.yaml은 있지만 package.json이 없어 검증 불가. SDK lockfile로 폴백합니다.");
-                }
-            }
-
-            if (useProjectLockfile)
-            {
-                File.Copy(pnpmLockProject, pnpmLockDst, true);
-                Debug.Log("[AIT]   ✓ pnpm-lock.yaml (프로젝트에서 복사, 정합 확인됨)");
-            }
-            else if (File.Exists(pnpmLockSdk))
-            {
-                File.Copy(pnpmLockSdk, pnpmLockDst, true);
-                Debug.Log("[AIT]   ✓ pnpm-lock.yaml (SDK에서 복사)");
-            }
+            // 2. pnpm-lock.yaml - 정합성 검증 후 폴백 정책 (Fix A, BuildConfigMerger 위임)
+            Package.BuildConfigMerger.CopyPnpmLockfileWithFallback(projectBuildConfigPath, sdkBuildConfigPath, buildProjectPath);
 
             // 3. vite.config.ts - 마커 기반 업데이트
             Package.BuildConfigMerger.UpdateViteConfig(projectBuildConfigPath, sdkBuildConfigPath, buildProjectPath, config);

@@ -926,6 +926,70 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       }
     });
 
+    // -------------------------------------------------------------------------
+    // Test 6: Build Customization Tutorial #1 — canvas-confetti
+    // BuildConfig~/src/main.ts 가 번들링되어 confetti 가 발사되었는지 검증
+    // (Docs~/BuildCustomization.md 튜토리얼 #1)
+    // -------------------------------------------------------------------------
+    test('6. Tutorial #1: canvas-confetti should fire after page load', async () => {
+      test.setTimeout(30000);
+
+      const confettiFired = await sharedPage.waitForFunction(
+        () => window['__TUTORIAL_CONFETTI_FIRED__'] === true,
+        { timeout: 15000 }
+      ).then(() => true).catch(() => false);
+
+      console.log(`🎉 Confetti fired: ${confettiFired}`);
+
+      testResults.tests['6_tutorial_confetti'] = {
+        passed: confettiFired
+      };
+
+      expect(confettiFired, 'window.__TUTORIAL_CONFETTI_FIRED__ should become true (main.ts bundled and load handler executed)').toBe(true);
+    });
+
+
+    // -------------------------------------------------------------------------
+    // Test 7: Build Customization Tutorial #2 — Firebase
+    // VITE_FIREBASE_* 환경변수가 주입되어 firebase/app 이 초기화되었는지 검증
+    // (Docs~/BuildCustomization.md 튜토리얼 #2)
+    //
+    // 환경변수가 없으면(로컬 개발) 초기화 시도를 건너뛰므로 skip 처리.
+    // CI 에서는 GitHub Secret 으로 주입되어 모든 단계가 통과해야 한다.
+    // -------------------------------------------------------------------------
+    test('7. Tutorial #2: Firebase should initialize when secrets are provided', async () => {
+      test.setTimeout(30000);
+
+      const state = await sharedPage.evaluate(() => ({
+        initialized: window['__TUTORIAL_FIREBASE_INITIALIZED__'] === true,
+        analyticsReady: window['__TUTORIAL_FIREBASE_ANALYTICS_READY__'] === true,
+        error: window['__TUTORIAL_FIREBASE_ERROR__'] || null,
+      }));
+
+      console.log(`🔥 Firebase state: ${JSON.stringify(state)}`);
+
+      const secretsProvided = !state.error || !state.error.includes('VITE_FIREBASE_*');
+
+      if (!secretsProvided) {
+        console.log('⏭️ Firebase secrets not provided, skipping initialization assertion (expected in local runs without .env)');
+        testResults.tests['7_tutorial_firebase'] = {
+          passed: true,
+          skipped: true,
+          reason: 'VITE_FIREBASE_* env vars not provided'
+        };
+        test.skip();
+        return;
+      }
+
+      testResults.tests['7_tutorial_firebase'] = {
+        passed: state.initialized,
+        analyticsReady: state.analyticsReady,
+        error: state.error,
+      };
+
+      expect(state.initialized, `Firebase initializeApp should succeed when VITE_FIREBASE_* are set (error: ${state.error})`).toBe(true);
+    });
+
   }); // end of test.describe.serial
 
 });

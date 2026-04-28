@@ -69,6 +69,53 @@ namespace AppsInToss.Editor.Package
         }
 
         /// <summary>
+        /// pnpm-lock.yaml을 destPath로 복사한다. 프로젝트 lockfile이 package.json과 정합 상태일 때만 사용,
+        /// 그렇지 않으면 SDK lockfile로 폴백한다 (stale lockfile 회귀 방지, Fix A).
+        /// 둘 다 없으면 no-op.
+        /// </summary>
+        internal static void CopyPnpmLockfileWithFallback(string projectBuildConfigPath, string sdkBuildConfigPath, string destPath)
+        {
+            string pnpmLockProject = Path.Combine(projectBuildConfigPath, "pnpm-lock.yaml");
+            string pnpmLockSdk = Path.Combine(sdkBuildConfigPath, "pnpm-lock.yaml");
+            string pnpmLockDst = Path.Combine(destPath, "pnpm-lock.yaml");
+            string projectPackageJson = Path.Combine(projectBuildConfigPath, "package.json");
+
+            bool useProjectLockfile = false;
+            if (File.Exists(pnpmLockProject))
+            {
+                if (File.Exists(projectPackageJson))
+                {
+                    if (LockfileValidator.IsLockfileInSync(projectPackageJson, pnpmLockProject, out string mismatchSummary))
+                    {
+                        useProjectLockfile = true;
+                    }
+                    else
+                    {
+                        Debug.LogWarning(
+                            "[AIT]   ⚠ 프로젝트 pnpm-lock.yaml이 package.json과 정합되지 않아 SDK lockfile로 폴백합니다. " +
+                            "불일치: " + mismatchSummary);
+                    }
+                }
+                else
+                {
+                    Debug.LogWarning(
+                        "[AIT]   ⚠ 프로젝트 pnpm-lock.yaml은 있지만 package.json이 없어 검증 불가. SDK lockfile로 폴백합니다.");
+                }
+            }
+
+            if (useProjectLockfile)
+            {
+                File.Copy(pnpmLockProject, pnpmLockDst, true);
+                Debug.Log("[AIT]   ✓ pnpm-lock.yaml (프로젝트에서 복사, 정합 확인됨)");
+            }
+            else if (File.Exists(pnpmLockSdk))
+            {
+                File.Copy(pnpmLockSdk, pnpmLockDst, true);
+                Debug.Log("[AIT]   ✓ pnpm-lock.yaml (SDK에서 복사)");
+            }
+        }
+
+        /// <summary>
         /// dependencies 딕셔너리를 머지합니다. SDK 패키지가 우선됩니다.
         /// </summary>
         internal static Dictionary<string, object> MergeDependencies(Dictionary<string, object> project, Dictionary<string, object> sdk)

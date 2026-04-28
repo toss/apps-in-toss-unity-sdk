@@ -28,15 +28,19 @@ namespace AppsInToss.Editor.Package
         }
 
         /// <summary>
-        /// pnpm install 재시도 정책 (args, label, cleanFirst).
-        /// 1단계 frozen → 2단계 lockfile 갱신 → 3단계 clean 재시도.
+        /// pnpm install 재시도 정책 (args, label, cleanFirst, deleteLockfileFirst).
+        /// 1단계: frozen-lockfile (lockfile 정합 시 통과)
+        /// 2단계: --no-frozen-lockfile (lockfile 갱신 허용)
+        /// 3단계: lockfile 삭제 후 --no-frozen-lockfile (손상된 lockfile 폐기 후 재생성)
+        /// 4단계: node_modules clean + --no-frozen-lockfile (최종 폴백)
         /// </summary>
-        internal static readonly IReadOnlyList<(string args, string label, bool cleanFirst)> InstallStages =
-            new (string args, string label, bool cleanFirst)[]
+        internal static readonly IReadOnlyList<(string args, string label, bool cleanFirst, bool deleteLockfileFirst)> InstallStages =
+            new (string args, string label, bool cleanFirst, bool deleteLockfileFirst)[]
             {
-                ("install --frozen-lockfile", "frozen-lockfile", false),
-                ("install --no-frozen-lockfile", "lockfile 갱신", false),
-                ("install --no-frozen-lockfile", "clean 재시도", true),
+                ("install --frozen-lockfile",    "frozen-lockfile",         false, false),
+                ("install --no-frozen-lockfile", "lockfile 갱신",            false, false),
+                ("install --no-frozen-lockfile", "lockfile 폐기 후 재시도",  false, true),
+                ("install --no-frozen-lockfile", "clean 재시도",            true,  false),
             };
     }
 }

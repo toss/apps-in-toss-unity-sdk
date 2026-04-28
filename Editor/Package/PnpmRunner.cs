@@ -229,8 +229,9 @@ namespace AppsInToss.Editor.Package
         /// <summary>
         /// ait-build/pnpm-lock.yaml 을 안전하게 삭제한다. 파일이 없으면 no-op.
         /// 파일 잠금 등 IO 예외는 로그만 남기고 무시 — pnpm install이 어차피 lockfile을 재생성한다.
+        /// internal: EditMode 테스트가 임시 디렉토리에서 IO 동작을 검증하기 위해 접근.
         /// </summary>
-        private static void DeleteLockfileIfExists(string buildProjectPath)
+        internal static void DeleteLockfileIfExists(string buildProjectPath)
         {
             string lockfilePath = System.IO.Path.Combine(buildProjectPath, "pnpm-lock.yaml");
             if (!System.IO.File.Exists(lockfilePath)) return;

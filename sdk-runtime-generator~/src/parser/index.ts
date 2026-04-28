@@ -75,3 +75,7 @@ export {
 
 // Constants
 export { DOM_TYPES, NAMESPACE_CATEGORY_OVERRIDES } from './constants.js';
+
+// DOM violations collector
+export { recordDomViolation, drainDomViolations, clearDomViolations } from './dom-violations.js';
+export type { DomViolation } from './dom-violations.js';

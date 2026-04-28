@@ -529,6 +529,9 @@ namespace AppsInToss
         [Preserve]
         [JsonProperty("stack")]
         public string Stack; // optional
+        [Preserve]
+        [JsonProperty("cause")]
+        public object Cause; // optional
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]

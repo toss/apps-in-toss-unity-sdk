@@ -5,7 +5,7 @@ import picocolors from 'picocolors';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import * as crypto from 'crypto';
-import { TypeScriptParser } from './parser/index.js';
+import { TypeScriptParser, drainDomViolations, type DomViolation } from './parser/index.js';
 import { validateAllTypes } from './validators/types.js';
 import { validateCompleteness, printSummary } from './validators/completeness.js';
 import { CSharpGenerator, CSharpTypeGenerator } from './generators/csharp/index.js';
@@ -387,6 +387,22 @@ async function getInstalledWebFrameworkVersion(webFrameworkPath: string): Promis
   }
 }
 
+function formatDomViolations(violations: DomViolation[]): string {
+  const lines = violations.map((v) => {
+    const where =
+      v.location === 'parameter'
+        ? `parameter "${v.paramName}"`
+        : 'return type';
+    const fnLabel = v.category ? `${v.category}.${v.functionName}` : v.functionName;
+    return `  - ${fnLabel}: ${where} has DOM-only type "${v.rawType}" (${v.file})`;
+  });
+  return [
+    `SDK generation failed: ${violations.length} API(s) use unsupported DOM types.`,
+    ...lines,
+    'Refactor these APIs (e.g. accept a CSS selector string only) or remove them from the SDK.',
+  ].join('\n');
+}
+
 /**
  * 메인 생성 로직
  */
@@ -430,6 +446,12 @@ async function generate(options: {
       parser.addSourceDirectory(webAnalyticsPath);
     }
     const allParsedApis = await parser.parseAPIs(FRAMEWORK_APIS);
+
+    // DOM-only 타입 위반 검증: 파싱 중 누적된 위반을 한 번에 보고하고 실패시킨다.
+    const domViolations = drainDomViolations();
+    if (domViolations.length > 0) {
+      throw new Error(formatDomViolations(domViolations));
+    }
 
     // 제외 목록에 있는 API 필터링
     const excludedSet = new Set(EXCLUDED_APIS);

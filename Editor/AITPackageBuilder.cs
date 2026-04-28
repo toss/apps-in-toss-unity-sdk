@@ -419,20 +419,8 @@ namespace AppsInToss.Editor
             // 1. package.json - dependencies 머지
             Package.BuildConfigMerger.MergePackageJson(projectBuildConfigPath, sdkBuildConfigPath, buildProjectPath);
 
-            // 2. pnpm-lock.yaml - 프로젝트 우선, 없으면 SDK
-            string pnpmLockProject = Path.Combine(projectBuildConfigPath, "pnpm-lock.yaml");
-            string pnpmLockSdk = Path.Combine(sdkBuildConfigPath, "pnpm-lock.yaml");
-            string pnpmLockDst = Path.Combine(buildProjectPath, "pnpm-lock.yaml");
-            if (File.Exists(pnpmLockProject))
-            {
-                File.Copy(pnpmLockProject, pnpmLockDst, true);
-                Debug.Log("[AIT]   ✓ pnpm-lock.yaml (프로젝트에서 복사)");
-            }
-            else if (File.Exists(pnpmLockSdk))
-            {
-                File.Copy(pnpmLockSdk, pnpmLockDst, true);
-                Debug.Log("[AIT]   ✓ pnpm-lock.yaml (SDK에서 복사)");
-            }
+            // 2. pnpm-lock.yaml - 정합성 검증 후 폴백 정책 (Fix A, BuildConfigMerger 위임)
+            Package.BuildConfigMerger.CopyPnpmLockfileWithFallback(projectBuildConfigPath, sdkBuildConfigPath, buildProjectPath);
 
             // 3. vite.config.ts - 마커 기반 업데이트
             Package.BuildConfigMerger.UpdateViteConfig(projectBuildConfigPath, sdkBuildConfigPath, buildProjectPath, config);

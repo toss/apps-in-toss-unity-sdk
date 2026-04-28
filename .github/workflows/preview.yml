@@ -217,8 +217,6 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
-        with:
-          version: 10
 
       - name: Checkout (버전 참조용)
         uses: actions/checkout@v6

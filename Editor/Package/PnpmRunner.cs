@@ -6,7 +6,7 @@ namespace AppsInToss.Editor.Package
 {
     /// <summary>
     /// pnpm install 실행 (동기/비동기/백그라운드).
-    /// PnpmStoreManager의 InstallStages 정책을 기반으로 frozen → lockfile 갱신 → clean 재시도 순으로 진행.
+    /// PnpmStoreManager의 InstallStages 정책을 기반으로 frozen → lockfile 갱신 → lockfile 폐기 → clean 재시도 순으로 진행.
     /// 실패 시 NodeModulesValidator.CleanNodeModules로 복구 후 재시도.
     /// </summary>
     internal static class PnpmRunner
@@ -52,12 +52,13 @@ namespace AppsInToss.Editor.Package
             var ct = earlyCtx.PnpmCancellationToken;
             var additionalPaths = AITNpmRunner.BuildAdditionalPaths(earlyCtx.PnpmPath);
 
-            foreach (var (args, label, cleanFirst) in PnpmStoreManager.InstallStages)
+            foreach (var (args, label, cleanFirst, deleteLockfileFirst) in PnpmStoreManager.InstallStages)
             {
                 if (ct.IsCancellationRequested)
                     return AITConvertCore.AITExportError.CANCELLED;
 
                 if (cleanFirst) NodeModulesValidator.CleanNodeModules(earlyCtx.BuildProjectPath);
+                if (deleteLockfileFirst) DeleteLockfileIfExists(earlyCtx.BuildProjectPath);
 
                 string fullArguments = AITNpmRunner.BuildFullArguments(args, earlyCtx.LocalCachePath);
                 string command = $"\"{earlyCtx.PnpmPath}\" {fullArguments}";
@@ -162,9 +163,10 @@ namespace AppsInToss.Editor.Package
         /// </summary>
         internal static AITConvertCore.AITExportError RunPnpmInstallSync(AITPackageBuilder.PackageContext ctx)
         {
-            foreach (var (args, label, cleanFirst) in PnpmStoreManager.InstallStages)
+            foreach (var (args, label, cleanFirst, deleteLockfileFirst) in PnpmStoreManager.InstallStages)
             {
                 if (cleanFirst) NodeModulesValidator.CleanNodeModules(ctx.BuildProjectPath);
+                if (deleteLockfileFirst) DeleteLockfileIfExists(ctx.BuildProjectPath);
                 var result = AITNpmRunner.RunNpmCommandWithCache(
                     ctx.BuildProjectPath, ctx.PnpmPath, args, ctx.LocalCachePath,
                     $"pnpm {label}...");
@@ -195,8 +197,9 @@ namespace AppsInToss.Editor.Package
                 return;
             }
 
-            var (args, label, cleanFirst) = PnpmStoreManager.InstallStages[stageIndex];
+            var (args, label, cleanFirst, deleteLockfileFirst) = PnpmStoreManager.InstallStages[stageIndex];
             if (cleanFirst) NodeModulesValidator.CleanNodeModules(buildProjectPath);
+            if (deleteLockfileFirst) DeleteLockfileIfExists(buildProjectPath);
 
             Debug.Log($"[AIT] pnpm {label} 실행 중...");
 
@@ -221,6 +224,27 @@ namespace AppsInToss.Editor.Package
                 },
                 onOutputReceived: onOutput
             );
+        }
+
+        /// <summary>
+        /// ait-build/pnpm-lock.yaml 을 안전하게 삭제한다. 파일이 없으면 no-op.
+        /// 파일 잠금 등 IO 예외는 로그만 남기고 무시 — pnpm install이 어차피 lockfile을 재생성한다.
+        /// internal: EditMode 테스트가 임시 디렉토리에서 IO 동작을 검증하기 위해 접근.
+        /// </summary>
+        internal static void DeleteLockfileIfExists(string buildProjectPath)
+        {
+            string lockfilePath = System.IO.Path.Combine(buildProjectPath, "pnpm-lock.yaml");
+            if (!System.IO.File.Exists(lockfilePath)) return;
+
+            try
+            {
+                System.IO.File.Delete(lockfilePath);
+                Debug.Log("[AIT] pnpm-lock.yaml 삭제됨 (lockfile 폐기 후 재시도 단계)");
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning($"[AIT] pnpm-lock.yaml 삭제 실패 (무시하고 진행): {e.Message}");
+            }
         }
     }
 }

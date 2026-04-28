@@ -78,6 +78,16 @@
 - SDK API 변경이 필요하면 반드시 `sdk-runtime-generator~/` 내 코드를 수정할 것
 - 생성기 수정 후 검증 순서: `pnpm generate` → `pnpm validate` → `pnpm test`
 
+### pnpm 버전 핀 동기화
+
+`Editor/AITPackageManagerHelper.cs`의 `PNPM_VERSION` 상수와 다음 세 파일의 `"packageManager"` 필드는 **항상 같은 버전**으로 유지해야 한다. 한 곳을 bump하면 나머지도 함께 bump:
+
+- `package.json` (UPM 매니페스트)
+- `sdk-runtime-generator~/package.json`
+- `WebGLTemplates/AITTemplate/BuildConfig~/package.json`
+
+값이 갈라지면 클라이언트 SDK가 사용하는 pnpm과 lockfile을 갱신한 pnpm이 달라져 미세한 specifier drift가 발생할 수 있다.
+
 ### GitHub Actions 관련
 - `gh workflow run` 명령어 사용 불가 (GraphQL 차단) — REST API 사용 필수
 - 워크플로우 트리거 예시와 ID 참조 테이블은 `docs/claude/github-actions.md` 참조

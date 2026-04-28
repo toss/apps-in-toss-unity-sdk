@@ -146,5 +146,22 @@ namespace AppsInToss.Editor.Package.Tests
             StringAssert.Contains("\"2.0.0\"", merged);
             Assert.IsFalse(merged.Contains("\"1.0.0\""), "SDK 버전이 우선해야 하는데 프로젝트 버전이 남아있음");
         }
+
+        [Test]
+        public void MergePackageJson_PreservesSdkPackageManagerField()
+        {
+            // SDK의 top-level packageManager 필드가 머지 결과에 보존되는지 검증.
+            // Fix C 회귀 보호: ait-build/package.json에 pnpm 버전 핀이 들어가야 한다.
+            File.WriteAllText(Path.Combine(_projectDir, "package.json"),
+                "{\"dependencies\":{\"user-pkg\":\"1.0.0\"}}");
+            File.WriteAllText(Path.Combine(_sdkDir, "package.json"),
+                "{\"name\":\"sdk\",\"packageManager\":\"pnpm@10.28.0\",\"dependencies\":{}}");
+
+            BuildConfigMerger.MergePackageJson(_projectDir, _sdkDir, _destDir);
+
+            string merged = File.ReadAllText(Path.Combine(_destDir, "package.json"));
+            StringAssert.Contains("packageManager", merged);
+            StringAssert.Contains("pnpm@10.28.0", merged);
+        }
     }
 }

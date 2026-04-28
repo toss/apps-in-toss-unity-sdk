@@ -103,6 +103,25 @@ namespace AppsInToss.Editor.Package.Tests
         }
 
         [Test]
+        public void IsLockfileInSync_StaleLeftoverInLockfile_ReturnsFalse()
+        {
+            File.WriteAllText(_packageJsonPath,
+                MakePackageJson("\"@apps-in-toss/web-framework\": \"2.4.7\""));
+            File.WriteAllText(_lockfilePath, MakeLockfile("9.0",
+                "      '@apps-in-toss/web-framework':\n" +
+                "        specifier: 2.4.7\n" +
+                "        version: 2.4.7\n" +
+                "      old-dep-removed-from-manifest:\n" +
+                "        specifier: 1.0.0\n" +
+                "        version: 1.0.0\n"));
+
+            bool result = LockfileValidator.IsLockfileInSync(_packageJsonPath, _lockfilePath, out string summary);
+
+            Assert.IsFalse(result);
+            StringAssert.Contains("old-dep-removed-from-manifest", summary);
+        }
+
+        [Test]
         public void IsLockfileInSync_DevDependenciesAlsoChecked()
         {
             File.WriteAllText(_packageJsonPath,

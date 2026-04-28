@@ -12,6 +12,7 @@ namespace AppsInToss.Editor.Package
     /// 외부 YAML 라이브러리에 의존하지 않기 위해 lockfile은 정규식 기반으로
     /// 'importers."."' 섹션의 specifier 값만 추출한다. lockfileVersion이
     /// 검증되지 않은 형식이면 false를 반환하여 안전 폴백을 유도한다.
+    /// internal 멤버는 Editor/AssemblyInfo.cs 의 InternalsVisibleTo 를 통해 테스트 어셈블리에서 접근됩니다.
     /// </summary>
     internal static class LockfileValidator
     {

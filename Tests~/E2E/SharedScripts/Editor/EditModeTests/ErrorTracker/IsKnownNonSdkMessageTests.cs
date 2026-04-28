@@ -142,6 +142,37 @@ public class IsKnownNonSdkMessageTests
         Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage("The Editor does not support 32-bit plugins"));
     }
 
+    [Test]
+    public void SendMessageDuringAwake_ReturnsTrue()
+    {
+        // Sentry KQ/KD/KC/KB — Unity 자체 경고
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "SendMessage cannot be called during Awake, CheckConsistency, or OnValidate."));
+    }
+
+    [Test]
+    public void SendMessageDuringAwake_WithAitPrefix_NeverFiltered()
+    {
+        // SDK 보호 가드: AIT prefix 붙으면 필터 안 함
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] SendMessage cannot be called during Awake, CheckConsistency, or OnValidate."));
+    }
+
+    [Test]
+    public void LegacyAnimationClips_ReturnsTrue()
+    {
+        // Sentry KT/KV — Unity 자체 경고
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Legacy AnimationClips are not allowed in Animator Controllers"));
+    }
+
+    [Test]
+    public void LegacyAnimationClips_WithAitPrefix_NeverFiltered()
+    {
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] Legacy AnimationClips are not allowed in Animator Controllers"));
+    }
+
     #endregion
 
     #region 사용자 프로젝트 에셋 문제
@@ -193,6 +224,21 @@ public class IsKnownNonSdkMessageTests
         // "Script attached to" + "is missing"이지만 Assets/ 경로가 없으면 필터링 안 함
         Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
             "Script attached to 'GameObject' is missing or no valid script"));
+    }
+
+    [Test]
+    public void AudioClipImportWarning_ReturnsTrue()
+    {
+        // Sentry GT/GV — 사용자 프로젝트 에셋 import 경고
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Warnings during import of AudioClip Assets/Sounds/bgm.wav"));
+    }
+
+    [Test]
+    public void AudioClipImportWarning_WithAitPrefix_NeverFiltered()
+    {
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] Warnings during import of AudioClip Assets/Sounds/bgm.wav"));
     }
 
     #endregion
@@ -334,41 +380,6 @@ public class IsKnownNonSdkMessageTests
             "[AIT] GUID [abc123] for asset 'Assets/Foo/bar.png' conflicts with: 'Assets/Baz/bar.png'"));
     }
 
-    #endregion
-
-    #region 신규 추가 패턴 (PR2 strict source gate)
-
-    [Test]
-    public void SendMessageDuringAwake_ReturnsTrue()
-    {
-        // Sentry KQ/KD/KC/KB — Unity 자체 경고
-        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
-            "SendMessage cannot be called during Awake, CheckConsistency, or OnValidate."));
-    }
-
-    [Test]
-    public void SendMessageDuringAwake_WithAitPrefix_NeverFiltered()
-    {
-        // SDK 보호 가드: AIT prefix 붙으면 필터 안 함
-        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
-            "[AIT] SendMessage cannot be called during Awake, CheckConsistency, or OnValidate."));
-    }
-
-    [Test]
-    public void LegacyAnimationClips_ReturnsTrue()
-    {
-        // Sentry KT/KV — Unity 자체 경고
-        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
-            "Legacy AnimationClips are not allowed in Animator Controllers"));
-    }
-
-    [Test]
-    public void LegacyAnimationClips_WithAitPrefix_NeverFiltered()
-    {
-        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
-            "[AIT] Legacy AnimationClips are not allowed in Animator Controllers"));
-    }
-
     [Test]
     public void AddressableGroupSchemasMissing_ReturnsTrue()
     {
@@ -382,21 +393,6 @@ public class IsKnownNonSdkMessageTests
     {
         Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
             "[AIT] Group 'Foo' does not have any associated AddressableAssetGroupSchemas"));
-    }
-
-    [Test]
-    public void AudioClipImportWarning_ReturnsTrue()
-    {
-        // Sentry GT/GV — 사용자 프로젝트 에셋 import 경고
-        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
-            "Warnings during import of AudioClip Assets/Sounds/bgm.wav"));
-    }
-
-    [Test]
-    public void AudioClipImportWarning_WithAitPrefix_NeverFiltered()
-    {
-        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
-            "[AIT] Warnings during import of AudioClip Assets/Sounds/bgm.wav"));
     }
 
     #endregion

@@ -135,8 +135,6 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
-        with:
-          version: 10
 
       - name: web-framework 버전 업데이트 및 SDK 재생성
         working-directory: sdk-runtime-generator~
@@ -630,8 +628,6 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
-        with:
-          version: 10
 
       - name: Checkout (버전 참조용)
         uses: actions/checkout@v6

@@ -311,6 +311,11 @@ namespace AppsInToss.Editor.ErrorTracker
                 && message.IndexOf("immutable packages", StringComparison.OrdinalIgnoreCase) >= 0)
                 return;
 
+            // Strict error_source 게이트: 출처가 SDK로 확정되지 않은 메시지는 전송하지 않음.
+            // DetermineErrorSource는 스택트레이스 우선, 그 다음 메시지 키워드(AIT/Sentry/SdkMessagePatterns) 순으로 분류.
+            if (ShouldDropAsNonSdkSource(message, stackTrace))
+                return;
+
             string level;
             string exceptionType;
 
@@ -627,6 +632,16 @@ namespace AppsInToss.Editor.ErrorTracker
                 return true;
 
             return false;
+        }
+
+        /// <summary>
+        /// strict error_source 게이트 판정. DetermineErrorSource() != "sdk"이면 true(드롭).
+        /// 필터 체인의 다른 단계(LogType, _suppressLogCaptureCount, IsAitRelated, IsKnownNonSdkMessage,
+        /// immutable packages)를 모두 통과한 메시지에 대해 마지막으로 출처를 strict 검사한다.
+        /// </summary>
+        internal static bool ShouldDropAsNonSdkSource(string message, string stackTrace)
+        {
+            return DetermineErrorSource(stackTrace, message) != "sdk";
         }
 
         private static string ExtractExceptionType(string message)

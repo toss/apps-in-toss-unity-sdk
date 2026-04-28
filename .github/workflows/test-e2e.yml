@@ -233,6 +233,10 @@ jobs:
     secrets:
       SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
       KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+      FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
+      FIREBASE_MEASUREMENT_ID: ${{ secrets.FIREBASE_MEASUREMENT_ID }}
 
   # =====================================================
   # E2E Tests - Windows (전체 테스트 실행)
@@ -263,6 +267,10 @@ jobs:
     secrets:
       SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
       KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+      FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
+      FIREBASE_MEASUREMENT_ID: ${{ secrets.FIREBASE_MEASUREMENT_ID }}
 
   # =====================================================
   # Test Report Summary

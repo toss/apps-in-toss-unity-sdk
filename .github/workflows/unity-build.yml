@@ -84,6 +84,18 @@ on:
       KEYCHAIN_PASSWORD:
         description: 'macOS Keychain password for license access'
         required: false
+      FIREBASE_API_KEY:
+        description: 'Firebase Web SDK API key (BuildCustomization tutorial #2)'
+        required: false
+      FIREBASE_PROJECT_ID:
+        description: 'Firebase project ID (BuildCustomization tutorial #2)'
+        required: false
+      FIREBASE_APP_ID:
+        description: 'Firebase Web app ID (BuildCustomization tutorial #2)'
+        required: false
+      FIREBASE_MEASUREMENT_ID:
+        description: 'Firebase Analytics measurement ID (BuildCustomization tutorial #2)'
+        required: false
     outputs:
       artifact-name:
         description: 'Uploaded artifact name'
@@ -619,6 +631,75 @@ jobs:
 
           Set-Content $adTester -Value $content -NoNewline
           Write-Host "Ad IDs injected successfully"
+
+      # =====================================================
+      # Firebase 환경변수 주입 (BuildCustomization 튜토리얼 #2)
+      # 각 sample 의 BuildConfig~/.env 파일을 secrets 로부터 생성한다.
+      # secrets 가 비어 있으면 .env 자체를 생성하지 않아 main.ts 의
+      # try/catch 가 "환경변수가 비어 있습니다" 분기를 타게 한다.
+      # =====================================================
+      - name: Inject Firebase .env (macOS)
+        if: inputs.os == 'macos' && inputs.run-build && (inputs.test-level || '2') != '0'
+        env:
+          FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+          FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
+          FIREBASE_MEASUREMENT_ID: ${{ secrets.FIREBASE_MEASUREMENT_ID }}
+        run: |
+          ENV_FILE="Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}/Assets/WebGLTemplates/AITTemplate/BuildConfig~/.env"
+
+          # BuildConfig~ 디렉토리가 없으면 (이전 버전 sample) 스킵
+          if [ ! -d "$(dirname "$ENV_FILE")" ]; then
+            echo "BuildConfig~ not found, skipping Firebase .env injection"
+            exit 0
+          fi
+
+          if [ -z "$FIREBASE_API_KEY" ] || [ -z "$FIREBASE_APP_ID" ]; then
+            echo "Firebase secrets not provided, skipping .env creation (tutorial #2 will run in 'env vars empty' branch)"
+            exit 0
+          fi
+
+          cat > "$ENV_FILE" <<EOF
+          VITE_FIREBASE_API_KEY=${FIREBASE_API_KEY}
+          VITE_FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID}
+          VITE_FIREBASE_APP_ID=${FIREBASE_APP_ID}
+          VITE_FIREBASE_MEASUREMENT_ID=${FIREBASE_MEASUREMENT_ID}
+          EOF
+
+          echo "Firebase .env written to $ENV_FILE"
+
+      - name: Inject Firebase .env (Windows)
+        if: inputs.os == 'windows' && inputs.run-build && (inputs.test-level || '2') != '0'
+        shell: powershell
+        env:
+          FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+          FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
+          FIREBASE_MEASUREMENT_ID: ${{ secrets.FIREBASE_MEASUREMENT_ID }}
+        run: |
+          $envFile = "Tests~\E2E\SampleUnityProject-${{ inputs.unity-version }}\Assets\WebGLTemplates\AITTemplate\BuildConfig~\.env"
+          $envDir = Split-Path -Parent $envFile
+
+          if (-not (Test-Path $envDir)) {
+            Write-Host "BuildConfig~ not found, skipping Firebase .env injection"
+            exit 0
+          }
+
+          if (-not $env:FIREBASE_API_KEY -or -not $env:FIREBASE_APP_ID) {
+            Write-Host "Firebase secrets not provided, skipping .env creation (tutorial #2 will run in 'env vars empty' branch)"
+            exit 0
+          }
+
+          # PowerShell here-string의 종료 토큰("@)은 반드시 줄의 첫 글자여야 한다.
+          # 또한 .env 파일에 들여쓰기 공백이 들어가지 않도록 단순 join 사용.
+          $lines = @(
+            "VITE_FIREBASE_API_KEY=$($env:FIREBASE_API_KEY)",
+            "VITE_FIREBASE_PROJECT_ID=$($env:FIREBASE_PROJECT_ID)",
+            "VITE_FIREBASE_APP_ID=$($env:FIREBASE_APP_ID)",
+            "VITE_FIREBASE_MEASUREMENT_ID=$($env:FIREBASE_MEASUREMENT_ID)"
+          )
+          Set-Content -Path $envFile -Value ($lines -join "`n") -NoNewline
+          Write-Host "Firebase .env written to $envFile"
 
       # =====================================================
       # EditMode 테스트 (Level 0+, 빌드 없이 C# 순수 로직 검증)

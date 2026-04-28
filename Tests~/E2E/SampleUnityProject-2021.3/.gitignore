@@ -11,8 +11,14 @@
 ait-build/
 webgl/
 
-# WebGL Templates (copied from SDK during build)
-Assets/WebGLTemplates/
+# WebGL Templates: SDK 자동 생성 부분(Runtime/, TemplateData/, loading.html)은 빌드 시 SDK로 덮어쓰므로 무시.
+# 단, AITTemplate/index.html(USER_* 마커 영역) 와 AITTemplate/BuildConfig~ 는 프로젝트 자산이므로 커밋.
+Assets/WebGLTemplates/AITTemplate/Runtime/
+Assets/WebGLTemplates/AITTemplate/Runtime.meta
+Assets/WebGLTemplates/AITTemplate/TemplateData/
+Assets/WebGLTemplates/AITTemplate/TemplateData.meta
+Assets/WebGLTemplates/AITTemplate/loading.html
+Assets/WebGLTemplates/AITTemplate/loading.html.meta
 
 # Package lock files (auto-generated)
 Packages/packages-lock.json

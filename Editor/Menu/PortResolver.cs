@@ -127,7 +127,8 @@ namespace AppsInToss.Editor.Menu
                 {
                     // 타임아웃 — 그래도 브라우저 열기 (사용자가 직접 새로고침 가능)
                     EditorApplication.update -= PollVitePort;
-                    Debug.LogWarning($"[AIT] Vite 포트 {port} 대기 타임아웃 ({maxWaitSeconds}초), 브라우저를 엽니다");
+                    // 정상 흐름의 timeout fallback이므로 Sentry 전송 억제
+                    AITLog.Warning($"[AIT] Vite 포트 {port} 대기 타임아웃 ({maxWaitSeconds}초), 브라우저를 엽니다", sentryCapture: false);
                     Application.OpenURL(url);
                 }
             }

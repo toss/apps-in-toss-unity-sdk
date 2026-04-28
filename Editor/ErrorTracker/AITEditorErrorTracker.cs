@@ -72,9 +72,14 @@ namespace AppsInToss.Editor.ErrorTracker
             "[ServicesCore]",
             "ProfileValueReference: GetValue called with empty id",
             "The Editor does not support 32-bit plugins",
+            // Unity 라이프사이클 경고 — 사용자 MonoBehaviour의 Awake/OnValidate에서 발생
+            "SendMessage cannot be called during Awake, CheckConsistency, or OnValidate",
+            // Unity Animator — 사용자 프로젝트의 레거시 클립 사용
+            "Legacy AnimationClips are not allowed in Animator Controllers",
 
             // 사용자 프로젝트 에셋 문제
             "matches more than one built-in atlases",
+            "Warnings during import of AudioClip",
 
             // Unity 패키지 내부
             "Localization-String-Tables-",
@@ -88,6 +93,9 @@ namespace AppsInToss.Editor.ErrorTracker
 
             // Unity URP 내부
             "exceeds previous array size",
+
+            // 사용자 Addressable 설정
+            "does not have any associated AddressableAssetGroupSchemas",
 
             // 사용자 Unity 설치에 WebGL 모듈 미설치 — SDK-DD
             "Build target 'WebGL' not supported",
@@ -301,6 +309,10 @@ namespace AppsInToss.Editor.ErrorTracker
             // (SDK 자동 업데이트 과정에서 정상적으로 발생할 수 있는 경고)
             if (type == LogType.Warning && message != null
                 && message.IndexOf("immutable packages", StringComparison.OrdinalIgnoreCase) >= 0)
+                return;
+
+            // Strict error_source 게이트: 출처가 SDK로 확정되지 않은 메시지는 전송하지 않음.
+            if (ShouldDropAsNonSdkSource(message, stackTrace))
                 return;
 
             string level;
@@ -619,6 +631,18 @@ namespace AppsInToss.Editor.ErrorTracker
                 return true;
 
             return false;
+        }
+
+        /// <summary>
+        /// strict error_source 게이트 판정. DetermineErrorSource() != "sdk"이면 true(드롭).
+        /// 필터 체인의 다른 단계(LogType, _suppressLogCaptureCount, IsAitRelated, IsKnownNonSdkMessage,
+        /// immutable packages)를 모두 통과한 메시지에 대해 마지막으로 출처를 strict 검사한다.
+        /// 분류 우선순위는 DetermineErrorSource를 따른다: 스택트레이스 우선, 그 다음 메시지 키워드(AIT/Sentry/SdkMessagePatterns).
+        /// </summary>
+        internal static bool ShouldDropAsNonSdkSource(string message, string stackTrace)
+        {
+            // 인수 순서 주의: DetermineErrorSource는 (stackTrace, message) 순.
+            return DetermineErrorSource(stackTrace, message) != "sdk";
         }
 
         private static string ExtractExceptionType(string message)

@@ -186,6 +186,7 @@ namespace AppsInToss.Editor
     ///   리로드가 Save 직전에 발생하면 마지막 변경이 디스크에 반영되지 못할 수 있으나,
     ///   이는 "자식 PID 하나 누락" 정도의 손실이고 asset corruption 은 방지된다.
     /// </summary>
+    [FilePath("Library/AppsInToss/AITBuildSession.asset", FilePathAttribute.Location.ProjectFolder)]
     internal sealed class AITBuildSession : ScriptableSingleton<AITBuildSession>
     {
         [SerializeField] public string sessionId;

@@ -210,14 +210,6 @@ jobs:
     if: success()
 
     steps:
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '20'
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6
-
       - name: Checkout (버전 참조용)
         uses: actions/checkout@v6
         with:
@@ -226,6 +218,16 @@ jobs:
           sparse-checkout: |
             WebGLTemplates/AITTemplate/BuildConfig~/package.json
           sparse-checkout-cone-mode: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          package_json_file: WebGLTemplates/AITTemplate/BuildConfig~/package.json
 
       - name: Install AIT CLI
         run: |

@@ -789,7 +789,9 @@ jobs:
           Write-Host "Running EditMode Tests..."
           Write-Host "Unity Version: ${{ steps.unity-windows.outputs.UNITY_VERSION }}"
 
-          $logFile = "$env:TEMP\unity-editmode-${{ inputs.unity-version }}.log"
+          # GitHub Actions의 runner.temp(=$env:RUNNER_TEMP)와 일치시켜 업로드 step의
+          # path가 정확히 매치되게 한다 ($env:TEMP는 self-hosted Windows에서 다른 경로).
+          $logFile = "$env:RUNNER_TEMP\unity-editmode-${{ inputs.unity-version }}.log"
 
           $proc = Start-Process -FilePath $unityPath -ArgumentList @(
             "-batchmode", "-nographics",
@@ -1097,8 +1099,9 @@ jobs:
         run: |
           $unityPath = "${{ steps.unity-windows.outputs.UNITY_PATH }}"
           $projectPath = "${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ inputs.unity-version }}"
-          $logFile = "$env:TEMP\unity-test-${{ inputs.unity-version }}.log"
-          $resultsFile = "$env:TEMP\unity-test-results-${{ inputs.unity-version }}.xml"
+          # runner.temp(=$env:RUNNER_TEMP)와 일치시켜 업로드 step path가 매치되게 한다.
+          $logFile = "$env:RUNNER_TEMP\unity-test-${{ inputs.unity-version }}.log"
+          $resultsFile = "$env:RUNNER_TEMP\unity-test-results-${{ inputs.unity-version }}.xml"
           $maxWaitSeconds = 600  # Unity 프로세스 최대 대기 시간 (10분)
 
           Write-Host "Running Unity EditMode tests..."
@@ -1414,7 +1417,8 @@ jobs:
             Write-Host "Unity Path: $unityPath"
             Write-Host "Project Path: $projectPath"
 
-            $logFile = "$env:TEMP\unity-build-${{ inputs.unity-version }}.log"
+            # runner.temp(=$env:RUNNER_TEMP)와 일치시켜 업로드 step path가 매치되게 한다.
+            $logFile = "$env:RUNNER_TEMP\unity-build-${{ inputs.unity-version }}.log"
             Write-Host "Starting Unity build..."
             Write-Host "Log file: $logFile"
 

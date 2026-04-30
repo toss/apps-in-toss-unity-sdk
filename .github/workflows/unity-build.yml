@@ -747,7 +747,9 @@ jobs:
           wait $UNITY_PID 2>/dev/null || true
 
           # Unity Test Runner는 테스트 실패 시 exit code 2를 반환
-          # editmode-results.xml을 파싱하여 실제 실패 여부 확인
+          # editmode-results.xml을 파싱하여 실제 실패 여부 확인.
+          # 결과 파일이 없으면 라이선스/Hub/캐시 등 인프라 문제로 Unity가 테스트를 실행하지 못한 것이므로
+          # 회귀가 조용히 묻히지 않도록 fail 처리한다 (분류기가 results-missing으로 잡아낼 수 있도록).
           if [ -f "$RESULTS_FILE" ]; then
             echo "EditMode test results:"
             if grep -q 'result="Failed"' "$RESULTS_FILE"; then
@@ -759,7 +761,8 @@ jobs:
               echo "✓ EditMode tests passed (${PASSED} tests)"
             fi
           else
-            echo "::warning::EditMode test results file not found (tests may not have run)"
+            echo "::error::EditMode test results file not found at $RESULTS_FILE — Unity가 테스트를 실행하지 못함 (라이선스/Hub/캐시 의심)"
+            exit 1
           fi
 
       - name: Run EditMode Tests (Windows)
@@ -825,7 +828,7 @@ jobs:
             $logReader.Close()
           }
 
-          # 결과 확인
+          # 결과 확인 — 결과 파일이 없으면 인프라 문제(라이선스/Hub/캐시 등)이므로 fail 처리한다.
           if (Test-Path $resultsFile) {
             $content = Get-Content $resultsFile -Raw
             if ($content -match 'result="Failed"') {
@@ -836,7 +839,8 @@ jobs:
               Write-Host "EditMode tests passed ($passed tests)"
             }
           } else {
-            Write-Host "::warning::EditMode test results file not found"
+            Write-Host "::error::EditMode test results file not found at $resultsFile — Unity가 테스트를 실행하지 못함 (라이선스/Hub/캐시 의심)"
+            exit 1
           }
 
       - name: Upload EditMode Test Results

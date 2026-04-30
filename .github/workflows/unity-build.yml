@@ -775,10 +775,16 @@ jobs:
         if: inputs.os == 'windows' && inputs.run-e2e-test
         shell: powershell
         run: |
+          # Windows PowerShell 5.1 reads scripts using the system code page; non-ASCII
+          # string literals (e.g. Korean) can be mis-decoded under CP949 and break the
+          # parser. Force UTF-8 output and keep user-facing messages ASCII-only.
+          [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+          $OutputEncoding = [System.Text.Encoding]::UTF8
+
           $unityPath = "${{ steps.unity-windows.outputs.UNITY_PATH }}"
           $projectPath = "${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ inputs.unity-version }}"
           $resultsFile = "$projectPath\editmode-results.xml"
-          $maxWaitSeconds = 600  # Unity 프로세스 최대 대기 시간 (10분)
+          $maxWaitSeconds = 600  # Unity process max wait (10 minutes)
 
           Write-Host "Running EditMode Tests..."
           Write-Host "Unity Version: ${{ steps.unity-windows.outputs.UNITY_VERSION }}"
@@ -793,7 +799,7 @@ jobs:
             "-logFile", $logFile
           ) -PassThru -NoNewWindow
 
-          # 로그 실시간 출력 + 타임아웃 감시
+          # Stream log to console and watch for timeout
           $logReader = $null
           $waitSeconds = 0
           while (-not $proc.HasExited) {
@@ -810,7 +816,7 @@ jobs:
               if ($chunk) { Write-Host $chunk -NoNewline }
             }
 
-            # 결과 파일이 생성된 후 60초 내에 프로세스가 종료되지 않으면 강제 종료
+            # Force-kill if process does not exit within 60s after results file was written
             if ((Test-Path $resultsFile) -and $waitSeconds -gt 60) {
               $resultAge = (New-TimeSpan -Start (Get-Item $resultsFile).LastWriteTime -End (Get-Date)).TotalSeconds
               if ($resultAge -gt 60) {
@@ -834,7 +840,8 @@ jobs:
             $logReader.Close()
           }
 
-          # 결과 확인 — 결과 파일이 없으면 인프라 문제(라이선스/Hub/캐시 등)이므로 fail 처리한다.
+          # Inspect results - missing results file means infra fault (license/Hub/cache),
+          # so fail the step loudly so the classifier picks it up as results-missing.
           if (Test-Path $resultsFile) {
             $content = Get-Content $resultsFile -Raw
             if ($content -match 'result="Failed"') {
@@ -845,7 +852,7 @@ jobs:
               Write-Host "EditMode tests passed ($passed tests)"
             }
           } else {
-            Write-Host "::error::EditMode test results file not found at $resultsFile — Unity가 테스트를 실행하지 못함 (라이선스/Hub/캐시 의심)"
+            Write-Host "::error::EditMode test results file not found at $resultsFile - Unity failed to run tests (suspect license/Hub/cache)"
             exit 1
           }
 

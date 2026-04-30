@@ -97,6 +97,8 @@ namespace AppsInToss.Editor.ErrorTracker
             "Type '[Assembly-CSharp]",
             // 사용자 게임 코드의 player script 컴파일 실패 (스택 없이 메시지만 도착)
             "Failed to compile player scripts",
+            // 사용자 코드의 사용되지 않은 필드 경고 — Unity 컴파일러가 직접 출력하는 CS0414
+            "warning CS0414",
 
             // 외부 패키지 (Unity 버전별 괄호 유무에 관계없이 매칭되도록 핵심 문구만 추출)
             "exists but its folder",
@@ -576,19 +578,81 @@ namespace AppsInToss.Editor.ErrorTracker
         /// 메시지가 SDK 자체 로그임을 식별할 수 있는 키워드를 포함하는지 검사합니다.
         /// <see cref="IsKnownNonSdkMessage"/>의 SDK 보호 가드 및 <see cref="DetermineErrorSource"/>의
         /// 메시지 기반 분류에서 단일 source로 재사용됩니다.
+        ///
+        /// <para>
+        /// "AppsInToss"/"ait-build"처럼 사용자 프로젝트 경로(예: <c>Assets/FTR_AppsInToss/...</c>)에
+        /// 부분 문자열로 들어갈 수 있는 키워드는 단어 경계를 요구하여 거짓 양성을 차단합니다.
+        /// 단어 경계: 키워드 직전/직후가 letter 또는 digit이면 SDK 키워드로 보지 않습니다.
+        /// (점/슬래시/공백/괄호 등 식별자 구분자만 허용)
+        /// </para>
         /// </summary>
         private static bool MessageContainsSdkKeyword(string message)
         {
             if (string.IsNullOrEmpty(message))
                 return false;
 
-            // AitKeywords를 그대로 재사용하여 IsAitRelated와 가드의 키워드 set drift를 방지
+            // AitKeywords를 그대로 재사용하여 IsAitRelated와 가드의 키워드 set drift를 방지.
+            // 식별자형 키워드(영숫자/언더스코어/하이픈)는 단어 경계를 요구해
+            // 사용자 경로(예: Assets/FTR_AppsInToss/...)에 부분 문자열로 들어가도
+            // SDK 가드가 잘못 발동하지 않게 한다. prefix형 키워드("[AIT", "AIT:")는
+            // 비식별자 문자를 포함하므로 substring 매치한다 ("[AITWarn]"처럼
+            // 다른 토큰의 시작 prefix로 사용되어야 함).
             for (int i = 0; i < AitKeywords.Length; i++)
             {
-                if (message.IndexOf(AitKeywords[i], StringComparison.OrdinalIgnoreCase) >= 0)
+                string keyword = AitKeywords[i];
+                bool match = IsIdentifierToken(keyword)
+                    ? ContainsKeywordAtBoundary(message, keyword)
+                    : message.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0;
+                if (match)
                     return true;
             }
             return false;
+        }
+
+        // 키워드의 모든 문자가 식별자 문자(letter/digit/underscore/하이픈)로 이루어졌는지.
+        // 'apps-in-toss'/'ait-build'처럼 하이픈을 포함한 키워드도 단일 토큰으로 본다.
+        private static bool IsIdentifierToken(string keyword)
+        {
+            for (int i = 0; i < keyword.Length; i++)
+            {
+                char c = keyword[i];
+                if (!char.IsLetterOrDigit(c) && c != '_' && c != '-')
+                    return false;
+            }
+            return true;
+        }
+
+        // 식별자형 키워드가 message에 단어 경계로 등장하는지 검사한다.
+        // 단어 경계: 키워드 직전/직후가 letter/digit/underscore가 아닌 위치.
+        // 예) "AppsInToss"는 "AppsInToss.Editor"에 매치, "FTR_AppsInToss"엔 미매치.
+        private static bool ContainsKeywordAtBoundary(string message, string keyword)
+        {
+            if (string.IsNullOrEmpty(message) || string.IsNullOrEmpty(keyword))
+                return false;
+
+            int searchFrom = 0;
+            while (searchFrom <= message.Length - keyword.Length)
+            {
+                int idx = message.IndexOf(keyword, searchFrom, StringComparison.OrdinalIgnoreCase);
+                if (idx < 0)
+                    return false;
+
+                bool leftOk = idx == 0 || !IsBoundaryWordChar(message[idx - 1]);
+                int after = idx + keyword.Length;
+                bool rightOk = after >= message.Length || !IsBoundaryWordChar(message[after]);
+
+                if (leftOk && rightOk)
+                    return true;
+
+                searchFrom = idx + 1;
+            }
+
+            return false;
+        }
+
+        private static bool IsBoundaryWordChar(char c)
+        {
+            return char.IsLetterOrDigit(c) || c == '_';
         }
 
         // Unity EditMode 테스트 러너 실행을 감지하는 스택트레이스 마커.

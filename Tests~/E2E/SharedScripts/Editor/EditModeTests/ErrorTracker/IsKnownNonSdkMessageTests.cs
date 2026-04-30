@@ -377,6 +377,31 @@ public class IsKnownNonSdkMessageTests
             "[AIT] Failed to compile player scripts"));
     }
 
+    [Test]
+    public void Cs0414UnusedField_ReturnsTrue()
+    {
+        // Sentry PK/PJ/PF/PC/PB/PZ/PY/PX — 사용자 프로젝트의 unused field 경고.
+        // Unity 컴파일러가 출력하는 CS0414는 SDK가 출력하지 않으므로 노이즈.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Assets\\FTR_AppsInToss\\Optimization\\Platform\\PlatformOptimizer.cs(14,35): warning CS0414: The field 'PlatformOptimizer.enableGPUInstancing' is assigned but its value is never used"));
+    }
+
+    [Test]
+    public void Cs0414UnusedField_ForwardSlash_ReturnsTrue()
+    {
+        // 동일 경고의 forward slash 경로 변형 (Unity 버전/플랫폼별 출력 차이)
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Assets/Foo/Bar.cs(10,20): warning CS0414: The field 'Bar.unused' is assigned but its value is never used"));
+    }
+
+    [Test]
+    public void Cs0414UnusedField_WithAitPrefix_NeverFiltered()
+    {
+        // AIT prefix가 붙으면 SDK 보호 가드로 필터링되지 않아야 함
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] warning CS0414: The field 'foo' is assigned but its value is never used"));
+    }
+
     #endregion
 
     #region 외부 패키지

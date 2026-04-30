@@ -97,6 +97,8 @@ namespace AppsInToss.Editor.ErrorTracker
             "Type '[Assembly-CSharp]",
             // 사용자 게임 코드의 player script 컴파일 실패 (스택 없이 메시지만 도착)
             "Failed to compile player scripts",
+            // 사용자 코드의 사용되지 않은 필드 경고 — Unity 컴파일러가 직접 출력하는 CS0414
+            "warning CS0414",
 
             // 외부 패키지 (Unity 버전별 괄호 유무에 관계없이 매칭되도록 핵심 문구만 추출)
             "exists but its folder",

@@ -288,6 +288,74 @@ jobs:
         with:
           path: artifacts
 
+      - name: Classify Matrix Failures
+        id: classify
+        shell: bash
+        run: |
+          set +e
+          # 매트릭스 잡별 결과 분류기.
+          # editmode-results-{os}-{version}/ 아티팩트가 있는 매트릭스만 대상으로 한다
+          # (아티팩트가 없으면 EditMode 단계 이전에 실패한 것 — 별도 처리 불필요).
+          mkdir -p classification
+          rows=""
+          shopt -s nullglob
+          for dir in artifacts/editmode-results-*; do
+            base=$(basename "$dir")
+            # editmode-results-<os>-<version> 에서 os/version 추출
+            target="${base#editmode-results-}"
+            os="${target%%-*}"
+            version="${target#*-}"
+
+            results_file="$dir/editmode-results.xml"
+            category="unknown"
+            detail=""
+            artifact="absent"
+
+            if [ -f "$results_file" ]; then
+              artifact="present"
+              if grep -q '<test-case [^>]*result="Failed"' "$results_file"; then
+                category="code"
+                failed_names=$(grep -oE '<test-case [^>]*fullname="[^"]*"[^>]*result="Failed"' "$results_file" \
+                  | grep -oE 'fullname="[^"]*"' \
+                  | sed 's/fullname="//; s/"$//' \
+                  | sort -u)
+                count=$(printf '%s\n' "$failed_names" | grep -c .)
+                first=$(printf '%s\n' "$failed_names" | head -1)
+                if [ "$count" -le 1 ]; then
+                  detail="failed test: ${first}"
+                else
+                  detail="failed tests (${count}): ${first} +$((count-1)) more"
+                fi
+              else
+                category="passed"
+                detail="all editmode tests passed"
+              fi
+            else
+              category="results-missing"
+              detail="editmode-results.xml not produced (license/setup/crash suspected; needs log inspection)"
+            fi
+
+            rows+="| ${os} | ${version} | \`${category}\` | \`${artifact}\` | ${detail:-_(none)_} |"$'\n'
+            echo "::notice title=Failure Classification (${os}, ${version})::category=${category} artifact=${artifact} detail=${detail}"
+          done
+
+          if [ -z "$rows" ]; then
+            echo "has_classification=false" >> "$GITHUB_OUTPUT"
+            echo "분류 가능한 매트릭스 결과 없음 (editmode-results 아티팩트 부재)"
+            exit 0
+          fi
+
+          {
+            echo "### Failure Classification"
+            echo ""
+            echo "| OS | Unity | category | results | detail |"
+            echo "|---|---|---|---|---|"
+            printf '%s' "$rows"
+          } > classification/classification.md
+
+          cat classification/classification.md >> "$GITHUB_STEP_SUMMARY"
+          echo "has_classification=true" >> "$GITHUB_OUTPUT"
+
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
@@ -337,6 +405,13 @@ jobs:
             BENCHMARK_CONTENT="벤치마크 데이터 없음"
           fi
 
+          # 실패 분류 리포트 읽기 (있으면)
+          if [ -f "classification/classification.md" ]; then
+            CLASSIFICATION_CONTENT=$(cat classification/classification.md)
+          else
+            CLASSIFICATION_CONTENT=""
+          fi
+
           # PR 코멘트 생성
           COMMENT_BODY=$(cat <<EOF
           ## ${STATUS_EMOJI} E2E Test Report
@@ -348,6 +423,8 @@ jobs:
           | E2E Windows | ${WINDOWS_RESULT} |
 
           **Status**: ${STATUS_TEXT}
+
+          ${CLASSIFICATION_CONTENT}
 
           <details>
           <summary>📊 Benchmark Report</summary>

@@ -58,9 +58,9 @@ runs:
 
         if [ -f "$RESULTS_FILE" ]; then
           artifact="present"
-          if grep -q 'result="Failed"' "$RESULTS_FILE"; then
+          if grep -q '<test-case [^>]*result="Failed"' "$RESULTS_FILE"; then
             category="code"
-            failed_names=$(grep -oE 'fullname="[^"]*"[^>]*result="Failed"' "$RESULTS_FILE" \
+            failed_names=$(grep -oE '<test-case [^>]*fullname="[^"]*"[^>]*result="Failed"' "$RESULTS_FILE" \
               | grep -oE 'fullname="[^"]*"' \
               | sed 's/fullname="//; s/"$//' \
               | sort -u)

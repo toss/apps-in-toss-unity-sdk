@@ -848,6 +848,15 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+      # POC: 실패 분류기 — 우선 macOS Unity 6000.2 한 잡에만 활성화하여 출력 모양을 검증한다.
+      # 만족스러우면 후속 PR에서 전 매트릭스 + 통합 코멘트 잡으로 확장한다.
+      - name: Classify Failure (POC)
+        if: failure() && inputs.os == 'macos' && inputs.unity-version == '6000.2'
+        uses: ./.github/actions/classify-failure
+        with:
+          os: ${{ inputs.os }}
+          unity-version: ${{ inputs.unity-version }}
+
       # =====================================================
       # macOS Keychain 잠금 해제
       # 화면 잠금 상태에서 Unity Licensing Client가 Keychain에 접근하지

@@ -710,16 +710,22 @@ jobs:
           UNITY_PATH="${{ steps.unity-macos.outputs.UNITY_PATH }}"
           PROJECT_PATH="${{ github.workspace }}/Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}"
           RESULTS_FILE="$PROJECT_PATH/editmode-results.xml"
+          LOG_FILE="/tmp/unity-editmode-${{ inputs.unity-version }}.log"
           MAX_WAIT=600  # Unity 프로세스 최대 대기 시간 (10분)
 
           echo "Running EditMode Tests..."
           echo "Unity Version: ${{ steps.unity-macos.outputs.UNITY_VERSION }}"
+          echo "Log file: $LOG_FILE"
 
+          # 프로세스 치환으로 stdout/stderr를 tee에 흘려 파일을 보존한다 — 잡 종료 후
+          # 통합 분류기가 라이선스/Hub/캐시 등 인프라 결함을 grep으로 세분화할 수 있도록 한다.
+          # 파이프(`| tee`)를 쓰면 `$!`이 tee의 PID가 되어 아래 wait 루프가 깨지므로
+          # `> >(tee ...)` 형태를 사용해 `$!`이 Unity PID를 가리키도록 한다.
           "$UNITY_PATH" -batchmode -nographics \
             -projectPath "$PROJECT_PATH" \
             -runTests -testPlatform EditMode \
             -testResults "$RESULTS_FILE" \
-            -logFile - 2>&1 &
+            -logFile - > >(tee "$LOG_FILE") 2>&1 &
           UNITY_PID=$!
 
           # 타임아웃 대기: 결과 파일이 생성되면 프로세스 종료를 기다리되, 최대 MAX_WAIT초
@@ -849,6 +855,26 @@ jobs:
         with:
           name: editmode-results-${{ inputs.os }}-${{ inputs.unity-version }}
           path: Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}/editmode-results.xml
+          if-no-files-found: ignore
+          retention-days: 7
+
+      # EditMode 로그를 통합 분류기에서 grep할 수 있도록 보존
+      # (라이선스/Hub/캐시 등 인프라 결함 세분화에 필요).
+      - name: Upload EditMode Unity Log (macOS)
+        if: inputs.os == 'macos' && inputs.run-e2e-test && always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: unity-log-editmode-${{ inputs.os }}-${{ inputs.unity-version }}
+          path: /tmp/unity-editmode-${{ inputs.unity-version }}.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload EditMode Unity Log (Windows)
+        if: inputs.os == 'windows' && inputs.run-e2e-test && always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: unity-log-editmode-${{ inputs.os }}-${{ inputs.unity-version }}
+          path: ${{ runner.temp }}\unity-editmode-${{ inputs.unity-version }}.log
           if-no-files-found: ignore
           retention-days: 7
 
@@ -1179,6 +1205,24 @@ jobs:
           path: |
             /tmp/unity-test-results-${{ inputs.unity-version }}.xml
             ${{ runner.temp }}/unity-test-results-${{ inputs.unity-version }}.xml
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload Unit Test Unity Log (macOS)
+        if: inputs.os == 'macos' && inputs.run-unit-test && always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: unity-log-unit-test-${{ inputs.os }}-${{ inputs.unity-version }}
+          path: /tmp/unity-test-${{ inputs.unity-version }}.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload Unit Test Unity Log (Windows)
+        if: inputs.os == 'windows' && inputs.run-unit-test && always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: unity-log-unit-test-${{ inputs.os }}-${{ inputs.unity-version }}
+          path: ${{ runner.temp }}\unity-test-${{ inputs.unity-version }}.log
           if-no-files-found: ignore
           retention-days: 7
 
@@ -1572,6 +1616,26 @@ jobs:
             Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}/ait-build/granite.config.ts
             Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}/ait-build/build-validation.json
           if-no-files-found: error
+          retention-days: 7
+
+      # WebGL 빌드 Unity 로그를 통합 분류기로 보낸다 — Brotli 크래시/디스크 풀 등
+      # 빌드 실패의 인프라 원인을 grep으로 세분화하기 위함.
+      - name: Upload Build Unity Log (macOS)
+        if: inputs.os == 'macos' && inputs.run-build && (inputs.test-level || '2') != '0' && always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: unity-log-build-${{ inputs.os }}-${{ inputs.unity-version }}
+          path: /tmp/unity-build-${{ inputs.unity-version }}.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload Build Unity Log (Windows)
+        if: inputs.os == 'windows' && inputs.run-build && (inputs.test-level || '2') != '0' && always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: unity-log-build-${{ inputs.os }}-${{ inputs.unity-version }}
+          path: ${{ runner.temp }}\unity-build-${{ inputs.unity-version }}.log
+          if-no-files-found: ignore
           retention-days: 7
 
       # =====================================================

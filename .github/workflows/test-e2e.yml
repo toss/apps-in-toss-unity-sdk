@@ -294,20 +294,96 @@ jobs:
         run: |
           set +e
           # 매트릭스 잡별 결과 분류기.
-          # editmode-results-{os}-{version}/ 아티팩트가 있는 매트릭스만 대상으로 한다
-          # (아티팩트가 없으면 EditMode 단계 이전에 실패한 것 — 별도 처리 불필요).
+          #
+          # 카테고리:
+          #   passed                          모든 EditMode 테스트 통과
+          #   code                            EditMode 테스트 실패 (이름 추출)
+          #   results-missing                 editmode-results.xml 없음 — 인프라 결함 의심
+          #   build-no-output                 빌드 산출물 없음 — Brotli/디스크 의심
+          #   unknown                         분류 불가
+          #
+          # results-missing/build-no-output/unknown은 `unity-log-*` 아티팩트를 grep해
+          # infra:* 서브카테고리로 세분화한다 (라이선스/Hub/캐시/Brotli/디스크 등).
+          #
+          # 매트릭스를 명시적으로 enumerate해서 아티팩트 자체가 없는 잡(예: setup 직후
+          # 라이선스 실패)도 표에 노출되게 한다.
           mkdir -p classification
           rows=""
-          shopt -s nullglob
-          for dir in artifacts/editmode-results-*; do
-            base=$(basename "$dir")
-            # editmode-results-<os>-<version> 에서 os/version 추출
-            target="${base#editmode-results-}"
-            os="${target%%-*}"
-            version="${target#*-}"
 
-            results_file="$dir/editmode-results.xml"
+          # OS × Unity 버전 조합 — e2e-test-{macos,windows} 잡의 matrix와 동일하게 유지.
+          declare -a TARGETS=(
+            "macos:2021.3"
+            "macos:2022.3"
+            "macos:6000.0"
+            "macos:6000.2"
+            "macos:6000.3"
+            "windows:2021.3"
+            "windows:2022.3"
+            "windows:6000.0"
+            "windows:6000.2"
+            "windows:6000.3"
+          )
+
+          # 인프라 서브카테고리 grep 패턴 (첫 매치가 detail에 노출됨).
+          # 패턴 추가 시 docs/claude/github-actions.md에도 반영을 권장.
+          classify_infra() {
+            local logs_glob="$1"
+            local hit_subcat="" hit_line=""
+            local file
+            for file in $logs_glob; do
+              [ -f "$file" ] || continue
+              # 라이선스 토큰 만료 / ULF 부재
+              hit_line=$(grep -m1 -E 'No ULF license found|Access token is unavailable|Token not found in cache' "$file" 2>/dev/null)
+              if [ -n "$hit_line" ]; then
+                hit_subcat="infra:license-token-expired"
+                printf '%s\t%s\n' "$hit_subcat" "$hit_line"
+                return 0
+              fi
+              # 라이선스 모듈 누락 (com.unity.editor.headless 등)
+              hit_line=$(grep -m1 -E "'com\.unity\.editor\.[a-z]+' was not found" "$file" 2>/dev/null)
+              if [ -n "$hit_line" ]; then
+                hit_subcat="infra:license-module-missing"
+                printf '%s\t%s\n' "$hit_subcat" "$hit_line"
+                return 0
+              fi
+              # Unity Hub 부재/실행 실패
+              hit_line=$(grep -m1 -E 'Unity Hub not found|hub: command not found' "$file" 2>/dev/null)
+              if [ -n "$hit_line" ]; then
+                hit_subcat="infra:hub-missing"
+                printf '%s\t%s\n' "$hit_subcat" "$hit_line"
+                return 0
+              fi
+              # Brotli 압축 크래시 (self-hosted runner 동시 빌드 리소스 경합)
+              hit_line=$(grep -m1 -E '\[BUSY [0-9]+s\] Brotli .*\.unityweb' "$file" 2>/dev/null)
+              if [ -n "$hit_line" ]; then
+                hit_subcat="infra:brotli-crash"
+                printf '%s\t%s\n' "$hit_subcat" "$hit_line"
+                return 0
+              fi
+              # 디스크 풀
+              hit_line=$(grep -m1 -E 'No space left on device|disk full' "$file" 2>/dev/null)
+              if [ -n "$hit_line" ]; then
+                hit_subcat="infra:disk-full"
+                printf '%s\t%s\n' "$hit_subcat" "$hit_line"
+                return 0
+              fi
+              # Library 잠금 (이전 잡 잔여 프로세스)
+              hit_line=$(grep -m1 -E 'Library directory is locked|Lockfile.*Library' "$file" 2>/dev/null)
+              if [ -n "$hit_line" ]; then
+                hit_subcat="infra:library-locked"
+                printf '%s\t%s\n' "$hit_subcat" "$hit_line"
+                return 0
+              fi
+            done
+            return 1
+          }
+
+          for target in "${TARGETS[@]}"; do
+            os="${target%%:*}"
+            version="${target##*:}"
+            results_file="artifacts/editmode-results-${os}-${version}/editmode-results.xml"
             category="unknown"
+            subcategory=""
             detail=""
             artifact="absent"
 
@@ -331,17 +407,59 @@ jobs:
                 detail="all editmode tests passed"
               fi
             else
-              category="results-missing"
-              detail="editmode-results.xml not produced (license/setup/crash suspected; needs log inspection)"
+              # 결과 파일이 없는 두 가지 가능성:
+              #   1. EditMode 단계가 results-missing으로 실패 (라이선스/Hub/캐시 등)
+              #   2. 빌드 단계에서 Brotli/디스크 등으로 실패 → editmode 도달 못함
+              # 빌드 산출물 디렉토리가 있는데 파일이 없는 경우는 build-no-output.
+              build_artifact_dir=$(ls -d "artifacts/ait-build-${os}-${version}"* 2>/dev/null | head -1)
+              if [ -n "$build_artifact_dir" ] && [ -d "$build_artifact_dir" ]; then
+                unityweb_count=$(find "$build_artifact_dir" -type f -name '*.unityweb' 2>/dev/null | wc -l | tr -d ' ')
+                if [ "$unityweb_count" = "0" ]; then
+                  category="build-no-output"
+                  detail="no .unityweb files in build artifact (compression failure suspected)"
+                else
+                  category="results-missing"
+                  detail="editmode-results.xml not produced (license/setup/crash suspected)"
+                fi
+              else
+                category="results-missing"
+                detail="editmode-results.xml not produced (license/setup/crash suspected)"
+              fi
             fi
 
-            rows+="| ${os} | ${version} | \`${category}\` | \`${artifact}\` | ${detail:-_(none)_} |"$'\n'
-            echo "::notice title=Failure Classification (${os}, ${version})::category=${category} artifact=${artifact} detail=${detail}"
+            # 인프라 서브카테고리: 결과가 코드/통과가 아닐 때만 시도.
+            if [ "$category" != "passed" ] && [ "$category" != "code" ]; then
+              shopt -s nullglob
+              # build → unit-test → editmode 순으로 grep (인프라 결함은 보통 빌드/EditMode에서 먼저 노출).
+              for kind in build unit-test editmode; do
+                infra_match=$(classify_infra "artifacts/unity-log-${kind}-${os}-${version}/*.log" 2>/dev/null)
+                if [ -n "$infra_match" ]; then
+                  subcategory="${infra_match%%	*}"
+                  hit="${infra_match#*	}"
+                  # detail에 매칭 라인 한 줄 첨부 (너무 길면 80자로 자름).
+                  # 마크다운 표 셀이 깨지지 않도록 `|`는 ⎮(U+23AE)로 치환.
+                  hit_short="${hit:0:80}"
+                  hit_safe="${hit_short//|/⎮}"
+                  detail_safe="${detail//|/⎮}"
+                  detail="${detail_safe} — ${subcategory}: ${hit_safe}"
+                  break
+                fi
+              done
+              shopt -u nullglob
+            fi
+
+            display_category="${category}"
+            if [ -n "$subcategory" ]; then
+              display_category="${category} → ${subcategory}"
+            fi
+
+            rows+="| ${os} | ${version} | \`${display_category}\` | \`${artifact}\` | ${detail:-_(none)_} |"$'\n'
+            echo "::notice title=Failure Classification (${os}, ${version})::category=${category} subcategory=${subcategory:-none} artifact=${artifact} detail=${detail}"
           done
 
           if [ -z "$rows" ]; then
             echo "has_classification=false" >> "$GITHUB_OUTPUT"
-            echo "분류 가능한 매트릭스 결과 없음 (editmode-results 아티팩트 부재)"
+            echo "분류 가능한 매트릭스 결과 없음"
             exit 0
           fi
 

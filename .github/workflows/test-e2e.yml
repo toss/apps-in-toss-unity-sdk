@@ -332,10 +332,11 @@ jobs:
             local file
             for file in $logs_glob; do
               [ -f "$file" ] || continue
-              # 라이선스 토큰 만료 / ULF 부재
-              hit_line=$(grep -m1 -E 'No ULF license found|Access token is unavailable|Token not found in cache' "$file" 2>/dev/null)
+
+              # 패키지 의존성 해결 실패 (git 누락 등) — 라이선스 자가복구 후에도 종료시키는 흔한 원인
+              hit_line=$(grep -m1 -E "No '?git'? executable|Project has invalid dependencies|Failed to resolve packages|Cannot fetch.*git" "$file" 2>/dev/null)
               if [ -n "$hit_line" ]; then
-                hit_subcat="infra:license-token-expired"
+                hit_subcat="infra:package-resolution"
                 printf '%s\t%s\n' "$hit_subcat" "$hit_line"
                 return 0
               fi
@@ -373,6 +374,18 @@ jobs:
                 hit_subcat="infra:library-locked"
                 printf '%s\t%s\n' "$hit_subcat" "$hit_line"
                 return 0
+              fi
+              # 라이선스 토큰 만료 / ULF 부재 — 자가복구 시 false positive를 일으키므로 마지막에 검사하고
+              # 같은 로그 안에서 라이선스가 정상 발급된 흔적이 있으면 무시한다.
+              hit_line=$(grep -m1 -E 'No ULF license found|Access token is unavailable|Token not found in cache' "$file" 2>/dev/null)
+              if [ -n "$hit_line" ]; then
+                if grep -qE 'Successfully updated license|Serial number assigned to' "$file"; then
+                  : # 라이선스가 자가복구되었으므로 진짜 원인이 아님
+                else
+                  hit_subcat="infra:license-token-expired"
+                  printf '%s\t%s\n' "$hit_subcat" "$hit_line"
+                  return 0
+                fi
               fi
             done
             return 1

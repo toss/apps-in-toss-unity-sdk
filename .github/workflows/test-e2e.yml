@@ -340,13 +340,6 @@ jobs:
                 printf '%s\t%s\n' "$hit_subcat" "$hit_line"
                 return 0
               fi
-              # 라이선스 모듈 누락 (com.unity.editor.headless 등)
-              hit_line=$(grep -m1 -E "'com\.unity\.editor\.[a-z]+' was not found" "$file" 2>/dev/null)
-              if [ -n "$hit_line" ]; then
-                hit_subcat="infra:license-module-missing"
-                printf '%s\t%s\n' "$hit_subcat" "$hit_line"
-                return 0
-              fi
               # Unity Hub 부재/실행 실패
               hit_line=$(grep -m1 -E 'Unity Hub not found|hub: command not found' "$file" 2>/dev/null)
               if [ -n "$hit_line" ]; then
@@ -375,9 +368,11 @@ jobs:
                 printf '%s\t%s\n' "$hit_subcat" "$hit_line"
                 return 0
               fi
-              # 라이선스 토큰 만료 / ULF 부재 — 자가복구 시 false positive를 일으키므로 마지막에 검사하고
+              # 라이선스 만료/시트 부재 — 자가복구 시 false positive를 일으키므로 마지막에 검사하고
               # 같은 로그 안에서 라이선스가 정상 발급된 흔적이 있으면 무시한다.
-              hit_line=$(grep -m1 -E 'No ULF license found|Access token is unavailable|Token not found in cache' "$file" 2>/dev/null)
+              # 표면 증상이 다양해도(ULF 부재 / 토큰 부재 / entitlement 0개 / Pro 모듈 미부여)
+              # 운영상 해결책은 동일(ULF 갱신)이므로 한 카테고리로 묶는다.
+              hit_line=$(grep -m1 -E "No ULF license found|Access token is unavailable|Token not found in cache|Found 0 entitlement groups|'com\.unity\.editor\.[a-z]+' was not found" "$file" 2>/dev/null)
               if [ -n "$hit_line" ]; then
                 if grep -qE 'Successfully updated license|Serial number assigned to' "$file"; then
                   : # 라이선스가 자가복구되었으므로 진짜 원인이 아님

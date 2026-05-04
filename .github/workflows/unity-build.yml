@@ -771,6 +771,31 @@ jobs:
             exit 1
           fi
 
+      - name: Probe Windows runner PATH (diagnostic)
+        if: inputs.os == 'windows' && inputs.run-e2e-test
+        shell: powershell
+        run: |
+          [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+          $OutputEncoding = [System.Text.Encoding]::UTF8
+          Write-Host "=== runner-spawned PowerShell environment ==="
+          Write-Host "USERNAME: $env:USERNAME"
+          Write-Host "USERPROFILE: $env:USERPROFILE"
+          Write-Host ""
+          Write-Host "=== PATH (one entry per line) ==="
+          $env:PATH -split ';' | ForEach-Object { Write-Host "  $_" }
+          Write-Host ""
+          Write-Host "=== git lookup ==="
+          $gitCmd = Get-Command git -ErrorAction SilentlyContinue
+          if ($gitCmd) {
+            Write-Host "git found at: $($gitCmd.Source)"
+            & git --version
+          } else {
+            Write-Host "::warning::git NOT in PATH for runner-spawned shell"
+          }
+          Write-Host ""
+          Write-Host "=== where.exe git ==="
+          where.exe git 2>&1 | ForEach-Object { Write-Host "  $_" }
+
       - name: Run EditMode Tests (Windows)
         if: inputs.os == 'windows' && inputs.run-e2e-test
         shell: powershell

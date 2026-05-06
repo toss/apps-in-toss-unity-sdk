@@ -129,9 +129,11 @@ namespace AppsInToss.Editor.ErrorTracker
         // 대상 Sentry 이슈:
         //   - SDK-D2: [AIT Login][src=AIT_MOCK_OR_TIMEOUT] ...
         //   - SDK-D3: [AIT Login] InitSession failed: FORBIDDEN_ORIGIN
+        //   - SDK-CF: [Toss Firebase] 게임로그인 실패: ... (사용자 게임 백엔드 통합 레이어)
         private static readonly string[] ExternalAitPrefixes =
         {
             "[AIT Login]",
+            "[Toss Firebase]",
         };
 
         #endregion

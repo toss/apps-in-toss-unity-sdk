@@ -160,6 +160,24 @@ namespace AppsInToss
         }
 
         /// <summary>
+        /// Unity의 BuildResult를 AIT 내부 에러 코드로 매핑합니다.
+        /// Cancelled는 사용자 의사이므로 SDK 결함 보고 대상이 아니며 CANCELLED로 매핑됩니다.
+        /// </summary>
+        internal static AITExportError MapBuildResultToExportError(
+            UnityEditor.Build.Reporting.BuildResult result)
+        {
+            switch (result)
+            {
+                case UnityEditor.Build.Reporting.BuildResult.Succeeded:
+                    return AITExportError.SUCCEED;
+                case UnityEditor.Build.Reporting.BuildResult.Cancelled:
+                    return AITExportError.CANCELLED;
+                default:
+                    return AITExportError.BUILD_WEBGL_FAILED;
+            }
+        }
+
+        /// <summary>
         /// 에러 코드를 사용자 친화적 메시지로 변환
         /// </summary>
         public static string GetErrorMessage(AITExportError error)
@@ -972,6 +990,14 @@ namespace AppsInToss
 
             if (result.summary.result != UnityEditor.Build.Reporting.BuildResult.Succeeded)
             {
+                // 사용자가 빌드를 취소한 경우 — Unity가 BuildResult.Cancelled를 반환한다.
+                // 이것은 사용자 의사이므로 SDK 결함 보고 대상이 아니다.
+                if (result.summary.result == UnityEditor.Build.Reporting.BuildResult.Cancelled)
+                {
+                    Debug.LogWarning("[AIT] 사용자에 의해 WebGL 빌드가 취소되었습니다.");
+                    return AITExportError.CANCELLED;
+                }
+
                 var sb = new System.Text.StringBuilder();
                 sb.AppendLine("[AIT] WebGL 빌드가 실패했습니다.");
                 sb.AppendLine($"  결과: {result.summary.result}");
@@ -1019,7 +1045,11 @@ namespace AppsInToss
                     sb.Append($"  ... 외 {messageCount - maxMessages}개 메시지 생략");
                 }
 
-                Debug.LogError(sb.ToString().TrimEnd());
+                // BuildPipeline.BuildPlayer 실패는 거의 항상 사용자 프로젝트(컴파일 에러,
+                // 사용자 에셋 문제, 환경 OOM 등) 또는 Unity 자체의 비정상 종료에서 비롯되며
+                // SDK 측에서 분기/수정할 수 있는 정보가 아니다. 콘솔에는 진단 메시지를 남기되
+                // Sentry로는 보내지 않아 분류 노이즈를 만들지 않는다.
+                AITLog.Error(sb.ToString().TrimEnd(), sentryCapture: false);
                 return AITExportError.BUILD_WEBGL_FAILED;
             }
 

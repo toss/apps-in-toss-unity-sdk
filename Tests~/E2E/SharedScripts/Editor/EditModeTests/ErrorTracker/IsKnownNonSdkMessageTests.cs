@@ -731,6 +731,38 @@ public class IsKnownNonSdkMessageTests
             "[AIT] The \"Method Name, File Name, and Line Number\" option for IL2CPP stack traces is not supported on WebGL."));
     }
 
+    [Test]
+    public void MetaFileInvalidGuid_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-R4 — 사용자 Assets/ 경로의 .meta 파일 GUID 손상
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "The .meta file Assets/Art/Images/Skin0/specialblock_fire_5.png.meta does not have a valid GUID and its corresponding Asset file will be ignored. If this file is not malformed, please add a GUID, or delete the .meta file and it will be recreated correctly"));
+    }
+
+    [Test]
+    public void MetaFileInvalidGuid_WithAitPrefix_NeverFiltered()
+    {
+        // AitKeywords 가드 회귀 방지: [AIT] prefix가 붙은 동일 메시지는 SDK 자체 로그로 간주
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] The .meta file Assets/Foo/bar.png.meta does not have a valid GUID"));
+    }
+
+    [Test]
+    public void GuidInsideMetaCannotBeExtracted_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-R3 — YAML Parser GUID 추출 실패 경고
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "The GUID inside 'Assets/Art/Images/Skin0/specialblock_fire_5.png.meta' cannot be extracted by the YAML Parser. Attempting to extract it via string matching instead. Please verify the file does not contain unexpected data."));
+    }
+
+    [Test]
+    public void GuidInsideMetaCannotBeExtracted_WithAitPrefix_NeverFiltered()
+    {
+        // AitKeywords 가드 회귀 방지
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] The GUID inside 'Assets/Foo.png.meta' cannot be extracted by the YAML Parser"));
+    }
+
     #endregion
 
     #region SDK 관련 메시지는 통과 (negative cases)

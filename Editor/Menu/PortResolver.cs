@@ -85,9 +85,57 @@ namespace AppsInToss.Editor.Menu
         }
 
         /// <summary>
+        /// Vite 포트 폴링 결정.
+        /// </summary>
+        internal enum VitePollDecision
+        {
+            /// <summary>다음 update 콜백까지 대기.</summary>
+            Wait,
+            /// <summary>이번 호출에서 포트 상태를 다시 확인하고 결정.</summary>
+            CheckPort,
+            /// <summary>포트가 준비됨 — 브라우저 열기.</summary>
+            Ready,
+            /// <summary>최대 대기 시간 초과 — fallback으로 브라우저 열기.</summary>
+            Timeout,
+        }
+
+        /// <summary>
+        /// Vite 포트 대기 폴링의 결정을 시간 진행만으로 계산하는 순수 함수.
+        /// 결과가 <see cref="VitePollDecision.CheckPort"/>이면 호출자가 포트 상태를 확인한 뒤
+        /// 사용 중이면 <see cref="VitePollDecision.Ready"/>로, 아니면 <see cref="VitePollDecision.Wait"/>로 진행해야 한다.
+        /// 시간 우선 순위: 타임아웃이 polling interval보다 우선 — 인터벌이 매우 길더라도 타임아웃은 보장된다.
+        /// </summary>
+        internal static VitePollDecision EvaluateVitePollDecision(
+            double elapsedSeconds,
+            double lastCheckSeconds,
+            double maxWaitSeconds,
+            double checkIntervalSeconds)
+        {
+            // 타임아웃이 우선 — checkInterval이 maxWait보다 큰 경우에도 타임아웃은 발생해야 한다.
+            if (elapsedSeconds > maxWaitSeconds)
+                return VitePollDecision.Timeout;
+
+            if (elapsedSeconds - lastCheckSeconds < checkIntervalSeconds)
+                return VitePollDecision.Wait;
+
+            return VitePollDecision.CheckPort;
+        }
+
+        /// <summary>
+        /// Vite 포트 대기의 기본 타임아웃 (초). 콜드 스타트나 무거운 사용자 환경에서
+        /// 15초가 부족해 fallback 경고가 발생하던 사례를 흡수하기 위해 충분히 크게 설정.
+        /// </summary>
+        internal const double DefaultViteWaitMaxSeconds = 60.0;
+
+        /// <summary>
+        /// Vite 포트 폴링 체크 간격 (초). TCP bind/unbind 부하 방지.
+        /// </summary>
+        internal const double DefaultViteWaitIntervalSeconds = 0.5;
+
+        /// <summary>
         /// Vite 포트가 열릴 때까지 대기한 후 브라우저를 엽니다.
         /// Granite 포트가 먼저 감지되지만 Vite는 아직 준비되지 않았을 수 있으므로
-        /// EditorApplication.update 폴링으로 최대 15초 대기합니다.
+        /// EditorApplication.update 폴링으로 최대 <see cref="DefaultViteWaitMaxSeconds"/>초 대기합니다.
         /// </summary>
         internal static void WaitForPortAndOpenBrowser(int port, string url)
         {
@@ -102,33 +150,32 @@ namespace AppsInToss.Editor.Menu
             Debug.Log($"[AIT] Vite 포트 {port} 대기 중...");
             double startTime = EditorApplication.timeSinceStartup;
             double lastCheckTime = 0;
-            const double maxWaitSeconds = 15.0;
-            const double checkIntervalSeconds = 0.5;
+            const double maxWaitSeconds = DefaultViteWaitMaxSeconds;
+            const double checkIntervalSeconds = DefaultViteWaitIntervalSeconds;
 
             void PollVitePort()
             {
                 double elapsed = EditorApplication.timeSinceStartup - startTime;
+                var decision = EvaluateVitePollDecision(elapsed, lastCheckTime, maxWaitSeconds, checkIntervalSeconds);
 
-                // TCP bind/unbind 부하 방지: 0.5초 간격으로 체크
-                if (elapsed - lastCheckTime < checkIntervalSeconds)
+                if (decision == VitePollDecision.Wait)
                     return;
-                lastCheckTime = elapsed;
 
-                if (!IsPortAvailable(port))
+                if (decision == VitePollDecision.Timeout)
                 {
-                    // 포트가 사용 중 = Vite 서버 준비됨
                     EditorApplication.update -= PollVitePort;
-                    Debug.Log($"[AIT] Vite 포트 {port} 준비 완료 ({elapsed:F1}초 대기), 브라우저 열기");
+                    // 정상 흐름의 timeout fallback이므로 Sentry 전송 억제
+                    AITLog.Warning($"[AIT] Vite 포트 {port} 대기 타임아웃 ({maxWaitSeconds}초), 브라우저를 엽니다", sentryCapture: false);
                     Application.OpenURL(url);
                     return;
                 }
 
-                if (elapsed > maxWaitSeconds)
+                // CheckPort
+                lastCheckTime = elapsed;
+                if (!IsPortAvailable(port))
                 {
-                    // 타임아웃 — 그래도 브라우저 열기 (사용자가 직접 새로고침 가능)
                     EditorApplication.update -= PollVitePort;
-                    // 정상 흐름의 timeout fallback이므로 Sentry 전송 억제
-                    AITLog.Warning($"[AIT] Vite 포트 {port} 대기 타임아웃 ({maxWaitSeconds}초), 브라우저를 엽니다", sentryCapture: false);
+                    Debug.Log($"[AIT] Vite 포트 {port} 준비 완료 ({elapsed:F1}초 대기), 브라우저 열기");
                     Application.OpenURL(url);
                 }
             }

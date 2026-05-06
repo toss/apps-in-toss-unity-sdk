@@ -94,4 +94,45 @@ public class StrictErrorSourceGateTests
     }
 
     #endregion
+
+    #region 분류기 false positive 회귀 (Sentry APPS-IN-TOSS-UNITY-SDK-R2)
+
+    // 사용자 코드의 Debug.LogError("order Recover fail ex: ...") 가
+    // SDK v2.4.7 (strict gate 도입 전) 에서 38건 캡처된 시나리오.
+    // 메시지에는 SDK 키워드가 없지만 스택의 어딘가(파일 경로/네임스페이스 substring)에
+    // AIT/AppsInToss 토큰이 들어가 IsAitRelated 의 substring 매치를 통과한 케이스.
+    // SanitizeFilePath 가 Library/PackageCache/<vendor>@... 경로를 그대로 보존하므로
+    // DetermineErrorSource 의 frame filename 비교는 SdkPackagePath / SdkPackageCachePath /
+    // UserProjectPathPrefix(Assets/) 어느 것에도 매칭되지 않고, 메시지 fallback 단계에서도
+    // MessageContainsSdkKeyword 가 message 본문에서 SDK 키워드를 찾지 못해 unknown 을 반환 →
+    // strict gate 가 드롭해야 한다.
+
+    [Test]
+    public void OrderRecoverFail_AitSubstringInNonSdkPath_Drops()
+    {
+        // 메시지 본문은 사용자 코드 출력 — SDK 키워드 없음
+        const string message = "order Recover fail ex: Object reference not set to an instance of an object";
+
+        // 스택의 frame filename 이 SDK package path (Packages/im.toss.apps-in-toss-unity-sdk/...) 도 아니고
+        // Assets/ 도 아닌 third-party/UPM 경로. 그러나 substring "AppsInToss" 가 들어 있어
+        // 과거 IsAitRelated 의 단순 IndexOf 매치를 통과시켰던 케이스.
+        const string stackTrace =
+            "at SomeVendor.AppsInTossBridge.Recover () in Library/PackageCache/com.vendor.bridge@1.0.0/Runtime/Bridge.cs:42";
+
+        Assert.IsTrue(AITEditorErrorTracker.ShouldDropAsNonSdkSource(message, stackTrace));
+    }
+
+    [Test]
+    public void OrderRecoverFail_NoStackNoSdkKeyword_Drops()
+    {
+        // R2 의 실제 재현 경로(스택에 AIT 토큰 substring 존재) 는 위 테스트가 커버한다.
+        // 본 케이스는 strict gate 도입 후 동일 메시지가 스택 없이 들어와도 일관되게 드롭됨을
+        // 확인하는 보완 케이스 — NoStackTrace_NoSdkKeyword_Drops 와 경로는 같지만 R2 메시지 문자열
+        // 로 회귀 표면을 한 번 더 고정한다.
+        const string message = "order Recover fail ex: Object reference not set to an instance of an object";
+        Assert.IsTrue(AITEditorErrorTracker.ShouldDropAsNonSdkSource(message, ""));
+        Assert.IsTrue(AITEditorErrorTracker.ShouldDropAsNonSdkSource(message, null));
+    }
+
+    #endregion
 }

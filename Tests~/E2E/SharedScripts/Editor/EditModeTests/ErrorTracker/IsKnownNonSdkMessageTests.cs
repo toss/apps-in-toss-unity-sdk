@@ -53,6 +53,15 @@ public class IsKnownNonSdkMessageTests
             "[AIT] InitSession started"));
     }
 
+    [Test]
+    public void ExternalTossFirebasePrefix_GameLoginFailure_ReturnsTrue()
+    {
+        // Sentry SDK-CF — 사용자 게임 백엔드의 [Toss Firebase] prefix.
+        // SDK 코드에는 "[Toss Firebase]"/"게임로그인" 문자열이 존재하지 않음.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[Toss Firebase] 게임로그인 실패: Object reference not set to an instance of an object"));
+    }
+
     #endregion
 
     #region SDK 보호: AIT 키워드 포함 시 절대 필터링 안 함

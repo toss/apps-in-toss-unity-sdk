@@ -396,29 +396,30 @@ namespace AppsInToss
 
             if (webglExists)
             {
-                try
+                // ait-build/node_modules 내 pnpm 의존성처럼 read-only 속성이 깔린 파일이
+                // 섞여 있을 수 있어 Directory.Delete 직호출은 UnauthorizedAccessException을
+                // 발생시킨다 (Sentry: APPS-IN-TOSS-UNITY-SDK-CA). 헬퍼는 ReadOnly를 선제 해제한다.
+                if (AITFileUtils.DeleteDirectory(webglPath))
                 {
-                    Directory.Delete(webglPath, true);
                     Debug.Log($"AIT: ✓ webgl/ 폴더 삭제 완료");
                     deletedCount++;
                 }
-                catch (Exception e)
+                else
                 {
-                    Debug.LogError($"AIT: webgl/ 폴더 삭제 실패: {e}");
+                    Debug.LogError($"AIT: webgl/ 폴더 삭제 실패: {webglPath}");
                 }
             }
 
             if (aitBuildExists)
             {
-                try
+                if (AITFileUtils.DeleteDirectory(aitBuildPath))
                 {
-                    Directory.Delete(aitBuildPath, true);
                     Debug.Log($"AIT: ✓ ait-build/ 폴더 삭제 완료");
                     deletedCount++;
                 }
-                catch (Exception e)
+                else
                 {
-                    Debug.LogError($"AIT: ait-build/ 폴더 삭제 실패: {e}");
+                    Debug.LogError($"AIT: ait-build/ 폴더 삭제 실패: {aitBuildPath}");
                 }
             }
 

@@ -194,6 +194,61 @@ public class AITFileSystemHelperTests
         }
     }
 
+    [Test]
+    public void SafeDeleteDirectory_NodeModulesShape_WithDeepReadOnlyFiles_RemovesAll()
+    {
+        // 회귀: Sentry APPS-IN-TOSS-UNITY-SDK-CA
+        // ait-build/node_modules/.pnpm/.../@jridgewell/gen-mapping/... 처럼
+        // 깊게 중첩된 read-only 트리(pnpm/npm 의존성)를 정리하지 못하면
+        // "ait-build/ 폴더 삭제 실패: UnauthorizedAccessException ... gen-mapping" 발생.
+        string aitBuild = Path.Combine(tempDir, "ait-build");
+        string nodeModules = Path.Combine(aitBuild, "node_modules");
+        string pnpmStore = Path.Combine(nodeModules, ".pnpm", "@jridgewell+gen-mapping@0.3.5", "node_modules", "@jridgewell", "gen-mapping");
+        Directory.CreateDirectory(pnpmStore);
+
+        // Symlink 형태로 의존성을 노출하는 pnpm 레이아웃을 모사 — 실제 심볼릭 링크 생성은
+        // 권한 의존이라 디렉토리/파일로 대체하되, read-only 속성은 동일하게 깐다.
+        string distDir = Path.Combine(pnpmStore, "dist");
+        Directory.CreateDirectory(distDir);
+
+        var readOnlyPaths = new[]
+        {
+            Path.Combine(pnpmStore, "package.json"),
+            Path.Combine(pnpmStore, "README.md"),
+            Path.Combine(distDir, "gen-mapping.umd.js"),
+            Path.Combine(distDir, "gen-mapping.mjs"),
+            Path.Combine(distDir, "types", "gen-mapping.d.ts"),
+        };
+
+        Directory.CreateDirectory(Path.Combine(distDir, "types"));
+        foreach (var p in readOnlyPaths)
+        {
+            File.WriteAllText(p, "{}");
+            File.SetAttributes(p, FileAttributes.ReadOnly);
+        }
+
+        try
+        {
+            bool result = InvokeSafeDeleteDirectory(aitBuild);
+
+            Assert.IsTrue(result,
+                "node_modules에 read-only 파일이 깔린 트리도 ait-build 전체가 재귀 삭제되어야 함");
+            Assert.IsFalse(Directory.Exists(aitBuild),
+                "ait-build/ 폴더가 완전히 제거되어야 함");
+        }
+        finally
+        {
+            // TearDown 보호: 실패해서 일부 파일이 남아있을 경우에도 read-only 속성 해제
+            foreach (var p in readOnlyPaths)
+            {
+                if (File.Exists(p))
+                {
+                    File.SetAttributes(p, FileAttributes.Normal);
+                }
+            }
+        }
+    }
+
     // =====================================================
     // logOnFailure / logPrefix (Windows 한정: 파일 공유 락으로 실패 강제)
     // macOS/Linux는 `FileShare.None`이 `File.Delete`를 막지 않아

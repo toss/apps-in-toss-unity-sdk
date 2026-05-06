@@ -992,9 +992,9 @@ namespace AppsInToss
             {
                 // 사용자가 빌드를 취소한 경우 — Unity가 BuildResult.Cancelled를 반환한다.
                 // 이것은 사용자 의사이므로 SDK 결함 보고 대상이 아니다.
-                if (MapBuildResultToExportError(result.summary.result) == AITExportError.CANCELLED)
+                if (result.summary.result == UnityEditor.Build.Reporting.BuildResult.Cancelled)
                 {
-                    AITLog.Error("[AIT] 사용자에 의해 WebGL 빌드가 취소되었습니다.", sentryCapture: false);
+                    Debug.LogWarning("[AIT] 사용자에 의해 WebGL 빌드가 취소되었습니다.");
                     return AITExportError.CANCELLED;
                 }
 

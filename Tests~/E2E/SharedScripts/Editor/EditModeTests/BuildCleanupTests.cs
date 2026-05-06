@@ -446,4 +446,67 @@ public class BuildCleanupTests
         Assert.IsFalse(File.Exists(Path.Combine(publicBuild, "build.wasm")),
             "Uncompressed .wasm should NOT exist after switching to Brotli");
     }
+
+    // =====================================================
+    // Sentry R8 회귀: webgl/Runtime 미존재 폴백 경로는
+    // SDK가 SDK 템플릿에서 자가복구하는 정상 동작이므로
+    // LogWarning이 아닌 Log로 출력되어야 한다 (Sentry 노이즈 방지).
+    // =====================================================
+
+    [Test]
+    public void RuntimeFolderFallback_DoesNotEmitLogWarning_R8()
+    {
+        // 소스 인변량 검증: WebGLBuildCopier.cs 에서
+        // "Runtime 폴더가 없" 메시지가 Debug.LogWarning 호출의 인자로 사용되지 않아야 한다.
+        // (Debug.Log로는 사용 가능)
+        string repoRoot = FindRepoRoot();
+        string copierPath = Path.Combine(repoRoot, "Editor", "Package", "WebGLBuildCopier.cs");
+        Assert.IsTrue(File.Exists(copierPath),
+            $"WebGLBuildCopier.cs should exist at {copierPath}");
+
+        string source = File.ReadAllText(copierPath);
+
+        // 메시지 토큰이 LogWarning 호출 안에 들어가 있는 라인이 있는지 검사.
+        // LogWarning("...Runtime 폴더가 없..." 패턴을 정확히 잡기 위해 라인 단위 스캔.
+        foreach (string rawLine in source.Split('\n'))
+        {
+            string line = rawLine.Trim();
+            if (line.IndexOf("Runtime 폴더가 없", StringComparison.Ordinal) < 0) continue;
+
+            Assert.IsFalse(
+                line.IndexOf("Debug.LogWarning", StringComparison.Ordinal) >= 0,
+                "Sentry R8 회귀: 'Runtime 폴더가 없' 메시지는 SDK 자가복구 폴백 경로로 " +
+                "정상 동작에 해당하므로 Debug.LogWarning이 아닌 Debug.Log로 출력해야 합니다. " +
+                $"문제 라인: {line}");
+        }
+    }
+
+    private static string FindRepoRoot()
+    {
+        // EditMode 테스트는 Unity 프로젝트 컨텍스트에서 실행될 수도, 패키지 컨텍스트에서 실행될 수도 있어
+        // 현재 어셈블리 위치에서 거슬러 올라가며 Editor/Package/WebGLBuildCopier.cs 가 있는 디렉토리를 찾는다.
+        string dir = Path.GetDirectoryName(typeof(BuildCleanupTests).Assembly.Location);
+        for (int i = 0; i < 10 && !string.IsNullOrEmpty(dir); i++)
+        {
+            string candidate = Path.Combine(dir, "Editor", "Package", "WebGLBuildCopier.cs");
+            if (File.Exists(candidate)) return dir;
+            dir = Path.GetDirectoryName(dir);
+        }
+
+        // 폴백: Unity 프로젝트 루트 (Application.dataPath의 부모) 아래 Packages/<sdk> 또는 직접 SDK 루트
+        string projectRoot = Path.GetDirectoryName(UnityEngine.Application.dataPath);
+        string[] candidates =
+        {
+            Path.Combine(projectRoot, "Packages", "im.toss.apps-in-toss-unity-sdk"),
+            projectRoot,
+        };
+        foreach (string c in candidates)
+        {
+            if (File.Exists(Path.Combine(c, "Editor", "Package", "WebGLBuildCopier.cs")))
+                return c;
+        }
+
+        Assert.Fail("Could not locate SDK repo root containing Editor/Package/WebGLBuildCopier.cs");
+        return null;
+    }
 }

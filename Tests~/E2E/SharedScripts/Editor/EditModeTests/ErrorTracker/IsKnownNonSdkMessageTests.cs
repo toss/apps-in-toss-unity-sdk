@@ -202,6 +202,30 @@ public class IsKnownNonSdkMessageTests
             "[AIT] Legacy AnimationClips are not allowed in Animator Controllers"));
     }
 
+    [Test]
+    public void LegacyAnimationClipCannotBeUsedInState_Finger_ReturnsTrue()
+    {
+        // Sentry KV — Unity가 메시지 첫 줄만 캡처하는 변형 ("Legacy AnimationClips are not allowed..." 후행 문구 없음)
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "The legacy Animation Clip \"finger\" cannot be used in the State \"finger\"."));
+    }
+
+    [Test]
+    public void LegacyAnimationClipCannotBeUsedInState_StartSound_ReturnsTrue()
+    {
+        // Sentry KT
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "The legacy Animation Clip \"start_sound\" cannot be used in the State \"start_sound\"."));
+    }
+
+    [Test]
+    public void LegacyAnimationClipCannotBeUsedInState_WithAitPrefix_NeverFiltered()
+    {
+        // SDK 보호 가드 회귀 방지: AIT prefix가 붙으면 SDK 자체 로그로 간주되어야 함
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] The legacy Animation Clip \"foo\" cannot be used in the State \"foo\"."));
+    }
+
     #endregion
 
     #region 사용자 프로젝트 에셋 문제

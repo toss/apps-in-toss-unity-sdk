@@ -141,6 +141,11 @@ namespace AppsInToss.Editor.ErrorTracker
             // (다른 YAML 에셋 파싱 오류 메시지와 충돌 방지).
             "does not have a valid GUID",
             "' cannot be extracted by the YAML Parser",
+
+            // pnpm stdout 패스스루 노이즈 — 본문 없는 "[pnpm] 출력:" 라인 (SDK-HA, SDK-R6).
+            // AitKeywords에 "[pnpm]"이 없어 SDK 보호 가드는 우회되며,
+            // SDK 자체 로그는 "[AIT...]" prefix와 함께 출력되므로 보호된다.
+            "[pnpm] 출력:",
         };
 
         // DetermineErrorSource에서 메시지를 SDK로 분류하는 추가 패턴.

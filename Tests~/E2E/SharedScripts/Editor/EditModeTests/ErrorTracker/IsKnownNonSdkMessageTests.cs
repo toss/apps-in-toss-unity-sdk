@@ -781,6 +781,33 @@ public class IsKnownNonSdkMessageTests
 
     #endregion
 
+    #region pnpm stdout 패스스루 (SDK-HA, SDK-R6)
+
+    [Test]
+    public void PnpmStdoutPassthrough_TrailingAnchor_ReturnsTrue()
+    {
+        // Sentry SDK-HA — 본문 없는 "[pnpm] 출력:" stdout passthrough
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage("[pnpm] 출력:"));
+    }
+
+    [Test]
+    public void PnpmStdoutPassthrough_LeadingAnchor_ReturnsTrue()
+    {
+        // Sentry SDK-R6 — "[pnpm] 출력:"으로 시작하는 패스스루 라인 (후행 본문이 있어도 노이즈)
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[pnpm] 출력: WARN deprecated some message"));
+    }
+
+    [Test]
+    public void PnpmStdoutPassthrough_WithAitPrefix_NeverFiltered()
+    {
+        // SDK가 직접 출력한 "[AIT...]" prefix가 붙으면 SDK 보호 가드로 필터링되지 않아야 함
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] [pnpm] 출력: build failed"));
+    }
+
+    #endregion
+
     #region SDK 관련 메시지는 통과 (negative cases)
 
     [Test]

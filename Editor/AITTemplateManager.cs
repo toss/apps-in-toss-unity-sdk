@@ -324,7 +324,9 @@ namespace AppsInToss.Editor
 
             if (startIdx == -1 || endIdx == -1)
             {
-                Debug.LogWarning($"[AIT] HTML 마커를 찾을 수 없습니다: {startMarker}");
+                // 사용자 환경 차이(빌드 출력에서 마커 누락, 사용자가 마커를 임의로 제거 등)로
+                // 발생하는 fallback. SDK 결함이 아니므로 Sentry 전송은 억제하고 콘솔 경고만 남긴다.
+                AITLog.Warning($"[AIT] HTML 마커를 찾을 수 없습니다: {startMarker}", sentryCapture: false);
                 return content;
             }
 

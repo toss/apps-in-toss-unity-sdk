@@ -16,6 +16,7 @@
 
 using System.IO;
 using NUnit.Framework;
+using AppsInToss;
 using AppsInToss.Editor;
 
 [TestFixture]

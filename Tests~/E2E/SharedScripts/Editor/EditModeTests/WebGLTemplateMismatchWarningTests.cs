@@ -12,6 +12,10 @@
 // 텍스트 수준에서 가드한다 — `CopyWebGLToPublic`을 통째로 호출하면
 // AITPackagePathResolver, AITTemplateManager, BuildMarker 등 의존 그래프가
 // 너무 커서 EditMode 단위 테스트로 격리하기 어렵다.
+//
+// 제약: 검증은 라인 단위로 수행하므로 두 경고 호출은 **단일 라인**에
+// `AITLog.Warning(..., sentryCapture: false)` 형태를 유지해야 한다.
+// named argument를 다음 줄로 줄바꿈하면 false negative가 발생한다.
 // -----------------------------------------------------------------------
 
 using System.IO;

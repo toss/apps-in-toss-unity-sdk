@@ -538,6 +538,30 @@ public class IsKnownNonSdkMessageTests
             "[AIT] Group 'Foo' does not have any associated AddressableAssetGroupSchemas"));
     }
 
+    [Test]
+    public void ExecGitBreadcrumb_GitShow_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-NX — 외부 도구의 git 서브프로세스 실행 브레드크럼
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Exec> git show -s --pretty=%D HEAD"));
+    }
+
+    [Test]
+    public void ExecGitBreadcrumb_GitLog_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-NW
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Exec> git log -1 --pretty=format:%h"));
+    }
+
+    [Test]
+    public void ExecGitBreadcrumb_WithAitPrefix_NeverFiltered()
+    {
+        // AitKeywords 가드 회귀 방지: SDK가 [AIT] prefix와 함께 동일 메시지를 출력했다면 필터되면 안 됨
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] Exec> git show -s --pretty=%D HEAD"));
+    }
+
     #endregion
 
     #region SDK 관련 메시지는 통과 (negative cases)

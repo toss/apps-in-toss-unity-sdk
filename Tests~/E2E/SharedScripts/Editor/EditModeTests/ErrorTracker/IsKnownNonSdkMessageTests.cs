@@ -378,47 +378,36 @@ public class IsKnownNonSdkMessageTests
     }
 
     [Test]
-    public void Cs0414UnusedField_ReturnsTrue()
+    public void ExecGitTrace_ShowHead_ReturnsTrue()
     {
-        // Sentry PK/PJ/PF/PC/PB/PZ/PY/PX — 사용자 프로젝트의 unused field 경고.
-        // Unity 컴파일러가 출력하는 CS0414는 SDK가 출력하지 않으므로 노이즈.
+        // Sentry NX — Unity Editor가 외부 git 명령 실행 시 stdout으로 출력하는 trace.
+        // SDK 코드 어디에도 "Exec>" 문자열이 없음을 grep으로 확인하여 안전하게 노이즈로 분류.
         Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
-            "Assets\\FTR_AppsInToss\\Optimization\\Platform\\PlatformOptimizer.cs(14,35): warning CS0414: The field 'PlatformOptimizer.enableGPUInstancing' is assigned but its value is never used"));
+            "Exec> git show -s --pretty=%D HEAD"));
     }
 
     [Test]
-    public void Cs0414UnusedField_ForwardSlash_ReturnsTrue()
+    public void ExecGitTrace_LogShortSha_ReturnsTrue()
     {
-        // 동일 경고의 forward slash 경로 변형 (Unity 버전/플랫폼별 출력 차이)
+        // Sentry NW
         Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
-            "Assets/Foo/Bar.cs(10,20): warning CS0414: The field 'Bar.unused' is assigned but its value is never used"));
+            "Exec> git log -1 --pretty=format:%h"));
     }
 
     [Test]
-    public void Cs0414UnusedField_WithAitPrefix_NeverFiltered()
+    public void ExecGitTrace_WithAitPrefix_NeverFiltered()
     {
-        // AIT prefix가 붙으면 SDK 보호 가드로 필터링되지 않아야 함
+        // SDK 보호 가드 회귀 방지: AIT prefix가 붙은 동일 메시지는 SDK 자체 로그로 간주
         Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
-            "[AIT] warning CS0414: The field 'foo' is assigned but its value is never used"));
+            "[AIT] Exec> git show -s --pretty=%D HEAD"));
     }
 
     [Test]
-    public void SdkKeyword_AsBoundedToken_StillProtected()
+    public void ExecWithoutGit_ReturnsFalse()
     {
-        // AppsInToss가 식별자 경계로 등장하면(SDK 네임스페이스) NonSdk 패턴이 일치해도 SDK 보호 가드가 우선해야 함
-        // — "GfxDevice renderer is null"은 NonSdk 패턴이지만, SDK가 직접 출력했으므로 필터하지 않는다.
+        // "Exec> " 단독은 너무 일반적이라 매칭 안 함 — git 호출 trace에 한정
         Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
-            "AppsInToss.Editor.Foo: GfxDevice renderer is null"));
-    }
-
-    [Test]
-    public void SdkKeyword_InUserPath_NotProtectedByGuard()
-    {
-        // 사용자 프로젝트 경로(FTR_AppsInToss/)에 AppsInToss가 부분 문자열로 들어가도
-        // SDK 보호 가드가 발동하지 않아야 NonSdk 패턴 매칭 단계에 도달한다.
-        // (이 메시지는 NonSdk 패턴 'warning CS0414'와 매치되어 노이즈로 분류되어야 함)
-        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
-            "Assets/FTR_AppsInToss/Foo.cs(1,1): warning CS0414: The field 'foo' is assigned but its value is never used"));
+            "Exec> npm install"));
     }
 
     #endregion

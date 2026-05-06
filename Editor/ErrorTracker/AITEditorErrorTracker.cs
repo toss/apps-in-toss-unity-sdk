@@ -99,6 +99,8 @@ namespace AppsInToss.Editor.ErrorTracker
             "Failed to compile player scripts",
             // 사용자 코드의 사용되지 않은 필드 경고 — Unity 컴파일러가 직접 출력하는 CS0414
             "warning CS0414",
+            // Unity Editor가 외부 git 명령 실행 시 stdout으로 출력하는 trace 메시지 — SDK는 출력하지 않음
+            "Exec> git ",
 
             // 외부 패키지 (Unity 버전별 괄호 유무에 관계없이 매칭되도록 핵심 문구만 추출)
             "exists but its folder",

@@ -94,4 +94,39 @@ public class StrictErrorSourceGateTests
     }
 
     #endregion
+
+    #region 분류기 false positive 회귀 (Sentry APPS-IN-TOSS-UNITY-SDK-R2)
+
+    // 사용자 코드의 Debug.LogError("order Recover fail ex: ...") 가
+    // SDK v2.4.7 (strict gate 도입 전) 에서 38건 캡처된 시나리오.
+    // 메시지에는 SDK 키워드가 없지만 스택의 어딘가(파일 경로/네임스페이스 substring)에
+    // AIT/AppsInToss 토큰이 들어가 IsAitRelated 의 substring 매치를 통과한 케이스.
+    // 파싱된 frame 의 filename 은 SDK package path 도 Assets/ 도 아니므로
+    // DetermineErrorSource 는 unknown 을 반환해야 하고 strict gate 가 드롭해야 한다.
+
+    [Test]
+    public void OrderRecoverFail_AitSubstringInNonSdkPath_Drops()
+    {
+        // 메시지 본문은 사용자 코드 출력 — SDK 키워드 없음
+        const string message = "order Recover fail ex: Object reference not set to an instance of an object";
+
+        // 스택의 frame filename 이 SDK package path (Packages/im.toss.apps-in-toss-unity-sdk/...) 도 아니고
+        // Assets/ 도 아닌 third-party/UPM 경로. 그러나 substring "AppsInToss" 가 들어 있어
+        // 과거 IsAitRelated 의 단순 IndexOf 매치를 통과시켰던 케이스.
+        const string stackTrace =
+            "at SomeVendor.AppsInTossBridge.Recover () in Library/PackageCache/com.vendor.bridge@1.0.0/Runtime/Bridge.cs:42";
+
+        Assert.IsTrue(AITEditorErrorTracker.ShouldDropAsNonSdkSource(message, stackTrace));
+    }
+
+    [Test]
+    public void OrderRecoverFail_NoStackNoSdkKeyword_Drops()
+    {
+        // stackTrace 가 비어있고 메시지에 SDK 키워드도 없는 변형 — unknown → 드롭
+        const string message = "order Recover fail ex: Object reference not set to an instance of an object";
+        Assert.IsTrue(AITEditorErrorTracker.ShouldDropAsNonSdkSource(message, ""));
+        Assert.IsTrue(AITEditorErrorTracker.ShouldDropAsNonSdkSource(message, null));
+    }
+
+    #endregion
 }

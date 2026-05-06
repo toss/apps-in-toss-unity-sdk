@@ -63,7 +63,7 @@ namespace AppsInToss.Editor
             }
         }
 
-        private static bool TryKillIfRunning(int pid)
+        internal static bool TryKillIfRunning(int pid)
         {
             try
             {
@@ -85,7 +85,13 @@ namespace AppsInToss.Editor
             }
             catch (ArgumentException)
             {
-                // 이미 종료됨 — 정상 경로, 로그 없음.
+                // 이미 종료됨 (PID가 OS process table에서 제거됨) — 정상 경로, 로그 없음.
+                return false;
+            }
+            catch (InvalidOperationException)
+            {
+                // GetProcessById 와 Kill 사이의 race window — 핸들은 잡았지만
+                // Kill 시점엔 이미 exit. ArgumentException 과 동일한 정상 경로.
                 return false;
             }
             catch (Exception ex)

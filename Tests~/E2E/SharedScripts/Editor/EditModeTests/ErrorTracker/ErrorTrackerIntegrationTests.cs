@@ -17,6 +17,7 @@ using SpanData = AppsInToss.Editor.ErrorTracker.AITSentryEnvelope.SpanData;
 
 [TestFixture]
 [Category("Integration")]
+[Ignore("Sentry organization quota 소진 시 모든 envelope이 429로 throttle됨. CI에서는 quota 영향을 피하기 위해 skip하고, 필요 시 로컬에서 명시적으로 실행한다.")]
 public class ErrorTrackerIntegrationTests
 {
     private string _dsn;

@@ -113,6 +113,11 @@ namespace AppsInToss.Editor.ErrorTracker
 
             // 사용자 Unity 설치에 WebGL 모듈 미설치 — SDK-DD
             "Build target 'WebGL' not supported",
+
+            // 서브프로세스 실행 브레드크럼 — SDK가 아닌 외부(Unity Collab/CCD/사용자 도구)가 출력
+            // 예: "Exec> git show -s --pretty=%D HEAD", "Exec> git log -1 --pretty=format:%h"
+            // Sentry APPS-IN-TOSS-UNITY-SDK-NX, APPS-IN-TOSS-UNITY-SDK-NW
+            "Exec> git ",
         };
 
         // DetermineErrorSource에서 메시지를 SDK로 분류하는 추가 패턴.

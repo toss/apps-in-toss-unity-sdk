@@ -142,10 +142,14 @@ namespace AppsInToss.Editor.ErrorTracker
         //   - SDK-D2: [AIT Login][src=AIT_MOCK_OR_TIMEOUT] ...
         //   - SDK-D3: [AIT Login] InitSession failed: FORBIDDEN_ORIGIN
         //   - SDK-CF: [Toss Firebase] 게임로그인 실패: ... (사용자 게임 백엔드 통합 레이어)
+        //   - SDK-PK/PJ/PF/PC/PB/QA/Q9/Q8/Q7/Q6/Q5/Q4: Assets/FTR_AppsInToss/... CS#### 사용자 코드 경고
+        //     (Unity 컴파일러가 사용자 프로젝트 파일 경로 prefix로 출력 — SDK 자체 코드는 Runtime/ 또는 Editor/ 하위)
         private static readonly string[] ExternalAitPrefixes =
         {
             "[AIT Login]",
             "[Toss Firebase]",
+            "Assets\\FTR_AppsInToss\\",
+            "Assets/FTR_AppsInToss/",
         };
 
         #endregion

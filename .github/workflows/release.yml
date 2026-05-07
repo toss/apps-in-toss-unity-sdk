@@ -354,8 +354,6 @@ jobs:
       web-framework-version: ${{ needs.release.outputs.version }}
       sdk-version: ${{ needs.release.outputs.version }}
       run-build: true
-      run-e2e-test: false
-      run-benchmark: false
     secrets:
       AIT_AD_INTERSTITIAL_ID: ${{ secrets.AIT_AD_INTERSTITIAL_ID }}
       AIT_AD_REWARDED_ID: ${{ secrets.AIT_AD_REWARDED_ID }}
@@ -381,8 +379,6 @@ jobs:
       web-framework-version: ${{ needs.release.outputs.version }}
       sdk-version: ${{ needs.release.outputs.version }}
       run-build: true
-      run-e2e-test: false
-      run-benchmark: false
     secrets:
       AIT_AD_INTERSTITIAL_ID: ${{ secrets.AIT_AD_INTERSTITIAL_ID }}
       AIT_AD_REWARDED_ID: ${{ secrets.AIT_AD_REWARDED_ID }}

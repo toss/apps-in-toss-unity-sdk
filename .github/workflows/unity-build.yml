@@ -31,13 +31,8 @@ on:
         type: boolean
         required: false
         default: true
-      run-e2e-test:
-        description: 'Run E2E tests after build'
-        type: boolean
-        required: false
-        default: false
-      run-benchmark:
-        description: 'Run benchmark tests'
+      run-editmode-test:
+        description: 'Run Unity EditMode tests before build (was: run-e2e-test). Playwright/benchmark는 별도 ubuntu 워크플로우(test-e2e.yml)로 분리되었음.'
         type: boolean
         required: false
         default: false
@@ -705,7 +700,7 @@ jobs:
       # EditMode 테스트 (Level 0+, 빌드 없이 C# 순수 로직 검증)
       # =====================================================
       - name: Run EditMode Tests (macOS)
-        if: inputs.os == 'macos' && inputs.run-e2e-test
+        if: inputs.os == 'macos' && inputs.run-editmode-test
         run: |
           UNITY_PATH="${{ steps.unity-macos.outputs.UNITY_PATH }}"
           PROJECT_PATH="${{ github.workspace }}/Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}"
@@ -772,7 +767,7 @@ jobs:
           fi
 
       - name: Probe Windows runner PATH (diagnostic)
-        if: inputs.os == 'windows' && inputs.run-e2e-test
+        if: inputs.os == 'windows' && inputs.run-editmode-test
         shell: powershell
         run: |
           [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -797,7 +792,7 @@ jobs:
           where.exe git 2>&1 | ForEach-Object { Write-Host "  $_" }
 
       - name: Run EditMode Tests (Windows)
-        if: inputs.os == 'windows' && inputs.run-e2e-test
+        if: inputs.os == 'windows' && inputs.run-editmode-test
         shell: powershell
         run: |
           # Windows PowerShell 5.1 reads scripts using the system code page; non-ASCII
@@ -884,7 +879,7 @@ jobs:
           }
 
       - name: Upload EditMode Test Results
-        if: inputs.run-e2e-test && always()
+        if: inputs.run-editmode-test && always()
         uses: actions/upload-artifact@v7
         with:
           name: editmode-results-${{ inputs.os }}-${{ inputs.unity-version }}
@@ -895,7 +890,7 @@ jobs:
       # EditMode 로그를 통합 분류기에서 grep할 수 있도록 보존
       # (라이선스/Hub/캐시 등 인프라 결함 세분화에 필요).
       - name: Upload EditMode Unity Log (macOS)
-        if: inputs.os == 'macos' && inputs.run-e2e-test && always()
+        if: inputs.os == 'macos' && inputs.run-editmode-test && always()
         uses: actions/upload-artifact@v7
         with:
           name: unity-log-editmode-${{ inputs.os }}-${{ inputs.unity-version }}
@@ -904,7 +899,7 @@ jobs:
           retention-days: 7
 
       - name: Upload EditMode Unity Log (Windows)
-        if: inputs.os == 'windows' && inputs.run-e2e-test && always()
+        if: inputs.os == 'windows' && inputs.run-editmode-test && always()
         uses: actions/upload-artifact@v7
         with:
           name: unity-log-editmode-${{ inputs.os }}-${{ inputs.unity-version }}
@@ -1218,7 +1213,7 @@ jobs:
             }
           }
 
-          # 첫 번째 EditMode(run-e2e-test)에서 이미 통과한 경우, 이 step 실패를 무시
+          # 첫 번째 EditMode(run-editmode-test)에서 이미 통과한 경우, 이 step 실패를 무시
           $firstEditModeResults = "${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ inputs.unity-version }}\editmode-results.xml"
           if (Test-Path $firstEditModeResults) {
             $firstContent = Get-Content $firstEditModeResults -Raw
@@ -1674,108 +1669,3 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-      # =====================================================
-      # E2E 테스트 (선택적)
-      # =====================================================
-      - name: Setup Node.js
-        if: inputs.run-e2e-test && (inputs.test-level || '2') == '2'
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24
-
-      - name: Install Playwright Dependencies (macOS)
-        if: inputs.os == 'macos' && inputs.run-e2e-test && (inputs.test-level || '2') == '2'
-        working-directory: Tests~/E2E/tests
-        run: |
-          # package.json 변경 시에만 node_modules 재설치 (self-hosted 캐시 활용)
-          EXPECTED_HASH=$(shasum -a 256 package.json | cut -d' ' -f1)
-          CACHED_HASH=""
-          if [ -f node_modules/.package-hash ]; then
-            CACHED_HASH=$(cat node_modules/.package-hash)
-          fi
-
-          if [ "$EXPECTED_HASH" != "$CACHED_HASH" ]; then
-            echo "package.json changed, reinstalling dependencies..."
-            rm -rf node_modules package-lock.json pnpm-lock.yaml
-            pnpm install
-            echo "$EXPECTED_HASH" > node_modules/.package-hash
-          else
-            echo "Dependencies up to date (cached)"
-          fi
-
-          # Playwright 브라우저 설치 (이미 설치된 버전이면 빠르게 스킵됨)
-          pnpm exec playwright install chromium --with-deps
-          pnpm exec playwright --version
-
-      - name: Install Playwright Dependencies (Windows)
-        if: inputs.os == 'windows' && inputs.run-e2e-test && (inputs.test-level || '2') == '2'
-        working-directory: Tests~/E2E/tests
-        shell: powershell
-        env:
-          # Use job-local Playwright cache to avoid race conditions between parallel runners
-          PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}\.playwright-browsers
-        run: |
-          # package.json 변경 시에만 node_modules 재설치 (self-hosted 캐시 활용)
-          $expectedHash = (Get-FileHash -Algorithm SHA256 package.json).Hash
-          $cachedHash = ""
-          if (Test-Path "node_modules\.package-hash") {
-            $cachedHash = Get-Content "node_modules\.package-hash" -Raw
-            $cachedHash = $cachedHash.Trim()
-          }
-
-          if ($expectedHash -ne $cachedHash) {
-            Write-Host "package.json changed, reinstalling dependencies..."
-            if (Test-Path node_modules) { Remove-Item -Recurse -Force node_modules }
-            if (Test-Path package-lock.json) { Remove-Item -Force package-lock.json }
-            if (Test-Path pnpm-lock.yaml) { Remove-Item -Force pnpm-lock.yaml }
-            pnpm install
-            Set-Content "node_modules\.package-hash" -Value $expectedHash -NoNewline
-          } else {
-            Write-Host "Dependencies up to date (cached)"
-          }
-
-          # Playwright 브라우저: 캐시 유지 (버전 변경 시에만 재설치)
-          pnpm exec playwright install chromium --with-deps
-          pnpm exec playwright --version
-
-      - name: Run E2E Tests (macOS - Full)
-        if: inputs.os == 'macos' && inputs.run-e2e-test && (inputs.test-level || '2') == '2'
-        working-directory: Tests~/E2E/tests
-        env:
-          UNITY_PROJECT_PATH: ${{ github.workspace }}/Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}
-          MOBILE_EMULATION: "true"
-          TEST_LEVEL: ${{ inputs.test-level || '2' }}
-        run: pnpm test
-
-      - name: Run E2E Tests (Windows - Full)
-        if: inputs.os == 'windows' && inputs.run-e2e-test && (inputs.test-level || '2') == '2'
-        working-directory: Tests~/E2E/tests
-        shell: powershell
-        env:
-          UNITY_PROJECT_PATH: ${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ inputs.unity-version }}
-          MOBILE_EMULATION: "true"
-          TEST_LEVEL: ${{ inputs.test-level || '2' }}
-          # Use job-local Playwright cache to avoid race conditions between parallel runners
-          PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}\.playwright-browsers
-        run: pnpm test
-
-      # =====================================================
-      # 벤치마크 결과 업로드 (선택적)
-      # =====================================================
-      - name: Upload Benchmark Results
-        if: inputs.run-benchmark && (inputs.test-level || '2') == '2'
-        uses: actions/upload-artifact@v7
-        with:
-          name: benchmark-results-${{ inputs.os }}-${{ inputs.unity-version }}
-          path: Tests~/E2E/tests/benchmark-results.json
-          if-no-files-found: ignore
-
-      - name: Upload Playwright Report
-        if: inputs.run-e2e-test && (inputs.test-level || '2') == '2' && always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: playwright-report-${{ inputs.os }}-${{ inputs.unity-version }}
-          path: Tests~/E2E/tests/playwright-report/
-          if-no-files-found: ignore
-          compression-level: 9
-          retention-days: 7

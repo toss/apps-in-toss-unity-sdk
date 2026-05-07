@@ -840,19 +840,19 @@ namespace AppsInToss
             var buildInfo = ReadBuildMarker(outputPath);
             if (buildInfo == null)
             {
-                Debug.LogWarning("[AIT] 빌드 마커가 없습니다. Clean build를 수행합니다.");
+                AITLog.Warning("[AIT] 빌드 마커가 없습니다. Clean build를 수행합니다.", sentryCapture: false);
                 return true;
             }
             if (buildInfo.unityVersion != Application.unityVersion)
             {
-                Debug.LogWarning($"[AIT] Unity 버전 불일치: 빌드 {buildInfo.unityVersion} vs 현재 {Application.unityVersion}. Clean build를 수행합니다.");
+                AITLog.Warning($"[AIT] Unity 버전 불일치: 빌드 {buildInfo.unityVersion} vs 현재 {Application.unityVersion}. Clean build를 수행합니다.", sentryCapture: false);
                 return true;
             }
 
             string buildDir = Path.Combine(outputPath, "Build");
             if (!Directory.Exists(buildDir) || Directory.GetFiles(buildDir, "*.loader.js").Length == 0)
             {
-                Debug.LogWarning("[AIT] 빌드 필수 파일이 없습니다. Clean build를 수행합니다.");
+                AITLog.Warning("[AIT] 빌드 필수 파일이 없습니다. Clean build를 수행합니다.", sentryCapture: false);
                 return true;
             }
 

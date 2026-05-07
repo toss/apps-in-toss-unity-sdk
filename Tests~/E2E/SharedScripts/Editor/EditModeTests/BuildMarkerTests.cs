@@ -6,6 +6,9 @@
 using NUnit.Framework;
 using System;
 using System.IO;
+using System.Reflection;
+using UnityEngine;
+using UnityEngine.TestTools;
 using AppsInToss;
 
 [TestFixture]
@@ -113,5 +116,35 @@ public class BuildMarkerTests
         Assert.IsNotNull(read);
         Assert.AreEqual("second-version", read.sdkVersion,
             "Second WriteBuildMarker should overwrite the first");
+    }
+
+    // 분류기가 메시지 본문으로 매칭하므로 문자열을 고정해서 회귀를 막는다 (Sentry SDK-AA).
+    private const string EXPECTED_MISSING_MARKER_WARNING =
+        "[AIT] 빌드 마커가 없습니다. Clean build를 수행합니다.";
+
+    private static bool InvokeShouldForceCleanBuild(string outputPath, bool cleanBuild)
+    {
+        MethodInfo m = typeof(AITConvertCore).GetMethod(
+            "ShouldForceCleanBuild",
+            BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.IsNotNull(m, "ShouldForceCleanBuild 메서드를 찾을 수 없습니다.");
+        return (bool)m.Invoke(null, new object[] { outputPath, cleanBuild });
+    }
+
+    [Test]
+    public void ShouldForceCleanBuild_ReturnsTrueAndWarns_WhenMarkerIsMissing()
+    {
+        // 빌드 산출 디렉토리는 존재하지만 마커 파일은 없는 상태
+        string outputPath = Path.Combine(tempDir, "webgl");
+        Directory.CreateDirectory(outputPath);
+        string markerPath = Path.Combine(outputPath, AITConvertCore.BUILD_MARKER_FILENAME);
+        Assert.IsFalse(File.Exists(markerPath), "Precondition: marker should be absent");
+
+        LogAssert.Expect(LogType.Warning, EXPECTED_MISSING_MARKER_WARNING);
+
+        bool shouldClean = InvokeShouldForceCleanBuild(outputPath, false);
+
+        Assert.IsTrue(shouldClean,
+            "마커가 없으면 ShouldForceCleanBuild는 true를 반환해야 합니다.");
     }
 }

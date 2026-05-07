@@ -76,6 +76,9 @@ namespace AppsInToss.Editor.ErrorTracker
             "SendMessage cannot be called during Awake, CheckConsistency, or OnValidate",
             // Unity Animator — 사용자 프로젝트의 레거시 클립 사용
             "Legacy AnimationClips are not allowed in Animator Controllers",
+            // ↑ 동일 경고의 첫 줄 변형 — Unity 출력 포맷("cannot be used in the State \"X\".")과 밀착시키려
+            // 따옴표를 포함해 좁힘 (SDK-KV/KT)
+            "cannot be used in the State \"",
 
             // 사용자 프로젝트 에셋 문제
             "matches more than one built-in atlases",

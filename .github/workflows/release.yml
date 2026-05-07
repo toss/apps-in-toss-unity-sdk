@@ -341,8 +341,15 @@ jobs:
     name: AIT 빌드 (macOS)
     needs: [release, regenerate-sdk, prepare-build-matrix]
     if: needs.release.outputs.skip != 'true' && needs.prepare-build-matrix.outputs.skip-build != 'true'
+
+    # ref-cancel: 라이센스 직렬화는 reusable workflow 의 머신 락 담당
+    concurrency:
+      group: release-${{ github.workflow }}-${{ needs.regenerate-sdk.outputs.ref }}-macos-${{ matrix.unity-version }}
+      cancel-in-progress: true
+
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
         unity-version: ${{ fromJSON(needs.prepare-build-matrix.outputs.macos-versions) }}
 
@@ -366,8 +373,14 @@ jobs:
     name: AIT 빌드 (Windows)
     needs: [release, regenerate-sdk, prepare-build-matrix]
     if: needs.release.outputs.skip != 'true' && needs.prepare-build-matrix.outputs.skip-windows != 'true'
+
+    concurrency:
+      group: release-${{ github.workflow }}-${{ needs.regenerate-sdk.outputs.ref }}-windows-${{ matrix.unity-version }}
+      cancel-in-progress: true
+
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
         unity-version: ${{ fromJSON(needs.prepare-build-matrix.outputs.windows-versions) }}
 

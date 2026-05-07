@@ -187,7 +187,10 @@ yarn.lock.meta
 # BuildConfig~의 pnpm-lock.yaml은 커밋 (빌드 시 --frozen-lockfile 사용을 위해)
 !**/BuildConfig~/pnpm-lock.yaml
 
-# Lockfile은 일반적으로 커밋하지 않음 (BuildConfig~ 제외)
+# Tests~/E2E/tests의 pnpm-lock.yaml은 커밋 (E2E 잡이 --frozen-lockfile 사용)
+!**/Tests~/E2E/tests/pnpm-lock.yaml
+
+# Lockfile은 일반적으로 커밋하지 않음 (BuildConfig~, Tests~/E2E/tests 제외)
 
 # Superpowers 플랜 문서 (Claude Code 작업용, 커밋 불필요)
 docs/superpowers/

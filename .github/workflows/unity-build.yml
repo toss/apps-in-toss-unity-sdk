@@ -103,10 +103,16 @@ jobs:
   build:
     name: Build (${{ inputs.os }}, Unity ${{ inputs.unity-version }})
     runs-on: ${{ inputs.os == 'macos' && fromJSON('["self-hosted", "macOS", "ARM64", "enabled"]') || fromJSON('["self-hosted", "Windows", "X64", "enabled"]') }}
-    timeout-minutes: 60
+    timeout-minutes: 90
+    # 라이센스 충돌 방지: Enterprise 라이센스 1개를 같은 머신(OS당 1대)에서
+    # 여러 Unity 프로세스가 동시 점유하면 실패. 따라서 OS 단위로 머신 락을
+    # 걸어 같은 머신에서 한 번에 한 잡만 Unity 를 띄우도록 직렬화한다.
+    # ref 기반 cancel 은 호출자(test-e2e / preview / release)의 잡 concurrency
+    # 가 담당. 호출자가 cancel 되면 reusable workflow 도 cancel 되어 라이센스
+    # 가 즉시 풀린다.
     concurrency:
-      group: unity-build-${{ inputs.ref || github.sha }}-${{ inputs.os }}-${{ inputs.unity-version }}-${{ inputs.sdk-version-override || 'default' }}
-      cancel-in-progress: true
+      group: unity-machine-${{ inputs.os }}
+      cancel-in-progress: false
 
     outputs:
       artifact-name: ${{ steps.artifact.outputs.name }}

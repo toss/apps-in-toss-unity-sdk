@@ -82,10 +82,6 @@ namespace AppsInToss.Editor.ErrorTracker
 
             // 사용자 프로젝트 에셋 문제
             "matches more than one built-in atlases",
-            // 사용자 prefab의 missing script 경고 (Sentry SDK-H1, SDK-GY 등) —
-            // Unity 표준 경고 문구로 SDK가 출력하지 않음. 717-720 라인의 composite 조건과
-            // 중복 매칭되지만 더 직관적인 단일 substring 매치를 우선 적용한다.
-            "is missing or no valid script is attached",
             "Warnings during import of AudioClip",
             // FMOD/오디오 — 사용자 에셋 import/포맷 문제
             "Cannot create FMOD::Sound instance for clip",
@@ -732,7 +728,7 @@ namespace AppsInToss.Editor.ErrorTracker
             }
 
             // "Script attached to ... is missing" 패턴은 Assets/ 경로가 포함된 경우에만 사용자 프로젝트로 분류.
-            // "in Assets/..." 직접 경로 형태와 "in scene 'Assets/...'" 변형(SDK-H0/GX/GW) 모두 매칭한다.
+            // "in Assets/..." 직접 경로 형태(SDK-H1/GY), "in scene 'Assets/...'" 변형(SDK-H0/GX/GW) 모두 매칭한다.
             if (message.IndexOf("Script attached to", StringComparison.Ordinal) >= 0
                 && message.IndexOf("is missing", StringComparison.Ordinal) >= 0
                 && message.IndexOf("Assets/", StringComparison.Ordinal) >= 0)

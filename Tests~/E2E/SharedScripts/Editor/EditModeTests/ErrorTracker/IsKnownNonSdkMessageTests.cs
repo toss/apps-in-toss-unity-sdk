@@ -283,9 +283,7 @@ public class IsKnownNonSdkMessageTests
     [Test]
     public void ScriptMissingWithoutAssets_ReturnsFalse()
     {
-        // "Script attached to" + "is missing"이지만 Assets/ 경로가 없으면
-        // composite 조건이 매칭되지 않고, 단일 substring "is missing or no valid script is attached"는
-        // 정확한 Unity 표준 문구만 매칭하므로 짧은 변형은 필터링되지 않는다.
+        // "Script attached to" + "is missing"이지만 Assets/ 경로가 없으면 필터링 안 함
         Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
             "Script attached to 'GameObject' is missing or no valid script"));
     }
@@ -319,7 +317,8 @@ public class IsKnownNonSdkMessageTests
     public void ScriptMissingInUserPrefab_LasercahrgingFixture_ReturnsTrue()
     {
         // Sentry APPS-IN-TOSS-UNITY-SDK-H1 실측 메시지.
-        // 사용자 Resources/Effect 하위 prefab의 missing script 경고 — Unity 표준 문구로 SDK 외부.
+        // "Script attached to" + "is missing" + "Assets/" composite 조건으로 매칭됨.
+        // 필터가 향후 anchored/regex로 tightening되어도 이 실측 메시지를 놓치지 않도록 fixture로 박아둠.
         Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
             "Script attached to '_NotUse_Effetc_Lasercharging' in asset 'Assets/Resources/Effect/_NotUse_Effetc_Lasercharging.prefab' is missing or no valid script is attached."));
     }

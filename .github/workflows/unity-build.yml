@@ -1718,6 +1718,8 @@ jobs:
           name: ${{ steps.artifact.outputs.name }}
           path: |
             Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}/ait-build/dist/
+            Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}/ait-build/public/
+            Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}/ait-build/index.html
             Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}/ait-build/*.ait
             Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}/ait-build/package.json
             Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}/ait-build/pnpm-lock.yaml

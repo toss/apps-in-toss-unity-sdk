@@ -265,6 +265,32 @@ public class IsKnownNonSdkMessageTests
     }
 
     [Test]
+    [TestCase(
+        "Script attached to '_iOSUpdate' in scene 'Assets/Scenes/Main.unity' is missing or no valid script is attached.",
+        TestName = "ScriptMissingInUserScene_iOSUpdate_ReturnsTrue")]
+    [TestCase(
+        "Script attached to 'Image_Popup' in scene 'Assets/Scenes/Main.unity' is missing or no valid script is attached.",
+        TestName = "ScriptMissingInUserScene_ImagePopup_ReturnsTrue")]
+    [TestCase(
+        "Script attached to '_AdManager' in scene 'Assets/Scenes/Main.unity' is missing or no valid script is attached.",
+        TestName = "ScriptMissingInUserScene_AdManager_ReturnsTrue")]
+    public void ScriptMissingInUserScene_RealisticVariants_ReturnsTrue(string message)
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-H0/GX/GW — 사용자 씬의 missing script 경고.
+        // "in scene 'Assets/...'" 형태도 기존 composite 가드(Script attached to + is missing + Assets/)가 매칭한다.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(message));
+    }
+
+    [Test]
+    public void ScriptMissingInUserScene_WithAitPrefix_NeverFiltered()
+    {
+        // composite missing-script 가드의 세 조건(Script attached to + is missing + Assets/)을 모두 만족하지만,
+        // "[AIT" 키워드가 MessageContainsSdkKeyword 가드에 먼저 매칭되어 composite 가드 도달 전에 return false 한다.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] Script attached to '_iOSUpdate' in scene 'Assets/Scenes/Main.unity' is missing or no valid script is attached."));
+    }
+
+    [Test]
     public void AudioClipImportWarning_ReturnsTrue()
     {
         // Sentry GT/GV — 사용자 프로젝트 에셋 import 경고

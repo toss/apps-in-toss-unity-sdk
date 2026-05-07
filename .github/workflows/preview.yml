@@ -180,8 +180,17 @@ jobs:
     name: Build (${{ matrix.target.os }}, Unity ${{ matrix.target.unity-version }})
     needs: parse-targets
 
+    # ref-cancel: 라이센스 직렬화는 reusable workflow 의 머신 락이 담당,
+    # 호출자에서는 같은 ref + 같은 (os, unity-version) 의 이전 호출만 cancel
+    concurrency:
+      group: preview-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ matrix.target.os }}-${{ matrix.target.unity-version }}
+      cancel-in-progress: true
+
     strategy:
       fail-fast: false
+      # max-parallel 미설정: matrix 가 macOS/Windows 를 섞어서 가지므로
+      # OS 간 병렬은 허용 (다른 머신). 같은 OS 내 직렬화는 reusable workflow
+      # 의 unity-machine-${os} concurrency 가 담당.
       matrix:
         target: ${{ fromJson(needs.parse-targets.outputs.targets) }}
 

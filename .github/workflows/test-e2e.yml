@@ -209,9 +209,17 @@ jobs:
     name: Build (macOS, Unity ${{ matrix.unity-version }})
     needs: [setup]
 
+    # ref-cancel: 같은 ref(브랜치/태그/PR) + 같은 (os, unity-version) 의 이전
+    # 호출을 cancel. reusable workflow 안의 머신 락(unity-build.yml)이 라이센스
+    # 직렬화를 담당하므로, 여기서는 새 푸시 시 이전 잡 정리만 책임진다.
+    concurrency:
+      group: e2e-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-macos-${{ matrix.unity-version }}
+      cancel-in-progress: true
+
     strategy:
       fail-fast: false
-      max-parallel: 2
+      # 같은 macOS 머신 락에 어차피 큐잉되므로 동시 dispatch 의미 없음
+      max-parallel: 1
       matrix:
         unity-version: ["2021.3", "2022.3", "6000.0", "6000.2", "6000.3"]
 
@@ -243,8 +251,13 @@ jobs:
     name: Build (Windows, Unity ${{ matrix.unity-version }})
     needs: [setup]
 
+    concurrency:
+      group: e2e-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-windows-${{ matrix.unity-version }}
+      cancel-in-progress: true
+
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
         unity-version: ["2021.3", "2022.3", "6000.0", "6000.2", "6000.3"]
 

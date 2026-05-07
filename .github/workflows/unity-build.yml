@@ -152,6 +152,9 @@ jobs:
         with:
           repository: ${{ inputs.repository || github.repository }}
           ref: ${{ inputs.ref || github.ref }}
+          # Bee 캐시 무효화 판정 시 git diff (push event before SHA → HEAD) 가 필요.
+          # 다중 커밋 푸시도 커버하도록 50 depth — diff 실패 시 보수적으로 Bee 삭제.
+          fetch-depth: 50
 
       # =====================================================
       # Runner 진단 (debug-runner 플래그 활성화 시)
@@ -417,31 +420,95 @@ jobs:
             echo "Cleaning Library cache (requested via input)..."
             rm -rf "${PROJECT_PATH}/Library" 2>/dev/null || true
           else
-            echo "Cleaning Bee build cache to prevent stale ref.dll issues..."
-            echo "Removing: ${PROJECT_PATH}/Library/Bee"
-            rm -rf "${PROJECT_PATH}/Library/Bee" 2>/dev/null || true
+            # Bee는 SDK/asmdef/jslib rename 시 stale ref.dll을 캐시한다
+            # → 해당 변경이 있을 때만 Bee 삭제. 그 외엔 증분 빌드 보존.
+            BEFORE_SHA="${{ github.event.before }}"
+            if [ -z "$BEFORE_SHA" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
+              BEFORE_REF="HEAD~1"
+            else
+              BEFORE_REF="$BEFORE_SHA"
+            fi
+            CHANGED=""
+            if git rev-parse --verify "$BEFORE_REF" >/dev/null 2>&1; then
+              CHANGED=$(git diff --name-only "$BEFORE_REF" HEAD -- \
+                'Runtime/SDK/' '*.asmdef' '*.jslib' 2>/dev/null || echo "__diff_failed__")
+            else
+              CHANGED="__diff_failed__"
+            fi
+            if [ "$CHANGED" = "__diff_failed__" ] || [ -n "$CHANGED" ]; then
+              if [ "$CHANGED" = "__diff_failed__" ]; then
+                echo "Cannot resolve git diff base — wiping Bee conservatively"
+              else
+                echo "SDK/asmdef/jslib changes detected — wiping Bee to prevent stale ref.dll:"
+                echo "$CHANGED" | sed 's/^/  /'
+              fi
+              rm -rf "${PROJECT_PATH}/Library/Bee" 2>/dev/null || true
+            else
+              echo "No SDK/asmdef/jslib changes — preserving Bee for incremental build"
+            fi
           fi
           echo "Done."
 
+      # Windows: shell 의존성을 피하기 위해 node 로 git/diff/rm 를 직접 호출
+      # (위 BuildConfig 스텝의 WSL/Git-bash 이슈 주석 참조)
       - name: Clean Previous Build Artifacts (Windows)
         if: inputs.os == 'windows' && (inputs.test-level || '2') != '0'
-        shell: cmd
+        shell: node {0}
+        env:
+          UNITY_VERSION: ${{ inputs.unity-version }}
+          CLEAN_LIBRARY: ${{ inputs.clean-library }}
+          BEFORE_SHA: ${{ github.event.before }}
         run: |
-          @echo off
-          set "PROJECT_PATH=Tests~\E2E\SampleUnityProject-${{ inputs.unity-version }}"
-          set "CLEAN_LIBRARY=${{ inputs.clean-library }}"
-          echo Cleaning previous build artifacts...
-          if exist "%PROJECT_PATH%\ait-build" rmdir /s /q "%PROJECT_PATH%\ait-build"
-          if exist "%PROJECT_PATH%\webgl" rmdir /s /q "%PROJECT_PATH%\webgl"
-          if "%CLEAN_LIBRARY%"=="true" (
-            echo Cleaning Library cache requested via input...
-            if exist "%PROJECT_PATH%\Library" rmdir /s /q "%PROJECT_PATH%\Library"
-          ) else (
-            echo Cleaning Bee build cache to prevent stale ref.dll issues...
-            echo Removing: %PROJECT_PATH%\Library\Bee
-            if exist "%PROJECT_PATH%\Library\Bee" rmdir /s /q "%PROJECT_PATH%\Library\Bee"
-          )
-          echo Done.
+          const fs = require('fs');
+          const path = require('path');
+          const { execFileSync } = require('child_process');
+
+          const projectPath = path.join('Tests~', 'E2E', `SampleUnityProject-${process.env.UNITY_VERSION}`);
+          const rm = (rel) => {
+            const p = path.join(projectPath, rel);
+            if (fs.existsSync(p)) {
+              fs.rmSync(p, { recursive: true, force: true });
+              console.log(`  removed: ${p}`);
+            }
+          };
+
+          console.log('Cleaning previous build artifacts...');
+          rm('ait-build');
+          rm('webgl');
+
+          if (process.env.CLEAN_LIBRARY === 'true') {
+            console.log('Cleaning Library cache (requested via input)...');
+            rm('Library');
+            console.log('Done.');
+            return;
+          }
+
+          let beforeRef = process.env.BEFORE_SHA;
+          if (!beforeRef || /^0+$/.test(beforeRef)) beforeRef = 'HEAD~1';
+
+          let changed = null;
+          let diffFailed = false;
+          try {
+            execFileSync('git', ['rev-parse', '--verify', beforeRef], { stdio: 'ignore' });
+            changed = execFileSync('git', [
+              'diff', '--name-only', beforeRef, 'HEAD', '--',
+              'Runtime/SDK/', '*.asmdef', '*.jslib',
+            ], { encoding: 'utf8' }).trim();
+          } catch {
+            diffFailed = true;
+          }
+
+          if (diffFailed) {
+            console.log('Cannot resolve git diff base — wiping Bee conservatively');
+            rm(path.join('Library', 'Bee'));
+          } else if (changed && changed.length > 0) {
+            console.log('SDK/asmdef/jslib changes detected — wiping Bee to prevent stale ref.dll:');
+            for (const line of changed.split(/\r?\n/)) console.log('  ' + line);
+            rm(path.join('Library', 'Bee'));
+          } else {
+            console.log('No SDK/asmdef/jslib changes — preserving Bee for incremental build');
+          }
+          console.log('Done.');
 
       # =====================================================
       # Unity 설치 감지

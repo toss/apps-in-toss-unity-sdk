@@ -728,7 +728,7 @@ namespace AppsInToss.Editor.ErrorTracker
             }
 
             // "Script attached to ... is missing" 패턴은 Assets/ 경로가 포함된 경우에만 사용자 프로젝트로 분류.
-            // "in Assets/..." 직접 경로 형태와 "in scene 'Assets/...'" 변형(SDK-H0/GX/GW) 모두 매칭한다.
+            // "in Assets/..." 직접 경로 형태(SDK-H1/GY), "in scene 'Assets/...'" 변형(SDK-H0/GX/GW) 모두 매칭한다.
             if (message.IndexOf("Script attached to", StringComparison.Ordinal) >= 0
                 && message.IndexOf("is missing", StringComparison.Ordinal) >= 0
                 && message.IndexOf("Assets/", StringComparison.Ordinal) >= 0)

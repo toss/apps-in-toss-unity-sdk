@@ -288,7 +288,6 @@ public class IsKnownNonSdkMessageTests
             "Script attached to 'GameObject' is missing or no valid script"));
     }
 
-    [Test]
     [TestCase(
         "Script attached to '_iOSUpdate' in scene 'Assets/Scenes/Main.unity' is missing or no valid script is attached.",
         TestName = "ScriptMissingInUserScene_iOSUpdate_ReturnsTrue")]
@@ -312,6 +311,32 @@ public class IsKnownNonSdkMessageTests
         // "[AIT" 키워드가 MessageContainsSdkKeyword 가드에 먼저 매칭되어 composite 가드 도달 전에 return false 한다.
         Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
             "[AIT] Script attached to '_iOSUpdate' in scene 'Assets/Scenes/Main.unity' is missing or no valid script is attached."));
+    }
+
+    [Test]
+    public void ScriptMissingInUserPrefab_LasercahrgingFixture_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-H1 실측 메시지.
+        // "Script attached to" + "is missing" + "Assets/" composite 조건으로 매칭됨.
+        // 필터가 향후 anchored/regex로 tightening되어도 이 실측 메시지를 놓치지 않도록 fixture로 박아둠.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Script attached to '_NotUse_Effetc_Lasercharging' in asset 'Assets/Resources/Effect/_NotUse_Effetc_Lasercharging.prefab' is missing or no valid script is attached."));
+    }
+
+    [Test]
+    public void ScriptMissingInUserPrefab_HitMissileFixture_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-GY 실측 메시지.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Script attached to '_NotUse_HitMissile_P10' in asset 'Assets/Resources/Effect/_NotUse_HitMissile_P10.prefab' is missing or no valid script is attached."));
+    }
+
+    [Test]
+    public void ScriptMissingInUserPrefab_WithAitPrefix_NeverFiltered()
+    {
+        // AitKeywords 가드 회귀 방지: [AIT] prefix가 붙으면 SDK 자체 로그로 간주되어 필터링되지 않아야 함.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] Script attached to 'Foo' in asset 'Assets/Resources/Foo.prefab' is missing or no valid script is attached."));
     }
 
     [Test]

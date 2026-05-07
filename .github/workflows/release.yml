@@ -342,14 +342,13 @@ jobs:
     needs: [release, regenerate-sdk, prepare-build-matrix]
     if: needs.release.outputs.skip != 'true' && needs.prepare-build-matrix.outputs.skip-build != 'true'
 
-    # ref-cancel: 라이센스 직렬화는 reusable workflow 의 머신 락 담당
+    # ref-cancel: 같은 ref의 이전 호출만 정리. 머신 분배는 GH Actions 자체가 담당.
     concurrency:
       group: release-${{ github.workflow }}-${{ needs.regenerate-sdk.outputs.ref }}-macos-${{ matrix.unity-version }}
       cancel-in-progress: true
 
     strategy:
       fail-fast: false
-      max-parallel: 1
       matrix:
         unity-version: ${{ fromJSON(needs.prepare-build-matrix.outputs.macos-versions) }}
 
@@ -380,7 +379,6 @@ jobs:
 
     strategy:
       fail-fast: false
-      max-parallel: 1
       matrix:
         unity-version: ${{ fromJSON(needs.prepare-build-matrix.outputs.windows-versions) }}
 

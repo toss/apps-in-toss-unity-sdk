@@ -113,6 +113,8 @@ namespace AppsInToss.Editor.ErrorTracker
 
             // 사용자 Addressable 설정
             "does not have any associated AddressableAssetGroupSchemas",
+            // 사용자 Addressables 콘텐츠 빌드 실패 — Unity Addressables 시스템 자체 오류 (SDK-H2)
+            "Addressable content build failure",
 
             // 사용자 Unity 설치에 WebGL 모듈 미설치 — SDK-DD
             "Build target 'WebGL' not supported",

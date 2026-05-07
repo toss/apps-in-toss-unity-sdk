@@ -610,6 +610,22 @@ public class IsKnownNonSdkMessageTests
             "[AIT] Exec> git show -s --pretty=%D HEAD"));
     }
 
+    [Test]
+    public void AddressableContentBuildFailure_ReturnsTrue()
+    {
+        // Sentry SDK-H2 — Unity Addressables 콘텐츠 빌드 실패 (SDK와 무관한 사용자 프로젝트 문제)
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "UnityError: Addressable content build failure (duration : 0:00:16.61)"));
+    }
+
+    [Test]
+    public void AddressableContentBuildFailure_WithAitPrefix_NeverFiltered()
+    {
+        // AitKeywords 가드 회귀 방지: [AIT] prefix가 붙으면 SDK 자체 로그로 간주
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] Addressable content build failure (duration : 0:00:16.61)"));
+    }
+
     #endregion
 
     #region SDK 관련 메시지는 통과 (negative cases)

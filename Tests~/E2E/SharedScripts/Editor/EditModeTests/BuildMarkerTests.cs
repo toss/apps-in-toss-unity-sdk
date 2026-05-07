@@ -1,6 +1,7 @@
 // -----------------------------------------------------------------------
 // BuildMarkerTests.cs - 빌드 마커 파일 생성/읽기 회귀 테스트
 // Level 0: WriteBuildMarker가 부모 디렉토리 부재 시에도 성공하는지 검증 (Sentry SDK-DC)
+//          + ShouldForceCleanBuild가 마커 부재 시 정확한 Warning을 남기는지 검증 (Sentry SDK-AA)
 // -----------------------------------------------------------------------
 
 using NUnit.Framework;
@@ -118,7 +119,11 @@ public class BuildMarkerTests
             "Second WriteBuildMarker should overwrite the first");
     }
 
-    // 분류기가 메시지 본문으로 매칭하므로 문자열을 고정해서 회귀를 막는다 (Sentry SDK-AA).
+    // =====================================================
+    // Sentry SDK-AA 회귀 테스트: 마커 누락 시 경고 + Clean build
+    // =====================================================
+
+    // 분류기가 메시지 본문으로 매칭하므로 문자열을 고정해서 회귀를 막는다.
     private const string EXPECTED_MISSING_MARKER_WARNING =
         "[AIT] 빌드 마커가 없습니다. Clean build를 수행합니다.";
 

@@ -94,6 +94,12 @@ namespace AppsInToss.Editor
                 // Kill 시점엔 이미 exit. ArgumentException 과 동일한 정상 경로.
                 return false;
             }
+            catch (System.ComponentModel.Win32Exception)
+            {
+                // Windows: 프로세스가 종료 중이거나 access denied 상태에서
+                // Process.Kill 이 Win32Exception 을 던질 수 있음. 정상 경로로 silent 처리.
+                return false;
+            }
             catch (Exception ex)
             {
                 Debug.LogWarning($"[AIT] PID {pid} 종료 실패: {ex.Message}. 수동 확인 필요.");

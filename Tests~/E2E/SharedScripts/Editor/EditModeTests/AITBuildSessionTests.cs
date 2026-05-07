@@ -186,7 +186,10 @@ namespace AppsInToss.Editor.EditModeTests
 
             Assert.DoesNotThrow(() =>
             {
-                AITBuildSessionRecovery.TryKillIfRunning(pid);
+                bool killed = AITBuildSessionRecovery.TryKillIfRunning(pid);
+                // 이미 종료된 PID 는 어느 catch 경로(ArgumentException/InvalidOperationException/
+                // Win32Exception)로 떨어지든 silent false 가 계약.
+                Assert.IsFalse(killed);
             });
         }
     }

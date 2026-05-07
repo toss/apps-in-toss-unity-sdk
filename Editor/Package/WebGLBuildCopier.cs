@@ -183,9 +183,11 @@ namespace AppsInToss.Editor.Package
             }
             else
             {
-                // SDK 템플릿에서 Runtime 폴더 복사 (수동 WebGL 빌드 시 AITTemplate 미사용 대응)
-                Debug.LogWarning("[AIT] WebGL 빌드에 Runtime 폴더가 없습니다. SDK 템플릿에서 복사합니다.");
-                Debug.LogWarning("[AIT]    ⚠️ AITTemplate이 아닌 다른 템플릿으로 빌드되었을 수 있습니다.");
+                // 사용자가 AITTemplate 외 다른 WebGL 템플릿으로 직접 빌드한 webgl/을 패키징하는
+                // 경우의 폴백: SDK 템플릿에서 Runtime 폴더를 복사한다. 콘솔 진단은 남기되
+                // Sentry 캡처는 차단한다 — SDK 결함이 아닌 사용자 설정 문제이기 때문.
+                AITLog.Warning("[AIT] WebGL 빌드에 Runtime 폴더가 없습니다. SDK 템플릿에서 복사합니다.", sentryCapture: false);
+                AITLog.Warning("[AIT]    ⚠️ AITTemplate이 아닌 다른 템플릿으로 빌드되었을 수 있습니다.", sentryCapture: false);
                 string sdkRuntimePath = SdkPathResolver.FindSdkRuntimePath();
                 if (!string.IsNullOrEmpty(sdkRuntimePath) && Directory.Exists(sdkRuntimePath))
                 {

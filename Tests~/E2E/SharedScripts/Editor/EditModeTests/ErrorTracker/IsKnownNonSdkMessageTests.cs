@@ -275,7 +275,8 @@ public class IsKnownNonSdkMessageTests
     [Test]
     public void ScriptMissingInUserScene_WithAitPrefix_NeverFiltered()
     {
-        // AIT 키워드가 섞이면 SDK 보호 가드가 우선 — composite missing-script 가드를 우회하지 않는다.
+        // composite missing-script 가드의 세 조건(Script attached to + is missing + Assets/)을 모두 만족하지만,
+        // "[AIT" 키워드가 MessageContainsSdkKeyword 가드에 먼저 매칭되어 composite 가드 도달 전에 return false 한다.
         Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
             "[AIT] Script attached to '_iOSUpdate' in scene 'Assets/Scenes/Main.unity' is missing or no valid script is attached."));
     }

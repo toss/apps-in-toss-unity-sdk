@@ -480,11 +480,10 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
         validation.warnings.forEach(w => console.log(`     ⚠️ ${w}`));
       }
 
-      const expectedCompressionFormat = process.env.AIT_COMPRESSION_FORMAT === '0'
-        ? 'disabled'
-        : process.env.AIT_COMPRESSION_FORMAT === '1'
-          ? 'gzip'
-          : 'brotli';
+      // AIT_COMPRESSION_FORMAT 매핑: 0=disabled, 1=gzip, 2=brotli, -1=auto(brotli),
+      // 미설정 시 사용자 PlayerSettings 따름 — null로 기록.
+      const compressionFormatEnvMap = { '0': 'disabled', '1': 'gzip', '2': 'brotli', '-1': 'brotli' };
+      const expectedCompressionFormat = compressionFormatEnvMap[process.env.AIT_COMPRESSION_FORMAT] ?? null;
 
       testResults.tests['1_build_validation'] = {
         passed: validation.passed,

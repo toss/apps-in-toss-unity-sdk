@@ -338,6 +338,9 @@ jobs:
         working-directory: Tests~/E2E/tests
         env:
           UNITY_PROJECT_PATH: ${{ github.workspace }}/Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}
+          # E2E 빌드와 동일한 값으로 전파 — test가 isDevBuild/expectedFormat을 분기.
+          AIT_DEVELOPMENT_BUILD: "true"
+          AIT_COMPRESSION_FORMAT: "0"
         run: pnpm test
 
       - name: Upload Benchmark Results
@@ -412,6 +415,9 @@ jobs:
         working-directory: Tests~/E2E/tests
         env:
           UNITY_PROJECT_PATH: ${{ github.workspace }}/Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}
+          # E2E 빌드와 동일한 값으로 전파 — test가 isDevBuild/expectedFormat을 분기.
+          AIT_DEVELOPMENT_BUILD: "true"
+          AIT_COMPRESSION_FORMAT: "0"
         run: pnpm test
 
       - name: Upload Benchmark Results

@@ -72,6 +72,11 @@ const AIT_BUILD = path.resolve(SAMPLE_PROJECT, 'ait-build');
 const DIST_WEB = path.resolve(AIT_BUILD, 'dist/web');
 
 // 벤치마크 기준
+// E2E CI는 AIT_DEVELOPMENT_BUILD=true + AIT_COMPRESSION_FORMAT=0(Disabled)로 빌드하여
+// 빌드 wallclock을 단축한다(unity-build.yml 참조).
+// Dev Build는 wasm 크기가 Release 대비 2-3배 커지고 압축도 비활성화되므로
+// MAX_BUILD_SIZE_MB 단언을 사용할 수 없어 isDevBuild일 때 스킵한다.
+const isDevBuild = process.env.AIT_DEVELOPMENT_BUILD === 'true';
 const BENCHMARKS = isMobileEmulation ? {
   MAX_LOAD_TIME_MS: 30000,
   MAX_BUILD_SIZE_MB: 50,
@@ -475,6 +480,11 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
         validation.warnings.forEach(w => console.log(`     ⚠️ ${w}`));
       }
 
+      // AIT_COMPRESSION_FORMAT 매핑: 0=disabled, 1=gzip, 2=brotli, -1=auto(brotli),
+      // 미설정 시 사용자 PlayerSettings 따름 — null로 기록.
+      const compressionFormatEnvMap = { '0': 'disabled', '1': 'gzip', '2': 'brotli', '-1': 'brotli' };
+      const expectedCompressionFormat = compressionFormatEnvMap[process.env.AIT_COMPRESSION_FORMAT] ?? null;
+
       testResults.tests['1_build_validation'] = {
         passed: validation.passed,
         buildSizeMB: validation.buildSizeMB,
@@ -482,12 +492,16 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
         fileCount: validation.fileCount,
         compressionValidation: {
           detectedFormat: validation.compressionFormat,
-          expectedFormat: 'brotli'
+          expectedFormat: expectedCompressionFormat
         }
       };
 
       expect(validation.passed, 'Build validation should pass').toBe(true);
-      expect(validation.buildSizeMB).toBeLessThanOrEqual(BENCHMARKS.MAX_BUILD_SIZE_MB);
+      // Dev Build + 압축 비활성화 조합에서는 산출물이 50MB 한도를 초과하므로 size 단언 스킵.
+      // 배포 빌드에는 영향 없음 (production 워크플로우는 사용자 PlayerSettings/압축 따름).
+      if (!isDevBuild) {
+        expect(validation.buildSizeMB).toBeLessThanOrEqual(BENCHMARKS.MAX_BUILD_SIZE_MB);
+      }
     } else {
       // build-validation.json이 없는 경우 직접 검증 (이전 버전 호환)
       console.log('⚠️ build-validation.json not found, performing direct validation...');

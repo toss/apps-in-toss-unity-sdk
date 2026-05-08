@@ -288,9 +288,10 @@ namespace AppsInToss.Editor
             // 환경 변수 읽기
             string debugConsoleEnv = System.Environment.GetEnvironmentVariable("AIT_DEBUG_CONSOLE");
             string compressionFormatEnv = System.Environment.GetEnvironmentVariable("AIT_COMPRESSION_FORMAT");
+            string developmentBuildEnv = System.Environment.GetEnvironmentVariable("AIT_DEVELOPMENT_BUILD");
 
             // 오버라이드할 항목이 없으면 원본 반환
-            if (string.IsNullOrEmpty(debugConsoleEnv) && string.IsNullOrEmpty(compressionFormatEnv))
+            if (string.IsNullOrEmpty(debugConsoleEnv) && string.IsNullOrEmpty(compressionFormatEnv) && string.IsNullOrEmpty(developmentBuildEnv))
                 return profile;
 
             // 복사본 생성 (새 필드 추가 시 누락 방지)
@@ -322,6 +323,21 @@ namespace AppsInToss.Editor
                 else
                 {
                     Debug.LogWarning($"[AIT] AIT_COMPRESSION_FORMAT 환경 변수 값이 올바르지 않습니다: '{compressionFormatEnv}' (-1/0/1/2 필요)");
+                }
+            }
+
+            // AIT_DEVELOPMENT_BUILD 오버라이드
+            // E2E CI에서 Emscripten 옵티마이저 단축으로 Link_WebGL_wasm 단계 시간 절감 목적.
+            if (!string.IsNullOrEmpty(developmentBuildEnv))
+            {
+                if (bool.TryParse(developmentBuildEnv, out bool developmentBuild))
+                {
+                    overriddenProfile.developmentBuild = developmentBuild;
+                    Debug.Log($"[AIT] 환경 변수 오버라이드: AIT_DEVELOPMENT_BUILD={developmentBuild}");
+                }
+                else
+                {
+                    Debug.LogWarning($"[AIT] AIT_DEVELOPMENT_BUILD 환경 변수 값이 올바르지 않습니다: '{developmentBuildEnv}' (true/false 필요)");
                 }
             }
 

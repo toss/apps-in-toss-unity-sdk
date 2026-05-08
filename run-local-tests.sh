@@ -436,21 +436,23 @@ test_e2e_playwright() {
     echo "Installing Playwright Chromium..."
     pnpx playwright install chromium
 
-    # EXPECTED_COMPRESSION 환경변수 설정 (압축 포맷 검증용)
-    local expected_compression=""
-    if [ -n "$COMPRESSION_FORMAT" ] && [ "$COMPRESSION_FORMAT" != "auto" ]; then
-        expected_compression="$COMPRESSION_FORMAT"
-        echo "Expected compression: $expected_compression"
-    elif [ -n "$COMPRESSION_FORMAT" ] && [ "$COMPRESSION_FORMAT" = "auto" ]; then
-        expected_compression="brotli"
-        echo "Expected compression: $expected_compression (auto → brotli)"
+    # 빌드 단계에서 사용한 AIT_COMPRESSION_FORMAT을 test에도 전파 — test가 expectedFormat을 분기.
+    local compression_env_for_test=""
+    if [ -n "$COMPRESSION_FORMAT" ]; then
+        case "$COMPRESSION_FORMAT" in
+            auto)     compression_env_for_test="-1" ;;
+            disabled) compression_env_for_test="0" ;;
+            gzip)     compression_env_for_test="1" ;;
+            brotli)   compression_env_for_test="2" ;;
+        esac
+        echo "Expected compression: $COMPRESSION_FORMAT (AIT_COMPRESSION_FORMAT=$compression_env_for_test)"
     fi
 
     # 테스트 실행 시 프로젝트 경로를 환경변수로 전달
     echo "Running E2E tests..."
     local e2e_env="UNITY_PROJECT_PATH=$project_path"
-    if [ -n "$expected_compression" ]; then
-        e2e_env="$e2e_env EXPECTED_COMPRESSION=$expected_compression"
+    if [ -n "$compression_env_for_test" ]; then
+        e2e_env="$e2e_env AIT_COMPRESSION_FORMAT=$compression_env_for_test"
     fi
     if env $e2e_env pnpm test; then
         print_success "E2E Playwright Tests ($version_pattern)"

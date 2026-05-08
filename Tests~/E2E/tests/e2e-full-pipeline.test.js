@@ -72,12 +72,16 @@ const AIT_BUILD = path.resolve(SAMPLE_PROJECT, 'ait-build');
 const DIST_WEB = path.resolve(AIT_BUILD, 'dist/web');
 
 // 벤치마크 기준
+// MAX_BUILD_SIZE_MB가 80인 이유: E2E CI는 AIT_DEVELOPMENT_BUILD=true로 빌드하여
+// Emscripten 옵티마이저를 줄여 Link_WebGL_wasm 단계 시간을 단축한다(unity-build.yml 참조).
+// Development Build는 wasm 크기가 Release 대비 2-3배 커지므로 한도 상향 필요.
+// 배포 빌드에는 영향 없음 (production 워크플로우는 사용자 PlayerSettings 따름).
 const BENCHMARKS = isMobileEmulation ? {
   MAX_LOAD_TIME_MS: 30000,
-  MAX_BUILD_SIZE_MB: 50,
+  MAX_BUILD_SIZE_MB: 80,
 } : {
   MAX_LOAD_TIME_MS: 10000,
-  MAX_BUILD_SIZE_MB: 50,
+  MAX_BUILD_SIZE_MB: 80,
 };
 
 // 결과 저장용

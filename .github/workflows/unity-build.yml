@@ -1341,6 +1341,11 @@ jobs:
         uses: nick-invision/retry@v4
         env:
           AIT_DEBUG_CONSOLE: "true"
+          # E2E 한정: Brotli(q11) 대신 Gzip으로 빌드 — wasm.unityweb 단일 파일 압축이
+          # Brotli q11에서 ~109s 직렬 병목이라 self-hosted runner 점유를 크게 늘린다.
+          # Gzip은 ~3s 수준이라 Build wallclock을 대폭 단축. 파일 크기는 +63%이지만
+          # E2E 아티팩트는 테스트용일 뿐 배포되지 않으므로 무관.
+          AIT_COMPRESSION_FORMAT: "1"
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         with:
           timeout_minutes: 30
@@ -1479,6 +1484,8 @@ jobs:
         uses: nick-invision/retry@v4
         env:
           AIT_DEBUG_CONSOLE: "true"
+          # E2E 한정: Brotli(q11) 대신 Gzip으로 빌드 — macOS step의 동일 주석 참조.
+          AIT_COMPRESSION_FORMAT: "1"
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         with:
           timeout_minutes: 30

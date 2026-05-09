@@ -1,5 +1,6 @@
 using System;
 using System.Threading;
+using AppsInToss.Editor.ErrorTracker;
 using UnityEngine;
 
 namespace AppsInToss.Editor.Package
@@ -8,9 +9,19 @@ namespace AppsInToss.Editor.Package
     /// pnpm install 실행 (동기/비동기/백그라운드).
     /// PnpmStoreManager의 InstallStages 정책을 기반으로 frozen → lockfile 갱신 → lockfile 폐기 → clean 재시도 순으로 진행.
     /// 실패 시 NodeModulesValidator.CleanNodeModules로 복구 후 재시도.
+    ///
+    /// Sentry 캡처 정책: 중간 단계 실패는 정상 fallback이므로 LogError가 발생해도 Sentry로
+    /// 보내지 않는다 (BeginSuppressLogCapture). 모든 단계가 실패한 최종 LogError만 캡처되도록
+    /// 한다 — false positive(SDK-B8/SDK-HB) 방지.
     /// </summary>
     internal static class PnpmRunner
     {
+        /// <summary>
+        /// 마지막 단계 실패 시 한 번만 출력하는 최종 에러 메시지.
+        /// PnpmRunner의 sync/async/background 경로에서 일관되게 사용된다.
+        /// </summary>
+        internal const string FinalFailureMessage = "[AIT] pnpm install 실패 (모든 재시도 후에도 실패)";
+
         /// <summary>
         /// ThreadPool에서 pnpm install을 백그라운드 OS 프로세스로 실행합니다.
         /// WebGL 빌드가 메인 스레드를 블로킹하는 동안 독립적으로 실행됩니다.
@@ -52,106 +63,116 @@ namespace AppsInToss.Editor.Package
             var ct = earlyCtx.PnpmCancellationToken;
             var additionalPaths = AITNpmRunner.BuildAdditionalPaths(earlyCtx.PnpmPath);
 
-            foreach (var (args, label, cleanFirst, deleteLockfileFirst) in PnpmStoreManager.InstallStages)
+            // 중간 단계의 실행 오류/시간 초과 LogError는 정상 fallback의 일부라 Sentry로 보내지 않는다.
+            // 모든 단계가 실패한 경우에만 스코프 밖에서 단일 LogError를 발생시킨다.
+            AITEditorErrorTracker.BeginSuppressLogCapture();
+            try
             {
-                if (ct.IsCancellationRequested)
-                    return AITConvertCore.AITExportError.CANCELLED;
-
-                if (cleanFirst) NodeModulesValidator.CleanNodeModules(earlyCtx.BuildProjectPath);
-                if (deleteLockfileFirst) DeleteLockfileIfExists(earlyCtx.BuildProjectPath);
-
-                string fullArguments = AITNpmRunner.BuildFullArguments(args, earlyCtx.LocalCachePath);
-                string command = $"\"{earlyCtx.PnpmPath}\" {fullArguments}";
-
-                Debug.Log($"[AIT] [병렬] pnpm {label} 실행 중...");
-                Debug.Log($"[AIT] [병렬] 명령: {command}");
-
-                try
+                foreach (var (args, label, cleanFirst, deleteLockfileFirst) in PnpmStoreManager.InstallStages)
                 {
-                    var processInfo = AITPlatformHelper.CreateProcessStartInfo(
-                        command, earlyCtx.BuildProjectPath, additionalPaths.ToArray());
+                    if (ct.IsCancellationRequested)
+                        return AITConvertCore.AITExportError.CANCELLED;
 
-                    using (var process = new System.Diagnostics.Process { StartInfo = processInfo })
+                    if (cleanFirst) NodeModulesValidator.CleanNodeModules(earlyCtx.BuildProjectPath);
+                    if (deleteLockfileFirst) DeleteLockfileIfExists(earlyCtx.BuildProjectPath);
+
+                    string fullArguments = AITNpmRunner.BuildFullArguments(args, earlyCtx.LocalCachePath);
+                    string command = $"\"{earlyCtx.PnpmPath}\" {fullArguments}";
+
+                    Debug.Log($"[AIT] [병렬] pnpm {label} 실행 중...");
+                    Debug.Log($"[AIT] [병렬] 명령: {command}");
+
+                    try
                     {
-                        int pid = -1;
-                        try
+                        var processInfo = AITPlatformHelper.CreateProcessStartInfo(
+                            command, earlyCtx.BuildProjectPath, additionalPaths.ToArray());
+
+                        using (var process = new System.Diagnostics.Process { StartInfo = processInfo })
                         {
-                            var outputBuilder = new System.Text.StringBuilder();
-                            var errorBuilder = new System.Text.StringBuilder();
-
-                            process.OutputDataReceived += (sender, e) =>
+                            int pid = -1;
+                            try
                             {
-                                if (e.Data != null)
-                                    outputBuilder.AppendLine(AITPlatformHelper.StripAnsiCodes(e.Data));
-                            };
-                            process.ErrorDataReceived += (sender, e) =>
-                            {
-                                if (e.Data != null)
-                                    errorBuilder.AppendLine(AITPlatformHelper.StripAnsiCodes(e.Data));
-                            };
+                                var outputBuilder = new System.Text.StringBuilder();
+                                var errorBuilder = new System.Text.StringBuilder();
 
-                            process.Start();
-                            pid = process.Id;
-                            AITBuildSession.RecordPid(pid);
-                            process.BeginOutputReadLine();
-                            process.BeginErrorReadLine();
-
-                            // HasExited 폴링 + CancellationToken 체크
-                            int maxWaitMs = 300000; // 5분
-                            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-
-                            while (!process.HasExited)
-                            {
-                                if (ct.IsCancellationRequested)
+                                process.OutputDataReceived += (sender, e) =>
                                 {
-                                    Debug.Log($"[AIT] [병렬] pnpm install 취소 요청. 프로세스를 종료합니다.");
-                                    process.Kill();
-                                    process.WaitForExit(5000);
-                                    return AITConvertCore.AITExportError.CANCELLED;
+                                    if (e.Data != null)
+                                        outputBuilder.AppendLine(AITPlatformHelper.StripAnsiCodes(e.Data));
+                                };
+                                process.ErrorDataReceived += (sender, e) =>
+                                {
+                                    if (e.Data != null)
+                                        errorBuilder.AppendLine(AITPlatformHelper.StripAnsiCodes(e.Data));
+                                };
+
+                                process.Start();
+                                pid = process.Id;
+                                AITBuildSession.RecordPid(pid);
+                                process.BeginOutputReadLine();
+                                process.BeginErrorReadLine();
+
+                                // HasExited 폴링 + CancellationToken 체크
+                                int maxWaitMs = 300000; // 5분
+                                var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+                                while (!process.HasExited)
+                                {
+                                    if (ct.IsCancellationRequested)
+                                    {
+                                        Debug.Log($"[AIT] [병렬] pnpm install 취소 요청. 프로세스를 종료합니다.");
+                                        process.Kill();
+                                        process.WaitForExit(5000);
+                                        return AITConvertCore.AITExportError.CANCELLED;
+                                    }
+
+                                    if (stopwatch.ElapsedMilliseconds > maxWaitMs)
+                                    {
+                                        process.Kill();
+                                        process.WaitForExit(5000);
+                                        Debug.LogError($"[AIT] [병렬] pnpm {label} 시간 초과 ({maxWaitMs / 1000}초)");
+                                        break; // 다음 단계로
+                                    }
+
+                                    Thread.Sleep(200);
                                 }
 
-                                if (stopwatch.ElapsedMilliseconds > maxWaitMs)
+                                // 아직 종료 안 된 경우 (타임아웃으로 빠져나온 경우) → 다음 단계
+                                if (!process.HasExited) continue;
+
+                                process.WaitForExit(5000); // 출력 버퍼 플러시
+
+                                if (process.ExitCode == 0)
                                 {
-                                    process.Kill();
-                                    process.WaitForExit(5000);
-                                    Debug.LogError($"[AIT] [병렬] pnpm {label} 시간 초과 ({maxWaitMs / 1000}초)");
-                                    break; // 다음 단계로
+                                    Debug.Log($"[AIT] [병렬] ✓ pnpm {label} 성공");
+                                    return AITConvertCore.AITExportError.SUCCEED;
                                 }
 
-                                Thread.Sleep(200);
+                                string output = outputBuilder.ToString();
+                                string error = errorBuilder.ToString();
+                                Debug.Log($"[AIT] [병렬] pnpm {label} 실패 (Exit Code: {process.ExitCode})");
+                                if (!string.IsNullOrEmpty(output))
+                                    Debug.Log($"[AIT] [병렬] 출력:\n{output.Trim()}");
+                                if (!string.IsNullOrEmpty(error))
+                                    Debug.Log($"[AIT] [병렬] 오류:\n{error.Trim()}");
                             }
-
-                            // 아직 종료 안 된 경우 (타임아웃으로 빠져나온 경우) → 다음 단계
-                            if (!process.HasExited) continue;
-
-                            process.WaitForExit(5000); // 출력 버퍼 플러시
-
-                            if (process.ExitCode == 0)
+                            finally
                             {
-                                Debug.Log($"[AIT] [병렬] ✓ pnpm {label} 성공");
-                                return AITConvertCore.AITExportError.SUCCEED;
+                                if (pid > 0) AITBuildSession.ClearPid(pid);
                             }
-
-                            string output = outputBuilder.ToString();
-                            string error = errorBuilder.ToString();
-                            Debug.Log($"[AIT] [병렬] pnpm {label} 실패 (Exit Code: {process.ExitCode})");
-                            if (!string.IsNullOrEmpty(output))
-                                Debug.Log($"[AIT] [병렬] 출력:\n{output.Trim()}");
-                            if (!string.IsNullOrEmpty(error))
-                                Debug.Log($"[AIT] [병렬] 오류:\n{error.Trim()}");
-                        }
-                        finally
-                        {
-                            if (pid > 0) AITBuildSession.ClearPid(pid);
                         }
                     }
-                }
-                catch (Exception e)
-                {
-                    Debug.LogError($"[AIT] [병렬] pnpm {label} 실행 오류: {e}");
-                }
+                    catch (Exception e)
+                    {
+                        Debug.LogError($"[AIT] [병렬] pnpm {label} 실행 오류: {e}");
+                    }
 
-                Debug.Log($"[AIT] [병렬] pnpm install ({label}) 실패, 다음 단계로...");
+                    Debug.Log($"[AIT] [병렬] pnpm install ({label}) 실패, 다음 단계로...");
+                }
+            }
+            finally
+            {
+                AITEditorErrorTracker.EndSuppressLogCapture();
             }
 
             Debug.LogError("[AIT] [병렬] pnpm install 실패 (모든 재시도 후에도 실패)");
@@ -163,18 +184,29 @@ namespace AppsInToss.Editor.Package
         /// </summary>
         internal static AITConvertCore.AITExportError RunPnpmInstallSync(AITPackageBuilder.PackageContext ctx)
         {
-            foreach (var (args, label, cleanFirst, deleteLockfileFirst) in PnpmStoreManager.InstallStages)
+            // 중간 단계 실패는 정상 fallback이라 Sentry로 보내지 않는다.
+            // 마지막 단계까지 실패하면 스코프 밖에서 단일 LogError를 발생시켜 Sentry가 캡처하게 한다.
+            AITEditorErrorTracker.BeginSuppressLogCapture();
+            try
             {
-                if (cleanFirst) NodeModulesValidator.CleanNodeModules(ctx.BuildProjectPath);
-                if (deleteLockfileFirst) DeleteLockfileIfExists(ctx.BuildProjectPath);
-                var result = AITNpmRunner.RunNpmCommandWithCache(
-                    ctx.BuildProjectPath, ctx.PnpmPath, args, ctx.LocalCachePath,
-                    $"pnpm {label}...");
-                if (result == AITConvertCore.AITExportError.SUCCEED) return result;
-                if (result == AITConvertCore.AITExportError.CANCELLED) return result;
-                Debug.Log($"[AIT] pnpm install ({label}) 실패, 다음 단계로...");
+                foreach (var (args, label, cleanFirst, deleteLockfileFirst) in PnpmStoreManager.InstallStages)
+                {
+                    if (cleanFirst) NodeModulesValidator.CleanNodeModules(ctx.BuildProjectPath);
+                    if (deleteLockfileFirst) DeleteLockfileIfExists(ctx.BuildProjectPath);
+                    var result = AITNpmRunner.RunNpmCommandWithCache(
+                        ctx.BuildProjectPath, ctx.PnpmPath, args, ctx.LocalCachePath,
+                        $"pnpm {label}...");
+                    if (result == AITConvertCore.AITExportError.SUCCEED) return result;
+                    if (result == AITConvertCore.AITExportError.CANCELLED) return result;
+                    Debug.Log($"[AIT] pnpm install ({label}) 실패, 다음 단계로...");
+                }
             }
-            Debug.LogError("[AIT] pnpm install 실패 (모든 재시도 후에도 실패)");
+            finally
+            {
+                AITEditorErrorTracker.EndSuppressLogCapture();
+            }
+
+            Debug.LogError(FinalFailureMessage);
             return AITConvertCore.AITExportError.FAIL_NPM_BUILD;
         }
 
@@ -192,7 +224,7 @@ namespace AppsInToss.Editor.Package
         {
             if (stageIndex >= PnpmStoreManager.InstallStages.Count)
             {
-                Debug.LogError("[AIT] pnpm install 실패 (모든 재시도 후에도 실패)");
+                Debug.LogError(FinalFailureMessage);
                 onComplete?.Invoke(AITConvertCore.AITExportError.FAIL_NPM_BUILD);
                 return;
             }
@@ -203,27 +235,49 @@ namespace AppsInToss.Editor.Package
 
             Debug.Log($"[AIT] pnpm {label} 실행 중...");
 
-            AITNpmRunner.RunNpmCommandWithCacheAsync(
-                buildProjectPath, pnpmPath, args, localCachePath,
-                onComplete: (result) =>
-                {
-                    if (result == AITConvertCore.AITExportError.SUCCEED)
-                    {
-                        onComplete?.Invoke(result);
-                        return;
-                    }
+            // 중간 단계 실패는 정상 fallback이라 Sentry로 보내지 않는다.
+            // 비동기 콜백 경계를 넘기 위해 Begin/End를 직접 호출한다.
+            AITEditorErrorTracker.BeginSuppressLogCapture();
+            bool suppressReleased = false;
+            void ReleaseSuppress()
+            {
+                if (suppressReleased) return;
+                suppressReleased = true;
+                AITEditorErrorTracker.EndSuppressLogCapture();
+            }
 
-                    if (ct.IsCancellationRequested)
+            try
+            {
+                AITNpmRunner.RunNpmCommandWithCacheAsync(
+                    buildProjectPath, pnpmPath, args, localCachePath,
+                    onComplete: (result) =>
                     {
-                        onComplete?.Invoke(AITConvertCore.AITExportError.CANCELLED);
-                        return;
-                    }
+                        ReleaseSuppress();
 
-                    Debug.Log($"[AIT] pnpm install ({label}) 실패, 다음 단계로...");
-                    RunPnpmInstallAsync(buildProjectPath, pnpmPath, localCachePath, ct, onOutput, onComplete, stageIndex + 1);
-                },
-                onOutputReceived: onOutput
-            );
+                        if (result == AITConvertCore.AITExportError.SUCCEED)
+                        {
+                            onComplete?.Invoke(result);
+                            return;
+                        }
+
+                        if (ct.IsCancellationRequested)
+                        {
+                            onComplete?.Invoke(AITConvertCore.AITExportError.CANCELLED);
+                            return;
+                        }
+
+                        Debug.Log($"[AIT] pnpm install ({label}) 실패, 다음 단계로...");
+                        RunPnpmInstallAsync(buildProjectPath, pnpmPath, localCachePath, ct, onOutput, onComplete, stageIndex + 1);
+                    },
+                    onOutputReceived: onOutput
+                );
+            }
+            catch
+            {
+                // RunNpmCommandWithCacheAsync 자체가 동기적으로 throw할 경우 suppress 누수를 막는다.
+                ReleaseSuppress();
+                throw;
+            }
         }
 
         /// <summary>

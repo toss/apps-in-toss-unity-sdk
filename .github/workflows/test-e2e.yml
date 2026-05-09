@@ -211,8 +211,11 @@ jobs:
 
     # ref-cancel: 같은 ref(브랜치/태그/PR) + 같은 (os, unity-version) 의 이전
     # 호출을 cancel. 새 푸시 시 이전 잡 정리만 담당한다.
+    # workflow_dispatch에서는 github.event.pull_request.number가 비어 있고
+    # github.ref가 항상 dispatch한 ref(보통 main)라 PR 간 분리가 안 됨 →
+    # needs.setup.outputs.ref(target_ref 해석 결과)를 우선 사용해 PR/브랜치별 격리.
     concurrency:
-      group: e2e-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-macos-${{ matrix.unity-version }}
+      group: e2e-${{ github.workflow }}-${{ needs.setup.outputs.ref || github.event.pull_request.number || github.ref }}-macos-${{ matrix.unity-version }}
       cancel-in-progress: true
 
     strategy:
@@ -250,7 +253,7 @@ jobs:
     needs: [setup]
 
     concurrency:
-      group: e2e-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-windows-${{ matrix.unity-version }}
+      group: e2e-${{ github.workflow }}-${{ needs.setup.outputs.ref || github.event.pull_request.number || github.ref }}-windows-${{ matrix.unity-version }}
       cancel-in-progress: true
 
     strategy:

@@ -62,6 +62,43 @@ public class IsKnownNonSdkMessageTests
             "[Toss Firebase] 게임로그인 실패: Object reference not set to an instance of an object"));
     }
 
+    [Test]
+    public void ExternalFtrAppsInTossPath_BackslashPrefix_ReturnsTrue()
+    {
+        // Sentry SDK-PK/PJ/PF/PC/PB — Windows 경로 변형. 사용자 프로젝트 경로 prefix는
+        // ExternalAitPrefixes를 통해 SDK 보호 가드보다 먼저 매칭되어 노이즈로 드롭된다.
+        // CS0414/NonSdkMessagePatterns에 의존하지 않는 입력으로 ExternalAitPrefixes 코드 경로를 직접 검증.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Assets\\FTR_AppsInToss\\Optimization\\Platform\\PlatformMemoryManager.cs(19,36): some unrelated diagnostic"));
+    }
+
+    [Test]
+    public void ExternalFtrAppsInTossPath_ForwardSlashPrefix_ReturnsTrue()
+    {
+        // Sentry SDK-QA/Q9/Q8/Q7/Q6/Q5/Q4 — POSIX 경로 변형. NonSdkMessagePatterns 키워드 없이도
+        // ExternalAitPrefixes만으로 노이즈 분류되어야 함.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Assets/FTR_AppsInToss/Optimization/Platform/PlatformOptimizer.cs(17,35): some unrelated diagnostic"));
+    }
+
+    [Test]
+    public void ExternalFtrAppsInTossPath_WithAitKeyword_StillFiltered()
+    {
+        // ExternalAitPrefixes는 AitKeywords 가드보다 먼저 매칭되어야 한다.
+        // 사용자 코드에 AppsInToss 식별자가 섞여도 FTR_AppsInToss 경로 prefix가 우선해 드롭된다.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Assets/FTR_AppsInToss/Foo.cs(1,1): warning CS0123: AppsInToss reference unresolved"));
+    }
+
+    [Test]
+    public void SdkAssetsPath_NotFtrAppsInToss_StillProtected()
+    {
+        // SDK 자체 경로(Runtime/, Editor/) 또는 일반 Assets/ 경로는
+        // FTR_AppsInToss prefix와 무관하므로 SDK 보호 가드가 정상 동작해야 한다.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] Assets/Other/Foo.cs error: AppsInToss runtime issue"));
+    }
+
     #endregion
 
     #region SDK 보호: AIT 키워드 포함 시 절대 필터링 안 함

@@ -713,6 +713,24 @@ public class IsKnownNonSdkMessageTests
             "[AIT] [Worker2] Import Error Code:(4)"));
     }
 
+    [Test]
+    public void Il2CppStackTracesNotSupportedOnWebGL_ReturnsTrue()
+    {
+        // Sentry SDK-8B — Unity 엔진 자체 경고. WebGL 빌드는 IL2CPP의 "Method Name, File Name, Line Number"
+        // 스택트레이스 옵션을 지원하지 않으므로 PlayerSettings에 해당 옵션이 켜져 있을 때 Unity가 직접 출력.
+        // SDK 코드와 무관하므로 노이즈로 분류.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "The \"Method Name, File Name, and Line Number\" option for IL2CPP stack traces is not supported on WebGL."));
+    }
+
+    [Test]
+    public void Il2CppStackTracesNotSupportedOnWebGL_WithAitPrefix_NeverFiltered()
+    {
+        // AitKeywords 가드 회귀 방지: [AIT] prefix가 붙은 동일 메시지는 SDK 자체 로그로 간주되어야 함
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] The \"Method Name, File Name, and Line Number\" option for IL2CPP stack traces is not supported on WebGL."));
+    }
+
     #endregion
 
     #region SDK 관련 메시지는 통과 (negative cases)

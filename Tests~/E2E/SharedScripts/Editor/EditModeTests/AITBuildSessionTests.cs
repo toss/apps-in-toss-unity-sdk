@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
@@ -138,6 +139,58 @@ namespace AppsInToss.Editor.EditModeTests
             AITBuildSession.BeginBuild("Test");
             AITBuildSession.TryLoadPendingSession(out var fresh);
             Assert.IsFalse(AITBuildSession.IsStale(fresh));
+        }
+    }
+
+    public class AITBuildSessionRecoveryTests
+    {
+        [Test]
+        public void TryKillIfRunning_ReturnsFalseForNonexistentPid()
+        {
+            // 절대 존재하지 않는 PID — Process.GetProcessById 가 ArgumentException 을 던지는 경로.
+            Assert.DoesNotThrow(() =>
+            {
+                bool killed = AITBuildSessionRecovery.TryKillIfRunning(int.MaxValue);
+                Assert.IsFalse(killed);
+            });
+        }
+
+        [Test]
+        public void TryKillIfRunning_DoesNotThrowForAlreadyExitedProcess()
+        {
+            // 즉시 종료되는 자식 프로세스를 spawn — Sentry APPS-IN-TOSS-UNITY-SDK-NT 의
+            // race window (GetProcessById 성공, Kill 시점엔 exited) 를 재현하기 위함.
+            // OS 스케줄링에 따라 ArgumentException 또는 InvalidOperationException 이 발생할 수
+            // 있으나, 두 경로 모두 silent 하게 false 를 리턴해야 한다.
+            int pid;
+#if UNITY_EDITOR_WIN
+            var psi = new ProcessStartInfo("cmd.exe", "/c exit 0")
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+#else
+            var psi = new ProcessStartInfo("/bin/sh", "-c \"exit 0\"")
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+#endif
+            using (var p = Process.Start(psi))
+            {
+                Assert.IsNotNull(p);
+                pid = p.Id;
+                p.WaitForExit(5000);
+                Assert.IsTrue(p.HasExited, "테스트 셋업: 자식 프로세스가 종료되어야 한다.");
+            }
+
+            Assert.DoesNotThrow(() =>
+            {
+                bool killed = AITBuildSessionRecovery.TryKillIfRunning(pid);
+                // 이미 종료된 PID 는 어느 catch 경로(ArgumentException/InvalidOperationException/
+                // Win32Exception)로 떨어지든 silent false 가 계약.
+                Assert.IsFalse(killed);
+            });
         }
     }
 }

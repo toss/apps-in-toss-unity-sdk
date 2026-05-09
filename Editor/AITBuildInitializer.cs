@@ -147,6 +147,23 @@ namespace AppsInToss.Editor
             Il2CppCompilerConfiguration il2cppConfig = editorConfig.il2cppConfiguration >= 0
                 ? (Il2CppCompilerConfiguration)editorConfig.il2cppConfiguration
                 : AITDefaultSettings.GetDefaultIl2CppConfiguration();
+
+            // E2E CI 한정 오버라이드: IL2CPP 컴파일러 옵티마이저 레벨을 줄여 Link_WebGL_wasm 단축.
+            // developmentBuild 플래그는 Player 측 옵션이며 IL2CPP 옵티마이저와 별개라 별도 변수 필요.
+            string il2cppConfigEnv = System.Environment.GetEnvironmentVariable("AIT_IL2CPP_CONFIGURATION");
+            if (!string.IsNullOrEmpty(il2cppConfigEnv))
+            {
+                if (System.Enum.TryParse<Il2CppCompilerConfiguration>(il2cppConfigEnv, ignoreCase: true, out var parsed))
+                {
+                    il2cppConfig = parsed;
+                    Debug.Log($"[AIT] 환경 변수 오버라이드: AIT_IL2CPP_CONFIGURATION={parsed}");
+                }
+                else
+                {
+                    Debug.LogWarning($"[AIT] AIT_IL2CPP_CONFIGURATION 환경 변수 값이 올바르지 않습니다: '{il2cppConfigEnv}' (Debug/Release/Master 필요)");
+                }
+            }
+
 #if UNITY_6000_0_OR_NEWER
             PlayerSettings.SetIl2CppCompilerConfiguration(NamedBuildTarget.WebGL, il2cppConfig);
 #else
@@ -190,7 +207,7 @@ namespace AppsInToss.Editor
             Debug.Log($"[AIT]   - 예외 처리: {exceptionSupport}{(editorConfig.exceptionSupport < 0 ? " (자동)" : "")}");
             Debug.Log($"[AIT]   - Stack Trace Log Type (Error/Assert/Warning/Log/Exception): {PlayerSettings.GetStackTraceLogType(LogType.Error)} (WebGL 자동)");
             Debug.Log($"[AIT]   - Stripping Level: {strippingLevel}{(profile?.managedStrippingLevel < 0 || profile == null ? " (자동)" : " (프로필)")}");
-            Debug.Log($"[AIT]   - IL2CPP 설정: {il2cppConfig}{(editorConfig.il2cppConfiguration < 0 ? " (자동)" : "")}");
+            Debug.Log($"[AIT]   - IL2CPP 설정: {il2cppConfig}{(!string.IsNullOrEmpty(il2cppConfigEnv) ? " (환경 변수)" : editorConfig.il2cppConfiguration < 0 ? " (자동)" : "")}");
             Debug.Log($"[AIT]   - Run In Background: {runInBackground}{(editorConfig.runInBackground < 0 ? " (자동)" : "")}");
             Debug.Log($"[AIT]   - Decompression Fallback: {decompressionFallback}{(editorConfig.decompressionFallback < 0 ? " (자동)" : "")}");
 #if UNITY_2023_3_OR_NEWER

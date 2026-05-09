@@ -1350,6 +1350,10 @@ jobs:
           # Development Build로 옵티마이저 단축, Build wallclock 대폭 절감 기대.
           # E2E는 SDK API 동작만 검증하며 런타임 성능을 보지 않으므로 무관.
           AIT_DEVELOPMENT_BUILD: "true"
+          # E2E 한정: IL2CPP 컴파일러 옵티마이저 레벨도 Debug로 강제. developmentBuild
+          # 플래그는 Player 측 설정이라 IL2CPP 옵티마이저(C_WebGL_wasm/Link_WebGL_wasm)에는
+          # 영향이 없어 별도 변수로 페어링. -O3 → -O0/-Og 수준으로 wasm 컴파일/링크 단축.
+          AIT_IL2CPP_CONFIGURATION: "Debug"
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         with:
           timeout_minutes: 30
@@ -1491,6 +1495,7 @@ jobs:
           # E2E 한정: macOS step의 동일 주석 참조.
           AIT_COMPRESSION_FORMAT: "0"
           AIT_DEVELOPMENT_BUILD: "true"
+          AIT_IL2CPP_CONFIGURATION: "Debug"
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         with:
           timeout_minutes: 30

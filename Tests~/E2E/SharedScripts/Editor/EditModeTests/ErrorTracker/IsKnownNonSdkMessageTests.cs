@@ -651,6 +651,31 @@ public class IsKnownNonSdkMessageTests
             "[AIT] Addressable content build failure (duration : 0:00:16.61)"));
     }
 
+    [TestCase(
+        "[Worker2] Import Error Code:(4)",
+        TestName = "WorkerImportError_Worker2_ReturnsTrue")]
+    [TestCase(
+        "[Worker3] Import Error Code:(4)",
+        TestName = "WorkerImportError_Worker3_ReturnsTrue")]
+    [TestCase(
+        "[Worker4] Import Error Code:(4)",
+        TestName = "WorkerImportError_Worker4_ReturnsTrue")]
+    public void WorkerImportError_RealisticVariants_ReturnsTrue(string message)
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-RC/RD/RE — Unity AssetImporter 내부 워커 에러.
+        // 워커 번호(2/3/4)가 가변이지만 "] Import Error Code:(" 부분 문자열로 모두 매칭.
+        // SDK 코드에는 "Worker"/"Import Error Code" 문자열이 존재하지 않음 (grep으로 확인).
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(message));
+    }
+
+    [Test]
+    public void WorkerImportError_WithAitPrefix_NeverFiltered()
+    {
+        // AitKeywords 가드 회귀 방지: [AIT] prefix가 붙으면 SDK 자체 로그로 간주되어 필터링되지 않아야 함
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] [Worker2] Import Error Code:(4)"));
+    }
+
     #endregion
 
     #region SDK 관련 메시지는 통과 (negative cases)

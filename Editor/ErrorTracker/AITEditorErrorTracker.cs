@@ -119,6 +119,12 @@ namespace AppsInToss.Editor.ErrorTracker
             // 사용자 Unity 설치에 WebGL 모듈 미설치 — SDK-DD
             "Build target 'WebGL' not supported",
 
+            // Unity AssetImporter 내부 워커 에러 — SDK 외부 출처
+            // 예: "[Worker2] Import Error Code:(4)", "[Worker3] Import Error Code:(4)", "[Worker4] Import Error Code:(4)"
+            // Sentry APPS-IN-TOSS-UNITY-SDK-RC, APPS-IN-TOSS-UNITY-SDK-RD, APPS-IN-TOSS-UNITY-SDK-RE
+            // 워커 번호와 코드 숫자가 가변이지만 "] Import Error Code:(" 부분 문자열로 모두 매칭됨
+            "] Import Error Code:(",
+
             // 서브프로세스 실행 브레드크럼 — SDK가 아닌 외부(Unity Collab/CCD/사용자 도구)가 출력
             // 예: "Exec> git show -s --pretty=%D HEAD", "Exec> git log -1 --pretty=format:%h"
             // Sentry APPS-IN-TOSS-UNITY-SDK-NX, APPS-IN-TOSS-UNITY-SDK-NW

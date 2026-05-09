@@ -8,6 +8,32 @@ using NUnit.Framework;
 
 namespace AppsInToss.Editor.Package.Tests
 {
+    /// <summary>
+    /// PnpmRunner 메시지/상수 정책 회귀 테스트.
+    /// Sentry SDK-R5 fingerprint와 일치하는 최종 실패 메시지가 변경되지 않도록 보장한다.
+    /// </summary>
+    [TestFixture]
+    public class PnpmRunnerMessagesTests
+    {
+        [Test]
+        public void FinalFailureMessage_MatchesSentrySdkR5Fingerprint()
+        {
+            // Sentry 이슈 SDK-R5는 정확히 이 메시지로 fingerprint되어 있으므로 변경 시 이슈가 분리된다.
+            // 메시지를 바꾸려면 Sentry 측 fingerprint도 함께 갱신해야 한다.
+            Assert.AreEqual("[AIT] pnpm install 실패 (모든 재시도 후에도 실패)", PnpmRunner.FinalFailureMessage);
+        }
+
+        [Test]
+        public void FinalFailureMessage_IsClassifiedAsAitSdkSource()
+        {
+            // FinalFailureMessage는 [AIT] 토큰을 포함해 ErrorTracker가 SDK 출처로 분류해야 한다.
+            // 분류기와 메시지가 어긋나면 진짜 실패가 Sentry에서 누락될 수 있다.
+            StringAssert.Contains("[AIT]", PnpmRunner.FinalFailureMessage);
+            StringAssert.Contains("pnpm install", PnpmRunner.FinalFailureMessage);
+            StringAssert.Contains("모든 재시도 후에도 실패", PnpmRunner.FinalFailureMessage);
+        }
+    }
+
     [TestFixture]
     public class PnpmInstallStagesTests
     {

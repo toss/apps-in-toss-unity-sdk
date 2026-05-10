@@ -758,7 +758,7 @@ public class IsKnownNonSdkMessageTests
     [Test]
     public void GuidInsideMetaCannotBeExtracted_WithAitPrefix_NeverFiltered()
     {
-        // AitKeywords 가드 회귀 방지
+        // AitKeywords 가드 회귀 방지: [AIT] prefix가 붙은 동일 메시지는 SDK 자체 로그로 간주
         Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
             "[AIT] The GUID inside 'Assets/Foo.png.meta' cannot be extracted by the YAML Parser"));
     }

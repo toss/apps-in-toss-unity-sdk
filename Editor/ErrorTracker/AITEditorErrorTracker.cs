@@ -131,11 +131,14 @@ namespace AppsInToss.Editor.ErrorTracker
             // Unity 엔진 자체 경고 — WebGL은 IL2CPP "Method Name, File Name, Line Number" 스택트레이스 옵션 미지원 (SDK-8B)
             "IL2CPP stack traces is not supported on WebGL",
 
-            // 사용자 프로젝트 .meta 파일 GUID 손상 — SDK-R4/SDK-R3 (Unity 자체 노이즈)
-            // 사용자 Assets/ 경로의 .meta 파일이 손상되어 Unity가 출력하는 경고/에러.
-            // SDK는 사용자의 .meta 파일을 직접 검사하지 않으므로 SDK 자체 로그와 충돌 위험 없음.
+            // 사용자 프로젝트 .meta 파일 GUID 손상 — Unity 자체 노이즈
+            // 예: "The .meta file Assets/.../foo.png.meta does not have a valid GUID..."
+            //     "The GUID inside 'Assets/.../foo.png.meta' cannot be extracted by the YAML Parser..."
+            // Sentry APPS-IN-TOSS-UNITY-SDK-R4, APPS-IN-TOSS-UNITY-SDK-R3
+            // 두 번째 패턴은 작은따옴표를 포함시켜 .meta 경로 형식의 메시지에만 매칭되도록 좁힘
+            // (다른 YAML 에셋 파싱 오류 메시지와 충돌 방지).
             "does not have a valid GUID",
-            "cannot be extracted by the YAML Parser",
+            "' cannot be extracted by the YAML Parser",
         };
 
         // DetermineErrorSource에서 메시지를 SDK로 분류하는 추가 패턴.

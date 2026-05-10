@@ -79,6 +79,8 @@ namespace AppsInToss.Editor.ErrorTracker
             // ↑ 동일 경고의 첫 줄 변형 — Unity 출력 포맷("cannot be used in the State \"X\".")과 밀착시키려
             // 따옴표를 포함해 좁힘 (SDK-KV/KT)
             "cannot be used in the State \"",
+            // Unity 빌드 — 미컴파일 코드 변경 상태에서 빌드 시도 시 Unity가 직접 출력 (SDK-NE)
+            "You are building a player, but you have uncompiled code changes",
 
             // 사용자 프로젝트 에셋 문제
             "matches more than one built-in atlases",

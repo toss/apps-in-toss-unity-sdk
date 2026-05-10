@@ -16,13 +16,23 @@
 
 ### 브랜치 보호 규칙
 - **main 브랜치에 직접 push 불가** — 반드시 PR을 통해 머지
-- main 브랜치 규칙 (Repository Rulesets):
+- main 브랜치 규칙 (Repository Rulesets, 서버 측 강제):
   - PR 필수 (승인 없이 머지 가능)
   - **머지 방식: squash merge만 허용** (merge commit, rebase 불가)
   - 커밋 서명 필수 (`required_signatures`)
   - 삭제 불가, force push 불가
   - bypass 권한자 없음 (`current_user_can_bypass: never`)
 - **작업 시**: 항상 feature 브랜치 생성 → PR 제출 → squash merge로 병합
+
+### 머지 실행 정책
+- Claude는 사용자의 **명시적 머지 요청**이 있을 때만 머지를 실행한다.
+  - 허용 예: "머지해줘", "squash merge로 머지", "/ship merge" + 명시적 확인
+  - PR 생성/푸시 같은 일반 작업의 일부로 자동 머지 금지
+- 명시적 요청을 받은 경우 다음 절차로 진행:
+  1. PR이 mergeable + 모든 required check가 success인지 확인
+  2. 머지 직전에 한 번 더 사용자에게 확인 ("PR #N을 squash merge합니다. 진행할까요?")
+  3. 사용자 확인 후 `gh pr merge <N> --squash` 실행
+- GitHub Ruleset이 서버 단에서 squash merge / 서명 / non-bypass를 강제하므로 Claude의 머지 실행도 이 경계 안에서만 가능
 
 ### Git 커밋 가이드라인
 - **모든 커밋 메시지는 반드시 한국어로 작성**

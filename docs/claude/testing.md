@@ -69,13 +69,20 @@ npm test
 ## CI/CD 통합
 
 `.github/workflows/test-e2e.yml` 실행 내용 (3-Level 테스트 구조):
-1. EditMode 테스트 (Level 0: C# 순수 로직 검증, 빌드 없이 ~10초)
-2. Unity WebGL 빌드 + C# 빌드 산출물 검증 (Level 1)
-3. Playwright E2E 테스트 (Level 2: 5개 테스트)
+1. EditMode 테스트 (Level 0: C# 순수 로직 검증, 빌드 없이 ~10초) — **self-hosted Unity runner**
+2. Unity WebGL 빌드 + C# 빌드 산출물 검증 (Level 1) — **self-hosted Unity runner** (`build-macos` / `build-windows` 잡)
+3. Playwright E2E 테스트 (Level 2: 5개 테스트) — **ubuntu-latest** (`e2e-macos` / `e2e-windows` 잡)
 4. 벤치마크 결과 아티팩트로 업로드
 5. 성능 메트릭이 포함된 Job summary
+
+**runner 라우팅**:
+- self-hosted runner는 `unity-<version>` 라벨로 1:1 핀 — `runs-on: [self-hosted, unity-${{ inputs.unity-version }}]`
+- 라이선스 충돌 차단을 위해 한 머신은 한 Unity 버전 잡만 받음
+- Playwright는 ubuntu에서 artifact 다운로드 → vite preview 서버 → 테스트 실행 (Unity binary 비의존)
 
 `test-level` 파라미터로 실행 범위 제어:
 - `0`: EditMode만 (~10초)
 - `1`: 빌드+검증, Playwright 스킵 (~8분)
 - `2`: 전체 실행 (~14분, 기본값)
+
+`test_level=0/1`이면 `e2e-*` 잡은 skipped 처리되고 결과는 `build-*` 결과로 폴백.

@@ -110,9 +110,9 @@
   gh api repos/{owner}/{repo}/actions/runs/{run_id}/rerun-failed-jobs -X POST
   ```
 - **알려진 flaky 패턴** (모두 인프라 기인, 코드 변경 없이 재실행으로 해결):
-  - **Unity 라이선스 충돌** — `Code 10 while verifying Licensing Client signature` / handshake / IPC 에러. PR #559에서 self-hosted runner를 `unity-<version>` 라벨로 1:1 핀 고정해 차단 중. 재발 시 라벨이 빠진 머신이 있는지 확인 (`docs/claude/github-actions.md`)
-  - **Windows artifact upload finalize transient** — `actions/upload-artifact@v7`가 `successfully finalized` 메시지 없이 종료 (~1.3% 빈도). PR #560/#562에서 진단 step + `continue-on-error` 적용. 재실행으로 해결
-  - **Unity WebGL Brotli 크래시** — `[BUSY Ns] Brotli webgl/Build/...unityweb` 직후 `exit code: 1`. self-hosted runner 동시 빌드 시 리소스 경합. CI는 PR #a8e8d31에서 **Gzip으로 전환**하여 신규 발생 차단 — 로컬 재현은 아래 "로컬 CI 재현" 가이드 참조
+  - **Unity 라이선스 충돌** — `Code 10 while verifying Licensing Client signature` / handshake / IPC 에러. self-hosted runner는 현재 `unity-<version>` 라벨로 1:1 핀 고정되어 차단 중. 재발 시 라벨이 빠진 머신이 있는지 확인 (`docs/claude/github-actions.md`)
+  - **Windows artifact upload finalize transient** — `actions/upload-artifact@v7`가 `successfully finalized` 메시지 없이 종료 (~1.3% 빈도). 진단 step + `continue-on-error`가 적용되어 있고 재실행으로 해결됨
+  - **Unity WebGL Brotli/Gzip 크래시** — `[BUSY Ns] Brotli webgl/Build/...unityweb` 직후 `exit code: 1`. self-hosted runner 동시 빌드 시 리소스 경합. **현재 E2E CI는 압축 비활성화(`AIT_COMPRESSION_FORMAT="0"`)** 로 압축 단계 자체를 건너뛰므로 신규 발생 없음 (E2E는 vite preview에서만 로드되며 배포되지 않아 압축 불필요). 로컬 재현은 아래 "로컬 CI 재현" 가이드 참조
 - **Sentry 노이즈 패턴 추가**는 자동화(`auto-resolve`)가 처리하므로 수동 PR 불필요 — `Editor/ErrorTracker/AITEditorErrorTracker.cs`의 `NonSdkMessagePatterns`에 자동 흡수됨
 
 ### 테스트 관련
@@ -143,13 +143,14 @@ SDK 생성기 작업을 포함하는 변경사항을 커밋/푸시하기 전, **
 
 ### 로컬 CI 재현 (압축 포맷 / 리소스 경합)
 
-CI는 PR #a8e8d31에서 **Gzip 압축으로 전환**되어 신규 빌드에서 Brotli 크래시는 발생하지 않음. 다만 이전 빌드 분석이나 압축별 동작 검증이 필요하면 `--compression`과 `--parallel`을 조합:
+E2E CI는 현재 압축이 **Disabled**(`AIT_COMPRESSION_FORMAT="0"`)이므로 신규 빌드에서 Brotli/Gzip 크래시는 발생하지 않음. 다만 이전 빌드 분석이나 압축별 동작 검증이 필요하면 `--compression`과 `--parallel`을 조합:
 
 ```bash
-# CI와 동일한 Gzip 경로로 빌드
-./run-local-tests.sh --unity-build --compression gzip --unity-version 6000.2
+# E2E CI와 동일한 경로(압축 비활성화)
+./run-local-tests.sh --unity-build --compression disabled --unity-version 6000.2
 
-# Brotli 강제 (과거 flaky 재현용)
+# Gzip / Brotli 강제 (압축 단계 flaky 재현용)
+./run-local-tests.sh --unity-build --compression gzip --unity-version 6000.2
 ./run-local-tests.sh --unity-build --compression brotli --unity-version 6000.2
 
 # 동시 빌드로 리소스 경합 재현 (모든 버전 병렬)
@@ -161,8 +162,8 @@ CI는 PR #a8e8d31에서 **Gzip 압축으로 전환**되어 신규 빌드에서 B
 
 ### Library/Bee 캐시 동작
 
-PR #540에서 캐시 무효화 정책이 변경됨:
-- **SDK/asmdef/jslib 변경 있음** → `Library/Bee` 삭제 (full rebuild)
+CI Unity 빌드의 `Library/Bee` 캐시 무효화 정책:
+- **SDK/asmdef/jslib 변경 있음** → `Library/Bee` 삭제 (full rebuild — stale ref.dll 차단)
 - **변경 없음** → 캐시 보존 (incremental rebuild로 빌드 시간 단축)
 - **fallback** (`git diff` 실패, 얕은 fetch 등) → 보수적으로 Bee 삭제
 - **escape hatch**: workflow_dispatch에서 `clean_library=true`로 강제 풀 클린 가능 (`docs/claude/github-actions.md` 참조)

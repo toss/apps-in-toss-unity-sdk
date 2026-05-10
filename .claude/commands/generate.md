@@ -9,7 +9,7 @@ SDK 런타임 코드를 재생성하고 검증합니다.
 3. `pnpm validate` 실행하여 vitest로 생성 코드 속성 검증
 4. `pnpm test` 실행하여 유닛 테스트
 5. 생성된 파일 변경사항 요약: `git diff --stat Runtime/SDK/`
-6. `Runtime/SDK/` 하위 `.cs`/`.jslib` 파일이 rename·add·remove 됐다면 **Library/Bee 캐시 무효화 영향** 사용자에게 안내 (PR #540 정책: SDK 변경 PR은 CI에서 풀 클린 빌드)
+6. `Runtime/SDK/` 하위 `.cs`/`.jslib` 파일이 rename·add·remove 됐다면 **Library/Bee 캐시 무효화 영향** 사용자에게 안내 (SDK 변경 PR은 CI에서 풀 클린 빌드 — `CLAUDE.md`의 "Library/Bee 캐시 동작" 참조)
 7. 결과 보고
 
 ## Arguments

@@ -109,7 +109,11 @@
   ```bash
   gh api repos/{owner}/{repo}/actions/runs/{run_id}/rerun-failed-jobs -X POST
   ```
-- **알려진 flaky 패턴**: Unity WebGL Brotli 크래시 (`[BUSY Ns] Brotli webgl/Build/...unityweb` 직후 `exit code: 1`) — self-hosted runner 동시 빌드 시 리소스 경합으로 발생
+- **알려진 flaky 패턴** (모두 인프라 기인, 코드 변경 없이 재실행으로 해결):
+  - **Unity 라이선스 충돌** — `Code 10 while verifying Licensing Client signature` / handshake / IPC 에러. PR #559에서 self-hosted runner를 `unity-<version>` 라벨로 1:1 핀 고정해 차단 중. 재발 시 라벨이 빠진 머신이 있는지 확인 (`docs/claude/github-actions.md`)
+  - **Windows artifact upload finalize transient** — `actions/upload-artifact@v7`가 `successfully finalized` 메시지 없이 종료 (~1.3% 빈도). PR #560/#562에서 진단 step + `continue-on-error` 적용. 재실행으로 해결
+  - **Unity WebGL Brotli 크래시** — `[BUSY Ns] Brotli webgl/Build/...unityweb` 직후 `exit code: 1`. self-hosted runner 동시 빌드 시 리소스 경합. CI는 PR #a8e8d31에서 **Gzip으로 전환**하여 신규 발생 차단 — 로컬 재현은 아래 "로컬 CI 재현" 가이드 참조
+- **Sentry 노이즈 패턴 추가**는 자동화(`auto-resolve`)가 처리하므로 수동 PR 불필요 — `Editor/ErrorTracker/AITEditorErrorTracker.cs`의 `NonSdkMessagePatterns`에 자동 흡수됨
 
 ### 테스트 관련
 - E2E 테스트 전 빌드 필요: `./run-local-tests.sh --all` (빌드+테스트) vs `--e2e` (테스트만)
@@ -137,12 +141,15 @@ SDK 생성기 작업을 포함하는 변경사항을 커밋/푸시하기 전, **
    - `.meta` 파일 누락/추가 여부 (Lint 워크플로우에서 검출)
    - 대용량 바이너리/빌드 산출물 혼입 여부
 
-### 로컬 CI 재현 (WebGL Brotli flaky)
+### 로컬 CI 재현 (압축 포맷 / 리소스 경합)
 
-self-hosted runner에서만 재현되는 Brotli 크래시를 로컬에서 좁히려면 `run-local-tests.sh`의 `--compression`과 `--parallel`을 조합:
+CI는 PR #a8e8d31에서 **Gzip 압축으로 전환**되어 신규 빌드에서 Brotli 크래시는 발생하지 않음. 다만 이전 빌드 분석이나 압축별 동작 검증이 필요하면 `--compression`과 `--parallel`을 조합:
 
 ```bash
-# Brotli 압축 강제로 빌드 (CI와 동일 경로)
+# CI와 동일한 Gzip 경로로 빌드
+./run-local-tests.sh --unity-build --compression gzip --unity-version 6000.2
+
+# Brotli 강제 (과거 flaky 재현용)
 ./run-local-tests.sh --unity-build --compression brotli --unity-version 6000.2
 
 # 동시 빌드로 리소스 경합 재현 (모든 버전 병렬)
@@ -151,6 +158,16 @@ self-hosted runner에서만 재현되는 Brotli 크래시를 로컬에서 좁히
 
 **압축 포맷 값**: `auto` | `disabled` | `gzip` | `brotli` (`run-local-tests.sh` 참조).
 **주의**: self-hosted runner의 리소스 경합 자체(CPU/메모리/디스크 경합)는 로컬 머신 스펙에 따라 재현이 보장되지 않음. 로컬에서 통과해도 CI flaky가 재현되지 않을 수 있으며, 이 경우 `rerun-failed-jobs` 경로를 사용 (위 "E2E 테스트 실패 대응" 참조).
+
+### Library/Bee 캐시 동작
+
+PR #540에서 캐시 무효화 정책이 변경됨:
+- **SDK/asmdef/jslib 변경 있음** → `Library/Bee` 삭제 (full rebuild)
+- **변경 없음** → 캐시 보존 (incremental rebuild로 빌드 시간 단축)
+- **fallback** (`git diff` 실패, 얕은 fetch 등) → 보수적으로 Bee 삭제
+- **escape hatch**: workflow_dispatch에서 `clean_library=true`로 강제 풀 클린 가능 (`docs/claude/github-actions.md` 참조)
+
+캐시가 의심되는 빌드 실패가 있으면 먼저 `clean_library=true`로 재트리거 후 재현 여부 확인.
 
 ## 빠른 참조: 주요 명령어
 
@@ -184,4 +201,5 @@ review-fix-loop 등 자동화 skill이 파싱하는 규약 섹션. 각 항목은
 - `docs/claude/testing.md` — 3-Level 테스트 구조, Unity 버전 요구사항, E2E 디렉토리 구조, 실행 명령, CI/CD 통합
 - `docs/claude/sdk-generator.md` — `sdk-runtime-generator~` 워크플로우, 타입 매핑, API 사용 패턴
 - `docs/claude/implementation-details.md` — WebGL 템플릿, 빌드 설정 자동 구성, 내장 Node.js 시스템, 설정 저장소
-- `docs/claude/sentry-known-issues.md` — 무시 가능 Sentry 이슈 목록, 통합 테스트 environment 분리
+- `docs/claude/sentry-known-issues.md` — 무시 가능 Sentry 이슈 목록, 통합 테스트 environment 분리, strict 게이트 + NonSdkMessagePatterns 이중 안전망
+- `docs/claude/build-session-recovery.md` — 빌드 중 도메인 리로드 복원력 (`AITBuildSessionRecovery`) 수동 재현 절차 (`.cs` 저장 / Unity 강제 종료 / Stale 세션 / Idle gate)

@@ -967,6 +967,7 @@ jobs:
       # 빌드 자체를 fail로 만들지 않도록 continue-on-error로 격리
       # (run #682, #695에서 windows-1-5 머신의 finalize 단계가 0.87s 만에 무성한 실패).
       - name: Upload EditMode Test Results
+        id: upload-editmode-results
         if: inputs.run-editmode-test && always()
         continue-on-error: true
         uses: actions/upload-artifact@v7
@@ -979,6 +980,7 @@ jobs:
       # EditMode 로그를 통합 분류기에서 grep할 수 있도록 보존
       # (라이선스/Hub/캐시 등 인프라 결함 세분화에 필요).
       - name: Upload EditMode Unity Log (macOS)
+        id: upload-editmode-log-macos
         if: inputs.os == 'macos' && inputs.run-editmode-test && always()
         continue-on-error: true
         uses: actions/upload-artifact@v7
@@ -989,6 +991,7 @@ jobs:
           retention-days: 7
 
       - name: Upload EditMode Unity Log (Windows)
+        id: upload-editmode-log-windows
         if: inputs.os == 'windows' && inputs.run-editmode-test && always()
         continue-on-error: true
         uses: actions/upload-artifact@v7
@@ -997,6 +1000,46 @@ jobs:
           path: ${{ runner.temp }}\unity-editmode-${{ inputs.unity-version }}.log
           if-no-files-found: ignore
           retention-days: 7
+
+      # Windows artifact upload finalize transient 실패 진단:
+      # actions/upload-artifact@v7가 Windows runner에서 finalize 시작 후
+      # `successfully finalized` 메시지 없이 step이 종료되는 케이스가 관측됨
+      # (run #682, #695, #700). 발생 빈도 ~1.3%지만 같은 패턴이 반복되므로
+      # 다음 발생 시 머신 상태 단서를 잡기 위한 진단 데이터를 수집한다.
+      - name: Diagnose Windows artifact upload failure (EditMode)
+        if: inputs.os == 'windows' && inputs.run-editmode-test && always() && (steps.upload-editmode-results.outcome == 'failure' || steps.upload-editmode-log-windows.outcome == 'failure')
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          Write-Host "=== Artifact upload failure diagnosis ==="
+          Write-Host "Runner: $env:RUNNER_NAME"
+          Write-Host "Failed step outcomes: results=${{ steps.upload-editmode-results.outcome }} log=${{ steps.upload-editmode-log-windows.outcome }}"
+          Write-Host "Timestamp: $(Get-Date -Format o)"
+
+          Write-Host "`n--- Disk free (system + work drive) ---"
+          Get-PSDrive -PSProvider FileSystem | Format-Table -AutoSize | Out-String | Write-Host
+
+          Write-Host "`n--- Runner work temp size ---"
+          if (Test-Path $env:RUNNER_TEMP) {
+            $size = (Get-ChildItem $env:RUNNER_TEMP -Recurse -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum / 1MB
+            Write-Host "RUNNER_TEMP size: $([math]::Round($size, 1)) MB"
+          }
+
+          Write-Host "`n--- Network: github.com reachability ---"
+          try { Test-NetConnection github.com -Port 443 -InformationLevel Detailed -WarningAction SilentlyContinue | Out-String | Write-Host } catch { Write-Host "Test-NetConnection failed: $_" }
+
+          Write-Host "`n--- Defender real-time protection ---"
+          try { Get-MpPreference | Select-Object DisableRealtimeMonitoring, ExclusionPath | Format-List | Out-String | Write-Host } catch { Write-Host "Get-MpPreference unavailable: $_" }
+
+          Write-Host "`n--- Recent system errors (last 10 min) ---"
+          try {
+            Get-WinEvent -FilterHashtable @{LogName='System'; Level=1,2,3; StartTime=(Get-Date).AddMinutes(-10)} -MaxEvents 20 -ErrorAction SilentlyContinue |
+              Select-Object TimeCreated, ProviderName, Id, LevelDisplayName, Message |
+              Format-Table -AutoSize -Wrap | Out-String | Write-Host
+          } catch { Write-Host "Get-WinEvent failed: $_" }
+
+          Write-Host "`n--- Runner agent process ---"
+          Get-Process -Name "Runner.Worker" -ErrorAction SilentlyContinue | Format-Table Id, StartTime, WorkingSet64 -AutoSize | Out-String | Write-Host
 
       # =====================================================
       # macOS Keychain 잠금 해제
@@ -1319,6 +1362,7 @@ jobs:
           exit 1
 
       - name: Upload Test Results
+        id: upload-unit-test-results
         if: inputs.run-unit-test && always()
         continue-on-error: true
         uses: actions/upload-artifact@v7
@@ -1331,6 +1375,7 @@ jobs:
           retention-days: 7
 
       - name: Upload Unit Test Unity Log (macOS)
+        id: upload-unit-test-log-macos
         if: inputs.os == 'macos' && inputs.run-unit-test && always()
         continue-on-error: true
         uses: actions/upload-artifact@v7
@@ -1341,6 +1386,7 @@ jobs:
           retention-days: 7
 
       - name: Upload Unit Test Unity Log (Windows)
+        id: upload-unit-test-log-windows
         if: inputs.os == 'windows' && inputs.run-unit-test && always()
         continue-on-error: true
         uses: actions/upload-artifact@v7
@@ -1349,6 +1395,29 @@ jobs:
           path: ${{ runner.temp }}\unity-test-${{ inputs.unity-version }}.log
           if-no-files-found: ignore
           retention-days: 7
+
+      - name: Diagnose Windows artifact upload failure (Unit Test)
+        if: inputs.os == 'windows' && inputs.run-unit-test && always() && (steps.upload-unit-test-results.outcome == 'failure' || steps.upload-unit-test-log-windows.outcome == 'failure')
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          Write-Host "=== Artifact upload failure diagnosis (Unit Test block) ==="
+          Write-Host "Runner: $env:RUNNER_NAME"
+          Write-Host "Failed step outcomes: results=${{ steps.upload-unit-test-results.outcome }} log=${{ steps.upload-unit-test-log-windows.outcome }}"
+          Write-Host "Timestamp: $(Get-Date -Format o)"
+
+          Write-Host "`n--- Disk free ---"
+          Get-PSDrive -PSProvider FileSystem | Format-Table -AutoSize | Out-String | Write-Host
+
+          Write-Host "`n--- Network: github.com reachability ---"
+          try { Test-NetConnection github.com -Port 443 -InformationLevel Detailed -WarningAction SilentlyContinue | Out-String | Write-Host } catch { Write-Host "Test-NetConnection failed: $_" }
+
+          Write-Host "`n--- Recent system errors (last 10 min) ---"
+          try {
+            Get-WinEvent -FilterHashtable @{LogName='System'; Level=1,2,3; StartTime=(Get-Date).AddMinutes(-10)} -MaxEvents 20 -ErrorAction SilentlyContinue |
+              Select-Object TimeCreated, ProviderName, Id, LevelDisplayName, Message |
+              Format-Table -AutoSize -Wrap | Out-String | Write-Host
+          } catch { Write-Host "Get-WinEvent failed: $_" }
 
       # =====================================================
       # Unity WebGL 빌드
@@ -1769,6 +1838,7 @@ jobs:
       # WebGL 빌드 Unity 로그를 통합 분류기로 보낸다 — Brotli 크래시/디스크 풀 등
       # 빌드 실패의 인프라 원인을 grep으로 세분화하기 위함.
       - name: Upload Build Unity Log (macOS)
+        id: upload-build-log-macos
         if: inputs.os == 'macos' && inputs.run-build && (inputs.test-level || '2') != '0' && always()
         continue-on-error: true
         uses: actions/upload-artifact@v7
@@ -1779,6 +1849,7 @@ jobs:
           retention-days: 7
 
       - name: Upload Build Unity Log (Windows)
+        id: upload-build-log-windows
         if: inputs.os == 'windows' && inputs.run-build && (inputs.test-level || '2') != '0' && always()
         continue-on-error: true
         uses: actions/upload-artifact@v7
@@ -1787,4 +1858,27 @@ jobs:
           path: ${{ runner.temp }}\unity-build-${{ inputs.unity-version }}.log
           if-no-files-found: ignore
           retention-days: 7
+
+      - name: Diagnose Windows artifact upload failure (Build)
+        if: inputs.os == 'windows' && inputs.run-build && (inputs.test-level || '2') != '0' && always() && steps.upload-build-log-windows.outcome == 'failure'
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          Write-Host "=== Artifact upload failure diagnosis (Build block) ==="
+          Write-Host "Runner: $env:RUNNER_NAME"
+          Write-Host "Failed step outcome: log=${{ steps.upload-build-log-windows.outcome }}"
+          Write-Host "Timestamp: $(Get-Date -Format o)"
+
+          Write-Host "`n--- Disk free ---"
+          Get-PSDrive -PSProvider FileSystem | Format-Table -AutoSize | Out-String | Write-Host
+
+          Write-Host "`n--- Network: github.com reachability ---"
+          try { Test-NetConnection github.com -Port 443 -InformationLevel Detailed -WarningAction SilentlyContinue | Out-String | Write-Host } catch { Write-Host "Test-NetConnection failed: $_" }
+
+          Write-Host "`n--- Recent system errors (last 10 min) ---"
+          try {
+            Get-WinEvent -FilterHashtable @{LogName='System'; Level=1,2,3; StartTime=(Get-Date).AddMinutes(-10)} -MaxEvents 20 -ErrorAction SilentlyContinue |
+              Select-Object TimeCreated, ProviderName, Id, LevelDisplayName, Message |
+              Format-Table -AutoSize -Wrap | Out-String | Write-Host
+          } catch { Write-Host "Get-WinEvent failed: $_" }
 

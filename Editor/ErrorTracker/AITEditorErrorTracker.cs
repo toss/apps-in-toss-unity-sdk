@@ -102,8 +102,6 @@ namespace AppsInToss.Editor.ErrorTracker
             "Failed to compile player scripts",
             // 사용자 코드의 사용되지 않은 필드 경고 — Unity 컴파일러가 직접 출력하는 CS0414
             "warning CS0414",
-            // Unity Editor가 외부 git 명령 실행 시 stdout으로 출력하는 trace 메시지 — SDK는 출력하지 않음
-            "Exec> git ",
 
             // 외부 패키지 (Unity 버전별 괄호 유무에 관계없이 매칭되도록 핵심 문구만 추출)
             "exists but its folder",
@@ -132,6 +130,15 @@ namespace AppsInToss.Editor.ErrorTracker
 
             // Unity 엔진 자체 경고 — WebGL은 IL2CPP "Method Name, File Name, Line Number" 스택트레이스 옵션 미지원 (SDK-8B)
             "IL2CPP stack traces is not supported on WebGL",
+
+            // 사용자 프로젝트 .meta 파일 GUID 손상 — Unity 자체 노이즈
+            // 예: "The .meta file Assets/.../foo.png.meta does not have a valid GUID..."
+            //     "The GUID inside 'Assets/.../foo.png.meta' cannot be extracted by the YAML Parser..."
+            // Sentry APPS-IN-TOSS-UNITY-SDK-R4, APPS-IN-TOSS-UNITY-SDK-R3
+            // 두 번째 패턴은 작은따옴표를 포함시켜 .meta 경로 형식의 메시지에만 매칭되도록 좁힘
+            // (다른 YAML 에셋 파싱 오류 메시지와 충돌 방지).
+            "does not have a valid GUID",
+            "' cannot be extracted by the YAML Parser",
         };
 
         // DetermineErrorSource에서 메시지를 SDK로 분류하는 추가 패턴.

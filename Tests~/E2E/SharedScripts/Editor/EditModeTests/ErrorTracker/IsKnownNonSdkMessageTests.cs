@@ -272,6 +272,22 @@ public class IsKnownNonSdkMessageTests
             "[AIT] The legacy Animation Clip \"foo\" cannot be used in the State \"foo\"."));
     }
 
+    [Test]
+    public void UncompiledCodeChangesBuild_ReturnsTrue()
+    {
+        // Sentry SDK-NE — Unity가 미컴파일 변경 상태에서 빌드 시도 시 출력하는 자체 경고
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "You are building a player, but you have uncompiled code changes. This means that any post-processing or importing code you may have changed will not affect this player build."));
+    }
+
+    [Test]
+    public void UncompiledCodeChangesBuild_WithAitPrefix_NeverFiltered()
+    {
+        // AitKeywords 가드 회귀 방지: [AIT] prefix가 붙으면 SDK 자체 로그로 간주되어야 함
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] You are building a player, but you have uncompiled code changes."));
+    }
+
     #endregion
 
     #region 사용자 프로젝트 에셋 문제

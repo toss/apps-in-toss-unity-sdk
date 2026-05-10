@@ -129,6 +129,9 @@ namespace AppsInToss.Editor.ErrorTracker
             // 예: "Exec> git show -s --pretty=%D HEAD", "Exec> git log -1 --pretty=format:%h"
             // Sentry APPS-IN-TOSS-UNITY-SDK-NX, APPS-IN-TOSS-UNITY-SDK-NW
             "Exec> git ",
+
+            // Unity 엔진 자체 경고 — WebGL은 IL2CPP "Method Name, File Name, Line Number" 스택트레이스 옵션 미지원 (SDK-8B)
+            "IL2CPP stack traces is not supported on WebGL",
         };
 
         // DetermineErrorSource에서 메시지를 SDK로 분류하는 추가 패턴.

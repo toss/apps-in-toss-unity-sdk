@@ -963,8 +963,12 @@ jobs:
             exit 1
           }
 
+      # 디버그/리포트 artifact: actions/upload-artifact의 finalize transient 실패가
+      # 빌드 자체를 fail로 만들지 않도록 continue-on-error로 격리
+      # (run #682, #695에서 windows-1-5 머신의 finalize 단계가 0.87s 만에 무성한 실패).
       - name: Upload EditMode Test Results
         if: inputs.run-editmode-test && always()
+        continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
           name: editmode-results-${{ inputs.os }}-${{ inputs.unity-version }}
@@ -976,6 +980,7 @@ jobs:
       # (라이선스/Hub/캐시 등 인프라 결함 세분화에 필요).
       - name: Upload EditMode Unity Log (macOS)
         if: inputs.os == 'macos' && inputs.run-editmode-test && always()
+        continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
           name: unity-log-editmode-${{ inputs.os }}-${{ inputs.unity-version }}
@@ -985,6 +990,7 @@ jobs:
 
       - name: Upload EditMode Unity Log (Windows)
         if: inputs.os == 'windows' && inputs.run-editmode-test && always()
+        continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
           name: unity-log-editmode-${{ inputs.os }}-${{ inputs.unity-version }}
@@ -1314,6 +1320,7 @@ jobs:
 
       - name: Upload Test Results
         if: inputs.run-unit-test && always()
+        continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
           name: unit-test-results-${{ inputs.os }}-${{ inputs.unity-version }}
@@ -1325,6 +1332,7 @@ jobs:
 
       - name: Upload Unit Test Unity Log (macOS)
         if: inputs.os == 'macos' && inputs.run-unit-test && always()
+        continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
           name: unity-log-unit-test-${{ inputs.os }}-${{ inputs.unity-version }}
@@ -1334,6 +1342,7 @@ jobs:
 
       - name: Upload Unit Test Unity Log (Windows)
         if: inputs.os == 'windows' && inputs.run-unit-test && always()
+        continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
           name: unity-log-unit-test-${{ inputs.os }}-${{ inputs.unity-version }}
@@ -1761,6 +1770,7 @@ jobs:
       # 빌드 실패의 인프라 원인을 grep으로 세분화하기 위함.
       - name: Upload Build Unity Log (macOS)
         if: inputs.os == 'macos' && inputs.run-build && (inputs.test-level || '2') != '0' && always()
+        continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
           name: unity-log-build-${{ inputs.os }}-${{ inputs.unity-version }}
@@ -1770,6 +1780,7 @@ jobs:
 
       - name: Upload Build Unity Log (Windows)
         if: inputs.os == 'windows' && inputs.run-build && (inputs.test-level || '2') != '0' && always()
+        continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
           name: unity-log-build-${{ inputs.os }}-${{ inputs.unity-version }}

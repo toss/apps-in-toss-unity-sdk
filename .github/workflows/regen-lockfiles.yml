@@ -56,11 +56,17 @@ jobs:
           rm -f pnpm-lock.yaml
           pnpm install --lockfile-only --registry=https://registry.npmjs.org/
 
+      - name: Regenerate SDK Generator lockfile
+        working-directory: sdk-runtime-generator~
+        run: |
+          rm -f pnpm-lock.yaml
+          pnpm install --lockfile-only --registry=https://registry.npmjs.org/
+
       - name: Verify no internal registry leak
         run: |
           set -e
           BAD=0
-          for f in Tests~/E2E/tests/pnpm-lock.yaml WebGLTemplates/AITTemplate/BuildConfig~/pnpm-lock.yaml; do
+          for f in Tests~/E2E/tests/pnpm-lock.yaml WebGLTemplates/AITTemplate/BuildConfig~/pnpm-lock.yaml sdk-runtime-generator~/pnpm-lock.yaml; do
             if grep -q "nexus.toss.bz\|toss.bz" "$f"; then
               echo "::error file=$f::Internal registry URL detected in regenerated lockfile"
               grep -nE "nexus.toss.bz|toss.bz" "$f" | head -5
@@ -77,7 +83,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add Tests~/E2E/tests/pnpm-lock.yaml WebGLTemplates/AITTemplate/BuildConfig~/pnpm-lock.yaml
+          git add Tests~/E2E/tests/pnpm-lock.yaml WebGLTemplates/AITTemplate/BuildConfig~/pnpm-lock.yaml sdk-runtime-generator~/pnpm-lock.yaml
           if git diff --staged --quiet; then
             echo "lockfiles unchanged"
             exit 0
@@ -95,15 +101,8 @@ jobs:
             echo "auto_merge=false — PR open 상태로 둠"
             exit 0
           fi
-          MERGED=false
-          for attempt in 1 2 3; do
-            sleep 5
-            echo "머지 시도 ${attempt}/3..."
-            if gh pr merge --squash --delete-branch; then
-              MERGED=true
-              break
-            fi
-          done
-          if [ "$MERGED" != "true" ]; then
-            echo "::warning::자동 머지 실패 — PR 수동 머지 필요"
+          # --auto: required check 통과 후 자동 squash merge 예약
+          # check 대기 없이 즉시 머지하면 lint/validate가 pending인 상태로 main에 들어갈 수 있어 위험
+          if ! gh pr merge --squash --delete-branch --auto; then
+            echo "::warning::auto-merge 예약 실패 — PR 수동 머지 필요"
           fi

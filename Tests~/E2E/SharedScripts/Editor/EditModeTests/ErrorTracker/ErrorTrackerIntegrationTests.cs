@@ -74,10 +74,25 @@ public class ErrorTrackerIntegrationTests
 
         long statusCode = request.responseCode;
         string error = request.error;
+        string rateLimits = request.GetResponseHeader("X-Sentry-Rate-Limits");
+        string retryAfter = request.GetResponseHeader("Retry-After");
+        string sentryError = request.GetResponseHeader("X-Sentry-Error");
+        string responseBody = request.downloadHandler != null ? request.downloadHandler.text : null;
         request.Dispose();
 
         if (!string.IsNullOrEmpty(error))
             Debug.Log($"[Test] HTTP 에러: {error}");
+
+        if (statusCode != 200)
+        {
+            Debug.Log(
+                $"[Test] Sentry non-200 응답: status={statusCode}, " +
+                $"X-Sentry-Rate-Limits={rateLimits ?? "(none)"}, " +
+                $"Retry-After={retryAfter ?? "(none)"}, " +
+                $"X-Sentry-Error={sentryError ?? "(none)"}, " +
+                $"body={(string.IsNullOrEmpty(responseBody) ? "(empty)" : responseBody)}"
+            );
+        }
 
         return statusCode;
     }

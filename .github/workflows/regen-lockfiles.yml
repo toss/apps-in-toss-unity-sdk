@@ -1,0 +1,108 @@
+name: Regenerate Lockfiles
+
+on:
+  schedule:
+    - cron: "0 18 * * 0"
+  workflow_dispatch:
+    inputs:
+      auto_merge:
+        description: "PR 자동 머지 여부"
+        required: false
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+jobs:
+  regen:
+    name: Regenerate pnpm lockfiles
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: "https://registry.npmjs.org/"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Force public registry
+        run: |
+          mkdir -p ~/.config/pnpm
+          cat > ~/.npmrc <<'EOF'
+          registry=https://registry.npmjs.org/
+          EOF
+          pnpm config set registry https://registry.npmjs.org/
+
+      - name: Regenerate E2E lockfile
+        working-directory: Tests~/E2E/tests
+        run: |
+          rm -f pnpm-lock.yaml
+          pnpm install --lockfile-only --registry=https://registry.npmjs.org/
+
+      - name: Regenerate BuildConfig lockfile
+        working-directory: WebGLTemplates/AITTemplate/BuildConfig~
+        run: |
+          rm -f pnpm-lock.yaml
+          pnpm install --lockfile-only --registry=https://registry.npmjs.org/
+
+      - name: Regenerate SDK Generator lockfile
+        working-directory: sdk-runtime-generator~
+        run: |
+          rm -f pnpm-lock.yaml
+          pnpm install --lockfile-only --registry=https://registry.npmjs.org/
+
+      - name: Verify no internal registry leak
+        run: |
+          set -e
+          BAD=0
+          for f in Tests~/E2E/tests/pnpm-lock.yaml WebGLTemplates/AITTemplate/BuildConfig~/pnpm-lock.yaml sdk-runtime-generator~/pnpm-lock.yaml; do
+            if grep -q "REDACTED\|REDACTED" "$f"; then
+              echo "::error file=$f::Internal registry URL detected in regenerated lockfile"
+              grep -nE "REDACTED|REDACTED" "$f" | head -5
+              BAD=1
+            fi
+          done
+          if [ "$BAD" = "1" ]; then exit 1; fi
+          echo "lockfiles clean"
+
+      - name: Open PR if changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AUTO_MERGE: ${{ inputs.auto_merge || 'true' }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Tests~/E2E/tests/pnpm-lock.yaml WebGLTemplates/AITTemplate/BuildConfig~/pnpm-lock.yaml sdk-runtime-generator~/pnpm-lock.yaml
+          if git diff --staged --quiet; then
+            echo "lockfiles unchanged"
+            exit 0
+          fi
+          BRANCH="chore/regen-lockfiles-$(date +%Y%m%d-%H%M%S)"
+          git checkout -b "$BRANCH"
+          git commit -m "빌드: pnpm lockfile 자동 재생성 (public registry)"
+          git push -u origin "$BRANCH"
+          gh pr create \
+            --title "빌드: pnpm lockfile 자동 재생성" \
+            --body "주기적 lockfile 재생성 — public registry(npmjs.org) 기반으로 새로 만들어 내부 nexus 레지스트리 URL 누출을 방지합니다." \
+            --base main \
+            --head "$BRANCH"
+          if [ "$AUTO_MERGE" != "true" ]; then
+            echo "auto_merge=false — PR open 상태로 둠"
+            exit 0
+          fi
+          # --auto: required check 통과 후 자동 squash merge 예약
+          # check 대기 없이 즉시 머지하면 lint/validate가 pending인 상태로 main에 들어갈 수 있어 위험
+          if ! gh pr merge --squash --delete-branch --auto; then
+            echo "::warning::auto-merge 예약 실패 — PR 수동 머지 필요"
+          fi

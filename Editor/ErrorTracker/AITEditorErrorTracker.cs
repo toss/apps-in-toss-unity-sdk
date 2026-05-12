@@ -754,6 +754,18 @@ namespace AppsInToss.Editor.ErrorTracker
             if (message.IndexOf("[AITSentryTransport] Sentry 전송 실패 (HTTP 5", StringComparison.Ordinal) >= 0)
                 return true;
 
+            // 사용자 프로젝트(Assets/) 하위 .cs 파일의 CS0029 암묵 변환 컴파일 에러 (SDK-T2).
+            // Unity 컴파일러가 사용자 코드의 타입 변환 실패를 보고할 때 출력하는 포맷:
+            //   "Assets/.../Foo.cs(L,C): error CS0029: Cannot implicitly convert type 'X' to 'Y'"
+            // 메시지에 SDK 타입명(예: 'AppsInToss.IapProductListItem')이 들어가 AitKeywords 가드가
+            // 발동되므로, SDK 가드보다 먼저 매칭해 노이즈로 드롭한다.
+            // SDK 자체 코드의 컴파일 에러는 'Packages/com.toss.apps-in-toss/...' 또는
+            // 'Library/PackageCache/...' 경로로 출력되어 'Assets/' prefix가 붙지 않으므로 안전.
+            if (message.IndexOf("error CS0029", StringComparison.Ordinal) >= 0
+                && message.IndexOf("Assets/", StringComparison.Ordinal) >= 0
+                && message.IndexOf(".cs(", StringComparison.Ordinal) >= 0)
+                return true;
+
             // SDK 자체 로그는 절대 필터링하지 않음 — AitKeywords 전체를 가드로 사용
             if (MessageContainsSdkKeyword(message))
                 return false;

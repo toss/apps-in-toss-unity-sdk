@@ -109,11 +109,11 @@ jobs:
     # 라우팅되게 해서 LicensingClient가 절대 다른 버전과 마주치지 않게 한다.
     #
     # 운영 측 라벨 매핑(필수 선결 조건):
-    #   macos-1-1 / windows-1-1 → unity-2021.3
-    #   macos-1-2 / windows-1-2 → unity-2022.3
-    #   macos-1-3 / windows-1-3 → unity-6000.0
-    #   macos-1-4 / windows-1-4 → unity-6000.2
-    #   macos-1-5 / windows-1-5 → unity-6000.3
+    #   macos-1-1 / windows-2-1 → unity-2021.3
+    #   macos-1-2 / windows-2-2 → unity-2022.3
+    #   macos-1-3 / windows-2-3 → unity-6000.0
+    #   macos-1-4 / windows-2-4 → unity-6000.2
+    #   macos-1-5 / windows-2-5 → unity-6000.3
     # 라벨이 누락된 머신/버전이 있으면 해당 매트릭스 잡은 영원히 큐에 남으므로
     # 즉시 발견된다(silent fallback 없음).
     runs-on: ${{ inputs.os == 'macos' && fromJSON(format('["self-hosted", "macOS", "ARM64", "enabled", "unity-{0}"]', inputs.unity-version)) || fromJSON(format('["self-hosted", "Windows", "X64", "enabled", "unity-{0}"]', inputs.unity-version)) }}
@@ -380,6 +380,21 @@ jobs:
           ls -la Runtime/SDK/ | head -20
 
       # =====================================================
+      # Windows: Node.js 가용성 보장
+      # 후속 Windows 스텝 중 일부가 `shell: node {0}` 또는 node CLI를 직접
+      # 호출한다(Clean Previous Build Artifacts (Windows), Update BuildConfig,
+      # Update Package 등). windows-1-x 풀에는 Node가 시스템 PATH에 있었으나
+      # windows-2-x 풀은 그렇지 않아 actions/checkout 이후 첫 node 스텝이
+      # "node: command not found"로 죽었다. self-hosted 머신 상태에 의존하지
+      # 않도록 워크플로우가 직접 Node를 PATH에 올린다.
+      # =====================================================
+      - name: Setup Node.js (Windows)
+        if: inputs.os == 'windows'
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      # =====================================================
       # Windows Defender 제외 (Windows)
       # =====================================================
       - name: Exclude Project from Windows Defender (Windows)
@@ -613,7 +628,8 @@ jobs:
       # temp 스크립트 파일 경로가 백슬래시 이스케이프로 깨져 실패함
       # (예: "/bin/bash: C:Users...work_temp...sh: No such file or directory").
       # 따라서 node 로 직접 파일을 조작하여 shell 의존성을 완전히 제거한다.
-      # node 는 setup-node 없이도 self-hosted 러너에 이미 존재함.
+      # Windows는 위 "Setup Node.js (Windows)" 스텝에서 actions/setup-node로
+      # Node를 PATH에 올리므로 머신에 Node가 미리 깔려 있을 필요 없음.
       # =====================================================
       - name: Update BuildConfig SDK Version
         if: inputs.web-framework-version != ''

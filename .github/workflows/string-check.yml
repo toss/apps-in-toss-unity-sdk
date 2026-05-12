@@ -30,7 +30,7 @@ jobs:
       - name: Scan tree
         run: |
           set +e
-          FOUND=$(grep -rIln \
+          FOUND=$(grep -rIn \
             --exclude-dir=".git" \
             --exclude-dir="node_modules" \
             --exclude-dir="Library" \
@@ -40,12 +40,7 @@ jobs:
           set -e
           if [ "$RC" = "0" ] && [ -n "$FOUND" ]; then
             echo "::error::금지된 패턴이 감지되었습니다."
-            # 디버그: 매치 파일 경로의 sha256 12자 + 파일 크기 (경로 자체는 노출 안 함)
-            echo "$FOUND" | sort -u | while IFS= read -r f; do
-              H=$(printf '%s' "$f" | sha256sum | cut -c1-12)
-              SIZE=$(wc -c < "$f" 2>/dev/null || echo "?")
-              echo "::error::match file (sha256:$H, size:$SIZE bytes)"
-            done
+            echo "$FOUND" | awk -F: '{print "::error file=" $1 ",line=" $2 "::redacted"}'
             exit 1
           fi
           echo "scan OK"

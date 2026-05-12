@@ -1,0 +1,64 @@
+name: String Check
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches: [main]
+
+jobs:
+  scan:
+    name: scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      PATTERN: ${{ secrets.STRING_CHECK_PATTERN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Guard
+        run: |
+          if [ -z "$PATTERN" ]; then
+            echo "::error::STRING_CHECK_PATTERN repository secret이 설정되지 않았습니다."
+            exit 1
+          fi
+          echo "::add-mask::$PATTERN"
+
+      - name: Scan tree
+        run: |
+          set +e
+          FOUND=$(grep -rIn \
+            --exclude-dir=".git" \
+            --exclude-dir="node_modules" \
+            --exclude-dir="Library" \
+            --exclude-dir="Temp" \
+            -E "$PATTERN" . 2>/dev/null)
+          RC=$?
+          set -e
+          if [ "$RC" = "0" ] && [ -n "$FOUND" ]; then
+            echo "::error::금지된 패턴이 감지되었습니다."
+            echo "$FOUND" | awk -F: '{print "::error file=" $1 ",line=" $2 "::redacted"}'
+            exit 1
+          fi
+          echo "scan OK"
+
+      - name: Scan lockfiles
+        run: |
+          set -e
+          BAD=0
+          for f in \
+            "Tests~/E2E/tests/pnpm-lock.yaml" \
+            "WebGLTemplates/AITTemplate/BuildConfig~/pnpm-lock.yaml" \
+            "sdk-runtime-generator~/pnpm-lock.yaml"
+          do
+            [ -f "$f" ] || continue
+            if grep -qE "$PATTERN" "$f"; then
+              echo "::error file=$f::redacted"
+              BAD=1
+            fi
+          done
+          [ "$BAD" = "0" ] || exit 1
+          echo "lockfile scan OK"

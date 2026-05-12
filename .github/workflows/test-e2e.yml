@@ -258,7 +258,7 @@ jobs:
 
     strategy:
       fail-fast: false
-      # OS당 enabled 머신 5대(windows-1-1~1-5)에서 매트릭스 5개를 병렬 실행
+      # OS당 enabled 머신 5대(windows-2-1~2-5)에서 매트릭스 5개를 병렬 실행
       matrix:
         unity-version: ["2021.3", "2022.3", "6000.0", "6000.2", "6000.3"]
 

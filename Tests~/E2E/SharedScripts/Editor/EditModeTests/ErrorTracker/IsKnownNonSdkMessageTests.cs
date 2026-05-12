@@ -234,6 +234,17 @@ public class IsKnownNonSdkMessageTests
     }
 
     [Test]
+    public void SendMessageDuringAwake_OnRectTransformDimensionsChange_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-T6 — 사용자 컴포넌트(ViewPortrait)의
+        // OnRectTransformDimensionsChange에서 발생한 라이프사이클 변형.
+        // 기존 "SendMessage cannot be called during Awake, CheckConsistency, or OnValidate" 패턴이
+        // 후행 컴포넌트/메서드 명시 변형도 부분 매칭으로 커버하는지 fixture로 박아둠.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "SendMessage cannot be called during Awake, CheckConsistency, or OnValidate (ViewPortrait: OnRectTransformDimensionsChange)"));
+    }
+
+    [Test]
     public void LegacyAnimationClips_ReturnsTrue()
     {
         // Sentry KT/KV — Unity 자체 경고

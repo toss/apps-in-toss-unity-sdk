@@ -149,6 +149,17 @@ namespace AppsInToss.Editor.ErrorTracker
             // AitKeywords에 "[pnpm]"이 없어 SDK 보호 가드는 우회되며,
             // SDK 자체 로그는 "[AIT...]" prefix와 함께 출력되므로 보호된다.
             "[pnpm] 출력:",
+
+            // 사용자 코드 using 중복 — Unity 컴파일러가 직접 출력하는 CS0105.
+            // 예: "warning CS0105: The using directive for 'AppsInToss' appeared previously in this namespace"
+            // Sentry APPS-IN-TOSS-UNITY-SDK-SW.
+            // SDK는 컴파일러 경고 메시지를 직접 출력하지 않으므로 안전.
+            "warning CS0105",
+
+            // 사용자 MonoBehaviour 라이프사이클 위반 — Unity 엔진이 OnValidate/animation event 등에서
+            // 즉시 파괴를 시도할 때 직접 출력. 사용자 게임 코드 호출 흐름.
+            // Sentry APPS-IN-TOSS-UNITY-SDK-T0.
+            "Destroying GameObjects immediately is not permitted during",
         };
 
         // DetermineErrorSource에서 메시지를 SDK로 분류하는 추가 패턴.
@@ -825,6 +836,14 @@ namespace AppsInToss.Editor.ErrorTracker
             // AITTemplate 경로가 포함되더라도 SDK가 제공한 파일을 사용자가 복사해둔 경우이므로 필터 대상
             if (message.IndexOf("GUID [", StringComparison.Ordinal) >= 0
                 && message.IndexOf("conflicts with:", StringComparison.Ordinal) >= 0)
+                return true;
+
+            // 사용자 코드의 'AppsInToss' 미발견 컴파일 에러 — SDK 미설치 또는 asmdef 참조 누락.
+            // 예: "error CS0246: The type or namespace name 'AppsInToss' could not be found ..."
+            // Sentry APPS-IN-TOSS-UNITY-SDK-C3, APPS-IN-TOSS-UNITY-SDK-M7 등 다수.
+            // CS0246 단독은 SDK 빌드 메시지와 충돌 위험이 있어, "'AppsInToss'"와 합성 AND로 좁힌다.
+            if (message.IndexOf("error CS0246", StringComparison.Ordinal) >= 0
+                && message.IndexOf("'AppsInToss'", StringComparison.Ordinal) >= 0)
                 return true;
 
             return false;

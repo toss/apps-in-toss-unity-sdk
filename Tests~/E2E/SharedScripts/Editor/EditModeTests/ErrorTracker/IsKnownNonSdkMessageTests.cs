@@ -1019,6 +1019,81 @@ public class IsKnownNonSdkMessageTests
 
     #endregion
 
+    #region 사용자 코드 컴파일러 경고/에러 (SDK-SW, SDK-T0, SDK-C3/M7)
+
+    [Test]
+    public void UsingDirectiveAppearedPreviously_AppsInToss_ReturnsTrue()
+    {
+        // Sentry SDK-SW — 사용자 코드의 using AppsInToss; 중복 (CS0105).
+        // Unity 컴파일러가 직접 출력하므로 SDK 외부 메시지로 드롭한다.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Assets\\Script\\AITIAPManager.cs(11,7): warning CS0105: The using directive for 'AppsInToss' appeared previously in this namespace"));
+    }
+
+    [Test]
+    public void UsingDirectiveAppearedPreviously_AitKeywordProtected()
+    {
+        // SDK 자체 로그가 "[AIT ...] warning CS0105 ..." 형태로 캡처될 가능성 보호.
+        // AitKeywords 가드로 필터링되지 않아야 함.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] internal: warning CS0105 collision"));
+    }
+
+    [Test]
+    public void DestroyingGameObjectsImmediately_ReturnsTrue()
+    {
+        // Sentry SDK-T0 — 사용자 MonoBehaviour의 OnValidate/animation event 등에서 즉시 파괴 시도.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Destroying GameObjects immediately is not permitted during physics trigger/contact, animation event callbacks, rendering callbacks or OnValidate. You must use Destroy instead."));
+    }
+
+    [Test]
+    public void DestroyingGameObjects_AitKeywordProtected()
+    {
+        // SDK가 동일 문구를 진단/리포트로 출력하더라도 [AIT] prefix가 붙으면 보호되어야 함.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] diag: Destroying GameObjects immediately is not permitted during teardown"));
+    }
+
+    #endregion
+
+    #region 'AppsInToss' 식별자 미발견 컴파일 에러 (SDK-C3, SDK-M7, SDK-PV)
+
+    [Test]
+    public void UserCode_AppsInTossNamespaceMissing_ReturnsTrue()
+    {
+        // Sentry SDK-C3 — 사용자 스크립트가 AppsInToss namespace를 import하지 못함.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Assets\\Script\\Tutorial_Howtoplay.cs(4,7): error CS0246: The type or namespace name 'AppsInToss' could not be found (are you missing a using directive or an assembly reference?)"));
+    }
+
+    [Test]
+    public void UserCode_AppsInTossNamespaceMissing_PosixPath_ReturnsTrue()
+    {
+        // Sentry SDK-M7 — POSIX 경로 변형
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Assets/CommonScripts/AdManager.cs(3,7): error CS0246: The type or namespace name 'AppsInToss' could not be found (are you missing a using directive or an assembly reference?)"));
+    }
+
+    [Test]
+    public void Cs0246_WithoutAppsInTossToken_NotFiltered()
+    {
+        // CS0246 단독은 SDK 빌드 메시지/다른 namespace 미발견과 충돌할 수 있으므로
+        // 'AppsInToss' 식별자가 동반될 때만 노이즈로 분류한다.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Assets/Foo.cs(1,1): error CS0246: The type or namespace name 'SomethingElse' could not be found"));
+    }
+
+    [Test]
+    public void Cs0246_AppsInTossToken_WithAitPrefix_StillProtected()
+    {
+        // SDK 보호 가드: [AIT] prefix가 붙은 동일 메시지는 SDK 자체 로그로 간주.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] diag: error CS0246: The type or namespace name 'AppsInToss' could not be found in fallback build"));
+    }
+
+    #endregion
+
     #region SDK 관련 메시지는 통과 (negative cases)
 
     [Test]

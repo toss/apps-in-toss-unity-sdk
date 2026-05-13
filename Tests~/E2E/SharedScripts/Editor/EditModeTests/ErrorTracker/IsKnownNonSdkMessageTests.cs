@@ -424,6 +424,13 @@ public class IsKnownNonSdkMessageTests
     [TestCase(
         "Sprite 'player idle frame' matches more than one built-in atlases (fallback applied).",
         TestName = "SpriteAtlas_QuotedNameAndTrailingParen_ReturnsTrue")]
+    // Sentry APPS-IN-TOSS-UNITY-SDK-RM / RN — "UnityWarning: " prefix가 붙은 실측 변형.
+    [TestCase(
+        "UnityWarning: Sprite object_03_07 matches more than one built-in atlases. Default to use the first available atlas.",
+        TestName = "SpriteAtlas_UnityWarningPrefix_ObjectName_ReturnsTrue")]
+    [TestCase(
+        "UnityWarning: Sprite background_theme1_3 matches more than one built-in atlases. Default to use the first available atlas.",
+        TestName = "SpriteAtlas_UnityWarningPrefix_UnderscoredName_ReturnsTrue")]
     public void SpriteAtlasDuplicate_RealisticVariants_ReturnsTrue(string message)
     {
         Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(message));

@@ -160,6 +160,20 @@ namespace AppsInToss.Editor.ErrorTracker
             // 즉시 파괴를 시도할 때 직접 출력. 사용자 게임 코드 호출 흐름.
             // Sentry APPS-IN-TOSS-UNITY-SDK-T0.
             "Destroying GameObjects immediately is not permitted during",
+
+            // Unity IL2CPP / Bee 빌드 시스템이 직접 출력하는 컴파일 단위별 빌드 실패.
+            // .o 해시 파일명이 매번 달라 Sentry에서 동일 빌드 실패가 수십 개 별도 이슈로 grouping 됨.
+            // 예: "Building Library/Bee/artifacts/WebGL/GameAssembly/release_WebGL_wasm/abcdef.o failed with output:"
+            //     "Building Library/Bee/artifacts/WebGL/ManagedStripped failed with output:"
+            //     "Building Library/Bee/artifacts/WebGL/build/debug_WebGL_wasm/build.js failed with output:"
+            // Sentry APPS-IN-TOSS-UNITY-SDK-SA~SV, T7, TV 등 다수.
+            // 실 SDK 빌드 실패는 "[AIT] WebGL 빌드가 실패했습니다." (SDK-8E)로 별도 캡처되므로 안전.
+            "Building Library/Bee/artifacts/WebGL/",
+
+            // git 호출 trace의 cmd wrapper 변형 — 기존 "Exec> git " 패턴이 잡지 못하는 형태.
+            // 예: "Exec> cmd /c \"git\" show -s --pretty=%D HEAD", "Exec> cmd /c \"git\" log -1 ..."
+            // Sentry APPS-IN-TOSS-UNITY-SDK-TE, APPS-IN-TOSS-UNITY-SDK-TF.
+            "Exec> cmd /c \"git\"",
         };
 
         // DetermineErrorSource에서 메시지를 SDK로 분류하는 추가 패턴.

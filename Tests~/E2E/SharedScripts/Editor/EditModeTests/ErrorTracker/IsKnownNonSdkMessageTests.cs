@@ -835,6 +835,65 @@ public class IsKnownNonSdkMessageTests
 
     #endregion
 
+    #region 외부 서비스 일시적 장애 (Sentry transport 5xx)
+
+    [Test]
+    public void SentryTransport_Http503_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-T4 — Sentry 서버의 일시적 503 응답.
+        // SDK 자체 로그이지만 원인이 외부 서비스 transient 장애이므로 노이즈로 드롭.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AITSentryTransport] Sentry 전송 실패 (HTTP 503)"));
+    }
+
+    [Test]
+    public void SentryTransport_Http500_ReturnsTrue()
+    {
+        // 5xx 일반화 — 500/502/504 등도 동일한 외부 transient 장애로 분류
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AITSentryTransport] Sentry 전송 실패 (HTTP 500)"));
+    }
+
+    [Test]
+    public void SentryTransport_Http502_ReturnsTrue()
+    {
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AITSentryTransport] Sentry 전송 실패 (HTTP 502)"));
+    }
+
+    [Test]
+    public void SentryTransport_Http504_ReturnsTrue()
+    {
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AITSentryTransport] Sentry 전송 실패 (HTTP 504)"));
+    }
+
+    [Test]
+    public void SentryTransport_Http400_NotFiltered()
+    {
+        // 4xx(인증/페이로드 오류)는 SDK가 알아야 하는 진짜 에러이므로 5xx 패턴에 매칭되지 않아야 함
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AITSentryTransport] Sentry 전송 실패 (HTTP 400)"));
+    }
+
+    [Test]
+    public void SentryTransport_Http401_NotFiltered()
+    {
+        // DSN 오설정 등 — SDK 측 수정이 필요한 진짜 에러
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AITSentryTransport] Sentry 전송 실패 (HTTP 401)"));
+    }
+
+    [Test]
+    public void SentryTransport_NetworkError_NotFiltered()
+    {
+        // 다른 transport 로그(네트워크 오류, 동기 전송 실패 등)는 영향 없음
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AITSentryTransport] 네트워크 오류: Connection refused"));
+    }
+
+    #endregion
+
     #region SDK 관련 메시지는 통과 (negative cases)
 
     [Test]

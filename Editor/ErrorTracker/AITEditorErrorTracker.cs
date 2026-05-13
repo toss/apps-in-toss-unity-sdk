@@ -748,6 +748,12 @@ namespace AppsInToss.Editor.ErrorTracker
                     return true;
             }
 
+            // SDK 자체 로그이지만 원인이 외부 서비스의 일시적 장애(5xx)인 메시지는
+            // SDK 가드 도달 전에 노이즈로 드롭한다. 5xx만 매칭하므로 4xx(인증/페이로드)는 영향 없음.
+            // Sentry APPS-IN-TOSS-UNITY-SDK-T4 — [AITSentryTransport] Sentry 전송 실패 (HTTP 503)
+            if (message.IndexOf("[AITSentryTransport] Sentry 전송 실패 (HTTP 5", StringComparison.Ordinal) >= 0)
+                return true;
+
             // SDK 자체 로그는 절대 필터링하지 않음 — AitKeywords 전체를 가드로 사용
             if (MessageContainsSdkKeyword(message))
                 return false;

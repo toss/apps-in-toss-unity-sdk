@@ -221,6 +221,23 @@ public class IsKnownNonSdkMessageTests
     }
 
     [Test]
+    public void UnableToLoadBuildReport_AddressablesBuildLayout_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-RP — Unity Addressables가 빌드 리포트 파일이 없을 때 출력하는 표준 경고.
+        // Library/com.unity.addressables/BuildReports/ 하위 timestamped 파일명까지 매칭되는지 검증.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Unable to load build report at Library/com.unity.addressables/BuildReports/buildlayout_2026.05.12.07.23.02.json."));
+    }
+
+    [Test]
+    public void UnableToLoadBuildReport_WithAitPrefix_NeverFiltered()
+    {
+        // SDK 보호 가드: AIT prefix가 붙은 동일 본문은 SDK 자체 로그로 보호되어야 함.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] Unable to load build report at Library/com.unity.addressables/BuildReports/foo.json"));
+    }
+
+    [Test]
     public void CannotReadBuildLayout_ReturnsTrue()
     {
         Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage("Cannot read BuildLayout header"));

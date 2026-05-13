@@ -612,10 +612,16 @@ namespace AppsInToss.Editor.ErrorTracker
         {
             for (int i = 0; i < AitKeywords.Length; i++)
             {
-                if (message != null && message.IndexOf(AitKeywords[i], StringComparison.OrdinalIgnoreCase) >= 0)
+                string keyword = AitKeywords[i];
+
+                // 메시지 본문은 단어 경계 정책으로 매칭 — "Portrait:" 안의 "ait:"처럼
+                // 일반 영어 단어 일부와 case-insensitive substring 충돌하는 거짓양성을 차단.
+                // 스택트레이스는 namespace prefix(예: "AppsInToss.Editor.Foo") 매칭이 자연스럽고
+                // 거짓양성 가능성이 낮으므로 기존 substring 동작 유지.
+                if (message != null && KeywordMatchesAtBoundary(message, keyword))
                     return true;
 
-                if (stackTrace != null && stackTrace.IndexOf(AitKeywords[i], StringComparison.OrdinalIgnoreCase) >= 0)
+                if (stackTrace != null && stackTrace.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0)
                     return true;
             }
 
@@ -640,19 +646,48 @@ namespace AppsInToss.Editor.ErrorTracker
                 return false;
 
             // AitKeywords를 그대로 재사용하여 IsAitRelated와 가드의 키워드 set drift를 방지.
-            // 식별자형 키워드(영숫자/언더스코어/하이픈)는 단어 경계를 요구해
-            // 사용자 경로(예: Assets/FTR_AppsInToss/...)에 부분 문자열로 들어가도
-            // SDK 가드가 잘못 발동하지 않게 한다. prefix형 키워드("[AIT", "AIT:")는
-            // 비식별자 문자를 포함하므로 substring 매치한다 ("[AITWarn]"처럼
-            // 다른 토큰의 시작 prefix로 사용되어야 함).
+            // 식별자형 키워드("AppsInToss"/"ait-build" 등)는 양쪽 단어 경계를 요구하고,
+            // prefix형 키워드("[AIT", "AIT:")는 키워드 자체가 letter로 시작하는 경우에 한해
+            // 왼쪽 단어 경계만 요구한다. 후자는 "Portrait:" 안의 "ait:"처럼 일반 영어 단어
+            // 일부와 case-insensitive 충돌하는 거짓양성을 차단하기 위함이다 (Sentry T6 회귀 방지).
             for (int i = 0; i < AitKeywords.Length; i++)
             {
-                string keyword = AitKeywords[i];
-                bool match = IsIdentifierToken(keyword)
-                    ? ContainsKeywordAtBoundary(message, keyword)
-                    : message.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0;
-                if (match)
+                if (KeywordMatchesAtBoundary(message, AitKeywords[i]))
                     return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// AitKeywords의 단일 키워드가 메시지에 단어 경계 정책에 맞게 등장하는지 검사한다.
+        /// 식별자형 키워드는 양쪽 경계, prefix형 키워드(첫 문자가 비식별자)는 substring 매치,
+        /// 첫 문자가 letter인 prefix형 키워드("AIT:")는 왼쪽 경계만 요구한다.
+        /// </summary>
+        private static bool KeywordMatchesAtBoundary(string text, string keyword)
+        {
+            if (string.IsNullOrEmpty(text) || string.IsNullOrEmpty(keyword))
+                return false;
+
+            if (IsIdentifierToken(keyword))
+                return ContainsKeywordAtBoundary(text, keyword);
+
+            // prefix형 키워드: 키워드 첫 문자가 비식별자(예: '[')면 자연스럽게 왼쪽 경계가 형성되어
+            // substring 매치로 충분. letter로 시작하면("AIT:") 왼쪽 경계 검사로 좁힘.
+            if (!IsBoundaryWordChar(keyword[0]))
+                return text.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0;
+
+            int searchFrom = 0;
+            while (searchFrom <= text.Length - keyword.Length)
+            {
+                int idx = text.IndexOf(keyword, searchFrom, StringComparison.OrdinalIgnoreCase);
+                if (idx < 0)
+                    return false;
+
+                bool leftOk = idx == 0 || !IsBoundaryWordChar(text[idx - 1]);
+                if (leftOk)
+                    return true;
+
+                searchFrom = idx + 1;
             }
             return false;
         }

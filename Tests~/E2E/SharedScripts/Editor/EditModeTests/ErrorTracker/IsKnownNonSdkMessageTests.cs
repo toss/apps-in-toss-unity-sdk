@@ -192,6 +192,24 @@ public class IsKnownNonSdkMessageTests
     }
 
     [Test]
+    public void AitColonPrefix_MidSentence_LeadingNonWordBoundary_NeverFiltered()
+    {
+        // "AIT:" prefix는 줄 시작이 아니어도 토큰 경계(공백 등) 직후이면 SDK 자체 로그로 보호되어야 한다.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[WARN] AIT: Ignoring locale en-US"));
+    }
+
+    [Test]
+    public void PortraitColonSubstring_NotMatchingAitColon_FilteredAsNoise()
+    {
+        // 회귀 가드: "Portrait:" 내부의 "ait:" substring은 "AIT:"와 case-insensitive로
+        // 충돌하지만 왼쪽이 letter라 단어 경계 정책에 의해 SDK 키워드로 인정하지 않는다.
+        // 따라서 SDK 보호 가드가 발동하지 않고 NonSdkMessagePatterns로 정상 필터된다.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "SendMessage cannot be called during Awake, CheckConsistency, or OnValidate (ViewPortrait: OnFoo)"));
+    }
+
+    [Test]
     public void AitBuildKeyword_NeverFiltered()
     {
         Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
@@ -275,6 +293,21 @@ public class IsKnownNonSdkMessageTests
         // SDK 보호 가드: AIT prefix 붙으면 필터 안 함
         Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
             "[AIT] SendMessage cannot be called during Awake, CheckConsistency, or OnValidate."));
+    }
+
+    [Test]
+    public void SendMessageDuringAwake_OnRectTransformDimensionsChange_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-T6 — 사용자 컴포넌트(ViewPortrait)의
+        // OnRectTransformDimensionsChange에서 발생한 라이프사이클 변형.
+        //
+        // 회귀 가드: "Portrait:" 안의 "ait:"가 AitKeywords의 "AIT:"와 case-insensitive로
+        // substring 충돌하던 거짓양성을 단어 경계 정책으로 차단했음을 검증한다.
+        // 거짓양성이 차단되면 SDK 보호 가드가 발동하지 않고 NonSdkMessagePatterns의
+        // "SendMessage cannot be called during Awake, CheckConsistency, or OnValidate" 패턴이
+        // 정상 매칭되어 노이즈로 드롭된다.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "SendMessage cannot be called during Awake, CheckConsistency, or OnValidate (ViewPortrait: OnRectTransformDimensionsChange)"));
     }
 
     [Test]

@@ -167,12 +167,16 @@ namespace AppsInToss.Editor.ErrorTracker
         //   - SDK-CF: [Toss Firebase] 게임로그인 실패: ... (사용자 게임 백엔드 통합 레이어)
         //   - SDK-PK/PJ/PF/PC/PB/QA/Q9/Q8/Q7/Q6/Q5/Q4: Assets/FTR_AppsInToss/... CS#### 사용자 코드 경고
         //     (Unity 컴파일러가 사용자 프로젝트 파일 경로 prefix로 출력 — SDK 자체 코드는 Runtime/ 또는 Editor/ 하위)
+        //   - SDK-S1/SX: <color=Yellow>AITPromotion</color>: ... (사용자 게임 프로모션 로직 로그)
+        //     SDK 어디에도 "AITPromotion" 문자열이 출력되지 않으며 (grep 확인),
+        //     AitKeywords의 "[AIT"/"AIT:"와도 매칭되지 않으므로 ExternalAitPrefixes로 안전하게 분류.
         private static readonly string[] ExternalAitPrefixes =
         {
             "[AIT Login]",
             "[Toss Firebase]",
             "Assets\\FTR_AppsInToss\\",
             "Assets/FTR_AppsInToss/",
+            "AITPromotion</color>",
         };
 
         #endregion

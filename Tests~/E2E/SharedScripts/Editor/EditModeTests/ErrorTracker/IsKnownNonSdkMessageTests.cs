@@ -99,6 +99,33 @@ public class IsKnownNonSdkMessageTests
             "[AIT] Assets/Other/Foo.cs error: AppsInToss runtime issue"));
     }
 
+    [Test]
+    public void ExternalAitPromotionPrefix_CaptureEntryPointSkipped_ReturnsTrue()
+    {
+        // Sentry SDK-S1 — 사용자 게임의 프로모션 로직이 <color=Yellow>AITPromotion</color> tag로 출력하는 로그.
+        // SDK 코드 어디에도 "AITPromotion" 문자열이 존재하지 않음 (grep 확인).
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[05:58:01:496] <color=Yellow>AITPromotion</color>: CaptureEntryPoint skipped on non-WebGL"));
+    }
+
+    [Test]
+    public void ExternalAitPromotionPrefix_SkipNotPromotionEntry_ReturnsTrue()
+    {
+        // Sentry SDK-SX — 동일 prefix를 사용하는 또 다른 분기 출력 (rebirthCount 조건).
+        // 단일 ExternalAitPrefixes 패턴 "AITPromotion</color>"이 두 변형 모두 매칭함을 검증.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[02:00:21:536] <color=Yellow>AITPromotion</color>: Skip: not a promotion entry (rebirthCount=1)"));
+    }
+
+    [Test]
+    public void AitPromotionPrefix_WithAitKeyword_StillFiltered()
+    {
+        // ExternalAitPrefixes는 AitKeywords 가드보다 먼저 매칭되므로,
+        // 동일 메시지에 SDK 키워드가 섞여도 외부 prefix가 우선해 드롭된다.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "<color=Yellow>AITPromotion</color>: AppsInToss helper called"));
+    }
+
     #endregion
 
     #region SDK 보호: AIT 키워드 포함 시 절대 필터링 안 함

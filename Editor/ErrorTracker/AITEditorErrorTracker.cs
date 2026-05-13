@@ -81,6 +81,9 @@ namespace AppsInToss.Editor.ErrorTracker
             "cannot be used in the State \"",
             // Unity 빌드 — 미컴파일 코드 변경 상태에서 빌드 시도 시 Unity가 직접 출력 (SDK-NE)
             "You are building a player, but you have uncompiled code changes",
+            // Unity 빌드 — 사용자가 Development 옵션 없이 ConnectWithProfiler를 설정해 발생하는 Unity 표준 예외 (SDK-T3)
+            // 사용자 BuildPlayerOptions 구성 문제이며 SDK 버그 아님. Unity 버전/언어와 무관하게 영문 메시지 본문이 동일.
+            "Non-development build cannot allow auto-connecting the profiler",
 
             // 사용자 프로젝트 에셋 문제
             "matches more than one built-in atlases",

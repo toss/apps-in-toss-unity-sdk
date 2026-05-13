@@ -315,6 +315,32 @@ public class IsKnownNonSdkMessageTests
             "[AIT] You are building a player, but you have uncompiled code changes."));
     }
 
+    [Test]
+    public void NonDevelopmentBuildAutoConnectingProfiler_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-T3 — 사용자가 Development 옵션 없이 ConnectWithProfiler를 설정해
+        // Unity가 직접 던지는 ArgumentException. 사용자 BuildPlayerOptions 구성 문제이며 SDK 버그 아님.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "UnityError: 변환 중 오류가 발생했습니다: System.ArgumentException: Non-development build cannot allow auto-connecting the profiler. Either add the Development build option,"));
+    }
+
+    [Test]
+    public void NonDevelopmentBuildAutoConnectingProfiler_PlainException_ReturnsTrue()
+    {
+        // Unity가 영문 환경 또는 다른 호출 경로에서 ArgumentException 본문만 그대로 출력하는 변형.
+        // "Non-development build cannot allow auto-connecting the profiler" 부분 문자열이 핵심 불변 문구.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "ArgumentException: Non-development build cannot allow auto-connecting the profiler. Either add the Development build option, or unset ConnectWithProfiler."));
+    }
+
+    [Test]
+    public void NonDevelopmentBuildAutoConnectingProfiler_WithAitPrefix_NeverFiltered()
+    {
+        // AitKeywords 가드 회귀 방지: [AIT] prefix가 붙으면 SDK 자체 로그로 간주되어야 함
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] Non-development build cannot allow auto-connecting the profiler"));
+    }
+
     #endregion
 
     #region 사용자 프로젝트 에셋 문제

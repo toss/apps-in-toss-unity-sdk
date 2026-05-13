@@ -851,6 +851,55 @@ public class IsKnownNonSdkMessageTests
 
     #endregion
 
+    #region 사용자 코드 CS0029 암묵 변환 컴파일 에러 (SDK-T2)
+
+    [Test]
+    public void UserCodeCS0029_IapProductListItem_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-T2 실측 메시지 — 사용자 IAP 매니저 코드가 SDK 반환 배열을
+        // List<T>에 암묵 변환하려다 발생한 컴파일 에러. SDK 타입명('AppsInToss.IapProductListItem')이
+        // 포함되어 AitKeywords 가드를 발동시키지만, composite AND 가드가 그보다 먼저 매칭되어 노이즈로 드롭됨.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Assets/02_Scripts/02_Manager/IAP/IAPServiceToss.cs(24,29): error CS0029: Cannot implicitly convert type 'AppsInToss.IapProductListItem[]' to 'System.Collections.Generic.List<AppsInToss.IapProductListItem>'"));
+    }
+
+    [Test]
+    public void UserCodeCS0029_OtherUserPath_ReturnsTrue()
+    {
+        // CS0029 + Assets/ + .cs( 조합은 SDK 타입 참조 여부와 무관하게 사용자 코드 컴파일 에러로 분류.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Assets/Scripts/GameLogic.cs(42,10): error CS0029: Cannot implicitly convert type 'int' to 'string'"));
+    }
+
+    [Test]
+    public void Cs0029WithoutAssetsPrefix_AitProtected_ReturnsFalse()
+    {
+        // 'Assets/' 경로가 없으면 composite AND 가드의 한 조건이 빠지므로 매칭되지 않고,
+        // AitKeywords 가드가 정상 동작해 SDK 자체 로그로 간주됨 (필터링 안 함).
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] error CS0029 reported from SDK build pipeline"));
+    }
+
+    [Test]
+    public void SdkPackageCS0029_ReturnsFalse()
+    {
+        // SDK 자체 .cs 파일의 컴파일 에러는 'Packages/com.toss.apps-in-toss/...' 경로로 출력되어
+        // 'Assets/' prefix가 붙지 않으므로 composite AND 가드가 매칭되지 않아야 함 (SDK 보호).
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Packages/com.toss.apps-in-toss/Runtime/Foo.cs(10,5): error CS0029: Cannot implicitly convert type 'int' to 'string'"));
+    }
+
+    [Test]
+    public void OtherCSErrorInUserAssets_ReturnsFalse()
+    {
+        // CS0029가 아닌 다른 컴파일 에러(CS0103 등)는 composite 가드가 매칭되지 않음.
+        // 필요 시 별도 패턴을 추가하되 본 가드는 'CS0029'에 한정.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Assets/Scripts/GameLogic.cs(42,10): error CS0103: The name 'foo' does not exist in the current context"));
+    }
+
+    #endregion
+
     #region pnpm stdout 패스스루 (SDK-HA, SDK-R6)
 
     [Test]

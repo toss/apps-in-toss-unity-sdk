@@ -394,7 +394,7 @@ namespace AppsInToss.Editor
                         {
                             Debug.LogWarning($"[AIT] Git stdout/stderr 수집 실패: {ex.GetType().Name}: {ex.Message}");
                         }
-                        Debug.LogWarning($"[AIT] Git 명령 타임아웃 ({timeoutMs / 1000}초): git {arguments}");
+                        AITLog.Warning($"[AIT] Git 명령 타임아웃 ({timeoutMs / 1000}초): git {arguments}", sentryCapture: false);
                         return null;
                     }
 

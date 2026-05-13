@@ -1017,11 +1017,36 @@ public class IsKnownNonSdkMessageTests
     }
 
     [Test]
-    public void SentryTransport_NetworkError_NotFiltered()
+    public void SentryTransport_NetworkError_ReturnsTrue()
     {
-        // 다른 transport 로그(네트워크 오류, 동기 전송 실패 등)는 영향 없음
-        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+        // Sentry SDK-CZ, KA — ConnectionError 등 transport 네트워크 일시 장애는 SDK 가드 우회로 드롭.
+        // Transport가 자기 출력을 다시 Sentry로 보내면 캐스케이드 위험.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
             "[AITSentryTransport] 네트워크 오류: Connection refused"));
+    }
+
+    [Test]
+    public void SentryTransport_NetworkErrorUnknown_ReturnsTrue()
+    {
+        // Sentry SDK-CZ
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AITSentryTransport] 네트워크 오류: Unknown Error"));
+    }
+
+    [Test]
+    public void SentryTransport_NetworkErrorTimeout_ReturnsTrue()
+    {
+        // Sentry SDK-KA
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AITSentryTransport] 네트워크 오류: Request timeout"));
+    }
+
+    [Test]
+    public void SentryTransport_OtherDiagnostic_NotFiltered()
+    {
+        // Transport의 다른 진단 메시지(예: 큐 가득 참, 동기 전송 등)는 영향받지 않아야 함.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AITSentryTransport] 큐가 가득 차서 가장 오래된 이벤트를 버립니다"));
     }
 
     #endregion

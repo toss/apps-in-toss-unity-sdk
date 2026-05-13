@@ -817,6 +817,13 @@ namespace AppsInToss.Editor.ErrorTracker
             if (message.IndexOf("[AITSentryTransport] Sentry 전송 실패 (HTTP 5", StringComparison.Ordinal) >= 0)
                 return true;
 
+            // AITSentryTransport 자체의 네트워크 오류(ConnectionError) — 사용자 환경 일시 장애.
+            // Transport가 스스로의 출력을 다시 Sentry로 보내면 캐스케이드 위험이 있고,
+            // 실제로 SubmitResult.Fail로 호출자에게 결과가 전달되므로 가시성도 유지됨.
+            // Sentry APPS-IN-TOSS-UNITY-SDK-CZ, APPS-IN-TOSS-UNITY-SDK-KA.
+            if (message.IndexOf("[AITSentryTransport] 네트워크 오류", StringComparison.Ordinal) >= 0)
+                return true;
+
             // 사용자 프로젝트(Assets/) 하위 .cs 파일의 CS0029 암묵 변환 컴파일 에러 (SDK-T2).
             // Unity 컴파일러가 사용자 코드의 타입 변환 실패를 보고할 때 출력하는 포맷:
             //   "Assets/.../Foo.cs(L,C): error CS0029: Cannot implicitly convert type 'X' to 'Y'"

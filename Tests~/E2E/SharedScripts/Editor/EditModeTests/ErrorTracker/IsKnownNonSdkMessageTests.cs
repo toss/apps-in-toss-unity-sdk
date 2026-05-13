@@ -1101,6 +1101,77 @@ public class IsKnownNonSdkMessageTests
 
     #endregion
 
+    #region IL2CPP/Bee 빌드 단위별 실패 (SDK-SA~SV, T7, TV)
+
+    [Test]
+    public void BuildLibraryBee_ObjFailed_ReturnsTrue()
+    {
+        // Sentry SDK-SV: 매번 다른 해시 파일명 — "Building Library/Bee/artifacts/WebGL/" 부분 문자열로 일괄 매칭
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Building Library/Bee/artifacts/WebGL/GameAssembly/master_WebGL_wasm/uqx36jn5evd9.o failed with output:"));
+    }
+
+    [Test]
+    public void BuildLibraryBee_ReleaseObjFailed_ReturnsTrue()
+    {
+        // Sentry SDK-SQ
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Building Library/Bee/artifacts/WebGL/GameAssembly/release_WebGL_wasm/287iqgly6k3x.o failed with output:"));
+    }
+
+    [Test]
+    public void BuildLibraryBee_ManagedStripped_ReturnsTrue()
+    {
+        // Sentry SDK-T7
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Building Library/Bee/artifacts/WebGL/ManagedStripped failed with output:"));
+    }
+
+    [Test]
+    public void BuildLibraryBee_BuildJs_ReturnsTrue()
+    {
+        // Sentry SDK-TV
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Building Library/Bee/artifacts/WebGL/build/debug_WebGL_wasm/build.js failed with output:"));
+    }
+
+    [Test]
+    public void BuildLibraryBee_WithAitPrefix_StillProtected()
+    {
+        // SDK 보호 가드: SDK가 동일 prefix로 출력하는 가상의 케이스도 필터링 안 되어야 함.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] Building Library/Bee/artifacts/WebGL/GameAssembly/release_WebGL_wasm/xxx.o failed"));
+    }
+
+    #endregion
+
+    #region git wrapper trace (SDK-TE, SDK-TF)
+
+    [Test]
+    public void ExecCmdGit_ShowVariant_ReturnsTrue()
+    {
+        // Sentry SDK-TF: Unity Collab/CCD 등이 cmd 래핑으로 git 호출
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Exec> cmd /c \"git\" show -s --pretty=%D HEAD"));
+    }
+
+    [Test]
+    public void ExecCmdGit_LogVariant_ReturnsTrue()
+    {
+        // Sentry SDK-TE
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Exec> cmd /c \"git\" log -1 --pretty=format:%h"));
+    }
+
+    [Test]
+    public void ExecCmdGit_WithAitPrefix_StillProtected()
+    {
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] Exec> cmd /c \"git\" show -s --pretty=%D HEAD"));
+    }
+
+    #endregion
+
     #region SDK 관련 메시지는 통과 (negative cases)
 
     [Test]

@@ -994,7 +994,7 @@ namespace AppsInToss
                 // 이것은 사용자 의사이므로 SDK 결함 보고 대상이 아니다.
                 if (result.summary.result == UnityEditor.Build.Reporting.BuildResult.Cancelled)
                 {
-                    Debug.LogWarning("[AIT] 사용자에 의해 WebGL 빌드가 취소되었습니다.");
+                    AITLog.Warning("[AIT] 사용자에 의해 WebGL 빌드가 취소되었습니다.", sentryCapture: false);
                     return AITExportError.CANCELLED;
                 }
 

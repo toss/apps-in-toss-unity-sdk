@@ -91,15 +91,20 @@ namespace AppsInToss.Editor.Package
                     }
                     else
                     {
-                        Debug.LogWarning(
+                        // 의도된 폴백 경로(SDK lockfile 사용). Console 가시성은 유지하되
+                        // 사용자 환경 의존 메시지(불일치 specifier 목록)가 Sentry fingerprint를
+                        // 흩어놓아 노이즈를 만들므로 Sentry 전송은 차단. Sentry SDK-Q1/S2.
+                        AITLog.Warning(
                             "[AIT]   ⚠ 프로젝트 pnpm-lock.yaml이 package.json과 정합되지 않아 SDK lockfile로 폴백합니다. " +
-                            "불일치: " + mismatchSummary);
+                            "불일치: " + mismatchSummary,
+                            sentryCapture: false);
                     }
                 }
                 else
                 {
-                    Debug.LogWarning(
-                        "[AIT]   ⚠ 프로젝트 pnpm-lock.yaml은 있지만 package.json이 없어 검증 불가. SDK lockfile로 폴백합니다.");
+                    AITLog.Warning(
+                        "[AIT]   ⚠ 프로젝트 pnpm-lock.yaml은 있지만 package.json이 없어 검증 불가. SDK lockfile로 폴백합니다.",
+                        sentryCapture: false);
                 }
             }
 

@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Threading;
 
 namespace AppsInToss.Editor
 {
@@ -14,6 +15,12 @@ namespace AppsInToss.Editor
     internal static class AITFileSystemHelper
     {
         private const string DefaultLogPrefix = "[AIT]";
+
+        // Windows 파일 잠금(AV 스캔, 직전 프로세스 핸들, pnpm symlink resolve race) 회복용
+        // 지수 백오프 — pnpm node_modules 트리는 보통 200~400ms 안에 안정화됨.
+        // 합계 약 750ms로 사용자가 인지 못할 수준이며, 회복 불가 케이스(권한 부족 등)에는
+        // 마지막 시도에서 동일 예외가 다시 던져져 호출자에게 결과가 전달됨.
+        private static readonly int[] DeleteRetryDelaysMs = { 50, 100, 200, 400 };
 
         /// <summary>
         /// 파일을 삭제합니다. 존재하지 않으면 조용히 true를 반환합니다.
@@ -78,6 +85,11 @@ namespace AppsInToss.Editor
         /// partial cleanup(일부 파일만 삭제)은 수행하지 않습니다.
         /// </para>
         /// <para>
+        /// 재시도: Windows의 일시적 잠금(AV 스캔, 직전 빌드 프로세스 핸들 미해제, pnpm symlink resolve race)에
+        /// 회복 가능하도록 지수 백오프 재시도를 수행합니다. ReparsePoint(symlink/junction)는 link 자체만
+        /// 제거하고 target은 따라가지 않으므로 store 외부에 영향이 없습니다.
+        /// </para>
+        /// <para>
         /// 실패 시 경고 로그를 남기고 false를 반환합니다 (Sentry 전송 없음).
         /// </para>
         /// <para>
@@ -93,24 +105,87 @@ namespace AppsInToss.Editor
             if (string.IsNullOrEmpty(path))
                 return true;
 
-            try
-            {
-                if (!Directory.Exists(path))
-                    return true;
-
-                ClearReadOnlyAttributesRecursive(path);
-                Directory.Delete(path, recursive: true);
+            if (!Directory.Exists(path))
                 return true;
-            }
-            catch (Exception ex)
+
+            Exception lastException = null;
+            int totalAttempts = DeleteRetryDelaysMs.Length + 1; // 즉시 1회 + 백오프 횟수
+
+            for (int attempt = 0; attempt < totalAttempts; attempt++)
             {
-                // cleanup 경로이므로 어떤 예외든 흡수: finally 블록에서 호출되어도 원래 예외를 마스킹하지 않음
-                if (logOnFailure)
-                    AITLog.Warning(
-                        $"{logPrefix} 디렉토리 삭제 실패: {path} ({ex.GetType().Name}: {ex.Message})",
-                        sentryCapture: false);
-                return false;
+                try
+                {
+                    DeleteDirectoryRecursive(path);
+                    return true;
+                }
+                catch (DirectoryNotFoundException)
+                {
+                    // 동시 정리 등으로 이미 사라진 경우 — 성공으로 처리
+                    return true;
+                }
+                catch (Exception ex) when (ex is UnauthorizedAccessException || ex is IOException)
+                {
+                    lastException = ex;
+                    // 마지막 시도는 sleep 없이 catch만 (백오프 배열 길이를 그대로 사용)
+                    if (attempt < DeleteRetryDelaysMs.Length)
+                    {
+                        try { Thread.Sleep(DeleteRetryDelaysMs[attempt]); }
+                        catch (ThreadInterruptedException) { break; }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // 회복 가능성이 낮은 다른 예외는 즉시 중단
+                    lastException = ex;
+                    break;
+                }
             }
+
+            // cleanup 경로이므로 어떤 예외든 흡수: finally 블록에서 호출되어도 원래 예외를 마스킹하지 않음
+            if (logOnFailure && lastException != null)
+                AITLog.Warning(
+                    $"{logPrefix} 디렉토리 삭제 실패: {path} ({lastException.GetType().Name}: {lastException.Message})",
+                    sentryCapture: false);
+            return false;
+        }
+
+        /// <summary>
+        /// 재귀 삭제 본체. ReadOnly 속성 해제 후 ReparsePoint(symlink/junction)는 link만 제거,
+        /// 일반 디렉토리는 자식 파일·서브디렉토리를 먼저 정리하고 본체를 삭제합니다.
+        /// 단순히 <c>Directory.Delete(recursive:true)</c>를 호출하면 symlink target까지 따라가
+        /// pnpm의 .pnpm 스토어 밖 파일에 영향을 줄 수 있어 수동 재귀를 사용합니다.
+        /// </summary>
+        private static void DeleteDirectoryRecursive(string dirPath)
+        {
+            var info = new DirectoryInfo(dirPath);
+            if (!info.Exists)
+                return;
+
+            // ReparsePoint(symlink/junction)는 link 본체만 제거하고 target은 따라가지 않는다.
+            if ((info.Attributes & FileAttributes.ReparsePoint) == FileAttributes.ReparsePoint)
+            {
+                try { info.Attributes = FileAttributes.Normal; }
+                catch { /* 권한 부족 등은 다음 Delete에서 다시 드러남 */ }
+                info.Delete();
+                return;
+            }
+
+            foreach (var file in info.GetFiles())
+            {
+                if ((file.Attributes & FileAttributes.ReadOnly) == FileAttributes.ReadOnly)
+                {
+                    try { file.Attributes = FileAttributes.Normal; }
+                    catch { /* 다음 Delete에서 동일 원인이 다시 드러남 */ }
+                }
+                file.Delete();
+            }
+
+            foreach (var sub in info.GetDirectories())
+            {
+                DeleteDirectoryRecursive(sub.FullName);
+            }
+
+            info.Delete(recursive: false);
         }
 
         private static void ClearReadOnlyAttribute(string filePath)
@@ -131,20 +206,5 @@ namespace AppsInToss.Editor
             }
         }
 
-        private static void ClearReadOnlyAttributesRecursive(string dirPath)
-        {
-            try
-            {
-                foreach (string file in Directory.GetFiles(dirPath, "*", SearchOption.AllDirectories))
-                {
-                    ClearReadOnlyAttribute(file);
-                }
-            }
-            catch (Exception)
-            {
-                // 의도적으로 무음 처리: 열람 실패 시 후속 Directory.Delete가 동일한 오류로 실패하며
-                // SafeDeleteDirectory의 catch 블록이 경고 로그를 남긴다.
-            }
-        }
     }
 }

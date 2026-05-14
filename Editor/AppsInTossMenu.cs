@@ -398,7 +398,8 @@ namespace AppsInToss
             {
                 // ait-build/node_modules 내 pnpm 의존성처럼 read-only 속성이 깔린 파일이
                 // 섞여 있을 수 있어 Directory.Delete 직호출은 UnauthorizedAccessException을
-                // 발생시킨다 (Sentry: APPS-IN-TOSS-UNITY-SDK-CA). 헬퍼는 ReadOnly를 선제 해제한다.
+                // 발생시킨다 (Sentry: APPS-IN-TOSS-UNITY-SDK-CA). 헬퍼는 ReadOnly를 선제 해제하고
+                // Windows 일시 잠금에 대해 지수 백오프로 재시도한다.
                 if (AITFileUtils.DeleteDirectory(webglPath))
                 {
                     Debug.Log($"AIT: ✓ webgl/ 폴더 삭제 완료");
@@ -406,7 +407,9 @@ namespace AppsInToss
                 }
                 else
                 {
-                    Debug.LogError($"AIT: webgl/ 폴더 삭제 실패: {webglPath}");
+                    // 헬퍼가 이미 [AIT] 디렉토리 삭제 실패 경고를 출력했음. 추가 LogError는 사용자 가시성용이며
+                    // Sentry로 캐스케이드하지 않도록 sentryCapture:false로 명시.
+                    AITLog.Error($"AIT: webgl/ 폴더 삭제 실패: {webglPath}", sentryCapture: false);
                 }
             }
 
@@ -419,7 +422,7 @@ namespace AppsInToss
                 }
                 else
                 {
-                    Debug.LogError($"AIT: ait-build/ 폴더 삭제 실패: {aitBuildPath}");
+                    AITLog.Error($"AIT: ait-build/ 폴더 삭제 실패: {aitBuildPath}", sentryCapture: false);
                 }
             }
 

@@ -406,7 +406,10 @@ namespace AppsInToss
                 }
                 else
                 {
-                    Debug.LogError($"AIT: webgl/ 폴더 삭제 실패: {webglPath}");
+                    // 헬퍼(SafeDeleteDirectory)가 이미 sentry-suppressed Warning을 남긴다.
+                    // 여기서 LogError를 띄우면 외부 file lock(IDE/Node/AV 핸들) 같은 사용자 환경 원인이
+                    // Sentry로 전파된다 (APPS-IN-TOSS-UNITY-SDK-RS/V3/V0).
+                    AITLog.Error($"AIT: webgl/ 폴더 삭제 실패: {webglPath}", sentryCapture: false);
                 }
             }
 
@@ -419,7 +422,8 @@ namespace AppsInToss
                 }
                 else
                 {
-                    Debug.LogError($"AIT: ait-build/ 폴더 삭제 실패: {aitBuildPath}");
+                    // 위 webgl/ 블록과 동일 — 헬퍼가 이미 흡수된 Warning을 남기므로 Sentry 전송은 억제.
+                    AITLog.Error($"AIT: ait-build/ 폴더 삭제 실패: {aitBuildPath}", sentryCapture: false);
                 }
             }
 

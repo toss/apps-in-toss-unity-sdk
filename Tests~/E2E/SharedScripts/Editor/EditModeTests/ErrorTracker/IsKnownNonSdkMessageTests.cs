@@ -1059,6 +1059,35 @@ public class IsKnownNonSdkMessageTests
 
     #endregion
 
+    #region Unity AssetDatabase GUID 충돌 (SDK-BQ)
+
+    [Test]
+    public void GuidConflict_SdkAssetImported_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-BQ — 사용자가 SDK를 UPM이 아닌 Assets/ 하위로 import.
+        // Unity 엔진이 출력하는 GUID 충돌 경고로, SDK 코드에서 차단 불가.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "GUID [ab2202024c4c0485e9a366792ed7605d] for asset 'Assets/WebGLTemplates/AITTemplate/TemplateData/unity-logo-dark.png' conflicts with:\n  'Packages/im.toss.apps-in-toss-unity-sdk/WebGLTemplates/AITTemplate/TemplateData/unity-logo-dark.png' (current owner)\nAssigning a new guid.\n"));
+    }
+
+    [Test]
+    public void GuidConflict_StyleCss_ReturnsTrue()
+    {
+        // BQ의 다른 변형 — style.css에서도 동일 패턴
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "GUID [d097f2670df9e41ff90dd9bda7da052c] for asset 'Assets/WebGLTemplates/AITTemplate/TemplateData/style.css' conflicts with:\n  'Packages/im.toss.apps-in-toss-unity-sdk/WebGLTemplates/AITTemplate/TemplateData/style.css' (current owner)\nAssigning a new guid.\n"));
+    }
+
+    [Test]
+    public void GuidDiagnostic_WithoutConflict_NotFiltered()
+    {
+        // composite AND 가드: "GUID ["만 있고 "conflicts with:"는 없는 다른 메시지는 통과
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "GUID [abc123] computed for asset; nothing else to report."));
+    }
+
+    #endregion
+
     #region 사용자 코드 컴파일러 경고/에러 (SDK-SW, SDK-T0, SDK-C3/M7)
 
     [Test]

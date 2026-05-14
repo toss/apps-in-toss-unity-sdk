@@ -877,6 +877,23 @@ namespace AppsInToss.Editor.ErrorTracker
             if (message.IndexOf("[AIT] Git 명령 타임아웃", StringComparison.Ordinal) >= 0)
                 return true;
 
+            // Unity AssetDatabase가 출력하는 GUID 충돌 경고. 사용자가 SDK를 UPM이 아닌
+            // Assets/ 하위로 import한 환경에서 동일 자산이 Packages/와 Assets/ 양쪽에 존재하면
+            // Unity 엔진이 자동으로 새 GUID를 부여하며 이 경고를 출력한다.
+            // 형식:
+            //   "GUID [<hash>] for asset '<assetPath>' conflicts with:
+            //     '<otherAssetPath>' (current owner)
+            //   Assigning a new guid."
+            // composite AND 조건으로 다른 GUID 진단 메시지와 거짓양성 충돌을 방지한다.
+            // SDK 패키지 경로가 message에 들어가 AitKeywords 가드가 발동되므로 가드보다 먼저 매칭.
+            // [AIT] prefix가 붙은 SDK 자체 로그는 절대 필터링하지 않으므로 별도 가드.
+            // Sentry APPS-IN-TOSS-UNITY-SDK-BQ.
+            if (message.IndexOf("GUID [", StringComparison.Ordinal) >= 0
+                && message.IndexOf("] for asset '", StringComparison.Ordinal) >= 0
+                && message.IndexOf("' conflicts with:", StringComparison.Ordinal) >= 0
+                && !message.StartsWith("[AIT]", StringComparison.Ordinal))
+                return true;
+
             // 사용자 프로젝트(Assets/) 하위 .cs 파일의 CS0029 암묵 변환 컴파일 에러 (SDK-T2).
             // Unity 컴파일러가 사용자 코드의 타입 변환 실패를 보고할 때 출력하는 포맷:
             //   "Assets/.../Foo.cs(L,C): error CS0029: Cannot implicitly convert type 'X' to 'Y'"

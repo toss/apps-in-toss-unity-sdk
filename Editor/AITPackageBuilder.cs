@@ -176,7 +176,9 @@ namespace AppsInToss.Editor
             string pnpmPath = AITNpmRunner.FindPnpmPath();
             if (string.IsNullOrEmpty(pnpmPath))
             {
-                Debug.LogError("[AIT] [병렬] pnpm 설치에 실패했습니다.");
+                // pnpm 부재는 환경 원인 — 다이얼로그로 사용자에게 안내되고 빌드 흐름이
+                // FAIL_NPM_BUILD로 결과 인지. Sentry는 fingerprint 가치가 없어 차단.
+                AITLog.Error("[AIT] [병렬] pnpm 설치에 실패했습니다.", sentryCapture: false);
                 AITPackageManagerHelper.ShowInstallationFailureDialog();
                 return (null, AITConvertCore.AITExportError.FAIL_NPM_BUILD);
             }
@@ -283,7 +285,9 @@ namespace AppsInToss.Editor
             var installResult = earlyCtx.PnpmInstallResult ?? AITConvertCore.AITExportError.FAIL_NPM_BUILD;
             if (installResult != AITConvertCore.AITExportError.SUCCEED)
             {
-                Debug.LogError($"[AIT] [병렬] pnpm install 실패: {installResult}");
+                // pnpm install 결과 코드만 노출 — onComplete가 빌드 흐름으로 결과를
+                // 전파해 상위에서 보고. 환경 원인이라 Sentry fingerprint 가치 없음.
+                AITLog.Error($"[AIT] [병렬] pnpm install 실패: {installResult}", sentryCapture: false);
                 earlyCtx.CancelAndDisposePnpm();
                 try { snapshot.Restore(); }
                 finally { AITBuildSession.EndBuild(); }

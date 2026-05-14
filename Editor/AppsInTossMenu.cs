@@ -745,18 +745,22 @@ namespace AppsInToss
                 {
                     if (result.ExitCode == -1)
                     {
-                        Debug.LogError("AIT: 배포 타임아웃 (5분 초과)");
+                        // 사용자 환경(네트워크/원격 응답 지연) 원인 — 다이얼로그로 가시화하며 Sentry는 차단.
+                        AITLog.Error("AIT: 배포 타임아웃 (5분 초과)", sentryCapture: false);
                         AITPlatformHelper.ShowInfoDialog("타임아웃", "배포 시간이 초과되었습니다.", "확인");
                     }
                     else
                     {
-                        // 에러 메시지 추출 (stdout과 stderr에서)
+                        // 'ait deploy' CLI exit != 0 — 원인은 인증 실패(401/403), 서버 오류,
+                        // 네트워크, 사용자 환경 등 사용자에게 actionable한 외부 요인. 다이얼로그에서
+                        // 인증/서버 분기로 가이드를 보여주므로 Sentry로 흘리면 stdout/stderr 변형이
+                        // 다수의 별도 fingerprint(SDK-B9, SDK-RF cascade)를 만든다.
                         string errorDetail = ExtractDeployErrorMessage(result.Output, result.Error);
-                        Debug.LogError($"AIT: 배포 실패 (Exit Code: {result.ExitCode})");
+                        AITLog.Error($"AIT: 배포 실패 (Exit Code: {result.ExitCode})", sentryCapture: false);
                         if (!string.IsNullOrEmpty(result.Output))
-                            Debug.LogError($"AIT: [stdout] {result.Output}");
+                            AITLog.Error($"AIT: [stdout] {result.Output}", sentryCapture: false);
                         if (!string.IsNullOrEmpty(result.Error))
-                            Debug.LogError($"AIT: [stderr] {result.Error}");
+                            AITLog.Error($"AIT: [stderr] {result.Error}", sentryCapture: false);
 
                         bool isAuthError = !string.IsNullOrEmpty(errorDetail) &&
                             (errorDetail.Contains("403") || errorDetail.Contains("401") ||

@@ -174,6 +174,28 @@ namespace AppsInToss.Editor.ErrorTracker
             // 예: "Exec> cmd /c \"git\" show -s --pretty=%D HEAD", "Exec> cmd /c \"git\" log -1 ..."
             // Sentry APPS-IN-TOSS-UNITY-SDK-TE, APPS-IN-TOSS-UNITY-SDK-TF.
             "Exec> cmd /c \"git\"",
+
+            // Unity Addressables / ScriptableBuildPipeline이 직접 출력하는 빌드 실패 메시지.
+            // 사용자 프로젝트의 Addressables 그룹/스키마 설정 문제이며 SDK 영역 아님.
+            // 예: "SBP ErrorError" (SDK-H4), "BuildFailedException: Failed to build Addressables content..." (SDK-S4)
+            // Addressables는 동일 메시지를 다양한 prefix로 반복 출력하므로 핵심 토큰만 매칭.
+            "SBP ErrorError",
+            "Failed to build Addressables content",
+            // Cannot read BuildLayout의 변형 — "BuildLayout has not open for a file" (SDK-EX)
+            "BuildLayout has not open",
+
+            // Unity 오디오 시스템 — 빌드/플레이 중 오디오 장치 전환 발생 시 출력 (SDK-TW)
+            "Default audio device was changed",
+
+            // Unity emscripten 압축 단계 직접 출력 — SDK 코드가 띄우는 메시지가 아님 (SDK-RV)
+            // 예: "Building webgl/Build/204ccce7cc46e2cd9bd7212e664b4738.data.unityweb failed with output:"
+            // 실 SDK 빌드 실패는 "[AIT] WebGL 빌드가 실패했습니다." (SDK-8E)로 별도 캡처되므로 안전.
+            "Building webgl/Build/",
+
+            // Unity AssetDatabase가 SDK 외부 캐시(Library/) 로딩 실패 시 직접 출력 (SDK-RT)
+            // 예: "Unknown error occurred while loading 'Library/AppsInToss/AITBuildSession.asset'."
+            // SDK가 띄우는 라이프사이클 경고가 아니라 Unity 자체 stderr 캡처.
+            "Unknown error occurred while loading 'Library/",
         };
 
         // DetermineErrorSource에서 메시지를 SDK로 분류하는 추가 패턴.
@@ -822,6 +844,36 @@ namespace AppsInToss.Editor.ErrorTracker
             // 실제로 SubmitResult.Fail로 호출자에게 결과가 전달되므로 가시성도 유지됨.
             // Sentry APPS-IN-TOSS-UNITY-SDK-CZ, APPS-IN-TOSS-UNITY-SDK-KA.
             if (message.IndexOf("[AITSentryTransport] 네트워크 오류", StringComparison.Ordinal) >= 0)
+                return true;
+
+            // 외부 정책 파일 fetch의 일시적 네트워크 오류 — SDK가 외부 호스트에 띄운 메시지이지만
+            // SubmitResult/콘솔로 사용자 가시성은 유지되고, 재시도 시 자연 회복되는 케이스.
+            // Sentry APPS-IN-TOSS-UNITY-SDK-M9.
+            if (message.IndexOf("[AIT] sdk-policy.json fetch 실패", StringComparison.Ordinal) >= 0)
+                return true;
+
+            // Vite dev 서버 포트 polling 타임아웃 — 단순 폴링 종료 알림이며 실제로는 곧 브라우저가 열림.
+            // SDK 흐름상 fatal하지 않고 사용자에게 안내 후 진행.
+            // Sentry APPS-IN-TOSS-UNITY-SDK-QN.
+            if (message.IndexOf("[AIT] Vite 포트 5173 대기 타임아웃", StringComparison.Ordinal) >= 0)
+                return true;
+
+            // 사용자 환경 포트 점유 / 외부 프로세스 비정상 종료 — actionable 가이드는 콘솔에 이미 출력.
+            // Sentry APPS-IN-TOSS-UNITY-SDK-KP, APPS-IN-TOSS-UNITY-SDK-Q3.
+            if (message.IndexOf("AIT: Dev 서버 시작 실패", StringComparison.Ordinal) >= 0
+                || message.IndexOf("AIT: Production 서버 시작 실패", StringComparison.Ordinal) >= 0)
+                return true;
+
+            // 사용자 git 환경 문제(Author identity 미설정, git 프로세스 실패 등) — SDK 자동 커밋 보조 흐름.
+            // 실패 시 SDK는 계속 진행하며 사용자가 수동 커밋 가능.
+            // Sentry APPS-IN-TOSS-UNITY-SDK-SK, APPS-IN-TOSS-UNITY-SDK-TZ.
+            if (message.IndexOf("[AIT] 자동 커밋 실패", StringComparison.Ordinal) >= 0)
+                return true;
+
+            // git 명령 타임아웃 — 짧은 타임아웃(5초)은 #591에서 source 차단(AITLog sentryCapture:false).
+            // 긴 타임아웃(예: 300초 commit) 변형도 동일하게 사용자 환경 응답 지연이므로 차단.
+            // Sentry APPS-IN-TOSS-UNITY-SDK-TY, QC.
+            if (message.IndexOf("[AIT] Git 명령 타임아웃", StringComparison.Ordinal) >= 0)
                 return true;
 
             // 사용자 프로젝트(Assets/) 하위 .cs 파일의 CS0029 암묵 변환 컴파일 에러 (SDK-T2).

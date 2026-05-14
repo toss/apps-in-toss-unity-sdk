@@ -1197,6 +1197,121 @@ public class IsKnownNonSdkMessageTests
 
     #endregion
 
+    #region 카테고리 D 노이즈 (Addressables / Vite / git / 정책 fetch / Unity 자체)
+
+    [Test]
+    public void Addressables_SbpError_ReturnsTrue()
+    {
+        // Sentry SDK-H4: "SBP ErrorError"는 ScriptableBuildPipeline 출력 자체.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage("SBP ErrorError"));
+    }
+
+    [Test]
+    public void Addressables_FailedToBuildContent_ReturnsTrue()
+    {
+        // Sentry SDK-S4
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "BuildFailedException: BuildFailedException: Failed to build Addressables content, content not included in Player Build. \"SBP ErrorError\""));
+    }
+
+    [Test]
+    public void BuildLayout_HasNotOpen_ReturnsTrue()
+    {
+        // Sentry SDK-EX
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Cannot read BuildLayout header, BuildLayout has not open for a file"));
+    }
+
+    [Test]
+    public void DefaultAudioDevice_Changed_ReturnsTrue()
+    {
+        // Sentry SDK-TW
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Default audio device was changed, but the audio system failed to initialize it. Attempting to reset sound system."));
+    }
+
+    [Test]
+    public void EmscriptenBuild_WebGlBuildFailed_ReturnsTrue()
+    {
+        // Sentry SDK-RV
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Building webgl/Build/204ccce7cc46e2cd9bd7212e664b4738.data.unityweb failed with output:"));
+    }
+
+    [Test]
+    public void UnityAssetDb_LibraryLoad_ReturnsTrue()
+    {
+        // Sentry SDK-RT
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Unknown error occurred while loading 'Library/AppsInToss/AITBuildSession.asset'."));
+    }
+
+    [Test]
+    public void SdkPolicyFetchFailed_ReturnsTrue()
+    {
+        // Sentry SDK-M9
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] sdk-policy.json fetch 실패: System.Net.WebException: The operation has timed out."));
+    }
+
+    [Test]
+    public void VitePortTimeout_ReturnsTrue()
+    {
+        // Sentry SDK-QN
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] Vite 포트 5173 대기 타임아웃 (15초), 브라우저를 엽니다"));
+    }
+
+    [Test]
+    public void DevServerStartFailed_PortBusy_ReturnsTrue()
+    {
+        // Sentry SDK-KP
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "AIT: Dev 서버 시작 실패 - 포트가 이미 사용 중입니다. 다른 서버가 실행 중인지 확인하세요."));
+    }
+
+    [Test]
+    public void ProductionServerStartFailed_ReturnsTrue()
+    {
+        // Sentry SDK-Q3
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "AIT: Production 서버 시작 실패 - 프로세스가 비정상 종료되었습니다 (Exit Code: 1)"));
+    }
+
+    [Test]
+    public void AutoCommit_AuthorIdentity_ReturnsTrue()
+    {
+        // Sentry SDK-SK
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] 자동 커밋 실패: Author identity unknown"));
+    }
+
+    [Test]
+    public void AutoCommit_GitProcessTimeout_ReturnsTrue()
+    {
+        // Sentry SDK-TZ
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] 자동 커밋 실패: Git 프로세스를 시작할 수 없거나 타임아웃이 발생했습니다."));
+    }
+
+    [Test]
+    public void GitCommandTimeout_300Seconds_ReturnsTrue()
+    {
+        // Sentry SDK-TY (300초 변형) — 5초 케이스(SDK-QC)는 #591에서 source 차단됨.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] Git 명령 타임아웃 (300초): git commit --quiet -m \"정리: .gitignore 보호 패턴 추가\""));
+    }
+
+    [Test]
+    public void SdkPolicyFetch_NotMatching_GenericMessage_NotFiltered()
+    {
+        // negative — 단순 'sdk-policy' 문자열만 포함된 다른 메시지는 영향받지 않아야 함.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] sdk-policy.json 적용 완료"));
+    }
+
+    #endregion
+
     #region SDK 관련 메시지는 통과 (negative cases)
 
     [Test]

@@ -938,6 +938,13 @@ namespace AppsInToss.Editor.ErrorTracker
                 && !message.StartsWith("[AIT]", StringComparison.Ordinal))
                 return true;
 
+            // 사용자가 직접 WebGL 빌드를 취소한 정보성 경고 — SDK의 의도된 동작 경로.
+            // 신규 SDK 버전은 #591에서 origin(AITLog sentryCapture:false)으로 차단되지만,
+            // 이전 버전 사용자 빌드에서는 여전히 Sentry로 도달하므로 message-filter로도 흡수.
+            // Sentry APPS-IN-TOSS-UNITY-SDK-TX.
+            if (message.IndexOf("사용자에 의해 WebGL 빌드가 취소", StringComparison.Ordinal) >= 0)
+                return true;
+
             // 사용자 프로젝트(Assets/) 하위 .cs 파일의 CS0029 암묵 변환 컴파일 에러 (SDK-T2).
             // Unity 컴파일러가 사용자 코드의 타입 변환 실패를 보고할 때 출력하는 포맷:
             //   "Assets/.../Foo.cs(L,C): error CS0029: Cannot implicitly convert type 'X' to 'Y'"

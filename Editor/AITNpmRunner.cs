@@ -138,7 +138,11 @@ namespace AppsInToss.Editor
 
             if (!result.Success)
             {
-                Debug.LogError($"[AIT] pnpm 설치 실패: {result.Error}");
+                // 사용자 환경(공백 미인용 PATH, PowerShell 정책, 네트워크 차단 등)에서 발생하는
+                // npm 호출 실패 — 콘솔에는 진단 메시지를 남기되 Sentry로 전송하지 않는다.
+                // result.Error에 전체 명령줄/PowerShell 호출 본문이 들어가 fingerprint가 폭주하던
+                // 케이스(Sentry SDK-TQ/TM/TR 등) 방지.
+                AITLog.Error($"[AIT] pnpm 설치 실패: {result.Error}", sentryCapture: false);
                 return false;
             }
             return true;

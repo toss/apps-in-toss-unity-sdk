@@ -159,7 +159,9 @@ namespace AppsInToss.Editor
                         }
                         catch (Exception e)
                         {
-                            Debug.LogWarning($"[NodeJS] 다운로드 실패 ({url}): {e}");
+                            // 네트워크/프록시/방화벽 등 사용자 환경 원인. 재시도/폴백 미러로
+                            // 회복되므로 Sentry로 매 시도마다 fingerprint를 흘릴 가치가 없음.
+                            AITLog.Warning($"[NodeJS] 다운로드 실패 ({url}): {e}", sentryCapture: false);
                             lastException = e;
 
                             // 다운로드 실패 시 임시 파일 삭제
@@ -196,7 +198,7 @@ namespace AppsInToss.Editor
                 if (!checksumValid)
                 {
                     // 체크섬 실패 시 다른 미러에서 재시도
-                    Debug.LogWarning("[NodeJS] 체크섬 불일치! 다른 미러에서 재다운로드를 시도합니다...");
+                    AITLog.Warning("[NodeJS] 체크섬 불일치! 다른 미러에서 재다운로드를 시도합니다...", sentryCapture: false);
                     AITFileSystemHelper.SafeDelete(tempFile, logPrefix: "[NodeJS]");
 
                     // 나머지 미러들로 재시도
@@ -218,13 +220,13 @@ namespace AppsInToss.Editor
                             }
                             else
                             {
-                                Debug.LogWarning($"[NodeJS] 대체 미러도 체크섬 실패: {mirrorUrl}");
+                                AITLog.Warning($"[NodeJS] 대체 미러도 체크섬 실패: {mirrorUrl}", sentryCapture: false);
                                 AITFileSystemHelper.SafeDelete(tempFile, logPrefix: "[NodeJS]");
                             }
                         }
                         catch (Exception e)
                         {
-                            Debug.LogWarning($"[NodeJS] 대체 미러 다운로드 실패: {e}");
+                            AITLog.Warning($"[NodeJS] 대체 미러 다운로드 실패: {e}", sentryCapture: false);
                             AITFileSystemHelper.SafeDelete(tempFile, logPrefix: "[NodeJS]");
                         }
                     }
@@ -304,12 +306,20 @@ namespace AppsInToss.Editor
                 }
                 else
                 {
-                    Debug.LogWarning($"[NodeJS] ✓ Node.js {NODE_VERSION} 설치 완료. pnpm 설치 실패 (빌드 시 재시도됨)");
+                    // pnpm 설치 실패는 빌드 시 재시도되며 사용자 환경(네트워크/PATH) 원인.
+                    // Sentry로 fingerprint를 흘리지 않음 (SDK-TG/TP/TN 등 흡수).
+                    AITLog.Warning(
+                        $"[NodeJS] ✓ Node.js {NODE_VERSION} 설치 완료. pnpm 설치 실패 (빌드 시 재시도됨)",
+                        sentryCapture: false);
                 }
             }
             catch (Exception e)
             {
-                Debug.LogError($"[NodeJS] 다운로드 실패: {e}");
+                // 사용자 환경(네트워크 차단, ZIP 추출 시 PowerShell 인용 충돌, 디스크 권한)
+                // 원인이며 SDK에서 분기/수정할 수 있는 정보가 아니다. 다이얼로그로 사용자에게는
+                // 안내하되, Sentry로는 fingerprint가 폭주하던 본문이 흘러가지 않도록 차단.
+                // Sentry SDK-RX/RZ 등 흡수. 호출자(Initializer)는 throw로 결과 인지 가능.
+                AITLog.Error($"[NodeJS] 다운로드 실패: {e}", sentryCapture: false);
 
                 // CI/배치 모드에서는 다이얼로그 스킵
                 AITPlatformHelper.ShowInfoDialog("다운로드 실패",
@@ -536,7 +546,8 @@ namespace AppsInToss.Editor
                     }
                     catch (Exception e)
                     {
-                        Debug.LogWarning($"[NodeJS] 임시 폴더 삭제 실패 (무시됨): {e}");
+                        // cleanup 경로 — 사용자 환경 잠금(AV/handle) 원인. Sentry 차단.
+                        AITLog.Warning($"[NodeJS] 임시 폴더 삭제 실패 (무시됨): {e}", sentryCapture: false);
                     }
                 }
             }
@@ -563,11 +574,13 @@ namespace AppsInToss.Editor
             }
             catch (UnauthorizedAccessException)
             {
-                Debug.LogWarning($"[NodeJS] 드라이브 루트 접근 권한 없음 ({driveRoot}), 표준 임시 디렉토리로 폴백");
+                // 드라이브 루트 권한 부족은 사용자 정책(BitLocker, 회사 정책) 원인.
+                // 폴백 경로가 있으므로 Sentry로 보고할 필요 없음.
+                AITLog.Warning($"[NodeJS] 드라이브 루트 접근 권한 없음 ({driveRoot}), 표준 임시 디렉토리로 폴백", sentryCapture: false);
             }
             catch (IOException ex)
             {
-                Debug.LogWarning($"[NodeJS] 드라이브 루트 접근 실패 ({ex}), 표준 임시 디렉토리로 폴백");
+                AITLog.Warning($"[NodeJS] 드라이브 루트 접근 실패 ({ex}), 표준 임시 디렉토리로 폴백", sentryCapture: false);
             }
 
             // 2순위: 표준 임시 디렉토리 사용 (권한 보장)
@@ -593,7 +606,9 @@ namespace AppsInToss.Editor
                 string npmPath = GetNpmExecutablePath(nodePath);
                 if (!File.Exists(npmPath))
                 {
-                    Debug.LogError($"[NodeJS] npm을 찾을 수 없습니다: {npmPath}");
+                    // 설치 직후 npm이 없는 케이스 — ZIP 추출/복사 race 또는 디스크 정리.
+                    // 사용자 환경 원인이며 호출자(빌드 흐름)가 fallback 처리 가능.
+                    AITLog.Error($"[NodeJS] npm을 찾을 수 없습니다: {npmPath}", sentryCapture: false);
                     return false;
                 }
 
@@ -618,14 +633,18 @@ namespace AppsInToss.Editor
                 }
                 else
                 {
-                    Debug.LogWarning("[NodeJS] pnpm 설치 실패");
+                    // pnpm 설치 실패는 사용자 환경(공백 PATH, PowerShell 정책, 네트워크) 원인.
+                    // 호출자가 빌드 시 재시도하므로 Sentry로 전송하지 않음.
+                    AITLog.Warning("[NodeJS] pnpm 설치 실패", sentryCapture: false);
                 }
 
                 return success;
             }
             catch (Exception e)
             {
-                Debug.LogWarning($"[NodeJS] pnpm 설치 중 예외 발생: {e}");
+                // 예외 본문에 PowerShell 호출 명령줄이 포함되어 fingerprint가 폭주하던 경로.
+                // 사용자 환경 원인이며 빌드 시 재시도되므로 Sentry 차단.
+                AITLog.Warning($"[NodeJS] pnpm 설치 중 예외 발생: {e}", sentryCapture: false);
                 return false;
             }
         }

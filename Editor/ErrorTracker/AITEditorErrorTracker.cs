@@ -828,10 +828,16 @@ namespace AppsInToss.Editor.ErrorTracker
                     return true;
             }
 
-            // SDK 자체 로그이지만 원인이 외부 서비스의 일시적 장애(5xx)인 메시지는
-            // SDK 가드 도달 전에 노이즈로 드롭한다. 5xx만 매칭하므로 4xx(인증/페이로드)는 영향 없음.
+            // Sentry 전송 모듈 자체의 실패를 다시 Sentry로 보내면 self-loop이 발생한다.
+            // 현재 main에서는 source 단에서 sentryCapture:false로 차단하지만(AITSentryTransport),
+            // 이전 SDK 버전이 만든 envelope이 후속 빌드에서 흘러올 수 있어 cascade 필터도 함께 유지.
+            // 4xx(인증/페이로드)와 5xx(서비스 장애) 모두 SDK 코드로 분기할 정보가 아니므로 동일 처리.
             // Sentry APPS-IN-TOSS-UNITY-SDK-T4 — [AITSentryTransport] Sentry 전송 실패 (HTTP 503)
-            if (message.IndexOf("[AITSentryTransport] Sentry 전송 실패 (HTTP 5", StringComparison.Ordinal) >= 0)
+            if (message.IndexOf("[AITSentryTransport] Sentry 전송 실패 (HTTP ", StringComparison.Ordinal) >= 0)
+                return true;
+
+            // 동기 전송(에디터 종료 시 FlushSync) 실패도 self-loop 위험. 동일 정책으로 차단.
+            if (message.IndexOf("[AITSentryTransport] 동기 전송 실패", StringComparison.Ordinal) >= 0)
                 return true;
 
             // AITSentryTransport 자체의 네트워크 오류(ConnectionError) — 사용자 환경 일시 장애.

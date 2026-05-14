@@ -191,11 +191,6 @@ namespace AppsInToss.Editor.ErrorTracker
             // 예: "Building webgl/Build/204ccce7cc46e2cd9bd7212e664b4738.data.unityweb failed with output:"
             // 실 SDK 빌드 실패는 "[AIT] WebGL 빌드가 실패했습니다." (SDK-8E)로 별도 캡처되므로 안전.
             "Building webgl/Build/",
-
-            // Unity AssetDatabase가 SDK 외부 캐시(Library/) 로딩 실패 시 직접 출력 (SDK-RT)
-            // 예: "Unknown error occurred while loading 'Library/AppsInToss/AITBuildSession.asset'."
-            // SDK가 띄우는 라이프사이클 경고가 아니라 Unity 자체 stderr 캡처.
-            "Unknown error occurred while loading 'Library/",
         };
 
         // DetermineErrorSource에서 메시지를 SDK로 분류하는 추가 패턴.
@@ -888,6 +883,35 @@ namespace AppsInToss.Editor.ErrorTracker
                 && message.IndexOf(".cs(", StringComparison.Ordinal) >= 0)
                 return true;
 
+            // 사용자 코드의 'AppsInToss' 미발견 컴파일 에러 — SDK 미설치 또는 asmdef 참조 누락.
+            // 예: "Assets/.../Foo.cs(L,C): error CS0246: The type or namespace name 'AppsInToss' could not be found ..."
+            // 메시지에 'AppsInToss' 토큰이 들어가 SDK 키워드 가드가 발동하므로 가드보다 먼저 매칭한다.
+            // Sentry APPS-IN-TOSS-UNITY-SDK-C3, APPS-IN-TOSS-UNITY-SDK-M7 등.
+            // CS0246 단독은 SDK 빌드 메시지와 충돌 위험이 있어 "'AppsInToss'"와 합성 AND + Assets/ 경로 가드로 좁힌다.
+            if (message.IndexOf("error CS0246", StringComparison.Ordinal) >= 0
+                && message.IndexOf("'AppsInToss'", StringComparison.Ordinal) >= 0
+                && (message.IndexOf("Assets/", StringComparison.Ordinal) >= 0
+                    || message.IndexOf("Assets\\", StringComparison.Ordinal) >= 0)
+                && message.IndexOf(".cs(", StringComparison.Ordinal) >= 0)
+                return true;
+
+            // 사용자 코드의 'AppsInToss' using 중복(CS0105) — Unity 컴파일러가 직접 출력.
+            // 예: "Assets/.../Foo.cs(L,C): warning CS0105: The using directive for 'AppsInToss' appeared previously in this namespace"
+            // Sentry APPS-IN-TOSS-UNITY-SDK-SW.
+            if (message.IndexOf("warning CS0105", StringComparison.Ordinal) >= 0
+                && message.IndexOf("'AppsInToss'", StringComparison.Ordinal) >= 0
+                && (message.IndexOf("Assets/", StringComparison.Ordinal) >= 0
+                    || message.IndexOf("Assets\\", StringComparison.Ordinal) >= 0)
+                && message.IndexOf(".cs(", StringComparison.Ordinal) >= 0)
+                return true;
+
+            // Unity AssetDatabase가 Library/ 경로의 SDK 외부 캐시 로딩 실패 시 직접 출력.
+            // 예: "Unknown error occurred while loading 'Library/AppsInToss/AITBuildSession.asset'."
+            // 메시지에 'AppsInToss'/'AIT' 토큰이 들어가 SDK 키워드 가드가 발동하므로 가드보다 먼저 매칭한다.
+            // Sentry APPS-IN-TOSS-UNITY-SDK-RT.
+            if (message.IndexOf("Unknown error occurred while loading 'Library/", StringComparison.Ordinal) >= 0)
+                return true;
+
             // SDK 자체 로그는 절대 필터링하지 않음 — AitKeywords 전체를 가드로 사용
             if (MessageContainsSdkKeyword(message))
                 return false;
@@ -909,14 +933,6 @@ namespace AppsInToss.Editor.ErrorTracker
             // AITTemplate 경로가 포함되더라도 SDK가 제공한 파일을 사용자가 복사해둔 경우이므로 필터 대상
             if (message.IndexOf("GUID [", StringComparison.Ordinal) >= 0
                 && message.IndexOf("conflicts with:", StringComparison.Ordinal) >= 0)
-                return true;
-
-            // 사용자 코드의 'AppsInToss' 미발견 컴파일 에러 — SDK 미설치 또는 asmdef 참조 누락.
-            // 예: "error CS0246: The type or namespace name 'AppsInToss' could not be found ..."
-            // Sentry APPS-IN-TOSS-UNITY-SDK-C3, APPS-IN-TOSS-UNITY-SDK-M7 등 다수.
-            // CS0246 단독은 SDK 빌드 메시지와 충돌 위험이 있어, "'AppsInToss'"와 합성 AND로 좁힌다.
-            if (message.IndexOf("error CS0246", StringComparison.Ordinal) >= 0
-                && message.IndexOf("'AppsInToss'", StringComparison.Ordinal) >= 0)
                 return true;
 
             return false;

@@ -133,18 +133,21 @@ namespace AppsInToss.Editor
         }
 
         /// <summary>
-        /// pnpm/Node.js 설치 실패 에러를 로그에 출력
+        /// pnpm/Node.js 설치 실패 에러를 로그에 출력. 사용자 환경(네트워크/방화벽/디스크 권한)
+        /// 원인이며 SDK에서 분기할 정보가 없으므로 콘솔에만 가이드를 남기고 Sentry로 보내지 않는다.
+        /// Sentry SDK-TP/RH/SZ 등 다수 fingerprint 변형 흡수.
         /// </summary>
         public static void LogInstallationFailure(string tag)
         {
             string nodejsPath = GetNodejsPathDescription();
-            Debug.LogError(
+            AITLog.Error(
                 $"[{tag}] ✗ pnpm을 설치할 수 없습니다.\n"
                 + $"내장 Node.js 다운로드 또는 pnpm 설치에 실패했습니다.\n"
                 + $"해결 방법:\n"
                 + $"  1. 네트워크 연결을 확인하세요.\n"
                 + $"  2. {nodejsPath} 폴더를 삭제 후 Unity를 재시작하세요.\n"
-                + $"  3. 방화벽/프록시가 nodejs.org를 차단하고 있는지 확인하세요."
+                + $"  3. 방화벽/프록시가 nodejs.org를 차단하고 있는지 확인하세요.",
+                sentryCapture: false
             );
         }
 

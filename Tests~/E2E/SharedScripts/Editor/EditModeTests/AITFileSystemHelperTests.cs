@@ -326,4 +326,102 @@ public class AITFileSystemHelperTests
 
         File.Delete(path);
     }
+
+    // =====================================================
+    // D1 회귀 (Sentry SDK-CA): retry-with-backoff + symlink/junction
+    // =====================================================
+
+    [Test]
+    public void SafeDeleteDirectory_TransientLock_RecoversViaRetry()
+    {
+        // 회귀: pnpm node_modules의 일시적 잠금(AV 스캔, 직전 빌드 핸들 미해제)에서
+        // 백오프 재시도가 회복하는지 검증한다. 별도 스레드가 파일을 잠시 잠갔다 해제하고,
+        // SafeDeleteDirectory의 백오프(50→100→200→400ms) 안에 잠금이 풀려 삭제가 성공해야 한다.
+        string dir = Path.Combine(tempDir, "transient-lock");
+        Directory.CreateDirectory(dir);
+        string filePath = Path.Combine(dir, "locked.txt");
+        File.WriteAllText(filePath, "x");
+
+        // ~120ms 동안 파일을 점유하다가 해제 — 두 번째 백오프(50+100=150ms) 안에 풀림.
+        var releaseEvent = new System.Threading.ManualResetEventSlim(false);
+        var locker = new System.Threading.Thread(() =>
+        {
+            try
+            {
+                using (var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.None))
+                {
+                    releaseEvent.Wait(System.TimeSpan.FromMilliseconds(120));
+                }
+            }
+            catch
+            {
+                // 파일이 이미 사라진 경우 등은 무시 — 테스트 본 목적은 retry 동작 검증
+            }
+        });
+        locker.IsBackground = true;
+
+        try
+        {
+            locker.Start();
+            // locker가 핸들을 잡을 시간 확보 (cross-platform sleep)
+            System.Threading.Thread.Sleep(10);
+
+            bool result = InvokeSafeDeleteDirectory(dir);
+
+            // Windows에서는 FileShare.None이 Delete를 막지만 백오프 안에서 풀려 성공해야 함.
+            // macOS/Linux는 잠금 자체가 Delete를 막지 않아 즉시 성공.
+            Assert.IsTrue(result, "백오프 재시도로 일시적 잠금에서 회복해야 함");
+            Assert.IsFalse(Directory.Exists(dir));
+        }
+        finally
+        {
+            releaseEvent.Set();
+            locker.Join(System.TimeSpan.FromSeconds(2));
+        }
+    }
+
+    [Test]
+    public void SafeDeleteDirectory_NonExistentPath_ReturnsTrue()
+    {
+        // 동시 정리·이미 삭제된 경로에서도 성공으로 처리되어야 한다.
+        // (재시도 루프 진입 전 Directory.Exists 가드)
+        string dir = Path.Combine(tempDir, "does-not-exist");
+        bool result = InvokeSafeDeleteDirectory(dir);
+        Assert.IsTrue(result, "존재하지 않는 디렉토리는 성공으로 보고되어야 함");
+    }
+
+    [Test]
+    public void SafeDeleteDirectory_EmptyPath_ReturnsTrueWithoutThrow()
+    {
+        // null/빈 문자열도 NullReferenceException 없이 true 반환해야 한다.
+        Assert.IsTrue(InvokeSafeDeleteDirectory(""));
+        Assert.IsTrue(InvokeSafeDeleteDirectory(null));
+    }
+
+    [Test]
+    [Platform("Win")]
+    public void SafeDeleteDirectory_UnrecoverableLock_EventuallyFailsWithWarning()
+    {
+        // 회복 불가 잠금(전체 재시도 윈도우 동안 핸들 유지) 시 백오프를 모두 소진하고
+        // 최종적으로 false + 경고 1회 출력으로 끝나야 한다. 캐스케이드(중복 경고/예외 전파) 없음.
+        string dir = Path.Combine(tempDir, "unrecoverable-lock");
+        Directory.CreateDirectory(dir);
+        string filePath = Path.Combine(dir, "stuck.txt");
+        File.WriteAllText(filePath, "y");
+
+        using (new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            LogAssert.Expect(LogType.Warning, new System.Text.RegularExpressions.Regex(@"\[AIT\] 디렉토리 삭제 실패"));
+            bool result = InvokeSafeDeleteDirectory(dir);
+            Assert.IsFalse(result, "전체 재시도 윈도우 동안 잠겨 있으면 실패로 보고");
+        }
+
+        // 정리
+        if (Directory.Exists(dir))
+        {
+            foreach (var f in Directory.GetFiles(dir, "*", SearchOption.AllDirectories))
+                File.SetAttributes(f, FileAttributes.Normal);
+            Directory.Delete(dir, true);
+        }
+    }
 }

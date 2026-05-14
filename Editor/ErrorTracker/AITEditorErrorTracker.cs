@@ -220,6 +220,7 @@ namespace AppsInToss.Editor.ErrorTracker
         //   - SDK-S1/SX: <color=Yellow>AITPromotion</color>: ... (사용자 게임 프로모션 로직 로그)
         //     SDK 어디에도 "AITPromotion" 문자열이 출력되지 않으며 (grep 확인),
         //     AitKeywords의 "[AIT"/"AIT:"와도 매칭되지 않으므로 ExternalAitPrefixes로 안전하게 분류.
+        //     "UnityWarning:" prefix가 덧붙은 변형(SDK-S1 재발)도 IndexOf 부분 매칭으로 동일하게 드롭.
         private static readonly string[] ExternalAitPrefixes =
         {
             "[AIT Login]",

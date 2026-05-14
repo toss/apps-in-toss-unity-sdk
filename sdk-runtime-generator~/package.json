@@ -34,7 +34,7 @@
   "devDependencies": {
     "@types/handlebars": "^4.1.0",
     "@types/node": "^25.0.8",
-    "@vitest/ui": "4.1.5",
+    "@vitest/ui": "4.1.6",
     "glob": "13.0.6",
     "tsx": "4.21.0",
     "typescript": "6.0.3",

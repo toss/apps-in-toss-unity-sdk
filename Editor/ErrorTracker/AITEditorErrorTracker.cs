@@ -136,6 +136,11 @@ namespace AppsInToss.Editor.ErrorTracker
             // Unity 엔진 자체 경고 — WebGL은 IL2CPP "Method Name, File Name, Line Number" 스택트레이스 옵션 미지원 (SDK-8B)
             "IL2CPP stack traces is not supported on WebGL",
 
+            // 사용자 게임 코드(외부 IAP 모듈)가 출력하는 진단. SDK 코드에 'Toss IAP' 문자열은 없음.
+            // 사용자 환경(상품 구성 누락, 백엔드 연결 실패) 원인이며 SDK 분기로 해결 불가.
+            // Sentry APPS-IN-TOSS-UNITY-SDK-CY.
+            "Toss IAP: Initialize failed or no products",
+
             // 사용자 프로젝트 .meta 파일 GUID 손상 — Unity 자체 노이즈
             // 예: "The .meta file Assets/.../foo.png.meta does not have a valid GUID..."
             //     "The GUID inside 'Assets/.../foo.png.meta' cannot be extracted by the YAML Parser..."
@@ -950,12 +955,6 @@ namespace AppsInToss.Editor.ErrorTracker
             if (message.IndexOf("Script attached to", StringComparison.Ordinal) >= 0
                 && message.IndexOf("is missing", StringComparison.Ordinal) >= 0
                 && message.IndexOf("Assets/", StringComparison.Ordinal) >= 0)
-                return true;
-
-            // "GUID [...] ... conflicts with:" 패턴 — 사용자 프로젝트에 동일 GUID 에셋 잔존 (SDK-BQ)
-            // AITTemplate 경로가 포함되더라도 SDK가 제공한 파일을 사용자가 복사해둔 경우이므로 필터 대상
-            if (message.IndexOf("GUID [", StringComparison.Ordinal) >= 0
-                && message.IndexOf("conflicts with:", StringComparison.Ordinal) >= 0)
                 return true;
 
             return false;

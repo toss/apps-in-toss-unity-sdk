@@ -1088,6 +1088,19 @@ public class IsKnownNonSdkMessageTests
 
     #endregion
 
+    #region 사용자 게임 코드 IAP 진단 (SDK-CY)
+
+    [Test]
+    public void TossIap_InitializeFailed_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-CY — 사용자 게임 코드(외부 IAP 모듈) 진단.
+        // SDK 코드에 'Toss IAP' 문자열은 없음.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Toss IAP: Initialize failed or no products"));
+    }
+
+    #endregion
+
     #region 사용자 코드 컴파일러 경고/에러 (SDK-SW, SDK-T0, SDK-C3/M7)
 
     [Test]

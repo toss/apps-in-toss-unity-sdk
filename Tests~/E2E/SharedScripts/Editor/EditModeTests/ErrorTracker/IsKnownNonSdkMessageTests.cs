@@ -967,13 +967,13 @@ public class IsKnownNonSdkMessageTests
 
     #endregion
 
-    #region 외부 서비스 일시적 장애 (Sentry transport 5xx)
+    #region Sentry transport 자기참조 노이즈 (4xx/5xx + 네트워크 + 동기)
 
     [Test]
     public void SentryTransport_Http503_ReturnsTrue()
     {
         // Sentry APPS-IN-TOSS-UNITY-SDK-T4 — Sentry 서버의 일시적 503 응답.
-        // SDK 자체 로그이지만 원인이 외부 서비스 transient 장애이므로 노이즈로 드롭.
+        // Transport 자체의 실패를 다시 Sentry로 보내면 self-loop이 발생하므로 드롭.
         Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
             "[AITSentryTransport] Sentry 전송 실패 (HTTP 503)"));
     }
@@ -981,7 +981,6 @@ public class IsKnownNonSdkMessageTests
     [Test]
     public void SentryTransport_Http500_ReturnsTrue()
     {
-        // 5xx 일반화 — 500/502/504 등도 동일한 외부 transient 장애로 분류
         Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
             "[AITSentryTransport] Sentry 전송 실패 (HTTP 500)"));
     }
@@ -1001,19 +1000,28 @@ public class IsKnownNonSdkMessageTests
     }
 
     [Test]
-    public void SentryTransport_Http400_NotFiltered()
+    public void SentryTransport_Http400_ReturnsTrue()
     {
-        // 4xx(인증/페이로드 오류)는 SDK가 알아야 하는 진짜 에러이므로 5xx 패턴에 매칭되지 않아야 함
-        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+        // 4xx도 self-loop 방지 정책에 따라 동일하게 차단. SDK 분기 정보가 없고
+        // SubmitResult.Fail로 호출자에게 결과가 전달되므로 가시성 손실 없음.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
             "[AITSentryTransport] Sentry 전송 실패 (HTTP 400)"));
     }
 
     [Test]
-    public void SentryTransport_Http401_NotFiltered()
+    public void SentryTransport_Http401_ReturnsTrue()
     {
-        // DSN 오설정 등 — SDK 측 수정이 필요한 진짜 에러
-        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+        // DSN 오설정도 사용자 가시성은 콘솔에 유지되므로 self-loop 방지를 우선.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
             "[AITSentryTransport] Sentry 전송 실패 (HTTP 401)"));
+    }
+
+    [Test]
+    public void SentryTransport_SyncSendFailure_ReturnsTrue()
+    {
+        // 에디터 종료 FlushSync 경로의 예외도 self-loop 방지를 위해 차단.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AITSentryTransport] 동기 전송 실패: System.Net.WebException: ..."));
     }
 
     [Test]

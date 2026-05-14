@@ -271,7 +271,9 @@ namespace AppsInToss.Editor.ErrorTracker
             }
             catch (Exception e)
             {
-                Debug.LogWarning($"[AITSentryTransport] 동기 전송 실패: {e}");
+                // Sentry 전송 모듈 자체의 실패를 다시 Sentry로 보내면 self-loop이 발생.
+                // SubmitResult.Fail로 호출자에게 결과가 전달되므로 가시성은 유지됨.
+                AITLog.Warning($"[AITSentryTransport] 동기 전송 실패: {e}", sentryCapture: false);
                 if (_requestEnvelopes.TryGetValue(request, out var env))
                 {
                     _requestEnvelopes.Remove(request);
@@ -315,9 +317,11 @@ namespace AppsInToss.Editor.ErrorTracker
                 if (request.isNetworkError)
 #endif
                 {
-                    Debug.LogWarning(
-                        $"[AITSentryTransport] 네트워크 오류: {request.error}"
-                    );
+                    // Sentry 전송 모듈 자체의 네트워크 오류를 다시 Sentry로 보내면 self-loop.
+                    // SubmitResult.Fail로 호출자에게 결과가 전달되므로 가시성은 유지됨.
+                    AITLog.Warning(
+                        $"[AITSentryTransport] 네트워크 오류: {request.error}",
+                        sentryCapture: false);
                     result = SubmitResult.Fail(request.error ?? "네트워크 오류");
                     return;
                 }
@@ -333,9 +337,12 @@ namespace AppsInToss.Editor.ErrorTracker
 
                 if (statusCode >= 400)
                 {
-                    Debug.LogWarning(
-                        $"[AITSentryTransport] Sentry 전송 실패 (HTTP {statusCode})"
-                    );
+                    // Sentry 전송 실패를 다시 Sentry로 보내면 self-loop.
+                    // 4xx(인증/페이로드)도 5xx(서비스 장애)도 SDK 코드로 분기할 정보가 없고,
+                    // SubmitResult.Fail로 호출자에게 결과가 전달되므로 가시성은 유지됨.
+                    AITLog.Warning(
+                        $"[AITSentryTransport] Sentry 전송 실패 (HTTP {statusCode})",
+                        sentryCapture: false);
                     result = SubmitResult.Fail($"HTTP {statusCode}", (int)statusCode);
                     return;
                 }

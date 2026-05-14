@@ -130,7 +130,9 @@ namespace AppsInToss.Editor.Package
                                     {
                                         process.Kill();
                                         process.WaitForExit(5000);
-                                        Debug.LogError($"[AIT] [병렬] pnpm {label} 시간 초과 ({maxWaitMs / 1000}초)");
+                                        // 5분 타임아웃은 환경(네트워크/registry) 원인이며 다음 폴백
+                                        // 단계로 진행됨. Sentry로 fingerprint를 흘리지 않음.
+                                        AITLog.Error($"[AIT] [병렬] pnpm {label} 시간 초과 ({maxWaitMs / 1000}초)", sentryCapture: false);
                                         break; // 다음 단계로
                                     }
 
@@ -164,7 +166,8 @@ namespace AppsInToss.Editor.Package
                     }
                     catch (Exception e)
                     {
-                        Debug.LogError($"[AIT] [병렬] pnpm {label} 실행 오류: {e}");
+                        // 프로세스 시작/IO 예외 — 다음 폴백 단계로 진행. 환경 원인 cascade이므로 Sentry 차단.
+                        AITLog.Error($"[AIT] [병렬] pnpm {label} 실행 오류: {e}", sentryCapture: false);
                     }
 
                     Debug.Log($"[AIT] [병렬] pnpm install ({label}) 실패, 다음 단계로...");

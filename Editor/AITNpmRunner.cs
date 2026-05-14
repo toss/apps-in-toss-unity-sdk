@@ -324,14 +324,18 @@ namespace AppsInToss.Editor
                     }
                     else
                     {
-                        Debug.LogError($"[{pmName}] 명령 실패 (Exit Code: {process.ExitCode}): {pmName} {arguments}");
+                        // npm/pnpm exit != 0 — lockfile drift, 네트워크, AV scan, registry 정책 등
+                        // 사용자 환경 원인. 호출자는 FAIL_NPM_BUILD로 결과 인지 후 상위에서
+                        // 컨텍스트 있는 메시지로 보고하므로 여기서는 Console 진단만 남기고
+                        // Sentry는 차단 (SDK-HA/HB/R6/PM cascade 흡수).
+                        AITLog.Error($"[{pmName}] 명령 실패 (Exit Code: {process.ExitCode}): {pmName} {arguments}", sentryCapture: false);
                         if (!string.IsNullOrEmpty(output))
                         {
-                            Debug.LogError($"[{pmName}] 출력:\n{output}");
+                            AITLog.Error($"[{pmName}] 출력:\n{output}", sentryCapture: false);
                         }
                         if (!string.IsNullOrEmpty(error))
                         {
-                            Debug.LogError($"[{pmName}] 오류:\n{error}");
+                            AITLog.Error($"[{pmName}] 오류:\n{error}", sentryCapture: false);
                         }
                         return AITConvertCore.AITExportError.FAIL_NPM_BUILD;
                     }
@@ -343,7 +347,9 @@ namespace AppsInToss.Editor
             catch (Exception e)
             {
                 EditorUtility.ClearProgressBar();
-                Debug.LogError($"[{pmName}] 명령 실행 오류: {e}");
+                // 동기 npm 실행 예외 — 호출자가 NODE_NOT_FOUND로 인지 후 상위 가이드 출력.
+                // 예외 본문에 명령줄/path가 들어가 fingerprint가 폭주하므로 Sentry 차단.
+                AITLog.Error($"[{pmName}] 명령 실행 오류: {e}", sentryCapture: false);
                 return AITConvertCore.AITExportError.NODE_NOT_FOUND;
             }
         }
@@ -399,10 +405,12 @@ namespace AppsInToss.Editor
                     }
                     else
                     {
-                        Debug.LogWarning($"[{pmName}] 비동기 명령 실패 (Exit Code: {result.ExitCode}): {pmName} {arguments}");
+                        // 비동기 변형 — 동기 경로와 동일하게 사용자 환경 원인이며
+                        // onComplete가 상위로 결과 전파. Sentry는 차단.
+                        AITLog.Warning($"[{pmName}] 비동기 명령 실패 (Exit Code: {result.ExitCode}): {pmName} {arguments}", sentryCapture: false);
                         if (!string.IsNullOrEmpty(result.Error))
                         {
-                            Debug.LogWarning($"[{pmName}] 오류:\n{result.Error}");
+                            AITLog.Warning($"[{pmName}] 오류:\n{result.Error}", sentryCapture: false);
                         }
                         onComplete?.Invoke(AITConvertCore.AITExportError.FAIL_NPM_BUILD);
                     }

@@ -1,0 +1,160 @@
+name: Benchmark Build (release + compression matrix)
+run-name: "Benchmark Build${{ inputs.target_ref && format(' - {0}', inputs.target_ref) || '' }}${{ inputs.compression_format && format(' [{0}]', inputs.compression_format) || '' }}"
+
+# 벤치마크 전용 release 빌드 트리거.
+# - test-e2e.yml은 빌드 속도 최적화를 위해 Development Build + Disabled로 빌드하므로
+#   런타임 성능 측정에 부적합. 이 워크플로우는 release 빌드(IL2CPP=Release,
+#   AIT_DEVELOPMENT_BUILD=false) + 압축 ON/OFF 매트릭스로 5×2=10개 산출물을
+#   업로드해 로컬 벤치마크 측정의 입력으로 쓴다.
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_ref:
+        description: 'PR 번호 또는 브랜치 이름 (예: 23 또는 chore/benchmark-…)'
+        type: string
+        required: false
+      compression_format:
+        description: '압축 포맷 (both = 5×2 모두, disabled / brotli)'
+        type: choice
+        options:
+          - both
+          - disabled
+          - brotli
+        default: both
+      unity_versions:
+        description: 'Unity 버전 (쉼표 구분, 비우면 전체 5개)'
+        type: string
+        required: false
+        default: ''
+      os:
+        description: '빌드 OS (벤치마크 측정용으로는 macos 권장)'
+        type: choice
+        options:
+          - macos
+          - windows
+          - both
+        default: macos
+      clean_library:
+        description: 'Clean Unity Library cache'
+        type: boolean
+        default: false
+
+concurrency:
+  group: benchmark-build-${{ inputs.target_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  setup:
+    name: Setup
+    runs-on: ubuntu-latest
+    outputs:
+      ref: ${{ steps.ref.outputs.ref }}
+      repository: ${{ steps.ref.outputs.repository }}
+      unity-versions: ${{ steps.matrix.outputs.unity-versions }}
+      compressions: ${{ steps.matrix.outputs.compressions }}
+    steps:
+      - name: Resolve Target Ref
+        id: ref
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TARGET_REF="${{ inputs.target_ref }}"
+          if [ -z "$TARGET_REF" ]; then
+            REF="${{ github.ref_name }}"
+            echo "현재 ref: $REF"
+            echo "ref=$REF" >> $GITHUB_OUTPUT
+            echo "repository=${{ github.repository }}" >> $GITHUB_OUTPUT
+          elif [[ "$TARGET_REF" =~ ^[0-9]+$ ]]; then
+            PR_DATA=$(gh api "repos/${{ github.repository }}/pulls/$TARGET_REF" --jq '{ref: .head.ref, repo: .head.repo.full_name}')
+            REF=$(echo "$PR_DATA" | jq -r '.ref')
+            REPO=$(echo "$PR_DATA" | jq -r '.repo')
+            echo "PR #$TARGET_REF → $REF ($REPO)"
+            echo "ref=$REF" >> $GITHUB_OUTPUT
+            echo "repository=$REPO" >> $GITHUB_OUTPUT
+          else
+            echo "ref=$TARGET_REF" >> $GITHUB_OUTPUT
+            echo "repository=${{ github.repository }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build matrix
+        id: matrix
+        run: |
+          ALL_VERSIONS='["2021.3","2022.3","6000.0","6000.2","6000.3"]'
+          INPUT_VERSIONS="${{ inputs.unity_versions }}"
+          if [ -z "$INPUT_VERSIONS" ]; then
+            VERSIONS="$ALL_VERSIONS"
+          else
+            VERSIONS=$(echo "$INPUT_VERSIONS" | jq -R 'split(",") | map(. | gsub("^\\s+|\\s+$"; ""))')
+          fi
+          echo "unity-versions=$(echo "$VERSIONS" | jq -c .)" >> $GITHUB_OUTPUT
+
+          CMP="${{ inputs.compression_format }}"
+          case "$CMP" in
+            disabled) COMPRESSIONS='["disabled"]' ;;
+            brotli)   COMPRESSIONS='["brotli"]' ;;
+            both|*)   COMPRESSIONS='["disabled","brotli"]' ;;
+          esac
+          echo "compressions=$COMPRESSIONS" >> $GITHUB_OUTPUT
+
+  build-macos:
+    name: Build macOS (Unity ${{ matrix.unity-version }}, ${{ matrix.compression }})
+    needs: [setup]
+    if: inputs.os == 'macos' || inputs.os == 'both'
+    strategy:
+      fail-fast: false
+      matrix:
+        unity-version: ${{ fromJSON(needs.setup.outputs.unity-versions) }}
+        compression: ${{ fromJSON(needs.setup.outputs.compressions) }}
+    uses: ./.github/workflows/unity-build.yml
+    with:
+      repository: ${{ needs.setup.outputs.repository }}
+      ref: ${{ needs.setup.outputs.ref }}
+      os: macos
+      unity-version: ${{ matrix.unity-version }}
+      run-build: true
+      run-editmode-test: false
+      run-unit-test: false
+      clean-library: ${{ inputs.clean_library }}
+      test-level: '1'
+      compression-format: ${{ matrix.compression == 'brotli' && '2' || '0' }}
+      development-build: 'false'
+      il2cpp-configuration: 'Release'
+    secrets:
+      SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+      KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+      FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
+      FIREBASE_MEASUREMENT_ID: ${{ secrets.FIREBASE_MEASUREMENT_ID }}
+
+  build-windows:
+    name: Build Windows (Unity ${{ matrix.unity-version }}, ${{ matrix.compression }})
+    needs: [setup]
+    if: inputs.os == 'windows' || inputs.os == 'both'
+    strategy:
+      fail-fast: false
+      matrix:
+        unity-version: ${{ fromJSON(needs.setup.outputs.unity-versions) }}
+        compression: ${{ fromJSON(needs.setup.outputs.compressions) }}
+    uses: ./.github/workflows/unity-build.yml
+    with:
+      repository: ${{ needs.setup.outputs.repository }}
+      ref: ${{ needs.setup.outputs.ref }}
+      os: windows
+      unity-version: ${{ matrix.unity-version }}
+      run-build: true
+      run-editmode-test: false
+      run-unit-test: false
+      clean-library: ${{ inputs.clean_library }}
+      test-level: '1'
+      compression-format: ${{ matrix.compression == 'brotli' && '2' || '0' }}
+      development-build: 'false'
+      il2cpp-configuration: 'Release'
+    secrets:
+      SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+      KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+      FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
+      FIREBASE_MEASUREMENT_ID: ${{ secrets.FIREBASE_MEASUREMENT_ID }}

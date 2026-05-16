@@ -171,6 +171,11 @@ Tests~/E2E/tests/e2e-test-results.json
 Tests~/E2E/tests/test-results/
 Tests~/E2E/tests/*-screenshot.png
 
+# Loading-time benchmark artifacts (scripts/benchmark.sh)
+Tests~/E2E/tests/benchmark-loading-results.jsonl
+benchmark-report.csv
+benchmark-report.md
+
 # Unity meta files - most .meta files should be tracked for consistent GUIDs
 # Exceptions:
 # - License files: sensitive

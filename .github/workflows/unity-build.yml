@@ -66,6 +66,21 @@ on:
         type: string
         required: false
         default: '2'
+      compression-format:
+        description: 'AIT_COMPRESSION_FORMAT override (0=Disabled, 1=Gzip, 2=Brotli, -1=Auto). Empty = caller default.'
+        type: string
+        required: false
+        default: '0'
+      development-build:
+        description: 'AIT_DEVELOPMENT_BUILD override (true/false). Empty = caller default.'
+        type: string
+        required: false
+        default: 'true'
+      il2cpp-configuration:
+        description: 'AIT_IL2CPP_CONFIGURATION override (Debug/Release/Master). Empty = caller default.'
+        type: string
+        required: false
+        default: 'Debug'
     secrets:
       AIT_AD_INTERSTITIAL_ID:
         description: 'Interstitial ad ID for testing'
@@ -1443,19 +1458,14 @@ jobs:
         uses: nick-invision/retry@v4
         env:
           AIT_DEBUG_CONSOLE: "true"
-          # E2E 한정: 압축 비활성화. E2E는 vite dev/preview 서버에서만 로드되며
-          # 배포되지 않으므로 압축이 불필요. Brotli/Gzip 단계 자체를 건너뛰어
-          # wallclock 절감(~120s).
-          AIT_COMPRESSION_FORMAT: "0"
-          # E2E 한정: Development Build 활성화 — Link_WebGL_wasm 단계가 단독 실행
-          # critical path에서 ~163s를 차지(Emscripten 옵티마이저 -O3 풀스피드).
-          # Development Build로 옵티마이저 단축, Build wallclock 대폭 절감 기대.
-          # E2E는 SDK API 동작만 검증하며 런타임 성능을 보지 않으므로 무관.
-          AIT_DEVELOPMENT_BUILD: "true"
-          # E2E 한정: IL2CPP 컴파일러 옵티마이저 레벨도 Debug로 강제. developmentBuild
-          # 플래그는 Player 측 설정이라 IL2CPP 옵티마이저(C_WebGL_wasm/Link_WebGL_wasm)에는
-          # 영향이 없어 별도 변수로 페어링. -O3 → -O0/-Og 수준으로 wasm 컴파일/링크 단축.
-          AIT_IL2CPP_CONFIGURATION: "Debug"
+          # 기본값은 E2E 최적화(압축 비활성화 + Development Build + Debug IL2CPP)이며
+          # caller에서 override 가능 (예: benchmark-build.yml은 release + 압축 ON/OFF로 호출).
+          # 압축: 0=Disabled로 Brotli/Gzip 단계 스킵(~120s 절감).
+          # 개발빌드: Link_WebGL_wasm critical path ~163s 단축.
+          # IL2CPP Debug: wasm 컴파일/링크 -O0/-Og.
+          AIT_COMPRESSION_FORMAT: ${{ inputs.compression-format }}
+          AIT_DEVELOPMENT_BUILD: ${{ inputs.development-build }}
+          AIT_IL2CPP_CONFIGURATION: ${{ inputs.il2cpp-configuration }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         with:
           timeout_minutes: 30
@@ -1596,10 +1606,10 @@ jobs:
         uses: nick-invision/retry@v4
         env:
           AIT_DEBUG_CONSOLE: "true"
-          # E2E 한정: macOS step의 동일 주석 참조.
-          AIT_COMPRESSION_FORMAT: "0"
-          AIT_DEVELOPMENT_BUILD: "true"
-          AIT_IL2CPP_CONFIGURATION: "Debug"
+          # macOS step의 동일 주석 참조. caller에서 override 가능.
+          AIT_COMPRESSION_FORMAT: ${{ inputs.compression-format }}
+          AIT_DEVELOPMENT_BUILD: ${{ inputs.development-build }}
+          AIT_IL2CPP_CONFIGURATION: ${{ inputs.il2cpp-configuration }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         with:
           timeout_minutes: 30

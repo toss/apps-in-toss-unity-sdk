@@ -1,0 +1,50 @@
+name: Benchmark Build (release + compression matrix)
+
+# 벤치마크 전용 release 빌드.
+#
+# main에 머지하지 않고 운용한다. workflow_dispatch는 워크플로우 파일이 기본 브랜치에
+# 존재해야 트리거 가능하므로, 대신 push 트리거(벤치마크 브랜치 한정)를 쓴다.
+# 'chore/benchmark-' 로 시작하는 브랜치에 푸시하면 실행되고, 측정이 끝나면 브랜치를
+# 삭제하면 main에 흔적이 남지 않는다.
+#
+# test-e2e.yml은 빌드 속도 최적화를 위해 Development Build + Disabled로 빌드하므로
+# 런타임 성능 측정에 부적합. 이 워크플로우는 release 빌드(IL2CPP=Release,
+# AIT_DEVELOPMENT_BUILD=false) + 압축 ON/OFF 매트릭스로 5×2=10개 산출물을
+# 업로드해 로컬 벤치마크 측정의 입력으로 쓴다.
+
+on:
+  push:
+    branches:
+      - 'chore/benchmark-**'
+
+concurrency:
+  group: benchmark-build-${{ github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  build-macos:
+    name: Build macOS (Unity ${{ matrix.unity-version }}, ${{ matrix.compression }})
+    strategy:
+      fail-fast: false
+      matrix:
+        unity-version: ['2021.3', '2022.3', '6000.0', '6000.2', '6000.3']
+        compression: [disabled, brotli]
+    uses: ./.github/workflows/unity-build.yml
+    with:
+      ref: ${{ github.ref_name }}
+      os: macos
+      unity-version: ${{ matrix.unity-version }}
+      run-build: true
+      run-editmode-test: false
+      run-unit-test: false
+      test-level: '1'
+      compression-format: ${{ matrix.compression == 'brotli' && '2' || '0' }}
+      development-build: 'false'
+      il2cpp-configuration: 'Release'
+    secrets:
+      SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+      KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+      FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
+      FIREBASE_MEASUREMENT_ID: ${{ secrets.FIREBASE_MEASUREMENT_ID }}

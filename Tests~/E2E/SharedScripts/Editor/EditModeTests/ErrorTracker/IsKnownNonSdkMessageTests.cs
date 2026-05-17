@@ -1176,6 +1176,91 @@ public class IsKnownNonSdkMessageTests
 
     #endregion
 
+    #region SDK 타입 인자 오용 컴파일 에러 CS1503 (SDK-VM, SDK-PV, SDK-PW, SDK-DA)
+
+    [Test]
+    public void UserCode_Cs1503_AppsInTossTypeMisuse_ReturnsTrue()
+    {
+        // Sentry SDK-VM — TossManager.cs에서 GetUserKeyForGameResult를 string으로 잘못 사용.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Assets\\Scripts\\Manager\\TossManager.cs(192,91): error CS1503: Argument 1: cannot convert from 'AppsInToss.GetUserKeyForGameResult' to 'string'"));
+    }
+
+    [Test]
+    public void UserCode_Cs1503_AppsInTossTypeMisuse_PosixPath_ReturnsTrue()
+    {
+        // Sentry SDK-PV — POSIX 경로 변형 (IapProductListItem 잘못 사용).
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Assets/02.Script/Platform/AIT/AITBridge.IAP.cs(17,26): error CS1503: Argument 1: cannot convert from 'AppsInToss.IapProductListItem' to 'string'"));
+    }
+
+    [Test]
+    public void UserCode_Cs1503_AitException_ReturnsTrue()
+    {
+        // Sentry SDK-PW — modules 경로의 사용자 코드, AITException 잘못 사용.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Assets/modules/unity-trident/Runtime/FeatureService/Billing/Billing.cs(398,42): error CS1503: Argument 1: cannot convert from 'AppsInToss.AITException' to 'string'"));
+    }
+
+    [Test]
+    public void Cs1503_WithoutAppsInTossNamespace_NotFiltered()
+    {
+        // CS1503 단독은 SDK와 무관한 컴파일 에러도 잡을 수 있으므로 'AppsInToss.' namespace prefix가
+        // 동반될 때만 노이즈로 분류. 'AppsInToss.' 점(.) 위치가 중요 (단독 토큰 'AppsInToss'는 통과).
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Assets/Foo.cs(1,1): error CS1503: Argument 1: cannot convert from 'System.Int32' to 'string'"));
+    }
+
+    [Test]
+    public void Cs1503_AppsInTossTypeMisuse_WithAitPrefix_StillProtected()
+    {
+        // SDK 보호 가드: 합성 가드(error CS1503 + 'AppsInToss.' + Assets/ + .cs()를 모두 만족하지 않으면
+        // 다음 단계인 SDK 키워드 가드에서 [AIT] prefix로 보호된다. 여기서는 Assets/와 .cs( 없이
+        // SDK가 진단/리포트로 같은 토큰을 출력하는 케이스를 검증.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] diag: error CS1503 fallback: 'AppsInToss.Result' conversion mismatch detected"));
+    }
+
+    #endregion
+
+    #region 'ait deploy' stdout/stderr ANSI escape 노이즈 (SDK-VK, SDK-BD, SDK-T5)
+
+    [Test]
+    public void DeployStdout_AnsiCursorHide_ReturnsTrue()
+    {
+        // Sentry SDK-VK/BD/T5 — pnpm progress bar의 커서 hide(\x1b[?25l) escape가 stdout에 새는 경우.
+        // 구버전 SDK 사용자가 deploy 실행 시 다수의 별도 fingerprint로 캡처되던 메시지.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "AIT: [stdout] \x1b[?25l│"));
+    }
+
+    [Test]
+    public void DeployStderr_AnsiCursorShow_ReturnsTrue()
+    {
+        // 동일 패턴의 stderr 변형 — 커서 show(\x1b[?25h) escape 포함.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "AIT: [stderr] \x1b[?25h│"));
+    }
+
+    [Test]
+    public void DeployStdout_WithoutAnsiEscape_NotFiltered()
+    {
+        // 실제 진단 가치가 있는 stdout 메시지는 보호되어야 한다 — ANSI escape "[?25" 미포함.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "AIT: [stdout] Building project... done in 12.3s"));
+    }
+
+    [Test]
+    public void DeployStdout_AnsiEscape_WithAitPrefix_StillProtected()
+    {
+        // SDK 보호 가드: [AIT...] prefix가 붙은 동일 패턴은 SDK 자체 진단 로그로 간주.
+        // 합성 가드의 "AIT: [std" 토큰을 우회하기 위해 [AIT] prefix가 먼저 와야 보호 가능.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] deploy diag: stdout snapshot contains \x1b[?25l progress bar fragment"));
+    }
+
+    #endregion
+
     #region IL2CPP/Bee 빌드 단위별 실패 (SDK-SA~SV, T7, TV)
 
     [Test]

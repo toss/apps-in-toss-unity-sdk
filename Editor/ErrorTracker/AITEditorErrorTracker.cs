@@ -933,11 +933,35 @@ namespace AppsInToss.Editor.ErrorTracker
                 && message.IndexOf(".cs(", StringComparison.Ordinal) >= 0)
                 return true;
 
+            // 사용자 코드의 SDK 타입 인자 오용(CS1503) — Unity 컴파일러가 직접 출력.
+            // 예: "Assets\Scripts\Manager\TossManager.cs(192,91): error CS1503: Argument 1: cannot convert from 'AppsInToss.GetUserKeyForGameResult' to 'string'"
+            // Sentry APPS-IN-TOSS-UNITY-SDK-VM/PV/PW/DA.
+            // 메시지에 'AppsInToss.*' 타입명이 들어가 SDK 키워드 가드가 발동하므로 가드보다 먼저 매칭한다.
+            // 'AppsInToss.' 점(.)을 포함해 namespace prefix를 정확히 요구하므로 단독 토큰 'AppsInToss'만 있는 SDK 빌드 메시지와 충돌 없음.
+            if (message.IndexOf("error CS1503", StringComparison.Ordinal) >= 0
+                && message.IndexOf("'AppsInToss.", StringComparison.Ordinal) >= 0
+                && (message.IndexOf("Assets/", StringComparison.Ordinal) >= 0
+                    || message.IndexOf("Assets\\", StringComparison.Ordinal) >= 0)
+                && message.IndexOf(".cs(", StringComparison.Ordinal) >= 0)
+                return true;
+
             // Unity AssetDatabase가 Library/ 경로의 SDK 외부 캐시 로딩 실패 시 직접 출력.
             // 예: "Unknown error occurred while loading 'Library/AppsInToss/AITBuildSession.asset'."
             // 메시지에 'AppsInToss'/'AIT' 토큰이 들어가 SDK 키워드 가드가 발동하므로 가드보다 먼저 매칭한다.
             // Sentry APPS-IN-TOSS-UNITY-SDK-RT.
             if (message.IndexOf("Unknown error occurred while loading 'Library/", StringComparison.Ordinal) >= 0)
+                return true;
+
+            // AppsInTossMenu의 'ait deploy' 실패 경로가 redirect한 stdout/stderr 본문 중
+            // pnpm/npm progress bar의 ANSI escape 시퀀스(\x1b[?25l, \x1b[?25h 등 커서 hide/show)만 들어간 라인.
+            // 예: "AIT: [stdout] \x1b[?25l│", "AIT: [stdout] \x1b[?25h"
+            // 신규 SDK는 deploy 경로를 sentryCapture: false로 차단(D10a)했지만, 구버전 SDK 사용자는 여전히
+            // 동일 메시지를 다수 fingerprint(VK/BD/T5)로 전송한다. 컨텐츠 기반 backstop.
+            // 'AIT: [stdout]'/'AIT: [stderr]' prefix는 SDK 키워드 가드("AIT:")에 막히므로 가드보다 먼저 매칭.
+            // ANSI escape "[?25" + "AIT: [std" 합성으로 좁혀 일반 stdout/stderr 진단 메시지와 충돌 방지.
+            // Sentry APPS-IN-TOSS-UNITY-SDK-VK/BD/T5.
+            if (message.IndexOf("AIT: [std", StringComparison.Ordinal) >= 0
+                && message.IndexOf("[?25", StringComparison.Ordinal) >= 0)
                 return true;
 
             // SDK 자체 로그는 절대 필터링하지 않음 — AitKeywords 전체를 가드로 사용

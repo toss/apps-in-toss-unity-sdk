@@ -196,6 +196,12 @@ namespace AppsInToss.Editor.ErrorTracker
             // 예: "Building webgl/Build/204ccce7cc46e2cd9bd7212e664b4738.data.unityweb failed with output:"
             // 실 SDK 빌드 실패는 "[AIT] WebGL 빌드가 실패했습니다." (SDK-8E)로 별도 캡처되므로 안전.
             "Building webgl/Build/",
+
+            // 사용자 프로젝트가 사용하는 다른 WebGL 템플릿(Fill 등)이 출력하는 진단. SDK 영역 아님.
+            // 예: "[WebGL] unity-webview.js source not found: /Users/.../Assets/WebGLTemplates/Fill/TemplateData/unity-webview.js"
+            // Sentry APPS-IN-TOSS-UNITY-SDK-VJ.
+            // SDK는 "[WebGL]" prefix를 출력하지 않으므로(grep 확인) AitKeywords 보호 가드와 충돌 없음.
+            "[WebGL] unity-webview.js source not found",
         };
 
         // DetermineErrorSource에서 메시지를 SDK로 분류하는 추가 패턴.
@@ -950,6 +956,17 @@ namespace AppsInToss.Editor.ErrorTracker
             // 메시지에 'AppsInToss'/'AIT' 토큰이 들어가 SDK 키워드 가드가 발동하므로 가드보다 먼저 매칭한다.
             // Sentry APPS-IN-TOSS-UNITY-SDK-RT.
             if (message.IndexOf("Unknown error occurred while loading 'Library/", StringComparison.Ordinal) >= 0)
+                return true;
+
+            // AITAsyncCommandRunner의 Windows powershell 실행 실패 — 사용자 환경(PATH/실행 정책) 원인.
+            // 예: "[AIT Async] 명령 실행 예외: System.ComponentModel.Win32Exception (0x80004005):
+            //       ApplicationName='powershell.exe', CommandLine='-ExecutionPolicy Bypass ...'"
+            // [AIT Async] prefix가 SDK 키워드 가드("[AIT")에 막히므로 가드보다 먼저 매칭한다.
+            // 사용자 환경 문제이며 SDK 코드 분기로 해결 불가. 합성 AND로 일반 [AIT Async] 메시지와 충돌 방지.
+            // Sentry APPS-IN-TOSS-UNITY-SDK-VE, APPS-IN-TOSS-UNITY-SDK-VC.
+            if (message.IndexOf("[AIT Async] 명령 실행 예외", StringComparison.Ordinal) >= 0
+                && message.IndexOf("Win32Exception", StringComparison.Ordinal) >= 0
+                && message.IndexOf("ApplicationName='powershell.exe'", StringComparison.Ordinal) >= 0)
                 return true;
 
             // AppsInTossMenu의 'ait deploy' 실패 경로가 redirect한 stdout/stderr 본문 중

@@ -124,6 +124,8 @@ measure_pair() {
   )
   [[ -n "$ONE_NETWORK" ]] && env_args+=(BENCHMARK_NETWORK="$ONE_NETWORK")
   [[ -n "$ONE_CPU" ]] && env_args+=(BENCHMARK_CPU="$ONE_CPU")
+  [[ -n "${BENCHMARK_TIMEOUT_MS:-}" ]] && env_args+=(BENCHMARK_TIMEOUT_MS="$BENCHMARK_TIMEOUT_MS")
+  [[ -n "${BENCHMARK_RETRY_ERRORS:-}" ]] && env_args+=(BENCHMARK_RETRY_ERRORS="$BENCHMARK_RETRY_ERRORS")
 
   (
     cd "$TESTS_DIR"

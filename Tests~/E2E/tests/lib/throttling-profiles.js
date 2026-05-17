@@ -39,7 +39,10 @@ export const UNITY_VERSION_PORTS = {
   '6000.3': 4177,
 };
 
-export const NETWORK_KEYS = Object.keys(NETWORK_PROFILES);
+// 측정 대상 네트워크. 3G(regular-3g/good-3g)는 비압축 빌드(~92MB)에서 cold
+// 다운로드가 cell당 수십 분이라 전체 매트릭스 측정이 비현실적이어서 제외.
+// NETWORK_PROFILES에는 정의를 남겨 향후 재사용 가능하게 둔다.
+export const NETWORK_KEYS = ['regular-4g', 'wifi'];
 export const CPU_KEYS = Object.keys(CPU_PROFILES);
 export const UNITY_VERSIONS = Object.keys(UNITY_VERSION_PORTS);
 export const COMPRESSIONS = ['disabled', 'brotli'];

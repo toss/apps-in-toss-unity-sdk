@@ -1261,6 +1261,59 @@ public class IsKnownNonSdkMessageTests
 
     #endregion
 
+    #region AITAsyncCommandRunner Windows powershell 실행 실패 (SDK-VE, SDK-VC)
+
+    [Test]
+    public void AsyncCommand_Win32Exception_PowershellMissing_ReturnsTrue()
+    {
+        // Sentry SDK-VE/VC — 사용자 Windows 환경에서 powershell.exe 실행 실패. PATH/실행 정책 문제.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT Async] 명령 실행 예외: System.ComponentModel.Win32Exception (0x80004005): " +
+            "ApplicationName='powershell.exe', CommandLine='-ExecutionPolicy Bypass -NoProfile -NoLogo -Command \"...\"'"));
+    }
+
+    [Test]
+    public void AsyncCommand_OtherException_NotFiltered()
+    {
+        // Win32Exception이 아닌 일반 [AIT Async] 예외는 SDK 디버깅에 가치가 있으므로 보호.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT Async] 명령 실행 예외: System.InvalidOperationException: pipe closed"));
+    }
+
+    [Test]
+    public void AsyncCommand_Win32Exception_NonPowershell_NotFiltered()
+    {
+        // powershell.exe 외 다른 ApplicationName의 Win32Exception은 패턴 좁히기 위해 통과.
+        // (현재는 pnpm/git/node 등은 별도 진단 경로가 있어 SDK 가치 보존)
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT Async] 명령 실행 예외: System.ComponentModel.Win32Exception (0x80004005): " +
+            "ApplicationName='node.exe', CommandLine='...'"));
+    }
+
+    #endregion
+
+    #region 외부 WebGL 템플릿 (SDK-VJ)
+
+    [Test]
+    public void ExternalWebGLTemplate_UnityWebviewSourceNotFound_ReturnsTrue()
+    {
+        // Sentry SDK-VJ — 사용자 프로젝트가 사용하는 다른 WebGL 템플릿(Fill)이 출력한 진단.
+        // SDK는 "[WebGL]" prefix를 사용하지 않음.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[WebGL] unity-webview.js source not found: " +
+            "/Users/ad03148361/jenkins_workspace/attack-web/Assets/WebGLTemplates/Fill/TemplateData/unity-webview.js"));
+    }
+
+    [Test]
+    public void WebGL_OtherWarning_NotFiltered()
+    {
+        // 다른 "[WebGL]" prefix 메시지는 패턴이 좁혀 있어 통과 (unity-webview source 한정).
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[WebGL] unity-webview.js compiled successfully"));
+    }
+
+    #endregion
+
     #region IL2CPP/Bee 빌드 단위별 실패 (SDK-SA~SV, T7, TV)
 
     [Test]

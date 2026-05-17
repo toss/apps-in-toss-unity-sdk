@@ -932,10 +932,62 @@ public class IsKnownNonSdkMessageTests
     [Test]
     public void OtherCSErrorInUserAssets_ReturnsFalse()
     {
-        // CS0029가 아닌 다른 컴파일 에러(CS0103 등)는 composite 가드가 매칭되지 않음.
-        // 필요 시 별도 패턴을 추가하되 본 가드는 'CS0029'에 한정.
+        // 가드가 등록되지 않은 다른 CS 에러 코드(예: CS0535)는 composite 가드가 매칭되지 않아 통과해야 함.
+        // 본 SDK는 CS0029/CS0103/CS0105/CS0117/CS0246/CS1503 한정으로 가드.
         Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
-            "Assets/Scripts/GameLogic.cs(42,10): error CS0103: The name 'foo' does not exist in the current context"));
+            "Assets/Scripts/GameLogic.cs(42,10): error CS0535: 'X' does not implement interface member 'Y'"));
+    }
+
+    #endregion
+
+    #region 사용자 코드 CS0103/CS0117 컴파일 에러 (SDK-CR, SDK-MN, SDK-80)
+
+    [Test]
+    public void UserCodeCS0103_AssetsBackslashPath_ReturnsTrue()
+    {
+        // Sentry SDK-CR — Windows 경로 + 사용자 식별자 미발견.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Assets\\Scripts\\AppsInTossCompatibilityChecker.cs(31,9): error CS0103: The name 'CheckIncompatibleComponents' does not exist in the current context"));
+    }
+
+    [Test]
+    public void UserCodeCS0103_AssetsForwardSlashPath_ReturnsTrue()
+    {
+        // Sentry SDK-MN POSIX 변형.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Assets/AppsInToss/01_Script/CreateObstacle.cs(22,54): error CS0103: The name 'touchPos' does not exist in the current context"));
+    }
+
+    [Test]
+    public void UserCodeCS0117_AppsInTossMenu_ReturnsTrue()
+    {
+        // Sentry SDK-80 — 사용자 BuildTool 코드가 SDK 타입의 존재하지 않는 멤버 참조.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Assets\\98_Tools\\BuildTool\\Editor\\BuildToolEditorWindow.cs(484,43): error CS0117: 'AppsInTossMenu' does not contain a definition for 'Package'"));
+    }
+
+    [Test]
+    public void Cs0103WithoutAssetsPrefix_AitProtected_ReturnsFalse()
+    {
+        // SDK 자체 진단 라인(Assets/ 경로 미포함)은 [AIT] prefix로 보호됨.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] diag: error CS0103 reported in SDK fallback path"));
+    }
+
+    [Test]
+    public void Cs0103_SdkPackagePath_NotFiltered()
+    {
+        // SDK 자체 .cs의 CS0103은 Packages/com.toss.apps-in-toss 경로로 출력되어 Assets/ prefix 미포함.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Packages/com.toss.apps-in-toss/Editor/Foo.cs(10,5): error CS0103: The name 'bar' does not exist in the current context"));
+    }
+
+    [Test]
+    public void Cs0117_SdkPackagePath_NotFiltered()
+    {
+        // CS0117도 동일 — SDK 자체 코드 보호.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Packages/com.toss.apps-in-toss/Editor/Foo.cs(10,5): error CS0117: 'Bar' does not contain a definition for 'baz'"));
     }
 
     #endregion

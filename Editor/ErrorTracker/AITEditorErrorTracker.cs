@@ -913,7 +913,31 @@ namespace AppsInToss.Editor.ErrorTracker
             // SDK 자체 코드의 컴파일 에러는 'Packages/com.toss.apps-in-toss/...' 또는
             // 'Library/PackageCache/...' 경로로 출력되어 'Assets/' prefix가 붙지 않으므로 안전.
             if (message.IndexOf("error CS0029", StringComparison.Ordinal) >= 0
-                && message.IndexOf("Assets/", StringComparison.Ordinal) >= 0
+                && (message.IndexOf("Assets/", StringComparison.Ordinal) >= 0
+                    || message.IndexOf("Assets\\", StringComparison.Ordinal) >= 0)
+                && message.IndexOf(".cs(", StringComparison.Ordinal) >= 0)
+                return true;
+
+            // 사용자 코드의 식별자 미발견 컴파일 에러 (CS0103) — Unity 컴파일러가 직접 출력.
+            // 예: "Assets\Scripts\AppsInTossCompatibilityChecker.cs(31,9): error CS0103:
+            //       The name 'CheckIncompatibleComponents' does not exist in the current context"
+            // Sentry APPS-IN-TOSS-UNITY-SDK-CR, APPS-IN-TOSS-UNITY-SDK-MN.
+            // 사용자 식별자가 가변이라 일반화된 형태로 좁힌다(Assets/ 경로 + .cs(L,C) 패턴).
+            // SDK 자체 코드는 Packages/ 또는 Library/PackageCache/ 경로로 출력되어 안전.
+            if (message.IndexOf("error CS0103", StringComparison.Ordinal) >= 0
+                && (message.IndexOf("Assets/", StringComparison.Ordinal) >= 0
+                    || message.IndexOf("Assets\\", StringComparison.Ordinal) >= 0)
+                && message.IndexOf(".cs(", StringComparison.Ordinal) >= 0)
+                return true;
+
+            // 사용자 코드의 멤버 미정의 컴파일 에러 (CS0117) — Unity 컴파일러가 직접 출력.
+            // 예: "Assets\98_Tools\BuildTool\Editor\BuildToolEditorWindow.cs(484,43): error CS0117:
+            //       'AppsInTossMenu' does not contain a definition for 'Package'"
+            // Sentry APPS-IN-TOSS-UNITY-SDK-80.
+            // SDK 타입명을 잘못 참조한 경우라도 사용자 코드가 잘못 사용한 것이며 SDK 분기로 해결 불가.
+            if (message.IndexOf("error CS0117", StringComparison.Ordinal) >= 0
+                && (message.IndexOf("Assets/", StringComparison.Ordinal) >= 0
+                    || message.IndexOf("Assets\\", StringComparison.Ordinal) >= 0)
                 && message.IndexOf(".cs(", StringComparison.Ordinal) >= 0)
                 return true;
 

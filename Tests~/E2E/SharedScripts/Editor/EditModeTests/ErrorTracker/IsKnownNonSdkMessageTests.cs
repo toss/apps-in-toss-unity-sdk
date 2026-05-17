@@ -1366,6 +1366,62 @@ public class IsKnownNonSdkMessageTests
 
     #endregion
 
+    #region Unity Addressables / AssetDatabase 노이즈 (SDK-QE, SDK-P4, SDK-P6, SDK-CH)
+
+    [Test]
+    public void Addressables_MissingLinker_ReturnsTrue()
+    {
+        // Sentry SDK-QE — 사용자 프로젝트의 Addressables 그룹/링커 설정 누락. SDK 영역 아님.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "BuildFailedException: Missing Addressables linker file. " +
+            "Please ensure the linker file is present in your project."));
+    }
+
+    [Test]
+    public void AssetDatabase_SaveAssetsRestricted_ReturnsTrue()
+    {
+        // Sentry SDK-P4 — 사용자 코드/플러그인이 import 중에 SaveAssets 호출.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Calls to \"AssetDatabase.SaveAssets\" are restricted during asset importing."));
+    }
+
+    [Test]
+    public void AssetDatabase_ScheduledForReimport_ReturnsTrue()
+    {
+        // Sentry SDK-P6 — Refresh 루프 중 import 충돌. Unity 자체 진단.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "The asset at ProjectSettings/ProjectSettings.asset has been scheduled for reimport " +
+            "during the Refresh loop and will be reimported."));
+    }
+
+    [Test]
+    public void ImmutablePackages_UnexpectedlyAltered_ReturnsTrue()
+    {
+        // Sentry SDK-CH — Unity PackageManager가 immutable 패키지 변경 감지 시 직접 출력.
+        // LogType.Warning 가드(line 432-436)와 별개로 Error/Exception LogType 변형도 흡수.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "The following asset(s) located in immutable packages were unexpectedly altered. " +
+            "These assets should be reverted to their original state."));
+    }
+
+    [Test]
+    public void Addressables_GenericMessage_NotFiltered()
+    {
+        // "Missing Addressables linker"가 없는 일반 Addressables 메시지는 통과.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Addressables: catalog cache miss"));
+    }
+
+    [Test]
+    public void AssetDatabase_GenericRestriction_NotFiltered()
+    {
+        // "SaveAssets" 토큰이 없으면 통과.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Calls to AssetDatabase.Refresh are restricted during asset importing."));
+    }
+
+    #endregion
+
     #region IL2CPP/Bee 빌드 단위별 실패 (SDK-SA~SV, T7, TV)
 
     [Test]

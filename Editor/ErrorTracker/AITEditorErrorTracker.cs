@@ -202,6 +202,31 @@ namespace AppsInToss.Editor.ErrorTracker
             // Sentry APPS-IN-TOSS-UNITY-SDK-VJ.
             // SDK는 "[WebGL]" prefix를 출력하지 않으므로(grep 확인) AitKeywords 보호 가드와 충돌 없음.
             "[WebGL] unity-webview.js source not found",
+
+            // Unity Addressables linker 누락 — 사용자 프로젝트의 Addressables 그룹 설정 문제. SDK 영역 아님.
+            // 예: "BuildFailedException: Missing Addressables linker file. ..."
+            // Sentry APPS-IN-TOSS-UNITY-SDK-QE.
+            // SDK는 "Addressables linker" 문자열을 출력하지 않으므로(grep 확인) 안전.
+            "Missing Addressables linker",
+
+            // Unity AssetDatabase가 import 중 SaveAssets 호출 시 직접 출력 — 사용자 코드/플러그인이 import 중에 SaveAssets를 호출.
+            // 예: "Calls to \"AssetDatabase.SaveAssets\" are restricted during asset importing."
+            // Sentry APPS-IN-TOSS-UNITY-SDK-P4.
+            // SDK는 이 문자열을 출력하지 않으므로(grep 확인) 안전.
+            "\"AssetDatabase.SaveAssets\" are restricted during asset importing",
+
+            // Unity AssetDatabase Refresh 루프 중 발생 — 사용자 프로젝트의 import 충돌. Unity 자체 진단.
+            // 예: "The asset at ProjectSettings/ProjectSettings.asset has been scheduled for reimport during the Refresh loop ..."
+            // Sentry APPS-IN-TOSS-UNITY-SDK-P6.
+            // SDK는 이 문자열을 출력하지 않으므로(grep 확인) 안전.
+            "scheduled for reimport during the Refresh loop",
+
+            // Unity PackageManager가 immutable 패키지 변경 감지 시 직접 출력 — SDK 자동 업데이트 또는 사용자 변경.
+            // 예: "The following asset(s) located in immutable packages were unexpectedly altered. ..."
+            // Sentry APPS-IN-TOSS-UNITY-SDK-CH.
+            // 기존 LogType.Warning 가드는 별도로 유지되며(line 432-436), 이 패턴은 Error/Exception LogType 변형도 흡수.
+            // SDK 자체 코드는 이 메시지를 출력하지 않으며(주석으로만 참조) Unity 엔진이 직접 출력.
+            "immutable packages were unexpectedly altered",
         };
 
         // DetermineErrorSource에서 메시지를 SDK로 분류하는 추가 패턴.

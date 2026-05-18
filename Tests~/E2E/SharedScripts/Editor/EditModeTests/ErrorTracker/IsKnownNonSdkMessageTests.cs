@@ -1357,6 +1357,26 @@ public class IsKnownNonSdkMessageTests
     }
 
     [Test]
+    public void ExternalWebGLTemplate_UnityWarningPrefix_ReturnsTrue()
+    {
+        // Sentry SDK-VJ — "UnityWarning: " prefix가 붙은 실측 변형.
+        // 매칭은 부분 문자열(IndexOf) 기반이므로 기존 "[WebGL] unity-webview.js source not found"
+        // 패턴이 prefix 유무와 무관하게 그대로 매칭한다.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "UnityWarning: [WebGL] unity-webview.js source not found: " +
+            "/Users/ad03148361/jenkins_workspace/attack-web/Assets/WebGLTemplates/Fill/TemplateData/unity-webview.js"));
+    }
+
+    [Test]
+    public void ExternalWebGLTemplate_UnityWebviewSourceNotFound_WithAitPrefix_NeverFiltered()
+    {
+        // SDK 자체 로그("[AIT" prefix)는 AitKeywords 가드로 보호되어 절대 필터링하지 않음.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] [WebGL] unity-webview.js source not found: " +
+            "/Users/foo/Assets/WebGLTemplates/AITTemplate/TemplateData/unity-webview.js"));
+    }
+
+    [Test]
     public void WebGL_OtherWarning_NotFiltered()
     {
         // 다른 "[WebGL]" prefix 메시지는 패턴이 좁혀 있어 통과 (unity-webview source 한정).

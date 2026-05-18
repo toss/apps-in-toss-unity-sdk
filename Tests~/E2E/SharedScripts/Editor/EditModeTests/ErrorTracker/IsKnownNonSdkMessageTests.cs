@@ -823,11 +823,15 @@ public class IsKnownNonSdkMessageTests
     [TestCase(
         "[Worker4] Import Error Code:(4)",
         TestName = "WorkerImportError_Worker4_ReturnsTrue")]
+    // Sentry APPS-IN-TOSS-UNITY-SDK-V7 — 워커 prefix 없이 UnityWarning으로 래핑된 변형
+    [TestCase(
+        "UnityWarning: Import Error Code:(4)",
+        TestName = "WorkerImportError_UnityWarningWrapped_ReturnsTrue")]
     public void WorkerImportError_RealisticVariants_ReturnsTrue(string message)
     {
-        // Sentry APPS-IN-TOSS-UNITY-SDK-RC/RD/RE — Unity AssetImporter 내부 워커 에러.
-        // 워커 번호(2/3/4)가 가변이지만 "] Import Error Code:(" 부분 문자열로 모두 매칭.
-        // SDK 코드에는 "Worker"/"Import Error Code" 문자열이 존재하지 않음 (grep으로 확인).
+        // Sentry APPS-IN-TOSS-UNITY-SDK-RC/RD/RE/V7 — Unity AssetImporter 내부/메인 에셋 임포트 에러.
+        // 워커 prefix 유무·워커 번호·코드 숫자가 가변이지만 "Import Error Code:(" 부분 문자열로 모두 매칭.
+        // SDK 코드에는 "Import Error Code" 문자열이 존재하지 않음 (grep으로 확인).
         Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(message));
     }
 
@@ -837,6 +841,9 @@ public class IsKnownNonSdkMessageTests
         // AitKeywords 가드 회귀 방지: [AIT] prefix가 붙으면 SDK 자체 로그로 간주되어 필터링되지 않아야 함
         Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
             "[AIT] [Worker2] Import Error Code:(4)"));
+        // UnityWarning 래핑 변형에 대한 가드 회귀 방지
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] Import Error Code:(4)"));
     }
 
     [Test]

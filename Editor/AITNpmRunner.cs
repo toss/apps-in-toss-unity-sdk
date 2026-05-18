@@ -273,11 +273,15 @@ namespace AppsInToss.Editor
                             EditorUtility.ClearProgressBar();
                             string timeoutOutput = outputBuilder.ToString();
                             string timeoutError = errorBuilder.ToString();
-                            Debug.LogError($"[{pmName}] 명령 시간 초과 ({maxWaitMs / 1000}초): {pmName} {arguments}");
+                            // npm/pnpm 타임아웃 — lockfile drift, 네트워크 지연, AV scan, registry
+                            // 정책 등 사용자 환경 원인. 호출자가 FAIL_NPM_BUILD로 결과 인지 후
+                            // 상위에서 컨텍스트 있는 메시지로 보고하므로 Console 진단만 남기고
+                            // Sentry는 차단 (exit != 0 동기 실패 분기와 동일 정책 — SDK-HA/R6/VF/VA cascade 흡수).
+                            AITLog.Error($"[{pmName}] 명령 시간 초과 ({maxWaitMs / 1000}초): {pmName} {arguments}", sentryCapture: false);
                             if (!string.IsNullOrEmpty(timeoutOutput))
-                                Debug.LogError($"[{pmName}] 출력:\n{timeoutOutput.Trim()}");
+                                AITLog.Error($"[{pmName}] 출력:\n{timeoutOutput.Trim()}", sentryCapture: false);
                             if (!string.IsNullOrEmpty(timeoutError))
-                                Debug.LogError($"[{pmName}] 오류:\n{timeoutError.Trim()}");
+                                AITLog.Error($"[{pmName}] 오류:\n{timeoutError.Trim()}", sentryCapture: false);
                             return AITConvertCore.AITExportError.FAIL_NPM_BUILD;
                         }
 

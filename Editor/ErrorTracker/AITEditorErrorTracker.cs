@@ -200,7 +200,8 @@ namespace AppsInToss.Editor.ErrorTracker
 
             // 사용자 프로젝트가 사용하는 다른 WebGL 템플릿(Fill 등)이 출력하는 진단. SDK 영역 아님.
             // 예: "[WebGL] unity-webview.js source not found: /Users/.../Assets/WebGLTemplates/Fill/TemplateData/unity-webview.js"
-            // Sentry APPS-IN-TOSS-UNITY-SDK-VJ.
+            //     "UnityWarning: [WebGL] unity-webview.js source not found: /Users/.../unity-webview.js"
+            // Sentry APPS-IN-TOSS-UNITY-SDK-VJ ("UnityWarning: " prefix 변형 포함 — 부분 문자열 매칭).
             // SDK는 "[WebGL]" prefix를 출력하지 않으므로(grep 확인) AitKeywords 보호 가드와 충돌 없음.
             "[WebGL] unity-webview.js source not found",
 

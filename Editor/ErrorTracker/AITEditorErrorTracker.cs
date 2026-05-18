@@ -150,10 +150,13 @@ namespace AppsInToss.Editor.ErrorTracker
             "does not have a valid GUID",
             "' cannot be extracted by the YAML Parser",
 
-            // pnpm stdout 패스스루 노이즈 — 본문 없는 "[pnpm] 출력:" 라인 (SDK-HA, SDK-R6).
+            // pnpm stdout/stderr 패스스루 노이즈 — Unity가 외부 pnpm 프로세스 출력을 래핑한 라인.
+            // "[pnpm] 출력:"(SDK-HA, SDK-R6)은 stdout, "[pnpm] 오류:"(SDK-VF, SDK-VA)는 stderr를
+            // Unity가 UnityWarning으로 래핑한 것. 둘 다 SDK 외부(pnpm 프로세스) 출처.
             // AitKeywords에 "[pnpm]"이 없어 SDK 보호 가드는 우회되며,
             // SDK 자체 로그는 "[AIT...]" prefix와 함께 출력되므로 보호된다.
             "[pnpm] 출력:",
+            "[pnpm] 오류:",
 
             // 사용자 코드 using 중복 — Unity 컴파일러가 직접 출력하는 CS0105.
             // 예: "warning CS0105: The using directive for 'AppsInToss' appeared previously in this namespace"

@@ -940,7 +940,7 @@ public class IsKnownNonSdkMessageTests
 
     #endregion
 
-    #region pnpm stdout 패스스루 (SDK-HA, SDK-R6)
+    #region pnpm stdout/stderr 패스스루 (SDK-HA, SDK-R6, SDK-VF, SDK-VA)
 
     [Test]
     public void PnpmStdoutPassthrough_TrailingAnchor_ReturnsTrue()
@@ -958,11 +958,34 @@ public class IsKnownNonSdkMessageTests
     }
 
     [Test]
+    public void PnpmStderrPassthrough_TrailingAnchor_ReturnsTrue()
+    {
+        // Sentry SDK-VF — Unity가 외부 pnpm 프로세스 stderr를 래핑한 "[pnpm] 오류:" 라인
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage("[pnpm] 오류:"));
+    }
+
+    [Test]
+    public void PnpmStderrPassthrough_UnityWrapped_ReturnsTrue()
+    {
+        // Sentry SDK-VA — UnityWarning prefix로 래핑된 "[pnpm] 오류:" 본문 (후행 내용 포함)
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[pnpm] 오류: ERR_PNPM_FETCH_404 GET https://registry.npmjs.org/foo"));
+    }
+
+    [Test]
     public void PnpmStdoutPassthrough_WithAitPrefix_NeverFiltered()
     {
         // SDK가 직접 출력한 "[AIT...]" prefix가 붙으면 SDK 보호 가드로 필터링되지 않아야 함
         Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
             "[AIT] [pnpm] 출력: build failed"));
+    }
+
+    [Test]
+    public void PnpmStderrPassthrough_WithAitPrefix_NeverFiltered()
+    {
+        // SDK가 직접 출력한 "[AIT...]" prefix가 붙으면 SDK 보호 가드로 필터링되지 않아야 함
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] [pnpm] 오류: 빌드 의존성 설치 실패"));
     }
 
     #endregion

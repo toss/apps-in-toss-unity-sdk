@@ -232,6 +232,32 @@ namespace AppsInToss.Editor.ErrorTracker
             // 기존 LogType.Warning 가드는 별도로 유지되며(line 432-436), 이 패턴은 Error/Exception LogType 변형도 흡수.
             // SDK 자체 코드는 이 메시지를 출력하지 않으며(주석으로만 참조) Unity 엔진이 직접 출력.
             "immutable packages were unexpectedly altered",
+
+            // Unity Package Manager가 사용자 환경(네트워크/Git 인증/SSL 등) 문제로 Git 패키지 추가/제거 실패 시 직접 출력.
+            // 예: "[Package Manager Window] Error adding/removing packages: https://github.com/toss/apps-in-toss-unity-sdk.git #release/v2.4.3."
+            // Sentry APPS-IN-TOSS-UNITY-SDK-QQ, APPS-IN-TOSS-UNITY-SDK-7Y.
+            // SDK는 "[Package Manager Window]" prefix를 출력하지 않으므로(grep 확인) 안전.
+            "[Package Manager Window] Error adding/removing packages",
+
+            // Unity Package Manager가 의존성 해석 실패 시 직접 출력 — 사용자 환경 manifest.json 충돌 또는 네트워크 장애.
+            // 예: "An error occurred while resolving packages:\n  Project has invalid dependencies: ..."
+            // Sentry APPS-IN-TOSS-UNITY-SDK-V1.
+            // SDK는 이 문자열을 출력하지 않으므로(grep 확인) 안전.
+            "An error occurred while resolving packages",
+
+            // AppsInTossMenu deploy 경로의 pnpm/ait CLI가 잘못된 인자로 호출됐을 때 출력하는 syntax error.
+            // 예: "AIT: [stdout] Unknown Syntax Error: Not enough arguments to option --api-key."
+            // 사용자가 deployment key를 입력하지 않은 사용자 환경 문제. SDK 분기로 해결 불가.
+            // "AIT: [stdout]"/"AIT: [stderr]" prefix는 SDK 키워드 가드에 막히지만, "AIT:" + "Unknown Syntax Error" 합성 가드는
+            // 별도 가드(IsKnownNonSdkMessage)로 처리. 여기 패턴은 단독 substring으로 좁혀도 SDK 출력과 충돌 없음.
+            // Sentry APPS-IN-TOSS-UNITY-SDK-TS.
+            "Unknown Syntax Error: Not enough arguments",
+
+            // Windows shell이 인식 못하는 명령어 호출 시 직접 출력 — 사용자 환경 PATH 누락 또는 인코딩 깨짐.
+            // 예: "AIT: [stderr] '��e' is not recognized as an internal or external command,"
+            // Sentry APPS-IN-TOSS-UNITY-SDK-RG.
+            // SDK는 이 문자열을 출력하지 않으므로(grep 확인) 안전. Windows cmd 표준 에러 메시지.
+            "is not recognized as an internal or external command",
         };
 
         // DetermineErrorSource에서 메시지를 SDK로 분류하는 추가 패턴.

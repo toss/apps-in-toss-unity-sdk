@@ -1608,6 +1608,44 @@ public class IsKnownNonSdkMessageTests
 
     #endregion
 
+    #region 사용자 WebGL 빌드 취소 (SDK-TX)
+
+    [Test]
+    public void UserCancelledWebGLBuild_ReturnsTrue()
+    {
+        // Sentry SDK-TX — 사용자가 WebGL 빌드를 직접 취소한 정상 액션. AITConvertCore.cs의
+        // AITLog.Warning("[AIT] 사용자에 의해 WebGL 빌드가 취소되었습니다.")가 출력한 본문.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] 사용자에 의해 WebGL 빌드가 취소되었습니다."));
+    }
+
+    [Test]
+    public void UserCancelledBuild_ShortVariant_ReturnsTrue()
+    {
+        // AITConvertCore.cs의 Debug.LogWarning("[AIT] 빌드가 취소되었습니다.") 변형도 동일 노이즈.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] 빌드가 취소되었습니다."));
+    }
+
+    [Test]
+    public void BuildFailure_NotCancellation_NotFiltered()
+    {
+        // 실제 빌드 실패는 SDK 진단 가치가 있으므로 보호 — "취소" 문구가 없으면 매칭되지 않음.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] WebGL 빌드가 실패했습니다."));
+    }
+
+    [Test]
+    public void Cancellation_WithoutAitPrefix_NotFiltered()
+    {
+        // composite AND 가드의 반대 축 검증 — "[AIT" prefix 없이 "빌드가 취소되었습니다"만
+        // 포함하는 메시지는 가드에 걸리지 않아야 한다(외부 코드의 다른 빌드 시스템 로그 보호).
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Addressables 빌드가 취소되었습니다."));
+    }
+
+    #endregion
+
     #region SDK 관련 메시지는 통과 (negative cases)
 
     [Test]

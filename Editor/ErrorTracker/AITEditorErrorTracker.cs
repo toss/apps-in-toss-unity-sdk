@@ -1030,6 +1030,18 @@ namespace AppsInToss.Editor.ErrorTracker
                 && message.IndexOf("[?25", StringComparison.Ordinal) >= 0)
                 return true;
 
+            // 사용자가 WebGL 빌드를 직접 취소한 정상 액션 — 에러가 아닌 의도된 사용자 동작 노이즈.
+            // 예: "[AIT] 사용자에 의해 WebGL 빌드가 취소되었습니다." (AITConvertCore.cs, AITLog.Warning)
+            //     "[AIT] 빌드가 취소되었습니다." (AITConvertCore.cs, Debug.LogWarning 변형)
+            // 신규 SDK는 취소 경로를 sentryCapture: false로 차단했지만, 구버전 SDK 사용자는 여전히
+            // 동일 Warning을 전송한다. 컨텐츠 기반 backstop.
+            // "[AIT]" prefix가 SDK 키워드 가드("[AIT")에 막히므로 가드보다 먼저 매칭한다.
+            // "[AIT" + "빌드가 취소되었습니다" 합성으로 좁혀 일반 빌드 실패 메시지와 충돌 방지.
+            // Sentry APPS-IN-TOSS-UNITY-SDK-TX.
+            if (message.IndexOf("[AIT", StringComparison.Ordinal) >= 0
+                && message.IndexOf("빌드가 취소되었습니다", StringComparison.Ordinal) >= 0)
+                return true;
+
             // SDK 자체 로그는 절대 필터링하지 않음 — AitKeywords 전체를 가드로 사용
             if (MessageContainsSdkKeyword(message))
                 return false;

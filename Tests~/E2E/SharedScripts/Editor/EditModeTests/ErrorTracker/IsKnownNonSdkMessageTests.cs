@@ -1635,6 +1635,15 @@ public class IsKnownNonSdkMessageTests
             "[AIT] WebGL 빌드가 실패했습니다."));
     }
 
+    [Test]
+    public void Cancellation_WithoutAitPrefix_NotFiltered()
+    {
+        // composite AND 가드의 반대 축 검증 — "[AIT" prefix 없이 "빌드가 취소되었습니다"만
+        // 포함하는 메시지는 가드에 걸리지 않아야 한다(외부 코드의 다른 빌드 시스템 로그 보호).
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Addressables 빌드가 취소되었습니다."));
+    }
+
     #endregion
 
     #region SDK 관련 메시지는 통과 (negative cases)

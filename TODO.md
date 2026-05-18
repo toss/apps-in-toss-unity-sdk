@@ -108,3 +108,12 @@
 ### P3 — Sentry 이슈 자동 정리 자동화
 - **현상**: resolve/ignore 처리해도 이전 SDK 버전 사용자에서 같은 패턴이 새 이슈 ID로 재생성됨. enterprise audit 제한으로 auto-resolve 불가
 - **조치**: 주기적으로 `!has:error_source` 이슈를 자동 삭제하는 스케줄 워크플로우 검토, 또는 Sentry의 Inbound Filter 기능 활용
+
+### P2 — WebGL 빌드 실패 진단 가시성 갭 보완
+- **파일**: `Editor/AITConvertCore.cs` (974-1053행), `Editor/AITErrorReporter` 관련
+- **배경**: 빌드 실패 시 `[AIT] WebGL 빌드가 실패했습니다.` + `BuildReport.steps[].messages`의 Error/Warning을 콘솔에 출력하고 있으나(이미 구현됨), 다음 갭이 남아 있음
+- **갭 1**: Bee/IL2CPP `.o` 컴파일 실패(`Building Library/Bee/artifacts/WebGL/.../xxx.o failed with output:`, Sentry W0/VZ)는 emscripten 서브프로세스 stdout이라 `BuildReport.steps`에 Error 타입으로 안 잡힐 수 있음 → `총 에러: 0`인데 빌드 실패하는 혼란. 실제 Bee 실패 빌드 재현으로 `result.steps` 내용 검증 후, 누락 시 빌드 로그 파일(`Editor.log` / `Library/Bee/.../*.log`)의 `failed with output:` 블록 tail 첨부
+- **갭 2**: 빌드 실패 경로가 `sentryCapture: false`(노이즈 방지)라 "사용자 빌드가 깨졌다"는 사실이 텔레메트리에 0건. `BUILD_WEBGL_FAILED` 단일 fingerprint로 집계용 캡처할지 결정 필요 (제품/운영 판단)
+- **갭 3**: `maxMessages` 카운팅이 Error+Warning 합산이라 Error가 10개를 채우면 Warning이 한 줄도 안 나오고 `... 외 N개 생략`의 N이 모호함 (1043행)
+- **갭 4**: `AITErrorReporter.SetBuildReport`가 저장한 리포트가 Issue 신고 플로우에서 Bee `.o` 출력까지 첨부하는지 확인
+- **선행 작업**: 갭 1·4는 추측이므로 실제 Bee 실패 빌드 1건 로컬 재현(`./run-local-tests.sh --unity-build` + IL2CPP 에러 주입)으로 `result.steps` 덤프가 첫 스텝

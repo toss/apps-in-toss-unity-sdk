@@ -104,16 +104,18 @@ namespace AppsInToss.Editor.Package
 
             if (missingFiles.Count > 0)
             {
-                Debug.LogError(
-                    $"[AIT] ✗ 치명적: WebGL 빌드 필수 파일 누락!\n"
-                    + $"누락된 필수 파일: {string.Join(", ", missingFiles)}\n"
-                    + "가능한 원인:\n"
+                // Sentry로는 단일 fingerprint(누락 파일 요약)만 보내고, 상세 가이드/원인은 콘솔에만 남긴다.
+                // Unity Log Listener가 \n으로 분할된 라인을 각각 다른 이슈로 묶는 경우를 회피.
+                AITLog.Error($"[AIT] ✗ 치명적: WebGL 빌드 필수 파일 누락! 누락된 필수 파일: {string.Join(", ", missingFiles)}");
+                AITLog.Error(
+                    "[AIT]   가능한 원인:\n"
                     + "  1. Unity WebGL 빌드가 완료되지 않았습니다.\n"
                     + "  2. WebGL 빌드가 실패했지만 부분 결과물만 남아있습니다.\n"
                     + "  3. 빌드 설정(압축 방식 등)이 예상과 다릅니다.\n"
                     + "해결 방법:\n"
                     + "  1. 'Clean Build' 옵션을 활성화하고 다시 빌드하세요.\n"
-                    + "  2. Unity Console에서 빌드 에러를 확인하세요."
+                    + "  2. Unity Console에서 빌드 에러를 확인하세요.",
+                    sentryCapture: false
                 );
                 return AITConvertCore.AITExportError.REQUIRED_FILE_MISSING;
             }

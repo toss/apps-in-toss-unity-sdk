@@ -351,23 +351,26 @@ namespace AppsInToss.Editor
 
             if (isRequired)
             {
-                Debug.LogError($"[AIT] ✗ 필수 파일을 찾을 수 없습니다: {pattern}");
-                Debug.LogError($"[AIT]   검색 경로: {buildPath}");
-                Debug.LogError($"[AIT]   이 파일이 없으면 런타임에서 'createUnityInstance is not defined' 에러가 발생합니다.");
+                // 사용자 환경의 빌드 산출물 누락 진단 로그 — Sentry로는 한 줄로 요약 전송하고
+                // 상세 다단 로그는 sentryCapture:false로 콘솔에만 남긴다.
+                // 첫 줄만 Sentry로 전송하면 fingerprint가 pattern 별로 안정적으로 묶임(SDK-KX 계열).
+                // 후속 진단 줄들은 hash/path가 빌드마다 달라 fingerprint가 분산되므로(SDK-KY~M6 계열) Sentry 억제.
+                AITLog.Error($"[AIT] ✗ 필수 파일을 찾을 수 없습니다: {pattern}");
+                AITLog.Error($"[AIT]   검색 경로: {buildPath}", sentryCapture: false);
+                AITLog.Error($"[AIT]   이 파일이 없으면 런타임에서 'createUnityInstance is not defined' 에러가 발생합니다.", sentryCapture: false);
 
-                // 실제로 어떤 파일들이 있는지 출력
                 var existingFiles = Directory.GetFiles(buildPath);
                 if (existingFiles.Length > 0)
                 {
-                    Debug.LogError($"[AIT]   Build 폴더의 실제 파일들:");
+                    AITLog.Error($"[AIT]   Build 폴더의 실제 파일들:", sentryCapture: false);
                     foreach (var file in existingFiles)
                     {
-                        Debug.LogError($"[AIT]     - {Path.GetFileName(file)}");
+                        AITLog.Error($"[AIT]     - {Path.GetFileName(file)}", sentryCapture: false);
                     }
                 }
                 else
                 {
-                    Debug.LogError($"[AIT]   Build 폴더가 비어 있습니다!");
+                    AITLog.Error($"[AIT]   Build 폴더가 비어 있습니다!", sentryCapture: false);
                 }
             }
 

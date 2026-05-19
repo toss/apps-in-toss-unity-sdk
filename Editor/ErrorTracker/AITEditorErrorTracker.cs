@@ -995,11 +995,14 @@ namespace AppsInToss.Editor.ErrorTracker
 
             // 사용자 코드의 SDK 타입 인자 오용(CS1503) — Unity 컴파일러가 직접 출력.
             // 예: "Assets\Scripts\Manager\TossManager.cs(192,91): error CS1503: Argument 1: cannot convert from 'AppsInToss.GetUserKeyForGameResult' to 'string'"
-            // Sentry APPS-IN-TOSS-UNITY-SDK-VM/PV/PW/DA.
+            // 예(List 제네릭 변형): "Assets/.../RemoteShopInfo.cs(312,68): error CS1503: Argument 1: cannot convert from 'System.Collections.Generic.List<Studio.Common.Trident.Billing.ProductInfo>' to 'System.Collections.Generic.List<AppsInToss.IapProductListItem>'"
+            // Sentry APPS-IN-TOSS-UNITY-SDK-VM/PV/PW/DA/WW/WV.
             // 메시지에 'AppsInToss.*' 타입명이 들어가 SDK 키워드 가드가 발동하므로 가드보다 먼저 매칭한다.
-            // 'AppsInToss.' 점(.)을 포함해 namespace prefix를 정확히 요구하므로 단독 토큰 'AppsInToss'만 있는 SDK 빌드 메시지와 충돌 없음.
+            // namespace prefix는 작은따옴표 직후('AppsInToss.) 또는 List<> 등 제네릭 인자 직후(<AppsInToss.) 두 형태를 모두 허용.
+            // 두 변형 모두 점(.)을 포함해 단독 토큰 'AppsInToss'만 있는 SDK 빌드 메시지와는 충돌 없음.
             if (message.IndexOf("error CS1503", StringComparison.Ordinal) >= 0
-                && message.IndexOf("'AppsInToss.", StringComparison.Ordinal) >= 0
+                && (message.IndexOf("'AppsInToss.", StringComparison.Ordinal) >= 0
+                    || message.IndexOf("<AppsInToss.", StringComparison.Ordinal) >= 0)
                 && (message.IndexOf("Assets/", StringComparison.Ordinal) >= 0
                     || message.IndexOf("Assets\\", StringComparison.Ordinal) >= 0)
                 && message.IndexOf(".cs(", StringComparison.Ordinal) >= 0)

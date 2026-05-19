@@ -1294,6 +1294,22 @@ public class IsKnownNonSdkMessageTests
     }
 
     [Test]
+    public void UserCode_Cs1503_ListGenericAppsInTossType_ReturnsTrue()
+    {
+        // Sentry SDK-WW — List<T> 제네릭 인자로 SDK 타입을 잘못 사용. namespace prefix가 '<AppsInToss.' 형태로 등장.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Assets/02.Script/Match3/Event/TravelPass/TravelPassEventModel.cs(203,60): error CS1503: Argument 1: cannot convert from 'System.Collections.Generic.List<Studio.Common.Trident.Billing.ProductInfo>' to 'System.Collections.Generic.List<AppsInToss.IapProductListItem>'"));
+    }
+
+    [Test]
+    public void UserCode_Cs1503_ListGenericAppsInTossType_PosixPath_ReturnsTrue()
+    {
+        // Sentry SDK-WV — POSIX 경로 + List<T> 제네릭 변형.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Assets/02.Script/Match3/Data/RemoteShopInfo.cs(312,68): error CS1503: Argument 1: cannot convert from 'System.Collections.Generic.List<Studio.Common.Trident.Billing.ProductInfo>' to 'System.Collections.Generic.List<AppsInToss.IapProductListItem>'"));
+    }
+
+    [Test]
     public void Cs1503_AppsInTossTypeMisuse_WithAitPrefix_StillProtected()
     {
         // SDK 보호 가드: 합성 가드(error CS1503 + 'AppsInToss.' + Assets/ + .cs()를 모두 만족하지 않으면

@@ -160,6 +160,34 @@ namespace AppsInToss
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __grantPromotionReward_Internal(string paramsParam, string callbackId, string typeName);
 #endif
+        /// <param name="onEvent">이벤트 콜백</param>
+        /// <param name="onError">에러 콜백</param>
+        /// <returns>구독 취소를 위한 Action</returns>
+        [Preserve]
+        [APICategory("Other")]
+        public static Action RequestNotificationAgreement(
+            Action<object> onEvent,
+            RequestNotificationAgreementOptionsOptions options,
+            Action<AITException> onError = null)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            string subscriptionId = AITCore.Instance.RegisterSubscriptionCallback<object>(
+                onEvent,
+                onError
+            );
+            __requestNotificationAgreement_Internal(AITJsonSettings.Serialize(options), subscriptionId, "object");
+            return () => AITCore.Instance.Unsubscribe(subscriptionId);
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] RequestNotificationAgreement called");
+            return () => UnityEngine.Debug.Log($"[AIT Mock] RequestNotificationAgreement cancelled");
+#endif
+        }
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __requestNotificationAgreement_Internal(string options, string subscriptionId, string typeName);
+#endif
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Other")]
@@ -204,6 +232,53 @@ namespace AppsInToss
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __requestReview_Internal(string callbackId, string typeName);
+#endif
+        /// <param name="options">정기결제창을 띄울 때 필요한 옵션이에요.</param>
+        /// <returns>인증 성공 여부를 포함한 결과를 반환해요. 값이 없으면 null을 반환합니다.</returns>
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
+        [APICategory("Other")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<RequestTossPayPaysBillingResult> RequestTossPayPaysBilling(RequestTossPayPaysBillingOptions options)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<RequestTossPayPaysBillingResult>();
+            string callbackId = AITCore.Instance.RegisterCallback<RequestTossPayPaysBillingResult>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error)
+            );
+            __requestTossPayPaysBilling_Internal(AITJsonSettings.Serialize(options), callbackId, "RequestTossPayPaysBillingResult");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] RequestTossPayPaysBilling called");
+            await Awaitable.NextFrameAsync();
+            return default(RequestTossPayPaysBillingResult);
+#endif
+        }
+#else
+        public static async Task<RequestTossPayPaysBillingResult> RequestTossPayPaysBilling(RequestTossPayPaysBillingOptions options)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<RequestTossPayPaysBillingResult>();
+            string callbackId = AITCore.Instance.RegisterCallback<RequestTossPayPaysBillingResult>(
+                result => tcs.TrySetResult(result),
+                error => tcs.TrySetException(error)
+            );
+            __requestTossPayPaysBilling_Internal(AITJsonSettings.Serialize(options), callbackId, "RequestTossPayPaysBillingResult");
+            return await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] RequestTossPayPaysBilling called");
+            await Task.CompletedTask;
+            return default(RequestTossPayPaysBillingResult);
+#endif
+        }
+#endif
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __requestTossPayPaysBilling_Internal(string options, string callbackId, string typeName);
 #endif
     }
 }

@@ -16,7 +16,9 @@
 //   BENCHMARK_UNITY        — Unity 버전 (예: 6000.2). 필수.
 //   BENCHMARK_PILLAR       — 'pillar1' | 'pillar2' | 'pillar3'. 필수.
 //   BENCHMARK_ITERATIONS   — 반복 횟수 (기본 5).
+//   BENCHMARK_NETWORKS     — 복수 네트워크 측정 (comma-separated, 우선순위 최상).
 //   BENCHMARK_NETWORK      — 단일 네트워크만 측정 (생략 시 NETWORK_KEYS 전체).
+//   BENCHMARK_CPUS         — 복수 CPU rate 측정 (comma-separated, 우선순위 최상).
 //   BENCHMARK_CPU          — 단일 CPU rate만 측정 (생략 시 CPU_KEYS 전체).
 //   BENCHMARK_RESULTS_PATH — 결과 JSONL 경로 (기본 ./benchmark-loading-results.jsonl).
 //   BENCHMARK_TIMEOUT_MS   — 로딩 timeout (기본 180000).
@@ -70,8 +72,18 @@ const AIT_BUILD = path.resolve(PROJECT_PATH, 'ait-build');
 const DIST_WEB = path.resolve(AIT_BUILD, 'dist', PILLARS[PILLAR].dist);
 const PORT = UNITY_VERSION_PORTS[UNITY_VER];
 
-const networksToRun = process.env.BENCHMARK_NETWORK ? [process.env.BENCHMARK_NETWORK] : NETWORK_KEYS;
-const cpusToRun = process.env.BENCHMARK_CPU ? [process.env.BENCHMARK_CPU] : CPU_KEYS;
+// 측정 축 선택 우선순위: 복수형(comma-separated) > 단수형 > 기본 키 집합.
+// 가설 벤치마크는 BENCHMARK_NETWORKS/BENCHMARK_CPUS로 다축을 한 번에 돌린다.
+const networksToRun = process.env.BENCHMARK_NETWORKS
+  ? process.env.BENCHMARK_NETWORKS.split(',').map((s) => s.trim()).filter(Boolean)
+  : process.env.BENCHMARK_NETWORK
+    ? [process.env.BENCHMARK_NETWORK]
+    : NETWORK_KEYS;
+const cpusToRun = process.env.BENCHMARK_CPUS
+  ? process.env.BENCHMARK_CPUS.split(',').map((s) => s.trim()).filter(Boolean)
+  : process.env.BENCHMARK_CPU
+    ? [process.env.BENCHMARK_CPU]
+    : CPU_KEYS;
 
 for (const k of networksToRun) {
   if (!NETWORK_PROFILES[k]) fail(`Unknown network: ${k}`);

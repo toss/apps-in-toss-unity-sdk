@@ -41,6 +41,24 @@ export const NETWORK_PROFILES = {
     uploadThroughput: (100 * 1024 * 1024) / 8,
     latency: 15,
   },
+  // 가설 검증용 LTE 변형 — 과기정통부·NIA 「2024 통신서비스 품질평가」 LTE
+  // 다운로드 통신사별 실측(SKT 238.49 / KT 166.81 / LGU+ 128.85Mbps)의
+  // 최저·최고를 그대로 채택한다. 기존 kr-lte(3사 평균 기반)는 건드리지 않는다.
+  //
+  // kr-lte-slow: LGU+ 실측 하단. 업로드·latency는 LTE 하위 사업자 수준의
+  // 보수적 값(up 30Mbps / latency 45ms)을 둔다.
+  'kr-lte-slow': {
+    downloadThroughput: (128 * 1024 * 1024) / 8,
+    uploadThroughput: (30 * 1024 * 1024) / 8,
+    latency: 45,
+  },
+  // kr-lte-fast: SKT 실측 상단. 업로드·latency는 LTE 상위 사업자 수준
+  // (up 50Mbps / latency 30ms).
+  'kr-lte-fast': {
+    downloadThroughput: (238 * 1024 * 1024) / 8,
+    uploadThroughput: (50 * 1024 * 1024) / 8,
+    latency: 30,
+  },
 };
 
 // CDP `Emulation.setCPUThrottlingRate` 슬로우다운 배율. 코어 수 emulation 불가, 정수만.
@@ -66,6 +84,13 @@ export const NETWORK_KEYS = ['kr-lte', 'kr-wifi'];
 // 3-필러 벤치마크는 cpu-4x 단일에 고정 (저성능 모바일 근사).
 export const CPU_KEYS = ['cpu-4x'];
 export const UNITY_VERSIONS = Object.keys(UNITY_VERSION_PORTS);
+
+// 가설 검증 벤치마크(scripts/benchmark-hypothesis.sh) 전용 축. 두 가설
+// (p1→p2 네트워크 의존 / p2→p3 CPU 의존)을 직접 검증하려면 네트워크·CPU를
+// 각각 3점으로 넓혀야 한다. 위 NETWORK_KEYS/CPU_KEYS는 기존 3-필러 벤치마크
+// 동작 보존을 위해 그대로 두고, 가설 측정은 이 상수를 사용한다.
+export const HYPOTHESIS_NETWORK_KEYS = ['kr-lte-slow', 'kr-lte-fast', 'kr-wifi'];
+export const HYPOTHESIS_CPU_KEYS = ['cpu-2x', 'cpu-4x', 'cpu-6x'];
 
 // 3-필러 — 압축/전송 설정의 세 가지 현실 시나리오.
 // 각 필러는 (빌드 산출물 dist) × (정적 서버의 Content-Encoding 동작) 조합.

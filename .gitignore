@@ -178,6 +178,12 @@ Tests~/E2E/tests/benchmark-loading-results.jsonl.*-OLD
 benchmark-report.csv
 benchmark-report.md
 benchmark-report.html
+# 가설 검증 벤치마크 산출물 (scripts/benchmark-hypothesis.sh)
+Tests~/E2E/tests/benchmark-hypothesis-results.jsonl
+Tests~/E2E/tests/benchmark-hypothesis-results.jsonl.*-OLD
+benchmark-hypothesis-report.csv
+benchmark-hypothesis-report.md
+benchmark-hypothesis-report.html
 # Local report-capture screenshots
 imp-*.png
 

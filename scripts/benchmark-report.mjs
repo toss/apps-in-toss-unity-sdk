@@ -12,10 +12,14 @@
 // 3-필러 정의:
 //   pillar1 — 압축 미설정 + CDN gzip:  Unity 압축 Disabled, 평문 산출물을
 //             서버가 on-the-fly gzip → 브라우저 네이티브 gzip 디코딩.
+//             (baseline — 최적화 이전 상태)
 //   pillar2 — 압축 O + Content-Encoding 누락: Brotli .unityweb를 헤더 없이 전송
 //             → Unity 로더 JS decompressionFallback 디코딩.
 //   pillar3 — 압축 O + Content-Encoding O: Brotli .unityweb를 Content-Encoding: br
-//             전송 → 브라우저 네이티브 Brotli 디코딩. (정석 설정, baseline)
+//             전송 → 브라우저 네이티브 Brotli 디코딩. (정석 설정)
+//
+// 리포트는 pillar1을 baseline으로 잡고, pillar2/pillar3가 그 대비 cold load를
+// 몇 ms / 몇 % 단축하는지(최적화 효과)를 보여준다. 음수 = 더 빠름.
 //
 // 사용:
 //   node scripts/benchmark-report.mjs
@@ -33,6 +37,8 @@ const ROOT = path.resolve(__dirname, '..');
 // 일치시킨다 (벤치마크 측정 환경 표기용).
 const NETWORK_LABELS = {
   'kr-lte': '한국 LTE (150↓/39↑Mbps, 38ms · 과기정통부 2024 실측 기반)',
+  'kr-lte-slow': '한국 LTE 느림 (128↓/30↑Mbps, 45ms · 과기정통부 2024 LGU+ 실측)',
+  'kr-lte-fast': '한국 LTE 빠름 (238↓/50↑Mbps, 30ms · 과기정통부 2024 SKT 실측)',
   'kr-wifi': '한국 WiFi (375↓/100↑Mbps, 15ms · 과기정통부 2024 상용 WiFi 실측 기반)',
   'wifi': 'wifi (30↓/15↑Mbps, 2ms)',
   'regular-4g': 'regular-4g (4↓/3↑Mbps, 20ms)',
@@ -54,9 +60,13 @@ function envSummary(rows) {
 const args = parseArgs(process.argv.slice(2));
 const INPUT = path.resolve(args.input || path.join(ROOT, 'Tests~/E2E/tests/benchmark-loading-results.jsonl'));
 const OUT_DIR = path.resolve(args['out-dir'] || ROOT);
-const CSV_PATH = path.join(OUT_DIR, 'benchmark-report.csv');
-const MD_PATH = path.join(OUT_DIR, 'benchmark-report.md');
-const HTML_PATH = path.join(OUT_DIR, 'benchmark-report.html');
+// 가설 검증 JSONL을 입력하면 출력 파일명도 별도로 분기해 3-필러 리포트를 덮어쓰지 않는다.
+// (입력 파일명에 'hypothesis'가 포함되면 가설 리포트로 간주)
+const IS_HYPOTHESIS = /hypothesis/i.test(path.basename(INPUT));
+const OUT_BASE = IS_HYPOTHESIS ? 'benchmark-hypothesis-report' : 'benchmark-report';
+const CSV_PATH = path.join(OUT_DIR, `${OUT_BASE}.csv`);
+const MD_PATH = path.join(OUT_DIR, `${OUT_BASE}.md`);
+const HTML_PATH = path.join(OUT_DIR, `${OUT_BASE}.html`);
 
 if (!fs.existsSync(INPUT)) {
   console.error(`[report] input not found: ${INPUT}`);
@@ -128,6 +138,7 @@ function groupRows(rows) {
 function summarizeGroup(rows) {
   const head = rows[0];
   const cold = rows.map((r) => r.cold_load_ms).filter((x) => Number.isFinite(x));
+  const transfer = rows.map((r) => r.cold_transfer_bytes).filter((x) => Number.isFinite(x));
   const errors = rows.filter((r) => r.error).length;
   return {
     unity_version: head.unity_version,
@@ -138,6 +149,10 @@ function summarizeGroup(rows) {
     iterations: rows.length,
     errors,
     cold: stats(cold),
+    // 압축 후 전송량 중앙값 (MB) — 번들 용량 외삽에 사용
+    transfer_mb: transfer.length
+      ? transfer.slice().sort((a, b) => a - b)[Math.floor(transfer.length / 2)] / 1048576
+      : null,
   };
 }
 
@@ -247,27 +262,46 @@ function writeMarkdown(rows, cells, file) {
   lines.push(`- Errors: ${cells.reduce((s, c) => s + c.errors, 0)}`);
   lines.push('');
 
-  // network별 pivot 표
+  // network × cpu별 pivot 표. cpu가 1개면 내부 루프가 한 번만 돌아 기존
+  // 3-필러 리포트와 하위 호환된다.
   for (const net of env.nets) {
-    const netCells = cells.filter((c) => c.network === net);
-    lines.push(`## Cold load median — ${networkLabel(net)} (cpu_rate=${env.cpus.join('/')}×)`);
-    lines.push('');
-    lines.push(pivotTable(netCells));
+    for (const cpu of env.cpus) {
+      const netCells = cells.filter((c) => c.network === net && c.cpu_rate === cpu);
+      if (netCells.length === 0) continue;
+      const cpuTag = env.cpus.length > 1 ? ` · cpu ${cpu}×` : ` (cpu_rate=${cpu}×)`;
+      lines.push(`## Cold load median — ${networkLabel(net)}${cpuTag}`);
+      lines.push('');
+      lines.push(pivotTable(netCells));
+      lines.push('');
+    }
+  }
+
+  // network 간 개선 비교 표 — cpu별로 분리 (복수 cpu면 cpu마다 한 표)
+  if (env.nets.length >= 2) {
+    for (const cpu of env.cpus) {
+      const cpuTag = env.cpus.length > 1 ? ` — cpu ${cpu}×` : '';
+      lines.push(`## Network 간 pillar 개선 비교 (baseline = pillar1)${cpuTag}`);
+      lines.push('');
+      lines.push(networkCompareTable(cells.filter((c) => c.cpu_rate === cpu), env.nets));
+      lines.push('');
+    }
+  }
+
+  // 가설 검증 (H1/H2) — 가설 데이터일 때만 비어있지 않음
+  const hypMd = hypothesisMarkdown(cells);
+  if (hypMd) {
+    lines.push(hypMd);
     lines.push('');
   }
 
-  // network 간 overhead 비교 표
-  if (env.nets.length >= 2) {
-    lines.push('## Network 간 pillar overhead 비교');
-    lines.push('');
-    lines.push(networkCompareTable(cells, env.nets));
-    lines.push('');
-  }
+  // 번들 용량 확장 추정 (100MB / 200MB)
+  lines.push(extrapolationMarkdown(cells, env.nets));
+  lines.push('');
 
   lines.push('## 필러 정의');
-  lines.push('- **pillar1**: 압축 미설정 + CDN gzip — Unity 압축 Disabled, 평문 산출물을 서버가 on-the-fly gzip → 브라우저 네이티브 gzip 디코딩.');
+  lines.push('- **pillar1**: 압축 미설정 + CDN gzip — Unity 압축 Disabled, 평문 산출물을 서버가 on-the-fly gzip → 브라우저 네이티브 gzip 디코딩. **(baseline — 최적화 이전 상태)**');
   lines.push('- **pillar2**: 압축 O + Content-Encoding 누락 — Brotli .unityweb를 헤더 없이 전송 → Unity 로더 JS decompressionFallback 디코딩.');
-  lines.push('- **pillar3**: 압축 O + Content-Encoding O — Brotli .unityweb를 Content-Encoding: br 전송 → 브라우저 네이티브 Brotli 디코딩. **(정석 설정, baseline)**');
+  lines.push('- **pillar3**: 압축 O + Content-Encoding O — Brotli .unityweb를 Content-Encoding: br 전송 → 브라우저 네이티브 Brotli 디코딩. **(정석 설정)**');
   lines.push('');
   lines.push('## Notes');
   lines.push('- Each cell measures cold load: a fresh browser (all storage cleared), URL');
@@ -275,10 +309,11 @@ function writeMarkdown(rows, cells, file) {
   lines.push('  becoming a function, which Unity registers from `E2ETestTrigger.Awake()` —');
   lines.push('  i.e. bundle decode + engine boot + first scene load + first-frame game code.');
   lines.push(`- Networks: ${env.netStr}. CPU: ${env.cpuStr} slowdown.`);
-  lines.push('- Baseline is pillar3 (native Content-Encoding). pillar1/pillar2 overhead');
-  lines.push('  shows the cost of each non-ideal delivery configuration.');
-  lines.push('- Network slowdown amplifies transfer-size differences: pillar1 overhead is');
-  lines.push('  expected to be larger on LTE (slower link) than on WiFi.');
+  lines.push('- Baseline is pillar1 (압축 미설정 — 최적화 이전 상태). pillar2/pillar3 improvement');
+  lines.push('  shows how much faster each optimization step makes cold load (negative = faster).');
+  lines.push('- Network slowdown amplifies transfer-size differences: the improvement from');
+  lines.push('  pillar2/pillar3 is larger (in %) on WiFi, because the faster link makes the');
+  lines.push('  smaller Brotli bundle pay off proportionally more.');
   lines.push('- Warm (cached re-visit) is not measured: CDP network throttling bypasses the');
   lines.push('  HTTP disk cache, so a throttled warm load is indistinguishable from cold.');
   lines.push('- See `benchmark-report.csv` for the full per-cell statistics.');
@@ -298,12 +333,12 @@ function pivotTable(cells) {
   if (pillars.length === 0) return '_no data_';
 
   const pillarLabel = {
-    pillar1: 'pillar1 (압축 미설정+CDN gzip)',
+    pillar1: 'pillar1 (압축 미설정+CDN gzip, baseline)',
     pillar2: 'pillar2 (압축O+헤더X)',
     pillar3: 'pillar3 (압축O+헤더O, 정석)',
   };
 
-  const header = ['Unity 버전', ...pillars.map((p) => pillarLabel[p] || p), 'p1 vs p3 (ms / %)', 'p2 vs p3 (ms / %)'];
+  const header = ['Unity 버전', ...pillars.map((p) => pillarLabel[p] || p), 'p2 개선 (ms / %)', 'p3 개선 (ms / %)'];
   const lines = [];
   lines.push('| ' + header.join(' | ') + ' |');
   lines.push('| ' + header.map(() => '---').join(' | ') + ' |');
@@ -315,24 +350,29 @@ function pivotTable(cells) {
       const c = getCell(p);
       vals[p] = c && c.cold ? c.cold.median : null;
     }
-    const base = vals['pillar3'];
-    const p1diff = base != null && vals['pillar1'] != null ? vals['pillar1'] - base : null;
+    // baseline = pillar1. improvement = pillarN − pillar1 (음수 = 더 빠름 = 최적화 효과).
+    const base = vals['pillar1'];
     const p2diff = base != null && vals['pillar2'] != null ? vals['pillar2'] - base : null;
-    const fmtOverheadMd = (diff, base) => {
+    const p3diff = base != null && vals['pillar3'] != null ? vals['pillar3'] - base : null;
+    const fmtImprovementMd = (diff, base) => {
       if (diff == null) return '–';
       const ms = Math.round(diff);
       const pct = base != null && base !== 0 ? ((diff / base) * 100).toFixed(1) : null;
-      return pct != null ? `+${ms} ms / +${pct}%` : `+${ms} ms`;
+      const sign = ms <= 0 ? '' : '+';
+      return pct != null ? `${sign}${ms} ms / ${sign}${pct}%` : `${sign}${ms} ms`;
     };
 
     const row = [u];
     for (const p of pillars) {
       row.push(vals[p] != null ? formatMs(vals[p]) : '–');
     }
-    row.push(fmtOverheadMd(p1diff, base));
-    row.push(fmtOverheadMd(p2diff, base));
+    row.push(fmtImprovementMd(p2diff, base));
+    row.push(fmtImprovementMd(p3diff, base));
     lines.push('| ' + row.join(' | ') + ' |');
   }
+
+  lines.push('');
+  lines.push('> 개선 = pillarN − pillar1 (baseline). 음수 = pillar1 대비 더 빠름(최적화 효과).');
 
   return lines.join('\n');
 }
@@ -342,9 +382,9 @@ function networkCompareTable(cells, nets) {
   const unities = uniq(cells.map((c) => c.unity_version)).sort();
   const lines = [];
 
-  // 헤더: Unity 버전 | p1 overhead @net1 | p1 overhead @net2 | p2 overhead @net1 | p2 overhead @net2
+  // 헤더: Unity 버전 | p2 개선 @net | p3 개선 @net … (baseline = pillar1)
   const shortNet = (n) => n.replace('kr-', '').toUpperCase();
-  const header = ['Unity 버전', ...nets.flatMap((n) => [`p1 overhead @${shortNet(n)}`, `p2 overhead @${shortNet(n)}`])];
+  const header = ['Unity 버전', ...nets.flatMap((n) => [`p2 개선 @${shortNet(n)}`, `p3 개선 @${shortNet(n)}`])];
   lines.push('| ' + header.join(' | ') + ' |');
   lines.push('| ' + header.map(() => '---').join(' | ') + ' |');
 
@@ -356,23 +396,24 @@ function networkCompareTable(cells, nets) {
         const c = netCells.find((c) => c.unity_version === u && c.pillar === p);
         return c && c.cold ? c.cold.median : null;
       };
-      const base = getV('pillar3');
-      const p1 = getV('pillar1');
+      const base = getV('pillar1');
       const p2 = getV('pillar2');
-      const fmtOvNet = (val, b) => {
+      const p3 = getV('pillar3');
+      const fmtImpNet = (val, b) => {
         if (b == null || val == null) return '–';
         const ms = Math.round(val - b);
         const pct = b !== 0 ? ((val - b) / b * 100).toFixed(1) : null;
-        return pct != null ? `+${ms} ms / +${pct}%` : `+${ms} ms`;
+        const sign = ms <= 0 ? '' : '+';
+        return pct != null ? `${sign}${ms} ms / ${sign}${pct}%` : `${sign}${ms} ms`;
       };
-      row.push(fmtOvNet(p1, base));
-      row.push(fmtOvNet(p2, base));
+      row.push(fmtImpNet(p2, base));
+      row.push(fmtImpNet(p3, base));
     }
     lines.push('| ' + row.join(' | ') + ' |');
   }
 
   lines.push('');
-  lines.push('> 네트워크가 느릴수록(LTE) 전송량 차이가 크게 작용하므로 pillar1 overhead가 더 클 것으로 예상.');
+  lines.push('> 개선 = pillarN − pillar1 (baseline, 음수 = 더 빠름). 네트워크가 빠를수록(WiFi) 작은 Brotli 번들의 이득이 %로 더 커진다.');
 
   return lines.join('\n');
 }
@@ -387,6 +428,393 @@ function uniq(arr) {
 }
 
 // ---------------------------------------------------------------------------
+// 번들 용량 확장 추정 (100MB / 200MB)
+// ---------------------------------------------------------------------------
+// 측정 번들은 압축 후 약 22MB(현행)이다. 더 큰 게임이라면 어떻게 될지를
+// 측정값에서 외삽한다. cold load = 고정 비용(엔진 부팅·씬 로드, 번들 크기와
+// 무관) + 가변 비용(전송 + 디코딩, 번들 크기에 거의 선형). 가변 비용만 번들
+// 크기에 비례시켜 추정한다.
+//
+//   cold ≈ fixed + variable,  variable ∝ 압축 후 전송량
+//
+// 두 번들(작음=현행, 큼=가정)의 압축 후 크기 비 r 만큼 variable이 커진다고
+// 본다. fixed는 가장 빠른 필러(pillar3)의 절편으로 근사하기 어려우므로,
+// 보수적으로 cold 전체가 전송량에 선형 비례한다고 가정한 상한과, variable
+// 만 비례한다고 본 하한을 함께 제시한다. 압축 후 크기는 평문 크기에 거의
+// 비례하므로, 평문 100MB→압축 후 약 22MB, 평문 200MB→약 44MB로 본다.
+function extrapolationSummary(cells, nets) {
+  const med = (a) => { a = a.slice().sort((x, y) => x - y); return a.length ? a[Math.floor(a.length / 2)] : null; };
+  const avg = (a) => (a.length ? a.reduce((s, x) => s + x, 0) / a.length : null);
+
+  // 복수 CPU 데이터일 수 있으므로 외삽은 단일 CPU로 고정한다 (cpu-4x 우선,
+  // 없으면 등장하는 가장 작은 rate). 고정하지 않으면 네트워크별 셀에 여러 CPU가
+  // 섞여 평균이 왜곡된다.
+  const cpuRates = uniq(cells.map((c) => c.cpu_rate)).filter((x) => x != null);
+  const fixedCpu = cpuRates.includes(4) ? 4 : cpuRates.slice().sort((a, b) => a - b)[0];
+
+  // 필러×네트워크별 평균 cold load (ms)와 압축 후 전송량(MB) — cpu 고정
+  const result = nets.map((net) => {
+    const pick = (p) => {
+      const cs = cells.filter((c) => c.network === net && c.pillar === p && c.cpu_rate === fixedCpu && c.cold);
+      const ms = avg(cs.map((c) => c.cold.median).filter((v) => v != null));
+      const mb = avg(cs.map((c) => c.transfer_mb).filter((v) => v != null));
+      return { ms, mb };
+    };
+    const p1 = pick('pillar1'), p3 = pick('pillar3');
+    // 현행 압축 후 크기 (pillar3 기준 — Brotli .unityweb 전송량)
+    const curMB = p3.mb || 22;
+    // 현행 측정 번들의 평문 크기는 약 100MB(압축 후 ~22MB)다. 따라서 현행
+    // 측정값이 곧 "평문 100MB" 시나리오다. 확장 시나리오는 평문 200MB(2×)만.
+    const scenarios = [200].map((plainMB) => {
+      const ratio = plainMB / 100; // 현행 평문 ≈ 100MB 기준
+      // 전송량 = 현행 × ratio. cold load 추정: 전체 선형(상한)
+      const proj = (base) => base != null ? Math.round(base * ratio) : null;
+      return { plainMB, ratio,
+        p1: proj(p1.ms), p3: proj(p3.ms),
+        p1mb: Math.round((p1.mb || 30) * ratio), p3mb: Math.round(curMB * ratio) };
+    });
+    return { net, p1: p1.ms, p3: p3.ms, curMB, scenarios };
+  });
+  result.fixedCpu = fixedCpu;
+  return result;
+}
+
+function extrapolationMarkdown(cells, nets) {
+  const data = extrapolationSummary(cells, nets);
+  const lines = [];
+  lines.push('## 번들 용량이 더 크다면? — 100MB / 200MB 추정');
+  lines.push('');
+  lines.push('현행 측정 번들은 압축 후 약 22MB다. 실제 상용 게임은 더 클 수 있으므로,');
+  lines.push('측정값에서 외삽한 예상치를 적는다. cold load는 *고정 비용*(엔진 부팅·첫 씬');
+  lines.push('로드 — 번들 크기와 무관)과 *가변 비용*(다운로드+디코딩 — 번들 크기에 거의');
+  lines.push('선형)으로 나뉜다. 아래는 cold load 전체가 전송량에 선형 비례한다고 본 **상한');
+  lines.push('추정**(고정 비용도 함께 늘어난다고 가정 → 보수적으로 크게 잡음)이다.');
+  lines.push('');
+  for (const d of data) {
+    const fmt = (v) => (v == null ? '–' : `${(v / 1000).toFixed(1)}s`);
+    lines.push(`### ${networkLabel(d.net)}`);
+    lines.push('');
+    lines.push('| 번들(평문) | pillar1 (압축 미설정) | pillar3 (정석) | pillar3로 절감 |');
+    lines.push('| --- | --- | --- | --- |');
+    lines.push(`| 현행 ~100MB (측정값) | ${fmt(d.p1)} | ${fmt(d.p3)} | ${d.p1 && d.p3 ? `−${((d.p1 - d.p3) / 1000).toFixed(1)}s (−${(((d.p1 - d.p3) / d.p1) * 100).toFixed(0)}%)` : '–'} |`);
+    for (const s of d.scenarios) {
+      const save = s.p1 && s.p3 ? `−${((s.p1 - s.p3) / 1000).toFixed(1)}s (−${(((s.p1 - s.p3) / s.p1) * 100).toFixed(0)}%)` : '–';
+      lines.push(`| ${s.plainMB}MB (추정 ${s.ratio}×) | ${fmt(s.p1)} | ${fmt(s.p3)} | ${save} |`);
+    }
+    lines.push('');
+  }
+  lines.push('**해석**');
+  lines.push('- 번들이 2배 커지면 cold load도 대략 2배가 된다 — 가변 비용(전송·디코딩)이');
+  lines.push('  지배적이기 때문이다. 따라서 큰 번들일수록 압축/헤더 설정의 *절대* 이득(초 단위)이');
+  lines.push('  비례해서 커진다. 현행(평문 ~100MB)에서 약 1초를 줄였다면, 평문 200MB에서는');
+  lines.push('  약 2초를 줄인다.');
+  lines.push('- **%** 절감률은 번들 크기와 무관하게 거의 일정하다 — pillar1→pillar3 전환은 전송량을');
+  lines.push('  같은 비율(약 0.73배)로 줄이므로, 100MB든 200MB든 비슷한 % 개선을 유지한다.');
+  lines.push('- 단 200MB 평문(압축 후 ~44MB)급에서는 메모리 압박·디코딩 CPU 시간이 비선형으로');
+  lines.push('  늘 수 있어, 실제로는 위 상한 추정보다 *나쁠* 가능성이 있다. 큰 번들일수록 압축/헤더를');
+  lines.push('  제대로 설정하는 것(pillar3)이 더 중요해진다.');
+  return lines.join('\n');
+}
+
+// HTML — 번들 용량 확장 추정 섹션 (100MB / 200MB)
+function extrapolationHtml(cells, nets) {
+  const data = extrapolationSummary(cells, nets);
+  const sec = (v) => (v == null ? '–' : `${(v / 1000).toFixed(1)}s`);
+  const tables = data.map((d) => {
+    const rows = [
+      { label: '현행 ~100MB (측정값)', p1: d.p1, p3: d.p3 },
+      ...d.scenarios.map((s) => ({ label: `${s.plainMB}MB (추정 ${s.ratio}×)`, p1: s.p1, p3: s.p3 })),
+    ].map((r) => {
+      const save = r.p1 && r.p3
+        ? `<b style="color:#6fd0a0">−${((r.p1 - r.p3) / 1000).toFixed(1)}s</b> <span style="color:#9aa0ac">(−${(((r.p1 - r.p3) / r.p1) * 100).toFixed(0)}%)</span>`
+        : '–';
+      return `<tr><td>${esc(r.label)}</td><td class="num">${sec(r.p1)}</td><td class="num">${sec(r.p3)}</td><td class="num">${save}</td></tr>`;
+    }).join('\n');
+    return `<h3>${esc(networkLabel(d.net))}</h3>
+  <table class="cmp">
+    <thead><tr><th>번들 (평문 크기)</th><th>pillar1 (압축 미설정)</th><th>pillar3 (정석)</th><th>pillar3로 절감</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+  }).join('\n');
+
+  return `<h2>5. 번들 용량이 더 크다면? — 100MB / 200MB 추정</h2>
+  <div class="callout">
+    현행 측정 번들은 압축 후 약 22MB다. 실제 상용 게임은 더 클 수 있으므로,
+    측정값에서 외삽한 <b>상한 추정</b>을 적는다. cold load는
+    <b>고정 비용</b>(엔진 부팅·첫 씬 로드 — 번들 크기와 무관)과
+    <b>가변 비용</b>(다운로드+디코딩 — 번들 크기에 거의 선형)으로 나뉘며,
+    아래는 전체가 전송량에 선형 비례한다고 본 보수적(크게 잡은) 추정이다.
+  </div>
+  ${tables}
+  <div class="pillar-legend" style="margin-top:14px;">
+    <div class="lh">해석 — 번들이 커질수록</div>
+    <p style="margin:8px 16px;color:#c8ccd4;line-height:1.7;">
+      • <b>절대 절감(초)은 번들에 비례해 커진다.</b> 가변 비용(전송·디코딩)이 지배적이라,
+        현행(평문 ~100MB)에서 약 1초를 줄였다면 평문 200MB에서는 약 2초를 줄인다.<br>
+      • <b>% 절감률은 번들 크기와 거의 무관하게 일정하다.</b> pillar1→pillar3 전환은 전송량을
+        같은 비율(약 0.73배)로 줄이므로, 100MB든 200MB든 비슷한 % 개선을 유지한다.<br>
+      • 단 평문 200MB(압축 후 ~44MB)급에서는 메모리 압박·디코딩 CPU 시간이 비선형으로
+        늘 수 있어, 실제로는 위 상한 추정보다 <b>나쁠</b> 가능성이 있다.
+        <b>큰 번들일수록 압축/헤더를 제대로 설정하는 것(pillar3)이 더 중요해진다.</b>
+    </p>
+  </div>`;
+}
+
+// ---------------------------------------------------------------------------
+// 가설 검증 섹션 (H1 / H2) — benchmark-hypothesis-results.jsonl 전용.
+// ---------------------------------------------------------------------------
+// 데이터에 가설 전용 네트워크(kr-lte-slow/kr-lte-fast)가 등장할 때만 렌더한다.
+// 기존 3-필러 JSONL에는 이 네트워크가 없으므로 자동으로 비활성화 → 하위 호환.
+function isHypothesisData(cells) {
+  return cells.some((c) => c.network === 'kr-lte-slow' || c.network === 'kr-lte-fast');
+}
+
+// 한 단계 절감(ms)의 중앙값을 (unity, axisValue)별로 집계.
+//   step='p1p2' → pillar1.median − pillar2.median
+//   step='p2p3' → pillar2.median − pillar3.median
+// 절감이 양수면 그 단계가 cold load를 줄였다는 뜻.
+function stepSavingByAxis(cells, { step, axis, fixed }) {
+  // axis: 'network' | 'cpu_rate' — 가변 축. fixed: 다른 축을 고정하는 {key,val}.
+  const fromP = step === 'p1p2' ? 'pillar1' : 'pillar2';
+  const toP = step === 'p1p2' ? 'pillar2' : 'pillar3';
+  const unities = uniq(cells.map((c) => c.unity_version)).sort();
+  const scoped = fixed ? cells.filter((c) => c[fixed.key] === fixed.val) : cells;
+  const axisVals = uniq(scoped.map((c) => c[axis])).filter((x) => x != null);
+  // network 축은 의미 순서(slow→fast→wifi), cpu 축은 수치 오름차순.
+  const NET_ORDER = ['kr-lte-slow', 'kr-lte-fast', 'kr-wifi', 'kr-lte'];
+  axisVals.sort((a, b) =>
+    axis === 'network' ? NET_ORDER.indexOf(a) - NET_ORDER.indexOf(b) : a - b);
+
+  const med = (u, axisVal, pillar) => {
+    const c = scoped.find(
+      (x) => x.unity_version === u && x[axis] === axisVal && x.pillar === pillar && x.cold,
+    );
+    return c && c.cold ? c.cold.median : null;
+  };
+  // rows[unity] = [{axisVal, savingMs, savingPct}, …]
+  const rows = unities.map((u) => ({
+    unity: u,
+    cells: axisVals.map((axisVal) => {
+      const from = med(u, axisVal, fromP);
+      const to = med(u, axisVal, toP);
+      const savingMs = from != null && to != null ? Math.round(from - to) : null;
+      const savingPct =
+        from != null && to != null && from !== 0
+          ? Number((((from - to) / from) * 100).toFixed(1))
+          : null;
+      return { axisVal, savingMs, savingPct, fromMs: from, toMs: to };
+    }),
+  }));
+  // axisVal별 unity 평균 절감
+  const avgByAxis = axisVals.map((axisVal, ai) => {
+    const ms = rows.map((r) => r.cells[ai].savingMs).filter((v) => v != null);
+    const pct = rows.map((r) => r.cells[ai].savingPct).filter((v) => v != null);
+    return {
+      axisVal,
+      avgMs: ms.length ? Math.round(ms.reduce((s, x) => s + x, 0) / ms.length) : null,
+      avgPct: pct.length
+        ? Number((pct.reduce((s, x) => s + x, 0) / pct.length).toFixed(1))
+        : null,
+    };
+  });
+  return { unities, axisVals, rows, avgByAxis };
+}
+
+// 느린쪽/빠른쪽 절감 비율로 가설 지지 여부를 한 줄 판정.
+//   slow = 가설이 "효과가 클 것"이라 예측하는 쪽(느린 네트워크 / 느린 CPU).
+//   fast = 그 반대.
+function hypothesisVerdict(slowMs, fastMs) {
+  if (slowMs == null || fastMs == null) return { tone: 'na', text: '데이터 부족 — 판정 불가' };
+  if (fastMs <= 0 && slowMs <= 0) return { tone: 'na', text: '양쪽 절감이 0 이하 — 판정 불가' };
+  if (fastMs <= 0)
+    return { tone: 'support', text: `빠른쪽 절감이 0 이하, 느린쪽만 ${slowMs}ms 절감 — 가설 강하게 지지` };
+  const ratio = slowMs / fastMs;
+  if (ratio >= 1.5)
+    return { tone: 'support', text: `느린쪽이 빠른쪽의 ${ratio.toFixed(2)}배 절감 — 가설 강하게 지지` };
+  if (ratio >= 1.05)
+    return { tone: 'support', text: `느린쪽이 빠른쪽의 ${ratio.toFixed(2)}배 절감 — 가설 지지` };
+  if (ratio >= 0.95)
+    return { tone: 'weak', text: `느린쪽/빠른쪽 비율 ${ratio.toFixed(2)} (±5%) — 가설 미지지 (효과 차이 미미)` };
+  return { tone: 'refute', text: `느린쪽이 빠른쪽의 ${ratio.toFixed(2)}배 — 오히려 빠른쪽 절감이 큼, 가설 반증` };
+}
+
+// H1·H2 두 섹션의 HTML. 가설 데이터가 아니면 빈 문자열 → 섹션 자체가 사라진다.
+function hypothesisSectionsHtml(cells) {
+  if (!isHypothesisData(cells)) return { html: '', chartJs: '' };
+
+  // H1 — 가설 1: p1→p2 절감을 network별로 (cpu-4x 고정).
+  const cpus = uniq(cells.map((c) => c.cpu_rate)).filter((x) => x != null);
+  const h1Cpu = cpus.includes(4) ? 4 : cpus.slice().sort((a, b) => a - b)[0];
+  const h1 = stepSavingByAxis(cells, {
+    step: 'p1p2',
+    axis: 'network',
+    fixed: { key: 'cpu_rate', val: h1Cpu },
+  });
+
+  // H2 — 가설 2: p2→p3 절감을 cpu별로 (kr-lte-slow 고정, 없으면 가장 느린 net).
+  const NET_ORDER = ['kr-lte-slow', 'kr-lte-fast', 'kr-wifi', 'kr-lte'];
+  const netsPresent = uniq(cells.map((c) => c.network)).filter(Boolean);
+  const h2Net = netsPresent.includes('kr-lte-slow')
+    ? 'kr-lte-slow'
+    : netsPresent.slice().sort((a, b) => NET_ORDER.indexOf(a) - NET_ORDER.indexOf(b))[0];
+  const h2 = stepSavingByAxis(cells, {
+    step: 'p2p3',
+    axis: 'cpu_rate',
+    fixed: { key: 'network', val: h2Net },
+  });
+
+  // 판정 — H1: 느린 네트워크(slow) vs 빠른쪽(wifi).
+  const h1Slow = h1.avgByAxis.find((a) => a.axisVal === 'kr-lte-slow');
+  const h1Fast = h1.avgByAxis.find((a) => a.axisVal === 'kr-wifi')
+    || h1.avgByAxis.find((a) => a.axisVal === 'kr-lte-fast');
+  const h1Verdict = hypothesisVerdict(h1Slow?.avgMs, h1Fast?.avgMs);
+  // 판정 — H2: 느린 CPU(가장 큰 rate) vs 빠른 CPU(가장 작은 rate).
+  const h2Sorted = h2.avgByAxis.slice().sort((a, b) => a.axisVal - b.axisVal);
+  const h2Fast = h2Sorted[0];
+  const h2Slow = h2Sorted[h2Sorted.length - 1];
+  const h2Verdict = hypothesisVerdict(h2Slow?.avgMs, h2Fast?.avgMs);
+
+  const verdictBox = (v) => {
+    const bg = { support: '#142a1f', weak: '#2a2410', refute: '#2a1410', na: '#1a1d26' }[v.tone];
+    const bd = { support: '#3fa06f', weak: '#c0a020', refute: '#c04040', na: '#2a2e38' }[v.tone];
+    const fg = { support: '#6fd0a0', weak: '#f5d08a', refute: '#f08a8a', na: '#9aa0ac' }[v.tone];
+    return `<div style="background:${bg};border-left:4px solid ${bd};border-radius:6px;padding:11px 16px;margin:14px 0;color:${fg};font-size:14px;"><b>자동 판정:</b> ${esc(v.text)}</div>`;
+  };
+
+  // 절감 표 (unity × axis) — ms / %
+  const savingTable = (data, axisLabel, axisFmt) => {
+    const head = ['Unity 버전', ...data.axisVals.map((a) => `${esc(axisFmt(a))} (ms / %)`)];
+    const fmtCell = (c) =>
+      c.savingMs == null
+        ? '–'
+        : `<b style="color:${c.savingMs >= 0 ? '#6fd0a0' : '#f99c4f'}">${c.savingMs >= 0 ? '−' : '+'}${Math.abs(c.savingMs)} ms</b>`
+          + ` <span style="color:#9aa0ac;font-size:11px">${c.savingPct != null ? `(${c.savingPct >= 0 ? '−' : '+'}${Math.abs(c.savingPct)}%)` : ''}</span>`;
+    const body = data.rows
+      .map((r) => `<tr><td>${esc(r.unity)}</td>${r.cells.map((c) => `<td class="num">${fmtCell(c)}</td>`).join('')}</tr>`)
+      .join('\n');
+    const avgRow = `<tr style="background:#181b23"><td><b>평균</b></td>${data.avgByAxis
+      .map((a) => `<td class="num"><b style="color:${(a.avgMs ?? 0) >= 0 ? '#6fd0a0' : '#f99c4f'}">${a.avgMs == null ? '–' : `${a.avgMs >= 0 ? '−' : '+'}${Math.abs(a.avgMs)} ms`}</b> <span style="color:#9aa0ac;font-size:11px">${a.avgPct != null ? `(${a.avgPct >= 0 ? '−' : '+'}${Math.abs(a.avgPct)}%)` : ''}</span></td>`)
+      .join('')}</tr>`;
+    return `<table class="cmp"><thead><tr>${head.map((h) => `<th>${h}</th>`).join('')}</tr></thead><tbody>${body}\n${avgRow}</tbody></table>`;
+  };
+
+  const netFmt = (n) => networkLabel(n);
+  const cpuFmt = (r) => `cpu-${r}×`;
+
+  const html = `
+  <!-- ===== H1 — 가설 1 검증 (p1→p2, 네트워크 축) ===== -->
+  <h2 style="margin-top:48px;border-color:#3a7bd5;color:#7ab8f5">H1. 가설 1 검증 — Brotli 압축(p1→p2)의 효과는 네트워크가 느릴수록 큰가?</h2>
+  <div class="callout">
+    <b>가설 1:</b> pillar1→pillar2 단계는 Brotli 압축으로 전송량을 줄인다(~30MB→~22MB).
+    전송 시간 절감이므로 <b>느린 네트워크일수록 절감(ms)이 커야</b> 한다.
+    아래는 cpu-${h1Cpu}× 고정, network를 slow/fast/wifi로 바꿔가며 잰 p1→p2 절감이다.
+  </div>
+  <div class="chartbox"><canvas id="c_h1"></canvas></div>
+  <div class="note">↑ x축 = 네트워크(느림→빠름), 막대 = p1→p2 절감(ms). 막대가 높을수록 압축 효과가 크다.</div>
+  ${savingTable(h1, '네트워크', netFmt)}
+  <div class="note">절감 = pillar1.median − pillar2.median. 양수(초록) = 압축으로 빨라짐.</div>
+  ${verdictBox(h1Verdict)}
+
+  <!-- ===== H2 — 가설 2 검증 (p2→p3, CPU 축) ===== -->
+  <h2 style="margin-top:48px;border-color:#3a7bd5;color:#7ab8f5">H2. 가설 2 검증 — Content-Encoding 헤더(p2→p3)의 효과는 CPU가 느릴수록 큰가?</h2>
+  <div class="callout">
+    <b>가설 2:</b> pillar2→pillar3 단계는 디코딩을 JS <code>decompressionFallback</code>에서
+    브라우저 네이티브 Brotli로 바꾼다. 디코딩은 CPU 바운드이므로
+    <b>느린 CPU일수록 절감(ms)이 커야</b> 한다.
+    아래는 ${esc(networkLabel(h2Net))} 고정, CPU를 2×/4×/6×로 바꿔가며 잰 p2→p3 절감이다.
+  </div>
+  <div class="chartbox"><canvas id="c_h2"></canvas></div>
+  <div class="note">↑ x축 = CPU 슬로우다운(느릴수록 오른쪽), 선 = p2→p3 절감(ms). 우상향이면 가설 지지.</div>
+  ${savingTable(h2, 'CPU', cpuFmt)}
+  <div class="note">절감 = pillar2.median − pillar3.median. 양수(초록) = 네이티브 디코딩으로 빨라짐.</div>
+  ${verdictBox(h2Verdict)}`;
+
+  // 차트 데이터 — H1 막대(네트워크별 unity 계열), H2 라인(CPU별 unity 계열).
+  const h1Labels = h1.axisVals.map(netFmt);
+  const h1Series = h1.unities.map((u, ui) => ({
+    label: `Unity ${u}`,
+    data: h1.rows[ui].cells.map((c) => c.savingMs),
+  }));
+  const h2Labels = h2.axisVals.map(cpuFmt);
+  const h2Series = h2.unities.map((u, ui) => ({
+    label: `Unity ${u}`,
+    data: h2.rows[ui].cells.map((c) => c.savingMs),
+  }));
+  const chartJs = `
+// 가설 검증 차트
+mkBar('c_h1', ${JSON.stringify(h1Labels)}, ${JSON.stringify(h1Series)}, 'p1→p2 절감 (ms) — 느린 네트워크일수록 커야 가설 지지');
+mkLine('c_h2', ${JSON.stringify(h2Labels)}, ${JSON.stringify(h2Series)}, 'p2→p3 절감 (ms) — 느린 CPU일수록 커야 가설 지지');`;
+
+  return { html, chartJs };
+}
+
+// 가설 검증 H1/H2 — Markdown. 가설 데이터가 아니면 빈 문자열.
+function hypothesisMarkdown(cells) {
+  if (!isHypothesisData(cells)) return '';
+
+  const cpus = uniq(cells.map((c) => c.cpu_rate)).filter((x) => x != null);
+  const h1Cpu = cpus.includes(4) ? 4 : cpus.slice().sort((a, b) => a - b)[0];
+  const h1 = stepSavingByAxis(cells, { step: 'p1p2', axis: 'network', fixed: { key: 'cpu_rate', val: h1Cpu } });
+
+  const NET_ORDER = ['kr-lte-slow', 'kr-lte-fast', 'kr-wifi', 'kr-lte'];
+  const netsPresent = uniq(cells.map((c) => c.network)).filter(Boolean);
+  const h2Net = netsPresent.includes('kr-lte-slow')
+    ? 'kr-lte-slow'
+    : netsPresent.slice().sort((a, b) => NET_ORDER.indexOf(a) - NET_ORDER.indexOf(b))[0];
+  const h2 = stepSavingByAxis(cells, { step: 'p2p3', axis: 'cpu_rate', fixed: { key: 'network', val: h2Net } });
+
+  const h1Slow = h1.avgByAxis.find((a) => a.axisVal === 'kr-lte-slow');
+  const h1Fast = h1.avgByAxis.find((a) => a.axisVal === 'kr-wifi')
+    || h1.avgByAxis.find((a) => a.axisVal === 'kr-lte-fast');
+  const h1Verdict = hypothesisVerdict(h1Slow?.avgMs, h1Fast?.avgMs);
+  const h2Sorted = h2.avgByAxis.slice().sort((a, b) => a.axisVal - b.axisVal);
+  const h2Verdict = hypothesisVerdict(
+    h2Sorted[h2Sorted.length - 1]?.avgMs, h2Sorted[0]?.avgMs);
+
+  const fmtSave = (c) => {
+    if (c.savingMs == null) return '–';
+    const ms = `${c.savingMs >= 0 ? '−' : '+'}${Math.abs(c.savingMs)} ms`;
+    const pct = c.savingPct != null ? ` / ${c.savingPct >= 0 ? '−' : '+'}${Math.abs(c.savingPct)}%` : '';
+    return ms + pct;
+  };
+  const fmtAvg = (a) => {
+    if (a.avgMs == null) return '–';
+    const ms = `${a.avgMs >= 0 ? '−' : '+'}${Math.abs(a.avgMs)} ms`;
+    const pct = a.avgPct != null ? ` / ${a.avgPct >= 0 ? '−' : '+'}${Math.abs(a.avgPct)}%` : '';
+    return ms + pct;
+  };
+  const table = (data, axisFmt) => {
+    const header = ['Unity 버전', ...data.axisVals.map(axisFmt)];
+    const out = ['| ' + header.join(' | ') + ' |', '| ' + header.map(() => '---').join(' | ') + ' |'];
+    for (const r of data.rows) {
+      out.push('| ' + [r.unity, ...r.cells.map(fmtSave)].join(' | ') + ' |');
+    }
+    out.push('| **평균** | ' + data.avgByAxis.map(fmtAvg).join(' | ') + ' |');
+    return out.join('\n');
+  };
+
+  const lines = [];
+  lines.push('## H1. 가설 1 검증 — Brotli 압축(p1→p2)의 효과는 네트워크가 느릴수록 큰가?');
+  lines.push('');
+  lines.push(`pillar1→pillar2 절감 = pillar1.median − pillar2.median (cpu-${h1Cpu}× 고정).`);
+  lines.push('느린 네트워크일수록 절감(ms)이 크면 가설 지지.');
+  lines.push('');
+  lines.push(table(h1, networkLabel));
+  lines.push('');
+  lines.push(`**자동 판정:** ${h1Verdict.text}`);
+  lines.push('');
+  lines.push('## H2. 가설 2 검증 — Content-Encoding 헤더(p2→p3)의 효과는 CPU가 느릴수록 큰가?');
+  lines.push('');
+  lines.push(`pillar2→pillar3 절감 = pillar2.median − pillar3.median (${networkLabel(h2Net)} 고정).`);
+  lines.push('느린 CPU일수록 절감(ms)이 크면 가설 지지.');
+  lines.push('');
+  lines.push(table(h2, (r) => `cpu-${r}×`));
+  lines.push('');
+  lines.push(`**자동 판정:** ${h2Verdict.text}`);
+  return lines.join('\n');
+}
+
+// ---------------------------------------------------------------------------
 // HTML 리포트 — 차트(Chart.js) + 표 + raw data 내장 단일 파일.
 // ---------------------------------------------------------------------------
 
@@ -398,14 +826,14 @@ function writeHtml(rows, cells, file) {
 
   // 3-필러 정의 (표시용 레이블)
   const PILLAR_LABELS = {
-    pillar1: 'pillar1 — 압축 미설정+CDN gzip',
+    pillar1: 'pillar1 — 압축 미설정+CDN gzip (baseline)',
     pillar2: 'pillar2 — 압축O+헤더X (jsfallback)',
-    pillar3: 'pillar3 — 압축O+헤더O (정석, baseline)',
+    pillar3: 'pillar3 — 압축O+헤더O (정석)',
   };
   const PILLAR_SHORT = {
-    pillar1: 'pillar1',
+    pillar1: 'pillar1 (baseline)',
     pillar2: 'pillar2',
-    pillar3: 'pillar3 (baseline)',
+    pillar3: 'pillar3',
   };
   const allPillars = ['pillar1', 'pillar2', 'pillar3'];
   // 데이터에 실제로 등장하는 필러만
@@ -434,11 +862,11 @@ function writeHtml(rows, cells, file) {
   // ----------------------------------------------------------------
   // ============================================================
   // 비교 방향:
-  //   baseline = pillar3 (정석 — Content-Encoding: br + 네이티브 Brotli)
-  //   pillar1 overhead = pillar1 − pillar3 (양수 = pillar3보다 느림)
-  //   pillar2 overhead = pillar2 − pillar3 (양수 = pillar3보다 느림)
-  // pillar3이 가장 빠르다고 가정. 만약 실측에서 다른 필러가 더 빠르면
-  // overhead가 음수로 표시된다.
+  //   baseline = pillar1 (압축 미설정 + CDN gzip — 최적화 이전 상태)
+  //   pillar2 improvement = pillar2 − pillar1 (음수 = pillar1보다 빠름 = 최적화 효과)
+  //   pillar3 improvement = pillar3 − pillar1 (음수 = pillar1보다 빠름 = 최적화 효과)
+  // pillar1이 가장 느리다고 가정. improvement가 음수일수록 최적화 효과가 크다.
+  // % 개선 = (pillarN − pillar1) / pillar1 × 100 (음수 = N% 빨라짐).
   // ============================================================
   function buildNetworkData(netCells, idSuffix) {
     // cell lookup: (unity_version, pillar) → cell (해당 network만)
@@ -455,62 +883,73 @@ function writeHtml(rows, cells, file) {
     const p2data = pillarMedians('pillar2');
     const p3data = pillarMedians('pillar3');
 
-    // pillar1/2의 pillar3 대비 overhead (ms)
-    const overheadData = (pData) =>
+    // pillar2/3의 pillar1 대비 improvement (ms) — 음수 = 더 빠름
+    const improvementData = (pData) =>
       unities.map((u, i) => {
-        const base = p3data[i];
+        const base = p1data[i];
         const val = pData[i];
         if (base == null || val == null) return null;
         return Math.round(val - base);
       });
-    const p1overhead = overheadData(p1data);
-    const p2overhead = overheadData(p2data);
+    const p2improvement = improvementData(p2data);
+    const p3improvement = improvementData(p3data);
 
-    // % overhead
-    const overheadPct = (pData) =>
+    // % improvement — 음수 = N% 빨라짐
+    const improvementPct = (pData) =>
       unities.map((u, i) => {
-        const base = p3data[i];
+        const base = p1data[i];
         const val = pData[i];
         if (base == null || val == null || base === 0) return null;
         return Number(((val - base) / base) * 100).toFixed(1);
       });
-    const p1overheadPct = overheadPct(p1data);
-    const p2overheadPct = overheadPct(p2data);
+    const p2improvementPct = improvementPct(p2data);
+    const p3improvementPct = improvementPct(p3data);
 
-    const p1overheadAvg = avgOf(p1overhead);
-    const p2overheadAvg = avgOf(p2overhead);
-    const p1overheadPctAvg = avgPctOf(p1overheadPct);
-    const p2overheadPctAvg = avgPctOf(p2overheadPct);
+    const p2improvementAvg = avgOf(p2improvement);
+    const p3improvementAvg = avgOf(p3improvement);
+    const p2improvementPctAvg = avgPctOf(p2improvementPct);
+    const p3improvementPctAvg = avgPctOf(p3improvementPct);
+
+    // 필러별 cold load 평균 (Unity 버전 전체) — 요약 카드에서 절대 시간 표시용
+    const p1loadAvg = avgOf(p1data);
+    const p2loadAvg = avgOf(p2data);
+    const p3loadAvg = avgOf(p3data);
 
     // 차트 데이터셋
     const c1series = presentPillars.map((p) => ({
       label: PILLAR_SHORT[p] || p,
       data: unities.map((u) => { const c = cellMap(u, p); return c && c.cold ? c.cold.median : null; }),
     }));
+    // c2: pillar1 baseline에서 각 최적화 단계가 깎아내는 양을 스택으로.
+    // base = 최종(pillar3) cold load, 그 위에 절감분을 쌓아 pillar1 높이까지.
     const c2series = [
-      { label: 'pillar3 (baseline)', kind: 'base',
+      { label: 'pillar3 (최종 도달)', kind: 'base',
         data: unities.map((u, i) => (p3data[i] != null ? Math.round(p3data[i]) : null)) },
       ...(presentPillars.includes('pillar2')
-        ? [{ label: 'pillar2 overhead vs pillar3', kind: 'gain', data: p2overhead }] : []),
+        ? [{ label: '헤더 추가로 추가 절감 (pillar2→pillar3)', kind: 'gain',
+             data: unities.map((u, i) =>
+               p2data[i] != null && p3data[i] != null ? Math.round(p2data[i] - p3data[i]) : null) }] : []),
       ...(presentPillars.includes('pillar1')
-        ? [{ label: 'pillar1 overhead vs pillar3', kind: 'gain2', data: p1overhead }] : []),
+        ? [{ label: 'Brotli 압축으로 절감 (pillar1→pillar2)', kind: 'gain2',
+             data: unities.map((u, i) =>
+               p1data[i] != null && p2data[i] != null ? Math.round(p1data[i] - p2data[i]) : null) }] : []),
     ];
     const c3series = [];
-    if (presentPillars.includes('pillar1'))
-      c3series.push({ label: 'pillar1 overhead (ms)', data: p1overhead });
     if (presentPillars.includes('pillar2'))
-      c3series.push({ label: 'pillar2 overhead (ms)', data: p2overhead });
+      c3series.push({ label: 'pillar2 개선 (ms)', data: p2improvement });
+    if (presentPillars.includes('pillar3'))
+      c3series.push({ label: 'pillar3 개선 (ms)', data: p3improvement });
     const c4series = [];
-    if (presentPillars.includes('pillar1'))
-      c4series.push({ label: 'pillar1 overhead (%)', data: p1overheadPct.map((v) => (v != null ? Number(v) : null)) });
     if (presentPillars.includes('pillar2'))
-      c4series.push({ label: 'pillar2 overhead (%)', data: p2overheadPct.map((v) => (v != null ? Number(v) : null)) });
+      c4series.push({ label: 'pillar2 개선 (%)', data: p2improvementPct.map((v) => (v != null ? Number(v) : null)) });
+    if (presentPillars.includes('pillar3'))
+      c4series.push({ label: 'pillar3 개선 (%)', data: p3improvementPct.map((v) => (v != null ? Number(v) : null)) });
 
-    // Unity 버전별 비교 표 행
-    const fmtOv = (v) =>
-      v == null ? '–' : v > 0 ? `<b style="color:#f99c4f">+${v}</b>` : `<b style="color:#6fd0a0">${v}</b>`;
+    // Unity 버전별 비교 표 행 — 음수(개선)는 초록, 양수(악화)는 주황
+    const fmtImp = (v) =>
+      v == null ? '–' : v <= 0 ? `<b style="color:#6fd0a0">${v}</b>` : `<b style="color:#f99c4f">+${v}</b>`;
     const fmtPct = (v) =>
-      v == null ? '–' : Number(v) > 0 ? `<b style="color:#f99c4f">+${v}%</b>` : `<b style="color:#6fd0a0">${v}%</b>`;
+      v == null ? '–' : Number(v) <= 0 ? `<b style="color:#6fd0a0">${v}%</b>` : `<b style="color:#f99c4f">+${v}%</b>`;
     const unityTableRows = unities.map((u, i) => {
       const p1 = p1data[i];
       const p2 = p2data[i];
@@ -519,35 +958,47 @@ function writeHtml(rows, cells, file) {
       return `<tr>
 <td>${esc(u)}</td>
 <td class="num">${mb}</td>
-<td class="num">${p3 != null ? Math.round(p3) : '–'}</td>
-<td class="num">${p2 != null ? Math.round(p2) : '–'}</td>
 <td class="num">${p1 != null ? Math.round(p1) : '–'}</td>
-<td class="num">${fmtOv(p2overhead[i])} <span style="color:#9aa0ac;font-size:11px">${fmtPct(p2overheadPct[i])}</span></td>
-<td class="num">${fmtOv(p1overhead[i])} <span style="color:#9aa0ac;font-size:11px">${fmtPct(p1overheadPct[i])}</span></td>
+<td class="num">${p2 != null ? Math.round(p2) : '–'}</td>
+<td class="num">${p3 != null ? Math.round(p3) : '–'}</td>
+<td class="num">${fmtImp(p2improvement[i])} <span style="color:#9aa0ac;font-size:11px">${fmtPct(p2improvementPct[i])}</span></td>
+<td class="num">${fmtImp(p3improvement[i])} <span style="color:#9aa0ac;font-size:11px">${fmtPct(p3improvementPct[i])}</span></td>
 </tr>`;
     }).join('\n');
 
-    return { p1overheadAvg, p2overheadAvg, p1overheadPctAvg, p2overheadPctAvg,
+    return { p2improvementAvg, p3improvementAvg, p2improvementPctAvg, p3improvementPctAvg,
+             p1loadAvg, p2loadAvg, p3loadAvg,
              c1series, c2series, c3series, c4series, unityTableRows, idSuffix };
   }
 
-  // network별 데이터 빌드
-  const netDataList = env.nets.map((net, ni) => {
-    const netCells = cells.filter((c) => c.network === net);
-    return { net, label: networkLabel(net), ...buildNetworkData(netCells, `n${ni}`) };
+  // network × cpu별 데이터 빌드. cpu가 1개면 net 수만큼만 슬라이스가 생겨
+  // 기존 3-필러 리포트와 하위 호환된다. 복수 cpu면 (net, cpu) 슬라이스마다
+  // 차트·표·카드가 분리돼 첫 매칭만 쓰던 버그가 사라진다.
+  const multiCpu = env.cpus.length > 1;
+  const netCpuSlices = [];
+  for (const net of env.nets) {
+    for (const cpu of env.cpus) {
+      const slice = cells.filter((c) => c.network === net && c.cpu_rate === cpu);
+      if (slice.length > 0) netCpuSlices.push({ net, cpu });
+    }
+  }
+  const netDataList = netCpuSlices.map(({ net, cpu }, ni) => {
+    const netCells = cells.filter((c) => c.network === net && c.cpu_rate === cpu);
+    const label = multiCpu ? `${networkLabel(net)} · cpu ${cpu}×` : networkLabel(net);
+    return { net, cpu, label, ...buildNetworkData(netCells, `n${ni}`) };
   });
 
-  // 전체 요약용 (모든 network 평균)
-  const allP1overheadAvg = avgOf(netDataList.map((d) => d.p1overheadAvg).filter((v) => v != null));
-  const allP2overheadAvg = avgOf(netDataList.map((d) => d.p2overheadAvg).filter((v) => v != null));
-  const allP1overheadPctAvg = avgPctOf(netDataList.map((d) => d.p1overheadPctAvg).filter((v) => v != null));
-  const allP2overheadPctAvg = avgPctOf(netDataList.map((d) => d.p2overheadPctAvg).filter((v) => v != null));
+  // 전체 요약용 (모든 network 평균) — baseline pillar1 대비 개선
+  const allP2impAvg = avgOf(netDataList.map((d) => d.p2improvementAvg).filter((v) => v != null));
+  const allP3impAvg = avgOf(netDataList.map((d) => d.p3improvementAvg).filter((v) => v != null));
+  const allP2impPctAvg = avgPctOf(netDataList.map((d) => d.p2improvementPctAvg).filter((v) => v != null));
+  const allP3impPctAvg = avgPctOf(netDataList.map((d) => d.p3improvementPctAvg).filter((v) => v != null));
 
   // 요약 카드에 사용할 값 (단일 network면 그 값, 복수면 전체 평균)
-  const p2overheadAvg = netDataList.length === 1 ? netDataList[0].p2overheadAvg : allP2overheadAvg;
-  const p1overheadAvg = netDataList.length === 1 ? netDataList[0].p1overheadAvg : allP1overheadAvg;
-  const p2overheadPctAvg = netDataList.length === 1 ? netDataList[0].p2overheadPctAvg : allP2overheadPctAvg;
-  const p1overheadPctAvg = netDataList.length === 1 ? netDataList[0].p1overheadPctAvg : allP1overheadPctAvg;
+  const p2impAvg = netDataList.length === 1 ? netDataList[0].p2improvementAvg : allP2impAvg;
+  const p3impAvg = netDataList.length === 1 ? netDataList[0].p3improvementAvg : allP3impAvg;
+  const p2impPctAvg = netDataList.length === 1 ? netDataList[0].p2improvementPctAvg : allP2impPctAvg;
+  const p3impPctAvg = netDataList.length === 1 ? netDataList[0].p3improvementPctAvg : allP3impPctAvg;
 
   // ----------------------------------------------------------------
   // 전체 cell 상세 표
@@ -581,49 +1032,50 @@ function writeHtml(rows, cells, file) {
   <!-- ===== 1. Unity 버전별 3-필러 로딩 시간 [${sn}] ===== -->
   <h2>1. Unity 버전별 3-필러 cold load 비교${isMultiNet ? ` — ${esc(d.label)}` : ''}</h2>
   <div class="devbar">x축 = Unity 버전, 계열 = 3-필러.
-    <b>pillar3(정석)</b>이 각 버전에서 최저점이어야 정상이다.</div>
+    <b>pillar1(압축 미설정)</b>이 baseline(최적화 이전)으로 각 버전에서 최고점,
+    <b>pillar3(정석)</b>이 최저점이어야 정상이다.</div>
   <div class="chartbox"><canvas id="c1_${sn}"></canvas></div>
   <div class="note">↑ Unity 버전별로 pillar1/2/3의 cold load median(ms)을 계열별로 비교.
-    pillar3 = baseline(브라우저 네이티브 Brotli). pillar1 = CDN gzip.
-    pillar2 = JS decompressionFallback.</div>
+    pillar1 = baseline(압축 미설정+CDN gzip). pillar2 = Brotli+JS fallback.
+    pillar3 = Brotli+네이티브 디코딩(정석).</div>
 
-  <!-- ===== 2. pillar3 기준 오버헤드 [${sn}] ===== -->
-  <h2>2. pillar3 대비 오버헤드 (필러별 추가 비용)${isMultiNet ? ` — ${esc(d.label)}` : ''}</h2>
-  <div class="warnbar">
-    <b>pillar2 오버헤드 평균 ${d.p2overheadAvg != null ? `+${d.p2overheadAvg} ms` : '–'}${d.p2overheadPctAvg != null ? ` (+${d.p2overheadPctAvg}%)` : ''}</b> — Brotli 번들을 Content-Encoding 헤더 없이 전송하면
-    브라우저가 Unity JS fallback에 Brotli 디코딩을 맡겨 이 비용이 발생한다.<br>
-    <b>pillar1 오버헤드 평균 ${d.p1overheadAvg != null ? `+${d.p1overheadAvg} ms` : '–'}${d.p1overheadPctAvg != null ? ` (+${d.p1overheadPctAvg}%)` : ''}</b> — 압축 미설정(평문 빌드)은 번들이 커서 전송 시간 자체가 늘어난다.
+  <!-- ===== 2. pillar1 대비 개선 [${sn}] ===== -->
+  <h2>2. pillar1 대비 최적화 효과 (단계별 절감)${isMultiNet ? ` — ${esc(d.label)}` : ''}</h2>
+  <div class="devbar">
+    <b>pillar2 개선 평균 ${d.p2improvementAvg != null ? `${d.p2improvementAvg} ms` : '–'}${d.p2improvementPctAvg != null ? ` (${d.p2improvementPctAvg}%)` : ''}</b> — Brotli로 압축하면 번들이 작아져 전송 시간이 줄어든다 (헤더는 아직 누락 → JS fallback 디코딩).<br>
+    <b>pillar3 개선 평균 ${d.p3improvementAvg != null ? `${d.p3improvementAvg} ms` : '–'}${d.p3improvementPctAvg != null ? ` (${d.p3improvementPctAvg}%)` : ''}</b> — 압축 + Content-Encoding 헤더까지 제대로 설정하면 브라우저 네이티브 디코딩으로 가장 빠르다. <b>이것이 압축 미설정(pillar1) 대비 총 최적화 효과다.</b>
   </div>
-  <h3>오버헤드 — ms</h3>
+  <h3>개선 — ms</h3>
   <div class="chartbox"><canvas id="c3_${sn}"></canvas></div>
-  <div class="note">↑ pillar3 대비 추가 소요 시간(ms). 양수 = pillar3보다 느림.
+  <div class="note">↑ pillar1 대비 단축된 시간(ms). 음수 = pillar1보다 빠름(최적화 효과).
     막대가 없으면 해당 버전 데이터 없음.</div>
 
-  <h3>오버헤드 — % (pillar3 대비)</h3>
+  <h3>개선 — % (pillar1 대비)</h3>
   <div class="chartbox"><canvas id="c4_${sn}"></canvas></div>
-  <div class="note">↑ pillar3 대비 추가 소요 시간(%). 계산식: (pillar_N − pillar3) / pillar3 × 100.
-    양수 = pillar3보다 느림. 막대가 없으면 해당 버전 데이터 없음.</div>
+  <div class="note">↑ pillar1 대비 단축률(%). 계산식: (pillar_N − pillar1) / pillar1 × 100.
+    음수 = pillar1보다 N% 빠름. 막대가 없으면 해당 버전 데이터 없음.</div>
 
-  <!-- ===== 3. 스택 막대: pillar3 + 오버헤드 [${sn}] ===== -->
-  <h2>3. cold load 구성 — pillar3 baseline + 오버헤드${isMultiNet ? ` — ${esc(d.label)}` : ''}</h2>
+  <!-- ===== 3. 스택 막대: pillar1 → 단계별 절감 [${sn}] ===== -->
+  <h2>3. cold load 구성 — pillar1에서 단계별로 깎이는 시간${isMultiNet ? ` — ${esc(d.label)}` : ''}</h2>
   <div class="chartbox"><canvas id="c2_${sn}"></canvas></div>
-  <div class="note">↑ 회색/파랑 = pillar3 cold load(baseline), 주황/붉은 슬랩 = 각 필러의 추가 비용.
-    스택 전체 높이 = 해당 필러의 총 cold load.</div>
+  <div class="note">↑ 회색 = pillar3 cold load(최종 도달점), 그 위 슬랩 = 각 최적화 단계가
+    깎아낸 시간. 스택 전체 높이 = pillar1(baseline) cold load.
+    아래에서 위로: pillar3 → +헤더 효과 → +Brotli 압축 효과 = pillar1.</div>
 
   <!-- ===== 4. Unity 버전별 상세 비교 표 [${sn}] ===== -->
   <h2>4. Unity 버전별 필러 비교${isMultiNet ? ` — ${esc(d.label)}` : ` (${esc(env.netStr)} · cpu ${esc(env.cpuStr)})`}</h2>
   <table class="cmp">
     <thead><tr>
       <th>Unity 버전</th><th>번들 크기 (MB)</th>
-      <th>pillar3 baseline (ms)</th>
+      <th>pillar1 baseline (ms)</th>
       <th>pillar2 (ms)</th>
-      <th>pillar1 (ms)</th>
-      <th>pillar2 overhead (ms / %)</th>
-      <th>pillar1 overhead (ms / %)</th>
+      <th>pillar3 (ms)</th>
+      <th>pillar2 개선 (ms / %)</th>
+      <th>pillar3 개선 (ms / %)</th>
     </tr></thead>
     <tbody>${d.unityTableRows}</tbody>
   </table>
-  <div class="note">오버헤드 = 해당 필러 − pillar3. 주황 = pillar3보다 느림, 초록 = 빠름(역전).
+  <div class="note">개선 = 해당 필러 − pillar1. 초록 = pillar1보다 빠름(최적화 효과), 주황 = 느림(역전).
     번들 크기는 pillar별 첫 측정 전송량 기준.</div>`;
   }).join('\n\n');
 
@@ -632,22 +1084,25 @@ function writeHtml(rows, cells, file) {
     const sn = d.idSuffix;
     return `// [${sn}] ${d.label}
 mkLine('c1_${sn}', UNITIES, ${JSON.stringify(d.c1series)}, 'cold load median (ms)');
-mkGain('c2_${sn}', UNITIES, ${JSON.stringify(d.c2series)}, 'cold load (ms) — pillar3 + overhead');
-mkBar('c3_${sn}', UNITIES, ${JSON.stringify(d.c3series)}, 'overhead vs pillar3 (ms)');
-mkBar('c4_${sn}', UNITIES, ${JSON.stringify(d.c4series)}, 'overhead vs pillar3 (%)');`;
+mkGain('c2_${sn}', UNITIES, ${JSON.stringify(d.c2series)}, 'cold load (ms) — pillar1 = pillar3 + 단계별 절감');
+mkBar('c3_${sn}', UNITIES, ${JSON.stringify(d.c3series)}, '개선 vs pillar1 (ms, 음수=빠름)');
+mkBar('c4_${sn}', UNITIES, ${JSON.stringify(d.c4series)}, '개선 vs pillar1 (%, 음수=빠름)');`;
   }).join('\n');
 
-  // network 간 비교 차트 데이터 (pillar1/2 overhead: LTE vs WiFi)
-  // 각 계열 = (network, pillar) 조합
-  const NET_COMP_COLORS = ['#4f9cf9', '#5fd0a0', '#f99c4f', '#d05f9c'];
-  const netCompP1series = netDataList.map((d, i) => ({
-    label: `pillar1 overhead @${d.net.replace('kr-', '').toUpperCase()} (ms)`,
-    data: d.c3series.find((s) => s.label.includes('pillar1'))?.data ?? unities.map(() => null),
+  // network 간 비교 차트 데이터 (pillar2/3 개선: 슬라이스별)
+  // 각 계열 = (network[, cpu], pillar) 조합. 슬라이스가 많으면 색을 순환한다.
+  const NET_COMP_COLORS = ['#4f9cf9', '#5fd0a0', '#f99c4f', '#d05f9c',
+    '#c0c84f', '#9c7ff9', '#f9d24f', '#4fd0d0', '#e07a5f'];
+  const sliceTag = (d) =>
+    `${d.net.replace('kr-', '').toUpperCase()}${multiCpu ? `/${d.cpu}×` : ''}`;
+  const netCompP2series = netDataList.map((d, i) => ({
+    label: `pillar2 개선 @${sliceTag(d)} (ms)`,
+    data: d.c3series.find((s) => s.label.includes('pillar2'))?.data ?? unities.map(() => null),
     _colorIdx: i,
   }));
-  const netCompP2series = netDataList.map((d, i) => ({
-    label: `pillar2 overhead @${d.net.replace('kr-', '').toUpperCase()} (ms)`,
-    data: d.c3series.find((s) => s.label.includes('pillar2'))?.data ?? unities.map(() => null),
+  const netCompP3series = netDataList.map((d, i) => ({
+    label: `pillar3 개선 @${sliceTag(d)} (ms)`,
+    data: d.c3series.find((s) => s.label.includes('pillar3'))?.data ?? unities.map(() => null),
     _colorIdx: i,
   }));
   const netCompChartJs = netDataList.length >= 2
@@ -661,7 +1116,7 @@ function mkBarNetComp(id, labels, series, yTitle) {
     type: 'bar',
     data: { labels, datasets: series.map((s, i) => ({
       label: s.label, data: s.data,
-      backgroundColor: NET_COMP_COLORS[s._colorIdx !== undefined ? s._colorIdx : i] })) },
+      backgroundColor: NET_COMP_COLORS[(s._colorIdx !== undefined ? s._colorIdx : i) % NET_COMP_COLORS.length] })) },
     options: { responsive: true,
       scales: {
         x: { grid: { color: GRID }, ticks: { color: TICK } },
@@ -670,9 +1125,12 @@ function mkBarNetComp(id, labels, series, yTitle) {
       plugins: { legend: { labels: { color: TICK } } } }
   });
 }
-mkBarNetComp('c_netcomp_p1', UNITIES, ${JSON.stringify(netCompP1series)}, 'pillar1 overhead vs pillar3 (ms)');
-mkBarNetComp('c_netcomp_p2', UNITIES, ${JSON.stringify(netCompP2series)}, 'pillar2 overhead vs pillar3 (ms)');`
+mkBarNetComp('c_netcomp_p2', UNITIES, ${JSON.stringify(netCompP2series)}, 'pillar2 개선 vs pillar1 (ms, 음수=빠름)');
+mkBarNetComp('c_netcomp_p3', UNITIES, ${JSON.stringify(netCompP3series)}, 'pillar3 개선 vs pillar1 (ms, 음수=빠름)');`
     : '// 단일 network — 비교 차트 생략';
+
+  // 가설 검증 섹션 (H1/H2) — 가설 데이터일 때만 비어있지 않다.
+  const { html: hypothesisHtml, chartJs: hypothesisChartJs } = hypothesisSectionsHtml(cells);
 
   // 전체 cell 통계 (전체 network 합산)
   const stddevs = cells.filter((c) => c.cold && c.cold.stddev != null).map((c) => c.cold.stddev);
@@ -760,7 +1218,9 @@ ${chartScriptTag}
   .pillar-legend th, .pillar-legend td { border: none; border-top: 1px solid #232733; padding: 6px 16px; }
   .pillar-legend th { background: transparent; color: #9aa0ac; font-weight: 500; }
   .pillar-legend tr.p3 td { color: #6fd0a0; }
-  .pillar-legend tr.p3 td:first-child::after { content: ' ✓ baseline'; color: #6fd0a0;
+  .pillar-legend tr.p3 td:first-child::after { content: ' ✓ 정석'; color: #6fd0a0;
+              font-size: 10.5px; font-weight: 600; }
+  .pillar-legend tr.p1 td:first-child::after { content: ' ◦ baseline'; color: #d59a6f;
               font-size: 10.5px; font-weight: 600; }
 </style>
 </head>
@@ -788,27 +1248,28 @@ ${chartScriptTag}
     <table>
       <thead><tr><th>구분</th><th>한 줄 비유</th><th>실제로 일어나는 일</th><th>로딩 속도</th></tr></thead>
       <tbody>
-        <tr><td><b>pillar 1</b><br><span style="color:#9aa0ac;">압축을 안 켬</span></td>
+        <tr class="p1"><td><b>pillar 1</b><br><span style="color:#9aa0ac;">압축을 안 켬</span></td>
           <td>짐을 안 접고 그대로 부침 — 택배기사(서버)가 보다 못해<br>대신 대충 묶어줌</td>
           <td>개발자가 압축 설정을 빠뜨려 게임 파일이 원본 크기 그대로.
             서버(CDN)가 전송 직전 급한 대로 압축해 주지만, 압축이 헐거워<br>
             전송할 용량이 여전히 큼</td>
-          <td><b>가장 느림</b></td></tr>
+          <td><b>가장 느림<br>(기준점)</b></td></tr>
         <tr><td><b>pillar 2</b><br><span style="color:#9aa0ac;">압축은 켰는데<br>표시를 빠뜨림</span></td>
           <td>짐은 잘 접어 압축했는데, 상자에 "압축됨" 라벨을<br>안 붙여 보냄</td>
           <td>게임은 잘 압축됐지만 서버가 "압축돼 있다"는 표시를 안 보냄.
             브라우저가 못 알아채서, 게임이 자체적으로 압축을 푸는데<br>
             이 방식이 브라우저 기본 기능보다 느림</td>
-          <td><b>중간</b></td></tr>
+          <td><b>중간 — pillar 1보다 빠름</b></td></tr>
         <tr class="p3"><td><b>pillar 3</b><br><span style="color:#9aa0ac;">둘 다 제대로</span></td>
           <td>짐을 잘 접고 "압축됨" 라벨도 또렷이 붙여 보냄</td>
           <td>압축도 했고 표시도 정확히 붙음. 브라우저가 자기 기본 기능으로
             가장 빠르게 압축을 풂. <b>권장 설정</b></td>
-          <td><b>가장 빠름<br>(기준점)</b></td></tr>
+          <td><b>가장 빠름</b></td></tr>
       </tbody>
     </table>
     <p style="margin:8px 0 0;color:#9aa0ac;font-size:12px;">
-      ※ 아래 모든 수치는 pillar 3(권장 설정)을 기준점으로, 나머지가 얼마나 더 느린지를 보여줍니다.
+      ※ 아래 모든 수치는 <b>pillar 1(압축을 안 켠 최악의 상태)</b>을 기준점으로,
+      압축·헤더를 제대로 설정하면 로딩이 <b>몇 % 빨라지는지(최적화 효과)</b>를 보여줍니다.
     </p>
   </div>
 
@@ -819,9 +1280,9 @@ ${chartScriptTag}
       <thead><tr><th>필러</th><th>Unity 빌드 압축</th><th>서버 Content-Encoding</th>
         <th>브라우저 동작</th><th>설명</th></tr></thead>
       <tbody>
-        <tr><td>pillar1</td><td>Disabled (평문)</td><td>gzip (CDN on-the-fly)</td>
+        <tr class="p1"><td>pillar1</td><td>Disabled (평문)</td><td>gzip (CDN on-the-fly)</td>
           <td>네이티브 gzip 디코딩</td>
-          <td>CDN이 평문을 실시간 gzip 압축 전송 — 압축 설정 누락 시나리오</td></tr>
+          <td>CDN이 평문을 실시간 gzip 압축 전송 — 압축 설정 누락 시나리오 (최적화 이전)</td></tr>
         <tr><td>pillar2</td><td>Brotli (.unityweb)</td><td>없음 (헤더 생략)</td>
           <td>Unity JS decompressionFallback</td>
           <td>Brotli 빌드를 만들었지만 헤더를 빠뜨린 시나리오</td></tr>
@@ -834,86 +1295,98 @@ ${chartScriptTag}
 
   <!-- ===== 요약 카드 (network별 분리) ===== -->
   <div class="sub" style="margin:18px 0 6px;font-weight:600;color:#c8ccd4;">
-    pillar3 대비 오버헤드 요약 — 네트워크별 (baseline = pillar3, 정석 설정)</div>
-  ${netDataList.map((d) => `
+    pillar1 대비 최적화 효과 요약 — 네트워크별 (baseline = pillar1, 압축 미설정)</div>
+  ${netDataList.map((d) => {
+    const ms = (v) => (v == null ? '–' : `${Math.round(v)} ms`);
+    const sub = (line) => `<div style="font-size:11px;color:#9aa0ac;margin-top:3px;line-height:1.5">${line}</div>`;
+    return `
   <div class="sub" style="margin:10px 0 4px;color:#7ab8f5;font-size:12px;font-weight:600;">${esc(d.label)}</div>
   <div class="cards">
+    <div class="card warn">
+      <div class="x">${ms(d.p1loadAvg)}</div>
+      <div class="v">pillar1 — 압축 미설정 + CDN gzip</div>
+      <div class="k">baseline (가장 느림 — 최적화 이전)</div>
+      ${sub(`이 시간이 기준점. 절감 0 ms / 0%`)}
+    </div>
     <div class="card gain">
-      <div class="x">pillar3</div>
-      <div class="v">정석 — Brotli + Content-Encoding: br</div>
-      <div class="k">baseline (가장 빠름)</div>
+      <div class="x">${ms(d.p2loadAvg)}</div>
+      <div class="v">pillar2 — Brotli 압축만</div>
+      <div class="k">번들 축소로 빨라짐 (헤더는 아직 누락)</div>
+      ${sub(`pillar1 대비 <b style="color:#6fd0a0">${d.p2improvementAvg != null ? `${d.p2improvementAvg} ms` : '–'}${d.p2improvementPctAvg != null ? ` / ${d.p2improvementPctAvg}%` : ''}</b> 절감`)}
     </div>
-    <div class="card warn">
-      <div class="x">${d.p2overheadAvg != null ? `+${d.p2overheadAvg} ms` : '–'}${d.p2overheadPctAvg != null ? ` <span style="font-size:18px;font-weight:500">(+${d.p2overheadPctAvg}%)</span>` : ''}</div>
-      <div class="v">pillar2 평균 오버헤드</div>
-      <div class="k">헤더 생략 → JS fallback 디코딩 비용</div>
+    <div class="card gain">
+      <div class="x">${ms(d.p3loadAvg)}</div>
+      <div class="v">pillar3 — 압축 + 헤더 (정석)</div>
+      <div class="k">총 최적화 효과 — 가장 빠름</div>
+      ${sub(`pillar1 대비 <b style="color:#6fd0a0">${d.p3improvementAvg != null ? `${d.p3improvementAvg} ms` : '–'}${d.p3improvementPctAvg != null ? ` / ${d.p3improvementPctAvg}%` : ''}</b> 절감`)}
     </div>
-    <div class="card warn">
-      <div class="x">${d.p1overheadAvg != null ? `+${d.p1overheadAvg} ms` : '–'}${d.p1overheadPctAvg != null ? ` <span style="font-size:18px;font-weight:500">(+${d.p1overheadPctAvg}%)</span>` : ''}</div>
-      <div class="v">pillar1 평균 오버헤드</div>
-      <div class="k">압축 미설정 + CDN gzip 비용</div>
-    </div>
-  </div>`).join('\n')}
-  <div class="note">오버헤드 = 해당 필러 cold load − pillar3 cold load (양수 = pillar3보다 느림).
-    Unity 버전 전체 평균값. cpu ${esc(env.cpuStr)}.</div>
+  </div>`;
+  }).join('\n')}
+  <div class="note">큰 숫자 = 해당 필러의 cold load 평균(ms). 절감 = 해당 필러 − pillar1 (음수 = pillar1보다 빠름 = 최적화 효과).
+    pillar3 절감폭이 압축/헤더를 제대로 설정했을 때의 총 단축량이다. Unity 버전 전체 평균값. cpu ${esc(env.cpuStr)}.</div>
 
   <!-- ===== 네트워크 간 비교 섹션 (핵심 인사이트) ===== -->
   ${netDataList.length >= 2 ? `
-  <h2 style="margin-top:48px;">LTE vs WiFi — 네트워크 간 overhead 비교 (측정의 핵심 인사이트)</h2>
+  <h2 style="margin-top:48px;">LTE vs WiFi — 네트워크별 최적화 효과 비교 (측정의 핵심 인사이트)</h2>
   <div class="callout">
-    <b>이 측정의 핵심 질문:</b> 네트워크가 느릴수록(LTE) 전송량 차이가 크게 작용한다.
-    <b>pillar1</b>(압축 미설정 → 번들이 더 큼)은 LTE에서 WiFi보다 overhead가 더 클 것으로 예상.
-    <b>pillar2</b>(CPU 디코딩 비용 중심)는 네트워크 속도 영향이 상대적으로 작을 것으로 예상.
+    <b>이 측정의 핵심 질문:</b> 압축/헤더 최적화(pillar1→pillar3)의 효과는 네트워크에 따라 어떻게 달라지는가.
+    빠른 네트워크(WiFi)일수록 baseline(pillar1)이 이미 빠르므로, 같은 절대 단축이라도 <b>% 개선률은 WiFi에서 더 크게</b> 나타난다.
+    pillar2(Brotli만)는 디코딩이 JS fallback이라 추가 CPU 비용이 있어, 네트워크와 무관하게 pillar3보다 개선폭이 작다.
   </div>
 
-  <h3>overhead 수치 비교 (Unity 버전 × network)</h3>
+  <h3>개선 수치 비교 (Unity 버전 × network)</h3>
   <table class="cmp">
     <thead><tr>
       <th>Unity 버전</th>
-      ${netDataList.map((d) => `<th>p1 overhead @${esc(d.net.replace('kr-','').toUpperCase())} (ms)</th><th>p2 overhead @${esc(d.net.replace('kr-','').toUpperCase())} (ms)</th>`).join('')}
+      ${netDataList.map((d) => `<th>p2 개선 @${esc(sliceTag(d))} (ms)</th><th>p3 개선 @${esc(sliceTag(d))} (ms)</th>`).join('')}
     </tr></thead>
     <tbody>
       ${unities.map((u, ui) => {
-        const fmtOv = (v) =>
-          v == null ? '–' : v > 0 ? `<b style="color:#f99c4f">+${v}</b>` : `<b style="color:#6fd0a0">${v}</b>`;
+        const fmtImp = (v) =>
+          v == null ? '–' : v <= 0 ? `<b style="color:#6fd0a0">${v}</b>` : `<b style="color:#f99c4f">+${v}</b>`;
         const cols = netDataList.map((d) => {
-          // c3series의 데이터는 overhead이므로 buildNetworkData에서 직접 꺼내야 함
-          // p1overhead/p2overhead는 d.c3series를 통해 접근
-          const p1ov = d.c3series.find((s) => s.label.includes('pillar1'));
-          const p2ov = d.c3series.find((s) => s.label.includes('pillar2'));
-          return `<td class="num">${fmtOv(p1ov ? p1ov.data[ui] : null)}</td><td class="num">${fmtOv(p2ov ? p2ov.data[ui] : null)}</td>`;
+          const p2 = d.c3series.find((s) => s.label.includes('pillar2'));
+          const p3 = d.c3series.find((s) => s.label.includes('pillar3'));
+          return `<td class="num">${fmtImp(p2 ? p2.data[ui] : null)}</td><td class="num">${fmtImp(p3 ? p3.data[ui] : null)}</td>`;
         }).join('');
         return `<tr><td>${esc(u)}</td>${cols}</tr>`;
       }).join('\n')}
     </tbody>
   </table>
-  <div class="note">오버헤드 = 해당 필러 − pillar3. 주황 = pillar3보다 느림, 초록 = 빠름(역전).
-    네트워크가 느릴수록(LTE) pillar1 overhead가 더 클 것으로 예상.</div>
+  <div class="note">개선 = 해당 필러 − pillar1. 초록 = pillar1보다 빠름(최적화 효과), 주황 = 느림(역전).</div>
 
-  <h3>pillar1 overhead 비교 — LTE vs WiFi</h3>
-  <div class="chartbox"><canvas id="c_netcomp_p1"></canvas></div>
-  <div class="note">↑ pillar1 overhead(ms)를 네트워크별로 비교. 느린 LTE에서 overhead가 더 클 것으로 예상.</div>
-
-  <h3>pillar2 overhead 비교 — LTE vs WiFi</h3>
+  <h3>pillar2 개선 비교 — LTE vs WiFi</h3>
   <div class="chartbox"><canvas id="c_netcomp_p2"></canvas></div>
-  <div class="note">↑ pillar2 overhead(ms)를 네트워크별로 비교. CPU 디코딩 비용 중심이므로 네트워크 차이가 적을 것으로 예상.</div>
+  <div class="note">↑ pillar2(Brotli 압축만) 개선폭(ms)을 네트워크별로 비교. 음수가 클수록 최적화 효과가 크다.</div>
+
+  <h3>pillar3 개선 비교 — LTE vs WiFi</h3>
+  <div class="chartbox"><canvas id="c_netcomp_p3"></canvas></div>
+  <div class="note">↑ pillar3(정석) 개선폭(ms)을 네트워크별로 비교. 압축 미설정 대비 총 최적화 효과.</div>
   ` : ''}
 
   <!-- ===== 섹션 1~4: network별 차트 + 표 ===== -->
   ${networkSections}
 
-  <!-- ===== 5. 종합 ===== -->
-  <h2>5. 종합</h2>
+  <!-- ===== H1/H2: 가설 검증 (가설 데이터일 때만 렌더) ===== -->
+  ${hypothesisHtml}
+
+  <!-- ===== 5. 번들 용량 확장 추정 (100MB / 200MB) ===== -->
+  ${extrapolationHtml(cells, env.nets)}
+
+  <!-- ===== 6. 종합 ===== -->
+  <h2>6. 종합</h2>
   <div class="callout">
-    <b>핵심 결론:</b><br>
-    • <b>pillar3(정석)</b>이 가장 빠르다 — Brotli 번들 + <code>Content-Encoding: br</code>로
-      브라우저 네이티브 디코딩.<br>
-    • <b>pillar2</b>는 Brotli 빌드를 만들고도 헤더를 빠뜨린 경우 — Unity JS fallback이
-      Brotli를 디코딩하며 불필요한 CPU 비용이 추가된다.<br>
-    • <b>pillar1</b>은 압축을 전혀 설정하지 않은 경우 — CDN gzip이 보정해주지만
-      Brotli 대비 번들이 크고 전송 시간이 길다.<br>
-    • <b>LTE vs WiFi</b> — 느린 네트워크(LTE)에서는 번들 크기 차이(pillar1 ↔ pillar3)의 영향이 커져
-      pillar1 overhead가 WiFi보다 더 크게 나타날 것으로 예상한다.
+    <b>핵심 결론 (baseline = pillar1, 압축 미설정):</b><br>
+    • <b>pillar2 (Brotli 압축만)</b>은 pillar1 대비 평균
+      <b>${p2impAvg != null ? `${p2impAvg}ms` : '–'}${p2impPctAvg != null ? ` (${p2impPctAvg}%)` : ''}</b> 빨라진다 — 번들이 작아져
+      전송 시간이 줄지만, 헤더가 없어 JS fallback 디코딩 비용이 남는다.<br>
+    • <b>pillar3 (압축 + 헤더, 정석)</b>은 pillar1 대비 평균
+      <b>${p3impAvg != null ? `${p3impAvg}ms` : '–'}${p3impPctAvg != null ? ` (${p3impPctAvg}%)` : ''}</b> 빨라진다 —
+      이것이 압축/헤더를 제대로 설정했을 때의 <b>총 최적화 효과</b>다.<br>
+    • <b>LTE vs WiFi</b> — 같은 최적화라도 빠른 네트워크(WiFi)에서 % 개선률이 더 크다.
+      baseline(pillar1)이 WiFi에서 이미 빠르기 때문에, 작은 Brotli 번들의 이득이 비율로 더 크게 잡힌다.<br>
+    • <b>권장</b> — Unity 빌드에서 압축(Brotli)을 켜고, 서버/CDN이 <code>Content-Encoding: br</code>
+      헤더를 보내도록 설정하면 pillar3에 도달한다. 둘 중 하나라도 빠지면 pillar1/pillar2로 후퇴한다.
   </div>
 
   <h3>전체 cell 통계</h3>
@@ -927,8 +1400,8 @@ ${chartScriptTag}
   <div class="note">단위 ms. ${cells.length} cell × 5 iter = ${rows.length} 측정 ·
     cell당 stddev 평균 ${stddevMean}ms · 에러 ${errorTotal}.</div>
 
-  <!-- ===== 6. Raw data ===== -->
-  <h2>6. Raw data</h2>
+  <!-- ===== 7. Raw data ===== -->
+  <h2>7. Raw data</h2>
   <p>
     <a class="dl" id="dl-jsonl">benchmark-loading-results.jsonl 다운로드</a>
     <a class="dl" id="dl-csv">benchmark-report.csv 다운로드 (집계)</a>
@@ -955,15 +1428,13 @@ const GRID = '#2a2e38', TICK = '#9aa0ac';
 
 // 3-필러 고정 색상
 const PILLAR_COLOR = {
-  'pillar3 (baseline)': '#5fd0a0',         // 초록 — 정석/최선
-  'pillar2': '#f99c4f',                    // 주황 — 헤더 누락 오버헤드
-  'pillar1': '#d05f9c',                    // 분홍 — 압축 미설정
-  'pillar1 overhead (ms)': '#d05f9c',      // 분홍 — 압축 미설정 (ms 차트)
-  'pillar2 overhead (ms)': '#f99c4f',      // 주황 — 헤더 누락 (ms 차트)
-  'pillar1 overhead (%)': '#d05f9c',       // 분홍 — 압축 미설정 (% 차트)
-  'pillar2 overhead (%)': '#f99c4f',       // 주황 — 헤더 누락 (% 차트)
-  'pillar1 overhead vs pillar3': '#d05f9c',
-  'pillar2 overhead vs pillar3': '#f99c4f',
+  'pillar1 (baseline)': '#d05f9c',         // 분홍 — 압축 미설정 (baseline)
+  'pillar2': '#f99c4f',                    // 주황 — Brotli만
+  'pillar3': '#5fd0a0',                    // 초록 — 정석/최선
+  'pillar2 개선 (ms)': '#f99c4f',          // 주황 — Brotli만 (ms 차트)
+  'pillar3 개선 (ms)': '#5fd0a0',          // 초록 — 정석 (ms 차트)
+  'pillar2 개선 (%)': '#f99c4f',           // 주황 — Brotli만 (% 차트)
+  'pillar3 개선 (%)': '#5fd0a0',           // 초록 — 정석 (% 차트)
 };
 function pillarColor(label, i) {
   if (PILLAR_COLOR[label]) return PILLAR_COLOR[label];
@@ -985,10 +1456,11 @@ function mkBar(id, labels, series, yTitle, stacked) {
   });
 }
 
-// 스택 막대: base(pillar3) + 필러별 오버헤드 슬랩.
-// base는 회색, gain(오버헤드)은 주황/분홍.
+// 스택 막대: base(pillar3, 최종 도달점) + 각 최적화 단계가 깎아낸 절감 슬랩.
+// 스택 전체 높이 = pillar1(baseline) cold load.
+// base는 회색, gain(절감분)은 주황/초록.
 function mkGain(id, labels, series, yTitle) {
-  const colors = { base: '#3a4254', gain: '#f99c4f', gain2: '#d05f9c' };
+  const colors = { base: '#3a4254', gain: '#5fd0a0', gain2: '#f99c4f' };
   new Chart(document.getElementById(id), {
     type: 'bar',
     data: { labels, datasets: series.map((s)=>{
@@ -1004,15 +1476,15 @@ function mkGain(id, labels, series, yTitle) {
       plugins: {
         legend: { labels: { color: TICK } },
         tooltip: { callbacks: { footer: (items) => {
-          let base = 0, overhead = 0;
+          let base = 0, saved = 0;
           for (const it of items) {
             const v = it.parsed.y || 0;
-            if (it.dataset.label && it.dataset.label.includes('baseline')) base += v;
-            else overhead += v;
+            if (it.dataset.label && it.dataset.label.includes('최종')) base += v;
+            else saved += v;
           }
-          if (!overhead) return '';
-          const total = base + overhead;
-          return 'pillar3 대비 +' + overhead + 'ms (' + ((overhead / base) * 100).toFixed(1) + '% 느림)';
+          if (!saved) return '';
+          const total = base + saved; // = pillar1 baseline
+          return 'pillar1 대비 −' + saved + 'ms (' + ((saved / total) * 100).toFixed(1) + '% 빨라짐)';
         } } } } }
   });
 }
@@ -1039,6 +1511,9 @@ ${chartInitCode}
 
 // network 간 비교 차트
 ${netCompChartJs}
+
+// 가설 검증 차트 (H1/H2)
+${hypothesisChartJs}
 
 // raw data 미리보기 + 다운로드
 const raw = document.getElementById('rawdata').textContent;

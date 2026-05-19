@@ -1472,6 +1472,69 @@ public class IsKnownNonSdkMessageTests
 
     #endregion
 
+    #region 사용자 환경 / 빌드 외부 노이즈 (SDK-QQ, SDK-7Y, SDK-V1, SDK-TS, SDK-RG)
+
+    [Test]
+    public void PackageManager_ErrorAddingPackages_ReturnsTrue()
+    {
+        // Sentry SDK-QQ — 사용자 환경 git/네트워크 문제로 Package Manager가 직접 출력.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[Package Manager Window] Error adding/removing packages: " +
+            "https://github.com/toss/apps-in-toss-unity-sdk.git #release/v2.4.3."));
+    }
+
+    [Test]
+    public void PackageManager_ErrorRemovingPackages_AltVersion_ReturnsTrue()
+    {
+        // Sentry SDK-7Y — 동일 패턴 다른 버전 변형.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[Package Manager Window] Error adding/removing packages: " +
+            "https://github.com/toss/apps-in-toss-unity-sdk.git#release/v2.4.5."));
+    }
+
+    [Test]
+    public void PackageManager_ResolvingPackagesError_ReturnsTrue()
+    {
+        // Sentry SDK-V1 — 사용자 manifest.json 충돌.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "An error occurred while resolving packages:\n" +
+            "  Project has invalid dependencies: com.example.foo"));
+    }
+
+    [Test]
+    public void Pnpm_UnknownSyntaxError_ApiKey_ReturnsTrue()
+    {
+        // Sentry SDK-TS — 사용자가 deployment key 미입력 상태로 deploy 실행.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "AIT: [stdout] Unknown Syntax Error: Not enough arguments to option --api-key."));
+    }
+
+    [Test]
+    public void WindowsShell_NotRecognized_ReturnsTrue()
+    {
+        // Sentry SDK-RG — Windows cmd 인코딩/PATH 문제.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "AIT: [stderr] '��e' is not recognized as an internal or external command,"));
+    }
+
+    [Test]
+    public void PackageManager_GenericPmMessage_NotFiltered()
+    {
+        // 다른 "[Package Manager Window]" 메시지는 통과 — "Error adding/removing" 토큰 미포함.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[Package Manager Window] Successfully installed package"));
+    }
+
+    [Test]
+    public void Pnpm_OtherSyntaxError_NotFiltered()
+    {
+        // "Not enough arguments" 부분이 없으면 통과 — 다른 Unknown Syntax 메시지 보호.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "AIT: [stdout] Unknown Syntax Error: Invalid flag --foo."));
+    }
+
+    #endregion
+
     #region IL2CPP/Bee 빌드 단위별 실패 (SDK-SA~SV, T7, TV)
 
     [Test]

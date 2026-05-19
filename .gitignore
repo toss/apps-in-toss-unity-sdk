@@ -173,8 +173,13 @@ Tests~/E2E/tests/*-screenshot.png
 
 # Loading-time benchmark artifacts (scripts/benchmark.sh)
 Tests~/E2E/tests/benchmark-loading-results.jsonl
+# Result-axis backups kept while iterating on the benchmark matrix
+Tests~/E2E/tests/benchmark-loading-results.jsonl.*-OLD
 benchmark-report.csv
 benchmark-report.md
+benchmark-report.html
+# Local report-capture screenshots
+imp-*.png
 
 # Unity meta files - most .meta files should be tracked for consistent GUIDs
 # Exceptions:

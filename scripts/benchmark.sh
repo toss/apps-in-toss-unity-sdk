@@ -1,17 +1,30 @@
 #!/usr/bin/env bash
-# 샘플 앱 로딩 시간 벤치마크 드라이버.
+# 샘플 앱 로딩 시간 벤치마크 드라이버 — 3-필러.
 #
-# Phase 1: 5 unity × 2 compression = 10개 빌드 (mtime 기반 캐시)
-# Phase 2: 빌드 페어당 vite preview 1회 기동 + 4 network × 4 cpu × ITER iter cell 측정
+# 측정 대상: 압축/전송 설정의 세 가지 현실 시나리오(필러).
+#   pillar1 (압축 미설정)        : Unity compressionFormat=Disabled. 평문 산출물을
+#                                  정적 서버(=CDN 근사)가 on-the-fly gzip 압축해
+#                                  Content-Encoding: gzip 전송 → 브라우저 네이티브
+#                                  gzip 디코딩.
+#   pillar2 (압축 O, 헤더 X)     : Unity Brotli .unityweb 산출물을 Content-Encoding
+#                                  헤더 없이 전송 → Unity 로더 JS decompressionFallback.
+#   pillar3 (압축 O, 헤더 O)     : Unity Brotli .unityweb 산출물을 Content-Encoding: br
+#                                  전송 → 브라우저 네이티브 Brotli 디코딩. (정석)
+#
+# Phase 1: unity × {brotli, disabled} = 빌드 (mtime 기반 캐시)
+#          pillar1은 disabled 빌드, pillar2/3은 brotli 빌드를 공유한다.
+# Phase 2: unity × pillar당 정적 서버 1회 기동 + network × cpu × ITER cell 측정
+#
+# 네트워크/CPU는 단일 환경 고정(wifi × cpu-4x, throttling-profiles.js 참조).
 #
 # 결과: Tests~/E2E/tests/benchmark-loading-results.jsonl
 #
 # 사용:
-#   scripts/benchmark.sh                 # 전체 매트릭스 (1600 측정)
-#   scripts/benchmark.sh --build-only    # Phase 1만
-#   scripts/benchmark.sh --measure-only  # Phase 2만 (Phase 1 산출물 가정)
-#   scripts/benchmark.sh --unity 6000.2 --compression brotli   # 한 페어만
-#   scripts/benchmark.sh --iterations 1 --network wifi --cpu cpu-1x  # 빠른 smoke
+#   scripts/benchmark.sh                  # 전체 매트릭스
+#   scripts/benchmark.sh --build-only     # Phase 1만
+#   scripts/benchmark.sh --measure-only   # Phase 2만 (Phase 1 산출물 가정)
+#   scripts/benchmark.sh --unity 6000.2 --pillar pillar3   # 한 페어만
+#   scripts/benchmark.sh --iterations 1 --network wifi --cpu cpu-4x  # 빠른 smoke
 
 set -euo pipefail
 
@@ -20,13 +33,13 @@ TESTS_DIR="$ROOT/Tests~/E2E/tests"
 RESULTS_PATH="$TESTS_DIR/benchmark-loading-results.jsonl"
 
 UNITY_VERSIONS=(2021.3 2022.3 6000.0 6000.2 6000.3)
-COMPRESSIONS=(disabled brotli)
+PILLARS=(pillar1 pillar2 pillar3)
 
 ITERATIONS=5
 ONLY_BUILD=0
 ONLY_MEASURE=0
 ONE_UNITY=""
-ONE_COMPRESSION=""
+ONE_PILLAR=""
 ONE_NETWORK=""
 ONE_CPU=""
 FORCE_REBUILD=0
@@ -36,7 +49,7 @@ while [[ $# -gt 0 ]]; do
     --build-only)    ONLY_BUILD=1; shift ;;
     --measure-only)  ONLY_MEASURE=1; shift ;;
     --unity)         ONE_UNITY="$2"; shift 2 ;;
-    --compression)   ONE_COMPRESSION="$2"; shift 2 ;;
+    --pillar)        ONE_PILLAR="$2"; shift 2 ;;
     --iterations)    ITERATIONS="$2"; shift 2 ;;
     --network)       ONE_NETWORK="$2"; shift 2 ;;
     --cpu)           ONE_CPU="$2"; shift 2 ;;
@@ -56,15 +69,27 @@ done
 if [[ -n "$ONE_UNITY" ]]; then
   UNITY_VERSIONS=("$ONE_UNITY")
 fi
-if [[ -n "$ONE_COMPRESSION" ]]; then
-  COMPRESSIONS=("$ONE_COMPRESSION")
+if [[ -n "$ONE_PILLAR" ]]; then
+  PILLARS=("$ONE_PILLAR")
 fi
 
 log() {
   echo "[benchmark $(date +%H:%M:%S)] $*"
 }
 
-build_pair() {
+# 필러 → 의존하는 빌드 압축 포맷. pillar1은 비압축(disabled), pillar2/3은 brotli.
+pillar_compression() {
+  case "$1" in
+    pillar1) echo "disabled" ;;
+    pillar2|pillar3) echo "brotli" ;;
+    *) echo "[benchmark] unknown pillar: $1" >&2; exit 2 ;;
+  esac
+}
+
+# Phase 1: 한 (unity, compression) 빌드를 생성한다.
+# compression=brotli → dist/web-brotli, disabled → dist/web-disabled.
+# 같은 압축 포맷을 공유하는 필러들은 빌드를 재사용한다.
+build_one() {
   local unity="$1"
   local compression="$2"
   local project_path="$ROOT/Tests~/E2E/SampleUnityProject-${unity}"
@@ -106,19 +131,21 @@ EOF
 
 measure_pair() {
   local unity="$1"
-  local compression="$2"
+  local pillar="$2"
+  local compression
+  compression="$(pillar_compression "$pillar")"
   local dist_pair="$ROOT/Tests~/E2E/SampleUnityProject-${unity}/ait-build/dist/web-${compression}"
 
   if [[ ! -d "$dist_pair" ]]; then
-    log "[$unity/$compression] dist missing ($dist_pair) — skip"
+    log "[$unity/$pillar] build dist missing ($dist_pair) — skip"
     return 0
   fi
 
-  log "[$unity/$compression] measuring (iterations=$ITERATIONS)"
+  log "[$unity/$pillar] measuring (iterations=$ITERATIONS)"
 
   local env_args=(
     BENCHMARK_UNITY="$unity"
-    BENCHMARK_COMPRESSION="$compression"
+    BENCHMARK_PILLAR="$pillar"
     BENCHMARK_ITERATIONS="$ITERATIONS"
     BENCHMARK_RESULTS_PATH="$RESULTS_PATH"
   )
@@ -137,9 +164,14 @@ mkdir -p "$(dirname "$RESULTS_PATH")"
 
 if [[ "$ONLY_MEASURE" -eq 0 ]]; then
   log "=== Phase 1: build matrix ==="
+  # 측정 대상 필러들이 필요로 하는 압축 포맷 집합만 빌드한다.
+  declare -A NEED_COMPRESSION=()
+  for pillar in "${PILLARS[@]}"; do
+    NEED_COMPRESSION["$(pillar_compression "$pillar")"]=1
+  done
   for unity in "${UNITY_VERSIONS[@]}"; do
-    for compression in "${COMPRESSIONS[@]}"; do
-      build_pair "$unity" "$compression"
+    for compression in "${!NEED_COMPRESSION[@]}"; do
+      build_one "$unity" "$compression"
     done
   done
 fi
@@ -153,8 +185,8 @@ log "=== Phase 2: measurement matrix ==="
 log "results → $RESULTS_PATH"
 
 for unity in "${UNITY_VERSIONS[@]}"; do
-  for compression in "${COMPRESSIONS[@]}"; do
-    measure_pair "$unity" "$compression"
+  for pillar in "${PILLARS[@]}"; do
+    measure_pair "$unity" "$pillar"
   done
 done
 

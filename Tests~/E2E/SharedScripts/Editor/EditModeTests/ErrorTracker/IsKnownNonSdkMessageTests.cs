@@ -1132,6 +1132,15 @@ public class IsKnownNonSdkMessageTests
     }
 
     [Test]
+    public void SentryTransport_NetworkErrorUnableToReadData_ReturnsTrue()
+    {
+        // Sentry SDK-RR — UnityWebRequest.error 변형 "Unable to read data" (transient I/O 실패).
+        // 기존 일반 패턴이 suffix 변형을 모두 흡수함을 검증.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AITSentryTransport] 네트워크 오류: Unable to read data"));
+    }
+
+    [Test]
     public void SentryTransport_OtherDiagnostic_NotFiltered()
     {
         // Transport의 다른 진단 메시지(예: 큐 가득 참, 동기 전송 등)는 영향받지 않아야 함.

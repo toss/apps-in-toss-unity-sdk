@@ -884,7 +884,9 @@ namespace AppsInToss.Editor.ErrorTracker
             // AITSentryTransport 자체의 네트워크 오류(ConnectionError) — 사용자 환경 일시 장애.
             // Transport가 스스로의 출력을 다시 Sentry로 보내면 캐스케이드 위험이 있고,
             // 실제로 SubmitResult.Fail로 호출자에게 결과가 전달되므로 가시성도 유지됨.
-            // Sentry APPS-IN-TOSS-UNITY-SDK-CZ, APPS-IN-TOSS-UNITY-SDK-KA.
+            // Sentry APPS-IN-TOSS-UNITY-SDK-CZ, APPS-IN-TOSS-UNITY-SDK-KA, APPS-IN-TOSS-UNITY-SDK-RR.
+            // UnityWebRequest.error 텍스트(예: "Connection refused", "Unknown Error", "Request timeout",
+            // "Unable to read data")가 suffix로 붙는 다양한 변형이 동일 패턴으로 모두 매칭된다.
             if (message.IndexOf("[AITSentryTransport] 네트워크 오류", StringComparison.Ordinal) >= 0)
                 return true;
 

@@ -626,7 +626,7 @@ jobs:
     name: Sentry 릴리즈 등록
     runs-on: ubuntu-latest
     needs: [create-release-tag]
-    if: needs.create-release-tag.result == 'success'
+    if: always() && needs.create-release-tag.result == 'success' && needs.create-release-tag.outputs.version != ''
     steps:
       - name: Checkout (main 커밋 히스토리)
         uses: actions/checkout@v6

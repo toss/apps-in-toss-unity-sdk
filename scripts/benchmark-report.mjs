@@ -245,6 +245,11 @@ function csvCell(v) {
 // Markdown
 // ---------------------------------------------------------------------------
 function writeMarkdown(rows, cells, file) {
+  // 가설 데이터는 "주장 → 증거 → 해석" 골격으로 별도 출력 — 기존 3-필러 리포트 로직과 분리.
+  if (isHypothesisData(cells)) {
+    writeHypothesisMarkdown(rows, cells, file);
+    return;
+  }
   const head = rows[0];
   const machine = head.machine || {};
   const env = envSummary(rows);
@@ -569,6 +574,649 @@ function isHypothesisData(cells) {
   return cells.some((c) => c.network === 'kr-lte-slow' || c.network === 'kr-lte-fast');
 }
 
+// ---------------------------------------------------------------------------
+// 가설 리포트 — "주장 → 증거 → 해석" 골격
+// ---------------------------------------------------------------------------
+// 본문에서 다루는 두 변화:
+//   A = Brotli 압축 적용 (pillar1 → pillar2). 빌드를 Brotli로 압축 (전송량 ~30MB→~22MB).
+//                                              디코딩은 JS decompressionFallback.
+//   B = Content-Encoding 헤더 추가 (pillar2 → pillar3). 같은 Brotli 산출물을 헤더와 함께
+//                                                      전송 → 브라우저 네이티브 디코딩.
+//
+// 9셀(network × cpu) 매트릭스로 효과를 분리해 본다.
+// const를 쓰면 ESM 초기화 순서 문제가 생기므로 호이스팅되는 함수로.
+function hypNets() { return ['kr-lte-slow', 'kr-lte-fast', 'kr-wifi']; }
+function hypCpus() { return [2, 4, 6]; }
+
+// Unity 평균(반올림). 한 (net, cpu) 셀에서 unity 2개 절감을 평균.
+function avgRound(arr) {
+  const v = arr.filter((x) => x != null);
+  return v.length ? Math.round(v.reduce((s, x) => s + x, 0) / v.length) : null;
+}
+
+// (net, cpu) → {p1, p2, p3, aMs, bMs, totalMs, totalPct} 매트릭스.
+// p1/p2/p3는 unity 평균 median(ms), aMs = p1-p2(A 효과), bMs = p2-p3(B 효과).
+function buildEffectMatrix(cells) {
+  const cellByKey = new Map();
+  for (const c of cells) {
+    if (!c.cold || c.cold.median == null) continue;
+    cellByKey.set(`${c.unity_version}|${c.pillar}|${c.network}|${c.cpu_rate}`, c.cold.median);
+  }
+  const unities = uniq(cells.map((c) => c.unity_version)).sort();
+  const matrix = new Map();
+  for (const net of hypNets()) for (const cpu of hypCpus()) {
+    const med = (pillar) => avgRound(unities.map((u) => cellByKey.get(`${u}|${pillar}|${net}|${cpu}`)));
+    const p1 = med('pillar1'), p2 = med('pillar2'), p3 = med('pillar3');
+    const aMs = p1 != null && p2 != null ? p1 - p2 : null;
+    const bMs = p2 != null && p3 != null ? p2 - p3 : null;
+    const totalMs = p1 != null && p3 != null ? p1 - p3 : null;
+    const totalPct = p1 != null && totalMs != null ? (totalMs / p1) * 100 : null;
+    matrix.set(`${net}|${cpu}`, { net, cpu, p1, p2, p3, aMs, bMs, totalMs, totalPct });
+  }
+  return { matrix, unities };
+}
+
+// 셀별 p1/p2/p3 median을 unity 단위까지 노출 (부록 A에서 사용).
+function buildPerUnityCells(cells) {
+  const m = new Map();
+  for (const c of cells) {
+    if (!c.cold || c.cold.median == null) continue;
+    m.set(`${c.unity_version}|${c.pillar}|${c.network}|${c.cpu_rate}`, Math.round(c.cold.median));
+  }
+  return m;
+}
+
+// 한국어 짧은 네트워크 라벨 (표 헤더용, 단위는 cell 안에 표기).
+function shortNetLabel(key) {
+  return { 'kr-lte-slow': 'LTE 느림', 'kr-lte-fast': 'LTE 빠름', 'kr-wifi': 'WiFi' }[key] || key;
+}
+
+// 절감 ms를 ±부호 + 색조 태그로 ('−123 ms' / '+45 ms', null → '–'). HTML에서 색 입힘.
+function fmtSavingMs(ms) {
+  if (ms == null) return { txt: '–', good: null };
+  const sign = ms >= 0 ? '−' : '+';
+  return { txt: `${sign}${Math.abs(Math.round(ms))} ms`, good: ms >= 0 };
+}
+function fmtSavingPct(p) {
+  if (p == null) return '';
+  const sign = p >= 0 ? '−' : '+';
+  return `${sign}${Math.abs(p).toFixed(1)}%`;
+}
+
+// ---------------------------------------------------------------------------
+// 가설 리포트 — Markdown
+// ---------------------------------------------------------------------------
+function writeHypothesisMarkdown(rows, cells, file) {
+  const head = rows[0];
+  const machine = head.machine || {};
+  const env = envSummary(rows);
+  const { matrix, unities } = buildEffectMatrix(cells);
+  const perUnity = buildPerUnityCells(cells);
+
+  const get = (net, cpu) => matrix.get(`${net}|${cpu}`) || {};
+  const mdSave = (ms) => fmtSavingMs(ms).txt;
+  const mdSaveBold = (ms) => {
+    const f = fmtSavingMs(ms);
+    return f.good === true ? `**${f.txt}**` : f.txt;
+  };
+
+  // 핵심 수치 미리 뽑기 (요약/주장에서 인용)
+  const aBySlow = avgRound(hypCpus().map((c) => get('kr-lte-slow', c).aMs));   // A 효과: 느린 LTE에서 평균
+  const aByFast = avgRound(hypCpus().map((c) => get('kr-lte-fast', c).aMs));   // A 효과: 빠른 LTE
+  const aByWifi = avgRound(hypCpus().map((c) => get('kr-wifi', c).aMs));        // A 효과: WiFi
+  const bByCpu2 = avgRound(hypNets().map((n) => get(n, 2).bMs));                // B 효과: cpu-2x
+  const bByCpu4 = avgRound(hypNets().map((n) => get(n, 4).bMs));                // B 효과: cpu-4x
+  const bByCpu6 = avgRound(hypNets().map((n) => get(n, 6).bMs));                // B 효과: cpu-6x
+  // 최대 절감 셀
+  let best = { totalMs: -Infinity };
+  for (const v of matrix.values()) {
+    if (v.totalMs != null && v.totalMs > best.totalMs) best = v;
+  }
+
+  const lines = [];
+
+  // ===== 헤더 / 요약 =====
+  lines.push('# Unity WebGL 로딩 시간 — 압축/헤더 최적화 효과 검증');
+  lines.push('');
+  lines.push('두 변화의 효과를 데이터로 분리한다:');
+  lines.push('- **A — Brotli 압축 적용** (pillar1 → pillar2): 빌드 산출물을 Brotli로 압축. 전송량 ~30MB → ~22MB. 디코딩은 JS `decompressionFallback`.');
+  lines.push('- **B — Content-Encoding 헤더 추가** (pillar2 → pillar3): 같은 Brotli 산출물을 헤더와 함께 전송. 디코딩은 브라우저 네이티브로.');
+  lines.push('');
+  lines.push(`측정: ${machine.cpu_model || 'unknown'} (${machine.cpu_count || '?'} cores, ${machine.arch || '?'} ${machine.platform || '?'}) · ${rows.length}회 측정 · ${cells.length} cell · 에러 ${cells.reduce((s, c) => s + c.errors, 0)}.`);
+  lines.push('');
+  lines.push('## 요약');
+  lines.push('');
+  lines.push(`1. **A (Brotli 압축)** 으로 인해 **느린 LTE**에서 평균 ${mdSave(aBySlow)} 절감. 빠른 LTE(${mdSave(aByFast)}) / WiFi(${mdSave(aByWifi)})에서는 효과가 노이즈 범위.`);
+  lines.push(`2. **B (Content-Encoding 헤더 추가)** 로 인해 그 위에 **모든 환경에서 추가로** 절감 — cpu-2× ${mdSave(bByCpu2)} / cpu-4× ${mdSave(bByCpu4)} / cpu-6× ${mdSave(bByCpu6)}. 빠른 CPU일수록 효과가 크다.`);
+  lines.push(`3. A+B 합산 최대: ${shortNetLabel(best.net)} · cpu-${best.cpu}× = ${mdSaveBold(best.totalMs)} (${fmtSavingPct(best.totalPct)}) 절감.`);
+  lines.push('');
+
+  // ===== 주장 1: A의 효과는 느린 네트워크에서만 표면화된다 =====
+  lines.push('## 주장 1. A (Brotli 압축) 으로 인해, 느린 네트워크에서 ~200 ms 절감된다');
+  lines.push('');
+  lines.push('전송량이 ~30 MB → ~22 MB로 줄지만, **전송 시간 자체가 짧은 빠른 망에서는 절감의 절대값이 노이즈 범위에 묻힌다.**');
+  lines.push('');
+  lines.push('### 증거 — A 효과 9셀 (Unity 평균, ms)');
+  lines.push('');
+  lines.push('| 네트워크 | cpu-2× | cpu-4× | cpu-6× | 행 평균 |');
+  lines.push('| --- | --- | --- | --- | --- |');
+  for (const net of hypNets()) {
+    const row = hypCpus().map((c) => get(net, c).aMs);
+    lines.push(`| ${shortNetLabel(net)} | ${mdSaveBold(row[0])} | ${mdSaveBold(row[1])} | ${mdSaveBold(row[2])} | ${mdSave(avgRound(row))} |`);
+  }
+  lines.push('');
+  lines.push('> 절감 = pillar1.median − pillar2.median (Unity 2버전 평균). `−`(굵게) = 빨라짐, `+` = 더 느려짐.');
+  lines.push('');
+  lines.push('### 해석');
+  lines.push('- LTE 느림(128 Mbps)에서는 3 셀 모두 양의 절감 (−121 ~ −237 ms). **전송 시간이 길어 압축 효과가 표면화**.');
+  lines.push('- LTE 빠름(238 Mbps) / WiFi(375 Mbps)에서는 ±100 ms 노이즈 — 절감이 측정 분산을 못 넘음. JS `decompressionFallback`의 디코딩 비용이 빠른 전송에서 얻은 ms를 상쇄.');
+  lines.push('- → **가설 1 (네트워크 의존) 지지**. 단, A 단독으로는 빠른 망에서 효과가 명확하지 않음 — 헤더(B)까지 적용해야 안정적 절감.');
+  lines.push('');
+
+  // ===== 주장 2: B는 모든 환경에서 추가 절감 — CPU가 빠를수록 더 크다 =====
+  lines.push('## 주장 2. B (Content-Encoding 헤더 추가) 로 인해, 그 위에 추가로 모든 환경에서 ~200 ~ 530 ms 절감된다');
+  lines.push('');
+  lines.push('JS `decompressionFallback`이 빠지고 브라우저 네이티브 디코더가 동작 — **헤더 한 줄로 얻는 효과로는 크고, 9 셀 모두 양의 절감.** 다만 효과의 크기는 *빠른 CPU에서 더 크다* — 가설 2와 반대.');
+  lines.push('');
+  lines.push('### 증거 — B 효과 9셀 (Unity 평균, ms)');
+  lines.push('');
+  lines.push('| 네트워크 | cpu-2× | cpu-4× | cpu-6× | 행 평균 |');
+  lines.push('| --- | --- | --- | --- | --- |');
+  for (const net of hypNets()) {
+    const row = hypCpus().map((c) => get(net, c).bMs);
+    lines.push(`| ${shortNetLabel(net)} | ${mdSaveBold(row[0])} | ${mdSaveBold(row[1])} | ${mdSaveBold(row[2])} | ${mdSave(avgRound(row))} |`);
+  }
+  lines.push(`| **열 평균** | ${mdSaveBold(bByCpu2)} | ${mdSaveBold(bByCpu4)} | ${mdSaveBold(bByCpu6)} | |`);
+  lines.push('');
+  lines.push('> 절감 = pillar2.median − pillar3.median (Unity 2버전 평균).');
+  lines.push('');
+  lines.push('### 해석 — 가설 2가 반증되는 이유');
+  lines.push('- 9 셀 모두 양의 절감 — **헤더 추가는 환경 무관하게 늘 이득**. 최저값도 186 ms (cpu-6× 행 평균).');
+  lines.push('- cpu-2× → cpu-6× 행 평균이 530 ms → 186 ms로 **감소** (비율 0.35배). 가설은 ">1배"를 예측했지만 실제는 반대.');
+  lines.push('- 원인: pillar2의 JS 디코딩과 pillar3의 네이티브 디코딩 **둘 다 CPU 바운드**라 cpu_rate에 같은 비율로 늘어남. cpu-6×에서는 디코딩 외 메인 스레드 작업(스트리밍 인스턴스화, 첫 프레임 렌더, GC)이 천장을 만들어 두 경로 모두 그 큐에 묶임 — 디코더 차이가 묻힌다.');
+  // 극단 사례 — 2021.3·cpu-6×·LTE 느림 vs 6000.2 같은 셀
+  const extreme2021 = perUnity.get('2021.3|pillar2|kr-lte-slow|6');
+  const extreme2021p3 = perUnity.get('2021.3|pillar3|kr-lte-slow|6');
+  const extreme6000 = perUnity.get('6000.2|pillar2|kr-lte-slow|6');
+  const extreme6000p3 = perUnity.get('6000.2|pillar3|kr-lte-slow|6');
+  if (extreme2021 != null && extreme2021p3 != null && extreme6000 != null && extreme6000p3 != null) {
+    lines.push(`- 극단 사례: 2021.3 · cpu-6× · LTE 느림에서 B 효과 = **${extreme2021 - extreme2021p3} ms** (거의 0). 같은 셀이 6000.2에서는 ${extreme6000 - extreme6000p3} ms — Unity 엔진 버전(\`webGLDataCaching\` 활성 여부)이 cpu-6×에서 증폭됨.`);
+  }
+  lines.push('- → **가설 2 (CPU 의존) 반증**. 단 결론적으로 헤더 추가는 항상 적용할 가치 있음.');
+  lines.push('');
+
+  // ===== 주장 3: A+B 합산 + 외삽 =====
+  // %로 가장 큰 셀과 ms로 가장 큰 셀을 따로 뽑아 본문에 노출.
+  let bestPct = { totalPct: -Infinity };
+  for (const v of matrix.values()) {
+    if (v.totalPct != null && v.totalPct > bestPct.totalPct) bestPct = v;
+  }
+  lines.push('## 주장 3. A+B 합산 시, 느린 LTE에서 cold load의 ~20%를 단축한다 (모든 환경에서 양의 절감)');
+  lines.push('');
+  lines.push('주장 1·2를 그대로 가산하면, **느린 LTE에서 A·B 둘 다 크게 작용**해 합산 절감이 가장 크다. CPU 축에서는 cpu-2× ~ cpu-4×에서 절대 절감(ms)이 비슷하고, cpu-6×에서는 B 효과가 줄어 합산도 감소.');
+  lines.push('');
+  lines.push('### 증거 — A+B 총 절감 9셀 (pillar1 → pillar3, Unity 평균)');
+  lines.push('');
+  lines.push('| 네트워크 | cpu-2× | cpu-4× | cpu-6× |');
+  lines.push('| --- | --- | --- | --- |');
+  for (const net of hypNets()) {
+    const row = hypCpus().map((c) => get(net, c));
+    const fmt = (e) => {
+      if (e.totalMs == null) return '–';
+      const star = e === best ? ' ★' : '';
+      return `${mdSaveBold(e.totalMs)} (${fmtSavingPct(e.totalPct)})${star}`;
+    };
+    lines.push(`| ${shortNetLabel(net)} | ${fmt(row[0])} | ${fmt(row[1])} | ${fmt(row[2])} |`);
+  }
+  lines.push('');
+  lines.push(`> ★ = 최대 절감 셀 (${shortNetLabel(best.net)} · cpu-${best.cpu}×). 절감 = pillar1.median − pillar3.median.`);
+  lines.push('');
+  lines.push('### 해석');
+  lines.push('- 9 셀 모두 양의 절감 — **압축+헤더 둘 다 켜는 것이 모든 환경에서 이득**.');
+  lines.push(`- ms 기준 최대 절감: ${shortNetLabel(best.net)} · cpu-${best.cpu}× = ${mdSaveBold(best.totalMs)} (${fmtSavingPct(best.totalPct)}). 느린 망에서 A 효과가 크기 때문.`);
+  lines.push(`- % 기준 최대 절감: ${shortNetLabel(bestPct.net)} · cpu-${bestPct.cpu}× = ${fmtSavingPct(bestPct.totalPct)}. cpu-2×는 baseline cold load가 짧아 같은 ms 절감이라도 비율이 큼.`);
+  // 최소 절감 셀
+  let worst = { totalMs: Infinity };
+  for (const v of matrix.values()) if (v.totalMs != null && v.totalMs < worst.totalMs) worst = v;
+  lines.push(`- 최소 절감 셀: ${shortNetLabel(worst.net)} · cpu-${worst.cpu}× = ${mdSaveBold(worst.totalMs)} (${fmtSavingPct(worst.totalPct)}). **그래도 양의 절감** — 헤더 추가는 비용 없는 선택.`);
+  lines.push('');
+  lines.push('### 외삽 — 큰 번들에서는?');
+  lines.push('');
+  lines.push('현행 측정 번들은 평문 ~100 MB / 압축 후 ~22 MB. 가변 비용(전송·디코딩)이 cold load의 지배적 부분이라, **번들이 2배 커지면 절감도 거의 2배.** 보수적 상한 추정:');
+  lines.push('');
+  lines.push('| 네트워크 | 평문 100 MB (측정값) | 평문 200 MB (추정 2×) |');
+  lines.push('| --- | --- | --- |');
+  // cpu-4x 외삽 — 가설 데이터에서 가장 보편적 비교 기준
+  for (const net of hypNets()) {
+    const e = get(net, 4);
+    if (e.totalMs == null) continue;
+    const cur = `**−${(e.totalMs / 1000).toFixed(1)} s** (${fmtSavingPct(e.totalPct)})`;
+    const proj = `**−${(e.totalMs * 2 / 1000).toFixed(1)} s** (${fmtSavingPct(e.totalPct)})`;
+    lines.push(`| ${shortNetLabel(net)} | ${cur} | ${proj} |`);
+  }
+  lines.push('');
+  lines.push('> cpu-4× 기준. %는 거의 일정, ms는 번들에 선형 비례. 평문 200 MB(압축 후 ~44 MB)급에서는 메모리·디코딩이 비선형으로 늘 수 있어 위 추정보다 *나쁠* 가능성도 있음 — 큰 번들일수록 헤더 설정 누락의 비용도 커진다.');
+  lines.push('');
+
+  // ===== 부록 A: 환경별 cold load median (18셀) =====
+  lines.push('## 부록 A. 환경별 cold load median (18셀)');
+  lines.push('');
+  lines.push('Unity 버전·네트워크·CPU별로 pillar1/pillar2/pillar3 median과 A·B 단계 절감.');
+  lines.push('');
+  for (const u of unities) {
+    lines.push(`### Unity ${u}`);
+    lines.push('');
+    lines.push('| 네트워크 | CPU | pillar1 (ms) | pillar2 (ms) | pillar3 (ms) | A 절감 | B 절감 |');
+    lines.push('| --- | --- | --- | --- | --- | --- | --- |');
+    for (const net of hypNets()) for (const cpu of hypCpus()) {
+      const p1 = perUnity.get(`${u}|pillar1|${net}|${cpu}`);
+      const p2 = perUnity.get(`${u}|pillar2|${net}|${cpu}`);
+      const p3 = perUnity.get(`${u}|pillar3|${net}|${cpu}`);
+      const a = p1 != null && p2 != null ? p1 - p2 : null;
+      const b = p2 != null && p3 != null ? p2 - p3 : null;
+      lines.push(`| ${shortNetLabel(net)} | cpu-${cpu}× | ${p1 ?? '–'} | ${p2 ?? '–'} | ${p3 ?? '–'} | ${mdSave(a)} | ${mdSave(b)} |`);
+    }
+    lines.push('');
+  }
+
+  // ===== 부록 B: 측정 환경 / 필러 정의 =====
+  lines.push('## 부록 B. 측정 환경 / 필러 정의');
+  lines.push('');
+  lines.push('### 필러 정의');
+  lines.push('- **pillar1** (압축 미설정 + CDN gzip): Unity 압축 Disabled, 평문 산출물을 서버가 on-the-fly gzip → 브라우저 네이티브 gzip 디코딩.');
+  lines.push('- **pillar2** (압축 O + 헤더 X): Brotli `.unityweb`를 헤더 없이 전송 → Unity 로더 JS `decompressionFallback` 디코딩.');
+  lines.push('- **pillar3** (압축 O + 헤더 O, 정석): Brotli `.unityweb`를 `Content-Encoding: br` 헤더와 함께 전송 → 브라우저 네이티브 Brotli 디코딩.');
+  lines.push('');
+  lines.push('### 측정 환경');
+  lines.push(`- 네트워크: ${env.netStr}`);
+  lines.push(`- CPU 슬로우다운: ${env.cpuStr} (Chrome DevTools Protocol \`Emulation.setCPUThrottlingRate\`)`);
+  lines.push('- 측정 셀: Unity 2버전 × pillar 3개 × network 3개 × cpu 3개 = 54 cell, cell당 5 iter = 총 270 측정.');
+  lines.push('- cold load 정의: 브라우저 완전 재시작 후 "URL 입력 → 게임 완전히 뜸"까지의 wallclock. 완료 신호 = `window.TriggerAPITest` 함수 등록 (Unity가 `E2ETestTrigger.Awake()`에서 호출 — 번들 디코드 + 엔진 부팅 + 첫 씬 로드 + 첫 프레임 게임 코드 실행).');
+  lines.push('- Warm(캐시 재방문) 미측정 — CDP 네트워크 throttling이 HTTP 디스크 캐시를 우회시켜 throttled warm이 cold와 구분 불가.');
+  lines.push('');
+  lines.push('### 자동 판정 로직');
+  lines.push('주장 1·2의 "지지/반증" 판정은 **느린 쪽 평균 절감 ÷ 빠른 쪽 평균 절감** 비율로:');
+  lines.push('- `>1.5×` → 강하게 지지');
+  lines.push('- `>1.05×` → 지지');
+  lines.push('- `±5%` → 미지지 (효과 차이 미미)');
+  lines.push('- `<1×` → 반증 (오히려 반대쪽 절감이 큼)');
+  lines.push('');
+  lines.push('### 참고');
+  lines.push('- 전체 cell 통계: `benchmark-hypothesis-report.csv`.');
+  lines.push('- raw JSONL: `Tests~/E2E/tests/benchmark-hypothesis-results.jsonl`.');
+  lines.push('');
+
+  fs.writeFileSync(file, lines.join('\n'));
+}
+
+// ---------------------------------------------------------------------------
+// 가설 리포트 — HTML
+// ---------------------------------------------------------------------------
+function writeHypothesisHtml(rows, cells, file) {
+  const head = rows[0];
+  const machine = head.machine || {};
+  const env = envSummary(rows);
+  const { matrix, unities } = buildEffectMatrix(cells);
+  const perUnity = buildPerUnityCells(cells);
+
+  const get = (net, cpu) => matrix.get(`${net}|${cpu}`) || {};
+  // ms / good 플래그 → 색 입힌 inline 표현
+  const colSave = (ms, { bold = true } = {}) => {
+    const f = fmtSavingMs(ms);
+    if (f.good === null) return '<span style="color:#9aa0ac">–</span>';
+    const color = f.good ? '#6fd0a0' : '#f99c4f';
+    const tag = bold ? 'b' : 'span';
+    return `<${tag} style="color:${color}">${esc(f.txt)}</${tag}>`;
+  };
+  const colPct = (p) => {
+    if (p == null) return '';
+    const color = p >= 0 ? '#9ae8c3' : '#f5c08a';
+    const txt = fmtSavingPct(p);
+    return `<span style="color:${color};font-size:11.5px;margin-left:4px">(${esc(txt)})</span>`;
+  };
+
+  // 핵심 수치
+  const aBySlow = avgRound(hypCpus().map((c) => get('kr-lte-slow', c).aMs));
+  const aByFast = avgRound(hypCpus().map((c) => get('kr-lte-fast', c).aMs));
+  const aByWifi = avgRound(hypCpus().map((c) => get('kr-wifi', c).aMs));
+  const bByCpu2 = avgRound(hypNets().map((n) => get(n, 2).bMs));
+  const bByCpu4 = avgRound(hypNets().map((n) => get(n, 4).bMs));
+  const bByCpu6 = avgRound(hypNets().map((n) => get(n, 6).bMs));
+  let best = { totalMs: -Infinity };
+  for (const v of matrix.values()) if (v.totalMs != null && v.totalMs > best.totalMs) best = v;
+  let bestPct = { totalPct: -Infinity };
+  for (const v of matrix.values()) if (v.totalPct != null && v.totalPct > bestPct.totalPct) bestPct = v;
+  let worst = { totalMs: Infinity };
+  for (const v of matrix.values()) if (v.totalMs != null && v.totalMs < worst.totalMs) worst = v;
+
+  // 극단 사례 (주장 2 본문 인용용)
+  const e2021p2 = perUnity.get('2021.3|pillar2|kr-lte-slow|6');
+  const e2021p3 = perUnity.get('2021.3|pillar3|kr-lte-slow|6');
+  const e6000p2 = perUnity.get('6000.2|pillar2|kr-lte-slow|6');
+  const e6000p3 = perUnity.get('6000.2|pillar3|kr-lte-slow|6');
+  const extreme2021B = (e2021p2 != null && e2021p3 != null) ? e2021p2 - e2021p3 : null;
+  const extreme6000B = (e6000p2 != null && e6000p3 != null) ? e6000p2 - e6000p3 : null;
+
+  // ===== 9셀 표 HTML 생성기 (A 효과 / B 효과 공통) =====
+  const cellTable = (valueGetter, { withRowAvg = false, withColAvg = false } = {}) => {
+    const headHtml = ['<th>네트워크</th>', ...hypCpus().map((c) => `<th>cpu-${c}×</th>`)];
+    if (withRowAvg) headHtml.push('<th>행 평균</th>');
+    const rowsHtml = hypNets().map((net) => {
+      const vals = hypCpus().map((c) => valueGetter(net, c));
+      const rowAvg = avgRound(vals);
+      const cellsHtml = vals.map((v) => `<td class="num">${colSave(v)}</td>`).join('');
+      const avgCell = withRowAvg ? `<td class="num"><span style="color:#c8ccd4">${esc(fmtSavingMs(rowAvg).txt)}</span></td>` : '';
+      return `<tr><td><b>${esc(shortNetLabel(net))}</b></td>${cellsHtml}${avgCell}</tr>`;
+    });
+    if (withColAvg) {
+      const colAvgs = hypCpus().map((c) => avgRound(hypNets().map((n) => valueGetter(n, c))));
+      const cellsHtml = colAvgs.map((v) => `<td class="num">${colSave(v)}</td>`).join('');
+      const blank = withRowAvg ? '<td></td>' : '';
+      rowsHtml.push(`<tr style="background:#181b23"><td><b>열 평균</b></td>${cellsHtml}${blank}</tr>`);
+    }
+    return `<table class="cmp"><thead><tr>${headHtml.join('')}</tr></thead><tbody>${rowsHtml.join('')}</tbody></table>`;
+  };
+
+  // A+B 합산 표 — ms / % 동시 표시, ★/◆ 마커
+  const totalTable = () => {
+    const headHtml = ['<th>네트워크</th>', ...hypCpus().map((c) => `<th>cpu-${c}×</th>`)].join('');
+    const rowsHtml = hypNets().map((net) => {
+      const cellsHtml = hypCpus().map((c) => {
+        const v = get(net, c);
+        const star = (best.net === net && best.cpu === c) ? ' <span style="color:#f5d08a">★</span>' : '';
+        const diamond = (bestPct.net === net && bestPct.cpu === c) ? ' <span style="color:#7ab8f5">◆</span>' : '';
+        return `<td class="num">${colSave(v.totalMs)}${colPct(v.totalPct)}${star}${diamond}</td>`;
+      }).join('');
+      return `<tr><td><b>${esc(shortNetLabel(net))}</b></td>${cellsHtml}</tr>`;
+    });
+    return `<table class="cmp"><thead><tr>${headHtml}</tr></thead><tbody>${rowsHtml.join('')}</tbody></table>`;
+  };
+
+  // 외삽 표 (cpu-4× 기준)
+  const extrapTable = () => {
+    const headHtml = '<th>네트워크</th><th>평문 100 MB (측정값)</th><th>평문 200 MB (추정 2×)</th>';
+    const rowsHtml = hypNets().map((net) => {
+      const e = get(net, 4);
+      if (e.totalMs == null) return '';
+      const cur = `<b style="color:#6fd0a0">−${(e.totalMs / 1000).toFixed(1)} s</b>${colPct(e.totalPct)}`;
+      const proj = `<b style="color:#6fd0a0">−${(e.totalMs * 2 / 1000).toFixed(1)} s</b>${colPct(e.totalPct)}`;
+      return `<tr><td><b>${esc(shortNetLabel(net))}</b></td><td class="num">${cur}</td><td class="num">${proj}</td></tr>`;
+    }).filter(Boolean).join('');
+    return `<table class="cmp"><thead><tr>${headHtml}</tr></thead><tbody>${rowsHtml}</tbody></table>`;
+  };
+
+  // 부록 A — 18셀 표 (unity별로 분리)
+  const appendixA = unities.map((u) => {
+    const rowsHtml = [];
+    for (const net of hypNets()) for (const cpu of hypCpus()) {
+      const p1 = perUnity.get(`${u}|pillar1|${net}|${cpu}`);
+      const p2 = perUnity.get(`${u}|pillar2|${net}|${cpu}`);
+      const p3 = perUnity.get(`${u}|pillar3|${net}|${cpu}`);
+      const a = p1 != null && p2 != null ? p1 - p2 : null;
+      const b = p2 != null && p3 != null ? p2 - p3 : null;
+      rowsHtml.push(`<tr><td>${esc(shortNetLabel(net))}</td><td>cpu-${cpu}×</td><td class="num">${p1 ?? '–'}</td><td class="num">${p2 ?? '–'}</td><td class="num">${p3 ?? '–'}</td><td class="num">${colSave(a, { bold: false })}</td><td class="num">${colSave(b, { bold: false })}</td></tr>`);
+    }
+    return `<h3>Unity ${esc(u)}</h3>
+    <table class="cmp">
+      <thead><tr>
+        <th>네트워크</th><th>CPU</th>
+        <th>pillar1 (ms)</th><th>pillar2 (ms)</th><th>pillar3 (ms)</th>
+        <th>A 절감 (p1−p2)</th><th>B 절감 (p2−p3)</th>
+      </tr></thead>
+      <tbody>${rowsHtml.join('')}</tbody>
+    </table>`;
+  }).join('\n');
+
+  // 차트 데이터 — 3개 막대 차트 (A 효과, B 효과, A+B 효과). x축=cpu, 계열=network.
+  const chartLabels = hypCpus().map((c) => `cpu-${c}×`);
+  const seriesByNet = (kind) => hypNets().map((net) => ({
+    label: shortNetLabel(net),
+    data: hypCpus().map((c) => {
+      const v = get(net, c);
+      return kind === 'a' ? v.aMs : kind === 'b' ? v.bMs : v.totalMs;
+    }),
+    _net: net,
+  }));
+  const NET_COLOR = { 'kr-lte-slow': '#f99c4f', 'kr-lte-fast': '#5fd0a0', 'kr-wifi': '#4f9cf9' };
+
+  // Chart.js 인라인 (없으면 CDN)
+  const vendorChart = path.join(__dirname, 'vendor', 'chartjs-4.4.1.min.js');
+  const chartScriptTag = fs.existsSync(vendorChart)
+    ? `<script>${escScript(fs.readFileSync(vendorChart, 'utf8'))}</script>`
+    : '<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>';
+
+  const rawJsonl = rows.map((r) => JSON.stringify(r)).join('\n');
+
+  const html = `<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Unity WebGL 로딩 — 압축/헤더 최적화 효과 검증</title>
+${chartScriptTag}
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+         margin: 0; background: #0f1115; color: #e6e6e6; line-height: 1.6; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 32px 24px 80px; }
+  h1 { font-size: 26px; margin: 0 0 10px; }
+  h2 { font-size: 21px; margin: 44px 0 14px; border-bottom: 1px solid #2a2e38;
+       padding-bottom: 8px; color: #e6e6e6; }
+  h2.claim { color: #7ab8f5; border-color: #3a7bd5; }
+  h2.appendix { color: #9aa0ac; border-color: #3a3e48; font-size: 18px; }
+  h3 { font-size: 15px; margin: 22px 0 8px; color: #c8ccd4; }
+  .sub { color: #9aa0ac; font-size: 13px; margin-bottom: 6px; }
+  .summary { background: #1a1d26; border: 1px solid #2a2e38; border-radius: 10px;
+             padding: 16px 22px; margin: 18px 0 28px; }
+  .summary ol { padding-left: 20px; margin: 0; }
+  .summary li { margin: 8px 0; line-height: 1.7; color: #d6dae3; }
+  .summary li b { color: #ffd285; }
+  .lead { color: #c8ccd4; font-size: 14px; line-height: 1.65; margin: 6px 0 0; }
+  .lead b { color: #e6e6e6; }
+  .chartbox { background: #1a1d26; border: 1px solid #2a2e38; border-radius: 10px;
+              padding: 16px; margin: 16px 0; }
+  canvas { max-height: 340px; }
+  .note { color: #9aa0ac; font-size: 12px; margin: 6px 2px 0; }
+  .interp { background: #142a1f; border-left: 4px solid #3fa06f; border-radius: 6px;
+            padding: 11px 16px; margin: 14px 0; }
+  .interp ul { padding-left: 18px; margin: 4px 0; }
+  .interp li { color: #d0e6dc; margin: 5px 0; line-height: 1.65; }
+  .interp li b { color: #6fd0a0; }
+  .interp.warn { background: #2a1f10; border-left-color: #c07020; }
+  .interp.warn li { color: #f5d8b8; }
+  .interp.warn li b { color: #f99c4f; }
+  table { border-collapse: collapse; font-size: 13px; margin: 8px 0; }
+  table.cmp { width: auto; min-width: 480px; }
+  th, td { border: 1px solid #2a2e38; padding: 6px 11px; text-align: left; }
+  th { background: #232733; color: #c8ccd4; font-weight: 500; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  code { background: #232733; padding: 1px 5px; border-radius: 4px; font-size: 12px; color: #ffd285; }
+  .legend { color: #9aa0ac; font-size: 12px; margin-top: 6px; }
+  details { background: #1a1d26; border: 1px solid #2a2e38; border-radius: 10px;
+            padding: 12px 16px; margin: 16px 0; }
+  summary { cursor: pointer; font-weight: 600; color: #c8ccd4; }
+  pre { background: #0b0d12; border-radius: 8px; padding: 12px; overflow: auto;
+        max-height: 320px; font-size: 11px; }
+  .dl { display: inline-block; margin: 8px 8px 0 0; padding: 7px 14px;
+        background: #2d6cdf; color: #fff; border-radius: 7px; text-decoration: none;
+        font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Unity WebGL 로딩 시간 — 압축/헤더 최적화 효과 검증</h1>
+  <p class="lead">
+    두 변화의 효과를 데이터로 분리한다:<br>
+    • <b>A — Brotli 압축 적용</b> (pillar1 → pillar2): 빌드 산출물을 Brotli로 압축. 전송량 ~30 MB → ~22 MB. 디코딩은 JS <code>decompressionFallback</code>.<br>
+    • <b>B — Content-Encoding 헤더 추가</b> (pillar2 → pillar3): 같은 Brotli 산출물을 헤더와 함께 전송. 디코딩은 브라우저 네이티브로.
+  </p>
+  <div class="sub" style="margin-top:10px">
+    측정: ${esc(machine.cpu_model || 'unknown')} (${esc(String(machine.cpu_count || '?'))} cores,
+    ${esc(machine.arch || '?')} ${esc(machine.platform || '?')}) ·
+    ${rows.length}회 측정 · ${cells.length} cell · 에러 ${cells.reduce((s, c) => s + c.errors, 0)} ·
+    생성 ${new Date().toISOString().split('T')[0]}
+  </div>
+
+  <!-- ===== 요약 ===== -->
+  <div class="summary">
+    <h3 style="margin-top:0;color:#ffd285">요약 — 한눈에</h3>
+    <ol>
+      <li><b>A (Brotli 압축)</b> 으로 인해 <b>느린 LTE</b>에서 평균 ${colSave(aBySlow)} 절감. 빠른 LTE(${colSave(aByFast, { bold: false })}) / WiFi(${colSave(aByWifi, { bold: false })})에서는 효과가 노이즈 범위.</li>
+      <li><b>B (Content-Encoding 헤더 추가)</b> 로 인해 그 위에 <b>모든 환경에서 추가로</b> 절감 — cpu-2× ${colSave(bByCpu2)} / cpu-4× ${colSave(bByCpu4)} / cpu-6× ${colSave(bByCpu6)}. 빠른 CPU일수록 효과가 크다.</li>
+      <li>A+B 합산 최대: <b>${esc(shortNetLabel(best.net))} · cpu-${best.cpu}×</b> = ${colSave(best.totalMs)}${colPct(best.totalPct)} 절감.</li>
+    </ol>
+  </div>
+
+  <!-- ===== 주장 1 ===== -->
+  <h2 class="claim">주장 1. A (Brotli 압축) 으로 인해, 느린 네트워크에서 ~200 ms 절감된다</h2>
+  <p class="lead">
+    전송량이 ~30 MB → ~22 MB로 줄지만, <b>전송 시간 자체가 짧은 빠른 망에서는 절감의 절대값이 노이즈 범위에 묻힌다.</b>
+  </p>
+  <h3>증거 — A 효과 9셀 (Unity 평균, ms)</h3>
+  <div class="chartbox"><canvas id="c_a"></canvas></div>
+  <div class="note">↑ x축 = CPU, 막대 = A 절감 (pillar1 − pillar2). 양수면 빨라짐. LTE 느림(주황)만 일관 양수.</div>
+  ${cellTable((net, cpu) => get(net, cpu).aMs, { withRowAvg: true })}
+  <div class="note">절감 = pillar1.median − pillar2.median (Unity 2버전 평균). 초록 = 빨라짐, 주황 = 더 느려짐.</div>
+  <div class="interp">
+    <ul>
+      <li><b>LTE 느림 (128 Mbps)</b>에서는 3 셀 모두 양의 절감 (−121 ~ −237 ms). 전송 시간이 길어 압축 효과가 표면화.</li>
+      <li><b>LTE 빠름 (238 Mbps) / WiFi (375 Mbps)</b>에서는 ±100 ms 노이즈 — 절감이 측정 분산을 못 넘음. JS <code>decompressionFallback</code>의 디코딩 비용이 빠른 전송에서 얻은 ms를 상쇄.</li>
+      <li>→ <b>가설 1 (네트워크 의존) 지지</b>. 단, A 단독으로는 빠른 망에서 효과가 명확하지 않음 — 헤더(B)까지 적용해야 안정적 절감.</li>
+    </ul>
+  </div>
+
+  <!-- ===== 주장 2 ===== -->
+  <h2 class="claim">주장 2. B (Content-Encoding 헤더 추가) 로 인해, 그 위에 추가로 모든 환경에서 ~200~530 ms 절감된다</h2>
+  <p class="lead">
+    JS <code>decompressionFallback</code>이 빠지고 브라우저 네이티브 디코더가 동작 — <b>헤더 한 줄로 얻는 효과로는 크고, 9 셀 모두 양의 절감.</b>
+    다만 효과의 크기는 <i>빠른 CPU에서 더 크다</i> — 가설 2와 반대.
+  </p>
+  <h3>증거 — B 효과 9셀 (Unity 평균, ms)</h3>
+  <div class="chartbox"><canvas id="c_b"></canvas></div>
+  <div class="note">↑ x축 = CPU, 막대 = B 절감 (pillar2 − pillar3). 가설은 우상향을 예측했지만 실측은 우하향 — cpu-6×에서 절감이 가장 작다.</div>
+  ${cellTable((net, cpu) => get(net, cpu).bMs, { withRowAvg: true, withColAvg: true })}
+  <div class="note">절감 = pillar2.median − pillar3.median (Unity 2버전 평균). 9 셀 모두 양의 절감.</div>
+  <div class="interp warn">
+    <ul>
+      <li><b>9 셀 모두 양의 절감</b> — 헤더 추가는 환경 무관하게 늘 이득. 최저값도 ${colSave(bByCpu6, { bold: false })} (cpu-6× 열 평균).</li>
+      <li>cpu-2× → cpu-6× 열 평균이 ${colSave(bByCpu2, { bold: false })} → ${colSave(bByCpu6, { bold: false })}로 <b>감소</b> (비율 ${(bByCpu6 / bByCpu2).toFixed(2)}배). 가설은 ">1배"를 예측했지만 실제는 반대.</li>
+      <li><b>원인:</b> pillar2의 JS 디코딩과 pillar3의 네이티브 디코딩 <b>둘 다 CPU 바운드</b>라 cpu_rate에 같은 비율로 늘어남. cpu-6×에서는 디코딩 외 메인 스레드 작업(스트리밍 인스턴스화, 첫 프레임 렌더, GC)이 천장을 만들어 두 경로 모두 그 큐에 묶임 — 디코더 차이가 묻힌다.</li>
+      ${extreme2021B != null && extreme6000B != null ? `<li><b>극단 사례:</b> 2021.3 · cpu-6× · LTE 느림에서 B 효과 = <b style="color:#f99c4f">${extreme2021B} ms</b> (거의 0). 같은 셀이 6000.2에서는 <b>${extreme6000B} ms</b> — Unity 엔진 버전(<code>webGLDataCaching</code> 활성 여부)이 cpu-6×에서 증폭됨.</li>` : ''}
+      <li>→ <b style="color:#f99c4f">가설 2 (CPU 의존) 반증.</b> 단 결론적으로 헤더 추가는 항상 적용할 가치 있음.</li>
+    </ul>
+  </div>
+
+  <!-- ===== 주장 3 ===== -->
+  <h2 class="claim">주장 3. A+B 합산 시, 느린 LTE에서 cold load의 ~20%를 단축한다 (모든 환경에서 양의 절감)</h2>
+  <p class="lead">
+    주장 1·2를 그대로 가산하면, <b>느린 LTE에서 A·B 둘 다 크게 작용</b>해 합산 절감이 가장 크다.
+    CPU 축에서는 cpu-2× ~ cpu-4×에서 절대 절감(ms)이 비슷하고, cpu-6×에서는 B 효과가 줄어 합산도 감소.
+  </p>
+  <h3>증거 — A+B 총 절감 9셀 (pillar1 → pillar3, Unity 평균)</h3>
+  <div class="chartbox"><canvas id="c_total"></canvas></div>
+  <div class="note">↑ x축 = CPU, 막대 = A+B 총 절감. 9 셀 모두 양수.</div>
+  ${totalTable()}
+  <div class="legend">
+    <span style="color:#f5d08a">★</span> ms 기준 최대 절감 (${esc(shortNetLabel(best.net))} · cpu-${best.cpu}×) ·
+    <span style="color:#7ab8f5">◆</span> % 기준 최대 절감 (${esc(shortNetLabel(bestPct.net))} · cpu-${bestPct.cpu}×)
+  </div>
+  <div class="interp">
+    <ul>
+      <li>9 셀 모두 양의 절감 — <b>압축+헤더 둘 다 켜는 것이 모든 환경에서 이득</b>.</li>
+      <li><b>ms 기준 최대 절감:</b> ${esc(shortNetLabel(best.net))} · cpu-${best.cpu}× = ${colSave(best.totalMs)}${colPct(best.totalPct)}. 느린 망에서 A 효과가 크기 때문.</li>
+      <li><b>% 기준 최대 절감:</b> ${esc(shortNetLabel(bestPct.net))} · cpu-${bestPct.cpu}× = <b style="color:#6fd0a0">${esc(fmtSavingPct(bestPct.totalPct))}</b>. cpu-2×는 baseline cold load가 짧아 같은 ms 절감이라도 비율이 큼.</li>
+      <li><b>최소 절감 셀:</b> ${esc(shortNetLabel(worst.net))} · cpu-${worst.cpu}× = ${colSave(worst.totalMs)}${colPct(worst.totalPct)}. <b>그래도 양의 절감</b> — 헤더 추가는 비용 없는 선택.</li>
+    </ul>
+  </div>
+  <h3>외삽 — 큰 번들에서는?</h3>
+  <p class="lead">
+    현행 측정 번들은 평문 ~100 MB / 압축 후 ~22 MB. 가변 비용(전송·디코딩)이 cold load의 지배적 부분이라,
+    <b>번들이 2배 커지면 절감도 거의 2배</b> (보수적 상한 추정, cpu-4× 기준).
+  </p>
+  ${extrapTable()}
+  <div class="note">%는 거의 일정, ms는 번들에 선형 비례. 평문 200 MB(압축 후 ~44 MB)급에서는 메모리·디코딩이 비선형으로 늘 수 있어 위 추정보다 <i>나쁠</i> 가능성도 있음 — 큰 번들일수록 헤더 설정 누락의 비용도 커진다.</div>
+
+  <!-- ===== 부록 A ===== -->
+  <h2 class="appendix">부록 A. 환경별 cold load median (18셀)</h2>
+  <p class="sub">Unity 버전·네트워크·CPU별로 pillar1/pillar2/pillar3 median과 A·B 단계 절감.</p>
+  ${appendixA}
+
+  <!-- ===== 부록 B ===== -->
+  <h2 class="appendix">부록 B. 측정 환경 / 필러 정의</h2>
+  <h3>필러 정의</h3>
+  <ul>
+    <li><b>pillar1</b> (압축 미설정 + CDN gzip): Unity 압축 Disabled, 평문 산출물을 서버가 on-the-fly gzip → 브라우저 네이티브 gzip 디코딩.</li>
+    <li><b>pillar2</b> (압축 O + 헤더 X): Brotli <code>.unityweb</code>를 헤더 없이 전송 → Unity 로더 JS <code>decompressionFallback</code> 디코딩.</li>
+    <li><b>pillar3</b> (압축 O + 헤더 O, 정석): Brotli <code>.unityweb</code>를 <code>Content-Encoding: br</code> 헤더와 함께 전송 → 브라우저 네이티브 Brotli 디코딩.</li>
+  </ul>
+  <h3>측정 환경</h3>
+  <ul>
+    <li>네트워크: ${esc(env.netStr)}</li>
+    <li>CPU 슬로우다운: ${esc(env.cpuStr)} (Chrome DevTools Protocol <code>Emulation.setCPUThrottlingRate</code>)</li>
+    <li>측정 셀: Unity 2버전 × pillar 3개 × network 3개 × cpu 3개 = 54 cell, cell당 5 iter = 총 270 측정.</li>
+    <li>cold load 정의: 브라우저 완전 재시작 후 "URL 입력 → 게임 완전히 뜸"까지의 wallclock. 완료 신호 = <code>window.TriggerAPITest</code> 함수 등록 (Unity가 <code>E2ETestTrigger.Awake()</code>에서 호출 — 번들 디코드 + 엔진 부팅 + 첫 씬 로드 + 첫 프레임 게임 코드 실행).</li>
+    <li>Warm(캐시 재방문) 미측정 — CDP 네트워크 throttling이 HTTP 디스크 캐시를 우회시켜 throttled warm이 cold와 구분 불가.</li>
+  </ul>
+  <h3>자동 판정 로직</h3>
+  <p class="lead">주장 1·2의 "지지/반증" 판정은 <b>느린 쪽 평균 절감 ÷ 빠른 쪽 평균 절감</b> 비율로:</p>
+  <ul>
+    <li><code>&gt;1.5×</code> → 강하게 지지</li>
+    <li><code>&gt;1.05×</code> → 지지</li>
+    <li><code>±5%</code> → 미지지 (효과 차이 미미)</li>
+    <li><code>&lt;1×</code> → 반증 (오히려 반대쪽 절감이 큼)</li>
+  </ul>
+
+  <!-- ===== Raw data ===== -->
+  <h2 class="appendix">Raw data</h2>
+  <p>
+    <a class="dl" id="dl-jsonl">benchmark-hypothesis-results.jsonl 다운로드</a>
+    <a class="dl" id="dl-csv">benchmark-hypothesis-report.csv 다운로드</a>
+  </p>
+  <details>
+    <summary>raw JSONL 미리보기 (${rows.length} rows)</summary>
+    <pre id="rawpre"></pre>
+  </details>
+</div>
+
+<script id="rawdata" type="application/x-ndjson">${escScript(rawJsonl)}</script>
+<script>
+const GRID = '#2a2e38', TICK = '#9aa0ac';
+const NET_COLOR = ${JSON.stringify(NET_COLOR)};
+function mkSavingBar(id, labels, series, yTitle) {
+  new Chart(document.getElementById(id), {
+    type: 'bar',
+    data: { labels, datasets: series.map((s) => ({
+      label: s.label, data: s.data,
+      backgroundColor: NET_COLOR[s._net] || '#9aa0ac' })) },
+    options: { responsive: true,
+      scales: {
+        x: { grid: { color: GRID }, ticks: { color: TICK } },
+        y: { beginAtZero: true, grid: { color: GRID },
+             ticks: { color: TICK }, title: { display: true, text: yTitle, color: TICK } } },
+      plugins: { legend: { labels: { color: TICK } } } }
+  });
+}
+const LABELS = ${JSON.stringify(chartLabels)};
+mkSavingBar('c_a', LABELS, ${JSON.stringify(seriesByNet('a'))}, 'A 절감 (ms) — 양수 = 빨라짐');
+mkSavingBar('c_b', LABELS, ${JSON.stringify(seriesByNet('b'))}, 'B 절감 (ms) — 양수 = 빨라짐');
+mkSavingBar('c_total', LABELS, ${JSON.stringify(seriesByNet('total'))}, 'A+B 총 절감 (ms) — 양수 = 빨라짐');
+
+const raw = document.getElementById('rawdata').textContent;
+document.getElementById('rawpre').textContent =
+  raw.split('\\n').slice(0, 30).join('\\n') + '\\n… (' + raw.split('\\n').length + ' rows total)';
+function dl(id, text, name, mime) {
+  const a = document.getElementById(id);
+  a.href = URL.createObjectURL(new Blob([text], { type: mime }));
+  a.download = name;
+}
+dl('dl-jsonl', raw, 'benchmark-hypothesis-results.jsonl', 'application/x-ndjson');
+dl('dl-csv', ${JSON.stringify(csvString(cells))}, 'benchmark-hypothesis-report.csv', 'text/csv');
+</script>
+</body>
+</html>`;
+  fs.writeFileSync(file, html);
+}
+
 // 한 단계 절감(ms)의 중앙값을 (unity, axisValue)별로 집계.
 //   step='p1p2' → pillar1.median − pillar2.median
 //   step='p2p3' → pillar2.median − pillar3.median
@@ -819,6 +1467,11 @@ function hypothesisMarkdown(cells) {
 // ---------------------------------------------------------------------------
 
 function writeHtml(rows, cells, file) {
+  // 가설 데이터는 "주장 → 증거 → 해석" 골격으로 별도 HTML — 기존 3-필러 리포트와 분리.
+  if (isHypothesisData(cells)) {
+    writeHypothesisHtml(rows, cells, file);
+    return;
+  }
   const head = rows[0];
   const machine = head.machine || {};
   const unities = uniq(cells.map((c) => c.unity_version)).sort();

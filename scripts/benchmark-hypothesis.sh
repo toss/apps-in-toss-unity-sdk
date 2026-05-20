@@ -42,7 +42,9 @@ PILLARS=(pillar1 pillar2 pillar3)
 HYPOTHESIS_NETWORKS="kr-lte-slow,kr-lte-fast,kr-wifi"
 HYPOTHESIS_CPUS="cpu-2x,cpu-4x,cpu-6x"
 
-ITERATIONS=5
+# 반복 횟수: --iterations 인자가 우선, 없으면 외부 BENCHMARK_ITERATIONS,
+# 그것도 없으면 5. (스모크 시 BENCHMARK_ITERATIONS=1로 조절 가능)
+ITERATIONS="${BENCHMARK_ITERATIONS:-5}"
 ONLY_BUILD=0
 ONLY_MEASURE=0
 ONE_UNITY=""

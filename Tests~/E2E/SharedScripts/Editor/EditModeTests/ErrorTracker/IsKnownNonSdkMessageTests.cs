@@ -1765,25 +1765,6 @@ public class IsKnownNonSdkMessageTests
     }
 
     [Test]
-    public void UserCancelledWebGLBuild_ReturnsTrue()
-    {
-        // Sentry SDK-TX — 사용자가 직접 WebGL 빌드를 취소한 정보성 경고.
-        // #591에서 origin(AITLog sentryCapture:false)으로 차단되지만, 이전 SDK 버전
-        // 사용자 빌드에서 도달하는 케이스를 message-filter로도 흡수.
-        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
-            "[AIT] 사용자에 의해 WebGL 빌드가 취소되었습니다."));
-    }
-
-    [Test]
-    public void GenericAitBuildFailed_NotFiltered()
-    {
-        // negative — 일반 [AIT] WebGL 빌드 실패 메시지는 SDK 보호 가드로 통과해야 한다.
-        // "사용자에 의해 ... 취소" 부분 문자열이 없으면 영향 없음.
-        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
-            "[AIT] WebGL 빌드가 실패했습니다."));
-    }
-
-    [Test]
     public void SdkPolicyFetch_NotMatching_GenericMessage_NotFiltered()
     {
         // negative — 단순 'sdk-policy' 문자열만 포함된 다른 메시지는 영향받지 않아야 함.

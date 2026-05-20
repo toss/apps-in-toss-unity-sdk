@@ -21,6 +21,53 @@ namespace AppsInToss
     /// </summary>
     public static partial class AIT
     {
+        /// <param name="options">조회 옵션을 담은 객체예요.</param>
+        /// <returns>선택한 미디어 목록을 반환해요. 취소 시 빈 배열을 반환해요.</returns>
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
+        [APICategory("Media")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<AlbumItemResponse[]> FetchAlbumItems(FetchAlbumItemsOptions options = null)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<AlbumItemResponse[]>();
+            string callbackId = AITCore.Instance.RegisterCallback<AlbumItemResponse[]>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error)
+            );
+            __fetchAlbumItems_Internal(AITJsonSettings.Serialize(options), callbackId, "AlbumItemResponse[]");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] FetchAlbumItems called");
+            await Awaitable.NextFrameAsync();
+            return new AlbumItemResponse[0];
+#endif
+        }
+#else
+        public static async Task<AlbumItemResponse[]> FetchAlbumItems(FetchAlbumItemsOptions options = null)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<AlbumItemResponse[]>();
+            string callbackId = AITCore.Instance.RegisterCallback<AlbumItemResponse[]>(
+                result => tcs.TrySetResult(result),
+                error => tcs.TrySetException(error)
+            );
+            __fetchAlbumItems_Internal(AITJsonSettings.Serialize(options), callbackId, "AlbumItemResponse[]");
+            return await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] FetchAlbumItems called");
+            await Task.CompletedTask;
+            return new AlbumItemResponse[0];
+#endif
+        }
+#endif
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __fetchAlbumItems_Internal(string options, string callbackId, string typeName);
+#endif
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Media")]

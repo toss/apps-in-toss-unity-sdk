@@ -1591,6 +1591,55 @@ namespace AppsInToss
         public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
+    public enum AlbumItemType
+    {
+        [EnumMember(Value = "PHOTO")]
+        PHOTO,
+        [EnumMember(Value = "VIDEO")]
+        VIDEO
+    }
+
+    [Serializable]
+    [Preserve]
+    public class FetchAlbumItemsOptions
+    {
+        [Preserve]
+        [JsonProperty("types")]
+        public AlbumItemType[] Types; // optional
+        [Preserve]
+        [JsonProperty("maxCount")]
+        public double? MaxCount; // optional
+        [Preserve]
+        [JsonProperty("maxWidth")]
+        public double? MaxWidth; // optional
+        [Preserve]
+        [JsonProperty("base64")]
+        public bool? Base64; // optional
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class AlbumItemResponse
+    {
+        [Preserve]
+        [JsonProperty("id")]
+        public string Id;
+        [Preserve]
+        [JsonProperty("dataUri")]
+        public string DataUri;
+        [Preserve]
+        [JsonProperty("type")]
+        public AlbumItemType Type;
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
     public enum PermissionStatus
     {
         [EnumMember(Value = "notDetermined")]
@@ -1978,6 +2027,22 @@ namespace AppsInToss
         [Preserve]
         [JsonProperty("maxWidth")]
         public double? MaxWidth; // optional
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class OpenPDFViewerParams
+    {
+        [Preserve]
+        [JsonProperty("data")]
+        public string Data;
+        [Preserve]
+        [JsonProperty("filename")]
+        public string Filename; // optional
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]

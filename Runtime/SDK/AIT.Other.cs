@@ -188,6 +188,53 @@ namespace AppsInToss
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __requestNotificationAgreement_Internal(string options, string subscriptionId, string typeName);
 #endif
+        /// <param name="paramsParam">PDF 데이터와 파일 이름을 담은 객체예요.</param>
+        /// <returns>PDF 뷰어가 닫히면 'CLOSE'를 반환해요.</returns>
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
+        [APICategory("Other")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<string> OpenPDFViewer(OpenPDFViewerParams paramsParam)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<string>();
+            string callbackId = AITCore.Instance.RegisterCallback<string>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error)
+            );
+            __openPDFViewer_Internal(AITJsonSettings.Serialize(paramsParam), callbackId, "string");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] OpenPDFViewer called");
+            await Awaitable.NextFrameAsync();
+            return "";
+#endif
+        }
+#else
+        public static async Task<string> OpenPDFViewer(OpenPDFViewerParams paramsParam)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<string>();
+            string callbackId = AITCore.Instance.RegisterCallback<string>(
+                result => tcs.TrySetResult(result),
+                error => tcs.TrySetException(error)
+            );
+            __openPDFViewer_Internal(AITJsonSettings.Serialize(paramsParam), callbackId, "string");
+            return await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] OpenPDFViewer called");
+            await Task.CompletedTask;
+            return "";
+#endif
+        }
+#endif
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __openPDFViewer_Internal(string paramsParam, string callbackId, string typeName);
+#endif
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]
         [APICategory("Other")]

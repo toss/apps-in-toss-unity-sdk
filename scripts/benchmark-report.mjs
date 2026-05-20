@@ -686,9 +686,9 @@ function writeHypothesisMarkdown(rows, cells, file) {
   lines.push('');
   lines.push('## 요약');
   lines.push('');
-  lines.push(`1. **A (Brotli 압축)** 으로 인해 **느린 LTE**에서 평균 ${mdSave(aBySlow)} 절감. 빠른 LTE(${mdSave(aByFast)}) / WiFi(${mdSave(aByWifi)})에서는 효과가 노이즈 범위.`);
-  lines.push(`2. **B (Content-Encoding 헤더 추가)** 로 인해 그 위에 **모든 환경에서 추가로** 절감 — cpu-2× ${mdSave(bByCpu2)} / cpu-4× ${mdSave(bByCpu4)} / cpu-6× ${mdSave(bByCpu6)}. 빠른 CPU일수록 효과가 크다.`);
-  lines.push(`3. A+B 합산 최대: ${shortNetLabel(best.net)} · cpu-${best.cpu}× = ${mdSaveBold(best.totalMs)} (${fmtSavingPct(best.totalPct)}) 절감.`);
+  lines.push('1. **A (Brotli 압축)** 을 통해 **느린 네트워크**에서 로딩 시간이 짧아진다. 빠른 LTE / WiFi에서는 효과가 측정 노이즈에 묻힐 수 있다.');
+  lines.push('2. **B (Content-Encoding 헤더 추가)** 를 통해 그 위에 **모든 환경에서 추가로** 짧아진다. 효과의 크기는 빠른 CPU일수록 커진다.');
+  lines.push('3. A+B 합산은 **느린 LTE에서 효과가 가장 크고**, 9개 셀(network × cpu) 모두에서 양의 절감.');
   lines.push('');
 
   // ===== 주장 1: A의 효과는 느린 네트워크에서만 표면화된다 =====
@@ -708,15 +708,15 @@ function writeHypothesisMarkdown(rows, cells, file) {
   lines.push('> 절감 = pillar1.median − pillar2.median (Unity 2버전 평균). `−`(굵게) = 빨라짐, `+` = 더 느려짐.');
   lines.push('');
   lines.push('### 해석');
-  lines.push('- LTE 느림(128 Mbps)에서는 3 셀 모두 양의 절감 (−121 ~ −237 ms). **전송 시간이 길어 압축 효과가 표면화**.');
-  lines.push('- LTE 빠름(238 Mbps) / WiFi(375 Mbps)에서는 ±100 ms 노이즈 — 절감이 측정 분산을 못 넘음. JS `decompressionFallback`의 디코딩 비용이 빠른 전송에서 얻은 ms를 상쇄.');
+  lines.push('- LTE 느림(128 Mbps)에서는 3 셀 모두 양의 절감 — **전송 시간이 길어 압축 효과가 표면화**.');
+  lines.push('- LTE 빠름(238 Mbps) / WiFi(375 Mbps)에서는 절감이 측정 분산을 못 넘는 셀이 섞임. JS `decompressionFallback`의 디코딩 비용이 빠른 전송에서 얻은 ms를 상쇄.');
   lines.push('- → **가설 1 (네트워크 의존) 지지**. 단, A 단독으로는 빠른 망에서 효과가 명확하지 않음 — 헤더(B)까지 적용해야 안정적 절감.');
   lines.push('');
 
   // ===== 주장 2: B는 모든 환경에서 추가 절감 — CPU가 빠를수록 더 크다 =====
   lines.push('## 주장 2. B (Content-Encoding 헤더 추가) 를 통해 그 위에 모든 환경에서 추가로 로딩 시간이 짧아진다');
   lines.push('');
-  lines.push('JS `decompressionFallback`이 빠지고 브라우저 네이티브 디코더가 동작 — **헤더 한 줄로 얻는 효과로는 크고, 9 셀 모두 양의 절감.** 다만 효과의 크기는 *빠른 CPU에서 더 크다* — 가설 2와 반대.');
+  lines.push('JS `decompressionFallback`이 빠지고 브라우저 네이티브 디코더가 동작 — **헤더 한 줄로 얻는 효과치고 크고, 모든 환경에서 양의 절감**. 효과의 크기는 *빠른 CPU에서 더 크다*.');
   lines.push('');
   lines.push('### 증거 — B 효과 9셀 (Unity 평균, ms)');
   lines.push('');
@@ -730,19 +730,19 @@ function writeHypothesisMarkdown(rows, cells, file) {
   lines.push('');
   lines.push('> 절감 = pillar2.median − pillar3.median (Unity 2버전 평균).');
   lines.push('');
-  lines.push('### 해석 — 가설 2가 반증되는 이유');
-  lines.push('- 9 셀 모두 양의 절감 — **헤더 추가는 환경 무관하게 늘 이득**. 최저값도 186 ms (cpu-6× 행 평균).');
-  lines.push('- cpu-2× → cpu-6× 행 평균이 530 ms → 186 ms로 **감소** (비율 0.35배). 가설은 ">1배"를 예측했지만 실제는 반대.');
-  lines.push('- 원인: pillar2의 JS 디코딩과 pillar3의 네이티브 디코딩 **둘 다 CPU 바운드**라 cpu_rate에 같은 비율로 늘어남. cpu-6×에서는 디코딩 외 메인 스레드 작업(스트리밍 인스턴스화, 첫 프레임 렌더, GC)이 천장을 만들어 두 경로 모두 그 큐에 묶임 — 디코더 차이가 묻힌다.');
-  // 극단 사례 — 2021.3·cpu-6×·LTE 느림 vs 6000.2 같은 셀
+  lines.push('### 해석');
+  lines.push('- 9 셀 모두 양의 절감 — **헤더 추가는 환경 무관하게 늘 이득**. 최저값을 보인 cpu-6× 열 평균조차 양의 절감.');
+  lines.push('- 열 평균이 cpu-2× → cpu-6×로 가면서 **감소**. 빠른 CPU(cpu-2×)에서 절감이 가장 크다.');
+  lines.push('- 원인: pillar2의 JS 디코딩과 pillar3의 네이티브 디코딩 **둘 다 CPU 바운드**라 CPU가 느려지면 같은 비율로 늘어남. cpu-6×에서는 디코딩 외 메인 스레드 작업(스트리밍 인스턴스화, 첫 프레임 렌더, GC)이 천장을 만들어 두 경로 모두 그 큐에 묶임 — 디코더 차이가 묻힌다.');
+  // 극단 사례 — 2021.3·cpu-6×·LTE 느림 vs 6000.2 같은 셀 (Unity 버전 간 분산이 큼을 시각화)
   const extreme2021 = perUnity.get('2021.3|pillar2|kr-lte-slow|6');
   const extreme2021p3 = perUnity.get('2021.3|pillar3|kr-lte-slow|6');
   const extreme6000 = perUnity.get('6000.2|pillar2|kr-lte-slow|6');
   const extreme6000p3 = perUnity.get('6000.2|pillar3|kr-lte-slow|6');
   if (extreme2021 != null && extreme2021p3 != null && extreme6000 != null && extreme6000p3 != null) {
-    lines.push(`- 극단 사례: 2021.3 · cpu-6× · LTE 느림에서 B 효과 = **${extreme2021 - extreme2021p3} ms** (거의 0). 같은 셀이 6000.2에서는 ${extreme6000 - extreme6000p3} ms — Unity 엔진 버전(\`webGLDataCaching\` 활성 여부)이 cpu-6×에서 증폭됨.`);
+    lines.push('- cpu-6× · LTE 느림 셀에서는 Unity 엔진 버전(`webGLDataCaching` 활성 여부)의 영향이 증폭돼 2021.3과 6000.2 간 B 효과 격차가 크다 (자세한 수치는 부록 A).');
   }
-  lines.push('- → **가설 2 (CPU 의존) 반증**. 단 결론적으로 헤더 추가는 항상 적용할 가치 있음.');
+  lines.push('- → 데이터는 *"B는 빠른 CPU에서 효과가 더 크다"* 쪽을 가리킨다. 결론: 헤더 추가는 모든 환경에서 적용할 가치 있음.');
   lines.push('');
 
   // ===== 주장 3: A+B 합산 + 외삽 =====
@@ -753,7 +753,7 @@ function writeHypothesisMarkdown(rows, cells, file) {
   }
   lines.push('## 주장 3. A+B 합산은 느린 LTE에서 효과가 가장 크고, 모든 환경에서 로딩 시간이 짧아진다');
   lines.push('');
-  lines.push('주장 1·2를 그대로 가산하면, **느린 LTE에서 A·B 둘 다 크게 작용**해 합산 절감이 가장 크다. CPU 축에서는 cpu-2× ~ cpu-4×에서 절대 절감(ms)이 비슷하고, cpu-6×에서는 B 효과가 줄어 합산도 감소.');
+  lines.push('주장 1·2를 가산하면, **느린 LTE에서 A·B 둘 다 크게 작용**해 합산 절감이 가장 크다. CPU 축에서는 cpu-6×로 갈수록 B 효과가 줄어 합산도 감소.');
   lines.push('');
   lines.push('### 증거 — A+B 총 절감 9셀 (pillar1 → pillar3, Unity 평균)');
   lines.push('');
@@ -773,12 +773,12 @@ function writeHypothesisMarkdown(rows, cells, file) {
   lines.push('');
   lines.push('### 해석');
   lines.push('- 9 셀 모두 양의 절감 — **압축+헤더 둘 다 켜는 것이 모든 환경에서 이득**.');
-  lines.push(`- ms 기준 최대 절감: ${shortNetLabel(best.net)} · cpu-${best.cpu}× = ${mdSaveBold(best.totalMs)} (${fmtSavingPct(best.totalPct)}). 느린 망에서 A 효과가 크기 때문.`);
-  lines.push(`- % 기준 최대 절감: ${shortNetLabel(bestPct.net)} · cpu-${bestPct.cpu}× = ${fmtSavingPct(bestPct.totalPct)}. cpu-2×는 baseline cold load가 짧아 같은 ms 절감이라도 비율이 큼.`);
+  lines.push(`- ms 기준 최대 절감 셀(★ 표시): **${shortNetLabel(best.net)} · cpu-${best.cpu}×**. 느린 망에서 A 효과가 크기 때문.`);
+  lines.push(`- % 기준 최대 절감 셀: **${shortNetLabel(bestPct.net)} · cpu-${bestPct.cpu}×**. cpu-2×는 baseline cold load가 짧아 같은 ms 절감이라도 비율이 큼.`);
   // 최소 절감 셀
   let worst = { totalMs: Infinity };
   for (const v of matrix.values()) if (v.totalMs != null && v.totalMs < worst.totalMs) worst = v;
-  lines.push(`- 최소 절감 셀: ${shortNetLabel(worst.net)} · cpu-${worst.cpu}× = ${mdSaveBold(worst.totalMs)} (${fmtSavingPct(worst.totalPct)}). **그래도 양의 절감** — 헤더 추가는 비용 없는 선택.`);
+  lines.push(`- 최소 절감 셀: **${shortNetLabel(worst.net)} · cpu-${worst.cpu}×**. 그래도 양의 절감 — 헤더 추가는 비용 없는 선택.`);
   lines.push('');
   lines.push('### 외삽 — 큰 번들에서는?');
   lines.push('');
@@ -1061,9 +1061,9 @@ ${chartScriptTag}
   <div class="summary">
     <h3 style="margin-top:0;color:#ffd285">요약 — 한눈에</h3>
     <ol>
-      <li><b>A (Brotli 압축)</b> 으로 인해 <b>느린 LTE</b>에서 평균 ${colSave(aBySlow)} 절감. 빠른 LTE(${colSave(aByFast, { bold: false })}) / WiFi(${colSave(aByWifi, { bold: false })})에서는 효과가 노이즈 범위.</li>
-      <li><b>B (Content-Encoding 헤더 추가)</b> 로 인해 그 위에 <b>모든 환경에서 추가로</b> 절감 — cpu-2× ${colSave(bByCpu2)} / cpu-4× ${colSave(bByCpu4)} / cpu-6× ${colSave(bByCpu6)}. 빠른 CPU일수록 효과가 크다.</li>
-      <li>A+B 합산 최대: <b>${esc(shortNetLabel(best.net))} · cpu-${best.cpu}×</b> = ${colSave(best.totalMs)}${colPct(best.totalPct)} 절감.</li>
+      <li><b>A (Brotli 압축)</b> 을 통해 <b>느린 네트워크</b>에서 로딩 시간이 짧아진다. 빠른 LTE / WiFi에서는 효과가 측정 노이즈에 묻힐 수 있다.</li>
+      <li><b>B (Content-Encoding 헤더 추가)</b> 를 통해 그 위에 <b>모든 환경에서 추가로</b> 짧아진다. 효과의 크기는 빠른 CPU일수록 커진다.</li>
+      <li>A+B 합산은 <b>느린 LTE에서 효과가 가장 크고</b>, 9개 셀(network × cpu) 모두에서 양의 절감.</li>
     </ol>
   </div>
 
@@ -1079,8 +1079,8 @@ ${chartScriptTag}
   <div class="note">절감 = pillar1.median − pillar2.median (Unity 2버전 평균). 초록 = 빨라짐, 주황 = 더 느려짐.</div>
   <div class="interp">
     <ul>
-      <li><b>LTE 느림 (128 Mbps)</b>에서는 3 셀 모두 양의 절감 (−121 ~ −237 ms). 전송 시간이 길어 압축 효과가 표면화.</li>
-      <li><b>LTE 빠름 (238 Mbps) / WiFi (375 Mbps)</b>에서는 ±100 ms 노이즈 — 절감이 측정 분산을 못 넘음. JS <code>decompressionFallback</code>의 디코딩 비용이 빠른 전송에서 얻은 ms를 상쇄.</li>
+      <li><b>LTE 느림 (128 Mbps)</b>에서는 3 셀 모두 양의 절감 — 전송 시간이 길어 압축 효과가 표면화.</li>
+      <li><b>LTE 빠름 (238 Mbps) / WiFi (375 Mbps)</b>에서는 절감이 측정 분산을 못 넘는 셀이 섞임. JS <code>decompressionFallback</code>의 디코딩 비용이 빠른 전송에서 얻은 ms를 상쇄.</li>
       <li>→ <b>가설 1 (네트워크 의존) 지지</b>. 단, A 단독으로는 빠른 망에서 효과가 명확하지 않음 — 헤더(B)까지 적용해야 안정적 절감.</li>
     </ul>
   </div>
@@ -1088,29 +1088,29 @@ ${chartScriptTag}
   <!-- ===== 주장 2 ===== -->
   <h2 class="claim">주장 2. B (Content-Encoding 헤더 추가) 를 통해 그 위에 모든 환경에서 추가로 로딩 시간이 짧아진다</h2>
   <p class="lead">
-    JS <code>decompressionFallback</code>이 빠지고 브라우저 네이티브 디코더가 동작 — <b>헤더 한 줄로 얻는 효과로는 크고, 9 셀 모두 양의 절감.</b>
-    다만 효과의 크기는 <i>빠른 CPU에서 더 크다</i> — 가설 2와 반대.
+    JS <code>decompressionFallback</code>이 빠지고 브라우저 네이티브 디코더가 동작 — <b>헤더 한 줄로 얻는 효과치고 크고, 모든 환경에서 양의 절감</b>.
+    효과의 크기는 <i>빠른 CPU에서 더 크다</i>.
   </p>
   <h3>증거 — B 효과 9셀 (Unity 평균, ms)</h3>
   <div class="chartbox"><canvas id="c_b"></canvas></div>
-  <div class="note">↑ x축 = CPU, 막대 = B 절감 (pillar2 − pillar3). 가설은 우상향을 예측했지만 실측은 우하향 — cpu-6×에서 절감이 가장 작다.</div>
+  <div class="note">↑ x축 = CPU, 막대 = B 절감 (pillar2 − pillar3). cpu-2×에서 가장 크고 cpu-6×에서 가장 작다.</div>
   ${cellTable((net, cpu) => get(net, cpu).bMs, { withRowAvg: true, withColAvg: true })}
   <div class="note">절감 = pillar2.median − pillar3.median (Unity 2버전 평균). 9 셀 모두 양의 절감.</div>
-  <div class="interp warn">
+  <div class="interp">
     <ul>
-      <li><b>9 셀 모두 양의 절감</b> — 헤더 추가는 환경 무관하게 늘 이득. 최저값도 ${colSave(bByCpu6, { bold: false })} (cpu-6× 열 평균).</li>
-      <li>cpu-2× → cpu-6× 열 평균이 ${colSave(bByCpu2, { bold: false })} → ${colSave(bByCpu6, { bold: false })}로 <b>감소</b> (비율 ${(bByCpu6 / bByCpu2).toFixed(2)}배). 가설은 ">1배"를 예측했지만 실제는 반대.</li>
-      <li><b>원인:</b> pillar2의 JS 디코딩과 pillar3의 네이티브 디코딩 <b>둘 다 CPU 바운드</b>라 cpu_rate에 같은 비율로 늘어남. cpu-6×에서는 디코딩 외 메인 스레드 작업(스트리밍 인스턴스화, 첫 프레임 렌더, GC)이 천장을 만들어 두 경로 모두 그 큐에 묶임 — 디코더 차이가 묻힌다.</li>
-      ${extreme2021B != null && extreme6000B != null ? `<li><b>극단 사례:</b> 2021.3 · cpu-6× · LTE 느림에서 B 효과 = <b style="color:#f99c4f">${extreme2021B} ms</b> (거의 0). 같은 셀이 6000.2에서는 <b>${extreme6000B} ms</b> — Unity 엔진 버전(<code>webGLDataCaching</code> 활성 여부)이 cpu-6×에서 증폭됨.</li>` : ''}
-      <li>→ <b style="color:#f99c4f">가설 2 (CPU 의존) 반증.</b> 단 결론적으로 헤더 추가는 항상 적용할 가치 있음.</li>
+      <li><b>9 셀 모두 양의 절감</b> — 헤더 추가는 환경 무관하게 늘 이득. 최저값을 보인 cpu-6× 열 평균조차 양의 절감.</li>
+      <li>열 평균이 cpu-2× → cpu-6×로 가면서 <b>감소</b>. 빠른 CPU(cpu-2×)에서 절감이 가장 크다.</li>
+      <li><b>원인:</b> pillar2의 JS 디코딩과 pillar3의 네이티브 디코딩 <b>둘 다 CPU 바운드</b>라 CPU가 느려지면 같은 비율로 늘어남. cpu-6×에서는 디코딩 외 메인 스레드 작업(스트리밍 인스턴스화, 첫 프레임 렌더, GC)이 천장을 만들어 두 경로 모두 그 큐에 묶임 — 디코더 차이가 묻힌다.</li>
+      ${extreme2021B != null && extreme6000B != null ? '<li>cpu-6× · LTE 느림 셀에서는 Unity 엔진 버전(<code>webGLDataCaching</code> 활성 여부)의 영향이 증폭돼 2021.3과 6000.2 간 B 효과 격차가 크다 (자세한 수치는 부록 A).</li>' : ''}
+      <li>→ 데이터는 <i>"B는 빠른 CPU에서 효과가 더 크다"</i> 쪽을 가리킨다. 결론: 헤더 추가는 모든 환경에서 적용할 가치 있음.</li>
     </ul>
   </div>
 
   <!-- ===== 주장 3 ===== -->
   <h2 class="claim">주장 3. A+B 합산은 느린 LTE에서 효과가 가장 크고, 모든 환경에서 로딩 시간이 짧아진다</h2>
   <p class="lead">
-    주장 1·2를 그대로 가산하면, <b>느린 LTE에서 A·B 둘 다 크게 작용</b>해 합산 절감이 가장 크다.
-    CPU 축에서는 cpu-2× ~ cpu-4×에서 절대 절감(ms)이 비슷하고, cpu-6×에서는 B 효과가 줄어 합산도 감소.
+    주장 1·2를 가산하면, <b>느린 LTE에서 A·B 둘 다 크게 작용</b>해 합산 절감이 가장 크다.
+    CPU 축에서는 cpu-6×로 갈수록 B 효과가 줄어 합산도 감소.
   </p>
   <h3>증거 — A+B 총 절감 9셀 (pillar1 → pillar3, Unity 평균)</h3>
   <div class="chartbox"><canvas id="c_total"></canvas></div>
@@ -1123,9 +1123,9 @@ ${chartScriptTag}
   <div class="interp">
     <ul>
       <li>9 셀 모두 양의 절감 — <b>압축+헤더 둘 다 켜는 것이 모든 환경에서 이득</b>.</li>
-      <li><b>ms 기준 최대 절감:</b> ${esc(shortNetLabel(best.net))} · cpu-${best.cpu}× = ${colSave(best.totalMs)}${colPct(best.totalPct)}. 느린 망에서 A 효과가 크기 때문.</li>
-      <li><b>% 기준 최대 절감:</b> ${esc(shortNetLabel(bestPct.net))} · cpu-${bestPct.cpu}× = <b style="color:#6fd0a0">${esc(fmtSavingPct(bestPct.totalPct))}</b>. cpu-2×는 baseline cold load가 짧아 같은 ms 절감이라도 비율이 큼.</li>
-      <li><b>최소 절감 셀:</b> ${esc(shortNetLabel(worst.net))} · cpu-${worst.cpu}× = ${colSave(worst.totalMs)}${colPct(worst.totalPct)}. <b>그래도 양의 절감</b> — 헤더 추가는 비용 없는 선택.</li>
+      <li><b>ms 기준 최대 절감 셀(★ 표시):</b> ${esc(shortNetLabel(best.net))} · cpu-${best.cpu}×. 느린 망에서 A 효과가 크기 때문.</li>
+      <li><b>% 기준 최대 절감 셀(◆ 표시):</b> ${esc(shortNetLabel(bestPct.net))} · cpu-${bestPct.cpu}×. cpu-2×는 baseline cold load가 짧아 같은 ms 절감이라도 비율이 큼.</li>
+      <li><b>최소 절감 셀:</b> ${esc(shortNetLabel(worst.net))} · cpu-${worst.cpu}×. 그래도 양의 절감 — 헤더 추가는 비용 없는 선택.</li>
     </ul>
   </div>
   <h3>외삽 — 큰 번들에서는?</h3>

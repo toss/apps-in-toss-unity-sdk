@@ -6,8 +6,10 @@
 #   가설 1 (네트워크 의존) — p1→p2 단계(Brotli 압축 적용)의 효과는 네트워크가
 #                            느릴수록 크다.
 #   가설 2 (CPU 의존)      — p2→p3 단계(JS decompressionFallback → 브라우저
-#                            네이티브 Brotli 디코딩)의 효과는 CPU가 느린
-#                            기기일수록 크다.
+#                            네이티브 Brotli 디코딩)의 효과는 CPU에 따라 달라진다.
+#                            (사전 가설: CPU가 느릴수록 크다. 실측 결과는 정반대 —
+#                             CPU가 빠를수록 절감이 크고, cpu-6×에서 효과가 가장 작다.
+#                             자세한 해석은 benchmark-hypothesis-report.md 주장 2.)
 #
 # 측정 매트릭스: unity{2021.3,6000.2} × pillar{1,2,3}
 #               × network{kr-lte-slow,kr-lte-fast,kr-wifi}

@@ -692,7 +692,7 @@ function writeHypothesisMarkdown(rows, cells, file) {
   lines.push('');
 
   // ===== 주장 1: A의 효과는 느린 네트워크에서만 표면화된다 =====
-  lines.push('## 주장 1. A (Brotli 압축) 으로 인해, 느린 네트워크에서 ~200 ms 절감된다');
+  lines.push('## 주장 1. A (Brotli 압축) 을 통해 느린 네트워크에서 로딩 시간이 더 짧아진다');
   lines.push('');
   lines.push('전송량이 ~30 MB → ~22 MB로 줄지만, **전송 시간 자체가 짧은 빠른 망에서는 절감의 절대값이 노이즈 범위에 묻힌다.**');
   lines.push('');
@@ -714,7 +714,7 @@ function writeHypothesisMarkdown(rows, cells, file) {
   lines.push('');
 
   // ===== 주장 2: B는 모든 환경에서 추가 절감 — CPU가 빠를수록 더 크다 =====
-  lines.push('## 주장 2. B (Content-Encoding 헤더 추가) 로 인해, 그 위에 추가로 모든 환경에서 ~200 ~ 530 ms 절감된다');
+  lines.push('## 주장 2. B (Content-Encoding 헤더 추가) 를 통해 그 위에 모든 환경에서 추가로 로딩 시간이 짧아진다');
   lines.push('');
   lines.push('JS `decompressionFallback`이 빠지고 브라우저 네이티브 디코더가 동작 — **헤더 한 줄로 얻는 효과로는 크고, 9 셀 모두 양의 절감.** 다만 효과의 크기는 *빠른 CPU에서 더 크다* — 가설 2와 반대.');
   lines.push('');
@@ -751,7 +751,7 @@ function writeHypothesisMarkdown(rows, cells, file) {
   for (const v of matrix.values()) {
     if (v.totalPct != null && v.totalPct > bestPct.totalPct) bestPct = v;
   }
-  lines.push('## 주장 3. A+B 합산 시, 느린 LTE에서 cold load의 ~20%를 단축한다 (모든 환경에서 양의 절감)');
+  lines.push('## 주장 3. A+B 합산은 느린 LTE에서 효과가 가장 크고, 모든 환경에서 로딩 시간이 짧아진다');
   lines.push('');
   lines.push('주장 1·2를 그대로 가산하면, **느린 LTE에서 A·B 둘 다 크게 작용**해 합산 절감이 가장 크다. CPU 축에서는 cpu-2× ~ cpu-4×에서 절대 절감(ms)이 비슷하고, cpu-6×에서는 B 효과가 줄어 합산도 감소.');
   lines.push('');
@@ -1068,7 +1068,7 @@ ${chartScriptTag}
   </div>
 
   <!-- ===== 주장 1 ===== -->
-  <h2 class="claim">주장 1. A (Brotli 압축) 으로 인해, 느린 네트워크에서 ~200 ms 절감된다</h2>
+  <h2 class="claim">주장 1. A (Brotli 압축) 을 통해 느린 네트워크에서 로딩 시간이 더 짧아진다</h2>
   <p class="lead">
     전송량이 ~30 MB → ~22 MB로 줄지만, <b>전송 시간 자체가 짧은 빠른 망에서는 절감의 절대값이 노이즈 범위에 묻힌다.</b>
   </p>
@@ -1086,7 +1086,7 @@ ${chartScriptTag}
   </div>
 
   <!-- ===== 주장 2 ===== -->
-  <h2 class="claim">주장 2. B (Content-Encoding 헤더 추가) 로 인해, 그 위에 추가로 모든 환경에서 ~200~530 ms 절감된다</h2>
+  <h2 class="claim">주장 2. B (Content-Encoding 헤더 추가) 를 통해 그 위에 모든 환경에서 추가로 로딩 시간이 짧아진다</h2>
   <p class="lead">
     JS <code>decompressionFallback</code>이 빠지고 브라우저 네이티브 디코더가 동작 — <b>헤더 한 줄로 얻는 효과로는 크고, 9 셀 모두 양의 절감.</b>
     다만 효과의 크기는 <i>빠른 CPU에서 더 크다</i> — 가설 2와 반대.
@@ -1107,7 +1107,7 @@ ${chartScriptTag}
   </div>
 
   <!-- ===== 주장 3 ===== -->
-  <h2 class="claim">주장 3. A+B 합산 시, 느린 LTE에서 cold load의 ~20%를 단축한다 (모든 환경에서 양의 절감)</h2>
+  <h2 class="claim">주장 3. A+B 합산은 느린 LTE에서 효과가 가장 크고, 모든 환경에서 로딩 시간이 짧아진다</h2>
   <p class="lead">
     주장 1·2를 그대로 가산하면, <b>느린 LTE에서 A·B 둘 다 크게 작용</b>해 합산 절감이 가장 크다.
     CPU 축에서는 cpu-2× ~ cpu-4×에서 절대 절감(ms)이 비슷하고, cpu-6×에서는 B 효과가 줄어 합산도 감소.

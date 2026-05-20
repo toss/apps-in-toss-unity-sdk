@@ -615,6 +615,36 @@ jobs:
       tag_name: ${{ needs.release.outputs.tag_name }}
 
   # =====================================================
+  # Sentry 릴리즈 등록 + 커밋 연동
+  # =====================================================
+  # 런타임 envelope 의 release 식별자(`apps-in-toss.unity@<version>`)와 동일한
+  # 이름으로 Sentry 에 릴리즈를 등록하고 commit range 를 연결한다.
+  # 이렇게 해야 PR 머지 메시지의 `Fixes APPS-IN-TOSS-UNITY-SDK-XX` trailer 가
+  # Sentry GitHub Integration 을 통해 해당 이슈를 자동으로 resolve in next release
+  # 로 표기하고, 다음 릴리즈가 배포되면 자동 closed 처리된다.
+  sentry-release:
+    name: Sentry 릴리즈 등록
+    runs-on: ubuntu-latest
+    needs: [create-release-tag]
+    if: needs.create-release-tag.result == 'success'
+    steps:
+      - name: Checkout (main 커밋 히스토리)
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Sentry Release 생성 + 커밋 연동
+        uses: getsentry/action-release@v3
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: toss
+          SENTRY_PROJECT: apps-in-toss-unity-sdk
+        with:
+          version: apps-in-toss.unity@${{ needs.create-release-tag.outputs.version }}
+          set_commits: auto
+          finalize: true
+
+  # =====================================================
   # AIT 패키지 배포
   # =====================================================
   deploy-ait:

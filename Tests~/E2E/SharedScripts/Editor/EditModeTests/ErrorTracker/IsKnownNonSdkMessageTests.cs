@@ -126,6 +126,17 @@ public class IsKnownNonSdkMessageTests
             "<color=Yellow>AITPromotion</color>: AppsInToss helper called"));
     }
 
+    [Test]
+    public void ExternalAitPromotionPrefix_WithUnityWarningPrefix_ReturnsTrue()
+    {
+        // Sentry SDK-S1 회귀 — Unity 로그 핸들러가 "UnityWarning:" prefix를 덧붙여
+        // 캡처한 변형도 동일한 ExternalAitPrefixes 패턴("AITPromotion</color>")으로 드롭됨을 검증.
+        // IndexOf 부분 문자열 매칭이므로 prefix 유무와 무관하지만, 실제 보고된 메시지 포맷이
+        // 미래 변경(예: prefix-anchored 매칭으로 회귀)에서도 계속 매칭되도록 회귀 케이스로 고정.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "UnityWarning: [17:07:22:329] <color=Yellow>AITPromotion</color>: CaptureEntryPoint skipped on non-WebGL"));
+    }
+
     #endregion
 
     #region SDK 보호: AIT 키워드 포함 시 절대 필터링 안 함

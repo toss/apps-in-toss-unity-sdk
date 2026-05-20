@@ -1105,6 +1105,36 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
+    public class RequestNotificationAgreementOptions
+    {
+        [Preserve]
+        [JsonProperty("options")]
+        public RequestNotificationAgreementOptionsOptions Options;
+        [JsonIgnore]
+        public System.Action<object> OnEvent;
+        [JsonIgnore]
+        public System.Action<object> OnError;
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class RequestNotificationAgreementOptionsOptions
+    {
+        [Preserve]
+        [JsonProperty("templateCode")]
+        public string TemplateCode;
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
     public class OnVisibilityChangedByTransparentServiceWebEventParams
     {
         [Preserve]
@@ -1948,6 +1978,38 @@ namespace AppsInToss
         [Preserve]
         [JsonProperty("maxWidth")]
         public double? MaxWidth; // optional
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class RequestTossPayPaysBillingOptions
+    {
+        /// <summary>정기결제 래핑 토큰이에요.</summary>
+        [Preserve]
+        [JsonProperty("wrappedToken")]
+        public string WrappedToken;
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class RequestTossPayPaysBillingResult
+    {
+        /// <summary>인증이 성공했는지 여부예요.</summary>
+        [Preserve]
+        [JsonProperty("success")]
+        public bool Success;
+        /// <summary>인증이 실패했을 경우의 이유예요.</summary>
+        [Preserve]
+        [JsonProperty("reason")]
+        public string Reason; // optional
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]

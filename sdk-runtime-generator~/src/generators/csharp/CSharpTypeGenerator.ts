@@ -14,6 +14,7 @@ import {
   collectFunctionParamTypes,
   collectNestedTypesForTypeDefinition,
 } from './type-collector.js';
+import { computeEnumAliases, applyEnumAliases } from './enum-dedup.js';
 
 /**
  * C# 타입 정의 생성기
@@ -161,14 +162,16 @@ export class CSharpTypeGenerator {
    * 타입 정의들을 C# 코드로 생성 (헤더 없이, 본문만)
    * @param typeDefinitions 파싱된 타입 정의 목록
    * @param excludeTypeNames 제외할 타입 이름 Set (API에서 이미 생성된 타입)
-   * @returns 객체 { code: 생성된 C# 코드, generatedTypeNames: 생성된 타입 이름 Set }
+   * @returns 객체 { code: 생성된 C# 코드, generatedTypeNames: 생성된 타입 이름 Set,
+   *                stringEnumValues: 문자열 enum 이름→값 셋(원본 camelCase) Map (inline enum dedup용) }
    */
   async generateTypeDefinitions(
     typeDefinitions: ParsedTypeDefinition[],
     excludeTypeNames?: Set<string>
-  ): Promise<{ code: string; generatedTypeNames: Set<string> }> {
+  ): Promise<{ code: string; generatedTypeNames: Set<string>; stringEnumValues: Map<string, string[]> }> {
     const generatedTypes: string[] = [];
     const generatedTypeNames = new Set<string>();
+    const stringEnumValues = new Map<string, string[]>();
     const exclude = excludeTypeNames || new Set<string>();
 
     for (const typeDef of typeDefinitions) {
@@ -177,6 +180,15 @@ export class CSharpTypeGenerator {
         if (enumCode) {
           generatedTypes.push(enumCode);
           generatedTypeNames.add(typeDef.name);
+          // inline enum dedup용 — 문자열 enum의 원본 값만 수집 (숫자 enum은 dedup 대상 아님)
+          if (typeDef.enumValues && typeDef.enumValues.length > 0) {
+            const isNumeric = typeDef.enumValues.some(
+              v => typeof v === 'object' && v !== null && 'value' in v
+            );
+            if (!isNumeric) {
+              stringEnumValues.set(typeDef.name, typeDef.enumValues as string[]);
+            }
+          }
         }
       } else if (typeDef.kind === 'interface') {
         const classCode = this.generateInterfaceAsClass(typeDef);
@@ -200,11 +212,11 @@ export class CSharpTypeGenerator {
     }
 
     if (generatedTypes.length === 0) {
-      return { code: '', generatedTypeNames };
+      return { code: '', generatedTypeNames, stringEnumValues };
     }
 
     // 헤더/푸터 없이 본문만 반환 (호출자가 합침)
-    return { code: generatedTypes.join('\n\n'), generatedTypeNames };
+    return { code: generatedTypes.join('\n\n'), generatedTypeNames, stringEnumValues };
   }
 
   /**
@@ -304,12 +316,16 @@ ${JSON_EXTENSION_DATA_FIELD}
 
   /**
    * API에서 사용되는 모든 타입 정의 생성
+   *
+   * @param parsedStringEnumValues 문자열 named enum 이름→값 셋. inline enum과 값 셋이
+   *   완전 일치하면 inline enum 생성을 생략하고 named enum 이름으로 alias한다.
    */
   async generateTypes(
     apis: ParsedAPI[],
     excludeTypeNames?: Set<string>,
     typeDefinitions?: ParsedTypeDefinition[],
-    parser?: { parseNativeModulesType: (typeName: string) => ParsedTypeDefinition | null }
+    parser?: { parseNativeModulesType: (typeName: string) => ParsedTypeDefinition | null },
+    parsedStringEnumValues?: Map<string, string[]>
   ): Promise<string> {
     const typeMap = new Map<string, string>(); // typeName -> classDefinition
     const unionResultMap = new Map<string, string>(); // API name -> Union Result class
@@ -520,18 +536,16 @@ ${JSON_EXTENSION_DATA_FIELD}
       }
     }
 
-    // Inline string literal union에서 생성된 enum 코드
+    // Inline string-literal-union enum을 named enum/이전 inline enum과 dedup (값 셋이 같으면 alias)
+    const { emit: inlineEmit, aliases: enumAliases } = computeEnumAliases(
+      this.tracker.inlineEnums,
+      parsedStringEnumValues,
+    );
+
     const inlineEnumTypes: string[] = [];
-    for (const [enumName, enumValues] of this.tracker.inlineEnums) {
-      const enumCode = this.generateEnum({
-        name: enumName,
-        kind: 'enum',
-        file: '',
-        enumValues: enumValues,
-      });
-      if (enumCode) {
-        inlineEnumTypes.push(enumCode);
-      }
+    for (const { name, values } of inlineEmit) {
+      const enumCode = this.generateEnum({ name, kind: 'enum', file: '', enumValues: values });
+      if (enumCode) inlineEnumTypes.push(enumCode);
     }
 
     // Union Result 클래스와 일반 타입 클래스 합치기
@@ -541,7 +555,7 @@ ${JSON_EXTENSION_DATA_FIELD}
       ...Array.from(typeMap.values())
     ];
 
-    // 헤더/푸터 없이 본문만 반환 (호출자가 합침)
-    return allTypes.join('\n\n');
+    // alias된 enum 식별자를 모든 emit 코드에서 rewrite (헤더/푸터 없이 본문만 반환 — 호출자가 합침)
+    return applyEnumAliases(allTypes.join('\n\n'), enumAliases);
   }
 }

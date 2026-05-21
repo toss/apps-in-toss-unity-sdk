@@ -556,7 +556,14 @@ async function generate(options: {
 
     // C# 타입 정의 생성 (API에서 추출된 타입) - 본문만 (중복 제외)
     // typeDefinitions와 parser도 전달하여 pending external types 해결에 사용
-    const apiTypesBody = await typeGenerator.generateTypes(apis, parsedTypeNames, typeDefinitions, parser);
+    // parsedTypesResult.stringEnumValues는 inline enum dedup용 (named enum과 값 셋 일치 시 alias)
+    const apiTypesBody = await typeGenerator.generateTypes(
+      apis,
+      parsedTypeNames,
+      typeDefinitions,
+      parser,
+      parsedTypesResult.stringEnumValues,
+    );
 
     // 헤더 + 본문들을 합침
     const typeFileHeader = `// -----------------------------------------------------------------------

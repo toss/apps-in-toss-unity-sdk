@@ -8,8 +8,8 @@
 
 ### P1 — AIT.Types.cs (2,086행): 자동 생성 타입 파일 분할
 - **파일**: `Runtime/SDK/AIT.Types.cs`
-- **현상**: 100+ enum/class 정의가 단일 파일에 집중. Permission 관련 enum 3개 중복 (`GetPermissionPermissionName`, `OpenPermissionDialogPermissionName`, `RequestPermissionPermissionName` — 동일 값)
-- **조치**: sdk-runtime-generator에서 카테고리별 타입 파일 분할 생성 검토, Permission enum 통합
+- **현상**: 100+ enum/class 정의가 단일 파일에 집중
+- **조치**: sdk-runtime-generator에서 카테고리별 타입 파일 분할 생성 검토
 
 ### P1 — AppsInTossMenu.cs (1,915행): 모놀리식 메뉴 컨트롤러
 - **파일**: `Editor/AppsInTossMenu.cs`
@@ -70,11 +70,6 @@
 - **파일**: `AITGitGuard.cs`, `AITPlatformHelper.cs`, `AITAsyncCommandRunner.cs`
 - **현상**: "프로세스 생성 → 타임아웃 대기 → 출력 캡처" 패턴이 3곳 이상에서 반복
 - **조치**: `ProcessExecutor` 유틸리티 클래스 추출
-
-### P1 — Permission enum 3중 중복
-- **파일**: `Runtime/SDK/AIT.Types.cs` (33, 67, 93행)
-- **현상**: `GetPermissionPermissionName`, `OpenPermissionDialogPermissionName`, `RequestPermissionPermissionName` — 동일한 enum 값이 3번 정의
-- **조치**: sdk-runtime-generator에서 공유 `PermissionName` enum 하나로 통합 생성
 
 ---
 

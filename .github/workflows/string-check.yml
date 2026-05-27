@@ -14,12 +14,22 @@ jobs:
     timeout-minutes: 5
     env:
       PATTERN: ${{ secrets.STRING_CHECK_PATTERN }}
+      # dependabot/github-actions[bot] PR은 GitHub 정책상 repository secret 접근 불가 →
+      # PATTERN이 빈 값이라 Guard가 무조건 fail. 작성자가 bot이면 scan을 skip해
+      # required check가 영원히 blocked되는 것을 방지.
+      IS_BOT_PR: ${{ github.event_name == 'pull_request' && (github.event.pull_request.user.login == 'dependabot[bot]' || github.event.pull_request.user.login == 'github-actions[bot]') }}
 
     steps:
       - name: Checkout
+        if: env.IS_BOT_PR != 'true'
         uses: actions/checkout@v6
 
+      - name: Skip scan for bot PR
+        if: env.IS_BOT_PR == 'true'
+        run: echo "Bot PR (${{ github.event.pull_request.user.login }}) — scan skipped (secret 접근 불가)"
+
       - name: Guard
+        if: env.IS_BOT_PR != 'true'
         run: |
           if [ -z "$PATTERN" ]; then
             echo "::error::STRING_CHECK_PATTERN repository secret이 설정되지 않았습니다."
@@ -28,6 +38,7 @@ jobs:
           echo "::add-mask::$PATTERN"
 
       - name: Scan tree
+        if: env.IS_BOT_PR != 'true'
         run: |
           set +e
           FOUND=$(grep -rIn \
@@ -46,6 +57,7 @@ jobs:
           echo "scan OK"
 
       - name: Scan lockfiles
+        if: env.IS_BOT_PR != 'true'
         run: |
           set -e
           BAD=0

@@ -30,90 +30,12 @@ namespace AppsInToss
         NoReward
     }
 
-    public enum GetPermissionPermissionName
-    {
-        [EnumMember(Value = "clipboard")]
-        Clipboard,
-        [EnumMember(Value = "contacts")]
-        Contacts,
-        [EnumMember(Value = "photos")]
-        Photos,
-        [EnumMember(Value = "geolocation")]
-        Geolocation,
-        [EnumMember(Value = "camera")]
-        Camera,
-        [EnumMember(Value = "microphone")]
-        Microphone
-    }
-
-    public enum GetPermissionPermissionAccess
-    {
-        [EnumMember(Value = "read")]
-        Read,
-        [EnumMember(Value = "write")]
-        Write,
-        [EnumMember(Value = "access")]
-        Access
-    }
-
     public enum CompletedOrRefundedOrdersResultOrderStatus
     {
         [EnumMember(Value = "COMPLETED")]
         COMPLETED,
         [EnumMember(Value = "REFUNDED")]
         REFUNDED
-    }
-
-    public enum OpenPermissionDialogPermissionName
-    {
-        [EnumMember(Value = "clipboard")]
-        Clipboard,
-        [EnumMember(Value = "contacts")]
-        Contacts,
-        [EnumMember(Value = "photos")]
-        Photos,
-        [EnumMember(Value = "geolocation")]
-        Geolocation,
-        [EnumMember(Value = "camera")]
-        Camera,
-        [EnumMember(Value = "microphone")]
-        Microphone
-    }
-
-    public enum OpenPermissionDialogPermissionAccess
-    {
-        [EnumMember(Value = "read")]
-        Read,
-        [EnumMember(Value = "write")]
-        Write,
-        [EnumMember(Value = "access")]
-        Access
-    }
-
-    public enum RequestPermissionPermissionName
-    {
-        [EnumMember(Value = "clipboard")]
-        Clipboard,
-        [EnumMember(Value = "contacts")]
-        Contacts,
-        [EnumMember(Value = "photos")]
-        Photos,
-        [EnumMember(Value = "geolocation")]
-        Geolocation,
-        [EnumMember(Value = "camera")]
-        Camera,
-        [EnumMember(Value = "microphone")]
-        Microphone
-    }
-
-    public enum RequestPermissionPermissionAccess
-    {
-        [EnumMember(Value = "read")]
-        Read,
-        [EnumMember(Value = "write")]
-        Write,
-        [EnumMember(Value = "access")]
-        Access
     }
 
     public enum SetDeviceOrientationOptionsType
@@ -330,10 +252,10 @@ namespace AppsInToss
     {
         [Preserve]
         [JsonProperty("name")]
-        public GetPermissionPermissionName Name;
+        public PermissionName Name;
         [Preserve]
         [JsonProperty("access")]
-        public GetPermissionPermissionAccess Access;
+        public PermissionAccess Access;
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
@@ -1169,10 +1091,10 @@ namespace AppsInToss
     {
         [Preserve]
         [JsonProperty("name")]
-        public OpenPermissionDialogPermissionName Name;
+        public PermissionName Name;
         [Preserve]
         [JsonProperty("access")]
-        public OpenPermissionDialogPermissionAccess Access;
+        public PermissionAccess Access;
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
@@ -1185,10 +1107,10 @@ namespace AppsInToss
     {
         [Preserve]
         [JsonProperty("name")]
-        public RequestPermissionPermissionName Name;
+        public PermissionName Name;
         [Preserve]
         [JsonProperty("access")]
-        public RequestPermissionPermissionAccess Access;
+        public PermissionAccess Access;
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]

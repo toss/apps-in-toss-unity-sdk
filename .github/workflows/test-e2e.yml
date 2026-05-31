@@ -293,7 +293,7 @@ jobs:
     needs: [setup, build-macos]
     if: needs.build-macos.result == 'success' && (inputs.test_level || '2') == '2'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
 
     strategy:
       fail-fast: false
@@ -331,11 +331,19 @@ jobs:
         working-directory: ${{ env.AIT_BUILD_DIR }}
         run: pnpm install --frozen-lockfile
 
+      - name: Cache Playwright Browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('Tests~/E2E/tests/pnpm-lock.yaml') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+
       - name: Install Playwright Test Dependencies
         working-directory: Tests~/E2E/tests
         run: |
           pnpm install --frozen-lockfile
-          pnpm exec playwright install chromium --with-deps
+          pnpm exec playwright install chromium
 
       - name: Run Playwright E2E
         working-directory: Tests~/E2E/tests
@@ -372,7 +380,7 @@ jobs:
     needs: [setup, build-windows]
     if: needs.build-windows.result == 'success' && (inputs.test_level || '2') == '2'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
 
     strategy:
       fail-fast: false
@@ -408,11 +416,19 @@ jobs:
         working-directory: ${{ env.AIT_BUILD_DIR }}
         run: pnpm install --frozen-lockfile
 
+      - name: Cache Playwright Browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('Tests~/E2E/tests/pnpm-lock.yaml') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+
       - name: Install Playwright Test Dependencies
         working-directory: Tests~/E2E/tests
         run: |
           pnpm install --frozen-lockfile
-          pnpm exec playwright install chromium --with-deps
+          pnpm exec playwright install chromium
 
       - name: Run Playwright E2E
         working-directory: Tests~/E2E/tests

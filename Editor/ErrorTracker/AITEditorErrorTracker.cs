@@ -110,6 +110,13 @@ namespace AppsInToss.Editor.ErrorTracker
 
             // 외부 패키지 (Unity 버전별 괄호 유무에 관계없이 매칭되도록 핵심 문구만 추출)
             "exists but its folder",
+            // .meta 파일은 있으나 대응 에셋을 못 찾을 때 Unity가 출력하는 표준 경고 — SDK 외부 패키지 노이즈.
+            // 예: "A meta data file (.meta) exists but its asset 'Packages/com.wooshii.foldericons/...' can't be found ..."
+            //     "A meta data file (.meta) exists but its asset can't be found. ..."
+            // 위 "exists but its folder"와 동일한 Unity 메시지 계열로, asset 경로 유무·버전 차이와 무관하게
+            // 핵심 문구 "exists but its asset" 만으로 두 변형을 모두 매칭. SDK는 이 문자열을 출력하지 않음.
+            // Sentry APPS-IN-TOSS-UNITY-SDK-ZQ, APPS-IN-TOSS-UNITY-SDK-ZS
+            "exists but its asset",
 
             // 외부 UPM 패키지(immutable 폴더)의 에셋에 .meta 파일이 없을 때 Unity 에디터가 직접 출력하는 표준 경고.
             // 외부 서드파티 패키지(예: com.lupidan.apple-signin-unity)가 .meta를 누락한 채 배포되어 발생.

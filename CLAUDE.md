@@ -114,11 +114,11 @@
   - **Windows artifact upload finalize transient** — `actions/upload-artifact@v7`가 `successfully finalized` 메시지 없이 종료 (~1.3% 빈도). 진단 step + `continue-on-error`가 적용되어 있고 재실행으로 해결됨
   - **Unity WebGL Brotli/Gzip 크래시** — `[BUSY Ns] Brotli webgl/Build/...unityweb` 직후 `exit code: 1`. self-hosted runner 동시 빌드 시 리소스 경합. **현재 E2E CI는 압축 비활성화(`AIT_COMPRESSION_FORMAT="0"`)** 로 압축 단계 자체를 건너뛰므로 신규 발생 없음 (E2E는 vite preview에서만 로드되며 배포되지 않아 압축 불필요). 로컬 재현은 아래 "로컬 CI 재현" 가이드 참조
 - **Sentry 노이즈 패턴 추가**는 자동화(`auto-resolve`)가 처리하므로 수동 PR 불필요 — `Editor/ErrorTracker/AITEditorErrorTracker.cs`의 `NonSdkMessagePatterns`에 자동 흡수됨
-- **⚠️ 머지 후 Sentry 이슈 수동 resolve 단계 필수** — auto-resolve PR body의 `Fixes APPS-IN-TOSS-UNITY-SDK-XX` 키워드는 squash 머지 커밋에 그대로 들어가지만, **이 repo의 Sentry GitHub 연동은 "커밋 push 즉시 resolve"가 아니라 release 연결 기반**이라 머지만으로는 대상 이슈가 `unresolved`로 남는다 (2026-06 PR #703에서 확인). 따라서 auto-resolve PR을 머지한 뒤 다음을 수행:
-  1. 대상 short ID들의 상태 확인 — Sentry MCP `get_sentry_resource(resourceType='issue', organizationSlug='toss', resourceId='APPS-IN-TOSS-UNITY-SDK-XX')` 또는 `search_issues`
-  2. 여전히 `unresolved`이면 직접 resolve — Sentry MCP `update_issue(organizationSlug='toss', issueId='APPS-IN-TOSS-UNITY-SDK-XX', status='resolved', reason='노이즈 패턴 PR #N 머지로 현행 SDK가 드롭 — Fixes 자동 resolve 미발동분 수동 resolve')`
-  3. 노이즈가 **이미 현행 main에 커버된 잔여 이벤트**(구버전 SDK에서 유입)인 경우에도 동일하게 수동 resolve (코드 변경/PR 없이 Sentry만 정리)
-  4. (근본 대응, 선택) Sentry GitHub integration을 commit 기반 resolve(기본 브랜치 push 시)로 전환하면 이 수동 단계를 제거 가능 — 연동 설정 검토 필요
+- **Sentry 자동 resolve는 "머지 시점"이 아니라 "다음 릴리즈 시점"에 발생 (release-gated)** — auto-resolve PR body의 `Fixes APPS-IN-TOSS-UNITY-SDK-XX` 키워드는 squash 머지 커밋에 그대로 들어가지만, 이슈가 실제로 closed 되는 건 **다음 `apps-in-toss.unity@X.Y.Z` 릴리즈가 cut될 때**다. `release.yml`의 `sentry-release` job(`getsentry/action-release@v3`, `set_commits: auto`, PR #657)이 릴리즈에 커밋 범위를 연결하고, 그 커밋의 `Fixes` trailer가 참조한 이슈를 Sentry가 resolve한다. 따라서 **머지 직후에는 대상 이슈가 여전히 `unresolved`로 보이는 게 정상**이다 (버그 아님, 2026-06 PR #703에서 확인).
+  - **즉시 닫아야 할 때만 수동 resolve** (릴리즈를 기다리지 않거나, 아래 잔여 이벤트처럼 미래 릴리즈 커밋 범위에 안 잡히는 경우):
+    1. 상태 확인 — Sentry MCP `get_sentry_resource(resourceType='issue', organizationSlug='toss', resourceId='APPS-IN-TOSS-UNITY-SDK-XX')` 또는 `search_issues`
+    2. `unresolved`이면 직접 resolve — Sentry MCP `update_issue(organizationSlug='toss', issueId='APPS-IN-TOSS-UNITY-SDK-XX', status='resolved', reason='노이즈 패턴 PR #N 머지로 현행 SDK가 드롭 — 릴리즈 전 즉시 resolve')`
+  - **이미 현행 main에 커버된 잔여 이벤트**(구버전 SDK에서 유입, 코드/PR 변경 없음)는 미래 릴리즈 커밋 범위에 `Fixes`가 없어 자동 resolve되지 않으므로 **항상 수동 resolve**로 정리한다.
 
 ### 테스트 관련
 - E2E 테스트 전 빌드 필요: `./run-local-tests.sh --all` (빌드+테스트) vs `--e2e` (테스트만)

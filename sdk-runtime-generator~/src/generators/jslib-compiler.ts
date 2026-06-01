@@ -17,8 +17,11 @@ const __dirname = path.dirname(__filename);
 /**
  * pnpm의 flat node_modules 구조에서 패키지 경로를 해석합니다.
  * 직접 node_modules에 없으면 .pnpm 스토어에서 최신 버전을 찾습니다.
+ *
+ * jslib 타입 검사와 동일한 해석 경로를 다른 모듈(예: 공개 export 목록 계산)에서도
+ * 재사용할 수 있도록 export 합니다 — 단일 진실 원천(single source of truth) 유지.
  */
-function resolvePackagePath(packageName: string): string {
+export function resolvePackagePath(packageName: string): string {
   const nodeModulesDir = path.resolve(__dirname, '../../node_modules');
   const directPath = path.join(nodeModulesDir, packageName);
 
@@ -89,7 +92,12 @@ export async function typeCheckBridgeCode(
   const checkedFiles: string[] = [];
 
   try {
-    // 캐시 디렉토리 생성
+    // 캐시 디렉토리를 매 실행마다 비운다.
+    // include: ['*.ts']가 디렉토리의 모든 .ts를 검사하므로, 이전 실행에서 남은
+    // 브릿지 파일이 그대로 남아 있으면 이번 생성에서 제거된 API(예: web-framework
+    // 메이저 업데이트로 사라진 export)의 stale 브릿지가 계속 검사되어 거짓 TS2305가
+    // 발생한다. 현재 생성 결과만 정확히 검사하도록 시작 시 클린 슬레이트로 만든다.
+    await fs.rm(cacheDir, { recursive: true, force: true });
     await fs.mkdir(cacheDir, { recursive: true });
 
     // TypeScript 파일들 작성

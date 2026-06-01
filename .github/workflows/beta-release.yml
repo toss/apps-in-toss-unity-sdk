@@ -1,5 +1,5 @@
 name: Beta Release
-run-name: "Beta Release - v${{ inputs.version }} → #${{ inputs.channel_ref }}"
+run-name: "Beta Release - v${{ inputs.version }} → #${{ inputs.channel_ref }} (from ${{ inputs.source_ref }})"
 
 # =====================================================
 # 베타 채널 릴리즈
@@ -26,6 +26,11 @@ on:
         required: false
         type: string
         default: beta
+      source_ref:
+        description: '빌드 베이스 ref (생성기·소스를 가져올 브랜치/태그). 기본 main. 머지 전 브랜치 검증에 사용.'
+        required: false
+        type: string
+        default: main
 
 permissions:
   contents: write
@@ -75,11 +80,14 @@ jobs:
           echo "버전: ${VERSION}"
           echo "채널 브랜치: ${CHANNEL_REF}"
           echo "스냅샷 태그: ${BETA_TAG}"
+          echo "빌드 베이스(source_ref): ${{ inputs.source_ref }}"
 
-      - name: Checkout (main)
+      # 기본 main에서 빌드(생성기·소스). source_ref로 머지 전 브랜치를 지정해 베타를 검증할 수 있다.
+      # 어떤 경우에도 이 워크플로는 source_ref에 push하지 않는다(읽기 전용) — main은 절대 변경되지 않음.
+      - name: Checkout (source_ref)
         uses: actions/checkout@v6
         with:
-          ref: main
+          ref: ${{ inputs.source_ref }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Node.js

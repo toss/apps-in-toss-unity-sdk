@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEngine;
 
@@ -115,17 +116,10 @@ namespace AppsInToss.Editor.ErrorTracker
             //     "A meta data file (.meta) exists but its asset can't be found. ..."
             // 위 "exists but its folder"와 동일한 Unity 메시지 계열로, asset 경로 유무·버전 차이와 무관하게
             // 핵심 문구 "exists but its asset" 만으로 두 변형을 모두 매칭. SDK는 이 문자열을 출력하지 않음.
+            // 사용자가 Unity 외부에서 자산을 이동/삭제해 .meta만 고아로 남은 변형(asset 경로가 Assets/ 또는
+            // Packages/...로 가변, "...please ensure that the corresponding .meta file is moved..." 안내 포함)도
+            // 동일 substring으로 매칭되므로 별도 항목이 필요 없다. (이전 중복 항목 1개 제거.)
             // Sentry APPS-IN-TOSS-UNITY-SDK-ZQ, APPS-IN-TOSS-UNITY-SDK-ZS
-            "exists but its asset",
-
-            // 위 "exists but its folder"의 에셋 변형 — 사용자가 Unity 외부에서 자산을 이동/삭제해
-            // .meta만 고아로 남은 경우 Unity 에디터가 직접 출력하는 표준 경고.
-            // 예: "A meta data file (.meta) exists but its asset 'Assets/.../Foo.cs' can't be found.
-            //      When moving or deleting files outside of Unity, please ensure that the corresponding
-            //      .meta file is moved or deleted along with it."
-            // 자산 경로(Assets/ 또는 Packages/...)가 가변이라 불변 핵심 문구만 추출.
-            // SDK는 이 문구를 출력하지 않으므로(grep 확인) AitKeywords 보호 가드와 충돌 없음.
-            // Sentry APPS-IN-TOSS-UNITY-SDK-ZS, APPS-IN-TOSS-UNITY-SDK-ZQ.
             "exists but its asset",
 
             // 외부 UPM 패키지(immutable 폴더)의 에셋에 .meta 파일이 없을 때 Unity 에디터가 직접 출력하는 표준 경고.
@@ -302,6 +296,10 @@ namespace AppsInToss.Editor.ErrorTracker
             // SDK는 IAPGetPendingOrders API는 제공하지만 "[AppsInTossIAPManager]" prefix는 출력하지 않으며(grep 확인),
             // "AppsInToss"가 "IAPManager"와 붙어 단어 경계가 깨져 AitKeywords 가드에도 안 걸리므로 ExternalAitPrefixes로 분류.
             "[AppsInTossIAPManager]",
+            // SDK-NB: [AIT_Auth] Custom Token 발급 실패 — 로컬 모드로 동작. 사용자 게임의 인증 래퍼 로그.
+            // SDK 코드는 "[AIT_Auth]" prefix를 출력하지 않음(grep 확인). 단, "[AIT"로 시작해 AitKeywords 가드에
+            // 걸려 NonSdkMessagePatterns로는 드롭 불가하므로, 가드보다 먼저 매칭되는 ExternalAitPrefixes로 분류.
+            "[AIT_Auth]",
         };
 
         #endregion
@@ -527,7 +525,12 @@ namespace AppsInToss.Editor.ErrorTracker
                 level = "warning";
             }
 
-            CaptureError(exceptionType, message, stackTrace, level);
+            // 가변 토큰(경로/해시/버전/숫자/GUID)을 정규화한 안정적 fingerprint를 부여해
+            // 동일 root cause가 Sentry에서 여러 이슈로 쪼개지는 fingerprint explosion을 방지한다.
+            // 가변 토큰이 없는 메시지는 null을 반환하므로 기본 그룹화 동작은 그대로 유지된다.
+            string[] fingerprint = BuildNormalizedFingerprint(exceptionType, message);
+
+            CaptureError(exceptionType, message, stackTrace, level, fingerprint: fingerprint);
         }
 
         /// <summary>
@@ -605,6 +608,71 @@ namespace AppsInToss.Editor.ErrorTracker
 
             _lastEventId = capturedEventId;
             AITSentryTransport.SendEnvelope(envelope);
+        }
+
+        // === fingerprint explosion 방지용 정규화 규칙 ===
+        // 메시지에 박히는 가변 토큰(파일 경로, 해시, 버전, 숫자, GUID, glob 파일명)을 placeholder로 치환해
+        // 같은 root cause의 변형들이 단일 Sentry 이슈로 묶이도록 한다. 에러 경로에서만 호출되므로(핫패스 아님)
+        // Compiled 정규식을 정적으로 캐시한다. 치환 순서 중요: 긴 토큰(경로/GUID/버전)을 숫자보다 먼저 소비.
+        private static readonly Regex _fpGuid =
+            new Regex(@"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", RegexOptions.Compiled);
+        private static readonly Regex _fpWinPath =
+            new Regex(@"[A-Za-z]:\\[^\s""'<>|]+", RegexOptions.Compiled);
+        private static readonly Regex _fpUnixPath =
+            new Regex(@"/(?:[\w.\-]+/)+[\w.\-]+", RegexOptions.Compiled);
+        private static readonly Regex _fpHexHash =
+            new Regex(@"\b[0-9a-fA-F]{16,}\b", RegexOptions.Compiled);
+        private static readonly Regex _fpVersion =
+            new Regex(@"\bv?\d+\.\d+(?:\.\d+)+(?:[\-+][0-9A-Za-z.\-]+)?\b", RegexOptions.Compiled);
+        private static readonly Regex _fpGlobFile =
+            new Regex(@"\*\.[A-Za-z][\w.]*", RegexOptions.Compiled);
+        private static readonly Regex _fpNumber =
+            new Regex(@"\d+", RegexOptions.Compiled);
+        private static readonly Regex _fpCollapseFiles =
+            new Regex(@"<file>(?:[,\s]+<file>)+", RegexOptions.Compiled);
+        private static readonly Regex _fpWhitespace =
+            new Regex(@"\s+", RegexOptions.Compiled);
+
+        /// <summary>
+        /// 로그 캡처 이벤트의 메시지에서 가변 토큰을 정규화해 안정적인 fingerprint를 생성합니다.
+        /// 가변 토큰이 하나도 없으면(정규화 결과가 원본과 동일) <c>null</c>을 반환하여 Sentry 기본 그룹화를 그대로 둡니다.
+        /// 반환 형식: <c>{ "ait-log", exceptionType, 정규화된 메시지 }</c> — "{{ default }}"를 포함하지 않으므로
+        /// 가변 텍스트가 그룹화에 다시 끼어들지 않고 동일 root cause가 단일 이슈로 묶입니다.
+        /// (빌드 에러 경로의 <see cref="CaptureBuildErrorInternal"/>는 errorCode 기반 fingerprint를 별도로 사용.)
+        /// </summary>
+        internal static string[] BuildNormalizedFingerprint(string exceptionType, string message)
+        {
+            if (string.IsNullOrEmpty(message))
+                return null;
+
+            string normalized = message;
+            normalized = _fpGuid.Replace(normalized, "<guid>");
+            normalized = _fpWinPath.Replace(normalized, "<path>");
+            normalized = _fpUnixPath.Replace(normalized, "<path>");
+            normalized = _fpHexHash.Replace(normalized, "<hash>");
+            normalized = _fpVersion.Replace(normalized, "<ver>");
+            normalized = _fpGlobFile.Replace(normalized, "<file>");
+            normalized = _fpNumber.Replace(normalized, "<n>");
+
+            // 가변 토큰이 전혀 치환되지 않았다면 fingerprint를 덮어쓰지 않고 기본 그룹화를 유지(기존 동작 불변).
+            if (string.Equals(normalized, message, StringComparison.Ordinal))
+                return null;
+
+            // "<file>, <file>, <file>"처럼 나열된 누락 파일 목록을 하나로 접어 조합 폭발(예: SDK-ZM)을 방지.
+            normalized = _fpCollapseFiles.Replace(normalized, "<file>");
+            // 줄바꿈/연속 공백 정리로 동일 메시지의 미세 변형까지 같은 키로 수렴.
+            normalized = _fpWhitespace.Replace(normalized, " ").Trim();
+
+            // 정규화 결과가 과도하게 길면 상한을 둔다(긴 경로/스택 혼입 방지).
+            if (normalized.Length > 200)
+                normalized = normalized.Substring(0, 200);
+
+            return new[]
+            {
+                "ait-log",
+                string.IsNullOrEmpty(exceptionType) ? "unknown" : exceptionType,
+                normalized
+            };
         }
 
         /// <summary>
@@ -1175,6 +1243,23 @@ namespace AppsInToss.Editor.ErrorTracker
             // Sentry APPS-IN-TOSS-UNITY-SDK-RG.
             if (message.IndexOf("AIT: [std", StringComparison.Ordinal) >= 0
                 && message.IndexOf("is not recognized as an internal or external command", StringComparison.Ordinal) >= 0)
+                return true;
+
+            // 번들 Node.js(libuv)가 종료 시점에 출력하는 내부 assertion crash — SDK 코드로 분기/조치할 정보가 아님.
+            // 예: "AIT: [stderr] Assertion failed: !(handle->flags & UV_HANDLE_CLOSING), file src\\win\\async.c, line 76"
+            // "AIT: [std" prefix가 SDK 키워드 가드("AIT:")에 막히므로 가드보다 먼저 매칭한다.
+            // Sentry APPS-IN-TOSS-UNITY-SDK-BE.
+            if (message.IndexOf("AIT: [std", StringComparison.Ordinal) >= 0
+                && message.IndexOf("Assertion failed:", StringComparison.Ordinal) >= 0)
+                return true;
+
+            // 사용자 게임의 FPS 모니터가 SDK의 "[AIT]" prefix를 그대로 사용해 출력하는 성능 경고.
+            // SDK 코드는 "평균 FPS"/"목표 30+ 미달" 문자열을 출력하지 않음(grep 확인). 사용자 코드가 SDK prefix를
+            // 흉내내 AitKeywords 가드("[AIT")를 우회하므로, 가드보다 먼저 두 핵심 문구의 합성으로 좁혀 드롭한다.
+            // (FPS 수치는 가변이므로 불변 문구 "평균 FPS" + "미달"만 검사 — 정상 SDK 경고는 이 조합을 출력하지 않음.)
+            // Sentry APPS-IN-TOSS-UNITY-SDK-WK.
+            if (message.IndexOf("평균 FPS", StringComparison.Ordinal) >= 0
+                && message.IndexOf("미달", StringComparison.Ordinal) >= 0)
                 return true;
 
             // SDK 자체 로그는 절대 필터링하지 않음 — AitKeywords 전체를 가드로 사용

@@ -103,8 +103,8 @@ namespace AppsInToss.Editor
                 }
                 catch (Exception e)
                 {
-                    // 초기화 실패해도 Unity는 정상 작동해야 함
-                    Debug.LogWarning($"[AIT] SDK 초기화 중 예외 발생 (무시됨): {e}");
+                    // 초기화 실패해도 Unity는 정상 작동해야 함 — 복구 가능 경로이므로 Sentry 전송 안 함.
+                    AITLog.Warning($"[AIT] SDK 초기화 중 예외 발생 (무시됨): {e}", sentryCapture: false);
                 }
             };
         }
@@ -251,7 +251,9 @@ namespace AppsInToss.Editor
             }
             catch (Exception e)
             {
-                Debug.LogError($"[AIT] 패키지 매니저 체크 중 예외 발생: {e}");
+                // 사용자 환경(FS 권한/락, 동시 설치)에서 발생하는 복구 가능 예외 — finally에서 정상 복구되므로
+                // Sentry 전송 안 함. (Sentry APPS-IN-TOSS-UNITY-SDK-100: IOException "Access to the path ... is denied")
+                AITLog.Error($"[AIT] 패키지 매니저 체크 중 예외 발생: {e}", sentryCapture: false);
             }
             finally
             {

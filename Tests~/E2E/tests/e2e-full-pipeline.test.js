@@ -382,6 +382,162 @@ async function applyMobileThrottling(page, overrideRate = undefined) {
 
 
 // ============================================================================
+// 로딩 프로파일러 (첫 프레임 렌더까지의 로드 타임라인 측정)
+// ============================================================================
+
+/**
+ * 페이지 컨텍스트에 주입되는 로딩 프로파일러.
+ * page.addInitScript로 navigation 이전에 설치되어 다음을 정밀 측정한다(performance.now 기준):
+ *  - instanceReadyMs : 템플릿이 `window.unityInstance = ...`를 세팅한 시각(엔진 준비 완료)
+ *  - firstFrameMs    : Unity 엔진이 캔버스에 최초로 그린 시각(첫 프레임 렌더 성공) = 헤드라인 지표
+ *
+ * 첫 프레임은 WebGL draw 콜을 프로토타입 레벨에서 후킹해 감지한다(최초 1회 기록 후 자가 제거 →
+ * 이후 오버헤드 0). AIT 템플릿의 로딩 화면은 HTML 오버레이라 캔버스에 그리지 않으므로,
+ * 최초 draw 콜 = 엔진의 첫 프레임이다.
+ *
+ * ⚠️ 이 함수는 브라우저 컨텍스트에서 실행되므로 Node 변수에 클로저로 접근하면 안 된다(self-contained).
+ */
+function installLoadProfiler() {
+  if (window['__AIT_LOAD_PROFILE__']) return;
+  const profile = {
+    timeOrigin: performance.timeOrigin,
+    instanceReadyMs: null,
+    firstFrameMs: null,
+    firstDrawMethod: null,
+    progress: [],
+  };
+  window['__AIT_LOAD_PROFILE__'] = profile;
+  const now = () => +performance.now().toFixed(1);
+
+  // 1) window.unityInstance 세터 트랩 → 엔진 인스턴스 준비 시각.
+  //    템플릿의 `window.unityInstance = unityInstance`는 [[Set]]이라 접근자 세터로 가로챌 수 있다.
+  try {
+    let _inst;
+    Object.defineProperty(window, 'unityInstance', {
+      configurable: true,
+      get() { return _inst; },
+      set(v) {
+        _inst = v;
+        if (profile.instanceReadyMs == null) profile.instanceReadyMs = now();
+      },
+    });
+  } catch (e) { /* 이미 정의된 경우 무시 */ }
+
+  // 2) WebGL draw 콜 후킹 → 최초 프레임 렌더 시각(자가 제거).
+  //    ⚠️ WebGL2 컨텍스트의 drawArrays/drawElements는 WebGL2RenderingContext.prototype의
+  //    고유 메서드라 WebGLRenderingContext.prototype 후킹만으로는 가로채지지 않는다 →
+  //    기본 draw 메서드를 두 프로토타입 모두에 후킹한다(가장 derived가 우선 적용됨).
+  try {
+    const targets = [];
+    const collect = (proto, names) => {
+      if (!proto) return;
+      for (const n of names) {
+        if (typeof proto[n] === 'function') targets.push([proto, n, proto[n]]);
+      }
+    };
+    collect(window.WebGLRenderingContext && window.WebGLRenderingContext.prototype,
+      ['drawArrays', 'drawElements']);
+    collect(window.WebGL2RenderingContext && window.WebGL2RenderingContext.prototype,
+      ['drawArrays', 'drawElements', 'drawArraysInstanced', 'drawElementsInstanced', 'drawRangeElements']);
+
+    const restore = () => {
+      for (const [p, n, orig] of targets) {
+        try { p[n] = orig; } catch (e) { /* noop */ }
+      }
+    };
+
+    for (const [proto, name, orig] of targets) {
+      proto[name] = function (...args) {
+        if (profile.firstFrameMs == null) {
+          profile.firstFrameMs = now();
+          profile.firstDrawMethod = name;
+          restore();
+        }
+        return orig.apply(this, args);
+      };
+    }
+  } catch (e) { /* 후킹 실패 시 firstFrameMs는 null로 남고 테스트가 실패시킨다 */ }
+}
+
+/**
+ * 페이지에서 로딩 프로파일 + Resource/Navigation Timing을 읽어 구조화된 객체로 반환.
+ * Unity 빌드 자산의 on-wire 전송 바이트(transferSize)·압축/비압축 바디·다운로드 구간을 포함한다.
+ */
+async function captureLoadProfile(page) {
+  return await page.evaluate(() => {
+    const prof = window['__AIT_LOAD_PROFILE__'] || {};
+    const nav = performance.getEntriesByType('navigation')[0];
+    const isUnityAsset = (name) =>
+      /\/Build\//.test(name) ||
+      /\.(unityweb|wasm|data|mem)$/.test(name) ||
+      /\.(loader|framework)\.js$/.test(name);
+
+    const resources = performance.getEntriesByType('resource')
+      .filter((r) => isUnityAsset(r.name))
+      .map((r) => ({
+        name: r.name.split('/').pop().split('?')[0],
+        initiatorType: r.initiatorType,
+        startMs: +r.startTime.toFixed(1),
+        responseEndMs: +r.responseEnd.toFixed(1),
+        durationMs: +r.duration.toFixed(1),
+        ttfbMs: +Math.max(0, r.responseStart - r.requestStart).toFixed(1),
+        transferSize: r.transferSize,        // on-wire(헤더 포함)
+        encodedBodySize: r.encodedBodySize,  // 압축 바디
+        decodedBodySize: r.decodedBodySize,  // 비압축 바디
+      }))
+      .sort((a, b) => a.startMs - b.startMs);
+
+    const sum = (key) => resources.reduce((s, r) => s + (r[key] || 0), 0);
+
+    return {
+      firstFrameMs: prof.firstFrameMs ?? null,
+      instanceReadyMs: prof.instanceReadyMs ?? null,
+      firstDrawMethod: prof.firstDrawMethod ?? null,
+      navigation: nav ? {
+        domContentLoadedMs: +nav.domContentLoadedEventEnd.toFixed(1),
+        domCompleteMs: +nav.domComplete.toFixed(1),
+        loadEventEndMs: +nav.loadEventEnd.toFixed(1),
+        responseEndMs: +nav.responseEnd.toFixed(1),
+      } : null,
+      resources,
+      totalTransferBytes: sum('transferSize'),
+      totalEncodedBytes: sum('encodedBodySize'),
+      totalDecodedBytes: sum('decodedBodySize'),
+    };
+  });
+}
+
+function formatBytes(n) {
+  if (n == null) return 'N/A';
+  if (n >= 1024 * 1024) return (n / (1024 * 1024)).toFixed(2) + ' MB';
+  if (n >= 1024) return (n / 1024).toFixed(1) + ' KB';
+  return n + ' B';
+}
+
+/** 베이스라인(이전 profile) 대비 before/after 델타를 콘솔에 출력. */
+function printLoadDiff(baseline, current) {
+  if (!baseline) return;
+  const b = baseline.profile || baseline;
+  const fmtDelta = (before, after, unit, lowerIsBetter = true) => {
+    if (before == null || after == null) return `${after ?? 'N/A'} (baseline N/A)`;
+    const d = after - before;
+    const pct = before !== 0 ? (d / before) * 100 : 0;
+    const sign = d > 0 ? '+' : '';
+    const better = lowerIsBetter ? (d < 0) : (d > 0);
+    const tag = d === 0 ? '=' : (better ? '✓ 개선' : '✗ 회귀');
+    return `${before}${unit} → ${after}${unit}  (${sign}${d.toFixed(1)}${unit}, ${sign}${pct.toFixed(1)}%) ${tag}`;
+  };
+  console.log('\n  ── Before → After (baseline diff) ──');
+  console.log('  첫 프레임:        ' + fmtDelta(b.firstFrameMs, current.firstFrameMs, 'ms'));
+  console.log('  인스턴스 준비:    ' + fmtDelta(b.instanceReadyMs, current.instanceReadyMs, 'ms'));
+  console.log('  on-wire 전송:     ' + fmtDelta(
+    b.totalTransferBytes != null ? +(b.totalTransferBytes / 1048576).toFixed(2) : null,
+    current.totalTransferBytes != null ? +(current.totalTransferBytes / 1048576).toFixed(2) : null,
+    'MB'));
+}
+
+
+// ============================================================================
 // Test Suite
 // ============================================================================
 
@@ -419,10 +575,27 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
         unexpectedErrorCount: testResults.tests['4_runtime_api'].unexpectedErrorCount
       } : null,
       compressionValidation: testResults.tests['1_build_validation']?.compressionValidation || null,
+      // 로딩 프로파일 헤드라인 (before/after diff용)
+      firstFrameMs: testResults.tests['3-2_load_profile']?.firstFrameMs ?? null,
+      instanceReadyMs: testResults.tests['3-2_load_profile']?.instanceReadyMs ?? null,
+      onWireTransferBytes: testResults.tests['3-2_load_profile']?.totalTransferBytes ?? null,
       testsPassed: Object.values(testResults.tests || {}).filter(t => t.passed).length,
       testsTotal: Object.keys(testResults.tests || {}).length
     };
     fs.writeFileSync(benchmarkPath, JSON.stringify(benchmarkResults, null, 2));
+
+    // 3. 로딩 프로파일 (before/after diff 베이스라인용 전용 산출물)
+    const loadProfile = testResults.tests['3-2_load_profile'];
+    if (loadProfile) {
+      const loadProfilePath = path.resolve(__dirname, 'load-profile.json');
+      const { passed, ...profile } = loadProfile;
+      fs.writeFileSync(loadProfilePath, JSON.stringify({
+        timestamp: testResults.timestamp,
+        unityProject: SAMPLE_PROJECT,
+        isDevBuild,
+        profile,
+      }, null, 2));
+    }
 
     // stdout으로 결과 출력
     console.log('\n');
@@ -440,10 +613,14 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
     const pageLoad = tests['3_production_server']?.pageLoadTimeMs;
     const unityLoad = tests['3_production_server']?.unityLoadTimeMs;
     const renderer = tests['3_production_server']?.webgl?.renderer;
+    const firstFrame = tests['3-2_load_profile']?.firstFrameMs;
+    const onWire = tests['3-2_load_profile']?.totalTransferBytes;
 
     console.log('\n  📦 Build Size:      ' + (buildSize ? buildSize.toFixed(2) + ' MB' : 'N/A'));
     console.log('  ⏱️  Page Load:       ' + (pageLoad ? pageLoad + ' ms' : 'N/A'));
     console.log('  🎮 Unity Load:      ' + (unityLoad ? unityLoad + ' ms' : 'N/A'));
+    console.log('  🎬 First Frame:     ' + (firstFrame != null ? firstFrame + ' ms' : 'N/A') + '  ← headline');
+    console.log('  📡 On-wire:         ' + (onWire != null ? formatBytes(onWire) : 'N/A'));
     console.log('  🖥️  GPU Renderer:    ' + (renderer || 'N/A'));
 
     console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -649,6 +826,8 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
     let sharedPort = serverPort;
     let pageLoadTime = 0;
     let unityLoadTime = 0;
+    /** @type {Awaited<ReturnType<typeof captureLoadProfile>> | null} */
+    let loadProfile = null;
     const preloadWarnings = [];
 
     test.beforeAll(async ({ browser }) => {
@@ -682,6 +861,9 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       // 2. 페이지 생성 + Unity 초기화
       sharedPage = await browser.newPage();
 
+      // 로딩 프로파일러를 navigation 이전에 주입 (첫 프레임/인스턴스 준비 시각 정밀 측정)
+      await sharedPage.addInitScript(installLoadProfiler);
+
       sharedPage.on('console', msg => {
         if (msg.type() === 'warning' && msg.text().includes('credentials mode')) {
           preloadWarnings.push(msg.text());
@@ -707,6 +889,26 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       } catch {
         unityLoadTime = Date.now() - unityStartTime;
         console.log('⚠️ Unity initialization timeout');
+      }
+
+      // 첫 프레임 렌더(최초 WebGL draw) 감지 — 헤드라인 로드 지표. 미감지 시 로드 실패로 간주.
+      try {
+        await sharedPage.waitForFunction(
+          () => window['__AIT_LOAD_PROFILE__'] && window['__AIT_LOAD_PROFILE__'].firstFrameMs != null,
+          { timeout: 30000 }
+        );
+      } catch {
+        console.log('⚠️ First frame(WebGL draw) not detected within timeout');
+      }
+
+      // 로딩 프로파일 캡처 (resource/navigation timing 포함)
+      try {
+        loadProfile = await captureLoadProfile(sharedPage);
+        if (loadProfile?.firstFrameMs != null) {
+          console.log(`🎬 First frame rendered at ${loadProfile.firstFrameMs}ms (nav start 기준, via ${loadProfile.firstDrawMethod})`);
+        }
+      } catch (e) {
+        console.log('⚠️ Load profile capture failed:', e?.message);
       }
 
       try {
@@ -766,6 +968,69 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
         pageLoadTimeMs: pageLoadTime,
         unityLoadTimeMs: unityLoadTime,
         webgl: webglInfo
+      };
+    });
+
+
+    // -------------------------------------------------------------------------
+    // Test 3-2: Load Profiling — 첫 프레임 렌더까지의 로드 타임라인
+    // before/after diff용 정밀 프로파일을 자동 수집 (헤드라인 = firstFrameMs)
+    // -------------------------------------------------------------------------
+    test('3-2. Load profiling: first-frame render time', async () => {
+      test.setTimeout(60000);
+
+      expect(loadProfile, 'load profile should have been captured in beforeAll').not.toBeNull();
+
+      // 첫 프레임이 감지되어야 한다(미감지 = WebGL 렌더 실패 = 로드 실패).
+      // wasm2023 미지원 브라우저 하드페일도 여기서 잡힌다.
+      expect(
+        loadProfile.firstFrameMs,
+        'first frame(WebGL draw)가 감지되어야 합니다 — 미감지 시 엔진 렌더 실패/하드페일'
+      ).not.toBeNull();
+
+      // 구조화된 프로파일 표 출력
+      console.log('\n  ━━━━━━━━━━━━━━━━ 🎬 Load Profile (nav start = 0ms) ━━━━━━━━━━━━━━━━');
+      console.log(`  첫 프레임 렌더(headline): ${loadProfile.firstFrameMs} ms  (via ${loadProfile.firstDrawMethod})`);
+      console.log(`  엔진 인스턴스 준비:       ${loadProfile.instanceReadyMs ?? 'N/A'} ms`);
+      if (loadProfile.navigation) {
+        console.log(`  DOMContentLoaded:         ${loadProfile.navigation.domContentLoadedMs} ms`);
+        console.log(`  load 이벤트:              ${loadProfile.navigation.loadEventEndMs} ms`);
+      }
+      console.log(`  on-wire 전송 합계:        ${formatBytes(loadProfile.totalTransferBytes)} (압축 ${formatBytes(loadProfile.totalEncodedBytes)} / 비압축 ${formatBytes(loadProfile.totalDecodedBytes)})`);
+      console.log('  ── 자산별 다운로드 ──');
+      console.log('  ' + 'asset'.padEnd(34) + 'on-wire'.padStart(11) + 'decoded'.padStart(11) + 'start'.padStart(9) + 'dur'.padStart(8));
+      for (const r of loadProfile.resources) {
+        console.log(
+          '  ' + r.name.slice(0, 33).padEnd(34) +
+          formatBytes(r.transferSize).padStart(11) +
+          formatBytes(r.decodedBodySize).padStart(11) +
+          (r.startMs + 'ms').padStart(9) +
+          (r.durationMs + 'ms').padStart(8)
+        );
+      }
+      console.log('  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+      // 베이스라인이 주어지면 before/after 델타 자동 출력
+      const baselinePath = process.env.AIT_LOAD_BASELINE;
+      if (baselinePath && fs.existsSync(baselinePath)) {
+        try {
+          const baseline = JSON.parse(fs.readFileSync(baselinePath, 'utf8'));
+          console.log(`\n  📐 Baseline: ${baselinePath}`);
+          printLoadDiff(baseline, loadProfile);
+        } catch (e) {
+          console.log(`  ⚠️ Baseline 읽기 실패: ${e?.message}`);
+        }
+      }
+
+      // 합리적 상한 단언 (모바일 30s / 데스크톱 10s). 회귀 가드.
+      expect(
+        loadProfile.firstFrameMs,
+        `first-frame가 ${BENCHMARKS.MAX_LOAD_TIME_MS}ms 이내여야 합니다`
+      ).toBeLessThan(BENCHMARKS.MAX_LOAD_TIME_MS);
+
+      testResults.tests['3-2_load_profile'] = {
+        passed: true,
+        ...loadProfile,
       };
     });
 

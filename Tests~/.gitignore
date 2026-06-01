@@ -21,6 +21,7 @@ E2E/SampleUnityProject/*.sln
 E2E/tests/playwright-report/
 E2E/tests/test-results/
 E2E/tests/benchmark-results.json
+E2E/tests/load-profile.json
 E2E/tests/node_modules/
 
 # JavaScript Test Coverage

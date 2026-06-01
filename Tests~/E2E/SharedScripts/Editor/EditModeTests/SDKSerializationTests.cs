@@ -25,8 +25,8 @@ public class SDKSerializationTests
 
     [TestCase(typeof(AppLoginResultReferrer), "DEFAULT")]
     [TestCase(typeof(AppLoginResultReferrer), "SANDBOX")]
-    [TestCase(typeof(GetPermissionPermissionName), "Camera")]
-    [TestCase(typeof(GetPermissionPermissionName), "Clipboard")]
+    [TestCase(typeof(PermissionName), "Camera")]
+    [TestCase(typeof(PermissionName), "Clipboard")]
     [TestCase(typeof(SetDeviceOrientationOptionsType), "Portrait")]
     [TestCase(typeof(SetDeviceOrientationOptionsType), "Landscape")]
     [TestCase(typeof(HapticFeedbackType), "Tap")]

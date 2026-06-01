@@ -183,10 +183,10 @@ public class RuntimeAPITester : MonoBehaviour
         // Event API
         TestAPICall("EventLog", async () => { await AIT.EventLog(new EventLogParams { Log_name = "test", Log_type = "test" }); });
 
-        // Permission APIs (class 타입 파라미터) - inline enum 사용
-        TestAPICall("GetPermission", async () => { await AIT.GetPermission(new GetPermissionPermission { Name = GetPermissionPermissionName.Camera, Access = GetPermissionPermissionAccess.Access }); });
-        TestAPICall("RequestPermission", async () => { await AIT.RequestPermission(new RequestPermissionPermission { Name = RequestPermissionPermissionName.Camera, Access = RequestPermissionPermissionAccess.Access }); });
-        TestAPICall("OpenPermissionDialog", async () => { await AIT.OpenPermissionDialog(new OpenPermissionDialogPermission { Name = OpenPermissionDialogPermissionName.Camera, Access = OpenPermissionDialogPermissionAccess.Access }); });
+        // Permission APIs (class 타입 파라미터) - PermissionName/PermissionAccess named enum 사용
+        TestAPICall("GetPermission", async () => { await AIT.GetPermission(new GetPermissionPermission { Name = PermissionName.Camera, Access = PermissionAccess.Access }); });
+        TestAPICall("RequestPermission", async () => { await AIT.RequestPermission(new RequestPermissionPermission { Name = PermissionName.Camera, Access = PermissionAccess.Access }); });
+        TestAPICall("OpenPermissionDialog", async () => { await AIT.OpenPermissionDialog(new OpenPermissionDialogPermission { Name = PermissionName.Camera, Access = PermissionAccess.Access }); });
 
         // Location APIs
         TestAPICall("GetCurrentLocation", async () => { await AIT.GetCurrentLocation(new GetCurrentLocationOptions { Accuracy = Accuracy.Balanced }); });

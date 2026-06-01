@@ -1422,6 +1422,101 @@ public class IsKnownNonSdkMessageTests
 
     #endregion
 
+    #region 사용자 코드 컴파일 에러 — 파일 경로 prefix 없는 진단 본문 변형 (SDK-ZR, SDK-102~105)
+
+    [Test]
+    public void BareDiagnostic_Cs0103_AppsInTossIdentifier_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-ZR — DreamPassDefinition.cs에서 'AppsInTossProductSkus' 식별자 미존재(CS0103).
+        // "Assets/.../...cs(L,C): error CS0103:" 경로 prefix 없이 진단 본문만 Sentry에 도달한 변형.
+        // 위 Assets/ 기반 CS0103 가드가 잡지 못하므로 진단 문구 + AppsInToss 토큰 합성 가드로 흡수.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "The name 'AppsInTossProductSkus' does not exist in the current context"));
+    }
+
+    [Test]
+    public void BareDiagnostic_Cs0246_AppsInTossNamespace_InGameUI_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-105 — InGameUI.cs에서 AppsInToss 네임스페이스 미발견(CS0246).
+        // SDK 패키지 미설치/asmdef 참조 누락이라는 사용자측 환경 문제. 경로 prefix 없는 본문 변형.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "The type or namespace name 'AppsInToss' could not be found (are you missing a using directive or an assembly reference?)"));
+    }
+
+    [Test]
+    public void BareDiagnostic_Cs0246_AppsInTossNamespace_IngameTower_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-104 — IngameTower.cs 변형. 동일 패턴이 항목별 evidence를 모두 커버하는지 검증.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "The type or namespace name 'AppsInToss' could not be found"));
+    }
+
+    [Test]
+    public void BareDiagnostic_Cs0246_AppsInTossNamespace_VersionCheckManager_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-103 — VersionCheckManager.cs 변형.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "VersionCheckManager.cs: The type or namespace name 'AppsInToss' could not be found"));
+    }
+
+    [Test]
+    public void BareDiagnostic_Cs1503_AitException_TossAdManager_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-102 — TossAdManager.cs에서 AITException을 string 자리에 전달(CS1503).
+        // 경로 prefix 없이 본문만 도달한 변형이라 위 'AppsInToss.'/Assets/ 합성 가드가 잡지 못해 별도 흡수.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Argument 1: cannot convert from 'AppsInToss.AITException' to 'string'"));
+    }
+
+    [Test]
+    public void BareDiagnostic_Cs0103_WithAitPrefix_NeverFiltered()
+    {
+        // SDK 보호 가드: [AIT] prefix가 붙은 동일 본문은 SDK 자체 로그로 간주되어 필터링되지 않아야 함.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] The name 'AppsInTossProductSkus' does not exist in the current context"));
+    }
+
+    [Test]
+    public void BareDiagnostic_Cs0246_WithAitPrefix_NeverFiltered()
+    {
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] The type or namespace name 'AppsInToss' could not be found"));
+    }
+
+    [Test]
+    public void BareDiagnostic_Cs1503_WithAitPrefix_NeverFiltered()
+    {
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] Argument 1: cannot convert from 'AppsInToss.AITException' to 'string'"));
+    }
+
+    [Test]
+    public void BareDiagnostic_Cs0246_SdkPackagePath_NotFiltered()
+    {
+        // SDK 자체 .cs의 실제 컴파일 에러는 'com.toss.apps-in-toss' 패키지 경로로 출력되므로
+        // 진단 본문 가드가 이를 흡수해 실 SDK 버그를 묻으면 안 된다 (패키지 경로 제외 가드 검증).
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Packages/com.toss.apps-in-toss/Runtime/Foo.cs(10,5): error CS0246: The type or namespace name 'AppsInToss' could not be found"));
+    }
+
+    [Test]
+    public void BareDiagnostic_Cs1503_WithoutAppsInTossToken_NotFiltered()
+    {
+        // 'AppsInToss' 토큰이 없으면 SDK와 무관한 일반 컴파일 에러이므로 진단 본문 가드가 매칭되지 않아야 함.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Argument 1: cannot convert from 'System.Int32' to 'string'"));
+    }
+
+    [Test]
+    public void BareDiagnostic_Cs0103_WithoutAppsInTossToken_NotFiltered()
+    {
+        // 동일 — AppsInToss 토큰 없는 일반 CS0103 진단 본문은 통과(노이즈로 단정하지 않음).
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "The name 'someLocalVariable' does not exist in the current context"));
+    }
+
+    #endregion
+
     #region 'ait deploy' stdout/stderr ANSI escape 노이즈 (SDK-VK, SDK-BD, SDK-T5)
 
     [Test]

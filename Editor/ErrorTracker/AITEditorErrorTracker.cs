@@ -1068,6 +1068,36 @@ namespace AppsInToss.Editor.ErrorTracker
                 && message.IndexOf(".cs(", StringComparison.Ordinal) >= 0)
                 return true;
 
+            // 사용자 코드의 컴파일 에러가 SDK 식별자(AppsInToss...)를 참조하는 경우 — Unity C# 컴파일러가 직접 출력.
+            // 위 CS0103/CS0246/CS1503 가드는 "Assets/" 경로 + ".cs(" 마커가 포함된 풀 라인을 요구하지만,
+            // Sentry로는 파일 경로 prefix 없이 컴파일러 진단 본문만 도달하는 변형이 있어(아래 이슈) 별도로 흡수한다.
+            // 진단 문구("does not exist in the current context" / "type or namespace name ... could not be found" /
+            // "cannot convert from")는 C# 컴파일러만 출력하며 SDK 런타임/빌드 코드는 이 문구를 직접 출력하지 않는다.
+            // SDK 자체 로그("[AIT" prefix)와 SDK 패키지 경로("com.toss.apps-in-toss")의 컴파일 에러는 방어적으로 제외해
+            // 실제 SDK 버그가 묻히지 않도록 한다. 'AppsInToss' 토큰을 동반할 때만 매칭해 SDK와 무관한 컴파일 에러는 통과시킨다.
+
+            // CS0103 변형 — "The name 'AppsInToss...' does not exist in the current context" (SDK-ZR: DreamPassDefinition.cs)
+            if (message.IndexOf("does not exist in the current context", StringComparison.Ordinal) >= 0
+                && message.IndexOf("AppsInToss", StringComparison.Ordinal) >= 0
+                && !message.StartsWith("[AIT", StringComparison.Ordinal)
+                && message.IndexOf("com.toss.apps-in-toss", StringComparison.Ordinal) < 0)
+                return true;
+
+            // CS0246 변형 — "The type or namespace name 'AppsInToss' could not be found" (SDK-103/104/105: SDK 패키지 미설치)
+            if (message.IndexOf("type or namespace name", StringComparison.Ordinal) >= 0
+                && message.IndexOf("could not be found", StringComparison.Ordinal) >= 0
+                && message.IndexOf("AppsInToss", StringComparison.Ordinal) >= 0
+                && !message.StartsWith("[AIT", StringComparison.Ordinal)
+                && message.IndexOf("com.toss.apps-in-toss", StringComparison.Ordinal) < 0)
+                return true;
+
+            // CS1503 변형 — "cannot convert from 'AppsInToss.AITException' to 'string'" (SDK-102: TossAdManager.cs)
+            if (message.IndexOf("cannot convert from", StringComparison.Ordinal) >= 0
+                && message.IndexOf("AppsInToss", StringComparison.Ordinal) >= 0
+                && !message.StartsWith("[AIT", StringComparison.Ordinal)
+                && message.IndexOf("com.toss.apps-in-toss", StringComparison.Ordinal) < 0)
+                return true;
+
             // Unity AssetDatabase가 Library/ 경로의 SDK 외부 캐시 로딩 실패 시 직접 출력.
             // 예: "Unknown error occurred while loading 'Library/AppsInToss/AITBuildSession.asset'."
             // 메시지에 'AppsInToss'/'AIT' 토큰이 들어가 SDK 키워드 가드가 발동하므로 가드보다 먼저 매칭한다.

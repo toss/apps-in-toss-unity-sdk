@@ -111,6 +111,15 @@ namespace AppsInToss.Editor.ErrorTracker
             // 외부 패키지 (Unity 버전별 괄호 유무에 관계없이 매칭되도록 핵심 문구만 추출)
             "exists but its folder",
 
+            // 외부 UPM 패키지(immutable 폴더)의 에셋에 .meta 파일이 없을 때 Unity 에디터가 직접 출력하는 표준 경고.
+            // 외부 서드파티 패키지(예: com.lupidan.apple-signin-unity)가 .meta를 누락한 채 배포되어 발생.
+            // 예: "Asset 'Packages/com.lupidan.apple-signin-unity/AppleAuthSampleProject/ProjectSettings/...'
+            //      has no meta file, but it's in an immutable folder. The asset will be ignored."
+            // Sentry APPS-IN-TOSS-UNITY-SDK-10D, 10E, 10F, 10G, 10H, 10J, 10K.
+            // immutable 폴더(외부 패키지)의 누락 .meta는 사용자가 조치 불가한 Unity 자체 노이즈이며,
+            // 에셋 경로/패키지명이 가변이므로 불변 핵심 문구만 추출. SDK는 이 문구를 출력하지 않으므로(AitKeywords 미포함) 보호 가드와 충돌 없음.
+            "has no meta file, but it's in an immutable folder",
+
             // Unity URP 내부
             "exceeds previous array size",
 
@@ -233,13 +242,13 @@ namespace AppsInToss.Editor.ErrorTracker
             // SDK 자체 코드는 이 메시지를 출력하지 않으며(주석으로만 참조) Unity 엔진이 직접 출력.
             "immutable packages were unexpectedly altered",
 
-            // Unity PackageManager가 immutable(읽기 전용) 폴더 내 에셋에 .meta 파일이 없을 때 직접 출력하는 경고.
-            // 외부 서드파티 패키지(예: com.lupidan.apple-signin-unity)가 .meta를 누락한 채 배포되어 발생하는
-            // Unity 자체 에셋 관리 노이즈이며 SDK 영역 아님.
-            // 예: "Asset Packages/com.lupidan.apple-signin-unity/Img has no meta file, but it's in an immutable folder. The asset will be ignored."
-            // Sentry APPS-IN-TOSS-UNITY-SDK-10K, 10J, 10H, 10G, 10F.
-            // 에셋 경로/패키지명이 가변이므로 불변 핵심 문구만 추출. SDK는 이 문자열을 출력하지 않으므로(grep 확인) 안전.
-            "has no meta file, but it's in an immutable folder",
+            // Unity AssetDatabase가 존재하지 않는 검색 폴더로 FindAssets 호출 시 직접 출력하는 엔진 경고.
+            // 예: "AssetDatabase.FindAssets: Folder not found: 'Assets/Foo'"
+            // SDK 자체 로그 접두사([AIT 등)가 없는 Unity 패키지 탐색 노이즈이며 사용자 프로젝트의
+            // 폴더 구성/검색 경로 문제에 해당. SDK는 FindAssets를 호출하긴 하지만(AITBuildOptimizationScanner)
+            // 이 경고 문자열을 직접 출력하지 않고 Unity 엔진이 출력하므로 AitKeywords 보호 가드와 충돌 없음.
+            // Sentry APPS-IN-TOSS-UNITY-SDK-ZZ.
+            "AssetDatabase.FindAssets: Folder not found",
         };
 
         // DetermineErrorSource에서 메시지를 SDK로 분류하는 추가 패턴.

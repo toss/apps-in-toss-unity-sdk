@@ -68,8 +68,9 @@ jobs:
 
           # 현재 SDK 버전 확인
           CURRENT_VERSION=$(jq -r '.version' package.json)
+          CURRENT_MAJOR="${CURRENT_VERSION%%.*}"
           echo ""
-          echo "현재 SDK 버전: ${CURRENT_VERSION}"
+          echo "현재 SDK 버전: ${CURRENT_VERSION} (메이저: ${CURRENT_MAJOR})"
 
           # 기존 릴리즈 태그 목록
           echo ""
@@ -91,6 +92,15 @@ jobs:
           MISSING_VERSIONS=""
 
           for VERSION in $ALL_NPM_VERSIONS; do
+            # 메이저 버전 ceiling 가드: 현재 메이저보다 높은 메이저는 자동 승격 차단
+            # (예: 현재 2.x → 3.0.0 자동 PR 생성 금지). 메이저는 API 표면이 바뀌므로
+            # 의도적 검증을 거쳐 workflow_dispatch의 version 입력으로만 승격한다.
+            CANDIDATE_MAJOR="${VERSION%%.*}"
+            if [ "$CANDIDATE_MAJOR" -gt "$CURRENT_MAJOR" ]; then
+              echo "  ${VERSION}: 메이저 상향(${CURRENT_MAJOR} → ${CANDIDATE_MAJOR}) 자동 승격 차단 (스킵)"
+              continue
+            fi
+
             # 2.0.0 미만 버전은 스킵 (SDK 1.x 지원 종료)
             if [ "$(printf '%s\n' "2.0.0" "$VERSION" | sort -V | head -n1)" = "$VERSION" ] && [ "$VERSION" != "2.0.0" ]; then
               echo "  ${VERSION}: SDK 1.x 지원 종료 (스킵)"

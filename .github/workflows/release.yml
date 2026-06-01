@@ -583,11 +583,21 @@ jobs:
           echo "태그 전파 대기 중 (5초)..."
           sleep 5
 
+          # prerelease 버전(예: 3.0.0-beta)이면 Latest로 표시되지 않도록 방어
+          # stable 자동 승격은 update.yml의 메이저 ceiling 가드가 1차 차단하지만,
+          # release.yml을 prerelease 버전으로 직접 디스패치하는 경우의 안전망.
+          PRERELEASE_FLAGS=""
+          if echo "$VERSION" | grep -q '-'; then
+            PRERELEASE_FLAGS="--prerelease --latest=false"
+            echo "prerelease 버전 감지: ${VERSION} → Latest 표시 안 함"
+          fi
+
           # 태그 기반으로 릴리즈 생성 (--verify-tag로 태그 확인)
           gh release create "${TAG_NAME}" \
             --title "v${VERSION}" \
             --notes "$RELEASE_BODY" \
-            --verify-tag
+            --verify-tag \
+            $PRERELEASE_FLAGS
 
           echo "GitHub Release 생성 완료"
           echo "URL: https://github.com/${{ github.repository }}/releases/tag/${TAG_NAME}"

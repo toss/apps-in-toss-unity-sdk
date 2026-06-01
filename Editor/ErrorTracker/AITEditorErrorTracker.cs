@@ -232,6 +232,14 @@ namespace AppsInToss.Editor.ErrorTracker
             // 기존 LogType.Warning 가드는 별도로 유지되며(line 432-436), 이 패턴은 Error/Exception LogType 변형도 흡수.
             // SDK 자체 코드는 이 메시지를 출력하지 않으며(주석으로만 참조) Unity 엔진이 직접 출력.
             "immutable packages were unexpectedly altered",
+
+            // Unity AssetDatabase가 존재하지 않는 검색 폴더로 FindAssets 호출 시 직접 출력하는 엔진 경고.
+            // 예: "AssetDatabase.FindAssets: Folder not found: 'Assets/Foo'"
+            // SDK 자체 로그 접두사([AIT 등)가 없는 Unity 패키지 탐색 노이즈이며 사용자 프로젝트의
+            // 폴더 구성/검색 경로 문제에 해당. SDK는 FindAssets를 호출하긴 하지만(AITBuildOptimizationScanner)
+            // 이 경고 문자열을 직접 출력하지 않고 Unity 엔진이 출력하므로 AitKeywords 보호 가드와 충돌 없음.
+            // Sentry APPS-IN-TOSS-UNITY-SDK-ZZ.
+            "AssetDatabase.FindAssets: Folder not found",
         };
 
         // DetermineErrorSource에서 메시지를 SDK로 분류하는 추가 패턴.

@@ -5,3 +5,6 @@ node_modules/
 debug-parse-output.ts
 tests/unit/fixtures/
 reports/
+# export 탐지 probe 임시 파일 (생성 중 임시로 쓰였다 삭제됨 — 커밋 금지)
+__export_probe*.ts
+__ait_wf_export_probe__.ts

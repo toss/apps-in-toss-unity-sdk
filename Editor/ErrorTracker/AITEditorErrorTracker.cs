@@ -112,11 +112,12 @@ namespace AppsInToss.Editor.ErrorTracker
             "exists but its folder",
 
             // 외부 UPM 패키지(immutable 폴더)의 에셋에 .meta 파일이 없을 때 Unity 에디터가 직접 출력하는 표준 경고.
+            // 외부 서드파티 패키지(예: com.lupidan.apple-signin-unity)가 .meta를 누락한 채 배포되어 발생.
             // 예: "Asset 'Packages/com.lupidan.apple-signin-unity/AppleAuthSampleProject/ProjectSettings/...'
             //      has no meta file, but it's in an immutable folder. The asset will be ignored."
-            // Sentry APPS-IN-TOSS-UNITY-SDK-10E, APPS-IN-TOSS-UNITY-SDK-10D.
+            // Sentry APPS-IN-TOSS-UNITY-SDK-10D, 10E, 10F, 10G, 10H, 10J, 10K.
             // immutable 폴더(외부 패키지)의 누락 .meta는 사용자가 조치 불가한 Unity 자체 노이즈이며,
-            // SDK는 이 문구를 출력하지 않으므로(AitKeywords 미포함) 보호 가드와 충돌 없음.
+            // 에셋 경로/패키지명이 가변이므로 불변 핵심 문구만 추출. SDK는 이 문구를 출력하지 않으므로(AitKeywords 미포함) 보호 가드와 충돌 없음.
             "has no meta file, but it's in an immutable folder",
 
             // Unity URP 내부

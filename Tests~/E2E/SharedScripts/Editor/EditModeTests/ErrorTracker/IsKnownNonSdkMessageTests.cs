@@ -1812,6 +1812,42 @@ public class IsKnownNonSdkMessageTests
 
     #endregion
 
+    #region immutable 폴더 meta 파일 누락 경고 (SDK-10K, 10J, 10H, 10G, 10F)
+
+    [Test]
+    public void ImmutableFolder_MissingMeta_Img_ReturnsTrue()
+    {
+        // Sentry SDK-10K — apple-signin-unity의 Img 폴더 meta 누락.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Asset Packages/com.lupidan.apple-signin-unity/Img has no meta file, but it's in an immutable folder. The asset will be ignored."));
+    }
+
+    [Test]
+    public void ImmutableFolder_MissingMeta_ProjectSettings_ReturnsTrue()
+    {
+        // Sentry SDK-10J, 10H, 10G, 10F — AppleAuthSampleProject/ProjectSettings 경로 변형.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Asset Packages/com.lupidan.apple-signin-unity/AppleAuthSampleProject/ProjectSettings has no meta file, but it's in an immutable folder. The asset will be ignored."));
+    }
+
+    [Test]
+    public void ImmutableFolder_MissingMeta_UnityWarningPrefix_ReturnsTrue()
+    {
+        // "UnityWarning: " prefix가 덧붙은 변형도 부분 문자열 매칭으로 동일하게 드롭.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "UnityWarning: Asset Packages/com.foo.bar/Baz has no meta file, but it's in an immutable folder."));
+    }
+
+    [Test]
+    public void ImmutableFolder_MissingMeta_AitPrefix_NotFiltered()
+    {
+        // AIT prefix가 붙은 SDK 자체 로그는 보호 — immutable 폴더 문구가 없는 SDK 메시지는 매칭 안 됨.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] 패키지 meta 파일을 검증합니다."));
+    }
+
+    #endregion
+
     #region SDK 관련 메시지는 통과 (negative cases)
 
     [Test]

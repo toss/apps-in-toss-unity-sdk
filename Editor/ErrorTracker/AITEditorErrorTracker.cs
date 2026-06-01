@@ -232,6 +232,14 @@ namespace AppsInToss.Editor.ErrorTracker
             // 기존 LogType.Warning 가드는 별도로 유지되며(line 432-436), 이 패턴은 Error/Exception LogType 변형도 흡수.
             // SDK 자체 코드는 이 메시지를 출력하지 않으며(주석으로만 참조) Unity 엔진이 직접 출력.
             "immutable packages were unexpectedly altered",
+
+            // Unity PackageManager가 immutable(읽기 전용) 폴더 내 에셋에 .meta 파일이 없을 때 직접 출력하는 경고.
+            // 외부 서드파티 패키지(예: com.lupidan.apple-signin-unity)가 .meta를 누락한 채 배포되어 발생하는
+            // Unity 자체 에셋 관리 노이즈이며 SDK 영역 아님.
+            // 예: "Asset Packages/com.lupidan.apple-signin-unity/Img has no meta file, but it's in an immutable folder. The asset will be ignored."
+            // Sentry APPS-IN-TOSS-UNITY-SDK-10K, 10J, 10H, 10G, 10F.
+            // 에셋 경로/패키지명이 가변이므로 불변 핵심 문구만 추출. SDK는 이 문자열을 출력하지 않으므로(grep 확인) 안전.
+            "has no meta file, but it's in an immutable folder",
         };
 
         // DetermineErrorSource에서 메시지를 SDK로 분류하는 추가 패턴.

@@ -716,6 +716,35 @@ public class IsKnownNonSdkMessageTests
 
     #endregion
 
+    #region Unity AssetDatabase.FindAssets 폴더 미발견 경고 (SDK-ZZ)
+
+    [Test]
+    public void AssetDatabaseFindAssetsFolderNotFound_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-ZZ — Unity AssetDatabase가 존재하지 않는 검색 폴더로
+        // FindAssets 호출 시 직접 출력하는 엔진 경고. SDK 로그 접두사 없는 Unity 패키지 탐색 노이즈.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "AssetDatabase.FindAssets: Folder not found: 'Assets/NonExistentFolder'"));
+    }
+
+    [Test]
+    public void AssetDatabaseFindAssetsFolderNotFound_BareMessage_ReturnsTrue()
+    {
+        // 경로 suffix 없이 핵심 문구만 도착하는 변형도 동일하게 드롭.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "AssetDatabase.FindAssets: Folder not found"));
+    }
+
+    [Test]
+    public void AssetDatabaseFindAssetsFolderNotFound_WithAitPrefix_NeverFiltered()
+    {
+        // AitKeywords 가드 회귀 방지: [AIT] prefix가 붙은 동일 메시지는 SDK 자체 로그로 간주되어야 함.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] AssetDatabase.FindAssets: Folder not found: 'Assets/Foo'"));
+    }
+
+    #endregion
+
     #region Unity URP 내부
 
     [Test]

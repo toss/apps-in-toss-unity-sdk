@@ -62,6 +62,49 @@ public class CleanMenuSafetyTests
             "AITFileSystemHelper.SafeDeleteDirectory)를 사용해야 한다.");
     }
 
+    /// <summary>
+    /// 회귀 가드: Clean() 본문의 삭제 실패 보고 경로가 `Debug.LogError`를 사용하면
+    /// 외부 file lock(다른 프로세스가 ait-build 핸들을 잡고 있는 사용자 환경 원인)이
+    /// Sentry로 전파된다. 헬퍼(SafeDeleteDirectory)가 이미 sentry-suppressed Warning을
+    /// 남기므로 호출자는 `AITLog.Error(..., sentryCapture: false)`를 사용해야 한다.
+    ///
+    /// 회귀 대상 Sentry 이슈:
+    ///   - APPS-IN-TOSS-UNITY-SDK-RS: "ait-build/ 폴더 삭제 실패: C:\UNITY\Projects\HolmesOrchard\ait-build"
+    ///   - APPS-IN-TOSS-UNITY-SDK-V3: "ait-build/ 폴더 삭제 실패: D:\New folder\BALANCE\..." (공백 포함 경로)
+    ///   - APPS-IN-TOSS-UNITY-SDK-V0: "ait-build/ 폴더 삭제 실패: C:\project\Match in Dream_1.0.21_web\ait-build"
+    /// 모두 read-only가 아닌 file lock에 의한 실패로, 메시지에 예외 타입이 없는 변형.
+    /// </summary>
+    [Test]
+    public void Clean_DeleteFailureUsesSentrySuppressedLog()
+    {
+        string sourcePath = LocateAppsInTossMenuSource();
+        Assert.IsNotNull(sourcePath, "AppsInTossMenu.cs 소스 경로를 찾을 수 없음.");
+
+        string source = File.ReadAllText(sourcePath);
+        string cleanBody = ExtractMethodBody(source, "public static void Clean()");
+        Assert.IsNotNull(cleanBody, "AppsInTossMenu.Clean() 메서드를 소스에서 찾을 수 없음.");
+
+        // 핵심 가드 #1: Clean() 본문에 Debug.LogError 직호출이 없어야 함.
+        //   `Debug.LogError`는 AITLog의 SuppressScope를 거치지 않으므로 Sentry로 전송된다.
+        bool callsDebugLogError = cleanBody.Contains("Debug.LogError(");
+        Assert.IsFalse(callsDebugLogError,
+            "AppsInTossMenu.Clean()은 Debug.LogError()를 직접 호출하면 안 됨. " +
+            "외부 file lock(IDE/Node/AV)에 의한 삭제 실패가 Sentry로 전파된다 " +
+            "(Sentry APPS-IN-TOSS-UNITY-SDK-RS/V3/V0). " +
+            "AITLog.Error(..., sentryCapture: false)를 사용할 것.");
+
+        // 핵심 가드 #2: 삭제 실패 분기가 명시적으로 sentryCapture: false를 사용해야 함.
+        //   이중 안전망 — Clean() 본문에 "폴더 삭제 실패" 문구를 출력하는 라인이 있다면
+        //   같은 라인 근처에 `sentryCapture: false`가 함께 있어야 한다.
+        bool reportsFailure = cleanBody.Contains("폴더 삭제 실패");
+        if (reportsFailure)
+        {
+            Assert.IsTrue(cleanBody.Contains("sentryCapture: false"),
+                "AppsInTossMenu.Clean()이 '폴더 삭제 실패'를 출력한다면 sentryCapture: false로 " +
+                "Sentry 전송을 억제해야 함. 헬퍼(SafeDeleteDirectory)가 이미 흡수된 Warning을 남긴다.");
+        }
+    }
+
     private static string LocateAppsInTossMenuSource()
     {
         // 1) 가장 견고한 방법: AssetDatabase에서 MonoScript를 검색해 자산 경로를 얻는다.

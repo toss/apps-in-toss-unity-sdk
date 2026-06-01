@@ -111,6 +111,16 @@ namespace AppsInToss.Editor.ErrorTracker
             // 외부 패키지 (Unity 버전별 괄호 유무에 관계없이 매칭되도록 핵심 문구만 추출)
             "exists but its folder",
 
+            // 위 "exists but its folder"의 에셋 변형 — 사용자가 Unity 외부에서 자산을 이동/삭제해
+            // .meta만 고아로 남은 경우 Unity 에디터가 직접 출력하는 표준 경고.
+            // 예: "A meta data file (.meta) exists but its asset 'Assets/.../Foo.cs' can't be found.
+            //      When moving or deleting files outside of Unity, please ensure that the corresponding
+            //      .meta file is moved or deleted along with it."
+            // 자산 경로(Assets/ 또는 Packages/...)가 가변이라 불변 핵심 문구만 추출.
+            // SDK는 이 문구를 출력하지 않으므로(grep 확인) AitKeywords 보호 가드와 충돌 없음.
+            // Sentry APPS-IN-TOSS-UNITY-SDK-ZS, APPS-IN-TOSS-UNITY-SDK-ZQ.
+            "exists but its asset",
+
             // 외부 UPM 패키지(immutable 폴더)의 에셋에 .meta 파일이 없을 때 Unity 에디터가 직접 출력하는 표준 경고.
             // 외부 서드파티 패키지(예: com.lupidan.apple-signin-unity)가 .meta를 누락한 채 배포되어 발생.
             // 예: "Asset 'Packages/com.lupidan.apple-signin-unity/AppleAuthSampleProject/ProjectSettings/...'
@@ -281,6 +291,10 @@ namespace AppsInToss.Editor.ErrorTracker
             "Assets\\FTR_AppsInToss\\",
             "Assets/FTR_AppsInToss/",
             "AITPromotion</color>",
+            // SDK-ZV: [AppsInTossIAPManager] IAPGetPendingOrders: null (앱 버전 미지원 등) — 사용자/샘플 IAP wrapper 클래스 로그.
+            // SDK는 IAPGetPendingOrders API는 제공하지만 "[AppsInTossIAPManager]" prefix는 출력하지 않으며(grep 확인),
+            // "AppsInToss"가 "IAPManager"와 붙어 단어 경계가 깨져 AitKeywords 가드에도 안 걸리므로 ExternalAitPrefixes로 분류.
+            "[AppsInTossIAPManager]",
         };
 
         #endregion
@@ -993,6 +1007,18 @@ namespace AppsInToss.Editor.ErrorTracker
             // Sentry APPS-IN-TOSS-UNITY-SDK-80.
             // SDK 타입명을 잘못 참조한 경우라도 사용자 코드가 잘못 사용한 것이며 SDK 분기로 해결 불가.
             if (message.IndexOf("error CS0117", StringComparison.Ordinal) >= 0
+                && (message.IndexOf("Assets/", StringComparison.Ordinal) >= 0
+                    || message.IndexOf("Assets\\", StringComparison.Ordinal) >= 0)
+                && message.IndexOf(".cs(", StringComparison.Ordinal) >= 0)
+                return true;
+
+            // 사용자 코드의 async/await 미사용 경고 (CS1998) — Unity 컴파일러가 직접 출력.
+            // 예: "Assets\Scripts\1. System\AppsInToss\TossManager.cs(260,43): warning CS1998:
+            //       This async method lacks 'await' operators and will run synchronously. ..."
+            // Sentry APPS-IN-TOSS-UNITY-SDK-Z6.
+            // 사용자 폴더명에 'AppsInToss'가 포함돼 SDK 키워드 가드가 발동하므로 가드보다 먼저 매칭한다(Assets/ 경로 + .cs(L,C)).
+            // SDK 자체 코드는 Packages/ 또는 Library/PackageCache/ 경로로 출력되어 Assets/ 가드와 충돌 없음.
+            if (message.IndexOf("warning CS1998", StringComparison.Ordinal) >= 0
                 && (message.IndexOf("Assets/", StringComparison.Ordinal) >= 0
                     || message.IndexOf("Assets\\", StringComparison.Ordinal) >= 0)
                 && message.IndexOf(".cs(", StringComparison.Ordinal) >= 0)

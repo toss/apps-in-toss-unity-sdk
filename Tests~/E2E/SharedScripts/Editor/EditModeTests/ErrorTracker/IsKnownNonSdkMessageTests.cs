@@ -1903,6 +1903,66 @@ public class IsKnownNonSdkMessageTests
 
     #endregion
 
+    #region 고아 .meta 에셋 / CS1998 / 외부 IAP wrapper (SDK-ZS, ZQ, Z6, ZV)
+
+    [Test]
+    public void OrphanMetaAsset_AssetsPath_ReturnsTrue()
+    {
+        // Sentry SDK-ZS — 사용자가 Unity 외부에서 .cs를 삭제해 .meta만 고아로 남음.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "A meta data file (.meta) exists but its asset 'Assets/02_Scripts/00_Common/AppsInTossProductSkus.cs' can't be found. When moving or deleting files outside of Unity, please ensure that the corresponding .meta file is moved or deleted along with it."));
+    }
+
+    [Test]
+    public void OrphanMetaAsset_PackagesPath_ReturnsTrue()
+    {
+        // Sentry SDK-ZQ — 외부 패키지(com.wooshii.foldericons)의 고아 .meta.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "A meta data file (.meta) exists but its asset 'Packages/com.wooshii.foldericons/package-lock.json' can't be found. When moving or deleting files outside of Unity, please ensure that the corresponding .meta file is moved or deleted along with it."));
+    }
+
+    [Test]
+    public void OrphanMetaAsset_WithAitPrefix_NeverFiltered()
+    {
+        // SDK 자체 로그는 보호 — "[AIT]" prefix가 붙으면 SDK 키워드 가드로 통과시킨다(array 도달 전 차단).
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] 에셋 검증 중: exists but its asset placeholder"));
+    }
+
+    [Test]
+    public void UserCodeCs1998_AppsInTossFolder_ReturnsTrue()
+    {
+        // Sentry SDK-Z6 — 사용자 폴더명에 AppsInToss가 포함된 .cs의 async/await 경고.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Assets\\Scripts\\1. System\\AppsInToss\\TossManager.cs(260,43): warning CS1998: This async method lacks 'await' operators and will run synchronously. Consider using the 'await' operator to await non-blocking API calls, or 'await Task.Run(...)' to do CPU-bound work on a background thread."));
+    }
+
+    [Test]
+    public void Cs1998_SdkPackagesPath_NeverFiltered()
+    {
+        // SDK 자체 코드(Packages/ 경로)의 CS1998은 Assets/ 가드 미충족 + SDK 키워드 가드로 보호되어 필터링 안 됨.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Packages/im.toss.apps-in-toss-unity-sdk/Runtime/Foo.cs(10,5): warning CS1998: This async method lacks 'await' operators and will run synchronously."));
+    }
+
+    [Test]
+    public void ExternalIapManagerPrefix_ReturnsTrue()
+    {
+        // Sentry SDK-ZV — 사용자/샘플 IAP wrapper 클래스 로그. SDK는 "[AppsInTossIAPManager]" prefix를 출력하지 않음.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AppsInTossIAPManager] IAPGetPendingOrders: null (앱 버전 미지원 등)"));
+    }
+
+    [Test]
+    public void SdkIapLog_WithAitPrefix_NeverFiltered()
+    {
+        // SDK 자체 IAP 로그("[AIT]" prefix)는 보호 — 새 ExternalAitPrefix가 너무 넓지 않음을 검증.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] IAPGetPendingOrders 호출: 보류 주문 0건"));
+    }
+
+    #endregion
+
     #region SDK 관련 메시지는 통과 (negative cases)
 
     [Test]

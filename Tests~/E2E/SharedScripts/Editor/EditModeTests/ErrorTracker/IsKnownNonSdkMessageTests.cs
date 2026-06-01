@@ -714,6 +714,32 @@ public class IsKnownNonSdkMessageTests
             "[AIT] Asset 'Packages/foo' has no meta file, but it's in an immutable folder."));
     }
 
+    [Test]
+    public void MetaButAssetMissing_ExternalPackagePath_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-ZQ — .meta는 있으나 외부 패키지(com.wooshii.foldericons)의
+        // 대응 에셋을 못 찾을 때 Unity가 출력하는 표준 경고. asset 경로가 포함된 변형.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "A meta data file (.meta) exists but its asset 'Packages/com.wooshii.foldericons/Editor/Icons/folder.png' can't be found. When the asset is reimported, its data will be lost."));
+    }
+
+    [Test]
+    public void MetaButAssetMissing_GenericForm_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-ZS — asset 경로 없이 핵심 문구만 출력되는 변형.
+        // 동일한 "exists but its asset" 패턴이 두 변형을 모두 매칭함을 검증.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "A meta data file (.meta) exists but its asset can't be found. When the asset is reimported, its data will be lost."));
+    }
+
+    [Test]
+    public void MetaButAssetMissing_WithAitPrefix_NeverFiltered()
+    {
+        // SDK 보호 가드 회귀 방지: [AIT] prefix가 붙은 동일 본문은 SDK 자체 로그로 간주되어 필터링되지 않아야 함.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] A meta data file (.meta) exists but its asset can't be found."));
+    }
+
     #endregion
 
     #region Unity AssetDatabase.FindAssets 폴더 미발견 경고 (SDK-ZZ)

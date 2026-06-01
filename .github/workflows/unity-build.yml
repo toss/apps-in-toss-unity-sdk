@@ -1,6 +1,43 @@
 name: Unity Build
 
 on:
+  # 수동 트리거: 단일 (os, unity-version) 빌드를 직접 dispatch한다(전체 매트릭스 회피).
+  # 프로덕션 설정 빌드 산출물을 받아 크기/구성을 분석하는 용도. 기본 production-build=true.
+  workflow_dispatch:
+    inputs:
+      os:
+        description: 'Operating system'
+        type: choice
+        options:
+          - macos
+          - windows
+        default: macos
+        required: true
+      unity-version:
+        description: 'Unity version pattern (e.g., 2021.3, 6000.3)'
+        type: string
+        required: true
+        default: '6000.3'
+      production-build:
+        description: '프로덕션 설정으로 빌드 (현 SDK 권장: Brotli + IL2CPP Release + non-dev). 끄면 E2E 빠른 빌드(무압축/Development/Debug)'
+        type: boolean
+        required: false
+        default: true
+      run-build:
+        description: 'Run Unity WebGL build'
+        type: boolean
+        required: false
+        default: true
+      web-framework-version:
+        description: '@apps-in-toss/web-framework version for BuildConfig (빈 값=기본)'
+        type: string
+        required: false
+        default: ''
+      test-level:
+        description: 'Test level: 0=editmode, 1=build+validation, 2=full-e2e'
+        type: string
+        required: false
+        default: '2'
   workflow_call:
     inputs:
       repository:
@@ -66,6 +103,11 @@ on:
         type: string
         required: false
         default: '2'
+      production-build:
+        description: '프로덕션 설정으로 빌드 (현 SDK 권장: Brotli + IL2CPP Release + non-dev). 기본 false=E2E 빠른 빌드 오버라이드 유지'
+        type: boolean
+        required: false
+        default: false
     secrets:
       AIT_AD_INTERSTITIAL_ID:
         description: 'Interstitial ad ID for testing'
@@ -1443,19 +1485,18 @@ jobs:
         uses: nick-invision/retry@v4
         env:
           AIT_DEBUG_CONSOLE: "true"
-          # E2E 한정: 압축 비활성화. E2E는 vite dev/preview 서버에서만 로드되며
-          # 배포되지 않으므로 압축이 불필요. Brotli/Gzip 단계 자체를 건너뛰어
-          # wallclock 절감(~120s).
-          AIT_COMPRESSION_FORMAT: "0"
-          # E2E 한정: Development Build 활성화 — Link_WebGL_wasm 단계가 단독 실행
-          # critical path에서 ~163s를 차지(Emscripten 옵티마이저 -O3 풀스피드).
-          # Development Build로 옵티마이저 단축, Build wallclock 대폭 절감 기대.
-          # E2E는 SDK API 동작만 검증하며 런타임 성능을 보지 않으므로 무관.
-          AIT_DEVELOPMENT_BUILD: "true"
-          # E2E 한정: IL2CPP 컴파일러 옵티마이저 레벨도 Debug로 강제. developmentBuild
-          # 플래그는 Player 측 설정이라 IL2CPP 옵티마이저(C_WebGL_wasm/Link_WebGL_wasm)에는
-          # 영향이 없어 별도 변수로 페어링. -O3 → -O0/-Og 수준으로 wasm 컴파일/링크 단축.
-          AIT_IL2CPP_CONFIGURATION: "Debug"
+          # 빌드 설정은 production-build 플래그로 분기한다.
+          #  - production-build=true  → 현 SDK 권장 프로덕션 설정(Brotli + IL2CPP Release + non-dev).
+          #                             env를 SDK 권장값으로 명시 → AITBuildInitializer가 그대로 적용.
+          #  - production-build=false → E2E 빠른 빌드(무압축 / Development Build / IL2CPP Debug).
+          #                             E2E는 vite preview에서만 로드되고 배포되지 않으며 런타임 성능을
+          #                             보지 않으므로, 압축(~120s)·Emscripten/IL2CPP -O3(~163s)를 건너뛰어
+          #                             wallclock을 크게 단축한다. 이게 기본값(=preview/release 외 호출자).
+          # ⚠️ GHA 표현식에서 빈 문자열은 falsy → `x && '' || 'y'`가 항상 'y'로 흐른다.
+          #    그래서 프로덕션 분기는 반드시 비어있지 않은 명시값(2 / false / Release)을 쓴다.
+          AIT_COMPRESSION_FORMAT: ${{ inputs.production-build && '2' || '0' }}       # 2=Brotli / 0=Disabled
+          AIT_DEVELOPMENT_BUILD: ${{ inputs.production-build && 'false' || 'true' }}
+          AIT_IL2CPP_CONFIGURATION: ${{ inputs.production-build && 'Release' || 'Debug' }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         with:
           timeout_minutes: 30
@@ -1596,10 +1637,10 @@ jobs:
         uses: nick-invision/retry@v4
         env:
           AIT_DEBUG_CONSOLE: "true"
-          # E2E 한정: macOS step의 동일 주석 참조.
-          AIT_COMPRESSION_FORMAT: "0"
-          AIT_DEVELOPMENT_BUILD: "true"
-          AIT_IL2CPP_CONFIGURATION: "Debug"
+          # production-build 게이트: macOS step의 동일 주석 참조.
+          AIT_COMPRESSION_FORMAT: ${{ inputs.production-build && '2' || '0' }}       # 2=Brotli / 0=Disabled
+          AIT_DEVELOPMENT_BUILD: ${{ inputs.production-build && 'false' || 'true' }}
+          AIT_IL2CPP_CONFIGURATION: ${{ inputs.production-build && 'Release' || 'Debug' }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         with:
           timeout_minutes: 30

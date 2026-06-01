@@ -334,8 +334,12 @@ jobs:
       - name: Install Playwright Test Dependencies
         working-directory: Tests~/E2E/tests
         # 브라우저는 runner image의 시스템 Chrome 사용 (playwright.config.ts: channel='chrome')
-        # cdn.playwright.dev → GCS 다운로드 hang 회피 (cross-cloud 의존성 제거)
-        run: pnpm install --frozen-lockfile
+        # cdn.playwright.dev → GCS 다운로드 hang 회피 (cross-cloud 의존성 제거).
+        # ffmpeg만 추가로 설치 — video 녹화(retain-on-failure)에 필요.
+        # ~1MB이고 Microsoft mirror fallback이 있어 hang 없음.
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec playwright install ffmpeg
 
       - name: Run Playwright E2E
         working-directory: Tests~/E2E/tests
@@ -411,8 +415,12 @@ jobs:
       - name: Install Playwright Test Dependencies
         working-directory: Tests~/E2E/tests
         # 브라우저는 runner image의 시스템 Chrome 사용 (playwright.config.ts: channel='chrome')
-        # cdn.playwright.dev → GCS 다운로드 hang 회피 (cross-cloud 의존성 제거)
-        run: pnpm install --frozen-lockfile
+        # cdn.playwright.dev → GCS 다운로드 hang 회피 (cross-cloud 의존성 제거).
+        # ffmpeg만 추가로 설치 — video 녹화(retain-on-failure)에 필요.
+        # ~1MB이고 Microsoft mirror fallback이 있어 hang 없음.
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec playwright install ffmpeg
 
       - name: Run Playwright E2E
         working-directory: Tests~/E2E/tests

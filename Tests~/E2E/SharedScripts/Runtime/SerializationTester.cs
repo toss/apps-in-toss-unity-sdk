@@ -87,9 +87,9 @@ public class SerializationTester : MonoBehaviour
         TestEnumValue("AppLoginResultReferrer.DEFAULT", AppLoginResultReferrer.DEFAULT, "DEFAULT");
         TestEnumValue("AppLoginResultReferrer.SANDBOX", AppLoginResultReferrer.SANDBOX, "SANDBOX");
 
-        // GetPermissionPermissionName 테스트
-        TestEnumValue("GetPermissionPermissionName.Camera", GetPermissionPermissionName.Camera, "camera");
-        TestEnumValue("GetPermissionPermissionName.Clipboard", GetPermissionPermissionName.Clipboard, "clipboard");
+        // PermissionName 테스트 (이전 GetPermissionPermissionName, named enum으로 통합됨)
+        TestEnumValue("PermissionName.Camera", PermissionName.Camera, "camera");
+        TestEnumValue("PermissionName.Clipboard", PermissionName.Clipboard, "clipboard");
 
         // SetDeviceOrientationOptionsType 테스트
         TestEnumValue("SetDeviceOrientationOptionsType.Portrait", SetDeviceOrientationOptionsType.Portrait, "portrait");
@@ -327,8 +327,8 @@ public class SerializationTester : MonoBehaviour
         // Permission 클래스 (중첩된 enum)
         TestClassSerialization("GetPermissionPermission", new GetPermissionPermission
         {
-            Name = GetPermissionPermissionName.Camera,
-            Access = GetPermissionPermissionAccess.Access
+            Name = PermissionName.Camera,
+            Access = PermissionAccess.Access
         }, json => json.ToLower().Contains("camera") && json.ToLower().Contains("access"));
 
         // SetDeviceOrientationOptions

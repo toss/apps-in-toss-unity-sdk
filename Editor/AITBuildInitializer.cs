@@ -189,6 +189,38 @@ namespace AppsInToss.Editor
             PlayerSettings.WebGL.wasm2023 = wasm2023;
 #endif
 
+            // ===== [측정 전용] WebGL Code Optimization = Disk Size with LTO =====
+            // Meta/Coatsink "Disk Size with LTO"의 실제 레버는 IL2CPP 컴파일러 config(Master)가 아니라
+            // WebGL code optimization. Master는 WebGL emscripten 최적화에 영향을 주지 않음(M3 실측: B0와 바이트 동일).
+            // Unity 6는 UnityEditor.WebGL.UserBuildSettings.codeOptimization (WasmCodeOptimization),
+            // 2021/2022는 PlayerSettings.WebGL.codeOptimization (WebGLCodeOptimization)로 API가 다르므로
+            // asmdef 참조/버전 차이를 피하기 위해 reflection으로 설정한다.
+            try
+            {
+                System.Type ubsType = null;
+                foreach (var asm in System.AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    ubsType = asm.GetType("UnityEditor.WebGL.UserBuildSettings");
+                    if (ubsType != null) break;
+                }
+                var prop = ubsType?.GetProperty("codeOptimization",
+                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+                if (prop != null && prop.PropertyType.IsEnum)
+                {
+                    var val = System.Enum.Parse(prop.PropertyType, "DiskSizeLTO");
+                    prop.SetValue(null, val);
+                    Debug.Log($"[AIT]   - WebGL Code Optimization: {prop.GetValue(null)} (측정/reflection)");
+                }
+                else
+                {
+                    Debug.LogWarning($"[AIT] WebGL codeOptimization 설정 실패: type={ubsType}, prop={prop}");
+                }
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning($"[AIT] WebGL Code Optimization 설정 예외: {e.Message}");
+            }
+
             // ===== Unity 6 (2023.3+) 전용 설정 =====
 #if UNITY_2023_3_OR_NEWER
             // 출처: UnityVersion.md:394-402

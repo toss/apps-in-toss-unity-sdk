@@ -1486,17 +1486,18 @@ jobs:
         env:
           AIT_DEBUG_CONSOLE: "true"
           # 빌드 설정은 production-build 플래그로 분기한다.
-          #  - production-build=true  → 현 SDK 권장 프로덕션 설정(Brotli + IL2CPP Release + non-dev).
-          #                             env를 SDK 권장값으로 명시 → AITBuildInitializer가 그대로 적용.
+          #  - production-build=true  → 현 SDK 권장 프로덕션 설정(Brotli + IL2CPP Master(LTO) + non-dev).
+          #                             env를 SDK 기본값(GetDefaultIl2CppConfiguration=Master)과 일치시켜
+          #                             명시 → AITBuildInitializer가 그대로 적용(Meta 로드타임 스택 L3 측정).
           #  - production-build=false → E2E 빠른 빌드(무압축 / Development Build / IL2CPP Debug).
           #                             E2E는 vite preview에서만 로드되고 배포되지 않으며 런타임 성능을
-          #                             보지 않으므로, 압축(~120s)·Emscripten/IL2CPP -O3(~163s)를 건너뛰어
+          #                             보지 않으므로, 압축(~120s)·Emscripten/IL2CPP -O3·LTO를 건너뛰어
           #                             wallclock을 크게 단축한다. 이게 기본값(=preview/release 외 호출자).
           # ⚠️ GHA 표현식에서 빈 문자열은 falsy → `x && '' || 'y'`가 항상 'y'로 흐른다.
-          #    그래서 프로덕션 분기는 반드시 비어있지 않은 명시값(2 / false / Release)을 쓴다.
+          #    그래서 프로덕션 분기는 반드시 비어있지 않은 명시값(2 / false / Master)을 쓴다.
           AIT_COMPRESSION_FORMAT: ${{ inputs.production-build && '2' || '0' }}       # 2=Brotli / 0=Disabled
           AIT_DEVELOPMENT_BUILD: ${{ inputs.production-build && 'false' || 'true' }}
-          AIT_IL2CPP_CONFIGURATION: ${{ inputs.production-build && 'Release' || 'Debug' }}
+          AIT_IL2CPP_CONFIGURATION: ${{ inputs.production-build && 'Master' || 'Debug' }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         with:
           timeout_minutes: 30
@@ -1640,7 +1641,7 @@ jobs:
           # production-build 게이트: macOS step의 동일 주석 참조.
           AIT_COMPRESSION_FORMAT: ${{ inputs.production-build && '2' || '0' }}       # 2=Brotli / 0=Disabled
           AIT_DEVELOPMENT_BUILD: ${{ inputs.production-build && 'false' || 'true' }}
-          AIT_IL2CPP_CONFIGURATION: ${{ inputs.production-build && 'Release' || 'Debug' }}
+          AIT_IL2CPP_CONFIGURATION: ${{ inputs.production-build && 'Master' || 'Debug' }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         with:
           timeout_minutes: 30

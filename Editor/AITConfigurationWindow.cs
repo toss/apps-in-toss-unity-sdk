@@ -658,6 +658,11 @@ namespace AppsInToss.Editor
             // IL2CPP 컴파일러 설정
             DrawIl2CppConfigurationSetting();
 
+#if UNITY_6000_0_OR_NEWER
+            // IL2CPP Code Generation (OptimizeSize) — Meta 로드타임 스택
+            DrawIl2CppCodeGenerationSetting();
+#endif
+
 #if UNITY_2023_3_OR_NEWER
             GUILayout.Space(10);
             EditorGUILayout.LabelField("Unity 6 전용 설정", EditorStyles.boldLabel);
@@ -665,6 +670,11 @@ namespace AppsInToss.Editor
 
             // Power Preference
             DrawPowerPreferenceSetting();
+
+#if UNITY_6000_0_OR_NEWER
+            // WebAssembly 2023 — Meta 로드타임 스택 (미지원 브라우저 로드 실패 주의)
+            DrawWasm2023Setting();
+#endif
 
 #if !UNITY_6000_0_OR_NEWER
             // WASM Streaming (Unity 6000에서 deprecated - decompressionFallback에 의해 자동 결정)
@@ -739,6 +749,70 @@ namespace AppsInToss.Editor
 
             EditorGUILayout.EndHorizontal();
         }
+
+#if UNITY_6000_0_OR_NEWER
+        private void DrawIl2CppCodeGenerationSetting()
+        {
+            UnityEditor.Build.Il2CppCodeGeneration defaultCodeGen = AITDefaultSettings.GetDefaultIl2CppCodeGeneration();
+            bool isModified = config.il2cppCodeGeneration >= 0 && (UnityEditor.Build.Il2CppCodeGeneration)config.il2cppCodeGeneration != defaultCodeGen;
+
+            EditorGUILayout.BeginHorizontal();
+
+            DrawModifiedIndicator(isModified);
+
+            string label = config.il2cppCodeGeneration < 0
+                ? $"IL2CPP 코드 생성 (자동: {defaultCodeGen})"
+                : "IL2CPP 코드 생성";
+
+            string[] options = { $"자동 ({defaultCodeGen})", "OptimizeSpeed", "OptimizeSize" };
+            int currentIndex = config.il2cppCodeGeneration < 0 ? 0 : config.il2cppCodeGeneration + 1;
+            int newIndex = EditorGUILayout.Popup(label, currentIndex, options);
+            config.il2cppCodeGeneration = newIndex == 0 ? -1 : newIndex - 1;
+
+            if (isModified && DrawResetButton())
+            {
+                config.il2cppCodeGeneration = -1;
+            }
+
+            EditorGUILayout.EndHorizontal();
+        }
+
+        private void DrawWasm2023Setting()
+        {
+            bool defaultValue = AITDefaultSettings.GetDefaultWasm2023();
+            bool isModified = config.wasm2023 >= 0 && (config.wasm2023 == 1) != defaultValue;
+
+            EditorGUILayout.BeginHorizontal();
+
+            DrawModifiedIndicator(isModified);
+
+            string label = config.wasm2023 < 0
+                ? $"WebAssembly 2023 (자동: {(defaultValue ? "활성화" : "비활성화")})"
+                : "WebAssembly 2023";
+
+            string[] options = { $"자동 ({(defaultValue ? "활성화" : "비활성화")})", "비활성화", "활성화" };
+            int currentIndex = config.wasm2023 < 0 ? 0 : config.wasm2023 + 1;
+            int newIndex = EditorGUILayout.Popup(label, currentIndex, options);
+            config.wasm2023 = newIndex == 0 ? -1 : newIndex - 1;
+
+            if (isModified && DrawResetButton())
+            {
+                config.wasm2023 = -1;
+            }
+
+            EditorGUILayout.EndHorizontal();
+
+            // 미지원 브라우저 하드 페일 경고 (graceful degradation 아님)
+            if (config.wasm2023 != 0)
+            {
+                EditorGUILayout.HelpBox(
+                    "WebAssembly 2023을 켜면 미지원 브라우저(대략 Chrome<91 / Safari<16.4)에서 " +
+                    "로드가 실패합니다. Apps in Toss WebView 최소 사양 충족 시에만 사용하세요.",
+                    MessageType.Warning
+                );
+            }
+        }
+#endif
 
 #if UNITY_2023_3_OR_NEWER
         private void DrawPowerPreferenceSetting()
@@ -882,6 +956,18 @@ namespace AppsInToss.Editor
             }
 
             EditorGUILayout.EndHorizontal();
+
+            // 끄면(기본값) JS 디컴프레서가 번들에서 제거되어 호스팅 CDN이 Content-Encoding: br를
+            // 직접 서빙해야 한다. AIT 플랫폼 CDN은 보장하지만, 자체 호스팅 시 미설정이면 로드 실패.
+            if (config.decompressionFallback != 1)
+            {
+                EditorGUILayout.HelpBox(
+                    "Decompression Fallback이 꺼지면 호스팅 서버가 Content-Encoding: br(또는 gzip)을 " +
+                    "직접 서빙해야 합니다. Apps in Toss 플랫폼 CDN은 보장하지만, 자체 호스팅 시 " +
+                    "압축 헤더 미설정이면 로드가 실패합니다.",
+                    MessageType.Warning
+                );
+            }
         }
 
         private void DrawRunInBackgroundSetting()
@@ -989,6 +1075,10 @@ namespace AppsInToss.Editor
             config.stripEngineCode = true;
             config.il2cppConfiguration = -1;
             config.powerPreference = -1;
+#if UNITY_6000_0_OR_NEWER
+            config.il2cppCodeGeneration = -1;
+            config.wasm2023 = -1;
+#endif
 #if !UNITY_6000_0_OR_NEWER
             config.wasmStreaming = true;
             config.webAssemblyArithmeticExceptions = -1;

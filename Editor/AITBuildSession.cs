@@ -35,6 +35,10 @@ namespace AppsInToss.Editor
         public ScriptingImplementation scriptingBackend;
         public ManagedStrippingLevel managedStrippingLevel;
         public Il2CppCompilerConfiguration il2cppCompilerConfiguration;
+#if UNITY_6000_0_OR_NEWER
+        public Il2CppCodeGeneration il2cppCodeGeneration;
+        public bool wasm2023;
+#endif
 
         // Stack Trace Log Type (LogType별)
         public StackTraceLogType stackTraceLogTypeError;
@@ -77,6 +81,8 @@ namespace AppsInToss.Editor
                 scriptingBackend = PlayerSettings.GetScriptingBackend(NamedBuildTarget.WebGL),
                 managedStrippingLevel = PlayerSettings.GetManagedStrippingLevel(NamedBuildTarget.WebGL),
                 il2cppCompilerConfiguration = PlayerSettings.GetIl2CppCompilerConfiguration(NamedBuildTarget.WebGL),
+                il2cppCodeGeneration = PlayerSettings.GetIl2CppCodeGeneration(NamedBuildTarget.WebGL),
+                wasm2023 = PlayerSettings.WebGL.wasm2023,
 #else
                 scriptingBackend = PlayerSettings.GetScriptingBackend(BuildTargetGroup.WebGL),
                 managedStrippingLevel = PlayerSettings.GetManagedStrippingLevel(BuildTargetGroup.WebGL),
@@ -138,6 +144,8 @@ namespace AppsInToss.Editor
             PlayerSettings.SetScriptingBackend(NamedBuildTarget.WebGL, scriptingBackend);
             PlayerSettings.SetManagedStrippingLevel(NamedBuildTarget.WebGL, managedStrippingLevel);
             PlayerSettings.SetIl2CppCompilerConfiguration(NamedBuildTarget.WebGL, il2cppCompilerConfiguration);
+            PlayerSettings.SetIl2CppCodeGeneration(NamedBuildTarget.WebGL, il2cppCodeGeneration);
+            PlayerSettings.WebGL.wasm2023 = wasm2023;
 #else
             PlayerSettings.SetScriptingBackend(BuildTargetGroup.WebGL, scriptingBackend);
             PlayerSettings.SetManagedStrippingLevel(BuildTargetGroup.WebGL, managedStrippingLevel);

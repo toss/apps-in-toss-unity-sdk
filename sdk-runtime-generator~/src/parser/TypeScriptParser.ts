@@ -1,4 +1,4 @@
-import { Project } from 'ts-morph';
+import { Project, ts } from 'ts-morph';
 import * as path from 'path';
 import * as fs from 'fs';
 import { ParsedAPI, ParsedTypeDefinition } from '../types.js';
@@ -6,6 +6,7 @@ import { parseSourceFile } from './api-parser.js';
 import { parseNamespaceObjects } from './namespace-parser.js';
 import { parseTypeDefinitionsFromFile } from './type-definition-parser.js';
 import { findFrameworkPath, parseFrameworkAPIs, parseFrameworkTypeDefinitions, parseNativeModulesType } from './framework-parser.js';
+import { resolvePackagePath } from '../generators/jslib-compiler.js';
 
 /**
  * TypeScript 소스 파일들을 파싱하여 API 정보 추출
@@ -60,6 +61,66 @@ export class TypeScriptParser {
    */
   addSourceDirectory(dir: string): void {
     this.project.addSourceFilesAtPaths(path.join(dir, '**', '*.d.ts'));
+  }
+
+  /**
+   * @apps-in-toss/web-framework가 공개적으로 export하는 심볼 이름 집합을 계산한다.
+   *
+   * jslib 타입 검사(jslib-compiler.ts)와 **동일한** 방식으로 web-framework 패키지를
+   * 해석(resolvePackagePath + bundler resolution)하므로, 생성된 브릿지가 import하게 될
+   * 심볼이 그 버전에서 실제로 존재하는지를 생성 이전에 판별할 수 있다.
+   *
+   * 용도: web-framework 메이저 업데이트(예: 3.0.0)에서 public export가 제거된 API를
+   * 발견 단계에서 걸러내, 존재하지 않는 심볼을 import하는 브릿지가 생성되어
+   * 타입 검사(TS2305)에서 실패하는 것을 방지한다. (구버전 발견 경로가 stale .d.ts로
+   * 폴백하여 제거된 API를 계속 발견하는 케이스 대응.)
+   *
+   * 해석에 실패하면 **빈 집합**을 반환한다 — 호출부는 이를 "판별 불가"로 보고
+   * 필터를 건너뛰어야 한다(fail-open). 빈 집합으로 필터링하면 모든 web-framework API가
+   * 제거되는 치명적 오작동이 발생하므로, 절대 빈 집합으로 필터를 적용하지 말 것.
+   */
+  getWebFrameworkExportedNames(): Set<string> {
+    const names = new Set<string>();
+    try {
+      const wfPkgDir = resolvePackagePath('@apps-in-toss/web-framework');
+
+      // jslib-compiler.ts의 타입 검사와 동일한 resolution(bundler + paths)으로
+      // 격리된 probe 프로젝트를 구성한다. 파일 위치에 의존하는 node_modules 탐색
+      // 대신 paths 매핑으로 명시 해석하여 stale 패키지로의 폴백을 차단한다.
+      const probeProject = new Project({
+        compilerOptions: {
+          moduleResolution: ts.ModuleResolutionKind.Bundler,
+          module: ts.ModuleKind.ESNext,
+          target: ts.ScriptTarget.ES2020,
+          strict: true,
+          skipLibCheck: true,
+          esModuleInterop: true,
+          allowSyntheticDefaultImports: true,
+          resolveJsonModule: true,
+          baseUrl: '.',
+          paths: {
+            '@apps-in-toss/web-framework': [wfPkgDir],
+          },
+        },
+        skipAddingFilesFromTsConfig: true,
+      });
+
+      const probe = probeProject.createSourceFile(
+        path.join(wfPkgDir, '..', '__ait_wf_export_probe__.ts'),
+        `export * from '@apps-in-toss/web-framework';`,
+        { overwrite: true },
+      );
+
+      for (const [name] of probe.getExportedDeclarations()) {
+        names.add(name);
+      }
+    } catch (err) {
+      // 해석 실패 → 빈 집합 반환(호출부에서 필터 스킵). 경고만 남긴다.
+      console.warn(
+        `⚠️  web-framework 공개 export 목록 계산 실패 — export 필터를 건너뜁니다: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    return names;
   }
 
   /**

@@ -15,6 +15,7 @@ import { generateUnityBridge } from './generators/unity-bridge.js';
 import { generateScreenManualCs, generateScreenManualJslib } from './generators/webgl-manual.js';
 import { formatCommand } from './commands/format.js';
 import { FRAMEWORK_APIS, EXCLUDED_APIS } from './categories.js';
+import { getApiImportSource, type ParsedAPI } from './types.js';
 
 const program = new Command();
 
@@ -27,6 +28,58 @@ const program = new Command();
  */
 function generateUnityGUID(): string {
   return crypto.randomBytes(16).toString('hex');
+}
+
+/**
+ * 타깃 web-framework가 더 이상 공개 export하지 않는 API를 발견 목록에서 제거한다.
+ *
+ * 배경: 발견(discovery)은 web-bridge .d.ts 스캔에 의존하는데, web-framework 메이저
+ * 업데이트로 패키지가 재구성되면(예: web-bridge → webview-bridge 리네임) 발견 경로가
+ * pnpm 스토어의 stale 구버전 .d.ts로 폴백할 수 있다. 그러면 신버전에서 제거된 API가
+ * 계속 발견되고, 그 API의 브릿지가 존재하지 않는 심볼을 import 하여 jslib 타입 검사
+ * (TS2305)에서 실패한다.
+ *
+ * 이 필터는 **@apps-in-toss/web-framework에서 import 될** API에 한해, 그 심볼이 실제
+ * 타깃 web-framework의 public export 집합에 있는지 확인하고 없으면 제거한다.
+ * - @apps-in-toss/framework(isTopLevelExport) / @apps-in-toss/web-analytics 소속 API는
+ *   web-framework export와 무관하므로 게이트 대상이 아니다.
+ * - export 집합 계산 실패 시(빈 집합) 필터를 적용하지 않는다(fail-open) — 정상 동작하는
+ *   기존 버전 생성이 빈 집합 때문에 전부 제거되는 사고를 방지.
+ *
+ * 2.6.1 등 기존 stable 버전에서는 발견 API가 모두 여전히 export되므로 무회귀.
+ */
+function filterToWebFrameworkExports(apis: ParsedAPI[], parser: TypeScriptParser): ParsedAPI[] {
+  const wfExports = parser.getWebFrameworkExportedNames();
+  if (wfExports.size === 0) {
+    // 판별 불가 → 필터 스킵 (경고는 getWebFrameworkExportedNames에서 이미 출력)
+    return apis;
+  }
+
+  const skipped: string[] = [];
+  const kept = apis.filter(api => {
+    // @apps-in-toss/framework 소속(top-level export)은 framework에서 import → 게이트 제외
+    if (api.isTopLevelExport) return true;
+    // web-framework가 아닌 패키지(web-analytics)에서 import → 게이트 제외
+    if (getApiImportSource(api) !== '@apps-in-toss/web-framework') return true;
+
+    // 브릿지가 web-framework에서 import할 심볼: 네임스페이스 API는 네임스페이스 이름,
+    // 그 외는 원본 함수 이름.
+    const requiredSymbol = api.namespace ?? api.originalName;
+    if (wfExports.has(requiredSymbol)) return true;
+
+    skipped.push(`${api.name} (심볼: ${requiredSymbol})`);
+    return false;
+  });
+
+  if (skipped.length > 0) {
+    console.log(
+      picocolors.yellow(
+        `⚠️  web-framework public export 제외: ${skipped.join(', ')} (이 web-framework 버전에서 제거됨 — 브릿지 생성 건너뜀)`,
+      ),
+    );
+  }
+
+  return kept;
 }
 
 /**
@@ -144,18 +197,47 @@ async function ensureMetaFile(
 /**
  * pnpm virtual store에서 web-bridge 패키지 동적 검색
  * v1.8.0+: dist/ 디렉토리, v1.5.0~v1.7.x: built/ 디렉토리
+ *
+ * 스토어에 여러 web-bridge 버전이 공존할 수 있다(여러 web-framework 버전을 testfixture로
+ * 설치하면 각자의 transitive web-bridge가 함께 깔린다). 이 폴백은 web-framework의
+ * 의존성 그래프에서 sibling web-bridge를 못 찾았을 때만 쓰이므로(findTypeDefinitions의
+ * strategy 1 실패 — 예: 3.0.0은 web-bridge가 webview-bridge로 rename됨), 가능한 한
+ * **가장 최신** web-bridge 버전을 선택해 그 시점에 알려진 최대 API 표면을 발견하게 한다.
+ * (과거에는 readdir 순서상 lexicographically-first 항목 — 예: 1.10.0 — 이 선택되어
+ * 오래된 표면으로 폴백하는 버그가 있었다.)
  */
 async function findWebBridgeInPnpmStore(): Promise<string | null> {
   const pnpmDir = path.join(process.cwd(), 'node_modules/.pnpm');
+  const PREFIX = '@apps-in-toss+web-bridge@';
 
   try {
     const entries = await fs.readdir(pnpmDir);
-    // @apps-in-toss+web-bridge@{version}_... 패턴 찾기
-    const webBridgeEntry = entries.find(e =>
-      e.startsWith('@apps-in-toss+web-bridge@') && !e.includes('+web-analytics')
+    // @apps-in-toss+web-bridge@{version}[_<peer>] 패턴 찾기 (web-analytics 제외)
+    const webBridgeEntries = entries.filter(e =>
+      e.startsWith(PREFIX) && !e.includes('+web-analytics')
     );
 
-    if (webBridgeEntry) {
+    // 버전 내림차순 정렬 — 가장 최신 web-bridge를 우선 선택.
+    // 엔트리명: "@apps-in-toss+web-bridge@2.6.1" 또는
+    //           "@apps-in-toss+web-bridge@1.5.0_@apps-in-toss+bridge-core@1.5.0"
+    const parseVersion = (entry: string): number[] => {
+      const raw = entry.slice(PREFIX.length);
+      // peer-dep 접미사(_… 또는 (…) 와 prerelease(-…) 제거 후 숫자 파트만 비교
+      const version = raw.split(/[_(]/)[0].split('-')[0];
+      return version.split('.').map(n => Number(n) || 0);
+    };
+    webBridgeEntries.sort((a, b) => {
+      const va = parseVersion(a);
+      const vb = parseVersion(b);
+      for (let i = 0; i < Math.max(va.length, vb.length); i++) {
+        const diff = (vb[i] || 0) - (va[i] || 0);
+        if (diff !== 0) return diff;
+      }
+      return 0;
+    });
+
+    // 최신 버전부터 순회하며 dist/built가 실재하는 첫 엔트리를 사용
+    for (const webBridgeEntry of webBridgeEntries) {
       const basePath = path.join(
         pnpmDir,
         webBridgeEntry,
@@ -167,6 +249,7 @@ async function findWebBridgeInPnpmStore(): Promise<string | null> {
         const candidatePath = path.join(basePath, subdir);
         try {
           await fs.access(candidatePath);
+          console.log(picocolors.gray(`  pnpm store에서 web-bridge 선택(최신): ${webBridgeEntry}`));
           return candidatePath;
         } catch {
           continue;
@@ -455,7 +538,13 @@ async function generate(options: {
 
     // 제외 목록에 있는 API 필터링
     const excludedSet = new Set(EXCLUDED_APIS);
-    const apis = allParsedApis.filter(api => !excludedSet.has(api.name));
+    const notExcludedApis = allParsedApis.filter(api => !excludedSet.has(api.name));
+
+    // 타깃 web-framework가 더 이상 public export하지 않는 API 제거
+    // (예: 3.0.0에서 제거된 onVisibilityChangedByTransparentServiceWeb).
+    // 발견 경로가 stale .d.ts로 폴백해 제거된 API를 계속 발견하더라도, 실제 타깃
+    // web-framework export에 없으면 브릿지를 생성하지 않아 TS2305 실패를 예방한다.
+    const apis = filterToWebFrameworkExports(notExcludedApis, parser);
 
     if (apis.length === 0) {
       console.error(picocolors.red('\n❌ web-framework에서 API를 발견하지 못했습니다.\n'));

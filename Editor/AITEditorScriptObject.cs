@@ -470,7 +470,7 @@ namespace AppsInToss
         /// </summary>
         public static bool GetDefaultDecompressionFallback()
         {
-            return false;
+            return true;
         }
 
         /// <summary>
@@ -484,7 +484,7 @@ namespace AppsInToss
         public static bool GetDefaultWasm2023()
         {
 #if UNITY_6000_0_OR_NEWER
-            return true;
+            return false;
 #else
             return false;
 #endif

@@ -141,6 +141,31 @@ namespace AppsInToss.Editor
                 return;
             }
 
+            // prerelease 채널(베타/RC/canary 등)은 stable-only 정책에 따라 자동 업데이트 대상이 아님.
+            // 자동 체크는 조용히 스킵하고, 수동 메뉴 실행 시에는 안내 다이얼로그를 표시한다.
+            // (private repo라 원격 버전을 무인증으로 못 읽으므로 ref 이름 패턴으로만 분류)
+            if (IsPrereleaseChannel(fragment))
+            {
+                if (isManualCheck)
+                {
+                    EditorUtility.DisplayDialog(
+                        "Apps in Toss SDK",
+                        $"현재 베타/프리릴리즈 채널('{fragment}')을 사용 중입니다.\n\n" +
+                        "베타 채널은 자동 업데이트 대상이 아니며, 수동으로 관리해야 합니다.\n\n" +
+                        "• 최신 베타로 갱신: Package Manager에서 패키지를 다시 추가\n" +
+                        "• 안정 버전으로 전환: manifest의 ref를 stable 태그(예: #release/vX.Y.Z)로 변경",
+                        "확인"
+                    );
+                }
+                else
+                {
+                    Debug.Log(
+                        $"[AIT] 베타/프리릴리즈 채널('{fragment}')은 자동 업데이트 대상이 아닙니다. 수동으로 관리하세요."
+                    );
+                }
+                return;
+            }
+
             // 2. 설치된 커밋 해시 가져오기
             string installedHash = GetInstalledCommitHash(packageInfo);
             if (string.IsNullOrEmpty(installedHash))
@@ -254,6 +279,43 @@ namespace AppsInToss.Editor
             }
 
             return !string.IsNullOrEmpty(gitUrl);
+        }
+
+        // prerelease 마커(베타/RC/canary 등)가 ref 이름의 토큰 경계에 등장하는지 판정.
+        // 경계 = 문자열 시작/끝 또는 구분자([/_.\-]). 트레일링 경계로 토큰을 한정해
+        // "development"(=dev 뒤 'e') 같은 단어는 stable로 취급한다.
+        // 매칭 예: beta, rc1, x_canary, dev.2, foo/preview-1 / 비매칭 예: main, development, release/v2.6.1
+        private static readonly Regex PrereleaseMarkerRegex = new Regex(
+            @"(^|[/_.\-])(alpha|beta|rc|canary|nightly|preview|dev|next|pre)([0-9._\-]|$)",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant
+        );
+
+        // semver prerelease 접미사를 가진 release 태그(예: release/v3.0.0-beta, release/v3.0.0-rc.1).
+        // stable release 태그(release/v3.0.0)는 '-'가 없어 매칭되지 않는다.
+        private static readonly Regex SemverPrereleaseTagRegex = new Regex(
+            @"^release/v\d+\.\d+\.\d+-",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant
+        );
+
+        /// <summary>
+        /// fragment(git ref 이름)가 prerelease 채널(베타/RC/canary 등)인지 판정합니다.
+        /// 자동 업데이터는 stable 채널로만 업데이트하므로, prerelease 채널은 자동 프롬프트에서 제외됩니다.
+        /// </summary>
+        /// <remarks>
+        /// 비공개 저장소에서는 원격 파일/버전을 무인증으로 읽을 수 없어 ref 이름 패턴으로만 분류합니다
+        /// (AITDeprecationChecker는 System.Version을 사용하므로 prerelease 접미사를 파싱하지 못함).
+        /// 누군가 stable ref(main 등)에 prerelease SDK를 잘못 머지하는 moving-ref 오염은
+        /// 이름만으로 막을 수 없으므로, 서버측 update.yml 메이저 ceiling 가드가 1차 방어를 담당합니다.
+        /// </remarks>
+        internal static bool IsPrereleaseChannel(string fragment)
+        {
+            if (string.IsNullOrEmpty(fragment))
+            {
+                return false;
+            }
+
+            return PrereleaseMarkerRegex.IsMatch(fragment)
+                || SemverPrereleaseTagRegex.IsMatch(fragment);
         }
 
         /// <summary>

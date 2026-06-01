@@ -20,7 +20,9 @@ export default defineConfig({
     // 데스크톱에서만 viewport 설정 (모바일은 디바이스 프로필에서 자동 설정)
     ...(isMobileEmulation ? {} : { viewport: { width: 1280, height: 720 } }),
     screenshot: 'only-on-failure',
-    video: 'retain-on-failure',
+    // video 녹화 비활성화: Playwright 번들 ffmpeg가 필요한데 그 다운로드가
+    // cdn.playwright.dev(GCS) 경로라 GitHub Actions runner에서 stall/hang함.
+    // 디버깅은 trace(DOM 스냅샷·네트워크·콘솔·액션별 스크린샷)+screenshot으로 충분.
     trace: 'retain-on-failure',
 
     launchOptions: {
@@ -37,11 +39,16 @@ export default defineConfig({
       name: isMobileEmulation ? 'Mobile Chrome' : 'chromium',
       use: isMobileEmulation
         ? {
-            // iPhone 8 뷰포트/터치 설정 + Chromium 브라우저 (WebGL 지원)
+            // iPhone 8 뷰포트/터치 설정 + 시스템 Chrome (runner image 사전 설치)
+            // iPhone 8 device 기본은 webkit이라 chromium으로 명시 후 channel 지정.
             ...devices['iPhone 8'],
-            browserName: 'chromium',  // WebKit 대신 Chromium 사용
+            browserName: 'chromium',
+            channel: 'chrome',
           }
-        : { ...devices['Desktop Chrome'] },
+        : {
+            ...devices['Desktop Chrome'],
+            channel: 'chrome',
+          },
     },
   ],
 

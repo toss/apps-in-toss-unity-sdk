@@ -38,7 +38,9 @@ export default defineConfig({
       use: isMobileEmulation
         ? {
             // iPhone 8 뷰포트/터치 설정 + 시스템 Chrome (runner image 사전 설치)
+            // iPhone 8 device 기본은 webkit이라 chromium으로 명시 후 channel 지정.
             ...devices['iPhone 8'],
+            browserName: 'chromium',
             channel: 'chrome',
           }
         : {

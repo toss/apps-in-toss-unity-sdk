@@ -184,7 +184,9 @@ namespace AppsInToss.Editor.Package
                 {
                     if (retryInstallResult != AITConvertCore.AITExportError.SUCCEED)
                     {
-                        Debug.LogError("[AIT] granite build 실패 후 pnpm install 재시도도 실패");
+                        // 실제 터미널 실패 경로 — 캡처 유지. 단일 이슈(Sentry SDK-VH) 안에서 원인 구분이
+                        // 가능하도록 실패 카테고리(AITExportError)를 함께 남긴다.
+                        Debug.LogError($"[AIT] granite build 실패 후 pnpm install 재시도도 실패 (결과: {retryInstallResult})");
                         onComplete?.Invoke(retryInstallResult);
                         return;
                     }
@@ -202,7 +204,7 @@ namespace AppsInToss.Editor.Package
                                 var distValidation = AITBuildValidator.ValidateDistOutput(ctx.BuildProjectPath);
                                 if (distValidation != AITConvertCore.AITExportError.SUCCEED)
                                 {
-                                    Debug.LogError("[AIT] granite build 재시도도 출력물 검증 실패");
+                                    Debug.LogError($"[AIT] granite build 재시도도 출력물 검증 실패 (결과: {distValidation})");
                                     onComplete?.Invoke(distValidation);
                                     return;
                                 }
@@ -212,7 +214,7 @@ namespace AppsInToss.Editor.Package
                             }
                             else
                             {
-                                Debug.LogError("[AIT] granite build 재시도도 실패");
+                                Debug.LogError($"[AIT] granite build 재시도도 실패 (결과: {retryBuildResult})");
                             }
                             onComplete?.Invoke(retryBuildResult);
                         }

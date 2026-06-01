@@ -2084,6 +2084,73 @@ public class IsKnownNonSdkMessageTests
 
     #endregion
 
+    #region 신규 노이즈: AIT_Auth prefix / FPS 모니터 / libuv assertion (Sentry SDK-NB/WK/BE)
+
+    [Test]
+    public void ExternalAitAuthPrefix_CustomTokenFailure_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-NB — 사용자 게임 인증 래퍼가 "[AIT_Auth]" prefix로 출력하는 경고.
+        // SDK 코드에는 "[AIT_Auth]" prefix가 없음(grep 확인). "[AIT"로 시작해 AitKeywords 가드에 걸리므로
+        // ExternalAitPrefixes로 가드보다 먼저 드롭되어야 한다.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT_Auth] Custom Token 발급 실패 — 로컬 모드로 동작"));
+    }
+
+    [Test]
+    public void RegularAitPrefix_NotAitAuth_StillProtected()
+    {
+        // "[AIT_Auth]"가 아닌 일반 "[AIT]" SDK 로그는 보호되어야 함 — 새 prefix가 과도하게 넓지 않음을 검증.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] Custom Token 발급 성공"));
+    }
+
+    [Test]
+    public void FpsMonitor_AverageFpsBelowTarget_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-WK — 사용자 게임 FPS 모니터가 SDK의 "[AIT]" prefix를 흉내내 출력.
+        // SDK 코드에는 "평균 FPS"/"미달" 성능 경고 문자열이 없음(grep 확인). "[AIT]"가 AitKeywords 가드에
+        // 걸리므로 "평균 FPS" + "미달" 합성 복합 검사가 가드보다 먼저 드롭한다(FPS 수치는 가변).
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] 평균 FPS 20.4 — 목표 30+ 미달"));
+    }
+
+    [Test]
+    public void FpsMonitor_UnityWarningWrapped_ReturnsTrue()
+    {
+        // Unity 로그 핸들러가 "UnityWarning:" prefix를 덧붙인 변형도 동일 복합 검사로 드롭.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "UnityWarning: [AIT] 평균 FPS 18.0 — 목표 30+ 미달"));
+    }
+
+    [Test]
+    public void NormalAitFpsLog_WithoutBelowTarget_StillProtected()
+    {
+        // "평균 FPS"만 있고 "미달"이 없으면 복합 AND의 한쪽만 충족 → SDK 키워드 보호 가드가 정상 동작해야 함.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] 평균 FPS 60.0 (정상)"));
+    }
+
+    [Test]
+    public void LibuvAssertionCrash_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-BE — 번들 Node.js(libuv)가 종료 시점에 출력하는 내부 assertion crash.
+        // "AIT: [stderr]" prefix가 SDK 키워드("AIT:") 가드에 걸리므로 "AIT: [std" + "Assertion failed:" 합성으로
+        // 가드보다 먼저 드롭한다. SDK 코드로 분기/조치할 정보가 아님.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "AIT: [stderr] Assertion failed: !(handle->flags & UV_HANDLE_CLOSING), file src\\win\\async.c, line 76"));
+    }
+
+    [Test]
+    public void NormalAitStderr_WithoutAssertion_StillProtected()
+    {
+        // "AIT: [stderr]"이지만 어떤 복합 검사 문구(Assertion failed/is not recognized/Unknown Syntax Error/[?25)도
+        // 없는 일반 SDK stderr 전달 로그는 보호되어야 함 — SDK 키워드("AIT:") 가드로 통과.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "AIT: [stderr] granite build progress: 50%"));
+    }
+
+    #endregion
+
     #region SDK 관련 메시지는 통과 (negative cases)
 
     [Test]

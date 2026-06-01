@@ -37,11 +37,14 @@ export default defineConfig({
       name: isMobileEmulation ? 'Mobile Chrome' : 'chromium',
       use: isMobileEmulation
         ? {
-            // iPhone 8 뷰포트/터치 설정 + Chromium 브라우저 (WebGL 지원)
+            // iPhone 8 뷰포트/터치 설정 + 시스템 Chrome (runner image 사전 설치)
             ...devices['iPhone 8'],
-            browserName: 'chromium',  // WebKit 대신 Chromium 사용
+            channel: 'chrome',
           }
-        : { ...devices['Desktop Chrome'] },
+        : {
+            ...devices['Desktop Chrome'],
+            channel: 'chrome',
+          },
     },
   ],
 

@@ -331,19 +331,11 @@ jobs:
         working-directory: ${{ env.AIT_BUILD_DIR }}
         run: pnpm install --frozen-lockfile
 
-      - name: Cache Playwright Browsers
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('Tests~/E2E/tests/pnpm-lock.yaml') }}
-          restore-keys: |
-            playwright-${{ runner.os }}-
-
       - name: Install Playwright Test Dependencies
         working-directory: Tests~/E2E/tests
-        run: |
-          pnpm install --frozen-lockfile
-          pnpm exec playwright install chromium
+        # 브라우저는 runner image의 시스템 Chrome 사용 (playwright.config.ts: channel='chrome')
+        # cdn.playwright.dev → GCS 다운로드 hang 회피 (cross-cloud 의존성 제거)
+        run: pnpm install --frozen-lockfile
 
       - name: Run Playwright E2E
         working-directory: Tests~/E2E/tests
@@ -416,19 +408,11 @@ jobs:
         working-directory: ${{ env.AIT_BUILD_DIR }}
         run: pnpm install --frozen-lockfile
 
-      - name: Cache Playwright Browsers
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('Tests~/E2E/tests/pnpm-lock.yaml') }}
-          restore-keys: |
-            playwright-${{ runner.os }}-
-
       - name: Install Playwright Test Dependencies
         working-directory: Tests~/E2E/tests
-        run: |
-          pnpm install --frozen-lockfile
-          pnpm exec playwright install chromium
+        # 브라우저는 runner image의 시스템 Chrome 사용 (playwright.config.ts: channel='chrome')
+        # cdn.playwright.dev → GCS 다운로드 hang 회피 (cross-cloud 의존성 제거)
+        run: pnpm install --frozen-lockfile
 
       - name: Run Playwright E2E
         working-directory: Tests~/E2E/tests

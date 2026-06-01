@@ -366,7 +366,13 @@ jobs:
             console.log(`Overridden version: ${pkg.version}`);
           }
 
-          // 2. BuildConfig의 web-framework / web-analytics 버전 동기화
+          // 2. BuildConfig의 web-framework 버전만 동기화
+          // 주의: override는 web-framework 전용 버전(예: 3.0.0-beta.<hash>)이다.
+          // @apps-in-toss/web-analytics는 별도 버전 라인(latest=2.6.1)이라 해당
+          // 버전이 npm에 존재하지 않으며, web-framework 3.x는 web-analytics에
+          // 의존하지도 않는다(검증됨). web-analytics까지 override로 덮으면
+          // ait-build의 pnpm install이 ERR_PNPM_NO_MATCHING_VERSION으로 실패하므로
+          // web-analytics는 BuildConfig 기본 핀(2.6.1)을 그대로 둔다.
           console.log('');
           console.log('=== Syncing BuildConfig web-framework version ===');
           {
@@ -374,12 +380,12 @@ jobs:
             const pkg = JSON.parse(fs.readFileSync(buildConfig, 'utf8'));
             for (const section of ['dependencies', 'devDependencies']) {
               if (!pkg[section]) continue;
-              for (const name of ['@apps-in-toss/web-framework', '@apps-in-toss/web-analytics']) {
-                if (pkg[section][name]) pkg[section][name] = overrideVersion;
+              if (pkg[section]['@apps-in-toss/web-framework']) {
+                pkg[section]['@apps-in-toss/web-framework'] = overrideVersion;
               }
             }
             fs.writeFileSync(buildConfig, JSON.stringify(pkg, null, 2) + '\n');
-            console.log('BuildConfig updated:');
+            console.log('BuildConfig updated (web-analytics는 의도적으로 유지):');
             console.log(fs.readFileSync(buildConfig, 'utf8'));
           }
 

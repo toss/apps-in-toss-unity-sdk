@@ -353,7 +353,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: benchmark-results-macos-${{ matrix.unity-version }}
-          path: Tests~/E2E/tests/benchmark-results.json
+          path: |
+            Tests~/E2E/tests/benchmark-results.json
+            Tests~/E2E/tests/load-profile.json
           if-no-files-found: ignore
 
       - name: Upload Playwright Report
@@ -432,7 +434,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: benchmark-results-windows-${{ matrix.unity-version }}
-          path: Tests~/E2E/tests/benchmark-results.json
+          path: |
+            Tests~/E2E/tests/benchmark-results.json
+            Tests~/E2E/tests/load-profile.json
           if-no-files-found: ignore
 
       - name: Upload Playwright Report

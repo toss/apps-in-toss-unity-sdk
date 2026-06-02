@@ -177,14 +177,23 @@ namespace AppsInToss
         [Header("IL2CPP/Stripping 설정")]
         public bool stripEngineCode = true;
 
-        [Tooltip("-1 = 자동 (Release)")]
+        [Tooltip("-1 = 자동 (Release). WebGL에서 Master는 emscripten 최적화/LTO에 영향을 주지 않음(no-op)")]
         public int il2cppConfiguration = -1;
+
+        [Tooltip("-1 = 자동 (OptimizeSize, Unity 6+). 0 = OptimizeSpeed, 1 = OptimizeSize — 제네릭 인스턴스 공유로 wasm 코드 크기 축소")]
+        public int il2cppCodeGeneration = -1;
+
+        [Tooltip("-1 = 자동 (Disk Size with LTO 적용 — Coatsink/Meta 로드타임 스택의 실제 LTO 레버). 0 = 미적용(Unity 설정 유지), 1 = 적용")]
+        public int webGLCodeOptimization = -1;
 
         [Header("Unity 6 전용 설정")]
         [Tooltip("-1 = 자동 (HighPerformance)")]
         public int powerPreference = -1;
 
         public bool wasmStreaming = true;
+
+        [Tooltip("-1 = 자동 (활성화, Unity 6+). WebAssembly 2023 기능셋(native exception/SIMD/BigInt/Table). 미지원 브라우저에서는 로드 실패")]
+        public int wasm2023 = -1;
 
         [Header("고급 설정 (주의: 변경 시 호환성 문제 발생 가능)")]
         [Tooltip("-1 = 자동 (FullWithStacktrace, Sentry 경고 방지)")]
@@ -193,7 +202,7 @@ namespace AppsInToss
         [Tooltip("-1 = 자동 (false), Unity Pro 라이선스 필요")]
         public int showUnityLogo = -1;
 
-        [Tooltip("-1 = 자동 (true)")]
+        [Tooltip("-1 = 자동 (false). 끄면 JS Brotli 디컴프레서가 번들에서 제거됨 — 플랫폼 CDN의 Content-Encoding: br 의존")]
         public int decompressionFallback = -1;
 
         [Tooltip("-1 = 자동 (false)")]
@@ -379,7 +388,7 @@ namespace AppsInToss
 
         /// <summary>
         /// 기본 압축 포맷: Brotli
-        /// decompressionFallback이 활성화되어 있으므로 모든 Unity 버전에서 Brotli 사용 가능
+        /// decompressionFallback=false이므로 브라우저/CDN이 Content-Encoding: br로 네이티브 해제 (모든 Unity 버전 Brotli)
         /// </summary>
         public static WebGLCompressionFormat GetDefaultCompressionFormat()
         {
@@ -396,13 +405,44 @@ namespace AppsInToss
         }
 
         /// <summary>
-        /// 기본 IL2CPP 컴파일러 설정
-        /// 출처: StartupOptimization.md:85
+        /// 기본 IL2CPP 컴파일러 설정: Release
+        /// 주의: 과거 이 값을 Master로 두고 Coatsink "Disk Size with LTO"의 LTO 파트라 가정했으나,
+        /// 실측 결과 WebGL에서 컴파일러 config(Master)는 emscripten 최적화/LTO에 영향을 주지 않아
+        /// Release와 바이트 단위로 동일한 산출물을 냈다(no-op). 실제 LTO 레버는
+        /// emscripten code optimization = "Disk Size with LTO"이며 GetDefaultWebGLCodeOptimization()이 담당한다.
         /// </summary>
         public static Il2CppCompilerConfiguration GetDefaultIl2CppConfiguration()
         {
             return Il2CppCompilerConfiguration.Release;
         }
+
+        /// <summary>
+        /// 기본 WebGL Code Optimization: "Disk Size with LTO"(DiskSizeLTO)
+        /// Meta+Unity 로드타임 스택의 실제 LTO 레버. emscripten Link Time Optimization으로
+        /// cross-module dead-code를 제거해 wasm 코드 크기를 추가로 축소한다(실측 기준 압축전 ~-21%).
+        /// trade-off: 빌드 시간 증가(LTO 링크). API가 버전마다 다르고(2022.3/6: UserBuildSettings,
+        /// 구버전: PlayerSettings.WebGL) 모듈 어셈블리 참조 보장이 없어 AITWebGLCodeOptimization이
+        /// reflection으로 적용한다. 멤버가 없는 버전(예: 2021.3)에서는 fail-safe로 건너뛴다.
+        /// 출처: Unity Manual web-optimization-c-sharp, Coatsink "Ready, Set, Cook!" 케이스 스터디
+        /// </summary>
+        public static string GetDefaultWebGLCodeOptimization()
+        {
+            return AppsInToss.Editor.AITWebGLCodeOptimization.DiskSizeLTO;
+        }
+
+#if UNITY_6000_0_OR_NEWER
+        /// <summary>
+        /// 기본 IL2CPP 코드 생성 방식 (Unity 6+): OptimizeSize
+        /// Meta+Unity 로드타임 스택의 "Faster (smaller) builds" — 제네릭 인스턴스화를
+        /// 공유해 제네릭 폭발(측정상 ~130k 함수)을 붕괴시켜 wasm 코드 크기를 축소한다.
+        /// trade-off: 공유 제네릭의 미세한 런타임 디스패치 비용(정확성 변화 아님).
+        /// 출처: Unity Manual web-optimization-player (IL2CPP Code Generation = Optimize for code size)
+        /// </summary>
+        public static UnityEditor.Build.Il2CppCodeGeneration GetDefaultIl2CppCodeGeneration()
+        {
+            return UnityEditor.Build.Il2CppCodeGeneration.OptimizeSize;
+        }
+#endif
 
 #if UNITY_2023_3_OR_NEWER
         /// <summary>
@@ -438,11 +478,33 @@ namespace AppsInToss
 
         /// <summary>
         /// 기본 Decompression Fallback
+        /// Apps in Toss 플랫폼 CDN이 .unityweb를 Content-Encoding: br로 서빙하므로
+        /// 브라우저가 네이티브 해제한다. Unity가 프레임워크 번들에 굽는 JS Brotli
+        /// 디컴프레서는 불필요(죽은 무게) → 비활성화로 번들 축소 + 시작 단축.
+        /// 의존: 플랫폼 CDN의 Content-Encoding: br 보장(확인 완료). vite dev/preview는
+        /// unityWebContentEncodingPlugin이 동일 헤더를 세팅한다.
         /// 출처: StartupOptimization.md:93
         /// </summary>
         public static bool GetDefaultDecompressionFallback()
         {
+            return false;
+        }
+
+        /// <summary>
+        /// 기본 WebAssembly 2023 타겟 여부 (Unity 6+): 활성화
+        /// Meta+Unity 로드타임 최적화: native exception/SIMD/BigInt/WebAssembly.Table 등
+        /// 2023 기능셋을 번들해 코드 크기·다운로드·시작 시간을 단축한다.
+        /// 주의: 미지원 브라우저(대략 Chrome&lt;91 / Safari&lt;16.4)에서는 graceful
+        /// degradation이 아니라 로드 자체가 실패한다. Apps in Toss는 Toss 앱 WebView
+        /// 전용이라 플랫폼 min-spec이 이를 충족하는 전제에서만 기본 활성.
+        /// </summary>
+        public static bool GetDefaultWasm2023()
+        {
+#if UNITY_6000_0_OR_NEWER
             return true;
+#else
+            return false;
+#endif
         }
 
         /// <summary>

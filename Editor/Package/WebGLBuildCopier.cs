@@ -355,7 +355,8 @@ namespace AppsInToss.Editor.Package
             var excludeRootFiles = new HashSet<string>
             {
                 "package.json", "pnpm-lock.yaml", "vite.config.ts",
-                "tsconfig.json", "unity-bridge.ts", "granite.config.ts"
+                "tsconfig.json", "unity-bridge.ts", "granite.config.ts",
+                "apps-in-toss.config.ts"
             };
 
             // 제외할 폴더들
@@ -501,6 +502,7 @@ namespace AppsInToss.Editor.Package
                     "package-lock.json",
                     "pnpm-lock.yaml",
                     "granite.config.ts",
+                    "apps-in-toss.config.ts",
                     "vite.config.ts",
                     "tsconfig.json"
                 };

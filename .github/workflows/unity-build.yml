@@ -310,89 +310,120 @@ jobs:
           Write-Host "Used: ${usedGB} GB / Free: ${freeGB} GB"
 
       # =====================================================
-      # SDK 버전 오버라이드 (호환성 테스트용)
-      # SDK 코드를 해당 버전의 web-framework로 재생성하여
-      # 생성기의 하위호환성까지 검증
-      # =====================================================
-      - name: Override SDK Version
-        if: inputs.sdk-version-override != ''
-        shell: bash
-        run: |
-          OVERRIDE_VERSION="${{ inputs.sdk-version-override }}"
-          PACKAGE_JSON="package.json"
-
-          echo "=== SDK Version Override ==="
-          echo "Target SDK version: ${OVERRIDE_VERSION}"
-          echo ""
-
-          # 1. package.json 버전 변경 (메타데이터용)
-          echo "=== Updating package.json version ==="
-          echo "Original version: $(grep '"version"' $PACKAGE_JSON)"
-          if [[ "$RUNNER_OS" == "macOS" ]]; then
-            sed -i '' "s/\"version\": \"[^\"]*\"/\"version\": \"${OVERRIDE_VERSION}\"/" $PACKAGE_JSON
-          else
-            sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"${OVERRIDE_VERSION}\"/" $PACKAGE_JSON
-          fi
-          echo "Overridden version: $(grep '"version"' $PACKAGE_JSON)"
-
-          # 2. BuildConfig의 web-framework 버전 동기화
-          echo ""
-          echo "=== Syncing BuildConfig web-framework version ==="
-          BUILDCONFIG_PKG="WebGLTemplates/AITTemplate/BuildConfig~/package.json"
-          if [[ "$RUNNER_OS" == "macOS" ]]; then
-            sed -i '' 's/"@apps-in-toss\/web-framework": "[^"]*"/"@apps-in-toss\/web-framework": "'"${OVERRIDE_VERSION}"'"/' "$BUILDCONFIG_PKG"
-            sed -i '' 's/"@apps-in-toss\/web-analytics": "[^"]*"/"@apps-in-toss\/web-analytics": "'"${OVERRIDE_VERSION}"'"/' "$BUILDCONFIG_PKG"
-          else
-            sed -i 's/"@apps-in-toss\/web-framework": "[^"]*"/"@apps-in-toss\/web-framework": "'"${OVERRIDE_VERSION}"'"/' "$BUILDCONFIG_PKG"
-            sed -i 's/"@apps-in-toss\/web-analytics": "[^"]*"/"@apps-in-toss\/web-analytics": "'"${OVERRIDE_VERSION}"'"/' "$BUILDCONFIG_PKG"
-          fi
-          echo "BuildConfig updated:"
-          grep -E "web-framework|web-analytics" "$BUILDCONFIG_PKG"
-
-          # 3. SDK 코드 재생성
-          # 잡별 격리된 pnpm store 사용 (동시 실행 시 공유 store 충돌 방지)
-          echo ""
-          echo "=== SDK 코드 재생성 ==="
-          ISOLATED_STORE="${RUNNER_TEMP}/pnpm-store-$$"
-          cd sdk-runtime-generator~
-          npx -y pnpm@10 install --store-dir "$ISOLATED_STORE"
-          npx -y pnpm@10 update "@apps-in-toss/web-framework@${OVERRIDE_VERSION}" --force --registry https://registry.npmjs.org --store-dir "$ISOLATED_STORE"
-
-          # 설치된 버전 검증 (jq 대신 node 사용 - Windows 호환)
-          INSTALLED_VERSION=$(npx -y pnpm@10 list @apps-in-toss/web-framework --json | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>console.log(JSON.parse(d)[0].dependencies['@apps-in-toss/web-framework'].version))")
-          echo "요청 버전: ${OVERRIDE_VERSION}"
-          echo "설치된 버전: ${INSTALLED_VERSION}"
-          if [ "$INSTALLED_VERSION" != "$OVERRIDE_VERSION" ]; then
-            echo "::warning::버전 불일치 - 요청: ${OVERRIDE_VERSION}, 설치됨: ${INSTALLED_VERSION}"
-          fi
-
-          echo "SDK 코드 생성 중..."
-          npx -y pnpm@10 generate
-          echo "SDK 코드 생성 완료"
-          cd ..
-
-          # 격리된 store 정리
-          rm -rf "$ISOLATED_STORE" 2>/dev/null || true
-
-          # 4. 재생성된 SDK 파일 확인
-          echo ""
-          echo "=== Regenerated SDK files ==="
-          ls -la Runtime/SDK/ | head -20
-
-      # =====================================================
       # Windows: Node.js 가용성 보장
-      # 후속 Windows 스텝 중 일부가 `shell: node {0}` 또는 node CLI를 직접
-      # 호출한다(Clean Previous Build Artifacts (Windows), Update BuildConfig,
-      # Update Package 등). windows-1-x 풀에는 Node가 시스템 PATH에 있었으나
-      # windows-2-x 풀은 그렇지 않아 actions/checkout 이후 첫 node 스텝이
-      # "node: command not found"로 죽었다. self-hosted 머신 상태에 의존하지
-      # 않도록 워크플로우가 직접 Node를 PATH에 올린다.
+      # 아래 Override SDK Version 스텝(shell: node {0})과 이후 Windows 스텝 일부가
+      # node/npx/pnpm을 직접 사용한다(SDK 재생성, Update BuildConfig/Package 등).
+      # windows-2-x 풀은 Node가 시스템 PATH에 없으므로, node를 쓰는 첫 스텝(Override)
+      # 보다 반드시 앞에 두어 self-hosted 머신 상태에 의존하지 않게 한다.
+      # 추가로 self-hosted Windows 러너에서 shell: bash 는 WSL bash로 해석되어
+      # GitHub Actions가 넘기는 Windows temp 스크립트 경로가 깨진다(즉시 `bash:
+      # command not found`로 사망). 따라서 Override는 shell: node {0}로 작성해
+      # 셸 의존성을 제거한다(아래 'Update BuildConfig SDK Version' 스텝과 동일 패턴).
       # =====================================================
       - name: Setup Node.js (Windows)
         if: inputs.os == 'windows'
         uses: actions/setup-node@v6
         with:
           node-version: 24
+
+      # =====================================================
+      # SDK 버전 오버라이드 (호환성 테스트용)
+      # SDK 코드를 해당 버전의 web-framework로 재생성하여
+      # 생성기의 하위호환성까지 검증
+      # =====================================================
+      - name: Override SDK Version
+        if: inputs.sdk-version-override != ''
+        # shell: bash 금지 — self-hosted Windows 러너에서 WSL bash로 해석되어
+        # temp 스크립트 경로가 깨진다(즉시 `bash: command not found`). node로 작성해
+        # macOS/Windows 양쪽에서 셸 의존성 없이 동작시킨다.
+        shell: node {0}
+        env:
+          OVERRIDE_VERSION: ${{ inputs.sdk-version-override }}
+        run: |
+          const fs = require('fs');
+          const os = require('os');
+          const path = require('path');
+          const { execFileSync } = require('child_process');
+
+          const overrideVersion = process.env.OVERRIDE_VERSION;
+          const onWindows = process.platform === 'win32';
+          // Windows에서 npx/pnpm은 .cmd 래퍼라 shell:true 필요. POSIX는 그대로.
+          const run = (cmd, args, opts = {}) =>
+            execFileSync(cmd, args, { stdio: 'inherit', shell: onWindows, ...opts });
+
+          console.log('=== SDK Version Override ===');
+          console.log(`Target SDK version: ${overrideVersion}`);
+          console.log('');
+
+          // 1. package.json 버전 변경 (메타데이터용 — AITVersion.Version의 소스)
+          console.log('=== Updating package.json version ===');
+          {
+            const pkgPath = 'package.json';
+            const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+            console.log(`Original version: ${pkg.version}`);
+            pkg.version = overrideVersion;
+            fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
+            console.log(`Overridden version: ${pkg.version}`);
+          }
+
+          // 2. BuildConfig의 web-framework 버전만 동기화
+          // 주의: override는 web-framework 전용 버전(예: 3.0.0-beta.<hash>)이다.
+          // @apps-in-toss/web-analytics는 별도 버전 라인(latest=2.6.1)이라 해당
+          // 버전이 npm에 존재하지 않으며, web-framework 3.x는 web-analytics에
+          // 의존하지도 않는다(검증됨). web-analytics까지 override로 덮으면
+          // ait-build의 pnpm install이 ERR_PNPM_NO_MATCHING_VERSION으로 실패하므로
+          // web-analytics는 BuildConfig 기본 핀(2.6.1)을 그대로 둔다.
+          console.log('');
+          console.log('=== Syncing BuildConfig web-framework version ===');
+          {
+            const buildConfig = 'WebGLTemplates/AITTemplate/BuildConfig~/package.json';
+            const pkg = JSON.parse(fs.readFileSync(buildConfig, 'utf8'));
+            for (const section of ['dependencies', 'devDependencies']) {
+              if (!pkg[section]) continue;
+              if (pkg[section]['@apps-in-toss/web-framework']) {
+                pkg[section]['@apps-in-toss/web-framework'] = overrideVersion;
+              }
+            }
+            fs.writeFileSync(buildConfig, JSON.stringify(pkg, null, 2) + '\n');
+            console.log('BuildConfig updated (web-analytics는 의도적으로 유지):');
+            console.log(fs.readFileSync(buildConfig, 'utf8'));
+          }
+
+          // 3. SDK 코드 재생성 (잡별 격리된 pnpm store — 동시 실행 store 충돌 방지)
+          console.log('');
+          console.log('=== SDK 코드 재생성 ===');
+          const generatorDir = 'sdk-runtime-generator~';
+          const isolatedStore = path.join(process.env.RUNNER_TEMP || os.tmpdir(), `pnpm-store-${process.pid}`);
+          run('npx', ['-y', 'pnpm@10', 'install', '--store-dir', isolatedStore], { cwd: generatorDir });
+          run('npx', ['-y', 'pnpm@10', 'update', `@apps-in-toss/web-framework@${overrideVersion}`,
+            '--force', '--registry', 'https://registry.npmjs.org', '--store-dir', isolatedStore], { cwd: generatorDir });
+
+          // 설치된 버전 검증
+          let installedVersion = 'unknown';
+          try {
+            const listJson = execFileSync('npx', ['-y', 'pnpm@10', 'list', '@apps-in-toss/web-framework', '--json'],
+              { cwd: generatorDir, shell: onWindows, encoding: 'utf8' });
+            installedVersion = JSON.parse(listJson)[0].dependencies['@apps-in-toss/web-framework'].version;
+          } catch (e) {
+            console.log(`::warning::설치 버전 파싱 실패: ${e.message}`);
+          }
+          console.log(`요청 버전: ${overrideVersion}`);
+          console.log(`설치된 버전: ${installedVersion}`);
+          if (installedVersion !== overrideVersion) {
+            console.log(`::warning::버전 불일치 - 요청: ${overrideVersion}, 설치됨: ${installedVersion}`);
+          }
+
+          console.log('SDK 코드 생성 중...');
+          run('npx', ['-y', 'pnpm@10', 'generate'], { cwd: generatorDir });
+          console.log('SDK 코드 생성 완료');
+
+          // 격리된 store 정리
+          try { fs.rmSync(isolatedStore, { recursive: true, force: true }); } catch (e) { /* best-effort */ }
+
+          // 4. 재생성된 SDK 파일 확인
+          console.log('');
+          console.log('=== Regenerated SDK files ===');
+          for (const f of fs.readdirSync('Runtime/SDK').slice(0, 20)) console.log(f);
 
       # =====================================================
       # Windows Defender 제외 (Windows)

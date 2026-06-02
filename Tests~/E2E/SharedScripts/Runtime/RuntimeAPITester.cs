@@ -219,8 +219,21 @@ public class RuntimeAPITester : MonoBehaviour
         TestAPICall("AppsInTossSignTossCert", async () => { await AIT.AppsInTossSignTossCert(new AppsInTossSignTossCertParams { TxId = "test-tx" }); });
 
         // Visibility API (이벤트 기반) - 콜백 분리 패턴
-        TestAPICall("OnVisibilityChangedByTransparentServiceWeb", async () =>
-            { AIT.OnVisibilityChangedByTransparentServiceWeb((visible) => { }, null); await System.Threading.Tasks.Task.CompletedTask; });
+        // web-framework 3.0.0에서 제거됨(web-bridge → webview-bridge 리네임). semver상
+        // 3.0.0-beta < 3.0.0 이라 asmdef versionDefines 임계값으로는 prerelease를 안정적으로
+        // 분기할 수 없어, 메서드가 존재할 때만 리플렉션으로 호출한다 — 2.x/3.0.0 양쪽에서
+        // 컴파일·동작을 모두 보장 (직접 호출 시 3.0.0 재생성 빌드에서 CS0117 발생).
+        var onVisibilityMethod = typeof(AIT).GetMethod(
+            "OnVisibilityChangedByTransparentServiceWeb",
+            BindingFlags.Public | BindingFlags.Static);
+        if (onVisibilityMethod != null)
+        {
+            TestAPICall("OnVisibilityChangedByTransparentServiceWeb", async () =>
+            {
+                onVisibilityMethod.Invoke(null, new object[] { (Action<bool>)((visible) => { }), null, null });
+                await System.Threading.Tasks.Task.CompletedTask;
+            });
+        }
 
         // Location 이벤트 API - 콜백 분리 패턴
         TestAPICall("StartUpdateLocation", async () =>

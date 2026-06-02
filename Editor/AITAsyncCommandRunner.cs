@@ -242,7 +242,10 @@ namespace AppsInToss.Editor
                     process.BeginOutputReadLine();
                     process.BeginErrorReadLine();
 
-                    // 취소 가능한 대기
+                    // 취소 가능 + 타임아웃 대기. timeoutMs(기본 5분) 초과 시 프로세스를 강제 종료한다.
+                    // 이 루프가 timeoutMs를 무시하면 granite/pnpm 등 하위 프로세스가 hang 했을 때
+                    // 무한 대기에 빠져 빌드 세션이 영구 정지된다 (SDK-VH 근본 원인).
+                    var timeoutStopwatch = Stopwatch.StartNew();
                     while (!process.HasExited)
                     {
                         if (task.CancellationSource.Token.IsCancellationRequested)
@@ -256,6 +259,27 @@ namespace AppsInToss.Editor
                             EnqueueMainThread(() =>
                             {
                                 Debug.Log($"[AIT Async] 명령 취소됨: {task.Id}");
+                                task.OnComplete?.Invoke(result);
+                            });
+                            return;
+                        }
+
+                        if (timeoutMs > 0 && timeoutStopwatch.ElapsedMilliseconds > timeoutMs)
+                        {
+                            try { process.Kill(); } catch { /* 이미 종료된 프로세스는 무시 */ }
+                            process.WaitForExit(5000);
+                            result.Success = false;
+                            result.Error = $"명령 시간 초과 ({timeoutMs / 1000}초)";
+                            result.ExitCode = -1;
+                            task.State = CommandState.Failed;
+
+                            EnqueueMainThread(() =>
+                            {
+                                // 타임아웃은 환경(네트워크/registry/hang) 원인. 상위 빌드 흐름이 FAIL 결과로
+                                // 인지해 단일 CaptureBuildError로 캡처하므로 runner 레벨은 진단만 남긴다.
+                                AppsInToss.Editor.AITLog.Error(
+                                    $"[AIT Async] ✗ 명령 시간 초과 ({timeoutMs / 1000}초): {task.Id}",
+                                    sentryCapture: false);
                                 task.OnComplete?.Invoke(result);
                             });
                             return;
@@ -298,7 +322,11 @@ namespace AppsInToss.Editor
                         }
                         else
                         {
-                            Debug.LogError($"[AIT Async] ✗ 명령 실패 (Exit: {result.ExitCode}): {task.Id}");
+                            // task.Id(cmd_N)는 fingerprint 가치가 없고, 빌드 실패의 단일 캡처는 상위
+                            // (CaptureBuildError)가 담당하므로 runner 레벨 명령 실패는 진단만 남긴다 (SDK-VG/VD/VB).
+                            AppsInToss.Editor.AITLog.Error(
+                                $"[AIT Async] ✗ 명령 실패 (Exit: {result.ExitCode}): {task.Id}",
+                                sentryCapture: false);
                             if (!string.IsNullOrEmpty(result.Error))
                             {
                                 AppsInToss.Editor.AITLog.Error(
@@ -319,7 +347,9 @@ namespace AppsInToss.Editor
 
                 EnqueueMainThread(() =>
                 {
-                    Debug.LogError($"[AIT Async] 명령 실행 예외: {e}");
+                    // 프로세스 시작/IO 예외 — 환경 원인 cascade이며 호출자(빌드: CaptureBuildError /
+                    // pnpm 글로벌 설치: LogWarning)가 결과를 인지해 처리한다. runner 레벨은 Sentry 차단 (SDK-VB).
+                    AppsInToss.Editor.AITLog.Error($"[AIT Async] 명령 실행 예외: {e}", sentryCapture: false);
                     task.OnComplete?.Invoke(result);
                 });
             }

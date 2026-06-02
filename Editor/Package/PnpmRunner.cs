@@ -10,9 +10,10 @@ namespace AppsInToss.Editor.Package
     /// PnpmStoreManager의 InstallStages 정책을 기반으로 frozen → lockfile 갱신 → lockfile 폐기 → clean 재시도 순으로 진행.
     /// 실패 시 NodeModulesValidator.CleanNodeModules로 복구 후 재시도.
     ///
-    /// Sentry 캡처 정책: 중간 단계 실패는 정상 fallback이므로 LogError가 발생해도 Sentry로
-    /// 보내지 않는다 (BeginSuppressLogCapture). 모든 단계가 실패한 최종 LogError만 캡처되도록
-    /// 한다 — false positive(SDK-B8/SDK-HB) 방지.
+    /// Sentry 캡처 정책: 중간/최종 단계 LogError는 모두 Console 진단 전용(sentryCapture:false)이다.
+    /// 빌드 실패의 단일 구조화 Sentry 이벤트는 상위 진입점(ShowBuildFailedDialog /
+    /// AITSettingsHelper → CaptureBuildError)이 errorCode 기반 fingerprint로 캡처한다.
+    /// — runner 레벨 cascade(SDK-R5) 및 중간 단계 false positive(SDK-B8/SDK-HB) 동시 방지.
     /// </summary>
     internal static class PnpmRunner
     {
@@ -47,7 +48,9 @@ namespace AppsInToss.Editor.Package
                 }
                 catch (Exception e)
                 {
-                    Debug.LogError($"[AIT] [병렬] 백그라운드 pnpm install 예외: {e}");
+                    // 백그라운드 install 예외는 메인 빌드 흐름이 결과(FAIL_NPM_BUILD)를 인지해
+                    // 재시도/터미널 처리하므로 cascade다. Sentry 단일 이벤트는 상위 CaptureBuildError에 위임.
+                    AITLog.Error($"[AIT] [병렬] 백그라운드 pnpm install 예외: {e}", sentryCapture: false);
                     earlyCtx.PnpmInstallResult = AITConvertCore.AITExportError.FAIL_NPM_BUILD;
                 }
             });
@@ -64,7 +67,7 @@ namespace AppsInToss.Editor.Package
             var additionalPaths = AITNpmRunner.BuildAdditionalPaths(earlyCtx.PnpmPath);
 
             // 중간 단계의 실행 오류/시간 초과 LogError는 정상 fallback의 일부라 Sentry로 보내지 않는다.
-            // 모든 단계가 실패한 경우에만 스코프 밖에서 단일 LogError를 발생시킨다.
+            // 최종 실패 LogError도 sentryCapture:false이며, 빌드 실패 캡처는 상위 CaptureBuildError가 담당한다.
             AITEditorErrorTracker.BeginSuppressLogCapture();
             try
             {
@@ -178,7 +181,9 @@ namespace AppsInToss.Editor.Package
                 AITEditorErrorTracker.EndSuppressLogCapture();
             }
 
-            Debug.LogError("[AIT] [병렬] pnpm install 실패 (모든 재시도 후에도 실패)");
+            // 백그라운드 install 최종 실패 — 메인 빌드 흐름이 재설치/터미널 실패로 인지한다.
+            // Sentry 단일 이벤트는 상위(ShowBuildFailedDialog → CaptureBuildError)에 위임 (SDK-R5 cascade 방지).
+            AITLog.Error("[AIT] [병렬] pnpm install 실패 (모든 재시도 후에도 실패)", sentryCapture: false);
             return AITConvertCore.AITExportError.FAIL_NPM_BUILD;
         }
 
@@ -188,7 +193,7 @@ namespace AppsInToss.Editor.Package
         internal static AITConvertCore.AITExportError RunPnpmInstallSync(AITPackageBuilder.PackageContext ctx)
         {
             // 중간 단계 실패는 정상 fallback이라 Sentry로 보내지 않는다.
-            // 마지막 단계까지 실패하면 스코프 밖에서 단일 LogError를 발생시켜 Sentry가 캡처하게 한다.
+            // 최종 실패 LogError도 sentryCapture:false이며, 빌드 실패 캡처는 상위 CaptureBuildError가 담당한다.
             AITEditorErrorTracker.BeginSuppressLogCapture();
             try
             {
@@ -209,7 +214,8 @@ namespace AppsInToss.Editor.Package
                 AITEditorErrorTracker.EndSuppressLogCapture();
             }
 
-            Debug.LogError(FinalFailureMessage);
+            // 동기 install 최종 실패 — Sentry 단일 이벤트는 상위 CaptureBuildError에 위임 (SDK-R5 cascade 방지).
+            AITLog.Error(FinalFailureMessage, sentryCapture: false);
             return AITConvertCore.AITExportError.FAIL_NPM_BUILD;
         }
 
@@ -227,7 +233,8 @@ namespace AppsInToss.Editor.Package
         {
             if (stageIndex >= PnpmStoreManager.InstallStages.Count)
             {
-                Debug.LogError(FinalFailureMessage);
+                // 비동기 install 최종 실패 — Sentry 단일 이벤트는 상위 CaptureBuildError에 위임 (SDK-R5 cascade 방지).
+                AITLog.Error(FinalFailureMessage, sentryCapture: false);
                 onComplete?.Invoke(AITConvertCore.AITExportError.FAIL_NPM_BUILD);
                 return;
             }

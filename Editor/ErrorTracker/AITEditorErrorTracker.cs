@@ -260,6 +260,36 @@ namespace AppsInToss.Editor.ErrorTracker
             // 이 경고 문자열을 직접 출력하지 않고 Unity 엔진이 출력하므로 AitKeywords 보호 가드와 충돌 없음.
             // Sentry APPS-IN-TOSS-UNITY-SDK-ZZ.
             "AssetDatabase.FindAssets: Folder not found",
+
+            // 사용자 게임의 이미지 유틸리티가 출력하는 sprite 미할당 경고 — SDK 영역 아님.
+            // 예: "[ImageUtil] Icon_1 sprite is null", "[ImageUtil] Body_7 sprite is null", "[ImageUtil] Weapon_3 sprite is null"
+            // 에셋명만 가변이고 "[ImageUtil]" prefix가 불변. SDK는 이 prefix를 출력하지 않으며(grep 확인)
+            // AitKeywords에도 없어 보호 가드와 충돌 없음.
+            // Sentry APPS-IN-TOSS-UNITY-SDK-W1, W2, W3.
+            "[ImageUtil]",
+
+            // Unity AssetDatabase가 프로젝트 폴더 밖/절대 경로로 호출될 때 직접 출력하는 엔진 경고 — 사용자 코드의 경로 사용 오류.
+            // 예: "Invalid AssetDatabase path: /Scripts/CameraController.cs. Use path relative to the project folder."
+            // SDK가 잘못된 경로로 호출하면 경로에 AppsInToss/ait-build 토큰이 들어가 키워드 가드로 보호되므로 안전.
+            // Sentry APPS-IN-TOSS-UNITY-SDK-QK.
+            "Invalid AssetDatabase path:",
+
+            // play mode 중 빌드/Addressables 트리거 시 Unity 엔진이 직접 출력하는 제약 에러.
+            // 현행 SDK는 DoExport/DoExportAsync 진입에서 isPlayingOrWillChangePlaymode 가드로 차단
+            // (AITConvertCore.cs, sentryCapture:false)하지만, 구버전 클라이언트 잔여 이벤트 및 Addressables 외
+            // 경로의 변형을 backstop으로 흡수한다. Unity 엔진 영문 문구이며 SDK는 이 문자열을 직접 출력하지 않는다.
+            // 예: 'Failed to build Addressables content ... "This cannot be used during play mode."'
+            //     (SDK-QJ는 기존 "Failed to build Addressables content" 패턴으로도 커버됨)
+            // Sentry APPS-IN-TOSS-UNITY-SDK-QJ/QH/QG.
+            "This cannot be used during play mode",
+
+            // pnpm/granite 명령 실패 — 현행 SDK는 source에서 sentryCapture:false로 차단하고(AITNpmRunner.cs:335/414)
+            // 터미널 단일 캡처는 상위 CaptureBuildError가 담당한다. 구버전(≤2.4.x) 클라이언트가 캡처한 채 보낸
+            // 잔여 이벤트를 backstop으로 흡수한다. "[pnpm]"은 AitKeywords에 없어 보호 가드와 충돌 없음.
+            // 예: "[pnpm] 명령 실패 (Exit Code: 1): pnpm exec ait build" (SDK-RJ)
+            //     "[pnpm] 비동기 명령 실패 (Exit Code: -1): pnpm exec granite build" (SDK-VG/VD/VB)
+            "[pnpm] 명령 실패 (Exit Code:",
+            "[pnpm] 비동기 명령 실패",
         };
 
         // DetermineErrorSource에서 메시지를 SDK로 분류하는 추가 패턴.
@@ -1094,6 +1124,22 @@ namespace AppsInToss.Editor.ErrorTracker
             // 사용자 폴더명에 'AppsInToss'가 포함돼 SDK 키워드 가드가 발동하므로 가드보다 먼저 매칭한다(Assets/ 경로 + .cs(L,C)).
             // SDK 자체 코드는 Packages/ 또는 Library/PackageCache/ 경로로 출력되어 Assets/ 가드와 충돌 없음.
             if (message.IndexOf("warning CS1998", StringComparison.Ordinal) >= 0
+                && (message.IndexOf("Assets/", StringComparison.Ordinal) >= 0
+                    || message.IndexOf("Assets\\", StringComparison.Ordinal) >= 0)
+                && message.IndexOf(".cs(", StringComparison.Ordinal) >= 0)
+                return true;
+
+            // 사용자 코드의 obsolete API 사용 경고 (CS0618) — Unity 컴파일러가 직접 출력.
+            // 예: "Assets\Editor\AppsInTossWebGLProjectSetup.cs(64,9): warning CS0618:
+            //       'PlayerSettings.SetManagedStrippingLevel(BuildTargetGroup, ManagedStrippingLevel)' is obsolete: ..."
+            //     "...(65,9): warning CS0618: 'PlayerSettings.SetScriptingBackend(BuildTargetGroup, ...)' is obsolete: ..."
+            // Sentry APPS-IN-TOSS-UNITY-SDK-WN, APPS-IN-TOSS-UNITY-SDK-WM.
+            // 현행 SDK 자체는 동일 API를 #if UNITY_6000_0_OR_NEWER로 버전 분기해 obsolete 경고를 내지 않는다
+            // (AITBuildSession.cs:137-145, AITBuildInitializer.cs). 사용자 프로젝트 파일(Assets/)의 obsolete 사용만 드롭한다.
+            // 파일명에 'AppsInToss'가 단어 경계 없이 붙어(AppsInTossWebGLProjectSetup) 키워드 가드를 우회하므로
+            // 가드보다 먼저 Assets/ 경로 + .cs(L,C) 합성으로 좁혀 매칭한다. SDK 패키지(Packages/) 경로의 경고는
+            // Assets/ 가드에 걸리지 않아 키워드 가드로 보호된다.
+            if (message.IndexOf("warning CS0618", StringComparison.Ordinal) >= 0
                 && (message.IndexOf("Assets/", StringComparison.Ordinal) >= 0
                     || message.IndexOf("Assets\\", StringComparison.Ordinal) >= 0)
                 && message.IndexOf(".cs(", StringComparison.Ordinal) >= 0)

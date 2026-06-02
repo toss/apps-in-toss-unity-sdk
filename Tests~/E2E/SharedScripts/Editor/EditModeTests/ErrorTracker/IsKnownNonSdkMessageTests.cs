@@ -2151,6 +2151,132 @@ public class IsKnownNonSdkMessageTests
 
     #endregion
 
+    #region A-5 백스톱: ImageUtil / AssetDatabase path / play mode / pnpm 실패 / CS0618 (SDK-W1~W3, QK, QJ/QH/QG, RJ, VG/VD/VB, WN/WM)
+
+    [Test]
+    public void ImageUtilSpriteNull_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-W1/W2/W3 — 사용자 게임 이미지 유틸리티의 sprite 미할당 경고.
+        // 에셋명만 가변이고 "[ImageUtil]" prefix가 불변. SDK는 이 prefix를 출력하지 않으며 AitKeywords에도 없다.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[ImageUtil] Icon_1 sprite is null"));
+    }
+
+    [Test]
+    public void ImageUtilSpriteNull_OtherAssetName_ReturnsTrue()
+    {
+        // 에셋명 변형(가변 토큰)도 동일 prefix로 흡수.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[ImageUtil] Weapon_3 sprite is null"));
+    }
+
+    [Test]
+    public void SdkSpriteLog_WithAitPrefix_NeverFiltered()
+    {
+        // SDK 자체 sprite 관련 로그("[AIT]" prefix)는 "[ImageUtil]" 패턴과 무관 — 보호되어야 함.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] 스프라이트 아틀라스 빌드 완료"));
+    }
+
+    [Test]
+    public void InvalidAssetDatabasePath_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-QK — 사용자 코드가 프로젝트 폴더 밖/절대 경로로 AssetDatabase 호출.
+        // Unity 엔진이 직접 출력하는 영문 경고. SDK는 이 문구를 출력하지 않는다.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Invalid AssetDatabase path: /Scripts/CameraController.cs. Use path relative to the project folder."));
+    }
+
+    [Test]
+    public void InvalidAssetDatabasePath_AitBuildToken_NeverFiltered()
+    {
+        // SDK가 잘못된 경로로 호출하면 경로에 "ait-build" 토큰이 들어가 키워드 가드가 먼저 보호한다(array 도달 전).
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Invalid AssetDatabase path: ait-build/dist/index.html. Use path relative to the project folder."));
+    }
+
+    [Test]
+    public void PlayModeRestriction_AddressablesWrapped_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-QJ/QH/QG — play mode 중 Addressables/빌드 트리거 시 Unity 엔진 제약 에러.
+        // 현행 SDK는 DoExport 진입에서 play mode 가드로 차단(sentryCapture:false)하지만 구버전 잔여 이벤트를 backstop으로 흡수.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Failed to build Addressables content, content not included in Player Build. \"This cannot be used during play mode.\""));
+    }
+
+    [Test]
+    public void SdkPlayModeGuardLog_WithAitPrefix_NeverFiltered()
+    {
+        // SDK 자체 play mode 가드 메시지("[AIT]" prefix, 한글)는 "This cannot be used during play mode" 문구가 없어
+        // 자연히 통과하지만, 보호 의도를 명시적으로 검증한다.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] play mode 중에는 빌드를 실행할 수 없습니다. 재생을 종료한 뒤 다시 시도하세요."));
+    }
+
+    [Test]
+    public void PnpmCommandFailed_ExitCode_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-RJ — 구버전(≤2.4.x)이 캡처한 채 보낸 "[pnpm] 명령 실패" 잔여 이벤트.
+        // 현행 SDK는 AITNpmRunner.cs:335에서 sentryCapture:false로 source 차단(이 패턴은 backstop).
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[pnpm] 명령 실패 (Exit Code: 1): pnpm exec ait build"));
+    }
+
+    [Test]
+    public void PnpmAsyncCommandFailed_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-VG/VD/VB — "[pnpm] 비동기 명령 실패" 잔여 이벤트.
+        // 현행 SDK는 AITNpmRunner.cs:414에서 sentryCapture:false로 source 차단(이 패턴은 backstop).
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[pnpm] 비동기 명령 실패 (Exit Code: -1): pnpm exec granite build"));
+    }
+
+    [Test]
+    public void PnpmCommandFailed_WithAitPrefix_NeverFiltered()
+    {
+        // SDK가 직접 "[AIT...]" prefix로 출력한 pnpm 실패 로그는 보호되어야 함(키워드 가드).
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] [pnpm] 명령 실패 (Exit Code: 1): pnpm exec ait build"));
+    }
+
+    [Test]
+    public void UserCodeCs0618_AssetsBackslashPath_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-WN — 사용자 프로젝트(Assets/) 코드의 obsolete API 사용 경고.
+        // 파일명 'AppsInTossWebGLProjectSetup'이 단어 경계 없이 붙어 키워드 가드를 우회하므로 Assets/ + .cs(L,C) 합성으로 좁혀 매칭.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Assets\\Editor\\AppsInTossWebGLProjectSetup.cs(64,9): warning CS0618: 'PlayerSettings.SetManagedStrippingLevel(BuildTargetGroup, ManagedStrippingLevel)' is obsolete: 'Use SetManagedStrippingLevel(NamedBuildTarget, ManagedStrippingLevel) instead.'"));
+    }
+
+    [Test]
+    public void UserCodeCs0618_AssetsForwardSlashPath_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-WM — POSIX 경로 변형(SetScriptingBackend).
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Assets/Editor/AppsInTossWebGLProjectSetup.cs(65,9): warning CS0618: 'PlayerSettings.SetScriptingBackend(BuildTargetGroup, ScriptingImplementation)' is obsolete: 'Use SetScriptingBackend(NamedBuildTarget, ScriptingImplementation) instead.'"));
+    }
+
+    [Test]
+    public void Cs0618_SdkPackagePath_NeverFiltered()
+    {
+        // SDK 자체 .cs의 CS0618은 Packages/com.toss.apps-in-toss 경로로 출력 → Assets/ 가드 미충족 +
+        // "apps-in-toss" 키워드 가드 보호. 현행 SDK는 #if UNITY_6000_0_OR_NEWER로 obsolete API를 피하지만
+        // 만약 출력되더라도 SDK 코드 경고는 절대 드롭하지 않는다.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Packages/com.toss.apps-in-toss/Editor/Foo.cs(10,5): warning CS0618: 'X' is obsolete: 'use Y'"));
+    }
+
+    [Test]
+    public void Cs0618_NoAssetsPath_NotFiltered()
+    {
+        // Assets/ 경로도 .cs(L,C)도 없는 일반 CS0618(예: 사전 컴파일된 dll)은 합성 가드가 매칭되지 않아 통과.
+        // CS0618을 무차별 드롭하지 않음을 검증.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "SomeLib.dll: warning CS0618: 'Z' is obsolete"));
+    }
+
+    #endregion
+
     #region SDK 관련 메시지는 통과 (negative cases)
 
     [Test]

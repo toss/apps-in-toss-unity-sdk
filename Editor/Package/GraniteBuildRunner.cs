@@ -41,7 +41,9 @@ namespace AppsInToss.Editor.Package
             }
             else
             {
-                Debug.LogError("[AIT] granite build 재시도도 실패");
+                // 동기 재시도 실패 — Console 진단만. Sentry 단일 이벤트는 상위
+                // (ShowBuildFailedDialog → CaptureBuildError)에 위임 (cascade 중복 방지, SDK-10Q).
+                AITLog.Error("[AIT] granite build 재시도도 실패", sentryCapture: false);
             }
             return result;
         }
@@ -90,7 +92,8 @@ namespace AppsInToss.Editor.Package
                         var distValidation = AITBuildValidator.ValidateDistOutput(ctx.BuildProjectPath);
                         if (distValidation != AITConvertCore.AITExportError.SUCCEED)
                         {
-                            Debug.LogError("[AIT] granite build가 exit code 0으로 완료되었으나 출력물 검증 실패. 재시도합니다...");
+                            // 출력물 검증 실패 → 재시도 진입(중간 단계). Sentry 캡처 불필요 (상위 단일 캡처에 위임).
+                            AITLog.Error("[AIT] granite build가 exit code 0으로 완료되었으나 출력물 검증 실패. 재시도합니다...", sentryCapture: false);
                             RetryGraniteBuildAsync(ctx, ct, onProgress, onComplete);
                             return;
                         }
@@ -184,9 +187,10 @@ namespace AppsInToss.Editor.Package
                 {
                     if (retryInstallResult != AITConvertCore.AITExportError.SUCCEED)
                     {
-                        // 실제 터미널 실패 경로 — 캡처 유지. 단일 이슈(Sentry SDK-VH) 안에서 원인 구분이
-                        // 가능하도록 실패 카테고리(AITExportError)를 함께 남긴다.
-                        Debug.LogError($"[AIT] granite build 실패 후 pnpm install 재시도도 실패 (결과: {retryInstallResult})");
+                        // granite build 실패 후 재설치까지 실패한 경로. Console 진단용으로 실패
+                        // 카테고리(AITExportError)를 남기되, Sentry 단일 이벤트는 상위
+                        // (ShowBuildFailedDialog → CaptureBuildError)에 위임한다 (SDK-VH cascade 중복 방지).
+                        AITLog.Error($"[AIT] granite build 실패 후 pnpm install 재시도도 실패 (결과: {retryInstallResult})", sentryCapture: false);
                         onComplete?.Invoke(retryInstallResult);
                         return;
                     }
@@ -204,7 +208,8 @@ namespace AppsInToss.Editor.Package
                                 var distValidation = AITBuildValidator.ValidateDistOutput(ctx.BuildProjectPath);
                                 if (distValidation != AITConvertCore.AITExportError.SUCCEED)
                                 {
-                                    Debug.LogError($"[AIT] granite build 재시도도 출력물 검증 실패 (결과: {distValidation})");
+                                    // 재시도 출력물 검증 실패 — Console 진단만, Sentry는 상위 단일 캡처에 위임.
+                                    AITLog.Error($"[AIT] granite build 재시도도 출력물 검증 실패 (결과: {distValidation})", sentryCapture: false);
                                     onComplete?.Invoke(distValidation);
                                     return;
                                 }
@@ -214,7 +219,8 @@ namespace AppsInToss.Editor.Package
                             }
                             else
                             {
-                                Debug.LogError($"[AIT] granite build 재시도도 실패 (결과: {retryBuildResult})");
+                                // 비동기 재시도 실패 — Console 진단만, Sentry는 상위 단일 캡처에 위임 (SDK-10Q).
+                                AITLog.Error($"[AIT] granite build 재시도도 실패 (결과: {retryBuildResult})", sentryCapture: false);
                             }
                             onComplete?.Invoke(retryBuildResult);
                         }

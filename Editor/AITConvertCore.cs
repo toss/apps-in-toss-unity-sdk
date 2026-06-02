@@ -480,6 +480,15 @@ namespace AppsInToss
         /// <returns>변환 결과</returns>
         public static AITExportError DoExport(bool buildWebGL = true, bool doPackaging = true, bool cleanBuild = false, AITBuildProfile profile = null, string profileName = null, bool skipGraniteBuild = false)
         {
+            // play mode 중에는 BuildPipeline.BuildPlayer가 내부적으로 Addressables 빌드를
+            // PreprocessBuild에서 트리거하며 "This cannot be used during play mode." 에러를 낸다.
+            // SDK 버그가 아니라 사용자 조작 오류이므로 빌드 진입 자체를 막는다 (SDK-QJ/QH/QG/E1).
+            if (EditorApplication.isPlayingOrWillChangePlaymode)
+            {
+                AITLog.Error("[AIT] play mode 중에는 빌드를 실행할 수 없습니다. Play 모드를 종료한 후 다시 시도하세요.", sentryCapture: false);
+                return AITExportError.CANCELLED;
+            }
+
             // 빌드 시작 전 취소 플래그 리셋
             ResetCancellation();
 
@@ -606,6 +615,15 @@ namespace AppsInToss
             Action<BuildPhase, float, string> onProgress = null,
             bool skipGraniteBuild = false)
         {
+            // play mode 중 빌드 진입 차단 (SDK-QJ/QH/QG/E1). DoExport와 동일한 가드 — 메뉴/UI 모든
+            // 진입점이 DoExport/DoExportAsync로 수렴하므로 두 곳만 막으면 전체 경로가 커버된다.
+            if (EditorApplication.isPlayingOrWillChangePlaymode)
+            {
+                AITLog.Error("[AIT] play mode 중에는 빌드를 실행할 수 없습니다. Play 모드를 종료한 후 다시 시도하세요.", sentryCapture: false);
+                onComplete?.Invoke(AITExportError.CANCELLED);
+                return;
+            }
+
             // 배치 모드에서는 동기 실행
             if (Application.isBatchMode)
             {
@@ -864,10 +882,14 @@ namespace AppsInToss
             // WebGL Build Support 모듈 설치 여부 사전 체크
             if (!BuildPipeline.IsBuildTargetSupported(BuildTargetGroup.WebGL, BuildTarget.WebGL))
             {
-                Debug.LogError(
+                // 사용자 환경 문제(Unity Hub에서 WebGL Build Support 미설치)이지 SDK 버그가 아니다.
+                // 메시지 첫머리의 '[AIT' 토큰이 트래커 SDK 키워드 가드를 먼저 발동시켜 NonSdkMessagePatterns를
+                // 무력화하므로, sentryCapture:false가 Sentry 차단의 유일하게 확실한 방법이다 (SDK-DB).
+                AITLog.Error(
                     "[AIT] ✗ WebGL Build Support 모듈이 설치되지 않았습니다.\n" +
                     "Unity Hub를 열고 현재 Unity 버전(" + Application.unityVersion + ")에 WebGL Build Support를 추가 설치하세요.\n" +
-                    "Unity Hub > Installs > Unity " + Application.unityVersion + " > Add Modules > WebGL Build Support");
+                    "Unity Hub > Installs > Unity " + Application.unityVersion + " > Add Modules > WebGL Build Support",
+                    sentryCapture: false);
                 return AITExportError.BUILD_WEBGL_FAILED;
             }
 

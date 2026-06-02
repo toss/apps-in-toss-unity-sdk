@@ -90,6 +90,12 @@ namespace AppsInToss
                 }
                 else
                 {
+                    // 빌드 실패의 단일 구조화 Sentry 이벤트(errorCode 기반 fingerprint). 메뉴 경로
+                    // (ShowBuildFailedDialog)와 동일하게 Configuration Window 경로도 여기서 캡처해야
+                    // runner 레벨 raw LogError(SDK-R5/10Q/VH)를 sentryCapture:false로 위임해도
+                    // 캡처 공백이 생기지 않는다.
+                    AppsInToss.Editor.ErrorTracker.AITEditorErrorTracker.CaptureBuildError(
+                        result, $"AIT: 빌드 실패: {result}", "Configuration Window");
                     AITPlatformHelper.ShowInfoDialog("실패", $"변환 중 오류가 발생했습니다: {result}", "확인");
                 }
             }
@@ -103,6 +109,9 @@ namespace AppsInToss
                 }
                 else
                 {
+                    // 위와 동일 — Configuration Window WebGL 빌드 실패도 단일 구조화 이벤트로 캡처.
+                    AppsInToss.Editor.ErrorTracker.AITEditorErrorTracker.CaptureBuildError(
+                        result, $"AIT: 빌드 실패: {result}", "Configuration Window (WebGL)");
                     AITPlatformHelper.ShowInfoDialog("실패", $"빌드 중 오류가 발생했습니다: {result}", "확인");
                 }
             }

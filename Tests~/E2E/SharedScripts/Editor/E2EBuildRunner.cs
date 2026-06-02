@@ -3,6 +3,7 @@ using UnityEditor;
 using UnityEditor.SceneManagement;
 using System.IO;
 using AppsInToss;
+using AppsInToss.Editor;
 
 /// <summary>
 /// E2E 테스트용 빌드 스크립트 - SDK API를 직접 호출
@@ -128,8 +129,11 @@ public class E2EBuildRunner
 
             if (!validation.passed)
             {
+                // 검증 에러 메시지에 ait-build 경로 등 AIT 키워드가 섞여 들어가면 SDK 에러 트래커가
+                // 캡처(IsAitRelated 통과)하므로 sentryCapture:false로 차단. E2E 검증 실패는 CI exit
+                // code 2로 검출되며 Sentry 대상이 아니다.
                 foreach (var err in validation.errors)
-                    Debug.LogError($"[Validation] {err}");
+                    AITLog.Error($"[Validation] {err}", sentryCapture: false);
                 Debug.LogError("========================================");
                 Debug.LogError("E2E Build Complete - VALIDATION FAILED");
                 Debug.LogError("========================================");
@@ -149,7 +153,10 @@ public class E2EBuildRunner
         else
         {
             string errorMessage = AITConvertCore.GetErrorMessage(result);
-            Debug.LogError($"✗ SDK build failed: {errorMessage}");
+            // errorMessage에는 "ait-build" 등 AIT 키워드가 포함되어 SDK 에러 트래커가 이 콘솔
+            // 로그를 캡처(SDK-10P cascade)한다. E2E 빌드 실패는 CI exit code 1로 검출되므로
+            // Sentry 캡처 대상이 아니다 — sentryCapture:false로 차단.
+            AITLog.Error($"✗ SDK build failed: {errorMessage}", sentryCapture: false);
             Debug.LogError("========================================");
             Debug.LogError("E2E Build Complete - FAILED");
             Debug.LogError("========================================");

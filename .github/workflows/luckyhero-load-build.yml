@@ -139,6 +139,10 @@ jobs:
         id: probe
         if: ${{ steps.params.outputs.run == 'true' }}
         shell: bash
+        env:
+          # repo secret 로 주입되는 fine-grained PAT (toss/LuckyHeroDefence read).
+          # 없으면 빈 문자열 → ambient(HTTPS/SSH) 폴백.
+          LUCKYHERO_CLONE_TOKEN: ${{ secrets.LUCKYHERO_CLONE_TOKEN }}
         run: |
           set +e
           UV="${{ steps.params.outputs.unity_version }}"
@@ -156,10 +160,12 @@ jobs:
           (command -v node && node -v) || echo "node: not on PATH (빌드는 mise/asdf 경유일 수 있음)"
           (command -v pnpm && pnpm -v) || echo "pnpm: not on PATH"
           echo ""
-          echo "===== Game repo access (ambient git auth, 토큰 비출력) ====="
-          # 두 경로를 순서대로 시도: (1) HTTPS ambient (credential helper),
-          # (2) SSH ambient (toss 개발자 머신의 org SSH 키). 먼저 성공한 프로토콜을
-          # clone 단계가 그대로 사용한다. BatchMode/GIT_TERMINAL_PROMPT 로 프롬프트 차단(행 방지).
+          echo "===== Game repo access (자격증명, 토큰 비출력) ====="
+          # 우선순위: (0) repo secret PAT(LUCKYHERO_CLONE_TOKEN) — 가장 확실,
+          #           (1) HTTPS ambient (러너 credential helper),
+          #           (2) SSH ambient (toss 개발자 머신의 org SSH 키).
+          # 먼저 성공한 프로토콜(clone_proto)을 clone 단계가 그대로 사용한다.
+          # 토큰은 GIT_ASKPASS 로만 전달 → argv/로그에 노출되지 않음.
           AUTH=fail; PROTO=""
           # 기존 영구 clone 이 있으면 그 remote 프로토콜을 우선 신뢰 (재인증 불필요).
           GAME_DIR_PROBE="$HOME/ait-luckyhero/LuckyHeroDefence"
@@ -171,25 +177,41 @@ jobs:
             esac
             [ -n "$PROTO" ] && echo "기존 clone remote 프로토콜 감지: $PROTO ($EXIST_URL)"
           fi
-          if GIT_TERMINAL_PROMPT=0 git ls-remote https://github.com/toss/LuckyHeroDefence HEAD >/dev/null 2>&1; then
-            AUTH=ok; [ -z "$PROTO" ] && PROTO=https
-            echo "✓ HTTPS ambient git auth 성공"
-          else
-            echo "✗ HTTPS ambient auth 실패 (GITHUB_TOKEN 은 cross-repo private 불가)"
-            if GIT_SSH_COMMAND="ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15" \
-                 git ls-remote git@github.com:toss/LuckyHeroDefence HEAD >/dev/null 2>&1; then
-              AUTH=ok; PROTO=ssh
-              echo "✓ SSH ambient git auth 성공 (러너 org SSH 키)"
+          if [ -n "${LUCKYHERO_CLONE_TOKEN:-}" ]; then
+            ASKPASS=$(mktemp)
+            printf '#!/bin/sh\nexec echo "$LUCKYHERO_CLONE_TOKEN"\n' > "$ASKPASS"
+            chmod +x "$ASKPASS"
+            if GIT_TERMINAL_PROMPT=0 GIT_ASKPASS="$ASKPASS" \
+                 git ls-remote https://x-access-token@github.com/toss/LuckyHeroDefence HEAD >/dev/null 2>&1; then
+              AUTH=ok; PROTO=token
+              echo "✓ PAT(repo secret) git auth 성공"
             else
-              echo "✗ SSH ambient auth 실패"
+              echo "✗ PAT(repo secret) auth 실패 — 토큰 scope/만료 확인 필요"
+            fi
+            rm -f "$ASKPASS"
+          else
+            echo "(LUCKYHERO_CLONE_TOKEN 미설정 — ambient 폴백)"
+          fi
+          if [ "$AUTH" != "ok" ]; then
+            if GIT_TERMINAL_PROMPT=0 git ls-remote https://github.com/toss/LuckyHeroDefence HEAD >/dev/null 2>&1; then
+              AUTH=ok; [ -z "$PROTO" ] && PROTO=https
+              echo "✓ HTTPS ambient git auth 성공"
+            else
+              echo "✗ HTTPS ambient auth 실패 (GITHUB_TOKEN 은 cross-repo private 불가)"
+              if GIT_SSH_COMMAND="ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15" \
+                   git ls-remote git@github.com:toss/LuckyHeroDefence HEAD >/dev/null 2>&1; then
+                AUTH=ok; PROTO=ssh
+                echo "✓ SSH ambient git auth 성공 (러너 org SSH 키)"
+              else
+                echo "✗ SSH ambient auth 실패"
+              fi
             fi
           fi
           echo "auth=$AUTH" >> "$GITHUB_OUTPUT"
           echo "clone_proto=$PROTO" >> "$GITHUB_OUTPUT"
           if [ "$AUTH" = "fail" ]; then
-            echo "::warning::LuckyHeroDefence 접근 불가 — 러너에 toss org private 자격증명(HTTPS/SSH)이 없습니다."
-            echo "  → (a) 러너 git credential helper/SSH 키에 toss org 접근 추가, 또는"
-            echo "    (b) repo secret 으로 PAT(repo scope) 추가 후 워크플로에서 사용."
+            echo "::warning::LuckyHeroDefence 접근 불가 — 자격증명(PAT secret / HTTPS / SSH) 모두 없음."
+            echo "  → repo secret LUCKYHERO_CLONE_TOKEN 에 toss/LuckyHeroDefence read 권한 PAT 추가 권장."
           else
             echo "→ clone 프로토콜: $PROTO"
           fi
@@ -208,20 +230,26 @@ jobs:
         id: clone
         if: ${{ steps.params.outputs.run == 'true' && steps.params.outputs.probe_only != 'true' && steps.probe.outputs.auth == 'ok' }}
         shell: bash
+        env:
+          LUCKYHERO_CLONE_TOKEN: ${{ secrets.LUCKYHERO_CLONE_TOKEN }}
         run: |
           set -euo pipefail
           GAME_DIR="$HOME/ait-luckyhero/LuckyHeroDefence"
           mkdir -p "$HOME/ait-luckyhero"
           LUCKY_REF="${{ steps.params.outputs.lucky_ref }}"
           PROTO="${{ steps.probe.outputs.clone_proto }}"
+          export GIT_TERMINAL_PROMPT=0
           if [ "$PROTO" = "ssh" ]; then
             GAME_URL="git@github.com:toss/LuckyHeroDefence"
             export GIT_SSH_COMMAND="ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15"
+          elif [ "$PROTO" = "token" ]; then
+            GAME_URL="https://x-access-token@github.com/toss/LuckyHeroDefence"
+            ASKPASS=$(mktemp); printf '#!/bin/sh\nexec echo "$LUCKYHERO_CLONE_TOKEN"\n' > "$ASKPASS"; chmod +x "$ASKPASS"
+            export GIT_ASKPASS="$ASKPASS"
           else
             GAME_URL="https://github.com/toss/LuckyHeroDefence"
           fi
-          export GIT_TERMINAL_PROMPT=0
-          echo "clone 프로토콜=$PROTO  url=$GAME_URL"
+          echo "clone 프로토콜=$PROTO  (url 토큰 비출력)"
 
           if [ "${{ steps.params.outputs.fresh_clone }}" = "true" ]; then
             echo "fresh_clone=true → 기존 clone 제거"; rm -rf "$GAME_DIR"

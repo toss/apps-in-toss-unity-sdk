@@ -429,8 +429,12 @@ namespace AppsInToss.Editor
             // 3. vite.config.ts - 마커 기반 업데이트
             Package.BuildConfigMerger.UpdateViteConfig(projectBuildConfigPath, sdkBuildConfigPath, buildProjectPath, config);
 
-            // 4. granite.config.ts - 마커 기반 업데이트
+            // 4. granite.config.ts - 마커 기반 업데이트 (web-framework 2.x granite build)
             Package.BuildConfigMerger.UpdateGraniteConfig(projectBuildConfigPath, sdkBuildConfigPath, buildProjectPath, config);
+
+            // 4.5. apps-in-toss.config.ts - 마커 기반 업데이트 (web-framework 3.x ait build)
+            // 2.x는 이 파일을 무시하므로 항상 emit해도 stable 빌드에 영향 없음 (버전 게이팅 불필요)
+            Package.BuildConfigMerger.UpdateAppsInTossConfig(projectBuildConfigPath, sdkBuildConfigPath, buildProjectPath, config);
 
             // 5. tsconfig.json - 머지 (프로젝트 옵션 + SDK 필수 옵션)
             Package.BuildConfigMerger.MergeTsConfig(projectBuildConfigPath, sdkBuildConfigPath, buildProjectPath);

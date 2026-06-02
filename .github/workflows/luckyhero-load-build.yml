@@ -13,10 +13,15 @@
 #   - 게임 clone 은 러너 로컬 디스크($HOME/ait-luckyhero)에만 존재하고 외부로 나가지 않는다.
 #   - 자격증명/토큰을 로그에 출력하지 않는다 (GIT_TERMINAL_PROMPT=0 로 프롬프트 차단).
 #
-# 트리거: workflow_dispatch 전용 (수동, push/pr 트리거 없음).
-#   - sdk_ref=main           → 베이스라인(현행) 빌드
-#   - sdk_ref=feature/...     → 최적화 레버 적용 빌드
-#   동일 게임 commit + 동일 러너 + 동일 Unity 로 A/B 직접 비교.
+# 트리거:
+#   (A) workflow_dispatch — 이 워크플로가 default 브랜치(main)에 머지된 뒤 사용 가능.
+#       sdk_ref=main → 베이스라인 / sdk_ref=feature/... → 최적화 빌드 (네이티브 inputs).
+#   (B) push (sentinel-gated) — main 머지 전, feature 브랜치에서 즉시 실행하기 위한 경로.
+#       이 브랜치에 push 하되 커밋 메시지에 센티넬을 넣어야만 실제 실행된다:
+#         [lucky-probe]  → 진단만 (clone/build 없음)
+#         [lucky-build]  → 빌드 + 측정
+#       파라미터는 커밋 메시지 토큰으로 전달: 예) "[lucky-build] sdk_ref=main"
+#       센티넬이 없는 push 는 즉시 no-op (run=false).
 # =============================================================================
 name: LuckyHero Load Build (internal)
 
@@ -36,7 +41,7 @@ on:
         type: string
         default: '2022.3'
       probe_only:
-        description: '진단만 — clone/build 없이 러너 환경 + 게임 접근권한만 확인 (먼저 이걸로 1회)'
+        description: '진단만 — clone/build 없이 러너 환경 + 게임 접근권한만 확인'
         type: boolean
         default: false
       clean_build:
@@ -47,49 +52,107 @@ on:
         description: '게임을 새로 clone (기존 영구 clone 폐기 — 7.9GB 재다운로드)'
         type: boolean
         default: false
+  push:
+    branches:
+      - 'chore/luckyhero-load-build-ci'
 
 concurrency:
-  group: luckyhero-load-build-${{ inputs.unity_version }}
+  group: luckyhero-load-build-${{ inputs.unity_version || '2022.3' }}
   cancel-in-progress: false
 
 jobs:
   build:
-    name: LuckyHero Build (sdk=${{ inputs.sdk_ref }})
-    runs-on: ${{ fromJSON(format('["self-hosted","macOS","ARM64","enabled","unity-{0}"]', inputs.unity_version)) }}
+    name: LuckyHero Build
+    runs-on: ${{ fromJSON(format('["self-hosted","macOS","ARM64","enabled","unity-{0}"]', inputs.unity_version || '2022.3')) }}
     timeout-minutes: 200
 
     steps:
-      # 0. 빌드-CI 도구(러너 스크립트 + 측정 스크립트)는 항상 이 워크플로의 ref 에서 가져온다.
+      # 0. 실행 파라미터 결정 (dispatch=inputs / push=커밋 메시지 센티넬+토큰).
+      - name: Resolve run params
+        id: params
+        shell: bash
+        env:
+          HEAD_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          set -uo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            RUN=true
+            SDK_REF="${{ inputs.sdk_ref }}"
+            LUCKY_REF="${{ inputs.lucky_ref }}"
+            UNITY_VERSION="${{ inputs.unity_version }}"
+            PROBE_ONLY="${{ inputs.probe_only }}"
+            CLEAN_BUILD="${{ inputs.clean_build }}"
+            FRESH_CLONE="${{ inputs.fresh_clone }}"
+          else
+            MSG="${HEAD_MSG:-}"
+            # 기본값
+            RUN=false; PROBE_ONLY=false
+            SDK_REF="feature/webgl-meta-load-time"; LUCKY_REF="main"; UNITY_VERSION="2022.3"
+            CLEAN_BUILD=false; FRESH_CLONE=false
+            case "$MSG" in
+              *"[lucky-probe]"*) RUN=true; PROBE_ONLY=true ;;
+            esac
+            case "$MSG" in
+              *"[lucky-build]"*) RUN=true; PROBE_ONLY=false ;;
+            esac
+            # key=value 토큰 파싱
+            for kv in $(printf '%s' "$MSG" | tr ' \t\n' '\n\n\n' | grep -E '^(sdk_ref|lucky_ref|unity_version|clean_build|fresh_clone)=' || true); do
+              k="${kv%%=*}"; v="${kv#*=}"
+              case "$k" in
+                sdk_ref) SDK_REF="$v" ;;
+                lucky_ref) LUCKY_REF="$v" ;;
+                unity_version) UNITY_VERSION="$v" ;;
+                clean_build) CLEAN_BUILD="$v" ;;
+                fresh_clone) FRESH_CLONE="$v" ;;
+              esac
+            done
+          fi
+          {
+            echo "run=$RUN"
+            echo "sdk_ref=$SDK_REF"
+            echo "lucky_ref=$LUCKY_REF"
+            echo "unity_version=$UNITY_VERSION"
+            echo "probe_only=$PROBE_ONLY"
+            echo "clean_build=$CLEAN_BUILD"
+            echo "fresh_clone=$FRESH_CLONE"
+          } >> "$GITHUB_OUTPUT"
+          echo "Resolved → run=$RUN sdk_ref=$SDK_REF lucky_ref=$LUCKY_REF unity=$UNITY_VERSION probe_only=$PROBE_ONLY clean=$CLEAN_BUILD fresh=$FRESH_CLONE"
+
+      # 1. 빌드-CI 도구(러너 스크립트 + 측정 스크립트)는 항상 이 워크플로의 ref 에서 가져온다.
       - name: Checkout build-CI tooling
+        if: ${{ steps.params.outputs.run == 'true' }}
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
 
-      # 1. 빌드에 사용할 SDK 소스(레버 포함)를 sdk-src/ 로 별도 체크아웃.
+      # 2. 빌드에 사용할 SDK 소스(레버 포함)를 sdk-src/ 로 별도 체크아웃.
       - name: Checkout SDK under test
+        if: ${{ steps.params.outputs.run == 'true' }}
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.sdk_ref }}
+          ref: ${{ steps.params.outputs.sdk_ref }}
           path: sdk-src
           fetch-depth: 1
 
-      # 2. 저비용 feasibility probe — 비싼 clone(7.9GB) 전에 go/no-go 판정.
+      # 3. 저비용 feasibility probe — 비싼 clone(7.9GB) 전에 go/no-go 판정.
       - name: Probe runner & game access
         id: probe
+        if: ${{ steps.params.outputs.run == 'true' }}
         shell: bash
         run: |
           set +e
+          UV="${{ steps.params.outputs.unity_version }}"
           echo "===== Runner ====="
           echo "Runner name : ${RUNNER_NAME:-unknown}"
           echo "Workspace   : ${GITHUB_WORKSPACE}"
           echo ""
           echo "===== Disk ====="
-          df -h "$HOME" 2>/dev/null | tail -n +1
+          df -h "$HOME" 2>/dev/null
           echo ""
-          echo "===== Unity ${{ inputs.unity_version }} installs ====="
-          ls -d "/Applications/Unity/Hub/Editor/${{ inputs.unity_version }}"* 2>/dev/null || echo "(none found under that version)"
+          echo "===== Unity ${UV} installs ====="
+          ls -d "/Applications/Unity/Hub/Editor/${UV}"* 2>/dev/null || echo "(none found under that version)"
           echo ""
-          echo "===== node / pnpm (빌드 패키징/측정에 필요) ====="
+          echo "===== node / pnpm ====="
           (command -v node && node -v) || echo "node: not on PATH (빌드는 mise/asdf 경유일 수 있음)"
           (command -v pnpm && pnpm -v) || echo "pnpm: not on PATH"
           echo ""
@@ -100,7 +163,7 @@ jobs:
           else
             echo "auth=fail" >> "$GITHUB_OUTPUT"
             echo "::warning::LuckyHeroDefence 접근 불가 — 러너에 toss org private 자격증명이 없습니다."
-            echo "  → 다음 중 하나 필요: (a) 러너 git credential helper 에 toss org 접근 추가,"
+            echo "  → (a) 러너 git credential helper 에 toss org 접근 추가, 또는"
             echo "    (b) repo secret 으로 PAT(repo scope) 추가 후 워크플로에서 사용."
           fi
           echo ""
@@ -108,28 +171,24 @@ jobs:
           if [ -d "$GAME_DIR/.git" ]; then
             echo "기존 영구 clone 존재: $GAME_DIR ($(du -sh "$GAME_DIR" 2>/dev/null | cut -f1))"
           else
-            echo "영구 clone 없음 (최초 실행 시 ~7.9GB 다운로드)"
+            echo "영구 clone 없음 (최초 빌드 시 ~7.9GB 다운로드)"
           fi
-          echo ""
-          if [ "${{ inputs.probe_only }}" = "true" ]; then
-            echo "probe_only=true → 여기서 종료 (clone/build 생략)."
-          fi
+          [ "${{ steps.params.outputs.probe_only }}" = "true" ] && echo "probe_only=true → 여기서 종료 (clone/build 생략)."
           exit 0
 
-      # 3. 게임 clone / update (probe 통과 + probe_only=false 일 때만).
+      # 4. 게임 clone / update (run + probe 통과 + probe_only=false 일 때만).
       - name: Clone / update LuckyHeroDefence
         id: clone
-        if: ${{ inputs.probe_only == false && steps.probe.outputs.auth == 'ok' }}
+        if: ${{ steps.params.outputs.run == 'true' && steps.params.outputs.probe_only != 'true' && steps.probe.outputs.auth == 'ok' }}
         shell: bash
         run: |
           set -euo pipefail
           GAME_DIR="$HOME/ait-luckyhero/LuckyHeroDefence"
           mkdir -p "$HOME/ait-luckyhero"
-          LUCKY_REF="${{ inputs.lucky_ref }}"
+          LUCKY_REF="${{ steps.params.outputs.lucky_ref }}"
 
-          if [ "${{ inputs.fresh_clone }}" = "true" ]; then
-            echo "fresh_clone=true → 기존 clone 제거"
-            rm -rf "$GAME_DIR"
+          if [ "${{ steps.params.outputs.fresh_clone }}" = "true" ]; then
+            echo "fresh_clone=true → 기존 clone 제거"; rm -rf "$GAME_DIR"
           fi
 
           if [ -d "$GAME_DIR/.git" ]; then
@@ -137,24 +196,20 @@ jobs:
             GIT_TERMINAL_PROMPT=0 git -C "$GAME_DIR" fetch --depth 1 origin "$LUCKY_REF"
             git -C "$GAME_DIR" checkout -f FETCH_HEAD
             git -C "$GAME_DIR" reset --hard FETCH_HEAD
-            # Library(에셋 임포트 캐시)만 보존, 나머지 untracked(빌드 산출물/임베드 패키지)는 정리
             git -C "$GAME_DIR" clean -fdx -e Library
           else
-            echo "최초 clone (shallow, single-branch) — 시간이 걸립니다 (~7.9GB)"
+            echo "최초 clone (shallow, single-branch) — ~7.9GB, 시간 소요"
             GIT_TERMINAL_PROMPT=0 git clone --depth 1 --single-branch --branch "$LUCKY_REF" \
               https://github.com/toss/LuckyHeroDefence "$GAME_DIR"
           fi
 
-          # 커밋된 빌드 산출물 제거(공간 확보 + 혼동 방지) — 우리가 새로 빌드한다.
           rm -rf "$GAME_DIR/webgl" "$GAME_DIR/WebBuild" "$GAME_DIR/ait-build/dist" "$GAME_DIR"/mono_crash* 2>/dev/null || true
-
           echo "game_dir=$GAME_DIR" >> "$GITHUB_OUTPUT"
-          echo "✓ 준비 완료: $GAME_DIR"
-          du -sh "$GAME_DIR" 2>/dev/null | cut -f1
+          echo "✓ 준비 완료: $GAME_DIR ($(du -sh "$GAME_DIR" 2>/dev/null | cut -f1))"
 
-      # 4. SDK(레버 포함)를 게임의 임베드 패키지로 주입 + 빌드 러너 복사.
+      # 5. SDK(레버 포함)를 게임의 임베드 패키지로 주입 + 빌드 러너 복사.
       - name: Embed SDK under test into game
-        if: ${{ inputs.probe_only == false && steps.probe.outputs.auth == 'ok' }}
+        if: ${{ steps.params.outputs.run == 'true' && steps.params.outputs.probe_only != 'true' && steps.probe.outputs.auth == 'ok' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -163,11 +218,9 @@ jobs:
           EMBED="$GAME_DIR/Packages/$PKG_NAME"
 
           echo "SDK 임베드: sdk-src → $EMBED"
-          rm -rf "$EMBED"
-          mkdir -p "$EMBED"
+          rm -rf "$EMBED"; mkdir -p "$EMBED"
           rsync -a --delete --exclude='.git' "$GITHUB_WORKSPACE/sdk-src/" "$EMBED/"
 
-          # 임베드 패키지가 우선하도록 manifest 의 git 의존성 라인 제거 + lock 재생성 유도.
           node - "$GAME_DIR" "$PKG_NAME" <<'NODE'
           const fs = require('fs');
           const path = require('path');
@@ -186,26 +239,24 @@ jobs:
           if (fs.existsSync(lock)) { fs.unlinkSync(lock); console.log('packages-lock.json 삭제 → UPM 재해석'); }
           NODE
 
-          # 비대화형 빌드 러너 주입
           mkdir -p "$GAME_DIR/Assets/Editor"
           cp "$GITHUB_WORKSPACE/.github/luckyhero/LuckyHeroLoadBuildRunner.cs" \
              "$GAME_DIR/Assets/Editor/LuckyHeroLoadBuildRunner.cs"
           echo "✓ 빌드 러너 주입: Assets/Editor/LuckyHeroLoadBuildRunner.cs"
 
-          # SDK/asmdef 변경 시 stale ref.dll 방지를 위해 Bee 캐시 삭제 (incremental import 는 유지)
           rm -rf "$GAME_DIR/Library/Bee" 2>/dev/null || true
           echo "✓ Library/Bee 제거 (SDK 교체 반영)"
 
-      # 5. Unity batchmode 빌드 (unity-build.yml 의 macOS 빌드 폴링 로직 재사용).
+      # 6. Unity batchmode 빌드 (unity-build.yml 의 macOS 빌드 폴링 로직 재사용).
       - name: Build LuckyHero WebGL (Unity batchmode)
-        if: ${{ inputs.probe_only == false && steps.probe.outputs.auth == 'ok' }}
+        if: ${{ steps.params.outputs.run == 'true' && steps.params.outputs.probe_only != 'true' && steps.probe.outputs.auth == 'ok' }}
         uses: nick-invision/retry@v4
         env:
           AIT_DEBUG_CONSOLE: "true"
-          AIT_COMPRESSION_FORMAT: "2"        # 2=Brotli (프로덕션 on-wire)
-          AIT_DEVELOPMENT_BUILD: "false"     # 비개발 빌드
+          AIT_COMPRESSION_FORMAT: "2"
+          AIT_DEVELOPMENT_BUILD: "false"
           AIT_IL2CPP_CONFIGURATION: "Release"
-          AIT_CLEAN_BUILD: ${{ inputs.clean_build && '1' || '0' }}
+          AIT_CLEAN_BUILD: ${{ steps.params.outputs.clean_build == 'true' && '1' || '0' }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         with:
           timeout_minutes: 180
@@ -215,18 +266,15 @@ jobs:
           shell: bash
           command: |
             set -uo pipefail
-            UNITY_BASE="/Applications/Unity/Hub/Editor"
-            UNITY_DIR=$(ls -d "${UNITY_BASE}/${{ inputs.unity_version }}"* 2>/dev/null | sort -rV | head -1)
+            UV="${{ steps.params.outputs.unity_version }}"
+            UNITY_DIR=$(ls -d "/Applications/Unity/Hub/Editor/${UV}"* 2>/dev/null | sort -rV | head -1)
             if [ -z "$UNITY_DIR" ]; then
-              echo "::error::Unity ${{ inputs.unity_version }}.x not found under ${UNITY_BASE}"
-              ls -la "$UNITY_BASE" 2>/dev/null || true
-              exit 1
+              echo "::error::Unity ${UV}.x not found"; ls -la "/Applications/Unity/Hub/Editor" 2>/dev/null || true; exit 1
             fi
             UNITY_PATH="${UNITY_DIR}/Unity.app/Contents/MacOS/Unity"
             GAME_DIR="${{ steps.clone.outputs.game_dir }}"
             LOG_FILE="/tmp/luckyhero-build.log"
             rm -f "$LOG_FILE"
-
             echo "Unity   : $(basename "$UNITY_DIR")"
             echo "Project : $GAME_DIR"
 
@@ -243,10 +291,9 @@ jobs:
               -buildTarget WebGL \
               -logFile "$LOG_FILE" &
             UNITY_PID=$!
-            echo "Unity started (PID: $UNITY_PID, log: $LOG_FILE)"
+            echo "Unity started (PID: $UNITY_PID)"
 
             for i in $(seq 1 30); do [ -f "$LOG_FILE" ] && break; sleep 1; done
-
             flush_log() {
               [ -f "$LOG_FILE" ] || return
               CUR=$(stat -f%z "$LOG_FILE" 2>/dev/null || echo 0); CUR=${CUR:-0}
@@ -255,14 +302,12 @@ jobs:
                 LOG_OFFSET=$CUR
               fi
             }
-            LOG_OFFSET=0
-            MAX_WAIT=10500   # 175분 — 7.9GB 최초 임포트 + 콜드 IL2CPP 커버
-            WAITED=0
+            LOG_OFFSET=0; MAX_WAIT=10500; WAITED=0
             while [ $WAITED -lt $MAX_WAIT ]; do
               sleep 5; WAITED=$((WAITED + 5)); flush_log
               if [ -f "$LOG_FILE" ]; then
-                if grep -q "Exiting batchmode successfully now!" "$LOG_FILE" 2>/dev/null; then break; fi
-                if grep -qE "FAIL_NPM_BUILD|FAIL_NPM_INSTALL|No valid Unity Editor license found|batch mode failed|LuckyHero Load Build - FAILED" "$LOG_FILE" 2>/dev/null; then break; fi
+                grep -q "Exiting batchmode successfully now!" "$LOG_FILE" 2>/dev/null && break
+                grep -qE "FAIL_NPM_BUILD|FAIL_NPM_INSTALL|No valid Unity Editor license found|batch mode failed|LuckyHero Load Build - FAILED" "$LOG_FILE" 2>/dev/null && break
               fi
               kill -0 "$UNITY_PID" 2>/dev/null || break
             done
@@ -272,33 +317,30 @@ jobs:
             grep -q "Exiting batchmode successfully now!" "$LOG_FILE" 2>/dev/null || EXIT_CODE=1
             cleanup_unity; sleep 1
             echo "Build finished (log-based exit: $EXIT_CODE)"
-
             if [ $EXIT_CODE -ne 0 ]; then
               if grep -qE "No valid Unity Editor license found|Unsupported protocol version|ResponseCode: 505|Access token is unavailable|Code 10 while verifying Licensing Client signature|LicensingClient has failed validation|Failed to handshake to channel|IPC channel to LicensingClient doesn't exist" "$LOG_FILE" 2>/dev/null; then
-                echo "::warning::Unity license error — triggering retry"
-                exit 42
+                echo "::warning::Unity license error — triggering retry"; exit 42
               fi
-              echo "::error::LuckyHero build failed (exit $EXIT_CODE). 로그 마지막 60줄:"
-              tail -60 "$LOG_FILE" 2>/dev/null || true
+              echo "::error::LuckyHero build failed (exit $EXIT_CODE). 로그 마지막 60줄:"; tail -60 "$LOG_FILE" 2>/dev/null || true
               exit $EXIT_CODE
             fi
             echo "✓ LuckyHero build succeeded"
 
-      # 6. node 확보 (측정 스크립트용) — 빌드 이후라 머신 빌드 toolchain 에 영향 없음.
+      # 7. node 확보 (측정 스크립트용) — 빌드 이후라 머신 빌드 toolchain 에 영향 없음.
       - name: Setup Node (for measurement)
-        if: ${{ inputs.probe_only == false && steps.probe.outputs.auth == 'ok' }}
+        if: ${{ steps.params.outputs.run == 'true' && steps.params.outputs.probe_only != 'true' && steps.probe.outputs.auth == 'ok' }}
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      # 7. 로드타임 프록시 지표 측정 (사이즈 메타데이터만 — 게임 바이너리 비출력).
+      # 8. 로드타임 프록시 지표 측정 (사이즈 메타데이터만 — 게임 바이너리 비출력).
       - name: Measure load-time proxy metrics
-        if: ${{ inputs.probe_only == false && steps.probe.outputs.auth == 'ok' }}
+        if: ${{ steps.params.outputs.run == 'true' && steps.params.outputs.probe_only != 'true' && steps.probe.outputs.auth == 'ok' }}
         shell: bash
         run: |
           set -euo pipefail
           GAME_DIR="${{ steps.clone.outputs.game_dir }}"
-          LABEL="sdk=${{ inputs.sdk_ref }} lucky=${{ inputs.lucky_ref }} unity=${{ inputs.unity_version }}"
+          LABEL="sdk=${{ steps.params.outputs.sdk_ref }} lucky=${{ steps.params.outputs.lucky_ref }} unity=${{ steps.params.outputs.unity_version }}"
           node "$GITHUB_WORKSPACE/.github/luckyhero/measure.mjs" \
             "$GAME_DIR" "$GITHUB_WORKSPACE/luckyhero-metrics.json" "$LABEL" | tee "$GITHUB_WORKSPACE/luckyhero-metrics.txt"
           {
@@ -309,12 +351,12 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           cp /tmp/luckyhero-build.log "$GITHUB_WORKSPACE/luckyhero-build.log" 2>/dev/null || true
 
-      # 8. 아티팩트 업로드 — 지표 JSON + 로그만 (게임 소스/바이너리 절대 미포함). 비공개 repo, 짧은 보존.
+      # 9. 아티팩트 업로드 — 지표 JSON + 로그만 (게임 소스/바이너리 절대 미포함). 비공개 repo, 짧은 보존.
       - name: Upload metrics & log (internal only)
-        if: ${{ inputs.probe_only == false && steps.probe.outputs.auth == 'ok' && always() }}
+        if: ${{ steps.params.outputs.run == 'true' && steps.params.outputs.probe_only != 'true' && steps.probe.outputs.auth == 'ok' && always() }}
         uses: actions/upload-artifact@v7
         with:
-          name: luckyhero-metrics-${{ inputs.sdk_ref == 'main' && 'baseline' || 'optimized' }}
+          name: luckyhero-metrics-${{ steps.params.outputs.sdk_ref == 'main' && 'baseline' || 'optimized' }}
           path: |
             luckyhero-metrics.json
             luckyhero-metrics.txt

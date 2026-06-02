@@ -33,6 +33,8 @@ namespace AppsInToss.Editor
         public Vector2 cursorHotspot;
         public bool runInBackground;
         public bool stripEngineCode;
+        public bool mipStripping;
+        public bool stripUnusedMeshComponents;
 
         // IL2CPP/Stripping 설정
         public ScriptingImplementation scriptingBackend;
@@ -80,6 +82,8 @@ namespace AppsInToss.Editor
                 cursorHotspot = PlayerSettings.cursorHotspot,
                 runInBackground = PlayerSettings.runInBackground,
                 stripEngineCode = PlayerSettings.stripEngineCode,
+                mipStripping = PlayerSettings.mipStripping,
+                stripUnusedMeshComponents = PlayerSettings.stripUnusedMeshComponents,
 
 #if UNITY_6000_0_OR_NEWER
                 scriptingBackend = PlayerSettings.GetScriptingBackend(NamedBuildTarget.WebGL),
@@ -146,6 +150,8 @@ namespace AppsInToss.Editor
             PlayerSettings.cursorHotspot = cursorHotspot;
             PlayerSettings.runInBackground = runInBackground;
             PlayerSettings.stripEngineCode = stripEngineCode;
+            PlayerSettings.mipStripping = mipStripping;
+            PlayerSettings.stripUnusedMeshComponents = stripUnusedMeshComponents;
 
 #if UNITY_6000_0_OR_NEWER
             PlayerSettings.SetScriptingBackend(NamedBuildTarget.WebGL, scriptingBackend);

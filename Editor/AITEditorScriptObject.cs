@@ -211,6 +211,13 @@ namespace AppsInToss
         [Tooltip("-1 = 자동 (false, Unity 6+)")]
         public int webAssemblyArithmeticExceptions = -1;
 
+        [Header("콘텐츠 축소 (빌드 산출물 .data/.wasm 실감축, 빌드 후 원복)")]
+        [Tooltip("-1 = 자동 (true). 사용하지 않는 텍스처 밉맵 레벨을 빌드 산출물에서 제거 — .data 축소. 설정된 품질의 출력은 불변(미사용 밉만 제거).")]
+        public int mipStripping = -1;
+
+        [Tooltip("-1 = 자동 (true). 어떤 머티리얼도 쓰지 않는 메시 정점 채널(노멀/탄젠트/UV 등)을 제거 — .data 축소. 주의: 런타임에 머티리얼을 교체해 제거된 채널을 요구하면 시각 오류 가능.")]
+        public int stripUnusedMeshComponents = -1;
+
         [Header("빌드 전 검사 설정")]
         [Tooltip("빌드 전 에셋 최적화 검사를 활성화합니다")]
         public bool enableBuildOptimizationCheck = true;
@@ -514,6 +521,33 @@ namespace AppsInToss
         public static bool GetDefaultRunInBackground()
         {
             return false;
+        }
+
+        /// <summary>
+        /// 기본 Mip Stripping: 활성화
+        /// 빌드 시 어떤 QualitySettings 레벨도 사용하지 않는 상위 밉맵 레벨을 산출물에서 제거해
+        /// .data 크기를 줄인다. 설정된 품질의 화면 출력은 바뀌지 않는다(사용되지 않는 밉만 제거).
+        /// QualitySettings가 텍스처 해상도를 제한하지 않으면 제거 대상이 없어 no-op(무해).
+        /// 빌드 후 PlayerSettingsSnapshot.Restore()가 사용자 원래 값으로 되돌린다.
+        /// 출처: Unity Manual reduce-the-file-size-of-your-build (Mipmap Stripping)
+        /// </summary>
+        public static bool GetDefaultMipStripping()
+        {
+            return true;
+        }
+
+        /// <summary>
+        /// 기본 Optimize Mesh Data(stripUnusedMeshComponents): 활성화
+        /// 빌드에 포함된 어떤 머티리얼/셰이더도 참조하지 않는 메시 정점 채널(노멀·탄젠트·컬러·여분 UV 등)을
+        /// 제거해 .data 메시 크기를 줄인다. Unity가 필요한 채널을 정적으로 산출하므로 일반적으로 안전.
+        /// 주의(좁은 위험): 런타임에 머티리얼을 빌드시점에 미사용이던 채널을 요구하는 것으로 교체하면
+        /// 시각 오류 가능 — 동적 머티리얼 스왑 게임은 토글로 비활성 가능.
+        /// 빌드 후 PlayerSettingsSnapshot.Restore()가 사용자 원래 값으로 되돌린다.
+        /// 출처: Unity Manual class-PlayerSettings (Optimize Mesh Data)
+        /// </summary>
+        public static bool GetDefaultStripUnusedMeshComponents()
+        {
+            return true;
         }
 
 #if UNITY_2023_3_OR_NEWER && !UNITY_6000_0_OR_NEWER

@@ -234,6 +234,19 @@ namespace AppsInToss.Editor
                 : AITDefaultSettings.GetDefaultDecompressionFallback();
             PlayerSettings.WebGL.decompressionFallback = decompressionFallback;
 
+            // ===== 콘텐츠 축소 (빌드 산출물 .data 실감축, 빌드 후 스냅샷 복원) =====
+            // 두 레버 모두 프로젝트 전역 PlayerSettings이므로 PlayerSettingsSnapshot이 캡처/복원한다
+            // (영구 오염 방지). 설정 출력은 바꾸지 않고(미사용 데이터만 제거) 산출물 크기만 줄인다.
+            bool mipStripping = editorConfig.mipStripping >= 0
+                ? editorConfig.mipStripping == 1
+                : AITDefaultSettings.GetDefaultMipStripping();
+            PlayerSettings.mipStripping = mipStripping;
+
+            bool stripUnusedMeshComponents = editorConfig.stripUnusedMeshComponents >= 0
+                ? editorConfig.stripUnusedMeshComponents == 1
+                : AITDefaultSettings.GetDefaultStripUnusedMeshComponents();
+            PlayerSettings.stripUnusedMeshComponents = stripUnusedMeshComponents;
+
             // 설정 요약 로그
             Debug.Log($"[AIT] Unity {AITDefaultSettings.GetUnityVersionGroup()} 최적화 설정 적용:");
             Debug.Log($"[AIT]   - WebGL Template: {PlayerSettings.WebGL.template}");
@@ -248,6 +261,8 @@ namespace AppsInToss.Editor
             Debug.Log($"[AIT]   - IL2CPP 설정: {il2cppConfig}{(!string.IsNullOrEmpty(il2cppConfigEnv) ? " (환경 변수)" : editorConfig.il2cppConfiguration < 0 ? " (자동)" : "")}");
             Debug.Log($"[AIT]   - Run In Background: {runInBackground}{(editorConfig.runInBackground < 0 ? " (자동)" : "")}");
             Debug.Log($"[AIT]   - Decompression Fallback: {decompressionFallback}{(editorConfig.decompressionFallback < 0 ? " (자동)" : "")}");
+            Debug.Log($"[AIT]   - Mip Stripping: {mipStripping}{(editorConfig.mipStripping < 0 ? " (자동)" : "")}");
+            Debug.Log($"[AIT]   - Optimize Mesh Data: {stripUnusedMeshComponents}{(editorConfig.stripUnusedMeshComponents < 0 ? " (자동)" : "")}");
             string webGLCodeOptLog = !applyWebGLCodeOpt ? "미적용 (off)"
                 : webGLCodeOptApplied ? $"{webGLCodeOptTarget}{(editorConfig.webGLCodeOptimization < 0 ? " (자동)" : "")}"
                 : "미적용 (API 부재)";

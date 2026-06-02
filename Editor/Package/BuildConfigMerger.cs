@@ -348,5 +348,59 @@ namespace AppsInToss.Editor.Package
 
             File.WriteAllText(destFile, finalContent, new System.Text.UTF8Encoding(false));
         }
+
+        /// <summary>
+        /// apps-in-toss.config.ts를 마커 기반으로 업데이트합니다 (web-framework 3.x ait build 전용).
+        /// SDK 템플릿을 기반으로 하고, USER_CONFIG 영역만 프로젝트에서 보존합니다.
+        /// 2.x granite build는 이 파일을 탐색하지 않으므로(granite.config.ts만 사용) 항상 emit해도
+        /// stable 빌드에 영향이 없다. SDK 템플릿이 없으면(구버전 SDK) no-op.
+        /// </summary>
+        internal static void UpdateAppsInTossConfig(string projectBuildConfigPath, string sdkBuildConfigPath, string destPath, AITEditorScriptObject config)
+        {
+            string projectFile = Path.Combine(projectBuildConfigPath, "apps-in-toss.config.ts");
+            string sdkFile = Path.Combine(sdkBuildConfigPath, "apps-in-toss.config.ts");
+            string destFile = Path.Combine(destPath, "apps-in-toss.config.ts");
+
+            // 구버전 SDK 템플릿에는 apps-in-toss.config.ts가 없을 수 있음 → 스킵 (granite.config.ts만으로 2.x 동작)
+            if (!File.Exists(sdkFile))
+            {
+                return;
+            }
+
+            // SDK 템플릿 로드
+            string sdkTemplate = File.ReadAllText(sdkFile);
+
+            // 플레이스홀더 치환 (granite.config.ts와 동일한 값 소스 사용 — 권한 JSON 형식이 3.x와 호환)
+            Debug.Log("[AIT] apps-in-toss.config.ts placeholder 치환 중...");
+            string finalContent = sdkTemplate
+                .Replace("%AIT_APP_NAME%", config.appName)
+                .Replace("%AIT_PRIMARY_COLOR%", config.primaryColor)
+                .Replace("%AIT_ALLOWS_INLINE_MEDIA_PLAYBACK%", config.allowsInlineMediaPlayback.ToString().ToLower())
+                .Replace("%AIT_MEDIA_PLAYBACK_REQUIRES_USER_ACTION%", config.mediaPlaybackRequiresUserAction.ToString().ToLower())
+                .Replace("%AIT_PERMISSIONS%", config.GetPermissionsJson());
+
+            // 프로젝트 파일이 있으면 USER_CONFIG 영역만 보존
+            if (File.Exists(projectFile))
+            {
+                string projectContent = File.ReadAllText(projectFile);
+
+                string projectUserConfig = AITTemplateManager.ExtractMarkerSection(projectContent, "USER_CONFIG");
+                if (projectUserConfig != null)
+                {
+                    finalContent = AITTemplateManager.ReplaceMarkerSection(finalContent, "USER_CONFIG", projectUserConfig);
+                    Debug.Log("[AIT]   ✓ apps-in-toss.config.ts (SDK 최신 버전 + USER_CONFIG 보존)");
+                }
+                else
+                {
+                    Debug.Log("[AIT]   ✓ apps-in-toss.config.ts (SDK 최신 버전으로 갱신)");
+                }
+            }
+            else
+            {
+                Debug.Log("[AIT]   ✓ apps-in-toss.config.ts (SDK에서 생성)");
+            }
+
+            File.WriteAllText(destFile, finalContent, new System.Text.UTF8Encoding(false));
+        }
     }
 }

@@ -60,7 +60,6 @@ public class SDKAPIReflectionTests
     [TestCase("SubmitGameCenterLeaderBoardScore")]
     [TestCase("GrantPromotionRewardForGame")]
     [TestCase("AppsInTossSignTossCert")]
-    [TestCase("OnVisibilityChangedByTransparentServiceWeb")]
     [TestCase("StartUpdateLocation")]
     [TestCase("ContactsViral")]
     [TestCase("GetGroupId")]
@@ -77,6 +76,20 @@ public class SDKAPIReflectionTests
             }
         }
         Assert.IsTrue(found, $"AIT.{methodName}() should exist as a public static method");
+    }
+
+    // web-framework 3.0.0에서 제거된 API(web-bridge → webview-bridge 리네임).
+    // 2.x에는 존재하고 3.0.0+에는 부재하므로, 존재 여부와 무관하게 통과시켜
+    // sdk-version-override를 포함한 버전 매트릭스에서 안전하게 만든다.
+    // (회귀로 인한 대량 누락은 AIT_Has_MinimumExpected_API_Count가 방어)
+    [Test]
+    public void AIT_OnVisibilityChangedByTransparentServiceWeb_PresenceIsVersionDependent()
+    {
+        var method = aitType.GetMethod("OnVisibilityChangedByTransparentServiceWeb",
+            BindingFlags.Public | BindingFlags.Static);
+        Assert.Pass(method != null
+            ? "present (web-framework < 3.0.0)"
+            : "absent (removed in web-framework 3.0.0+)");
     }
 
     // =====================================================

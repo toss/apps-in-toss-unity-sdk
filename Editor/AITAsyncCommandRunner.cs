@@ -267,9 +267,19 @@ namespace AppsInToss.Editor
                         if (timeoutMs > 0 && timeoutStopwatch.ElapsedMilliseconds > timeoutMs)
                         {
                             try { process.Kill(); } catch { /* 이미 종료된 프로세스는 무시 */ }
-                            process.WaitForExit(5000);
+                            // WaitForExit(ms)는 비동기 출력 핸들러 플러시를 보장하지 않는다. 종료가 확인되면
+                            // 무파라미터 오버로드를 한 번 더 호출해 outputBuilder/errorBuilder를 마저 채운다(.NET 권장, §5).
+                            if (process.WaitForExit(5000))
+                                process.WaitForExit();
                             result.Success = false;
-                            result.Error = $"명령 시간 초과 ({timeoutMs / 1000}초)";
+                            // 타임아웃 직전까지 누적된 stderr/stdout을 결과에 실어 상위 빌드 실패 캡처의
+                            // 진단(extra)에 hang 원인이 남도록 한다 — 동기 경로와 대칭, 빈 result.Output/Error
+                            // 회귀 방지 (§5). "명령 시간 초과" 문구를 접두로 둬 메시지 가독성을 유지한다(매칭 계약 아님).
+                            result.Output = outputBuilder.ToString();
+                            string timeoutStderr = errorBuilder.ToString();
+                            result.Error = string.IsNullOrEmpty(timeoutStderr)
+                                ? $"명령 시간 초과 ({timeoutMs / 1000}초)"
+                                : $"명령 시간 초과 ({timeoutMs / 1000}초)\n{timeoutStderr}";
                             result.ExitCode = -1;
                             task.State = CommandState.Failed;
 

@@ -282,6 +282,9 @@ namespace AppsInToss.Editor
                                 AITLog.Error($"[{pmName}] 출력:\n{timeoutOutput.Trim()}", sentryCapture: false);
                             if (!string.IsNullOrEmpty(timeoutError))
                                 AITLog.Error($"[{pmName}] 오류:\n{timeoutError.Trim()}", sentryCapture: false);
+                            // 상위 단일 빌드 실패 캡처(CaptureBuildError)에 exit/stderr 진단을 실어줄 수 있도록 기록 (§5).
+                            AITBuildDiagnostics.RecordFailure(
+                                $"{pmName} {arguments} (timeout {maxWaitMs / 1000}s)", -1, timeoutError, timeoutOutput);
                             return AITConvertCore.AITExportError.FAIL_NPM_BUILD;
                         }
 
@@ -320,6 +323,8 @@ namespace AppsInToss.Editor
 
                     if (success)
                     {
+                        // 명령이 성공하면 직전 폴백 단계의 실패 진단을 비운다 (복구된 단계 stderr 오첨부 방지, §5).
+                        AITBuildDiagnostics.ClearOnSuccess();
                         Debug.Log($"[Platform] ✓ 명령 성공 (Exit Code: {process.ExitCode})");
                         if (!string.IsNullOrEmpty(output))
                         {
@@ -341,6 +346,9 @@ namespace AppsInToss.Editor
                         {
                             AITLog.Error($"[{pmName}] 오류:\n{error}", sentryCapture: false);
                         }
+                        // 상위 단일 빌드 실패 캡처(CaptureBuildError)에 exit/stderr 진단을 실어줄 수 있도록 기록 (§5).
+                        AITBuildDiagnostics.RecordFailure(
+                            $"{pmName} {arguments}", process.ExitCode, error, output);
                         return AITConvertCore.AITExportError.FAIL_NPM_BUILD;
                     }
                 }
@@ -354,6 +362,8 @@ namespace AppsInToss.Editor
                 // 동기 npm 실행 예외 — 호출자가 NODE_NOT_FOUND로 인지 후 상위 가이드 출력.
                 // 예외 본문에 명령줄/path가 들어가 fingerprint가 폭주하므로 Sentry 차단.
                 AITLog.Error($"[{pmName}] 명령 실행 오류: {e}", sentryCapture: false);
+                // 상위 캡처(NODE_NOT_FOUND)에 예외 요지를 진단으로 실어줄 수 있도록 기록 (§5).
+                AITBuildDiagnostics.RecordFailure($"{pmName} {arguments} (exception)", -1, e.Message);
                 return AITConvertCore.AITExportError.NODE_NOT_FOUND;
             }
         }
@@ -404,6 +414,8 @@ namespace AppsInToss.Editor
 
                     if (result.Success)
                     {
+                        // 성공 시 직전 폴백 단계 실패 진단을 비운다 (§5).
+                        AITBuildDiagnostics.ClearOnSuccess();
                         Debug.Log($"[{pmName}] ✓ 비동기 명령 성공: {pmName} {arguments}");
                         onComplete?.Invoke(AITConvertCore.AITExportError.SUCCEED);
                     }
@@ -416,6 +428,9 @@ namespace AppsInToss.Editor
                         {
                             AITLog.Warning($"[{pmName}] 오류:\n{result.Error}", sentryCapture: false);
                         }
+                        // 상위 단일 빌드 실패 캡처에 exit/stderr 진단을 실어줄 수 있도록 기록 (§5).
+                        AITBuildDiagnostics.RecordFailure(
+                            $"{pmName} {arguments} (async)", result.ExitCode, result.Error, result.Output);
                         onComplete?.Invoke(AITConvertCore.AITExportError.FAIL_NPM_BUILD);
                     }
                 },

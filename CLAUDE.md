@@ -52,10 +52,10 @@
 - **예외**: 명시적으로 지시받은 경우 CLAUDE.md 수정 가능, TODO.md는 PR 제출 시 자동 최신화 (아래 규칙 참조)
 - **이유**: AI가 생성한 문서는 기업 저장소에 부적절하게 보일 수 있음
 
-### 저장소 소유권
-- 이 저장소는 **기업 소유 비공개 저장소** (오픈소스 아님)
-- LICENSE 파일이나 오픈소스 라이선스 정보 추가 금지
-- package.json "license" 필드 추가 금지
+### 저장소 소유권 및 공개 범위
+- ⚠️ **이 저장소는 GitHub상 public(소스 공개) 저장소다.** 개발자가 UPM git URL(`im.toss.apps-in-toss-unity-sdk` → `github.com/toss/apps-in-toss-unity-sdk.git`)로 소비하는 **개발자용 SDK**라서 public이 의도된 설계다. **여기에 push하는 모든 브랜치·커밋·PR(제목/본문 포함)은 익명 사용자에게 즉시 공개**되며, 한 번 push되면 GH Archive 등에 수집되어 사실상 회수 불가다.
+- **기업 소유이며 오픈소스 라이선스는 부여하지 않는다**(source-available, OSS 아님). 따라서 LICENSE 파일이나 오픈소스 라이선스 정보 추가 금지, package.json "license" 필드 추가 금지.
+- 🔒 **비공개 자원을 이 public 저장소에 절대 엮지 말 것.** 비공개 repo(별도의 비공개 게임/앱 프로젝트 등)의 이름·존재·clone URL·빌드 워크플로·관련 PR/커밋 메시지를 이 저장소(브랜치/PR/Actions 로그/커밋)에 넣지 않는다. (이 CLAUDE.md 자체도 public이므로 비공개 repo 이름을 예시로도 적지 않는다.) 비공개 프로젝트의 빌드·측정 등은 **로컬 환경**에서 수행한다(로컬 git 자격증명으로 clone, 산출물은 로컬 디스크에만 보관). 실수로 노출 시 브랜치 삭제+PR close만으로는 완전 제거가 안 되므로(커밋/PR 페이지·GH Archive 잔존) GitHub Support 퍼지가 필요하다.
 
 ### 자동 생성 코드 정책
 - **`Runtime/SDK/` 디렉토리의 파일을 직접 수정하지 말 것**

@@ -13,6 +13,9 @@ importers:
 
   .:
     dependencies:
+      '@apps-in-toss/bridge-core':
+        specifier: 2.6.1
+        version: 2.6.1
       '@apps-in-toss/web-analytics':
         specifier: 2.6.1
         version: 2.6.1(@apps-in-toss/web-bridge@2.6.1)

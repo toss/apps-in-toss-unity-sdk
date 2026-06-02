@@ -189,6 +189,25 @@ namespace AppsInToss.Editor
             PlayerSettings.WebGL.wasm2023 = wasm2023;
 #endif
 
+            // ===== WebGL Code Optimization (Meta 로드타임 스택의 실제 "Disk Size with LTO" 레버) =====
+            // IL2CPP 컴파일러 config(Master)는 WebGL emscripten 최적화/LTO에 영향을 주지 않으므로(no-op),
+            // 실제 LTO는 emscripten code optimization으로 켠다. 버전별 API 차이(2022.3/6: UserBuildSettings,
+            // 구버전: PlayerSettings.WebGL) + WebGL 모듈 어셈블리 참조 보장 부재 때문에
+            // AITWebGLCodeOptimization이 reflection으로 적용한다(멤버 없는 버전은 fail-safe로 건너뜀).
+            // editorConfig.webGLCodeOptimization: -1(자동)/1 → DiskSizeLTO 적용, 0 → 미적용(Unity 설정 유지).
+            bool applyWebGLCodeOpt = editorConfig.webGLCodeOptimization != 0;
+            string webGLCodeOptTarget = AITDefaultSettings.GetDefaultWebGLCodeOptimization();
+            bool webGLCodeOptApplied = false;
+            if (applyWebGLCodeOpt)
+            {
+                webGLCodeOptApplied = AITWebGLCodeOptimization.TrySetByName(webGLCodeOptTarget);
+                if (!webGLCodeOptApplied)
+                {
+                    Debug.LogWarning(
+                        $"[AIT] WebGL Code Optimization({webGLCodeOptTarget}) 미적용 — 이 Unity 버전에서 API/멤버 부재 (빌드는 계속)");
+                }
+            }
+
             // ===== Unity 6 (2023.3+) 전용 설정 =====
 #if UNITY_2023_3_OR_NEWER
             // 출처: UnityVersion.md:394-402
@@ -229,6 +248,10 @@ namespace AppsInToss.Editor
             Debug.Log($"[AIT]   - IL2CPP 설정: {il2cppConfig}{(!string.IsNullOrEmpty(il2cppConfigEnv) ? " (환경 변수)" : editorConfig.il2cppConfiguration < 0 ? " (자동)" : "")}");
             Debug.Log($"[AIT]   - Run In Background: {runInBackground}{(editorConfig.runInBackground < 0 ? " (자동)" : "")}");
             Debug.Log($"[AIT]   - Decompression Fallback: {decompressionFallback}{(editorConfig.decompressionFallback < 0 ? " (자동)" : "")}");
+            string webGLCodeOptLog = !applyWebGLCodeOpt ? "미적용 (off)"
+                : webGLCodeOptApplied ? $"{webGLCodeOptTarget}{(editorConfig.webGLCodeOptimization < 0 ? " (자동)" : "")}"
+                : "미적용 (API 부재)";
+            Debug.Log($"[AIT]   - WebGL Code Optimization: {webGLCodeOptLog}");
 #if UNITY_6000_0_OR_NEWER
             Debug.Log($"[AIT]   - IL2CPP Code Generation: {il2cppCodeGen}{(editorConfig.il2cppCodeGeneration < 0 ? " (자동)" : "")}");
             Debug.Log($"[AIT]   - WebAssembly 2023: {wasm2023}{(editorConfig.wasm2023 < 0 ? " (자동)" : "")}");

@@ -177,11 +177,14 @@ namespace AppsInToss
         [Header("IL2CPP/Stripping 설정")]
         public bool stripEngineCode = true;
 
-        [Tooltip("-1 = 자동 (Master, LTO)")]
+        [Tooltip("-1 = 자동 (Release). WebGL에서 Master는 emscripten 최적화/LTO에 영향을 주지 않음(no-op)")]
         public int il2cppConfiguration = -1;
 
         [Tooltip("-1 = 자동 (OptimizeSize, Unity 6+). 0 = OptimizeSpeed, 1 = OptimizeSize — 제네릭 인스턴스 공유로 wasm 코드 크기 축소")]
         public int il2cppCodeGeneration = -1;
+
+        [Tooltip("-1 = 자동 (Disk Size with LTO 적용 — Coatsink/Meta 로드타임 스택의 실제 LTO 레버). 0 = 미적용(Unity 설정 유지), 1 = 적용")]
+        public int webGLCodeOptimization = -1;
 
         [Header("Unity 6 전용 설정")]
         [Tooltip("-1 = 자동 (HighPerformance)")]
@@ -402,15 +405,29 @@ namespace AppsInToss
         }
 
         /// <summary>
-        /// 기본 IL2CPP 컴파일러 설정
-        /// Meta+Unity 로드타임 스택의 "Disk Size with LTO" — Master는 LTO + 최대 최적화로
-        /// IL2CPP 생성 C++의 cross-module dead-code 제거를 강화해 wasm 코드 크기를 축소한다.
-        /// trade-off: 빌드 시간 증가(CI 콜드 빌드 ~20-30분, Bee 캐시 무효화 시 가산).
-        /// 출처: StartupOptimization.md:85, Coatsink "Ready, Set, Cook!" 케이스 스터디
+        /// 기본 IL2CPP 컴파일러 설정: Release
+        /// 주의: 과거 이 값을 Master로 두고 Coatsink "Disk Size with LTO"의 LTO 파트라 가정했으나,
+        /// 실측 결과 WebGL에서 컴파일러 config(Master)는 emscripten 최적화/LTO에 영향을 주지 않아
+        /// Release와 바이트 단위로 동일한 산출물을 냈다(no-op). 실제 LTO 레버는
+        /// emscripten code optimization = "Disk Size with LTO"이며 GetDefaultWebGLCodeOptimization()이 담당한다.
         /// </summary>
         public static Il2CppCompilerConfiguration GetDefaultIl2CppConfiguration()
         {
-            return Il2CppCompilerConfiguration.Master;
+            return Il2CppCompilerConfiguration.Release;
+        }
+
+        /// <summary>
+        /// 기본 WebGL Code Optimization: "Disk Size with LTO"(DiskSizeLTO)
+        /// Meta+Unity 로드타임 스택의 실제 LTO 레버. emscripten Link Time Optimization으로
+        /// cross-module dead-code를 제거해 wasm 코드 크기를 추가로 축소한다(실측 기준 압축전 ~-21%).
+        /// trade-off: 빌드 시간 증가(LTO 링크). API가 버전마다 다르고(2022.3/6: UserBuildSettings,
+        /// 구버전: PlayerSettings.WebGL) 모듈 어셈블리 참조 보장이 없어 AITWebGLCodeOptimization이
+        /// reflection으로 적용한다. 멤버가 없는 버전(예: 2021.3)에서는 fail-safe로 건너뛴다.
+        /// 출처: Unity Manual web-optimization-c-sharp, Coatsink "Ready, Set, Cook!" 케이스 스터디
+        /// </summary>
+        public static string GetDefaultWebGLCodeOptimization()
+        {
+            return AppsInToss.Editor.AITWebGLCodeOptimization.DiskSizeLTO;
         }
 
 #if UNITY_6000_0_OR_NEWER

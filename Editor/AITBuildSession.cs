@@ -24,6 +24,9 @@ namespace AppsInToss.Editor
         public WebGLExceptionSupport exceptionSupport;
         public bool decompressionFallback;
         public bool nameFilesAsHashes;
+        // WebGL code optimization(Disk Size with LTO)은 버전별 enum이 달라 멤버 "이름"으로 보관.
+        // API 부재 버전에서는 null(복원 시 no-op). 적용/읽기는 AITWebGLCodeOptimization(reflection).
+        public string webGLCodeOptimization;
 
         // 일반 설정
         public Texture2D defaultCursor;
@@ -71,6 +74,7 @@ namespace AppsInToss.Editor
                 exceptionSupport = PlayerSettings.WebGL.exceptionSupport,
                 decompressionFallback = PlayerSettings.WebGL.decompressionFallback,
                 nameFilesAsHashes = PlayerSettings.WebGL.nameFilesAsHashes,
+                webGLCodeOptimization = AITWebGLCodeOptimization.GetCurrentName(),
 
                 defaultCursor = PlayerSettings.defaultCursor,
                 cursorHotspot = PlayerSettings.cursorHotspot,
@@ -134,6 +138,9 @@ namespace AppsInToss.Editor
             PlayerSettings.WebGL.exceptionSupport = exceptionSupport;
             PlayerSettings.WebGL.decompressionFallback = decompressionFallback;
             PlayerSettings.WebGL.nameFilesAsHashes = nameFilesAsHashes;
+            // 빌드 시 DiskSizeLTO로 바꿨더라도 빌드 후 사용자의 원래 설정으로 되돌린다(영구 오염 방지).
+            // null이면(캡처 당시 API 부재) no-op.
+            AITWebGLCodeOptimization.TrySetByName(webGLCodeOptimization);
 
             PlayerSettings.defaultCursor = defaultCursor;
             PlayerSettings.cursorHotspot = cursorHotspot;

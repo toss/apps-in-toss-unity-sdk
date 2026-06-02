@@ -658,6 +658,10 @@ namespace AppsInToss.Editor
             // IL2CPP 컴파일러 설정
             DrawIl2CppConfigurationSetting();
 
+            // WebGL 코드 최적화 (Disk Size with LTO) — Meta 로드타임 스택의 실제 LTO 레버
+            // (전 버전 reflection 적용이라 #if 가드 없음. API 부재 버전은 fail-safe)
+            DrawWebGLCodeOptimizationSetting();
+
 #if UNITY_6000_0_OR_NEWER
             // IL2CPP Code Generation (OptimizeSize) — Meta 로드타임 스택
             DrawIl2CppCodeGenerationSetting();
@@ -748,6 +752,43 @@ namespace AppsInToss.Editor
             }
 
             EditorGUILayout.EndHorizontal();
+        }
+
+        private void DrawWebGLCodeOptimizationSetting()
+        {
+            // 기본 동작 = 적용(DiskSizeLTO). 토글: -1=자동(적용) / 0=미적용 / 1=적용.
+            // (config.webGLCodeOptimization==1)은 기본(적용)과 동일하므로 "미적용"(0)만 modified.
+            bool isModified = config.webGLCodeOptimization == 0;
+
+            EditorGUILayout.BeginHorizontal();
+
+            DrawModifiedIndicator(isModified);
+
+            string label = config.webGLCodeOptimization < 0
+                ? "WebGL 코드 최적화 (자동: Disk Size with LTO)"
+                : "WebGL 코드 최적화";
+
+            string[] options = { "자동 (Disk Size with LTO)", "미적용", "적용 (Disk Size with LTO)" };
+            int currentIndex = config.webGLCodeOptimization < 0 ? 0 : config.webGLCodeOptimization + 1;
+            int newIndex = EditorGUILayout.Popup(label, currentIndex, options);
+            config.webGLCodeOptimization = newIndex == 0 ? -1 : newIndex - 1;
+
+            if (isModified && DrawResetButton())
+            {
+                config.webGLCodeOptimization = -1;
+            }
+
+            EditorGUILayout.EndHorizontal();
+
+            // 이 Unity 버전에서 codeOptimization API가 없으면 fail-safe로 무시됨을 안내
+            if (config.webGLCodeOptimization != 0 && !AITWebGLCodeOptimization.IsSupported)
+            {
+                EditorGUILayout.HelpBox(
+                    "이 Unity 버전에는 WebGL code optimization API가 없어 이 설정은 빌드 시 무시됩니다 " +
+                    "(빌드는 정상 진행, LTO 이득만 없음).",
+                    MessageType.Info
+                );
+            }
         }
 
 #if UNITY_6000_0_OR_NEWER
@@ -1074,6 +1115,7 @@ namespace AppsInToss.Editor
         {
             config.stripEngineCode = true;
             config.il2cppConfiguration = -1;
+            config.webGLCodeOptimization = -1;
             config.powerPreference = -1;
 #if UNITY_6000_0_OR_NEWER
             config.il2cppCodeGeneration = -1;

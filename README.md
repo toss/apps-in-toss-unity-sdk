@@ -26,3 +26,8 @@ Apps in Toss 플랫폼을 위한 Unity SDK입니다. Unity 프로젝트를 Apps 
 | [메트릭](Docs~/Metrics.md) | 성능 메트릭 확인 |
 | [문제 해결](Docs~/Troubleshooting.md) | FAQ 및 트러블슈팅 |
 | [Contributing](Docs~/Contributing.md) | 개발 환경, 커밋 규칙 |
+| [베타 채널](Docs~/BetaChannel.md) | 3.0.0 파일럿 옵트인, 수동 업데이트/복귀 |
+
+## 베타 채널 (파일럿 전용)
+
+`web-framework` 3.0.0 기반 SDK를 미리 테스트하려는 **선택된 파일럿 제휴사**를 위한 옵트인 베타 채널이 있습니다 (`...git#beta`). 일반 서비스 배포에는 stable(`#release/vX.Y.Z`)을 사용하세요. 설치·수동 업데이트·stable 복귀 절차는 [베타 채널 가이드](Docs~/BetaChannel.md)를 참고하세요.

@@ -2,7 +2,6 @@ using System.Collections.Generic;
 using System.IO;
 using UnityEditor.PackageManager;
 using UnityEngine;
-using Debug = UnityEngine.Debug;
 
 namespace AppsInToss.Editor
 {
@@ -46,10 +45,14 @@ namespace AppsInToss.Editor
             else if (!_warningLogged)
             {
                 _warningLogged = true;
-                Debug.LogWarning(
+                // 패키지 해석 실패는 호출부의 물리 경로 폴백(GetSDKResolvedPath)으로 복구된다 —
+                // 이 warning이 떠도 SDK가 정상 동작하는 경우가 많아 Sentry에는 전송하지 않는다(Console warning만).
+                // 진짜 실패라면 다운스트림 빌드 에러가 구조화 이벤트로 별도 캡처된다.
+                AITLog.Warning(
                     $"[AIT] SDK 패키지를 찾을 수 없습니다. " +
                     $"시도: FindForAssetPath({AITVersion.PackageAssetPath}, {AITVersion.LegacyPackageAssetPath}), FindForAssembly. " +
-                    "패키지 설치 상태를 확인하세요.");
+                    "패키지 설치 상태를 확인하세요.",
+                    sentryCapture: false);
             }
 
             return info;

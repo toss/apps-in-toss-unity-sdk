@@ -12,6 +12,7 @@ using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
 using UnityEngine;
 using Sentry.Unity;
+using AppsInToss;
 
 namespace AppsInToss.Sentry.Editor
 {
@@ -67,13 +68,31 @@ namespace AppsInToss.Sentry.Editor
             options.Enabled = true;
             options.Dsn = dsn;
 
-            string environment = Environment.GetEnvironmentVariable("SENTRY_ENVIRONMENT");
+            // environment / release 결정 (AITSentryReleaseResolver):
+            //   - 명시된 SENTRY_ENVIRONMENT / SENTRY_RELEASE env가 있으면 그 값을 우선 사용
+            //   - 없으면 SDK 버전(AITVersion.Version)에서 자동 파생:
+            //       · prerelease 빌드(예: 3.0.0-beta.x) → environment "beta" (stable triage 오염 방지)
+            //       · release 식별자 → "apps-in-toss.unity@{버전}" (release.yml의 Sentry release 컨벤션과 정합)
+            //   - stable 빌드는 environment를 설정하지 않아 Sentry 기본값("production")을 그대로 사용 (동작 불변)
+            string sdkVersion = AITVersion.Version;
+            string environment = AITSentryReleaseResolver.ResolveEnvironment(
+                sdkVersion, Environment.GetEnvironmentVariable("SENTRY_ENVIRONMENT"));
+            string release = AITSentryReleaseResolver.ResolveRelease(
+                sdkVersion, Environment.GetEnvironmentVariable("SENTRY_RELEASE"));
+
+            // release가 비어 있으면(override 없음 + SDK 버전이 unknown) environment/release를 bake할 수 없다.
+            // 이 경우 Sentry가 기본값(environment="production", release=Application.version)을 사용하므로,
+            // prerelease 빌드라면 이벤트가 stable("production") triage로 흘러갈 수 있어 경고로 가시화한다.
+            if (string.IsNullOrEmpty(release))
+            {
+                Debug.LogWarning($"{Tag} SDK 버전을 확인할 수 없어(unknown) environment/release를 SentryOptions.asset에 bake하지 않습니다 - 이벤트가 의도한 Sentry environment로 분리되지 않을 수 있습니다");
+            }
+
             if (!string.IsNullOrEmpty(environment))
             {
                 options.EnvironmentOverride = environment;
             }
 
-            string release = Environment.GetEnvironmentVariable("SENTRY_RELEASE");
             if (!string.IsNullOrEmpty(release))
             {
                 options.ReleaseOverride = release;
@@ -82,7 +101,7 @@ namespace AppsInToss.Sentry.Editor
             AssetDatabase.CreateAsset(options, configPath);
             AssetDatabase.SaveAssets();
 
-            Debug.Log($"{Tag} SentryOptions.asset을 환경변수에서 생성했습니다: {configPath}");
+            Debug.Log($"{Tag} SentryOptions.asset을 생성했습니다: {configPath}");
             Debug.Log($"{Tag}   DSN: {MaskDsn(dsn)}");
             if (!string.IsNullOrEmpty(environment))
                 Debug.Log($"{Tag}   Environment: {environment}");

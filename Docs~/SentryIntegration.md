@@ -120,10 +120,24 @@ AIT SDK는 WebGL 빌드 시 `SENTRY_DSN` 환경변수에서 `SentryOptions.asset
 | 변수 | 용도 | 예시 |
 |------|------|------|
 | `SENTRY_DSN` | DSN → `SentryOptions.asset` 자동 생성 | `https://key@sentry.io/123` |
-| `SENTRY_ENVIRONMENT` | 환경 식별자 (자동 주입) | `production`, `staging` |
-| `SENTRY_RELEASE` | 릴리즈 버전 (자동 주입) | `my-app@1.0.0` |
+| `SENTRY_ENVIRONMENT` | 환경 override (선택 — 미지정 시 SDK 버전에서 자동 파생) | `production`, `staging` |
+| `SENTRY_RELEASE` | 릴리즈 override (선택 — 미지정 시 `apps-in-toss.unity@{버전}` 자동 파생) | `my-app@1.0.0` |
 
 > **자동 주입 동작**: WebGL 빌드 시 `AITSentryDsnInjector`(`IPreprocessBuildWithReport`, callbackOrder=0)가 `SENTRY_DSN` 환경변수를 감지하면 `SentryOptions.asset`을 Unity API로 생성합니다. 이미 asset이 존재하면 사용자 설정을 보호하기 위해 건너뜁니다.
+
+#### environment / release 자동 파생 (prerelease 분리)
+
+`SENTRY_ENVIRONMENT` / `SENTRY_RELEASE`를 명시하지 않으면, `AITSentryDsnInjector`는 SDK 버전(`AITVersion.Version`)에서 두 값을 자동 파생합니다 (`AITSentryReleaseResolver`). Sentry의 `environment`/`release`는 init-time(`BeforeSceneLoad`) 전용 옵션이라 런타임 scope로 바꿀 수 없으므로, 빌드 시점에 asset으로 bake 합니다.
+
+| SDK 버전 | environment | release |
+|----------|-------------|---------|
+| stable (예: `2.6.1`, `3.0.0`) | *(미설정 → Sentry 기본값 `production`)* | `apps-in-toss.unity@2.6.1` |
+| prerelease (예: `3.0.0-beta.9d42c0b`) | `beta` | `apps-in-toss.unity@3.0.0-beta.9d42c0b` |
+| unknown (패키지 정보 없음) | *(미설정)* | *(미설정)* |
+
+- **목적**: 베타 파일럿(`#beta`) 빌드의 에러가 `environment:beta`로 분리되어 **stable triage·알림·release-health를 오염시키지 않습니다**. stable 빌드는 environment를 설정하지 않아 기존 동작(`production`)이 그대로 유지됩니다.
+- **우선순위**: 명시된 `SENTRY_ENVIRONMENT` / `SENTRY_RELEASE` env가 있으면 **항상 그 값이 자동 파생을 이깁니다**. CI에서 임의 환경 라벨을 강제하고 싶을 때 사용하세요.
+- **release 정합**: 자동 파생된 release(`apps-in-toss.unity@{버전}`)는 `release.yml`이 생성하는 Sentry release 식별자와 동일한 prefix를 사용하므로, release-health 및 `Fixes` trailer 기반 auto-resolve 연결이 정확해집니다.
 
 ### sentry-cli (빌드 타임)
 
@@ -198,7 +212,7 @@ PlayerSettings.SetIl2CppStacktraceInformation(WebGL, MethodFileLineNumber)
 
 1. **DSN 확인**: `Tools > Sentry`에서 DSN이 올바르게 설정되어 있는지 확인
 2. **로그 확인**: 콘솔에 `[AIT:Sentry] Sentry is not enabled` 메시지가 있으면 Sentry SDK가 비활성 상태
-3. **WebGL CI/CD**: `SENTRY_DSN` 환경변수를 설정하면 빌드 시 `SentryOptions.asset`이 자동 생성됩니다. 빌드 로그에서 `[AITSentry] SentryOptions.asset을 환경변수에서 생성했습니다`를 확인하세요.
+3. **WebGL CI/CD**: `SENTRY_DSN` 환경변수를 설정하면 빌드 시 `SentryOptions.asset`이 자동 생성됩니다. 빌드 로그에서 `[AITSentry] SentryOptions.asset을 생성했습니다:`로 시작하는 줄을 확인하세요. 같은 블록의 `Environment` / `Release` 줄에서 자동 파생된 값도 함께 확인할 수 있습니다.
 
 ### IL2CPP 빌드에서 AIT 태그가 없음
 

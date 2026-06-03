@@ -118,6 +118,7 @@ namespace AppsInToss.Editor.Package
                                 // HasExited 폴링 + CancellationToken 체크
                                 int maxWaitMs = 300000; // 5분
                                 var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+                                bool timedOut = false;
 
                                 while (!process.HasExited)
                                 {
@@ -136,19 +137,27 @@ namespace AppsInToss.Editor.Package
                                         // 5분 타임아웃은 환경(네트워크/registry) 원인이며 다음 폴백
                                         // 단계로 진행됨. Sentry로 fingerprint를 흘리지 않음.
                                         AITLog.Error($"[AIT] [병렬] pnpm {label} 시간 초과 ({maxWaitMs / 1000}초)", sentryCapture: false);
+                                        // 모든 단계가 타임아웃으로 끝나도 상위 캡처에 진단이 남도록 기록 (§5).
+                                        AITBuildDiagnostics.RecordFailure(
+                                            $"pnpm {label} (timeout {maxWaitMs / 1000}s)", -1,
+                                            errorBuilder.ToString(), outputBuilder.ToString());
+                                        timedOut = true;
                                         break; // 다음 단계로
                                     }
 
                                     Thread.Sleep(200);
                                 }
 
-                                // 아직 종료 안 된 경우 (타임아웃으로 빠져나온 경우) → 다음 단계
-                                if (!process.HasExited) continue;
+                                // 타임아웃으로 Kill한 경우 process.HasExited가 true가 되어 아래 exit-code 경로로
+                                // 떨어지면 위 (timeout) 진단을 일반 라벨로 덮어쓴다. timedOut이면 곧장 다음 단계로 (§5).
+                                if (timedOut || !process.HasExited) continue;
 
                                 process.WaitForExit(5000); // 출력 버퍼 플러시
 
                                 if (process.ExitCode == 0)
                                 {
+                                    // 성공 시 직전 폴백 단계의 실패 진단을 비운다 (§5).
+                                    AITBuildDiagnostics.ClearOnSuccess();
                                     Debug.Log($"[AIT] [병렬] ✓ pnpm {label} 성공");
                                     return AITConvertCore.AITExportError.SUCCEED;
                                 }
@@ -160,6 +169,8 @@ namespace AppsInToss.Editor.Package
                                     Debug.Log($"[AIT] [병렬] 출력:\n{output.Trim()}");
                                 if (!string.IsNullOrEmpty(error))
                                     Debug.Log($"[AIT] [병렬] 오류:\n{error.Trim()}");
+                                // 상위 단일 빌드 실패 캡처(CaptureBuildError)에 exit/stderr 진단을 실어줄 수 있도록 기록 (§5).
+                                AITBuildDiagnostics.RecordFailure($"pnpm {label}", process.ExitCode, error, output);
                             }
                             finally
                             {
@@ -171,6 +182,8 @@ namespace AppsInToss.Editor.Package
                     {
                         // 프로세스 시작/IO 예외 — 다음 폴백 단계로 진행. 환경 원인 cascade이므로 Sentry 차단.
                         AITLog.Error($"[AIT] [병렬] pnpm {label} 실행 오류: {e}", sentryCapture: false);
+                        // 모든 단계가 시작 단계 예외로 끝나도 상위 캡처가 원인을 받도록 진단 기록 (§5).
+                        AITBuildDiagnostics.RecordFailure($"pnpm {label} (process-start exception)", -1, e.Message);
                     }
 
                     Debug.Log($"[AIT] [병렬] pnpm install ({label}) 실패, 다음 단계로...");

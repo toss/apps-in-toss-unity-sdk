@@ -572,7 +572,8 @@ namespace AppsInToss.Editor.ErrorTracker
             string stackTrace,
             string level = "error",
             Dictionary<string, string> extraTags = null,
-            string[] fingerprint = null)
+            string[] fingerprint = null,
+            Dictionary<string, string> extra = null)
         {
             if (!AITErrorTrackerConsent.IsEnabled())
                 return;
@@ -630,6 +631,7 @@ namespace AppsInToss.Editor.ErrorTracker
                 eventId: out string capturedEventId,
                 level: level,
                 tags: tags,
+                extra: extra,
                 breadcrumbs: _breadcrumbs.Count > 0 ? new List<AITSentryEnvelope.Breadcrumb>(_breadcrumbs) : null,
                 fingerprint: fingerprint,
                 release: GetRelease(),
@@ -775,6 +777,22 @@ namespace AppsInToss.Editor.ErrorTracker
                 extraTags["build_profile"] = profileName;
             }
 
+            // pnpm/granite 등 외부 명령이 남긴 마지막 실패 진단(exit code + stderr 말미)을 extra로 첨부한다 (§5).
+            // fingerprint는 여전히 errorCode 기반이므로 그룹화(이슈 1개)는 유지되고, 진단만 이벤트에 실린다.
+            // extra(인덱싱되지 않는 자유 컨텍스트)에 담으므로 tag 길이/cardinality 제약과 무관하다.
+            // 소비-once 정책상, 동일 세션에서 같은 errorCode가 CaptureError의 dedup으로 드롭되는 후속 캡처는
+            // 진단도 함께 비워진다. 드롭된 이벤트엔 어차피 첨부할 곳이 없고, 먼저 전송된 대표 이벤트가 진단을
+            // 이미 실어 보냈으므로 triage에는 영향이 없다(이슈당 대표 1건 + 진단 보존).
+            Dictionary<string, string> extra = null;
+            string buildDiag = AITBuildDiagnostics.ConsumeForCapture();
+            if (!string.IsNullOrEmpty(buildDiag))
+            {
+                extra = new Dictionary<string, string>
+                {
+                    { "build_command_diagnostics", buildDiag }
+                };
+            }
+
             var fingerprint = new[] { "{{ default }}", errorCode.ToString() };
 
             CaptureError(
@@ -783,7 +801,8 @@ namespace AppsInToss.Editor.ErrorTracker
                 stackTrace: null,
                 level: "error",
                 extraTags: extraTags,
-                fingerprint: fingerprint
+                fingerprint: fingerprint,
+                extra: extra
             );
         }
 

@@ -167,8 +167,10 @@ namespace AppsInToss.Editor
             }
             else
             {
-                // SDK 템플릿을 찾지 못함 (경고만 출력, 빌드 시 다시 시도됨)
-                Debug.LogWarning("[AIT] SDK 로딩 화면 템플릿을 찾을 수 없습니다. 첫 빌드 시 다시 시도됩니다.");
+                // 정상 흐름의 예측된 분기 — SDK 로딩 화면 템플릿을 아직 못 찾으면 첫 빌드 시 다시 시도된다.
+                // SDK 결함 조사가 필요 없는 fallback이므로 Sentry에는 전송하지 않는다(Console warning만).
+                // (Sentry APPS-IN-TOSS-UNITY-SDK-10R)
+                AITLog.Warning("[AIT] SDK 로딩 화면 템플릿을 찾을 수 없습니다. 첫 빌드 시 다시 시도됩니다.", sentryCapture: false);
             }
         }
 

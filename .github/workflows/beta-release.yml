@@ -4,21 +4,29 @@ run-name: "Beta Release - v${{ inputs.version }} → #${{ inputs.channel_ref }} 
 # =====================================================
 # 베타 채널 릴리즈
 # 선택된 제휴사만 옵트인으로 파일럿 테스트할 수 있는 prerelease 채널을 만든다.
-# stable release.yml과 달리 다음 부작용을 전부 생략한다:
-#   - main 브랜치 / package.json 변경 (main은 절대 건드리지 않음)
+# stable release.yml의 검증 파이프라인(빌드 게이트·Sentry 등록·알림)을 최대한 동일하게
+# 재현하되, 채널 격리를 위해 다음 부작용은 구조적으로 차단한다:
+#   - main 브랜치 / package.json 변경 (main은 절대 건드리지 않음 — source_ref 읽기 전용)
 #   - Latest 릴리즈 표시 (항상 --prerelease --latest=false)
-#   - AIT 배포(deploy-ait) / Slack·Sentry 알림 / GettingStarted.md 갱신
+#   - AIT 프로덕션 배포(deploy-ait) / AIT_DEPLOY_KEY (구조적 부재로 차단)
 # 산출물: 정리된 orphan commit을 channel_ref 브랜치(기본 beta)로 force-push.
 #         제휴사는 manifest에서 `...git#beta`로 핀한다.
 # 자동 업데이터(AITAutoUpdater)는 prerelease 채널에 자동 프롬프트를 띄우지 않으므로,
 # 새 베타 배포는 out-of-band(슬랙/이슈)로 알리고 제휴사가 수동으로 갱신한다.
+#
+# release.yml과의 의도적 차이(채널 격리, INV1~INV5):
+#   - output: immutable 태그 대신 이동 channel_ref 브랜치 + -beta 스냅샷 태그
+#   - GitHub Release: 무조건 --prerelease --latest=false (stable의 조건부 분기 미사용)
+#   - bare 버전 입력은 package.json .version을 prerelease로 정규화 → Sentry env=beta 격리 유지
+#   - deploy-ait 잡 없음 / AIT_DEPLOY_KEY 미사용
+#   - Sentry는 set_commits: skip(미머지 orphan의 Fixes trailer가 stable 이슈를 조기 resolve하는 것 차단)
 # =====================================================
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: '파일럿 web-framework 버전 (예: 3.0.0 또는 3.0.0-beta.9d42c0b)'
+        description: '파일럿 web-framework npm 버전 (예: 3.0.0 또는 3.0.0-beta.9d42c0b)'
         required: true
         type: string
       channel_ref:
@@ -31,57 +39,54 @@ on:
         required: false
         type: string
         default: main
+      build_strategy:
+        description: '빌드 검증 전략: full (10빌드), standard (5빌드), minimal (1빌드), skip-build (0빌드)'
+        required: false
+        type: choice
+        options:
+          - full
+          - standard
+          - minimal
+          - skip-build
+        default: full
+      notify:
+        description: '베타 배포 알림 전송 여부'
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   contents: write
 
+# 같은 채널에 대한 동시 디스패치를 직렬화 (channel_ref force-push 레이스 방지).
+# cancel-in-progress: false — 진행 중인 publish를 끊지 않고 큐잉.
+concurrency:
+  group: beta-release-${{ inputs.channel_ref || 'beta' }}
+  cancel-in-progress: false
+
 jobs:
-  beta-release:
-    name: 베타 채널 빌드 및 게시
+  # =====================================================
+  # 베타 준비: 검증·정규화·매트릭스·SDK 재생성 → staging orphan commit
+  # release.yml의 release + regenerate-sdk + prepare-build-matrix를 한 잡으로 합친 것.
+  # main(source_ref)에는 절대 push하지 않으며, 임시 staging ref로만 push한다.
+  # =====================================================
+  beta-prepare:
+    name: 베타 준비 (재생성 + staging)
     runs-on: ubuntu-latest
 
+    outputs:
+      npm_version: ${{ steps.prep.outputs.npm_version }}
+      pkg_version: ${{ steps.prep.outputs.pkg_version }}
+      channel_ref: ${{ steps.prep.outputs.channel_ref }}
+      beta_tag: ${{ steps.prep.outputs.beta_tag }}
+      staging_ref: ${{ steps.stage.outputs.staging_ref }}
+      staging_sha: ${{ steps.stage.outputs.sha }}
+      macos_versions: ${{ steps.prep.outputs.macos_versions }}
+      windows_versions: ${{ steps.prep.outputs.windows_versions }}
+      skip_windows: ${{ steps.prep.outputs.skip_windows }}
+      skip_build: ${{ steps.prep.outputs.skip_build }}
+
     steps:
-      - name: 입력 검증
-        id: validate
-        run: |
-          VERSION="${{ inputs.version }}"
-          CHANNEL_REF="${{ inputs.channel_ref }}"
-
-          # 버전 형식 검증 (stable 또는 prerelease 접미사 허용)
-          if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$'; then
-            echo "::error::올바른 버전 형식이 아닙니다: ${VERSION}"
-            exit 1
-          fi
-
-          # 채널 ref는 stable 브랜치(main/master)일 수 없음 (베타 전용 안전 가드)
-          if [ "$CHANNEL_REF" = "main" ] || [ "$CHANNEL_REF" = "master" ]; then
-            echo "::error::channel_ref는 main/master일 수 없습니다 (베타 채널 전용): ${CHANNEL_REF}"
-            exit 1
-          fi
-          if [ -z "$CHANNEL_REF" ]; then
-            echo "::error::channel_ref가 비어 있습니다."
-            exit 1
-          fi
-
-          # 베타 스냅샷 태그 이름 derivation
-          # - 이미 prerelease 접미사가 있으면 그대로 (release/v3.0.0-beta.9d42c0b)
-          # - bare 버전이면 -beta 부여 (release/v3.0.0-beta)
-          # 두 경우 모두 IsPrereleaseChannel의 semver-prerelease 패턴(release/vX.Y.Z-)에 매칭됨.
-          if echo "$VERSION" | grep -q '-'; then
-            BETA_TAG="release/v${VERSION}"
-          else
-            BETA_TAG="release/v${VERSION}-beta"
-          fi
-
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
-          echo "channel_ref=${CHANNEL_REF}" >> $GITHUB_OUTPUT
-          echo "beta_tag=${BETA_TAG}" >> $GITHUB_OUTPUT
-
-          echo "버전: ${VERSION}"
-          echo "채널 브랜치: ${CHANNEL_REF}"
-          echo "스냅샷 태그: ${BETA_TAG}"
-          echo "빌드 베이스(source_ref): ${{ inputs.source_ref }}"
-
       # 기본 main에서 빌드(생성기·소스). source_ref로 머지 전 브랜치를 지정해 베타를 검증할 수 있다.
       # 어떤 경우에도 이 워크플로는 source_ref에 push하지 않는다(읽기 전용) — main은 절대 변경되지 않음.
       - name: Checkout (source_ref)
@@ -103,31 +108,123 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
+      - name: 입력 검증 / 버전 정규화 / 빌드 매트릭스 결정
+        id: prep
+        run: |
+          NPM_VERSION="${{ inputs.version }}"
+          CHANNEL_REF="${{ inputs.channel_ref }}"
+          STRATEGY="${{ inputs.build_strategy || 'full' }}"
+
+          # --- 버전 형식 검증 (stable 또는 prerelease 접미사 허용) ---
+          if ! echo "$NPM_VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$'; then
+            echo "::error::올바른 버전 형식이 아닙니다: ${NPM_VERSION}"
+            exit 1
+          fi
+
+          # --- 채널 ref 가드 (stable 브랜치 금지) ---
+          if [ -z "$CHANNEL_REF" ]; then
+            echo "::error::channel_ref가 비어 있습니다."
+            exit 1
+          fi
+          if [ "$CHANNEL_REF" = "main" ] || [ "$CHANNEL_REF" = "master" ]; then
+            echo "::error::channel_ref는 main/master일 수 없습니다 (베타 채널 전용): ${CHANNEL_REF}"
+            exit 1
+          fi
+
+          # --- 버전 정규화 (INV4: 배포되는 package.json .version은 항상 prerelease여야 함) ---
+          # NPM_VERSION: npm에서 설치할 실제 web-framework 버전 (검증 대상)
+          # PKG_VERSION: UPM 패키지 package.json .version에 baked할 SDK 자체 버전
+          #   - 입력에 prerelease 접미사가 있으면 그대로 사용
+          #   - bare 버전이면 -beta.<source-sha>를 부여해 prerelease 보장
+          #     → AITVersion.Version이 prerelease가 되어 AITSentryReleaseResolver.IsPrerelease=true
+          #     → 파일럿이 자기 머신에서 빌드해도(SENTRY_ENVIRONMENT override 없음) environment="beta"로 분리
+          #     → 베타 런타임 에러가 stable("production") triage를 오염시키지 않음
+          if echo "$NPM_VERSION" | grep -q '-'; then
+            PKG_VERSION="$NPM_VERSION"
+          else
+            SOURCE_SHA=$(git rev-parse --short=7 HEAD)
+            PKG_VERSION="${NPM_VERSION}-beta.${SOURCE_SHA}"
+            echo "bare 버전 입력 → prerelease로 정규화: ${NPM_VERSION} → ${PKG_VERSION}"
+          fi
+
+          # 스냅샷 태그는 정규화된 PKG_VERSION에서 파생 → .version과 항상 일치
+          BETA_TAG="release/v${PKG_VERSION}"
+
+          echo "npm_version=${NPM_VERSION}" >> $GITHUB_OUTPUT
+          echo "pkg_version=${PKG_VERSION}" >> $GITHUB_OUTPUT
+          echo "channel_ref=${CHANNEL_REF}" >> $GITHUB_OUTPUT
+          echo "beta_tag=${BETA_TAG}" >> $GITHUB_OUTPUT
+
+          # --- 빌드 매트릭스 (release.yml prepare-build-matrix와 동일 전략) ---
+          case "$STRATEGY" in
+            full)
+              MACOS='["2021.3","2022.3","6000.0","6000.2","6000.3"]'
+              WINDOWS='["2021.3","2022.3","6000.0","6000.2","6000.3"]'
+              SKIP_WIN=false
+              SKIP_BUILD=false
+              ;;
+            standard)
+              MACOS='["2021.3","6000.0","6000.3"]'
+              WINDOWS='["2022.3","6000.2"]'
+              SKIP_WIN=false
+              SKIP_BUILD=false
+              ;;
+            minimal)
+              MACOS='["2021.3"]'
+              WINDOWS='["2021.3"]'
+              SKIP_WIN=true
+              SKIP_BUILD=false
+              ;;
+            skip-build)
+              MACOS='["2021.3"]'
+              WINDOWS='["2021.3"]'
+              SKIP_WIN=true
+              SKIP_BUILD=true
+              ;;
+            *)
+              echo "::error::알 수 없는 빌드 전략: ${STRATEGY}"
+              exit 1
+              ;;
+          esac
+
+          echo "macos_versions=${MACOS}" >> $GITHUB_OUTPUT
+          echo "windows_versions=${WINDOWS}" >> $GITHUB_OUTPUT
+          echo "skip_windows=${SKIP_WIN}" >> $GITHUB_OUTPUT
+          echo "skip_build=${SKIP_BUILD}" >> $GITHUB_OUTPUT
+
+          echo "=== 베타 준비 요약 ==="
+          echo "npm 버전(설치): ${NPM_VERSION}"
+          echo "패키지 버전(.version): ${PKG_VERSION}"
+          echo "채널 브랜치: ${CHANNEL_REF}"
+          echo "스냅샷 태그: ${BETA_TAG}"
+          echo "빌드 전략: ${STRATEGY} (macOS=${MACOS}, Windows=${WINDOWS}, skip_windows=${SKIP_WIN}, skip_build=${SKIP_BUILD})"
+          echo "빌드 베이스(source_ref): ${{ inputs.source_ref }}"
+
       - name: web-framework 버전 업데이트 및 SDK 재생성
         working-directory: sdk-runtime-generator~
         run: |
-          VERSION="${{ steps.validate.outputs.version }}"
+          NPM_VERSION="${{ steps.prep.outputs.npm_version }}"
 
-          echo "=== web-framework v${VERSION} 업데이트 (베타) ==="
+          echo "=== web-framework v${NPM_VERSION} 업데이트 (베타) ==="
 
           # 캐시 정리 후 강제 업데이트 (캐시로 인한 오래된 버전 문제 방지)
           pnpm store prune
 
           # web-analytics에 동일 버전이 존재하면 함께 업데이트 (major 베타에서 둘이 갈라질 수 있으므로 조건부)
-          if npm view "@apps-in-toss/web-analytics@${VERSION}" version --registry https://registry.npmjs.org >/dev/null 2>&1; then
-            echo "web-analytics@${VERSION} 존재 — 함께 업데이트"
-            pnpm update "@apps-in-toss/web-framework@${VERSION}" "@apps-in-toss/web-analytics@${VERSION}" --force --registry https://registry.npmjs.org
+          if npm view "@apps-in-toss/web-analytics@${NPM_VERSION}" version --registry https://registry.npmjs.org >/dev/null 2>&1; then
+            echo "web-analytics@${NPM_VERSION} 존재 — 함께 업데이트"
+            pnpm update "@apps-in-toss/web-framework@${NPM_VERSION}" "@apps-in-toss/web-analytics@${NPM_VERSION}" --force --registry https://registry.npmjs.org
           else
-            echo "::warning::web-analytics@${VERSION} 없음 — web-framework만 업데이트"
-            pnpm update "@apps-in-toss/web-framework@${VERSION}" --force --registry https://registry.npmjs.org
+            echo "::warning::web-analytics@${NPM_VERSION} 없음 — web-framework만 업데이트"
+            pnpm update "@apps-in-toss/web-framework@${NPM_VERSION}" --force --registry https://registry.npmjs.org
           fi
 
           # 설치된 버전 검증
           INSTALLED_VERSION=$(pnpm list @apps-in-toss/web-framework --json | jq -r '.[0].dependencies["@apps-in-toss/web-framework"].version')
-          echo "요청 버전: ${VERSION}"
+          echo "요청 버전: ${NPM_VERSION}"
           echo "설치된 버전: ${INSTALLED_VERSION}"
-          if [ "$INSTALLED_VERSION" != "$VERSION" ]; then
-            echo "::error::버전 불일치! 요청: ${VERSION}, 설치됨: ${INSTALLED_VERSION}"
+          if [ "$INSTALLED_VERSION" != "$NPM_VERSION" ]; then
+            echo "::error::버전 불일치! 요청: ${NPM_VERSION}, 설치됨: ${INSTALLED_VERSION}"
             exit 1
           fi
           echo "✅ 버전 검증 완료: ${INSTALLED_VERSION}"
@@ -136,27 +233,27 @@ jobs:
           pnpm generate
           echo "SDK 코드 생성 완료"
 
-      - name: 루트 package.json 버전 업데이트
+      - name: 루트 package.json 버전 업데이트 (정규화된 prerelease)
         run: |
-          VERSION="${{ steps.validate.outputs.version }}"
-          jq --arg v "$VERSION" '.version = $v' package.json > tmp.json
+          PKG_VERSION="${{ steps.prep.outputs.pkg_version }}"
+          jq --arg v "$PKG_VERSION" '.version = $v' package.json > tmp.json
           mv tmp.json package.json
-          echo "package.json 버전: ${VERSION}"
+          echo "package.json 버전: ${PKG_VERSION}"
 
       - name: BuildConfig package.json 버전 동기화
         run: |
-          VERSION="${{ steps.validate.outputs.version }}"
+          NPM_VERSION="${{ steps.prep.outputs.npm_version }}"
           BUILDCONFIG_PKG="WebGLTemplates/AITTemplate/BuildConfig~/package.json"
 
-          # 베타 빌드가 3.0.0 기준 생성 브릿지와 동일한 web-framework로 빌드되도록 동기화.
+          # 베타 빌드가 재생성 브릿지와 동일한 web-framework로 빌드되도록 동기화.
           # web-analytics는 동일 버전이 존재할 때만 맞춘다.
-          if npm view "@apps-in-toss/web-analytics@${VERSION}" version --registry https://registry.npmjs.org >/dev/null 2>&1; then
-            jq --arg v "$VERSION" '
+          if npm view "@apps-in-toss/web-analytics@${NPM_VERSION}" version --registry https://registry.npmjs.org >/dev/null 2>&1; then
+            jq --arg v "$NPM_VERSION" '
               .dependencies["@apps-in-toss/web-framework"] = $v |
               .dependencies["@apps-in-toss/web-analytics"] = $v
             ' "$BUILDCONFIG_PKG" > tmp.json
           else
-            jq --arg v "$VERSION" '
+            jq --arg v "$NPM_VERSION" '
               .dependencies["@apps-in-toss/web-framework"] = $v
             ' "$BUILDCONFIG_PKG" > tmp.json
           fi
@@ -205,6 +302,150 @@ jobs:
             find "$SHARED_PLUGINS" -name "*.cs" -type f -delete
           fi
 
+      - name: Staging Orphan Commit 생성 및 push
+        id: stage
+        run: |
+          PKG_VERSION="${{ steps.prep.outputs.pkg_version }}"
+          # 빌드 잡 핸드오프용 임시 staging ref (refs/heads/ 경로 — refs/builds/는 GC 대상)
+          # publish-beta가 빌드 성공 후 이 트리를 channel_ref로 승격한다.
+          STAGING_REF="refs/heads/_build/beta-v${PKG_VERSION}"
+
+          echo "=== Staging Orphan Commit 생성 ==="
+          git add -A
+          TREE=$(git write-tree)
+          COMMIT=$(git commit-tree "$TREE" -m "베타(staging): SDK v${PKG_VERSION} 재생성
+
+          - @apps-in-toss/web-framework v${{ steps.prep.outputs.npm_version }} 기반 SDK 코드 재생성
+          - 빌드 검증용 staging commit (UPM 정리/description bake는 publish 단계에서)
+
+          Generated at: $(date -u +%Y-%m-%dT%H:%M:%SZ)")
+          echo "Staging orphan commit SHA: ${COMMIT}"
+
+          git push -f origin "${COMMIT}:${STAGING_REF}"
+          echo "staging_ref=${STAGING_REF}" >> $GITHUB_OUTPUT
+          echo "sha=${COMMIT}" >> $GITHUB_OUTPUT
+          echo "Staging ref push 완료: ${STAGING_REF}"
+
+  # =====================================================
+  # 베타 빌드 검증 - macOS
+  # staging ref를 unity-build.yml로 빌드. AIT_DEPLOY_KEY는 절대 전달하지 않음(INV3).
+  # =====================================================
+  build-beta-macos:
+    name: 베타 빌드 (macOS)
+    needs: [beta-prepare]
+    if: needs.beta-prepare.outputs.skip_build != 'true'
+
+    concurrency:
+      group: beta-release-${{ github.workflow }}-${{ needs.beta-prepare.outputs.staging_ref }}-macos-${{ matrix.unity-version }}
+      cancel-in-progress: true
+
+    strategy:
+      fail-fast: false
+      matrix:
+        unity-version: ${{ fromJSON(needs.beta-prepare.outputs.macos_versions) }}
+
+    uses: ./.github/workflows/unity-build.yml
+    with:
+      ref: ${{ needs.beta-prepare.outputs.staging_ref }}
+      os: macos
+      unity-version: ${{ matrix.unity-version }}
+      web-framework-version: ${{ needs.beta-prepare.outputs.npm_version }}
+      sdk-version: ${{ needs.beta-prepare.outputs.pkg_version }}
+      run-build: true
+    secrets:
+      AIT_AD_INTERSTITIAL_ID: ${{ secrets.AIT_AD_INTERSTITIAL_ID }}
+      AIT_AD_REWARDED_ID: ${{ secrets.AIT_AD_REWARDED_ID }}
+      KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+
+  # =====================================================
+  # 베타 빌드 검증 - Windows
+  # =====================================================
+  build-beta-windows:
+    name: 베타 빌드 (Windows)
+    needs: [beta-prepare]
+    if: needs.beta-prepare.outputs.skip_build != 'true' && needs.beta-prepare.outputs.skip_windows != 'true'
+
+    concurrency:
+      group: beta-release-${{ github.workflow }}-${{ needs.beta-prepare.outputs.staging_ref }}-windows-${{ matrix.unity-version }}
+      cancel-in-progress: true
+
+    strategy:
+      fail-fast: false
+      matrix:
+        unity-version: ${{ fromJSON(needs.beta-prepare.outputs.windows_versions) }}
+
+    uses: ./.github/workflows/unity-build.yml
+    with:
+      ref: ${{ needs.beta-prepare.outputs.staging_ref }}
+      os: windows
+      unity-version: ${{ matrix.unity-version }}
+      web-framework-version: ${{ needs.beta-prepare.outputs.npm_version }}
+      sdk-version: ${{ needs.beta-prepare.outputs.pkg_version }}
+      run-build: true
+    secrets:
+      AIT_AD_INTERSTITIAL_ID: ${{ secrets.AIT_AD_INTERSTITIAL_ID }}
+      AIT_AD_REWARDED_ID: ${{ secrets.AIT_AD_REWARDED_ID }}
+      KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+
+  # =====================================================
+  # 베타 게시: 빌드 성공 후 staging 트리를 channel_ref로 승격
+  # 빌드 실패 시 게시하지 않음 → 베타 채널이 깨진 SDK로 갱신되는 것 방지.
+  # =====================================================
+  publish-beta:
+    name: 베타 채널 게시
+    runs-on: ubuntu-latest
+    needs: [beta-prepare, build-beta-macos, build-beta-windows]
+    if: |
+      always() &&
+      needs.beta-prepare.result == 'success' &&
+      (needs.build-beta-macos.result == 'success' || needs.build-beta-macos.result == 'skipped') &&
+      (needs.build-beta-windows.result == 'success' || needs.build-beta-windows.result == 'skipped')
+
+    outputs:
+      pkg_version: ${{ needs.beta-prepare.outputs.pkg_version }}
+      channel_ref: ${{ needs.beta-prepare.outputs.channel_ref }}
+      beta_tag: ${{ needs.beta-prepare.outputs.beta_tag }}
+      release_url: ${{ steps.release.outputs.release_url }}
+
+    steps:
+      - name: Checkout (staging ref)
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.beta-prepare.outputs.staging_ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Git 설정
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: 릴리즈 정보 주입 (description bake)
+        id: release-info
+        run: |
+          PKG_VERSION="${{ needs.beta-prepare.outputs.pkg_version }}"
+          RELEASE_DATETIME=$(date -u +"%Y%m%d_%H%M")
+          # orphan commit의 7자 단축 해시 (파트너 #beta 핀과 정합 — source_ref HEAD 해시를 쓰지 않음)
+          COMMIT_HASH=$(git rev-parse --short=7 HEAD)
+
+          echo "=== 릴리즈 정보 주입 ==="
+          echo "버전: ${PKG_VERSION}"
+          echo "릴리즈 일시: ${RELEASE_DATETIME}"
+          echo "커밋 해시: ${COMMIT_HASH}"
+
+          echo "release_datetime=${RELEASE_DATETIME}" >> $GITHUB_OUTPUT
+          echo "commit_hash=${COMMIT_HASH}" >> $GITHUB_OUTPUT
+
+          # package.json description 업데이트 (런타임 AITVersion이 정규식으로 파싱).
+          # .version은 건드리지 않으므로 prerelease 격리(INV4) 불변.
+          jq --arg dt "$RELEASE_DATETIME" --arg hash "$COMMIT_HASH" \
+             '.description = "Apps in Toss Mini App Unity Engine Adapter SDK Package. (Released: " + $dt + ", " + $hash + ")"' \
+             package.json > tmp.json && mv tmp.json package.json
+
+          echo "package.json description:"
+          jq '.description' package.json
+          echo "package.json version (prerelease 유지 확인):"
+          jq '.version' package.json
+
       - name: UPM 패키지 정리
         run: |
           echo "=== UPM 패키지 정리 ==="
@@ -232,16 +473,18 @@ jobs:
       - name: Orphan Commit 생성 및 채널 ref / 스냅샷 태그 푸시
         id: publish
         run: |
-          VERSION="${{ steps.validate.outputs.version }}"
-          CHANNEL_REF="${{ steps.validate.outputs.channel_ref }}"
-          BETA_TAG="${{ steps.validate.outputs.beta_tag }}"
+          PKG_VERSION="${{ needs.beta-prepare.outputs.pkg_version }}"
+          NPM_VERSION="${{ needs.beta-prepare.outputs.npm_version }}"
+          CHANNEL_REF="${{ needs.beta-prepare.outputs.channel_ref }}"
+          BETA_TAG="${{ needs.beta-prepare.outputs.beta_tag }}"
+          STAGING_REF="${{ needs.beta-prepare.outputs.staging_ref }}"
 
-          echo "=== Orphan Commit 생성 ==="
+          echo "=== 게시용 Orphan Commit 생성 ==="
           git add -A
           TREE=$(git write-tree)
-          COMMIT=$(git commit-tree "$TREE" -m "베타: SDK v${VERSION} (prerelease 채널)
+          COMMIT=$(git commit-tree "$TREE" -m "베타: SDK v${PKG_VERSION} (prerelease 채널)
 
-          - @apps-in-toss/web-framework v${VERSION} 기반 SDK 코드 재생성
+          - @apps-in-toss/web-framework v${NPM_VERSION} 기반 SDK 코드 재생성
           - UPM 패키지용 정리된 베타 빌드 (개발/테스트 파일 제외)
           - 채널: ${CHANNEL_REF}
 
@@ -254,26 +497,36 @@ jobs:
 
           # 스냅샷 태그 upsert (immutable 스냅샷 + GitHub Release 앵커)
           git push origin --delete "${BETA_TAG}" 2>/dev/null || true
-          git tag -f "${BETA_TAG}" "${COMMIT}" -m "베타 릴리즈: v${VERSION}"
+          git tag -f "${BETA_TAG}" "${COMMIT}" -m "베타 릴리즈: v${PKG_VERSION}"
           git push -f origin "refs/tags/${BETA_TAG}:refs/tags/${BETA_TAG}"
           echo "스냅샷 태그 푸시 완료: ${BETA_TAG}"
+
+          # 임시 staging ref 정리
+          git push origin --delete "${STAGING_REF}" 2>/dev/null || echo "staging ref 정리 스킵 (이미 없거나 권한 없음)"
 
           echo "sha=${COMMIT}" >> $GITHUB_OUTPUT
 
       - name: GitHub Release 생성 (prerelease, Latest 아님)
+        id: release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          VERSION="${{ steps.validate.outputs.version }}"
-          CHANNEL_REF="${{ steps.validate.outputs.channel_ref }}"
-          BETA_TAG="${{ steps.validate.outputs.beta_tag }}"
+          PKG_VERSION="${{ needs.beta-prepare.outputs.pkg_version }}"
+          NPM_VERSION="${{ needs.beta-prepare.outputs.npm_version }}"
+          CHANNEL_REF="${{ needs.beta-prepare.outputs.channel_ref }}"
+          BETA_TAG="${{ needs.beta-prepare.outputs.beta_tag }}"
+          RELEASE_DATETIME="${{ steps.release-info.outputs.release_datetime }}"
+          COMMIT_HASH="${{ steps.release-info.outputs.commit_hash }}"
 
           RELEASE_BODY=$(cat <<EOF
-          ## Apps in Toss Unity SDK — 베타 (v${VERSION})
+          ## Apps in Toss Unity SDK — 베타 (v${PKG_VERSION})
 
           ⚠️ **prerelease 채널입니다.** 선택된 제휴사 파일럿 테스트 전용이며, 안정 버전이 아닙니다.
 
-          \`@apps-in-toss/web-framework\` v${VERSION} 기반으로 생성된 베타 SDK입니다.
+          📅 **Released**: ${RELEASE_DATETIME} (UTC)
+          🔗 **Commit**: \`${COMMIT_HASH}\` (orphan)
+
+          \`@apps-in-toss/web-framework\` v${NPM_VERSION} 기반으로 생성된 베타 SDK입니다.
 
           ### 설치 (파일럿 제휴사 전용)
 
@@ -292,6 +545,28 @@ jobs:
           - 파일럿 종료 시 안정 태그(예: \`#release/vX.Y.Z\`)로 다시 핀하세요.
 
           이 스냅샷 태그: \`${BETA_TAG}\`
+
+          ### 지원 Unity 버전
+
+          | 버전 | 상태 |
+          |------|------|
+          | Unity 6000.3 (Unity 6.3) | ✅ 지원 |
+          | Unity 6000.2 (Unity 6 LTS) | ✅ 지원 |
+          | Unity 6000.0 (Unity 6) | ✅ 지원 |
+          | Unity 2022.3 LTS | ✅ 지원 |
+          | Unity 2021.3 LTS | ✅ 지원 (최소 버전) |
+
+          ### 주요 기능
+
+          - Apps in Toss 플랫폼에 최적화된 WebGL 빌드 자동화
+          - 커스텀 Build & Deploy 윈도우를 통한 Unity Editor 통합
+          - 플랫폼별 브릿지 코드가 포함된 커스텀 WebGL 템플릿 (AITTemplate)
+          - granite 빌드 시스템을 사용한 Vite 기반 빌드 파이프라인
+          - 플랫폼 기능을 위한 종합 C# API (결제, 사용자 인증, 기기 API 등)
+
+          ### 문서
+
+          - [Unity Editor 설정](https://github.com/${{ github.repository }}#readme)
           EOF
           )
 
@@ -301,27 +576,31 @@ jobs:
           echo "태그 전파 대기 중 (5초)..."
           sleep 5
 
-          # prerelease로 생성 — 절대 Latest로 표시되지 않음
+          # prerelease로 생성 — 절대 Latest로 표시되지 않음 (베타 채널 무조건 격리, INV2)
           gh release create "${BETA_TAG}" \
-            --title "v${VERSION} (beta)" \
+            --title "v${PKG_VERSION} (beta)" \
             --notes "$RELEASE_BODY" \
             --verify-tag \
             --prerelease \
             --latest=false
 
-          echo "GitHub Release(prerelease) 생성 완료: ${BETA_TAG}"
+          RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/${BETA_TAG}"
+          echo "release_url=${RELEASE_URL}" >> $GITHUB_OUTPUT
+          echo "GitHub Release(prerelease) 생성 완료: ${RELEASE_URL}"
 
       - name: 베타 릴리즈 요약
         run: |
-          VERSION="${{ steps.validate.outputs.version }}"
-          CHANNEL_REF="${{ steps.validate.outputs.channel_ref }}"
-          BETA_TAG="${{ steps.validate.outputs.beta_tag }}"
+          PKG_VERSION="${{ needs.beta-prepare.outputs.pkg_version }}"
+          NPM_VERSION="${{ needs.beta-prepare.outputs.npm_version }}"
+          CHANNEL_REF="${{ needs.beta-prepare.outputs.channel_ref }}"
+          BETA_TAG="${{ needs.beta-prepare.outputs.beta_tag }}"
 
           echo "## 베타 채널 릴리즈 완료" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| 항목 | 값 |" >> $GITHUB_STEP_SUMMARY
           echo "|------|-----|" >> $GITHUB_STEP_SUMMARY
-          echo "| web-framework 버전 | v${VERSION} |" >> $GITHUB_STEP_SUMMARY
+          echo "| web-framework npm 버전 | v${NPM_VERSION} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 패키지 버전(.version) | v${PKG_VERSION} |" >> $GITHUB_STEP_SUMMARY
           echo "| 채널 브랜치 | \`${CHANNEL_REF}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| 스냅샷 태그 | \`${BETA_TAG}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Latest 표시 | ❌ (prerelease) |" >> $GITHUB_STEP_SUMMARY
@@ -333,3 +612,94 @@ jobs:
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "> 베타 채널은 자동 업데이트 대상이 아닙니다. 새 베타 배포 시 제휴사에게 별도 안내 후 수동 갱신 요청." >> $GITHUB_STEP_SUMMARY
+
+  # =====================================================
+  # Sentry 릴리즈 등록 (베타 environment)
+  # 런타임 envelope의 release 식별자(apps-in-toss.unity@<pkg_version>)와 동일 이름으로 등록.
+  # release.yml과 달리 set_commits: skip — 미머지 orphan 커밋의 Fixes trailer가
+  # stable 이슈를 조기 auto-resolve하는 것을 차단(INV5/INV1 보호).
+  # =====================================================
+  sentry-release:
+    name: Sentry 베타 릴리즈 등록
+    runs-on: ubuntu-latest
+    needs: [beta-prepare, publish-beta]
+    if: always() && needs.publish-beta.result == 'success' && needs.beta-prepare.outputs.pkg_version != ''
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Sentry Release 생성 (set_commits skip, finalize)
+        uses: getsentry/action-release@v3
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: toss
+          SENTRY_PROJECT: apps-in-toss-unity-sdk
+        with:
+          version: apps-in-toss.unity@${{ needs.beta-prepare.outputs.pkg_version }}
+          # set_commits 기본값은 "auto"(commit range 연동)이므로 반드시 "skip"으로 명시.
+          # 미머지 orphan 커밋의 Fixes trailer가 stable 이슈를 조기 auto-resolve하는 것 차단(INV5).
+          set_commits: skip
+          finalize: true
+
+  # =====================================================
+  # 베타 배포 알림
+  # release.yml과 동일한 corp 자동화 웹훅을 재사용하되, 메시지는 베타 전용으로 구성한다.
+  # 프로덕션 deploy URL(intoss-private://...)은 베타에 존재하지 않으므로 전송하지 않고,
+  # 베타 채널 핀(#<ref>)·스냅샷 태그·GitHub Release 링크와 "prerelease, 수동 갱신" 라벨만 보낸다.
+  # =====================================================
+  notify-beta:
+    name: 베타 배포 알림
+    runs-on: ubuntu-latest
+    needs: [beta-prepare, publish-beta]
+    if: always() && needs.publish-beta.result == 'success' && inputs.notify != false
+    steps:
+      - name: 베타 알림 전송
+        env:
+          DEPLOY_WEBHOOK_URL: "https://ipd-public-gateway.core.toss-internal.com/api-public/v3/ipd-public-gateway/webhooks/ipd-corp-core-automation-webhook/8b6db539-6cb4-4b99-b2a8-8981c43b2592"
+          PKG_VERSION: ${{ needs.beta-prepare.outputs.pkg_version }}
+          CHANNEL_REF: ${{ needs.beta-prepare.outputs.channel_ref }}
+          BETA_TAG: ${{ needs.beta-prepare.outputs.beta_tag }}
+          RELEASE_URL: ${{ needs.publish-beta.outputs.release_url }}
+        run: |
+          ACTIONS_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+          # 베타는 프로덕션 deploy URL이 없으므로 채널 핀 안내를 단일 라인으로 전송.
+          # 메시지만 베타용으로 수정 — 웹훅 수신 템플릿이 요구하는 필드 구조는 유지.
+          BETA_LINE="🧪 베타 #${CHANNEL_REF} (prerelease — 수동 갱신): <${RELEASE_URL}|${BETA_TAG}>"
+          MAX_EDITION_LINES=10
+
+          echo "=== 베타 배포 알림 전송 ==="
+          echo "버전: ${PKG_VERSION} (beta)"
+          echo "채널: #${CHANNEL_REF}"
+          echo "Actions URL: ${ACTIONS_URL}"
+
+          # version 필드에 (beta)를 명시해 프로덕션 배포와 구분
+          JSON_PAYLOAD=$(jq -n \
+            --arg version "${PKG_VERSION} (beta)" \
+            --arg urls "$BETA_LINE" \
+            --arg actionsUrl "$ACTIONS_URL" \
+            --argjson lineCount 1 \
+            '{version: $version, urlsForEdition: $urls, actionsUrl: $actionsUrl, lineCount: $lineCount}')
+
+          # urlsForEdition2 ~ urlsForEdition{MAX} 키를 빈 문자열로 패딩 (템플릿이 모든 키 존재를 요구)
+          for i in $(seq 2 $MAX_EDITION_LINES); do
+            JSON_PAYLOAD=$(echo "$JSON_PAYLOAD" | jq \
+              --arg key "urlsForEdition${i}" \
+              --arg val "" \
+              '. + {($key): $val}')
+          done
+
+          echo "전송할 JSON:"
+          echo "$JSON_PAYLOAD"
+
+          HTTP_STATUS=$(curl -s -o /tmp/webhook_response.txt -w "%{http_code}" -X POST "$DEPLOY_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d "$JSON_PAYLOAD")
+
+          if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
+            echo "✅ 베타 알림 전송 완료 (HTTP ${HTTP_STATUS})"
+          else
+            echo "::error::베타 알림 전송 실패 (HTTP ${HTTP_STATUS})"
+            cat /tmp/webhook_response.txt
+            exit 1
+          fi

@@ -246,7 +246,9 @@ namespace AppsInToss.Editor
                 }
                 else
                 {
-                    Debug.LogWarning("[AIT] package.json 템플릿을 찾을 수 없습니다. 첫 빌드 시 자동으로 설치됩니다.");
+                    // 정상 흐름의 예측된 분기 — package.json 템플릿이 아직 없으면 첫 빌드 시 자동 설치된다.
+                    // SDK 결함 조사가 필요 없는 fallback이므로 Sentry에는 전송하지 않는다(Console warning만).
+                    AITLog.Warning("[AIT] package.json 템플릿을 찾을 수 없습니다. 첫 빌드 시 자동으로 설치됩니다.", sentryCapture: false);
                 }
             }
             catch (Exception e)

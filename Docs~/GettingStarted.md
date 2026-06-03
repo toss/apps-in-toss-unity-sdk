@@ -36,7 +36,9 @@ https://github.com/toss/apps-in-toss-unity-sdk.git#release/v2.6.1
 }
 ```
 
-> **버전 고정**: 특정 버전을 고정하려면 `#main` 대신 `#release/v1.9.2`와 같이 릴리즈 태그를 사용하세요. 릴리즈 목록은 [GitHub Releases](https://github.com/toss/apps-in-toss-unity-sdk/releases)에서 확인할 수 있습니다.
+> **버전 고정 (서비스 배포 권장)**: 위 예시처럼 **불변 릴리즈 태그** `#release/vX.Y.Z`(예: `#release/v2.6.1`)로 핀하세요. 릴리즈 태그는 특정 커밋을 영구히 가리키는 불변 ref라, 재현 가능한 빌드를 보장하고 의도치 않은 업데이트로부터 가장 강하게 격리됩니다.
+>
+> 반면 `#main` 같은 **브랜치**로 핀하면 HEAD가 이동할 때마다 자동 업데이터가 변경을 감지해 업데이트 프롬프트를 띄웁니다 — 최신을 따라가고 싶을 때만 사용하세요. 릴리즈 목록은 [GitHub Releases](https://github.com/toss/apps-in-toss-unity-sdk/releases)에서 확인할 수 있습니다.
 
 ### 지원 Unity 버전
 

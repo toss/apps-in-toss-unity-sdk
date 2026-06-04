@@ -59,7 +59,7 @@ public static class BuildOutputValidator
             errors.Add("ait-build/package.json not found");
         }
 
-        // 3. granite.config.ts 존재 + 플레이스홀더 확인
+        // 3. granite.config.ts 존재 + 플레이스홀더 확인 (web-framework 2.x granite build 전용)
         string graniteConfigPath = Path.Combine(aitBuildPath, "granite.config.ts");
         if (File.Exists(graniteConfigPath))
         {
@@ -73,6 +73,26 @@ public static class BuildOutputValidator
         else
         {
             warnings.Add("granite.config.ts not found");
+        }
+
+        // 3.5. apps-in-toss.config.ts 존재 + 플레이스홀더 확인 (web-framework 3.x ait build 전용)
+        //   3.x의 `ait build`는 granite.config.ts를 무시하고 이 파일을 cosmiconfig로 탐색한다.
+        //   granite.config.ts만 검증하면 3.x가 실제로 읽는 설정의 치환이 검증되지 않아
+        //   vestigial 파일만 통과시키는 false green이 된다. 두 파일 모두 Unity 템플릿이
+        //   emit·치환하므로 채널과 무관하게 함께 검증한다 (구버전 SDK 템플릿엔 없을 수 있어 warning).
+        string appsInTossConfigPath = Path.Combine(aitBuildPath, "apps-in-toss.config.ts");
+        if (File.Exists(appsInTossConfigPath))
+        {
+            string content = File.ReadAllText(appsInTossConfigPath);
+            var placeholders = CheckForPlaceholders(content);
+            if (placeholders.Count > 0)
+            {
+                errors.Add($"apps-in-toss.config.ts has unsubstituted placeholders: {string.Join(", ", placeholders)}");
+            }
+        }
+        else
+        {
+            warnings.Add("apps-in-toss.config.ts not found");
         }
 
         // 4. node_modules/ 존재 확인

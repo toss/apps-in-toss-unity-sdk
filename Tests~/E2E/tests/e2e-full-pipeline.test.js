@@ -512,12 +512,21 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       // package.json
       expect(fileExists(path.resolve(AIT_BUILD, 'package.json')), 'package.json should exist').toBe(true);
 
-      // granite.config.ts 플레이스홀더
+      // granite.config.ts 플레이스홀더 (web-framework 2.x granite build 전용)
       const graniteConfigPath = path.resolve(AIT_BUILD, 'granite.config.ts');
       if (fileExists(graniteConfigPath)) {
         const content = fs.readFileSync(graniteConfigPath, 'utf-8');
         const placeholders = checkForPlaceholders(content);
         expect(placeholders.length, 'Should have no unsubstituted placeholders in granite.config.ts').toBe(0);
+      }
+
+      // apps-in-toss.config.ts 플레이스홀더 (web-framework 3.x ait build — cosmiconfig 탐색 대상)
+      // 3.x가 실제로 읽는 설정 파일. granite.config.ts만 검증하면 false green이 되므로 함께 검증한다.
+      const appsInTossConfigPath = path.resolve(AIT_BUILD, 'apps-in-toss.config.ts');
+      if (fileExists(appsInTossConfigPath)) {
+        const content = fs.readFileSync(appsInTossConfigPath, 'utf-8');
+        const placeholders = checkForPlaceholders(content);
+        expect(placeholders.length, 'Should have no unsubstituted placeholders in apps-in-toss.config.ts').toBe(0);
       }
 
       // node_modules

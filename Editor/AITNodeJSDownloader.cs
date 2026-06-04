@@ -264,34 +264,18 @@ namespace AppsInToss.Editor
                 // pnpm 자동 설치 (스테이징 경로에서)
                 bool pnpmInstalled = InstallPnpm(stagingPath);
 
-                // atomic 이동: 스테이징 → 최종 경로
-                // 다른 프로세스가 먼저 설치를 완료했을 수 있으므로 확인
-                if (Directory.Exists(targetPath))
+                // atomic 이동: 스테이징 → 최종 경로.
+                // Windows AV가 추출 직후 staging 핸들을 점유해 rename이 일시적 IOException으로
+                // 실패하는 경우(Sentry APPS-IN-TOSS-UNITY-SDK-100)에 지수 백오프로 재시도한다.
+                // 다른 프로세스가 먼저/동시에 설치를 완료하면(race winner) false가 반환되며,
+                // 어느 경로든 stagingPath는 아래 finally의 SafeDeleteDirectory가 정리한다.
+                if (AITFileSystemHelper.MoveDirectoryWithRetry(stagingPath, targetPath, logPrefix: "[NodeJS]"))
                 {
-                    // 이미 설치됨 - 스테이징 삭제
-                    Debug.Log($"[NodeJS] 다른 프로세스가 이미 설치를 완료함. 스테이징 삭제: {stagingPath}");
-                    AITFileSystemHelper.SafeDeleteDirectory(stagingPath, logPrefix: "[NodeJS]");
+                    Debug.Log($"[NodeJS] Node.js 설치 완료 (atomic move): {targetPath}");
                 }
                 else
                 {
-                    try
-                    {
-                        Directory.Move(stagingPath, targetPath);
-                        Debug.Log($"[NodeJS] Node.js 설치 완료 (atomic move): {targetPath}");
-                    }
-                    catch (IOException)
-                    {
-                        // Move 실패 = 다른 프로세스가 동시에 이동 성공
-                        if (Directory.Exists(targetPath))
-                        {
-                            Debug.Log($"[NodeJS] 다른 프로세스가 동시에 설치 완료함. 스테이징 삭제.");
-                            AITFileSystemHelper.SafeDeleteDirectory(stagingPath, logPrefix: "[NodeJS]");
-                        }
-                        else
-                        {
-                            throw;
-                        }
-                    }
+                    Debug.Log($"[NodeJS] 다른 프로세스가 이미/동시에 설치를 완료함. 스테이징은 정리됨: {stagingPath}");
                 }
 
                 Debug.Log($"[NodeJS] Node.js 다운로드 및 설치 완료: {targetPath}");

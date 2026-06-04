@@ -89,6 +89,7 @@ public class BuildCleanupTests
         File.WriteAllText(Path.Combine(buildPath, "package-lock.json"), "{}");
         File.WriteAllText(Path.Combine(buildPath, "pnpm-lock.yaml"), "lockfile: 1");
         File.WriteAllText(Path.Combine(buildPath, "granite.config.ts"), "export default {}");
+        File.WriteAllText(Path.Combine(buildPath, "apps-in-toss.config.ts"), "export default {}");
         File.WriteAllText(Path.Combine(buildPath, "vite.config.ts"), "export default {}");
         File.WriteAllText(Path.Combine(buildPath, "tsconfig.json"), "{}");
 
@@ -111,6 +112,8 @@ public class BuildCleanupTests
             "pnpm-lock.yaml should be preserved");
         Assert.IsTrue(File.Exists(Path.Combine(buildPath, "granite.config.ts")),
             "granite.config.ts should be preserved");
+        Assert.IsTrue(File.Exists(Path.Combine(buildPath, "apps-in-toss.config.ts")),
+            "apps-in-toss.config.ts should be preserved");
         Assert.IsTrue(File.Exists(Path.Combine(buildPath, "vite.config.ts")),
             "vite.config.ts should be preserved");
         Assert.IsTrue(File.Exists(Path.Combine(buildPath, "tsconfig.json")),

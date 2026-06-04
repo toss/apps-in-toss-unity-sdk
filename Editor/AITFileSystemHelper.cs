@@ -22,6 +22,13 @@ namespace AppsInToss.Editor
         // 마지막 시도에서 동일 예외가 다시 던져져 호출자에게 결과가 전달됨.
         private static readonly int[] DeleteRetryDelaysMs = { 50, 100, 200, 400 };
 
+        // 원자적 디렉토리 이동(Directory.Move) 회복용 지수 백오프.
+        // Windows AV/Defender가 추출 직후 staging dir 내 파일 핸들을 점유하면 rename이
+        // IOException("Access denied")으로 실패하는데, 보통 수백 ms 안에 핸들이 풀린다.
+        // 삭제(DeleteRetryDelaysMs)보다 다소 길게 잡는다 — 이동 실패는 Node.js 설치 자체를
+        // 무산시키는 치명적 경로라 회복 가치가 더 크고, 1회성 설치라 합계 ~1.85s도 수용 가능.
+        private static readonly int[] MoveRetryDelaysMs = { 100, 250, 500, 1000 };
+
         /// <summary>
         /// 파일을 삭제합니다. 존재하지 않으면 조용히 true를 반환합니다.
         /// Unity `.meta` 파일이 있으면 함께 삭제합니다.
@@ -147,6 +154,95 @@ namespace AppsInToss.Editor
                     $"{logPrefix} 디렉토리 삭제 실패: {path} ({lastException.GetType().Name}: {lastException.Message})",
                     sentryCapture: false);
             return false;
+        }
+
+        /// <summary>
+        /// 디렉토리를 최종 경로로 원자적 이동(rename)합니다. Windows의 일시적 잠금
+        /// (AV/Defender가 추출 직후 staging dir 내 파일 핸들을 점유하는 경우 등)으로 인한
+        /// <see cref="IOException"/>에 대해 지수 백오프로 재시도합니다.
+        /// <para>
+        /// 동시 설치 경합 대응: 매 시도 전에 <paramref name="targetPath"/> 존재를 확인하여,
+        /// 다른 프로세스가 먼저(또는 재시도 도중) 설치를 완료하면(race winner) 이동을 건너뛰고
+        /// <c>false</c>를 반환합니다. 이 경우 <paramref name="stagingPath"/> 정리는 호출자가
+        /// 담당합니다(이 메서드는 stagingPath를 삭제하지 않음).
+        /// </para>
+        /// <para>
+        /// 삭제 유틸(<see cref="SafeDeleteDirectory"/>)과 달리 이동 실패는 치명적이므로
+        /// (Node.js 설치 자체가 무산됨) 전체 재시도 윈도우를 소진해도 실패하면 마지막
+        /// <see cref="IOException"/>을 다시 던집니다 — 호출자가 결과를 인지하고 사용자에게
+        /// 안내/정리하도록. 실패 직전 경고 로그 1회를 남기되 Sentry 전송은 억제합니다.
+        /// </para>
+        /// </summary>
+        /// <param name="stagingPath">이동할 원본(스테이징) 경로</param>
+        /// <param name="targetPath">이동 대상(최종) 경로</param>
+        /// <param name="logPrefix">로그 메시지 접두사 (예: "[NodeJS]"). 기본값은 "[AIT]"</param>
+        /// <returns>이동을 수행했으면 true, 다른 프로세스가 이미 target을 완성해 이동을 건너뛰었으면 false</returns>
+        /// <exception cref="IOException">전체 재시도 윈도우를 소진해도 이동에 실패한 경우</exception>
+        public static bool MoveDirectoryWithRetry(string stagingPath, string targetPath, string logPrefix = DefaultLogPrefix)
+        {
+            return MoveDirectoryWithRetryCore(
+                stagingPath,
+                targetPath,
+                logPrefix,
+                move: () => Directory.Move(stagingPath, targetPath),
+                targetExists: () => Directory.Exists(targetPath),
+                sleep: ms => Thread.Sleep(ms));
+        }
+
+        /// <summary>
+        /// <see cref="MoveDirectoryWithRetry"/>의 테스트 가능한 코어. 파일시스템·시간 의존성을
+        /// 델리게이트로 주입받아 재시도/백오프/경합(race winner)/소진 흐름만 결정적으로 검증할 수 있다.
+        /// 프로덕션 호출은 <see cref="MoveDirectoryWithRetry"/>가 실제 <see cref="Directory"/>/
+        /// <see cref="Thread.Sleep(int)"/>를 주입한다.
+        /// </summary>
+        /// <param name="move">이동 시도(성공 시 정상 반환, 일시적 실패 시 <see cref="IOException"/>)</param>
+        /// <param name="targetExists">대상 경로 존재 여부(다른 프로세스의 동시 설치 감지)</param>
+        /// <param name="sleep">백오프 대기(ms) — 테스트에서는 실제 대기 없이 호출 인자만 기록 가능</param>
+        internal static bool MoveDirectoryWithRetryCore(
+            string stagingPath,
+            string targetPath,
+            string logPrefix,
+            Action move,
+            Func<bool> targetExists,
+            Action<int> sleep)
+        {
+            int totalAttempts = MoveRetryDelaysMs.Length + 1; // 즉시 1회 + 백오프 횟수
+            IOException lastException = null;
+
+            for (int attempt = 0; attempt < totalAttempts; attempt++)
+            {
+                // 다른 프로세스가 먼저(또는 재시도 도중) 설치를 완료했으면 이동 불필요 — race winner.
+                if (targetExists())
+                    return false;
+
+                try
+                {
+                    move();
+                    return true;
+                }
+                catch (IOException ex)
+                {
+                    // targetPath가 아직 없는 상태의 IOException = staging 측 핸들 점유(주로 AV 스캔)
+                    // 가능성이 높다. 다음 반복 진입 시 targetExists()로 race winner도 함께 재확인된다.
+                    lastException = ex;
+                    if (attempt < MoveRetryDelaysMs.Length)
+                    {
+                        try { sleep(MoveRetryDelaysMs[attempt]); }
+                        catch (ThreadInterruptedException) { break; }
+                    }
+                }
+            }
+
+            // 재시도 도중 race winner가 target을 완성했을 수 있으니 마지막으로 한 번 더 확인.
+            if (targetExists())
+                return false;
+
+            // 전체 재시도 소진 — 이동 실패는 치명적이므로 호출자에게 마지막 예외를 전파.
+            AITLog.Warning(
+                $"{logPrefix} 디렉토리 이동 재시도 {totalAttempts}회 모두 실패: {stagingPath} → {targetPath} " +
+                $"({lastException?.GetType().Name}: {lastException?.Message})",
+                sentryCapture: false);
+            throw lastException ?? new IOException($"디렉토리 이동 실패: {stagingPath} → {targetPath}");
         }
 
         /// <summary>

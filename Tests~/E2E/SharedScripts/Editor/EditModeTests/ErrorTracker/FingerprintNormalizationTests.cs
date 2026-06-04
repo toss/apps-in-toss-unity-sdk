@@ -32,14 +32,15 @@ public class FingerprintNormalizationTests
     [Test]
     public void GlobFileList_CollapsesToSingleFingerprint()
     {
-        // Sentry SDK-ZM: "필수 파일 누락! {목록}" — 누락 파일 조합이 달라도(1개 vs 여러 개) 같은 이슈로 수렴해야 한다.
+        // Sentry SDK-ZM: "필수 파일 누락! 누락된 필수 파일: {목록}" — 누락 파일 조합이 달라도(1개 vs 여러 개) 같은 이슈로 수렴해야 한다.
         // glob 파일명 → <file>, 나열된 "<file>, <file>, ..." → <file> 로 접힘.
+        // 실제 WebGLBuildCopier.cs 에서 생성되는 메시지 형식: "누락된 필수 파일: *.framework.js"
         var single = AITEditorErrorTracker.BuildNormalizedFingerprint(
             "Error",
-            "[AIT] ✗ 치명적: WebGL 빌드 필수 파일 누락! *.framework.js");
+            "[AIT] ✗ 치명적: WebGL 빌드 필수 파일 누락! 누락된 필수 파일: *.framework.js");
         var many = AITEditorErrorTracker.BuildNormalizedFingerprint(
             "Error",
-            "[AIT] ✗ 치명적: WebGL 빌드 필수 파일 누락! *.framework.js, *.loader.js, *.data.gz");
+            "[AIT] ✗ 치명적: WebGL 빌드 필수 파일 누락! 누락된 필수 파일: *.framework.js, *.loader.js, *.data.gz");
 
         Assert.IsNotNull(single);
         Assert.IsNotNull(many);
@@ -72,7 +73,7 @@ public class FingerprintNormalizationTests
         // 누락 파일(ZM)과 폴더 삭제 실패는 서로 다른 이슈로 유지되어야 한다(과도한 병합 방지).
         var missing = AITEditorErrorTracker.BuildNormalizedFingerprint(
             "Error",
-            "[AIT] ✗ 치명적: WebGL 빌드 필수 파일 누락! *.framework.js");
+            "[AIT] ✗ 치명적: WebGL 빌드 필수 파일 누락! 누락된 필수 파일: *.framework.js");
         var deleteFail = AITEditorErrorTracker.BuildNormalizedFingerprint(
             "Error",
             @"[AIT] 이전 빌드 잔여물 정리 실패: C:\proj\ait-build");

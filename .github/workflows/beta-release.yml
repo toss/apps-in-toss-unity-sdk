@@ -560,7 +560,8 @@ jobs:
           fi
           echo "Installing @apps-in-toss/web-framework@${WF_VERSION}"
           pnpm install -g "@apps-in-toss/web-framework@${WF_VERSION}"
-          ait --version || echo "AIT CLI installed"
+          # 설치/PATH 실패를 조기에 감지 — ait가 없으면 여기서 즉시 실패(이후 deploy에서 command not found 방지).
+          ait --version
 
       - name: 베타 빌드 산출물 다운로드
         uses: actions/download-artifact@v8
@@ -610,8 +611,12 @@ jobs:
             elif [ "$DEPLOY_STATUS" -eq 0 ]; then
               DEPLOY_URL=$(echo "$CLEANED_OUTPUT" | grep -oE 'intoss-private://[^[:space:]]+' | head -1 || true)
               if [ -z "$DEPLOY_URL" ]; then
-                echo "::warning::배포는 성공(exit 0)했으나 intoss-private:// URL을 출력에서 찾지 못했습니다."
-                DEPLOY_URL="SUCCESS(no-url)"
+                # release.yml과 동일하게 https:// URL로 2차 폴백, 그래도 없으면 표시용 토큰.
+                DEPLOY_URL=$(echo "$CLEANED_OUTPUT" | grep -oE 'https?://[^[:space:]]+' | head -1 || true)
+                if [ -z "$DEPLOY_URL" ]; then
+                  echo "::warning::배포는 성공(exit 0)했으나 URL을 출력에서 찾지 못했습니다."
+                  DEPLOY_URL="SUCCESS(no-url)"
+                fi
               fi
               echo "✅ 배포 성공: ${DEPLOY_URL}"
               DEPLOY_RESULTS="${DEPLOY_RESULTS}${BUILD_NAME}: ${DEPLOY_URL}\n"
@@ -633,20 +638,30 @@ jobs:
             echo ""
             echo "버전: \`${{ needs.beta-prepare.outputs.pkg_version }}\` (web-framework \`${{ needs.beta-prepare.outputs.npm_version }}\`)"
             echo ""
-            echo "| 빌드 | 상태 / URL |"
-            echo "|------|------------|"
+            echo "| 빌드 | 상태 / URL | QR |"
+            echo "|------|------------|:--:|"
             echo -e "$DEPLOY_RESULTS" | while IFS= read -r line; do
               [ -n "$line" ] || continue
               NAME=$(echo "$line" | cut -d: -f1 | xargs)
               STATUS=$(echo "$line" | cut -d: -f2- | xargs)
               if echo "$STATUS" | grep -qE '^intoss-private://'; then
-                echo "| ${NAME} | ✅ \`${STATUS}\` |"
+                # release.yml/preview.yml과 동일: intoss-private URL을 스캔 가능한 QR 이미지로 게시.
+                ENCODED_URL=$(printf '%s' "$STATUS" | jq -sRr @uri)
+                QR_IMG="![QR](https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${ENCODED_URL})"
+                echo "| ${NAME} | ✅ \`${STATUS}\` | ${QR_IMG} |"
               elif echo "$STATUS" | grep -qE 'FAILED|TIMEOUT|NO_AIT'; then
-                echo "| ${NAME} | ❌ ${STATUS} |"
+                echo "| ${NAME} | ❌ ${STATUS} | - |"
               else
-                echo "| ${NAME} | ✅ ${STATUS} |"
+                echo "| ${NAME} | ✅ ${STATUS} | - |"
               fi
             done
+            echo ""
+            echo "<details><summary>📱 테스트 방법</summary>"
+            echo ""
+            echo "1. 위 QR 코드를 Toss 앱으로 스캔, 또는"
+            echo "2. \`intoss-private://\` URL을 복사해 Toss 앱에서 열기"
+            echo ""
+            echo "</details>"
           } >> "$GITHUB_STEP_SUMMARY"
 
           if [ "$HAS_FAILURE" = true ]; then

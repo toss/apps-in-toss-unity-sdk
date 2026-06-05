@@ -586,9 +586,26 @@ jobs:
           HAS_FAILURE=false
           DEPLOYED_ANY=false
 
-          for build_dir in ait-builds/ait-build-*/; do
+          # download-artifact@v8 레이아웃 처리:
+          #  - 매치 아티팩트가 여러 개면 ait-builds/<artifact-name>/ 서브디렉터리 생성 (release.yml 실릴리즈 경로)
+          #  - 매치가 정확히 1개면 단일 다운로드로 간주해 ait-builds/ 바로 밑에 flat 추출 (beta minimal 경로)
+          # 두 레이아웃 모두 지원하도록 빌드 디렉터리 목록을 동적으로 구성한다.
+          BUILD_DIRS=()
+          for d in ait-builds/ait-build-*/; do
+            [ -d "$d" ] && BUILD_DIRS+=("$d")
+          done
+          if [ ${#BUILD_DIRS[@]} -eq 0 ] && [ -d ait-builds ] && find ait-builds -maxdepth 3 -name '*.ait' -type f -print -quit 2>/dev/null | grep -q .; then
+            echo "단일 아티팩트 flat 추출 감지 — ait-builds/ 를 빌드 디렉터리로 사용"
+            BUILD_DIRS=(ait-builds/)
+          fi
+
+          for build_dir in "${BUILD_DIRS[@]}"; do
             [ -d "$build_dir" ] || continue
             BUILD_NAME=$(basename "$build_dir")
+            # flat 추출 시 basename은 'ait-builds' — 의미 있는 라벨로 치환.
+            if [ "$BUILD_NAME" = "ait-builds" ]; then
+              BUILD_NAME="베타빌드-v${{ needs.beta-prepare.outputs.pkg_version }}"
+            fi
             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             echo "배포 검증: ${BUILD_NAME}"
 

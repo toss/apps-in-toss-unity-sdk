@@ -560,8 +560,13 @@ jobs:
           fi
           echo "Installing @apps-in-toss/web-framework@${WF_VERSION}"
           pnpm install -g "@apps-in-toss/web-framework@${WF_VERSION}"
-          # 설치/PATH 실패를 조기에 감지 — ait가 없으면 여기서 즉시 실패(이후 deploy에서 command not found 방지).
-          ait --version
+          # 3.x ait CLI(clipanion)는 --version 플래그가 없으므로(HelpCommand만 등록),
+          # PATH 존재로 설치/PATH를 fail-fast 검증한다 — 이후 deploy 단계의 command not found 방지.
+          if ! command -v ait >/dev/null 2>&1; then
+            echo "::error::ait CLI를 PATH에서 찾을 수 없습니다 — web-framework 글로벌 설치 실패."
+            exit 1
+          fi
+          echo "ait CLI 설치 확인: $(command -v ait)"
 
       - name: 베타 빌드 산출물 다운로드
         uses: actions/download-artifact@v8

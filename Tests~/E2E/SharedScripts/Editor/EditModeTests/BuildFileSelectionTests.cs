@@ -138,6 +138,41 @@ public class BuildFileSelectionTests
     }
 
     // =====================================================
+    // Sentry SDK-ZM 회귀: *.framework.js* 누락 시 에러 로그 방출
+    // WebGLBuildCopier가 "isRequired: true"로 검색해 빈 문자열을 받으면
+    // FindFileInBuild 내부에서 "[AIT] ✗ 필수 파일을 찾을 수 없습니다" 에러가 발생한다.
+    // 이 테스트는 framework.js 파일이 Build/ 폴더에 없는 상황에서 해당 에러가
+    // 정확히 방출되는지 보장한다.
+    // =====================================================
+
+    [Test]
+    public void FindFileInBuild_MissingFrameworkJs_EmitsRequiredErrorLog()
+    {
+        // Build/ 폴더에 loader.js, data, wasm만 있고 framework.js 파일은 없음
+        File.WriteAllText(Path.Combine(tempDir, "build.loader.js"), "loader");
+        File.WriteAllText(Path.Combine(tempDir, "build.data"), "data");
+        File.WriteAllText(Path.Combine(tempDir, "build.wasm"), "wasm");
+        // framework.js 의도적으로 생성 안 함
+
+        string result = null;
+        var logs = CollectLogs(() =>
+            result = AITBuildValidator.FindFileInBuild(tempDir, "*.framework.js*", isRequired: true));
+
+        // 빈 문자열 반환 → missingFiles.Add("*.framework.js") 로 이어짐 (WebGLBuildCopier.cs)
+        Assert.AreEqual("", result,
+            "framework.js 파일이 없으면 빈 문자열을 반환해야 함");
+
+        // "[AIT] ✗ 필수 파일을 찾을 수 없습니다: *.framework.js*" 에러 로그 방출 확인
+        bool emittedRequiredError = logs.Exists(l =>
+            l.type == LogType.Error &&
+            l.message.Contains("필수 파일을 찾을 수 없습니다") &&
+            l.message.Contains("*.framework.js*"));
+        Assert.IsTrue(emittedRequiredError,
+            "isRequired:true 이면서 파일이 없으면 에러 로그가 방출되어야 함. " +
+            "실제 로그: " + string.Join(" | ", logs.ConvertAll(l => $"[{l.type}] {l.message}")));
+    }
+
+    // =====================================================
     // GetFilePatterns — decompressionFallback=true 시 .unityweb 패턴 반환
     // =====================================================
 

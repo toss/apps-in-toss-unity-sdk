@@ -8,10 +8,11 @@ run-name: "Beta Release - v${{ inputs.version }} → #${{ inputs.channel_ref }} 
 # 재현하되, 채널 격리를 위해 다음 부작용은 구조적으로 차단한다:
 #   - main 브랜치 / package.json 변경 (main은 절대 건드리지 않음 — source_ref 읽기 전용)
 #   - Latest 릴리즈 표시 (항상 --prerelease --latest=false)
-# AIT deploy: deploy-beta 잡이 release.yml과 동일한 `ait deploy` route로 SDK 샘플 앱을
-#   실 콘솔에 배포해 베타 3.x의 deploy 동작을 end-to-end 검증한다(AIT_DEPLOY_KEY 사용).
-#   이는 stable 릴리즈와 동일한 성격의 SDK 자체 샘플 앱 QA 배포(intoss-private 검증)이며,
-#   Latest 표시·npm latest·main·stable Sentry에는 영향을 주지 않는다 (INV1/INV2/INV5 불변).
+# AIT deploy: e2e-beta-macos 잡의 deploy 스텝이 E2E가 빌드/설치한 ait-build/(베타 3.x
+#   node_modules 포함)에서 `pnpm run deploy`(= 프로젝트 자신의 ait, Tests~/E2E/deploy.sh와 동일
+#   경로)로 SDK 샘플 앱을 실 콘솔에 배포해 베타 3.x deploy를 end-to-end 검증한다(AIT_DEPLOY_KEY 사용).
+#   빌드 ait와 배포 ait 버전이 동일해 skew가 없다. stable 릴리즈와 동일한 성격의 SDK 샘플 앱 QA
+#   배포(intoss-private 검증)이며, Latest 표시·npm latest·main·stable Sentry에 영향 없음 (INV1/INV2/INV5 불변).
 # 산출물: 정리된 orphan commit을 channel_ref 브랜치(기본 beta)로 force-push.
 #         제휴사는 manifest에서 `...git#beta`로 핀한다.
 # 자동 업데이터(AITAutoUpdater)는 prerelease 채널에 자동 프롬프트를 띄우지 않으므로,
@@ -21,7 +22,7 @@ run-name: "Beta Release - v${{ inputs.version }} → #${{ inputs.channel_ref }} 
 #   - output: immutable 태그 대신 이동 channel_ref 브랜치 + -beta 스냅샷 태그
 #   - GitHub Release: 무조건 --prerelease --latest=false (stable의 조건부 분기 미사용)
 #   - bare 버전 입력은 package.json .version을 prerelease로 정규화 → Sentry env=beta 격리 유지
-#   - deploy-beta는 샘플 앱만 배포(intoss-private 검증용) — partner/production 배포나 Latest 승격이 아님
+#   - 배포는 SDK 샘플 앱만(intoss-private 검증용) — partner/production 배포나 Latest 승격이 아님
 #   - Sentry는 set_commits: skip(미머지 orphan의 Fixes trailer가 stable 이슈를 조기 resolve하는 것 차단)
 # =====================================================
 
@@ -302,7 +303,7 @@ jobs:
 
   # =====================================================
   # 베타 빌드 검증 - macOS
-  # staging ref를 unity-build.yml로 빌드. 빌드 잡은 AIT_DEPLOY_KEY를 받지 않음 (deploy 검증은 deploy-beta 잡).
+  # staging ref를 unity-build.yml로 빌드. 빌드 잡은 AIT_DEPLOY_KEY를 받지 않음 (deploy 검증은 e2e-beta-macos 잡의 deploy 스텝).
   # =====================================================
   build-beta-macos:
     name: 베타 빌드 (macOS)
@@ -366,7 +367,9 @@ jobs:
   # build-beta-macos가 올린 ait-build 아티팩트(베타 재생성 SDK + E2E 부트스트랩)를
   # 받아 vite preview로 띄우고 Playwright로 검증한다. test-e2e.yml의 e2e-macos와 동일
   # 경로이며, 매트릭스는 beta-prepare의 macos_versions(build_strategy 비례)를 그대로 사용.
-  # 이 E2E 잡은 배포하지 않음 — 로컬 preview 서버에서만 로드(AIT_DEPLOY_KEY 불사용). 실 ait deploy 검증은 deploy-beta 잡.
+  # Playwright 통과 후, 동일 ait-build/(베타 node_modules)에서 `pnpm run deploy`로 실 콘솔
+  # 배포까지 검증한다(AIT_DEPLOY_KEY 사용 — Tests~/E2E/deploy.sh와 동일 경로). 배포 실패 시
+  # 잡 실패 → publish-beta 차단. (Windows e2e 잡은 테스트만 — 배포는 macOS 경로에서 1회.)
   # =====================================================
   e2e-beta-macos:
     name: 베타 E2E (macOS, Unity ${{ matrix.unity-version }})
@@ -425,6 +428,61 @@ jobs:
           AIT_DEVELOPMENT_BUILD: "true"
           AIT_COMPRESSION_FORMAT: "0"
         run: pnpm test
+
+      - name: 베타 ait deploy 검증
+        # E2E가 빌드/설치한 ait-build/(dist + 베타 web-framework node_modules)에서 프로젝트
+        # 자신의 ait로 실 콘솔에 배포한다 — Tests~/E2E/deploy.sh와 동일한 `pnpm run deploy` 경로.
+        # 빌드한 ait 버전과 배포 ait 버전이 동일(베타 3.x)해 버전 skew가 없다.
+        # AIT_DEPLOY_KEY 미설정 시 건너뛴다(로컬/포크). 배포 실패 시 잡 실패 → publish-beta 차단.
+        working-directory: ${{ env.AIT_BUILD_DIR }}
+        env:
+          AIT_DEPLOY_KEY: ${{ secrets.AIT_DEPLOY_KEY }}
+        run: |
+          if [ -z "$AIT_DEPLOY_KEY" ]; then
+            echo "::warning::AIT_DEPLOY_KEY 미설정 — 베타 배포 검증을 건너뜁니다."
+            exit 0
+          fi
+          echo "베타 배포 실행 (pnpm run deploy = 프로젝트 ait): $(pwd)"
+          DEPLOY_OUTPUT=$(timeout 300 pnpm run deploy --api-key "$AIT_DEPLOY_KEY" 2>&1) && DEPLOY_STATUS=0 || DEPLOY_STATUS=$?
+          echo "$DEPLOY_OUTPUT"
+          CLEANED=$(echo "$DEPLOY_OUTPUT" | sed 's/\x1b\[[0-9;]*m//g' | tr -d '\r')
+
+          if [ "$DEPLOY_STATUS" -eq 124 ]; then
+            echo "::error::베타 배포 타임아웃 (5분 초과)"
+            exit 1
+          elif [ "$DEPLOY_STATUS" -ne 0 ]; then
+            echo "::error::베타 ait deploy 실패 (exit ${DEPLOY_STATUS})"
+            exit 1
+          fi
+
+          DEPLOY_URL=$(echo "$CLEANED" | grep -oE 'intoss-private://[^[:space:]]+' | head -1 || true)
+          if [ -z "$DEPLOY_URL" ]; then
+            DEPLOY_URL=$(echo "$CLEANED" | grep -oE 'https?://[^[:space:]]+' | head -1 || true)
+          fi
+          echo "✅ 베타 배포 성공: ${DEPLOY_URL:-(URL 미발견)}"
+
+          {
+            echo "## 베타 ait deploy 검증 (macOS · Unity ${{ matrix.unity-version }})"
+            echo ""
+            echo "web-framework \`${{ needs.beta-prepare.outputs.npm_version }}\` · SDK \`${{ needs.beta-prepare.outputs.pkg_version }}\`"
+            echo ""
+            if echo "${DEPLOY_URL}" | grep -qE '^intoss-private://'; then
+              ENCODED_URL=$(printf '%s' "$DEPLOY_URL" | jq -sRr @uri)
+              echo "| URL | QR |"
+              echo "|-----|:--:|"
+              echo "| \`${DEPLOY_URL}\` | ![QR](https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${ENCODED_URL}) |"
+              echo ""
+              echo "<details><summary>📱 테스트 방법</summary>"
+              echo ""
+              echo "위 QR을 Toss 앱으로 스캔하거나 \`intoss-private://\` URL을 복사해 Toss 앱에서 여세요."
+              echo ""
+              echo "</details>"
+            elif [ -n "$DEPLOY_URL" ]; then
+              echo "✅ 배포 성공 — URL: \`${DEPLOY_URL}\`"
+            else
+              echo "✅ 배포 성공(exit 0) — 출력에서 intoss-private URL을 찾지 못했습니다."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload Playwright Report
         if: always()
@@ -507,206 +565,20 @@ jobs:
           retention-days: 7
 
   # =====================================================
-  # 베타 배포 검증 - 실 ait deploy route (release.yml deploy-ait와 동일)
-  # build-beta-* / e2e-beta-* 통과 후, 베타 web-framework의 `ait deploy`로 SDK 샘플 앱을
-  # 실 콘솔(apps-in-toss.toss.im/console)에 배포해 3.x deploy route가 실제로 동작하는지
-  # end-to-end 검증하고 intoss-private:// URL을 확보한다. SDK 자체 샘플 앱의 QA 배포로
-  # stable release.yml과 동일한 성격이며, Latest 표시·npm latest·main·stable Sentry에는
-  # 영향을 주지 않는다(INV1/INV2/INV5 불변). build_strategy의 skip_build면 빌드와 함께 스킵.
-  # CLI 설치 버전은 beta-prepare.outputs.npm_version(베타 web-framework) — staging 트리의
-  # BuildConfig가 stale할 수 있어 BuildConfig 대신 명시 버전으로 베타 CLI를 고정 설치한다.
-  # =====================================================
-  deploy-beta:
-    name: 베타 배포 검증 (ait deploy)
-    needs: [beta-prepare, build-beta-macos, build-beta-windows, e2e-beta-macos, e2e-beta-windows]
-    if: |
-      always() &&
-      needs.beta-prepare.outputs.skip_build != 'true' &&
-      needs.build-beta-macos.result == 'success' &&
-      needs.e2e-beta-macos.result == 'success' &&
-      (needs.build-beta-windows.result == 'success' || needs.build-beta-windows.result == 'skipped') &&
-      (needs.e2e-beta-windows.result == 'success' || needs.e2e-beta-windows.result == 'skipped')
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-
-    env:
-      AIT_DEPLOY_KEY: ${{ secrets.AIT_DEPLOY_KEY }}
-
-    steps:
-      - name: Checkout (pnpm 핀 참조용)
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.beta-prepare.outputs.staging_ref }}
-          sparse-checkout: |
-            WebGLTemplates/AITTemplate/BuildConfig~/package.json
-          sparse-checkout-cone-mode: false
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '20'
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6
-        with:
-          package_json_file: WebGLTemplates/AITTemplate/BuildConfig~/package.json
-
-      - name: AIT CLI 설치 (베타 web-framework)
-        run: |
-          WF_VERSION="${{ needs.beta-prepare.outputs.npm_version }}"
-          if [ -z "$WF_VERSION" ]; then
-            echo "::error::beta-prepare.outputs.npm_version이 비어 있습니다 — 설치할 베타 web-framework 버전을 알 수 없습니다."
-            exit 1
-          fi
-          echo "Installing @apps-in-toss/web-framework@${WF_VERSION}"
-          pnpm install -g "@apps-in-toss/web-framework@${WF_VERSION}"
-          # 3.x ait CLI(clipanion)는 --version 플래그가 없으므로(HelpCommand만 등록),
-          # PATH 존재로 설치/PATH를 fail-fast 검증한다 — 이후 deploy 단계의 command not found 방지.
-          if ! command -v ait >/dev/null 2>&1; then
-            echo "::error::ait CLI를 PATH에서 찾을 수 없습니다 — web-framework 글로벌 설치 실패."
-            exit 1
-          fi
-          echo "ait CLI 설치 확인: $(command -v ait)"
-
-      - name: 베타 빌드 산출물 다운로드
-        uses: actions/download-artifact@v8
-        with:
-          pattern: ait-build-*-v${{ needs.beta-prepare.outputs.pkg_version }}
-          path: ait-builds/
-
-      - name: ait deploy 검증
-        id: deploy
-        run: |
-          if [ -z "$AIT_DEPLOY_KEY" ]; then
-            echo "::error::AIT_DEPLOY_KEY가 설정되지 않았습니다."
-            exit 1
-          fi
-
-          DEPLOY_RESULTS=""
-          HAS_FAILURE=false
-          DEPLOYED_ANY=false
-
-          # download-artifact@v8 레이아웃 처리:
-          #  - 매치 아티팩트가 여러 개면 ait-builds/<artifact-name>/ 서브디렉터리 생성 (release.yml 실릴리즈 경로)
-          #  - 매치가 정확히 1개면 단일 다운로드로 간주해 ait-builds/ 바로 밑에 flat 추출 (beta minimal 경로)
-          # 두 레이아웃 모두 지원하도록 빌드 디렉터리 목록을 동적으로 구성한다.
-          BUILD_DIRS=()
-          for d in ait-builds/ait-build-*/; do
-            [ -d "$d" ] && BUILD_DIRS+=("$d")
-          done
-          if [ ${#BUILD_DIRS[@]} -eq 0 ] && [ -d ait-builds ] && find ait-builds -maxdepth 3 -name '*.ait' -type f -print -quit 2>/dev/null | grep -q .; then
-            echo "단일 아티팩트 flat 추출 감지 — ait-builds/ 를 빌드 디렉터리로 사용"
-            BUILD_DIRS=(ait-builds/)
-          fi
-
-          for build_dir in "${BUILD_DIRS[@]}"; do
-            [ -d "$build_dir" ] || continue
-            BUILD_NAME=$(basename "$build_dir")
-            # flat 추출 시 basename은 'ait-builds' — 의미 있는 라벨로 치환.
-            if [ "$BUILD_NAME" = "ait-builds" ]; then
-              BUILD_NAME="베타빌드-v${{ needs.beta-prepare.outputs.pkg_version }}"
-            fi
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            echo "배포 검증: ${BUILD_NAME}"
-
-            # 3.x ait deploy는 패키지 루트에서 *.ait를 자동 탐색한다. 아티팩트에 포함된
-            # .ait(ait-build/*.ait 또는 dist/*.ait)가 실제로 있는지 먼저 확인.
-            AIT_FILE=$(find "$build_dir" -maxdepth 2 -name '*.ait' -type f 2>/dev/null | head -1)
-            if [ -z "$AIT_FILE" ]; then
-              echo "❌ .ait 파일을 찾을 수 없습니다: ${build_dir}"
-              DEPLOY_RESULTS="${DEPLOY_RESULTS}${BUILD_NAME}: NO_AIT\n"
-              HAS_FAILURE=true
-              continue
-            fi
-            echo ".ait 확인: ${AIT_FILE}"
-
-            DEPLOYED_ANY=true
-            # release.yml deploy-ait와 동일: build_dir에서 ait deploy 실행, 5분 타임아웃.
-            DEPLOY_OUTPUT=$(cd "${build_dir}" && timeout 300 ait deploy --api-key "$AIT_DEPLOY_KEY" 2>&1) && DEPLOY_STATUS=0 || DEPLOY_STATUS=$?
-            echo "$DEPLOY_OUTPUT"
-            CLEANED_OUTPUT=$(echo "$DEPLOY_OUTPUT" | sed 's/\x1b\[[0-9;]*m//g' | tr -d '\r')
-
-            if [ "$DEPLOY_STATUS" -eq 124 ]; then
-              echo "❌ 배포 타임아웃 (5분 초과)"
-              DEPLOY_RESULTS="${DEPLOY_RESULTS}${BUILD_NAME}: TIMEOUT\n"
-              HAS_FAILURE=true
-            elif [ "$DEPLOY_STATUS" -eq 0 ]; then
-              DEPLOY_URL=$(echo "$CLEANED_OUTPUT" | grep -oE 'intoss-private://[^[:space:]]+' | head -1 || true)
-              if [ -z "$DEPLOY_URL" ]; then
-                # release.yml과 동일하게 https:// URL로 2차 폴백, 그래도 없으면 표시용 토큰.
-                DEPLOY_URL=$(echo "$CLEANED_OUTPUT" | grep -oE 'https?://[^[:space:]]+' | head -1 || true)
-                if [ -z "$DEPLOY_URL" ]; then
-                  echo "::warning::배포는 성공(exit 0)했으나 URL을 출력에서 찾지 못했습니다."
-                  DEPLOY_URL="SUCCESS(no-url)"
-                fi
-              fi
-              echo "✅ 배포 성공: ${DEPLOY_URL}"
-              DEPLOY_RESULTS="${DEPLOY_RESULTS}${BUILD_NAME}: ${DEPLOY_URL}\n"
-            else
-              echo "❌ 배포 실패 (exit code: $DEPLOY_STATUS)"
-              DEPLOY_RESULTS="${DEPLOY_RESULTS}${BUILD_NAME}: FAILED(exit ${DEPLOY_STATUS})\n"
-              HAS_FAILURE=true
-            fi
-          done
-
-          if [ "$DEPLOYED_ANY" = false ] && [ "$HAS_FAILURE" = false ]; then
-            echo "::error::배포할 ait-build 산출물을 찾지 못했습니다 (pattern: ait-build-*-v${{ needs.beta-prepare.outputs.pkg_version }})."
-            exit 1
-          fi
-
-          # Step Summary
-          {
-            echo "## 베타 ait deploy 검증 결과"
-            echo ""
-            echo "버전: \`${{ needs.beta-prepare.outputs.pkg_version }}\` (web-framework \`${{ needs.beta-prepare.outputs.npm_version }}\`)"
-            echo ""
-            echo "| 빌드 | 상태 / URL | QR |"
-            echo "|------|------------|:--:|"
-            echo -e "$DEPLOY_RESULTS" | while IFS= read -r line; do
-              [ -n "$line" ] || continue
-              NAME=$(echo "$line" | cut -d: -f1 | xargs)
-              STATUS=$(echo "$line" | cut -d: -f2- | xargs)
-              if echo "$STATUS" | grep -qE '^intoss-private://'; then
-                # release.yml/preview.yml과 동일: intoss-private URL을 스캔 가능한 QR 이미지로 게시.
-                ENCODED_URL=$(printf '%s' "$STATUS" | jq -sRr @uri)
-                QR_IMG="![QR](https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${ENCODED_URL})"
-                echo "| ${NAME} | ✅ \`${STATUS}\` | ${QR_IMG} |"
-              elif echo "$STATUS" | grep -qE 'FAILED|TIMEOUT|NO_AIT'; then
-                echo "| ${NAME} | ❌ ${STATUS} | - |"
-              else
-                echo "| ${NAME} | ✅ ${STATUS} | - |"
-              fi
-            done
-            echo ""
-            echo "<details><summary>📱 테스트 방법</summary>"
-            echo ""
-            echo "1. 위 QR 코드를 Toss 앱으로 스캔, 또는"
-            echo "2. \`intoss-private://\` URL을 복사해 Toss 앱에서 열기"
-            echo ""
-            echo "</details>"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-          if [ "$HAS_FAILURE" = true ]; then
-            echo "::error::하나 이상의 베타 배포가 실패했습니다 — 채널 게시를 차단합니다."
-            exit 1
-          fi
-
-  # =====================================================
   # 베타 게시: 빌드 + E2E + 배포 검증 성공 후 staging 트리를 channel_ref로 승격
   # 빌드/E2E/배포 실패 시 게시하지 않음 → 베타 채널이 깨진/배포불가 SDK로 갱신되는 것 방지.
   # =====================================================
   publish-beta:
     name: 베타 채널 게시
     runs-on: ubuntu-latest
-    needs: [beta-prepare, build-beta-macos, build-beta-windows, e2e-beta-macos, e2e-beta-windows, deploy-beta]
+    needs: [beta-prepare, build-beta-macos, build-beta-windows, e2e-beta-macos, e2e-beta-windows]
     if: |
       always() &&
       needs.beta-prepare.result == 'success' &&
       (needs.build-beta-macos.result == 'success' || needs.build-beta-macos.result == 'skipped') &&
       (needs.build-beta-windows.result == 'success' || needs.build-beta-windows.result == 'skipped') &&
       (needs.e2e-beta-macos.result == 'success' || needs.e2e-beta-macos.result == 'skipped') &&
-      (needs.e2e-beta-windows.result == 'success' || needs.e2e-beta-windows.result == 'skipped') &&
-      (needs.deploy-beta.result == 'success' || needs.deploy-beta.result == 'skipped')
+      (needs.e2e-beta-windows.result == 'success' || needs.e2e-beta-windows.result == 'skipped')
 
     outputs:
       pkg_version: ${{ needs.beta-prepare.outputs.pkg_version }}

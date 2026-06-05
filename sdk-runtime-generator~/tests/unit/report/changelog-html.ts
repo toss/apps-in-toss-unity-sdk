@@ -736,7 +736,7 @@ body {
 
 <div class="header">
   <h1>Apps in Toss Unity SDK — API Changelog</h1>
-  <div class="subtitle">Generated ${new Date().toISOString().split('T')[0]} · ${versions.length} versions · ${apiIndex.size} unique APIs</div>
+  <div class="subtitle">Generated as of v${versions[versions.length - 1]} · ${versions.length} versions · ${apiIndex.size} unique APIs</div>
 </div>
 
 <div class="summary-bar">

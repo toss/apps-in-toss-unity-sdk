@@ -267,40 +267,11 @@ jobs:
           pnpm install --no-frozen-lockfile
           echo "BuildConfig pnpm-lock.yaml 업데이트 완료"
 
-      - name: 릴리즈용 테스트 코드 제외
-        run: |
-          echo "=== 릴리즈 빌드용 테스트 코드 제외 ==="
-
-          SHARED_RUNTIME="Tests~/E2E/SharedScripts/Runtime"
-
-          if [ -d "$SHARED_RUNTIME" ]; then
-            echo "SharedScripts/Runtime .cs 파일 삭제 중..."
-            find "$SHARED_RUNTIME" -name "*.cs" -type f -delete
-
-            # E2EBuildRunner.cs가 의존하는 최소 스텁 파일 생성
-            cat > "${SHARED_RUNTIME}/E2EBootstrapperHelper.cs" << 'STUB_EOF'
-          using UnityEngine;
-          // 릴리즈 빌드용 스텁 - 실제 기능 없음
-          public class E2EBootstrapperHelper : MonoBehaviour
-          {
-              void Start() { }
-          }
-          STUB_EOF
-
-            cat > "${SHARED_RUNTIME}/E2EBootstrapper.cs" << 'STUB_EOF'
-          using UnityEngine;
-          // 릴리즈 빌드용 스텁 - 실제 기능 없음
-          public static class E2EBootstrapper
-          {
-              public static void Initialize() { }
-          }
-          STUB_EOF
-          fi
-
-          SHARED_PLUGINS="Tests~/E2E/SharedScripts/Plugins"
-          if [ -d "$SHARED_PLUGINS" ]; then
-            find "$SHARED_PLUGINS" -name "*.cs" -type f -delete
-          fi
+      # 주의: 과거에는 여기서 E2E 테스트 코드(SharedScripts/Runtime·Plugins)를 stub으로
+      # strip 했으나, 이제 staging 트리를 Playwright E2E 게이트(e2e-beta-*)로 검증하므로
+      # E2E 부트스트랩이 빌드에 그대로 살아 있어야 한다. 게시 패키지에는 publish-beta의
+      # `rm -rf Tests~/` 가 SharedScripts를 통째로 제거하므로 테스트 코드가 새어 나가지 않는다
+      # (E2EBootstrapper/E2EBuildRunner 참조는 전부 Tests~/ 내부에만 존재 — shipped SDK 무관).
 
       - name: Staging Orphan Commit 생성 및 push
         id: stage
@@ -388,18 +359,165 @@ jobs:
       KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
 
   # =====================================================
-  # 베타 게시: 빌드 성공 후 staging 트리를 channel_ref로 승격
-  # 빌드 실패 시 게시하지 않음 → 베타 채널이 깨진 SDK로 갱신되는 것 방지.
+  # 베타 E2E 게이트 - macOS 빌드 산출물 (Playwright, ubuntu-latest)
+  # build-beta-macos가 올린 ait-build 아티팩트(베타 재생성 SDK + E2E 부트스트랩)를
+  # 받아 vite preview로 띄우고 Playwright로 검증한다. test-e2e.yml의 e2e-macos와 동일
+  # 경로이며, 매트릭스는 beta-prepare의 macos_versions(build_strategy 비례)를 그대로 사용.
+  # INV3 보존: 배포(ait deploy) 없음 — 로컬 preview 서버에서만 로드하며 AIT_DEPLOY_KEY 불사용.
+  # =====================================================
+  e2e-beta-macos:
+    name: 베타 E2E (macOS, Unity ${{ matrix.unity-version }})
+    needs: [beta-prepare, build-beta-macos]
+    if: needs.beta-prepare.outputs.skip_build != 'true' && needs.build-beta-macos.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    concurrency:
+      group: beta-e2e-${{ github.workflow }}-${{ needs.beta-prepare.outputs.staging_ref }}-macos-${{ matrix.unity-version }}
+      cancel-in-progress: true
+
+    strategy:
+      fail-fast: false
+      matrix:
+        unity-version: ${{ fromJSON(needs.beta-prepare.outputs.macos_versions) }}
+
+    env:
+      MOBILE_EMULATION: "true"
+      TEST_LEVEL: "2"
+      AIT_BUILD_DIR: ${{ github.workspace }}/Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build
+
+    steps:
+      - name: Checkout (staging ref)
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.beta-prepare.outputs.staging_ref }}
+
+      - name: Download AIT Build Artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: ait-build-macos-${{ matrix.unity-version }}-v${{ needs.beta-prepare.outputs.pkg_version }}
+          path: ${{ env.AIT_BUILD_DIR }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Install AIT Build Dependencies
+        working-directory: ${{ env.AIT_BUILD_DIR }}
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Test Dependencies
+        working-directory: Tests~/E2E/tests
+        # 브라우저는 runner image의 시스템 Chrome 사용 (playwright.config.ts: channel='chrome').
+        run: pnpm install --frozen-lockfile
+
+      - name: Run Playwright E2E
+        working-directory: Tests~/E2E/tests
+        env:
+          UNITY_PROJECT_PATH: ${{ github.workspace }}/Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}
+          AIT_DEVELOPMENT_BUILD: "true"
+          AIT_COMPRESSION_FORMAT: "0"
+        run: pnpm test
+
+      - name: Upload Playwright Report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: beta-playwright-report-macos-${{ matrix.unity-version }}
+          path: Tests~/E2E/tests/playwright-report/
+          if-no-files-found: ignore
+          compression-level: 9
+          retention-days: 7
+
+  # =====================================================
+  # 베타 E2E 게이트 - Windows 빌드 산출물 (Playwright, ubuntu-latest)
+  # skip_windows(예: minimal 전략)면 build-beta-windows가 스킵되고 이 잡도 스킵된다.
+  # =====================================================
+  e2e-beta-windows:
+    name: 베타 E2E (Windows, Unity ${{ matrix.unity-version }})
+    needs: [beta-prepare, build-beta-windows]
+    if: needs.beta-prepare.outputs.skip_build != 'true' && needs.beta-prepare.outputs.skip_windows != 'true' && needs.build-beta-windows.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    concurrency:
+      group: beta-e2e-${{ github.workflow }}-${{ needs.beta-prepare.outputs.staging_ref }}-windows-${{ matrix.unity-version }}
+      cancel-in-progress: true
+
+    strategy:
+      fail-fast: false
+      matrix:
+        unity-version: ${{ fromJSON(needs.beta-prepare.outputs.windows_versions) }}
+
+    env:
+      TEST_LEVEL: "2"
+      AIT_BUILD_DIR: ${{ github.workspace }}/Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build
+
+    steps:
+      - name: Checkout (staging ref)
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.beta-prepare.outputs.staging_ref }}
+
+      - name: Download AIT Build Artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: ait-build-windows-${{ matrix.unity-version }}-v${{ needs.beta-prepare.outputs.pkg_version }}
+          path: ${{ env.AIT_BUILD_DIR }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Install AIT Build Dependencies
+        working-directory: ${{ env.AIT_BUILD_DIR }}
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Test Dependencies
+        working-directory: Tests~/E2E/tests
+        run: pnpm install --frozen-lockfile
+
+      - name: Run Playwright E2E
+        working-directory: Tests~/E2E/tests
+        env:
+          UNITY_PROJECT_PATH: ${{ github.workspace }}/Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}
+          AIT_DEVELOPMENT_BUILD: "true"
+          AIT_COMPRESSION_FORMAT: "0"
+        run: pnpm test
+
+      - name: Upload Playwright Report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: beta-playwright-report-windows-${{ matrix.unity-version }}
+          path: Tests~/E2E/tests/playwright-report/
+          if-no-files-found: ignore
+          compression-level: 9
+          retention-days: 7
+
+  # =====================================================
+  # 베타 게시: 빌드 + E2E 성공 후 staging 트리를 channel_ref로 승격
+  # 빌드/E2E 실패 시 게시하지 않음 → 베타 채널이 깨진 SDK로 갱신되는 것 방지.
   # =====================================================
   publish-beta:
     name: 베타 채널 게시
     runs-on: ubuntu-latest
-    needs: [beta-prepare, build-beta-macos, build-beta-windows]
+    needs: [beta-prepare, build-beta-macos, build-beta-windows, e2e-beta-macos, e2e-beta-windows]
     if: |
       always() &&
       needs.beta-prepare.result == 'success' &&
       (needs.build-beta-macos.result == 'success' || needs.build-beta-macos.result == 'skipped') &&
-      (needs.build-beta-windows.result == 'success' || needs.build-beta-windows.result == 'skipped')
+      (needs.build-beta-windows.result == 'success' || needs.build-beta-windows.result == 'skipped') &&
+      (needs.e2e-beta-macos.result == 'success' || needs.e2e-beta-macos.result == 'skipped') &&
+      (needs.e2e-beta-windows.result == 'success' || needs.e2e-beta-windows.result == 'skipped')
 
     outputs:
       pkg_version: ${{ needs.beta-prepare.outputs.pkg_version }}

@@ -447,6 +447,39 @@ jobs:
           echo "$DEPLOY_OUTPUT"
           CLEANED=$(echo "$DEPLOY_OUTPUT" | sed 's/\x1b\[[0-9;]*m//g' | tr -d '\r')
 
+          # 실패 시: 서버측(레이어 3) 빌드 상태를 deployment GET으로 직접 조회해 CI 로그에 덤프.
+          # ait CLI는 응답에서 reviewStatus enum만 읽고 나머지를 버리므로, 실패 사유가
+          # 응답 본문 어딘가에 있는지 raw JSON으로 확인한다 (콘솔 접근 없이 진단 가능).
+          if [ "$DEPLOY_STATUS" -ne 0 ]; then
+            DEPLOYMENT_ID=$(echo "$CLEANED" | grep -oE '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}' | head -1 || true)
+            AIT_FILE=$(ls -1 *.ait 2>/dev/null | head -1 || true)
+            APP_NAME="${AIT_FILE%.ait}"
+            echo "::group::서버측 배포 상태 조회 (deployment GET — 레이어 3 진단)"
+            echo "appName=${APP_NAME:-(미발견)} deploymentId=${DEPLOYMENT_ID:-(미발견)}"
+            if [ -n "$DEPLOYMENT_ID" ] && [ -n "$APP_NAME" ]; then
+              STATUS_JSON=$(curl -sS \
+                -H "Authorization: Bearer ${AIT_DEPLOY_KEY}" \
+                -H "Accept: application/json" \
+                "https://apps-in-toss.toss.im/console/api-public/v3/openapi/bundles/${APP_NAME}/deployments/${DEPLOYMENT_ID}" 2>&1 || true)
+              echo "--- raw response ---"
+              echo "$STATUS_JSON"
+              echo "--- jq (pretty) ---"
+              echo "$STATUS_JSON" | jq . 2>/dev/null || echo "(jq 파싱 실패 — raw 참조)"
+              {
+                echo "## 🔎 서버측 배포 상태 (deployment GET) — 실패 진단"
+                echo ""
+                echo "appName: \`${APP_NAME}\` · deploymentId: \`${DEPLOYMENT_ID}\`"
+                echo ""
+                echo '```json'
+                echo "$STATUS_JSON" | jq . 2>/dev/null || echo "$STATUS_JSON"
+                echo '```'
+              } >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+            else
+              echo "deploymentId 또는 appName 파싱 실패 — 서버 상태 조회 건너뜀"
+            fi
+            echo "::endgroup::"
+          fi
+
           if [ "$DEPLOY_STATUS" -eq 124 ]; then
             echo "::error::베타 배포 타임아웃 (5분 초과)"
             exit 1

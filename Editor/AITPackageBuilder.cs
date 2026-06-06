@@ -454,6 +454,26 @@ namespace AppsInToss.Editor
                 Debug.Log("[AIT]   ✓ unity-bridge.ts (SDK에서 복사)");
             }
 
+            // 6.5. ait-inject-runtime-version.mjs - 프로젝트 우선, 없으면 SDK
+            // deploy 시 `pnpm run deploy`(= node ait-inject-runtime-version.mjs && ait deploy)가
+            // 이 스크립트로 .ait 메타데이터의 runtimeVersion을 sdkVersion(=web-framework 버전)으로 채운다.
+            // upstream ait build가 runtimeVersion을 emit하기 전까지의 브릿지이며, 스크립트는
+            // 항상 exit 0(.ait 없음/포맷 불일치/이미 설정됨 → graceful skip)이라 stable 빌드에 무해하다.
+            string aitInjectName = "ait-inject-runtime-version.mjs";
+            string aitInjectProject = Path.Combine(projectBuildConfigPath, aitInjectName);
+            string aitInjectSdk = Path.Combine(sdkBuildConfigPath, aitInjectName);
+            string aitInjectDst = Path.Combine(buildProjectPath, aitInjectName);
+            if (File.Exists(aitInjectProject))
+            {
+                File.Copy(aitInjectProject, aitInjectDst, true);
+                Debug.Log("[AIT]   ✓ ait-inject-runtime-version.mjs (프로젝트에서 복사)");
+            }
+            else if (File.Exists(aitInjectSdk))
+            {
+                File.Copy(aitInjectSdk, aitInjectDst, true);
+                Debug.Log("[AIT]   ✓ ait-inject-runtime-version.mjs (SDK에서 복사)");
+            }
+
             // 7. 사용자 추가 파일 복사
             Package.WebGLBuildCopier.CopyAdditionalUserFiles(projectBuildConfigPath, buildProjectPath);
 

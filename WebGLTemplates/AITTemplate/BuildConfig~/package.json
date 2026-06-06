@@ -6,9 +6,10 @@
     "dev": "ait dev",
     "build": "ait build || granite build",
     "start": "ait dev",
-    "deploy": "ait deploy"
+    "deploy": "node ait-inject-runtime-version.mjs && ait deploy"
   },
   "dependencies": {
+    "@apps-in-toss/ait-format": "^1.0.0",
     "@apps-in-toss/bridge-core": "2.6.1",
     "@apps-in-toss/web-analytics": "2.6.1",
     "@apps-in-toss/web-framework": "2.6.1"

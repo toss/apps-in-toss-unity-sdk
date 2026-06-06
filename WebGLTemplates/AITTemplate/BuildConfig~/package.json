@@ -6,7 +6,7 @@
     "dev": "ait dev",
     "build": "ait build || granite build",
     "start": "ait dev",
-    "deploy": "node ait-inject-runtime-version.mjs && ait deploy"
+    "deploy": "ait deploy"
   },
   "dependencies": {
     "@apps-in-toss/ait-format": "^1.0.0",

@@ -454,24 +454,27 @@ namespace AppsInToss.Editor
                 Debug.Log("[AIT]   ✓ unity-bridge.ts (SDK에서 복사)");
             }
 
-            // 6.5. ait-inject-runtime-version.mjs - 프로젝트 우선, 없으면 SDK
-            // deploy 시 `pnpm run deploy`(= node ait-inject-runtime-version.mjs && ait deploy)가
-            // 이 스크립트로 .ait 메타데이터의 runtimeVersion을 sdkVersion(=web-framework 버전)으로 채운다.
-            // upstream ait build가 runtimeVersion을 emit하기 전까지의 브릿지이며, 스크립트는
-            // 항상 exit 0(.ait 없음/포맷 불일치/이미 설정됨 → graceful skip)이라 stable 빌드에 무해하다.
-            string aitInjectName = "ait-inject-runtime-version.mjs";
-            string aitInjectProject = Path.Combine(projectBuildConfigPath, aitInjectName);
-            string aitInjectSdk = Path.Combine(sdkBuildConfigPath, aitInjectName);
-            string aitInjectDst = Path.Combine(buildProjectPath, aitInjectName);
-            if (File.Exists(aitInjectProject))
+            // 6.5. ait-patch-cli.mjs - 프로젝트 우선, 없으면 SDK
+            // 3.x 빌드 시 GraniteBuildRunner가 ait build 직전에 `pnpm exec node ait-patch-cli.mjs`로
+            // 이 스크립트를 실행한다. web-framework cli.js의 setMetadata 호출을 패치해 .ait
+            // 메타데이터에 runtimeVersion("0.84.0")을 직접 emit하게 만든다 (3.x deploy 게이트
+            // "runtimeVersion이 없습니다" 통과용). 빌드된 .ait는 손대지 않아 봉인이 깨지지 않는다.
+            // 스크립트는 항상 exit 0(2.x엔 setMetadata 없음/구조 변경/이미 설정됨 → graceful no-op)
+            // 이라 stable(2.x) 빌드에 무해하다. 2.x/3.x 양쪽에서 항상 복사된다(unity-build.yml
+            // 업로드 allowlist의 error-gate 충족).
+            string aitPatchName = "ait-patch-cli.mjs";
+            string aitPatchProject = Path.Combine(projectBuildConfigPath, aitPatchName);
+            string aitPatchSdk = Path.Combine(sdkBuildConfigPath, aitPatchName);
+            string aitPatchDst = Path.Combine(buildProjectPath, aitPatchName);
+            if (File.Exists(aitPatchProject))
             {
-                File.Copy(aitInjectProject, aitInjectDst, true);
-                Debug.Log("[AIT]   ✓ ait-inject-runtime-version.mjs (프로젝트에서 복사)");
+                File.Copy(aitPatchProject, aitPatchDst, true);
+                Debug.Log("[AIT]   ✓ ait-patch-cli.mjs (프로젝트에서 복사)");
             }
-            else if (File.Exists(aitInjectSdk))
+            else if (File.Exists(aitPatchSdk))
             {
-                File.Copy(aitInjectSdk, aitInjectDst, true);
-                Debug.Log("[AIT]   ✓ ait-inject-runtime-version.mjs (SDK에서 복사)");
+                File.Copy(aitPatchSdk, aitPatchDst, true);
+                Debug.Log("[AIT]   ✓ ait-patch-cli.mjs (SDK에서 복사)");
             }
 
             // 7. 사용자 추가 파일 복사

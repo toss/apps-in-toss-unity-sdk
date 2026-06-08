@@ -58,6 +58,11 @@ on:
         required: false
         type: boolean
         default: true
+      deploy_probe_only:
+        description: 'true면 ait deploy 게이트 검증만 수행하고 채널 게시(publish-beta)는 건너뜀. 자동 감시 루프(신규 beta deploy 가능성 점검)용.'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -610,6 +615,8 @@ jobs:
   # =====================================================
   # 베타 게시: 빌드 + E2E + 배포 검증 성공 후 staging 트리를 channel_ref로 승격
   # 빌드/E2E/배포 실패 시 게시하지 않음 → 베타 채널이 깨진/배포불가 SDK로 갱신되는 것 방지.
+  # deploy_probe_only=true(자동 감시 루프)면 게시를 건너뛴다 — deploy 게이트만 점검하고
+  # 파일럿 채널은 건드리지 않는다(무단 게시 방지).
   # =====================================================
   publish-beta:
     name: 베타 채널 게시
@@ -617,6 +624,7 @@ jobs:
     needs: [beta-prepare, build-beta-macos, build-beta-windows, e2e-beta-macos, e2e-beta-windows]
     if: |
       always() &&
+      inputs.deploy_probe_only != true &&
       needs.beta-prepare.result == 'success' &&
       (needs.build-beta-macos.result == 'success' || needs.build-beta-macos.result == 'skipped') &&
       (needs.build-beta-windows.result == 'success' || needs.build-beta-windows.result == 'skipped') &&

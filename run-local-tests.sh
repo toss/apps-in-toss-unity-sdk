@@ -9,6 +9,8 @@
 #   --editmode               Unity EditMode 테스트 실행 (~10초)
 #   --e2e                    E2E 테스트만 (빌드 결과물 필요)
 #   --unity-build            Unity WebGL 빌드 실행
+#   --heavy                  무거운 픽스처(HeavySampleUnityProject) 릴리즈+gzip 빌드 (perf용)
+#   --perf                   로딩 성능(TTFF) 실측 (무거운 빌드 결과물 필요)
 #   --unity-version <버전>   특정 Unity 버전 지정 (예: 2022.3, 6000.0)
 #   --compression <format>   압축 포맷 지정 (auto, disabled, gzip, brotli)
 #   --parallel               다른 모드와 조합하여 병렬 실행 (예: --unity-build --parallel)
@@ -43,6 +45,8 @@ UNITY_VERSION=""
 UNITY_PATH=""
 PARALLEL_MODE=false
 COMPRESSION_FORMAT=""
+RUN_HEAVY=false   # --heavy: 무거운 픽스처 빌드(perf 측정용)
+RUN_PERF=false    # --perf:  TTFF 실측 (무거운 빌드 결과물 필요)
 EDITMODE_FAILED_VERSIONS=()  # 병렬 EditMode 실패 버전 (빌드 스킵용)
 
 # 지원하는 Unity 버전 패턴 (우선순위 순)
@@ -80,6 +84,13 @@ get_project_path_for_version() {
             echo "$SCRIPT_DIR/Tests~/E2E/SampleUnityProject-$short_version"
             ;;
     esac
+}
+
+# perf 무거운 픽스처 프로젝트 경로 매핑 (HeavySampleUnityProject-{2021.3,6000.0,6000.3} 3종만 존재)
+get_heavy_project_path_for_version() {
+    local version_pattern="$1"
+    local short_version=$(echo "$version_pattern" | grep -oE '^[0-9]+\.[0-9]+')
+    echo "$SCRIPT_DIR/Tests~/E2E/HeavySampleUnityProject-$short_version"
 }
 
 # 유틸리티 함수
@@ -271,6 +282,9 @@ show_help() {
     echo "│ --unity-build --parallel    │ 모든 버전 병렬 빌드                │ ~20분 (병렬) │"
     echo "│ --e2e                       │ Playwright 테스트 (빌드 필요)      │ ~5분         │"
     echo "│ --e2e --parallel            │ 모든 빌드에 대해 E2E 테스트        │ ~15분        │"
+    echo "│ --heavy                     │ 무거운 픽스처 릴리즈+gzip 빌드     │ ~25분        │"
+    echo "│ --perf                      │ 로딩 성능(TTFF) 실측 (heavy 필요)  │ ~5분         │"
+    echo "│ --heavy --perf              │ 무거운 빌드 + TTFF 실측            │ ~30분        │"
     echo "│ --all                       │ 빌드 + 테스트 (단일 버전)          │ ~30분        │"
     echo "│ --all --parallel            │ 빌드 + 테스트 (모든 버전 병렬)     │ ~30분 (병렬) │"
     echo "│ --list-unity                │ 설치된 Unity 버전 목록 표시        │ 즉시         │"
@@ -307,6 +321,9 @@ show_help() {
     echo "  --editmode    : [1] Unity EditMode 테스트 (~10초, 빌드 불필요)"
     echo "  --unity-build : [1] Unity WebGL 빌드"
     echo "  --e2e         : [1] Playwright E2E 테스트 (빌드 결과물 필요)"
+    echo "  --heavy       : [1] 무거운 픽스처(HeavySampleUnityProject) 릴리즈+gzip 빌드"
+    echo "  --perf        : [1] TTFF 실측 (무거운 빌드 결과물 필요)"
+    echo "  --heavy --perf: [1] 무거운 빌드 → [2] TTFF 실측 (CI perf.yml과 동일 경로)"
     echo "  --all         : [1] 파일 검증 → [2] Playwright 설정 → [3] SDK 유닛 테스트 → [4] EditMode → [5] Unity 빌드 → [6] E2E 테스트"
     echo ""
     echo "--parallel 플래그:"
@@ -557,6 +574,150 @@ test_unity_build() {
         tail -50 "$LOG_FILE"
         return 1
     fi
+}
+
+# 4.5 무거운 픽스처 WebGL 빌드 (perf 측정용)
+# test_unity_build의 perf 변형: HeavySampleUnityProject + HeavyBuildRunner + 릴리즈/gzip.
+test_heavy_build() {
+    local version_pattern="${1:-$UNITY_VERSION}"
+
+    print_header "Heavy WebGL Build (perf fixture)"
+
+    local unity_path=$(find_unity_path "$version_pattern")
+    if [ -z "$unity_path" ]; then
+        if [ -n "$version_pattern" ]; then
+            print_failure "Heavy WebGL Build - Unity $version_pattern 버전을 찾을 수 없음"
+            echo ""
+            echo "설치된 Unity 버전 확인:"
+            list_unity_versions
+        else
+            print_skip "Heavy WebGL Build - Unity를 찾을 수 없음"
+        fi
+        return 1
+    fi
+
+    local detected_version=$(get_unity_version_from_path "$unity_path")
+    local detected_pattern=$(get_version_pattern "$detected_version")
+    local project_path=$(get_heavy_project_path_for_version "$detected_pattern")
+
+    echo "Using Unity: $detected_version"
+    echo "Path: $unity_path"
+    echo "Heavy project: $(basename "$project_path")"
+
+    if [ ! -d "$project_path" ]; then
+        print_failure "Heavy WebGL Build - 무거운 프로젝트 없음: $(basename "$project_path")"
+        echo "  (HeavySampleUnityProject는 2021.3 / 6000.0 / 6000.3 만 존재)"
+        return 1
+    fi
+
+    local LOG_FILE="$project_path/unity-build.log"
+
+    # 압축 포맷: 미지정 시 perf 기본값 gzip(1). on-wire 현실성을 위해 압축 ON.
+    local compression_env="1"
+    if [ -n "$COMPRESSION_FORMAT" ]; then
+        case "$COMPRESSION_FORMAT" in
+            auto)     compression_env="-1" ;;
+            disabled) compression_env="0" ;;
+            gzip)     compression_env="1" ;;
+            brotli)   compression_env="2" ;;
+        esac
+    fi
+    echo "Compression: AIT_COMPRESSION_FORMAT=$compression_env (perf 기본 gzip)"
+    echo "Build flags: AIT_DEVELOPMENT_BUILD=false, AIT_IL2CPP_CONFIGURATION=Release"
+
+    # 기존 빌드 정리 (Library는 패키지 캐시를 위해 유지)
+    rm -rf "$project_path/ait-build"
+    rm -rf "$project_path/Temp"
+
+    echo "Building heavy WebGL..."
+    echo "Log file: $LOG_FILE"
+
+    # perf CI(perf.yml)와 동일한 환경: 릴리즈 빌드 + gzip + HeavyBuildRunner 진입점
+    if env \
+        AIT_DEBUG_CONSOLE=true \
+        AIT_COMPRESSION_FORMAT="$compression_env" \
+        AIT_DEVELOPMENT_BUILD=false \
+        AIT_IL2CPP_CONFIGURATION=Release \
+        "$unity_path" \
+        -quit -batchmode -nographics \
+        -projectPath "$project_path" \
+        -executeMethod HeavyBuildRunner.CommandLineHeavyBuild \
+        -logFile "$LOG_FILE"; then
+
+        if [ -d "$project_path/ait-build/dist/web" ]; then
+            print_success "Heavy WebGL Build ($detected_version)"
+            echo "Build output: $project_path/ait-build/dist/web"
+            du -sh "$project_path/ait-build/dist/web"
+        else
+            print_failure "Heavy WebGL Build - 결과물 없음"
+            echo "Check log: $LOG_FILE"
+            tail -50 "$LOG_FILE"
+            return 1
+        fi
+    else
+        print_failure "Heavy WebGL Build"
+        echo "Check log: $LOG_FILE"
+        tail -50 "$LOG_FILE"
+        return 1
+    fi
+}
+
+# 4.6 로딩 성능(TTFF) 실측 — test_e2e_playwright의 perf 변형 (pnpm run test:perf)
+test_perf_playwright() {
+    local version_pattern="$1"
+    local project_path=""
+
+    if [ -n "$version_pattern" ]; then
+        project_path=$(get_heavy_project_path_for_version "$version_pattern")
+        print_header "Perf TTFF Measurement ($version_pattern)"
+    else
+        # 자동 탐지: 무거운 빌드 결과물이 있는 첫 번째 프로젝트 사용
+        for pattern in "${UNITY_VERSION_PATTERNS[@]}"; do
+            local test_path=$(get_heavy_project_path_for_version "$pattern")
+            if [ -d "$test_path/ait-build/dist/web" ]; then
+                project_path="$test_path"
+                version_pattern="$pattern"
+                break
+            fi
+        done
+        print_header "Perf TTFF Measurement"
+    fi
+
+    if [ -z "$project_path" ] || [ ! -d "$project_path/ait-build/dist/web" ]; then
+        print_skip "Perf TTFF - 무거운 빌드 결과물 없음 (--heavy 먼저 실행)"
+        return 0
+    fi
+
+    local short_version=$(echo "$version_pattern" | grep -oE '^[0-9]+\.[0-9]+')
+    echo "Using heavy project: $(basename "$project_path")"
+
+    cd "$SCRIPT_DIR/Tests~/E2E/tests"
+
+    echo "Installing dependencies..."
+    pnpm install --silent
+
+    echo "Running perf (TTFF median-of-N)..."
+    if env \
+        UNITY_PROJECT_PATH="$project_path" \
+        PERF_UNITY_VERSION="$short_version" \
+        AIT_DEVELOPMENT_BUILD=false \
+        AIT_COMPRESSION_FORMAT=1 \
+        pnpm run test:perf; then
+        print_success "Perf TTFF Measurement ($version_pattern)"
+
+        local result_file="perf-results-${short_version}.json"
+        if [ -f "$result_file" ]; then
+            echo ""
+            echo "📊 Perf Result ($result_file):"
+            cat "$result_file" | head -40
+        fi
+    else
+        print_failure "Perf TTFF Measurement ($version_pattern)"
+        cd "$SCRIPT_DIR"
+        return 1
+    fi
+
+    cd "$SCRIPT_DIR"
 }
 
 # 5. Playwright 설정 검증
@@ -1168,6 +1329,13 @@ main() {
                 PARALLEL_MODE=true
                 # --parallel은 다른 모드와 조합 가능한 플래그 (모드 덮어쓰기 안함)
                 ;;
+            --heavy)
+                RUN_HEAVY=true
+                # --heavy/--perf는 조합 가능한 플래그 (--heavy --perf = 빌드 후 측정)
+                ;;
+            --perf)
+                RUN_PERF=true
+                ;;
             --all|--e2e|--editmode|--unity-build|--validate)
                 mode="${args[$i]}"
                 ;;
@@ -1181,6 +1349,37 @@ main() {
 
     # 기본 모드 설정
     mode="${mode:---validate}"
+
+    # --heavy / --perf 는 일반 모드와 독립적인 perf 하네스 경로.
+    # 둘 중 하나라도 켜져 있으면 perf 흐름을 타고 종료(일반 mode case 무시).
+    if [ "$RUN_HEAVY" = true ] || [ "$RUN_PERF" = true ]; then
+        echo ""
+        echo "╔══════════════════════════════════════════════════════════════════════════╗"
+        echo "║           Apps in Toss Unity SDK - Perf Harness (TTFF)                  ║"
+        echo "╚══════════════════════════════════════════════════════════════════════════╝"
+        echo ""
+        [ "$RUN_HEAVY" = true ] && echo "  • Heavy build: HeavyBuildRunner.CommandLineHeavyBuild (release + gzip)"
+        [ "$RUN_PERF" = true ]  && echo "  • Perf measure: pnpm run test:perf (TTFF median-of-N)"
+        if [ -n "$UNITY_VERSION" ]; then
+            echo "  • Unity Version: $UNITY_VERSION"
+        fi
+        echo "  • Directory: $SCRIPT_DIR"
+
+        local heavy_ok=true
+        if [ "$RUN_HEAVY" = true ]; then
+            if ! test_heavy_build "$UNITY_VERSION"; then
+                heavy_ok=false
+                print_info "무거운 빌드 실패 — perf 측정을 건너뜁니다"
+            fi
+        fi
+
+        if [ "$RUN_PERF" = true ] && [ "$heavy_ok" = true ]; then
+            test_perf_playwright "$UNITY_VERSION"
+        fi
+
+        print_summary
+        return $?
+    fi
 
     echo ""
     echo "╔══════════════════════════════════════════════════════════════════════════╗"

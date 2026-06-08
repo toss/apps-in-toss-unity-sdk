@@ -202,6 +202,10 @@ namespace AppsInToss
         [Tooltip("-1 = 자동 (false, Unity 6+)")]
         public int webAssemblyArithmeticExceptions = -1;
 
+        [Header("콘텐츠 축소 (빌드 산출물 .data/.wasm 실감축, 빌드 후 원복)")]
+        [Tooltip("-1 = 자동 (true). 사용하지 않는 텍스처 밉맵 레벨을 빌드 산출물에서 제거 — .data 축소. 설정된 품질의 출력은 불변(미사용 밉만 제거).")]
+        public int mipStripping = -1;
+
         [Header("빌드 전 검사 설정")]
         [Tooltip("빌드 전 에셋 최적화 검사를 활성화합니다")]
         public bool enableBuildOptimizationCheck = true;
@@ -456,6 +460,16 @@ namespace AppsInToss
         public static bool GetDefaultRunInBackground()
         {
             return false;
+        }
+
+        /// <summary>
+        /// 기본 Mip Stripping: 활성화(true)
+        /// 빌드 산출물에서 실제로 참조되지 않는 텍스처 밉맵 레벨을 제거해 .data 크기를 줄인다.
+        /// 설정된 품질의 출력은 불변(쓰이지 않는 밉만 제거되므로 시각적 변화 없음).
+        /// </summary>
+        public static bool GetDefaultMipStripping()
+        {
+            return true;
         }
 
 #if UNITY_2023_3_OR_NEWER && !UNITY_6000_0_OR_NEWER

@@ -701,6 +701,18 @@ namespace AppsInToss.Editor
             DrawRunInBackgroundSetting();
 
             GUILayout.Space(10);
+            EditorGUILayout.LabelField("콘텐츠 축소 (빌드 산출물 크기)", EditorStyles.boldLabel);
+            EditorGUILayout.HelpBox(
+                "빌드 산출물(.data)에서 사용되지 않는 데이터를 제거해 다운로드/로드 시간을 줄입니다. " +
+                "프로젝트 설정은 빌드 후 원래대로 복원됩니다.",
+                MessageType.Info
+            );
+            GUILayout.Space(5);
+
+            // Mip Stripping
+            DrawMipStrippingSetting();
+
+            GUILayout.Space(10);
             EditorGUILayout.LabelField("빌드 전 검사", EditorStyles.boldLabel);
 
             // 빌드 전 최적화 검사
@@ -915,6 +927,32 @@ namespace AppsInToss.Editor
             EditorGUILayout.EndHorizontal();
         }
 
+        private void DrawMipStrippingSetting()
+        {
+            bool defaultValue = AITDefaultSettings.GetDefaultMipStripping();
+            bool isModified = config.mipStripping >= 0 && (config.mipStripping == 1) != defaultValue;
+
+            EditorGUILayout.BeginHorizontal();
+
+            DrawModifiedIndicator(isModified);
+
+            string label = config.mipStripping < 0
+                ? $"Mip Stripping (자동: {(defaultValue ? "활성화" : "비활성화")})"
+                : "Mip Stripping";
+
+            string[] options = { $"자동 ({(defaultValue ? "활성화" : "비활성화")})", "비활성화", "활성화" };
+            int currentIndex = config.mipStripping < 0 ? 0 : config.mipStripping + 1;
+            int newIndex = EditorGUILayout.Popup(label, currentIndex, options);
+            config.mipStripping = newIndex == 0 ? -1 : newIndex - 1;
+
+            if (isModified && DrawResetButton())
+            {
+                config.mipStripping = -1;
+            }
+
+            EditorGUILayout.EndHorizontal();
+        }
+
         // ===== 유틸리티 메서드 =====
 
         private void DrawModifiedIndicator(bool isModified)
@@ -1037,6 +1075,7 @@ namespace AppsInToss.Editor
             config.showUnityLogo = -1;
             config.decompressionFallback = -1;
             config.runInBackground = -1;
+            config.mipStripping = -1;
             config.enableBuildOptimizationCheck = true;
         }
 

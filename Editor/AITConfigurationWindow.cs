@@ -887,6 +887,18 @@ namespace AppsInToss.Editor
             }
 
             EditorGUILayout.EndHorizontal();
+
+            // 끄면(기본값) JS 디컴프레서가 번들에서 제거되어 호스팅 CDN이 Content-Encoding: br를
+            // 직접 서빙해야 한다. AIT 플랫폼 CDN은 보장하지만, 자체 호스팅 시 미설정이면 로드 실패.
+            if (config.decompressionFallback != 1)
+            {
+                EditorGUILayout.HelpBox(
+                    "Decompression Fallback이 꺼지면 호스팅 서버가 Content-Encoding: br(또는 gzip)을 " +
+                    "직접 서빙해야 합니다. Apps in Toss 플랫폼 CDN은 보장하지만, 자체 호스팅 시 " +
+                    "압축 헤더 미설정이면 로드가 실패합니다.",
+                    MessageType.Warning
+                );
+            }
         }
 
         private void DrawRunInBackgroundSetting()

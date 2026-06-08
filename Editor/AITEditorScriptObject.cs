@@ -193,7 +193,7 @@ namespace AppsInToss
         [Tooltip("-1 = 자동 (false), Unity Pro 라이선스 필요")]
         public int showUnityLogo = -1;
 
-        [Tooltip("-1 = 자동 (true)")]
+        [Tooltip("-1 = 자동 (false). 끄면 JS Brotli 디컴프레서가 번들에서 제거됨 — 플랫폼 CDN의 Content-Encoding: br 의존")]
         public int decompressionFallback = -1;
 
         [Tooltip("-1 = 자동 (false)")]
@@ -383,7 +383,7 @@ namespace AppsInToss
 
         /// <summary>
         /// 기본 압축 포맷: Brotli
-        /// decompressionFallback이 활성화되어 있으므로 모든 Unity 버전에서 Brotli 사용 가능
+        /// decompressionFallback=false이므로 브라우저/CDN이 Content-Encoding: br로 네이티브 해제 (모든 Unity 버전 Brotli)
         /// </summary>
         public static WebGLCompressionFormat GetDefaultCompressionFormat()
         {
@@ -441,12 +441,14 @@ namespace AppsInToss
         }
 
         /// <summary>
-        /// 기본 Decompression Fallback
-        /// 출처: StartupOptimization.md:93
+        /// 기본 Decompression Fallback: 비활성화(false)
+        /// 끄면 Unity가 JS Brotli 디컴프레서를 프레임워크 번들에서 제외 → 다운로드/파싱 바이트 감소.
+        /// 대신 브라우저/CDN이 Content-Encoding: br로 .unityweb를 네이티브 해제하도록 의존한다.
+        /// Apps in Toss 플랫폼 CDN이 br 인코딩을 서빙하는 전제에서만 안전(자체 호스팅 시 헤더 필수).
         /// </summary>
         public static bool GetDefaultDecompressionFallback()
         {
-            return true;
+            return false;
         }
 
         /// <summary>

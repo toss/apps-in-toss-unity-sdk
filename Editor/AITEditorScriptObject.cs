@@ -210,6 +210,29 @@ namespace AppsInToss
         [Tooltip("first-interactive 계측: -1 = 자동 (활성), 0 = 비활성, 1 = 활성")]
         public int firstInteractiveLog = -1;
 
+        [Header("콘텐츠 최적화 — 텍스처 crunch")]
+        [Tooltip("대상 텍스처/SpriteAtlas 를 빌드 시 일시적으로 crunch(DXT 위 4~8x) 압축 + maxTextureSize 캡으로 reimport 하여 " +
+                 "다운로드/.data 를 줄입니다. 빌드 후 원본 임포트 설정으로 복원하므로 명시적 opt-in 으로 기본 비활성입니다. " +
+                 "crunch reimport 는 무겁습니다(에셋 수에 비례).")]
+        public bool enableTextureCrunch = false;
+
+        [Tooltip("텍스처 maxTextureSize 상한(0=캡 안 함). 이 값보다 큰 텍스처만 축소합니다. 예) 512, 1024")]
+        public int textureCrunchMaxSize = 0;
+
+        [Range(0, 100)]
+        [Tooltip("crunch 압축 품질(0~100). 낮을수록 작고 화질↓. 기본 50.")]
+        public int textureCrunchQuality = 50;
+
+        [Tooltip("SpriteAtlas 도 함께 crunch + WebGL repack 합니다(기본 true).")]
+        public bool textureCrunchAtlas = true;
+
+        [Tooltip("SpriteAtlas maxTextureSize 상한(0=캡 안 함). 예) 1024, 2048")]
+        public int textureCrunchAtlasMaxSize = 0;
+
+        [Tooltip("대상 폴더(쉼표 구분, Assets/ 기준). 비우면 프로젝트 전체 텍스처가 대상입니다. 예) Assets/Art/Textures")]
+        public string textureCrunchDirs = "";
+>>>>>>> 1bccfce (기능: 텍스처 Crunch 압축 빌드 프로세서 추가 (빌드 시 DXT crunch, 빌드 후 임포터 원복))
+
         [Header("권한 설정")]
         public AITPermissionConfig permissionConfig = new AITPermissionConfig();
 

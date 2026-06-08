@@ -456,6 +456,11 @@ namespace AppsInToss.Editor
 
             GUILayout.Space(10);
 
+            // 콘텐츠 최적화 — 텍스처 crunch (빌드 산출물 .data 축소)
+            DrawTextureCrunchSetting();
+
+            GUILayout.Space(10);
+
             // 변경된 설정 개수 표시
             int modifiedCount = CountModifiedWebGLSettings();
             if (modifiedCount > 0)
@@ -472,6 +477,49 @@ namespace AppsInToss.Editor
             }
 
             EditorGUILayout.EndVertical();
+        }
+
+        private void DrawTextureCrunchSetting()
+        {
+            EditorGUILayout.LabelField("콘텐츠 최적화 — 텍스처 crunch", EditorStyles.boldLabel);
+
+            config.enableTextureCrunch = EditorGUILayout.Toggle(
+                new GUIContent("텍스처 crunch 활성화",
+                    "대상 텍스처/SpriteAtlas를 빌드 시 crunch(DXT 위 4~8x) 압축 + maxTextureSize 캡으로 reimport하여 다운로드/.data를 줄입니다. " +
+                    "빌드 후 원본 임포트 설정으로 복원합니다. crunch reimport는 무겁습니다(에셋 수에 비례)."),
+                config.enableTextureCrunch);
+
+            if (config.enableTextureCrunch)
+            {
+                EditorGUI.indentLevel++;
+                config.textureCrunchMaxSize = EditorGUILayout.IntField(
+                    new GUIContent("최대 텍스처 크기(0=캡 안 함)", "이 값보다 큰 텍스처만 축소합니다. 예) 512, 1024"),
+                    config.textureCrunchMaxSize);
+
+                config.textureCrunchQuality = EditorGUILayout.IntSlider(
+                    new GUIContent("crunch 품질(0~100)", "낮을수록 작고 화질↓. 기본 50."),
+                    Mathf.Clamp(config.textureCrunchQuality, 0, 100), 0, 100);
+
+                config.textureCrunchAtlas = EditorGUILayout.Toggle(
+                    new GUIContent("SpriteAtlas 포함", "SpriteAtlas도 함께 crunch + WebGL repack 합니다."),
+                    config.textureCrunchAtlas);
+
+                if (config.textureCrunchAtlas)
+                {
+                    config.textureCrunchAtlasMaxSize = EditorGUILayout.IntField(
+                        new GUIContent("아틀라스 최대 크기(0=캡 안 함)", "예) 1024, 2048"),
+                        config.textureCrunchAtlasMaxSize);
+                }
+
+                config.textureCrunchDirs = EditorGUILayout.TextField(
+                    new GUIContent("대상 폴더(쉼표 구분)", "Assets/ 기준 경로. 비우면 프로젝트 전체 텍스처가 대상. 예) Assets/Art/Textures"),
+                    config.textureCrunchDirs);
+
+                EditorGUILayout.HelpBox(
+                    "crunch는 화질이 약간 떨어질 수 있습니다(특히 그라데이션/UI). 적용 후 결과를 확인하세요. 빌드 후 원본 설정은 자동 복원됩니다.",
+                    MessageType.Info);
+                EditorGUI.indentLevel--;
+            }
         }
 
         private void DrawMemorySizeSetting()

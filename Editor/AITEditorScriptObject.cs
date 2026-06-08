@@ -209,6 +209,17 @@ namespace AppsInToss
         [Header("계측 설정")]
         [Tooltip("first-interactive 계측: -1 = 자동 (활성), 0 = 비활성, 1 = 활성")]
         public int firstInteractiveLog = -1;
+        [Header("콘텐츠 최적화 — 폰트 CJK subset")]
+        [Tooltip("지정한 .ttf/.otf 를 빌드 시 '보존 유니코드 범위'만 남기도록 subset 하여 .data 의 폰트 데이터를 급감시킵니다(CJK 풀 폰트 5~15MB → ~0.1MB). " +
+                 "빌드 후 원본 폰트로 복원합니다. ⚠ subset 에 없는 글자(희귀 한자/이모지/동적 텍스트)는 □ 로 렌더되므로, " +
+                 "대상 폰트(fontSubsetTargetPaths)와 보존 범위(fontSubsetUnicodeRanges)를 모두 명시해야만 동작합니다(둘 중 하나라도 비면 no-op).")]
+        public bool enableFontSubset = false;
+
+        [Tooltip("보존할 유니코드 범위(쉼표 구분, fontTools 표기). 기본: ASCII+Latin-1+한글 음절/자모+CJK 기호+전각. 비우면 no-op.")]
+        public string fontSubsetUnicodeRanges = "U+0020-007E,U+00A0-00FF,U+AC00-D7A3,U+1100-11FF,U+3000-303F,U+FF00-FFEF";
+
+        [Tooltip("subset 대상 폰트 에셋 경로(쉼표 구분, Assets/ 기준의 .ttf/.otf). 안전을 위해 비우면 아무 폰트도 건드리지 않습니다. 예) Assets/Fonts/NotoSansKR.ttf")]
+        public string fontSubsetTargetPaths = "";
 
         [Header("권한 설정")]
         public AITPermissionConfig permissionConfig = new AITPermissionConfig();

@@ -453,6 +453,8 @@ namespace AppsInToss.Editor
 
             // first-interactive 계측
             DrawFirstInteractiveLogSetting();
+            // 콘텐츠 최적화 — 폰트 CJK subset (.data 폰트 데이터 축소)
+            DrawFontSubsetSetting();
 
             GUILayout.Space(10);
 
@@ -472,6 +474,37 @@ namespace AppsInToss.Editor
             }
 
             EditorGUILayout.EndVertical();
+        }
+
+        private void DrawFontSubsetSetting()
+        {
+            EditorGUILayout.LabelField("콘텐츠 최적화 — 폰트 CJK subset", EditorStyles.boldLabel);
+
+            config.enableFontSubset = EditorGUILayout.Toggle(
+                new GUIContent("폰트 subset 활성화",
+                    "지정한 .ttf/.otf를 빌드 시 '보존 유니코드 범위'만 남기도록 subset하여 .data의 폰트 데이터를 급감시킵니다(CJK 풀 폰트 5~15MB → ~0.1MB). " +
+                    "빌드 후 원본 폰트로 복원합니다. SDK 내장 Node.js로 동작합니다."),
+                config.enableFontSubset);
+
+            if (config.enableFontSubset)
+            {
+                EditorGUI.indentLevel++;
+                config.fontSubsetTargetPaths = EditorGUILayout.TextField(
+                    new GUIContent("대상 폰트 경로(쉼표 구분)", "Assets/ 기준의 .ttf/.otf. 비우면 아무 폰트도 건드리지 않습니다(안전 기본값). 예) Assets/Fonts/NotoSansKR.ttf"),
+                    config.fontSubsetTargetPaths);
+
+                config.fontSubsetUnicodeRanges = EditorGUILayout.TextField(
+                    new GUIContent("보존 유니코드 범위", "쉼표 구분(fontTools 표기). 기본: ASCII+Latin-1+한글+CJK 기호+전각."),
+                    config.fontSubsetUnicodeRanges);
+                EditorGUI.indentLevel--;
+
+                bool ready = !string.IsNullOrEmpty(config.fontSubsetTargetPaths) && !string.IsNullOrEmpty(config.fontSubsetUnicodeRanges);
+                EditorGUILayout.HelpBox(
+                    "⚠ subset에 포함되지 않은 글자(희귀 한자/이모지/런타임 동적 텍스트)는 □로 렌더됩니다. " +
+                    "닉네임·채팅 등 임의 문자가 표시되는 폰트에는 사용하지 마세요. " +
+                    (ready ? "빌드 시 대상 폰트가 subset됩니다." : "대상 폰트와 보존 범위를 모두 지정해야 동작합니다(현재 no-op)."),
+                    ready ? MessageType.Warning : MessageType.Info);
+            }
         }
 
         private void DrawMemorySizeSetting()

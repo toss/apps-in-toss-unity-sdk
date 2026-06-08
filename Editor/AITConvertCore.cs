@@ -993,6 +993,9 @@ namespace AppsInToss
             // .cs 파일 수정과 달리 .json은 스크립트 컴파일을 유발하지 않으므로 도메인 리로드 없음
             bool versionInfoWritten = WriteVersionInfoJson(out bool createdResourcesDir);
 
+            // 콘텐츠 최적화 — 폰트 CJK subset (.data 폰트 데이터 축소, 빌드 후 원본 폰트 복원)
+            var fontSubsetHandle = Editor.AITFontSubsetProcessor.ApplyForBuild(config);
+
             UnityEditor.Build.Reporting.BuildReport result;
             try
             {
@@ -1000,6 +1003,9 @@ namespace AppsInToss
             }
             finally
             {
+                // 콘텐츠 최적화 — 폰트 subset 원본 폰트 복원 (빌드 성공/실패 무관)
+                Editor.AITFontSubsetProcessor.RestoreForBuild(fontSubsetHandle);
+
                 // 빌드 완료 후 (성공/실패 무관) 생성한 JSON 제거 — 사용자 프로젝트에 산출물 남기지 않음
                 if (versionInfoWritten)
                 {

@@ -180,6 +180,9 @@ namespace AppsInToss
         [Tooltip("-1 = 자동 (Release)")]
         public int il2cppConfiguration = -1;
 
+        [Tooltip("-1 = 자동 (OptimizeSize, Unity 6+). 0 = OptimizeSpeed, 1 = OptimizeSize — 제네릭 인스턴스 공유로 wasm 코드 크기 축소")]
+        public int il2cppCodeGeneration = -1;
+
         [Header("Unity 6 전용 설정")]
         [Tooltip("-1 = 자동 (HighPerformance)")]
         public int powerPreference = -1;
@@ -407,6 +410,20 @@ namespace AppsInToss
         {
             return Il2CppCompilerConfiguration.Release;
         }
+
+#if UNITY_6000_0_OR_NEWER
+        /// <summary>
+        /// 기본 IL2CPP 코드 생성 방식 (Unity 6+): OptimizeSize
+        /// Meta+Unity 로드타임 스택의 "Faster (smaller) builds" — 제네릭 인스턴스화를
+        /// 공유해 제네릭 폭발(측정상 ~130k 함수)을 붕괴시켜 wasm 코드 크기를 축소한다.
+        /// trade-off: 공유 제네릭의 미세한 런타임 디스패치 비용(정확성 변화 아님).
+        /// 출처: Unity Manual web-optimization-player (IL2CPP Code Generation = Optimize for code size)
+        /// </summary>
+        public static UnityEditor.Build.Il2CppCodeGeneration GetDefaultIl2CppCodeGeneration()
+        {
+            return UnityEditor.Build.Il2CppCodeGeneration.OptimizeSize;
+        }
+#endif
 
 #if UNITY_2023_3_OR_NEWER
         /// <summary>

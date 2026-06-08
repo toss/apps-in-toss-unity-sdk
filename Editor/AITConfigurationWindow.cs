@@ -663,6 +663,11 @@ namespace AppsInToss.Editor
             // IL2CPP 컴파일러 설정
             DrawIl2CppConfigurationSetting();
 
+#if UNITY_6000_0_OR_NEWER
+            // IL2CPP Code Generation (OptimizeSize) — Meta 로드타임 스택
+            DrawIl2CppCodeGenerationSetting();
+#endif
+
 #if UNITY_2023_3_OR_NEWER
             GUILayout.Space(10);
             EditorGUILayout.LabelField("Unity 6 전용 설정", EditorStyles.boldLabel);
@@ -744,6 +749,34 @@ namespace AppsInToss.Editor
 
             EditorGUILayout.EndHorizontal();
         }
+
+#if UNITY_6000_0_OR_NEWER
+        private void DrawIl2CppCodeGenerationSetting()
+        {
+            UnityEditor.Build.Il2CppCodeGeneration defaultCodeGen = AITDefaultSettings.GetDefaultIl2CppCodeGeneration();
+            bool isModified = config.il2cppCodeGeneration >= 0 && (UnityEditor.Build.Il2CppCodeGeneration)config.il2cppCodeGeneration != defaultCodeGen;
+
+            EditorGUILayout.BeginHorizontal();
+
+            DrawModifiedIndicator(isModified);
+
+            string label = config.il2cppCodeGeneration < 0
+                ? $"IL2CPP 코드 생성 (자동: {defaultCodeGen})"
+                : "IL2CPP 코드 생성";
+
+            string[] options = { $"자동 ({defaultCodeGen})", "OptimizeSpeed", "OptimizeSize" };
+            int currentIndex = config.il2cppCodeGeneration < 0 ? 0 : config.il2cppCodeGeneration + 1;
+            int newIndex = EditorGUILayout.Popup(label, currentIndex, options);
+            config.il2cppCodeGeneration = newIndex == 0 ? -1 : newIndex - 1;
+
+            if (isModified && DrawResetButton())
+            {
+                config.il2cppCodeGeneration = -1;
+            }
+
+            EditorGUILayout.EndHorizontal();
+        }
+#endif
 
 #if UNITY_2023_3_OR_NEWER
         private void DrawPowerPreferenceSetting()
@@ -1029,6 +1062,9 @@ namespace AppsInToss.Editor
             config.stripEngineCode = true;
             config.il2cppConfiguration = -1;
             config.powerPreference = -1;
+#if UNITY_6000_0_OR_NEWER
+            config.il2cppCodeGeneration = -1;
+#endif
 #if !UNITY_6000_0_OR_NEWER
             config.wasmStreaming = true;
             config.webAssemblyArithmeticExceptions = -1;

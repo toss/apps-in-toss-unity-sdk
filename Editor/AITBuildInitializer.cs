@@ -170,6 +170,15 @@ namespace AppsInToss.Editor
             PlayerSettings.SetIl2CppCompilerConfiguration(BuildTargetGroup.WebGL, il2cppConfig);
 #endif
 
+            // ===== IL2CPP Code Generation (Meta 로드타임 스택: OptimizeSize) =====
+            // 제네릭 인스턴스화 공유로 wasm 코드 크기 축소. Unity 6+ 전용 API.
+#if UNITY_6000_0_OR_NEWER
+            Il2CppCodeGeneration il2cppCodeGen = editorConfig.il2cppCodeGeneration >= 0
+                ? (Il2CppCodeGeneration)editorConfig.il2cppCodeGeneration
+                : AITDefaultSettings.GetDefaultIl2CppCodeGeneration();
+            PlayerSettings.SetIl2CppCodeGeneration(NamedBuildTarget.WebGL, il2cppCodeGen);
+#endif
+
             // ===== Unity 6 (2023.3+) 전용 설정 =====
 #if UNITY_2023_3_OR_NEWER
             // 출처: UnityVersion.md:394-402
@@ -210,6 +219,9 @@ namespace AppsInToss.Editor
             Debug.Log($"[AIT]   - IL2CPP 설정: {il2cppConfig}{(!string.IsNullOrEmpty(il2cppConfigEnv) ? " (환경 변수)" : editorConfig.il2cppConfiguration < 0 ? " (자동)" : "")}");
             Debug.Log($"[AIT]   - Run In Background: {runInBackground}{(editorConfig.runInBackground < 0 ? " (자동)" : "")}");
             Debug.Log($"[AIT]   - Decompression Fallback: {decompressionFallback}{(editorConfig.decompressionFallback < 0 ? " (자동)" : "")}");
+#if UNITY_6000_0_OR_NEWER
+            Debug.Log($"[AIT]   - IL2CPP Code Generation: {il2cppCodeGen}{(editorConfig.il2cppCodeGeneration < 0 ? " (자동)" : "")}");
+#endif
 #if UNITY_2023_3_OR_NEWER
             Debug.Log($"[AIT]   - Power Preference: {powerPreference}{(editorConfig.powerPreference < 0 ? " (자동)" : "")}");
 #if !UNITY_6000_0_OR_NEWER

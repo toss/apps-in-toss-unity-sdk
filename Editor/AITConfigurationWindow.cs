@@ -671,6 +671,11 @@ namespace AppsInToss.Editor
             // Power Preference
             DrawPowerPreferenceSetting();
 
+#if UNITY_6000_0_OR_NEWER
+            // WebAssembly 2023 — Meta 로드타임 스택 (미지원 브라우저 로드 실패 주의)
+            DrawWasm2023Setting();
+#endif
+
 #if !UNITY_6000_0_OR_NEWER
             // WASM Streaming (Unity 6000에서 deprecated - decompressionFallback에 의해 자동 결정)
             config.wasmStreaming = EditorGUILayout.Toggle("WASM 스트리밍", config.wasmStreaming);
@@ -744,6 +749,44 @@ namespace AppsInToss.Editor
 
             EditorGUILayout.EndHorizontal();
         }
+
+#if UNITY_6000_0_OR_NEWER
+        private void DrawWasm2023Setting()
+        {
+            bool defaultValue = AITDefaultSettings.GetDefaultWasm2023();
+            bool isModified = config.wasm2023 >= 0 && (config.wasm2023 == 1) != defaultValue;
+
+            EditorGUILayout.BeginHorizontal();
+
+            DrawModifiedIndicator(isModified);
+
+            string label = config.wasm2023 < 0
+                ? $"WebAssembly 2023 (자동: {(defaultValue ? "활성화" : "비활성화")})"
+                : "WebAssembly 2023";
+
+            string[] options = { $"자동 ({(defaultValue ? "활성화" : "비활성화")})", "비활성화", "활성화" };
+            int currentIndex = config.wasm2023 < 0 ? 0 : config.wasm2023 + 1;
+            int newIndex = EditorGUILayout.Popup(label, currentIndex, options);
+            config.wasm2023 = newIndex == 0 ? -1 : newIndex - 1;
+
+            if (isModified && DrawResetButton())
+            {
+                config.wasm2023 = -1;
+            }
+
+            EditorGUILayout.EndHorizontal();
+
+            // 미지원 브라우저 하드 페일 경고 (graceful degradation 아님)
+            if (config.wasm2023 != 0)
+            {
+                EditorGUILayout.HelpBox(
+                    "WebAssembly 2023을 켜면 미지원 브라우저(대략 Chrome<91 / Safari<16.4)에서 " +
+                    "로드가 실패합니다. Apps in Toss WebView 최소 사양 충족 시에만 사용하세요.",
+                    MessageType.Warning
+                );
+            }
+        }
+#endif
 
 #if UNITY_2023_3_OR_NEWER
         private void DrawPowerPreferenceSetting()
@@ -1029,6 +1072,9 @@ namespace AppsInToss.Editor
             config.stripEngineCode = true;
             config.il2cppConfiguration = -1;
             config.powerPreference = -1;
+#if UNITY_6000_0_OR_NEWER
+            config.wasm2023 = -1;
+#endif
 #if !UNITY_6000_0_OR_NEWER
             config.wasmStreaming = true;
             config.webAssemblyArithmeticExceptions = -1;

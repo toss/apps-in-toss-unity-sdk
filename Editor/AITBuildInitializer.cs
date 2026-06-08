@@ -170,6 +170,16 @@ namespace AppsInToss.Editor
             PlayerSettings.SetIl2CppCompilerConfiguration(BuildTargetGroup.WebGL, il2cppConfig);
 #endif
 
+            // ===== WebAssembly 2023 (Meta 로드타임 스택: native exception/SIMD/BigInt/Table) =====
+            // 코드 크기·다운로드·시작 시간 단축. 미지원 브라우저에서는 로드 실패하므로
+            // Apps in Toss WebView min-spec(Chrome≥91 / Safari≥16.4) 충족이 전제.
+#if UNITY_6000_0_OR_NEWER
+            bool wasm2023 = editorConfig.wasm2023 >= 0
+                ? editorConfig.wasm2023 == 1
+                : AITDefaultSettings.GetDefaultWasm2023();
+            PlayerSettings.WebGL.wasm2023 = wasm2023;
+#endif
+
             // ===== Unity 6 (2023.3+) 전용 설정 =====
 #if UNITY_2023_3_OR_NEWER
             // 출처: UnityVersion.md:394-402
@@ -210,6 +220,9 @@ namespace AppsInToss.Editor
             Debug.Log($"[AIT]   - IL2CPP 설정: {il2cppConfig}{(!string.IsNullOrEmpty(il2cppConfigEnv) ? " (환경 변수)" : editorConfig.il2cppConfiguration < 0 ? " (자동)" : "")}");
             Debug.Log($"[AIT]   - Run In Background: {runInBackground}{(editorConfig.runInBackground < 0 ? " (자동)" : "")}");
             Debug.Log($"[AIT]   - Decompression Fallback: {decompressionFallback}{(editorConfig.decompressionFallback < 0 ? " (자동)" : "")}");
+#if UNITY_6000_0_OR_NEWER
+            Debug.Log($"[AIT]   - WebAssembly 2023: {wasm2023}{(editorConfig.wasm2023 < 0 ? " (자동)" : "")}");
+#endif
 #if UNITY_2023_3_OR_NEWER
             Debug.Log($"[AIT]   - Power Preference: {powerPreference}{(editorConfig.powerPreference < 0 ? " (자동)" : "")}");
 #if !UNITY_6000_0_OR_NEWER

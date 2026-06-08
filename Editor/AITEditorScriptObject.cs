@@ -186,6 +186,9 @@ namespace AppsInToss
 
         public bool wasmStreaming = true;
 
+        [Tooltip("-1 = 자동 (활성화, Unity 6+). WebAssembly 2023 기능셋(native exception/SIMD/BigInt/Table). 미지원 브라우저에서는 로드 실패")]
+        public int wasm2023 = -1;
+
         [Header("고급 설정 (주의: 변경 시 호환성 문제 발생 가능)")]
         [Tooltip("-1 = 자동 (FullWithStacktrace, Sentry 경고 방지)")]
         public int exceptionSupport = -1;
@@ -406,6 +409,23 @@ namespace AppsInToss
         public static Il2CppCompilerConfiguration GetDefaultIl2CppConfiguration()
         {
             return Il2CppCompilerConfiguration.Release;
+        }
+
+        /// <summary>
+        /// 기본 WebAssembly 2023 타겟 여부 (Unity 6+): 활성화
+        /// Meta+Unity 로드타임 최적화: native exception/SIMD/BigInt/WebAssembly.Table 등
+        /// 2023 기능셋을 번들해 코드 크기·다운로드·시작 시간을 단축한다.
+        /// 주의: 미지원 브라우저(대략 Chrome&lt;91 / Safari&lt;16.4)에서는 graceful
+        /// degradation이 아니라 로드 자체가 실패한다. Apps in Toss는 Toss 앱 WebView
+        /// 전용이라 플랫폼 min-spec이 이를 충족하는 전제에서만 기본 활성.
+        /// </summary>
+        public static bool GetDefaultWasm2023()
+        {
+#if UNITY_6000_0_OR_NEWER
+            return true;
+#else
+            return false;
+#endif
         }
 
 #if UNITY_2023_3_OR_NEWER

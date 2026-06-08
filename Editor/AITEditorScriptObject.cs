@@ -209,6 +209,25 @@ namespace AppsInToss
         [Header("계측 설정")]
         [Tooltip("first-interactive 계측: -1 = 자동 (활성), 0 = 비활성, 1 = 활성")]
         public int firstInteractiveLog = -1;
+        [Header("콘텐츠 최적화 — 대형 텍스처 스트리밍")]
+        [Tooltip("비-부팅 대형 Texture2D 를 초기 .data 에서 분리해 StreamingAssets 로 외부화하고, 소스를 '동일 차원 단색 스텁'으로 치환합니다. " +
+                 "런타임(AITStreamingTexture)이 first-frame 이후 실 텍스처를 비동기 스트리밍 로드하여 동일 Texture2D 객체에 픽셀을 제자리 복원하므로 " +
+                 "이를 참조하는 Sprite/Material 이 참조 재할당 없이 갱신됩니다. 초기 다운로드/TTFF 를 크게 줄입니다. " +
+                 "빌드 후 원본/임포터 설정을 원상 복원하므로 명시적 opt-in 으로 기본 비활성입니다.")]
+        public bool enableTextureStreaming = false;
+
+        [Tooltip("이 바이트 수보다 큰 텍스처 소스만 외부화 대상입니다 (기본 512KB). 소형 아이콘은 동적 Resources.Load 로 부팅에 끌려올 수 있어 보호합니다.")]
+        public int textureStreamingMinBytes = 524288;
+
+        [Tooltip("외부화 대상 폴더(쉼표 구분, Assets/ 기준 경로). 비우면 프로젝트 전체의 큰 텍스처가 대상입니다. 예) Assets/Art/BG,Assets/Textures")]
+        public string textureStreamingDirs = "";
+
+        [Tooltip("외부화에서 제외할 폴더(쉼표 구분, Assets/ 기준). 부팅에 필요한 텍스처를 사용자가 명시 보호하는 escape hatch. 예) Assets/UI/Always")]
+        public string textureStreamingExcludeDirs = "";
+
+        [Range(1, 8)]
+        [Tooltip("런타임 동시 스트리밍 다운로드/디코드 상한(기본 3). LoadImage 가 RGBA32 로 강제하므로 VRAM/메인스레드 hitch 를 이 값으로 제한합니다.")]
+        public int textureStreamingMaxConcurrent = 3;
 
         [Header("권한 설정")]
         public AITPermissionConfig permissionConfig = new AITPermissionConfig();

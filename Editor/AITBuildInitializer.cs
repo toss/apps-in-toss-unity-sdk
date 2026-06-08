@@ -196,6 +196,13 @@ namespace AppsInToss.Editor
                 : AITDefaultSettings.GetDefaultDecompressionFallback();
             PlayerSettings.WebGL.decompressionFallback = decompressionFallback;
 
+            // ===== Optimize Mesh Data (빌드 산출물 .data 축소, AITBuildSession이 빌드 후 원복) =====
+            // stripUnusedMeshComponents는 프로젝트 전역 PlayerSettings라 비활성화 선택 시에도 명시 적용해 결정성 보장.
+            bool stripUnusedMeshComponents = editorConfig.stripUnusedMeshComponents >= 0
+                ? editorConfig.stripUnusedMeshComponents == 1
+                : AITDefaultSettings.GetDefaultStripUnusedMeshComponents();
+            PlayerSettings.stripUnusedMeshComponents = stripUnusedMeshComponents;
+
             // 설정 요약 로그
             Debug.Log($"[AIT] Unity {AITDefaultSettings.GetUnityVersionGroup()} 최적화 설정 적용:");
             Debug.Log($"[AIT]   - WebGL Template: {PlayerSettings.WebGL.template}");
@@ -210,6 +217,7 @@ namespace AppsInToss.Editor
             Debug.Log($"[AIT]   - IL2CPP 설정: {il2cppConfig}{(!string.IsNullOrEmpty(il2cppConfigEnv) ? " (환경 변수)" : editorConfig.il2cppConfiguration < 0 ? " (자동)" : "")}");
             Debug.Log($"[AIT]   - Run In Background: {runInBackground}{(editorConfig.runInBackground < 0 ? " (자동)" : "")}");
             Debug.Log($"[AIT]   - Decompression Fallback: {decompressionFallback}{(editorConfig.decompressionFallback < 0 ? " (자동)" : "")}");
+            Debug.Log($"[AIT]   - Optimize Mesh Data: {stripUnusedMeshComponents}{(editorConfig.stripUnusedMeshComponents < 0 ? " (자동)" : "")}");
 #if UNITY_2023_3_OR_NEWER
             Debug.Log($"[AIT]   - Power Preference: {powerPreference}{(editorConfig.powerPreference < 0 ? " (자동)" : "")}");
 #if !UNITY_6000_0_OR_NEWER

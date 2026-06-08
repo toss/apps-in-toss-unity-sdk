@@ -202,6 +202,10 @@ namespace AppsInToss
         [Tooltip("-1 = 자동 (false, Unity 6+)")]
         public int webAssemblyArithmeticExceptions = -1;
 
+        [Header("콘텐츠 축소 (빌드 산출물 .data/.wasm 실감축, 빌드 후 원복)")]
+        [Tooltip("-1 = 자동 (true). 어떤 머티리얼도 쓰지 않는 메시 정점 채널(노멀/탄젠트/UV 등)을 제거 — .data 축소. 주의: 런타임에 머티리얼을 교체해 제거된 채널을 요구하면 시각 오류 가능.")]
+        public int stripUnusedMeshComponents = -1;
+
         [Header("빌드 전 검사 설정")]
         [Tooltip("빌드 전 에셋 최적화 검사를 활성화합니다")]
         public bool enableBuildOptimizationCheck = true;
@@ -456,6 +460,16 @@ namespace AppsInToss
         public static bool GetDefaultRunInBackground()
         {
             return false;
+        }
+
+        /// <summary>
+        /// 기본 Optimize Mesh Data(Strip Unused Mesh Components): 활성화(true)
+        /// 어떤 머티리얼도 참조하지 않는 메시 정점 채널(노멀/탄젠트/UV 등)을 빌드 산출물에서 제거해 .data를 줄인다.
+        /// 주의: 런타임에 머티리얼을 교체해 제거된 채널을 요구하면 시각 오류가 발생할 수 있다.
+        /// </summary>
+        public static bool GetDefaultStripUnusedMeshComponents()
+        {
+            return true;
         }
 
 #if UNITY_2023_3_OR_NEWER && !UNITY_6000_0_OR_NEWER

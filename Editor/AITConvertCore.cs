@@ -993,6 +993,10 @@ namespace AppsInToss
             // .cs 파일 수정과 달리 .json은 스크립트 컴파일을 유발하지 않으므로 도메인 리로드 없음
             bool versionInfoWritten = WriteVersionInfoJson(out bool createdResourcesDir);
 
+            // 빌드 직전 콘텐츠 최적화(인프로세스, opt-in): 대용량 오디오를 StreamingAssets로 외부화하고
+            // 소스를 무음 스텁으로 치환 → BuildPlayer가 최적화본을 패키징. 빌드 후 finally에서 원상 복원.
+            var audioStreamHandle = Editor.AITAudioStreamingProcessor.ExternalizeForBuild(config);
+
             UnityEditor.Build.Reporting.BuildReport result;
             try
             {
@@ -1000,7 +1004,8 @@ namespace AppsInToss
             }
             finally
             {
-                // 빌드 완료 후 (성공/실패 무관) 생성한 JSON 제거 — 사용자 프로젝트에 산출물 남기지 않음
+                // 빌드 완료 후 (성공/실패 무관) 콘텐츠 최적화를 원상 복원 + 생성한 JSON 제거 — 사용자 프로젝트에 산출물 남기지 않음
+                Editor.AITAudioStreamingProcessor.RestoreForBuild(audioStreamHandle);
                 if (versionInfoWritten)
                 {
                     RemoveVersionInfoJson(createdResourcesDir);

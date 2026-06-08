@@ -454,6 +454,9 @@ namespace AppsInToss.Editor
             // first-interactive 계측
             DrawFirstInteractiveLogSetting();
 
+            // 콘텐츠 최적화 — 오디오 스트리밍
+            DrawAudioStreamingSetting();
+
             GUILayout.Space(10);
 
             // 변경된 설정 개수 표시
@@ -472,6 +475,43 @@ namespace AppsInToss.Editor
             }
 
             EditorGUILayout.EndVertical();
+        }
+
+        private void DrawAudioStreamingSetting()
+        {
+            EditorGUILayout.LabelField("콘텐츠 최적화 — 오디오 스트리밍", EditorStyles.boldLabel);
+
+            bool prev = config.enableAudioStreaming;
+            config.enableAudioStreaming = EditorGUILayout.Toggle(
+                new GUIContent("오디오 스트리밍 활성화",
+                    "대용량 오디오를 초기 .data에서 분리해 StreamingAssets로 외부화하고, 런타임에 비동기 스트리밍으로 복원합니다. " +
+                    "초기 다운로드/TTI를 크게 줄입니다. 빌드 시 오디오를 무음 스텁으로 일시 치환했다가 빌드 후 원상 복원합니다."),
+                config.enableAudioStreaming);
+
+            if (config.enableAudioStreaming)
+            {
+                EditorGUI.indentLevel++;
+                config.audioStreamingMinBytes = EditorGUILayout.IntField(
+                    new GUIContent("최소 크기(Bytes)", "이 바이트 수보다 큰 AudioClip만 외부화합니다 (기본 262144 = 256KB)."),
+                    config.audioStreamingMinBytes);
+                if (config.audioStreamingMinBytes <= 0)
+                {
+                    config.audioStreamingMinBytes = 262144;
+                }
+
+                config.audioStreamingDirs = EditorGUILayout.TextField(
+                    new GUIContent("대상 폴더(쉼표 구분)", "Assets/ 기준 경로. 비우면 프로젝트 전체의 큰 오디오가 대상. 예) Assets/Sounds/BGM,Assets/Music"),
+                    config.audioStreamingDirs);
+                EditorGUI.indentLevel--;
+            }
+
+            if (prev != config.enableAudioStreaming && config.enableAudioStreaming)
+            {
+                EditorGUILayout.HelpBox(
+                    "외부화된 오디오는 게임이 interactive 된 후 비동기로 로드됩니다(초기 BGM 시작이 약간 지연될 수 있음). " +
+                    "빌드 후 소스 오디오는 자동 복원됩니다.",
+                    MessageType.Info);
+            }
         }
 
         private void DrawMemorySizeSetting()

@@ -210,6 +210,18 @@ namespace AppsInToss
         [Tooltip("first-interactive 계측: -1 = 자동 (활성), 0 = 비활성, 1 = 활성")]
         public int firstInteractiveLog = -1;
 
+        [Header("콘텐츠 최적화 — 오디오 스트리밍")]
+        [Tooltip("대용량 오디오를 초기 .data 에서 분리해 StreamingAssets 로 외부화하고, 런타임에 비동기 스트리밍으로 복원합니다. " +
+                 "초기 다운로드/TTI 를 크게 줄입니다. 빌드 시 오디오 에셋을 일시적으로 무음 스텁으로 치환했다가 빌드 후 원상 복원하므로, " +
+                 "명시적 opt-in 으로 기본 비활성입니다.")]
+        public bool enableAudioStreaming = false;
+
+        [Tooltip("이 바이트 수보다 큰 AudioClip 만 외부화 대상입니다 (기본 256KB).")]
+        public int audioStreamingMinBytes = 262144;
+
+        [Tooltip("외부화 대상 폴더(쉼표 구분, Assets/ 기준 경로). 비우면 프로젝트 전체의 큰 오디오가 대상입니다. 예) Assets/Sounds/BGM,Assets/Music")]
+        public string audioStreamingDirs = "";
+
         [Header("권한 설정")]
         public AITPermissionConfig permissionConfig = new AITPermissionConfig();
 

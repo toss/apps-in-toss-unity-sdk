@@ -1883,6 +1883,7 @@ jobs:
             Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}/ait-build/*.ait
             Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}/ait-build/package.json
             Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}/ait-build/pnpm-lock.yaml
+            Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}/ait-build/ait-patch-cli.mjs
             Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}/ait-build/granite.config.ts
             Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}/ait-build/build-validation.json
           if-no-files-found: error

@@ -340,6 +340,14 @@ namespace AppsInToss.Editor.Package
                 Debug.Log($"[AIT] appsintoss-unity-bridge.js Mock 브릿지 모드: {(profile.enableMockBridge ? "활성화" : "비활성화")}");
             }
 
+            // Build 파일 복사 및 index.html 치환 완료 후 warm manifest 를 산출합니다.
+            // [destPath = publicPath] 명세 원문은 'index.html 이 놓이는 web 루트(buildProjectPath)' 라 기술하나,
+            // Build/* 파일은 publicPath(buildProjectPath/public/)에 복사되므로 wireBytes 계산이
+            // buildProjectPath 기준이면 FileInfo.Length 가 실패합니다. publicPath 를 전달해야
+            // Path.Combine(destPath, "Build", file) 이 실제 파일 위치와 일치합니다.
+            // Vite 가 public/ 을 정적 루트로 서빙하므로 호스트는 /ait-warm-manifest.json 으로 취득합니다.
+            AITWarmManifestEmitter.WriteManifest(config, publicPath, loaderFile, dataFile, frameworkFile, wasmFile, symbolsFile);
+
             Debug.Log("[AIT] Unity WebGL 빌드 복사 완료");
             Debug.Log("[AIT]   - index.html → 프로젝트 루트");
             Debug.Log("[AIT]   - Build, TemplateData, Runtime → public/");

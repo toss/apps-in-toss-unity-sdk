@@ -181,6 +181,15 @@ namespace AppsInToss
                  "비우면 ait-page-cache 로 보정됩니다. 런타임 window.__AIT_CACHE_NAME 으로도 오버라이드 가능.")]
         public string pageCacheName = "ait-page-cache";
 
+        /// <summary>
+        /// 빌드 시 ait-warm-manifest.json 산출 여부 (호스트 warm 연동용).
+        /// 기본 false(opt-in). enablePageCache 와 AND 게이팅되어 있으며,
+        /// enablePageCache=false 이면 manifest 를 내보내지 않습니다.
+        /// </summary>
+        [Tooltip("빌드 시 ait-warm-manifest.json 을 산출합니다. 호스트(슈퍼앱)가 선다운로드(warm) diff 기준으로 사용합니다. " +
+                 "enablePageCache 와 AND 게이팅: enablePageCache=false 이면 미산출. 기본 비활성(opt-in).")]
+        public bool emitWarmManifest = false;
+
         [Header("렌더링 품질 설정")]
         [Tooltip("devicePixelRatio 설정: -1 = auto (기기 성능에 따라 자동 결정), 1/2/3 = 고정값. 높을수록 고품질이지만 GPU 부하 증가")]
         public int devicePixelRatio = -1;

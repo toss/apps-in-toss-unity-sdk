@@ -599,6 +599,22 @@ namespace AppsInToss.Editor
 
                 EditorGUI.indentLevel--;
             }
+
+            // warm manifest 산출 토글 — enablePageCache=false 이면 회색 비활성, true 이면 편집 가능.
+            // if (config.enablePageCache) 블록 바깥에 배치해 항상 렌더링(숨김 없음).
+            using (new EditorGUI.DisabledScope(!config.enablePageCache))
+            {
+                EditorGUI.indentLevel++;
+                config.emitWarmManifest = EditorGUILayout.Toggle(
+                    new GUIContent(
+                        "Warm Manifest 산출",
+                        "빌드 시 ait-warm-manifest.json 을 web 루트에 산출합니다. " +
+                        "호스트(슈퍼앱)가 선다운로드(warm) diff 기준으로 사용합니다. " +
+                        "페이지 캐시(enablePageCache)가 비활성이면 회색 비활성화됩니다."),
+                    config.emitWarmManifest
+                );
+                EditorGUI.indentLevel--;
+            }
         }
 
         private void DrawPermissionSettings()
@@ -1040,6 +1056,7 @@ namespace AppsInToss.Editor
             config.dataCaching = -1;
             config.enablePageCache = false;
             config.pageCacheName = "ait-page-cache";
+            config.emitWarmManifest = false;
         }
 
         private void ResetAdvancedSettings()

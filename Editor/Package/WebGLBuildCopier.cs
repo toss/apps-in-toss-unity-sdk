@@ -287,6 +287,10 @@ namespace AppsInToss.Editor.Package
                 .Replace("%AIT_ICON_URL%", config.iconUrl ?? "")
                 .Replace("%AIT_DISPLAY_NAME%", config.displayName ?? "")
                 .Replace("%AIT_PRIMARY_COLOR%", config.primaryColor ?? "#3182f6")
+                // 페이지 캐시 인터셉터 (재방문 서빙, opt-in). index.html 에서 Early Fetch 보다 '앞'에 위치해야
+                // priorFetch=native 캡처 → 캐시 히트가 Early Fetch 소진과 무관하게 단락됨.
+                // 각 토큰은 독립 치환이므로 치환 순서는 출력 위치를 바꾸지 않음(물리 위치는 index.html 이 보장).
+                .Replace("%AIT_PAGE_CACHE_SCRIPT%", AITPageCacheEmitter.GenerateInterceptorScript(config, dataFile, frameworkFile, wasmFile))
                 // Early Fetch 스크립트 (로딩 성능 개선)
                 .Replace("%AIT_EARLY_FETCH_SCRIPT%", GenerateEarlyFetchScript(dataFile, wasmFile));
 

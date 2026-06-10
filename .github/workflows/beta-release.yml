@@ -8,7 +8,13 @@ run-name: "Beta Release - v${{ inputs.version }} → #${{ inputs.channel_ref }} 
 # 재현하되, 채널 격리를 위해 다음 부작용은 구조적으로 차단한다:
 #   - main 브랜치 / package.json 변경 (main은 절대 건드리지 않음 — source_ref 읽기 전용)
 #   - Latest 릴리즈 표시 (항상 --prerelease --latest=false)
-#   - AIT 프로덕션 배포(deploy-ait) / AIT_DEPLOY_KEY (구조적 부재로 차단)
+# AIT deploy 검증: e2e-beta-macos 잡의 deploy 스텝이 Playwright 통과 후 같은 ait-build
+#   (베타 3.x node_modules 포함)에서 프로젝트 자신의 ait로 SDK 샘플 앱을 실 콘솔에 배포해
+#   (= Tests~/E2E/deploy.sh와 동일한 `pnpm run deploy`, AIT_DEPLOY_KEY 사용) 베타 3.x
+#   deploy를 end-to-end 검증하는 게시 게이트다. 첫 macOS Unity 버전 leg에서만 1회 실행
+#   (중복/레이스 방지). 빌드 ait와 배포 ait 버전이 동일해 skew가 없다. stable 릴리즈와
+#   동일한 SDK 샘플 앱 QA 배포(intoss-private)이며, Latest 표시·npm latest·main·stable
+#   Sentry에 영향 없음(INV1/INV2/INV4/INV5 불변; INV3만 베타 채널 한정으로 완화).
 # 산출물: 정리된 orphan commit을 channel_ref 브랜치(기본 beta)로 force-push.
 #         제휴사는 manifest에서 `...git#beta`로 핀한다.
 # 자동 업데이터(AITAutoUpdater)는 prerelease 채널에 자동 프롬프트를 띄우지 않으므로,
@@ -18,7 +24,7 @@ run-name: "Beta Release - v${{ inputs.version }} → #${{ inputs.channel_ref }} 
 #   - output: immutable 태그 대신 이동 channel_ref 브랜치 + -beta 스냅샷 태그
 #   - GitHub Release: 무조건 --prerelease --latest=false (stable의 조건부 분기 미사용)
 #   - bare 버전 입력은 package.json .version을 prerelease로 정규화 → Sentry env=beta 격리 유지
-#   - deploy-ait 잡 없음 / AIT_DEPLOY_KEY 미사용
+#   - 배포는 SDK 샘플 앱만(intoss-private 검증용 게시 게이트) — partner/production 배포나 Latest 승격이 아님
 #   - Sentry는 set_commits: skip(미머지 orphan의 Fixes trailer가 stable 이슈를 조기 resolve하는 것 차단)
 # =====================================================
 
@@ -26,7 +32,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: '파일럿 web-framework npm 버전 (예: 3.0.0 또는 3.0.0-beta.9d42c0b)'
+        description: '파일럿 web-framework npm 버전 또는 dist-tag (예: 3.0.0-beta.973c8c3, 또는 beta — dist-tag는 현재 가리키는 버전으로 해석)'
         required: true
         type: string
       channel_ref:
@@ -54,6 +60,11 @@ on:
         required: false
         type: boolean
         default: true
+      deploy_probe_only:
+        description: 'true면 ait deploy 게이트 검증만 수행하고 채널 게시(publish-beta)는 건너뜀. deploy 가능 여부만 점검할 때 사용(파일럿 채널 무손상).'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -115,7 +126,21 @@ jobs:
           CHANNEL_REF="${{ inputs.channel_ref }}"
           STRATEGY="${{ inputs.build_strategy || 'full' }}"
 
-          # --- 버전 형식 검증 (stable 또는 prerelease 접미사 허용) ---
+          # --- dist-tag 해석: 입력이 semver가 아니면 web-framework dist-tag로 간주해 해석 ---
+          # (예: version=beta → npm dist-tag 'beta'가 현재 가리키는 버전. "항상 최신 베타 추적" 편의)
+          # GitHub-hosted runner라 public registry.npmjs.org 직접 조회(사내 프록시 무관).
+          if ! echo "$NPM_VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$'; then
+            echo "입력 '${NPM_VERSION}'이 semver 형식이 아님 → web-framework dist-tag로 해석 시도"
+            RESOLVED=$(npm view "@apps-in-toss/web-framework@${NPM_VERSION}" version --registry https://registry.npmjs.org 2>/dev/null | tail -1 | tr -d '[:space:]')
+            if [ -z "$RESOLVED" ]; then
+              echo "::error::버전/dist-tag 해석 실패: '${NPM_VERSION}' (semver도 아니고 존재하는 dist-tag도 아님)"
+              exit 1
+            fi
+            echo "dist-tag '${NPM_VERSION}' → ${RESOLVED}"
+            NPM_VERSION="$RESOLVED"
+          fi
+
+          # --- 버전 형식 검증 (해석 후 반드시 semver) ---
           if ! echo "$NPM_VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$'; then
             echo "::error::올바른 버전 형식이 아닙니다: ${NPM_VERSION}"
             exit 1
@@ -299,7 +324,8 @@ jobs:
 
   # =====================================================
   # 베타 빌드 검증 - macOS
-  # staging ref를 unity-build.yml로 빌드. AIT_DEPLOY_KEY는 절대 전달하지 않음(INV3).
+  # staging ref를 unity-build.yml로 빌드. 빌드 잡은 AIT_DEPLOY_KEY를 받지 않음 — 실 콘솔
+  # 배포 검증은 e2e-beta-macos 잡의 deploy 스텝이 이 빌드 산출물(ait-build)로 1회 수행한다.
   # =====================================================
   build-beta-macos:
     name: 베타 빌드 (macOS)
@@ -363,7 +389,8 @@ jobs:
   # build-beta-macos가 올린 ait-build 아티팩트(베타 재생성 SDK + E2E 부트스트랩)를
   # 받아 vite preview로 띄우고 Playwright로 검증한다. test-e2e.yml의 e2e-macos와 동일
   # 경로이며, 매트릭스는 beta-prepare의 macos_versions(build_strategy 비례)를 그대로 사용.
-  # INV3 보존: 배포(ait deploy) 없음 — 로컬 preview 서버에서만 로드하며 AIT_DEPLOY_KEY 불사용.
+  # Playwright 통과 후 첫 macOS Unity 버전 leg에서만 deploy 스텝이 같은 ait-build로
+  # 실 콘솔 배포를 1회 검증한다(게시 게이트) — 나머지 leg는 preview 검증만 수행.
   # =====================================================
   e2e-beta-macos:
     name: 베타 E2E (macOS, Unity ${{ matrix.unity-version }})
@@ -422,6 +449,101 @@ jobs:
           AIT_DEVELOPMENT_BUILD: "true"
           AIT_COMPRESSION_FORMAT: "0"
         run: pnpm test
+
+      - name: 베타 ait deploy 검증 (게시 게이트)
+        # Playwright 통과 후, 첫 macOS Unity 버전에 한해(중복/레이스 방지) E2E가 빌드/설치한
+        # ait-build/(dist + 베타 web-framework node_modules)에서 프로젝트 자신의 ait로 실 콘솔에
+        # 배포한다 — Tests~/E2E/deploy.sh와 동일한 `pnpm run deploy` 경로. 빌드 ait와 배포 ait
+        # 버전이 동일(베타 3.x)해 skew 없음.
+        #
+        # 게시 게이트: 배포 실패 시 이 잡이 fail → publish-beta 스킵 → 배포 불가한 베타가 파일럿
+        #   채널에 게시되는 것 차단. 분기:
+        #   - AIT_DEPLOY_KEY 미설정(로컬/포크) → 검증 건너뜀(exit 0).
+        #   - 타임아웃(5분) → 콘솔측 지연으로 간주, 경고만 남기고 통과(exit 0, 재실행 권장).
+        #   - 그 외 배포 실패 → 게이트 차단(exit 비0). 서버측 상태를 deployment GET으로 덤프해 진단.
+        if: matrix.unity-version == fromJSON(needs.beta-prepare.outputs.macos_versions)[0]
+        working-directory: ${{ env.AIT_BUILD_DIR }}
+        env:
+          AIT_DEPLOY_KEY: ${{ secrets.AIT_DEPLOY_KEY }}
+        run: |
+          if [ -z "$AIT_DEPLOY_KEY" ]; then
+            echo "::warning::AIT_DEPLOY_KEY 미설정 — 베타 배포 검증을 건너뜁니다."
+            exit 0
+          fi
+          echo "베타 배포 실행 (pnpm run deploy = 프로젝트 ait): $(pwd)"
+          DEPLOY_OUTPUT=$(timeout 300 pnpm run deploy --api-key "$AIT_DEPLOY_KEY" 2>&1) && DEPLOY_STATUS=0 || DEPLOY_STATUS=$?
+          echo "$DEPLOY_OUTPUT"
+          CLEANED=$(echo "$DEPLOY_OUTPUT" | sed 's/\x1b\[[0-9;]*m//g' | tr -d '\r')
+
+          # 실패 시: 서버측(레이어 3) 빌드 상태를 deployment GET으로 직접 조회해 CI 로그/요약에 덤프.
+          # ait CLI는 응답에서 reviewStatus enum만 읽고 나머지를 버리므로, 실패 사유가 응답
+          # 본문 어딘가에 있는지 raw JSON으로 확인한다 (콘솔 접근 없이 진단 가능).
+          if [ "$DEPLOY_STATUS" -ne 0 ]; then
+            DEPLOYMENT_ID=$(echo "$CLEANED" | grep -oE '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}' | head -1 || true)
+            AIT_FILE=$(ls -1 *.ait 2>/dev/null | head -1 || true)
+            APP_NAME="${AIT_FILE%.ait}"
+            echo "::group::서버측 배포 상태 조회 (deployment GET — 레이어 3 진단)"
+            echo "appName=${APP_NAME:-(미발견)} deploymentId=${DEPLOYMENT_ID:-(미발견)}"
+            if [ -n "$DEPLOYMENT_ID" ] && [ -n "$APP_NAME" ]; then
+              STATUS_JSON=$(curl -sS \
+                -H "Authorization: Bearer ${AIT_DEPLOY_KEY}" \
+                -H "Accept: application/json" \
+                "https://apps-in-toss.toss.im/console/api-public/v3/openapi/bundles/${APP_NAME}/deployments/${DEPLOYMENT_ID}" 2>&1 || true)
+              echo "--- raw response ---"
+              echo "$STATUS_JSON"
+              echo "--- jq (pretty) ---"
+              echo "$STATUS_JSON" | jq . 2>/dev/null || echo "(jq 파싱 실패 — raw 참조)"
+              {
+                echo "## 🔎 서버측 배포 상태 (deployment GET) — 실패 진단"
+                echo ""
+                echo "appName: \`${APP_NAME}\` · deploymentId: \`${DEPLOYMENT_ID}\`"
+                echo ""
+                echo '```json'
+                echo "$STATUS_JSON" | jq . 2>/dev/null || echo "$STATUS_JSON"
+                echo '```'
+              } >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+            else
+              echo "deploymentId 또는 appName 파싱 실패 — 서버 상태 조회 건너뜀"
+            fi
+            echo "::endgroup::"
+          fi
+
+          if [ "$DEPLOY_STATUS" -eq 124 ]; then
+            echo "::warning::베타 배포 타임아웃 (5분 초과) — 콘솔측 지연으로 간주, 게이트 통과(재실행 권장)"
+            exit 0
+          elif [ "$DEPLOY_STATUS" -ne 0 ]; then
+            echo "::error::베타 ait deploy 실패 (exit ${DEPLOY_STATUS}) — 게시 게이트 차단, publish-beta 스킵됨"
+            exit "$DEPLOY_STATUS"
+          fi
+
+          DEPLOY_URL=$(echo "$CLEANED" | grep -oE 'intoss-private://[^[:space:]]+' | head -1 || true)
+          if [ -z "$DEPLOY_URL" ]; then
+            DEPLOY_URL=$(echo "$CLEANED" | grep -oE 'https?://[^[:space:]]+' | head -1 || true)
+          fi
+          echo "✅ 베타 배포 성공: ${DEPLOY_URL:-(URL 미발견)}"
+
+          {
+            echo "## 베타 ait deploy 검증 (macOS · Unity ${{ matrix.unity-version }})"
+            echo ""
+            echo "web-framework \`${{ needs.beta-prepare.outputs.npm_version }}\` · SDK \`${{ needs.beta-prepare.outputs.pkg_version }}\`"
+            echo ""
+            if echo "${DEPLOY_URL}" | grep -qE '^intoss-private://'; then
+              ENCODED_URL=$(printf '%s' "$DEPLOY_URL" | jq -sRr @uri)
+              echo "| URL | QR |"
+              echo "|-----|:--:|"
+              echo "| \`${DEPLOY_URL}\` | ![QR](https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${ENCODED_URL}) |"
+              echo ""
+              echo "<details><summary>📱 테스트 방법</summary>"
+              echo ""
+              echo "위 QR을 Toss 앱으로 스캔하거나 \`intoss-private://\` URL을 복사해 Toss 앱에서 여세요."
+              echo ""
+              echo "</details>"
+            elif [ -n "$DEPLOY_URL" ]; then
+              echo "✅ 배포 성공 — URL: \`${DEPLOY_URL}\`"
+            else
+              echo "✅ 배포 성공(exit 0) — 출력에서 intoss-private URL을 찾지 못했습니다."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload Playwright Report
         if: always()
@@ -504,8 +626,9 @@ jobs:
           retention-days: 7
 
   # =====================================================
-  # 베타 게시: 빌드 + E2E 성공 후 staging 트리를 channel_ref로 승격
-  # 빌드/E2E 실패 시 게시하지 않음 → 베타 채널이 깨진 SDK로 갱신되는 것 방지.
+  # 베타 게시: 빌드 + E2E + 배포 검증 성공 후 staging 트리를 channel_ref로 승격
+  # 빌드/E2E/배포 실패 시 게시하지 않음 → 깨졌거나 배포 불가한 SDK로 채널이 갱신되는 것 방지.
+  # deploy_probe_only=true면 게시를 건너뛴다 — deploy 게이트만 점검하고 파일럿 채널은 건드리지 않음.
   # =====================================================
   publish-beta:
     name: 베타 채널 게시
@@ -513,6 +636,7 @@ jobs:
     needs: [beta-prepare, build-beta-macos, build-beta-windows, e2e-beta-macos, e2e-beta-windows]
     if: |
       always() &&
+      inputs.deploy_probe_only != true &&
       needs.beta-prepare.result == 'success' &&
       (needs.build-beta-macos.result == 'success' || needs.build-beta-macos.result == 'skipped') &&
       (needs.build-beta-windows.result == 'success' || needs.build-beta-windows.result == 'skipped') &&

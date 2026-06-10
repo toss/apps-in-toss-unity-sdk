@@ -451,6 +451,11 @@ namespace AppsInToss.Editor
 
             GUILayout.Space(10);
 
+            // 페이지 캐시 (재방문 서빙, opt-in)
+            DrawPageCacheSetting();
+
+            GUILayout.Space(10);
+
             // 변경된 설정 개수 표시
             int modifiedCount = CountModifiedWebGLSettings();
             if (modifiedCount > 0)
@@ -546,6 +551,54 @@ namespace AppsInToss.Editor
             }
 
             EditorGUILayout.EndHorizontal();
+        }
+
+        private void DrawPageCacheSetting()
+        {
+            EditorGUILayout.LabelField("WebGL 로딩 — 페이지 캐시(재방문 서빙)", EditorStyles.boldLabel);
+
+            config.enablePageCache = EditorGUILayout.Toggle(
+                new GUIContent(
+                    "페이지 캐시 활성화",
+                    "재방문 시 Build/* 자산을 CacheStorage 에서 직접 서빙합니다(ServiceWorker 불필요). " +
+                    "첫 방문(콜드)에는 효과가 없고, 미지원/비보안 환경에서는 자동으로 원래 로드로 무해 통과합니다. 기본 비활성(opt-in)."),
+                config.enablePageCache
+            );
+
+            if (config.enablePageCache)
+            {
+                EditorGUI.indentLevel++;
+
+                config.pageCacheName = EditorGUILayout.TextField(
+                    new GUIContent(
+                        "캐시 이름",
+                        "호스트 백그라운드 pre-fill 페이지와 동일한 이름을 써야 같은 캐시를 공유합니다. 비우면 ait-page-cache. " +
+                        "같은 오리진에 여러 미니앱이 있으면 앱마다 다른 이름을 쓰세요(공유 시 sweep 상호 간섭)."),
+                    config.pageCacheName
+                );
+                if (string.IsNullOrEmpty(config.pageCacheName))
+                {
+                    config.pageCacheName = "ait-page-cache";
+                }
+
+                EditorGUILayout.HelpBox(
+                    "재방문 전용 최적화입니다. 콘텐츠-해시 URL(파일명 해싱) 전제이며, " +
+                    "부팅 시 현재 빌드에 없는 옛 캐시 엔트리는 자동 정리됩니다. 저장 공간 초과 시 무해하게 건너뜁니다.",
+                    MessageType.Info
+                );
+
+                if (string.Equals(config.pageCacheName, "ait-page-cache", System.StringComparison.Ordinal))
+                {
+                    EditorGUILayout.HelpBox(
+                        "주의(멀티앱): 같은 오리진에서 여러 미니앱이 기본 'ait-page-cache' 버킷을 공유하면, " +
+                        "한 앱의 부팅 정리(sweep)가 다른 앱의 Build/* 엔트리를 옛 것으로 오인해 삭제할 수 있습니다. " +
+                        "오리진을 공유하는 앱이 둘 이상이면 앱별로 고유한 캐시 이름을 지정하세요.",
+                        MessageType.Warning
+                    );
+                }
+
+                EditorGUI.indentLevel--;
+            }
         }
 
         private void DrawPermissionSettings()
@@ -974,6 +1027,9 @@ namespace AppsInToss.Editor
             bool defaultCaching = AITDefaultSettings.GetDefaultDataCaching();
             if (config.dataCaching >= 0 && (config.dataCaching == 1) != defaultCaching) count++;
 
+            // 페이지 캐시는 opt-in(기본 false). 활성화 시 변경으로 집계.
+            if (config.enablePageCache) count++;
+
             return count;
         }
 
@@ -982,6 +1038,8 @@ namespace AppsInToss.Editor
             config.memorySize = -1;
             config.threadsSupport = -1;
             config.dataCaching = -1;
+            config.enablePageCache = false;
+            config.pageCacheName = "ait-page-cache";
         }
 
         private void ResetAdvancedSettings()

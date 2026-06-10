@@ -170,6 +170,17 @@ namespace AppsInToss
 
         public bool nameFilesAsHashes = true;
 
+        [Header("로딩 최적화 — 페이지 캐시(CacheStorage 재방문 서빙)")]
+        [Tooltip("재방문 시 Build/* 자산을 CacheStorage 에서 직접 서빙합니다(ServiceWorker 불필요). " +
+                 "첫 방문(콜드)에는 효과가 없고, 미지원/비보안 환경에서는 자동으로 원래 로드로 무해 통과합니다. " +
+                 "호스트(슈퍼앱)가 decode-free(Content-Encoding 미포함 raw bytes)로 동일 캐시명에 pre-fill 하면 " +
+                 "첫 방문도 가속됩니다. 기본 비활성(opt-in).")]
+        public bool enablePageCache = false;
+
+        [Tooltip("페이지 캐시 버킷 이름. 호스트 백그라운드 pre-fill 페이지와 '동일한 이름'을 써야 같은 캐시를 공유합니다. " +
+                 "비우면 ait-page-cache 로 보정됩니다. 런타임 window.__AIT_CACHE_NAME 으로도 오버라이드 가능.")]
+        public string pageCacheName = "ait-page-cache";
+
         [Header("렌더링 품질 설정")]
         [Tooltip("devicePixelRatio 설정: -1 = auto (기기 성능에 따라 자동 결정), 1/2/3 = 고정값. 높을수록 고품질이지만 GPU 부하 증가")]
         public int devicePixelRatio = -1;

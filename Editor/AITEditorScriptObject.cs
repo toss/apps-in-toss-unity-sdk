@@ -211,14 +211,15 @@ namespace AppsInToss
         public int firstInteractiveLog = -1;
 
         [Header("콘텐츠 최적화 — 대형 폰트 deferral")]
-        [Tooltip("비-부팅 대형 폰트(예: 게임이 임베드한 비-한국어 CJK NotoSansSC/TC/JP 등)를 초기 .data 에서 분리해 " +
-                 "WebGL AssetBundle 로 StreamingAssets 에 외부화하고, 소스 폰트의 includeFontData 를 꺼서 .data 에서 .ttf 바이트를 제외합니다. " +
-                 "런타임(AITStreamingFont)이 first-frame 이후 번들을 로드하여 그 안의 TMP_FontAsset 을 TMP fallback 체인에 주입해 CJK 를 재수화합니다. " +
-                 "부팅 화면이 해당 글자를 안 쓰는 경우 TTFF 를 크게 줄입니다. 빌드 후 임포터 설정을 원상 복원하므로 명시적 opt-in 으로 기본 비활성입니다. " +
+        [Tooltip("-1 = 자동(1MB 이상·부팅 씬 미포함 TMP_FontAsset 자동 스캔 후 외부화), " +
+                 "0 = 비활성화, 1 = 수동(fontStreamingTargetPaths 에 명시한 경로만 외부화). " +
+                 "자동 모드: 비-부팅 대형 폰트를 초기 .data 에서 분리해 WebGL AssetBundle 로 StreamingAssets 에 외부화하고, " +
+                 "소스 폰트를 최소 스텁 .ttf 로 치환해 .data 에서 .ttf 바이트를 제외합니다. " +
+                 "런타임(AITStreamingFont)이 first-frame 이후 번들을 로드하여 그 안의 TMP_FontAsset 을 TMP fallback 체인에 주입해 재수화합니다. " +
                  "⚠ 동적 텍스트 리스크: 재수화 전(또는 TMP 부재 시) 대상 폰트의 글자는 □ 로 렌더됩니다.")]
-        public bool enableFontStreaming = false;
+        public int fontStreaming = -1;
 
-        [Tooltip("외부화 대상 TMP_FontAsset 경로(쉼표 구분, Assets/ 기준의 .asset). 비우면 아무 폰트도 건드리지 않습니다(동적 텍스트 안전). " +
+        [Tooltip("수동 모드(fontStreaming=1)일 때 외부화 대상 TMP_FontAsset 경로(쉼표 구분, Assets/ 기준의 .asset). " +
                  "각 대상의 소스 .ttf/.otf 는 의존성에서 자동 해석됩니다. 예) Assets/Fonts/NotoSansSC SDF.asset,Assets/Fonts/NotoSansJP SDF.asset")]
         public string fontStreamingTargetPaths = "";
 
@@ -472,6 +473,15 @@ namespace AppsInToss
         public static bool GetDefaultRunInBackground()
         {
             return false;
+        }
+
+        /// <summary>
+        /// 폰트 스트리밍 기본값: 자동 모드(-1 → true)
+        /// 1MB 이상·부팅 씬 미포함 TMP_FontAsset 을 자동 스캔하여 외부화합니다.
+        /// </summary>
+        public static bool GetDefaultFontStreaming()
+        {
+            return true;
         }
 
 #if UNITY_2023_3_OR_NEWER && !UNITY_6000_0_OR_NEWER

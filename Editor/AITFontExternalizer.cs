@@ -34,8 +34,10 @@
 //   복원 + reimport 로 원상 복귀.
 //   비정상 종료 시 다음 에디터 로드의 안전망(SafetyNetRestore, 마커 게이트)이 자동 복원한다.
 //
-// 화이트리스트 전용: 동적 텍스트 □ 리스크 때문에 fontStreamingTargetPaths(TMP_FontAsset 경로)
-//   가 명시된 경우에만 동작한다(프로젝트 전체 폰트 자동 스캔 금지).
+// 동작 모드:
+//   -1(자동): 프로젝트 내 TMP_FontAsset 전수 스캔 → 소스 ≥1MB + 부팅 씬 미포함 + 소스 공유 없음 조건으로 후보 선택.
+//    0(비활성): 외부화 수행 안 함.
+//    1(수동): fontStreamingTargetPaths 에 명시한 경로만 외부화(기존 화이트리스트 동작).
 //
 // 통합: AITConvertCore.BuildWebGL 가 빌드 직전 ExternalizeForBuild 를 호출하고,
 //   finally 에서 RestoreForBuild 로 원상 복원한다.
@@ -50,7 +52,7 @@ using UnityEngine;
 namespace AppsInToss.Editor
 {
     /// <summary>
-    /// 빌드 단계 대형 폰트 외부화/복원 처리기. <see cref="AITEditorScriptObject.enableFontStreaming"/>
+    /// 빌드 단계 대형 폰트 외부화/복원 처리기. <see cref="AITEditorScriptObject.fontStreaming"/>
     /// 설정에 따라 동작하며, 런타임 컴포넌트 <c>AppsInToss.AITStreamingFont</c> 와 짝을 이룬다.
     /// </summary>
     [InitializeOnLoad]
@@ -111,24 +113,174 @@ namespace AppsInToss.Editor
         }
 
         /// <summary>
-        /// 빌드 직전 호출: 설정이 켜져 있고 대상이 지정돼 있으면 대상 폰트를 AssetBundle 로 외부화하고
-        /// 소스 폰트를 최소 스텁 .ttf 로 치환해 .data 에서 제외한다.
+        /// 소스 .ttf/.otf 크기 임계값(바이트). 이 크기 이상인 폰트만 자동 스캔 후보로 선택.
         /// </summary>
-        /// <param name="config">프로젝트 에디터 설정. null·비활성·화이트리스트 미지정 시 no-op.</param>
+        private const long AutoScanMinSrcBytes = 1 * 1024 * 1024; // 1MB
+
+        /// <summary>
+        /// 자동 모드(-1)에서 외부화 후보 TMP_FontAsset 경로 목록을 반환한다.
+        /// 조건: (a) 소스 .ttf/.otf 크기 ≥ 1MB, (b) 부팅 씬(EditorBuildSettings 첫 활성 씬)의
+        /// 재귀 의존성에 포함되지 않음, (c) IsSourceSharedByNonTarget 검사 통과.
+        /// TMP 어셈블리 부재 프로젝트(reflection 가드)는 후보 0개를 반환한다.
+        /// </summary>
+        public static string[] GetFontStreamingCandidates()
+        {
+            try
+            {
+                // TMP 어셈블리 부재 프로젝트 가드: FindAssets("t:TMP_FontAsset") 는 TMP 없어도 에러 안 나지만
+                // 이후 type 비교(obj.GetType().Name)가 빈 목록이므로 별도 체크는 불필요.
+                // 단, TMP 네임스페이스 없이 reflection 으로만 사용하므로 컴파일 타임 의존성 없음.
+
+                string projectRoot = Directory.GetParent(Application.dataPath).FullName;
+
+                // 부팅 씬(첫 활성 씬) 의존성 세트 구성.
+                var bootDeps = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                string bootScene = GetFirstActiveScenePath();
+                if (!string.IsNullOrEmpty(bootScene))
+                {
+                    try
+                    {
+                        foreach (var dep in AssetDatabase.GetDependencies(bootScene, true))
+                        {
+                            bootDeps.Add(dep.Replace('\\', '/'));
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        Debug.LogWarning($"[AIT-StreamingFont] 부팅 씬 의존성 조회 경고({bootScene}): {e.Message}");
+                    }
+                }
+
+                var candidates = new List<string>();
+                string[] allFontGuids = AssetDatabase.FindAssets("t:TMP_FontAsset");
+                if (allFontGuids == null || allFontGuids.Length == 0)
+                {
+                    return new string[0];
+                }
+
+                // 전체 후보 경로 세트(IsSourceSharedByNonTarget 에 넘길 targetSet 구성용).
+                // 1차 필터(크기 + 부팅 씬 미포함)를 통과한 것만 넣어 소스 공유 검사를 좁힌다.
+                var preFiltered = new List<string>();
+                foreach (var guid in allFontGuids)
+                {
+                    string assetPath = AssetDatabase.GUIDToAssetPath(guid);
+                    if (string.IsNullOrEmpty(assetPath))
+                        continue;
+                    assetPath = assetPath.Replace('\\', '/');
+
+                    // (b) 부팅 씬 의존성 포함 여부
+                    if (bootDeps.Contains(assetPath))
+                        continue;
+
+                    // 소스 폰트 해석
+                    string srcPath = null;
+                    try { srcPath = ResolveSourceFont(assetPath); }
+                    catch { /* 무시 */ }
+                    if (string.IsNullOrEmpty(srcPath))
+                        continue;
+
+                    // (a) 소스 크기 ≥ 1MB
+                    long srcBytes = SafeFileSize(Path.Combine(projectRoot, srcPath));
+                    if (srcBytes < AutoScanMinSrcBytes)
+                        continue;
+
+                    preFiltered.Add(assetPath);
+                }
+
+                if (preFiltered.Count == 0)
+                    return new string[0];
+
+                // (c) 소스 공유 검사: preFiltered 를 targetSet 으로 취급해 화이트리스트 밖 공유만 차단.
+                var targetSet = new HashSet<string>(preFiltered, StringComparer.OrdinalIgnoreCase);
+                foreach (var assetPath in preFiltered)
+                {
+                    string srcPath = null;
+                    try { srcPath = ResolveSourceFont(assetPath); }
+                    catch { /* 무시 */ }
+                    if (string.IsNullOrEmpty(srcPath))
+                        continue;
+
+                    if (IsSourceSharedByNonTarget(srcPath, targetSet))
+                    {
+                        Debug.Log($"[AIT-StreamingFont] 자동 스캔 제외(소스 공유): {assetPath}");
+                        continue;
+                    }
+
+                    candidates.Add(assetPath);
+                }
+
+                return candidates.ToArray();
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[AIT-StreamingFont] 자동 후보 스캔 예외(후보 0 반환): {e.Message}");
+                return new string[0];
+            }
+        }
+
+        /// <summary>EditorBuildSettings 의 첫 번째 활성 씬 경로를 반환(없으면 null).</summary>
+        private static string GetFirstActiveScenePath()
+        {
+            try
+            {
+                foreach (var scene in EditorBuildSettings.scenes)
+                {
+                    if (scene != null && scene.enabled && !string.IsNullOrEmpty(scene.path))
+                        return scene.path;
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[AIT-StreamingFont] 부팅 씬 조회 경고: {e.Message}");
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// 빌드 직전 호출: fontStreaming 설정 값에 따라 대상 폰트를 AssetBundle 로 외부화하고
+        /// 소스 폰트를 최소 스텁 .ttf 로 치환해 .data 에서 제외한다.
+        /// -1(자동): 1MB 이상·부팅 씬 미포함 TMP_FontAsset 자동 스캔.
+        ///  0(비활성): no-op.
+        ///  1(수동): fontStreamingTargetPaths 에 명시한 경로만 외부화.
+        /// </summary>
+        /// <param name="config">프로젝트 에디터 설정. null·비활성 시 no-op.</param>
         /// <returns>복원에 사용할 핸들(항상 non-null).</returns>
         public static FontStreamHandle ExternalizeForBuild(AITEditorScriptObject config)
         {
             var handle = new FontStreamHandle();
-            if (config == null || !config.enableFontStreaming)
-            {
+            if (config == null)
                 return handle;
-            }
 
-            string[] targets = SplitList(config.fontStreamingTargetPaths);
-            if (targets == null || targets.Length == 0)
-            {
-                Debug.Log("[AIT-StreamingFont] 대상 TMP_FontAsset 경로가 비어 있어 건너뜁니다(fontStreamingTargetPaths). 동적 텍스트 안전을 위해 명시적 지정이 필요합니다.");
+            // 유효 활성 여부 결정: -1(자동) → GetDefaultFontStreaming(), 0 → false, 1 → true
+            bool enabled = config.fontStreaming >= 0
+                ? config.fontStreaming == 1
+                : AITDefaultSettings.GetDefaultFontStreaming();
+            if (!enabled)
                 return handle;
+
+            bool isAutoMode = config.fontStreaming < 0;
+            string[] targets;
+
+            if (!isAutoMode)
+            {
+                // 수동 모드: fontStreamingTargetPaths 화이트리스트 사용
+                targets = SplitList(config.fontStreamingTargetPaths);
+                if (targets == null || targets.Length == 0)
+                {
+                    Debug.Log("[AIT-StreamingFont] 수동 모드: 대상 TMP_FontAsset 경로가 비어 있어 건너뜁니다(fontStreamingTargetPaths).");
+                    return handle;
+                }
+            }
+            else
+            {
+                // 자동 모드: 후보 스캔
+                targets = GetFontStreamingCandidates();
+                if (targets == null || targets.Length == 0)
+                {
+                    Debug.Log("[AIT-StreamingFont] 폰트 스트리밍: 자동 스캔 대상 없음 — 외부화를 건너뜁니다.");
+                    return handle;
+                }
+                Debug.Log($"[AIT-StreamingFont] 자동 모드: {targets.Length}개 폰트 후보 발견 → 외부화 진행.");
             }
 
             try
@@ -274,7 +426,19 @@ namespace AppsInToss.Editor
                       .Append(",\"entries\":[").Append(string.Join(",", entries)).Append("]}");
                     File.WriteAllText(Path.Combine(streamRootFull, "manifest.json"), sb.ToString());
                     AssetDatabase.Refresh();
-                    Debug.Log($"[AIT-StreamingFont] ✓ {n}개 폰트 외부화, 소스 {deferredBytes / 1048576f:0.0}MB defer(초기 .data 제거).");
+
+                    // 빌드 리포트 — 외부화된 폰트 목록 + defer 크기 출력.
+                    // 자동 모드에서는 opt-out 안내도 포함.
+                    var fontList = new StringBuilder();
+                    foreach (var p in built)
+                    {
+                        if (disabledSources.Contains(p.SrcFontPath))
+                            fontList.Append(" ").Append(Path.GetFileName(p.TmpAssetPath));
+                    }
+                    string modeNote = isAutoMode
+                        ? " 원치 않으면 AIT Configuration > 폰트 스트리밍을 '비활성화' 또는 '수동 설정'으로 변경하세요."
+                        : "";
+                    Debug.Log($"[AIT-StreamingFont] 폰트 스트리밍: {n}개 자동 외부화({deferredBytes / 1048576f:0.0}MB defer):{fontList}.{modeNote}");
                 }
                 else
                 {
@@ -284,7 +448,7 @@ namespace AppsInToss.Editor
                     RemoveBundleTemp();
                     RemoveMarker();
                     AssetDatabase.Refresh();
-                    Debug.Log("[AIT-StreamingFont] 외부화 대상 0개 → 원상 복귀.");
+                    Debug.Log("[AIT-StreamingFont] 폰트 스트리밍: 외부화 대상 없음.");
                 }
 
                 return handle;

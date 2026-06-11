@@ -710,6 +710,11 @@ namespace AppsInToss.Editor
 
             GUILayout.Space(10);
 
+            // 폰트 스트리밍
+            DrawFontStreamingSettings();
+
+            GUILayout.Space(10);
+
             // 고급 설정 초기화
             if (GUILayout.Button("고급 설정 기본값으로 복원"))
             {
@@ -717,6 +722,60 @@ namespace AppsInToss.Editor
             }
 
             EditorGUILayout.EndVertical();
+        }
+
+        private void DrawFontStreamingSettings()
+        {
+            EditorGUILayout.LabelField("폰트 스트리밍 (대형 폰트 deferral)", EditorStyles.boldLabel);
+
+            // -1=자동, 0=비활성화, 1=수동 설정
+            bool defaultEnabled = AITDefaultSettings.GetDefaultFontStreaming();
+            string autoLabel = defaultEnabled ? "자동 (활성화)" : "자동 (비활성화)";
+            bool isModified = config.fontStreaming >= 0;
+
+            EditorGUILayout.BeginHorizontal();
+            DrawModifiedIndicator(isModified);
+
+            string[] fontStreamingOptions = { autoLabel, "비활성화", "수동 설정" };
+            int currentIndex = config.fontStreaming < 0 ? 0 : config.fontStreaming + 1;
+            int newIndex = EditorGUILayout.Popup(
+                new GUIContent("폰트 스트리밍",
+                    "자동: 소스 1MB 이상이고 부팅 씬에 포함되지 않은 TMP_FontAsset 을 자동 스캔하여 외부화합니다.\n" +
+                    "비활성화: 외부화를 수행하지 않습니다.\n" +
+                    "수동 설정: fontStreamingTargetPaths 에 명시한 경로만 외부화합니다."),
+                currentIndex,
+                fontStreamingOptions);
+            config.fontStreaming = newIndex == 0 ? -1 : newIndex - 1;
+
+            if (isModified && DrawResetButton())
+            {
+                config.fontStreaming = -1;
+            }
+            EditorGUILayout.EndHorizontal();
+
+            // 수동 모드에서만 targetPaths 노출
+            if (config.fontStreaming == 1)
+            {
+                EditorGUI.indentLevel++;
+                EditorGUILayout.LabelField("외부화 대상 TMP_FontAsset 경로 (쉼표 구분)", EditorStyles.boldLabel);
+                config.fontStreamingTargetPaths = EditorGUILayout.TextArea(
+                    config.fontStreamingTargetPaths,
+                    GUILayout.Height(50));
+                EditorGUILayout.HelpBox(
+                    "Assets/ 기준의 .asset 경로를 쉼표로 구분하여 입력합니다.\n" +
+                    "예) Assets/Fonts/NotoSansSC SDF.asset,Assets/Fonts/NotoSansJP SDF.asset",
+                    MessageType.Info);
+                EditorGUI.indentLevel--;
+            }
+
+            // HelpBox: 자동/수동 공통 리스크 안내
+            if (config.fontStreaming != 0)
+            {
+                EditorGUILayout.HelpBox(
+                    "⚠ 재수화 전(또는 TMP_Settings 미설정 시) 대상 폰트의 글리프는 □ 로 렌더됩니다.\n" +
+                    "부팅 씬에서 해당 글자를 사용하지 않는 경우 TTFF 를 크게 줄일 수 있습니다.",
+                    MessageType.Warning);
+            }
         }
 
         private void DrawIl2CppConfigurationSetting()
@@ -1038,6 +1097,7 @@ namespace AppsInToss.Editor
             config.decompressionFallback = -1;
             config.runInBackground = -1;
             config.enableBuildOptimizationCheck = true;
+            config.fontStreaming = -1;
         }
 
         private void DrawDeploymentSettings()

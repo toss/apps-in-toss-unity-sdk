@@ -480,30 +480,97 @@ namespace AppsInToss.Editor
         {
             EditorGUILayout.LabelField("콘텐츠 최적화 — 폰트 CJK subset", EditorStyles.boldLabel);
 
-            config.enableFontSubset = EditorGUILayout.Toggle(
-                new GUIContent("폰트 subset 활성화",
-                    "지정한 .ttf/.otf를 빌드 시 '보존 유니코드 범위'만 남기도록 subset하여 .data의 폰트 데이터를 급감시킵니다(CJK 풀 폰트 5~15MB → ~0.1MB). " +
-                    "빌드 후 원본 폰트로 복원합니다. SDK 내장 Node.js로 동작합니다."),
-                config.enableFontSubset);
+            bool defaultValue = AITDefaultSettings.GetDefaultFontSubset();
+            // 수동 설정 모드: targetPaths 또는 unicodeRanges 가 채워져 있으면 override(수동) 모드로 간주.
+            bool hasManualOverride = !string.IsNullOrEmpty(config.fontSubsetTargetPaths)
+                || !string.IsNullOrEmpty(config.fontSubsetUnicodeRanges);
 
-            if (config.enableFontSubset)
+            // tri-state 매핑: 0=자동, 1=비활성화, 2=수동 설정.
+            int currentIndex;
+            if (config.fontSubset == 0)
+            {
+                currentIndex = 1;
+            }
+            else if (hasManualOverride)
+            {
+                currentIndex = 2;
+            }
+            else
+            {
+                currentIndex = 0;
+            }
+
+            EditorGUILayout.BeginHorizontal();
+
+            bool isModified = config.fontSubset == 0 || hasManualOverride;
+            DrawModifiedIndicator(isModified);
+
+            string label = currentIndex == 0
+                ? $"폰트 subset (자동: {(defaultValue ? "활성화" : "비활성화")})"
+                : "폰트 subset";
+            string[] options = { $"자동 ({(defaultValue ? "활성화" : "비활성화")})", "비활성화", "수동 설정" };
+            int newIndex = EditorGUILayout.Popup(
+                new GUIContent(label,
+                    "zero-config: 자동 모드는 크고(≥1MB) 빌드 포함 가능한 폰트를 탐지하고, 프로젝트에 등장하는 " +
+                    "문자체계의 유니코드 블록 전체를 보존하도록 subset합니다(동적 텍스트도 □가 되지 않음). " +
+                    "수동 설정은 대상/범위를 직접 지정합니다."),
+                currentIndex, options);
+
+            if (newIndex != currentIndex)
+            {
+                switch (newIndex)
+                {
+                    case 0: // 자동
+                        config.fontSubset = -1;
+                        config.fontSubsetTargetPaths = string.Empty;
+                        config.fontSubsetUnicodeRanges = string.Empty;
+                        break;
+                    case 1: // 비활성화
+                        config.fontSubset = 0;
+                        break;
+                    case 2: // 수동 설정
+                        config.fontSubset = 1;
+                        break;
+                }
+
+                currentIndex = newIndex;
+            }
+
+            if (isModified && DrawResetButton())
+            {
+                config.fontSubset = -1;
+                config.fontSubsetTargetPaths = string.Empty;
+                config.fontSubsetUnicodeRanges = string.Empty;
+                currentIndex = 0;
+            }
+
+            EditorGUILayout.EndHorizontal();
+
+            if (currentIndex == 0)
+            {
+                EditorGUILayout.HelpBox(
+                    "자동 모드: 대상 폰트를 탐지하고, 씬/프리팹/asset/스크립트/로컬라이제이션에 등장하는 " +
+                    "문자체계의 유니코드 블록 전체를 보존하도록 subset합니다. " +
+                    "한자는 KS X 1001 상용 한자(4,888자) + 감지된 한자를 보존하며, ASCII·한글 등 베이스라인은 항상 포함됩니다. " +
+                    "빌드 로그에 드롭 리포트가 출력됩니다.",
+                    MessageType.Info);
+            }
+            else if (currentIndex == 2)
             {
                 EditorGUI.indentLevel++;
                 config.fontSubsetTargetPaths = EditorGUILayout.TextField(
-                    new GUIContent("대상 폰트 경로(쉼표 구분)", "Assets/ 기준의 .ttf/.otf. 비우면 아무 폰트도 건드리지 않습니다(안전 기본값). 예) Assets/Fonts/NotoSansKR.ttf"),
+                    new GUIContent("대상 폰트 경로(쉼표 구분)", "Assets/ 기준의 .ttf/.otf. 비우면 자동 탐지로 폴백됩니다. 예) Assets/Fonts/NotoSansKR.ttf"),
                     config.fontSubsetTargetPaths);
 
                 config.fontSubsetUnicodeRanges = EditorGUILayout.TextField(
-                    new GUIContent("보존 유니코드 범위", "쉼표 구분(fontTools 표기). 기본: ASCII+Latin-1+한글+CJK 기호+전각."),
+                    new GUIContent("보존 유니코드 범위", "쉼표 구분(fontTools 표기). 비우면 Auto 스캔이 범위를 결정합니다. 예) U+0020-007E,U+AC00-D7A3"),
                     config.fontSubsetUnicodeRanges);
                 EditorGUI.indentLevel--;
 
-                bool ready = !string.IsNullOrEmpty(config.fontSubsetTargetPaths) && !string.IsNullOrEmpty(config.fontSubsetUnicodeRanges);
                 EditorGUILayout.HelpBox(
-                    "⚠ subset에 포함되지 않은 글자(희귀 한자/이모지/런타임 동적 텍스트)는 □로 렌더됩니다. " +
-                    "닉네임·채팅 등 임의 문자가 표시되는 폰트에는 사용하지 마세요. " +
-                    (ready ? "빌드 시 대상 폰트가 subset됩니다." : "대상 폰트와 보존 범위를 모두 지정해야 동작합니다(현재 no-op)."),
-                    ready ? MessageType.Warning : MessageType.Info);
+                    "⚠ 수동 보존 범위를 지정하면 그 범위만 남고 나머지 글자(희귀 한자/이모지/동적 텍스트)는 □로 렌더됩니다. " +
+                    "범위를 비우면 Auto 스캔이 등장 문자체계를 보존하므로 더 안전합니다.",
+                    MessageType.Warning);
             }
         }
 
@@ -1045,6 +1112,13 @@ namespace AppsInToss.Editor
 
             bool defaultFirstInteractive = AITDefaultSettings.GetDefaultFirstInteractiveLog();
             if (config.firstInteractiveLog >= 0 && (config.firstInteractiveLog == 1) != defaultFirstInteractive) count++;
+            // 폰트 subset: 비활성(0)이거나 수동 override(target/range 지정)면 변경으로 집계.
+            if (config.fontSubset == 0
+                || !string.IsNullOrEmpty(config.fontSubsetTargetPaths)
+                || !string.IsNullOrEmpty(config.fontSubsetUnicodeRanges))
+            {
+                count++;
+            }
 
             return count;
         }
@@ -1055,6 +1129,9 @@ namespace AppsInToss.Editor
             config.threadsSupport = -1;
             config.dataCaching = -1;
             config.firstInteractiveLog = -1;
+            config.fontSubset = -1;
+            config.fontSubsetTargetPaths = string.Empty;
+            config.fontSubsetUnicodeRanges = string.Empty;
         }
 
         private void ResetAdvancedSettings()

@@ -5,18 +5,27 @@
 // </copyright>
 // -----------------------------------------------------------------------
 //
-// 빌드 직전, 지정한 .ttf/.otf 소스를 "보존할 유니코드 범위"만 남기도록 subset 하여
-// Unity 가 .data 에 굽는 폰트 데이터를 급감시킨다(CJK 전체 폰트는 5~15MB → subset 후 ~0.1MB).
+// 빌드 직전, 크고 빌드에 포함될 가능성이 있는 .ttf/.otf 소스를 "보존할 유니코드 범위"만 남기도록
+// subset 하여 Unity 가 .data 에 굽는 폰트 데이터를 급감시킨다(CJK 전체 폰트는 5~15MB → subset 후 ~0.1MB).
 // 빌드 종료(성공/실패 무관) 후 원본 폰트로 원상 복원한다.
 //
 // 효과: Unity 의 동적 폰트는 소스 .ttf 전체를 빌드에 포함시켜 런타임에 임의 글자를 래스터화한다.
 //   필요한 범위(예: 한글 음절 + ASCII)만 남기면 .data 의 폰트 바이트가 사라져 초기 다운로드/TTI 급감.
 //
-// ⚠ 동적 텍스트 리스크(이 기능만의 고유 위험): subset 에 포함되지 않은 글자(희귀 한자, 이모지,
-//   런타임 동적 텍스트)는 □(누락 글리프)로 렌더된다. 따라서 본 기능은
-//     (1) 대상 폰트 경로(fontSubsetTargetPaths) 를 명시적으로 지정해야만 동작하고(비우면 no-op),
-//     (2) 보존 범위(fontSubsetUnicodeRanges) 도 명시 필요,
-//   두 화이트리스트가 모두 채워졌을 때만 적용된다(프로젝트 전체 폰트 자동 스캔 금지).
+// ─── zero-config(Auto 모드) 철학 ───
+//   모든 성능 최적화 레버는 개발자의 깊은 이해 없이 자동 적용된다: 기본 ON + 자동 안전장치.
+//   폰트 subset 은 본래 lossy(보존 범위에 없는 글자는 □)지만, 다음 자동 안전장치로 정확성을 보존한다.
+//     (1) 자동 대상 탐지: ≥1MB 이고 빌드에 포함될 가능성이 있는 폰트만(활성 씬 의존성 + Resources/ + TMP 소스).
+//     (2) 전 프로젝트 사용 문자 스캔(AITFontUsedCharScanner): 씬/프리팹/asset/C#/로컬라이제이션 텍스트.
+//     (3) ★ 블록 완성 규칙(AITFontUnicodeBlocks): 등장한 문자체계의 유니코드 블록 전체를 보존.
+//         → "가" 한 글자만 써도 한글 음절 전체가 살아남아 동적 닉네임/채팅이 □ 가 되지 않는다.
+//     (4) Han 예외: 한자 블록(2만+자)은 전체 대신 [감지 한자 + KS X 1001 상용 한자 4,888자 패드]만.
+//     (5) 항시 베이스라인: ASCII+Latin-1+한글+CJK 기호+전각은 스캔 결과와 무관하게 항상 포함.
+//     (6) 빌드 드롭 리포트: 폰트별 원본→subset 크기, 보존 블록, 감지 문자체계 요약.
+//     (7) opt-out: fontSubset=0(완전 no-op). override: 수동 대상/범위 지정 시 Auto 스캔 생략.
+//
+//   레버 상태(tri-state): fontSubset = -1(자동, 기본) | 0(비활성) | 1(자동, 명시적 ON).
+//     -1/1 → Auto 동작, 0 → 완전 no-op. 수동 필드(targetPaths/unicodeRanges)는 Auto 의 override.
 //
 // 도구: harfbuzz(hb-subset, wasm) 를 래핑한 `subset-font`(npm). Google Fonts 와 동일 코덱.
 //   SDK 내장 Node.js(AITNodeJSDownloader)로 실행하며, 최초 1회 ~/.ait-unity-sdk/font-subset/ 에
@@ -39,8 +48,9 @@ using Debug = UnityEngine.Debug;
 namespace AppsInToss.Editor
 {
     /// <summary>
-    /// 빌드 단계 폰트 CJK subset 처리기. <see cref="AITEditorScriptObject.enableFontSubset"/>
-    /// 설정에 따라 동작한다. 런타임 컴포넌트는 없다(빌드 산출물만 작아질 뿐, 런타임 렌더 경로 동일).
+    /// 빌드 단계 폰트 CJK subset 처리기. <see cref="AITEditorScriptObject.fontSubset"/>
+    /// tri-state(-1=자동/0=비활성/1=자동 명시) 설정에 따라 동작한다.
+    /// 런타임 컴포넌트는 없다(빌드 산출물만 작아질 뿐, 런타임 렌더 경로 동일).
     /// </summary>
     [InitializeOnLoad]
     public static class AITFontSubsetProcessor
@@ -72,33 +82,78 @@ namespace AppsInToss.Editor
             EditorApplication.delayCall += SafetyNetRestore;
         }
 
+        /// <summary>크기 자동 탐지 하한(바이트). 이보다 작은 폰트는 절감 효과가 미미해 대상에서 제외.</summary>
+        private const long AutoTargetMinBytes = 1L * 1024 * 1024; // 1MB
+
         /// <summary>
-        /// 빌드 직전 호출: 설정이 켜져 있고 대상/범위가 지정돼 있으면 대상 폰트를 subset 한다.
+        /// 빌드 직전 호출: tri-state 설정에 따라 Auto 모드(또는 수동 override)로 대상 폰트를 subset 한다.
+        ///
+        /// - fontSubset == 0: 완전 no-op.
+        /// - fontSubset == -1/1: Auto 동작. fontSubsetTargetPaths 비면 자동 대상 탐지, 지정 시 수동 대상.
+        ///   fontSubsetUnicodeRanges 비면 Auto 스캔으로 범위 결정, 지정 시 수동 범위(스캔 생략).
         /// </summary>
-        /// <param name="config">프로젝트 에디터 설정. null·비활성·화이트리스트 미지정 시 no-op.</param>
+        /// <param name="config">프로젝트 에디터 설정. null·비활성 시 no-op.</param>
         /// <returns>복원에 사용할 핸들(항상 non-null).</returns>
         public static FontHandle ApplyForBuild(AITEditorScriptObject config)
         {
             var handle = new FontHandle();
-            if (config == null || !config.enableFontSubset)
+            if (config == null)
             {
                 return handle;
             }
 
-            string ranges = (config.fontSubsetUnicodeRanges ?? string.Empty).Trim();
+            // tri-state: 0 = 완전 비활성(no-op), -1/1 = Auto 동작.
+            bool enabled = config.fontSubset >= 0
+                ? config.fontSubset == 1
+                : AITDefaultSettings.GetDefaultFontSubset();
+            if (!enabled)
+            {
+                if (config.fontSubset == 0)
+                {
+                    Debug.Log("[AIT-FontSubset] 폰트 subset 비활성(설정) → 풀 폰트로 빌드합니다.");
+                }
+
+                return handle;
+            }
+
+            // ── 대상 폰트 결정: 수동 지정(override)이 있으면 그대로, 없으면 자동 탐지 ──
             string[] targets = SplitList(config.fontSubsetTargetPaths);
-
-            // 화이트리스트 이중 안전망: 대상/범위 중 하나라도 비면 동적-텍스트 리스크 때문에 적용하지 않는다.
-            if (targets == null || targets.Length == 0)
+            bool manualTargets = targets != null && targets.Length > 0;
+            if (!manualTargets)
             {
-                Debug.Log("[AIT-FontSubset] 대상 폰트 경로가 비어 있어 건너뜁니다(fontSubsetTargetPaths). 동적 텍스트 안전을 위해 명시적 지정이 필요합니다.");
-                return handle;
+                targets = DetectAutoTargets();
+                if (targets.Length == 0)
+                {
+                    Debug.Log($"[AIT-FontSubset] 자동 탐지된 subset 대상 폰트가 없습니다(≥{AutoTargetMinBytes / 1048576}MB & 빌드 포함 가능 폰트 없음) → no-op.");
+                    return handle;
+                }
+
+                Debug.Log($"[AIT-FontSubset] 자동 탐지: subset 대상 폰트 {targets.Length}개.");
             }
 
-            if (string.IsNullOrEmpty(ranges))
+            // ── 보존 범위 결정: 수동 범위(override)가 있으면 그대로, 없으면 Auto 스캔으로 도출 ──
+            string ranges = (config.fontSubsetUnicodeRanges ?? string.Empty).Trim();
+            bool manualRanges = !string.IsNullOrEmpty(ranges);
+            System.Collections.Generic.List<AITFontUnicodeBlocks.Block> preservedBlocks = null;
+            int detectedCount = 0;
+            int hanPadCount = 0;
+            if (!manualRanges)
             {
-                Debug.LogWarning("[AIT-FontSubset] 보존 유니코드 범위가 비어 있어 건너뜁니다(fontSubsetUnicodeRanges).");
-                return handle;
+                var detected = AITFontUsedCharScanner.ScanProject();
+                detectedCount = detected.Count;
+                var hanPad = AITFontUsedCharScanner.GetKsx1001Han();
+                hanPadCount = hanPad.Count;
+                ranges = AITFontUsedCharScanner.BuildPreservedRanges(detected, hanPad, out preservedBlocks);
+
+                if (string.IsNullOrEmpty(ranges))
+                {
+                    Debug.LogWarning("[AIT-FontSubset] Auto 스캔 결과 보존 범위가 비어 있어 건너뜁니다(풀 폰트로 빌드).");
+                    return handle;
+                }
+            }
+            else
+            {
+                Debug.Log("[AIT-FontSubset] 수동 보존 범위 지정(override) → Auto 스캔 생략.");
             }
 
             string node, runner;
@@ -186,6 +241,7 @@ namespace AppsInToss.Editor
                 }
 
                 Debug.Log($"[AIT-FontSubset] ✓ {n}개 폰트 subset, 소스 {savedBytes / 1048576f:0.0}MB 절감(초기 .data 제거).");
+                LogDropReport(manualTargets, manualRanges, detectedCount, hanPadCount, preservedBlocks);
                 return handle;
             }
             catch (Exception e)
@@ -241,6 +297,186 @@ namespace AppsInToss.Editor
             catch (Exception e)
             {
                 Debug.LogWarning($"[AIT-FontSubset] 안전망 복원 중 예외(무시): {e}");
+            }
+        }
+
+        // ─────────────────────────── 자동 대상 탐지 ───────────────────────────
+
+        /// <summary>
+        /// 빌드에 포함될 가능성이 있는 대형(≥1MB) .ttf/.otf 폰트를 보수적으로 자동 탐지한다.
+        /// 후보 출처:
+        ///   - EditorBuildSettings 활성 씬들의 AssetDatabase.GetDependencies(재귀)
+        ///   - Resources/ 하위(런타임 동적 로드 경로)
+        ///   - TMP_FontAsset 의 소스 폰트(있으면 — 리플렉션으로 TMP 하드 의존 회피)
+        /// 탐지 실패/예외 시 빈 배열을 반환한다(no-op + 로그).
+        /// </summary>
+        private static string[] DetectAutoTargets()
+        {
+            var candidates = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                // 1) 활성 씬 + 의존성(재귀).
+                var scenePaths = new System.Collections.Generic.List<string>();
+                foreach (var scene in EditorBuildSettings.scenes)
+                {
+                    if (scene != null && scene.enabled && !string.IsNullOrEmpty(scene.path))
+                    {
+                        scenePaths.Add(scene.path);
+                    }
+                }
+
+                if (scenePaths.Count > 0)
+                {
+                    foreach (var dep in AssetDatabase.GetDependencies(scenePaths.ToArray(), recursive: true))
+                    {
+                        AddIfFontCandidate(dep, candidates);
+                    }
+                }
+
+                // 2) Resources/ 하위 폰트(런타임 동적 로드 가능 경로).
+                foreach (var guid in AssetDatabase.FindAssets("t:Font"))
+                {
+                    string path = AssetDatabase.GUIDToAssetPath(guid);
+                    if (!string.IsNullOrEmpty(path) && path.Replace('\\', '/').Contains("/Resources/"))
+                    {
+                        AddIfFontCandidate(path, candidates);
+                    }
+                }
+
+                // 3) TMP_FontAsset 소스 폰트(리플렉션 — TMP 미설치 환경에서도 안전).
+                CollectTmpSourceFonts(candidates);
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[AIT-FontSubset] 자동 대상 탐지 예외(빈 목록으로 계속): {e.Message}");
+                return Array.Empty<string>();
+            }
+
+            var result = new System.Collections.Generic.List<string>();
+            foreach (var path in candidates)
+            {
+                result.Add(path);
+            }
+
+            return result.ToArray();
+        }
+
+        /// <summary>경로가 ≥1MB 인 .ttf/.otf 폰트 에셋이면 후보 집합에 추가한다.</summary>
+        private static void AddIfFontCandidate(string assetPath, System.Collections.Generic.HashSet<string> sink)
+        {
+            if (string.IsNullOrEmpty(assetPath))
+            {
+                return;
+            }
+
+            string norm = assetPath.Replace('\\', '/');
+            if (!norm.StartsWith("Assets/"))
+            {
+                return;
+            }
+
+            string ext = Path.GetExtension(norm).ToLowerInvariant();
+            if (ext != ".ttf" && ext != ".otf")
+            {
+                return;
+            }
+
+            try
+            {
+                string projectRoot = Directory.GetParent(Application.dataPath).FullName;
+                string full = Path.Combine(projectRoot, norm);
+                if (File.Exists(full) && new FileInfo(full).Length >= AutoTargetMinBytes)
+                {
+                    sink.Add(norm);
+                }
+            }
+            catch
+            {
+                // 파일 접근 실패는 무시(후보 제외)
+            }
+        }
+
+        /// <summary>
+        /// TMP_FontAsset 의 소스 폰트(sourceFontFile)를 리플렉션으로 수집한다.
+        /// TextMeshPro 미설치/타입 미발견 시 조용히 건너뛴다(하드 의존 회피).
+        /// </summary>
+        private static void CollectTmpSourceFonts(System.Collections.Generic.HashSet<string> sink)
+        {
+            try
+            {
+                foreach (var guid in AssetDatabase.FindAssets("t:TMP_FontAsset"))
+                {
+                    string path = AssetDatabase.GUIDToAssetPath(guid);
+                    if (string.IsNullOrEmpty(path))
+                    {
+                        continue;
+                    }
+
+                    var asset = AssetDatabase.LoadMainAssetAtPath(path);
+                    if (asset == null)
+                    {
+                        continue;
+                    }
+
+                    var prop = asset.GetType().GetProperty("sourceFontFile");
+                    var source = prop?.GetValue(asset) as UnityEngine.Object;
+                    if (source != null)
+                    {
+                        AddIfFontCandidate(AssetDatabase.GetAssetPath(source), sink);
+                    }
+                }
+            }
+            catch
+            {
+                // TMP 미설치 등 — 무시
+            }
+        }
+
+        // ─────────────────────────── 드롭 리포트 ───────────────────────────
+
+        /// <summary>
+        /// 빌드 로그에 subset 드롭 리포트를 출력한다(자동 안전장치 가시화).
+        /// 보존 블록 목록(이름+범위), 감지된 문자체계 요약, 수동 override 안내를 포함한다.
+        /// </summary>
+        private static void LogDropReport(
+            bool manualTargets,
+            bool manualRanges,
+            int detectedCodepoints,
+            int hanPadCount,
+            System.Collections.Generic.List<AITFontUnicodeBlocks.Block> preservedBlocks)
+        {
+            try
+            {
+                string mode = manualRanges ? "수동 범위(override)" : "Auto 스캔";
+                Debug.Log($"[AIT-FontSubset] ── 드롭 리포트 ── (대상: {(manualTargets ? "수동 지정" : "자동 탐지")}, 범위: {mode})");
+
+                if (manualRanges)
+                {
+                    Debug.Log("[AIT-FontSubset]   수동 보존 범위가 적용되었습니다. 동적 텍스트 글자가 누락되지 않도록 범위를 직접 검토하세요.");
+                    return;
+                }
+
+                Debug.Log($"[AIT-FontSubset]   스캔 감지 문자(비ASCII 고유): {detectedCodepoints}개, 한자 패드(KS X 1001): {hanPadCount}자");
+
+                if (preservedBlocks != null && preservedBlocks.Count > 0)
+                {
+                    Debug.Log($"[AIT-FontSubset]   보존 블록(블록 완성 규칙으로 전체 보존) {preservedBlocks.Count}개:");
+                    foreach (var b in preservedBlocks)
+                    {
+                        Debug.Log($"[AIT-FontSubset]     - {b.Name} ({AITFontUnicodeBlocks.FormatCodepoint(b.Start)}-{AITFontUnicodeBlocks.FormatCodepoint(b.End)})");
+                    }
+                }
+                else
+                {
+                    Debug.Log("[AIT-FontSubset]   보존 블록 없음(베이스라인 + 감지 한자만 보존).");
+                }
+
+                Debug.Log("[AIT-FontSubset]   동적 텍스트는 같은 문자체계라면 블록 전체가 보존되어 □ 가 되지 않습니다.");
+                Debug.Log("[AIT-FontSubset]   수동 범위를 쓰려면 fontSubsetUnicodeRanges 를, 수동 대상은 fontSubsetTargetPaths 를 지정하세요.");
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[AIT-FontSubset] 드롭 리포트 출력 예외(무시): {e.Message}");
             }
         }
 

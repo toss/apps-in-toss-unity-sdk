@@ -1,3 +1,6 @@
+using System.Collections.Generic;
+using System.IO;
+using System.Text.RegularExpressions;
 using UnityEditor;
 #if UNITY_6000_0_OR_NEWER
 using UnityEditor.Build;
@@ -203,6 +206,14 @@ namespace AppsInToss.Editor
                 : AITDefaultSettings.GetDefaultStripUnusedMeshComponents();
             PlayerSettings.stripUnusedMeshComponents = stripUnusedMeshComponents;
 
+            // stripUnusedMeshComponents가 활성화된 경우: 런타임 머티리얼 교체 코드 스캔
+            // false positive 허용(경고일 뿐 동작 변경 없음) — 정규식 스캔은 의미론적 분석이 아니므로
+            // 실제로 문제가 없는 코드도 검출될 수 있다. 그러나 경고를 보고 사용자가 직접 판단하도록 유도하는 것이 목적.
+            if (stripUnusedMeshComponents)
+            {
+                ScanRuntimeMaterialReplacementCode();
+            }
+
             // 설정 요약 로그
             Debug.Log($"[AIT] Unity {AITDefaultSettings.GetUnityVersionGroup()} 최적화 설정 적용:");
             Debug.Log($"[AIT]   - WebGL Template: {PlayerSettings.WebGL.template}");
@@ -386,6 +397,75 @@ namespace AppsInToss.Editor
                 : WebGLDebugSymbolMode.Embedded;
             Debug.Log($"[AIT] 디버그 심볼 모드 설정: {PlayerSettings.WebGL.debugSymbolMode}");
 #endif
+        }
+
+        /// <summary>
+        /// Assets/ 하위 런타임 C# 코드에서 머티리얼 교체 패턴을 정적으로 스캔하여 경고를 출력한다.
+        /// Optimize Mesh Data(stripUnusedMeshComponents)가 활성화될 때만 호출된다.
+        ///
+        /// 목적: 빌드 시점 머티리얼 기준으로 미사용 정점 채널을 제거하므로, 교체된 머티리얼이
+        /// 제거된 채널(노멀/탄젠트/UV 등)을 요구하면 시각 오류가 발생할 수 있다.
+        /// 이 스캔은 사용자에게 확인을 유도할 뿐, 동작을 변경하지 않는다.
+        ///
+        /// false positive 허용: 정규식 스캔은 의미론적 분석이 아니므로 실제로 문제없는
+        /// 코드(주석 내 패턴, 에디터 전용 코드 등)도 검출될 수 있다.
+        /// 스캔 실패는 try/catch로 흡수하며 빌드에 영향을 주지 않는다.
+        /// </summary>
+        private static void ScanRuntimeMaterialReplacementCode()
+        {
+            try
+            {
+                string assetsPath = Path.Combine(Application.dataPath);
+                // 머티리얼 런타임 대입 패턴: .material =, .materials =, .sharedMaterial =, .sharedMaterials =
+                var pattern = new Regex(
+                    @"\.(material|materials|sharedMaterial|sharedMaterials)\s*=",
+                    RegexOptions.Compiled);
+
+                var matchedFiles = new List<string>();
+                int totalCount = 0;
+
+                // Assets/ 하위 .cs 파일 탐색 (Editor/ 폴더 제외)
+                string[] csFiles = Directory.GetFiles(assetsPath, "*.cs", SearchOption.AllDirectories);
+                foreach (string filePath in csFiles)
+                {
+                    // Editor 폴더 경로 제외 (경로 구분자 통일 후 검사)
+                    string normalizedPath = filePath.Replace('\\', '/');
+                    if (normalizedPath.Contains("/Editor/"))
+                        continue;
+
+                    string source = File.ReadAllText(filePath, System.Text.Encoding.UTF8);
+                    var matches = pattern.Matches(source);
+                    if (matches.Count > 0)
+                    {
+                        totalCount += matches.Count;
+                        // Assets/ 기준 상대 경로로 변환
+                        string relativePath = "Assets" + normalizedPath.Substring(assetsPath.Replace('\\', '/').Length);
+                        matchedFiles.Add(relativePath);
+                    }
+                }
+
+                if (totalCount > 0)
+                {
+                    // 파일 목록은 최대 5개까지만 출력
+                    var displayFiles = matchedFiles.Count > 5
+                        ? matchedFiles.GetRange(0, 5)
+                        : matchedFiles;
+                    string fileList = string.Join("\n  - ", displayFiles);
+                    string moreNote = matchedFiles.Count > 5 ? $"\n  … 외 {matchedFiles.Count - 5}개 파일" : "";
+
+                    Debug.LogWarning(
+                        $"[AIT] 런타임 머티리얼 교체 코드가 감지되었습니다({totalCount}건).\n" +
+                        "Optimize Mesh Data는 빌드 시점 머티리얼 기준으로 미사용 정점 채널(노멀/탄젠트/UV)을 제거하므로, " +
+                        "교체된 머티리얼이 제거된 채널을 요구하면 시각 오류가 발생할 수 있습니다.\n" +
+                        "문제가 있으면 AIT Configuration에서 Optimize Mesh Data를 비활성화하세요.\n" +
+                        $"감지된 파일:\n  - {fileList}{moreNote}");
+                }
+            }
+            catch (System.Exception e)
+            {
+                // 스캔 실패는 흡수 — 빌드에 영향을 주지 않음
+                Debug.Log($"[AIT] 런타임 머티리얼 교체 코드 스캔 중 오류 발생 (무시): {e.Message}");
+            }
         }
     }
 }

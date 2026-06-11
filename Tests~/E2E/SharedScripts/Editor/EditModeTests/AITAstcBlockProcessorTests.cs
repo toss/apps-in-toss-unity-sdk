@@ -274,18 +274,38 @@ public class AITAstcBlockProcessorTests
     [Test]
     public void ApplyForBuild_DisabledConfig_ReturnsInactiveHandleAndNoMarker()
     {
-        _config.enableAstcBlockEscalation = false;
+        _config.astcBlockEscalation = 0; // 명시적 비활성(0)
 
         var handle = AITAstcBlockProcessor.ApplyForBuild(_config);
 
         Assert.IsNotNull(handle, "핸들은 non-null 이어야 합니다.");
-        Assert.IsFalse(handle.Active, "기능 비활성 시 비활성 핸들이어야 합니다.");
+        Assert.IsFalse(handle.Active, "기능 비활성(0) 시 비활성 핸들이어야 합니다.");
 
         // 마커 파일이 생성되지 않았는지 확인.
         // Application.dataPath 는 EditMode 테스트에서도 유효.
         string projectRoot = Directory.GetParent(Application.dataPath).FullName;
         string markerPath = Path.Combine(projectRoot, "Assets/.ait-astcblock-active");
         Assert.IsFalse(File.Exists(markerPath),
-            "비활성 config 시 마커 파일 'Assets/.ait-astcblock-active' 가 생성되어서는 안 됩니다.");
+            "비활성(0) config 시 마커 파일 'Assets/.ait-astcblock-active' 가 생성되어서는 안 됩니다.");
+    }
+
+    // =====================================================
+    // 12) EffectiveEnabled — tri-state 해석 + null → false
+    // =====================================================
+
+    [TestCase(-1, true,  "자동 기본값(-1)은 GetDefaultAstcBlockEscalation()==true 이어야 합니다.")]
+    [TestCase(0,  false, "명시적 비활성(0)은 false 이어야 합니다.")]
+    [TestCase(1,  true,  "명시적 활성(1)은 true 이어야 합니다.")]
+    public void EffectiveEnabled_TriState_ReturnsExpected(int value, bool expected, string reason)
+    {
+        _config.astcBlockEscalation = value;
+        Assert.AreEqual(expected, AITAstcBlockProcessor.EffectiveEnabled(_config), reason);
+    }
+
+    [Test]
+    public void EffectiveEnabled_NullConfig_ReturnsFalse()
+    {
+        Assert.IsFalse(AITAstcBlockProcessor.EffectiveEnabled(null),
+            "null config 시 EffectiveEnabled=false 이어야 합니다.");
     }
 }

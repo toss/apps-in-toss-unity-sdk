@@ -26,8 +26,9 @@
 //   try/finally 의 finally 에서 RestoreForBuild 를 호출한다.
 //
 // ⚠ 비용: ASTC reimport 는 무겁다(에셋 수에 비례). 빌드 시 apply + 복원으로 2회 reimport 가
-//   발생하므로, 명시적 opt-in 으로 기본 비활성이다. 대용량 ASTC 텍스처가 많은 프로젝트의
-//   다운로드 최적화용이다. ASTC 서브타겟 전용 — DXT 서브타겟 프로젝트에서는 crunch 를 사용할 것.
+//   발생한다. 기본은 자동 ON이며, 대용량 ASTC 텍스처 프로젝트에서 다운로드/.data 를 실감한다.
+//   필요시 AIT Configuration에서 비활성화할 수 있다.
+//   ASTC 서브타겟 전용 — DXT 서브타겟 프로젝트에서는 crunch 를 사용할 것.
 
 using System;
 using System.IO;
@@ -39,7 +40,7 @@ using UnityEngine.U2D;
 namespace AppsInToss.Editor
 {
     /// <summary>
-    /// 빌드 단계 ASTC 블록 에스컬레이션 처리기. <see cref="AITEditorScriptObject.enableAstcBlockEscalation"/>
+    /// 빌드 단계 ASTC 블록 에스컬레이션 처리기. <see cref="AITEditorScriptObject.astcBlockEscalation"/>
     /// 설정에 따라 동작한다. 런타임 컴포넌트는 없다(빌드 산출물만 작아질 뿐, 런타임 동작 동일).
     /// ASTC 서브타겟 전용 — DXT 서브타겟이면 skip.
     /// </summary>
@@ -83,9 +84,10 @@ namespace AppsInToss.Editor
         {
             var handle = new AstcBlockHandle();
 
-            if (config == null || !config.enableAstcBlockEscalation)
+            bool enabled = EffectiveEnabled(config);
+            if (config == null || !enabled)
             {
-                // ASTC 비활성 — ASTC 서브타겟일 때만 후보 스캔 후 절감 가능 여부를 1줄 안내(후보 0이면 침묵).
+                // ASTC 비활성화 — ASTC 서브타겟일 때만 후보 스캔 후 절감 가능 여부를 1줄 안내(후보 0이면 침묵).
                 if (config != null)
                 {
                     ReportCandidateHint(config);
@@ -137,7 +139,7 @@ namespace AppsInToss.Editor
                 }
 
                 string capStr = maxCap > 0 ? maxCap.ToString() : "원본";
-                Debug.Log($"[AIT-AstcBlock] ✓ 텍스처 {tex}개 + 아틀라스 {atl}개 ASTC_{blockSize}x{blockSize} 적용(maxSize 캡={capStr}).");
+                Debug.Log($"[AIT-AstcBlock] ✓ 텍스처 {tex}개 + 아틀라스 {atl}개 ASTC_{blockSize}x{blockSize} 적용(maxSize 캡={capStr}){(config.astcBlockEscalation < 0 ? " (자동)" : "")}.");
                 return handle;
             }
             catch (Exception e)
@@ -200,8 +202,8 @@ namespace AppsInToss.Editor
         // ─────────────────────────── 후보 스캔 안내 ───────────────────────────
 
         /// <summary>
-        /// ASTC 비활성 빌드에서 절감 후보 텍스처 수를 빠르게 세어
-        /// ASTC 서브타겟일 때만, 후보가 1개 이상이면 Debug.Log 1줄로 opt-in 안내를 출력한다.
+        /// ASTC 비활성화 빌드에서 절감 후보 텍스처 수를 빠르게 세어
+        /// ASTC 서브타겟일 때만, 후보가 1개 이상이면 Debug.Log 1줄로 재활성화 안내를 출력한다.
         /// 스캔 비용을 제한하기 위해 <see cref="CandidateScanLimit"/>개를 초과하면 중단.
         /// </summary>
         private static void ReportCandidateHint(AITEditorScriptObject config)
@@ -284,8 +286,8 @@ namespace AppsInToss.Editor
                 if (candidates > 0)
                 {
                     string countStr = hitLimit ? $"{CandidateScanLimit}+개" : $"{candidates}개";
-                    Debug.Log($"[AIT] ASTC 블록 에스컬레이션(opt-in): 후보 {countStr} 발견. " +
-                        "AIT Configuration에서 활성화하면 .data 크기를 줄일 수 있습니다" +
+                    Debug.Log($"[AIT] ASTC 블록 에스컬레이션 비활성화됨: 후보 {countStr} 존재. " +
+                        "AIT Configuration에서 자동/활성화로 되돌리면 .data 크기를 줄일 수 있습니다" +
                         "(품질 트레이드오프 있음 — lossy).");
                 }
             }
@@ -581,6 +583,18 @@ namespace AppsInToss.Editor
         }
 
         // ─────────────────────────── 순수 내부 헬퍼 (테스트용, 에셋 DB 비의존) ───────────────────────────
+
+        /// <summary>
+        /// ASTC 블록 에스컬레이션 실효 활성 여부를 반환한다(tri-state 해석).
+        /// null → false, astcBlockEscalation >= 0 → ==1, &lt;0 → GetDefaultAstcBlockEscalation().
+        /// </summary>
+        internal static bool EffectiveEnabled(AITEditorScriptObject config)
+        {
+            if (config == null) return false;
+            return config.astcBlockEscalation >= 0
+                ? config.astcBlockEscalation == 1
+                : AITDefaultSettings.GetDefaultAstcBlockEscalation();
+        }
 
         /// <summary>
         /// ASTC 블록 크기(4/5/6/8/10/12)를 <see cref="TextureImporterFormat"/> 으로 변환한다.

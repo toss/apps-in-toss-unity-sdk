@@ -210,10 +210,11 @@ namespace AppsInToss
         [Tooltip("first-interactive 계측: -1 = 자동 (활성), 0 = 비활성, 1 = 활성")]
         public int firstInteractiveLog = -1;
         [Header("콘텐츠 최적화 — ASTC 블록 에스컬레이션")]
-        [Tooltip("ASTC 서브타겟 WebGL 빌드에서 텍스처를 더 큰 ASTC 블록(기본 12x12)으로 reimport 하여 " +
+        [Tooltip("-1 = 자동 (true), 0 = 비활성, 1 = 활성. " +
+                 "ASTC 서브타겟 WebGL 빌드에서 텍스처를 더 큰 ASTC 블록(기본 12x12)으로 reimport 하여 " +
                  ".data on-wire 크기를 줄입니다. lossy(화질 저하 있음). 빌드 후 원본 임포트 설정으로 자동 복원. " +
                  "ASTC 서브타겟 전용 — DXT(기본) 서브타겟 프로젝트에서는 빌드 시 자동 skip됩니다.")]
-        public bool enableAstcBlockEscalation = false;
+        public int astcBlockEscalation = -1;
 
         [Tooltip("ASTC 블록 크기(4/5/6/8/10/12). 클수록 파일이 작아지고 화질이 낮아집니다. 기본값 12.")]
         public int astcBlockSize = 12;
@@ -496,6 +497,11 @@ namespace AppsInToss
         /// 픽셀 불변·세션당 1회 단일 이벤트·호스트 로딩 지표 표준화에 해당하므로 기본 ON.
         /// </summary>
         public static bool GetDefaultFirstInteractiveLog()
+        /// 기본 ASTC 블록 에스컬레이션 활성화 여부.
+        /// 블록 확대(예: 12x12)는 시각 저하가 통상 미미한 반면 다운로드/.data 절감이 커 기본 ON.
+        /// 비-ASTC 서브타겟에서는 빌드 시 자동으로 건너뛰고(no-op), 빌드 후 임포터 설정은 항상 원상 복원된다.
+        /// </summary>
+        public static bool GetDefaultAstcBlockEscalation()
         {
             return true;
         }

@@ -221,6 +221,11 @@ namespace AppsInToss.Editor
                 ? editorConfig.firstInteractiveLog == 1
                 : AITDefaultSettings.GetDefaultFirstInteractiveLog();
             Debug.Log($"[AIT]   - first-interactive 계측: {firstInteractiveEnabled}{(editorConfig.firstInteractiveLog < 0 ? " (자동)" : "")}");
+            // ASTC 블록 에스컬레이션은 BuildPlayer 직전 AITAstcBlockProcessor 에서 처리
+            bool astcBlockEnabled = editorConfig.astcBlockEscalation >= 0
+                ? editorConfig.astcBlockEscalation == 1
+                : AITDefaultSettings.GetDefaultAstcBlockEscalation();
+            Debug.Log($"[AIT]   - ASTC 블록 에스컬레이션: {astcBlockEnabled}{(editorConfig.astcBlockEscalation < 0 ? " (자동)" : "")}");
         }
 
         /// <summary>

@@ -1014,21 +1014,48 @@ namespace AppsInToss.Editor
 
             bool defaultFirstInteractive = AITDefaultSettings.GetDefaultFirstInteractiveLog();
             if (config.firstInteractiveLog >= 0 && (config.firstInteractiveLog == 1) != defaultFirstInteractive) count++;
+            bool defaultAstcBlock = AITDefaultSettings.GetDefaultAstcBlockEscalation();
+            if (config.astcBlockEscalation >= 0 && (config.astcBlockEscalation == 1) != defaultAstcBlock) count++;
 
             return count;
         }
 
         private void DrawAstcBlockSetting()
         {
+            bool defaultValue = AITDefaultSettings.GetDefaultAstcBlockEscalation();
+            bool isModified = config.astcBlockEscalation >= 0 && (config.astcBlockEscalation == 1) != defaultValue;
+
             EditorGUILayout.LabelField("콘텐츠 최적화 — ASTC 블록 에스컬레이션", EditorStyles.boldLabel);
 
-            config.enableAstcBlockEscalation = EditorGUILayout.Toggle(
-                new GUIContent("ASTC 블록 에스컬레이션 활성화",
-                    "ASTC 서브타겟 전용: 텍스처를 더 큰 ASTC 블록으로 reimport 하여 .data 크기를 줄입니다. lossy."),
-                config.enableAstcBlockEscalation
-            );
+            EditorGUILayout.BeginHorizontal();
 
-            if (config.enableAstcBlockEscalation)
+            DrawModifiedIndicator(isModified);
+
+            string autoLabel = defaultValue ? "활성화" : "비활성화";
+            string label = config.astcBlockEscalation < 0
+                ? $"ASTC 블록 에스컬레이션 (자동: {autoLabel})"
+                : "ASTC 블록 에스컬레이션";
+
+            string[] options = { $"자동 ({autoLabel})", "비활성화", "활성화" };
+            int currentIndex = config.astcBlockEscalation < 0 ? 0 : config.astcBlockEscalation + 1;
+            int newIndex = EditorGUILayout.Popup(
+                new GUIContent(label,
+                    "ASTC 서브타겟 전용: 텍스처를 더 큰 ASTC 블록으로 reimport 하여 .data 크기를 줄입니다. " +
+                    "lossy. 빌드 후 원본 임포트 설정으로 복원합니다."),
+                currentIndex,
+                options
+            );
+            config.astcBlockEscalation = newIndex == 0 ? -1 : newIndex - 1;
+
+            if (isModified && DrawResetButton())
+            {
+                config.astcBlockEscalation = -1;
+            }
+
+            EditorGUILayout.EndHorizontal();
+
+            bool effectiveEnabled = config.astcBlockEscalation >= 0 ? config.astcBlockEscalation == 1 : defaultValue;
+            if (effectiveEnabled)
             {
                 EditorGUI.indentLevel++;
 
@@ -1087,6 +1114,7 @@ namespace AppsInToss.Editor
             config.dataCaching = -1;
             config.firstInteractiveLog = -1;
             config.enableAstcBlockEscalation = false;
+            config.astcBlockEscalation = -1;
             config.astcBlockSize = 12;
             config.astcBlockMaxSize = 0;
             config.astcBlockAtlas = true;

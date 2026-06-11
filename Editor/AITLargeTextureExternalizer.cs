@@ -429,44 +429,42 @@ namespace AppsInToss.Editor
         {
             var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var folders = new List<string>();
-            try
+            // 예외는 잡지 않는다: 호출자(ExternalizeForBuild)가 전체 외부화 no-op 으로 처리.
+            // (부분 적용 후 영구 투명 스프라이트 리스크를 원천 차단)
+            foreach (var g in AssetDatabase.FindAssets("t:SpriteAtlas"))
             {
-                foreach (var g in AssetDatabase.FindAssets("t:SpriteAtlas"))
+                string atlasPath = AssetDatabase.GUIDToAssetPath(g);
+                var atlas = AssetDatabase.LoadAssetAtPath<UnityEngine.U2D.SpriteAtlas>(atlasPath);
+                if (atlas == null)
                 {
-                    string atlasPath = AssetDatabase.GUIDToAssetPath(g);
-                    var atlas = AssetDatabase.LoadAssetAtPath<UnityEngine.U2D.SpriteAtlas>(atlasPath);
-                    if (atlas == null)
+                    continue;
+                }
+
+                foreach (var packable in UnityEditor.U2D.SpriteAtlasExtensions.GetPackables(atlas))
+                {
+                    if (packable == null)
                     {
                         continue;
                     }
 
-                    foreach (var packable in UnityEditor.U2D.SpriteAtlasExtensions.GetPackables(atlas))
+                    string p = AssetDatabase.GetAssetPath(packable);
+                    if (string.IsNullOrEmpty(p))
                     {
-                        if (packable == null)
-                        {
-                            continue;
-                        }
+                        continue;
+                    }
 
-                        string p = AssetDatabase.GetAssetPath(packable);
-                        if (string.IsNullOrEmpty(p))
-                        {
-                            continue;
-                        }
-
-                        // 폴더 패킹 → 폴더 하위 모든 스프라이트가 아틀라스에 들어감.
-                        if (AssetDatabase.IsValidFolder(p))
-                        {
-                            folders.Add(p);
-                        }
-                        else
-                        {
-                            paths.Add(p);
-                        }
+                    // 폴더 패킹 → 폴더 하위 모든 스프라이트가 아틀라스에 들어감.
+                    if (AssetDatabase.IsValidFolder(p))
+                    {
+                        folders.Add(p);
+                    }
+                    else
+                    {
+                        paths.Add(p);
                     }
                 }
             }
-            // 예외는 잡지 않는다: 호출자(ExternalizeForBuild)가 전체 외부화 no-op 으로 처리.
-            // (부분 적용 후 영구 투명 스프라이트 리스크를 원천 차단)
+
             return (paths, folders.ToArray());
         }
 

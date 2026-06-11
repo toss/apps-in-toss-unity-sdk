@@ -35,7 +35,7 @@ public class AITPageCacheEmitterTests
         }
     }
 
-    // === 게이팅 ===
+    // === 게이팅 (tri-state) ===
 
     [Test]
     public void NullConfig_ReturnsEmpty()
@@ -45,11 +45,27 @@ public class AITPageCacheEmitterTests
     }
 
     [Test]
-    public void Disabled_ReturnsEmpty()
+    public void PageCache_ExplicitDisabled_ReturnsEmpty()
     {
-        config.enablePageCache = false;
+        config.pageCache = 0; // 명시적 비활성
         string result = AITPageCacheEmitter.GenerateInterceptorScript(config, DataFile, FrameworkFile, WasmFile);
-        Assert.AreEqual(string.Empty, result, "enablePageCache==false 이면 빈 문자열(byte-identical no-op)이어야 한다");
+        Assert.AreEqual(string.Empty, result, "pageCache==0(명시적 비활성) 이면 빈 문자열(byte-identical no-op)이어야 한다");
+    }
+
+    [Test]
+    public void PageCache_Auto_DefaultIsEnabled()
+    {
+        config.pageCache = -1; // 자동 (기본값)
+        string result = AITPageCacheEmitter.GenerateInterceptorScript(config, DataFile, FrameworkFile, WasmFile);
+        Assert.IsNotEmpty(result, "pageCache==-1(자동) 이면 기본값 true 이므로 스니펫이 생성되어야 한다");
+    }
+
+    [Test]
+    public void PageCache_ExplicitEnabled_EmitsScript()
+    {
+        config.pageCache = 1; // 명시적 활성
+        string result = AITPageCacheEmitter.GenerateInterceptorScript(config, DataFile, FrameworkFile, WasmFile);
+        Assert.IsNotEmpty(result, "pageCache==1(명시적 활성) 이면 스니펫이 생성되어야 한다");
     }
 
     // === 활성 출력 ===
@@ -57,7 +73,7 @@ public class AITPageCacheEmitterTests
     [Test]
     public void Enabled_EmitsCacheNameLiteral()
     {
-        config.enablePageCache = true;
+        config.pageCache = 1;
         config.pageCacheName = "ait-page-cache";
         string result = AITPageCacheEmitter.GenerateInterceptorScript(config, DataFile, FrameworkFile, WasmFile);
 
@@ -69,7 +85,7 @@ public class AITPageCacheEmitterTests
     [Test]
     public void Enabled_AllowlistContainsBuildFiles()
     {
-        config.enablePageCache = true;
+        config.pageCache = 1;
         string result = AITPageCacheEmitter.GenerateInterceptorScript(config, DataFile, FrameworkFile, WasmFile);
 
         StringAssert.Contains("Build/" + DataFile, result, "allowlist 에 data 파일이 포함되어야 한다");
@@ -80,7 +96,7 @@ public class AITPageCacheEmitterTests
     [Test]
     public void Enabled_AllowlistExcludesLoader()
     {
-        config.enablePageCache = true;
+        config.pageCache = 1;
         // loaderFile 은 시그니처에 없으므로 어떤 경로로도 스니펫에 들어가면 안 됨(캐시 대상 외 계약).
         string result = AITPageCacheEmitter.GenerateInterceptorScript(config, DataFile, FrameworkFile, WasmFile);
 
@@ -91,7 +107,7 @@ public class AITPageCacheEmitterTests
     [Test]
     public void Enabled_ContainsFeatureDetectGate()
     {
-        config.enablePageCache = true;
+        config.pageCache = 1;
         string result = AITPageCacheEmitter.GenerateInterceptorScript(config, DataFile, FrameworkFile, WasmFile);
 
         StringAssert.Contains("isSecureContext", result, "비보안 컨텍스트 feature-detect 가 있어야 한다");
@@ -101,7 +117,7 @@ public class AITPageCacheEmitterTests
     [Test]
     public void Enabled_ContainsBuildOriginGetGates()
     {
-        config.enablePageCache = true;
+        config.pageCache = 1;
         string result = AITPageCacheEmitter.GenerateInterceptorScript(config, DataFile, FrameworkFile, WasmFile);
 
         StringAssert.Contains("/Build/", result, "/Build/ 경로 게이트가 있어야 한다");
@@ -112,7 +128,7 @@ public class AITPageCacheEmitterTests
     [Test]
     public void Enabled_CapturesPriorFetch()
     {
-        config.enablePageCache = true;
+        config.pageCache = 1;
         string result = AITPageCacheEmitter.GenerateInterceptorScript(config, DataFile, FrameworkFile, WasmFile);
 
         StringAssert.Contains("priorFetch", result, "priorFetch 캡처 패턴이 있어야 한다");
@@ -122,7 +138,7 @@ public class AITPageCacheEmitterTests
     [Test]
     public void Enabled_NonGetCheckInspectsRequestMethod()
     {
-        config.enablePageCache = true;
+        config.pageCache = 1;
         string result = AITPageCacheEmitter.GenerateInterceptorScript(config, DataFile, FrameworkFile, WasmFile);
 
         // 비-GET 판정이 init.method 뿐 아니라 Request 객체의 method 도 확인해야 한다.
@@ -137,7 +153,7 @@ public class AITPageCacheEmitterTests
     [Test]
     public void Enabled_HasNoUppercasePercentTokens()
     {
-        config.enablePageCache = true;
+        config.pageCache = 1;
         string result = AITPageCacheEmitter.GenerateInterceptorScript(config, DataFile, FrameworkFile, WasmFile);
 
         // %FOO_BAR% 같은 대문자/숫자/언더스코어 퍼센트 토큰이 0개여야 빌드 치환 검증을 통과한다.
@@ -151,7 +167,7 @@ public class AITPageCacheEmitterTests
     [Test]
     public void Enabled_CustomCacheName_IsEmbedded()
     {
-        config.enablePageCache = true;
+        config.pageCache = 1;
         config.pageCacheName = "custom-bucket";
         string result = AITPageCacheEmitter.GenerateInterceptorScript(config, DataFile, FrameworkFile, WasmFile);
 
@@ -159,12 +175,118 @@ public class AITPageCacheEmitterTests
     }
 
     [Test]
-    public void Enabled_EmptyCacheName_FallsBackToDefault()
+    public void Enabled_EmptyCacheName_WithAppName_DerivesCacheName()
     {
-        config.enablePageCache = true;
+        config.pageCache = 1;
         config.pageCacheName = "";
+        config.appName = "my-game";
         string result = AITPageCacheEmitter.GenerateInterceptorScript(config, DataFile, FrameworkFile, WasmFile);
 
-        StringAssert.Contains("ait-page-cache", result, "빈 캐시명은 기본값 ait-page-cache 로 보정되어야 한다");
+        StringAssert.Contains("ait-page-cache-my-game", result,
+            "빈 캐시명 + appName 'my-game' 이면 'ait-page-cache-my-game' 으로 자동 파생되어야 한다");
+    }
+
+    [Test]
+    public void Enabled_EmptyCacheName_EmptyAppName_FallsBackToDefault()
+    {
+        config.pageCache = 1;
+        config.pageCacheName = "";
+        config.appName = "";
+        string result = AITPageCacheEmitter.GenerateInterceptorScript(config, DataFile, FrameworkFile, WasmFile);
+
+        StringAssert.Contains("ait-page-cache", result,
+            "빈 캐시명 + 빈 appName 이면 기본값 ait-page-cache 로 폴백되어야 한다");
+    }
+
+    // === DeriveCacheName 순수 함수 단위 테스트 ===
+
+    [Test]
+    public void DeriveCacheName_AsciiIdentifier_ReturnsNormalizedSlug()
+    {
+        string result = AITPageCacheEmitter.DeriveCacheName("MyGame");
+        Assert.AreEqual("ait-page-cache-mygame", result, "ASCII 식별자는 소문자 정규화 후 prefix 가 붙어야 한다");
+    }
+
+    [Test]
+    public void DeriveCacheName_IdentifierWithSpecialChars_NormalizesToHyphen()
+    {
+        string result = AITPageCacheEmitter.DeriveCacheName("My Game!");
+        Assert.AreEqual("ait-page-cache-my-game", result, "특수문자/공백은 하이픈으로 치환되어야 한다");
+    }
+
+    [Test]
+    public void DeriveCacheName_NonAsciiIdentifier_ReturnsHashSlug()
+    {
+        string identifier = "내게임";
+        string result = AITPageCacheEmitter.DeriveCacheName(identifier);
+
+        Assert.IsNotNull(result, "비ASCII 식별자도 null 이 아닌 캐시명을 반환해야 한다");
+        StringAssert.StartsWith("ait-page-cache-", result, "비ASCII 식별자도 prefix 가 붙어야 한다");
+        // FNV-1a 32비트 해시는 8자리 16진수
+        string slug = result.Substring("ait-page-cache-".Length);
+        Assert.AreEqual(8, slug.Length, "비ASCII 식별자의 해시 슬러그는 8자리여야 한다");
+        StringAssert.IsMatch("^[0-9a-f]{8}$", slug, "해시 슬러그는 16진수 소문자 8자리여야 한다");
+    }
+
+    [Test]
+    public void DeriveCacheName_SameNonAsciiInput_ReturnsSameHash()
+    {
+        string identifier = "내게임";
+        string result1 = AITPageCacheEmitter.DeriveCacheName(identifier);
+        string result2 = AITPageCacheEmitter.DeriveCacheName(identifier);
+        Assert.AreEqual(result1, result2, "동일 입력은 동일 해시를 반환해야 한다(결정론적)");
+    }
+
+    [Test]
+    public void DeriveCacheName_EmptyString_ReturnsNull()
+    {
+        string result = AITPageCacheEmitter.DeriveCacheName("");
+        Assert.IsNull(result, "빈 문자열 식별자는 null 을 반환해야 한다");
+    }
+
+    [Test]
+    public void DeriveCacheName_NullString_ReturnsNull()
+    {
+        string result = AITPageCacheEmitter.DeriveCacheName(null);
+        Assert.IsNull(result, "null 식별자는 null 을 반환해야 한다");
+    }
+
+    [Test]
+    public void DeriveCacheName_DifferentInputs_ReturnDifferentHashes()
+    {
+        string result1 = AITPageCacheEmitter.DeriveCacheName("게임A");
+        string result2 = AITPageCacheEmitter.DeriveCacheName("게임B");
+        Assert.AreNotEqual(result1, result2, "서로 다른 식별자는 서로 다른 캐시명을 반환해야 한다");
+    }
+
+    // === ResolveCacheName 통합 테스트 ===
+
+    [Test]
+    public void ResolveCacheName_ExplicitName_ReturnsAsIs()
+    {
+        config.pageCacheName = "explicit-cache";
+        config.appName = "some-app";
+        string result = AITPageCacheEmitter.ResolveCacheName(config);
+        Assert.AreEqual("explicit-cache", result, "명시적 캐시명이 있으면 그대로 반환해야 한다");
+    }
+
+    [Test]
+    public void ResolveCacheName_EmptyName_WithAppName_Derives()
+    {
+        config.pageCacheName = "";
+        config.appName = "cool-game";
+        string result = AITPageCacheEmitter.ResolveCacheName(config);
+        Assert.AreEqual("ait-page-cache-cool-game", result,
+            "빈 캐시명 + appName 있으면 자동 파생해야 한다");
+    }
+
+    [Test]
+    public void ResolveCacheName_EmptyName_EmptyAppName_FallsBack()
+    {
+        config.pageCacheName = "";
+        config.appName = "";
+        string result = AITPageCacheEmitter.ResolveCacheName(config);
+        Assert.AreEqual(AITPageCacheEmitter.DefaultCacheName, result,
+            "캐시명·appName 모두 비어 있으면 기본값으로 폴백해야 한다");
     }
 }

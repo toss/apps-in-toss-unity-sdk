@@ -1,4 +1,7 @@
 using System.Collections.Generic;
+using System.Text;
+using System.Text.RegularExpressions;
+using UnityEngine;
 
 namespace AppsInToss.Editor.Package
 {
@@ -9,13 +12,18 @@ namespace AppsInToss.Editor.Package
     /// 재방문(warm) 시 Unity Build/* 자산(wasm/data/framework)을 CacheStorage 에서 직접 서빙하면
     /// 네트워크 요청 자체가 발생하지 않아(transferSize 0) ServiceWorker 없이도 재방문 TTFF 를 단축합니다.
     ///
-    /// 게이팅: config.enablePageCache 가 false 이면 string.Empty 를 반환합니다.
+    /// 게이팅: config.pageCache tri-state (-1=자동/true, 0=비활성, 1=활성).
+    /// 비활성 판정 시 string.Empty 를 반환합니다.
     /// → %AIT_PAGE_CACHE_SCRIPT% 가 빈 문자열로 치환되어 산출물이 byte-identical no-op 이 됩니다.
     /// (AITServiceWorkerEmitter 류의 enableXxx → emitter → %AIT_..._SCRIPT% 치환 컨벤션과 동일.)
     ///
+    /// 캐시명 자동 파생: config.pageCacheName 이 비어 있으면 appName 에서 "ait-page-cache-{slug}" 를 파생합니다.
+    /// appName 도 비어 있으면 기본값 "ait-page-cache" 를 사용하고 빌드 경고를 출력합니다.
+    /// 이 자동 파생은 멀티앱 오리진 공유 시 sweep 상호 간섭을 방지합니다.
+    ///
     /// === 호스트(슈퍼앱) 연동 계약 (코드 주석으로 명문화) ===
     ///  · 캐시명 규약: 호스트의 백그라운드 pre-fill 페이지와 '동일한 캐시명' 을 써야 같은 버킷을 공유합니다.
-    ///    캐시명은 config.pageCacheName(기본 'ait-page-cache') 이며, 런타임 window.__AIT_CACHE_NAME 으로도 오버라이드됩니다.
+    ///    캐시명은 config.pageCacheName(또는 자동 파생값) 이며, 런타임 window.__AIT_CACHE_NAME 으로도 오버라이드됩니다.
     ///  · 캐시 키 규약: 절대 URL 문자열(new URL(resource, location.href).href).
     ///    nameFilesAsHashes=true(기본) 전제 → 파일명이 콘텐츠 해시이므로 키=불변 콘텐츠(스테일 없음).
     ///  · decode-free pre-fill 규약: 캐시에 Content-Encoding 없는 raw(해제된) bytes 가 들어 있으면
@@ -32,22 +40,110 @@ namespace AppsInToss.Editor.Package
     internal static class AITPageCacheEmitter
     {
         internal const string DefaultCacheName = "ait-page-cache";
+        internal const string CacheNamePrefix = "ait-page-cache-";
+
+        /// <summary>
+        /// appName(앱 식별자)에서 캐시 버킷 이름을 파생합니다.
+        /// 영문 소문자/숫자/하이픈으로 정규화하며, 비ASCII 문자는 짧은 해시로 대체합니다.
+        /// identifier 가 비어 있으면 null 을 반환합니다(호출자가 폴백 처리).
+        /// </summary>
+        internal static string DeriveCacheName(string identifier)
+        {
+            if (string.IsNullOrEmpty(identifier))
+                return null;
+
+            // 비ASCII 포함 여부 확인
+            bool hasNonAscii = false;
+            foreach (char c in identifier)
+            {
+                if (c > 127) { hasNonAscii = true; break; }
+            }
+
+            string slug;
+            if (hasNonAscii)
+            {
+                // 비ASCII 문자가 있으면 UTF-8 바이트의 FNV-1a 32비트 해시(16진수 8자리)로 대체
+                slug = ComputeFnv1a32Hex(identifier);
+            }
+            else
+            {
+                // ASCII만 있으면 소문자 변환 후 영숫자·하이픈 이외 문자를 하이픈으로 치환
+                slug = identifier.ToLowerInvariant();
+                slug = Regex.Replace(slug, @"[^a-z0-9\-]", "-");
+                // 연속 하이픈·앞뒤 하이픈 정리
+                slug = Regex.Replace(slug, @"-{2,}", "-").Trim('-');
+            }
+
+            if (string.IsNullOrEmpty(slug))
+                return null;
+
+            return CacheNamePrefix + slug;
+        }
+
+        /// <summary>
+        /// 문자열의 UTF-8 바이트에 대한 FNV-1a 32비트 해시를 16진수 문자열(8자리)로 반환합니다.
+        /// 순수 정적 함수: 외부 의존성 없음, 테스트 용이.
+        /// </summary>
+        internal static string ComputeFnv1a32Hex(string value)
+        {
+            const uint FnvOffsetBasis = 2166136261u;
+            const uint FnvPrime = 16777619u;
+
+            uint hash = FnvOffsetBasis;
+            byte[] bytes = Encoding.UTF8.GetBytes(value);
+            foreach (byte b in bytes)
+            {
+                hash ^= b;
+                hash *= FnvPrime;
+            }
+            return hash.ToString("x8");
+        }
+
+        /// <summary>
+        /// pageCache tri-state 값과 appName 을 고려하여 실제 캐시명을 결정합니다.
+        /// pageCacheName 이 명시적으로 설정되어 있으면 그대로 사용하고,
+        /// 비어 있으면 appName 에서 자동 파생합니다.
+        /// </summary>
+        internal static string ResolveCacheName(AITEditorScriptObject config)
+        {
+            // 명시적 캐시명이 있으면 그대로 사용
+            if (!string.IsNullOrEmpty(config.pageCacheName))
+                return config.pageCacheName;
+
+            // appName 에서 자동 파생
+            string derived = DeriveCacheName(config.appName);
+            if (derived != null)
+                return derived;
+
+            // 식별자도 없으면 기본값 폴백 + 경고
+            Debug.LogWarning(
+                "[AIT] pageCacheName 과 appName 이 모두 비어 있어 기본 캐시 이름 '" + DefaultCacheName + "' 을 사용합니다. " +
+                "멀티앱 오리진 공유 환경에서는 앱별 고유 이름을 설정하세요."
+            );
+            return DefaultCacheName;
+        }
 
         /// <summary>
         /// index.html 의 %AIT_PAGE_CACHE_SCRIPT% 자리에 인라인 삽입할 &lt;script&gt; IIFE 를 생성합니다.
-        /// config 가 null 이거나 enablePageCache 가 false 이면 string.Empty(no-op)를 반환합니다.
+        /// config 가 null 이거나 pageCache 가 비활성(0) 이면 string.Empty(no-op)를 반환합니다.
+        /// pageCache == -1(자동) 이면 AITDefaultSettings.GetDefaultPageCache() == true 이므로 활성으로 동작합니다.
         /// loaderFile 은 캐시 대상이 아니므로 인자로 받지 않습니다.
         /// </summary>
         internal static string GenerateInterceptorScript(AITEditorScriptObject config, string dataFile, string frameworkFile, string wasmFile)
         {
-            // 게이팅: 비활성 시 완전한 no-op (byte-identical).
-            if (config == null || !config.enablePageCache)
+            // 게이팅: tri-state 해석 (-1=자동→기본값true, 0=비활성, 1=활성).
+            bool enabled = config != null && (
+                config.pageCache < 0
+                    ? AITDefaultSettings.GetDefaultPageCache()
+                    : config.pageCache == 1
+            );
+            if (!enabled)
             {
                 return string.Empty;
             }
 
-            // 캐시명: 비어 있으면 기본값으로 보정. 호스트 pre-fill 페이지와 동일 문자열이어야 같은 버킷 공유.
-            string cacheName = string.IsNullOrEmpty(config.pageCacheName) ? DefaultCacheName : config.pageCacheName;
+            // 캐시명: 명시적 설정 > appName 파생 > 기본값 폴백.
+            string cacheName = ResolveCacheName(config);
 
             // 부팅 무효화용 allowlist: 현재 빌드의 Build/* 상대 경로(data/framework/wasm). loader 는 제외.
             var allowlist = new List<string>();
@@ -158,7 +254,7 @@ namespace AppsInToss.Editor.Package
             // await 하지 않으므로 부팅을 막지 않고, 실패는 catch 로 흡수합니다.
             // 멀티앱 주의: 같은 오리진의 여러 미니앱이 동일 CACHE_NAME 버킷을 공유하면, 이 sweep 이
             // 다른 앱의 Build/* 엔트리를 allowlist 외로 오인해 삭제합니다(키 충돌은 없으나 무효화 상호 간섭).
-            // 오리진을 공유하는 앱이 둘 이상이면 앱별로 고유한 pageCacheName(=CACHE_NAME)을 지정하세요.
+            // 오리진을 공유하는 앱이 둘 이상이면 앱별로 고유한 캐시명(=CACHE_NAME)을 지정하세요(appName 기반 자동 파생).
             try {
                 var allowAbs = {};
                 for (var i = 0; i < ALLOWLIST.length; i++) {

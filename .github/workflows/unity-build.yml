@@ -73,9 +73,6 @@ on:
       AIT_AD_REWARDED_ID:
         description: 'Rewarded ad ID for testing'
         required: false
-      AIT_AD_BANNER_ID:
-        description: 'Banner ad group ID for testing'
-        required: false
       SENTRY_DSN:
         description: 'Sentry DSN for error reporting'
         required: false
@@ -717,10 +714,8 @@ jobs:
         env:
           AIT_AD_INTERSTITIAL_ID: ${{ secrets.AIT_AD_INTERSTITIAL_ID }}
           AIT_AD_REWARDED_ID: ${{ secrets.AIT_AD_REWARDED_ID }}
-          AIT_AD_BANNER_ID: ${{ secrets.AIT_AD_BANNER_ID }}
         run: |
           AD_TESTER="Tests~/E2E/SharedScripts/Runtime/AdV2Tester.cs"
-          BANNER_TESTER="Tests~/E2E/SharedScripts/Runtime/BannerAdTester.cs"
 
           # SharedScripts가 없으면 스킵 (릴리즈 빌드에서는 제거됨)
           if [ ! -f "$AD_TESTER" ]; then
@@ -738,11 +733,6 @@ jobs:
             sed -i '' 's/ait-ad-test-rewarded-id/'"$AIT_AD_REWARDED_ID"'/g' "$AD_TESTER"
           fi
 
-          if [ -n "$AIT_AD_BANNER_ID" ] && [ -f "$BANNER_TESTER" ]; then
-            echo "Injecting banner ad ID..."
-            sed -i '' 's/ait-ad-test-banner-id/'"$AIT_AD_BANNER_ID"'/g' "$BANNER_TESTER"
-          fi
-
           echo "Ad IDs injected successfully"
 
       - name: Inject Ad IDs (Windows)
@@ -751,10 +741,8 @@ jobs:
         env:
           AIT_AD_INTERSTITIAL_ID: ${{ secrets.AIT_AD_INTERSTITIAL_ID }}
           AIT_AD_REWARDED_ID: ${{ secrets.AIT_AD_REWARDED_ID }}
-          AIT_AD_BANNER_ID: ${{ secrets.AIT_AD_BANNER_ID }}
         run: |
           $adTester = "Tests~\E2E\SharedScripts\Runtime\AdV2Tester.cs"
-          $bannerTester = "Tests~\E2E\SharedScripts\Runtime\BannerAdTester.cs"
 
           # SharedScripts가 없으면 스킵 (릴리즈 빌드에서는 제거됨)
           if (-not (Test-Path $adTester)) {
@@ -775,14 +763,6 @@ jobs:
           }
 
           Set-Content $adTester -Value $content -NoNewline
-
-          if ($env:AIT_AD_BANNER_ID -and (Test-Path $bannerTester)) {
-            Write-Host "Injecting banner ad ID..."
-            $bannerContent = Get-Content $bannerTester -Raw
-            $bannerContent = $bannerContent -replace 'ait-ad-test-banner-id', $env:AIT_AD_BANNER_ID
-            Set-Content $bannerTester -Value $bannerContent -NoNewline
-          }
-
           Write-Host "Ad IDs injected successfully"
 
       # =====================================================

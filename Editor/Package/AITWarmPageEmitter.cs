@@ -229,9 +229,12 @@ namespace AppsInToss.Editor.Package
     return new Promise(function (resolve) {
       var stored = 0, skipped = 0, failed = 0, bytes = 0;
       var stopReason = null;
-      var remaining = todo.length;
+      // 종료 카운터 = 워커 루프 수(아이템 수 아님). 각 루프는 종료 분기에서 정확히 1회 감소시키므로
+      // 아이템 수로 초기화하면 todo.length > workerCount 일 때 0 에 도달하지 못해 resolve 가 누락된다.
+      var workers = Math.min(workerCount, todo.length);
+      var remaining = workers;
 
-      if (remaining === 0) { resolve({ stored: stored, skipped: skipped, failed: failed, bytes: bytes, reason: null }); return; }
+      if (todo.length === 0) { resolve({ stored: stored, skipped: skipped, failed: failed, bytes: bytes, reason: null }); return; }
 
       function next() {
         if (todo.length === 0 || stopReason) {
@@ -285,7 +288,6 @@ namespace AppsInToss.Editor.Package
         });
       }
 
-      var workers = Math.min(workerCount, todo.length);
       for (var i = 0; i < workers; i++) { next(); }
     });
   }

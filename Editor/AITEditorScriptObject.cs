@@ -193,13 +193,16 @@ namespace AppsInToss
 
         /// <summary>
         /// 빌드 시 self-warming 페이지(ait-warm.html)를 함께 산출합니다.
-        /// 호스트가 숨김 WebView 로 열면 매니페스트 변경분을 미리 캐시에 적재합니다.
-        /// warmManifest 실효값과 pageCache 실효값이 모두 ON 이어야 동작합니다. 기본 false(opt-in).
+        /// tri-state: -1=자동(true, 기본 ON), 0=비활성, 1=활성.
+        /// warmManifest 실효값과 pageCache 실효값이 모두 ON 이어야 동작합니다(AND 게이팅).
+        /// pageCache·warmManifest 실효값이 모두 ON 일 때만 실제 산출되는 AND 게이트이며,
+        /// 산출물은 정적 파일 1개 추가일 뿐 게임 런타임 동작에 영향이 없어 기본 ON.
         /// </summary>
-        [Tooltip("빌드 시 self-warming 페이지(ait-warm.html)를 함께 산출합니다. " +
+        [Tooltip("-1 = 자동 (true), 0 = 비활성, 1 = 활성. " +
+                 "빌드 시 self-warming 페이지(ait-warm.html)를 함께 산출합니다. " +
                  "호스트가 숨김 WebView 로 열면 매니페스트 변경분을 미리 캐시에 적재합니다. " +
                  "warmManifest 실효값과 pageCache 실효값이 모두 ON 이어야 동작합니다.")]
-        public bool emitWarmPage = false;
+        public int warmPage = -1;
 
         [Header("렌더링 품질 설정")]
         [Tooltip("devicePixelRatio 설정: -1 = auto (기기 성능에 따라 자동 결정), 1/2/3 = 고정값. 높을수록 고품질이지만 GPU 부하 증가")]
@@ -409,6 +412,16 @@ namespace AppsInToss
         /// pageCache 실효값이 OFF 이면 게이팅으로 no-op 처리되므로 독립적으로 ON 해도 안전.
         /// </summary>
         public static bool GetDefaultWarmManifest()
+        {
+            return true;
+        }
+
+        /// <summary>
+        /// 기본 warm 페이지(ait-warm.html) 산출 여부.
+        /// pageCache·warmManifest 실효값이 모두 ON 일 때만 실제 산출되는 AND 게이트이며,
+        /// 산출물은 정적 파일 1개 추가일 뿐 게임 런타임 동작에 영향이 없어 기본 ON.
+        /// </summary>
+        public static bool GetDefaultWarmPage()
         {
             return true;
         }

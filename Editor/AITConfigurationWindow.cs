@@ -654,22 +654,30 @@ namespace AppsInToss.Editor
                 }
             }
 
-            // warm 페이지 산출 토글 — pageCache 와 warmManifest 실효값이 모두 true 일 때만 편집 가능.
+            // warm 페이지 산출 (tri-state) — pageCache·warmManifest 실효값이 모두 true 일 때만 편집 가능.
             bool warmManifestEffectiveForPage = config.warmManifest < 0
                 ? AITDefaultSettings.GetDefaultWarmManifest()
                 : config.warmManifest == 1;
             using (new EditorGUI.DisabledScope(!(pageCacheActive && warmManifestEffectiveForPage)))
             {
-                EditorGUI.indentLevel++;
-                config.emitWarmPage = EditorGUILayout.Toggle(
-                    new GUIContent(
-                        "Warm 페이지 산출",
-                        "빌드 시 self-warming 페이지(ait-warm.html)를 함께 산출합니다. " +
-                        "호스트가 숨김 WebView 로 열면 매니페스트 변경분을 미리 캐시에 적재합니다. " +
-                        "Warm Manifest 산출과 페이지 캐시 실효값이 모두 ON 이어야 활성화됩니다."),
-                    config.emitWarmPage
-                );
-                EditorGUI.indentLevel--;
+                DrawWarmPageSetting();
+            }
+
+            // pageCache 또는 warmManifest 실효값=OFF + warmPage 실효값=ON 일 때 경고 HelpBox 표시.
+            if (!(pageCacheActive && warmManifestEffectiveForPage))
+            {
+                bool warmPageEffective = config.warmPage < 0
+                    ? AITDefaultSettings.GetDefaultWarmPage()
+                    : config.warmPage == 1;
+
+                if (warmPageEffective)
+                {
+                    EditorGUILayout.HelpBox(
+                        "페이지 캐시 또는 Warm Manifest 가 비활성이므로 Warm 페이지도 산출되지 않습니다. " +
+                        "페이지 캐시와 Warm Manifest 를 활성화하거나 Warm 페이지를 명시적으로 비활성화하세요.",
+                        MessageType.Warning
+                    );
+                }
             }
         }
 
@@ -703,6 +711,42 @@ namespace AppsInToss.Editor
             if (isModified && DrawResetButton())
             {
                 config.warmManifest = -1;
+            }
+
+            EditorGUILayout.EndHorizontal();
+            EditorGUI.indentLevel--;
+        }
+
+        private void DrawWarmPageSetting()
+        {
+            bool defaultWarmPage = AITDefaultSettings.GetDefaultWarmPage();
+            bool isModified = config.warmPage >= 0 && (config.warmPage == 1) != defaultWarmPage;
+
+            EditorGUI.indentLevel++;
+            EditorGUILayout.BeginHorizontal();
+
+            DrawModifiedIndicator(isModified);
+
+            string label = config.warmPage < 0
+                ? $"Warm 페이지 산출 (자동: {(defaultWarmPage ? "활성화" : "비활성화")})"
+                : "Warm 페이지 산출";
+
+            string[] options = { $"자동 ({(defaultWarmPage ? "활성화" : "비활성화")})", "비활성화", "활성화" };
+            int currentIndex = config.warmPage < 0 ? 0 : config.warmPage + 1;
+            int newIndex = EditorGUILayout.Popup(
+                new GUIContent(label,
+                    "빌드 시 self-warming 페이지(ait-warm.html)를 함께 산출합니다. " +
+                    "호스트가 숨김 WebView 로 열면 매니페스트 변경분을 미리 캐시에 적재합니다. " +
+                    "페이지 캐시·Warm Manifest 실효값이 모두 OFF 이면 회색 비활성화됩니다(AND 게이팅). " +
+                    "-1=자동(활성화), 0=비활성화, 1=활성화."),
+                currentIndex,
+                options
+            );
+            config.warmPage = newIndex == 0 ? -1 : newIndex - 1;
+
+            if (isModified && DrawResetButton())
+            {
+                config.warmPage = -1;
             }
 
             EditorGUILayout.EndHorizontal();
@@ -1143,6 +1187,10 @@ namespace AppsInToss.Editor
             bool defaultWarmManifest = AITDefaultSettings.GetDefaultWarmManifest();
             if (config.warmManifest >= 0 && (config.warmManifest == 1) != defaultWarmManifest) count++;
 
+            // warm 페이지: 기본 자동(true). 명시적으로 기본값과 다르게 설정된 경우만 변경으로 집계.
+            bool defaultWarmPage = AITDefaultSettings.GetDefaultWarmPage();
+            if (config.warmPage >= 0 && (config.warmPage == 1) != defaultWarmPage) count++;
+
             return count;
         }
 
@@ -1154,7 +1202,7 @@ namespace AppsInToss.Editor
             config.pageCache = -1;
             config.pageCacheName = "";
             config.warmManifest = -1;
-            config.emitWarmPage = false;
+            config.warmPage = -1;
         }
 
         private void ResetAdvancedSettings()

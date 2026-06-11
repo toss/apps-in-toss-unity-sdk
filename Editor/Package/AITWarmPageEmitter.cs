@@ -13,10 +13,11 @@ namespace AppsInToss.Editor.Package
     /// <c>ait-warm-manifest.json</c> 을 읽어 변경분(diff warm)만 내려받아
     /// CacheStorage(인터셉터와 동일 버킷)에 decode-free 로 적재합니다.
     ///
-    /// === 게이팅 규칙 ===
+    /// === 게이팅 규칙 (tri-state) ===
     ///  · <c>config == null</c> → stale 파일 삭제 후 no-op 반환.
-    ///  · emitWarmPage 실효값(bool) = false → stale 파일 삭제 후 no-op 반환.
-    ///  · emitWarmPage 실효값=true 이지만 warmManifest 실효값=false 또는 pageCache 실효값=false → 경고 후 no-op 반환.
+    ///  · warmPage 실효값 = (warmPage == -1) ? GetDefaultWarmPage() : (warmPage == 1)
+    ///  · 실효값 false → stale 파일 삭제 후 no-op 반환.
+    ///  · warmPage 실효값 true 이지만 warmManifest 실효값 false 또는 pageCache 실효값 false → 경고 로그 출력 후 no-op 반환.
     ///    (매니페스트 없이는 읽을 대상이 없고, 인터셉터(pageCache) 없이는 채운 캐시를 소비할 주체가 없음.)
     ///  · 세 조건 모두 실효값 true 일 때만 실제 파일을 산출합니다.
     ///
@@ -60,24 +61,39 @@ namespace AppsInToss.Editor.Package
         {
             string outputPath = Path.Combine(destPath, FileName);
 
-            // 게이팅 1: emitWarmPage 가 비활성이면 stale 파일 삭제 후 종료.
-            if (config == null || !config.emitWarmPage)
+            // 게이팅 1: config 가 null 이거나 warmPage 실효값이 false 이면 stale 파일 삭제 후 종료.
+            // tri-state: -1=자동(GetDefaultWarmPage()), 0=비활성, 1=활성.
+            if (config == null)
             {
                 DeleteStale(outputPath);
                 return;
             }
 
-            // 게이팅 2: emitWarmPage=true 이지만 warmManifest 실효값 또는 pageCache 실효값이 false → 미산출.
+            bool warmPageEffective = config.warmPage < 0
+                ? AITDefaultSettings.GetDefaultWarmPage()
+                : config.warmPage == 1;
+
+            if (!warmPageEffective)
+            {
+                DeleteStale(outputPath);
+                return;
+            }
+
+            // 게이팅 2: warmPage 실효값 true 이지만 warmManifest 실효값 false 또는 pageCache 실효값 false → 미산출.
             // 매니페스트 없이는 warm 페이지가 읽을 대상이 없고,
             // 인터셉터(pageCache) 없이는 채운 캐시를 소비할 주체가 없음.
-            bool warmManifestEffective = (config.warmManifest < 0 ? AITDefaultSettings.GetDefaultWarmManifest() : config.warmManifest == 1);
-            bool pageCacheEffective    = (config.pageCache < 0    ? AITDefaultSettings.GetDefaultPageCache()    : config.pageCache == 1);
+            bool warmManifestEffective = config.warmManifest < 0
+                ? AITDefaultSettings.GetDefaultWarmManifest()
+                : config.warmManifest == 1;
+            bool pageCacheEffective    = config.pageCache < 0
+                ? AITDefaultSettings.GetDefaultPageCache()
+                : config.pageCache == 1;
             if (!warmManifestEffective || !pageCacheEffective)
             {
                 Debug.LogWarning(
-                    "[AIT] ait-warm.html 미산출: warmManifest 실효값과 pageCache 실효값이 모두 ON 이어야 합니다 " +
-                    $"(현재 warmManifest 실효값={warmManifestEffective}, pageCache 실효값={pageCacheEffective}). " +
-                    "(warm 페이지는 매니페스트를 읽고 인터셉터 캐시 버킷에 기록)."
+                    "[AIT] ait-warm.html 미산출: warmPage 실효값=true 이지만 " +
+                    $"warmManifest 실효값={warmManifestEffective}, pageCache 실효값={pageCacheEffective} 입니다. " +
+                    "warm 페이지는 매니페스트를 읽고 인터셉터 캐시 버킷에 기록합니다."
                 );
                 DeleteStale(outputPath);
                 return;
@@ -108,7 +124,7 @@ namespace AppsInToss.Editor.Package
             }
 
             File.WriteAllText(outputPath, html, Encoding.UTF8);
-            Debug.Log($"[AIT] ✓ ait-warm.html 산출 완료: {outputPath}");
+            Debug.Log($"[AIT] ✓ ait-warm.html 산출 완료{(config.warmPage < 0 ? " (자동)" : "")}: {outputPath}");
         }
 
         // -----------------------------------------------------------------------

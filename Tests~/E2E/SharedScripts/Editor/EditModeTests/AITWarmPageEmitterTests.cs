@@ -31,7 +31,7 @@ public class AITWarmPageEmitterTests
         _config = ScriptableObject.CreateInstance<AITEditorScriptObject>();
         _config.pageCache     = 1;  // 명시적 활성
         _config.warmManifest  = 1;  // 명시적 활성
-        _config.emitWarmPage  = true;
+        _config.warmPage      = 1;  // 명시적 활성
         _config.pageCacheName = "ait-page-cache";
     }
 
@@ -70,22 +70,56 @@ public class AITWarmPageEmitterTests
             "config null 이면 stale 파일도 삭제되고 신규 산출 없어야 한다");
     }
 
-    // ===== 케이스 2: emitWarmPage=false → stale 삭제 =====
+    // ===== 케이스 1b: warmPage=-1(자동=ON) + 업스트림 ON → 산출됨 =====
 
     [Test]
-    public void WritePage_EmitWarmPageOff_DeletesStale()
+    public void AutoDefault_EmitsFile()
+    {
+        // GetDefaultWarmPage()=true 전제: warmPage=-1 이면 기본 ON.
+        _config.warmPage = -1; // 자동 (기본값 true)
+        _config.pageCache    = 1;
+        _config.warmManifest = 1;
+        WritePage();
+
+        string pagePath = Path.Combine(_tempDir, AITWarmPageEmitter.FileName);
+        Assert.IsTrue(File.Exists(pagePath),
+            "warmPage=-1(자동=ON) + pageCache·warmManifest 활성이면 ait-warm.html 을 산출해야 한다");
+    }
+
+    // ===== 케이스 2: warmPage=0(명시적 비활성) → stale 삭제 =====
+
+    [Test]
+    public void WritePage_WarmPageOff_DeletesStale()
     {
         string pagePath = Path.Combine(_tempDir, AITWarmPageEmitter.FileName);
         File.WriteAllText(pagePath, "stale", Encoding.UTF8);
 
-        _config.emitWarmPage = false;
+        _config.warmPage = 0; // 명시적 비활성
         WritePage();
 
         Assert.IsFalse(File.Exists(pagePath),
-            "emitWarmPage=false 이면 기존 stale 파일이 삭제되어야 한다");
+            "warmPage=0(명시적 비활성) 이면 기존 stale 파일이 삭제되어야 한다");
     }
 
-    // ===== 케이스 3: emitWarmPage=true, warmManifest=0(명시적 비활성) → 경고 + 미산출 =====
+    // ===== 케이스 2b: warmPage=-1(자동=ON) + pageCache=0(명시적 비활성) → 미산출 =====
+
+    [Test]
+    public void AutoDefault_PageCacheOff_DoesNotEmit()
+    {
+        _config.warmPage  = -1; // 자동 (기본값 true)
+        _config.pageCache = 0;  // 명시적 비활성
+
+        string pagePath = Path.Combine(_tempDir, AITWarmPageEmitter.FileName);
+
+        LogAssert.Expect(LogType.Warning, new Regex(@"ait-warm\.html 미산출"));
+
+        WritePage();
+
+        Assert.IsFalse(File.Exists(pagePath),
+            "warmPage=-1(자동=ON) + pageCache=0(비활성) 이면 ait-warm.html 미산출이어야 한다");
+    }
+
+    // ===== 케이스 3: warmPage=1, warmManifest=0(명시적 비활성) → 경고 + 미산출 =====
 
     [Test]
     public void WritePage_WarmManifestOff_Warns_AndDeletesStale()
@@ -103,7 +137,7 @@ public class AITWarmPageEmitterTests
             "warmManifest=0(명시적 비활성) 이면 ait-warm.html 미산출 + stale 삭제");
     }
 
-    // ===== 케이스 4: emitWarmPage=true, pageCache=0(명시적 비활성) → 경고 + 미산출 =====
+    // ===== 케이스 4: warmPage=1, pageCache=0(명시적 비활성) → 경고 + 미산출 =====
 
     [Test]
     public void WritePage_PageCacheOff_Warns_AndDeletesStale()
@@ -121,7 +155,7 @@ public class AITWarmPageEmitterTests
             "pageCache=0(명시적 비활성) 이면 ait-warm.html 미산출 + stale 삭제");
     }
 
-    // ===== 케이스 5: 세 플래그 모두 true → 파일 존재, 길이 > 0 =====
+    // ===== 케이스 5: 세 값 모두 명시적 활성 → 파일 존재, 길이 > 0 =====
 
     [Test]
     public void WritePage_AllFlagsOn_EmitsFile()
@@ -129,7 +163,7 @@ public class AITWarmPageEmitterTests
         WritePage();
 
         string pagePath = Path.Combine(_tempDir, AITWarmPageEmitter.FileName);
-        Assert.IsTrue(File.Exists(pagePath), "세 플래그 모두 true 이면 파일이 산출되어야 한다");
+        Assert.IsTrue(File.Exists(pagePath), "세 값 모두 명시적 활성이면 파일이 산출되어야 한다");
         Assert.Greater(new FileInfo(pagePath).Length, 0L, "산출 파일 크기가 0 보다 커야 한다");
     }
 

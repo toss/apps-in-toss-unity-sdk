@@ -18,6 +18,7 @@ namespace AppsInToss.Editor
         private bool showBuildProfiles = true;
         private bool showDevServerProfile = false;
         private bool showProductionProfile = false;
+        private bool showTextureStreamingSettings = true;
 
         // 하이라이트 색상
         private static readonly Color ModifiedColor = new Color(1f, 0.6f, 0f); // 주황색
@@ -62,6 +63,8 @@ namespace AppsInToss.Editor
             DrawBuildSettings();
             GUILayout.Space(10);
             DrawWebGLOptimizationSettings();
+            GUILayout.Space(10);
+            DrawTextureStreamingSettings();
             GUILayout.Space(10);
             DrawPermissionSettings();
             GUILayout.Space(10);
@@ -548,6 +551,83 @@ namespace AppsInToss.Editor
             if (isModified && DrawResetButton())
             {
                 config.dataCaching = -1;
+            }
+
+            EditorGUILayout.EndHorizontal();
+        }
+
+        private void DrawTextureStreamingSettings()
+        {
+            showTextureStreamingSettings = EditorGUILayout.Foldout(showTextureStreamingSettings, "콘텐츠 최적화 — 텍스처 스트리밍", true);
+
+            if (!showTextureStreamingSettings) return;
+
+            EditorGUILayout.BeginVertical("box");
+
+            // tri-state 드롭다운
+            DrawTextureStreamingSetting();
+
+            GUILayout.Space(5);
+
+            // 스텁 노출 구간 설명 HelpBox
+            EditorGUILayout.HelpBox(
+                "스텁 노출 구간: 첫 프레임 직후 ~ 비동기 로드 완료 사이에 단색 스텁이 잠깐 보일 수 있습니다.\n" +
+                "항상 원본 텍스처가 보여야 하는 경로는 '제외 폴더'에 지정하세요.\n\n" +
+                "외부화 대상: 부팅 씬에 의존하지 않는 대형(기본 512KB 이상) Texture2D.\n" +
+                "자동 제외: 부팅 씬 의존 / Resources / SpriteAtlas 패킹 대상 / 동명·동차원 충돌 / linear / NormalMap.",
+                MessageType.Info
+            );
+
+            GUILayout.Space(5);
+
+            // 최소 바이트 설정
+            config.textureStreamingMinBytes = EditorGUILayout.IntField(
+                new GUIContent("외부화 최소 크기 (바이트)", "이 크기보다 큰 텍스처 소스만 외부화합니다 (기본 524288 = 512KB)."),
+                config.textureStreamingMinBytes
+            );
+
+            // 대상 폴더
+            config.textureStreamingDirs = EditorGUILayout.TextField(
+                new GUIContent("대상 폴더 (쉼표 구분)", "비우면 프로젝트 전체. 예) Assets/Art/BG,Assets/Textures"),
+                config.textureStreamingDirs
+            );
+
+            // 제외 폴더
+            config.textureStreamingExcludeDirs = EditorGUILayout.TextField(
+                new GUIContent("제외 폴더 (쉼표 구분)", "항상 원본 텍스처를 사용해야 하는 경로. 예) Assets/UI/Always"),
+                config.textureStreamingExcludeDirs
+            );
+
+            // 최대 동시 스트리밍
+            config.textureStreamingMaxConcurrent = EditorGUILayout.IntSlider(
+                new GUIContent("최대 동시 스트리밍", "런타임 동시 다운로드/디코드 상한 (기본 3). VRAM/메인스레드 hitch 제한."),
+                config.textureStreamingMaxConcurrent, 1, 8
+            );
+
+            EditorGUILayout.EndVertical();
+        }
+
+        private void DrawTextureStreamingSetting()
+        {
+            bool defaultEnabled = AITDefaultSettings.GetDefaultTextureStreaming();
+            bool isModified = config.textureStreaming >= 0 && (config.textureStreaming == 1) != defaultEnabled;
+
+            EditorGUILayout.BeginHorizontal();
+
+            DrawModifiedIndicator(isModified);
+
+            string label = config.textureStreaming < 0
+                ? $"텍스처 스트리밍 (자동: {(defaultEnabled ? "활성화" : "비활성화")})"
+                : "텍스처 스트리밍";
+
+            string[] options = { $"자동 ({(defaultEnabled ? "활성화" : "비활성화")})", "비활성화", "활성화" };
+            int currentIndex = config.textureStreaming < 0 ? 0 : config.textureStreaming + 1;
+            int newIndex = EditorGUILayout.Popup(label, currentIndex, options);
+            config.textureStreaming = newIndex == 0 ? -1 : newIndex - 1;
+
+            if (isModified && DrawResetButton())
+            {
+                config.textureStreaming = -1;
             }
 
             EditorGUILayout.EndHorizontal();

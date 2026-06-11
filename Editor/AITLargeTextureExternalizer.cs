@@ -48,7 +48,7 @@ using UnityEngine;
 namespace AppsInToss.Editor
 {
     /// <summary>
-    /// 빌드 단계 대형 텍스처 외부화/복원 처리기. <see cref="AITEditorScriptObject.enableTextureStreaming"/>
+    /// 빌드 단계 대형 텍스처 외부화/복원 처리기. <see cref="AITEditorScriptObject.textureStreaming"/>
     /// 설정에 따라 동작하며, 런타임 컴포넌트 <c>AppsInToss.AITStreamingTexture</c> 와 짝을 이룬다.
     /// </summary>
     [InitializeOnLoad]
@@ -77,6 +77,24 @@ namespace AppsInToss.Editor
 
             /// <summary>외부화된 텍스처 개수.</summary>
             public int Count;
+
+            /// <summary>외부화된 총 바이트(소스 파일 크기 합계).</summary>
+            public long TotalBytes;
+
+            /// <summary>부팅 씬 의존으로 제외된 개수.</summary>
+            public int ExcludedBoot;
+
+            /// <summary>/Resources/ 경로로 제외된 개수.</summary>
+            public int ExcludedResources;
+
+            /// <summary>SpriteAtlas 패킹 대상으로 제외된 개수.</summary>
+            public int ExcludedAtlas;
+
+            /// <summary>동명·동차원 충돌로 제외된 개수(매칭 모호).</summary>
+            public int ExcludedDuplicate;
+
+            /// <summary>linear(sRGB=false) 또는 NormalMap 으로 제외된 개수.</summary>
+            public int ExcludedColorSpace;
         }
 
         static AITLargeTextureExternalizer()
@@ -93,7 +111,10 @@ namespace AppsInToss.Editor
         public static TextureStreamHandle ExternalizeForBuild(AITEditorScriptObject config)
         {
             var handle = new TextureStreamHandle();
-            if (config == null || !config.enableTextureStreaming)
+            // tri-state: -1 = 자동(기본 활성), 0 = 비활성, 1 = 강제 활성.
+            bool enabled = config != null && (config.textureStreaming == 1
+                || (config.textureStreaming < 0 && AITDefaultSettings.GetDefaultTextureStreaming()));
+            if (config == null || !enabled)
             {
                 return handle;
             }
@@ -106,15 +127,33 @@ namespace AppsInToss.Editor
 
                 string projectRoot = Directory.GetParent(Application.dataPath).FullName;
                 var bootSet = BuildBootDependencySet();
-                var (atlasPaths, atlasFolders) = BuildSpriteAtlasPackedSet();
+
+                // SpriteAtlas 패킹 집합: 예외 발생 시 전체 외부화 no-op(부분 적용 → 영구 투명 스프라이트 리스크 차단).
+                HashSet<string> atlasPaths;
+                string[] atlasFolders;
+                try
+                {
+                    (atlasPaths, atlasFolders) = BuildSpriteAtlasPackedSet();
+                }
+                catch (Exception atlasEx)
+                {
+                    Debug.LogWarning($"[AIT-StreamingTexture] SpriteAtlas 패킹 집합 산출 실패 → 외부화 전체 skip(영구 투명 스프라이트 리스크 차단): {atlasEx.Message}");
+                    return handle; // no-op: 비활성 핸들 반환
+                }
 
                 CreateMarker();
                 Directory.CreateDirectory(Path.Combine(projectRoot, StreamRootAssets));
 
-                var entries = new List<string>();
-                int n = 0;
-                long stubbedBytes = 0;
+                // 제외 사유별 카운터(빌드 리포트용).
+                int cntBoot = 0, cntResources = 0, cntAtlas = 0, cntDuplicate = 0, cntColorSpace = 0;
+
+                // ─── 1단계: 후보 수집 + 차원 산출 ─────────────────────────────────
+                // (동명·동차원 충돌 검사를 위해 전체 목록을 먼저 모은다.)
                 var guids = AssetDatabase.FindAssets("t:Texture2D", new[] { "Assets" });
+
+                // 경로 → (guid, w, h) 후보 목록(제외 게이트 통과 + minBytes 충족).
+                var candidates = new List<(string guid, string path, int w, int h, long size)>();
+
                 foreach (var g in guids)
                 {
                     string path = AssetDatabase.GUIDToAssetPath(g);
@@ -133,7 +172,9 @@ namespace AppsInToss.Editor
                         continue;
                     }
 
-                    if (!PassesExclusionGates(path, bootSet, atlasPaths, atlasFolders, excludeDirs, out var ti))
+                    // 제외 게이트: 사유별 카운터 갱신.
+                    if (!PassesExclusionGatesWithCount(path, bootSet, atlasPaths, atlasFolders, excludeDirs,
+                            ref cntBoot, ref cntResources, ref cntAtlas, ref cntColorSpace, out _))
                     {
                         continue;
                     }
@@ -161,6 +202,61 @@ namespace AppsInToss.Editor
                         continue;
                     }
 
+                    candidates.Add((g, path, w, h, size));
+                }
+
+                // ─── 2단계: 동명·동차원 충돌 검사 ────────────────────────────────
+                // (name, w, h) 키가 동일한 Texture2D 가 2개 이상이면 런타임 매칭이 모호 → 그룹 전체 제외.
+                var nameKey = new Dictionary<string, List<int>>(); // key → candidate 인덱스 목록
+                for (int i = 0; i < candidates.Count; i++)
+                {
+                    var (_, cpath, cw, ch, _) = candidates[i];
+                    string name = Path.GetFileNameWithoutExtension(cpath);
+                    string key = name + "\0" + cw + "\0" + ch;
+                    if (!nameKey.TryGetValue(key, out var idxList))
+                    {
+                        nameKey[key] = idxList = new List<int>();
+                    }
+
+                    idxList.Add(i);
+                }
+
+                var duplicateIndices = new HashSet<int>();
+                foreach (var kv in nameKey)
+                {
+                    if (kv.Value.Count >= 2)
+                    {
+                        var parts = kv.Key.Split('\0');
+                        string dupName = parts[0];
+                        string dupW = parts.Length > 1 ? parts[1] : "?";
+                        string dupH = parts.Length > 2 ? parts[2] : "?";
+                        var paths = new List<string>();
+                        foreach (var idx in kv.Value)
+                        {
+                            duplicateIndices.Add(idx);
+                            paths.Add(candidates[idx].path);
+                        }
+
+                        Debug.LogWarning($"[AIT-StreamingTexture] 동명·동차원 텍스처 {kv.Value.Count}건 — 매칭 모호로 외부화에서 제외: {dupName} ({dupW}x{dupH})\n  {string.Join("\n  ", paths)}");
+                        cntDuplicate += kv.Value.Count;
+                    }
+                }
+
+                // ─── 3단계: 외부화 실행 ─────────────────────────────────────────
+                var entries = new List<string>();
+                int n = 0;
+                long stubbedBytes = 0;
+                var detailLines = new List<string>();
+
+                for (int i = 0; i < candidates.Count; i++)
+                {
+                    if (duplicateIndices.Contains(i))
+                    {
+                        continue; // 동명·동차원 충돌 → 제외
+                    }
+
+                    var (g, path, w, h, size) = candidates[i];
+                    string srcFull = Path.Combine(projectRoot, path);
                     string ext = Path.GetExtension(path).ToLowerInvariant(); // ".png" 등(점 포함)
                     string texName = Path.GetFileNameWithoutExtension(path);
 
@@ -209,10 +305,11 @@ namespace AppsInToss.Editor
                                 + ",\"width\":" + w + ",\"height\":" + h + "}");
                     n++;
                     stubbedBytes += size;
-                    Debug.Log($"[AIT-StreamingTexture]   외부화 {texName} ({w}x{h}, src {size / 1048576f:0.00}MB) → {streamFile}");
+                    detailLines.Add($"  {texName} ({w}x{h}, {size / 1048576f:0.00}MB) → {streamFile}");
                 }
 
-                // 5) 매니페스트 동봉(런타임 AITStreamingTexture 가 읽는 계약: maxConcurrent + entries).
+                // ─── 4단계: 매니페스트 동봉 ─────────────────────────────────────
+                // 런타임 AITStreamingTexture 가 읽는 계약: maxConcurrent + entries.
                 int maxConcurrent = config.textureStreamingMaxConcurrent > 0 ? config.textureStreamingMaxConcurrent : 3;
                 var sb = new StringBuilder();
                 sb.Append("{\"maxConcurrent\":").Append(maxConcurrent)
@@ -222,13 +319,40 @@ namespace AppsInToss.Editor
 
                 handle.Active = n > 0;
                 handle.Count = n;
+                handle.TotalBytes = stubbedBytes;
+                handle.ExcludedBoot = cntBoot;
+                handle.ExcludedResources = cntResources;
+                handle.ExcludedAtlas = cntAtlas;
+                handle.ExcludedDuplicate = cntDuplicate;
+                handle.ExcludedColorSpace = cntColorSpace;
+
                 if (!handle.Active)
                 {
                     RemoveStreamRoot();
                     RemoveMarker();
                 }
 
-                Debug.Log($"[AIT-StreamingTexture] ✓ {n}개 텍스처 외부화, 소스 {stubbedBytes / 1048576f:0.0}MB 스텁(초기 .data 제거).");
+                // ─── 5단계: 빌드 리포트 ──────────────────────────────────────────
+                if (n == 0)
+                {
+                    Debug.Log("[AIT-StreamingTexture] 텍스처 스트리밍: 외부화 대상 없음.");
+                }
+                else
+                {
+                    // 요약 1줄 (제외 사유별 카운트 포함)
+                    var excParts = new List<string>();
+                    if (cntBoot > 0) excParts.Add($"부팅 의존 {cntBoot}");
+                    if (cntResources > 0) excParts.Add($"Resources {cntResources}");
+                    if (cntAtlas > 0) excParts.Add($"아틀라스 {cntAtlas}");
+                    if (cntDuplicate > 0) excParts.Add($"동명 충돌 {cntDuplicate}");
+                    if (cntColorSpace > 0) excParts.Add($"linear/NormalMap {cntColorSpace}");
+                    string excSummary = excParts.Count > 0 ? $" | 제외: {string.Join(", ", excParts)}" : "";
+                    Debug.Log($"[AIT-StreamingTexture] ✓ 외부화 {n}개 / {stubbedBytes / 1048576f:0.0}MB 절감{excSummary}");
+
+                    // 상세 목록
+                    Debug.Log($"[AIT-StreamingTexture] 외부화 상세 목록:\n{string.Join("\n", detailLines)}");
+                }
+
                 return handle;
             }
             catch (Exception e)
@@ -341,49 +465,61 @@ namespace AppsInToss.Editor
                     }
                 }
             }
-            catch (Exception e)
-            {
-                // 산출 실패 시 부분 적용(이미 수집된 항목만). 게이트가 비어도 다른 가드(sRGB/NormalMap 등)는 유지.
-                Debug.LogWarning($"[AIT-StreamingTexture] SpriteAtlas 패킹 집합 산출 경고(아틀라스 제외 게이트 부분 적용): {e.Message}");
-            }
-
+            // 예외는 잡지 않는다: 호출자(ExternalizeForBuild)가 전체 외부화 no-op 으로 처리.
+            // (부분 적용 후 영구 투명 스프라이트 리스크를 원천 차단)
             return (paths, folders.ToArray());
         }
 
         /// <summary>
         /// 적대검증으로 확정된 제외 필터를 모두 통과하는지 판정. 통과 시 <paramref name="ti"/> 에 임포터를 채운다.
+        /// 제외 사유별 카운터(<paramref name="cntBoot"/> 등)를 갱신한다(빌드 리포트용).
         /// </summary>
-        private static bool PassesExclusionGates(string path, HashSet<string> bootSet, HashSet<string> atlasPaths, string[] atlasFolders, string[] excludeDirs, out TextureImporter ti)
+        private static bool PassesExclusionGatesWithCount(
+            string path,
+            HashSet<string> bootSet,
+            HashSet<string> atlasPaths,
+            string[] atlasFolders,
+            string[] excludeDirs,
+            ref int cntBoot,
+            ref int cntResources,
+            ref int cntAtlas,
+            ref int cntColorSpace,
+            out TextureImporter ti)
         {
             ti = null;
 
             // ③ 부팅 씬 의존 → frame-1 에 보임 → 절대 스텁 금지.
             if (bootSet.Contains(path))
             {
+                cntBoot++;
                 return false;
             }
 
             // ① SpriteAtlas 패킹 대상 → 소스 스텁이 시각 파손 + on-wire 이득 0(아틀라스 페이지가 .data 에 잔존) → 하드 제외.
             if (atlasPaths.Contains(path) || (atlasFolders.Length > 0 && UnderAny(path, atlasFolders)))
             {
+                cntAtlas++;
                 return false;
             }
 
             // ③ Resources/ → 런타임 문자열 경로 Resources.Load 로 언제든 끌려옴(GetDependencies 가 추적 못함) → 보호.
             if (path.IndexOf("/Resources/", StringComparison.OrdinalIgnoreCase) >= 0)
             {
+                cntResources++;
                 return false;
             }
 
             // ③ 스플래시/로고 휴리스틱 → 보호.
             if (path.IndexOf("Splash", StringComparison.OrdinalIgnoreCase) >= 0)
             {
+                cntBoot++; // 부팅 계열로 집계
                 return false;
             }
 
             // ③ 사용자 escape hatch.
             if (excludeDirs != null && UnderAny(path, excludeDirs))
             {
+                cntBoot++; // 사용자 제외는 부팅 보호와 동일 목적(사용자가 지정한 보호 경로)
                 return false;
             }
 
@@ -396,12 +532,14 @@ namespace AppsInToss.Editor
             // ② NormalMap → 단색 스텁이 degenerate normal, 런타임 LoadImage 가 sRGB 로 덮어써 라이팅 깨짐 → 제외.
             if (ti.textureType == TextureImporterType.NormalMap)
             {
+                cntColorSpace++;
                 return false;
             }
 
             // ② linear(sRGB=false) → LoadImage 는 항상 sRGB 로 기록, colorSpace 플래그는 객체 생성 시 고정 → 제외.
             if (!ti.sRGBTexture)
             {
+                cntColorSpace++;
                 return false;
             }
 

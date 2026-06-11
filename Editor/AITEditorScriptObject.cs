@@ -213,8 +213,8 @@ namespace AppsInToss
         [Tooltip("비-부팅 대형 Texture2D 를 초기 .data 에서 분리해 StreamingAssets 로 외부화하고, 소스를 '동일 차원 단색 스텁'으로 치환합니다. " +
                  "런타임(AITStreamingTexture)이 first-frame 이후 실 텍스처를 비동기 스트리밍 로드하여 동일 Texture2D 객체에 픽셀을 제자리 복원하므로 " +
                  "이를 참조하는 Sprite/Material 이 참조 재할당 없이 갱신됩니다. 초기 다운로드/TTFF 를 크게 줄입니다. " +
-                 "빌드 후 원본/임포터 설정을 원상 복원하므로 명시적 opt-in 으로 기본 비활성입니다.")]
-        public bool enableTextureStreaming = false;
+                 "빌드 후 원본/임포터 설정을 원상 복원합니다. -1 = 자동 (활성화), 0 = 비활성화, 1 = 활성화.")]
+        public int textureStreaming = -1;
 
         [Tooltip("이 바이트 수보다 큰 텍스처 소스만 외부화 대상입니다 (기본 512KB). 소형 아이콘은 동적 Resources.Load 로 부팅에 끌려올 수 있어 보호합니다.")]
         public int textureStreamingMinBytes = 524288;
@@ -494,6 +494,10 @@ namespace AppsInToss
         /// 픽셀 불변·세션당 1회 단일 이벤트·호스트 로딩 지표 표준화에 해당하므로 기본 ON.
         /// </summary>
         public static bool GetDefaultFirstInteractiveLog()
+        /// 기본 텍스처 스트리밍 활성 여부.
+        /// 비-부팅 대형 텍스처를 자동으로 외부화해 초기 다운로드/TTFF 를 줄인다(zero-config).
+        /// </summary>
+        public static bool GetDefaultTextureStreaming()
         {
             return true;
         }

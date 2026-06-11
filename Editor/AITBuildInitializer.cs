@@ -221,6 +221,10 @@ namespace AppsInToss.Editor
                 ? editorConfig.firstInteractiveLog == 1
                 : AITDefaultSettings.GetDefaultFirstInteractiveLog();
             Debug.Log($"[AIT]   - first-interactive 계측: {firstInteractiveEnabled}{(editorConfig.firstInteractiveLog < 0 ? " (자동)" : "")}");
+            // 텍스처 스트리밍은 ExternalizeForBuild 에서 별도 리포트를 출력하므로 활성 여부만 기록.
+            bool texStreamEnabled = editorConfig.textureStreaming == 1
+                || (editorConfig.textureStreaming < 0 && AITDefaultSettings.GetDefaultTextureStreaming());
+            Debug.Log($"[AIT]   - 텍스처 스트리밍: {(texStreamEnabled ? "활성화" : "비활성화")}{(editorConfig.textureStreaming < 0 ? " (자동)" : "")}");
         }
 
         /// <summary>

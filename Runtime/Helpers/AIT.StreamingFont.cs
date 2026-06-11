@@ -97,6 +97,11 @@ namespace AppsInToss
 
         private IEnumerator Run()
         {
+#if !AIT_HAS_ASSETBUNDLE
+            Debug.LogWarning("[AIT] assetbundle 모듈이 비활성화되어 폰트 스트리밍 재수화를 건너뜁니다");
+            Destroy(gameObject);
+            yield break;
+#endif
             // 첫 프레임(TTFF) 이후로 확실히 미룬다 — 재수화가 부팅 임계 경로에 끼지 않도록.
             for (int i = 0; i < WarmupFrames; i++)
             {
@@ -197,6 +202,7 @@ namespace AppsInToss
 
         private IEnumerator LoadAndInject(Entry e, Action<bool> done)
         {
+#if AIT_HAS_ASSETBUNDLE
             byte[] data = null;
             string url = ResolveStreamingUrl(StreamDirRelativePath + e.bundle);
             using (var req = UnityWebRequest.Get(url))
@@ -258,6 +264,12 @@ namespace AppsInToss
             // 번들은 언로드하지 않는다(unload(true) 는 주입한 폰트를 파괴, unload(false) 도 동적
             // 래스터화가 번들 자원을 늦게 참조할 위험이 있어 세션 동안 유지). 메모리 비용은 폰트 1~2개분.
             done(any);
+#else
+            // AIT_HAS_ASSETBUNDLE 미정의 시: Run() 진입부에서 이미 종료하므로 여기에 도달하지 않음.
+            // C# 컴파일러의 "yield return 없는 IEnumerator" 경고를 방지하기 위해 yield 유지.
+            yield return null;
+            done(false);
+#endif
         }
 
         // ─────────────────────────── TMP reflection ───────────────────────────

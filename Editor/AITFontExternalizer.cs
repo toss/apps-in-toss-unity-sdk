@@ -258,6 +258,14 @@ namespace AppsInToss.Editor
             if (!enabled)
                 return handle;
 
+            // 런타임 assetbundle 모듈 비활성 게이트: 모듈이 없으면 번들을 로드할 런타임 코드가 없어
+            // 외부화 후 폰트를 재수화할 수 없고, 스텁으로 치환된 소스는 영구 □(두부문자)가 된다.
+            if (System.Type.GetType("UnityEngine.AssetBundle, UnityEngine.AssetBundleModule") == null)
+            {
+                Debug.LogWarning("[AIT] 폰트 스트리밍: assetbundle 모듈 비활성화로 외부화를 건너뜁니다");
+                return handle;
+            }
+
             bool isAutoMode = config.fontStreaming < 0;
             string[] targets;
 

@@ -47,11 +47,11 @@ public class AITWarmManifestEmitterTests
         CreatePlainFile(Path.Combine(_buildDir, LoaderFile),     64);
         CreatePlainFile(Path.Combine(_buildDir, SymbolsFile),    32);
 
-        // config 생성
+        // config 생성 — tri-state: -1=자동(ON), 0=비활성, 1=활성
         _config = ScriptableObject.CreateInstance<AITEditorScriptObject>();
-        _config.enablePageCache  = true;
-        _config.emitWarmManifest = true;
-        _config.pageCacheName    = "ait-page-cache";
+        _config.pageCache     = 1;  // 명시적 활성
+        _config.warmManifest  = 1;  // 명시적 활성
+        _config.pageCacheName = "ait-page-cache";
     }
 
     [TearDown]
@@ -76,7 +76,7 @@ public class AITWarmManifestEmitterTests
         }
     }
 
-    // ===== 케이스 1: emitWarmManifest=false → 파일 미산출, stale 파일 삭제 =====
+    // ===== 케이스 1: warmManifest=0(명시적 비활성) → 파일 미산출, stale 파일 삭제 =====
 
     [Test]
     public void Disabled_NoFileEmitted_AndStaleDeleted()
@@ -86,20 +86,34 @@ public class AITWarmManifestEmitterTests
         File.WriteAllText(manifestPath, "stale", Encoding.UTF8);
         Assert.IsTrue(File.Exists(manifestPath), "SetUp: stale 파일이 있어야 한다");
 
-        _config.emitWarmManifest = false;
+        _config.warmManifest = 0; // 명시적 비활성
         WriteManifest();
 
         Assert.IsFalse(File.Exists(manifestPath),
-            "emitWarmManifest=false 이면 기존 stale 파일도 삭제되어야 한다");
+            "warmManifest=0(명시적 비활성) 이면 기존 stale 파일도 삭제되어야 한다");
     }
 
-    // ===== 케이스 2: emitWarmManifest=true + enablePageCache=false → 경고 + 미산출 =====
+    // ===== 케이스 1b: warmManifest=-1(자동=ON) → 정상 산출 =====
+
+    [Test]
+    public void AutoDefault_EmitsFile()
+    {
+        _config.warmManifest = -1; // 자동 (기본값 true)
+        _config.pageCache    = 1;  // 명시적 활성
+        WriteManifest();
+
+        string manifestPath = Path.Combine(_tempDir, AITWarmManifestEmitter.FileName);
+        Assert.IsTrue(File.Exists(manifestPath),
+            "warmManifest=-1(자동=ON) + pageCache 활성이면 manifest 를 산출해야 한다");
+    }
+
+    // ===== 케이스 2: warmManifest 실효값=true + pageCache=0(명시적 비활성) → 경고 + 미산출 =====
 
     [Test]
     public void EnabledManifest_ButPageCacheDisabled_WarnsAndNoFile()
     {
-        _config.enablePageCache  = false;
-        _config.emitWarmManifest = true;
+        _config.pageCache    = 0; // 명시적 비활성
+        _config.warmManifest = 1; // 명시적 활성
 
         // 경고 로그가 발생해야 한다
         LogAssert.Expect(LogType.Warning, new Regex("ait-warm-manifest\\.json 미산출"));
@@ -108,7 +122,21 @@ public class AITWarmManifestEmitterTests
 
         string manifestPath = Path.Combine(_tempDir, AITWarmManifestEmitter.FileName);
         Assert.IsFalse(File.Exists(manifestPath),
-            "enablePageCache=false 이면 manifest 를 산출하지 않아야 한다");
+            "pageCache=0(명시적 비활성) 이면 manifest 를 산출하지 않아야 한다");
+    }
+
+    // ===== 케이스 2b: warmManifest=-1(자동=ON) + pageCache=-1(자동=ON) → 정상 산출 =====
+
+    [Test]
+    public void BothAuto_ProducesManifest()
+    {
+        _config.warmManifest = -1; // 자동
+        _config.pageCache    = -1; // 자동 (기본값 true)
+        WriteManifest();
+
+        string manifestPath = Path.Combine(_tempDir, AITWarmManifestEmitter.FileName);
+        Assert.IsTrue(File.Exists(manifestPath),
+            "warmManifest=-1(자동=ON) + pageCache=-1(자동=ON) 이면 manifest 를 산출해야 한다(zero-config)");
     }
 
     // ===== 케이스 3: 정상 산출 — 파일 존재, 경로 포함, cacheName 에코 =====

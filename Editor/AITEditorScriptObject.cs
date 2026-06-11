@@ -183,12 +183,13 @@ namespace AppsInToss
 
         /// <summary>
         /// 빌드 시 ait-warm-manifest.json 산출 여부 (호스트 warm 연동용).
-        /// 기본 false(opt-in). enablePageCache 와 AND 게이팅되어 있으며,
-        /// enablePageCache=false 이면 manifest 를 내보내지 않습니다.
+        /// tri-state: -1=자동(true, 기본 ON), 0=비활성, 1=활성.
+        /// pageCache 실효값이 OFF 이면 warmManifest 도 no-op (AND 게이팅).
+        /// pageCache 실효값이 OFF 이면서 warmManifest 실효값이 ON 이면 경고 로그를 출력합니다.
         /// </summary>
         [Tooltip("빌드 시 ait-warm-manifest.json 을 산출합니다. 호스트(슈퍼앱)가 선다운로드(warm) diff 기준으로 사용합니다. " +
-                 "enablePageCache 와 AND 게이팅: enablePageCache=false 이면 미산출. 기본 비활성(opt-in).")]
-        public bool emitWarmManifest = false;
+                 "pageCache 실효값이 OFF 이면 회색 비활성 + no-op (AND 게이팅). -1=자동(true), 0=비활성, 1=활성.")]
+        public int warmManifest = -1;
 
         [Header("렌더링 품질 설정")]
         [Tooltip("devicePixelRatio 설정: -1 = auto (기기 성능에 따라 자동 결정), 1/2/3 = 고정값. 높을수록 고품질이지만 GPU 부하 증가")]
@@ -388,6 +389,16 @@ namespace AppsInToss
         /// 모든 Unity 버전에서 기본 활성화: 미지원 환경에서 무해 통과가 보장됨.
         /// </summary>
         public static bool GetDefaultPageCache()
+        {
+            return true;
+        }
+
+        /// <summary>
+        /// 기본 warm manifest 산출 여부.
+        /// pageCache 와 쌍으로 기본 ON: 호스트 warm 연동 zero-config 제공.
+        /// pageCache 실효값이 OFF 이면 게이팅으로 no-op 처리되므로 독립적으로 ON 해도 안전.
+        /// </summary>
+        public static bool GetDefaultWarmManifest()
         {
             return true;
         }

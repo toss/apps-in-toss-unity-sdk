@@ -16,11 +16,14 @@ namespace AppsInToss.Editor.Package
     /// <see cref="AITPageCacheEmitter"/> 인터셉터의 allowlist 와 '같은 빌드의 같은 입력 변수'에서
     /// 생성되므로 두 파일 사이에 drift 가 불가능합니다.
     ///
-    /// === 게이팅 규칙 ===
-    ///  · <c>config == null || !config.emitWarmManifest</c> → stale 파일 삭제 후 no-op 반환.
-    ///  · <c>emitWarmManifest=true &amp;&amp; enablePageCache=false</c> → 경고 로그 출력 후 no-op 반환.
+    /// === 게이팅 규칙 (tri-state) ===
+    ///  · <c>config == null</c> → stale 파일 삭제 후 no-op 반환.
+    ///  · warmManifest 실효값 = (warmManifest == -1) ? GetDefaultWarmManifest() : (warmManifest == 1)
+    ///  · 실효값 false → stale 파일 삭제 후 no-op 반환.
+    ///  · pageCache 실효값 = (pageCache == -1) ? GetDefaultPageCache() : (pageCache == 1)
+    ///  · warmManifest 실효값 true + pageCache 실효값 false → 경고 로그 출력 후 no-op 반환.
     ///    (manifest 단독으로는 의미가 없습니다. 인터셉터 없이 배포하면 호스트가 참조할 캐시 버킷이 존재하지 않음.)
-    ///  · 둘 다 true 일 때만 실제 파일을 산출합니다.
+    ///  · 둘 다 실효값 true 일 때만 실제 파일을 산출합니다.
     ///
     /// === 호스트(슈퍼앱) 연동 계약 (코드 주석으로 명문화) ===
     ///  · cacheName: 호스트 백그라운드 pre-fill 페이지와 '동일한 캐시명'을 사용해야 같은 버킷을 공유합니다.
@@ -57,20 +60,36 @@ namespace AppsInToss.Editor.Package
         {
             string outputPath = Path.Combine(destPath, FileName);
 
-            // 게이팅 1: emitWarmManifest 가 비활성이면 stale 파일 삭제 후 종료.
-            if (config == null || !config.emitWarmManifest)
+            // 게이팅 1: config 가 null 이거나 warmManifest 실효값이 false 이면 stale 파일 삭제 후 종료.
+            // tri-state: -1=자동(GetDefaultWarmManifest()), 0=비활성, 1=활성.
+            if (config == null)
             {
                 DeleteStale(outputPath);
                 return;
             }
 
-            // 게이팅 2: emitWarmManifest=true 이지만 enablePageCache=false 이면 무의미 — 미산출.
+            bool warmManifestEffective = config.warmManifest < 0
+                ? AITDefaultSettings.GetDefaultWarmManifest()
+                : config.warmManifest == 1;
+
+            if (!warmManifestEffective)
+            {
+                DeleteStale(outputPath);
+                return;
+            }
+
+            // 게이팅 2: warmManifest 실효값 true 이지만 pageCache 실효값 false 이면 무의미 — 미산출 + 경고.
             // 호스트 pre-fill 없이 manifest 만 내보내면 참조할 캐시 버킷 자체가 없어 활용 불가.
-            if (!config.enablePageCache)
+            // pageCache tri-state: -1=자동(GetDefaultPageCache()), 0=비활성, 1=활성.
+            bool pageCacheEffective = config.pageCache < 0
+                ? AITDefaultSettings.GetDefaultPageCache()
+                : config.pageCache == 1;
+
+            if (!pageCacheEffective)
             {
                 Debug.LogWarning(
-                    "[AIT] ait-warm-manifest.json 미산출: emitWarmManifest=true 이지만 enablePageCache=false 입니다. " +
-                    "manifest 는 페이지 캐시 인터셉터(enablePageCache) 없이는 호스트가 참조할 캐시 버킷이 존재하지 않으므로 무의미합니다."
+                    "[AIT] ait-warm-manifest.json 미산출: warmManifest 실효값=true 이지만 pageCache 실효값=false 입니다. " +
+                    "manifest 는 페이지 캐시 인터셉터(pageCache) 없이는 호스트가 참조할 캐시 버킷이 존재하지 않으므로 무의미합니다."
                 );
                 DeleteStale(outputPath);
                 return;

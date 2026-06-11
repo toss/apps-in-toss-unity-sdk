@@ -234,6 +234,16 @@ export const EXCLUDED_APIS: string[] = [
 ];
 
 /**
+ * 생성기 측 deprecate override 목록
+ * upstream d.ts에 @deprecated JSDoc이 없지만 SDK 차원에서 deprecate 처리할 API.
+ * 키는 생성되는 C# API 이름(네임스페이스+PascalCase), 값은 [Obsolete] 메시지.
+ */
+export const DEPRECATED_API_OVERRIDES: Record<string, string> = {
+  'TossAdsAttachBanner':
+    'CSS 셀렉터 기반 attachBanner는 더 이상 권장되지 않습니다. AITBannerAdView 컴포넌트 또는 AITBannerAd.Show를 사용해주세요.',
+};
+
+/**
  * 모든 API가 카테고리에 매핑되어 있는지 검증
  * @param apiNames 검증할 API 이름 목록
  * @returns 검증 결과 (성공 여부, 누락된 API 목록, 추론된 API 목록)

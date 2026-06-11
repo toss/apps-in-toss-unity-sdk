@@ -223,6 +223,13 @@ public static class APIParameterInspector
         { "GoogleAdMobLoadAppsInTossAdMob", "Advertising" },
         { "GoogleAdMobShowAppsInTossAdMob", "Advertising" },
 
+        // Advertising (TossAds)
+        { "TossAdsInitialize", "Advertising" },
+        { "TossAdsAttach", "Advertising" },
+        { "TossAdsAttachBanner", "Advertising" },
+        { "TossAdsDestroy", "Advertising" },
+        { "TossAdsDestroyAll", "Advertising" },
+
         // SystemInfo
         { "GetDeviceId", "SystemInfo" },
         { "GetLocale", "SystemInfo" },

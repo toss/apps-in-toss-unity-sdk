@@ -516,8 +516,11 @@ namespace AppsInToss.Editor
                     config.textureCrunchDirs);
 
                 EditorGUILayout.HelpBox(
-                    "crunch는 화질이 약간 떨어질 수 있습니다(특히 그라데이션/UI). 적용 후 결과를 확인하세요. 빌드 후 원본 설정은 자동 복원됩니다.",
-                    MessageType.Info);
+                    "crunch는 lossy 압축입니다. 특히 그라데이션/UI 텍스처에서 화질이 눈에 띄게 저하될 수 있으므로 " +
+                    "빌드 후 결과를 반드시 확인하세요. 빌드 후 원본 임포트 설정은 자동 복원됩니다.\n\n" +
+                    "⚠ WebGL Texture Compression을 ASTC로 설정한 경우 crunch(DXT 기반)가 동작하지 않으며 " +
+                    "오히려 RGBA32 비압축으로 팽창할 수 있습니다. 이 경우 빌드 시 자동으로 건너뜁니다(DXT 서브타겟에서만 유효).",
+                    MessageType.Warning);
                 EditorGUI.indentLevel--;
             }
         }

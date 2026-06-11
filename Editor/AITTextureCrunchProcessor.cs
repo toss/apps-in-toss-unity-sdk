@@ -68,18 +68,39 @@ namespace AppsInToss.Editor
             EditorApplication.delayCall += SafetyNetRestore;
         }
 
+        /// <summary>후보 스캔 상한. 이 수를 넘으면 스캔을 중단하고 "N+개" 로 표기한다.</summary>
+        private const int CandidateScanLimit = 2000;
+
         /// <summary>
         /// 빌드 직전 호출: 설정이 켜져 있으면 대상 텍스처/아틀라스를 crunch 로 reimport 한다.
+        /// 설정이 꺼져 있으면 후보 스캔 후 절감 가능 여부를 Debug.Log 1줄로 안내한다.
         /// </summary>
-        /// <param name="config">프로젝트 에디터 설정. null 이거나 기능이 꺼져 있으면 no-op.</param>
+        /// <param name="config">프로젝트 에디터 설정. null 이거나 기능이 꺼져 있으면 no-op(단, 후보 안내는 수행).</param>
         /// <returns>복원에 사용할 핸들(항상 non-null).</returns>
         public static CrunchHandle ApplyForBuild(AITEditorScriptObject config)
         {
             var handle = new CrunchHandle();
             if (config == null || !config.enableTextureCrunch)
             {
+                // crunch 비활성 — 후보 스캔 후 절감 가능 여부를 1줄 안내(후보 0이면 침묵).
+                if (config != null)
+                {
+                    ReportCandidateHint(config);
+                }
+
                 return handle;
             }
+
+            // ASTC 서브타겟 감지: crunch(DXT 위 압축)가 효과 없고 오히려 RGBA32 팽창 위험.
+#if UNITY_2022_3_OR_NEWER
+            if (EditorUserBuildSettings.webGLBuildSubtarget == WebGLTextureSubtarget.ASTC)
+            {
+                Debug.LogWarning("[AIT-TextureCrunch] WebGL Texture Compression이 ASTC라 crunch를 건너뜁니다. " +
+                    "ASTC 환경에서는 crunch(DXT 기반 압축)가 동작하지 않으며 오히려 RGBA32 비압축으로 팽창할 수 있습니다. " +
+                    "DXT(기본) 서브타겟에서만 crunch가 유효합니다.");
+                return handle;
+            }
+#endif
 
             try
             {
@@ -162,6 +183,75 @@ namespace AppsInToss.Editor
             catch (Exception e)
             {
                 Debug.LogWarning($"[AIT-TextureCrunch] 안전망 복원 중 예외(무시): {e}");
+            }
+        }
+
+        // ─────────────────────────── 후보 스캔 안내 ───────────────────────────
+
+        /// <summary>
+        /// crunch 비활성 빌드에서 절감 후보 텍스처 수를 빠르게 세어
+        /// 후보가 1개 이상이면 Debug.Log 1줄로 opt-in 안내를 출력한다.
+        /// 스캔 비용을 제한하기 위해 <see cref="CandidateScanLimit"/>개를 초과하면 중단.
+        /// </summary>
+        private static void ReportCandidateHint(AITEditorScriptObject config)
+        {
+            try
+            {
+                string[] dirs = SplitDirs(config.textureCrunchDirs);
+                var guids = AssetDatabase.FindAssets("t:Texture2D", new[] { "Assets" });
+
+                int candidates = 0;
+                int scanned = 0;
+                bool hitLimit = false;
+
+                foreach (var g in guids)
+                {
+                    if (scanned >= CandidateScanLimit)
+                    {
+                        hitLimit = true;
+                        break;
+                    }
+
+                    string path = AssetDatabase.GUIDToAssetPath(g);
+                    if (string.IsNullOrEmpty(path) || !path.StartsWith("Assets/"))
+                    {
+                        continue;
+                    }
+
+                    if (dirs != null && !UnderAny(path, dirs))
+                    {
+                        continue;
+                    }
+
+                    var ti = AssetImporter.GetAtPath(path) as TextureImporter;
+                    if (ti == null)
+                    {
+                        continue;
+                    }
+
+                    // 후보 기준: crunch 미적용 + DXT 계열(compressed, 비압축 포함) — ASTC 제외.
+                    // 비압축(Uncompressed) 텍스처는 DXT+crunch 적용 경로가 있으므로 후보에 포함한다.
+                    bool isCrunchTarget = !ti.crunchedCompression;
+                    if (isCrunchTarget)
+                    {
+                        candidates++;
+                    }
+
+                    scanned++;
+                }
+
+                if (candidates > 0)
+                {
+                    string countStr = hitLimit ? $"{CandidateScanLimit}+개" : $"{candidates}개";
+                    Debug.Log($"[AIT] 텍스처 Crunch(opt-in): 후보 {countStr} 발견. " +
+                        "AIT Configuration에서 활성화하면 .data 크기를 줄일 수 있습니다" +
+                        "(품질 트레이드오프 있음 — lossy).");
+                }
+            }
+            catch (Exception e)
+            {
+                // 후보 스캔 실패는 빌드 차단이 아님(안내용).
+                Debug.LogWarning($"[AIT-TextureCrunch] 후보 스캔 중 예외(무시): {e.Message}");
             }
         }
 

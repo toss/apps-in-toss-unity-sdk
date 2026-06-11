@@ -191,6 +191,16 @@ namespace AppsInToss
                  "pageCache 실효값이 OFF 이면 회색 비활성 + no-op (AND 게이팅). -1=자동(true), 0=비활성, 1=활성.")]
         public int warmManifest = -1;
 
+        /// <summary>
+        /// 빌드 시 self-warming 페이지(ait-warm.html)를 함께 산출합니다.
+        /// 호스트가 숨김 WebView 로 열면 매니페스트 변경분을 미리 캐시에 적재합니다.
+        /// warmManifest 실효값과 pageCache 실효값이 모두 ON 이어야 동작합니다. 기본 false(opt-in).
+        /// </summary>
+        [Tooltip("빌드 시 self-warming 페이지(ait-warm.html)를 함께 산출합니다. " +
+                 "호스트가 숨김 WebView 로 열면 매니페스트 변경분을 미리 캐시에 적재합니다. " +
+                 "warmManifest 실효값과 pageCache 실효값이 모두 ON 이어야 동작합니다.")]
+        public bool emitWarmPage = false;
+
         [Header("렌더링 품질 설정")]
         [Tooltip("devicePixelRatio 설정: -1 = auto (기기 성능에 따라 자동 결정), 1/2/3 = 고정값. 높을수록 고품질이지만 GPU 부하 증가")]
         public int devicePixelRatio = -1;

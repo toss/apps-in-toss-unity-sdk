@@ -347,6 +347,7 @@ namespace AppsInToss.Editor.Package
             // Path.Combine(destPath, "Build", file) 이 실제 파일 위치와 일치합니다.
             // Vite 가 public/ 을 정적 루트로 서빙하므로 호스트는 /ait-warm-manifest.json 으로 취득합니다.
             AITWarmManifestEmitter.WriteManifest(config, publicPath, loaderFile, dataFile, frameworkFile, wasmFile, symbolsFile);
+            AITWarmPageEmitter.WritePage(config, publicPath);
 
             Debug.Log("[AIT] Unity WebGL 빌드 복사 완료");
             Debug.Log("[AIT]   - index.html → 프로젝트 루트");

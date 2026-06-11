@@ -653,6 +653,24 @@ namespace AppsInToss.Editor
                     );
                 }
             }
+
+            // warm 페이지 산출 토글 — pageCache 와 warmManifest 실효값이 모두 true 일 때만 편집 가능.
+            bool warmManifestEffectiveForPage = config.warmManifest < 0
+                ? AITDefaultSettings.GetDefaultWarmManifest()
+                : config.warmManifest == 1;
+            using (new EditorGUI.DisabledScope(!(pageCacheActive && warmManifestEffectiveForPage)))
+            {
+                EditorGUI.indentLevel++;
+                config.emitWarmPage = EditorGUILayout.Toggle(
+                    new GUIContent(
+                        "Warm 페이지 산출",
+                        "빌드 시 self-warming 페이지(ait-warm.html)를 함께 산출합니다. " +
+                        "호스트가 숨김 WebView 로 열면 매니페스트 변경분을 미리 캐시에 적재합니다. " +
+                        "Warm Manifest 산출과 페이지 캐시 실효값이 모두 ON 이어야 활성화됩니다."),
+                    config.emitWarmPage
+                );
+                EditorGUI.indentLevel--;
+            }
         }
 
         private void DrawWarmManifestSetting()
@@ -1136,6 +1154,7 @@ namespace AppsInToss.Editor
             config.pageCache = -1;
             config.pageCacheName = "";
             config.warmManifest = -1;
+            config.emitWarmPage = false;
         }
 
         private void ResetAdvancedSettings()

@@ -211,10 +211,11 @@ namespace AppsInToss
         public int firstInteractiveLog = -1;
 
         [Header("콘텐츠 최적화 — 텍스처 crunch")]
-        [Tooltip("대상 텍스처/SpriteAtlas 를 빌드 시 일시적으로 crunch(DXT 위 4~8x) 압축 + maxTextureSize 캡으로 reimport 하여 " +
-                 "다운로드/.data 를 줄입니다. 빌드 후 원본 임포트 설정으로 복원하므로 명시적 opt-in 으로 기본 비활성입니다. " +
+        [Tooltip("-1 = 자동 (true), 0 = 비활성, 1 = 활성. " +
+                 "대상 텍스처/SpriteAtlas 를 빌드 시 일시적으로 crunch(DXT 위 4~8x) 압축 + maxTextureSize 캡으로 reimport 하여 " +
+                 "다운로드/.data 를 줄입니다. 빌드 후 원본 임포트 설정으로 복원합니다. " +
                  "crunch reimport 는 무겁습니다(에셋 수에 비례).")]
-        public bool enableTextureCrunch = false;
+        public int textureCrunch = -1;
 
         [Tooltip("텍스처 maxTextureSize 상한(0=캡 안 함). 이 값보다 큰 텍스처만 축소합니다. 예) 512, 1024")]
         public int textureCrunchMaxSize = 0;
@@ -231,7 +232,6 @@ namespace AppsInToss
 
         [Tooltip("대상 폴더(쉼표 구분, Assets/ 기준). 비우면 프로젝트 전체 텍스처가 대상입니다. 예) Assets/Art/Textures")]
         public string textureCrunchDirs = "";
->>>>>>> 1bccfce (기능: 텍스처 Crunch 압축 빌드 프로세서 추가 (빌드 시 DXT crunch, 빌드 후 임포터 원복))
 
         [Header("권한 설정")]
         public AITPermissionConfig permissionConfig = new AITPermissionConfig();
@@ -498,6 +498,16 @@ namespace AppsInToss
         /// 픽셀 불변·세션당 1회 단일 이벤트·호스트 로딩 지표 표준화에 해당하므로 기본 ON.
         /// </summary>
         public static bool GetDefaultFirstInteractiveLog()
+        {
+            return true;
+        }
+
+        /// <summary>
+        /// 기본 텍스처 crunch 활성화 여부.
+        /// crunch(DXT 위 4~8x)는 q=50 기준 시각 저하가 통상 미미한 반면 다운로드/.data 절감이 커 기본 ON.
+        /// ASTC 서브타겟에서는 빌드 시 자동으로 건너뛰고(no-op), 빌드 후 임포터 설정은 항상 원상 복원된다.
+        /// </summary>
+        public static bool GetDefaultTextureCrunch()
         {
             return true;
         }

@@ -481,15 +481,40 @@ namespace AppsInToss.Editor
 
         private void DrawTextureCrunchSetting()
         {
+            bool defaultValue = AITDefaultSettings.GetDefaultTextureCrunch();
+            bool isModified = config.textureCrunch >= 0 && (config.textureCrunch == 1) != defaultValue;
+
             EditorGUILayout.LabelField("콘텐츠 최적화 — 텍스처 crunch", EditorStyles.boldLabel);
 
-            config.enableTextureCrunch = EditorGUILayout.Toggle(
-                new GUIContent("텍스처 crunch 활성화",
+            EditorGUILayout.BeginHorizontal();
+
+            DrawModifiedIndicator(isModified);
+
+            string autoLabel = defaultValue ? "활성화" : "비활성화";
+            string label = config.textureCrunch < 0
+                ? $"텍스처 crunch (자동: {autoLabel})"
+                : "텍스처 crunch";
+
+            string[] options = { $"자동 ({autoLabel})", "비활성화", "활성화" };
+            int currentIndex = config.textureCrunch < 0 ? 0 : config.textureCrunch + 1;
+            int newIndex = EditorGUILayout.Popup(
+                new GUIContent(label,
                     "대상 텍스처/SpriteAtlas를 빌드 시 crunch(DXT 위 4~8x) 압축 + maxTextureSize 캡으로 reimport하여 다운로드/.data를 줄입니다. " +
                     "빌드 후 원본 임포트 설정으로 복원합니다. crunch reimport는 무겁습니다(에셋 수에 비례)."),
-                config.enableTextureCrunch);
+                currentIndex,
+                options
+            );
+            config.textureCrunch = newIndex == 0 ? -1 : newIndex - 1;
 
-            if (config.enableTextureCrunch)
+            if (isModified && DrawResetButton())
+            {
+                config.textureCrunch = -1;
+            }
+
+            EditorGUILayout.EndHorizontal();
+
+            bool effectiveEnabled = config.textureCrunch >= 0 ? config.textureCrunch == 1 : defaultValue;
+            if (effectiveEnabled)
             {
                 EditorGUI.indentLevel++;
                 config.textureCrunchMaxSize = EditorGUILayout.IntField(
@@ -1064,6 +1089,9 @@ namespace AppsInToss.Editor
             bool defaultFirstInteractive = AITDefaultSettings.GetDefaultFirstInteractiveLog();
             if (config.firstInteractiveLog >= 0 && (config.firstInteractiveLog == 1) != defaultFirstInteractive) count++;
 
+            bool defaultCrunch = AITDefaultSettings.GetDefaultTextureCrunch();
+            if (config.textureCrunch >= 0 && (config.textureCrunch == 1) != defaultCrunch) count++;
+
             return count;
         }
 
@@ -1073,6 +1101,7 @@ namespace AppsInToss.Editor
             config.threadsSupport = -1;
             config.dataCaching = -1;
             config.firstInteractiveLog = -1;
+            config.textureCrunch = -1;
         }
 
         private void ResetAdvancedSettings()

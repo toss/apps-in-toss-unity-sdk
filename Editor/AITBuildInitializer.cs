@@ -221,6 +221,12 @@ namespace AppsInToss.Editor
                 ? editorConfig.firstInteractiveLog == 1
                 : AITDefaultSettings.GetDefaultFirstInteractiveLog();
             Debug.Log($"[AIT]   - first-interactive 계측: {firstInteractiveEnabled}{(editorConfig.firstInteractiveLog < 0 ? " (자동)" : "")}");
+
+            // 텍스처 crunch 는 BuildPlayer 직전 AITTextureCrunchProcessor 에서 처리
+            bool textureCrunchEnabled = editorConfig.textureCrunch >= 0
+                ? editorConfig.textureCrunch == 1
+                : AITDefaultSettings.GetDefaultTextureCrunch();
+            Debug.Log($"[AIT]   - 텍스처 crunch: {textureCrunchEnabled}{(editorConfig.textureCrunch < 0 ? " (자동)" : "")}");
         }
 
         /// <summary>

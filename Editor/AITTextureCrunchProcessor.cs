@@ -24,8 +24,8 @@
 //   try/finally 의 finally 에서 RestoreForBuild 를 호출한다(오디오 스트리밍과 동일 패턴).
 //
 // ⚠ 비용: crunch reimport 는 무겁다(에셋 수에 비례). 빌드 시 apply + 복원으로 2회 reimport 가
-//   발생하므로, 명시적 opt-in 으로 기본 비활성이다. 대용량 텍스처가 많은 프로젝트의 다운로드
-//   최적화용이다.
+//   발생한다. 기본은 자동 ON이며, 대용량 텍스처 프로젝트에서 다운로드/.data 를 실감한다.
+//   필요시 AIT Configuration에서 비활성화할 수 있다.
 
 using System;
 using System.Collections.Generic;
@@ -38,7 +38,7 @@ using UnityEngine.U2D;
 namespace AppsInToss.Editor
 {
     /// <summary>
-    /// 빌드 단계 텍스처 crunch 처리기. <see cref="AITEditorScriptObject.enableTextureCrunch"/>
+    /// 빌드 단계 텍스처 crunch 처리기. <see cref="AITEditorScriptObject.textureCrunch"/>
     /// 설정에 따라 동작한다. 런타임 컴포넌트는 없다(빌드 산출물만 작아질 뿐, 런타임 동작 동일).
     /// </summary>
     [InitializeOnLoad]
@@ -80,7 +80,10 @@ namespace AppsInToss.Editor
         public static CrunchHandle ApplyForBuild(AITEditorScriptObject config)
         {
             var handle = new CrunchHandle();
-            if (config == null || !config.enableTextureCrunch)
+            bool enabled = config != null && (config.textureCrunch >= 0
+                ? config.textureCrunch == 1
+                : AITDefaultSettings.GetDefaultTextureCrunch());
+            if (config == null || !enabled)
             {
                 // crunch 비활성 — 후보 스캔 후 절감 가능 여부를 1줄 안내(후보 0이면 침묵).
                 if (config != null)
@@ -126,7 +129,7 @@ namespace AppsInToss.Editor
                     RemoveMarker();
                 }
 
-                Debug.Log($"[AIT-TextureCrunch] ✓ 텍스처 {tex}개 + 아틀라스 {atl}개 crunch(q={quality}, maxSize≤{(maxSize > 0 ? maxSize.ToString() : "원본")}) 적용.");
+                Debug.Log($"[AIT-TextureCrunch] ✓ 텍스처 {tex}개 + 아틀라스 {atl}개 crunch(q={quality}, maxSize≤{(maxSize > 0 ? maxSize.ToString() : "원본")}) 적용{(config.textureCrunch < 0 ? " (자동)" : "")}.");
                 return handle;
             }
             catch (Exception e)
@@ -189,8 +192,8 @@ namespace AppsInToss.Editor
         // ─────────────────────────── 후보 스캔 안내 ───────────────────────────
 
         /// <summary>
-        /// crunch 비활성 빌드에서 절감 후보 텍스처 수를 빠르게 세어
-        /// 후보가 1개 이상이면 Debug.Log 1줄로 opt-in 안내를 출력한다.
+        /// crunch 비활성화 빌드에서 절감 후보 텍스처 수를 빠르게 세어
+        /// 후보가 1개 이상이면 Debug.Log 1줄로 재활성화 안내를 출력한다.
         /// 스캔 비용을 제한하기 위해 <see cref="CandidateScanLimit"/>개를 초과하면 중단.
         /// </summary>
         private static void ReportCandidateHint(AITEditorScriptObject config)
@@ -243,8 +246,8 @@ namespace AppsInToss.Editor
                 if (candidates > 0)
                 {
                     string countStr = hitLimit ? $"{CandidateScanLimit}+개" : $"{candidates}개";
-                    Debug.Log($"[AIT] 텍스처 Crunch(opt-in): 후보 {countStr} 발견. " +
-                        "AIT Configuration에서 활성화하면 .data 크기를 줄일 수 있습니다" +
+                    Debug.Log($"[AIT] 텍스처 Crunch 비활성화됨: 후보 {countStr} 존재. " +
+                        "AIT Configuration에서 자동/활성화로 되돌리면 .data 크기를 줄일 수 있습니다" +
                         "(품질 트레이드오프 있음 — lossy).");
                 }
             }

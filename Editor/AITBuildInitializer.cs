@@ -221,6 +221,12 @@ namespace AppsInToss.Editor
                 ? editorConfig.firstInteractiveLog == 1
                 : AITDefaultSettings.GetDefaultFirstInteractiveLog();
             Debug.Log($"[AIT]   - first-interactive 계측: {firstInteractiveEnabled}{(editorConfig.firstInteractiveLog < 0 ? " (자동)" : "")}");
+
+            // 오디오 스트리밍은 BuildPlayer 직전 AITAudioStreamingProcessor 에서 처리
+            bool audioStreamingEnabled = editorConfig.audioStreaming >= 0
+                ? editorConfig.audioStreaming == 1
+                : AITDefaultSettings.GetDefaultAudioStreaming();
+            Debug.Log($"[AIT]   - 오디오 스트리밍: {audioStreamingEnabled}{(editorConfig.audioStreaming < 0 ? " (자동)" : "")}");
         }
 
         /// <summary>

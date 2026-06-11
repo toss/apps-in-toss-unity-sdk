@@ -211,10 +211,10 @@ namespace AppsInToss
         public int firstInteractiveLog = -1;
 
         [Header("콘텐츠 최적화 — 오디오 스트리밍")]
-        [Tooltip("대용량 오디오를 초기 .data 에서 분리해 StreamingAssets 로 외부화하고, 런타임에 비동기 스트리밍으로 복원합니다. " +
-                 "초기 다운로드/TTI 를 크게 줄입니다. 빌드 시 오디오 에셋을 일시적으로 무음 스텁으로 치환했다가 빌드 후 원상 복원하므로, " +
-                 "명시적 opt-in 으로 기본 비활성입니다.")]
-        public bool enableAudioStreaming = false;
+        [Tooltip("-1 = 자동 (true), 0 = 비활성, 1 = 활성. " +
+                 "대용량 오디오를 초기 .data 에서 분리해 StreamingAssets 로 외부화하고, 런타임에 비동기 스트리밍으로 복원합니다. " +
+                 "초기 다운로드/TTI 를 크게 줄입니다. 빌드 시 오디오 에셋을 일시적으로 무음 스텁으로 치환했다가 빌드 후 원상 복원합니다.")]
+        public int audioStreaming = -1;
 
         [Tooltip("이 바이트 수보다 큰 AudioClip 만 외부화 대상입니다 (기본 256KB).")]
         public int audioStreamingMinBytes = 262144;
@@ -487,6 +487,16 @@ namespace AppsInToss
         /// 픽셀 불변·세션당 1회 단일 이벤트·호스트 로딩 지표 표준화에 해당하므로 기본 ON.
         /// </summary>
         public static bool GetDefaultFirstInteractiveLog()
+        {
+            return true;
+        }
+
+        /// <summary>
+        /// 기본 오디오 스트리밍 활성화 여부.
+        /// 256KB 초과 AudioClip 을 초기 .data 에서 분리해 StreamingAssets 로 외부화하고
+        /// 런타임에 비동기로 복원 — TTI 단축 효과가 크므로 기본 ON.
+        /// </summary>
+        public static bool GetDefaultAudioStreaming()
         {
             return true;
         }

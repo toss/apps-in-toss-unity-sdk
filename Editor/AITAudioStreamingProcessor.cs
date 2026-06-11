@@ -31,8 +31,8 @@ using UnityEngine;
 namespace AppsInToss.Editor
 {
     /// <summary>
-    /// 빌드 단계 오디오 외부화/복원 처리기. <see cref="AITEditorScriptObject.enableAudioStreaming"/>
-    /// 설정에 따라 동작하며, 런타임 컴포넌트 <c>AppsInToss.AITStreamingAudio</c> 와 짝을 이룬다.
+    /// 빌드 단계 오디오 외부화/복원 처리기. <see cref="AITEditorScriptObject.audioStreaming"/>
+    /// tri-state 설정에 따라 동작하며, 런타임 컴포넌트 <c>AppsInToss.AITStreamingAudio</c> 와 짝을 이룬다.
     /// </summary>
     [InitializeOnLoad]
     public static class AITAudioStreamingProcessor
@@ -72,7 +72,13 @@ namespace AppsInToss.Editor
         public static StreamHandle ExternalizeForBuild(AITEditorScriptObject config)
         {
             var handle = new StreamHandle();
-            if (config == null || !config.enableAudioStreaming)
+
+            // tri-state: -1 = 자동 (GetDefaultAudioStreaming()), 0 = 비활성, 1 = 활성
+            bool enabled = config != null
+                ? (config.audioStreaming >= 0 ? config.audioStreaming == 1 : AITDefaultSettings.GetDefaultAudioStreaming())
+                : false;
+
+            if (config == null || !enabled)
             {
                 return handle;
             }
@@ -93,6 +99,7 @@ namespace AppsInToss.Editor
                 Directory.CreateDirectory(Path.Combine(projectRoot, StreamRootAssets));
 
                 var entries = new List<string>();
+                var externalizedPaths = new List<string>(); // 빌드 리포트용 경로 목록
                 int n = 0;
                 long stubbedBytes = 0;
                 var guids = AssetDatabase.FindAssets("t:AudioClip", new[] { "Assets" });
@@ -162,6 +169,7 @@ namespace AppsInToss.Editor
                                 + ",\"file\":" + JsonStr(streamFile) + ",\"length\":" + realLen.ToString("0.###") + "}");
                     n++;
                     stubbedBytes += size;
+                    externalizedPaths.Add(path);
                     Debug.Log($"[AIT-StreamingAudio]   외부화 {clipName} ({size / 1048576f:0.00}MB src, len {realLen:0.0}s) → {streamFile}");
                 }
 
@@ -174,7 +182,27 @@ namespace AppsInToss.Editor
 
                 handle.Active = true;
                 handle.Count = n;
-                Debug.Log($"[AIT-StreamingAudio] ✓ {n}개 오디오 외부화, 소스 {stubbedBytes / 1048576f:0.0}MB 스텁(초기 .data 제거).");
+
+                // 빌드 리포트: 요약 1줄
+                if (n > 0)
+                {
+                    float savedMb = stubbedBytes / 1048576f;
+                    Debug.Log($"[AIT] 오디오 스트리밍: {n}개 클립 외부화, 초기 번들 {savedMb:0.0} MB 절감");
+
+                    // 외부화된 클립 경로 목록
+                    var pathListSb = new StringBuilder();
+                    pathListSb.AppendLine("[AIT-StreamingAudio] 외부화된 클립 목록:");
+                    foreach (var p in externalizedPaths)
+                    {
+                        pathListSb.AppendLine($"  - {p}");
+                    }
+                    Debug.Log(pathListSb.ToString().TrimEnd());
+                }
+                else
+                {
+                    Debug.Log($"[AIT] 오디오 스트리밍: 외부화 대상 없음(256KB 초과 AudioClip 없음)");
+                }
+
                 return handle;
             }
             catch (Exception e)

@@ -203,6 +203,12 @@ namespace AppsInToss.Editor
                 : AITDefaultSettings.GetDefaultMipStripping();
             PlayerSettings.mipStripping = mipStripping;
 
+            // Mip Stripping이 활성화된 경우, 런타임 Quality 변경 코드가 있는지 경고
+            if (mipStripping)
+            {
+                WarnIfRuntimeQualityChangingCodeExists();
+            }
+
             // 설정 요약 로그
             Debug.Log($"[AIT] Unity {AITDefaultSettings.GetUnityVersionGroup()} 최적화 설정 적용:");
             Debug.Log($"[AIT]   - WebGL Template: {PlayerSettings.WebGL.template}");
@@ -252,6 +258,75 @@ namespace AppsInToss.Editor
             PlayerSettings.SetStackTraceLogType(LogType.Warning, StackTraceLogType.ScriptOnly);
             PlayerSettings.SetStackTraceLogType(LogType.Log, StackTraceLogType.ScriptOnly);
             PlayerSettings.SetStackTraceLogType(LogType.Exception, StackTraceLogType.ScriptOnly);
+        }
+
+        /// <summary>
+        /// 런타임에서 Quality 레벨을 변경하는 코드가 감지되면 경고를 출력한다.
+        /// Mip Stripping은 빌드 시점의 현재 Quality 기준으로 밉맵을 제거하므로,
+        /// 런타임에 더 낮은 Quality로 전환하면 렌더링 아티팩트가 발생할 수 있다.
+        /// 스캔 실패(IO 예외 등)는 흡수하고 빌드를 계속한다.
+        /// </summary>
+        private static void WarnIfRuntimeQualityChangingCodeExists()
+        {
+            // Quality 레벨이 1개 이하이면 런타임 변경이 무의미하므로 스캔 불필요
+            if (UnityEngine.QualitySettings.names.Length <= 1)
+                return;
+
+            try
+            {
+                string assetsPath = System.IO.Path.Combine(
+                    System.IO.Directory.GetCurrentDirectory(), "Assets");
+
+                if (!System.IO.Directory.Exists(assetsPath))
+                    return;
+
+                // Assets/ 하위 .cs 파일을 검색하되 Editor/ 폴더는 제외
+                var csFiles = System.IO.Directory.GetFiles(
+                    assetsPath, "*.cs", System.IO.SearchOption.AllDirectories);
+
+                var matchedFiles = new System.Collections.Generic.List<string>();
+
+                foreach (string filePath in csFiles)
+                {
+                    // Editor 폴더 내 파일은 런타임 코드가 아니므로 제외
+                    string normalizedPath = filePath.Replace('\\', '/');
+                    if (normalizedPath.Contains("/Editor/"))
+                        continue;
+
+                    string content = System.IO.File.ReadAllText(filePath);
+                    if (content.Contains("QualitySettings.SetQualityLevel") ||
+                        content.Contains("QualitySettings.IncreaseLevel") ||
+                        content.Contains("QualitySettings.DecreaseLevel"))
+                    {
+                        // 상대 경로로 변환해 로그를 간결하게 출력
+                        string relativePath = filePath.Replace(
+                            System.IO.Directory.GetCurrentDirectory() + System.IO.Path.DirectorySeparatorChar, "");
+                        matchedFiles.Add(relativePath.Replace('\\', '/'));
+                    }
+                }
+
+                if (matchedFiles.Count == 0)
+                    return;
+
+                // 최대 5개 파일 목록 구성
+                int displayCount = System.Math.Min(matchedFiles.Count, 5);
+                var fileList = new System.Text.StringBuilder();
+                for (int i = 0; i < displayCount; i++)
+                    fileList.AppendLine($"  - {matchedFiles[i]}");
+                if (matchedFiles.Count > 5)
+                    fileList.AppendLine($"  ... 외 {matchedFiles.Count - 5}개 파일");
+
+                Debug.LogWarning(
+                    $"[AIT] 런타임 Quality 변경 코드가 감지되었습니다({matchedFiles.Count}개 파일). " +
+                    "Mip Stripping은 현재 Quality의 텍스처 품질 기준으로 밉을 제거하므로 런타임에 Quality를 낮추면 " +
+                    "렌더링 아티팩트가 발생할 수 있습니다. 문제가 있으면 AIT Configuration에서 Mip Stripping을 비활성화하세요.\n" +
+                    fileList.ToString().TrimEnd());
+            }
+            catch (System.Exception e)
+            {
+                // IO 예외 등 스캔 실패는 흡수하고 빌드 계속
+                Debug.Log($"[AIT] Mip Stripping 런타임 Quality 변경 스캔 중 예외 발생 (무시됨): {e.Message}");
+            }
         }
 
         /// <summary>

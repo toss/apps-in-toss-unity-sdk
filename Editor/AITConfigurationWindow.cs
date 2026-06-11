@@ -453,6 +453,8 @@ namespace AppsInToss.Editor
 
             // first-interactive 계측
             DrawFirstInteractiveLogSetting();
+            // 콘텐츠 최적화 — ASTC 블록 에스컬레이션
+            DrawAstcBlockSetting();
 
             GUILayout.Space(10);
 
@@ -1016,12 +1018,80 @@ namespace AppsInToss.Editor
             return count;
         }
 
+        private void DrawAstcBlockSetting()
+        {
+            EditorGUILayout.LabelField("콘텐츠 최적화 — ASTC 블록 에스컬레이션", EditorStyles.boldLabel);
+
+            config.enableAstcBlockEscalation = EditorGUILayout.Toggle(
+                new GUIContent("ASTC 블록 에스컬레이션 활성화",
+                    "ASTC 서브타겟 전용: 텍스처를 더 큰 ASTC 블록으로 reimport 하여 .data 크기를 줄입니다. lossy."),
+                config.enableAstcBlockEscalation
+            );
+
+            if (config.enableAstcBlockEscalation)
+            {
+                EditorGUI.indentLevel++;
+
+                // 블록 크기 팝업
+                int[] blockSizes = { 4, 5, 6, 8, 10, 12 };
+                string[] blockSizeLabels = { "4x4 (최고화질, 최대용량)", "5x5", "6x6", "8x8", "10x10", "12x12 (최소용량, 최저화질)" };
+                int currentBlockIndex = Array.IndexOf(blockSizes, config.astcBlockSize);
+                if (currentBlockIndex < 0) currentBlockIndex = 5; // 기본값 12x12
+                int newBlockIndex = EditorGUILayout.IntPopup(
+                    "블록 크기",
+                    currentBlockIndex,
+                    blockSizeLabels,
+                    new int[] { 0, 1, 2, 3, 4, 5 }
+                );
+                config.astcBlockSize = blockSizes[newBlockIndex];
+
+                // maxTextureSize 캡
+                config.astcBlockMaxSize = EditorGUILayout.IntField(
+                    new GUIContent("maxTextureSize 캡", "0=캡 안 함(원본 크기 유지). 양수 입력 시 해당 크기로 제한."),
+                    config.astcBlockMaxSize
+                );
+
+                // SpriteAtlas 포함
+                config.astcBlockAtlas = EditorGUILayout.Toggle(
+                    new GUIContent("SpriteAtlas 포함", "SpriteAtlas 의 WebGL 플랫폼 설정도 오버라이드하고 repack합니다."),
+                    config.astcBlockAtlas
+                );
+
+                // 대상 폴더
+                config.astcBlockDirs = EditorGUILayout.TextField(
+                    new GUIContent("대상 폴더 (쉼표 구분)", "비우면 Assets 전체. 예: Assets/Textures,Assets/UI"),
+                    config.astcBlockDirs
+                );
+
+                // 제외 폴더
+                config.astcBlockExcludeDirs = EditorGUILayout.TextField(
+                    new GUIContent("제외 폴더 (쉼표 구분)", "폰트/SDF/TextMeshPro 는 항상 자동 제외됩니다."),
+                    config.astcBlockExcludeDirs
+                );
+
+                EditorGUI.indentLevel--;
+            }
+
+            EditorGUILayout.HelpBox(
+                "⚠ lossy: 원본보다 화질이 낮아집니다.\n" +
+                "ASTC 서브타겟 전용 — DXT(기본) 서브타겟 프로젝트에서는 빌드 시 자동 skip됩니다.\n" +
+                "빌드 완료 후 원본 임포트 설정이 자동으로 복원됩니다(비파괴).",
+                MessageType.Warning
+            );
+        }
+
         private void ResetWebGLSettings()
         {
             config.memorySize = -1;
             config.threadsSupport = -1;
             config.dataCaching = -1;
             config.firstInteractiveLog = -1;
+            config.enableAstcBlockEscalation = false;
+            config.astcBlockSize = 12;
+            config.astcBlockMaxSize = 0;
+            config.astcBlockAtlas = true;
+            config.astcBlockDirs = "";
+            config.astcBlockExcludeDirs = "";
         }
 
         private void ResetAdvancedSettings()

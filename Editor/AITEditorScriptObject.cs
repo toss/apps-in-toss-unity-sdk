@@ -209,6 +209,27 @@ namespace AppsInToss
         [Header("계측 설정")]
         [Tooltip("first-interactive 계측: -1 = 자동 (활성), 0 = 비활성, 1 = 활성")]
         public int firstInteractiveLog = -1;
+        [Header("콘텐츠 최적화 — ASTC 블록 에스컬레이션")]
+        [Tooltip("ASTC 서브타겟 WebGL 빌드에서 텍스처를 더 큰 ASTC 블록(기본 12x12)으로 reimport 하여 " +
+                 ".data on-wire 크기를 줄입니다. lossy(화질 저하 있음). 빌드 후 원본 임포트 설정으로 자동 복원. " +
+                 "ASTC 서브타겟 전용 — DXT(기본) 서브타겟 프로젝트에서는 빌드 시 자동 skip됩니다.")]
+        public bool enableAstcBlockEscalation = false;
+
+        [Tooltip("ASTC 블록 크기(4/5/6/8/10/12). 클수록 파일이 작아지고 화질이 낮아집니다. 기본값 12.")]
+        public int astcBlockSize = 12;
+
+        [Tooltip("WebGL 플랫폼 오버라이드 maxTextureSize 캡. 0=캡 안 함(원본 크기 유지).")]
+        public int astcBlockMaxSize = 0;
+
+        [Tooltip("SpriteAtlas 도 포함하여 WebGL 플랫폼 설정을 오버라이드하고 repack합니다.")]
+        public bool astcBlockAtlas = true;
+
+        [Tooltip("ASTC 블록 에스컬레이션을 적용할 폴더(쉼표 구분). 비우면 Assets 전체가 대상입니다.")]
+        public string astcBlockDirs = "";
+
+        [Tooltip("ASTC 블록 에스컬레이션에서 제외할 폴더(쉼표 구분). " +
+                 "폰트/SDF/TextMeshPro 경로는 이 필드와 무관하게 항상 내장 휴리스틱으로 추가 제외됩니다.")]
+        public string astcBlockExcludeDirs = "";
 
         [Header("권한 설정")]
         public AITPermissionConfig permissionConfig = new AITPermissionConfig();

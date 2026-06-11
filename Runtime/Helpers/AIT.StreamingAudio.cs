@@ -24,7 +24,9 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+#if AIT_HAS_UWR_AUDIO
 using UnityEngine.Networking;
+#endif
 using UnityEngine.Scripting;
 
 namespace AppsInToss
@@ -83,6 +85,12 @@ namespace AppsInToss
 
         private IEnumerator Run()
         {
+#if !AIT_HAS_UWR_AUDIO
+            // unitywebrequestaudio 모듈이 비활성화된 환경: 복원 불가이므로 컴포넌트 정리 후 종료.
+            Debug.LogWarning("[AIT] unitywebrequestaudio 모듈이 비활성화되어 오디오 스트리밍 복원을 건너뜁니다");
+            Destroy(gameObject);
+            yield break;
+#endif
             yield return LoadManifest();
             if (!ready || byName.Count == 0)
             {
@@ -176,6 +184,7 @@ namespace AppsInToss
 
         private IEnumerator LoadClip(Entry entry, AudioSource firstRequester)
         {
+#if AIT_HAS_UWR_AUDIO
             string url = ResolveStreamingUrl(StreamDirRelativePath + entry.file);
             var type = GuessAudioType(entry.file);
             using (var req = UnityWebRequestMultimedia.GetAudioClip(url, type))
@@ -204,6 +213,12 @@ namespace AppsInToss
 
                 loading.Remove(entry.name);
             }
+#else
+            // unitywebrequestaudio 모듈 비활성화 환경: 오디오 스트리밍 복원 불가.
+            Debug.LogWarning("[AIT] unitywebrequestaudio 모듈이 비활성화되어 오디오 스트리밍 복원을 건너뜁니다");
+            loading.Remove(entry.name);
+            yield break;
+#endif
         }
 
         /// <summary>클립 길이가 무음 스텁 임계값보다 짧으면 재수화 대상(=스텁)으로 판정. (테스트 가능한 순수 함수)</summary>

@@ -73,6 +73,16 @@ namespace AppsInToss.Editor
         {
             var handle = new StreamHandle();
 
+            // 리플렉션으로 unitywebrequestaudio 모듈 존재 확인.
+            // 모듈이 없으면 런타임 복원이 불가하므로 빌드 단계에서 외부화를 차단한다(영구 무음 방지).
+            var uwrAudioType = System.Type.GetType(
+                "UnityEngine.Networking.UnityWebRequestMultimedia, UnityEngine.UnityWebRequestAudioModule");
+            if (uwrAudioType == null)
+            {
+                Debug.LogWarning("[AIT] 오디오 스트리밍: unitywebrequestaudio 모듈 비활성화로 외부화를 건너뜁니다 (Package Manager에서 Unity Web Request Audio 모듈을 활성화하면 사용 가능)");
+                return handle;
+            }
+
             // tri-state: -1 = 자동 (GetDefaultAudioStreaming()), 0 = 비활성, 1 = 활성
             bool enabled = config != null
                 ? (config.audioStreaming >= 0 ? config.audioStreaming == 1 : AITDefaultSettings.GetDefaultAudioStreaming())

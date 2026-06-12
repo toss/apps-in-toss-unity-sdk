@@ -24,8 +24,8 @@
   "packageManager": "pnpm@10.28.0",
   "dependencies": {
     "@apps-in-toss/framework": "1.6.0",
-    "@apps-in-toss/web-analytics": "2.6.1",
-    "@apps-in-toss/web-framework": "2.6.1",
+    "@apps-in-toss/web-analytics": "2.6.2",
+    "@apps-in-toss/web-framework": "2.6.2",
     "commander": "15.0.0",
     "handlebars": "4.7.9",
     "picocolors": "1.1.1",
@@ -87,7 +87,8 @@
     "web-framework-2.5.1": "npm:@apps-in-toss/web-framework@2.5.1",
     "web-framework-2.5.2": "npm:@apps-in-toss/web-framework@2.5.2",
     "web-framework-2.6.0": "npm:@apps-in-toss/web-framework@2.6.0",
-    "web-framework-2.6.1": "npm:@apps-in-toss/web-framework@2.6.1"
+    "web-framework-2.6.1": "npm:@apps-in-toss/web-framework@2.6.1",
+    "web-framework-2.6.2": "npm:@apps-in-toss/web-framework@2.6.2"
   },
   "pnpm": {
     "overrides": {

@@ -1646,7 +1646,11 @@ jobs:
           AIT_IL2CPP_CONFIGURATION: ${{ inputs.fast-build && 'Debug' || '' }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         with:
-          timeout_minutes: 30
+          # Windows 러너의 release 프로필(fast-build=false) 6000.x 빌드는 Brotli 압축
+          # 포함 ~28분(warm Library 캐시 실측, 2026-06 베타 릴리즈 run 27433833844)으로
+          # 30분 한도에 아슬아슬하고, cold 캐시에서는 timeout으로 실패가 재발한다 →
+          # 45분으로 상향 (job 한도 90분 내 여유 충분. macOS는 30분 내 안정 통과라 유지).
+          timeout_minutes: 45
           max_attempts: 3
           retry_wait_seconds: 0
           retry_on_exit_code: 42

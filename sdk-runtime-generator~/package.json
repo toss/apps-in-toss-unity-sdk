@@ -24,7 +24,7 @@
   "packageManager": "pnpm@10.28.0",
   "dependencies": {
     "@apps-in-toss/framework": "1.6.0",
-    "@apps-in-toss/web-analytics": "2.6.2",
+    "@apps-in-toss/web-analytics": "2.7.0",
     "@apps-in-toss/web-framework": "2.6.2",
     "commander": "15.0.0",
     "handlebars": "4.7.9",

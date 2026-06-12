@@ -451,6 +451,11 @@ namespace AppsInToss.Editor
 
             GUILayout.Space(10);
 
+            // first-interactive 계측
+            DrawFirstInteractiveLogSetting();
+
+            GUILayout.Space(10);
+
             // 변경된 설정 개수 표시
             int modifiedCount = CountModifiedWebGLSettings();
             if (modifiedCount > 0)
@@ -961,6 +966,37 @@ namespace AppsInToss.Editor
             }
         }
 
+        private void DrawFirstInteractiveLogSetting()
+        {
+            bool defaultValue = AITDefaultSettings.GetDefaultFirstInteractiveLog();
+            bool isModified = config.firstInteractiveLog >= 0 && (config.firstInteractiveLog == 1) != defaultValue;
+
+            EditorGUILayout.BeginHorizontal();
+
+            DrawModifiedIndicator(isModified);
+
+            string autoLabel = defaultValue ? "활성화" : "비활성화";
+            string label = config.firstInteractiveLog < 0
+                ? $"first-interactive 계측 (자동: {autoLabel})"
+                : "first-interactive 계측";
+
+            string[] options = { $"자동 ({autoLabel})", "비활성화", "활성화" };
+            int currentIndex = config.firstInteractiveLog < 0 ? 0 : config.firstInteractiveLog + 1;
+            int newIndex = EditorGUILayout.Popup(
+                new GUIContent(label,
+                    "원래 첫 씬 로드 완료 시점(time-to-original-scene)을 호스트에 전송합니다. " +
+                    "픽셀 불변·세션당 1회 단일 이벤트이므로 기본 활성화됩니다."),
+                currentIndex, options);
+            config.firstInteractiveLog = newIndex == 0 ? -1 : newIndex - 1;
+
+            if (isModified && DrawResetButton())
+            {
+                config.firstInteractiveLog = -1;
+            }
+
+            EditorGUILayout.EndHorizontal();
+        }
+
         private int CountModifiedWebGLSettings()
         {
             int count = 0;
@@ -974,6 +1010,9 @@ namespace AppsInToss.Editor
             bool defaultCaching = AITDefaultSettings.GetDefaultDataCaching();
             if (config.dataCaching >= 0 && (config.dataCaching == 1) != defaultCaching) count++;
 
+            bool defaultFirstInteractive = AITDefaultSettings.GetDefaultFirstInteractiveLog();
+            if (config.firstInteractiveLog >= 0 && (config.firstInteractiveLog == 1) != defaultFirstInteractive) count++;
+
             return count;
         }
 
@@ -982,6 +1021,7 @@ namespace AppsInToss.Editor
             config.memorySize = -1;
             config.threadsSupport = -1;
             config.dataCaching = -1;
+            config.firstInteractiveLog = -1;
         }
 
         private void ResetAdvancedSettings()

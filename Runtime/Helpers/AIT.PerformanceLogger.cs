@@ -19,7 +19,9 @@ namespace AppsInToss
     /// <remarks>
     /// RuntimeInitializeOnLoadMethod로 자동 초기화되며, 사용자 코드 작성이 불필요합니다.
     /// 수집 이벤트: Scene 전환, Low Memory, 에러/예외, 앱 라이프사이클,
-    /// 프레임 스톨, 화면 변경, GC 수집, TimeScale 변경
+    /// 프레임 스톨, 화면 변경, GC 수집, TimeScale 변경, first-interactive
+    /// (first-interactive: 원래 첫 씬 로드 완료 시점 — time-to-original-scene.
+    ///  부팅 첫 씬 로드는 first-paint 직전에 발생하므로 base 빌드에서는 두 지표가 근접함)
     /// </remarks>
     [Preserve]
     internal static class AITPerformanceLogger
@@ -27,9 +29,17 @@ namespace AppsInToss
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __AITDebugLog_Send(string jsonStr);
+
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern int __AITDebugLog_FirstInteractiveEnabled();
 #endif
 
         private const string Tag = "[AITPerformanceLogger]";
+
+        // first-interactive 관련 상수 및 상태
+        private const string ProxyBootScenePrefix = "AITProxyBoot";
+        private static bool _firstInteractiveSent;
+        private static int _firstInteractiveEnabledCache = -1; // -1=미확인, 0=비활성, 1=활성
 
         // Rate limit constants
         private const float LowMemoryIntervalSec = 30f;
@@ -155,11 +165,74 @@ namespace AppsInToss
                     { "total_loaded_scenes", SceneManager.sceneCount },
                     { "time_since_start_sec", Math.Round(Time.realtimeSinceStartup, 1) }
                 });
+
+                // first-interactive: 원래 첫 씬 로드 완료 시점 계측 (once-per-session).
+                // 활성 여부는 빌드 시 템플릿에 새겨진 상수(부재 시 fail-open=활성)라 세션 중 변하지 않으며,
+                // 최초 대상 씬에서 활성 여부와 무관하게 _firstInteractiveSent를 고정한다 — 이후 씬은 "first"가 아니다.
+                if (ShouldEmitFirstInteractive(scene.name, _firstInteractiveSent))
+                {
+                    bool enabled = IsFirstInteractiveLogEnabled();
+                    _firstInteractiveSent = true; // 활성 여부와 무관하게 "최초" 의미 고정 (이후 씬은 first가 아님)
+                    if (enabled)
+                    {
+                        SendLog("unity_first_interactive", new Dictionary<string, object>
+                        {
+                            { "event_type", "first_interactive" },
+                            { "scene_name", scene.name },
+                            { "scene_build_index", scene.buildIndex },
+                            { "time_since_start_ms", (long)Math.Round(Time.realtimeSinceStartup * 1000.0, 0) }
+                        });
+                    }
+                }
             }
             catch (Exception ex)
             {
                 Debug.LogWarning($"{Tag} OnSceneLoaded error: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// first-interactive 이벤트를 발화해야 하는지 판단한다.
+        /// </summary>
+        /// <param name="sceneName">로드된 씬 이름</param>
+        /// <param name="alreadySent">이미 발화된 경우 true</param>
+        /// <returns>
+        /// alreadySent=true 이면 false(중복 방지).
+        /// sceneName이 null/empty 이면 true(이름 없는 씬도 최초 실 씬으로 취급).
+        /// sceneName이 "AITProxyBoot"로 시작하면 false(SDK 주입 프록시 부팅 씬은 원래 첫 씬이 아님).
+        /// 그 외는 true.
+        /// </returns>
+        internal static bool ShouldEmitFirstInteractive(string sceneName, bool alreadySent)
+        {
+            if (alreadySent) return false;
+            if (string.IsNullOrEmpty(sceneName)) return true;
+            if (sceneName.StartsWith(ProxyBootScenePrefix, StringComparison.Ordinal)) return false;
+            return true;
+        }
+
+        /// <summary>
+        /// first-interactive 로그 활성 여부를 반환한다.
+        /// WebGL 비에디터 환경에서 jslib extern을 1회 호출한 뒤 캐시한다(fail-open).
+        /// 그 외 환경에서는 항상 false(SendLog가 어차피 no-op).
+        /// </summary>
+        private static bool IsFirstInteractiveLogEnabled()
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            if (_firstInteractiveEnabledCache < 0)
+            {
+                try
+                {
+                    _firstInteractiveEnabledCache = __AITDebugLog_FirstInteractiveEnabled();
+                }
+                catch
+                {
+                    _firstInteractiveEnabledCache = 1; // fail-open
+                }
+            }
+            return _firstInteractiveEnabledCache == 1;
+#else
+            return false;
+#endif
         }
 
         private static void OnSceneUnloaded(Scene scene)

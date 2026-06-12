@@ -216,6 +216,11 @@ namespace AppsInToss.Editor
             Debug.Log($"[AIT]   - WASM Streaming: {editorConfig.wasmStreaming}");
 #endif
 #endif
+            // first-interactive 계측은 BuildPlayer 후 WebGLBuildCopier에서 처리
+            bool firstInteractiveEnabled = editorConfig.firstInteractiveLog >= 0
+                ? editorConfig.firstInteractiveLog == 1
+                : AITDefaultSettings.GetDefaultFirstInteractiveLog();
+            Debug.Log($"[AIT]   - first-interactive 계측: {firstInteractiveEnabled}{(editorConfig.firstInteractiveLog < 0 ? " (자동)" : "")}");
         }
 
         /// <summary>

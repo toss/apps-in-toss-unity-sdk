@@ -12,5 +12,12 @@ mergeInto(LibraryManager.library, {
         } catch (e) {
             console.warn('[AIT] debugLog failed', e);
         }
+    },
+    __AITDebugLog_FirstInteractiveEnabled: function() {
+        try {
+            return (window.__AIT_FIRST_INTERACTIVE_LOG === false) ? 0 : 1; // 부재/미치환 → 기본 활성(fail-open)
+        } catch (e) {
+            return 1;
+        }
     }
 });

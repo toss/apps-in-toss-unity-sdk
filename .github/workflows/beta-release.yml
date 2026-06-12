@@ -352,6 +352,7 @@ jobs:
     secrets:
       AIT_AD_INTERSTITIAL_ID: ${{ secrets.AIT_AD_INTERSTITIAL_ID }}
       AIT_AD_REWARDED_ID: ${{ secrets.AIT_AD_REWARDED_ID }}
+      AIT_AD_BANNER_ID: ${{ secrets.AIT_AD_BANNER_ID }}
       KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
 
   # =====================================================
@@ -382,6 +383,7 @@ jobs:
     secrets:
       AIT_AD_INTERSTITIAL_ID: ${{ secrets.AIT_AD_INTERSTITIAL_ID }}
       AIT_AD_REWARDED_ID: ${{ secrets.AIT_AD_REWARDED_ID }}
+      AIT_AD_BANNER_ID: ${{ secrets.AIT_AD_BANNER_ID }}
       KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
 
   # =====================================================

@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@apps-in-toss/bridge-core": "2.6.1",
-    "@apps-in-toss/web-analytics": "2.6.2",
+    "@apps-in-toss/web-analytics": "2.7.0",
     "@apps-in-toss/web-framework": "2.6.2"
   },
   "devDependencies": {

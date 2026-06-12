@@ -404,6 +404,13 @@ function mapToCSharpTypeCore(type: ParsedType): string {
       return 'Dictionary<string, object>';
 
     case 'unknown':
+      // 제네릭 텍스트(Record<K, V>, Partial<Record<...>> 등)가 unknown으로 떨어진 경우,
+      // 아래 split/strip은 "ConsentedUserDataKeystring" 같은 깨진 식별자를 만들므로
+      // (CS0246 — 존재하지 않는 타입) 안전한 Dictionary 매핑으로 우회한다.
+      // 정상 경로는 parser가 kind:'record'로 분류하는 것이고, 이 분기는 방어선이다.
+      if (type.name && type.name.includes('Record<')) {
+        return 'Dictionary<string, object>';
+      }
       // unknown 타입이지만 name에 import 경로가 있으면 타입 이름 추출
       // 예: import("...").GameCenterGameProfileResponse -> GameCenterGameProfileResponse
       if (type.name && type.name.includes('.')) {

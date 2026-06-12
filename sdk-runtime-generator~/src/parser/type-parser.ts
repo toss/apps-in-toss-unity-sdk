@@ -138,6 +138,24 @@ export function parseType(typeNode: any): ParsedType {
     };
   }
 
+  // Partial<T> / Readonly<T> 유틸리티 타입: C# 매핑 관점에서는 내부 타입 T와 동일
+  // (Partial은 키를 optional로 만들 뿐이고 Readonly는 수정 가능 여부만 다름 — 타입 구조는 그대로).
+  // 예: Partial<Record<ConsentedUserDataKey, string>> -> Record<...> -> Dictionary<...>
+  // 주의: nullable unwrap(위) 등 텍스트 기반 재귀에서 오는 pseudo-node는 ts-morph 메서드가
+  // 없으므로, alias 타입 인자를 못 얻으면 텍스트 슬라이스로 내부 타입을 추출해 재귀 파싱한다.
+  const utilityWrapperMatch = typeText.match(/^(Partial|Readonly)<(.+)>$/s);
+  if (utilityWrapperMatch) {
+    const aliasArgs = typeNode.getAliasTypeArguments?.();
+    const innerNode = aliasArgs && aliasArgs.length === 1
+      ? aliasArgs[0]
+      : { getText: () => utilityWrapperMatch[2] };
+    const parsed = parseType(innerNode);
+    return {
+      ...parsed,
+      raw: typeText,
+    };
+  }
+
   // Record 타입 (Record<K, V> -> Dictionary<K, V>)
   if (typeText.startsWith('Record<')) {
     const typeArgs = typeNode.getTypeArguments?.();
@@ -150,7 +168,22 @@ export function parseType(typeNode: any): ParsedType {
         raw: typeText,
       };
     }
-    // Fallback: 기본 Dictionary<string, object>
+    // Fallback 1: 텍스트에서 K, V 추출 (pseudo-node 재귀 경로 — getTypeArguments 없음)
+    // import("...").TypeName 형식은 TypeName만 남긴다 (프로퍼티 레벨 Record 처리와 동일한 패턴).
+    const recordMatch = typeText.match(/^Record<([^,]+),\s*(.+)>$/s);
+    if (recordMatch) {
+      const stripImport = (s: string) => s.replace(/import\((?:"[^"]*"|'[^']*')\)\./g, '').trim();
+      const keyText = stripImport(recordMatch[1]);
+      const valueText = stripImport(recordMatch[2]);
+      return {
+        name: 'Record',
+        kind: 'record',
+        keyType: { name: keyText, kind: 'primitive', raw: recordMatch[1].trim() },
+        valueType: { name: valueText, kind: 'primitive', raw: recordMatch[2].trim() },
+        raw: typeText,
+      };
+    }
+    // Fallback 2: 기본 Dictionary<string, object>
     return {
       name: 'Record',
       kind: 'record',

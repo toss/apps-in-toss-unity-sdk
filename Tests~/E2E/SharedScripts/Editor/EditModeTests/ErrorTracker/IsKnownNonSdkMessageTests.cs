@@ -915,13 +915,14 @@ public class IsKnownNonSdkMessageTests
     [TestCase(
         "[Worker4] Import Error Code:(4)",
         TestName = "WorkerImportError_Worker4_ReturnsTrue")]
-    // Sentry APPS-IN-TOSS-UNITY-SDK-V7 — 워커 prefix 없이 UnityWarning으로 래핑된 변형
+    // Sentry APPS-IN-TOSS-UNITY-SDK-V7, APPS-IN-TOSS-UNITY-SDK-111 — 워커 prefix 없이 UnityWarning으로 래핑된 변형.
+    // Unity SourceAssetDB modification time 불일치 경고로 Unity 자체 에셋 임포트 시스템에서 출력되는 외부 노이즈 — SDK 식별자 없음.
     [TestCase(
         "UnityWarning: Import Error Code:(4)",
         TestName = "WorkerImportError_UnityWarningWrapped_ReturnsTrue")]
     public void WorkerImportError_RealisticVariants_ReturnsTrue(string message)
     {
-        // Sentry APPS-IN-TOSS-UNITY-SDK-RC/RD/RE/V7 — Unity AssetImporter 내부/메인 에셋 임포트 에러.
+        // Sentry APPS-IN-TOSS-UNITY-SDK-RC/RD/RE/V7/111 — Unity AssetImporter 내부/메인 에셋 임포트 에러.
         // 워커 prefix 유무·워커 번호·코드 숫자가 가변이지만 "Import Error Code:(" 부분 문자열로 모두 매칭.
         // SDK 코드에는 "Import Error Code" 문자열이 존재하지 않음 (grep으로 확인).
         Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(message));

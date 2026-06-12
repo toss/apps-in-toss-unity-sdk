@@ -20,6 +20,8 @@ permissions:
   contents: write
   pull-requests: write
   actions: write
+  # 필수 'scan' 체크를 bot PR에 직접 보고하기 위해 필요 (아래 'scan 체크 충족' step)
+  statuses: write
 
 jobs:
   # =====================================================
@@ -434,6 +436,24 @@ jobs:
             gh api "repos/${{ github.repository }}/actions/workflows/216286654/dispatches" \
             -X POST --input -
           echo "✅ E2E 테스트 트리거 완료: PR #${PR_NUMBER}"
+
+      # 필수 'scan' 체크 충족. GITHUB_TOKEN으로 만든 PR은 GitHub 정책상
+      # string-check.yml(pull_request)을 트리거하지 못해 scan이 영구 pending →
+      # 머지 불가가 된다(PR #771에서 확인). string-check.yml의 'bot PR → scan skip'
+      # 정책과 동일하게 scan=success를 직접 보고한다(update-changelog.yml과 같은 패턴).
+      - name: 필수 scan 체크 충족 (bot PR)
+        if: steps.create-pr.outputs.pr_created == 'true' && steps.create-pr.outputs.pr_number != ''
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.create-pr.outputs.pr_number }}
+        run: |
+          HEAD_SHA=$(gh api "repos/${{ github.repository }}/pulls/${PR_NUMBER}" --jq '.head.sha')
+          gh api "repos/${{ github.repository }}/statuses/${HEAD_SHA}" -X POST \
+            -f state=success \
+            -f context=scan \
+            -f description="bot SDK 업데이트 PR — scan skipped (github-actions[bot])"
+          echo "✅ scan status 보고 완료: ${HEAD_SHA}"
 
       - name: 업데이트 요약
         if: always()

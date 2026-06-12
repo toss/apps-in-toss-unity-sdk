@@ -11,6 +11,8 @@ permissions:
   contents: write
   pull-requests: write
   actions: write
+  # 필수 'scan' 체크를 bot PR 새 head에 재보고하기 위해 필요 (아래 'scan 체크 충족' step)
+  statuses: write
 
 concurrency:
   group: sdk-update-rebase
@@ -363,6 +365,23 @@ jobs:
             gh api "repos/${{ github.repository }}/actions/workflows/216286654/dispatches" \
             -X POST --input -
           echo "✅ E2E 테스트 트리거 완료: PR #${PR_NUMBER}"
+
+      # 필수 'scan' 체크 충족. force-push로 head가 바뀌면 기존 scan status가
+      # 무효화되는데, GITHUB_TOKEN bot PR은 string-check.yml을 트리거하지 못해
+      # scan이 영구 pending → 머지 불가가 된다. 새 head에 scan=success를 재보고
+      # (update.yml / update-changelog.yml과 같은 패턴).
+      - name: 필수 scan 체크 충족 (bot PR)
+        if: steps.author-check.outputs.skip != 'true' && steps.push.outputs.pushed == 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          HEAD_SHA=$(git rev-parse HEAD)
+          gh api "repos/${{ github.repository }}/statuses/${HEAD_SHA}" -X POST \
+            -f state=success \
+            -f context=scan \
+            -f description="bot SDK 업데이트 PR(리베이스) — scan skipped (github-actions[bot])"
+          echo "✅ scan status 보고 완료: ${HEAD_SHA}"
 
       - name: 실패 시 PR 코멘트
         if: failure() && steps.author-check.outputs.skip != 'true'

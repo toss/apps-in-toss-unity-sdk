@@ -229,6 +229,9 @@ public static class APIParameterInspector
         { "TossAdsAttachBanner", "Advertising" },
         { "TossAdsDestroy", "Advertising" },
         { "TossAdsDestroyAll", "Advertising" },
+        { "LoadFullScreenAd", "Advertising" },
+        { "ShowFullScreenAd", "Advertising" },
+        { "GoogleAdMobIsAppsInTossAdMobLoaded", "Advertising" },
 
         // SystemInfo
         { "GetDeviceId", "SystemInfo" },

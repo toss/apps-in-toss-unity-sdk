@@ -721,6 +721,7 @@ jobs:
         run: |
           AD_TESTER="Tests~/E2E/SharedScripts/Runtime/AdV2Tester.cs"
           BANNER_TESTER="Tests~/E2E/SharedScripts/Runtime/BannerAdTester.cs"
+          FS_TESTER="Tests~/E2E/SharedScripts/Runtime/FullScreenAdTester.cs"
 
           # SharedScripts가 없으면 스킵 (릴리즈 빌드에서는 제거됨)
           if [ ! -f "$AD_TESTER" ]; then
@@ -731,11 +732,13 @@ jobs:
           if [ -n "$AIT_AD_INTERSTITIAL_ID" ]; then
             echo "Injecting interstitial ad ID..."
             sed -i '' 's/ait-ad-test-interstitial-id/'"$AIT_AD_INTERSTITIAL_ID"'/g' "$AD_TESTER"
+            [ -f "$FS_TESTER" ] && sed -i '' 's/ait-ad-test-interstitial-id/'"$AIT_AD_INTERSTITIAL_ID"'/g' "$FS_TESTER"
           fi
 
           if [ -n "$AIT_AD_REWARDED_ID" ]; then
             echo "Injecting rewarded ad ID..."
             sed -i '' 's/ait-ad-test-rewarded-id/'"$AIT_AD_REWARDED_ID"'/g' "$AD_TESTER"
+            [ -f "$FS_TESTER" ] && sed -i '' 's/ait-ad-test-rewarded-id/'"$AIT_AD_REWARDED_ID"'/g' "$FS_TESTER"
           fi
 
           if [ -n "$AIT_AD_BANNER_ID" ] && [ -f "$BANNER_TESTER" ]; then
@@ -755,6 +758,7 @@ jobs:
         run: |
           $adTester = "Tests~\E2E\SharedScripts\Runtime\AdV2Tester.cs"
           $bannerTester = "Tests~\E2E\SharedScripts\Runtime\BannerAdTester.cs"
+          $fsTester = "Tests~\E2E\SharedScripts\Runtime\FullScreenAdTester.cs"
 
           # SharedScripts가 없으면 스킵 (릴리즈 빌드에서는 제거됨)
           if (-not (Test-Path $adTester)) {
@@ -767,11 +771,21 @@ jobs:
           if ($env:AIT_AD_INTERSTITIAL_ID) {
             Write-Host "Injecting interstitial ad ID..."
             $content = $content -replace 'ait-ad-test-interstitial-id', $env:AIT_AD_INTERSTITIAL_ID
+            if (Test-Path $fsTester) {
+              $fsContent = Get-Content $fsTester -Raw
+              $fsContent = $fsContent -replace 'ait-ad-test-interstitial-id', $env:AIT_AD_INTERSTITIAL_ID
+              Set-Content $fsTester -Value $fsContent -NoNewline
+            }
           }
 
           if ($env:AIT_AD_REWARDED_ID) {
             Write-Host "Injecting rewarded ad ID..."
             $content = $content -replace 'ait-ad-test-rewarded-id', $env:AIT_AD_REWARDED_ID
+            if (Test-Path $fsTester) {
+              $fsContent = Get-Content $fsTester -Raw
+              $fsContent = $fsContent -replace 'ait-ad-test-rewarded-id', $env:AIT_AD_REWARDED_ID
+              Set-Content $fsTester -Value $fsContent -NoNewline
+            }
           }
 
           Set-Content $adTester -Value $content -NoNewline

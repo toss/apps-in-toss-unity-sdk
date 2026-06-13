@@ -69,6 +69,7 @@ mergeInto(LibraryManager.library, {
             banner: null,
             lastRect: null,
             resizeHandler: null,
+            resizeObserver: null,
             destroyed: false,
             applyRect: function() {
                 if (slot.destroyed || !slot.lastRect) return;
@@ -85,6 +86,10 @@ mergeInto(LibraryManager.library, {
             destroy: function() {
                 if (slot.destroyed) return;
                 slot.destroyed = true;
+                if (slot.resizeObserver) {
+                    try { slot.resizeObserver.disconnect(); } catch (e) { /* 무시 */ }
+                    slot.resizeObserver = null;
+                }
                 if (slot.resizeHandler) {
                     window.removeEventListener('resize', slot.resizeHandler);
                     slot.resizeHandler = null;
@@ -102,6 +107,43 @@ mergeInto(LibraryManager.library, {
         if (mode === 2) {
             slot.resizeHandler = function() { slot.applyRect(); };
             window.addEventListener('resize', slot.resizeHandler);
+        }
+
+        // 렌더된 배너 높이를 C#에 통지한다.
+        // 컨테이너는 높이를 명시하지 않아(광고 소재가 결정) container 높이 = 실제 배너 높이.
+        // ResizeObserver로 그 높이를 관찰해 '캔버스 대비 비율(heightFraction)'로 보고하면
+        // C#이 RectTransform 영역을 배너 실제 크기에 맞출 수 있다 (문구 강조 ~90px vs 이미지 강조 가변).
+        var lastSentHeight = -1;
+        function sendResize() {
+            if (slot.destroyed) return;
+            var rect = container.getBoundingClientRect();
+            var h = rect.height;
+            var w = rect.width;
+            if (h <= 0) return;
+            if (Math.abs(h - lastSentHeight) < 0.5) return; // 미세 변동 무시
+            lastSentHeight = h;
+            var canvas = document.querySelector('#unity-canvas');
+            var base = canvas ? canvas.getBoundingClientRect()
+                              : { width: window.innerWidth, height: window.innerHeight };
+            SendMessage('AITBannerAdBridge', 'OnBannerAdEvent', JSON.stringify({
+                instanceId: instanceId,
+                kind: 'resized',
+                adGroupId: adGroupId,
+                slotId: '',
+                creativeId: '',
+                requestId: '',
+                errorCode: 0,
+                errorMessage: '',
+                width: w,
+                height: h,
+                widthFraction: base.width > 0 ? (w / base.width) : 0,
+                heightFraction: base.height > 0 ? (h / base.height) : 0
+            }));
+        }
+
+        if (typeof ResizeObserver !== 'undefined') {
+            slot.resizeObserver = new ResizeObserver(function() { sendResize(); });
+            slot.resizeObserver.observe(container);
         }
 
         // 광고 영역만 클릭을 받고 주변은 캔버스로 통과시킨다

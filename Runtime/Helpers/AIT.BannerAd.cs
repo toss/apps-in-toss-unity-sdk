@@ -92,6 +92,13 @@ namespace AppsInToss
 
         /// <summary>채울 광고 없음 (no-fill)</summary>
         NoFill,
+
+        /// <summary>
+        /// 렌더된 배너 크기 변경 (소재 로드/리사이즈 시).
+        /// <see cref="AITBannerAdEvent.Width"/>/<see cref="AITBannerAdEvent.Height"/>(CSS px)와
+        /// <see cref="AITBannerAdEvent.HeightFraction"/>(캔버스 대비 비율)이 채워집니다.
+        /// </summary>
+        Resized,
     }
 
     /// <summary>
@@ -122,11 +129,25 @@ namespace AppsInToss
         /// <summary>오류 메시지 (실패 이벤트 전용)</summary>
         public string ErrorMessage;
 
+        /// <summary>렌더된 배너 너비 (CSS px, Resized 이벤트 전용 / 그 외 0)</summary>
+        public float Width;
+
+        /// <summary>렌더된 배너 높이 (CSS px, Resized 이벤트 전용 / 그 외 0)</summary>
+        public float Height;
+
+        /// <summary>
+        /// 렌더된 배너 높이의 캔버스 대비 비율 (0~1, Resized 이벤트 전용 / 그 외 0).
+        /// RectTransform 영역을 배너 실제 높이에 맞추는 자동 높이 조정에 사용됩니다.
+        /// </summary>
+        public float HeightFraction;
+
         public override string ToString()
         {
-            return Kind == AITBannerAdEventKind.InitializationFailed || Kind == AITBannerAdEventKind.FailedToRender
-                ? $"{Kind} (adGroupId: {AdGroupId}, code: {ErrorCode}, message: {ErrorMessage})"
-                : $"{Kind} (adGroupId: {AdGroupId}, slotId: {SlotId})";
+            if (Kind == AITBannerAdEventKind.InitializationFailed || Kind == AITBannerAdEventKind.FailedToRender)
+                return $"{Kind} (adGroupId: {AdGroupId}, code: {ErrorCode}, message: {ErrorMessage})";
+            if (Kind == AITBannerAdEventKind.Resized)
+                return $"{Kind} (adGroupId: {AdGroupId}, {Width:F0}x{Height:F0}px, heightFraction: {HeightFraction:F3})";
+            return $"{Kind} (adGroupId: {AdGroupId}, slotId: {SlotId})";
         }
     }
 
@@ -315,6 +336,9 @@ namespace AppsInToss
                 RequestId = payload.requestId,
                 ErrorCode = payload.errorCode,
                 ErrorMessage = payload.errorMessage,
+                Width = payload.width,
+                Height = payload.height,
+                HeightFraction = payload.heightFraction,
             };
 
             try
@@ -348,6 +372,7 @@ namespace AppsInToss
                 case "clicked": return AITBannerAdEventKind.Clicked;
                 case "impression": return AITBannerAdEventKind.Impression;
                 case "noFill": return AITBannerAdEventKind.NoFill;
+                case "resized": return AITBannerAdEventKind.Resized;
                 case "failedToRender": return AITBannerAdEventKind.FailedToRender;
                 default:
                     Debug.LogWarning($"{Tag} 알 수 없는 이벤트 종류: {kind}");
@@ -390,6 +415,10 @@ namespace AppsInToss
             public string requestId;
             public int errorCode;
             public string errorMessage;
+            public float width;
+            public float height;
+            // widthFraction은 jslib가 보내지만 C#은 높이만 자동 조정하므로 매핑하지 않음 (가로폭은 호출자 결정)
+            public float heightFraction;
         }
 
 #if UNITY_WEBGL && !UNITY_EDITOR

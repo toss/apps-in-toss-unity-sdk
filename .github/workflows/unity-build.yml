@@ -73,8 +73,11 @@ on:
       AIT_AD_REWARDED_ID:
         description: 'Rewarded ad ID for testing'
         required: false
-      AIT_AD_BANNER_ID:
-        description: 'Banner ad group ID for testing'
+      AIT_AD_BANNER_TEXT_ID:
+        description: 'Banner ad group ID (text-emphasis / 문구 강조) for testing'
+        required: false
+      AIT_AD_BANNER_IMAGE_ID:
+        description: 'Banner ad group ID (image-emphasis / 이미지 강조) for testing'
         required: false
       SENTRY_DSN:
         description: 'Sentry DSN for error reporting'
@@ -717,7 +720,8 @@ jobs:
         env:
           AIT_AD_INTERSTITIAL_ID: ${{ secrets.AIT_AD_INTERSTITIAL_ID }}
           AIT_AD_REWARDED_ID: ${{ secrets.AIT_AD_REWARDED_ID }}
-          AIT_AD_BANNER_ID: ${{ secrets.AIT_AD_BANNER_ID }}
+          AIT_AD_BANNER_TEXT_ID: ${{ secrets.AIT_AD_BANNER_TEXT_ID }}
+          AIT_AD_BANNER_IMAGE_ID: ${{ secrets.AIT_AD_BANNER_IMAGE_ID }}
         run: |
           AD_TESTER="Tests~/E2E/SharedScripts/Runtime/AdV2Tester.cs"
           BANNER_TESTER="Tests~/E2E/SharedScripts/Runtime/BannerAdTester.cs"
@@ -741,9 +745,15 @@ jobs:
             [ -f "$FS_TESTER" ] && sed -i '' 's/ait-ad-test-rewarded-id/'"$AIT_AD_REWARDED_ID"'/g' "$FS_TESTER"
           fi
 
-          if [ -n "$AIT_AD_BANNER_ID" ] && [ -f "$BANNER_TESTER" ]; then
-            echo "Injecting banner ad ID..."
-            sed -i '' 's/ait-ad-test-banner-id/'"$AIT_AD_BANNER_ID"'/g' "$BANNER_TESTER"
+          if [ -f "$BANNER_TESTER" ]; then
+            if [ -n "$AIT_AD_BANNER_TEXT_ID" ]; then
+              echo "Injecting banner text-emphasis ad ID..."
+              sed -i '' 's/ait-ad-test-banner-text-id/'"$AIT_AD_BANNER_TEXT_ID"'/g' "$BANNER_TESTER"
+            fi
+            if [ -n "$AIT_AD_BANNER_IMAGE_ID" ]; then
+              echo "Injecting banner image-emphasis ad ID..."
+              sed -i '' 's/ait-ad-test-banner-image-id/'"$AIT_AD_BANNER_IMAGE_ID"'/g' "$BANNER_TESTER"
+            fi
           fi
 
           echo "Ad IDs injected successfully"
@@ -754,7 +764,8 @@ jobs:
         env:
           AIT_AD_INTERSTITIAL_ID: ${{ secrets.AIT_AD_INTERSTITIAL_ID }}
           AIT_AD_REWARDED_ID: ${{ secrets.AIT_AD_REWARDED_ID }}
-          AIT_AD_BANNER_ID: ${{ secrets.AIT_AD_BANNER_ID }}
+          AIT_AD_BANNER_TEXT_ID: ${{ secrets.AIT_AD_BANNER_TEXT_ID }}
+          AIT_AD_BANNER_IMAGE_ID: ${{ secrets.AIT_AD_BANNER_IMAGE_ID }}
         run: |
           $adTester = "Tests~\E2E\SharedScripts\Runtime\AdV2Tester.cs"
           $bannerTester = "Tests~\E2E\SharedScripts\Runtime\BannerAdTester.cs"
@@ -790,10 +801,16 @@ jobs:
 
           Set-Content $adTester -Value $content -NoNewline
 
-          if ($env:AIT_AD_BANNER_ID -and (Test-Path $bannerTester)) {
-            Write-Host "Injecting banner ad ID..."
+          if ((Test-Path $bannerTester) -and ($env:AIT_AD_BANNER_TEXT_ID -or $env:AIT_AD_BANNER_IMAGE_ID)) {
             $bannerContent = Get-Content $bannerTester -Raw
-            $bannerContent = $bannerContent -replace 'ait-ad-test-banner-id', $env:AIT_AD_BANNER_ID
+            if ($env:AIT_AD_BANNER_TEXT_ID) {
+              Write-Host "Injecting banner text-emphasis ad ID..."
+              $bannerContent = $bannerContent -replace 'ait-ad-test-banner-text-id', $env:AIT_AD_BANNER_TEXT_ID
+            }
+            if ($env:AIT_AD_BANNER_IMAGE_ID) {
+              Write-Host "Injecting banner image-emphasis ad ID..."
+              $bannerContent = $bannerContent -replace 'ait-ad-test-banner-image-id', $env:AIT_AD_BANNER_IMAGE_ID
+            }
             Set-Content $bannerTester -Value $bannerContent -NoNewline
           }
 

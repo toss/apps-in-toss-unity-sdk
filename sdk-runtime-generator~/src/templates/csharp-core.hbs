@@ -418,9 +418,9 @@ namespace AppsInToss
                 switch (typeName)
                 {
 {{#each eventDataTypes}}
-                    case "{{this}}":
-                        var data_{{@index}} = JsonConvert.DeserializeObject<{{this}}>(apiResponse.data);
-                        (rawCallback as Action<{{this}}>)?.Invoke(data_{{@index}});
+                    case "{{{this}}}":
+                        var data_{{@index}} = JsonConvert.DeserializeObject<{{{this}}}>(apiResponse.data);
+                        (rawCallback as Action<{{{this}}}>)?.Invoke(data_{{@index}});
                         break;
 {{/each}}
                     case "void":
@@ -473,12 +473,12 @@ namespace AppsInToss
             switch (typeName)
             {
 {{#each callbackTypes}}
-                case "{{this}}":
+                case "{{{this}}}":
                     if (apiResponse.success)
                     {
-                        if (TryGetCallback<{{this}}>(callbackId, out var callback{{@index}}) && callback{{@index}} != null)
+                        if (TryGetCallback<{{{this}}}>(callbackId, out var callback{{@index}}) && callback{{@index}} != null)
                         {
-                            var data{{@index}} = JsonConvert.DeserializeObject<{{this}}>(apiResponse.data);
+                            var data{{@index}} = JsonConvert.DeserializeObject<{{{this}}}>(apiResponse.data);
                             callback{{@index}}(data{{@index}});
                         }
                     }
@@ -486,7 +486,7 @@ namespace AppsInToss
                     {
                         if (TryGetErrorCallback(callbackId, out var errorCallback{{@index}}) && errorCallback{{@index}} != null)
                         {
-                            errorCallback{{@index}}(new AITException("{{this}}", apiResponse.error));
+                            errorCallback{{@index}}(new AITException("{{{this}}}", apiResponse.error));
                         }
                     }
                     break;

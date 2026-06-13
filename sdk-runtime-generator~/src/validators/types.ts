@@ -4,7 +4,7 @@ import picocolors from 'picocolors';
 /**
  * 지원되는 타입 목록
  */
-const SUPPORTED_PRIMITIVES = new Set(['string', 'number', 'boolean', 'void', 'any', 'unknown', 'object', 'null', 'undefined', 'never']);
+const SUPPORTED_PRIMITIVES = new Set(['string', 'number', 'boolean', 'void', 'any', 'unknown', 'object', 'null', 'undefined', 'never', 'symbol']);
 
 /**
  * C# 타입 매핑 테이블
@@ -17,6 +17,7 @@ export const TYPE_MAPPING: Record<string, string> = {
   void: 'void',
   any: 'void', // any는 void로 처리 (Promise<any> → Task)
   unknown: 'object',
+  symbol: 'object', // C#에 대응 타입 없음 — object로 매핑 (예: Record<string, Primitive> 값)
 
   // Unity types
   Date: 'DateTime',

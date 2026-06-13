@@ -1,7 +1,7 @@
 import { describe, test, expect } from 'vitest';
 import { Project } from 'ts-morph';
 import { parseType } from '../../src/parser/type-parser.js';
-import { mapToCSharpType } from '../../src/validators/types.js';
+import { mapToCSharpType, validateTypeMapping, isTypeSupported } from '../../src/validators/types.js';
 import { determineCallbackType } from '../../src/generators/csharp/api-data-preparer.js';
 
 function makeProject(): Project {
@@ -19,6 +19,18 @@ function getFunctionType(source: string, funcName: string) {
   const sf = project.createSourceFile('/test.d.ts', source);
   const fn = sf.getFunctionOrThrow(funcName);
   return { project, sf, fn };
+}
+
+// 생성기가 API를 검증하는 것과 동일하게 파라미터/반환 타입을 파싱한 ParsedAPI를 만든다.
+// (pnpm generate의 validateAllTypes 게이트를 그대로 재현 — 이 게이트가 실제로 실패했었다)
+function buildApi(source: string, funcName: string): any {
+  const { fn } = getFunctionType(source, funcName);
+  return {
+    name: funcName,
+    pascalName: funcName.charAt(0).toUpperCase() + funcName.slice(1),
+    parameters: fn.getParameters().map(p => ({ name: p.getName(), type: parseType(p.getType()) })),
+    returnType: parseType(fn.getReturnType()),
+  };
 }
 
 describe('Record / Partial<Record> 반환 타입 매핑 (web-framework 2.7.0 getConsentedUserData 회귀)', () => {
@@ -44,6 +56,14 @@ export declare function getConsentedUserData(options: GetConsentedUserDataOption
 
     const csharpType = mapToCSharpType(parsed.promiseType!);
     expect(csharpType).toBe('Dictionary<ConsentedUserDataKey, string>');
+  });
+
+  test('getConsentedUserData가 타입 검증 게이트(validateAllTypes)를 통과', () => {
+    // 회귀의 핵심: 첫 수정은 mapToCSharpType만 고쳐 통과했지만 generate를 막은 건
+    // isTypeSupported 게이트였다 (record 키 ConsentedUserDataKey가 primitive로 분류되어 거부됨).
+    const api = buildApi(GCUD_SOURCE, 'getConsentedUserData');
+    expect(isTypeSupported(api.returnType)).toBe(true);
+    expect(validateTypeMapping(api)).toHaveLength(0);
   });
 
   test('깨진 식별자(ConsentedUserDataKeystring)가 다시는 생성되지 않음', () => {
@@ -124,5 +144,37 @@ export declare function foo(): Promise<Partial<UserInfo> | undefined>;`,
       raw: 'Partial<Record<import("/x").ConsentedUserDataKey, string>> | undefined',
     };
     expect(mapToCSharpType(broken)).toBe('Dictionary<string, object>');
+  });
+
+  // 회귀: web-framework 2.7.0의 eventLog 파라미터
+  // EventLogParams.params: Record<string, Primitive> (Primitive = ...|symbol union-alias)
+  const EVENTLOG_SOURCE = `
+export type Primitive = string | number | boolean | null | undefined | symbol;
+export interface EventLogParams {
+  log_name: string;
+  log_type: "debug" | "info" | "warn" | "error" | "event" | "screen" | "impression" | "click" | "popup";
+  params: Record<string, Primitive>;
+}
+export declare function eventLog(params: EventLogParams): Promise<void>;
+`;
+
+  test('eventLog(EventLogParams)가 타입 검증 게이트를 통과 (Record<string, Primitive> 포함)', () => {
+    const api = buildApi(EVENTLOG_SOURCE, 'eventLog');
+    expect(validateTypeMapping(api)).toHaveLength(0);
+  });
+
+  test('Record<string, Primitive>의 값(symbol 포함 union-alias)은 object로 collapse', () => {
+    const api = buildApi(EVENTLOG_SOURCE, 'eventLog');
+    const paramsProp = api.parameters[0].type.properties.find((p: any) => p.name === 'params');
+    expect(paramsProp.type.kind).toBe('record');
+    expect(isTypeSupported(paramsProp.type)).toBe(true);
+    // 깨진 식별자(Dictionary<string, Primitive>)가 아니라 안전한 object여야 함
+    expect(mapToCSharpType(paramsProp.type)).toBe('Dictionary<string, object>');
+  });
+
+  test('symbol은 지원 primitive로 인정되고 object로 매핑', () => {
+    const symType = { name: 'symbol', kind: 'primitive' as const, raw: 'symbol' };
+    expect(isTypeSupported(symType)).toBe(true);
+    expect(mapToCSharpType(symType)).toBe('object');
   });
 });

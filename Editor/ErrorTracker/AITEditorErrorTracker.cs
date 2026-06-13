@@ -290,6 +290,12 @@ namespace AppsInToss.Editor.ErrorTracker
             //     "[pnpm] 비동기 명령 실패 (Exit Code: -1): pnpm exec granite build" (SDK-VG/VD/VB)
             "[pnpm] 명령 실패 (Exit Code:",
             "[pnpm] 비동기 명령 실패",
+
+            // Unity Android 빌드 시스템(sdktools.jar)의 키스토어 설정 오류 — 사용자 프로젝트의
+            // 키스토어 경로·비밀번호 설정 문제이며 AIT SDK 식별자 없음. SDK로 분기/조치 불가.
+            // 예: "UnityError: Unable to list keys in the keystore. Please make sure the location and password of the keystore is correct."
+            // Sentry APPS-IN-TOSS-UNITY-SDK-118.
+            "Unable to list keys in the keystore",
         };
 
         // DetermineErrorSource에서 메시지를 SDK로 분류하는 추가 패턴.

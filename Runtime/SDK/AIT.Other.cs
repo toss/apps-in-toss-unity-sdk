@@ -67,6 +67,53 @@ namespace AppsInToss
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __getAnonymousKey_Internal(string callbackId, string typeName);
 #endif
+        /// <param name="options">동의 데이터 요청 옵션이에요.</param>
+        /// <returns>서버에서 제공하는 사용자 데이터를 반환해요. 토스앱 버전이 5.264.0 미만이면 undefined를 반환해요. 값이 없으면 null을 반환합니다.</returns>
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
+        [APICategory("Other")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<Dictionary<ConsentedUserDataKey, string>> GetConsentedUserData(GetConsentedUserDataOptions options)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<Dictionary<ConsentedUserDataKey, string>>();
+            string callbackId = AITCore.Instance.RegisterCallback<Dictionary<ConsentedUserDataKey, string>>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error)
+            );
+            __getConsentedUserData_Internal(AITJsonSettings.Serialize(options), callbackId, "Dictionary<ConsentedUserDataKey, string>");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] GetConsentedUserData called");
+            await Awaitable.NextFrameAsync();
+            return default(Dictionary<ConsentedUserDataKey, string>);
+#endif
+        }
+#else
+        public static async Task<Dictionary<ConsentedUserDataKey, string>> GetConsentedUserData(GetConsentedUserDataOptions options)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<Dictionary<ConsentedUserDataKey, string>>();
+            string callbackId = AITCore.Instance.RegisterCallback<Dictionary<ConsentedUserDataKey, string>>(
+                result => tcs.TrySetResult(result),
+                error => tcs.TrySetException(error)
+            );
+            __getConsentedUserData_Internal(AITJsonSettings.Serialize(options), callbackId, "Dictionary<ConsentedUserDataKey, string>");
+            return await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] GetConsentedUserData called");
+            await Task.CompletedTask;
+            return default(Dictionary<ConsentedUserDataKey, string>);
+#endif
+        }
+#endif
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __getConsentedUserData_Internal(string options, string callbackId, string typeName);
+#endif
         /// <returns>그룹 ID</returns>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]

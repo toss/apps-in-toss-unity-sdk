@@ -4,6 +4,39 @@ import { DOM_TYPES } from './constants.js';
 import { cleanTypeName } from './utils.js';
 
 /**
+ * Record<K, V>의 K/V를 텍스트에서 분류할 때 원시 타입으로 인정하는 이름 집합.
+ * (validators/types.ts의 SUPPORTED_PRIMITIVES와 정렬)
+ */
+const RECORD_PRIMITIVE_NAMES = new Set([
+  'string', 'number', 'boolean', 'void', 'any', 'unknown', 'object', 'null', 'undefined', 'never', 'symbol',
+]);
+
+/**
+ * 텍스트 기반 Record 파싱(실제 ts-morph 노드가 없는 pseudo-node 경로 및 프로퍼티 레벨)에서
+ * Record<K, V>의 K 또는 V 텍스트를 ParsedType으로 분류한다.
+ *
+ * 텍스트 경로는 타입을 재해석할 수 없으므로, key/value를 무조건 kind:'primitive'로 두면
+ * 명명 타입(enum/union-alias)이 "지원되지 않는 타입"으로 검증 실패하거나
+ * Dictionary<..., Primitive> 같은 존재하지 않는 C# 식별자(CS0246)를 만든다. 이를 방지:
+ *  - 원시 타입 이름 → primitive (TYPE_MAPPING으로 매핑, 검증 통과)
+ *  - KEY의 명명 타입 → object kind로 이름 보존
+ *    (Record 키는 enum(문자열 리터럴 union)으로 생성되므로 이름이 유효; object kind는
+ *     프로퍼티가 없으면 isTypeSupported 통과 + mapToCSharpType가 이름을 그대로 보존)
+ *  - VALUE의 명명/복합 타입 → C#에서 항상 안전한 object로 collapse
+ *    (예: Primitive = string|number|...|symbol union-alias → Dictionary<string, object>)
+ */
+function classifyRecordArg(rawText: string, role: 'key' | 'value'): ParsedType {
+  const name = rawText.replace(/import\((?:"[^"]*"|'[^']*')\)\./g, '').trim();
+  if (RECORD_PRIMITIVE_NAMES.has(name)) {
+    return { name, kind: 'primitive', raw: rawText.trim() };
+  }
+  if (role === 'key' && /^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+    return { name, kind: 'object', raw: rawText.trim() };
+  }
+  return { name: 'object', kind: 'primitive', raw: rawText.trim() };
+}
+
+/**
  * 타입 파싱 (ts-morph Type 객체 사용)
  */
 export function parseType(typeNode: any): ParsedType {
@@ -20,7 +53,7 @@ export function parseType(typeNode: any): ParsedType {
   }
 
   // Primitive 타입 (string literal도 포함)
-  if (['string', 'number', 'boolean', 'void', 'any', 'unknown', 'undefined', 'null', 'never'].includes(typeText)) {
+  if (['string', 'number', 'boolean', 'void', 'any', 'unknown', 'undefined', 'null', 'never', 'symbol'].includes(typeText)) {
     return {
       name: typeText,
       kind: 'primitive',
@@ -169,17 +202,14 @@ export function parseType(typeNode: any): ParsedType {
       };
     }
     // Fallback 1: 텍스트에서 K, V 추출 (pseudo-node 재귀 경로 — getTypeArguments 없음)
-    // import("...").TypeName 형식은 TypeName만 남긴다 (프로퍼티 레벨 Record 처리와 동일한 패턴).
+    // 명명 키(enum)는 이름 보존, 명명/복합 값은 object로 collapse (classifyRecordArg 참조).
     const recordMatch = typeText.match(/^Record<([^,]+),\s*(.+)>$/s);
     if (recordMatch) {
-      const stripImport = (s: string) => s.replace(/import\((?:"[^"]*"|'[^']*')\)\./g, '').trim();
-      const keyText = stripImport(recordMatch[1]);
-      const valueText = stripImport(recordMatch[2]);
       return {
         name: 'Record',
         kind: 'record',
-        keyType: { name: keyText, kind: 'primitive', raw: recordMatch[1].trim() },
-        valueType: { name: valueText, kind: 'primitive', raw: recordMatch[2].trim() },
+        keyType: classifyRecordArg(recordMatch[1], 'key'),
+        valueType: classifyRecordArg(recordMatch[2], 'value'),
         raw: typeText,
       };
     }
@@ -615,13 +645,11 @@ export function parseTypeMembers(members: any[]): any[] {
           // Record<K, V> 타입
           const recordMatch = propTypeText.match(/^Record<([^,]+),\s*([^>]+)>/);
           if (recordMatch) {
-            const keyTypeText = recordMatch[1].trim();
-            const valueTypeText = recordMatch[2].trim();
             parsedType = {
               name: 'Record',
               kind: 'record',
-              keyType: { name: keyTypeText, kind: 'primitive', raw: keyTypeText },
-              valueType: { name: valueTypeText, kind: 'primitive', raw: valueTypeText },
+              keyType: classifyRecordArg(recordMatch[1], 'key'),
+              valueType: classifyRecordArg(recordMatch[2], 'value'),
               raw: propTypeText,
             };
           } else {

@@ -8,6 +8,11 @@
 //   - APPS-IN-TOSS-UNITY-SDK-QB : "[AIT] package.json 템플릿을 찾을 수 없습니다. 첫 빌드 시 자동으로 설치됩니다."
 //   - APPS-IN-TOSS-UNITY-SDK-Q2 : "[AIT] SDK 패키지를 찾을 수 없습니다. … 패키지 설치 상태를 확인하세요."
 //   - APPS-IN-TOSS-UNITY-SDK-10R: "[AIT] SDK 로딩 화면 템플릿을 찾을 수 없습니다. 첫 빌드 시 다시 시도됩니다."
+//   - APPS-IN-TOSS-UNITY-SDK-119: "[AIT] 패키지 매니저 체크 중 예외 발생: ..."
+//     Windows AV/Defender가 staging dir 핸들을 점유해 Directory.Move(rename)가 IOException으로
+//     실패 → CheckAndSetupPackageManager catch가 Sentry에 전송하던 패턴.
+//     SDK-100 retry fix(#746) + sentryCapture:false(#715)로 수정됐으나 이 회귀 가드가 없어
+//     sentryCapture:false가 raw Debug.LogError로 되돌아가도 발각되지 않는 갭이 있었음.
 //
 // 진짜 빌드 실패는 다운스트림 CaptureBuildError(구조화 이벤트, errorCode fingerprint)가 별도로
 // 캡처하므로, 이 fallback warning들을 Sentry에서 억제해도 가시성을 잃지 않는다.
@@ -48,10 +53,32 @@ public class SentryNoiseSuppressionCallsiteTests
             "10R");
 
     /// <summary>
-    /// fileName 소스에서 messageAnchor를 내보내는 가장 가까운 선행 로그 호출이
-    /// AITLog.Warning(...)이고, 그 호출 인자에 sentryCapture: false가 포함됨을 정적으로 검증한다.
+    /// 회귀 가드 — APPS-IN-TOSS-UNITY-SDK-119:
+    /// CheckAndSetupPackageManager 의 catch 블록이 Node.js 설치 중
+    /// Directory.Move IOException(Windows AV 핸들 점유)을 잡아 로그할 때
+    /// raw Debug.LogError 로 되돌아가지 않고 sentryCapture:false 를 유지하는지 검증.
+    /// SDK-100 재시도 fix(#746) + sentryCapture:false(#715) 로 수정됐으나 이 가드가 없으면
+    /// 코드 변경 시 Sentry 노이즈 회귀가 발각되지 않는다.
     /// </summary>
-    private static void AssertCallsiteSuppressed(string fileName, string messageAnchor, string sentryIssue)
+    [Test]
+    public void OneTwoNine_PackageManagerCheckException_StaysSentrySuppressed()
+        => AssertCallsiteSuppressed(
+            "AITPackageInitializer.cs",
+            "패키지 매니저 체크 중 예외 발생",
+            "119",
+            expectWarning: false);  // AITLog.Error (복구 불가 경로이므로 Error 레벨이 맞다)
+
+    /// <summary>
+    /// fileName 소스에서 messageAnchor를 내보내는 가장 가까운 선행 로그 호출이
+    /// AITLog.Warning( 또는 AITLog.Error(이고, 그 호출 인자에 sentryCapture: false가 포함됨을
+    /// 정적으로 검증한다.
+    /// </summary>
+    /// <param name="expectWarning">
+    /// true: AITLog.Warning(만 허용 (기존 동작 — 정상 fallback warning 콜사이트).
+    /// false: AITLog.Warning( 또는 AITLog.Error( 모두 허용 (catch 블록의 Error 레벨 로그).
+    /// </param>
+    private static void AssertCallsiteSuppressed(string fileName, string messageAnchor, string sentryIssue,
+        bool expectWarning = true)
     {
         string path = LocateEditorSource(fileName);
         Assert.IsNotNull(path,
@@ -71,8 +98,9 @@ public class SentryNoiseSuppressionCallsiteTests
         Assert.AreEqual(-1, secondIdx,
             $"[{sentryIssue}] 메시지 앵커가 {fileName}에 2회 이상 등장 — 더 구체적인 앵커가 필요.");
 
-        // (3) 메시지를 내보내는 '가장 가까운 선행 호출'이 AITLog.Warning(이어야 함.
-        //     raw Debug.Log* 직호출은 SuppressScope를 거치지 않아 Sentry로 전송된다.
+        // (3) 메시지를 내보내는 '가장 가까운 선행 호출'을 찾는다.
+        //     AITLog.Warning/Error는 SuppressScope를 거쳐 Sentry 억제 가능.
+        //     raw Debug.Log*는 SuppressScope를 거치지 않아 Sentry로 전송된다.
         string[] emitTokens =
         {
             "AITLog.Warning(", "AITLog.Error(",
@@ -85,27 +113,41 @@ public class SentryNoiseSuppressionCallsiteTests
             int idx = source.LastIndexOf(tok, anchorIdx, StringComparison.Ordinal);
             if (idx > bestIdx) { bestIdx = idx; bestTok = tok; }
         }
-        Assert.AreEqual("AITLog.Warning(", bestTok,
-            $"[{sentryIssue}] '{messageAnchor}' 메시지는 AITLog.Warning(...)으로 내보내야 함. " +
-            $"가장 가까운 선행 호출이 '{bestTok ?? "(없음)"}'임 — raw Debug.Log* 직호출은 " +
-            "SuppressScope를 거치지 않아 Sentry 노이즈로 전송된다.");
+
+        // expectWarning=true: Warning 전용 콜사이트; false: Warning 또는 Error 모두 허용.
+        string expectedTok = expectWarning ? "AITLog.Warning(" : null;
+        if (expectedTok != null)
+        {
+            Assert.AreEqual(expectedTok, bestTok,
+                $"[{sentryIssue}] '{messageAnchor}' 메시지는 AITLog.Warning(...)으로 내보내야 함. " +
+                $"가장 가까운 선행 호출이 '{bestTok ?? "(없음)"}'임 — raw Debug.Log* 직호출은 " +
+                "SuppressScope를 거치지 않아 Sentry 노이즈로 전송된다.");
+        }
+        else
+        {
+            Assert.IsTrue(bestTok == "AITLog.Warning(" || bestTok == "AITLog.Error(",
+                $"[{sentryIssue}] '{messageAnchor}' 메시지는 AITLog.Warning(...) 또는 AITLog.Error(...)로 내보내야 함. " +
+                $"가장 가까운 선행 호출이 '{bestTok ?? "(없음)"}'임 — raw Debug.Log* 직호출은 " +
+                "SuppressScope를 거치지 않아 Sentry 노이즈로 전송된다.");
+        }
 
         // (4) 호출 인자 영역(여는 괄호 ~ 매칭 닫는 괄호)을 문자열 리터럴 인식 스캐너로 추출.
         int openParen = bestIdx + bestTok.Length - 1; // bestTok 끝의 '(' 위치
         int closeParen = FindMatchingParen(source, openParen);
+        string callLabel = expectWarning ? "AITLog.Warning(...)" : "AITLog.Warning(...)/AITLog.Error(...)";
         Assert.Greater(closeParen, openParen,
-            $"[{sentryIssue}] AITLog.Warning(...) 호출의 닫는 괄호를 찾지 못함 (소스 구조 확인 필요).");
+            $"[{sentryIssue}] {callLabel} 호출의 닫는 괄호를 찾지 못함 (소스 구조 확인 필요).");
 
         // 앵커가 이 호출 인자 범위 안에 있어야 함 — 메시지가 정말 이 호출에 속함을 확인.
         Assert.IsTrue(anchorIdx > openParen && anchorIdx < closeParen,
-            $"[{sentryIssue}] 메시지 앵커가 가장 가까운 AITLog.Warning(...) 인자 범위 밖 — 스캔 가정 위반.");
+            $"[{sentryIssue}] 메시지 앵커가 가장 가까운 {callLabel} 인자 범위 밖 — 스캔 가정 위반.");
 
         string callArgs = source.Substring(openParen, closeParen - openParen + 1);
 
         // (5) 핵심 회귀 가드: sentryCapture: false (공백/개행 무관) 가 인자에 포함되어야 함.
         string normalized = Regex.Replace(callArgs, @"\s+", "");
         Assert.IsTrue(normalized.Contains("sentryCapture:false"),
-            $"[{sentryIssue}] {fileName}의 정상 fallback warning은 sentryCapture: false 여야 함. " +
+            $"[{sentryIssue}] {fileName}의 정상 fallback은 sentryCapture: false 여야 함. " +
             "이 단언이 깨지면 정상 fallback이 다시 Sentry로 전송되는 노이즈 회귀다 " +
             $"(Sentry APPS-IN-TOSS-UNITY-SDK-{sentryIssue}). 호출: {callArgs.Trim()}");
     }

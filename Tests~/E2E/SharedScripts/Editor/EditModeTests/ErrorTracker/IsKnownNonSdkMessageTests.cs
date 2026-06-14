@@ -2277,6 +2277,36 @@ public class IsKnownNonSdkMessageTests
 
     #endregion
 
+    #region Android 키스토어 노이즈 (APPS-IN-TOSS-UNITY-SDK-118)
+
+    [Test]
+    public void AndroidKeystore_UnableToListKeys_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-118 — Unity Android 빌드 시 사용자가 잘못된 키스토어
+        // 경로/비밀번호를 설정했을 때 OpenJDK + sdktools.jar가 직접 출력하는 오류.
+        // AIT SDK 식별자 없음, SDK 코드는 키스토어를 직접 다루지 않으므로 SDK 버그 아님.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "UnityError: Unable to list keys in the keystore. Please make sure the location and password of the keystore is correct."));
+    }
+
+    [Test]
+    public void AndroidKeystore_UnableToListKeys_BareMessage_ReturnsTrue()
+    {
+        // prefix 없이 핵심 문구만 도달하는 변형도 동일하게 드롭.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Unable to list keys in the keystore. Please make sure the location and password of the keystore is correct."));
+    }
+
+    [Test]
+    public void AndroidKeystore_UnableToListKeys_WithAitPrefix_NeverFiltered()
+    {
+        // AitKeywords 가드 회귀 방지: [AIT] prefix가 붙은 동일 메시지는 SDK 자체 로그로 간주되어야 함.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] Unable to list keys in the keystore."));
+    }
+
+    #endregion
+
     #region SDK 관련 메시지는 통과 (negative cases)
 
     [Test]

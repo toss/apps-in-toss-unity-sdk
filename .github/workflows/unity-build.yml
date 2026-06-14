@@ -66,6 +66,11 @@ on:
         type: string
         required: false
         default: '2'
+      fast-build:
+        description: 'E2E 고속 빌드 프로필 (dev build + 압축 비활성화 + IL2CPP Debug, PR #551). 산출물을 ait deploy로 콘솔에 배포하는 호출자(preview 등)는 false 필수 — dev 빌드 wasm(6000.x 기준 ~134MiB)이 콘솔 번들 크기 제한을 초과해 서버측 BUILD_FAILED가 남. false면 env 오버라이드 없이 SDK 기본 프로필(release 빌드)로 빌드.'
+        type: boolean
+        required: false
+        default: true
     secrets:
       AIT_AD_INTERSTITIAL_ID:
         description: 'Interstitial ad ID for testing'
@@ -1531,19 +1536,21 @@ jobs:
         uses: nick-invision/retry@v4
         env:
           AIT_DEBUG_CONSOLE: "true"
-          # E2E 한정: 압축 비활성화. E2E는 vite dev/preview 서버에서만 로드되며
-          # 배포되지 않으므로 압축이 불필요. Brotli/Gzip 단계 자체를 건너뛰어
-          # wallclock 절감(~120s).
-          AIT_COMPRESSION_FORMAT: "0"
-          # E2E 한정: Development Build 활성화 — Link_WebGL_wasm 단계가 단독 실행
+          # fast-build(기본 true, E2E용) 한정: 압축 비활성화. E2E는 vite dev/preview 서버에서만
+          # 로드되며 배포되지 않으므로 압축이 불필요. Brotli/Gzip 단계 자체를 건너뛰어
+          # wallclock 절감(~120s). 빈 문자열이면 오버라이드 없음(SDK 기본 프로필).
+          AIT_COMPRESSION_FORMAT: ${{ inputs.fast-build && '0' || '' }}
+          # fast-build 한정: Development Build 활성화 — Link_WebGL_wasm 단계가 단독 실행
           # critical path에서 ~163s를 차지(Emscripten 옵티마이저 -O3 풀스피드).
           # Development Build로 옵티마이저 단축, Build wallclock 대폭 절감 기대.
           # E2E는 SDK API 동작만 검증하며 런타임 성능을 보지 않으므로 무관.
-          AIT_DEVELOPMENT_BUILD: "true"
-          # E2E 한정: IL2CPP 컴파일러 옵티마이저 레벨도 Debug로 강제. developmentBuild
+          # 주의: dev 빌드 wasm은 콘솔 번들 크기 제한을 초과할 수 있어(6000.x ~134MiB)
+          # 배포 목적 호출자는 fast-build=false로 비활성화해야 함.
+          AIT_DEVELOPMENT_BUILD: ${{ inputs.fast-build && 'true' || '' }}
+          # fast-build 한정: IL2CPP 컴파일러 옵티마이저 레벨도 Debug로 강제. developmentBuild
           # 플래그는 Player 측 설정이라 IL2CPP 옵티마이저(C_WebGL_wasm/Link_WebGL_wasm)에는
           # 영향이 없어 별도 변수로 페어링. -O3 → -O0/-Og 수준으로 wasm 컴파일/링크 단축.
-          AIT_IL2CPP_CONFIGURATION: "Debug"
+          AIT_IL2CPP_CONFIGURATION: ${{ inputs.fast-build && 'Debug' || '' }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         with:
           timeout_minutes: 30
@@ -1684,13 +1691,17 @@ jobs:
         uses: nick-invision/retry@v4
         env:
           AIT_DEBUG_CONSOLE: "true"
-          # E2E 한정: macOS step의 동일 주석 참조.
-          AIT_COMPRESSION_FORMAT: "0"
-          AIT_DEVELOPMENT_BUILD: "true"
-          AIT_IL2CPP_CONFIGURATION: "Debug"
+          # fast-build 한정: macOS step의 동일 주석 참조.
+          AIT_COMPRESSION_FORMAT: ${{ inputs.fast-build && '0' || '' }}
+          AIT_DEVELOPMENT_BUILD: ${{ inputs.fast-build && 'true' || '' }}
+          AIT_IL2CPP_CONFIGURATION: ${{ inputs.fast-build && 'Debug' || '' }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         with:
-          timeout_minutes: 30
+          # Windows 러너의 release 프로필(fast-build=false) 6000.x 빌드는 Brotli 압축
+          # 포함 ~28분(warm Library 캐시 실측, 2026-06 베타 릴리즈 run 27433833844)으로
+          # 30분 한도에 아슬아슬하고, cold 캐시에서는 timeout으로 실패가 재발한다 →
+          # 45분으로 상향 (job 한도 90분 내 여유 충분. macOS는 30분 내 안정 통과라 유지).
+          timeout_minutes: 45
           max_attempts: 3
           retry_wait_seconds: 0
           retry_on_exit_code: 42

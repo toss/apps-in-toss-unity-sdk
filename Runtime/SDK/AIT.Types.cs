@@ -1753,6 +1753,60 @@ namespace AppsInToss
         public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
+    public enum GetConsentedUserDataErrorCode
+    {
+        [EnumMember(Value = "USER_DECLINED")]
+        USER_DECLINED,
+        [EnumMember(Value = "UNAVAILABLE")]
+        UNAVAILABLE,
+        [EnumMember(Value = "TERMS_NOT_SET")]
+        TERMS_NOT_SET,
+        [EnumMember(Value = "INVALID_REQUEST")]
+        INVALID_REQUEST,
+        [EnumMember(Value = "CANCELED")]
+        CANCELED,
+        [EnumMember(Value = "CONSENTED_USER_DATA_AGREEMENT_FAILED")]
+        CONSENTED_USER_DATA_AGREEMENT_FAILED,
+        [EnumMember(Value = "CONSENTED_USER_DATA_INVALID_DATA")]
+        CONSENTED_USER_DATA_INVALID_DATA
+    }
+
+    public enum ConsentedUserDataKey
+    {
+        [EnumMember(Value = "USER_NAME")]
+        USER_NAME,
+        [EnumMember(Value = "USER_GENDER")]
+        USER_GENDER,
+        [EnumMember(Value = "USER_NATIONALITY")]
+        USER_NATIONALITY,
+        [EnumMember(Value = "USER_BIRTHDAY")]
+        USER_BIRTHDAY,
+        [EnumMember(Value = "USER_PHONE")]
+        USER_PHONE,
+        [EnumMember(Value = "USER_ADDRESS")]
+        USER_ADDRESS,
+        [EnumMember(Value = "USER_EMAIL")]
+        USER_EMAIL,
+        [EnumMember(Value = "USER_CONSUMPTION_HISTORY")]
+        USER_CONSUMPTION_HISTORY
+    }
+
+    [Serializable]
+    [Preserve]
+    public class GetConsentedUserDataOptions
+    {
+        [Preserve]
+        [JsonProperty("consentedUserDataKey")]
+        public string ConsentedUserDataKey;
+        [Preserve]
+        [JsonProperty("shouldRequestAgreementWhenUserDeclined")]
+        public bool? ShouldRequestAgreementWhenUserDeclined; // optional
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
     public enum Accuracy
     {
         Lowest = 1,

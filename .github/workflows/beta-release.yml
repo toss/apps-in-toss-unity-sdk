@@ -349,6 +349,11 @@ jobs:
       web-framework-version: ${{ needs.beta-prepare.outputs.npm_version }}
       sdk-version: ${{ needs.beta-prepare.outputs.pkg_version }}
       run-build: true
+      # 이 산출물은 e2e-beta-macos의 deploy 게이트에서 ait deploy로 실 콘솔에
+      # 배포되므로 E2E 고속 프로필(dev build)을 끄고 SDK 기본 프로필(release 빌드)로
+      # 빌드한다. dev 빌드 wasm(6000.x ~134MiB)은 콘솔 번들 크기 제한을 초과해
+      # 서버측 BUILD_FAILED가 난다 (2026-06 진단).
+      fast-build: false
     secrets:
       AIT_AD_INTERSTITIAL_ID: ${{ secrets.AIT_AD_INTERSTITIAL_ID }}
       AIT_AD_REWARDED_ID: ${{ secrets.AIT_AD_REWARDED_ID }}
@@ -381,6 +386,9 @@ jobs:
       web-framework-version: ${{ needs.beta-prepare.outputs.npm_version }}
       sdk-version: ${{ needs.beta-prepare.outputs.pkg_version }}
       run-build: true
+      # macOS leg와 동일한 release 프로필로 빌드해 게시 게이트 검증의 일관성을
+      # 유지한다 (베타 게시 대상 산출물은 dev 프로필이어선 안 됨).
+      fast-build: false
     secrets:
       AIT_AD_INTERSTITIAL_ID: ${{ secrets.AIT_AD_INTERSTITIAL_ID }}
       AIT_AD_REWARDED_ID: ${{ secrets.AIT_AD_REWARDED_ID }}

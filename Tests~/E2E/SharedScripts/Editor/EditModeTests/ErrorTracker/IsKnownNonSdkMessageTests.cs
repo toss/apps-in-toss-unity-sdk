@@ -915,13 +915,14 @@ public class IsKnownNonSdkMessageTests
     [TestCase(
         "[Worker4] Import Error Code:(4)",
         TestName = "WorkerImportError_Worker4_ReturnsTrue")]
-    // Sentry APPS-IN-TOSS-UNITY-SDK-V7 — 워커 prefix 없이 UnityWarning으로 래핑된 변형
+    // Sentry APPS-IN-TOSS-UNITY-SDK-V7, APPS-IN-TOSS-UNITY-SDK-111 — 워커 prefix 없이 UnityWarning으로 래핑된 변형.
+    // Unity SourceAssetDB modification time 불일치 경고로 Unity 자체 에셋 임포트 시스템에서 출력되는 외부 노이즈 — SDK 식별자 없음.
     [TestCase(
         "UnityWarning: Import Error Code:(4)",
         TestName = "WorkerImportError_UnityWarningWrapped_ReturnsTrue")]
     public void WorkerImportError_RealisticVariants_ReturnsTrue(string message)
     {
-        // Sentry APPS-IN-TOSS-UNITY-SDK-RC/RD/RE/V7 — Unity AssetImporter 내부/메인 에셋 임포트 에러.
+        // Sentry APPS-IN-TOSS-UNITY-SDK-RC/RD/RE/V7/111 — Unity AssetImporter 내부/메인 에셋 임포트 에러.
         // 워커 prefix 유무·워커 번호·코드 숫자가 가변이지만 "Import Error Code:(" 부분 문자열로 모두 매칭.
         // SDK 코드에는 "Import Error Code" 문자열이 존재하지 않음 (grep으로 확인).
         Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(message));
@@ -2273,6 +2274,36 @@ public class IsKnownNonSdkMessageTests
         // CS0618을 무차별 드롭하지 않음을 검증.
         Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
             "SomeLib.dll: warning CS0618: 'Z' is obsolete"));
+    }
+
+    #endregion
+
+    #region Android 키스토어 노이즈 (APPS-IN-TOSS-UNITY-SDK-118)
+
+    [Test]
+    public void AndroidKeystore_UnableToListKeys_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-118 — Unity Android 빌드 시 사용자가 잘못된 키스토어
+        // 경로/비밀번호를 설정했을 때 OpenJDK + sdktools.jar가 직접 출력하는 오류.
+        // AIT SDK 식별자 없음, SDK 코드는 키스토어를 직접 다루지 않으므로 SDK 버그 아님.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "UnityError: Unable to list keys in the keystore. Please make sure the location and password of the keystore is correct."));
+    }
+
+    [Test]
+    public void AndroidKeystore_UnableToListKeys_BareMessage_ReturnsTrue()
+    {
+        // prefix 없이 핵심 문구만 도달하는 변형도 동일하게 드롭.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Unable to list keys in the keystore. Please make sure the location and password of the keystore is correct."));
+    }
+
+    [Test]
+    public void AndroidKeystore_UnableToListKeys_WithAitPrefix_NeverFiltered()
+    {
+        // AitKeywords 가드 회귀 방지: [AIT] prefix가 붙은 동일 메시지는 SDK 자체 로그로 간주되어야 함.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] Unable to list keys in the keystore."));
     }
 
     #endregion

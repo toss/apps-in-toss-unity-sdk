@@ -144,7 +144,8 @@ namespace AppsInToss.Editor.ErrorTracker
 
             // Unity AssetImporter 내부 워커/메인 에러 — SDK 외부 출처 (Unity 자체 에셋 임포트 경고).
             // 워커 prefix가 있는 변형: "[Worker2] Import Error Code:(4)" (SDK-RC/RD/RE)
-            // prefix 없이 UnityWarning으로 래핑된 변형: "UnityWarning: Import Error Code:(4)" (SDK-V7)
+            // prefix 없이 UnityWarning으로 래핑된 변형: "UnityWarning: Import Error Code:(4)" (SDK-V7, APPS-IN-TOSS-UNITY-SDK-111)
+            // Unity SourceAssetDB modification time 불일치 경고로 Unity 자체 에셋 임포트 시스템에서 출력되는 외부 노이즈 — SDK 식별자 없음.
             // prefix 유무·워커 번호·코드 숫자가 모두 가변이므로 공통 핵심 문구 "Import Error Code:(" 로 일반화.
             // SDK는 이 문자열을 출력하지 않으므로(AitKeywords에 없음) 보호 가드와 충돌 없음.
             "Import Error Code:(",
@@ -290,6 +291,15 @@ namespace AppsInToss.Editor.ErrorTracker
             //     "[pnpm] 비동기 명령 실패 (Exit Code: -1): pnpm exec granite build" (SDK-VG/VD/VB)
             "[pnpm] 명령 실패 (Exit Code:",
             "[pnpm] 비동기 명령 실패",
+
+            // Android 키스토어 경로/비밀번호 잘못 설정 시 OpenJDK + sdktools.jar가 직접 출력하는 오류.
+            // Unity Android 빌드 시 사용자가 Project Settings > Player > Publishing Settings에
+            // 잘못된 키스토어 경로 또는 비밀번호를 입력했을 때 발생. AIT SDK 식별자 없음.
+            // 예: "UnityError: Unable to list keys in the keystore. Please make sure the location
+            //      and password of the keystore is correct." (APPS-IN-TOSS-UNITY-SDK-118)
+            // SDK 코드는 키스토어 경로/비밀번호를 직접 다루지 않으므로 SDK 버그 아님.
+            // SDK는 이 문자열을 출력하지 않음(AitKeywords에 없음).
+            "Unable to list keys in the keystore",
         };
 
         // DetermineErrorSource에서 메시지를 SDK로 분류하는 추가 패턴.

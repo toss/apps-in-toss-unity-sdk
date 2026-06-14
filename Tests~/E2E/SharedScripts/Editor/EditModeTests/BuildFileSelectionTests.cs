@@ -154,9 +154,21 @@ public class BuildFileSelectionTests
         File.WriteAllText(Path.Combine(tempDir, "build.wasm"), "wasm");
         // framework.js 의도적으로 생성 안 함
 
+        // AITLog.Error → Debug.LogError 다단 진단 블록(검색 경로·Build 폴더 파일 목록 등
+        // 가변 개수)을 의도적으로 발화시키므로, UTF의 unhandled-log 실패를 스코프 한정으로
+        // 무시한다. 핵심 에러의 실제 방출 여부는 아래 CollectLogs 기반 양성 검증이 보장한다.
         string result = null;
-        var logs = CollectLogs(() =>
-            result = AITBuildValidator.FindFileInBuild(tempDir, "*.framework.js*", isRequired: true));
+        List<LogEntry> logs;
+        LogAssert.ignoreFailingMessages = true;
+        try
+        {
+            logs = CollectLogs(() =>
+                result = AITBuildValidator.FindFileInBuild(tempDir, "*.framework.js*", isRequired: true));
+        }
+        finally
+        {
+            LogAssert.ignoreFailingMessages = false;
+        }
 
         // 빈 문자열 반환 → missingFiles.Add("*.framework.js") 로 이어짐 (WebGLBuildCopier.cs)
         Assert.AreEqual("", result,

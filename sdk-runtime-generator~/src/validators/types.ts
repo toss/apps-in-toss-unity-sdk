@@ -4,7 +4,7 @@ import picocolors from 'picocolors';
 /**
  * 지원되는 타입 목록
  */
-const SUPPORTED_PRIMITIVES = new Set(['string', 'number', 'boolean', 'void', 'any', 'unknown', 'object', 'null', 'undefined', 'never']);
+const SUPPORTED_PRIMITIVES = new Set(['string', 'number', 'boolean', 'void', 'any', 'unknown', 'object', 'null', 'undefined', 'never', 'symbol']);
 
 /**
  * C# 타입 매핑 테이블
@@ -17,6 +17,7 @@ export const TYPE_MAPPING: Record<string, string> = {
   void: 'void',
   any: 'void', // any는 void로 처리 (Promise<any> → Task)
   unknown: 'object',
+  symbol: 'object', // C#에 대응 타입 없음 — object로 매핑 (예: Record<string, Primitive> 값)
 
   // Unity types
   Date: 'DateTime',
@@ -404,6 +405,13 @@ function mapToCSharpTypeCore(type: ParsedType): string {
       return 'Dictionary<string, object>';
 
     case 'unknown':
+      // 제네릭 텍스트(Record<K, V>, Partial<Record<...>> 등)가 unknown으로 떨어진 경우,
+      // 아래 split/strip은 "ConsentedUserDataKeystring" 같은 깨진 식별자를 만들므로
+      // (CS0246 — 존재하지 않는 타입) 안전한 Dictionary 매핑으로 우회한다.
+      // 정상 경로는 parser가 kind:'record'로 분류하는 것이고, 이 분기는 방어선이다.
+      if (type.name && type.name.includes('Record<')) {
+        return 'Dictionary<string, object>';
+      }
       // unknown 타입이지만 name에 import 경로가 있으면 타입 이름 추출
       // 예: import("...").GameCenterGameProfileResponse -> GameCenterGameProfileResponse
       if (type.name && type.name.includes('.')) {

@@ -103,12 +103,11 @@ jobs:
       run-editmode-test: false
       run-unit-test: false
       clean-library: false
-      # ---- perf 입력: 무거운 픽스처 + 릴리즈 + gzip(현실적 on-wire) ----
+      # ---- perf 입력: 무거운 픽스처 + 배포 동일 Release wasm + gzip(현실적 on-wire) ----
       project-dir-prefix: HeavySampleUnityProject
       build-method: HeavyBuildRunner.CommandLineHeavyBuild
-      compression-format: "1"
-      development-build: false
-      il2cpp-configuration: Release
+      fast-build: false      # release wasm(배포·preview 와 동일 프로필) — dev build/Debug il2cpp 비활성
+      compression-format: "1" # fast-build 가 표현 못 하는 유일 노브: gzip 으로 현실적 on-wire 측정
     secrets:
       SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
       KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}

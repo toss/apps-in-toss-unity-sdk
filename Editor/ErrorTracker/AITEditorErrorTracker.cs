@@ -144,7 +144,8 @@ namespace AppsInToss.Editor.ErrorTracker
 
             // Unity AssetImporter 내부 워커/메인 에러 — SDK 외부 출처 (Unity 자체 에셋 임포트 경고).
             // 워커 prefix가 있는 변형: "[Worker2] Import Error Code:(4)" (SDK-RC/RD/RE)
-            // prefix 없이 UnityWarning으로 래핑된 변형: "UnityWarning: Import Error Code:(4)" (SDK-V7)
+            // prefix 없이 UnityWarning으로 래핑된 변형: "UnityWarning: Import Error Code:(4)" (SDK-V7, APPS-IN-TOSS-UNITY-SDK-111)
+            // Unity SourceAssetDB modification time 불일치 경고로 Unity 자체 에셋 임포트 시스템에서 출력되는 외부 노이즈 — SDK 식별자 없음.
             // prefix 유무·워커 번호·코드 숫자가 모두 가변이므로 공통 핵심 문구 "Import Error Code:(" 로 일반화.
             // SDK는 이 문자열을 출력하지 않으므로(AitKeywords에 없음) 보호 가드와 충돌 없음.
             "Import Error Code:(",

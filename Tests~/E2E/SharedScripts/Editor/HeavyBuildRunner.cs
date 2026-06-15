@@ -170,7 +170,11 @@ public class HeavyBuildRunner
         settings.loadType = AudioClipLoadType.DecompressOnLoad; // L8: 대용량 AudioClip 외부화 대상
         settings.compressionFormat = AudioCompressionFormat.PCM; // PCM → .data 비중 큼(신호 강함)
         importer.defaultSampleSettings = settings;
-        importer.preloadAudioData = true;
+        // preloadAudioData 는 명시 설정하지 않는다(임포트 기본값이 true). Unity 6 에서
+        // AudioImporter.preloadAudioData 는 obsolete-as-error(CS0619)로 빌드를 깨고
+        // (per-platform SampleSettings 로 이전됨), 2021.3 에는 그 대체 필드가 없어 버전 간
+        // 통일이 불가하다. L8 측정 대상인 .data 비중은 loadType/compressionFormat 이 결정하므로
+        // preload 명시는 불필요하다.
         importer.SaveAndReimport();
     }
 

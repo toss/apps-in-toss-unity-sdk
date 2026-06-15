@@ -99,3 +99,8 @@ jobs:
           fi
 
           echo "✓ 모든 Unity 파일에 .meta 파일이 있습니다."
+
+      - name: Check .meta GUID hygiene
+        # 배포 .meta의 중복 GUID / 손-작성 순차 GUID 검사 (techchat #4076 재발 방지).
+        # Node stdlib만 사용 — ubuntu-latest 기본 Node로 충분.
+        run: node "scripts~/check-meta-guids.js"

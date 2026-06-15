@@ -317,7 +317,7 @@ show_help() {
     echo "    $0 --list-unity               # 설치된 버전 확인"
     echo ""
     echo "실행 순서:"
-    echo "  --validate    : [1] 파일 구조 검증 → [2] Playwright 설정 → [3] SDK 유닛 테스트"
+    echo "  --validate    : [1] 파일 구조 검증 → [2] Playwright 설정 → [3] SDK 유닛 테스트 → [4] Meta GUID 위생"
     echo "  --editmode    : [1] Unity EditMode 테스트 (~10초, 빌드 불필요)"
     echo "  --unity-build : [1] Unity WebGL 빌드"
     echo "  --e2e         : [1] Playwright E2E 테스트 (빌드 결과물 필요)"
@@ -778,6 +778,24 @@ test_sdk_generator_unit() {
         return 0
     else
         print_failure "SDK Generator Unit Tests"
+        return 1
+    fi
+}
+
+# 5.6 .meta GUID 위생 검사 (중복/손-작성 순차 GUID — techchat #4076 재발 방지)
+test_meta_guids() {
+    print_header "Meta GUID Hygiene"
+
+    if ! command -v node >/dev/null 2>&1; then
+        print_skip "Meta GUID Hygiene - node 없음"
+        return 0
+    fi
+
+    if node "$SCRIPT_DIR/scripts~/check-meta-guids.js"; then
+        print_success "Meta GUID Hygiene"
+        return 0
+    else
+        print_failure "Meta GUID Hygiene"
         return 1
     fi
 }
@@ -1446,6 +1464,7 @@ main() {
             test_e2e_validation
             test_playwright_config
             test_sdk_generator_unit
+            test_meta_guids
             ;;
     esac
 

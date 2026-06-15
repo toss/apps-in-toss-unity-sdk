@@ -21,7 +21,7 @@
     "test:differential": "vitest run tests/unit/differential.test.ts",
     "test:multi-version": "vitest run tests/unit/multi-version.test.ts"
   },
-  "packageManager": "pnpm@10.28.0",
+  "packageManager": "pnpm@11.6.0",
   "dependencies": {
     "@apps-in-toss/framework": "1.6.0",
     "@apps-in-toss/web-analytics": "2.7.0",
@@ -90,11 +90,5 @@
     "web-framework-2.6.1": "npm:@apps-in-toss/web-framework@2.6.1",
     "web-framework-2.6.2": "npm:@apps-in-toss/web-framework@2.6.2",
     "web-framework-2.7.0": "npm:@apps-in-toss/web-framework@2.7.0"
-  },
-  "pnpm": {
-    "overrides": {
-      "find-my-way": ">=8.2.2",
-      "ip": ">=2.0.1"
-    }
   }
 }

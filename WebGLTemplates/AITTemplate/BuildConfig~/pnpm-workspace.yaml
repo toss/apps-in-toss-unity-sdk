@@ -9,3 +9,11 @@
 # 이 파일은 미니앱 빌드 디렉토리로 복사되며, 사용자 프로젝트에 동명 파일이 있으면 그쪽이 우선한다.
 minimumReleaseAgeExclude:
   - '@apps-in-toss/*'
+
+# transitive 의존성 보안/호환 고정.
+# pnpm v11부터 package.json의 "pnpm" 필드(overrides 등)를 더 이상 읽지 않으므로
+# 기존 package.json#pnpm.overrides를 이곳으로 이전했다.
+overrides:
+  '@granite-js/plugin-core': 0.1.30
+  find-my-way: '>=8.2.2'
+  ip: '>=2.0.1'

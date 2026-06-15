@@ -21,8 +21,11 @@ namespace AppsInToss.Editor.Package
         /// Unity WebGL 빌드를 public 폴더로 복사합니다.
         /// </summary>
         /// <returns>성공 시 SUCCEED, 실패 시 해당 에러 코드</returns>
-        internal static AITConvertCore.AITExportError CopyWebGLToPublic(string webglPath, string buildProjectPath, AITBuildProfile profile = null)
+        internal static AITConvertCore.AITExportError CopyWebGLToPublic(string webglPath, string buildProjectPath, out string inlinePrefetchJson, AITBuildProfile profile = null)
         {
+            // prefetch 인라인 카탈로그는 성공 경로(WriteManifest 산출)에서만 채워짐. 그 외 경로는 null 유지.
+            inlinePrefetchJson = null;
+
             // 프로필이 없으면 기본 프로필 사용
             if (profile == null)
             {
@@ -341,9 +344,46 @@ namespace AppsInToss.Editor.Package
                 Debug.Log($"[AIT] appsintoss-unity-bridge.js Mock 브릿지 모드: {(profile.enableMockBridge ? "활성화" : "비활성화")}");
             }
 
+            // Build 파일 복사 및 index.html 치환 완료 후 warm manifest 를 산출합니다.
+            // [destPath = publicPath] 명세 원문은 'index.html 이 놓이는 web 루트(buildProjectPath)' 라 기술하나,
+            // Build/* 파일은 publicPath(buildProjectPath/public/)에 복사되므로 wireBytes 계산이
+            // buildProjectPath 기준이면 FileInfo.Length 가 실패합니다. publicPath 를 전달해야
+            // Path.Combine(destPath, "Build", file) 이 실제 파일 위치와 일치합니다.
+            // Vite 가 public/ 을 정적 루트로 서빙하므로 호스트는 /ait-warm-manifest.json 으로 취득합니다.
+            inlinePrefetchJson = AITWarmManifestEmitter.WriteManifest(config, publicPath, loaderFile, dataFile, frameworkFile, wasmFile, symbolsFile);
+            AITWarmPageEmitter.WritePage(config, publicPath);
+
             Debug.Log("[AIT] Unity WebGL 빌드 복사 완료");
             Debug.Log("[AIT]   - index.html → 프로젝트 루트");
             Debug.Log("[AIT]   - Build, TemplateData, Runtime → public/");
+
+            // 네이티브 에셋 소스 레버 실효값 빌드 요약 + 침묵 열화(silent degradation) 경고.
+            // pageCache 가 ON 일 때만 인터셉터에 신호가 주입되므로 AND 게이트.
+            bool pageCacheEffective = config.pageCache < 0
+                ? AITDefaultSettings.GetDefaultPageCache()
+                : config.pageCache == 1;
+            bool nativeSourceEffective = config.nativeAssetSource < 0
+                ? AITDefaultSettings.GetDefaultNativeAssetSource()
+                : config.nativeAssetSource == 1;
+            if (pageCacheEffective && nativeSourceEffective)
+            {
+                Debug.Log("[AIT]   - 네이티브 에셋 소스 우선: 활성 (호스트 window.__aitResolveAsset 주입 시 native→CacheStorage→network)");
+
+                // 네이티브가 프리페치 대상 목록을 얻으려면 ait-warm-manifest.json 이 필요하다.
+                // warmManifest 가 OFF 면 매니페스트가 없어 네이티브 우선 경로가 사실상 무력화(폴백)된다 → 경고.
+                bool warmManifestEffective = config.warmManifest < 0
+                    ? AITDefaultSettings.GetDefaultWarmManifest()
+                    : config.warmManifest == 1;
+                if (!warmManifestEffective)
+                {
+                    Debug.LogWarning(
+                        "[AIT] 네이티브 에셋 소스가 활성이지만 Warm Manifest 가 비활성입니다. " +
+                        "호스트 네이티브가 프리페치 대상 목록(ait-warm-manifest.json)을 얻을 수 없어 " +
+                        "네이티브 우선 경로가 사실상 동작하지 않고 CacheStorage/network 로 폴백됩니다. " +
+                        "Warm Manifest 를 활성화하세요."
+                    );
+                }
+            }
 
             return AITConvertCore.AITExportError.SUCCEED;
         }

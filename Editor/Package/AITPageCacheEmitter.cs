@@ -155,6 +155,13 @@ namespace AppsInToss.Editor.Package
             string allowlistJson = "[" + string.Join(",", allowlist.ConvertAll(JsString)) + "]";
             string cacheNameJs = JsString(cacheName);
 
+            // 네이티브 에셋 소스 레버 (tri-state -1=자동→기본값true, 0=비활성, 1=활성).
+            // pageCache 가 ON 일 때만(인터셉터 존재 전제) 이 분기에 도달하므로 AND 게이트가 성립.
+            bool nativeEnabled = config.nativeAssetSource < 0
+                ? AITDefaultSettings.GetDefaultNativeAssetSource()
+                : config.nativeAssetSource == 1;
+            string nativeEnabledJs = nativeEnabled ? "true" : "false";
+
             // 주의: 이 스니펫에는 %대문자_퍼센트% 토큰을 포함하지 않습니다(ValidatePlaceholderSubstitution 안전).
             // 설치 순서: index.html 에서 본 스니펫은 %AIT_EARLY_FETCH_SCRIPT% 보다 '앞'에 위치합니다.
             // 따라서 priorFetch 캡처 시점의 window.fetch 는 native 이며, 그 위를 이후 Early Fetch 가 래핑합니다.
@@ -174,6 +181,14 @@ namespace AppsInToss.Editor.Package
 
             // 부팅 무효화 allowlist: 현재 빌드의 Build/* 상대경로. 설치 직후 1회 정리에 사용.
             var ALLOWLIST = " + allowlistJson + @";
+
+            // 네이티브 에셋 소스: 호스트(슈퍼앱)가 window.__aitResolveAsset(url) 리졸버를 주입하면
+            // Build/* 요청을 native→CacheStorage→network 순으로 해석합니다(리졸버 미주입 시 신호만 노출).
+            // 보안/CacheStorage 가드(위 return) 이후에 정의되므로 미지원 환경에선 신호가 미정의로 남습니다(의도).
+            var NATIVE_SOURCE = " + nativeEnabledJs + @";
+            var NATIVE_TIMEOUT_MS = 3000;
+            // 호스트가 리졸버 주입 가치를 판단할 수 있도록 신호를 노출(레버 OFF 면 false → 호스트가 주입 생략).
+            window.__aitNativeSourceEnabled = NATIVE_SOURCE;
 
             // 통계 훅(perf CI/검증용, 운영 무영향).
             window.__aitCacheStats = { hits: [], misses: [], puts: [], errors: [] };
@@ -209,13 +224,9 @@ namespace AppsInToss.Editor.Package
             // 설치 시점의 fetch 를 캡처(여기선 native; Early Fetch 는 아직 미설치).
             var priorFetch = window.fetch.bind(window);
 
-            window.fetch = function (resource, init) {
-                var url = absUrl(resource);
-                // 비대상/비GET 은 그대로 위임(StreamingAssets/TemplateData/Document/loader.js 등).
-                if (!url || !isCacheable(url) || isNonGet(resource, init)) {
-                    return priorFetch(resource, init);
-                }
-                // cache-first: 어떤 네트워크/Early-Fetch 경로보다 CacheStorage 를 먼저 시도.
+            // cache-first 체인: CacheStorage 히트 → 단락, 미스 → priorFetch 후 비차단 put.
+            // native-first 분기가 실패/미설정/타임아웃일 때의 폴백 경로로도 재사용됩니다.
+            function cacheFirst(resource, init, url) {
                 return getCache().then(function (cache) {
                     return cache.match(url).then(function (hit) {
                         if (hit) {
@@ -248,6 +259,58 @@ namespace AppsInToss.Editor.Package
                     window.__aitCacheStats.errors.push('match ' + url + ': ' + (e && e.message || e));
                     return priorFetch(resource, init);
                 });
+            }
+
+            window.fetch = function (resource, init) {
+                var url = absUrl(resource);
+                // 비대상/비GET 은 그대로 위임(StreamingAssets/TemplateData/Document/loader.js 등).
+                if (!url || !isCacheable(url) || isNonGet(resource, init)) {
+                    return priorFetch(resource, init);
+                }
+                // native-first: 레버 ON + 호스트가 리졸버를 주입했으면 네이티브 프리페치 결과를 우선 시도.
+                // 리졸버 계약: window.__aitResolveAsset(url) => Promise<Response|null>(동기 Response/null 도 허용).
+                //  · Response 반환 → 그대로 서빙(cache.put 하지 않음: 네이티브가 자체 스토어 소유).
+                //  · null/throw/reject/타임아웃 → cacheFirst 폴백(native→CacheStorage→network 우선순위).
+                if (NATIVE_SOURCE && typeof window.__aitResolveAsset === 'function') {
+                    var nativeCall;
+                    try {
+                        // 동기/비동기 모두 흡수(동기 Response/null 도 Promise 로 정규화).
+                        nativeCall = Promise.resolve(window.__aitResolveAsset(url));
+                    } catch (e) {
+                        // 동기 throw → 폴백.
+                        window.__aitCacheStats.errors.push('native-throw ' + url + ': ' + (e && e.message || e));
+                        return cacheFirst(resource, init, url);
+                    }
+                    var nativeTimer = null;
+                    var timeoutP = new Promise(function (resolve) {
+                        // setTimeout 콜백은 동기적으로 등록되므로 race 호출 전에 nativeTimer 가 할당됩니다.
+                        nativeTimer = setTimeout(function () { resolve(null); }, NATIVE_TIMEOUT_MS);
+                    });
+                    return Promise.race([nativeCall, timeoutP]).then(function (nativeResp) {
+                        if (nativeTimer) { clearTimeout(nativeTimer); nativeTimer = null; } // 타이머 누수 방지.
+                        if (nativeResp) {
+                            // 방어적 검사: raw-only 계약(네이티브는 해제된 bytes 를 Content-Encoding 없이 반환)을 위반해
+                            // 압축 응답을 CE 헤더와 함께 돌려주면 loader.js 가 Unity 마커를 못 찾아 깨질 수 있음.
+                            // 차단하진 않되(호스트 책임) 경고를 남겨 진단 가능하게 한다.
+                            try {
+                                if (nativeResp.headers && nativeResp.headers.get && nativeResp.headers.get('Content-Encoding')) {
+                                    window.__aitCacheStats.errors.push('native-ce ' + url + ': resolver Content-Encoding 동반(raw-only 계약 위반)');
+                                }
+                            } catch (e) {}
+                            window.__aitCacheStats.hits.push('native:' + url);
+                            return nativeResp; // 네이티브 응답은 cache.put 하지 않음(스토어 이중화 방지).
+                        }
+                        // null/타임아웃 → cache-first 폴백.
+                        return cacheFirst(resource, init, url);
+                    }).catch(function (e) {
+                        if (nativeTimer) { clearTimeout(nativeTimer); nativeTimer = null; } // 타이머 누수 방지.
+                        // 비동기 reject → 폴백.
+                        window.__aitCacheStats.errors.push('native-reject ' + url + ': ' + (e && e.message || e));
+                        return cacheFirst(resource, init, url);
+                    });
+                }
+                // 레버 OFF 또는 리졸버 미주입 → 기존 cache-first(어떤 네트워크/Early-Fetch 경로보다 우선).
+                return cacheFirst(resource, init, url);
             };
 
             // 부팅 무효화(설치 직후 1회, 비차단): allowlist 에 없는 옛 해시 엔트리를 백그라운드 정리.

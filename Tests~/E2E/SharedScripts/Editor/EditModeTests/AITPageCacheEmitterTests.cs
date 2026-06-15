@@ -289,4 +289,89 @@ public class AITPageCacheEmitterTests
         Assert.AreEqual(AITPageCacheEmitter.DefaultCacheName, result,
             "캐시명·appName 모두 비어 있으면 기본값으로 폴백해야 한다");
     }
+
+    // === 네이티브 에셋 소스 레버 (nativeAssetSource tri-state) ===
+
+    [Test]
+    public void NativeAssetSource_Default_IsEnabled()
+    {
+        Assert.IsTrue(AITDefaultSettings.GetDefaultNativeAssetSource(),
+            "네이티브 에셋 소스 기본값은 자동(true)이어야 한다");
+    }
+
+    [Test]
+    public void NativeAuto_EmitsResolverGuardAndSignal()
+    {
+        config.pageCache = 1;
+        config.nativeAssetSource = -1; // 자동 (기본 true)
+        string result = AITPageCacheEmitter.GenerateInterceptorScript(config, DataFile, FrameworkFile, WasmFile);
+
+        Assert.IsNotEmpty(result);
+        StringAssert.Contains("var NATIVE_SOURCE = true", result,
+            "자동(-1)이면 기본값 true 가 NATIVE_SOURCE 에 박혀야 한다");
+        StringAssert.Contains("window.__aitNativeSourceEnabled", result,
+            "호스트가 리졸버 주입 여부를 판단할 신호를 노출해야 한다");
+        StringAssert.Contains("window.__aitResolveAsset", result,
+            "호스트 리졸버 진입점(__aitResolveAsset) 분기가 있어야 한다");
+        StringAssert.Contains("NATIVE_TIMEOUT_MS", result,
+            "네이티브 응답 타임아웃 상수가 있어야 한다");
+        StringAssert.Contains("clearTimeout", result,
+            "타이머 누수 방지를 위해 clearTimeout 으로 타이머를 해제해야 한다");
+    }
+
+    [Test]
+    public void NativeAuto_KeepsCacheFirstFallback()
+    {
+        config.pageCache = 1;
+        config.nativeAssetSource = -1;
+        string result = AITPageCacheEmitter.GenerateInterceptorScript(config, DataFile, FrameworkFile, WasmFile);
+
+        // 네이티브 우선 분기가 추가되어도 cacheFirst 폴백 경로는 보존되어야 한다(native→CacheStorage→network).
+        StringAssert.Contains("function cacheFirst", result,
+            "cacheFirst 폴백 함수가 추출되어 있어야 한다");
+        StringAssert.Contains("getCache", result,
+            "CacheStorage 폴백 경로가 유지되어야 한다");
+        StringAssert.Contains("native:", result,
+            "네이티브 히트 통계 라벨(native:)이 있어야 한다");
+    }
+
+    [Test]
+    public void NativeExplicitOff_DisablesSignalButKeepsCacheFirst()
+    {
+        config.pageCache = 1;
+        config.nativeAssetSource = 0; // 명시적 비활성
+        string result = AITPageCacheEmitter.GenerateInterceptorScript(config, DataFile, FrameworkFile, WasmFile);
+
+        Assert.IsNotEmpty(result, "pageCache 가 ON 이면 인터셉터 자체는 여전히 생성되어야 한다");
+        StringAssert.Contains("var NATIVE_SOURCE = false", result,
+            "명시적 비활성(0)이면 NATIVE_SOURCE 가 false 여야 한다");
+        StringAssert.Contains("getCache", result,
+            "네이티브가 OFF 여도 cache-first 경로는 유지되어야 한다");
+    }
+
+    [Test]
+    public void NativeOn_PageCacheOff_NoInterceptor()
+    {
+        config.pageCache = 0; // 인터셉터 없음 → 신호 주입 지점 자체가 없음
+        config.nativeAssetSource = 1; // 명시적 활성이어도 무의미
+        string result = AITPageCacheEmitter.GenerateInterceptorScript(config, DataFile, FrameworkFile, WasmFile);
+
+        Assert.AreEqual(string.Empty, result,
+            "pageCache==0 이면 인터셉터가 없으므로 nativeAssetSource 와 무관하게 빈 문자열이어야 한다(AND 게이트)");
+    }
+
+    [Test]
+    public void NativeSignal_AfterSecureContextGuard()
+    {
+        config.pageCache = 1;
+        config.nativeAssetSource = 1;
+        string result = AITPageCacheEmitter.GenerateInterceptorScript(config, DataFile, FrameworkFile, WasmFile);
+
+        // 신호는 보안/CacheStorage 가드(return) '이후'에 정의되어야 미지원 환경에서 미정의로 남는다(의도).
+        int guardIdx = result.IndexOf("'caches' in window");
+        int signalIdx = result.IndexOf("window.__aitNativeSourceEnabled");
+        Assert.Greater(guardIdx, -1, "보안/CacheStorage 가드가 있어야 한다");
+        Assert.Greater(signalIdx, guardIdx,
+            "네이티브 신호는 미지원 가드 이후에 정의되어야 한다(미지원 환경 미정의 보장)");
+    }
 }

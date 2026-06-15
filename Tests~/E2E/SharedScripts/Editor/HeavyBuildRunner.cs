@@ -85,18 +85,15 @@ public class HeavyBuildRunner
         EnsureFolder(HeavyRoot + "/Meshes");
         EnsureFolder(HeavyRoot + "/Fonts");
 
-        AssetDatabase.StartAssetEditing();
-        try
-        {
-            for (int i = 0; i < textureCount; i++) GenerateTexture(i, textureSize);
-            for (int i = 0; i < audioCount; i++) GenerateAudio(i, audioSeconds);
-            for (int i = 0; i < meshCount; i++) GenerateMesh(i, meshGrid);
-            CopyFonts(fontCopies);
-        }
-        finally
-        {
-            AssetDatabase.StopAssetEditing();
-        }
+        // 주의: 이 루프를 StartAssetEditing/StopAssetEditing 배치로 감싸면 안 된다.
+        // 배치 중에는 AssetDatabase 임포트가 지연되어, GenerateTexture/GenerateAudio 내부의
+        // AssetImporter.GetAtPath()가 (아직 임포트 전이라) null 을 반환하고 importer.* 접근에서
+        // NullReferenceException 이 난다. 각 Generate* 는 "파일 기록 → ForceSynchronousImport →
+        // 임포터 설정 → SaveAndReimport" 를 자기 완결적으로 수행하므로 배치 없이 순차 호출한다.
+        for (int i = 0; i < textureCount; i++) GenerateTexture(i, textureSize);
+        for (int i = 0; i < audioCount; i++) GenerateAudio(i, audioSeconds);
+        for (int i = 0; i < meshCount; i++) GenerateMesh(i, meshGrid);
+        CopyFonts(fontCopies);
 
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
@@ -128,6 +125,10 @@ public class HeavyBuildRunner
         AssetDatabase.ImportAsset(assetPath, ImportAssetOptions.ForceSynchronousImport);
 
         var importer = (TextureImporter)AssetImporter.GetAtPath(assetPath);
+        if (importer == null)
+            throw new System.Exception(
+                $"[heavy] TextureImporter 가 null: {assetPath} (ForceSynchronousImport 후에도 임포트 안 됨 — " +
+                "StartAssetEditing 배치로 감싸면 임포트가 지연되어 이 NRE 가 난다)");
         importer.textureType = TextureImporterType.Default;
         importer.mipmapEnabled = true;            // L6 (mip stripping) 대상
         importer.isReadable = false;
@@ -161,11 +162,19 @@ public class HeavyBuildRunner
         AssetDatabase.ImportAsset(assetPath, ImportAssetOptions.ForceSynchronousImport);
 
         var importer = (AudioImporter)AssetImporter.GetAtPath(assetPath);
+        if (importer == null)
+            throw new System.Exception(
+                $"[heavy] AudioImporter 가 null: {assetPath} (ForceSynchronousImport 후에도 임포트 안 됨 — " +
+                "StartAssetEditing 배치로 감싸면 임포트가 지연되어 이 NRE 가 난다)");
         var settings = importer.defaultSampleSettings;
         settings.loadType = AudioClipLoadType.DecompressOnLoad; // L8: 대용량 AudioClip 외부화 대상
         settings.compressionFormat = AudioCompressionFormat.PCM; // PCM → .data 비중 큼(신호 강함)
         importer.defaultSampleSettings = settings;
-        importer.preloadAudioData = true;
+        // preloadAudioData 는 명시 설정하지 않는다(임포트 기본값이 true). Unity 6 에서
+        // AudioImporter.preloadAudioData 는 obsolete-as-error(CS0619)로 빌드를 깨고
+        // (per-platform SampleSettings 로 이전됨), 2021.3 에는 그 대체 필드가 없어 버전 간
+        // 통일이 불가하다. L8 측정 대상인 .data 비중은 loadType/compressionFormat 이 결정하므로
+        // preload 명시는 불필요하다.
         importer.SaveAndReimport();
     }
 

@@ -66,8 +66,29 @@ on:
         type: string
         required: false
         default: '2'
+      # ---- perf 하네스용 파라미터 ----
+      # project-dir-prefix·build-method 는 기본값이 기존 E2E 리터럴과 동일 → 기존 호출자 무영향.
+      # 빌드 프로필(dev/release·il2cpp)은 main 의 fast-build 단일 스위치가 담당한다:
+      #   perf.yml 은 fast-build=false 로 "배포와 동일한 Release wasm"(preview 와 동일 경로)을 측정.
+      # fast-build 가 표현 못 하는 단 하나의 노브(압축 포맷)만 compression-format 로 분리 — perf 는
+      # '1'(gzip)을 넘겨 현실적 on-wire 바이트를 만든다. 빈 값이면 fast-build 로 파생(기존 동작 유지).
+      project-dir-prefix:
+        description: 'Project directory prefix under Tests~/E2E (SampleUnityProject | HeavySampleUnityProject)'
+        type: string
+        required: false
+        default: 'SampleUnityProject'
+      build-method:
+        description: 'Unity -executeMethod entry point (E2EBuildRunner.CommandLineBuild | HeavyBuildRunner.CommandLineHeavyBuild)'
+        type: string
+        required: false
+        default: 'E2EBuildRunner.CommandLineBuild'
+      compression-format:
+        description: 'AIT_COMPRESSION_FORMAT override: 0=disabled 1=gzip 2=brotli -1=auto. 빈 값이면 fast-build 파생(E2E=0). perf=1(gzip).'
+        type: string
+        required: false
+        default: ''
       fast-build:
-        description: 'E2E 고속 빌드 프로필 (dev build + 압축 비활성화 + IL2CPP Debug, PR #551). 산출물을 ait deploy로 콘솔에 배포하는 호출자(preview 등)는 false 필수 — dev 빌드 wasm(6000.x 기준 ~134MiB)이 콘솔 번들 크기 제한을 초과해 서버측 BUILD_FAILED가 남. false면 env 오버라이드 없이 SDK 기본 프로필(release 빌드)로 빌드.'
+        description: 'E2E 고속 빌드 프로필 (dev build + 압축 비활성화 + IL2CPP Debug, PR #551). 산출물을 ait deploy로 콘솔에 배포하는 호출자(preview 등)는 false 필수 — dev 빌드 wasm(6000.x 기준 ~134MiB)이 콘솔 번들 크기 제한을 초과해 서버측 BUILD_FAILED가 남. false면 env 오버라이드 없이 SDK 기본 프로필(release 빌드)로 빌드. perf 하네스도 false 를 넘겨 배포 동일 Release wasm 을 측정한다.'
         type: boolean
         required: false
         default: true
@@ -447,9 +468,9 @@ jobs:
           $paths = @(
             '${{ github.workspace }}',
             'C:\Program Files\Unity',
-            '${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ inputs.unity-version }}\ait-build',
-            '${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ inputs.unity-version }}\webgl',
-            '${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ inputs.unity-version }}\Library'
+            '${{ github.workspace }}\Tests~\E2E\${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}\ait-build',
+            '${{ github.workspace }}\Tests~\E2E\${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}\webgl',
+            '${{ github.workspace }}\Tests~\E2E\${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}\Library'
           )
 
           $successCount = 0
@@ -481,7 +502,7 @@ jobs:
       - name: Clean Previous Build Artifacts (macOS)
         if: inputs.os == 'macos' && (inputs.test-level || '2') != '0'
         run: |
-          PROJECT_PATH="Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}"
+          PROJECT_PATH="Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}"
           echo "Cleaning previous build artifacts..."
           rm -rf "${PROJECT_PATH}/ait-build" 2>/dev/null || true
           rm -rf "${PROJECT_PATH}/webgl" 2>/dev/null || true
@@ -525,6 +546,7 @@ jobs:
         shell: node {0}
         env:
           UNITY_VERSION: ${{ inputs.unity-version }}
+          PROJECT_DIR_PREFIX: ${{ inputs.project-dir-prefix }}
           CLEAN_LIBRARY: ${{ inputs.clean-library }}
           BEFORE_SHA: ${{ github.event.before }}
         run: |
@@ -532,7 +554,7 @@ jobs:
           const path = require('path');
           const { execFileSync } = require('child_process');
 
-          const projectPath = path.join('Tests~', 'E2E', `SampleUnityProject-${process.env.UNITY_VERSION}`);
+          const projectPath = path.join('Tests~', 'E2E', `${process.env.PROJECT_DIR_PREFIX}-${process.env.UNITY_VERSION}`);
           const rm = (rel) => {
             const p = path.join(projectPath, rel);
             if (fs.existsSync(p)) {
@@ -835,7 +857,7 @@ jobs:
           FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
           FIREBASE_MEASUREMENT_ID: ${{ secrets.FIREBASE_MEASUREMENT_ID }}
         run: |
-          ENV_FILE="Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}/Assets/WebGLTemplates/AITTemplate/BuildConfig~/.env"
+          ENV_FILE="Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}/Assets/WebGLTemplates/AITTemplate/BuildConfig~/.env"
 
           # BuildConfig~ 디렉토리가 없으면 (이전 버전 sample) 스킵
           if [ ! -d "$(dirname "$ENV_FILE")" ]; then
@@ -866,7 +888,7 @@ jobs:
           FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
           FIREBASE_MEASUREMENT_ID: ${{ secrets.FIREBASE_MEASUREMENT_ID }}
         run: |
-          $envFile = "Tests~\E2E\SampleUnityProject-${{ inputs.unity-version }}\Assets\WebGLTemplates\AITTemplate\BuildConfig~\.env"
+          $envFile = "Tests~\E2E\${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}\Assets\WebGLTemplates\AITTemplate\BuildConfig~\.env"
           $envDir = Split-Path -Parent $envFile
 
           if (-not (Test-Path $envDir)) {
@@ -897,7 +919,7 @@ jobs:
         if: inputs.os == 'macos' && inputs.run-editmode-test
         run: |
           UNITY_PATH="${{ steps.unity-macos.outputs.UNITY_PATH }}"
-          PROJECT_PATH="${{ github.workspace }}/Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}"
+          PROJECT_PATH="${{ github.workspace }}/Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}"
           RESULTS_FILE="$PROJECT_PATH/editmode-results.xml"
           LOG_FILE="/tmp/unity-editmode-${{ inputs.unity-version }}.log"
           MAX_WAIT=600  # Unity 프로세스 최대 대기 시간 (10분)
@@ -996,7 +1018,7 @@ jobs:
           $OutputEncoding = [System.Text.Encoding]::UTF8
 
           $unityPath = "${{ steps.unity-windows.outputs.UNITY_PATH }}"
-          $projectPath = "${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ inputs.unity-version }}"
+          $projectPath = "${{ github.workspace }}\Tests~\E2E\${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}"
           $resultsFile = "$projectPath\editmode-results.xml"
           $maxWaitSeconds = 600  # Unity process max wait (10 minutes)
 
@@ -1082,7 +1104,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: editmode-results-${{ inputs.os }}-${{ inputs.unity-version }}
-          path: Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}/editmode-results.xml
+          path: Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}/editmode-results.xml
           if-no-files-found: ignore
           retention-days: 7
 
@@ -1321,7 +1343,7 @@ jobs:
         if: inputs.os == 'macos' && inputs.run-unit-test
         run: |
           UNITY_PATH="${{ steps.unity-macos.outputs.UNITY_PATH }}"
-          PROJECT_PATH="${{ github.workspace }}/Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}"
+          PROJECT_PATH="${{ github.workspace }}/Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}"
           LOG_FILE="/tmp/unity-test-${{ inputs.unity-version }}.log"
           RESULTS_FILE="/tmp/unity-test-results-${{ inputs.unity-version }}.xml"
 
@@ -1361,7 +1383,7 @@ jobs:
         shell: powershell
         run: |
           $unityPath = "${{ steps.unity-windows.outputs.UNITY_PATH }}"
-          $projectPath = "${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ inputs.unity-version }}"
+          $projectPath = "${{ github.workspace }}\Tests~\E2E\${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}"
           # runner.temp(=$env:RUNNER_TEMP)와 일치시켜 업로드 step path가 매치되게 한다.
           $logFile = "$env:RUNNER_TEMP\unity-test-${{ inputs.unity-version }}.log"
           $resultsFile = "$env:RUNNER_TEMP\unity-test-results-${{ inputs.unity-version }}.xml"
@@ -1457,7 +1479,7 @@ jobs:
           }
 
           # 첫 번째 EditMode(run-editmode-test)에서 이미 통과한 경우, 이 step 실패를 무시
-          $firstEditModeResults = "${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ inputs.unity-version }}\editmode-results.xml"
+          $firstEditModeResults = "${{ github.workspace }}\Tests~\E2E\${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}\editmode-results.xml"
           if (Test-Path $firstEditModeResults) {
             $firstContent = Get-Content $firstEditModeResults -Raw
             if ($firstContent -match 'result="Passed"' -and $firstContent -notmatch 'result="Failed"') {
@@ -1536,20 +1558,15 @@ jobs:
         uses: nick-invision/retry@v4
         env:
           AIT_DEBUG_CONSOLE: "true"
-          # fast-build(기본 true, E2E용) 한정: 압축 비활성화. E2E는 vite dev/preview 서버에서만
-          # 로드되며 배포되지 않으므로 압축이 불필요. Brotli/Gzip 단계 자체를 건너뛰어
-          # wallclock 절감(~120s). 빈 문자열이면 오버라이드 없음(SDK 기본 프로필).
-          AIT_COMPRESSION_FORMAT: ${{ inputs.fast-build && '0' || '' }}
-          # fast-build 한정: Development Build 활성화 — Link_WebGL_wasm 단계가 단독 실행
-          # critical path에서 ~163s를 차지(Emscripten 옵티마이저 -O3 풀스피드).
-          # Development Build로 옵티마이저 단축, Build wallclock 대폭 절감 기대.
-          # E2E는 SDK API 동작만 검증하며 런타임 성능을 보지 않으므로 무관.
-          # 주의: dev 빌드 wasm은 콘솔 번들 크기 제한을 초과할 수 있어(6000.x ~134MiB)
-          # 배포 목적 호출자는 fast-build=false로 비활성화해야 함.
+          # 압축 포맷: compression-format 입력이 명시되면 우선(perf=1/gzip), 빈 값이면 fast-build 파생.
+          #   E2E 기본 fast-build(true)→0(Disabled, vite preview 전용·압축 불필요·wallclock 절감).
+          #   preview/perf 의 fast-build=false 경로에서 빈 값이면 ''(SDK 기본 압축). perf 는 '1' 명시.
+          AIT_COMPRESSION_FORMAT: ${{ inputs.compression-format != '' && inputs.compression-format || (inputs.fast-build && '0' || '') }}
+          # Development Build / IL2CPP 프로필: fast-build 단일 스위치가 담당(main PR #551).
+          #   fast-build=true(E2E) → dev build + Debug(Link_WebGL_wasm -O3 단축, wallclock 절감).
+          #   fast-build=false(preview·perf) → ''(SDK 기본 release 프로필 = 배포와 동일한 wasm).
+          #   주의: dev 빌드 wasm은 콘솔 번들 크기 제한 초과 가능(6000.x ~134MiB) → 배포 호출자는 fast-build=false.
           AIT_DEVELOPMENT_BUILD: ${{ inputs.fast-build && 'true' || '' }}
-          # fast-build 한정: IL2CPP 컴파일러 옵티마이저 레벨도 Debug로 강제. developmentBuild
-          # 플래그는 Player 측 설정이라 IL2CPP 옵티마이저(C_WebGL_wasm/Link_WebGL_wasm)에는
-          # 영향이 없어 별도 변수로 페어링. -O3 → -O0/-Og 수준으로 wasm 컴파일/링크 단축.
           AIT_IL2CPP_CONFIGURATION: ${{ inputs.fast-build && 'Debug' || '' }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         with:
@@ -1575,7 +1592,7 @@ jobs:
             echo "0" > "$ATTEMPT_FILE"
 
             UNITY_PATH="${{ steps.unity-macos.outputs.UNITY_PATH }}"
-            PROJECT_PATH="${{ github.workspace }}/Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}"
+            PROJECT_PATH="${{ github.workspace }}/Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}"
             LOG_FILE="/tmp/unity-build-${{ inputs.unity-version }}.log"
 
             # Unity 프로세스 트리 강제 종료 (SIGKILL)
@@ -1599,7 +1616,7 @@ jobs:
             # 주의: >/dev/null 사용 불가 — Unity의 -logFile이 stdout fd에 의존함
             "$UNITY_PATH" -quit -batchmode -nographics \
               -projectPath "$PROJECT_PATH" \
-              -executeMethod E2EBuildRunner.CommandLineBuild \
+              -executeMethod ${{ inputs.build-method }} \
               -buildTarget WebGL \
               -logFile "$LOG_FILE" &
             UNITY_PID=$!
@@ -1691,8 +1708,8 @@ jobs:
         uses: nick-invision/retry@v4
         env:
           AIT_DEBUG_CONSOLE: "true"
-          # fast-build 한정: macOS step의 동일 주석 참조.
-          AIT_COMPRESSION_FORMAT: ${{ inputs.fast-build && '0' || '' }}
+          # macOS step의 동일 주석 참조 (compression-format 명시 우선, dev/il2cpp 는 fast-build 단일 스위치).
+          AIT_COMPRESSION_FORMAT: ${{ inputs.compression-format != '' && inputs.compression-format || (inputs.fast-build && '0' || '') }}
           AIT_DEVELOPMENT_BUILD: ${{ inputs.fast-build && 'true' || '' }}
           AIT_IL2CPP_CONFIGURATION: ${{ inputs.fast-build && 'Debug' || '' }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
@@ -1728,7 +1745,7 @@ jobs:
             }
 
             $unityPath = "${{ steps.unity-windows.outputs.UNITY_PATH }}"
-            $projectPath = "${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ inputs.unity-version }}"
+            $projectPath = "${{ github.workspace }}\Tests~\E2E\${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}"
 
             Write-Host "Unity Version: ${{ steps.unity-windows.outputs.UNITY_VERSION }}"
             Write-Host "Unity Path: $unityPath"
@@ -1742,7 +1759,7 @@ jobs:
             $unityProcess = Start-Process -FilePath $unityPath -ArgumentList @(
               "-quit", "-batchmode", "-nographics",
               "-projectPath", $projectPath,
-              "-executeMethod", "E2EBuildRunner.CommandLineBuild",
+              "-executeMethod", "${{ inputs.build-method }}",
               "-buildTarget", "WebGL",
               "-logFile", $logFile
             ) -PassThru -NoNewWindow
@@ -1778,7 +1795,7 @@ jobs:
             # ExitCode가 null인 경우 방어 (빌드 출력 존재 여부로 판단)
             if ($null -eq $exitCode) {
               Write-Host "::warning::ExitCode is null, checking build output..."
-              $distPath = "${{ github.workspace }}\Tests~\E2E\SampleUnityProject-${{ inputs.unity-version }}\ait-build\dist"
+              $distPath = "${{ github.workspace }}\Tests~\E2E\${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}\ait-build\dist"
               if (Test-Path $distPath) {
                 Write-Host "Build output exists, treating as success"
                 $exitCode = 0
@@ -1855,8 +1872,8 @@ jobs:
       - name: Verify Build Output (macOS)
         if: inputs.os == 'macos' && inputs.run-build && (inputs.test-level || '2') != '0'
         run: |
-          DIST_PATH="Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}/ait-build/dist"
-          AIT_BUILD_PATH="Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}/ait-build"
+          DIST_PATH="Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}/ait-build/dist"
+          AIT_BUILD_PATH="Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}/ait-build"
 
           if [ ! -d "$DIST_PATH" ]; then
             echo "::error::Build output not found at $DIST_PATH"
@@ -1885,8 +1902,8 @@ jobs:
         run: |
           @echo off
           setlocal enabledelayedexpansion
-          set "DIST_PATH=Tests~\E2E\SampleUnityProject-${{ inputs.unity-version }}\ait-build\dist"
-          set "AIT_BUILD_PATH=Tests~\E2E\SampleUnityProject-${{ inputs.unity-version }}\ait-build"
+          set "DIST_PATH=Tests~\E2E\${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}\ait-build\dist"
+          set "AIT_BUILD_PATH=Tests~\E2E\${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}\ait-build"
 
           if not exist "%DIST_PATH%" (
             echo ::error::Build output not found at %DIST_PATH%
@@ -1925,11 +1942,15 @@ jobs:
           OS: ${{ inputs.os }}
           UNITY_VERSION: ${{ inputs.unity-version }}
           SDK_VERSION: ${{ inputs.sdk-version }}
+          PROJECT_DIR_PREFIX: ${{ inputs.project-dir-prefix }}
         run: |
           const fs = require('fs');
-          const { OS, UNITY_VERSION, SDK_VERSION } = process.env;
+          const { OS, UNITY_VERSION, SDK_VERSION, PROJECT_DIR_PREFIX } = process.env;
           const suffix = SDK_VERSION ? `-v${SDK_VERSION}` : '';
-          const name = `ait-build-${OS}-${UNITY_VERSION}${suffix}`;
+          // perf 하네스(HeavySampleUnityProject)는 'heavy-' 변형 이름으로 E2E 아티팩트와 충돌 회피.
+          // 기본(SampleUnityProject)이면 variant='' → 기존 이름 'ait-build-${OS}-${VERSION}' 그대로.
+          const variant = (PROJECT_DIR_PREFIX || '').startsWith('Heavy') ? 'heavy-' : '';
+          const name = `ait-build-${variant}${OS}-${UNITY_VERSION}${suffix}`;
           fs.appendFileSync(process.env.GITHUB_OUTPUT, `name=${name}\n`);
           console.log(`Artifact name: ${name}`);
 
@@ -1939,14 +1960,14 @@ jobs:
         with:
           name: ${{ steps.artifact.outputs.name }}
           path: |
-            Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}/ait-build/dist/
-            Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}/ait-build/public/
-            Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}/ait-build/index.html
-            Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}/ait-build/*.ait
-            Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}/ait-build/package.json
-            Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}/ait-build/pnpm-lock.yaml
-            Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}/ait-build/granite.config.ts
-            Tests~/E2E/SampleUnityProject-${{ inputs.unity-version }}/ait-build/build-validation.json
+            Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}/ait-build/dist/
+            Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}/ait-build/public/
+            Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}/ait-build/index.html
+            Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}/ait-build/*.ait
+            Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}/ait-build/package.json
+            Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}/ait-build/pnpm-lock.yaml
+            Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}/ait-build/granite.config.ts
+            Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}/ait-build/build-validation.json
           if-no-files-found: error
           retention-days: 7
 

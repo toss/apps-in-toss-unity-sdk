@@ -13,6 +13,9 @@
 using NUnit.Framework;
 using System;
 using System.IO;
+using System.Text.RegularExpressions;
+using UnityEngine;
+using UnityEngine.TestTools;
 using AppsInToss.Editor;
 using AppsInToss;
 
@@ -46,6 +49,9 @@ public class ValidateDistOutputTests
     public void ValidateDistOutput_NoAitFile_NoDistFolder_ReturnsAitFileMissing()
     {
         // buildProjectPath 에 아무 파일도 없는 경우
+        // .ait 파일이 없으면 ValidateDistOutput 이 의도적으로 LogError 를 남기므로 기대 등록
+        // (Unity Test Runner 는 미선언 LogError 를 자동으로 테스트 실패 처리함)
+        LogAssert.Expect(LogType.Error, new Regex(@"\.ait 파일이 생성되지 않았습니다"));
         var result = AITBuildValidator.ValidateDistOutput(tempDir);
         Assert.AreEqual(AITConvertCore.AITExportError.AIT_FILE_MISSING, result);
     }
@@ -59,6 +65,8 @@ public class ValidateDistOutputTests
         File.WriteAllText(Path.Combine(distPath, "bundle.ios.js"), "// js bundle");
         File.WriteAllText(Path.Combine(distPath, "bundle.android.js"), "// js bundle");
 
+        // .ait 파일이 없으면 ValidateDistOutput 이 의도적으로 LogError 를 남기므로 기대 등록
+        LogAssert.Expect(LogType.Error, new Regex(@"\.ait 파일이 생성되지 않았습니다"));
         var result = AITBuildValidator.ValidateDistOutput(tempDir);
         Assert.AreEqual(AITConvertCore.AITExportError.AIT_FILE_MISSING, result,
             "dist/ 에 .ait 파일이 없으면 AIT_FILE_MISSING 을 반환해야 한다");
@@ -70,6 +78,8 @@ public class ValidateDistOutputTests
         string distPath = Path.Combine(tempDir, "dist");
         Directory.CreateDirectory(distPath);
 
+        // .ait 파일이 없으면 ValidateDistOutput 이 의도적으로 LogError 를 남기므로 기대 등록
+        LogAssert.Expect(LogType.Error, new Regex(@"\.ait 파일이 생성되지 않았습니다"));
         var result = AITBuildValidator.ValidateDistOutput(tempDir);
         Assert.AreEqual(AITConvertCore.AITExportError.AIT_FILE_MISSING, result);
     }

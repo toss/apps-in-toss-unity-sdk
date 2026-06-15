@@ -426,6 +426,10 @@ namespace AppsInToss.Editor
             // 2. pnpm-lock.yaml - 정합성 검증 후 폴백 정책 (Fix A, BuildConfigMerger 위임)
             Package.BuildConfigMerger.CopyPnpmLockfileWithFallback(projectBuildConfigPath, sdkBuildConfigPath, buildProjectPath);
 
+            // 2-1. pnpm-workspace.yaml - 공급망 보호(minimumReleaseAge)에서 @apps-in-toss/* 예외 처리
+            //      (pnpm은 이 설정을 pnpm-workspace.yaml에서만 읽으므로 빌드 디렉토리에 복사 필수)
+            Package.BuildConfigMerger.CopyPnpmWorkspaceWithFallback(projectBuildConfigPath, sdkBuildConfigPath, buildProjectPath);
+
             // 3. vite.config.ts - 마커 기반 업데이트
             Package.BuildConfigMerger.UpdateViteConfig(projectBuildConfigPath, sdkBuildConfigPath, buildProjectPath, config);
 

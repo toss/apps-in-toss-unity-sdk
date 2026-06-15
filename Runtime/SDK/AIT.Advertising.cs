@@ -223,6 +223,7 @@ namespace AppsInToss
         private static extern void __TossAdsAttach_Internal(string adGroupId, string target, string options, string callbackId, string typeName);
 #endif
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Obsolete("CSS 셀렉터 기반 attachBanner는 더 이상 권장되지 않습니다. AITBannerAdView 컴포넌트 또는 AITBannerAd.Show를 사용해주세요.")]
         [Preserve]
         [APICategory("Advertising")]
 #if UNITY_6000_0_OR_NEWER

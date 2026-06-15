@@ -4,7 +4,7 @@
  * 현재 생성된 SDK 파일을 golden file로 저장합니다.
  * SDK 생성기의 의도적 변경 후 실행하여 새로운 기준을 설정합니다.
  *
- * 사용법: pnpm test:update-golden
+ * 사용법: pnpm exec tsx tests/unit/scripts/update-golden.ts
  */
 
 import * as fs from 'fs/promises';
@@ -14,8 +14,9 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// 경로 설정
-const GOLDEN_DIR = path.resolve(__dirname, '../fixtures/golden');
+// 경로 설정 — differential.test.ts의 GOLDEN_DIR(tests/fixtures/golden)과 같은 곳이어야 한다.
+// (tests/unit/fixtures/는 gitignore 대상이라 거기에 쓰면 golden 갱신이 반영되지 않음)
+const GOLDEN_DIR = path.resolve(__dirname, '../../fixtures/golden');
 const SDK_GENERATED_DIR = path.resolve(__dirname, '../../../..', 'Runtime/SDK');
 
 // 복사할 파일 목록

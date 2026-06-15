@@ -493,6 +493,7 @@ export function parseNativeModulesType(typeName: string): ParsedTypeDefinition |
     'TossAdsAttachOptions': 'AttachOptions',
     'TossAdsInitializeOptions': 'InitializeOptions',
     'TossAdsBannerSlotCallbacks': 'BannerSlotCallbacks',
+    'TossAdsAttachBannerOptions': 'AttachBannerOptions',
   };
   const actualTypeName = typeNameMappings[typeName] || typeName;
 
@@ -525,7 +526,8 @@ export function parseNativeModulesType(typeName: string): ParsedTypeDefinition |
 
   // 2. web-bridge에서도 찾기 (TossAds 관련 타입 등)
   // v1.8.0+: dist/, v1.5.0~v1.7.x: built/
-  let webBridgePath: string | null = null;
+  // 첫 디렉토리에만 의존하면 이후 버전에서 추가된 타입(예: AttachBannerOptions, 1.11.0+)을
+  // 놓치므로, 타입을 찾을 때까지 모든 web-bridge 버전을 순회한다.
   for (const dir of pnpmDirs) {
     if (dir.startsWith('@apps-in-toss+web-bridge')) {
       const basePath = path.join(pnpmPath, dir, 'node_modules', '@apps-in-toss', 'web-bridge');
@@ -533,17 +535,12 @@ export function parseNativeModulesType(typeName: string): ParsedTypeDefinition |
       for (const subdir of ['dist', 'built']) {
         const indexPath = path.join(basePath, subdir, 'index.d.ts');
         if (fs.existsSync(indexPath)) {
-          webBridgePath = indexPath;
+          const result = parseTypeFromFile(indexPath, actualTypeName, typeName);
+          if (result) return result;
           break;
         }
       }
-      if (webBridgePath) break;
     }
-  }
-
-  if (webBridgePath) {
-    const result = parseTypeFromFile(webBridgePath, actualTypeName, typeName);
-    if (result) return result;
   }
 
   // 3. @apps-in-toss/types에서도 찾기 (SDK 하위호환성: web-framework에서 제거된 타입)

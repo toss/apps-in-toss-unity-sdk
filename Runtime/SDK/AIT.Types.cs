@@ -1314,6 +1314,28 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
+    public class TossAdsAttachBannerOptions
+    {
+        [Preserve]
+        [JsonProperty("theme")]
+        public string Theme; // optional
+        [Preserve]
+        [JsonProperty("tone")]
+        public string Tone; // optional
+        [Preserve]
+        [JsonProperty("variant")]
+        public string Variant; // optional
+        [Preserve]
+        [JsonProperty("callbacks")]
+        public BannerSlotCallbacks Callbacks; // optional
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
     public class BannerSlotCallbacks
     {
         [JsonIgnore]
@@ -1373,18 +1395,6 @@ namespace AppsInToss
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
         public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
-    }
-
-    /// <summary>
-    /// Stub class for TossAdsAttachBannerOptions (type definition not found in current SDK version)
-    /// This class is auto-generated for SDK version compatibility
-    /// </summary>
-    [Serializable]
-    [Preserve]
-    public class TossAdsAttachBannerOptions
-    {
-        // Stub class - no properties defined
-        // This type may not be available in the current SDK version
     }
 
     [Serializable]

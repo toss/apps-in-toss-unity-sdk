@@ -5,10 +5,11 @@ using UnityEngine.UI;
 using AppsInToss;
 
 /// <summary>
-/// AdMob 광고 테스터 컴포넌트
-/// GoogleAdMobLoadAppsInTossAdMob/GoogleAdMobShowAppsInTossAdMob API를 테스트합니다.
+/// 전체 화면 광고 테스터 컴포넌트
+/// TossAds 네이티브 경로(LoadFullScreenAd/ShowFullScreenAd API)를 테스트합니다.
+/// AdV2Tester(AdMob 미디에이션)와는 별개의 경로이며, 광고 그룹 ID를 공용으로 사용합니다.
 /// </summary>
-public class AdV2Tester : MonoBehaviour
+public class FullScreenAdTester : MonoBehaviour
 {
     // 테스트용 광고 ID (CI에서 빌드 시 sed로 치환됨)
     private const string TEST_INTERSTITIAL_AD_ID = "ait-ad-test-interstitial-id";
@@ -35,11 +36,6 @@ public class AdV2Tester : MonoBehaviour
     private Button _clearLogBtn;
 
     /// <summary>
-    /// 마지막 작업 상태 메시지
-    /// </summary>
-    public string Status => adStatus;
-
-    /// <summary>
     /// uGUI 기반 UI를 생성합니다.
     /// </summary>
     public void SetupUI(Transform parent)
@@ -54,9 +50,11 @@ public class AdV2Tester : MonoBehaviour
         vlg.padding = new RectOffset(12, 12, 12, 12);
         section.gameObject.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
-        UIBuilder.CreateText(section, "AdMob Tester",
+        UIBuilder.CreateText(section, "Full Screen Ad Tester",
             UIBuilder.Theme.FontLarge, UIBuilder.Theme.TextAccent, fontStyle: FontStyle.Bold);
-        UIBuilder.CreateText(section, "loadAppsInTossAdMob/showAppsInTossAdMob API를 테스트합니다.",
+        UIBuilder.CreateText(section, "LoadFullScreenAd/ShowFullScreenAd API를 테스트합니다. (TossAds 네이티브 경로)",
+            UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary);
+        UIBuilder.CreateText(section, "AdMob 미디에이션 경로(AdV2Tester)와는 별개입니다.",
             UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary);
         UIBuilder.CreateText(section, "Load → Show 순서로 호출해야 합니다.",
             UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary);
@@ -100,20 +98,15 @@ public class AdV2Tester : MonoBehaviour
         // Step 1: Load
         UIBuilder.CreateText(section, "Step 1: Load Ad",
             UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary);
-        UIBuilder.CreateButton(section, "loadAppsInTossAdMob(...)", onClick: ExecuteLoadAd);
+        UIBuilder.CreateButton(section, "LoadFullScreenAd(...)", onClick: ExecuteLoadAd);
 
         // Step 2: Show
         UIBuilder.CreateText(section, "Step 2: Show Ad",
             UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary);
-        _showAdBtn = UIBuilder.CreateButton(section, "showAppsInTossAdMob(...)", onClick: ExecuteShowAd);
+        _showAdBtn = UIBuilder.CreateButton(section, "ShowFullScreenAd(...)", onClick: ExecuteShowAd);
         _showAdBtn.interactable = false;
         _showAdHintText = UIBuilder.CreateText(section, "(광고를 먼저 로드해주세요)",
             UIBuilder.Theme.FontTiny, UIBuilder.Theme.TextCallback);
-
-        // Step 3: Check Loaded
-        UIBuilder.CreateText(section, "Step 3: Check Loaded",
-            UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary);
-        UIBuilder.CreateButton(section, "isAppsInTossAdMobLoaded(...)", onClick: ExecuteCheckLoaded);
 
         // Clear Log
         _clearLogBtn = UIBuilder.CreateButton(section, "Clear Log", onClick: () =>
@@ -131,7 +124,11 @@ public class AdV2Tester : MonoBehaviour
     private void SelectAdType(string type)
     {
         selectedAdType = type;
+        // 타입 변경 시 로드 상태 초기화
+        isAdLoaded = false;
+        adStatus = "";
         UpdateAdTypeUI();
+        UpdateUI();
     }
 
     private void UpdateAdTypeUI()
@@ -225,28 +222,23 @@ public class AdV2Tester : MonoBehaviour
 
     private void ExecuteLoadAd()
     {
-#if AIT_SDK_1_7_OR_LATER
         string adId = selectedAdType == "interstitial" ? TEST_INTERSTITIAL_AD_ID : TEST_REWARDED_AD_ID;
         adStatus = $"Loading {selectedAdType} ad...";
-        adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] loadAppsInTossAdMob(adGroupId: {adId})");
+        adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] load: LoadFullScreenAd(adGroupId: {adId})");
         UpdateUI();
 
         _loadUnsubscribe?.Invoke();
+        _loadUnsubscribe = null;
 
-#pragma warning disable CS0618
-        _loadUnsubscribe = AIT.GoogleAdMobLoadAppsInTossAdMob(
-            options: new LoadAdMobOptions { AdGroupId = adId },
+        _loadUnsubscribe = AIT.LoadFullScreenAd(
+            adGroupId: adId,
             onEvent: (result) =>
             {
-                adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Load event: {result.Type}");
+                adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] load: {result.Type}");
                 if (result.Type == "loaded")
                 {
                     isAdLoaded = true;
                     adStatus = $"{selectedAdType} ad loaded";
-                    if (result.Data != null)
-                    {
-                        adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] AdGroupId: {result.Data.AdGroupId}, AdUnitId: {result.Data.AdUnitId}");
-                    }
                 }
                 UpdateUI();
             },
@@ -254,23 +246,16 @@ public class AdV2Tester : MonoBehaviour
             {
                 isAdLoaded = false;
                 adStatus = $"Error: {error.Message}";
-                adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Error: {error.ErrorCode} - {error.Message}");
+                adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] load error: {error.ErrorCode} - {error.Message}");
                 UpdateUI();
             }
         );
-#pragma warning restore CS0618
-#else
-        adStatus = "AdMob API requires SDK 1.7.0+";
-        adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] AdMob Load API not available in this SDK version");
-        UpdateUI();
-#endif
     }
 
     private Action _showUnsubscribe;
 
     private void ExecuteShowAd()
     {
-#if AIT_SDK_1_7_OR_LATER
         if (!isAdLoaded)
         {
             adStatus = "Please load ad first";
@@ -280,76 +265,48 @@ public class AdV2Tester : MonoBehaviour
 
         string adId = selectedAdType == "interstitial" ? TEST_INTERSTITIAL_AD_ID : TEST_REWARDED_AD_ID;
         adStatus = $"Showing {selectedAdType} ad...";
-        adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] showAppsInTossAdMob(adGroupId: {adId})");
+        adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] show: ShowFullScreenAd(adGroupId: {adId})");
         UpdateUI();
 
         _showUnsubscribe?.Invoke();
+        _showUnsubscribe = null;
 
-#pragma warning disable CS0618
-        _showUnsubscribe = AIT.GoogleAdMobShowAppsInTossAdMob(
-            options: new ShowAdMobOptions { AdGroupId = adId },
+        _showUnsubscribe = AIT.ShowFullScreenAd(
+            adGroupId: adId,
             onEvent: (result) =>
             {
-                adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Show event: {result.Type}");
+                string logEntry;
+                if (result.Type == "userEarnedReward" && result.Data != null)
+                {
+                    logEntry = $"[{DateTime.Now:HH:mm:ss}] show: {result.Type} (unitType: {result.Data.UnitType}, unitAmount: {result.Data.UnitAmount})";
+                }
+                else
+                {
+                    logEntry = $"[{DateTime.Now:HH:mm:ss}] show: {result.Type}";
+                }
+                adEventLog.Add(logEntry);
+
                 if (result.Type == "dismissed")
                 {
                     isAdLoaded = false;
                     adStatus = $"{selectedAdType} ad shown (reload required for next ad)";
-                    adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Success: Ad dismissed");
-                }
-                else if (result.Type == "userEarnedReward" && result.Data != null)
-                {
-                    adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Reward: {result.Data.UnitAmount} {result.Data.UnitType}");
                 }
                 UpdateUI();
             },
             onError: (error) =>
             {
                 adStatus = $"Error: {error.Message}";
-                adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Error: {error.ErrorCode} - {error.Message}");
+                adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] show error: {error.ErrorCode} - {error.Message}");
                 UpdateUI();
             }
         );
-#pragma warning restore CS0618
-#else
-        adStatus = "AdMob API requires SDK 1.7.0+";
-        adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] AdMob Show API not available in this SDK version");
-        UpdateUI();
-#endif
-    }
-
-    private async void ExecuteCheckLoaded()
-    {
-#if AIT_SDK_1_7_OR_LATER
-        string adId = selectedAdType == "interstitial" ? TEST_INTERSTITIAL_AD_ID : TEST_REWARDED_AD_ID;
-        adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] isAppsInTossAdMobLoaded(adGroupId: {adId})");
-        UpdateUI();
-
-        try
-        {
-            bool loaded = await AIT.GoogleAdMobIsAppsInTossAdMobLoaded(new IsAdMobLoadedOptions { AdGroupId = adId });
-            adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] isAppsInTossAdMobLoaded => {loaded}");
-        }
-        catch (AITException ex)
-        {
-            adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Error: {ex.ErrorCode} - {ex.Message}");
-        }
-        catch (Exception ex)
-        {
-            adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Exception: {ex.Message}");
-        }
-
-        UpdateUI();
-#else
-        adStatus = "AdMob API requires SDK 1.7.0+";
-        adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] AdMob IsLoaded API not available in this SDK version");
-        UpdateUI();
-#endif
     }
 
     private void OnDestroy()
     {
         _loadUnsubscribe?.Invoke();
+        _loadUnsubscribe = null;
         _showUnsubscribe?.Invoke();
+        _showUnsubscribe = null;
     }
 }

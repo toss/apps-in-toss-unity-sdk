@@ -14,7 +14,7 @@ import { typeCheckBridgeCode, printTypeCheckResult, cleanupCache } from './gener
 import { generateUnityBridge } from './generators/unity-bridge.js';
 import { generateScreenManualCs, generateScreenManualJslib } from './generators/webgl-manual.js';
 import { formatCommand } from './commands/format.js';
-import { FRAMEWORK_APIS, EXCLUDED_APIS } from './categories.js';
+import { FRAMEWORK_APIS, EXCLUDED_APIS, DEPRECATED_API_OVERRIDES } from './categories.js';
 import { getApiImportSource, type ParsedAPI } from './types.js';
 
 const program = new Command();
@@ -545,6 +545,15 @@ async function generate(options: {
     // 발견 경로가 stale .d.ts로 폴백해 제거된 API를 계속 발견하더라도, 실제 타깃
     // web-framework export에 없으면 브릿지를 생성하지 않아 TS2305 실패를 예방한다.
     const apis = filterToWebFrameworkExports(notExcludedApis, parser);
+
+    // 생성기 측 deprecate override 적용 (upstream d.ts에 @deprecated가 없는 API)
+    for (const api of apis) {
+      const overrideMessage = DEPRECATED_API_OVERRIDES[api.name];
+      if (overrideMessage) {
+        api.isDeprecated = true;
+        api.deprecatedMessage = overrideMessage;
+      }
+    }
 
     if (apis.length === 0) {
       console.error(picocolors.red('\n❌ web-framework에서 API를 발견하지 못했습니다.\n'));

@@ -26,6 +26,8 @@ public class InteractiveAPITester : MonoBehaviour
 #endif
     private IAPv2Tester _iapTester;
     private AdV2Tester _adV2Tester;
+    private FullScreenAdTester _fullScreenAdTester;
+    private BannerAdTester _bannerAdTester;
     private ContactsViralTester _contactsViralTester;
     private VisibilityBGMTester _visibilityBGMTester;
     private MetricEventTester _metricEventTester;
@@ -44,6 +46,8 @@ public class InteractiveAPITester : MonoBehaviour
 
         _iapTester = GetComponent<IAPv2Tester>() ?? gameObject.AddComponent<IAPv2Tester>();
         _adV2Tester = GetComponent<AdV2Tester>() ?? gameObject.AddComponent<AdV2Tester>();
+        _fullScreenAdTester = GetComponent<FullScreenAdTester>() ?? gameObject.AddComponent<FullScreenAdTester>();
+        _bannerAdTester = GetComponent<BannerAdTester>() ?? gameObject.AddComponent<BannerAdTester>();
         _contactsViralTester = GetComponent<ContactsViralTester>() ?? gameObject.AddComponent<ContactsViralTester>();
         _visibilityBGMTester = GetComponent<VisibilityBGMTester>() ?? gameObject.AddComponent<VisibilityBGMTester>();
         _metricEventTester = GetComponent<MetricEventTester>() ?? gameObject.AddComponent<MetricEventTester>();
@@ -73,6 +77,8 @@ public class InteractiveAPITester : MonoBehaviour
 
         _iapTester?.SetupUI(subTesterContainer);
         _adV2Tester?.SetupUI(subTesterContainer);
+        _fullScreenAdTester?.SetupUI(subTesterContainer);
+        _bannerAdTester?.SetupUI(subTesterContainer);
         _contactsViralTester?.SetupUI(subTesterContainer);
         _metricEventTester?.SetupUI(subTesterContainer);
 

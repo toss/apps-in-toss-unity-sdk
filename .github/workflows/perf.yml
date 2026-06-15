@@ -160,16 +160,22 @@ jobs:
       - name: Install AIT Build Dependencies
         # ait-build/ 안에서 vite preview 서버를 띄우려면 node_modules 필요.
         # --no-frozen-lockfile: 측정용 임시 설치이므로 정확한 deps 가 TTFF 에 영향 없음.
-        # SDK 빌드 자체도 PnpmStoreManager.InstallStages(frozen→갱신→폐기→clean)로
-        # lockfile 드리프트에 내성이 있다 — 여기선 그 비-frozen 단계를 직접 채택해
-        # BuildConfig~ overrides 드리프트(#795)로 인한 ERR_PNPM_LOCKFILE_CONFIG_MISMATCH 회피.
+        #   SDK 빌드 자체도 PnpmStoreManager.InstallStages(frozen→갱신→폐기→clean)로
+        #   lockfile 드리프트에 내성이 있다 — 여기선 그 비-frozen 단계를 직접 채택해
+        #   BuildConfig~ overrides 드리프트(#795)로 인한 ERR_PNPM_LOCKFILE_CONFIG_MISMATCH 회피.
+        # --ignore-scripts: pnpm 11.6.0 은 비-frozen 설치 시 미승인 빌드 스크립트가 있으면
+        #   ERR_PNPM_IGNORED_BUILDS 로 exit 1 한다. esbuild/swc/sentry-cli/protobufjs 빌드
+        #   스크립트는 dist 를 정적 서빙하는 vite preview 에 불필요하고(esbuild 바이너리는
+        #   @esbuild/<platform> optional dep 가 제공), frozen 이던 직전 성공 baseline 도
+        #   빌드 스크립트를 돌리지 않았다 → 명시적 opt-out 으로 오류 회피. (로컬 검증 완료)
         working-directory: ${{ env.AIT_BUILD_DIR }}
-        run: pnpm install --no-frozen-lockfile
+        run: pnpm install --no-frozen-lockfile --ignore-scripts
 
       - name: Install Playwright Test Dependencies
         working-directory: Tests~/E2E/tests
-        # 브라우저는 runner image의 시스템 Chrome 사용(perf config: channel='chrome').
-        run: pnpm install --no-frozen-lockfile
+        # 브라우저는 runner image의 시스템 Chrome 사용(perf config: channel='chrome') →
+        # 빌드 스크립트/브라우저 다운로드 불필요. AIT 설치와 동일 정책(비-frozen + 스크립트 무시).
+        run: pnpm install --no-frozen-lockfile --ignore-scripts
 
       - name: Run Perf (TTFF median-of-N)
         working-directory: Tests~/E2E/tests

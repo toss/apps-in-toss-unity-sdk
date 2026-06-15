@@ -154,6 +154,12 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
+        with:
+          # 프로젝트 핀(AITPackageManagerHelper.PNPM_VERSION / package.json packageManager)과 동일.
+          # version 미지정 시 action-setup@v6 가 latest pnpm 을 끌어오는데, v11.6.0 부터
+          # frozen install 의 overrides 직렬화를 엄격 검사해 lockfile(10.28.0 생성)과 불일치하면
+          # ERR_PNPM_LOCKFILE_CONFIG_MISMATCH 로 실패한다 → lockfile 생성 버전으로 고정.
+          version: 10.28.0
 
       - name: Install AIT Build Dependencies
         # ait-build/ 안에서 vite preview 서버를 띄우려면 node_modules 필요

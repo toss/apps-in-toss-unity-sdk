@@ -206,6 +206,10 @@ namespace AppsInToss
         [Tooltip("빌드 전 에셋 최적화 검사를 활성화합니다")]
         public bool enableBuildOptimizationCheck = true;
 
+        [Header("계측 설정")]
+        [Tooltip("first-interactive 계측: -1 = 자동 (활성), 0 = 비활성, 1 = 활성")]
+        public int firstInteractiveLog = -1;
+
         [Header("권한 설정")]
         public AITPermissionConfig permissionConfig = new AITPermissionConfig();
 
@@ -465,6 +469,15 @@ namespace AppsInToss
             return false;
         }
 #endif
+
+        /// <summary>
+        /// first-interactive 계측 기본 활성 여부.
+        /// 픽셀 불변·세션당 1회 단일 이벤트·호스트 로딩 지표 표준화에 해당하므로 기본 ON.
+        /// </summary>
+        public static bool GetDefaultFirstInteractiveLog()
+        {
+            return true;
+        }
 
         /// <summary>
         /// 현재 Unity 버전의 버전 그룹 이름 반환

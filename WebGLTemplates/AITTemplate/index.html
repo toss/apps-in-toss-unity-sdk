@@ -503,6 +503,11 @@
         // devicePixelRatio 설정: -1 = auto, 1/2/3 = 고정값
         var aitDevicePixelRatioSetting = %AIT_DEVICE_PIXEL_RATIO%;
 
+        // first-interactive 계측 활성 여부.
+        // 빌드 시 %AIT_FIRST_INTERACTIVE_LOG% 플레이스홀더가 "true"/"false"로 치환됨.
+        // 미치환 리터럴('%AIT_FIRST_INTERACTIVE_LOG%')은 "false"와 다르므로 true로 평가 — fail-open.
+        window.__AIT_FIRST_INTERACTIVE_LOG = '%AIT_FIRST_INTERACTIVE_LOG%' !== 'false';
+
         // 기기 성능에 따른 최적 devicePixelRatio 계산
         function getOptimalDevicePixelRatio() {
             var baseRatio = window.devicePixelRatio || 1;

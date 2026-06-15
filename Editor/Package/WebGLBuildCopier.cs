@@ -282,6 +282,7 @@ namespace AppsInToss.Editor.Package
                 // AIT 커스텀 플레이스홀더
                 .Replace("%AIT_IS_PRODUCTION%", isProduction)
                 .Replace("%AIT_ENABLE_DEBUG_CONSOLE%", enableDebugConsole)
+                .Replace("%AIT_FIRST_INTERACTIVE_LOG%", EffectiveFirstInteractiveLog(config) ? "true" : "false")
                 .Replace("%AIT_DEVICE_PIXEL_RATIO%", config.devicePixelRatio.ToString())
                 .Replace("%AIT_ICON_URL%", config.iconUrl ?? "")
                 .Replace("%AIT_DISPLAY_NAME%", config.displayName ?? "")
@@ -479,6 +480,20 @@ namespace AppsInToss.Editor.Package
         }};
     }})();
     </script>";
+        }
+
+        /// <summary>
+        /// first-interactive 계측 실효 활성 여부를 반환한다(tri-state 해석).
+        /// 계측기는 픽셀 불변이며 설정 로드 실패가 계측을 침묵시키면 안 되므로 null → true(fail-open).
+        /// (파괴적 변환 프로세서와 달리 null→false 안전 전략을 쓰지 않는다)
+        /// firstInteractiveLog >= 0 이면 ==1, &lt;0 이면 GetDefaultFirstInteractiveLog().
+        /// </summary>
+        internal static bool EffectiveFirstInteractiveLog(AITEditorScriptObject config)
+        {
+            if (config == null) return true; // fail-open: 설정 로드 실패 시 계측 침묵 방지
+            return config.firstInteractiveLog >= 0
+                ? config.firstInteractiveLog == 1
+                : AITDefaultSettings.GetDefaultFirstInteractiveLog();
         }
 
         /// <summary>

@@ -153,23 +153,23 @@ jobs:
           node-version: 24
 
       - name: Setup pnpm
+        # version 미지정 → action-setup@v6 가 package.json 의 packageManager(pnpm@11.6.0)를
+        # 그대로 설치. version 을 추가로 핀하면 "Multiple versions of pnpm specified" 충돌.
         uses: pnpm/action-setup@v6
-        with:
-          # 프로젝트 핀(AITPackageManagerHelper.PNPM_VERSION / package.json packageManager)과 동일.
-          # version 미지정 시 action-setup@v6 가 latest pnpm 을 끌어오는데, v11.6.0 부터
-          # frozen install 의 overrides 직렬화를 엄격 검사해 lockfile(10.28.0 생성)과 불일치하면
-          # ERR_PNPM_LOCKFILE_CONFIG_MISMATCH 로 실패한다 → lockfile 생성 버전으로 고정.
-          version: 10.28.0
 
       - name: Install AIT Build Dependencies
-        # ait-build/ 안에서 vite preview 서버를 띄우려면 node_modules 필요
+        # ait-build/ 안에서 vite preview 서버를 띄우려면 node_modules 필요.
+        # --no-frozen-lockfile: 측정용 임시 설치이므로 정확한 deps 가 TTFF 에 영향 없음.
+        # SDK 빌드 자체도 PnpmStoreManager.InstallStages(frozen→갱신→폐기→clean)로
+        # lockfile 드리프트에 내성이 있다 — 여기선 그 비-frozen 단계를 직접 채택해
+        # BuildConfig~ overrides 드리프트(#795)로 인한 ERR_PNPM_LOCKFILE_CONFIG_MISMATCH 회피.
         working-directory: ${{ env.AIT_BUILD_DIR }}
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
 
       - name: Install Playwright Test Dependencies
         working-directory: Tests~/E2E/tests
         # 브라우저는 runner image의 시스템 Chrome 사용(perf config: channel='chrome').
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
 
       - name: Run Perf (TTFF median-of-N)
         working-directory: Tests~/E2E/tests

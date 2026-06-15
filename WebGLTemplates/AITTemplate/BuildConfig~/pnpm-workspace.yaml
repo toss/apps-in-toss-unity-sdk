@@ -17,3 +17,12 @@ overrides:
   '@granite-js/plugin-core': 0.1.30
   find-my-way: '>=8.2.2'
   ip: '>=2.0.1'
+
+# pnpm v11은 의존성의 build script(postinstall 등)가 차단될 때 승인/무시 결정이 없으면
+# 설치 자체를 실패시킨다(ERR_PNPM_IGNORED_BUILDS). 미니앱 빌드 의존성(granite/vite 등)의
+# 트리는 크고 버전마다 달라 목록 고정은 깨지기 쉬우므로, 설치 단계의 의존성 스크립트를
+# 건너뛰어(=pnpm v10 동작 유지) 빌드가 실패하지 않게 한다. 네이티브 바이너리(esbuild 등)는
+# optionalDependencies 플랫폼 패키지로 제공되어 영향이 없다.
+# 주의: ignoreScripts는 '설치 단계'만 막는다. `ait build`/`granite build`(명시적 `pnpm run`)는
+#       그대로 실행된다 (pnpm 11.6.0에서 검증).
+ignoreScripts: true

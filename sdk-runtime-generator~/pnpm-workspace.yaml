@@ -14,3 +14,12 @@ minimumReleaseAgeExclude:
 overrides:
   find-my-way: '>=8.2.2'
   ip: '>=2.0.1'
+
+# pnpm v11은 의존성의 build script(postinstall 등)를 기본 차단하고, 승인/무시 결정이 없으면
+# 설치 자체를 실패시킨다(ERR_PNPM_IGNORED_BUILDS — 예: @sentry/cli·@swc/core·esbuild·protobufjs).
+# pnpm v10에서도 이 스크립트들은 실행되지 않은 채(경고만) 정상 동작했으므로(네이티브 바이너리는
+# optionalDependencies 플랫폼 패키지로 제공됨), 설치 단계에서 의존성 스크립트를 건너뛰어
+# 동일한 동작을 유지한다.
+# 주의: ignoreScripts는 '설치 단계'의 스크립트만 막는다. 명시적 `pnpm run build`/`generate`/
+#       `test` 와 pre·post 훅(prebuild 등)은 그대로 실행된다 (pnpm 11.6.0에서 검증).
+ignoreScripts: true

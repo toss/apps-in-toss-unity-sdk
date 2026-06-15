@@ -181,6 +181,43 @@ namespace AppsInToss
                  "비우면 appName(앱 식별자)에서 자동 파생합니다. 런타임 window.__AIT_CACHE_NAME 으로도 오버라이드 가능.")]
         public string pageCacheName = "";
 
+        /// <summary>
+        /// 빌드 시 ait-warm-manifest.json 산출 여부 (호스트 warm 연동용).
+        /// tri-state: -1=자동(true, 기본 ON), 0=비활성, 1=활성.
+        /// pageCache 실효값이 OFF 이면 warmManifest 도 no-op (AND 게이팅).
+        /// pageCache 실효값이 OFF 이면서 warmManifest 실효값이 ON 이면 경고 로그를 출력합니다.
+        /// </summary>
+        [Tooltip("빌드 시 ait-warm-manifest.json 을 산출합니다. 호스트(슈퍼앱)가 선다운로드(warm) diff 기준으로 사용합니다. " +
+                 "pageCache 실효값이 OFF 이면 회색 비활성 + no-op (AND 게이팅). -1=자동(true), 0=비활성, 1=활성.")]
+        public int warmManifest = -1;
+
+        /// <summary>
+        /// 빌드 시 self-warming 페이지(ait-warm.html)를 함께 산출합니다.
+        /// tri-state: -1=자동(true, 기본 ON), 0=비활성, 1=활성.
+        /// warmManifest 실효값과 pageCache 실효값이 모두 ON 이어야 동작합니다(AND 게이팅).
+        /// pageCache·warmManifest 실효값이 모두 ON 일 때만 실제 산출되는 AND 게이트이며,
+        /// 산출물은 정적 파일 1개 추가일 뿐 게임 런타임 동작에 영향이 없어 기본 ON.
+        /// </summary>
+        [Tooltip("-1 = 자동 (true), 0 = 비활성, 1 = 활성. " +
+                 "빌드 시 self-warming 페이지(ait-warm.html)를 함께 산출합니다. " +
+                 "호스트가 숨김 WebView 로 열면 매니페스트 변경분을 미리 캐시에 적재합니다. " +
+                 "warmManifest 실효값과 pageCache 실효값이 모두 ON 이어야 동작합니다.")]
+        public int warmPage = -1;
+
+        /// <summary>
+        /// 페이지 캐시 인터셉터가 호스트 네이티브 프리페치 결과를 우선 소스로 사용할지 여부.
+        /// tri-state: -1=자동(true, 기본 ON), 0=비활성, 1=활성.
+        /// 인터셉터가 존재해야(pageCache 실효값 ON) 동작하는 AND 게이트이며,
+        /// 호스트가 window.__aitResolveAsset(url) 리졸버를 주입하지 않으면 신호만 노출되고
+        /// 자동으로 CacheStorage→network 폴백으로 흡수되어 런타임 동작에 영향이 없어 기본 ON.
+        /// </summary>
+        [Tooltip("-1 = 자동 (true), 0 = 비활성, 1 = 활성. " +
+                 "페이지 캐시 인터셉터가 Build/* 요청에 대해 호스트 네이티브 프리페치 결과를 우선 사용합니다. " +
+                 "호스트가 window.__aitResolveAsset 리졸버를 주입하면 native→CacheStorage→network 순으로 해석합니다. " +
+                 "리졸버 미주입 시 신호만 노출되고 기존 캐시-퍼스트 동작으로 자동 폴백됩니다. " +
+                 "pageCache 실효값이 ON 이어야 동작합니다.")]
+        public int nativeAssetSource = -1;
+
         [Header("렌더링 품질 설정")]
         [Tooltip("devicePixelRatio 설정: -1 = auto (기기 성능에 따라 자동 결정), 1/2/3 = 고정값. 높을수록 고품질이지만 GPU 부하 증가")]
         public int devicePixelRatio = -1;
@@ -383,6 +420,36 @@ namespace AppsInToss
         /// 모든 Unity 버전에서 기본 활성화: 미지원 환경에서 무해 통과가 보장됨.
         /// </summary>
         public static bool GetDefaultPageCache()
+        {
+            return true;
+        }
+
+        /// <summary>
+        /// 기본 warm manifest 산출 여부.
+        /// pageCache 와 쌍으로 기본 ON: 호스트 warm 연동 zero-config 제공.
+        /// pageCache 실효값이 OFF 이면 게이팅으로 no-op 처리되므로 독립적으로 ON 해도 안전.
+        /// </summary>
+        public static bool GetDefaultWarmManifest()
+        {
+            return true;
+        }
+
+        /// <summary>
+        /// 기본 warm 페이지(ait-warm.html) 산출 여부.
+        /// pageCache·warmManifest 실효값이 모두 ON 일 때만 실제 산출되는 AND 게이트이며,
+        /// 산출물은 정적 파일 1개 추가일 뿐 게임 런타임 동작에 영향이 없어 기본 ON.
+        /// </summary>
+        public static bool GetDefaultWarmPage()
+        {
+            return true;
+        }
+
+        /// <summary>
+        /// 기본 네이티브 에셋 소스 우선 사용 여부.
+        /// pageCache 실효값이 ON 일 때만 인터셉터에 신호가 주입되는 AND 게이트이며,
+        /// 호스트가 리졸버를 주입하지 않으면 신호만 노출되고 캐시-퍼스트로 자동 폴백되어 기본 ON.
+        /// </summary>
+        public static bool GetDefaultNativeAssetSource()
         {
             return true;
         }

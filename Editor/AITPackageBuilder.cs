@@ -110,7 +110,7 @@ namespace AppsInToss.Editor
             CopyBuildConfigFromTemplate(buildProjectPath);
 
             Debug.Log("[AIT] Step 2/3: Unity WebGL 빌드 복사 중...");
-            var copyResult = Package.WebGLBuildCopier.CopyWebGLToPublic(webglPath, buildProjectPath, profile);
+            var copyResult = Package.WebGLBuildCopier.CopyWebGLToPublic(webglPath, buildProjectPath, out string inlinePrefetchJson, profile);
             if (copyResult != AITConvertCore.AITExportError.SUCCEED)
                 return (null, copyResult);
 
@@ -131,12 +131,20 @@ namespace AppsInToss.Editor
                 Package.NodeModulesValidator.CleanNodeModules(buildProjectPath);
             }
 
+            // 인라인 프리페치 카탈로그를 .ait 메타데이터에 패치(post-copy: 실제 Build/* 크기 필요).
+            var unityMetadataEnv = AITUnityMetadata.BuildEnvironmentVariables();
+            if (!string.IsNullOrEmpty(inlinePrefetchJson) &&
+                unityMetadataEnv.TryGetValue("UNITY_METADATA", out var metadataJson))
+            {
+                unityMetadataEnv["UNITY_METADATA"] = AITUnityMetadata.WithPrefetch(metadataJson, inlinePrefetchJson);
+            }
+
             return (new PackageContext
             {
                 BuildProjectPath = buildProjectPath,
                 PnpmPath = pnpmPath,
                 LocalCachePath = storePath,
-                UnityMetadataEnv = AITUnityMetadata.BuildEnvironmentVariables()
+                UnityMetadataEnv = unityMetadataEnv
             }, AITConvertCore.AITExportError.SUCCEED);
         }
 
@@ -226,7 +234,7 @@ namespace AppsInToss.Editor
             onProgress?.Invoke(AITConvertCore.BuildPhase.CopyingFiles, 0.15f, "WebGL 빌드 파일 복사 중...");
             Debug.Log("[AIT] [병렬] WebGL 빌드를 ait-build/public으로 복사 중...");
 
-            var copyResult = Package.WebGLBuildCopier.CopyWebGLToPublic(webglPath, earlyCtx.BuildProjectPath, profile);
+            var copyResult = Package.WebGLBuildCopier.CopyWebGLToPublic(webglPath, earlyCtx.BuildProjectPath, out string inlinePrefetchJson, profile);
             if (copyResult != AITConvertCore.AITExportError.SUCCEED)
             {
                 earlyCtx.CancelAndDisposePnpm();
@@ -234,6 +242,15 @@ namespace AppsInToss.Editor
                 finally { AITBuildSession.EndBuild(); }
                 onComplete?.Invoke(copyResult);
                 return;
+            }
+
+            // 인라인 프리페치 카탈로그를 .ait 메타데이터에 패치(post-copy: 실제 Build/* 크기 필요).
+            // 병렬 경로는 UnityMetadataEnv 를 빌드 전 미리 구성하므로 여기서 보정한다.
+            if (!string.IsNullOrEmpty(inlinePrefetchJson) &&
+                earlyCtx.UnityMetadataEnv != null &&
+                earlyCtx.UnityMetadataEnv.TryGetValue("UNITY_METADATA", out var metadataJson))
+            {
+                earlyCtx.UnityMetadataEnv["UNITY_METADATA"] = AITUnityMetadata.WithPrefetch(metadataJson, inlinePrefetchJson);
             }
 
             // Step 2: 백그라운드 pnpm install 완료 확인

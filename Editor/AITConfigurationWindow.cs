@@ -631,6 +631,189 @@ namespace AppsInToss.Editor
 
                 EditorGUI.indentLevel--;
             }
+
+            // warm manifest 산출 (tri-state) — pageCache 실효값이 OFF 이면 회색 비활성.
+            // if (pageCacheActive) 블록 바깥에 배치해 항상 렌더링(숨김 없음).
+            using (new EditorGUI.DisabledScope(!pageCacheActive))
+            {
+                DrawWarmManifestSetting();
+            }
+
+            // pageCache=OFF + warmManifest 실효값=ON 일 때 경고 HelpBox 표시.
+            if (!pageCacheActive)
+            {
+                bool warmManifestEffective = config.warmManifest < 0
+                    ? AITDefaultSettings.GetDefaultWarmManifest()
+                    : config.warmManifest == 1;
+
+                if (warmManifestEffective)
+                {
+                    EditorGUILayout.HelpBox(
+                        "페이지 캐시가 비활성이므로 Warm Manifest 도 산출되지 않습니다. " +
+                        "페이지 캐시를 활성화하거나 Warm Manifest 를 명시적으로 비활성화하세요.",
+                        MessageType.Warning
+                    );
+                }
+            }
+
+            // warm 페이지 산출 (tri-state) — pageCache·warmManifest 실효값이 모두 true 일 때만 편집 가능.
+            bool warmManifestEffectiveForPage = config.warmManifest < 0
+                ? AITDefaultSettings.GetDefaultWarmManifest()
+                : config.warmManifest == 1;
+            using (new EditorGUI.DisabledScope(!(pageCacheActive && warmManifestEffectiveForPage)))
+            {
+                DrawWarmPageSetting();
+            }
+
+            // pageCache 또는 warmManifest 실효값=OFF + warmPage 실효값=ON 일 때 경고 HelpBox 표시.
+            if (!(pageCacheActive && warmManifestEffectiveForPage))
+            {
+                bool warmPageEffective = config.warmPage < 0
+                    ? AITDefaultSettings.GetDefaultWarmPage()
+                    : config.warmPage == 1;
+
+                if (warmPageEffective)
+                {
+                    EditorGUILayout.HelpBox(
+                        "페이지 캐시 또는 Warm Manifest 가 비활성이므로 Warm 페이지도 산출되지 않습니다. " +
+                        "페이지 캐시와 Warm Manifest 를 활성화하거나 Warm 페이지를 명시적으로 비활성화하세요.",
+                        MessageType.Warning
+                    );
+                }
+            }
+
+            // 네이티브 에셋 소스 우선 (tri-state) — pageCache 실효값이 ON 일 때만 편집 가능(인터셉터 존재 전제).
+            // warmManifest/warmPage 와 독립: 인터셉터만 있으면 신호를 노출하므로 pageCache 에만 AND 게이팅.
+            using (new EditorGUI.DisabledScope(!pageCacheActive))
+            {
+                DrawNativeAssetSourceSetting();
+            }
+
+            // pageCache 실효값=OFF + nativeAssetSource 실효값=ON 일 때 경고 HelpBox 표시.
+            if (!pageCacheActive)
+            {
+                bool nativeSourceEffective = config.nativeAssetSource < 0
+                    ? AITDefaultSettings.GetDefaultNativeAssetSource()
+                    : config.nativeAssetSource == 1;
+
+                if (nativeSourceEffective)
+                {
+                    EditorGUILayout.HelpBox(
+                        "페이지 캐시가 비활성이므로 네이티브 에셋 소스도 동작하지 않습니다(인터셉터 없음). " +
+                        "페이지 캐시를 활성화하거나 네이티브 에셋 소스를 명시적으로 비활성화하세요.",
+                        MessageType.Warning
+                    );
+                }
+            }
+        }
+
+        private void DrawWarmManifestSetting()
+        {
+            bool defaultWarmManifest = AITDefaultSettings.GetDefaultWarmManifest();
+            bool isModified = config.warmManifest >= 0 && (config.warmManifest == 1) != defaultWarmManifest;
+
+            EditorGUI.indentLevel++;
+            EditorGUILayout.BeginHorizontal();
+
+            DrawModifiedIndicator(isModified);
+
+            string label = config.warmManifest < 0
+                ? $"Warm Manifest 산출 (자동: {(defaultWarmManifest ? "활성화" : "비활성화")})"
+                : "Warm Manifest 산출";
+
+            string[] options = { $"자동 ({(defaultWarmManifest ? "활성화" : "비활성화")})", "비활성화", "활성화" };
+            int currentIndex = config.warmManifest < 0 ? 0 : config.warmManifest + 1;
+            int newIndex = EditorGUILayout.Popup(
+                new GUIContent(label,
+                    "빌드 시 ait-warm-manifest.json 을 web 루트에 산출합니다. " +
+                    "호스트(슈퍼앱)가 선다운로드(warm) diff 기준으로 사용합니다. " +
+                    "페이지 캐시 실효값이 OFF 이면 회색 비활성화됩니다(AND 게이팅). " +
+                    "-1=자동(활성화), 0=비활성화, 1=활성화."),
+                currentIndex,
+                options
+            );
+            config.warmManifest = newIndex == 0 ? -1 : newIndex - 1;
+
+            if (isModified && DrawResetButton())
+            {
+                config.warmManifest = -1;
+            }
+
+            EditorGUILayout.EndHorizontal();
+            EditorGUI.indentLevel--;
+        }
+
+        private void DrawWarmPageSetting()
+        {
+            bool defaultWarmPage = AITDefaultSettings.GetDefaultWarmPage();
+            bool isModified = config.warmPage >= 0 && (config.warmPage == 1) != defaultWarmPage;
+
+            EditorGUI.indentLevel++;
+            EditorGUILayout.BeginHorizontal();
+
+            DrawModifiedIndicator(isModified);
+
+            string label = config.warmPage < 0
+                ? $"Warm 페이지 산출 (자동: {(defaultWarmPage ? "활성화" : "비활성화")})"
+                : "Warm 페이지 산출";
+
+            string[] options = { $"자동 ({(defaultWarmPage ? "활성화" : "비활성화")})", "비활성화", "활성화" };
+            int currentIndex = config.warmPage < 0 ? 0 : config.warmPage + 1;
+            int newIndex = EditorGUILayout.Popup(
+                new GUIContent(label,
+                    "빌드 시 self-warming 페이지(ait-warm.html)를 함께 산출합니다. " +
+                    "호스트가 숨김 WebView 로 열면 매니페스트 변경분을 미리 캐시에 적재합니다. " +
+                    "페이지 캐시·Warm Manifest 실효값이 모두 OFF 이면 회색 비활성화됩니다(AND 게이팅). " +
+                    "-1=자동(활성화), 0=비활성화, 1=활성화."),
+                currentIndex,
+                options
+            );
+            config.warmPage = newIndex == 0 ? -1 : newIndex - 1;
+
+            if (isModified && DrawResetButton())
+            {
+                config.warmPage = -1;
+            }
+
+            EditorGUILayout.EndHorizontal();
+            EditorGUI.indentLevel--;
+        }
+
+        private void DrawNativeAssetSourceSetting()
+        {
+            bool defaultNativeSource = AITDefaultSettings.GetDefaultNativeAssetSource();
+            bool isModified = config.nativeAssetSource >= 0 && (config.nativeAssetSource == 1) != defaultNativeSource;
+
+            EditorGUI.indentLevel++;
+            EditorGUILayout.BeginHorizontal();
+
+            DrawModifiedIndicator(isModified);
+
+            string label = config.nativeAssetSource < 0
+                ? $"네이티브 에셋 소스 우선 (자동: {(defaultNativeSource ? "활성화" : "비활성화")})"
+                : "네이티브 에셋 소스 우선";
+
+            string[] options = { $"자동 ({(defaultNativeSource ? "활성화" : "비활성화")})", "비활성화", "활성화" };
+            int currentIndex = config.nativeAssetSource < 0 ? 0 : config.nativeAssetSource + 1;
+            int newIndex = EditorGUILayout.Popup(
+                new GUIContent(label,
+                    "페이지 캐시 인터셉터가 Build/* 요청에 대해 호스트 네이티브 프리페치 결과를 우선 사용합니다. " +
+                    "호스트가 window.__aitResolveAsset 리졸버를 주입하면 native→CacheStorage→network 순으로 해석합니다. " +
+                    "리졸버 미주입 시 신호만 노출되고 기존 캐시-퍼스트 동작으로 자동 폴백됩니다. " +
+                    "페이지 캐시 실효값이 OFF 이면 회색 비활성화됩니다(AND 게이팅). " +
+                    "-1=자동(활성화), 0=비활성화, 1=활성화."),
+                currentIndex,
+                options
+            );
+            config.nativeAssetSource = newIndex == 0 ? -1 : newIndex - 1;
+
+            if (isModified && DrawResetButton())
+            {
+                config.nativeAssetSource = -1;
+            }
+
+            EditorGUILayout.EndHorizontal();
+            EditorGUI.indentLevel--;
         }
 
         private void DrawPermissionSettings()
@@ -1098,6 +1281,18 @@ namespace AppsInToss.Editor
             bool defaultPageCache = AITDefaultSettings.GetDefaultPageCache();
             if (config.pageCache >= 0 && (config.pageCache == 1) != defaultPageCache) count++;
 
+            // warm manifest: 기본 자동(true). 명시적으로 기본값과 다르게 설정된 경우만 변경으로 집계.
+            bool defaultWarmManifest = AITDefaultSettings.GetDefaultWarmManifest();
+            if (config.warmManifest >= 0 && (config.warmManifest == 1) != defaultWarmManifest) count++;
+
+            // warm 페이지: 기본 자동(true). 명시적으로 기본값과 다르게 설정된 경우만 변경으로 집계.
+            bool defaultWarmPage = AITDefaultSettings.GetDefaultWarmPage();
+            if (config.warmPage >= 0 && (config.warmPage == 1) != defaultWarmPage) count++;
+
+            // 네이티브 에셋 소스: 기본 자동(true). 명시적으로 기본값과 다르게 설정된 경우만 변경으로 집계.
+            bool defaultNativeSource = AITDefaultSettings.GetDefaultNativeAssetSource();
+            if (config.nativeAssetSource >= 0 && (config.nativeAssetSource == 1) != defaultNativeSource) count++;
+
             return count;
         }
 
@@ -1111,6 +1306,9 @@ namespace AppsInToss.Editor
             config.pageCacheName = "ait-page-cache";
             config.pageCache = -1;
             config.pageCacheName = "";
+            config.warmManifest = -1;
+            config.warmPage = -1;
+            config.nativeAssetSource = -1;
         }
 
         private void ResetAdvancedSettings()

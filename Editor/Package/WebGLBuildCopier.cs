@@ -352,9 +352,10 @@ namespace AppsInToss.Editor.Package
             if (!Directory.Exists(projectBuildConfigPath)) return;
 
             // 루트 레벨에서 제외할 파일들
+            // (pnpm-workspace.yaml은 BuildConfigMerger.CopyPnpmWorkspaceWithFallback가 전담 복사하므로 제외)
             var excludeRootFiles = new HashSet<string>
             {
-                "package.json", "pnpm-lock.yaml", "vite.config.ts",
+                "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "vite.config.ts",
                 "tsconfig.json", "unity-bridge.ts", "granite.config.ts",
                 "apps-in-toss.config.ts"
             };
@@ -501,6 +502,7 @@ namespace AppsInToss.Editor.Package
                     "package.json",
                     "package-lock.json",
                     "pnpm-lock.yaml",
+                    "pnpm-workspace.yaml",
                     "granite.config.ts",
                     "apps-in-toss.config.ts",
                     "vite.config.ts",

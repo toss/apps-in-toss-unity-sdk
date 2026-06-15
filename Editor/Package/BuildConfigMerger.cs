@@ -121,6 +121,32 @@ namespace AppsInToss.Editor.Package
         }
 
         /// <summary>
+        /// pnpm-workspace.yaml을 빌드 디렉토리로 복사합니다.
+        /// 이 파일은 공급망 보호(minimumReleaseAge)에서 @apps-in-toss/* 패키지를 예외 처리하는
+        /// 정적 설정 파일이라 병합/검증 없이 그대로 복사합니다. pnpm은 이 설정을
+        /// pnpm-workspace.yaml에서만 읽으므로(.npmrc/package.json#pnpm 불가) 빌드 디렉토리에
+        /// 반드시 존재해야 미니앱 빌드 시 예외가 적용됩니다.
+        /// 프로젝트에 동명 파일이 있으면 사용자 설정을 우선하고, 없으면 SDK 기본값을 사용합니다.
+        /// </summary>
+        internal static void CopyPnpmWorkspaceWithFallback(string projectBuildConfigPath, string sdkBuildConfigPath, string destPath)
+        {
+            string workspaceProject = Path.Combine(projectBuildConfigPath, "pnpm-workspace.yaml");
+            string workspaceSdk = Path.Combine(sdkBuildConfigPath, "pnpm-workspace.yaml");
+            string workspaceDst = Path.Combine(destPath, "pnpm-workspace.yaml");
+
+            if (File.Exists(workspaceProject))
+            {
+                File.Copy(workspaceProject, workspaceDst, true);
+                Debug.Log("[AIT]   ✓ pnpm-workspace.yaml (프로젝트에서 복사)");
+            }
+            else if (File.Exists(workspaceSdk))
+            {
+                File.Copy(workspaceSdk, workspaceDst, true);
+                Debug.Log("[AIT]   ✓ pnpm-workspace.yaml (SDK에서 복사)");
+            }
+        }
+
+        /// <summary>
         /// dependencies 딕셔너리를 머지합니다. SDK 패키지가 우선됩니다.
         /// </summary>
         internal static Dictionary<string, object> MergeDependencies(Dictionary<string, object> project, Dictionary<string, object> sdk)

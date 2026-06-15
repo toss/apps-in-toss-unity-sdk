@@ -29,7 +29,7 @@
     "com.unity.nuget.newtonsoft-json": "3.0.2"
   },
   "category": "Platform SDK",
-  "packageManager": "pnpm@10.28.0",
+  "packageManager": "pnpm@11.6.0",
   "devDependencies": {
     "typescript": "^6.0.2"
   }

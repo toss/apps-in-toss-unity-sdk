@@ -95,6 +95,12 @@ public class HeavyBuildRunner
         for (int i = 0; i < meshCount; i++) GenerateMesh(i, meshGrid);
         CopyFonts(fontCopies);
 
+        // L6(mip stripping) 측정 가능화: 모든 Quality 레벨의 텍스처 mip 제한을 설정한다.
+        // 이 설정 단독으로는 .data 가 변하지 않는다(mipStripping=false 면 mip 전량 빌드 포함 →
+        // baseline on-wire 불변). L6 레버(PlayerSettings.mipStripping=true)가 켜졌을 때 비로소
+        // "어떤 Quality 레벨도 안 쓰는 최상위 mip"으로 분류되어 빌드에서 제거된다.
+        ApplyMipLimitToAllQualityLevels(GetEnvInt("AIT_HEAVY_MIP_LIMIT", 1));
+
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
         LogHeavyFootprint();
@@ -342,6 +348,38 @@ public class HeavyBuildRunner
         }
         Debug.Log($"[heavy] generated source footprint: {total / (1024.0 * 1024.0):F1} MB on disk " +
                   $"(빌드 .data 기여는 압축 포맷에 따라 상이; gitignore 대상)");
+    }
+
+    // ---- Quality mip 제한 (L6 mip stripping 레버 측정 가능화) ----
+    // Unity 의 mip stripping(PlayerSettings.mipStripping=true)은 "어떤 Quality 레벨도 필요로 하지
+    // 않는 mip"만 빌드에서 제거한다. 기본 Unity Quality 는 모든 레벨이 mip 제한 0(전체 해상도)이라
+    // 최상위 mip 이 항상 "사용됨"으로 분류 → mipStripping 플래그가 no-op 이 된다(진단 §9.32).
+    // 따라서 픽스처가 모든 레벨에 mip 제한 ≥1 을 설정해야, 레버가 켜졌을 때 mip0 이 "미사용"으로
+    // 분류되어 실제로 제거된다(2048² DXT5 의 ~1/4 절감). limit≤0 이면 no-op(설정 비활성).
+    //
+    // baseline 안전성: 이 설정은 .data 의 on-wire 바이트를 바꾸지 않는다. mipStripping=false 인
+    // baseline/타 레버 빌드는 mip 피라미드를 전량 포함하며(런타임 업로드 base 만 mip1 로 이동),
+    // 오직 L6 레버 빌드(mipStripping=true)에서만 mip0 이 제거된다.
+    private static void ApplyMipLimitToAllQualityLevels(int limit)
+    {
+        if (limit <= 0)
+            return;
+
+        int originalLevel = QualitySettings.GetQualityLevel();
+        int levelCount = QualitySettings.names.Length;
+        for (int i = 0; i < levelCount; i++)
+        {
+            QualitySettings.SetQualityLevel(i, applyExpensiveChanges: false);
+#if UNITY_2022_2_OR_NEWER
+            QualitySettings.globalTextureMipmapLimit = limit;
+#else
+            QualitySettings.masterTextureLimit = limit;
+#endif
+        }
+        QualitySettings.SetQualityLevel(originalLevel, applyExpensiveChanges: false);
+
+        Debug.Log($"[heavy] Quality mip limit = {limit} → {levelCount} 레벨 전부 적용 " +
+                  "(L6 mip stripping 이 mip0 제거 가능; baseline on-wire 불변)");
     }
 
     private static int GetEnvInt(string name, int defaultValue)

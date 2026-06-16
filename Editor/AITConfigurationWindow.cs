@@ -1092,8 +1092,6 @@ namespace AppsInToss.Editor
 
             bool defaultFirstInteractive = AITDefaultSettings.GetDefaultFirstInteractiveLog();
             if (config.firstInteractiveLog >= 0 && (config.firstInteractiveLog == 1) != defaultFirstInteractive) count++;
-            // 페이지 캐시는 opt-in(기본 false). 활성화 시 변경으로 집계.
-            if (config.enablePageCache) count++;
             // 페이지 캐시: 기본 자동(true). 명시적으로 기본값과 다르게 설정된 경우만 변경으로 집계.
             bool defaultPageCache = AITDefaultSettings.GetDefaultPageCache();
             if (config.pageCache >= 0 && (config.pageCache == 1) != defaultPageCache) count++;
@@ -1107,8 +1105,6 @@ namespace AppsInToss.Editor
             config.threadsSupport = -1;
             config.dataCaching = -1;
             config.firstInteractiveLog = -1;
-            config.enablePageCache = false;
-            config.pageCacheName = "ait-page-cache";
             config.pageCache = -1;
             config.pageCacheName = "";
         }

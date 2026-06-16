@@ -494,6 +494,11 @@ namespace AppsInToss
         /// 픽셀 불변·세션당 1회 단일 이벤트·호스트 로딩 지표 표준화에 해당하므로 기본 ON.
         /// </summary>
         public static bool GetDefaultFirstInteractiveLog()
+        {
+            return true;
+        }
+
+        /// <summary>
         /// 기본 텍스처 스트리밍 활성 여부.
         /// 비-부팅 대형 텍스처를 자동으로 외부화해 초기 다운로드/TTFF 를 줄인다(zero-config).
         /// </summary>

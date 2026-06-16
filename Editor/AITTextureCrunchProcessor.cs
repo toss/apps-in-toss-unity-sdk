@@ -14,6 +14,10 @@
 //   WebGL 플랫폼 오버라이드를 "생성"하면 format 이 RGBA32(비압축)로 리셋돼 오히려 팽창하므로,
 //   오버라이드를 만들지 않고 기본 임포터 설정(textureCompression/crunchedCompression/compressionQuality)
 //   과 maxTextureSize 만 조정한다(빌드는 WebGL fallback 으로 기본 format=DXT 를 쓰고 거기에 crunch).
+//   다만 텍스처가 "이미" WebGL 오버라이드(overridden=true)를 가진 경우, 빌드는 그 오버라이드를
+//   우선하므로 기본 임포터 crunch 가 무시된다 → 이때는 (신규 생성이 아니라) 기존 오버라이드를
+//   in-place 갱신해 crunch 를 반영한다(명시 DXT 포맷 → 대응 Crunched 변형, 포맷 리셋 없음).
+//   비-DXT 오버라이드(ASTC/비압축)는 crunch 불가라 maxSize 만 반영하고 포맷은 보존한다.
 //   SpriteAtlas 는 DefaultTexturePlatform(마스터) 설정만 조정 후 WebGL 타깃으로 repack.
 //
 // 비파괴: 각 에셋의 원본 .meta(텍스처) / .spriteatlasv2(아틀라스) 를 <path>.aittexbak 로 백업,
@@ -283,11 +287,16 @@ namespace AppsInToss.Editor
                     continue;
                 }
 
+                // 기존 WebGL 오버라이드가 crunch 미적용 상태인지(=빌드가 기본 crunch 를 무시하는지) 검사.
+                var webPs = ti.GetPlatformTextureSettings("WebGL");
+                bool webOverrideNeedsCrunch = WebGLOverrideNeedsCrunch(webPs, maxSize, quality);
+
                 bool wouldChange =
                     (maxSize > 0 && ti.maxTextureSize > maxSize)
                     || ti.textureCompression == TextureImporterCompression.Uncompressed
                     || !ti.crunchedCompression
-                    || ti.compressionQuality != quality;
+                    || ti.compressionQuality != quality
+                    || webOverrideNeedsCrunch;
                 if (!wouldChange)
                 {
                     continue; // 이미 목표 상태(예: 재진입) → 백업/리임포트 비용 회피
@@ -311,11 +320,103 @@ namespace AppsInToss.Editor
 
                 ti.crunchedCompression = true;
                 ti.compressionQuality = quality;
+
+                // 기존 WebGL 오버라이드가 있으면 빌드가 그것을 우선하므로, 위 기본 설정만으로는
+                // crunch 가 무시된다 → 오버라이드를 in-place 갱신(신규 생성 금지)해 crunch 반영.
+                if (webPs != null && webPs.overridden)
+                {
+                    ApplyCrunchToExistingWebGLOverride(ti, webPs, maxSize, quality);
+                }
+
                 ti.SaveAndReimport();
                 n++;
             }
 
             return n;
+        }
+
+        // 기존(overridden=true) WebGL 오버라이드 설정이 crunch 미반영 상태인지 판정.
+        // 신규 오버라이드 생성은 하지 않으므로 overridden=false 면 항상 false(기본 crunch fallback 사용).
+        private static bool WebGLOverrideNeedsCrunch(
+            TextureImporterPlatformSettings ps, int maxSize, int quality)
+        {
+            if (ps == null || !ps.overridden)
+            {
+                return false;
+            }
+
+            if (maxSize > 0 && ps.maxTextureSize > maxSize)
+            {
+                return true;
+            }
+
+            // crunch 적용 가능 포맷(명시 DXT / Automatic / 이미 Crunched)에 한해 crunch 상태를 본다.
+            if (IsCrunchApplicableFormat(ps.format))
+            {
+                return !ps.crunchedCompression
+                    || ps.compressionQuality != quality
+                    || ToCrunchedDxtFormat(ps.format) != ps.format; // 명시 DXT → Crunched 변형 필요
+            }
+
+            return false; // ASTC/비압축 등: crunch 불가 → maxSize 외 변경 없음
+        }
+
+        // 기존 WebGL 오버라이드에 crunch 를 in-place 반영한다(format 리셋·신규 생성 없음).
+        private static void ApplyCrunchToExistingWebGLOverride(
+            TextureImporter ti, TextureImporterPlatformSettings ps, int maxSize, int quality)
+        {
+            bool changed = false;
+
+            if (maxSize > 0 && ps.maxTextureSize > maxSize)
+            {
+                ps.maxTextureSize = maxSize;
+                changed = true;
+            }
+
+            if (IsCrunchApplicableFormat(ps.format))
+            {
+                var crunched = ToCrunchedDxtFormat(ps.format);
+                if (crunched != ps.format)
+                {
+                    ps.format = crunched; // DXT1/DXT5 → DXT1Crunched/DXT5Crunched (비압축 리셋 아님)
+                    changed = true;
+                }
+                if (!ps.crunchedCompression || ps.compressionQuality != quality)
+                {
+                    ps.crunchedCompression = true;
+                    ps.compressionQuality = quality;
+                    changed = true;
+                }
+            }
+
+            if (changed)
+            {
+                ti.SetPlatformTextureSettings(ps);
+            }
+        }
+
+        // crunch 는 DXT 계열에만 적용 가능. Automatic 은 빌드가 crunched 포맷을 자동 선택,
+        // 이미 *Crunched 포맷은 idempotent 보장. 그 외(ASTC/RGBA32 등)는 crunch 불가.
+        private static bool IsCrunchApplicableFormat(TextureImporterFormat f)
+        {
+            return f == TextureImporterFormat.Automatic
+                || f == TextureImporterFormat.DXT1
+                || f == TextureImporterFormat.DXT5
+                || f == TextureImporterFormat.DXT1Crunched
+                || f == TextureImporterFormat.DXT5Crunched;
+        }
+
+        private static TextureImporterFormat ToCrunchedDxtFormat(TextureImporterFormat f)
+        {
+            switch (f)
+            {
+                case TextureImporterFormat.DXT1:
+                    return TextureImporterFormat.DXT1Crunched;
+                case TextureImporterFormat.DXT5:
+                    return TextureImporterFormat.DXT5Crunched;
+                default:
+                    return f; // Automatic / 이미 Crunched / 비-DXT → 그대로
+            }
         }
 
         // ─────────────────────────── SpriteAtlas ───────────────────────────

@@ -1113,7 +1113,6 @@ namespace AppsInToss.Editor
             config.threadsSupport = -1;
             config.dataCaching = -1;
             config.firstInteractiveLog = -1;
-            config.enableAstcBlockEscalation = false;
             config.astcBlockEscalation = -1;
             config.astcBlockSize = 12;
             config.astcBlockMaxSize = 0;

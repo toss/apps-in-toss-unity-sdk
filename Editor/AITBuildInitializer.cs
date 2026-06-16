@@ -195,7 +195,9 @@ namespace AppsInToss.Editor
             }
             else if (applyWebGLCodeOpt)
             {
-                webGLCodeOptApplied = AITWebGLCodeOptimization.TrySetByName(webGLCodeOptTarget);
+                // TrySetDiskSizeLTO: DiskSizeLTO 미지원 버전에서 DiskSize로 자동 폴백
+                // (Sentry APPS-IN-TOSS-UNITY-SDK-10W: 멤버 미정의 시 건너뛰던 동작 개선)
+                webGLCodeOptApplied = AITWebGLCodeOptimization.TrySetDiskSizeLTO();
                 if (!webGLCodeOptApplied)
                 {
                     Debug.LogWarning(

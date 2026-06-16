@@ -2308,6 +2308,57 @@ public class IsKnownNonSdkMessageTests
 
     #endregion
 
+    #region AITSentry WebGL JS 브리지 핸들러 미등록 노이즈 (APPS-IN-TOSS-UNITY-SDK-11J)
+
+    [Test]
+    public void AitSentryGetLocaleConstantHandlerFailure_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-11J — AITSentryContextEnricher.CollectSafe가
+        // window.AppsInToss.getLocale 핸들러가 없는 환경(sandbox, 구버전 웹뷰 등)에서 발생하는
+        // "getLocale is not a constant handler" AITException을 잡아 출력한 경고.
+        // CollectSafe가 "unavailable"로 폴백 처리하므로 SDK 동작은 정상이며 Sentry 캡처 대상이 아님.
+        // "[AITSentry]" prefix가 AitKeywords("[AIT")에 걸려 SDK 보호 가드를 통과하므로
+        // 가드보다 먼저 매칭하는 composite AND 필터로 차단.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "UnityWarning: [AITSentry] GetLocale 호출 실패: getLocale is not a constant handler"));
+    }
+
+    [Test]
+    public void AitSentryGetDeviceIdConstantHandlerFailure_ReturnsTrue()
+    {
+        // 동일 패턴의 다른 API 변형 (GetDeviceId, GetPlatformOS 등) 도 동일하게 드롭됨을 검증.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "UnityWarning: [AITSentry] GetDeviceId 호출 실패: getDeviceId is not a constant handler"));
+    }
+
+    [Test]
+    public void AitSentryConstantHandlerFailure_BareMessage_ReturnsTrue()
+    {
+        // "UnityWarning:" prefix 없이 메시지 본문만 도달하는 변형도 드롭됨을 검증.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AITSentry] GetLocale 호출 실패: getLocale is not a constant handler"));
+    }
+
+    [Test]
+    public void AitSentryConstantHandlerFailure_RealApiCallFailed_StillCaptured()
+    {
+        // "is not a constant handler"가 없는 실제 API 호출 실패(예: NullReference)는 드롭하지 않음.
+        // composite AND 조건 중 "is not a constant handler" 부분이 빠지면 true를 반환하지 않는다.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AITSentry] GetLocale 호출 실패: Object reference not set to an instance of an object"));
+    }
+
+    [Test]
+    public void AitSentryConstantHandlerFailure_WithoutAitSentryPrefix_StillFiltered()
+    {
+        // "is not a constant handler"가 있으면 "[AITSentry]" prefix와 함께 드롭됨을 검증.
+        // 다른 prefix이지만 "[AITSentry]" + "is not a constant handler" 합성 조건을 충족하지 않으면 통과.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "SomeOtherSystem is not a constant handler"));
+    }
+
+    #endregion
+
     #region SDK 관련 메시지는 통과 (negative cases)
 
     [Test]

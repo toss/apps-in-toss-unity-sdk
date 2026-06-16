@@ -7,6 +7,7 @@
 
 using System;
 using System.Collections.Generic;
+using AppsInToss;
 using Sentry;
 using Sentry.Unity;
 using UnityEngine;
@@ -98,7 +99,18 @@ namespace AppsInToss.Sentry
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"{Tag} {apiName} 호출 실패: {ex.Message}");
+                // IsPlatformUnavailable 예외(예: "getLocale is not a constant handler")는
+                // WebGL JS 브리지 핸들러가 없는 환경에서 발생하는 예상된 동작이므로
+                // Warning이 아닌 Info 레벨로 기록하여 Sentry 노이즈를 방지한다.
+                var aitEx = ex as AITException;
+                if (aitEx != null && aitEx.IsPlatformUnavailable)
+                {
+                    Debug.Log($"{Tag} {apiName} 플랫폼 미지원 (예상됨): {ex.Message}");
+                }
+                else
+                {
+                    Debug.LogWarning($"{Tag} {apiName} 호출 실패: {ex.Message}");
+                }
                 return Unavailable;
             }
         }
@@ -120,7 +132,18 @@ namespace AppsInToss.Sentry
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"{Tag} {apiName} 호출 실패: {ex.Message}");
+                // IsPlatformUnavailable 예외(예: "getLocale is not a constant handler")는
+                // WebGL JS 브리지 핸들러가 없는 환경에서 발생하는 예상된 동작이므로
+                // Warning이 아닌 Info 레벨로 기록하여 Sentry 노이즈를 방지한다.
+                var aitEx = ex as AITException;
+                if (aitEx != null && aitEx.IsPlatformUnavailable)
+                {
+                    Debug.Log($"{Tag} {apiName} 플랫폼 미지원 (예상됨): {ex.Message}");
+                }
+                else
+                {
+                    Debug.LogWarning($"{Tag} {apiName} 호출 실패: {ex.Message}");
+                }
                 return Unavailable;
             }
         }

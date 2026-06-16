@@ -179,7 +179,21 @@ namespace AppsInToss.Editor
             bool applyWebGLCodeOpt = editorConfig.webGLCodeOptimization != 0;
             string webGLCodeOptTarget = AITDefaultSettings.GetDefaultWebGLCodeOptimization();
             bool webGLCodeOptApplied = false;
-            if (applyWebGLCodeOpt)
+            // Unity 6000.0의 emscripten 툴체인은 대형 프로젝트의 whole-program LTO 링크에서
+            // wasm-ld가 빌드 머신 메모리(>65GB)를 초과해 OOM(SIGKILL "Killed: 9")으로 빌드를 깨뜨린다.
+            // 6000.3의 신형 툴체인은 동일한 DiskSizeLTO를 정상 링크함을 실측 확인했다.
+            // 따라서 6000.0.x에서만 LTO 적용을 건너뛰어 하드 빌드 실패를 막는다
+            // (저메모리 빌드 머신을 쓰는 실사용자 보호 + 비-LTO 산출물로 빌드 완주).
+            bool webGLCodeOptOomSkipped =
+                applyWebGLCodeOpt
+                && webGLCodeOptTarget == AITWebGLCodeOptimization.DiskSizeLTO
+                && Application.unityVersion.StartsWith("6000.0.");
+            if (webGLCodeOptOomSkipped)
+            {
+                Debug.LogWarning(
+                    $"[AIT] WebGL Code Optimization({webGLCodeOptTarget}) 건너뜀 — Unity 6000.0 emscripten은 대형 프로젝트 LTO 링크에서 메모리 초과(OOM)로 빌드가 실패할 수 있어 이 버전에서만 비활성화 (6000.1+ 권장, 빌드는 계속)");
+            }
+            else if (applyWebGLCodeOpt)
             {
                 webGLCodeOptApplied = AITWebGLCodeOptimization.TrySetByName(webGLCodeOptTarget);
                 if (!webGLCodeOptApplied)
@@ -230,6 +244,7 @@ namespace AppsInToss.Editor
             Debug.Log($"[AIT]   - Run In Background: {runInBackground}{(editorConfig.runInBackground < 0 ? " (자동)" : "")}");
             Debug.Log($"[AIT]   - Decompression Fallback: {decompressionFallback}{(editorConfig.decompressionFallback < 0 ? " (자동)" : "")}");
             string webGLCodeOptLog = !applyWebGLCodeOpt ? "미적용 (off)"
+                : webGLCodeOptOomSkipped ? "미적용 (6000.0 LTO OOM 회피)"
                 : webGLCodeOptApplied ? $"{webGLCodeOptTarget}{(editorConfig.webGLCodeOptimization < 0 ? " (자동)" : "")}"
                 : "미적용 (API 부재)";
             Debug.Log($"[AIT]   - WebGL Code Optimization: {webGLCodeOptLog}");

@@ -16,7 +16,7 @@
   },
   "devDependencies": {
     "@types/canvas-confetti": "^1.6.4",
-    "vite": "8.0.10",
+    "vite": "8.0.16",
     "typescript": "6.0.3"
   },
   "pnpm": {

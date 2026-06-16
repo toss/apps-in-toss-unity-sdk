@@ -497,6 +497,11 @@ namespace AppsInToss
         /// 픽셀 불변·세션당 1회 단일 이벤트·호스트 로딩 지표 표준화에 해당하므로 기본 ON.
         /// </summary>
         public static bool GetDefaultFirstInteractiveLog()
+        {
+            return true;
+        }
+
+        /// <summary>
         /// 기본 ASTC 블록 에스컬레이션 활성화 여부.
         /// 블록 확대(예: 12x12)는 시각 저하가 통상 미미한 반면 다운로드/.data 절감이 커 기본 ON.
         /// 비-ASTC 서브타겟에서는 빌드 시 자동으로 건너뛰고(no-op), 빌드 후 임포터 설정은 항상 원상 복원된다.

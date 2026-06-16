@@ -587,11 +587,13 @@ namespace AppsInToss.Editor
                 };
 
                 // ChunkBasedCompression(LZ4): 런타임 LoadFromMemoryAsync 가 빠름(post-boot 배경 로드라 TTFF 무관).
-                // DeterministicAssetBundle: 동일 입력 → 동일 출력(재현성). BuildTarget.WebGL: 플레이어와 동일 타깃.
+                // BuildTarget.WebGL: 플레이어와 동일 타깃.
+                // (DeterministicAssetBundle은 Unity 5.0+에서 항상 적용되는 기본 동작이라 명시 불필요 —
+                //  6000.3에서 obsolete-as-error로 승격되어 빌드를 깨뜨리므로 플래그에서 제거)
                 var manifest = BuildPipeline.BuildAssetBundles(
                     bundleTempFull,
                     new[] { build },
-                    BuildAssetBundleOptions.ChunkBasedCompression | BuildAssetBundleOptions.DeterministicAssetBundle,
+                    BuildAssetBundleOptions.ChunkBasedCompression,
                     BuildTarget.WebGL);
 
                 if (manifest == null)

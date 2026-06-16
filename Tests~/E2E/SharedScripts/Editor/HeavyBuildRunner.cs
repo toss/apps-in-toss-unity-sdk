@@ -65,14 +65,18 @@ public class HeavyBuildRunner
         // 콘텐츠 규모는 환경변수로 조절 가능(로컬 빠른 검증 시 축소). 기본값은 perf 측정용.
         int textureCount = GetEnvInt("AIT_HEAVY_TEXTURES", 6);
         int textureSize = GetEnvInt("AIT_HEAVY_TEXTURE_SIZE", 2048);
+        // L9(crunch) 측정용 압축성 텍스처. 노이즈 텍스처(GenerateTexture)는 DXT 블록이 전부
+        // 달라 crunch 가 거의 무력(≈0 Δ)하므로, 저주파 콘텐츠 텍스처를 별도로 추가한다.
+        int crunchTextureCount = GetEnvInt("AIT_HEAVY_CRUNCH_TEXTURES", 4);
         int audioCount = GetEnvInt("AIT_HEAVY_AUDIO", 2);
         int audioSeconds = GetEnvInt("AIT_HEAVY_AUDIO_SECONDS", 60);
         int meshCount = GetEnvInt("AIT_HEAVY_MESHES", 80);
         int meshGrid = GetEnvInt("AIT_HEAVY_MESH_GRID", 70); // (grid+1)^2 verts ≈ 5041
         int fontCopies = GetEnvInt("AIT_HEAVY_FONT_COPIES", 2);
 
-        Debug.Log($"[heavy] generating: textures={textureCount}@{textureSize}², audio={audioCount}@{audioSeconds}s, " +
-                  $"meshes={meshCount}@~{(meshGrid + 1) * (meshGrid + 1)}v, fontCopies={fontCopies}");
+        Debug.Log($"[heavy] generating: textures={textureCount}(+{crunchTextureCount} 압축성)@{textureSize}², " +
+                  $"audio={audioCount}@{audioSeconds}s, meshes={meshCount}@~{(meshGrid + 1) * (meshGrid + 1)}v, " +
+                  $"fontCopies={fontCopies}");
 
         // 결정론 보장: 매 빌드 전 생성 루트를 비우고 새로 만든다.
         if (AssetDatabase.IsValidFolder(HeavyRoot))
@@ -91,6 +95,7 @@ public class HeavyBuildRunner
         // NullReferenceException 이 난다. 각 Generate* 는 "파일 기록 → ForceSynchronousImport →
         // 임포터 설정 → SaveAndReimport" 를 자기 완결적으로 수행하므로 배치 없이 순차 호출한다.
         for (int i = 0; i < textureCount; i++) GenerateTexture(i, textureSize);
+        for (int i = 0; i < crunchTextureCount; i++) GenerateCompressibleTexture(i, textureSize);
         for (int i = 0; i < audioCount; i++) GenerateAudio(i, audioSeconds);
         for (int i = 0; i < meshCount; i++) GenerateMesh(i, meshGrid);
         CopyFonts(fontCopies);
@@ -135,6 +140,80 @@ public class HeavyBuildRunner
         importer.textureCompression = TextureImporterCompression.Compressed;
         // WebGL 플랫폼 오버라이드로 DXT5 강제 → L9(crunch, DXT 전용)·L11(대형 텍스처) 대상.
         // ASTC면 crunch 레버가 작동하지 않으므로 명시적으로 DXT5 고정.
+        var ps = new TextureImporterPlatformSettings
+        {
+            name = "WebGL",
+            overridden = true,
+            maxTextureSize = size,
+            format = TextureImporterFormat.DXT5,
+            textureCompression = TextureImporterCompression.Compressed,
+            crunchedCompression = false,          // 베이스라인: 비-crunch (L9이 켜는 레버)
+        };
+        importer.SetPlatformTextureSettings(ps);
+        importer.SaveAndReimport();
+    }
+
+    // ---- 압축성 텍스처: 저주파 타일 그라디언트 → DXT 블록 중복↑ → L9(crunch) 측정 가능화 ----
+    // GenerateTexture 의 노이즈는 DXT 4×4 블록이 전부 달라 crunch(블록 스트림 재압축)가 거의
+    // 무력하다(≈0 Δ). crunch 가 유의미한 절감을 내려면 인접·반복 블록이 중복돼야 하므로,
+    // 큰 타일 단위의 부드러운 그라디언트(저주파)로 생성한다. 인덱스 시드로 완전 결정론적.
+    // 임포트 설정은 노이즈 텍스처와 동일(DXT5 오버라이드 + 비-crunch 베이스라인)하게 두어,
+    // L9 레버가 이 오버라이드를 DXT5→DXT5Crunched 로 in-place 갱신할 때만 크기가 줄도록 한다.
+    private static void GenerateCompressibleTexture(int index, int size)
+    {
+        var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+        var pixels = new Color32[size * size];
+
+        // 타일 베이스 색을 좁은 범위(저채도)로 미리 결정 → 타일 간 색 유사 → 블록 중복↑.
+        const int tile = 128;                          // 128² 타일 = 32×32 DXT 블록의 반복 단위
+        int tilesPerRow = (size + tile - 1) / tile;
+        var tileColors = new Color32[tilesPerRow * tilesPerRow];
+        uint state = 0x6C078965u ^ (uint)(index * 0x9E3779B9u + 1u);
+        for (int t = 0; t < tileColors.Length; t++)
+        {
+            state = NextLcg(state);
+            // 64..127 의 좁은 대역 → 타일 간 차이가 작아 crunch 친화적.
+            byte r = (byte)(64 + ((state >> 24) & 0x3F));
+            byte g = (byte)(64 + ((state >> 16) & 0x3F));
+            byte b = (byte)(64 + ((state >> 8) & 0x3F));
+            tileColors[t] = new Color32(r, g, b, 255);
+        }
+
+        for (int y = 0; y < size; y++)
+        {
+            int ty = y / tile;
+            float gy = (float)(y % tile) / tile;       // 타일 내 세로 위치 0..1
+            for (int x = 0; x < size; x++)
+            {
+                int tx = x / tile;
+                float gx = (float)(x % tile) / tile;   // 타일 내 가로 위치 0..1
+                var c = tileColors[ty * tilesPerRow + tx];
+                // 타일 내부는 0.75..1.0 의 완만한 명도 그라디언트(저주파) → DXT 후 crunch 친화.
+                float shade = 0.75f + 0.125f * (gx + gy);
+                byte r = (byte)Mathf.Clamp(c.r * shade, 0f, 255f);
+                byte g = (byte)Mathf.Clamp(c.g * shade, 0f, 255f);
+                byte b = (byte)Mathf.Clamp(c.b * shade, 0f, 255f);
+                pixels[y * size + x] = new Color32(r, g, b, 255);
+            }
+        }
+        tex.SetPixels32(pixels);
+        tex.Apply(false, false);
+        byte[] png = tex.EncodeToPNG();
+        Object.DestroyImmediate(tex);
+
+        string assetPath = $"{HeavyRoot}/Textures/heavy_ctex_{index:D2}.png";
+        File.WriteAllBytes(assetPath, png);
+        AssetDatabase.ImportAsset(assetPath, ImportAssetOptions.ForceSynchronousImport);
+
+        var importer = (TextureImporter)AssetImporter.GetAtPath(assetPath);
+        if (importer == null)
+            throw new System.Exception(
+                $"[heavy] TextureImporter 가 null: {assetPath} (ForceSynchronousImport 후에도 임포트 안 됨 — " +
+                "StartAssetEditing 배치로 감싸면 임포트가 지연되어 이 NRE 가 난다)");
+        importer.textureType = TextureImporterType.Default;
+        importer.mipmapEnabled = true;            // L6(mip stripping) 대상에 동일 포함
+        importer.isReadable = false;
+        importer.textureCompression = TextureImporterCompression.Compressed;
         var ps = new TextureImporterPlatformSettings
         {
             name = "WebGL",

@@ -29,6 +29,12 @@ namespace AppsInToss.Editor
         /// <summary>Coatsink/Meta 로드타임 스택의 권장값(enum 멤버 이름).</summary>
         public const string DiskSizeLTO = "DiskSizeLTO";
 
+        /// <summary>
+        /// DiskSizeLTO 미지원 버전에서 사용하는 폴백 멤버 이름.
+        /// DiskSize는 LTO 없는 disk-size 최적화로, DiskSizeLTO와 동일한 방향의 최선 근사다.
+        /// </summary>
+        internal const string DiskSizeFallback = "DiskSize";
+
         private static bool _resolved;
         private static PropertyInfo _prop;
 
@@ -114,6 +120,35 @@ namespace AppsInToss.Editor
                 Debug.LogWarning($"[AIT] WebGL codeOptimization 설정 실패('{name}'): {e.Message}");
                 return false;
             }
+        }
+
+        /// <summary>
+        /// DiskSizeLTO(disk-size 최적화 + cross-module LTO)를 적용한다.
+        /// DiskSizeLTO 멤버가 이 Unity 버전의 enum에 없으면 DiskSize(LTO 없는 disk-size)로 폴백한다.
+        /// 두 멤버 모두 없거나 API 자체가 없으면 false를 반환하고 호출자가 경고를 남긴다.
+        ///
+        /// Sentry APPS-IN-TOSS-UNITY-SDK-10W: DiskSizeLTO 미정의 버전에서 경고만 남기고
+        /// 설정을 완전 건너뛰던 동작을 DiskSize 폴백으로 개선.
+        /// </summary>
+        public static bool TrySetDiskSizeLTO()
+        {
+            var p = ResolveProperty();
+            if (p == null) return false;
+
+            // 1순위: DiskSizeLTO (cross-module LTO 포함, 권장)
+            if (Enum.IsDefined(p.PropertyType, DiskSizeLTO))
+                return TrySetByName(DiskSizeLTO);
+
+            // 2순위: DiskSize (LTO 없는 disk-size 최적화, 동일 방향의 폴백)
+            if (Enum.IsDefined(p.PropertyType, DiskSizeFallback))
+            {
+                Debug.Log(
+                    $"[AIT] WebGL codeOptimization: '{DiskSizeLTO}' 미지원 버전 — '{DiskSizeFallback}'(폴백) 적용");
+                return TrySetByName(DiskSizeFallback);
+            }
+
+            // 둘 다 없는 경우: 호출자가 별도 경고를 남기므로 여기서는 false만 반환
+            return false;
         }
     }
 }

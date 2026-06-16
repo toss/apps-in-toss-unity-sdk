@@ -1954,6 +1954,12 @@ jobs:
           fs.appendFileSync(process.env.GITHUB_OUTPUT, `name=${name}\n`);
           console.log(`Artifact name: ${name}`);
 
+      # pnpm-workspace.yaml은 pnpm-lock.yaml과 반드시 함께 업로드한다. 누락하면 다운스트림
+      # 잡(E2E/beta-release/perf)이 다운로드한 ait-build에서 `pnpm install --frozen-lockfile`
+      # 실행 시, pnpm v11이 overrides 설정을 pnpm-workspace.yaml에서만 읽으므로(.npmrc/
+      # package.json#pnpm 불가) overrides config가 비어 lockfile의 overrides 스냅샷과 어긋나
+      # ERR_PNPM_LOCKFILE_CONFIG_MISMATCH로 실패한다. ignoreScripts/minimumReleaseAgeExclude도
+      # 이 파일에서만 읽으므로 함께 전달되어야 한다.
       - name: Upload AIT Build
         if: inputs.run-build && (inputs.test-level || '2') != '0'
         uses: actions/upload-artifact@v7
@@ -1966,6 +1972,7 @@ jobs:
             Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}/ait-build/*.ait
             Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}/ait-build/package.json
             Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}/ait-build/pnpm-lock.yaml
+            Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}/ait-build/pnpm-workspace.yaml
             Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}/ait-build/granite.config.ts
             Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}/ait-build/build-validation.json
           if-no-files-found: error

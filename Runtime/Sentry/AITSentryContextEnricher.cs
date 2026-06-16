@@ -98,7 +98,13 @@ namespace AppsInToss.Sentry
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"{Tag} {apiName} 호출 실패: {ex.Message}");
+                // IsPlatformUnavailable=true인 AITException (예: "is not a constant handler")은
+                // 플랫폼이 해당 API를 지원하지 않는 정상 상황이므로 LogWarning 대신 Log로 기록.
+                // LogWarning은 Sentry에 전송되어 노이즈 이슈가 되므로 (APPS-IN-TOSS-UNITY-SDK-11H).
+                if (ex is AITException { IsPlatformUnavailable: true })
+                    Debug.Log($"{Tag} {apiName} 호출 실패 (플랫폼 미지원): {ex.Message}");
+                else
+                    Debug.LogWarning($"{Tag} {apiName} 호출 실패: {ex.Message}");
                 return Unavailable;
             }
         }
@@ -120,7 +126,13 @@ namespace AppsInToss.Sentry
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"{Tag} {apiName} 호출 실패: {ex.Message}");
+                // IsPlatformUnavailable=true인 AITException (예: "is not a constant handler")은
+                // 플랫폼이 해당 API를 지원하지 않는 정상 상황이므로 LogWarning 대신 Log로 기록.
+                // LogWarning은 Sentry에 전송되어 노이즈 이슈가 되므로 (APPS-IN-TOSS-UNITY-SDK-11H).
+                if (ex is AITException { IsPlatformUnavailable: true })
+                    Debug.Log($"{Tag} {apiName} 호출 실패 (플랫폼 미지원): {ex.Message}");
+                else
+                    Debug.LogWarning($"{Tag} {apiName} 호출 실패: {ex.Message}");
                 return Unavailable;
             }
         }

@@ -221,6 +221,12 @@ namespace AppsInToss.Editor
                 ? editorConfig.firstInteractiveLog == 1
                 : AITDefaultSettings.GetDefaultFirstInteractiveLog();
             Debug.Log($"[AIT]   - first-interactive 계측: {firstInteractiveEnabled}{(editorConfig.firstInteractiveLog < 0 ? " (자동)" : "")}");
+
+            // 텍스처 크기 클램프는 BuildPlayer 직전 AITTextureSizeClampProcessor 에서 처리
+            bool textureSizeClampEnabled = editorConfig.textureSizeClamp >= 0
+                ? editorConfig.textureSizeClamp == 1
+                : AITDefaultSettings.GetDefaultTextureSizeClamp();
+            Debug.Log($"[AIT]   - 텍스처 크기 클램프: {textureSizeClampEnabled}{(editorConfig.textureSizeClamp < 0 ? " (자동)" : "")}{(textureSizeClampEnabled ? $" (≤{editorConfig.textureClampMaxSize})" : "")}");
         }
 
         /// <summary>

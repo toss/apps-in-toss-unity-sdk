@@ -456,6 +456,11 @@ namespace AppsInToss.Editor
 
             GUILayout.Space(10);
 
+            // 콘텐츠 최적화 — 텍스처 크기 클램프 (maxTextureSize 캡)
+            DrawTextureSizeClampSetting();
+
+            GUILayout.Space(10);
+
             // 변경된 설정 개수 표시
             int modifiedCount = CountModifiedWebGLSettings();
             if (modifiedCount > 0)
@@ -472,6 +477,70 @@ namespace AppsInToss.Editor
             }
 
             EditorGUILayout.EndVertical();
+        }
+
+        private void DrawTextureSizeClampSetting()
+        {
+            bool defaultValue = AITDefaultSettings.GetDefaultTextureSizeClamp();
+            bool isModified = config.textureSizeClamp >= 0 && (config.textureSizeClamp == 1) != defaultValue;
+
+            EditorGUILayout.LabelField("콘텐츠 최적화 — 텍스처 크기 클램프", EditorStyles.boldLabel);
+
+            EditorGUILayout.BeginHorizontal();
+
+            DrawModifiedIndicator(isModified);
+
+            string autoLabel = defaultValue ? "활성화" : "비활성화";
+            string label = config.textureSizeClamp < 0
+                ? $"텍스처 크기 클램프 (자동: {autoLabel})"
+                : "텍스처 크기 클램프";
+
+            string[] options = { $"자동 ({autoLabel})", "비활성화", "활성화" };
+            int currentIndex = config.textureSizeClamp < 0 ? 0 : config.textureSizeClamp + 1;
+            int newIndex = EditorGUILayout.Popup(
+                new GUIContent(label,
+                    "대상 텍스처의 maxTextureSize만 빌드 시 일시적으로 캡(상한)으로 낮춰 reimport하여 텍셀 수를 줄입니다 " +
+                    "(format/compression/crunch 불변). 예) 2048→1024는 텍셀 1/4. 빌드 후 원본 임포트 설정으로 복원합니다."),
+                currentIndex,
+                options
+            );
+            config.textureSizeClamp = newIndex == 0 ? -1 : newIndex - 1;
+
+            if (isModified && DrawResetButton())
+            {
+                config.textureSizeClamp = -1;
+            }
+
+            EditorGUILayout.EndHorizontal();
+
+            bool effectiveEnabled = config.textureSizeClamp >= 0 ? config.textureSizeClamp == 1 : defaultValue;
+            if (effectiveEnabled)
+            {
+                EditorGUI.indentLevel++;
+                config.textureClampMaxSize = EditorGUILayout.IntField(
+                    new GUIContent("최대 텍스처 크기", "이 값보다 큰 텍스처만 축소합니다. 16 미만은 무시. 예) 512, 1024"),
+                    config.textureClampMaxSize);
+
+                int minBytesKb = EditorGUILayout.IntField(
+                    new GUIContent("소스 크기 필터(KB, 0=없음)", "소스 파일이 이 크기 미만이면 제외(작은 아이콘 보호)."),
+                    (int)(config.textureClampMinBytes / 1024));
+                config.textureClampMinBytes = (long)Mathf.Max(0, minBytesKb) * 1024;
+
+                config.textureClampDirs = EditorGUILayout.TextField(
+                    new GUIContent("대상 폴더(쉼표 구분)", "Assets/ 기준 경로. 비우면 프로젝트 전체 텍스처가 대상. 예) Assets/Art/Backgrounds"),
+                    config.textureClampDirs);
+
+                config.textureClampExcludeDirs = EditorGUILayout.TextField(
+                    new GUIContent("제외 폴더(쉼표 구분)", "Assets/ 기준 경로. 클램프에서 제외할 폴더(escape hatch)."),
+                    config.textureClampExcludeDirs);
+
+                EditorGUILayout.HelpBox(
+                    "크기 클램프는 표시 해상도를 낮추는 lossy 변경입니다(예: 2048→1024). UI/텍스트 텍스처에서 흐려짐이 " +
+                    "눈에 띌 수 있으므로 빌드 후 결과를 반드시 확인하세요. crunch와 달리 format/압축은 건드리지 않아 " +
+                    "ASTC로 굽는 프로젝트에서도 그대로 적용됩니다. 빌드 후 원본 임포트 설정은 자동 복원됩니다.",
+                    MessageType.Warning);
+                EditorGUI.indentLevel--;
+            }
         }
 
         private void DrawMemorySizeSetting()
@@ -1013,6 +1082,9 @@ namespace AppsInToss.Editor
             bool defaultFirstInteractive = AITDefaultSettings.GetDefaultFirstInteractiveLog();
             if (config.firstInteractiveLog >= 0 && (config.firstInteractiveLog == 1) != defaultFirstInteractive) count++;
 
+            bool defaultTextureClamp = AITDefaultSettings.GetDefaultTextureSizeClamp();
+            if (config.textureSizeClamp >= 0 && (config.textureSizeClamp == 1) != defaultTextureClamp) count++;
+
             return count;
         }
 
@@ -1022,6 +1094,7 @@ namespace AppsInToss.Editor
             config.threadsSupport = -1;
             config.dataCaching = -1;
             config.firstInteractiveLog = -1;
+            config.textureSizeClamp = -1;
         }
 
         private void ResetAdvancedSettings()

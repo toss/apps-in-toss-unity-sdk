@@ -210,6 +210,25 @@ namespace AppsInToss
         [Tooltip("first-interactive 계측: -1 = 자동 (활성), 0 = 비활성, 1 = 활성")]
         public int firstInteractiveLog = -1;
 
+        [Header("콘텐츠 최적화 — 텍스처 크기 클램프 (lossy, opt-in)")]
+        [Tooltip("-1 = 자동(비활성), 0 = 비활성, 1 = 활성. " +
+                 "대상 텍스처의 maxTextureSize 만 빌드 시 일시적으로 캡(상한)으로 낮춰 reimport 하여 텍셀 수를 줄입니다 " +
+                 "(format/compression/crunch 불변). 예) 2048→1024 는 텍셀 1/4 → 압축 payload/on-wire 도 ~1/4. " +
+                 "표시 해상도가 낮아지는 lossy 변경이므로 기본 비활성입니다. 빌드 후 원본 임포트 설정으로 복원합니다.")]
+        public int textureSizeClamp = -1;
+
+        [Tooltip("텍스처 maxTextureSize 상한(이 값보다 큰 텍스처만 축소). 16 미만은 무시. 예) 512, 1024")]
+        public int textureClampMaxSize = 1024;
+
+        [Tooltip("소스 파일 크기 필터(바이트). 이 크기 미만 텍스처는 제외(작은 아이콘 보호). 0 = 필터 없음")]
+        public long textureClampMinBytes = 0;
+
+        [Tooltip("대상 폴더(쉼표 구분, Assets/ 기준). 비우면 프로젝트 전체 텍스처가 대상입니다. 예) Assets/Art/Backgrounds")]
+        public string textureClampDirs = "";
+
+        [Tooltip("제외할 폴더(쉼표 구분, Assets/ 기준). 사용자 escape hatch.")]
+        public string textureClampExcludeDirs = "";
+
         [Header("권한 설정")]
         public AITPermissionConfig permissionConfig = new AITPermissionConfig();
 
@@ -477,6 +496,16 @@ namespace AppsInToss
         public static bool GetDefaultFirstInteractiveLog()
         {
             return true;
+        }
+
+        /// <summary>
+        /// 텍스처 크기 클램프(maxTextureSize 캡) 기본 활성 여부.
+        /// 표시 해상도를 낮추는 lossy 변경이고, 안전한 자동 캡 값이 존재하지 않으므로(프로젝트마다 적정 상한이 다름)
+        /// 항상 명시적 opt-in 으로 기본 비활성이다. 빌드 후 임포터 설정은 항상 원상 복원된다.
+        /// </summary>
+        public static bool GetDefaultTextureSizeClamp()
+        {
+            return false;
         }
 
         /// <summary>

@@ -993,6 +993,9 @@ namespace AppsInToss
             // .cs 파일 수정과 달리 .json은 스크립트 컴파일을 유발하지 않으므로 도메인 리로드 없음
             bool versionInfoWritten = WriteVersionInfoJson(out bool createdResourcesDir);
 
+            // 콘텐츠 최적화 — 텍스처 크기 클램프 (maxTextureSize 캡으로 .data 축소, 빌드 후 임포터 원복)
+            var textureClampHandle = Editor.AITTextureSizeClampProcessor.ApplyForBuild(config);
+
             UnityEditor.Build.Reporting.BuildReport result;
             try
             {
@@ -1000,6 +1003,9 @@ namespace AppsInToss
             }
             finally
             {
+                // 콘텐츠 최적화 — 텍스처 크기 클램프 임포터 설정 원복 (빌드 성공/실패 무관)
+                Editor.AITTextureSizeClampProcessor.RestoreForBuild(textureClampHandle);
+
                 // 빌드 완료 후 (성공/실패 무관) 생성한 JSON 제거 — 사용자 프로젝트에 산출물 남기지 않음
                 if (versionInfoWritten)
                 {

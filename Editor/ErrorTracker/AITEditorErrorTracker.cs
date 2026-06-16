@@ -1056,6 +1056,19 @@ namespace AppsInToss.Editor.ErrorTracker
             if (message.IndexOf("[AITSentryTransport] 네트워크 오류", StringComparison.Ordinal) >= 0)
                 return true;
 
+            // AITSentryContextEnricher가 WebGL JS 브리지 API 호출 실패 시 출력하는 경고.
+            // "is not a constant handler" 에러는 window.AppsInToss.getXxx 핸들러가 등록되지 않은
+            // 환경(sandbox, 구버전 웹뷰 등)에서 발생하는 예상된 플랫폼 미지원 상황이며,
+            // CollectSafe가 "unavailable"로 폴백 처리하므로 SDK 동작은 정상이다.
+            // 신규 SDK 버전은 source에서 LogWarning → Log로 다운그레이드해 이 경로를 막지만,
+            // 이전 버전 클라이언트의 잔여 이벤트를 backstop으로 흡수하기 위한 메시지 필터.
+            // "[AITSentry]" prefix가 AitKeywords("[AIT")에 걸려 SDK 보호 가드를 통과하므로
+            // 가드보다 먼저 매칭하여 Sentry 캡처를 차단한다.
+            // Sentry APPS-IN-TOSS-UNITY-SDK-11J.
+            if (message.IndexOf("[AITSentry]", StringComparison.Ordinal) >= 0
+                && message.IndexOf("is not a constant handler", StringComparison.Ordinal) >= 0)
+                return true;
+
             // 외부 정책 파일 fetch의 일시적 네트워크 오류 — SDK가 외부 호스트에 띄운 메시지이지만
             // SubmitResult/콘솔로 사용자 가시성은 유지되고, 재시도 시 자연 회복되는 케이스.
             // Sentry APPS-IN-TOSS-UNITY-SDK-M9.

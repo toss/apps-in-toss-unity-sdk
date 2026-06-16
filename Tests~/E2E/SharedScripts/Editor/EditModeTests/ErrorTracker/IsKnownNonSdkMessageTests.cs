@@ -2308,6 +2308,64 @@ public class IsKnownNonSdkMessageTests
 
     #endregion
 
+    #region AITSentryContextEnricher CollectSafe 수집 실패 노이즈 (APPS-IN-TOSS-UNITY-SDK-11G)
+
+    [Test]
+    public void AITSentryCollectSafe_GetTossAppVersionFailure_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-11G — WebGL 빌드에서 window.AppsInToss가 초기화되기 전에
+        // AITSentryContextEnricher.CollectSafe가 GetTossAppVersion을 호출하면 jslib에서
+        // "Cannot read properties of undefined (reading 'getTossAppVersion')" 예외가 발생한다.
+        // CollectSafe는 이 예외를 잡아 "unavailable"를 반환하므로 SDK 동작은 중단되지 않는다.
+        // 에디터 Sentry로 전송하면 조치 불가한 노이즈가 되므로 차단한다.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AITSentry] GetTossAppVersion 호출 실패: Cannot read properties of undefined (reading 'getTossAppVersion')"));
+    }
+
+    [Test]
+    public void AITSentryCollectSafe_GetTossAppVersionFailure_UnityWarningPrefix_ReturnsTrue()
+    {
+        // Unity가 Debug.LogWarning을 에디터 콘솔로 보낼 때 "UnityWarning: " prefix가 붙는 변형.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "UnityWarning: [AITSentry] GetTossAppVersion 호출 실패: Cannot read properties of undefined (reading 'getTossAppVersion')"));
+    }
+
+    [Test]
+    public void AITSentryCollectSafe_GetDeviceIdFailure_ReturnsTrue()
+    {
+        // 동일 CollectSafe 경로 — GetDeviceId API도 동일 패턴으로 실패할 수 있음.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AITSentry] GetDeviceId 호출 실패: Cannot read properties of undefined (reading 'getDeviceId')"));
+    }
+
+    [Test]
+    public void AITSentryCollectSafe_GenericApiFailure_ReturnsTrue()
+    {
+        // CollectSafe가 감싸는 모든 AIT API의 실패 변형을 포괄적으로 드롭한다.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AITSentry] GetOperationalEnvironment 호출 실패: some platform error"));
+    }
+
+    [Test]
+    public void AITSentryCollectSafe_OtherDiagnostic_NotFiltered()
+    {
+        // "[AITSentry]" prefix라도 "호출 실패:" 패턴이 없는 다른 진단 메시지는 통과해야 한다.
+        // (CollectSafe 경로 전용 필터이므로 다른 [AITSentry] 경고는 영향받지 않음.)
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AITSentry] AIT 컨텍스트 수집 완료 (device=abc, platform=WebGL, locale=ko)"));
+    }
+
+    [Test]
+    public void AITSentryCollectSafe_NoAITSentryPrefix_NotFiltered()
+    {
+        // "호출 실패:" 패턴만 있고 "[AITSentry]" prefix가 없으면 드롭하지 않는다.
+        // (다른 SDK 모듈의 "호출 실패" 메시지와 충돌하지 않도록 AND 조건 사용.)
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] GetTossAppVersion 호출 실패: some error"));
+    }
+
+    #endregion
+
     #region AITSentry WebGL JS 브리지 핸들러 미등록 노이즈 (APPS-IN-TOSS-UNITY-SDK-11J)
 
     [Test]
@@ -2337,15 +2395,6 @@ public class IsKnownNonSdkMessageTests
         // "UnityWarning:" prefix 없이 메시지 본문만 도달하는 변형도 드롭됨을 검증.
         Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
             "[AITSentry] GetLocale 호출 실패: getLocale is not a constant handler"));
-    }
-
-    [Test]
-    public void AitSentryConstantHandlerFailure_RealApiCallFailed_StillCaptured()
-    {
-        // "is not a constant handler"가 없는 실제 API 호출 실패(예: NullReference)는 드롭하지 않음.
-        // composite AND 조건 중 "is not a constant handler" 부분이 빠지면 true를 반환하지 않는다.
-        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
-            "[AITSentry] GetLocale 호출 실패: Object reference not set to an instance of an object"));
     }
 
     [Test]

@@ -1350,6 +1350,19 @@ namespace AppsInToss.Editor.ErrorTracker
                 && message.IndexOf("미달", StringComparison.Ordinal) >= 0)
                 return true;
 
+            // AITSentryContextEnricher의 CollectSafe가 플랫폼 API 수집 실패 시 출력하는 경고.
+            // 예: "[AITSentry] GetTossAppVersion 호출 실패: Cannot read properties of undefined (reading 'getTossAppVersion')"
+            //     "[AITSentry] GetDeviceId 호출 실패: ..."
+            // WebGL 브리지(window.AppsInToss)가 초기화되기 전에 SDK가 먼저 호출되는 타이밍 조건이거나,
+            // 에디터 PlayMode에서 WebGL jslib이 없어 발생하는 정상 실패 경로다.
+            // CollectSafe는 예외를 잡아 "unavailable"를 반환하고 계속 진행하므로 SDK 동작은 중단되지 않는다.
+            // Sentry로 전송하면 조치 불가한 노이즈가 되고 transport 자기참조 위험도 있으므로 차단한다.
+            // "[AITSentry]" prefix는 AitKeywords("[AIT")에 막히므로 반드시 가드보다 먼저 매칭해야 한다.
+            // Sentry APPS-IN-TOSS-UNITY-SDK-11G.
+            if (message.IndexOf("[AITSentry]", StringComparison.Ordinal) >= 0
+                && message.IndexOf("호출 실패:", StringComparison.Ordinal) >= 0)
+                return true;
+
             // SDK 자체 로그는 절대 필터링하지 않음 — AitKeywords 전체를 가드로 사용
             if (MessageContainsSdkKeyword(message))
                 return false;

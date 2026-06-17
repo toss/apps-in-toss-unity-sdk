@@ -63,8 +63,10 @@ jobs:
           fi
 
           # npm에서 모든 버전 가져오기 (정식 릴리즈만, dev/alpha/beta 제외)
+          # --prefer-online: self-hosted runner의 stale npm 메타데이터 캐시가 unpublish된
+          # phantom 버전(설치 시 E404나 목록에는 잔존)을 노출하지 않도록 매번 레지스트리 재검증.
           echo "=== npm에서 버전 목록 가져오기 ==="
-          ALL_NPM_VERSIONS=$(npm view @apps-in-toss/web-framework versions --json | jq -r '.[]' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V)
+          ALL_NPM_VERSIONS=$(npm view @apps-in-toss/web-framework versions --json --prefer-online | jq -r '.[]' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V)
           echo "npm 버전 목록:"
           echo "$ALL_NPM_VERSIONS"
 
@@ -123,6 +125,20 @@ jobs:
             # 이미 열린 PR이 있으면 스킵
             if echo "$OPEN_PR_VERSIONS" | grep -qx "$VERSION"; then
               echo "  ${VERSION}: 열린 PR 존재 (스킵)"
+              continue
+            fi
+
+            # public npm resolvability 가드: 후보 버전이 실제로 public npm에 존재하는지 최종 검증.
+            # 감지 목록(npm view versions)이 stale 캐시로 phantom 버전을 포함할 수 있고,
+            # 외부 개발자는 public npm 기준으로 BuildConfig~를 clean install하므로
+            # web-framework·web-analytics 둘 중 하나라도 없으면 release/vX.Y.Z가 깨진다.
+            # --prefer-online으로 캐시 우회 재검증하여 unpublish/미존재 버전 PR을 차단한다.
+            if ! npm view "@apps-in-toss/web-framework@${VERSION}" version --prefer-online >/dev/null 2>&1; then
+              echo "  ${VERSION}: web-framework@${VERSION} public npm 미존재(E404/unpublished) — PR 생성 스킵"
+              continue
+            fi
+            if ! npm view "@apps-in-toss/web-analytics@${VERSION}" version --prefer-online >/dev/null 2>&1; then
+              echo "  ${VERSION}: web-analytics@${VERSION} public npm 미존재(E404/unpublished) — PR 생성 스킵"
               continue
             fi
 

@@ -141,9 +141,36 @@ namespace AppsInToss.Editor.Package
             if (viteResult != AITConvertCore.AITExportError.SUCCEED) return viteResult;
 
             Debug.Log("[AIT] ✓ vite build 완료 (dist/web). ait build로 패키징합니다...");
+
+            // ait build 직전: cli.js를 패치해 setMetadata가 runtimeVersion을 emit하도록 만든다
+            // (3.x deploy 게이트 통과용). CANCELLED만 전파, 그 외 실패는 경고 후 계속.
+            var patchResult = RunRuntimeVersionPatchSync(ctx, label);
+            if (patchResult == AITConvertCore.AITExportError.CANCELLED) return patchResult;
+
             return AITNpmRunner.RunNpmCommandWithCache(
                 ctx.BuildProjectPath, ctx.PnpmPath, "exec ait build", ctx.LocalCachePath,
                 $"{label} (ait build)...", additionalEnvVars: ctx.UnityMetadataEnv);
+        }
+
+        /// <summary>
+        /// ait build 직전에 web-framework cli.js를 패치해 setMetadata가 runtimeVersion을
+        /// 직접 emit하도록 만든다 (3.x deploy 게이트 "runtimeVersion이 없습니다" 통과용).
+        /// 빌드된 .ait 자체는 손대지 않으므로 봉인이 깨지지 않는다.
+        ///
+        /// ait-patch-cli.mjs는 항상 exit 0이며 (2.x cli.js엔 setMetadata 없음/구조 변경/
+        /// 이미 설정됨 → graceful no-op), 패치 자체는 빌드를 막지 않는다. 따라서 사용자
+        /// 취소(CANCELLED)만 상위로 전파하고, 그 외 비정상 종료는 경고만 남기고 ait build를
+        /// 계속 진행한다 (패치 실패가 빌드 실패로 번지지 않게 — stable 무회귀).
+        /// </summary>
+        internal static AITConvertCore.AITExportError RunRuntimeVersionPatchSync(AITPackageBuilder.PackageContext ctx, string label)
+        {
+            var result = AITNpmRunner.RunNpmCommandWithCache(
+                ctx.BuildProjectPath, ctx.PnpmPath, "exec node ait-patch-cli.mjs", ctx.LocalCachePath,
+                $"{label} (runtimeVersion 패치)...", additionalEnvVars: ctx.UnityMetadataEnv);
+            if (result == AITConvertCore.AITExportError.CANCELLED) return result;
+            if (result != AITConvertCore.AITExportError.SUCCEED)
+                Debug.LogWarning($"[AIT] runtimeVersion 패치 스크립트 비정상 종료 (결과: {result}) — 무시하고 ait build를 계속합니다.");
+            return AITConvertCore.AITExportError.SUCCEED;
         }
 
         /// <summary>
@@ -289,24 +316,66 @@ namespace AppsInToss.Editor.Package
                     }
 
                     Debug.Log("[AIT] ✓ vite build 완료 (dist/web). ait build로 패키징합니다...");
-                    AITNpmRunner.RunNpmCommandWithCacheAsync(
-                        ctx.BuildProjectPath, ctx.PnpmPath, "exec ait build", ctx.LocalCachePath,
-                        onComplete: (aitResult) =>
+
+                    // ait build 직전: cli.js 패치(runtimeVersion 주입) → 그 다음 ait build.
+                    // 패치 자체 실패는 빌드를 막지 않고, 사용자 취소(CANCELLED)만 전파한다.
+                    RunRuntimeVersionPatchAsync(ctx, (patchResult) =>
+                    {
+                        if (patchResult == AITConvertCore.AITExportError.CANCELLED)
                         {
-                            if (aitResult == AITConvertCore.AITExportError.SUCCEED)
-                                Debug.Log("[AIT] ✓ ait build 패키징 성공 (3.x)");
-                            onComplete?.Invoke(aitResult);
-                        },
-                        onOutputReceived: (line) =>
-                        {
-                            onProgress?.Invoke(AITConvertCore.BuildPhase.GraniteBuild, 0.85f, line);
-                        },
-                        additionalEnvVars: ctx.UnityMetadataEnv
-                    );
+                            onComplete?.Invoke(patchResult);
+                            return;
+                        }
+                        AITNpmRunner.RunNpmCommandWithCacheAsync(
+                            ctx.BuildProjectPath, ctx.PnpmPath, "exec ait build", ctx.LocalCachePath,
+                            onComplete: (aitResult) =>
+                            {
+                                if (aitResult == AITConvertCore.AITExportError.SUCCEED)
+                                    Debug.Log("[AIT] ✓ ait build 패키징 성공 (3.x)");
+                                onComplete?.Invoke(aitResult);
+                            },
+                            onOutputReceived: (line) =>
+                            {
+                                onProgress?.Invoke(AITConvertCore.BuildPhase.GraniteBuild, 0.85f, line);
+                            },
+                            additionalEnvVars: ctx.UnityMetadataEnv
+                        );
+                    });
                 },
                 onOutputReceived: (line) =>
                 {
                     onProgress?.Invoke(AITConvertCore.BuildPhase.GraniteBuild, 0.7f, line);
+                },
+                additionalEnvVars: ctx.UnityMetadataEnv
+            );
+        }
+
+        /// <summary>
+        /// <see cref="RunRuntimeVersionPatchSync"/>의 비동기 버전.
+        /// CANCELLED만 onComplete로 전파하고, 그 외 비정상 종료는 경고 후 SUCCEED로 흘려
+        /// 호출부가 ait build를 계속 진행하게 한다.
+        /// </summary>
+        internal static void RunRuntimeVersionPatchAsync(
+            AITPackageBuilder.PackageContext ctx,
+            Action<AITConvertCore.AITExportError> onComplete)
+        {
+            Debug.Log("[AIT] runtimeVersion 패치: cli.js setMetadata에 runtimeVersion 주입 시도...");
+            AITNpmRunner.RunNpmCommandWithCacheAsync(
+                ctx.BuildProjectPath, ctx.PnpmPath, "exec node ait-patch-cli.mjs", ctx.LocalCachePath,
+                onComplete: (result) =>
+                {
+                    if (result == AITConvertCore.AITExportError.CANCELLED)
+                    {
+                        onComplete?.Invoke(result);
+                        return;
+                    }
+                    if (result != AITConvertCore.AITExportError.SUCCEED)
+                        Debug.LogWarning($"[AIT] runtimeVersion 패치 스크립트 비정상 종료 (결과: {result}) — 무시하고 ait build를 계속합니다.");
+                    onComplete?.Invoke(AITConvertCore.AITExportError.SUCCEED);
+                },
+                onOutputReceived: (line) =>
+                {
+                    Debug.Log($"[AIT] [patch] {line}");
                 },
                 additionalEnvVars: ctx.UnityMetadataEnv
             );

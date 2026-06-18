@@ -102,8 +102,16 @@ namespace AppsInToss.Sentry
                 // IsPlatformUnavailable 예외(예: "getLocale is not a constant handler")는
                 // WebGL JS 브리지 핸들러가 없는 환경에서 발생하는 예상된 동작이므로
                 // Warning이 아닌 Info 레벨로 기록하여 Sentry 노이즈를 방지한다.
+                //
+                // "Cannot read properties of undefined" 예외는 window.AppsInToss 객체가
+                // 아직 초기화되지 않은 상태에서 jslib이 호출될 때 발생하는 JS TypeError이다.
+                // 이 역시 플랫폼 브리지 미준비 상태로서 IsPlatformUnavailable 과 동일하게
+                // Info 레벨로 기록하여 Runtime Sentry 노이즈를 방지한다.
+                // Sentry APPS-IN-TOSS-UNITY-SDK-11E.
                 var aitEx = ex as AITException;
-                if (aitEx != null && aitEx.IsPlatformUnavailable)
+                bool isUndefinedAccess = ex.Message != null &&
+                    ex.Message.IndexOf("Cannot read properties of undefined", StringComparison.Ordinal) >= 0;
+                if ((aitEx != null && aitEx.IsPlatformUnavailable) || isUndefinedAccess)
                 {
                     Debug.Log($"{Tag} {apiName} 플랫폼 미지원 (예상됨): {ex.Message}");
                 }
@@ -135,8 +143,16 @@ namespace AppsInToss.Sentry
                 // IsPlatformUnavailable 예외(예: "getLocale is not a constant handler")는
                 // WebGL JS 브리지 핸들러가 없는 환경에서 발생하는 예상된 동작이므로
                 // Warning이 아닌 Info 레벨로 기록하여 Sentry 노이즈를 방지한다.
+                //
+                // "Cannot read properties of undefined" 예외는 window.AppsInToss 객체가
+                // 아직 초기화되지 않은 상태에서 jslib이 호출될 때 발생하는 JS TypeError이다.
+                // 이 역시 플랫폼 브리지 미준비 상태로서 IsPlatformUnavailable 과 동일하게
+                // Info 레벨로 기록하여 Runtime Sentry 노이즈를 방지한다.
+                // Sentry APPS-IN-TOSS-UNITY-SDK-11E.
                 var aitEx = ex as AITException;
-                if (aitEx != null && aitEx.IsPlatformUnavailable)
+                bool isUndefinedAccess = ex.Message != null &&
+                    ex.Message.IndexOf("Cannot read properties of undefined", StringComparison.Ordinal) >= 0;
+                if ((aitEx != null && aitEx.IsPlatformUnavailable) || isUndefinedAccess)
                 {
                     Debug.Log($"{Tag} {apiName} 플랫폼 미지원 (예상됨): {ex.Message}");
                 }

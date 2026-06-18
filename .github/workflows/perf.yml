@@ -233,7 +233,7 @@ jobs:
           done
 
       - name: Save baseline cache
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: baseline
           key: perf-baseline-all-${{ github.sha }}
@@ -260,7 +260,7 @@ jobs:
       - name: Restore baseline cache
         # baseline 자신을 만드는 main 푸시 런에서는 복원 불필요(자기 자신이 baseline)
         if: needs.setup.outputs.is_baseline != 'true'
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: baseline
           key: perf-baseline-all-${{ github.sha }}

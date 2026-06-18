@@ -107,6 +107,14 @@ namespace AppsInToss.Sentry
                 {
                     Debug.Log($"{Tag} {apiName} 플랫폼 미지원 (예상됨): {ex.Message}");
                 }
+                else if (ex.Message != null && ex.Message.Contains("Cannot read properties of undefined"))
+                {
+                    // window.AppsInToss 브리지가 주입되지 않은 환경(Toss 앱 WebView 외부)에서
+                    // jslib 내 window.AppsInToss.xxx() 호출 시 발생하는 JS TypeError.
+                    // 이는 플랫폼 미지원 상황의 예상된 동작이므로 Info 레벨로 기록한다.
+                    // (APPS-IN-TOSS-UNITY-SDK-11D)
+                    Debug.Log($"{Tag} {apiName} 플랫폼 브리지 미초기화 (예상됨): {ex.Message}");
+                }
                 else
                 {
                     Debug.LogWarning($"{Tag} {apiName} 호출 실패: {ex.Message}");
@@ -139,6 +147,14 @@ namespace AppsInToss.Sentry
                 if (aitEx != null && aitEx.IsPlatformUnavailable)
                 {
                     Debug.Log($"{Tag} {apiName} 플랫폼 미지원 (예상됨): {ex.Message}");
+                }
+                else if (ex.Message != null && ex.Message.Contains("Cannot read properties of undefined"))
+                {
+                    // window.AppsInToss 브리지가 주입되지 않은 환경(Toss 앱 WebView 외부)에서
+                    // jslib 내 window.AppsInToss.xxx() 호출 시 발생하는 JS TypeError.
+                    // 이는 플랫폼 미지원 상황의 예상된 동작이므로 Info 레벨로 기록한다.
+                    // (APPS-IN-TOSS-UNITY-SDK-11D)
+                    Debug.Log($"{Tag} {apiName} 플랫폼 브리지 미초기화 (예상됨): {ex.Message}");
                 }
                 else
                 {

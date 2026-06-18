@@ -13,6 +13,10 @@
 //     실패 → CheckAndSetupPackageManager catch가 Sentry에 전송하던 패턴.
 //     SDK-100 retry fix(#746) + sentryCapture:false(#715)로 수정됐으나 이 회귀 가드가 없어
 //     sentryCapture:false가 raw Debug.LogError로 되돌아가도 발각되지 않는 갭이 있었음.
+//   - APPS-IN-TOSS-UNITY-SDK-11W: "[AIT] pnpm 글로벌 설치 실패 (exit code: …). 첫 빌드 시 다시 시도됩니다."
+//     네트워크 차단/npm 권한/AV 핸들 점유로 백그라운드 pnpm install이 exit code 1로 실패하는
+//     사용자 환경 원인. InstallPnpmGlobal의 onComplete 콜백이 raw Debug.LogWarning으로 Sentry에
+//     전송하던 패턴을 AITLog.Warning(sentryCapture:false)로 수정.
 //
 // 진짜 빌드 실패는 다운스트림 CaptureBuildError(구조화 이벤트, errorCode fingerprint)가 별도로
 // 캡처하므로, 이 fallback warning들을 Sentry에서 억제해도 가시성을 잃지 않는다.
@@ -67,6 +71,20 @@ public class SentryNoiseSuppressionCallsiteTests
             "패키지 매니저 체크 중 예외 발생",
             "119",
             expectWarning: false);  // AITLog.Error (복구 불가 경로이므로 Error 레벨이 맞다)
+
+    /// <summary>
+    /// 회귀 가드 — APPS-IN-TOSS-UNITY-SDK-11W:
+    /// InstallPnpmGlobal 의 onComplete 콜백이 pnpm 설치 exit code 1 실패를 로그할 때
+    /// raw Debug.LogWarning 으로 되돌아가지 않고 sentryCapture:false 를 유지하는지 검증.
+    /// 네트워크 차단/npm 권한/AV 핸들 점유 등 사용자 환경 원인이며, 메시지 자체가
+    /// "첫 빌드 시 다시 시도됩니다"라는 복구 경로를 안내하는 정상 fallback warning이다.
+    /// </summary>
+    [Test]
+    public void ElevenW_PnpmGlobalInstallFailure_StaysSentrySuppressed()
+        => AssertCallsiteSuppressed(
+            "AITPackageInitializer.cs",
+            "pnpm 글로벌 설치 실패 (exit code:",
+            "11W");
 
     /// <summary>
     /// fileName 소스에서 messageAnchor를 내보내는 가장 가까운 선행 로그 호출이

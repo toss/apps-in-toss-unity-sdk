@@ -426,10 +426,14 @@ namespace AppsInToss.Editor
                         }
                         else
                         {
-                            Debug.LogWarning($"[AIT] pnpm 글로벌 설치 실패 (exit code: {result.ExitCode}). 첫 빌드 시 다시 시도됩니다.");
+                            // pnpm 글로벌 설치 실패 — 네트워크 차단, npm 권한 문제, AV 핸들 점유 등
+                            // 사용자 환경 원인. 메시지 자체가 "첫 빌드 시 다시 시도"라는 복구 경로를
+                            // 안내하는 정상 fallback이므로 Sentry로 전송하지 않는다.
+                            // (APPS-IN-TOSS-UNITY-SDK-11W 노이즈 방지)
+                            AITLog.Warning($"[AIT] pnpm 글로벌 설치 실패 (exit code: {result.ExitCode}). 첫 빌드 시 다시 시도됩니다.", sentryCapture: false);
                             if (!string.IsNullOrEmpty(result.Error))
                             {
-                                Debug.LogWarning($"[AIT] 오류: {result.Error}");
+                                AITLog.Warning($"[AIT] 오류: {result.Error}", sentryCapture: false);
                             }
                         }
                     },
@@ -439,7 +443,9 @@ namespace AppsInToss.Editor
             catch (Exception e)
             {
                 MarkInstallationCompleted();
-                Debug.LogWarning($"[AIT] pnpm 글로벌 설치 중 예외 발생: {e}");
+                // 프로세스 시작/IO 예외 — 사용자 환경 원인이며 AITAsyncCommandRunner가 이미
+                // 진단을 콘솔에 남기므로 여기서는 Sentry 전송 없이 Warning만 출력한다.
+                AITLog.Warning($"[AIT] pnpm 글로벌 설치 중 예외 발생: {e}", sentryCapture: false);
             }
         }
     }

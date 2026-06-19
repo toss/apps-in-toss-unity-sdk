@@ -172,7 +172,10 @@ namespace AppsInToss
             if (string.IsNullOrEmpty(message)) return false;
             return message.Contains("__GRANITE_NATIVE_EMITTER") ||
                    message.Contains("ReactNativeWebView") ||
-                   message.Contains("is not a constant handler");
+                   message.Contains("is not a constant handler") ||
+                   // WebGL JS 브리지 객체(window.AppsInToss)가 아직 초기화되지 않았을 때
+                   // 발생하는 JS TypeError — 플랫폼 미지원과 동일하게 처리한다.
+                   message.Contains("Cannot read properties of undefined");
         }
     }
 

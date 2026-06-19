@@ -14,8 +14,8 @@ importers:
   .:
     dependencies:
       '@apps-in-toss/bridge-core':
-        specifier: 2.7.0
-        version: 2.7.0
+        specifier: 2.9.2
+        version: 2.9.2
       '@apps-in-toss/web-analytics':
         specifier: 2.9.1
         version: 2.9.1(@apps-in-toss/web-bridge@2.9.1)
@@ -53,11 +53,11 @@ packages:
       react: '*'
       react-native: '*'
 
-  '@apps-in-toss/bridge-core@2.7.0':
-    resolution: {integrity: sha512-+C6fz1c3qLXjLXGLzyuD7+MaTE0RI+0MzBhFEFWpefbwOWlCFekirC1hUigT15L+JVMi7D6q6ZoUkiWSTBYTgQ==}
-
   '@apps-in-toss/bridge-core@2.9.1':
     resolution: {integrity: sha512-fCG2Sqno/btjFPXlxKAJ6U/Z6s37b2r2WejyU2SNYfyk4r5mZb/UuEBZnnmMsyEbaHb8LHXGDGOWTrzBrzil0w==}
+
+  '@apps-in-toss/bridge-core@2.9.2':
+    resolution: {integrity: sha512-A2zV32SFryTJYoXKLEi3EUcMTlyg2NLyFxKHs5FfpZfHiQbXs0aiNhGwZLUy2Ar7JSRLXwgrUVngDpeEFQ2AkA==}
 
   '@apps-in-toss/cli@2.9.1':
     resolution: {integrity: sha512-T486SDrxW8TqEZe5HoWewXQdZxWKq3NjgXXOILPt1Rk1gpsIcTJRzfkXL6C8dIXgxQg3QmwgKw1QAI4qHnZVTQ==}
@@ -6337,9 +6337,9 @@ snapshots:
       react: 18.2.0
       react-native: 0.72.6(@babel/core@7.23.9)(@babel/preset-env@7.28.5(@babel/core@7.23.9))(react@18.2.0)
 
-  '@apps-in-toss/bridge-core@2.7.0': {}
-
   '@apps-in-toss/bridge-core@2.9.1': {}
+
+  '@apps-in-toss/bridge-core@2.9.2': {}
 
   '@apps-in-toss/cli@2.9.1(@babel/core@7.23.9)(@babel/preset-env@7.28.5(@babel/core@7.23.9))(@react-navigation/native@7.2.2(react-native@0.72.6(@babel/core@7.23.9)(@babel/preset-env@7.28.5(@babel/core@7.23.9))(react@18.2.0))(react@18.2.0))(@swc/helpers@0.5.17)(@types/node@25.9.3)(react-native-safe-area-context@5.6.2(react-native@0.72.6(@babel/core@7.23.9)(@babel/preset-env@7.28.5(@babel/core@7.23.9))(react@18.2.0))(react@18.2.0))(react-native-screens@4.23.0(react-native@0.72.6(@babel/core@7.23.9)(@babel/preset-env@7.28.5(@babel/core@7.23.9))(react@18.2.0))(react@18.2.0))(react-native@0.72.6(@babel/core@7.23.9)(@babel/preset-env@7.28.5(@babel/core@7.23.9))(react@18.2.0))(react@18.2.0)(typanion@3.14.0)(typescript@6.0.3)':
     dependencies:

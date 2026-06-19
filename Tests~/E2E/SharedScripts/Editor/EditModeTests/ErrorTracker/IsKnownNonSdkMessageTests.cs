@@ -2347,6 +2347,28 @@ public class IsKnownNonSdkMessageTests
     }
 
     [Test]
+    public void AITSentryCollectSafe_GetOperationalEnvironmentUndefinedAccess_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-11E — WebGL 빌드에서 window.AppsInToss가 초기화되기 전에
+        // AITSentryContextEnricher.CollectSafe가 GetOperationalEnvironment를 호출하면 jslib에서
+        // "Cannot read properties of undefined (reading 'getOperationalEnvironment')" JS TypeError가 발생한다.
+        // CollectSafe는 이 예외를 잡아 "unavailable"를 반환하므로 SDK 동작은 중단되지 않는다.
+        // 에디터 Sentry로 전송하면 조치 불가한 노이즈가 되므로 차단한다.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AITSentry] GetOperationalEnvironment 호출 실패: Cannot read properties of undefined (reading 'getOperationalEnvironment')"));
+    }
+
+    [Test]
+    public void AITSentryCollectSafe_GetOperationalEnvironmentUndefinedAccess_UnityWarningPrefix_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-11E 실측 메시지 — Unity가 Debug.LogWarning을 에디터 콘솔로
+        // 보낼 때 "UnityWarning: " prefix가 붙는 변형. 에디터 backstop 필터(IsKnownNonSdkMessage)가
+        // [AITSentry] + 호출 실패: 합성으로 이 변형도 드롭함을 검증.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "UnityWarning: [AITSentry] GetOperationalEnvironment 호출 실패: Cannot read properties of undefined (reading 'getOperationalEnvironment')"));
+    }
+
+    [Test]
     public void AITSentryCollectSafe_OtherDiagnostic_NotFiltered()
     {
         // "[AITSentry]" prefix라도 "호출 실패:" 패턴이 없는 다른 진단 메시지는 통과해야 한다.

@@ -190,7 +190,10 @@ yarn.lock.meta
 # Tests~/E2E/tests의 pnpm-lock.yaml은 커밋 (E2E 잡이 --frozen-lockfile 사용)
 !**/Tests~/E2E/tests/pnpm-lock.yaml
 
-# Lockfile은 일반적으로 커밋하지 않음 (BuildConfig~, Tests~/E2E/tests 제외)
+# sdk-runtime-generator~의 pnpm-lock.yaml은 커밋 (Regenerate Lockfiles 워크플로가 재생성·커밋)
+!sdk-runtime-generator~/pnpm-lock.yaml
+
+# Lockfile은 일반적으로 커밋하지 않음 (BuildConfig~, Tests~/E2E/tests, sdk-runtime-generator~ 제외)
 
 # Superpowers 플랜 문서 (Claude Code 작업용, 커밋 불필요)
 docs/superpowers/

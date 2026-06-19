@@ -137,6 +137,7 @@ public static class BuildOutputValidator
         bool hasLoader = false;
         bool hasWasm = false;
         bool hasData = false;
+        bool hasFramework = false;
         string compressionFormat = "unknown";
 
         foreach (string file in buildFiles)
@@ -163,11 +164,17 @@ public static class BuildOutputValidator
             {
                 hasData = true;
             }
+
+            if (fileName.Contains(".framework.js"))
+            {
+                hasFramework = true;
+            }
         }
 
         if (!hasLoader) errors.Add("Missing loader.js in Build/");
         if (!hasWasm) errors.Add("Missing .wasm file in Build/");
         if (!hasData) errors.Add("Missing .data file in Build/");
+        if (!hasFramework) errors.Add("Missing .framework.js file in Build/");
 
         // 9. Build/ 파일 수 검증 — 선별 복사 회귀 감지
         int expectedMaxFiles = 6; // loader, data, framework, wasm + symbols + 여유 1

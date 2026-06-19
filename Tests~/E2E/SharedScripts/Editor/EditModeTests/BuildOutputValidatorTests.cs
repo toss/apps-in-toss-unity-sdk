@@ -78,4 +78,59 @@ public class BuildOutputValidatorTests
     {
         Assert.AreEqual("symbols", BuildOutputValidator.DetectFileType("notes.symbols.json.backup"));
     }
+
+    // =====================================================
+    // APPS-IN-TOSS-UNITY-SDK-11Z 회귀 가드:
+    // ValidateAll이 *.framework.js 누락을 에러로 보고해야 한다.
+    // 기존 코드는 hasLoader/hasWasm/hasData만 검증하고 hasFramework를 누락했다.
+    // 이 테스트는 framework.js가 없는 Build/ 폴더에서 ValidateAll이
+    // "Missing .framework.js" 에러를 포함한 결과를 반환하는지 고정한다.
+    // =====================================================
+
+    [Test]
+    public void ValidateAll_MissingFrameworkJs_ReturnsError()
+    {
+        // 임시 프로젝트 구조 생성
+        string tempDir = System.IO.Path.Combine(
+            System.IO.Path.GetTempPath(),
+            "ait-test-validator-" + System.Guid.NewGuid().ToString("N").Substring(0, 8));
+
+        try
+        {
+            // ait-build/dist/web/Build/ 구조 생성 (framework.js 제외)
+            string aitBuildPath = System.IO.Path.Combine(tempDir, "ait-build");
+            string distWebPath = System.IO.Path.Combine(aitBuildPath, "dist", "web");
+            string distBuildPath = System.IO.Path.Combine(distWebPath, "Build");
+            System.IO.Directory.CreateDirectory(distBuildPath);
+
+            // 필수 설정 파일
+            System.IO.File.WriteAllText(System.IO.Path.Combine(aitBuildPath, "package.json"), "{}");
+            System.IO.File.WriteAllText(System.IO.Path.Combine(aitBuildPath, "node_modules", ".keep"), "");
+            System.IO.Directory.CreateDirectory(System.IO.Path.Combine(aitBuildPath, "node_modules"));
+            System.IO.File.WriteAllText(System.IO.Path.Combine(distWebPath, "index.html"), "<html></html>");
+
+            // loader, data, wasm은 있지만 framework.js는 의도적으로 생성 안 함
+            System.IO.File.WriteAllText(System.IO.Path.Combine(distBuildPath, "build.loader.js"), "loader");
+            System.IO.File.WriteAllText(System.IO.Path.Combine(distBuildPath, "build.data"), "data");
+            System.IO.File.WriteAllText(System.IO.Path.Combine(distBuildPath, "build.wasm"), "wasm");
+            // build.framework.js 의도적으로 누락
+
+            var result = BuildOutputValidator.ValidateAll(tempDir);
+
+            Assert.IsFalse(result.passed,
+                "framework.js가 없으면 ValidateAll은 실패해야 한다");
+
+            bool hasFrameworkError = System.Array.Exists(
+                result.errors,
+                e => e.Contains("framework.js"));
+            Assert.IsTrue(hasFrameworkError,
+                "ValidateAll 에러 목록에 'framework.js' 누락 에러가 포함되어야 한다. " +
+                "실제 에러: " + string.Join(", ", result.errors));
+        }
+        finally
+        {
+            if (System.IO.Directory.Exists(tempDir))
+                System.IO.Directory.Delete(tempDir, true);
+        }
+    }
 }

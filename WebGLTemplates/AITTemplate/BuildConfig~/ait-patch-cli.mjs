@@ -19,9 +19,12 @@
 // runtimeVersion 값:
 //   "0.84.0" — @apps-in-toss/cli@2.6.1의 RUNTIME_BUILD_DEFINITIONS[0].runtimeVersion.
 //   2.6.1 경로(WEB 플랫폼 포함)가 서버에 실제로 기록·수락시키는 React Native 런타임
-//   버전이다. 3.x WEB 서버가 동일 값을 수락하는지는 실제 ait deploy로 최종 확인해야
-//   하며, 거부 시 deployment 응답에서 서버가 기대하는 값을 확인해 이 상수만 갱신하면
-//   된다(beta-release.yml의 deployment GET 진단 참조).
+//   버전이다. 3.x WEB deploy 서버가 이 값을 수락함을 실제 ait deploy로 확인 완료했다
+//   (2026-06-20 베타 probe: beta-release.yml deploy_probe_only 디스패치 → 3.x ait
+//   build가 이 패치로 0.84.0을 주입한 .ait를 ait deploy가 정상 배포 생성, deploymentId
+//   019ee488-… 발급). 향후 upstream이 기대 런타임 버전을 바꿔 거부가 재발하면, deployment
+//   응답에서 서버가 기대하는 값을 확인해 이 상수만 갱신하면 된다(beta-release.yml의
+//   deployment GET 진단 참조).
 //
 // 안전 규칙 — 어떤 상황에서도 빌드를 막지 않는다(항상 정상 종료):
 //   (a) 멱등        : setMetadata에 이미 runtimeVersion이 있으면 no-op.

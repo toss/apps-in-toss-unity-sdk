@@ -48,9 +48,13 @@ namespace AppsInToss.Editor.Package
 
             if (!Directory.Exists(buildSrc))
             {
-                Debug.LogError(
+                // Build 폴더 부재는 사용자가 WebGL 빌드를 실행하지 않은 워크플로우 문제이며
+                // SDK 자체 버그가 아니므로 Sentry 캡처를 억제한다 (APPS-IN-TOSS-UNITY-SDK-12E).
+                // 오류 메시지는 Unity Console에 표시되어 사용자에게 안내된다.
+                AITLog.Error(
                     "[AIT] ✗ 치명적: Build 폴더를 찾을 수 없습니다!\n"
-                    + $"검색 경로: {buildSrc}"
+                    + $"검색 경로: {buildSrc}",
+                    sentryCapture: false
                 );
                 return AITConvertCore.AITExportError.BUILD_FOLDER_MISSING;
             }

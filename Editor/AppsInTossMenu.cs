@@ -733,10 +733,14 @@ namespace AppsInToss
 
                 // pnpm exec ait deploy --api-key "KEY" 형태로 직접 실행
                 string command = $"\"{pnpmPath}\" exec ait deploy --api-key \"{deploymentKey}\"";
+                // BuildAdditionalPaths: node_modules/.bin (ait CLI) + npmDir + 내장 node bin
+                // deploy는 build와 달리 additionalPaths에 npmDir만 넣어 node_modules/.bin을 누락하면
+                // Windows에서 'ait' is not recognized 오류 발생 (techchat#4138, APPS-IN-TOSS-UNITY-SDK-12J)
+                var additionalPaths = AITNpmRunner.BuildAdditionalPaths(npmPath, buildPath);
                 var result = AITPlatformHelper.ExecuteCommand(
                     command,
                     buildPath,
-                    new[] { npmDir },
+                    additionalPaths.ToArray(),
                     timeoutMs: 300000,
                     verbose: true
                 );

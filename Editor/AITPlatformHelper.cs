@@ -368,71 +368,53 @@ namespace AppsInToss.Editor
                     Debug.Log($"[Platform] 셸: {processInfo.FileName} {processInfo.Arguments}");
                 }
 
-                using (var process = new Process { StartInfo = processInfo })
+                // 프로세스 실행 + 타임아웃 + 출력 캡처의 공통 패턴은 AITProcessExecutor가 담당.
+                var run = AITProcessExecutor.Run(processInfo, timeoutMs);
+
+                if (run.TimedOut)
                 {
-                    process.Start();
-
-                    // 비동기로 출력 읽기 (데드락 방지)
-                    var outputTask = process.StandardOutput.ReadToEndAsync();
-                    var errorTask = process.StandardError.ReadToEndAsync();
-
-                    bool completed = process.WaitForExit(timeoutMs);
-
-                    if (!completed)
-                    {
-                        process.Kill();
-                        result.Success = false;
-                        result.Error = "명령 실행 시간 초과";
-                        result.ExitCode = -1;
-
-                        if (verbose)
-                        {
-                            Debug.LogError($"[Platform] 명령 시간 초과 ({timeoutMs}ms): {command}");
-                        }
-
-                        return result;
-                    }
-
-                    // 타임아웃 강제(WaitForExit(int)) + 리더 drain 확정(WaitForExit())의 2단계 패턴.
-                    // 타임아웃 오버로드 WaitForExit(int)은 stdout/stderr 비동기 리더 배수(drain)를
-                    // 보장하지 않음. 파라미터 없는 오버로드를 한 번 더 호출해 리더 완료를 확정함.
-                    // (이 시점에서 프로세스는 이미 exit 상태이므로 리더가 EOF로 곧 완료됨.
-                    //  둘 중 한 호출만 남기지 말 것 — 하나만 있으면 hang 또는 drain 누락 발생.)
-                    process.WaitForExit();
-
-                    // 이 시점에서 두 리더 Task는 완료 상태이므로 동기 접근에 데드락 위험 없음.
-                    // .Result 대신 GetAwaiter().GetResult()를 사용해 예외 래핑(AggregateException)을 피함.
-                    result.Output = StripAnsiCodes(outputTask.GetAwaiter().GetResult());
-                    result.Error = StripAnsiCodes(errorTask.GetAwaiter().GetResult());
-                    result.ExitCode = process.ExitCode;
-                    result.Success = process.ExitCode == 0;
+                    result.Success = false;
+                    result.Error = "명령 실행 시간 초과";
+                    result.ExitCode = -1;
 
                     if (verbose)
                     {
-                        if (result.Success)
+                        Debug.LogError($"[Platform] 명령 시간 초과 ({timeoutMs}ms): {command}");
+                    }
+
+                    return result;
+                }
+
+                result.Output = StripAnsiCodes(run.StdOut);
+                result.Error = StripAnsiCodes(run.StdErr);
+                result.ExitCode = run.ExitCode;
+                result.Success = run.ExitCode == 0;
+
+                if (verbose)
+                {
+                    if (result.Success)
+                    {
+                        Debug.Log($"[Platform] ✓ 명령 성공 (Exit Code: {result.ExitCode})");
+                        if (!string.IsNullOrEmpty(result.Output))
                         {
-                            Debug.Log($"[Platform] ✓ 명령 성공 (Exit Code: {result.ExitCode})");
-                            if (!string.IsNullOrEmpty(result.Output))
-                            {
-                                Debug.Log($"[Platform] 출력:\n{result.Output.Trim()}");
-                            }
+                            Debug.Log($"[Platform] 출력:\n{result.Output.Trim()}");
                         }
-                        else
+                    }
+                    else
+                    {
+                        Debug.LogError($"[Platform] ✗ 명령 실패 (Exit Code: {result.ExitCode})");
+                        // stdout/stderr는 Console에만 출력 (Sentry에는 최종 실패 메시지만 전송되도록)
+                        if (!string.IsNullOrEmpty(result.Output))
                         {
-                            Debug.LogError($"[Platform] ✗ 명령 실패 (Exit Code: {result.ExitCode})");
-                            // stdout/stderr는 Console에만 출력 (Sentry에는 최종 실패 메시지만 전송되도록)
-                            if (!string.IsNullOrEmpty(result.Output))
-                            {
-                                AppsInToss.Editor.AITLog.Error(
-                                    $"[Platform] stdout:\n{result.Output.Trim()}",
-                                    sentryCapture: false);
-                            }
-                            if (!string.IsNullOrEmpty(result.Error))
-                            {
-                                AppsInToss.Editor.AITLog.Error(
-                                    $"[Platform] stderr:\n{result.Error.Trim()}",
-                                    sentryCapture: false);
-                            }
+                            AppsInToss.Editor.AITLog.Error(
+                                $"[Platform] stdout:\n{result.Output.Trim()}",
+                                sentryCapture: false);
+                        }
+                        if (!string.IsNullOrEmpty(result.Error))
+                        {
+                            AppsInToss.Editor.AITLog.Error(
+                                $"[Platform] stderr:\n{result.Error.Trim()}",
+                                sentryCapture: false);
                         }
                     }
                 }

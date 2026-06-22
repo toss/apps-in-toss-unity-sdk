@@ -6,7 +6,6 @@
 ## 리팩토링 (대형 파일 분리)
 
 - **P1 — `Runtime/SDK/AIT.Types.cs` (2,192행)**: 100+ enum/class가 단일 파일에 집중. generator에서 카테고리별 타입 파일로 분할 생성.
-- **P1 — `Editor/AppsInTossMenu.cs` (1,630행)**: 여전히 모놀리식(서버 관리·배포·브라우저 실행·플러그인 설치 혼재). `PortResolver`·`AITServerStateManager`는 분리 완료 → 배포/브라우저 실행 로직 추가 분리 필요.
 - **P2 — `Editor/AITConvertCore.cs` (1,298행)**: 빌드 초기화·에셋 내보내기·WebGL 생성·에러 처리가 한 클래스에 집중. 단계별 Strategy/Pipeline 분리.
 - **P2 — `run-local-tests.sh` (1,276행)**: `scripts~/test-editmode.sh`, `scripts~/test-e2e.sh` 등으로 모듈 분리.
 - **P2 — 프로세스 실행+타임아웃 패턴 중복**: `AITGitGuard`·`AITPlatformHelper`·`AITAsyncCommandRunner`의 "프로세스 생성 → 타임아웃 대기 → 출력 캡처" 반복 → `ProcessExecutor` 유틸 추출.

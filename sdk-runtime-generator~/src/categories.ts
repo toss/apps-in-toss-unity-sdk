@@ -185,9 +185,11 @@ export const CATEGORY_ORDER: string[] = [
  * 3. 기본 카테고리 (DEFAULT_CATEGORY) - 'Other'
  *
  * @param apiName API 이름 (camelCase, 예: appLogin) 또는 PascalCase (예: IAPGetProductItemList)
+ * @param warn 매핑 누락 시 경고 출력 여부 (기본 true). 타입 분류처럼 동일 API에 대해
+ *   getCategory가 두 번 호출되는 경로에서는 false로 넘겨 중복 경고를 막는다.
  * @returns 카테고리 이름
  */
-export function getCategory(apiName: string): string {
+export function getCategory(apiName: string, warn: boolean = true): string {
   // 1. 명시적 매핑 확인 (가장 우선)
   for (const [category, apis] of Object.entries(API_CATEGORIES)) {
     if (apis.includes(apiName)) {
@@ -203,11 +205,35 @@ export function getCategory(apiName: string): string {
   }
 
   // 3. 기본 카테고리 반환 (경고 출력)
-  console.warn(
-    `⚠️  API '${apiName}'의 카테고리가 정의되지 않았습니다. '${DEFAULT_CATEGORY}'로 분류됩니다.\n` +
-    `   categories.ts의 API_CATEGORIES 또는 CATEGORY_INFERENCE_RULES에 추가를 검토해주세요.`
-  );
+  if (warn) {
+    console.warn(
+      `⚠️  API '${apiName}'의 카테고리가 정의되지 않았습니다. '${DEFAULT_CATEGORY}'로 분류됩니다.\n` +
+      `   categories.ts의 API_CATEGORIES 또는 CATEGORY_INFERENCE_RULES에 추가를 검토해주세요.`
+    );
+  }
   return DEFAULT_CATEGORY;
+}
+
+/**
+ * API 객체의 카테고리를 결정한다 (생성기 전역 단일 규약).
+ * - 이벤트 구독 API: 파서가 설정한 api.category 사용
+ * - 네임스페이스 API: 전체 이름(pascalName)으로 룩업 (예: IAPGetProductItemList)
+ * - 일반 API: 원본 이름(originalName)으로 룩업 (예: appLogin)
+ *
+ * 파라미터는 ParsedAPI를 구조적으로만 받아 categories.ts ↔ types.ts 순환 import를 피한다.
+ * @param warn getCategory 매핑 누락 경고 출력 여부 (동일 API에 대해 중복 호출되는 경로는 false).
+ */
+export function resolveApiCategory(
+  api: { isEventSubscription?: boolean; category: string; namespace?: string; pascalName: string; originalName: string },
+  warn: boolean = true
+): string {
+  if (api.isEventSubscription) {
+    return api.category;
+  }
+  if (api.namespace) {
+    return getCategory(api.pascalName, warn);
+  }
+  return getCategory(api.originalName, warn);
 }
 
 /**

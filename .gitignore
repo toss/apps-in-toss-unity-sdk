@@ -107,6 +107,7 @@ logs/
 !Tests~
 !Tools~
 !sdk-runtime-generator~
+!scripts~
 !**/Plugins~
 !**/Plugins~/**
 !**/BuildConfig~

@@ -61,6 +61,13 @@ describe('콜백 디스패치 템플릿 HTML escape 회귀 (csharp-core.hbs)', (
 
     expect(rendered).toContain('case "UserInfo":');
     expect(rendered).toContain('TryGetCallback<UserInfo>');
-    expect(rendered).not.toContain('&lt;');
+
+    // `///` XML doc 주석에는 의도적으로 escape된 정적 텍스트(Func&lt;T, bool&gt;)가
+    // 들어있고(위 테스트와 동일 사유) 컴파일/디스패치와 무관하므로 코드 라인만 검사한다.
+    const escapedCode = rendered
+      .split('\n')
+      .filter((l) => !l.trim().startsWith('///'))
+      .filter((l) => l.includes('&lt;') || l.includes('&gt;'));
+    expect(escapedCode).toEqual([]);
   });
 });

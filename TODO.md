@@ -5,10 +5,8 @@
 
 ## 리팩토링 (대형 파일 분리)
 
-- **P1 — `Runtime/SDK/AIT.Types.cs` (2,192행)**: 100+ enum/class가 단일 파일에 집중. generator에서 카테고리별 타입 파일로 분할 생성.
 - **P1 — `Editor/AppsInTossMenu.cs` (1,630행)**: 여전히 모놀리식(서버 관리·배포·브라우저 실행·플러그인 설치 혼재). `PortResolver`·`AITServerStateManager`는 분리 완료 → 배포/브라우저 실행 로직 추가 분리 필요.
 - **P2 — `Editor/AITConvertCore.cs` (1,298행)**: 빌드 초기화·에셋 내보내기·WebGL 생성·에러 처리가 한 클래스에 집중. 단계별 Strategy/Pipeline 분리.
-- **P2 — `run-local-tests.sh` (1,276행)**: `scripts~/test-editmode.sh`, `scripts~/test-e2e.sh` 등으로 모듈 분리.
 
 ## 비동기 / 스레드 안전성
 
@@ -20,10 +18,6 @@
 ## 의존성
 
 - **P2 — `sdk-runtime-generator~/pnpm-lock.yaml` gitignored** (`.gitignore:181`): package.json은 핵심 의존성을 pin하지만 transitive dependency는 drift 가능. 재현성 목표라면 lockfile 커밋 여부 결정.
-
-## 테스트 커버리지
-
-- **P2 — 미테스트 핵심 클래스**: `AITPackageManagerHelper`, `AITPlatformHelper` 유닛 테스트 부재. (EditMode 테스트는 62→823 메서드 / 7→45 파일로 대폭 보강됨)
 
 ## 보안
 

@@ -43,9 +43,12 @@ describe('JSON 스키마 일치성 검증', () => {
       );
     }
 
-    // AIT.Types.cs 로딩
-    const typesFilePath = path.join(runtimeSDKPath, 'AIT.Types.cs');
-    typesFileContent = await fs.readFile(typesFilePath, 'utf-8');
+    // 타입 정의 로딩 — 카테고리별로 분할된 AIT.Types.*.cs를 모두 결합
+    const typeFiles = (await glob('AIT.Types.*.cs', { cwd: runtimeSDKPath, absolute: false })).sort();
+    const typeParts = await Promise.all(
+      typeFiles.map(f => fs.readFile(path.join(runtimeSDKPath, f), 'utf-8'))
+    );
+    typesFileContent = typeParts.join('\n');
 
     // 모든 C# 파일 로딩
     allCSharpFiles = new Map();
@@ -368,7 +371,7 @@ describe('JSON 스키마 일치성 검증', () => {
   describe('API 파라미터/반환 타입 커버리지', () => {
     test('모든 API 파일이 적절한 타입을 반환해야 함', async () => {
       const apiFiles = [...allCSharpFiles.entries()].filter(
-        ([name]) => name.startsWith('AIT.') && name !== 'AIT.cs' && name !== 'AIT.Types.cs'
+        ([name]) => name.startsWith('AIT.') && name !== 'AIT.cs' && !name.startsWith('AIT.Types')
       );
 
       console.log(`\n📊 API 파일 분석: ${apiFiles.length}개`);

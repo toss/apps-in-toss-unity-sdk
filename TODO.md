@@ -5,7 +5,6 @@
 
 ## 리팩토링 (대형 파일 분리)
 
-- **P1 — `Editor/AppsInTossMenu.cs` (1,630행)**: 여전히 모놀리식(서버 관리·배포·브라우저 실행·플러그인 설치 혼재). `PortResolver`·`AITServerStateManager`는 분리 완료 → 배포/브라우저 실행 로직 추가 분리 필요.
 - **P2 — `Editor/AITConvertCore.cs` (1,298행)**: 빌드 초기화·에셋 내보내기·WebGL 생성·에러 처리가 한 클래스에 집중. 단계별 Strategy/Pipeline 분리.
 
 ## 비동기 / 스레드 안전성

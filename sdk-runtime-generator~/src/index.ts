@@ -14,8 +14,8 @@ import { typeCheckBridgeCode, printTypeCheckResult, cleanupCache } from './gener
 import { generateUnityBridge } from './generators/unity-bridge.js';
 import { generateScreenManualCs, generateScreenManualJslib } from './generators/webgl-manual.js';
 import { formatCommand } from './commands/format.js';
-import { FRAMEWORK_APIS, EXCLUDED_APIS, DEPRECATED_API_OVERRIDES } from './categories.js';
-import { getApiImportSource, type ParsedAPI } from './types.js';
+import { FRAMEWORK_APIS, EXCLUDED_APIS, DEPRECATED_API_OVERRIDES, CATEGORY_ORDER, DEFAULT_CATEGORY, resolveApiCategory } from './categories.js';
+import { getApiImportSource, type ParsedAPI, type GeneratedTypeUnit } from './types.js';
 
 const program = new Command();
 
@@ -644,18 +644,17 @@ async function generate(options: {
     const coreFile = await csharpGenerator.generateCoreFile(apis, enumTypeNames);
     console.log(picocolors.green(`✓ AITCore.cs (Infrastructure)`));
 
-    // C# 타입 정의 생성 (파싱된 enum/interface) - 본문만
+    // C# 타입 정의 생성 (파싱된 enum/interface) - 타입별 유닛
     // 생성된 타입 이름도 함께 반환하여 API 타입 생성 시 중복 방지
     const parsedTypesResult = await typeGenerator.generateTypeDefinitions(typeDefinitions);
-    const parsedTypesBody = parsedTypesResult.code;
 
     // 파싱된 타입 이름 목록 (중첩 타입 포함) - 중복 방지용
     const parsedTypeNames = parsedTypesResult.generatedTypeNames;
 
-    // C# 타입 정의 생성 (API에서 추출된 타입) - 본문만 (중복 제외)
+    // C# 타입 정의 생성 (API에서 추출된 타입) - 타입별 유닛 (중복 제외)
     // typeDefinitions와 parser도 전달하여 pending external types 해결에 사용
     // parsedTypesResult.stringEnumValues는 inline enum dedup용 (named enum과 값 셋 일치 시 alias)
-    const apiTypesBody = await typeGenerator.generateTypes(
+    const apiTypeUnits = await typeGenerator.generateTypes(
       apis,
       parsedTypeNames,
       typeDefinitions,
@@ -663,9 +662,47 @@ async function generate(options: {
       parsedTypesResult.stringEnumValues,
     );
 
-    // 헤더 + 본문들을 합침
-    const typeFileHeader = `// -----------------------------------------------------------------------
-// <copyright file="AIT.Types.cs" company="Toss">
+    // 타입 유닛을 카테고리별로 버킷팅 (API 추출 타입 + 파싱된 도메인 타입)
+    const allTypeUnits: GeneratedTypeUnit[] = [...apiTypeUnits, ...parsedTypesResult.units];
+
+    // 'Other'로 남은 유닛(파싱된 도메인 타입 + 루프 밖 pending 타입)을 API 이름 프리픽스로 재귀속.
+    // 이들 대부분은 `{ApiPascalName}{Options|Result|Params|Response|...}` 규약을 따르므로
+    // 가장 긴 API 이름이 word-boundary(다음 글자 대문자/끝)로 prefix 매칭되면 그 API의 카테고리로 옮긴다.
+    // 매칭 실패한 진짜 공용 타입(LocationCoords, Money 등)은 'Other'에 남는다(오분류 위험 없음).
+    // 참조 그래프 기반 delta-snapshot 분류(generateTypes)는 더 정확하므로 건드리지 않는다.
+    const apiCatByPascal = new Map<string, string>();
+    for (const api of apis) {
+      apiCatByPascal.set(api.pascalName, resolveApiCategory(api, false));
+    }
+    const apiNamesLongestFirst = Array.from(apiCatByPascal.keys()).sort((a, b) => b.length - a.length);
+    for (const unit of allTypeUnits) {
+      if (unit.category !== DEFAULT_CATEGORY) continue;
+      for (const apiName of apiNamesLongestFirst) {
+        if (unit.name === apiName) {
+          unit.category = apiCatByPascal.get(apiName)!;
+          break;
+        }
+        if (unit.name.length > apiName.length && unit.name.startsWith(apiName)) {
+          const next = unit.name.charAt(apiName.length);
+          if (next >= 'A' && next <= 'Z') {
+            unit.category = apiCatByPascal.get(apiName)!;
+            break;
+          }
+        }
+      }
+    }
+
+    const typeUnitsByCategory = new Map<string, GeneratedTypeUnit[]>();
+    for (const unit of allTypeUnits) {
+      if (!typeUnitsByCategory.has(unit.category)) {
+        typeUnitsByCategory.set(unit.category, []);
+      }
+      typeUnitsByCategory.get(unit.category)!.push(unit);
+    }
+
+    // 카테고리별 타입 파일 헤더 (copyright file= 속성은 실제 파일명으로)
+    const buildTypeFileHeader = (fileName: string) => `// -----------------------------------------------------------------------
+// <copyright file="${fileName}" company="Toss">
 //     Copyright (c) Toss. All rights reserved.
 //     Apps in Toss Unity SDK - Type Definitions
 // </copyright>
@@ -684,11 +721,28 @@ namespace AppsInToss
     const typeFileFooter = `}
 `;
 
-    const typesFile = typeFileHeader +
-      (apiTypesBody ? apiTypesBody + '\n\n' : '') +
-      (parsedTypesBody ? parsedTypesBody + '\n' : '') +
-      typeFileFooter;
-    console.log(picocolors.green(`✓ AIT.Types.cs (${typeDefinitions.length}개 타입 정의)`));
+    // 카테고리 순서대로 파일 생성 (CATEGORY_ORDER 우선, 그 외 알파벳 순 — generateCategoryFiles와 동일 규약)
+    const typeFiles = new Map<string, string>();
+    const orderedTypeCategories: string[] = [];
+    const processedTypeCategories = new Set<string>();
+    for (const category of CATEGORY_ORDER) {
+      if (typeUnitsByCategory.has(category)) {
+        orderedTypeCategories.push(category);
+        processedTypeCategories.add(category);
+      }
+    }
+    for (const category of Array.from(typeUnitsByCategory.keys())
+      .filter(c => !processedTypeCategories.has(c))
+      .sort()) {
+      orderedTypeCategories.push(category);
+    }
+    for (const category of orderedTypeCategories) {
+      const units = typeUnitsByCategory.get(category)!;
+      const fileName = `AIT.Types.${category}.cs`;
+      const body = units.map(u => u.code).join('\n\n');
+      typeFiles.set(fileName, buildTypeFileHeader(fileName) + body + '\n' + typeFileFooter);
+    }
+    console.log(picocolors.green(`✓ ${typeFiles.size}개 타입 파일 (AIT.Types.{Category}.cs, ${typeDefinitions.length}개 타입 정의)`));
 
     // jslib 파일들 생성 (TypeScript 포함)
     const jslibResult = await jslibGenerator.generateWithTypescript(apis, options.tag);
@@ -733,9 +787,9 @@ namespace AppsInToss
     const newCsFiles = new Set<string>([
       path.join(outputDir, 'AIT.cs'),
       path.join(outputDir, 'AITCore.cs'),
-      path.join(outputDir, 'AIT.Types.cs'),
       path.join(outputDir, 'AIT.Screen.cs'), // Screen 수동 API
       ...Array.from(categoryFiles.keys()).map(f => path.join(outputDir, f)),
+      ...Array.from(typeFiles.keys()).map(f => path.join(outputDir, f)), // AIT.Types.{Category}.cs
     ]);
     const newJslibFiles = new Set<string>([
       ...Array.from(jslibFiles.keys()).map(f => path.join(pluginsDir, f)),
@@ -807,11 +861,13 @@ namespace AppsInToss
     await ensureMetaFile(corePath, existingMetas, 'cs');
     console.log(picocolors.green(`  ✓ AITCore.cs`));
 
-    // 6. AIT.Types.cs 쓰기 (타입 정의)
-    const typesPath = path.join(outputDir, 'AIT.Types.cs');
-    await fs.writeFile(typesPath, typesFile);
-    await ensureMetaFile(typesPath, existingMetas, 'cs');
-    console.log(picocolors.green(`  ✓ AIT.Types.cs`));
+    // 6. AIT.Types.{Category}.cs 쓰기 (카테고리별 타입 정의)
+    for (const [fileName, content] of typeFiles.entries()) {
+      const filePath = path.join(outputDir, fileName);
+      await fs.writeFile(filePath, content);
+      await ensureMetaFile(filePath, existingMetas, 'cs');
+      console.log(picocolors.green(`  ✓ ${fileName}`));
+    }
 
     // 7. jslib 파일들 쓰기
     for (const [fileName, content] of jslibFiles.entries()) {

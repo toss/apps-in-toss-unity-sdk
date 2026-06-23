@@ -17,6 +17,7 @@
 import { describe, test, expect, beforeAll } from 'vitest';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { readdirSync } from 'node:fs';
 import * as fs from 'fs/promises';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -29,12 +30,50 @@ const CLASS_PATTERN = `public (?:partial )?class`;
 const GOLDEN_DIR = path.resolve(__dirname, '../fixtures/golden');
 const SDK_GENERATED_DIR = path.resolve(__dirname, '../../..', 'Runtime/SDK');
 
-// 비교할 주요 파일들
-const GOLDEN_FILES = [
-  'AIT.Types.cs',
-  'AITCore.cs',
-  // jslib 파일은 자주 변경되므로 선택적으로 포함
-];
+// 카테고리별 타입 파일(AIT.Types.{Category}.cs) 매칭 — 구버전 단일 AIT.Types.cs는 매칭 안 됨
+const TYPE_FILE_RE = /^AIT\.Types\..+\.cs$/;
+
+/**
+ * 비교할 주요 파일 목록을 동적으로 수집한다.
+ * 타입 정의는 카테고리별로 분할(AIT.Types.{Category}.cs)되므로 생성 디렉토리와
+ * golden 디렉토리 양쪽에서 발견되는 타입 파일의 합집합을 대상으로 한다
+ * (카테고리 추가/삭제 모두 회귀로 검출). AITCore.cs는 항상 포함.
+ */
+function discoverGoldenFiles(): string[] {
+  const typeFiles = new Set<string>();
+  try {
+    for (const f of readdirSync(SDK_GENERATED_DIR)) {
+      if (TYPE_FILE_RE.test(f)) typeFiles.add(f);
+    }
+  } catch { /* generate 전이면 비어있음 */ }
+  try {
+    for (const f of readdirSync(GOLDEN_DIR)) {
+      if (f.endsWith('.golden') && TYPE_FILE_RE.test(f.slice(0, -'.golden'.length))) {
+        typeFiles.add(f.slice(0, -'.golden'.length));
+      }
+    }
+  } catch { /* golden 디렉토리 없음 */ }
+  return [...Array.from(typeFiles).sort(), 'AITCore.cs'];
+}
+
+// 비교할 주요 파일들 (jslib 파일은 자주 변경되므로 선택적으로 포함)
+const GOLDEN_FILES = discoverGoldenFiles();
+
+/**
+ * 분할된 타입 파일들을 모아 하나의 문자열로 결합 (집계 카운트용).
+ * @param dir 대상 디렉토리
+ * @param golden true면 *.golden 접미사 기준으로 수집
+ */
+async function readAllTypeFiles(dir: string, golden: boolean): Promise<string> {
+  const all = await fs.readdir(dir).catch(() => [] as string[]);
+  const matched = all
+    .filter(f => golden
+      ? f.endsWith('.golden') && TYPE_FILE_RE.test(f.slice(0, -'.golden'.length))
+      : TYPE_FILE_RE.test(f))
+    .sort();
+  const parts = await Promise.all(matched.map(f => fs.readFile(path.join(dir, f), 'utf-8')));
+  return parts.join('\n');
+}
 
 describe('Golden File 비교 (회귀 테스트)', () => {
   let goldenFilesExist = false;
@@ -145,24 +184,17 @@ describe('Golden File 비교 (회귀 테스트)', () => {
   });
 
   describe('구조적 일관성 검증', () => {
-    test('AIT.Types.cs의 클래스 수가 일정해야 함', async () => {
-      const typesPath = path.join(SDK_GENERATED_DIR, 'AIT.Types.cs');
-      const goldenPath = path.join(GOLDEN_DIR, 'AIT.Types.cs.golden');
+    test('AIT.Types.*.cs의 클래스 수가 일정해야 함', async () => {
+      // 타입 정의는 카테고리별 파일로 분할되므로 전체 AIT.Types.*.cs를 집계해 비교
+      const generatedContent = await readAllTypeFiles(SDK_GENERATED_DIR, false);
+      const goldenContent = await readAllTypeFiles(GOLDEN_DIR, true);
 
-      let generatedContent: string;
-      let goldenContent: string;
-
-      try {
-        generatedContent = await fs.readFile(typesPath, 'utf-8');
-      } catch {
-        console.log('⚠️ AIT.Types.cs 파일 없음');
+      if (!generatedContent) {
+        console.log('⚠️ AIT.Types.*.cs 생성 파일 없음');
         return;
       }
-
-      try {
-        goldenContent = await fs.readFile(goldenPath, 'utf-8');
-      } catch {
-        console.log('⚠️ AIT.Types.cs.golden 파일 없음');
+      if (!goldenContent) {
+        console.log('⚠️ AIT.Types.*.cs.golden 파일 없음');
         return;
       }
 
@@ -181,24 +213,16 @@ describe('Golden File 비교 (회귀 테스트)', () => {
       expect(genClassCount).toBeGreaterThanOrEqual(goldClassCount * 0.8);
     });
 
-    test('AIT.Types.cs의 enum 수가 일정해야 함', async () => {
-      const typesPath = path.join(SDK_GENERATED_DIR, 'AIT.Types.cs');
-      const goldenPath = path.join(GOLDEN_DIR, 'AIT.Types.cs.golden');
+    test('AIT.Types.*.cs의 enum 수가 일정해야 함', async () => {
+      const generatedContent = await readAllTypeFiles(SDK_GENERATED_DIR, false);
+      const goldenContent = await readAllTypeFiles(GOLDEN_DIR, true);
 
-      let generatedContent: string;
-      let goldenContent: string;
-
-      try {
-        generatedContent = await fs.readFile(typesPath, 'utf-8');
-      } catch {
-        console.log('⚠️ AIT.Types.cs 파일 없음');
+      if (!generatedContent) {
+        console.log('⚠️ AIT.Types.*.cs 생성 파일 없음');
         return;
       }
-
-      try {
-        goldenContent = await fs.readFile(goldenPath, 'utf-8');
-      } catch {
-        console.log('⚠️ AIT.Types.cs.golden 파일 없음');
+      if (!goldenContent) {
+        console.log('⚠️ AIT.Types.*.cs.golden 파일 없음');
         return;
       }
 
@@ -221,7 +245,7 @@ describe('Golden File 비교 (회귀 테스트)', () => {
     test('공개 API 메서드 수가 줄어들지 않아야 함', async () => {
       const sdkFiles = await fs.readdir(SDK_GENERATED_DIR).catch(() => []);
       const apiFiles = sdkFiles.filter(
-        f => f.startsWith('AIT.') && f.endsWith('.cs') && f !== 'AIT.cs' && f !== 'AIT.Types.cs'
+        f => f.startsWith('AIT.') && f.endsWith('.cs') && f !== 'AIT.cs' && !f.startsWith('AIT.Types')
       );
 
       let totalApiMethods = 0;

@@ -1,4 +1,18 @@
 /**
+ * 카테고리별로 분할 출력하기 위한 단위 C# 타입.
+ * generateTypes / generateTypeDefinitions가 타입 1개당 1개씩 반환하면
+ * 호출자(index.ts)가 category로 버킷팅해 AIT.Types.{Category}.cs로 분할 기록한다.
+ */
+export interface GeneratedTypeUnit {
+  /** 타입(클래스/enum) 이름 */
+  name: string;
+  /** 헤더/네임스페이스 없는 C# 본문 (alias 적용 완료) */
+  code: string;
+  /** 소속 카테고리 (AIT.Types.{category}.cs 파일로 모임) */
+  category: string;
+}
+
+/**
  * 파싱된 API 정보
  */
 export interface ParsedAPI {

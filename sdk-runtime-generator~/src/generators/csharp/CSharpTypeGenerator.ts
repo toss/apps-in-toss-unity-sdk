@@ -1,4 +1,5 @@
-import { ParsedAPI, ParsedType, ParsedTypeDefinition } from '../../types.js';
+import { ParsedAPI, ParsedType, ParsedTypeDefinition, GeneratedTypeUnit } from '../../types.js';
+import { resolveApiCategory, DEFAULT_CATEGORY } from '../../categories.js';
 import { mapToCSharpType } from '../../validators/types.js';
 import { loadUnionResultTemplate } from './templates.js';
 import { extractCleanName, capitalize, xmlSafe } from './utils.js';
@@ -159,17 +160,21 @@ export class CSharpTypeGenerator {
   }
 
   /**
-   * 타입 정의들을 C# 코드로 생성 (헤더 없이, 본문만)
+   * 타입 정의들을 C# 코드로 생성 (헤더 없이, 타입 1개당 1 유닛)
    * @param typeDefinitions 파싱된 타입 정의 목록
    * @param excludeTypeNames 제외할 타입 이름 Set (API에서 이미 생성된 타입)
-   * @returns 객체 { code: 생성된 C# 코드, generatedTypeNames: 생성된 타입 이름 Set,
+   * @returns 객체 { units: 타입별 유닛 배열, generatedTypeNames: 생성된 타입 이름 Set,
    *                stringEnumValues: 문자열 enum 이름→값 셋(원본 camelCase) Map (inline enum dedup용) }
+   *
+   * 파싱된 도메인 타입은 특정 API에 직접 귀속되지 않으므로 모두 'Other' 카테고리로 분류한다
+   * (AIT.Types.Other.cs). getCategory는 API 이름용이라 도메인 타입명에 적용하면 경고만 양산되므로
+   * 호출하지 않는다.
    */
   async generateTypeDefinitions(
     typeDefinitions: ParsedTypeDefinition[],
     excludeTypeNames?: Set<string>
-  ): Promise<{ code: string; generatedTypeNames: Set<string>; stringEnumValues: Map<string, string[]> }> {
-    const generatedTypes: string[] = [];
+  ): Promise<{ units: GeneratedTypeUnit[]; generatedTypeNames: Set<string>; stringEnumValues: Map<string, string[]> }> {
+    const units: GeneratedTypeUnit[] = [];
     const generatedTypeNames = new Set<string>();
     const stringEnumValues = new Map<string, string[]>();
     const exclude = excludeTypeNames || new Set<string>();
@@ -178,7 +183,7 @@ export class CSharpTypeGenerator {
       if (typeDef.kind === 'enum') {
         const enumCode = this.generateEnum(typeDef);
         if (enumCode) {
-          generatedTypes.push(enumCode);
+          units.push({ name: typeDef.name, code: enumCode, category: DEFAULT_CATEGORY });
           generatedTypeNames.add(typeDef.name);
           // inline enum dedup용 — 문자열 enum의 원본 값만 수집 (숫자 enum은 dedup 대상 아님)
           if (typeDef.enumValues && typeDef.enumValues.length > 0) {
@@ -193,7 +198,7 @@ export class CSharpTypeGenerator {
       } else if (typeDef.kind === 'interface') {
         const classCode = this.generateInterfaceAsClass(typeDef);
         if (classCode) {
-          generatedTypes.push(classCode);
+          units.push({ name: typeDef.name, code: classCode, category: DEFAULT_CATEGORY });
           generatedTypeNames.add(typeDef.name);
         }
 
@@ -203,7 +208,7 @@ export class CSharpTypeGenerator {
           collectNestedTypesForTypeDefinition(typeDef.name, typeDef.properties, nestedTypes, exclude, generatedTypeNames);
           for (const [nestedName, nestedCode] of nestedTypes) {
             if (!generatedTypeNames.has(nestedName) && !exclude.has(nestedName)) {
-              generatedTypes.push(nestedCode);
+              units.push({ name: nestedName, code: nestedCode, category: DEFAULT_CATEGORY });
               generatedTypeNames.add(nestedName);
             }
           }
@@ -211,12 +216,8 @@ export class CSharpTypeGenerator {
       }
     }
 
-    if (generatedTypes.length === 0) {
-      return { code: '', generatedTypeNames, stringEnumValues };
-    }
-
-    // 헤더/푸터 없이 본문만 반환 (호출자가 합침)
-    return { code: generatedTypes.join('\n\n'), generatedTypeNames, stringEnumValues };
+    // 헤더/푸터 없이 유닛만 반환 (호출자가 카테고리별로 합침)
+    return { units, generatedTypeNames, stringEnumValues };
   }
 
   /**
@@ -326,10 +327,15 @@ ${JSON_EXTENSION_DATA_FIELD}
     typeDefinitions?: ParsedTypeDefinition[],
     parser?: { parseNativeModulesType: (typeName: string) => ParsedTypeDefinition | null },
     parsedStringEnumValues?: Map<string, string[]>
-  ): Promise<string> {
+  ): Promise<GeneratedTypeUnit[]> {
     const typeMap = new Map<string, string>(); // typeName -> classDefinition
     const unionResultMap = new Map<string, string>(); // API name -> Union Result class
     const exclude = excludeTypeNames || new Set<string>();
+
+    // 타입/enum 이름 → 카테고리 귀속 맵. API 루프에서 각 api 처리 전후의 키 델타로 채운다.
+    // (카테고리는 순전히 미용 목적 — 모든 타입이 같은 namespace AppsInToss라 오분류해도 컴파일됨)
+    const typeCategory = new Map<string, string>();
+    const inlineEnumCategory = new Map<string, string>();
 
     // Inline enum Map 초기화 (generateClassType에서 채워짐)
     this.tracker.clear();
@@ -339,6 +345,13 @@ ${JSON_EXTENSION_DATA_FIELD}
 
     // API에서 사용되는 모든 타입 수집
     for (const api of apis) {
+      // 이 api가 새로 추가하는 타입/enum 키를 잡기 위한 처리 전 스냅샷
+      // (경고는 generateCategoryFiles가 이미 1회 출력하므로 여기서는 silent)
+      const apiCategory = resolveApiCategory(api, false);
+      const typeKeysBefore = new Set(typeMap.keys());
+      const urKeysBefore = new Set(unionResultMap.keys());
+      const enumKeysBefore = new Set(this.tracker.inlineEnums.keys());
+
       // Discriminated Union 타입 처리
       if (api.returnType.kind === 'promise' && api.returnType.promiseType) {
         const innerType = api.returnType.promiseType;
@@ -488,6 +501,17 @@ ${JSON_EXTENSION_DATA_FIELD}
           collectReferencedTypes(api.returnType.properties, typeMap, exclude, this.tracker, boundGenerateClassType, cleanName);
         }
       }
+
+      // 이 api가 새로 추가한 타입/enum 키에 카테고리 귀속 (최초 등장 api 기준, 덮어쓰지 않음)
+      for (const k of typeMap.keys()) {
+        if (!typeKeysBefore.has(k) && !typeCategory.has(k)) typeCategory.set(k, apiCategory);
+      }
+      for (const k of unionResultMap.keys()) {
+        if (!urKeysBefore.has(k) && !typeCategory.has(k)) typeCategory.set(k, apiCategory);
+      }
+      for (const k of this.tracker.inlineEnums.keys()) {
+        if (!enumKeysBefore.has(k) && !inlineEnumCategory.has(k)) inlineEnumCategory.set(k, apiCategory);
+      }
     }
 
     // Pending external types 해결: typeDefinitions와 native-modules에서 찾아서 클래스 생성
@@ -542,20 +566,39 @@ ${JSON_EXTENSION_DATA_FIELD}
       parsedStringEnumValues,
     );
 
-    const inlineEnumTypes: string[] = [];
+    // 타입 1개당 1 유닛으로 반환. alias는 본문 식별자 word-boundary 치환이라 유닛별로 적용해도
+    // 전체를 합쳐 적용한 것과 결과가 동일하다 (블록 간 의존 없음). 순서는 기존 단일 파일과 동일:
+    // inline enum → union result → 일반 타입.
+    const units: GeneratedTypeUnit[] = [];
+
     for (const { name, values } of inlineEmit) {
       const enumCode = this.generateEnum({ name, kind: 'enum', file: '', enumValues: values });
-      if (enumCode) inlineEnumTypes.push(enumCode);
+      if (enumCode) {
+        units.push({
+          name,
+          code: applyEnumAliases(enumCode, enumAliases),
+          category: inlineEnumCategory.get(name) ?? DEFAULT_CATEGORY,
+        });
+      }
     }
 
-    // Union Result 클래스와 일반 타입 클래스 합치기
-    const allTypes = [
-      ...inlineEnumTypes,  // inline enum이 먼저 (타입 참조 순서)
-      ...Array.from(unionResultMap.values()),
-      ...Array.from(typeMap.values())
-    ];
+    for (const [name, code] of unionResultMap) {
+      units.push({
+        name,
+        code: applyEnumAliases(code, enumAliases),
+        category: typeCategory.get(name) ?? DEFAULT_CATEGORY,
+      });
+    }
 
-    // alias된 enum 식별자를 모든 emit 코드에서 rewrite (헤더/푸터 없이 본문만 반환 — 호출자가 합침)
-    return applyEnumAliases(allTypes.join('\n\n'), enumAliases);
+    // API 루프 밖(pending/stub 해결 단계)에서 추가된 타입은 typeCategory에 없으므로 'Other'로 흡수
+    for (const [name, code] of typeMap) {
+      units.push({
+        name,
+        code: applyEnumAliases(code, enumAliases),
+        category: typeCategory.get(name) ?? DEFAULT_CATEGORY,
+      });
+    }
+
+    return units;
   }
 }

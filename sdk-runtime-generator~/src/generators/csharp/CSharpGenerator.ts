@@ -1,6 +1,6 @@
 import { ParsedAPI, GeneratedCode } from '../../types.js';
 import { mapToCSharpType } from '../../validators/types.js';
-import { getCategory, CATEGORY_ORDER } from '../../categories.js';
+import { resolveApiCategory, CATEGORY_ORDER } from '../../categories.js';
 import { loadAllTemplates, getTemplateCache } from './templates.js';
 import { escapeCSharpKeyword, toPascalCase } from './utils.js';
 import { PRIMITIVE_TYPES, EXCLUDED_CALLBACK_TYPES } from './constants.js';
@@ -440,19 +440,8 @@ export class CSharpGenerator {
     // 이벤트 API는 파서에서 설정한 카테고리 사용, 나머지는 categories.ts에서 룩업
     const categoryMap = new Map<string, ParsedAPI[]>();
     for (const api of apis) {
-      // 이벤트 구독 API는 파서에서 설정한 카테고리 사용
-      // 네임스페이스 API는 전체 이름(pascalName)으로 룩업
-      // 일반 API는 원본 이름(originalName)으로 룩업
-      let category: string;
-      if (api.isEventSubscription) {
-        category = api.category;
-      } else if (api.namespace) {
-        // 네임스페이스 API: 전체 이름으로 룩업 (예: IAPGetProductItemList)
-        category = getCategory(api.pascalName);
-      } else {
-        // 일반 API: 원본 이름으로 룩업 (예: appLogin)
-        category = getCategory(api.originalName);
-      }
+      // 카테고리 결정은 resolveApiCategory로 단일화 (CSharpTypeGenerator/index.ts와 동일 규약)
+      const category = resolveApiCategory(api);
       if (!categoryMap.has(category)) {
         categoryMap.set(category, []);
       }

@@ -19,8 +19,8 @@ const __dirname = path.dirname(__filename);
 const GOLDEN_DIR = path.resolve(__dirname, '../../fixtures/golden');
 const SDK_GENERATED_DIR = path.resolve(__dirname, '../../../..', 'Runtime/SDK');
 
-// 복사할 파일 목록
-const FILES_TO_COPY = ['AIT.Types.cs', 'AITCore.cs'];
+// 카테고리별 타입 파일(AIT.Types.{Category}.cs) 매칭
+const TYPE_FILE_RE = /^AIT\.Types\..+\.cs$/;
 
 async function main() {
   console.log('\n📝 Golden Files 업데이트 시작\n');
@@ -29,6 +29,23 @@ async function main() {
 
   // Golden 디렉토리 생성
   await fs.mkdir(GOLDEN_DIR, { recursive: true });
+
+  // 복사할 파일 목록 — 타입 정의는 카테고리별로 분할되므로 동적 수집 (+ AITCore.cs 고정)
+  const generatedFiles = await fs.readdir(SDK_GENERATED_DIR).catch(() => [] as string[]);
+  const typeFiles = generatedFiles.filter(f => TYPE_FILE_RE.test(f)).sort();
+  const FILES_TO_COPY = [...typeFiles, 'AITCore.cs'];
+
+  // 더 이상 생성되지 않는 타입 golden 정리 (구버전 단일 AIT.Types.cs.golden, 카테고리 리네임 등)
+  const keep = new Set(FILES_TO_COPY.map(f => `${f}.golden`));
+  const existingGoldens = await fs.readdir(GOLDEN_DIR).catch(() => [] as string[]);
+  for (const g of existingGoldens) {
+    if (!g.endsWith('.golden')) continue;
+    const base = g.slice(0, -'.golden'.length);
+    if (base.startsWith('AIT.Types') && !keep.has(g)) {
+      await fs.rm(path.join(GOLDEN_DIR, g), { force: true });
+      console.log(`   🗑️  stale 타입 golden 제거: ${g}`);
+    }
+  }
 
   let successCount = 0;
   let failCount = 0;

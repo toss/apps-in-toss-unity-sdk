@@ -20,10 +20,6 @@
 
 - **P2 — `sdk-runtime-generator~/pnpm-lock.yaml` gitignored** (`.gitignore:181`): package.json은 핵심 의존성을 pin하지만 transitive dependency는 drift 가능. 재현성 목표라면 lockfile 커밋 여부 결정.
 
-## 테스트 커버리지
-
-- **P2 — 미테스트 핵심 클래스**: `AITPackageManagerHelper`, `AITPlatformHelper` 유닛 테스트 부재. (EditMode 테스트는 62→823 메서드 / 7→45 파일로 대폭 보강됨)
-
 ## 보안
 
 - **P3 — Sentry DSN 하드코딩** (`Editor/ErrorTracker/AITEditorErrorTracker.cs:21`): public key라 위험은 낮음. 환경변수/설정 주입 방식 검토.

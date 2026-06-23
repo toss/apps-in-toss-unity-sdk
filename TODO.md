@@ -7,7 +7,6 @@
 
 - **P1 — `Editor/AppsInTossMenu.cs` (1,630행)**: 여전히 모놀리식(서버 관리·배포·브라우저 실행·플러그인 설치 혼재). `PortResolver`·`AITServerStateManager`는 분리 완료 → 배포/브라우저 실행 로직 추가 분리 필요.
 - **P2 — `Editor/AITConvertCore.cs` (1,298행)**: 빌드 초기화·에셋 내보내기·WebGL 생성·에러 처리가 한 클래스에 집중. 단계별 Strategy/Pipeline 분리.
-- **P2 — 프로세스 실행+타임아웃 패턴 중복**: `AITGitGuard`·`AITPlatformHelper`·`AITAsyncCommandRunner`의 "프로세스 생성 → 타임아웃 대기 → 출력 캡처" 반복 → `ProcessExecutor` 유틸 추출.
 
 ## 비동기 / 스레드 안전성
 

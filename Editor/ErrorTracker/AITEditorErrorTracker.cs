@@ -1363,6 +1363,21 @@ namespace AppsInToss.Editor.ErrorTracker
                 && message.IndexOf("호출 실패:", StringComparison.Ordinal) >= 0)
                 return true;
 
+            // SDK 자체 immutable 패키지 폴더(im.toss.apps-in-toss-unity-sdk)의 파일이 .meta 없이 배포되어
+            // Unity 에디터가 직접 출력하는 표준 경고. 브랜치 핀(dev 트리) 설치 시 CLAUDE.md/docs 등
+            // .meta 미동반 파일에서 발생하며 "The asset will be ignored"로 기능 영향이 없는 노이즈다.
+            // 예: "UnityError: Asset Packages/im.toss.apps-in-toss-unity-sdk/Runtime/SDK/Plugins/CLAUDE.md
+            //      has no meta file, but it's in an immutable folder. The asset will be ignored."
+            // 메시지에 SDK 패키지 경로(apps-in-toss)가 포함돼 SDK 키워드 가드가 발동하므로 가드보다 먼저 매칭한다.
+            // 외부 서드파티 패키지 변형(apps-in-toss 미포함)은 아래 NonSdkMessagePatterns 루프가 그대로 처리하므로
+            // 여기서 apps-in-toss 동반 조건으로 좁혀 외부 경로와 역할을 분리한다(중복 매칭 방지).
+            // "[AIT" prefix가 붙은 SDK 자체 로그는 절대 필터링하지 않으므로 별도 가드.
+            // Sentry APPS-IN-TOSS-UNITY-SDK-12K.
+            if (message.IndexOf("has no meta file, but it's in an immutable folder", StringComparison.Ordinal) >= 0
+                && message.IndexOf("apps-in-toss", StringComparison.Ordinal) >= 0
+                && !message.StartsWith("[AIT", StringComparison.Ordinal))
+                return true;
+
             // SDK 자체 로그는 절대 필터링하지 않음 — AitKeywords 전체를 가드로 사용
             if (MessageContainsSdkKeyword(message))
                 return false;

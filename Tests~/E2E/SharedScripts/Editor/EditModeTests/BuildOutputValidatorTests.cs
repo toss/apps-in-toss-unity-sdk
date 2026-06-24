@@ -105,8 +105,11 @@ public class BuildOutputValidatorTests
 
             // 필수 설정 파일
             System.IO.File.WriteAllText(System.IO.Path.Combine(aitBuildPath, "package.json"), "{}");
-            System.IO.File.WriteAllText(System.IO.Path.Combine(aitBuildPath, "node_modules", ".keep"), "");
+            // node_modules/ 디렉토리를 먼저 만든 뒤 .keep을 써야 한다 —
+            // File.WriteAllText는 상위 디렉토리를 만들지 않으므로 순서가 뒤바뀌면
+            // DirectoryNotFoundException으로 테스트가 셋업 단계에서 throw된다.
             System.IO.Directory.CreateDirectory(System.IO.Path.Combine(aitBuildPath, "node_modules"));
+            System.IO.File.WriteAllText(System.IO.Path.Combine(aitBuildPath, "node_modules", ".keep"), "");
             System.IO.File.WriteAllText(System.IO.Path.Combine(distWebPath, "index.html"), "<html></html>");
 
             // loader, data, wasm은 있지만 framework.js는 의도적으로 생성 안 함

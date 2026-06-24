@@ -17,7 +17,8 @@
 using NUnit.Framework;
 using System.IO;
 using UnityEditor;
-using AppsInToss.Editor;
+using AppsInToss.Editor;       // AITNpmRunner (internal)
+using AppsInToss.Editor.Menu;  // AITDeployManager (internal, .Menu 하위 네임스페이스)
 
 [TestFixture]
 public class DeployPathTests

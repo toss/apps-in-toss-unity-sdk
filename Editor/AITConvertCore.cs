@@ -30,70 +30,37 @@ namespace AppsInToss
     {
         #region Build Cancellation
 
-        // volatile: 백그라운드 빌드 스레드와 메인 스레드(취소 요청) 간 가시성 보장.
-        // 취소 플래그/핸들 참조의 stale 캐시 읽기를 막는다.
-        private static volatile bool isCancelled = false;
-        private static volatile Editor.AITAsyncCommandRunner.CommandTask currentAsyncTask = null;
-        private static volatile Editor.AITPackageBuilder.EarlyPackageContext currentEarlyContext = null;
+        // 빌드 취소 상태(플래그/비동기 작업 핸들/조기 패키지 컨텍스트)는
+        // AITBuildCancellation으로 분리(#36). 아래는 기존 공개 API 호환을 위한 위임 래퍼이며
+        // 동작은 변경되지 않는다.
 
         static AITConvertCore() { }
 
         /// <summary>
         /// 빌드 취소 요청
         /// </summary>
-        public static void CancelBuild()
-        {
-            isCancelled = true;
-            Debug.Log("[AIT] 빌드 취소 요청됨");
-
-            // 병렬 pnpm install 취소
-            if (currentEarlyContext != null)
-            {
-                currentEarlyContext.CancelAndDisposePnpm();
-                currentEarlyContext = null;
-            }
-
-            // 현재 실행 중인 비동기 작업이 있으면 취소
-            if (currentAsyncTask != null)
-            {
-                Editor.AITAsyncCommandRunner.CancelTask(currentAsyncTask);
-                currentAsyncTask = null;
-            }
-        }
+        public static void CancelBuild() => AITBuildCancellation.CancelBuild();
 
         /// <summary>
         /// 빌드 취소 플래그 리셋
         /// </summary>
-        public static void ResetCancellation()
-        {
-            isCancelled = false;
-            currentAsyncTask = null;
-            currentEarlyContext = null;
-        }
+        public static void ResetCancellation() => AITBuildCancellation.ResetCancellation();
 
         /// <summary>
         /// 빌드가 취소되었는지 확인
         /// </summary>
-        public static bool IsCancelled()
-        {
-            return isCancelled;
-        }
+        public static bool IsCancelled() => AITBuildCancellation.IsCancelled();
 
         /// <summary>
         /// 비동기 빌드 작업이 진행 중인지 확인
         /// </summary>
-        public static bool HasRunningAsyncTask()
-        {
-            return currentAsyncTask != null;
-        }
+        public static bool HasRunningAsyncTask() => AITBuildCancellation.HasRunningAsyncTask();
 
         /// <summary>
         /// 현재 비동기 작업 설정 (취소용)
         /// </summary>
         internal static void SetCurrentAsyncTask(Editor.AITAsyncCommandRunner.CommandTask task)
-        {
-            currentAsyncTask = task;
-        }
+            => AITBuildCancellation.SetCurrentAsyncTask(task);
 
         #endregion
 
@@ -822,7 +789,7 @@ namespace AppsInToss
                         return;
                     }
 
-                    currentEarlyContext = earlyCtx;
+                    AITBuildCancellation.SetCurrentEarlyContext(earlyCtx);
                     Editor.AITPackageBuilder.StartPnpmInstallInBackground(earlyCtx);
 
                     // Phase 1: WebGL Build (BLOCKING - 메인 스레드)
@@ -834,7 +801,7 @@ namespace AppsInToss
                     if (webglResult != AITExportError.SUCCEED)
                     {
                         earlyCtx.CancelAndDisposePnpm();
-                        currentEarlyContext = null;
+                        AITBuildCancellation.SetCurrentEarlyContext(null);
                         try { snapshot.Restore(); }
                         finally { AITBuildSession.EndBuild(); }
                         onComplete?.Invoke(webglResult);
@@ -844,7 +811,7 @@ namespace AppsInToss
                     if (IsCancelled())
                     {
                         earlyCtx.CancelAndDisposePnpm();
-                        currentEarlyContext = null;
+                        AITBuildCancellation.SetCurrentEarlyContext(null);
                         Debug.LogWarning("[AIT] 빌드가 취소되었습니다.");
                         try { snapshot.Restore(); }
                         finally { AITBuildSession.EndBuild(); }
@@ -854,7 +821,7 @@ namespace AppsInToss
 
                     // Phase 2: WebGL 출력 복사 + pnpm install 완료 대기 + granite build
                     string webglPath = Path.Combine(projectPath, webglDir);
-                    currentEarlyContext = null;
+                    AITBuildCancellation.SetCurrentEarlyContext(null);
                     AITBuildSession.SetStage(BuildStage.Packaging);
                     Editor.AITPackageBuilder.CompletePackagingAfterWebGLBuild(
                         earlyCtx, webglPath, profile, snapshot, onComplete, onProgress, skipGraniteBuild);
@@ -958,7 +925,7 @@ namespace AppsInToss
                 profile,
                 onComplete: (result) =>
                 {
-                    currentAsyncTask = null;
+                    AITBuildCancellation.SetCurrentAsyncTask(null);
                     try { snapshot.Restore(); }
                     finally { AITBuildSession.EndBuild(); }
 

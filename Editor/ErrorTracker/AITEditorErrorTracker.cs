@@ -19,6 +19,13 @@ namespace AppsInToss.Editor.ErrorTracker
         // DSN의 public key는 클라이언트 측에서 사용하도록 설계되어 있으며 (Sentry 공식 문서 참조),
         // Sentry 측 inbound filter와 rate limiting으로 보호됩니다.
         private const string DEFAULT_DSN = "https://af6caf8b80107bc41edf37baff728a5d@o89496.ingest.us.sentry.io/4511182309359616";
+
+        // 에디터 트래커 DSN을 빌드/CI 환경에서 재정의할 수 있는 환경변수 이름.
+        // 미설정(혹은 공백)이면 DEFAULT_DSN으로 폴백하므로 기본 동작은 변하지 않는다(순수 추가·가역적).
+        // 런타임(플레이어) Sentry DSN을 주입하는 SENTRY_DSN(AITSentryDsnInjector)과는 의도적으로
+        // 분리한다: 에디터 트래커는 SDK 자체 Sentry 프로젝트로, 런타임은 게임 개발자의 프로젝트로
+        // 향하므로 같은 변수를 공유하면 에디터 텔레메트리가 게임 런타임 프로젝트로 오라우팅된다.
+        private const string DSN_ENV_VAR = "AIT_EDITOR_SENTRY_DSN";
         private const string RELEASE_PREFIX = "apps-in-toss.unity";
         private const string ENVIRONMENT = "editor";
         private const int MAX_BREADCRUMBS = 20;
@@ -414,15 +421,26 @@ namespace AppsInToss.Editor.ErrorTracker
 
         /// <summary>
         /// DSN이 설정되어 있는지 확인합니다. 사용자의 opt-out 상태는 반영하지 않습니다.
+        /// 환경변수 override(<see cref="DSN_ENV_VAR"/>)가 설정되어 있으면 그 값을 기준으로 판정합니다.
         /// </summary>
-        internal static bool IsDsnConfigured => !string.IsNullOrEmpty(DEFAULT_DSN);
+        internal static bool IsDsnConfigured => !string.IsNullOrEmpty(GetDsn());
 
         /// <summary>
         /// 현재 설정된 Sentry DSN을 반환합니다.
+        /// 환경변수 <see cref="DSN_ENV_VAR"/>가 비어있지 않게 설정되어 있으면 그 값을, 아니면 DEFAULT_DSN을 반환합니다.
         /// </summary>
         internal static string GetDsn()
         {
-            return DEFAULT_DSN;
+            return ResolveEditorDsn(Environment.GetEnvironmentVariable(DSN_ENV_VAR));
+        }
+
+        /// <summary>
+        /// 환경변수 override 적용 규칙(순수 함수 — 프로세스 env 없이 테스트 가능).
+        /// override가 null/공백이면 DEFAULT_DSN으로 폴백하고, 그 외에는 trim한 override 값을 사용합니다.
+        /// </summary>
+        internal static string ResolveEditorDsn(string overrideValue)
+        {
+            return string.IsNullOrWhiteSpace(overrideValue) ? DEFAULT_DSN : overrideValue.Trim();
         }
 
         /// <summary>

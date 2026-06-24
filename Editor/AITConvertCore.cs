@@ -179,6 +179,136 @@ namespace AppsInToss
             }
         }
 
+        // WebGL 빌드 실패 진단에서 에러/경고에 부여하는 '개별' 캡(슬롯).
+        // 과거에는 단일 maxMessages(10)를 에러·경고가 공유해, 에러가 10개를 채우면 경고가
+        // 한 줄도 안 보이고 생략 카운트도 심각도 구분 없이 합산돼 모호했다(이 PR이 해소하는 갭).
+        // 캡을 분리해 에러를 우선 보장하고 경고에도 별도 예산을 준다.
+        internal const int FailureSummaryMaxErrors = 10;
+        internal const int FailureSummaryMaxWarnings = 5;
+
+        /// <summary>
+        /// WebGL 빌드 실패 진단 요약 문자열을 구성합니다. 에러/경고 캡을 분리(에러 우선)하여
+        /// 한쪽이 다른 쪽의 슬롯을 잠식하지 않게 하고, 생략 개수를 심각도별로 분리 표기합니다.
+        /// <paramref name="messages"/>에 에러/경고가 하나도 없을 때(예: Bee/IL2CPP의 .o 컴파일
+        /// 실패가 BuildReport.steps 메시지로 잡히지 않는 무진단 실패)에 한해
+        /// <paramref name="logTail"/>(에디터 로그 꼬리)을 첨부해 단서를 남깁니다.
+        /// 순수 함수로 분리되어 EditMode에서 BuildReport 없이 검증 가능합니다.
+        /// </summary>
+        internal static string BuildFailureSummary(
+            string resultLabel,
+            int summaryTotalErrors,
+            int summaryTotalWarnings,
+            List<(LogType type, string content)> messages,
+            string logTail,
+            int maxErrors = FailureSummaryMaxErrors,
+            int maxWarnings = FailureSummaryMaxWarnings)
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("[AIT] WebGL 빌드가 실패했습니다.");
+            sb.AppendLine($"  결과: {resultLabel}");
+            sb.AppendLine($"  총 에러: {summaryTotalErrors}, 총 경고: {summaryTotalWarnings}");
+
+            int shownErrors = 0, omittedErrors = 0;
+            int shownWarnings = 0, omittedWarnings = 0;
+
+            if (messages != null)
+            {
+                // 에러(Error/Exception/Assert) 먼저 출력 — 실패 원인 우선.
+                foreach (var m in messages)
+                {
+                    if (m.type == LogType.Error || m.type == LogType.Exception || m.type == LogType.Assert)
+                    {
+                        if (shownErrors < maxErrors)
+                        {
+                            sb.AppendLine($"  [{m.type}] {m.content}");
+                            shownErrors++;
+                        }
+                        else
+                        {
+                            omittedErrors++;
+                        }
+                    }
+                }
+
+                // 경고는 에러 캡과 무관한 별도 예산으로 출력(에러가 경고 슬롯을 잠식하지 않음).
+                foreach (var m in messages)
+                {
+                    if (m.type == LogType.Warning)
+                    {
+                        if (shownWarnings < maxWarnings)
+                        {
+                            sb.AppendLine($"  [{m.type}] {m.content}");
+                            shownWarnings++;
+                        }
+                        else
+                        {
+                            omittedWarnings++;
+                        }
+                    }
+                }
+            }
+
+            if (omittedErrors > 0 || omittedWarnings > 0)
+            {
+                sb.AppendLine($"  ... 생략: 에러 {omittedErrors}개, 경고 {omittedWarnings}개");
+            }
+
+            // step 메시지가 하나도 없을 때만 로그 꼬리를 첨부(Bee/IL2CPP .o 무진단 실패 대비).
+            bool hadAnyStepMessage =
+                shownErrors > 0 || shownWarnings > 0 || omittedErrors > 0 || omittedWarnings > 0;
+            if (!hadAnyStepMessage && !string.IsNullOrEmpty(logTail))
+            {
+                sb.AppendLine("  [진단] BuildReport.steps에 메시지가 없습니다. 에디터 로그 꼬리:");
+                sb.Append(logTail);
+            }
+
+            return sb.ToString().TrimEnd();
+        }
+
+        /// <summary>
+        /// 에디터 로그 파일의 마지막 <paramref name="maxBytes"/>바이트(꼬리)를 읽어 반환합니다.
+        /// Bee/IL2CPP의 .o 컴파일 실패처럼 BuildReport.steps에 잡히지 않는 무진단 실패의 단서를
+        /// 남기기 위한 보조 진단 경로입니다. 파일이 에디터에 의해 열려 있을 수 있으므로 공유 읽기
+        /// 모드로 접근하고, 어떤 예외도 삼켜 <c>null</c>을 반환합니다(진단 보조라 실패가 빌드 흐름을
+        /// 막으면 안 됨). UTF-8 다바이트 경계가 잘릴 수 있으나 진단용으로 허용합니다.
+        /// </summary>
+        internal static string ReadEditorLogTail(string logPath, int maxBytes = 4000)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(logPath) || !File.Exists(logPath))
+                    return null;
+
+                using (var fs = new FileStream(logPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                {
+                    long len = fs.Length;
+                    if (len <= 0)
+                        return null;
+
+                    int toRead = (int)Math.Min(len, (long)Math.Max(0, maxBytes));
+                    if (toRead <= 0)
+                        return null;
+
+                    fs.Seek(-toRead, SeekOrigin.End);
+                    var buffer = new byte[toRead];
+                    int offset = 0;
+                    while (offset < toRead)
+                    {
+                        int read = fs.Read(buffer, offset, toRead - offset);
+                        if (read <= 0)
+                            break;
+                        offset += read;
+                    }
+
+                    return System.Text.Encoding.UTF8.GetString(buffer, 0, offset);
+                }
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
         /// <summary>
         /// 에러 코드를 사용자 친화적 메시지로 변환
         /// </summary>
@@ -1022,58 +1152,44 @@ namespace AppsInToss
                     return AITExportError.CANCELLED;
                 }
 
-                var sb = new System.Text.StringBuilder();
-                sb.AppendLine("[AIT] WebGL 빌드가 실패했습니다.");
-                sb.AppendLine($"  결과: {result.summary.result}");
-                sb.AppendLine($"  총 에러: {result.summary.totalErrors}, 총 경고: {result.summary.totalWarnings}");
-
-                int messageCount = 0;
-                const int maxMessages = 10;
-
-                // 에러 메시지를 먼저 출력 (실패 원인 우선)
+                // 실패 진단 메시지를 step에서 평탄화 수집(에러/경고 캡 분리는 BuildFailureSummary가 처리).
+                var collected = new List<(LogType type, string content)>();
                 foreach (var step in result.steps)
                 {
                     foreach (var message in step.messages)
                     {
-                        if (message.type == LogType.Error ||
-                            message.type == LogType.Exception ||
-                            message.type == LogType.Assert)
-                        {
-                            if (messageCount < maxMessages)
-                            {
-                                sb.AppendLine($"  [{message.type}] {message.content}");
-                            }
-                            messageCount++;
-                        }
+                        collected.Add((message.type, message.content));
                     }
                 }
 
-                // 경고 메시지는 남은 슬롯에 출력
-                foreach (var step in result.steps)
+                // BuildReport.steps에 에러/경고가 전혀 없으면(Bee/IL2CPP의 .o 실패 등 무진단 실패)
+                // 에디터 로그 꼬리를 첨부해 단서를 남긴다. 그 외에는 step 메시지로 충분하다.
+                bool hasDiagnosticMessage = false;
+                foreach (var m in collected)
                 {
-                    foreach (var message in step.messages)
+                    if (m.type == LogType.Error || m.type == LogType.Exception
+                        || m.type == LogType.Assert || m.type == LogType.Warning)
                     {
-                        if (message.type == LogType.Warning)
-                        {
-                            if (messageCount < maxMessages)
-                            {
-                                sb.AppendLine($"  [{message.type}] {message.content}");
-                            }
-                            messageCount++;
-                        }
+                        hasDiagnosticMessage = true;
+                        break;
                     }
                 }
+                string logTail = hasDiagnosticMessage ? null : ReadEditorLogTail(Application.consoleLogPath);
 
-                if (messageCount > maxMessages)
-                {
-                    sb.Append($"  ... 외 {messageCount - maxMessages}개 메시지 생략");
-                }
+                // BuildSummary.totalErrors/totalWarnings는 uint이므로 int 시그니처로 명시 캐스트
+                // (실패 빌드의 카운트는 항상 int 범위 — overflow 우려 없음).
+                string failureSummary = BuildFailureSummary(
+                    result.summary.result.ToString(),
+                    (int)result.summary.totalErrors,
+                    (int)result.summary.totalWarnings,
+                    collected,
+                    logTail);
 
                 // BuildPipeline.BuildPlayer 실패는 거의 항상 사용자 프로젝트(컴파일 에러,
                 // 사용자 에셋 문제, 환경 OOM 등) 또는 Unity 자체의 비정상 종료에서 비롯되며
                 // SDK 측에서 분기/수정할 수 있는 정보가 아니다. 콘솔에는 진단 메시지를 남기되
                 // Sentry로는 보내지 않아 분류 노이즈를 만들지 않는다.
-                AITLog.Error(sb.ToString().TrimEnd(), sentryCapture: false);
+                AITLog.Error(failureSummary, sentryCapture: false);
                 return AITExportError.BUILD_WEBGL_FAILED;
             }
 

@@ -532,6 +532,18 @@ namespace AppsInToss.Editor.ErrorTracker
             if (!IsAitRelated(message, stackTrace))
                 return;
 
+            // SDK 브레이킹 체인지 추적: 사용자 프로젝트가 SDK API 변경으로 컴파일에 실패한 경우,
+            // IsKnownNonSdkMessage가 이 컴파일 에러를 노이즈로 드롭하기 전에 가로채 별도 버킷
+            // (error_source=sdk_breaking_change, exceptionType=SdkBreakingChange)으로 캡처해
+            // 릴리즈가 제휴사 프로젝트 컴파일을 깨뜨린 영향을 추적한다. 에디터 전용 트래커라
+            // 볼륨은 개발자 세션 수로 제한되고 dedup/fingerprint로 추가 제한되며, distinct
+            // exceptionType/fingerprint라 기존에 ignored 처리된 SDK 자체 이슈를 재오픈하지 않는다.
+            if (type == LogType.Error && IsSdkBreakingChangeCompileError(message))
+            {
+                CaptureSdkBreakingChange(message, stackTrace);
+                return;
+            }
+
             // 확실한 사용자 프로젝트/Unity 내부 메시지는 IsAitRelated를 통과해도 제외
             if (IsKnownNonSdkMessage(message))
                 return;
@@ -650,6 +662,59 @@ namespace AppsInToss.Editor.ErrorTracker
 
             _lastEventId = capturedEventId;
             AITSentryTransport.SendEnvelope(envelope);
+        }
+
+        /// <summary>
+        /// 사용자 프로젝트 코드가 SDK API 변경(브레이킹 체인지)으로 컴파일에 실패했음을 나타내는
+        /// C# 컴파일러 '에러'인지 판정합니다. SDK 심볼("AppsInToss")을 참조하는 "error CS####"만
+        /// 매칭하며, 경고("warning CS")는 호환성 깨짐이 아니므로 제외합니다(기존 드롭 동작 유지).
+        /// SDK 자체 로그("[AIT" prefix)와 SDK 패키지 경로(im.toss/com.toss.apps-in-toss)의 컴파일
+        /// 에러는 실제 SDK 버그이므로 이 분류에서 제외하고 일반 경로(error_source=sdk)로 흘려보냅니다.
+        ///
+        /// <para>
+        /// 매칭 시 <see cref="OnLogMessageReceived"/>가 <see cref="IsKnownNonSdkMessage"/>의 드롭
+        /// (이 컴파일 에러들은 기존에 SDK-80/C3/M7 등으로 ignored 처리되어 드롭됨)보다 먼저 가로채,
+        /// 별도 버킷(error_source=sdk_breaking_change)으로 캡처합니다.
+        /// </para>
+        /// </summary>
+        internal static bool IsSdkBreakingChangeCompileError(string message)
+        {
+            if (string.IsNullOrEmpty(message))
+                return false;
+
+            // SDK 자체 로그/패키지 경로의 컴파일 에러는 실 SDK 버그이므로 별도 분류로 흘려보낸다.
+            if (message.StartsWith("[AIT", StringComparison.Ordinal))
+                return false;
+            if (message.IndexOf("im.toss.apps-in-toss", StringComparison.Ordinal) >= 0
+                || message.IndexOf("com.toss.apps-in-toss", StringComparison.Ordinal) >= 0)
+                return false;
+
+            // C# 컴파일러 '에러'(error CS####)이면서 SDK 심볼(AppsInToss)을 참조해야 한다.
+            // 경고(warning CS####)는 호환성 깨짐이 아니므로 제외(기존 드롭 동작 유지).
+            return message.IndexOf("error CS", StringComparison.Ordinal) >= 0
+                && message.IndexOf("AppsInToss", StringComparison.Ordinal) >= 0;
+        }
+
+        /// <summary>
+        /// SDK 브레이킹 체인지로 인한 사용자 컴파일 에러를 별도 버킷으로 캡처합니다.
+        /// exceptionType "SdkBreakingChange" + error_source 태그 "sdk_breaking_change"로,
+        /// 기존에 ignored 처리된 SDK 자체 이슈와 fingerprint가 겹치지 않게 분리합니다
+        /// (<see cref="BuildNormalizedFingerprint"/>가 exceptionType을 fingerprint에 포함).
+        /// </summary>
+        private static void CaptureSdkBreakingChange(string message, string stackTrace)
+        {
+            var tags = new Dictionary<string, string>
+            {
+                { "error_source", "sdk_breaking_change" }
+            };
+            string[] fingerprint = BuildNormalizedFingerprint("SdkBreakingChange", message);
+            CaptureError(
+                exceptionType: "SdkBreakingChange",
+                message: message,
+                stackTrace: stackTrace,
+                level: "error",
+                extraTags: tags,
+                fingerprint: fingerprint);
         }
 
         // === fingerprint explosion 방지용 정규화 규칙 ===

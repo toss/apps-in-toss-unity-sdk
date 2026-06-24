@@ -87,6 +87,23 @@ public class SentryNoiseSuppressionCallsiteTests
             "11W");
 
     /// <summary>
+    /// 회귀 가드 — APPS-IN-TOSS-UNITY-SDK-12E:
+    /// WebGLBuildCopier.CopyWebGLToPublic 에서 webgl/Build 폴더가 없을 때 출력하는
+    /// "[AIT] ✗ 치명적: Build 폴더를 찾을 수 없습니다!" 메시지가 raw Debug.LogError 로
+    /// 되돌아가지 않고 AITLog.Error(sentryCapture:false) 를 유지하는지 검증.
+    ///
+    /// Build 폴더 부재는 사용자가 Unity WebGL 빌드를 실행하지 않은 워크플로우 문제이며
+    /// SDK 자체 버그가 아니다. Sentry에 전송되면 SDK 버그로 오인되는 노이즈가 된다.
+    /// </summary>
+    [Test]
+    public void TwelveE_BuildFolderMissing_StaysSentrySuppressed()
+        => AssertCallsiteSuppressed(
+            "WebGLBuildCopier.cs",
+            "Build 폴더를 찾을 수 없습니다!",
+            "12E",
+            expectWarning: false);  // AITLog.Error (사용자에게 치명적 오류로 표시해야 하므로 Error 레벨)
+
+    /// <summary>
     /// fileName 소스에서 messageAnchor를 내보내는 가장 가까운 선행 로그 호출이
     /// AITLog.Warning( 또는 AITLog.Error(이고, 그 호출 인자에 sentryCapture: false가 포함됨을
     /// 정적으로 검증한다.

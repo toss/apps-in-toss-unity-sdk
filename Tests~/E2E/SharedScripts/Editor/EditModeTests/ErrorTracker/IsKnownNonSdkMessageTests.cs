@@ -2308,7 +2308,7 @@ public class IsKnownNonSdkMessageTests
 
     #endregion
 
-    #region AITSentryContextEnricher CollectSafe 수집 실패 노이즈 (APPS-IN-TOSS-UNITY-SDK-11G)
+    #region AITSentryContextEnricher CollectSafe 수집 실패 노이즈 (APPS-IN-TOSS-UNITY-SDK-11F / 11G)
 
     [Test]
     public void AITSentryCollectSafe_GetTossAppVersionFailure_ReturnsTrue()
@@ -2366,6 +2366,32 @@ public class IsKnownNonSdkMessageTests
         // [AITSentry] + 호출 실패: 합성으로 이 변형도 드롭함을 검증.
         Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
             "UnityWarning: [AITSentry] GetOperationalEnvironment 호출 실패: Cannot read properties of undefined (reading 'getOperationalEnvironment')"));
+    }
+
+    [Test]
+    public void AITSentryCollectSafe_EnvGetDeploymentIdUndefinedAccess_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-11F — WebGL 빌드에서 window.AppsInToss가 초기화되기 전에
+        // AITSentryContextEnricher.CollectSafe가 EnvGetDeploymentId를 호출하면 jslib에서
+        // window.AppsInToss.env.getDeploymentId() 접근 시 "Cannot read properties of undefined
+        // (reading 'env')" JS TypeError가 발생한다.
+        // 11E(GetOperationalEnvironment)와 동일한 window.AppsInToss 미초기화 타이밍 조건이지만,
+        // EnvGetDeploymentId는 window.AppsInToss.env.getDeploymentId() — 중첩 속성 접근 구조라
+        // 에러 메시지의 reading 키가 'env'로 다르다.
+        // CollectSafe의 isUndefinedAccess 가드가 이 패턴도 "unavailable"로 폴백 처리하므로
+        // SDK 동작은 중단되지 않으며, 에디터 backstop 필터가 Sentry 전송을 차단한다.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AITSentry] EnvGetDeploymentId 호출 실패: Cannot read properties of undefined (reading 'env')"));
+    }
+
+    [Test]
+    public void AITSentryCollectSafe_EnvGetDeploymentIdUndefinedAccess_UnityWarningPrefix_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-11F 실측 메시지 — Unity가 Debug.LogWarning을 에디터 콘솔로
+        // 보낼 때 "UnityWarning: " prefix가 붙는 변형. 중간에 "Autoconnected Player" 원격 디버거
+        // prefix가 포함된 경우에도 "[AITSentry]" + "호출 실패:" 부분 문자열 합성 조건이 매칭된다.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "UnityWarning: [AITSentry] EnvGetDeploymentId 호출 실패: Cannot read properties of undefined (reading 'env')"));
     }
 
     [Test]

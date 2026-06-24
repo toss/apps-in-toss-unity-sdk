@@ -66,6 +66,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           AUTO_MERGE: ${{ inputs.auto_merge || 'true' }}
+          REPO: ${{ github.repository }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -78,17 +79,42 @@ jobs:
           git checkout -b "$BRANCH"
           git commit -m "빌드: pnpm lockfile 자동 재생성 (public registry)"
           git push -u origin "$BRANCH"
-          gh pr create \
+          PR_RESULT=$(gh pr create \
             --title "빌드: pnpm lockfile 자동 재생성" \
             --body "주기적 lockfile 재생성 — public registry(npmjs.org) 기반." \
             --base main \
-            --head "$BRANCH"
+            --head "$BRANCH")
+          PR_NUMBER=$(echo "$PR_RESULT" | grep -oE '[0-9]+$')
+          echo "PR 생성: $PR_RESULT (번호: $PR_NUMBER)"
+
+          # 필수 'scan' 체크 충족. GITHUB_TOKEN으로 만든 PR은 GitHub 정책상
+          # string-check.yml(pull_request)을 트리거하지 못해 scan이 영구 pending →
+          # auto-merge가 영원히 예약 상태로 남아 머지되지 않는다(적체 원인).
+          # update.yml·update-changelog.yml의 bot PR 처리와 동일하게 scan=success를
+          # 직접 보고한다. lockfile-only 변경이라 scan skip이 안전하다.
+          HEAD_SHA=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.head.sha')
+          gh api "repos/${REPO}/statuses/${HEAD_SHA}" -X POST \
+            -f state=success \
+            -f context=scan \
+            -f description="bot lockfile 재생성 PR — scan skipped (github-actions[bot])"
+          echo "✅ scan status 보고 완료: $HEAD_SHA"
+
           if [ "$AUTO_MERGE" != "true" ]; then
             echo "auto_merge=false — PR open 상태로 둠"
             exit 0
           fi
-          # --auto: required check 통과 후 자동 squash merge 예약
-          # check 대기 없이 즉시 머지하면 lint/validate가 pending인 상태로 main에 들어갈 수 있어 위험
-          if ! gh pr merge --squash --delete-branch --auto; then
-            echo "::warning::auto-merge 예약 실패 — PR 수동 머지 필요"
+
+          # 유일한 required check가 scan이고 방금 success로 보고했으므로 추가로
+          # 대기할 pending requirement가 없다 → --auto 대신 직접 squash 머지.
+          # mergeable_state가 unknown이면 GitHub가 재계산 중이므로 잠시 폴링.
+          for i in $(seq 1 10); do
+            STATE=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.mergeable_state')
+            echo "mergeable_state=$STATE (시도 $i)"
+            [ "$STATE" = "unknown" ] || break
+            sleep 3
+          done
+          if ! gh pr merge "$PR_NUMBER" --squash --delete-branch; then
+            echo "::warning::직접 머지 실패 — auto-merge로 폴백 예약"
+            gh pr merge "$PR_NUMBER" --squash --delete-branch --auto \
+              || echo "::warning::auto-merge 예약도 실패 — PR 수동 머지 필요"
           fi

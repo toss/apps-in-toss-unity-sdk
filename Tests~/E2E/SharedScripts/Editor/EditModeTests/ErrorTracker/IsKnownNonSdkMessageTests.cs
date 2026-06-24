@@ -1989,7 +1989,7 @@ public class IsKnownNonSdkMessageTests
 
     #endregion
 
-    #region immutable 폴더 meta 파일 누락 경고 (SDK-10K, 10J, 10H, 10G, 10F)
+    #region immutable 폴더 meta 파일 누락 경고 (SDK-10K, 10J, 10H, 10G, 10F, APPS-IN-TOSS-UNITY-SDK-12K)
 
     [Test]
     public void ImmutableFolder_MissingMeta_Img_ReturnsTrue()
@@ -2021,6 +2021,25 @@ public class IsKnownNonSdkMessageTests
         // AIT prefix가 붙은 SDK 자체 로그는 보호 — immutable 폴더 문구가 없는 SDK 메시지는 매칭 안 됨.
         Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
             "[AIT] 패키지 meta 파일을 검증합니다."));
+    }
+
+    [Test]
+    public void ImmutableFolder_MissingMeta_SdkPluginsClaudeMd_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-12K — SDK 자체 immutable 패키지 폴더(im.toss.apps-in-toss-unity-sdk)
+        // 내 파일에 .meta가 없을 때 Unity 에디터가 직접 출력하는 표준 경고. 메시지에 SDK 패키지 경로
+        // (apps-in-toss)가 들어가 SDK 키워드 가드가 발동하므로, 가드보다 먼저 매칭하는 전용 분기로 드롭한다.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "UnityError: Asset Packages/im.toss.apps-in-toss-unity-sdk/Runtime/SDK/Plugins/CLAUDE.md has no meta file, but it's in an immutable folder. The asset will be ignored."));
+    }
+
+    [Test]
+    public void ImmutableFolder_MissingMeta_SdkPluginsClaudeMd_WithAitPrefix_NeverFiltered()
+    {
+        // AitKeywords 가드 회귀 방지: "[AIT" prefix가 붙은 동일 본문은 SDK 자체 로그로 간주되어
+        // immutable 폴더 전용 분기(!StartsWith("[AIT"))에서 제외되고 키워드 가드로 보호되어야 한다.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] Asset Packages/im.toss.apps-in-toss-unity-sdk/Runtime/SDK/Plugins/CLAUDE.md has no meta file, but it's in an immutable folder."));
     }
 
     #endregion

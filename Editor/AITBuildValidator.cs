@@ -19,6 +19,18 @@ namespace AppsInToss.Editor
             "%UNITY_WEBGL_CODE_URL%"
         };
 
+        // 2.x→3.x 마이그레이션 시 USER_CONFIG로 흘러들 수 있는, 3.x에서 이동/이름변경된 키.
+        // (displayName/icon → toss 개발자센터, webViewProps → webView, outdir → webBundleDir,
+        //  bridgeColorMode → 콘솔/플랫폼 관리). USER_CONFIG에 남아 있으면 경고만 한다(빌드는 계속).
+        private static readonly string[] DeprecatedUserConfigKeys = new[]
+        {
+            "displayName",
+            "icon",
+            "webViewProps",
+            "outdir",
+            "bridgeColorMode"
+        };
+
         /// <summary>
         /// index.html에서 미치환된 플레이스홀더가 있는지 검증합니다.
         /// </summary>
@@ -96,6 +108,114 @@ namespace AppsInToss.Editor
             }
 
             return !hasError;
+        }
+
+        /// <summary>
+        /// 생성된 빌드 설정 파일(apps-in-toss.config.ts / granite.config.ts)을 검증합니다.
+        /// (① 마이그레이션 가드 — 잘못 포팅된 USER_CONFIG로 인한 bundle.json 손상을 빌드 단계에서 차단)
+        ///  • SDK_GENERATED 영역에 미치환 %AIT_*%/%UNITY_*% 플레이스홀더가 있으면 치명적 → 빌드 중단
+        ///    (실제 치환 실패. 이대로 배포하면 bundle.json에 플레이스홀더 문자열이 그대로 들어감)
+        ///  • USER_CONFIG 영역의 SDK 플레이스홀더/2.x deprecated 키는 경고만 → 빌드 계속
+        ///    (apps-in-toss.config.ts 병합에서 SDK 값이 우선하므로 결과는 정상, 정리만 권고)
+        /// 검증기 자체 예외는 빌드를 막지 않는다(보수적으로 SUCCEED 반환).
+        /// </summary>
+        /// <returns>치명적 미치환 발견 시 PLACEHOLDER_SUBSTITUTION_FAILED, 그 외 SUCCEED</returns>
+        internal static AITConvertCore.AITExportError ValidateGeneratedBuildConfigs(string buildProjectPath)
+        {
+            try
+            {
+                bool hardError = false;
+
+                foreach (var fileName in new[] { "apps-in-toss.config.ts", "granite.config.ts" })
+                {
+                    string path = Path.Combine(buildProjectPath, fileName);
+                    if (!File.Exists(path)) continue;
+
+                    string content = File.ReadAllText(path);
+
+                    // 하드 에러: SDK_GENERATED 영역의 미치환 플레이스홀더 (= 치환 실패)
+                    string sdkSection = AITTemplateManager.ExtractSdkSection(content) ?? content;
+                    var sdkPlaceholders = FindUnsubstitutedPlaceholders(sdkSection);
+                    if (sdkPlaceholders.Count > 0)
+                    {
+                        AITLog.Error(
+                            $"[AIT] ✗ 치명적: {fileName}의 SDK_GENERATED 영역에 미치환 플레이스홀더가 있습니다: "
+                            + string.Join(", ", sdkPlaceholders) + "\n"
+                            + "  이 상태로 배포하면 bundle.json에 플레이스홀더 문자열이 그대로 들어가 앱 설정이 깨집니다.\n"
+                            + "  해결: 'Clean Build' 옵션을 켜고 다시 빌드하세요.");
+                        hardError = true;
+                    }
+
+                    // 경고: USER_CONFIG 영역의 SDK 플레이스홀더/2.x deprecated 키
+                    // (병합 시 SDK 값이 우선하므로 빌드 결과는 정상 — 사용자에게 정리만 권고)
+                    // 3.x 파일(apps-in-toss.config.ts)에만 적용. granite.config.ts는 2.x 레거시라
+                    // USER_CONFIG에 webViewProps 등 2.x 키가 정상적으로 존재할 수 있어 오탐을 만든다.
+                    string userSection = fileName == "apps-in-toss.config.ts"
+                        ? AITTemplateManager.ExtractMarkerSection(content, "USER_CONFIG")
+                        : null;
+                    if (userSection != null)
+                    {
+                        var userPlaceholders = FindUnsubstitutedPlaceholders(userSection);
+                        var deprecatedKeys = FindDeprecatedUserConfigKeys(userSection);
+                        if (userPlaceholders.Count > 0 || deprecatedKeys.Count > 0)
+                        {
+                            string msg =
+                                $"[AIT]   ⚠ {fileName}의 USER_CONFIG에 SDK가 관리하는 설정이 남아 있습니다. "
+                                + "SDK 값이 우선 적용되어 빌드 결과에는 문제가 없지만, USER_CONFIG에서 제거하는 것을 권장합니다.";
+                            if (userPlaceholders.Count > 0)
+                                msg += "\n     - 미치환 플레이스홀더: " + string.Join(", ", userPlaceholders);
+                            if (deprecatedKeys.Count > 0)
+                                msg += "\n     - 3.x에서 이동/이름변경된 키: " + string.Join(", ", deprecatedKeys)
+                                     + " (표시이름·아이콘은 toss 개발자센터, 색상/권한 등은 AIT Configuration 창에서 설정)";
+
+                            // 사용자 환경(잘못 포팅된 USER_CONFIG)에 기인하므로 Sentry 전송은 억제하고 콘솔 경고만 남긴다.
+                            AITLog.Warning(msg, sentryCapture: false);
+                        }
+                    }
+                }
+
+                return hardError
+                    ? AITConvertCore.AITExportError.PLACEHOLDER_SUBSTITUTION_FAILED
+                    : AITConvertCore.AITExportError.SUCCEED;
+            }
+            catch (Exception e)
+            {
+                // 검증기 자체 결함으로 정상 빌드를 막지 않는다.
+                AITLog.Warning($"[AIT] 빌드 설정 검증 중 예외(빌드는 계속): {e.Message}", sentryCapture: false);
+                return AITConvertCore.AITExportError.SUCCEED;
+            }
+        }
+
+        /// <summary>
+        /// 텍스트에서 미치환된 %AIT_*% / %UNITY_*% 플레이스홀더를 중복 없이 찾습니다.
+        /// </summary>
+        private static List<string> FindUnsubstitutedPlaceholders(string content)
+        {
+            var found = new HashSet<string>();
+            foreach (System.Text.RegularExpressions.Match m in
+                     System.Text.RegularExpressions.Regex.Matches(content, @"%(?:AIT|UNITY)_[A-Z0-9_]+%"))
+            {
+                found.Add(m.Value);
+            }
+            return new List<string>(found);
+        }
+
+        /// <summary>
+        /// USER_CONFIG 섹션에서 3.x deprecated/이름변경 키가 프로퍼티 키로 사용되었는지 찾습니다.
+        /// </summary>
+        private static List<string> FindDeprecatedUserConfigKeys(string userSection)
+        {
+            var found = new List<string>();
+            foreach (var key in DeprecatedUserConfigKeys)
+            {
+                // 식별자 경계 뒤에 `key:` 형태로 등장할 때만 키로 간주 (부분 문자열 오탐 방지)
+                if (System.Text.RegularExpressions.Regex.IsMatch(
+                        userSection, $@"(^|[^A-Za-z0-9_$])({System.Text.RegularExpressions.Regex.Escape(key)})\s*:"))
+                {
+                    found.Add(key);
+                }
+            }
+            return found;
         }
 
         /// <summary>

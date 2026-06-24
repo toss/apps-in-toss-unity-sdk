@@ -109,6 +109,11 @@ namespace AppsInToss.Editor
             Debug.Log("[AIT] Step 1/3: Vite 프로젝트 구조 생성 중...");
             CopyBuildConfigFromTemplate(buildProjectPath);
 
+            // 생성된 빌드 설정 검증 (① 마이그레이션 가드): SDK_GENERATED 미치환 시 빌드 중단
+            var configValidation = AITBuildValidator.ValidateGeneratedBuildConfigs(buildProjectPath);
+            if (configValidation != AITConvertCore.AITExportError.SUCCEED)
+                return (null, configValidation);
+
             Debug.Log("[AIT] Step 2/3: Unity WebGL 빌드 복사 중...");
             var copyResult = Package.WebGLBuildCopier.CopyWebGLToPublic(webglPath, buildProjectPath, profile);
             if (copyResult != AITConvertCore.AITExportError.SUCCEED)
@@ -171,6 +176,11 @@ namespace AppsInToss.Editor
             // BuildConfig 복사 (WebGL 출력 불필요 — package.json, lockfile 등만)
             Debug.Log("[AIT] [병렬] BuildConfig 파일 복사 중...");
             CopyBuildConfigFromTemplate(buildProjectPath);
+
+            // 생성된 빌드 설정 검증 (① 마이그레이션 가드): SDK_GENERATED 미치환 시 빌드 중단
+            var configValidation = AITBuildValidator.ValidateGeneratedBuildConfigs(buildProjectPath);
+            if (configValidation != AITConvertCore.AITExportError.SUCCEED)
+                return (null, configValidation);
 
             // pnpm 경로 확인
             string pnpmPath = AITNpmRunner.FindPnpmPath();

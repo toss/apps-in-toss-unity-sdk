@@ -25,4 +25,15 @@ const userConfig = {
 };
 //// USER_CONFIG_END ////
 
-export default defineConfig({ ...sdkConfig, ...userConfig });
+// SDK_GENERATED가 관리하는 필드(appName/brand/permissions/webBundleDir/webView 플래그)는
+// AIT Configuration 창에서 설정합니다. userConfig에서 이 필드들을 덮어쓰면 2.x의
+// brand.displayName/icon(3.x에서 toss 개발자센터로 이동)이나 미치환 %AIT_*% 플레이스홀더가
+// bundle.json으로 새어 들어가는 마이그레이션 결함이 있었습니다. 그래서 SDK 관리 필드는 항상
+// SDK 값이 이기도록 병합하고, userConfig에는 3.x 신규 필드 추가(navigationBar 등)와
+// webView 옵션 확장(bounces 등)만 허용합니다.
+const _userConfig = userConfig as Record<string, any>;
+export default defineConfig({
+  ..._userConfig,
+  ...sdkConfig,
+  webView: { ..._userConfig.webView, ...sdkConfig.webView },
+});

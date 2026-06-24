@@ -275,11 +275,15 @@ namespace AppsInToss.Editor.Menu
                 string pnpmPath = Path.Combine(npmDir, pnpmName);
 
                 // pnpm exec ait deploy --api-key "KEY" 형태로 직접 실행
+                // additionalPaths는 BuildAdditionalPaths로 구성한다(npmDir 단독 전달 금지).
+                // node_modules/.bin이 PATH에서 빠지면 Windows에서 'ait' is not recognized로 배포가 실패한다
+                // (build 경로 RunNpmCommandWithCache와 동일한 PATH 구성). Sentry APPS-IN-TOSS-UNITY-SDK-12J.
                 string command = $"\"{pnpmPath}\" exec ait deploy --api-key \"{deploymentKey}\"";
+                var additionalPaths = AITNpmRunner.BuildAdditionalPaths(npmPath, buildPath);
                 var result = AITPlatformHelper.ExecuteCommand(
                     command,
                     buildPath,
-                    new[] { npmDir },
+                    additionalPaths.ToArray(),
                     timeoutMs: 300000,
                     verbose: true
                 );

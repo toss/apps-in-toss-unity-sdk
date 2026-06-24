@@ -12,7 +12,6 @@
 - **P2 — `Thread.Sleep` 블로킹**: 백그라운드 ThreadPool 폴링 루프 2곳을 `await Task.Delay`로 전환 — `AITAsyncCommandRunner.cs`(프로세스 종료 폴링), `Editor/Package/PnpmRunner.cs`(pnpm install 폴링). 두 루프 모두 내부에서 메인 스레드 API를 쓰지 않아 대기 중 풀 스레드 반납이 안전. 나머지는 동기 유지가 불가피(전환 시 데드락/계약 위반):
   - 같은 루프에서 메인 스레드 진행률 UI 호출: `AITNodeJSDownloader.cs:143`, `AITNpmRunner.cs:307`, `AITPackageInitializer.cs:337` (`EditorUtility.DisplayProgressBar`).
   - 동기 종료 계약: `AITProcessTreeManager.cs:283`(`IDisposable.Dispose`의 SIGTERM→SIGKILL 유예), `AITSentryTransport.cs:268`(`EditorApplication.quitting` 동기 핸들러의 마지막 flush).
-- **P2 — 동기화 없는 static 필드**: `AITConvertCore.cs:33-34`의 `isCancelled`/`currentAsyncTask` → `Interlocked`/`volatile`로 스레드 안전성 보장. (AppsInTossMenu 서버 상태는 `AITServerStateManager`로 이전 완료)
 
 ## Sentry / 빌드 진단
 

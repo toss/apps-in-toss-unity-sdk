@@ -30,9 +30,11 @@ namespace AppsInToss
     {
         #region Build Cancellation
 
-        private static bool isCancelled = false;
-        private static Editor.AITAsyncCommandRunner.CommandTask currentAsyncTask = null;
-        private static Editor.AITPackageBuilder.EarlyPackageContext currentEarlyContext = null;
+        // volatile: 백그라운드 빌드 스레드와 메인 스레드(취소 요청) 간 가시성 보장.
+        // 취소 플래그/핸들 참조의 stale 캐시 읽기를 막는다.
+        private static volatile bool isCancelled = false;
+        private static volatile Editor.AITAsyncCommandRunner.CommandTask currentAsyncTask = null;
+        private static volatile Editor.AITPackageBuilder.EarlyPackageContext currentEarlyContext = null;
 
         static AITConvertCore() { }
 

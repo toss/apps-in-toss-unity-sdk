@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using UnityEditor;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
@@ -87,8 +88,10 @@ namespace AppsInToss.Editor
                 OnOutputReceived = onOutputReceived
             };
 
-            // 백그라운드 스레드에서 명령 실행
-            ThreadPool.QueueUserWorkItem(_ => ExecuteCommandAsync(task, command, workingDirectory, additionalPaths, timeoutMs, additionalEnvVars));
+            // 백그라운드에서 명령 실행. Task.Run으로 ThreadPool에 올리되, 폴링 대기 중에는
+            // await Task.Delay가 스레드를 반납하므로 풀 스레드를 점유하지 않는다(ExecuteCommandAsync 내부 try/catch가
+            // 모든 예외를 흡수해 반환 Task는 fault 되지 않으므로 관찰 불필요).
+            _ = Task.Run(() => ExecuteCommandAsync(task, command, workingDirectory, additionalPaths, timeoutMs, additionalEnvVars));
 
             return task;
         }
@@ -121,9 +124,9 @@ namespace AppsInToss.Editor
         }
 
         /// <summary>
-        /// 백그라운드 스레드에서 명령 실행
+        /// 백그라운드에서 명령 실행 (await Task.Delay로 폴링 — 대기 중 풀 스레드 반납)
         /// </summary>
-        private static void ExecuteCommandAsync(
+        private static async Task ExecuteCommandAsync(
             CommandTask task,
             string command,
             string workingDirectory,
@@ -295,7 +298,8 @@ namespace AppsInToss.Editor
                             return;
                         }
 
-                        Thread.Sleep(100);
+                        // 취소는 루프 상단에서 매 100ms 감지하므로 토큰 없이 대기(취소 지연 동일·예외 경로 불변).
+                        await Task.Delay(100).ConfigureAwait(false);
                     }
 
                     process.WaitForExit(); // 출력 버퍼 플러시 대기

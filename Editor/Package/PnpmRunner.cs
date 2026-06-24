@@ -1,5 +1,6 @@
 using System;
 using System.Threading;
+using System.Threading.Tasks;
 using AppsInToss.Editor.ErrorTracker;
 using UnityEngine;
 
@@ -32,11 +33,13 @@ namespace AppsInToss.Editor.Package
         {
             Debug.Log("[AIT] [병렬] pnpm install을 백그라운드에서 시작합니다...");
 
-            ThreadPool.QueueUserWorkItem(_ =>
+            // Task.Run으로 백그라운드 실행. 폴링 대기(await Task.Delay) 중에는 풀 스레드를 반납한다.
+            // 람다 내부 try/catch가 모든 예외를 흡수하므로 반환 Task는 fault 되지 않아 관찰 불필요.
+            _ = Task.Run(async () =>
             {
                 try
                 {
-                    var result = RunPnpmInstallInThread(earlyCtx);
+                    var result = await RunPnpmInstallInThread(earlyCtx).ConfigureAwait(false);
 
                     if (result == AITConvertCore.AITExportError.SUCCEED)
                         Debug.Log("[AIT] [병렬] ✓ 백그라운드 pnpm install 완료");
@@ -61,7 +64,7 @@ namespace AppsInToss.Editor.Package
         /// 메인 스레드 전용 API(EditorUtility 등)를 사용하지 않으며,
         /// Process.HasExited 폴링 + CancellationToken으로 취소를 지원합니다.
         /// </summary>
-        private static AITConvertCore.AITExportError RunPnpmInstallInThread(AITPackageBuilder.EarlyPackageContext earlyCtx)
+        private static async Task<AITConvertCore.AITExportError> RunPnpmInstallInThread(AITPackageBuilder.EarlyPackageContext earlyCtx)
         {
             var ct = earlyCtx.PnpmCancellationToken;
             var additionalPaths = AITNpmRunner.BuildAdditionalPaths(earlyCtx.PnpmPath);
@@ -145,7 +148,8 @@ namespace AppsInToss.Editor.Package
                                         break; // 다음 단계로
                                     }
 
-                                    Thread.Sleep(200);
+                                    // 취소·타임아웃은 루프 상단에서 매 200ms 감지(대기 중 풀 스레드 반납).
+                                    await Task.Delay(200).ConfigureAwait(false);
                                 }
 
                                 // 타임아웃으로 Kill한 경우 process.HasExited가 true가 되어 아래 exit-code 경로로

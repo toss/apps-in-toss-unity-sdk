@@ -13,6 +13,12 @@
 //         추가하여 JS 브리지 미초기화를 "플랫폼 미지원"과 동일하게 처리한다.
 //         AITSentryContextEnricher.CollectSafe에서 IsPlatformUnavailable == true이면
 //         Debug.Log (Info 레벨)로 기록하여 Sentry로 전송되지 않는다.
+//
+// APPS-IN-TOSS-UNITY-SDK-11G:
+//   동일 패턴 — GetTossAppVersion 호출 시 "Cannot read properties of undefined
+//   (reading 'getTossAppVersion')" 발생. CheckPlatformUnavailable의
+//   "Cannot read properties of undefined" 패턴이 이 케이스도 포괄하므로
+//   IsPlatformUnavailable == true가 보장됨을 명시적으로 회귀 가드한다.
 // -----------------------------------------------------------------------
 
 using AppsInToss;
@@ -33,6 +39,8 @@ public class AITExceptionPlatformUnavailableTests
         TestName = "getDeviceId — 동일 패턴")]
     [TestCase("Cannot read properties of undefined (reading 'getLocale')",
         TestName = "getLocale — 동일 패턴")]
+    [TestCase("Cannot read properties of undefined (reading 'getTossAppVersion')",
+        TestName = "getTossAppVersion — SDK-11G 재현 메시지")]
     [TestCase("Cannot read properties of undefined",
         TestName = "접두 메시지만 있는 경우")]
     public void IsPlatformUnavailable_JsBridgeUndefined_ReturnsTrue(string errorMessage)

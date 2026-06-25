@@ -10,7 +10,8 @@ using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
-using AppsInToss.Editor;
+using AppsInToss;          // AITConvertCore (namespace AppsInToss)
+using AppsInToss.Editor;   // AITBuildValidator (namespace AppsInToss.Editor)
 
 [TestFixture]
 public class AITBuildValidatorConfigGuardTests

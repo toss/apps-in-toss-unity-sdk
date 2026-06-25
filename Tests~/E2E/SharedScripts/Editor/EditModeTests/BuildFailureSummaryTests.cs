@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// BuildFailureSummaryTests.cs - AITConvertCore.BuildFailureSummary / ReadEditorLogTail 단위 테스트
+// BuildFailureSummaryTests.cs - AITWebGLBuildDiagnostics.BuildFailureSummary / ReadEditorLogTail 단위 테스트
 // 에러/경고 캡 분리(에러 우선, 상호 비잠식)·심각도별 생략 표기·무진단 실패 시 에디터 로그 꼬리
 // 첨부를 검증한다. BuildReport 없이 순수 함수로 검증 가능(Level 0, Unity/빌드 실행 불필요).
 // ---------------------------------------------------------------------------
@@ -22,7 +22,7 @@ public class BuildFailureSummaryTests
     [Test]
     public void Header_AlwaysIncludesResultAndTotals()
     {
-        string s = AITConvertCore.BuildFailureSummary("Failed", 3, 7, null, null);
+        string s = AITWebGLBuildDiagnostics.BuildFailureSummary("Failed", 3, 7, null, null);
         StringAssert.Contains("[AIT] WebGL 빌드가 실패했습니다.", s);
         StringAssert.Contains("결과: Failed", s);
         StringAssert.Contains("총 에러: 3, 총 경고: 7", s);
@@ -31,7 +31,7 @@ public class BuildFailureSummaryTests
     [Test]
     public void ErrorsShownBeforeWarnings()
     {
-        string s = AITConvertCore.BuildFailureSummary("Failed", 1, 1,
+        string s = AITWebGLBuildDiagnostics.BuildFailureSummary("Failed", 1, 1,
             Msgs((LogType.Warning, "W1"), (LogType.Error, "E1")), null);
         int eIdx = s.IndexOf("E1");
         int wIdx = s.IndexOf("W1");
@@ -49,7 +49,7 @@ public class BuildFailureSummaryTests
         for (int i = 0; i < 20; i++) msgs.Add((LogType.Error, "E" + i));
         msgs.Add((LogType.Warning, "WKEEP"));
 
-        string s = AITConvertCore.BuildFailureSummary("Failed", 20, 1, msgs, null,
+        string s = AITWebGLBuildDiagnostics.BuildFailureSummary("Failed", 20, 1, msgs, null,
             maxErrors: 10, maxWarnings: 5);
 
         StringAssert.Contains("WKEEP", s);
@@ -63,7 +63,7 @@ public class BuildFailureSummaryTests
         for (int i = 0; i < 12; i++) msgs.Add((LogType.Error, "E" + i));
         for (int i = 0; i < 8; i++) msgs.Add((LogType.Warning, "W" + i));
 
-        string s = AITConvertCore.BuildFailureSummary("Failed", 12, 8, msgs, null,
+        string s = AITWebGLBuildDiagnostics.BuildFailureSummary("Failed", 12, 8, msgs, null,
             maxErrors: 10, maxWarnings: 5);
 
         // 에러 12개 중 10개 표시 → 2개 생략, 경고 8개 중 5개 표시 → 3개 생략
@@ -73,7 +73,7 @@ public class BuildFailureSummaryTests
     [Test]
     public void NoOmissionLine_WhenWithinCaps()
     {
-        string s = AITConvertCore.BuildFailureSummary("Failed", 1, 1,
+        string s = AITWebGLBuildDiagnostics.BuildFailureSummary("Failed", 1, 1,
             Msgs((LogType.Error, "E1"), (LogType.Warning, "W1")), null);
         StringAssert.DoesNotContain("생략", s);
     }
@@ -81,7 +81,7 @@ public class BuildFailureSummaryTests
     [Test]
     public void AssertAndExceptionCountAsErrors()
     {
-        string s = AITConvertCore.BuildFailureSummary("Failed", 2, 0,
+        string s = AITWebGLBuildDiagnostics.BuildFailureSummary("Failed", 2, 0,
             Msgs((LogType.Exception, "EX1"), (LogType.Assert, "AS1")), null);
         StringAssert.Contains("EX1", s);
         StringAssert.Contains("AS1", s);
@@ -90,7 +90,7 @@ public class BuildFailureSummaryTests
     [Test]
     public void LogTailAttached_OnlyWhenNoStepMessages()
     {
-        string s = AITConvertCore.BuildFailureSummary("Failed", 0, 0,
+        string s = AITWebGLBuildDiagnostics.BuildFailureSummary("Failed", 0, 0,
             new List<(LogType type, string content)>(), "TAIL-CONTENT-XYZ");
         StringAssert.Contains("에디터 로그 꼬리", s);
         StringAssert.Contains("TAIL-CONTENT-XYZ", s);
@@ -99,7 +99,7 @@ public class BuildFailureSummaryTests
     [Test]
     public void LogTailNotAttached_WhenStepMessagesPresent()
     {
-        string s = AITConvertCore.BuildFailureSummary("Failed", 1, 0,
+        string s = AITWebGLBuildDiagnostics.BuildFailureSummary("Failed", 1, 0,
             Msgs((LogType.Error, "E1")), "TAIL-CONTENT-XYZ");
         StringAssert.DoesNotContain("TAIL-CONTENT-XYZ", s);
     }
@@ -113,7 +113,7 @@ public class BuildFailureSummaryTests
         try
         {
             File.WriteAllText(path, "HEAD-0123456789-TAILSEGMENT");
-            string tail = AITConvertCore.ReadEditorLogTail(path, maxBytes: 11);
+            string tail = AITWebGLBuildDiagnostics.ReadEditorLogTail(path, maxBytes: 11);
             Assert.AreEqual("TAILSEGMENT", tail);
         }
         finally
@@ -129,7 +129,7 @@ public class BuildFailureSummaryTests
         try
         {
             File.WriteAllText(path, "short");
-            Assert.AreEqual("short", AITConvertCore.ReadEditorLogTail(path, maxBytes: 1000));
+            Assert.AreEqual("short", AITWebGLBuildDiagnostics.ReadEditorLogTail(path, maxBytes: 1000));
         }
         finally
         {
@@ -140,14 +140,14 @@ public class BuildFailureSummaryTests
     [Test]
     public void ReadEditorLogTail_MissingFile_ReturnsNull()
     {
-        Assert.IsNull(AITConvertCore.ReadEditorLogTail(
+        Assert.IsNull(AITWebGLBuildDiagnostics.ReadEditorLogTail(
             Path.Combine(Path.GetTempPath(), "ait-nonexistent-" + System.Guid.NewGuid().ToString("N") + ".log")));
     }
 
     [Test]
     public void ReadEditorLogTail_NullPath_ReturnsNull()
     {
-        Assert.IsNull(AITConvertCore.ReadEditorLogTail(null));
+        Assert.IsNull(AITWebGLBuildDiagnostics.ReadEditorLogTail(null));
     }
 
     private static string TempLogPath()

@@ -544,6 +544,18 @@ namespace AppsInToss.Editor.ErrorTracker
                 return;
             }
 
+            // SDK 자체 패키지 경로의 컴파일 에러(error CS#### in im.toss/com.toss.apps-in-toss)는
+            // UPM 임포트/재컴파일 중 심볼 정의 어셈블리가 컴파일되기 전 일시적으로 발생할 수 있다
+            // (transient 임포트 아티팩트, 0-user 노이즈 — SDK-133/130/131/12Z/12P/12W/12V/12T/12S).
+            // 즉시 캡처하면 노이즈가 새므로 defer+confirm 게이트로 보내, 성공적인 도메인 리로드를
+            // 거치지 못한(= 컴파일이 끝내 실패한 실 회귀) 경우에만 캡처한다(#42). 일반 경로보다 먼저
+            // 가로채야 하므로 ShouldDropAsNonSdkSource/CaptureError 직전인 이 위치에 둔다.
+            if (type == LogType.Error && AITSdkSelfCompileGuard.IsSdkSelfCompileError(message))
+            {
+                AITSdkSelfCompileGuard.Defer(message, stackTrace);
+                return;
+            }
+
             // 확실한 사용자 프로젝트/Unity 내부 메시지는 IsAitRelated를 통과해도 제외
             if (IsKnownNonSdkMessage(message))
                 return;
@@ -710,6 +722,28 @@ namespace AppsInToss.Editor.ErrorTracker
             string[] fingerprint = BuildNormalizedFingerprint("SdkBreakingChange", message);
             CaptureError(
                 exceptionType: "SdkBreakingChange",
+                message: message,
+                stackTrace: stackTrace,
+                level: "error",
+                extraTags: tags,
+                fingerprint: fingerprint);
+        }
+
+        /// <summary>
+        /// defer+confirm 게이트(<see cref="AITSdkSelfCompileGuard"/>)가 "성공적인 도메인 리로드로
+        /// 해소되지 못한 = 컴파일이 끝내 실패한 실 회귀"로 확정한 SDK 자체 컴파일 에러를 캡처합니다(#42).
+        /// 기존 일반 경로와 동일하게 exceptionType "UnityError" + 정규화 fingerprint로 캡처해 그룹화를
+        /// 보존하되, transient 게이트를 통과(성공 리로드로 사라지지 않음)했음을 태그로 남겨 triage를 돕습니다.
+        /// </summary>
+        internal static void CaptureConfirmedSdkSelfCompileError(string message, string stackTrace)
+        {
+            var tags = new Dictionary<string, string>
+            {
+                { "compile_error_confirmed", "persisted_no_reload" }
+            };
+            string[] fingerprint = BuildNormalizedFingerprint("UnityError", message);
+            CaptureError(
+                exceptionType: "UnityError",
                 message: message,
                 stackTrace: stackTrace,
                 level: "error",

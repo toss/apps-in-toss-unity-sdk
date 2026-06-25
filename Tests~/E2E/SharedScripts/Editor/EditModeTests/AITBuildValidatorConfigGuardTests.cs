@@ -11,6 +11,7 @@ using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
 using AppsInToss.Editor;
+using AppsInToss; // AITConvertCore(=AppsInToss.AITConvertCore) 해소 — using AppsInToss.Editor는 부모 네임스페이스를 가져오지 않음
 
 [TestFixture]
 public class AITBuildValidatorConfigGuardTests

@@ -224,7 +224,7 @@ jobs:
 
     steps:
       - name: Checkout (버전 참조용)
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: ${{ needs.parse-targets.outputs.repository }}
           ref: ${{ needs.parse-targets.outputs.ref }}

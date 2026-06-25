@@ -101,7 +101,7 @@ jobs:
       # 기본 main에서 빌드(생성기·소스). source_ref로 머지 전 브랜치를 지정해 베타를 검증할 수 있다.
       # 어떤 경우에도 이 워크플로는 source_ref에 push하지 않는다(읽기 전용) — main은 절대 변경되지 않음.
       - name: Checkout (source_ref)
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ inputs.source_ref }}
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -427,7 +427,7 @@ jobs:
 
     steps:
       - name: Checkout (staging ref)
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ needs.beta-prepare.outputs.staging_ref }}
 
@@ -593,7 +593,7 @@ jobs:
 
     steps:
       - name: Checkout (staging ref)
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ needs.beta-prepare.outputs.staging_ref }}
 
@@ -663,7 +663,7 @@ jobs:
 
     steps:
       - name: Checkout (staging ref)
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ needs.beta-prepare.outputs.staging_ref }}
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -880,7 +880,7 @@ jobs:
     if: always() && needs.publish-beta.result == 'success' && needs.beta-prepare.outputs.pkg_version != ''
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Sentry Release 생성 (set_commits skip, finalize)
         uses: getsentry/action-release@v3

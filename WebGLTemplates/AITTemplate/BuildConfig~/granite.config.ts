@@ -34,4 +34,15 @@ const userConfig = {
 };
 //// USER_CONFIG_END ////
 
-export default defineConfig({ ...sdkConfig, ...userConfig });
+// SDK_GENERATED가 관리하는 필드(appName/brand/permissions/outdir/webViewProps 플래그)는
+// AIT Configuration 창에서 설정합니다. userConfig에서 이 필드들을 덮어쓰면 brand의
+// 미치환 %AIT_*% 플레이스홀더(특히 마이그레이션 중 복사된 brand 블록)가 빌드 산출물로
+// 새어 들어가는 결함이 있었습니다(apps-in-toss.config.ts와 동일 클래스). 그래서 SDK 관리
+// 필드는 항상 SDK 값이 이기도록 병합하고, userConfig에는 신규 필드 추가와 webViewProps
+// 옵션 확장만 허용합니다.
+const _userConfig = userConfig as Record<string, any>;
+export default defineConfig({
+  ..._userConfig,
+  ...sdkConfig,
+  webViewProps: { ..._userConfig.webViewProps, ...sdkConfig.webViewProps },
+});

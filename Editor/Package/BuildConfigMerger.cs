@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text.RegularExpressions;
 using UnityEngine;
 
 namespace AppsInToss.Editor.Package
@@ -383,7 +384,6 @@ namespace AppsInToss.Editor.Package
         /// </summary>
         internal static void UpdateAppsInTossConfig(string projectBuildConfigPath, string sdkBuildConfigPath, string destPath, AITEditorScriptObject config)
         {
-            string projectFile = Path.Combine(projectBuildConfigPath, "apps-in-toss.config.ts");
             string sdkFile = Path.Combine(sdkBuildConfigPath, "apps-in-toss.config.ts");
             string destFile = Path.Combine(destPath, "apps-in-toss.config.ts");
 
@@ -405,21 +405,16 @@ namespace AppsInToss.Editor.Package
                 .Replace("%AIT_MEDIA_PLAYBACK_REQUIRES_USER_ACTION%", config.mediaPlaybackRequiresUserAction.ToString().ToLower())
                 .Replace("%AIT_PERMISSIONS%", config.GetPermissionsJson());
 
-            // 프로젝트 파일이 있으면 USER_CONFIG 영역만 보존
-            if (File.Exists(projectFile))
+            // USER_CONFIG 결정:
+            //  1) 프로젝트 apps-in-toss.config.ts의 USER_CONFIG에 실제 내용이 있으면 그대로 보존
+            //  2) 비어 있으면 granite.config.ts의 USER_CONFIG를 자동 이전 (2.x→3.x 마이그레이션, 수동 포팅 제거)
+            //  3) 둘 다 비어 있으면 SDK 템플릿 기본값(빈 USER_CONFIG) 유지
+            // SDK 관리 필드(brand/appName/permissions/webView 등)는 apps-in-toss.config.ts의 병합 로직에서
+            // 항상 SDK 값이 우선하므로, granite USER_CONFIG를 그대로 가져와도 안전하다.
+            string resolvedUserConfig = ResolveUserConfigForAppsInToss(projectBuildConfigPath);
+            if (resolvedUserConfig != null)
             {
-                string projectContent = File.ReadAllText(projectFile);
-
-                string projectUserConfig = AITTemplateManager.ExtractMarkerSection(projectContent, "USER_CONFIG");
-                if (projectUserConfig != null)
-                {
-                    finalContent = AITTemplateManager.ReplaceMarkerSection(finalContent, "USER_CONFIG", projectUserConfig);
-                    Debug.Log("[AIT]   ✓ apps-in-toss.config.ts (SDK 최신 버전 + USER_CONFIG 보존)");
-                }
-                else
-                {
-                    Debug.Log("[AIT]   ✓ apps-in-toss.config.ts (SDK 최신 버전으로 갱신)");
-                }
+                finalContent = AITTemplateManager.ReplaceMarkerSection(finalContent, "USER_CONFIG", resolvedUserConfig);
             }
             else
             {
@@ -427,6 +422,61 @@ namespace AppsInToss.Editor.Package
             }
 
             File.WriteAllText(destFile, finalContent, new System.Text.UTF8Encoding(false));
+        }
+
+        /// <summary>
+        /// apps-in-toss.config.ts에 주입할 USER_CONFIG 섹션을 결정합니다.
+        /// 프로젝트 apps-in-toss.config.ts의 USER_CONFIG가 비어 있으면 granite.config.ts의 USER_CONFIG를
+        /// 자동 이전합니다(2.x→3.x 마이그레이션). 둘 다 비어 있으면 null(SDK 템플릿 기본값 유지)을 반환합니다.
+        /// </summary>
+        internal static string ResolveUserConfigForAppsInToss(string projectBuildConfigPath)
+        {
+            // 1) apps-in-toss.config.ts의 USER_CONFIG 우선
+            string appsInTossFile = Path.Combine(projectBuildConfigPath, "apps-in-toss.config.ts");
+            if (File.Exists(appsInTossFile))
+            {
+                string section = AITTemplateManager.ExtractMarkerSection(File.ReadAllText(appsInTossFile), "USER_CONFIG");
+                if (section != null && !IsEffectivelyEmptyUserConfig(section))
+                {
+                    Debug.Log("[AIT]   ✓ apps-in-toss.config.ts (SDK 최신 버전 + USER_CONFIG 보존)");
+                    return section;
+                }
+            }
+
+            // 2) 비어 있으면 granite.config.ts의 USER_CONFIG를 자동 이전
+            string graniteFile = Path.Combine(projectBuildConfigPath, "granite.config.ts");
+            if (File.Exists(graniteFile))
+            {
+                string section = AITTemplateManager.ExtractMarkerSection(File.ReadAllText(graniteFile), "USER_CONFIG");
+                if (section != null && !IsEffectivelyEmptyUserConfig(section))
+                {
+                    Debug.Log(
+                        "[AIT]   ✓ apps-in-toss.config.ts (granite.config.ts의 USER_CONFIG 자동 이전 — 2.x→3.x 마이그레이션). " +
+                        "SDK 관리 필드는 SDK 값이 우선하므로 안전합니다.");
+                    return section;
+                }
+            }
+
+            // 3) 둘 다 비어 있음 → SDK 템플릿 기본값 유지
+            return null;
+        }
+
+        /// <summary>
+        /// USER_CONFIG 마커 섹션이 실질적으로 비어 있는지(실제 프로퍼티 없이 주석/공백만 있는지) 판별합니다.
+        /// 구조를 확신할 수 없으면(중괄호 미발견 등) 보수적으로 "내용 있음"으로 간주해 보존합니다.
+        /// </summary>
+        internal static bool IsEffectivelyEmptyUserConfig(string section)
+        {
+            if (string.IsNullOrEmpty(section)) return true;
+
+            int open = section.IndexOf('{');
+            int close = section.LastIndexOf('}');
+            if (open == -1 || close == -1 || close <= open) return false; // 구조 불명 → 보존
+
+            string body = section.Substring(open + 1, close - open - 1);
+            body = Regex.Replace(body, @"/\*.*?\*/", "", RegexOptions.Singleline); // 블록 주석 제거
+            body = Regex.Replace(body, @"//[^\n]*", "");                           // 줄 주석 제거
+            return body.Trim().Length == 0;
         }
     }
 }

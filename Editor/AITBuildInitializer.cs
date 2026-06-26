@@ -20,6 +20,10 @@ namespace AppsInToss.Editor
             bool templatesChanged = AITTemplateManager.EnsureWebGLTemplatesExist();
             Debug.Log($"[AIT] 빌드 초기화: 템플릿 변경={templatesChanged}");
 
+            // Unity WebGL 템플릿 전처리기 크래시 방지 (SDK-137):
+            // BuildConfig~ 하위에 잔존하는 비-소스 산출물(node_modules 등)을 BuildPlayer 직전에 제거.
+            ScrubTemplatePreprocessorHazards();
+
             // 템플릿이 변경된 경우에만 Unity가 인식하도록 리프레시
             // Domain Reload 방지: 빌드 중 Assembly 리로드를 잠금하여
             // 비-스크립트 파일 변경으로 인한 불필요한 Domain Reload를 차단
@@ -221,6 +225,57 @@ namespace AppsInToss.Editor
                 ? editorConfig.firstInteractiveLog == 1
                 : AITDefaultSettings.GetDefaultFirstInteractiveLog();
             Debug.Log($"[AIT]   - first-interactive 계측: {firstInteractiveEnabled}{(editorConfig.firstInteractiveLog < 0 ? " (자동)" : "")}");
+        }
+
+        /// <summary>
+        /// Unity WebGL 빌드의 템플릿 전처리기(Preprocess.js)가 템플릿 폴더를 재귀 순회하다
+        /// BuildConfig~ 하위의 잔여 빌드 산출물에 들어가 크래시하는 것을 막기 위해, 빌드 직전에
+        /// 해당 산출물 폴더를 제거한다. (Sentry SDK-137)
+        ///
+        /// 배경: SDK 자신은 pnpm install을 ait-build/ 사본에서만 수행하므로
+        /// Assets/WebGLTemplates/AITTemplate/BuildConfig~/node_modules를 만들지 않는다. 그러나
+        /// 개발자가 BuildConfig~ 안에서 직접 install을 돌리면 node_modules가 남고, 그 안의 전이
+        /// 의존성(예: @react-native/codegen의 C++ 코드젠 .js)에 들어 있는 bare #endif를 Unity 템플릿
+        /// 전처리기가 "found #endif without matching #if"로 오인해 빌드가 중단된다. 폴더명 끝의 '~'는
+        /// AssetDatabase import만 가리고 WebGL 템플릿 파일 스캔은 가리지 못하기 때문이다.
+        ///
+        /// 제거 대상 세 폴더는 이미 WebGLBuildCopier.CopyAdditionalUserFiles의 excludeFolders로
+        /// 취급되는 비-소스 산출물이며 모두 gitignore + 재생성 가능하므로 빌드 직전 제거해도 안전하다.
+        /// pnpm install은 ait-build/node_modules에서 별도로 일어나므로 재설치 비용도 없다.
+        /// </summary>
+        internal static void ScrubTemplatePreprocessorHazards()
+        {
+            ScrubTemplatePreprocessorHazards(System.IO.Path.Combine(
+                Application.dataPath, "WebGLTemplates/AITTemplate/BuildConfig~"));
+        }
+
+        /// <summary>
+        /// <see cref="ScrubTemplatePreprocessorHazards()"/>의 테스트 가능한 본체.
+        /// Application.dataPath 의존 없이 임의의 BuildConfig 경로를 받아 정리한다.
+        /// </summary>
+        /// <param name="projectBuildConfigPath">프로젝트의 BuildConfig~ 절대 경로</param>
+        internal static void ScrubTemplatePreprocessorHazards(string projectBuildConfigPath)
+        {
+            if (string.IsNullOrEmpty(projectBuildConfigPath))
+                return;
+
+            // 전처리기가 들어가면 안 되는 비-소스 산출물 (WebGLBuildCopier excludeFolders와 동일 집합)
+            string[] hazardFolders = { "node_modules", ".npm-cache", "dist" };
+
+            foreach (var folder in hazardFolders)
+            {
+                string target = System.IO.Path.Combine(projectBuildConfigPath, folder);
+                if (!System.IO.Directory.Exists(target))
+                    continue;
+
+                bool removed = AITFileSystemHelper.SafeDeleteDirectory(target);
+                if (removed)
+                    Debug.Log($"[AIT] 템플릿 전처리 위험 폴더 제거: BuildConfig~/{folder} " +
+                              "(Unity WebGL 전처리기 크래시 방지 — ait-build 재설치에는 영향 없음)");
+                else
+                    Debug.LogWarning($"[AIT] BuildConfig~/{folder} 제거 실패 — " +
+                                     "Unity WebGL 빌드가 전처리 단계에서 실패할 수 있습니다. 수동 삭제를 권장합니다.");
+            }
         }
 
         /// <summary>

@@ -18,7 +18,7 @@ public class BuildResultMappingTests
         // BUILD_WEBGL_FAILED로 매핑되어 Sentry 노이즈를 만들면 안 된다.
         Assert.AreEqual(
             AITConvertCore.AITExportError.CANCELLED,
-            AITConvertCore.MapBuildResultToExportError(BuildResult.Cancelled));
+            AITWebGLBuildDiagnostics.MapBuildResultToExportError(BuildResult.Cancelled));
     }
 
     [Test]
@@ -26,7 +26,7 @@ public class BuildResultMappingTests
     {
         Assert.AreEqual(
             AITConvertCore.AITExportError.SUCCEED,
-            AITConvertCore.MapBuildResultToExportError(BuildResult.Succeeded));
+            AITWebGLBuildDiagnostics.MapBuildResultToExportError(BuildResult.Succeeded));
     }
 
     [Test]
@@ -34,7 +34,7 @@ public class BuildResultMappingTests
     {
         Assert.AreEqual(
             AITConvertCore.AITExportError.BUILD_WEBGL_FAILED,
-            AITConvertCore.MapBuildResultToExportError(BuildResult.Failed));
+            AITWebGLBuildDiagnostics.MapBuildResultToExportError(BuildResult.Failed));
     }
 
     [Test]
@@ -44,6 +44,6 @@ public class BuildResultMappingTests
         // SDK가 진단할 수 있는 추가 정보가 없으므로 일반 빌드 실패로 매핑한다.
         Assert.AreEqual(
             AITConvertCore.AITExportError.BUILD_WEBGL_FAILED,
-            AITConvertCore.MapBuildResultToExportError(BuildResult.Unknown));
+            AITWebGLBuildDiagnostics.MapBuildResultToExportError(BuildResult.Unknown));
     }
 }

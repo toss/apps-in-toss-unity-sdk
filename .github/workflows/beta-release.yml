@@ -893,7 +893,8 @@ jobs:
           SENTRY_ORG: toss
           SENTRY_PROJECT: apps-in-toss-unity-sdk
         with:
-          version: apps-in-toss.unity@${{ needs.beta-prepare.outputs.pkg_version }}
+          # action-release@v3에서 `version`은 deprecated이고 `release`로 대체됨(동작 동일).
+          release: apps-in-toss.unity@${{ needs.beta-prepare.outputs.pkg_version }}
           # set_commits 기본값은 "auto"(commit range 연동)이므로 반드시 "skip"으로 명시.
           # 미머지 orphan 커밋의 Fixes trailer가 stable 이슈를 조기 auto-resolve하는 것 차단(INV5).
           set_commits: skip

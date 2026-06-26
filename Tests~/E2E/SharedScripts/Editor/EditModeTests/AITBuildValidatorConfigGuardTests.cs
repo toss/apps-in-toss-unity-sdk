@@ -29,6 +29,8 @@ public class AITBuildValidatorConfigGuardTests
         "  webBundleDir: 'dist/web',\n" +
         "};\n" +
         "//// SDK_GENERATED_END ////\n" +
+        // USER_CONFIG 블록이 삽입되는 자리(sentinel). 반드시 string.Replace로 치환할 것 —
+        // string.Format을 쓰면 위 TS 리터럴 중괄호({ ... })를 서식 placeholder로 오인해 FormatException이 발생한다.
         "{0}" +
         "const _userConfig = userConfig as Record<string, any>;\n" +
         "export default defineConfig({ ..._userConfig, ...sdkConfig });\n";
@@ -62,7 +64,7 @@ public class AITBuildValidatorConfigGuardTests
     [Test]
     public void Validate_CleanConfig_ReturnsSucceed()
     {
-        WriteAppsInToss(string.Format(Substituted, EmptyUserConfig));
+        WriteAppsInToss(Substituted.Replace("{0}", EmptyUserConfig));
 
         var result = AITBuildValidator.ValidateGeneratedBuildConfigs(_buildDir);
 
@@ -105,7 +107,7 @@ public class AITBuildValidatorConfigGuardTests
             "  brand: { primaryColor: '%AIT_PRIMARY_COLOR%', displayName: '%AIT_DISPLAY_NAME%' },\n" +
             "};\n" +
             "//// USER_CONFIG_END ////\n";
-        WriteAppsInToss(string.Format(Substituted, userConfig));
+        WriteAppsInToss(Substituted.Replace("{0}", userConfig));
 
         LogAssert.Expect(LogType.Warning, new Regex(@"USER_CONFIG에 SDK가 관리하는 설정이 남아"));
         var result = AITBuildValidator.ValidateGeneratedBuildConfigs(_buildDir);
@@ -123,7 +125,7 @@ public class AITBuildValidatorConfigGuardTests
             "  webViewProps: { bounces: false },\n" +
             "};\n" +
             "//// USER_CONFIG_END ////\n";
-        WriteAppsInToss(string.Format(Substituted, userConfig));
+        WriteAppsInToss(Substituted.Replace("{0}", userConfig));
 
         LogAssert.Expect(LogType.Warning, new Regex(@"이동/이름변경된 키"));
         var result = AITBuildValidator.ValidateGeneratedBuildConfigs(_buildDir);

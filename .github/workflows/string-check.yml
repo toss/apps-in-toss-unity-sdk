@@ -22,7 +22,7 @@ jobs:
     steps:
       - name: Checkout
         if: env.IS_BOT_PR != 'true'
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Skip scan for bot PR
         if: env.IS_BOT_PR == 'true'

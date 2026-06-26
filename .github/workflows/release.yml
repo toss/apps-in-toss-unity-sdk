@@ -668,7 +668,8 @@ jobs:
           SENTRY_ORG: toss
           SENTRY_PROJECT: apps-in-toss-unity-sdk
         with:
-          version: apps-in-toss.unity@${{ needs.create-release-tag.outputs.version }}
+          # action-release@v3에서 `version`은 deprecated이고 `release`로 대체됨(동작 동일).
+          release: apps-in-toss.unity@${{ needs.create-release-tag.outputs.version }}
           set_commits: auto
           finalize: true
 

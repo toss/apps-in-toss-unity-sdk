@@ -770,7 +770,11 @@ jobs:
           CHANNEL_REF="${{ needs.beta-prepare.outputs.channel_ref }}"
           BETA_TAG="${{ needs.beta-prepare.outputs.beta_tag }}"
           RELEASE_DATETIME="${{ steps.release-info.outputs.release_datetime }}"
-          COMMIT_HASH="${{ steps.release-info.outputs.commit_hash }}"
+          # release notes의 commit 표기는 실제 게시된 orphan(publish step) 단축 해시를 사용한다.
+          # release-info.commit_hash는 UPM 정리(rm) 이전 staging HEAD라 force-push된 게시 커밋과
+          # 어긋난다(예: staging 1600e8c ≠ 게시 9c74bb0). publish.outputs.sha가 실제 게시 커밋이다.
+          COMMIT_HASH="${{ steps.publish.outputs.sha }}"
+          COMMIT_HASH="${COMMIT_HASH:0:7}"
 
           RELEASE_BODY=$(cat <<EOF
           ## Apps in Toss Unity SDK — 베타 (v${PKG_VERSION})

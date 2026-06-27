@@ -2475,6 +2475,36 @@ public class IsKnownNonSdkMessageTests
 
     #endregion
 
+    #region Android Gradle 빌드 실패 노이즈 (APPS-IN-TOSS-UNITY-SDK-134)
+
+    [Test]
+    public void GradleBuildFailed_CommandInvokationFailure_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-134 — Unity Editor가 Android Gradle/Java 외부 빌드 실패를
+        // 출력하는 순수 외부 노이즈. 사용자 프로젝트 Android 빌드 설정 문제(JDK/SDK 경로,
+        // Gradle 버전 호환성 등)이며 SDK 코드와 무관.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "CommandInvokationFailure: Gradle build failed."));
+    }
+
+    [Test]
+    public void GradleBuildFailed_WithTrailingDetail_ReturnsTrue()
+    {
+        // 빌드 에러 상세 내용이 후행하는 변형도 부분 문자열 매칭으로 드롭됨을 검증.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "CommandInvokationFailure: Gradle build failed.\r\nstderr[\r\nFAILURE: Build failed with an exception."));
+    }
+
+    [Test]
+    public void GradleBuildFailed_WithAitPrefix_NeverFiltered()
+    {
+        // AitKeywords 가드 회귀 방지: [AIT] prefix가 붙은 동일 메시지는 SDK 자체 로그로 간주되어야 함.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] CommandInvokationFailure: Gradle build failed."));
+    }
+
+    #endregion
+
     #region SDK 관련 메시지는 통과 (negative cases)
 
     [Test]

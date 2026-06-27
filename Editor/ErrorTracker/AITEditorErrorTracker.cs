@@ -307,6 +307,13 @@ namespace AppsInToss.Editor.ErrorTracker
             // SDK 코드는 키스토어 경로/비밀번호를 직접 다루지 않으므로 SDK 버그 아님.
             // SDK는 이 문자열을 출력하지 않음(AitKeywords에 없음).
             "Unable to list keys in the keystore",
+
+            // Unity Editor가 Android Gradle/Java 외부 빌드 실패를 출력하는 순수 외부 노이즈.
+            // 사용자 프로젝트 Android 빌드 설정 문제(JDK/SDK 경로, Gradle 버전 호환성 등)이며
+            // SDK 코드와 무관. 과거 동일 패턴(S5)이 auto로 처리된 선례 있음.
+            // 예: "CommandInvokationFailure: Gradle build failed." (APPS-IN-TOSS-UNITY-SDK-134)
+            // SDK는 이 문자열을 출력하지 않음(AitKeywords에 없음).
+            "CommandInvokationFailure: Gradle build failed",
         };
 
         // DetermineErrorSource에서 메시지를 SDK로 분류하는 추가 패턴.

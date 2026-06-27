@@ -111,13 +111,47 @@ namespace AppsInToss.Editor.Package
 
             if (useProjectLockfile)
             {
-                File.Copy(pnpmLockProject, pnpmLockDst, true);
-                Debug.Log("[AIT]   ✓ pnpm-lock.yaml (프로젝트에서 복사, 정합 확인됨)");
+                CopyWithIoExceptionFallback(pnpmLockProject, pnpmLockDst, "pnpm-lock.yaml (프로젝트에서 복사, 정합 확인됨)");
             }
             else if (File.Exists(pnpmLockSdk))
             {
-                File.Copy(pnpmLockSdk, pnpmLockDst, true);
-                Debug.Log("[AIT]   ✓ pnpm-lock.yaml (SDK에서 복사)");
+                CopyWithIoExceptionFallback(pnpmLockSdk, pnpmLockDst, "pnpm-lock.yaml (SDK에서 복사)");
+            }
+        }
+
+        /// <summary>
+        /// File.Copy(overwrite:true)를 수행하되, 대상 파일이 다른 프로세스(pnpm, antivirus 등)에 의해
+        /// 메모리 맵으로 열려 있어 덮어쓰기(overwrite) 모드가 IOException을 발생시키는 경우
+        /// (Windows 한정, APPS-IN-TOSS-UNITY-SDK-132) 대상 파일을 삭제 후 재시도한다.
+        /// 재시도도 실패하면 IOException을 다시 던진다.
+        /// </summary>
+        private static void CopyWithIoExceptionFallback(string src, string dst, string label)
+        {
+            try
+            {
+                File.Copy(src, dst, overwrite: true);
+                Debug.Log($"[AIT]   ✓ {label}");
+            }
+            catch (IOException ex)
+            {
+                // Windows에서 대상 파일이 메모리 맵으로 열려 있으면 overwrite 모드에서 IOException이 발생한다.
+                // 대상 파일을 먼저 삭제한 뒤 복사를 재시도한다.
+                AITLog.Warning(
+                    $"[AIT]   ⚠ {label} — File.Copy IOException, 대상 파일 삭제 후 재시도 중: {ex.Message}",
+                    sentryCapture: false);
+                try
+                {
+                    if (File.Exists(dst))
+                        File.Delete(dst);
+                    File.Copy(src, dst, overwrite: false);
+                    Debug.Log($"[AIT]   ✓ {label} (삭제 후 재시도 성공)");
+                }
+                catch (Exception retryEx)
+                {
+                    throw new IOException(
+                        $"[AIT] pnpm-lock.yaml 복사 재시도 실패 ({label}): {retryEx.Message} — 원래 오류: {ex.Message}",
+                        retryEx);
+                }
             }
         }
 

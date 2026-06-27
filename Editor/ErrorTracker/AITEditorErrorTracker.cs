@@ -1415,11 +1415,13 @@ namespace AppsInToss.Editor.ErrorTracker
 
             // Unity Package Manager가 사용자 환경(네트워크/Git 인증/SSL 등) 문제로 Git 패키지 추가/제거 실패 시 직접 출력.
             // 예: "[Package Manager Window] Error adding/removing packages: https://github.com/toss/apps-in-toss-unity-sdk.git #release/v2.4.3."
-            // URL에 'apps-in-toss' 토큰이 단어 경계로 들어가 SDK 키워드 가드가 발동하므로 가드보다 먼저 매칭한다.
-            // "[Package Manager Window]" + "Error adding/removing packages" 합성으로 일반 PM 메시지와 충돌 방지.
-            // Sentry APPS-IN-TOSS-UNITY-SDK-QQ, APPS-IN-TOSS-UNITY-SDK-7Y.
+            //     "[Package Manager Window] Error adding package: im.toss.apps-in-toss-unity-sdk@https://...#2.9.0"
+            // URL/패키지 ID에 'apps-in-toss' 토큰이 단어 경계로 들어가 SDK 키워드 가드가 발동하므로 가드보다 먼저 매칭한다.
+            // "[Package Manager Window]" + ("Error adding/removing packages" OR "Error adding package:") 합성으로 일반 PM 메시지와 충돌 방지.
+            // Sentry APPS-IN-TOSS-UNITY-SDK-QQ, APPS-IN-TOSS-UNITY-SDK-7Y, APPS-IN-TOSS-UNITY-SDK-12Q.
             if (message.IndexOf("[Package Manager Window]", StringComparison.Ordinal) >= 0
-                && message.IndexOf("Error adding/removing packages", StringComparison.Ordinal) >= 0)
+                && (message.IndexOf("Error adding/removing packages", StringComparison.Ordinal) >= 0
+                    || message.IndexOf("Error adding package:", StringComparison.Ordinal) >= 0))
                 return true;
 
             // Unity Package Manager가 의존성 해석 실패 시 직접 출력 — 사용자 환경 manifest.json 충돌 또는 네트워크 장애.

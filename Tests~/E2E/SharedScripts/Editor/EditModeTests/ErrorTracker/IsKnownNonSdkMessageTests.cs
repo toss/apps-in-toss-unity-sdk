@@ -1685,7 +1685,7 @@ public class IsKnownNonSdkMessageTests
 
     #endregion
 
-    #region 사용자 환경 / 빌드 외부 노이즈 (SDK-QQ, SDK-7Y, SDK-V1, SDK-TS, SDK-RG)
+    #region 사용자 환경 / 빌드 외부 노이즈 (SDK-QQ, SDK-7Y, SDK-V1, SDK-TS, SDK-RG, APPS-IN-TOSS-UNITY-SDK-12Q)
 
     [Test]
     public void PackageManager_ErrorAddingPackages_ReturnsTrue()
@@ -1728,6 +1728,25 @@ public class IsKnownNonSdkMessageTests
         // Sentry SDK-RG — Windows cmd 인코딩/PATH 문제.
         Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
             "AIT: [stderr] '��e' is not recognized as an internal or external command,"));
+    }
+
+    [Test]
+    public void PackageManager_ErrorAddingPackageSingular_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-12Q — UPM이 단일 패키지 추가 실패 시 출력하는 단수형 변형.
+        // "Error adding/removing packages"(복수형, QQ/7Y)와 달리 "Error adding package:"(단수형 + 콜론)으로 출력됨.
+        // 패키지 ID에 'apps-in-toss' 토큰이 포함되어 SDK 키워드 가드가 발동하므로 가드보다 먼저 매칭된다.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "UnityError: [Package Manager Window] Error adding package: " +
+            "im.toss.apps-in-toss-unity-sdk@https://github.com/toss/apps-in-toss-unity-sdk.git#2.9.0"));
+    }
+
+    [Test]
+    public void PackageManager_ErrorAddingPackageSingular_WithAitPrefix_NeverFiltered()
+    {
+        // AitKeywords 가드 회귀 방지: [AIT] prefix가 붙으면 SDK 자체 로그로 간주되어 필터링되지 않아야 함.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] [Package Manager Window] Error adding package: im.toss.apps-in-toss-unity-sdk@https://example.com#2.9.0"));
     }
 
     [Test]

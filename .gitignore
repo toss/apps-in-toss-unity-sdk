@@ -82,6 +82,7 @@ yarn-error.log*
 
 # Package files
 *.tgz
+*.tgz.meta
 *.tar.gz
 
 # Runtime logs
@@ -198,3 +199,4 @@ yarn.lock.meta
 
 # Superpowers 플랜 문서 (Claude Code 작업용, 커밋 불필요)
 docs/superpowers/
+docs/superpowers.meta

@@ -114,6 +114,51 @@ namespace AppsInToss
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __getConsentedUserData_Internal(string options, string callbackId, string typeName);
 #endif
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        [Preserve]
+        [APICategory("Other")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<DeclaredAgeRange> GetDeclaredAgeRange(GetDeclaredAgeRangeParams paramsParam)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<DeclaredAgeRange>();
+            string callbackId = AITCore.Instance.RegisterCallback<DeclaredAgeRange>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error)
+            );
+            __getDeclaredAgeRange_Internal(AITJsonSettings.Serialize(paramsParam), callbackId, "DeclaredAgeRange");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] GetDeclaredAgeRange called");
+            await Awaitable.NextFrameAsync();
+            return default(DeclaredAgeRange);
+#endif
+        }
+#else
+        public static async Task<DeclaredAgeRange> GetDeclaredAgeRange(GetDeclaredAgeRangeParams paramsParam)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<DeclaredAgeRange>();
+            string callbackId = AITCore.Instance.RegisterCallback<DeclaredAgeRange>(
+                result => tcs.TrySetResult(result),
+                error => tcs.TrySetException(error)
+            );
+            __getDeclaredAgeRange_Internal(AITJsonSettings.Serialize(paramsParam), callbackId, "DeclaredAgeRange");
+            return await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] GetDeclaredAgeRange called");
+            await Task.CompletedTask;
+            return default(DeclaredAgeRange);
+#endif
+        }
+#endif
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __getDeclaredAgeRange_Internal(string paramsParam, string callbackId, string typeName);
+#endif
         /// <returns>그룹 ID</returns>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         [Preserve]

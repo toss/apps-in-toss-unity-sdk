@@ -104,6 +104,19 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
+    public class GetDeclaredAgeRangeParams
+    {
+        [Preserve]
+        [JsonProperty("ageGates")]
+        public double[] AgeGates;
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
     public class GrantPromotionRewardParams
     {
         [Preserve]
@@ -295,6 +308,18 @@ namespace AppsInToss
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
         public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    /// <summary>
+    /// Stub class for number (type definition not found in current SDK version)
+    /// This class is auto-generated for SDK version compatibility
+    /// </summary>
+    [Serializable]
+    [Preserve]
+    public class number
+    {
+        // Stub class - no properties defined
+        // This type may not be available in the current SDK version
     }
 
     public enum AlbumItemType
@@ -540,6 +565,37 @@ namespace AppsInToss
         [Preserve]
         [JsonProperty("heading")]
         public double Heading;
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class DeclaredAgeRange
+    {
+        [Preserve]
+        [JsonProperty("status")]
+        public string Status;
+        [Preserve]
+        [JsonProperty("lowerBound")]
+        public double? LowerBound; // optional
+        [Preserve]
+        [JsonProperty("upperBound")]
+        public double? UpperBound; // optional
+        [Preserve]
+        [JsonProperty("ageRangeDeclaration")]
+        public string AgeRangeDeclaration; // optional
+        [Preserve]
+        [JsonProperty("activeParentalControls")]
+        public string[] ActiveParentalControls;
+        [Preserve]
+        [JsonProperty("isEligibleForAgeFeatures")]
+        public bool? IsEligibleForAgeFeatures; // optional
+        [Preserve]
+        [JsonProperty("errorCode")]
+        public string ErrorCode; // optional
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]

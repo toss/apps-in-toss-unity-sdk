@@ -172,6 +172,27 @@ namespace AppsInToss.Editor
 
             GUILayout.Space(5);
 
+            // 네비게이션 바 설정 (game 타입에서만 적용)
+            using (new EditorGUI.DisabledScope(config.webViewType != 0))
+            {
+                config.navigationBarTransparentBackground = EditorGUILayout.Toggle(
+                    new GUIContent("Transparent Nav Bar", "상단 네비게이션 바 투명 배경 (게임 풀스크린)"),
+                    config.navigationBarTransparentBackground
+                );
+
+                string[] navBarThemeOptions = { "기본 (미지정)", "light", "dark" };
+                config.navigationBarTheme = EditorGUILayout.Popup(
+                    "Nav Bar Theme", config.navigationBarTheme, navBarThemeOptions);
+            }
+
+            EditorGUILayout.HelpBox(
+                "Navigation Bar 옵션은 'game' 타입에서만 적용됩니다.\n" +
+                "Transparent Nav Bar를 켜면 상단(노치/내비게이션) 영역까지 투명하게 풀스크린 렌더링됩니다.",
+                MessageType.Info
+            );
+
+            GUILayout.Space(5);
+
             // 미디어 재생 설정
             config.allowsInlineMediaPlayback = EditorGUILayout.Toggle(
                 new GUIContent("Inline Media Playback", "인라인 미디어 재생 허용"),

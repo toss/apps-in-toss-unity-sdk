@@ -128,6 +128,12 @@ namespace AppsInToss
         [Tooltip("WebView 타입. 게임앱은 'game' (투명배경), 일반앱은 'partner' (흰색배경)")]
         public int webViewType = 0; // 0=game, 1=partner
 
+        [Tooltip("상단 네비게이션 바 투명 배경. game 타입에서 풀스크린(노치/상단 영역까지 그리기)에 필요")]
+        public bool navigationBarTransparentBackground = true; // 기본 ON (game 풀스크린 복구)
+
+        [Tooltip("네비게이션 바 테마. 0=기본(미지정), 1=light, 2=dark")]
+        public int navigationBarTheme = 0; // 0=기본(미지정), 1=light, 2=dark
+
         [Tooltip("인라인 미디어 재생 허용")]
         public bool allowsInlineMediaPlayback = false;
 
@@ -290,6 +296,30 @@ namespace AppsInToss
                 case 1: return "partner";
                 default: return "game";
             }
+        }
+
+        /// <summary>
+        /// navigationBar 옵션을 granite.config.ts/apps-in-toss.config.ts 형식의 TS 객체 리터럴로 반환.
+        /// webViewType=game일 때만 transparentBackground/theme를 emit하고(하위호환), partner면 빈 객체를
+        /// 반환해 기존 동작과 USER_CONFIG의 navigationBar를 보존한다.
+        /// 형식 예: { transparentBackground: true, theme: 'dark' }
+        /// </summary>
+        public string GetNavigationBarJson()
+        {
+            // partner(비게임)는 동작 불변 — 빈 객체로 emit (USER_CONFIG의 navigationBar 보존)
+            if (webViewType != 0)
+                return "{}";
+
+            var parts = new System.Collections.Generic.List<string>
+            {
+                "transparentBackground: " + navigationBarTransparentBackground.ToString().ToLower()
+            };
+            if (navigationBarTheme == 1)
+                parts.Add("theme: 'light'");
+            else if (navigationBarTheme == 2)
+                parts.Add("theme: 'dark'");
+
+            return "{ " + string.Join(", ", parts) + " }";
         }
 
         /// <summary>

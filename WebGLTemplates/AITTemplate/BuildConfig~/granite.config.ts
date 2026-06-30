@@ -14,6 +14,7 @@ const sdkConfig = {
     allowsInlineMediaPlayback: %AIT_ALLOWS_INLINE_MEDIA_PLAYBACK%,
     mediaPlaybackRequiresUserAction: %AIT_MEDIA_PLAYBACK_REQUIRES_USER_ACTION%,
   },
+  navigationBar: %AIT_NAVIGATION_BAR%,
   web: {
     host: process.env.AIT_VITE_HOST || '%AIT_VITE_HOST%',
     port: parseInt(process.env.AIT_VITE_PORT || '%AIT_VITE_PORT%', 10),
@@ -45,4 +46,5 @@ export default defineConfig({
   ..._userConfig,
   ...sdkConfig,
   webViewProps: { ..._userConfig.webViewProps, ...sdkConfig.webViewProps },
+  navigationBar: { ..._userConfig.navigationBar, ...sdkConfig.navigationBar },
 });

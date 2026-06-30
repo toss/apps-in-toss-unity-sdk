@@ -130,7 +130,7 @@ namespace AppsInToss.Editor.Package.Tests
         [Test]
         public void UpdateGraniteConfig_SubstitutesAllPlaceholders_WhenAllPresent()
         {
-            // UpdateGraniteConfig가 치환하는 12개 플레이스홀더 전부 포함
+            // UpdateGraniteConfig가 치환하는 13개 플레이스홀더 전부 포함
             File.WriteAllText(Path.Combine(_sdkDir, "granite.config.ts"),
                 "export default {\n" +
                 "  name: '%AIT_APP_NAME%',\n" +
@@ -139,6 +139,7 @@ namespace AppsInToss.Editor.Package.Tests
                 "  icon: '%AIT_ICON_URL%',\n" +
                 "  bridgeColorMode: '%AIT_BRIDGE_COLOR_MODE%',\n" +
                 "  webViewType: '%AIT_WEBVIEW_TYPE%',\n" +
+                "  navigationBar: %AIT_NAVIGATION_BAR%,\n" +
                 "  allowsInlineMediaPlayback: %AIT_ALLOWS_INLINE_MEDIA_PLAYBACK%,\n" +
                 "  mediaPlaybackRequiresUserAction: %AIT_MEDIA_PLAYBACK_REQUIRES_USER_ACTION%,\n" +
                 "  viteHost: '%AIT_VITE_HOST%',\n" +
@@ -157,6 +158,8 @@ namespace AppsInToss.Editor.Package.Tests
             StringAssert.Contains("test.example.com", merged);
             StringAssert.Contains("4242", merged);
             StringAssert.Contains("test-dist", merged);
+            // webViewType 기본값(0=game) → navigationBar.transparentBackground emit
+            StringAssert.Contains("transparentBackground: true", merged);
             // GetBridgeColorModeString/GetWebViewTypeString/GetPermissionsJson 호출 확인 — 결과 토큰이 사라지면 됨
             Assert.IsFalse(Regex.IsMatch(merged, "%AIT_[A-Z_]+%"),
                 $"치환되지 않은 %AIT_*% 플레이스홀더가 남아있음:\n{merged}");
@@ -203,6 +206,87 @@ namespace AppsInToss.Editor.Package.Tests
             StringAssert.Contains("4242", merged);
             Assert.IsFalse(Regex.IsMatch(merged, "%AIT_[A-Z_]+%"),
                 "프로젝트 파일이 없을 때도 SDK 템플릿의 플레이스홀더는 모두 치환되어야 함");
+        }
+
+        // ----- GetNavigationBarJson -----
+
+        [Test]
+        public void GetNavigationBarJson_EmitsTransparentBackgroundTrue_WhenGameAndDefault()
+        {
+            var cfg = ScriptableObject.CreateInstance<AITEditorScriptObject>();
+            try
+            {
+                cfg.webViewType = 0; // game
+                // navigationBarTransparentBackground 기본값 true, theme 기본값 0(미지정)
+                string json = cfg.GetNavigationBarJson();
+                StringAssert.Contains("transparentBackground: true", json);
+                Assert.IsFalse(json.Contains("theme:"), "theme 미지정일 때 theme 키가 없어야 함");
+            }
+            finally { Object.DestroyImmediate(cfg); }
+        }
+
+        [Test]
+        public void GetNavigationBarJson_EmitsTheme_WhenGameAndThemeSet()
+        {
+            var cfg = ScriptableObject.CreateInstance<AITEditorScriptObject>();
+            try
+            {
+                cfg.webViewType = 0; // game
+                cfg.navigationBarTheme = 2; // dark
+                string json = cfg.GetNavigationBarJson();
+                StringAssert.Contains("transparentBackground: true", json);
+                StringAssert.Contains("theme: 'dark'", json);
+            }
+            finally { Object.DestroyImmediate(cfg); }
+        }
+
+        [Test]
+        public void GetNavigationBarJson_EmitsTransparentBackgroundFalse_WhenGameAndToggleOff()
+        {
+            var cfg = ScriptableObject.CreateInstance<AITEditorScriptObject>();
+            try
+            {
+                cfg.webViewType = 0; // game
+                cfg.navigationBarTransparentBackground = false;
+                string json = cfg.GetNavigationBarJson();
+                StringAssert.Contains("transparentBackground: false", json);
+            }
+            finally { Object.DestroyImmediate(cfg); }
+        }
+
+        [Test]
+        public void GetNavigationBarJson_ReturnsEmptyObject_WhenPartner()
+        {
+            var cfg = ScriptableObject.CreateInstance<AITEditorScriptObject>();
+            try
+            {
+                cfg.webViewType = 1; // partner
+                cfg.navigationBarTransparentBackground = true;
+                cfg.navigationBarTheme = 2;
+                // 하위호환: partner는 navigationBar 필드를 emit하지 않음
+                Assert.AreEqual("{}", cfg.GetNavigationBarJson());
+            }
+            finally { Object.DestroyImmediate(cfg); }
+        }
+
+        // ----- UpdateAppsInTossConfig (3.x) -----
+
+        [Test]
+        public void UpdateAppsInTossConfig_SubstitutesNavigationBarPlaceholder_NoLeak()
+        {
+            File.WriteAllText(Path.Combine(_sdkDir, "apps-in-toss.config.ts"),
+                "export default {\n" +
+                "  name: '%AIT_APP_NAME%',\n" +
+                "  navigationBar: %AIT_NAVIGATION_BAR%,\n" +
+                "}");
+
+            BuildConfigMerger.UpdateAppsInTossConfig(_projectDir, _sdkDir, _destDir, _config);
+
+            string merged = File.ReadAllText(Path.Combine(_destDir, "apps-in-toss.config.ts"));
+            // webViewType 기본값(0=game) → transparentBackground emit
+            StringAssert.Contains("transparentBackground: true", merged);
+            Assert.IsFalse(Regex.IsMatch(merged, "%AIT_[A-Z_]+%"),
+                $"apps-in-toss.config.ts에 치환되지 않은 %AIT_*% 플레이스홀더가 남아있음:\n{merged}");
         }
     }
 }

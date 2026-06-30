@@ -15,6 +15,7 @@ const sdkConfig = {
     allowsInlineMediaPlayback: %AIT_ALLOWS_INLINE_MEDIA_PLAYBACK%,
     mediaPlaybackRequiresUserAction: %AIT_MEDIA_PLAYBACK_REQUIRES_USER_ACTION%,
   },
+  navigationBar: %AIT_NAVIGATION_BAR%,
   webBundleDir: 'dist/web',
 };
 //// SDK_GENERATED_END ////
@@ -36,4 +37,5 @@ export default defineConfig({
   ..._userConfig,
   ...sdkConfig,
   webView: { ..._userConfig.webView, ...sdkConfig.webView },
+  navigationBar: { ..._userConfig.navigationBar, ...sdkConfig.navigationBar },
 });

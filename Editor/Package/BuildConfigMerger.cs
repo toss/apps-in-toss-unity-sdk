@@ -377,6 +377,7 @@ namespace AppsInToss.Editor.Package
                 .Replace("%AIT_ICON_URL%", config.iconUrl)
                 .Replace("%AIT_BRIDGE_COLOR_MODE%", config.GetBridgeColorModeString())
                 .Replace("%AIT_WEBVIEW_TYPE%", config.GetWebViewTypeString())
+                .Replace("%AIT_NAVIGATION_BAR%", config.GetNavigationBarJson())
                 .Replace("%AIT_ALLOWS_INLINE_MEDIA_PLAYBACK%", config.allowsInlineMediaPlayback.ToString().ToLower())
                 .Replace("%AIT_MEDIA_PLAYBACK_REQUIRES_USER_ACTION%", config.mediaPlaybackRequiresUserAction.ToString().ToLower())
                 .Replace("%AIT_VITE_HOST%", config.viteHost)
@@ -437,6 +438,7 @@ namespace AppsInToss.Editor.Package
                 .Replace("%AIT_PRIMARY_COLOR%", config.primaryColor)
                 .Replace("%AIT_ALLOWS_INLINE_MEDIA_PLAYBACK%", config.allowsInlineMediaPlayback.ToString().ToLower())
                 .Replace("%AIT_MEDIA_PLAYBACK_REQUIRES_USER_ACTION%", config.mediaPlaybackRequiresUserAction.ToString().ToLower())
+                .Replace("%AIT_NAVIGATION_BAR%", config.GetNavigationBarJson())
                 .Replace("%AIT_PERMISSIONS%", config.GetPermissionsJson());
 
             // USER_CONFIG 결정:

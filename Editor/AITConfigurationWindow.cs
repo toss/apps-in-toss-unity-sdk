@@ -19,6 +19,7 @@ namespace AppsInToss.Editor
         private bool showBuildProfiles = true;
         private bool showDevServerProfile = false;
         private bool showProductionProfile = false;
+        private bool showTextureStreamingSettings = true;
 
         // 하이라이트 색상
         private static readonly Color ModifiedColor = new Color(1f, 0.6f, 0f); // 주황색
@@ -65,6 +66,8 @@ namespace AppsInToss.Editor
             DrawBuildSettings();
             GUILayout.Space(10);
             DrawWebGLOptimizationSettings();
+            GUILayout.Space(10);
+            DrawTextureStreamingSettings();
             GUILayout.Space(10);
             DrawPermissionSettings();
             GUILayout.Space(10);

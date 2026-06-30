@@ -465,6 +465,43 @@ namespace AppsInToss.Editor
                 def.crunchedCompression = true;
                 def.compressionQuality = quality;
                 atlas.SetPlatformSettings(def);
+
+                // 기존 WebGL 오버라이드(overridden=true)가 있으면 빌드는 그것을 우선하므로, 마스터에만 crunch 를
+                // 걸면 빌드 산출물엔 반영되지 않는다(#9 plat-override-ignored). 오버라이드에도 동일하게 in-place
+                // 반영한다(신규 오버라이드/format 리셋 없음 — Texture2D 경로의 ApplyCrunchToExistingWebGLOverride 와 동일).
+                var ws = atlas.GetPlatformSettings("WebGL");
+                if (ws != null && ws.overridden)
+                {
+                    if (atlasMax > 0 && ws.maxTextureSize > atlasMax)
+                    {
+                        ws.maxTextureSize = atlasMax;
+                    }
+
+                    // crunch 는 DXT 계열(또는 Automatic)에만 적용 가능. ASTC/비압축 등 비-DXT 오버라이드는
+                    // crunchedCompression 을 켜도 Unity 가 무시하거나 비압축으로 폴백할 수 있어 maxSize 외엔
+                    // 건드리지 않는다(Texture2D 경로의 IsCrunchApplicableFormat 가드와 동일).
+                    if (IsCrunchApplicableFormat(ws.format))
+                    {
+                        var crunched = ToCrunchedDxtFormat(ws.format);
+                        if (crunched != ws.format)
+                        {
+                            ws.format = crunched; // DXT1/DXT5 → DXT1Crunched/DXT5Crunched (비압축 리셋 아님)
+                        }
+
+                        // Automatic 오버라이드가 Uncompressed 로 고정돼 있으면 crunch 가 적용되지 않으므로
+                        // Compressed 로 정규화(마스터 def 블록과 동일 의도).
+                        if (ws.textureCompression == TextureImporterCompression.Uncompressed)
+                        {
+                            ws.textureCompression = TextureImporterCompression.Compressed;
+                        }
+
+                        ws.crunchedCompression = true;
+                        ws.compressionQuality = quality;
+                    }
+
+                    atlas.SetPlatformSettings(ws);
+                }
+
                 EditorUtility.SetDirty(atlas);
                 n++;
             }

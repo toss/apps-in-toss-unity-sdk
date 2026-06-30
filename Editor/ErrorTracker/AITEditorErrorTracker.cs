@@ -1425,10 +1425,12 @@ namespace AppsInToss.Editor.ErrorTracker
             //     "[Package Manager Window] Error adding package: im.toss.apps-in-toss-unity-sdk@https://...#2.9.0"
             // URL/패키지 ID에 'apps-in-toss' 토큰이 단어 경계로 들어가 SDK 키워드 가드가 발동하므로 가드보다 먼저 매칭한다.
             // "[Package Manager Window]" + ("Error adding/removing packages" OR "Error adding package:") 합성으로 일반 PM 메시지와 충돌 방지.
+            // 단, "[AIT" prefix로 시작하는 SDK 자체 로그는 절대 필터링하지 않으므로 별도 가드(GUID/meta 패턴과 동일 컨벤션).
             // Sentry APPS-IN-TOSS-UNITY-SDK-QQ, APPS-IN-TOSS-UNITY-SDK-7Y, APPS-IN-TOSS-UNITY-SDK-12Q.
             if (message.IndexOf("[Package Manager Window]", StringComparison.Ordinal) >= 0
                 && (message.IndexOf("Error adding/removing packages", StringComparison.Ordinal) >= 0
-                    || message.IndexOf("Error adding package:", StringComparison.Ordinal) >= 0))
+                    || message.IndexOf("Error adding package:", StringComparison.Ordinal) >= 0)
+                && !message.StartsWith("[AIT", StringComparison.Ordinal))
                 return true;
 
             // Unity Package Manager가 의존성 해석 실패 시 직접 출력 — 사용자 환경 manifest.json 충돌 또는 네트워크 장애.

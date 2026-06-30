@@ -968,21 +968,30 @@ namespace AppsInToss
             finally
             {
                 // 빌드 완료 후 (성공/실패 무관) 콘텐츠 최적화를 원상 복원 — 사용자 프로젝트에 산출물 남기지 않음
-                // (적용의 역순으로 복원: crunch → audio)
-                Editor.AITTextureCrunchProcessor.RestoreForBuild(textureCrunchHandle);
-                Editor.AITAudioStreamingProcessor.RestoreForBuild(audioStreamHandle);
-
-                // 빌드 직전 생성한 Version JSON 제거
-                // 콘텐츠 최적화 — 텍스처 크기 클램프 임포터 설정 원복 (빌드 성공/실패 무관)
-                Editor.AITTextureSizeClampProcessor.RestoreForBuild(textureClampHandle);
-                // ASTC 블록 에스컬레이션 복원 (성공/실패 무관)
-                AITAstcBlockProcessor.RestoreForBuild(astcBlockHandle);
-                // 콘텐츠 최적화 — 폰트 subset 원본 폰트 복원 (빌드 성공/실패 무관)
-                Editor.AITFontSubsetProcessor.RestoreForBuild(fontSubsetHandle);
-                // 콘텐츠 최적화 — 대형 텍스처 외부화 원복(소스/임포터 복원) (빌드 성공/실패 무관)
-                Editor.AITLargeTextureExternalizer.RestoreForBuild(textureStreamHandle);
+                //
+                // 반드시 "적용의 정확한 역순"으로 복원한다. 각 프로세서는 자기 변형 직전의
+                // 온디스크 .meta/.ttf 스냅샷을 백업하므로, 같은 에셋을 여러 프로세서가 건드린
+                // 경우 "가장 먼저 적용한" 프로세서가 진짜 원본을 갖고 있다. 역순 복원이면 그
+                // 프로세서의 RestoreForBuild가 가장 마지막에 쓰여 최종 승자가 되어 원본이 보존된다.
+                // (순서가 어긋나면 뒤에 적용된 프로세서가 자신의 "이미 변형된" 스냅샷을 마지막에
+                //  덮어써 파트너 에셋이 매 빌드마다 영구 오염된다 — 교차-프로세서 복원 버그.)
+                //
+                // 적용 순서: audio → crunch → clamp → ASTC → fontSubset → texStream → fontStream
+                // 복원 순서: fontStream → texStream → fontSubset → ASTC → clamp → crunch → audio
                 // 콘텐츠 최적화 — 대형 폰트 deferral 원복(임포터 설정 복원) (빌드 성공/실패 무관)
                 Editor.AITFontExternalizer.RestoreForBuild(fontStreamHandle);
+                // 콘텐츠 최적화 — 대형 텍스처 외부화 원복(소스/임포터 복원) (빌드 성공/실패 무관)
+                Editor.AITLargeTextureExternalizer.RestoreForBuild(textureStreamHandle);
+                // 콘텐츠 최적화 — 폰트 subset 원본 폰트 복원 (빌드 성공/실패 무관)
+                Editor.AITFontSubsetProcessor.RestoreForBuild(fontSubsetHandle);
+                // ASTC 블록 에스컬레이션 복원 (성공/실패 무관)
+                AITAstcBlockProcessor.RestoreForBuild(astcBlockHandle);
+                // 콘텐츠 최적화 — 텍스처 크기 클램프 임포터 설정 원복 (빌드 성공/실패 무관)
+                Editor.AITTextureSizeClampProcessor.RestoreForBuild(textureClampHandle);
+                // 콘텐츠 최적화 — 텍스처 crunch 임포터 설정 원복 (빌드 성공/실패 무관)
+                Editor.AITTextureCrunchProcessor.RestoreForBuild(textureCrunchHandle);
+                // 오디오 스트리밍 외부화 원복 (StreamingAssets — 다른 에셋과 .meta 중첩 없음)
+                Editor.AITAudioStreamingProcessor.RestoreForBuild(audioStreamHandle);
 
                 // 빌드 완료 후 (성공/실패 무관) 생성한 JSON 제거 — 사용자 프로젝트에 산출물 남기지 않음
                 if (versionInfoWritten)

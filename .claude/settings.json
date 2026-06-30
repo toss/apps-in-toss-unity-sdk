@@ -1,8 +1,5 @@
 {
   "enableAllProjectMcpServers": true,
-  "enabledMcpjsonServers": [
-    "playwright"
-  ],
   "hooks": {
     "PreToolUse": [
       {

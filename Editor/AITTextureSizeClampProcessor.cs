@@ -214,9 +214,18 @@ namespace AppsInToss.Editor
                     continue;
                 }
 
-                // maxTextureSize 가 이미 캡 이하면 줄일 것이 없음(재진입/이미 작은 텍스처) → 비용 회피.
+                // 빌드가 실제로 ship 하는 maxTextureSize 를 해석한다: WebGL 오버라이드(overridden=true,
+                // maxTextureSize>0)가 있으면 빌드는 그 값을 우선하므로 그것을, 없으면 base(ti.maxTextureSize)를
+                // 본다. base 만 보면 오버라이드가 더 큰 텍스처를 놓친다 — base 1024(≤cap)라 skip 했는데 WebGL
+                // 오버라이드 2048 이 그대로 ship 되어 clamp 가 무효가 된다(#5 plat-override-ignored).
+                var webPs = ti.GetPlatformTextureSettings("WebGL");
+                bool wasOverridden = webPs != null && webPs.overridden;
+                int effectiveMax = ResolveEffectiveMaxSize(
+                    wasOverridden, webPs != null ? webPs.maxTextureSize : 0, ti.maxTextureSize);
+
+                // 빌드가 ship 하는 값이 이미 캡 이하면 줄일 것이 없음(재진입/이미 작은 텍스처) → 비용 회피.
                 // 이렇게 "더 큰 쪽만 내리는" 게이트라 crunch 가 이미 더 작게 캡했어도 그 값을 덮어쓰지 않는다.
-                if (ti.maxTextureSize <= clampMax)
+                if (effectiveMax <= clampMax)
                 {
                     continue;
                 }
@@ -238,7 +247,17 @@ namespace AppsInToss.Editor
                 }
 
                 // maxTextureSize 한 필드만 override. format/compression/crunch/sRGB/sprite 설정은 보존.
-                ti.maxTextureSize = clampMax;
+                // base 와(있다면) WebGL 오버라이드 양쪽을 캡 이하로 내린다 — 빌드가 오버라이드를 우선하므로
+                // 오버라이드를 안 내리면 clamp 가 무효(#5). 각 필드는 cap 초과일 때만 건드려 더 작은 값은 보존.
+                if (ti.maxTextureSize > clampMax)
+                {
+                    ti.maxTextureSize = clampMax;
+                }
+                if (wasOverridden && webPs.maxTextureSize > clampMax)
+                {
+                    webPs.maxTextureSize = clampMax;
+                    ti.SetPlatformTextureSettings(webPs);
+                }
                 ti.SaveAndReimport();
                 n++;
             }
@@ -373,5 +392,13 @@ namespace AppsInToss.Editor
 
             return false;
         }
+
+        /// <summary>
+        /// 빌드가 실제로 ship 하는 maxTextureSize 를 해석한다. WebGL 오버라이드(overridden=true,
+        /// maxTextureSize&gt;0)가 있으면 빌드는 그 값을 우선하므로 그것을, 없으면 base(importer 기본 maxTextureSize)를
+        /// 반환한다. base 만 보면 더 큰 WebGL 오버라이드를 놓쳐 clamp 가 무효가 된다(#5 plat-override-ignored).
+        /// </summary>
+        internal static int ResolveEffectiveMaxSize(bool overridden, int overrideMax, int baseMax)
+            => (overridden && overrideMax > 0) ? overrideMax : baseMax;
     }
 }

@@ -409,17 +409,38 @@ namespace AppsInToss.Editor
                     continue;
                 }
 
+                // SpriteAtlas 의 WebGL 플랫폼 설정에 오버라이드 적용(Texture2D 경로와 동일 구조).
+                var masterPs = atlas.GetPlatformSettings("DefaultTexturePlatform");
+                var ws = atlas.GetPlatformSettings("WebGL");
+                bool wasOverridden = ws.overridden;
+
+                // 현재 maxTextureSize 해석: 기존 WebGL 오버라이드(overridden=true, >0)가 있으면 빌드는 그것을
+                // 우선하므로 그 값을, 없으면 DefaultTexturePlatform 마스터(>0), 둘 다 없으면 2048.
+                // 마스터 기준으로만 해석하면 더 작은 오버라이드 캡(예: 512)을 마스터(4096)로 부풀려
+                // 덮어써 아틀라스가 최대 64× 비대해진다(#8 plat-override-ignored).
+                int curMax = (wasOverridden && ws.maxTextureSize > 0)
+                    ? ws.maxTextureSize
+                    : (masterPs.maxTextureSize > 0 ? masterPs.maxTextureSize : 2048);
+
+                // 기존 WebGL 오버라이드 format 이 비압축 계열이면 ASTC 강제 시 팽창 → skip.
+                if (wasOverridden && IsUncompressedFormat(ws.format))
+                {
+                    continue;
+                }
+
+                int targetMax = ResolveTargetMaxSize(curMax, maxCap);
+
+                // 이미 목표 상태이면 skip(재진입 비용 회피).
+                if (!WouldChange(wasOverridden, ws.format, curMax, targetFormat, targetMax))
+                {
+                    continue;
+                }
+
                 // 아틀라스 에셋 파일 자체를 백업(플랫폼 설정이 .spriteatlasv2 안에 직렬화됨).
                 if (!BackupAssetFile(path, projectRoot))
                 {
                     continue;
                 }
-
-                // SpriteAtlas 의 WebGL 플랫폼 설정에 오버라이드 적용.
-                var masterPs = atlas.GetPlatformSettings("DefaultTexturePlatform");
-                var ws = atlas.GetPlatformSettings("WebGL");
-                int curMax = masterPs.maxTextureSize > 0 ? masterPs.maxTextureSize : 2048;
-                int targetMax = ResolveTargetMaxSize(curMax, maxCap);
 
                 ws.overridden = true;
                 ws.format = targetFormat;

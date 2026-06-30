@@ -501,12 +501,15 @@ namespace AppsInToss.Editor
 
         // ─────────────────────────── 외부화 단계 ───────────────────────────
 
-        /// <summary>TMP_FontAsset 의 의존성 중 첫 .ttf/.otf 소스 Font 경로를 반환(없으면 null).</summary>
+        /// <summary>TMP_FontAsset 의 ★직접★ 의존성 중 첫 .ttf/.otf 소스 Font 경로를 반환(없으면 null).</summary>
+        // 직접 의존만 검사(recursive:false): TMP_FontAsset 의 자체 소스 .ttf 는 직접 의존이지만,
+        // fallback 체인으로 전이 참조되는 다른 폰트의 .ttf 는 재귀(true) 시 비결정적 순서로 먼저 잡혀
+        // 엉뚱한 폰트를 소스로 오인할 수 있다(형제 IsSourceSharedByNonTarget 이 동일 사유로 false 사용).
         private static string ResolveSourceFont(string tmpAssetPath)
         {
             try
             {
-                foreach (var dep in AssetDatabase.GetDependencies(tmpAssetPath, true))
+                foreach (var dep in AssetDatabase.GetDependencies(tmpAssetPath, false))
                 {
                     if (string.IsNullOrEmpty(dep) || dep == tmpAssetPath)
                     {

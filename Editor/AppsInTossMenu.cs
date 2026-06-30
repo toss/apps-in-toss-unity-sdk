@@ -812,6 +812,11 @@ namespace AppsInToss
                 }
             }
 
+            // pnpm이 비대화형(no TTY) 환경임을 인식하도록 CI=true 설정
+            // (없으면 node_modules purge 확인 프롬프트에서 ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY 발생)
+            // AITPlatformHelper.CreateProcessStartInfo / AITAsyncCommandRunner와 동일한 컨벤션
+            startInfo.EnvironmentVariables["CI"] = "true";
+
             // 스레드 안전한 상태 플래그 (Interlocked 사용)
             // OutputDataReceived는 ThreadPool 스레드에서 호출되므로 원자적 연산 필요
             int serverStartedFlag = 0;  // 0 = false, 1 = true

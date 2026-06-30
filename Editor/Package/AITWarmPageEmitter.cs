@@ -99,10 +99,10 @@ namespace AppsInToss.Editor.Package
                 return;
             }
 
-            // 캐시명: 비어 있으면 AITPageCacheEmitter 와 동일한 기본값으로 보정.
-            string cacheName = string.IsNullOrEmpty(config.pageCacheName)
-                ? AITPageCacheEmitter.DefaultCacheName
-                : config.pageCacheName;
+            // 캐시명: pageCache 인터셉터와 ★완전히 동일한★ 해석을 사용해야 같은 캐시 버킷을 공유한다.
+            // 인라인 DefaultCacheName 폴백은 appName 파생(ait-page-cache-{slug})을 건너뛰므로
+            // 인터셉터와 버킷이 어긋나 warm 재방문이 전부 캐시 미스가 된다 → ResolveCacheName 으로 통일.
+            string cacheName = AITPageCacheEmitter.ResolveCacheName(config);
 
             // 마커 치환 (치환값 이스케이프: JS 단일따옴표 문자열용).
             string html = HtmlTemplate

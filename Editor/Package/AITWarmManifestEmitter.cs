@@ -27,7 +27,8 @@ namespace AppsInToss.Editor.Package
     ///
     /// === 호스트(슈퍼앱) 연동 계약 (코드 주석으로 명문화) ===
     ///  · cacheName: 호스트 백그라운드 pre-fill 페이지와 '동일한 캐시명'을 사용해야 같은 버킷을 공유합니다.
-    ///    <c>config.pageCacheName</c> 이 비어 있으면 <see cref="AITPageCacheEmitter.DefaultCacheName"/> 으로 보정합니다.
+    ///    <c>config.pageCacheName</c> 이 비어 있으면 <see cref="AITPageCacheEmitter.ResolveCacheName"/> 이
+    ///    appName 파생 슬러그(ait-page-cache-{slug})로 보정합니다(pageCache 인터셉터와 ★동일★ 버킷명).
     ///  · assets: data/framework/wasm 3종만 포함합니다. loader 와 symbols 는 excluded 에만 기재합니다.
     ///  · wireBytes: 실제 디스크 상의 (압축 포함) 파일 크기입니다.
     ///  · rawBytes: gzip/brotli 해제 후 바이트 수입니다. 탐지 불가 시 필드를 생략합니다.
@@ -100,10 +101,10 @@ namespace AppsInToss.Editor.Package
                 return null;
             }
 
-            // 캐시명: 비어 있으면 AITPageCacheEmitter 와 동일한 기본값으로 보정.
-            string cacheName = string.IsNullOrEmpty(config.pageCacheName)
-                ? AITPageCacheEmitter.DefaultCacheName
-                : config.pageCacheName;
+            // 캐시명: pageCache 인터셉터와 ★완전히 동일한★ 해석을 사용해야 같은 캐시 버킷을 공유한다.
+            // 인라인 DefaultCacheName 폴백은 appName 파생(ait-page-cache-{slug})을 건너뛰므로
+            // 인터셉터와 버킷이 어긋나 warm 재방문이 전부 캐시 미스가 된다 → ResolveCacheName 으로 통일.
+            string cacheName = AITPageCacheEmitter.ResolveCacheName(config);
 
             // 버전 문자열: package.json 에서 추출. 실패 시 버전 없이 식별자만.
             string sdkVersion = ReadSdkVersion();

@@ -17,7 +17,6 @@
     ]
   },
   "enabledPlugins": {
-    "playwright@claude-plugins-official": true,
-    "sentry@claude-plugins-official": true
+    "playwright@claude-plugins-official": true
   }
 }

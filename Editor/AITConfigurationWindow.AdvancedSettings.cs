@@ -562,7 +562,10 @@ namespace AppsInToss.Editor
             config.mipStripping = -1;
             config.stripUnusedMeshComponents = -1;
             config.enableBuildOptimizationCheck = true;
-            config.fontStreaming = -1;
+            // 폰트 스트리밍(fontStreaming + targetPaths/maxConcurrent)은 형제 레버 textureStreaming 과 동일하게
+            // ResetWebGLOptimizationDefaults("모든 WebGL 설정 기본값으로 복원")가 master+서브필드를 일괄 복원한다.
+            // 여기서 master 만 부분 복원하면 targetPaths/maxConcurrent 가 stale 로 남는 split-reset 위험이 있어 제외한다
+            // (폰트 스트리밍 master 단독 복원은 해당 UI 의 인라인 리셋 버튼이 제공).
         }
 
     }

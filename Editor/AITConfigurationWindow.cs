@@ -1952,6 +1952,9 @@ namespace AppsInToss.Editor
 
             bool defaultFirstInteractive = AITDefaultSettings.GetDefaultFirstInteractiveLog();
             if (config.firstInteractiveLog >= 0 && (config.firstInteractiveLog == 1) != defaultFirstInteractive) count++;
+
+            // 파일명 해싱: 선언 기본 true. false 로 바뀐 경우만 변경으로 집계(reset 버튼 노출 조건에 포함).
+            if (!config.nameFilesAsHashes) count++;
             // 페이지 캐시: 기본 자동(true). 명시적으로 기본값과 다르게 설정된 경우만 변경으로 집계.
             bool defaultPageCache = AITDefaultSettings.GetDefaultPageCache();
             if (config.pageCache >= 0 && (config.pageCache == 1) != defaultPageCache) count++;
@@ -2078,29 +2081,78 @@ namespace AppsInToss.Editor
 
         private void ResetWebGLSettings()
         {
+            ResetWebGLOptimizationDefaults(config);
+        }
+
+        /// <summary>
+        /// 모든 WebGL 최적화 레버를 AITEditorScriptObject 의 선언 기본값으로 되돌린다.
+        /// 각 레버는 master 토글뿐 아니라 수치 파라미터·스코프 디렉터리/경로까지 전부 복원해야
+        /// "기본값 복원"이 실제로 fresh 설정과 동일해진다(stale 스코프/임계값이 남으면 재활성 시 의도와 다르게 동작).
+        /// 신규 레버 필드를 추가하면 이 메서드에도 반드시 그 기본값을 추가할 것
+        /// (AITResetWebGLSettingsTests 가 fresh 인스턴스와 비교해 누락을 검출한다).
+        /// </summary>
+        internal static void ResetWebGLOptimizationDefaults(AITEditorScriptObject config)
+        {
+            if (config == null) return;
+
+            // 엔진 / 전송
             config.memorySize = -1;
             config.threadsSupport = -1;
             config.dataCaching = -1;
+            config.nameFilesAsHashes = true; // [Header "WebGL 최적화 설정"] 파일명 해싱 토글 (선언 기본 true)
             config.firstInteractiveLog = -1;
-            config.pageCache = -1;
-            config.pageCacheName = "";
+
+            // 페이지 캐시 / warm / 네이티브 프리페치
             config.pageCache = -1;
             config.pageCacheName = "";
             config.warmManifest = -1;
             config.warmPage = -1;
             config.nativeAssetSource = -1;
+
+            // 콘텐츠 최적화 — 오디오 스트리밍
             config.audioStreaming = -1;
+            config.audioStreamingMinBytes = 262144;
+            config.audioStreamingDirs = "";
+
+            // 콘텐츠 최적화 — 텍스처 crunch
             config.textureCrunch = -1;
+            config.textureCrunchMaxSize = 0;
+            config.textureCrunchQuality = 50;
+            config.textureCrunchAtlas = true;
+            config.textureCrunchAtlasMaxSize = 0;
+            config.textureCrunchDirs = "";
+
+            // 콘텐츠 최적화 — 텍스처 크기 클램프
             config.textureSizeClamp = -1;
+            config.textureClampMaxSize = 1024;
+            config.textureClampMinBytes = 0;
+            config.textureClampDirs = "";
+            config.textureClampExcludeDirs = "";
+
+            // 콘텐츠 최적화 — ASTC 블록 에스컬레이션
             config.astcBlockEscalation = -1;
             config.astcBlockSize = 12;
             config.astcBlockMaxSize = 0;
             config.astcBlockAtlas = true;
             config.astcBlockDirs = "";
             config.astcBlockExcludeDirs = "";
+
+            // 콘텐츠 최적화 — 폰트 CJK subset
             config.fontSubset = -1;
             config.fontSubsetTargetPaths = string.Empty;
             config.fontSubsetUnicodeRanges = string.Empty;
+
+            // 콘텐츠 최적화 — 대형 텍스처 스트리밍
+            config.textureStreaming = -1;
+            config.textureStreamingMinBytes = 524288;
+            config.textureStreamingDirs = "";
+            config.textureStreamingExcludeDirs = "";
+            config.textureStreamingMaxConcurrent = 3;
+
+            // 콘텐츠 최적화 — 대형 폰트 deferral
+            config.fontStreaming = -1;
+            config.fontStreamingTargetPaths = string.Empty;
+            config.fontStreamingMaxConcurrent = 2;
         }
 
         private void ResetAdvancedSettings()
@@ -2126,7 +2178,10 @@ namespace AppsInToss.Editor
             config.mipStripping = -1;
             config.stripUnusedMeshComponents = -1;
             config.enableBuildOptimizationCheck = true;
-            config.fontStreaming = -1;
+            // 폰트 스트리밍(fontStreaming + targetPaths/maxConcurrent)은 형제 레버 textureStreaming 과 동일하게
+            // ResetWebGLOptimizationDefaults("모든 WebGL 설정 기본값으로 복원")가 master+서브필드를 일괄 복원한다.
+            // 여기서 master 만 부분 복원하면 targetPaths/maxConcurrent 가 stale 로 남는 split-reset 위험이 있어 제외한다
+            // (폰트 스트리밍 master 단독 복원은 해당 UI 의 인라인 리셋 버튼이 제공).
         }
 
         private void DrawDeploymentSettings()

@@ -16,11 +16,11 @@ importers:
         specifier: 1.6.0
         version: 1.6.0(41ad6601f20b10310103e03bee2e51df)
       '@apps-in-toss/web-analytics':
-        specifier: 2.10.3
-        version: 2.10.3(@apps-in-toss/web-bridge@2.10.3)
+        specifier: 2.10.4
+        version: 2.10.4(@apps-in-toss/web-bridge@2.10.4)
       '@apps-in-toss/web-framework':
-        specifier: 2.10.3
-        version: 2.10.3(@babel/preset-env@7.28.5(@babel/core@7.29.7))(@babel/runtime@7.29.7)(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(@react-navigation/native@7.2.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(@swc/helpers@0.5.17)(@toss/tds-react-native@2.0.3(366d533fd4dc14ff23f9238f24747cce))(@types/node@25.9.4)(@types/react@19.2.17)(jiti@1.21.7)(postcss@8.5.16)(react-native-safe-area-context@5.6.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(react-native-screens@4.23.0(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)(tsx@4.22.4)(typanion@3.14.0)(typescript@6.0.3)(yaml@2.9.0)
+        specifier: 2.10.4
+        version: 2.10.4(@babel/preset-env@7.28.5(@babel/core@7.29.7))(@babel/runtime@7.29.7)(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(@react-navigation/native@7.2.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(@swc/helpers@0.5.17)(@toss/tds-react-native@2.0.3(366d533fd4dc14ff23f9238f24747cce))(@types/node@25.9.4)(@types/react@19.2.17)(jiti@1.21.7)(postcss@8.5.16)(react-native-safe-area-context@5.6.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(react-native-screens@4.23.0(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)(tsx@4.22.4)(typanion@3.14.0)(typescript@6.0.3)(yaml@2.9.0)
       commander:
         specifier: 15.0.0
         version: 15.0.0
@@ -169,6 +169,9 @@ importers:
       web-framework-2.10.3:
         specifier: npm:@apps-in-toss/web-framework@2.10.3
         version: '@apps-in-toss/web-framework@2.10.3(@babel/preset-env@7.28.5(@babel/core@7.29.7))(@babel/runtime@7.29.7)(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(@react-navigation/native@7.2.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(@swc/helpers@0.5.17)(@toss/tds-react-native@2.0.3(366d533fd4dc14ff23f9238f24747cce))(@types/node@25.9.4)(@types/react@19.2.17)(jiti@1.21.7)(postcss@8.5.16)(react-native-safe-area-context@5.6.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(react-native-screens@4.23.0(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)(tsx@4.22.4)(typanion@3.14.0)(typescript@6.0.3)(yaml@2.9.0)'
+      web-framework-2.10.4:
+        specifier: npm:@apps-in-toss/web-framework@2.10.4
+        version: '@apps-in-toss/web-framework@2.10.4(@babel/preset-env@7.28.5(@babel/core@7.29.7))(@babel/runtime@7.29.7)(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(@react-navigation/native@7.2.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(@swc/helpers@0.5.17)(@toss/tds-react-native@2.0.3(366d533fd4dc14ff23f9238f24747cce))(@types/node@25.9.4)(@types/react@19.2.17)(jiti@1.21.7)(postcss@8.5.16)(react-native-safe-area-context@5.6.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(react-native-screens@4.23.0(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)(tsx@4.22.4)(typanion@3.14.0)(typescript@6.0.3)(yaml@2.9.0)'
       web-framework-2.2.0:
         specifier: npm:@apps-in-toss/web-framework@2.2.0
         version: '@apps-in-toss/web-framework@2.2.0(@babel/preset-env@7.28.5(@babel/core@7.29.7))(@babel/runtime@7.29.7)(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(@react-navigation/native@7.2.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(@swc/helpers@0.5.17)(@toss/tds-react-native@2.0.3(366d533fd4dc14ff23f9238f24747cce))(@types/node@25.9.4)(@types/react@19.2.17)(jiti@1.21.7)(postcss@8.5.16)(react-native-safe-area-context@5.6.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(react-native-screens@4.23.0(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)(tsx@4.22.4)(typanion@3.14.0)(typescript@6.0.3)(yaml@2.9.0)'
@@ -608,6 +611,16 @@ packages:
       react: '*'
       react-native: '*'
 
+  '@apps-in-toss/analytics@2.10.4':
+    resolution: {integrity: sha512-ZiuWcw2mLyP4PBHiVx8kuKULcM4DleiZcvBcnd8UxWzqFNcgZ355m1T15FOAlRHuIx+/wSePHKr48pgvs7mABQ==}
+    peerDependencies:
+      '@granite-js/native': '*'
+      '@granite-js/react-native': '*'
+      '@types/react': '*'
+      brick-module: '*'
+      react: '*'
+      react-native: '*'
+
   '@apps-in-toss/analytics@2.2.0':
     resolution: {integrity: sha512-LTVNFc9CPcHWIPeuAcNdGug93pYbu1+AUsGCCesCW3FpxDhI22pLRSmedlQrAU2eDP+8vfjP+pGffP/NNY33mA==}
     peerDependencies:
@@ -952,6 +965,9 @@ packages:
   '@apps-in-toss/bridge-core@2.10.3':
     resolution: {integrity: sha512-R6+cVRXS9C63DgNP00RJqLrcfOc/LOLcMtFe3DHCSNh4nwDW1ryYSTgmFAzVgT90LEk6XzfYPfAsNQ9ZoHLJxQ==}
 
+  '@apps-in-toss/bridge-core@2.10.4':
+    resolution: {integrity: sha512-5cnRcgeO3MRHuorXx/pYsXlhGNEio/x1bnTwBQGOeoZoKpzpH/L73P3RXE0puOHzaQ3JfD4b8q/lAm6etIX3kg==}
+
   '@apps-in-toss/bridge-core@2.2.0':
     resolution: {integrity: sha512-r4omdfvnXTmvHkjsnzDKW7bHdEk21bOo0dFDtyZyGFz2IlGT0lrjdrnWKPZCEUtheSo6XxuXgA09fFlF1rYwEA==}
 
@@ -1134,6 +1150,9 @@ packages:
 
   '@apps-in-toss/cli@2.10.3':
     resolution: {integrity: sha512-cBtT0znqY/fp/M/rNcWUVpMJijA9jgkvC999hhd3FP0Be9BrBkMy17EMMRjFGfUQXhLjM0irucsLZ8ed8j90rg==}
+
+  '@apps-in-toss/cli@2.10.4':
+    resolution: {integrity: sha512-kFoMVX3h3TCtyayMtGBYQNdoSkSqaARMuF8dzFJOf7NNLHnZ2dqUf/tyRmtaoZAaaafshw8iS4J2e6uEhtrwqQ==}
 
   '@apps-in-toss/cli@2.2.0':
     resolution: {integrity: sha512-RFxTyAJG7+zu3VuOfOeX1eBnzQf5ROw/g+bb4eZRGsrVrTZd7WnMkBmS4h20LfD6QVdV/wSwSlO9M3AZohxvyw==}
@@ -1626,6 +1645,18 @@ packages:
 
   '@apps-in-toss/framework@2.10.3':
     resolution: {integrity: sha512-kTuDlZoELlU3lRGzgczRZJt1vRYnyUFWsPscDwAxuQexuR9Sj1QIwiJMmIAhQg5GNM5TVip4T8MgIoxHaTwBpA==}
+    hasBin: true
+    peerDependencies:
+      '@granite-js/native': '*'
+      '@granite-js/react-native': '*'
+      '@toss/tds-react-native': '>=2.0.0'
+      '@types/react': '*'
+      brick-module: '*'
+      react: '*'
+      react-native: '*'
+
+  '@apps-in-toss/framework@2.10.4':
+    resolution: {integrity: sha512-Q3iQ+H28SHX6f/cSTtZAGCK9MVlw0E15mVcH+bDN53zsCFegNZOPcUcpLYg2+nrZ+wpV/B5ScT/yvUCWRXeVEw==}
     hasBin: true
     peerDependencies:
       '@granite-js/native': '*'
@@ -2192,6 +2223,14 @@ packages:
       react: '*'
       react-native: '*'
 
+  '@apps-in-toss/native-modules@2.10.4':
+    resolution: {integrity: sha512-0w3aQ2Q6+eqOfgDEKzL32FicCQOdk8cwnPTvdkIm3WGnq/H45r1/yleu4QE6SkP2Adz6fL2AfiutFu7oVyAlAg==}
+    peerDependencies:
+      '@granite-js/native': '*'
+      '@granite-js/react-native': '*'
+      react: '*'
+      react-native: '*'
+
   '@apps-in-toss/native-modules@2.2.0':
     resolution: {integrity: sha512-OpJV4Kfg4wccC490xrx0QMAYU1CKONmT6hKXgx6vei1bDvxnJDJMmZASoYeyk1pMXMzrZRTtaGwysiGm/rLpqQ==}
     peerDependencies:
@@ -2418,6 +2457,9 @@ packages:
   '@apps-in-toss/plugin-compat@2.10.3':
     resolution: {integrity: sha512-7J7CRR1c4W8xac8XMt9NAyOlgTRAXdtG242xuqkQRlTz1CveG2lLN2Q6PAEQvWCnPDMxg/Bngp9Gc7rVRVUiLg==}
 
+  '@apps-in-toss/plugin-compat@2.10.4':
+    resolution: {integrity: sha512-MnkqKgsf3gQObMPAMe9PmZLlzWYNrxS712Qdy98dR/TFmbtuk4gX4OmDjIcjW16M14QJHk1t7NwyGOwQ7dDT7A==}
+
   '@apps-in-toss/plugin-compat@2.2.0':
     resolution: {integrity: sha512-B3BfJ2oPWEuFr9MN3gNZuJcDkYByVCcqLvQv4TAvGrnEZBKO7hFP4vhUGYqmY7MoX/EJEjUXBAgVLROyBkCQFA==}
 
@@ -2601,6 +2643,9 @@ packages:
   '@apps-in-toss/plugins@2.10.3':
     resolution: {integrity: sha512-nUf0RL3nuSDW5r1hBpQBhwH7ysbHSQcI+TePtxLv0Hnrq7ritYljanVeoXcSjsaWmxEVay6Z0bwiwtKvOViJNA==}
 
+  '@apps-in-toss/plugins@2.10.4':
+    resolution: {integrity: sha512-iR1/GckJuD1zad47neXya4Y3FViJF/M+EY1pT/3CXZjM3eoyvBxITtNeOD/p3fh90RRm5E50iKoWNJsHnhmN/A==}
+
   '@apps-in-toss/plugins@2.2.0':
     resolution: {integrity: sha512-pmFttThxqC7LQjSkqhQ0p46RZSZhn6gqZt63puITAiMfOfKvBatgqVCcNY+oyIWepNeI5Q2b8/G5IydfckbGUQ==}
 
@@ -2783,6 +2828,9 @@ packages:
 
   '@apps-in-toss/types@2.10.3':
     resolution: {integrity: sha512-aLL5cJevV7JvoyKfKIFIsRm/Tc1Z+n+sytS2g5LS9c4HHJYCu+aCRxaTTNe7NdmfHLLKuOLK2760hDGWklD6Xw==}
+
+  '@apps-in-toss/types@2.10.4':
+    resolution: {integrity: sha512-GMODZlV7xjUYKd7nPMMAVSStfwIOwiC4v6SIcTgKlqfdTvF+9X52/hiAY2UMdCAlxWO8lZD9uHchp3fC+CvY6w==}
 
   '@apps-in-toss/types@2.2.0':
     resolution: {integrity: sha512-IqZzJT0q82QqfbwaFijujJu0Y3UsswpeIWF2ePUTatq9FgESXeOt4KTxIfViqTdy403HrHfQG3NRSCqWjnoJtA==}
@@ -3049,6 +3097,11 @@ packages:
     peerDependencies:
       '@apps-in-toss/web-bridge': '*'
 
+  '@apps-in-toss/web-analytics@2.10.4':
+    resolution: {integrity: sha512-9K3Ytd9yyOLhVuQvFQxHI369pjzv+kSV8yq3t+oHUhgjPyocNEyL6dQfKkf6uwJMf8XEvGuXIo+QFib3HJoA4w==}
+    peerDependencies:
+      '@apps-in-toss/web-bridge': '*'
+
   '@apps-in-toss/web-analytics@2.2.0':
     resolution: {integrity: sha512-VrYfUK/Oj4Whn3h1QjW82uysRMY3856gPV4/o/08OOuaFATTnUdDGkesVEwNwNIQuPPKyGKh6Tj9f3dKNJzAGQ==}
     peerDependencies:
@@ -3308,6 +3361,9 @@ packages:
   '@apps-in-toss/web-bridge@2.10.3':
     resolution: {integrity: sha512-GhWH99Mi/98swaT1COy+w9ctb/LK+PoqqhEzxwJaZpDfj0POj+9y7xrO41Pkt9hsv8rxy8A+6qUYukoEwTwsXg==}
 
+  '@apps-in-toss/web-bridge@2.10.4':
+    resolution: {integrity: sha512-P336Zd6k6qt6hUp6hDYaqevXk8i8QepMOlHsDcj+wAxc5xsZ0BLxkmV76E8WD/MiWKH8IQYeVuU8k2OCuaORcQ==}
+
   '@apps-in-toss/web-bridge@2.2.0':
     resolution: {integrity: sha512-bgo2PrRKvCAOV34kcFcdpebEgg+hzh+HTTkuu0Cg/Vtl8Olie3xLAr6IuB24hSWuD5bNj1DfVwGIW64ykRC/sA==}
 
@@ -3418,6 +3474,9 @@ packages:
 
   '@apps-in-toss/web-config@2.10.3':
     resolution: {integrity: sha512-mRim2EEe8xe+Itb5Ku0A2L8zyfq3pwOsEDMNBrFrlPPaoJl0Lq6n973LG8nGa4X8LPeaKOx9NLIMO/bTQepMAg==}
+
+  '@apps-in-toss/web-config@2.10.4':
+    resolution: {integrity: sha512-w9onw/MND1DunbSmhQHZWkhMvFeZ3Y3NinY6ysSBPm9BGe3xMoJZPt71on5cuptGSWaKjmbh68X87V9wK14dSw==}
 
   '@apps-in-toss/web-config@2.2.0':
     resolution: {integrity: sha512-Hv9A6z6HcyoGAbl/JtM8N8neP/CT0o3GMpYsMfhx0O0U3CgUt692fkdSMg4aVi+Dsg41VVnxt1b9OHVox7mL0w==}
@@ -3638,6 +3697,10 @@ packages:
 
   '@apps-in-toss/web-framework@2.10.3':
     resolution: {integrity: sha512-GX5H4kaClM4anLJ/gUYkLtC4uoRd5+fByZF0SIsOl0kvd+QG21DnK7YCE99+DDBKLWPsjiM0BYxF+M+mAbsMcA==}
+    hasBin: true
+
+  '@apps-in-toss/web-framework@2.10.4':
+    resolution: {integrity: sha512-ZHjKRcJBlHpnAC8aAzVLexf20izBbUqlMjiimFy3M4OWIglVxvgxTb8pmiWkLS6xoPkmbU3g4porNAa76U1O3w==}
     hasBin: true
 
   '@apps-in-toss/web-framework@2.2.0':
@@ -11141,6 +11204,15 @@ snapshots:
       react: 18.2.0
       react-native: 0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0)
 
+  '@apps-in-toss/analytics@2.10.4(0f776096f2723e5a843074b9e65799e3)':
+    dependencies:
+      '@granite-js/native': 1.0.20(@babel/runtime@7.29.7)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)
+      '@granite-js/react-native': 1.0.20(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(@granite-js/native@1.0.20(@babel/runtime@7.29.7)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(@swc/helpers@0.5.17)(@types/node@25.9.4)(@types/react@19.2.17)(brick-module@0.5.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(jiti@1.21.7)(postcss@8.5.16)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)(tsx@4.22.4)(typescript@6.0.3)(yaml@2.9.0)
+      '@types/react': 19.2.17
+      brick-module: 0.5.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)
+      react: 18.2.0
+      react-native: 0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0)
+
   '@apps-in-toss/analytics@2.2.0(5d5004c58b204049e3a4059ccafd86b7)':
     dependencies:
       '@granite-js/native': 1.0.10(@babel/runtime@7.29.7)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)
@@ -11423,6 +11495,8 @@ snapshots:
   '@apps-in-toss/bridge-core@2.10.2': {}
 
   '@apps-in-toss/bridge-core@2.10.3': {}
+
+  '@apps-in-toss/bridge-core@2.10.4': {}
 
   '@apps-in-toss/bridge-core@2.2.0': {}
 
@@ -12433,6 +12507,46 @@ snapshots:
       '@apps-in-toss/ait-format': 1.0.0
       '@apps-in-toss/plugins': 2.10.3(@babel/core@7.23.9)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(@react-navigation/native@7.2.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(@swc/helpers@0.5.17)(@types/node@25.9.4)(react-native-safe-area-context@5.6.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(react-native-screens@4.23.0(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)(typescript@6.0.3)
       '@apps-in-toss/web-config': 2.10.3(@types/node@25.9.4)(typescript@6.0.3)
+      '@clack/prompts': 0.10.1
+      '@granite-js/utils': 1.0.20
+      '@sentry/cli': 2.58.6
+      clipanion: 4.0.0-rc.4(typanion@3.14.0)
+      dedent: 1.7.2
+      execa: 9.3.0
+      fast-glob: 3.3.3
+      jscodeshift: 17.3.0(@babel/preset-env@7.28.5(@babel/core@7.29.7))
+      source-map: 0.8.0-beta.0
+      unzipper: 0.12.5
+      uuidv7: 1.2.1
+    transitivePeerDependencies:
+      - '@babel/core'
+      - '@babel/preset-env'
+      - '@dotlottie/react-player'
+      - '@lottiefiles/react-lottie-player'
+      - '@react-navigation/native'
+      - '@swc/helpers'
+      - '@types/node'
+      - babel-plugin-macros
+      - bare-abort-controller
+      - bare-buffer
+      - bufferutil
+      - encoding
+      - react
+      - react-native
+      - react-native-b4a
+      - react-native-safe-area-context
+      - react-native-screens
+      - react-native-windows
+      - supports-color
+      - typanion
+      - typescript
+      - utf-8-validate
+
+  '@apps-in-toss/cli@2.10.4(@babel/core@7.23.9)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(@react-navigation/native@7.2.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(@swc/helpers@0.5.17)(@types/node@25.9.4)(react-native-safe-area-context@5.6.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(react-native-screens@4.23.0(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)(typanion@3.14.0)(typescript@6.0.3)':
+    dependencies:
+      '@apps-in-toss/ait-format': 1.0.0
+      '@apps-in-toss/plugins': 2.10.4(@babel/core@7.23.9)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(@react-navigation/native@7.2.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(@swc/helpers@0.5.17)(@types/node@25.9.4)(react-native-safe-area-context@5.6.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(react-native-screens@4.23.0(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)(typescript@6.0.3)
+      '@apps-in-toss/web-config': 2.10.4(@types/node@25.9.4)(typescript@6.0.3)
       '@clack/prompts': 0.10.1
       '@granite-js/utils': 1.0.20
       '@sentry/cli': 2.58.6
@@ -14605,6 +14719,44 @@ snapshots:
       - typescript
       - utf-8-validate
 
+  '@apps-in-toss/framework@2.10.4(07e90f7a61c8e3751550500d22b3eec2)':
+    dependencies:
+      '@apps-in-toss/analytics': 2.10.4(0f776096f2723e5a843074b9e65799e3)
+      '@apps-in-toss/cli': 2.10.4(@babel/core@7.23.9)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(@react-navigation/native@7.2.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(@swc/helpers@0.5.17)(@types/node@25.9.4)(react-native-safe-area-context@5.6.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(react-native-screens@4.23.0(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)(typanion@3.14.0)(typescript@6.0.3)
+      '@apps-in-toss/native-modules': 2.10.4(@granite-js/native@1.0.20(@babel/runtime@7.29.7)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(@granite-js/react-native@1.0.20(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(@granite-js/native@1.0.20(@babel/runtime@7.29.7)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(@swc/helpers@0.5.17)(@types/node@25.9.4)(@types/react@19.2.17)(brick-module@0.5.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(jiti@1.21.7)(postcss@8.5.16)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)(tsx@4.22.4)(typescript@6.0.3)(yaml@2.9.0))(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)
+      '@apps-in-toss/plugins': 2.10.4(@babel/core@7.23.9)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(@react-navigation/native@7.2.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(@swc/helpers@0.5.17)(@types/node@25.9.4)(react-native-safe-area-context@5.6.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(react-native-screens@4.23.0(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)(typescript@6.0.3)
+      '@apps-in-toss/types': 2.10.4
+      '@apps-in-toss/user-scripts': 2.10.4
+      '@granite-js/native': 1.0.20(@babel/runtime@7.29.7)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)
+      '@granite-js/react-native': 1.0.20(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(@granite-js/native@1.0.20(@babel/runtime@7.29.7)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(@swc/helpers@0.5.17)(@types/node@25.9.4)(@types/react@19.2.17)(brick-module@0.5.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(jiti@1.21.7)(postcss@8.5.16)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)(tsx@4.22.4)(typescript@6.0.3)(yaml@2.9.0)
+      '@toss/tds-react-native': 2.0.3(366d533fd4dc14ff23f9238f24747cce)
+      '@types/react': 19.2.17
+      brick-module: 0.5.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)
+      es-hangul: 2.3.8
+      react: 18.2.0
+      react-native: 0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0)
+    transitivePeerDependencies:
+      - '@babel/core'
+      - '@babel/preset-env'
+      - '@dotlottie/react-player'
+      - '@lottiefiles/react-lottie-player'
+      - '@react-navigation/native'
+      - '@swc/helpers'
+      - '@types/node'
+      - babel-plugin-macros
+      - bare-abort-controller
+      - bare-buffer
+      - bufferutil
+      - encoding
+      - react-native-b4a
+      - react-native-safe-area-context
+      - react-native-screens
+      - react-native-windows
+      - supports-color
+      - typanion
+      - typescript
+      - utf-8-validate
+
   '@apps-in-toss/framework@2.2.0(87e0fb32579670941affc80184000fcb)':
     dependencies:
       '@apps-in-toss/analytics': 2.2.0(5d5004c58b204049e3a4059ccafd86b7)
@@ -15577,7 +15729,7 @@ snapshots:
 
   '@apps-in-toss/native-modules@1.6.0(@granite-js/native@0.1.31(@babel/runtime@7.29.7)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(@granite-js/react-native@0.1.31(@granite-js/native@0.1.31(@babel/runtime@7.29.7)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(@swc/helpers@0.5.17)(@types/node@25.9.4)(@types/react@19.2.17)(jiti@1.21.7)(postcss@8.5.16)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)(tsx@4.22.4)(typescript@6.0.3)(yaml@2.9.0))(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))':
     dependencies:
-      '@apps-in-toss/types': 1.6.0
+      '@apps-in-toss/types': 1.14.1
       '@granite-js/native': 0.1.31(@babel/runtime@7.29.7)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)
       '@granite-js/react-native': 0.1.31(@granite-js/native@0.1.31(@babel/runtime@7.29.7)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(@swc/helpers@0.5.17)(@types/node@25.9.4)(@types/react@19.2.17)(jiti@1.21.7)(postcss@8.5.16)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)(tsx@4.22.4)(typescript@6.0.3)(yaml@2.9.0)
       es-toolkit: 1.49.0
@@ -15585,7 +15737,7 @@ snapshots:
 
   '@apps-in-toss/native-modules@1.6.0(@granite-js/native@1.0.20(@babel/runtime@7.29.7)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(@granite-js/react-native@1.0.20(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(@granite-js/native@1.0.20(@babel/runtime@7.29.7)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(@swc/helpers@0.5.17)(@types/node@25.9.4)(@types/react@19.2.17)(brick-module@0.5.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(jiti@1.21.7)(postcss@8.5.16)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)(tsx@4.22.4)(typescript@6.0.3)(yaml@2.9.0))(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))':
     dependencies:
-      '@apps-in-toss/types': 1.6.0
+      '@apps-in-toss/types': 1.14.1
       '@granite-js/native': 1.0.20(@babel/runtime@7.29.7)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)
       '@granite-js/react-native': 1.0.20(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(@granite-js/native@1.0.20(@babel/runtime@7.29.7)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(@swc/helpers@0.5.17)(@types/node@25.9.4)(@types/react@19.2.17)(brick-module@0.5.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(jiti@1.21.7)(postcss@8.5.16)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)(tsx@4.22.4)(typescript@6.0.3)(yaml@2.9.0)
       es-toolkit: 1.49.0
@@ -15812,6 +15964,16 @@ snapshots:
   '@apps-in-toss/native-modules@2.10.3(@granite-js/native@1.0.20(@babel/runtime@7.29.7)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(@granite-js/react-native@1.0.20(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(@granite-js/native@1.0.20(@babel/runtime@7.29.7)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(@swc/helpers@0.5.17)(@types/node@25.9.4)(@types/react@19.2.17)(brick-module@0.5.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(jiti@1.21.7)(postcss@8.5.16)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)(tsx@4.22.4)(typescript@6.0.3)(yaml@2.9.0))(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)':
     dependencies:
       '@apps-in-toss/types': 2.10.3
+      '@granite-js/native': 1.0.20(@babel/runtime@7.29.7)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)
+      '@granite-js/react-native': 1.0.20(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(@granite-js/native@1.0.20(@babel/runtime@7.29.7)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(@swc/helpers@0.5.17)(@types/node@25.9.4)(@types/react@19.2.17)(brick-module@0.5.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(jiti@1.21.7)(postcss@8.5.16)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)(tsx@4.22.4)(typescript@6.0.3)(yaml@2.9.0)
+      brick-module: 0.5.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)
+      es-toolkit: 1.49.0
+      react: 18.2.0
+      react-native: 0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0)
+
+  '@apps-in-toss/native-modules@2.10.4(@granite-js/native@1.0.20(@babel/runtime@7.29.7)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(@granite-js/react-native@1.0.20(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(@granite-js/native@1.0.20(@babel/runtime@7.29.7)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(@swc/helpers@0.5.17)(@types/node@25.9.4)(@types/react@19.2.17)(brick-module@0.5.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(jiti@1.21.7)(postcss@8.5.16)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)(tsx@4.22.4)(typescript@6.0.3)(yaml@2.9.0))(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)':
+    dependencies:
+      '@apps-in-toss/types': 2.10.4
       '@granite-js/native': 1.0.20(@babel/runtime@7.29.7)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)
       '@granite-js/react-native': 1.0.20(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(@granite-js/native@1.0.20(@babel/runtime@7.29.7)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(@swc/helpers@0.5.17)(@types/node@25.9.4)(@types/react@19.2.17)(brick-module@0.5.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(jiti@1.21.7)(postcss@8.5.16)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)(tsx@4.22.4)(typescript@6.0.3)(yaml@2.9.0)
       brick-module: 0.5.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)
@@ -16807,6 +16969,65 @@ snapshots:
       - utf-8-validate
 
   '@apps-in-toss/plugin-compat@2.10.3(@babel/core@7.23.9)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(@react-navigation/native@7.2.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(@swc/helpers@0.5.17)(@types/node@25.9.4)(react-native-safe-area-context@5.6.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(react-native-screens@4.23.0(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)(typescript@6.0.3)':
+    dependencies:
+      '@babel/runtime': 7.29.7
+      '@granite-js/plugin-core': 1.0.20(@swc/helpers@0.5.17)(@types/node@25.9.4)(typescript@6.0.3)
+      '@granite-js/utils': 1.0.20
+      '@react-native-async-storage/async-storage-1.18.2': '@react-native-async-storage/async-storage@1.18.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))'
+      '@react-native-community/blur-4.3.2': '@react-native-community/blur@4.3.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)'
+      '@react-native/codegen-0.72.6': '@react-native/codegen@0.72.6(@babel/preset-env@7.28.5(@babel/core@7.29.7))'
+      '@react-native/js-polyfills-0.72.1': '@react-native/js-polyfills@0.72.1'
+      '@react-native/normalize-colors-0.72.0': '@react-native/normalize-colors@0.72.0'
+      '@react-navigation/elements-1.3.9': '@react-navigation/elements@1.3.9(@react-navigation/native@7.2.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(react-native-safe-area-context@5.6.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)'
+      '@react-navigation/native-6.0.13': '@react-navigation/native@6.0.13(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)'
+      '@react-navigation/native-stack-6.9.0': '@react-navigation/native-stack@6.9.0(@react-navigation/native@7.2.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(react-native-safe-area-context@5.6.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(react-native-screens@4.23.0(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)'
+      '@shopify/flash-list-1.6.2': '@shopify/flash-list@1.6.2(@babel/runtime@7.29.7)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)'
+      assert: 2.1.0
+      browserify-zlib: 0.2.0
+      buffer: 6.0.3
+      enhanced-resolve: 5.24.1
+      es-toolkit: 1.49.0
+      events: 3.3.0
+      https-browserify: 1.0.0
+      lottie-react-native-6.4.0: lottie-react-native@6.4.0(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)
+      path-browserify: 1.0.1
+      react-18.2.0: react@18.2.0
+      react-dom-18.2.0: react-dom@18.2.0(react@18.2.0)
+      react-native-0.72.6: react-native@0.72.6(@babel/core@7.23.9)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0)
+      react-native-fast-image-8.6.3: react-native-fast-image@8.6.3(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)
+      react-native-gesture-handler-2.8.0: react-native-gesture-handler@2.8.0(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)
+      react-native-pager-view-6.1.2: react-native-pager-view@6.1.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)
+      react-native-safe-area-context-4.7.4: react-native-safe-area-context@4.7.4(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)
+      react-native-screens-3.27.0: react-native-screens@3.27.0(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)
+      react-native-svg-13.14.0: react-native-svg@13.14.0(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)
+      react-native-video-6.0.0-alpha.6: react-native-video@6.0.0-alpha.6
+      react-native-webview-13.6.3: react-native-webview@13.6.3(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)
+      react18-use: 0.4.1(react@18.2.0)
+      stream-browserify: 3.0.0
+      stream-http: 3.2.0
+      url: 0.11.0
+      use-effect-event: 2.0.3(react@18.2.0)
+      util: 0.12.5
+    transitivePeerDependencies:
+      - '@babel/core'
+      - '@babel/preset-env'
+      - '@dotlottie/react-player'
+      - '@lottiefiles/react-lottie-player'
+      - '@react-navigation/native'
+      - '@swc/helpers'
+      - '@types/node'
+      - bufferutil
+      - encoding
+      - react
+      - react-native
+      - react-native-safe-area-context
+      - react-native-screens
+      - react-native-windows
+      - supports-color
+      - typescript
+      - utf-8-validate
+
+  '@apps-in-toss/plugin-compat@2.10.4(@babel/core@7.23.9)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(@react-navigation/native@7.2.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(@swc/helpers@0.5.17)(@types/node@25.9.4)(react-native-safe-area-context@5.6.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(react-native-screens@4.23.0(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)(typescript@6.0.3)':
     dependencies:
       '@babel/runtime': 7.29.7
       '@granite-js/plugin-core': 1.0.20(@swc/helpers@0.5.17)(@types/node@25.9.4)(typescript@6.0.3)
@@ -19259,6 +19480,42 @@ snapshots:
       - typescript
       - utf-8-validate
 
+  '@apps-in-toss/plugins@2.10.4(@babel/core@7.23.9)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(@react-navigation/native@7.2.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(@swc/helpers@0.5.17)(@types/node@25.9.4)(react-native-safe-area-context@5.6.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(react-native-screens@4.23.0(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)(typescript@6.0.3)':
+    dependencies:
+      '@apps-in-toss/ait-format': 1.0.0
+      '@apps-in-toss/plugin-compat': 2.10.4(@babel/core@7.23.9)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(@react-navigation/native@7.2.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(@swc/helpers@0.5.17)(@types/node@25.9.4)(react-native-safe-area-context@5.6.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(react-native-screens@4.23.0(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)(typescript@6.0.3)
+      '@granite-js/plugin-core': 1.0.20(@swc/helpers@0.5.17)(@types/node@25.9.4)(typescript@6.0.3)
+      '@granite-js/plugin-micro-frontend': 1.0.20(@swc/helpers@0.5.17)(@types/node@25.9.4)(typescript@6.0.3)
+      '@granite-js/plugin-sentry': 1.0.20(@swc/helpers@0.5.17)(@types/node@25.9.4)(typescript@6.0.3)
+      '@granite-js/utils': 1.0.20
+      archiver: 7.0.1
+      connect: 3.7.0
+      esbuild: 0.25.5
+      execa: 9.3.0
+      picocolors: 1.1.1
+      uuidv7: 1.2.1
+    transitivePeerDependencies:
+      - '@babel/core'
+      - '@babel/preset-env'
+      - '@dotlottie/react-player'
+      - '@lottiefiles/react-lottie-player'
+      - '@react-navigation/native'
+      - '@swc/helpers'
+      - '@types/node'
+      - bare-abort-controller
+      - bare-buffer
+      - bufferutil
+      - encoding
+      - react
+      - react-native
+      - react-native-b4a
+      - react-native-safe-area-context
+      - react-native-screens
+      - react-native-windows
+      - supports-color
+      - typescript
+      - utf-8-validate
+
   '@apps-in-toss/plugins@2.2.0(@babel/core@7.23.9)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(@react-navigation/native@7.2.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(@swc/helpers@0.5.17)(@types/node@25.9.4)(react-native-safe-area-context@5.6.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(react-native-screens@4.23.0(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)(typescript@6.0.3)':
     dependencies:
       '@apps-in-toss/ait-format': 1.0.0
@@ -20163,6 +20420,8 @@ snapshots:
 
   '@apps-in-toss/types@2.10.3': {}
 
+  '@apps-in-toss/types@2.10.4': {}
+
   '@apps-in-toss/types@2.2.0': {}
 
   '@apps-in-toss/types@2.3.0': {}
@@ -20364,6 +20623,10 @@ snapshots:
   '@apps-in-toss/web-analytics@2.10.3(@apps-in-toss/web-bridge@2.10.3)':
     dependencies:
       '@apps-in-toss/web-bridge': 2.10.3
+
+  '@apps-in-toss/web-analytics@2.10.4(@apps-in-toss/web-bridge@2.10.4)':
+    dependencies:
+      '@apps-in-toss/web-bridge': 2.10.4
 
   '@apps-in-toss/web-analytics@2.2.0(@apps-in-toss/web-bridge@2.2.0)':
     dependencies:
@@ -20623,6 +20886,10 @@ snapshots:
   '@apps-in-toss/web-bridge@2.10.3':
     dependencies:
       '@apps-in-toss/types': 2.10.3
+
+  '@apps-in-toss/web-bridge@2.10.4':
+    dependencies:
+      '@apps-in-toss/types': 2.10.4
 
   '@apps-in-toss/web-bridge@2.2.0':
     dependencies:
@@ -20886,6 +21153,19 @@ snapshots:
       - typescript
 
   '@apps-in-toss/web-config@2.10.3(@types/node@25.9.4)(typescript@6.0.3)':
+    dependencies:
+      '@babel/core': 7.23.9
+      '@babel/traverse': 7.29.7
+      '@babel/types': 7.29.7
+      '@granite-js/utils': 1.0.20
+      cosmiconfig: 9.0.2(typescript@6.0.3)
+      cosmiconfig-typescript-loader: 5.1.0(@types/node@25.9.4)(cosmiconfig@9.0.2(typescript@6.0.3))(typescript@6.0.3)
+    transitivePeerDependencies:
+      - '@types/node'
+      - supports-color
+      - typescript
+
+  '@apps-in-toss/web-config@2.10.4(@types/node@25.9.4)(typescript@6.0.3)':
     dependencies:
       '@babel/core': 7.23.9
       '@babel/traverse': 7.29.7
@@ -22975,6 +23255,59 @@ snapshots:
       '@apps-in-toss/web-analytics': 2.10.3(@apps-in-toss/web-bridge@2.10.3)
       '@apps-in-toss/web-bridge': 2.10.3
       '@apps-in-toss/web-config': 2.10.3(@types/node@25.9.4)(typescript@6.0.3)
+      '@babel/core': 7.23.9
+      '@granite-js/cli': 1.0.20(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(@swc/helpers@0.5.17)(@types/node@25.9.4)(jiti@1.21.7)(postcss@8.5.16)(tsx@4.22.4)(typescript@6.0.3)(yaml@2.9.0)
+      '@granite-js/mpack': 1.0.20(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(@types/node@25.9.4)(jiti@1.21.7)(postcss@8.5.16)(tsx@4.22.4)(typescript@6.0.3)(yaml@2.9.0)
+      '@granite-js/native': 1.0.20(@babel/runtime@7.29.7)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)
+      '@granite-js/plugin-core': 1.0.20(@swc/helpers@0.5.17)(@types/node@25.9.4)(typescript@6.0.3)
+      '@granite-js/react-native': 1.0.20(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(@granite-js/native@1.0.20(@babel/runtime@7.29.7)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(@swc/helpers@0.5.17)(@types/node@25.9.4)(@types/react@19.2.17)(brick-module@0.5.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(jiti@1.21.7)(postcss@8.5.16)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)(tsx@4.22.4)(typescript@6.0.3)(yaml@2.9.0)
+      '@granite-js/utils': 1.0.20
+      brick-module: 0.5.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)
+    transitivePeerDependencies:
+      - '@babel/preset-env'
+      - '@babel/runtime'
+      - '@dotlottie/react-player'
+      - '@emnapi/core'
+      - '@emnapi/runtime'
+      - '@lottiefiles/react-lottie-player'
+      - '@microsoft/api-extractor'
+      - '@react-native-masked-view/masked-view'
+      - '@react-navigation/native'
+      - '@swc/helpers'
+      - '@toss/tds-react-native'
+      - '@types/node'
+      - '@types/react'
+      - babel-plugin-macros
+      - bare-abort-controller
+      - bare-buffer
+      - bufferutil
+      - encoding
+      - jiti
+      - node-notifier
+      - postcss
+      - react
+      - react-native
+      - react-native-b4a
+      - react-native-safe-area-context
+      - react-native-screens
+      - react-native-windows
+      - supports-color
+      - ts-node
+      - tsx
+      - typanion
+      - typescript
+      - utf-8-validate
+      - yaml
+
+  '@apps-in-toss/web-framework@2.10.4(@babel/preset-env@7.28.5(@babel/core@7.29.7))(@babel/runtime@7.29.7)(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(@react-navigation/native@7.2.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(@swc/helpers@0.5.17)(@toss/tds-react-native@2.0.3(366d533fd4dc14ff23f9238f24747cce))(@types/node@25.9.4)(@types/react@19.2.17)(jiti@1.21.7)(postcss@8.5.16)(react-native-safe-area-context@5.6.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(react-native-screens@4.23.0(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)(tsx@4.22.4)(typanion@3.14.0)(typescript@6.0.3)(yaml@2.9.0)':
+    dependencies:
+      '@apps-in-toss/bridge-core': 2.10.4
+      '@apps-in-toss/cli': 2.10.4(@babel/core@7.23.9)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(@react-navigation/native@7.2.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(@swc/helpers@0.5.17)(@types/node@25.9.4)(react-native-safe-area-context@5.6.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(react-native-screens@4.23.0(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)(typanion@3.14.0)(typescript@6.0.3)
+      '@apps-in-toss/framework': 2.10.4(07e90f7a61c8e3751550500d22b3eec2)
+      '@apps-in-toss/plugins': 2.10.4(@babel/core@7.23.9)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(@react-navigation/native@7.2.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(@swc/helpers@0.5.17)(@types/node@25.9.4)(react-native-safe-area-context@5.6.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(react-native-screens@4.23.0(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)(typescript@6.0.3)
+      '@apps-in-toss/web-analytics': 2.10.4(@apps-in-toss/web-bridge@2.10.4)
+      '@apps-in-toss/web-bridge': 2.10.4
+      '@apps-in-toss/web-config': 2.10.4(@types/node@25.9.4)(typescript@6.0.3)
       '@babel/core': 7.23.9
       '@granite-js/cli': 1.0.20(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(@swc/helpers@0.5.17)(@types/node@25.9.4)(jiti@1.21.7)(postcss@8.5.16)(tsx@4.22.4)(typescript@6.0.3)(yaml@2.9.0)
       '@granite-js/mpack': 1.0.20(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(@types/node@25.9.4)(jiti@1.21.7)(postcss@8.5.16)(tsx@4.22.4)(typescript@6.0.3)(yaml@2.9.0)

@@ -1427,7 +1427,12 @@ namespace AppsInToss.Editor.ErrorTracker
             // "[Package Manager Window]" + ("Error adding/removing packages" OR "Error adding package:") 합성으로 일반 PM 메시지와 충돌 방지.
             // 단, "[AIT" prefix로 시작하는 SDK 자체 로그는 절대 필터링하지 않으므로 별도 가드(GUID/meta 패턴과 동일 컨벤션).
             // Sentry APPS-IN-TOSS-UNITY-SDK-QQ, APPS-IN-TOSS-UNITY-SDK-7Y, APPS-IN-TOSS-UNITY-SDK-12Q.
-            if (message.IndexOf("[Package Manager Window]", StringComparison.Ordinal) >= 0
+            // SDK 자체 로그("[AIT" prefix)는 보호한다 — SDK는 Unity PM 창 출력을 "[AIT]"로 감싸지 않으므로
+            // "[AIT" 로 시작하는 메시지는 이 외부 노이즈 패턴의 대상이 아니다. 이 선행 가드가 없으면
+            // "[AIT] [Package Manager Window] Error adding package: ..." 같은 SDK 로그가 AitKeywords 가드보다
+            // 먼저 드롭된다(#886 package-manager-noise 회귀). 회귀 테스트: ..._WithAitPrefix_NeverFiltered.
+            if (!message.StartsWith("[AIT", StringComparison.Ordinal)
+                && message.IndexOf("[Package Manager Window]", StringComparison.Ordinal) >= 0
                 && (message.IndexOf("Error adding/removing packages", StringComparison.Ordinal) >= 0
                     || message.IndexOf("Error adding package:", StringComparison.Ordinal) >= 0)
                 && !message.StartsWith("[AIT", StringComparison.Ordinal))

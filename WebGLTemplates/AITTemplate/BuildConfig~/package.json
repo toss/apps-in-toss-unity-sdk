@@ -1,0 +1,21 @@
+{
+  "name": "unity-miniapp",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "ait dev",
+    "build": "ait build || granite build",
+    "start": "ait dev",
+    "deploy": "ait deploy"
+  },
+  "dependencies": {
+    "@apps-in-toss/bridge-core": "2.10.0",
+    "@apps-in-toss/web-analytics": "2.10.2",
+    "@apps-in-toss/web-framework": "2.10.2"
+  },
+  "devDependencies": {
+    "vite": "8.0.16",
+    "typescript": "6.0.3"
+  },
+  "packageManager": "pnpm@11.6.0"
+}

@@ -259,12 +259,22 @@ namespace AppsInToss.Editor.Package
             // 통계 훅(perf CI/검증용, 운영 무영향).
             window.__aitCacheStats = { hits: [], misses: [], puts: [], errors: [] };
 
-            // 인터셉트 조건: 동일 오리진 && /Build/ 경로. (GET 여부는 호출부에서 별도 판정.)
+            // ALLOWLIST 절대 URL 집합(부팅 sweep 과 isCacheable 이 공유). loader.js 등 ALLOWLIST 에
+            // 없는 Build/* 경로는(예: early-fetch 가 HTTP 캐시 워밍 목적으로 bare fetch 하는 loader.js)
+            // 캐시 대상이 아니므로 이 집합으로 걸러낸다(캐시 버킷에 put 되어 원 목적을 해치지 않도록).
+            var ALLOW_ABS = {};
+            for (var _ai = 0; _ai < ALLOWLIST.length; _ai++) {
+                try { ALLOW_ABS[new URL(ALLOWLIST[_ai], location.href).href] = true; } catch (e) {}
+            }
+
+            // 인터셉트 조건: 동일 오리진 && /Build/ 경로 && ALLOWLIST 멤버(현재 빌드의 data/framework/wasm).
+            // /Build/ 접두사만으로는 loader.js 같은 '캐시 대상 아님' 경로까지 오판하므로 ALLOWLIST 로 좁힌다.
             function isCacheable(url) {
                 try {
                     var u = new URL(url, location.href);
                     if (u.origin !== location.origin) { return false; }
-                    return u.pathname.indexOf('/Build/') >= 0;
+                    if (u.pathname.indexOf('/Build/') < 0) { return false; }
+                    return !!ALLOW_ABS[u.href];
                 } catch (e) { return false; }
             }
             // 캐시 키: 절대 URL 문자열(콘텐츠 해시 파일명 전제이므로 키=불변 콘텐츠).
@@ -296,6 +306,11 @@ namespace AppsInToss.Editor.Package
             //       모든 연산은 실패 시 조용히 강등(match/keys→빈결과, delete→resolve, put→reject 후 상위 catch 흡수).
             var IDB_STORE = 'assets';
             var IDB_VERSION = 1;   // 스키마 버전(구조 변경 시 bump → onupgradeneeded 에서 store 재생성)
+            // indexedDB.open() 은 onsuccess/onerror/onblocked 중 아무 것도 발동하지 않고 pending 으로
+            // 남을 수 있다(구형 WebKit/사파리 프라이빗 브라우징 등 역사적 보고 사례, 최초 방문 디스크
+            // 초기화 지연 등). 네이티브 리졸버 분기(NATIVE_TIMEOUT_MS)와 동일하게 상한을 둔다 — 그래야
+            // getCache() 를 기다리는 cacheFirst() 가 영구 대기하지 않고 네트워크로 폴백한다(리뷰 후속 수정).
+            var IDB_OPEN_TIMEOUT_MS = 3000;
 
             function openIdbBackend(dbName) {
                 return new Promise(function (resolve, reject) {
@@ -340,15 +355,26 @@ namespace AppsInToss.Editor.Package
                 //      이미 해제한 body 를 CE 헤더 없이 저장하고, 없으면 그대로 저장(loader.js 정합 보장).
                 //      합성 Response(ArrayBuffer, {headers:{content-encoding}}) 는 CE 헤더가 inert 라 loader 오판
                 //      위험이 있어, iOS-IDB 환경의 유일 populator 인 이 경로에서만 스트립한다(caches 경로는 비대칭 유지).
+                //      CE 가 있을 때는 storeDecodeFree() 와 동일하게 content-type 만 남기고 나머지 헤더(특히
+                //      압축 상태 기준의 원본 content-length)는 버린다 — 해제된 buf.byteLength 와 불일치하는
+                //      content-length 를 그대로 들고 가면 이를 신뢰하는 소비자(다운로드 진행률 계산 등)가
+                //      재구성된 Response 를 보고 오동작할 수 있다(리뷰 후속 수정).
                 function idbPut(url, resp) {
+                    var ce;
+                    try { ce = resp.headers.get('content-encoding'); } catch (e) { ce = null; }
                     return resp.arrayBuffer().then(function (buf) {
-                        var headers = {};
-                        try {
-                            resp.headers.forEach(function (v, k) {
-                                if (k.toLowerCase() !== 'content-encoding') { headers[k] = v; }
-                            });
-                        } catch (e) {}
-                        if (!headers['content-type']) { headers['content-type'] = 'application/octet-stream'; }
+                        var headers;
+                        if (ce) {
+                            var ct = 'application/octet-stream';
+                            try { ct = resp.headers.get('content-type') || ct; } catch (e) {}
+                            headers = { 'content-type': ct };
+                        } else {
+                            headers = {};
+                            try {
+                                resp.headers.forEach(function (v, k) { headers[k] = v; });
+                            } catch (e) {}
+                            if (!headers['content-type']) { headers['content-type'] = 'application/octet-stream'; }
+                        }
                         var rec = {
                             url: url,
                             body: buf,
@@ -412,9 +438,22 @@ namespace AppsInToss.Editor.Package
             var cachePromise = null;
             function getCache() {
                 if (!cachePromise) {
-                    cachePromise = (BACKEND_KIND === 'caches')
-                        ? caches.open(CACHE_NAME)          // 네이티브 Cache = cache-like 그대로
-                        : openIdbBackend(CACHE_NAME);       // IDB 어댑터로 resolve
+                    if (BACKEND_KIND === 'caches') {
+                        cachePromise = caches.open(CACHE_NAME); // 네이티브 Cache = cache-like 그대로
+                    } else {
+                        // IDB open 은 행(hang) 가능성이 있으므로 타임아웃으로 상한을 둔다(IDB_OPEN_TIMEOUT_MS).
+                        // 타임아웃/실패 시 cachePromise 는 rejected 상태로 메모이즈되며, cacheFirst()/sweep 의
+                        // 기존 .catch 경로가 그대로 네트워크 폴백을 수행한다(재시도 없음: 반복 open 이 더 위험).
+                        var opener = openIdbBackend(CACHE_NAME);
+                        cachePromise = Promise.race([
+                            opener,
+                            new Promise(function (_resolve, reject) {
+                                setTimeout(function () { reject(new Error('idb open timeout')); }, IDB_OPEN_TIMEOUT_MS);
+                            })
+                        ]);
+                        // race 패자로 남아 뒤늦게 reject 되는 opener 가 unhandled rejection 을 띄우지 않도록 흡수.
+                        opener.catch(function () {});
+                    }
                 }
                 return cachePromise;
             }
@@ -520,7 +559,8 @@ namespace AppsInToss.Editor.Package
         /// <summary>
         /// 부팅 무효화(allowlist sweep) + 검증용 dump 헬퍼 + 최상위 catch + IIFE/&lt;script&gt; 종료.
         /// sweep/dump 는 getCache() 어댑터의 keys()/delete() 만 사용하므로 백엔드(caches/IndexedDB)와
-        /// 무관하게 원본과 문자 그대로 동일한 코드로 동작합니다.
+        /// 무관하게 동일 코드로 동작합니다. allowlist 절대 URL 집합(ALLOW_ABS)은 isCacheable() 과
+        /// 공유하며 BakedTailJs 에서 1회만 계산됩니다(리뷰 후속 수정: 중복 계산 제거).
         /// </summary>
         private const string SweepDumpCloseJs = @"
 
@@ -530,15 +570,12 @@ namespace AppsInToss.Editor.Package
             // 다른 앱의 Build/* 엔트리를 allowlist 외로 오인해 삭제합니다(키 충돌은 없으나 무효화 상호 간섭).
             // 오리진을 공유하는 앱이 둘 이상이면 앱별로 고유한 캐시명(=CACHE_NAME)을 지정하세요(appName 기반 자동 파생).
             try {
-                var allowAbs = {};
-                for (var i = 0; i < ALLOWLIST.length; i++) {
-                    try { allowAbs[new URL(ALLOWLIST[i], location.href).href] = true; } catch (e) {}
-                }
+                // ALLOW_ABS 는 isCacheable() 과 동일한 값을 공유합니다(BakedTailJs 에서 1회 계산).
                 getCache().then(function (c) {
                     return c.keys().then(function (reqs) {
                         for (var j = 0; j < reqs.length; j++) {
                             var k = reqs[j].url;
-                            if (!allowAbs[k]) {
+                            if (!ALLOW_ABS[k]) {
                                 c.delete(reqs[j]).catch(function () {});
                             }
                         }

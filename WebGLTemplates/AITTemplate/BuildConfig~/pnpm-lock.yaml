@@ -14,8 +14,8 @@ importers:
   .:
     dependencies:
       '@apps-in-toss/bridge-core':
-        specifier: 2.10.0
-        version: 2.10.0
+        specifier: 2.10.4
+        version: 2.10.4
       '@apps-in-toss/web-analytics':
         specifier: 2.10.4
         version: 2.10.4(@apps-in-toss/web-bridge@2.10.4)
@@ -52,9 +52,6 @@ packages:
       brick-module: '*'
       react: '*'
       react-native: '*'
-
-  '@apps-in-toss/bridge-core@2.10.0':
-    resolution: {integrity: sha512-pHRdeneS60a+ChlMOig99pRAcouwRB4lL1pld2FXFXiiRRmLbDKpjQlKUiqQ/s/Kl0dv2ayewhTG0VrQTnFcLQ==}
 
   '@apps-in-toss/bridge-core@2.10.4':
     resolution: {integrity: sha512-5cnRcgeO3MRHuorXx/pYsXlhGNEio/x1bnTwBQGOeoZoKpzpH/L73P3RXE0puOHzaQ3JfD4b8q/lAm6etIX3kg==}
@@ -6339,8 +6336,6 @@ snapshots:
       brick-module: 0.5.2(react-native@0.72.6(@babel/core@7.23.9)(@babel/preset-env@7.28.5(@babel/core@7.23.9))(react@18.2.0))(react@18.2.0)
       react: 18.2.0
       react-native: 0.72.6(@babel/core@7.23.9)(@babel/preset-env@7.28.5(@babel/core@7.23.9))(react@18.2.0)
-
-  '@apps-in-toss/bridge-core@2.10.0': {}
 
   '@apps-in-toss/bridge-core@2.10.4': {}
 

@@ -374,4 +374,58 @@ public class AITPageCacheEmitterTests
         Assert.Greater(signalIdx, guardIdx,
             "네이티브 신호는 미지원 가드 이후에 정의되어야 한다(미지원 환경 미정의 보장)");
     }
+
+    // === IndexedDB 폴백 백엔드 (CacheStorage 부재 환경 도달) ===
+
+    [Test]
+    public void Enabled_ContainsIndexedDbFallbackBackend()
+    {
+        config.pageCache = 1;
+        string result = AITPageCacheEmitter.GenerateInterceptorScript(config, DataFile, FrameworkFile, WasmFile);
+
+        StringAssert.Contains("indexedDB.open", result, "IndexedDB open 호출이 있어야 한다");
+        StringAssert.Contains("createObjectStore", result, "objectStore 생성 로직이 있어야 한다");
+        StringAssert.Contains("openKeyCursor", result, "keys() 는 openKeyCursor 로 구현되어야 한다");
+    }
+
+    [Test]
+    public void Enabled_PrefersCachesOverIdb()
+    {
+        config.pageCache = 1;
+        string result = AITPageCacheEmitter.GenerateInterceptorScript(config, DataFile, FrameworkFile, WasmFile);
+
+        StringAssert.Contains("BACKEND_KIND", result, "백엔드 선택 변수가 있어야 한다");
+        StringAssert.Contains("hasCaches ?", result, "CacheStorage 를 우선 선택하는 조건식이 있어야 한다");
+    }
+
+    [Test]
+    public void Enabled_SecureContextGateRetainedButCachesNotHardRequired()
+    {
+        config.pageCache = 1;
+        string result = AITPageCacheEmitter.GenerateInterceptorScript(config, DataFile, FrameworkFile, WasmFile);
+
+        StringAssert.Contains("isSecureContext", result, "보안 컨텍스트 가드는 유지되어야 한다");
+        StringAssert.Contains("'caches' in window", result, "CacheStorage feature-detect 는 유지되어야 한다");
+        StringAssert.Contains("indexedDB", result, "IndexedDB 폴백 경로가 존재해야 한다(CacheStorage 하드 요구 제거)");
+    }
+
+    [Test]
+    public void Enabled_IdbStoresArrayBufferBodyDecodeFree()
+    {
+        config.pageCache = 1;
+        string result = AITPageCacheEmitter.GenerateInterceptorScript(config, DataFile, FrameworkFile, WasmFile);
+
+        StringAssert.Contains("arrayBuffer(", result, "IDB put 은 arrayBuffer() 로 해제된 bytes 를 읽어야 한다");
+        StringAssert.Contains("content-encoding", result, "저장 시 content-encoding 헤더를 제외해야 한다(decode-free 계약)");
+        StringAssert.Contains("storedAt", result, "IDB 레코드에 진단용 storedAt 타임스탬프가 있어야 한다");
+    }
+
+    [Test]
+    public void Enabled_IdbSchemaVersionConstant()
+    {
+        config.pageCache = 1;
+        string result = AITPageCacheEmitter.GenerateInterceptorScript(config, DataFile, FrameworkFile, WasmFile);
+
+        StringAssert.Contains("IDB_VERSION", result, "IndexedDB 스키마 버전 상수가 있어야 한다(콘텐츠 sweep 과 독립된 축)");
+    }
 }

@@ -205,6 +205,21 @@ namespace AppsInToss.Editor.Package
                 }
             }
 
+            // Dev 전용 디버그 콘솔(vConsole) 산출물 정리:
+            // enableDebugConsole=false(프로덕션)면 index.html 부트스트랩이 조기 반환해
+            // devconsole 스크립트를 로드하지 않지만, CopyDirectory는 플래그와 무관하게 복사한다.
+            // public 저장소 산출 위생을 위해 프로덕션 빌드에서는 Runtime/devconsole/ 를 제거한다
+            // (%AIT_ENABLE_DEBUG_CONSOLE% 치환과 동일하게 profile.enableDebugConsole을 소스로 사용).
+            if (!profile.enableDebugConsole)
+            {
+                string devConsoleDest = Path.Combine(runtimeDest, "devconsole");
+                if (Directory.Exists(devConsoleDest))
+                {
+                    Directory.Delete(devConsoleDest, true);
+                    Debug.Log("[AIT] ✓ 프로덕션 빌드: Runtime/devconsole/ 제거 (디버그 콘솔 비활성화)");
+                }
+            }
+
             // StreamingAssets 폴더 → public/StreamingAssets (있는 경우)
             string streamingAssetsSrc = Path.Combine(webglPath, "StreamingAssets");
             string streamingAssetsDest = Path.Combine(publicPath, "StreamingAssets");

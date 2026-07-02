@@ -21,8 +21,11 @@ namespace AppsInToss.Editor.Package
         /// Unity WebGL 빌드를 public 폴더로 복사합니다.
         /// </summary>
         /// <returns>성공 시 SUCCEED, 실패 시 해당 에러 코드</returns>
-        internal static AITConvertCore.AITExportError CopyWebGLToPublic(string webglPath, string buildProjectPath, AITBuildProfile profile = null)
+        internal static AITConvertCore.AITExportError CopyWebGLToPublic(string webglPath, string buildProjectPath, out string inlinePrefetchJson, AITBuildProfile profile = null)
         {
+            // prefetch 인라인 카탈로그는 성공 경로(WriteManifest 산출)에서만 채워짐. 그 외 경로는 null 유지.
+            inlinePrefetchJson = null;
+
             // 프로필이 없으면 기본 프로필 사용
             if (profile == null)
             {
@@ -300,14 +303,20 @@ namespace AppsInToss.Editor.Package
                 .Replace("%UNITY_WEBGL_SYMBOLS_FILENAME%", symbolsFile)
                 // AIT 커스텀 플레이스홀더
                 .Replace("%AIT_IS_PRODUCTION%", isProduction)
+                // 번들 마킹 — 이 SDK 변형(perf 채널 등) 식별자를 in-page JS(window.AITLoading.buildVariant)에 주입
+                .Replace("%AIT_BUILD_VARIANT%", AITBuildVariant.Value)
                 .Replace("%AIT_ENABLE_DEBUG_CONSOLE%", enableDebugConsole)
                 .Replace("%AIT_FIRST_INTERACTIVE_LOG%", EffectiveFirstInteractiveLog(config) ? "true" : "false")
                 .Replace("%AIT_DEVICE_PIXEL_RATIO%", config.devicePixelRatio.ToString())
                 .Replace("%AIT_ICON_URL%", config.iconUrl ?? "")
                 .Replace("%AIT_DISPLAY_NAME%", config.displayName ?? "")
                 .Replace("%AIT_PRIMARY_COLOR%", config.primaryColor ?? "#3182f6")
-                // Early Fetch 스크립트 (로딩 성능 개선)
-                .Replace("%AIT_EARLY_FETCH_SCRIPT%", GenerateEarlyFetchScript(dataFile, wasmFile));
+                // 페이지 캐시 인터셉터 (재방문 서빙, opt-in). index.html 에서 Early Fetch 보다 '앞'에 위치해야
+                // priorFetch=native 캡처 → 캐시 히트가 Early Fetch 소진과 무관하게 단락됨.
+                // 각 토큰은 독립 치환이므로 치환 순서는 출력 위치를 바꾸지 않음(물리 위치는 index.html 이 보장).
+                .Replace("%AIT_PAGE_CACHE_SCRIPT%", AITPageCacheEmitter.GenerateInterceptorScript(config, dataFile, frameworkFile, wasmFile))
+                // Early Fetch 스크립트 (로딩 성능 개선). framework/loader 도 함께 조기 요청해 HTTP 캐시를 워밍한다.
+                .Replace("%AIT_EARLY_FETCH_SCRIPT%", GenerateEarlyFetchScript(dataFile, frameworkFile, wasmFile, loaderFile));
 
             // 로딩 화면 삽입 (%AIT_LOADING_SCREEN% 플레이스홀더)
             string loadingContent = "";
@@ -351,14 +360,54 @@ namespace AppsInToss.Editor.Package
             if (File.Exists(bridgeSrc))
             {
                 string bridgeContent = File.ReadAllText(bridgeSrc);
-                bridgeContent = bridgeContent.Replace("%AIT_IS_PRODUCTION%", isProduction);
+                bridgeContent = bridgeContent
+                    .Replace("%AIT_IS_PRODUCTION%", isProduction)
+                    // 번들 마킹 — window.AITBuildVariant 평면 글로벌 주입
+                    .Replace("%AIT_BUILD_VARIANT%", AITBuildVariant.Value);
                 File.WriteAllText(bridgeSrc, bridgeContent, System.Text.Encoding.UTF8);
                 Debug.Log($"[AIT] appsintoss-unity-bridge.js Mock 브릿지 모드: {(profile.enableMockBridge ? "활성화" : "비활성화")}");
             }
 
+            // Build 파일 복사 및 index.html 치환 완료 후 warm manifest 를 산출합니다.
+            // [destPath = publicPath] 명세 원문은 'index.html 이 놓이는 web 루트(buildProjectPath)' 라 기술하나,
+            // Build/* 파일은 publicPath(buildProjectPath/public/)에 복사되므로 wireBytes 계산이
+            // buildProjectPath 기준이면 FileInfo.Length 가 실패합니다. publicPath 를 전달해야
+            // Path.Combine(destPath, "Build", file) 이 실제 파일 위치와 일치합니다.
+            // Vite 가 public/ 을 정적 루트로 서빙하므로 호스트는 /ait-warm-manifest.json 으로 취득합니다.
+            inlinePrefetchJson = AITWarmManifestEmitter.WriteManifest(config, publicPath, loaderFile, dataFile, frameworkFile, wasmFile, symbolsFile);
+            AITWarmPageEmitter.WritePage(config, publicPath);
+
             Debug.Log("[AIT] Unity WebGL 빌드 복사 완료");
             Debug.Log("[AIT]   - index.html → 프로젝트 루트");
             Debug.Log("[AIT]   - Build, TemplateData, Runtime → public/");
+
+            // 네이티브 에셋 소스 레버 실효값 빌드 요약 + 침묵 열화(silent degradation) 경고.
+            // pageCache 가 ON 일 때만 인터셉터에 신호가 주입되므로 AND 게이트.
+            bool pageCacheEffective = config.pageCache < 0
+                ? AITDefaultSettings.GetDefaultPageCache()
+                : config.pageCache == 1;
+            bool nativeSourceEffective = config.nativeAssetSource < 0
+                ? AITDefaultSettings.GetDefaultNativeAssetSource()
+                : config.nativeAssetSource == 1;
+            if (pageCacheEffective && nativeSourceEffective)
+            {
+                Debug.Log("[AIT]   - 네이티브 에셋 소스 우선: 활성 (호스트 window.__aitResolveAsset 주입 시 native→CacheStorage→network)");
+
+                // 네이티브가 프리페치 대상 목록을 얻으려면 ait-warm-manifest.json 이 필요하다.
+                // warmManifest 가 OFF 면 매니페스트가 없어 네이티브 우선 경로가 사실상 무력화(폴백)된다 → 경고.
+                bool warmManifestEffective = config.warmManifest < 0
+                    ? AITDefaultSettings.GetDefaultWarmManifest()
+                    : config.warmManifest == 1;
+                if (!warmManifestEffective)
+                {
+                    Debug.LogWarning(
+                        "[AIT] 네이티브 에셋 소스가 활성이지만 Warm Manifest 가 비활성입니다. " +
+                        "호스트 네이티브가 프리페치 대상 목록(ait-warm-manifest.json)을 얻을 수 없어 " +
+                        "네이티브 우선 경로가 사실상 동작하지 않고 CacheStorage/network 로 폴백됩니다. " +
+                        "Warm Manifest 를 활성화하세요."
+                    );
+                }
+            }
 
             return AITConvertCore.AITExportError.SUCCEED;
         }
@@ -458,12 +507,26 @@ namespace AppsInToss.Editor.Package
         ///
         /// 해결: head에서 JS fetch()를 즉시 시작하고, window.fetch를 일회성으로 인터셉트하여
         /// Unity loader가 같은 URL을 요청할 때 이미 받은 Response를 반환합니다.
+        ///
+        /// 워밍 대상 확장(data/wasm → +framework/+loader):
+        ///  · framework.js: Unity loader 가 window.fetch() 로 요청하므로 earlyFetchMap 에서 정상 소진됩니다.
+        ///    콜드 방문에서는 네트워크 fetch + (활성 시) page-cache put, 재방문에서는 page-cache 히트가
+        ///    early-fetch 의 bare fetch 호출을 경유해 그대로 단락됩니다(page-cache 래퍼 우선순위 불변).
+        ///  · loader.js: index.html 이 &lt;script src&gt; 로 로드하므로 window.fetch 를 통해 재요청되지 않아
+        ///    earlyFetchMap 엔트리가 소진되지 않습니다(브라우저 HTTP 캐시 워밍이 목적). 이로 인한 두 가지
+        ///    양성(benign) 부작용: (1) earlyFetchMap 이 완전히 비지 않아 window.fetch 가 originalFetch 로
+        ///    복원되지 않고 early-fetch 래퍼가 상주(fetch 호출당 프로퍼티 조회 1회 오버헤드, 무시 가능),
+        ///    (2) early-fetch 의 bare fetch(loader)가 page-cache 래퍼를 경유해 loader 가 일시적으로
+        ///    page-cache 에 put 될 수 있으나 부팅 sweep 이 allowlist(loader 제외) 기준으로 즉시 삭제합니다.
+        ///    둘 다 측정 중립이며 게임 동작/allowlist 계약을 바꾸지 않습니다.
         /// </summary>
-        private static string GenerateEarlyFetchScript(string dataFile, string wasmFile)
+        private static string GenerateEarlyFetchScript(string dataFile, string frameworkFile, string wasmFile, string loaderFile)
         {
             var urls = new List<string>();
             if (!string.IsNullOrEmpty(dataFile)) urls.Add($"Build/{dataFile}");
             if (!string.IsNullOrEmpty(wasmFile)) urls.Add($"Build/{wasmFile}");
+            if (!string.IsNullOrEmpty(frameworkFile)) urls.Add($"Build/{frameworkFile}");
+            if (!string.IsNullOrEmpty(loaderFile)) urls.Add($"Build/{loaderFile}");
 
             if (urls.Count == 0) return "";
 

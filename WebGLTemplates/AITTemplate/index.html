@@ -8,6 +8,9 @@
     <link rel="stylesheet" href="TemplateData/style.css">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
 
+    <!-- AIT Page Cache (CacheStorage 인터셉터, SDK Auto-generated) -->
+    %AIT_PAGE_CACHE_SCRIPT%
+
     <!-- Unity Resource Early Fetch (SDK Auto-generated) -->
     %AIT_EARLY_FETCH_SCRIPT%
 
@@ -278,6 +281,10 @@
     <!-- AITLoading: 커스텀 로딩 화면 API -->
     <script>
         window.AITLoading = {
+            // 번들 마킹 — 이 SDK 변형(perf 채널 등)으로 생성된 번들을 클라이언트/RUM 에서 식별.
+            // 빌드 시 %AIT_BUILD_VARIANT% 가 치환됨(미치환 시 빈 문자열 → main 산출 번들).
+            buildVariant: '%AIT_BUILD_VARIANT%',
+
             // 앱 정보 (초기화 전 기본값)
             appInfo: {
                 iconUrl: '',

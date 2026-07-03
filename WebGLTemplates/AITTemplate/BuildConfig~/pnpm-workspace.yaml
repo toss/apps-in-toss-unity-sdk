@@ -1,0 +1,28 @@
+# 공급망 보호(minimumReleaseAge)에서 @apps-in-toss/* 패키지를 예외 처리한다.
+#
+# pnpm은 갓 publish된 버전을 일정 시간(minimumReleaseAge)만큼 격리해 공급망 공격을 완화한다.
+# pnpm v11부터 이 값의 기본이 1440분(1일)이라, SDK가 막 배포한 @apps-in-toss/* 패키지가
+# quarantine에 걸려 미니앱 빌드가 지연될 수 있다. 우리 패키지는 신뢰 대상이므로 예외 처리해
+# 유저(게임 개발자)가 불편을 겪지 않게 한다.
+#
+# 주의: pnpm은 이 설정을 pnpm-workspace.yaml에서만 읽는다 (.npmrc / package.json#pnpm 불가).
+# 이 파일은 미니앱 빌드 디렉토리로 복사되며, 사용자 프로젝트에 동명 파일이 있으면 그쪽이 우선한다.
+minimumReleaseAgeExclude:
+  - '@apps-in-toss/*'
+
+# transitive 의존성 보안/호환 고정.
+# pnpm v11부터 package.json의 "pnpm" 필드(overrides 등)를 더 이상 읽지 않으므로
+# 기존 package.json#pnpm.overrides를 이곳으로 이전했다.
+overrides:
+  '@granite-js/plugin-core': 0.1.30
+  find-my-way: '>=8.2.2'
+  ip: '>=2.0.1'
+
+# pnpm v11은 의존성의 build script(postinstall 등)가 차단될 때 승인/무시 결정이 없으면
+# 설치 자체를 실패시킨다(ERR_PNPM_IGNORED_BUILDS). 미니앱 빌드 의존성(granite/vite 등)의
+# 트리는 크고 버전마다 달라 목록 고정은 깨지기 쉬우므로, 설치 단계의 의존성 스크립트를
+# 건너뛰어(=pnpm v10 동작 유지) 빌드가 실패하지 않게 한다. 네이티브 바이너리(esbuild 등)는
+# optionalDependencies 플랫폼 패키지로 제공되어 영향이 없다.
+# 주의: ignoreScripts는 '설치 단계'만 막는다. `ait build`/`granite build`(명시적 `pnpm run`)는
+#       그대로 실행된다 (pnpm 11.6.0에서 검증).
+ignoreScripts: true

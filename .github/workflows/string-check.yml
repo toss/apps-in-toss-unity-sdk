@@ -1,9 +1,12 @@
 name: String Check
 
 on:
+  # 전 브랜치 push에서 스캔 — feature 브랜치를 public 원격에 push하는 "노출 순간"을
+  # 서버 측에서 탐지하기 위함(로컬 pre-push 훅은 --no-verify로 우회 가능하므로 백스톱 필요).
+  # push 이벤트는 fork PR과 달리 repository secret 접근이 가능해 STRING_CHECK_PATTERN을 쓸 수 있다.
   push:
     branches:
-      - main
+      - '**'
   pull_request:
     branches: [main]
 

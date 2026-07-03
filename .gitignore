@@ -200,3 +200,6 @@ yarn.lock.meta
 # Superpowers 플랜 문서 (Claude Code 작업용, 커밋 불필요)
 docs/superpowers/
 docs/superpowers.meta
+
+# 로컬 전용 내부호스트 denylist (pre-push 훅용) — 커밋 금지. 템플릿: patterns.local.example
+.githooks/patterns.local

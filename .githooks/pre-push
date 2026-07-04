@@ -16,10 +16,23 @@
 #       우회 가능하다(모든 git 훅 공통). 완전(우회 불가) 차단은 서버 측 push protection 또는
 #       전 브랜치 CI 스캔이 담당한다.
 #
+# 한계(의도된 스코프):
+#   - 이 훅은 '텍스트' 설정 유출을 대상으로 한다. git이 바이너리로 분류하는 파일(NUL 바이트 포함)은
+#     -I 로 건너뛴다 — Unity 바이너리 에셋을 바이트 스캔하면 오탐이 폭증하므로 의도된 스코프다.
+#     (동일 한계가 서버 측 CI String Check에도 존재; 텍스트가 아닌 유출은 코드리뷰/정책으로 커버.)
+#   - tip 트리 스캔은 '이미 공개된' 내용까지 매치할 수 있어 '경고'만 한다. 실제 push 차단은
+#     '새로 push되는 커밋의 추가 라인' 스캔(range)만 담당한다(무관한 push 영구 차단 방지).
+#
 # 옵션:
 #   PREPUSH_STRICT=1  조직 denylist(env/patterns.local) 미설정 시 경고 대신 push 거부(fail-closed).
 
 set -u
+
+# 바이트 단위 매칭 강제: UTF-8 로케일에서는 grep/git grep 이 '유효하지 않은 UTF-8 바이트'가 든 줄을
+# 조용히 건너뛰어(매칭 실패) fail-open 될 수 있다. C 로케일에서 바이트 기준으로 검사해 이를 차단한다.
+# (한국어 메시지는 printf 가 바이트를 그대로 출력하므로 표시에 영향 없음. export 는 이 훅 프로세스에만
+#  적용되며 사용자 셸로 새지 않는다.)
+export LC_ALL=C
 
 z40="0000000000000000000000000000000000000000"
 HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -27,7 +40,7 @@ HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
 RED='\033[0;31m'; YEL='\033[1;33m'; NC='\033[0m'
 
 # 훅 자신의 '패턴 정의' 파일은 self-match 방지를 위해 스캔에서 제외한다.
-# (그 파일들의 실제 유출은 CI String Check가 secret 패턴으로 백스톱한다.)
+# (그 파일들의 실제 유출은 CI String Check가 secret 패턴으로 백스톱한다 — CI는 제외하지 않음.)
 EXC1=':!.githooks/pre-push'
 EXC2=':!.githooks/patterns.local.example'
 
@@ -75,14 +88,26 @@ if [ "$have_org" = "0" ]; then
 fi
 
 # --- push되는 각 ref 검사 ----------------------------------------------------
+# 새 브랜치 range 스캔은 '이 push의 대상 원격'을 기준으로 한정한다. bare '--not --remotes'는
+# 다른 원격(사설 미러/포크/stale ref)에 있는 커밋까지 제외해 유출을 놓칠 수 있으므로, 대상 원격이
+# 이름으로 식별되면 그 원격만 기준으로 삼는다(식별 불가한 URL push 등은 보수적으로 모든 원격 기준).
+REMOTE_NAME="${1:-}"
+if [ -n "$REMOTE_NAME" ] && git config "remote.$REMOTE_NAME.url" >/dev/null 2>&1; then
+  NOT_REMOTES="--remotes=$REMOTE_NAME"
+else
+  NOT_REMOTES="--remotes"
+fi
+
 fail=0
 while read -r localref localsha remoteref remotesha; do
   [ -z "${localsha:-}" ] && continue
   [ "$localsha" = "$z40" ] && continue   # 삭제 push: 스캔할 tip 없음
 
-  # (1) tip tree 스캔 — 항상 실행. tip에 내부호스트가 남아있으면 차단.
-  #     git grep 종료코드: 0=매치, 1=미매치, >=2=오류(예: 구버전 git의 pathspec 미지원).
-  #     오류는 조용히 통과시키지 않고 fail-closed로 차단한다.
+  # (1) tip tree 스캔 — 경고 전용. tip 트리 '전체'를 훑기 때문에 이미 공개된 내용까지 매치할 수
+  #     있어(예: 오래전 머지된 문서의 사설 IP 예시) 여기서 차단하면 무관한 push가 영구히 막힌다.
+  #     따라서 tip 매치는 '경고'만 하고, 실제 차단은 아래 (2) range 스캔이 담당한다.
+  #     (트리 전체 청결성 강제는 서버 측 CI String Check가 맡는다.)
+  #     git grep 종료코드: 0=매치, 1=미매치, >=2=오류. 오류는 스캔 불능이므로 fail-closed.
   hits="$(git grep -I -i -n -E "$PATTERNS" "$localsha" -- . "$EXC1" "$EXC2" 2>/dev/null)"
   rc=$?
   if [ "$rc" -ge 2 ]; then
@@ -90,27 +115,31 @@ while read -r localref localsha remoteref remotesha; do
     printf "  git 버전/pathspec 지원을 확인하세요(:! exclude 는 git 1.9+ 필요).\n" >&2
     fail=1
   elif [ "$rc" -eq 0 ] && [ -n "$hits" ]; then
-    printf "${RED}[pre-push] 차단: 내부 호스트/자격증명 패턴 감지 (tip %s).${NC}\n" "${localsha:0:12}" >&2
+    printf "${YEL}[pre-push] 경고: tip 트리에 내부 호스트/자격증명 패턴이 있습니다 (tip %s).${NC}\n" "${localsha:0:12}" >&2
     printf '%s\n' "$hits" | awk -F: '{print "    " $2 ":" $3 "  (redacted)"}' | sort -u >&2
-    fail=1
+    printf "  이미 공개된 내용이면 정리를 권장합니다. (이 항목만으로는 push를 막지 않습니다.)\n" >&2
   fi
 
-  # (2) push 범위 커밋별 추가 라인 스캔 — 중간 커밋에서 add된 뒤 tip에서 지워졌더라도
-  #     그 중간 커밋 객체는 push되어 공개되므로 함께 검사. origin/main 에 의존하지 않도록
-  #     '리모트에 아직 없는 커밋'을 --not --remotes 로 정의(shallow/orphan/비-main 기본브랜치 안전).
+  # (2) push 범위 커밋별 추가 라인 스캔 — 차단의 핵심. 중간 커밋에서 add된 뒤 tip에서 지워졌더라도
+  #     그 커밋 객체는 push되어 공개되므로 함께 검사. origin/main 에 의존하지 않도록 '대상 원격에
+  #     아직 없는 커밋'을 --not $NOT_REMOTES 로 정의(shallow/orphan/비-main 기본브랜치 안전).
+  #     --full-history: pathspec(-- .)로 인한 history simplification 이 --no-ff 머지에서 정리된
+  #     side-branch 유출 커밋을 walk에서 누락시키는 것을 방지.
   if [ "$remotesha" != "$z40" ]; then
-    RANGE="$remotesha..$localsha"          # 기존 브랜치 업데이트: 정확한 범위
+    RANGE="$remotesha..$localsha"                 # 기존 브랜치 업데이트: 정확한 범위
   else
-    RANGE="$localsha --not --remotes"      # 새 브랜치: 리모트에 없는 모든 커밋
+    RANGE="$localsha --not $NOT_REMOTES"          # 새 브랜치: 대상 원격에 없는 모든 커밋
   fi
-  # shellcheck disable=SC2086  # RANGE 는 의도적으로 여러 토큰으로 분리
-  plog="$(git log -p --no-color $RANGE -- . "$EXC1" "$EXC2" 2>/dev/null)"
+  # shellcheck disable=SC2086  # RANGE/NOT_REMOTES 는 의도적으로 여러 토큰으로 분리
+  plog="$(git log -p --no-color --full-history $RANGE -- . "$EXC1" "$EXC2" 2>/dev/null)"
   lrc=$?
   if [ "$lrc" -ne 0 ]; then
     printf "${RED}[pre-push] 오류: 범위 스캔 실패(git log rc=%s). 안전을 위해 push를 중단합니다.${NC}\n" "$lrc" >&2
     fail=1
   else
-    dhits="$(printf '%s\n' "$plog" | grep -E "^\+" | grep -icE "$PATTERNS")"
+    # 추가된 실제 내용 라인만 검사: '^+' 중 diff 헤더('+++ b/path')는 제외해, 파일 경로가 패턴과
+    # 겹치는 것만으로 오탐하지 않게 한다.
+    dhits="$(printf '%s\n' "$plog" | grep -E "^\+" | grep -vE "^\+\+\+ " | grep -icE "$PATTERNS")"
     if [ "${dhits:-0}" -gt 0 ] 2>/dev/null; then
       printf "${RED}[pre-push] 차단: push 범위 커밋에서 추가된 내부 호스트 패턴 %s건 감지 (tip %s).${NC}\n" "$dhits" "${localsha:0:12}" >&2
       fail=1

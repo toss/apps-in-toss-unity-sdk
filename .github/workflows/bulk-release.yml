@@ -76,9 +76,17 @@ jobs:
             ALL_INPUT=$(git tag -l 'release/v*' | sed 's/release\/v//' | sort -V)
           fi
 
-          # min_version 이상만 필터링
+          # prerelease 스냅샷(예: 2.10.1-beta.48b3324) 제외 + min_version 이상만 필터링
+          # release.yml은 version을 publish된 web-framework npm 버전으로 검증하므로
+          # SDK 스냅샷 버전 문자열인 prerelease 태그는 항상 실패한다 (beta-release.yml 전용 경로)
           VERSIONS=""
           for V in $ALL_INPUT; do
+            case "$V" in
+              *-*)
+                echo "  v${V}: prerelease 스냅샷은 일괄 릴리즈 대상이 아니므로 스킵"
+                continue
+                ;;
+            esac
             if [ "$(printf '%s\n' "$MIN_VERSION" "$V" | sort -V | head -n1)" = "$MIN_VERSION" ] || [ "$V" = "$MIN_VERSION" ]; then
               VERSIONS="${VERSIONS}${V}"$'\n'
             else

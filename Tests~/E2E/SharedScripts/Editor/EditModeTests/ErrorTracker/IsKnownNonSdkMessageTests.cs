@@ -1033,14 +1033,14 @@ public class IsKnownNonSdkMessageTests
     public void OtherCSErrorInUserAssets_ReturnsFalse()
     {
         // 가드가 등록되지 않은 다른 CS 에러 코드(예: CS0535)는 composite 가드가 매칭되지 않아 통과해야 함.
-        // 본 SDK는 CS0029/CS0103/CS0105/CS0117/CS0246/CS1503 한정으로 가드.
+        // 본 SDK는 CS0029/CS0103/CS0105/CS0117/CS0246/CS1503/CS1061 한정으로 가드.
         Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
             "Assets/Scripts/GameLogic.cs(42,10): error CS0535: 'X' does not implement interface member 'Y'"));
     }
 
     #endregion
 
-    #region 사용자 코드 CS0103/CS0117 컴파일 에러 (SDK-CR, SDK-MN, SDK-80)
+    #region 사용자 코드 CS0103/CS0117/CS1061 컴파일 에러 (SDK-CR, SDK-MN, SDK-80, SDK-13G)
 
     [Test]
     public void UserCodeCS0103_AssetsBackslashPath_ReturnsTrue()
@@ -1064,6 +1064,40 @@ public class IsKnownNonSdkMessageTests
         // Sentry SDK-80 — 사용자 BuildTool 코드가 SDK 타입의 존재하지 않는 멤버 참조.
         Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
             "Assets\\98_Tools\\BuildTool\\Editor\\BuildToolEditorWindow.cs(484,43): error CS0117: 'AppsInTossMenu' does not contain a definition for 'Package'"));
+    }
+
+    [Test]
+    public void UserCodeCS1061_GameServerConfigMissingMember_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-13G — 사용자 정의 클래스 'GameServerConfig'(SDK 타입 아님)의
+        // 존재하지 않는 멤버/확장 메서드 참조. 파일 경로에 "AppsInToss" 폴더명이 포함돼 SDK 키워드
+        // 가드가 발동하므로 CS0117과 동일하게 가드보다 먼저 매칭되어야 한다.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "UnityError: Assets\\Scripts\\AppsInToss\\AppsInTossRemoteConfig.cs(21,61): error CS1061: 'GameServerConfig' does not contain a definition for 'gameSettingsId' and no accessible extension method 'gameSettingsId' accepting a first argument of type 'GameServerConfig' could be found"));
+    }
+
+    [Test]
+    public void UserCodeCS1061_ForwardSlashPath_ReturnsTrue()
+    {
+        // POSIX 경로 변형도 동일 composite 가드(error CS1061 + Assets/ + .cs()로 매칭됨을 검증.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Assets/Scripts/Manager/InventoryManager.cs(58,20): error CS1061: 'ItemData' does not contain a definition for 'stackSize'"));
+    }
+
+    [Test]
+    public void Cs1061_SdkPackagePath_NotFiltered()
+    {
+        // SDK 자체 .cs의 CS1061은 Packages/com.toss.apps-in-toss 경로로 출력되어 Assets/ prefix 미포함 → 보호됨.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Packages/com.toss.apps-in-toss/Editor/Foo.cs(10,5): error CS1061: 'Bar' does not contain a definition for 'baz'"));
+    }
+
+    [Test]
+    public void Cs1061WithoutAssetsPrefix_AitProtected_ReturnsFalse()
+    {
+        // SDK 자체 진단 라인(Assets/ 경로 미포함)은 [AIT] prefix로 보호됨.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] diag: error CS1061 reported in SDK fallback path"));
     }
 
     [Test]

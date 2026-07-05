@@ -40,6 +40,7 @@ jobs:
       versions: ${{ steps.extract.outputs.versions }}
       version_count: ${{ steps.extract.outputs.count }}
       min_version: ${{ steps.extract.outputs.min_version }}
+      skipped_missing: ${{ steps.extract.outputs.skipped_missing }}
 
     steps:
       - name: Checkout
@@ -87,6 +88,29 @@ jobs:
           done
           VERSIONS=$(echo "$VERSIONS" | sed '/^$/d')
 
+          # npm 사전 존재 체크 — npm에서 제거된(unpublish) web-framework 버전은
+          # regenerate-sdk가 ERR_PNPM_NO_MATCHING_VERSION으로 반드시 실패하므로
+          # 대상에서 미리 제외한다 (주로 수명이 끝난 beta 스냅샷 태그).
+          # 패큐먼트 조회 실패 시에는 기존 동작 그대로 전체 버전을 시도한다 (fail-open).
+          SKIPPED_MISSING=""
+          NPM_VERSIONS=$(curl -fsSL --retry 3 "https://registry.npmjs.org/@apps-in-toss%2fweb-framework" | jq -r '.versions | keys[]' || echo "")
+          if [ -z "$NPM_VERSIONS" ]; then
+            echo "::warning::web-framework 패큐먼트 조회 실패 — npm 사전 존재 체크를 건너뜁니다"
+          else
+            EXISTING=""
+            for V in $VERSIONS; do
+              if echo "$NPM_VERSIONS" | grep -Fqx "$V"; then
+                EXISTING="${EXISTING}${V}"$'\n'
+              else
+                SKIPPED_MISSING="${SKIPPED_MISSING}${V}"$'\n'
+                echo "  v${V}: npm에 @apps-in-toss/web-framework@${V} 없음 → 스킵"
+              fi
+            done
+            VERSIONS=$(echo "$EXISTING" | sed '/^$/d')
+          fi
+          SKIPPED_MISSING_CSV=$(echo "$SKIPPED_MISSING" | sed '/^$/d' | paste -sd, -)
+          echo "skipped_missing=${SKIPPED_MISSING_CSV}" >> $GITHUB_OUTPUT
+
           # 버전이 없으면 에러
           if [ -z "$VERSIONS" ]; then
             echo "::error::릴리즈할 버전이 없습니다"
@@ -126,6 +150,11 @@ jobs:
 
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**총 ${{ steps.extract.outputs.count }}개 버전**" >> $GITHUB_STEP_SUMMARY
+          SKIPPED_MISSING="${{ steps.extract.outputs.skipped_missing }}"
+          if [ -n "$SKIPPED_MISSING" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**npm 미존재로 스킵**: ${SKIPPED_MISSING}" >> $GITHUB_STEP_SUMMARY
+          fi
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**최소 버전**: ${{ steps.extract.outputs.min_version }}" >> $GITHUB_STEP_SUMMARY
           echo "**동시 실행 수**: ${{ inputs.max_parallel || 2 }}" >> $GITHUB_STEP_SUMMARY
@@ -376,6 +405,12 @@ jobs:
             RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/${TAG_NAME}"
             echo "- [v${VERSION}](${RELEASE_URL})" >> $GITHUB_STEP_SUMMARY
           done
+
+          SKIPPED_MISSING="${{ needs.prepare-versions.outputs.skipped_missing }}"
+          if [ -n "$SKIPPED_MISSING" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**npm 미존재로 스킵된 버전**: ${SKIPPED_MISSING}" >> $GITHUB_STEP_SUMMARY
+          fi
 
           # 배포 URL + QR 코드 테이블 추가
           if [ -d "all-deploy-results" ]; then

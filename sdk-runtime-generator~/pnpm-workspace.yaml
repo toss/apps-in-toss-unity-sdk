@@ -14,6 +14,14 @@ minimumReleaseAgeExclude:
 overrides:
   find-my-way: '>=8.2.2'
   ip: '>=2.0.1'
+  # dependabot 취약점 대응(패치 존재분). granite 빌드 툴체인의 전이 의존이며
+  # SDK 산출물에 배포되지 않는다. 예기치 않은 상위 major 점프 차단 위해 캡.
+  '@babel/core': '>=7.29.6 <8'
+  '@fastify/middie': '>=9.3.2 <10'
+  esbuild: '>=0.28.1'
+  fast-uri: '>=3.1.2 <4'
+  fast-xml-parser: '>=5.7.0 <6'
+  fastify: '>=5.8.3 <6'
 
 # pnpm v11은 의존성의 build script(postinstall 등)를 기본 차단하고, 승인/무시 결정이 없으면
 # 설치 자체를 실패시킨다(ERR_PNPM_IGNORED_BUILDS — 예: @sentry/cli·@swc/core·esbuild·protobufjs).

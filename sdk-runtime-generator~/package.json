@@ -22,6 +22,16 @@
     "test:multi-version": "vitest run tests/unit/multi-version.test.ts"
   },
   "packageManager": "pnpm@11.6.0",
+  "pnpm": {
+    "overrides": {
+      "@babel/core": ">=7.29.6 <8",
+      "@fastify/middie": ">=9.3.2 <10",
+      "esbuild": ">=0.28.1",
+      "fast-uri": ">=3.1.2 <4",
+      "fast-xml-parser": ">=5.7.0 <6",
+      "fastify": ">=5.8.3 <6"
+    }
+  },
   "dependencies": {
     "@apps-in-toss/framework": "1.6.0",
     "@apps-in-toss/web-analytics": "2.10.4",

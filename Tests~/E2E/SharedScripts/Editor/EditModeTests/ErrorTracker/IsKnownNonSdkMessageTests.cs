@@ -2524,6 +2524,45 @@ public class IsKnownNonSdkMessageTests
 
     #endregion
 
+    #region 서드파티 Unity MCP 빌드 도구 노이즈 (APPS-IN-TOSS-UNITY-SDK-13E)
+
+    [Test]
+    public void McpBuildPrefix_WebGLManagedStrippedFailure_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-13E — 서드파티 Unity MCP 빌드 도구가 stdout/stderr에
+        // 남기는 로그 prefix. 본문은 개인/사용자 프로젝트의 IL2CPP UnityLinker(ManagedStripped)
+        // 빌드 실패이며, SDK 코드베이스 어디에도 "[MCP Build]" 문자열이 없음(grep 확인).
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "UnityError: [MCP Build] ✗ Build failed: WebGL — Building Library/Bee/artifacts/WebGL/ManagedStripped failed with output:"));
+    }
+
+    [Test]
+    public void McpBuildPrefix_BareVariant_ReturnsTrue()
+    {
+        // prefix만 있고 후행 문구가 다른 변형도 부분 문자열 매칭으로 동일하게 드롭됨을 검증.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[MCP Build] Build failed: iOS — xcodebuild exited with code 65"));
+    }
+
+    [Test]
+    public void McpBuildPrefix_WithAitPrefix_NeverFiltered()
+    {
+        // AitKeywords 가드 회귀 방지: [AIT] prefix가 붙은 동일 메시지는 SDK 자체 로그로 간주되어야 함.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] [MCP Build] Build failed: WebGL"));
+    }
+
+    [Test]
+    public void McpBuildPrefix_WithAppsInTossKeyword_NeverFiltered()
+    {
+        // AitKeywords 가드 회귀 방지: 메시지 본문에 AppsInToss 식별자가 섞이면
+        // MessageContainsSdkKeyword 가드가 먼저 매칭되어 "[MCP Build]" 패턴보다 우선해 보호되어야 함.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[MCP Build] Build failed while referencing AppsInToss.dll during IL2CPP link step"));
+    }
+
+    #endregion
+
     #region SDK 관련 메시지는 통과 (negative cases)
 
     [Test]

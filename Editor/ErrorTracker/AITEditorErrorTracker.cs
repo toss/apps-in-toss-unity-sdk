@@ -314,6 +314,15 @@ namespace AppsInToss.Editor.ErrorTracker
             // 예: "CommandInvokationFailure: Gradle build failed." (APPS-IN-TOSS-UNITY-SDK-134)
             // SDK는 이 문자열을 출력하지 않음(AitKeywords에 없음).
             "CommandInvokationFailure: Gradle build failed",
+
+            // 서드파티 Unity MCP 빌드 도구가 stdout/stderr에 남기는 로그 prefix. SDK 코드베이스
+            // 어디에도 "[MCP Build]" 문자열이 없으며(grep 확인), 본문은 개인/사용자 프로젝트의
+            // IL2CPP UnityLinker(ManagedStripped) 등 Unity 자체 툴체인 빌드 실패를 그대로 전달한 것.
+            // "[Dev Server]"/"[Production Server]"(ServerLogPrefixes)와 동일한 선례 패턴이며,
+            // AIT 식별자가 섞이지 않는 한 AitKeywords 보호 가드와 충돌하지 않는다.
+            // 예: "UnityError: [MCP Build] ✗ Build failed: WebGL — Building Library/Bee/artifacts/WebGL/ManagedStripped failed with output:"
+            // Sentry APPS-IN-TOSS-UNITY-SDK-13E.
+            "[MCP Build]",
         };
 
         // DetermineErrorSource에서 메시지를 SDK로 분류하는 추가 패턴.

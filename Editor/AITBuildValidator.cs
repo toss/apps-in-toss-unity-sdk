@@ -16,7 +16,10 @@ namespace AppsInToss.Editor
             "%UNITY_WEBGL_LOADER_URL%",
             "%UNITY_WEBGL_DATA_URL%",
             "%UNITY_WEBGL_FRAMEWORK_URL%",
-            "%UNITY_WEBGL_CODE_URL%"
+            "%UNITY_WEBGL_CODE_URL%",
+            // perf 채널 번들 마킹(window.AITLoading.buildVariant) — 미치환이면 성능 귀속이
+            // 침묵 유실되므로 빌드를 실패시켜 회귀를 조기에 드러낸다.
+            "%AIT_BUILD_VARIANT%"
         };
 
         // 2.x→3.x 마이그레이션 시 USER_CONFIG로 흘러들 수 있는, 3.x에서 이동/이름변경된 키.

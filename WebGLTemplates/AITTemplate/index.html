@@ -520,6 +520,63 @@
             showBanner: unityShowBanner,
         };
 
+        // wasm 스트리밍 컴파일 수리:
+        // decompressionFallback OFF(.br/.gz 네이티브 서빙) 빌드에서 서버가 Content-Type을
+        // application/wasm으로 주지 않으면 브라우저가 instantiateStreaming을 거부해
+        // ArrayBuffer 컴파일로 강등된다(다운로드-컴파일 중첩 손실 + 경고 배너).
+        // 응답 스트림을 올바른 MIME으로 재포장해 스트리밍 컴파일을 복원한다.
+        // .unityweb(JS 디컴프레서) 빌드는 로더가 wasm을 선다운로드하므로 개입하지 않는다.
+        (function () {
+            var codeUrl = config.codeUrl || '';
+            var nativeServed = codeUrl.indexOf('.unityweb') === -1;
+            var canStream = typeof WebAssembly !== 'undefined'
+                && typeof WebAssembly.instantiateStreaming === 'function'
+                && typeof fetch === 'function'
+                && typeof Response === 'function';
+            if (!nativeServed || !canStream) return;
+
+            function instantiateFromArrayBuffer(imports, done) {
+                return fetch(codeUrl, { credentials: 'same-origin' })
+                    .then(function (r) {
+                        if (!r.ok) throw new Error('HTTP ' + r.status + ' for ' + codeUrl);
+                        return r.arrayBuffer();
+                    })
+                    .then(function (bytes) { return WebAssembly.instantiate(bytes, imports); })
+                    .then(done);
+            }
+
+            config.instantiateWasm = function (imports, receiveInstance) {
+                var done = function (result) { receiveInstance(result.instance, result.module); };
+                fetch(codeUrl, { credentials: 'same-origin' })
+                    .then(function (r) {
+                        if (!r.ok) throw new Error('HTTP ' + r.status + ' for ' + codeUrl);
+                        var mime = (r.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase();
+                        var resp = r;
+                        if (mime !== 'application/wasm') {
+                            if (!r.body) throw new Error('Response.body 스트림 미지원');
+                            resp = new Response(r.body, {
+                                status: r.status,
+                                statusText: r.statusText,
+                                headers: { 'Content-Type': 'application/wasm' }
+                            });
+                            console.log('[AIT] wasm Content-Type 재포장(' + (mime || '없음') + ' → application/wasm) — 스트리밍 컴파일 복원');
+                        }
+                        return WebAssembly.instantiateStreaming(resp, imports).then(done);
+                    })
+                    .catch(function (err) {
+                        console.warn('[AIT] wasm 스트리밍 컴파일 실패 — ArrayBuffer 폴백:', err);
+                        return instantiateFromArrayBuffer(imports, done);
+                    })
+                    .catch(function (err) {
+                        console.error('[AIT] wasm 인스턴스화 최종 실패:', err);
+                        if (typeof unityShowBanner === 'function') {
+                            unityShowBanner('WebAssembly 인스턴스화에 실패했습니다: ' + err, 'error');
+                        }
+                    });
+                return {};
+            };
+        })();
+
         // 모바일 감지 및 최적화
         var isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 

@@ -1283,6 +1283,22 @@ namespace AppsInToss.Editor.ErrorTracker
                 && message.IndexOf(".cs(", StringComparison.Ordinal) >= 0)
                 return true;
 
+            // 사용자 코드의 멤버/확장 메서드 미정의 컴파일 에러 (CS1061) — Unity 컴파일러가 직접 출력.
+            // 예: "Assets\Scripts\AppsInToss\AppsInTossRemoteConfig.cs(21,61): error CS1061:
+            //       'GameServerConfig' does not contain a definition for 'gameSettingsId' and no
+            //       accessible extension method 'gameSettingsId' accepting a first argument of
+            //       type 'GameServerConfig' could be found ..."
+            // Sentry APPS-IN-TOSS-UNITY-SDK-13G.
+            // 'GameServerConfig'는 SDK 타입이 아닌 사용자 정의 클래스이며, 파일 경로가 사용자 폴더명
+            // "AppsInToss\AppsInTossRemoteConfig.cs"를 포함해 SDK 키워드 가드가 발동하므로 CS0117과
+            // 동일하게 가드보다 먼저 매칭한다(Assets/ 경로 + .cs(L,C) 패턴). SDK 자체 코드는 Packages/
+            // 또는 Library/PackageCache/ 경로로 출력되어 안전.
+            if (message.IndexOf("error CS1061", StringComparison.Ordinal) >= 0
+                && (message.IndexOf("Assets/", StringComparison.Ordinal) >= 0
+                    || message.IndexOf("Assets\\", StringComparison.Ordinal) >= 0)
+                && message.IndexOf(".cs(", StringComparison.Ordinal) >= 0)
+                return true;
+
             // 사용자 코드의 async/await 미사용 경고 (CS1998) — Unity 컴파일러가 직접 출력.
             // 예: "Assets\Scripts\1. System\AppsInToss\TossManager.cs(260,43): warning CS1998:
             //       This async method lacks 'await' operators and will run synchronously. ..."

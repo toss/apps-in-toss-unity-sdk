@@ -807,6 +807,50 @@
                 }
                 window.addEventListener('error', _aitGLErrorHandler);
 
+                // 데이터/프레임워크 다운로드 실패 워치독:
+                // 레거시 Unity(2021/2022) 로더는 다운로드 실패를 catch에서 삼키고 undefined를
+                // resolve하므로 createUnityInstance promise가 영영 결정되지 않는다
+                // (dataUrl run dependency 영구 대기 → 무한 로딩). 로더가 남기는 유일한 신호인
+                // console.error('Failed to download file ...')를 감지해 ASM_CONSTS 재시도와
+                // 동일한 예산(__ait_reload_count__, 최대 2회)으로 자동 재시도한다.
+                (function() {
+                    var origConsoleError = console.error;
+                    console.error = function() {
+                        try {
+                            var msg = arguments[0];
+                            if (typeof msg === 'string'
+                                && msg.indexOf('Failed to download file ') === 0
+                                && !window.unityInstance) {
+                                var retryKey = '__ait_reload_count__';
+                                var maxRetries = 2;
+                                var retries = parseInt(sessionStorage.getItem(retryKey) || '0', 10);
+                                if (retries < maxRetries) {
+                                    sessionStorage.setItem(retryKey, String(retries + 1));
+                                    // 복구 reload는 Cache-Storage(레거시 워밍)를 1회 우회하고 네트워크로 직행한다
+                                    // — 혹시 오염된 캐시 엔트리가 있어도 복구가 그것에 갇히지 않도록.
+                                    try { sessionStorage.setItem('__ait_skip_data_cache__', '1'); } catch (e) {}
+                                    origConsoleError.call(console,
+                                        '[AIT] 다운로드 실패 감지, 자동 재시도 (' + (retries + 1) + '/' + maxRetries + '):', msg);
+                                    location.reload();
+                                } else {
+                                    sessionStorage.removeItem(retryKey);
+                                    showLoadError(
+                                        '게임 로드 실패',
+                                        String(msg),
+                                        [
+                                            '네트워크 연결 상태를 확인해 주세요.',
+                                            '잠시 후 다시 시도해 주세요.',
+                                            '문제가 계속되면 앱을 재시작해 주세요.'
+                                        ],
+                                        { error: String(msg), retryCount: retries, source: 'download-watchdog' }
+                                    );
+                                }
+                            }
+                        } catch (e) {}
+                        return origConsoleError.apply(console, arguments);
+                    };
+                })();
+
                 // WebGL context 생성 실패 시 브라우저 이벤트 캡처
                 // Unity가 내부적으로 canvas.getContext()를 호출할 때 실패하면 이 이벤트 발생
                 canvas.addEventListener('webglcontextcreationerror', function(e) {
@@ -822,7 +866,40 @@
                     e.preventDefault();
                 });
 
+                // 다운로드 정체(stall) 워치독:
+                // 데이터 스트림이 에러 없이 조용히 멈추는 경우(좀비 커넥션)에는
+                // 로더의 catch도, console.error 신호도 발생하지 않아 위 워치독이 잡지 못한다.
+                // 다운로드 단계(progress < 0.9)에서 60초간 진행이 전혀 없으면 동일 예산으로 재시도.
+                // (진행 이벤트는 청크 단위로 오므로 느린 네트워크에서도 오탐하지 않고,
+                //  WASM 컴파일 등 진행 이벤트가 뜸한 후반부(>= 0.9)는 감시에서 제외)
+                var _aitLastProgress = 0;
+                var _aitLastProgressTs = Date.now();
+                var _aitStallTimer = setInterval(function() {
+                    if (window.unityInstance) { clearInterval(_aitStallTimer); return; }
+                    if (_aitLastProgress >= 0.9) return;
+                    if (Date.now() - _aitLastProgressTs > 60000) {
+                        clearInterval(_aitStallTimer);
+                        try {
+                            var retryKey = '__ait_reload_count__';
+                            var maxRetries = 2;
+                            var retries = parseInt(sessionStorage.getItem(retryKey) || '0', 10);
+                            if (retries < maxRetries) {
+                                sessionStorage.setItem(retryKey, String(retries + 1));
+                                // 복구 reload는 Cache-Storage(레거시 워밍)를 1회 우회하고 네트워크로 직행.
+                                try { sessionStorage.setItem('__ait_skip_data_cache__', '1'); } catch (e) {}
+                                console.error('[AIT] 다운로드 정체 감지 (progress=' + _aitLastProgress
+                                    + ', 60s 무진행), 자동 재시도 (' + (retries + 1) + '/' + maxRetries + ')');
+                                location.reload();
+                            }
+                        } catch (e) {}
+                    }
+                }, 10000);
+
                 createUnityInstance(canvas, config, (progress) => {
+                    if (progress > _aitLastProgress) {
+                        _aitLastProgress = progress;
+                        _aitLastProgressTs = Date.now();
+                    }
                     var unityProgress = 0.1 + (progress * 0.9); // 10%부터 시작해서 100%까지
                     updateLoadingProgress(unityProgress);
                     progressBarFull.style.width = 100 * progress + "%";

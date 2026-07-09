@@ -783,23 +783,51 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
     // Test 3-1: Page Reload Crash Test (cache warm)
     // -------------------------------------------------------------------------
     test('3-1. Page reload should not crash (cache warm)', async () => {
-      test.setTimeout(120000);
+      // [진단 실험] 예산 충돌(하니스 인공물) vs warm reload 재초기화 실패(제품 회귀) 판별용.
+      // - 예산을 300s로 확보하여 내부 waitForFunction(150s)이 물리적으로 도달 가능하게 함
+      //   (reload 90s + inner 150s = 240s < 300s). 기존 120s/120s는 test-level이 먼저 만료됐다.
+      // - 내부 대기는 hard-fail 유지(삼키지 않음): 시간을 줘도 재초기화되는지 정직하게 관측.
+      // - 재로드 페이지 콘솔을 실시간 캡처하여 로더가 도는지(느림) vs 침묵(freeze)을 구분.
+      test.setTimeout(300000);
       const reloadErrors = [];
-      const handler = err => reloadErrors.push(err.message);
-      sharedPage.on('pageerror', handler);
+      const errHandler = err => reloadErrors.push(err.message);
+      const consoleLines = [];
+      const consoleHandler = msg => {
+        const line = `[3-1 PAGE ${msg.type()}] ${msg.text()}`;
+        consoleLines.push(line);
+        console.log(line);
+      };
+      sharedPage.on('pageerror', errHandler);
+      sharedPage.on('console', consoleHandler);
 
+      const t0 = Date.now();
       try {
         const resp = await sharedPage.reload({ waitUntil: 'networkidle', timeout: 90000 });
+        console.log(`[3-1 DIAG] reload status=${resp?.status()} after ${Date.now() - t0}ms`);
         expect(resp?.status()).toBe(200);
 
+        const tWait = Date.now();
         await sharedPage.waitForFunction(
-          () => window['unityInstance'] !== undefined, { timeout: 120000 });
+          () => window['unityInstance'] !== undefined,
+          { timeout: 150000, polling: 1000 });
+        console.log(`[3-1 DIAG] unityInstance re-set after ${Date.now() - tWait}ms (warm reinit ok)`);
 
         const abortErrors = reloadErrors.filter(e => e.includes('ERR_ABORTED'));
         expect(abortErrors.length, 'No ERR_ABORTED errors on reload').toBe(0);
+
+        const crashErrors = reloadErrors.filter(e =>
+          /webglcontextlost|Aborted\(|RuntimeError|out of bounds|memory access/i.test(e));
+        expect(crashErrors.length, `No crash errors on reload: ${crashErrors.join('; ')}`).toBe(0);
+
         testResults.tests['3_1_reload'] = { passed: true };
+      } catch (err) {
+        console.log(`[3-1 DIAG] FAILED after ${Date.now() - t0}ms: ${err.message}`);
+        console.log(`[3-1 DIAG] pageerrors(${reloadErrors.length}): ${reloadErrors.join(' | ')}`);
+        console.log(`[3-1 DIAG] captured console lines(${consoleLines.length}), last 40:\n${consoleLines.slice(-40).join('\n')}`);
+        throw err;
       } finally {
-        sharedPage.off('pageerror', handler);
+        sharedPage.off('pageerror', errHandler);
+        sharedPage.off('console', consoleHandler);
       }
     });
 

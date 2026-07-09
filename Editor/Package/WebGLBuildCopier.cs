@@ -588,18 +588,24 @@ namespace AppsInToss.Editor.Package
         }
 
         /// <summary>
-        /// 레거시(2021/2022) 로더용 Early Fetch + Cache-Storage 워밍 스크립트.
+        /// 레거시(2021/2022) 로더용 데이터 캐싱 + 버퍼링 재시도 fetch 인터셉터.
         ///
-        /// 문제: 레거시 로더는 데이터 캐시가 없어 warm reload마다 webgl.data(~100MB)를 재다운로드한다.
-        /// 부하 상태의 로컬 vite preview/CDN이 본문 스트림을 중단(ERR_CONNECTION_CLOSED)하면 로더가
-        /// 실패를 삼키고 undefined를 resolve → new DataView(undefined.buffer) throw → 영구 로딩 행.
+        /// 문제: 레거시 로더는 데이터 캐시가 없어 warm reload마다 webgl.data/wasm(~100MB)를 재다운로드한다.
+        /// 부하 상태의 로컬 vite preview/CDN이 본문 스트림을 중단(ERR_CONNECTION_CLOSED)하면 로더의
+        /// downloadBinary().catch가 실패를 삼키고 undefined를 resolve → new DataView(undefined.buffer)
+        /// throw(loader.js:620) → 영구 로딩 행.
         ///
-        /// 대책(리뷰 반영):
-        ///  - 콜드 로드는 기존과 동일하게 prefetch → 로더 전달(clone/tee 없음 → 콜드 로드 메모리 회귀 없음).
-        ///  - 로드 성공(unityInstance) 후 별도 fetch(force-cache: 콜드 로드가 채운 HTTP 디스크 캐시에서 로컬로 읽음)로
-        ///    Cache Storage를 스트리밍 워밍. 스트리밍 put은 원자적 → 스트림 중단/Content-Length 불일치 시 put이
-        ///    reject되어 부분(오염) 엔트리를 남기지 않는다(BLOCKER 근본 차단, 라이브 소켓과 분리).
-        ///  - 재로드는 완결 엔트리만 존재하는 캐시에서 서빙(ignoreSearch) → 네트워크 재다운로드/순단 회피.
+        /// 대책(버퍼링-재시도 모델 — 캐시가 아니라 네트워크 경로 자체가 순단에서 복구):
+        ///  - window.fetch 오버라이드가 data/wasm 요청을 가로챈다. 캐시 HIT면 네트워크 없이 서빙(warm reload
+        ///    순단 원천 차단). MISS면 bufferedFetch로 진행.
+        ///  - bufferedFetch: 본문을 arrayBuffer()로 끝까지 받고 Content-Length와 대조. 스트림 중단 →
+        ///    arrayBuffer reject, 길이 불일치 → throw → 최대 MAX_TRIES회 재시도. 성공 시 완결 버퍼를
+        ///    Cache Storage에 저장(버퍼가 이미 완전 → put 원자적, 부분/오염 엔트리 없음)하고 로더에는
+        ///    완결 Response(body 스트림 + Content-Length)를 반환한다 → 로더는 undefined를 볼 수 없다.
+        ///  - 콜드 로드에서 data/wasm 모두 결정적으로 캐싱되므로(이전 clone-tee가 CI에서 wasm을 못 담던 문제
+        ///    해소) 이후 reload는 전량 HIT → 네트워크 접촉 0.
+        ///  - 저메모리 기기(deviceMemory<4)는 ~80MB 버퍼링이 OOM 위험 → 버퍼링/캐싱을 생략하고 원본
+        ///    스트리밍 fetch로 폴백(기존 동작 유지, 제품 워치독이 방어).
         ///  - 워치독 복구 reload는 SKIP_KEY로 캐시를 1회 우회 → 오염 캐시가 복구를 막지 않음(self-amplification 차단).
         ///  - 캐시명에 data/wasm 바이트 크기 포함 → 콘텐츠 변경 시 자동 버스팅(2021 고정 파일명 스테일 방지).
         /// </summary>
@@ -611,24 +617,23 @@ namespace AppsInToss.Editor.Package
         if (!urls || !urls.length) return;
         var CACHE_NAME = '{cacheName}';
         var SKIP_KEY = '__ait_skip_data_cache__';
+        var MAX_TRIES = 3;
 
-        var absUrls = [];
         var knownSet = {{}};
         for (var i = 0; i < urls.length; i++) {{
-            var abs = new URL(urls[i], location.href).href;
-            absUrls.push(abs);
-            knownSet[abs] = urls[i];
+            knownSet[new URL(urls[i], location.href).href] = urls[i];
         }}
 
         // Cache Storage 가용성(보안 컨텍스트 필요: https 또는 localhost — E2E/프로덕션 모두 충족).
         var hasCache = false;
         try {{ hasCache = !!(self.caches && self.caches.open); }} catch (e) {{ hasCache = false; }}
 
-        // 저메모리 모바일 WebView는 클론-tee의 ~100MB 일시 버퍼가 OOM 위험 → deviceMemory<4면 캐싱 생략(기존 동작 유지).
-        // deviceMemory 미지원(undefined)이면 캐싱 허용(데스크톱/CI 등 메모리 충분 가정).
-        var deviceOK = true;
-        try {{ if (typeof navigator.deviceMemory === 'number' && navigator.deviceMemory < 4) deviceOK = false; }} catch (e) {{}}
-        var cacheOK = hasCache && deviceOK;
+        // 저메모리 기기(모바일 WebView)는 큰 파일 전체 버퍼링(~80MB)이 OOM 위험 → deviceMemory<4면
+        // 버퍼링/캐싱을 생략하고 원본 스트리밍 fetch로 폴백(기존 동작 유지 + 제품 워치독 방어).
+        // deviceMemory 미지원(undefined)이면 허용(데스크톱/CI 등 메모리 충분 가정).
+        var bufOK = true;
+        try {{ if (typeof navigator.deviceMemory === 'number' && navigator.deviceMemory < 4) bufOK = false; }} catch (e) {{}}
+        var cacheOK = hasCache && bufOK;
 
         var isReload = false;
         try {{
@@ -638,45 +643,34 @@ namespace AppsInToss.Editor.Package
                 : (performance.navigation && performance.navigation.type === 1);
         }} catch (e) {{}}
 
-        // 워치독 복구 reload는 캐시를 1회 우회하고 네트워크로 직행(오염 캐시에 복구가 갇히지 않도록).
+        // 워치독 복구 reload는 캐시를 1회 우회하고 네트워크(버퍼링 재시도)로 직행(오염 캐시에 복구가 갇히지 않도록).
         var skipCacheOnce = false;
         try {{
-            if (sessionStorage.getItem(SKIP_KEY)) {{
-                skipCacheOnce = true;
-                sessionStorage.removeItem(SKIP_KEY);
-            }}
+            if (sessionStorage.getItem(SKIP_KEY)) {{ skipCacheOnce = true; sessionStorage.removeItem(SKIP_KEY); }}
         }} catch (e) {{}}
 
         try {{ console.log('[AIT] cache: legacy active isReload=' + isReload + ' cacheOK=' + cacheOK + ' skip=' + skipCacheOnce + ' devMem=' + (navigator.deviceMemory)); }} catch (e) {{}}
 
         var originalFetch = window.fetch;
-        var earlyFetchMap = {{}};
 
-        if (!isReload) {{
-            // 콜드 로드: 병렬 prefetch → 로더에 그대로 전달(콜드 로드 fast-path에서 클론-tee 워밍).
-            for (var j = 0; j < urls.length; j++) {{
-                (function(href, fetchUrl) {{
-                    var p = originalFetch(fetchUrl).catch(function() {{ delete earlyFetchMap[href]; return null; }});
-                    earlyFetchMap[href] = p;
-                }})(absUrls[j], urls[j]);
-            }}
-            if (cacheOK) {{
-                // 이전(스테일) 빌드의 ait-unity-* 캐시 정리(현재 캐시명은 data/wasm 바이트 크기로 버스팅됨).
-                try {{
-                    self.caches.keys().then(function(names) {{
-                        names.forEach(function(n) {{
-                            if (n.indexOf('ait-unity-') === 0 && n !== CACHE_NAME) self.caches.delete(n);
-                        }});
-                    }}).catch(function() {{}});
-                }} catch (e) {{}}
-            }}
+        // 콜드 로드에서 이전(스테일) 빌드 캐시 정리(현재 캐시명은 data/wasm 바이트 크기로 버스팅됨).
+        if (!isReload && cacheOK) {{
+            try {{
+                self.caches.keys().then(function(names) {{
+                    names.forEach(function(n) {{
+                        if (n.indexOf('ait-unity-') === 0 && n !== CACHE_NAME) self.caches.delete(n);
+                    }});
+                }}).catch(function() {{}});
+            }} catch (e) {{}}
         }}
 
-        // 스트리밍 put(원자적): 스트림 중단/Content-Length 불일치 → reject → 부분(오염) 엔트리 미저장.
-        function cachePut(url, resp) {{
+        // 완결 버퍼로 Cache Storage에 저장. 버퍼가 이미 완전하므로 라이브 소켓/스트림 중단과 무관하게
+        // 저장이 원자적으로 성공한다(부분/오염 엔트리 없음). fire-and-forget: 이후 reload가 HIT로 서빙.
+        function storeBuffer(url, buf, ct) {{
             try {{
+                var h = {{ 'Content-Type': ct || 'application/octet-stream', 'Content-Length': String(buf.byteLength) }};
                 self.caches.open(CACHE_NAME).then(function(c) {{
-                    return c.put(url, resp);
+                    return c.put(url, new Response(buf, {{ status: 200, headers: h }}));
                 }}).then(function() {{
                     try {{ console.log('[AIT] cache: stored ' + url); }} catch (e) {{}}
                 }}).catch(function() {{
@@ -685,26 +679,43 @@ namespace AppsInToss.Editor.Package
             }} catch (e) {{}}
         }}
 
+        // 버퍼링 다운로드(재시도): 본문을 끝까지 받고 Content-Length와 대조.
+        // 스트림 중단(ERR_CONNECTION_CLOSED) → arrayBuffer reject, 길이 불일치 → 재시도.
+        // 성공 시 (cacheOK면) 캐시에 저장하고 로더에는 완결 Response(body 스트림 + Content-Length 보유)를 반환한다.
+        // 모두 소진 시 원본 fetch로 폴백(로더가 실패를 삼키면 제품 워치독 reload가 처리).
+        function bufferedFetch(url, left) {{
+            return originalFetch(url, {{ method: 'GET' }}).then(function(r) {{
+                if (!r || !r.ok) throw new Error('bad status ' + (r && r.status));
+                var ct = r.headers.get('Content-Type') || 'application/octet-stream';
+                var expected = parseInt(r.headers.get('Content-Length') || '-1', 10);
+                return r.arrayBuffer().then(function(ab) {{
+                    var buf = new Uint8Array(ab);
+                    if (expected >= 0 && buf.byteLength !== expected) {{
+                        throw new Error('short read ' + buf.byteLength + '/' + expected);
+                    }}
+                    if (cacheOK) {{ storeBuffer(url, buf, ct); }}
+                    return new Response(buf, {{ status: 200, headers: {{ 'Content-Type': ct, 'Content-Length': String(buf.byteLength) }} }});
+                }});
+            }}).catch(function(e) {{
+                if (left > 1) {{
+                    try {{ console.warn('[AIT] cache: retry ' + url + ' (' + (left - 1) + ' left): ' + (e && e.message)); }} catch (x) {{}}
+                    return bufferedFetch(url, left - 1);
+                }}
+                try {{ console.error('[AIT] cache: giveup ' + url + ': ' + (e && e.message)); }} catch (x) {{}}
+                return originalFetch(url, {{ method: 'GET' }});
+            }});
+        }}
+
         window.fetch = function(resource, init) {{
             var url = (typeof resource === 'string') ? new URL(resource, location.href).href : resource.url;
             if (!knownSet[url]) return originalFetch.apply(this, arguments);
-
             var self2 = this, args = arguments;
-            var pending = earlyFetchMap[url];
-            if (pending) {{
-                // 콜드 로드 fast-path: prefetch 재사용 + (cacheOK 시) 클론-tee로 Cache Storage 워밍.
-                // r.clone()은 로더가 r을 읽기 전에 생성 → tee가 성공한 콜드 로드 스트림의 바이트를 버퍼링해 저장.
-                delete earlyFetchMap[url];
-                return pending.then(function(r) {{
-                    if (r && r.ok && !r.bodyUsed) {{
-                        if (cacheOK) {{ try {{ cachePut(url, r.clone()); }} catch (e) {{}} }}
-                        return r;
-                    }}
-                    return originalFetch.apply(self2, args);
-                }});
-            }}
-            // 재로드: Cache Storage에서 서빙 → 네트워크 재다운로드(순단) 회피. skip 플래그면 네트워크 직행.
-            if (hasCache && !skipCacheOnce) {{
+
+            // 저메모리/무캐시: 버퍼링 없이 원본 스트리밍 fetch(기존 동작, 제품 워치독 방어).
+            if (!cacheOK) return originalFetch.apply(self2, args);
+
+            // 캐시 우선(skip 플래그면 우회). HIT → 네트워크 없이 서빙(warm reload 순단 원천 차단).
+            if (!skipCacheOnce) {{
                 return self.caches.open(CACHE_NAME).then(function(c) {{
                     return c.match(url, {{ ignoreSearch: true }});
                 }}).then(function(cached) {{
@@ -713,12 +724,12 @@ namespace AppsInToss.Editor.Package
                         return cached;
                     }}
                     try {{ console.log('[AIT] cache: MISS ' + url); }} catch (e) {{}}
-                    return originalFetch.apply(self2, args);
+                    return bufferedFetch(url, MAX_TRIES);
                 }}).catch(function() {{
-                    return originalFetch.apply(self2, args);
+                    return bufferedFetch(url, MAX_TRIES);
                 }});
             }}
-            return originalFetch.apply(self2, args);
+            return bufferedFetch(url, MAX_TRIES);
         }};
     }})();
     </script>";

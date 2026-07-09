@@ -242,8 +242,9 @@ namespace AppsInToss.Editor
                     }
                 }
 
-                // ─── 3단계: 외부화 실행 ─────────────────────────────────────────
-                var entries = new List<string>();
+                // ─── 3단계: 외부화 실행(스텁 치환 + 스트리밍 소스 복사) ──────────────
+                //    엔트리 문자열은 4단계의 brotli 채택 판정 후 확정하므로, 여기서는 레코드만 수집.
+                var records = new List<(string g, string streamFile, string texName, int w, int h, long size)>();
                 int n = 0;
                 long stubbedBytes = 0;
                 var detailLines = new List<string>();
@@ -285,6 +286,8 @@ namespace AppsInToss.Editor
                     {
                         // 스텁 생성 실패 → 이 텍스처는 백업 되돌리고 건너뜀.
                         RevertSingle(srcFull, metaFull, srcBak, metaBak, projectRoot);
+                        // 스트리밍 소스 복사본도 정리(매니페스트에 안 실릴 고아 파일 방지).
+                        SafeDelete(Path.Combine(projectRoot, StreamRootAssets, streamFile));
                         continue;
                     }
 
@@ -300,12 +303,57 @@ namespace AppsInToss.Editor
                         ti2.SaveAndReimport();
                     }
 
-                    entries.Add("{\"guid\":\"" + g + "\",\"name\":" + JsonStr(texName)
-                                + ",\"file\":" + JsonStr(streamFile)
-                                + ",\"width\":" + w + ",\"height\":" + h + "}");
+                    records.Add((g, streamFile, texName, w, h, size));
                     n++;
                     stubbedBytes += size;
                     detailLines.Add($"  {texName} ({w}x{h}, {size / 1048576f:0.00}MB) → {streamFile}");
+                }
+
+                // ─── 3-1단계: 스트리밍 소스 brotli(.br) 인코딩 ────────────────────────
+                //    <guid><ext> 는 아직 원본 바이트(스텁 치환은 프로젝트 내 소스에만 적용, 복사본은
+                //    복사 시점의 원본). PNG/JPG 는 이미 엔트로피 코딩돼 이득이 파일별 0~18.5%로 편차가
+                //    커서, ShouldKeep(≥10%) 채택 파일만 <guid><ext>.br 로 대체하고 원본은 제거한다.
+                //    런타임 AITStreamingCodec 이 encoding="br" 를 매직 스니핑으로 해제(서버 해제 포함).
+                var texBr = new Dictionary<string, string>(); // streamFile → streamFile+".br"
+                if (records.Count > 0 && AITBrotliCompressor.TryResolveNode(out _))
+                {
+                    var brSources = new List<string>();
+                    foreach (var rec in records)
+                    {
+                        brSources.Add(Path.Combine(projectRoot, StreamRootAssets, rec.streamFile));
+                    }
+
+                    var brResults = AITBrotliCompressor.Compress(brSources);
+                    foreach (var rec in records)
+                    {
+                        string abs = Path.Combine(projectRoot, StreamRootAssets, rec.streamFile);
+                        if (brResults.TryGetValue(abs, out var r) && r.Ok
+                            && AITBrotliCompressor.ShouldKeep(r.raw, r.br, AITBrotliCompressor.DefaultMinGainPercent))
+                        {
+                            SafeDelete(abs);            // 원본 제거 — .br 만 스트리밍.
+                            SafeDelete(abs + ".meta");  // Refresh 전이라 대개 없음(방어적).
+                            texBr[rec.streamFile] = rec.streamFile + ".br";
+                        }
+                        else
+                        {
+                            SafeDelete(abs + ".br");    // 이득 미달/실패 → 무압축 원본 유지.
+                        }
+                    }
+                }
+
+                var entries = new List<string>();
+                foreach (var rec in records)
+                {
+                    bool isBr = texBr.TryGetValue(rec.streamFile, out string fileName);
+                    if (!isBr)
+                    {
+                        fileName = rec.streamFile;
+                    }
+
+                    entries.Add("{\"guid\":\"" + rec.g + "\",\"name\":" + JsonStr(rec.texName)
+                                + ",\"file\":" + JsonStr(fileName)
+                                + (isBr ? ",\"encoding\":\"br\"" : string.Empty)
+                                + ",\"width\":" + rec.w + ",\"height\":" + rec.h + "}");
                 }
 
                 // ─── 4단계: 매니페스트 동봉 ─────────────────────────────────────
@@ -774,5 +822,21 @@ namespace AppsInToss.Editor
 
         private static string JsonStr(string s)
             => "\"" + s.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
+
+        // 존재하지 않는 경로에 대해 조용히 no-op(brotli 채택/폐기 정리용).
+        private static void SafeDelete(string full)
+        {
+            try
+            {
+                if (File.Exists(full))
+                {
+                    File.Delete(full);
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[AIT-StreamingTexture] 파일 삭제 실패(무시): {full} — {e.Message}");
+            }
+        }
     }
 }

@@ -366,10 +366,13 @@ namespace AppsInToss.Editor
 
                 // ── Phase B: 모든 번들을 먼저 빌드(소스가 전부 아직 원본 → 풀 폰트 캡처). ──
                 //    이렇게 해야 같은 소스를 공유하는 다중 대상에서 '이미 스텁된 소스'를 캡처하는 순서 위험이 없다.
+                // brotli 인코더(내장 Node) 가용 여부를 여기서 한 번 결정: 가용하면 무압축 번들 +
+                // Phase D-1 의 .br 인코딩, 미가용이면 종전 LZ4 경로(BuildFontBundle 주석 참조).
+                bool brotliAvailable = AITBrotliCompressor.TryResolveNode(out _);
                 var built = new List<PlanEntry>();
                 foreach (var p in plan)
                 {
-                    if (BuildFontBundle(p.TmpAssetPath, p.BundleFileName, bundleTempFull, streamRootFull))
+                    if (BuildFontBundle(p.TmpAssetPath, p.BundleFileName, bundleTempFull, streamRootFull, brotliAvailable))
                     {
                         built.Add(p);
                     }
@@ -401,26 +404,73 @@ namespace AppsInToss.Editor
                 }
 
                 // ── Phase D: 스텁 치환 성공 소스만 매니페스트에 채택, 실패 소스 엔트리는 번들 제거(다운로드 낭비 방지). ──
+                var adopted = new List<PlanEntry>();
+                foreach (var p in built)
+                {
+                    if (disabledSources.Contains(p.SrcFontPath))
+                    {
+                        adopted.Add(p);
+                    }
+                    else
+                    {
+                        SafeDelete(Path.Combine(streamRootFull, p.BundleFileName));
+                    }
+                }
+
+                // ── Phase D-1: 채택 번들 brotli(.br) 인코딩(Phase B 에서 무압축으로 빌드된 전제). ──
+                // 채택 시 원본을 지우고 "<guid>.bundle.br"만 남긴다(런타임 AITStreamingCodec 이
+                // 매직 스니핑으로 서버 해제/클라이언트 해제 양쪽을 처리). 압축 실패·이득 미달 시
+                // 무압축 원본 유지 — 기능은 정상이나 크기가 LZ4 시절보다 커서 경고로 가시화.
+                var brFileNames = new Dictionary<string, string>();
+                if (brotliAvailable && adopted.Count > 0)
+                {
+                    var brSources = new List<string>();
+                    foreach (var p in adopted)
+                    {
+                        brSources.Add(Path.Combine(streamRootFull, p.BundleFileName));
+                    }
+
+                    var brResults = AITBrotliCompressor.Compress(brSources);
+                    foreach (var p in adopted)
+                    {
+                        string abs = Path.Combine(streamRootFull, p.BundleFileName);
+                        if (brResults.TryGetValue(abs, out var r) && r.Ok
+                            && AITBrotliCompressor.ShouldKeep(r.raw, r.br, AITBrotliCompressor.DefaultMinGainPercent))
+                        {
+                            SafeDelete(abs);
+                            brFileNames[p.BundleFileName] = p.BundleFileName + ".br";
+                            Debug.Log($"[AIT-StreamingFont]   brotli 채택 {p.BundleFileName}: {r.raw / 1048576f:0.00}MB → {r.br / 1048576f:0.00}MB");
+                        }
+                        else
+                        {
+                            SafeDelete(abs + ".br");
+                            Debug.LogWarning($"[AIT-StreamingFont]   brotli 미채택(실패/이득 미달) — 무압축 번들 유지: {p.BundleFileName}");
+                        }
+                    }
+                }
+
                 var entries = new List<string>();
                 int n = 0;
                 long deferredBytes = 0;
-                foreach (var p in built)
+                foreach (var p in adopted)
                 {
-                    if (!disabledSources.Contains(p.SrcFontPath))
+                    string fileName;
+                    bool isBr = brFileNames.TryGetValue(p.BundleFileName, out fileName);
+                    if (!isBr)
                     {
-                        SafeDelete(Path.Combine(streamRootFull, p.BundleFileName));
-                        continue;
+                        fileName = p.BundleFileName;
                     }
 
                     string[] fontNames = CollectFontAssetNames(p.TmpAssetPath);
-                    entries.Add("{\"guid\":\"" + p.Guid + "\",\"bundle\":" + JsonStr(p.BundleFileName)
+                    entries.Add("{\"guid\":\"" + p.Guid + "\",\"bundle\":" + JsonStr(fileName)
+                                + (isBr ? ",\"encoding\":\"br\"" : string.Empty)
                                 + ",\"fonts\":[" + string.Join(",", Array.ConvertAll(fontNames, JsonStr)) + "]}");
                     n++;
                     // Phase A 에서 스텁 치환 전 캡처한 원본 크기(p.SrcBytes)를 보고. 지금 파일을 다시
                     // 재면 이미 612B 스텁이라 0.00MB 로 잘못 나온다.
                     long srcBytes = p.SrcBytes;
                     deferredBytes += srcBytes;
-                    Debug.Log($"[AIT-StreamingFont]   외부화 {Path.GetFileName(p.TmpAssetPath)} (소스 {Path.GetFileName(p.SrcFontPath)} {srcBytes / 1048576f:0.00}MB) → {p.BundleFileName}");
+                    Debug.Log($"[AIT-StreamingFont]   외부화 {Path.GetFileName(p.TmpAssetPath)} (소스 {Path.GetFileName(p.SrcFontPath)} {srcBytes / 1048576f:0.00}MB) → {fileName}");
                 }
 
                 handle.Active = n > 0;
@@ -579,7 +629,7 @@ namespace AppsInToss.Editor
         }
 
         /// <summary>지정 TMP_FontAsset 을 단일 WebGL AssetBundle 로 빌드하여 StreamingAssets 로 복사. 성공 시 true.</summary>
-        private static bool BuildFontBundle(string tmpAssetPath, string bundleFileName, string bundleTempFull, string streamRootFull)
+        private static bool BuildFontBundle(string tmpAssetPath, string bundleFileName, string bundleTempFull, string streamRootFull, bool uncompressed)
         {
             try
             {
@@ -589,14 +639,18 @@ namespace AppsInToss.Editor
                     assetNames = new[] { tmpAssetPath },
                 };
 
-                // ChunkBasedCompression(LZ4): 런타임 LoadFromMemoryAsync 가 빠름(post-boot 배경 로드라 TTFF 무관).
+                // uncompressed=true(내장 Node 가용): 후속 brotli(.br) 인코딩 전제로 무압축 빌드 —
+                //   LZ4 위에 brotli 를 겹치면 이득이 실측 ~21%에 그치지만, 무압축 폰트 바이트는
+                //   brotli 단일 계층이 훨씬 깊게 누른다. LoadFromMemoryAsync 는 무압축이 가장 빠른 경로.
+                // uncompressed=false(Node 미가용): 종전 ChunkBasedCompression(LZ4) 유지 —
+                //   무압축 원본이 .br 없이 그대로 나가는 크기 회귀를 방지.
                 // BuildTarget.WebGL: 플레이어와 동일 타깃.
                 // (DeterministicAssetBundle은 Unity 5.0+에서 항상 적용되는 기본 동작이라 명시 불필요 —
                 //  6000.3에서 obsolete-as-error로 승격되어 빌드를 깨뜨리므로 플래그에서 제거)
                 var manifest = BuildPipeline.BuildAssetBundles(
                     bundleTempFull,
                     new[] { build },
-                    BuildAssetBundleOptions.ChunkBasedCompression,
+                    uncompressed ? BuildAssetBundleOptions.UncompressedAssetBundle : BuildAssetBundleOptions.ChunkBasedCompression,
                     BuildTarget.WebGL);
 
                 if (manifest == null)

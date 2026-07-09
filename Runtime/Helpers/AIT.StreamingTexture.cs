@@ -61,6 +61,9 @@ namespace AppsInToss
             public string file;
             public int width;
             public int height;
+
+            /// <summary>페이로드 인코딩("br" = brotli). 빈 값이면 무압축(구 매니페스트 호환).</summary>
+            public string encoding;
         }
 
         [System.Serializable]
@@ -246,9 +249,14 @@ namespace AppsInToss
                 bool applied = false;
                 try
                 {
+                    // .br 외부화 페이로드 정규화: 서버가 Content-Encoding 으로 이미 해제했으면
+                    // 그대로, raw brotli 면 여기서 해제(PNG/JPG 매직으로 판별). 무압축 엔트리는 no-op.
+                    byte[] payload = AITStreamingCodec.DecodePayload(
+                        e.encoding, req.downloadHandler.data, AITStreamingCodec.LooksLikeImage, e.name);
+
                     // 동일 차원 스텁(readable+uncompressed)에 실 픽셀을 in-place 업로드.
                     // LoadImage 는 PNG/JPG 디코드 후 GPU 업로드까지 수행 → 참조하는 Sprite/Material 자동 갱신.
-                    applied = tex.LoadImage(req.downloadHandler.data, false);
+                    applied = tex.LoadImage(payload, false);
                     if (applied && (tex.width != e.width || tex.height != e.height))
                     {
                         // 스텁 차원과 원본 차원 불일치(예: crunch maxTextureSize 캡 + D1 동시 사용).

@@ -63,6 +63,9 @@ namespace AppsInToss
             public string guid;
             public string bundle;
             public string[] fonts;
+
+            /// <summary>페이로드 인코딩("br" = brotli). 빈 값이면 무압축(구 매니페스트 호환).</summary>
+            public string encoding;
         }
 
         [Serializable]
@@ -217,6 +220,10 @@ namespace AppsInToss
 
                 data = req.downloadHandler.data;
             }
+
+            // .br 외부화 페이로드 정규화: 서버가 Content-Encoding 으로 이미 해제했으면 그대로,
+            // raw brotli 면 여기서 해제(UnityFS 매직으로 판별). 무압축 엔트리는 no-op.
+            data = AITStreamingCodec.DecodePayload(e.encoding, data, AITStreamingCodec.LooksLikeUnityFs, e.bundle);
 
             // stripping High 가 잘라낸 GetAssetBundle/DownloadHandlerAssetBundle 대신
             // DownloadHandlerBuffer 로 받은 바이트를 LoadFromMemoryAsync 로 적재(가상 FS 캐시 비의존).

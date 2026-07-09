@@ -800,7 +800,12 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       const reloadErrors = [];   // { message, stack }
       const errHandler = err => reloadErrors.push({ message: err.message, stack: err.stack });
       const consoleLines = [];
-      const consoleHandler = msg => consoleLines.push(`[${msg.type()}] ${msg.text()}`);
+      const consoleHandler = msg => {
+        const line = `[${msg.type()}] ${msg.text()}`;
+        consoleLines.push(line);
+        // 제품 캐시 계층 마커를 CI stdout으로 즉시 포워딩(콜드 워밍/재로드 HIT·MISS 진단).
+        if (line.indexOf('[AIT] cache:') !== -1) console.log(`  (page) ${line}`);
+      };
       // 실패한 네트워크 요청(끊긴 소켓 등)을 URL+원인과 함께 포착.
       const failedRequests = [];
       const reqFailedHandler = req => {
@@ -840,6 +845,30 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
         if (signal.length > 110) console.log(`[3-1] --- signal tail (last 30) ---\n${signal.slice(-30).join('\n')}`);
       };
 
+      // 벽시계-바운드 unityInstance 폴링. Playwright waitForFunction은 제품 워치독의
+      // location.reload() 루프를 만나면 자체 timeout을 무시하고 navigation마다 re-arm되어
+      // test.setTimeout 예산 전체를 소진한다(관측: 90s 지정에도 363s 실행). 이 헬퍼는
+      // 내가 제어하는 벽시계 deadline으로 시도별 예산을 실제로 강제하고, navigation 중
+      // evaluate 예외("context destroyed"/page closed)를 삼켜 재로드 루프에 견딘다.
+      const waitForUnityBounded = async (budgetMs) => {
+        const deadline = Date.now() + budgetMs;
+        let evalThrows = 0;
+        while (Date.now() < deadline) {
+          try {
+            const ready = await sharedPage.evaluate(
+              () => typeof window !== 'undefined' && window['unityInstance'] !== undefined);
+            if (ready) return { ready: true, evalThrows };
+          } catch (e) {
+            evalThrows++; // 재로드 중 컨텍스트 파괴 등 — 계속 폴링.
+            if (/has been closed|Target closed/.test(e.message || '')) {
+              return { ready: false, closed: true, evalThrows };
+            }
+          }
+          await new Promise(r => setTimeout(r, 1000));
+        }
+        return { ready: false, evalThrows };
+      };
+
       let passed = false;
       let lastErr = null;
       try {
@@ -858,8 +887,11 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
             } catch (e) {}
           }
           const t0 = Date.now();
+          let closedFatal = false;
           try {
-            const resp = await sharedPage.reload({ waitUntil: 'networkidle', timeout: 90000 });
+            // domcontentloaded로 커밋(networkidle 금지 — 워치독 재다운로드 루프 하에선 idle이 안 옴).
+            // unityInstance 대기는 벽시계-바운드 폴링으로 분리 제어한다.
+            const resp = await sharedPage.reload({ waitUntil: 'domcontentloaded', timeout: 45000 });
             console.log(`[3-1] attempt ${attempt}/${maxAttempts} reload status=${resp?.status()} after ${Date.now() - t0}ms`);
             expect(resp?.status()).toBe(200);
 
@@ -868,22 +900,24 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
                 const e = performance.getEntriesByType('navigation')[0];
                 return e ? e.type : (performance.navigation && performance.navigation.type);
               } catch (e) { return 'unknown'; }
-            });
+            }).catch(() => 'unknown');
             console.log(`[3-1] navigation type=${navType}`);
 
             const tWait = Date.now();
-            await sharedPage.waitForFunction(
-              () => window['unityInstance'] !== undefined,
-              { timeout: 90000, polling: 1000 });
-            console.log(`[3-1] unityInstance re-set after ${Date.now() - tWait}ms (warm reinit ok, attempt ${attempt})`);
+            const res = await waitForUnityBounded(75000);
+            if (res.ready) {
+              console.log(`[3-1] unityInstance re-set after ${Date.now() - tWait}ms (warm reinit ok, attempt ${attempt}, evalThrows=${res.evalThrows})`);
+              // 성공 경로에서도 진짜 크래시 시그니처는 hard-fail.
+              const crashErrors = reloadErrors.filter(e => CRASH_RE.test(e.message));
+              expect(crashErrors.length, `No crash errors on reload: ${crashErrors.map(e => e.message).join('; ')}`).toBe(0);
 
-            // 성공 경로에서도 진짜 크래시 시그니처는 hard-fail.
-            const crashErrors = reloadErrors.filter(e => CRASH_RE.test(e.message));
-            expect(crashErrors.length, `No crash errors on reload: ${crashErrors.map(e => e.message).join('; ')}`).toBe(0);
-
-            testResults.tests['3_1_reload'] = { passed: true, attempts: attempt };
-            passed = true;
-            break;
+              testResults.tests['3_1_reload'] = { passed: true, attempts: attempt };
+              passed = true;
+              break;
+            }
+            // unityInstance가 예산 내 미설정(evalThrows>0이면 재로드 루프 진행 중 = 워치독 발동).
+            closedFatal = !!res.closed;
+            throw new Error(`unityInstance not set within 75s budget (evalThrows=${res.evalThrows}${res.closed ? ', page closed' : ''})`);
           } catch (err) {
             lastErr = err;
             console.log(`[3-1] attempt ${attempt}/${maxAttempts} FAILED after ${Date.now() - t0}ms: ${err.message}`);
@@ -891,6 +925,12 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
             if (hadCrash()) {
               console.log(`[3-1] genuine crash signature detected — hard-fail (no retry)`);
               dumpDiag('crash');
+              throw err;
+            }
+            // 페이지/컨텍스트가 닫혔으면 재시도 불가(fatal).
+            if (closedFatal || /has been closed|Target closed/.test(err.message || '')) {
+              console.log(`[3-1] page/context closed — cannot retry`);
+              dumpDiag('closed');
               throw err;
             }
             // 하니스 순단(로컬 서버 연결 끊김/다운로드 실패)이고 시도가 남았으면 재시도.

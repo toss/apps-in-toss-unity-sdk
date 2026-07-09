@@ -863,7 +863,38 @@
                     e.preventDefault();
                 });
 
+                // 다운로드 정체(stall) 워치독:
+                // 데이터 스트림이 에러 없이 조용히 멈추는 경우(좀비 커넥션)에는
+                // 로더의 catch도, console.error 신호도 발생하지 않아 위 워치독이 잡지 못한다.
+                // 다운로드 단계(progress < 0.9)에서 60초간 진행이 전혀 없으면 동일 예산으로 재시도.
+                // (진행 이벤트는 청크 단위로 오므로 느린 네트워크에서도 오탐하지 않고,
+                //  WASM 컴파일 등 진행 이벤트가 뜸한 후반부(>= 0.9)는 감시에서 제외)
+                var _aitLastProgress = 0;
+                var _aitLastProgressTs = Date.now();
+                var _aitStallTimer = setInterval(function() {
+                    if (window.unityInstance) { clearInterval(_aitStallTimer); return; }
+                    if (_aitLastProgress >= 0.9) return;
+                    if (Date.now() - _aitLastProgressTs > 60000) {
+                        clearInterval(_aitStallTimer);
+                        try {
+                            var retryKey = '__ait_reload_count__';
+                            var maxRetries = 2;
+                            var retries = parseInt(sessionStorage.getItem(retryKey) || '0', 10);
+                            if (retries < maxRetries) {
+                                sessionStorage.setItem(retryKey, String(retries + 1));
+                                console.error('[AIT] 다운로드 정체 감지 (progress=' + _aitLastProgress
+                                    + ', 60s 무진행), 자동 재시도 (' + (retries + 1) + '/' + maxRetries + ')');
+                                location.reload();
+                            }
+                        } catch (e) {}
+                    }
+                }, 10000);
+
                 createUnityInstance(canvas, config, (progress) => {
+                    if (progress > _aitLastProgress) {
+                        _aitLastProgress = progress;
+                        _aitLastProgressTs = Date.now();
+                    }
                     var unityProgress = 0.1 + (progress * 0.9); // 10%부터 시작해서 100%까지
                     updateLoadingProgress(unityProgress);
                     progressBarFull.style.width = 100 * progress + "%";

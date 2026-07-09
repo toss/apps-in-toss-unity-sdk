@@ -789,12 +789,32 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       // 내부 대기는 의도적으로 hard-fail 유지: warm reload 후 unityInstance 재세팅은
       // 이 테스트의 원 계약(재로드 재초기화 회귀 가드, 4654e21)이므로 삼키지 않는다.
       test.setTimeout(300000);
-      const reloadErrors = [];
-      const errHandler = err => reloadErrors.push(err.message);
+      const reloadErrors = [];   // { message, stack }
+      const errHandler = err => reloadErrors.push({ message: err.message, stack: err.stack });
       const consoleLines = [];
       const consoleHandler = msg => consoleLines.push(`[${msg.type()}] ${msg.text()}`);
+      // 실패한 네트워크 요청(끊긴 소켓 등)을 URL+원인과 함께 포착 —
+      // 좀비 스트림(조용한 정체)인지 명시적 실패인지 구분하기 위함.
+      const failedRequests = [];
+      const reqFailedHandler = req => {
+        try {
+          failedRequests.push(`${req.url().split('/').slice(-2).join('/')} :: ${req.failure()?.errorText || '?'}`);
+        } catch (e) {}
+      };
+      // Build/* 응답 상태 관측 — 데이터 재다운로드가 시작은 됐는지 확인.
+      const buildResponses = [];
+      const respHandler = resp => {
+        try {
+          const u = resp.url();
+          if (/\/Build\//.test(u)) {
+            buildResponses.push(`${u.split('/').slice(-1)[0]} -> ${resp.status()}`);
+          }
+        } catch (e) {}
+      };
       sharedPage.on('pageerror', errHandler);
       sharedPage.on('console', consoleHandler);
+      sharedPage.on('requestfailed', reqFailedHandler);
+      sharedPage.on('response', respHandler);
 
       const t0 = Date.now();
       try {
@@ -802,29 +822,54 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
         console.log(`[3-1] reload status=${resp?.status()} after ${Date.now() - t0}ms`);
         expect(resp?.status()).toBe(200);
 
+        // 재로드 유형 확인 — early-fetch 스킵 가드가 작동하려면 'reload'여야 함.
+        const navType = await sharedPage.evaluate(() => {
+          try {
+            const e = performance.getEntriesByType('navigation')[0];
+            return e ? e.type : (performance.navigation && performance.navigation.type);
+          } catch (e) { return 'unknown'; }
+        });
+        console.log(`[3-1] navigation type=${navType}`);
+
         const tWait = Date.now();
         await sharedPage.waitForFunction(
           () => window['unityInstance'] !== undefined,
           { timeout: 150000, polling: 1000 });
         console.log(`[3-1] unityInstance re-set after ${Date.now() - tWait}ms (warm reinit ok)`);
 
-        const abortErrors = reloadErrors.filter(e => e.includes('ERR_ABORTED'));
+        const abortErrors = reloadErrors.filter(e => e.message.includes('ERR_ABORTED'));
         expect(abortErrors.length, 'No ERR_ABORTED errors on reload').toBe(0);
 
         const crashErrors = reloadErrors.filter(e =>
-          /webglcontextlost|Aborted\(|RuntimeError|out of bounds|memory access/i.test(e));
-        expect(crashErrors.length, `No crash errors on reload: ${crashErrors.join('; ')}`).toBe(0);
+          /webglcontextlost|Aborted\(|RuntimeError|out of bounds|memory access/i.test(e.message));
+        expect(crashErrors.length, `No crash errors on reload: ${crashErrors.map(e => e.message).join('; ')}`).toBe(0);
 
         testResults.tests['3_1_reload'] = { passed: true };
       } catch (err) {
         // 실패 시에만 진단 덤프 (통과 leg 로그 오염 방지)
         console.log(`[3-1] FAILED after ${Date.now() - t0}ms: ${err.message}`);
-        console.log(`[3-1] pageerrors(${reloadErrors.length}): ${reloadErrors.join(' | ')}`);
-        console.log(`[3-1] console lines(${consoleLines.length}), last 40:\n${consoleLines.slice(-40).join('\n')}`);
+        console.log(`[3-1] pageerrors(${reloadErrors.length}):`);
+        reloadErrors.forEach((e, i) => {
+          console.log(`  #${i}: ${e.message}`);
+          if (e.stack && e.stack !== e.message) console.log(`     stack: ${e.stack.split('\n').slice(0, 4).join(' | ')}`);
+        });
+        console.log(`[3-1] requestfailed(${failedRequests.length}): ${failedRequests.join(' | ')}`);
+        console.log(`[3-1] Build/* responses(${buildResponses.length}): ${buildResponses.join(' | ')}`);
+        // 반복 스팸("still waiting on run dependencies", "dependency: dataUrl",
+        // "(end of list)")을 제거해 실제 신호만 남긴 뒤 앞 80 + 뒤 30줄 덤프.
+        const spam = /still waiting on run dependencies|dependency: dataUrl|\(end of list\)/;
+        const signal = consoleLines.filter(l => !spam.test(l));
+        console.log(`[3-1] console lines total=${consoleLines.length}, signal(non-spam)=${signal.length}`);
+        const head = signal.slice(0, 80);
+        const tail = signal.slice(-30);
+        console.log(`[3-1] --- signal head (first 80) ---\n${head.join('\n')}`);
+        if (signal.length > 110) console.log(`[3-1] --- signal tail (last 30) ---\n${tail.join('\n')}`);
         throw err;
       } finally {
         sharedPage.off('pageerror', errHandler);
         sharedPage.off('console', consoleHandler);
+        sharedPage.off('requestfailed', reqFailedHandler);
+        sharedPage.off('response', respHandler);
       }
     });
 

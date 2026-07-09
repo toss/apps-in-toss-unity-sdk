@@ -33,7 +33,7 @@
   },
   "devDependencies": {
     "@types/handlebars": "^4.1.0",
-    "@types/node": "^26.1.0",
+    "@types/node": "^26.1.1",
     "@vitest/ui": "4.1.9",
     "glob": "13.0.6",
     "tsx": "4.22.4",

@@ -23,6 +23,20 @@ jobs:
       contents: write
       pull-requests: write
       statuses: write
+    env:
+      # 공급망 격리(minimum-release-age): 게시 3일(4320분) 미만 버전을 해석에서 제외해,
+      # 게시 직후 삭제·오염되는 버전(2026-07 enhanced-resolve@5.24.2 등)을 lockfile에
+      # 스냅샷하는 사고 방지. 사내 통제 스코프는 당일 릴리즈(SDK 버전 동시 bump)가
+      # 정상 흐름이고, 격리되면 정확 핀 해석이 아예 실패하므로 제외.
+      # ⚠️ pnpm 11은 이 설정을 .npmrc에서 읽지 않는다(조용히 무시) — pnpm-workspace.yaml
+      #    또는 --config.* CLI 플래그만 유효하며, CLI가 workspace 값보다 우선 (11.6.0 실측).
+      # ⚠️ exclude 플래그는 2개 이상 반복될 때만 배열로 파싱된다 — 1개만 남기면 문자열로
+      #    파싱돼 통째로 무시되므로(11.6.0 실측) 항목을 1개로 줄이지 말 것.
+      MRA_FLAGS: >-
+        --config.minimum-release-age=4320
+        --config.minimum-release-age-exclude=@apps-in-toss/*
+        --config.minimum-release-age-exclude=@toss/*
+        --config.minimum-release-age-exclude=@granite-js/*
 
     steps:
       - name: Checkout Repository
@@ -38,18 +52,12 @@ jobs:
         uses: pnpm/action-setup@v6
 
       - name: Force public registry
-        # minimum-release-age(분): 게시 3일(4320분) 미만의 버전을 해석에서 제외.
-        # 갓 게시됐다가 npm이 악성으로 삭제하는 버전(2026-07 enhanced-resolve 5.24.2 등
-        # 4종이 하루 만에 unpublish)을 lockfile에 스냅샷하는 사고 방지.
-        # 사내 통제 스코프는 당일 릴리즈(SDK 버전 동시 bump)가 정상 흐름이라 제외.
+        # registry는 .npmrc에서 정상 인식된다. minimum-release-age 계열은 pnpm 11이
+        # .npmrc를 읽지 않으므로 여기 두면 안 되고, job env의 MRA_FLAGS(CLI)로 전달한다.
         run: |
           mkdir -p ~/.config/pnpm
           cat > ~/.npmrc <<'EOF'
           registry=https://registry.npmjs.org/
-          minimum-release-age=4320
-          minimum-release-age-exclude[]=@apps-in-toss/*
-          minimum-release-age-exclude[]=@toss/*
-          minimum-release-age-exclude[]=@granite-js/*
           EOF
           pnpm config set registry https://registry.npmjs.org/
 
@@ -57,19 +65,19 @@ jobs:
         working-directory: Tests~/E2E/tests
         run: |
           rm -f pnpm-lock.yaml
-          pnpm install --lockfile-only --registry=https://registry.npmjs.org/
+          pnpm install --lockfile-only --registry=https://registry.npmjs.org/ $MRA_FLAGS
 
       - name: Regenerate BuildConfig lockfile
         working-directory: WebGLTemplates/AITTemplate/BuildConfig~
         run: |
           rm -f pnpm-lock.yaml
-          pnpm install --lockfile-only --registry=https://registry.npmjs.org/
+          pnpm install --lockfile-only --registry=https://registry.npmjs.org/ $MRA_FLAGS
 
       - name: Regenerate SDK Generator lockfile
         working-directory: sdk-runtime-generator~
         run: |
           rm -f pnpm-lock.yaml
-          pnpm install --lockfile-only --registry=https://registry.npmjs.org/
+          pnpm install --lockfile-only --registry=https://registry.npmjs.org/ $MRA_FLAGS
 
       - name: Verify lockfiles (frozen install)
         # --lockfile-only는 메타데이터만 보고 기록하므로, 메타데이터와 실제 tarball이
@@ -83,7 +91,7 @@ jobs:
           set -euo pipefail
           for dir in "Tests~/E2E/tests" "WebGLTemplates/AITTemplate/BuildConfig~" "sdk-runtime-generator~"; do
             echo "::group::verify $dir"
-            (cd "$dir" && pnpm install --frozen-lockfile --ignore-scripts)
+            (cd "$dir" && pnpm install --frozen-lockfile --ignore-scripts $MRA_FLAGS)
             echo "::endgroup::"
           done
 

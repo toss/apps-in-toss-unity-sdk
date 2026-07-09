@@ -306,8 +306,8 @@ namespace AppsInToss.Editor.Package
                 .Replace("%AIT_ICON_URL%", config.iconUrl ?? "")
                 .Replace("%AIT_DISPLAY_NAME%", config.displayName ?? "")
                 .Replace("%AIT_PRIMARY_COLOR%", config.primaryColor ?? "#3182f6")
-                // Early Fetch 스크립트 (로딩 성능 개선)
-                .Replace("%AIT_EARLY_FETCH_SCRIPT%", GenerateEarlyFetchScript(dataFile, wasmFile));
+                // Early Fetch 스크립트 (로딩 성능 개선 + 레거시 warm-reload Cache-Storage 워밍)
+                .Replace("%AIT_EARLY_FETCH_SCRIPT%", GenerateEarlyFetchScript(dataFile, wasmFile, buildSrc, PlayerSettings.bundleVersion));
 
             // 로딩 화면 삽입 (%AIT_LOADING_SCREEN% 플레이스홀더)
             string loadingContent = "";
@@ -459,7 +459,7 @@ namespace AppsInToss.Editor.Package
         /// 해결: head에서 JS fetch()를 즉시 시작하고, window.fetch를 일회성으로 인터셉트하여
         /// Unity loader가 같은 URL을 요청할 때 이미 받은 Response를 반환합니다.
         /// </summary>
-        private static string GenerateEarlyFetchScript(string dataFile, string wasmFile)
+        private static string GenerateEarlyFetchScript(string dataFile, string wasmFile, string buildSrc, string bundleVersion)
         {
             var urls = new List<string>();
             if (!string.IsNullOrEmpty(dataFile)) urls.Add($"Build/{dataFile}");
@@ -470,6 +470,77 @@ namespace AppsInToss.Editor.Package
             // JSON 배열로 URL 목록 생성
             var urlsJson = "[" + string.Join(",", urls.ConvertAll(u => $"\"{u}\"")) + "]";
 
+            // Unity 6000.x 로더는 자체 IndexedDB(UnityCache)로 데이터를 검증 캐싱하므로 warm reload에서
+            // 재다운로드가 없다 → 우리 Cache-Storage 오버라이드는 순이득이 없고 스테일/이중 저장 위험만 더한다.
+            // 레거시(2021/2022) 로더는 데이터 캐시가 없어 warm reload마다 100MB를 재다운로드 → 로컬 preview/CDN
+            // 순단에 노출된다. 따라서 Cache-Storage 워밍은 레거시에만 적용하고 6000.x는 기존 스크립트를 유지한다.
+            if (!IsLegacyUnityLoader())
+            {
+                return GenerateEarlyFetchScriptModern(urlsJson);
+            }
+
+            string cacheName = BuildDataCacheName(dataFile, wasmFile, buildSrc, bundleVersion);
+            return GenerateEarlyFetchScriptLegacyCaching(urlsJson, cacheName);
+        }
+
+        /// <summary>
+        /// Application.unityVersion의 메이저가 6000 미만이면 레거시 로더(자체 데이터 캐시 없음)로 판정한다.
+        /// WebGL 빌드는 에디터 버전의 로더를 임베드하므로 빌드 시 에디터 버전 == 런타임 로더 버전이다.
+        /// 파싱 실패 시 보수적으로 false(기존 무캐시 동작 유지)를 반환한다.
+        /// </summary>
+        private static bool IsLegacyUnityLoader()
+        {
+            try
+            {
+                string v = Application.unityVersion;
+                int dot = v.IndexOf('.');
+                string majorStr = dot > 0 ? v.Substring(0, dot) : v;
+                if (int.TryParse(majorStr, out int major))
+                {
+                    return major < 6000;
+                }
+            }
+            catch { }
+            return false;
+        }
+
+        /// <summary>
+        /// Cache-Storage 캐시명 생성. 콘텐츠 변경 버스팅을 위해 data/wasm 파일의 바이트 크기와 bundleVersion을
+        /// 캐시명에 포함한다. 2021 고정 파일명(webgl.data)에서도 콘텐츠(에셋/코드)가 바뀌면 최소 한 파일의 크기가
+        /// 달라져 새 캐시명이 되고, 이전 빌드 캐시는 콜드 로드 시 정리된다(스테일 데이터/wasm 서빙 방지).
+        /// </summary>
+        private static string BuildDataCacheName(string dataFile, string wasmFile, string buildSrc, string bundleVersion)
+        {
+            long dataSize = FileSizeSafe(Path.Combine(buildSrc, dataFile));
+            long wasmSize = string.IsNullOrEmpty(wasmFile) ? 0L : FileSizeSafe(Path.Combine(buildSrc, wasmFile));
+            string ver = string.IsNullOrEmpty(bundleVersion) ? "0" : bundleVersion;
+            return $"ait-unity-{SanitizeCacheToken(dataFile)}-{dataSize}-{wasmSize}-{SanitizeCacheToken(ver)}";
+        }
+
+        private static long FileSizeSafe(string path)
+        {
+            try { return File.Exists(path) ? new FileInfo(path).Length : 0L; }
+            catch { return 0L; }
+        }
+
+        private static string SanitizeCacheToken(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return "0";
+            var chars = s.ToCharArray();
+            for (int i = 0; i < chars.Length; i++)
+            {
+                char c = chars[i];
+                bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
+                if (!ok) chars[i] = '_';
+            }
+            return new string(chars);
+        }
+
+        /// <summary>
+        /// 6000.x용 기존 Early Fetch 스크립트(무캐시): 콜드 로드에서 병렬 prefetch → 로더에 전달, 재로드에서는 미설치.
+        /// </summary>
+        private static string GenerateEarlyFetchScriptModern(string urlsJson)
+        {
             return $@"<script>
     // Early Fetch: HTML 파싱과 동시에 리소스 다운로드를 시작하고,
     // Unity loader가 같은 URL을 요청할 때 이미 받은 Response를 반환합니다.
@@ -512,6 +583,149 @@ namespace AppsInToss.Editor.Package
             }}
             return originalFetch.apply(this, arguments);
         }};
+    }})();
+    </script>";
+        }
+
+        /// <summary>
+        /// 레거시(2021/2022) 로더용 Early Fetch + Cache-Storage 워밍 스크립트.
+        ///
+        /// 문제: 레거시 로더는 데이터 캐시가 없어 warm reload마다 webgl.data(~100MB)를 재다운로드한다.
+        /// 부하 상태의 로컬 vite preview/CDN이 본문 스트림을 중단(ERR_CONNECTION_CLOSED)하면 로더가
+        /// 실패를 삼키고 undefined를 resolve → new DataView(undefined.buffer) throw → 영구 로딩 행.
+        ///
+        /// 대책(리뷰 반영):
+        ///  - 콜드 로드는 기존과 동일하게 prefetch → 로더 전달(clone/tee 없음 → 콜드 로드 메모리 회귀 없음).
+        ///  - 로드 성공(unityInstance) 후 별도 fetch(force-cache: 콜드 로드가 채운 HTTP 디스크 캐시에서 로컬로 읽음)로
+        ///    Cache Storage를 스트리밍 워밍. 스트리밍 put은 원자적 → 스트림 중단/Content-Length 불일치 시 put이
+        ///    reject되어 부분(오염) 엔트리를 남기지 않는다(BLOCKER 근본 차단, 라이브 소켓과 분리).
+        ///  - 재로드는 완결 엔트리만 존재하는 캐시에서 서빙(ignoreSearch) → 네트워크 재다운로드/순단 회피.
+        ///  - 워치독 복구 reload는 SKIP_KEY로 캐시를 1회 우회 → 오염 캐시가 복구를 막지 않음(self-amplification 차단).
+        ///  - 캐시명에 data/wasm 바이트 크기 포함 → 콘텐츠 변경 시 자동 버스팅(2021 고정 파일명 스테일 방지).
+        /// </summary>
+        private static string GenerateEarlyFetchScriptLegacyCaching(string urlsJson, string cacheName)
+        {
+            return $@"<script>
+    (function() {{
+        var urls = {urlsJson};
+        if (!urls || !urls.length) return;
+        var CACHE_NAME = '{cacheName}';
+        var SKIP_KEY = '__ait_skip_data_cache__';
+
+        var absUrls = [];
+        var knownSet = {{}};
+        for (var i = 0; i < urls.length; i++) {{
+            var abs = new URL(urls[i], location.href).href;
+            absUrls.push(abs);
+            knownSet[abs] = urls[i];
+        }}
+
+        // Cache Storage 가용성(보안 컨텍스트 필요: https 또는 localhost — E2E/프로덕션 모두 충족).
+        var hasCache = false;
+        try {{ hasCache = !!(self.caches && self.caches.open); }} catch (e) {{ hasCache = false; }}
+
+        var isReload = false;
+        try {{
+            var navEntries = performance.getEntriesByType && performance.getEntriesByType('navigation');
+            isReload = (navEntries && navEntries[0])
+                ? navEntries[0].type === 'reload'
+                : (performance.navigation && performance.navigation.type === 1);
+        }} catch (e) {{}}
+
+        var originalFetch = window.fetch;
+        var earlyFetchMap = {{}};
+
+        // 워치독 복구 reload는 캐시를 1회 우회하고 네트워크로 직행(오염 캐시에 복구가 갇히지 않도록).
+        var skipCacheOnce = false;
+        try {{
+            if (sessionStorage.getItem(SKIP_KEY)) {{
+                skipCacheOnce = true;
+                sessionStorage.removeItem(SKIP_KEY);
+            }}
+        }} catch (e) {{}}
+
+        if (!isReload) {{
+            // 콜드 로드: 병렬 prefetch → 로더에 그대로 전달(clone/tee 없음).
+            for (var j = 0; j < urls.length; j++) {{
+                (function(href, fetchUrl) {{
+                    var p = originalFetch(fetchUrl).catch(function() {{ delete earlyFetchMap[href]; return null; }});
+                    earlyFetchMap[href] = p;
+                }})(absUrls[j], urls[j]);
+            }}
+            if (hasCache) {{
+                // 이전(스테일) 빌드의 ait-unity-* 캐시 정리(현재 캐시명은 data/wasm 바이트 크기로 버스팅됨).
+                try {{
+                    self.caches.keys().then(function(names) {{
+                        names.forEach(function(n) {{
+                            if (n.indexOf('ait-unity-') === 0 && n !== CACHE_NAME) self.caches.delete(n);
+                        }});
+                    }}).catch(function() {{}});
+                }} catch (e) {{}}
+                schedulePopulate();
+            }}
+        }}
+
+        window.fetch = function(resource, init) {{
+            var url = (typeof resource === 'string') ? new URL(resource, location.href).href : resource.url;
+            if (!knownSet[url]) return originalFetch.apply(this, arguments);
+
+            var self2 = this, args = arguments;
+            var pending = earlyFetchMap[url];
+            if (pending) {{
+                // 콜드 로드 fast-path: 이미 시작된 prefetch 재사용.
+                delete earlyFetchMap[url];
+                return pending.then(function(r) {{
+                    return (r && r.ok && !r.bodyUsed) ? r : originalFetch.apply(self2, args);
+                }});
+            }}
+            // 재로드: Cache Storage에서 서빙 → 네트워크 재다운로드(순단) 회피. 완결 엔트리만 저장되므로 히트는 신뢰 가능.
+            if (hasCache && !skipCacheOnce) {{
+                return self.caches.open(CACHE_NAME).then(function(c) {{
+                    return c.match(url, {{ ignoreSearch: true }});
+                }}).then(function(cached) {{
+                    return (cached && cached.ok) ? cached : originalFetch.apply(self2, args);
+                }}).catch(function() {{
+                    return originalFetch.apply(self2, args);
+                }});
+            }}
+            return originalFetch.apply(self2, args);
+        }};
+
+        // 게임 로드 완료(window.unityInstance) 후 폴링 → Cache Storage 워밍.
+        function schedulePopulate() {{
+            var tries = 0;
+            var iv = setInterval(function() {{
+                tries++;
+                if (window.unityInstance) {{
+                    clearInterval(iv);
+                    populateAll();
+                }} else if (tries > 360) {{
+                    clearInterval(iv); // ~180s 뒤 포기(로드 미완료 시 인터벌 누수 방지).
+                }}
+            }}, 500);
+        }}
+
+        function populateAll() {{
+            self.caches.open(CACHE_NAME).then(function(c) {{
+                absUrls.forEach(function(u) {{ putWithRetry(c, u, 3); }});
+            }}).catch(function() {{}});
+        }}
+
+        // force-cache: 콜드 로드가 채운 HTTP 디스크 캐시에서 로컬로 읽음(라이브 소켓과 분리, 재다운로드/순단 회피).
+        // 스트리밍 put은 원자적: 스트림 중단/Content-Length 불일치 → put reject → 부분 엔트리 미저장.
+        function putWithRetry(cache, url, attemptsLeft) {{
+            cache.match(url, {{ ignoreSearch: true }}).then(function(existing) {{
+                if (existing) return; // 이미 워밍됨.
+                originalFetch(url, {{ cache: 'force-cache' }}).then(function(r) {{
+                    if (!r || !r.ok) throw new Error('populate: bad response');
+                    return cache.put(url, r); // 스트리밍 저장(원자적).
+                }}).catch(function() {{
+                    if (attemptsLeft > 1) {{
+                        setTimeout(function() {{ putWithRetry(cache, url, attemptsLeft - 1); }}, 2000);
+                    }}
+                }});
+            }}).catch(function() {{}});
+        }}
     }})();
     </script>";
         }

@@ -826,6 +826,9 @@
                                 var retries = parseInt(sessionStorage.getItem(retryKey) || '0', 10);
                                 if (retries < maxRetries) {
                                     sessionStorage.setItem(retryKey, String(retries + 1));
+                                    // 복구 reload는 Cache-Storage(레거시 워밍)를 1회 우회하고 네트워크로 직행한다
+                                    // — 혹시 오염된 캐시 엔트리가 있어도 복구가 그것에 갇히지 않도록.
+                                    try { sessionStorage.setItem('__ait_skip_data_cache__', '1'); } catch (e) {}
                                     origConsoleError.call(console,
                                         '[AIT] 다운로드 실패 감지, 자동 재시도 (' + (retries + 1) + '/' + maxRetries + '):', msg);
                                     location.reload();
@@ -882,6 +885,8 @@
                             var retries = parseInt(sessionStorage.getItem(retryKey) || '0', 10);
                             if (retries < maxRetries) {
                                 sessionStorage.setItem(retryKey, String(retries + 1));
+                                // 복구 reload는 Cache-Storage(레거시 워밍)를 1회 우회하고 네트워크로 직행.
+                                try { sessionStorage.setItem('__ait_skip_data_cache__', '1'); } catch (e) {}
                                 console.error('[AIT] 다운로드 정체 감지 (progress=' + _aitLastProgress
                                     + ', 60s 무진행), 자동 재시도 (' + (retries + 1) + '/' + maxRetries + ')');
                                 location.reload();

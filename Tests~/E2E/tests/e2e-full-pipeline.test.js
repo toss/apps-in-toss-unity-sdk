@@ -783,34 +783,30 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
     // Test 3-1: Page Reload Crash Test (cache warm)
     // -------------------------------------------------------------------------
     test('3-1. Page reload should not crash (cache warm)', async () => {
-      // [진단 실험] 예산 충돌(하니스 인공물) vs warm reload 재초기화 실패(제품 회귀) 판별용.
-      // - 예산을 300s로 확보하여 내부 waitForFunction(150s)이 물리적으로 도달 가능하게 함
-      //   (reload 90s + inner 150s = 240s < 300s). 기존 120s/120s는 test-level이 먼저 만료됐다.
-      // - 내부 대기는 hard-fail 유지(삼키지 않음): 시간을 줘도 재초기화되는지 정직하게 관측.
-      // - 재로드 페이지 콘솔을 실시간 캡처하여 로더가 도는지(느림) vs 침묵(freeze)을 구분.
+      // 예산 설계: 기존 test 120s == 내부 waitForFunction 120s는 reload(90s)가 예산을 먼저
+      // 소모해 내부 타임아웃이 물리적으로 도달 불가였다(테스트가 항상 teardown으로 종료).
+      // test 300s > reload 90s + inner 150s로 내부 대기가 끝까지 관측되도록 한다.
+      // 내부 대기는 의도적으로 hard-fail 유지: warm reload 후 unityInstance 재세팅은
+      // 이 테스트의 원 계약(재로드 재초기화 회귀 가드, 4654e21)이므로 삼키지 않는다.
       test.setTimeout(300000);
       const reloadErrors = [];
       const errHandler = err => reloadErrors.push(err.message);
       const consoleLines = [];
-      const consoleHandler = msg => {
-        const line = `[3-1 PAGE ${msg.type()}] ${msg.text()}`;
-        consoleLines.push(line);
-        console.log(line);
-      };
+      const consoleHandler = msg => consoleLines.push(`[${msg.type()}] ${msg.text()}`);
       sharedPage.on('pageerror', errHandler);
       sharedPage.on('console', consoleHandler);
 
       const t0 = Date.now();
       try {
         const resp = await sharedPage.reload({ waitUntil: 'networkidle', timeout: 90000 });
-        console.log(`[3-1 DIAG] reload status=${resp?.status()} after ${Date.now() - t0}ms`);
+        console.log(`[3-1] reload status=${resp?.status()} after ${Date.now() - t0}ms`);
         expect(resp?.status()).toBe(200);
 
         const tWait = Date.now();
         await sharedPage.waitForFunction(
           () => window['unityInstance'] !== undefined,
           { timeout: 150000, polling: 1000 });
-        console.log(`[3-1 DIAG] unityInstance re-set after ${Date.now() - tWait}ms (warm reinit ok)`);
+        console.log(`[3-1] unityInstance re-set after ${Date.now() - tWait}ms (warm reinit ok)`);
 
         const abortErrors = reloadErrors.filter(e => e.includes('ERR_ABORTED'));
         expect(abortErrors.length, 'No ERR_ABORTED errors on reload').toBe(0);
@@ -821,9 +817,10 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
 
         testResults.tests['3_1_reload'] = { passed: true };
       } catch (err) {
-        console.log(`[3-1 DIAG] FAILED after ${Date.now() - t0}ms: ${err.message}`);
-        console.log(`[3-1 DIAG] pageerrors(${reloadErrors.length}): ${reloadErrors.join(' | ')}`);
-        console.log(`[3-1 DIAG] captured console lines(${consoleLines.length}), last 40:\n${consoleLines.slice(-40).join('\n')}`);
+        // 실패 시에만 진단 덤프 (통과 leg 로그 오염 방지)
+        console.log(`[3-1] FAILED after ${Date.now() - t0}ms: ${err.message}`);
+        console.log(`[3-1] pageerrors(${reloadErrors.length}): ${reloadErrors.join(' | ')}`);
+        console.log(`[3-1] console lines(${consoleLines.length}), last 40:\n${consoleLines.slice(-40).join('\n')}`);
         throw err;
       } finally {
         sharedPage.off('pageerror', errHandler);

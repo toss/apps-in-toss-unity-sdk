@@ -474,6 +474,19 @@ namespace AppsInToss.Editor.Package
     // Early Fetch: HTML 파싱과 동시에 리소스 다운로드를 시작하고,
     // Unity loader가 같은 URL을 요청할 때 이미 받은 Response를 반환합니다.
     (function() {{
+        // 재로드 내비게이션에서는 early fetch를 건너뛴다.
+        // 재로드 시점에는 이전 문서의 keep-alive 소켓이 정리되는 중이라 파싱 시점 fetch가
+        // 그 해체와 경합해 ERR_CONNECTION_CLOSED로 죽을 수 있고, 레거시 Unity(2021/2022)
+        // 로더는 데이터 다운로드 실패를 삼키고 undefined를 resolve해 영구 행으로 이어진다.
+        // 재로드에서는 HTTP 캐시가 이미 따뜻하므로 early fetch의 이득도 거의 없다 —
+        // 인터셉터를 아예 설치하지 않으면 로더가 자체 단일 fetch를 수행한다(이중 다운로드 없음).
+        try {{
+            var navEntries = performance.getEntriesByType && performance.getEntriesByType('navigation');
+            var isReload = (navEntries && navEntries[0])
+                ? navEntries[0].type === 'reload'
+                : (performance.navigation && performance.navigation.type === 1);
+            if (isReload) return;
+        }} catch (e) {{}}
         var earlyFetchMap = {{}};
         var urls = {urlsJson};
         for (var i = 0; i < urls.length; i++) {{
@@ -491,9 +504,11 @@ namespace AppsInToss.Editor.Package
                 if (Object.keys(earlyFetchMap).length === 0) {{
                     window.fetch = originalFetch;
                 }}
-                // early fetch 실패 시 null이 반환되므로 원본 fetch로 재시도
+                // early fetch 실패(null)·비정상 응답(!ok)·body 소진 시 원본 fetch로 재시도
                 var self = this, args = arguments;
-                return pending.then(function(r) {{ return r || originalFetch.apply(self, args); }});
+                return pending.then(function(r) {{
+                    return (r && r.ok && !r.bodyUsed) ? r : originalFetch.apply(self, args);
+                }});
             }}
             return originalFetch.apply(this, arguments);
         }};

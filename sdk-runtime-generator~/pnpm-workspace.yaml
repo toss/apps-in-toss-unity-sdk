@@ -3,12 +3,19 @@
 # 읽으므로, 기존 package.json#pnpm.overrides를 이곳으로 이전했다.
 # (pnpm은 minimumReleaseAge*/overrides 설정을 pnpm-workspace.yaml에서만 읽는다.)
 
-# 공급망 보호(minimumReleaseAge)에서 @apps-in-toss/* 패키지를 예외 처리한다.
-# pnpm v11부터 minimumReleaseAge 기본이 1440분(1일)이라, SDK가 막 배포한 @apps-in-toss/*
-# 패키지가 quarantine에 걸려 SDK 재생성/빌드가 지연될 수 있다. 자사 패키지는 신뢰 대상이므로
-# 예외 처리해 유저(게임 개발자)가 불편을 겪지 않게 한다.
+# 공급망 보호(minimumReleaseAge)에서 자사 1st-party 스코프를 예외 처리한다.
+# pnpm v11부터 minimumReleaseAge 기본이 1440분(1일)이라, 토스 조직이 막 배포한 패키지가
+# quarantine에 걸려 SDK 재생성/빌드가 지연될 수 있다. 아래 세 스코프는 모두 동일 토스 조직이
+# 퍼블리시하는 신뢰 대상이므로 예외 처리해 유저(게임 개발자)가 불편을 겪지 않게 한다.
+# 쿨다운은 하이재킹된 '서드파티' 패키지를 격리 기간 동안 걸러내려는 장치라, 1st-party 스코프는
+# 제외해도 보안 이득이 미미하고 프레임워크 릴리스마다 CI만 깨진다.
+# 주의: regen-lockfiles.yml은 CLI 플래그로 이미 세 스코프를 제외한다. 이 파일도 동일하게 맞춰
+#       validate/changelog 잡의 install(이 workspace를 읽음)과 lockfile 재생성 정책을 정합화한다.
+#       (예: @toss/tds-react-native 가 granite/framework 전이 의존으로 딸려오므로 @toss/* 필요.)
 minimumReleaseAgeExclude:
   - '@apps-in-toss/*'
+  - '@toss/*'
+  - '@granite-js/*'
 
 # transitive 의존성 보안/호환 고정 (구 package.json#pnpm.overrides에서 이전).
 overrides:

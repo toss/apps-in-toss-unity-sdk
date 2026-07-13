@@ -33,6 +33,9 @@ public class AITResetWebGLSettingsTests
         "pageCache", "pageCacheName", "warmManifest", "warmPage", "nativeAssetSource",
         // 오디오 스트리밍
         "audioStreaming", "audioStreamingMinBytes", "audioStreamingDirs",
+        // 오디오 재인코딩
+        "audioReencode", "audioReencodeQuality", "audioReencodeMinBytes",
+        "audioReencodeDirs", "audioReencodeExcludeDirs",
         // 텍스처 crunch
         "textureCrunch", "textureCrunchMaxSize", "textureCrunchQuality",
         "textureCrunchAtlas", "textureCrunchAtlasMaxSize", "textureCrunchDirs",
@@ -47,6 +50,8 @@ public class AITResetWebGLSettingsTests
         // 대형 텍스처 스트리밍
         "textureStreaming", "textureStreamingMinBytes", "textureStreamingDirs",
         "textureStreamingExcludeDirs", "textureStreamingMaxConcurrent",
+        // 스트림 사본 다운스케일
+        "textureStreamDownscale", "textureStreamDownscaleMaxSize",
         // 대형 폰트 deferral
         "fontStreaming", "fontStreamingTargetPaths", "fontStreamingMaxConcurrent",
     };
@@ -117,6 +122,10 @@ public class AITResetWebGLSettingsTests
         if (t == typeof(long))
         {
             return (long)def == 99999L ? 12345L : 99999L;
+        }
+        if (t == typeof(float))
+        {
+            return (float)def == 99999f ? 12345f : 99999f;
         }
         if (t == typeof(bool))
         {

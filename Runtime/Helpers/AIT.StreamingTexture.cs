@@ -64,6 +64,14 @@ namespace AppsInToss
 
             /// <summary>페이로드 인코딩("br" = brotli). 빈 값이면 무압축(구 매니페스트 호환).</summary>
             public string encoding;
+
+            /// <summary>
+            /// 스트림 사본이 의도적으로 다운스케일된 경우의 '스트림 이미지 실제 차원'(sw=width, sh=height).
+            /// 0 이면 다운스케일 없음(width/height 와 동일 = 구 매니페스트 호환). width/height 는 스텁 매칭용
+            /// '원본 차원'으로 유지되고(FindStub 계약), 여기 sw/sh 는 LoadImage 후 기대되는 실제 텍스처 차원이다.
+            /// </summary>
+            public int sw;
+            public int sh;
         }
 
         [System.Serializable]
@@ -257,11 +265,18 @@ namespace AppsInToss
                     // 동일 차원 스텁(readable+uncompressed)에 실 픽셀을 in-place 업로드.
                     // LoadImage 는 PNG/JPG 디코드 후 GPU 업로드까지 수행 → 참조하는 Sprite/Material 자동 갱신.
                     applied = tex.LoadImage(payload, false);
-                    if (applied && (tex.width != e.width || tex.height != e.height))
+                    if (applied)
                     {
-                        // 스텁 차원과 원본 차원 불일치(예: crunch maxTextureSize 캡 + D1 동시 사용).
-                        // Sprite rect 가 스텁 차원으로 bake 됐다면 UV 가 어긋날 수 있음 — 경고만(복원은 유지).
-                        Debug.LogWarning($"[AIT-StreamingTexture] 차원 불일치 {e.name}: 스텁 {e.width}x{e.height} → 원본 {tex.width}x{tex.height}");
+                        // 기대 차원: 의도적 다운스케일(sw/sh>0)이면 스트림 이미지 차원, 아니면 스텁=원본 차원.
+                        // 균일 배율 다운스케일은 Sprite 의 정규화 UV(비율)를 보존하므로 렌더는 정상(저해상도일 뿐).
+                        int expW = e.sw > 0 ? e.sw : e.width;
+                        int expH = e.sh > 0 ? e.sh : e.height;
+                        if (tex.width != expW || tex.height != expH)
+                        {
+                            // 기대와 다른 실제 차원 = 진짜 불일치(예: crunch maxTextureSize 캡 + 스트리밍 동시 사용으로
+                            // 스텁/스트림 차원이 예기치 않게 어긋남). Sprite rect UV 가 틀어질 수 있음 — 경고만(복원은 유지).
+                            Debug.LogWarning($"[AIT-StreamingTexture] 차원 불일치 {e.name}: 기대 {expW}x{expH} → 실제 {tex.width}x{tex.height} (스텁 {e.width}x{e.height})");
+                        }
                     }
                 }
                 catch (System.Exception ex)

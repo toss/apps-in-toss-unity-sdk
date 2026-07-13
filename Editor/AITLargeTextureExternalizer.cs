@@ -323,7 +323,7 @@ namespace AppsInToss.Editor
                     || (config.textureStreamDownscale < 0 && AITDefaultSettings.GetDefaultTextureStreamDownscale());
                 if (dsEnabled && records.Count > 0)
                 {
-                    int dsCap = config.textureStreamDownscaleMaxSize;
+                    int dsCap = ResolveDownscaleCap(config);
                     if (dsCap < MinDownscaleSize)
                     {
                         Debug.LogWarning($"[AIT-StreamingTexture] textureStreamDownscaleMaxSize={dsCap} < {MinDownscaleSize} → 다운스케일 skip.");
@@ -334,11 +334,12 @@ namespace AppsInToss.Editor
                         long dsBefore = 0, dsAfter = 0;
                         foreach (var rec in records)
                         {
-                            if (Math.Max(rec.w, rec.h) <= dsCap)
-                            {
-                                continue; // 캡 이하 → 그대로(작은 건 불변).
-                            }
-
+                            // 주의: rec.w/rec.h 로 pre-filter 하지 않는다. 이 값은 '임포트 후' 치수
+                            // (클램프/임포터 maxTextureSize 캡 반영)라 스트림 사본(raw 소스)의 실 픽셀
+                            // 치수보다 작을 수 있고, 그걸로 걸러내면 "임포트는 캡됐지만 소스는 캡 초과"인
+                            // 주 대상(예: 4096 소스 + 기본 클램프 2048)이 기본 posture 에서 전부 스킵된다.
+                            // 실 판정은 TryDownscaleStreamImage 가 스트림 파일을 디코드한 실제 치수로
+                            // 수행하며, 캡 이하면 파일을 건드리지 않고 false 를 반환한다.
                             string absStream = Path.Combine(projectRoot, StreamRootAssets, rec.streamFile);
                             if (TryDownscaleStreamImage(absStream, dsCap, out int nw, out int nh, out long bBefore, out long bAfter))
                             {
@@ -713,6 +714,20 @@ namespace AppsInToss.Editor
         /// 즉시 파괴(leak 방지). 인코딩은 확장자에 맞춤(.jpg/.jpeg → JPG q90, 그 외 → PNG).
         /// 성공 시 새 차원/바이트를 반환하고, 디코드/인코드 실패·무축소(반올림)면 원본을 그대로 두고 false.
         /// </summary>
+        /// <summary>
+        /// 이번 빌드에 적용할 다운스케일 캡을 해석한다(순수 판정 — 테스트 대상).
+        /// 명시 활성(textureStreamDownscale==1)일 때만 사용자 캡을 존중하고, 자동(-1)은 SDK 안전 캡
+        /// (GetDefaultTextureStreamDownscaleMaxSize)을 사용한다 — 구버전 AITConfig.asset 에 박제된
+        /// 옛 기본값이 미래 posture/기본값 변경 후 의도 없이 적용되는 것을 차단한다
+        /// (클램프 캡의 AITTextureSizeClampProcessor.ResolveClampMax 와 동일 규칙).
+        /// </summary>
+        internal static int ResolveDownscaleCap(AITEditorScriptObject config)
+        {
+            return config.textureStreamDownscale == 1
+                ? config.textureStreamDownscaleMaxSize
+                : AITDefaultSettings.GetDefaultTextureStreamDownscaleMaxSize();
+        }
+
         private static bool TryDownscaleStreamImage(string absPath, int cap, out int newW, out int newH, out long beforeBytes, out long afterBytes)
         {
             newW = 0;

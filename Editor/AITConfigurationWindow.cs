@@ -765,9 +765,23 @@ namespace AppsInToss.Editor
             if (effectiveEnabled)
             {
                 EditorGUI.indentLevel++;
-                config.textureClampMaxSize = EditorGUILayout.IntField(
-                    new GUIContent("최대 텍스처 크기", "이 값보다 큰 텍스처만 축소합니다. 16 미만은 무시. 기본 2048 = HiDPI 헤드룸. 예) 1536, 2048, 3072"),
-                    config.textureClampMaxSize);
+                if (config.textureSizeClamp == 1)
+                {
+                    config.textureClampMaxSize = EditorGUILayout.IntField(
+                        new GUIContent("최대 텍스처 크기", "이 값보다 큰 텍스처만 축소합니다. 16 미만은 무시. 기본 2048 = HiDPI 헤드룸. 예) 1536, 2048, 3072"),
+                        config.textureClampMaxSize);
+                }
+                else
+                {
+                    // 자동 모드는 SDK 안전 캡 고정(구버전 자산에 박제된 옛 캡이 의도 없이 적용되는 것 차단).
+                    using (new EditorGUI.DisabledScope(true))
+                    {
+                        EditorGUILayout.IntField(
+                            new GUIContent("최대 텍스처 크기 (자동: SDK 관리)",
+                                "자동 모드는 SDK 안전 캡(2048)을 사용합니다. 캡을 직접 튜닝하려면 '활성화'로 전환하세요."),
+                            AITDefaultSettings.GetDefaultTextureClampMaxSize());
+                    }
+                }
 
                 int minBytesKb = EditorGUILayout.IntField(
                     new GUIContent("소스 크기 필터(KB, 0=없음)", "소스 파일이 이 크기 미만이면 제외(작은 아이콘 보호)."),
@@ -1320,10 +1334,24 @@ namespace AppsInToss.Editor
             if (dsEffective)
             {
                 EditorGUI.indentLevel++;
-                config.textureStreamDownscaleMaxSize = EditorGUILayout.IntField(
-                    new GUIContent("다운스케일 max-size 캡",
-                        "이 값보다 큰 스트림 텍스처만 축소(균일 배율). 기본 2048 = HiDPI(DPR2~3) 헤드룸. 16 미만 무시. 예) 1536, 2048, 3072"),
-                    config.textureStreamDownscaleMaxSize);
+                if (config.textureStreamDownscale == 1)
+                {
+                    config.textureStreamDownscaleMaxSize = EditorGUILayout.IntField(
+                        new GUIContent("다운스케일 max-size 캡",
+                            "이 값보다 큰 스트림 텍스처만 축소(균일 배율). 기본 2048 = HiDPI(DPR2~3) 헤드룸. 16 미만 무시. 예) 1536, 2048, 3072"),
+                        config.textureStreamDownscaleMaxSize);
+                }
+                else
+                {
+                    // 자동 모드는 SDK 안전 캡 고정(클램프 캡과 동일 규칙 — ResolveDownscaleCap 참조).
+                    using (new EditorGUI.DisabledScope(true))
+                    {
+                        EditorGUILayout.IntField(
+                            new GUIContent("다운스케일 max-size 캡 (자동: SDK 관리)",
+                                "자동 모드는 SDK 안전 캡(2048)을 사용합니다. 캡을 직접 튜닝하려면 '활성'으로 전환하세요."),
+                            AITDefaultSettings.GetDefaultTextureStreamDownscaleMaxSize());
+                    }
+                }
                 EditorGUILayout.HelpBox(
                     "미니앱은 devicePixelRatio(모바일 2~3)로 렌더하며 고사양 기기엔 native DPR(iPhone Pro=3 등)을 줍니다. " +
                     "2048 은 화면 일부 스프라이트/UI 는 DPR3 에서도 선명하고 full-bleed 배경만 최대폰에서 세로가 살짝 소프트. " +
@@ -2116,10 +2144,12 @@ namespace AppsInToss.Editor
             if (config.textureSizeClamp >= 0 && (config.textureSizeClamp == 1) != defaultTextureClamp) count++;
             bool defaultAstcBlock = AITDefaultSettings.GetDefaultAstcBlockEscalation();
             if (config.astcBlockEscalation >= 0 && (config.astcBlockEscalation == 1) != defaultAstcBlock) count++;
-            // 폰트 subset: 비활성(0)이거나 수동 override(target/range 지정)면 변경으로 집계.
+            // 폰트 subset: 비활성(0)이거나 수동 override(target/range/추가범위/제외경로 지정)면 변경으로 집계.
             if (config.fontSubset == 0
                 || !string.IsNullOrEmpty(config.fontSubsetTargetPaths)
-                || !string.IsNullOrEmpty(config.fontSubsetUnicodeRanges))
+                || !string.IsNullOrEmpty(config.fontSubsetUnicodeRanges)
+                || !string.IsNullOrEmpty(config.fontSubsetExtraRanges)
+                || !string.IsNullOrEmpty(config.fontSubsetExcludeTargetPaths))
             {
                 count++;
             }
@@ -2283,6 +2313,8 @@ namespace AppsInToss.Editor
             config.fontSubset = -1;
             config.fontSubsetTargetPaths = string.Empty;
             config.fontSubsetUnicodeRanges = string.Empty;
+            config.fontSubsetExtraRanges = string.Empty;
+            config.fontSubsetExcludeTargetPaths = string.Empty;
 
             // 콘텐츠 최적화 — 대형 텍스처 스트리밍
             config.textureStreaming = -1;

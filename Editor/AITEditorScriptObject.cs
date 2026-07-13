@@ -314,8 +314,8 @@ namespace AppsInToss
 
         [Header("콘텐츠 최적화 — 오디오 재인코딩 (lossy, 기본 ON)")]
         [Tooltip("-1 = 자동(활성), 0 = 비활성, 1 = 활성. " +
-                 "대상 AudioClip 의 WebGL 임포터 설정을 빌드 시 일시적으로 compressionFormat=Vorbis + quality 로 override 해 " +
-                 "reimport 하여 .data/CDN 오디오 용량을 줄입니다(빌드 후 원본 임포트 설정으로 복원). " +
+                 "대상 AudioClip 의 임포터 base 설정(defaultSampleSettings — WebGL 빌드가 ship 하는 값)을 빌드 시 " +
+                 "일시적으로 compressionFormat=Vorbis + quality 로 변경·reimport 하여 .data/CDN 오디오 용량을 줄입니다(빌드 후 원본 복원). " +
                  "자동 모드는 '이미 Vorbis 인 클립은 건드리지 않고' 비압축(PCM)/ADPCM 만 Vorbis 로 변환하므로 세대손실 없이 near-transparent 합니다. " +
                  "SDK 가 이미 lossy 텍스처 최적화(crunch/ASTC)를 기본 ON 으로 두는 것과 동일 posture 로 기본 활성입니다. " +
                  "audioStreaming 으로 외부화된 클립은 대상에서 제외됩니다(무음 스텁 재인코딩 방지).")]
@@ -923,6 +923,19 @@ namespace AppsInToss
         }
 
         /// <summary>
+        /// 자동(-1) 모드에서 사용하는 텍스처 클램프 캡(px).
+        /// ⚠ 자동 모드는 직렬화된 textureClampMaxSize 를 사용하지 않는다: 클램프가 opt-in(기본 OFF)이던
+        /// 구버전에서 저장된 AITConfig.asset 에는 당시 기본값(1024)이 박제되어 있는데, 그 시절 auto 는
+        /// 비활성이라 캡 값은 사용자의 의도가 아닌 직렬화 잔재다. posture 플립(auto=ON) 후 그 잔재가
+        /// 그대로 적용되면 의도(2048 안전 헤드룸)보다 훨씬 공격적인 축소가 조용히 발생한다.
+        /// 사용자 튜닝 캡은 명시 활성(textureSizeClamp==1)에서만 존중한다.
+        /// </summary>
+        public static int GetDefaultTextureClampMaxSize()
+        {
+            return 2048;
+        }
+
+        /// <summary>
         /// 기본 ASTC 블록 에스컬레이션 활성화 여부.
         /// 블록 확대(예: 12x12)는 시각 저하가 통상 미미한 반면 다운로드/.data 절감이 커 기본 ON.
         /// 비-ASTC 서브타겟에서는 빌드 시 자동으로 건너뛰고(no-op), 빌드 후 임포터 설정은 항상 원상 복원된다.
@@ -950,6 +963,17 @@ namespace AppsInToss
         public static bool GetDefaultTextureStreamDownscale()
         {
             return true;
+        }
+
+        /// <summary>
+        /// 자동(-1) 모드에서 사용하는 스트림 사본 다운스케일 캡(px).
+        /// 클램프 캡과 동일한 이유로(GetDefaultTextureClampMaxSize 참조) 자동 모드는 직렬화 값을
+        /// 사용하지 않는다 — 미래에 기본값을 튜닝해도 구버전 자산의 박제 값이 아닌 새 안전값이 적용된다.
+        /// 사용자 튜닝 캡은 명시 활성(textureStreamDownscale==1)에서만 존중한다.
+        /// </summary>
+        public static int GetDefaultTextureStreamDownscaleMaxSize()
+        {
+            return 2048;
         }
 
         /// <summary>

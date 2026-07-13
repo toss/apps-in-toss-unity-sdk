@@ -311,6 +311,30 @@ namespace AppsInToss
 
         [Tooltip("외부화 대상 폴더(쉼표 구분, Assets/ 기준 경로). 비우면 프로젝트 전체의 큰 오디오가 대상입니다. 예) Assets/Sounds/BGM,Assets/Music")]
         public string audioStreamingDirs = "";
+
+        [Header("콘텐츠 최적화 — 오디오 재인코딩 (lossy, 기본 ON)")]
+        [Tooltip("-1 = 자동(활성), 0 = 비활성, 1 = 활성. " +
+                 "대상 AudioClip 의 WebGL 임포터 설정을 빌드 시 일시적으로 compressionFormat=Vorbis + quality 로 override 해 " +
+                 "reimport 하여 .data/CDN 오디오 용량을 줄입니다(빌드 후 원본 임포트 설정으로 복원). " +
+                 "자동 모드는 '이미 Vorbis 인 클립은 건드리지 않고' 비압축(PCM)/ADPCM 만 Vorbis 로 변환하므로 세대손실 없이 near-transparent 합니다. " +
+                 "SDK 가 이미 lossy 텍스처 최적화(crunch/ASTC)를 기본 ON 으로 두는 것과 동일 posture 로 기본 활성입니다. " +
+                 "audioStreaming 으로 외부화된 클립은 대상에서 제외됩니다(무음 스텁 재인코딩 방지).")]
+        public int audioReencode = -1;
+
+        [Tooltip("Vorbis quality(0.0~1.0). 기본 0.7 = near-transparent 헤드룸. 낮출수록 더 작지만 아티팩트 위험이 커집니다. " +
+                 "explicit 활성(1)에서는 이미 Vorbis 인 클립도 이 값을 초과하면 이 값으로 낮춥니다(자동 모드는 비압축만 변환).")]
+        [Range(0f, 1f)]
+        public float audioReencodeQuality = 0.7f;
+
+        [Tooltip("소스 파일 크기 필터(바이트). 이 크기 미만 오디오는 제외(짧은 SFX 보호). 0 = 필터 없음")]
+        public long audioReencodeMinBytes = 0;
+
+        [Tooltip("대상 폴더(쉼표 구분, Assets/ 기준). 비우면 프로젝트 전체 오디오가 대상입니다. 예) Assets/Audio,Assets/Sounds")]
+        public string audioReencodeDirs = "";
+
+        [Tooltip("제외 폴더(쉼표 구분, Assets/ 기준). 특정 폴더를 재인코딩에서 제외(원본 품질 보존 escape hatch).")]
+        public string audioReencodeExcludeDirs = "";
+
         [Header("콘텐츠 최적화 — 텍스처 crunch")]
         [Tooltip("-1 = 자동 (true), 0 = 비활성, 1 = 활성. " +
                  "대상 텍스처/SpriteAtlas 를 빌드 시 일시적으로 crunch(DXT 위 4~8x) 압축 + maxTextureSize 캡으로 reimport 하여 " +
@@ -333,11 +357,13 @@ namespace AppsInToss
 
         [Tooltip("대상 폴더(쉼표 구분, Assets/ 기준). 비우면 프로젝트 전체 텍스처가 대상입니다. 예) Assets/Art/Textures")]
         public string textureCrunchDirs = "";
-        [Header("콘텐츠 최적화 — 텍스처 크기 클램프 (lossy, opt-in)")]
-        [Tooltip("-1 = 자동(비활성), 0 = 비활성, 1 = 활성. " +
+        [Header("콘텐츠 최적화 — 텍스처 크기 클램프 (lossy, 기본 ON)")]
+        [Tooltip("-1 = 자동(활성), 0 = 비활성, 1 = 활성. " +
                  "대상 텍스처의 maxTextureSize 만 빌드 시 일시적으로 캡(상한)으로 낮춰 reimport 하여 텍셀 수를 줄입니다 " +
-                 "(format/compression/crunch 불변). 예) 2048→1024 는 텍셀 1/4 → 압축 payload/on-wire 도 ~1/4. " +
-                 "표시 해상도가 낮아지는 lossy 변경이므로 기본 비활성입니다. 빌드 후 원본 임포트 설정으로 복원합니다.")]
+                 "(format/compression/crunch 불변). 예) 4096→2048 은 텍셀 1/4 → 압축 payload/on-wire 도 ~1/4. " +
+                 "SDK 가 이미 lossy 텍스처 최적화(crunch/ASTC)를 기본 ON 으로 두는 것과 동일 posture 로 기본 활성이며, " +
+                 "안전한 기본 캡 2048 초과분(사실상 4096)만 축소합니다. 의도적 고해상도는 값 0(비활성)·캡 상향·폴더 " +
+                 "제외로 opt-out 가능하고, 빌드 후 원본 임포트 설정으로 복원합니다.")]
         public int textureSizeClamp = -1;
 
         [Tooltip("텍스처 maxTextureSize 상한(이 값보다 큰 텍스처만 축소). 16 미만은 무시. 예) 1536, 2048, 3072.\n\n" +
@@ -405,10 +431,10 @@ namespace AppsInToss
         [Tooltip("런타임 동시 스트리밍 다운로드/디코드 상한(기본 3). LoadImage 가 RGBA32 로 강제하므로 VRAM/메인스레드 hitch 를 이 값으로 제한합니다.")]
         public int textureStreamingMaxConcurrent = 3;
 
-        [Tooltip("(lossy, opt-in) 외부화된 스트림 사본(StreamingAssets, CDN 배포본)을 max-size 캡보다 크면 축소해 CDN 무압축 총량을 실감축합니다. " +
+        [Tooltip("(lossy, 기본 ON) 외부화된 스트림 사본(StreamingAssets, CDN 배포본)을 max-size 캡보다 크면 축소해 CDN 무압축 총량을 실감축합니다. " +
                  "프로젝트 원본은 빌드 후 그대로 복원되고, 축소는 '배포/런타임에 보이는 텍스처'에만 적용됩니다(스텁은 원본 차원 유지 → Sprite rect 정합). " +
                  "균일 배율(캡÷최대변)로 축소해 스프라이트시트 서브-rect UV 도 비율 보존됩니다. 스트림은 비-부팅이라 로딩속도엔 무영향, CDN 캡만 감소. " +
-                 "표시 해상도가 낮아지는 lossy 변경이므로 기본 비활성입니다. -1 = 자동(비활성), 0 = 비활성, 1 = 활성.")]
+                 "클램프와 동일 posture 로 기본 활성이며 오히려 더 안전합니다(CDN 전용·원본 불변). -1 = 자동(활성), 0 = 비활성, 1 = 활성.")]
         public int textureStreamDownscale = -1;
 
         [Tooltip("스트림 사본 다운스케일 max-size 캡(이 값보다 큰 스트림 텍스처만 축소). 16 미만은 무시. 기본 2048 = HiDPI(DPR2~3) 헤드룸. " +
@@ -861,6 +887,18 @@ namespace AppsInToss
         }
 
         /// <summary>
+        /// 기본 오디오 재인코딩 활성화 여부.
+        /// 표시/청취 품질을 낮추는 lossy 변경이지만, 자동 모드는 비압축(PCM)/ADPCM 만 Vorbis(q≈0.7)로 변환하고
+        /// 이미 압축된(Vorbis) 클립은 건드리지 않아 세대손실이 없고 near-transparent 하다. WebGL 에서 PCM 오디오는
+        /// 사실상 오설정이므로 이를 Vorbis 로 정규화하는 것은 crunch/ASTC 를 기본 ON 으로 두는 것과 동일 posture.
+        /// 미니앱 플랫폼(다운로드/.data 민감)에서 기본 ON(opt-out)이 효익을 실현한다. 빌드 후 임포터 설정은 항상 원상 복원.
+        /// </summary>
+        public static bool GetDefaultAudioReencode()
+        {
+            return true;
+        }
+
+        /// <summary>
         /// 기본 텍스처 crunch 활성화 여부.
         /// crunch(DXT 위 4~8x)는 q=50 기준 시각 저하가 통상 미미한 반면 다운로드/.data 절감이 커 기본 ON.
         /// ASTC 서브타겟에서는 빌드 시 자동으로 건너뛰고(no-op), 빌드 후 임포터 설정은 항상 원상 복원된다.
@@ -872,12 +910,16 @@ namespace AppsInToss
 
         /// <summary>
         /// 텍스처 크기 클램프(maxTextureSize 캡) 기본 활성 여부.
-        /// 표시 해상도를 낮추는 lossy 변경이고, 안전한 자동 캡 값이 존재하지 않으므로(프로젝트마다 적정 상한이 다름)
-        /// 항상 명시적 opt-in 으로 기본 비활성이다. 빌드 후 임포터 설정은 항상 원상 복원된다.
+        /// 표시 해상도를 낮추는 lossy 변경이지만, SDK 는 이미 lossy 텍스처 최적화를 기본 ON 으로 둔다
+        /// (crunch=DXT 압축, ASTC 블록 에스컬레이션). 미니앱 플랫폼(200MB 캡·모바일 다운로드 민감)에서
+        /// 그게 SDK 의 존재 이유이므로, 클램프도 동일 posture 로 기본 ON(opt-out)이 일관적이다.
+        /// 기본 캡 2048 은 안전한 HiDPI 헤드룸 — 2048 초과(사실상 4096) 텍스처만 축소되고, 이는 DPR3
+        /// 모바일에서 대개 과하다. 의도적 4096 은 캡 상향/폴더 제외/값 0 으로 opt-out 가능하고,
+        /// 빌드 후 임포터 설정은 항상 원상 복원된다.
         /// </summary>
         public static bool GetDefaultTextureSizeClamp()
         {
-            return false;
+            return true;
         }
 
         /// <summary>
@@ -901,12 +943,13 @@ namespace AppsInToss
 
         /// <summary>
         /// 기본 스트림 사본 다운스케일 활성 여부.
-        /// 외부화된 스트림 사본을 HiDPI 캡으로 축소해 CDN 무압축 총량을 줄이지만, 표시 해상도가 낮아지는
-        /// lossy 변경이므로(클램프와 동일 철학) 항상 명시적 opt-in 으로 기본 비활성이다. 프로젝트 원본은 불변.
+        /// 외부화된 스트림 사본을 HiDPI 캡으로 축소해 CDN 무압축 총량을 줄인다. 클램프와 동일 posture 로
+        /// 기본 ON(opt-out)이며, 클램프보다 오히려 안전하다 — 스트림 사본은 비-부팅(CDN 전용)이라 로딩
+        /// 속도엔 영향이 없고, 프로젝트 원본은 항상 불변이며, 기본 캡 2048 초과분만 축소된다.
         /// </summary>
         public static bool GetDefaultTextureStreamDownscale()
         {
-            return false;
+            return true;
         }
 
         /// <summary>

@@ -328,6 +328,12 @@ namespace AppsInToss.Editor
                 : AITDefaultSettings.GetDefaultAudioStreaming();
             Debug.Log($"[AIT]   - 오디오 스트리밍: {audioStreamingEnabled}{(editorConfig.audioStreaming < 0 ? " (자동)" : "")}");
 
+            // 오디오 재인코딩은 BuildPlayer 직전 AITAudioReencodeProcessor 에서 처리
+            bool audioReencodeEnabled = editorConfig.audioReencode >= 0
+                ? editorConfig.audioReencode == 1
+                : AITDefaultSettings.GetDefaultAudioReencode();
+            Debug.Log($"[AIT]   - 오디오 재인코딩: {audioReencodeEnabled}{(editorConfig.audioReencode < 0 ? " (자동)" : "")}{(audioReencodeEnabled ? $" (Vorbis q{Mathf.Clamp01(editorConfig.audioReencodeQuality):0.00})" : "")}");
+
             // 텍스처 crunch 는 BuildPlayer 직전 AITTextureCrunchProcessor 에서 처리
             bool textureCrunchEnabled = editorConfig.textureCrunch >= 0
                 ? editorConfig.textureCrunch == 1

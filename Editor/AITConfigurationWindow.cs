@@ -485,6 +485,11 @@ namespace AppsInToss.Editor
 
             GUILayout.Space(10);
 
+            // 콘텐츠 최적화 — 오디오 재인코딩 (Vorbis+quality)
+            DrawAudioReencodeSetting();
+
+            GUILayout.Space(10);
+
             // 콘텐츠 최적화 — 텍스처 crunch (빌드 산출물 .data 축소)
             DrawTextureCrunchSetting();
 
@@ -576,6 +581,78 @@ namespace AppsInToss.Editor
                     "interactive 이후 오디오가 비동기 복원되어 초기 BGM 시작이 수백 ms 지연될 수 있음. " +
                     "빌드 후 소스 오디오는 자동 복원됩니다.",
                     MessageType.Info);
+            }
+        }
+
+        private void DrawAudioReencodeSetting()
+        {
+            bool defaultValue = AITDefaultSettings.GetDefaultAudioReencode();
+            bool isModified = config.audioReencode >= 0 && (config.audioReencode == 1) != defaultValue;
+
+            EditorGUILayout.LabelField("콘텐츠 최적화 — 오디오 재인코딩", EditorStyles.boldLabel);
+
+            EditorGUILayout.BeginHorizontal();
+
+            DrawModifiedIndicator(isModified);
+
+            string autoLabel = defaultValue ? "활성화" : "비활성화";
+            string label = config.audioReencode < 0
+                ? $"오디오 재인코딩 (자동: {autoLabel})"
+                : "오디오 재인코딩";
+
+            string[] options = { $"자동 ({autoLabel})", "비활성화", "활성화" };
+            int currentIndex = config.audioReencode < 0 ? 0 : config.audioReencode + 1;
+            int newIndex = EditorGUILayout.Popup(
+                new GUIContent(label,
+                    "대상 AudioClip 의 WebGL compressionFormat/quality 만 빌드 시 Vorbis 로 override 해 reimport 하여 오디오 용량을 줄입니다 " +
+                    "(loadType/sampleRate 불변). 자동 모드는 비압축(PCM)/ADPCM 만 변환하고 이미 Vorbis 인 클립은 건드리지 않아 near-transparent 합니다. " +
+                    "빌드 후 원본 임포트 설정으로 복원합니다. audioStreaming 으로 외부화된 클립은 제외됩니다."),
+                currentIndex,
+                options
+            );
+            config.audioReencode = newIndex == 0 ? -1 : newIndex - 1;
+
+            if (isModified && DrawResetButton())
+            {
+                config.audioReencode = -1;
+            }
+
+            EditorGUILayout.EndHorizontal();
+
+            bool effectiveEnabled = config.audioReencode >= 0 ? config.audioReencode == 1 : defaultValue;
+            if (effectiveEnabled)
+            {
+                EditorGUI.indentLevel++;
+
+                config.audioReencodeQuality = EditorGUILayout.Slider(
+                    new GUIContent("Vorbis quality", "0.0~1.0. 기본 0.7 = near-transparent. 낮출수록 더 작지만 아티팩트 위험. explicit 활성(활성화) 시 이미 Vorbis 인 클립도 이 값 초과분을 낮춥니다."),
+                    config.audioReencodeQuality, 0f, 1f);
+
+                config.audioReencodeMinBytes = EditorGUILayout.LongField(
+                    new GUIContent("최소 크기(Bytes)", "이 바이트 수보다 큰 오디오만 재인코딩(짧은 SFX 보호). 0 = 필터 없음."),
+                    config.audioReencodeMinBytes);
+                if (config.audioReencodeMinBytes < 0)
+                {
+                    config.audioReencodeMinBytes = 0;
+                }
+
+                config.audioReencodeDirs = EditorGUILayout.TextField(
+                    new GUIContent("대상 폴더(쉼표 구분)", "Assets/ 기준 경로. 비우면 프로젝트 전체 오디오가 대상. 예) Assets/Audio,Assets/Sounds"),
+                    config.audioReencodeDirs);
+
+                config.audioReencodeExcludeDirs = EditorGUILayout.TextField(
+                    new GUIContent("제외 폴더(쉼표 구분)", "특정 폴더를 재인코딩에서 제외(원본 품질 보존 escape hatch)."),
+                    config.audioReencodeExcludeDirs);
+
+                EditorGUI.indentLevel--;
+
+                if (config.audioReencode == 1)
+                {
+                    EditorGUILayout.HelpBox(
+                        "explicit 활성: 이미 Vorbis 인 클립도 quality 초과 시 낮춥니다(세대손실 가능). " +
+                        "자동(권장)은 비압축만 변환해 세대손실이 없습니다.",
+                        MessageType.Info);
+                }
             }
         }
 
@@ -689,7 +766,7 @@ namespace AppsInToss.Editor
             {
                 EditorGUI.indentLevel++;
                 config.textureClampMaxSize = EditorGUILayout.IntField(
-                    new GUIContent("최대 텍스처 크기", "이 값보다 큰 텍스처만 축소합니다. 16 미만은 무시. 예) 512, 1024"),
+                    new GUIContent("최대 텍스처 크기", "이 값보다 큰 텍스처만 축소합니다. 16 미만은 무시. 기본 2048 = HiDPI 헤드룸. 예) 1536, 2048, 3072"),
                     config.textureClampMaxSize);
 
                 int minBytesKb = EditorGUILayout.IntField(
@@ -1227,17 +1304,20 @@ namespace AppsInToss.Editor
 
             GUILayout.Space(5);
 
-            // 스트림 사본 다운스케일(lossy, opt-in)
+            // 스트림 사본 다운스케일(lossy, 기본 ON)
+            bool dsDefault = AITDefaultSettings.GetDefaultTextureStreamDownscale();
+            string dsAutoLabel = dsDefault ? "활성" : "비활성";
             int dsIndex = config.textureStreamDownscale < 0 ? 0 : config.textureStreamDownscale + 1;
             int dsNew = EditorGUILayout.Popup(
                 new GUIContent("스트림 다운스케일 (lossy)",
                     "외부화된 스트림 사본(CDN 배포본)을 max-size 캡보다 크면 축소해 CDN 무압축 총량을 실감축합니다. " +
                     "프로젝트 원본은 불변, 스텁은 원본 차원 유지(Sprite rect 정합). 균일 배율이라 스프라이트시트 UV 도 보존. " +
-                    "스트림은 비-부팅이라 로딩속도엔 무영향, CDN 캡만 감소. 표시 해상도가 낮아지는 lossy 라 기본 비활성."),
-                dsIndex, new[] { new GUIContent("자동 (비활성)"), new GUIContent("비활성"), new GUIContent("활성") });
+                    "스트림은 비-부팅이라 로딩속도엔 무영향, CDN 캡만 감소. 클램프와 동일 posture 로 기본 활성(CDN 전용·원본 불변이라 더 안전)."),
+                dsIndex, new[] { new GUIContent($"자동 ({dsAutoLabel})"), new GUIContent("비활성"), new GUIContent("활성") });
             config.textureStreamDownscale = dsNew == 0 ? -1 : dsNew - 1;
 
-            if (config.textureStreamDownscale == 1)
+            bool dsEffective = config.textureStreamDownscale >= 0 ? config.textureStreamDownscale == 1 : dsDefault;
+            if (dsEffective)
             {
                 EditorGUI.indentLevel++;
                 config.textureStreamDownscaleMaxSize = EditorGUILayout.IntField(
@@ -2026,6 +2106,9 @@ namespace AppsInToss.Editor
             bool defaultStreaming = AITDefaultSettings.GetDefaultAudioStreaming();
             if (config.audioStreaming >= 0 && (config.audioStreaming == 1) != defaultStreaming) count++;
 
+            bool defaultAudioReencode = AITDefaultSettings.GetDefaultAudioReencode();
+            if (config.audioReencode >= 0 && (config.audioReencode == 1) != defaultAudioReencode) count++;
+
             bool defaultCrunch = AITDefaultSettings.GetDefaultTextureCrunch();
             if (config.textureCrunch >= 0 && (config.textureCrunch == 1) != defaultCrunch) count++;
 
@@ -2165,6 +2248,13 @@ namespace AppsInToss.Editor
             config.audioStreaming = -1;
             config.audioStreamingMinBytes = 262144;
             config.audioStreamingDirs = "";
+
+            // 콘텐츠 최적화 — 오디오 재인코딩
+            config.audioReencode = -1;
+            config.audioReencodeQuality = 0.7f;
+            config.audioReencodeMinBytes = 0;
+            config.audioReencodeDirs = "";
+            config.audioReencodeExcludeDirs = "";
 
             // 콘텐츠 최적화 — 텍스처 crunch
             config.textureCrunch = -1;

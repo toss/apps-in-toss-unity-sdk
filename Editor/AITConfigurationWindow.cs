@@ -1225,6 +1225,33 @@ namespace AppsInToss.Editor
                 config.textureStreamingMaxConcurrent, 1, 8
             );
 
+            GUILayout.Space(5);
+
+            // 스트림 사본 다운스케일(lossy, opt-in)
+            int dsIndex = config.textureStreamDownscale < 0 ? 0 : config.textureStreamDownscale + 1;
+            int dsNew = EditorGUILayout.Popup(
+                new GUIContent("스트림 다운스케일 (lossy)",
+                    "외부화된 스트림 사본(CDN 배포본)을 max-size 캡보다 크면 축소해 CDN 무압축 총량을 실감축합니다. " +
+                    "프로젝트 원본은 불변, 스텁은 원본 차원 유지(Sprite rect 정합). 균일 배율이라 스프라이트시트 UV 도 보존. " +
+                    "스트림은 비-부팅이라 로딩속도엔 무영향, CDN 캡만 감소. 표시 해상도가 낮아지는 lossy 라 기본 비활성."),
+                dsIndex, new[] { new GUIContent("자동 (비활성)"), new GUIContent("비활성"), new GUIContent("활성") });
+            config.textureStreamDownscale = dsNew == 0 ? -1 : dsNew - 1;
+
+            if (config.textureStreamDownscale == 1)
+            {
+                EditorGUI.indentLevel++;
+                config.textureStreamDownscaleMaxSize = EditorGUILayout.IntField(
+                    new GUIContent("다운스케일 max-size 캡",
+                        "이 값보다 큰 스트림 텍스처만 축소(균일 배율). 기본 2048 = HiDPI(DPR2~3) 헤드룸. 16 미만 무시. 예) 1536, 2048, 3072"),
+                    config.textureStreamDownscaleMaxSize);
+                EditorGUILayout.HelpBox(
+                    "미니앱은 devicePixelRatio(모바일 2~3)로 렌더하며 고사양 기기엔 native DPR(iPhone Pro=3 등)을 줍니다. " +
+                    "2048 은 화면 일부 스프라이트/UI 는 DPR3 에서도 선명하고 full-bleed 배경만 최대폰에서 세로가 살짝 소프트. " +
+                    "1024 로 낮추면 DPR2 풀스크린도 뭉개질 수 있어 HiDPI 에 과합니다.",
+                    MessageType.Info);
+                EditorGUI.indentLevel--;
+            }
+
             EditorGUILayout.EndVertical();
         }
 
@@ -2149,7 +2176,7 @@ namespace AppsInToss.Editor
 
             // 콘텐츠 최적화 — 텍스처 크기 클램프
             config.textureSizeClamp = -1;
-            config.textureClampMaxSize = 1024;
+            config.textureClampMaxSize = 2048;
             config.textureClampMinBytes = 0;
             config.textureClampDirs = "";
             config.textureClampExcludeDirs = "";
@@ -2173,6 +2200,8 @@ namespace AppsInToss.Editor
             config.textureStreamingDirs = "";
             config.textureStreamingExcludeDirs = "";
             config.textureStreamingMaxConcurrent = 3;
+            config.textureStreamDownscale = -1;
+            config.textureStreamDownscaleMaxSize = 2048;
 
             // 콘텐츠 최적화 — 대형 폰트 deferral
             config.fontStreaming = -1;

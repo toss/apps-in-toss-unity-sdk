@@ -340,8 +340,12 @@ namespace AppsInToss
                  "표시 해상도가 낮아지는 lossy 변경이므로 기본 비활성입니다. 빌드 후 원본 임포트 설정으로 복원합니다.")]
         public int textureSizeClamp = -1;
 
-        [Tooltip("텍스처 maxTextureSize 상한(이 값보다 큰 텍스처만 축소). 16 미만은 무시. 예) 512, 1024")]
-        public int textureClampMaxSize = 1024;
+        [Tooltip("텍스처 maxTextureSize 상한(이 값보다 큰 텍스처만 축소). 16 미만은 무시. 예) 1536, 2048, 3072.\n\n" +
+                 "기본 2048 = HiDPI 헤드룸. 미니앱은 devicePixelRatio(모바일 웹뷰 실질 2~3)로 렌더하며 SDK 는 고사양 기기에 " +
+                 "native DPR(iPhone Pro=3, 플래그십 Android=3+)을 그대로 줍니다. 화면 일부를 점유하는 스프라이트/UI/아이콘은 " +
+                 "2048 로 충분히 선명(예: 200 CSS px @DPR3 = 600px ≪ 2048)하고, full-bleed 배경만 DPR3 최대폰에서 세로가 " +
+                 "약간 소프트해집니다. 1024 로 낮추면 DPR2 풀스크린에서도 뭉개질 수 있어 HiDPI 에 과합니다.")]
+        public int textureClampMaxSize = 2048;
 
         [Tooltip("소스 파일 크기 필터(바이트). 이 크기 미만 텍스처는 제외(작은 아이콘 보호). 0 = 필터 없음")]
         public long textureClampMinBytes = 0;
@@ -400,6 +404,16 @@ namespace AppsInToss
         [Range(1, 8)]
         [Tooltip("런타임 동시 스트리밍 다운로드/디코드 상한(기본 3). LoadImage 가 RGBA32 로 강제하므로 VRAM/메인스레드 hitch 를 이 값으로 제한합니다.")]
         public int textureStreamingMaxConcurrent = 3;
+
+        [Tooltip("(lossy, opt-in) 외부화된 스트림 사본(StreamingAssets, CDN 배포본)을 max-size 캡보다 크면 축소해 CDN 무압축 총량을 실감축합니다. " +
+                 "프로젝트 원본은 빌드 후 그대로 복원되고, 축소는 '배포/런타임에 보이는 텍스처'에만 적용됩니다(스텁은 원본 차원 유지 → Sprite rect 정합). " +
+                 "균일 배율(캡÷최대변)로 축소해 스프라이트시트 서브-rect UV 도 비율 보존됩니다. 스트림은 비-부팅이라 로딩속도엔 무영향, CDN 캡만 감소. " +
+                 "표시 해상도가 낮아지는 lossy 변경이므로 기본 비활성입니다. -1 = 자동(비활성), 0 = 비활성, 1 = 활성.")]
+        public int textureStreamDownscale = -1;
+
+        [Tooltip("스트림 사본 다운스케일 max-size 캡(이 값보다 큰 스트림 텍스처만 축소). 16 미만은 무시. 기본 2048 = HiDPI(DPR2~3) 헤드룸. " +
+                 "예) 1536, 2048, 3072. textureClampMaxSize 와 같은 HiDPI 캡 개념(스트림 대상).")]
+        public int textureStreamDownscaleMaxSize = 2048;
 
         [Header("콘텐츠 최적화 — 대형 폰트 deferral")]
         [Tooltip("-1 = 자동(1MB 이상·부팅 씬 미포함 TMP_FontAsset 자동 스캔 후 외부화), " +
@@ -883,6 +897,16 @@ namespace AppsInToss
         public static bool GetDefaultTextureStreaming()
         {
             return true;
+        }
+
+        /// <summary>
+        /// 기본 스트림 사본 다운스케일 활성 여부.
+        /// 외부화된 스트림 사본을 HiDPI 캡으로 축소해 CDN 무압축 총량을 줄이지만, 표시 해상도가 낮아지는
+        /// lossy 변경이므로(클램프와 동일 철학) 항상 명시적 opt-in 으로 기본 비활성이다. 프로젝트 원본은 불변.
+        /// </summary>
+        public static bool GetDefaultTextureStreamDownscale()
+        {
+            return false;
         }
 
         /// <summary>

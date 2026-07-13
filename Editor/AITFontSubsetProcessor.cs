@@ -116,19 +116,38 @@ namespace AppsInToss.Editor
                 return handle;
             }
 
+            // ── 안전 정보 수집: TMP fallback 소스 / Dynamic atlas 소스 폰트(리플렉션, TMP 미설치 안전) ──
+            //   fallback 소스: '임의 언어' 글자를 렌더하려고 존재하는 폰트라 subset 하면 tofu 위험 → 자동 제외.
+            //   Dynamic atlas 소스: 런타임에 소스에서 글자를 즉석 래스터화 → 보존 범위 밖 '동적' 글자 tofu 위험 → 경고.
+            CollectTmpFontSafetyInfo(out var fallbackSourcePaths, out var dynamicAtlasSourcePaths);
+            var excludeSet = BuildNormalizedPathSet(SplitList(config.fontSubsetExcludeTargetPaths));
+
             // ── 대상 폰트 결정: 수동 지정(override)이 있으면 그대로, 없으면 자동 탐지 ──
             string[] targets = SplitList(config.fontSubsetTargetPaths);
             bool manualTargets = targets != null && targets.Length > 0;
             if (!manualTargets)
             {
                 targets = DetectAutoTargets();
+
+                // 자동 탐지 대상에서 TMP fallback 소스 폰트를 제외(임의 언어 fallback 글자 tofu 방지).
+                //   수동 지정(fontSubsetTargetPaths)은 개발자의 명시 의사이므로 이 자동 제외를 적용하지 않는다.
+                targets = FilterOutPaths(targets, fallbackSourcePaths, "TMP fallback 소스(임의 언어 렌더) — 자동 제외");
+
                 if (targets.Length == 0)
                 {
-                    Debug.Log($"[AIT-FontSubset] 자동 탐지된 subset 대상 폰트가 없습니다(≥{AutoTargetMinBytes / 1048576}MB & 빌드 포함 가능 폰트 없음) → no-op.");
+                    Debug.Log($"[AIT-FontSubset] 자동 탐지된 subset 대상 폰트가 없습니다(≥{AutoTargetMinBytes / 1048576}MB & 빌드 포함 가능·비-fallback 폰트 없음) → no-op.");
                     return handle;
                 }
 
                 Debug.Log($"[AIT-FontSubset] 자동 탐지: subset 대상 폰트 {targets.Length}개.");
+            }
+
+            // ── escape hatch: fontSubsetExcludeTargetPaths 는 auto/manual 무관하게 항상 적용(안전 우선) ──
+            targets = FilterOutPaths(targets, excludeSet, "fontSubsetExcludeTargetPaths 지정 — 제외");
+            if (targets.Length == 0)
+            {
+                Debug.Log("[AIT-FontSubset] 제외 필터 적용 후 남은 대상 폰트가 없습니다 → no-op.");
+                return handle;
             }
 
             // ── 보존 범위 결정: 수동 범위(override)가 있으면 그대로, 없으면 Auto 스캔으로 도출 ──
@@ -154,6 +173,15 @@ namespace AppsInToss.Editor
             else
             {
                 Debug.Log("[AIT-FontSubset] 수동 보존 범위 지정(override) → Auto 스캔 생략.");
+            }
+
+            // ── (additive) fontSubsetExtraRanges: auto/manual 무관하게 항상 union(override 아님) ──
+            //   스캔이 놓칠 수 있는 '외부에서 동적 로드하는 다른 언어'를 개발자가 보강하는 안전 필드.
+            string extraRanges = (config.fontSubsetExtraRanges ?? string.Empty).Trim();
+            if (!string.IsNullOrEmpty(extraRanges))
+            {
+                ranges = string.IsNullOrEmpty(ranges) ? extraRanges : ranges + "," + extraRanges;
+                Debug.Log($"[AIT-FontSubset] 추가 보존 범위(union) 적용: {extraRanges}");
             }
 
             string node, runner;
@@ -196,6 +224,15 @@ namespace AppsInToss.Editor
                     {
                         Debug.LogWarning($"[AIT-FontSubset]   대상 없음: {assetPath}");
                         continue;
+                    }
+
+                    // Dynamic atlas TMP 폰트 소스면 경고 — 런타임 즉석 래스터화 글자 중 보존 범위 밖은 □.
+                    if (dynamicAtlasSourcePaths.Contains(assetPath))
+                    {
+                        Debug.LogWarning($"[AIT-FontSubset]   ⚠ {Path.GetFileName(assetPath)}: Dynamic atlas TMP 폰트 소스입니다. " +
+                            "런타임에 소스 폰트에서 글자를 즉석 래스터화하므로, 프로젝트에 등장하지 않는 '외부/동적' 언어 글자는 " +
+                            "보존 범위 밖이라 □(tofu)가 될 수 있습니다. 외부 언어 UGC 가 있으면 fontSubsetExtraRanges 로 보강하거나 " +
+                            "fontSubsetExcludeTargetPaths 로 이 폰트를 제외하세요.");
                     }
 
                     long before = new FileInfo(srcFull).Length;
@@ -432,6 +469,191 @@ namespace AppsInToss.Editor
             }
         }
 
+        // ─────────────────────────── TMP 안전 정보 / 경로 필터 ───────────────────────────
+
+        /// <summary>
+        /// TMP 폰트의 안전 정보를 리플렉션으로 수집한다(TMP 미설치/타입 미발견 시 빈 집합).
+        ///   - fallbackSourcePaths: TMP fallback(폰트별 fallbackFontAssetTable + 전역 TMP_Settings.fallbackFontAssets)
+        ///     의 소스 .ttf/.otf 경로. '임의 언어' 렌더 목적이라 자동 subset 대상에서 제외한다.
+        ///   - dynamicAtlasSourcePaths: atlasPopulationMode==Dynamic 인 TMP 폰트의 소스 경로. 런타임 즉석
+        ///     래스터화라 보존 범위 밖 '동적' 글자가 tofu 위험 → 경고 대상.
+        /// 경로는 정규화(forward-slash)되며 대소문자 무시 비교용 집합으로 반환한다.
+        /// </summary>
+        private static void CollectTmpFontSafetyInfo(
+            out System.Collections.Generic.HashSet<string> fallbackSourcePaths,
+            out System.Collections.Generic.HashSet<string> dynamicAtlasSourcePaths)
+        {
+            fallbackSourcePaths = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            dynamicAtlasSourcePaths = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                Type fontAssetType = null;
+                foreach (var guid in AssetDatabase.FindAssets("t:TMP_FontAsset"))
+                {
+                    string path = AssetDatabase.GUIDToAssetPath(guid);
+                    if (string.IsNullOrEmpty(path))
+                    {
+                        continue;
+                    }
+
+                    var asset = AssetDatabase.LoadMainAssetAtPath(path);
+                    if (asset == null)
+                    {
+                        continue;
+                    }
+
+                    if (fontAssetType == null)
+                    {
+                        fontAssetType = asset.GetType();
+                    }
+
+                    // atlasPopulationMode == Dynamic → 이 폰트의 소스는 경고 대상.
+                    var modeProp = asset.GetType().GetProperty("atlasPopulationMode");
+                    var mode = modeProp?.GetValue(asset);
+                    if (mode != null && string.Equals(mode.ToString(), "Dynamic", StringComparison.Ordinal))
+                    {
+                        AddTmpSourcePath(asset, dynamicAtlasSourcePaths);
+                    }
+
+                    // 폰트별 fallback 체인의 소스들 → fallback 제외 대상.
+                    CollectFallbackTableSources(asset, fallbackSourcePaths);
+                }
+
+                // 전역 fallback(TMP_Settings.fallbackFontAssets).
+                if (fontAssetType != null)
+                {
+                    CollectGlobalFallbackSources(fontAssetType, fallbackSourcePaths);
+                }
+            }
+            catch
+            {
+                // TMP 미설치/리플렉션 실패 — 빈 집합으로 안전 진행.
+            }
+        }
+
+        /// <summary>TMP 폰트 에셋의 sourceFontFile 경로를 정규화(forward-slash)해 집합에 추가.</summary>
+        private static void AddTmpSourcePath(UnityEngine.Object tmpFontAsset, System.Collections.Generic.HashSet<string> sink)
+        {
+            try
+            {
+                var prop = tmpFontAsset.GetType().GetProperty("sourceFontFile");
+                var source = prop?.GetValue(tmpFontAsset) as UnityEngine.Object;
+                if (source == null)
+                {
+                    return;
+                }
+
+                string p = AssetDatabase.GetAssetPath(source);
+                if (!string.IsNullOrEmpty(p))
+                {
+                    sink.Add(p.Replace('\\', '/'));
+                }
+            }
+            catch
+            {
+                // 무시
+            }
+        }
+
+        /// <summary>TMP 폰트의 fallbackFontAssetTable(List&lt;TMP_FontAsset&gt;) 각 원소의 소스 경로를 수집.</summary>
+        private static void CollectFallbackTableSources(UnityEngine.Object tmpFontAsset, System.Collections.Generic.HashSet<string> sink)
+        {
+            try
+            {
+                var t = tmpFontAsset.GetType();
+                object table = t.GetField("fallbackFontAssetTable")?.GetValue(tmpFontAsset)
+                    ?? t.GetProperty("fallbackFontAssetTable")?.GetValue(tmpFontAsset);
+                if (table is System.Collections.IEnumerable list)
+                {
+                    foreach (var item in list)
+                    {
+                        if (item is UnityEngine.Object fb && fb != null)
+                        {
+                            AddTmpSourcePath(fb, sink);
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // 무시
+            }
+        }
+
+        /// <summary>전역 TMP_Settings.fallbackFontAssets 의 소스 경로를 수집(리플렉션).</summary>
+        private static void CollectGlobalFallbackSources(Type fontAssetType, System.Collections.Generic.HashSet<string> sink)
+        {
+            try
+            {
+                var settingsType = fontAssetType.Assembly.GetType("TMPro.TMP_Settings");
+                var prop = settingsType?.GetProperty(
+                    "fallbackFontAssets",
+                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+                if (prop?.GetValue(null) is System.Collections.IEnumerable list)
+                {
+                    foreach (var item in list)
+                    {
+                        if (item is UnityEngine.Object fb && fb != null)
+                        {
+                            AddTmpSourcePath(fb, sink);
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // 무시
+            }
+        }
+
+        /// <summary>경로 목록을 정규화(trim, forward-slash)해 대소문자 무시 집합으로. null/빈 입력은 빈 집합.</summary>
+        private static System.Collections.Generic.HashSet<string> BuildNormalizedPathSet(string[] paths)
+        {
+            var set = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (paths != null)
+            {
+                foreach (var p in paths)
+                {
+                    string n = (p ?? string.Empty).Trim().Replace('\\', '/');
+                    if (n.Length > 0)
+                    {
+                        set.Add(n);
+                    }
+                }
+            }
+
+            return set;
+        }
+
+        /// <summary>targets 에서 excludeSet 에 속한 경로를 제거하고 로그를 남긴다. excludeSet 이 비면 원본 그대로.</summary>
+        private static string[] FilterOutPaths(string[] targets, System.Collections.Generic.HashSet<string> excludeSet, string reasonLabel)
+        {
+            if (targets == null || targets.Length == 0 || excludeSet == null || excludeSet.Count == 0)
+            {
+                return targets ?? Array.Empty<string>();
+            }
+
+            var kept = new System.Collections.Generic.List<string>(targets.Length);
+            foreach (var raw in targets)
+            {
+                string n = (raw ?? string.Empty).Trim().Replace('\\', '/');
+                if (n.Length == 0)
+                {
+                    continue;
+                }
+
+                if (excludeSet.Contains(n))
+                {
+                    Debug.Log($"[AIT-FontSubset]   대상 제외({reasonLabel}): {n}");
+                    continue;
+                }
+
+                kept.Add(raw);
+            }
+
+            return kept.ToArray();
+        }
+
         // ─────────────────────────── 드롭 리포트 ───────────────────────────
 
         /// <summary>
@@ -471,8 +693,10 @@ namespace AppsInToss.Editor
                     Debug.Log("[AIT-FontSubset]   보존 블록 없음(베이스라인 + 감지 한자만 보존).");
                 }
 
-                Debug.Log("[AIT-FontSubset]   동적 텍스트는 같은 문자체계라면 블록 전체가 보존되어 □ 가 되지 않습니다.");
-                Debug.Log("[AIT-FontSubset]   수동 범위를 쓰려면 fontSubsetUnicodeRanges 를, 수동 대상은 fontSubsetTargetPaths 를 지정하세요.");
+                Debug.Log("[AIT-FontSubset]   프로젝트에 등장한 문자체계는 (블록 완성으로) 동적 텍스트도 □ 가 되지 않습니다.");
+                Debug.Log("[AIT-FontSubset]   ⚠ 외부/서버에서 '프로젝트에 없는 다른 언어'를 동적 로드한다면 fontSubsetExtraRanges 에 그 범위를 추가하세요(union).");
+                Debug.Log("[AIT-FontSubset]   특정 폰트를 subset 에서 빼려면 fontSubsetExcludeTargetPaths, 수동 범위/대상은 fontSubsetUnicodeRanges/fontSubsetTargetPaths 를 쓰세요.");
+                Debug.Log("[AIT-FontSubset]   (TMP fallback 소스 폰트는 자동 제외, Dynamic atlas 소스 폰트는 위 로그에 ⚠ 로 표시됩니다.)");
             }
             catch (Exception e)
             {

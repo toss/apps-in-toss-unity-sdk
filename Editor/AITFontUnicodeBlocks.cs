@@ -89,12 +89,35 @@ namespace AppsInToss.Editor
             new Block(0x0400, 0x04FF, "Cyrillic"),
             new Block(0x0500, 0x052F, "Cyrillic Supplement"),
 
-            // ── 기타 표기 체계 ──
+            // ── 기타 표기 체계(주요 생존 문자체계 — 모두 소형 블록이라 블록 완성이 안전) ──
             new Block(0x0530, 0x058F, "Armenian"),
             new Block(0x0590, 0x05FF, "Hebrew"),
             new Block(0x0600, 0x06FF, "Arabic"),
-            new Block(0x0E00, 0x0E7F, "Thai"),
+            new Block(0x0700, 0x074F, "Syriac"),
+            new Block(0x0750, 0x077F, "Arabic Supplement"),
+            new Block(0x0780, 0x07BF, "Thaana"),
+            new Block(0x07C0, 0x07FF, "NKo"),
             new Block(0x0900, 0x097F, "Devanagari"),
+            new Block(0x0980, 0x09FF, "Bengali"),
+            new Block(0x0A00, 0x0A7F, "Gurmukhi"),
+            new Block(0x0A80, 0x0AFF, "Gujarati"),
+            new Block(0x0B00, 0x0B7F, "Oriya"),
+            new Block(0x0B80, 0x0BFF, "Tamil"),
+            new Block(0x0C00, 0x0C7F, "Telugu"),
+            new Block(0x0C80, 0x0CFF, "Kannada"),
+            new Block(0x0D00, 0x0D7F, "Malayalam"),
+            new Block(0x0D80, 0x0DFF, "Sinhala"),
+            new Block(0x0E00, 0x0E7F, "Thai"),
+            new Block(0x0E80, 0x0EFF, "Lao"),
+            new Block(0x0F00, 0x0FFF, "Tibetan"),
+            new Block(0x1000, 0x109F, "Myanmar"),
+            new Block(0x10A0, 0x10FF, "Georgian"),
+            new Block(0x1200, 0x137F, "Ethiopic"),
+            new Block(0x13A0, 0x13FF, "Cherokee"),
+            new Block(0x1400, 0x167F, "Unified Canadian Aboriginal Syllabics"),
+            new Block(0x1780, 0x17FF, "Khmer"),
+            new Block(0x1800, 0x18AF, "Mongolian"),
+            new Block(0x2D00, 0x2D2F, "Georgian Supplement"),
 
             // ── 한글 ──
             new Block(0x1100, 0x11FF, "Hangul Jamo"),
@@ -115,23 +138,37 @@ namespace AppsInToss.Editor
             new Block(0x2150, 0x218F, "Number Forms"),
             new Block(0x2190, 0x21FF, "Arrows"),
             new Block(0x2200, 0x22FF, "Mathematical Operators"),
+            new Block(0x2300, 0x23FF, "Miscellaneous Technical"),
             new Block(0x2460, 0x24FF, "Enclosed Alphanumerics"),
             new Block(0x2500, 0x257F, "Box Drawing"),
+            new Block(0x2580, 0x259F, "Block Elements"),
             new Block(0x25A0, 0x25FF, "Geometric Shapes"),
             new Block(0x2600, 0x26FF, "Miscellaneous Symbols"),
             new Block(0x2700, 0x27BF, "Dingbats"),
+            new Block(0x2800, 0x28FF, "Braille Patterns"),
             new Block(0x3000, 0x303F, "CJK Symbols and Punctuation"),
             new Block(0x3200, 0x32FF, "Enclosed CJK Letters and Months"),
             new Block(0x3300, 0x33FF, "CJK Compatibility"),
             new Block(0xFE30, 0xFE4F, "CJK Compatibility Forms"),
             new Block(0xFF00, 0xFFEF, "Halfwidth and Fullwidth Forms"),
 
-            // ── 이모지 관련(BMP 외 일부는 코드포인트 자체만 보존) ──
+            // ── 이모지 / 기호(astral 포함 — 블록 완성으로 동적 이모지도 커버; 폰트에 없는 글리프는 subset-font 가 자동 제외) ──
+            new Block(0x2B00, 0x2BFF, "Miscellaneous Symbols and Arrows"),
+            new Block(0x1F000, 0x1F02F, "Mahjong Tiles"),
+            new Block(0x1F030, 0x1F09F, "Domino Tiles"),
+            new Block(0x1F0A0, 0x1F0FF, "Playing Cards"),
+            new Block(0x1F100, 0x1F1FF, "Enclosed Alphanumeric Supplement"), // ← 국기 이모지 Regional Indicator(U+1F1E6-1F1FF) 포함
+            new Block(0x1F200, 0x1F2FF, "Enclosed Ideographic Supplement"),
             new Block(0x1F300, 0x1F5FF, "Miscellaneous Symbols and Pictographs"),
             new Block(0x1F600, 0x1F64F, "Emoticons"),
+            new Block(0x1F650, 0x1F67F, "Ornamental Dingbats"),
             new Block(0x1F680, 0x1F6FF, "Transport and Map Symbols"),
+            new Block(0x1F700, 0x1F77F, "Alchemical Symbols"),
+            new Block(0x1F780, 0x1F7FF, "Geometric Shapes Extended"),
+            new Block(0x1F800, 0x1F8FF, "Supplemental Arrows-C"),
             new Block(0x1F900, 0x1F9FF, "Supplemental Symbols and Pictographs"),
-            new Block(0x2B00, 0x2BFF, "Miscellaneous Symbols and Arrows"),
+            new Block(0x1FA00, 0x1FA6F, "Chess Symbols"),
+            new Block(0x1FA70, 0x1FAFF, "Symbols and Pictographs Extended-A"),
 
             // ── 한자(Han 예외: 블록 완성 미적용) ──
             new Block(HanBlockStart, HanBlockEnd, "CJK Unified Ideographs", isHan: true),
@@ -176,8 +213,12 @@ namespace AppsInToss.Editor
         /// <summary>
         /// 감지된 코드포인트 집합 → "보존할 블록" 집합으로 확장한다(블록 완성 규칙).
         ///
-        /// - 한자(IsHan) 블록은 전체 보존하지 않으므로 결과에 포함하지 않는다(호출부가 별도 처리).
-        /// - 테이블에 없는 코드포인트는 블록이 없으므로 무시된다(호출부가 코드포인트 자체를 별도 보존).
+        /// - 한자(IsHan) 블록은 전체 보존하지 않으므로 결과에 포함하지 않는다(호출부가 감지 한자 자체 + KS X 1001 패드로 별도 처리).
+        /// - 테이블에 없는 코드포인트는 여기서 블록을 만들지 않는다(블록 완성 미적용).
+        ///   ★ 단, 호출부(<see cref="AITFontUsedCharScanner.BuildPreservedRanges"/>)가 감지된 코드포인트
+        ///   자체를 무조건 보존하므로 미등재 문자체계라도 '감지된 글자'는 절대 드롭되지 않는다.
+        ///   블록 완성(동적 텍스트 전체 커버)은 등재 블록에 한하며, 미등재 문자체계의 동적 커버는
+        ///   테이블 확장 또는 fontSubsetExtraRanges 로 보강한다.
         /// </summary>
         /// <param name="codepoints">스캔으로 감지한 코드포인트.</param>
         /// <returns>보존 대상 블록 목록(start 오름차순, 중복 제거).</returns>

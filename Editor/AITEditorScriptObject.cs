@@ -355,7 +355,12 @@ namespace AppsInToss
         [Tooltip("크고(≥1MB) 빌드에 포함될 가능성이 있는 .ttf/.otf 를 자동 탐지해, 프로젝트에 실제 등장하는 " +
                  "문자체계의 유니코드 블록 전체를 보존하도록 subset 합니다(.data 폰트 데이터 급감, CJK 풀 폰트 5~15MB → ~0.1MB). " +
                  "빌드 후 원본 폰트로 복원합니다. zero-config: -1=자동(권장), 0=비활성, 1=자동(명시). " +
-                 "수동 제어가 필요하면 fontSubsetTargetPaths/fontSubsetUnicodeRanges 로 override 합니다.")]
+                 "수동 제어가 필요하면 fontSubsetTargetPaths/fontSubsetUnicodeRanges 로 override 합니다.\n\n" +
+                 "⚠ 동적 텍스트 리스크: subset 은 보존 범위 밖 글자를 제거합니다(lossy). 스캐너가 프로젝트에 " +
+                 "'실제 등장하는' 문자체계는 블록 전체를 보존하지만, 서버/외부에서 '전혀 다른 언어'의 텍스트를 " +
+                 "동적으로 받아 표시하는데 그 문자체계가 프로젝트 어디에도 없으면 □(tofu)가 될 수 있습니다. " +
+                 "그런 경우 fontSubsetExtraRanges 에 해당 문자체계 범위를 추가하거나, 해당 폰트를 " +
+                 "fontSubsetExcludeTargetPaths 로 제외하세요(TMP fallback/Dynamic atlas 폰트는 자동 제외/경고).")]
         public int fontSubset = -1; // -1=자동, 0=비활성, 1=자동(명시적 ON)
 
         [Tooltip("(override) 보존할 유니코드 범위를 직접 지정(쉼표 구분, fontTools 표기). 비우면 Auto 스캔이 범위를 결정합니다. " +
@@ -365,6 +370,17 @@ namespace AppsInToss
         [Tooltip("(override) subset 대상 폰트 에셋 경로(쉼표 구분, Assets/ 기준의 .ttf/.otf). 비우면 Auto 탐지가 대상을 정합니다. " +
                  "값을 넣으면 그 폰트만 대상이 되는 수동 모드가 됩니다. 예) Assets/Fonts/NotoSansKR.ttf")]
         public string fontSubsetTargetPaths = "";
+
+        [Tooltip("(additive) Auto 스캔 결과에 '추가로' 항상 보존할 유니코드 범위(쉼표 구분, fontTools 표기). " +
+                 "fontSubsetUnicodeRanges 와 달리 override 가 아니라 합집합(union)입니다. 스캔이 놓칠 수 있는 " +
+                 "'외부에서 동적 로드하는 다른 언어'를 보강하는 안전 필드입니다. 예) 일본어 UGC 지원 → U+3040-30FF,U+FF66-FF9F. " +
+                 "수동 범위(fontSubsetUnicodeRanges) 사용 시에도 함께 union 됩니다.")]
+        public string fontSubsetExtraRanges = "";
+
+        [Tooltip("(escape hatch) Auto 탐지 대상에서 '제외'할 폰트 경로(쉼표 구분, Assets/ 기준의 .ttf/.otf). " +
+                 "임의 언어 UGC 를 렌더하는 폰트 등 subset 하면 안 되는 폰트를 명시 보호합니다. " +
+                 "TMP fallback 소스/Dynamic atlas 소스 폰트는 이 목록과 무관하게 자동 제외/경고됩니다. 예) Assets/Fonts/UGC_Universal.ttf")]
+        public string fontSubsetExcludeTargetPaths = "";
         [Header("콘텐츠 최적화 — 대형 텍스처 스트리밍")]
         [Tooltip("비-부팅 대형 Texture2D 를 초기 .data 에서 분리해 StreamingAssets 로 외부화하고, 소스를 '동일 차원 단색 스텁'으로 치환합니다. " +
                  "런타임(AITStreamingTexture)이 first-frame 이후 실 텍스처를 비동기 스트리밍 로드하여 동일 Texture2D 객체에 픽셀을 제자리 복원하므로 " +

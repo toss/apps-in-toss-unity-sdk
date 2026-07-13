@@ -810,6 +810,31 @@ namespace AppsInToss.Editor
                     "범위를 비우면 Auto 스캔이 등장 문자체계를 보존하므로 더 안전합니다.",
                     MessageType.Warning);
             }
+
+            // ── 안전 필드(additive/exclude) — 자동·수동 공통(비활성화 모드 제외) ──
+            if (currentIndex != 1)
+            {
+                EditorGUI.indentLevel++;
+                config.fontSubsetExtraRanges = EditorGUILayout.TextField(
+                    new GUIContent("추가 보존 범위(union)",
+                        "Auto 스캔/수동 범위에 '추가로' 항상 보존할 유니코드 범위(쉼표 구분, fontTools 표기). override 가 아니라 합집합입니다. " +
+                        "외부에서 동적 로드하는 다른 언어를 보강하세요. 예) 일본어 UGC → U+3040-30FF,U+FF66-FF9F"),
+                    config.fontSubsetExtraRanges);
+
+                config.fontSubsetExcludeTargetPaths = EditorGUILayout.TextField(
+                    new GUIContent("subset 제외 폰트(쉼표 구분)",
+                        "이 폰트들은 subset 대상에서 제외합니다(Assets/ 기준 .ttf/.otf). 임의 언어 UGC 를 렌더하는 폰트 보호용. " +
+                        "TMP fallback/Dynamic atlas 소스 폰트는 이 목록과 무관하게 자동 제외/경고됩니다."),
+                    config.fontSubsetExcludeTargetPaths);
+                EditorGUI.indentLevel--;
+
+                EditorGUILayout.HelpBox(
+                    "동적 텍스트 안전: 프로젝트에 '등장하는' 문자체계는 블록 전체가 보존되어 □ 가 되지 않습니다. " +
+                    "다만 서버/외부에서 '프로젝트에 전혀 없는 다른 언어'를 받아 표시하면 그 문자체계가 subset 에서 빠져 □ 가 될 수 있습니다. " +
+                    "그런 경우 '추가 보존 범위'에 해당 범위를 넣거나 해당 폰트를 'subset 제외'에 지정하세요. " +
+                    "TMP fallback 소스 폰트는 자동 제외되고, Dynamic atlas 소스 폰트는 빌드 로그에 ⚠ 로 표시됩니다.",
+                    MessageType.Info);
+            }
         }
 
         private void DrawMemorySizeSetting()

@@ -16,6 +16,11 @@
 //   - C# 소스(.cs, Editor 포함): 문자열/문자 리터럴(단순화: 비ASCII + 따옴표 안 문자)
 //   - StreamingAssets/ 및 Localization 텍스트(.json/.csv/.txt/.xml/.yaml): 비ASCII 문자 전부
 //
+// ★ 원시 비ASCII 문자뿐 아니라 백슬래시 이스케이프(\xXX/\uXXXX/\UXXXXXXXX)도 디코드한다. Unity YAML·
+//   C#·JSON 은 비ASCII 문자열을 ASCII 이스케이프로 직렬화하는 경우가 흔하다(예: I2Languages.asset 은
+//   로컬라이제이션 DB 전체를 "\uXXXX..." 형태로 저장). 원시 문자만 봤다면 실사용 CJK·가나 수천 자를
+//   통째로 놓쳐 서브셋 결과가 대량 □(tofu)가 된다.
+//
 // 비용: 수천 파일에서도 수 초 수준이 되도록 파일을 라인 스트리밍으로 처리한다(전체 read 금지).
 //   파일별 try/catch — 한 파일 실패가 전체 스캔을 막지 않는다.
 //
@@ -95,13 +100,16 @@ namespace AppsInToss.Editor
                 }
             }
 
-            // 3) 감지된 한자 자체 보존(블록 완성 제외 대상이지만 글자 자체는 살린다).
+            // 3) ★ 감지된 코드포인트 자체는 블록 등재 여부·한자 여부와 무관하게 전부 보존한다(드롭 방지).
+            //   블록 완성(1~2)은 '테이블에 등재된' 비한자 문자체계만 블록 전체를 살리지만, 테이블에
+            //   없는 문자체계(예: Bengali·Georgian·Tibetan·Khmer·국기 이모지 Regional Indicator 등)의
+            //   감지 글자가 조용히 누락되면 그 글자가 □(tofu)로 깨진다. 또한 한자는 블록 완성 제외
+            //   대상이지만 감지된 글자 자체는 살려야 한다. 따라서 감지된 코드포인트를 무조건 보존해
+            //   "프로젝트에 실제 등장한 글자는 어떤 문자체계든 절대 □ 가 되지 않는다"를 보장한다.
+            //   (미등재 문자체계의 '동적' 텍스트 블록 완성은 fontSubsetExtraRanges 로 보강한다.)
             foreach (var cp in detectedSet)
             {
-                if (AITFontUnicodeBlocks.IsHan(cp))
-                {
-                    codepoints.Add(cp);
-                }
+                codepoints.Add(cp);
             }
 
             // 4) Han 패드(KS X 1001 상용 한자) 보존.
@@ -236,6 +244,14 @@ namespace AppsInToss.Editor
         /// <summary>
         /// 문자열에서 비ASCII 코드포인트를 수집한다. 서로게이트 쌍은 <see cref="char.ConvertToUtf32(char, char)"/>
         /// 로 합쳐 단일 코드포인트로 다룬다(이모지/확장 한자 대응).
+        ///
+        /// ★ 원시(raw) 문자뿐 아니라 백슬래시 이스케이프(<c>\xXX</c>·<c>\uXXXX</c>·<c>\UXXXXXXXX</c>)도
+        /// 디코드한다. Unity YAML(.asset/.prefab/.unity)·C# 소스·JSON 은 비ASCII 문자열을 원시 바이트가
+        /// 아니라 ASCII 이스케이프로 직렬화하는 경우가 흔하다. 예: I2 Localization 의 I2Languages.asset 은
+        /// 전 로컬라이제이션 DB 를 <c>"抽抽防..."</c> 형태(CJK/가나/키릴)로 저장한다.
+        /// 이를 놓치면(=원시 문자만 수집) 서브셋이 실사용 CJK·가나 수천 자를 통째로 누락해 대량 tofu(□)
+        /// 가 된다. 과보존이 누락보다 안전하다는 스캐너 철학에 따라 이스케이프를 적극 디코드한다
+        /// (오검출된 코드포인트는 글리프 몇 개를 더 살릴 뿐이나, 누락은 글자가 □ 로 깨진다).
         /// </summary>
         internal static void CollectNonAscii(string s, HashSet<int> sink)
         {
@@ -244,9 +260,55 @@ namespace AppsInToss.Editor
                 return;
             }
 
+            int pendingHighSurrogate = -1; // \uXXXX 상위 서로게이트가 하위 짝을 기다리는 중.
+
             for (int i = 0; i < s.Length; i++)
             {
                 char c = s[i];
+
+                // 1) 백슬래시 이스케이프 디코드(\xXX / \uXXXX / \UXXXXXXXX).
+                if (c == '\\' && i + 1 < s.Length)
+                {
+                    // 이스케이프된 백슬래시(\\)는 다음 문자를 이스케이프 시작으로 오인하지 않도록 함께 소비.
+                    if (s[i + 1] == '\\')
+                    {
+                        pendingHighSurrogate = -1;
+                        i++;
+                        continue;
+                    }
+
+                    int cp = TryReadUnicodeEscape(s, i, out int consumed);
+                    if (cp >= 0)
+                    {
+                        if (cp >= 0xD800 && cp <= 0xDBFF)
+                        {
+                            // \uXXXX 상위 서로게이트 — 다음 하위 서로게이트와 합쳐 astral 코드포인트로.
+                            pendingHighSurrogate = cp;
+                        }
+                        else if (cp >= 0xDC00 && cp <= 0xDFFF && pendingHighSurrogate >= 0)
+                        {
+                            sink.Add(char.ConvertToUtf32((char)pendingHighSurrogate, (char)cp));
+                            pendingHighSurrogate = -1;
+                        }
+                        else
+                        {
+                            pendingHighSurrogate = -1;
+
+                            // ASCII 영역은 베이스라인이 책임지므로 비ASCII(0x80 이상)만 수집.
+                            if (cp >= 0x80)
+                            {
+                                sink.Add(cp);
+                            }
+                        }
+
+                        i += consumed - 1; // for 루프의 i++ 를 상쇄해 이스케이프 전체를 건너뜀.
+                        continue;
+                    }
+                }
+
+                pendingHighSurrogate = -1;
+
+                // 2) 원시(raw) 서로게이트 쌍 → UTF-32 로 합쳐 수집(이모지/확장 한자).
                 if (char.IsHighSurrogate(c) && i + 1 < s.Length && char.IsLowSurrogate(s[i + 1]))
                 {
                     sink.Add(char.ConvertToUtf32(c, s[i + 1]));
@@ -254,12 +316,80 @@ namespace AppsInToss.Editor
                     continue;
                 }
 
-                // ASCII 제어/기본 영역은 베이스라인이 책임지므로 비ASCII(0x80 이상)만 수집.
+                // 3) 원시(raw) 비ASCII(0x80 이상)만 수집.
                 if (c >= 0x80)
                 {
                     sink.Add(c);
                 }
             }
+        }
+
+        /// <summary>
+        /// 위치 <paramref name="backslashIndex"/>('\')에서 시작하는 유니코드 이스케이프를 해석한다.
+        /// 지원 형식: <c>\xXX</c>(2 hex)·<c>\uXXXX</c>(4 hex)·<c>\UXXXXXXXX</c>(8 hex).
+        /// 성공 시 코드포인트를, 형식 불일치/hex 부족/범위 초과 시 -1 을 반환한다. 서로게이트 값
+        /// (0xD800-0xDFFF)은 유효로 간주해 반환하며, 쌍 합성은 호출부가 담당한다.
+        /// </summary>
+        /// <param name="consumed">소비한 문자 수('\' 포함). 실패 시 0.</param>
+        private static int TryReadUnicodeEscape(string s, int backslashIndex, out int consumed)
+        {
+            consumed = 0;
+
+            int hexLen;
+            switch (s[backslashIndex + 1])
+            {
+                case 'x': hexLen = 2; break;
+                case 'u': hexLen = 4; break;
+                case 'U': hexLen = 8; break;
+                default: return -1;
+            }
+
+            int start = backslashIndex + 2;
+            if (start + hexLen > s.Length)
+            {
+                return -1;
+            }
+
+            int value = 0;
+            for (int k = 0; k < hexLen; k++)
+            {
+                int d = HexDigit(s[start + k]);
+                if (d < 0)
+                {
+                    return -1;
+                }
+
+                value = (value << 4) | d;
+            }
+
+            if (value > 0x10FFFF)
+            {
+                return -1;
+            }
+
+            consumed = 2 + hexLen;
+            return value;
+        }
+
+        /// <summary>16진 숫자 하나를 값(0-15)으로. 16진이 아니면 -1.</summary>
+        private static int HexDigit(char c)
+        {
+            if (c >= '0' && c <= '9')
+            {
+                return c - '0';
+            }
+
+            if (c >= 'a' && c <= 'f')
+            {
+                return (c - 'a') + 10;
+            }
+
+            if (c >= 'A' && c <= 'F')
+            {
+                return (c - 'A') + 10;
+            }
+
+            return -1;
         }
 
         /// <summary>

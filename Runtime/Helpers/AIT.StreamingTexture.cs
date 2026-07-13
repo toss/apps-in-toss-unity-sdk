@@ -90,6 +90,18 @@ namespace AppsInToss
         /// <summary>이미 복원한 Texture2D 인스턴스 ID (동일 name+차원 중복 텍스처를 각기 다른 인스턴스에 매핑).</summary>
         private readonly HashSet<int> restoredInstanceIds = new HashSet<int>();
 
+        /// <summary>엔트리별 다운로드 실패 횟수(guid 키). 상한 초과 시 포기해 무한 재다운로드를 차단.</summary>
+        private readonly Dictionary<string, int> downloadFailCounts = new Dictionary<string, int>();
+
+        /// <summary>엔트리별 디코드/적용 실패 횟수(guid 키). 같은 바이트는 재시도해도 같게 실패하므로 상한이 작다.</summary>
+        private readonly Dictionary<string, int> applyFailCounts = new Dictionary<string, int>();
+
+        /// <summary>일시적일 수 있는 다운로드 실패의 시도 상한(초과 시 포기 — 스텁 유지, 기능 저하일 뿐 안전).</summary>
+        private const int MaxDownloadAttempts = 8;
+
+        /// <summary>결정적(같은 페이로드 → 같은 결과) 디코드/적용 실패의 시도 상한.</summary>
+        private const int MaxApplyAttempts = 2;
+
         private int maxConcurrent = DefaultMaxConcurrent;
         private int loadingCount;
         private bool ready;
@@ -242,8 +254,20 @@ namespace AppsInToss
                 if (!IsSuccess(req))
                 {
                     // 실패 → 인스턴스 예약 해제 후 다음 스캔에서 재시도(다른 인스턴스 포함).
+                    // 일시적 네트워크 실패일 수 있어 재시도하되, 상한 초과 시 포기(스텁 유지)해
+                    // 250ms 간격 무한 재다운로드(배터리/네트워크 소모)를 차단한다.
                     restoredInstanceIds.Remove(tex != null ? tex.GetInstanceID() : 0);
-                    Debug.LogWarning($"[AIT-StreamingTexture] 로드 실패 {e.file}: {req.error}");
+                    int dlFails = IncrementFailure(downloadFailCounts, e.guid);
+                    if (dlFails >= MaxDownloadAttempts)
+                    {
+                        pending.RemoveAll(x => x.guid == e.guid);
+                        Debug.LogWarning($"[AIT-StreamingTexture] 로드 실패 {e.file}: {req.error} — {dlFails}회 누적, 포기(스텁 유지)");
+                    }
+                    else
+                    {
+                        Debug.LogWarning($"[AIT-StreamingTexture] 로드 실패 {e.file}: {req.error} (재시도 {dlFails}/{MaxDownloadAttempts})");
+                    }
+
                     yield break;
                 }
 
@@ -290,10 +314,26 @@ namespace AppsInToss
                 }
                 else
                 {
-                    // 적용 실패 → 인스턴스 예약 해제(다음 스캔 재시도).
+                    // 적용 실패 → 인스턴스 예약 해제. 같은 페이로드는 재시도해도 같게 실패하므로
+                    // (예: 영구 해독 불가 브로틀리, 손상 이미지) 소수 시도 후 포기(스텁 유지)해
+                    // 250ms 간격 무한 재다운로드 루프를 차단한다.
                     restoredInstanceIds.Remove(tex.GetInstanceID());
+                    int apFails = IncrementFailure(applyFailCounts, e.guid);
+                    if (apFails >= MaxApplyAttempts)
+                    {
+                        pending.RemoveAll(x => x.guid == e.guid);
+                        Debug.LogWarning($"[AIT-StreamingTexture] 복원 적용 실패 {e.name} — {apFails}회(디코드 불가/손상 페이로드), 포기(스텁 유지)");
+                    }
                 }
             }
+        }
+
+        /// <summary>guid 의 실패 횟수를 1 올리고 누적값을 반환한다.</summary>
+        private static int IncrementFailure(Dictionary<string, int> counts, string guid)
+        {
+            counts.TryGetValue(guid, out int n);
+            counts[guid] = ++n;
+            return n;
         }
 
         private static bool IsSuccess(UnityWebRequest req)

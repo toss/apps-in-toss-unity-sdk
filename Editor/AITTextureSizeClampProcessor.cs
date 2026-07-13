@@ -78,6 +78,20 @@ namespace AppsInToss.Editor
         /// </summary>
         /// <param name="config">프로젝트 에디터 설정. null 이거나 기능이 꺼져 있으면 no-op.</param>
         /// <returns>복원에 사용할 핸들(항상 non-null).</returns>
+        /// <summary>
+        /// 이번 빌드에 적용할 클램프 캡을 해석한다(순수 판정 — 테스트 대상).
+        /// 명시 활성(textureSizeClamp==1)일 때만 사용자 캡(textureClampMaxSize)을 존중하고,
+        /// 자동(-1)은 SDK 안전 캡(GetDefaultTextureClampMaxSize)을 사용한다 — 클램프가 opt-in 이던
+        /// 구버전 AITConfig.asset 에 박제된 옛 기본값(1024)이 posture 플립(auto=ON) 후 사용자 의도
+        /// 없이 적용되는 것을 차단한다(당시 auto 는 비활성이라 캡 값은 의도가 아닌 직렬화 잔재).
+        /// </summary>
+        internal static int ResolveClampMax(AITEditorScriptObject config)
+        {
+            return config.textureSizeClamp == 1
+                ? config.textureClampMaxSize
+                : AITDefaultSettings.GetDefaultTextureClampMaxSize();
+        }
+
         public static ClampHandle ApplyForBuild(AITEditorScriptObject config)
         {
             var handle = new ClampHandle();
@@ -93,7 +107,7 @@ namespace AppsInToss.Editor
 
             try
             {
-                int clampMax = config.textureClampMaxSize;       // 0 이하 또는 하한 미만 = no-op
+                int clampMax = ResolveClampMax(config);          // 0 이하 또는 하한 미만 = no-op
                 if (clampMax < MinClampSize)
                 {
                     Debug.LogWarning($"[AIT-TextureSizeClamp] textureClampMaxSize({clampMax}) < 하한({MinClampSize}) → 건너뜀(no-op).");

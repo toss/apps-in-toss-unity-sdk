@@ -69,6 +69,9 @@ namespace AppsInToss.Editor
         /// <summary>외부화 기본 최소 소스 크기(512KB). 동적 Resources.Load 로 부팅에 끌려올 수 있는 소형 아이콘 보호.</summary>
         private const long DefaultMinBytes = 524288;
 
+        /// <summary>스트림 다운스케일 캡 하한. 이 값 미만의 캡은 사고 방지를 위해 무시(다운스케일 skip).</summary>
+        private const int MinDownscaleSize = 16;
+
         /// <summary>한 번의 외부화 결과 핸들. finally 에서 정확한 복원에 사용.</summary>
         public sealed class TextureStreamHandle
         {
@@ -309,7 +312,52 @@ namespace AppsInToss.Editor
                     detailLines.Add($"  {texName} ({w}x{h}, {size / 1048576f:0.00}MB) → {streamFile}");
                 }
 
-                // ─── 3-1단계: 스트리밍 소스 brotli(.br) 인코딩 ────────────────────────
+                // ─── 3-1단계: 스트림 사본 다운스케일(HiDPI 캡, lossy opt-in) ───────────
+                //    스트림 사본(StreamingAssets, CDN 배포본)만 축소한다. 프로젝트 원본은 이미 스텁으로
+                //    치환됐고(백업으로 복원됨), 스텁은 '원본 차원' 유지라 Sprite rect bake 계약은 불변.
+                //    균일 배율(캡÷최대변)로 축소해 스프라이트시트 서브-rect UV 비율도 보존한다.
+                //    반드시 brotli 앞에서 실행해야 이미 줄어든 바이트를 brotli 가 다시 압축한다.
+                //    downscaledDims: streamFile → (sw, sh). 매니페스트 sw/sh 로 기록되어 런타임 기대 차원이 됨.
+                var downscaledDims = new Dictionary<string, (int w, int h)>();
+                bool dsEnabled = config.textureStreamDownscale == 1
+                    || (config.textureStreamDownscale < 0 && AITDefaultSettings.GetDefaultTextureStreamDownscale());
+                if (dsEnabled && records.Count > 0)
+                {
+                    int dsCap = config.textureStreamDownscaleMaxSize;
+                    if (dsCap < MinDownscaleSize)
+                    {
+                        Debug.LogWarning($"[AIT-StreamingTexture] textureStreamDownscaleMaxSize={dsCap} < {MinDownscaleSize} → 다운스케일 skip.");
+                    }
+                    else
+                    {
+                        int dsCount = 0;
+                        long dsBefore = 0, dsAfter = 0;
+                        foreach (var rec in records)
+                        {
+                            if (Math.Max(rec.w, rec.h) <= dsCap)
+                            {
+                                continue; // 캡 이하 → 그대로(작은 건 불변).
+                            }
+
+                            string absStream = Path.Combine(projectRoot, StreamRootAssets, rec.streamFile);
+                            if (TryDownscaleStreamImage(absStream, dsCap, out int nw, out int nh, out long bBefore, out long bAfter))
+                            {
+                                downscaledDims[rec.streamFile] = (nw, nh);
+                                dsCount++;
+                                dsBefore += bBefore;
+                                dsAfter += bAfter;
+                                Debug.Log($"[AIT-StreamingTexture]   다운스케일: {rec.texName} {rec.w}x{rec.h} → {nw}x{nh} ({bBefore / 1048576f:0.00}→{bAfter / 1048576f:0.00}MB)");
+                            }
+                        }
+
+                        if (dsCount > 0)
+                        {
+                            Debug.Log($"[AIT-StreamingTexture] 스트림 다운스케일 {dsCount}개(캡 {dsCap}px, HiDPI 헤드룸), {dsBefore / 1048576f:0.00}→{dsAfter / 1048576f:0.00}MB. (표시 해상도 lossy — 프로젝트 원본 불변)");
+                        }
+                    }
+                }
+
+                // ─── 3-2단계: 스트리밍 소스 brotli(.br) 인코딩 ────────────────────────
                 //    <guid><ext> 는 아직 원본 바이트(스텁 치환은 프로젝트 내 소스에만 적용, 복사본은
                 //    복사 시점의 원본). PNG/JPG 는 이미 엔트로피 코딩돼 이득이 파일별 0~18.5%로 편차가
                 //    커서, ShouldKeep(≥10%) 채택 파일만 <guid><ext>.br 로 대체하고 원본은 제거한다.
@@ -350,10 +398,14 @@ namespace AppsInToss.Editor
                         fileName = rec.streamFile;
                     }
 
+                    // width/height 는 스텁=원본 차원(FindStub 매칭 계약, 절대 축소본으로 바꾸지 않음).
+                    // 다운스케일된 경우에만 sw/sh(스트림 실제 차원)를 추가 — 런타임이 LoadImage 후 기대 차원으로 사용.
+                    bool isDs = downscaledDims.TryGetValue(rec.streamFile, out var dsd);
                     entries.Add("{\"guid\":\"" + rec.g + "\",\"name\":" + JsonStr(rec.texName)
                                 + ",\"file\":" + JsonStr(fileName)
                                 + (isBr ? ",\"encoding\":\"br\"" : string.Empty)
-                                + ",\"width\":" + rec.w + ",\"height\":" + rec.h + "}");
+                                + ",\"width\":" + rec.w + ",\"height\":" + rec.h
+                                + (isDs ? ",\"sw\":" + dsd.w + ",\"sh\":" + dsd.h : string.Empty) + "}");
                 }
 
                 // ─── 4단계: 매니페스트 동봉 ─────────────────────────────────────
@@ -619,6 +671,184 @@ namespace AppsInToss.Editor
                     UnityEngine.Object.DestroyImmediate(tex);
                 }
             }
+        }
+
+        // ─────────────────────────── 스트림 다운스케일 ───────────────────────────
+
+        /// <summary>
+        /// 균일 배율(cap÷최대변)로 다운스케일된 목표 차원을 산출한다. 두 축에 '동일 factor' 를 적용해
+        /// 종횡비와 스프라이트시트 서브-rect UV 비율을 보존한다. 최대변이 cap 이하이거나 반올림 결과
+        /// 축소가 없으면(둘 중 하나라도 원본 이상) false. 성공 시 nw/nh 는 1 이상 & 각각 원본 미만.
+        /// </summary>
+        internal static bool ComputeDownscaledDims(int w, int h, int cap, out int nw, out int nh)
+        {
+            nw = w;
+            nh = h;
+            if (w <= 0 || h <= 0 || cap < MinDownscaleSize)
+            {
+                return false;
+            }
+
+            int maxDim = Math.Max(w, h);
+            if (maxDim <= cap)
+            {
+                return false; // 캡 이하 → 축소 없음.
+            }
+
+            double scale = (double)cap / maxDim;
+            nw = Math.Max(1, (int)Math.Round(w * scale));
+            nh = Math.Max(1, (int)Math.Round(h * scale));
+            if (nw >= w || nh >= h)
+            {
+                return false; // 반올림 결과 축소 없음 → skip.
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// StreamingAssets 스트림 사본 이미지를 균일 배율(cap÷최대변)로 다운스케일해 제자리 덮어쓴다.
+        /// GPU(Graphics.Blit/RenderTexture) 대신 CPU 영역(box) 평균 리샘플 — <c>-batchmode -nographics</c>
+        /// 에서도 안전하고, 알파 프리멀티플라이 평균으로 투명 경계 dark-fringe 를 방지한다. temp 텍스처는
+        /// 즉시 파괴(leak 방지). 인코딩은 확장자에 맞춤(.jpg/.jpeg → JPG q90, 그 외 → PNG).
+        /// 성공 시 새 차원/바이트를 반환하고, 디코드/인코드 실패·무축소(반올림)면 원본을 그대로 두고 false.
+        /// </summary>
+        private static bool TryDownscaleStreamImage(string absPath, int cap, out int newW, out int newH, out long beforeBytes, out long afterBytes)
+        {
+            newW = 0;
+            newH = 0;
+            beforeBytes = 0;
+            afterBytes = 0;
+            Texture2D src = null;
+            Texture2D dst = null;
+            try
+            {
+                if (!File.Exists(absPath))
+                {
+                    return false;
+                }
+
+                byte[] bytes = File.ReadAllBytes(absPath);
+                beforeBytes = bytes.Length;
+
+                src = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+                if (!src.LoadImage(bytes, false)) // PNG/JPG 디코드 실패 → skip.
+                {
+                    return false;
+                }
+
+                int w = src.width;
+                int h = src.height;
+                if (!ComputeDownscaledDims(w, h, cap, out newW, out newH))
+                {
+                    return false; // 캡 이하이거나 반올림 결과 축소 없음 → skip.
+                }
+
+                Color32[] dstPixels = BoxDownsamplePremultiplied(src.GetPixels32(), w, h, newW, newH);
+                dst = new Texture2D(newW, newH, TextureFormat.RGBA32, false);
+                dst.SetPixels32(dstPixels);
+                dst.Apply(false, false);
+
+                string ext = Path.GetExtension(absPath).ToLowerInvariant();
+                byte[] outBytes = (ext == ".jpg" || ext == ".jpeg") ? dst.EncodeToJPG(90) : dst.EncodeToPNG();
+                if (outBytes == null || outBytes.Length == 0)
+                {
+                    return false;
+                }
+
+                File.WriteAllBytes(absPath, outBytes);
+                afterBytes = outBytes.Length;
+                return true;
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[AIT-StreamingTexture]   다운스케일 실패({Path.GetFileName(absPath)}): {e.Message}");
+                return false;
+            }
+            finally
+            {
+                if (src != null)
+                {
+                    UnityEngine.Object.DestroyImmediate(src);
+                }
+
+                if (dst != null)
+                {
+                    UnityEngine.Object.DestroyImmediate(dst);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Color32 픽셀 배열을 영역(box) 평균으로 다운샘플한다(src w×h → dst w×h, 축소 전용).
+        /// RGB 는 알파 가중(프리멀티플라이) 평균 후 언프리멀티플라이 → 완전 투명 texel 의 색이 경계를
+        /// 오염시키지 않는다(dark-fringe 방지). 알파는 단순 평균. 각 dst 픽셀의 소스 풋프린트를 모두 누적.
+        /// </summary>
+        internal static Color32[] BoxDownsamplePremultiplied(Color32[] src, int sw, int sh, int dw, int dh)
+        {
+            var dst = new Color32[dw * dh];
+            float rx = (float)sw / dw;
+            float ry = (float)sh / dh;
+            for (int y = 0; y < dh; y++)
+            {
+                int sy0 = (int)(y * ry);
+                int sy1 = Math.Max(sy0 + 1, (int)((y + 1) * ry));
+                if (sy1 > sh)
+                {
+                    sy1 = sh;
+                }
+
+                for (int x = 0; x < dw; x++)
+                {
+                    int sx0 = (int)(x * rx);
+                    int sx1 = Math.Max(sx0 + 1, (int)((x + 1) * rx));
+                    if (sx1 > sw)
+                    {
+                        sx1 = sw;
+                    }
+
+                    long aSum = 0, rSum = 0, gSum = 0, bSum = 0;
+                    int cnt = 0;
+                    for (int yy = sy0; yy < sy1; yy++)
+                    {
+                        int row = yy * sw;
+                        for (int xx = sx0; xx < sx1; xx++)
+                        {
+                            Color32 c = src[row + xx];
+                            int a = c.a;
+                            aSum += a;
+                            rSum += (long)c.r * a; // 알파 가중(프리멀티플라이).
+                            gSum += (long)c.g * a;
+                            bSum += (long)c.b * a;
+                            cnt++;
+                        }
+                    }
+
+                    if (cnt == 0)
+                    {
+                        cnt = 1;
+                    }
+
+                    byte outA = (byte)(aSum / cnt);
+                    byte outR, outG, outB;
+                    if (aSum > 0)
+                    {
+                        outR = (byte)(rSum / aSum); // 언프리멀티플라이.
+                        outG = (byte)(gSum / aSum);
+                        outB = (byte)(bSum / aSum);
+                    }
+                    else
+                    {
+                        outR = 0; // 완전 투명 → 색 무의미.
+                        outG = 0;
+                        outB = 0;
+                    }
+
+                    dst[y * dw + x] = new Color32(outR, outG, outB, outA);
+                }
+            }
+
+            return dst;
         }
 
         // ─────────────────────────── 백업/복원 ───────────────────────────

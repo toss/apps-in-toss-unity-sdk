@@ -7,7 +7,6 @@
 using NUnit.Framework;
 using System;
 using System.IO;
-using System.Reflection;
 using UnityEngine;
 using UnityEngine.TestTools;
 using AppsInToss;
@@ -127,15 +126,6 @@ public class BuildMarkerTests
     private const string EXPECTED_MISSING_MARKER_WARNING =
         "[AIT] 빌드 마커가 없습니다. Clean build를 수행합니다.";
 
-    private static bool InvokeShouldForceCleanBuild(string outputPath, bool cleanBuild)
-    {
-        MethodInfo m = typeof(AITConvertCore).GetMethod(
-            "ShouldForceCleanBuild",
-            BindingFlags.Static | BindingFlags.NonPublic);
-        Assert.IsNotNull(m, "ShouldForceCleanBuild 메서드를 찾을 수 없습니다.");
-        return (bool)m.Invoke(null, new object[] { outputPath, cleanBuild });
-    }
-
     [Test]
     public void ShouldForceCleanBuild_ReturnsTrueAndWarns_WhenMarkerIsMissing()
     {
@@ -147,7 +137,8 @@ public class BuildMarkerTests
 
         LogAssert.Expect(LogType.Warning, EXPECTED_MISSING_MARKER_WARNING);
 
-        bool shouldClean = InvokeShouldForceCleanBuild(outputPath, false);
+        // internal 접근은 Editor/AssemblyInfo.cs의 InternalsVisibleTo("AppsInTossEditModeTests")로 허용됨
+        bool shouldClean = AppsInToss.Editor.AITWebGLBuilder.ShouldForceCleanBuild(outputPath, false);
 
         Assert.IsTrue(shouldClean,
             "마커가 없으면 ShouldForceCleanBuild는 true를 반환해야 합니다.");

@@ -86,7 +86,7 @@ namespace AppsInToss.Editor
         }
 
         /// <summary>
-        /// 빌드 리포트 저장 (AITConvertCore.BuildWebGL에서 호출)
+        /// 빌드 리포트 저장 (AITWebGLBuilder.BuildWebGL에서 호출)
         /// </summary>
         public static void SetBuildReport(BuildReport report)
         {

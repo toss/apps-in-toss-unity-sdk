@@ -145,11 +145,15 @@ namespace AppsInToss.Editor
                 var importer = AssetImporter.GetAtPath(path) as AudioImporter;
                 if (importer == null) continue;
 
-                var sampleSettings = importer.GetOverrideSampleSettings("WebGL");
+                // WebGL 은 per-platform 오디오 오버라이드 미지원(ContainsSampleSettingsOverride("WebGL")
+                // 은 항상 false) → WebGL 빌드가 ship 하는 유효 설정은 base(defaultSampleSettings)다.
+                // 과거 "오버라이드 부재 = 이슈" 판정은 이 때문에 전 클립을 오탐했다.
+                var sampleSettings = importer.ContainsSampleSettingsOverride("WebGL")
+                    ? importer.GetOverrideSampleSettings("WebGL")
+                    : importer.defaultSampleSettings;
 
-                // WebGL 오버라이드가 없거나 비압축/경량압축 포맷인 경우
-                if (!importer.ContainsSampleSettingsOverride("WebGL") ||
-                    sampleSettings.compressionFormat == AudioCompressionFormat.PCM ||
+                // 유효 포맷이 비압축/경량압축인 경우만 이슈
+                if (sampleSettings.compressionFormat == AudioCompressionFormat.PCM ||
                     sampleSettings.compressionFormat == AudioCompressionFormat.ADPCM)
                 {
                     issue.assetPaths.Add(path);
@@ -253,10 +257,12 @@ namespace AppsInToss.Editor
                         var importer = AssetImporter.GetAtPath(assetPaths[i]) as AudioImporter;
                         if (importer == null) continue;
 
-                        var sampleSettings = importer.GetOverrideSampleSettings("WebGL");
+                        // WebGL 은 per-platform 오디오 오버라이드 미지원 → base 를 변경해야 실제로 적용됨
+                        // (기존 SetOverrideSampleSettings("WebGL") 경로는 항상 no-op 였다).
+                        var sampleSettings = importer.defaultSampleSettings;
                         sampleSettings.compressionFormat = AudioCompressionFormat.Vorbis;
                         sampleSettings.quality = 0.5f;
-                        importer.SetOverrideSampleSettings("WebGL", sampleSettings);
+                        importer.defaultSampleSettings = sampleSettings;
                         fixed_++;
                     }
                 }

@@ -5,9 +5,18 @@
 // </copyright>
 // -----------------------------------------------------------------------
 //
-// 빌드 직전, 대상 AudioClip 의 WebGL 임포터 설정 중 compressionFormat/quality "만" 일시적으로
-//   override(Vorbis + quality) 하여 reimport 함으로써, Unity 가 더 작은 오디오를 .data(및 CDN)에
+// 빌드 직전, 대상 AudioClip 의 임포터 설정 중 compressionFormat/quality "만" 일시적으로
+//   Vorbis + quality 로 변경해 reimport 함으로써, Unity 가 더 작은 오디오를 .data(및 CDN)에
 //   굽게 한다. 빌드 종료(성공/실패 무관) 후 원본 임포트 설정으로 원상 복원한다.
+//
+// ⚠ WebGL 은 per-platform 오디오 오버라이드 미지원 플랫폼이다:
+//   AudioImporter.SetOverrideSampleSettings("WebGL", …) 및 enum 오버로드는 항상 false 를 반환하며
+//   아무것도 저장하지 않는다 — 전 BuildTargetGroup 중 유일하게 거부된다(2022.3 에서 전수 실측;
+//   WebGL 초기의 특수 오디오 파이프라인 잔재). 따라서 WebGL 빌드가 실제로 ship 하는 것은
+//   base(defaultSampleSettings)이고, 이 프로세서는 base 를 빌드 스코프로 변경한다.
+//   .meta verbatim 백업/복원이 원상 회복을 보장하므로 타 플랫폼 설정에 잔존 영향이 없다.
+//   (방어: 미래 에디터가 WebGL 오버라이드를 지원하고 실존 오버라이드가 있으면 그것이 base 에
+//   우선하므로 함께 갱신한다.)
 //
 // posture(기본 ON, opt-out):
 //   SDK 는 이미 lossy 텍스처 최적화(crunch=DXT 압축, ASTC 블록 에스컬레이션)를 기본 ON 으로 둔다.
@@ -47,7 +56,8 @@ namespace AppsInToss.Editor
     /// <summary>
     /// 빌드 단계 오디오 재인코딩(Vorbis + quality) 처리기.
     /// <see cref="AITEditorScriptObject.audioReencode"/> 설정에 따라 동작한다.
-    /// loadType/sampleRate/preloadAudioData 는 건드리지 않고 compressionFormat/quality 만 override 한다.
+    /// loadType/sampleRate/preloadAudioData 는 건드리지 않고 compressionFormat/quality 만 변경한다
+    /// (WebGL 은 per-platform 오디오 오버라이드 미지원 → base defaultSampleSettings 를 빌드 스코프로 변경).
     /// 런타임 컴포넌트는 없다(빌드 산출물만 작아질 뿐, 런타임 동작 동일).
     /// </summary>
     [InitializeOnLoad]
@@ -222,9 +232,11 @@ namespace AppsInToss.Editor
                     continue;
                 }
 
-                // 빌드가 실제로 ship 하는 설정을 해석한다: WebGL 오버라이드가 있으면 그것을, 없으면 base(default).
-                bool overridden = ti.ContainsSampleSettingsOverride("WebGL");
-                AudioImporterSampleSettings cur = overridden
+                // 빌드가 실제로 ship 하는 설정을 해석한다. WebGL 은 per-platform 오버라이드 미지원이라
+                // 현행 에디터에서 hasWebGLOverride 는 항상 false → base(defaultSampleSettings)가 ship 값.
+                // (미래 에디터가 오버라이드를 지원하게 되면 실존 오버라이드가 우선하므로 그쪽을 읽는다.)
+                bool hasWebGLOverride = ti.ContainsSampleSettingsOverride("WebGL");
+                AudioImporterSampleSettings cur = hasWebGLOverride
                     ? ti.GetOverrideSampleSettings("WebGL")
                     : ti.defaultSampleSettings;
 
@@ -248,15 +260,25 @@ namespace AppsInToss.Editor
                     continue;
                 }
 
-                // compressionFormat/quality 만 override. loadType/sampleRate 등은 base 에서 승계(보존).
-                // WebGL 오버라이드로 세팅해 빌드가 실제로 Vorbis 를 ship 하도록 강제한다(base 만 바꾸면
-                // 기존 WebGL 오버라이드가 우선해 무효가 될 수 있음).
-                AudioImporterSampleSettings ns = overridden
-                    ? ti.GetOverrideSampleSettings("WebGL")
-                    : ti.defaultSampleSettings;
-                ns.compressionFormat = AudioCompressionFormat.Vorbis;
-                ns.quality = quality;
-                ti.SetOverrideSampleSettings("WebGL", ns);
+                // compressionFormat/quality 만 변경. loadType/sampleRate/preloadAudioData 는 보존.
+                // WebGL 빌드는 base(defaultSampleSettings)를 ship 하므로 base 를 변경한다 — WebGL 은
+                // per-platform 오버라이드 미지원이라 SetOverrideSampleSettings("WebGL") 은 항상 no-op
+                // (false 반환)이다. 빌드 스코프 변경 + .meta verbatim 복원이라 타 플랫폼 영향 없음.
+                AudioImporterSampleSettings nsBase = ti.defaultSampleSettings;
+                nsBase.compressionFormat = AudioCompressionFormat.Vorbis;
+                nsBase.quality = quality;
+                ti.defaultSampleSettings = nsBase;
+
+                // 방어: WebGL 오버라이드가 실존하는 에디터/프로젝트에서는 그것이 base 에 우선하므로
+                // 함께 갱신한다(현행 에디터에서는 도달 불가 경로 — hasWebGLOverride 항상 false).
+                if (hasWebGLOverride)
+                {
+                    AudioImporterSampleSettings nsOv = ti.GetOverrideSampleSettings("WebGL");
+                    nsOv.compressionFormat = AudioCompressionFormat.Vorbis;
+                    nsOv.quality = quality;
+                    ti.SetOverrideSampleSettings("WebGL", nsOv);
+                }
+
                 ti.SaveAndReimport();
                 n++;
             }

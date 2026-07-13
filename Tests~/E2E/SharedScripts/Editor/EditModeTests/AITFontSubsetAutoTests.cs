@@ -233,4 +233,174 @@ public class AITFontSubsetAutoTests
 
         Assert.IsTrue(sink.Contains(0x1F600), "서로게이트 쌍을 합친 코드포인트로 수집");
     }
+
+    // =====================================================
+    // 백슬래시 이스케이프 디코드: Unity YAML/C#/JSON 은 비ASCII 를 \uXXXX 로 직렬화
+    // (회귀 방지: I2Languages.asset 처럼 CJK 를 \uXXXX 로 저장하면 원시 문자만 봐선 전부 누락됨)
+    // =====================================================
+
+    [Test]
+    public void CollectNonAscii_Decodes_UnicodeEscape_uXXXX()
+    {
+        var sink = new HashSet<int>();
+        // verbatim(@) 이라 백슬래시가 그대로 — 런타임 문자열은 "一"(6문자) → 一(U+4E00) 수집
+        AITFontUsedCharScanner.CollectNonAscii(@"prefix \u4E00 suffix", sink);
+
+        Assert.IsTrue(sink.Contains(0x4E00), "\\uXXXX 이스케이프를 코드포인트로 디코드");
+    }
+
+    [Test]
+    public void CollectNonAscii_Decodes_MultipleEscapes_InQuotedString()
+    {
+        var sink = new HashSet<int>();
+        // I2Languages.asset 의 실제 저장 형태: "抽抽防御" (抽抽防御)
+        AITFontUsedCharScanner.CollectNonAscii("      - \"\\u62BD\\u62BD\\u9632\\u5FA1\"", sink);
+
+        Assert.IsTrue(sink.Contains(0x62BD), "연속 이스케이프 첫 글자(抽) 수집");
+        Assert.IsTrue(sink.Contains(0x9632), "연속 이스케이프 셋째 글자(防) 수집");
+        Assert.IsTrue(sink.Contains(0x5FA1), "연속 이스케이프 넷째 글자(御) 수집");
+    }
+
+    [Test]
+    public void CollectNonAscii_Decodes_HexEscape_xXX()
+    {
+        var sink = new HashSet<int>();
+        // \xE9 = é(U+00E9) — 프랑스어 텍스트가 이 형태로 저장됨(YAML double-quoted 스칼라)
+        AITFontUsedCharScanner.CollectNonAscii(@"r\xE9clamer", sink);
+
+        Assert.IsTrue(sink.Contains(0xE9), "\\xXX(2 hex) 이스케이프를 디코드");
+    }
+
+    [Test]
+    public void CollectNonAscii_Decodes_SurrogatePair_FromTwoEscapes()
+    {
+        var sink = new HashSet<int>();
+        // 😀 (상위+하위 서로게이트 이스케이프) → 😀(U+1F600) 로 합성
+        AITFontUsedCharScanner.CollectNonAscii(@"emoji \uD83D\uDE00 end", sink);
+
+        Assert.IsTrue(sink.Contains(0x1F600), "두 \\uXXXX 서로게이트를 astral 코드포인트로 합성");
+        Assert.IsFalse(sink.Contains(0xD83D), "낱개 상위 서로게이트는 수집하지 않음");
+        Assert.IsFalse(sink.Contains(0xDE00), "낱개 하위 서로게이트는 수집하지 않음");
+    }
+
+    [Test]
+    public void CollectNonAscii_Decodes_EightDigitEscape_UXXXXXXXX()
+    {
+        var sink = new HashSet<int>();
+        // \U0001F600 (8 hex) → 😀(U+1F600)
+        AITFontUsedCharScanner.CollectNonAscii(@"emoji \U0001F600 end", sink);
+
+        Assert.IsTrue(sink.Contains(0x1F600), "\\UXXXXXXXX(8 hex) 이스케이프를 디코드");
+    }
+
+    [Test]
+    public void CollectNonAscii_IgnoresEscapedBackslash_NotAnEscape()
+    {
+        var sink = new HashSet<int>();
+        // 리터럴 "\\u4E00" = 이스케이프된 백슬래시 + "u4E00" 텍스트 → 一 을 수집하면 안 됨
+        AITFontUsedCharScanner.CollectNonAscii(@"path\\u4E00text", sink);
+
+        Assert.IsFalse(sink.Contains(0x4E00), "이스케이프된 백슬래시(\\\\) 뒤 텍스트는 이스케이프로 오인하지 않음");
+    }
+
+    [Test]
+    public void CollectNonAscii_Malformed_Escape_DoesNotThrow_OrOverCollect()
+    {
+        var sink = new HashSet<int>();
+        // hex 부족/비hex — 예외 없이 무시(원시 ASCII 로 취급되어 아무것도 수집 안 함)
+        Assert.DoesNotThrow(() => AITFontUsedCharScanner.CollectNonAscii(@"bad \u4E end \uZZZZ \x", sink));
+        Assert.IsFalse(sink.Contains(0x4E00), "불완전한 \\u4E 는 디코드하지 않음");
+    }
+
+    [Test]
+    public void CollectNonAscii_StillCollects_RawNonAscii_AlongsideEscapes()
+    {
+        var sink = new HashSet<int>();
+        // 원시 CJK 와 이스케이프가 섞여도 둘 다 수집(기존 동작 회귀 방지)
+        AITFontUsedCharScanner.CollectNonAscii("가나 \\u4E00 " + "あ", sink);
+
+        Assert.IsTrue(sink.Contains(0xAC00), "원시 '가' 수집(기존 동작 유지)");
+        Assert.IsTrue(sink.Contains(0x4E00), "이스케이프 一 수집");
+        Assert.IsTrue(sink.Contains(0x3042), "원시 'あ' 수집");
+    }
+
+    // =====================================================
+    // ★ 드롭 버그 회귀 방지: 감지된 코드포인트는 블록 등재 여부와 무관하게 항상 보존
+    // (테이블에 없는 문자체계라도 '감지된 글자'는 절대 드롭되지 않아야 함 — tofu 방지 최저선)
+    // =====================================================
+
+    [Test]
+    public void BuildPreservedRanges_PreservesDetectedCodepoint_EvenWhenBlockNotTabled()
+    {
+        // U+16A0 (Runic) 은 블록 테이블에 없음 → 블록 완성은 안 되지만 감지된 글자 자체는 보존되어야 함.
+        const int runic = 0x16A0;
+        Assert.IsFalse(AITFontUnicodeBlocks.TryFindBlock(runic, out _),
+            "전제: Runic 은 블록 테이블에 없어야 이 테스트가 드롭 경로를 검증함");
+
+        string ranges = AITFontUsedCharScanner.BuildPreservedRanges(
+            new[] { runic }, new int[0], out var blocks);
+        var cps = Expand(ranges);
+
+        Assert.IsTrue(cps.Contains(runic),
+            "미등재 블록의 감지 글자도 raw 로 보존되어야 함(드롭 버그 회귀 방지)");
+        Assert.IsFalse(blocks.Exists(b => b.Contains(runic)),
+            "미등재 블록은 블록 완성 리포트에 포함되지 않음(글자 자체만 보존)");
+    }
+
+    [Test]
+    public void ExpandToBlocks_UntabledCodepoint_ReturnsNoBlock_ButCallerPreservesRaw()
+    {
+        // 계약 분리 검증: ExpandToBlocks 는 미등재 코드포인트에 블록을 만들지 않지만(블록 완성 미적용),
+        // BuildPreservedRanges 는 그 글자를 raw 로 무조건 보존한다.
+        const int pua = 0xE000; // Private Use Area — 어떤 블록에도 없음
+        var blocks = AITFontUnicodeBlocks.ExpandToBlocks(new[] { pua });
+        Assert.IsEmpty(blocks, "ExpandToBlocks 는 미등재 코드포인트에 블록을 만들지 않아야 함");
+
+        var cps = Expand(AITFontUsedCharScanner.BuildPreservedRanges(new[] { pua }, new int[0], out _));
+        Assert.IsTrue(cps.Contains(pua), "호출부(BuildPreservedRanges)가 미등재 감지 글자를 raw 로 보존");
+    }
+
+    [Test]
+    public void BuildPreservedRanges_MixedTabledAndUntabled_BothPreserved()
+    {
+        // 등재(키릴 U+0410) + 미등재(Runic U+16A0) 혼재 → 키릴은 블록 완성, Runic 은 raw 보존.
+        string ranges = AITFontUsedCharScanner.BuildPreservedRanges(
+            new[] { 0x0410, 0x16A0 }, new int[0], out _);
+        var cps = Expand(ranges);
+
+        Assert.IsTrue(cps.Contains(0x0400) && cps.Contains(0x04FF), "키릴은 블록 전체 보존");
+        Assert.IsTrue(cps.Contains(0x16A0), "미등재 Runic 은 감지 글자 raw 보존");
+    }
+
+    // =====================================================
+    // 블록 테이블 확장: 주요 생존 문자체계 + 국기/게임 이모지의 동적 텍스트 커버
+    // =====================================================
+
+    [Test]
+    public void ExpandedTable_Covers_MajorLivingScripts()
+    {
+        AssertBlockCompletes(0x0995, "Bengali");   // ক
+        AssertBlockCompletes(0x0B95, "Tamil");     // க
+        AssertBlockCompletes(0x10D0, "Georgian");  // ა
+        AssertBlockCompletes(0x0E01, "Thai");      // ก (기존 유지 확인)
+        AssertBlockCompletes(0x1780, "Khmer");     // ក
+        AssertBlockCompletes(0x0F40, "Tibetan");   // ཀ
+        AssertBlockCompletes(0x1000, "Myanmar");   // က
+    }
+
+    [Test]
+    public void ExpandedTable_Covers_FlagAndGameEmoji()
+    {
+        // 국기 이모지 Regional Indicator(U+1F1E6-1F1FF) → Enclosed Alphanumeric Supplement 블록.
+        AssertBlockCompletes(0x1F1F0, "Enclosed Alphanumeric Supplement");
+        AssertBlockCompletes(0x1F0A1, "Playing Cards");
+        AssertBlockCompletes(0x1F004, "Mahjong Tiles");
+    }
+
+    private static void AssertBlockCompletes(int detectedCp, string expectedBlockName)
+    {
+        var blocks = AITFontUnicodeBlocks.ExpandToBlocks(new[] { detectedCp });
+        Assert.IsTrue(blocks.Exists(b => b.Name == expectedBlockName && b.Contains(detectedCp)),
+            $"U+{detectedCp:X4} 감지 → '{expectedBlockName}' 블록 전체가 보존되어야 함(동적 텍스트 커버)");
+    }
 }

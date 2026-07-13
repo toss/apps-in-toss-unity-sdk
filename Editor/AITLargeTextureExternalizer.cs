@@ -312,7 +312,7 @@ namespace AppsInToss.Editor
                     detailLines.Add($"  {texName} ({w}x{h}, {size / 1048576f:0.00}MB) → {streamFile}");
                 }
 
-                // ─── 3-1단계: 스트림 사본 다운스케일(HiDPI 캡, lossy opt-in) ───────────
+                // ─── 3-1단계: 스트림 사본 다운스케일(HiDPI 캡, lossy, 기본 ON) ───────────
                 //    스트림 사본(StreamingAssets, CDN 배포본)만 축소한다. 프로젝트 원본은 이미 스텁으로
                 //    치환됐고(백업으로 복원됨), 스텁은 '원본 차원' 유지라 Sprite rect bake 계약은 불변.
                 //    균일 배율(캡÷최대변)로 축소해 스프라이트시트 서브-rect UV 비율도 보존한다.

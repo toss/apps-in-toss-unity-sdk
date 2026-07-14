@@ -358,6 +358,21 @@ namespace AppsInToss.Editor
                     }
                 }
 
+                // ─── 3-1.5단계: 스트림 PNG 사본 무손실 재압축(oxipng, 기본 ON) ─────────
+                //    다운스케일이 EncodeToPNG 로 다시 쓴 무최적화 deflate 와 원본 소스 PNG 를
+                //    함께 누른다. 픽셀 불변(무손실) — brotli(3-2) 앞에서 실행해야 br 판정이
+                //    이미 줄어든 바이트를 기준으로 이뤄진다.
+                if (records.Count > 0)
+                {
+                    var pngPaths = new List<string>();
+                    foreach (var rec in records)
+                    {
+                        pngPaths.Add(Path.Combine(projectRoot, StreamRootAssets, rec.streamFile));
+                    }
+
+                    AITTextureStreamRecompressor.RecompressInPlace(config, pngPaths);
+                }
+
                 // ─── 3-2단계: 스트리밍 소스 brotli(.br) 인코딩 ────────────────────────
                 //    <guid><ext> 는 아직 원본 바이트(스텁 치환은 프로젝트 내 소스에만 적용, 복사본은
                 //    복사 시점의 원본). PNG/JPG 는 이미 엔트로피 코딩돼 이득이 파일별 0~18.5%로 편차가

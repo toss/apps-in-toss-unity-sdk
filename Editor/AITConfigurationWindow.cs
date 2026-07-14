@@ -1398,6 +1398,18 @@ namespace AppsInToss.Editor
                 EditorGUI.indentLevel--;
             }
 
+            // 스트림 PNG 무손실 재압축(기본 ON)
+            bool rcDefault = AITDefaultSettings.GetDefaultTextureStreamRecompress();
+            string rcAutoLabel = rcDefault ? "활성" : "비활성";
+            int rcIndex = config.textureStreamRecompress < 0 ? 0 : config.textureStreamRecompress + 1;
+            int rcNew = EditorGUILayout.Popup(
+                new GUIContent("스트림 PNG 재압축 (무손실)",
+                    "외부화된 스트림 PNG 사본을 oxipng(WASM)로 무손실 재압축합니다. 픽셀 데이터 불변(필터/deflate 재탐색만) — " +
+                    "런타임 LoadImage 결과 동일, 품질 트레이드오프 없음. 다운스케일이 다시 쓴 PNG(실측 −32%)와 " +
+                    "원본 소스 PNG(실측 −7~16%)를 함께 눌러 CDN 무압축 총량을 실감축합니다."),
+                rcIndex, new[] { new GUIContent($"자동 ({rcAutoLabel})"), new GUIContent("비활성"), new GUIContent("활성") });
+            config.textureStreamRecompress = rcNew == 0 ? -1 : rcNew - 1;
+
             EditorGUILayout.EndVertical();
         }
 
@@ -2183,6 +2195,8 @@ namespace AppsInToss.Editor
 
             bool defaultTextureClamp = AITDefaultSettings.GetDefaultTextureSizeClamp();
             if (config.textureSizeClamp >= 0 && (config.textureSizeClamp == 1) != defaultTextureClamp) count++;
+            bool defaultStreamRecompress = AITDefaultSettings.GetDefaultTextureStreamRecompress();
+            if (config.textureStreamRecompress >= 0 && (config.textureStreamRecompress == 1) != defaultStreamRecompress) count++;
             bool defaultAstcBlock = AITDefaultSettings.GetDefaultAstcBlockEscalation();
             if (config.astcBlockEscalation >= 0 && (config.astcBlockEscalation == 1) != defaultAstcBlock) count++;
             // 폰트 subset: 비활성(0)이거나 수동 override(target/range/추가범위/제외경로 지정)면 변경으로 집계.
@@ -2368,6 +2382,7 @@ namespace AppsInToss.Editor
             config.textureStreamingMaxConcurrent = 3;
             config.textureStreamDownscale = -1;
             config.textureStreamDownscaleMaxSize = 2048;
+            config.textureStreamRecompress = -1;
 
             // 콘텐츠 최적화 — 대형 폰트 deferral
             config.fontStreaming = -1;

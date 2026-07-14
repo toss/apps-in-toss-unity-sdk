@@ -455,6 +455,11 @@ namespace AppsInToss
                  "예) 1536, 2048, 3072. textureClampMaxSize 와 같은 HiDPI 캡 개념(스트림 대상).")]
         public int textureStreamDownscaleMaxSize = 2048;
 
+        [Tooltip("(무손실, 기본 ON) 외부화된 스트림 PNG 사본을 oxipng(WASM)로 무손실 재압축해 CDN 무압축 총량을 실감축합니다. " +
+                 "픽셀 데이터 불변(필터/deflate 재탐색만) — 런타임 LoadImage 결과 동일, 품질 트레이드오프 없음. " +
+                 "다운스케일이 다시 쓴 PNG(실측 −32%)와 원본 소스 PNG(실측 −7~16%)를 함께 누릅니다. -1 = 자동(활성), 0 = 비활성, 1 = 활성.")]
+        public int textureStreamRecompress = -1;
+
         [Header("콘텐츠 최적화 — 대형 폰트 deferral")]
         [Tooltip("-1 = 자동(1MB 이상·부팅 씬 미포함 TMP_FontAsset 자동 스캔 후 외부화), " +
                  "0 = 비활성화, 1 = 수동(fontStreamingTargetPaths 에 명시한 경로만 외부화). " +
@@ -1000,6 +1005,16 @@ namespace AppsInToss
         public static int GetDefaultTextureStreamDownscaleMaxSize()
         {
             return 2048;
+        }
+
+        /// <summary>
+        /// 기본 스트림 PNG 사본 무손실 재압축 활성 여부.
+        /// oxipng 는 픽셀 데이터를 바꾸지 않으므로(필터/deflate 재탐색만) 품질 트레이드오프가 없다 —
+        /// 청취/시각 검증 게이트가 필요한 lossy 레버(GetDefaultAudioStreamTranscode)와 달리 기본 ON.
+        /// </summary>
+        public static bool GetDefaultTextureStreamRecompress()
+        {
+            return true;
         }
 
         /// <summary>

@@ -137,6 +137,12 @@ const sdkConfig = defineConfig({
   build: {
     // Unity WebGL 빌드와 호환되도록 설정
     target: 'es2015',
+    // 우리 브릿지/템플릿 코드의 sourcemap(.js.map)을 생성하지 않는다. Vite 기본값도
+    // false 지만, 배포 번들에 불필요한 .js.map 이 새어 들어가지 않도록 명시로 고정한다.
+    // (.ait 에 담기는 필수 .js.map 은 @apps-in-toss/cli 가 만드는 RN 브릿지 번들
+    //  bundle.{platform}.js.map 뿐이며, 이는 배포 서버가 필수 번들 파일로 요구하므로
+    //  건드리지 않는다. 우리 쪽에서 추가로 map 을 만들지 않게만 관리한다.)
+    sourcemap: false,
     // 빌드 출력 설정
     rollupOptions: {
       output: {

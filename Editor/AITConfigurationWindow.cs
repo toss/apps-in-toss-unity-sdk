@@ -574,6 +574,44 @@ namespace AppsInToss.Editor
                     new GUIContent("대상 폴더(쉼표 구분)", "Assets/ 기준 경로. 비우면 프로젝트 전체의 큰 오디오가 대상. 예) Assets/Sounds/BGM,Assets/Music"),
                     config.audioStreamingDirs);
 
+                // 하위 레버: 외부화 사본 저비트레이트 재인코딩 (청취 검증 전까지 auto=OFF, 명시 활성 전용)
+                bool transcodeDefault = AITDefaultSettings.GetDefaultAudioStreamTranscode();
+                string transcodeAuto = transcodeDefault ? "활성화" : "비활성화";
+                string[] transcodeOptions = { $"자동 ({transcodeAuto})", "비활성화", "활성화" };
+                int transcodeIndex = config.audioStreamTranscode < 0 ? 0 : config.audioStreamTranscode + 1;
+                int newTranscodeIndex = EditorGUILayout.Popup(
+                    new GUIContent("스트림 재인코딩 (lossy)",
+                        "외부화된 스트리밍 MP3 사본을 저비트레이트 MP3로 재인코딩해 .ait 번들 크기를 줄입니다(원본 비접촉, 런타임 불변). " +
+                        "소스가 이미 lossy라 세대손실이 누적되고 루핑 BGM 이음새 갭 위험이 있어, 청취 검증 전까지 명시 활성에서만 동작합니다."),
+                    transcodeIndex,
+                    transcodeOptions);
+                config.audioStreamTranscode = newTranscodeIndex == 0 ? -1 : newTranscodeIndex - 1;
+
+                bool transcodeEnabled = config.audioStreamTranscode >= 0
+                    ? config.audioStreamTranscode == 1
+                    : transcodeDefault;
+                if (transcodeEnabled)
+                {
+                    EditorGUI.indentLevel++;
+                    config.audioStreamTranscodeBitrateKbps = EditorGUILayout.IntField(
+                        new GUIContent("목표 비트레이트(kbps)", "기본 160 (CBR). 96~320 범위로 클램프됩니다."),
+                        config.audioStreamTranscodeBitrateKbps);
+                    if (config.audioStreamTranscodeBitrateKbps <= 0)
+                    {
+                        config.audioStreamTranscodeBitrateKbps = 160;
+                    }
+
+                    config.audioStreamTranscodeMinSourceKbps = EditorGUILayout.IntField(
+                        new GUIContent("소스 최소 비트레이트(kbps)", "이 평균 비트레이트 이상인 소스만 재인코딩(기본 256)."),
+                        config.audioStreamTranscodeMinSourceKbps);
+                    if (config.audioStreamTranscodeMinSourceKbps <= 0)
+                    {
+                        config.audioStreamTranscodeMinSourceKbps = 256;
+                    }
+
+                    EditorGUI.indentLevel--;
+                }
+
                 EditorGUI.indentLevel--;
 
                 // 지연 안내 — 항시 표시 (active 상태인 경우)
@@ -2134,6 +2172,9 @@ namespace AppsInToss.Editor
             bool defaultStreaming = AITDefaultSettings.GetDefaultAudioStreaming();
             if (config.audioStreaming >= 0 && (config.audioStreaming == 1) != defaultStreaming) count++;
 
+            bool defaultStreamTranscode = AITDefaultSettings.GetDefaultAudioStreamTranscode();
+            if (config.audioStreamTranscode >= 0 && (config.audioStreamTranscode == 1) != defaultStreamTranscode) count++;
+
             bool defaultAudioReencode = AITDefaultSettings.GetDefaultAudioReencode();
             if (config.audioReencode >= 0 && (config.audioReencode == 1) != defaultAudioReencode) count++;
 
@@ -2278,6 +2319,9 @@ namespace AppsInToss.Editor
             config.audioStreaming = -1;
             config.audioStreamingMinBytes = 262144;
             config.audioStreamingDirs = "";
+            config.audioStreamTranscode = -1;
+            config.audioStreamTranscodeBitrateKbps = 160;
+            config.audioStreamTranscodeMinSourceKbps = 256;
 
             // 콘텐츠 최적화 — 오디오 재인코딩
             config.audioReencode = -1;

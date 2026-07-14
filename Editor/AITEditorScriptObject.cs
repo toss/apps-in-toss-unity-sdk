@@ -312,6 +312,20 @@ namespace AppsInToss
         [Tooltip("외부화 대상 폴더(쉼표 구분, Assets/ 기준 경로). 비우면 프로젝트 전체의 큰 오디오가 대상입니다. 예) Assets/Sounds/BGM,Assets/Music")]
         public string audioStreamingDirs = "";
 
+        [Tooltip("-1 = 자동(현재 비활성 — 청취 검증 전), 0 = 비활성, 1 = 활성. " +
+                 "외부화된 스트리밍 오디오 '사본'(MP3)을 저비트레이트 MP3 로 재인코딩해 .ait 번들 크기를 줄입니다(실측 320→160kbps 기준 ~50% 절감). " +
+                 "프로젝트 원본은 건드리지 않으며(외부화 사본만 교체) 런타임 복원 경로도 그대로입니다. " +
+                 "⚠ 소스가 이미 lossy(MP3)라 세대손실이 누적되고, 루핑 BGM 은 인코더 delay/padding 으로 루프 이음새에 미세 갭이 생길 수 있어 " +
+                 "청취 검증 전까지는 명시 활성(1)에서만 동작합니다.")]
+        public int audioStreamTranscode = -1;
+
+        [Tooltip("재인코딩 목표 비트레이트(kbps, CBR). 기본 160 — BGM 기준 지각 손실이 작은 하한대. 96~320 범위로 클램프됩니다.")]
+        public int audioStreamTranscodeBitrateKbps = 160;
+
+        [Tooltip("이 평균 비트레이트(kbps) 이상인 소스만 재인코딩 대상입니다(기본 256). " +
+                 "목표 비트레이트 근처의 소스를 재인코딩하면 크기 이득 없이 세대손실만 남는 것을 방지합니다.")]
+        public int audioStreamTranscodeMinSourceKbps = 256;
+
         [Header("콘텐츠 최적화 — 오디오 재인코딩 (lossy, 기본 ON)")]
         [Tooltip("-1 = 자동(활성), 0 = 비활성, 1 = 활성. " +
                  "대상 AudioClip 의 임포터 base 설정(defaultSampleSettings — WebGL 빌드가 ship 하는 값)을 빌드 시 " +
@@ -896,6 +910,18 @@ namespace AppsInToss
         public static bool GetDefaultAudioReencode()
         {
             return true;
+        }
+
+        /// <summary>
+        /// 기본 스트리밍 오디오 트랜스코딩(외부화 MP3 사본 → 저비트레이트 MP3) 활성화 여부.
+        /// 다른 lossy 레버(crunch/ASTC/재인코딩)와 달리 소스가 이미 lossy 인 MP3 에 대한
+        /// cascaded lossy 라 세대손실이 누적되고, 루핑 BGM 은 LAME delay/padding 으로
+        /// 루프 이음새 갭 위험이 있다. A/B 청취 검증(2026-07 적대 검증 게이트)을 통과하기
+        /// 전까지 auto 는 OFF — 명시 활성(audioStreamTranscode==1)에서만 동작한다.
+        /// </summary>
+        public static bool GetDefaultAudioStreamTranscode()
+        {
+            return false;
         }
 
         /// <summary>

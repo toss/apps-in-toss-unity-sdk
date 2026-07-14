@@ -370,16 +370,26 @@ namespace AppsInToss.Editor
                 // Phase D-1 의 .br 인코딩, 미가용이면 종전 LZ4 경로(BuildFontBundle 주석 참조).
                 bool brotliAvailable = AITBrotliCompressor.TryResolveNode(out _);
                 var built = new List<PlanEntry>();
-                foreach (var p in plan)
+                // ── Phase B-0: 로컬 fallback 테이블 strip — 체인 중복 선적 방지(빌드 직후 복원). ──
+                var strippedFallbacks = StripFallbackTablesForBundleCapture(plan);
+                try
                 {
-                    if (BuildFontBundle(p.TmpAssetPath, p.BundleFileName, bundleTempFull, streamRootFull, brotliAvailable))
+                    foreach (var p in plan)
                     {
-                        built.Add(p);
+                        if (BuildFontBundle(p.TmpAssetPath, p.BundleFileName, bundleTempFull, streamRootFull, brotliAvailable))
+                        {
+                            built.Add(p);
+                        }
+                        else
+                        {
+                            Debug.LogWarning($"[AIT-StreamingFont]   번들 빌드 실패 → 건너뜀: {p.TmpAssetPath}");
+                        }
                     }
-                    else
-                    {
-                        Debug.LogWarning($"[AIT-StreamingFont]   번들 빌드 실패 → 건너뜀: {p.TmpAssetPath}");
-                    }
+                }
+                finally
+                {
+                    // 플레이어 .data 직렬화(Phase C 이후)는 원본 테이블을 유지해야 하므로 여기서 즉시 복원.
+                    RestoreStrippedFallbackTables(strippedFallbacks);
                 }
 
                 // ── Phase C: 소스별 1회 스텁 치환(성공한 번들 대상의 소스만). ──
@@ -734,6 +744,92 @@ namespace AppsInToss.Editor
 
                 Debug.LogWarning($"[AIT-StreamingFont] 소스 스텁 치환 예외({srcFontPath}): {e.Message}");
                 return false;
+            }
+        }
+
+        /// <summary>
+        /// 번들 캡처 전, 대상 TMP_FontAsset 의 m_FallbackFontAssetTable 을 백업 후 비운다(순수 dedup).
+        /// 에셋별 독립 BuildAssetBundles 호출은 fallback 체인 전체(다른 대상의 .ttf/에셋)를 해당
+        /// 번들에 중복 선적한다 — 작은 dynamic 주폰트 에셋이 fallback 체인의 CJK .ttf 크기만큼 부풀 수 있음.
+        /// 런타임(AIT.StreamingFont)은 번들 속 폰트를 TMP ★글로벌★ fallback 목록에 주입하므로
+        /// 번들 사본의 로컬 테이블은 스트리밍 경로에서 사용되지 않는다. 플레이어 .data 쪽 원본
+        /// 테이블은 빌드 직후(Phase C 이전) 복원되어 그대로 유지된다.
+        /// 백업은 소스 스텁과 동일 접미사(SrcBackupSuffix) 파일 사본 — RestoreAllBackups/
+        /// SafetyNetRestore 글롭이 무변경으로 커버한다('~' 접미사라 Unity 미임포트).
+        /// 반환: strip 된 에셋의 프로젝트 상대 경로 목록(복원용).
+        /// </summary>
+        private static List<string> StripFallbackTablesForBundleCapture(List<PlanEntry> plan)
+        {
+            var stripped = new List<string>();
+            string projectRoot = Directory.GetParent(Application.dataPath).FullName;
+            foreach (var p in plan)
+            {
+                try
+                {
+                    var mainAsset = AssetDatabase.LoadMainAssetAtPath(p.TmpAssetPath);
+                    if (mainAsset == null || mainAsset.GetType().Name != "TMP_FontAsset")
+                    {
+                        continue;
+                    }
+
+                    var so = new SerializedObject(mainAsset);
+                    var table = so.FindProperty("m_FallbackFontAssetTable");
+                    if (table == null || !table.isArray || table.arraySize == 0)
+                    {
+                        continue; // 로컬 fallback 없음 → 중복 선적 없음.
+                    }
+
+                    string assetFull = Path.Combine(projectRoot, p.TmpAssetPath);
+                    File.Copy(assetFull, assetFull + SrcBackupSuffix, true);
+
+                    int entries = table.arraySize;
+                    table.ClearArray();
+                    so.ApplyModifiedPropertiesWithoutUndo();
+                    stripped.Add(p.TmpAssetPath);
+                    Debug.Log($"[AIT-StreamingFont]   fallback strip: {Path.GetFileName(p.TmpAssetPath)} (로컬 fallback {entries}개 — 번들 중복 선적 방지, 빌드 후 복원)");
+                }
+                catch (Exception e)
+                {
+                    Debug.LogWarning($"[AIT-StreamingFont] fallback strip 실패(원본 유지, 해당 에셋은 종전대로 체인 포함 번들): {p.TmpAssetPath}: {e.Message}");
+                }
+            }
+
+            if (stripped.Count > 0)
+            {
+                AssetDatabase.SaveAssets(); // 번들 빌드가 디스크 직렬화를 읽으므로 저장 필수.
+            }
+
+            return stripped;
+        }
+
+        /// <summary>StripFallbackTablesForBundleCapture 의 즉시 복원 짝. 백업 사본을 되돌리고 reimport.</summary>
+        private static void RestoreStrippedFallbackTables(List<string> strippedAssetPaths)
+        {
+            if (strippedAssetPaths == null || strippedAssetPaths.Count == 0)
+            {
+                return;
+            }
+
+            string projectRoot = Directory.GetParent(Application.dataPath).FullName;
+            foreach (var rel in strippedAssetPaths)
+            {
+                try
+                {
+                    string assetFull = Path.Combine(projectRoot, rel);
+                    string bak = assetFull + SrcBackupSuffix;
+                    if (!File.Exists(bak))
+                    {
+                        continue; // 이미 복원됨(안전망 경합 등) — 멱등.
+                    }
+
+                    File.Copy(bak, assetFull, true);
+                    SafeDelete(bak);
+                    AssetDatabase.ImportAsset(rel, ImportAssetOptions.ForceUpdate | ImportAssetOptions.ForceSynchronousImport);
+                }
+                catch (Exception e)
+                {
+                    Debug.LogWarning($"[AIT-StreamingFont] fallback 복원 실패({rel}): {e.Message} — 안전망(RestoreAllBackups)이 재시도합니다.");
+                }
             }
         }
 

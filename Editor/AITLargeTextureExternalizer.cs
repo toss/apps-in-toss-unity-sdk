@@ -358,6 +358,42 @@ namespace AppsInToss.Editor
                     }
                 }
 
+                // ─── 3-1.4단계: 불투명 스트림 PNG → JPEG 전환(lossy, 시각 검증 전 기본 OFF) ───
+                //    다운스케일(3-1) 뒤·무손실 재압축(3-1.5) 앞 — 전환된 파일은 .jpg 로 개명되어
+                //    oxipng 대상에서 자연 제외된다. 개명 시 레코드와 다운스케일 차원 맵의 키를
+                //    함께 이관해야 매니페스트가 새 파일명을 가리킨다.
+                if (records.Count > 0)
+                {
+                    var jpegCandidates = new List<string>();
+                    foreach (var rec in records)
+                    {
+                        jpegCandidates.Add(Path.Combine(projectRoot, StreamRootAssets, rec.streamFile));
+                    }
+
+                    var jpegRenamed = AITTextureStreamJpegTranscoder.TranscodeInPlace(config, jpegCandidates);
+                    if (jpegRenamed.Count > 0)
+                    {
+                        for (int ri = 0; ri < records.Count; ri++)
+                        {
+                            var rec = records[ri];
+                            string abs = Path.Combine(projectRoot, StreamRootAssets, rec.streamFile);
+                            if (!jpegRenamed.TryGetValue(abs, out string newAbs))
+                            {
+                                continue;
+                            }
+
+                            string newFile = Path.GetFileName(newAbs);
+                            if (downscaledDims.TryGetValue(rec.streamFile, out var dsDim))
+                            {
+                                downscaledDims.Remove(rec.streamFile);
+                                downscaledDims[newFile] = dsDim;
+                            }
+
+                            records[ri] = (rec.g, newFile, rec.texName, rec.w, rec.h, rec.size);
+                        }
+                    }
+                }
+
                 // ─── 3-1.5단계: 스트림 PNG 사본 무손실 재압축(oxipng, 기본 ON) ─────────
                 //    다운스케일이 EncodeToPNG 로 다시 쓴 무최적화 deflate 와 원본 소스 PNG 를
                 //    함께 누른다. 픽셀 불변(무손실) — brotli(3-2) 앞에서 실행해야 br 판정이

@@ -57,6 +57,8 @@ public class AITResetWebGLSettingsTests
         "textureStreamDownscale", "textureStreamDownscaleMaxSize",
         // 스트림 PNG 무손실 재압축
         "textureStreamRecompress",
+        // 불투명 스트림 PNG → JPEG 전환
+        "textureStreamJpeg", "textureStreamJpegQuality",
         // 대형 폰트 deferral
         "fontStreaming", "fontStreamingTargetPaths", "fontStreamingMaxConcurrent",
     };

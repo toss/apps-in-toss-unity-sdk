@@ -55,6 +55,8 @@ public class AITResetWebGLSettingsTests
         "textureStreamingExcludeDirs", "textureStreamingMaxConcurrent",
         // 스트림 사본 다운스케일
         "textureStreamDownscale", "textureStreamDownscaleMaxSize",
+        // 스트림 PNG 무손실 재압축
+        "textureStreamRecompress",
         // 대형 폰트 deferral
         "fontStreaming", "fontStreamingTargetPaths", "fontStreamingMaxConcurrent",
     };

@@ -110,6 +110,7 @@ namespace AppsInToss.Editor
 
                 var entries = new List<string>();
                 var externalizedPaths = new List<string>(); // 빌드 리포트용 경로 목록
+                var transcodeCandidates = new List<AITAudioStreamTranscoder.Candidate>(); // 사본 재인코딩 후보
                 int n = 0;
                 long stubbedBytes = 0;
                 var guids = AssetDatabase.FindAssets("t:AudioClip", new[] { "Assets" });
@@ -163,7 +164,14 @@ namespace AppsInToss.Editor
 
                     // 1) 원본 → StreamingAssets/<guid><ext> (온디맨드 스트리밍 소스)
                     string streamFile = g + ext;
-                    File.Copy(srcFull, Path.Combine(projectRoot, StreamRootAssets, streamFile), true);
+                    string streamFull = Path.Combine(projectRoot, StreamRootAssets, streamFile);
+                    File.Copy(srcFull, streamFull, true);
+                    transcodeCandidates.Add(new AITAudioStreamTranscoder.Candidate
+                    {
+                        AbsPath = streamFull,
+                        Bytes = size,
+                        Seconds = realLen,
+                    });
 
                     // 2) 소스 백업 + 무음 치환 + reimport (.data 에서 제거)
                     string bak = srcFull + BackupSuffix;
@@ -183,7 +191,11 @@ namespace AppsInToss.Editor
                     Debug.Log($"[AIT-StreamingAudio]   외부화 {clipName} ({size / 1048576f:0.00}MB src, len {realLen:0.0}s) → {streamFile}");
                 }
 
-                // 3) 매니페스트 동봉
+                // 3) 외부화 사본 재인코딩(옵션, 명시 활성 시에만). 파일명/매니페스트 불변,
+                //    프로젝트 원본 비접촉 — 실패 시 사본이 원본 바이트 그대로 유지된다.
+                AITAudioStreamTranscoder.TranscodeInPlace(config, transcodeCandidates);
+
+                // 4) 매니페스트 동봉
                 var sb = new StringBuilder();
                 sb.Append("{\"entries\":[").Append(string.Join(",", entries)).Append("]}");
                 string manifestPath = Path.Combine(projectRoot, StreamRootAssets, "manifest.json");

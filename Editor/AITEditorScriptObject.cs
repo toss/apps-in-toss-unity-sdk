@@ -460,6 +460,15 @@ namespace AppsInToss
                  "다운스케일이 다시 쓴 PNG(실측 −32%)와 원본 소스 PNG(실측 −7~16%)를 함께 누릅니다. -1 = 자동(활성), 0 = 비활성, 1 = 활성.")]
         public int textureStreamRecompress = -1;
 
+        [Tooltip("(lossy, 시각 검증 전 기본 OFF) 알파 없는(불투명 RGB) 스트림 PNG 사본을 JPEG 로 전환해 CDN 무압축 총량을 실감축합니다(실측 −77%). " +
+                 "프로젝트 원본은 건드리지 않으며(스트림 사본만 교체) 런타임 LoadImage 는 PNG/JPG 를 매직 바이트로 자동 감지합니다. " +
+                 "⚠ DCT 아티팩트(플랫 아트 ringing 등) 위험이 있는 lossy 전환이라 시각 검증 전까지는 명시 활성(1)에서만 동작합니다. " +
+                 "-1 = 자동(현재 비활성), 0 = 비활성, 1 = 활성.")]
+        public int textureStreamJpeg = -1;
+
+        [Tooltip("JPEG 전환 품질(50~100 클램프, 기본 90). 실측상 q85 의 추가 이득은 q90 대비 ~1.5%p 에 불과해 품질 보수적인 90 이 기본입니다.")]
+        public int textureStreamJpegQuality = 90;
+
         [Header("콘텐츠 최적화 — 대형 폰트 deferral")]
         [Tooltip("-1 = 자동(1MB 이상·부팅 씬 미포함 TMP_FontAsset 자동 스캔 후 외부화), " +
                  "0 = 비활성화, 1 = 수동(fontStreamingTargetPaths 에 명시한 경로만 외부화). " +
@@ -1015,6 +1024,17 @@ namespace AppsInToss
         public static bool GetDefaultTextureStreamRecompress()
         {
             return true;
+        }
+
+        /// <summary>
+        /// 기본 스트림 PNG → JPEG 전환 활성 여부.
+        /// 불투명(RGB) 스트림 사본 한정이지만 DCT 아티팩트가 생기는 lossy 전환이라
+        /// (GetDefaultAudioStreamTranscode 와 동일 posture) 시각 검증 게이트를 통과하기
+        /// 전까지 auto 는 OFF — 명시 활성(textureStreamJpeg==1)에서만 동작한다.
+        /// </summary>
+        public static bool GetDefaultTextureStreamJpeg()
+        {
+            return false;
         }
 
         /// <summary>

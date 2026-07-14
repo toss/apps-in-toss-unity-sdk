@@ -1410,6 +1410,28 @@ namespace AppsInToss.Editor
                 rcIndex, new[] { new GUIContent($"자동 ({rcAutoLabel})"), new GUIContent("비활성"), new GUIContent("활성") });
             config.textureStreamRecompress = rcNew == 0 ? -1 : rcNew - 1;
 
+            // 불투명 스트림 PNG → JPEG 전환(lossy, 시각 검증 전 기본 OFF)
+            bool jtDefault = AITDefaultSettings.GetDefaultTextureStreamJpeg();
+            string jtAutoLabel = jtDefault ? "활성" : "비활성";
+            int jtIndex = config.textureStreamJpeg < 0 ? 0 : config.textureStreamJpeg + 1;
+            int jtNew = EditorGUILayout.Popup(
+                new GUIContent("스트림 JPEG 전환 (lossy)",
+                    "알파 없는(불투명 RGB) 스트림 PNG 사본을 JPEG 로 전환합니다(불투명 사진류 실측 −77%). " +
+                    "프로젝트 원본은 불변(스트림 사본만 교체), 런타임 LoadImage 는 PNG/JPG 를 매직 바이트로 자동 감지. " +
+                    "⚠ DCT 아티팩트(플랫 아트 ringing 등) 위험이 있는 lossy 전환이라 시각 검증 전까지 자동 모드는 비활성입니다."),
+                jtIndex, new[] { new GUIContent($"자동 ({jtAutoLabel})"), new GUIContent("비활성"), new GUIContent("활성") });
+            config.textureStreamJpeg = jtNew == 0 ? -1 : jtNew - 1;
+
+            if (config.textureStreamJpeg == 1)
+            {
+                EditorGUI.indentLevel++;
+                config.textureStreamJpegQuality = EditorGUILayout.IntSlider(
+                    new GUIContent("JPEG 품질",
+                        "50~100(기본 90). 실측상 q85 의 추가 이득은 q90 대비 ~1.5%p 에 불과해 품질 보수적인 90 을 권장합니다."),
+                    config.textureStreamJpegQuality <= 0 ? 90 : config.textureStreamJpegQuality, 50, 100);
+                EditorGUI.indentLevel--;
+            }
+
             EditorGUILayout.EndVertical();
         }
 
@@ -2197,6 +2219,8 @@ namespace AppsInToss.Editor
             if (config.textureSizeClamp >= 0 && (config.textureSizeClamp == 1) != defaultTextureClamp) count++;
             bool defaultStreamRecompress = AITDefaultSettings.GetDefaultTextureStreamRecompress();
             if (config.textureStreamRecompress >= 0 && (config.textureStreamRecompress == 1) != defaultStreamRecompress) count++;
+            bool defaultStreamJpeg = AITDefaultSettings.GetDefaultTextureStreamJpeg();
+            if (config.textureStreamJpeg >= 0 && (config.textureStreamJpeg == 1) != defaultStreamJpeg) count++;
             bool defaultAstcBlock = AITDefaultSettings.GetDefaultAstcBlockEscalation();
             if (config.astcBlockEscalation >= 0 && (config.astcBlockEscalation == 1) != defaultAstcBlock) count++;
             // 폰트 subset: 비활성(0)이거나 수동 override(target/range/추가범위/제외경로 지정)면 변경으로 집계.
@@ -2383,6 +2407,8 @@ namespace AppsInToss.Editor
             config.textureStreamDownscale = -1;
             config.textureStreamDownscaleMaxSize = 2048;
             config.textureStreamRecompress = -1;
+            config.textureStreamJpeg = -1;
+            config.textureStreamJpegQuality = 90;
 
             // 콘텐츠 최적화 — 대형 폰트 deferral
             config.fontStreaming = -1;

@@ -185,6 +185,21 @@ public class AITFontSubsetProcessorRestoreTests
                 "결정적 복원 가드는 RestoreForBuild_AfterStagedSubset_RestoresSourceBytesAndMetaVerbatim 가 담당한다.");
         }
 
+        // 2차 게이트: subset-font(npm) 모듈이 아직 캐시되지 않았다면 ApplyForBuild → EnsureTool 이
+        // 1회 `npm install`(네트워크, 최대 180s)을 유발한다. 이 테스트는 "다운로드 미유발" 프로브 계약이므로
+        // 모듈이 이미 설치된 환경에서만 실 왕복을 검증하고, 미설치면 Ignore 한다(EditMode 테스트의 네트워크
+        // 접근·비결정성 방지). 경로는 프로세서 GetHomeToolDir()(~/.ait-unity-sdk/font-subset) 미러.
+        string homeToolBase = AITPlatformHelper.IsWindows
+            ? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)
+            : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        string subsetFontInstalled = Path.Combine(
+            homeToolBase, ".ait-unity-sdk", "font-subset", "node_modules", "subset-font", "package.json");
+        if (!File.Exists(subsetFontInstalled))
+        {
+            Assert.Ignore("subset-font(npm) 모듈 미캐시 — 실 subset 호출 시 네트워크 npm install 유발 위험으로 생략. " +
+                "결정적 복원 가드는 RestoreForBuild_AfterStagedSubset_RestoresSourceBytesAndMetaVerbatim 가 담당한다.");
+        }
+
         byte[] original = File.ReadAllBytes(FixtureFull);
         string originalMeta = File.ReadAllText(FixtureMetaFull);
         string bak = FixtureFull + BackupSuffix;

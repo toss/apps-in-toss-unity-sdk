@@ -50,7 +50,7 @@ namespace AppsInToss
         [JsonProperty("sku")]
         public string Sku; // optional
         [JsonIgnore]
-        public System.Func<object, object> ProcessProductGrant;
+        public System.Func<object, System.Threading.Tasks.Task<bool>> ProcessProductGrant;
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
@@ -132,7 +132,7 @@ namespace AppsInToss
         [JsonProperty("offerId")]
         public string OfferId; // optional
         [JsonIgnore]
-        public System.Func<object, object> ProcessProductGrant;
+        public System.Func<object, System.Threading.Tasks.Task<bool>> ProcessProductGrant;
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]

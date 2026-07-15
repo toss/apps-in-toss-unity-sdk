@@ -1,4 +1,7 @@
+using System;
+using System.Threading.Tasks;
 using UnityEngine;
+using AppsInToss;
 
 /// <summary>
 /// E2E 테스트용 부트스트래퍼 - 런타임에 필요한 컴포넌트들을 동적으로 생성
@@ -155,6 +158,15 @@ public static class E2EBootstrapper
 /// </summary>
 public class E2ETestTrigger : MonoBehaviour
 {
+    // 중첩 콜백 비동기 왕복 검증용 사전 등록 콜백 식별자.
+    // 등록 키는 "{CallbackId}_{CallbackName}" 이므로 Playwright는 OnNestedCallback payload의
+    // CallbackId/CallbackName을 이 값들로 맞춰 결제 없이 콜백을 직접 구동한다.
+    public const string NestedCallbackName = "processProductGrant";
+    public const string NestedAsyncCallbackId = "e2e-nested-async";
+    public const string NestedThrowCallbackId = "e2e-nested-throw";
+    // 동기 구현으로는 불가능한 "지연 후 응답"을 증명하기 위한 대기 시간(ms).
+    public const int NestedAsyncDelayMs = 300;
+
 #if UNITY_WEBGL && !UNITY_EDITOR
     [System.Runtime.InteropServices.DllImport("__Internal")]
     private static extern void RegisterTriggerFunctions();
@@ -174,6 +186,51 @@ public class E2ETestTrigger : MonoBehaviour
             Debug.LogWarning($"[E2ETestTrigger] Failed to register trigger functions: {e.Message}");
         }
 #endif
+    }
+
+    void Start()
+    {
+        // 결제 이벤트 없이 중첩 콜백(processProductGrant) 비동기 왕복을 검증하기 위해
+        // 테스트용 콜백을 사전 등록한다. AITCore.Instance 접근이 "AITCore" GameObject를
+        // 생성하므로 이후 SendMessage('AITCore','OnNestedCallback', ...)가 도달한다.
+        // Playwright가 이 콜백들을 직접 구동하고 __AITRespondToNestedCallback 응답을 관찰한다.
+#if AIT_SDK_1_7_OR_LATER
+        try
+        {
+            // 지연 후 true 반환 — async/await 왕복이 실제로 대기됨을 증명 (지연 resolve).
+            // WebGL은 단일 스레드라 Task.Delay 대신 플레이어 루프가 구동하는 코루틴으로 대기한다.
+            AITCore.Instance.RegisterNestedCallback<object, bool>(
+                NestedAsyncCallbackId, NestedCallbackName, (object data) => DelayedGrant());
+
+            // 예외를 던지는 콜백 — dispatch가 잡아 false로 응답(응답 유실 없음)
+            AITCore.Instance.RegisterNestedCallback<object, bool>(
+                NestedThrowCallbackId, NestedCallbackName, (object data) =>
+                    Task.FromException<bool>(new Exception("e2e forced failure")));
+
+            Debug.Log("[E2ETestTrigger] Registered e2e nested callbacks (async/throw)");
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning($"[E2ETestTrigger] Failed to register nested callbacks: {e.Message}");
+        }
+#endif
+    }
+
+    /// <summary>
+    /// 지연 후 true로 완료되는 Task를 반환한다 (WebGL-safe: WaitForSecondsRealtime 코루틴 → TCS).
+    /// 지연 resolve는 구 동기 구현으로는 불가능하므로 async 왕복의 결정적 증거가 된다.
+    /// </summary>
+    private Task<bool> DelayedGrant()
+    {
+        var tcs = new TaskCompletionSource<bool>();
+        StartCoroutine(DelayThenResolve(tcs));
+        return tcs.Task;
+    }
+
+    private System.Collections.IEnumerator DelayThenResolve(TaskCompletionSource<bool> tcs)
+    {
+        yield return new WaitForSecondsRealtime(NestedAsyncDelayMs / 1000f);
+        tcs.SetResult(true);
     }
 
     /// <summary>

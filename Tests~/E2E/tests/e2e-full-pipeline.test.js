@@ -1162,6 +1162,105 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       expect(state.initialized, `Firebase initializeApp should succeed when VITE_FIREBASE_* are set (error: ${state.error})`).toBe(true);
     });
 
+
+    // -------------------------------------------------------------------------
+    // Test 8: Nested callback async round-trip (processProductGrant)
+    // 결제 이벤트 없이 중첩 콜백 왕복을 실 WebGL 빌드에서 검증한다:
+    //   JS SendMessage('AITCore','OnNestedCallback')
+    //     → C# OnNestedCallback → DispatchNestedCallbackAsync → await 사용자 콜백
+    //     → __AITRespondToNestedCallback → JS Promise resolve
+    // E2ETestTrigger.Start()가 사전 등록한 콜백 2종(지연 true / 예외)을 구동하고,
+    // 미등록 콜백까지 3케이스로 검증한다. 핵심: 지연 resolve는 구 동기 구현으로 불가능.
+    // -------------------------------------------------------------------------
+    test('8. Nested callback (processProductGrant) should round-trip asynchronously', async () => {
+      test.setTimeout(60000);
+
+      console.log('🔄 Driving nested callback round-trip via SendMessage...');
+
+      const roundTrip = await sharedPage.evaluate(async () => {
+        const CB_NAME = 'processProductGrant';
+
+        // 하나의 콜백을 구동하고 resolve까지의 결과/경과시간을 반환한다.
+        // resolver를 __AIT_NESTED_CALLBACKS에 직접 등록(실 jslib과 동일 경로)한 뒤
+        // SendMessage로 C#을 트리거하고, C#의 __AITRespondToNestedCallback 응답을 기다린다.
+        function drive(callbackId, suffix, timeoutMs) {
+          return new Promise((resolve) => {
+            const ui = window['unityInstance'];
+            if (!ui || typeof ui.SendMessage !== 'function') {
+              resolve({ ok: false, reason: 'unityInstance/SendMessage unavailable' });
+              return;
+            }
+            window.__AIT_NESTED_CALLBACKS = window.__AIT_NESTED_CALLBACKS || {};
+            const requestId = 'e2e-rt-' + suffix + '-' + Date.now();
+            const started = performance.now();
+            let settled = false;
+
+            const timer = setTimeout(() => {
+              if (settled) return;
+              settled = true;
+              delete window.__AIT_NESTED_CALLBACKS[requestId];
+              resolve({ ok: false, reason: 'timeout', elapsedMs: performance.now() - started });
+            }, timeoutMs);
+
+            window.__AIT_NESTED_CALLBACKS[requestId] = (resultBool) => {
+              if (settled) return;
+              settled = true;
+              clearTimeout(timer);
+              delete window.__AIT_NESTED_CALLBACKS[requestId];
+              resolve({ ok: true, result: resultBool, elapsedMs: performance.now() - started });
+            };
+
+            const payload = JSON.stringify({
+              RequestId: requestId,
+              CallbackId: callbackId,
+              CallbackName: CB_NAME,
+              Data: JSON.stringify({ orderId: 'e2e-order' })
+            });
+            ui.SendMessage('AITCore', 'OnNestedCallback', payload);
+          });
+        }
+
+        // 순차 실행(응답이 requestId로 구분되므로 병렬도 가능하나 로그 가독성을 위해 순차)
+        const asyncCase = await drive('e2e-nested-async', 'async', 20000);
+        const throwCase = await drive('e2e-nested-throw', 'throw', 20000);
+        const unknownCase = await drive('e2e-nested-unknown', 'unknown', 20000);
+
+        return { asyncCase, throwCase, unknownCase };
+      });
+
+      console.log('\n' + '='.repeat(70));
+      console.log('📊 NESTED CALLBACK ROUND-TRIP RESULTS');
+      console.log('='.repeat(70));
+      console.log(`   async(true) : ${JSON.stringify(roundTrip.asyncCase)}`);
+      console.log(`   throw(false): ${JSON.stringify(roundTrip.throwCase)}`);
+      console.log(`   unknown     : ${JSON.stringify(roundTrip.unknownCase)}`);
+      console.log('='.repeat(70));
+
+      testResults.tests['8_nested_callback'] = {
+        passed:
+          roundTrip.asyncCase.ok && roundTrip.asyncCase.result === true &&
+          roundTrip.throwCase.ok && roundTrip.throwCase.result === false &&
+          roundTrip.unknownCase.ok && roundTrip.unknownCase.result === false,
+        asyncCase: roundTrip.asyncCase,
+        throwCase: roundTrip.throwCase,
+        unknownCase: roundTrip.unknownCase
+      };
+
+      // 1) 지연 async 콜백 → true 로 resolve, 그리고 등록된 지연(300ms)만큼 실제로 기다렸는지 검증.
+      //    구 동기 구현은 같은 프레임에 즉시 응답하므로 이 지연은 async 왕복의 결정적 증거다.
+      expect(roundTrip.asyncCase.ok, `async case should resolve (got: ${JSON.stringify(roundTrip.asyncCase)})`).toBe(true);
+      expect(roundTrip.asyncCase.result, 'async callback should resolve true').toBe(true);
+      expect(roundTrip.asyncCase.elapsedMs, 'async callback should genuinely await (>=150ms vs ~300ms delay)').toBeGreaterThanOrEqual(150);
+
+      // 2) 예외 콜백 → false 로 resolve (응답 유실 없이 dispatch가 잡아 정확히 1회 응답)
+      expect(roundTrip.throwCase.ok, `throw case should resolve (got: ${JSON.stringify(roundTrip.throwCase)})`).toBe(true);
+      expect(roundTrip.throwCase.result, 'throwing callback should resolve false (no lost response)').toBe(false);
+
+      // 3) 미등록 callbackId → false 로 즉시 resolve
+      expect(roundTrip.unknownCase.ok, `unknown case should resolve (got: ${JSON.stringify(roundTrip.unknownCase)})`).toBe(true);
+      expect(roundTrip.unknownCase.result, 'unknown callback should resolve false').toBe(false);
+    });
+
   }); // end of test.describe.serial
 
 });

@@ -10,6 +10,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
+using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 using UnityEngine;
@@ -653,20 +654,23 @@ namespace AppsInToss
         private Dictionary<string, Delegate> _nestedCallbacks = new Dictionary<string, Delegate>();
 
         /// <summary>
-        /// Register a nested callback (e.g., processProductGrant in IAPCreateOneTimePurchaseOrder)
+        /// Register a nested callback (e.g., processProductGrant in IAPCreateOneTimePurchaseOrder).
+        /// The user callback returns a Task so it can await asynchronous work (such as
+        /// server-side receipt validation) before deciding the result. JavaScript awaits
+        /// the returned Promise, so the response may be delivered after an await.
         /// </summary>
         /// <param name="subscriptionId">Parent subscription ID</param>
         /// <param name="callbackName">Callback name (e.g., "processProductGrant")</param>
-        /// <param name="callback">Callback function (Func&lt;T, bool&gt; or similar)</param>
-        public void RegisterNestedCallback<TParam, TResult>(string subscriptionId, string callbackName, Func<TParam, TResult> callback)
+        /// <param name="callback">Callback function (Func&lt;T, Task&lt;TResult&gt;&gt;)</param>
+        public void RegisterNestedCallback<TParam, TResult>(string subscriptionId, string callbackName, Func<TParam, Task<TResult>> callback)
         {
             var key = $"{subscriptionId}_{callbackName}";
-            // Wrap the callback to accept JSON string and return bool
-            Func<string, bool> wrapper = (string jsonData) => {
+            // Wrap the callback to accept a JSON string and return Task<bool>
+            Func<string, Task<bool>> wrapper = async (string jsonData) => {
                 try
                 {
                     var param = JsonConvert.DeserializeObject<TParam>(jsonData);
-                    var result = callback(param);
+                    var result = await callback(param);
                     // Convert result to bool (handles bool, object, etc.)
                     if (result is bool boolResult) return boolResult;
                     return result != null;
@@ -704,40 +708,60 @@ namespace AppsInToss
         /// <summary>
         /// Called by JavaScript when a nested callback is triggered.
         /// JavaScript waits for the result via RespondToNestedCallback.
+        /// This method must stay synchronous/void because Unity's SendMessage invokes it
+        /// by name; the actual (possibly asynchronous) callback runs fire-and-forget so the
+        /// response is sent exactly once when it completes.
         /// </summary>
         public void OnNestedCallback(string jsonPayload)
         {
             Debug.Log($"[AITCore] OnNestedCallback received: {jsonPayload}");
+            NestedCallbackRequest request;
             try
             {
-                var request = JsonConvert.DeserializeObject<NestedCallbackRequest>(jsonPayload);
-                var key = $"{request.CallbackId}_{request.CallbackName}";
-
-                if (_nestedCallbacks.TryGetValue(key, out var rawCallback))
-                {
-                    // The stored callback is already a Func<string, bool> wrapper
-                    if (rawCallback is Func<string, bool> callback)
-                    {
-                        bool result = callback(request.Data);
-                        RespondToNestedCallback(request.RequestId, result);
-                    }
-                    else
-                    {
-                        Debug.LogError($"[AITCore] Callback is not a Func<string, bool>: {rawCallback.GetType()}");
-                        RespondToNestedCallback(request.RequestId, false);
-                    }
-                }
-                else
-                {
-                    Debug.LogWarning($"[AITCore] Unknown nested callback: {key}");
-                    // Return false if callback not found
-                    RespondToNestedCallback(request.RequestId, false);
-                }
+                request = JsonConvert.DeserializeObject<NestedCallbackRequest>(jsonPayload);
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[AITCore] Failed to process nested callback: {ex.Message}");
+                // Cannot parse the payload, so there is no RequestId to respond to.
+                Debug.LogError($"[AITCore] Failed to parse nested callback: {ex.Message}");
+                return;
             }
+
+            var key = $"{request.CallbackId}_{request.CallbackName}";
+            if (_nestedCallbacks.TryGetValue(key, out var rawCallback)
+                && rawCallback is Func<string, Task<bool>> callback)
+            {
+                // Fire-and-forget: DispatchNestedCallbackAsync owns all exception handling
+                // and always responds exactly once, so this task never carries an
+                // unobserved exception.
+                _ = DispatchNestedCallbackAsync(request.RequestId, request.Data, callback);
+            }
+            else
+            {
+                Debug.LogWarning($"[AITCore] Unknown nested callback: {key}");
+                // Return false if callback not found
+                RespondToNestedCallback(request.RequestId, false);
+            }
+        }
+
+        /// <summary>
+        /// Awaits the (possibly asynchronous) nested callback and responds to JavaScript
+        /// exactly once. Returns a Task (not async void) so a faulted user callback cannot
+        /// escape as an unobserved exception and crash the WebGL player.
+        /// </summary>
+        private async Task DispatchNestedCallbackAsync(string requestId, string data, Func<string, Task<bool>> callback)
+        {
+            bool result;
+            try
+            {
+                result = await callback(data);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[AITCore] Nested callback dispatch error: {ex.Message}");
+                result = false;
+            }
+            RespondToNestedCallback(requestId, result);
         }
 
 #if UNITY_WEBGL && !UNITY_EDITOR

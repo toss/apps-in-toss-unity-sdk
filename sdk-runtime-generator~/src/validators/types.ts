@@ -354,20 +354,39 @@ function mapToCSharpTypeCore(type: ParsedType): string {
         if (returnType === 'void') {
           // fall through to Action handling below
         } else {
-          // Promise<T> 반환은 T로 단순화 (JS 측에서 await 처리)
-          if (type.functionReturnType.kind === 'promise' && type.functionReturnType.promiseType) {
-            returnType = mapToCSharpType(type.functionReturnType.promiseType);
-          }
-          // union 타입 (boolean | Promise<boolean>)은 첫 번째 타입 사용
-          if (type.functionReturnType.kind === 'union' && type.functionReturnType.unionTypes?.[0]) {
-            let firstType = type.functionReturnType.unionTypes[0];
-            if (firstType.kind === 'promise' && firstType.promiseType) {
-              firstType = firstType.promiseType;
+          // Promise<T> 또는 T | Promise<T> union 반환은 Task<T'>로 보존한다.
+          // JS 브릿지는 이 콜백의 반환 Promise를 이미 await하므로, C# 콜백도
+          // 비동기로(예: 서버 검증을 기다린 뒤) 값을 결정할 수 있어야 한다.
+          // 과거에는 Promise를 벗겨내 동기 Func로 축소했으나, 그러면 C#에서
+          // await가 불가능해 결제 완료 처리 전에 서버 응답을 기다릴 수 없었다.
+          const ret = type.functionReturnType;
+          const promiseMember =
+            ret.kind === 'promise'
+              ? ret
+              : ret.kind === 'union'
+                ? ret.unionTypes?.find(u => u.kind === 'promise')
+                : undefined;
+
+          if (promiseMember) {
+            const inner = promiseMember.promiseType
+              ? mapToCSharpType(promiseMember.promiseType)
+              : 'void';
+            const taskType = inner === 'void'
+              ? 'System.Threading.Tasks.Task'
+              : `System.Threading.Tasks.Task<${inner}>`;
+            if (type.functionParams && type.functionParams.length > 0) {
+              const paramTypes = type.functionParams.map(p => mapToCSharpType(p));
+              return `System.Func<${paramTypes.join(', ')}, ${taskType}>`;
             }
-            returnType = mapToCSharpType(firstType);
+            return `System.Func<${taskType}>`;
           }
 
-          // void가 아닌 경우만 Func 반환
+          // Promise가 아닌 union은 첫 번째 타입을 동기 반환으로 사용
+          if (ret.kind === 'union' && ret.unionTypes?.[0]) {
+            returnType = mapToCSharpType(ret.unionTypes[0]);
+          }
+
+          // void가 아닌 경우만 Func 반환 (동기)
           if (returnType !== 'void') {
             if (type.functionParams && type.functionParams.length > 0) {
               const paramTypes = type.functionParams.map(p => mapToCSharpType(p));

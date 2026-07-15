@@ -1,6 +1,6 @@
 // -----------------------------------------------------------------------
 // AITTextureStreamJpegTranscoderTests.cs - 불투명 스트림 PNG → JPEG 전환 판정 규칙 검증
-// Level 0: IsEnabled / ResolveQuality / ShouldAdopt / IsOpaquePng (순수 함수)
+// Level 0: IsEnabled / ResolveQuality / ShouldAdopt / IsOpaquePng / IsRgbaPng / IsFullyOpaque (순수 함수)
 // + TranscodeInPlace 파일 왕복(임시 디렉토리, 외부 도구 불필요 — 순수 C#)
 //
 // 핵심 불변식:
@@ -8,8 +8,9 @@
 //      의도적으로 다른 posture. 시각 검증 게이트 통과 후 기본값을 바꾸면 이 테스트와 문서를 함께 갱신할 것.
 //   2) 채택 게이트: ≥25% 이득(AITBrotliCompressor.ShouldKeep)일 때만 교체 — lossy 전환은
 //      경계 이득에서 원본 PNG 유지.
-//   3) 불투명 판정은 '확실히 불투명'(IHDR colortype==2 RGB & tRNS 없음)만 true —
-//      gray/palette 는 마스크·플랫 아트 가능성으로 보수적 제외.
+//   3) 전환 대상은 '완전 불투명'뿐 — (a) IsOpaquePng 헤더 빠른 경로(colortype==2 RGB & tRNS 없음),
+//      또는 (b) colortype==6(RGBA)를 디코드해 알파 전량 255 로 확인된 파일(다운스케일 재인코딩 산출물).
+//      IsOpaquePng 자체는 여전히 RGB 만 true(gray/palette 보수적 제외); RGBA 는 실 알파 스캔이 판정한다.
 // -----------------------------------------------------------------------
 
 using System.Collections.Generic;
@@ -201,6 +202,66 @@ public class AITTextureStreamJpegTranscoderTests
         }
     }
 
+    // ─────────────────────────── IsRgbaPng (colortype 6 게이트) ───────────────────────────
+
+    [Test]
+    public void IsRgbaPng_ColorType6_ReturnsTrue()
+    {
+        Assert.IsTrue(AITTextureStreamJpegTranscoder.IsRgbaPng(BuildPngHeader(6, withTrns: false)),
+            "colortype 6(RGBA)는 실 알파 스캔 후보");
+    }
+
+    [Test]
+    public void IsRgbaPng_NonRgbaColorTypes_ReturnFalse()
+    {
+        Assert.IsFalse(AITTextureStreamJpegTranscoder.IsRgbaPng(BuildPngHeader(2, withTrns: false)), "RGB");
+        Assert.IsFalse(AITTextureStreamJpegTranscoder.IsRgbaPng(BuildPngHeader(4, withTrns: false)), "grayA — 제외");
+        Assert.IsFalse(AITTextureStreamJpegTranscoder.IsRgbaPng(BuildPngHeader(0, withTrns: false)), "gray — 제외");
+        Assert.IsFalse(AITTextureStreamJpegTranscoder.IsRgbaPng(BuildPngHeader(3, withTrns: false)), "palette — 제외");
+    }
+
+    [Test]
+    public void IsRgbaPng_InvalidBytes_ReturnFalse()
+    {
+        Assert.IsFalse(AITTextureStreamJpegTranscoder.IsRgbaPng(null));
+        Assert.IsFalse(AITTextureStreamJpegTranscoder.IsRgbaPng(new byte[0]));
+        Assert.IsFalse(AITTextureStreamJpegTranscoder.IsRgbaPng(new byte[] { 0xFF, 0xD8, 0xFF, 0xE0 }), "JPEG 매직");
+    }
+
+    // ─────────────────────────── IsFullyOpaque (알파 스캔) ───────────────────────────
+
+    [Test]
+    public void IsFullyOpaque_AllAlpha255_ReturnsTrue()
+    {
+        var pixels = new Color32[64];
+        for (int i = 0; i < pixels.Length; i++)
+        {
+            pixels[i] = new Color32(10, 20, 30, 255);
+        }
+
+        Assert.IsTrue(AITTextureStreamJpegTranscoder.IsFullyOpaque(pixels));
+    }
+
+    [Test]
+    public void IsFullyOpaque_AnyAlphaBelow255_ReturnsFalse()
+    {
+        var pixels = new Color32[64];
+        for (int i = 0; i < pixels.Length; i++)
+        {
+            pixels[i] = new Color32(10, 20, 30, 255);
+        }
+
+        pixels[40] = new Color32(10, 20, 30, 254); // 단 하나라도 투명하면 false
+        Assert.IsFalse(AITTextureStreamJpegTranscoder.IsFullyOpaque(pixels));
+    }
+
+    [Test]
+    public void IsFullyOpaque_NullOrEmpty_ReturnsFalse()
+    {
+        Assert.IsFalse(AITTextureStreamJpegTranscoder.IsFullyOpaque(null));
+        Assert.IsFalse(AITTextureStreamJpegTranscoder.IsFullyOpaque(new Color32[0]));
+    }
+
     // ─────────────────────────── TranscodeInPlace (파일 왕복) ───────────────────────────
 
     // JPEG 가 확실히 이기는 소재: 다주파 사인 필드(사진류 근사) — 매끈해서 DCT 는 소수 계수로
@@ -219,6 +280,35 @@ public class AITTextureStreamJpegTranscoderTests
                     float g = 0.5f * (1f + Mathf.Sin(x * 0.07f - y * 0.19f + 1.3f));
                     float b = 0.5f * (1f + Mathf.Sin((x + y) * 0.13f + 2.1f));
                     tex.SetPixel(x, y, new Color(r, g, b, withAlpha ? 0.5f : 1f));
+                }
+            }
+
+            tex.Apply();
+            string path = Path.Combine(_tmpDir, name);
+            File.WriteAllBytes(path, tex.EncodeToPNG());
+            return path;
+        }
+        finally
+        {
+            Object.DestroyImmediate(tex);
+        }
+    }
+
+    // 다운스케일(3-1)이 EncodeToPNG 로 재인코딩한 산출물 재현: RGBA32(=colortype 6) 이지만 알파 전량 255.
+    // 헤더만으론 IsOpaquePng 가 놓치고, 실 알파 스캔(IsFullyOpaque)이 되살려야 하는 케이스.
+    private string WriteOpaqueRgbaSineFieldPng(string name)
+    {
+        var tex = new Texture2D(128, 128, TextureFormat.RGBA32, false);
+        try
+        {
+            for (int y = 0; y < 128; y++)
+            {
+                for (int x = 0; x < 128; x++)
+                {
+                    float r = 0.5f * (1f + Mathf.Sin(x * 0.23f + y * 0.11f));
+                    float g = 0.5f * (1f + Mathf.Sin(x * 0.07f - y * 0.19f + 1.3f));
+                    float b = 0.5f * (1f + Mathf.Sin((x + y) * 0.13f + 2.1f));
+                    tex.SetPixel(x, y, new Color(r, g, b, 1f)); // 알파 전량 불투명
                 }
             }
 
@@ -260,6 +350,27 @@ public class AITTextureStreamJpegTranscoderTests
         Assert.AreEqual(0, renamed.Count);
         Assert.IsTrue(File.Exists(png), "알파 보유 PNG 는 그대로 유지");
         Assert.AreEqual(before, new FileInfo(png).Length, "바이트 불변");
+    }
+
+    [Test]
+    public void TranscodeInPlace_OpaqueRgbaPng_ConvertsToJpg()
+    {
+        // 회귀 가드: 다운스케일 재인코딩 산출물(colortype 6, 알파 전량 255)이 헤더 빠른 경로를
+        // 통과 못 해도 실 알파 스캔으로 되살아나 JPEG 전환되어야 한다(JPEG 는 전량 255 알파를 무손실로 버림).
+        _config.textureStreamJpeg = 1;
+        string png = WriteOpaqueRgbaSineFieldPng("opaque-rgba.png");
+        Assert.IsTrue(AITTextureStreamJpegTranscoder.IsRgbaPng(File.ReadAllBytes(png)),
+            "픽스처는 colortype 6(RGBA)여야 이 케이스를 검증한다");
+
+        var renamed = AITTextureStreamJpegTranscoder.TranscodeInPlace(_config, new[] { png });
+
+        Assert.AreEqual(1, renamed.Count, "알파 전량 255 RGBA 는 실 스캔으로 채택되어야 함");
+        string jpg = renamed[png];
+        Assert.AreEqual(Path.ChangeExtension(png, ".jpg"), jpg);
+        Assert.IsFalse(File.Exists(png), "원본 PNG 는 제거");
+        Assert.IsTrue(File.Exists(jpg), "JPEG 산출물 생성");
+        var head = File.ReadAllBytes(jpg);
+        Assert.IsTrue(head.Length > 2 && head[0] == 0xFF && head[1] == 0xD8, "JPEG 매직(SOI)");
     }
 
     [Test]

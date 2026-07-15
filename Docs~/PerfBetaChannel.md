@@ -122,7 +122,7 @@ https://github.com/toss/apps-in-toss-unity-sdk.git#beta-perf
 | 레버 | master switch (필드=값) | 주요 설정 필드 (기본값) | 손실 특성 | UI 위치 |
 |---|---|---|---|---|
 | **스트리밍 오디오 트랜스코딩** | `audioStreamTranscode = 1` (**기본 `-1` = auto-OFF**) | `audioStreamTranscodeBitrateKbps = 160`<br>`audioStreamTranscodeMinSourceKbps = 256` | lossy(`audioStreaming` 이 외부화한 MP3 사본 → 저비트레이트 MP3). 소스가 이미 lossy(MP3)라 **세대손실 누적**, 루핑 BGM 은 인코더 delay/padding 으로 **루프 이음새 갭 위험** → 청취 검증 전 기본 OFF | 콘텐츠 최적화 — 오디오 스트리밍 |
-| **스트림 PNG → JPEG** | `textureStreamJpeg = 1` (**기본 `-1` = auto-OFF**) | `textureStreamJpegQuality = 90` | lossy(알파 없는 불투명 RGB 스트림 사본을 JPEG 로 전환). **DCT 아티팩트(플랫 아트 ringing 등) 위험** → 시각 검증 전 기본 OFF | 콘텐츠 최적화 — 대형 텍스처 스트리밍 |
+| **스트림 PNG → JPEG** | `textureStreamJpeg = 1` (**기본 `-1` = auto-OFF**) | `textureStreamJpegQuality = 90` | lossy(불투명 스트림 사본을 JPEG 로 전환 — 알파 없는 RGB, 또는 알파 스캔으로 전량 불투명이 확인된 RGBA. gray/palette 는 계속 제외). **DCT 아티팩트(플랫 아트 ringing 등) 위험** → 시각 검증 전 기본 OFF | 콘텐츠 최적화 — 대형 텍스처 스트리밍 |
 
 ---
 

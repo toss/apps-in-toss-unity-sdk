@@ -79,7 +79,7 @@ public class AITFontExternalizerRestoreTests
 
         // 소스 .ttf 를 "스텁 + 무해한 트레일링 패딩(16B 0x00)"으로 만들어 원본을 스텁과 ★바이트가 다르게★
         // 한다. sfnt 테이블 오프셋은 파일 선두 기준 절대값이라 끝에 붙인 바이트는 어떤 테이블에도
-        // 참조되지 않아 FreeType 임포트에 무해하다(원본 868→628B ≠ 스텁 612B). 이 차이가 있어야
+        // 참조되지 않아 FreeType 임포트에 무해하다(원본 612+16=628B ≠ 스텁 612B). 이 차이가 있어야
         // "복원 후 == 원본" 단언이 공허하지 않다(스텁이 남으면 길이부터 어긋나 RED).
         byte[] padded = new byte[stub.Length + 16];
         Array.Copy(stub, padded, stub.Length);

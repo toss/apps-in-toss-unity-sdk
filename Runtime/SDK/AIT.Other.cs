@@ -258,16 +258,16 @@ namespace AppsInToss
         [Preserve]
         [APICategory("Other")]
         public static Action RequestNotificationAgreement(
-            Action<object> onEvent,
+            Action<RequestNotificationAgreementOptionsOnEventParam> onEvent,
             RequestNotificationAgreementOptionsOptions options,
             Action<AITException> onError = null)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            string subscriptionId = AITCore.Instance.RegisterSubscriptionCallback<object>(
+            string subscriptionId = AITCore.Instance.RegisterSubscriptionCallback<RequestNotificationAgreementOptionsOnEventParam>(
                 onEvent,
                 onError
             );
-            __requestNotificationAgreement_Internal(AITJsonSettings.Serialize(options), subscriptionId, "object");
+            __requestNotificationAgreement_Internal(AITJsonSettings.Serialize(options), subscriptionId, "RequestNotificationAgreementOptionsOnEventParam");
             return () => AITCore.Instance.Unsubscribe(subscriptionId);
 #else
             // Unity Editor mock implementation

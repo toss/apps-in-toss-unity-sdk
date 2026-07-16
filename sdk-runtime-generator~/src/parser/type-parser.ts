@@ -61,6 +61,46 @@ export function parseType(typeNode: any): ParsedType {
     };
   }
 
+  // ts-morph 구조적 nullable 언랩 (텍스트 파싱보다 우선):
+  // optional 프로퍼티(예: cb?: (...) => void)나 `X | undefined`/`X | null`은 ts-morph에서
+  // `X | undefined` 유니온(callSignatures 0개)으로 온다. 이를 아래의 텍스트 기반 방식으로 쪼개면
+  // 함수/객체처럼 복잡한 내부 타입은 합성 { getText } 노드로 재귀하면서 ts-morph 노드를 잃어
+  // 'unknown'으로 붕괴한다(예: optional 콜백 param 전체 소실). getNonNullableType()로
+  // null/undefined를 구조적으로 벗겨 실제 타입을 그대로 보존한다.
+  // (텍스트 기반 재귀 노드에는 isNullable/getNonNullableType가 없어 자연히 아래 폴백을 탄다.)
+  //
+  // 단, 벗긴 결과가 **여전히 union**이면 언랩하지 않는다 (`A | B | 'ERROR' | undefined` 등).
+  // getNonNullableType()이 만드는 필터드 union은 alias symbol이 없는 익명 타입이라
+  // getText()가 멤버 나열 텍스트를 체커의 타입 생성 순서(type id)대로 출력한다 —
+  // 다른 파일이 같은 문자열 리터럴을 먼저 생성했으면 리터럴이 선두로 와서
+  // 아래 string literal 체크(startsWith('"'))가 union 전체를 string으로 붕괴시키고,
+  // alias 이름(예: GrantPromotionRewardResult)도 소실된다. 다중 멤버 union은
+  // 아래 isUnion 분기가 null/undefined 멤버 필터링 + isNullable 설정을 구조적으로
+  // 처리하므로 그 경로에 맡긴다. (boolean도 TS 내부적으로 true|false union이라
+  // 여기서 걸러지지만, 텍스트 폴백이 동일한 primitive 결과를 낸다.)
+  //
+  // 또한 벗긴 결과가 **intersection**이어도 언랩하지 않는다. index signature를 더하는
+  // intersection(예: LoggerParams = `{ log_name?: string } & { [key: string]: Primitive }`)은
+  // 고정 형태 인터페이스가 아니라 열린 사전(Record류) 타입이다. 이를 구조적으로 벗기면
+  // intersection 분기가 `log_name` 하나만 가진 익명 객체(__type)로 병합하고, 그러면
+  // 파라미터 익명-객체 합성이 발화해 손수작성 소비자가 기대하는 `object`(open dictionary)를
+  // 명명 클래스로 바꿔버린다(예: Analytics screen/impression/click → CS1503). 언랩을 건너뛰면
+  // 아래 텍스트 폴백이 그대로 `object`로 남겨 원래(open dictionary) 의미를 보존한다.
+  // (onNoFill 같은 optional **함수** 콜백은 intersection이 아니므로 정상적으로 언랩된다.)
+  if (typeNode.isNullable?.() && typeNode.getNonNullableType) {
+    const nonNullable = typeNode.getNonNullableType();
+    if (nonNullable &&
+        !nonNullable.isUnion?.() &&
+        !nonNullable.isIntersection?.() &&
+        nonNullable.getText?.() !== typeText) {
+      return {
+        ...parseType(nonNullable),
+        isNullable: true,
+        raw: typeText,
+      };
+    }
+  }
+
   // 텍스트 기반 nullable 패턴 감지: "SomeType | undefined" 또는 "SomeType | null"
   // ts-morph가 isUnion()을 false로 반환하는 경우가 있어서 텍스트 기반 체크 추가
   // 단순 패턴만 처리 (단일 타입 | null/undefined)

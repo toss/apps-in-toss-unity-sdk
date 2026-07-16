@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.UI;
 using AppsInToss;
@@ -12,7 +13,7 @@ using AppsInToss;
 /// ## 정상 플로우 (소모품)
 /// 1. GetProductItemList() - 상품 목록 조회
 /// 2. CreateOneTimePurchaseOrder() - 구매 주문 생성
-///    - processProductGrant 콜백에서 상품 지급 후 true 반환
+///    - processProductGrant 비동기 콜백(Task&lt;bool&gt;)에서 서버 영수증 검증을 await한 뒤 지급, true 반환
 ///    - SDK가 자동으로 CompleteProductGrant 호출하여 주문 완료 처리
 ///
 /// ## 복구 플로우 (앱 크래시/네트워크 끊김 등으로 processProductGrant 콜백 미호출 시)
@@ -410,11 +411,13 @@ public class IAPv2Tester : MonoBehaviour
             var options = new IapCreateOneTimePurchaseOrderOptionsOptions
             {
                 Sku = iapSku,
-                ProcessProductGrant = (data) =>
+                // 비동기 콜백: 개발사 서버의 영수증 검증 API 호출을 기다린 뒤 지급 여부를 결정한다.
+                // SDK는 이 Task<bool>이 완료될 때까지 주문 완료 처리를 보류한다 (true → 자동 지급 완료).
+                ProcessProductGrant = async (data) =>
                 {
                     iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] ProcessProductGrant called: {data}");
                     Debug.Log($"[IAPv2Tester] ProcessProductGrant called with data: {data}");
-                    bool grantSuccess = GrantGameProduct(data);
+                    bool grantSuccess = await GrantGameProduct(data);
                     iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] ProcessProductGrant result: {grantSuccess}");
                     UpdateEventLog();
                     return grantSuccess;
@@ -613,10 +616,26 @@ public class IAPv2Tester : MonoBehaviour
 
     /// <summary>
     /// 실제 게임 상품 지급 로직 (데모용)
+    /// 개발사 서버의 영수증 검증 API 왕복을 코루틴 + <see cref="TaskCompletionSource{TResult}"/>로 시뮬레이션한다.
+    /// (WebGL은 단일 스레드라 Task.Delay 대신 플레이어 루프가 구동하는 코루틴으로 대기한다 — SDK 관용.)
+    /// 실제 구현에서는 이 자리에서 UnityWebRequest/HttpClient로 서버에 영수증을 전송해 검증 결과를 반환한다.
     /// </summary>
-    private bool GrantGameProduct(object data)
+    private Task<bool> GrantGameProduct(object data)
     {
-        Debug.Log($"[IAPv2Tester] Granting product: {data}");
-        return true;
+        var tcs = new TaskCompletionSource<bool>();
+        StartCoroutine(ValidateReceiptOnServer(data, tcs));
+        return tcs.Task;
+    }
+
+    /// <summary>
+    /// 서버 영수증 검증 왕복 시뮬레이션 (WebGL-safe: WaitForSecondsRealtime 코루틴).
+    /// </summary>
+    private System.Collections.IEnumerator ValidateReceiptOnServer(object data, TaskCompletionSource<bool> tcs)
+    {
+        Debug.Log($"[IAPv2Tester] Validating receipt on server: {data}");
+        // 동기 스텁으로는 표현 불가했던 비동기 서버 왕복 경로
+        yield return new WaitForSecondsRealtime(0.2f);
+        Debug.Log($"[IAPv2Tester] Receipt validated, granting product: {data}");
+        tcs.SetResult(true);
     }
 }

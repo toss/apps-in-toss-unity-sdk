@@ -1,6 +1,7 @@
 import { ParsedAPI } from '../../types.js';
 import { mapToCSharpType } from '../../validators/types.js';
-import { escapeCSharpKeyword, toPascalCase, xmlSafe } from './utils.js';
+import { escapeCSharpKeyword, toPascalCase, xmlSafe, functionParamTypeName, extractCleanName } from './utils.js';
+import { isInlineAnonymousObjectParam } from './type-collector.js';
 import { PRIMITIVE_TYPES } from './constants.js';
 
 /**
@@ -72,8 +73,20 @@ export function prepareParameters(api: ParsedAPI): PreparedParameter[] {
         paramType = 'object';
       }
 
-      // 파라미터가 익명 객체(__type, object)인 경우 의미있는 이름 생성
-      if ((paramType === '__type' || paramType === 'object') && param.type.kind === 'object' && param.type.properties && param.type.properties.length > 0) {
+      // 옵션성 파라미터 객체의 타입명을 API-스코프로 합성한다: `<Api><Param>`.
+      // 대상:
+      //  (a) 익명 객체 파라미터(__type/object) — 이름이 없어 반드시 합성 필요.
+      //  (b) optional named 객체 파라미터 — upstream 내부 인터페이스명(예: attach의
+      //      AttachOptions)을 그대로 노출하면 전역 네임스페이스 충돌 위험이 크다.
+      //      실제로 web-bridge는 이런 옵션 타입을 `AttachOptions as TossAdsAttachOptions`
+      //      처럼 API-스코프 별칭으로 re-export 하므로, 합성명이 그 공개 표면명과 일치한다.
+      // required named 파라미터(예: initialize(options: InitializeOptions))는 원래 이름을 유지한다.
+      // ※ CSharpTypeGenerator의 파라미터 클래스 생성부와 동일한 규칙을 적용해야 CS0246을 막는다.
+      const isAnonymousObjectParam = paramType === '__type' || paramType === 'object';
+      const isOptionalNamedObjectParam =
+        param.optional && param.type.kind === 'object' && !isAnonymousObjectParam;
+      if ((isAnonymousObjectParam || isOptionalNamedObjectParam) &&
+          param.type.kind === 'object' && param.type.properties && param.type.properties.length > 0) {
         const capitalize = (str: string) => str.charAt(0).toUpperCase() + str.slice(1);
         const apiName = capitalize(api.name);
         const paramName = capitalize(param.name);
@@ -234,7 +247,20 @@ export function extractCallbackTypes(api: ParsedAPI): {
   }
 
   if (onEventParam && onEventParam.type.kind === 'function' && onEventParam.type.functionParams?.[0]) {
-    callbackEventType = mapToCSharpType(onEventParam.type.functionParams[0]);
+    const fp0 = onEventParam.type.functionParams[0];
+    // onEvent 콜백의 첫 파라미터가 인라인 익명 객체 리터럴이면 부모 옵션 타입 기준
+    // 명명 클래스(...OnEventParam)로 참조. type-collector가 동일 이름으로 먼저 등록하므로 일치.
+    // 익명 판정은 raw-aware(isInlineAnonymousObjectParam)로 통일 — name이 '__type'이라도 raw가
+    // named type을 가리키면 배제되어, 등록되지 않은 클래스 참조(CS0246)를 방지한다.
+    const parentRaw = api.parameters[0]?.type?.name;
+    const parent = parentRaw ? extractCleanName(parentRaw) : '';
+    const parentIsAnonymous = !parentRaw ||
+      parentRaw === '__type' || parentRaw === 'object' || parentRaw.startsWith('{');
+    if (isInlineAnonymousObjectParam(fp0) && parent && !parentIsAnonymous) {
+      callbackEventType = functionParamTypeName(parent, 'onEvent');
+    } else {
+      callbackEventType = mapToCSharpType(fp0);
+    }
   }
   if (onErrorParam && onErrorParam.type.kind === 'function' && onErrorParam.type.functionParams?.[0]) {
     callbackErrorType = mapToCSharpType(onErrorParam.type.functionParams[0]);
@@ -304,27 +330,17 @@ export function getNestedCallbackEventType(api: ParsedAPI): string | undefined {
 /**
  * 콜백 기반 API에서 이벤트 타입 추출
  * loadFullScreenAd, GoogleAdMob.loadAppsInTossAdMob 등의 패턴에서 onEvent 콜백의 데이터 타입 추출
+ *
+ * 반드시 extractCallbackTypes와 같은 이름을 산출해야 한다: API 본문이
+ * RegisterSubscriptionCallback<T>/typeName에 쓰는 타입(extractCallbackTypes 결과)과
+ * AITCore RouteSubscriptionCallback의 case 목록(이 함수 결과 수집)이 어긋나면
+ * 해당 이벤트가 "Unknown subscription type"으로 드롭된다.
+ * (예: 인라인 익명 onEvent param이 ...OnEventParam으로 명명되는 경우 —
+ * requestNotificationAgreement)
  */
 export function extractCallbackEventType(api: ParsedAPI): string | undefined {
   if (!api.isCallbackBased) return undefined;
-
-  // 1. 직접 파라미터에서 onEvent 찾기 (top-level export 패턴)
-  let onEventParam = api.parameters.find(p => p.name === 'onEvent');
-
-  // 2. 없으면 첫 번째 파라미터(args 객체)의 프로퍼티에서 찾기 (namespace method 패턴)
-  if (!onEventParam && api.parameters.length === 1 && api.parameters[0].type.kind === 'object') {
-    const argsProperties = api.parameters[0].type.properties || [];
-    const onEventProp = argsProperties.find(p => p.name === 'onEvent');
-    if (onEventProp && onEventProp.type.kind === 'function') {
-      onEventParam = { name: 'onEvent', type: onEventProp.type, optional: false };
-    }
-  }
-
-  if (onEventParam && onEventParam.type.kind === 'function' && onEventParam.type.functionParams?.[0]) {
-    return mapToCSharpType(onEventParam.type.functionParams[0]);
-  }
-
-  return undefined;
+  return extractCallbackTypes(api).callbackEventType;
 }
 
 /**

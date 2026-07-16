@@ -81,3 +81,16 @@ export function extractCleanName(name: string): string {
 
   return cleanName;
 }
+
+/**
+ * 콜백(함수 타입) 파라미터가 인라인 익명 객체 리터럴일 때 생성할 C# 클래스 이름.
+ * 부모 타입 이름 + 콜백 프로퍼티 이름(PascalCase) + "Param" 규칙.
+ * 세 소비처(type-collector, CSharpTypeGenerator, api-data-preparer)가 반드시 이 함수를
+ * 공유해야 한다 (공식을 인라인 재현하면 drift로 CS0246 발생).
+ * @param parentName 콜백을 소유한 부모 타입 이름
+ * @param callbackName 콜백 프로퍼티 이름 (예: processProductGrant, onEvent, onNoFill)
+ * @returns 생성할 파라미터 클래스 이름 (예: IapCreateOneTimePurchaseOrderOptionsOptionsProcessProductGrantParam)
+ */
+export function functionParamTypeName(parentName: string, callbackName: string): string {
+  return `${extractCleanName(parentName)}${capitalize(callbackName)}Param`;
+}

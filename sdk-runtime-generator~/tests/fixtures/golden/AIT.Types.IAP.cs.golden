@@ -50,7 +50,20 @@ namespace AppsInToss
         [JsonProperty("sku")]
         public string Sku; // optional
         [JsonIgnore]
-        public System.Func<object, object> ProcessProductGrant;
+        public System.Func<IapCreateOneTimePurchaseOrderOptionsOptionsProcessProductGrantParam, System.Threading.Tasks.Task<bool>> ProcessProductGrant;
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class IapCreateOneTimePurchaseOrderOptionsOptionsProcessProductGrantParam
+    {
+        [Preserve]
+        [JsonProperty("orderId")]
+        public string OrderId;
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
@@ -132,7 +145,23 @@ namespace AppsInToss
         [JsonProperty("offerId")]
         public string OfferId; // optional
         [JsonIgnore]
-        public System.Func<object, object> ProcessProductGrant;
+        public System.Func<CreateSubscriptionPurchaseOrderOptionsOptionsProcessProductGrantParam, System.Threading.Tasks.Task<bool>> ProcessProductGrant;
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class CreateSubscriptionPurchaseOrderOptionsOptionsProcessProductGrantParam
+    {
+        [Preserve]
+        [JsonProperty("orderId")]
+        public string OrderId;
+        [Preserve]
+        [JsonProperty("subscriptionId")]
+        public string SubscriptionId; // optional
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]

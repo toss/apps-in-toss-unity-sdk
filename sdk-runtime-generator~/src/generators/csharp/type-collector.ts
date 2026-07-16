@@ -1,6 +1,6 @@
 import { ParsedType } from '../../types.js';
 import { mapToCSharpType } from '../../validators/types.js';
-import { extractCleanName, capitalize, xmlSafe } from './utils.js';
+import { extractCleanName, capitalize, xmlSafe, functionParamTypeName } from './utils.js';
 
 /**
  * [JsonExtensionData] 필드 선언 (JSON 역직렬화 시 매핑되지 않는 추가 필드를 자동 캡처)
@@ -37,6 +37,21 @@ export class InlineTypeTracker {
     this.inlineObjectTypes.clear();
     this.pendingExternalTypes.clear();
   }
+}
+
+/**
+ * 콜백 함수의 첫 파라미터가 "명명 클래스로 승격할 인라인 익명 객체 리터럴"인지 판정.
+ * true인 경우에만 ...Param 클래스를 합성/참조한다.
+ *
+ * 핵심: name이 '__type'이라도 raw가 named type(예: import("...").LoadAdMobEvent)을 가리키면
+ * mapToCSharpType이 그 이름을 복구해 'object'가 아니게 되므로 배제된다. 이는
+ * collectFunctionParamTypes의 익명 판정(raw 복구 포함)과 일치하여, 실제로 클래스가 등록되는
+ * 경우에만 필드 타입을 치환하도록 보장한다(등록 없는 참조 = CS0246 방지).
+ */
+export function isInlineAnonymousObjectParam(fp0: any): boolean {
+  if (!fp0 || fp0.kind !== 'object') return false;
+  if (!fp0.properties || fp0.properties.length === 0) return false;
+  return mapToCSharpType(fp0) === 'object';
 }
 
 /**
@@ -319,9 +334,14 @@ export function collectReferencedTypes(
     }
     // 함수 타입의 파라미터
     else if (prop.type.kind === 'function' && prop.type.functionParams) {
-      for (const funcParam of prop.type.functionParams) {
-        collectFunctionParamTypes(funcParam, typeMap, exclude, tracker, generateClassType);
-      }
+      // 콜백의 첫 번째 파라미터가 인라인 익명 객체면 부모 컨텍스트로 명명 클래스 생성.
+      // 나머지 파라미터는 기존 전역 동작(익명 no-op) 유지.
+      prop.type.functionParams.forEach((funcParam: any, i: number) => {
+        const contextName = (i === 0 && parentTypeName)
+          ? functionParamTypeName(parentTypeName, prop.name)
+          : undefined;
+        collectFunctionParamTypes(funcParam, typeMap, exclude, tracker, generateClassType, contextName);
+      });
     }
   }
 }
@@ -334,7 +354,8 @@ export function collectFunctionParamTypes(
   typeMap: Map<string, string>,
   exclude: Set<string>,
   tracker: InlineTypeTracker,
-  generateClassType: (name: string, properties: any[], isResultType?: boolean) => string
+  generateClassType: (name: string, properties: any[], isResultType?: boolean) => string,
+  contextName?: string
 ): void {
   // Union 타입 처리 (ContactsViralEvent = RewardFromContactsViralEvent | ContactsViralSuccessEvent)
   if (paramType.kind === 'union') {
@@ -401,7 +422,14 @@ export function collectFunctionParamTypes(
     }
     // Anonymous type - still collect referenced types if it has properties
     else if (paramType.properties && paramType.properties.length > 0) {
-      collectReferencedTypes(paramType.properties, typeMap, exclude, tracker, generateClassType, undefined);
+      // contextName이 주어지면 익명 객체를 부모 컨텍스트 명명 클래스로 생성.
+      // (콜백 파라미터가 인라인 익명 객체 리터럴인 경우 — object로 뭉개지지 않도록)
+      if (contextName && !typeMap.has(contextName) && !exclude.has(contextName)) {
+        typeMap.set(contextName, generateClassType(contextName, paramType.properties));
+      }
+      // contextName 있으면 자식 재귀도 그 이름을 부모로(parentTypeName=contextName),
+      // 없으면 기존 전역 no-op 동작 유지.
+      collectReferencedTypes(paramType.properties, typeMap, exclude, tracker, generateClassType, contextName);
     }
   }
 }

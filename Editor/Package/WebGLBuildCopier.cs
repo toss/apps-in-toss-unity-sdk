@@ -666,6 +666,10 @@ namespace AppsInToss.Editor.Package
         ///    arrayBuffer reject, 길이 불일치 → throw → 최대 MAX_TRIES회 재시도. 성공 시 완결 버퍼를
         ///    Cache Storage에 저장(버퍼가 이미 완전 → put 원자적, 부분/오염 엔트리 없음)하고 로더에는
         ///    완결 Response(body 스트림 + Content-Length)를 반환한다 → 로더는 undefined를 볼 수 없다.
+        ///    단, Content-Encoding 응답(.br/.gz 네이티브 서빙)은 해제된 byteLength 와 압축 크기
+        ///    Content-Length 가 정의상 불일치라 길이 대조를 생략(잘린 CE 스트림은 디코더가
+        ///    arrayBuffer 를 reject → 재시도 방어 유지). 미생략 시 콜드 부트마다 data+wasm 이
+        ///    2회 전송된다(실측 2026-07).
         ///  - 콜드 로드에서 data/wasm 모두 결정적으로 캐싱되므로(이전 clone-tee가 CI에서 wasm을 못 담던 문제
         ///    해소) 이후 reload는 전량 HIT → 네트워크 접촉 0.
         ///  - 저메모리 기기(deviceMemory<4)는 ~80MB 버퍼링이 OOM 위험 → 버퍼링/캐싱을 생략하고 원본
@@ -747,11 +751,16 @@ namespace AppsInToss.Editor.Package
         // 스트림 중단(ERR_CONNECTION_CLOSED) → arrayBuffer reject, 길이 불일치 → 재시도.
         // 성공 시 (cacheOK면) 캐시에 저장하고 로더에는 완결 Response(body 스트림 + Content-Length 보유)를 반환한다.
         // 모두 소진 시 원본 fetch로 폴백(로더가 실패를 삼키면 제품 워치독 reload가 처리).
+        // Content-Encoding 응답(.br/.gz 네이티브 서빙)은 길이 대조를 생략한다: fetch 가 해제한
+        // buf.byteLength(원본 크기)와 헤더의 Content-Length(압축 크기)는 정의상 항상 불일치라
+        // 대조하면 완결 본문도 short read 로 오판 → 성공할 수 없는 재다운로드 루프(콜드 부트
+        // data+wasm 2회 전송 실측). 잘린 CE 스트림은 디코더가 arrayBuffer 를 reject 하므로
+        // 재시도 방어는 길이 대조 없이도 유지된다.
         function bufferedFetch(url, left) {{
             return originalFetch(url, {{ method: 'GET' }}).then(function(r) {{
                 if (!r || !r.ok) throw new Error('bad status ' + (r && r.status));
                 var ct = r.headers.get('Content-Type') || 'application/octet-stream';
-                var expected = parseInt(r.headers.get('Content-Length') || '-1', 10);
+                var expected = r.headers.get('Content-Encoding') ? -1 : parseInt(r.headers.get('Content-Length') || '-1', 10);
                 return r.arrayBuffer().then(function(ab) {{
                     var buf = new Uint8Array(ab);
                     if (expected >= 0 && buf.byteLength !== expected) {{

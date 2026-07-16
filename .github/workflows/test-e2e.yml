@@ -206,23 +206,45 @@ jobs:
   # Playwright는 build-* 다음의 e2e-* job(ubuntu)에서 실행
   # =====================================================
   build-macos:
-    name: Build (macOS, Unity ${{ matrix.unity-version }})
+    name: Build (macOS, Unity ${{ matrix.unity-version }}${{ matrix.leg-suffix }})
     needs: [setup]
 
-    # ref-cancel: 같은 ref(브랜치/태그/PR) + 같은 (os, unity-version) 의 이전
+    # ref-cancel: 같은 ref(브랜치/태그/PR) + 같은 (os, unity-version, leg) 의 이전
     # 호출을 cancel. 새 푸시 시 이전 잡 정리만 담당한다.
     # workflow_dispatch에서는 github.event.pull_request.number가 비어 있고
     # github.ref가 항상 dispatch한 ref(보통 main)라 PR 간 분리가 안 됨 →
     # needs.setup.outputs.ref(target_ref 해석 결과)를 우선 사용해 PR/브랜치별 격리.
     concurrency:
-      group: e2e-${{ github.workflow }}-${{ needs.setup.outputs.ref || github.event.pull_request.number || github.ref }}-macos-${{ matrix.unity-version }}
+      group: e2e-${{ github.workflow }}-${{ needs.setup.outputs.ref || github.event.pull_request.number || github.ref }}-macos-${{ matrix.unity-version }}${{ matrix.leg-suffix }}
       cancel-in-progress: true
 
     strategy:
       fail-fast: false
-      # OS당 enabled 머신 5대(macos-1-1~1-5)에서 매트릭스 5개를 병렬 실행
+      # OS당 enabled 머신 5대(macos-1-1~1-5)에서 기본 매트릭스 5개를 병렬 실행.
+      # + brotli 레그: 2022.3에서 압축(brotli)+CE 네이티브 서빙 경로 검증
+      #   (기본 레그는 압축 비활성이라 Content-Encoding 경로가 무검증 — 레거시 버퍼링
+      #   fetch의 CE 응답 처리 회귀를 e2e-ce-serving.test.js가 잡는다).
+      #   같은 unity-2022.3 라벨 핀 머신에서 기본 2022.3 레그와 순차 실행된다.
+      #   fast-build=false(release) 필수: Unity는 Development Build에서 WebGL 압축을
+      #   생략하므로(2026-07 로컬 실측: dev+brotli → 비압축 .data/.wasm) dev 프로필이면
+      #   .br이 산출되지 않아 CE 검증이 무의미해진다. release는 배포 빌드와 동일 프로필.
+      # ⚠ include 목록은 e2e-macos matrix·test-report TARGETS와 수동 동기화.
       matrix:
-        unity-version: ["2021.3", "2022.3", "6000.0", "6000.2", "6000.3"]
+        include:
+          - unity-version: "2021.3"
+            fast-build: true
+          - unity-version: "2022.3"
+            fast-build: true
+          - unity-version: "6000.0"
+            fast-build: true
+          - unity-version: "6000.2"
+            fast-build: true
+          - unity-version: "6000.3"
+            fast-build: true
+          - unity-version: "2022.3"
+            fast-build: false
+            compression-format: "2"
+            leg-suffix: "-brotli"
 
     uses: ./.github/workflows/unity-build.yml
     with:
@@ -237,6 +259,9 @@ jobs:
       sdk-version-override: ${{ inputs.sdk_version_override || '' }}
       test-level: ${{ inputs.test_level || '2' }}
       debug-runner: ${{ inputs.debug_runner || false }}
+      compression-format: ${{ matrix.compression-format || '' }}
+      leg-suffix: ${{ matrix.leg-suffix || '' }}
+      fast-build: ${{ matrix.fast-build }}
     secrets:
       SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
       KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
@@ -289,7 +314,7 @@ jobs:
   # WebGL 산출물은 OS-독립적이라 ubuntu에서 동일하게 동작.
   # =====================================================
   e2e-macos:
-    name: E2E (macOS build, Unity ${{ matrix.unity-version }})
+    name: E2E (macOS build, Unity ${{ matrix.unity-version }}${{ matrix.leg-suffix }})
     needs: [setup, build-macos]
     if: needs.build-macos.result == 'success' && (inputs.test_level || '2') == '2'
     runs-on: ubuntu-latest
@@ -297,8 +322,22 @@ jobs:
 
     strategy:
       fail-fast: false
+      # ⚠ include 목록은 build-macos matrix·test-report TARGETS와 수동 동기화.
+      # brotli 레그는 CE(Content-Encoding) 네이티브 서빙 경로를 검증한다
+      # (Tests~/E2E/tests/e2e-ce-serving.test.js). development-build는 빌드 쪽
+      # fast-build와 짝: brotli 레그는 release 빌드(fast-build=false)이므로 "false"를
+      # 전파해 테스트의 isDevBuild 분기(빌드 크기 단언 등)가 실제 빌드와 일치하게 한다.
       matrix:
-        unity-version: ["2021.3", "2022.3", "6000.0", "6000.2", "6000.3"]
+        include:
+          - unity-version: "2021.3"
+          - unity-version: "2022.3"
+          - unity-version: "6000.0"
+          - unity-version: "6000.2"
+          - unity-version: "6000.3"
+          - unity-version: "2022.3"
+            compression-format: "2"
+            leg-suffix: "-brotli"
+            development-build: "false"
 
     env:
       MOBILE_EMULATION: "true"
@@ -315,7 +354,7 @@ jobs:
       - name: Download AIT Build Artifact
         uses: actions/download-artifact@v8
         with:
-          name: ait-build-macos-${{ matrix.unity-version }}
+          name: ait-build-macos-${{ matrix.unity-version }}${{ matrix.leg-suffix }}
           path: ${{ env.AIT_BUILD_DIR }}
 
       - name: Setup Node.js
@@ -344,15 +383,15 @@ jobs:
         env:
           UNITY_PROJECT_PATH: ${{ github.workspace }}/Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}
           # E2E 빌드와 동일한 값으로 전파 — test가 isDevBuild/expectedFormat을 분기.
-          AIT_DEVELOPMENT_BUILD: "true"
-          AIT_COMPRESSION_FORMAT: "0"
+          AIT_DEVELOPMENT_BUILD: ${{ matrix.development-build || 'true' }}
+          AIT_COMPRESSION_FORMAT: ${{ matrix.compression-format || '0' }}
         run: pnpm test
 
       - name: Upload Benchmark Results
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: benchmark-results-macos-${{ matrix.unity-version }}
+          name: benchmark-results-macos-${{ matrix.unity-version }}${{ matrix.leg-suffix }}
           path: Tests~/E2E/tests/benchmark-results.json
           if-no-files-found: ignore
 
@@ -360,7 +399,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: playwright-report-macos-${{ matrix.unity-version }}
+          name: playwright-report-macos-${{ matrix.unity-version }}${{ matrix.leg-suffix }}
           path: Tests~/E2E/tests/playwright-report/
           if-no-files-found: ignore
           compression-level: 9
@@ -485,10 +524,13 @@ jobs:
           mkdir -p classification
           rows=""
 
-          # OS × Unity 버전 조합 — e2e-test-{macos,windows} 잡의 matrix와 동일하게 유지.
+          # OS × Unity 버전(+레그) 조합 — build/e2e-{macos,windows} 잡의 matrix와 동일하게 유지.
+          # 레그 접미사가 있는 항목은 version 자리에 "버전<leg-suffix>"를 그대로 쓴다
+          # (아티팩트 이름이 editmode-results-macos-2022.3-brotli 형태이므로 조회가 일치).
           declare -a TARGETS=(
             "macos:2021.3"
             "macos:2022.3"
+            "macos:2022.3-brotli"
             "macos:6000.0"
             "macos:6000.2"
             "macos:6000.3"
@@ -596,7 +638,8 @@ jobs:
               # 빌드 산출물 디렉토리가 있는데 파일이 없는 경우는 build-no-output.
               build_artifact_dir=$(ls -d "artifacts/ait-build-${os}-${version}"* 2>/dev/null | head -1)
               if [ -n "$build_artifact_dir" ] && [ -d "$build_artifact_dir" ]; then
-                unityweb_count=$(find "$build_artifact_dir" -type f -name '*.unityweb' 2>/dev/null | wc -l | tr -d ' ')
+                # 압축 레그(brotli/gzip)는 .unityweb 대신 .br/.gz를 산출하므로 함께 센다.
+                unityweb_count=$(find "$build_artifact_dir" -type f \( -name '*.unityweb' -o -name '*.br' -o -name '*.gz' \) 2>/dev/null | wc -l | tr -d ' ')
                 if [ "$unityweb_count" = "0" ]; then
                   category="build-no-output"
                   detail="no .unityweb files in build artifact (compression failure suspected)"

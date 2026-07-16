@@ -73,6 +73,19 @@ public class E2EBuildRunner
         EditorBuildSettings.scenes = scenes;
         Debug.Log("✓ Scene added to Build Settings");
 
+        // 배포 프로브 픽스처 훅: DeployProbeBuildRunner가 env var로 프로브 씬 경로를 넘기면
+        // index 1로 추가한다(위 단일 원소 덮어쓰기 로직은 그대로 두고 최소 개입으로 append).
+        string probeScenePath = System.Environment.GetEnvironmentVariable("AIT_DEPLOY_PROBE_SCENE_PATH");
+        if (!string.IsNullOrEmpty(probeScenePath) && File.Exists(probeScenePath))
+        {
+            EditorBuildSettings.scenes = new EditorBuildSettingsScene[]
+            {
+                scenes[0],
+                new EditorBuildSettingsScene(probeScenePath, true)
+            };
+            Debug.Log($"✓ Deploy probe scene added to Build Settings (index 1): {probeScenePath}");
+        }
+
         // 2. SDK 설정 구성
         Debug.Log("[2/5] Configuring Apps in Toss SDK...");
         var config = UnityUtil.GetEditorConf();

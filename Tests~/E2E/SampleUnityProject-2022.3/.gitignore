@@ -30,6 +30,11 @@ Assets/Resources.meta
 # Benchmark results (generated during E2E tests)
 BenchmarkResults/
 
+# Deploy probe 픽스처: 빌드 시 DeployProbeBuildRunner가 생성하는 배포 검증용 콘텐츠
+# (텍스처/폰트/오디오 사본 + 프로브 씬). HeavyGen과 동일하게 Resources 밖에 생성되므로 명시 필요.
+Assets/DeployProbeGen/
+Assets/DeployProbeGen.meta
+
 # ============================================================
 # Apps in Toss SDK 설정 파일 (.gitignore 권장 설정)
 # 아래 패턴을 프로젝트의 .gitignore에 추가하세요

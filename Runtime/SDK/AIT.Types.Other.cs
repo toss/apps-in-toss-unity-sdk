@@ -14,6 +14,16 @@ using UnityEngine.Scripting;
 
 namespace AppsInToss
 {
+    public enum RequestNotificationAgreementOptionsOnEventParamType
+    {
+        [EnumMember(Value = "newAgreement")]
+        NewAgreement,
+        [EnumMember(Value = "alreadyAgreed")]
+        AlreadyAgreed,
+        [EnumMember(Value = "agreementRejected")]
+        AgreementRejected
+    }
+
     /// <summary>
     /// Result type for GetAnonymousKey (Discriminated Union)
     /// Success: GetAnonymousKeySuccessResponse | Error: ERROR
@@ -174,7 +184,7 @@ namespace AppsInToss
         [JsonProperty("options")]
         public RequestNotificationAgreementOptionsOptions Options;
         [JsonIgnore]
-        public System.Action<object> OnEvent;
+        public System.Action<RequestNotificationAgreementOptionsOnEventParam> OnEvent;
         [JsonIgnore]
         public System.Action<object> OnError;
 
@@ -198,24 +208,11 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class LoadAdMobOptions
+    public class RequestNotificationAgreementOptionsOnEventParam
     {
         [Preserve]
-        [JsonProperty("adGroupId")]
-        public string AdGroupId;
-
-        [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class ShowAdMobOptions
-    {
-        [Preserve]
-        [JsonProperty("adGroupId")]
-        public string AdGroupId;
+        [JsonProperty("type")]
+        public RequestNotificationAgreementOptionsOnEventParamType Type;
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
@@ -241,69 +238,6 @@ namespace AppsInToss
         [Preserve]
         [JsonProperty("description")]
         public string Description;
-
-        [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class BannerSlotCallbacks
-    {
-        [JsonIgnore]
-        public System.Action<BannerSlotEventPayload> OnAdRendered; // optional
-        [JsonIgnore]
-        public System.Action<BannerSlotEventPayload> OnAdViewable; // optional
-        [JsonIgnore]
-        public System.Action<BannerSlotEventPayload> OnAdClicked; // optional
-        [JsonIgnore]
-        public System.Action<BannerSlotEventPayload> OnAdImpression; // optional
-        [JsonIgnore]
-        public System.Action<BannerSlotErrorPayload> OnAdFailedToRender; // optional
-        [JsonIgnore]
-        public System.Action<object> OnNoFill; // optional
-
-        [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class BannerSlotEventPayload
-    {
-        [Preserve]
-        [JsonProperty("slotId")]
-        public string SlotId;
-        [Preserve]
-        [JsonProperty("adGroupId")]
-        public string AdGroupId;
-        [Preserve]
-        [JsonProperty("adMetadata")]
-        public object AdMetadata;
-
-        [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class BannerSlotErrorPayload
-    {
-        [Preserve]
-        [JsonProperty("slotId")]
-        public string SlotId;
-        [Preserve]
-        [JsonProperty("adGroupId")]
-        public string AdGroupId;
-        [Preserve]
-        [JsonProperty("adMetadata")]
-        public Dictionary<string, object> AdMetadata;
-        [Preserve]
-        [JsonProperty("error")]
-        public object Error;
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]

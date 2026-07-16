@@ -60,74 +60,59 @@ export function detectCallbackBasedPattern(
  * - 최상위 함수 프로퍼티 (param.onEvent, param.onError): 이벤트 콜백 시스템 사용
  * - object 타입 프로퍼티 내부의 함수 (param.options.processProductGrant): 중첩 콜백
  *
- * 이름이 아닌 구조(depth)로 구분하므로, 어떤 이름의 콜백도 올바르게 처리됨
+ * 중요: 중첩 콜백 렌더링(RegisterNestedCallback + `options.<콜백>` 접근 +
+ * `<래퍼타입명>Options` 파라미터 타입 유도)이 지원하는 형태는
+ * "단일 파라미터 + 파라미터 타입에 'options' 프로퍼티 + 콜백이 options 직속"뿐이다.
+ * (예: IAP.createOneTimePurchaseOrder({ options: { ..., processProductGrant } }))
+ * 그 외 형태 — 다중 파라미터(tossAds.attach(adGroupId, target, options?)),
+ * 'callbacks' 등 다른 프로퍼티 아래의 콜백(tossAds.initialize) — 를 감지하면
+ * 존재하지 않는 타입(stringOptions, InitializeOptionsOptions 등)을 참조하고
+ * 나머지 파라미터를 유실하는 C#이 생성되므로(CS0246), 감지 대상에서 제외한다.
+ * 제외된 API는 일반(async) 경로로 생성된다.
  */
 export function detectNestedCallbacks(parameters: ParsedParameter[]): NestedCallback[] {
+  // 지원 형태 가드: 단일 파라미터 + object 타입 + 'options' 프로퍼티 보유
+  if (parameters.length !== 1) return [];
+  const wrapperType = parameters[0].type;
+  if (wrapperType.kind !== 'object' || !wrapperType.properties?.some(p => p.name === 'options')) {
+    return [];
+  }
   const nestedCallbacks: NestedCallback[] = [];
   const seenCallbacks = new Set<string>(); // 중복 방지
 
-  // object 타입 내부에서 중첩 콜백을 추출하는 재귀 헬퍼 함수
-  // depth가 1 이상인 함수 프로퍼티만 중첩 콜백으로 취급
-  const extractNestedCallbacksFromType = (
-    type: ParsedType,
-    path: string[],
-    depth: number  // 0 = 최상위 파라미터 레벨, 1+ = 중첩
-  ): void => {
-    // object 타입: properties 확인
+  // options 프로퍼티 타입의 "직속" 함수 프로퍼티만 수집한다.
+  // 템플릿은 `options.<콜백>` 접근만 렌더하므로 더 깊은 중첩(options.a.b)은 지원 불가.
+  const collectDirectCallbacks = (type: ParsedType, path: string[]): void => {
+    // object 타입: 직속 함수 프로퍼티 수집
     if (type.kind === 'object' && type.properties) {
       for (const prop of type.properties) {
         if (prop.type.kind === 'function') {
-          // depth가 1 이상이면 중첩 콜백 (options.xyz, nested.abc 등)
-          if (depth >= 1) {
-            const callbackKey = [...path, prop.name].join('.');
-            if (!seenCallbacks.has(callbackKey)) {
-              seenCallbacks.add(callbackKey);
-              nestedCallbacks.push({
-                name: prop.name,
-                path: [...path, prop.name],
-                parameterType: prop.type.functionParams?.[0],
-                returnType: prop.type.functionReturnType,
-              });
-            }
+          const callbackKey = [...path, prop.name].join('.');
+          if (!seenCallbacks.has(callbackKey)) {
+            seenCallbacks.add(callbackKey);
+            nestedCallbacks.push({
+              name: prop.name,
+              path: [...path, prop.name],
+              parameterType: prop.type.functionParams?.[0],
+              returnType: prop.type.functionReturnType,
+            });
           }
-          // depth 0의 함수 프로퍼티는 최상위 콜백이므로 무시
-        } else if (prop.type.kind === 'object' || prop.type.kind === 'union') {
-          // object 또는 union 타입이면 재귀 탐색 (depth 증가)
-          extractNestedCallbacksFromType(
-            prop.type,
-            [...path, prop.name],
-            depth + 1
-          );
         }
       }
     }
 
-    // union 타입: 각 멤버 확인 (인터섹션 타입이 잘못 파싱된 경우 포함)
+    // union 타입: 각 멤버 확인 (인터섹션 타입이 union으로 파싱된 경우 포함 —
+    // 예: Sku & { processProductGrant } 형태) — 같은 레벨로 취급
     if (type.kind === 'union' && type.unionTypes) {
       for (const unionMember of type.unionTypes) {
-        extractNestedCallbacksFromType(unionMember, path, depth);
+        collectDirectCallbacks(unionMember, path);
       }
     }
   };
 
-  for (const param of parameters) {
-    // object 타입 파라미터 확인
-    if (param.type.kind !== 'object' || !param.type.properties) {
-      continue;
-    }
-
-    // 파라미터의 각 프로퍼티 확인 (depth 0에서 시작)
-    for (const prop of param.type.properties) {
-      if (prop.type.kind === 'object' || prop.type.kind === 'union') {
-        // object/union 타입 프로퍼티 내부 탐색 (depth 1부터 중첩 콜백)
-        extractNestedCallbacksFromType(
-          prop.type,
-          [prop.name],
-          1  // 이 레벨의 함수부터 중첩 콜백
-        );
-      }
-      // depth 0의 함수 타입 프로퍼티는 최상위 콜백이므로 여기서 무시
-    }
+  const optionsProp = wrapperType.properties.find(p => p.name === 'options');
+  if (optionsProp && (optionsProp.type.kind === 'object' || optionsProp.type.kind === 'union')) {
+    collectDirectCallbacks(optionsProp.type, ['options']);
   }
 
   return nestedCallbacks;

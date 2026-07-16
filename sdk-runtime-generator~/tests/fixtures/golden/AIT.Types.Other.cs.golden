@@ -14,6 +14,16 @@ using UnityEngine.Scripting;
 
 namespace AppsInToss
 {
+    public enum RequestNotificationAgreementOptionsOnEventParamType
+    {
+        [EnumMember(Value = "newAgreement")]
+        NewAgreement,
+        [EnumMember(Value = "alreadyAgreed")]
+        AlreadyAgreed,
+        [EnumMember(Value = "agreementRejected")]
+        AgreementRejected
+    }
+
     /// <summary>
     /// Result type for GetAnonymousKey (Discriminated Union)
     /// Success: GetAnonymousKeySuccessResponse | Error: ERROR
@@ -104,6 +114,19 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
+    public class GetDeclaredAgeRangeParams
+    {
+        [Preserve]
+        [JsonProperty("ageGates")]
+        public double[] AgeGates;
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
     public class GrantPromotionRewardParams
     {
         [Preserve]
@@ -161,7 +184,7 @@ namespace AppsInToss
         [JsonProperty("options")]
         public RequestNotificationAgreementOptionsOptions Options;
         [JsonIgnore]
-        public System.Action<object> OnEvent;
+        public System.Action<RequestNotificationAgreementOptionsOnEventParam> OnEvent;
         [JsonIgnore]
         public System.Action<object> OnError;
 
@@ -185,24 +208,11 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class LoadAdMobOptions
+    public class RequestNotificationAgreementOptionsOnEventParam
     {
         [Preserve]
-        [JsonProperty("adGroupId")]
-        public string AdGroupId;
-
-        [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class ShowAdMobOptions
-    {
-        [Preserve]
-        [JsonProperty("adGroupId")]
-        public string AdGroupId;
+        [JsonProperty("type")]
+        public RequestNotificationAgreementOptionsOnEventParamType Type;
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
@@ -234,67 +244,16 @@ namespace AppsInToss
         public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
+    /// <summary>
+    /// Stub class for number (type definition not found in current SDK version)
+    /// This class is auto-generated for SDK version compatibility
+    /// </summary>
     [Serializable]
     [Preserve]
-    public class BannerSlotCallbacks
+    public class number
     {
-        [JsonIgnore]
-        public System.Action<BannerSlotEventPayload> OnAdRendered; // optional
-        [JsonIgnore]
-        public System.Action<BannerSlotEventPayload> OnAdViewable; // optional
-        [JsonIgnore]
-        public System.Action<BannerSlotEventPayload> OnAdClicked; // optional
-        [JsonIgnore]
-        public System.Action<BannerSlotEventPayload> OnAdImpression; // optional
-        [JsonIgnore]
-        public System.Action<BannerSlotErrorPayload> OnAdFailedToRender; // optional
-        [JsonIgnore]
-        public System.Action<object> OnNoFill; // optional
-
-        [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class BannerSlotEventPayload
-    {
-        [Preserve]
-        [JsonProperty("slotId")]
-        public string SlotId;
-        [Preserve]
-        [JsonProperty("adGroupId")]
-        public string AdGroupId;
-        [Preserve]
-        [JsonProperty("adMetadata")]
-        public object AdMetadata;
-
-        [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class BannerSlotErrorPayload
-    {
-        [Preserve]
-        [JsonProperty("slotId")]
-        public string SlotId;
-        [Preserve]
-        [JsonProperty("adGroupId")]
-        public string AdGroupId;
-        [Preserve]
-        [JsonProperty("adMetadata")]
-        public Dictionary<string, object> AdMetadata;
-        [Preserve]
-        [JsonProperty("error")]
-        public object Error;
-
-        [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        // Stub class - no properties defined
+        // This type may not be available in the current SDK version
     }
 
     public enum AlbumItemType
@@ -540,6 +499,37 @@ namespace AppsInToss
         [Preserve]
         [JsonProperty("heading")]
         public double Heading;
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class DeclaredAgeRange
+    {
+        [Preserve]
+        [JsonProperty("status")]
+        public string Status;
+        [Preserve]
+        [JsonProperty("lowerBound")]
+        public double? LowerBound; // optional
+        [Preserve]
+        [JsonProperty("upperBound")]
+        public double? UpperBound; // optional
+        [Preserve]
+        [JsonProperty("ageRangeDeclaration")]
+        public string AgeRangeDeclaration; // optional
+        [Preserve]
+        [JsonProperty("activeParentalControls")]
+        public string[] ActiveParentalControls;
+        [Preserve]
+        [JsonProperty("isEligibleForAgeFeatures")]
+        public bool? IsEligibleForAgeFeatures; // optional
+        [Preserve]
+        [JsonProperty("errorCode")]
+        public string ErrorCode; // optional
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]

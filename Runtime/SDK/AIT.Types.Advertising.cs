@@ -134,6 +134,19 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
+    public class LoadAdMobOptions
+    {
+        [Preserve]
+        [JsonProperty("adGroupId")]
+        public string AdGroupId;
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
     public class GoogleAdMobShowAppsInTossAdMobArgs
     {
         [JsonIgnore]
@@ -215,6 +228,19 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
+    public class ShowAdMobOptions
+    {
+        [Preserve]
+        [JsonProperty("adGroupId")]
+        public string AdGroupId;
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
     public class IsAdMobLoadedOptions
     {
         [Preserve]
@@ -243,26 +269,10 @@ namespace AppsInToss
     [Preserve]
     public class InitializeOptionsCallbacks
     {
-        [Preserve]
-        [JsonProperty("onInitialized")]
-        public object OnInitialized; // optional
-        [Preserve]
-        [JsonProperty("onInitializationFailed")]
-        public object OnInitializationFailed; // optional
-
-        [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class AttachBannerResult
-    {
         [JsonIgnore]
-        public System.Action Destroy;
-        /// <summary>에러 발생 시 에러 메시지 (플랫폼 미지원 등)</summary>
-        public string error;
+        public System.Action OnInitialized; // optional
+        [JsonIgnore]
+        public System.Action<Error> OnInitializationFailed; // optional
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
@@ -290,6 +300,126 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
+    public class BannerSlotCallbacks
+    {
+        [JsonIgnore]
+        public System.Action<BannerSlotEventPayload> OnAdRendered; // optional
+        [JsonIgnore]
+        public System.Action<BannerSlotEventPayload> OnAdViewable; // optional
+        [JsonIgnore]
+        public System.Action<BannerSlotEventPayload> OnAdClicked; // optional
+        [JsonIgnore]
+        public System.Action<BannerSlotEventPayload> OnAdImpression; // optional
+        [JsonIgnore]
+        public System.Action<BannerSlotErrorPayload> OnAdFailedToRender; // optional
+        [JsonIgnore]
+        public System.Action<BannerSlotCallbacksOnNoFillParam> OnNoFill; // optional
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class BannerSlotEventPayload
+    {
+        [Preserve]
+        [JsonProperty("slotId")]
+        public string SlotId;
+        [Preserve]
+        [JsonProperty("adGroupId")]
+        public string AdGroupId;
+        [Preserve]
+        [JsonProperty("adMetadata")]
+        public BannerSlotEventPayloadAdMetadata AdMetadata;
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class BannerSlotEventPayloadAdMetadata
+    {
+        [Preserve]
+        [JsonProperty("creativeId")]
+        public string CreativeId;
+        [Preserve]
+        [JsonProperty("requestId")]
+        public string RequestId;
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class BannerSlotErrorPayload
+    {
+        [Preserve]
+        [JsonProperty("slotId")]
+        public string SlotId;
+        [Preserve]
+        [JsonProperty("adGroupId")]
+        public string AdGroupId;
+        [Preserve]
+        [JsonProperty("adMetadata")]
+        public Dictionary<string, object> AdMetadata;
+        [Preserve]
+        [JsonProperty("error")]
+        public BannerSlotErrorPayloadError Error;
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class BannerSlotErrorPayloadError
+    {
+        [Preserve]
+        [JsonProperty("code")]
+        public double Code;
+        [Preserve]
+        [JsonProperty("message")]
+        public string Message;
+        [Preserve]
+        [JsonProperty("domain")]
+        public string Domain; // optional
+        [Preserve]
+        [JsonProperty("mediationId")]
+        public string MediationId; // optional
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class BannerSlotCallbacksOnNoFillParam
+    {
+        [Preserve]
+        [JsonProperty("slotId")]
+        public string SlotId;
+        [Preserve]
+        [JsonProperty("adGroupId")]
+        public string AdGroupId;
+        [Preserve]
+        [JsonProperty("adMetadata")]
+        public Dictionary<string, object> AdMetadata;
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
     public class TossAdsAttachBannerOptions
     {
         [Preserve]
@@ -304,6 +434,20 @@ namespace AppsInToss
         [Preserve]
         [JsonProperty("callbacks")]
         public BannerSlotCallbacks Callbacks; // optional
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class AttachBannerResult
+    {
+        [JsonIgnore]
+        public System.Action Destroy;
+        /// <summary>에러 발생 시 에러 메시지 (플랫폼 미지원 등)</summary>
+        public string error;
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]

@@ -2,7 +2,7 @@ import { ParsedAPI, ParsedType, ParsedTypeDefinition, GeneratedTypeUnit } from '
 import { resolveApiCategory, DEFAULT_CATEGORY } from '../../categories.js';
 import { mapToCSharpType } from '../../validators/types.js';
 import { loadUnionResultTemplate } from './templates.js';
-import { extractCleanName, capitalize, xmlSafe } from './utils.js';
+import { extractCleanName, capitalize, xmlSafe, functionParamTypeName } from './utils.js';
 import {
   InlineTypeTracker,
   JSON_EXTENSION_DATA_FIELD,
@@ -14,6 +14,7 @@ import {
   collectReferencedTypes,
   collectFunctionParamTypes,
   collectNestedTypesForTypeDefinition,
+  isInlineAnonymousObjectParam,
 } from './type-collector.js';
 import { computeEnumAliases, applyEnumAliases } from './enum-dedup.js';
 
@@ -242,6 +243,27 @@ export class CSharpTypeGenerator {
           }
           type = enumName;
         }
+        // 콜백(함수 타입)의 첫 번째 파라미터가 인라인 익명 객체 리터럴인 경우
+        // object로 뭉개지지 않도록 명명 클래스(...Param)를 참조하도록 치환한다.
+        // named param(예: BannerSlotEventPayload)·onError(kind!=='object')는 가드로 배제 → 불변.
+        // 주의: name이 '__type'이라도 raw가 named type을 가리키면(예: LoadAdMobEvent)
+        //   mapToCSharpType이 그 이름을 복구하므로 'object'가 아니게 되어 배제된다
+        //   (collectFunctionParamTypes의 익명 판정과 일치 → 등록되지 않은 클래스 참조 방지).
+        else if (
+          prop.type.kind === 'function' &&
+          isInlineAnonymousObjectParam(prop.type.functionParams?.[0])
+        ) {
+          const className = functionParamTypeName(cleanName, prop.name);
+          // functionParams[0]만 명명 클래스로 교체한 합성 함수 타입을 매핑
+          const synthFn = {
+            ...prop.type,
+            functionParams: [
+              { ...prop.type.functionParams[0], name: className },
+              ...prop.type.functionParams.slice(1),
+            ],
+          };
+          type = mapToCSharpType(synthFn);
+        }
         // 중첩 익명 객체는 생성된 클래스 이름 사용
         else if (prop.type.kind === 'object' &&
             prop.type.properties &&
@@ -386,6 +408,12 @@ ${JSON_EXTENSION_DATA_FIELD}
             } else {
               typeName = `${capitalize(api.name)}${capitalize(param.name)}`;
             }
+          } else if (param.optional) {
+            // optional named 객체 파라미터는 API-스코프 합성명을 쓴다(예: AttachOptions →
+            // TossAdsAttachOptions). prepareParameters의 시그니처 합성과 반드시 일치시켜
+            // 클래스명과 참조가 어긋나 CS0246이 나지 않도록 한다. (자세한 근거는
+            // api-data-preparer.ts prepareParameters 주석 참조.)
+            typeName = `${capitalize(api.name)}${capitalize(param.name)}`;
           }
 
           // cleanName을 키로 사용 (중복 방지)

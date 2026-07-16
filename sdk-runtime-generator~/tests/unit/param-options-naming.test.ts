@@ -81,10 +81,13 @@ describe('옵션 파라미터 타입명 합성 규칙', () => {
     expect(p.paramType).toBe('InitializeOptions');
   });
 
-  test('익명 객체 파라미터는 기존대로 <Api><Param>로 합성된다', () => {
-    const api = makeApi('AnalyticsScreen', 'params', anonObject(['log_name']), true);
+  test('고정 형태 익명 객체 파라미터는 기존대로 <Api><Param>로 합성된다', () => {
+    // 주: 이는 파서가 이미 프로퍼티를 가진 익명 객체로 넘겨준 경우의 합성 규칙 검증이다.
+    // 실제 Analytics screen/impression/click의 params는 index-signature intersection이라
+    // 파서가 object로 남기므로(여기 합성 대상 아님) 여기서는 중립적 예시명을 쓴다.
+    const api = makeApi('SomeApiCall', 'params', anonObject(['field']), true);
     const [p] = prepareParameters(api);
-    expect(p.paramType).toBe('AnalyticsScreenParams');
+    expect(p.paramType).toBe('SomeApiCallParams');
   });
 
   test('합성명은 CSharpTypeGenerator의 파라미터 클래스명 공식과 동일하다 (CS0246 방지)', () => {

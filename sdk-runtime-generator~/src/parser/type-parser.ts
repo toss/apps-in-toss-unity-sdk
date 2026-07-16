@@ -78,9 +78,21 @@ export function parseType(typeNode: any): ParsedType {
   // 아래 isUnion 분기가 null/undefined 멤버 필터링 + isNullable 설정을 구조적으로
   // 처리하므로 그 경로에 맡긴다. (boolean도 TS 내부적으로 true|false union이라
   // 여기서 걸러지지만, 텍스트 폴백이 동일한 primitive 결과를 낸다.)
+  //
+  // 또한 벗긴 결과가 **intersection**이어도 언랩하지 않는다. index signature를 더하는
+  // intersection(예: LoggerParams = `{ log_name?: string } & { [key: string]: Primitive }`)은
+  // 고정 형태 인터페이스가 아니라 열린 사전(Record류) 타입이다. 이를 구조적으로 벗기면
+  // intersection 분기가 `log_name` 하나만 가진 익명 객체(__type)로 병합하고, 그러면
+  // 파라미터 익명-객체 합성이 발화해 손수작성 소비자가 기대하는 `object`(open dictionary)를
+  // 명명 클래스로 바꿔버린다(예: Analytics screen/impression/click → CS1503). 언랩을 건너뛰면
+  // 아래 텍스트 폴백이 그대로 `object`로 남겨 원래(open dictionary) 의미를 보존한다.
+  // (onNoFill 같은 optional **함수** 콜백은 intersection이 아니므로 정상적으로 언랩된다.)
   if (typeNode.isNullable?.() && typeNode.getNonNullableType) {
     const nonNullable = typeNode.getNonNullableType();
-    if (nonNullable && !nonNullable.isUnion?.() && nonNullable.getText?.() !== typeText) {
+    if (nonNullable &&
+        !nonNullable.isUnion?.() &&
+        !nonNullable.isIntersection?.() &&
+        nonNullable.getText?.() !== typeText) {
       return {
         ...parseType(nonNullable),
         isNullable: true,

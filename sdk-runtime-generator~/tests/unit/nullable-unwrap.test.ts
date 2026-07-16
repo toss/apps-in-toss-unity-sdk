@@ -43,11 +43,12 @@ describe('optional 콜백/객체의 구조적 nullable 언랩', () => {
     expect(parsed.functionParams![0].properties?.map(p => p.name)).toEqual(['adGroupId']);
   });
 
-  test('params?: { ... } (단일 객체 | undefined)는 object kind로 프로퍼티 보존', () => {
-    // analytics screen/impression/click의 optional params 패턴
+  test('params?: { ... } (고정 형태 인라인 객체 | undefined)는 object kind로 프로퍼티 보존', () => {
+    // 고정 형태의 인라인 익명 객체(인터섹션/인덱스 시그니처 없음)는 언랩되어 프로퍼티가 보존된다.
+    // (아래 intersection+index signature 케이스와 대비: 그쪽은 열린 사전이라 object로 남겨야 한다.)
     const project = makeProject();
     const sf = project.createSourceFile(
-      '/analytics.d.ts',
+      '/inline-object.d.ts',
       `export declare function screen(params?: { log_name?: string }): Promise<void>;`,
     );
     const param = sf.getFunctionOrThrow('screen').getParameters()[0];
@@ -56,6 +57,47 @@ describe('optional 콜백/객체의 구조적 nullable 언랩', () => {
     expect(parsed.kind).toBe('object');
     expect(parsed.isNullable).toBe(true);
     expect(parsed.properties?.map(p => p.name)).toEqual(['log_name']);
+  });
+});
+
+describe('optional intersection(index signature) param은 언랩하지 않는다 (Analytics CS1503 회귀 방지)', () => {
+  // analytics screen/impression/click의 실제 파라미터: LoggerParams = `{ log_name?: string } & { [key: string]: Primitive }`.
+  // 이 intersection은 index signature를 더한 "열린 사전(Record류)"이므로 고정 형태 인터페이스가 아니다.
+  // 구조적으로 언랩하면 intersection 분기가 `log_name` 하나짜리 익명 객체(__type)로 병합하고,
+  // 파라미터 익명-객체 합성이 발화해 손수작성 소비자가 넘기는 object/익명객체와 타입이 어긋난다
+  // (실제 사례: Runtime/Sentry/AITSentryAnalytics.cs가 `object`를 AIT.AnalyticsScreen()에 전달 → CS1503).
+  // 게이팅되면 open dictionary 의미의 object로 남는다.
+  test('LoggerParams 형태(intersection + index signature)는 병합 객체로 언랩되지 않는다', () => {
+    const project = makeProject();
+    const sf = project.createSourceFile(
+      '/analytics-logger.d.ts',
+      `type Primitive = string | number | boolean | null | undefined | symbol;
+       type LoggerParams = { log_name?: string } & { [key: string]: Primitive };
+       export declare function screen(params?: LoggerParams): Promise<void>;`,
+    );
+    const param = sf.getFunctionOrThrow('screen').getParameters()[0];
+    const parsed = parseType(param.getType());
+
+    // 회귀 시그니처: 언랩 → intersection 병합 → isIntersection=true + props=['log_name'].
+    // 게이팅되면 병합이 일어나지 않아 intersection 플래그도, 병합된 log_name 필드도 표면화되지 않는다.
+    expect(parsed.isIntersection).toBeFalsy();
+    expect((parsed.properties ?? []).map(p => p.name)).not.toContain('log_name');
+  });
+
+  test('대비: 고정 형태 named 인터페이스(TossAds AttachOptions 류)는 여전히 named 객체로 언랩된다', () => {
+    // 게이트가 좁게 걸려 있음을 보장 — 콜백을 품은 옵션 타입 등 고정 형태 인터페이스는 언랩되어
+    // 프로퍼티가 보존되고, 다운스트림에서 API-스코프 명명 클래스로 승격될 수 있어야 한다.
+    const project = makeProject();
+    const sf = project.createSourceFile(
+      '/attach.d.ts',
+      `interface AttachOptions { theme?: string; padding?: string; }
+       export declare function attach(a: string, options?: AttachOptions): void;`,
+    );
+    const parsed = parseType(sf.getFunctionOrThrow('attach').getParameters()[1].getType());
+
+    expect(parsed.kind).toBe('object');
+    expect(parsed.isNullable).toBe(true);
+    expect(parsed.properties?.map(p => p.name)).toEqual(['theme', 'padding']);
   });
 });
 

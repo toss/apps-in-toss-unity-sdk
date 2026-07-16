@@ -25,7 +25,7 @@ namespace AppsInToss
         [Preserve]
         [APICategory("Analytics")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable AnalyticsScreen(AnalyticsScreenParams paramsParam = null)
+        public static async Awaitable AnalyticsScreen(object paramsParam = null)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var acs = new AwaitableCompletionSource();
@@ -43,7 +43,7 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async Task AnalyticsScreen(AnalyticsScreenParams paramsParam = null)
+        public static async Task AnalyticsScreen(object paramsParam = null)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<object>();
@@ -70,7 +70,7 @@ namespace AppsInToss
         [Preserve]
         [APICategory("Analytics")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable AnalyticsImpression(AnalyticsImpressionParams paramsParam = null)
+        public static async Awaitable AnalyticsImpression(object paramsParam = null)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var acs = new AwaitableCompletionSource();
@@ -88,7 +88,7 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async Task AnalyticsImpression(AnalyticsImpressionParams paramsParam = null)
+        public static async Task AnalyticsImpression(object paramsParam = null)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<object>();
@@ -115,7 +115,7 @@ namespace AppsInToss
         [Preserve]
         [APICategory("Analytics")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable AnalyticsClick(AnalyticsClickParams paramsParam = null)
+        public static async Awaitable AnalyticsClick(object paramsParam = null)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var acs = new AwaitableCompletionSource();
@@ -133,7 +133,7 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async Task AnalyticsClick(AnalyticsClickParams paramsParam = null)
+        public static async Task AnalyticsClick(object paramsParam = null)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<object>();

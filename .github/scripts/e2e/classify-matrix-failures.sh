@@ -19,10 +19,13 @@ set +e
 mkdir -p classification
 rows=""
 
-# OS × Unity 버전 조합 — e2e-test-{macos,windows} 잡의 matrix와 동일하게 유지.
+# OS × Unity 버전(+레그) 조합 — build/e2e-{macos,windows} 잡의 matrix와 동일하게 유지.
+# 레그 접미사가 있는 항목은 version 자리에 "버전<leg-suffix>"를 그대로 쓴다
+# (아티팩트 이름이 editmode-results-macos-2022.3-brotli 형태이므로 조회가 일치).
 declare -a TARGETS=(
   "macos:2021.3"
   "macos:2022.3"
+  "macos:2022.3-brotli"
   "macos:6000.0"
   "macos:6000.2"
   "macos:6000.3"
@@ -130,7 +133,8 @@ for target in "${TARGETS[@]}"; do
     # 빌드 산출물 디렉토리가 있는데 파일이 없는 경우는 build-no-output.
     build_artifact_dir=$(ls -d "artifacts/ait-build-${os}-${version}"* 2>/dev/null | head -1)
     if [ -n "$build_artifact_dir" ] && [ -d "$build_artifact_dir" ]; then
-      unityweb_count=$(find "$build_artifact_dir" -type f -name '*.unityweb' 2>/dev/null | wc -l | tr -d ' ')
+      # 압축 레그(brotli/gzip)는 .unityweb 대신 .br/.gz를 산출하므로 함께 센다.
+      unityweb_count=$(find "$build_artifact_dir" -type f \( -name '*.unityweb' -o -name '*.br' -o -name '*.gz' \) 2>/dev/null | wc -l | tr -d ' ')
       if [ "$unityweb_count" = "0" ]; then
         category="build-no-output"
         detail="no .unityweb files in build artifact (compression failure suspected)"

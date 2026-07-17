@@ -5854,8 +5854,8 @@ packages:
     resolution: {integrity: sha512-+QU2zd6OTD8XWIJCbffaiQeH9U73qIqafo1x6V1snCWYGJf6cVE0cDR4D8xRzcEnfI21IFrUPzPGtcPf8AC+Rw==}
     engines: {node: ^14.17.0 || ^16.13.0 || >=18.0.0}
 
-  ws@6.2.4:
-    resolution: {integrity: sha512-PNIUUyLI5YpkJZj60YBzX1o0ByQ4ovvfmq9N/Kig/PAYbVlGyz4R6G0SEWrD0O9acc0sT2+IdMBVLFv8FSi0Nw==}
+  ws@6.2.5:
+    resolution: {integrity: sha512-T7pPl+DnmNrKRuttAIQwueReX5GqsedYEWp3/H//CG35+DyUOe1+/voAeE8idxgfLsQf2tO+rdtBd1FnPopgTQ==}
     peerDependencies:
       bufferutil: ^4.0.1
       utf-8-validate: ^5.0.2
@@ -5865,8 +5865,8 @@ packages:
       utf-8-validate:
         optional: true
 
-  ws@7.5.11:
-    resolution: {integrity: sha512-zS54Oen9bITtp7kp2XM3AydrCIq1D+HwJOuH+c+e4LfpL/lotP5osijd+UoMnxwAam1GN8R4KtLAyIrIcBNpiA==}
+  ws@7.5.12:
+    resolution: {integrity: sha512-1xGnbYN3zbog9CwuNDQULNRrTCLIn46/WmpR1f0w6PsCYQHkylZr5vkd6kfMZYV6pRnQkcPNRyiA8LsrNKyhpg==}
     engines: {node: '>=8.3.0'}
     peerDependencies:
       bufferutil: ^4.0.1
@@ -5877,8 +5877,8 @@ packages:
       utf-8-validate:
         optional: true
 
-  ws@8.21.0:
-    resolution: {integrity: sha512-Vsp28b7DRcimFQvrqu2Wek3z1iYxDCWqHYB8Qsnk/S4RfaCQzPGPyBNuVjJV3cd6UiKtUtp6sNM77gWvzcCH+g==}
+  ws@8.21.1:
+    resolution: {integrity: sha512-+0NTnW77fFN/DjQi6k/Sq/Yvk4Sgajw7urW8V+asjXnRgDs9gyGkdb7EzgfhA4goXsRIZKE28fzIXBHEzhuiWw==}
     engines: {node: '>=10.0.0'}
     peerDependencies:
       bufferutil: ^4.0.1
@@ -7541,7 +7541,7 @@ snapshots:
       tsup: 8.5.1(@swc/core@1.15.8(@swc/helpers@0.5.17))(jiti@1.21.7)(postcss@8.5.19)(typescript@7.0.2)(yaml@2.9.0)
       url: 0.11.0
       util: 0.12.5
-      ws: 8.21.0
+      ws: 8.21.1
       yargs: 15.4.1
       zod: 3.24.4
     transitivePeerDependencies:
@@ -8280,7 +8280,7 @@ snapshots:
       nocache: 3.0.4
       pretty-format: 26.6.2
       serve-static: 1.16.3
-      ws: 7.5.11
+      ws: 7.5.12
     transitivePeerDependencies:
       - bufferutil
       - encoding
@@ -8435,7 +8435,7 @@ snapshots:
       nullthrows: 1.1.1
       open: 7.4.2
       serve-static: 1.16.3
-      ws: 7.5.11
+      ws: 7.5.12
     transitivePeerDependencies:
       - bufferutil
       - supports-color
@@ -11286,7 +11286,7 @@ snapshots:
     dependencies:
       connect: 3.7.0
       debug: 2.6.9
-      ws: 7.5.11
+      ws: 7.5.12
       yargs: 15.4.1
     transitivePeerDependencies:
       - bufferutil
@@ -11298,7 +11298,7 @@ snapshots:
       connect: 3.7.0
       debug: 2.6.9
       node-fetch: 2.7.0
-      ws: 7.5.11
+      ws: 7.5.12
       yargs: 17.7.3
     transitivePeerDependencies:
       - bufferutil
@@ -11568,7 +11568,7 @@ snapshots:
       source-map: 0.5.7
       strip-ansi: 6.0.1
       throat: 5.0.0
-      ws: 7.5.11
+      ws: 7.5.12
       yargs: 17.7.3
     transitivePeerDependencies:
       - bufferutil
@@ -12017,7 +12017,7 @@ snapshots:
   react-devtools-core@4.28.5:
     dependencies:
       shell-quote: 1.10.0
-      ws: 7.5.11
+      ws: 7.5.12
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
@@ -12174,7 +12174,7 @@ snapshots:
       stacktrace-parser: 0.1.11
       use-sync-external-store: 1.6.0(react@18.2.0)
       whatwg-fetch: 3.6.20
-      ws: 6.2.4
+      ws: 6.2.5
       yargs: 17.7.3
     transitivePeerDependencies:
       - '@babel/core'
@@ -13010,13 +13010,13 @@ snapshots:
       imurmurhash: 0.1.4
       signal-exit: 4.1.0
 
-  ws@6.2.4:
+  ws@6.2.5:
     dependencies:
       async-limiter: 1.0.1
 
-  ws@7.5.11: {}
+  ws@7.5.12: {}
 
-  ws@8.21.0: {}
+  ws@8.21.1: {}
 
   xml-naming@0.3.0: {}
 

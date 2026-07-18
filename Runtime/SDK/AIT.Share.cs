@@ -49,17 +49,21 @@ namespace AppsInToss
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __contactsViral_Internal(string options, string subscriptionId, string typeName);
 #endif
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
         [Preserve]
         [APICategory("Share")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable<ContactResult> FetchContacts(FetchContactsOptions options)
+        public static async Awaitable<ContactResult> FetchContacts(FetchContactsOptions options, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var acs = new AwaitableCompletionSource<ContactResult>();
             string callbackId = AITCore.Instance.RegisterCallback<ContactResult>(
                 result => acs.SetResult(result),
-                error => acs.SetException(error)
+                error => acs.SetException(error),
+                timeoutMs,
+                "FetchContacts"
             );
             __fetchContacts_Internal(AITJsonSettings.Serialize(options), callbackId, "ContactResult");
             return await acs.Awaitable;
@@ -71,13 +75,15 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async Task<ContactResult> FetchContacts(FetchContactsOptions options)
+        public static async Task<ContactResult> FetchContacts(FetchContactsOptions options, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<ContactResult>();
             string callbackId = AITCore.Instance.RegisterCallback<ContactResult>(
                 result => tcs.TrySetResult(result),
-                error => tcs.TrySetException(error)
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "FetchContacts"
             );
             __fetchContacts_Internal(AITJsonSettings.Serialize(options), callbackId, "ContactResult");
             return await tcs.Task;
@@ -95,18 +101,22 @@ namespace AppsInToss
         private static extern void __fetchContacts_Internal(string options, string callbackId, string typeName);
 #endif
         /// <param name="path">딥링크로 열고 싶은 경로예요. intoss://로 시작하는 문자열이어야 해요.</param>
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <returns>deep_link_value가 포함된 토스 공유 링크를 반환해요.</returns>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
         [Preserve]
         [APICategory("Share")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable<string> GetTossShareLink(string path, string ogImageUrl = null)
+        public static async Awaitable<string> GetTossShareLink(string path, string ogImageUrl = null, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var acs = new AwaitableCompletionSource<string>();
             string callbackId = AITCore.Instance.RegisterCallback<string>(
                 result => acs.SetResult(result),
-                error => acs.SetException(error)
+                error => acs.SetException(error),
+                timeoutMs,
+                "GetTossShareLink"
             );
             __getTossShareLink_Internal(path, ogImageUrl, callbackId, "string");
             return await acs.Awaitable;
@@ -118,13 +128,15 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async Task<string> GetTossShareLink(string path, string ogImageUrl = null)
+        public static async Task<string> GetTossShareLink(string path, string ogImageUrl = null, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<string>();
             string callbackId = AITCore.Instance.RegisterCallback<string>(
                 result => tcs.TrySetResult(result),
-                error => tcs.TrySetException(error)
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "GetTossShareLink"
             );
             __getTossShareLink_Internal(path, ogImageUrl, callbackId, "string");
             return await tcs.Task;
@@ -141,17 +153,21 @@ namespace AppsInToss
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __getTossShareLink_Internal(string path, string ogImageUrl, string callbackId, string typeName);
 #endif
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
         [Preserve]
         [APICategory("Share")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable Share(ShareMessage message)
+        public static async Awaitable Share(ShareMessage message, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var acs = new AwaitableCompletionSource();
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => acs.SetResult(),
-                error => acs.SetException(error)
+                error => acs.SetException(error),
+                timeoutMs,
+                "Share"
             );
             __share_Internal(AITJsonSettings.Serialize(message), callbackId, "void");
             await acs.Awaitable;
@@ -163,13 +179,15 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async Task Share(ShareMessage message)
+        public static async Task Share(ShareMessage message, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<object>();
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => tcs.TrySetResult(null),
-                error => tcs.TrySetException(error)
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "Share"
             );
             __share_Internal(AITJsonSettings.Serialize(message), callbackId, "void");
             await tcs.Task;

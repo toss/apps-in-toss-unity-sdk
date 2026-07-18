@@ -21,17 +21,21 @@ namespace AppsInToss
     /// </summary>
     public static partial class AIT
     {
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
         [Preserve]
         [APICategory("Clipboard")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable<string> GetClipboardText()
+        public static async Awaitable<string> GetClipboardText(int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var acs = new AwaitableCompletionSource<string>();
             string callbackId = AITCore.Instance.RegisterCallback<string>(
                 result => acs.SetResult(result),
-                error => acs.SetException(error)
+                error => acs.SetException(error),
+                timeoutMs,
+                "GetClipboardText"
             );
             __getClipboardText_Internal(callbackId, "string");
             return await acs.Awaitable;
@@ -43,13 +47,15 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async Task<string> GetClipboardText()
+        public static async Task<string> GetClipboardText(int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<string>();
             string callbackId = AITCore.Instance.RegisterCallback<string>(
                 result => tcs.TrySetResult(result),
-                error => tcs.TrySetException(error)
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "GetClipboardText"
             );
             __getClipboardText_Internal(callbackId, "string");
             return await tcs.Task;
@@ -66,17 +72,21 @@ namespace AppsInToss
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __getClipboardText_Internal(string callbackId, string typeName);
 #endif
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
         [Preserve]
         [APICategory("Clipboard")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable SetClipboardText(string text)
+        public static async Awaitable SetClipboardText(string text, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var acs = new AwaitableCompletionSource();
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => acs.SetResult(),
-                error => acs.SetException(error)
+                error => acs.SetException(error),
+                timeoutMs,
+                "SetClipboardText"
             );
             __setClipboardText_Internal(text, callbackId, "void");
             await acs.Awaitable;
@@ -88,13 +98,15 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async Task SetClipboardText(string text)
+        public static async Task SetClipboardText(string text, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<object>();
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => tcs.TrySetResult(null),
-                error => tcs.TrySetException(error)
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "SetClipboardText"
             );
             __setClipboardText_Internal(text, callbackId, "void");
             await tcs.Task;

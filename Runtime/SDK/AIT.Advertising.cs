@@ -86,17 +86,21 @@ namespace AppsInToss
         /// <summary>
         /// 이 함수는 `loadAppsInTossAdMob` 로 광고가 잘 불러와졌는지 확인해요.
         /// </summary>
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
         [Preserve]
         [APICategory("Advertising")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable<bool> GoogleAdMobIsAppsInTossAdMobLoaded(IsAdMobLoadedOptions args_0)
+        public static async Awaitable<bool> GoogleAdMobIsAppsInTossAdMobLoaded(IsAdMobLoadedOptions args_0, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var acs = new AwaitableCompletionSource<bool>();
             string callbackId = AITCore.Instance.RegisterCallback<bool>(
                 result => acs.SetResult(result),
-                error => acs.SetException(error)
+                error => acs.SetException(error),
+                timeoutMs,
+                "GoogleAdMobIsAppsInTossAdMobLoaded"
             );
             __GoogleAdMobIsAppsInTossAdMobLoaded_Internal(AITJsonSettings.Serialize(args_0), callbackId, "bool");
             return await acs.Awaitable;
@@ -108,13 +112,15 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async Task<bool> GoogleAdMobIsAppsInTossAdMobLoaded(IsAdMobLoadedOptions args_0)
+        public static async Task<bool> GoogleAdMobIsAppsInTossAdMobLoaded(IsAdMobLoadedOptions args_0, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<bool>();
             string callbackId = AITCore.Instance.RegisterCallback<bool>(
                 result => tcs.TrySetResult(result),
-                error => tcs.TrySetException(error)
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "GoogleAdMobIsAppsInTossAdMobLoaded"
             );
             __GoogleAdMobIsAppsInTossAdMobLoaded_Internal(AITJsonSettings.Serialize(args_0), callbackId, "bool");
             return await tcs.Task;
@@ -131,17 +137,21 @@ namespace AppsInToss
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __GoogleAdMobIsAppsInTossAdMobLoaded_Internal(string args_0, string callbackId, string typeName);
 #endif
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
         [Preserve]
         [APICategory("Advertising")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable TossAdsInitialize(InitializeOptions options)
+        public static async Awaitable TossAdsInitialize(InitializeOptions options, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var acs = new AwaitableCompletionSource();
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => acs.SetResult(),
-                error => acs.SetException(error)
+                error => acs.SetException(error),
+                timeoutMs,
+                "TossAdsInitialize"
             );
             __TossAdsInitialize_Internal(AITJsonSettings.Serialize(options), callbackId, "void");
             await acs.Awaitable;
@@ -153,13 +163,15 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async Task TossAdsInitialize(InitializeOptions options)
+        public static async Task TossAdsInitialize(InitializeOptions options, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<object>();
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => tcs.TrySetResult(null),
-                error => tcs.TrySetException(error)
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "TossAdsInitialize"
             );
             __TossAdsInitialize_Internal(AITJsonSettings.Serialize(options), callbackId, "void");
             await tcs.Task;
@@ -176,18 +188,22 @@ namespace AppsInToss
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __TossAdsInitialize_Internal(string options, string callbackId, string typeName);
 #endif
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
         [Obsolete("attach는 더 이상 권장되지 않습니다. attachBanner를 사용해주세요.")]
         [Preserve]
         [APICategory("Advertising")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable TossAdsAttach(string adGroupId, string target, TossAdsAttachOptions options = null)
+        public static async Awaitable TossAdsAttach(string adGroupId, string target, TossAdsAttachOptions options = null, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var acs = new AwaitableCompletionSource();
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => acs.SetResult(),
-                error => acs.SetException(error)
+                error => acs.SetException(error),
+                timeoutMs,
+                "TossAdsAttach"
             );
             __TossAdsAttach_Internal(adGroupId, target, AITJsonSettings.Serialize(options), callbackId, "void");
             await acs.Awaitable;
@@ -199,13 +215,15 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async Task TossAdsAttach(string adGroupId, string target, TossAdsAttachOptions options = null)
+        public static async Task TossAdsAttach(string adGroupId, string target, TossAdsAttachOptions options = null, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<object>();
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => tcs.TrySetResult(null),
-                error => tcs.TrySetException(error)
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "TossAdsAttach"
             );
             __TossAdsAttach_Internal(adGroupId, target, AITJsonSettings.Serialize(options), callbackId, "void");
             await tcs.Task;
@@ -222,18 +240,22 @@ namespace AppsInToss
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __TossAdsAttach_Internal(string adGroupId, string target, string options, string callbackId, string typeName);
 #endif
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
         [Obsolete("CSS 셀렉터 기반 attachBanner는 더 이상 권장되지 않습니다. AITBannerAdView 컴포넌트 또는 AITBannerAd.Show를 사용해주세요.")]
         [Preserve]
         [APICategory("Advertising")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable<AttachBannerResult> TossAdsAttachBanner(string adGroupId, string target, TossAdsAttachBannerOptions options = null)
+        public static async Awaitable<AttachBannerResult> TossAdsAttachBanner(string adGroupId, string target, TossAdsAttachBannerOptions options = null, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var acs = new AwaitableCompletionSource<AttachBannerResult>();
             string callbackId = AITCore.Instance.RegisterCallback<AttachBannerResult>(
                 result => acs.SetResult(result),
-                error => acs.SetException(error)
+                error => acs.SetException(error),
+                timeoutMs,
+                "TossAdsAttachBanner"
             );
             __TossAdsAttachBanner_Internal(adGroupId, target, AITJsonSettings.Serialize(options), callbackId, "AttachBannerResult");
             return await acs.Awaitable;
@@ -245,13 +267,15 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async Task<AttachBannerResult> TossAdsAttachBanner(string adGroupId, string target, TossAdsAttachBannerOptions options = null)
+        public static async Task<AttachBannerResult> TossAdsAttachBanner(string adGroupId, string target, TossAdsAttachBannerOptions options = null, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<AttachBannerResult>();
             string callbackId = AITCore.Instance.RegisterCallback<AttachBannerResult>(
                 result => tcs.TrySetResult(result),
-                error => tcs.TrySetException(error)
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "TossAdsAttachBanner"
             );
             __TossAdsAttachBanner_Internal(adGroupId, target, AITJsonSettings.Serialize(options), callbackId, "AttachBannerResult");
             return await tcs.Task;
@@ -268,17 +292,21 @@ namespace AppsInToss
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __TossAdsAttachBanner_Internal(string adGroupId, string target, string options, string callbackId, string typeName);
 #endif
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
         [Preserve]
         [APICategory("Advertising")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable TossAdsDestroy(string slotId)
+        public static async Awaitable TossAdsDestroy(string slotId, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var acs = new AwaitableCompletionSource();
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => acs.SetResult(),
-                error => acs.SetException(error)
+                error => acs.SetException(error),
+                timeoutMs,
+                "TossAdsDestroy"
             );
             __TossAdsDestroy_Internal(slotId, callbackId, "void");
             await acs.Awaitable;
@@ -290,13 +318,15 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async Task TossAdsDestroy(string slotId)
+        public static async Task TossAdsDestroy(string slotId, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<object>();
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => tcs.TrySetResult(null),
-                error => tcs.TrySetException(error)
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "TossAdsDestroy"
             );
             __TossAdsDestroy_Internal(slotId, callbackId, "void");
             await tcs.Task;
@@ -313,17 +343,21 @@ namespace AppsInToss
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __TossAdsDestroy_Internal(string slotId, string callbackId, string typeName);
 #endif
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
         [Preserve]
         [APICategory("Advertising")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable TossAdsDestroyAll()
+        public static async Awaitable TossAdsDestroyAll(int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var acs = new AwaitableCompletionSource();
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => acs.SetResult(),
-                error => acs.SetException(error)
+                error => acs.SetException(error),
+                timeoutMs,
+                "TossAdsDestroyAll"
             );
             __TossAdsDestroyAll_Internal(callbackId, "void");
             await acs.Awaitable;
@@ -335,13 +369,15 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async Task TossAdsDestroyAll()
+        public static async Task TossAdsDestroyAll(int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<object>();
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => tcs.TrySetResult(null),
-                error => tcs.TrySetException(error)
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "TossAdsDestroyAll"
             );
             __TossAdsDestroyAll_Internal(callbackId, "void");
             await tcs.Task;

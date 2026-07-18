@@ -21,17 +21,21 @@ namespace AppsInToss
     /// </summary>
     public static partial class AIT
     {
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
         [Preserve]
         [APICategory("Analytics")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable AnalyticsScreen(object paramsParam = null)
+        public static async Awaitable AnalyticsScreen(object paramsParam = null, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var acs = new AwaitableCompletionSource();
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => acs.SetResult(),
-                error => acs.SetException(error)
+                error => acs.SetException(error),
+                timeoutMs,
+                "AnalyticsScreen"
             );
             __AnalyticsScreen_Internal(AITJsonSettings.Serialize(paramsParam), callbackId, "void");
             await acs.Awaitable;
@@ -43,13 +47,15 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async Task AnalyticsScreen(object paramsParam = null)
+        public static async Task AnalyticsScreen(object paramsParam = null, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<object>();
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => tcs.TrySetResult(null),
-                error => tcs.TrySetException(error)
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "AnalyticsScreen"
             );
             __AnalyticsScreen_Internal(AITJsonSettings.Serialize(paramsParam), callbackId, "void");
             await tcs.Task;
@@ -66,17 +72,21 @@ namespace AppsInToss
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __AnalyticsScreen_Internal(string paramsParam, string callbackId, string typeName);
 #endif
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
         [Preserve]
         [APICategory("Analytics")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable AnalyticsImpression(object paramsParam = null)
+        public static async Awaitable AnalyticsImpression(object paramsParam = null, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var acs = new AwaitableCompletionSource();
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => acs.SetResult(),
-                error => acs.SetException(error)
+                error => acs.SetException(error),
+                timeoutMs,
+                "AnalyticsImpression"
             );
             __AnalyticsImpression_Internal(AITJsonSettings.Serialize(paramsParam), callbackId, "void");
             await acs.Awaitable;
@@ -88,13 +98,15 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async Task AnalyticsImpression(object paramsParam = null)
+        public static async Task AnalyticsImpression(object paramsParam = null, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<object>();
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => tcs.TrySetResult(null),
-                error => tcs.TrySetException(error)
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "AnalyticsImpression"
             );
             __AnalyticsImpression_Internal(AITJsonSettings.Serialize(paramsParam), callbackId, "void");
             await tcs.Task;
@@ -111,17 +123,21 @@ namespace AppsInToss
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __AnalyticsImpression_Internal(string paramsParam, string callbackId, string typeName);
 #endif
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
         [Preserve]
         [APICategory("Analytics")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable AnalyticsClick(object paramsParam = null)
+        public static async Awaitable AnalyticsClick(object paramsParam = null, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var acs = new AwaitableCompletionSource();
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => acs.SetResult(),
-                error => acs.SetException(error)
+                error => acs.SetException(error),
+                timeoutMs,
+                "AnalyticsClick"
             );
             __AnalyticsClick_Internal(AITJsonSettings.Serialize(paramsParam), callbackId, "void");
             await acs.Awaitable;
@@ -133,13 +149,15 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async Task AnalyticsClick(object paramsParam = null)
+        public static async Task AnalyticsClick(object paramsParam = null, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<object>();
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => tcs.TrySetResult(null),
-                error => tcs.TrySetException(error)
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "AnalyticsClick"
             );
             __AnalyticsClick_Internal(AITJsonSettings.Serialize(paramsParam), callbackId, "void");
             await tcs.Task;

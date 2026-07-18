@@ -126,17 +126,21 @@ namespace AppsInToss
         /// <summary>
         /// 인앱결제로 구매할 수 있는 상품 목록을 가져와요. 상품 목록 화면에 진입할 때 호출해요.
         /// </summary>
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
         [Preserve]
         [APICategory("IAP")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable<IAPGetProductItemListResult> IAPGetProductItemList()
+        public static async Awaitable<IAPGetProductItemListResult> IAPGetProductItemList(int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var acs = new AwaitableCompletionSource<IAPGetProductItemListResult>();
             string callbackId = AITCore.Instance.RegisterCallback<IAPGetProductItemListResult>(
                 result => acs.SetResult(result),
-                error => acs.SetException(error)
+                error => acs.SetException(error),
+                timeoutMs,
+                "IAPGetProductItemList"
             );
             __IAPGetProductItemList_Internal(callbackId, "IAPGetProductItemListResult");
             return await acs.Awaitable;
@@ -148,13 +152,15 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async Task<IAPGetProductItemListResult> IAPGetProductItemList()
+        public static async Task<IAPGetProductItemListResult> IAPGetProductItemList(int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<IAPGetProductItemListResult>();
             string callbackId = AITCore.Instance.RegisterCallback<IAPGetProductItemListResult>(
                 result => tcs.TrySetResult(result),
-                error => tcs.TrySetException(error)
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "IAPGetProductItemList"
             );
             __IAPGetProductItemList_Internal(callbackId, "IAPGetProductItemListResult");
             return await tcs.Task;
@@ -174,17 +180,21 @@ namespace AppsInToss
         /// <summary>
         /// 대기 중인 주문 목록을 가져와요. 이 함수를 사용하면 결제가 아직 완료되지 않은 주문 정보를 확인할 수 있어요.
         /// </summary>
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
         [Preserve]
         [APICategory("IAP")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable<IAPGetPendingOrdersResult> IAPGetPendingOrders()
+        public static async Awaitable<IAPGetPendingOrdersResult> IAPGetPendingOrders(int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var acs = new AwaitableCompletionSource<IAPGetPendingOrdersResult>();
             string callbackId = AITCore.Instance.RegisterCallback<IAPGetPendingOrdersResult>(
                 result => acs.SetResult(result),
-                error => acs.SetException(error)
+                error => acs.SetException(error),
+                timeoutMs,
+                "IAPGetPendingOrders"
             );
             __IAPGetPendingOrders_Internal(callbackId, "IAPGetPendingOrdersResult");
             return await acs.Awaitable;
@@ -196,13 +206,15 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async Task<IAPGetPendingOrdersResult> IAPGetPendingOrders()
+        public static async Task<IAPGetPendingOrdersResult> IAPGetPendingOrders(int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<IAPGetPendingOrdersResult>();
             string callbackId = AITCore.Instance.RegisterCallback<IAPGetPendingOrdersResult>(
                 result => tcs.TrySetResult(result),
-                error => tcs.TrySetException(error)
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "IAPGetPendingOrders"
             );
             __IAPGetPendingOrders_Internal(callbackId, "IAPGetPendingOrdersResult");
             return await tcs.Task;
@@ -222,17 +234,21 @@ namespace AppsInToss
         /// <summary>
         /// 인앱결제로 구매하거나 환불한 주문 목록을 가져와요.
         /// </summary>
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
         [Preserve]
         [APICategory("IAP")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable<CompletedOrRefundedOrdersResult> IAPGetCompletedOrRefundedOrders()
+        public static async Awaitable<CompletedOrRefundedOrdersResult> IAPGetCompletedOrRefundedOrders(int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var acs = new AwaitableCompletionSource<CompletedOrRefundedOrdersResult>();
             string callbackId = AITCore.Instance.RegisterCallback<CompletedOrRefundedOrdersResult>(
                 result => acs.SetResult(result),
-                error => acs.SetException(error)
+                error => acs.SetException(error),
+                timeoutMs,
+                "IAPGetCompletedOrRefundedOrders"
             );
             __IAPGetCompletedOrRefundedOrders_Internal(callbackId, "CompletedOrRefundedOrdersResult");
             return await acs.Awaitable;
@@ -244,13 +260,15 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async Task<CompletedOrRefundedOrdersResult> IAPGetCompletedOrRefundedOrders()
+        public static async Task<CompletedOrRefundedOrdersResult> IAPGetCompletedOrRefundedOrders(int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<CompletedOrRefundedOrdersResult>();
             string callbackId = AITCore.Instance.RegisterCallback<CompletedOrRefundedOrdersResult>(
                 result => tcs.TrySetResult(result),
-                error => tcs.TrySetException(error)
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "IAPGetCompletedOrRefundedOrders"
             );
             __IAPGetCompletedOrRefundedOrders_Internal(callbackId, "CompletedOrRefundedOrdersResult");
             return await tcs.Task;
@@ -270,17 +288,21 @@ namespace AppsInToss
         /// <summary>
         /// 상품 지급 처리를 완료했다는 메시지를 앱에 전달해요. 이 함수를 사용하면 결제가 완료된 주문의 상품 지급이 정상적으로 완료되었음을 알릴 수 있어요.
         /// </summary>
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
         [Preserve]
         [APICategory("IAP")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable<bool> IAPCompleteProductGrant(IAPCompleteProductGrantArgs_0 args_0)
+        public static async Awaitable<bool> IAPCompleteProductGrant(IAPCompleteProductGrantArgs_0 args_0, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var acs = new AwaitableCompletionSource<bool>();
             string callbackId = AITCore.Instance.RegisterCallback<bool>(
                 result => acs.SetResult(result),
-                error => acs.SetException(error)
+                error => acs.SetException(error),
+                timeoutMs,
+                "IAPCompleteProductGrant"
             );
             __IAPCompleteProductGrant_Internal(AITJsonSettings.Serialize(args_0), callbackId, "bool");
             return await acs.Awaitable;
@@ -292,13 +314,15 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async Task<bool> IAPCompleteProductGrant(IAPCompleteProductGrantArgs_0 args_0)
+        public static async Task<bool> IAPCompleteProductGrant(IAPCompleteProductGrantArgs_0 args_0, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<bool>();
             string callbackId = AITCore.Instance.RegisterCallback<bool>(
                 result => tcs.TrySetResult(result),
-                error => tcs.TrySetException(error)
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "IAPCompleteProductGrant"
             );
             __IAPCompleteProductGrant_Internal(AITJsonSettings.Serialize(args_0), callbackId, "bool");
             return await tcs.Task;
@@ -315,17 +339,21 @@ namespace AppsInToss
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __IAPCompleteProductGrant_Internal(string args_0, string callbackId, string typeName);
 #endif
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
         [Preserve]
         [APICategory("IAP")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable<IapSubscriptionInfoResponse> IAPGetSubscriptionInfo(IAPGetSubscriptionInfoArgs_0 args_0)
+        public static async Awaitable<IapSubscriptionInfoResponse> IAPGetSubscriptionInfo(IAPGetSubscriptionInfoArgs_0 args_0, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var acs = new AwaitableCompletionSource<IapSubscriptionInfoResponse>();
             string callbackId = AITCore.Instance.RegisterCallback<IapSubscriptionInfoResponse>(
                 result => acs.SetResult(result),
-                error => acs.SetException(error)
+                error => acs.SetException(error),
+                timeoutMs,
+                "IAPGetSubscriptionInfo"
             );
             __IAPGetSubscriptionInfo_Internal(AITJsonSettings.Serialize(args_0), callbackId, "IapSubscriptionInfoResponse");
             return await acs.Awaitable;
@@ -337,13 +365,15 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async Task<IapSubscriptionInfoResponse> IAPGetSubscriptionInfo(IAPGetSubscriptionInfoArgs_0 args_0)
+        public static async Task<IapSubscriptionInfoResponse> IAPGetSubscriptionInfo(IAPGetSubscriptionInfoArgs_0 args_0, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<IapSubscriptionInfoResponse>();
             string callbackId = AITCore.Instance.RegisterCallback<IapSubscriptionInfoResponse>(
                 result => tcs.TrySetResult(result),
-                error => tcs.TrySetException(error)
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "IAPGetSubscriptionInfo"
             );
             __IAPGetSubscriptionInfo_Internal(AITJsonSettings.Serialize(args_0), callbackId, "IapSubscriptionInfoResponse");
             return await tcs.Task;

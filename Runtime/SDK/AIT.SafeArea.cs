@@ -21,17 +21,21 @@ namespace AppsInToss
     /// </summary>
     public static partial class AIT
     {
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
         [Preserve]
         [APICategory("SafeArea")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable<SafeAreaInsets> SafeAreaInsetsGet()
+        public static async Awaitable<SafeAreaInsets> SafeAreaInsetsGet(int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var acs = new AwaitableCompletionSource<SafeAreaInsets>();
             string callbackId = AITCore.Instance.RegisterCallback<SafeAreaInsets>(
                 result => acs.SetResult(result),
-                error => acs.SetException(error)
+                error => acs.SetException(error),
+                timeoutMs,
+                "SafeAreaInsetsGet"
             );
             __SafeAreaInsetsGet_Internal(callbackId, "SafeAreaInsets");
             return await acs.Awaitable;
@@ -43,13 +47,15 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async Task<SafeAreaInsets> SafeAreaInsetsGet()
+        public static async Task<SafeAreaInsets> SafeAreaInsetsGet(int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<SafeAreaInsets>();
             string callbackId = AITCore.Instance.RegisterCallback<SafeAreaInsets>(
                 result => tcs.TrySetResult(result),
-                error => tcs.TrySetException(error)
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "SafeAreaInsetsGet"
             );
             __SafeAreaInsetsGet_Internal(callbackId, "SafeAreaInsets");
             return await tcs.Task;
@@ -66,17 +72,21 @@ namespace AppsInToss
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __SafeAreaInsetsGet_Internal(string callbackId, string typeName);
 #endif
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
         [Preserve]
         [APICategory("SafeArea")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable<System.Action> SafeAreaInsetsSubscribe(SafeAreaInsetsSubscribe__0 __0)
+        public static async Awaitable<System.Action> SafeAreaInsetsSubscribe(SafeAreaInsetsSubscribe__0 __0, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var acs = new AwaitableCompletionSource<System.Action>();
             string callbackId = AITCore.Instance.RegisterCallback<System.Action>(
                 result => acs.SetResult(result),
-                error => acs.SetException(error)
+                error => acs.SetException(error),
+                timeoutMs,
+                "SafeAreaInsetsSubscribe"
             );
             __SafeAreaInsetsSubscribe_Internal(AITJsonSettings.Serialize(__0), callbackId, "System.Action");
             return await acs.Awaitable;
@@ -88,13 +98,15 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async Task<System.Action> SafeAreaInsetsSubscribe(SafeAreaInsetsSubscribe__0 __0)
+        public static async Task<System.Action> SafeAreaInsetsSubscribe(SafeAreaInsetsSubscribe__0 __0, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<System.Action>();
             string callbackId = AITCore.Instance.RegisterCallback<System.Action>(
                 result => tcs.TrySetResult(result),
-                error => tcs.TrySetException(error)
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "SafeAreaInsetsSubscribe"
             );
             __SafeAreaInsetsSubscribe_Internal(AITJsonSettings.Serialize(__0), callbackId, "System.Action");
             return await tcs.Task;

@@ -24,18 +24,22 @@ namespace AppsInToss
         /// <summary>
         /// 모바일 앱의 로컬 저장소에서 문자열 데이터를 가져와요. 주로 앱이 종료되었다가 다시 시작해도 데이터가 유지되어야 하는 경우에 사용해요.
         /// </summary>
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <returns>결과 값 또는 null</returns>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
         [Preserve]
         [APICategory("Storage")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable<string> StorageGetItem(string args_0)
+        public static async Awaitable<string> StorageGetItem(string args_0, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var acs = new AwaitableCompletionSource<string>();
             string callbackId = AITCore.Instance.RegisterCallback<string>(
                 result => acs.SetResult(result),
-                error => acs.SetException(error)
+                error => acs.SetException(error),
+                timeoutMs,
+                "StorageGetItem"
             );
             __StorageGetItem_Internal(args_0, callbackId, "string");
             return await acs.Awaitable;
@@ -47,13 +51,15 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async Task<string> StorageGetItem(string args_0)
+        public static async Task<string> StorageGetItem(string args_0, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<string>();
             string callbackId = AITCore.Instance.RegisterCallback<string>(
                 result => tcs.TrySetResult(result),
-                error => tcs.TrySetException(error)
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "StorageGetItem"
             );
             __StorageGetItem_Internal(args_0, callbackId, "string");
             return await tcs.Task;
@@ -73,17 +79,21 @@ namespace AppsInToss
         /// <summary>
         /// 모바일 앱의 로컬 저장소에 문자열 데이터를 저장해요. 주로 앱이 종료되었다가 다시 시작해도 데이터가 유지되어야 하는 경우에 사용해요.
         /// </summary>
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
         [Preserve]
         [APICategory("Storage")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable StorageSetItem(string args_0, string args_1)
+        public static async Awaitable StorageSetItem(string args_0, string args_1, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var acs = new AwaitableCompletionSource();
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => acs.SetResult(),
-                error => acs.SetException(error)
+                error => acs.SetException(error),
+                timeoutMs,
+                "StorageSetItem"
             );
             __StorageSetItem_Internal(args_0, args_1, callbackId, "void");
             await acs.Awaitable;
@@ -95,13 +105,15 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async Task StorageSetItem(string args_0, string args_1)
+        public static async Task StorageSetItem(string args_0, string args_1, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<object>();
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => tcs.TrySetResult(null),
-                error => tcs.TrySetException(error)
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "StorageSetItem"
             );
             __StorageSetItem_Internal(args_0, args_1, callbackId, "void");
             await tcs.Task;
@@ -121,17 +133,21 @@ namespace AppsInToss
         /// <summary>
         /// 모바일 앱의 로컬 저장소에서 특정 키에 해당하는 아이템을 삭제해요.
         /// </summary>
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
         [Preserve]
         [APICategory("Storage")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable StorageRemoveItem(string args_0)
+        public static async Awaitable StorageRemoveItem(string args_0, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var acs = new AwaitableCompletionSource();
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => acs.SetResult(),
-                error => acs.SetException(error)
+                error => acs.SetException(error),
+                timeoutMs,
+                "StorageRemoveItem"
             );
             __StorageRemoveItem_Internal(args_0, callbackId, "void");
             await acs.Awaitable;
@@ -143,13 +159,15 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async Task StorageRemoveItem(string args_0)
+        public static async Task StorageRemoveItem(string args_0, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<object>();
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => tcs.TrySetResult(null),
-                error => tcs.TrySetException(error)
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "StorageRemoveItem"
             );
             __StorageRemoveItem_Internal(args_0, callbackId, "void");
             await tcs.Task;
@@ -169,17 +187,21 @@ namespace AppsInToss
         /// <summary>
         /// 모바일 앱의 로컬 저장소의 모든 아이템을 삭제해요.
         /// </summary>
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
         [Preserve]
         [APICategory("Storage")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable StorageClearItems()
+        public static async Awaitable StorageClearItems(int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var acs = new AwaitableCompletionSource();
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => acs.SetResult(),
-                error => acs.SetException(error)
+                error => acs.SetException(error),
+                timeoutMs,
+                "StorageClearItems"
             );
             __StorageClearItems_Internal(callbackId, "void");
             await acs.Awaitable;
@@ -191,13 +213,15 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async Task StorageClearItems()
+        public static async Task StorageClearItems(int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<object>();
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => tcs.TrySetResult(null),
-                error => tcs.TrySetException(error)
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "StorageClearItems"
             );
             __StorageClearItems_Internal(callbackId, "void");
             await tcs.Task;

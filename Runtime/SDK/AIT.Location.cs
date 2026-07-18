@@ -21,17 +21,21 @@ namespace AppsInToss
     /// </summary>
     public static partial class AIT
     {
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
         [Preserve]
         [APICategory("Location")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable<Location> GetCurrentLocation(GetCurrentLocationOptions options)
+        public static async Awaitable<Location> GetCurrentLocation(GetCurrentLocationOptions options, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var acs = new AwaitableCompletionSource<Location>();
             string callbackId = AITCore.Instance.RegisterCallback<Location>(
                 result => acs.SetResult(result),
-                error => acs.SetException(error)
+                error => acs.SetException(error),
+                timeoutMs,
+                "GetCurrentLocation"
             );
             __getCurrentLocation_Internal(AITJsonSettings.Serialize(options), callbackId, "Location");
             return await acs.Awaitable;
@@ -43,13 +47,15 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async Task<Location> GetCurrentLocation(GetCurrentLocationOptions options)
+        public static async Task<Location> GetCurrentLocation(GetCurrentLocationOptions options, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<Location>();
             string callbackId = AITCore.Instance.RegisterCallback<Location>(
                 result => tcs.TrySetResult(result),
-                error => tcs.TrySetException(error)
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "GetCurrentLocation"
             );
             __getCurrentLocation_Internal(AITJsonSettings.Serialize(options), callbackId, "Location");
             return await tcs.Task;

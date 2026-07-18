@@ -203,6 +203,12 @@ test.describe('CE Native Serving (brotli/gzip, decompressionFallback OFF)', () =
     const buildResponseEncodings = new Map();
     /** @type {string[]} 인터셉터 진단용 콘솔 라인 */
     const cacheLogs = [];
+    // Unity 로더가 WebAssembly.instantiateStreaming 실패 시 wasm을 ArrayBuffer로
+    // 재페치하는 폴백. 이 E2E 환경(vite preview + 헤드리스/모바일 Chrome)에서는
+    // CE(.br) wasm의 스트리밍 컴파일이 실패해 이 폴백이 발생하고 wasm이 1회 더
+    // 다운로드된다 — short read 재시도 버그와는 무관한 브라우저/로더 동작이다.
+    // (CLAUDE.md의 알려진 E2E red-herring: 통과 leg에도 동일하게 등장.)
+    let wasmStreamingFallback = false;
 
     page.on('request', (req) => {
       const url = req.url();
@@ -225,6 +231,10 @@ test.describe('CE Native Serving (brotli/gzip, decompressionFallback OFF)', () =
       if (text.includes('[AIT] cache:') || text.includes('short read')) {
         cacheLogs.push(text);
         console.log('  [console]', text.slice(0, 160));
+      }
+      if (/스트리밍 컴파일 실패|ArrayBuffer 폴백|instantiateStreaming|compileStreaming/.test(text)) {
+        wasmStreamingFallback = true;
+        console.log('  [console:wasm-fallback]', text.slice(0, 160));
       }
     });
 
@@ -252,11 +262,26 @@ test.describe('CE Native Serving (brotli/gzip, decompressionFallback OFF)', () =
       }
     }
 
-    // 2. 이중 다운로드 회귀: Build/* 각 URL은 정확히 1회만 요청되어야 한다
-    const duplicated = [...buildRequestCounts.entries()].filter(([, n]) => n > 1);
-    expect(duplicated, `Build 리소스 중복 다운로드 감지: ${JSON.stringify(duplicated)} — CE 응답 길이 오판(short read) 회귀 의심`).toEqual([]);
+    // 2. 이중 다운로드 회귀: Build/* 각 URL은 정확히 1회만 요청되어야 한다.
+    //    예외: wasm은 위 스트리밍 폴백이 발생하면 ArrayBuffer 재페치로 1회 더
+    //    받는다(환경 아티팩트, short read 버그와 무관) → 그 경우에 한해 2회까지 허용.
+    //    data/framework/symbols 등 비-wasm 리소스는 스트리밍 컴파일 대상이 아니므로
+    //    항상 단일 다운로드여야 한다 — 이들이 2회면 short read 회귀의 결정적 증거다
+    //    (원 버그는 CE 응답이면 data도 통째로 재다운로드했다).
+    const isWasm = (name) => /\.wasm(\.br|\.gz)?$/.test(name);
+    const duplicated = [...buildRequestCounts.entries()].filter(([name, n]) => {
+      if (n <= 1) return false;
+      if (isWasm(name) && n === 2 && wasmStreamingFallback) return false; // 허용된 폴백
+      return true;
+    });
+    expect(
+      duplicated,
+      `Build 리소스 중복 다운로드 감지: ${JSON.stringify(duplicated)} ` +
+      `(wasmStreamingFallback=${wasmStreamingFallback}) — CE 응답 길이 오판(short read) 회귀 의심`
+    ).toEqual([]);
 
-    // 3. 버퍼링 인터셉터 무결성 재시도 미발화
+    // 3. 버퍼링 인터셉터 무결성 재시도 미발화 — short read 버그의 직접 지문.
+    //    (이중 다운로드 단언이 환경 폴백을 허용하므로, 실제 회귀는 이 재시도 로그가 잡는다.)
     const retryLogs = cacheLogs.filter((l) => /cache: (retry|giveup)|short read/.test(l));
     expect(retryLogs, `버퍼링 fetch 재시도/포기 발생: ${JSON.stringify(retryLogs)}`).toEqual([]);
 
@@ -266,7 +291,7 @@ test.describe('CE Native Serving (brotli/gzip, decompressionFallback OFF)', () =
       expect(storedLogs.length, '레거시 버퍼링 인터셉터 개입 시 cache: stored 1건 이상 필요').toBeGreaterThan(0);
     }
 
-    console.log(`✅ CE 서빙 검증 완료 — 요청 ${buildRequestCounts.size}종 전부 단일 다운로드, legacy=${legacyActive}`);
+    console.log(`✅ CE 서빙 검증 완료 — 요청 ${buildRequestCounts.size}종, legacy=${legacyActive}, wasmStreamingFallback=${wasmStreamingFallback}`);
 
     await context.close();
   });

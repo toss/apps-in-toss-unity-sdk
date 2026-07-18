@@ -67,6 +67,17 @@ public class AITWebGLCodeOptimizationTests
             return;
         }
 
+        // API는 있지만 enum에 DiskSizeLTO/DiskSize가 둘 다 없는 버전(예: 2021.3의 레거시
+        // WebGLCodeOptimization={Speed,Size})에서는 TrySetDiskSizeLTO가 설계상 false를 반환한다
+        // (fail-safe skip). 이 경우는 폴백 대상 자체가 없으므로 "true 반환" 계약을 요구할 수 없다 →
+        // 별도 fail-safe 동작으로 보고 Ignore. (IsSupported만으로는 2021.3을 걸러내지 못한다 —
+        // 2021.3은 레거시 codeOptimization이 있어 IsSupported==true이나 DiskSize*는 없다.)
+        if (!AITWebGLCodeOptimization.SupportsDiskSizeMember)
+        {
+            Assert.Ignore("이 Unity 버전의 codeOptimization enum에는 DiskSizeLTO/DiskSize가 없어 폴백 대상이 아닙니다.");
+            return;
+        }
+
         // 수정 전 값 기억 (복원용)
         string before = AITWebGLCodeOptimization.GetCurrentName();
 

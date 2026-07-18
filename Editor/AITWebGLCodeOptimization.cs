@@ -21,7 +21,8 @@ namespace AppsInToss.Editor
     ///   Unity 6에서 제거됨 → 직접 참조 시 컴파일 실패.
     /// 두 API의 enum 멤버명(DiskSizeLTO 등)이 동일하므로 멤버 "이름"으로 다룬다.
     ///
-    /// 멤버가 없는 버전(예: 2021.3에 codeOptimization 부재)에서는 fail-safe로 동작한다 —
+    /// codeOptimization API는 있지만 enum에 DiskSizeLTO/DiskSize가 없는 버전
+    /// (예: 2021.3의 레거시 WebGLCodeOptimization={Speed,Size})에서는 fail-safe로 동작한다 —
     /// 설정을 건너뛰고 경고만 남기며 빌드는 계속된다(해당 버전에서 LTO 이득만 없음).
     /// </summary>
     internal static class AITWebGLCodeOptimization
@@ -81,6 +82,23 @@ namespace AppsInToss.Editor
 
         /// <summary>이 Unity 버전에서 codeOptimization 설정이 가능한지.</summary>
         public static bool IsSupported => ResolveProperty() != null;
+
+        /// <summary>
+        /// resolved된 codeOptimization enum이 DiskSizeLTO 또는 DiskSize 멤버를 정의하는지.
+        /// 2021.3의 레거시 WebGLCodeOptimization({Speed,Size})처럼 API는 있지만 두 멤버가
+        /// 모두 없는 버전에서는 TrySetDiskSizeLTO()가 설계상 false(fail-safe skip)를 반환한다.
+        /// 이 경우를 구분해야 하는 호출자/테스트가 사용한다.
+        /// </summary>
+        internal static bool SupportsDiskSizeMember
+        {
+            get
+            {
+                var p = ResolveProperty();
+                if (p == null) return false;
+                return Enum.IsDefined(p.PropertyType, DiskSizeLTO)
+                    || Enum.IsDefined(p.PropertyType, DiskSizeFallback);
+            }
+        }
 
         /// <summary>현재 값의 enum 멤버 이름. API 부재 시 null.</summary>
         public static string GetCurrentName()

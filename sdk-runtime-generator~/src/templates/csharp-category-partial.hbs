@@ -228,6 +228,7 @@ namespace AppsInToss
         /// <param name="{{this.paramName}}">{{xmlSafe this.description}}</param>
 {{/if}}
 {{/each}}
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
 {{#if this.returnDescription}}
         /// <returns>{{xmlSafe this.returnDescription}}{{#if this.isNullableReturn}} 값이 없으면 null을 반환합니다.{{/if}}</returns>
 {{else if this.isNullableReturn}}
@@ -235,20 +236,23 @@ namespace AppsInToss
 {{/if}}
 {{#if this.isAsync}}
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
 {{#if this.isDeprecated}}
         [Obsolete("{{this.deprecatedMessage}}")]
 {{/if}}
         [Preserve]
         [APICategory("{{../categoryName}}")]
 #if UNITY_6000_0_OR_NEWER
-        public static async {{#if (eq this.callbackType "void")}}Awaitable{{else}}Awaitable<{{{this.callbackType}}}>{{/if}} {{{this.pascalName}}}({{#each this.parameters}}{{{this.paramType}}} {{this.paramName}}{{#if this.optional}} = null{{/if}}{{#unless @last}}, {{/unless}}{{/each}})
+        public static async {{#if (eq this.callbackType "void")}}Awaitable{{else}}Awaitable<{{{this.callbackType}}}>{{/if}} {{{this.pascalName}}}({{#each this.parameters}}{{{this.paramType}}} {{this.paramName}}{{#if this.optional}} = null{{/if}}, {{/each}}int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
 {{#if (eq this.callbackType "void")}}
             var acs = new AwaitableCompletionSource();
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => acs.SetResult(),
-                error => acs.SetException(error)
+                error => acs.SetException(error),
+                timeoutMs,
+                "{{{this.pascalName}}}"
             );
             __{{{this.name}}}_Internal({{#each this.parameters}}{{#if this.isPrimitive}}{{this.paramName}}{{else}}AITJsonSettings.Serialize({{this.paramName}}){{/if}}, {{/each}}callbackId, "{{{this.callbackType}}}");
             await acs.Awaitable;
@@ -256,7 +260,9 @@ namespace AppsInToss
             var acs = new AwaitableCompletionSource<{{{this.callbackType}}}>();
             string callbackId = AITCore.Instance.RegisterCallback<{{{this.callbackType}}}>(
                 result => acs.SetResult(result),
-                error => acs.SetException(error)
+                error => acs.SetException(error),
+                timeoutMs,
+                "{{{this.pascalName}}}"
             );
             __{{{this.name}}}_Internal({{#each this.parameters}}{{#if this.isPrimitive}}{{this.paramName}}{{else}}AITJsonSettings.Serialize({{this.paramName}}){{/if}}, {{/each}}callbackId, "{{{this.callbackType}}}");
             return await acs.Awaitable;
@@ -283,14 +289,16 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async {{#if (eq this.callbackType "void")}}Task{{else}}Task<{{{this.callbackType}}}>{{/if}} {{{this.pascalName}}}({{#each this.parameters}}{{{this.paramType}}} {{this.paramName}}{{#if this.optional}} = null{{/if}}{{#unless @last}}, {{/unless}}{{/each}})
+        public static async {{#if (eq this.callbackType "void")}}Task{{else}}Task<{{{this.callbackType}}}>{{/if}} {{{this.pascalName}}}({{#each this.parameters}}{{{this.paramType}}} {{this.paramName}}{{#if this.optional}} = null{{/if}}, {{/each}}int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
 {{#if (eq this.callbackType "void")}}
             var tcs = new TaskCompletionSource<object>();
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => tcs.TrySetResult(null),
-                error => tcs.TrySetException(error)
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "{{{this.pascalName}}}"
             );
             __{{{this.name}}}_Internal({{#each this.parameters}}{{#if this.isPrimitive}}{{this.paramName}}{{else}}AITJsonSettings.Serialize({{this.paramName}}){{/if}}, {{/each}}callbackId, "{{{this.callbackType}}}");
             await tcs.Task;
@@ -298,7 +306,9 @@ namespace AppsInToss
             var tcs = new TaskCompletionSource<{{{this.callbackType}}}>();
             string callbackId = AITCore.Instance.RegisterCallback<{{{this.callbackType}}}>(
                 result => tcs.TrySetResult(result),
-                error => tcs.TrySetException(error)
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "{{{this.pascalName}}}"
             );
             __{{{this.name}}}_Internal({{#each this.parameters}}{{#if this.isPrimitive}}{{this.paramName}}{{else}}AITJsonSettings.Serialize({{this.paramName}}){{/if}}, {{/each}}callbackId, "{{{this.callbackType}}}");
             return await tcs.Task;
@@ -332,20 +342,23 @@ namespace AppsInToss
 #endif
 {{else}}
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
 {{#if this.isDeprecated}}
         [Obsolete("{{this.deprecatedMessage}}")]
 {{/if}}
         [Preserve]
         [APICategory("{{../categoryName}}")]
 #if UNITY_6000_0_OR_NEWER
-        public static async {{#if (eq this.callbackType "void")}}Awaitable{{else}}Awaitable<{{{this.callbackType}}}>{{/if}} {{{this.pascalName}}}({{#each this.parameters}}{{{this.paramType}}} {{this.paramName}}{{#if this.optional}} = null{{/if}}{{#unless @last}}, {{/unless}}{{/each}})
+        public static async {{#if (eq this.callbackType "void")}}Awaitable{{else}}Awaitable<{{{this.callbackType}}}>{{/if}} {{{this.pascalName}}}({{#each this.parameters}}{{{this.paramType}}} {{this.paramName}}{{#if this.optional}} = null{{/if}}, {{/each}}int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
 {{#if (eq this.callbackType "void")}}
             var acs = new AwaitableCompletionSource();
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => acs.SetResult(),
-                error => acs.SetException(error)
+                error => acs.SetException(error),
+                timeoutMs,
+                "{{{this.pascalName}}}"
             );
             __{{{this.name}}}_Internal({{#each this.parameters}}{{#if this.isPrimitive}}{{this.paramName}}{{else}}AITJsonSettings.Serialize({{this.paramName}}){{/if}}, {{/each}}callbackId, "{{{this.callbackType}}}");
             await acs.Awaitable;
@@ -353,7 +366,9 @@ namespace AppsInToss
             var acs = new AwaitableCompletionSource<{{{this.callbackType}}}>();
             string callbackId = AITCore.Instance.RegisterCallback<{{{this.callbackType}}}>(
                 result => acs.SetResult(result),
-                error => acs.SetException(error)
+                error => acs.SetException(error),
+                timeoutMs,
+                "{{{this.pascalName}}}"
             );
             __{{{this.name}}}_Internal({{#each this.parameters}}{{#if this.isPrimitive}}{{this.paramName}}{{else}}AITJsonSettings.Serialize({{this.paramName}}){{/if}}, {{/each}}callbackId, "{{{this.callbackType}}}");
             return await acs.Awaitable;
@@ -378,14 +393,16 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async {{#if (eq this.callbackType "void")}}Task{{else}}Task<{{{this.callbackType}}}>{{/if}} {{{this.pascalName}}}({{#each this.parameters}}{{{this.paramType}}} {{this.paramName}}{{#if this.optional}} = null{{/if}}{{#unless @last}}, {{/unless}}{{/each}})
+        public static async {{#if (eq this.callbackType "void")}}Task{{else}}Task<{{{this.callbackType}}}>{{/if}} {{{this.pascalName}}}({{#each this.parameters}}{{{this.paramType}}} {{this.paramName}}{{#if this.optional}} = null{{/if}}, {{/each}}int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
 {{#if (eq this.callbackType "void")}}
             var tcs = new TaskCompletionSource<object>();
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => tcs.TrySetResult(null),
-                error => tcs.TrySetException(error)
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "{{{this.pascalName}}}"
             );
             __{{{this.name}}}_Internal({{#each this.parameters}}{{#if this.isPrimitive}}{{this.paramName}}{{else}}AITJsonSettings.Serialize({{this.paramName}}){{/if}}, {{/each}}callbackId, "{{{this.callbackType}}}");
             await tcs.Task;
@@ -393,7 +410,9 @@ namespace AppsInToss
             var tcs = new TaskCompletionSource<{{{this.callbackType}}}>();
             string callbackId = AITCore.Instance.RegisterCallback<{{{this.callbackType}}}>(
                 result => tcs.TrySetResult(result),
-                error => tcs.TrySetException(error)
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "{{{this.pascalName}}}"
             );
             __{{{this.name}}}_Internal({{#each this.parameters}}{{#if this.isPrimitive}}{{this.paramName}}{{else}}AITJsonSettings.Serialize({{this.paramName}}){{/if}}, {{/each}}callbackId, "{{{this.callbackType}}}");
             return await tcs.Task;

@@ -21,18 +21,22 @@ namespace AppsInToss
     /// </summary>
     public static partial class AIT
     {
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <returns>권한의 현재 상태를 반환해요. 반환값은 다음 중 하나예요: allowed: 권한이 허용된 상태예요. denied: 권한이 거부된 상태예요. notDetermined: 아직 권한 요청에 대한 결정이 이루어지지 않은 상태예요.</returns>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
         [Preserve]
         [APICategory("Permission")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable<PermissionStatus> GetPermission(GetPermissionPermission permission)
+        public static async Awaitable<PermissionStatus> GetPermission(GetPermissionPermission permission, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var acs = new AwaitableCompletionSource<PermissionStatus>();
             string callbackId = AITCore.Instance.RegisterCallback<PermissionStatus>(
                 result => acs.SetResult(result),
-                error => acs.SetException(error)
+                error => acs.SetException(error),
+                timeoutMs,
+                "GetPermission"
             );
             __getPermission_Internal(AITJsonSettings.Serialize(permission), callbackId, "PermissionStatus");
             return await acs.Awaitable;
@@ -44,13 +48,15 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async Task<PermissionStatus> GetPermission(GetPermissionPermission permission)
+        public static async Task<PermissionStatus> GetPermission(GetPermissionPermission permission, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<PermissionStatus>();
             string callbackId = AITCore.Instance.RegisterCallback<PermissionStatus>(
                 result => tcs.TrySetResult(result),
-                error => tcs.TrySetException(error)
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "GetPermission"
             );
             __getPermission_Internal(AITJsonSettings.Serialize(permission), callbackId, "PermissionStatus");
             return await tcs.Task;
@@ -67,18 +73,22 @@ namespace AppsInToss
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __getPermission_Internal(string permission, string callbackId, string typeName);
 #endif
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <returns>권한의 현재 상태를 반환해요. 반환값은 다음 중 하나예요: allowed: 권한이 허용된 상태예요. denied: 권한이 거부된 상태예요.</returns>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
         [Preserve]
         [APICategory("Permission")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable<string> OpenPermissionDialog(OpenPermissionDialogPermission permission)
+        public static async Awaitable<string> OpenPermissionDialog(OpenPermissionDialogPermission permission, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var acs = new AwaitableCompletionSource<string>();
             string callbackId = AITCore.Instance.RegisterCallback<string>(
                 result => acs.SetResult(result),
-                error => acs.SetException(error)
+                error => acs.SetException(error),
+                timeoutMs,
+                "OpenPermissionDialog"
             );
             __openPermissionDialog_Internal(AITJsonSettings.Serialize(permission), callbackId, "string");
             return await acs.Awaitable;
@@ -90,13 +100,15 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async Task<string> OpenPermissionDialog(OpenPermissionDialogPermission permission)
+        public static async Task<string> OpenPermissionDialog(OpenPermissionDialogPermission permission, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<string>();
             string callbackId = AITCore.Instance.RegisterCallback<string>(
                 result => tcs.TrySetResult(result),
-                error => tcs.TrySetException(error)
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "OpenPermissionDialog"
             );
             __openPermissionDialog_Internal(AITJsonSettings.Serialize(permission), callbackId, "string");
             return await tcs.Task;
@@ -113,18 +125,22 @@ namespace AppsInToss
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __openPermissionDialog_Internal(string permission, string callbackId, string typeName);
 #endif
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <returns>사용자가 선택한 최종 권한 상태를 반환해요. 반환값은 다음 중 하나예요: allowed: 권한이 허용된 경우 denied: 권한이 거부된 경우</returns>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
         [Preserve]
         [APICategory("Permission")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable<string> RequestPermission(RequestPermissionPermission permission)
+        public static async Awaitable<string> RequestPermission(RequestPermissionPermission permission, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var acs = new AwaitableCompletionSource<string>();
             string callbackId = AITCore.Instance.RegisterCallback<string>(
                 result => acs.SetResult(result),
-                error => acs.SetException(error)
+                error => acs.SetException(error),
+                timeoutMs,
+                "RequestPermission"
             );
             __requestPermission_Internal(AITJsonSettings.Serialize(permission), callbackId, "string");
             return await acs.Awaitable;
@@ -136,13 +152,15 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async Task<string> RequestPermission(RequestPermissionPermission permission)
+        public static async Task<string> RequestPermission(RequestPermissionPermission permission, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<string>();
             string callbackId = AITCore.Instance.RegisterCallback<string>(
                 result => tcs.TrySetResult(result),
-                error => tcs.TrySetException(error)
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "RequestPermission"
             );
             __requestPermission_Internal(AITJsonSettings.Serialize(permission), callbackId, "string");
             return await tcs.Task;

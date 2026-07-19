@@ -21,18 +21,22 @@ namespace AppsInToss
     /// </summary>
     public static partial class AIT
     {
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <returns>프로필 정보 또는 undefined를 반환해요. 값이 없으면 null을 반환합니다.</returns>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
         [Preserve]
         [APICategory("GameCenter")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable<GameCenterGameProfileResponse> GetGameCenterGameProfile()
+        public static async Awaitable<GameCenterGameProfileResponse> GetGameCenterGameProfile(int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var acs = new AwaitableCompletionSource<GameCenterGameProfileResponse>();
             string callbackId = AITCore.Instance.RegisterCallback<GameCenterGameProfileResponse>(
                 result => acs.SetResult(result),
-                error => acs.SetException(error)
+                error => acs.SetException(error),
+                timeoutMs,
+                "GetGameCenterGameProfile"
             );
             __getGameCenterGameProfile_Internal(callbackId, "GameCenterGameProfileResponse");
             return await acs.Awaitable;
@@ -44,13 +48,15 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async Task<GameCenterGameProfileResponse> GetGameCenterGameProfile()
+        public static async Task<GameCenterGameProfileResponse> GetGameCenterGameProfile(int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<GameCenterGameProfileResponse>();
             string callbackId = AITCore.Instance.RegisterCallback<GameCenterGameProfileResponse>(
                 result => tcs.TrySetResult(result),
-                error => tcs.TrySetException(error)
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "GetGameCenterGameProfile"
             );
             __getGameCenterGameProfile_Internal(callbackId, "GameCenterGameProfileResponse");
             return await tcs.Task;
@@ -67,17 +73,21 @@ namespace AppsInToss
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __getGameCenterGameProfile_Internal(string callbackId, string typeName);
 #endif
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
         [Preserve]
         [APICategory("GameCenter")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable<string> GetUserKeyForGame()
+        public static async Awaitable<string> GetUserKeyForGame(int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var acs = new AwaitableCompletionSource<string>();
             string callbackId = AITCore.Instance.RegisterCallback<string>(
                 result => acs.SetResult(result),
-                error => acs.SetException(error)
+                error => acs.SetException(error),
+                timeoutMs,
+                "GetUserKeyForGame"
             );
             __getUserKeyForGame_Internal(callbackId, "string");
             return await acs.Awaitable;
@@ -89,13 +99,15 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async Task<string> GetUserKeyForGame()
+        public static async Task<string> GetUserKeyForGame(int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<string>();
             string callbackId = AITCore.Instance.RegisterCallback<string>(
                 result => tcs.TrySetResult(result),
-                error => tcs.TrySetException(error)
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "GetUserKeyForGame"
             );
             __getUserKeyForGame_Internal(callbackId, "string");
             return await tcs.Task;
@@ -113,18 +125,22 @@ namespace AppsInToss
         private static extern void __getUserKeyForGame_Internal(string callbackId, string typeName);
 #endif
         /// <param name="paramsParam">포인트를 지급하기 위해 필요한 정보예요.</param>
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <returns>포인트 지급 결과를 반환해요. { key: string }: 포인트 지급에 성공했어요. key는 리워드 키를 의미해요. { errorCode: string, message: string }: 포인트 지급에 실패했어요. 에러 코드는 다음과 같아요. "40000": 게임이 아닌 미니앱에서 호출했을 때 "4100": 프로모션 정보를 찾을 수 없을 때 "4104": 프로모션이 중지되었을 때 "4105": 프로모션이 종료되었을 때 "4108": 프로모션이 승인되지 않았을 때 "4109": 프로모션이 실행중이 아닐 때 "4110": 리워드를 지급/회수할 수 없을 때 "4112": 프로모션 머니가 부족할 때 "4113": 이미 지급/회수된 내역일 때 "4114": 프로모션에 설정된 1회 지급 금액을 초과할 때 'ERROR': 알 수 없는 오류가 발생했어요. undefined: 앱 버전이 최소 지원 버전보다 낮아요. 값이 없으면 null을 반환합니다.</returns>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
         [Preserve]
         [APICategory("GameCenter")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable<GrantPromotionRewardResult> GrantPromotionRewardForGame(GrantPromotionRewardForGameParams paramsParam)
+        public static async Awaitable<GrantPromotionRewardResult> GrantPromotionRewardForGame(GrantPromotionRewardForGameParams paramsParam, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var acs = new AwaitableCompletionSource<GrantPromotionRewardResult>();
             string callbackId = AITCore.Instance.RegisterCallback<GrantPromotionRewardResult>(
                 result => acs.SetResult(result),
-                error => acs.SetException(error)
+                error => acs.SetException(error),
+                timeoutMs,
+                "GrantPromotionRewardForGame"
             );
             __grantPromotionRewardForGame_Internal(AITJsonSettings.Serialize(paramsParam), callbackId, "GrantPromotionRewardResult");
             return await acs.Awaitable;
@@ -136,13 +152,15 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async Task<GrantPromotionRewardResult> GrantPromotionRewardForGame(GrantPromotionRewardForGameParams paramsParam)
+        public static async Task<GrantPromotionRewardResult> GrantPromotionRewardForGame(GrantPromotionRewardForGameParams paramsParam, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<GrantPromotionRewardResult>();
             string callbackId = AITCore.Instance.RegisterCallback<GrantPromotionRewardResult>(
                 result => tcs.TrySetResult(result),
-                error => tcs.TrySetException(error)
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "GrantPromotionRewardForGame"
             );
             __grantPromotionRewardForGame_Internal(AITJsonSettings.Serialize(paramsParam), callbackId, "GrantPromotionRewardResult");
             return await tcs.Task;
@@ -159,18 +177,22 @@ namespace AppsInToss
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __grantPromotionRewardForGame_Internal(string paramsParam, string callbackId, string typeName);
 #endif
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <returns>리더보드 웹뷰를 호출해요. 앱 버전이 낮으면 아무 동작도 하지 않고 undefined를 반환해요.</returns>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
         [Preserve]
         [APICategory("GameCenter")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable OpenGameCenterLeaderboard()
+        public static async Awaitable OpenGameCenterLeaderboard(int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var acs = new AwaitableCompletionSource();
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => acs.SetResult(),
-                error => acs.SetException(error)
+                error => acs.SetException(error),
+                timeoutMs,
+                "OpenGameCenterLeaderboard"
             );
             __openGameCenterLeaderboard_Internal(callbackId, "void");
             await acs.Awaitable;
@@ -182,13 +204,15 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async Task OpenGameCenterLeaderboard()
+        public static async Task OpenGameCenterLeaderboard(int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<object>();
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => tcs.TrySetResult(null),
-                error => tcs.TrySetException(error)
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "OpenGameCenterLeaderboard"
             );
             __openGameCenterLeaderboard_Internal(callbackId, "void");
             await tcs.Task;
@@ -205,18 +229,22 @@ namespace AppsInToss
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __openGameCenterLeaderboard_Internal(string callbackId, string typeName);
 #endif
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <returns>점수 제출 결과를 반환해요. 앱 버전이 최소 지원 버전보다 낮으면 아무 동작도 하지 않고 undefined를 반환해요. 값이 없으면 null을 반환합니다.</returns>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
         [Preserve]
         [APICategory("GameCenter")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable<SubmitGameCenterLeaderBoardScoreResponse> SubmitGameCenterLeaderBoardScore(SubmitGameCenterLeaderBoardScoreParams paramsParam)
+        public static async Awaitable<SubmitGameCenterLeaderBoardScoreResponse> SubmitGameCenterLeaderBoardScore(SubmitGameCenterLeaderBoardScoreParams paramsParam, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var acs = new AwaitableCompletionSource<SubmitGameCenterLeaderBoardScoreResponse>();
             string callbackId = AITCore.Instance.RegisterCallback<SubmitGameCenterLeaderBoardScoreResponse>(
                 result => acs.SetResult(result),
-                error => acs.SetException(error)
+                error => acs.SetException(error),
+                timeoutMs,
+                "SubmitGameCenterLeaderBoardScore"
             );
             __submitGameCenterLeaderBoardScore_Internal(AITJsonSettings.Serialize(paramsParam), callbackId, "SubmitGameCenterLeaderBoardScoreResponse");
             return await acs.Awaitable;
@@ -228,13 +256,15 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async Task<SubmitGameCenterLeaderBoardScoreResponse> SubmitGameCenterLeaderBoardScore(SubmitGameCenterLeaderBoardScoreParams paramsParam)
+        public static async Task<SubmitGameCenterLeaderBoardScoreResponse> SubmitGameCenterLeaderBoardScore(SubmitGameCenterLeaderBoardScoreParams paramsParam, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<SubmitGameCenterLeaderBoardScoreResponse>();
             string callbackId = AITCore.Instance.RegisterCallback<SubmitGameCenterLeaderBoardScoreResponse>(
                 result => tcs.TrySetResult(result),
-                error => tcs.TrySetException(error)
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "SubmitGameCenterLeaderBoardScore"
             );
             __submitGameCenterLeaderBoardScore_Internal(AITJsonSettings.Serialize(paramsParam), callbackId, "SubmitGameCenterLeaderBoardScoreResponse");
             return await tcs.Task;

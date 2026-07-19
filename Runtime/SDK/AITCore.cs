@@ -181,6 +181,25 @@ namespace AppsInToss
     }
 
     /// <summary>
+    /// Exception thrown when an Apps in Toss API call exceeds its client-side timeout
+    /// (the <c>timeoutMs</c> argument). Only the C# wait is abandoned — the underlying
+    /// JavaScript/platform work may still complete, and its late result is discarded.
+    /// Inherits <see cref="AITException"/>, so existing <c>catch (AITException)</c> blocks
+    /// still handle it; catch <see cref="AITClientTimeoutException"/> to react to timeouts specifically.
+    /// </summary>
+    public partial class AITClientTimeoutException : AITException
+    {
+        /// <summary>The client-side timeout, in milliseconds, that elapsed.</summary>
+        public int TimeoutMs { get; }
+
+        public AITClientTimeoutException(string apiName, int timeoutMs)
+            : base(apiName, $"'{apiName}' timed out after {timeoutMs}ms while waiting for the Apps in Toss bridge response (client-side wait only).", "TIMEOUT")
+        {
+            TimeoutMs = timeoutMs;
+        }
+    }
+
+    /// <summary>
     /// API response from JavaScript bridge.
     /// Uses explicit success/data/error format to avoid IL2CPP stripping issues.
     /// </summary>
@@ -227,15 +246,26 @@ namespace AppsInToss
         private Dictionary<string, Delegate> _callbacks = new Dictionary<string, Delegate>();
         private Dictionary<string, Action<AITException>> _errorCallbacks = new Dictionary<string, Action<AITException>>();
 
+        // Pending client-side timeout coroutines, keyed by callback ID (armed only when timeoutMs > 0).
+        private Dictionary<string, Coroutine> _timeoutCoroutines = new Dictionary<string, Coroutine>();
+
         /// <summary>
         /// Register success and error callbacks, return the callback ID.
         /// Used by async API methods with TaskCompletionSource.
+        /// When <paramref name="timeoutMs"/> is greater than 0, a client-side timeout is armed:
+        /// if no response arrives within the deadline, the pending callback is removed and the
+        /// error callback is invoked with an <see cref="AITClientTimeoutException"/>. A value of 0
+        /// (the default) waits indefinitely, preserving the original no-timeout behavior.
         /// </summary>
-        public string RegisterCallback<T>(Action<T> onSuccess, Action<AITException> onError)
+        public string RegisterCallback<T>(Action<T> onSuccess, Action<AITException> onError, int timeoutMs = 0, string apiName = null)
         {
             string id = $"cb_{_callbackIdCounter++}";
             _callbacks[id] = onSuccess;
             _errorCallbacks[id] = onError;
+            if (timeoutMs > 0)
+            {
+                _timeoutCoroutines[id] = StartCoroutine(TimeoutCoroutine(id, timeoutMs, apiName));
+            }
             return id;
         }
 
@@ -261,6 +291,7 @@ namespace AppsInToss
                 callback = rawCallback as Action<T>;
                 _callbacks.Remove(callbackId);
                 _errorCallbacks.Remove(callbackId);
+                CancelTimeout(callbackId);
                 return callback != null;
             }
             callback = null;
@@ -276,6 +307,7 @@ namespace AppsInToss
             {
                 _callbacks.Remove(callbackId);
                 _errorCallbacks.Remove(callbackId);
+                CancelTimeout(callbackId);
                 return callback != null;
             }
             callback = null;
@@ -289,6 +321,40 @@ namespace AppsInToss
         {
             _callbacks.Remove(callbackId);
             _errorCallbacks.Remove(callbackId);
+            CancelTimeout(callbackId);
+        }
+
+        /// <summary>
+        /// Client-side timeout for a one-shot callback. After the deadline, if the callback is
+        /// still pending (no response arrived), removes it and faults the awaiter with an
+        /// <see cref="AITClientTimeoutException"/>. Runs on the Unity player loop (WebGL-safe,
+        /// single-threaded); WaitForSecondsRealtime is used so the deadline is wall-clock, not
+        /// affected by Time.timeScale.
+        /// </summary>
+        private System.Collections.IEnumerator TimeoutCoroutine(string callbackId, int timeoutMs, string apiName)
+        {
+            yield return new WaitForSecondsRealtime(timeoutMs / 1000f);
+            _timeoutCoroutines.Remove(callbackId);
+            // Fire only if the real response has not already resolved this callback.
+            if (_errorCallbacks.TryGetValue(callbackId, out var onError))
+            {
+                _callbacks.Remove(callbackId);
+                _errorCallbacks.Remove(callbackId);
+                onError?.Invoke(new AITClientTimeoutException(apiName ?? string.Empty, timeoutMs));
+            }
+        }
+
+        /// <summary>
+        /// Cancel a pending timeout coroutine (invoked when the real response arrives or the
+        /// callback is removed), so it does not fire after the callback has been resolved.
+        /// </summary>
+        private void CancelTimeout(string callbackId)
+        {
+            if (_timeoutCoroutines.TryGetValue(callbackId, out var coroutine))
+            {
+                if (coroutine != null) StopCoroutine(coroutine);
+                _timeoutCoroutines.Remove(callbackId);
+            }
         }
 
         // ===================================================================

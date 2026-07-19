@@ -521,10 +521,18 @@
         };
 
         // wasm 스트리밍 컴파일 수리:
-        // decompressionFallback OFF(.br/.gz 네이티브 서빙) 빌드에서 서버가 Content-Type을
-        // application/wasm으로 주지 않으면 브라우저가 instantiateStreaming을 거부해
-        // ArrayBuffer 컴파일로 강등된다(다운로드-컴파일 중첩 손실 + 경고 배너).
-        // 응답 스트림을 올바른 MIME으로 재포장해 스트리밍 컴파일을 복원한다.
+        // decompressionFallback OFF(.br/.gz 네이티브 서빙) 빌드에서 브라우저가 wasm을
+        // 스트리밍 컴파일하려면 응답이 (1) Content-Type: application/wasm 이고 (2) 네이티브
+        // Response 객체여야 한다. 둘 중 하나라도 깨지면 instantiateStreaming이
+        // "must be a Response" / "Incorrect MIME"로 거부하고, 로더가 wasm을 통째로 다시 받아
+        // 직렬 컴파일로 강등된다(콜드 부트 이중 다운로드 + 경고 배너).
+        //  · 서버가 application/wasm을 주지 않을 수 있고(사설 채널 MIME),
+        //  · dev console(vConsole 등)이 window.fetch를 감싸면 반환 Response가 네이티브가 아닌
+        //    bound/proxy 객체가 되어 V8 스트리밍 브랜드 체크를 통과하지 못한다(2026-07 실측:
+        //    vConsole 활성 시 fetch가 "bound Response"를 반환 → 매 콜드 부트 폴백·재다운로드).
+        // → 응답 body를 항상 네이티브 new Response(application/wasm)로 재포장해 두 조건을
+        //   동시에 충족시킨다. 재포장은 MIME 문제와 fetch 래퍼 오염을 한 번에 무력화하며,
+        //   단일 다운로드 상태로 스트리밍 컴파일을 복원한다(재페치 폴백은 이제 발생하지 않음).
         // .unityweb(JS 디컴프레서) 빌드는 로더가 wasm을 선다운로드하므로 개입하지 않는다.
         (function () {
             var codeUrl = config.codeUrl || '';
@@ -535,37 +543,35 @@
                 && typeof Response === 'function';
             if (!nativeServed || !canStream) return;
 
-            function instantiateFromArrayBuffer(imports, done) {
-                return fetch(codeUrl, { credentials: 'same-origin' })
-                    .then(function (r) {
-                        if (!r.ok) throw new Error('HTTP ' + r.status + ' for ' + codeUrl);
-                        return r.arrayBuffer();
-                    })
-                    .then(function (bytes) { return WebAssembly.instantiate(bytes, imports); })
-                    .then(done);
-            }
-
             config.instantiateWasm = function (imports, receiveInstance) {
                 var done = function (result) { receiveInstance(result.instance, result.module); };
                 fetch(codeUrl, { credentials: 'same-origin' })
                     .then(function (r) {
                         if (!r.ok) throw new Error('HTTP ' + r.status + ' for ' + codeUrl);
-                        var mime = (r.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase();
-                        var resp = r;
-                        if (mime !== 'application/wasm') {
-                            if (!r.body) throw new Error('Response.body 스트림 미지원');
-                            resp = new Response(r.body, {
-                                status: r.status,
-                                statusText: r.statusText,
-                                headers: { 'Content-Type': 'application/wasm' }
-                            });
-                            console.log('[AIT] wasm Content-Type 재포장(' + (mime || '없음') + ' → application/wasm) — 스트리밍 컴파일 복원');
+                        if (!r.body) {
+                            // body 스트림 미지원(구형 환경): 같은 응답 바이트로 직접 컴파일(재페치 없음).
+                            return r.arrayBuffer()
+                                .then(function (bytes) { return WebAssembly.instantiate(bytes, imports); })
+                                .then(done);
                         }
+                        // 네이티브 Response로 재포장 — fetch 래퍼 오염과 MIME 문제를 동시에 무력화.
+                        var resp = new Response(r.body, {
+                            status: 200,
+                            headers: { 'Content-Type': 'application/wasm' }
+                        });
                         return WebAssembly.instantiateStreaming(resp, imports).then(done);
                     })
                     .catch(function (err) {
+                        // 재포장으로 정상 경로의 스트리밍 실패는 제거됐다. 여기 도달하면 손상 응답 등
+                        // 예기치 못한 이상이므로 마지막 수단으로 1회 재페치해 복구를 시도한다.
                         console.warn('[AIT] wasm 스트리밍 컴파일 실패 — ArrayBuffer 폴백:', err);
-                        return instantiateFromArrayBuffer(imports, done);
+                        return fetch(codeUrl, { credentials: 'same-origin' })
+                            .then(function (r) {
+                                if (!r.ok) throw new Error('HTTP ' + r.status + ' for ' + codeUrl);
+                                return r.arrayBuffer();
+                            })
+                            .then(function (bytes) { return WebAssembly.instantiate(bytes, imports); })
+                            .then(done);
                     })
                     .catch(function (err) {
                         console.error('[AIT] wasm 인스턴스화 최종 실패:', err);

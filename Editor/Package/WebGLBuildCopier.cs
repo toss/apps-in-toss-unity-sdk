@@ -534,6 +534,16 @@ namespace AppsInToss.Editor.Package
             // JSON 배열로 URL 목록 생성
             var urlsJson = "[" + string.Join(",", urls.ConvertAll(u => $"\"{u}\"")) + "]";
 
+            // EARLY KICKOFF 대상은 window.fetch 로 실제 소비되는 data/wasm 뿐이다(framework/loader 는
+            // <script src> 로 소비 — 아래 GenerateEarlyFetchScriptLegacyCaching 주석 참조). 어느 파일이
+            // data/wasm 인지는 C# 이 명확히 알고 있으므로(파일명 sniffing 아님) 여기서 명시 리스트로 넘긴다.
+            // 런타임에서 절대 URL(host+path 포함)에 substring 매칭하면 배포 도메인/경로에 우연히 '.data'/'.wasm'
+            // 이 포함될 때 framework/loader 를 오탐 선시작할 수 있어 그 휴리스틱을 원천 제거한다.
+            var kickUrls = new List<string>();
+            if (!string.IsNullOrEmpty(dataFile)) kickUrls.Add($"Build/{dataFile}");
+            if (!string.IsNullOrEmpty(wasmFile)) kickUrls.Add($"Build/{wasmFile}");
+            var kickUrlsJson = "[" + string.Join(",", kickUrls.ConvertAll(u => $"\"{u}\"")) + "]";
+
             // Unity 6000.x 로더는 자체 IndexedDB(UnityCache)로 데이터를 검증 캐싱하므로 warm reload에서
             // 재다운로드가 없다 → 우리 Cache-Storage 오버라이드는 순이득이 없고 스테일/이중 저장 위험만 더한다.
             // 레거시(2021/2022) 로더는 데이터 캐시가 없어 warm reload마다 100MB를 재다운로드 → 로컬 preview/CDN
@@ -544,7 +554,7 @@ namespace AppsInToss.Editor.Package
             }
 
             string cacheName = BuildDataCacheName(dataFile, wasmFile, buildSrc, bundleVersion);
-            return GenerateEarlyFetchScriptLegacyCaching(urlsJson, cacheName);
+            return GenerateEarlyFetchScriptLegacyCaching(urlsJson, cacheName, kickUrlsJson);
         }
 
         /// <summary>
@@ -603,7 +613,7 @@ namespace AppsInToss.Editor.Package
         /// <summary>
         /// 6000.x용 기존 Early Fetch 스크립트(무캐시): 콜드 로드에서 병렬 prefetch → 로더에 전달, 재로드에서는 미설치.
         /// </summary>
-        private static string GenerateEarlyFetchScriptModern(string urlsJson)
+        internal static string GenerateEarlyFetchScriptModern(string urlsJson)
         {
             return $@"<script>
     // Early Fetch: HTML 파싱과 동시에 리소스 다운로드를 시작하고,
@@ -676,13 +686,17 @@ namespace AppsInToss.Editor.Package
         ///    스트리밍 fetch로 폴백(기존 동작 유지, 제품 워치독이 방어).
         ///  - 워치독 복구 reload는 SKIP_KEY로 캐시를 1회 우회 → 오염 캐시가 복구를 막지 않음(self-amplification 차단).
         ///  - 캐시명에 data/wasm 바이트 크기 포함 → 콘텐츠 변경 시 자동 버스팅(2021 고정 파일명 스테일 방지).
+        ///  - EARLY KICKOFF: 콜드 로드에서 캐시 MISS 리소스(data/wasm/framework)의 bufferedFetch를 head 파싱
+        ///    시점에 선시작하고, 로더의 fetch가 pending promise에 합류한다 → 로더 다운로드+파싱+초기화 갭만큼
+        ///    크리티컬 다운로드가 앞당겨진다(modern 6000.x 경로와 동일 발상, 캐시 HIT/reload 는 선시작 없음).
         /// </summary>
-        private static string GenerateEarlyFetchScriptLegacyCaching(string urlsJson, string cacheName)
+        internal static string GenerateEarlyFetchScriptLegacyCaching(string urlsJson, string cacheName, string kickUrlsJson)
         {
             return $@"<script>
     (function() {{
         var urls = {urlsJson};
         if (!urls || !urls.length) return;
+        var kickUrls = {kickUrlsJson};
         var CACHE_NAME = '{cacheName}';
         var SKIP_KEY = '__ait_skip_data_cache__';
         var MAX_TRIES = 3;
@@ -779,9 +793,54 @@ namespace AppsInToss.Editor.Package
             }});
         }}
 
+        // EARLY KICKOFF: 콜드(비리로드) 로드에서 known 리소스의 다운로드를 head 파싱 시점에 선시작한다.
+        // 로더가 같은 URL을 fetch하면 아래 오버라이드가 pending promise를 재사용해 이중 다운로드 없이
+        // 로더 다운로드+파싱+초기화 갭만큼 크리티컬 다운로드를 앞당긴다(modern 6000.x 경로와 동일 발상).
+        //  · 캐시 가용 시 HIT 확인 후 MISS만 선시작 → 재방문(비리로드 내비게이션) 캐시 HIT에 네트워크 낭비 없음.
+        //    (pendingEarly 엔트리는 동기 설정되므로 로더 fetch가 match 진행 중에 와도 같은 promise에 합류 — race 없음)
+        //  · 선시작 대상은 C# 이 명시로 넘긴 kickUrls(= data/wasm 만): 레거시(2021/2022) 로더는 framework 을
+        //    <script src> 로, index.html 은 loader 를 <script src> 로 소비해 window.fetch 로 재요청되지
+        //    않으므로, 이 둘을 선시작하면 pending 이 소진되지 않고 CDN cache-control: max-age=0 에서
+        //    이중 다운로드만 유발한다(2022.3 loader.js 의 createElement('script') 경로 grep 확인). 절대 URL
+        //    substring 매칭이 아니라 명시 리스트라, 배포 host/path 에 '.data'/'.wasm' 이 들어가도 오탐 없음.
+        //  · isReload 제외: 이전 문서 keep-alive 소켓 해체와 경합(ERR_CONNECTION_CLOSED 위험) + HTTP 캐시 이미 warm.
+        //  · 저메모리(cacheOK=false)는 버퍼링 없이 bare 스트리밍 fetch로 선시작(OOM 방어 유지).
+        //  · 실패는 엔트리 삭제 후 null → 오버라이드가 originalFetch로 폴백(bufferedFetch 자체가 재시도+폴백 내장).
+        var pendingEarly = {{}};
+        if (!isReload) {{
+            for (var ki = 0; ki < kickUrls.length; ki++) (function(url) {{
+                var p;
+                if (cacheOK && !skipCacheOnce) {{
+                    p = self.caches.open(CACHE_NAME).then(function(c) {{
+                        return c.match(url, {{ ignoreSearch: true }});
+                    }}).then(function(hit) {{
+                        return (hit && hit.ok) ? hit : bufferedFetch(url, MAX_TRIES);
+                    }});
+                }} else if (cacheOK) {{
+                    p = bufferedFetch(url, MAX_TRIES);
+                }} else {{
+                    p = originalFetch(url, {{ method: 'GET' }});
+                }}
+                pendingEarly[url] = p.catch(function() {{ delete pendingEarly[url]; return null; }});
+                try {{ console.log('[AIT] cache: early-kick ' + url); }} catch (e) {{}}
+            }})(new URL(kickUrls[ki], location.href).href);
+        }}
+
         window.fetch = function(resource, init) {{
             var url = (typeof resource === 'string') ? new URL(resource, location.href).href : resource.url;
             if (!knownSet[url]) return originalFetch.apply(this, arguments);
+            var pend = pendingEarly[url];
+            if (pend) {{
+                delete pendingEarly[url];
+                // 로더가 취소 시그널을 넘기면(현행 레거시 로더는 미사용) kickoff 는 그것을 반영할 수 없으므로
+                // pending 재사용 대신 실제 인자로 위임해 취소 시맨틱을 보존한다(향후 로더 변경 대비 방어).
+                if (init && init.signal) return originalFetch.apply(this, arguments);
+                var s3 = this, a3 = arguments;
+                try {{ console.log('[AIT] cache: early-join ' + url); }} catch (e) {{}}
+                return pend.then(function(r) {{
+                    return (r && r.ok && !r.bodyUsed) ? r : originalFetch.apply(s3, a3);
+                }});
+            }}
             var self2 = this, args = arguments;
 
             // 저메모리/무캐시: 버퍼링 없이 원본 스트리밍 fetch(기존 동작, 제품 워치독 방어).

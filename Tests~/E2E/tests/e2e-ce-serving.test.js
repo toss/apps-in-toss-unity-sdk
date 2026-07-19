@@ -203,11 +203,11 @@ test.describe('CE Native Serving (brotli/gzip, decompressionFallback OFF)', () =
     const buildResponseEncodings = new Map();
     /** @type {string[]} 인터셉터 진단용 콘솔 라인 */
     const cacheLogs = [];
-    // Unity 로더가 WebAssembly.instantiateStreaming 실패 시 wasm을 ArrayBuffer로
-    // 재페치하는 폴백. 이 E2E 환경(vite preview + 헤드리스/모바일 Chrome)에서는
-    // CE(.br) wasm의 스트리밍 컴파일이 실패해 이 폴백이 발생하고 wasm이 1회 더
-    // 다운로드된다 — short read 재시도 버그와는 무관한 브라우저/로더 동작이다.
-    // (CLAUDE.md의 알려진 E2E red-herring: 통과 leg에도 동일하게 등장.)
+    // wasm 스트리밍 컴파일 폴백 감시. index.html의 instantiateWasm 훅이 응답 body를
+    // 네이티브 new Response(application/wasm)로 재포장하므로, dev console(vConsole)이
+    // window.fetch를 감싸 네이티브가 아닌 "bound Response"를 반환해도 스트리밍 컴파일이
+    // 성공한다(2026-07 실측: 재포장 전엔 매 콜드 부트 폴백 → wasm 재페치·이중 다운로드).
+    // 따라서 이 폴백은 발생하면 안 되며, true면 재포장 회귀로 간주해 실패시킨다.
     let wasmStreamingFallback = false;
 
     page.on('request', (req) => {
@@ -262,26 +262,26 @@ test.describe('CE Native Serving (brotli/gzip, decompressionFallback OFF)', () =
       }
     }
 
-    // 2. 이중 다운로드 회귀: Build/* 각 URL은 정확히 1회만 요청되어야 한다.
-    //    예외: wasm은 위 스트리밍 폴백이 발생하면 ArrayBuffer 재페치로 1회 더
-    //    받는다(환경 아티팩트, short read 버그와 무관) → 그 경우에 한해 2회까지 허용.
-    //    data/framework/symbols 등 비-wasm 리소스는 스트리밍 컴파일 대상이 아니므로
-    //    항상 단일 다운로드여야 한다 — 이들이 2회면 short read 회귀의 결정적 증거다
-    //    (원 버그는 CE 응답이면 data도 통째로 재다운로드했다).
-    const isWasm = (name) => /\.wasm(\.br|\.gz)?$/.test(name);
-    const duplicated = [...buildRequestCounts.entries()].filter(([name, n]) => {
-      if (n <= 1) return false;
-      if (isWasm(name) && n === 2 && wasmStreamingFallback) return false; // 허용된 폴백
-      return true;
-    });
+    // 2. 이중 다운로드 회귀: Build/* 각 URL(wasm 포함)은 정확히 1회만 요청되어야 한다.
+    //    wasm은 instantiateStreaming 재포장(index.html 훅)으로 단일 다운로드 + 스트리밍
+    //    컴파일이 보장되므로 예외를 두지 않는다. 2회 이상이면 (a) 스트리밍 재포장 회귀
+    //    또는 (b) CE 응답 길이 오판(short read)에 의한 재다운로드다.
+    const duplicated = [...buildRequestCounts.entries()].filter(([, n]) => n > 1);
     expect(
       duplicated,
       `Build 리소스 중복 다운로드 감지: ${JSON.stringify(duplicated)} ` +
-      `(wasmStreamingFallback=${wasmStreamingFallback}) — CE 응답 길이 오판(short read) 회귀 의심`
+      `(wasmStreamingFallback=${wasmStreamingFallback}) — 스트리밍 재포장/short read 회귀 의심`
     ).toEqual([]);
 
+    // 2-1. wasm 스트리밍 컴파일 폴백 미발화 — 재포장 훅이 fetch 래퍼(vConsole) Response
+    //      오염과 MIME 문제를 무력화해 스트리밍이 성공해야 한다. 이 폴백이 곧 wasm
+    //      이중 다운로드의 원인이었으므로, 발생 자체를 회귀로 본다.
+    expect(
+      wasmStreamingFallback,
+      'wasm 스트리밍 컴파일이 ArrayBuffer 폴백으로 강등됨 — index.html instantiateWasm 재포장 회귀(CE wasm 이중 다운로드)'
+    ).toBe(false);
+
     // 3. 버퍼링 인터셉터 무결성 재시도 미발화 — short read 버그의 직접 지문.
-    //    (이중 다운로드 단언이 환경 폴백을 허용하므로, 실제 회귀는 이 재시도 로그가 잡는다.)
     const retryLogs = cacheLogs.filter((l) => /cache: (retry|giveup)|short read/.test(l));
     expect(retryLogs, `버퍼링 fetch 재시도/포기 발생: ${JSON.stringify(retryLogs)}`).toEqual([]);
 

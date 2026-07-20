@@ -11,16 +11,16 @@ mergeInto(LibraryManager.library, {
         var callback = UTF8ToString(callbackId);
         var typeNameStr = UTF8ToString(typeName);
 
-        console.log('[AIT jslib] submitGameCenterLeaderBoardScore called, callbackId:', callback);
-        console.log('[AIT jslib] submitGameCenterLeaderBoardScore raw param params:', UTF8ToString(params));
+        if (window.__AIT_VERBOSE) console.log('[AIT jslib] submitGameCenterLeaderBoardScore called, callbackId:', callback);
+        if (window.__AIT_VERBOSE) console.log('[AIT jslib] submitGameCenterLeaderBoardScore raw param params:', UTF8ToString(params));
 
         try {
             var promiseResult = window.AppsInToss.submitGameCenterLeaderBoardScore(JSON.parse(UTF8ToString(params)));
-            console.log('[AIT jslib] submitGameCenterLeaderBoardScore returned:', promiseResult, 'isPromise:', promiseResult && typeof promiseResult.then === 'function');
+            if (window.__AIT_VERBOSE) console.log('[AIT jslib] submitGameCenterLeaderBoardScore returned:', promiseResult, 'isPromise:', promiseResult && typeof promiseResult.then === 'function');
 
             if (!promiseResult || typeof promiseResult.then !== 'function') {
                 // Promise가 아닌 경우 (undefined, null 등) - 즉시 응답
-                console.log('[AIT jslib] submitGameCenterLeaderBoardScore did not return a Promise, sending immediate response');
+                if (window.__AIT_VERBOSE) console.log('[AIT jslib] submitGameCenterLeaderBoardScore did not return a Promise, sending immediate response');
                 var payload = JSON.stringify({
                     CallbackId: callback,
                     TypeName: typeNameStr,
@@ -32,7 +32,7 @@ mergeInto(LibraryManager.library, {
 
             promiseResult
                 .then(function(result) {
-                    console.log('[AIT jslib] submitGameCenterLeaderBoardScore resolved:', result);
+                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] submitGameCenterLeaderBoardScore resolved:', result);
                     var payload = JSON.stringify({
                         CallbackId: callback,
                         TypeName: typeNameStr,
@@ -41,7 +41,7 @@ mergeInto(LibraryManager.library, {
                     SendMessage('AITCore', 'OnAITCallback', payload);
                 })
                 .catch(function(error) {
-                    console.log('[AIT jslib] submitGameCenterLeaderBoardScore rejected:', error);
+                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] submitGameCenterLeaderBoardScore rejected:', error);
                     var payload = JSON.stringify({
                         CallbackId: callback,
                         TypeName: typeNameStr,
@@ -50,7 +50,7 @@ mergeInto(LibraryManager.library, {
                     setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
                 });
         } catch (error) {
-            console.log('[AIT jslib] submitGameCenterLeaderBoardScore sync error:', error);
+            if (window.__AIT_VERBOSE) console.log('[AIT jslib] submitGameCenterLeaderBoardScore sync error:', error);
             var payload = JSON.stringify({
                 CallbackId: callback,
                 TypeName: typeNameStr,

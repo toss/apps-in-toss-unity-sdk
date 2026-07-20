@@ -11,16 +11,16 @@ mergeInto(LibraryManager.library, {
         var callback = UTF8ToString(callbackId);
         var typeNameStr = UTF8ToString(typeName);
 
-        console.log('[AIT jslib] partnerAddAccessoryButton called, callbackId:', callback);
-        console.log('[AIT jslib] partnerAddAccessoryButton raw param args_0:', UTF8ToString(args_0));
+        if (window.__AIT_VERBOSE) console.log('[AIT jslib] partnerAddAccessoryButton called, callbackId:', callback);
+        if (window.__AIT_VERBOSE) console.log('[AIT jslib] partnerAddAccessoryButton raw param args_0:', UTF8ToString(args_0));
 
         try {
             var promiseResult = window.AppsInToss.partner.addAccessoryButton(JSON.parse(UTF8ToString(args_0)));
-            console.log('[AIT jslib] addAccessoryButton returned:', promiseResult, 'isPromise:', promiseResult && typeof promiseResult.then === 'function');
+            if (window.__AIT_VERBOSE) console.log('[AIT jslib] addAccessoryButton returned:', promiseResult, 'isPromise:', promiseResult && typeof promiseResult.then === 'function');
 
             if (!promiseResult || typeof promiseResult.then !== 'function') {
                 // Promise가 아닌 경우 (undefined, null 등) - 즉시 응답
-                console.log('[AIT jslib] addAccessoryButton did not return a Promise, sending immediate response');
+                if (window.__AIT_VERBOSE) console.log('[AIT jslib] addAccessoryButton did not return a Promise, sending immediate response');
                 var payload = JSON.stringify({
                     CallbackId: callback,
                     TypeName: typeNameStr,
@@ -32,7 +32,7 @@ mergeInto(LibraryManager.library, {
 
             promiseResult
                 .then(function(result) {
-                    console.log('[AIT jslib] addAccessoryButton resolved:', result);
+                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] addAccessoryButton resolved:', result);
                     var payload = JSON.stringify({
                         CallbackId: callback,
                         TypeName: typeNameStr,
@@ -41,7 +41,7 @@ mergeInto(LibraryManager.library, {
                     SendMessage('AITCore', 'OnAITCallback', payload);
                 })
                 .catch(function(error) {
-                    console.log('[AIT jslib] addAccessoryButton rejected:', error);
+                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] addAccessoryButton rejected:', error);
                     var payload = JSON.stringify({
                         CallbackId: callback,
                         TypeName: typeNameStr,
@@ -50,7 +50,7 @@ mergeInto(LibraryManager.library, {
                     setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
                 });
         } catch (error) {
-            console.log('[AIT jslib] addAccessoryButton sync error:', error);
+            if (window.__AIT_VERBOSE) console.log('[AIT jslib] addAccessoryButton sync error:', error);
             var payload = JSON.stringify({
                 CallbackId: callback,
                 TypeName: typeNameStr,
@@ -65,15 +65,15 @@ mergeInto(LibraryManager.library, {
         var callback = UTF8ToString(callbackId);
         var typeNameStr = UTF8ToString(typeName);
 
-        console.log('[AIT jslib] partnerRemoveAccessoryButton called, callbackId:', callback);
+        if (window.__AIT_VERBOSE) console.log('[AIT jslib] partnerRemoveAccessoryButton called, callbackId:', callback);
 
         try {
             var promiseResult = window.AppsInToss.partner.removeAccessoryButton();
-            console.log('[AIT jslib] removeAccessoryButton returned:', promiseResult, 'isPromise:', promiseResult && typeof promiseResult.then === 'function');
+            if (window.__AIT_VERBOSE) console.log('[AIT jslib] removeAccessoryButton returned:', promiseResult, 'isPromise:', promiseResult && typeof promiseResult.then === 'function');
 
             if (!promiseResult || typeof promiseResult.then !== 'function') {
                 // Promise가 아닌 경우 (undefined, null 등) - 즉시 응답
-                console.log('[AIT jslib] removeAccessoryButton did not return a Promise, sending immediate response');
+                if (window.__AIT_VERBOSE) console.log('[AIT jslib] removeAccessoryButton did not return a Promise, sending immediate response');
                 var payload = JSON.stringify({
                     CallbackId: callback,
                     TypeName: typeNameStr,
@@ -85,7 +85,7 @@ mergeInto(LibraryManager.library, {
 
             promiseResult
                 .then(function(result) {
-                    console.log('[AIT jslib] removeAccessoryButton resolved:', result);
+                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] removeAccessoryButton resolved:', result);
                     var payload = JSON.stringify({
                         CallbackId: callback,
                         TypeName: typeNameStr,
@@ -94,7 +94,7 @@ mergeInto(LibraryManager.library, {
                     SendMessage('AITCore', 'OnAITCallback', payload);
                 })
                 .catch(function(error) {
-                    console.log('[AIT jslib] removeAccessoryButton rejected:', error);
+                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] removeAccessoryButton rejected:', error);
                     var payload = JSON.stringify({
                         CallbackId: callback,
                         TypeName: typeNameStr,
@@ -103,7 +103,7 @@ mergeInto(LibraryManager.library, {
                     setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
                 });
         } catch (error) {
-            console.log('[AIT jslib] removeAccessoryButton sync error:', error);
+            if (window.__AIT_VERBOSE) console.log('[AIT jslib] removeAccessoryButton sync error:', error);
             var payload = JSON.stringify({
                 CallbackId: callback,
                 TypeName: typeNameStr,

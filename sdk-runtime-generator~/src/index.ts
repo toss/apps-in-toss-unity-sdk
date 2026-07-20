@@ -12,7 +12,7 @@ import { CSharpGenerator, CSharpTypeGenerator } from './generators/csharp/index.
 import { JSLibGenerator } from './generators/jslib.js';
 import { typeCheckBridgeCode, printTypeCheckResult, cleanupCache } from './generators/jslib-compiler.js';
 import { generateUnityBridge } from './generators/unity-bridge.js';
-import { generateScreenManualCs, generateScreenManualJslib } from './generators/webgl-manual.js';
+import { generateScreenManualCs, generateScreenManualJslib, generateCoreManualJslib } from './generators/webgl-manual.js';
 import { formatCommand } from './commands/format.js';
 import { FRAMEWORK_APIS, EXCLUDED_APIS, DEPRECATED_API_OVERRIDES, CATEGORY_ORDER, DEFAULT_CATEGORY, resolveApiCategory } from './categories.js';
 import { getApiImportSource, type ParsedAPI, type GeneratedTypeUnit } from './types.js';
@@ -794,6 +794,7 @@ namespace AppsInToss
     const newJslibFiles = new Set<string>([
       ...Array.from(jslibFiles.keys()).map(f => path.join(pluginsDir, f)),
       path.join(pluginsDir, 'AppsInToss-Screen.jslib'), // Screen 수동 API
+      path.join(pluginsDir, 'AppsInToss-Core.jslib'), // Core 수동 API (verbose 로깅 스위치)
     ]);
 
     // 1. 기존 .meta 파일 수집 (삭제 전에)
@@ -888,6 +889,12 @@ namespace AppsInToss
     await fs.writeFile(screenJslibPath, generateScreenManualJslib());
     await ensureMetaFile(screenJslibPath, existingMetas, 'jslib');
     console.log(picocolors.green(`  ✓ Plugins/AppsInToss-Screen.jslib`));
+
+    // Core 수동 API 파일 쓰기 (verbose 로깅 스위치 브릿지 - web-framework 외부)
+    const coreJslibPath = path.join(pluginsDir, 'AppsInToss-Core.jslib');
+    await fs.writeFile(coreJslibPath, generateCoreManualJslib());
+    await ensureMetaFile(coreJslibPath, existingMetas, 'jslib');
+    console.log(picocolors.green(`  ✓ Plugins/AppsInToss-Core.jslib`));
 
     // 9. unity-bridge.ts 생성 (WebGLTemplates/AITTemplate/BuildConfig~/)
     console.log(picocolors.cyan('\n🌉 Unity Bridge 생성 중...'));

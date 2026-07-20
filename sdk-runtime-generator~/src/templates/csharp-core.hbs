@@ -241,6 +241,47 @@ namespace AppsInToss
             }
         }
 
+        // ===================================================================
+        // Verbose Logging Switch
+        // ===================================================================
+
+        private static bool _verboseLogging = false;
+
+        /// <summary>
+        /// Enables verbose SDK-internal logging (raw jslib call/event/response payloads and
+        /// AITCore callback routing/registration logs). Defaults to <c>false</c> so production
+        /// WebGL builds stay quiet — each <see cref="UnityEngine.Debug.Log"/> call carries a
+        /// non-trivial per-call cost on WebGL, and every emitted event otherwise shows up
+        /// duplicated across layers in tools like vConsole.
+        /// <para>
+        /// <see cref="UnityEngine.Debug.LogWarning"/>, <see cref="UnityEngine.Debug.LogError"/>,
+        /// and jslib's <c>console.error</c>/<c>console.warn</c> are never gated by this switch —
+        /// warnings and errors are always logged regardless of its value.
+        /// </para>
+        /// <para>
+        /// Setting this property also propagates the flag to the JavaScript bridge
+        /// (<c>window.__AIT_VERBOSE</c>) on WebGL builds, so the generated jslib's informational
+        /// <c>console.log</c> calls follow the same switch. The propagation is a no-op outside
+        /// WebGL player builds (Editor, other platforms).
+        /// </para>
+        /// </summary>
+        public static bool VerboseLogging
+        {
+            get => _verboseLogging;
+            set
+            {
+                _verboseLogging = value;
+#if UNITY_WEBGL && !UNITY_EDITOR
+                __AITSetVerboseLogging(value ? 1 : 0);
+#endif
+            }
+        }
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __AITSetVerboseLogging(int verbose);
+#endif
+
         // Callback storage: success callbacks and error callbacks
         private int _callbackIdCounter = 0;
         private Dictionary<string, Delegate> _callbacks = new Dictionary<string, Delegate>();
@@ -419,11 +460,11 @@ namespace AppsInToss
         /// </summary>
         public void OnAITEventCallback(string jsonPayload)
         {
-            Debug.Log($"[AITCore] OnAITEventCallback received: {jsonPayload}");
+            if (VerboseLogging) Debug.Log($"[AITCore] OnAITEventCallback received: {jsonPayload}");
             try
             {
                 var callbackData = JsonConvert.DeserializeObject<CallbackData>(jsonPayload);
-                Debug.Log($"[AITCore] Routing event callback: id={callbackData.CallbackId}, type={callbackData.TypeName}");
+                if (VerboseLogging) Debug.Log($"[AITCore] Routing event callback: id={callbackData.CallbackId}, type={callbackData.TypeName}");
                 RouteSubscriptionCallback(callbackData.CallbackId, callbackData.TypeName, callbackData.Result);
             }
             catch (Exception ex)
@@ -442,7 +483,7 @@ namespace AppsInToss
         [Preserve]
         public void OnVisibilityStateChanged(string jsonPayload)
         {
-            Debug.Log($"[AITCore] OnVisibilityStateChanged received: {jsonPayload}");
+            if (VerboseLogging) Debug.Log($"[AITCore] OnVisibilityStateChanged received: {jsonPayload}");
             try
             {
                 var data = JsonConvert.DeserializeObject<VisibilityStateData>(jsonPayload);
@@ -517,11 +558,11 @@ namespace AppsInToss
         /// </summary>
         public void OnAITCallback(string jsonPayload)
         {
-            Debug.Log($"[AITCore] OnAITCallback received: {jsonPayload}");
+            if (VerboseLogging) Debug.Log($"[AITCore] OnAITCallback received: {jsonPayload}");
             try
             {
                 var callbackData = JsonConvert.DeserializeObject<CallbackData>(jsonPayload);
-                Debug.Log($"[AITCore] Routing callback: id={callbackData.CallbackId}, type={callbackData.TypeName}");
+                if (VerboseLogging) Debug.Log($"[AITCore] Routing callback: id={callbackData.CallbackId}, type={callbackData.TypeName}");
                 RouteCallback(callbackData.CallbackId, callbackData.TypeName, callbackData.Result);
             }
             catch (Exception ex)
@@ -748,7 +789,7 @@ namespace AppsInToss
                 }
             };
             _nestedCallbacks[key] = wrapper;
-            Debug.Log($"[AITCore] Registered nested callback: {key}");
+            if (VerboseLogging) Debug.Log($"[AITCore] Registered nested callback: {key}");
         }
 
         /// <summary>
@@ -767,7 +808,7 @@ namespace AppsInToss
             foreach (var key in keysToRemove)
             {
                 _nestedCallbacks.Remove(key);
-                Debug.Log($"[AITCore] Removed nested callback: {key}");
+                if (VerboseLogging) Debug.Log($"[AITCore] Removed nested callback: {key}");
             }
         }
 
@@ -780,7 +821,7 @@ namespace AppsInToss
         /// </summary>
         public void OnNestedCallback(string jsonPayload)
         {
-            Debug.Log($"[AITCore] OnNestedCallback received: {jsonPayload}");
+            if (VerboseLogging) Debug.Log($"[AITCore] OnNestedCallback received: {jsonPayload}");
             NestedCallbackRequest request;
             try
             {
@@ -840,7 +881,7 @@ namespace AppsInToss
         /// </summary>
         private void RespondToNestedCallback(string requestId, bool result)
         {
-            Debug.Log($"[AITCore] RespondToNestedCallback: {requestId} = {result}");
+            if (VerboseLogging) Debug.Log($"[AITCore] RespondToNestedCallback: {requestId} = {result}");
 #if UNITY_WEBGL && !UNITY_EDITOR
             __AITRespondToNestedCallback(requestId, result ? 1 : 0);
 #endif

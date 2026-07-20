@@ -11,16 +11,16 @@ mergeInto(LibraryManager.library, {
         var callback = UTF8ToString(callbackId);
         var typeNameStr = UTF8ToString(typeName);
 
-        console.log('[AIT jslib] fetchAlbumPhotos called, callbackId:', callback);
-        console.log('[AIT jslib] fetchAlbumPhotos raw param options:', UTF8ToString(options));
+        if (window.__AIT_VERBOSE) console.log('[AIT jslib] fetchAlbumPhotos called, callbackId:', callback);
+        if (window.__AIT_VERBOSE) console.log('[AIT jslib] fetchAlbumPhotos raw param options:', UTF8ToString(options));
 
         try {
             var promiseResult = window.AppsInToss.fetchAlbumPhotos(JSON.parse(UTF8ToString(options)));
-            console.log('[AIT jslib] fetchAlbumPhotos returned:', promiseResult, 'isPromise:', promiseResult && typeof promiseResult.then === 'function');
+            if (window.__AIT_VERBOSE) console.log('[AIT jslib] fetchAlbumPhotos returned:', promiseResult, 'isPromise:', promiseResult && typeof promiseResult.then === 'function');
 
             if (!promiseResult || typeof promiseResult.then !== 'function') {
                 // Promise가 아닌 경우 (undefined, null 등) - 즉시 응답
-                console.log('[AIT jslib] fetchAlbumPhotos did not return a Promise, sending immediate response');
+                if (window.__AIT_VERBOSE) console.log('[AIT jslib] fetchAlbumPhotos did not return a Promise, sending immediate response');
                 var payload = JSON.stringify({
                     CallbackId: callback,
                     TypeName: typeNameStr,
@@ -32,7 +32,7 @@ mergeInto(LibraryManager.library, {
 
             promiseResult
                 .then(function(result) {
-                    console.log('[AIT jslib] fetchAlbumPhotos resolved:', result);
+                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] fetchAlbumPhotos resolved:', result);
                     var payload = JSON.stringify({
                         CallbackId: callback,
                         TypeName: typeNameStr,
@@ -41,7 +41,7 @@ mergeInto(LibraryManager.library, {
                     SendMessage('AITCore', 'OnAITCallback', payload);
                 })
                 .catch(function(error) {
-                    console.log('[AIT jslib] fetchAlbumPhotos rejected:', error);
+                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] fetchAlbumPhotos rejected:', error);
                     var payload = JSON.stringify({
                         CallbackId: callback,
                         TypeName: typeNameStr,
@@ -50,7 +50,7 @@ mergeInto(LibraryManager.library, {
                     setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
                 });
         } catch (error) {
-            console.log('[AIT jslib] fetchAlbumPhotos sync error:', error);
+            if (window.__AIT_VERBOSE) console.log('[AIT jslib] fetchAlbumPhotos sync error:', error);
             var payload = JSON.stringify({
                 CallbackId: callback,
                 TypeName: typeNameStr,

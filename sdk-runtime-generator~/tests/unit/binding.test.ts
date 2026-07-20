@@ -311,6 +311,7 @@ describe('C# ↔ jslib 바인딩 일관성 검증', () => {
       const syncFunctions = [
         '__AITUnsubscribe_Internal', // 구독 해제는 동기적으로 처리됨
         '__AITRespondToNestedCallback', // 중첩 콜백 응답 (동기적으로 결과 전달)
+        '__AITSetVerboseLogging', // verbose 로깅 스위치 전파 (동기적으로 플래그만 설정, 콜백 없음)
       ];
 
       for (const extern of csharpExterns) {

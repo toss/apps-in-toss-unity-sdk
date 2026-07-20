@@ -11,13 +11,13 @@ mergeInto(LibraryManager.library, {
         var typeNameStr = UTF8ToString(typeName);
         var optionsObj = options ? JSON.parse(UTF8ToString(options)) : {};
 
-        console.log('[AIT jslib] GoogleAdMobLoadAppsInTossAdMob called, id:', subId, 'options:', optionsObj);
+        if (window.__AIT_VERBOSE) console.log('[AIT jslib] GoogleAdMobLoadAppsInTossAdMob called, id:', subId, 'options:', optionsObj);
 
         try {
             var unsubscribe = window.AppsInToss.GoogleAdMob.loadAppsInTossAdMob({
                 options: optionsObj,
                 onEvent: function(data) {
-                    console.log('[AIT jslib] GoogleAdMobLoadAppsInTossAdMob event:', data);
+                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] GoogleAdMobLoadAppsInTossAdMob event:', data);
                     var payload = JSON.stringify({
                         CallbackId: subId,
                         TypeName: typeNameStr,
@@ -30,7 +30,7 @@ mergeInto(LibraryManager.library, {
                     SendMessage('AITCore', 'OnAITEventCallback', payload);
                 },
                 onError: function(error) {
-                    console.log('[AIT jslib] GoogleAdMobLoadAppsInTossAdMob error:', error);
+                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] GoogleAdMobLoadAppsInTossAdMob error:', error);
                     var errorMessage = error instanceof Error ? error.message : String(error);
                     var payload = JSON.stringify({
                         CallbackId: subId,
@@ -71,13 +71,13 @@ mergeInto(LibraryManager.library, {
         var typeNameStr = UTF8ToString(typeName);
         var optionsObj = options ? JSON.parse(UTF8ToString(options)) : {};
 
-        console.log('[AIT jslib] GoogleAdMobShowAppsInTossAdMob called, id:', subId, 'options:', optionsObj);
+        if (window.__AIT_VERBOSE) console.log('[AIT jslib] GoogleAdMobShowAppsInTossAdMob called, id:', subId, 'options:', optionsObj);
 
         try {
             var unsubscribe = window.AppsInToss.GoogleAdMob.showAppsInTossAdMob({
                 options: optionsObj,
                 onEvent: function(data) {
-                    console.log('[AIT jslib] GoogleAdMobShowAppsInTossAdMob event:', data);
+                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] GoogleAdMobShowAppsInTossAdMob event:', data);
                     var payload = JSON.stringify({
                         CallbackId: subId,
                         TypeName: typeNameStr,
@@ -90,7 +90,7 @@ mergeInto(LibraryManager.library, {
                     SendMessage('AITCore', 'OnAITEventCallback', payload);
                 },
                 onError: function(error) {
-                    console.log('[AIT jslib] GoogleAdMobShowAppsInTossAdMob error:', error);
+                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] GoogleAdMobShowAppsInTossAdMob error:', error);
                     var errorMessage = error instanceof Error ? error.message : String(error);
                     var payload = JSON.stringify({
                         CallbackId: subId,
@@ -131,16 +131,16 @@ mergeInto(LibraryManager.library, {
         var callback = UTF8ToString(callbackId);
         var typeNameStr = UTF8ToString(typeName);
 
-        console.log('[AIT jslib] GoogleAdMobIsAppsInTossAdMobLoaded called, callbackId:', callback);
-        console.log('[AIT jslib] GoogleAdMobIsAppsInTossAdMobLoaded raw param args_0:', UTF8ToString(args_0));
+        if (window.__AIT_VERBOSE) console.log('[AIT jslib] GoogleAdMobIsAppsInTossAdMobLoaded called, callbackId:', callback);
+        if (window.__AIT_VERBOSE) console.log('[AIT jslib] GoogleAdMobIsAppsInTossAdMobLoaded raw param args_0:', UTF8ToString(args_0));
 
         try {
             var promiseResult = window.AppsInToss.GoogleAdMob.isAppsInTossAdMobLoaded(JSON.parse(UTF8ToString(args_0)));
-            console.log('[AIT jslib] isAppsInTossAdMobLoaded returned:', promiseResult, 'isPromise:', promiseResult && typeof promiseResult.then === 'function');
+            if (window.__AIT_VERBOSE) console.log('[AIT jslib] isAppsInTossAdMobLoaded returned:', promiseResult, 'isPromise:', promiseResult && typeof promiseResult.then === 'function');
 
             if (!promiseResult || typeof promiseResult.then !== 'function') {
                 // Promise가 아닌 경우 (undefined, null 등) - 즉시 응답
-                console.log('[AIT jslib] isAppsInTossAdMobLoaded did not return a Promise, sending immediate response');
+                if (window.__AIT_VERBOSE) console.log('[AIT jslib] isAppsInTossAdMobLoaded did not return a Promise, sending immediate response');
                 var payload = JSON.stringify({
                     CallbackId: callback,
                     TypeName: typeNameStr,
@@ -152,7 +152,7 @@ mergeInto(LibraryManager.library, {
 
             promiseResult
                 .then(function(result) {
-                    console.log('[AIT jslib] isAppsInTossAdMobLoaded resolved:', result);
+                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] isAppsInTossAdMobLoaded resolved:', result);
                     var payload = JSON.stringify({
                         CallbackId: callback,
                         TypeName: typeNameStr,
@@ -161,7 +161,7 @@ mergeInto(LibraryManager.library, {
                     SendMessage('AITCore', 'OnAITCallback', payload);
                 })
                 .catch(function(error) {
-                    console.log('[AIT jslib] isAppsInTossAdMobLoaded rejected:', error);
+                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] isAppsInTossAdMobLoaded rejected:', error);
                     var payload = JSON.stringify({
                         CallbackId: callback,
                         TypeName: typeNameStr,
@@ -170,7 +170,7 @@ mergeInto(LibraryManager.library, {
                     setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
                 });
         } catch (error) {
-            console.log('[AIT jslib] isAppsInTossAdMobLoaded sync error:', error);
+            if (window.__AIT_VERBOSE) console.log('[AIT jslib] isAppsInTossAdMobLoaded sync error:', error);
             var payload = JSON.stringify({
                 CallbackId: callback,
                 TypeName: typeNameStr,
@@ -186,13 +186,13 @@ mergeInto(LibraryManager.library, {
 
         var adGroupIdVal = UTF8ToString(adGroupId);
 
-        console.log('[AIT jslib] loadFullScreenAd called, id:', subId);
+        if (window.__AIT_VERBOSE) console.log('[AIT jslib] loadFullScreenAd called, id:', subId);
 
         try {
             var unsubscribe = window.AppsInToss.loadFullScreenAd({
                 options: { adGroupId: adGroupIdVal },
                 onEvent: function(data) {
-                    console.log('[AIT jslib] loadFullScreenAd event:', data);
+                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] loadFullScreenAd event:', data);
                     var payload = JSON.stringify({
                         CallbackId: subId,
                         TypeName: typeNameStr,
@@ -205,7 +205,7 @@ mergeInto(LibraryManager.library, {
                     SendMessage('AITCore', 'OnAITEventCallback', payload);
                 },
                 onError: function(error) {
-                    console.log('[AIT jslib] loadFullScreenAd error:', error);
+                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] loadFullScreenAd error:', error);
                     var errorMessage = error instanceof Error ? error.message : String(error);
                     var payload = JSON.stringify({
                         CallbackId: subId,
@@ -247,13 +247,13 @@ mergeInto(LibraryManager.library, {
 
         var adGroupIdVal = UTF8ToString(adGroupId);
 
-        console.log('[AIT jslib] showFullScreenAd called, id:', subId);
+        if (window.__AIT_VERBOSE) console.log('[AIT jslib] showFullScreenAd called, id:', subId);
 
         try {
             var unsubscribe = window.AppsInToss.showFullScreenAd({
                 options: { adGroupId: adGroupIdVal },
                 onEvent: function(data) {
-                    console.log('[AIT jslib] showFullScreenAd event:', data);
+                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] showFullScreenAd event:', data);
                     var payload = JSON.stringify({
                         CallbackId: subId,
                         TypeName: typeNameStr,
@@ -266,7 +266,7 @@ mergeInto(LibraryManager.library, {
                     SendMessage('AITCore', 'OnAITEventCallback', payload);
                 },
                 onError: function(error) {
-                    console.log('[AIT jslib] showFullScreenAd error:', error);
+                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] showFullScreenAd error:', error);
                     var errorMessage = error instanceof Error ? error.message : String(error);
                     var payload = JSON.stringify({
                         CallbackId: subId,

@@ -114,6 +114,54 @@ describe('(a) NestedCallbackTimeoutMs 노브 표면 (csharp-core.hbs)', () => {
   });
 });
 
+describe('(c) C# nested 코루틴 타임아웃 (심층 방어, csharp-core.hbs)', () => {
+  test('DispatchNestedCallbackAsync가 timeoutMs>0일 때만 코루틴을 무장한다', () => {
+    const body = extractCsMethodBody(
+      coreContent,
+      'private async Task DispatchNestedCallbackAsync(string requestId, string data, Func<string, Task<bool>> callback)'
+    );
+    expect(body).not.toBeNull();
+    // 노브 스냅샷 → 게이트 → 무장 (pending 등록 + 코루틴 시작)
+    expect(body).toContain('int timeoutMs = NestedCallbackTimeoutMs;');
+    expect(body).toMatch(/if \(timeoutMs > 0\)/);
+    expect(body).toContain('_pendingNestedRequests.Add(requestId);');
+    expect(body).toContain('StartCoroutine(NestedTimeoutCoroutine(requestId, timeoutMs))');
+    // 정상 완료 시 코루틴 취소 + exactly-once 가드
+    expect(body).toContain('CancelNestedTimeout(requestId);');
+    expect(body).toMatch(/if \(timeoutMs > 0 && !_pendingNestedRequests\.Remove\(requestId\)\)/);
+  });
+
+  test('NestedTimeoutCoroutine이 #978 WaitForSecondsRealtime 패턴으로 정확히 1회 false 응답한다', () => {
+    const body = extractCsMethodBody(
+      coreContent,
+      'private System.Collections.IEnumerator NestedTimeoutCoroutine(string requestId, int timeoutMs)'
+    );
+    expect(body).not.toBeNull();
+    expect(body).toContain('WaitForSecondsRealtime(timeoutMs / 1000f)');
+    // pending에서 제거에 성공한 경우에만 응답 (double-respond 방지)
+    expect(body).toMatch(/if \(_pendingNestedRequests\.Remove\(requestId\)\)/);
+    expect(body).toContain('RespondToNestedCallback(requestId, false);');
+  });
+
+  test('CancelNestedTimeout이 StopCoroutine으로 대기 중 코루틴을 취소한다', () => {
+    const body = extractCsMethodBody(coreContent, 'private void CancelNestedTimeout(string requestId)');
+    expect(body).not.toBeNull();
+    expect(body).toContain('StopCoroutine(coroutine)');
+    expect(body).toContain('_nestedTimeoutCoroutines.Remove(requestId);');
+  });
+
+  test('코루틴이 player-loop 의존이라 오버레이 교착을 못 깬다는 한계가 주석에 명시된다 (역할 분담)', () => {
+    const body = extractCsMethodBody(
+      coreContent,
+      'private async Task DispatchNestedCallbackAsync(string requestId, string data, Func<string, Task<bool>> callback)'
+    );
+    expect(body).not.toBeNull();
+    // (B)가 loop 재개 후에만 발화하고, 오버레이 교착은 (A) JS-side가 깬다는 역할 분담 주석
+    expect(body).toMatch(/WaitForSecondsRealtime/);
+    expect(body).toMatch(/lever A|JavaScript-side setTimeout/);
+  });
+});
+
 describe('(A) grant Promise JS-side 타임아웃 (jslib.ts → AppsInToss-IAP.jslib)', () => {
   test('processProductGrant Promise가 __AIT_NESTED_TIMEOUT_MS 가드 setTimeout을 무장한다', () => {
     // 최소 1개 이상의 grant 콜백(one-time/subscription)에 lever A가 삽입되어야 한다
@@ -153,6 +201,21 @@ describe('(A) grant Promise JS-side 타임아웃 (jslib.ts → AppsInToss-IAP.js
 });
 
 describe('(d) 기본 0(비활성) = 기존 동작 불변 (게이팅 무결성)', () => {
+  test('C#: 코루틴 무장/스냅샷이 timeoutMs>0 게이트 뒤에만 존재한다 (기본 0이면 무장 안 됨)', () => {
+    // 게이트 밖에서 무조건 무장하는 코드가 없어야 한다 — StartCoroutine(NestedTimeoutCoroutine ...)은
+    // 반드시 `if (timeoutMs > 0)` 블록 안에서만 나타난다.
+    const dispatchBody = extractCsMethodBody(
+      coreContent,
+      'private async Task DispatchNestedCallbackAsync(string requestId, string data, Func<string, Task<bool>> callback)'
+    )!;
+    const gateIdx = dispatchBody.indexOf('if (timeoutMs > 0)');
+    const armIdx = dispatchBody.indexOf('StartCoroutine(NestedTimeoutCoroutine');
+    expect(gateIdx).toBeGreaterThanOrEqual(0);
+    expect(armIdx).toBeGreaterThan(gateIdx);
+    // 무장은 이 dispatch 메서드에서 정확히 1회만 (게이트 뒤)
+    expect((coreContent.match(/StartCoroutine\(NestedTimeoutCoroutine/g) || []).length).toBe(1);
+  });
+
   test('JS: setTimeout이 __AIT_NESTED_TIMEOUT_MS 진리성 가드 뒤에만 존재한다 (기본 undefined이면 무장 안 됨)', () => {
     // grant 콜백 블록 내 setTimeout( 호출은 모두 `if (timeoutMs && timeoutMs > 0)` 뒤에 온다.
     // 무장 setTimeout 수 == 가드 수 (짝이 맞아야 게이팅 누락 없음)

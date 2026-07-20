@@ -1237,6 +1237,14 @@ namespace AppsInToss
 
         private Dictionary<string, Delegate> _nestedCallbacks = new Dictionary<string, Delegate>();
 
+        // Nested-callback deadlock guard (opt-in). Populated/armed only when
+        // NestedCallbackTimeoutMs > 0, and always drained on response/timeout, so neither
+        // collection grows unbounded. Keyed by JavaScript RequestId (e.g.
+        // "sub_0_processProductGrant_1700000000000"), which never collides with the "cb_N"
+        // keys used by the one-shot _timeoutCoroutines above.
+        private HashSet<string> _pendingNestedRequests = new HashSet<string>();
+        private Dictionary<string, Coroutine> _nestedTimeoutCoroutines = new Dictionary<string, Coroutine>();
+
         private static int _nestedCallbackTimeoutMs = 0;
 
         /// <summary>
@@ -1257,10 +1265,13 @@ namespace AppsInToss
         /// probes the native UI did not auto-dismiss even after "purchase completed".
         /// </para>
         /// <para>
-        /// When set greater than 0, a JavaScript-side <c>setTimeout</c> is armed (lever A):
-        /// it resolves the grant Promise to <c>false</c> if no C# response arrives in time.
-        /// This is the lever that can actually break the overlay deadlock, because the JS event
-        /// loop still fires (throttled) while the player loop is frozen.
+        /// When set greater than 0, two timeouts are armed together:
+        /// (A) a JavaScript-side <c>setTimeout</c> that resolves the grant Promise to
+        /// <c>false</c> if no C# response arrives in time. This is the lever that can actually
+        /// break the overlay deadlock, because the JS event loop still fires (throttled) while
+        /// the player loop is frozen. (B) a C# coroutine that responds <c>false</c> after the
+        /// deadline as defense in depth for the case where the loop is running but the user
+        /// callback itself hangs.
         /// </para>
         /// <para>
         /// WARNING — consistency trade-off: if the JavaScript-side timeout fires and resolves
@@ -1383,6 +1394,21 @@ namespace AppsInToss
         /// </summary>
         private async Task DispatchNestedCallbackAsync(string requestId, string data, Func<string, Task<bool>> callback)
         {
+            // (B) C# coroutine timeout — defense in depth, opt-in via NestedCallbackTimeoutMs.
+            // IMPORTANT: this coroutine uses WaitForSecondsRealtime, so it runs on the Unity
+            // player loop and CANNOT fire while the native payment overlay has frozen the loop;
+            // it only fires once the loop resumes. Breaking the *overlay* deadlock is the job of
+            // the JavaScript-side setTimeout (lever A in the jslib). This coroutine instead
+            // cleans up the case where the loop is running but the user's async callback itself
+            // hangs (e.g. a server that never responds), by responding false after the deadline.
+            // Snapshot the knob once so arming and completion agree even if it changes mid-flight.
+            int timeoutMs = NestedCallbackTimeoutMs;
+            if (timeoutMs > 0)
+            {
+                _pendingNestedRequests.Add(requestId);
+                _nestedTimeoutCoroutines[requestId] = StartCoroutine(NestedTimeoutCoroutine(requestId, timeoutMs));
+            }
+
             bool result;
             try
             {
@@ -1393,7 +1419,47 @@ namespace AppsInToss
                 Debug.LogError($"[AITCore] Nested callback dispatch error: {ex.Message}");
                 result = false;
             }
+
+            // Cancel the pending coroutine (if it has not already fired) and respond exactly once.
+            CancelNestedTimeout(requestId);
+            if (timeoutMs > 0 && !_pendingNestedRequests.Remove(requestId))
+            {
+                // The timeout coroutine already responded false for this request — do not
+                // respond a second time (JS would ignore it anyway, but keep C# exactly-once).
+                return;
+            }
             RespondToNestedCallback(requestId, result);
+        }
+
+        /// <summary>
+        /// Client-side timeout for a nested grant callback (opt-in defense in depth). After the
+        /// deadline, if the user callback has not yet produced a response, responds <c>false</c>
+        /// to JavaScript exactly once. Reuses the #978 <see cref="TimeoutCoroutine"/> pattern
+        /// (player-loop-based <c>WaitForSecondsRealtime</c>), so — unlike the JavaScript-side
+        /// setTimeout — it cannot fire while the native overlay has frozen the loop.
+        /// </summary>
+        private System.Collections.IEnumerator NestedTimeoutCoroutine(string requestId, int timeoutMs)
+        {
+            yield return new WaitForSecondsRealtime(timeoutMs / 1000f);
+            _nestedTimeoutCoroutines.Remove(requestId);
+            // Fire only if the user callback has not already produced a response.
+            if (_pendingNestedRequests.Remove(requestId))
+            {
+                RespondToNestedCallback(requestId, false);
+            }
+        }
+
+        /// <summary>
+        /// Cancel a pending nested-timeout coroutine (invoked when the user callback resolves),
+        /// so it does not respond after the request has already been answered.
+        /// </summary>
+        private void CancelNestedTimeout(string requestId)
+        {
+            if (_nestedTimeoutCoroutines.TryGetValue(requestId, out var coroutine))
+            {
+                if (coroutine != null) StopCoroutine(coroutine);
+                _nestedTimeoutCoroutines.Remove(requestId);
+            }
         }
 
 #if UNITY_WEBGL && !UNITY_EDITOR

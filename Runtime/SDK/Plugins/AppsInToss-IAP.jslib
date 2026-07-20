@@ -20,7 +20,28 @@ mergeInto(LibraryManager.library, {
                     return new Promise(function(resolve) {
                         var requestId = subId + '_processProductGrant_' + Date.now();
                         window.__AIT_NESTED_CALLBACKS = window.__AIT_NESTED_CALLBACKS || {};
-                        window.__AIT_NESTED_CALLBACKS[requestId] = resolve;
+
+                        // (A) Opt-in deadlock guard: when AITCore.NestedCallbackTimeoutMs > 0,
+                        // arm a JS-side setTimeout. The JS event loop keeps firing (throttled)
+                        // even while the native overlay freezes the Unity player loop, so this
+                        // is the timeout that can actually break the circular deadlock. If it
+                        // fires first, resolve the grant to false and drop the callback so a
+                        // late C# response is a silent no-op.
+                        // WARNING: resolving false here does NOT cancel the purchase — it may
+                        // already have succeeded server-side. Reconcile "paid but not granted"
+                        // orders via IAPGetCompletedOrRefundedOrders.
+                        var timeoutMs = window.__AIT_NESTED_TIMEOUT_MS;
+                        var timeoutId = null;
+                        if (timeoutMs && timeoutMs > 0) {
+                            timeoutId = setTimeout(function() {
+                                if (window.__AIT_NESTED_CALLBACKS && window.__AIT_NESTED_CALLBACKS[requestId]) {
+                                    delete window.__AIT_NESTED_CALLBACKS[requestId];
+                                    resolve(false);
+                                }
+                            }, timeoutMs);
+                        }
+
+                        window.__AIT_NESTED_CALLBACKS[requestId] = { resolve: resolve, timeoutId: timeoutId };
 
                         var payload = JSON.stringify({
                             RequestId: requestId,
@@ -97,7 +118,28 @@ mergeInto(LibraryManager.library, {
                     return new Promise(function(resolve) {
                         var requestId = subId + '_processProductGrant_' + Date.now();
                         window.__AIT_NESTED_CALLBACKS = window.__AIT_NESTED_CALLBACKS || {};
-                        window.__AIT_NESTED_CALLBACKS[requestId] = resolve;
+
+                        // (A) Opt-in deadlock guard: when AITCore.NestedCallbackTimeoutMs > 0,
+                        // arm a JS-side setTimeout. The JS event loop keeps firing (throttled)
+                        // even while the native overlay freezes the Unity player loop, so this
+                        // is the timeout that can actually break the circular deadlock. If it
+                        // fires first, resolve the grant to false and drop the callback so a
+                        // late C# response is a silent no-op.
+                        // WARNING: resolving false here does NOT cancel the purchase — it may
+                        // already have succeeded server-side. Reconcile "paid but not granted"
+                        // orders via IAPGetCompletedOrRefundedOrders.
+                        var timeoutMs = window.__AIT_NESTED_TIMEOUT_MS;
+                        var timeoutId = null;
+                        if (timeoutMs && timeoutMs > 0) {
+                            timeoutId = setTimeout(function() {
+                                if (window.__AIT_NESTED_CALLBACKS && window.__AIT_NESTED_CALLBACKS[requestId]) {
+                                    delete window.__AIT_NESTED_CALLBACKS[requestId];
+                                    resolve(false);
+                                }
+                            }, timeoutMs);
+                        }
+
+                        window.__AIT_NESTED_CALLBACKS[requestId] = { resolve: resolve, timeoutId: timeoutId };
 
                         var payload = JSON.stringify({
                             RequestId: requestId,
@@ -433,12 +475,20 @@ mergeInto(LibraryManager.library, {
 
         if (window.__AIT_VERBOSE) console.log('[AIT jslib] RespondToNestedCallback:', reqId, resultBool);
 
-        if (window.__AIT_NESTED_CALLBACKS && window.__AIT_NESTED_CALLBACKS[reqId]) {
-            window.__AIT_NESTED_CALLBACKS[reqId](resultBool);
+        var entry = window.__AIT_NESTED_CALLBACKS && window.__AIT_NESTED_CALLBACKS[reqId];
+        if (entry) {
+            if (entry.timeoutId) { clearTimeout(entry.timeoutId); }
             delete window.__AIT_NESTED_CALLBACKS[reqId];
+            entry.resolve(resultBool);
         } else {
-            console.warn('[AIT jslib] Unknown nested callback:', reqId);
+            // Already settled by the (A) JS-side timeout, or never registered — silent no-op.
+            console.log('[AIT jslib] Nested callback already settled, ignoring:', reqId);
         }
+    },
+
+    __AITSetNestedCallbackTimeoutMs: function(timeoutMs) {
+        window.__AIT_NESTED_TIMEOUT_MS = timeoutMs;
+        console.log('[AIT jslib] NestedCallbackTimeoutMs set:', timeoutMs);
     },
 
 });

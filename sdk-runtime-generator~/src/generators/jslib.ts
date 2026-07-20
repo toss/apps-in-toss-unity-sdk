@@ -50,10 +50,11 @@ export class JSLibGenerator {
         functions.push(this.generateUnsubscribeFunction());
       }
 
-      // 중첩 콜백이 있는 API가 있는 카테고리에는 응답 함수 추가
+      // 중첩 콜백이 있는 API가 있는 카테고리에는 응답 함수 + 타임아웃 설정 브릿지 추가
       const hasNestedCallbacks = categoryAPIs.some(api => api.nestedCallbacks && api.nestedCallbacks.length > 0);
       if (hasNestedCallbacks) {
         functions.push(this.generateNestedCallbackResponseFunction());
+        functions.push(this.generateSetNestedCallbackTimeoutFunction());
       }
 
       const fileName = `AppsInToss-${category}.jslib`;
@@ -96,10 +97,11 @@ export class JSLibGenerator {
         functions.push(this.generateUnsubscribeFunction());
       }
 
-      // 중첩 콜백이 있는 API가 있는 카테고리에는 응답 함수 추가
+      // 중첩 콜백이 있는 API가 있는 카테고리에는 응답 함수 + 타임아웃 설정 브릿지 추가
       const hasNestedCallbacks = categoryAPIs.some(api => api.nestedCallbacks && api.nestedCallbacks.length > 0);
       if (hasNestedCallbacks) {
         functions.push(this.generateNestedCallbackResponseFunction());
+        functions.push(this.generateSetNestedCallbackTimeoutFunction());
       }
 
       const fileName = `AppsInToss-${category}.jslib`;
@@ -798,7 +800,28 @@ ${jsConversions ? '\n' + jsConversions + '\n' : ''}
                     return new Promise(function(resolve) {
                         var requestId = subId + '_${nc.name}_' + Date.now();
                         window.__AIT_NESTED_CALLBACKS = window.__AIT_NESTED_CALLBACKS || {};
-                        window.__AIT_NESTED_CALLBACKS[requestId] = resolve;
+
+                        // (A) Opt-in deadlock guard: when AITCore.NestedCallbackTimeoutMs > 0,
+                        // arm a JS-side setTimeout. The JS event loop keeps firing (throttled)
+                        // even while the native overlay freezes the Unity player loop, so this
+                        // is the timeout that can actually break the circular deadlock. If it
+                        // fires first, resolve the grant to false and drop the callback so a
+                        // late C# response is a silent no-op.
+                        // WARNING: resolving false here does NOT cancel the purchase — it may
+                        // already have succeeded server-side. Reconcile "paid but not granted"
+                        // orders via IAPGetCompletedOrRefundedOrders.
+                        var timeoutMs = window.__AIT_NESTED_TIMEOUT_MS;
+                        var timeoutId = null;
+                        if (timeoutMs && timeoutMs > 0) {
+                            timeoutId = setTimeout(function() {
+                                if (window.__AIT_NESTED_CALLBACKS && window.__AIT_NESTED_CALLBACKS[requestId]) {
+                                    delete window.__AIT_NESTED_CALLBACKS[requestId];
+                                    resolve(false);
+                                }
+                            }, timeoutMs);
+                        }
+
+                        window.__AIT_NESTED_CALLBACKS[requestId] = { resolve: resolve, timeoutId: timeoutId };
 
                         var payload = JSON.stringify({
                             RequestId: requestId,
@@ -1325,6 +1348,11 @@ ${onEventHandler}
 
   /**
    * 중첩 콜백 응답 함수 생성 (C# → JS)
+   *
+   * exactly-once: 정상 C# 응답과 (A) JS-side setTimeout 두 경로가 같은 pending 엔트리를
+   * 놓고 경쟁한다. 여기서 엔트리를 발견하면 반드시 setTimeout을 clearTimeout하고 엔트리를
+   * 제거한 뒤 resolve하여 중복 resolve를 막는다. 엔트리가 이미 제거된 경우(= setTimeout이
+   * 먼저 false로 resolve) 조용히 no-op한다(에러 로그 없이) — 늦게 도착한 응답은 정상 흐름.
    */
   private generateNestedCallbackResponseFunction(): string {
     return `    __AITRespondToNestedCallback: function(requestId, result) {
@@ -1333,12 +1361,30 @@ ${onEventHandler}
 
         if (window.__AIT_VERBOSE) console.log('[AIT jslib] RespondToNestedCallback:', reqId, resultBool);
 
-        if (window.__AIT_NESTED_CALLBACKS && window.__AIT_NESTED_CALLBACKS[reqId]) {
-            window.__AIT_NESTED_CALLBACKS[reqId](resultBool);
+        var entry = window.__AIT_NESTED_CALLBACKS && window.__AIT_NESTED_CALLBACKS[reqId];
+        if (entry) {
+            if (entry.timeoutId) { clearTimeout(entry.timeoutId); }
             delete window.__AIT_NESTED_CALLBACKS[reqId];
+            entry.resolve(resultBool);
         } else {
-            console.warn('[AIT jslib] Unknown nested callback:', reqId);
+            // Already settled by the (A) JS-side timeout, or never registered — silent no-op.
+            console.log('[AIT jslib] Nested callback already settled, ignoring:', reqId);
         }
+    },`;
+  }
+
+  /**
+   * 중첩 콜백 타임아웃 설정 브릿지 생성 (C# → JS)
+   *
+   * AITCore.NestedCallbackTimeoutMs 세터가 __AITSetNestedCallbackTimeoutMs(value)로 호출.
+   * grant Promise가 (A) JS-side setTimeout을 무장할지 판단하는 window.__AIT_NESTED_TIMEOUT_MS
+   * 전역을 설정한다. 함수명이 _Internal로 끝나지 않으므로 invariants의 DllImport 규약 검사
+   * 대상에서 제외된다(__AITRespondToNestedCallback과 동일).
+   */
+  private generateSetNestedCallbackTimeoutFunction(): string {
+    return `    __AITSetNestedCallbackTimeoutMs: function(timeoutMs) {
+        window.__AIT_NESTED_TIMEOUT_MS = timeoutMs;
+        console.log('[AIT jslib] NestedCallbackTimeoutMs set:', timeoutMs);
     },`;
   }
 

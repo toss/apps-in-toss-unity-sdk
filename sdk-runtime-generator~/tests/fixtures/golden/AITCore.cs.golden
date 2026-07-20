@@ -1237,6 +1237,54 @@ namespace AppsInToss
 
         private Dictionary<string, Delegate> _nestedCallbacks = new Dictionary<string, Delegate>();
 
+        private static int _nestedCallbackTimeoutMs = 0;
+
+        /// <summary>
+        /// Opt-in client-side timeout, in milliseconds, for nested grant callbacks such as
+        /// <c>processProductGrant</c> in <c>IAPCreateOneTimePurchaseOrder</c>.
+        /// <para>
+        /// Default is <c>0</c> = disabled = the original behavior is fully preserved (the SDK
+        /// waits indefinitely for the user's grant callback to resolve). Set a value greater
+        /// than 0 only after weighing the trade-off described below.
+        /// </para>
+        /// <para>
+        /// Why this exists: while the native payment overlay is shown, the Unity WebGL player
+        /// loop freezes (measured 26–43s) and the JavaScript event loop is heavily throttled.
+        /// If the user's async grant callback awaits server-side receipt validation, a circular
+        /// deadlock can form: native waits for the grant Promise, the Promise waits for the C#
+        /// response, the C# response waits for the awaited continuation, the continuation waits
+        /// for the player loop, and the player loop waits for the overlay to close. In measured
+        /// probes the native UI did not auto-dismiss even after "purchase completed".
+        /// </para>
+        /// <para>
+        /// When set greater than 0, a JavaScript-side <c>setTimeout</c> is armed (lever A):
+        /// it resolves the grant Promise to <c>false</c> if no C# response arrives in time.
+        /// This is the lever that can actually break the overlay deadlock, because the JS event
+        /// loop still fires (throttled) while the player loop is frozen.
+        /// </para>
+        /// <para>
+        /// WARNING — consistency trade-off: if the JavaScript-side timeout fires and resolves
+        /// the grant to <c>false</c>, the underlying purchase may already have SUCCEEDED on the
+        /// server (the measured overlay showed "purchase completed"). The order then becomes
+        /// "paid but not granted", and you MUST reconcile it after the fact via the
+        /// <c>IAPGetCompletedOrRefundedOrders</c> recovery flow to grant the item. This
+        /// reconciliation burden is exactly why the default is 0 (disabled).
+        /// </para>
+        /// </summary>
+        public static int NestedCallbackTimeoutMs
+        {
+            get => _nestedCallbackTimeoutMs;
+            set
+            {
+                _nestedCallbackTimeoutMs = value;
+#if UNITY_WEBGL && !UNITY_EDITOR
+                // Propagate to JavaScript so the grant Promise can arm its own setTimeout
+                // (lever A). Editor/other platforms compile but no-op.
+                __AITSetNestedCallbackTimeoutMs(value);
+#endif
+            }
+        }
+
         /// <summary>
         /// Register a nested callback (e.g., processProductGrant in IAPCreateOneTimePurchaseOrder).
         /// The user callback returns a Task so it can await asynchronous work (such as
@@ -1351,6 +1399,9 @@ namespace AppsInToss
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __AITRespondToNestedCallback(string requestId, int result);
+
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __AITSetNestedCallbackTimeoutMs(int timeoutMs);
 #endif
 
         /// <summary>

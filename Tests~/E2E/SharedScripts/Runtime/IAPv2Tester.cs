@@ -402,6 +402,7 @@ public class IAPv2Tester : MonoBehaviour
 
         iapStatus = "Creating purchase order...";
         iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] IAPCreateOneTimePurchaseOrder(sku: {iapSku})");
+        ArmPlayerLoopProbe();
         UpdateStatus();
         UpdateEventLog();
 
@@ -415,9 +416,25 @@ public class IAPv2Tester : MonoBehaviour
                 // SDK는 이 Task<bool>이 완료될 때까지 주문 완료 처리를 보류한다 (true → 자동 지급 완료).
                 ProcessProductGrant = async (data) =>
                 {
+                    // [PLP] 진입 시각/프레임은 동기 기록 — loop가 멈춰 있어도 유실 없음
+                    var t0 = DateTime.UtcNow;
+                    int f0 = _plpFrames;
                     iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] ProcessProductGrant called: {data}");
                     Debug.Log($"[IAPv2Tester] ProcessProductGrant called with data: {data}");
+
+                    // [PLP] continuation 재개 프로브 1: player loop가 멈춰 있으면 3초 Delay가 3초에 안 끝난다
+                    await Task.Delay(3000);
+                    var t1 = DateTime.UtcNow;
+                    int f1 = _plpFrames;
+
+                    // [PLP] continuation 재개 프로브 2: 코루틴(WaitForSecondsRealtime 0.2s) 경로
                     bool grantSuccess = await GrantGameProduct(data);
+                    var t2 = DateTime.UtcNow;
+                    int f2 = _plpFrames;
+
+                    iapEventLog.Add(
+                        $"[{DateTime.Now:HH:mm:ss}] [PLP] delay(3000ms): actual={(t1 - t0).TotalMilliseconds:F0}ms (frames {f0}->{f1}), " +
+                        $"coroutine(200ms): actual={(t2 - t1).TotalMilliseconds:F0}ms (frames {f1}->{f2})");
                     iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] ProcessProductGrant result: {grantSuccess}");
                     UpdateEventLog();
                     return grantSuccess;
@@ -432,6 +449,7 @@ public class IAPv2Tester : MonoBehaviour
                     iapOrderId = successEvent.Data?.OrderId ?? "";
                     if (_orderIdInput != null) _orderIdInput.text = iapOrderId;
                     iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] OnEvent: orderId={successEvent.Data?.OrderId}, amount={successEvent.Data?.DisplayAmount}");
+                    ReportPlayerLoopProbe("onEvent");
                     UpdateStatus();
                     UpdateEventLog();
                 },
@@ -440,6 +458,7 @@ public class IAPv2Tester : MonoBehaviour
                 {
                     iapStatus = "Purchase failed";
                     iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] OnError: {error.ErrorCode} - {error.Message}");
+                    ReportPlayerLoopProbe("onError");
                     UpdateStatus();
                     UpdateEventLog();
                 }
@@ -637,5 +656,71 @@ public class IAPv2Tester : MonoBehaviour
         yield return new WaitForSecondsRealtime(0.2f);
         Debug.Log($"[IAPv2Tester] Receipt validated, granting product: {data}");
         tcs.SetResult(true);
+    }
+
+    // =====================================================
+    // Player loop freeze 진단 프로브 (techchat 4377 검증용)
+    //
+    // 결제 native 오버레이 구간에서 실측으로 판별한다:
+    //  (1) player loop(Update) 정지 여부      — C# 프레임 하트비트의 최대 gap
+    //  (2) 웹뷰 JS 이벤트 루프 생존 여부       — jslib setInterval(250ms) 하트비트
+    //  (3) C# await 재개(continuation) 지연    — ProcessProductGrant 내 Task.Delay/코루틴 실측
+    // 모든 기록은 메모리에 남겼다가 루프 재개 후 이벤트 로그로 출력한다
+    // (loop가 멈춰도 SendMessage 진입·메모리 기록은 동기 경로라 유실되지 않음).
+    // =====================================================
+#if UNITY_WEBGL && !UNITY_EDITOR
+    [System.Runtime.InteropServices.DllImport("__Internal")]
+    private static extern void PLP_StartJsProbe();
+
+    [System.Runtime.InteropServices.DllImport("__Internal")]
+    private static extern string PLP_GetJsReport();
+#else
+    private static void PLP_StartJsProbe() { }
+    private static string PLP_GetJsReport() { return "{\"count\":0,\"maxGapMs\":0,\"spanMs\":0}"; }
+#endif
+
+    private bool _plpArmed;
+    private int _plpFrames;
+    private float _plpLastFrameRealtime;
+    private float _plpMaxFrameGapSec;
+    private string _plpMaxGapAt = "";
+
+    private void Update()
+    {
+        if (!_plpArmed) return;
+        float now = Time.realtimeSinceStartup;
+        if (_plpLastFrameRealtime > 0f)
+        {
+            float gap = now - _plpLastFrameRealtime;
+            if (gap > _plpMaxFrameGapSec)
+            {
+                _plpMaxFrameGapSec = gap;
+                _plpMaxGapAt = DateTime.Now.ToString("HH:mm:ss");
+            }
+        }
+        _plpLastFrameRealtime = now;
+        _plpFrames++;
+    }
+
+    private void ArmPlayerLoopProbe()
+    {
+        _plpArmed = true;
+        _plpFrames = 0;
+        _plpLastFrameRealtime = 0f;
+        _plpMaxFrameGapSec = 0f;
+        _plpMaxGapAt = "";
+        PLP_StartJsProbe();
+        iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] [PLP] probe armed (C# Update + JS setInterval 250ms)");
+    }
+
+    private void ReportPlayerLoopProbe(string phase)
+    {
+        if (!_plpArmed) return;
+        _plpArmed = false;
+        string jsReport = PLP_GetJsReport();
+        iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] [PLP:{phase}] frames={_plpFrames}, maxFrameGap={_plpMaxFrameGapSec:F2}s@{_plpMaxGapAt}");
+        iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] [PLP:{phase}] js={jsReport}");
+        Debug.Log($"[PLP:{phase}] frames={_plpFrames} maxFrameGap={_plpMaxFrameGapSec:F2}s@{_plpMaxGapAt} js={jsReport}");
+        UpdateEventLog();
     }
 }

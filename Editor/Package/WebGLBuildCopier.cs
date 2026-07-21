@@ -534,11 +534,13 @@ namespace AppsInToss.Editor.Package
             // JSON 배열로 URL 목록 생성
             var urlsJson = "[" + string.Join(",", urls.ConvertAll(u => $"\"{u}\"")) + "]";
 
-            // EARLY KICKOFF 대상은 window.fetch 로 실제 소비되는 data/wasm 뿐이다(framework/loader 는
-            // <script src> 로 소비 — 아래 GenerateEarlyFetchScriptLegacyCaching 주석 참조). 어느 파일이
-            // data/wasm 인지는 C# 이 명확히 알고 있으므로(파일명 sniffing 아님) 여기서 명시 리스트로 넘긴다.
+            // 선시작(prefetch/kickoff) 대상은 window.fetch 로 실제 소비되는 data/wasm 뿐이다 — 레거시·modern
+            // 공통. loader 는 index.html 이, framework 은 로더(2022.3·6000.x 모두 createElement('script'))가
+            // <script src> 로 소비해 window.fetch 를 타지 않으므로, 선시작하면 응답이 소진되지 않고 이중
+            // 다운로드만 유발한다(2026-07 베타 E2E 에서 6000.x loader/framework 각 2회 다운로드로 실측 적발).
+            // 어느 파일이 data/wasm 인지는 C# 이 명확히 알고 있으므로(파일명 sniffing 아님) 명시 리스트로 넘긴다.
             // 런타임에서 절대 URL(host+path 포함)에 substring 매칭하면 배포 도메인/경로에 우연히 '.data'/'.wasm'
-            // 이 포함될 때 framework/loader 를 오탐 선시작할 수 있어 그 휴리스틱을 원천 제거한다.
+            // 이 포함될 때 framework/loader 를 오탐 선시작할 수 있어 그 휴리스틱을 원천 배제한다.
             var kickUrls = new List<string>();
             if (!string.IsNullOrEmpty(dataFile)) kickUrls.Add($"Build/{dataFile}");
             if (!string.IsNullOrEmpty(wasmFile)) kickUrls.Add($"Build/{wasmFile}");
@@ -550,7 +552,7 @@ namespace AppsInToss.Editor.Package
             // 순단에 노출된다. 따라서 Cache-Storage 워밍은 레거시에만 적용하고 6000.x는 기존 스크립트를 유지한다.
             if (!IsLegacyUnityLoader())
             {
-                return GenerateEarlyFetchScriptModern(urlsJson);
+                return GenerateEarlyFetchScriptModern(kickUrlsJson);
             }
 
             string cacheName = BuildDataCacheName(dataFile, wasmFile, buildSrc, bundleVersion);
@@ -612,6 +614,9 @@ namespace AppsInToss.Editor.Package
 
         /// <summary>
         /// 6000.x용 기존 Early Fetch 스크립트(무캐시): 콜드 로드에서 병렬 prefetch → 로더에 전달, 재로드에서는 미설치.
+        /// urlsJson 에는 window.fetch 로 실제 소비되는 리소스(data/wasm)만 넘겨야 한다 — loader/framework 은
+        /// 6000.x 에서도 &lt;script src&gt; 로 소비되어 prefetch 응답이 소진되지 않고 이중 다운로드가 된다
+        /// (2026-07 베타 E2E CE 테스트에서 실측 적발, 디스패처가 kickUrlsJson 을 전달).
         /// </summary>
         internal static string GenerateEarlyFetchScriptModern(string urlsJson)
         {

@@ -350,6 +350,7 @@
         '<button class="metric-subtab active" data-subtab="events">📝 Events</button>' +
         '<button class="metric-subtab" data-subtab="stats">📈 Statistics</button>' +
         '<button class="metric-subtab" data-subtab="perf">⚡ Performance</button>' +
+        '<button class="metric-subtab" data-subtab="loading">🚀 Loading</button>' +
         '<button id="metric-copy-btn" class="metric-tool-btn" data-label="📋 Copy" title="현재 탭 내용을 클립보드로 복사">📋 Copy</button>' +
         '<button id="metric-copy-logs-btn" class="metric-tool-btn" data-label="🪵 Logs" title="콘솔 로그를 클립보드로 복사">🪵 Logs</button>' +
       '</div>' +
@@ -359,6 +360,7 @@
       '</div>' +
       '<div class="metric-content" id="metric-panel-stats" style="display:none;"></div>' +
       '<div class="metric-content" id="metric-panel-perf" style="display:none;"></div>' +
+      '<div class="metric-content" id="metric-panel-loading" style="display:none;"></div>' +
     '</div>';
 
   var metricPanels = null;
@@ -372,7 +374,8 @@
     metricPanels = {
       events: document.getElementById('metric-panel-events'),
       stats: document.getElementById('metric-panel-stats'),
-      perf: document.getElementById('metric-panel-perf')
+      perf: document.getElementById('metric-panel-perf'),
+      loading: document.getElementById('metric-panel-loading')
     };
     eventListEl = document.getElementById('metric-event-list');
 
@@ -381,6 +384,7 @@
     subtabBtns.forEach(function (btn) {
       btn.onclick = function () {
         currentSubtab = btn.getAttribute('data-subtab');
+        if (currentSubtab === 'loading') loadingNeedsRender = true;  // 탭 진입 시 최신 상태로 갱신
         subtabBtns.forEach(function (b) { b.classList.remove('active'); });
         btn.classList.add('active');
         Object.keys(metricPanels).forEach(function (key) {
@@ -414,6 +418,8 @@
           handleCopy(copyBtn, buildStatsCopyText(), null);
         } else if (currentSubtab === 'perf') {
           handleCopy(copyBtn, buildPerfCopyText(), null);
+        } else if (currentSubtab === 'loading') {
+          handleCopy(copyBtn, buildLoadingCopyText(), null);
         } else {
           handleCopy(copyBtn, buildEventsCopyText(), getFilteredEvents().length);
         }
@@ -560,12 +566,248 @@
     panel.innerHTML = html;
   }
 
+  // =========================================================================
+  // Loading 계측
+  //
+  // vConsole 내장 System 탭은 index.html 문서 하나의 navigation timing만 보여준다.
+  // Unity WebGL 로딩 시간은 사실상 전부 그 뒤(wasm/data 다운로드·해제, WASM 컴파일,
+  // UnityCache IndexedDB 입출력)에서 소모되므로 문서 타이밍만으로는 느린 로딩의
+  // 원인을 가릴 수 없다. Resource Timing으로 Build/* 자산별 실측을 보여준다.
+  //
+  // transferSize === 0 && decodedBodySize > 0  → 캐시 히트(네트워크 미사용)
+  // 아예 엔트리가 없음                          → UnityCache(IndexedDB)에서 제공됨
+  //                                              (IndexedDB 읽기는 Resource Timing에 안 잡힌다)
+  // =========================================================================
+  var ttffMs = null;          // window.unityInstance가 생긴 시각 (performance.now 기준 = navigationStart 기준)
+  var ttffWatchStopped = false;
+  var loadingNeedsRender = true;  // 탭 진입/TTFF 확정 시에만 참 (아래 updateMetricExplorerUI 주석 참조)
+
+  (function watchUnityReady() {
+    // 템플릿 로그 문자열에 의존하지 않기 위해 unityInstance 존재를 직접 폴링한다.
+    var startedAt = performance.now();
+    var timer = setInterval(function () {
+      if (ttffWatchStopped) { clearInterval(timer); return; }
+      if (window['unityInstance']) {
+        ttffMs = performance.now();
+        ttffWatchStopped = true;
+        clearInterval(timer);
+        loadingNeedsRender = true;
+        if (isMetricsVisible && currentSubtab === 'loading') updateMetricExplorerUI();
+      } else if (performance.now() - startedAt > 300000) {
+        // 5분이 지나도 안 뜨면 폴링을 멈춘다 (로딩 실패 케이스에서 무한 타이머 방지)
+        ttffWatchStopped = true;
+        clearInterval(timer);
+      }
+    }, 50);
+  })();
+
+  function fmtBytes(n) {
+    if (n === null || n === undefined || isNaN(n)) return '-';
+    if (n === 0) return '0';
+    if (n < 1024) return n + 'B';
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + 'KB';
+    return (n / (1024 * 1024)).toFixed(2) + 'MB';
+  }
+
+  function fmtMs(n) {
+    if (n === null || n === undefined || isNaN(n)) return '-';
+    return Math.round(n).toLocaleString() + 'ms';
+  }
+
+  // Unity 페이로드로 볼 자산 판별 (경로/확장자 기준 — 로그 문자열에 의존하지 않는다)
+  function isUnityAsset(name) {
+    return /\/Build\//.test(name) ||
+           /\.(unityweb|wasm|data|symbols\.json)(\?|$)/.test(name) ||
+           /\.(loader|framework)\.js(\?|$)/.test(name);
+  }
+
+  function collectLoadingRows() {
+    if (!performance.getEntriesByType) return [];
+    var entries = [];
+    try { entries = performance.getEntriesByType('resource') || []; } catch (e) { return []; }
+    var rows = [];
+    for (var i = 0; i < entries.length; i++) {
+      var e = entries[i];
+      if (!isUnityAsset(e.name)) continue;
+      var short = e.name.split('/').pop().split('?')[0];
+      // 콘텐츠 해시 파일명이 길어 UI를 밀어내므로 앞부분을 줄인다 (확장자는 보존)
+      if (short.length > 28) short = short.slice(0, 8) + '…' + short.slice(-16);
+      rows.push({
+        name: short,
+        duration: e.duration,
+        transfer: e.transferSize,
+        decoded: e.decodedBodySize,
+        cached: e.transferSize === 0 && e.decodedBodySize > 0,
+        start: e.startTime
+      });
+    }
+    rows.sort(function (a, b) { return a.start - b.start; });
+    return rows;
+  }
+
+  function getNavTiming() {
+    var nav = null;
+    try {
+      var navs = performance.getEntriesByType ? performance.getEntriesByType('navigation') : null;
+      if (navs && navs.length) nav = navs[0];
+    } catch (e) { /* 미지원 브라우저 — 아래에서 null 처리 */ }
+    return nav;
+  }
+
+  function renderLoading() {
+    if (!metricPanels) return;
+    var panel = metricPanels.loading;
+    var nav = getNavTiming();
+    var rows = collectLoadingRows();
+
+    function metric(label, value, color) {
+      return '<div class="perf-metric"><span class="perf-label">' + label + '</span>' +
+             '<span class="perf-value"' + (color ? ' style="color:' + color + ';"' : '') + '>' +
+             value + '</span></div>';
+    }
+
+    var html = '';
+    html += metric('TTFF (Unity 준비 완료)',
+      ttffMs === null ? '측정 중…' : fmtMs(ttffMs),
+      ttffMs === null ? '#666' : (ttffMs > 10000 ? '#fb923c' : '#00ff00'));
+    if (nav) {
+      html += metric('DOMContentLoaded', fmtMs(nav.domContentLoadedEventEnd));
+      html += metric('Window load', fmtMs(nav.loadEventEnd > 0 ? nav.loadEventEnd : nav.responseEnd));
+      html += metric('문서(HTML) 응답', fmtMs(nav.responseEnd - nav.requestStart));
+    }
+
+    var totalTransfer = 0, totalDecoded = 0, cachedCount = 0;
+    for (var i = 0; i < rows.length; i++) {
+      totalTransfer += rows[i].transfer || 0;
+      totalDecoded += rows[i].decoded || 0;
+      if (rows[i].cached) cachedCount++;
+    }
+    html += metric('총 전송량 (Unity 자산)', fmtBytes(totalTransfer) + ' / 해제 후 ' + fmtBytes(totalDecoded));
+    html += metric('캐시 히트', cachedCount + ' / ' + rows.length,
+      rows.length > 0 && cachedCount === rows.length ? '#00ff00' : '');
+
+    html += '<div class="fps-graph-container"><div class="fps-graph-title">Unity 자산별 로딩</div></div>';
+    if (rows.length === 0) {
+      html += '<div style="color:#666;padding:8px 0;">Resource Timing 엔트리 없음 — ' +
+              'UnityCache(IndexedDB)에서 제공되었거나 브라우저가 미지원입니다.</div>';
+    } else {
+      html += '<div style="font-family:monospace;font-size:11px;line-height:1.7;">';
+      for (var j = 0; j < rows.length; j++) {
+        var r = rows[j];
+        html += '<div style="display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid #333;padding:2px 0;">' +
+          '<span style="color:#ccc;flex:1;overflow:hidden;text-overflow:ellipsis;">' + r.name + '</span>' +
+          '<span style="color:' + (r.duration > 2000 ? '#fb923c' : '#8ac') + ';">' + fmtMs(r.duration) + '</span>' +
+          '<span style="color:#888;">' + (r.cached ? 'cache' : fmtBytes(r.transfer)) + '</span>' +
+          '</div>';
+      }
+      html += '</div>';
+    }
+
+    html += '<div class="fps-graph-container"><div class="fps-graph-title">클린 상태 재측정</div></div>' +
+      '<button id="metric-clear-cache-btn" class="metric-tool-btn" data-label="🧹 캐시 삭제 후 리로드" ' +
+      'title="UnityCache(IndexedDB) + CacheStorage를 지우고 새로고침">🧹 캐시 삭제 후 리로드</button>' +
+      '<div style="color:#888;font-size:11px;padding:6px 0 0;">' +
+      'UnityCache(IndexedDB)와 CacheStorage를 삭제한 뒤 리로드합니다. ' +
+      '브라우저 HTTP 캐시는 JS에서 삭제할 수 없어 남을 수 있고, PlayerPrefs는 보존됩니다.</div>';
+
+    panel.innerHTML = html;
+    wireClearCacheButton();
+  }
+
+  // =========================================================================
+  // 캐시 삭제 후 리로드 — 콜드 로딩 재현용
+  //
+  // Unity WebGL은 빌드 산출물을 UnityCache라는 IndexedDB DB에 넣어두고 두 번째
+  // 로드부터 네트워크를 건너뛴다. 로딩 성능을 다시 재려면 이걸 지워야 콜드 상태가 된다.
+  // 테스트 중 오조작으로 리로드되면 진행 중 측정이 날아가므로 2단계 확인을 둔다.
+  // =========================================================================
+  var clearCacheArmed = false;
+
+  function wireClearCacheButton() {
+    var btn = document.getElementById('metric-clear-cache-btn');
+    if (!btn) return;
+    clearCacheArmed = false;
+    btn.onclick = function () {
+      if (!clearCacheArmed) {
+        clearCacheArmed = true;
+        btn.textContent = '⚠️ 한 번 더 누르면 리로드';
+        btn.classList.add('copied-ok');
+        setTimeout(function () {
+          if (!clearCacheArmed) return;
+          clearCacheArmed = false;
+          btn.textContent = btn.getAttribute('data-label');
+          btn.classList.remove('copied-ok');
+        }, 4000);
+        return;
+      }
+      clearCacheArmed = false;
+      btn.disabled = true;
+      btn.textContent = '삭제 중…';
+      clearBuildCaches(function (summary) {
+        console.log('[AIT] 캐시 삭제 완료 — ' + summary + ' / 리로드합니다');
+        setTimeout(function () { location.reload(); }, 150);
+      });
+    };
+  }
+
+  function clearBuildCaches(done) {
+    var results = [];
+    var pending = 2;
+    var finished = false;
+
+    function step(label) {
+      results.push(label);
+      if (--pending === 0 && !finished) { finished = true; done(results.join(', ')); }
+    }
+
+    // 어떤 단계가 매달려도(IndexedDB delete는 다른 탭/연결이 열려 있으면 blocked 상태로
+    // 영원히 대기할 수 있다) 리로드까지 가도록 상한을 둔다.
+    setTimeout(function () {
+      if (!finished) { finished = true; done(results.join(', ') + ', timeout'); }
+    }, 3000);
+
+    // 1) UnityCache (IndexedDB)
+    try {
+      var req = indexedDB.deleteDatabase('UnityCache');
+      req.onsuccess = function () { step('UnityCache 삭제'); };
+      req.onerror = function () { step('UnityCache 실패'); };
+      req.onblocked = function () { step('UnityCache blocked(사용 중)'); };
+    } catch (e) {
+      step('UnityCache 예외');
+    }
+
+    // 2) CacheStorage (서비스워커/프리캐시)
+    try {
+      if (window.caches && caches.keys) {
+        caches.keys().then(function (keys) {
+          if (!keys.length) { step('CacheStorage 없음'); return; }
+          var left = keys.length;
+          keys.forEach(function (k) {
+            caches.delete(k).then(function () { if (--left === 0) step('CacheStorage ' + keys.length + '개 삭제'); })
+              ['catch'](function () { if (--left === 0) step('CacheStorage 일부 실패'); });
+          });
+        })['catch'](function () { step('CacheStorage 실패'); });
+      } else {
+        step('CacheStorage 미지원');
+      }
+    } catch (e) {
+      step('CacheStorage 예외');
+    }
+  }
+
   function updateMetricExplorerUI() {
     if (!isMetricsVisible) return;
     if (!ensureWired()) return;
     if (currentSubtab === 'events') renderEventList();
     else if (currentSubtab === 'stats') renderStatistics();
     else if (currentSubtab === 'perf') renderPerformance();
+    else if (currentSubtab === 'loading' && loadingNeedsRender) {
+      // Loading 데이터는 로드 완료 후 사실상 고정이다. 반면 이 함수는 메트릭 이벤트마다
+      // 불리므로, 매번 재렌더하면 innerHTML 교체로 "캐시 삭제" 버튼의 2단계 확인 상태가
+      // 초기화되어 두 번째 클릭이 먹지 않는다. 탭 진입/TTFF 확정 시에만 그린다.
+      loadingNeedsRender = false;
+      renderLoading();
+    }
   }
 
   // =========================================================================
@@ -656,6 +898,45 @@
     lines.push('');
     lines.push('FPS History (last ' + FPS_HISTORY_MAX + 's, oldest→newest):');
     lines.push(fpsHistory.length ? fpsHistory.join(', ') : '(collecting...)');
+    return lines.join('\n');
+  }
+
+  function buildLoadingCopyText() {
+    var lines = [];
+    var nav = getNavTiming();
+    var rows = collectLoadingRows();
+    lines.push('=== AIT Metrics — Loading ===');
+    lines.push('Exported: ' + fmtExportTime(new Date()));
+    lines.push('URL: ' + location.href);
+    lines.push('');
+    lines.push('TTFF (Unity 준비 완료): ' + (ttffMs === null ? '측정 중' : fmtMs(ttffMs)));
+    if (nav) {
+      lines.push('DOMContentLoaded: ' + fmtMs(nav.domContentLoadedEventEnd));
+      lines.push('Window load: ' + fmtMs(nav.loadEventEnd > 0 ? nav.loadEventEnd : nav.responseEnd));
+      lines.push('문서(HTML) 응답: ' + fmtMs(nav.responseEnd - nav.requestStart));
+    }
+
+    var totalTransfer = 0, totalDecoded = 0, cachedCount = 0;
+    for (var i = 0; i < rows.length; i++) {
+      totalTransfer += rows[i].transfer || 0;
+      totalDecoded += rows[i].decoded || 0;
+      if (rows[i].cached) cachedCount++;
+    }
+    lines.push('총 전송량: ' + fmtBytes(totalTransfer) + ' (해제 후 ' + fmtBytes(totalDecoded) + ')');
+    lines.push('캐시 히트: ' + cachedCount + ' / ' + rows.length);
+    lines.push('');
+    lines.push('Unity 자산별:');
+    if (rows.length === 0) {
+      lines.push('  (Resource Timing 엔트리 없음 — UnityCache에서 제공되었거나 미지원)');
+    } else {
+      for (var j = 0; j < rows.length; j++) {
+        var r = rows[j];
+        lines.push('  ' + r.name + '  ' + fmtMs(r.duration) +
+          '  전송 ' + (r.cached ? 'cache hit' : fmtBytes(r.transfer)) +
+          '  해제 ' + fmtBytes(r.decoded) +
+          '  시작 ' + fmtMs(r.start));
+      }
+    }
     return lines.join('\n');
   }
 

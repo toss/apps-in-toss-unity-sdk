@@ -1,0 +1,106 @@
+name: Lint
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches: [main]
+
+jobs:
+  check-unity-meta-files:
+    name: Check Unity .meta files
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+
+      - name: Check for missing .meta files
+        run: |
+          echo "Unity .meta 파일 누락 검사 중..."
+          echo ""
+
+          MISSING=()
+
+          # -------------------------------------------------------
+          # 1) 루트 레벨: 숨김/~접미사/node_modules 제외한 모든 파일과 폴더에 .meta 확인
+          # -------------------------------------------------------
+          for item in *; do
+            # 숨김 파일/폴더 제외 (. 으로 시작)
+            case "$item" in
+              .*) continue ;;
+            esac
+            # ~ 접미사 제외 (Unity가 무시)
+            case "$item" in
+              *~) continue ;;
+            esac
+            # node_modules 제외
+            [ "$item" = "node_modules" ] && continue
+            # .meta 파일 자체 제외
+            case "$item" in
+              *.meta) continue ;;
+            esac
+
+            if [ ! -f "${item}.meta" ]; then
+              MISSING+=("$item")
+            fi
+          done
+
+          # -------------------------------------------------------
+          # 2) 하위 디렉토리: 재귀적으로 모든 파일과 폴더에 .meta 확인
+          # -------------------------------------------------------
+          # 검사 대상 디렉토리 수집 (루트에서 숨김/~접미사/node_modules 제외)
+          ROOT_DIRS=()
+          for item in */; do
+            item="${item%/}"
+            case "$item" in
+              .*) continue ;;
+              *~) continue ;;
+              node_modules) continue ;;
+            esac
+            ROOT_DIRS+=("$item")
+          done
+
+          for dir in "${ROOT_DIRS[@]}"; do
+            # find로 하위 파일 및 폴더 검사
+            # - ~접미사 디렉토리는 prune
+            # - node_modules는 prune
+            # - 숨김 파일/폴더 제외
+            # - .meta 파일 자체 제외
+            while IFS= read -r -d '' entry; do
+              if [ ! -e "${entry}.meta" ]; then
+                MISSING+=("$entry")
+              fi
+            done < <(find "$dir" \
+              -mindepth 1 \
+              \( -type d -name "node_modules" -prune \) -o \
+              \( -type d -name "*~" -prune \) -o \
+              \( -name ".*" -prune \) -o \
+              -not -name "*.meta" \
+              -print0)
+          done
+
+          # -------------------------------------------------------
+          # 결과 출력
+          # -------------------------------------------------------
+          if [ ${#MISSING[@]} -gt 0 ]; then
+            echo "::error::Unity .meta 파일이 누락되었습니다!"
+            echo ""
+            echo "다음 항목에 대한 .meta 파일이 없습니다:"
+            for item in "${MISSING[@]}"; do
+              echo "  - $item"
+            done
+            echo ""
+            echo "해결 방법:"
+            echo "  1. Unity Editor에서 프로젝트를 열어 자동으로 .meta 파일 생성"
+            echo "  2. 또는 기존 .meta 파일을 참고하여 수동으로 생성 (GUID 포함)"
+            exit 1
+          fi
+
+          echo "✓ 모든 Unity 파일에 .meta 파일이 있습니다."
+
+      - name: Check .meta GUID hygiene
+        # 배포 .meta의 중복 GUID / 손-작성 순차 GUID 검사 (techchat #4076 재발 방지).
+        # Node stdlib만 사용 — ubuntu-latest 기본 Node로 충분.
+        run: node "scripts~/check-meta-guids.js"

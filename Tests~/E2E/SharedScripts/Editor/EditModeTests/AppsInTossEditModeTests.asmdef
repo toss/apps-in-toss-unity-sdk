@@ -1,0 +1,30 @@
+{
+    "name": "AppsInTossEditModeTests",
+    "rootNamespace": "",
+    "references": [
+        "AppsInTossSDK",
+        "AppsInTossSDKEditor",
+        "AppsInToss.Helpers",
+        "AppsInTossTestScripts",
+        "AppsInTossTestScripts.Editor"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll",
+        "Newtonsoft.Json.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false,
+    "optionalUnityReferences": [
+        "TestAssemblies"
+    ]
+}

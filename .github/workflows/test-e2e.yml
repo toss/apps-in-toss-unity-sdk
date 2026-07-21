@@ -1,0 +1,864 @@
+name: E2E Tests
+run-name: "E2E Tests${{ inputs.sdk_version_override && format(' (SDK {0})', inputs.sdk_version_override) || '' }}${{ inputs.target_ref && format(' - {0}', inputs.target_ref) || '' }}"
+
+on:
+  # 수동 실행
+  workflow_dispatch:
+    inputs:
+      target_ref:
+        description: 'PR 번호 또는 브랜치 이름 (예: 23 또는 feature/my-branch)'
+        type: string
+        required: false
+      clean_library:
+        description: 'Clean Unity Library cache'
+        type: boolean
+        default: false
+      sdk_version_override:
+        description: 'SDK 버전 오버라이드 (호환성 테스트용, 예: 1.5.0)'
+        type: string
+        required: false
+        default: ''
+      test_level:
+        description: 'Test level: 0=editmode, 1=build+validation, 2=full-e2e'
+        type: choice
+        options:
+          - '2'
+          - '1'
+          - '0'
+        default: '2'
+      debug_runner:
+        description: 'Kill Unity processes and log system diagnostics before build'
+        type: boolean
+        default: false
+
+  # update.yml에서 호출
+  workflow_call:
+    inputs:
+      target_ref:
+        description: 'PR number or branch name'
+        type: string
+        required: false
+      clean_library:
+        description: 'Clean Unity Library cache'
+        type: boolean
+        default: false
+      sdk_version_override:
+        description: 'Override SDK version for compatibility testing'
+        type: string
+        required: false
+        default: ''
+      test_level:
+        description: 'Test level: 0=editmode, 1=build+validation, 2=full-e2e'
+        type: string
+        required: false
+        default: '2'
+      debug_runner:
+        description: 'Kill Unity processes and log system diagnostics before build'
+        type: boolean
+        required: false
+        default: false
+
+concurrency:
+  group: e2e-tests-${{ inputs.target_ref || github.ref_name }}-${{ inputs.sdk_version_override || 'default' }}
+  cancel-in-progress: true
+
+jobs:
+  # =====================================================
+  # Ref 결정
+  # =====================================================
+  setup:
+    name: Setup
+    runs-on: ubuntu-latest
+
+    outputs:
+      ref: ${{ steps.ref.outputs.ref }}
+      repository: ${{ steps.ref.outputs.repository }}
+      pr_number: ${{ steps.ref.outputs.pr_number }}
+
+    steps:
+      - name: Resolve Target Ref
+        id: ref
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TARGET_REF="${{ inputs.target_ref }}"
+
+          if [ -z "$TARGET_REF" ]; then
+            # 입력이 없으면 현재 브랜치 사용
+            REF="${{ github.ref_name }}"
+            echo "현재 ref 사용: ${REF}"
+          elif [[ "$TARGET_REF" =~ ^[0-9]+$ ]]; then
+            # 숫자만 있으면 PR 번호로 간주
+            PR_NUMBER="$TARGET_REF"
+            echo "PR 번호로 감지: #${PR_NUMBER}"
+
+            PR_DATA=$(gh api "repos/${{ github.repository }}/pulls/${PR_NUMBER}" --jq '{ref: .head.ref, repo: .head.repo.full_name}' 2>/dev/null || echo "")
+
+            if [ -z "$PR_DATA" ]; then
+              echo "::error::PR #${PR_NUMBER}을(를) 찾을 수 없습니다"
+              exit 1
+            fi
+
+            REF=$(echo "$PR_DATA" | jq -r '.ref')
+            REPO=$(echo "$PR_DATA" | jq -r '.repo')
+            echo "ref=${REF}" >> $GITHUB_OUTPUT
+            echo "repository=${REPO}" >> $GITHUB_OUTPUT
+            echo "pr_number=${PR_NUMBER}" >> $GITHUB_OUTPUT
+            echo "브랜치: ${REF} (저장소: ${REPO})"
+            exit 0
+          else
+            # 브랜치 이름으로 간주
+            REF="$TARGET_REF"
+            echo "브랜치 이름으로 감지: ${REF}"
+          fi
+
+          # 브랜치에서 열린 PR 찾기
+          echo "ref=${REF}" >> $GITHUB_OUTPUT
+          echo "repository=${{ github.repository }}" >> $GITHUB_OUTPUT
+          PR_NUMBER=$(gh pr list --head "${REF}" --state open --json number --jq '.[0].number' 2>/dev/null || echo "")
+
+          if [ -n "$PR_NUMBER" ]; then
+            echo "pr_number=${PR_NUMBER}" >> $GITHUB_OUTPUT
+            echo "열린 PR 발견: #${PR_NUMBER}"
+          else
+            echo "pr_number=" >> $GITHUB_OUTPUT
+            echo "열린 PR 없음 (코멘트 보고 스킵)"
+          fi
+
+  # =====================================================
+  # SDK Generator Unit Tests
+  # =====================================================
+  sdk-generator-tests:
+    name: SDK Generator Tests
+    runs-on: ubuntu-latest
+    needs: setup
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ needs.setup.outputs.repository }}
+          ref: ${{ needs.setup.outputs.ref }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Install Dependencies
+        working-directory: sdk-runtime-generator~
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Run Unit Tests (C#/jslib invariants)
+        working-directory: sdk-runtime-generator~
+        run: pnpm run test:invariants
+
+  # =====================================================
+  # Pending Status 보고
+  # =====================================================
+  report-pending:
+    name: Report Pending Status
+    runs-on: ubuntu-latest
+    needs: setup
+    if: needs.setup.outputs.ref != ''
+
+    steps:
+      - name: Get Commit SHA
+        id: sha
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          REF="${{ needs.setup.outputs.ref }}"
+          REPO="${{ needs.setup.outputs.repository }}"
+          SHA=$(gh api "repos/${REPO}/git/ref/heads/${REF}" --jq '.object.sha' 2>/dev/null || echo "")
+
+          if [ -z "$SHA" ]; then
+            echo "::warning::Could not get SHA for ref ${REF} in ${REPO}"
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "sha=${SHA}" >> $GITHUB_OUTPUT
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Report Pending Status
+        if: steps.sha.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SHA="${{ steps.sha.outputs.sha }}"
+          TARGET_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          gh api "repos/${{ github.repository }}/statuses/${SHA}" \
+            -X POST \
+            -f state="pending" \
+            -f target_url="$TARGET_URL" \
+            -f description="E2E tests running..." \
+            -f context="E2E Tests"
+
+          echo "Reported pending status for commit $SHA"
+
+  # =====================================================
+  # Unity Build - macOS (EditMode 테스트 + WebGL 빌드)
+  # Playwright는 build-* 다음의 e2e-* job(ubuntu)에서 실행
+  # =====================================================
+  build-macos:
+    name: Build (macOS, Unity ${{ matrix.unity-version }}${{ matrix.leg-suffix }})
+    needs: [setup]
+
+    # ref-cancel: 같은 ref(브랜치/태그/PR) + 같은 (os, unity-version, leg) 의 이전
+    # 호출을 cancel. 새 푸시 시 이전 잡 정리만 담당한다.
+    # workflow_dispatch에서는 github.event.pull_request.number가 비어 있고
+    # github.ref가 항상 dispatch한 ref(보통 main)라 PR 간 분리가 안 됨 →
+    # needs.setup.outputs.ref(target_ref 해석 결과)를 우선 사용해 PR/브랜치별 격리.
+    concurrency:
+      group: e2e-${{ github.workflow }}-${{ needs.setup.outputs.ref || github.event.pull_request.number || github.ref }}-macos-${{ matrix.unity-version }}${{ matrix.leg-suffix }}
+      cancel-in-progress: true
+
+    strategy:
+      fail-fast: false
+      # OS당 enabled 머신 5대(macos-1-1~1-5)에서 기본 매트릭스 5개를 병렬 실행.
+      # + brotli 레그: 2022.3에서 압축(brotli)+CE 네이티브 서빙 경로 검증
+      #   (기본 레그는 압축 비활성이라 Content-Encoding 경로가 무검증 — 레거시 버퍼링
+      #   fetch의 CE 응답 처리 회귀를 e2e-ce-serving.test.js가 잡는다).
+      #   같은 unity-2022.3 라벨 핀 머신에서 기본 2022.3 레그와 순차 실행된다.
+      #   fast-build=false(release) 필수: Unity는 Development Build에서 WebGL 압축을
+      #   생략하므로(2026-07 로컬 실측: dev+brotli → 비압축 .data/.wasm) dev 프로필이면
+      #   .br이 산출되지 않아 CE 검증이 무의미해진다. release는 배포 빌드와 동일 프로필.
+      # ⚠ include 목록은 e2e-macos matrix·test-report TARGETS와 수동 동기화.
+      matrix:
+        include:
+          - unity-version: "2021.3"
+            fast-build: true
+          - unity-version: "2022.3"
+            fast-build: true
+          - unity-version: "6000.0"
+            fast-build: true
+          - unity-version: "6000.2"
+            fast-build: true
+          - unity-version: "6000.3"
+            fast-build: true
+          - unity-version: "2022.3"
+            fast-build: false
+            compression-format: "2"
+            leg-suffix: "-brotli"
+
+    uses: ./.github/workflows/unity-build.yml
+    with:
+      repository: ${{ needs.setup.outputs.repository }}
+      ref: ${{ needs.setup.outputs.ref }}
+      os: macos
+      unity-version: ${{ matrix.unity-version }}
+      run-build: true
+      run-editmode-test: true
+      run-unit-test: false
+      clean-library: ${{ inputs.clean_library || false }}
+      sdk-version-override: ${{ inputs.sdk_version_override || '' }}
+      test-level: ${{ inputs.test_level || '2' }}
+      debug-runner: ${{ inputs.debug_runner || false }}
+      compression-format: ${{ matrix.compression-format || '' }}
+      leg-suffix: ${{ matrix.leg-suffix || '' }}
+      fast-build: ${{ matrix.fast-build }}
+    secrets:
+      SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+      KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+      FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
+      FIREBASE_MEASUREMENT_ID: ${{ secrets.FIREBASE_MEASUREMENT_ID }}
+
+  # =====================================================
+  # Unity Build - Windows (EditMode 테스트 + WebGL 빌드)
+  # =====================================================
+  build-windows:
+    name: Build (Windows, Unity ${{ matrix.unity-version }})
+    needs: [setup]
+
+    concurrency:
+      group: e2e-${{ github.workflow }}-${{ needs.setup.outputs.ref || github.event.pull_request.number || github.ref }}-windows-${{ matrix.unity-version }}
+      cancel-in-progress: true
+
+    strategy:
+      fail-fast: false
+      # OS당 enabled 머신 5대(windows-2-1~2-5)에서 매트릭스 5개를 병렬 실행
+      matrix:
+        unity-version: ["2021.3", "2022.3", "6000.0", "6000.2", "6000.3"]
+
+    uses: ./.github/workflows/unity-build.yml
+    with:
+      repository: ${{ needs.setup.outputs.repository }}
+      ref: ${{ needs.setup.outputs.ref }}
+      os: windows
+      unity-version: ${{ matrix.unity-version }}
+      run-build: true
+      run-editmode-test: true
+      run-unit-test: false
+      clean-library: ${{ inputs.clean_library || false }}
+      sdk-version-override: ${{ inputs.sdk_version_override || '' }}
+      test-level: ${{ inputs.test_level || '2' }}
+      debug-runner: ${{ inputs.debug_runner || false }}
+    secrets:
+      SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+      KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+      FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
+      FIREBASE_MEASUREMENT_ID: ${{ secrets.FIREBASE_MEASUREMENT_ID }}
+
+  # =====================================================
+  # Playwright E2E Tests - macOS 빌드 산출물 (ubuntu-latest)
+  # self-hosted runner 점유를 줄이기 위해 ubuntu에서 실행.
+  # WebGL 산출물은 OS-독립적이라 ubuntu에서 동일하게 동작.
+  # =====================================================
+  e2e-macos:
+    name: E2E (macOS build, Unity ${{ matrix.unity-version }}${{ matrix.leg-suffix }})
+    needs: [setup, build-macos]
+    if: needs.build-macos.result == 'success' && (inputs.test_level || '2') == '2'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    strategy:
+      fail-fast: false
+      # ⚠ include 목록은 build-macos matrix·test-report TARGETS와 수동 동기화.
+      # brotli 레그는 CE(Content-Encoding) 네이티브 서빙 경로를 검증한다
+      # (Tests~/E2E/tests/e2e-ce-serving.test.js). development-build는 빌드 쪽
+      # fast-build와 짝: brotli 레그는 release 빌드(fast-build=false)이므로 "false"를
+      # 전파해 테스트의 isDevBuild 분기(빌드 크기 단언 등)가 실제 빌드와 일치하게 한다.
+      matrix:
+        include:
+          - unity-version: "2021.3"
+          - unity-version: "2022.3"
+          - unity-version: "6000.0"
+          - unity-version: "6000.2"
+          - unity-version: "6000.3"
+          - unity-version: "2022.3"
+            compression-format: "2"
+            leg-suffix: "-brotli"
+            development-build: "false"
+
+    env:
+      MOBILE_EMULATION: "true"
+      TEST_LEVEL: ${{ inputs.test_level || '2' }}
+      AIT_BUILD_DIR: ${{ github.workspace }}/Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ needs.setup.outputs.repository }}
+          ref: ${{ needs.setup.outputs.ref }}
+
+      - name: Download AIT Build Artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: ait-build-macos-${{ matrix.unity-version }}${{ matrix.leg-suffix }}
+          path: ${{ env.AIT_BUILD_DIR }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Install AIT Build Dependencies
+        # ait-build/ 안에서 vite preview/dev 서버를 띄우려면 node_modules 필요
+        working-directory: ${{ env.AIT_BUILD_DIR }}
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Test Dependencies
+        working-directory: Tests~/E2E/tests
+        # 브라우저는 runner image의 시스템 Chrome 사용 (playwright.config.ts: channel='chrome').
+        # Playwright 관리 바이너리(chromium/ffmpeg)는 cdn.playwright.dev(GCS) 다운로드가
+        # GitHub Actions runner에서 stall/hang하므로 일절 받지 않음 (video도 비활성화).
+        # 따라서 npm registry 기반 pnpm install만 수행 — 외부 다운로드 의존성 0.
+        run: pnpm install --frozen-lockfile
+
+      - name: Run Playwright E2E
+        working-directory: Tests~/E2E/tests
+        env:
+          UNITY_PROJECT_PATH: ${{ github.workspace }}/Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}
+          # E2E 빌드와 동일한 값으로 전파 — test가 isDevBuild/expectedFormat을 분기.
+          AIT_DEVELOPMENT_BUILD: ${{ matrix.development-build || 'true' }}
+          AIT_COMPRESSION_FORMAT: ${{ matrix.compression-format || '0' }}
+        run: pnpm test
+
+      - name: Upload Benchmark Results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: benchmark-results-macos-${{ matrix.unity-version }}${{ matrix.leg-suffix }}
+          path: Tests~/E2E/tests/benchmark-results.json
+          if-no-files-found: ignore
+
+      - name: Upload Playwright Report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report-macos-${{ matrix.unity-version }}${{ matrix.leg-suffix }}
+          path: Tests~/E2E/tests/playwright-report/
+          if-no-files-found: ignore
+          compression-level: 9
+          retention-days: 7
+
+  # =====================================================
+  # Playwright E2E Tests - Windows 빌드 산출물 (ubuntu-latest)
+  # =====================================================
+  e2e-windows:
+    name: E2E (Windows build, Unity ${{ matrix.unity-version }})
+    needs: [setup, build-windows]
+    if: needs.build-windows.result == 'success' && (inputs.test_level || '2') == '2'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    strategy:
+      fail-fast: false
+      matrix:
+        unity-version: ["2021.3", "2022.3", "6000.0", "6000.2", "6000.3"]
+
+    env:
+      TEST_LEVEL: ${{ inputs.test_level || '2' }}
+      AIT_BUILD_DIR: ${{ github.workspace }}/Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ needs.setup.outputs.repository }}
+          ref: ${{ needs.setup.outputs.ref }}
+
+      - name: Download AIT Build Artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: ait-build-windows-${{ matrix.unity-version }}
+          path: ${{ env.AIT_BUILD_DIR }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Install AIT Build Dependencies
+        working-directory: ${{ env.AIT_BUILD_DIR }}
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Test Dependencies
+        working-directory: Tests~/E2E/tests
+        # 브라우저는 runner image의 시스템 Chrome 사용 (playwright.config.ts: channel='chrome').
+        # Playwright 관리 바이너리(chromium/ffmpeg)는 cdn.playwright.dev(GCS) 다운로드가
+        # GitHub Actions runner에서 stall/hang하므로 일절 받지 않음 (video도 비활성화).
+        # 따라서 npm registry 기반 pnpm install만 수행 — 외부 다운로드 의존성 0.
+        run: pnpm install --frozen-lockfile
+
+      - name: Run Playwright E2E
+        working-directory: Tests~/E2E/tests
+        env:
+          UNITY_PROJECT_PATH: ${{ github.workspace }}/Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}
+          # E2E 빌드와 동일한 값으로 전파 — test가 isDevBuild/expectedFormat을 분기.
+          AIT_DEVELOPMENT_BUILD: "true"
+          AIT_COMPRESSION_FORMAT: "0"
+        run: pnpm test
+
+      - name: Upload Benchmark Results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: benchmark-results-windows-${{ matrix.unity-version }}
+          path: Tests~/E2E/tests/benchmark-results.json
+          if-no-files-found: ignore
+
+      - name: Upload Playwright Report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report-windows-${{ matrix.unity-version }}
+          path: Tests~/E2E/tests/playwright-report/
+          if-no-files-found: ignore
+          compression-level: 9
+          retention-days: 7
+
+  # =====================================================
+  # Test Report Summary
+  # =====================================================
+  test-report:
+    name: Test Report Summary
+    runs-on: ubuntu-latest
+    needs: [setup, sdk-generator-tests, build-macos, build-windows, e2e-macos, e2e-windows]
+    if: always()
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+
+      - name: Classify Matrix Failures
+        id: classify
+        shell: bash
+        run: |
+          set +e
+          # 매트릭스 잡별 결과 분류기.
+          #
+          # 카테고리:
+          #   passed                          모든 EditMode 테스트 통과
+          #   code                            EditMode 테스트 실패 (이름 추출)
+          #   results-missing                 editmode-results.xml 없음 — 인프라 결함 의심
+          #   build-no-output                 빌드 산출물 없음 — Brotli/디스크 의심
+          #   unknown                         분류 불가
+          #
+          # results-missing/build-no-output/unknown은 `unity-log-*` 아티팩트를 grep해
+          # infra:* 서브카테고리로 세분화한다 (라이선스/Hub/캐시/Brotli/디스크 등).
+          #
+          # 매트릭스를 명시적으로 enumerate해서 아티팩트 자체가 없는 잡(예: setup 직후
+          # 라이선스 실패)도 표에 노출되게 한다.
+          mkdir -p classification
+          rows=""
+
+          # OS × Unity 버전(+레그) 조합 — build/e2e-{macos,windows} 잡의 matrix와 동일하게 유지.
+          # 레그 접미사가 있는 항목은 version 자리에 "버전<leg-suffix>"를 그대로 쓴다
+          # (아티팩트 이름이 editmode-results-macos-2022.3-brotli 형태이므로 조회가 일치).
+          declare -a TARGETS=(
+            "macos:2021.3"
+            "macos:2022.3"
+            "macos:2022.3-brotli"
+            "macos:6000.0"
+            "macos:6000.2"
+            "macos:6000.3"
+            "windows:2021.3"
+            "windows:2022.3"
+            "windows:6000.0"
+            "windows:6000.2"
+            "windows:6000.3"
+          )
+
+          # 인프라 서브카테고리 grep 패턴 (첫 매치가 detail에 노출됨).
+          # 패턴 추가 시 docs/claude/github-actions.md에도 반영을 권장.
+          classify_infra() {
+            local logs_glob="$1"
+            local hit_subcat="" hit_line=""
+            local file
+            for file in $logs_glob; do
+              [ -f "$file" ] || continue
+
+              # 패키지 의존성 해결 실패 (git 누락 등) — 라이선스 자가복구 후에도 종료시키는 흔한 원인
+              hit_line=$(grep -m1 -E "No '?git'? executable|Project has invalid dependencies|Failed to resolve packages|Cannot fetch.*git" "$file" 2>/dev/null)
+              if [ -n "$hit_line" ]; then
+                hit_subcat="infra:package-resolution"
+                printf '%s\t%s\n' "$hit_subcat" "$hit_line"
+                return 0
+              fi
+              # Unity Hub 부재/실행 실패
+              hit_line=$(grep -m1 -E 'Unity Hub not found|hub: command not found' "$file" 2>/dev/null)
+              if [ -n "$hit_line" ]; then
+                hit_subcat="infra:hub-missing"
+                printf '%s\t%s\n' "$hit_subcat" "$hit_line"
+                return 0
+              fi
+              # Brotli 압축 크래시 (self-hosted runner 동시 빌드 리소스 경합)
+              hit_line=$(grep -m1 -E '\[BUSY [0-9]+s\] Brotli .*\.unityweb' "$file" 2>/dev/null)
+              if [ -n "$hit_line" ]; then
+                hit_subcat="infra:brotli-crash"
+                printf '%s\t%s\n' "$hit_subcat" "$hit_line"
+                return 0
+              fi
+              # 디스크 풀
+              hit_line=$(grep -m1 -E 'No space left on device|disk full' "$file" 2>/dev/null)
+              if [ -n "$hit_line" ]; then
+                hit_subcat="infra:disk-full"
+                printf '%s\t%s\n' "$hit_subcat" "$hit_line"
+                return 0
+              fi
+              # Library 잠금 (이전 잡 잔여 프로세스)
+              hit_line=$(grep -m1 -E 'Library directory is locked|Lockfile.*Library' "$file" 2>/dev/null)
+              if [ -n "$hit_line" ]; then
+                hit_subcat="infra:library-locked"
+                printf '%s\t%s\n' "$hit_subcat" "$hit_line"
+                return 0
+              fi
+              # 라이선스 만료/시트 부재 — 자가복구 시 false positive를 일으키므로 마지막에 검사하고
+              # 같은 로그 안에서 라이선스가 정상 발급된 흔적이 있으면 무시한다.
+              # 표면 증상이 다양해도(ULF 부재 / 토큰 부재 / entitlement 0개 / Pro 모듈 미부여)
+              # 운영상 해결책은 동일(ULF 갱신)이므로 한 카테고리로 묶는다.
+              hit_line=$(grep -m1 -E "No ULF license found|Access token is unavailable|Token not found in cache|Found 0 entitlement groups|'com\.unity\.editor\.[a-z]+' was not found" "$file" 2>/dev/null)
+              if [ -n "$hit_line" ]; then
+                if grep -qE 'Successfully updated license|Serial number assigned to' "$file"; then
+                  : # 라이선스가 자가복구되었으므로 진짜 원인이 아님
+                else
+                  hit_subcat="infra:license-token-expired"
+                  printf '%s\t%s\n' "$hit_subcat" "$hit_line"
+                  return 0
+                fi
+              fi
+            done
+            return 1
+          }
+
+          for target in "${TARGETS[@]}"; do
+            os="${target%%:*}"
+            version="${target##*:}"
+            results_file="artifacts/editmode-results-${os}-${version}/editmode-results.xml"
+            category="unknown"
+            subcategory=""
+            detail=""
+            artifact="absent"
+
+            if [ -f "$results_file" ]; then
+              artifact="present"
+              if grep -q '<test-case [^>]*result="Failed"' "$results_file"; then
+                category="code"
+                failed_names=$(grep -oE '<test-case [^>]*fullname="[^"]*"[^>]*result="Failed"' "$results_file" \
+                  | grep -oE 'fullname="[^"]*"' \
+                  | sed 's/fullname="//; s/"$//' \
+                  | sort -u)
+                count=$(printf '%s\n' "$failed_names" | grep -c .)
+                first=$(printf '%s\n' "$failed_names" | head -1)
+                if [ "$count" -le 1 ]; then
+                  detail="failed test: ${first}"
+                else
+                  detail="failed tests (${count}): ${first} +$((count-1)) more"
+                fi
+              else
+                category="passed"
+                detail="all editmode tests passed"
+              fi
+            else
+              # 결과 파일이 없는 두 가지 가능성:
+              #   1. EditMode 단계가 results-missing으로 실패 (라이선스/Hub/캐시 등)
+              #   2. 빌드 단계에서 Brotli/디스크 등으로 실패 → editmode 도달 못함
+              # 빌드 산출물 디렉토리가 있는데 파일이 없는 경우는 build-no-output.
+              build_artifact_dir=$(ls -d "artifacts/ait-build-${os}-${version}"* 2>/dev/null | head -1)
+              if [ -n "$build_artifact_dir" ] && [ -d "$build_artifact_dir" ]; then
+                # 압축 레그(brotli/gzip)는 .unityweb 대신 .br/.gz를 산출하므로 함께 센다.
+                unityweb_count=$(find "$build_artifact_dir" -type f \( -name '*.unityweb' -o -name '*.br' -o -name '*.gz' \) 2>/dev/null | wc -l | tr -d ' ')
+                if [ "$unityweb_count" = "0" ]; then
+                  category="build-no-output"
+                  detail="no .unityweb files in build artifact (compression failure suspected)"
+                else
+                  category="results-missing"
+                  detail="editmode-results.xml not produced (license/setup/crash suspected)"
+                fi
+              else
+                category="results-missing"
+                detail="editmode-results.xml not produced (license/setup/crash suspected)"
+              fi
+            fi
+
+            # 인프라 서브카테고리: 결과가 코드/통과가 아닐 때만 시도.
+            if [ "$category" != "passed" ] && [ "$category" != "code" ]; then
+              shopt -s nullglob
+              # build → unit-test → editmode 순으로 grep (인프라 결함은 보통 빌드/EditMode에서 먼저 노출).
+              for kind in build unit-test editmode; do
+                infra_match=$(classify_infra "artifacts/unity-log-${kind}-${os}-${version}/*.log" 2>/dev/null)
+                if [ -n "$infra_match" ]; then
+                  subcategory="${infra_match%%	*}"
+                  hit="${infra_match#*	}"
+                  # detail에 매칭 라인 한 줄 첨부 (너무 길면 80자로 자름).
+                  # 마크다운 표 셀이 깨지지 않도록 `|`는 ⎮(U+23AE)로 치환.
+                  hit_short="${hit:0:80}"
+                  hit_safe="${hit_short//|/⎮}"
+                  detail_safe="${detail//|/⎮}"
+                  detail="${detail_safe} — ${subcategory}: ${hit_safe}"
+                  break
+                fi
+              done
+              shopt -u nullglob
+            fi
+
+            display_category="${category}"
+            if [ -n "$subcategory" ]; then
+              display_category="${category} → ${subcategory}"
+            fi
+
+            rows+="| ${os} | ${version} | \`${display_category}\` | \`${artifact}\` | ${detail:-_(none)_} |"$'\n'
+            echo "::notice title=Failure Classification (${os}, ${version})::category=${category} subcategory=${subcategory:-none} artifact=${artifact} detail=${detail}"
+          done
+
+          if [ -z "$rows" ]; then
+            echo "has_classification=false" >> "$GITHUB_OUTPUT"
+            echo "분류 가능한 매트릭스 결과 없음"
+            exit 0
+          fi
+
+          {
+            echo "### Failure Classification"
+            echo ""
+            echo "| OS | Unity | category | results | detail |"
+            echo "|---|---|---|---|---|"
+            printf '%s' "$rows"
+          } > classification/classification.md
+
+          cat classification/classification.md >> "$GITHUB_STEP_SUMMARY"
+          echo "has_classification=true" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Generate Benchmark Report
+        run: node .github/scripts/generate-benchmark-report.js
+
+      - name: Write Job Summary
+        run: cat benchmark-report.md >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload Benchmark Report
+        uses: actions/upload-artifact@v7
+        with:
+          name: benchmark-report
+          path: benchmark-report.md
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Post PR Comment
+        if: needs.setup.outputs.pr_number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PR_NUMBER="${{ needs.setup.outputs.pr_number }}"
+
+          # 테스트 결과 상태 확인
+          # e2e-* job은 test_level=2일 때만 실행되므로, skipped인 경우 build-* 결과를 OS 결과로 사용
+          SDK_RESULT="${{ needs.sdk-generator-tests.result }}"
+          BUILD_MACOS_RESULT="${{ needs.build-macos.result }}"
+          BUILD_WINDOWS_RESULT="${{ needs.build-windows.result }}"
+          E2E_MACOS_RESULT="${{ needs.e2e-macos.result }}"
+          E2E_WINDOWS_RESULT="${{ needs.e2e-windows.result }}"
+          MACOS_RESULT=$([ "$E2E_MACOS_RESULT" = "skipped" ] && echo "$BUILD_MACOS_RESULT" || echo "$E2E_MACOS_RESULT")
+          WINDOWS_RESULT=$([ "$E2E_WINDOWS_RESULT" = "skipped" ] && echo "$BUILD_WINDOWS_RESULT" || echo "$E2E_WINDOWS_RESULT")
+
+          if [ "$SDK_RESULT" = "success" ] && [ "$MACOS_RESULT" = "success" ] && [ "$WINDOWS_RESULT" = "success" ]; then
+            STATUS_EMOJI="✅"
+            STATUS_TEXT="All tests passed"
+          elif [ "$SDK_RESULT" = "cancelled" ] || [ "$MACOS_RESULT" = "cancelled" ] || [ "$WINDOWS_RESULT" = "cancelled" ]; then
+            STATUS_EMOJI="⚠️"
+            STATUS_TEXT="Tests cancelled"
+          else
+            STATUS_EMOJI="❌"
+            STATUS_TEXT="Tests failed"
+          fi
+
+          # 벤치마크 리포트 읽기 (있으면)
+          if [ -f "benchmark-report.md" ]; then
+            BENCHMARK_CONTENT=$(cat benchmark-report.md)
+          else
+            BENCHMARK_CONTENT="벤치마크 데이터 없음"
+          fi
+
+          # 실패 분류 리포트 읽기 (있으면)
+          if [ -f "classification/classification.md" ]; then
+            CLASSIFICATION_CONTENT=$(cat classification/classification.md)
+          else
+            CLASSIFICATION_CONTENT=""
+          fi
+
+          # PR 코멘트 생성
+          COMMENT_BODY=$(cat <<EOF
+          ## ${STATUS_EMOJI} E2E Test Report
+
+          | Test | Result |
+          |------|--------|
+          | SDK Generator | ${SDK_RESULT} |
+          | E2E macOS | ${MACOS_RESULT} |
+          | E2E Windows | ${WINDOWS_RESULT} |
+
+          **Status**: ${STATUS_TEXT}
+
+          ${CLASSIFICATION_CONTENT}
+
+          <details>
+          <summary>📊 Benchmark Report</summary>
+
+          ${BENCHMARK_CONTENT}
+
+          </details>
+
+          ---
+          [View full run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          EOF
+          )
+
+          # gh api로 코멘트 작성
+          gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
+            -X POST \
+            -f body="$COMMENT_BODY"
+
+          echo "PR #${PR_NUMBER}에 테스트 리포트 코멘트 작성 완료"
+
+  # =====================================================
+  # Commit Status 보고
+  # =====================================================
+  report-status:
+    name: Report Status
+    runs-on: ubuntu-latest
+    needs: [setup, sdk-generator-tests, build-macos, build-windows, e2e-macos, e2e-windows]
+    if: always() && needs.setup.outputs.ref != ''
+
+    steps:
+      - name: Determine Status
+        id: status
+        run: |
+          SDK_RESULT="${{ needs.sdk-generator-tests.result }}"
+          BUILD_MACOS_RESULT="${{ needs.build-macos.result }}"
+          BUILD_WINDOWS_RESULT="${{ needs.build-windows.result }}"
+          E2E_MACOS_RESULT="${{ needs.e2e-macos.result }}"
+          E2E_WINDOWS_RESULT="${{ needs.e2e-windows.result }}"
+          # e2e-* skipped (test_level != 2)이면 build-* 결과를 OS 결과로 사용
+          MACOS_RESULT=$([ "$E2E_MACOS_RESULT" = "skipped" ] && echo "$BUILD_MACOS_RESULT" || echo "$E2E_MACOS_RESULT")
+          WINDOWS_RESULT=$([ "$E2E_WINDOWS_RESULT" = "skipped" ] && echo "$BUILD_WINDOWS_RESULT" || echo "$E2E_WINDOWS_RESULT")
+
+          if [ "$SDK_RESULT" = "success" ] && [ "$MACOS_RESULT" = "success" ] && [ "$WINDOWS_RESULT" = "success" ]; then
+            echo "state=success" >> $GITHUB_OUTPUT
+            echo "description=All tests passed (SDK + E2E macOS + Windows)" >> $GITHUB_OUTPUT
+          elif [ "$SDK_RESULT" = "cancelled" ] || [ "$MACOS_RESULT" = "cancelled" ] || [ "$WINDOWS_RESULT" = "cancelled" ]; then
+            echo "state=error" >> $GITHUB_OUTPUT
+            echo "description=Tests cancelled" >> $GITHUB_OUTPUT
+          else
+            echo "state=failure" >> $GITHUB_OUTPUT
+            echo "description=Tests failed (SDK: $SDK_RESULT, macOS: $MACOS_RESULT, Windows: $WINDOWS_RESULT)" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Get Commit SHA
+        id: sha
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          REF="${{ needs.setup.outputs.ref }}"
+          REPO="${{ needs.setup.outputs.repository }}"
+          SHA=$(gh api "repos/${REPO}/git/ref/heads/${REF}" --jq '.object.sha' 2>/dev/null || echo "")
+
+          if [ -z "$SHA" ]; then
+            echo "::warning::Could not get SHA for ref ${REF} in ${REPO}"
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "sha=${SHA}" >> $GITHUB_OUTPUT
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Report Commit Status
+        if: steps.sha.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SHA="${{ steps.sha.outputs.sha }}"
+          STATE="${{ steps.status.outputs.state }}"
+          DESCRIPTION="${{ steps.status.outputs.description }}"
+          TARGET_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          gh api "repos/${{ github.repository }}/statuses/${SHA}" \
+            -X POST \
+            -f state="$STATE" \
+            -f target_url="$TARGET_URL" \
+            -f description="$DESCRIPTION" \
+            -f context="E2E Tests"
+
+          echo "Reported status: $STATE for commit $SHA"

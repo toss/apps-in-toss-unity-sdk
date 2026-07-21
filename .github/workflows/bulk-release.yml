@@ -1,0 +1,465 @@
+name: Bulk Release
+run-name: "Bulk Release${{ inputs.versions && format(' - {0}', inputs.versions) || '' }}${{ inputs.min_version && format(' (min: v{0})', inputs.min_version) || '' }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      versions:
+        description: '버전 목록 (콤마 구분, 예: 1.5.0,1.6.0,1.7.0) - 비어있으면 모든 release/v* 태그 대상'
+        required: false
+        type: string
+      max_parallel:
+        description: '동시 실행 버전 수 (기본: 2)'
+        required: false
+        type: number
+        default: 2
+      min_version:
+        description: '최소 버전 (비워두면 sdk-policy.json에서 읽음). 이전 버전 배포가 필요하면 낮은 버전으로 지정'
+        required: false
+        type: string
+      build_strategy:
+        description: '빌드 전략: full (10빌드), standard (5빌드), minimal (1빌드), skip-build (0빌드) - 기본: minimal'
+        required: false
+        type: choice
+        options:
+          - full
+          - standard
+          - minimal
+          - skip-build
+        default: minimal
+
+jobs:
+  # =====================================================
+  # 버전 목록 준비
+  # =====================================================
+  prepare-versions:
+    name: 버전 목록 준비
+    runs-on: ubuntu-latest
+
+    outputs:
+      versions: ${{ steps.extract.outputs.versions }}
+      version_count: ${{ steps.extract.outputs.count }}
+      min_version: ${{ steps.extract.outputs.min_version }}
+      skipped_missing: ${{ steps.extract.outputs.skipped_missing }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: 버전 추출
+        id: extract
+        run: |
+          INPUT_VERSIONS="${{ inputs.versions }}"
+
+          # sdk-policy.json에서 기본 최소 버전을 읽어옴 (수동 입력이 없을 경우)
+          POLICY_MIN_VERSION=$(jq -r '.minVersion // empty' sdk-policy.json 2>/dev/null || echo "")
+          if [ -z "$POLICY_MIN_VERSION" ]; then
+            # 이 값은 AITDeprecationChecker.cs의 FallbackDeprecationThreshold와 일치해야 합니다.
+            POLICY_MIN_VERSION="2.4.0"
+            echo "sdk-policy.json에서 minVersion을 읽지 못해 폴백 사용: ${POLICY_MIN_VERSION}"
+          fi
+
+          MIN_VERSION="${{ inputs.min_version || '' }}"
+          if [ -z "$MIN_VERSION" ]; then
+            MIN_VERSION="$POLICY_MIN_VERSION"
+          fi
+          echo "최소 버전: ${MIN_VERSION}"
+          echo "min_version=${MIN_VERSION}" >> $GITHUB_OUTPUT
+
+          if [ -n "$INPUT_VERSIONS" ]; then
+            echo "=== 입력된 버전 사용 ==="
+            ALL_INPUT=$(echo "$INPUT_VERSIONS" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sort -V)
+          else
+            echo "=== Git 태그에서 버전 추출 ==="
+            ALL_INPUT=$(git tag -l 'release/v*' | sed 's/release\/v//' | sort -V)
+          fi
+
+          # min_version 이상만 필터링
+          VERSIONS=""
+          for V in $ALL_INPUT; do
+            if [ "$(printf '%s\n' "$MIN_VERSION" "$V" | sort -V | head -n1)" = "$MIN_VERSION" ] || [ "$V" = "$MIN_VERSION" ]; then
+              VERSIONS="${VERSIONS}${V}"$'\n'
+            else
+              echo "  v${V}: min_version(${MIN_VERSION}) 미만으로 스킵"
+            fi
+          done
+          VERSIONS=$(echo "$VERSIONS" | sed '/^$/d')
+
+          # npm 사전 존재 체크 — npm에서 제거된(unpublish) web-framework 버전은
+          # regenerate-sdk가 ERR_PNPM_NO_MATCHING_VERSION으로 반드시 실패하므로
+          # 대상에서 미리 제외한다 (주로 수명이 끝난 beta 스냅샷 태그).
+          # 패큐먼트 조회 실패 시에는 기존 동작 그대로 전체 버전을 시도한다 (fail-open).
+          SKIPPED_MISSING=""
+          NPM_VERSIONS=$(curl -fsSL --retry 3 "https://registry.npmjs.org/@apps-in-toss%2fweb-framework" | jq -r '.versions | keys[]' || echo "")
+          if [ -z "$NPM_VERSIONS" ]; then
+            echo "::warning::web-framework 패큐먼트 조회 실패 — npm 사전 존재 체크를 건너뜁니다"
+          else
+            EXISTING=""
+            for V in $VERSIONS; do
+              if echo "$NPM_VERSIONS" | grep -Fqx "$V"; then
+                EXISTING="${EXISTING}${V}"$'\n'
+              else
+                SKIPPED_MISSING="${SKIPPED_MISSING}${V}"$'\n'
+                echo "  v${V}: npm에 @apps-in-toss/web-framework@${V} 없음 → 스킵"
+              fi
+            done
+            VERSIONS=$(echo "$EXISTING" | sed '/^$/d')
+          fi
+          SKIPPED_MISSING_CSV=$(echo "$SKIPPED_MISSING" | sed '/^$/d' | paste -sd, -)
+          echo "skipped_missing=${SKIPPED_MISSING_CSV}" >> $GITHUB_OUTPUT
+
+          # 버전이 없으면 에러
+          if [ -z "$VERSIONS" ]; then
+            echo "::error::릴리즈할 버전이 없습니다"
+            exit 1
+          fi
+
+          # 버전 목록 출력
+          echo "발견된 버전:"
+          echo "$VERSIONS"
+          echo ""
+
+          # JSON 배열로 변환
+          JSON_VERSIONS=$(echo "$VERSIONS" | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          echo "JSON 배열: ${JSON_VERSIONS}"
+
+          # 버전 개수
+          COUNT=$(echo "$VERSIONS" | grep -c .)
+          echo "총 ${COUNT}개 버전"
+
+          # 출력 설정
+          echo "versions=${JSON_VERSIONS}" >> $GITHUB_OUTPUT
+          echo "count=${COUNT}" >> $GITHUB_OUTPUT
+
+      - name: 버전 목록 요약
+        run: |
+          echo "## 일괄 릴리즈 대상 버전" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| # | 버전 |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|------|" >> $GITHUB_STEP_SUMMARY
+
+          VERSIONS='${{ steps.extract.outputs.versions }}'
+          INDEX=1
+          for VERSION in $(echo "$VERSIONS" | jq -r '.[]'); do
+            echo "| ${INDEX} | v${VERSION} |" >> $GITHUB_STEP_SUMMARY
+            INDEX=$((INDEX + 1))
+          done
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**총 ${{ steps.extract.outputs.count }}개 버전**" >> $GITHUB_STEP_SUMMARY
+          SKIPPED_MISSING="${{ steps.extract.outputs.skipped_missing }}"
+          if [ -n "$SKIPPED_MISSING" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**npm 미존재로 스킵**: ${SKIPPED_MISSING}" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**최소 버전**: ${{ steps.extract.outputs.min_version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**동시 실행 수**: ${{ inputs.max_parallel || 2 }}" >> $GITHUB_STEP_SUMMARY
+          echo "**빌드 전략**: ${{ inputs.build_strategy || 'minimal' }}" >> $GITHUB_STEP_SUMMARY
+
+  # =====================================================
+  # 각 버전별 릴리즈 실행 (병렬)
+  # =====================================================
+  release-versions:
+    name: 릴리즈 v${{ matrix.version }}
+    needs: prepare-versions
+    if: needs.prepare-versions.outputs.version_count > 0
+
+    strategy:
+      fail-fast: false
+      max-parallel: ${{ fromJSON(inputs.max_parallel || '2') }}
+      matrix:
+        version: ${{ fromJSON(needs.prepare-versions.outputs.versions) }}
+
+    uses: ./.github/workflows/release.yml
+    with:
+      version: ${{ matrix.version }}
+      skip_notification: true
+      build_strategy: ${{ inputs.build_strategy || 'minimal' }}
+    secrets: inherit
+
+  # =====================================================
+  # 결과 요약
+  # =====================================================
+  summary:
+    name: 일괄 릴리즈 요약
+    runs-on: ubuntu-latest
+    needs: [prepare-versions, release-versions]
+    if: always()
+
+    steps:
+      - name: 배포 결과 아티팩트 다운로드
+        uses: actions/download-artifact@v8
+        with:
+          pattern: deploy-results-*
+          path: all-deploy-results/
+        continue-on-error: true
+
+      - name: 통합 배포 알림 전송
+        env:
+          DEPLOY_WEBHOOK_URL: "https://ipd-public-gateway.core.toss-internal.com/api-public/v3/ipd-public-gateway/webhooks/ipd-corp-core-automation-webhook/8b6db539-6cb4-4b99-b2a8-8981c43b2592"
+        run: |
+          VERSIONS='${{ needs.prepare-versions.outputs.versions }}'
+
+          # 모든 버전을 콤마로 구분한 문자열 생성
+          ALL_VERSIONS=$(echo "$VERSIONS" | jq -r 'join(", ")')
+          echo "배포 버전: ${ALL_VERSIONS}"
+
+          # 버전별 배포 결과를 임시 파일에 수집
+          # 형식: /tmp/deploy-results-{version}.txt에 "플랫폼=URL" 줄 단위 저장
+          HAS_ANY_RESULT=false
+
+          process_results_file() {
+            local file="$1"
+            echo "처리 중: $file"
+
+            FILE_VERSION=$(grep "^version=" "$file" | cut -d= -f2)
+            echo "  버전: ${FILE_VERSION}"
+
+            RESULTS=$(sed -n '/^---RESULTS---$/,$ p' "$file" | tail -n +2)
+
+            if [ -n "$RESULTS" ]; then
+              while IFS= read -r line; do
+                if [ -n "$line" ]; then
+                  # "macOS - 2021.3: URL" 형식에서 플랫폼과 URL 분리
+                  PLATFORM=$(echo "$line" | cut -d: -f1 | xargs)
+                  URL=$(echo "$line" | cut -d: -f2- | xargs)
+
+                  # 이미 버전 정보가 포함된 플랫폼명에서 버전 제거 (예: "macOS - 2021.3-v1.6.1" → "macOS - 2021.3")
+                  if echo "$PLATFORM" | grep -qE '\-v[0-9]+\.[0-9]+\.[0-9]+'; then
+                    # 해당 버전과 일치하는 경우만 처리
+                    if echo "$PLATFORM" | grep -q "\-v${FILE_VERSION}$"; then
+                      PLATFORM=$(echo "$PLATFORM" | sed "s/-v${FILE_VERSION}$//")
+                    else
+                      continue
+                    fi
+                  fi
+
+                  # 버전별 임시 파일에 저장
+                  echo "${PLATFORM}=${URL}" >> "/tmp/deploy-results-${FILE_VERSION}.txt"
+                fi
+              done <<< "$RESULTS"
+            fi
+          }
+
+          if [ -d "all-deploy-results" ]; then
+            echo "=== 배포 결과 수집 ==="
+            echo "디렉토리 구조:"
+            ls -laR all-deploy-results/
+            echo ""
+
+            # Case 1: 서브디렉토리 구조 (여러 아티팩트 - download-artifact@v7)
+            for dir in all-deploy-results/deploy-results-*/; do
+              if [ -d "$dir" ] && [ -f "${dir}deploy-results.txt" ]; then
+                HAS_ANY_RESULT=true
+                process_results_file "${dir}deploy-results.txt"
+              fi
+            done
+
+            # Case 2: Flat 구조 (단일 아티팩트 - download-artifact@v7 동작)
+            if [ "$HAS_ANY_RESULT" = false ] && [ -f "all-deploy-results/deploy-results.txt" ]; then
+              HAS_ANY_RESULT=true
+              process_results_file "all-deploy-results/deploy-results.txt"
+            fi
+          fi
+
+          if [ "$HAS_ANY_RESULT" = false ]; then
+            echo "::warning::수집된 배포 결과가 없습니다"
+            URLS_FOR_EDITION="배포 결과 없음"
+          else
+            # 모든 플랫폼 목록 추출 (정렬: macOS 먼저, 그 다음 Windows, Unity 버전순)
+            ALL_PLATFORMS=$(cat /tmp/deploy-results-*.txt 2>/dev/null | cut -d= -f1 | sort -u | sort -t'-' -k1,1 -k2,2V)
+
+            echo ""
+            echo "=== 플랫폼별 markdown link 조합 ==="
+
+            URLS_FOR_EDITION=""
+            while IFS= read -r platform; do
+              if [ -z "$platform" ]; then continue; fi
+
+              LINKS=""
+              # 각 버전에 대해 해당 플랫폼의 URL을 markdown link로 조합
+              for version in $(echo "$VERSIONS" | jq -r '.[]'); do
+                RESULT_FILE="/tmp/deploy-results-${version}.txt"
+                if [ -f "$RESULT_FILE" ]; then
+                  URL=$(grep "^${platform}=" "$RESULT_FILE" | head -1 | cut -d= -f2-)
+                  if [ -n "$URL" ] && [ "$URL" != "FAILED" ] && [ "$URL" != "TIMEOUT" ]; then
+                    LINKS="${LINKS}  <${URL}|${version}>"
+                  elif [ -n "$URL" ]; then
+                    LINKS="${LINKS}  ${version}(${URL})"
+                  fi
+                fi
+              done
+
+              if [ -n "$LINKS" ]; then
+                # 선행 공백 제거
+                LINKS=$(echo "$LINKS" | sed 's/^  //')
+                LINE="${platform}: ${LINKS}"
+                echo "$LINE"
+                if [ -n "$URLS_FOR_EDITION" ]; then
+                  URLS_FOR_EDITION="${URLS_FOR_EDITION}\n${LINE}"
+                else
+                  URLS_FOR_EDITION="${LINE}"
+                fi
+              fi
+            done <<< "$ALL_PLATFORMS"
+          fi
+
+          echo ""
+          echo "=== 통합 배포 결과 ==="
+          echo -e "$URLS_FOR_EDITION"
+          echo ""
+
+          ACTIONS_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+          echo "=== 배포 알림 전송 ==="
+          echo "버전: ${ALL_VERSIONS}"
+          echo "Actions URL: ${ACTIONS_URL}"
+
+          # 1줄(1플랫폼)당 1필드로 분할
+          # Slack section block에서 여러 링크가 한 필드에 있으면 렌더링 버그 발생하므로 분리
+          LINES=()
+          while IFS= read -r line; do
+            if [ -z "$line" ]; then continue; fi
+            LINES+=("$line")
+          done <<< "$(echo -e "$URLS_FOR_EDITION")"
+
+          TOTAL_LINES=${#LINES[@]}
+          echo "총 ${TOTAL_LINES}개 줄(플랫폼)로 분할"
+
+          # 최대 에디션 수 (macOS/Windows x 5 Unity 버전 = 10)
+          MAX_EDITION_LINES=10
+
+          # jq로 안전한 JSON 생성
+          # urlsForEdition (첫 번째), urlsForEdition2, ..., urlsForEditionN 필드로 전송
+          # lineCount 필드로 총 줄 수 전달 (Slack 템플릿에서 반복 범위로 사용)
+          JSON_PAYLOAD=$(jq -n \
+            --arg version "$ALL_VERSIONS" \
+            --arg urls "${LINES[0]:-}" \
+            --arg actionsUrl "$ACTIONS_URL" \
+            --argjson lineCount "$TOTAL_LINES" \
+            '{version: $version, urlsForEdition: $urls, actionsUrl: $actionsUrl, lineCount: $lineCount}')
+
+          # urlsForEdition2 ~ urlsForEdition{MAX} 키를 항상 포함 (빈 문자열로 패딩)
+          # 웹훅 수신 템플릿이 모든 키의 존재를 요구하므로, 실제 데이터 유무와 관계없이 전송
+          for i in $(seq 2 $MAX_EDITION_LINES); do
+            JSON_PAYLOAD=$(echo "$JSON_PAYLOAD" | jq \
+              --arg key "urlsForEdition${i}" \
+              --arg val "${LINES[$((i-1))]:-}" \
+              '. + {($key): $val}')
+          done
+
+          echo "전송할 JSON:"
+          echo "$JSON_PAYLOAD"
+
+          # HTTP 상태 코드 확인하여 실패 처리
+          HTTP_STATUS=$(curl -s -o /tmp/webhook_response.txt -w "%{http_code}" -X POST "$DEPLOY_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d "$JSON_PAYLOAD")
+
+          if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
+            echo "✅ 통합 알림 전송 완료 (HTTP ${HTTP_STATUS})"
+          else
+            echo "::error::알림 전송 실패 (HTTP ${HTTP_STATUS})"
+            cat /tmp/webhook_response.txt
+            exit 1
+          fi
+
+      - name: 결과 요약 생성
+        run: |
+          echo "## 일괄 릴리즈 결과" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          RELEASE_RESULT="${{ needs.release-versions.result }}"
+          VERSIONS='${{ needs.prepare-versions.outputs.versions }}'
+          VERSION_COUNT="${{ needs.prepare-versions.outputs.version_count }}"
+
+          # 릴리즈 결과에 따른 상태 표시
+          case "$RELEASE_RESULT" in
+            success)
+              echo "### ✅ 모든 릴리즈 성공" >> $GITHUB_STEP_SUMMARY
+              ;;
+            failure)
+              echo "### ❌ 일부 릴리즈 실패" >> $GITHUB_STEP_SUMMARY
+              ;;
+            cancelled)
+              echo "### ⚠️ 릴리즈 취소됨" >> $GITHUB_STEP_SUMMARY
+              ;;
+            skipped)
+              echo "### ⏭️ 릴리즈 스킵됨" >> $GITHUB_STEP_SUMMARY
+              ;;
+            *)
+              echo "### ❓ 알 수 없는 상태: ${RELEASE_RESULT}" >> $GITHUB_STEP_SUMMARY
+              ;;
+          esac
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**빌드 전략**: ${{ inputs.build_strategy || 'minimal' }}" >> $GITHUB_STEP_SUMMARY
+          echo "**처리된 버전 (${VERSION_COUNT}개)**:" >> $GITHUB_STEP_SUMMARY
+
+          for VERSION in $(echo "$VERSIONS" | jq -r '.[]'); do
+            TAG_NAME="release/v${VERSION}"
+            RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/${TAG_NAME}"
+            echo "- [v${VERSION}](${RELEASE_URL})" >> $GITHUB_STEP_SUMMARY
+          done
+
+          SKIPPED_MISSING="${{ needs.prepare-versions.outputs.skipped_missing }}"
+          if [ -n "$SKIPPED_MISSING" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**npm 미존재로 스킵된 버전**: ${SKIPPED_MISSING}" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # 배포 URL + QR 코드 테이블 추가
+          if [ -d "all-deploy-results" ]; then
+            HAS_DEPLOY_URL=false
+            DEPLOY_TABLE=""
+
+            for dir in all-deploy-results/deploy-results-*/; do
+              if [ -d "$dir" ] && [ -f "${dir}deploy-results.txt" ]; then
+                FILE_VERSION=$(grep "^version=" "${dir}deploy-results.txt" | cut -d= -f2)
+                RESULTS=$(sed -n '/^---RESULTS---$/,$ p' "${dir}deploy-results.txt" | tail -n +2)
+
+                if [ -n "$RESULTS" ]; then
+                  while IFS= read -r line; do
+                    if [ -n "$line" ]; then
+                      PLATFORM=$(echo "$line" | cut -d: -f1 | xargs)
+                      STATUS=$(echo "$line" | cut -d: -f2- | xargs)
+                      # PLATFORM 형식: "macOS - 2021.3"
+                      OS_NAME=$(echo "$PLATFORM" | cut -d'-' -f1 | xargs)
+                      UV=$(echo "$PLATFORM" | cut -d'-' -f2- | xargs)
+
+                      if echo "$STATUS" | grep -qE '^intoss-private://'; then
+                        HAS_DEPLOY_URL=true
+                        ENCODED_URL=$(printf '%s' "$STATUS" | jq -sRr @uri)
+                        QR_IMG="![QR](https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${ENCODED_URL})"
+                        DEPLOY_TABLE="${DEPLOY_TABLE}| v${FILE_VERSION} | ${OS_NAME} | ${UV} | ✅ | \`${STATUS}\` | ${QR_IMG} |\n"
+                      elif [[ "$STATUS" == *"FAILED"* ]] || [[ "$STATUS" == *"TIMEOUT"* ]]; then
+                        HAS_DEPLOY_URL=true
+                        DEPLOY_TABLE="${DEPLOY_TABLE}| v${FILE_VERSION} | ${OS_NAME} | ${UV} | ❌ | ${STATUS} | - |\n"
+                      elif [[ "$STATUS" != "SUCCESS" ]]; then
+                        HAS_DEPLOY_URL=true
+                        DEPLOY_TABLE="${DEPLOY_TABLE}| v${FILE_VERSION} | ${OS_NAME} | ${UV} | ✅ | ${STATUS} | - |\n"
+                      fi
+                    fi
+                  done <<< "$RESULTS"
+                fi
+              fi
+            done
+
+            if [ "$HAS_DEPLOY_URL" = true ]; then
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "### 배포 결과" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "| 버전 | 플랫폼 | Unity | 상태 | URL | QR |" >> $GITHUB_STEP_SUMMARY
+              echo "|------|--------|-------|------|-----|:--:|" >> $GITHUB_STEP_SUMMARY
+              echo -e "$DEPLOY_TABLE" >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "개별 릴리즈 상세 결과는 위의 각 job에서 확인하세요." >> $GITHUB_STEP_SUMMARY

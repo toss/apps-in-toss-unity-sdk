@@ -1,0 +1,4 @@
+# 환경별 시크릿 (Firebase API 키 등) — 절대 커밋 금지
+.env
+.env.local
+.env.*.local

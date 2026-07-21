@@ -1,0 +1,186 @@
+name: Regenerate Lockfiles
+
+on:
+  schedule:
+    - cron: "0 18 * * *"
+  workflow_dispatch:
+    inputs:
+      auto_merge:
+        description: "PR 자동 머지 여부"
+        required: false
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+jobs:
+  regen:
+    name: Regenerate pnpm lockfiles
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+      statuses: write
+    env:
+      # 공급망 격리(minimum-release-age): 게시 3일(4320분) 미만 버전을 해석에서 제외해,
+      # 게시 직후 삭제·오염되는 버전(2026-07 enhanced-resolve@5.24.2 등)을 lockfile에
+      # 스냅샷하는 사고 방지. 사내 통제 스코프는 당일 릴리즈(SDK 버전 동시 bump)가
+      # 정상 흐름이고, 격리되면 정확 핀 해석이 아예 실패하므로 제외.
+      # ⚠️ pnpm 11은 이 설정을 .npmrc에서 읽지 않는다(조용히 무시) — pnpm-workspace.yaml
+      #    또는 --config.* CLI 플래그만 유효하며, CLI가 workspace 값보다 우선 (11.6.0 실측).
+      # ⚠️ exclude 플래그는 2개 이상 반복될 때만 배열로 파싱된다 — 1개만 남기면 문자열로
+      #    파싱돼 통째로 무시되므로(11.6.0 실측) 항목을 1개로 줄이지 말 것.
+      MRA_FLAGS: >-
+        --config.minimum-release-age=4320
+        --config.minimum-release-age-exclude=@apps-in-toss/*
+        --config.minimum-release-age-exclude=@toss/*
+        --config.minimum-release-age-exclude=@granite-js/*
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: "https://registry.npmjs.org/"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Force public registry
+        # registry는 .npmrc에서 정상 인식된다. minimum-release-age 계열은 pnpm 11이
+        # .npmrc를 읽지 않으므로 여기 두면 안 되고, job env의 MRA_FLAGS(CLI)로 전달한다.
+        run: |
+          mkdir -p ~/.config/pnpm
+          cat > ~/.npmrc <<'EOF'
+          registry=https://registry.npmjs.org/
+          EOF
+          pnpm config set registry https://registry.npmjs.org/
+
+      - name: Regenerate E2E lockfile
+        working-directory: Tests~/E2E/tests
+        run: |
+          rm -f pnpm-lock.yaml
+          pnpm install --lockfile-only --registry=https://registry.npmjs.org/ $MRA_FLAGS
+
+      - name: Regenerate BuildConfig lockfile
+        working-directory: WebGLTemplates/AITTemplate/BuildConfig~
+        run: |
+          rm -f pnpm-lock.yaml
+          pnpm install --lockfile-only --registry=https://registry.npmjs.org/ $MRA_FLAGS
+
+      - name: Regenerate SDK Generator lockfile
+        working-directory: sdk-runtime-generator~
+        run: |
+          rm -f pnpm-lock.yaml
+          pnpm install --lockfile-only --registry=https://registry.npmjs.org/ $MRA_FLAGS
+
+      - name: Verify lockfiles (frozen install)
+        # --lockfile-only는 메타데이터만 보고 기록하므로, 메타데이터와 실제 tarball이
+        # 어긋난 패키지(integrity 오염·게시 직후 삭제로 404)를 그대로 스냅샷할 수 있다.
+        # 실제 frozen 설치로 존재+integrity를 검증해, 설치 불가능한 lockfile이
+        # PR·자동머지로 흘러가는 것을 차단한다 (2026-07 #939가 머지 후 수 시간 만에
+        # 404 3종으로 전 소비자 설치 불능이 된 사고의 재발 방지).
+        # --ignore-scripts: 검증 목적은 fetch+integrity뿐 — 서드파티 postinstall을
+        # 러너에서 실행하지 않는다(악성 버전 유입 시 실행 벡터 제거).
+        run: |
+          set -euo pipefail
+          for dir in "Tests~/E2E/tests" "WebGLTemplates/AITTemplate/BuildConfig~" "sdk-runtime-generator~"; do
+            echo "::group::verify $dir"
+            (cd "$dir" && pnpm install --frozen-lockfile --ignore-scripts $MRA_FLAGS)
+            echo "::endgroup::"
+          done
+
+      - name: Verify lockfiles (registry/string guard)
+        # 이 워크플로우의 산출 경로는 string-check.yml이 실제로 돌지 않는 사각지대다:
+        # bot PR은 IS_BOT_PR로 scan skip + 아래에서 scan=success 수동 보고,
+        # GITHUB_TOKEN push는 GitHub 정책상 push 트리거 워크플로우를 발화시키지 않음.
+        # 그래서 PR 생성 전에 동일한 조직 denylist(STRING_CHECK_PATTERN)로 직접 검사하고,
+        # 추가로 tarball URL이 public registry(npmjs)만 가리키는지 구조 검증한다.
+        env:
+          PATTERN: ${{ secrets.STRING_CHECK_PATTERN }}
+          LC_ALL: C
+        run: |
+          set -euo pipefail
+          if [ -z "$PATTERN" ]; then
+            echo "::error::STRING_CHECK_PATTERN repository secret이 설정되지 않았습니다."
+            exit 1
+          fi
+          echo "::add-mask::$PATTERN"
+          FILES="Tests~/E2E/tests/pnpm-lock.yaml WebGLTemplates/AITTemplate/BuildConfig~/pnpm-lock.yaml sdk-runtime-generator~/pnpm-lock.yaml"
+          for f in $FILES; do
+            # rc: 0=매치(차단), 1=미매치(정상), >=2=오류(fail-closed) — string-check.yml과 동일 규약
+            if grep -qiE "$PATTERN" "$f"; then
+              echo "::error file=$f::재생성된 lockfile에서 금지 패턴 감지 (redacted)"
+              exit 1
+            elif [ "$?" -ge 2 ]; then
+              echo "::error::lockfile 스캔 실패($f, grep rc>=2). 안전을 위해 실패 처리합니다."
+              exit 1
+            fi
+            if grep -PHn "tarball: (?!https://registry\.npmjs\.org/)" "$f"; then
+              echo "::error file=$f::public registry 외 tarball URL이 있습니다"
+              exit 1
+            fi
+          done
+          echo "✓ lockfile 3개 모두 public registry만 참조 (금지 패턴 없음)"
+
+      - name: Open PR if changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AUTO_MERGE: ${{ inputs.auto_merge || 'true' }}
+          REPO: ${{ github.repository }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Tests~/E2E/tests/pnpm-lock.yaml WebGLTemplates/AITTemplate/BuildConfig~/pnpm-lock.yaml sdk-runtime-generator~/pnpm-lock.yaml
+          if git diff --staged --quiet; then
+            echo "lockfiles unchanged"
+            exit 0
+          fi
+          BRANCH="chore/regen-lockfiles-$(date +%Y%m%d-%H%M%S)"
+          git checkout -b "$BRANCH"
+          git commit -m "빌드: pnpm lockfile 자동 재생성 (public registry)"
+          git push -u origin "$BRANCH"
+          PR_RESULT=$(gh pr create \
+            --title "빌드: pnpm lockfile 자동 재생성" \
+            --body "주기적 lockfile 재생성 — public registry(npmjs.org) 기반." \
+            --base main \
+            --head "$BRANCH")
+          PR_NUMBER=$(echo "$PR_RESULT" | grep -oE '[0-9]+$')
+          echo "PR 생성: $PR_RESULT (번호: $PR_NUMBER)"
+
+          # 필수 'scan' 체크 충족. GITHUB_TOKEN으로 만든 PR은 GitHub 정책상
+          # string-check.yml(pull_request)을 트리거하지 못해 scan이 영구 pending →
+          # auto-merge가 영원히 예약 상태로 남아 머지되지 않는다(적체 원인).
+          # update.yml·update-changelog.yml의 bot PR 처리와 동일하게 scan=success를
+          # 직접 보고한다. lockfile-only 변경이라 scan skip이 안전하다.
+          HEAD_SHA=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.head.sha')
+          gh api "repos/${REPO}/statuses/${HEAD_SHA}" -X POST \
+            -f state=success \
+            -f context=scan \
+            -f description="bot lockfile 재생성 PR — scan skipped (github-actions[bot])"
+          echo "✅ scan status 보고 완료: $HEAD_SHA"
+
+          if [ "$AUTO_MERGE" != "true" ]; then
+            echo "auto_merge=false — PR open 상태로 둠"
+            exit 0
+          fi
+
+          # 유일한 required check가 scan이고 방금 success로 보고했으므로 추가로
+          # 대기할 pending requirement가 없다 → --auto 대신 직접 squash 머지.
+          # mergeable_state가 unknown이면 GitHub가 재계산 중이므로 잠시 폴링.
+          for i in $(seq 1 10); do
+            STATE=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.mergeable_state')
+            echo "mergeable_state=$STATE (시도 $i)"
+            [ "$STATE" = "unknown" ] || break
+            sleep 3
+          done
+          if ! gh pr merge "$PR_NUMBER" --squash --delete-branch; then
+            echo "::warning::직접 머지 실패 — auto-merge로 폴백 예약"
+            gh pr merge "$PR_NUMBER" --squash --delete-branch --auto \
+              || echo "::warning::auto-merge 예약도 실패 — PR 수동 머지 필요"
+          fi

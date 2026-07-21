@@ -1,0 +1,106 @@
+name: Classify Failure
+description: |
+  E2E/EditMode/Build 잡 실패 시 산출물(editmode-results.xml, WebGL 빌드 디렉토리)을
+  검사해 코드/인프라/빌드 실패를 구분한다. 잡 step 안에서는 자기 자신의 로그를 받을 수
+  없으므로 라이선스/Brotli 같은 로그 grep이 필요한 케이스는 후속 통합 잡에서
+  세분화한다(이 액션은 results-missing/build-no-output까지만 분류).
+
+inputs:
+  os:
+    required: true
+    description: 'macos | windows'
+  unity-version:
+    required: true
+    description: 'Unity 버전 (예: 6000.2)'
+  editmode-results-path:
+    required: false
+    description: 'editmode-results.xml 절대 경로 (기본: Tests~/E2E/SampleUnityProject-<version>/editmode-results.xml)'
+    default: ''
+  webgl-output-path:
+    required: false
+    description: 'WebGL 빌드 산출물 디렉토리 (기본: webgl)'
+    default: 'webgl'
+
+outputs:
+  failure_category:
+    description: 'code | results-missing | build-no-output | unknown'
+    value: ${{ steps.classify.outputs.failure_category }}
+  failure_detail:
+    description: '실패 요약 (한 줄)'
+    value: ${{ steps.classify.outputs.failure_detail }}
+  results_artifact:
+    description: 'present | absent'
+    value: ${{ steps.classify.outputs.results_artifact }}
+
+runs:
+  using: composite
+  steps:
+    - name: Classify
+      id: classify
+      shell: bash
+      env:
+        OS_NAME: ${{ inputs.os }}
+        UNITY_VERSION: ${{ inputs.unity-version }}
+        RESULTS_PATH_INPUT: ${{ inputs.editmode-results-path }}
+        WEBGL_PATH: ${{ inputs.webgl-output-path }}
+      run: |
+        set +e
+
+        if [ -n "$RESULTS_PATH_INPUT" ]; then
+          RESULTS_FILE="$RESULTS_PATH_INPUT"
+        else
+          RESULTS_FILE="${GITHUB_WORKSPACE}/Tests~/E2E/SampleUnityProject-${UNITY_VERSION}/editmode-results.xml"
+        fi
+
+        category="unknown"
+        detail=""
+        artifact="absent"
+
+        if [ -f "$RESULTS_FILE" ]; then
+          artifact="present"
+          if grep -q '<test-case [^>]*result="Failed"' "$RESULTS_FILE"; then
+            category="code"
+            failed_names=$(grep -oE '<test-case [^>]*fullname="[^"]*"[^>]*result="Failed"' "$RESULTS_FILE" \
+              | grep -oE 'fullname="[^"]*"' \
+              | sed 's/fullname="//; s/"$//' \
+              | sort -u)
+            count=$(printf '%s\n' "$failed_names" | grep -c .)
+            first=$(printf '%s\n' "$failed_names" | head -1)
+            if [ "$count" -le 1 ]; then
+              detail="failed test: ${first}"
+            else
+              detail="failed tests (${count}): ${first} +$((count-1)) more"
+            fi
+          fi
+        fi
+
+        if [ "$category" = "unknown" ] && [ "$artifact" = "absent" ]; then
+          category="results-missing"
+          detail="editmode-results.xml not produced (license/setup/crash suspected; needs log inspection)"
+        fi
+
+        if [ "$category" = "unknown" ]; then
+          if [ -d "$WEBGL_PATH" ]; then
+            unityweb_count=$(find "$WEBGL_PATH" -type f -name '*.unityweb' 2>/dev/null | wc -l | tr -d ' ')
+            if [ "$unityweb_count" = "0" ]; then
+              category="build-no-output"
+              detail="WebGL output dir exists but no .unityweb files (possible Brotli/compression failure)"
+            fi
+          fi
+        fi
+
+        echo "failure_category=${category}" >> "$GITHUB_OUTPUT"
+        echo "failure_detail=${detail}" >> "$GITHUB_OUTPUT"
+        echo "results_artifact=${artifact}" >> "$GITHUB_OUTPUT"
+
+        {
+          echo "### Failure Classification (${OS_NAME}, Unity ${UNITY_VERSION})"
+          echo ""
+          echo "| field | value |"
+          echo "|---|---|"
+          echo "| failure_category | \`${category}\` |"
+          echo "| results_artifact | \`${artifact}\` |"
+          echo "| failure_detail | ${detail:-_(none)_} |"
+        } >> "$GITHUB_STEP_SUMMARY"
+
+        echo "::notice title=Failure Classification::category=${category} artifact=${artifact} detail=${detail}"

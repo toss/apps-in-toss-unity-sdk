@@ -1,0 +1,983 @@
+name: Release
+run-name: "Release${{ inputs.version && format(' - v{0}', inputs.version) || '' }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '릴리즈 버전 (예: 1.6.0) - 필수'
+        required: true
+        type: string
+      build_strategy:
+        description: '빌드 전략: full (10빌드), standard (5빌드), minimal (1빌드), skip-build (0빌드)'
+        required: false
+        type: choice
+        options:
+          - full
+          - standard
+          - minimal
+          - skip-build
+        default: minimal
+
+  # update/ 브랜치가 main에 머지되면 자동 릴리즈
+  push:
+    branches:
+      - main
+    paths:
+      - 'package.json'
+
+  # bulk-release.yml에서 호출용
+  workflow_call:
+    inputs:
+      version:
+        description: '릴리즈 버전'
+        required: true
+        type: string
+      skip_notification:
+        description: 'bulk-release에서 호출 시 개별 알림 스킵'
+        required: false
+        type: boolean
+        default: false
+      build_strategy:
+        description: '빌드 전략: full, standard, minimal, skip-build'
+        required: false
+        type: string
+        default: minimal
+    secrets:
+      AIT_DEPLOY_KEY:
+        required: true
+      AIT_AD_INTERSTITIAL_ID:
+        required: false
+      AIT_AD_REWARDED_ID:
+        required: false
+      AIT_AD_BANNER_TEXT_ID:
+        required: false
+      AIT_AD_BANNER_IMAGE_ID:
+        required: false
+      KEYCHAIN_PASSWORD:
+        required: false
+
+jobs:
+  # =====================================================
+  # 버전 결정
+  # =====================================================
+  release:
+    name: 버전 결정
+    runs-on: ubuntu-latest
+
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag_name: ${{ steps.version.outputs.tag_name }}
+      skip: ${{ steps.version.outputs.skip }}
+
+    steps:
+      - name: Checkout (push 이벤트용)
+        if: github.event_name == 'push'
+        uses: actions/checkout@v7
+
+      - name: 버전 결정
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # push 이벤트: package.json에서 버전 읽기
+          # workflow_dispatch/workflow_call: inputs에서 버전 받기
+          if [ "${{ github.event_name }}" = "push" ]; then
+            VERSION=$(cat package.json | jq -r '.version')
+            echo "package.json에서 버전 읽기: ${VERSION}"
+
+            # 이미 릴리즈 태그가 존재하면 스킵
+            TAG_NAME="release/v${VERSION}"
+            if git ls-remote --tags origin | grep -q "refs/tags/${TAG_NAME}$"; then
+              echo "이미 릴리즈 태그가 존재합니다: ${TAG_NAME}"
+              echo "skip=true" >> $GITHUB_OUTPUT
+              echo "version=${VERSION}" >> $GITHUB_OUTPUT
+              echo "tag_name=${TAG_NAME}" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+          else
+            VERSION="${{ inputs.version }}"
+            echo "입력된 버전: ${VERSION}"
+          fi
+
+          # Semver 형식 검증
+          if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z][a-zA-Z0-9.]*)?$'; then
+            echo "::error::올바른 버전 형식이 아닙니다: ${VERSION}"
+            exit 1
+          fi
+
+          echo "버전 검증 통과: ${VERSION}"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "tag_name=release/v${VERSION}" >> $GITHUB_OUTPUT
+          echo "skip=false" >> $GITHUB_OUTPUT
+
+  # =====================================================
+  # SDK Runtime 재생성 (Orphan Commit)
+  # main branch를 건드리지 않고 orphan commit 생성
+  # =====================================================
+  regenerate-sdk:
+    name: SDK Runtime 재생성
+    runs-on: ubuntu-latest
+    needs: release
+    if: needs.release.outputs.skip != 'true'
+
+    outputs:
+      ref: ${{ steps.commit.outputs.ref }}
+      sha: ${{ steps.commit.outputs.sha }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: web-framework 버전 업데이트 및 SDK 재생성
+        working-directory: sdk-runtime-generator~
+        run: |
+          VERSION="${{ needs.release.outputs.version }}"
+
+          echo "=== web-framework v${VERSION} 업데이트 ==="
+
+          # 캐시 정리 후 강제 업데이트 (캐시로 인한 오래된 버전 문제 방지)
+          pnpm store prune
+          pnpm update "@apps-in-toss/web-framework@${VERSION}" --force --registry https://registry.npmjs.org
+
+          # 설치된 버전 검증
+          INSTALLED_VERSION=$(pnpm list @apps-in-toss/web-framework --json | jq -r '.[0].dependencies["@apps-in-toss/web-framework"].version')
+          echo "요청 버전: ${VERSION}"
+          echo "설치된 버전: ${INSTALLED_VERSION}"
+          if [ "$INSTALLED_VERSION" != "$VERSION" ]; then
+            echo "::error::버전 불일치! 요청: ${VERSION}, 설치됨: ${INSTALLED_VERSION}"
+            exit 1
+          fi
+          echo "✅ 버전 검증 완료: ${INSTALLED_VERSION}"
+
+          echo "SDK 코드 생성 중..."
+          pnpm generate
+
+          echo "SDK 코드 생성 완료"
+
+      - name: 루트 package.json 버전 업데이트
+        run: |
+          VERSION="${{ needs.release.outputs.version }}"
+          jq --arg v "$VERSION" '.version = $v' package.json > tmp.json
+          mv tmp.json package.json
+          echo "package.json 버전: ${VERSION}"
+
+      - name: Git 설정
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: 릴리즈용 테스트 코드 제외
+        run: |
+          echo "=== 릴리즈 빌드용 테스트 코드 제외 ==="
+
+          SHARED_RUNTIME="Tests~/E2E/SharedScripts/Runtime"
+
+          # SharedScripts/Runtime의 .cs 파일 삭제 (API 호환성 문제가 있는 코드)
+          if [ -d "$SHARED_RUNTIME" ]; then
+            echo "SharedScripts/Runtime .cs 파일 삭제 중..."
+            find "$SHARED_RUNTIME" -name "*.cs" -type f -delete
+          fi
+
+          # E2EBuildRunner.cs가 의존하는 최소 스텁 파일 생성
+          # E2EBootstrapperHelper.cs (E2EBuildRunner에서 AddComponent로 사용)
+          cat > "${SHARED_RUNTIME}/E2EBootstrapperHelper.cs" << 'STUB_EOF'
+          using UnityEngine;
+          // 릴리즈 빌드용 스텁 - 실제 기능 없음
+          public class E2EBootstrapperHelper : MonoBehaviour
+          {
+              void Start() { }
+          }
+          STUB_EOF
+
+          # E2EBootstrapper.cs (E2EBootstrapperHelper에서 호출)
+          cat > "${SHARED_RUNTIME}/E2EBootstrapper.cs" << 'STUB_EOF'
+          using UnityEngine;
+          // 릴리즈 빌드용 스텁 - 실제 기능 없음
+          public static class E2EBootstrapper
+          {
+              public static void Initialize() { }
+          }
+          STUB_EOF
+
+          echo "스텁 파일 생성 완료"
+          echo ""
+          echo "SharedScripts/Runtime 내용:"
+          ls -la "$SHARED_RUNTIME"
+
+          # Plugins 폴더 .cs 파일 삭제
+          SHARED_PLUGINS="Tests~/E2E/SharedScripts/Plugins"
+          if [ -d "$SHARED_PLUGINS" ]; then
+            find "$SHARED_PLUGINS" -name "*.cs" -type f -delete
+          fi
+
+          echo ""
+          echo "SharedScripts Editor 폴더 확인:"
+          ls -la Tests~/E2E/SharedScripts/Editor/
+
+      - name: Orphan Commit 생성 및 Push
+        id: commit
+        run: |
+          VERSION="${{ needs.release.outputs.version }}"
+          # refs/heads/ 경로 사용 (refs/builds/는 GitHub GC에 의해 삭제될 수 있음)
+          BUILD_REF="refs/heads/_build/release-v${VERSION}"
+
+          echo "=== Orphan Commit 생성 ==="
+
+          # 모든 변경사항을 staging에 추가
+          git add -A
+
+          # Orphan commit 생성 (부모 없는 커밋)
+          TREE=$(git write-tree)
+          COMMIT=$(git commit-tree "$TREE" -m "빌드: SDK v${VERSION} 재생성
+
+          - @apps-in-toss/web-framework v${VERSION} 기반 SDK 코드 재생성
+          - package.json 버전 동기화
+
+          Generated at: $(date -u +%Y-%m-%dT%H:%M:%SZ)")
+
+          echo "Orphan commit SHA: ${COMMIT}"
+
+          # 임시 ref로 push (main은 건드리지 않음)
+          git push origin "${COMMIT}:${BUILD_REF}" --force
+
+          echo "ref=${BUILD_REF}" >> $GITHUB_OUTPUT
+          echo "sha=${COMMIT}" >> $GITHUB_OUTPUT
+          echo "Orphan commit push 완료: ${BUILD_REF}"
+
+  # =====================================================
+  # 빌드 매트릭스 준비
+  # =====================================================
+  prepare-build-matrix:
+    name: 빌드 매트릭스 준비
+    runs-on: ubuntu-latest
+    needs: release
+    if: needs.release.outputs.skip != 'true'
+
+    outputs:
+      macos-versions: ${{ steps.matrix.outputs.macos_versions }}
+      windows-versions: ${{ steps.matrix.outputs.windows_versions }}
+      skip-windows: ${{ steps.matrix.outputs.skip_windows }}
+      skip-build: ${{ steps.matrix.outputs.skip_build }}
+
+    steps:
+      - name: 빌드 매트릭스 결정
+        id: matrix
+        run: |
+          # push 이벤트(update/ 브랜치 머지)는 E2E에서 이미 검증되었으므로 minimal 빌드
+          if [ "${{ github.event_name }}" = "push" ]; then
+            STRATEGY="minimal"
+          else
+            STRATEGY="${{ inputs.build_strategy || 'minimal' }}"
+          fi
+          echo "빌드 전략: ${STRATEGY}"
+
+          case "$STRATEGY" in
+            full)
+              MACOS='["2021.3","2022.3","6000.0","6000.2","6000.3"]'
+              WINDOWS='["2021.3","2022.3","6000.0","6000.2","6000.3"]'
+              SKIP_WIN=false
+              SKIP_BUILD=false
+              ;;
+            standard)
+              MACOS='["2021.3","6000.0","6000.3"]'
+              WINDOWS='["2022.3","6000.2"]'
+              SKIP_WIN=false
+              SKIP_BUILD=false
+              ;;
+            minimal)
+              MACOS='["2021.3"]'
+              # Windows placeholder — 빈 배열은 매트릭스 파싱 에러 유발, skip-windows=true로 실제 실행은 스킵됨
+              WINDOWS='["2021.3"]'
+              SKIP_WIN=true
+              SKIP_BUILD=false
+              ;;
+            skip-build)
+              MACOS='["2021.3"]'
+              WINDOWS='["2021.3"]'
+              SKIP_WIN=true
+              SKIP_BUILD=true
+              ;;
+            *)
+              echo "::error::알 수 없는 빌드 전략: ${STRATEGY}"
+              exit 1
+              ;;
+          esac
+
+          echo "macos_versions=${MACOS}" >> $GITHUB_OUTPUT
+          echo "windows_versions=${WINDOWS}" >> $GITHUB_OUTPUT
+          echo "skip_windows=${SKIP_WIN}" >> $GITHUB_OUTPUT
+          echo "skip_build=${SKIP_BUILD}" >> $GITHUB_OUTPUT
+
+          echo "${STRATEGY}: macOS=${MACOS}, Windows=${WINDOWS}, skip_windows=${SKIP_WIN}, skip_build=${SKIP_BUILD}"
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 빌드 매트릭스" >> $GITHUB_STEP_SUMMARY
+          echo "- **전략**: ${STRATEGY}" >> $GITHUB_STEP_SUMMARY
+          if [ "$SKIP_BUILD" = "true" ]; then
+            echo "- **macOS**: 스킵" >> $GITHUB_STEP_SUMMARY
+            echo "- **Windows**: 스킵" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- **macOS**: ${MACOS}" >> $GITHUB_STEP_SUMMARY
+            if [ "$SKIP_WIN" = "true" ]; then
+              echo "- **Windows**: 스킵" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "- **Windows**: ${WINDOWS}" >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
+
+  # =====================================================
+  # AIT 빌드 - macOS
+  # macOS runner 라이선스 문제 시 Windows로 폴백
+  # =====================================================
+  build-ait-macos:
+    name: AIT 빌드 (macOS)
+    needs: [release, regenerate-sdk, prepare-build-matrix]
+    if: needs.release.outputs.skip != 'true' && needs.prepare-build-matrix.outputs.skip-build != 'true'
+
+    # ref-cancel: 같은 ref의 이전 호출만 정리. 머신 분배는 GH Actions 자체가 담당.
+    concurrency:
+      group: release-${{ github.workflow }}-${{ needs.regenerate-sdk.outputs.ref }}-macos-${{ matrix.unity-version }}
+      cancel-in-progress: true
+
+    strategy:
+      fail-fast: false
+      matrix:
+        unity-version: ${{ fromJSON(needs.prepare-build-matrix.outputs.macos-versions) }}
+
+    uses: ./.github/workflows/unity-build.yml
+    with:
+      ref: ${{ needs.regenerate-sdk.outputs.ref }}
+      # afbbd23(2026-03)에서 macOS 러너 라이선스 hang 회피로 windows로 임시
+      # 전환했던 잔재를 원복. 근본 원인은 #559(unity-<version> 라벨 1:1 머신 핀)로
+      # 해결됐고, beta-release/preview는 이미 macOS 러너에서 정상 빌드 중.
+      os: macos
+      unity-version: ${{ matrix.unity-version }}
+      web-framework-version: ${{ needs.release.outputs.version }}
+      sdk-version: ${{ needs.release.outputs.version }}
+      run-build: true
+      # 이 산출물은 deploy-ait에서 ait deploy로 실 릴리즈 콘솔에 배포되므로
+      # E2E 고속 프로필(dev build)을 끄고 SDK 기본 프로필(release 빌드)로 빌드한다.
+      # dev 빌드 wasm(6000.x ~134MiB)은 콘솔 번들 크기 제한을 초과해 서버측
+      # BUILD_FAILED가 난다 (2026-06 진단).
+      fast-build: false
+    secrets:
+      AIT_AD_INTERSTITIAL_ID: ${{ secrets.AIT_AD_INTERSTITIAL_ID }}
+      AIT_AD_REWARDED_ID: ${{ secrets.AIT_AD_REWARDED_ID }}
+      AIT_AD_BANNER_TEXT_ID: ${{ secrets.AIT_AD_BANNER_TEXT_ID }}
+      AIT_AD_BANNER_IMAGE_ID: ${{ secrets.AIT_AD_BANNER_IMAGE_ID }}
+      KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+
+  # =====================================================
+  # AIT 빌드 - Windows
+  # =====================================================
+  build-ait-windows:
+    name: AIT 빌드 (Windows)
+    needs: [release, regenerate-sdk, prepare-build-matrix]
+    if: needs.release.outputs.skip != 'true' && needs.prepare-build-matrix.outputs.skip-windows != 'true'
+
+    concurrency:
+      group: release-${{ github.workflow }}-${{ needs.regenerate-sdk.outputs.ref }}-windows-${{ matrix.unity-version }}
+      cancel-in-progress: true
+
+    strategy:
+      fail-fast: false
+      matrix:
+        unity-version: ${{ fromJSON(needs.prepare-build-matrix.outputs.windows-versions) }}
+
+    uses: ./.github/workflows/unity-build.yml
+    with:
+      ref: ${{ needs.regenerate-sdk.outputs.ref }}
+      os: windows
+      unity-version: ${{ matrix.unity-version }}
+      web-framework-version: ${{ needs.release.outputs.version }}
+      sdk-version: ${{ needs.release.outputs.version }}
+      run-build: true
+      # macOS 빌드와 동일한 release 프로필 — 배포 대상 산출물은 dev 프로필 금지.
+      fast-build: false
+    secrets:
+      AIT_AD_INTERSTITIAL_ID: ${{ secrets.AIT_AD_INTERSTITIAL_ID }}
+      AIT_AD_REWARDED_ID: ${{ secrets.AIT_AD_REWARDED_ID }}
+      AIT_AD_BANNER_TEXT_ID: ${{ secrets.AIT_AD_BANNER_TEXT_ID }}
+      AIT_AD_BANNER_IMAGE_ID: ${{ secrets.AIT_AD_BANNER_IMAGE_ID }}
+      KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+
+  # =====================================================
+  # 릴리즈 태그 생성 (UPM 패키지 정리 포함)
+  # AIT 빌드 성공 후에만 실행 → 빌드 실패 시 릴리즈 방지
+  # main branch는 건드리지 않고 orphan commit에서 태그 생성
+  # =====================================================
+  create-release-tag:
+    name: 릴리즈 태그 생성
+    runs-on: ubuntu-latest
+    needs: [release, regenerate-sdk, build-ait-macos, build-ait-windows]
+    if: |
+      always() &&
+      needs.release.outputs.skip != 'true' &&
+      needs.regenerate-sdk.result == 'success' &&
+      (needs.build-ait-macos.result == 'success' || needs.build-ait-macos.result == 'skipped') &&
+      (needs.build-ait-windows.result == 'success' || needs.build-ait-windows.result == 'skipped')
+
+    steps:
+      - name: Checkout (Orphan Ref)
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.regenerate-sdk.outputs.ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 릴리즈 정보 주입
+        id: release-info
+        run: |
+          VERSION="${{ needs.release.outputs.version }}"
+          RELEASE_DATETIME=$(date -u +"%Y%m%d_%H%M")
+          COMMIT_HASH=$(git rev-parse --short=7 HEAD)
+          FULL_COMMIT_HASH=$(git rev-parse HEAD)
+
+          echo "=== 릴리즈 정보 주입 ==="
+          echo "버전: ${VERSION}"
+          echo "릴리즈 일시: ${RELEASE_DATETIME}"
+          echo "커밋 해시: ${COMMIT_HASH}"
+
+          # outputs로 내보내기
+          echo "release_datetime=${RELEASE_DATETIME}" >> $GITHUB_OUTPUT
+          echo "commit_hash=${COMMIT_HASH}" >> $GITHUB_OUTPUT
+          echo "full_commit_hash=${FULL_COMMIT_HASH}" >> $GITHUB_OUTPUT
+
+          # package.json description 업데이트
+          # 런타임은 AITVersion.LoadVersionInfoEditor 가 이 description 을 정규식으로
+          # 파싱해 ReleaseDateTime/CommitHash 를 읽는다 (UPM 설치 환경에서의 채널).
+          # 로컬/임베디드/플레이어 경로는 빌드 시 Editor 가 Assets/Resources/AITVersionInfo.json
+          # 을 생성하는 방식(Resources) 으로 분리되어 있어 이 워크플로우는 .cs 를 건드리지 않는다.
+          jq --arg dt "$RELEASE_DATETIME" --arg hash "$COMMIT_HASH" \
+             '.description = "Apps in Toss Mini App Unity Engine Adapter SDK Package. (Released: " + $dt + ", " + $hash + ")"' \
+             package.json > tmp.json && mv tmp.json package.json
+
+          echo "package.json description:"
+          cat package.json | jq '.description'
+
+      - name: UPM 패키지 정리
+        run: |
+          echo "=== UPM 패키지 정리 ==="
+
+          # 불필요한 디렉토리 제거 (~ 접미사 디렉토리는 Unity가 무시하므로 .meta 없음)
+          rm -rf .github/
+          rm -rf Tests~/
+          rm -rf Tools~/
+          rm -rf sdk-runtime-generator~/
+          rm -rf scripts~/
+
+          # 불필요한 파일 제거
+          rm -f .gitignore
+          rm -f CLAUDE.md
+          rm -f run-local-tests.sh
+
+          # 해당 .meta 파일도 제거
+          rm -f .gitignore.meta
+          rm -f CLAUDE.md.meta
+          rm -f run-local-tests.sh.meta
+
+          echo "정리된 파일 목록:"
+          ls -la
+          echo ""
+          echo "Runtime/ 내용:"
+          ls -la Runtime/ || true
+          echo ""
+          echo "Editor/ 내용:"
+          ls -la Editor/ || true
+
+      - name: Git 설정
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: 릴리즈 태그 생성 (Orphan Commit)
+        run: |
+          VERSION="${{ needs.release.outputs.version }}"
+          TAG_NAME="${{ needs.release.outputs.tag_name }}"
+          BUILD_REF="${{ needs.regenerate-sdk.outputs.ref }}"
+
+          echo "=== 릴리즈 태그 생성: ${TAG_NAME} ==="
+
+          # 정리된 상태로 새 orphan commit 생성
+          git add -A
+          TREE=$(git write-tree)
+          RELEASE_COMMIT=$(git commit-tree "$TREE" -m "릴리즈: v${VERSION} (UPM 패키지)
+
+          Apps in Toss Unity SDK v${VERSION}
+          - @apps-in-toss/web-framework v${VERSION} 기반
+          - UPM 패키지용 정리된 릴리즈
+          - 개발/테스트 파일 제외
+
+          Generated at: $(date -u +%Y-%m-%dT%H:%M:%SZ)")
+
+          echo "릴리즈 commit SHA: ${RELEASE_COMMIT}"
+
+          # 기존 태그가 있으면 삭제 (upsert)
+          git push origin --delete "${TAG_NAME}" 2>/dev/null || true
+
+          # 태그 생성 및 푸시
+          git tag -f "${TAG_NAME}" "${RELEASE_COMMIT}" -m "릴리즈: v${VERSION}
+
+          Apps in Toss Unity SDK v${VERSION}
+          - @apps-in-toss/web-framework v${VERSION} 기반
+
+          Generated at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+          git push -f origin "refs/tags/${TAG_NAME}:refs/tags/${TAG_NAME}"
+          echo "태그 푸시 완료: ${TAG_NAME}"
+
+          # 임시 빌드 ref 정리
+          git push origin --delete "${BUILD_REF}" 2>/dev/null || echo "빌드 ref 정리 스킵 (이미 없거나 권한 없음)"
+
+      - name: GitHub Release 생성/업데이트
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ needs.release.outputs.version }}"
+          TAG_NAME="${{ needs.release.outputs.tag_name }}"
+          RELEASE_DATETIME="${{ steps.release-info.outputs.release_datetime }}"
+          COMMIT_HASH="${{ steps.release-info.outputs.commit_hash }}"
+          FULL_COMMIT_HASH="${{ steps.release-info.outputs.full_commit_hash }}"
+
+          RELEASE_BODY=$(cat <<EOF
+          ## Apps in Toss Unity SDK v${VERSION}
+
+          📅 **Released**: ${RELEASE_DATETIME} (UTC)
+          🔗 **Commit**: [\`${COMMIT_HASH}\`](https://github.com/${{ github.repository }}/commit/${FULL_COMMIT_HASH})
+
+          \`@apps-in-toss/web-framework\` v${VERSION} 기반으로 생성된 Unity SDK입니다.
+
+          ### 설치 방법
+
+          \`Packages/manifest.json\`에 다음을 추가하세요:
+
+          \`\`\`json
+          {
+            "dependencies": {
+              "im.toss.apps-in-toss-unity-sdk": "https://github.com/${{ github.repository }}.git#${TAG_NAME}"
+            }
+          }
+          \`\`\`
+
+          ### 지원 Unity 버전
+
+          | 버전 | 상태 |
+          |------|------|
+          | Unity 6000.3 (Unity 6.3) | ✅ 지원 |
+          | Unity 6000.2 (Unity 6 LTS) | ✅ 지원 |
+          | Unity 6000.0 (Unity 6) | ✅ 지원 |
+          | Unity 2022.3 LTS | ✅ 지원 |
+          | Unity 2021.3 LTS | ✅ 지원 (최소 버전) |
+
+          ### 주요 기능
+
+          - Apps in Toss 플랫폼에 최적화된 WebGL 빌드 자동화
+          - 커스텀 Build & Deploy 윈도우를 통한 Unity Editor 통합
+          - 플랫폼별 브릿지 코드가 포함된 커스텀 WebGL 템플릿 (AITTemplate)
+          - granite 빌드 시스템을 사용한 Vite 기반 빌드 파이프라인
+          - 플랫폼 기능을 위한 종합 C# API (결제, 사용자 인증, 기기 API 등)
+
+          ### 문서
+
+          - [Unity Editor 설정](https://github.com/${{ github.repository }}#readme)
+          EOF
+          )
+
+          # 기존 릴리즈가 있으면 삭제 (upsert) - 태그는 유지 (이미 푸시됨)
+          gh release delete "${TAG_NAME}" --yes 2>/dev/null || true
+
+          # 태그 전파 대기 (GitHub API 동기화)
+          echo "태그 전파 대기 중 (5초)..."
+          sleep 5
+
+          # prerelease 버전(예: 3.0.0-beta)이면 Latest로 표시되지 않도록 방어
+          # stable 자동 승격은 update.yml의 메이저 ceiling 가드가 1차 차단하지만,
+          # release.yml을 prerelease 버전으로 직접 디스패치하는 경우의 안전망.
+          PRERELEASE_FLAGS=""
+          if echo "$VERSION" | grep -q '-'; then
+            PRERELEASE_FLAGS="--prerelease --latest=false"
+            echo "prerelease 버전 감지: ${VERSION} → Latest 표시 안 함"
+          fi
+
+          # 태그 기반으로 릴리즈 생성 (--verify-tag로 태그 확인)
+          gh release create "${TAG_NAME}" \
+            --title "v${VERSION}" \
+            --notes "$RELEASE_BODY" \
+            --verify-tag \
+            $PRERELEASE_FLAGS
+
+          echo "GitHub Release 생성 완료"
+          echo "URL: https://github.com/${{ github.repository }}/releases/tag/${TAG_NAME}"
+
+      - name: 릴리즈 요약
+        run: |
+          VERSION="${{ needs.release.outputs.version }}"
+          TAG_NAME="${{ needs.release.outputs.tag_name }}"
+
+          echo "## 릴리즈 완료" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| 항목 | 값 |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|-----|" >> $GITHUB_STEP_SUMMARY
+          echo "| 버전 | v${VERSION} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 태그 | \`${TAG_NAME}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| 릴리즈 | [GitHub Release](https://github.com/${{ github.repository }}/releases/tag/${TAG_NAME}) |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### UPM 설치" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "https://github.com/${{ github.repository }}.git#${TAG_NAME}" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
+    outputs:
+      version: ${{ needs.release.outputs.version }}
+      tag_name: ${{ needs.release.outputs.tag_name }}
+
+  # =====================================================
+  # Sentry 릴리즈 등록 + 커밋 연동
+  # =====================================================
+  # 런타임 envelope 의 release 식별자(`apps-in-toss.unity@<version>`)와 동일한
+  # 이름으로 Sentry 에 릴리즈를 등록하고 commit range 를 연결한다.
+  # 이렇게 해야 PR 머지 메시지의 `Fixes APPS-IN-TOSS-UNITY-SDK-XX` trailer 가
+  # Sentry GitHub Integration 을 통해 해당 이슈를 자동으로 resolve in next release
+  # 로 표기하고, 다음 릴리즈가 배포되면 자동 closed 처리된다.
+  sentry-release:
+    name: Sentry 릴리즈 등록
+    runs-on: ubuntu-latest
+    needs: [create-release-tag]
+    if: always() && needs.create-release-tag.result == 'success' && needs.create-release-tag.outputs.version != ''
+    steps:
+      - name: Checkout (main 커밋 히스토리)
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Sentry Release 생성 + 커밋 연동
+        uses: getsentry/action-release@v3
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: toss
+          SENTRY_PROJECT: apps-in-toss-unity-sdk
+        with:
+          # action-release@v3에서 `version`은 deprecated이고 `release`로 대체됨(동작 동일).
+          release: apps-in-toss.unity@${{ needs.create-release-tag.outputs.version }}
+          set_commits: auto
+          finalize: true
+
+  # =====================================================
+  # AIT 패키지 배포
+  # =====================================================
+  deploy-ait:
+    name: AIT 패키지 배포
+    runs-on: ubuntu-latest
+    needs: [build-ait-macos, build-ait-windows, create-release-tag]
+    if: |
+      always() &&
+      needs.create-release-tag.result == 'success' &&
+      (needs.build-ait-macos.result == 'success' || needs.build-ait-windows.result == 'success')
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout (버전 참조용)
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.create-release-tag.outputs.tag_name }}
+          sparse-checkout: |
+            WebGLTemplates/AITTemplate/BuildConfig~/package.json
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          package_json_file: WebGLTemplates/AITTemplate/BuildConfig~/package.json
+
+      - name: Install AIT CLI
+        run: |
+          WF_VERSION=$(node -p "require('./WebGLTemplates/AITTemplate/BuildConfig~/package.json').dependencies['@apps-in-toss/web-framework']")
+          echo "Installing @apps-in-toss/web-framework@${WF_VERSION}"
+          pnpm install -g "@apps-in-toss/web-framework@${WF_VERSION}"
+          ait --version || echo "AIT CLI installed"
+
+      - name: AIT 빌드 결과물 다운로드
+        uses: actions/download-artifact@v8
+        with:
+          pattern: ait-build-*-v${{ needs.create-release-tag.outputs.version }}
+          path: ait-builds/
+
+      - name: 다운로드된 빌드 확인
+        id: check-packages
+        run: |
+          echo "=== 다운로드된 AIT 빌드 결과물 ==="
+          if [ -d "ait-builds" ]; then
+            echo "빌드 목록:"
+            ls -la ait-builds/
+            echo ""
+
+            BUILD_COUNT=0
+            for build_dir in ait-builds/ait-build-*/; do
+              if [ -d "$build_dir" ]; then
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                echo "빌드: $(basename $build_dir)"
+                ls -la "$build_dir"
+                if [ -d "${build_dir}dist" ]; then
+                  echo "dist/ 폴더:"
+                  ls -la "${build_dir}dist" | head -10
+                  BUILD_COUNT=$((BUILD_COUNT + 1))
+                fi
+              fi
+            done
+
+            echo "package_count=${BUILD_COUNT}" >> $GITHUB_OUTPUT
+
+            if [ "$BUILD_COUNT" -gt 0 ]; then
+              echo "✅ ${BUILD_COUNT}개 AIT 빌드 발견"
+            else
+              echo "::warning::유효한 AIT 빌드가 없습니다"
+            fi
+          else
+            echo "::warning::ait-builds 디렉토리가 없습니다"
+            echo "package_count=0" >> $GITHUB_OUTPUT
+          fi
+
+      - name: AIT 빌드 배포
+        id: deploy
+        if: steps.check-packages.outputs.package_count > 0
+        env:
+          AIT_DEPLOY_KEY: ${{ secrets.AIT_DEPLOY_KEY }}
+        run: |
+          VERSION="${{ needs.create-release-tag.outputs.version }}"
+
+          echo "=== AIT 빌드 배포 ==="
+          echo "버전: ${VERSION}"
+          echo ""
+
+          if [ -z "$AIT_DEPLOY_KEY" ]; then
+            echo "::error::AIT_DEPLOY_KEY가 설정되지 않았습니다."
+            echo "deploy_results=" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+          # 배포 결과 저장용 변수
+          DEPLOY_RESULTS=""
+          HAS_FAILURE=false
+
+          for build_dir in ait-builds/ait-build-*/; do
+            if [ -d "$build_dir" ]; then
+              BUILD_NAME=$(basename "$build_dir")
+              # ait-build-{os}-{unity-version} 형식에서 OS와 버전 추출
+              OS=$(echo "$BUILD_NAME" | sed 's/ait-build-\([^-]*\)-.*/\1/')
+              UNITY_VERSION=$(echo "$BUILD_NAME" | sed 's/ait-build-[^-]*-//')
+
+              # OS 이름 정규화
+              case "$OS" in
+                macos) OS_DISPLAY="macOS" ;;
+                windows) OS_DISPLAY="Windows" ;;
+                *) OS_DISPLAY="$OS" ;;
+              esac
+
+              echo ""
+              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+              echo "배포: ${OS_DISPLAY} - Unity ${UNITY_VERSION}"
+              echo "경로: ${build_dir}"
+
+              # ait deploy는 현재 디렉토리에서 실행되어야 함
+              # dist/ 폴더 안에서 실행
+              if [ -d "${build_dir}" ]; then
+                echo "배포 디렉토리: ${build_dir}"
+
+                # ait deploy 실행 (작업 디렉토리를 build_dir로 변경)
+                # 5분(300초) 타임아웃 설정 - 배포 서버 응답 대기
+                DEPLOY_OUTPUT=$(cd "${build_dir}" && timeout 300 ait deploy --api-key "$AIT_DEPLOY_KEY" 2>&1) && DEPLOY_STATUS=0 || DEPLOY_STATUS=$?
+
+                echo "$DEPLOY_OUTPUT"
+
+                if [ $DEPLOY_STATUS -eq 124 ]; then
+                  # timeout 명령어의 타임아웃 종료 코드
+                  echo "❌ 배포 타임아웃 (5분 초과)"
+                  DEPLOY_RESULTS="${DEPLOY_RESULTS}${OS_DISPLAY} - ${UNITY_VERSION}: TIMEOUT\n"
+                  HAS_FAILURE=true
+                elif [ $DEPLOY_STATUS -eq 0 ]; then
+                  # 배포 성공 - URL 추출 시도 (ANSI 이스케이프 시퀀스 제거 후 파싱)
+                  CLEANED_OUTPUT=$(echo "$DEPLOY_OUTPUT" | sed 's/\x1b\[[0-9;]*m//g' | tr -d '\r')
+                  DEPLOY_URL=$(echo "$CLEANED_OUTPUT" | grep -oE 'intoss-private://[^[:space:]]+' | head -1 || true)
+                  if [ -z "$DEPLOY_URL" ]; then
+                    DEPLOY_URL=$(echo "$CLEANED_OUTPUT" | grep -oE 'https?://[^[:space:]]+' | head -1 || echo "SUCCESS")
+                  fi
+                  echo "✅ 배포 성공: ${DEPLOY_URL}"
+                  DEPLOY_RESULTS="${DEPLOY_RESULTS}${OS_DISPLAY} - ${UNITY_VERSION}: ${DEPLOY_URL}\n"
+                else
+                  echo "❌ 배포 실패 (exit code: $DEPLOY_STATUS)"
+                  DEPLOY_RESULTS="${DEPLOY_RESULTS}${OS_DISPLAY} - ${UNITY_VERSION}: FAILED\n"
+                  HAS_FAILURE=true
+                fi
+              else
+                echo "::warning::빌드 디렉토리가 없습니다: ${build_dir}"
+                DEPLOY_RESULTS="${DEPLOY_RESULTS}${OS_DISPLAY} - ${UNITY_VERSION}: FAILED (no build dir)\n"
+                HAS_FAILURE=true
+              fi
+            fi
+          done
+
+          # 결과 저장
+          echo "deploy_results<<EOF" >> $GITHUB_OUTPUT
+          echo -e "$DEPLOY_RESULTS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+          if [ "$HAS_FAILURE" = true ]; then
+            echo "has_failure=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_failure=false" >> $GITHUB_OUTPUT
+          fi
+
+          # Step Summary 작성
+          echo "## AIT 배포 결과" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| 플랫폼 | Unity 버전 | 상태 | URL | QR |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-----------|------|-----|:--:|" >> $GITHUB_STEP_SUMMARY
+
+          echo -e "$DEPLOY_RESULTS" | while IFS= read -r line; do
+            if [ -n "$line" ]; then
+              PLATFORM=$(echo "$line" | cut -d: -f1 | xargs)
+              STATUS=$(echo "$line" | cut -d: -f2- | xargs)
+              # PLATFORM 형식: "macOS - 2021.3" → OS와 Unity 버전 분리
+              OS_NAME=$(echo "$PLATFORM" | cut -d'-' -f1 | xargs)
+              UV=$(echo "$PLATFORM" | cut -d'-' -f2- | xargs)
+              if [[ "$STATUS" == *"FAILED"* ]] || [[ "$STATUS" == *"TIMEOUT"* ]]; then
+                echo "| ${OS_NAME} | ${UV} | ❌ | ${STATUS} | - |" >> $GITHUB_STEP_SUMMARY
+              elif echo "$STATUS" | grep -qE '^intoss-private://'; then
+                ENCODED_URL=$(printf '%s' "$STATUS" | jq -sRr @uri)
+                QR_IMG="![QR](https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${ENCODED_URL})"
+                echo "| ${OS_NAME} | ${UV} | ✅ | \`${STATUS}\` | ${QR_IMG} |" >> $GITHUB_STEP_SUMMARY
+              else
+                echo "| ${OS_NAME} | ${UV} | ✅ | ${STATUS} | - |" >> $GITHUB_STEP_SUMMARY
+              fi
+            fi
+          done
+
+      - name: 배포 결과 아티팩트 저장
+        if: always() && steps.check-packages.outputs.package_count > 0
+        env:
+          VERSION: ${{ needs.create-release-tag.outputs.version }}
+          DEPLOY_RESULTS: ${{ steps.deploy.outputs.deploy_results }}
+          HAS_FAILURE: ${{ steps.deploy.outputs.has_failure }}
+        run: |
+          echo "version=${VERSION}" > deploy-results.txt
+          echo "has_failure=${HAS_FAILURE}" >> deploy-results.txt
+          echo "---RESULTS---" >> deploy-results.txt
+          echo -e "$DEPLOY_RESULTS" >> deploy-results.txt
+
+          echo "저장된 배포 결과:"
+          cat deploy-results.txt
+
+      - name: 배포 결과 아티팩트 업로드
+        if: always() && steps.check-packages.outputs.package_count > 0
+        uses: actions/upload-artifact@v7
+        with:
+          name: deploy-results-${{ needs.create-release-tag.outputs.version }}
+          path: deploy-results.txt
+          retention-days: 1
+
+      - name: 배포 알림 전송
+        if: always() && steps.check-packages.outputs.package_count > 0 && inputs.skip_notification != true
+        env:
+          DEPLOY_WEBHOOK_URL: "https://ipd-public-gateway.core.toss-internal.com/api-public/v3/ipd-public-gateway/webhooks/ipd-corp-core-automation-webhook/8b6db539-6cb4-4b99-b2a8-8981c43b2592"
+          VERSION: ${{ needs.create-release-tag.outputs.version }}
+          DEPLOY_RESULTS: ${{ steps.deploy.outputs.deploy_results }}
+        run: |
+
+          if [ -z "$DEPLOY_RESULTS" ]; then
+            URLS_FOR_EDITION="배포 결과 없음"
+          else
+            echo "=== markdown link 형식으로 변환 ==="
+            URLS_FOR_EDITION=""
+            while IFS= read -r line; do
+              if [ -n "$line" ]; then
+                # "macOS - 2021.3: URL" 형식에서 플랫폼과 URL 분리
+                PLATFORM=$(echo "$line" | cut -d: -f1 | xargs)
+                URL=$(echo "$line" | cut -d: -f2- | xargs)
+
+                if [ -n "$URL" ] && [ "$URL" != "FAILED" ] && [ "$URL" != "TIMEOUT" ]; then
+                  LINE="${PLATFORM}: <${URL}|${VERSION}>"
+                else
+                  LINE="${PLATFORM}: ${VERSION}(${URL})"
+                fi
+
+                if [ -n "$URLS_FOR_EDITION" ]; then
+                  URLS_FOR_EDITION="${URLS_FOR_EDITION}\n${LINE}"
+                else
+                  URLS_FOR_EDITION="${LINE}"
+                fi
+              fi
+            done <<< "$(echo -e "$DEPLOY_RESULTS")"
+          fi
+
+          ACTIONS_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+          echo "=== 배포 알림 전송 ==="
+          echo "버전: ${VERSION}"
+          echo "Actions URL: ${ACTIONS_URL}"
+          echo "결과:"
+          echo -e "$URLS_FOR_EDITION"
+
+          # 1줄(1플랫폼)당 1필드로 분할
+          # Slack section block에서 여러 링크가 한 필드에 있으면 렌더링 버그 발생하므로 분리
+          LINES=()
+          while IFS= read -r line; do
+            if [ -z "$line" ]; then continue; fi
+            LINES+=("$line")
+          done <<< "$(echo -e "$URLS_FOR_EDITION")"
+
+          TOTAL_LINES=${#LINES[@]}
+          echo "총 ${TOTAL_LINES}개 줄(플랫폼)로 분할"
+
+          # 최대 에디션 수 (macOS/Windows x 5 Unity 버전 = 10)
+          MAX_EDITION_LINES=10
+
+          # jq로 안전한 JSON 생성
+          # urlsForEdition (첫 번째), urlsForEdition2, ..., urlsForEditionN 필드로 전송
+          # lineCount 필드로 총 줄 수 전달 (Slack 템플릿에서 반복 범위로 사용)
+          JSON_PAYLOAD=$(jq -n \
+            --arg version "$VERSION" \
+            --arg urls "${LINES[0]:-}" \
+            --arg actionsUrl "$ACTIONS_URL" \
+            --argjson lineCount "$TOTAL_LINES" \
+            '{version: $version, urlsForEdition: $urls, actionsUrl: $actionsUrl, lineCount: $lineCount}')
+
+          # urlsForEdition2 ~ urlsForEdition{MAX} 키를 항상 포함 (빈 문자열로 패딩)
+          # 웹훅 수신 템플릿이 모든 키의 존재를 요구하므로, 실제 데이터 유무와 관계없이 전송
+          for i in $(seq 2 $MAX_EDITION_LINES); do
+            JSON_PAYLOAD=$(echo "$JSON_PAYLOAD" | jq \
+              --arg key "urlsForEdition${i}" \
+              --arg val "${LINES[$((i-1))]:-}" \
+              '. + {($key): $val}')
+          done
+
+          echo "전송할 JSON:"
+          echo "$JSON_PAYLOAD"
+
+          # HTTP 상태 코드 확인하여 실패 처리
+          HTTP_STATUS=$(curl -s -o /tmp/webhook_response.txt -w "%{http_code}" -X POST "$DEPLOY_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d "$JSON_PAYLOAD")
+
+          if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
+            echo "✅ 알림 전송 완료 (HTTP ${HTTP_STATUS})"
+          else
+            echo "::error::알림 전송 실패 (HTTP ${HTTP_STATUS})"
+            cat /tmp/webhook_response.txt
+            exit 1
+          fi

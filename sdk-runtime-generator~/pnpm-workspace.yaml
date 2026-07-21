@@ -1,0 +1,40 @@
+# pnpm 설정 파일.
+# pnpm v11부터 package.json의 "pnpm" 필드(overrides 등)를 더 이상 읽지 않고 이 파일에서만
+# 읽으므로, 기존 package.json#pnpm.overrides를 이곳으로 이전했다.
+# (pnpm은 minimumReleaseAge*/overrides 설정을 pnpm-workspace.yaml에서만 읽는다.)
+
+# 공급망 보호(minimumReleaseAge)에서 자사 1st-party 스코프를 예외 처리한다.
+# pnpm v11부터 minimumReleaseAge 기본이 1440분(1일)이라, 토스 조직이 막 배포한 패키지가
+# quarantine에 걸려 SDK 재생성/빌드가 지연될 수 있다. 아래 세 스코프는 모두 동일 토스 조직이
+# 퍼블리시하는 신뢰 대상이므로 예외 처리해 유저(게임 개발자)가 불편을 겪지 않게 한다.
+# 쿨다운은 하이재킹된 '서드파티' 패키지를 격리 기간 동안 걸러내려는 장치라, 1st-party 스코프는
+# 제외해도 보안 이득이 미미하고 프레임워크 릴리스마다 CI만 깨진다.
+# 주의: regen-lockfiles.yml은 CLI 플래그로 이미 세 스코프를 제외한다. 이 파일도 동일하게 맞춰
+#       validate/changelog 잡의 install(이 workspace를 읽음)과 lockfile 재생성 정책을 정합화한다.
+#       (예: @toss/tds-react-native 가 granite/framework 전이 의존으로 딸려오므로 @toss/* 필요.)
+minimumReleaseAgeExclude:
+  - '@apps-in-toss/*'
+  - '@toss/*'
+  - '@granite-js/*'
+
+# transitive 의존성 보안/호환 고정 (구 package.json#pnpm.overrides에서 이전).
+overrides:
+  find-my-way: '>=8.2.2'
+  ip: '>=2.0.1'
+  # dependabot 취약점 대응(패치 존재분). granite 빌드 툴체인의 전이 의존이며
+  # SDK 산출물에 배포되지 않는다. 예기치 않은 상위 major 점프 차단 위해 캡.
+  '@babel/core': '>=7.29.6 <8'
+  '@fastify/middie': '>=9.3.2 <10'
+  esbuild: '>=0.28.1'
+  fast-uri: '>=3.1.2 <4'
+  fast-xml-parser: '>=5.7.0 <6'
+  fastify: '>=5.8.3 <6'
+
+# pnpm v11은 의존성의 build script(postinstall 등)를 기본 차단하고, 승인/무시 결정이 없으면
+# 설치 자체를 실패시킨다(ERR_PNPM_IGNORED_BUILDS — 예: @sentry/cli·@swc/core·esbuild·protobufjs).
+# pnpm v10에서도 이 스크립트들은 실행되지 않은 채(경고만) 정상 동작했으므로(네이티브 바이너리는
+# optionalDependencies 플랫폼 패키지로 제공됨), 설치 단계에서 의존성 스크립트를 건너뛰어
+# 동일한 동작을 유지한다.
+# 주의: ignoreScripts는 '설치 단계'의 스크립트만 막는다. 명시적 `pnpm run build`/`generate`/
+#       `test` 와 pre·post 훅(prebuild 등)은 그대로 실행된다 (pnpm 11.6.0에서 검증).
+ignoreScripts: true

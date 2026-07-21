@@ -1,0 +1,624 @@
+// -----------------------------------------------------------------------
+// BuildFileSelectionTests.cs - EditMode Build 파일 선별 테스트
+// Level 0: FindFileInBuild의 패턴 매칭 및 중복 파일 최신 선택 로직 검증
+// -----------------------------------------------------------------------
+
+using NUnit.Framework;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Text.RegularExpressions;
+using UnityEngine;
+using UnityEngine.TestTools;
+using AppsInToss.Editor;
+
+[TestFixture]
+public class BuildFileSelectionTests
+{
+    private string tempDir;
+
+    [SetUp]
+    public void Setup()
+    {
+        tempDir = Path.Combine(Path.GetTempPath(), "ait-test-build-" + Guid.NewGuid().ToString("N").Substring(0, 8));
+        Directory.CreateDirectory(tempDir);
+    }
+
+    [TearDown]
+    public void TearDown()
+    {
+        try
+        {
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, true);
+            }
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // fallback 테스트가 권한을 복구하지 못한 경우 임시 디렉토리 누수 허용
+        }
+        catch (IOException)
+        {
+            // 다른 테스트가 파일을 잡고 있는 경우 best-effort
+        }
+    }
+
+    // =====================================================
+    // 단일 매치 — 정확한 파일명 반환
+    // =====================================================
+
+    [Test]
+    public void FindFileInBuild_SingleMatch_ReturnsFileName()
+    {
+        string filePath = Path.Combine(tempDir, "build.loader.js");
+        File.WriteAllText(filePath, "// loader");
+
+        string result = AITBuildValidator.FindFileInBuild(tempDir, "*.loader.js");
+
+        Assert.AreEqual("build.loader.js", result);
+    }
+
+    // =====================================================
+    // 다중 매치 — 최신 파일 선택
+    // Build 선별 복사의 핵심 변경을 검증:
+    // 이전 코드는 파일시스템 순서로 반환했지만,
+    // 현재 코드는 LastWriteTime 기준 최신 파일을 선택함
+    // =====================================================
+
+    [Test]
+    public void FindFileInBuild_MultipleMatches_SelectsNewestFile()
+    {
+        // 오래된 파일 (이전 빌드 잔여물)
+        string oldFile = Path.Combine(tempDir, "old_hash.loader.js");
+        File.WriteAllText(oldFile, "// old loader");
+        File.SetLastWriteTime(oldFile, new DateTime(2025, 1, 1, 0, 0, 0));
+
+        // 최신 파일 (현재 빌드)
+        string newFile = Path.Combine(tempDir, "new_hash.loader.js");
+        File.WriteAllText(newFile, "// new loader");
+        File.SetLastWriteTime(newFile, new DateTime(2026, 2, 1, 0, 0, 0));
+
+        string result = AITBuildValidator.FindFileInBuild(tempDir, "*.loader.js");
+
+        Assert.AreEqual("new_hash.loader.js", result,
+            "FindFileInBuild should select the newest file when multiple matches exist");
+    }
+
+    // =====================================================
+    // 매치 없음 — 빈 문자열 반환
+    // =====================================================
+
+    [Test]
+    public void FindFileInBuild_NoMatch_ReturnsEmpty()
+    {
+        // Build 폴더에 관련 없는 파일만 존재
+        File.WriteAllText(Path.Combine(tempDir, "unrelated.txt"), "nothing");
+
+        string result = AITBuildValidator.FindFileInBuild(tempDir, "*.loader.js");
+
+        Assert.AreEqual("", result);
+    }
+
+    // =====================================================
+    // 압축 확장자 (.br, .gz) 매치
+    // Unity 압축 설정에 따라 .wasm.br, .wasm.gz 파일이 생성됨
+    // =====================================================
+
+    [TestCase("build.wasm.br", "*.wasm*")]
+    [TestCase("build.wasm.gz", "*.wasm*")]
+    [TestCase("build.data.unityweb", "*.data*")]
+    [TestCase("build.framework.js.br", "*.framework.js*")]
+    [TestCase("build.wasm.unityweb", "*.wasm.unityweb")]
+    [TestCase("build.data.unityweb", "*.data.unityweb")]
+    [TestCase("build.framework.js.unityweb", "*.framework.js.unityweb")]
+    [TestCase("build.symbols.json.unityweb", "*.symbols.json.unityweb")]
+    public void FindFileInBuild_CompressedExtensions_Matches(string fileName, string pattern)
+    {
+        File.WriteAllText(Path.Combine(tempDir, fileName), "compressed");
+
+        string result = AITBuildValidator.FindFileInBuild(tempDir, pattern);
+
+        Assert.AreEqual(fileName, result,
+            $"Pattern '{pattern}' should match compressed file '{fileName}'");
+    }
+
+    // =====================================================
+    // 존재하지 않는 경로 — 빈 문자열 반환
+    // =====================================================
+
+    [Test]
+    public void FindFileInBuild_NonExistentPath_ReturnsEmpty()
+    {
+        string fakePath = Path.Combine(tempDir, "nonexistent");
+
+        string result = AITBuildValidator.FindFileInBuild(fakePath, "*.loader.js");
+
+        Assert.AreEqual("", result);
+    }
+
+    // =====================================================
+    // Sentry SDK-ZM 회귀: *.framework.js* 누락 시 에러 로그 방출
+    // WebGLBuildCopier가 "isRequired: true"로 검색해 빈 문자열을 받으면
+    // FindFileInBuild 내부에서 "[AIT] ✗ 필수 파일을 찾을 수 없습니다" 에러가 발생한다.
+    // 이 테스트는 framework.js 파일이 Build/ 폴더에 없는 상황에서 해당 에러가
+    // 정확히 방출되는지 보장한다.
+    // =====================================================
+
+    [Test]
+    public void FindFileInBuild_MissingFrameworkJs_EmitsRequiredErrorLog()
+    {
+        // Build/ 폴더에 loader.js, data, wasm만 있고 framework.js 파일은 없음
+        File.WriteAllText(Path.Combine(tempDir, "build.loader.js"), "loader");
+        File.WriteAllText(Path.Combine(tempDir, "build.data"), "data");
+        File.WriteAllText(Path.Combine(tempDir, "build.wasm"), "wasm");
+        // framework.js 의도적으로 생성 안 함
+
+        // AITLog.Error → Debug.LogError 다단 진단 블록(검색 경로·Build 폴더 파일 목록 등
+        // 가변 개수)을 의도적으로 발화시키므로, UTF의 unhandled-log 실패를 스코프 한정으로
+        // 무시한다. 핵심 에러의 실제 방출 여부는 아래 CollectLogs 기반 양성 검증이 보장한다.
+        string result = null;
+        List<LogEntry> logs;
+        LogAssert.ignoreFailingMessages = true;
+        try
+        {
+            logs = CollectLogs(() =>
+                result = AITBuildValidator.FindFileInBuild(tempDir, "*.framework.js*", isRequired: true));
+        }
+        finally
+        {
+            LogAssert.ignoreFailingMessages = false;
+        }
+
+        // 빈 문자열 반환 → missingFiles.Add("*.framework.js") 로 이어짐 (WebGLBuildCopier.cs)
+        Assert.AreEqual("", result,
+            "framework.js 파일이 없으면 빈 문자열을 반환해야 함");
+
+        // "[AIT] ✗ 필수 파일을 찾을 수 없습니다: *.framework.js*" 에러 로그 방출 확인
+        bool emittedRequiredError = logs.Exists(l =>
+            l.type == LogType.Error &&
+            l.message.Contains("필수 파일을 찾을 수 없습니다") &&
+            l.message.Contains("*.framework.js*"));
+        Assert.IsTrue(emittedRequiredError,
+            "isRequired:true 이면서 파일이 없으면 에러 로그가 방출되어야 함. " +
+            "실제 로그: " + string.Join(" | ", logs.ConvertAll(l => $"[{l.type}] {l.message}")));
+    }
+
+    // =====================================================
+    // GetFilePatterns — decompressionFallback=true 시 .unityweb 패턴 반환
+    // =====================================================
+
+    [Test]
+    public void GetFilePatterns_DecompressionFallback_ReturnsUnitywebPatterns()
+    {
+        var patterns = AITBuildValidator.GetFilePatterns(0, decompressionFallback: true);
+
+        Assert.AreEqual("*.loader.js", patterns["loader"]);
+        Assert.AreEqual("*.data.unityweb", patterns["data"]);
+        Assert.AreEqual("*.framework.js.unityweb", patterns["framework"]);
+        Assert.AreEqual("*.wasm.unityweb", patterns["wasm"]);
+        Assert.AreEqual("*.symbols.json.unityweb", patterns["symbols"]);
+    }
+
+    [Test]
+    public void GetFilePatterns_DecompressionFallback_OverridesCompressionFormat()
+    {
+        // Brotli(2) + decompressionFallback=true → .unityweb가 우선
+        var patterns = AITBuildValidator.GetFilePatterns(2, decompressionFallback: true);
+
+        Assert.AreEqual("*.data.unityweb", patterns["data"],
+            "decompressionFallback should override compressionFormat (Brotli)");
+        Assert.AreEqual("*.wasm.unityweb", patterns["wasm"]);
+        Assert.AreEqual("*.framework.js.unityweb", patterns["framework"]);
+    }
+
+    [Test]
+    public void GetFilePatterns_NoDecompressionFallback_ReturnsStandardPatterns()
+    {
+        var patterns = AITBuildValidator.GetFilePatterns(0, decompressionFallback: false);
+
+        Assert.AreEqual("*.loader.js", patterns["loader"]);
+        Assert.AreEqual("*.data", patterns["data"]);
+        Assert.AreEqual("*.framework.js", patterns["framework"]);
+        Assert.AreEqual("*.wasm", patterns["wasm"]);
+        Assert.AreEqual("*.symbols.json", patterns["symbols"]);
+    }
+
+    // =====================================================
+    // 다중 매치 3개 이상 — 가장 최신 파일 선택
+    // 이전 빌드가 여러 번 쌓인 경우를 시뮬레이션
+    // =====================================================
+
+    [Test]
+    public void FindFileInBuild_ThreeMatches_SelectsNewest()
+    {
+        // 가장 오래된 파일
+        string file1 = Path.Combine(tempDir, "aaa.data");
+        File.WriteAllText(file1, "data1");
+        File.SetLastWriteTime(file1, new DateTime(2025, 1, 1));
+
+        // 중간 파일
+        string file2 = Path.Combine(tempDir, "bbb.data");
+        File.WriteAllText(file2, "data2");
+        File.SetLastWriteTime(file2, new DateTime(2025, 6, 1));
+
+        // 최신 파일
+        string file3 = Path.Combine(tempDir, "ccc.data");
+        File.WriteAllText(file3, "data3");
+        File.SetLastWriteTime(file3, new DateTime(2026, 2, 1));
+
+        string result = AITBuildValidator.FindFileInBuild(tempDir, "*.data*");
+
+        Assert.AreEqual("ccc.data", result,
+            "FindFileInBuild should select the newest among 3+ matching files");
+    }
+
+    // =====================================================
+    // 중복 파일 자동 정리 — 최신 외 오래된 파일 삭제
+    // Sentry 이슈 SDK-7F/7G/7H/7J 대응:
+    // 중복 감지 시 경고만 출력 → 자동 삭제로 전환하여 반복 경고 제거
+    // =====================================================
+
+    [Test]
+    public void FindFileInBuild_MultipleMatches_DeletesStaleFiles()
+    {
+        // 오래된 파일 (이전 빌드 잔여물)
+        string oldFile = Path.Combine(tempDir, "old_hash.loader.js");
+        File.WriteAllText(oldFile, "// old loader");
+        File.SetLastWriteTime(oldFile, new DateTime(2025, 1, 1, 0, 0, 0));
+
+        // 최신 파일 (현재 빌드)
+        string newFile = Path.Combine(tempDir, "new_hash.loader.js");
+        File.WriteAllText(newFile, "// new loader");
+        File.SetLastWriteTime(newFile, new DateTime(2026, 2, 1, 0, 0, 0));
+
+        string result = AITBuildValidator.FindFileInBuild(tempDir, "*.loader.js");
+
+        Assert.AreEqual("new_hash.loader.js", result);
+        Assert.IsFalse(File.Exists(oldFile),
+            "Stale duplicate should be deleted to prevent repeated Sentry warnings");
+        Assert.IsTrue(File.Exists(newFile),
+            "Newest file must remain after cleanup");
+    }
+
+    [Test]
+    public void FindFileInBuild_MultipleMatches_DeletesMetaFiles()
+    {
+        // Unity .meta 파일도 함께 정리해야 중복 asset 경고 방지
+        string oldFile = Path.Combine(tempDir, "old_hash.loader.js");
+        File.WriteAllText(oldFile, "// old");
+        File.SetLastWriteTime(oldFile, new DateTime(2025, 1, 1));
+
+        string oldMeta = oldFile + ".meta";
+        File.WriteAllText(oldMeta, "fileFormatVersion: 2\nguid: deadbeef\n");
+
+        string newFile = Path.Combine(tempDir, "new_hash.loader.js");
+        File.WriteAllText(newFile, "// new");
+        File.SetLastWriteTime(newFile, new DateTime(2026, 2, 1));
+
+        AITBuildValidator.FindFileInBuild(tempDir, "*.loader.js");
+
+        Assert.IsFalse(File.Exists(oldFile), "stale file should be deleted");
+        Assert.IsFalse(File.Exists(oldMeta), "stale .meta should be deleted");
+    }
+
+    [Test]
+    public void FindFileInBuild_ThreeMatches_DeletesAllButNewest()
+    {
+        string file1 = Path.Combine(tempDir, "aaa.data");
+        File.WriteAllText(file1, "old1");
+        File.SetLastWriteTime(file1, new DateTime(2025, 1, 1));
+
+        string file2 = Path.Combine(tempDir, "bbb.data");
+        File.WriteAllText(file2, "old2");
+        File.SetLastWriteTime(file2, new DateTime(2025, 6, 1));
+
+        string file3 = Path.Combine(tempDir, "ccc.data");
+        File.WriteAllText(file3, "newest");
+        File.SetLastWriteTime(file3, new DateTime(2026, 2, 1));
+
+        string result = AITBuildValidator.FindFileInBuild(tempDir, "*.data*");
+
+        Assert.AreEqual("ccc.data", result);
+        Assert.IsFalse(File.Exists(file1), "oldest should be deleted");
+        Assert.IsFalse(File.Exists(file2), "middle should be deleted");
+        Assert.IsTrue(File.Exists(file3), "newest should remain");
+    }
+
+    [Test]
+    public void FindFileInBuild_SingleFile_NotDeleted()
+    {
+        // 단일 파일은 삭제 로직을 거치지 않아야 함 (회귀 방지)
+        string file = Path.Combine(tempDir, "build.loader.js");
+        File.WriteAllText(file, "// only");
+
+        string result = AITBuildValidator.FindFileInBuild(tempDir, "*.loader.js");
+
+        Assert.AreEqual("build.loader.js", result);
+        Assert.IsTrue(File.Exists(file),
+            "Single match should never be deleted");
+    }
+
+    // =====================================================
+    // 중복 자동 정리 — 모든 WebGL 산출물 패턴 회귀 방지
+    // Sentry SDK-7J(213ev), SDK-7T(3ev): loader.js 외 .data/.wasm/.framework.js/
+    // .symbols.json 파일에 대해서도 같은 "이전 빌드 잔여물" 경고가 반복 수집됨.
+    // FindFileInBuild는 패턴 독립적으로 동작하므로 호출부가 모든 패턴에 대해
+    // 자동 정리를 받는지 명시적으로 고정한다.
+    // 비압축(.data), Brotli(.wasm.br), Gzip(.framework.js.gz), decompressionFallback
+    // (.data.unityweb, .symbols.json.unityweb) 케이스를 전부 포함.
+    //
+    // 비고: FindFileInBuild_CompressedExtensions_Matches(:108)는 단일 파일에 대한
+    // 패턴 매칭만 검증하지만, 이 테스트는 동일 조합에 '중복 시 자동 정리'와
+    // '반환값 = 최신 파일명' 계약을 추가로 고정한다.
+    // =====================================================
+
+    // pattern: AITBuildValidator.GetFilePatterns가 생성하는 실제 패턴
+    // suffix: 생성할 파일 확장자 (pattern과 매칭되어야 함)
+    [TestCase("*.data*", ".data")]
+    [TestCase("*.data*", ".data.br")]
+    [TestCase("*.data*", ".data.gz")]
+    [TestCase("*.data.unityweb", ".data.unityweb")]
+    [TestCase("*.framework.js*", ".framework.js")]
+    [TestCase("*.framework.js*", ".framework.js.br")]
+    [TestCase("*.framework.js*", ".framework.js.gz")]
+    [TestCase("*.framework.js.unityweb", ".framework.js.unityweb")]
+    [TestCase("*.wasm*", ".wasm")]
+    [TestCase("*.wasm*", ".wasm.br")]
+    [TestCase("*.wasm*", ".wasm.gz")]
+    [TestCase("*.wasm.unityweb", ".wasm.unityweb")]
+    [TestCase("*.symbols.json*", ".symbols.json")]
+    [TestCase("*.symbols.json*", ".symbols.json.br")]
+    [TestCase("*.symbols.json*", ".symbols.json.gz")]
+    [TestCase("*.symbols.json.unityweb", ".symbols.json.unityweb")]
+    public void FindFileInBuild_AllProductPatterns_DuplicateCleanup(string pattern, string suffix)
+    {
+        string oldFile = Path.Combine(tempDir, "old_hash" + suffix);
+        File.WriteAllText(oldFile, "old");
+        File.SetLastWriteTime(oldFile, new DateTime(2025, 1, 1));
+
+        string oldMeta = oldFile + ".meta";
+        File.WriteAllText(oldMeta, "fileFormatVersion: 2\nguid: deadbeef\n");
+
+        string newFile = Path.Combine(tempDir, "new_hash" + suffix);
+        File.WriteAllText(newFile, "new");
+        File.SetLastWriteTime(newFile, new DateTime(2026, 2, 1));
+
+        string result = null;
+        var logs = CollectLogs(() =>
+            result = AITBuildValidator.FindFileInBuild(tempDir, pattern));
+
+        Assert.AreEqual("new_hash" + suffix, result,
+            $"[{pattern} / {suffix}] 최신 파일명이 반환되어야 함");
+        Assert.IsFalse(File.Exists(oldFile),
+            $"[{pattern} / {suffix}] 이전 빌드 잔여물이 자동 삭제되어야 함");
+        Assert.IsFalse(File.Exists(oldMeta),
+            $"[{pattern} / {suffix}] 잔여물의 .meta 파일도 함께 삭제되어야 함");
+        Assert.IsTrue(File.Exists(newFile),
+            $"[{pattern} / {suffix}] 최신 파일은 유지되어야 함");
+
+        // Sentry 노이즈 방지: 성공 경로에서는 Warning/Error 없이 Debug.Log만 발생
+        var noisy = logs.FindAll(l =>
+            l.type == LogType.Warning || l.type == LogType.Error ||
+            l.type == LogType.Exception || l.type == LogType.Assert);
+        Assert.IsEmpty(noisy,
+            $"[{pattern} / {suffix}] 정상 자동 정리는 Warning/Error를 발생시키면 안 됨: " +
+            string.Join(" | ", noisy.ConvertAll(l => $"[{l.type}] {l.message}")));
+    }
+
+    // =====================================================
+    // LastWriteTime 동률 — 파일명 내림차순 타이브레이크로 결정적 선택
+    // Array.Sort가 불안정하므로 명시적 이차 정렬 키가 필요
+    // =====================================================
+
+    [Test]
+    public void FindFileInBuild_SameTimestamp_DeterministicByName()
+    {
+        var time = new DateTime(2026, 1, 1, 12, 0, 0);
+
+        string fileA = Path.Combine(tempDir, "aaa.loader.js");
+        File.WriteAllText(fileA, "// a");
+        File.SetLastWriteTime(fileA, time);
+
+        string fileZ = Path.Combine(tempDir, "zzz.loader.js");
+        File.WriteAllText(fileZ, "// z");
+        File.SetLastWriteTime(fileZ, time);
+
+        string result = AITBuildValidator.FindFileInBuild(tempDir, "*.loader.js");
+
+        // CompareOrdinal 내림차순 → "zzz" > "aaa" → zzz 선택
+        Assert.AreEqual("zzz.loader.js", result,
+            "Tie on LastWriteTime should break deterministically by filename (descending)");
+        Assert.IsFalse(File.Exists(fileA), "Tie loser should be deleted");
+        Assert.IsTrue(File.Exists(fileZ), "Tie winner should remain");
+    }
+
+    // =====================================================
+    // 로그 레벨 검증 — 성공 시 Debug.Log 1건만 발생, Warning/Error 없음
+    // Sentry 노이즈 제거의 핵심 목적 회귀 방지.
+    // LogAssert.NoUnexpectedReceived는 Error/Assert/Exception만 감시하므로
+    // Warning까지 확실히 막으려면 logMessageReceived 훅으로 직접 수집.
+    // =====================================================
+
+    [Test]
+    public void FindFileInBuild_DuplicateCleanup_EmitsInfoLogNotWarning()
+    {
+        string oldFile = Path.Combine(tempDir, "old.loader.js");
+        File.WriteAllText(oldFile, "// old");
+        File.SetLastWriteTime(oldFile, new DateTime(2025, 1, 1));
+
+        string newFile = Path.Combine(tempDir, "new.loader.js");
+        File.WriteAllText(newFile, "// new");
+        File.SetLastWriteTime(newFile, new DateTime(2026, 2, 1));
+
+        var logs = CollectLogs(() =>
+            AITBuildValidator.FindFileInBuild(tempDir, "*.loader.js"));
+
+        // 양성 검증: 성공 메시지가 실제로 발생해야 함 (기능이 조용히 사라지지 않도록)
+        bool emittedSuccess = logs.Exists(l =>
+            l.type == LogType.Log &&
+            Regex.IsMatch(l.message, @"이전 빌드 잔여물 \d+개 자동 정리"));
+        Assert.IsTrue(emittedSuccess,
+            "성공 경로에서 자동 정리 확인 Debug.Log가 발생해야 함: " +
+            string.Join(" | ", logs.ConvertAll(l => $"[{l.type}] {l.message}")));
+
+        // 음성 검증: Warning/Error/Exception/Assert 없음 (Sentry 노이즈 방지)
+        var noisy = logs.FindAll(l =>
+            l.type == LogType.Warning || l.type == LogType.Error ||
+            l.type == LogType.Exception || l.type == LogType.Assert);
+        Assert.IsEmpty(noisy,
+            "성공 경로는 Warning/Error 로그를 발생시키면 안 됨: " +
+            string.Join(" | ", noisy.ConvertAll(l => $"[{l.type}] {l.message}")));
+    }
+
+    // =====================================================
+    // Fallback 경로 검증 (Unix) — chmod로 삭제 실패 유도
+    // Windows는 POSIX 권한 모델이 달라 별도 테스트 (file lock)에서 커버
+    // =====================================================
+
+    [Test]
+    public void FindFileInBuild_DeleteFails_FallsBackAndLogs_Unix()
+    {
+        Assume.That(Application.platform != RuntimePlatform.WindowsEditor,
+            "Unix-only: chmod-based directory permission manipulation");
+
+        string oldFile = Path.Combine(tempDir, "old.loader.js");
+        File.WriteAllText(oldFile, "// old");
+        File.SetLastWriteTime(oldFile, new DateTime(2025, 1, 1));
+
+        string newFile = Path.Combine(tempDir, "new.loader.js");
+        File.WriteAllText(newFile, "// new");
+        File.SetLastWriteTime(newFile, new DateTime(2026, 2, 1));
+
+        try
+        {
+            Syscall_Chmod(tempDir, "0555");
+
+            // root 사용자면 0555가 무시되어 삭제가 성공 → false positive
+            // 실제로 쓰기 불가한지 선검증
+            Assume.That(IsDirectoryWriteBlocked(tempDir),
+                "현재 사용자는 0555 디렉토리에도 쓸 수 있음 (root?) — 테스트 의미 없음");
+
+            LogAssert.Expect(LogType.Log, new Regex(@"\[AIT\].+이전 빌드 잔여물 \d+개 정리 실패"));
+            LogAssert.Expect(LogType.Log, new Regex(@"\[AIT\].+Clean Build"));
+
+            string result = AITBuildValidator.FindFileInBuild(tempDir, "*.loader.js");
+
+            Assert.AreEqual("new.loader.js", result,
+                "삭제 실패 시에도 최신 파일명은 정상 반환되어야 함");
+            Assert.IsTrue(File.Exists(oldFile),
+                "chmod로 삭제를 막았으므로 oldFile은 남아있어야 함");
+        }
+        finally
+        {
+            // TearDown이 tempDir을 지우려면 쓰기 권한 복구 필요
+            try
+            {
+                Syscall_Chmod(tempDir, "0755");
+            }
+            catch (Exception ex)
+            {
+                // 진단 정보는 TestContext.Error로 — Debug.LogError는 AITEditorErrorTracker
+                // 가 다시 Sentry로 보낼 수 있어 회귀 방지 목적에 역행
+                TestContext.Error.WriteLine($"chmod 0755 restore failed: {ex.Message}");
+            }
+        }
+    }
+
+    // =====================================================
+    // Fallback 경로 검증 (Windows) — FileStream 락으로 IOException 유도
+    // Windows는 열린 파일을 다른 핸들에서 삭제 불가(sharing violation)
+    // =====================================================
+
+    [Test]
+    public void FindFileInBuild_DeleteFails_FallsBackAndLogs_Windows()
+    {
+        Assume.That(Application.platform == RuntimePlatform.WindowsEditor,
+            "Windows-only: file lock semantics differ on Unix");
+
+        string oldFile = Path.Combine(tempDir, "old.loader.js");
+        File.WriteAllText(oldFile, "// old");
+        File.SetLastWriteTime(oldFile, new DateTime(2025, 1, 1));
+
+        string newFile = Path.Combine(tempDir, "new.loader.js");
+        File.WriteAllText(newFile, "// new");
+        File.SetLastWriteTime(newFile, new DateTime(2026, 2, 1));
+
+        // Windows에서 FileShare.Read로 열면 다른 프로세스의 Delete가 sharing violation 발생
+        string result;
+        using (File.Open(oldFile, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            LogAssert.Expect(LogType.Log, new Regex(@"\[AIT\].+이전 빌드 잔여물 \d+개 정리 실패"));
+            LogAssert.Expect(LogType.Log, new Regex(@"\[AIT\].+Clean Build"));
+
+            result = AITBuildValidator.FindFileInBuild(tempDir, "*.loader.js");
+
+            Assert.IsTrue(File.Exists(oldFile),
+                "락이 걸려있는 동안 oldFile은 남아있어야 함");
+        }
+
+        Assert.AreEqual("new.loader.js", result,
+            "삭제 실패 시에도 최신 파일명은 정상 반환되어야 함");
+    }
+
+    // -----------------------------------------------------------------
+    // 유틸리티: 동작 중 발생한 모든 로그를 타입과 함께 수집
+    // LogAssert.NoUnexpectedReceived가 Warning을 감시하지 않는 한계 보완.
+    // -----------------------------------------------------------------
+    private struct LogEntry
+    {
+        public LogType type;
+        public string message;
+    }
+
+    private static List<LogEntry> CollectLogs(Action action)
+    {
+        var logs = new List<LogEntry>();
+        Application.LogCallback handler = null;
+        handler = (msg, _, type) =>
+        {
+            logs.Add(new LogEntry { type = type, message = msg });
+        };
+        Application.logMessageReceived += handler;
+        try { action(); }
+        finally { Application.logMessageReceived -= handler; }
+        return logs;
+    }
+
+    private static bool IsDirectoryWriteBlocked(string dir)
+    {
+        string probe = Path.Combine(dir, "probe-" + Guid.NewGuid().ToString("N").Substring(0, 6));
+        try
+        {
+            File.WriteAllText(probe, "x");
+            File.Delete(probe);
+            return false;
+        }
+        catch (UnauthorizedAccessException) { return true; }
+        catch (IOException) { return true; }
+    }
+
+    private static void Syscall_Chmod(string path, string mode)
+    {
+        var psi = new System.Diagnostics.ProcessStartInfo("chmod", $"{mode} \"{path}\"")
+        {
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+        };
+        using (var proc = System.Diagnostics.Process.Start(psi))
+        {
+            if (!proc.WaitForExit(3000))
+            {
+                try { proc.Kill(); } catch { /* best-effort */ }
+                throw new InvalidOperationException($"chmod {mode} {path} timed out");
+            }
+            if (proc.ExitCode != 0)
+            {
+                throw new InvalidOperationException(
+                    $"chmod {mode} {path} failed: {proc.StandardError.ReadToEnd()}");
+            }
+        }
+    }
+}

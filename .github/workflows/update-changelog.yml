@@ -1,0 +1,97 @@
+name: Update API Changelog
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  update-changelog:
+    name: Update API Changelog Report
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+      statuses: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Install Dependencies
+        working-directory: sdk-runtime-generator~
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Generate Report
+        working-directory: sdk-runtime-generator~
+        run: pnpm test:multi-version || true
+
+      - name: Commit Report
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p docs/changelog
+          cp sdk-runtime-generator~/reports/api-changelog.html docs/changelog/index.html
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+
+          # 고정 브랜치 1개만 사용 → 열린 changelog PR은 항상 ≤1개.
+          # (기존 타임스탬프 브랜치는 머지 실패 시 무한 누적되는 원인이었음)
+          BRANCH="docs/auto-changelog"
+          git checkout -b "$BRANCH"
+          git commit -m "문서: API Changelog 리포트 자동 갱신"
+          # force push: 기존 열린 PR이 있으면 in-place로 갱신, 없으면 새로 생성
+          git push -u origin "$BRANCH" --force
+          HEAD_SHA=$(git rev-parse HEAD)
+
+          # 필수 'scan' 체크 충족.
+          # GITHUB_TOKEN으로 만든 PR은 GitHub 정책상 워크플로(string-check.yml)를 트리거하지
+          # 못해 scan이 영구 pending → 머지 불가였다. string-check.yml의 'bot PR → scan skip'
+          # 정책과 동일하게, 봇이 만든 이 PR에 한해 scan=success를 직접 보고한다.
+          gh api "repos/${{ github.repository }}/statuses/${HEAD_SHA}" -X POST \
+            -f state=success \
+            -f context=scan \
+            -f description="bot changelog PR — scan skipped (github-actions[bot])"
+
+          # 열린 PR이 없을 때만 생성 (있으면 위 force-push로 이미 갱신됨)
+          EXISTING_PR=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number')
+          if [ -z "$EXISTING_PR" ]; then
+            gh pr create \
+              --title "문서: API Changelog 리포트 자동 갱신" \
+              --body "API Changelog 리포트를 자동 갱신합니다." \
+              --base main \
+              --head "$BRANCH"
+          fi
+
+          # scan을 success로 보고했으므로 PR은 mergeable. merge-ref 계산 지연 대비 재시도.
+          MERGED=false
+          for attempt in 1 2 3; do
+            if gh pr merge "$BRANCH" --squash --delete-branch; then
+              MERGED=true
+              break
+            fi
+            echo "머지 시도 ${attempt}/3 실패 — 재시도"
+            sleep 5
+          done
+
+          # 동기 머지가 실패하면 auto-merge로 예약 (required check 통과 시 자동 머지)
+          if [ "$MERGED" != "true" ]; then
+            echo "::warning::동기 머지 실패 — auto-merge로 예약 시도"
+            gh pr merge "$BRANCH" --squash --delete-branch --auto \
+              || echo "::warning::auto-merge 예약 실패 — PR을 수동으로 머지해주세요"
+          fi

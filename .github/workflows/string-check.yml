@@ -1,0 +1,108 @@
+name: String Check
+
+on:
+  # 전 브랜치 push에서 스캔 — feature 브랜치를 public 원격에 push하는 "노출 순간"을
+  # 서버 측에서 탐지하기 위함(로컬 pre-push 훅은 --no-verify로 우회 가능하므로 백스톱 필요).
+  # push 이벤트는 fork PR과 달리 repository secret 접근이 가능해 STRING_CHECK_PATTERN을 쓸 수 있다.
+  # dependabot 브랜치는 secret 미접근이라 Guard가 매번 실패하므로 push 트리거에서 제외한다
+  # (dependabot PR은 pull_request 경로의 IS_BOT_PR skip이 처리). 태그 push도 노출 순간이므로 포함.
+  push:
+    branches:
+      - '**'
+      - '!dependabot/**'
+    tags:
+      - '**'
+  pull_request:
+    branches: [main]
+
+jobs:
+  scan:
+    name: scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      PATTERN: ${{ secrets.STRING_CHECK_PATTERN }}
+      # dependabot/github-actions[bot] PR은 GitHub 정책상 repository secret 접근 불가 →
+      # PATTERN이 빈 값이라 Guard가 무조건 fail. 작성자가 bot이면 scan을 skip해
+      # required check가 영원히 blocked되는 것을 방지.
+      IS_BOT_PR: ${{ github.event_name == 'pull_request' && (github.event.pull_request.user.login == 'dependabot[bot]' || github.event.pull_request.user.login == 'github-actions[bot]') }}
+
+    steps:
+      - name: Checkout
+        if: env.IS_BOT_PR != 'true'
+        uses: actions/checkout@v7
+
+      - name: Skip scan for bot PR
+        if: env.IS_BOT_PR == 'true'
+        run: echo "Bot PR (${{ github.event.pull_request.user.login }}) — scan skipped (secret 접근 불가)"
+
+      - name: Guard
+        if: env.IS_BOT_PR != 'true'
+        run: |
+          if [ -z "$PATTERN" ]; then
+            echo "::error::STRING_CHECK_PATTERN repository secret이 설정되지 않았습니다."
+            exit 1
+          fi
+          echo "::add-mask::$PATTERN"
+          # 정규식 유효성 사전 검증: 잘못된 ERE가 스캔을 조용히 무력화(grep rc>=2를 미매치로 취급)하는
+          # fail-open 을 방지. 빈 입력 grep 은 유효한 정규식이면 rc=1(미매치)이라, GHA 기본 셸
+          # (bash -eo pipefail)에서 set -e 로 중단되지 않도록 if/elif 조건 컨텍스트에 둔다.
+          # grep 종료코드: 0/1=정규식 유효(매치/미매치), >=2=정규식 오류.
+          if printf '' | LC_ALL=C grep -E "$PATTERN" >/dev/null 2>&1; then
+            :
+          elif [ "$?" -ge 2 ]; then
+            echo "::error::STRING_CHECK_PATTERN 이 유효한 ERE가 아닙니다(정규식 오류)."
+            exit 1
+          fi
+
+      - name: Scan tree
+        if: env.IS_BOT_PR != 'true'
+        env:
+          LC_ALL: C   # 바이트 단위 매칭(로케일 의존 UTF-8 스킵으로 인한 fail-open 방지)
+        run: |
+          set +e
+          FOUND=$(grep -rIni \
+            --exclude-dir=".git" \
+            --exclude-dir="node_modules" \
+            --exclude-dir="Library" \
+            --exclude-dir="Temp" \
+            -E "$PATTERN" . 2>/dev/null)
+          RC=$?
+          set -e
+          # grep rc: 0=매치, 1=미매치, >=2=오류. 오류를 미매치로 취급(fail-open)하지 않고 실패 처리.
+          if [ "$RC" -ge 2 ]; then
+            echo "::error::tree 스캔 실패(grep rc=$RC). 안전을 위해 실패 처리합니다."
+            exit 1
+          fi
+          if [ "$RC" = "0" ] && [ -n "$FOUND" ]; then
+            echo "::error::금지된 패턴이 감지되었습니다."
+            echo "$FOUND" | awk -F: '{print "::error file=" $1 ",line=" $2 "::redacted"}'
+            exit 1
+          fi
+          echo "scan OK"
+
+      - name: Scan lockfiles
+        if: env.IS_BOT_PR != 'true'
+        env:
+          LC_ALL: C   # 바이트 단위 매칭(로케일 의존 UTF-8 스킵으로 인한 fail-open 방지)
+        run: |
+          set -e
+          BAD=0
+          for f in \
+            "Tests~/E2E/tests/pnpm-lock.yaml" \
+            "WebGLTemplates/AITTemplate/BuildConfig~/pnpm-lock.yaml" \
+            "sdk-runtime-generator~/pnpm-lock.yaml"
+          do
+            [ -f "$f" ] || continue
+            # grep 을 if/elif 조건 컨텍스트에 두어 rc=1(미매치)이 set -e 로 스크립트를 중단시키지 않게 함.
+            # rc: 0=매치(차단), 1=미매치(정상), >=2=오류(fail-closed).
+            if grep -qiE "$PATTERN" "$f"; then
+              echo "::error file=$f::redacted"
+              BAD=1
+            elif [ "$?" -ge 2 ]; then
+              echo "::error::lockfile 스캔 실패($f, grep rc>=2). 안전을 위해 실패 처리합니다."
+              exit 1
+            fi
+          done
+          [ "$BAD" = "0" ] || exit 1
+          echo "lockfile scan OK"

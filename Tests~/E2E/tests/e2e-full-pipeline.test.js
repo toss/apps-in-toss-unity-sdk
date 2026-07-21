@@ -1202,12 +1202,20 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
               resolve({ ok: false, reason: 'timeout', elapsedMs: performance.now() - started });
             }, timeoutMs);
 
-            window.__AIT_NESTED_CALLBACKS[requestId] = (resultBool) => {
-              if (settled) return;
-              settled = true;
-              clearTimeout(timer);
-              delete window.__AIT_NESTED_CALLBACKS[requestId];
-              resolve({ ok: true, result: resultBool, elapsedMs: performance.now() - started });
+            // 실 jslib과 동일한 엔트리 shape({ resolve, timeoutId })로 등록한다.
+            // SDK가 opt-in 오버레이 교착 타임아웃(NestedCallbackTimeoutMs)을 도입하면서
+            // __AITRespondToNestedCallback 핸들러가 entry.resolve(resultBool)를 호출하고
+            // entry.timeoutId를 clearTimeout하므로, 옛 "직접 함수" shape는 더 이상 호환되지 않는다.
+            // (이 테스트는 SDK 타임아웃을 켜지 않으므로 timeoutId는 null.)
+            window.__AIT_NESTED_CALLBACKS[requestId] = {
+              resolve: (resultBool) => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timer);
+                delete window.__AIT_NESTED_CALLBACKS[requestId];
+                resolve({ ok: true, result: resultBool, elapsedMs: performance.now() - started });
+              },
+              timeoutId: null
             };
 
             const payload = JSON.stringify({

@@ -1368,7 +1368,7 @@ ${onEventHandler}
             entry.resolve(resultBool);
         } else {
             // Already settled by the (A) JS-side timeout, or never registered — silent no-op.
-            console.log('[AIT jslib] Nested callback already settled, ignoring:', reqId);
+            if (window.__AIT_VERBOSE) console.log('[AIT jslib] Nested callback already settled, ignoring:', reqId);
         }
     },`;
   }
@@ -1384,7 +1384,7 @@ ${onEventHandler}
   private generateSetNestedCallbackTimeoutFunction(): string {
     return `    __AITSetNestedCallbackTimeoutMs: function(timeoutMs) {
         window.__AIT_NESTED_TIMEOUT_MS = timeoutMs;
-        console.log('[AIT jslib] NestedCallbackTimeoutMs set:', timeoutMs);
+        if (window.__AIT_VERBOSE) console.log('[AIT jslib] NestedCallbackTimeoutMs set:', timeoutMs);
     },`;
   }
 

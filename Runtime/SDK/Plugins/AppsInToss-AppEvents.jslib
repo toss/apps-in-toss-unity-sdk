@@ -10,13 +10,13 @@ mergeInto(LibraryManager.library, {
         var subId = UTF8ToString(subscriptionId);
         var typeNameStr = UTF8ToString(typeName);
 
-        console.log('[AIT jslib] GraniteEventSubscribeBackEvent subscribing, id:', subId);
+        if (window.__AIT_VERBOSE) console.log('[AIT jslib] GraniteEventSubscribeBackEvent subscribing, id:', subId);
 
         try {
             // Subscribe to event
             var unsubscribe = window.AppsInToss.graniteEvent.addEventListener('backEvent', {
                 onEvent: function() {
-                    console.log('[AIT jslib] backEvent fired (void)');
+                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] backEvent fired (void)');
                     var payload = JSON.stringify({
                         CallbackId: subId,
                         TypeName: typeNameStr,
@@ -30,7 +30,7 @@ mergeInto(LibraryManager.library, {
                     SendMessage('AITCore', 'OnAITEventCallback', payload);
                 },
                 onError: function(error) {
-                    console.log('[AIT jslib] backEvent error:', error);
+                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] backEvent error:', error);
                     var payload = JSON.stringify({
                         CallbackId: subId,
                         TypeName: typeNameStr,
@@ -69,13 +69,13 @@ mergeInto(LibraryManager.library, {
         var subId = UTF8ToString(subscriptionId);
         var typeNameStr = UTF8ToString(typeName);
 
-        console.log('[AIT jslib] GraniteEventSubscribeHomeEvent subscribing, id:', subId);
+        if (window.__AIT_VERBOSE) console.log('[AIT jslib] GraniteEventSubscribeHomeEvent subscribing, id:', subId);
 
         try {
             // Subscribe to event
             var unsubscribe = window.AppsInToss.graniteEvent.addEventListener('homeEvent', {
                 onEvent: function() {
-                    console.log('[AIT jslib] homeEvent fired (void)');
+                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] homeEvent fired (void)');
                     var payload = JSON.stringify({
                         CallbackId: subId,
                         TypeName: typeNameStr,
@@ -89,7 +89,7 @@ mergeInto(LibraryManager.library, {
                     SendMessage('AITCore', 'OnAITEventCallback', payload);
                 },
                 onError: function(error) {
-                    console.log('[AIT jslib] homeEvent error:', error);
+                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] homeEvent error:', error);
                     var payload = JSON.stringify({
                         CallbackId: subId,
                         TypeName: typeNameStr,
@@ -128,13 +128,13 @@ mergeInto(LibraryManager.library, {
         var subId = UTF8ToString(subscriptionId);
         var typeNameStr = UTF8ToString(typeName);
 
-        console.log('[AIT jslib] TdsEventSubscribeNavigationAccessoryEvent subscribing, id:', subId);
+        if (window.__AIT_VERBOSE) console.log('[AIT jslib] TdsEventSubscribeNavigationAccessoryEvent subscribing, id:', subId);
 
         try {
             // Subscribe to event
             var unsubscribe = window.AppsInToss.tdsEvent.addEventListener('navigationAccessoryEvent', {
                 onEvent: function(data) {
-                    console.log('[AIT jslib] navigationAccessoryEvent fired:', data);
+                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] navigationAccessoryEvent fired:', data);
                     var payload = JSON.stringify({
                         CallbackId: subId,
                         TypeName: typeNameStr,
@@ -148,7 +148,7 @@ mergeInto(LibraryManager.library, {
                     SendMessage('AITCore', 'OnAITEventCallback', payload);
                 },
                 onError: function(error) {
-                    console.log('[AIT jslib] navigationAccessoryEvent error:', error);
+                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] navigationAccessoryEvent error:', error);
                     var payload = JSON.stringify({
                         CallbackId: subId,
                         TypeName: typeNameStr,
@@ -187,7 +187,7 @@ mergeInto(LibraryManager.library, {
         var subId = UTF8ToString(subscriptionId);
 
         if (window.__AIT_SUBSCRIPTIONS && window.__AIT_SUBSCRIPTIONS[subId]) {
-            console.log('[AIT jslib] Unsubscribing:', subId);
+            if (window.__AIT_VERBOSE) console.log('[AIT jslib] Unsubscribing:', subId);
             var unsubscribe = window.__AIT_SUBSCRIPTIONS[subId];
             if (typeof unsubscribe === 'function') {
                 unsubscribe();

@@ -816,7 +816,7 @@ ${jsConversions ? '\n' + jsConversions + '\n' : ''}
         var typeNameStr = UTF8ToString(typeName);
         var parsedParams = JSON.parse(UTF8ToString(params));
 
-        console.log('[AIT jslib] ${api.name} called, id:', subId);
+        if (window.__AIT_VERBOSE) console.log('[AIT jslib] ${api.name} called, id:', subId);
 
         try {
             var result = ${apiCallExpr}({
@@ -824,7 +824,7 @@ ${jsConversions ? '\n' + jsConversions + '\n' : ''}
 ${nestedCallbacksCode}
                 }),
                 onEvent: function(event) {
-                    console.log('[AIT jslib] ${api.name} event:', event);
+                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] ${api.name} event:', event);
                     var payload = JSON.stringify({
                         CallbackId: subId,
                         TypeName: typeNameStr,
@@ -837,7 +837,7 @@ ${nestedCallbacksCode}
                     SendMessage('AITCore', 'OnAITEventCallback', payload);
                 },
                 onError: function(error) {
-                    console.log('[AIT jslib] ${api.name} error:', error);
+                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] ${api.name} error:', error);
                     var errorMessage = error instanceof Error ? error.message : String(error);
                     var payload = JSON.stringify({
                         CallbackId: subId,
@@ -924,13 +924,13 @@ ${nestedCallbacksCode}
         var subId = UTF8ToString(subscriptionId);
         var typeNameStr = UTF8ToString(typeName);
 ${paramConversions ? '\n' + paramConversions + '\n' : ''}
-        console.log('[AIT jslib] ${api.name} called, id:', subId);
+        if (window.__AIT_VERBOSE) console.log('[AIT jslib] ${api.name} called, id:', subId);
 
         try {
             var unsubscribe = ${apiCallExpr}({
                 options: ${optionsObj},
                 onEvent: function(data) {
-                    console.log('[AIT jslib] ${api.name} event:', data);
+                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] ${api.name} event:', data);
                     var payload = JSON.stringify({
                         CallbackId: subId,
                         TypeName: typeNameStr,
@@ -943,7 +943,7 @@ ${paramConversions ? '\n' + paramConversions + '\n' : ''}
                     SendMessage('AITCore', 'OnAITEventCallback', payload);
                 },
                 onError: function(error) {
-                    console.log('[AIT jslib] ${api.name} error:', error);
+                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] ${api.name} error:', error);
                     var errorMessage = error instanceof Error ? error.message : String(error);
                     var payload = JSON.stringify({
                         CallbackId: subId,
@@ -998,13 +998,13 @@ ${paramConversions ? '\n' + paramConversions + '\n' : ''}
         var typeNameStr = UTF8ToString(typeName);
         var optionsObj = options ? JSON.parse(UTF8ToString(options)) : {};
 
-        console.log('[AIT jslib] ${api.name} called, id:', subId, 'options:', optionsObj);
+        if (window.__AIT_VERBOSE) console.log('[AIT jslib] ${api.name} called, id:', subId, 'options:', optionsObj);
 
         try {
             var unsubscribe = ${apiCallExpr}({
                 options: optionsObj,
                 onEvent: function(data) {
-                    console.log('[AIT jslib] ${api.name} event:', data);
+                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] ${api.name} event:', data);
                     var payload = JSON.stringify({
                         CallbackId: subId,
                         TypeName: typeNameStr,
@@ -1017,7 +1017,7 @@ ${paramConversions ? '\n' + paramConversions + '\n' : ''}
                     SendMessage('AITCore', 'OnAITEventCallback', payload);
                 },
                 onError: function(error) {
-                    console.log('[AIT jslib] ${api.name} error:', error);
+                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] ${api.name} error:', error);
                     var errorMessage = error instanceof Error ? error.message : String(error);
                     var payload = JSON.stringify({
                         CallbackId: subId,
@@ -1068,7 +1068,7 @@ ${paramConversions ? '\n' + paramConversions + '\n' : ''}
 
     // 파라미터 로깅
     const paramLogs = effectiveParams.map(p =>
-      `        console.log('[AIT jslib] ${api.name} raw param ${p.name}:', UTF8ToString(${p.name}));`
+      `        if (window.__AIT_VERBOSE) console.log('[AIT jslib] ${api.name} raw param ${p.name}:', UTF8ToString(${p.name}));`
     ).join('\n');
 
     // 파라미터 변환을 인라인으로 처리 (중간 변수 없이)
@@ -1119,15 +1119,15 @@ ${paramConversions ? '\n' + paramConversions + '\n' : ''}
         var callback = UTF8ToString(callbackId);
         var typeNameStr = UTF8ToString(typeName);
 
-        console.log('[AIT jslib] ${api.name} called, callbackId:', callback);
+        if (window.__AIT_VERBOSE) console.log('[AIT jslib] ${api.name} called, callbackId:', callback);
 ${paramLogs ? paramLogs + '\n' : ''}
         try {
             var promiseResult = ${apiCall};
-            console.log('[AIT jslib] ${api.originalName} returned:', promiseResult, 'isPromise:', promiseResult && typeof promiseResult.then === 'function');
+            if (window.__AIT_VERBOSE) console.log('[AIT jslib] ${api.originalName} returned:', promiseResult, 'isPromise:', promiseResult && typeof promiseResult.then === 'function');
 
             if (!promiseResult || typeof promiseResult.then !== 'function') {
                 // Promise가 아닌 경우 (undefined, null 등) - 즉시 응답
-                console.log('[AIT jslib] ${api.originalName} did not return a Promise, sending immediate response');
+                if (window.__AIT_VERBOSE) console.log('[AIT jslib] ${api.originalName} did not return a Promise, sending immediate response');
                 var payload = JSON.stringify({
                     CallbackId: callback,
                     TypeName: typeNameStr,
@@ -1139,12 +1139,12 @@ ${paramLogs ? paramLogs + '\n' : ''}
 
             promiseResult
                 .then(function(result) {
-                    console.log('[AIT jslib] ${api.originalName} resolved:', result);
+                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] ${api.originalName} resolved:', result);
 ${resultHandling}
                     SendMessage('AITCore', 'OnAITCallback', payload);
                 })
                 .catch(function(error) {
-                    console.log('[AIT jslib] ${api.originalName} rejected:', error);
+                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] ${api.originalName} rejected:', error);
                     var payload = JSON.stringify({
                         CallbackId: callback,
                         TypeName: typeNameStr,
@@ -1153,7 +1153,7 @@ ${resultHandling}
                     setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
                 });
         } catch (error) {
-            console.log('[AIT jslib] ${api.originalName} sync error:', error);
+            if (window.__AIT_VERBOSE) console.log('[AIT jslib] ${api.originalName} sync error:', error);
             var payload = JSON.stringify({
                 CallbackId: callback,
                 TypeName: typeNameStr,
@@ -1206,7 +1206,7 @@ ${resultHandling}
 
     const onEventHandler = hasEventData
       ? `                onEvent: function(data) {
-                    console.log('[AIT jslib] ${api.eventName} fired:', data);
+                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] ${api.eventName} fired:', data);
                     var payload = JSON.stringify({
                         CallbackId: subId,
                         TypeName: typeNameStr,
@@ -1220,7 +1220,7 @@ ${resultHandling}
                     SendMessage('AITCore', 'OnAITEventCallback', payload);
                 },`
       : `                onEvent: function() {
-                    console.log('[AIT jslib] ${api.eventName} fired (void)');
+                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] ${api.eventName} fired (void)');
                     var payload = JSON.stringify({
                         CallbackId: subId,
                         TypeName: typeNameStr,
@@ -1238,14 +1238,14 @@ ${resultHandling}
         var subId = UTF8ToString(subscriptionId);
         var typeNameStr = UTF8ToString(typeName);
 
-        console.log('[AIT jslib] ${api.name} subscribing, id:', subId);
+        if (window.__AIT_VERBOSE) console.log('[AIT jslib] ${api.name} subscribing, id:', subId);
 
         try {
             // Subscribe to event
             var unsubscribe = window.AppsInToss.${api.namespace}.addEventListener('${api.eventName}', {
 ${onEventHandler}
                 onError: function(error) {
-                    console.log('[AIT jslib] ${api.eventName} error:', error);
+                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] ${api.eventName} error:', error);
                     var payload = JSON.stringify({
                         CallbackId: subId,
                         TypeName: typeNameStr,
@@ -1311,7 +1311,7 @@ ${onEventHandler}
         var subId = UTF8ToString(subscriptionId);
 
         if (window.__AIT_SUBSCRIPTIONS && window.__AIT_SUBSCRIPTIONS[subId]) {
-            console.log('[AIT jslib] Unsubscribing:', subId);
+            if (window.__AIT_VERBOSE) console.log('[AIT jslib] Unsubscribing:', subId);
             var unsubscribe = window.__AIT_SUBSCRIPTIONS[subId];
             if (typeof unsubscribe === 'function') {
                 unsubscribe();
@@ -1331,7 +1331,7 @@ ${onEventHandler}
         var reqId = UTF8ToString(requestId);
         var resultBool = result !== 0;
 
-        console.log('[AIT jslib] RespondToNestedCallback:', reqId, resultBool);
+        if (window.__AIT_VERBOSE) console.log('[AIT jslib] RespondToNestedCallback:', reqId, resultBool);
 
         if (window.__AIT_NESTED_CALLBACKS && window.__AIT_NESTED_CALLBACKS[reqId]) {
             window.__AIT_NESTED_CALLBACKS[reqId](resultBool);

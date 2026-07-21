@@ -11,15 +11,15 @@ mergeInto(LibraryManager.library, {
         var callback = UTF8ToString(callbackId);
         var typeNameStr = UTF8ToString(typeName);
 
-        console.log('[AIT jslib] getUserKeyForGame called, callbackId:', callback);
+        if (window.__AIT_VERBOSE) console.log('[AIT jslib] getUserKeyForGame called, callbackId:', callback);
 
         try {
             var promiseResult = window.AppsInToss.getUserKeyForGame();
-            console.log('[AIT jslib] getUserKeyForGame returned:', promiseResult, 'isPromise:', promiseResult && typeof promiseResult.then === 'function');
+            if (window.__AIT_VERBOSE) console.log('[AIT jslib] getUserKeyForGame returned:', promiseResult, 'isPromise:', promiseResult && typeof promiseResult.then === 'function');
 
             if (!promiseResult || typeof promiseResult.then !== 'function') {
                 // Promise가 아닌 경우 (undefined, null 등) - 즉시 응답
-                console.log('[AIT jslib] getUserKeyForGame did not return a Promise, sending immediate response');
+                if (window.__AIT_VERBOSE) console.log('[AIT jslib] getUserKeyForGame did not return a Promise, sending immediate response');
                 var payload = JSON.stringify({
                     CallbackId: callback,
                     TypeName: typeNameStr,
@@ -31,7 +31,7 @@ mergeInto(LibraryManager.library, {
 
             promiseResult
                 .then(function(result) {
-                    console.log('[AIT jslib] getUserKeyForGame resolved:', result);
+                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] getUserKeyForGame resolved:', result);
                     var payload = JSON.stringify({
                         CallbackId: callback,
                         TypeName: typeNameStr,
@@ -40,7 +40,7 @@ mergeInto(LibraryManager.library, {
                     SendMessage('AITCore', 'OnAITCallback', payload);
                 })
                 .catch(function(error) {
-                    console.log('[AIT jslib] getUserKeyForGame rejected:', error);
+                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] getUserKeyForGame rejected:', error);
                     var payload = JSON.stringify({
                         CallbackId: callback,
                         TypeName: typeNameStr,
@@ -49,7 +49,7 @@ mergeInto(LibraryManager.library, {
                     setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
                 });
         } catch (error) {
-            console.log('[AIT jslib] getUserKeyForGame sync error:', error);
+            if (window.__AIT_VERBOSE) console.log('[AIT jslib] getUserKeyForGame sync error:', error);
             var payload = JSON.stringify({
                 CallbackId: callback,
                 TypeName: typeNameStr,

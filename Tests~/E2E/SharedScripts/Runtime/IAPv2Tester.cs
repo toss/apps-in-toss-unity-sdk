@@ -36,6 +36,9 @@ public class IAPv2Tester : MonoBehaviour
     private List<string> iapEventLog = new List<string>();
     private int _lastRenderedLogCount = 0;
 
+    /// <summary>화면 이벤트 로그(iapEventLog) 상한. 초과 시 오래된 항목을 트리밍한다.</summary>
+    private const int MaxIapEventLogCount = 300;
+
     // 구독 해제 액션
     private Action _purchaseDisposer;
 
@@ -53,6 +56,15 @@ public class IAPv2Tester : MonoBehaviour
     /// 마지막 작업 상태 메시지
     /// </summary>
     public string Status => iapStatus;
+
+    private void Awake()
+    {
+        // WebGL 빌드에서는 Debug.Log/Warning 한 줄마다 스택트레이스가 함께 캡처되어
+        // vConsole 노이즈가 커지고, 문자열 생성 비용 때문에 프레임 성능도 저하된다.
+        // 진단 가치가 큰 Error/Exception은 스택트레이스를 그대로 유지한다.
+        Application.SetStackTraceLogType(LogType.Log, StackTraceLogType.None);
+        Application.SetStackTraceLogType(LogType.Warning, StackTraceLogType.None);
+    }
 
     /// <summary>
     /// uGUI 기반 UI를 생성합니다.
@@ -173,6 +185,32 @@ public class IAPv2Tester : MonoBehaviour
         {
             _statusText.text = $"Status: {iapStatus}";
             _statusText.gameObject.SetActive(!string.IsNullOrEmpty(iapStatus));
+        }
+    }
+
+    /// <summary>
+    /// IAP 이벤트를 화면 로그(iapEventLog)와 콘솔(Debug.Log)에 동일한 타임스탬프로 1회씩 기록한다.
+    /// 실기기 콘솔 로그에도 발생 시각을 남기기 위해 "HH:mm:ss.fff" 타임스탬프를 공유한다.
+    /// </summary>
+    /// <param name="msg">기록할 메시지 (타임스탬프/프리픽스 제외한 본문)</param>
+    /// <param name="toConsole">false면 화면(iapEventLog)에만 남기고 콘솔에는 기록하지 않는다</param>
+    private void LogIap(string msg, bool toConsole = true)
+    {
+        string timestamp = DateTime.Now.ToString("HH:mm:ss.fff");
+        iapEventLog.Add($"[{timestamp}] {msg}");
+
+        if (iapEventLog.Count > MaxIapEventLogCount)
+        {
+            // _lastRenderedLogCount 기반 증분 렌더링은 트리밍하면 인덱스가 어긋난다.
+            // 렌더 카운트를 리셋해 다음 UpdateEventLog() 호출이 전체 재구축(단순·정확한 경로)을
+            // 타도록 강제하는 방식으로 정합을 보장한다.
+            iapEventLog.RemoveRange(0, iapEventLog.Count - MaxIapEventLogCount);
+            _lastRenderedLogCount = 0;
+        }
+
+        if (toConsole)
+        {
+            Debug.Log($"[IAPv2Tester] [{timestamp}] {msg}");
         }
     }
 
@@ -364,7 +402,7 @@ public class IAPv2Tester : MonoBehaviour
     private async void ExecuteIAPGetProductList()
     {
         iapStatus = "Loading products...";
-        iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] IAPGetProductItemList()");
+        LogIap("IAPGetProductItemList()");
         UpdateStatus();
         UpdateEventLog();
 
@@ -373,17 +411,17 @@ public class IAPv2Tester : MonoBehaviour
             iapProducts = await AIT.IAPGetProductItemList();
             int count = iapProducts?.Products?.Length ?? 0;
             iapStatus = $"Found {count} products";
-            iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Success: {count} products");
+            LogIap($"Success: {count} products");
         }
         catch (AITException ex)
         {
             iapStatus = $"Error: {ex.Message}";
-            iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Error: {ex.ErrorCode} - {ex.Message}");
+            LogIap($"Error: {ex.ErrorCode} - {ex.Message}");
         }
         catch (Exception ex)
         {
             iapStatus = $"Error: {ex.Message}";
-            iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Exception: {ex.Message}");
+            LogIap($"Exception: {ex.Message}");
         }
 
         UpdateStatus();
@@ -401,7 +439,7 @@ public class IAPv2Tester : MonoBehaviour
         }
 
         iapStatus = "Creating purchase order...";
-        iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] IAPCreateOneTimePurchaseOrder(sku: {iapSku})");
+        LogIap($"IAPCreateOneTimePurchaseOrder(sku: {iapSku})");
         UpdateStatus();
         UpdateEventLog();
 
@@ -415,10 +453,9 @@ public class IAPv2Tester : MonoBehaviour
                 // SDK는 이 Task<bool>이 완료될 때까지 주문 완료 처리를 보류한다 (true → 자동 지급 완료).
                 ProcessProductGrant = async (data) =>
                 {
-                    iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] ProcessProductGrant called: {data}");
-                    Debug.Log($"[IAPv2Tester] ProcessProductGrant called with data: {data}");
+                    LogIap($"ProcessProductGrant called: {data}");
                     bool grantSuccess = await GrantGameProduct(data);
-                    iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] ProcessProductGrant result: {grantSuccess}");
+                    LogIap($"ProcessProductGrant result: {grantSuccess}");
                     UpdateEventLog();
                     return grantSuccess;
                 }
@@ -431,7 +468,7 @@ public class IAPv2Tester : MonoBehaviour
                     iapStatus = "Purchase completed";
                     iapOrderId = successEvent.Data?.OrderId ?? "";
                     if (_orderIdInput != null) _orderIdInput.text = iapOrderId;
-                    iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] OnEvent: orderId={successEvent.Data?.OrderId}, amount={successEvent.Data?.DisplayAmount}");
+                    LogIap($"OnEvent: orderId={successEvent.Data?.OrderId}, amount={successEvent.Data?.DisplayAmount}");
                     UpdateStatus();
                     UpdateEventLog();
                 },
@@ -439,7 +476,7 @@ public class IAPv2Tester : MonoBehaviour
                 onError: (error) =>
                 {
                     iapStatus = "Purchase failed";
-                    iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] OnError: {error.ErrorCode} - {error.Message}");
+                    LogIap($"OnError: {error.ErrorCode} - {error.Message}");
                     UpdateStatus();
                     UpdateEventLog();
                 }
@@ -448,17 +485,17 @@ public class IAPv2Tester : MonoBehaviour
             ExecuteIAPCreateOrderLegacy();
 #endif
             iapStatus = "Purchase order created";
-            iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Order created successfully");
+            LogIap("Order created successfully");
         }
         catch (AITException ex)
         {
             iapStatus = $"Error: {ex.Message}";
-            iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Error: {ex.ErrorCode} - {ex.Message}");
+            LogIap($"Error: {ex.ErrorCode} - {ex.Message}");
         }
         catch (Exception ex)
         {
             iapStatus = $"Error: {ex.Message}";
-            iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Exception: {ex.Message}");
+            LogIap($"Exception: {ex.Message}");
         }
 
         UpdateStatus();
@@ -480,7 +517,7 @@ public class IAPv2Tester : MonoBehaviour
                 onEvent: (successEvent) =>
                 {
                     iapStatus = "Purchase completed (legacy)";
-                    iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] OnEvent (legacy): success");
+                    LogIap("OnEvent (legacy): success");
                     UpdateStatus();
                     UpdateEventLog();
                 },
@@ -488,7 +525,7 @@ public class IAPv2Tester : MonoBehaviour
                 onError: (error) =>
                 {
                     iapStatus = "Purchase failed (legacy)";
-                    iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] OnError (legacy): {error?.Message}");
+                    LogIap($"OnError (legacy): {error?.Message}");
                     UpdateStatus();
                     UpdateEventLog();
                 }
@@ -497,7 +534,7 @@ public class IAPv2Tester : MonoBehaviour
         catch (Exception ex)
         {
             iapStatus = $"Error: {ex.Message}";
-            iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Exception (legacy): {ex.Message}");
+            LogIap($"Exception (legacy): {ex.Message}");
         }
     }
 #endif
@@ -505,7 +542,7 @@ public class IAPv2Tester : MonoBehaviour
     private async void ExecuteIAPGetPendingOrders()
     {
         iapStatus = "Loading pending orders...";
-        iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] IAPGetPendingOrders()");
+        LogIap("IAPGetPendingOrders()");
         UpdateStatus();
         UpdateEventLog();
 
@@ -514,19 +551,19 @@ public class IAPv2Tester : MonoBehaviour
             iapPendingOrders = await AIT.IAPGetPendingOrders();
             int count = iapPendingOrders?.Orders?.Length ?? 0;
             iapStatus = $"Found {count} pending orders";
-            iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Success: {count} orders");
+            LogIap($"Success: {count} orders");
         }
         catch (AITException ex)
         {
             iapPendingOrders = null;
             iapStatus = $"Error: {ex.Message}";
-            iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Error: {ex.ErrorCode} - {ex.Message}");
+            LogIap($"Error: {ex.ErrorCode} - {ex.Message}");
         }
         catch (Exception ex)
         {
             iapPendingOrders = null;
             iapStatus = $"Error: {ex.Message}";
-            iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Exception: {ex.Message}");
+            LogIap($"Exception: {ex.Message}");
         }
 
         UpdateStatus();
@@ -537,7 +574,7 @@ public class IAPv2Tester : MonoBehaviour
     private async void ExecuteIAPGetCompletedOrRefundedOrders()
     {
         iapStatus = "Loading completed/refunded orders...";
-        iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] IAPGetCompletedOrRefundedOrders()");
+        LogIap("IAPGetCompletedOrRefundedOrders()");
         UpdateStatus();
         UpdateEventLog();
 
@@ -546,19 +583,19 @@ public class IAPv2Tester : MonoBehaviour
             iapCompletedOrders = await AIT.IAPGetCompletedOrRefundedOrders();
             int count = iapCompletedOrders?.Orders?.Length ?? 0;
             iapStatus = $"Found {count} completed/refunded orders";
-            iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Success: {count} orders, HasNext={iapCompletedOrders?.HasNext}");
+            LogIap($"Success: {count} orders, HasNext={iapCompletedOrders?.HasNext}");
         }
         catch (AITException ex)
         {
             iapCompletedOrders = null;
             iapStatus = $"Error: {ex.Message}";
-            iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Error: {ex.ErrorCode} - {ex.Message}");
+            LogIap($"Error: {ex.ErrorCode} - {ex.Message}");
         }
         catch (Exception ex)
         {
             iapCompletedOrders = null;
             iapStatus = $"Error: {ex.Message}";
-            iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Exception: {ex.Message}");
+            LogIap($"Exception: {ex.Message}");
         }
 
         UpdateStatus();
@@ -576,7 +613,7 @@ public class IAPv2Tester : MonoBehaviour
         }
 
         iapStatus = "Processing product grant...";
-        iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] IAPCompleteProductGrant(orderId: {iapOrderId})");
+        LogIap($"IAPCompleteProductGrant(orderId: {iapOrderId})");
         UpdateStatus();
         UpdateEventLog();
 
@@ -592,17 +629,17 @@ public class IAPv2Tester : MonoBehaviour
 
             bool success = await AIT.IAPCompleteProductGrant(args);
             iapStatus = success ? "Product grant completed" : "Product grant failed";
-            iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Result: {success}");
+            LogIap($"Result: {success}");
         }
         catch (AITException ex)
         {
             iapStatus = $"Error: {ex.Message}";
-            iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Error: {ex.ErrorCode} - {ex.Message}");
+            LogIap($"Error: {ex.ErrorCode} - {ex.Message}");
         }
         catch (Exception ex)
         {
             iapStatus = $"Error: {ex.Message}";
-            iapEventLog.Add($"[{DateTime.Now:HH:mm:ss}] Exception: {ex.Message}");
+            LogIap($"Exception: {ex.Message}");
         }
 
         UpdateStatus();
@@ -632,10 +669,10 @@ public class IAPv2Tester : MonoBehaviour
     /// </summary>
     private System.Collections.IEnumerator ValidateReceiptOnServer(object data, TaskCompletionSource<bool> tcs)
     {
-        Debug.Log($"[IAPv2Tester] Validating receipt on server: {data}");
+        LogIap($"Validating receipt on server: {data}");
         // 동기 스텁으로는 표현 불가했던 비동기 서버 왕복 경로
         yield return new WaitForSecondsRealtime(0.2f);
-        Debug.Log($"[IAPv2Tester] Receipt validated, granting product: {data}");
+        LogIap($"Receipt validated, granting product: {data}");
         tcs.SetResult(true);
     }
 }

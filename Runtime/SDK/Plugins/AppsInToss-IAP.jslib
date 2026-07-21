@@ -36,6 +36,9 @@ mergeInto(LibraryManager.library, {
                             timeoutId = setTimeout(function() {
                                 if (window.__AIT_NESTED_CALLBACKS && window.__AIT_NESTED_CALLBACKS[requestId]) {
                                     delete window.__AIT_NESTED_CALLBACKS[requestId];
+                                    // Not verbose-gated on purpose: the guard firing means the C#
+                                    // callback never answered, which is always worth surfacing.
+                                    console.warn('[AIT jslib] Nested callback timed out after ' + timeoutMs + 'ms, resolving false:', requestId);
                                     resolve(false);
                                 }
                             }, timeoutMs);
@@ -134,6 +137,9 @@ mergeInto(LibraryManager.library, {
                             timeoutId = setTimeout(function() {
                                 if (window.__AIT_NESTED_CALLBACKS && window.__AIT_NESTED_CALLBACKS[requestId]) {
                                     delete window.__AIT_NESTED_CALLBACKS[requestId];
+                                    // Not verbose-gated on purpose: the guard firing means the C#
+                                    // callback never answered, which is always worth surfacing.
+                                    console.warn('[AIT jslib] Nested callback timed out after ' + timeoutMs + 'ms, resolving false:', requestId);
                                     resolve(false);
                                 }
                             }, timeoutMs);

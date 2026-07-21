@@ -39,6 +39,14 @@ public class IAPv2Tester : MonoBehaviour
     /// <summary>화면 이벤트 로그(iapEventLog) 상한. 초과 시 오래된 항목을 트리밍한다.</summary>
     private const int MaxIapEventLogCount = 300;
 
+    /// <summary>
+    /// [PLP] 하드닝(AITCore.NestedCallbackTimeoutMs) opt-in 값. UI 토글로 0 ↔ 이 값을 오간다.
+    /// 한 빌드로 "교착 재현"(0)과 "하드닝 검증"(30s)을 모두 측정하기 위한 스위치.
+    /// </summary>
+    private const int PlpHardeningTimeoutMs = 30000;
+
+    private Text _plpToggleLabel;
+
     // 구독 해제 액션
     private Action _purchaseDisposer;
 
@@ -150,6 +158,37 @@ public class IAPv2Tester : MonoBehaviour
         UIBuilder.SetLayout(_orderIdInput.gameObject, flexibleWidth: 1);
 
         UIBuilder.CreateButton(section, "IAPCompleteProductGrant(...)", onClick: ExecuteIAPCompleteGrant);
+
+        // [PLP] 교착 방지 하드닝 토글 — 같은 빌드로 재현(OFF)과 검증(ON)을 번갈아 측정한다.
+        UIBuilder.CreateText(section, "진단: Player Loop Probe (techchat 4377)",
+            UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary, fontStyle: FontStyle.Bold);
+        _plpToggleLabel = UIBuilder.CreateText(section, "",
+            UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary);
+        UIBuilder.CreateButton(section, "NestedCallbackTimeoutMs 토글 (OFF ↔ 30s)", onClick: TogglePlpHardening);
+        // 교착이 완전하면 onEvent/onError가 끝내 오지 않아 자동 리포트가 안 나온다.
+        // 화면이 다시 움직이기 시작하면 이 버튼으로 수집분을 강제로 덤프한다.
+        UIBuilder.CreateButton(section, "PLP 리포트 강제 출력", onClick: () => ReportPlayerLoopProbe("manual"));
+        UpdatePlpToggleLabel();
+    }
+
+    /// <summary>[PLP] 하드닝 opt-in을 켜고 끈다. 결제 시작 전에 눌러 모드를 정한다.</summary>
+    private void TogglePlpHardening()
+    {
+        AITCore.NestedCallbackTimeoutMs =
+            AITCore.NestedCallbackTimeoutMs > 0 ? 0 : PlpHardeningTimeoutMs;
+        UpdatePlpToggleLabel();
+        LogIap($"[PLP] NestedCallbackTimeoutMs = {AITCore.NestedCallbackTimeoutMs}ms " +
+               $"({(AITCore.NestedCallbackTimeoutMs > 0 ? "하드닝 ON" : "하드닝 OFF — 교착 재현 모드")})");
+        UpdateEventLog();
+    }
+
+    private void UpdatePlpToggleLabel()
+    {
+        if (_plpToggleLabel == null) return;
+        int ms = AITCore.NestedCallbackTimeoutMs;
+        _plpToggleLabel.text = ms > 0
+            ? $"하드닝 ON — {ms}ms 후 자동 false 응답 (오버레이 해제 시도)"
+            : "하드닝 OFF — 교착 재현 모드 (타임아웃 없음)";
     }
 
     private GameObject CreateDynamicContainer(Transform parent, string name)
@@ -440,6 +479,7 @@ public class IAPv2Tester : MonoBehaviour
 
         iapStatus = "Creating purchase order...";
         LogIap($"IAPCreateOneTimePurchaseOrder(sku: {iapSku})");
+        ArmPlayerLoopProbe();
         UpdateStatus();
         UpdateEventLog();
 
@@ -453,8 +493,26 @@ public class IAPv2Tester : MonoBehaviour
                 // SDK는 이 Task<bool>이 완료될 때까지 주문 완료 처리를 보류한다 (true → 자동 지급 완료).
                 ProcessProductGrant = async (data) =>
                 {
+                    // [PLP] 진입 시각/프레임을 동기 기록 — loop가 멈춰 있어도 유실되지 않는다.
+                    var t0 = DateTime.UtcNow;
+                    int f0 = _plpFrames;
                     LogIap($"ProcessProductGrant called: {data}");
-                    bool grantSuccess = await GrantGameProduct(data);
+
+                    // [PLP] 프로브 1 — await continuation 재개.
+                    // player loop가 멈춰 있으면 3초 Delay가 3초에 끝나지 않는다.
+                    await Task.Delay(3000);
+                    var t1 = DateTime.UtcNow;
+                    int f1 = _plpFrames;
+
+                    // [PLP] 프로브 2 — 실제 UnityWebRequest 서버 검증(hugh의 원래 요구사항).
+                    // 코루틴/Task.Delay 시뮬레이션이 아니라 진짜 네트워크 왕복이 오버레이 구간에
+                    // 완료될 수 있는지를 잰다. UnityWebRequest 완료 콜백은 player loop가 전달한다.
+                    bool grantSuccess = await VerifyReceiptViaWebRequest(data);
+                    var t2 = DateTime.UtcNow;
+                    int f2 = _plpFrames;
+
+                    LogIap($"[PLP] delay(3000ms) actual={(t1 - t0).TotalMilliseconds:F0}ms (frames {f0}->{f1}) | " +
+                           $"UnityWebRequest actual={(t2 - t1).TotalMilliseconds:F0}ms (frames {f1}->{f2})");
                     LogIap($"ProcessProductGrant result: {grantSuccess}");
                     UpdateEventLog();
                     return grantSuccess;
@@ -469,6 +527,7 @@ public class IAPv2Tester : MonoBehaviour
                     iapOrderId = successEvent.Data?.OrderId ?? "";
                     if (_orderIdInput != null) _orderIdInput.text = iapOrderId;
                     LogIap($"OnEvent: orderId={successEvent.Data?.OrderId}, amount={successEvent.Data?.DisplayAmount}");
+                    ReportPlayerLoopProbe("onEvent");
                     UpdateStatus();
                     UpdateEventLog();
                 },
@@ -477,6 +536,7 @@ public class IAPv2Tester : MonoBehaviour
                 {
                     iapStatus = "Purchase failed";
                     LogIap($"OnError: {error.ErrorCode} - {error.Message}");
+                    ReportPlayerLoopProbe("onError");
                     UpdateStatus();
                     UpdateEventLog();
                 }
@@ -674,5 +734,118 @@ public class IAPv2Tester : MonoBehaviour
         yield return new WaitForSecondsRealtime(0.2f);
         LogIap($"Receipt validated, granting product: {data}");
         tcs.SetResult(true);
+    }
+
+    // =====================================================
+    // Player loop freeze 진단 프로브 (techchat 4377 검증용) — round 2
+    //
+    // 결제 native 오버레이 구간에서 실측으로 판별한다:
+    //  (1) player loop(Update) 정지 여부  — C# 프레임 하트비트의 최대 gap
+    //  (2) rAF / 타이머 / 매크로태스크     — jslib 3종 하트비트 (무엇이 멈추는지 분리)
+    //  (3) C# await continuation 재개 지연 — ProcessProductGrant 내 Task.Delay 실측
+    //  (4) 실제 서버 검증 완료 가능 여부    — UnityWebRequest 실 왕복 (hugh의 원래 요구사항)
+    //
+    // 모든 기록은 메모리에 남겼다가 루프 재개 후 이벤트 로그로 출력한다
+    // (loop가 멈춰도 SendMessage 진입·메모리 기록은 동기 경로라 유실되지 않음).
+    // =====================================================
+#if UNITY_WEBGL && !UNITY_EDITOR
+    [System.Runtime.InteropServices.DllImport("__Internal")]
+    private static extern void PLP_StartJsProbe();
+
+    [System.Runtime.InteropServices.DllImport("__Internal")]
+    private static extern string PLP_GetJsReport();
+#else
+    private static void PLP_StartJsProbe() { }
+    private static string PLP_GetJsReport() { return "{\"raf\":{},\"timer\":{},\"task\":{}}"; }
+#endif
+
+    private bool _plpArmed;
+    private int _plpFrames;
+    private float _plpLastFrameRealtime;
+    private float _plpMaxFrameGapSec;
+    private string _plpMaxGapAt = "";
+
+    private void Update()
+    {
+        if (!_plpArmed) return;
+        float now = Time.realtimeSinceStartup;
+        if (_plpLastFrameRealtime > 0f)
+        {
+            float gap = now - _plpLastFrameRealtime;
+            if (gap > _plpMaxFrameGapSec)
+            {
+                _plpMaxFrameGapSec = gap;
+                _plpMaxGapAt = DateTime.Now.ToString("HH:mm:ss.fff");
+            }
+        }
+        _plpLastFrameRealtime = now;
+        _plpFrames++;
+    }
+
+    private void ArmPlayerLoopProbe()
+    {
+        _plpArmed = true;
+        _plpFrames = 0;
+        _plpLastFrameRealtime = 0f;
+        _plpMaxFrameGapSec = 0f;
+        _plpMaxGapAt = "";
+        PLP_StartJsProbe();
+        LogIap($"[PLP] probe armed (C# Update + JS raf/timer/task) — " +
+               $"하드닝 {(AITCore.NestedCallbackTimeoutMs > 0 ? AITCore.NestedCallbackTimeoutMs + "ms ON" : "OFF")}");
+    }
+
+    private void ReportPlayerLoopProbe(string phase)
+    {
+        if (!_plpArmed) return;
+        _plpArmed = false;
+        string jsReport = PLP_GetJsReport();
+        LogIap($"[PLP:{phase}] frames={_plpFrames}, maxFrameGap={_plpMaxFrameGapSec:F2}s@{_plpMaxGapAt}");
+        LogIap($"[PLP:{phase}] js={jsReport}");
+        UpdateEventLog();
+    }
+
+    /// <summary>
+    /// [PLP] 실제 UnityWebRequest 왕복으로 영수증 검증을 시뮬레이션한다.
+    ///
+    /// hugh가 막힌 지점이 정확히 이것이다 — "결제 완료 후 개발사 서버에 영수증 검증 API를
+    /// 호출하고 그 결과로 지급 여부를 결정"하려면 UnityWebRequest가 오버레이 구간에 완료돼야 한다.
+    /// UnityWebRequest의 완료 통지는 player loop가 전달하므로, loop가 멈춰 있으면 요청이
+    /// 네트워크적으로 끝나도 C#은 그 사실을 알 수 없다. 이 프로브가 그 지연을 실측한다.
+    ///
+    /// 엔드포인트는 배포본 자신의 정적 파일(same-origin, 캐시버스터 부착)이다 — 외부 서비스
+    /// 가용성·CORS에 의존하지 않으면서 "요청 완료를 loop가 전달하는가"라는 메커니즘만 격리해 잰다.
+    /// </summary>
+    private Task<bool> VerifyReceiptViaWebRequest(object data)
+    {
+        var tcs = new TaskCompletionSource<bool>();
+        StartCoroutine(VerifyReceiptViaWebRequestRoutine(data, tcs));
+        return tcs.Task;
+    }
+
+    private System.Collections.IEnumerator VerifyReceiptViaWebRequestRoutine(object data, TaskCompletionSource<bool> tcs)
+    {
+        string url = $"index.html?receiptCheck={DateTime.UtcNow.Ticks}";
+        LogIap($"[PLP] UnityWebRequest 시작: {url}");
+        var startedAt = DateTime.UtcNow;
+        int startFrames = _plpFrames;
+
+        using (var req = UnityEngine.Networking.UnityWebRequest.Get(url))
+        {
+            req.timeout = 30;
+            yield return req.SendWebRequest();
+
+            var elapsed = (DateTime.UtcNow - startedAt).TotalMilliseconds;
+#if UNITY_2020_1_OR_NEWER
+            bool ok = req.result == UnityEngine.Networking.UnityWebRequest.Result.Success;
+#else
+            bool ok = !req.isNetworkError && !req.isHttpError;
+#endif
+            LogIap($"[PLP] UnityWebRequest 완료: ok={ok}, {elapsed:F0}ms, " +
+                   $"frames {startFrames}->{_plpFrames}, code={req.responseCode}");
+
+            // 네트워크 실패는 지급 실패로 보지 않는다 — 이 프로브의 관심사는 "완료 통지가
+            // 오는가"이지 응답 내용이 아니다. 지급은 true로 진행해 결제 흐름을 끝까지 관찰한다.
+            tcs.SetResult(true);
+        }
     }
 }

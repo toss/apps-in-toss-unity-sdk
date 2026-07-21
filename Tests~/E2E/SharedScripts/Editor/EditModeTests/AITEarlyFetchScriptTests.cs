@@ -146,7 +146,8 @@ public class AITEarlyFetchScriptTests
     [Test]
     public void Modern_Structure_Unchanged()
     {
-        string js = WebGLBuildCopier.GenerateEarlyFetchScriptModern(UrlsJson);
+        // 디스패처 계약: modern 은 kickUrlsJson(data/wasm 만)을 받는다.
+        string js = WebGLBuildCopier.GenerateEarlyFetchScriptModern(KickUrlsJson);
 
         // 6000.x 경로는 기존 earlyFetchMap 프리페치 구조 그대로 (legacy 전용 킥오프 미혼입)
         StringAssert.Contains("var earlyFetchMap = {}", js);
@@ -154,5 +155,19 @@ public class AITEarlyFetchScriptTests
         StringAssert.DoesNotContain("pendingEarly", js);
         StringAssert.DoesNotContain("early-kick", js);
         StringAssert.DoesNotContain("bufferedFetch", js);
+    }
+
+    [Test]
+    public void Modern_PrefetchesDataAndWasmOnly()
+    {
+        // 6000.x 로더도 framework 을, index.html 은 loader 를 <script src> 로 소비하므로
+        // prefetch 대상에 이 둘이 들어가면 응답이 소진되지 않고 이중 다운로드가 된다
+        // (2026-07 베타 E2E CE 테스트에서 6000.x loader/framework 각 2회 다운로드로 실측 적발).
+        // 디스패처는 modern 에 data/wasm 만 담긴 kickUrlsJson 을 넘겨야 한다.
+        string js = WebGLBuildCopier.GenerateEarlyFetchScriptModern(KickUrlsJson);
+        StringAssert.Contains("Build/aaaa.data.br", js);
+        StringAssert.Contains("Build/bbbb.wasm.br", js);
+        StringAssert.DoesNotContain(".framework.js", js);
+        StringAssert.DoesNotContain(".loader.js", js);
     }
 }

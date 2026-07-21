@@ -513,6 +513,36 @@
             showBanner: unityShowBanner,
         };
 
+        // 콜드 로딩 재측정 — dev console의 "캐시 삭제 후 리로드"가 남긴 세션 플래그가 있으면
+        // Unity 자산 URL에 캐시버스터를 붙인다.
+        //
+        // 브라우저 HTTP 캐시는 JS API로 삭제할 수 없다. UnityCache(IndexedDB)와 CacheStorage는
+        // 지울 수 있지만 그것만으로는 자산이 HTTP 캐시에서 나와 콜드 로딩이 재현되지 않는다.
+        // URL이 다르면 캐시 키가 달라지므로, 쿼리 파라미터를 붙이는 것이 유일하고 확실한 우회다.
+        //
+        // 부작용: 이 로드의 산출물은 캐시버스터가 붙은 URL로 UnityCache에 저장되므로, 다음
+        // 일반 로드는 (깨끗한 URL 기준으로) 캐시가 비어 한 번 더 콜드가 된다. 워밍된 측정을
+        // 하려면 리로드를 두 번 하면 된다.
+        try {
+            var aitColdBust = sessionStorage.getItem('__aitColdReload');
+            if (aitColdBust) {
+                sessionStorage.removeItem('__aitColdReload');
+                var bustUrl = function (u) {
+                    if (!u) return u;
+                    return u + (u.indexOf('?') === -1 ? '?' : '&') + '__aitcb=' + aitColdBust;
+                };
+                loaderUrl = bustUrl(loaderUrl);
+                config.dataUrl = bustUrl(config.dataUrl);
+                config.frameworkUrl = bustUrl(config.frameworkUrl);
+                config.codeUrl = bustUrl(config.codeUrl);
+                if (config.memoryUrl) config.memoryUrl = bustUrl(config.memoryUrl);
+                if (config.symbolsUrl) config.symbolsUrl = bustUrl(config.symbolsUrl);
+                console.log('[AIT] 콜드 로딩 모드 — Unity 자산 URL에 캐시버스터 적용 (HTTP 캐시 우회)');
+            }
+        } catch (e) {
+            // sessionStorage 미지원/차단 — 캐시버스터 없이 진행 (UnityCache 삭제 효과는 유지)
+        }
+
         // 모바일 감지 및 최적화
         var isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 

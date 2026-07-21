@@ -10,16 +10,31 @@ using AppsInToss;
 /// 인앱결제 v2 API 워크플로우를 테스트할 수 있는 UI 제공
 /// OOMTester 패턴을 따라 InteractiveAPITester에서 분리됨
 ///
+/// ## ⚠️ processProductGrant 안에서 await 하지 말 것 (Unity WebGL 제약)
+/// 업스트림 계약은 Promise 반환을 허용하지만, 그건 JS 미니앱 기준이다. 결제 native
+/// 오버레이가 떠 있는 동안 웹뷰는 visibilityState=hidden이 되고 rAF가 스펙대로 멈춘다.
+/// Unity WebGL의 player loop는 rAF로 구동되므로 함께 멈추고, C# await continuation도
+/// 재개되지 않는다. 그런데 오버레이는 이 콜백이 끝나야 닫히고, 루프는 오버레이가 닫혀야
+/// 도므로 자력 탈출이 불가능한 교착이 된다 (2026-07-21 실기기 실측: rAF 갭 27.5s ≡
+/// hidden 구간 27.5s ≡ C# 프레임 갭 27.4s).
+///
+/// 콜백 "진입"은 정지 중에도 된다 — SendMessage가 JS 스택에서 동기로 C#을 부르기
+/// 때문이다. 막히는 건 await 이후의 continuation뿐이다. 따라서:
+///   - 동기 반환(Task.FromResult(true))만 안전하다. JS 스택 위에서 끝나 즉시 응답한다.
+///   - await(코루틴/UnityWebRequest/Task.Delay 무엇이든)은 결제 완료 시 영구 교착이다.
+/// 추가로 Task.Delay는 WebGL에 타이머 스레드가 없어 애초에 완료되지 않는다.
+///
 /// ## 정상 플로우 (소모품)
 /// 1. GetProductItemList() - 상품 목록 조회
 /// 2. CreateOneTimePurchaseOrder() - 구매 주문 생성
-///    - processProductGrant 비동기 콜백(Task&lt;bool&gt;)에서 서버 영수증 검증을 await한 뒤 지급, true 반환
+///    - processProductGrant는 동기로 true 반환 (서버 검증을 여기서 기다리지 않는다)
 ///    - SDK가 자동으로 CompleteProductGrant 호출하여 주문 완료 처리
 ///
-/// ## 복구 플로우 (앱 크래시/네트워크 끊김 등으로 processProductGrant 콜백 미호출 시)
+/// ## 서버 영수증 검증이 필요하면 — 복구 플로우에서 (오버레이가 닫힌 뒤라 루프가 살아있다)
 /// 1. GetCompletedOrRefundedOrders() - 미처리 완료 주문 조회
-/// 2. 각 주문에 대해 상품 지급 수행
+/// 2. 각 주문에 대해 서버 검증 후 상품 지급 수행
 /// 3. CompleteProductGrant() - 수동으로 주문 완료 처리
+/// 앱 크래시/네트워크 끊김으로 콜백이 미호출된 경우의 복구 경로이기도 하다.
 ///
 /// ## 비소모품
 /// - 한 번 구매하면 영구 소유, CompleteProductGrant 불필요

@@ -632,12 +632,24 @@
       var short = e.name.split('/').pop().split('?')[0];
       // 콘텐츠 해시 파일명이 길어 UI를 밀어내므로 앞부분을 줄인다 (확장자는 보존)
       if (short.length > 28) short = short.slice(0, 8) + '…' + short.slice(-16);
+      // 캐시 상태 판정 (Resource Timing 스펙):
+      //   transferSize 0 + 본문 있음      → 네트워크 미사용, 캐시에서 바로 제공
+      //   transferSize 작음 + 본문 0바이트 → 304 Not Modified. 본문은 캐시에서 오고
+      //                                      헤더만 전송되므로 이것도 캐시 히트다.
+      //                                      (전송 300B/해제 0이 여기 해당)
+      //   그 외                            → 실제 다운로드
+      var body = e.decodedBodySize || e.encodedBodySize || 0;
+      var state = 'download';
+      if (e.transferSize === 0 && body > 0) state = 'cache';
+      else if (body === 0 && e.transferSize > 0 && e.transferSize < 1000) state = '304';
+
       rows.push({
         name: short,
         duration: e.duration,
         transfer: e.transferSize,
         decoded: e.decodedBodySize,
-        cached: e.transferSize === 0 && e.decodedBodySize > 0,
+        state: state,
+        cached: state !== 'download',
         start: e.startTime
       });
     }
@@ -697,7 +709,7 @@
         html += '<div style="display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid #333;padding:2px 0;">' +
           '<span style="color:#ccc;flex:1;overflow:hidden;text-overflow:ellipsis;">' + r.name + '</span>' +
           '<span style="color:' + (r.duration > 2000 ? '#fb923c' : '#8ac') + ';">' + fmtMs(r.duration) + '</span>' +
-          '<span style="color:#888;">' + (r.cached ? 'cache' : fmtBytes(r.transfer)) + '</span>' +
+          '<span style="color:#888;">' + (r.cached ? r.state : fmtBytes(r.transfer) + '→' + fmtBytes(r.decoded)) + '</span>' +
           '</div>';
       }
       html += '</div>';
@@ -707,8 +719,9 @@
       '<button id="metric-clear-cache-btn" class="metric-tool-btn" data-label="🧹 캐시 삭제 후 리로드" ' +
       'title="UnityCache(IndexedDB) + CacheStorage를 지우고 새로고침">🧹 캐시 삭제 후 리로드</button>' +
       '<div style="color:#888;font-size:11px;padding:6px 0 0;">' +
-      'UnityCache(IndexedDB)와 CacheStorage를 삭제한 뒤 리로드합니다. ' +
-      '브라우저 HTTP 캐시는 JS에서 삭제할 수 없어 남을 수 있고, PlayerPrefs는 보존됩니다.</div>';
+      'UnityCache(IndexedDB) + CacheStorage를 삭제하고, 다음 로드의 Unity 자산 URL에 ' +
+      '캐시버스터를 붙여 브라우저 HTTP 캐시까지 우회합니다(HTTP 캐시는 JS로 삭제할 수 없어 ' +
+      'URL을 어긋내는 것이 유일한 방법). PlayerPrefs는 보존됩니다.</div>';
 
     panel.innerHTML = html;
     wireClearCacheButton();
@@ -743,6 +756,10 @@
       clearCacheArmed = false;
       btn.disabled = true;
       btn.textContent = '삭제 중…';
+      // index.html이 다음 로드에서 Unity 자산 URL에 캐시버스터를 붙이도록 표시한다.
+      // 브라우저 HTTP 캐시는 JS로 삭제할 수 없어, URL을 바꿔 캐시 키를 어긋나게 하는 것이
+      // 유일한 우회 수단이다. sessionStorage가 막혀 있으면 UnityCache 삭제 효과만 남는다.
+      try { sessionStorage.setItem('__aitColdReload', String(Date.now())); } catch (e) { /* 무시 */ }
       clearBuildCaches(function (summary) {
         console.log('[AIT] 캐시 삭제 완료 — ' + summary + ' / 리로드합니다');
         setTimeout(function () { location.reload(); }, 150);
@@ -932,7 +949,8 @@
       for (var j = 0; j < rows.length; j++) {
         var r = rows[j];
         lines.push('  ' + r.name + '  ' + fmtMs(r.duration) +
-          '  전송 ' + (r.cached ? 'cache hit' : fmtBytes(r.transfer)) +
+          '  [' + r.state + ']' +
+          '  전송 ' + fmtBytes(r.transfer) +
           '  해제 ' + fmtBytes(r.decoded) +
           '  시작 ' + fmtMs(r.start));
       }
@@ -1146,7 +1164,9 @@
     var css =
       '#ait-metrics-root{display:flex;flex-direction:column;font-size:12px;color:#eee;}' +
       '#ait-metrics-root .metric-content{padding:12px 16px;}' +
-      '#ait-metrics-root .metric-subtabs{position:sticky;top:0;z-index:1;display:flex;gap:6px;padding:8px 12px;border-bottom:1px solid #444;background:rgba(35,35,35,0.98);}' +
+      // 서브탭이 4개로 늘면서 좁은 화면에서 오른쪽 도구 버튼이 잘렸다. wrap을 허용해
+      // 줄바꿈되게 한다 (가로 스크롤은 잘린 버튼의 존재 자체를 발견하기 어려워 부적합).
+      '#ait-metrics-root .metric-subtabs{position:sticky;top:0;z-index:1;display:flex;flex-wrap:wrap;gap:6px;padding:8px 12px;border-bottom:1px solid #444;background:rgba(35,35,35,0.98);}' +
       '#ait-metrics-root .metric-subtab{background:transparent;border:1px solid #555;color:#aaa;padding:4px 12px;border-radius:3px;cursor:pointer;font-size:12px;font-family:inherit;transition:all 0.2s;}' +
       '#ait-metrics-root .metric-subtab:hover{border-color:#888;color:#ccc;}' +
       '#ait-metrics-root .metric-subtab.active{border-color:#00ff00;color:#00ff00;}' +

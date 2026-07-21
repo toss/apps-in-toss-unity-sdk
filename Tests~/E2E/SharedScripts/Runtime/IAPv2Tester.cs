@@ -41,9 +41,13 @@ public class IAPv2Tester : MonoBehaviour
 
     /// <summary>
     /// [PLP] 하드닝(AITCore.NestedCallbackTimeoutMs) opt-in 값. UI 토글로 0 ↔ 이 값을 오간다.
-    /// 한 빌드로 "교착 재현"(0)과 "하드닝 검증"(30s)을 모두 측정하기 위한 스위치.
+    /// 한 빌드로 "교착 재현"(0)과 "하드닝 검증"(ON)을 모두 측정하기 위한 스위치.
+    ///
+    /// 측정용 10초 — round 2 실측 오버레이 지속이 13.6s/27.5s였고 30s로는 오버레이가
+    /// 닫히기 전에 발화하지 못했다. 프로덕션 권장값이 아니라 "타임아웃이 실제로 오버레이를
+    /// 닫는가"를 관찰 가능한 창 안에서 확인하기 위한 값이다.
     /// </summary>
-    private const int PlpHardeningTimeoutMs = 30000;
+    private const int PlpHardeningTimeoutMs = 10000;
 
     private Text _plpToggleLabel;
 
@@ -498,9 +502,16 @@ public class IAPv2Tester : MonoBehaviour
                     int f0 = _plpFrames;
                     LogIap($"ProcessProductGrant called: {data}");
 
+                    // [PLP] 프로브 0 — Task.Delay가 WebGL에서 완료되는가? (관찰만, await하지 않음)
+                    // round 2에서 await Task.Delay(3000)이 영영 완료되지 않아 이후 계측이 전부
+                    // 막혔다. WebGL은 스레드가 없어 타이머가 발화하지 않는 것이 원인으로 보이며,
+                    // 이 프로브로 확증한다. 크리티컬 패스에서 빼서 다른 측정을 가로막지 않게 한다.
+                    _ = ProbeTaskDelayAsync();
+
                     // [PLP] 프로브 1 — await continuation 재개.
-                    // player loop가 멈춰 있으면 3초 Delay가 3초에 끝나지 않는다.
-                    await Task.Delay(3000);
+                    // 코루틴 기반 대기(WaitForSecondsRealtime)는 player loop가 구동하므로,
+                    // loop가 멈춰 있으면 3초가 3초에 끝나지 않는다. SDK가 문서화한 WebGL 관용구.
+                    await DelayViaCoroutine(3000);
                     var t1 = DateTime.UtcNow;
                     int f1 = _plpFrames;
 
@@ -511,8 +522,9 @@ public class IAPv2Tester : MonoBehaviour
                     var t2 = DateTime.UtcNow;
                     int f2 = _plpFrames;
 
-                    LogIap($"[PLP] delay(3000ms) actual={(t1 - t0).TotalMilliseconds:F0}ms (frames {f0}->{f1}) | " +
-                           $"UnityWebRequest actual={(t2 - t1).TotalMilliseconds:F0}ms (frames {f1}->{f2})");
+                    LogIap($"[PLP] coroutine(3000ms) actual={(t1 - t0).TotalMilliseconds:F0}ms (frames {f0}->{f1}) | " +
+                           $"UnityWebRequest actual={(t2 - t1).TotalMilliseconds:F0}ms (frames {f1}->{f2}) | " +
+                           $"Task.Delay(3000ms)={_taskDelayReport}");
                     LogIap($"ProcessProductGrant result: {grantSuccess}");
                     UpdateEventLog();
                     return grantSuccess;
@@ -742,7 +754,7 @@ public class IAPv2Tester : MonoBehaviour
     // 결제 native 오버레이 구간에서 실측으로 판별한다:
     //  (1) player loop(Update) 정지 여부  — C# 프레임 하트비트의 최대 gap
     //  (2) rAF / 타이머 / 매크로태스크     — jslib 3종 하트비트 (무엇이 멈추는지 분리)
-    //  (3) C# await continuation 재개 지연 — ProcessProductGrant 내 Task.Delay 실측
+    //  (3) C# await continuation 재개 지연 — 코루틴 기반 대기 실측 (+ Task.Delay 완료 여부 관찰)
     //  (4) 실제 서버 검증 완료 가능 여부    — UnityWebRequest 실 왕복 (hugh의 원래 요구사항)
     //
     // 모든 기록은 메모리에 남겼다가 루프 재개 후 이벤트 로그로 출력한다
@@ -756,8 +768,50 @@ public class IAPv2Tester : MonoBehaviour
     private static extern string PLP_GetJsReport();
 #else
     private static void PLP_StartJsProbe() { }
-    private static string PLP_GetJsReport() { return "{\"raf\":{},\"timer\":{},\"task\":{}}"; }
+    private static string PLP_GetJsReport() { return "{\"raf\":{},\"timer\":{},\"visibility\":[]}"; }
 #endif
+
+    /// <summary>
+    /// [PLP] Task.Delay(3000) 관찰 결과. round 2에서 이 await가 영영 완료되지 않아
+    /// grant 콜백 이후 계측이 전부 막혔다 — WebGL은 스레드가 없어 Task의 타이머가
+    /// 발화하지 않는 것으로 보이며, 이번 라운드에서 확증한다.
+    /// </summary>
+    private string _taskDelayReport = "미완료";
+
+    /// <summary>[PLP] Task.Delay 완료 여부를 크리티컬 패스 밖에서 관찰한다.</summary>
+    private async Task ProbeTaskDelayAsync()
+    {
+        _taskDelayReport = "미완료";
+        var startedAt = DateTime.UtcNow;
+        int startFrames = _plpFrames;
+        try
+        {
+            await Task.Delay(3000);
+            _taskDelayReport = $"완료 {(DateTime.UtcNow - startedAt).TotalMilliseconds:F0}ms " +
+                               $"(frames {startFrames}->{_plpFrames})";
+        }
+        catch (Exception ex)
+        {
+            _taskDelayReport = $"예외 {ex.GetType().Name}";
+        }
+    }
+
+    /// <summary>
+    /// [PLP] 코루틴 기반 대기. WebGL에서 신뢰할 수 있는 유일한 지연 수단이며
+    /// player loop가 구동하므로 loop 정지 시 그만큼 늘어난다(= 재개 지연 측정기).
+    /// </summary>
+    private Task DelayViaCoroutine(int milliseconds)
+    {
+        var tcs = new TaskCompletionSource<bool>();
+        StartCoroutine(DelayViaCoroutineRoutine(milliseconds, tcs));
+        return tcs.Task;
+    }
+
+    private System.Collections.IEnumerator DelayViaCoroutineRoutine(int milliseconds, TaskCompletionSource<bool> tcs)
+    {
+        yield return new WaitForSecondsRealtime(milliseconds / 1000f);
+        tcs.SetResult(true);
+    }
 
     private bool _plpArmed;
     private int _plpFrames;
@@ -799,7 +853,8 @@ public class IAPv2Tester : MonoBehaviour
         if (!_plpArmed) return;
         _plpArmed = false;
         string jsReport = PLP_GetJsReport();
-        LogIap($"[PLP:{phase}] frames={_plpFrames}, maxFrameGap={_plpMaxFrameGapSec:F2}s@{_plpMaxGapAt}");
+        LogIap($"[PLP:{phase}] frames={_plpFrames}, maxFrameGap={_plpMaxFrameGapSec:F2}s@{_plpMaxGapAt}, " +
+               $"Task.Delay={_taskDelayReport}");
         LogIap($"[PLP:{phase}] js={jsReport}");
         UpdateEventLog();
     }

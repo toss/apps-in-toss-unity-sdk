@@ -5,15 +5,17 @@
 //   (a) rAF    — requestAnimationFrame. Unity WebGL player loop를 실제로 구동하는 콜백.
 //                "rAF가 멈추는가?"에 직접 답한다.
 //   (b) timer  — setInterval(250ms). 타이머 큐가 도는지 = JS-side 타임아웃(레버 A)이 발화 가능한지.
-//   (c) task   — MessageChannel 매크로태스크. 타이머만 clamp된 건지 이벤트 루프 자체가
-//                멈춘 건지 구분한다 (브라우저는 background에서 타이머만 조이기도 한다).
+//   (c) visibility — visibilitychange 기록. rAF 정지의 원인이 표준 hidden 처리인지 확인.
 //
-// C# Update() 하트비트와 교차하면 시나리오가 확정된다:
-//   1) rAF 멈춤 + timer 생존  → rAF만 정지. 템플릿 keep-alive 워크어라운드 가능,
-//                               레버 A가 제때 발화한다.
-//   2) rAF 멈춤 + timer 멈춤  → 웹뷰 전체 suspend. 네이티브 수정 필요,
-//                               레버 A는 복귀 시점 지연 발화에 그친다.
-//   3) 둘 다 생존             → player loop 정지 재현 안 됨. 다른 원인.
+// round 2 실측 결과 (2026-07-21, iOS Toss 5.269.0):
+//   rAF 갭 27.52s ≡ C# 프레임 갭 27.44s ≡ hidden→visible 27.51s (세 값 일치)
+//   timer는 28s 동안 22회 발화(최대 갭 11.6s) — throttle될 뿐 죽지 않는다.
+//   → 결론: 웹뷰 suspend가 아니라 표준 hidden 처리. rAF만 스펙대로 멈춘다.
+//     레버 A(JS 타임아웃)는 작동하되 최대 ~12s 지터를 감수해야 한다.
+//
+// MessageChannel 매크로태스크 프로브는 제거했다: (1) ping-pong이 상한을 895ms 만에
+// 소진해 정작 프리즈 구간 데이터가 없었고, (2) timer가 이미 이벤트 루프 생존을
+// 증명하므로 답할 질문이 남지 않았으며, (3) 상시 spin이 측정 자체를 왜곡한다.
 //
 // 모든 틱은 메모리에만 쌓고 복귀 후 한 번에 리포트한다 (정지 중 로그 출력은 유실 위험).
 mergeInto(LibraryManager.library, {
@@ -21,7 +23,6 @@ mergeInto(LibraryManager.library, {
         // 재무장 시 이전 프로브 정리 (중복 하트비트 방지)
         if (window.__plpTimer) { clearInterval(window.__plpTimer); window.__plpTimer = null; }
         if (window.__plpRafId) { cancelAnimationFrame(window.__plpRafId); window.__plpRafId = null; }
-        if (window.__plpChannel) { window.__plpChannel.port1.onmessage = null; window.__plpChannel = null; }
         if (window.__plpVisHandler) {
             document.removeEventListener('visibilitychange', window.__plpVisHandler);
             window.__plpVisHandler = null;
@@ -32,7 +33,6 @@ mergeInto(LibraryManager.library, {
         window.__plpArmedAt = now;
         window.__plpRafTicks = [now];
         window.__plpTimerTicks = [now];
-        window.__plpTaskTicks = [now];
         window.__plpVisibility = [];
 
         // (a) rAF 하트비트 — Unity player loop와 동일한 구동원
@@ -51,22 +51,7 @@ mergeInto(LibraryManager.library, {
             }
         }, 250);
 
-        // (c) 매크로태스크 하트비트 — 타이머 clamp와 이벤트 루프 정지를 구분
-        try {
-            var ch = new MessageChannel();
-            ch.port1.onmessage = function() {
-                if (window.__plpTaskTicks.length < CAP) {
-                    window.__plpTaskTicks.push(Date.now());
-                    ch.port2.postMessage(0);
-                }
-            };
-            window.__plpChannel = ch;
-            ch.port2.postMessage(0);
-        } catch (e) {
-            // MessageChannel 미지원 환경 — (a)(b)만으로도 판별 가능하므로 무시
-        }
-
-        // 웹뷰가 실제로 hidden 처리되는지 (rAF 정지의 표준적 원인) 기록
+        // (c) 웹뷰가 실제로 hidden 처리되는지 — round 2에서 rAF 정지의 원인으로 확인된 신호
         window.__plpVisHandler = function() {
             window.__plpVisibility.push(document.visibilityState + '@' + Date.now());
         };
@@ -77,7 +62,6 @@ mergeInto(LibraryManager.library, {
         // 하트비트 정지 — 리포트 시점 이후의 틱은 의미 없다
         if (window.__plpTimer) { clearInterval(window.__plpTimer); window.__plpTimer = null; }
         if (window.__plpRafId) { cancelAnimationFrame(window.__plpRafId); window.__plpRafId = null; }
-        if (window.__plpChannel) { window.__plpChannel.port1.onmessage = null; window.__plpChannel = null; }
         if (window.__plpVisHandler) {
             document.removeEventListener('visibilitychange', window.__plpVisHandler);
             window.__plpVisHandler = null;
@@ -102,7 +86,6 @@ mergeInto(LibraryManager.library, {
         var report = JSON.stringify({
             raf: summarize(window.__plpRafTicks),
             timer: summarize(window.__plpTimerTicks),
-            task: summarize(window.__plpTaskTicks),
             visibility: window.__plpVisibility || [],
             armedAtEpochMs: window.__plpArmedAt || 0
         });

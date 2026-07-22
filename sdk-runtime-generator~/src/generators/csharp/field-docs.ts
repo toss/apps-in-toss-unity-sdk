@@ -35,6 +35,8 @@ const FIELD_DOC_OVERRIDES: Record<string, string> = {
         /// 앱이 결제 성공을 판정했다는 뜻이고, 전달되는 정보도 OrderId 하나뿐이라 여기서
         /// 새로 검증할 수 있는 것이 없다. 서버 영수증 검증과 실제 아이템 지급은 오버레이가
         /// 닫힌 뒤 <c>onEvent</c>에서 한다 — 그때부터는 프레임이 정상적으로 돌아 await가 안전하다.
+        /// 검증 자체는 개발사 서버가 Toss의 주문 상태 조회 API(mTLS, 서버 간 통신)로 OrderId를
+        /// 확인하는 것이며, 클라이언트가 보고한 OrderId를 그대로 신뢰해서는 안 된다.
         /// </para>
         /// <example>
         /// <code>

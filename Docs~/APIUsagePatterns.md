@@ -173,6 +173,32 @@ async Task DeliverAsync(string orderId)
 
 > `SuccessEvent.Data`에는 `Sku`가 없습니다. 어떤 상품인지는 구매를 시작할 때 넘긴 `sku`를 클로저로 잡아두거나, 서버가 `OrderId`로 조회해야 합니다.
 
+#### 서버는 무엇을 검증하나
+
+클라이언트가 보낸 `OrderId`를 그대로 믿으면 안 됩니다. 개발사 서버는 **주문 상태 조회 API**로 Toss에 직접 확인합니다.
+
+```
+POST https://apps-in-toss-api.toss.im/api-partner/v1/apps-in-toss/order/get-order-status
+{ "orderId": "..." }
+```
+
+- **mTLS 인증서가 필수**입니다 (서버 간 통신). 발급 방법은 [연동 절차 문서](https://developers-apps-in-toss.toss.im/development/integration-process.html)를 참고하세요.
+- `x-toss-user-key` 헤더에 토스 로그인으로 얻은 userKey를 넣으면 **그 유저의 주문만** 응답합니다. 넣지 않으면 모든 주문이 조회되므로, 다른 유저의 `OrderId`를 가로채 재사용하는 것을 막으려면 이 헤더를 함께 보내야 합니다.
+- 응답의 `sku`로 실제 결제된 상품을 확인할 수 있습니다. 클라이언트가 알려준 SKU를 신뢰하지 마세요.
+
+응답 `status`가 이 API의 핵심입니다.
+
+| status | 의미 |
+|---|---|
+| `PURCHASED` | 결제와 상품 지급이 모두 완료 |
+| `PAYMENT_COMPLETED` | 결제는 완료됐으나 **상품 지급 실패** |
+| `REFUNDED` | 환불 완료 |
+| `FAILED` / `ORDER_IN_PROGRESS` / `NOT_FOUND` | 결제 실패 / 진행 중 / 주문 없음 |
+
+앞의 두 값이 곧 `ProcessProductGrant` 반환값의 결과입니다. `true`를 반환한 주문은 `PURCHASED`, 그렇지 않은 주문은 `PAYMENT_COMPLETED`로 남습니다.
+
+자세한 명세는 [공식 IAP 문서](https://developers-apps-in-toss.toss.im/bedrock/reference/framework/%EC%9D%B8%EC%95%B1%20%EA%B2%B0%EC%A0%9C/IAP.html)를 참고하세요.
+
 ### 3단계 — 앱 시작 시 미배달 대사
 
 2단계가 항상 실행된다는 보장은 없습니다. 콜백이 `true`를 보낸 직후 앱이 종료되면 `onEvent`를 받지 못하고, 그 주문은 이미 결제 소비가 확정돼 `IAPGetPendingOrders`에도 나타나지 않습니다.
@@ -194,6 +220,8 @@ foreach (var order in completed.Orders)
 ```
 
 이 3단계가 없으면 1단계의 즉시 승인이 위험해집니다. **셋은 한 묶음입니다.**
+
+> **환불은 폴링으로만 알 수 있습니다.** 결제나 환불이 발생했을 때 개발사 서버로 알려주는 웹훅은 제공되지 않습니다. 사용자가 환불을 받아도 앱이 다시 실행되어 이 대사가 돌기 전까지는 개발사가 알 수 없습니다. 환불된 주문의 상품을 회수해야 한다면, 지급한 주문의 `OrderId`를 서버에 보관해두고 주문 상태 조회 API로 주기적으로 확인해야 합니다.
 
 ### `false`는 언제 반환하나
 

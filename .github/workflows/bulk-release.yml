@@ -74,7 +74,10 @@ jobs:
             ALL_INPUT=$(echo "$INPUT_VERSIONS" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sort -V)
           else
             echo "=== Git 태그에서 버전 추출 ==="
-            ALL_INPUT=$(git tag -l 'release/v*' | sed 's/release\/v//' | sort -V)
+            # stable(X.Y.Z)만 대상으로 삼는다. prerelease 스냅샷(3.0.0-beta.<sha> 등)이 섞이면
+            # 안정 릴리즈 경로(release.yml)로 흘러가 beta 태그를 stable 템플릿으로 덮어쓴다.
+            # release.yml의 버전 검증 정규식은 prerelease를 허용하므로 여기서 걸러야 한다.
+            ALL_INPUT=$(git tag -l 'release/v*' | sed 's/release\/v//' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V)
           fi
 
           # min_version 이상만 필터링

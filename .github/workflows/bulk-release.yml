@@ -80,9 +80,25 @@ jobs:
             ALL_INPUT=$(git tag -l 'release/v*' | sed 's/release\/v//' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V)
           fi
 
-          # min_version 이상만 필터링
+          # prerelease 스냅샷 제외 + min_version 이상만 필터링
+          #
+          # 위의 태그 열거 경로는 grep으로 이미 stable 형태만 남기지만, 명시 입력
+          # (versions) 경로는 그 grep을 타지 않는다. 아래 npm 사전 존재 체크도
+          # 방어가 되지 않는데, prerelease 중에는 npm에 실제로 게시된 것이 있어
+          # (예: 3.0.0-beta.<sha>) 존재 체크를 통과해 버리기 때문이다. 게다가 그
+          # 체크는 패큐먼트 조회 실패 시 fail-open이라 아예 건너뛴다.
+          #
+          # prerelease가 stable 경로(release.yml)로 흘러가면 beta 태그가 stable
+          # 템플릿으로 덮어써진다(prerelease 표시가 사라지고 릴리즈 노트가 오기됨).
+          # beta 스냅샷은 beta-release.yml 전용 경로이므로 여기서 걸러낸다.
           VERSIONS=""
           for V in $ALL_INPUT; do
+            case "$V" in
+              *-*)
+                echo "  v${V}: prerelease 스냅샷은 일괄 릴리즈 대상이 아니므로 스킵"
+                continue
+                ;;
+            esac
             if [ "$(printf '%s\n' "$MIN_VERSION" "$V" | sort -V | head -n1)" = "$MIN_VERSION" ] || [ "$V" = "$MIN_VERSION" ]; then
               VERSIONS="${VERSIONS}${V}"$'\n'
             else

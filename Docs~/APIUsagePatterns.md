@@ -121,68 +121,87 @@ async void InitializeGameParallel()
 
 같은 실측에서 동기로 반환했을 때는 오버레이가 **1.5초 만에** 닫히고 결제가 정상 완료됐습니다.
 
-### 패턴 A — 서버 검증이 필요한 경우
+### 장부가 두 개라는 것부터
 
-검증을 **결제 시작 전에** 끝내고, 그 결과를 캡처해서 콜백에서 그대로 반환합니다. 실패하면 결제 자체를 시작하지 않는 선택지도 생깁니다.
+"서버 검증 결과로 지급 여부를 결정한다"가 안 되는 진짜 이유는 시간이 부족해서가 아니라, **서로 다른 두 장부를 하나로 취급했기** 때문입니다.
+
+| | 무엇을 기록하나 | 소유 | 마감 |
+|---|---|---|---|
+| `ProcessProductGrant` 반환값 | **결제가 소비됐는가** | Toss | 30초 (프레임 없음) |
+| 내 서버의 지급 기록 | **아이템을 배달했는가** | 개발사 | 마감 없음, 재시도 가능 |
+
+검증은 첫 번째 장부를 막는 게 아니라 **두 번째 장부를 막습니다.** 콜백은 "결제 소비를 접수했다"고 답하는 자리고, 검증과 지급은 그 뒤에 여유롭게 합니다.
+
+그래서 이 콜백에 넣을 코드는 사실상 한 줄로 정해져 있습니다.
+
+### 1단계 — 콜백은 즉시 승인한다
 
 ```csharp
-// 1) 오버레이가 뜨기 전 — 여기서는 프레임이 정상적으로 돕니다
-bool authorized = await MyServer.ReserveEntitlement(sku);
-if (!authorized)
-{
-    ShowError("지금은 구매할 수 없습니다");
-    return;
-}
-
-// 2) 콜백은 이미 결정된 값을 동기로 반환합니다 (await 0회)
 var options = new IapCreateOneTimePurchaseOrderOptionsOptions
 {
     Sku = sku,
-    ProcessProductGrant = _ => Task.FromResult(authorized)
+    ProcessProductGrant = _ => Task.FromResult(true)   // await 0회
 };
+```
 
+이 콜백이 호출됐다는 것 자체가 이미 앱이 결제 성공을 판정했다는 뜻입니다. 콜백이 들고 오는 정보는 `OrderId` 하나뿐이라, 여기서 새로 검증할 수 있는 것도 없습니다.
+
+### 2단계 — 검증과 지급은 `onEvent`에서
+
+`onEvent`는 **`OrderId`와 살아 있는 player loop를 동시에 갖는 첫 순간**입니다. 실측에서 오버레이가 닫히고 45ms 뒤에 도착했습니다. 여기서부터는 `await`를 마음껏 써도 됩니다.
+
+```csharp
 _disposer = AIT.IAPCreateOneTimePurchaseOrder(
-    onEvent: e => GrantItemLocally(e.Data.OrderId),
+    onEvent: e =>
+    {
+        // 결제는 이미 확정됐으므로 UI에 즉시 반영해도 됩니다
+        ShowPurchaseSuccess(e.Data.DisplayAmount);
+
+        // 검증·지급은 서버에 맡기고 기다리지 않습니다
+        _ = DeliverAsync(e.Data.OrderId);
+    },
     options: options,
     onError: err => Debug.LogError(err.Message)
 );
-```
 
-### 패턴 B — 미리 알 수 없는 경우
-
-지급 가능 여부를 결제 전에 확정할 수 없다면 `false`를 반환하고, 나중에 복구합니다.
-
-```csharp
-ProcessProductGrant = _ => Task.FromResult(false)
-```
-
-주문이 `PAYMENT_COMPLETED` 상태로 남아 `IAPGetPendingOrders`에 계속 보이므로, 앱 시작 시 밀린 주문을 훑어 검증하고 지급을 완료하면 됩니다.
-
-```csharp
-var pending = await AIT.IAPGetPendingOrders();
-if (pending.Orders == null) return;   // 플랫폼 미지원 시 error 필드에 사유가 담깁니다
-
-foreach (var order in pending.Orders)
+async Task DeliverAsync(string orderId)
 {
-    if (!await MyServer.VerifyAndGrant(order.OrderId, order.Sku)) continue;
-
-    await AIT.IAPCompleteProductGrant(new IAPCompleteProductGrantArgs_0
-    {
-        Params = new IAPCompleteProductGrantArgs_0Params { OrderId = order.OrderId }
-    });
+    // 여기서는 프레임이 정상적으로 돌므로 await가 안전합니다
+    await MyServer.VerifyAndDeliver(orderId);
 }
 ```
 
-사용자에게 환불 안내 페이지가 한 번 보이는 대신, 돈만 받고 상품을 못 주는 상황은 구조적으로 생기지 않습니다.
+> `SuccessEvent.Data`에는 `Sku`가 없습니다. 어떤 상품인지는 구매를 시작할 때 넘긴 `sku`를 클로저로 잡아두거나, 서버가 `OrderId`로 조회해야 합니다.
 
-### `true`와 `false`는 대칭이 아닙니다
+### 3단계 — 앱 시작 시 미배달 대사
 
-| 반환값 | 주문 상태 | `IAPGetPendingOrders` | 되돌리기 |
-|---|---|---|---|
-| `true` | `PURCHASED` (지급 확정) | 사라짐 | **불가** — un-grant API 없음 |
-| `false` / 무응답 | `PAYMENT_COMPLETED` | 계속 보임 | 가능 — `IAPCompleteProductGrant` |
+2단계가 항상 실행된다는 보장은 없습니다. 콜백이 `true`를 보낸 직후 앱이 종료되면 `onEvent`를 받지 못하고, 그 주문은 이미 결제 소비가 확정돼 `IAPGetPendingOrders`에도 나타나지 않습니다.
 
-`true`는 편도입니다. 확신이 없으면 `false`가 안전한 방향입니다. "일단 `true`로 지급하고 나중에 정산하자"는 로컬 기록(예: `PlayerPrefs`)에 의존하게 되는데, 재설치·기기 변경·결제 중 앱 종료에서 그 기록이 사라지면 복구할 방법이 없습니다.
+이 경우를 회수하는 것이 `IAPGetCompletedOrRefundedOrders`입니다. 앱 시작이나 포그라운드 복귀 시 한 번 훑어, 내 서버가 배달하지 않은 주문을 찾습니다.
+
+```csharp
+var completed = await AIT.IAPGetCompletedOrRefundedOrders();
+if (completed.Orders == null) return;   // 플랫폼 미지원 시 error 필드에 사유가 담깁니다
+
+foreach (var order in completed.Orders)
+{
+    if (order.Status != CompletedOrRefundedOrdersResultOrderStatus.COMPLETED) continue;
+
+    // 배달 여부의 기준은 서버 기록입니다. PlayerPrefs 같은 로컬 기록은
+    // 재설치·기기 변경으로 사라지므로 이 대사의 기준이 될 수 없습니다.
+    await MyServer.DeliverIfMissing(order.OrderId, order.Sku);
+}
+```
+
+이 3단계가 없으면 1단계의 즉시 승인이 위험해집니다. **셋은 한 묶음입니다.**
+
+### `false`는 언제 반환하나
+
+`true`가 아닌 응답은 사용자에게 환불 안내 페이지를 띄웁니다. 따라서 `false`는 **정말로 이 상품을 줄 수 없을 때만** 씁니다 — 예를 들어 이미 보유한 비소모품을 결제 도중 다른 기기에서 획득한 경우처럼, 지급이 불가능하다고 지금 단정할 수 있을 때입니다.
+
+"확신이 없으니 일단 `false`"는 성립하지 않습니다. 매 결제마다 환불 안내가 뜨는 앱이 되기 때문입니다. 확신은 1~3단계로 확보하는 것이지 `false`로 확보하는 것이 아닙니다.
+
+판정 근거는 반드시 이미 메모리에 있어야 합니다. `false`를 반환하기 위해 무언가를 조회해야 한다면, 그 조회 자체가 이 절이 설명한 교착을 일으킵니다.
 
 ### 쓸 수 없는 것들
 

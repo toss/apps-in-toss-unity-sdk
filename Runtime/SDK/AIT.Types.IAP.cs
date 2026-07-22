@@ -68,23 +68,34 @@ namespace AppsInToss
         /// 어떤 경우에도 쓸 수 없다.)
         /// </para>
         /// <para>
-        /// 서버 검증이 필요하면 결제를 시작하기 전에 끝내고, 그 결과를 캡처해서 반환한다.
+        /// 이 콜백은 검증하는 자리가 아니라 접수하는 자리다. 콜백이 호출됐다는 것 자체가 이미
+        /// 앱이 결제 성공을 판정했다는 뜻이고, 전달되는 정보도 OrderId 하나뿐이라 여기서
+        /// 새로 검증할 수 있는 것이 없다. 서버 영수증 검증과 실제 아이템 지급은 오버레이가
+        /// 닫힌 뒤 <c>onEvent</c>에서 한다 — 그때부터는 프레임이 정상적으로 돌아 await가 안전하다.
         /// </para>
         /// <example>
         /// <code>
-        /// // 1) 오버레이가 뜨기 전 — 여기서는 프레임이 정상적으로 돈다
-        /// bool authorized = await MyServer.ReserveEntitlement(sku);
-        /// if (!authorized) return;   // 결제 자체를 시작하지 않는 선택지가 생긴다
+        /// // 1) 콜백은 즉시 승인한다 (await 0회)
+        /// options.ProcessProductGrant = _ => Task.FromResult(true);
         ///
-        /// // 2) 콜백은 이미 결정된 값을 동기로 반환한다 (await 0회)
-        /// options.ProcessProductGrant = _ => Task.FromResult(authorized);
+        /// // 2) 검증·지급은 onEvent에서. OrderId와 살아있는 player loop를 동시에 갖는 첫 순간이다.
+        /// onEvent: e => { ShowPurchaseSuccess(); _ = MyServer.VerifyAndDeliver(e.Data.OrderId); }
+        ///
+        /// // 3) 앱 시작 시 미배달 대사 — 2)가 실행되기 전에 앱이 죽은 경우를 회수한다.
+        /// var completed = await AIT.IAPGetCompletedOrRefundedOrders();
         /// </code>
         /// </example>
         /// <para>
-        /// 지급 가능 여부를 미리 알 수 없다면 <c>Task.FromResult(false)</c>를 반환한다. 주문이
-        /// PAYMENT_COMPLETED 상태로 남아 <c>IAPGetPendingOrders</c>에 계속 보이므로, 검증을 마친
-        /// 뒤 <c>IAPCompleteProductGrant</c>로 지급을 완료할 수 있다. 반대로 <c>true</c>는 주문을
-        /// PURCHASED로 확정하며 되돌리는 API가 없다 — 확신이 없으면 <c>false</c>가 안전한 방향이다.
+        /// 3단계가 빠지면 1단계가 위험해진다. <c>true</c>는 주문을 PURCHASED로 확정하고 되돌리는
+        /// API가 없어서, 승인 직후 앱이 종료되면 그 주문은 <c>IAPGetPendingOrders</c>에도 나타나지
+        /// 않는다. 회수 창구는 <c>IAPGetCompletedOrRefundedOrders</c>뿐이며, 배달 여부의 기준은
+        /// 재설치·기기 변경에도 남는 서버 기록이어야 한다 (PlayerPrefs 등 로컬 기록은 안 된다).
+        /// </para>
+        /// <para>
+        /// <c>false</c>는 정말로 이 상품을 줄 수 없을 때만 반환한다 — true가 아닌 응답은 사용자에게
+        /// 환불 안내 페이지를 띄우므로 "확신이 없으니 일단 false"는 매 결제마다 환불 안내가 뜨는
+        /// 앱이 된다. 판정 근거는 이미 메모리에 있어야 한다. false를 반환하려고 무언가를 조회하면
+        /// 그 조회가 위에서 설명한 교착을 그대로 일으킨다.
         /// </para>
         /// </remarks>
         [JsonIgnore]
@@ -201,23 +212,34 @@ namespace AppsInToss
         /// 어떤 경우에도 쓸 수 없다.)
         /// </para>
         /// <para>
-        /// 서버 검증이 필요하면 결제를 시작하기 전에 끝내고, 그 결과를 캡처해서 반환한다.
+        /// 이 콜백은 검증하는 자리가 아니라 접수하는 자리다. 콜백이 호출됐다는 것 자체가 이미
+        /// 앱이 결제 성공을 판정했다는 뜻이고, 전달되는 정보도 OrderId 하나뿐이라 여기서
+        /// 새로 검증할 수 있는 것이 없다. 서버 영수증 검증과 실제 아이템 지급은 오버레이가
+        /// 닫힌 뒤 <c>onEvent</c>에서 한다 — 그때부터는 프레임이 정상적으로 돌아 await가 안전하다.
         /// </para>
         /// <example>
         /// <code>
-        /// // 1) 오버레이가 뜨기 전 — 여기서는 프레임이 정상적으로 돈다
-        /// bool authorized = await MyServer.ReserveEntitlement(sku);
-        /// if (!authorized) return;   // 결제 자체를 시작하지 않는 선택지가 생긴다
+        /// // 1) 콜백은 즉시 승인한다 (await 0회)
+        /// options.ProcessProductGrant = _ => Task.FromResult(true);
         ///
-        /// // 2) 콜백은 이미 결정된 값을 동기로 반환한다 (await 0회)
-        /// options.ProcessProductGrant = _ => Task.FromResult(authorized);
+        /// // 2) 검증·지급은 onEvent에서. OrderId와 살아있는 player loop를 동시에 갖는 첫 순간이다.
+        /// onEvent: e => { ShowPurchaseSuccess(); _ = MyServer.VerifyAndDeliver(e.Data.OrderId); }
+        ///
+        /// // 3) 앱 시작 시 미배달 대사 — 2)가 실행되기 전에 앱이 죽은 경우를 회수한다.
+        /// var completed = await AIT.IAPGetCompletedOrRefundedOrders();
         /// </code>
         /// </example>
         /// <para>
-        /// 지급 가능 여부를 미리 알 수 없다면 <c>Task.FromResult(false)</c>를 반환한다. 주문이
-        /// PAYMENT_COMPLETED 상태로 남아 <c>IAPGetPendingOrders</c>에 계속 보이므로, 검증을 마친
-        /// 뒤 <c>IAPCompleteProductGrant</c>로 지급을 완료할 수 있다. 반대로 <c>true</c>는 주문을
-        /// PURCHASED로 확정하며 되돌리는 API가 없다 — 확신이 없으면 <c>false</c>가 안전한 방향이다.
+        /// 3단계가 빠지면 1단계가 위험해진다. <c>true</c>는 주문을 PURCHASED로 확정하고 되돌리는
+        /// API가 없어서, 승인 직후 앱이 종료되면 그 주문은 <c>IAPGetPendingOrders</c>에도 나타나지
+        /// 않는다. 회수 창구는 <c>IAPGetCompletedOrRefundedOrders</c>뿐이며, 배달 여부의 기준은
+        /// 재설치·기기 변경에도 남는 서버 기록이어야 한다 (PlayerPrefs 등 로컬 기록은 안 된다).
+        /// </para>
+        /// <para>
+        /// <c>false</c>는 정말로 이 상품을 줄 수 없을 때만 반환한다 — true가 아닌 응답은 사용자에게
+        /// 환불 안내 페이지를 띄우므로 "확신이 없으니 일단 false"는 매 결제마다 환불 안내가 뜨는
+        /// 앱이 된다. 판정 근거는 이미 메모리에 있어야 한다. false를 반환하려고 무언가를 조회하면
+        /// 그 조회가 위에서 설명한 교착을 그대로 일으킨다.
         /// </para>
         /// </remarks>
         [JsonIgnore]

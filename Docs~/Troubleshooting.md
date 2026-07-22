@@ -186,15 +186,17 @@ catch (AITException ex)
 // ❌ 교착 — 결제가 완료되지 않습니다
 ProcessProductGrant = async _ => await MyServer.VerifyReceipt(orderId)
 
-// ✅ 결제 시작 전에 검증을 끝내고, 캡처한 값을 동기로 반환합니다
-bool authorized = await MyServer.ReserveEntitlement(sku);
+// ✅ 콜백은 즉시 승인하고, 검증·지급은 onEvent에서 합니다
+ProcessProductGrant = _ => Task.FromResult(true)
 // ...
-ProcessProductGrant = _ => Task.FromResult(authorized)
+onEvent: e => { ShowPurchaseSuccess(); _ = MyServer.VerifyAndDeliver(e.Data.OrderId); }
 ```
+
+이 콜백은 검증하는 자리가 아니라 접수하는 자리입니다. 콜백이 호출된 시점에 결제 성공은 이미 확정돼 있고, 검증과 지급은 오버레이가 닫힌 뒤에 해도 늦지 않습니다.
 
 `Task.Delay`는 WebGL에 타이머 스레드가 없어 아예 완료되지 않으므로 이 콜백뿐 아니라 어디서도 쓸 수 없습니다.
 
-**이미 결제된 주문 복구**: 이 증상으로 실패한 주문은 `PAYMENT_COMPLETED` 상태로 남아 있습니다. `IAPGetPendingOrders`로 조회한 뒤 `IAPCompleteProductGrant`로 지급을 완료하세요.
+**이미 실패한 주문 복구**: 이 증상으로 응답하지 못한 주문은 `PAYMENT_COMPLETED` 상태로 남아 있습니다. `IAPGetPendingOrders`로 조회한 뒤 `IAPCompleteProductGrant`로 지급을 완료하세요. 승인은 됐지만 지급이 누락된 주문은 `IAPGetCompletedOrRefundedOrders`로 찾습니다.
 
 > 자세한 메커니즘과 전체 코드는 [API 사용 패턴 — 인앱결제](APIUsagePatterns.md#인앱결제-await를-쓰면-안-되는-자리)를 참조하세요.
 

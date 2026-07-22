@@ -20,8 +20,8 @@ importers:
   .:
     dependencies:
       '@apps-in-toss/bridge-core':
-        specifier: 2.10.6
-        version: 2.10.6
+        specifier: 2.10.7
+        version: 2.10.7
       '@apps-in-toss/web-analytics':
         specifier: 2.10.6
         version: 2.10.6(@apps-in-toss/web-bridge@2.10.6)
@@ -57,6 +57,9 @@ packages:
 
   '@apps-in-toss/bridge-core@2.10.6':
     resolution: {integrity: sha512-r/aaiMwg0GYjetiELD2NyvX1VG+OELuHUFIlNN8GGW3YOFlIkx4C1B2BoscjAWazqJpNdbpKlH2JzXrYy5KHzA==}
+
+  '@apps-in-toss/bridge-core@2.10.7':
+    resolution: {integrity: sha512-c6H7EZ8Ux4LtaPrm/EkNTWRVjegkbRiuQZIQsknOuh+h0k7vlzB10armjbG5DYTeAn+geChi5qEZCGZ6BZD9sg==}
 
   '@apps-in-toss/cli@2.10.6':
     resolution: {integrity: sha512-fBouLfQTJklJvQc36kFZKQtfVpYa4D1JdYXGiV/S81OfpK6tOeOMBo8qaRsF5MN5y2zBNx4WyejTUWiejmxzBg==}
@@ -5980,6 +5983,8 @@ snapshots:
       react-native: 0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0)
 
   '@apps-in-toss/bridge-core@2.10.6': {}
+
+  '@apps-in-toss/bridge-core@2.10.7': {}
 
   '@apps-in-toss/cli@2.10.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(@react-navigation/native@7.2.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(@swc/helpers@0.5.17)(@types/node@26.1.1)(react-native-safe-area-context@5.6.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(react-native-screens@4.23.0(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)(typanion@3.14.0)(typescript@7.0.2)':
     dependencies:

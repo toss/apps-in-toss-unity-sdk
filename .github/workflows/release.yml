@@ -173,6 +173,54 @@ jobs:
           mv tmp.json package.json
           echo "package.json 버전: ${VERSION}"
 
+      - name: BuildConfig package.json 버전 동기화
+        run: |
+          VERSION="${{ needs.release.outputs.version }}"
+          BUILDCONFIG_PKG="WebGLTemplates/AITTemplate/BuildConfig~/package.json"
+
+          # 이 잡은 `ref: main`을 체크아웃하므로 BuildConfig의 @apps-in-toss 핀은 "릴리즈 대상 버전"이
+          # 아니라 "실행 시점 main의 버전"이다. 정상 릴리즈에서는 update.yml이 직전에 main을
+          # 동기화해 두어 우연히 일치하지만, bulk-release로 과거 버전을 백필하면 루트 version만
+          # 과거로 돌아가고 이 핀은 main 값에 머물러 태그가 오염된다.
+          # BuildConfig~는 빌드 시 ait-build/로 복사되어 실제 번들되는 웹 런타임을 결정하므로
+          # 여기서 반드시 대상 버전으로 함께 롤백해야 한다.
+          # (참조 구현: update.yml "BuildConfig package.json 버전 동기화")
+          #
+          # web-analytics/bridge-core는 web-framework와 lockstep으로 publish되지만, 구버전 백필 시
+          # 동일 버전이 npm에 없을 수 있으므로 존재할 때만 맞춘다 (beta-release.yml의 npm view 가드).
+          if npm view "@apps-in-toss/web-analytics@${VERSION}" version --registry https://registry.npmjs.org >/dev/null 2>&1; then
+            jq --arg v "$VERSION" '
+              .dependencies["@apps-in-toss/web-framework"] = $v |
+              .dependencies["@apps-in-toss/web-analytics"] = $v
+            ' "$BUILDCONFIG_PKG" > tmp.json
+          else
+            echo "::warning::@apps-in-toss/web-analytics@${VERSION} 미존재 — web-framework만 동기화"
+            jq --arg v "$VERSION" '
+              .dependencies["@apps-in-toss/web-framework"] = $v
+            ' "$BUILDCONFIG_PKG" > tmp.json
+          fi
+          mv tmp.json "$BUILDCONFIG_PKG"
+
+          # bridge-core는 직접 의존성으로 존재할 때만 갱신 — 직접 핀이 제거되어도 phantom 키를
+          # 다시 만들지 않도록 조건부 처리 (update.yml과 동일 정책).
+          if npm view "@apps-in-toss/bridge-core@${VERSION}" version --registry https://registry.npmjs.org >/dev/null 2>&1; then
+            jq --arg v "$VERSION" '
+              (if .dependencies["@apps-in-toss/bridge-core"]
+               then .dependencies["@apps-in-toss/bridge-core"] = $v
+               else . end)
+            ' "$BUILDCONFIG_PKG" > tmp.json
+            mv tmp.json "$BUILDCONFIG_PKG"
+          fi
+
+          echo "BuildConfig dependencies:"
+          jq '.dependencies' "$BUILDCONFIG_PKG"
+
+      - name: BuildConfig pnpm-lock.yaml 업데이트
+        run: |
+          cd WebGLTemplates/AITTemplate/BuildConfig~
+          pnpm install --no-frozen-lockfile
+          echo "BuildConfig pnpm-lock.yaml 업데이트 완료"
+
       - name: Git 설정
         run: |
           git config user.name "github-actions[bot]"
@@ -501,6 +549,35 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
+      - name: 버전 정합성 검증 (태그 생성 전 게이트)
+        run: |
+          VERSION="${{ needs.release.outputs.version }}"
+          BUILDCONFIG_PKG="WebGLTemplates/AITTemplate/BuildConfig~/package.json"
+
+          # 릴리즈 태그의 불변식: 루트 package.json의 version 과
+          # BuildConfig~ 의 @apps-in-toss/web-framework 핀이 반드시 같아야 한다.
+          # BuildConfig~ 는 빌드 시 ait-build/ 로 복사되어 실제 번들되는 웹 런타임을 결정하므로,
+          # 이 둘이 갈리면 "vX.Y.Z 태그인데 다른 버전의 웹 런타임이 설치되는" 태그가 출하된다.
+          # 이 검증이 없어 과거 백필 실행들이 태그를 오염시켰다 — 태그를 만들기 전에 여기서 막는다.
+          PKG_VERSION=$(jq -r '.version' package.json)
+          WF_PIN=$(jq -r '.dependencies["@apps-in-toss/web-framework"]' "$BUILDCONFIG_PKG")
+
+          echo "루트 package.json version : ${PKG_VERSION}"
+          echo "BuildConfig web-framework : ${WF_PIN}"
+          echo "릴리즈 대상 버전          : ${VERSION}"
+
+          if [ "$PKG_VERSION" != "$VERSION" ]; then
+            echo "::error::루트 package.json version(${PKG_VERSION})이 릴리즈 대상 버전(${VERSION})과 다릅니다."
+            exit 1
+          fi
+
+          if [ "$WF_PIN" != "$VERSION" ]; then
+            echo "::error::BuildConfig~ 의 @apps-in-toss/web-framework 핀(${WF_PIN})이 릴리즈 대상 버전(${VERSION})과 다릅니다. 이 상태로 태그를 만들면 잘못된 웹 런타임이 번들됩니다."
+            exit 1
+          fi
+
+          echo "✅ 버전 정합성 검증 통과: ${VERSION}"
+
       - name: 릴리즈 태그 생성 (Orphan Commit)
         run: |
           VERSION="${{ needs.release.outputs.version }}"
@@ -523,8 +600,9 @@ jobs:
 
           echo "릴리즈 commit SHA: ${RELEASE_COMMIT}"
 
-          # 기존 태그가 있으면 삭제 (upsert)
-          git push origin --delete "${TAG_NAME}" 2>/dev/null || true
+          # 주의: 여기서 `git push origin --delete "${TAG_NAME}"` 로 선삭제하지 않는다.
+          # 아래 `git push -f` 만으로 upsert가 성립하며, 선삭제는 태그가 잠시 사라지는 창을 만들어
+          # 해당 태그를 참조하던 GitHub Release가 untagged draft로 강등된다 (release/v2.4.3 실측).
 
           # 태그 생성 및 푸시
           git tag -f "${TAG_NAME}" "${RELEASE_COMMIT}" -m "릴리즈: v${VERSION}
@@ -707,7 +785,18 @@ jobs:
 
       - name: Install AIT CLI
         run: |
-          WF_VERSION=$(node -p "require('./WebGLTemplates/AITTemplate/BuildConfig~/package.json').dependencies['@apps-in-toss/web-framework']")
+          # 설치 버전은 "릴리즈 대상 버전"을 기준으로 삼는다.
+          # 과거에는 태그에 실린 BuildConfig~ 핀을 그대로 읽었는데, 그 핀 자체가 오염 대상이라
+          # 배포 검증이 오염된 값을 검증하는 자기참조 루프가 되어 결함을 영원히 통과시켰다.
+          WF_VERSION="${{ needs.create-release-tag.outputs.version }}"
+
+          # 태그에 실린 핀이 대상 버전과 일치하는지 교차 확인 (create-release-tag 게이트의 이중 안전망)
+          TAG_PIN=$(node -p "require('./WebGLTemplates/AITTemplate/BuildConfig~/package.json').dependencies['@apps-in-toss/web-framework']")
+          if [ "$TAG_PIN" != "$WF_VERSION" ]; then
+            echo "::error::태그의 web-framework 핀(${TAG_PIN})이 릴리즈 대상 버전(${WF_VERSION})과 다릅니다."
+            exit 1
+          fi
+
           echo "Installing @apps-in-toss/web-framework@${WF_VERSION}"
           pnpm install -g "@apps-in-toss/web-framework@${WF_VERSION}"
           ait --version || echo "AIT CLI installed"

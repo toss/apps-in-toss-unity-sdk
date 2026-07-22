@@ -1,6 +1,7 @@
 import { ParsedType } from '../../types.js';
 import { mapToCSharpType } from '../../validators/types.js';
 import { extractCleanName, capitalize, xmlSafe, functionParamTypeName } from './utils.js';
+import { generateFieldDoc } from './field-docs.js';
 
 /**
  * [JsonExtensionData] 필드 선언 (JSON 역직렬화 시 매핑되지 않는 추가 필드를 자동 캡처)
@@ -149,9 +150,7 @@ export function generateNestedClassType(
           type = `${name}${capitalize(prop.name)}`;
         }
       }
-      const description = prop.description
-        ? `        /// <summary>${xmlSafe(prop.description)}</summary>\n`
-        : '';
+      const description = generateFieldDoc(prop.name, prop.description);
       return `${description}${generateFieldDeclaration(prop.name, type, prop.optional)}`;
     })
     .join('\n');

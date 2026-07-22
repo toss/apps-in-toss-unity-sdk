@@ -5,6 +5,7 @@
 ## 목차
 
 - [기본 패턴: async/await](#기본-패턴-asyncawait)
+- [인앱결제: await를 쓰면 안 되는 자리](#인앱결제-await를-쓰면-안-되는-자리)
 - [에러 처리](#에러-처리)
 - [WebGL vs Unity Editor](#webgl-vs-unity-editor)
 - [Mock 브릿지](#mock-브릿지)
@@ -14,6 +15,8 @@
 ## 기본 패턴: async/await
 
 SDK의 모든 API는 C#의 `async/await` 패턴을 사용합니다. 이는 Unity의 메인 스레드를 차단하지 않고 비동기 작업을 수행할 수 있게 해줍니다.
+
+> ⚠️ **예외가 하나 있습니다.** 인앱결제의 `ProcessProductGrant` 콜백 안에서는 `await`를 쓰면 안 됩니다. 결제가 완료되지 않습니다. [인앱결제 절](#인앱결제-await를-쓰면-안-되는-자리)을 먼저 읽어주세요.
 
 ### 기본 사용법
 
@@ -94,6 +97,103 @@ async void InitializeGameParallel()
     Debug.Log($"기기: {deviceIdTask.Result}, 플랫폼: {platformTask.Result}, 언어: {localeTask.Result}");
 }
 ```
+
+---
+
+## 인앱결제: await를 쓰면 안 되는 자리
+
+`IAPCreateOneTimePurchaseOrder` / `IAPCreateSubscriptionPurchaseOrder`에 넘기는 `ProcessProductGrant` 콜백은 **동기로 값을 반환해야 합니다.** 타입이 `Task<bool>`이라 `await`를 쓸 수 있게 생겼지만, 쓰면 결제가 완료되지 않습니다.
+
+### 왜 안 되는가
+
+이 콜백은 **네이티브 결제 오버레이가 화면을 덮고 있는 동안** 호출됩니다. 그 구간에는 브라우저가 `visibilityState = hidden` 상태라 `requestAnimationFrame`이 멈추고, 그것이 유일한 구동원인 Unity WebGL의 player loop도 함께 멈춥니다. player loop가 멈추면 `await`의 continuation이 재개되지 않습니다.
+
+그래서 콜백 안에서 무언가를 `await`하면 순환 교착이 생깁니다:
+
+```
+오버레이는 이 콜백의 응답을 기다린다
+   → 콜백은 await continuation을 기다린다
+      → continuation은 프레임을 기다린다
+         → 프레임은 오버레이가 닫혀야 온다   ← 처음으로 돌아감
+```
+
+실기기 실측에서 이 고리가 **115초간** 유지된 뒤, 앱이 자체 타임아웃으로 끊고 `"{앱 이름}에 문제가 생겼어요. 환불을 신청해주세요"` 페이지를 띄웠습니다. 결제 성공 후 30초 안에 `ProcessProductGrant`가 `true`로 응답하지 않으면 이 페이지가 노출될 수 있습니다.
+
+같은 실측에서 동기로 반환했을 때는 오버레이가 **1.5초 만에** 닫히고 결제가 정상 완료됐습니다.
+
+### 패턴 A — 서버 검증이 필요한 경우
+
+검증을 **결제 시작 전에** 끝내고, 그 결과를 캡처해서 콜백에서 그대로 반환합니다. 실패하면 결제 자체를 시작하지 않는 선택지도 생깁니다.
+
+```csharp
+// 1) 오버레이가 뜨기 전 — 여기서는 프레임이 정상적으로 돕니다
+bool authorized = await MyServer.ReserveEntitlement(sku);
+if (!authorized)
+{
+    ShowError("지금은 구매할 수 없습니다");
+    return;
+}
+
+// 2) 콜백은 이미 결정된 값을 동기로 반환합니다 (await 0회)
+var options = new IapCreateOneTimePurchaseOrderOptionsOptions
+{
+    Sku = sku,
+    ProcessProductGrant = _ => Task.FromResult(authorized)
+};
+
+_disposer = AIT.IAPCreateOneTimePurchaseOrder(
+    onEvent: e => GrantItemLocally(e.Data.OrderId),
+    options: options,
+    onError: err => Debug.LogError(err.Message)
+);
+```
+
+### 패턴 B — 미리 알 수 없는 경우
+
+지급 가능 여부를 결제 전에 확정할 수 없다면 `false`를 반환하고, 나중에 복구합니다.
+
+```csharp
+ProcessProductGrant = _ => Task.FromResult(false)
+```
+
+주문이 `PAYMENT_COMPLETED` 상태로 남아 `IAPGetPendingOrders`에 계속 보이므로, 앱 시작 시 밀린 주문을 훑어 검증하고 지급을 완료하면 됩니다.
+
+```csharp
+var pending = await AIT.IAPGetPendingOrders();
+if (pending.Orders == null) return;   // 플랫폼 미지원 시 error 필드에 사유가 담깁니다
+
+foreach (var order in pending.Orders)
+{
+    if (!await MyServer.VerifyAndGrant(order.OrderId, order.Sku)) continue;
+
+    await AIT.IAPCompleteProductGrant(new IAPCompleteProductGrantArgs_0
+    {
+        Params = new IAPCompleteProductGrantArgs_0Params { OrderId = order.OrderId }
+    });
+}
+```
+
+사용자에게 환불 안내 페이지가 한 번 보이는 대신, 돈만 받고 상품을 못 주는 상황은 구조적으로 생기지 않습니다.
+
+### `true`와 `false`는 대칭이 아닙니다
+
+| 반환값 | 주문 상태 | `IAPGetPendingOrders` | 되돌리기 |
+|---|---|---|---|
+| `true` | `PURCHASED` (지급 확정) | 사라짐 | **불가** — un-grant API 없음 |
+| `false` / 무응답 | `PAYMENT_COMPLETED` | 계속 보임 | 가능 — `IAPCompleteProductGrant` |
+
+`true`는 편도입니다. 확신이 없으면 `false`가 안전한 방향입니다. "일단 `true`로 지급하고 나중에 정산하자"는 로컬 기록(예: `PlayerPrefs`)에 의존하게 되는데, 재설치·기기 변경·결제 중 앱 종료에서 그 기록이 사라지면 복구할 방법이 없습니다.
+
+### 쓸 수 없는 것들
+
+| 하려던 것 | 결과 |
+|---|---|
+| `await UnityWebRequest` 영수증 검증 | 오버레이가 닫힐 때까지 완료 통지가 오지 않음 |
+| `await Task.Delay(...)` | WebGL에는 타이머 스레드가 없어 **아예 완료되지 않음** |
+| `await` 코루틴 래퍼 (`WaitForSecondsRealtime`) | 코루틴도 player loop가 구동하므로 동일하게 멈춤 |
+| 콜백 안에서 UI를 띄워 사용자 입력 대기 | 화면이 오버레이에 덮여 있어 사용자가 볼 수 없음 |
+
+> 이 제약은 Unity 고유가 아닙니다. 웹(React 등) 미니앱에서도 `processProductGrant`가 30초를 넘기면 같은 환불 페이지가 노출됩니다. 다만 Unity WebGL은 *모든* `await`가 프레임을 필요로 해서 더 쉽게 걸립니다.
 
 ---
 

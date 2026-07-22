@@ -55,6 +55,12 @@ namespace AppsInToss
         /// </summary>
         /// <remarks>
         /// <para>
+        /// nullable 필드지만 사실상 필수다. 지정하지 않으면 브릿지가 플랫폼에 콜백을 넘기는 반면
+        /// C# 쪽에는 등록된 핸들러가 없어, 결제가 완료될 때마다 SDK가 자동으로 false를 응답한다
+        /// (Console에 "Unknown nested callback" 경고가 남는다). 결과적으로 모든 결제가 지급 실패로
+        /// 처리되므로, 결제 흐름을 붙일 때 이 필드부터 채워야 한다.
+        /// </para>
+        /// <para>
         /// 이 콜백은 네이티브 결제 오버레이가 화면을 덮고 있는 동안 호출된다. 그 구간에는
         /// 브라우저가 <c>visibilityState = hidden</c> 상태라 requestAnimationFrame이 멈추고,
         /// 그것이 유일한 구동원인 Unity WebGL player loop도 함께 멈춘다. player loop가 멈추면
@@ -200,6 +206,12 @@ namespace AppsInToss
         /// 이 콜백 안에서 <c>await</c>를 쓰면 결제가 완료되지 않는다.
         /// </summary>
         /// <remarks>
+        /// <para>
+        /// nullable 필드지만 사실상 필수다. 지정하지 않으면 브릿지가 플랫폼에 콜백을 넘기는 반면
+        /// C# 쪽에는 등록된 핸들러가 없어, 결제가 완료될 때마다 SDK가 자동으로 false를 응답한다
+        /// (Console에 "Unknown nested callback" 경고가 남는다). 결과적으로 모든 결제가 지급 실패로
+        /// 처리되므로, 결제 흐름을 붙일 때 이 필드부터 채워야 한다.
+        /// </para>
         /// <para>
         /// 이 콜백은 네이티브 결제 오버레이가 화면을 덮고 있는 동안 호출된다. 그 구간에는
         /// 브라우저가 <c>visibilityState = hidden</c> 상태라 requestAnimationFrame이 멈추고,

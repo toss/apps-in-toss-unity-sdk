@@ -104,6 +104,23 @@ async void InitializeGameParallel()
 
 `IAPCreateOneTimePurchaseOrder` / `IAPCreateSubscriptionPurchaseOrder`에 넘기는 `ProcessProductGrant` 콜백은 **동기로 값을 반환해야 합니다.** 타입이 `Task<bool>`이라 `await`를 쓸 수 있게 생겼지만, 쓰면 결제가 완료되지 않습니다.
 
+### 먼저: 이 콜백은 선택이 아닙니다
+
+`ProcessProductGrant`는 nullable 필드라 지정하지 않아도 컴파일되지만, **지정하지 않으면 모든 결제가 지급 실패로 처리됩니다.**
+
+```csharp
+// ❌ 컴파일도 되고 결제 창도 뜨지만, 상품이 지급되지 않습니다
+var options = new IapCreateOneTimePurchaseOrderOptionsOptions { Sku = sku };
+```
+
+SDK 내부적으로 JS 브릿지는 이 콜백을 **항상** 플랫폼에 넘깁니다. C# 쪽에서 콜백이 등록되지 않았을 뿐이라, 결제가 완료되면 플랫폼이 콜백을 호출하고 SDK는 등록된 핸들러가 없다는 이유로 자동으로 `false`를 응답합니다. 이때 Console에 다음 경고가 남습니다.
+
+```
+[AITCore] Unknown nested callback: {subscriptionId}_processProductGrant
+```
+
+결제 흐름을 붙일 때 이 필드부터 채우세요.
+
 ### 왜 안 되는가
 
 이 콜백은 **네이티브 결제 오버레이가 화면을 덮고 있는 동안** 호출됩니다. 그 구간에는 브라우저가 `visibilityState = hidden` 상태라 `requestAnimationFrame`이 멈추고, 그것이 유일한 구동원인 Unity WebGL의 player loop도 함께 멈춥니다. player loop가 멈추면 `await`의 continuation이 재개되지 않습니다.
@@ -225,11 +242,13 @@ foreach (var order in completed.Orders)
 
 ### `false`는 언제 반환하나
 
-`true`가 아닌 응답은 사용자에게 환불 안내 페이지를 띄웁니다. 따라서 `false`는 **정말로 이 상품을 줄 수 없을 때만** 씁니다 — 예를 들어 이미 보유한 비소모품을 결제 도중 다른 기기에서 획득한 경우처럼, 지급이 불가능하다고 지금 단정할 수 있을 때입니다.
+공식 문서는 `true`가 아닌 응답에 대해 환불 안내 페이지가 *노출될 수 있다*고 안내합니다. (직접 측정한 것은 무응답 경로이며, 명시적 `false`에서도 같은 화면이 나오는지는 확인하지 않았습니다.) 따라서 `false`는 **정말로 이 상품을 줄 수 없을 때만** 씁니다 — 예를 들어 이미 보유한 비소모품을 결제 도중 다른 기기에서 획득한 경우처럼, 지급이 불가능하다고 지금 단정할 수 있을 때입니다.
 
 "확신이 없으니 일단 `false`"는 성립하지 않습니다. 매 결제마다 환불 안내가 뜨는 앱이 되기 때문입니다. 확신은 1~3단계로 확보하는 것이지 `false`로 확보하는 것이 아닙니다.
 
 판정 근거는 반드시 이미 메모리에 있어야 합니다. `false`를 반환하기 위해 무언가를 조회해야 한다면, 그 조회 자체가 이 절이 설명한 교착을 일으킵니다.
+
+> **구버전 토스앱에서는 반환값이 무시됩니다.** `processProductGrant`를 지원하지 않는 버전(Android 5.231.1 미만 / iOS 5.230.0 미만)에서는 브릿지가 구 결제 경로로 폴백하며, 이때 콜백의 반환값은 플랫폼에 전달되지 않고 버려집니다. 반환값에 의존하는 로직을 짤 때 이 구간을 염두에 두세요.
 
 ### 쓸 수 없는 것들
 

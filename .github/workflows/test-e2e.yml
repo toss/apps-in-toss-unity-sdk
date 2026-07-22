@@ -142,7 +142,7 @@ jobs:
           ref: ${{ needs.setup.outputs.ref }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: 24
 
@@ -319,7 +319,7 @@ jobs:
           path: ${{ env.AIT_BUILD_DIR }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: 24
 
@@ -399,7 +399,7 @@ jobs:
           path: ${{ env.AIT_BUILD_DIR }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: 24
 
@@ -658,7 +658,7 @@ jobs:
           echo "has_classification=true" >> "$GITHUB_OUTPUT"
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: "24"
 

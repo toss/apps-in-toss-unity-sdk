@@ -576,6 +576,49 @@ jobs:
             exit 1
           fi
 
+          # web-framework 외 @apps-in-toss 핀도 함께 본다.
+          #
+          # 위 동기화 스텝은 "@apps-in-toss/<pkg>@VERSION 이 npm에 있으면 VERSION 으로 맞추고,
+          # 없으면 손대지 않는다"는 규칙으로 동작한다. 여기서도 같은 규칙의 대우를 검사한다 —
+          # 해당 버전이 npm에 존재하는데 핀이 다르면 동기화가 누락된 것이므로 막는다.
+          # (존재하지 않으면 핀이 달라도 정상이다. 구버전 백필에서 흔하다.)
+          FAILED=0
+          for PKG in web-analytics bridge-core; do
+            PIN=$(jq -r --arg k "@apps-in-toss/${PKG}" '.dependencies[$k] // "none"' "$BUILDCONFIG_PKG")
+            [ "$PIN" = "none" ] && continue
+            if npm view "@apps-in-toss/${PKG}@${VERSION}" version --registry https://registry.npmjs.org >/dev/null 2>&1; then
+              if [ "$PIN" != "$VERSION" ]; then
+                echo "::error::@apps-in-toss/${PKG}@${VERSION} 이 npm에 존재하는데 BuildConfig 핀은 ${PIN} 입니다 — 동기화 누락."
+                FAILED=1
+              else
+                echo "  ${PKG}: ${PIN} (일치)"
+              fi
+            else
+              echo "  ${PKG}: ${PIN} (npm에 ${VERSION} 없음 — 검사 생략)"
+            fi
+          done
+
+          # 핀이 가리키는 버전이 실제로 설치 가능한지 확인한다.
+          #
+          # 2026-07 사례: @apps-in-toss 2.10.7 이 게시 직후 unpublish 되었는데, 그 사이에
+          # 돌던 자동화들이 해당 버전을 핀/lockfile 에 새겨 넣었다. 존재하지 않는 버전이
+          # BuildConfig 에 박히면 그 태그를 설치한 환경에서 ERR_PNPM_FETCH_404 가 난다.
+          #
+          # ⚠️ 한계: 이 조회는 러너가 붙는 CDN 엣지의 응답에 의존한다. npm 의 unpublish 퍼지는
+          #    엣지마다 비동기로 전파되므로, 아직 해당 버전을 서빙하는 엣지에서 실행되면
+          #    통과할 수 있다. 완전한 방어가 아니라 "이미 전파된 유령 버전"을 잡는 그물이다.
+          for PKG in $(jq -r '.dependencies | keys[] | select(startswith("@apps-in-toss/"))' "$BUILDCONFIG_PKG"); do
+            PIN=$(jq -r --arg k "$PKG" '.dependencies[$k]' "$BUILDCONFIG_PKG")
+            if ! npm view "${PKG}@${PIN}" version --registry https://registry.npmjs.org >/dev/null 2>&1; then
+              echo "::error::${PKG}@${PIN} 을 npm에서 찾을 수 없습니다 — 존재하지 않는 버전을 핀한 채로 태그를 만들 수 없습니다."
+              FAILED=1
+            fi
+          done
+
+          if [ "$FAILED" -ne 0 ]; then
+            exit 1
+          fi
+
           echo "✅ 버전 정합성 검증 통과: ${VERSION}"
 
       - name: 릴리즈 태그 생성 (Orphan Commit)

@@ -66,6 +66,25 @@ public class IAPv2Tester : MonoBehaviour
 
     private Text _plpToggleLabel;
 
+    /// <summary>
+    /// [실험 1] ProcessProductGrant가 응답을 만드는 방식.
+    ///
+    /// SyncTrue  — await 0회로 true. 주문이 PURCHASED로 확정되며 되돌릴 수 없다(un-grant API 없음).
+    /// SyncFalse — await 0회로 false. 주문이 PAYMENT_COMPLETED로 남아 getPendingOrders +
+    ///             IAPCompleteProductGrant로 복구 가능하다. 실패해도 안전한 방향.
+    /// Async     — 서버 검증을 await. 교착 재현 arm.
+    /// </summary>
+    private enum GrantMode
+    {
+        SyncTrue,
+        SyncFalse,
+        Async
+    }
+
+    // 실험 1의 대상이 SyncTrue이므로 기본값으로 둔다.
+    private GrantMode _grantMode = GrantMode.SyncTrue;
+    private Text _grantModeLabel;
+
     // 구독 해제 액션
     private Action _purchaseDisposer;
 
@@ -184,10 +203,37 @@ public class IAPv2Tester : MonoBehaviour
         _plpToggleLabel = UIBuilder.CreateText(section, "",
             UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary);
         UIBuilder.CreateButton(section, "NestedCallbackTimeoutMs 토글 (OFF ↔ 30s)", onClick: TogglePlpHardening);
+
+        // [실험 1] grant 응답 방식 — 결제 시작 전에 눌러 arm을 고른다.
+        _grantModeLabel = UIBuilder.CreateText(section, "",
+            UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary);
+        UIBuilder.CreateButton(section, "ProcessProductGrant 모드 토글", onClick: ToggleGrantMode);
+
         // 교착이 완전하면 onEvent/onError가 끝내 오지 않아 자동 리포트가 안 나온다.
         // 화면이 다시 움직이기 시작하면 이 버튼으로 수집분을 강제로 덤프한다.
         UIBuilder.CreateButton(section, "PLP 리포트 강제 출력", onClick: () => ReportPlayerLoopProbe("manual"));
         UpdatePlpToggleLabel();
+        UpdateGrantModeLabel();
+    }
+
+    /// <summary>[실험 1] grant 응답 방식을 순환시킨다. 결제 시작 전에 눌러 모드를 정한다.</summary>
+    private void ToggleGrantMode()
+    {
+        _grantMode = _grantMode == GrantMode.SyncTrue ? GrantMode.SyncFalse
+                   : _grantMode == GrantMode.SyncFalse ? GrantMode.Async
+                   : GrantMode.SyncTrue;
+        UpdateGrantModeLabel();
+        LogIap($"[실험1] ProcessProductGrant 모드 = {_grantMode}");
+        UpdateEventLog();
+    }
+
+    private void UpdateGrantModeLabel()
+    {
+        if (_grantModeLabel == null) return;
+        _grantModeLabel.text =
+            _grantMode == GrantMode.SyncTrue ? "SyncTrue — 동기 true (지급 확정, 되돌릴 수 없음)"
+          : _grantMode == GrantMode.SyncFalse ? "SyncFalse — 동기 false (주문 pending 유지, 복구 가능)"
+          : "Async — 서버 검증 await (교착 재현)";
     }
 
     /// <summary>[PLP] 하드닝 opt-in을 켜고 끈다. 결제 시작 전에 눌러 모드를 정한다.</summary>
@@ -508,41 +554,34 @@ public class IAPv2Tester : MonoBehaviour
             var options = new IapCreateOneTimePurchaseOrderOptionsOptions
             {
                 Sku = iapSku,
-                // 비동기 콜백: 개발사 서버의 영수증 검증 API 호출을 기다린 뒤 지급 여부를 결정한다.
-                // SDK는 이 Task<bool>이 완료될 때까지 주문 완료 처리를 보류한다 (true → 자동 지급 완료).
-                ProcessProductGrant = async (data) =>
+                // [실험 1] 동기 응답이 실제로 네이티브 오버레이를 닫는가?
+                // 오버레이가 webview를 덮는 동안 player loop가 멈춰 await continuation이 재개되지
+                // 않는다(115s 실측). 그래서 남는 유일한 경로가 "await 0회 + 이미 결정된 값 반환"인데,
+                // 그게 실제로 통하는지는 한 번도 측정된 적이 없다 — hidden 상태에서 JS→native
+                // postMessage가 전달되는지 자체가 미검증이기 때문이다. GrantMode로 같은 빌드에서
+                // SyncTrue/SyncFalse/Async를 번갈아 눌러 비교한다.
+                ProcessProductGrant = (data) =>
                 {
-                    // [PLP] 진입 시각/프레임을 동기 기록 — loop가 멈춰 있어도 유실되지 않는다.
-                    var t0 = DateTime.UtcNow;
-                    int f0 = _plpFrames;
-                    LogIap($"ProcessProductGrant called: {data}");
+                    // 콜백 진입은 SendMessage 동기 스택이라 loop가 멈춰 있어도 실행된다.
+                    LogIap($"ProcessProductGrant called [{_grantMode}]: {data}");
 
-                    // [PLP] 프로브 0 — Task.Delay가 WebGL에서 완료되는가? (관찰만, await하지 않음)
-                    // round 2에서 await Task.Delay(3000)이 영영 완료되지 않아 이후 계측이 전부
-                    // 막혔다. WebGL은 스레드가 없어 타이머가 발화하지 않는 것이 원인으로 보이며,
-                    // 이 프로브로 확증한다. 크리티컬 패스에서 빼서 다른 측정을 가로막지 않게 한다.
+                    // [PLP] Task.Delay가 WebGL에서 완료되는가? 어느 모드에서든 관찰만 한다.
                     _ = ProbeTaskDelayAsync();
 
-                    // [PLP] 프로브 1 — await continuation 재개.
-                    // 코루틴 기반 대기(WaitForSecondsRealtime)는 player loop가 구동하므로,
-                    // loop가 멈춰 있으면 3초가 3초에 끝나지 않는다. SDK가 문서화한 WebGL 관용구.
-                    await DelayViaCoroutine(3000);
-                    var t1 = DateTime.UtcNow;
-                    int f1 = _plpFrames;
+                    if (_grantMode == GrantMode.Async)
+                    {
+                        return GrantViaAsyncVerificationAsync(data);
+                    }
 
-                    // [PLP] 프로브 2 — 실제 UnityWebRequest 서버 검증(hugh의 원래 요구사항).
-                    // 코루틴/Task.Delay 시뮬레이션이 아니라 진짜 네트워크 왕복이 오버레이 구간에
-                    // 완료될 수 있는지를 잰다. UnityWebRequest 완료 콜백은 player loop가 전달한다.
-                    bool grantSuccess = await VerifyReceiptViaWebRequest(data);
-                    var t2 = DateTime.UtcNow;
-                    int f2 = _plpFrames;
+                    // [PLP] 동기 모드에서도 프리즈 구간 길이는 재고 싶으므로 fire-and-forget으로
+                    // 띄운다. 응답은 이 아래에서 즉시 나가므로 크리티컬 패스에 없다.
+                    _ = VerifyReceiptViaWebRequest(data);
 
-                    LogIap($"[PLP] coroutine(3000ms) actual={(t1 - t0).TotalMilliseconds:F0}ms (frames {f0}->{f1}) | " +
-                           $"UnityWebRequest actual={(t2 - t1).TotalMilliseconds:F0}ms (frames {f1}->{f2}) | " +
-                           $"Task.Delay(3000ms)={_taskDelayReport}");
-                    LogIap($"ProcessProductGrant result: {grantSuccess}");
+                    bool grantSuccess = _grantMode == GrantMode.SyncTrue;
+                    MarkGrantResponded();
+                    LogIap($"ProcessProductGrant result: {grantSuccess} (await 0회 — 동기 반환)");
                     UpdateEventLog();
-                    return grantSuccess;
+                    return Task.FromResult(grantSuccess);
                 }
             };
 
@@ -787,6 +826,50 @@ public class IAPv2Tester : MonoBehaviour
 #endif
 
     /// <summary>
+    /// [실험 1] Async 모드 — 서버 검증을 await한 뒤 지급 여부를 정하는 원래 요구사항 그대로.
+    /// 교착 재현 arm이며, 동기 모드와 같은 빌드에서 비교하기 위해 남겨둔다.
+    /// </summary>
+    private async Task<bool> GrantViaAsyncVerificationAsync(object data)
+    {
+        var t0 = DateTime.UtcNow;
+        int f0 = _plpFrames;
+
+        // [PLP] await continuation 재개. 코루틴 대기(WaitForSecondsRealtime)는 player loop가
+        // 구동하므로, loop가 멈춰 있으면 3초가 3초에 끝나지 않는다.
+        await DelayViaCoroutine(3000);
+        var t1 = DateTime.UtcNow;
+        int f1 = _plpFrames;
+
+        // [PLP] 진짜 네트워크 왕복이 오버레이 구간에 완료될 수 있는지. 완료 콜백은 loop가 전달한다.
+        bool grantSuccess = await VerifyReceiptViaWebRequest(data);
+        var t2 = DateTime.UtcNow;
+        int f2 = _plpFrames;
+
+        LogIap($"[PLP] coroutine(3000ms) actual={(t1 - t0).TotalMilliseconds:F0}ms (frames {f0}->{f1}) | " +
+               $"UnityWebRequest actual={(t2 - t1).TotalMilliseconds:F0}ms (frames {f1}->{f2}) | " +
+               $"Task.Delay(3000ms)={_taskDelayReport}");
+        MarkGrantResponded();
+        LogIap($"ProcessProductGrant result: {grantSuccess}");
+        UpdateEventLog();
+        return grantSuccess;
+    }
+
+    /// <summary>
+    /// [실험 1] grant 응답 시각을 동기로 못박는다. 이 시점 이후 도는 첫 Update()가
+    /// 곧 "오버레이가 실제로 해제되어 player loop가 재개된 순간"이다.
+    /// </summary>
+    private void MarkGrantResponded()
+    {
+        _grantRespondedAtUtc = DateTime.UtcNow;
+        _grantRespondedAtFrames = _plpFrames;
+        _grantResumeReported = false;
+    }
+
+    private DateTime _grantRespondedAtUtc;
+    private int _grantRespondedAtFrames;
+    private bool _grantResumeReported = true;
+
+    /// <summary>
     /// [PLP] Task.Delay(3000) 관찰 결과. round 2에서 이 await가 영영 완료되지 않아
     /// grant 콜백 이후 계측이 전부 막혔다 — WebGL은 스레드가 없어 Task의 타이머가
     /// 발화하지 않는 것으로 보이며, 이번 라운드에서 확증한다.
@@ -836,6 +919,19 @@ public class IAPv2Tester : MonoBehaviour
 
     private void Update()
     {
+        // [실험 1] grant 응답 후 처음 도는 프레임 = 오버레이가 해제되어 loop가 재개된 시점.
+        // 이게 이번 실험의 핵심 수치다. 동기 응답이 오버레이를 즉시 닫으면 수백 ms,
+        // 응답이 무시되고 네이티브 30초 타임아웃에 걸리면 30000ms+로 찍힌다.
+        // 자동으로 찍으므로 버튼을 누르느라 측정이 오염되지 않는다.
+        if (!_grantResumeReported)
+        {
+            _grantResumeReported = true;
+            LogIap($"[PLP:resume] grant 응답 → 첫 프레임 = " +
+                   $"{(DateTime.UtcNow - _grantRespondedAtUtc).TotalMilliseconds:F0}ms " +
+                   $"(frames {_grantRespondedAtFrames}->{_plpFrames})");
+            UpdateEventLog();
+        }
+
         if (!_plpArmed) return;
         float now = Time.realtimeSinceStartup;
         if (_plpLastFrameRealtime > 0f)

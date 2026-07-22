@@ -13,13 +13,17 @@ using AppsInToss;
 /// ## 정상 플로우 (소모품)
 /// 1. GetProductItemList() - 상품 목록 조회
 /// 2. CreateOneTimePurchaseOrder() - 구매 주문 생성
-///    - processProductGrant 비동기 콜백(Task&lt;bool&gt;)에서 서버 영수증 검증을 await한 뒤 지급, true 반환
+///    - processProductGrant 콜백은 await 없이 즉시 true를 반환한다.
+///      이 콜백 안에서 await하면 결제가 완료되지 않는다 (아래 ExecuteIAPCreateOrder 주석 참조)
 ///    - SDK가 자동으로 CompleteProductGrant 호출하여 주문 완료 처리
+/// 3. 서버 영수증 검증과 실제 상품 지급은 onEvent에서 — 오버레이가 닫힌 뒤라 await가 안전하다
 ///
-/// ## 복구 플로우 (앱 크래시/네트워크 끊김 등으로 processProductGrant 콜백 미호출 시)
-/// 1. GetCompletedOrRefundedOrders() - 미처리 완료 주문 조회
+/// ## 복구 플로우 (지급 전에 앱이 종료되는 등으로 3단계가 실행되지 못한 경우)
+/// 1. GetCompletedOrRefundedOrders() - 승인은 됐지만 배달 기록이 없는 주문 조회
 /// 2. 각 주문에 대해 상품 지급 수행
 /// 3. CompleteProductGrant() - 수동으로 주문 완료 처리
+///
+/// 배달 여부의 기준은 재설치·기기 변경에도 남는 서버 기록이어야 한다 (PlayerPrefs 등 로컬 기록은 안 된다).
 ///
 /// ## 비소모품
 /// - 한 번 구매하면 영구 소유, CompleteProductGrant 불필요
@@ -449,15 +453,23 @@ public class IAPv2Tester : MonoBehaviour
             var options = new IapCreateOneTimePurchaseOrderOptionsOptions
             {
                 Sku = iapSku,
-                // 비동기 콜백: 개발사 서버의 영수증 검증 API 호출을 기다린 뒤 지급 여부를 결정한다.
-                // SDK는 이 Task<bool>이 완료될 때까지 주문 완료 처리를 보류한다 (true → 자동 지급 완료).
-                ProcessProductGrant = async (data) =>
+                // [1단계] 콜백은 즉시 승인한다. await가 한 번이라도 들어가면 결제가 완료되지 않는다.
+                //
+                // 이 콜백은 네이티브 결제 오버레이가 화면을 덮고 있는 동안 호출된다. 그 구간에는
+                // 브라우저가 visibilityState = hidden 상태라 requestAnimationFrame이 멈추고,
+                // 그것이 유일한 구동원인 Unity WebGL player loop도 함께 멈춘다. player loop가
+                // 멈추면 await의 continuation이 재개되지 않는데, 오버레이는 이 콜백의 응답을
+                // 기다리고 있으므로 서로를 기다리는 교착이 된다.
+                // (실측: 115초 정지 후 "문제가 생겼어요. 환불을 신청해주세요" 페이지 노출)
+                //
+                // 여기서 검증할 수 있는 것도 없다 — 이 콜백이 호출됐다는 것 자체가 앱이 이미
+                // 결제 성공을 판정했다는 뜻이고, 넘어오는 정보도 OrderId 하나뿐이다.
+                // 검증과 지급은 아래 onEvent(2단계)에서 한다.
+                ProcessProductGrant = _ =>
                 {
-                    LogIap($"ProcessProductGrant called: {data}");
-                    bool grantSuccess = await GrantGameProduct(data);
-                    LogIap($"ProcessProductGrant result: {grantSuccess}");
+                    LogIap("ProcessProductGrant: 즉시 true 반환 (await 0회)");
                     UpdateEventLog();
-                    return grantSuccess;
+                    return Task.FromResult(true);
                 }
             };
 
@@ -469,6 +481,12 @@ public class IAPv2Tester : MonoBehaviour
                     iapOrderId = successEvent.Data?.OrderId ?? "";
                     if (_orderIdInput != null) _orderIdInput.text = iapOrderId;
                     LogIap($"OnEvent: orderId={successEvent.Data?.OrderId}, amount={successEvent.Data?.DisplayAmount}");
+
+                    // [2단계] 검증과 지급은 여기서. 오버레이가 닫혀 player loop가 살아난 뒤라
+                    // 서버 왕복을 기다려도 안전하다 — OrderId와 살아있는 프레임을 동시에 갖는
+                    // 첫 순간이다. (실측: 오버레이가 닫히고 45ms 뒤 도착)
+                    GrantGameProduct(iapOrderId);
+
                     UpdateStatus();
                     UpdateEventLog();
                 },
@@ -652,27 +670,50 @@ public class IAPv2Tester : MonoBehaviour
     }
 
     /// <summary>
-    /// 실제 게임 상품 지급 로직 (데모용)
-    /// 개발사 서버의 영수증 검증 API 왕복을 코루틴 + <see cref="TaskCompletionSource{TResult}"/>로 시뮬레이션한다.
-    /// (WebGL은 단일 스레드라 Task.Delay 대신 플레이어 루프가 구동하는 코루틴으로 대기한다 — SDK 관용.)
-    /// 실제 구현에서는 이 자리에서 UnityWebRequest/HttpClient로 서버에 영수증을 전송해 검증 결과를 반환한다.
+    /// [2단계] 서버 영수증 검증 + 실제 상품 지급 (데모용).
+    ///
+    /// onEvent에서 fire-and-forget으로 호출한다. 이 자리는 오버레이가 이미 닫혀 player loop가
+    /// 돌고 있으므로 await가 정상 동작한다 — 똑같은 코드를 ProcessProductGrant 콜백 안에 두면
+    /// 교착이 된다. 차이는 코드가 아니라 호출되는 시점이다.
+    ///
+    /// 실제 구현에서는 개발사 서버에 OrderId를 보내고, 서버가 Toss의 주문 상태 조회 API
+    /// (mTLS, 서버 간 통신)로 결제를 확인한 뒤 지급을 기록한다. 클라이언트가 보고한 OrderId를
+    /// 그대로 신뢰해서는 안 된다.
     /// </summary>
-    private Task<bool> GrantGameProduct(object data)
+    private async void GrantGameProduct(string orderId)
     {
-        var tcs = new TaskCompletionSource<bool>();
-        StartCoroutine(ValidateReceiptOnServer(data, tcs));
-        return tcs.Task;
+        try
+        {
+            bool granted = await VerifyReceiptOnServerAsync(orderId);
+            LogIap($"[2단계] 지급 {(granted ? "완료" : "보류")}: {orderId}");
+        }
+        catch (Exception ex)
+        {
+            // 여기서 실패해도 결제는 이미 승인(PURCHASED)됐고 되돌릴 수 없다.
+            // 회수는 IAPGetCompletedOrRefundedOrders() 버튼의 복구 플로우로 한다.
+            LogIap($"[2단계] 지급 실패 — 복구 플로우 필요: {ex.Message}");
+        }
+        UpdateEventLog();
     }
 
     /// <summary>
     /// 서버 영수증 검증 왕복 시뮬레이션 (WebGL-safe: WaitForSecondsRealtime 코루틴).
+    /// WebGL에는 타이머 스레드가 없어 <c>Task.Delay</c>가 완료되지 않으므로, player loop가
+    /// 구동하는 코루틴으로 대기하고 <see cref="TaskCompletionSource{TResult}"/>로 Task 경계를
+    /// 만든다 — SDK 관용.
     /// </summary>
-    private System.Collections.IEnumerator ValidateReceiptOnServer(object data, TaskCompletionSource<bool> tcs)
+    private Task<bool> VerifyReceiptOnServerAsync(string orderId)
     {
-        LogIap($"Validating receipt on server: {data}");
-        // 동기 스텁으로는 표현 불가했던 비동기 서버 왕복 경로
+        var tcs = new TaskCompletionSource<bool>();
+        StartCoroutine(VerifyReceiptRoutine(orderId, tcs));
+        return tcs.Task;
+    }
+
+    private System.Collections.IEnumerator VerifyReceiptRoutine(string orderId, TaskCompletionSource<bool> tcs)
+    {
+        LogIap($"[2단계] 서버 영수증 검증 중: {orderId}");
         yield return new WaitForSecondsRealtime(0.2f);
-        LogIap($"Receipt validated, granting product: {data}");
+        LogIap($"[2단계] 검증 통과, 상품 지급: {orderId}");
         tcs.SetResult(true);
     }
 }

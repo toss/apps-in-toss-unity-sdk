@@ -57,7 +57,8 @@ namespace AppsInToss
         /// <para>
         /// nullable 필드지만 사실상 필수다. 지정하지 않으면 브릿지가 플랫폼에 콜백을 넘기는 반면
         /// C# 쪽에는 등록된 핸들러가 없어, 결제가 완료될 때마다 SDK가 자동으로 false를 응답한다
-        /// (Console에 "Unknown nested callback" 경고가 남는다). 결과적으로 모든 결제가 지급 실패로
+        /// (Console에 "Nested callback 'processProductGrant' is not registered" 에러가 남는다).
+        /// 결과적으로 모든 결제가 지급 실패로
         /// 처리되므로, 결제 흐름을 붙일 때 이 필드부터 채워야 한다.
         /// </para>
         /// <para>
@@ -209,7 +210,8 @@ namespace AppsInToss
         /// <para>
         /// nullable 필드지만 사실상 필수다. 지정하지 않으면 브릿지가 플랫폼에 콜백을 넘기는 반면
         /// C# 쪽에는 등록된 핸들러가 없어, 결제가 완료될 때마다 SDK가 자동으로 false를 응답한다
-        /// (Console에 "Unknown nested callback" 경고가 남는다). 결과적으로 모든 결제가 지급 실패로
+        /// (Console에 "Nested callback 'processProductGrant' is not registered" 에러가 남는다).
+        /// 결과적으로 모든 결제가 지급 실패로
         /// 처리되므로, 결제 흐름을 붙일 때 이 필드부터 채워야 한다.
         /// </para>
         /// <para>

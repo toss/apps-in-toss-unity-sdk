@@ -113,10 +113,13 @@ async void InitializeGameParallel()
 var options = new IapCreateOneTimePurchaseOrderOptionsOptions { Sku = sku };
 ```
 
-SDK 내부적으로 JS 브릿지는 이 콜백을 **항상** 플랫폼에 넘깁니다. C# 쪽에서 콜백이 등록되지 않았을 뿐이라, 결제가 완료되면 플랫폼이 콜백을 호출하고 SDK는 등록된 핸들러가 없다는 이유로 자동으로 `false`를 응답합니다. 이때 Console에 다음 경고가 남습니다.
+SDK 내부적으로 JS 브릿지는 이 콜백을 **항상** 플랫폼에 넘깁니다. C# 쪽에서 콜백이 등록되지 않았을 뿐이라, 결제가 완료되면 플랫폼이 콜백을 호출하고 SDK는 등록된 핸들러가 없다는 이유로 자동으로 `false`를 응답합니다. 이때 Console에 다음 에러가 남습니다.
 
 ```
-[AITCore] Unknown nested callback: {subscriptionId}_processProductGrant
+[AITCore] Nested callback 'processProductGrant' is not registered (id: ...); responding false.
+The payment already succeeded, so the product will NOT be granted and the user may see a
+refund notice. Set ProcessProductGrant on the order options and return without awaiting
+(e.g. Task.FromResult(true)) -- awaiting inside it freezes the payment overlay.
 ```
 
 결제 흐름을 붙일 때 이 필드부터 채우세요.

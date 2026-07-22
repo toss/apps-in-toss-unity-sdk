@@ -1322,8 +1322,18 @@ namespace AppsInToss
             }
             else
             {
-                Debug.LogWarning($"[AITCore] Unknown nested callback: {key}");
-                // Return false if callback not found
+                // The platform asked a question nobody is listening to, and the only
+                // answer we can give is a rejection. For processProductGrant that rejects
+                // a payment that already went through, so name the consequence -- a bare
+                // "unknown callback: key" reads like a harmless warning.
+                var detail = request.CallbackName == "processProductGrant"
+                    ? "The payment already succeeded, so the product will NOT be granted and the user may see a refund notice. "
+                      + "Set ProcessProductGrant on the order options and return without awaiting (e.g. Task.FromResult(true)) "
+                      + "-- awaiting inside it freezes the payment overlay."
+                    : "It was either never set on the options, or its subscription was already cancelled.";
+                Debug.LogError(
+                    $"[AITCore] Nested callback '{request.CallbackName}' is not registered (id: {request.CallbackId}); "
+                    + $"responding false. {detail}");
                 RespondToNestedCallback(request.RequestId, false);
             }
         }

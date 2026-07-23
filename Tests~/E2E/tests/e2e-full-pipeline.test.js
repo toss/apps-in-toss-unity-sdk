@@ -1164,15 +1164,15 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
 
 
     // -------------------------------------------------------------------------
-    // Test 8: Nested callback async round-trip (processProductGrant)
+    // Test 8: Nested callback synchronous round-trip (processProductGrant)
     // 결제 이벤트 없이 중첩 콜백 왕복을 실 WebGL 빌드에서 검증한다:
     //   JS SendMessage('AITCore','OnNestedCallback')
-    //     → C# OnNestedCallback → DispatchNestedCallbackAsync → await 사용자 콜백
-    //     → __AITRespondToNestedCallback → JS Promise resolve
-    // E2ETestTrigger.Start()가 사전 등록한 콜백 2종(지연 true / 예외)을 구동하고,
-    // 미등록 콜백까지 3케이스로 검증한다. 핵심: 지연 resolve는 구 동기 구현으로 불가능.
+    //     → C# OnNestedCallback → 동기 콜백 실행 → __AITRespondToNestedCallback
+    //     → JS Promise resolve
+    // E2ETestTrigger.Start()가 사전 등록한 콜백 2종(즉시 true / 예외)을 구동하고,
+    // 미등록 콜백까지 3케이스로 검증한다. 응답은 SendMessage와 같은 스택에서 나간다.
     // -------------------------------------------------------------------------
-    test('8. Nested callback (processProductGrant) should round-trip asynchronously', async () => {
+    test('8. Nested callback (processProductGrant) should round-trip synchronously', async () => {
       test.setTimeout(60000);
 
       console.log('🔄 Driving nested callback round-trip via SendMessage...');
@@ -1221,36 +1221,35 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
         }
 
         // 순차 실행(응답이 requestId로 구분되므로 병렬도 가능하나 로그 가독성을 위해 순차)
-        const asyncCase = await drive('e2e-nested-async', 'async', 20000);
+        const grantCase = await drive('e2e-nested-grant', 'grant', 20000);
         const throwCase = await drive('e2e-nested-throw', 'throw', 20000);
         const unknownCase = await drive('e2e-nested-unknown', 'unknown', 20000);
 
-        return { asyncCase, throwCase, unknownCase };
+        return { grantCase, throwCase, unknownCase };
       });
 
       console.log('\n' + '='.repeat(70));
       console.log('📊 NESTED CALLBACK ROUND-TRIP RESULTS');
       console.log('='.repeat(70));
-      console.log(`   async(true) : ${JSON.stringify(roundTrip.asyncCase)}`);
+      console.log(`   grant(true) : ${JSON.stringify(roundTrip.grantCase)}`);
       console.log(`   throw(false): ${JSON.stringify(roundTrip.throwCase)}`);
       console.log(`   unknown     : ${JSON.stringify(roundTrip.unknownCase)}`);
       console.log('='.repeat(70));
 
       testResults.tests['8_nested_callback'] = {
         passed:
-          roundTrip.asyncCase.ok && roundTrip.asyncCase.result === true &&
+          roundTrip.grantCase.ok && roundTrip.grantCase.result === true &&
           roundTrip.throwCase.ok && roundTrip.throwCase.result === false &&
           roundTrip.unknownCase.ok && roundTrip.unknownCase.result === false,
-        asyncCase: roundTrip.asyncCase,
+        grantCase: roundTrip.grantCase,
         throwCase: roundTrip.throwCase,
         unknownCase: roundTrip.unknownCase
       };
 
-      // 1) 지연 async 콜백 → true 로 resolve, 그리고 등록된 지연(300ms)만큼 실제로 기다렸는지 검증.
-      //    구 동기 구현은 같은 프레임에 즉시 응답하므로 이 지연은 async 왕복의 결정적 증거다.
-      expect(roundTrip.asyncCase.ok, `async case should resolve (got: ${JSON.stringify(roundTrip.asyncCase)})`).toBe(true);
-      expect(roundTrip.asyncCase.result, 'async callback should resolve true').toBe(true);
-      expect(roundTrip.asyncCase.elapsedMs, 'async callback should genuinely await (>=150ms vs ~300ms delay)').toBeGreaterThanOrEqual(150);
+      // 1) 즉시 승인 콜백 → true 로 resolve. 응답은 OnNestedCallback과 같은 스택에서 나가므로
+      //    별도의 continuation 없이 왕복이 완료된다.
+      expect(roundTrip.grantCase.ok, `grant case should resolve (got: ${JSON.stringify(roundTrip.grantCase)})`).toBe(true);
+      expect(roundTrip.grantCase.result, 'grant callback should resolve true').toBe(true);
 
       // 2) 예외 콜백 → false 로 resolve (응답 유실 없이 dispatch가 잡아 정확히 1회 응답)
       expect(roundTrip.throwCase.ok, `throw case should resolve (got: ${JSON.stringify(roundTrip.throwCase)})`).toBe(true);

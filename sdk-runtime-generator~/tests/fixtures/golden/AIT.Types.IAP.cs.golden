@@ -50,46 +50,30 @@ namespace AppsInToss
         [JsonProperty("sku")]
         public string Sku; // optional
         /// <summary>
-        /// 결제 완료 시 상품 지급 여부를 결정하는 콜백. 반드시 동기로 값을 반환해야 한다 —
-        /// 이 콜백 안에서 <c>await</c>를 쓰면 결제가 완료되지 않는다.
+        /// 결제 완료 시 상품 지급 여부를 <c>bool</c>로 즉시 반환하는 콜백. 여기서 서버 검증을
+        /// 하지 말고 <c>true</c>를 반환한 뒤, 검증·지급은 <c>onEvent</c>에서 한다.
         /// </summary>
         /// <remarks>
         /// <para>
-        /// nullable 필드지만 사실상 필수다. 지정하지 않으면 브릿지가 플랫폼에 콜백을 넘기는 반면
-        /// C# 쪽에는 등록된 핸들러가 없어, 결제가 완료될 때마다 SDK가 자동으로 false를 응답한다
-        /// (Console에 "Nested callback 'processProductGrant' is not registered" 에러가 남는다).
-        /// 결과적으로 모든 결제가 지급 실패로
-        /// 처리되므로, 결제 흐름을 붙일 때 이 필드부터 채워야 한다.
+        /// 이 콜백은 네이티브 결제 오버레이가 화면을 덮고 player loop가 멈춘 동안 호출되므로,
+        /// 반드시 이미 메모리에 있는 값으로 동기 판정해야 한다 (그래서 반환형이 <c>bool</c>이다 —
+        /// async로 서버를 기다리면 오버레이가 닫힐 때까지 프레임이 오지 않아 교착이 된다).
+        /// 전달되는 정보도 OrderId 하나뿐이라 여기서 새로 검증할 수 있는 것도 없다.
         /// </para>
         /// <para>
-        /// 이 콜백은 네이티브 결제 오버레이가 화면을 덮고 있는 동안 호출된다. 그 구간에는
-        /// 브라우저가 <c>visibilityState = hidden</c> 상태라 requestAnimationFrame이 멈추고,
-        /// 그것이 유일한 구동원인 Unity WebGL player loop도 함께 멈춘다. player loop가 멈추면
-        /// <c>await</c>의 continuation이 재개되지 않는다.
-        /// </para>
-        /// <para>
-        /// 그래서 서버 검증, <c>UnityWebRequest</c>, 코루틴 대기 등을 await하면 순환 교착이 생긴다.
-        /// 오버레이는 이 콜백의 응답을 기다리고, 이 콜백은 오버레이가 닫혀야 오는 프레임을 기다린다.
-        /// 실기기 실측에서 115초간 정지한 뒤 "문제가 생겼어요. 환불을 신청해주세요" 페이지가
-        /// 노출됐다. (<c>Task.Delay</c>는 WebGL에 타이머 스레드가 없어 아예 완료되지 않으므로
-        /// 어떤 경우에도 쓸 수 없다.)
-        /// </para>
-        /// <para>
-        /// 이 콜백은 검증하는 자리가 아니라 접수하는 자리다. 콜백이 호출됐다는 것 자체가 이미
-        /// 앱이 결제 성공을 판정했다는 뜻이고, 전달되는 정보도 OrderId 하나뿐이라 여기서
-        /// 새로 검증할 수 있는 것이 없다. 서버 검증을 호출할 수 있는 시점은 둘뿐이다 —
-        /// 정상 흐름의 <c>onEvent</c>(오버레이가 닫힌 직후, OrderId와 살아 있는 player loop를
-        /// 동시에 갖는 첫 순간)와, 그마저 놓쳤을 때의 앱 시작 시 대사다. 이 콜백 안에서는 절대
-        /// 호출하지 않는다 — 여기서는 검증 요청의 응답을 기다릴 수 없다. 검증 자체는 개발사
-        /// 서버가 Toss의 주문 상태 조회 API(mTLS, 서버 간 통신)로 OrderId를 확인하는 것이며,
-        /// 클라이언트가 보고한 OrderId를 그대로 신뢰해서는 안 된다.
+        /// nullable 필드지만 사실상 필수다. 지정하지 않으면 브릿지는 플랫폼에 콜백을 넘기는데
+        /// C# 쪽에 등록된 핸들러가 없어, 결제가 완료될 때마다 SDK가 자동으로 false를 응답한다
+        /// (Console에 "Nested callback 'processProductGrant' is not registered" 에러). 결과적으로
+        /// 모든 결제가 지급 실패로 처리되므로, 결제 흐름을 붙일 때 이 필드부터 채워야 한다.
         /// </para>
         /// <example>
         /// <code>
-        /// // 1) 콜백은 즉시 승인한다 (await 0회)
-        /// options.ProcessProductGrant = _ => Task.FromResult(true);
+        /// // 1) 콜백은 즉시 승인한다
+        /// options.ProcessProductGrant = _ => true;
         ///
-        /// // 2) 검증·지급은 onEvent에서. OrderId와 살아있는 player loop를 동시에 갖는 첫 순간이다.
+        /// // 2) 검증·지급은 onEvent에서. 오버레이가 닫혀 player loop가 살아난 뒤라 await가 안전하다.
+        /// //    검증은 개발사 서버가 Toss 주문 상태 조회 API(mTLS)로 OrderId를 확인하는 것이며,
+        /// //    클라이언트가 보고한 OrderId를 그대로 신뢰하지 않는다.
         /// onEvent: e => { ShowPurchaseSuccess(); _ = MyServer.VerifyAndDeliver(e.Data.OrderId); }
         ///
         /// // 3) 앱 시작 시 미배달 대사 — 2)가 실행되기 전에 앱이 죽은 경우를 회수한다.
@@ -105,12 +89,11 @@ namespace AppsInToss
         /// <para>
         /// <c>false</c>는 정말로 이 상품을 줄 수 없을 때만 반환한다 — true가 아닌 응답은 사용자에게
         /// 환불 안내 페이지를 띄우므로 "확신이 없으니 일단 false"는 매 결제마다 환불 안내가 뜨는
-        /// 앱이 된다. 판정 근거는 이미 메모리에 있어야 한다. false를 반환하려고 무언가를 조회하면
-        /// 그 조회가 위에서 설명한 교착을 그대로 일으킨다.
+        /// 앱이 된다. 판정 근거는 이미 메모리에 있어야 한다.
         /// </para>
         /// </remarks>
         [JsonIgnore]
-        public System.Func<IapCreateOneTimePurchaseOrderOptionsOptionsProcessProductGrantParam, System.Threading.Tasks.Task<bool>> ProcessProductGrant;
+        public System.Func<IapCreateOneTimePurchaseOrderOptionsOptionsProcessProductGrantParam, bool> ProcessProductGrant;
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
@@ -205,46 +188,30 @@ namespace AppsInToss
         [JsonProperty("offerId")]
         public string OfferId; // optional
         /// <summary>
-        /// 결제 완료 시 상품 지급 여부를 결정하는 콜백. 반드시 동기로 값을 반환해야 한다 —
-        /// 이 콜백 안에서 <c>await</c>를 쓰면 결제가 완료되지 않는다.
+        /// 결제 완료 시 상품 지급 여부를 <c>bool</c>로 즉시 반환하는 콜백. 여기서 서버 검증을
+        /// 하지 말고 <c>true</c>를 반환한 뒤, 검증·지급은 <c>onEvent</c>에서 한다.
         /// </summary>
         /// <remarks>
         /// <para>
-        /// nullable 필드지만 사실상 필수다. 지정하지 않으면 브릿지가 플랫폼에 콜백을 넘기는 반면
-        /// C# 쪽에는 등록된 핸들러가 없어, 결제가 완료될 때마다 SDK가 자동으로 false를 응답한다
-        /// (Console에 "Nested callback 'processProductGrant' is not registered" 에러가 남는다).
-        /// 결과적으로 모든 결제가 지급 실패로
-        /// 처리되므로, 결제 흐름을 붙일 때 이 필드부터 채워야 한다.
+        /// 이 콜백은 네이티브 결제 오버레이가 화면을 덮고 player loop가 멈춘 동안 호출되므로,
+        /// 반드시 이미 메모리에 있는 값으로 동기 판정해야 한다 (그래서 반환형이 <c>bool</c>이다 —
+        /// async로 서버를 기다리면 오버레이가 닫힐 때까지 프레임이 오지 않아 교착이 된다).
+        /// 전달되는 정보도 OrderId 하나뿐이라 여기서 새로 검증할 수 있는 것도 없다.
         /// </para>
         /// <para>
-        /// 이 콜백은 네이티브 결제 오버레이가 화면을 덮고 있는 동안 호출된다. 그 구간에는
-        /// 브라우저가 <c>visibilityState = hidden</c> 상태라 requestAnimationFrame이 멈추고,
-        /// 그것이 유일한 구동원인 Unity WebGL player loop도 함께 멈춘다. player loop가 멈추면
-        /// <c>await</c>의 continuation이 재개되지 않는다.
-        /// </para>
-        /// <para>
-        /// 그래서 서버 검증, <c>UnityWebRequest</c>, 코루틴 대기 등을 await하면 순환 교착이 생긴다.
-        /// 오버레이는 이 콜백의 응답을 기다리고, 이 콜백은 오버레이가 닫혀야 오는 프레임을 기다린다.
-        /// 실기기 실측에서 115초간 정지한 뒤 "문제가 생겼어요. 환불을 신청해주세요" 페이지가
-        /// 노출됐다. (<c>Task.Delay</c>는 WebGL에 타이머 스레드가 없어 아예 완료되지 않으므로
-        /// 어떤 경우에도 쓸 수 없다.)
-        /// </para>
-        /// <para>
-        /// 이 콜백은 검증하는 자리가 아니라 접수하는 자리다. 콜백이 호출됐다는 것 자체가 이미
-        /// 앱이 결제 성공을 판정했다는 뜻이고, 전달되는 정보도 OrderId 하나뿐이라 여기서
-        /// 새로 검증할 수 있는 것이 없다. 서버 검증을 호출할 수 있는 시점은 둘뿐이다 —
-        /// 정상 흐름의 <c>onEvent</c>(오버레이가 닫힌 직후, OrderId와 살아 있는 player loop를
-        /// 동시에 갖는 첫 순간)와, 그마저 놓쳤을 때의 앱 시작 시 대사다. 이 콜백 안에서는 절대
-        /// 호출하지 않는다 — 여기서는 검증 요청의 응답을 기다릴 수 없다. 검증 자체는 개발사
-        /// 서버가 Toss의 주문 상태 조회 API(mTLS, 서버 간 통신)로 OrderId를 확인하는 것이며,
-        /// 클라이언트가 보고한 OrderId를 그대로 신뢰해서는 안 된다.
+        /// nullable 필드지만 사실상 필수다. 지정하지 않으면 브릿지는 플랫폼에 콜백을 넘기는데
+        /// C# 쪽에 등록된 핸들러가 없어, 결제가 완료될 때마다 SDK가 자동으로 false를 응답한다
+        /// (Console에 "Nested callback 'processProductGrant' is not registered" 에러). 결과적으로
+        /// 모든 결제가 지급 실패로 처리되므로, 결제 흐름을 붙일 때 이 필드부터 채워야 한다.
         /// </para>
         /// <example>
         /// <code>
-        /// // 1) 콜백은 즉시 승인한다 (await 0회)
-        /// options.ProcessProductGrant = _ => Task.FromResult(true);
+        /// // 1) 콜백은 즉시 승인한다
+        /// options.ProcessProductGrant = _ => true;
         ///
-        /// // 2) 검증·지급은 onEvent에서. OrderId와 살아있는 player loop를 동시에 갖는 첫 순간이다.
+        /// // 2) 검증·지급은 onEvent에서. 오버레이가 닫혀 player loop가 살아난 뒤라 await가 안전하다.
+        /// //    검증은 개발사 서버가 Toss 주문 상태 조회 API(mTLS)로 OrderId를 확인하는 것이며,
+        /// //    클라이언트가 보고한 OrderId를 그대로 신뢰하지 않는다.
         /// onEvent: e => { ShowPurchaseSuccess(); _ = MyServer.VerifyAndDeliver(e.Data.OrderId); }
         ///
         /// // 3) 앱 시작 시 미배달 대사 — 2)가 실행되기 전에 앱이 죽은 경우를 회수한다.
@@ -260,12 +227,11 @@ namespace AppsInToss
         /// <para>
         /// <c>false</c>는 정말로 이 상품을 줄 수 없을 때만 반환한다 — true가 아닌 응답은 사용자에게
         /// 환불 안내 페이지를 띄우므로 "확신이 없으니 일단 false"는 매 결제마다 환불 안내가 뜨는
-        /// 앱이 된다. 판정 근거는 이미 메모리에 있어야 한다. false를 반환하려고 무언가를 조회하면
-        /// 그 조회가 위에서 설명한 교착을 그대로 일으킨다.
+        /// 앱이 된다. 판정 근거는 이미 메모리에 있어야 한다.
         /// </para>
         /// </remarks>
         [JsonIgnore]
-        public System.Func<CreateSubscriptionPurchaseOrderOptionsOptionsProcessProductGrantParam, System.Threading.Tasks.Task<bool>> ProcessProductGrant;
+        public System.Func<CreateSubscriptionPurchaseOrderOptionsOptionsProcessProductGrantParam, bool> ProcessProductGrant;
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]

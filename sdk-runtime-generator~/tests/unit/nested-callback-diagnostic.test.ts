@@ -43,10 +43,10 @@ describe('미등록 nested callback 진단 (csharp-core.hbs)', () => {
     expect(rendered).toContain('request.CallbackName == "processProductGrant"');
     expect(rendered).toContain('The payment already succeeded');
     expect(rendered).toContain('will NOT be granted');
-    // 대처가 없으면 진단이 막다른 길이 된다.
-    expect(rendered).toContain('Task.FromResult(true)');
-    // 필드를 채우다 곧바로 다음 함정(await 교착)에 빠지지 않도록 같이 경고한다.
-    expect(rendered).toContain('freezes the payment overlay');
+    // 대처가 없으면 진단이 막다른 길이 된다. 동기 bool 계약이므로 즉시 승인 예시를 준다.
+    expect(rendered).toContain('_ => true');
+    // 검증·지급을 어디서 하는지(onEvent)까지 짚어 다음 스텝을 잃지 않게 한다.
+    expect(rendered).toContain('verify and deliver later in onEvent');
   });
 
   test('진단을 추가해도 정확히 1회 false 응답은 유지된다', async () => {

@@ -762,22 +762,23 @@ namespace AppsInToss
 
         /// <summary>
         /// Register a nested callback (e.g., processProductGrant in IAPCreateOneTimePurchaseOrder).
-        /// The user callback returns a Task so it can await asynchronous work (such as
-        /// server-side receipt validation) before deciding the result. JavaScript awaits
-        /// the returned Promise, so the response may be delivered after an await.
+        /// The callback returns its result synchronously. In Unity WebGL the native payment
+        /// overlay freezes the player loop, so an async callback's continuation could never
+        /// resume; the callback must decide from in-memory state and return immediately.
+        /// Server verification and delivery happen later, in onEvent, where frames run again.
         /// </summary>
         /// <param name="subscriptionId">Parent subscription ID</param>
         /// <param name="callbackName">Callback name (e.g., "processProductGrant")</param>
-        /// <param name="callback">Callback function (Func&lt;T, Task&lt;TResult&gt;&gt;)</param>
-        public void RegisterNestedCallback<TParam, TResult>(string subscriptionId, string callbackName, Func<TParam, Task<TResult>> callback)
+        /// <param name="callback">Callback function (Func&lt;T, TResult&gt;)</param>
+        public void RegisterNestedCallback<TParam, TResult>(string subscriptionId, string callbackName, Func<TParam, TResult> callback)
         {
             var key = $"{subscriptionId}_{callbackName}";
-            // Wrap the callback to accept a JSON string and return Task<bool>
-            Func<string, Task<bool>> wrapper = async (string jsonData) => {
+            // Wrap the callback to accept a JSON string and return bool
+            Func<string, bool> wrapper = (string jsonData) => {
                 try
                 {
                     var param = JsonConvert.DeserializeObject<TParam>(jsonData);
-                    var result = await callback(param);
+                    var result = callback(param);
                     // Convert result to bool (handles bool, object, etc.)
                     if (result is bool boolResult) return boolResult;
                     return result != null;
@@ -814,10 +815,10 @@ namespace AppsInToss
 
         /// <summary>
         /// Called by JavaScript when a nested callback is triggered.
-        /// JavaScript waits for the result via RespondToNestedCallback.
-        /// This method must stay synchronous/void because Unity's SendMessage invokes it
-        /// by name; the actual (possibly asynchronous) callback runs fire-and-forget so the
-        /// response is sent exactly once when it completes.
+        /// JavaScript waits for the result via RespondToNestedCallback. The callback runs
+        /// and responds synchronously, on the same stack as Unity's SendMessage -- so the
+        /// response reaches JavaScript even while the payment overlay has frozen the player
+        /// loop, without relying on any continuation resuming.
         /// </summary>
         public void OnNestedCallback(string jsonPayload)
         {
@@ -836,12 +837,19 @@ namespace AppsInToss
 
             var key = $"{request.CallbackId}_{request.CallbackName}";
             if (_nestedCallbacks.TryGetValue(key, out var rawCallback)
-                && rawCallback is Func<string, Task<bool>> callback)
+                && rawCallback is Func<string, bool> callback)
             {
-                // Fire-and-forget: DispatchNestedCallbackAsync owns all exception handling
-                // and always responds exactly once, so this task never carries an
-                // unobserved exception.
-                _ = DispatchNestedCallbackAsync(request.RequestId, request.Data, callback);
+                bool result;
+                try
+                {
+                    result = callback(request.Data);
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogError($"[AITCore] Nested callback dispatch error: {ex.Message}");
+                    result = false;
+                }
+                RespondToNestedCallback(request.RequestId, result);
             }
             else
             {
@@ -851,34 +859,14 @@ namespace AppsInToss
                 // "unknown callback: key" reads like a harmless warning.
                 var detail = request.CallbackName == "processProductGrant"
                     ? "The payment already succeeded, so the product will NOT be granted and the user may see a refund notice. "
-                      + "Set ProcessProductGrant on the order options and return without awaiting (e.g. Task.FromResult(true)) "
-                      + "-- awaiting inside it freezes the payment overlay."
+                      + "Set ProcessProductGrant on the order options and return the grant decision (e.g. _ => true); "
+                      + "verify and deliver later in onEvent."
                     : "It was either never set on the options, or its subscription was already cancelled.";
                 Debug.LogError(
                     $"[AITCore] Nested callback '{request.CallbackName}' is not registered (id: {request.CallbackId}); "
                     + $"responding false. {detail}");
                 RespondToNestedCallback(request.RequestId, false);
             }
-        }
-
-        /// <summary>
-        /// Awaits the (possibly asynchronous) nested callback and responds to JavaScript
-        /// exactly once. Returns a Task (not async void) so a faulted user callback cannot
-        /// escape as an unobserved exception and crash the WebGL player.
-        /// </summary>
-        private async Task DispatchNestedCallbackAsync(string requestId, string data, Func<string, Task<bool>> callback)
-        {
-            bool result;
-            try
-            {
-                result = await callback(data);
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError($"[AITCore] Nested callback dispatch error: {ex.Message}");
-                result = false;
-            }
-            RespondToNestedCallback(requestId, result);
         }
 
 #if UNITY_WEBGL && !UNITY_EDITOR

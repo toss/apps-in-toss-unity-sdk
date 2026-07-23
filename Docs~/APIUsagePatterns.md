@@ -5,7 +5,7 @@
 ## 목차
 
 - [기본 패턴: async/await](#기본-패턴-asyncawait)
-- [인앱결제: await를 쓰면 안 되는 자리](#인앱결제-await를-쓰면-안-되는-자리)
+- [인앱결제: 지급 승인과 서버 검증](#인앱결제-지급-승인과-서버-검증)
 - [에러 처리](#에러-처리)
 - [WebGL vs Unity Editor](#webgl-vs-unity-editor)
 - [Mock 브릿지](#mock-브릿지)
@@ -100,9 +100,11 @@ async void InitializeGameParallel()
 
 ---
 
-## 인앱결제: await를 쓰면 안 되는 자리
+## 인앱결제: 지급 승인과 서버 검증
 
-`IAPCreateOneTimePurchaseOrder` / `IAPCreateSubscriptionPurchaseOrder`에 넘기는 `ProcessProductGrant` 콜백은 **동기로 값을 반환해야 합니다.** 타입이 `Task<bool>`이라 `await`를 쓸 수 있게 생겼지만, 쓰면 결제가 완료되지 않습니다.
+`IAPCreateOneTimePurchaseOrder` / `IAPCreateSubscriptionPurchaseOrder`에 넘기는 `ProcessProductGrant` 콜백은 지급 여부를 `bool`로 **동기 반환**합니다. 이 콜백은 네이티브 결제 오버레이가 화면을 덮어 player loop가 멈춘 동안 호출되므로, `await`로 서버를 기다리면 오버레이가 닫힐 때까지 프레임이 오지 않아 교착이 됩니다. 반환형이 `bool`인 것은 그래서입니다 — async 형태는 컴파일되지 않아 이 위험을 원천 차단합니다.
+
+**핵심은 여기서 검증하지 않는다는 것입니다.** 콜백은 이미 메모리에 있는 값으로 즉시 승인하고, 서버 검증과 실제 지급은 오버레이가 닫힌 **뒤** `onEvent`에서 합니다. 어떻게 나누고 서버 검증은 무엇으로 하는지가 이 절의 내용입니다.
 
 ### 먼저: 이 콜백은 선택이 아닙니다
 
@@ -118,30 +120,17 @@ SDK 내부적으로 JS 브릿지는 이 콜백을 **항상** 플랫폼에 넘깁
 ```
 [AITCore] Nested callback 'processProductGrant' is not registered (id: ...); responding false.
 The payment already succeeded, so the product will NOT be granted and the user may see a
-refund notice. Set ProcessProductGrant on the order options and return without awaiting
-(e.g. Task.FromResult(true)) -- awaiting inside it freezes the payment overlay.
+refund notice. Set ProcessProductGrant on the order options and return the grant decision
+(e.g. _ => true); verify and deliver later in onEvent.
 ```
 
 결제 흐름을 붙일 때 이 필드부터 채우세요.
 
-### 왜 안 되는가
+### 왜 동기여야 하나
 
-이 콜백은 **네이티브 결제 오버레이가 화면을 덮고 있는 동안** 호출됩니다. 그 구간에는 브라우저가 `visibilityState = hidden` 상태라 `requestAnimationFrame`이 멈추고, 그것이 유일한 구동원인 Unity WebGL의 player loop도 함께 멈춥니다. player loop가 멈추면 `await`의 continuation이 재개되지 않습니다.
+결제 오버레이가 떠 있는 동안은 `visibilityState = hidden`이라 `requestAnimationFrame`이 멈추고, 그것으로만 도는 Unity WebGL player loop도 함께 멈춥니다. 그래서 콜백 안에서 `await`한 continuation은 오버레이가 닫혀야 오는 프레임을 기다리고, 오버레이는 그 콜백의 응답을 기다리는 교착이 됩니다. 실기기 실측에서 이 고리가 **115초** 유지된 뒤 `"{앱 이름}에 문제가 생겼어요. 환불을 신청해주세요"` 페이지가 떴고(결제 성공 후 30초 내 `true` 응답이 없으면 노출될 수 있음), 즉시 승인한 결제는 오버레이가 **1.5초**에 닫히고 정상 완료됐습니다. 반환형을 `bool`로 고정한 것은 이 `await` 형태를 컴파일 단계에서 막기 위해서입니다.
 
-그래서 콜백 안에서 무언가를 `await`하면 순환 교착이 생깁니다:
-
-```
-오버레이는 이 콜백의 응답을 기다린다
-   → 콜백은 await continuation을 기다린다
-      → continuation은 프레임을 기다린다
-         → 프레임은 오버레이가 닫혀야 온다   ← 처음으로 돌아감
-```
-
-실기기 실측에서 이 고리가 **115초간** 유지된 뒤, 앱이 자체 타임아웃으로 끊고 `"{앱 이름}에 문제가 생겼어요. 환불을 신청해주세요"` 페이지를 띄웠습니다. 결제 성공 후 30초 안에 `ProcessProductGrant`가 `true`로 응답하지 않으면 이 페이지가 노출될 수 있습니다.
-
-같은 실측에서 동기로 반환했을 때는 오버레이가 **1.5초 만에** 닫히고 결제가 정상 완료됐습니다.
-
-### 장부가 두 개라는 것부터
+### 장부가 두 개입니다
 
 "서버 검증 결과로 지급 여부를 결정한다"가 안 되는 진짜 이유는 시간이 부족해서가 아니라, **서로 다른 두 장부를 하나로 취급했기** 때문입니다.
 
@@ -160,7 +149,7 @@ refund notice. Set ProcessProductGrant on the order options and return without a
 var options = new IapCreateOneTimePurchaseOrderOptionsOptions
 {
     Sku = sku,
-    ProcessProductGrant = _ => Task.FromResult(true)   // await 0회
+    ProcessProductGrant = _ => true
 };
 ```
 
@@ -272,17 +261,6 @@ foreach (var order in completed.Orders)
 판정 근거는 반드시 이미 메모리에 있어야 합니다. `false`를 반환하기 위해 무언가를 조회해야 한다면, 그 조회 자체가 이 절이 설명한 교착을 일으킵니다.
 
 > **구버전 토스앱에서는 반환값이 무시됩니다.** `processProductGrant`를 지원하지 않는 버전(Android 5.231.1 미만 / iOS 5.230.0 미만)에서는 브릿지가 구 결제 경로로 폴백하며, 이때 콜백의 반환값은 플랫폼에 전달되지 않고 버려집니다. 반환값에 의존하는 로직을 짤 때 이 구간을 염두에 두세요.
-
-### 쓸 수 없는 것들
-
-| 하려던 것 | 결과 |
-|---|---|
-| `await UnityWebRequest` 영수증 검증 | 오버레이가 닫힐 때까지 완료 통지가 오지 않음 |
-| `await Task.Delay(...)` | WebGL에는 타이머 스레드가 없어 **아예 완료되지 않음** |
-| `await` 코루틴 래퍼 (`WaitForSecondsRealtime`) | 코루틴도 player loop가 구동하므로 동일하게 멈춤 |
-| 콜백 안에서 UI를 띄워 사용자 입력 대기 | 화면이 오버레이에 덮여 있어 사용자가 볼 수 없음 |
-
-> 이 제약은 Unity 고유가 아닙니다. 웹(React 등) 미니앱에서도 `processProductGrant`가 30초를 넘기면 같은 환불 페이지가 노출됩니다. 다만 Unity WebGL은 *모든* `await`가 프레임을 필요로 해서 더 쉽게 걸립니다.
 
 ---
 

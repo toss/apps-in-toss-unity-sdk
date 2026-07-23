@@ -7,10 +7,11 @@ import { generateFieldDoc } from '../../src/generators/csharp/field-docs.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SDK_DIR = path.resolve(__dirname, '../../..', 'Runtime/SDK');
 
-// processProductGrant는 SDK에서 가장 위험한 필드다. 이 콜백 안에서 await를 쓰면
-// 네이티브 오버레이 구간에 player loop가 멈춰 continuation이 재개되지 않고,
-// 오버레이는 이 콜백의 응답을 기다리므로 순환 교착이 된다 (실측 115초 정지 후 환불 페이지).
-// 업스트림 JSDoc은 웹 기준이라 이 제약을 담지 못하므로 SDK가 직접 문서를 넣는다.
+// processProductGrant는 SDK에서 가장 위험한 필드다. 네이티브 오버레이 구간에는
+// player loop가 멈춰 어떤 await도 재개되지 않으므로, 반환형을 동기 bool로 고정해
+// async 형태를 컴파일 단계에서 차단한다 (실측 115초 정지 후 환불 페이지).
+// 그 이유와 "그럼 서버 검증은 어디서 하나(onEvent)"를 IntelliSense에 직접 띄우기 위해
+// 업스트림 JSDoc(웹 기준) 대신 SDK가 직접 문서를 넣는다.
 // 재생성 때 조용히 사라지면 개발자가 다시 같은 함정에 빠지므로 여기서 고정한다.
 // XML 주석 접두사와 줄바꿈을 걷어내 문장이 줄에 걸쳐 있어도 검사할 수 있게 만든다.
 // 이게 없으면 문구를 다듬어 줄바꿈 위치가 바뀔 때마다 테스트가 엉뚱하게 깨진다.
@@ -22,10 +23,12 @@ describe('필드 XML 문서 오버라이드', () => {
   test('processProductGrant에 동기 반환 규칙이 문서화되어야 함', () => {
     const doc = flatten(generateFieldDoc('processProductGrant'));
 
-    expect(doc).toContain('반드시 동기로 값을 반환해야 한다');
-    expect(doc).toContain('<c>await</c>를 쓰면 결제가 완료되지 않는다');
+    expect(doc).toContain('<c>bool</c>로 즉시 반환');
+    // 왜 동기여야 하는지(async→교착)를 짚어야 규칙이 납득된다.
+    expect(doc).toContain('async로 서버를 기다리면');
+    expect(doc).toContain('교착이 된다');
     // 경고만 있고 대안이 없으면 막다른 길이 된다.
-    expect(doc).toContain('Task.FromResult(true)');
+    expect(doc).toContain('_ => true');
   });
 
   test('즉시 승인이 안전해지려면 대사 단계가 함께 문서화되어야 함', () => {
@@ -51,7 +54,7 @@ describe('필드 XML 문서 오버라이드', () => {
     const doc = generateFieldDoc('processProductGrant', '업스트림 설명');
 
     expect(doc).not.toContain('업스트림 설명');
-    expect(flatten(doc)).toContain('반드시 동기로 값을 반환해야 한다');
+    expect(flatten(doc)).toContain('<c>bool</c>로 즉시 반환');
   });
 
   test('오버라이드가 없는 필드는 업스트림 description을 한 줄 summary로 쓴다', () => {

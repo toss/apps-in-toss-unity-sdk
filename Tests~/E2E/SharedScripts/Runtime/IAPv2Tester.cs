@@ -453,23 +453,19 @@ public class IAPv2Tester : MonoBehaviour
             var options = new IapCreateOneTimePurchaseOrderOptionsOptions
             {
                 Sku = iapSku,
-                // [1단계] 콜백은 즉시 승인한다. await가 한 번이라도 들어가면 결제가 완료되지 않는다.
-                //
-                // 이 콜백은 네이티브 결제 오버레이가 화면을 덮고 있는 동안 호출된다. 그 구간에는
-                // 브라우저가 visibilityState = hidden 상태라 requestAnimationFrame이 멈추고,
-                // 그것이 유일한 구동원인 Unity WebGL player loop도 함께 멈춘다. player loop가
-                // 멈추면 await의 continuation이 재개되지 않는데, 오버레이는 이 콜백의 응답을
-                // 기다리고 있으므로 서로를 기다리는 교착이 된다.
-                // (실측: 115초 정지 후 "문제가 생겼어요. 환불을 신청해주세요" 페이지 노출)
+                // [1단계] 콜백은 이미 메모리에 있는 값으로 즉시 승인한다. 반환형이 bool인 것은
+                // 우연이 아니다 — 이 콜백은 네이티브 결제 오버레이가 화면을 덮고 player loop가
+                // 멈춘 동안 호출되므로, async로 서버를 기다리면 오버레이가 닫힐 때까지 프레임이
+                // 오지 않아 교착이 된다. 동기 bool 계약이 그 위험한 형태를 컴파일 단계에서 막는다.
                 //
                 // 여기서 검증할 수 있는 것도 없다 — 이 콜백이 호출됐다는 것 자체가 앱이 이미
                 // 결제 성공을 판정했다는 뜻이고, 넘어오는 정보도 OrderId 하나뿐이다.
                 // 검증과 지급은 아래 onEvent(2단계)에서 한다.
                 ProcessProductGrant = _ =>
                 {
-                    LogIap("ProcessProductGrant: 즉시 true 반환 (await 0회)");
+                    LogIap("ProcessProductGrant: 즉시 true 반환 (동기)");
                     UpdateEventLog();
-                    return Task.FromResult(true);
+                    return true;
                 }
             };
 

@@ -13,8 +13,7 @@ using AppsInToss;
 /// ## 정상 플로우 (소모품)
 /// 1. GetProductItemList() - 상품 목록 조회
 /// 2. CreateOneTimePurchaseOrder() - 구매 주문 생성
-///    - processProductGrant 콜백은 await 없이 즉시 true를 반환한다.
-///      이 콜백 안에서 await하면 결제가 완료되지 않는다 (아래 ExecuteIAPCreateOrder 주석 참조)
+///    - processProductGrant 콜백은 동기 bool — 즉시 true를 반환한다 (아래 ExecuteIAPCreateOrder 주석 참조)
 ///    - SDK가 자동으로 CompleteProductGrant 호출하여 주문 완료 처리
 /// 3. 서버 영수증 검증과 실제 상품 지급은 onEvent에서 — 오버레이가 닫힌 뒤라 await가 안전하다
 ///
@@ -453,14 +452,9 @@ public class IAPv2Tester : MonoBehaviour
             var options = new IapCreateOneTimePurchaseOrderOptionsOptions
             {
                 Sku = iapSku,
-                // [1단계] 콜백은 이미 메모리에 있는 값으로 즉시 승인한다. 반환형이 bool인 것은
-                // 우연이 아니다 — 이 콜백은 네이티브 결제 오버레이가 화면을 덮고 player loop가
-                // 멈춘 동안 호출되므로, async로 서버를 기다리면 오버레이가 닫힐 때까지 프레임이
-                // 오지 않아 교착이 된다. 동기 bool 계약이 그 위험한 형태를 컴파일 단계에서 막는다.
-                //
-                // 여기서 검증할 수 있는 것도 없다 — 이 콜백이 호출됐다는 것 자체가 앱이 이미
-                // 결제 성공을 판정했다는 뜻이고, 넘어오는 정보도 OrderId 하나뿐이다.
-                // 검증과 지급은 아래 onEvent(2단계)에서 한다.
+                // [1단계] 콜백은 즉시 승인한다. 오버레이가 player loop를 멈춘 동안 호출되는
+                // 자리라 반환형이 동기 bool이다(async는 컴파일 불가). 여기서 검증할 것도
+                // 없다(정보는 OrderId뿐) — 검증과 지급은 아래 onEvent(2단계)에서 한다.
                 ProcessProductGrant = _ =>
                 {
                     LogIap("ProcessProductGrant: 즉시 true 반환 (동기)");
@@ -480,7 +474,7 @@ public class IAPv2Tester : MonoBehaviour
 
                     // [2단계] 검증과 지급은 여기서. 오버레이가 닫혀 player loop가 살아난 뒤라
                     // 서버 왕복을 기다려도 안전하다 — OrderId와 살아있는 프레임을 동시에 갖는
-                    // 첫 순간이다. (실측: 오버레이가 닫히고 45ms 뒤 도착)
+                    // 첫 순간이다. (실측: 오버레이가 닫히고 71ms 뒤 도착)
                     GrantGameProduct(iapOrderId);
 
                     UpdateStatus();
@@ -669,8 +663,7 @@ public class IAPv2Tester : MonoBehaviour
     /// [2단계] 서버 영수증 검증 + 실제 상품 지급 (데모용).
     ///
     /// onEvent에서 fire-and-forget으로 호출한다. 이 자리는 오버레이가 이미 닫혀 player loop가
-    /// 돌고 있으므로 await가 정상 동작한다 — 똑같은 코드를 ProcessProductGrant 콜백 안에 두면
-    /// 교착이 된다. 차이는 코드가 아니라 호출되는 시점이다.
+    /// 돌고 있으므로 await가 정상 동작한다.
     ///
     /// 실제 구현에서는 개발사 서버에 OrderId를 보내고, 서버가 Toss의 주문 상태 조회 API
     /// (mTLS, 서버 간 통신)로 결제를 확인한 뒤 지급을 기록한다. 클라이언트가 보고한 OrderId를

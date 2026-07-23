@@ -1202,12 +1202,24 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
               resolve({ ok: false, reason: 'timeout', elapsedMs: performance.now() - started });
             }, timeoutMs);
 
+            // jslib의 __AITRespondToNestedCallback은 저장된 resolver를 동기 호출하므로,
+            // 동기 dispatch라면 SendMessage가 리턴한 시점에 이미 응답이 도착해 있어야 한다.
+            // syncSettled가 그 사실을 기록한다 — dispatch가 fire-and-forget(비동기 1틱 지연)
+            // 으로 되돌아가는 회귀를 타이밍 임계값 없이 결정적으로 잡는다.
+            let outcome = null;
+            let sendReturned = false;
             window.__AIT_NESTED_CALLBACKS[requestId] = (resultBool) => {
               if (settled) return;
               settled = true;
               clearTimeout(timer);
               delete window.__AIT_NESTED_CALLBACKS[requestId];
-              resolve({ ok: true, result: resultBool, elapsedMs: performance.now() - started });
+              outcome = {
+                ok: true,
+                result: resultBool,
+                elapsedMs: performance.now() - started,
+                syncSettled: !sendReturned
+              };
+              if (sendReturned) resolve(outcome); // 비동기 도착 경로 (회귀 시)
             };
 
             const payload = JSON.stringify({
@@ -1217,6 +1229,8 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
               Data: JSON.stringify({ orderId: 'e2e-order' })
             });
             ui.SendMessage('AITCore', 'OnNestedCallback', payload);
+            sendReturned = true;
+            if (outcome) resolve(outcome); // 동기 도착 경로 (정상)
           });
         }
 
@@ -1246,18 +1260,21 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
         unknownCase: roundTrip.unknownCase
       };
 
-      // 1) 즉시 승인 콜백 → true 로 resolve. 응답은 OnNestedCallback과 같은 스택에서 나가므로
-      //    별도의 continuation 없이 왕복이 완료된다.
+      // 1) 즉시 승인 콜백 → true 로 resolve, 그리고 SendMessage와 같은 스택에서 응답이
+      //    나갔는지(syncSettled) 검증 — dispatch가 비동기로 되돌아가는 회귀를 결정적으로 잡는다.
       expect(roundTrip.grantCase.ok, `grant case should resolve (got: ${JSON.stringify(roundTrip.grantCase)})`).toBe(true);
       expect(roundTrip.grantCase.result, 'grant callback should resolve true').toBe(true);
+      expect(roundTrip.grantCase.syncSettled, 'grant response must arrive on the SendMessage stack (sync dispatch)').toBe(true);
 
       // 2) 예외 콜백 → false 로 resolve (응답 유실 없이 dispatch가 잡아 정확히 1회 응답)
       expect(roundTrip.throwCase.ok, `throw case should resolve (got: ${JSON.stringify(roundTrip.throwCase)})`).toBe(true);
       expect(roundTrip.throwCase.result, 'throwing callback should resolve false (no lost response)').toBe(false);
+      expect(roundTrip.throwCase.syncSettled, 'exception path must also respond synchronously').toBe(true);
 
       // 3) 미등록 callbackId → false 로 즉시 resolve
       expect(roundTrip.unknownCase.ok, `unknown case should resolve (got: ${JSON.stringify(roundTrip.unknownCase)})`).toBe(true);
       expect(roundTrip.unknownCase.result, 'unknown callback should resolve false').toBe(false);
+      expect(roundTrip.unknownCase.syncSettled, 'unregistered path must also respond synchronously').toBe(true);
     });
 
   }); // end of test.describe.serial

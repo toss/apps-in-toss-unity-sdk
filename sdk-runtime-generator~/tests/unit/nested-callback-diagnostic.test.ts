@@ -49,6 +49,22 @@ describe('미등록 nested callback 진단 (csharp-core.hbs)', () => {
     expect(rendered).toContain('verify and deliver later in onEvent');
   });
 
+  test('dispatch는 동기다 — 등록·실행 어느 쪽에도 Task 경로가 없다', async () => {
+    const rendered = await renderCore();
+
+    // 등록: 동기 Func<TParam, TResult>. Task<...> 래퍼가 되살아나면 async 람다가
+    // 다시 컴파일되어 오버레이 교착이 재발한다. (타입 매핑은 function-mapping.test.ts가,
+    // 템플릿 쪽 계약은 여기가 고정한다 — hbs만 단독으로 되돌아가는 회귀 차단)
+    expect(rendered).toContain(
+      'public void RegisterNestedCallback<TParam, TResult>(string subscriptionId, string callbackName, Func<TParam, TResult> callback)',
+    );
+    expect(rendered).toContain('rawCallback is Func<string, bool> callback');
+    // 실행: 응답은 SendMessage와 같은 스택에서 나가야 한다. fire-and-forget 비동기
+    // 디스패치로 되돌아가면 오버레이 정지 중 continuation이 재개되지 않는다.
+    expect(rendered).not.toContain('DispatchNestedCallbackAsync');
+    expect(rendered).not.toContain('Func<string, Task<bool>>');
+  });
+
   test('진단을 추가해도 정확히 1회 false 응답은 유지된다', async () => {
     const rendered = await renderCore();
 

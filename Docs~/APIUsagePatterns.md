@@ -16,7 +16,7 @@
 
 SDK의 모든 API는 C#의 `async/await` 패턴을 사용합니다. 이는 Unity의 메인 스레드를 차단하지 않고 비동기 작업을 수행할 수 있게 해줍니다.
 
-> ⚠️ **예외가 하나 있습니다.** 인앱결제의 `ProcessProductGrant` 콜백 안에서는 `await`를 쓰면 안 됩니다. 결제가 완료되지 않습니다. [인앱결제 절](#인앱결제-await를-쓰면-안-되는-자리)을 먼저 읽어주세요.
+> ⚠️ **예외가 하나 있습니다.** 인앱결제의 `ProcessProductGrant` 콜백만은 동기 `bool`을 반환합니다. 이유와 올바른 구조는 [인앱결제 절](#인앱결제-지급-승인과-서버-검증)을 참고하세요.
 
 ### 기본 사용법
 
@@ -102,9 +102,7 @@ async void InitializeGameParallel()
 
 ## 인앱결제: 지급 승인과 서버 검증
 
-`IAPCreateOneTimePurchaseOrder` / `IAPCreateSubscriptionPurchaseOrder`에 넘기는 `ProcessProductGrant` 콜백은 지급 여부를 `bool`로 **동기 반환**합니다. 이 콜백은 네이티브 결제 오버레이가 화면을 덮어 player loop가 멈춘 동안 호출되므로, `await`로 서버를 기다리면 오버레이가 닫힐 때까지 프레임이 오지 않아 교착이 됩니다. 반환형이 `bool`인 것은 그래서입니다 — async 형태는 컴파일되지 않아 이 위험을 원천 차단합니다.
-
-**핵심은 여기서 검증하지 않는다는 것입니다.** 콜백은 이미 메모리에 있는 값으로 즉시 승인하고, 서버 검증과 실제 지급은 오버레이가 닫힌 **뒤** `onEvent`에서 합니다. 어떻게 나누고 서버 검증은 무엇으로 하는지가 이 절의 내용입니다.
+`IAPCreateOneTimePurchaseOrder` / `IAPCreateSubscriptionPurchaseOrder`에 넘기는 `ProcessProductGrant` 콜백은 지급 여부를 `bool`로 **동기 반환**합니다. 핵심은 이 콜백에서 검증하지 않는 것입니다 — 콜백은 즉시 승인하고, 서버 검증과 실제 지급은 오버레이가 닫힌 **뒤** `onEvent`에서 합니다.
 
 ### 먼저: 이 콜백은 선택이 아닙니다
 
@@ -115,7 +113,7 @@ async void InitializeGameParallel()
 var options = new IapCreateOneTimePurchaseOrderOptionsOptions { Sku = sku };
 ```
 
-SDK 내부적으로 JS 브릿지는 이 콜백을 **항상** 플랫폼에 넘깁니다. C# 쪽에서 콜백이 등록되지 않았을 뿐이라, 결제가 완료되면 플랫폼이 콜백을 호출하고 SDK는 등록된 핸들러가 없다는 이유로 자동으로 `false`를 응답합니다. 이때 Console에 다음 에러가 남습니다.
+JS 브릿지는 이 콜백을 **항상** 플랫폼에 넘기므로, C#에 등록된 핸들러가 없으면 SDK가 결제 완료 시마다 자동으로 `false`를 응답합니다. 이때 Console에 다음 에러가 남습니다.
 
 ```
 [AITCore] Nested callback 'processProductGrant' is not registered (id: ...); responding false.
@@ -132,7 +130,7 @@ refund notice. Set ProcessProductGrant on the order options and return the grant
 
 ### 장부가 두 개입니다
 
-"서버 검증 결과로 지급 여부를 결정한다"가 안 되는 진짜 이유는 시간이 부족해서가 아니라, **서로 다른 두 장부를 하나로 취급했기** 때문입니다.
+콜백의 반환값과 내 서버의 지급 기록은 **서로 다른 두 장부**입니다.
 
 | | 무엇을 기록하나 | 소유 | 마감 |
 |---|---|---|---|
@@ -162,8 +160,6 @@ var options = new IapCreateOneTimePurchaseOrderOptionsOptions
 1. 정상 흐름이면 **`onEvent`** — 오버레이가 닫힌 직후.
 2. 그마저 놓쳤으면 **앱 시작 시 대사**(3단계).
 
-콜백(`ProcessProductGrant`) 안에서는 **절대 호출하지 않습니다.** 그 구간에는 player loop가 멈춰 있어 검증 요청의 응답을 기다릴 수 없기 때문입니다.
-
 `onEvent`가 첫 번째 유효 시점인 이유는, 그때가 **`OrderId`와 살아 있는 player loop를 동시에 갖는 가장 이른 순간**이기 때문입니다. 아래는 실기기에서 측정한 한 결제의 타임라인입니다.
 
 ```
@@ -177,7 +173,7 @@ var options = new IapCreateOneTimePurchaseOrderOptionsOptions
 00:36:02.998  검증 완료                (+202ms)          await가 정상 재개
 ```
 
-`WaitForSecondsRealtime(0.2f)` 코루틴이 202ms에 완료된 것에 주목하세요. 같은 대기 코드를 콜백 안에 두면 오버레이가 닫힐 때까지 영영 재개되지 않습니다. **차이는 코드가 아니라 호출되는 시점**입니다. `onEvent`부터는 `await`를 마음껏 써도 됩니다.
+`onEvent`부터는 프레임이 정상 속도로 돌므로 `await`를 마음껏 써도 됩니다 (`WaitForSecondsRealtime(0.2f)`가 202ms에 완료).
 
 ```csharp
 _disposer = AIT.IAPCreateOneTimePurchaseOrder(
@@ -257,8 +253,6 @@ foreach (var order in completed.Orders)
 공식 문서는 `true`가 아닌 응답에 대해 환불 안내 페이지가 *노출될 수 있다*고 안내합니다. (직접 측정한 것은 무응답 경로이며, 명시적 `false`에서도 같은 화면이 나오는지는 확인하지 않았습니다.) 따라서 `false`는 **정말로 이 상품을 줄 수 없을 때만** 씁니다 — 예를 들어 이미 보유한 비소모품을 결제 도중 다른 기기에서 획득한 경우처럼, 지급이 불가능하다고 지금 단정할 수 있을 때입니다.
 
 "확신이 없으니 일단 `false`"는 성립하지 않습니다. 매 결제마다 환불 안내가 뜨는 앱이 되기 때문입니다. 확신은 1~3단계로 확보하는 것이지 `false`로 확보하는 것이 아닙니다.
-
-판정 근거는 반드시 이미 메모리에 있어야 합니다. `false`를 반환하기 위해 무언가를 조회해야 한다면, 그 조회 자체가 이 절이 설명한 교착을 일으킵니다.
 
 > **구버전 토스앱에서는 반환값이 무시됩니다.** `processProductGrant`를 지원하지 않는 버전(Android 5.231.1 미만 / iOS 5.230.0 미만)에서는 브릿지가 구 결제 경로로 폴백하며, 이때 콜백의 반환값은 플랫폼에 전달되지 않고 버려집니다. 반환값에 의존하는 로직을 짤 때 이 구간을 염두에 두세요.
 

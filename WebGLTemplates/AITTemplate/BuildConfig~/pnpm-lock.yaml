@@ -20,8 +20,8 @@ importers:
   .:
     dependencies:
       '@apps-in-toss/bridge-core':
-        specifier: 2.10.6
-        version: 2.10.6
+        specifier: 2.10.7
+        version: 2.10.7
       '@apps-in-toss/web-analytics':
         specifier: 2.10.6
         version: 2.10.6(@apps-in-toss/web-bridge@2.10.6)
@@ -57,6 +57,9 @@ packages:
 
   '@apps-in-toss/bridge-core@2.10.6':
     resolution: {integrity: sha512-r/aaiMwg0GYjetiELD2NyvX1VG+OELuHUFIlNN8GGW3YOFlIkx4C1B2BoscjAWazqJpNdbpKlH2JzXrYy5KHzA==}
+
+  '@apps-in-toss/bridge-core@2.10.7':
+    resolution: {integrity: sha512-c6H7EZ8Ux4LtaPrm/EkNTWRVjegkbRiuQZIQsknOuh+h0k7vlzB10armjbG5DYTeAn+geChi5qEZCGZ6BZD9sg==}
 
   '@apps-in-toss/cli@2.10.6':
     resolution: {integrity: sha512-fBouLfQTJklJvQc36kFZKQtfVpYa4D1JdYXGiV/S81OfpK6tOeOMBo8qaRsF5MN5y2zBNx4WyejTUWiejmxzBg==}
@@ -5981,6 +5984,8 @@ snapshots:
 
   '@apps-in-toss/bridge-core@2.10.6': {}
 
+  '@apps-in-toss/bridge-core@2.10.7': {}
+
   '@apps-in-toss/cli@2.10.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(@react-navigation/native@7.2.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(@swc/helpers@0.5.17)(@types/node@26.1.1)(react-native-safe-area-context@5.6.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(react-native-screens@4.23.0(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)(typanion@3.14.0)(typescript@7.0.2)':
     dependencies:
       '@apps-in-toss/ait-format': 1.0.0
@@ -6337,7 +6342,7 @@ snapshots:
 
   '@babel/helper-environment-visitor@7.24.7':
     dependencies:
-      '@babel/types': 7.28.5
+      '@babel/types': 7.29.7
 
   '@babel/helper-globals@7.29.7': {}
 
@@ -10950,7 +10955,7 @@ snapshots:
       '@babel/register': 7.29.7(@babel/core@7.29.7)
       babel-core: 7.0.0-bridge.0(@babel/core@7.29.7)
       chalk: 4.1.2
-      flow-parser: 0.206.0
+      flow-parser: 0.322.0
       graceful-fs: 4.2.11
       micromatch: 4.0.8
       neo-async: 2.6.2
@@ -11447,8 +11452,8 @@ snapshots:
 
   metro-source-map@0.76.8:
     dependencies:
-      '@babel/traverse': 7.28.5
-      '@babel/types': 7.28.5
+      '@babel/traverse': 7.29.7
+      '@babel/types': 7.29.7
       invariant: 2.2.4
       metro-symbolicate: 0.76.8
       nullthrows: 1.1.1
@@ -11504,7 +11509,7 @@ snapshots:
     dependencies:
       '@babel/core': 7.29.7
       '@babel/generator': 7.28.5
-      '@babel/parser': 7.28.5
+      '@babel/parser': 7.29.7
       '@babel/types': 7.28.5
       babel-preset-fbjs: 3.4.0(@babel/core@7.29.7)
       metro: 0.76.8

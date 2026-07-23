@@ -16,7 +16,7 @@
     "test:watch": "vitest watch",
     "test:ui": "vitest --ui",
     "test:binding": "vitest run tests/unit/binding.test.ts",
-    "test:invariants": "vitest run tests/unit/invariants.test.ts",
+    "test:invariants": "vitest run tests/unit/invariants.test.ts tests/unit/function-mapping.test.ts tests/unit/nested-callback-diagnostic.test.ts tests/unit/field-docs.test.ts tests/unit/differential.test.ts",
     "test:serialization": "vitest run tests/unit/serialization.test.ts",
     "test:differential": "vitest run tests/unit/differential.test.ts",
     "test:multi-version": "vitest run tests/unit/multi-version.test.ts"

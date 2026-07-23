@@ -49,8 +49,38 @@ namespace AppsInToss
         [Preserve]
         [JsonProperty("sku")]
         public string Sku; // optional
+        /// <summary>
+        /// 결제 완료 시 상품 지급 여부를 <c>bool</c>로 즉시 반환하는 콜백. 결제 오버레이가
+        /// player loop를 멈춘 동안 호출되므로 async로 서버를 기다리면 교착이 된다 — 그래서
+        /// 반환형이 동기 bool이다. 서버 검증·지급은 오버레이가 닫힌 뒤 <c>onEvent</c>에서 한다.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// nullable 필드지만 사실상 필수다. 지정하지 않으면 결제가 완료될 때마다 SDK가 자동으로
+        /// false를 응답해("Nested callback 'processProductGrant' is not registered" 에러)
+        /// 모든 결제가 지급 실패로 처리된다.
+        /// </para>
+        /// <example>
+        /// <code>
+        /// options.ProcessProductGrant = _ => true;                          // 1) 즉시 승인
+        /// onEvent: e => { _ = MyServer.VerifyAndDeliver(e.Data.OrderId); }  // 2) 검증·지급
+        /// var completed = await AIT.IAPGetCompletedOrRefundedOrders();      // 3) 앱 시작 시 미배달 대사
+        /// </code>
+        /// </example>
+        /// <para>
+        /// <c>true</c>는 비가역이다 — 주문이 PURCHASED로 확정되고 되돌리는 API가 없어, 승인 직후
+        /// 앱이 죽으면 <c>IAPGetPendingOrders</c>에도 남지 않는다. 회수 창구는
+        /// <c>IAPGetCompletedOrRefundedOrders</c>뿐이며, 배달 여부의 기준은 서버 기록이어야
+        /// 한다(PlayerPrefs 등 로컬 기록은 재설치·기기 변경에 사라진다).
+        /// </para>
+        /// <para>
+        /// <c>false</c>는 정말로 이 상품을 줄 수 없을 때만 반환한다 — true가 아닌 응답은
+        /// 사용자에게 환불 안내 페이지를 띄운다. 자세한 절차는 Docs~/APIUsagePatterns.md의
+        /// "인앱결제: 지급 승인과 서버 검증" 절 참고.
+        /// </para>
+        /// </remarks>
         [JsonIgnore]
-        public System.Func<IapCreateOneTimePurchaseOrderOptionsOptionsProcessProductGrantParam, System.Threading.Tasks.Task<bool>> ProcessProductGrant;
+        public System.Func<IapCreateOneTimePurchaseOrderOptionsOptionsProcessProductGrantParam, bool> ProcessProductGrant;
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
@@ -144,8 +174,38 @@ namespace AppsInToss
         [Preserve]
         [JsonProperty("offerId")]
         public string OfferId; // optional
+        /// <summary>
+        /// 결제 완료 시 상품 지급 여부를 <c>bool</c>로 즉시 반환하는 콜백. 결제 오버레이가
+        /// player loop를 멈춘 동안 호출되므로 async로 서버를 기다리면 교착이 된다 — 그래서
+        /// 반환형이 동기 bool이다. 서버 검증·지급은 오버레이가 닫힌 뒤 <c>onEvent</c>에서 한다.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// nullable 필드지만 사실상 필수다. 지정하지 않으면 결제가 완료될 때마다 SDK가 자동으로
+        /// false를 응답해("Nested callback 'processProductGrant' is not registered" 에러)
+        /// 모든 결제가 지급 실패로 처리된다.
+        /// </para>
+        /// <example>
+        /// <code>
+        /// options.ProcessProductGrant = _ => true;                          // 1) 즉시 승인
+        /// onEvent: e => { _ = MyServer.VerifyAndDeliver(e.Data.OrderId); }  // 2) 검증·지급
+        /// var completed = await AIT.IAPGetCompletedOrRefundedOrders();      // 3) 앱 시작 시 미배달 대사
+        /// </code>
+        /// </example>
+        /// <para>
+        /// <c>true</c>는 비가역이다 — 주문이 PURCHASED로 확정되고 되돌리는 API가 없어, 승인 직후
+        /// 앱이 죽으면 <c>IAPGetPendingOrders</c>에도 남지 않는다. 회수 창구는
+        /// <c>IAPGetCompletedOrRefundedOrders</c>뿐이며, 배달 여부의 기준은 서버 기록이어야
+        /// 한다(PlayerPrefs 등 로컬 기록은 재설치·기기 변경에 사라진다).
+        /// </para>
+        /// <para>
+        /// <c>false</c>는 정말로 이 상품을 줄 수 없을 때만 반환한다 — true가 아닌 응답은
+        /// 사용자에게 환불 안내 페이지를 띄운다. 자세한 절차는 Docs~/APIUsagePatterns.md의
+        /// "인앱결제: 지급 승인과 서버 검증" 절 참고.
+        /// </para>
+        /// </remarks>
         [JsonIgnore]
-        public System.Func<CreateSubscriptionPurchaseOrderOptionsOptionsProcessProductGrantParam, System.Threading.Tasks.Task<bool>> ProcessProductGrant;
+        public System.Func<CreateSubscriptionPurchaseOrderOptionsOptionsProcessProductGrantParam, bool> ProcessProductGrant;
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]

@@ -3,6 +3,7 @@ import { resolveApiCategory, DEFAULT_CATEGORY } from '../../categories.js';
 import { mapToCSharpType } from '../../validators/types.js';
 import { loadUnionResultTemplate } from './templates.js';
 import { extractCleanName, capitalize, xmlSafe, functionParamTypeName } from './utils.js';
+import { generateFieldDoc } from './field-docs.js';
 import {
   InlineTypeTracker,
   JSON_EXTENSION_DATA_FIELD,
@@ -146,9 +147,7 @@ export class CSharpTypeGenerator {
           type = `${typeDef.name}${capitalize(prop.name)}`;
         }
 
-        const description = prop.description
-          ? `        /// <summary>${xmlSafe(prop.description)}</summary>\n`
-          : '';
+        const description = generateFieldDoc(prop.name, prop.description);
         return `${description}${generateFieldDeclaration(prop.name, type, prop.optional)}`;
       })
       .join('\n');
@@ -292,9 +291,7 @@ export class CSharpTypeGenerator {
           const propNameSingular = prop.name.endsWith('s') ? prop.name.slice(0, -1) : prop.name;
           type = `${cleanName}${capitalize(propNameSingular)}[]`;
         }
-        const description = prop.description
-          ? `        /// <summary>${xmlSafe(prop.description)}</summary>\n`
-          : '';
+        const description = generateFieldDoc(prop.name, prop.description);
         return `${description}${generateFieldDeclaration(prop.name, type, prop.optional)}`;
       })
       .join('\n');

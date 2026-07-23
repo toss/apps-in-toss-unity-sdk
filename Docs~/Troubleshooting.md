@@ -172,6 +172,29 @@ catch (AITException ex)
 
 ---
 
+### 인앱결제 후 "문제가 생겼어요. 환불을 신청해주세요"가 뜸
+
+**증상**: 결제는 성공했는데 `{앱 이름}에 문제가 생겼어요. 환불을 신청해주세요` 페이지가 뜨고, 상품이 지급되지 않습니다.
+
+**원인**: `ProcessProductGrant` 콜백이 `true`가 아닌 값으로 응답했습니다. 대부분은 콜백을 **아예 설정하지 않은** 경우입니다 — 이때 SDK는 등록된 핸들러가 없다는 이유로 자동으로 `false`를 응답하고, Console에 `Nested callback 'processProductGrant' is not registered` 에러를 남깁니다. 직접 `false`를 반환한 경우에도 같은 페이지가 뜹니다.
+
+**해결**: 콜백을 설정하고 즉시 `true`를 반환하세요. 반환형이 `bool`이라 이 자리에서 서버 검증(`await`)은 아예 컴파일되지 않습니다 — 검증과 지급은 오버레이가 닫힌 뒤 `onEvent`에서 합니다.
+
+```csharp
+// ✅ 콜백은 즉시 승인하고, 검증·지급은 onEvent에서 합니다
+options.ProcessProductGrant = _ => true;
+// ...
+onEvent: e => { ShowPurchaseSuccess(); _ = MyServer.VerifyAndDeliver(e.Data.OrderId); }
+```
+
+`false`는 정말로 이 상품을 줄 수 없다고 지금 단정할 수 있을 때만 반환하세요. "확신이 없으니 일단 `false`"는 매 결제마다 이 페이지가 뜨는 앱이 됩니다.
+
+**이미 실패한 주문 복구**: 이 증상으로 `true` 응답을 놓친 주문은 `PAYMENT_COMPLETED` 상태로 남습니다. `IAPGetPendingOrders`로 조회한 뒤 `IAPCompleteProductGrant`로 지급을 완료하세요. 승인은 됐지만 지급이 누락된 주문은 `IAPGetCompletedOrRefundedOrders`로 찾습니다.
+
+> 자세한 메커니즘과 전체 코드는 [API 사용 패턴 — 인앱결제](APIUsagePatterns.md#인앱결제-지급-승인과-서버-검증)를 참조하세요.
+
+---
+
 ## 개발 환경 문제
 
 ### Unity Editor에서 SDK 메뉴가 보이지 않음

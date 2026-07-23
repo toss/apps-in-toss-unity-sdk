@@ -5,6 +5,7 @@
 ## 목차
 
 - [기본 패턴: async/await](#기본-패턴-asyncawait)
+- [인앱결제: 지급 승인과 서버 검증](#인앱결제-지급-승인과-서버-검증)
 - [에러 처리](#에러-처리)
 - [WebGL vs Unity Editor](#webgl-vs-unity-editor)
 - [Mock 브릿지](#mock-브릿지)
@@ -14,6 +15,8 @@
 ## 기본 패턴: async/await
 
 SDK의 모든 API는 C#의 `async/await` 패턴을 사용합니다. 이는 Unity의 메인 스레드를 차단하지 않고 비동기 작업을 수행할 수 있게 해줍니다.
+
+> ⚠️ **예외가 하나 있습니다.** 인앱결제의 `ProcessProductGrant` 콜백만은 동기 `bool`을 반환합니다. 이유와 올바른 구조는 [인앱결제 절](#인앱결제-지급-승인과-서버-검증)을 참고하세요.
 
 ### 기본 사용법
 
@@ -94,6 +97,164 @@ async void InitializeGameParallel()
     Debug.Log($"기기: {deviceIdTask.Result}, 플랫폼: {platformTask.Result}, 언어: {localeTask.Result}");
 }
 ```
+
+---
+
+## 인앱결제: 지급 승인과 서버 검증
+
+`IAPCreateOneTimePurchaseOrder` / `IAPCreateSubscriptionPurchaseOrder`에 넘기는 `ProcessProductGrant` 콜백은 지급 여부를 `bool`로 **동기 반환**합니다. 핵심은 이 콜백에서 검증하지 않는 것입니다 — 콜백은 즉시 승인하고, 서버 검증과 실제 지급은 오버레이가 닫힌 **뒤** `onEvent`에서 합니다.
+
+### 먼저: 이 콜백은 선택이 아닙니다
+
+`ProcessProductGrant`는 nullable 필드라 지정하지 않아도 컴파일되지만, **지정하지 않으면 모든 결제가 지급 실패로 처리됩니다.**
+
+```csharp
+// ❌ 컴파일도 되고 결제 창도 뜨지만, 상품이 지급되지 않습니다
+var options = new IapCreateOneTimePurchaseOrderOptionsOptions { Sku = sku };
+```
+
+JS 브릿지는 이 콜백을 **항상** 플랫폼에 넘기므로, C#에 등록된 핸들러가 없으면 SDK가 결제 완료 시마다 자동으로 `false`를 응답합니다. 이때 Console에 다음 에러가 남습니다.
+
+```
+[AITCore] Nested callback 'processProductGrant' is not registered (id: ...); responding false.
+The payment already succeeded, so the product will NOT be granted and the user may see a
+refund notice. Set ProcessProductGrant on the order options and return the grant decision
+(e.g. _ => true); verify and deliver later in onEvent.
+```
+
+결제 흐름을 붙일 때 이 필드부터 채우세요.
+
+### 왜 동기여야 하나
+
+결제 오버레이가 떠 있는 동안은 `visibilityState = hidden`이라 `requestAnimationFrame`이 멈추고, 그것으로만 도는 Unity WebGL player loop도 함께 멈춥니다. 그래서 콜백 안에서 `await`한 continuation은 오버레이가 닫혀야 오는 프레임을 기다리고, 오버레이는 그 콜백의 응답을 기다리는 교착이 됩니다. 실기기 실측에서 이 고리가 **115초** 유지된 뒤 `"{앱 이름}에 문제가 생겼어요. 환불을 신청해주세요"` 페이지가 떴고(결제 성공 후 30초 내 `true` 응답이 없으면 노출될 수 있음), 즉시 승인한 결제는 오버레이가 **1.5초**에 닫히고 정상 완료됐습니다. 반환형을 `bool`로 고정한 것은 이 `await` 형태를 컴파일 단계에서 막기 위해서입니다.
+
+### 장부가 두 개입니다
+
+콜백의 반환값과 내 서버의 지급 기록은 **서로 다른 두 장부**입니다.
+
+| | 무엇을 기록하나 | 소유 | 마감 |
+|---|---|---|---|
+| `ProcessProductGrant` 반환값 | **결제가 소비됐는가** | Toss | 30초 (프레임 없음) |
+| 내 서버의 지급 기록 | **아이템을 배달했는가** | 개발사 | 마감 없음, 재시도 가능 |
+
+검증은 첫 번째 장부를 막는 게 아니라 **두 번째 장부를 막습니다.** 콜백은 "결제 소비를 접수했다"고 답하는 자리고, 검증과 지급은 그 뒤에 여유롭게 합니다.
+
+그래서 이 콜백에 넣을 코드는 사실상 한 줄로 정해져 있습니다.
+
+### 1단계 — 콜백은 즉시 승인한다
+
+```csharp
+var options = new IapCreateOneTimePurchaseOrderOptionsOptions
+{
+    Sku = sku,
+    ProcessProductGrant = _ => true
+};
+```
+
+이 콜백이 호출됐다는 것 자체가 이미 앱이 결제 성공을 판정했다는 뜻입니다. 콜백이 들고 오는 정보는 `OrderId` 하나뿐이라, 여기서 새로 검증할 수 있는 것도 없습니다.
+
+### 2단계 — 검증과 지급은 `onEvent`에서
+
+서버 검증을 **호출할 수 있는 시점은 둘뿐**입니다.
+
+1. 정상 흐름이면 **`onEvent`** — 오버레이가 닫힌 직후.
+2. 그마저 놓쳤으면 **앱 시작 시 대사**(3단계).
+
+`onEvent`가 첫 번째 유효 시점인 이유는, 그때가 **`OrderId`와 살아 있는 player loop를 동시에 갖는 가장 이른 순간**이기 때문입니다. 아래는 실기기에서 측정한 한 결제의 타임라인입니다.
+
+```
+00:35:48.563  결제 오버레이가 화면을 덮음      player loop 정지 ─┐
+                                                                │ 이 구간에서는 await가
+                 ⋮  (사용자가 결제 UI 조작)                      │ 재개되지 않는다.
+                                                                │ 검증을 호출하면 교착.
+00:36:01.413  ProcessProductGrant → 즉시 true   [1단계]         │
+00:36:02.725  오버레이 닫힘                     loop 재개 ──────┘
+00:36:02.796  onEvent 도착              (+71ms)  [2단계] ← 서버 검증은 여기서 호출
+00:36:02.998  검증 완료                (+202ms)          await가 정상 재개
+```
+
+`onEvent`부터는 프레임이 정상 속도로 돌므로 `await`를 마음껏 써도 됩니다 (`WaitForSecondsRealtime(0.2f)`가 202ms에 완료).
+
+```csharp
+_disposer = AIT.IAPCreateOneTimePurchaseOrder(
+    onEvent: e =>
+    {
+        // 결제는 이미 확정됐으므로 UI에 즉시 반영해도 됩니다
+        ShowPurchaseSuccess(e.Data.DisplayAmount);
+
+        // 검증·지급은 서버에 맡기고 기다리지 않습니다
+        _ = DeliverAsync(e.Data.OrderId);
+    },
+    options: options,
+    onError: err => Debug.LogError(err.Message)
+);
+
+async Task DeliverAsync(string orderId)
+{
+    // 여기서는 프레임이 정상적으로 돌므로 await가 안전합니다
+    await MyServer.VerifyAndDeliver(orderId);
+}
+```
+
+> `SuccessEvent.Data`에는 `Sku`가 없습니다. 어떤 상품인지는 구매를 시작할 때 넘긴 `sku`를 클로저로 잡아두거나, 서버가 `OrderId`로 조회해야 합니다.
+
+#### 서버는 무엇을 검증하나
+
+클라이언트가 보낸 `OrderId`를 그대로 믿으면 안 됩니다. 개발사 서버는 **주문 상태 조회 API**로 Toss에 직접 확인합니다.
+
+```
+POST https://apps-in-toss-api.toss.im/api-partner/v1/apps-in-toss/order/get-order-status
+{ "orderId": "..." }
+```
+
+- **mTLS 인증서가 필수**입니다 (서버 간 통신). 발급 방법은 [연동 절차 문서](https://developers-apps-in-toss.toss.im/development/integration-process.html)를 참고하세요.
+- `x-toss-user-key` 헤더에 토스 로그인으로 얻은 userKey를 넣으면 **그 유저의 주문만** 응답합니다. 넣지 않으면 모든 주문이 조회되므로, 다른 유저의 `OrderId`를 가로채 재사용하는 것을 막으려면 이 헤더를 함께 보내야 합니다.
+- 응답의 `sku`로 실제 결제된 상품을 확인할 수 있습니다. 클라이언트가 알려준 SKU를 신뢰하지 마세요.
+
+응답 `status`가 이 API의 핵심입니다.
+
+| status | 의미 |
+|---|---|
+| `PURCHASED` | 결제와 상품 지급이 모두 완료 |
+| `PAYMENT_COMPLETED` | 결제는 완료됐으나 **상품 지급 실패** |
+| `REFUNDED` | 환불 완료 |
+| `FAILED` / `ORDER_IN_PROGRESS` / `NOT_FOUND` | 결제 실패 / 진행 중 / 주문 없음 |
+
+앞의 두 값이 곧 `ProcessProductGrant` 반환값의 결과입니다. `true`를 반환한 주문은 `PURCHASED`, 그렇지 않은 주문은 `PAYMENT_COMPLETED`로 남습니다.
+
+자세한 명세는 [공식 IAP 문서](https://developers-apps-in-toss.toss.im/bedrock/reference/framework/%EC%9D%B8%EC%95%B1%20%EA%B2%B0%EC%A0%9C/IAP.html)를 참고하세요.
+
+### 3단계 — 앱 시작 시 미배달 대사
+
+2단계가 항상 실행된다는 보장은 없습니다. 콜백이 `true`를 보낸 직후 앱이 종료되면 `onEvent`를 받지 못하고, 그 주문은 이미 결제 소비가 확정돼 `IAPGetPendingOrders`에도 나타나지 않습니다.
+
+이 경우를 회수하는 것이 `IAPGetCompletedOrRefundedOrders`입니다. 앱 시작이나 포그라운드 복귀 시 한 번 훑어, 내 서버가 배달하지 않은 주문을 찾습니다.
+
+```csharp
+var completed = await AIT.IAPGetCompletedOrRefundedOrders();
+if (completed.Orders == null) return;   // 플랫폼 미지원 시 error 필드에 사유가 담깁니다
+
+foreach (var order in completed.Orders)
+{
+    if (order.Status != CompletedOrRefundedOrdersResultOrderStatus.COMPLETED) continue;
+
+    // 배달 여부의 기준은 서버 기록입니다. PlayerPrefs 같은 로컬 기록은
+    // 재설치·기기 변경으로 사라지므로 이 대사의 기준이 될 수 없습니다.
+    await MyServer.DeliverIfMissing(order.OrderId, order.Sku);
+}
+```
+
+이 3단계가 없으면 1단계의 즉시 승인이 위험해집니다. **셋은 한 묶음입니다.**
+
+> **환불은 폴링으로만 알 수 있습니다.** 결제나 환불이 발생했을 때 개발사 서버로 알려주는 웹훅은 제공되지 않습니다. 사용자가 환불을 받아도 앱이 다시 실행되어 이 대사가 돌기 전까지는 개발사가 알 수 없습니다. 환불된 주문의 상품을 회수해야 한다면, 지급한 주문의 `OrderId`를 서버에 보관해두고 주문 상태 조회 API로 주기적으로 확인해야 합니다.
+
+### `false`는 언제 반환하나
+
+공식 문서는 `true`가 아닌 응답에 대해 환불 안내 페이지가 *노출될 수 있다*고 안내합니다. (직접 측정한 것은 무응답 경로이며, 명시적 `false`에서도 같은 화면이 나오는지는 확인하지 않았습니다.) 따라서 `false`는 **정말로 이 상품을 줄 수 없을 때만** 씁니다 — 예를 들어 이미 보유한 비소모품을 결제 도중 다른 기기에서 획득한 경우처럼, 지급이 불가능하다고 지금 단정할 수 있을 때입니다.
+
+"확신이 없으니 일단 `false`"는 성립하지 않습니다. 매 결제마다 환불 안내가 뜨는 앱이 되기 때문입니다. 확신은 1~3단계로 확보하는 것이지 `false`로 확보하는 것이 아닙니다.
+
+> **구버전 토스앱에서는 반환값이 무시됩니다.** `processProductGrant`를 지원하지 않는 버전(Android 5.231.1 미만 / iOS 5.230.0 미만)에서는 브릿지가 구 결제 경로로 폴백하며, 이때 콜백의 반환값은 플랫폼에 전달되지 않고 버려집니다. 반환값에 의존하는 로직을 짤 때 이 구간을 염두에 두세요.
 
 ---
 

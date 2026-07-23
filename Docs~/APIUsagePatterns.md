@@ -168,7 +168,27 @@ var options = new IapCreateOneTimePurchaseOrderOptionsOptions
 
 ### 2단계 — 검증과 지급은 `onEvent`에서
 
-`onEvent`는 **`OrderId`와 살아 있는 player loop를 동시에 갖는 첫 순간**입니다. 실측에서 오버레이가 닫히고 45ms 뒤에 도착했습니다. 여기서부터는 `await`를 마음껏 써도 됩니다.
+서버 검증을 **호출할 수 있는 시점은 둘뿐**입니다.
+
+1. 정상 흐름이면 **`onEvent`** — 오버레이가 닫힌 직후.
+2. 그마저 놓쳤으면 **앱 시작 시 대사**(3단계).
+
+콜백(`ProcessProductGrant`) 안에서는 **절대 호출하지 않습니다.** 그 구간에는 player loop가 멈춰 있어 검증 요청의 응답을 기다릴 수 없기 때문입니다.
+
+`onEvent`가 첫 번째 유효 시점인 이유는, 그때가 **`OrderId`와 살아 있는 player loop를 동시에 갖는 가장 이른 순간**이기 때문입니다. 아래는 실기기에서 측정한 한 결제의 타임라인입니다.
+
+```
+00:35:48.563  결제 오버레이가 화면을 덮음      player loop 정지 ─┐
+                                                                │ 이 구간에서는 await가
+                 ⋮  (사용자가 결제 UI 조작)                      │ 재개되지 않는다.
+                                                                │ 검증을 호출하면 교착.
+00:36:01.413  ProcessProductGrant → 즉시 true   [1단계]         │
+00:36:02.725  오버레이 닫힘                     loop 재개 ──────┘
+00:36:02.796  onEvent 도착              (+71ms)  [2단계] ← 서버 검증은 여기서 호출
+00:36:02.998  검증 완료                (+202ms)          await가 정상 재개
+```
+
+`WaitForSecondsRealtime(0.2f)` 코루틴이 202ms에 완료된 것에 주목하세요. 같은 대기 코드를 콜백 안에 두면 오버레이가 닫힐 때까지 영영 재개되지 않습니다. **차이는 코드가 아니라 호출되는 시점**입니다. `onEvent`부터는 `await`를 마음껏 써도 됩니다.
 
 ```csharp
 _disposer = AIT.IAPCreateOneTimePurchaseOrder(

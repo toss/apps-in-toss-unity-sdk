@@ -1933,6 +1933,17 @@ namespace AppsInToss.Editor
             }
 
             EditorGUILayout.EndHorizontal();
+
+            // "None"은 iOS WebView에서 "RuntimeError: Unreachable code" 크래시가 실측 확인된 값이라
+            // 선택 자체는 막지 않되(명시적 override 존중) 경고로 위험을 알린다.
+            if (config.exceptionSupport >= 0 && (WebGLExceptionSupport)config.exceptionSupport == WebGLExceptionSupport.None)
+            {
+                EditorGUILayout.HelpBox(
+                    "예외 처리 모드 'None'은 iOS WebView에서 'RuntimeError: Unreachable code' 크래시가 실측 확인되었습니다.\n" +
+                    "사용을 권장하지 않습니다 — 최소 'ExplicitlyThrownOnly' 이상을 선택하세요.",
+                    MessageType.Warning
+                );
+            }
         }
 
         private void DrawShowUnityLogoSetting()

@@ -111,4 +111,84 @@ public class AITBuildInitializerSettingsTests
             PlayerSettings.GetStackTraceLogType(LogType.Log),
             "Restore must return LogType.Log stack trace to pre-build user value");
     }
+
+    // =====================================================
+    // ApplyShowUnityLogoSetting 동작 검증 (죽은 설정 배선 회귀 방지)
+    // =====================================================
+
+    /// <summary>
+    /// Personal 라이선스 에디터에서는 PlayerSettings.SplashScreen.show=false 대입이
+    /// 조용히 무시된다(값이 true로 유지됨 — Plus/Pro 전용 기능). setter가 실제로 반영되는
+    /// 환경인지 프로브해, 반영을 전제하는 테스트를 라이선스와 무관하게 안전하게 게이트한다.
+    /// </summary>
+    private static bool SplashScreenSetterIsEffective()
+    {
+        bool originalShow = PlayerSettings.SplashScreen.show;
+        try
+        {
+            PlayerSettings.SplashScreen.show = false;
+            return PlayerSettings.SplashScreen.show == false;
+        }
+        finally
+        {
+            PlayerSettings.SplashScreen.show = originalShow;
+        }
+    }
+
+    [Test]
+    public void ApplyShowUnityLogoSetting_ShowRequested_LeavesSplashScreenUntouched()
+    {
+        bool beforeShow = PlayerSettings.SplashScreen.show;
+        bool beforeLogo = PlayerSettings.SplashScreen.showUnityLogo;
+
+        // 로고 표시가 요청되면(showUnityLogoResolved=true) 라이선스와 무관하게 아무것도 쓰지 않는다.
+        bool applied = AITBuildInitializer.ApplyShowUnityLogoSetting(showUnityLogoResolved: true, hasProLicense: true);
+
+        Assert.IsFalse(applied, "표시 요청 시에는 적용(hide)이 일어나지 않아야 한다");
+        Assert.AreEqual(beforeShow, PlayerSettings.SplashScreen.show, "표시 요청 시 기존 PlayerSettings 값을 건드리면 안 된다");
+        Assert.AreEqual(beforeLogo, PlayerSettings.SplashScreen.showUnityLogo, "표시 요청 시 기존 PlayerSettings 값을 건드리면 안 된다");
+    }
+
+    [Test]
+    public void ApplyShowUnityLogoSetting_HideRequested_WithProLicense_HidesLogo()
+    {
+        if (!SplashScreenSetterIsEffective())
+        {
+            Assert.Ignore("Personal 라이선스 에디터에서는 SplashScreen setter가 무시되어 적용 결과를 검증할 수 없습니다.");
+            return;
+        }
+
+        bool originalShow = PlayerSettings.SplashScreen.show;
+        bool originalLogo = PlayerSettings.SplashScreen.showUnityLogo;
+        try
+        {
+            PlayerSettings.SplashScreen.show = true;
+            PlayerSettings.SplashScreen.showUnityLogo = true;
+
+            bool applied = AITBuildInitializer.ApplyShowUnityLogoSetting(showUnityLogoResolved: false, hasProLicense: true);
+
+            Assert.IsTrue(applied, "Pro 라이선스가 있으면 로고 숨김이 적용되어야 한다");
+            Assert.IsFalse(PlayerSettings.SplashScreen.show);
+            Assert.IsFalse(PlayerSettings.SplashScreen.showUnityLogo);
+        }
+        finally
+        {
+            PlayerSettings.SplashScreen.show = originalShow;
+            PlayerSettings.SplashScreen.showUnityLogo = originalLogo;
+        }
+    }
+
+    [Test]
+    public void ApplyShowUnityLogoSetting_HideRequested_WithoutProLicense_SkipsAndLeavesSettingsUntouched()
+    {
+        PlayerSettings.SplashScreen.show = true;
+        PlayerSettings.SplashScreen.showUnityLogo = true;
+
+        // Personal 라이선스는 Unity가 로고 표시를 강제하므로 시도 자체를 건너뛰어야 한다.
+        bool applied = AITBuildInitializer.ApplyShowUnityLogoSetting(showUnityLogoResolved: false, hasProLicense: false);
+
+        Assert.IsFalse(applied, "Pro 라이선스가 없으면 숨김을 적용하면 안 된다");
+        Assert.IsTrue(PlayerSettings.SplashScreen.show, "Personal 라이선스에서는 원래 값을 그대로 두어야 한다");
+        Assert.IsTrue(PlayerSettings.SplashScreen.showUnityLogo, "Personal 라이선스에서는 원래 값을 그대로 두어야 한다");
+    }
 }

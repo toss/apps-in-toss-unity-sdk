@@ -36,6 +36,11 @@ namespace AppsInToss.Editor
         public bool mipStripping;
         public bool stripUnusedMeshComponents;
 
+        // 스플래시 스크린(Unity 로고) 설정 — AITBuildInitializer.ApplyShowUnityLogoSetting 이
+        // Pro 라이선스에서만 일시적으로 끄고, 빌드 후 여기 캡처한 원래 값으로 되돌린다.
+        public bool splashScreenShow;
+        public bool splashScreenShowUnityLogo;
+
         // IL2CPP/Stripping 설정
         public ScriptingImplementation scriptingBackend;
         public ManagedStrippingLevel managedStrippingLevel;
@@ -84,6 +89,9 @@ namespace AppsInToss.Editor
                 stripEngineCode = PlayerSettings.stripEngineCode,
                 mipStripping = PlayerSettings.mipStripping,
                 stripUnusedMeshComponents = PlayerSettings.stripUnusedMeshComponents,
+
+                splashScreenShow = PlayerSettings.SplashScreen.show,
+                splashScreenShowUnityLogo = PlayerSettings.SplashScreen.showUnityLogo,
 
 #if UNITY_6000_0_OR_NEWER
                 scriptingBackend = PlayerSettings.GetScriptingBackend(NamedBuildTarget.WebGL),
@@ -152,6 +160,9 @@ namespace AppsInToss.Editor
             PlayerSettings.stripEngineCode = stripEngineCode;
             PlayerSettings.mipStripping = mipStripping;
             PlayerSettings.stripUnusedMeshComponents = stripUnusedMeshComponents;
+
+            PlayerSettings.SplashScreen.show = splashScreenShow;
+            PlayerSettings.SplashScreen.showUnityLogo = splashScreenShowUnityLogo;
 
 #if UNITY_6000_0_OR_NEWER
             PlayerSettings.SetScriptingBackend(NamedBuildTarget.WebGL, scriptingBackend);

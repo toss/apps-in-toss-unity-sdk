@@ -243,7 +243,13 @@ namespace AppsInToss.Editor
 #endif
 #endif
 
-            // ===== Unity 로고 표시: 사용자의 PlayerSettings 설정을 그대로 유지 =====
+            // ===== Unity 로고 표시 (사용자 지정 또는 자동, Pro 라이선스 필요) =====
+            // -1(자동)은 AITDefaultSettings.GetDefaultShowUnityLogo()(=!HasPro())로 위임 — 다른 설정과 동일한
+            // Resolve 패턴. 실제 PlayerSettings 적용은 ApplyShowUnityLogoSetting에서 Pro 라이선스를 재확인한다.
+            bool showUnityLogo = editorConfig.showUnityLogo >= 0
+                ? editorConfig.showUnityLogo == 1
+                : AITDefaultSettings.GetDefaultShowUnityLogo();
+            bool showUnityLogoApplied = ApplyShowUnityLogoSetting(showUnityLogo);
 
             // ===== 디버그 심볼 (빌드 프로필에서 설정 - ApplyBuildProfileSettings 참조) =====
             // 프로필 기반 설정은 DoExport()에서 ApplyBuildProfileSettings()를 통해 적용됨
@@ -297,6 +303,10 @@ namespace AppsInToss.Editor
             Debug.Log($"[AIT]   - IL2CPP 설정: {il2cppConfig}{(!string.IsNullOrEmpty(il2cppConfigEnv) ? " (환경 변수)" : editorConfig.il2cppConfiguration < 0 ? " (자동)" : "")}");
             Debug.Log($"[AIT]   - Run In Background: {runInBackground}{(editorConfig.runInBackground < 0 ? " (자동)" : "")}");
             Debug.Log($"[AIT]   - Decompression Fallback: {decompressionFallback}{(editorConfig.decompressionFallback < 0 ? " (자동)" : "")}");
+            string showUnityLogoLog = showUnityLogo ? "표시"
+                : showUnityLogoApplied ? "숨김"
+                : "숨김 요청됨 (Pro 라이선스 없음 — 미적용)";
+            Debug.Log($"[AIT]   - Unity 로고: {showUnityLogoLog}{(editorConfig.showUnityLogo < 0 ? " (자동)" : "")}");
             string webGLCodeOptLog = !applyWebGLCodeOpt ? "미적용 (off)"
                 : webGLCodeOptOomSkipped ? "미적용 (6000.0 LTO OOM 회피)"
                 : webGLCodeOptApplied ? $"{webGLCodeOptTarget}{(editorConfig.webGLCodeOptimization < 0 ? " (자동)" : "")}"
@@ -427,6 +437,45 @@ namespace AppsInToss.Editor
             PlayerSettings.SetStackTraceLogType(LogType.Warning, StackTraceLogType.ScriptOnly);
             PlayerSettings.SetStackTraceLogType(LogType.Log, StackTraceLogType.ScriptOnly);
             PlayerSettings.SetStackTraceLogType(LogType.Exception, StackTraceLogType.ScriptOnly);
+        }
+
+        /// <summary>
+        /// Unity 로고(스플래시 스크린) 표시 설정을 적용한다.
+        /// 호출 위치: <see cref="Init"/>. PlayerSettingsSnapshot.Capture()가 호출 전에 찍혀 있어야
+        /// 빌드 후 Restore()로 사용자의 원래 스플래시 설정이 복원된다(AITConvertCore.DoExport 참조).
+        ///
+        /// showUnityLogoResolved == true(로고 표시)인 경우는 사용자의 기존 PlayerSettings를 그대로
+        /// 두고 아무것도 쓰지 않는다 — Unity 기본 동작이 이미 로고를 표시하므로 명시 적용이 불필요하다.
+        /// showUnityLogoResolved == false(로고 숨김)이 요청된 경우에만 Pro 라이선스를 확인한 뒤 적용한다:
+        /// Unity Personal 라이선스는 스플래시 화면에 Unity 로고 표시를 강제하므로 HasPro()가 false면
+        /// SplashScreen.show/showUnityLogo를 건드리지 않고 사유만 로그로 남긴다(시도해도 무의미).
+        /// </summary>
+        /// <returns>실제로 로고 숨김을 적용했으면 true.</returns>
+        internal static bool ApplyShowUnityLogoSetting(bool showUnityLogoResolved)
+        {
+            return ApplyShowUnityLogoSetting(showUnityLogoResolved, UnityEditorInternal.InternalEditorUtility.HasPro());
+        }
+
+        /// <summary>
+        /// <see cref="ApplyShowUnityLogoSetting(bool)"/>의 테스트 가능한 본체.
+        /// HasPro()는 실행 환경의 실제 라이선스에 의존하므로, 테스트가 Pro/Personal 양쪽 분기를
+        /// 검증할 수 있도록 hasProLicense를 파라미터로 분리했다.
+        /// </summary>
+        internal static bool ApplyShowUnityLogoSetting(bool showUnityLogoResolved, bool hasProLicense)
+        {
+            if (showUnityLogoResolved)
+                return false;
+
+            if (!hasProLicense)
+            {
+                Debug.Log("[AIT] Unity 로고 숨김이 설정되었지만 건너뜁니다 — Unity Personal 라이선스는 " +
+                          "스플래시 화면에 Unity 로고 표시를 강제합니다(Unity Pro 라이선스 필요).");
+                return false;
+            }
+
+            PlayerSettings.SplashScreen.show = false;
+            PlayerSettings.SplashScreen.showUnityLogo = false;
+            return true;
         }
 
         /// <summary>

@@ -510,16 +510,15 @@ namespace AppsInToss.Editor.Package
         /// Unity loader가 같은 URL을 요청할 때 이미 받은 Response를 반환합니다.
         ///
         /// 워밍 대상 확장(data/wasm → +framework/+loader):
-        ///  · framework.js: Unity loader 가 window.fetch() 로 요청하므로 earlyFetchMap 에서 정상 소진됩니다.
-        ///    콜드 방문에서는 네트워크 fetch + (활성 시) page-cache put, 재방문에서는 page-cache 히트가
-        ///    early-fetch 의 bare fetch 호출을 경유해 그대로 단락됩니다(page-cache 래퍼 우선순위 불변).
-        ///  · loader.js: index.html 이 &lt;script src&gt; 로 로드하므로 window.fetch 를 통해 재요청되지 않아
-        ///    earlyFetchMap 엔트리가 소진되지 않습니다(브라우저 HTTP 캐시 워밍이 목적). 이로 인한 두 가지
-        ///    양성(benign) 부작용: (1) earlyFetchMap 이 완전히 비지 않아 window.fetch 가 originalFetch 로
-        ///    복원되지 않고 early-fetch 래퍼가 상주(fetch 호출당 프로퍼티 조회 1회 오버헤드, 무시 가능),
-        ///    (2) early-fetch 의 bare fetch(loader)가 page-cache 래퍼를 경유해 loader 가 일시적으로
-        ///    page-cache 에 put 될 수 있으나 부팅 sweep 이 allowlist(loader 제외) 기준으로 즉시 삭제합니다.
-        ///    둘 다 측정 중립이며 게임 동작/allowlist 계약을 바꾸지 않습니다.
+        ///  · framework.js, loader.js: 둘 다 &lt;script src&gt; 로 소비됩니다 — loader.js 는 index.html 이,
+        ///    framework.js 는 로더 자신이 document.createElement('script') 로 로드합니다. 따라서 window.fetch 를
+        ///    통해 재요청되지 않아 earlyFetchMap 엔트리가 소진되지 않습니다(브라우저 HTTP 캐시 워밍이 목적).
+        ///    이로 인한 두 가지 양성(benign) 부작용: (1) earlyFetchMap 이 완전히 비지 않아 window.fetch 가
+        ///    originalFetch 로 복원되지 않고 early-fetch 래퍼가 상주(fetch 호출당 프로퍼티 조회 1회 오버헤드,
+        ///    무시 가능), (2) early-fetch 의 bare fetch(framework/loader)가 page-cache 래퍼를 경유해 일시적으로
+        ///    page-cache 에 put 될 수 있으나 부팅 sweep 이 allowlist(data/wasm 만) 기준으로 즉시 삭제합니다.
+        ///    둘 다 측정 중립이며 게임 동작/allowlist 계약을 바꾸지 않습니다. (선시작/kickoff 대상에서는
+        ///    이 둘을 제외합니다 — 아래 kickUrls 주석 참조.)
         /// </summary>
         private static string GenerateEarlyFetchScript(string dataFile, string frameworkFile, string wasmFile, string loaderFile, string buildSrc, string bundleVersion)
         {

@@ -5,7 +5,9 @@
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
     <title>Unity WebGL Player | %UNITY_WEB_NAME%</title>
     <link rel="shortcut icon" href="TemplateData/favicon.ico">
-    <link rel="stylesheet" href="TemplateData/style.css">
+    <!-- TemplateData/style.css 링크 없음: 모든 스타일은 아래 인라인 <style>에 있고(파일은 죽은 참조로 보존),
+         스타일시트 <link>는 CSSOM 블로킹으로 뒤에 오는 조기 fetch 인라인 스크립트 실행을 지연시킴 -->
+    <link rel="preload" as="script" href="%UNITY_WEBGL_FRAMEWORK_URL%" fetchpriority="high">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
 
     <!-- AIT Page Cache (CacheStorage 인터셉터, SDK Auto-generated) -->
@@ -753,6 +755,13 @@
         // Race condition 방지: loader 스크립트가 비동기로 로드되므로 완료를 기다림
         function waitForLoader(callback, timeoutMs) {
             var startTime = Date.now();
+            // 동기 선검사: 직전 <script src> 로더가 이미 로드 완료된 성공 경로에서
+            // setInterval의 첫 tick(최대 50ms)을 기다리지 않고 즉시 콜백한다.
+            if (window._aitLoaderLoaded || typeof createUnityInstance !== 'undefined') {
+                console.log('[AIT] ✓ Loader 스크립트 준비 완료 (0ms, 동기 선검사)');
+                callback(true);
+                return;
+            }
             var checkInterval = setInterval(function() {
                 if (window._aitLoaderLoaded || typeof createUnityInstance !== 'undefined') {
                     clearInterval(checkInterval);

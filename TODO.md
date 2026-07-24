@@ -2,7 +2,7 @@
 
 > 2026-04-14 전체 리뷰 기준 작성 · 2026-06-16 코드 대조로 완료 항목 정리.
 > 우선순위 P1(높음) ~ P3(낮음).
-> 2026-07-08 P2 잔여 항목 완료로 정리 · 2026-07-20 perf 채널 적대적 리뷰 후속 과제 등재 · 2026-07-26 베타 기능 항목 추가 · 2026-07-27 문서 통합 정리에서 발견한 항목 추가 · 2026-08-01 의존성 항목 추가 · 2026-08-10 Deploy 항목 추가.
+> 2026-07-08 P2 잔여 항목 완료로 정리 · 2026-07-20 perf 채널 적대적 리뷰 후속 과제 등재 · 2026-07-24 P3 early-fetch 런타임 테스트 완료로 정리 · 2026-07-26 베타 기능 항목 추가 · 2026-07-27 문서 통합 정리에서 발견한 항목 추가 · 2026-08-01 의존성 항목 추가 · 2026-08-10 Deploy 항목 추가.
 
 ## 베타 기능
 
@@ -21,10 +21,6 @@
 - **P2 — PlayerPrefs 영속화: 플랫폼 Storage 값 크기 상한 미확인**: 개발자센터 스토리지 문서에 `Storage.setItem` 값 크기 상한이 명시돼 있지 않아, `WebGLTemplates/AITTemplate/Runtime/ait-playerprefs.js`는 보수값 512KB(`MAX_MANIFEST_CHARS`) 초과 시 push를 건너뛰고 경고를 남긴다. 실기기(토스 앱 샌드박스)에서 16KB~1MB 구간 setItem/getItem 왕복을 실측해 상한을 확정하고 임계값을 조정할 것. 함께 실측: 백그라운드 전환 시 Unity의 PlayerPrefs 자동 flush 여부와 `visibilitychange` 발화 후 JS 실행 시간 확보 여부(미보장으로 확인되면 C#측 강제 `PlayerPrefs.Save()` 헬퍼를 후속 추가).
 
 - **P2 — Unity 2021.3 순정 IDBFS 세션 노화 결함 실기기 확인**: E2E CI(Chromium, macOS/Windows)에서 Unity 2021.3(Emscripten 2.0.19) 빌드가 세션 시작 약 60초 후부터 순정 IDBFS 저장이 통째로 죽는 현상을 재현(4 run × 2 attempt × 2 OS, 16/16). 시그니처: `IDBFS.getLocalSet`의 MEMFS 트리 순회가 `errno=44`(ENOENT)로 실패 → `IDBFS.syncfs` 양방향 전부 조용히 실패(Unity가 에러를 삼킴) → 이후 저장된 값은 reload 시 유실, `indexedDB.open('/idbfs')` 직접 프로브도 응답 없음. 레이어를 완전히 끈 순정 페이지에서는 노화 후 reload하면 `page.evaluate`가 무기한 hang되는 페이지 wedge까지 관찰됨(run 31577487933, 양 OS). SDK PlayerPrefs 레이어와 무관함은 E2E 9-6 통제군(레이어 완전 비활성)으로 검증하며, 9-4의 IDBFS 폴백 값 단언은 2021.3에서만 skip 처리(`Tests~/E2E/tests/e2e-full-pipeline.test.js`). 같은 조건에서 앱인토스 Storage 경로(9-1/9-2)는 2021.3 포함 전 버전 green — 이 결함이 본 기능의 필요성을 강화한다. 후속: (1) 실기기(토스 앱 WebView) 2021.3 빌드에서 동일 결함 재현 여부 확인, (2) 재현 시 2021.3 사용자에게 PlayerPrefs 영속화 opt-out 비권장 안내 문서화(사용자 허락 후), (3) Unity 상류 리포트 여부 판단.
-
-## P3 (낮음)
-
-- **레거시 early-fetch 킥오프 런타임 실행 기반 테스트 보강** — 현재 `AITEarlyFetchScriptTests`는 생성된 JS의 토큰 존재만 `StringAssert`로 검증해, 런타임 동작 회귀(로더 fetch의 pending 합류, `bodyUsed` 응답 재사용 방지 폴백, 저메모리 분기의 실제 fetch 선택, `init.signal` 우회)는 잡지 못한다. Node `vm`/`child_process`로 생성 스크립트를 `fetch`/`caches`/`sessionStorage` mock과 함께 실제 실행해 이 동작들을 assert하는 테스트를 추가하거나, `Tests~/E2E/tests/e2e-ce-serving.test.js`에 `cache: early-kick`/`early-join` 로그 존재 + Build 리소스 단일 다운로드(이중 다운로드 미발생) 검증 케이스를 추가한다. (근거: 2026-07 early-fetch 킥오프 적대적 리뷰 confirmed finding — `Editor/Package/WebGLBuildCopier.cs` `GenerateEarlyFetchScriptLegacyCaching`)
 
 ## 코드 결함
 

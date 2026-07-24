@@ -25,10 +25,6 @@
 
   선결 과제: (1) 플랫폼 API가 앱 단위 스코프인지 — 아니면 다른 게임 세이브를 옮길 소지(방어선 `LEGACY_MAX_CANDIDATES`, 걸리면 `skip-ambiguous`로 미심음). (2) 'empty' 응답을 종결로 볼지 — lazy-backfill 가능성으로 지금은 창을 연다.
 
-## P3 (낮음)
-
-- **레거시 early-fetch 킥오프 런타임 실행 기반 테스트 보강** — 현재 `AITEarlyFetchScriptTests`는 생성된 JS의 토큰 존재만 `StringAssert`로 검증해, 런타임 동작 회귀(로더 fetch의 pending 합류, `bodyUsed` 응답 재사용 방지 폴백, 저메모리 분기의 실제 fetch 선택, `init.signal` 우회)는 잡지 못한다. Node `vm`/`child_process`로 생성 스크립트를 `fetch`/`caches`/`sessionStorage` mock과 함께 실제 실행해 이 동작들을 assert하는 테스트를 추가하거나, `Tests~/E2E/tests/e2e-ce-serving.test.js`에 `cache: early-kick`/`early-join` 로그 존재 + Build 리소스 단일 다운로드(이중 다운로드 미발생) 검증 케이스를 추가한다. (근거: 2026-07 early-fetch 킥오프 적대적 리뷰 confirmed finding — `Editor/Package/WebGLBuildCopier.cs` `GenerateEarlyFetchScriptLegacyCaching`)
-
 ## 코드 결함
 
 - **P3 — stale 디렉터리에 남은 PlayerPrefs를 `collectScoped`가 매니페스트에 올린다**: 위 마이그레이션은 stale 디렉터리에 남은 PlayerPrefs는 다루지 않는다. `collectScoped()`가 `SCOPE_RE`에 맞는 경로를 전부 긁어 좌초된 값도 매니페스트에 올린다.

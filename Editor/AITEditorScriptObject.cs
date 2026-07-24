@@ -27,7 +27,7 @@ namespace AppsInToss
         [Tooltip("압축 포맷: -1 = 자동, 0 = Disabled, 1 = Gzip, 2 = Brotli")]
         public int compressionFormat = -1;
 
-        [Tooltip("Managed Stripping Level: -1 = 자동 (High), 0 = Disabled, 1 = Minimal, 2 = Low, 3 = Medium, 4 = High")]
+        [Tooltip("Managed Stripping Level: -1 = 자동 (High), 1 = Minimal, 2 = Low, 3 = Medium, 4 = High (0 = 레거시 Disabled, Minimal로 처리)")]
         public int managedStrippingLevel = -1;
 
         [Tooltip("디버그 심볼을 외부 파일로 분리 (빌드 크기 감소)")]

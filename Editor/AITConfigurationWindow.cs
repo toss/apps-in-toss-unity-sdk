@@ -358,15 +358,19 @@ namespace AppsInToss.Editor
             );
             profile.compressionFormat = compressionIndex == 0 ? -1 : compressionIndex - 1;
 
-            // Stripping Level
-            string[] strippingOptions = { "자동 (High)", "Disabled", "Minimal", "Low", "Medium", "High" };
-            int strippingIndex = profile.managedStrippingLevel < 0 ? 0 : profile.managedStrippingLevel + 1;
+            // Stripping Level — 저장값은 UI 순서(1=Minimal, 2=Low, 3=Medium, 4=High)이며
+            // 빌드 적용 시 AITBuildInitializer.ConvertToManagedStrippingLevel로 실제 enum에 매핑됨
+            // WebGL(IL2CPP)은 Disabled를 지원하지 않아 옵션에서 제외, 레거시 저장값 0(Disabled)은 Minimal로 정규화
+            if (profile.managedStrippingLevel == 0) profile.managedStrippingLevel = 1;
+            else if (profile.managedStrippingLevel > 4) profile.managedStrippingLevel = -1;
+            string[] strippingOptions = { "자동 (High)", "Minimal", "Low", "Medium", "High" };
+            int strippingIndex = profile.managedStrippingLevel < 0 ? 0 : profile.managedStrippingLevel;
             strippingIndex = EditorGUILayout.Popup(
                 new GUIContent("Managed Stripping", "코드 스트리핑 레벨 (낮을수록 빌드 속도 향상)"),
                 strippingIndex,
                 strippingOptions
             );
-            profile.managedStrippingLevel = strippingIndex == 0 ? -1 : strippingIndex - 1;
+            profile.managedStrippingLevel = strippingIndex == 0 ? -1 : strippingIndex;
 
             // 디버그 심볼
             profile.debugSymbolsExternal = EditorGUILayout.Toggle(
@@ -418,13 +422,10 @@ namespace AppsInToss.Editor
             };
             if (!string.IsNullOrEmpty(compression)) parts.Add(compression);
 
-            // Stripping
-            string stripping = profile.managedStrippingLevel switch
-            {
-                0 => "NoStrip",
-                1 => "Minimal",
-                _ => ""
-            };
+            // Stripping (실제 적용될 enum 기준)
+            string stripping = profile.managedStrippingLevel < 0
+                ? ""
+                : AITBuildInitializer.ConvertToManagedStrippingLevel(profile.managedStrippingLevel).ToString();
             if (!string.IsNullOrEmpty(stripping)) parts.Add(stripping);
 
             return parts.Count > 0 ? string.Join(", ", parts) : "(기본 설정)";
@@ -770,7 +771,7 @@ namespace AppsInToss.Editor
         private void DrawPowerPreferenceSetting()
         {
             WebGLPowerPreference defaultPower = AITDefaultSettings.GetDefaultPowerPreference();
-            bool isModified = config.powerPreference >= 0 && (WebGLPowerPreference)config.powerPreference != defaultPower;
+            bool isModified = config.powerPreference >= 0 && AITBuildInitializer.ConvertToPowerPreference(config.powerPreference) != defaultPower;
 
             EditorGUILayout.BeginHorizontal();
 
@@ -825,7 +826,7 @@ namespace AppsInToss.Editor
         private void DrawExceptionSupportSetting()
         {
             WebGLExceptionSupport defaultValue = AITDefaultSettings.GetDefaultExceptionSupport();
-            bool isModified = config.exceptionSupport >= 0 && (WebGLExceptionSupport)config.exceptionSupport != defaultValue;
+            bool isModified = config.exceptionSupport >= 0 && AITBuildInitializer.ConvertToExceptionSupport(config.exceptionSupport) != defaultValue;
 
             EditorGUILayout.BeginHorizontal();
 
@@ -1152,13 +1153,7 @@ namespace AppsInToss.Editor
             int effectiveMemory = config.memorySize > 0 ? config.memorySize : AITDefaultSettings.GetDefaultMemorySize();
             EditorGUILayout.LabelField($"  메모리: {effectiveMemory}MB");
 
-            WebGLCompressionFormat effectiveCompression = config.productionProfile.compressionFormat switch
-            {
-                0 => WebGLCompressionFormat.Disabled,
-                1 => WebGLCompressionFormat.Gzip,
-                2 => WebGLCompressionFormat.Brotli,
-                _ => AITDefaultSettings.GetDefaultCompressionFormat()
-            };
+            WebGLCompressionFormat effectiveCompression = AITBuildInitializer.ConvertToCompressionFormat(config.productionProfile.compressionFormat);
             EditorGUILayout.LabelField($"  압축: {effectiveCompression}");
 
             bool effectiveThreads = config.threadsSupport >= 0

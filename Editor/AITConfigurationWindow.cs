@@ -1012,7 +1012,8 @@ namespace AppsInToss.Editor
         {
             config.memorySize = -1;
             config.threadsSupport = -1;
-            config.dataCaching = -1;
+            // dataCaching은 UI에서 숨겨진 베타 설정이라 리셋 대상에서도 제외 —
+            // 화면에 보이지 않는 값을 복원 버튼이 조용히 덮어쓰면 안 됨
             config.firstInteractiveLog = -1;
         }
 

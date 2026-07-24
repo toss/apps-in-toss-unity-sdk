@@ -1,0 +1,27 @@
+{
+    "name": "AppsInToss.Helpers",
+    "rootNamespace": "AppsInToss",
+    "references": [
+        "AppsInTossSDK"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [
+        {
+            "name": "com.unity.modules.unitywebrequestaudio",
+            "expression": "1.0.0",
+            "define": "AIT_HAS_UWR_AUDIO"
+        },
+        {
+            "name": "com.unity.modules.assetbundle",
+            "expression": "1.0.0",
+            "define": "AIT_HAS_ASSETBUNDLE"
+        }
+    ],
+    "noEngineReferences": false
+}

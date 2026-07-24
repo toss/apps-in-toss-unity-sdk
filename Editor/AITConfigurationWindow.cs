@@ -464,8 +464,8 @@ namespace AppsInToss.Editor
             // 스레딩 지원
             DrawThreadsSupportSetting();
 
-            // 데이터 캐싱
-            DrawDataCachingSetting();
+            // 데이터 캐싱: 베타 기능 — 정식 공개 전까지 설정 UI에서 제외
+            // (config.dataCaching 저장값과 빌드 적용 로직은 유지 — AITBuildInitializer 참조)
 
             // 파일 해싱
             config.nameFilesAsHashes = EditorGUILayout.Toggle("파일명 해싱", config.nameFilesAsHashes);
@@ -543,32 +543,6 @@ namespace AppsInToss.Editor
             if (isModified && DrawResetButton())
             {
                 config.threadsSupport = -1;
-            }
-
-            EditorGUILayout.EndHorizontal();
-        }
-
-        private void DrawDataCachingSetting()
-        {
-            bool defaultCaching = AITDefaultSettings.GetDefaultDataCaching();
-            bool isModified = config.dataCaching >= 0 && (config.dataCaching == 1) != defaultCaching;
-
-            EditorGUILayout.BeginHorizontal();
-
-            DrawModifiedIndicator(isModified);
-
-            string label = config.dataCaching < 0
-                ? $"데이터 캐싱 (자동: {(defaultCaching ? "활성화" : "비활성화")})"
-                : "데이터 캐싱";
-
-            string[] options = { $"자동 ({(defaultCaching ? "활성화" : "비활성화")})", "비활성화", "활성화" };
-            int currentIndex = config.dataCaching < 0 ? 0 : config.dataCaching + 1;
-            int newIndex = EditorGUILayout.Popup(label, currentIndex, options);
-            config.dataCaching = newIndex == 0 ? -1 : newIndex - 1;
-
-            if (isModified && DrawResetButton())
-            {
-                config.dataCaching = -1;
             }
 
             EditorGUILayout.EndHorizontal();
@@ -1028,9 +1002,6 @@ namespace AppsInToss.Editor
             bool defaultThreads = AITDefaultSettings.GetDefaultThreadsSupport();
             if (config.threadsSupport >= 0 && (config.threadsSupport == 1) != defaultThreads) count++;
 
-            bool defaultCaching = AITDefaultSettings.GetDefaultDataCaching();
-            if (config.dataCaching >= 0 && (config.dataCaching == 1) != defaultCaching) count++;
-
             bool defaultFirstInteractive = AITDefaultSettings.GetDefaultFirstInteractiveLog();
             if (config.firstInteractiveLog >= 0 && (config.firstInteractiveLog == 1) != defaultFirstInteractive) count++;
 
@@ -1165,11 +1136,6 @@ namespace AppsInToss.Editor
                 ? config.threadsSupport == 1
                 : AITDefaultSettings.GetDefaultThreadsSupport();
             EditorGUILayout.LabelField($"  스레딩: {(effectiveThreads ? "활성화" : "비활성화")}");
-
-            bool effectiveCaching = config.dataCaching >= 0
-                ? config.dataCaching == 1
-                : AITDefaultSettings.GetDefaultDataCaching();
-            EditorGUILayout.LabelField($"  데이터 캐싱: {(effectiveCaching ? "활성화" : "비활성화")}");
 
             GUILayout.Space(10);
 

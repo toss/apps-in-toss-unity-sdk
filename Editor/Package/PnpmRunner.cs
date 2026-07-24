@@ -66,6 +66,13 @@ namespace AppsInToss.Editor.Package
         /// </summary>
         private static async Task<AITConvertCore.AITExportError> RunPnpmInstallInThread(AITPackageBuilder.EarlyPackageContext earlyCtx)
         {
+            // 순수 파일 IO/해시 비교만 수행하므로 백그라운드 스레드에서 안전.
+            if (PnpmInstallStateMarker.ShouldSkipInstall(earlyCtx.BuildProjectPath, out string skipReason))
+            {
+                Debug.Log($"[AIT] [병렬] ✓ pnpm install 스킵: {skipReason}");
+                return AITConvertCore.AITExportError.SUCCEED;
+            }
+
             var ct = earlyCtx.PnpmCancellationToken;
             var additionalPaths = AITNpmRunner.BuildAdditionalPaths(earlyCtx.PnpmPath);
 
@@ -162,6 +169,7 @@ namespace AppsInToss.Editor.Package
                                 {
                                     // 성공 시 직전 폴백 단계의 실패 진단을 비운다 (§5).
                                     AITBuildDiagnostics.ClearOnSuccess();
+                                    PnpmInstallStateMarker.WriteMarkerAfterSuccessfulInstall(earlyCtx.BuildProjectPath);
                                     Debug.Log($"[AIT] [병렬] ✓ pnpm {label} 성공");
                                     return AITConvertCore.AITExportError.SUCCEED;
                                 }
@@ -209,6 +217,12 @@ namespace AppsInToss.Editor.Package
         /// </summary>
         internal static AITConvertCore.AITExportError RunPnpmInstallSync(AITPackageBuilder.PackageContext ctx)
         {
+            if (PnpmInstallStateMarker.ShouldSkipInstall(ctx.BuildProjectPath, out string skipReason))
+            {
+                Debug.Log($"[AIT] ✓ pnpm install 스킵: {skipReason}");
+                return AITConvertCore.AITExportError.SUCCEED;
+            }
+
             // 중간 단계 실패는 정상 fallback이라 Sentry로 보내지 않는다.
             // 최종 실패 LogError도 sentryCapture:false이며, 빌드 실패 캡처는 상위 CaptureBuildError가 담당한다.
             AITEditorErrorTracker.BeginSuppressLogCapture();
@@ -221,7 +235,11 @@ namespace AppsInToss.Editor.Package
                     var result = AITNpmRunner.RunNpmCommandWithCache(
                         ctx.BuildProjectPath, ctx.PnpmPath, args, ctx.LocalCachePath,
                         $"pnpm {label}...");
-                    if (result == AITConvertCore.AITExportError.SUCCEED) return result;
+                    if (result == AITConvertCore.AITExportError.SUCCEED)
+                    {
+                        PnpmInstallStateMarker.WriteMarkerAfterSuccessfulInstall(ctx.BuildProjectPath);
+                        return result;
+                    }
                     if (result == AITConvertCore.AITExportError.CANCELLED) return result;
                     Debug.Log($"[AIT] pnpm install ({label}) 실패, 다음 단계로...");
                 }
@@ -256,6 +274,14 @@ namespace AppsInToss.Editor.Package
                 return;
             }
 
+            // 스킵 판정은 첫 단계에서만 — 재시도 단계(stageIndex > 0)는 이미 install이 필요하다고 판명된 상태.
+            if (stageIndex == 0 && PnpmInstallStateMarker.ShouldSkipInstall(buildProjectPath, out string skipReason))
+            {
+                Debug.Log($"[AIT] ✓ pnpm install 스킵: {skipReason}");
+                onComplete?.Invoke(AITConvertCore.AITExportError.SUCCEED);
+                return;
+            }
+
             var (args, label, cleanFirst, deleteLockfileFirst) = PnpmStoreManager.InstallStages[stageIndex];
             if (cleanFirst) NodeModulesValidator.CleanNodeModules(buildProjectPath);
             if (deleteLockfileFirst) DeleteLockfileIfExists(buildProjectPath);
@@ -283,6 +309,7 @@ namespace AppsInToss.Editor.Package
 
                         if (result == AITConvertCore.AITExportError.SUCCEED)
                         {
+                            PnpmInstallStateMarker.WriteMarkerAfterSuccessfulInstall(buildProjectPath);
                             onComplete?.Invoke(result);
                             return;
                         }

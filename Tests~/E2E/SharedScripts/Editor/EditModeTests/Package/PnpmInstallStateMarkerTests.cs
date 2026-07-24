@@ -161,11 +161,14 @@ namespace AppsInToss.Editor.Package.Tests
             Assert.IsFalse(PnpmInstallStateMarker.ShouldSkipInstall(_tempDir, out _));
         }
 
-        [Test]
-        public void ShouldSkipInstall_ReturnsFalse_WhenKillSwitchEnvVarSet()
+        [TestCase("1")]
+        [TestCase("true")]
+        [TestCase("TRUE")]
+        [TestCase(" 1 ")]
+        public void ShouldSkipInstall_ReturnsFalse_WhenKillSwitchEnvVarSet(string value)
         {
             CreateValidInstalledState();
-            System.Environment.SetEnvironmentVariable(PnpmInstallStateMarker.KillSwitchEnvVar, "1");
+            System.Environment.SetEnvironmentVariable(PnpmInstallStateMarker.KillSwitchEnvVar, value);
             try
             {
                 Assert.IsFalse(PnpmInstallStateMarker.ShouldSkipInstall(_tempDir, out _));
@@ -174,6 +177,64 @@ namespace AppsInToss.Editor.Package.Tests
             {
                 System.Environment.SetEnvironmentVariable(PnpmInstallStateMarker.KillSwitchEnvVar, null);
             }
+        }
+
+        [Test]
+        public void ShouldSkipInstall_ReturnsFalse_AndWarns_WhenKillSwitchValueUnrecognized()
+        {
+            // 오타/비표준 값("yes" 등)으로 킬스위치를 걸어도 무경고 무시되면 안 됨 —
+            // fail-safe로 킬스위치 활성 처리 + 경고 로그
+            CreateValidInstalledState();
+            System.Environment.SetEnvironmentVariable(PnpmInstallStateMarker.KillSwitchEnvVar, "yes");
+            try
+            {
+                UnityEngine.TestTools.LogAssert.Expect(UnityEngine.LogType.Warning,
+                    new System.Text.RegularExpressions.Regex("인식할 수 없어 킬스위치 활성"));
+                Assert.IsFalse(PnpmInstallStateMarker.ShouldSkipInstall(_tempDir, out _));
+            }
+            finally
+            {
+                System.Environment.SetEnvironmentVariable(PnpmInstallStateMarker.KillSwitchEnvVar, null);
+            }
+        }
+
+        [TestCase("0")]
+        [TestCase("false")]
+        public void ShouldSkipInstall_StillSkips_WhenKillSwitchExplicitlyOff(string value)
+        {
+            CreateValidInstalledState();
+            System.Environment.SetEnvironmentVariable(PnpmInstallStateMarker.KillSwitchEnvVar, value);
+            try
+            {
+                Assert.IsTrue(PnpmInstallStateMarker.ShouldSkipInstall(_tempDir, out _));
+            }
+            finally
+            {
+                System.Environment.SetEnvironmentVariable(PnpmInstallStateMarker.KillSwitchEnvVar, null);
+            }
+        }
+
+        [TestCase(null, false)]
+        [TestCase("", false)]
+        [TestCase("   ", false)]
+        [TestCase("0", false)]
+        [TestCase("false", false)]
+        [TestCase("FALSE", false)]
+        [TestCase("1", true)]
+        [TestCase("true", true)]
+        [TestCase("True", true)]
+        [TestCase(" 1 ", true)]
+        public void IsKillSwitchActive_ParsesRecognizedValues(string value, bool expected)
+        {
+            Assert.AreEqual(expected, PnpmInstallStateMarker.IsKillSwitchActive(value));
+        }
+
+        [Test]
+        public void IsKillSwitchActive_UnrecognizedValue_IsActiveWithWarning()
+        {
+            UnityEngine.TestTools.LogAssert.Expect(UnityEngine.LogType.Warning,
+                new System.Text.RegularExpressions.Regex("인식할 수 없어 킬스위치 활성"));
+            Assert.IsTrue(PnpmInstallStateMarker.IsKillSwitchActive("yes"));
         }
 
         // =====================================================

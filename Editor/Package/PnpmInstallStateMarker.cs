@@ -29,6 +29,34 @@ namespace AppsInToss.Editor.Package
         /// </summary>
         internal const string KillSwitchEnvVar = "AIT_DISABLE_INSTALL_SKIP";
 
+        /// <summary>
+        /// 킬스위치 값 해석. "1"/"true"는 활성, "0"/"false"/미설정은 비활성 (대소문자·양끝 공백 무시).
+        /// 그 외 값은 운영자가 스킵을 끄려던 의도로 보고 경고 로그 후 활성으로 처리한다 —
+        /// 킬스위치의 존재 목적상 오타로 무력화되는 것보다 스킵이 꺼지는 쪽이 항상 안전하다 (fail-safe).
+        /// </summary>
+        internal static bool IsKillSwitchActive(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            string normalized = value.Trim();
+            if (normalized == "1" || normalized.Equals("true", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+            if (normalized == "0" || normalized.Equals("false", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            Debug.LogWarning(
+                $"[AIT] {KillSwitchEnvVar}='{value}' 값을 인식할 수 없어 킬스위치 활성(스킵 비활성화)으로 처리합니다. " +
+                "인식되는 값: 1/true (활성), 0/false (비활성).");
+            return true;
+        }
+
         internal static string GetMarkerPath(string buildProjectPath)
         {
             return Path.Combine(buildProjectPath, "node_modules", MarkerFileName);
@@ -45,7 +73,7 @@ namespace AppsInToss.Editor.Package
 
             try
             {
-                if (Environment.GetEnvironmentVariable(KillSwitchEnvVar) == "1")
+                if (IsKillSwitchActive(Environment.GetEnvironmentVariable(KillSwitchEnvVar)))
                 {
                     return false;
                 }

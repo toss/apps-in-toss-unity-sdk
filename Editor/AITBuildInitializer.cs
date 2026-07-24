@@ -105,9 +105,7 @@ namespace AppsInToss.Editor
             // ===== 예외 처리 (사용자 지정 또는 자동) =====
             // 출처: UnityVersion.md:393, 431
             // 실제 적용은 아래 ApplySentryFriendlyWebGLSettings에서 수행 (stack trace와 함께 관리)
-            WebGLExceptionSupport exceptionSupport = editorConfig.exceptionSupport >= 0
-                ? (WebGLExceptionSupport)editorConfig.exceptionSupport
-                : AITDefaultSettings.GetDefaultExceptionSupport();
+            WebGLExceptionSupport exceptionSupport = ConvertToExceptionSupport(editorConfig.exceptionSupport);
 
             // ===== 파일 해싱 =====
             // Unity 2021.3에서 nameFilesAsHashes = true 시 Bee 빌드 루프 버그 발생
@@ -139,8 +137,8 @@ namespace AppsInToss.Editor
             PlayerSettings.stripEngineCode = editorConfig.stripEngineCode;
 
             // ===== Managed Stripping Level (프로필 → 자동) =====
-            ManagedStrippingLevel strippingLevel = profile?.managedStrippingLevel >= 0
-                ? (ManagedStrippingLevel)profile.managedStrippingLevel
+            ManagedStrippingLevel strippingLevel = profile != null
+                ? ConvertToManagedStrippingLevel(profile.managedStrippingLevel)
                 : AITDefaultSettings.GetDefaultManagedStrippingLevel();
 #if UNITY_6000_0_OR_NEWER
             PlayerSettings.SetManagedStrippingLevel(NamedBuildTarget.WebGL, strippingLevel);
@@ -177,9 +175,7 @@ namespace AppsInToss.Editor
             // ===== Unity 6 (2023.3+) 전용 설정 =====
 #if UNITY_2023_3_OR_NEWER
             // 출처: UnityVersion.md:394-402
-            WebGLPowerPreference powerPreference = editorConfig.powerPreference >= 0
-                ? (WebGLPowerPreference)editorConfig.powerPreference
-                : AITDefaultSettings.GetDefaultPowerPreference();
+            WebGLPowerPreference powerPreference = ConvertToPowerPreference(editorConfig.powerPreference);
             PlayerSettings.WebGL.powerPreference = powerPreference;
 
             // wasmStreaming은 Unity 6000에서 deprecated됨 (decompressionFallback에 의해 자동 결정)
@@ -306,7 +302,7 @@ namespace AppsInToss.Editor
         /// 저장값: -1=자동, 0=Disabled, 1=Gzip, 2=Brotli
         /// enum값: 0=Brotli, 1=Gzip, 2=Disabled
         /// </summary>
-        private static WebGLCompressionFormat ConvertToCompressionFormat(int storedValue)
+        internal static WebGLCompressionFormat ConvertToCompressionFormat(int storedValue)
         {
             return storedValue switch
             {
@@ -316,6 +312,60 @@ namespace AppsInToss.Editor
                 _ => AITDefaultSettings.GetDefaultCompressionFormat()
             };
         }
+
+        /// <summary>
+        /// 프로필 저장값을 ManagedStrippingLevel enum으로 변환
+        /// 저장값(UI 순서): -1=자동, 0=Disabled(레거시), 1=Minimal, 2=Low, 3=Medium, 4=High
+        /// enum값: Disabled=0, Low=1, Medium=2, High=3, Minimal=4 — Minimal이 나중에 추가되어 순서가 달라 직접 캐스팅 금지
+        /// WebGL(IL2CPP)은 Disabled를 지원하지 않으므로 레거시 저장값 0은 Minimal로 폴백
+        /// </summary>
+        internal static ManagedStrippingLevel ConvertToManagedStrippingLevel(int storedValue)
+        {
+            return storedValue switch
+            {
+                0 => ManagedStrippingLevel.Minimal,
+                1 => ManagedStrippingLevel.Minimal,
+                2 => ManagedStrippingLevel.Low,
+                3 => ManagedStrippingLevel.Medium,
+                4 => ManagedStrippingLevel.High,
+                _ => AITDefaultSettings.GetDefaultManagedStrippingLevel()
+            };
+        }
+
+        /// <summary>
+        /// 설정 저장값을 WebGLExceptionSupport enum으로 변환
+        /// 저장값(UI 순서): -1=자동, 0=None, 1=ExplicitlyThrownOnly, 2=FullWithStacktrace, 3=FullWithoutStacktrace
+        /// enum값: None=0, ExplicitlyThrownExceptionsOnly=1, FullWithoutStacktrace=2, FullWithStacktrace=3 — 2·3 순서가 반대라 직접 캐스팅 금지
+        /// </summary>
+        internal static WebGLExceptionSupport ConvertToExceptionSupport(int storedValue)
+        {
+            return storedValue switch
+            {
+                0 => WebGLExceptionSupport.None,
+                1 => WebGLExceptionSupport.ExplicitlyThrownExceptionsOnly,
+                2 => WebGLExceptionSupport.FullWithStacktrace,
+                3 => WebGLExceptionSupport.FullWithoutStacktrace,
+                _ => AITDefaultSettings.GetDefaultExceptionSupport()
+            };
+        }
+
+#if UNITY_2023_3_OR_NEWER
+        /// <summary>
+        /// 설정 저장값을 WebGLPowerPreference enum으로 변환
+        /// 저장값(UI 순서): -1=자동, 0=Default, 1=HighPerformance, 2=LowPower
+        /// enum값: Default=0, LowPower=1, HighPerformance=2 — 1·2 순서가 반대라 직접 캐스팅 금지
+        /// </summary>
+        internal static WebGLPowerPreference ConvertToPowerPreference(int storedValue)
+        {
+            return storedValue switch
+            {
+                0 => WebGLPowerPreference.Default,
+                1 => WebGLPowerPreference.HighPerformance,
+                2 => WebGLPowerPreference.LowPower,
+                _ => AITDefaultSettings.GetDefaultPowerPreference()
+            };
+        }
+#endif
 
         /// <summary>
         /// 빌드 프로필 정보를 로그로 출력
@@ -331,16 +381,10 @@ namespace AppsInToss.Editor
                 _ => "자동"
             };
 
-            // Stripping Level 문자열 생성
-            string strippingStr = profile.managedStrippingLevel switch
-            {
-                0 => "Disabled",
-                1 => "Minimal",
-                2 => "Low",
-                3 => "Medium",
-                4 => "High",
-                _ => "자동 (High)"
-            };
+            // Stripping Level 문자열 생성 (실제 적용될 enum 기준)
+            string strippingStr = profile.managedStrippingLevel < 0
+                ? "자동 (High)"
+                : ConvertToManagedStrippingLevel(profile.managedStrippingLevel).ToString();
 
             Debug.Log("[AIT] ========================================");
             Debug.Log($"[AIT] 빌드 프로필: {profileName}");

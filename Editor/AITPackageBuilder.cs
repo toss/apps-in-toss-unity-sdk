@@ -22,6 +22,13 @@ namespace AppsInToss.Editor
         /// </summary>
         internal static string GetSharedPnpmStorePath() => Package.PnpmStoreManager.GetSharedPnpmStorePath();
 
+        /// <summary>
+        /// 빌드 프로젝트 드라이브를 고려한 pnpm store 경로 (PnpmStoreManager에 위임).
+        /// Windows 크로스 드라이브 시 하드링크가 가능한 드라이브별 store를 선택한다.
+        /// </summary>
+        internal static string GetSharedPnpmStorePath(string buildProjectPath) =>
+            Package.PnpmStoreManager.GetSharedPnpmStorePath(buildProjectPath);
+
         #region Packaging Common
 
         /// <summary>
@@ -129,7 +136,7 @@ namespace AppsInToss.Editor
             }
 
             // node_modules 무결성 검증
-            string storePath = GetSharedPnpmStorePath();
+            string storePath = GetSharedPnpmStorePath(buildProjectPath);
             if (!Package.NodeModulesValidator.ValidateIntegrity(buildProjectPath))
             {
                 Debug.Log("[AIT] node_modules 무결성 검증 실패. 정리 후 재설치합니다.");
@@ -194,7 +201,7 @@ namespace AppsInToss.Editor
             }
 
             // node_modules 무결성 검증
-            string storePath = GetSharedPnpmStorePath();
+            string storePath = GetSharedPnpmStorePath(buildProjectPath);
             if (!Package.NodeModulesValidator.ValidateIntegrity(buildProjectPath))
             {
                 Debug.Log("[AIT] [병렬] node_modules 무결성 검증 실패. 정리 후 재설치합니다.");

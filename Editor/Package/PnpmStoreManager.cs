@@ -28,6 +28,73 @@ namespace AppsInToss.Editor.Package
         }
 
         /// <summary>
+        /// 빌드 프로젝트 위치를 고려한 store 경로.
+        /// pnpm의 하드링크는 같은 볼륨 안에서만 동작한다 — Windows에서 프로젝트가
+        /// 홈 드라이브(보통 C:)와 다른 드라이브에 있으면 store→node_modules가 매번
+        /// 파일 복사로 폴백되어 재설치가 크게 느려진다. 이 경우 pnpm 자체의 관례처럼
+        /// 프로젝트 드라이브 루트에 드라이브별 store(예: D:\.ait-unity-sdk\pnpm-store)를
+        /// 사용해 하드링크를 복원한다. 드라이브 루트에 쓸 수 없으면 홈 store로 폴백
+        /// (복사라서 느리지만 동작은 함).
+        /// </summary>
+        internal static string GetSharedPnpmStorePath(string buildProjectPath)
+        {
+            string homeStore = GetSharedPnpmStorePath();
+            string resolved = ResolveStorePathForProject(homeStore, buildProjectPath);
+            if (resolved == homeStore)
+            {
+                return homeStore;
+            }
+
+            try
+            {
+                Directory.CreateDirectory(resolved);
+                // 디렉토리가 이미 있어도 쓰기 권한이 없을 수 있어 실제 쓰기로 검증
+                string probe = Path.Combine(resolved, ".ait-write-probe-" + Guid.NewGuid().ToString("N"));
+                File.WriteAllText(probe, string.Empty);
+                File.Delete(probe);
+                return resolved;
+            }
+            catch (Exception e)
+            {
+                UnityEngine.Debug.LogWarning(
+                    $"[AIT] 프로젝트 드라이브 pnpm store({resolved})에 쓸 수 없어 홈 store로 폴백합니다. " +
+                    $"크로스 드라이브 하드링크가 불가능해 설치가 느려질 수 있습니다: {e.Message}");
+                return homeStore;
+            }
+        }
+
+        /// <summary>
+        /// 순수 함수: 홈 store와 프로젝트가 다른 Windows 드라이브에 있으면
+        /// 프로젝트 드라이브 루트의 store 경로를, 그 외에는 홈 store를 반환.
+        /// 드라이브 문자 루트(C:\ 등)만 대상 — UNC/유닉스 경로는 항상 홈 store.
+        /// </summary>
+        internal static string ResolveStorePathForProject(string homeStorePath, string buildProjectPath)
+        {
+            string homeRoot = GetWindowsDriveRoot(homeStorePath);
+            string projectRoot = GetWindowsDriveRoot(buildProjectPath);
+            if (homeRoot == null || projectRoot == null || homeRoot == projectRoot)
+            {
+                return homeStorePath;
+            }
+            return projectRoot + @".ait-unity-sdk\pnpm-store";
+        }
+
+        /// <summary>
+        /// 경로가 Windows 드라이브 문자로 시작하면 정규화된 루트("D:\")를, 아니면 null 반환.
+        /// Path.GetPathRoot는 실행 OS의 규칙을 따르므로 플랫폼 무관 판정을 위해 직접 파싱.
+        /// </summary>
+        internal static string GetWindowsDriveRoot(string path)
+        {
+            if (string.IsNullOrEmpty(path) || path.Length < 2 || path[1] != ':')
+            {
+                return null;
+            }
+            char drive = path[0];
+            bool isAsciiLetter = (drive >= 'A' && drive <= 'Z') || (drive >= 'a' && drive <= 'z');
+            return isAsciiLetter ? char.ToUpperInvariant(drive) + @":\" : null;
+        }
+
+        /// <summary>
         /// pnpm install 재시도 정책 (args, label, cleanFirst, deleteLockfileFirst).
         /// 1단계: frozen-lockfile (lockfile 정합 시 통과)
         /// 2단계: --no-frozen-lockfile (lockfile 갱신 허용)

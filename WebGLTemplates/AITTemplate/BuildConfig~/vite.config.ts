@@ -13,16 +13,40 @@ function detectUnityWebCompression(filePath: string): 'br' | 'gzip' | null {
     // 파일 헤더의 처음 64바이트만 읽음
     const fd = openSync(filePath, 'r');
     const buffer = Buffer.alloc(64);
-    readSync(fd, buffer, 0, 64, 0);
+    const bytesRead = readSync(fd, buffer, 0, 64, 0);
     closeSync(fd);
 
     const header = buffer.toString('ascii');
 
+    // decompressionFallback=ON: Unity가 텍스트 매직 헤더를 기록
     if (header.includes('(brotli)')) return 'br';
     if (header.includes('(gzip)')) return 'gzip';
-    return null;
+
+    // decompressionFallback=OFF: 매직 헤더 없는 raw 압축 스트림.
+    // .unityweb는 항상 압축 산출물이므로(비압축 빌드는 .unityweb를 만들지 않음)
+    // gzip magic(0x1f 0x8b)이면 gzip, 그 외에는 brotli(매직 없음)로 간주한다.
+    if (bytesRead >= 2 && buffer[0] === 0x1f && buffer[1] === 0x8b) return 'gzip';
+    return 'br';
   } catch {
     return null;
+  }
+}
+
+/**
+ * Unity WebGL 산출물 경로 패턴으로 Content-Type을 설정.
+ * .wasm.→application/wasm (instantiateStreaming 활성), .js.→javascript, .data.→octet-stream.
+ * .unityweb / .br / .gz 모두 ".wasm." 같은 중간 패턴을 포함하므로 한 함수로 커버된다.
+ */
+function setUnityContentType(
+  res: { setHeader(name: string, value: string): void },
+  url: string,
+): void {
+  if (url.includes('.wasm.')) {
+    res.setHeader('Content-Type', 'application/wasm');
+  } else if (url.includes('.js.')) {
+    res.setHeader('Content-Type', 'application/javascript');
+  } else if (url.includes('.data.')) {
+    res.setHeader('Content-Type', 'application/octet-stream');
   }
 }
 
@@ -69,22 +93,18 @@ function unityWebContentEncodingPlugin(): Plugin {
           res.setHeader('Content-Encoding', encoding);
         }
 
-        // Content-Type 설정
-        if (url.includes('.wasm.')) {
-          res.setHeader('Content-Type', 'application/wasm');
-        } else if (url.includes('.js.')) {
-          res.setHeader('Content-Type', 'application/javascript');
-        } else if (url.includes('.data.')) {
-          res.setHeader('Content-Type', 'application/octet-stream');
-        }
+        // Content-Type 설정 (instantiateStreaming 활성화 위해 .wasm은 application/wasm)
+        setUnityContentType(res, url);
       }
-      // 레거시 .br 파일 (Unity 2021/2022)
+      // 레거시 .br 파일 (Unity 2021/2022 — Unity 6는 .unityweb 사용)
       else if (url.endsWith('.br')) {
         res.setHeader('Content-Encoding', 'br');
+        setUnityContentType(res, url);
       }
-      // 레거시 .gz 파일 (Unity 2021/2022)
+      // 레거시 .gz 파일 (Unity 2021/2022 — Unity 6는 .unityweb 사용)
       else if (url.endsWith('.gz')) {
         res.setHeader('Content-Encoding', 'gzip');
+        setUnityContentType(res, url);
       }
 
       next();
@@ -117,6 +137,12 @@ const sdkConfig = defineConfig({
   build: {
     // Unity WebGL 빌드와 호환되도록 설정
     target: 'es2015',
+    // 우리 브릿지/템플릿 코드의 sourcemap(.js.map)을 생성하지 않는다. Vite 기본값도
+    // false 지만, 배포 번들에 불필요한 .js.map 이 새어 들어가지 않도록 명시로 고정한다.
+    // (.ait 에 담기는 필수 .js.map 은 @apps-in-toss/cli 가 만드는 RN 브릿지 번들
+    //  bundle.{platform}.js.map 뿐이며, 이는 배포 서버가 필수 번들 파일로 요구하므로
+    //  건드리지 않는다. 우리 쪽에서 추가로 map 을 만들지 않게만 관리한다.)
+    sourcemap: false,
     // 빌드 출력 설정
     rollupOptions: {
       output: {

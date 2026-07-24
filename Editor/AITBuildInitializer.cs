@@ -1,3 +1,6 @@
+using System.Collections.Generic;
+using System.IO;
+using System.Text.RegularExpressions;
 using UnityEditor;
 #if UNITY_6000_0_OR_NEWER
 using UnityEditor.Build;
@@ -174,6 +177,58 @@ namespace AppsInToss.Editor
             PlayerSettings.SetIl2CppCompilerConfiguration(BuildTargetGroup.WebGL, il2cppConfig);
 #endif
 
+            // ===== WebGL Code Optimization (Meta 로드타임 스택의 실제 "Disk Size with LTO" 레버) =====
+            // IL2CPP 컴파일러 config(Master)는 WebGL emscripten 최적화/LTO에 영향을 주지 않으므로(no-op),
+            // 실제 LTO는 emscripten code optimization으로 켠다. 버전별 API 차이(2022.3/6: UserBuildSettings,
+            // 구버전: PlayerSettings.WebGL) + WebGL 모듈 어셈블리 참조 보장 부재 때문에
+            // AITWebGLCodeOptimization이 reflection으로 적용한다(멤버 없는 버전은 fail-safe로 건너뜀).
+            // editorConfig.webGLCodeOptimization: -1(자동)/1 → DiskSizeLTO 적용, 0 → 미적용(Unity 설정 유지).
+            bool applyWebGLCodeOpt = editorConfig.webGLCodeOptimization != 0;
+            string webGLCodeOptTarget = AITDefaultSettings.GetDefaultWebGLCodeOptimization();
+            bool webGLCodeOptApplied = false;
+            // Unity 6000.0의 emscripten 툴체인은 대형 프로젝트의 whole-program LTO 링크에서
+            // wasm-ld가 빌드 머신 메모리(>65GB)를 초과해 OOM(SIGKILL "Killed: 9")으로 빌드를 깨뜨린다.
+            // 6000.3의 신형 툴체인은 동일한 DiskSizeLTO를 정상 링크함을 실측 확인했다.
+            // 따라서 6000.0.x에서만 LTO 적용을 건너뛰어 하드 빌드 실패를 막는다
+            // (저메모리 빌드 머신을 쓰는 실사용자 보호 + 비-LTO 산출물로 빌드 완주).
+            bool webGLCodeOptOomSkipped =
+                applyWebGLCodeOpt
+                && webGLCodeOptTarget == AITWebGLCodeOptimization.DiskSizeLTO
+                && Application.unityVersion.StartsWith("6000.0.");
+            if (webGLCodeOptOomSkipped)
+            {
+                Debug.LogWarning(
+                    $"[AIT] WebGL Code Optimization({webGLCodeOptTarget}) 건너뜀 — Unity 6000.0 emscripten은 대형 프로젝트 LTO 링크에서 메모리 초과(OOM)로 빌드가 실패할 수 있어 이 버전에서만 비활성화 (6000.1+ 권장, 빌드는 계속)");
+            }
+            else if (applyWebGLCodeOpt)
+            {
+                // TrySetDiskSizeLTO: DiskSizeLTO 미지원 버전에서 DiskSize로 자동 폴백
+                // (Sentry APPS-IN-TOSS-UNITY-SDK-10W: 멤버 미정의 시 건너뛰던 동작 개선)
+                webGLCodeOptApplied = AITWebGLCodeOptimization.TrySetDiskSizeLTO();
+                if (!webGLCodeOptApplied)
+                {
+                    Debug.LogWarning(
+                        $"[AIT] WebGL Code Optimization({webGLCodeOptTarget}) 미적용 — 이 Unity 버전에서 API/멤버 부재 (빌드는 계속)");
+                }
+            }
+            // ===== IL2CPP Code Generation (Meta 로드타임 스택: OptimizeSize) =====
+            // 제네릭 인스턴스화 공유로 wasm 코드 크기 축소. Unity 6+ 전용 API.
+#if UNITY_6000_0_OR_NEWER
+            Il2CppCodeGeneration il2cppCodeGen = editorConfig.il2cppCodeGeneration >= 0
+                ? (Il2CppCodeGeneration)editorConfig.il2cppCodeGeneration
+                : AITDefaultSettings.GetDefaultIl2CppCodeGeneration();
+            PlayerSettings.SetIl2CppCodeGeneration(NamedBuildTarget.WebGL, il2cppCodeGen);
+#endif
+            // ===== WebAssembly 2023 (Meta 로드타임 스택: native exception/SIMD/BigInt/Table) =====
+            // 코드 크기·다운로드·시작 시간 단축. 미지원 브라우저에서는 로드 실패하므로
+            // Apps in Toss WebView min-spec(Chrome≥91 / Safari≥16.4) 충족이 전제.
+#if UNITY_6000_0_OR_NEWER
+            bool wasm2023 = editorConfig.wasm2023 >= 0
+                ? editorConfig.wasm2023 == 1
+                : AITDefaultSettings.GetDefaultWasm2023();
+            PlayerSettings.WebGL.wasm2023 = wasm2023;
+#endif
+
             // ===== Unity 6 (2023.3+) 전용 설정 =====
 #if UNITY_2023_3_OR_NEWER
             // 출처: UnityVersion.md:394-402
@@ -188,7 +243,13 @@ namespace AppsInToss.Editor
 #endif
 #endif
 
-            // ===== Unity 로고 표시: 사용자의 PlayerSettings 설정을 그대로 유지 =====
+            // ===== Unity 로고 표시 (사용자 지정 또는 자동, Pro 라이선스 필요) =====
+            // -1(자동)은 AITDefaultSettings.GetDefaultShowUnityLogo()(=!HasPro())로 위임 — 다른 설정과 동일한
+            // Resolve 패턴. 실제 PlayerSettings 적용은 ApplyShowUnityLogoSetting에서 Pro 라이선스를 재확인한다.
+            bool showUnityLogo = editorConfig.showUnityLogo >= 0
+                ? editorConfig.showUnityLogo == 1
+                : AITDefaultSettings.GetDefaultShowUnityLogo();
+            bool showUnityLogoApplied = ApplyShowUnityLogoSetting(showUnityLogo);
 
             // ===== 디버그 심볼 (빌드 프로필에서 설정 - ApplyBuildProfileSettings 참조) =====
             // 프로필 기반 설정은 DoExport()에서 ApplyBuildProfileSettings()를 통해 적용됨
@@ -199,6 +260,34 @@ namespace AppsInToss.Editor
                 ? editorConfig.decompressionFallback == 1
                 : AITDefaultSettings.GetDefaultDecompressionFallback();
             PlayerSettings.WebGL.decompressionFallback = decompressionFallback;
+
+            // ===== Mip Stripping (빌드 산출물 .data 축소, AITBuildSession이 빌드 후 원복) =====
+            // mipStripping은 프로젝트 전역 PlayerSettings라 비활성화 선택 시에도 명시 적용해 결정성 보장.
+            bool mipStripping = editorConfig.mipStripping >= 0
+                ? editorConfig.mipStripping == 1
+                : AITDefaultSettings.GetDefaultMipStripping();
+            PlayerSettings.mipStripping = mipStripping;
+
+            // Mip Stripping이 활성화된 경우, 런타임 Quality 변경 코드가 있는지 경고
+            if (mipStripping)
+            {
+                WarnIfRuntimeQualityChangingCodeExists();
+            }
+
+            // ===== Optimize Mesh Data (빌드 산출물 .data 축소, AITBuildSession이 빌드 후 원복) =====
+            // stripUnusedMeshComponents는 프로젝트 전역 PlayerSettings라 비활성화 선택 시에도 명시 적용해 결정성 보장.
+            bool stripUnusedMeshComponents = editorConfig.stripUnusedMeshComponents >= 0
+                ? editorConfig.stripUnusedMeshComponents == 1
+                : AITDefaultSettings.GetDefaultStripUnusedMeshComponents();
+            PlayerSettings.stripUnusedMeshComponents = stripUnusedMeshComponents;
+
+            // stripUnusedMeshComponents가 활성화된 경우: 런타임 머티리얼 교체 코드 스캔
+            // false positive 허용(경고일 뿐 동작 변경 없음) — 정규식 스캔은 의미론적 분석이 아니므로
+            // 실제로 문제가 없는 코드도 검출될 수 있다. 그러나 경고를 보고 사용자가 직접 판단하도록 유도하는 것이 목적.
+            if (stripUnusedMeshComponents)
+            {
+                ScanRuntimeMaterialReplacementCode();
+            }
 
             // 설정 요약 로그
             Debug.Log($"[AIT] Unity {AITDefaultSettings.GetUnityVersionGroup()} 최적화 설정 적용:");
@@ -214,6 +303,23 @@ namespace AppsInToss.Editor
             Debug.Log($"[AIT]   - IL2CPP 설정: {il2cppConfig}{(!string.IsNullOrEmpty(il2cppConfigEnv) ? " (환경 변수)" : editorConfig.il2cppConfiguration < 0 ? " (자동)" : "")}");
             Debug.Log($"[AIT]   - Run In Background: {runInBackground}{(editorConfig.runInBackground < 0 ? " (자동)" : "")}");
             Debug.Log($"[AIT]   - Decompression Fallback: {decompressionFallback}{(editorConfig.decompressionFallback < 0 ? " (자동)" : "")}");
+            string showUnityLogoLog = showUnityLogo ? "표시"
+                : showUnityLogoApplied ? "숨김"
+                : "숨김 요청됨 (Pro 라이선스 없음 — 미적용)";
+            Debug.Log($"[AIT]   - Unity 로고: {showUnityLogoLog}{(editorConfig.showUnityLogo < 0 ? " (자동)" : "")}");
+            string webGLCodeOptLog = !applyWebGLCodeOpt ? "미적용 (off)"
+                : webGLCodeOptOomSkipped ? "미적용 (6000.0 LTO OOM 회피)"
+                : webGLCodeOptApplied ? $"{webGLCodeOptTarget}{(editorConfig.webGLCodeOptimization < 0 ? " (자동)" : "")}"
+                : "미적용 (API 부재)";
+            Debug.Log($"[AIT]   - WebGL Code Optimization: {webGLCodeOptLog}");
+#if UNITY_6000_0_OR_NEWER
+            Debug.Log($"[AIT]   - IL2CPP Code Generation: {il2cppCodeGen}{(editorConfig.il2cppCodeGeneration < 0 ? " (자동)" : "")}");
+#endif
+#if UNITY_6000_0_OR_NEWER
+            Debug.Log($"[AIT]   - WebAssembly 2023: {wasm2023}{(editorConfig.wasm2023 < 0 ? " (자동)" : "")}");
+#endif
+            Debug.Log($"[AIT]   - Mip Stripping: {mipStripping}{(editorConfig.mipStripping < 0 ? " (자동)" : "")}");
+            Debug.Log($"[AIT]   - Optimize Mesh Data: {stripUnusedMeshComponents}{(editorConfig.stripUnusedMeshComponents < 0 ? " (자동)" : "")}");
 #if UNITY_2023_3_OR_NEWER
             Debug.Log($"[AIT]   - Power Preference: {powerPreference}{(editorConfig.powerPreference < 0 ? " (자동)" : "")}");
 #if !UNITY_6000_0_OR_NEWER
@@ -225,6 +331,38 @@ namespace AppsInToss.Editor
                 ? editorConfig.firstInteractiveLog == 1
                 : AITDefaultSettings.GetDefaultFirstInteractiveLog();
             Debug.Log($"[AIT]   - first-interactive 계측: {firstInteractiveEnabled}{(editorConfig.firstInteractiveLog < 0 ? " (자동)" : "")}");
+
+            // 오디오 스트리밍은 BuildPlayer 직전 AITAudioStreamingProcessor 에서 처리
+            bool audioStreamingEnabled = editorConfig.audioStreaming >= 0
+                ? editorConfig.audioStreaming == 1
+                : AITDefaultSettings.GetDefaultAudioStreaming();
+            Debug.Log($"[AIT]   - 오디오 스트리밍: {audioStreamingEnabled}{(editorConfig.audioStreaming < 0 ? " (자동)" : "")}");
+
+            // 오디오 재인코딩은 BuildPlayer 직전 AITAudioReencodeProcessor 에서 처리
+            bool audioReencodeEnabled = editorConfig.audioReencode >= 0
+                ? editorConfig.audioReencode == 1
+                : AITDefaultSettings.GetDefaultAudioReencode();
+            Debug.Log($"[AIT]   - 오디오 재인코딩: {audioReencodeEnabled}{(editorConfig.audioReencode < 0 ? " (자동)" : "")}{(audioReencodeEnabled ? $" (Vorbis q{Mathf.Clamp01(editorConfig.audioReencodeQuality):0.00})" : "")}");
+
+            // 텍스처 crunch 는 BuildPlayer 직전 AITTextureCrunchProcessor 에서 처리
+            bool textureCrunchEnabled = editorConfig.textureCrunch >= 0
+                ? editorConfig.textureCrunch == 1
+                : AITDefaultSettings.GetDefaultTextureCrunch();
+            Debug.Log($"[AIT]   - 텍스처 crunch: {textureCrunchEnabled}{(editorConfig.textureCrunch < 0 ? " (자동)" : "")}");
+            // 텍스처 크기 클램프는 BuildPlayer 직전 AITTextureSizeClampProcessor 에서 처리
+            bool textureSizeClampEnabled = editorConfig.textureSizeClamp >= 0
+                ? editorConfig.textureSizeClamp == 1
+                : AITDefaultSettings.GetDefaultTextureSizeClamp();
+            Debug.Log($"[AIT]   - 텍스처 크기 클램프: {textureSizeClampEnabled}{(editorConfig.textureSizeClamp < 0 ? " (자동)" : "")}{(textureSizeClampEnabled ? $" (≤{editorConfig.textureClampMaxSize})" : "")}");
+            // ASTC 블록 에스컬레이션은 BuildPlayer 직전 AITAstcBlockProcessor 에서 처리
+            bool astcBlockEnabled = editorConfig.astcBlockEscalation >= 0
+                ? editorConfig.astcBlockEscalation == 1
+                : AITDefaultSettings.GetDefaultAstcBlockEscalation();
+            Debug.Log($"[AIT]   - ASTC 블록 에스컬레이션: {astcBlockEnabled}{(editorConfig.astcBlockEscalation < 0 ? " (자동)" : "")}");
+            // 텍스처 스트리밍은 ExternalizeForBuild 에서 별도 리포트를 출력하므로 활성 여부만 기록.
+            bool texStreamEnabled = editorConfig.textureStreaming == 1
+                || (editorConfig.textureStreaming < 0 && AITDefaultSettings.GetDefaultTextureStreaming());
+            Debug.Log($"[AIT]   - 텍스처 스트리밍: {(texStreamEnabled ? "활성화" : "비활성화")}{(editorConfig.textureStreaming < 0 ? " (자동)" : "")}");
         }
 
         /// <summary>
@@ -299,6 +437,114 @@ namespace AppsInToss.Editor
             PlayerSettings.SetStackTraceLogType(LogType.Warning, StackTraceLogType.ScriptOnly);
             PlayerSettings.SetStackTraceLogType(LogType.Log, StackTraceLogType.ScriptOnly);
             PlayerSettings.SetStackTraceLogType(LogType.Exception, StackTraceLogType.ScriptOnly);
+        }
+
+        /// <summary>
+        /// Unity 로고(스플래시 스크린) 표시 설정을 적용한다.
+        /// 호출 위치: <see cref="Init"/>. PlayerSettingsSnapshot.Capture()가 호출 전에 찍혀 있어야
+        /// 빌드 후 Restore()로 사용자의 원래 스플래시 설정이 복원된다(AITConvertCore.DoExport 참조).
+        ///
+        /// showUnityLogoResolved == true(로고 표시)인 경우는 사용자의 기존 PlayerSettings를 그대로
+        /// 두고 아무것도 쓰지 않는다 — Unity 기본 동작이 이미 로고를 표시하므로 명시 적용이 불필요하다.
+        /// showUnityLogoResolved == false(로고 숨김)이 요청된 경우에만 Pro 라이선스를 확인한 뒤 적용한다:
+        /// Unity Personal 라이선스는 스플래시 화면에 Unity 로고 표시를 강제하므로 HasPro()가 false면
+        /// SplashScreen.show/showUnityLogo를 건드리지 않고 사유만 로그로 남긴다(시도해도 무의미).
+        /// </summary>
+        /// <returns>실제로 로고 숨김을 적용했으면 true.</returns>
+        internal static bool ApplyShowUnityLogoSetting(bool showUnityLogoResolved)
+        {
+            return ApplyShowUnityLogoSetting(showUnityLogoResolved, UnityEditorInternal.InternalEditorUtility.HasPro());
+        }
+
+        /// <summary>
+        /// <see cref="ApplyShowUnityLogoSetting(bool)"/>의 테스트 가능한 본체.
+        /// HasPro()는 실행 환경의 실제 라이선스에 의존하므로, 테스트가 Pro/Personal 양쪽 분기를
+        /// 검증할 수 있도록 hasProLicense를 파라미터로 분리했다.
+        /// </summary>
+        internal static bool ApplyShowUnityLogoSetting(bool showUnityLogoResolved, bool hasProLicense)
+        {
+            if (showUnityLogoResolved)
+                return false;
+
+            if (!hasProLicense)
+            {
+                Debug.Log("[AIT] Unity 로고 숨김이 설정되었지만 건너뜁니다 — Unity Personal 라이선스는 " +
+                          "스플래시 화면에 Unity 로고 표시를 강제합니다(Unity Pro 라이선스 필요).");
+                return false;
+            }
+
+            PlayerSettings.SplashScreen.show = false;
+            PlayerSettings.SplashScreen.showUnityLogo = false;
+            return true;
+        }
+
+        /// <summary>
+        /// 런타임에서 Quality 레벨을 변경하는 코드가 감지되면 경고를 출력한다.
+        /// Mip Stripping은 빌드 시점의 현재 Quality 기준으로 밉맵을 제거하므로,
+        /// 런타임에 더 낮은 Quality로 전환하면 렌더링 아티팩트가 발생할 수 있다.
+        /// 스캔 실패(IO 예외 등)는 흡수하고 빌드를 계속한다.
+        /// </summary>
+        private static void WarnIfRuntimeQualityChangingCodeExists()
+        {
+            // Quality 레벨이 1개 이하이면 런타임 변경이 무의미하므로 스캔 불필요
+            if (UnityEngine.QualitySettings.names.Length <= 1)
+                return;
+
+            try
+            {
+                string assetsPath = System.IO.Path.Combine(
+                    System.IO.Directory.GetCurrentDirectory(), "Assets");
+
+                if (!System.IO.Directory.Exists(assetsPath))
+                    return;
+
+                // Assets/ 하위 .cs 파일을 검색하되 Editor/ 폴더는 제외
+                var csFiles = System.IO.Directory.GetFiles(
+                    assetsPath, "*.cs", System.IO.SearchOption.AllDirectories);
+
+                var matchedFiles = new System.Collections.Generic.List<string>();
+
+                foreach (string filePath in csFiles)
+                {
+                    // Editor 폴더 내 파일은 런타임 코드가 아니므로 제외
+                    string normalizedPath = filePath.Replace('\\', '/');
+                    if (normalizedPath.Contains("/Editor/"))
+                        continue;
+
+                    string content = System.IO.File.ReadAllText(filePath);
+                    if (content.Contains("QualitySettings.SetQualityLevel") ||
+                        content.Contains("QualitySettings.IncreaseLevel") ||
+                        content.Contains("QualitySettings.DecreaseLevel"))
+                    {
+                        // 상대 경로로 변환해 로그를 간결하게 출력
+                        string relativePath = filePath.Replace(
+                            System.IO.Directory.GetCurrentDirectory() + System.IO.Path.DirectorySeparatorChar, "");
+                        matchedFiles.Add(relativePath.Replace('\\', '/'));
+                    }
+                }
+
+                if (matchedFiles.Count == 0)
+                    return;
+
+                // 최대 5개 파일 목록 구성
+                int displayCount = System.Math.Min(matchedFiles.Count, 5);
+                var fileList = new System.Text.StringBuilder();
+                for (int i = 0; i < displayCount; i++)
+                    fileList.AppendLine($"  - {matchedFiles[i]}");
+                if (matchedFiles.Count > 5)
+                    fileList.AppendLine($"  ... 외 {matchedFiles.Count - 5}개 파일");
+
+                Debug.LogWarning(
+                    $"[AIT] 런타임 Quality 변경 코드가 감지되었습니다({matchedFiles.Count}개 파일). " +
+                    "Mip Stripping은 현재 Quality의 텍스처 품질 기준으로 밉을 제거하므로 런타임에 Quality를 낮추면 " +
+                    "렌더링 아티팩트가 발생할 수 있습니다. 문제가 있으면 AIT Configuration에서 Mip Stripping을 비활성화하세요.\n" +
+                    fileList.ToString().TrimEnd());
+            }
+            catch (System.Exception e)
+            {
+                // IO 예외 등 스캔 실패는 흡수하고 빌드 계속
+                Debug.Log($"[AIT] Mip Stripping 런타임 Quality 변경 스캔 중 예외 발생 (무시됨): {e.Message}");
+            }
         }
 
         /// <summary>
@@ -433,6 +679,75 @@ namespace AppsInToss.Editor
                 : WebGLDebugSymbolMode.Embedded;
             Debug.Log($"[AIT] 디버그 심볼 모드 설정: {PlayerSettings.WebGL.debugSymbolMode}");
 #endif
+        }
+
+        /// <summary>
+        /// Assets/ 하위 런타임 C# 코드에서 머티리얼 교체 패턴을 정적으로 스캔하여 경고를 출력한다.
+        /// Optimize Mesh Data(stripUnusedMeshComponents)가 활성화될 때만 호출된다.
+        ///
+        /// 목적: 빌드 시점 머티리얼 기준으로 미사용 정점 채널을 제거하므로, 교체된 머티리얼이
+        /// 제거된 채널(노멀/탄젠트/UV 등)을 요구하면 시각 오류가 발생할 수 있다.
+        /// 이 스캔은 사용자에게 확인을 유도할 뿐, 동작을 변경하지 않는다.
+        ///
+        /// false positive 허용: 정규식 스캔은 의미론적 분석이 아니므로 실제로 문제없는
+        /// 코드(주석 내 패턴, 에디터 전용 코드 등)도 검출될 수 있다.
+        /// 스캔 실패는 try/catch로 흡수하며 빌드에 영향을 주지 않는다.
+        /// </summary>
+        private static void ScanRuntimeMaterialReplacementCode()
+        {
+            try
+            {
+                string assetsPath = Path.Combine(Application.dataPath);
+                // 머티리얼 런타임 대입 패턴: .material =, .materials =, .sharedMaterial =, .sharedMaterials =
+                var pattern = new Regex(
+                    @"\.(material|materials|sharedMaterial|sharedMaterials)\s*=",
+                    RegexOptions.Compiled);
+
+                var matchedFiles = new List<string>();
+                int totalCount = 0;
+
+                // Assets/ 하위 .cs 파일 탐색 (Editor/ 폴더 제외)
+                string[] csFiles = Directory.GetFiles(assetsPath, "*.cs", SearchOption.AllDirectories);
+                foreach (string filePath in csFiles)
+                {
+                    // Editor 폴더 경로 제외 (경로 구분자 통일 후 검사)
+                    string normalizedPath = filePath.Replace('\\', '/');
+                    if (normalizedPath.Contains("/Editor/"))
+                        continue;
+
+                    string source = File.ReadAllText(filePath, System.Text.Encoding.UTF8);
+                    var matches = pattern.Matches(source);
+                    if (matches.Count > 0)
+                    {
+                        totalCount += matches.Count;
+                        // Assets/ 기준 상대 경로로 변환
+                        string relativePath = "Assets" + normalizedPath.Substring(assetsPath.Replace('\\', '/').Length);
+                        matchedFiles.Add(relativePath);
+                    }
+                }
+
+                if (totalCount > 0)
+                {
+                    // 파일 목록은 최대 5개까지만 출력
+                    var displayFiles = matchedFiles.Count > 5
+                        ? matchedFiles.GetRange(0, 5)
+                        : matchedFiles;
+                    string fileList = string.Join("\n  - ", displayFiles);
+                    string moreNote = matchedFiles.Count > 5 ? $"\n  … 외 {matchedFiles.Count - 5}개 파일" : "";
+
+                    Debug.LogWarning(
+                        $"[AIT] 런타임 머티리얼 교체 코드가 감지되었습니다({totalCount}건).\n" +
+                        "Optimize Mesh Data는 빌드 시점 머티리얼 기준으로 미사용 정점 채널(노멀/탄젠트/UV)을 제거하므로, " +
+                        "교체된 머티리얼이 제거된 채널을 요구하면 시각 오류가 발생할 수 있습니다.\n" +
+                        "문제가 있으면 AIT Configuration에서 Optimize Mesh Data를 비활성화하세요.\n" +
+                        $"감지된 파일:\n  - {fileList}{moreNote}");
+                }
+            }
+            catch (System.Exception e)
+            {
+                // 스캔 실패는 흡수 — 빌드에 영향을 주지 않음
+                Debug.Log($"[AIT] 런타임 머티리얼 교체 코드 스캔 중 오류 발생 (무시): {e.Message}");
+            }
         }
     }
 }

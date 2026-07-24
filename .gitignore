@@ -170,6 +170,7 @@ Tests~/E2E/benchmark*.log
 Tests~/E2E/temp/
 Tests~/E2E/tests/test-results.json
 Tests~/E2E/tests/e2e-test-results.json
+Tests~/E2E/tests/perf-results-*.json
 Tests~/E2E/tests/test-results/
 Tests~/E2E/tests/*-screenshot.png
 

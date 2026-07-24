@@ -5,8 +5,13 @@
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
     <title>Unity WebGL Player | %UNITY_WEB_NAME%</title>
     <link rel="shortcut icon" href="TemplateData/favicon.ico">
-    <link rel="stylesheet" href="TemplateData/style.css">
+    <!-- TemplateData/style.css 링크 없음: 모든 스타일은 아래 인라인 <style>에 있고(파일은 죽은 참조로 보존),
+         스타일시트 <link>는 CSSOM 블로킹으로 뒤에 오는 조기 fetch 인라인 스크립트 실행을 지연시킴 -->
+    <link rel="preload" as="script" href="%UNITY_WEBGL_FRAMEWORK_URL%" fetchpriority="high">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+
+    <!-- AIT Page Cache (CacheStorage 인터셉터, SDK Auto-generated) -->
+    %AIT_PAGE_CACHE_SCRIPT%
 
     <!-- Unity Resource Early Fetch (SDK Auto-generated) -->
     %AIT_EARLY_FETCH_SCRIPT%
@@ -278,6 +283,10 @@
     <!-- AITLoading: 커스텀 로딩 화면 API -->
     <script>
         window.AITLoading = {
+            // 번들 마킹 — 이 SDK 변형(perf 채널 등)으로 생성된 번들을 클라이언트/RUM 에서 식별.
+            // 빌드 시 %AIT_BUILD_VARIANT% 가 치환됨(미치환 시 빈 문자열 → main 산출 번들).
+            buildVariant: '%AIT_BUILD_VARIANT%',
+
             // 앱 정보 (초기화 전 기본값)
             appInfo: {
                 iconUrl: '',
@@ -513,6 +522,69 @@
             showBanner: unityShowBanner,
         };
 
+        // wasm 스트리밍 컴파일 수리:
+        // decompressionFallback OFF(.br/.gz 네이티브 서빙) 빌드에서 브라우저가 wasm을
+        // 스트리밍 컴파일하려면 응답이 (1) Content-Type: application/wasm 이고 (2) 네이티브
+        // Response 객체여야 한다. 둘 중 하나라도 깨지면 instantiateStreaming이
+        // "must be a Response" / "Incorrect MIME"로 거부하고, 로더가 wasm을 통째로 다시 받아
+        // 직렬 컴파일로 강등된다(콜드 부트 이중 다운로드 + 경고 배너).
+        //  · 서버가 application/wasm을 주지 않을 수 있고(사설 채널 MIME),
+        //  · dev console(vConsole 등)이 window.fetch를 감싸면 반환 Response가 네이티브가 아닌
+        //    bound/proxy 객체가 되어 V8 스트리밍 브랜드 체크를 통과하지 못한다(2026-07 실측:
+        //    vConsole 활성 시 fetch가 "bound Response"를 반환 → 매 콜드 부트 폴백·재다운로드).
+        // → 응답 body를 항상 네이티브 new Response(application/wasm)로 재포장해 두 조건을
+        //   동시에 충족시킨다. 재포장은 MIME 문제와 fetch 래퍼 오염을 한 번에 무력화하며,
+        //   단일 다운로드 상태로 스트리밍 컴파일을 복원한다(재페치 폴백은 이제 발생하지 않음).
+        // .unityweb(JS 디컴프레서) 빌드는 로더가 wasm을 선다운로드하므로 개입하지 않는다.
+        (function () {
+            var codeUrl = config.codeUrl || '';
+            var nativeServed = codeUrl.indexOf('.unityweb') === -1;
+            var canStream = typeof WebAssembly !== 'undefined'
+                && typeof WebAssembly.instantiateStreaming === 'function'
+                && typeof fetch === 'function'
+                && typeof Response === 'function';
+            if (!nativeServed || !canStream) return;
+
+            config.instantiateWasm = function (imports, receiveInstance) {
+                var done = function (result) { receiveInstance(result.instance, result.module); };
+                fetch(codeUrl, { credentials: 'same-origin' })
+                    .then(function (r) {
+                        if (!r.ok) throw new Error('HTTP ' + r.status + ' for ' + codeUrl);
+                        if (!r.body) {
+                            // body 스트림 미지원(구형 환경): 같은 응답 바이트로 직접 컴파일(재페치 없음).
+                            return r.arrayBuffer()
+                                .then(function (bytes) { return WebAssembly.instantiate(bytes, imports); })
+                                .then(done);
+                        }
+                        // 네이티브 Response로 재포장 — fetch 래퍼 오염과 MIME 문제를 동시에 무력화.
+                        var resp = new Response(r.body, {
+                            status: 200,
+                            headers: { 'Content-Type': 'application/wasm' }
+                        });
+                        return WebAssembly.instantiateStreaming(resp, imports).then(done);
+                    })
+                    .catch(function (err) {
+                        // 재포장으로 정상 경로의 스트리밍 실패는 제거됐다. 여기 도달하면 손상 응답 등
+                        // 예기치 못한 이상이므로 마지막 수단으로 1회 재페치해 복구를 시도한다.
+                        console.warn('[AIT] wasm 스트리밍 컴파일 실패 — ArrayBuffer 폴백:', err);
+                        return fetch(codeUrl, { credentials: 'same-origin' })
+                            .then(function (r) {
+                                if (!r.ok) throw new Error('HTTP ' + r.status + ' for ' + codeUrl);
+                                return r.arrayBuffer();
+                            })
+                            .then(function (bytes) { return WebAssembly.instantiate(bytes, imports); })
+                            .then(done);
+                    })
+                    .catch(function (err) {
+                        console.error('[AIT] wasm 인스턴스화 최종 실패:', err);
+                        if (typeof unityShowBanner === 'function') {
+                            unityShowBanner('WebAssembly 인스턴스화에 실패했습니다: ' + err, 'error');
+                        }
+                    });
+                return {};
+            };
+        })();
+
         // 모바일 감지 및 최적화
         var isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
@@ -683,6 +755,13 @@
         // Race condition 방지: loader 스크립트가 비동기로 로드되므로 완료를 기다림
         function waitForLoader(callback, timeoutMs) {
             var startTime = Date.now();
+            // 동기 선검사: 직전 <script src> 로더가 이미 로드 완료된 성공 경로에서
+            // setInterval의 첫 tick(최대 50ms)을 기다리지 않고 즉시 콜백한다.
+            if (window._aitLoaderLoaded || typeof createUnityInstance !== 'undefined') {
+                console.log('[AIT] ✓ Loader 스크립트 준비 완료 (0ms, 동기 선검사)');
+                callback(true);
+                return;
+            }
             var checkInterval = setInterval(function() {
                 if (window._aitLoaderLoaded || typeof createUnityInstance !== 'undefined') {
                     clearInterval(checkInterval);

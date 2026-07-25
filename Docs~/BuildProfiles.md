@@ -107,13 +107,13 @@ Unity의 Development Build 옵션을 활성화합니다.
 | 값 | 설명 |
 |-----|------|
 | 자동 | High 사용 (기본값) |
-| Disabled | 코드 제거 없음 |
 | Minimal | 최소한의 코드만 제거 |
 | Low | 낮은 수준의 코드 제거 |
 | Medium | 중간 수준의 코드 제거 |
 | High | 적극적으로 코드 제거 (최소 빌드 크기) |
 
 > **참고**: Dev Server는 빌드 속도를 위해 Minimal, 나머지 프로필은 자동(High)이 기본값입니다.
+> Disabled는 WebGL(IL2CPP)에서 지원되지 않아 옵션에서 제외되었으며, 이전 버전에서 Disabled로 저장된 값은 Minimal로 정규화됩니다.
 
 ### LZ4 압축
 

@@ -59,6 +59,10 @@ namespace AppsInToss.Editor
             // 빌드 시 자동 생성되는 빌드 정보
             "Assets/StreamingAssets/build_info",
             "Assets/StreamingAssets/build_info.meta",
+            // 빌드 시 자동 생성·유지되는 버전 정보 (빌드 캐시 보존을 위해 빌드 후에도 유지됨 —
+            // 내용에 프로젝트 커밋 해시가 포함되어 커밋하면 매 커밋 후 빌드마다 churn 발생)
+            "Assets/Resources/AITVersionInfo.json",
+            "Assets/Resources/AITVersionInfo.json.meta",
         };
 
         /// <summary>
@@ -72,9 +76,11 @@ namespace AppsInToss.Editor
             ("Assets/WebGLTemplates/", true),
             ("Assets/StreamingAssets/build_info", false),
             ("Assets/StreamingAssets/build_info.meta", false),
+            ("Assets/Resources/AITVersionInfo.json", false),
+            ("Assets/Resources/AITVersionInfo.json.meta", false),
         };
 
-        private const string PREFS_KEY_GITIGNORE_CHECKED = "AIT_GitIgnore_Checked_v5";
+        private const string PREFS_KEY_GITIGNORE_CHECKED = "AIT_GitIgnore_Checked_v6";
 
         static AITGitGuard()
         {

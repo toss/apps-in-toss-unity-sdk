@@ -10,7 +10,7 @@ namespace AppsInToss.Editor
     /// <summary>
     /// Unity WebGL 빌드 실행부 (AITConvertCore에서 분리).
     /// 빌드 캐시 유효성 검증, BuildPipeline 실행, 빌드 마커 기록,
-    /// 버전 정보 JSON 기록/정리를 한 곳에서 관리한다.
+    /// 버전 정보 JSON 기록을 한 곳에서 관리한다.
     /// AITConvertCore의 빌드 파이프라인(DoExport/DoExportAsync)이 이 클래스를 호출하며 동작은 기존과 동일하다.
     /// </summary>
     internal static class AITWebGLBuilder
@@ -160,21 +160,9 @@ namespace AppsInToss.Editor
 
             // 빌드 직전: Resources JSON으로 Version/CommitHash/ReleaseDateTime 기록
             // .cs 파일 수정과 달리 .json은 스크립트 컴파일을 유발하지 않으므로 도메인 리로드 없음
-            bool versionInfoWritten = WriteVersionInfoJson(out bool createdResourcesDir);
+            WriteVersionInfoJson();
 
-            UnityEditor.Build.Reporting.BuildReport result;
-            try
-            {
-                result = BuildPipeline.BuildPlayer(buildPlayerOptions);
-            }
-            finally
-            {
-                // 빌드 완료 후 (성공/실패 무관) 생성한 JSON 제거 — 사용자 프로젝트에 산출물 남기지 않음
-                if (versionInfoWritten)
-                {
-                    RemoveVersionInfoJson(createdResourcesDir);
-                }
-            }
+            var result = BuildPipeline.BuildPlayer(buildPlayerOptions);
 
             // 빌드 리포트를 에러 리포터에 저장 (Issue 신고 시 사용)
             AITErrorReporter.SetBuildReport(result);
@@ -256,61 +244,103 @@ namespace AppsInToss.Editor
 
         // Unity Resources 폴더는 사용자 프로젝트 소유 — SDK 패키지(UPM Git 설치 시 immutable)가 아니라
         // 여기에 쓰면 설치 방식에 무관하게 쓰기 가능. 플레이어 번들은 Resources/ 를 자동 포함함.
+        // 이 파일은 빌드 후에도 삭제하지 않고 유지한다 — 매 빌드 삭제/재생성하면 .meta GUID가
+        // 갱신되어 내용이 같아도 data 아카이브가 dirty 판정되고, 무변경 재빌드마다 아카이브
+        // 재빌드+재압축(대형 프로젝트에서 수 분)이 발생하기 때문이다.
         private const string VersionInfoAssetPath = "Assets/Resources/AITVersionInfo.json";
 
         /// <summary>
         /// 빌드 직전 Assets/Resources/AITVersionInfo.json 에 Version/CommitHash/ReleaseDateTime 기록.
         /// .cs 파일 수정과 달리 .json은 스크립트 컴파일/도메인 리로드를 유발하지 않는다.
+        ///
+        /// 내용이 실제로 달라질 때(SDK 버전/커밋 변경)만 다시 기록한다. 같은 내용을 매 빌드
+        /// 다시 쓰거나 삭제/재생성하면 asset dirty 판정으로 data 아카이브 증분 캐시가 무효화된다
+        /// (판단 로직은 <see cref="BuildVersionInfoJson"/> 참조).
         /// </summary>
-        /// <param name="createdResourcesDir">
-        /// 이번 호출에서 Assets/Resources/ 폴더를 새로 생성했는지. 파일 쓰기까지 성공한 경우에만
-        /// true 로 설정되어, cleanup 단계가 "우리가 만든 빈 폴더" 만 지우고 사용자의 기존
-        /// Resources/ 는 보존하도록 한다.
-        /// </param>
-        /// <returns>파일을 성공적으로 기록했으면 true (빌드 후 정리 대상)</returns>
-        private static bool WriteVersionInfoJson(out bool createdResourcesDir)
+        private static void WriteVersionInfoJson()
         {
-            createdResourcesDir = false;
             try
             {
-                // AITVersion.Version은 EnsureLoaded 경로에 따라 "unknown"으로 초기화될 수 있어
-                // 패키지의 권위 있는 소스인 package.json 에서 직접 읽는다.
-                var payload = new AITVersion.VersionInfoPayload
-                {
-                    version = ResolveSdkVersion(),
-                    releaseDateTime = DateTime.UtcNow.ToString("yyyyMMdd_HHmm"),
-                    commitHash = GetGitCommitHash(),
-                };
-
-                // JsonUtility.ToJson 으로 직렬화 — 수동 문자열 보간의 이스케이프 누락을 방지.
-                // 필드명은 VersionInfoPayload 의 public field 이름과 런타임 read 경로가 공유.
-                string json = JsonUtility.ToJson(payload, prettyPrint: true);
-
                 string projectPath = UnityUtil.GetProjectPath();
                 string absolutePath = Path.Combine(projectPath, VersionInfoAssetPath);
+                string existingJson = File.Exists(absolutePath) ? File.ReadAllText(absolutePath) : null;
+
+                // AITVersion.Version은 EnsureLoaded 경로에 따라 "unknown"으로 초기화될 수 있어
+                // 패키지의 권위 있는 소스인 package.json 에서 직접 읽는다.
+                string version = ResolveSdkVersion();
+                string commitHash = GetGitCommitHash();
+                string json = BuildVersionInfoJson(
+                    existingJson, version, commitHash,
+                    DateTime.UtcNow.ToString("yyyyMMdd_HHmm"),
+                    out bool changed);
+
+                if (!changed)
+                {
+                    Debug.Log("[AIT] 버전 정보 JSON 변경 없음 — 기존 파일 유지 (data 빌드 캐시 보존)");
+                    return;
+                }
+
                 string directory = Path.GetDirectoryName(absolutePath);
-                bool directoryCreated = false;
                 if (!Directory.Exists(directory))
                 {
                     Directory.CreateDirectory(directory);
-                    directoryCreated = true;
                 }
-
                 File.WriteAllText(absolutePath, json);
-                // 파일 쓰기까지 성공한 후에야 "우리가 만든 폴더" 로 확정 — 쓰기 실패 시 폴더가
-                // 남더라도 caller 는 정리하지 않아 시스템이 일관된 상태를 유지.
-                createdResourcesDir = directoryCreated;
 
                 // Resources로 인식시키기 위해 임포트 (스크립트가 아니므로 도메인 리로드 없음)
                 AssetDatabase.ImportAsset(VersionInfoAssetPath, ImportAssetOptions.ForceSynchronousImport);
-                Debug.Log($"[AIT] 버전 정보 JSON 기록: Version={payload.version}, CommitHash={payload.commitHash}, ReleaseDateTime={payload.releaseDateTime}");
-                return true;
+                Debug.Log($"[AIT] 버전 정보 JSON 기록: Version={version}, CommitHash={commitHash}");
             }
             catch (Exception e)
             {
                 Debug.LogWarning($"[AIT] 버전 정보 JSON 기록 실패 (무시됨): {e.Message}");
-                return false;
             }
+        }
+
+        /// <summary>
+        /// 기록할 버전 정보 JSON(canonical 형태)을 만들고 기존 파일 내용과 비교해
+        /// 재기록 필요 여부를 판단한다. 순수 함수 — 파일 IO 없음 (EditMode 테스트 대상).
+        ///
+        /// version/commitHash가 기존 파일과 같으면 기존 releaseDateTime을 재사용한다.
+        /// releaseDateTime은 분 단위 wall-clock이라 이를 매 빌드 갱신하면 그것만으로
+        /// 내용이 달라져 data 아카이브가 무효화된다. 소비처(<see cref="AITVersion.FullVersion"/>,
+        /// Sentry 태그)는 표시용이므로 "이 버전/커밋 조합을 처음 빌드한 시각" 의미로 충분하다.
+        /// </summary>
+        /// <returns>기록할 canonical JSON. changed가 false면 기존 파일과 동일하므로 기록 불필요.</returns>
+        internal static string BuildVersionInfoJson(
+            string existingJson, string version, string commitHash, string nowStamp, out bool changed)
+        {
+            var payload = new AITVersion.VersionInfoPayload
+            {
+                version = version,
+                releaseDateTime = nowStamp,
+                commitHash = commitHash,
+            };
+
+            if (!string.IsNullOrEmpty(existingJson))
+            {
+                try
+                {
+                    var existing = JsonUtility.FromJson<AITVersion.VersionInfoPayload>(existingJson);
+                    if (existing != null
+                        && existing.version == version
+                        && existing.commitHash == commitHash
+                        && !string.IsNullOrEmpty(existing.releaseDateTime))
+                    {
+                        payload.releaseDateTime = existing.releaseDateTime;
+                    }
+                }
+                catch
+                {
+                    // 손상된 기존 파일 → 새 값으로 canonical 재기록
+                }
+            }
+
+            // JsonUtility.ToJson 으로 직렬화 — 수동 문자열 보간의 이스케이프 누락을 방지.
+            // 필드명은 VersionInfoPayload 의 public field 이름과 런타임 read 경로가 공유.
+            string json = JsonUtility.ToJson(payload, prettyPrint: true);
+            changed = !string.Equals(existingJson, json, StringComparison.Ordinal);
+            return json;
         }
 
         /// <summary>
@@ -337,46 +367,6 @@ namespace AppsInToss.Editor
             catch
             {
                 return AITVersion.Version;
-            }
-        }
-
-        /// <summary>
-        /// 빌드 후 Assets/Resources/AITVersionInfo.json 및 .meta 파일을 제거해
-        /// 사용자 프로젝트에 산출물이 남지 않도록 한다.
-        /// </summary>
-        /// <param name="createdResourcesDir">
-        /// 같은 빌드에서 WriteVersionInfoJson 이 Resources/ 폴더를 새로 생성했는지.
-        /// true 인 경우 빈 폴더도 함께 정리한다 (사용자가 원래 사용 중이던 Resources/ 는 보존).
-        /// </param>
-        private static void RemoveVersionInfoJson(bool createdResourcesDir)
-        {
-            try
-            {
-                // AssetDatabase.DeleteAsset이 파일과 .meta를 함께 삭제 (스크립트 아님 → 리로드 없음)
-                if (!AssetDatabase.DeleteAsset(VersionInfoAssetPath))
-                {
-                    return;
-                }
-
-                Debug.Log("[AIT] 버전 정보 JSON 제거 완료");
-
-                // 우리가 생성한 빈 Resources/ 폴더 정리 (Finder 등이 만든 .DS_Store 같은 hidden
-                // 파일이 있으면 Directory.GetFileSystemEntries 가 0 이 아니므로 보존되는데, 이는
-                // 안전한 방향의 기본값).
-                if (createdResourcesDir)
-                {
-                    string projectPath = UnityUtil.GetProjectPath();
-                    string resourcesAbs = Path.Combine(projectPath, "Assets/Resources");
-                    if (Directory.Exists(resourcesAbs)
-                        && Directory.GetFileSystemEntries(resourcesAbs).Length == 0)
-                    {
-                        AssetDatabase.DeleteAsset("Assets/Resources");
-                    }
-                }
-            }
-            catch (Exception e)
-            {
-                Debug.LogWarning($"[AIT] 버전 정보 JSON 제거 실패 (무시됨): {e.Message}");
             }
         }
 

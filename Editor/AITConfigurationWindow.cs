@@ -2327,6 +2327,7 @@ namespace AppsInToss.Editor
             config.threadsSupport = -1;
             // dataCaching은 UI에서 숨겨진 베타 설정이라 리셋 대상에서도 제외 —
             // 화면에 보이지 않는 값을 복원 버튼이 조용히 덮어쓰면 안 됨
+            // (brotliRecompress 도 동일 — UI 미노출 숨김 스파이크 설정이라 리셋 대상에서 제외)
             config.nameFilesAsHashes = true; // [Header "WebGL 최적화 설정"] 파일명 해싱 토글 (선언 기본 true)
             config.firstInteractiveLog = -1;
 

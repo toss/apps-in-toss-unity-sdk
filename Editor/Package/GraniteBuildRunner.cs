@@ -33,6 +33,7 @@ namespace AppsInToss.Editor.Package
                 ctx.BuildProjectPath, ctx.PnpmPath, "install --no-frozen-lockfile",
                 ctx.LocalCachePath, "pnpm install (빌드 실패 후)...");
             if (installResult != AITConvertCore.AITExportError.SUCCEED) return installResult;
+            PnpmInstallStateMarker.WriteMarkerAfterSuccessfulInstall(ctx.BuildProjectPath);
 
             result = RunVersionedBuildSync(ctx, "ait build (재시도)");
             if (result == AITConvertCore.AITExportError.SUCCEED)
@@ -408,6 +409,7 @@ namespace AppsInToss.Editor.Package
                         return;
                     }
 
+                    PnpmInstallStateMarker.WriteMarkerAfterSuccessfulInstall(ctx.BuildProjectPath);
                     onProgress?.Invoke(AITConvertCore.BuildPhase.GraniteBuild, 0.7f, "granite build 재시도 중...");
 
                     RunVersionedBuildAsync(ctx, onProgress,

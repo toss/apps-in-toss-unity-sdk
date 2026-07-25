@@ -82,7 +82,7 @@ namespace AppsInToss.Editor.Menu
             {
                 Debug.Log("AIT: node_modules가 없습니다. pnpm install을 실행합니다...");
 
-                string localCachePath = AITPackageBuilder.GetSharedPnpmStorePath();
+                string localCachePath = AITPackageBuilder.GetSharedPnpmStorePath(buildPath);
                 var installResult = AITNpmRunner.RunNpmCommandWithCache(
                     buildPath, npmPath, "install", localCachePath, "pnpm install 실행 중..."
                 );

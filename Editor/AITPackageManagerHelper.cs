@@ -393,7 +393,7 @@ namespace AppsInToss.Editor
                 // install 명령이면 공유 store 경로 추가 (병렬 빌드 시 패키지 공유)
                 if (command.TrimStart().StartsWith("install"))
                 {
-                    string storePath = AITPackageBuilder.GetSharedPnpmStorePath();
+                    string storePath = AITPackageBuilder.GetSharedPnpmStorePath(buildPath);
                     fullCommand += $" --store-dir \"{storePath}\"";
                 }
                 if (async)

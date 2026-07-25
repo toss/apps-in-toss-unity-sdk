@@ -22,7 +22,7 @@ namespace AppsInToss.Editor.Package
             // 프로젝트 파일 없으면 SDK 복사
             if (!File.Exists(projectFile))
             {
-                File.Copy(sdkFile, destFile, true);
+                CopyIfChanged(sdkFile, destFile);
                 Debug.Log("[AIT]   ✓ package.json (SDK에서 복사)");
                 return;
             }
@@ -39,7 +39,7 @@ namespace AppsInToss.Editor.Package
                 if (projectJson == null || sdkJson == null)
                 {
                     Debug.Log("[AIT] package.json 파싱 실패, SDK 버전 사용");
-                    File.Copy(sdkFile, destFile, true);
+                    CopyIfChanged(sdkFile, destFile);
                     return;
                 }
 
@@ -59,7 +59,7 @@ namespace AppsInToss.Editor.Package
                 );
 
                 string mergedJson = MiniJson.Serialize(result);
-                File.WriteAllText(destFile, mergedJson, new System.Text.UTF8Encoding(false));
+                WriteAllTextIfChanged(destFile, mergedJson);
                 Debug.Log("[AIT]   ✓ package.json (dependencies 머지됨)");
             }
             catch (Exception e)
@@ -67,6 +67,43 @@ namespace AppsInToss.Editor.Package
                 Debug.Log($"[AIT] package.json 머지 실패: {e}, SDK 버전 사용");
                 File.Copy(sdkFile, destFile, true);
             }
+        }
+
+        /// <summary>
+        /// 대상 파일 내용이 이미 동일하면 쓰기를 생략한다 (mtime 보존).
+        /// ait-build/package.json이 매 빌드 재작성되면 mtime이 갱신되어
+        /// pnpm의 "매니페스트 변경 없음 → install 스킵" 자체 최적화가 매번 무효화되는 것을 방지.
+        /// </summary>
+        private static void WriteAllTextIfChanged(string destFile, string content)
+        {
+            try
+            {
+                if (File.Exists(destFile) && File.ReadAllText(destFile) == content)
+                {
+                    return;
+                }
+            }
+            catch (Exception)
+            {
+                // 비교 실패 시 그냥 새로 쓴다.
+            }
+            File.WriteAllText(destFile, content, new System.Text.UTF8Encoding(false));
+        }
+
+        private static void CopyIfChanged(string sourceFile, string destFile)
+        {
+            try
+            {
+                if (File.Exists(destFile) && File.ReadAllText(sourceFile) == File.ReadAllText(destFile))
+                {
+                    return;
+                }
+            }
+            catch (Exception)
+            {
+                // 비교 실패 시 그냥 복사한다.
+            }
+            File.Copy(sourceFile, destFile, true);
         }
 
         /// <summary>

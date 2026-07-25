@@ -28,7 +28,9 @@ public class AITResetWebGLSettingsTests
     private static readonly string[] WebGLLeverFields =
     {
         // 엔진 / 전송
-        "memorySize", "threadsSupport", "dataCaching", "nameFilesAsHashes", "firstInteractiveLog",
+        // (dataCaching 은 UI 숨김 베타 설정이라 리셋 대상에서 의도적으로 제외 — #1002 정책.
+        //  화면에 보이지 않는 값을 복원 버튼이 조용히 덮어쓰면 안 되므로 이 목록에도 넣지 않는다.)
+        "memorySize", "threadsSupport", "nameFilesAsHashes", "firstInteractiveLog",
         // 페이지 캐시 / warm / 네이티브 프리페치
         "pageCache", "pageCacheName", "warmManifest", "warmPage", "nativeAssetSource",
         // 오디오 스트리밍

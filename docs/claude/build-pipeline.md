@@ -20,8 +20,10 @@ SDK는 **2단계 빌드 시스템**을 사용합니다:
 3. **WebGL 빌드를 적절한 구조로 복사**:
    - `index.html` → 프로젝트 루트 (Unity 플레이스홀더 치환 적용)
    - `Build/`, `TemplateData/`, `Runtime/` → `public/` 폴더
-4. **npm install 실행** (`node_modules/`가 없는 경우에만)
-5. **`npm run build` 실행** (`granite build` 실행):
+4. **pnpm install 실행** — 재빌드 시 `node_modules/.ait-install-state.json` 마커(`PnpmInstallStateMarker`) 기준으로
+   package.json/pnpm-lock.yaml 해시·pnpm 버전이 일치하고 node_modules 무결성 검증을 통과하면 install을 스킵
+   (판정 불가 시 fail-closed로 재설치, 킬스위치: `AIT_DISABLE_INSTALL_SKIP=1`)
+5. **`pnpm run build` 실행** (`granite build` 실행):
    - `ait-build/dist/`에 최종 배포 가능 패키지 생성
 
 ## 플레이스홀더 치환

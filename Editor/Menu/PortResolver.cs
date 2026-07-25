@@ -201,12 +201,16 @@ namespace AppsInToss.Editor.Menu
         }
 
         /// <summary>
-        /// 서버 포트 설정 해석 및 충돌 검사
+        /// 서버 포트 설정 해석 및 충돌 검사.
+        /// skipGranitePortScan이 true면 granite 포트 가용성 검사를 건너뛴다
+        /// (web-framework 3.x vite 단독 모드 — granite 포트를 열지 않으므로, 8081 계열이
+        /// 다른 프로세스에 점유되어 있어도 서버 기동을 차단하면 안 된다).
         /// </summary>
         internal static bool TryResolveServerPorts(
             AITEditorScriptObject config,
             out string graniteHost, out int granitePort,
-            out string viteHost, out int vitePort)
+            out string viteHost, out int vitePort,
+            bool skipGranitePortScan = false)
         {
             graniteHost = !string.IsNullOrEmpty(config.graniteHost) ? config.graniteHost : "0.0.0.0";
             granitePort = config.granitePort > 0 ? config.granitePort : 8081;
@@ -231,7 +235,7 @@ namespace AppsInToss.Editor.Menu
             }
 
             // Granite 포트 충돌 확인 및 자동 탐지
-            if (!IsPortAvailable(granitePort))
+            if (!skipGranitePortScan && !IsPortAvailable(granitePort))
             {
                 int availablePort = FindAvailablePort(granitePort);
                 if (availablePort > 0)

@@ -149,6 +149,31 @@ namespace AppsInToss.Editor.Package
                 return AITConvertCore.AITExportError.REQUIRED_FILE_MISSING;
             }
 
+            // Early Fetch 캐시명(BuildDataCacheName)의 콘텐츠 버스팅 기준 크기는 재인코딩 훅 실행 '전'에
+            // 스냅숏한다. brotli q11 재인코딩은 콘텐츠가 그대로여도 산출 .br 바이트 크기를 바꾸므로, 훅
+            // 온/오프 토글(동일 버전 재배포·카나리 등)만으로 캐시명이 바뀌면 레거시 캐싱 스크립트의
+            // 스테일-스윕(ait-unity- 접두 삭제)이 콘텐츠 불변 빌드까지 구 캐시로 오판해 콜드 부트마다
+            // 불필요한 전체 재다운로드를 유발한다. 재인코딩 전(Unity 자체 출력) 크기는 동일 콘텐츠에 대해
+            // 결정적이므로 이 스냅숏이 캐시 버스팅 기준으로는 더 안정적이다.
+            // (totalBytes 로그·AITWarmManifestEmitter·플레이스홀더 치환 등 다른 모든 소비자는 이 스냅숏과
+            // 무관하게 buildSrc 를 직접 재읽어 항상 실제(재인코딩 후) 바이트를 사용하므로 정확성 영향 없음.)
+            long cacheDataSize = FileSizeSafe(Path.Combine(buildSrc, dataFile));
+            long cacheWasmSize = string.IsNullOrEmpty(wasmFile) ? 0L : FileSizeSafe(Path.Combine(buildSrc, wasmFile));
+
+            // ── (스파이크, 기본 OFF) brotli .br q11 in-place 재인코딩 ──
+            // Unity 내장 brotli(~q5)를 외부 q11 로 다시 눌러 data/wasm 을 더 줄인다(동일 파일명 유지).
+            // 반드시 이 지점 — 필수 파일 검증 직후, 그리고 buildSrc→buildDest 복사·totalBytes 로그·
+            // early-fetch kickUrls·플레이스홀더 치환·AITWarmManifestEmitter/ValidatePlaceholderSubstitution
+            // (파일 크기 읽는 모든 단계)보다 앞 — 에서 buildSrc 를 in-place 로 갱신해야 이후 복사본과
+            // 그 크기 읽기들이 실제 바이트와 일치한다(캐시명은 위 스냅숏을 쓰므로 예외).
+            // 훅이 뒤로 가면 totalBytes 로그·warm manifest 가 재인코딩 전 크기로 계산돼 실 바이트와 어긋난다.
+            // 대상은 buildSrc 최상위 .br 파일만이며 .unityweb(감지 마커)은 AITBrotliCompressor 가 제외한다.
+            if (EffectiveBrotliRecompress(config))
+            {
+                Debug.Log("[AIT] brotli q11 재인코딩 활성 — buildSrc 의 .br 파일을 in-place 재인코딩합니다.");
+                AITBrotliCompressor.RecompressBrFilesInPlace(buildSrc);
+            }
+
             // 필수 파일만 선별 복사 (변경분만 — 크기/내용이 같으면 스킵해 초 단위 I/O를 줄인다)
             var filesToCopy = new List<string> { loaderFile, dataFile, frameworkFile, wasmFile };
             if (!string.IsNullOrEmpty(symbolsFile))
@@ -391,7 +416,7 @@ namespace AppsInToss.Editor.Package
                 .Replace("%AIT_PAGE_CACHE_SCRIPT%", AITPageCacheEmitter.GenerateInterceptorScript(config, dataFile, frameworkFile, wasmFile))
                 // Early Fetch 스크립트 (로딩 성능 개선 + 레거시 warm-reload Cache-Storage 워밍).
                 // framework/loader 도 함께 조기 요청해 HTTP 캐시를 워밍한다.
-                .Replace("%AIT_EARLY_FETCH_SCRIPT%", GenerateEarlyFetchScript(dataFile, frameworkFile, wasmFile, loaderFile, buildSrc, PlayerSettings.bundleVersion));
+                .Replace("%AIT_EARLY_FETCH_SCRIPT%", GenerateEarlyFetchScript(dataFile, frameworkFile, wasmFile, loaderFile, PlayerSettings.bundleVersion, cacheDataSize, cacheWasmSize));
 
             // 로딩 화면 삽입 (%AIT_LOADING_SCREEN% 플레이스홀더)
             string loadingContent = "";
@@ -744,6 +769,25 @@ namespace AppsInToss.Editor.Package
             return config.playerPrefsPersistence >= 0
                 ? config.playerPrefsPersistence == 1
                 : AITDefaultSettings.GetDefaultPlayerPrefsPersistence();
+        }
+
+        /// <summary>
+        /// brotli q11 재인코딩(스파이크) 실효 활성 여부. 기본은 config.brotliRecompress(선언 기본 false).
+        /// AIT_BROTLI_RECOMPRESS 환경 변수가 설정되면 오버라이드한다(1/true=활성, 0/false=비활성) —
+        /// AIT_COMPRESSION_FORMAT 오버라이드와 동일 패턴. 값이 이상하면 경고 후 설정값으로 폴백.
+        /// </summary>
+        internal static bool EffectiveBrotliRecompress(AITEditorScriptObject config)
+        {
+            string env = System.Environment.GetEnvironmentVariable("AIT_BROTLI_RECOMPRESS");
+            if (!string.IsNullOrEmpty(env))
+            {
+                string v = env.Trim().ToLowerInvariant();
+                if (v == "1" || v == "true") return true;
+                if (v == "0" || v == "false") return false;
+                Debug.LogWarning($"[AIT] AIT_BROTLI_RECOMPRESS 환경 변수 값이 올바르지 않습니다: '{env}' (1/0/true/false 필요) — 설정값 사용");
+            }
+
+            return config != null && config.brotliRecompress;
         }
 
     }

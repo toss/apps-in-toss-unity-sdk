@@ -114,6 +114,9 @@ logs/
 !**/BuildConfig~
 !**/BuildConfig~/**
 **/BuildConfig~/node_modules/
+# 샘플 프로젝트에 빌드 시 스캐폴드되는 SDK 템플릿 사본 (AITTemplateManager.UpdateConfigFileWithMarkers)
+Tests~/E2E/*UnityProject-*/Assets/WebGLTemplates/AITTemplate/BuildConfig~/vite.config.ts
+Tests~/E2E/*UnityProject-*/Assets/WebGLTemplates/AITTemplate/BuildConfig~/granite.config.ts
 
 # Legacy folders (replaced with ~ suffix versions)
 BuildTemplate/

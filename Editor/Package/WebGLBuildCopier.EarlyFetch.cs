@@ -28,7 +28,7 @@ namespace AppsInToss.Editor.Package
         ///    둘 다 측정 중립이며 게임 동작/allowlist 계약을 바꾸지 않습니다. (선시작/kickoff 대상에서는
         ///    이 둘을 제외합니다 — 아래 kickUrls 주석 참조.)
         /// </summary>
-        private static string GenerateEarlyFetchScript(string dataFile, string frameworkFile, string wasmFile, string loaderFile, string buildSrc, string bundleVersion)
+        private static string GenerateEarlyFetchScript(string dataFile, string frameworkFile, string wasmFile, string loaderFile, string bundleVersion, long cacheDataSize, long cacheWasmSize)
         {
             var urls = new List<string>();
             if (!string.IsNullOrEmpty(dataFile)) urls.Add($"Build/{dataFile}");
@@ -62,7 +62,7 @@ namespace AppsInToss.Editor.Package
                 return GenerateEarlyFetchScriptModern(kickUrlsJson);
             }
 
-            string cacheName = BuildDataCacheName(dataFile, wasmFile, buildSrc, bundleVersion);
+            string cacheName = BuildDataCacheName(dataFile, cacheDataSize, cacheWasmSize, bundleVersion);
             return GenerateEarlyFetchScriptLegacyCaching(urlsJson, cacheName, kickUrlsJson);
         }
 
@@ -91,11 +91,13 @@ namespace AppsInToss.Editor.Package
         /// Cache-Storage 캐시명 생성. 콘텐츠 변경 버스팅을 위해 data/wasm 파일의 바이트 크기와 bundleVersion을
         /// 캐시명에 포함한다. 2021 고정 파일명(webgl.data)에서도 콘텐츠(에셋/코드)가 바뀌면 최소 한 파일의 크기가
         /// 달라져 새 캐시명이 되고, 이전 빌드 캐시는 콜드 로드 시 정리된다(스테일 데이터/wasm 서빙 방지).
+        /// dataSize/wasmSize는 반드시 brotli q11 재인코딩 훅(있다면) 실행 '전' 크기를 넘겨야 한다 — 훅은
+        /// 동일 콘텐츠라도 .br 산출 바이트 크기를 바꾸므로, 훅 실행 후 크기를 쓰면 재인코딩 온/오프
+        /// 토글만으로 캐시명이 흔들려 콘텐츠 불변 빌드까지 스테일로 오판되어 불필요한 전체 재다운로드가
+        /// 발생한다(호출부 CopyWebGLToPublic 참조).
         /// </summary>
-        private static string BuildDataCacheName(string dataFile, string wasmFile, string buildSrc, string bundleVersion)
+        private static string BuildDataCacheName(string dataFile, long dataSize, long wasmSize, string bundleVersion)
         {
-            long dataSize = FileSizeSafe(Path.Combine(buildSrc, dataFile));
-            long wasmSize = string.IsNullOrEmpty(wasmFile) ? 0L : FileSizeSafe(Path.Combine(buildSrc, wasmFile));
             string ver = string.IsNullOrEmpty(bundleVersion) ? "0" : bundleVersion;
             return $"ait-unity-{SanitizeCacheToken(dataFile)}-{dataSize}-{wasmSize}-{SanitizeCacheToken(ver)}";
         }

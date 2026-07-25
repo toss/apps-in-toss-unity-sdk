@@ -171,6 +171,15 @@ public class AITWebGLCodeOptimizationTests
             return;
         }
 
+        // 테스트 전제 "DiskSizeLTO 정의됨"을 실제로 확인 — 2021.3처럼 DiskSizeLTO/DiskSize 가
+        // 없는 버전은 Size 폴백이 적용되어 result=true 여도 값이 DiskSizeLTO 가 아니다
+        // (폴백 경로는 위 폴백 전용 테스트가 검증).
+        if (!AITWebGLCodeOptimization.IsMemberDefined(AITWebGLCodeOptimization.DiskSizeLTO))
+        {
+            Assert.Ignore("이 Unity 버전은 DiskSizeLTO 멤버를 정의하지 않습니다.");
+            return;
+        }
+
         string before = AITWebGLCodeOptimization.GetCurrentName();
 
         try

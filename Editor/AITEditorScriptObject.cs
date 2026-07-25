@@ -260,6 +260,19 @@ namespace AppsInToss
 
         public bool nameFilesAsHashes = true;
 
+        /// <summary>
+        /// (스파이크·숨김) 빌드 산출물의 brotli(.br) 파일을 q11 로 in-place 재인코딩할지 여부.
+        /// Unity 내장 brotli 는 저품질(대략 q5 수준)이라, 빌드 후 .br 을 디코드→q11 재인코딩(동일 파일명)하면
+        /// data/wasm 이 유의미하게 더 작아진다(입력 바이트가 줄어 브라우저 디코드도 소폭 빨라진다). 유일한 비용은
+        /// 인코딩 시간(대형 앱 기준 수 분, 싱글스레드)이라 기본 false 로 두고 opt-in 한다.
+        /// UI(AITConfigurationWindow)에는 노출하지 않는 숨김 스파이크 설정이며(dataCaching 과 동일 취급),
+        /// ResetWebGLOptimizationDefaults(기본값 복원) 대상에서도 제외한다 — 화면에 보이지 않는 값을
+        /// 복원 버튼이 조용히 덮어쓰면 안 되기 때문이다.
+        /// AIT_BROTLI_RECOMPRESS 환경 변수로 오버라이드 가능(1/true=활성, 0/false=비활성 — AIT_COMPRESSION_FORMAT 과 동일 패턴).
+        /// .unityweb(decompressionFallback 산출물, brotli 메타데이터에 Unity 감지 마커 포함)은 재인코딩 대상에서 제외된다.
+        /// </summary>
+        public bool brotliRecompress = false;
+
         [Header("로딩 최적화 — 페이지 캐시(CacheStorage 재방문 서빙)")]
         [Tooltip("재방문 시 Build/* 자산을 CacheStorage 에서 직접 서빙합니다(ServiceWorker 불필요). " +
                  "첫 방문(콜드)에는 효과가 없고, 미지원/비보안 환경에서는 자동으로 원래 로드로 무해 통과합니다. " +

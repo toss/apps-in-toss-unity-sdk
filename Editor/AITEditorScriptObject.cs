@@ -398,17 +398,13 @@ namespace AppsInToss
         }
 
         /// <summary>
-        /// 버전별 기본 데이터 캐싱 여부
-        /// - Unity 2021.3/2022.3: false
-        /// - Unity 6+: true (UnityVersion.md:401)
+        /// 기본 데이터 캐싱 여부
+        /// 베타 기능 미공개 상태라 전 버전 비활성화 — 플랫폼(WebView) 캐시 정책 검증 완료 후
+        /// 공개 시 Unity 6+ 기본 활성화(UnityVersion.md:401) 재검토
         /// </summary>
         public static bool GetDefaultDataCaching()
         {
-#if UNITY_2023_3_OR_NEWER
-            return true;  // Unity 6에서만 활성화 권장
-#else
             return false;
-#endif
         }
 
         /// <summary>

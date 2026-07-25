@@ -152,7 +152,52 @@ namespace AppsInToss.Editor.Package
             }
             else if (File.Exists(pnpmLockSdk))
             {
-                CopyWithIoExceptionFallback(pnpmLockSdk, pnpmLockDst, "pnpm-lock.yaml (SDK에서 복사)");
+                // SDK lockfile은 프로젝트가 BuildConfig~/package.json으로 추가한 의존성을 모른다.
+                // 그런 프로젝트에서 무조건 덮어쓰면 이전 빌드의 install이 재생성한(= 병합 package.json과
+                // 정합인) lockfile이 매 빌드 stale 템플릿으로 되돌아가, frozen-lockfile이 항상 실패하고
+                // install 스킵 마커의 lockfileHash도 매번 갈려 스킵이 영원히 발동하지 못한다.
+                // 기존 산출물이 병합 package.json과 정합이면 보존한다 (MergePackageJson이 먼저 실행되어
+                // destPath/package.json은 이 시점에 항상 병합 완료 상태). 정합 판정이 실패하거나
+                // 예외가 나면 기존 동작(SDK 복사)으로 폴백한다 (Fix A의 stale lockfile 회귀 방지 유지).
+                if (IsExistingLockfileReusable(destPath, pnpmLockDst))
+                {
+                    Debug.Log("[AIT]   ✓ pnpm-lock.yaml (기존 빌드 산출물 유지 — 병합된 package.json과 정합)");
+                }
+                else
+                {
+                    CopyWithIoExceptionFallback(pnpmLockSdk, pnpmLockDst, "pnpm-lock.yaml (SDK에서 복사)");
+                }
+            }
+        }
+
+        /// <summary>
+        /// destPath의 기존 pnpm-lock.yaml이 병합된 package.json과 정합이어서 재사용해도 안전한지 판정한다.
+        /// 판정 불가(파일 없음, 파싱 실패, 예외)는 전부 false → SDK lockfile 복사로 폴백 (fail-closed).
+        /// </summary>
+        internal static bool IsExistingLockfileReusable(string destPath, string pnpmLockDst)
+        {
+            try
+            {
+                if (!File.Exists(pnpmLockDst))
+                {
+                    return false;
+                }
+                string mergedPackageJson = Path.Combine(destPath, "package.json");
+                if (!File.Exists(mergedPackageJson))
+                {
+                    return false;
+                }
+                if (LockfileValidator.IsLockfileInSync(mergedPackageJson, pnpmLockDst, out string mismatchSummary))
+                {
+                    return true;
+                }
+                Debug.Log($"[AIT] 기존 pnpm-lock.yaml 재사용 불가 (SDK lockfile로 대체): {mismatchSummary}");
+                return false;
+            }
+            catch (Exception e)
+            {
+                Debug.Log($"[AIT] 기존 pnpm-lock.yaml 재사용 판정 중 오류 (SDK lockfile로 대체): {e.Message}");
+                return false;
             }
         }
 

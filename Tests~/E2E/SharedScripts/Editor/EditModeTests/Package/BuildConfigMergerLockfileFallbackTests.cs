@@ -39,6 +39,7 @@ namespace AppsInToss.Editor.Package.Tests
 
         private const string ProjectLockfileMarker = "PROJECT_LOCKFILE_MARKER";
         private const string SdkLockfileMarker = "SDK_LOCKFILE_MARKER";
+        private const string DestLockfileMarker = "DEST_LOCKFILE_MARKER";
 
         private static string MakePackageJson(string webFrameworkSpec)
         {
@@ -129,6 +130,85 @@ namespace AppsInToss.Editor.Package.Tests
 
             Assert.IsFalse(File.Exists(Path.Combine(_destDir, "pnpm-lock.yaml")),
                 "양쪽 lockfile이 모두 없을 때 dest에 lockfile이 생성되면 안 된다");
+        }
+
+        [Test]
+        public void CopyPnpmLockfileWithFallback_PreservesExistingDestLockfile_WhenInSyncWithMergedPackageJson()
+        {
+            // 프로젝트가 의존성을 추가한 시나리오: 이전 빌드의 install이 재생성한 dest lockfile은
+            // 병합 package.json(9.9.9)과 정합이고, SDK 템플릿 lockfile(2.4.7)은 이를 모른다.
+            // 무조건 SDK 복사로 되돌리면 frozen-lockfile 실패 + install 스킵 마커 해시 불일치가
+            // 매 빌드 반복되므로, 정합인 기존 산출물은 보존되어야 한다.
+            File.WriteAllText(Path.Combine(_destDir, "package.json"), MakePackageJson("9.9.9"));
+            File.WriteAllText(Path.Combine(_destDir, "pnpm-lock.yaml"), MakeLockfile("9.9.9", DestLockfileMarker));
+            File.WriteAllText(Path.Combine(_sdkDir, "pnpm-lock.yaml"), MakeLockfile("2.4.7", SdkLockfileMarker));
+
+            BuildConfigMerger.CopyPnpmLockfileWithFallback(_projectDir, _sdkDir, _destDir);
+
+            string result = File.ReadAllText(Path.Combine(_destDir, "pnpm-lock.yaml"));
+            StringAssert.Contains(DestLockfileMarker, result,
+                "병합 package.json과 정합인 기존 dest lockfile은 보존되어야 한다");
+        }
+
+        [Test]
+        public void CopyPnpmLockfileWithFallback_OverwritesDestLockfile_WhenOutOfSyncWithMergedPackageJson()
+        {
+            // package.json이 변경되어(9.9.9→2.4.7) 기존 dest lockfile(9.9.9)이 더 이상 정합이 아니면
+            // 기존 동작대로 SDK lockfile로 되돌린다 (Fix A의 stale lockfile 회귀 방지 유지).
+            File.WriteAllText(Path.Combine(_destDir, "package.json"), MakePackageJson("2.4.7"));
+            File.WriteAllText(Path.Combine(_destDir, "pnpm-lock.yaml"), MakeLockfile("9.9.9", DestLockfileMarker));
+            File.WriteAllText(Path.Combine(_sdkDir, "pnpm-lock.yaml"), MakeLockfile("2.4.7", SdkLockfileMarker));
+
+            BuildConfigMerger.CopyPnpmLockfileWithFallback(_projectDir, _sdkDir, _destDir);
+
+            string result = File.ReadAllText(Path.Combine(_destDir, "pnpm-lock.yaml"));
+            StringAssert.Contains(SdkLockfileMarker, result,
+                "정합이 깨진 dest lockfile은 SDK lockfile로 교체되어야 한다");
+            Assert.IsFalse(result.Contains(DestLockfileMarker));
+        }
+
+        [Test]
+        public void CopyPnpmLockfileWithFallback_OverwritesDestLockfile_WhenMergedPackageJsonMissing()
+        {
+            // 병합 package.json이 없으면 정합 판정 불가 → fail-closed로 SDK 복사.
+            File.WriteAllText(Path.Combine(_destDir, "pnpm-lock.yaml"), MakeLockfile("9.9.9", DestLockfileMarker));
+            File.WriteAllText(Path.Combine(_sdkDir, "pnpm-lock.yaml"), MakeLockfile("2.4.7", SdkLockfileMarker));
+
+            BuildConfigMerger.CopyPnpmLockfileWithFallback(_projectDir, _sdkDir, _destDir);
+
+            string result = File.ReadAllText(Path.Combine(_destDir, "pnpm-lock.yaml"));
+            StringAssert.Contains(SdkLockfileMarker, result);
+        }
+
+        [Test]
+        public void CopyPnpmLockfileWithFallback_OverwritesDestLockfile_WhenDestLockfileCorrupted()
+        {
+            // dest lockfile이 lockfile 형식이 아니면(파싱 불가) 보존하지 않고 SDK 복사 (fail-closed).
+            File.WriteAllText(Path.Combine(_destDir, "package.json"), MakePackageJson("2.4.7"));
+            File.WriteAllText(Path.Combine(_destDir, "pnpm-lock.yaml"), "not a lockfile");
+            File.WriteAllText(Path.Combine(_sdkDir, "pnpm-lock.yaml"), MakeLockfile("2.4.7", SdkLockfileMarker));
+
+            BuildConfigMerger.CopyPnpmLockfileWithFallback(_projectDir, _sdkDir, _destDir);
+
+            string result = File.ReadAllText(Path.Combine(_destDir, "pnpm-lock.yaml"));
+            StringAssert.Contains(SdkLockfileMarker, result);
+        }
+
+        [Test]
+        public void CopyPnpmLockfileWithFallback_ProjectLockfileStillWins_OverExistingDestLockfile()
+        {
+            // 정합인 프로젝트 lockfile(사용자의 명시적 핀)은 기존 dest lockfile보다 항상 우선한다.
+            File.WriteAllText(Path.Combine(_projectDir, "package.json"), MakePackageJson("2.4.7"));
+            File.WriteAllText(Path.Combine(_projectDir, "pnpm-lock.yaml"), MakeLockfile("2.4.7", ProjectLockfileMarker));
+            File.WriteAllText(Path.Combine(_destDir, "package.json"), MakePackageJson("9.9.9"));
+            File.WriteAllText(Path.Combine(_destDir, "pnpm-lock.yaml"), MakeLockfile("9.9.9", DestLockfileMarker));
+            File.WriteAllText(Path.Combine(_sdkDir, "pnpm-lock.yaml"), MakeLockfile("2.4.7", SdkLockfileMarker));
+
+            BuildConfigMerger.CopyPnpmLockfileWithFallback(_projectDir, _sdkDir, _destDir);
+
+            string result = File.ReadAllText(Path.Combine(_destDir, "pnpm-lock.yaml"));
+            StringAssert.Contains(ProjectLockfileMarker, result,
+                "정합인 프로젝트 lockfile이 기존 dest lockfile을 덮어써야 한다");
         }
 
         /// <summary>

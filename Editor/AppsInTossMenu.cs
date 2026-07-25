@@ -641,16 +641,22 @@ namespace AppsInToss
             string logPrefix = GetProfileName(type);
             string suffix = openBrowser ? "" : " (서버만)";
 
+            // vite 단독 모드(web-framework 3.x) 여부 — granite 포트를 열지 않으므로
+            // 포트 가용성 검사와 Granite 관련 로그를 건너뛴다
+            bool viteOnly = DevServerCommandResolver.IsViteOnly(buildPath);
+
             // 서버 포트 해석 및 충돌 검사
             if (!PortResolver.TryResolveServerPorts(config,
                 out string graniteHost, out int granitePort,
-                out string viteHost, out int vitePort))
+                out string viteHost, out int vitePort,
+                skipGranitePortScan: viteOnly))
             {
                 return;
             }
 
-            Debug.Log($"AIT: {label} 서버 시작 중{suffix} (granite dev)... ({buildPath})");
-            Debug.Log($"AIT:   Granite: {graniteHost}:{granitePort}");
+            Debug.Log($"AIT: {label} 서버 시작 중{suffix}... ({buildPath})");
+            if (!viteOnly)
+                Debug.Log($"AIT:   Granite: {graniteHost}:{granitePort}");
             Debug.Log($"AIT:   Vite: {viteHost}:{vitePort}");
 
             // 캡처용 로컬 변수
@@ -668,23 +674,27 @@ namespace AppsInToss
                     { "AIT_VITE_PORT", finalVitePort.ToString() }
                 };
 
-                // granite dev 명령어에 --host, --port 인자로 granite 서버 설정 전달
-                string graniteCommand = "exec -- granite dev";
+                // web-framework 버전에 맞는 dev 서버 커맨드 해석
+                // (2.x: granite bin 파일을 node로 직접 실행 — .bin/granite 이름 충돌 우회, 3.x: vite)
+                string devCommand = DevServerCommandResolver.Resolve(buildPath, finalVitePort, out viteOnly);
+                int expectedPort = viteOnly ? finalVitePort : finalGranitePort;
+                Debug.Log($"AIT:   dev 커맨드: pnpm {devCommand}");
 
                 var processManager = new AITProcessTreeManager();
 
                 // 포트와 프로세스 관리자 저장 (상태는 변경하지 않음)
-                stateManager.SetExpectedPortAndProcess(processManager, finalGranitePort);
+                stateManager.SetExpectedPortAndProcess(processManager, expectedPort);
 
                 StartServerProcessWithPortDetection(
                     processManager,
-                    buildPath, npmPath, graniteCommand, logPrefix, envVars, finalGranitePort,
+                    buildPath, npmPath, devCommand, logPrefix, envVars, expectedPort,
                     onServerStarted: (detectedPort) =>
                     {
-                        // 감지된 포트(Granite)를 저장하여 ValidateState에서 올바르게 확인할 수 있도록 함
+                        // 감지된 포트를 저장하여 ValidateState에서 올바르게 확인할 수 있도록 함
                         stateManager.OnServerStarted(detectedPort);
                         Debug.Log($"AIT: {label} 서버가 시작되었습니다{suffix}");
-                        Debug.Log($"AIT:   Granite (Metro): http://{graniteHost}:{finalGranitePort}");
+                        if (!viteOnly)
+                            Debug.Log($"AIT:   Granite (Metro): http://{graniteHost}:{finalGranitePort}");
                         Debug.Log($"AIT:   Vite: http://{viteHost}:{finalVitePort}");
                         if (openBrowser)
                             AITBrowserLauncher.OpenBrowser(finalVitePort, type);

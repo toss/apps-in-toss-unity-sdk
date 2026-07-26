@@ -14,6 +14,9 @@ on:
       - '**'
   pull_request:
     branches: [main]
+    # 기본 타입(opened/synchronize/reopened)에 edited 를 더해 PR '제목/본문 수정' 시에도 재스캔한다
+    # — open 이후의 제목 rename 이 재검사되지 않아 코드네임이 제목으로 새는 갭을 닫는다.
+    types: [opened, synchronize, reopened, edited]
 
 jobs:
   scan:
@@ -31,6 +34,11 @@ jobs:
       - name: Checkout
         if: env.IS_BOT_PR != 'true'
         uses: actions/checkout@v7
+        with:
+          # 커밋 메시지 / 파일 경로 range 스캔에 전체 히스토리 + 원격 브랜치/태그 ref 가 필요하다.
+          # fetch-depth:0 은 모든 브랜치·태그를 가져와, 새 브랜치 첫 푸시(before=40-zero)의 range 를
+          # '방금 푸시된 ref 를 제외한 다른 모든 ref' 기준으로 계산할 수 있게 한다.
+          fetch-depth: 0
 
       - name: Skip scan for bot PR
         if: env.IS_BOT_PR == 'true'
@@ -106,3 +114,140 @@ jobs:
           done
           [ "$BAD" = "0" ] || exit 1
           echo "lockfile scan OK"
+
+      # ── 아래 스텝들은 파일 '내용' 외의 metadata 표면(ref 이름 / 커밋·태그 메시지 / 파일 경로 /
+      #    PR 제목·본문)을 검사한다. 모두 Guard 뒤에 두어(빈 PATTERN 이면 Guard 가 이미 job 을 중단)
+      #    fork PR 의 빈 정규식이 전부 매치되는 false-fail 을 원천 차단한다. grep rc: 0=매치, 1=미매치,
+      #    2+=오류(fail-closed). 매치 시 이름/경로/메시지 '원문'은 절대 출력하지 않는다(공개 Actions
+      #    로그는 비인증 열람 가능 — 경로/이름 자체가 토큰일 수 있음).
+
+      - name: Scan ref name
+        if: env.IS_BOT_PR != 'true'
+        env:
+          LC_ALL: C
+          # push 는 github.ref_name(브랜치/태그 short), PR 은 소스 브랜치 github.head_ref.
+          REF_NAME: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
+        run: |
+          set -euo pipefail
+          set +e
+          printf '%s' "$REF_NAME" | grep -qiE "$PATTERN"
+          RC=$?
+          set -e
+          if [ "$RC" -eq 0 ]; then
+            echo "::error::ref(브랜치/태그) 이름에서 금지 패턴이 감지되었습니다(이름 비표시). 이름을 바꿔 다시 push 하세요."
+            exit 1
+          elif [ "$RC" -ge 2 ]; then
+            echo "::error::ref 이름 스캔 실패(grep rc=$RC). 안전을 위해 실패 처리합니다."
+            exit 1
+          fi
+          echo "ref-name scan OK"
+
+      - name: Scan commit messages and file paths
+        if: env.IS_BOT_PR != 'true'
+        env:
+          LC_ALL: C
+          EV_BEFORE: ${{ github.event.before }}
+          EV_AFTER: ${{ github.sha }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          REF_TYPE: ${{ github.ref_type }}
+          PUSH_REF: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          Z40=0000000000000000000000000000000000000000
+          # range 계산. PR 은 base..head(정확히 PR 커밋). push 기존 브랜치는 before..after.
+          # push 새 브랜치/태그(before=40-zero)는 '방금 푸시된 ref 를 제외한 다른 모든 remote
+          # 브랜치·태그' 를 기준으로 'after 에서만 도달 가능한' 커밋 — orphan/disjoint 히스토리의
+          # 첫 푸시 커밋도 전부 포함(tip-only 아님, origin/main merge-base 아님).
+          if [ -n "${PR_HEAD:-}" ]; then
+            RANGE="$PR_BASE..$PR_HEAD"
+          elif [ "${EV_BEFORE:-$Z40}" != "$Z40" ]; then
+            RANGE="$EV_BEFORE..$EV_AFTER"
+          else
+            if [ "$REF_TYPE" = "tag" ]; then CUR="refs/tags/$PUSH_REF"; else CUR="refs/remotes/origin/$PUSH_REF"; fi
+            OTHERS=$(git for-each-ref --format='%(refname)' refs/remotes/origin refs/tags | grep -vFx "$CUR" || true)
+            if [ -n "$OTHERS" ]; then RANGE="$EV_AFTER --not $OTHERS"; else RANGE="$EV_AFTER"; fi
+          fi
+
+          # (B) 커밋 메시지 — pathspec 없이 스캔(경로에 안 걸리는 orphan/메시지-only 유출 커밋 누락 방지).
+          set +e
+          # shellcheck disable=SC2086  # $RANGE 는 'SHA --not ref1 ref2' 형태로 의도적 워드분할
+          MSGS=$(git log --no-color --format=%B $RANGE 2>/dev/null); GRC=$?
+          set -e
+          [ "$GRC" -eq 0 ] || { echo "::error::커밋 메시지 범위 조회 실패(git log rc=$GRC). 안전을 위해 실패 처리합니다."; exit 1; }
+          set +e
+          printf '%s\n' "$MSGS" | grep -qiE "$PATTERN"; MRC=$?
+          set -e
+          if [ "$MRC" -eq 0 ]; then
+            echo "::error::push 범위 커밋 메시지에서 금지 패턴이 감지되었습니다(내용 비표시)."
+            exit 1
+          elif [ "$MRC" -ge 2 ]; then
+            echo "::error::커밋 메시지 스캔 실패(grep rc=$MRC). 안전을 위해 실패 처리합니다."
+            exit 1
+          fi
+
+          # (D) 파일 경로명 — 경로(파일명) 자체가 토큰인 유출(#718 워크플로 파일명)은 내용/‘^+’ diff
+          #     스캔이 못 잡는다. 경로가 곧 토큰이므로 매치 경로/라인을 절대 출력하지 않고 정적 마커만.
+          #     git 오류는 grep 전에 fail-closed. merge 커밋 경로도 보도록 -m.
+          set +e
+          # shellcheck disable=SC2086  # $RANGE 는 'SHA --not ref1 ref2' 형태로 의도적 워드분할
+          PATHS=$(git log --name-only --format= -m $RANGE 2>/dev/null); PRC=$?
+          set -e
+          [ "$PRC" -eq 0 ] || { echo "::error::경로명 범위 조회 실패(git log rc=$PRC). 안전을 위해 실패 처리합니다."; exit 1; }
+          set +e
+          printf '%s\n' "$PATHS" | grep -qiE "$PATTERN"; NRC=$?
+          set -e
+          if [ "$NRC" -eq 0 ]; then
+            echo "::error::push 범위에서 금지 패턴을 포함한 파일 경로가 감지되었습니다(경로 비표시)."
+            exit 1
+          elif [ "$NRC" -ge 2 ]; then
+            echo "::error::경로명 스캔 실패(grep rc=$NRC). 안전을 위해 실패 처리합니다."
+            exit 1
+          fi
+          echo "commit-message + path scan OK"
+
+      - name: Scan annotated tag message
+        if: env.IS_BOT_PR != 'true' && github.ref_type == 'tag'
+        env:
+          LC_ALL: C
+          TAG_REF: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          # annotated 태그 객체 메시지는 커밋 walk(git log)로는 안 보인다(이 저장소는 release/
+          # beta-release 에서 'git tag -m' 로 생성). lightweight 태그는 %(contents)가 비어 무매치.
+          MSG=$(git for-each-ref --format='%(contents)' "refs/tags/$TAG_REF" 2>/dev/null) || {
+            echo "::error::태그 메시지 조회 실패. 안전을 위해 실패 처리합니다."; exit 1; }
+          set +e
+          printf '%s\n' "$MSG" | grep -qiE "$PATTERN"; RC=$?
+          set -e
+          if [ "$RC" -eq 0 ]; then
+            echo "::error::annotated 태그 메시지에서 금지 패턴이 감지되었습니다(내용 비표시)."
+            exit 1
+          elif [ "$RC" -ge 2 ]; then
+            echo "::error::태그 메시지 스캔 실패(grep rc=$RC). 안전을 위해 실패 처리합니다."
+            exit 1
+          fi
+          echo "tag-message scan OK"
+
+      - name: Scan PR title and body
+        if: env.IS_BOT_PR != 'true' && github.event_name == 'pull_request'
+        env:
+          LC_ALL: C
+          # 인젝션 안전: 제목/본문을 셸에 직접 보간하지 않고 env 로만 전달한다.
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+          # 참고: 제목 rename 은 이 스텝이 돌기 전 이미 타임라인 이벤트로 기록된다 —
+          # 따라서 이 검사는 '예방'이 아니라 '탐지 + 머지 차단'이다(권한 있는 대응이 뒤따라야 함).
+          set +e
+          printf '%s\n%s\n' "$PR_TITLE" "${PR_BODY:-}" | grep -qiE "$PATTERN"; RC=$?
+          set -e
+          if [ "$RC" -eq 0 ]; then
+            echo "::error::PR 제목/본문에서 금지 패턴이 감지되었습니다(내용 비표시). 제목/본문을 수정하세요."
+            exit 1
+          elif [ "$RC" -ge 2 ]; then
+            echo "::error::PR 제목/본문 스캔 실패(grep rc=$RC). 안전을 위해 실패 처리합니다."
+            exit 1
+          fi
+          echo "pr title/body scan OK"

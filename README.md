@@ -8,26 +8,19 @@ Apps in Toss 플랫폼을 위한 Unity SDK입니다. Unity 프로젝트를 Apps 
 - **자동 변환 및 배포**: Unity 프로젝트를 미니앱으로 자동 변환하고 손쉽게 배포
 - **Apps in Toss API**: 결제, 인증, 기기 정보, 위치, 권한 등 모든 Apps in Toss API 지원
 
-## 지원 Unity 버전
-
-- **최소 버전**: Unity 2021.3
-- **권장 버전**: Unity 6 이상
-- Unity 2021.3 이후의 모든 버전을 지원합니다.
+Unity 2021.3 이상을 지원하며, Unity 6 이상을 권장합니다.
 
 ## 문서
 
 | 문서 | 내용 |
 |------|------|
-| [시작하기](Documentation~/GettingStarted.md) | 설치, 초기 설정, 첫 번째 빌드 |
+| [시작하기](Documentation~/GettingStarted.md) | 설치, 설치 ref 관리, 설정, 첫 번째 빌드 |
 | [API 사용 패턴](Documentation~/APIUsagePatterns.md) | async/await, 에러 처리, Mock 브릿지 |
-| [빌드 프로필](Documentation~/BuildProfiles.md) | 빌드 설정, 환경 변수 |
-| [빌드 커스터마이징](Documentation~/BuildCustomization.md) | 템플릿 수정, React/TypeScript |
-| [로딩 화면 커스터마이징](Documentation~/LoadingScreenCustomization.md) | 로딩 UI 변경 |
-| [메트릭](Documentation~/Metrics.md) | 성능 메트릭 확인 |
-| [문제 해결](Documentation~/Troubleshooting.md) | FAQ 및 트러블슈팅 |
-| [Contributing](Documentation~/Contributing.md) | 개발 환경, 커밋 규칙 |
-| [베타 채널](Documentation~/BetaChannel.md) | 3.0.0 파일럿 옵트인, 수동 업데이트/복귀 |
-| [perf 베타 채널](Documentation~/PerfBetaChannel.md) | WebGL 콜드 로드 최적화 파일럿 옵트인(#beta-perf) |
+| [빌드 프로필](Documentation~/BuildProfiles.md) | Dev Server, Production Server, Build & Package, Publish |
+| [빌드 커스터마이징](Documentation~/BuildCustomization.md) | 웹 진입점 수정, 외부 라이브러리 추가 |
+| [문제 해결](Documentation~/Troubleshooting.md) | 자주 막히는 지점과 해결 방법 |
+
+광고 연동, 로딩 화면 커스터마이징, Sentry 연동, 기여 가이드를 포함한 전체 목록은 [문서 인덱스](Documentation~/README.md)에 있습니다.
 
 ## 베타 채널 (파일럿 전용)
 

@@ -84,6 +84,11 @@ jobs:
           relative_links:
             enabled: true
             collections: false
+          # github-pages gem이 기본 활성화하는 jekyll-readme-index를 끈다.
+          # 켜져 있으면 docs/README.md 가 docs/index.html 로 옮겨져
+          # 루트 README가 거는 docs/README.html 링크가 404가 된다.
+          readme_index:
+            enabled: false
           YAML
 
           echo "스테이징 완료:"
@@ -111,6 +116,7 @@ jobs:
 
           # 마크다운이 실제로 렌더됐는지(정적 .md 복사로 끝나지 않았는지) 확인.
           for target in _site/index.html \
+                        _site/docs/README.html \
                         _site/docs/GettingStarted.html \
                         _site/docs/APIUsagePatterns.html \
                         _site/docs/Troubleshooting.html; do

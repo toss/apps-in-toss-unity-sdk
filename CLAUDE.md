@@ -100,7 +100,7 @@
 
 ### GitHub Actions 관련
 - `gh workflow run` 명령어 사용 불가 (GraphQL 차단) — REST API 사용 필수
-- 워크플로우 트리거 예시와 ID 참조 테이블은 `docs/claude/github-actions.md` 참조
+- 워크플로우 트리거 예시와 ID 참조 테이블은 `Documentation~/internal/github-actions.md` 참조
 - PR 번호 사용 시 `target_ref`에 숫자만 입력 (# 접두사 불필요)
 
 ### E2E 테스트 실패 대응
@@ -110,7 +110,7 @@
   gh api repos/{owner}/{repo}/actions/runs/{run_id}/rerun-failed-jobs -X POST
   ```
 - **알려진 flaky 패턴** (대부분 인프라 기인, 코드 변경 없이 재실행으로 해결 — Unity 라이선스 결함은 예외, 아래 참조):
-  - **Unity 라이선스 충돌** — `Code 8 (또는 Code 10) while verifying Licensing Client signature` / `No ULF license found` / `Token not found in cache` / handshake / IPC 에러 (exit code 42). self-hosted runner는 현재 `unity-<version>` 라벨로 1:1 핀 고정되어 차단 중. 재발 시 라벨이 빠진 머신이 있는지 확인 (`docs/claude/github-actions.md`).
+  - **Unity 라이선스 충돌** — `Code 8 (또는 Code 10) while verifying Licensing Client signature` / `No ULF license found` / `Token not found in cache` / handshake / IPC 에러 (exit code 42). self-hosted runner는 현재 `unity-<version>` 라벨로 1:1 핀 고정되어 차단 중. 재발 시 라벨이 빠진 머신이 있는지 확인 (`Documentation~/internal/github-actions.md`).
     - ⚠️ **단, 라벨 핀된 단일 러너(예: `macos-1-1`=2021.3)의 라이선스가 실제로 깨진 경우는 transient가 아니다** — `rerun-failed-jobs`를 반복해도 인프라/사람이 라이선스를 고치기 전까지 매번 동일 시그니처로 실패한다. (2026-06 베타 deploy probe에서 attempt #1~#3이 모두 macos-1-1의 동일 라이선스 시그니처로 실패했고, **시간 경과가 아니라 수동 라이선스 수복 후에야** attempt #4가 통과했다 — 자연 복구 아님.) 동일 라이선스 시그니처가 **2회 연속**이면 transient로 보지 말고 러너 라이선스 수복 필요로 **에스컬레이션**(반복 rerun으로 시간 낭비 금지).
   - **Windows artifact upload finalize transient** — `actions/upload-artifact@v7`가 `successfully finalized` 메시지 없이 종료 (~1.3% 빈도). 진단 step + `continue-on-error`가 적용되어 있고 재실행으로 해결됨
   - **Unity WebGL Brotli/Gzip 크래시** — `[BUSY Ns] Brotli webgl/Build/...unityweb` 직후 `exit code: 1`. self-hosted runner 동시 빌드 시 리소스 경합. **현재 E2E CI는 압축 비활성화(`AIT_COMPRESSION_FORMAT="0"`)** 로 압축 단계 자체를 건너뛰므로 신규 발생 없음 (E2E는 vite preview에서만 로드되며 배포되지 않아 압축 불필요). 로컬 재현은 아래 "로컬 CI 재현" 가이드 참조
@@ -126,11 +126,11 @@
 ### 테스트 관련
 - E2E 테스트 전 빌드 필요: `./run-local-tests.sh --all` (빌드+테스트) vs `--e2e` (테스트만)
 - Level 0 테스트(EditMode)는 빌드 없이 ~10초만에 실행 가능
-- 상세 테스트 구조는 `docs/claude/testing.md` 참조
+- 상세 테스트 구조는 `Documentation~/internal/testing.md` 참조
 
 ### Sentry 이슈 관련
 - EditMode 통합 테스트가 의도적으로 발생시키는 무시 가능한 이슈들이 있음 (SDK-2, SDK-3, SDK-8, SDK-9, SDK-A, SDK-B, SDK-C) — 이미 Sentry에서 ignored 처리됨
-- 상세 목록 및 통합 테스트 environment 분리 절차는 `docs/claude/sentry-known-issues.md` 참조
+- 상세 목록 및 통합 테스트 environment 분리 절차는 `Documentation~/internal/sentry-known-issues.md` 참조
 
 ### Push 직전 검증 체크리스트
 
@@ -174,7 +174,7 @@ CI Unity 빌드의 `Library/Bee` 캐시 무효화 정책:
 - **SDK/asmdef/jslib 변경 있음** → `Library/Bee` 삭제 (full rebuild — stale ref.dll 차단)
 - **변경 없음** → 캐시 보존 (incremental rebuild로 빌드 시간 단축)
 - **fallback** (`git diff` 실패, 얕은 fetch 등) → 보수적으로 Bee 삭제
-- **escape hatch**: workflow_dispatch에서 `clean_library=true`로 강제 풀 클린 가능 (`docs/claude/github-actions.md` 참조)
+- **escape hatch**: workflow_dispatch에서 `clean_library=true`로 강제 풀 클린 가능 (`Documentation~/internal/github-actions.md` 참조)
 
 캐시가 의심되는 빌드 실패가 있으면 먼저 `clean_library=true`로 재트리거 후 재현 여부 확인.
 
@@ -188,7 +188,7 @@ CI Unity 빌드의 `Library/Bee` 캐시 무효화 정책:
 | 전체 로컬 테스트 | `./run-local-tests.sh --all` |
 | 빠른 검증만 | `./run-local-tests.sh --validate` |
 | E2E만 | `./run-local-tests.sh --e2e` |
-| CI 트리거 (E2E) | `docs/claude/github-actions.md` 참조 |
+| CI 트리거 (E2E) | `Documentation~/internal/github-actions.md` 참조 |
 
 ## Verification Commands
 
@@ -204,11 +204,11 @@ review-fix-loop 등 자동화 skill이 파싱하는 규약 섹션. 각 항목은
 
 필요할 때 Read로 가져가서 참조:
 
-- `docs/claude/github-actions.md` — 워크플로우 ID 전체 테이블, 트리거 예시 (E2E/Preview/Release/SDK Update/Bulk Release), 상태 확인 명령
-- `docs/claude/project-structure.md` — 전체 디렉토리 트리 (Runtime/SDK partial class 목록 포함)
-- `docs/claude/build-pipeline.md` — 2단계 빌드 시스템 (Unity WebGL → Granite), 플레이스홀더 치환 규칙
-- `docs/claude/testing.md` — 3-Level 테스트 구조, Unity 버전 요구사항, E2E 디렉토리 구조, 실행 명령, CI/CD 통합
-- `docs/claude/sdk-generator.md` — `sdk-runtime-generator~` 워크플로우, 타입 매핑, API 사용 패턴
-- `docs/claude/implementation-details.md` — WebGL 템플릿, 빌드 설정 자동 구성, 내장 Node.js 시스템, 설정 저장소
-- `docs/claude/sentry-known-issues.md` — 무시 가능 Sentry 이슈 목록, 통합 테스트 environment 분리, strict 게이트 + NonSdkMessagePatterns 이중 안전망
-- `docs/claude/build-session-recovery.md` — 빌드 중 도메인 리로드 복원력 (`AITBuildSessionRecovery`) 수동 재현 절차 (`.cs` 저장 / Unity 강제 종료 / Stale 세션 / Idle gate)
+- `Documentation~/internal/github-actions.md` — 워크플로우 ID 전체 테이블, 트리거 예시 (E2E/Preview/Release/SDK Update/Bulk Release), 상태 확인 명령
+- `Documentation~/internal/project-structure.md` — 전체 디렉토리 트리 (Runtime/SDK partial class 목록 포함)
+- `Documentation~/internal/build-pipeline.md` — 2단계 빌드 시스템 (Unity WebGL → Granite), 플레이스홀더 치환 규칙
+- `Documentation~/internal/testing.md` — 3-Level 테스트 구조, Unity 버전 요구사항, E2E 디렉토리 구조, 실행 명령, CI/CD 통합
+- `Documentation~/internal/sdk-generator.md` — `sdk-runtime-generator~` 워크플로우, 타입 매핑, API 사용 패턴
+- `Documentation~/internal/implementation-details.md` — WebGL 템플릿, 빌드 설정 자동 구성, 내장 Node.js 시스템, 설정 저장소
+- `Documentation~/internal/sentry-known-issues.md` — 무시 가능 Sentry 이슈 목록, 통합 테스트 environment 분리, strict 게이트 + NonSdkMessagePatterns 이중 안전망
+- `Documentation~/internal/build-session-recovery.md` — 빌드 중 도메인 리로드 복원력 (`AITBuildSessionRecovery`) 수동 재현 절차 (`.cs` 저장 / Unity 강제 종료 / Stale 세션 / Idle gate)

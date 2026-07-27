@@ -18,21 +18,21 @@ Apps in Toss 플랫폼을 위한 Unity SDK입니다. Unity 프로젝트를 Apps 
 
 | 문서 | 내용 |
 |------|------|
-| [시작하기](Docs~/GettingStarted.md) | 설치, 초기 설정, 첫 번째 빌드 |
-| [API 사용 패턴](Docs~/APIUsagePatterns.md) | async/await, 에러 처리, Mock 브릿지 |
-| [빌드 프로필](Docs~/BuildProfiles.md) | 빌드 설정, 환경 변수 |
-| [빌드 커스터마이징](Docs~/BuildCustomization.md) | 템플릿 수정, React/TypeScript |
-| [로딩 화면 커스터마이징](Docs~/LoadingScreenCustomization.md) | 로딩 UI 변경 |
-| [메트릭](Docs~/Metrics.md) | 성능 메트릭 확인 |
-| [문제 해결](Docs~/Troubleshooting.md) | FAQ 및 트러블슈팅 |
-| [Contributing](Docs~/Contributing.md) | 개발 환경, 커밋 규칙 |
-| [베타 채널](Docs~/BetaChannel.md) | 3.0.0 파일럿 옵트인, 수동 업데이트/복귀 |
-| [perf 베타 채널](Docs~/PerfBetaChannel.md) | WebGL 콜드 로드 최적화 파일럿 옵트인(#beta-perf) |
+| [시작하기](Documentation~/GettingStarted.md) | 설치, 초기 설정, 첫 번째 빌드 |
+| [API 사용 패턴](Documentation~/APIUsagePatterns.md) | async/await, 에러 처리, Mock 브릿지 |
+| [빌드 프로필](Documentation~/BuildProfiles.md) | 빌드 설정, 환경 변수 |
+| [빌드 커스터마이징](Documentation~/BuildCustomization.md) | 템플릿 수정, React/TypeScript |
+| [로딩 화면 커스터마이징](Documentation~/LoadingScreenCustomization.md) | 로딩 UI 변경 |
+| [메트릭](Documentation~/Metrics.md) | 성능 메트릭 확인 |
+| [문제 해결](Documentation~/Troubleshooting.md) | FAQ 및 트러블슈팅 |
+| [Contributing](Documentation~/Contributing.md) | 개발 환경, 커밋 규칙 |
+| [베타 채널](Documentation~/BetaChannel.md) | 3.0.0 파일럿 옵트인, 수동 업데이트/복귀 |
+| [perf 베타 채널](Documentation~/PerfBetaChannel.md) | WebGL 콜드 로드 최적화 파일럿 옵트인(#beta-perf) |
 
 ## 베타 채널 (파일럿 전용)
 
-`web-framework` 3.0.0 기반 SDK를 미리 테스트하려는 **선택된 파일럿 제휴사**를 위한 옵트인 베타 채널이 있습니다 (`...git#beta`). 일반 서비스 배포에는 stable(`#release/vX.Y.Z`)을 사용하세요. 설치·수동 업데이트·stable 복귀 절차는 [베타 채널 가이드](Docs~/BetaChannel.md)를 참고하세요.
+`web-framework` 3.0.0 기반 SDK를 미리 테스트하려는 **선택된 파일럿 제휴사**를 위한 옵트인 베타 채널이 있습니다 (`...git#beta`). 일반 서비스 배포에는 stable(`#release/vX.Y.Z`)을 사용하세요. 설치·수동 업데이트·stable 복귀 절차는 [베타 채널 가이드](Documentation~/BetaChannel.md)를 참고하세요.
 
 ## perf 베타 채널 (파일럿 전용)
 
-WebGL 콜드 로드 최적화를 미리 테스트하려는 파일럿 제휴사를 위한 옵트인 채널이 있습니다 (`...git#beta-perf`). 일반 서비스 배포에는 stable을 사용하고, 상세 절차는 [perf 베타 채널 가이드](Docs~/PerfBetaChannel.md)를 참고하세요.
+WebGL 콜드 로드 최적화를 미리 테스트하려는 파일럿 제휴사를 위한 옵트인 채널이 있습니다 (`...git#beta-perf`). 일반 서비스 배포에는 stable을 사용하고, 상세 절차는 [perf 베타 채널 가이드](Documentation~/PerfBetaChannel.md)를 참고하세요.

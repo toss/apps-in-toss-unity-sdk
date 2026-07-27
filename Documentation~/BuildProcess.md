@@ -1,34 +1,14 @@
-# 빌드 프로세스 상세 가이드
+# 빌드 파이프라인
 
-이 문서는 Apps in Toss Unity SDK의 전체 빌드 파이프라인을 상세히 설명합니다.
+Unity 프로젝트가 배포 가능한 `.ait` 패키지가 되기까지 SDK가 내부에서 무엇을 하는지 설명합니다.
 
----
+> **대상**: SDK 기여자. SDK를 사용해 게임을 빌드하는 것이 목적이라면 [빌드 프로필](BuildProfiles.md)과 [빌드 커스터마이징](BuildCustomization.md)이 필요한 문서입니다.
 
-## 목차
+## 2단계 파이프라인 구조
 
-1. [빌드 파이프라인 개요](#빌드-파이프라인-개요)
-2. [Phase 0: 초기화 (Build Initialization)](#phase-0-초기화)
-3. [Phase 1: WebGL 빌드](#phase-1-webgl-빌드)
-4. [Phase 2: 패키징 (Transform + Package)](#phase-2-패키징)
-5. [파일 시그니처 탐지 및 검증](#파일-시그니처-탐지-및-검증)
-6. [플레이스홀더 치환 시스템](#플레이스홀더-치환-시스템)
-7. [로딩 화면 시스템](#로딩-화면-시스템)
-8. [템플릿 관리 (마커 기반 병합)](#템플릿-관리)
-9. [Node.js / pnpm 관리](#nodejs--pnpm-관리)
-10. [에러 코드 및 메시지](#에러-코드-및-메시지)
-11. [사용자 경고 및 다이얼로그 조건](#사용자-경고-및-다이얼로그-조건)
-12. [서버 라이프사이클](#서버-라이프사이클)
-13. [에러 리포팅](#에러-리포팅)
-14. [환경 변수 오버라이드](#환경-변수-오버라이드)
-15. [개선 가능 영역](#개선-가능-영역)
+빌드는 Unity가 WebGL 산출물을 만드는 단계와, 그 산출물을 웹 프로젝트로 재배치해 granite로 패키징하는 단계로 나뉩니다.
 
----
-
-## 빌드 파이프라인 개요
-
-빌드는 3개의 주요 단계로 구성됩니다:
-
-```
+```text
 ┌─────────────────────────────────────────────────────────────────────┐
 │                        Entry Points                                 │
 │  Menu: Build & Package  │  Build Window  │  Server Start/Restart    │
@@ -37,27 +17,27 @@
               │
               ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│  AITConvertCore.DoExport(buildWebGL, doPackaging, cleanBuild,      │
+│  AITConvertCore.DoExport(buildWebGL, doPackaging, cleanBuild,       │
 │                          profile, profileName)                      │
-│  또는 DoExportAsync(...)                                           │
+│  또는 DoExportAsync(...)                                            │
 └─────────────┬───────────────────────────────────────────────────────┘
               │
      ┌────────┴────────────────────────────────┐
      ▼                                         ▼
 ┌──────────────────────┐          ┌────────────────────────────────┐
 │  Phase 1: WebGL 빌드 │          │  Phase 2: 패키징               │
-│  BuildWebGL()         │          │  GenerateMiniAppPackage()      │
-│                       │          │  → AITPackageBuilder            │
-│  - Init()             │          │    .PackageWebGLBuild()        │
-│  - BuildPipeline      │          │                                │
-│  - .ait-build-info    │          │  2a. BuildConfig 복사          │
-│                       │          │  2b. WebGL→public 복사         │
-│  산출물: webgl/       │          │  2c. 플레이스홀더 치환         │
-│                       │          │  2d. 로딩 화면 삽입            │
-│                       │          │  2e. pnpm install              │
-│                       │          │  2f. granite build             │
-│                       │          │                                │
-│                       │          │  산출물: ait-build/dist/       │
+│  BuildWebGL()        │          │  GenerateMiniAppPackage()      │
+│                      │          │  → AITPackageBuilder           │
+│  - Init()            │          │    .PackageWebGLBuild()        │
+│  - BuildPipeline     │          │                                │
+│  - .ait-build-info   │          │  2a. BuildConfig 복사          │
+│                      │          │  2b. WebGL→public 복사         │
+│  산출물: webgl/      │          │  2c. 플레이스홀더 치환         │
+│                      │          │  2d. 로딩 화면 삽입            │
+│                      │          │  2e. pnpm install              │
+│                      │          │  2f. granite build             │
+│                      │          │                                │
+│                      │          │  산출물: ait-build/dist/       │
 └──────────────────────┘          └────────────────────────────────┘
 ```
 
@@ -72,31 +52,26 @@
 | `Prod Server Start` | `true` | `true` | `false` |
 | `Restart Server` | `true` | `true` | `false` |
 | `Restart (server-only)` | — | — | — |
-| ~~`Build (deprecated)`~~ | 경고 → `Build & Package` 유도 |
-| ~~`Package (deprecated)`~~ | 경고 → `Build & Package` 유도 |
 
 > **참고**: `Restart (server-only)`는 `DoExport`를 호출하지 않고 granite 프로세스만 재시작합니다.
 
----
+## Phase 0 초기화
 
-## Phase 0: 초기화
+### 템플릿 동기화
 
-### 템플릿 동기화 (`AITTemplateManager.EnsureWebGLTemplatesExist`)
+`AITTemplateManager.EnsureWebGLTemplatesExist`가 빌드 전에 SDK의 WebGL 템플릿을 프로젝트로 복사합니다.
 
-빌드 전에 SDK의 WebGL 템플릿을 프로젝트로 복사합니다.
+SDK 템플릿 검색 순서:
 
-**SDK 템플릿 검색 순서:**
 1. `Packages/im.toss.apps-in-toss-unity-sdk/WebGLTemplates/`
 2. `Packages/com.appsintoss.miniapp/WebGLTemplates/`
 3. Assembly 경로 기반 (`typeof(AITConvertCore).Assembly.Location` 상위)
 
-**동작:**
-- 프로젝트에 `Assets/WebGLTemplates/AITTemplate/`이 없으면 → 전체 복사
-- 있으면 → 마커 기반 업데이트 (사용자 커스텀 영역 보존, [상세](#템플릿-관리) 참조)
+프로젝트에 `Assets/WebGLTemplates/AITTemplate/`이 없으면 전체를 복사하고, 있으면 마커 기반으로 갱신해 사용자 커스텀 영역을 보존합니다. [템플릿 병합 시점](#템플릿-병합-시점)을 참고하세요.
 
-### 빌드 설정 (`AITBuildInitializer.Init`)
+### 빌드 설정
 
-Unity PlayerSettings를 자동 구성합니다:
+`AITBuildInitializer.Init`이 Unity PlayerSettings를 자동 구성합니다.
 
 | 설정 | 값 | 비고 |
 |------|---|------|
@@ -104,36 +79,38 @@ Unity PlayerSettings를 자동 구성합니다:
 | Linker Target | `Wasm` | 하드코딩 |
 | Scripting Backend | `IL2CPP` | 하드코딩 |
 | Memory Size | 256~1536MB | Unity 버전별 기본값 (사용자 오버라이드 가능) |
-| Compression | `Disabled` | 기본값 (Apps in Toss 요구사항) |
+| Compression | `Brotli` | 기본값. `decompressionFallback`이 켜져 있어 모든 Unity 버전에서 사용 가능 |
 | Threading | `false` | 기본값 (모바일 브라우저 호환성) |
 | Data Caching | `false` | 기본값 |
-| `nameFilesAsHashes` | `false` | Unity 2021.x에서 강제 비활성화 + 경고 |
+| `nameFilesAsHashes` | 사용자 설정 (기본 `true`) | Unity 2021.x에서만 강제로 `false` — `true`면 Bee 빌드 루프 버그 발생 |
 | Engine Code Stripping | 사용자 설정 | — |
 | Managed Stripping | `High` | 기본값 |
 | IL2CPP Config | 사용자 설정 | — |
 
-**버전별 기본 메모리:**
+기본값의 단일 출처는 `AITEditorScriptObject`의 `GetDefault*` 정적 메서드입니다. Dev Server 프로필만 압축을 `Disabled`로 내립니다 — 프로필별 차이는 [빌드 프로필](BuildProfiles.md)에 정리되어 있습니다.
+
+버전별 기본 메모리:
+
 - Unity 2021.3: 256MB
 - Unity 2022.3: 512MB
 - Unity 6 (2023.3+): 1024MB
 - Unity 2024.2+: 1536MB
 
+프로필에 적용되는 환경 변수 오버라이드는 `AITBuildInitializer.ApplyEnvironmentVariableOverrides`가 처리합니다. 변수 목록과 값은 [빌드 프로필](BuildProfiles.md)이 정본입니다.
+
 ### Config 검증
 
-빌드 전 `AITEditorScriptObject` (config)를 검증합니다:
+`DoExport`는 시작 시 `UnityUtil.GetEditorConf()`로 설정 에셋을 읽고, 에셋 자체를 찾지 못하면 `INVALID_APP_CONFIG`를 반환합니다.
 
-- `config.appName`이 비어있으면 → `INVALID_APP_CONFIG` 에러
-- `config.iconUrl`이 비어있으면 → `INVALID_APP_CONFIG` 에러 (필수 필드)
+앱 ID나 아이콘 URL이 비어 있는 것은 빌드를 막지 않습니다. 앱 ID는 Configuration 창의 빌드 버튼을 비활성화하는 조건(`AITEditorScriptObject.IsAppNameValid`)일 뿐이고, 아이콘 URL은 입력됐을 때 형식만 검사합니다. 즉 빈 값 그대로 빌드하면 `%AIT_ICON_URL%` 등이 빈 문자열로 치환된 패키지가 만들어집니다.
 
----
-
-## Phase 1: WebGL 빌드
+## Phase 1 WebGL 빌드
 
 `AITConvertCore.BuildWebGL()`
 
 ### 실행 흐름
 
-```
+```text
 1. AITBuildInitializer.Init(profile)
    ├── PlayerSettings 자동 구성
    ├── 환경 변수 오버라이드 적용
@@ -155,15 +132,16 @@ Unity PlayerSettings를 자동 구성합니다:
 5. 빌드 마커 작성: webgl/.ait-build-info.json
 ```
 
-### 빌드 마커 (`.ait-build-info.json`)
+### 빌드 마커
 
-성공적인 WebGL 빌드 후 `webgl/.ait-build-info.json`에 메타데이터를 기록합니다:
+성공적인 WebGL 빌드 후 `webgl/.ait-build-info.json`에 메타데이터를 기록합니다. 스키마는 `AITConvertCore.cs`의 `AITBuildInfo` 클래스입니다.
 
 ```json
 {
     "sdkVersion": "1.7.0",
     "buildTime": "2024-03-01T12:00:00.0000000Z",
-    "compressionFormat": 0,
+    "compressionFormat": 2,
+    "decompressionFallback": true,
     "profileName": "Production",
     "unityVersion": "6000.2.15f1"
 }
@@ -173,21 +151,23 @@ Unity PlayerSettings를 자동 구성합니다:
 |------|------|
 | `sdkVersion` | SDK 패키지 버전 |
 | `buildTime` | UTC ISO 8601 빌드 시각 |
-| `compressionFormat` | `PlayerSettings.WebGL.compressionFormat` int 값 (0=Disabled) |
+| `compressionFormat` | `PlayerSettings.WebGL.compressionFormat` int 값 (0=Disabled, 1=Gzip, 2=Brotli) |
+| `decompressionFallback` | `PlayerSettings.WebGL.decompressionFallback`. 켜져 있으면 산출물 확장자가 `.unityweb`가 된다 |
 | `profileName` | "Development" 또는 "Production" |
 | `unityVersion` | `Application.unityVersion` |
 
-`ReadBuildMarker(webglPath)` 메서드로 마커를 읽어 `AITBuildInfo`를 반환합니다. 파일이 없거나 파싱 실패 시 `null`을 반환합니다.
+`ReadBuildMarker(webglPath)`가 마커를 읽어 `AITBuildInfo`를 반환하고, 파일이 없거나 파싱에 실패하면 `null`을 반환합니다.
 
-**마커 활용처:**
-- **빌드 캐시 검증** (`ShouldForceCleanBuild`): Unity 버전 불일치, 마커 없음 → 자동 clean build
-- **압축 포맷 탐지** (`CopyWebGLToPublic`): `compressionFormat` 값으로 정확한 확장자 탐지
+마커 활용처:
+
+- **빌드 캐시 검증** (`ShouldForceCleanBuild`) — Unity 버전 불일치나 마커 없음이면 자동 clean build
+- **압축 포맷 탐지** (`CopyWebGLToPublic`) — `compressionFormat`과 `decompressionFallback`으로 정확한 확장자 결정
 
 ### 빌드 캐시 유효성 검증
 
-`ShouldForceCleanBuild(outputPath, cleanBuild)`는 WebGL 빌드 전에 기존 빌드 캐시를 검증합니다:
+`ShouldForceCleanBuild(outputPath, cleanBuild)`가 WebGL 빌드 전에 기존 캐시를 검증합니다.
 
-```
+```text
 1. cleanBuild=true → 무조건 clean build
 2. webgl/ 폴더 없음 → 새 빌드 (clean 불필요)
 3. 빌드 마커 없음 → clean build (이전 SDK 버전 또는 손상)
@@ -196,32 +176,18 @@ Unity PlayerSettings를 자동 구성합니다:
 6. 모두 통과 → 증분 빌드
 ```
 
-### 증분 빌드 (Incremental Build)
+Unity의 `BuildPipeline`은 기본적으로 증분 빌드를 수행하므로, `webgl/`이 남아 있으면 변경된 에셋만 다시 만듭니다. `cleanBuild=true`이면 `webgl/`을 삭제하고 `BuildOptions.CleanBuildCache`로 전체 빌드합니다.
 
-Unity의 `BuildPipeline`은 기본적으로 증분 빌드를 수행합니다:
-- `webgl/` 폴더가 존재하면 변경된 에셋만 재빌드
-- `cleanBuild=true`이면 `webgl/` 삭제 후 전체 빌드 (`BuildOptions.CleanBuildCache`)
+## Phase 2 패키징
 
----
+`AITPackageBuilder.PackageWebGLBuild()` (동기) 또는 `PackageWebGLBuildAsync()` (비동기). 두 경로는 `PreparePackaging()`으로 공통 준비 로직을 공유합니다.
 
-## Phase 2: 패키징
-
-`AITPackageBuilder.PackageWebGLBuild()` (동기) 또는 `PackageWebGLBuildAsync()` (비동기)
-
-동기/비동기 경로는 `PreparePackaging()`으로 공통 준비 로직을 공유합니다.
-
-### 전체 흐름
-
-```
+```text
 PreparePackaging() ← 동기/비동기 공통
 ├── Node.js/pnpm 설치 대기
 ├── ait-build/ 디렉토리 생성
 ├── CopyBuildConfigFromTemplate()
-│   ├── SDK BuildConfig/ → ait-build/ 복사
-│   │   ├── package.json (dependencies 머지)
-│   │   ├── vite.config.ts (호스트/포트 치환)
-│   │   ├── granite.config.ts (앱 메타데이터 치환)
-│   │   └── tsconfig.json (compilerOptions 머지)
+│   ├── SDK BuildConfig~/ → ait-build/ 복사
 │   └── pnpm-lock.yaml 복사
 ├── CopyWebGLToPublic()
 │   ├── webgl/Build/ 검증 (압축 포맷별 파일 탐지)
@@ -238,34 +204,29 @@ PreparePackaging() ← 동기/비동기 공통
 동기 경로: RunPnpmInstallSync() → RunGraniteBuildSync()
 비동기 경로: RunPnpmInstallAsync() → RunGraniteBuildAsync()
 
-pnpm install (PnpmInstallStages 배열 기반 3단계 재시도)
-├── 1차: pnpm install --frozen-lockfile
-├── 2차: pnpm install --no-frozen-lockfile
-└── 3차: node_modules 삭제 + pnpm install --no-frozen-lockfile
-
-granite build
-├── 1차: pnpm run build
-└── 실패 시: CleanNodeModules → install → build 재시도
-
 산출물: ait-build/dist/
 ```
 
-### 2a. BuildConfig 복사 (`CopyBuildConfigFromTemplate`)
+### BuildConfig 복사
 
-SDK의 `WebGLTemplates/AITTemplate/BuildConfig~/` 내 파일들을 `ait-build/`로 복사합니다.
+`CopyBuildConfigFromTemplate`이 SDK의 `WebGLTemplates/AITTemplate/BuildConfig~/`를 `ait-build/`로 복사합니다.
 
-**복사 대상:**
-- `package.json` — 그대로 복사
-- `tsconfig.json` — 그대로 복사
-- `vite.config.ts` — `%AIT_VITE_HOST%`, `%AIT_VITE_PORT%` 치환
-- `granite.config.ts` — 12개 플레이스홀더 치환 ([상세](#graniteconfgts-치환))
-- `pnpm-lock.yaml` — 있으면 복사
+| 파일 | 처리 |
+|------|------|
+| `package.json` | dependencies 머지 |
+| `tsconfig.json` | compilerOptions 머지 |
+| `vite.config.ts` | `%AIT_VITE_HOST%`, `%AIT_VITE_PORT%` 치환 |
+| `granite.config.ts` | 13개 플레이스홀더 치환 |
+| `apps-in-toss.config.ts` | 3.x 설정 파일. `granite.config.ts`와 같은 플레이스홀더 집합 |
+| `pnpm-lock.yaml` | 있으면 복사 |
 
-### 2b. WebGL→public 복사 (`CopyWebGLToPublic`)
+실제 머지 규칙은 `Package/BuildConfigMerger.cs`에 있습니다.
 
-`webgl/` 빌드 산출물을 `ait-build/` 구조로 재배치합니다.
+### WebGL을 public으로 복사
 
-```
+`CopyWebGLToPublic`이 `webgl/` 산출물을 `ait-build/` 구조로 재배치합니다.
+
+```text
 webgl/
 ├── Build/
 │   ├── webgl.loader.js          → ait-build/public/Build/
@@ -277,13 +238,19 @@ webgl/
 └── index.html                   → ait-build/index.html (치환 후)
 ```
 
-### 2c~2d. 플레이스홀더 치환 + 로딩 화면
+이 과정에서 [플레이스홀더 치환](#플레이스홀더-치환)과 로딩 화면 삽입이 함께 일어납니다. 로딩 화면 자체의 동작과 커스터마이징은 [로딩 화면 커스터마이징](LoadingScreenCustomization.md)이 정본입니다.
 
-[플레이스홀더 치환 시스템](#플레이스홀더-치환-시스템) 및 [로딩 화면 시스템](#로딩-화면-시스템) 참조.
+### pnpm install
 
-### 2e. pnpm install (3단계 재시도 전략)
+**설치 스킵 판정.** 매 빌드마다 install을 다시 도는 것을 피하기 위해, 성공한 install 직후 `Package/PnpmInstallStateMarker.cs`가 `package.json`·`pnpm-lock.yaml`의 내용 해시와 pnpm 버전을 `ait-build/node_modules/.ait-install-state.json`에 기록합니다. 다음 빌드에서 이 값이 전부 일치하고 `node_modules` 무결성 검증을 통과하면 install을 건너뜁니다.
 
-```
+마커를 `node_modules` **안에** 두는 이유는 `NodeModulesValidator.CleanNodeModules`가 `node_modules`를 통째로 지우면 마커도 함께 무효화되기 때문입니다 — 재시도 정책의 clean 단계와 자동으로 정합이 맞습니다. 마커가 없거나 파싱에 실패하는 등 판정이 불가능한 모든 경우는 fail-closed로 "스킵 불가" 처리합니다. 잘못된 스킵(빌드 실패)의 비용이 불필요한 재설치(시간 낭비)보다 크기 때문입니다.
+
+킬스위치는 환경 변수 `AIT_DISABLE_INSTALL_SKIP`입니다. `1`/`true`면 스킵을 끄고, 해석할 수 없는 값이면 경고를 남긴 뒤 역시 스킵을 끕니다 — 오타로 킬스위치가 무력화되지 않도록 fail-safe로 동작합니다.
+
+**3단계 재시도.** 스킵하지 않는 경우 `PnpmInstallStages` 배열에 정의된 순서로 진행합니다.
+
+```text
 ┌──────────────────────────────────────┐
 │  ValidateNodeModulesIntegrity()      │
 │  web-framework 버전 불일치?          │
@@ -305,159 +272,110 @@ webgl/
 │       + pnpm install                 │
 │         --no-frozen-lockfile         │
 │  성공? → 완료                        │
-│  실패? → FAIL_NPM_BUILD 에러        │
+│  실패? → FAIL_NPM_BUILD 에러         │
 └──────────────────────────────────────┘
 ```
 
-**`ValidateNodeModulesIntegrity()` 검증 로직:**
-1. `node_modules/`가 없으면 → 유효 (새로 설치됨)
-2. `node_modules/.pnpm/` 디렉토리가 없으면 → 무효 (stale modules)
-3. `package.json`에서 `@apps-in-toss/web-framework` 버전 추출
-4. `node_modules/.pnpm/@apps-in-toss+web-framework@{version}*/` 디렉토리 존재 확인
-   - 버전 불일치 시 → `Debug.LogWarning` + 무효 처리
-   - 해당 패키지 없음 → `Debug.LogWarning` + 무효 처리
+`ValidateNodeModulesIntegrity()`의 판정 순서:
 
-### 2f. granite build
+1. `node_modules/`가 없으면 유효 (새로 설치됨)
+2. `node_modules/.pnpm/` 디렉토리가 없으면 무효 (stale modules)
+3. `package.json`에서 `@apps-in-toss/web-framework` 버전 추출
+4. `node_modules/.pnpm/@apps-in-toss+web-framework@{version}*/` 존재 확인 — 버전 불일치나 패키지 없음이면 경고 후 무효 처리
+
+### granite build
 
 ```bash
 pnpm run build   # → granite build 실행
 ```
 
-**granite build 실패 시 재시도:**
-1. `CleanNodeModules()` → `pnpm install --no-frozen-lockfile` → `pnpm run build`
-2. 재실패 → `FAIL_NPM_BUILD` 에러 반환
+실패하면 `CleanNodeModules()` → `pnpm install --no-frozen-lockfile` → `pnpm run build`로 한 번 재시도하고, 그래도 실패하면 `FAIL_NPM_BUILD`를 반환합니다.
 
-**산출물:** `ait-build/dist/` (배포 가능한 최종 패키지)
-
----
+산출물은 `ait-build/dist/`이며, 여기에 `.ait` 파일이 없으면 `DIST_FOLDER_MISSING` 또는 `AIT_FILE_MISSING`으로 이어집니다.
 
 ## 파일 시그니처 탐지 및 검증
 
-`AITBuildValidator` 클래스가 WebGL 빌드 산출물의 존재 및 무결성을 검증합니다.
+`AITBuildValidator`가 WebGL 산출물의 존재와 무결성을 검증합니다.
 
-### `GetFilePatterns(compressionFormat)`
+### 압축 포맷별 검색 패턴
 
-빌드 마커의 `compressionFormat` 값에 따라 정확한 파일 검색 패턴을 반환합니다.
+`GetFilePatterns(compressionFormat, decompressionFallback)`이 빌드 마커 값에 따라 검색 패턴을 결정합니다.
 
-| compressionFormat | 의미 | data 패턴 | framework 패턴 | wasm 패턴 |
-|---|---|---|---|---|
-| `0` | Disabled | `*.data` | `*.framework.js` | `*.wasm` |
-| `1` | Gzip | `*.data.gz` | `*.framework.js.gz` | `*.wasm.gz` |
-| `2` | Brotli | `*.data.br` | `*.framework.js.br` | `*.wasm.br` |
-| `-1` (기본) | 폴백 | `*.data*` | `*.framework.js*` | `*.wasm*` |
+| 조건 | data 패턴 | framework 패턴 | wasm 패턴 |
+|---|---|---|---|
+| `decompressionFallback = true` | `*.data.unityweb` | `*.framework.js.unityweb` | `*.wasm.unityweb` |
+| `0` Disabled | `*.data` | `*.framework.js` | `*.wasm` |
+| `1` Gzip | `*.data.gz` | `*.framework.js.gz` | `*.wasm.gz` |
+| `2` Brotli | `*.data.br` | `*.framework.js.br` | `*.wasm.br` |
+| 그 외 (폴백) | `*.data*` | `*.framework.js*` | `*.wasm*` |
 
-> **참고**: loader.js는 압축 설정과 무관하게 항상 `*.loader.js` 패턴으로 검색됩니다.
+`decompressionFallback`이 켜져 있으면 압축 포맷보다 우선합니다. loader는 압축 대상이 아니므로 항상 `*.loader.js`입니다.
 
-**탐지 흐름:**
-1. 빌드 마커에서 `compressionFormat` 읽기 (없으면 `-1`)
-2. 정확한 확장자 패턴으로 파일 탐지
-3. 정확한 패턴으로 못 찾으면 와일드카드(`-1`)로 폴백
+### 파일 탐지
 
-### `FindFileInBuild(buildPath, pattern, isRequired)`
+`FindFileInBuild(buildPath, pattern, isRequired)`가 glob 패턴으로 파일을 찾습니다. `*.data*` 같은 꼬리 와일드카드는 `*.data.meta`도 매칭하므로 `.meta`는 결과에서 제외합니다 — 제외하지 않으면 `LastWriteTime` 정렬에서 `.meta`가 최신으로 뽑혀 잘못된 파일명이 반환됩니다.
 
-WebGL 빌드 폴더에서 glob 패턴으로 필요한 파일을 찾습니다.
+| 패턴 | 필수 | 설명 |
+|------|------|------|
+| `*.loader.js` | Yes | Unity WebGL 로더 |
+| `*.data*` | Yes | 게임 데이터 |
+| `*.framework.js*` | Yes | Unity 프레임워크 |
+| `*.wasm*` | Yes | WebAssembly 바이너리 |
+| `*.symbols.json*` | No | 디버그 심볼 |
 
-**기본 검색 패턴 (폴백):**
+**중복 매칭 시 자동 정리.** 한 패턴에 여러 파일이 매칭되면 `LastWriteTime` 내림차순(동률이면 파일명 내림차순)으로 정렬해 최신 하나만 남기고 나머지를 `.meta`와 함께 삭제합니다. 경고 로그만 남기는 방식은 매 빌드마다 반복 발생해 Sentry 노이즈가 쌓이기 때문에 삭제로 바뀌었습니다. 삭제에 실패한 파일이 있으면 Clean Build를 권고하는 정보 로그를 남깁니다.
 
-| 패턴 | 필수 | 설명 | 예시 파일명 |
-|------|------|------|------------|
-| `*.loader.js` | Yes | Unity WebGL 로더 | `webgl.loader.js` |
-| `*.data*` | Yes | 게임 데이터 | `webgl.data`, `webgl.data.gz`, `webgl.data.br` |
-| `*.framework.js*` | Yes | Unity 프레임워크 | `webgl.framework.js`, `webgl.framework.js.gz` |
-| `*.wasm*` | Yes | WebAssembly 바이너리 | `webgl.wasm`, `webgl.wasm.gz` |
-| `*.symbols.json*` | No | 디버그 심볼 | `webgl.symbols.json` |
+**필수 파일 누락.** `isRequired=true`인 패턴을 못 찾으면 첫 줄만 Sentry로 보내고(패턴별로 fingerprint가 안정적으로 묶이도록) 나머지 진단 줄은 콘솔에만 남깁니다. 진단에는 검색 경로, 다음 문자열, 그리고 Build 폴더의 실제 파일 목록(비어 있으면 그 사실)이 포함됩니다.
 
-### 다중 매칭 경고
-
-한 패턴에 여러 파일이 매칭되면:
-
-```
-⚠️ [AIT] Build 폴더에서 *.data* 패턴으로 여러 파일이 발견되었습니다.
-  - webgl.data (2024-03-01 12:00:00)
-  - webgl.data.gz (2024-03-01 11:50:00)
-가장 최근 파일을 사용합니다: webgl.data
-💡 Clean Build를 권장합니다: AIT > Clean 후 다시 빌드하세요.
+```text
+이 파일이 없으면 런타임에서 'createUnityInstance is not defined' 에러가 발생합니다.
 ```
 
-- `Debug.LogWarning` 출력
-- 최신 파일(LastWriteTime 기준) 선택
-- "이전 빌드 잔여물일 수 있습니다" 메시지 포함
+반환값은 빈 문자열이고, 호출부에서 `REQUIRED_FILE_MISSING`으로 이어집니다.
 
-### 필수 파일 누락 에러
+### 플레이스홀더 치환 검증
 
-필수 파일(`isRequired=true`)이 없으면:
+`ValidatePlaceholderSubstitution(content, filePath)`이 정규식 `%[A-Z_]+%`로 미치환 플레이스홀더를 찾습니다.
 
-```
-❌ [AIT] 필수 WebGL 빌드 파일을 찾을 수 없습니다: *.loader.js
-Build 폴더 내 파일 목록:
-  - webgl.data
-  - webgl.framework.js
-  - webgl.wasm
-💡 필수 파일이 없으면 'createUnityInstance is not defined' 오류가 발생합니다.
-```
+치명적 (에러 + 빌드 실패):
 
-- `Debug.LogError` 출력
-- 빌드 폴더 내 실제 파일 목록 표시
-- 빈 폴더면 "Build 폴더가 비어 있습니다!" 표시
-- 반환값: 빈 문자열 → `REQUIRED_FILE_MISSING` 에러로 이어짐
-
-### `ValidatePlaceholderSubstitution(content, filePath)`
-
-index.html 내 미치환 플레이스홀더를 탐지합니다.
-
-**탐지 방법:** 정규식 `%[A-Z_]+%`
-
-**치명적 플레이스홀더** (에러 + 빌드 실패):
 - `%UNITY_WEBGL_LOADER_URL%`
 - `%UNITY_WEBGL_DATA_URL%`
 - `%UNITY_WEBGL_FRAMEWORK_URL%`
 - `%UNITY_WEBGL_CODE_URL%`
 
-**비치명적 플레이스홀더** (경고만):
-- 그 외 `%...%` 패턴
+그 외 `%...%` 패턴은 경고만 남깁니다. 다음과 같은 빈 경로 패턴도 치명적으로 취급합니다.
 
-**빈 경로 패턴 탐지** (치명적):
 ```html
 src="Build/"     ← loader.js 누락 의미
 "Build/"         ← data 파일 누락 의미
 Build/",         ← 구분자 뒤 빈 파일명
 ```
 
-### `PrintBuildReport(buildProjectPath, distPath)`
+`apps-in-toss.config.ts`의 경우 SDK_GENERATED 영역의 미치환은 하드 에러지만, USER_CONFIG 영역에 남은 SDK 플레이스홀더나 3.x에서 이동된 키는 경고에 그칩니다 — 병합 시 SDK 값이 우선하므로 빌드 결과는 정상입니다.
 
-빌드 완료 후 리포트를 출력합니다:
+### 빌드 완료 리포트
 
-```
-[AIT] === 빌드 리포트 ===
-✓ loader.js: webgl.loader.js
-✓ data: webgl.data
-✓ framework: webgl.framework.js
-✓ wasm: webgl.wasm
-✗ symbols: (없음)
-```
+`PrintBuildReport(buildProjectPath, distPath)`가 `ait-build/public/Build/`를 스캔해 필수 패턴 4개와 선택 패턴 1개의 존재 여부를 파일 크기와 함께 출력합니다. 필수 패턴이 없으면 `Debug.LogError`로 `[누락됨!]`을 표시하고, 선택 패턴은 있을 때만 표시합니다.
 
----
+## 플레이스홀더 치환
 
-## 플레이스홀더 치환 시스템
+### index.html
 
-### index.html 치환
+`AITPackageBuilder.CopyWebGLToPublic()`에서 수행됩니다.
 
-`AITPackageBuilder.CopyWebGLToPublic()` 에서 수행됩니다.
+**Unity 표준**
 
-#### Unity 표준 플레이스홀더
+| 플레이스홀더 | 소스 |
+|-------------|------|
+| `%UNITY_WEB_NAME%` | `PlayerSettings.productName` |
+| `%UNITY_WIDTH%` | `PlayerSettings.defaultWebScreenWidth` |
+| `%UNITY_HEIGHT%` | `PlayerSettings.defaultWebScreenHeight` |
+| `%UNITY_COMPANY_NAME%` | `PlayerSettings.companyName` |
+| `%UNITY_PRODUCT_NAME%` | `PlayerSettings.productName` |
+| `%UNITY_PRODUCT_VERSION%` | `PlayerSettings.bundleVersion` |
 
-| 플레이스홀더 | 치환 값 | 소스 |
-|-------------|---------|------|
-| `%UNITY_WEB_NAME%` | 프로젝트명 | `PlayerSettings.productName` |
-| `%UNITY_WIDTH%` | 화면 너비 | `PlayerSettings.defaultWebScreenWidth` |
-| `%UNITY_HEIGHT%` | 화면 높이 | `PlayerSettings.defaultWebScreenHeight` |
-| `%UNITY_COMPANY_NAME%` | 회사명 | `PlayerSettings.companyName` |
-| `%UNITY_PRODUCT_NAME%` | 제품명 | `PlayerSettings.productName` |
-| `%UNITY_PRODUCT_VERSION%` | 버전 | `PlayerSettings.bundleVersion` |
-
-#### Unity WebGL URL 플레이스홀더 (치명적)
-
-이 플레이스홀더가 치환되지 않으면 빌드 실패합니다:
+**Unity WebGL URL** — 치환되지 않으면 빌드가 실패합니다.
 
 | 플레이스홀더 | 치환 값 |
 |-------------|---------|
@@ -467,17 +385,17 @@ Build/",         ← 구분자 뒤 빈 파일명
 | `%UNITY_WEBGL_CODE_URL%` | `Build/{wasmFile}` |
 | `%UNITY_WEBGL_SYMBOLS_URL%` | `Build/{symbolsFile}` (또는 빈 문자열) |
 
-#### 레거시 파일명 플레이스홀더 (하위 호환)
+**레거시 파일명** — 하위 호환용. 경로 없이 파일명만 치환됩니다.
 
 | 플레이스홀더 | 치환 값 |
 |-------------|---------|
-| `%UNITY_WEBGL_LOADER_FILENAME%` | `{loaderFile}` (경로 없이) |
+| `%UNITY_WEBGL_LOADER_FILENAME%` | `{loaderFile}` |
 | `%UNITY_WEBGL_DATA_FILENAME%` | `{dataFile}` |
 | `%UNITY_WEBGL_FRAMEWORK_FILENAME%` | `{frameworkFile}` |
 | `%UNITY_WEBGL_CODE_FILENAME%` | `{wasmFile}` |
 | `%UNITY_WEBGL_SYMBOLS_FILENAME%` | `{symbolsFile}` |
 
-#### AIT 커스텀 플레이스홀더
+**AIT 커스텀**
 
 | 플레이스홀더 | 치환 값 | 설명 |
 |-------------|---------|------|
@@ -487,184 +405,87 @@ Build/",         ← 구분자 뒤 빈 파일명
 | `%AIT_ICON_URL%` | URL 문자열 | 앱 아이콘 URL |
 | `%AIT_DISPLAY_NAME%` | 문자열 | 앱 표시 이름 |
 | `%AIT_PRIMARY_COLOR%` | 색상 코드 | 브랜드 색상 (기본: `#3182f6`) |
-| `%AIT_PRELOAD_TAGS%` | HTML 태그 | `<link rel="preload">` 태그 ([상세](#preload-태그-생성)) |
-| `%AIT_LOADING_SCREEN%` | HTML 문자열 | `loading.html` 전체 내용 |
+| `%AIT_PRELOAD_TAGS%` | HTML 태그 | `<link rel="preload">` 태그 |
+| `%AIT_LOADING_SCREEN%` | HTML 문자열 | 로딩 화면 전체 내용. [로딩 화면 커스터마이징](LoadingScreenCustomization.md) 참고 |
 
-### Preload 태그 생성
+### Preload 태그
 
-`GeneratePreloadTags(dataFile, wasmFile, frameworkFile)` 에서 생성됩니다.
+`GeneratePreloadTags(dataFile, wasmFile, frameworkFile)`이 생성합니다.
 
 ```html
 <link rel="preload" href="Build/webgl.data" as="fetch">
 <link rel="preload" href="Build/webgl.wasm" as="fetch">
 ```
 
-**중요: framework.js는 preload하지 않습니다.**
+> **중요**: framework.js는 preload하지 않습니다. Unity 로더가 framework.js를 `<script>` 태그로 로드하면 `as="fetch"` preload와 캐시 키가 불일치해 이중 다운로드가 발생할 수 있습니다. 이는 메모리 압박을 키워 간헐적 초기화 실패(ASM_CONSTS 오류) 확률을 높입니다.
 
-> Unity 로더가 framework.js를 `<script>` 태그로 로드하는 경우 `as="fetch"` preload와
-> 캐시 키가 불일치하여 이중 다운로드가 발생할 수 있습니다.
-> 이는 메모리 압박을 증가시켜 간헐적 초기화 실패(ASM_CONSTS 오류)의 확률을 높일 수 있습니다.
+### granite.config.ts
 
-### granite.config.ts 치환
+`Package.BuildConfigMerger.UpdateGraniteConfig()`에서 13개를 치환합니다.
 
-`Package.BuildConfigMerger.UpdateGraniteConfig()` 에서 수행됩니다.
-
-| 플레이스홀더 | 치환 값 | 소스 |
-|-------------|---------|------|
-| `%AIT_APP_NAME%` | 앱 ID | `config.appName` |
-| `%AIT_DISPLAY_NAME%` | 표시 이름 | `config.displayName` |
-| `%AIT_PRIMARY_COLOR%` | 브랜드 색상 | `config.primaryColor` |
-| `%AIT_ICON_URL%` | 아이콘 URL | `config.iconUrl` |
-| `%AIT_BRIDGE_COLOR_MODE%` | 색상 모드 | `config.GetBridgeColorModeString()` |
-| `%AIT_WEBVIEW_TYPE%` | 웹뷰 타입 | `config.GetWebViewTypeString()` |
-| `%AIT_ALLOWS_INLINE_MEDIA_PLAYBACK%` | `true`/`false` | 인라인 미디어 재생 허용 |
-| `%AIT_MEDIA_PLAYBACK_REQUIRES_USER_ACTION%` | `true`/`false` | 미디어 재생 사용자 동작 필요 |
-| `%AIT_VITE_HOST%` | 호스트 | `config.viteHost` |
-| `%AIT_VITE_PORT%` | 포트 | `config.vitePort` |
-| `%AIT_PERMISSIONS%` | JSON 문자열 | `config.GetPermissionsJson()` |
-| `%AIT_OUTDIR%` | 출력 디렉토리 | `config.outdir` |
-
-### vite.config.ts 치환
-
-| 플레이스홀더 | 치환 값 |
-|-------------|---------|
+| 플레이스홀더 | 소스 |
+|-------------|------|
+| `%AIT_APP_NAME%` | `config.appName` |
+| `%AIT_DISPLAY_NAME%` | `config.displayName` |
+| `%AIT_PRIMARY_COLOR%` | `config.primaryColor` |
+| `%AIT_ICON_URL%` | `config.iconUrl` |
+| `%AIT_BRIDGE_COLOR_MODE%` | `config.GetBridgeColorModeString()` |
+| `%AIT_WEBVIEW_TYPE%` | `config.GetWebViewTypeString()` |
+| `%AIT_NAVIGATION_BAR%` | `config.GetNavigationBarJson()` |
+| `%AIT_ALLOWS_INLINE_MEDIA_PLAYBACK%` | `config.allowsInlineMediaPlayback` |
+| `%AIT_MEDIA_PLAYBACK_REQUIRES_USER_ACTION%` | `config.mediaPlaybackRequiresUserAction` |
 | `%AIT_VITE_HOST%` | `config.viteHost` |
 | `%AIT_VITE_PORT%` | `config.vitePort` |
+| `%AIT_PERMISSIONS%` | `config.GetPermissionsJson()` |
+| `%AIT_OUTDIR%` | `config.outdir` |
 
-### appsintoss-unity-bridge.js 치환
+### vite.config.ts
 
-Runtime 폴더의 브릿지 JS 파일에서:
+`%AIT_VITE_HOST%` → `config.viteHost`, `%AIT_VITE_PORT%` → `config.vitePort`.
 
-| 플레이스홀더 | 치환 값 |
-|-------------|---------|
-| `%AIT_IS_PRODUCTION%` | index.html과 동일한 로직 |
+### 브릿지 JS
 
----
+`Runtime/appsintoss-unity-bridge.js`에서 `%AIT_IS_PRODUCTION%`을 index.html과 같은 로직으로 치환합니다.
 
-## 로딩 화면 시스템
+## 템플릿 병합 시점
 
-### 로딩 화면 파일 위치
+`AITTemplateManager`가 SDK 템플릿과 프로젝트 커스텀 영역을 마커 기반으로 병합합니다. 마커 문법과 사용자가 편집할 수 있는 영역은 [빌드 커스터마이징](BuildCustomization.md)이 정본입니다. 여기서는 병합이 **언제, 무엇에** 일어나는지만 다룹니다.
 
-| 경로 | 역할 |
-|------|------|
-| `WebGLTemplates/AITTemplate/loading.html` | SDK 기본 템플릿 (원본) |
-| `Assets/AppsInToss/loading.html` | 프로젝트별 커스텀 로딩 화면 |
+병합은 Phase 0의 `EnsureWebGLTemplatesExist`에서, 즉 Unity WebGL 빌드가 시작되기 전에 일어납니다.
 
-### 자동 생성 (`AITPackageInitializer`)
-
-`[InitializeOnLoad]` 속성으로 에디터 시작 시 자동 실행:
-1. `Assets/AppsInToss/loading.html`이 없으면 SDK 템플릿을 복사
-2. SDK 템플릿 검색 순서:
-   - `Packages/im.toss.apps-in-toss-unity-sdk/WebGLTemplates/AITTemplate/loading.html`
-   - `Packages/com.appsintoss.miniapp/WebGLTemplates/AITTemplate/loading.html`
-   - Assembly 경로 기반
-
-### 빌드 시 삽입
-
-`CopyWebGLToPublic()` 에서 `index.html`의 `%AIT_LOADING_SCREEN%` 플레이스홀더를 치환:
-
-```
-1. Assets/AppsInToss/loading.html 존재?
-   → Yes: 프로젝트 커스텀 로딩 화면 사용
-   → No: SDK 기본 템플릿 폴백
-
-2. SDK 템플릿도 없으면?
-   → Debug.LogWarning("로딩 화면 파일을 찾을 수 없습니다. 빈 로딩 화면이 사용됩니다.")
-   → 빈 문자열로 치환
-```
-
-### 로딩 화면 JavaScript API
-
-`loading.html`은 `window.AITLoading` 객체를 통해 Unity 로딩 상태와 연동됩니다:
-
-| 메서드 | 설명 |
-|--------|------|
-| `onReady(callback)` | 로딩 화면 준비 완료 시 |
-| `onProgress(callback)` | 로딩 진행률 업데이트 (0~1) |
-| `onComplete(callback)` | 로딩 완료 시 |
-| `onError(callback)` | 에러 발생 시 |
-| `hide()` | 로딩 화면 숨김 |
-
-### 로딩 화면 초기화 메뉴
-
-`AIT > Reset Loading Screen`:
-- 확인 다이얼로그: "로딩 화면을 기본 템플릿으로 초기화하시겠습니까?"
-- SDK 템플릿을 `Assets/AppsInToss/loading.html`로 복사
-- `AssetDatabase.Refresh()` 호출
-
----
-
-## 템플릿 관리
-
-`AITTemplateManager` 클래스가 SDK 템플릿과 프로젝트 커스텀 영역을 마커 기반으로 병합합니다.
-
-### 마커 시스템
-
-**TypeScript 설정 파일용 (vite.config.ts, granite.config.ts):**
-```typescript
-//// SDK_GENERATED_START
-// ... SDK가 관리하는 코드 (SDK 업데이트 시 자동 갱신) ...
-//// SDK_GENERATED_END ////
-
-//// USER_CONFIG_START
-// ... 사용자 커스텀 코드 (SDK 업데이트 시 보존) ...
-//// USER_CONFIG_END ////
-```
-
-**HTML용 (index.html):**
-```html
-<!-- USER_HEAD_START
-     사용자가 <head>에 추가한 커스텀 태그 -->
-<!-- USER_HEAD_END -->
-
-<!-- USER_BODY_END_START
-     사용자가 </body> 직전에 추가한 커스텀 코드 -->
-<!-- USER_BODY_END_END -->
-```
-
-### 업데이트 동작
-
-```
+```text
 SDK 업데이트 시:
   ├── index.html:
   │   ├── 마커 없음 (이전 버전) → SDK 템플릿으로 교체 + 경고
   │   └── 마커 있음 → USER_HEAD, USER_BODY_END 영역 보존, 나머지 갱신
-  ├── vite.config.ts, granite.config.ts:
+  ├── vite.config.ts, granite.config.ts, apps-in-toss.config.ts:
   │   └── USER_CONFIG 영역 보존, SDK_GENERATED 영역 갱신
   ├── Runtime/ → 항상 SDK 버전으로 덮어쓰기 (브릿지 코드)
   └── TemplateData/ → 항상 SDK 버전으로 덮어쓰기
 ```
 
-### 이전 버전 업그레이드 경고
+마커가 없는 이전 버전 index.html을 발견하면 다음 경고를 남기고 SDK 템플릿으로 교체합니다.
 
-마커가 없는 이전 버전 index.html 발견 시:
-```
+```text
 [AIT] 템플릿 업데이트: 이전 버전 템플릿을 새 마커 기반 템플릿으로 교체합니다.
 ⚠️ 기존 index.html에 커스텀 수정이 있었다면 수동으로 USER_* 마커 영역에 재적용하세요.
 ```
 
----
+## Node.js 와 pnpm 관리
 
-## Node.js / pnpm 관리
+SDK는 시스템 설치와 무관하게 자체 Node.js를 내려받아 사용합니다. 버전의 단일 출처는 `AITNodeJSDownloader.cs`의 `NODE_VERSION`과 `AITPackageManagerHelper.cs`의 `PNPM_VERSION`입니다.
 
-### 내장 Node.js (`AITNodeJSDownloader`)
+`PNPM_VERSION`은 `package.json`, `sdk-runtime-generator~/package.json`, `WebGLTemplates/AITTemplate/BuildConfig~/package.json` 세 곳의 `packageManager` 필드와 항상 같아야 합니다. 값이 갈라지면 클라이언트가 쓰는 pnpm과 lockfile을 갱신한 pnpm이 달라져 specifier drift가 생깁니다.
 
-SDK는 시스템 설치와 무관하게 자체 Node.js를 사용합니다.
+설치 경로는 `~/.ait-unity-sdk/nodejs/v{NODE_VERSION}/{platform}/`입니다.
 
-**버전:**
-- Node.js: v24.13.0
-- pnpm: 10.28.0
+다운로드 미러는 순서대로 폴백합니다.
 
-**설치 경로:** `~/.ait-unity-sdk/nodejs/v24.13.0/{platform}/`
-
-**다운로드 미러 (폴백 순서):**
 1. `https://nodejs.org/dist/` (공식)
-2. `https://cdn.npmmirror.com/binaries/node/` (중국 미러)
-3. `https://repo.huaweicloud.com/nodejs/` (Huawei 미러)
+2. `https://cdn.npmmirror.com/binaries/node/`
+3. `https://repo.huaweicloud.com/nodejs/`
 
-### 다운로드 프로세스
-
-```
+```text
 1. 설치 경로 확인 → 이미 있으면 스킵
 2. 미러 1 시도:
    ├── .tar.gz 다운로드 (macOS/Linux) 또는 .zip (Windows)
@@ -672,39 +493,34 @@ SDK는 시스템 설치와 무관하게 자체 Node.js를 사용합니다.
    └── 압축 해제 → 임시 폴더
 3. 미러 2/3 폴백 (동일 프로세스)
 4. 임시 폴더 → 최종 경로로 원자적 이동
-5. pnpm 설치: corepack enable + corepack prepare pnpm@10.28.0
+5. pnpm 설치: corepack enable + corepack prepare
 ```
 
-**SHA256 체크섬**: 플랫폼별 해시가 `AITNodeJSDownloader.cs`에 하드코딩되어 있음
+플랫폼별 SHA256 해시는 `AITNodeJSDownloader.cs`에 하드코딩되어 있습니다. Node.js와 pnpm 실행 경로 해석 및 프로세스 관리는 `AITPackageManagerHelper`가 담당합니다.
 
-### pnpm 패키지 매니저 (`AITPackageManagerHelper`)
+## 에러 코드
 
-Node.js와 pnpm 실행 경로 해석 및 프로세스 관리를 담당합니다.
+`AITConvertCore.AITExportError` enum입니다. 값 `7`은 이전 `WEBGL_BUILD_INCOMPLETE`였으나 `10`~`13`으로 세분화되면서 제거됐습니다.
 
----
+| 코드 | 값 | 짧은 라벨 |
+|------|---|-----------|
+| `SUCCEED` | 0 | 성공 |
+| `NODE_NOT_FOUND` | 1 | Node.js 없음 |
+| `BUILD_WEBGL_FAILED` | 2 | WebGL 빌드 오류 |
+| `INVALID_APP_CONFIG` | 3 | 앱 설정 오류 |
+| `NETWORK_ERROR` | 4 | 네트워크 오류 |
+| `CANCELLED` | 5 | 사용자 취소 |
+| `FAIL_NPM_BUILD` | 6 | pnpm 빌드 오류 |
+| `BUILD_FOLDER_MISSING` | 10 | Build 폴더 없음 |
+| `REQUIRED_FILE_MISSING` | 11 | 필수 파일 누락 |
+| `INDEX_HTML_MISSING` | 12 | index.html 없음 |
+| `PLACEHOLDER_SUBSTITUTION_FAILED` | 13 | 플레이스홀더 미치환 |
+| `DIST_FOLDER_MISSING` | 14 | dist 폴더 없음 |
+| `AIT_FILE_MISSING` | 15 | .ait 파일 없음 |
 
-## 에러 코드 및 메시지
+사용자에게 보여줄 전체 메시지와 짧은 라벨은 모두 `AITExportErrorCatalog`가 소유합니다.
 
-### `AITConvertCore.AITExportError` enum
-
-| 코드 | 값 | 의미 | 사용자 메시지 요약 |
-|------|---|------|-------------------|
-| `SUCCEED` | 0 | 성공 | — |
-| `NODE_NOT_FOUND` | 1 | Node.js 없음 | nodejs.org에서 설치 후 에디터 재시작 |
-| `BUILD_WEBGL_FAILED` | 2 | WebGL 빌드 실패 | 콘솔 에러 확인, WebGL Build Support 설치 확인 |
-| `INVALID_APP_CONFIG` | 3 | 앱 설정 오류 | 아이콘 URL(필수), 앱 ID 확인 |
-| `NETWORK_ERROR` | 4 | 네트워크 오류 | 인터넷 연결, npm 레지스트리, 방화벽/프록시 확인 |
-| `CANCELLED` | 5 | 사용자 취소 | 사용자가 빌드 취소함 |
-| `FAIL_NPM_BUILD` | 6 | pnpm 빌드 실패 | 콘솔 확인, ait-build에서 pnpm install, Node.js 재설치 |
-| `WEBGL_BUILD_INCOMPLETE` | 7 | WebGL 산출물 불완전 (레거시) | AIT > Clean, Clean Build, WebGL 템플릿 재생성 |
-| `BUILD_FOLDER_MISSING` | 10 | Build 폴더 없음 | Build & Package 실행 안내 |
-| `REQUIRED_FILE_MISSING` | 11 | 필수 파일 누락 | Clean Build 안내 |
-| `INDEX_HTML_MISSING` | 12 | index.html 없음 | WebGL Templates 재생성 안내 |
-| `PLACEHOLDER_SUBSTITUTION_FAILED` | 13 | 플레이스홀더 미치환 | Clean Build 안내 |
-
-### 에러 발생 → 사용자 다이얼로그 흐름
-
-```
+```text
 빌드 에러 발생
   ↓
 ShowComplexDialog("빌드 실패", errorMessage, ...)
@@ -713,11 +529,9 @@ ShowComplexDialog("빌드 실패", errorMessage, ...)
                      → GitHub Issues에 자동 채워진 이슈 URL 오픈
 ```
 
----
-
 ## 사용자 경고 및 다이얼로그 조건
 
-### 에러 다이얼로그 (`EditorUtility.DisplayDialog`)
+### 에러 다이얼로그
 
 | 조건 | 제목 | 내용 |
 |------|------|------|
@@ -732,19 +546,17 @@ ShowComplexDialog("빌드 실패", errorMessage, ...)
 | 배포 타임아웃 | "타임아웃" | 배포 시간 초과 |
 | 포트 충돌 | "포트 충돌" | 해당 포트가 이미 사용 중입니다 |
 
-### 확인 다이얼로그 (`ShowConfirmDialog`)
+### 확인 다이얼로그
 
 | 조건 | 동작 |
 |------|------|
-| `AIT/Build` (deprecated) 메뉴 클릭 | "'Build' 기능은 제거되었습니다" → Build & Package 유도 |
-| `AIT/Package` (deprecated) 메뉴 클릭 | "'Package' 기능은 제거되었습니다" → Build & Package 유도 |
-| `AIT/Clean` 메뉴 클릭 | "webgl/, ait-build/ 폴더를 삭제하시겠습니까?" |
+| `AIT/Clean` | "webgl/, ait-build/ 폴더를 삭제하시겠습니까?" |
 | 배포 확인 | "앱 이름: X, 버전: Y — 배포하시겠습니까?" |
 | 서버 전환 | "Production 서버를 정지하고 Dev 서버를 시작하시겠습니까?" |
 | 설정 초기화 | "설정을 초기화하시겠습니까?" |
 | 로딩 화면 초기화 | "로딩 화면을 기본 템플릿으로 초기화하시겠습니까?" |
 
-### 3-Way 다이얼로그 (`ShowComplexDialog`)
+### 3-Way 다이얼로그
 
 | 조건 | 옵션 |
 |------|------|
@@ -752,22 +564,22 @@ ShowComplexDialog("빌드 실패", errorMessage, ...)
 | Publish 진입점 | "다시 빌드 후 배포" / "취소" / "기존 빌드로 배포" |
 | 배포 실패 | "확인" / "Issue 신고" |
 
-### 콘솔 경고 (`Debug.LogWarning`)
+### 콘솔 경고
 
 | 조건 | 메시지 요약 |
 |------|------------|
-| Unity 2021.x + `nameFilesAsHashes=true` | 자동 비활성화됨 |
-| Build 폴더에 다중 파일 매칭 | "이전 빌드 잔여물" + Clean Build 권장 |
 | 비치명적 플레이스홀더 미치환 | 해당 플레이스홀더 이름 표시 |
-| `pnpm install --frozen-lockfile` 실패 | "lockfile 없이 재시도" |
+| USER_CONFIG에 SDK 관리 설정 잔존 | 제거 권고 (빌드는 정상) |
+| `pnpm install --frozen-lockfile` 실패 | 다음 재시도 단계로 진행 |
 | web-framework 버전 불일치 | 기대 vs 실제 버전 표시 |
-| `node_modules/.pnpm` 없음 | "stale modules" |
-| 이전 버전 템플릿 업그레이드 | "커스텀 수정 수동 재적용" 안내 |
-| 로딩 화면 파일 없음 | "빈 로딩 화면이 사용됩니다" |
+| `node_modules/.pnpm` 없음 | stale modules |
+| 이전 버전 템플릿 업그레이드 | 커스텀 수정 수동 재적용 안내 |
+| 로딩 화면 파일 없음 | 빈 로딩 화면이 사용됨 |
 | 빌드 마커 작성 실패 | 경고만 (빌드는 계속) |
-| 빌드 마커 없음/Unity 버전 불일치 | 자동 clean build |
+| 빌드 마커 없음 / Unity 버전 불일치 | 자동 clean build |
+| `AIT_DISABLE_INSTALL_SKIP` 값 해석 불가 | 스킵 비활성으로 처리 |
 
-### 콘솔 에러 (`Debug.LogError`)
+### 콘솔 에러
 
 | 조건 | 결과 |
 |------|------|
@@ -776,139 +588,57 @@ ShowComplexDialog("빌드 실패", errorMessage, ...)
 | `index.html` 없음 | `INDEX_HTML_MISSING` |
 | 치명적 플레이스홀더 미치환 | `PLACEHOLDER_SUBSTITUTION_FAILED` |
 | 빈 경로 패턴 탐지 | `PLACEHOLDER_SUBSTITUTION_FAILED` |
+| granite build 후 dist 없음 | `DIST_FOLDER_MISSING` |
+| dist에 `.ait` 없음 | `AIT_FILE_MISSING` |
 | pnpm install 최종 실패 | 빌드 중단 |
 | SDK BuildConfig 폴더 없음 | 빌드 중단 |
 | SDK WebGLTemplates 폴더 없음 | 빌드 중단 |
 
----
-
 ## 서버 라이프사이클
 
-### 통합 서버 API
-
-`ServerType` enum (`Dev`, `Prod`)을 매개변수로 받는 통합 메서드로 서버를 관리합니다:
+`ServerType` enum (`Dev`, `Prod`)을 받는 통합 메서드로 서버를 관리합니다.
 
 | 메서드 | 설명 |
 |--------|------|
 | `StartServer(type)` | 빌드 + 서버 시작 |
 | `StopServer(type)` | 서버 프로세스 종료 |
-| `RestartServer(type, serverOnly)` | `serverOnly=false`: 빌드+서버, `true`: 서버만 재시작 |
+| `RestartServer(type, serverOnly)` | `serverOnly=false`면 빌드+서버, `true`면 서버만 재시작 |
 | `ValidateAndSwitchServer(type)` | 반대 서버가 실행 중이면 전환 확인 다이얼로그 |
 
-### 메뉴 구조
-
-```
+```text
 AIT/Dev Server/
-├── Start           → StartServer(Dev) → DoExport(dev) + granite dev
-├── Stop            → StopServer(Dev)
-├── Restart Server  → RestartServer(Dev, serverOnly: false)
-└── Restart (server-only) → RestartServer(Dev, serverOnly: true)
+├── Start Server              → StartServer(Dev) → DoExport(dev) + granite dev
+├── Stop Server               → StopServer(Dev)
+├── Restart Server            → RestartServer(Dev, serverOnly: false)
+└── Restart Server (server-only) → RestartServer(Dev, serverOnly: true)
 
 AIT/Production Server/
-├── Start           → StartServer(Prod) → DoExport(prod) + granite dev
-├── Stop            → StopServer(Prod)
-├── Restart Server  → RestartServer(Prod, serverOnly: false)
-└── Restart (server-only) → RestartServer(Prod, serverOnly: true)
+├── Start Server              → StartServer(Prod) → DoExport(prod) + granite dev
+├── Stop Server               → StopServer(Prod)
+├── Restart Server            → RestartServer(Prod, serverOnly: false)
+└── Restart Server (server-only) → RestartServer(Prod, serverOnly: true)
 ```
 
-### 상호 배제
-
-Dev와 Production 서버는 동시에 실행할 수 없습니다:
-- `StartServer(type)` 호출 시 반대 서버가 실행 중이면 → `ValidateAndSwitchServer()` 호출
-- 사용자가 전환 승인 → 기존 서버 종료 후 새 서버 시작
-- 사용자가 취소 → 아무 동작 없음
-
-### 포트 충돌 탐지
-
-서버 시작 시 대상 포트가 이미 사용 중이면:
-- "포트 충돌" 다이얼로그 표시
-- 사용자가 수동으로 포트를 변경하거나 프로세스를 종료해야 함
-
----
+Dev와 Production 서버는 동시에 실행할 수 없습니다. `StartServer(type)` 호출 시 반대 서버가 실행 중이면 `ValidateAndSwitchServer()`가 전환 여부를 묻고, 승인하면 기존 서버를 종료한 뒤 새 서버를 시작합니다. 대상 포트가 이미 사용 중이면 "포트 충돌" 다이얼로그를 띄우고, 사용자가 포트를 바꾸거나 점유 프로세스를 종료해야 합니다.
 
 ## 에러 리포팅
 
-### `AITErrorReporter`
+`AITErrorReporter`가 `[InitializeOnLoad]`로 에디터 시작 시 `Application.logMessageReceived`를 구독해 모든 콘솔 로그를 순환 버퍼에 캡처합니다.
 
-`[InitializeOnLoad]`로 에디터 시작 시 `Application.logMessageReceived`에 구독하여 모든 콘솔 로그를 캡처합니다.
-
-**순환 버퍼:**
 | 버퍼 | 최대 크기 | 캡처 대상 |
 |------|----------|----------|
 | `errorLogs` | 50개 | `LogType.Error`, `LogType.Exception` |
 | `warningLogs` | 30개 | `LogType.Warning` |
 | `infoLogs` | 20개 | `LogType.Log`, `LogType.Assert` |
 
-### GitHub Issue 자동 생성
+`OpenIssueInBrowser(errorCode, profileName)`은 이 버퍼로 GitHub Issue URL을 자동 구성합니다. 제목은 `[빌드 에러] {errorCode}`이고, 본문에는 SDK/Unity/OS 버전, 프로필 이름, 에러 코드와 메시지, 앱 설정, `BuildReport` 에러(있는 경우), 최근 콘솔 로그가 담깁니다. URL이 2000자를 넘으면 `infoLogs` → `warningLogs` → `errorLogs` 순으로 단계적으로 잘라냅니다.
 
-`OpenIssueInBrowser(errorCode, profileName)`:
+Sentry로 나가는 로그의 범위와 노이즈 억제 정책은 [Sentry 연동](SentryIntegration.md)에 있습니다.
 
-**포함 정보:**
-- 이슈 제목: `[빌드 에러] {errorCode}`
-- SDK 버전, Unity 버전, OS
-- 프로필 이름, 에러 코드 + 메시지
-- 앱 설정 (appName, displayName 등)
-- BuildReport 에러 (있는 경우)
-- 최근 콘솔 로그 (에러 → 경고 → 정보 순)
+## 관련 문서
 
-**URL 길이 제한:** 2000자 초과 시 단계적 절삭 (infoLogs → warningLogs → errorLogs 순으로 제거)
-
----
-
-## 환경 변수 오버라이드
-
-`AITBuildInitializer.ApplyEnvironmentVariableOverrides(profile)`:
-
-| 환경 변수 | 값 | 동작 |
-|----------|---|------|
-| `AIT_DEBUG_CONSOLE` | `true`/`false` | 디버그 콘솔 강제 활성화/비활성화 |
-| `AIT_COMPRESSION_FORMAT` | `-1` (Auto), `0` (Disabled), `1` (Gzip), `2` (Brotli) | 압축 포맷 오버라이드 |
-
-잘못된 값은 `Debug.LogWarning`으로 경고하고 무시됩니다.
-
----
-
-## 개선 이력
-
-### 1. ✅ 빌드 마커 활용
-
-`ReadBuildMarker()` 메서드로 `.ait-build-info.json`을 읽어 활용합니다:
-- 빌드 캐시 검증: Unity 버전 불일치 시 자동 clean build
-- 압축 포맷 탐지: `compressionFormat` 값으로 정확한 파일 확장자 탐지
-
-### 2. ✅ Dev/Prod 서버 코드 통합
-
-`ServerType` enum과 `StartServer(type)`, `StopServer(type)`, `RestartServer(type, serverOnly)` 등
-통합 메서드로 서버 코드 중복을 제거했습니다.
-
-### 3. ✅ 동기/비동기 패키징 코드 통합
-
-`PreparePackaging()`으로 공통 준비 로직을 추출하고, `PackageContext` 클래스로 상태를 캡슐화했습니다.
-동기 경로(`RunPnpmInstallSync`, `RunGraniteBuildSync`)와 비동기 경로(`RunPnpmInstallAsync`, `RunGraniteBuildAsync`)가
-같은 `PreparePackaging()`을 공유합니다.
-
-### 4. ✅ pnpm 재시도 로직 단순화
-
-`PnpmInstallStages` 배열로 3단계 재시도 정책을 데이터화했습니다:
-- 동기: `foreach` 루프로 순회
-- 비동기: 재귀 패턴으로 3-depth 중첩 콜백을 1-depth로 평탄화
-
-### 5. ✅ 압축 포맷별 파일 탐지 개선
-
-`AITBuildValidator.GetFilePatterns(compressionFormat)`가 빌드 마커의 압축 포맷에 따라
-정확한 확장자(`.gz`, `.br`, 없음)로 파일을 탐지합니다. 정확한 패턴으로 못 찾으면 와일드카드로 폴백합니다.
-
-### 6. ✅ 에러 코드 세분화
-
-`WEBGL_BUILD_INCOMPLETE`를 4개의 구체적 에러 코드로 세분화했습니다:
-- `BUILD_FOLDER_MISSING` (10): Build 폴더 없음
-- `REQUIRED_FILE_MISSING` (11): 필수 파일 누락
-- `INDEX_HTML_MISSING` (12): index.html 없음
-- `PLACEHOLDER_SUBSTITUTION_FAILED` (13): 플레이스홀더 미치환
-
-### 7. ✅ 빌드 캐시 유효성 검증
-
-`ShouldForceCleanBuild()`가 WebGL 빌드 전에 기존 빌드 캐시를 검증합니다:
-- 빌드 마커 없음 → 자동 clean build
-- Unity 버전 불일치 → 자동 clean build
-- Build 폴더/loader.js 없음 → 자동 clean build
+- [빌드 프로필](BuildProfiles.md) — 프로필별 설정 차이, 환경 변수 오버라이드
+- [빌드 커스터마이징](BuildCustomization.md) — 마커 영역 계약, 웹 진입점 편집
+- [로딩 화면 커스터마이징](LoadingScreenCustomization.md) — 로딩 화면 교체와 `AITLoading` API
+- [Sentry 연동](SentryIntegration.md) — 에러 수집과 컨텍스트 주입
+- [문제 해결](Troubleshooting.md) — 빌드가 막혔을 때

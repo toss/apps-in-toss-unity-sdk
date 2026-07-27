@@ -1,23 +1,8 @@
-# 빌드 프로필 시스템
+# 빌드 프로필
 
-이 문서는 Apps in Toss Unity SDK의 빌드 프로필 시스템을 설명합니다.
+`AIT` 메뉴의 빌드 진입점마다 어떤 설정이 자동으로 달라지는지, 그리고 그 값을 어떻게 바꾸는지 설명합니다.
 
-## 목차
-
-- [개요](#개요)
-- [프로필 매트릭스](#프로필-매트릭스)
-- [각 설정의 의미](#각-설정의-의미)
-- [프로필 커스터마이징](#프로필-커스터마이징)
-- [환경 변수 오버라이드](#환경-변수-오버라이드)
-- [빌드 로그](#빌드-로그)
-
----
-
-## 개요
-
-SDK는 각 작업 메뉴별로 다른 빌드 설정(프로필)을 자동 적용합니다. 이를 통해 개발, 테스트, 배포 각 단계에 최적화된 빌드를 생성할 수 있습니다.
-
-### 작업 메뉴
+## 작업 메뉴
 
 | 메뉴 | 용도 |
 |------|------|
@@ -26,11 +11,7 @@ SDK는 각 작업 메뉴별로 다른 빌드 설정(프로필)을 자동 적용�
 | `AIT > Build & Package` | 배포용 패키지 생성 |
 | `AIT > Publish` | Apps in Toss에 배포 |
 
----
-
 ## 프로필 매트릭스
-
-각 프로필의 기본 설정입니다:
 
 | 작업 | Mock 브릿지 | 디버그 콘솔 | Development Build | WebGL 압축 | Stripping Level | LZ4 압축 | 디버그 심볼 |
 |------|:-----------:|:-----------:|:-----------------:|:----------:|:---------------:|:--------:|:-----------:|
@@ -39,57 +20,37 @@ SDK는 각 작업 메뉴별로 다른 빌드 설정(프로필)을 자동 적용�
 | **Build & Package** | ❌ 비활성화 | ❌ 비활성화 | ❌ 비활성화 | 자동 (Brotli) | 자동 (High) | ✅ 활성화 | External |
 | **Publish** | ❌ 비활성화 | ❌ 비활성화 | ❌ 비활성화 | 자동 (Brotli) | 자동 (High) | ✅ 활성화 | External |
 
----
-
 ## 각 설정의 의미
 
 ### Mock 브릿지
 
-네이티브 API가 없는 환경(로컬 브라우저)에서 SDK API를 테스트할 수 있도록 하는 시뮬레이션 레이어입니다.
-
-| 값 | 설명 |
-|-----|------|
-| 활성화 | 로컬 브라우저에서 테스트 가능 (Mock 데이터 반환) |
-| 비활성화 | 실제 Apps in Toss 앱 환경에서만 동작 |
-
-> **권장**: 개발 중에는 활성화, 배포 시에는 비활성화
+네이티브 API가 없는 환경에서 SDK API 호출에 가짜 응답을 돌려주는 시뮬레이션 레이어입니다. 활성화하면 toss 앱 없이 로컬 브라우저에서 게임을 돌려볼 수 있고, 비활성화하면 실제 Apps in Toss 앱 환경에서만 API가 동작합니다. 반환되는 값과 한계는 [API 사용 패턴](APIUsagePatterns.md)의 Mock 브릿지 절에 정리되어 있습니다.
 
 ### Development Build
 
-Unity의 Development Build 옵션을 활성화합니다.
+Unity의 Development Build 옵션입니다.
 
 | 값 | 설명 |
 |-----|------|
 | 활성화 | 빌드 속도 향상, 디버깅 편의 (Profiler 연결 가능) |
 | 비활성화 | 최적화된 릴리즈 빌드 |
 
-> **권장**: 개발 중에는 활성화, 배포 시에는 비활성화
-
 ### 디버그 심볼
 
-디버그 심볼(소스맵) 포함 방식을 결정합니다.
+디버그 심볼(소스맵)을 어디에 둘지 결정합니다. Unity 2022.3 이상에서 적용됩니다.
 
 | 값 | 설명 |
 |-----|------|
 | Embedded | 빌드 파일에 심볼 포함 (파일 크기 증가, 디버깅 용이) |
 | External | 별도 파일로 분리 (파일 크기 감소, 배포에 적합) |
 
-> **권장**: 개발 중에는 Embedded, 배포 시에는 External
-
 ### 디버그 콘솔
 
-화면에 디버그 콘솔 UI를 표시합니다.
-
-| 값 | 설명 |
-|-----|------|
-| 활성화 | 좌측 하단에 디버그 버튼 표시 (메트릭, 로그 확인 가능) |
-| 비활성화 | 디버그 UI 숨김 |
-
-> **권장**: 개발/테스트 중에는 활성화, 프로덕션 배포 시에는 비활성화
+화면 좌측 하단에 디버그 버튼을 띄웁니다. 눌러서 로그와 [SDK 이벤트](Metrics.md)를 확인할 수 있습니다. 프로덕션 배포 시에는 비활성화하세요.
 
 ### WebGL 압축
 
-최종 빌드 결과물의 압축 포맷을 결정합니다.
+최종 산출물의 압축 포맷입니다.
 
 | 값 | 설명 |
 |-----|------|
@@ -98,11 +59,11 @@ Unity의 Development Build 옵션을 활성화합니다.
 | Gzip | Gzip 압축 |
 | Brotli | Brotli 압축 (최고 압축률) |
 
-> **참고**: Dev Server는 빌드 속도를 위해 Disabled, 나머지 프로필은 자동(Brotli)이 기본값입니다.
+Dev Server만 빌드 속도를 위해 Disabled이고, 나머지 프로필은 자동(Brotli)입니다.
 
 ### Stripping Level
 
-사용하지 않는 코드를 제거하여 빌드 크기를 줄이는 수준을 결정합니다.
+사용하지 않는 관리 코드를 제거하는 수준입니다.
 
 | 값 | 설명 |
 |-----|------|
@@ -112,27 +73,15 @@ Unity의 Development Build 옵션을 활성화합니다.
 | Medium | 중간 수준의 코드 제거 |
 | High | 적극적으로 코드 제거 (최소 빌드 크기) |
 
-> **참고**: Dev Server는 빌드 속도를 위해 Minimal, 나머지 프로필은 자동(High)이 기본값입니다.
-> Disabled는 WebGL(IL2CPP)에서 지원되지 않아 옵션에서 제외되었으며, 이전 버전에서 Disabled로 저장된 값은 Minimal로 정규화됩니다.
+Dev Server만 빌드 속도를 위해 Minimal이고, 나머지는 자동(High)입니다.
+
+> **참고**: Disabled는 WebGL(IL2CPP)에서 지원되지 않아 옵션에서 제외되었으며, 이전 버전에서 Disabled로 저장된 값은 Minimal로 정규화됩니다. 리플렉션으로만 참조되는 타입이 High에서 제거될 수 있으니, 스트리핑 이후 동작이 달라지면 `link.xml`로 보존 대상을 지정하세요.
 
 ### LZ4 압축
 
-Unity 빌드 프로세스에서 LZ4 압축을 사용하여 빌드 속도를 향상시킵니다.
-
-| 값 | 설명 |
-|-----|------|
-| 활성화 | 빌드 속도 향상 |
-| 비활성화 | LZ4 미사용 |
-
-> **참고**: 모든 프로필에서 기본적으로 활성화되어 있습니다.
-
----
+Unity 빌드 프로세스의 LZ4 압축입니다. 모든 프로필에서 기본 활성화되어 있습니다.
 
 ## 프로필 커스터마이징
-
-각 프로필의 설정을 개별적으로 변경할 수 있습니다.
-
-### 설정 방법
 
 1. `AIT > Configuration` 메뉴 열기
 2. "빌드 프로필" 섹션 확장
@@ -140,39 +89,37 @@ Unity 빌드 프로세스에서 LZ4 압축을 사용하여 빌드 속도를 향�
 4. 각 옵션의 체크박스 변경
 5. 변경 사항은 자동 저장됨
 
-### 설정 저장 위치
-
 프로필 설정은 `Assets/AppsInToss/Editor/AITConfig.asset`에 저장됩니다.
-
----
 
 ## 환경 변수 오버라이드
 
-CI/CD 환경이나 자동화 스크립트에서 환경 변수를 통해 빌드 프로필 설정을 오버라이드할 수 있습니다.
+CI/CD나 자동화 스크립트에서 프로필 값을 코드 수정 없이 덮어쓸 수 있습니다. 대부분은 `AITBuildInitializer.ApplyEnvironmentVariableOverrides(profile)`가 프로필 사본에 적용하고, `AIT_IL2CPP_CONFIGURATION`만 `Init` 단계에서 PlayerSettings에 직접 적용합니다.
 
-### 지원 환경 변수
-
-| 환경 변수 | 설명 | 값 |
+| 환경 변수 | 설명 | 허용 값 |
 |----------|------|-----|
 | `AIT_DEBUG_CONSOLE` | 디버그 콘솔 활성화 | `true` / `false` |
-| `AIT_COMPRESSION_FORMAT` | 압축 포맷 오버라이드 | `-1` (자동) / `0` (Disabled) / `1` (Gzip) / `2` (Brotli) |
+| `AIT_COMPRESSION_FORMAT` | 압축 포맷 | `-1` (자동) / `0` (Disabled) / `1` (Gzip) / `2` (Brotli) |
+| `AIT_DEVELOPMENT_BUILD` | Development Build | `true` / `false` |
+| `AIT_IL2CPP_CONFIGURATION` | IL2CPP 컴파일러 최적화 수준 | `Debug` / `Release` / `Master` |
 
-### 사용 예시
+허용 값을 벗어나면 `Debug.LogWarning`으로 경고하고 그 변수만 무시합니다 — 빌드는 계속됩니다.
 
-Unity Editor를 커맨드라인으로 실행할 때 환경 변수를 설정할 수 있습니다:
+`AIT_DEVELOPMENT_BUILD`와 `AIT_IL2CPP_CONFIGURATION`은 둘 다 링크 시간을 줄이지만 서로 다른 레이어입니다. 전자는 Player 옵션이고 후자는 IL2CPP 컴파일러 옵티마이저 레벨이라, CI에서 빌드 시간을 줄이려면 두 개를 함께 지정해야 효과가 큽니다.
 
 ```bash
-AIT_DEBUG_CONSOLE=true /Applications/Unity/Hub/Editor/2022.3.62f1/Unity.app/Contents/MacOS/Unity \
+AIT_DEBUG_CONSOLE=true \
+AIT_COMPRESSION_FORMAT=0 \
+/Applications/Unity/Hub/Editor/2022.3.62f1/Unity.app/Contents/MacOS/Unity \
   -quit -batchmode -projectPath ./MyProject
 ```
 
----
+SDK가 읽는 환경 변수가 이 넷이 전부는 아닙니다. 패키징 단계의 `AIT_DISABLE_INSTALL_SKIP`은 [빌드 파이프라인](BuildProcess.md)에, Sentry 관련 변수는 [Sentry 연동](SentryIntegration.md)에 있습니다.
 
 ## 빌드 로그
 
-빌드 시작 시 적용된 프로필이 Unity Console에 출력됩니다:
+빌드 시작 시 적용된 프로필이 Unity Console에 출력됩니다. 어떤 값이 실제로 먹었는지는 이 로그가 최종 확인 수단입니다 — 환경 변수 오버라이드도 여기에 반영됩니다.
 
-```
+```text
 [AIT] ========================================
 [AIT] 빌드 프로필: Dev Server
 [AIT] ========================================
@@ -186,13 +133,12 @@ AIT_DEBUG_CONSOLE=true /Applications/Unity/Hub/Editor/2022.3.62f1/Unity.app/Cont
 [AIT] ========================================
 ```
 
-이 로그를 통해 현재 빌드에 어떤 설정이 적용되었는지 확인할 수 있습니다.
+압축 포맷은 프로필에 저장된 값 그대로(`-1`이면 `자동`) 찍히고, Stripping Level은 `-1`일 때 실제 적용될 값을 괄호로 함께 표시합니다.
 
----
+## 관련 문서
 
-## 다음 단계
-
-- [시작하기](GettingStarted.md) - 설치 및 기본 설정
-- [API 사용 패턴](APIUsagePatterns.md) - async/await 패턴, 에러 처리
-- [빌드 커스터마이징](BuildCustomization.md) - 템플릿 커스터마이징
-- [문제 해결](Troubleshooting.md) - FAQ 및 트러블슈팅
+- [시작하기](GettingStarted.md) — 설치 및 기본 설정
+- [빌드 파이프라인](BuildProcess.md) — 프로필이 적용된 뒤 실제로 일어나는 일
+- [빌드 커스터마이징](BuildCustomization.md) — 웹 진입점과 마커 영역
+- [API 사용 패턴](APIUsagePatterns.md) — Mock 브릿지 동작
+- [문제 해결](Troubleshooting.md) — 빌드가 막혔을 때

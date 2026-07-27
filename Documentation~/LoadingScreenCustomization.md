@@ -1,90 +1,47 @@
-# 로딩 화면 커스터마이징 가이드
+# 로딩 화면 커스터마이징
 
-Apps in Toss Unity SDK는 WebGL 로딩 화면의 다양한 커스터마이징 옵션을 제공합니다.
+Unity WebGL이 로드되는 동안 보이는 화면을 원하는 대로 바꾸는 방법을 설명합니다.
 
-## 목차
+## 로딩 화면 파일
 
-- [로딩 화면 설정](#로딩-화면-설정)
-- [전면 커스터마이징 (커스텀 HTML)](#전면-커스터마이징-커스텀-html)
-- [AITLoading JavaScript API](#aitloading-javascript-api)
-- [예제](#예제)
+로딩 화면은 두 곳에 존재합니다.
 
----
-
-## 로딩 화면 설정
-
-### 앱 정보 우선순위
-
-로딩 화면에 표시되는 앱 정보는 다음 순서로 결정됩니다:
-
-1. **네이티브 앱 환경** (토스 앱 내): SDK가 네이티브 API (`getAppsInTossGlobals`)를 통해 자동으로 앱 정보를 가져옵니다.
-2. **폴백** (웹 브라우저 등): AIT Configuration에서 설정한 값이 사용됩니다.
-
-### 폴백 설정 항목
-
-| 설정 | 설명 |
+| 경로 | 역할 |
 |------|------|
-| 앱 이름 (`displayName`) | 로딩 화면에 표시되는 앱 이름 |
-| 앱 아이콘 (`iconUrl`) | 로딩 화면에 표시되는 앱 아이콘 URL |
-| 기본 색상 (`primaryColor`) | 진행률 바 색상 |
+| `WebGLTemplates/AITTemplate/loading.html` | SDK 기본 템플릿 (원본) |
+| `Assets/AppsInToss/loading.html` | 프로젝트별 커스텀 로딩 화면 |
 
-> **참고**: 실제 토스 앱 환경에서는 네이티브 API가 우선 적용되므로, 위 설정은 개발/테스트 환경에서 주로 사용됩니다.
+`AITPackageInitializer`가 `[InitializeOnLoad]`로 에디터 시작 시 실행되어, `Assets/AppsInToss/loading.html`이 없으면 SDK 템플릿을 복사합니다. 이 파일을 수정하면 커스텀 로딩 화면이 적용됩니다.
 
----
+SDK 템플릿 검색 순서:
 
-## 커스텀 로딩 화면
+1. `Packages/im.toss.apps-in-toss-unity-sdk/WebGLTemplates/AITTemplate/loading.html`
+2. `Packages/com.appsintoss.miniapp/WebGLTemplates/AITTemplate/loading.html`
+3. Assembly 경로 기반
 
-로딩 화면 전체를 직접 디자인할 수 있습니다.
+### 빌드 시 삽입 순서
 
-### 설정 방법
+빌드의 `CopyWebGLToPublic()` 단계에서 `index.html`의 `%AIT_LOADING_SCREEN%` 플레이스홀더가 로딩 화면 전체 내용으로 치환됩니다.
 
-1. SDK 설치 후 Unity Editor 실행 시 `Assets/AppsInToss/loading.html` 자동 생성
-2. `Assets/AppsInToss/loading.html` 파일을 편집
+```text
+1. Assets/AppsInToss/loading.html 존재?
+   → Yes: 프로젝트 커스텀 로딩 화면 사용
+   → No: SDK 기본 템플릿 폴백
 
-> **참고**: SDK가 로드될 때 기본 템플릿이 `Assets/AppsInToss/loading.html`에 자동 생성됩니다. 이 파일을 수정하면 커스텀 로딩 화면이 적용됩니다.
+2. SDK 템플릿도 없으면?
+   → Debug.LogWarning("로딩 화면 파일을 찾을 수 없습니다. 빈 로딩 화면이 사용됩니다.")
+   → 빈 문자열로 치환
+```
 
-### 커스터마이징 가능 범위
+즉 로딩 화면은 **빌드 시점에 index.html 안으로 인라인**됩니다. 별도 파일로 로드되지 않으므로 상대 경로 참조는 최종 `index.html` 기준으로 해석됩니다.
 
-`loading.html`의 HTML, CSS, JavaScript를 자유롭게 수정하여 완전히 커스텀한 로딩 UI를 만들 수 있습니다:
+### 기본 템플릿으로 되돌리기
 
-- **다양한 UI 디자인**: 프로그레스 바, 파이 차트, 원형 로딩 등
-- **애니메이션**: CSS 애니메이션, JavaScript 애니메이션, GIF/Lottie 등
-- **캐릭터/브랜드 요소**: 마스코트 캐릭터, 브랜드 로고 애니메이션 등
-- **인터랙티브 요소**: 미니 게임, 팁 슬라이더 등
-
-SDK가 제공하는 `AITLoading` API를 통해 로딩 진행률을 받아 원하는 방식으로 표현하면 됩니다.
-
-### 외부 리소스 사용
-
-이미지, 폰트, 애니메이션 파일 등 외부 리소스를 사용하려면:
-
-1. **StreamingAssets 사용** (권장): Unity의 `Assets/StreamingAssets` 폴더에 파일을 추가하면 빌드에 자동 포함됩니다.
-   ```html
-   <img src="StreamingAssets/loading-character.gif" />
-   <link rel="stylesheet" href="StreamingAssets/loading-fonts.css" />
-   ```
-
-   파일 구조:
-   ```
-   Assets/
-   └── StreamingAssets/
-       ├── loading-character.gif
-       └── loading-fonts.css
-   ```
-
-2. **Data URI 사용**: 작은 이미지(수 KB 이하)는 Base64로 인라인 포함
-   ```html
-   <img src="data:image/png;base64,iVBORw0KGgo..." />
-   ```
-
-3. **CDN 사용**: 외부 URL로 리소스 로드 (네트워크 의존성 발생)
-   ```html
-   <img src="https://your-cdn.com/loading-character.gif" />
-   ```
+`AIT > Reset Loading Screen`을 실행하면 확인 다이얼로그 후 SDK 템플릿을 `Assets/AppsInToss/loading.html`로 다시 복사합니다. 커스텀 내용은 사라지므로 필요하면 먼저 백업하세요.
 
 ### 파일 구조
 
-```
+```text
 Assets/
 └── AppsInToss/
     ├── Editor/
@@ -92,17 +49,72 @@ Assets/
     └── loading.html    ← 커스텀 로딩 화면 (있으면 자동 적용)
 ```
 
----
+## 앱 정보
 
-## AITLoading JavaScript API
+로딩 화면에 표시되는 앱 정보는 다음 순서로 결정됩니다.
 
-커스텀 로딩 화면에서 SDK가 제공하는 JavaScript API를 사용하여 로딩 상태를 제어할 수 있습니다.
+1. **네이티브 앱 환경** (toss 앱 내) — SDK가 `getAppsInTossGlobals`로 앱 정보를 가져와 덮어씁니다
+2. **폴백** (웹 브라우저 등) — AIT Configuration에서 설정한 값이 쓰입니다
 
-### 앱 정보 API
+| 설정 | 설명 |
+|------|------|
+| 앱 이름 (`displayName`) | 로딩 화면에 표시되는 앱 이름 |
+| 앱 아이콘 (`iconUrl`) | 로딩 화면에 표시되는 앱 아이콘 URL |
+| 기본 색상 (`primaryColor`) | 진행률 바 색상 |
 
-#### `AITLoading.appInfo`
+> **참고**: 실제 toss 앱 환경에서는 네이티브 값이 우선하므로 위 설정은 주로 개발·테스트 환경에서 보입니다.
 
-AIT Configuration에서 설정한 앱 정보입니다.
+## 커스터마이징 가능 범위
+
+`loading.html`의 HTML, CSS, JavaScript를 자유롭게 수정할 수 있습니다. 진행률은 `AITLoading` API로 받아서 원하는 방식으로 표현하면 됩니다.
+
+- **UI 디자인** — 프로그레스 바, 파이 차트, 원형 로딩 등
+- **애니메이션** — CSS 애니메이션, JavaScript 애니메이션, GIF, Lottie
+- **브랜드 요소** — 마스코트 캐릭터, 로고 애니메이션
+- **인터랙티브 요소** — 미니 게임, 팁 슬라이더
+
+### 외부 리소스 사용
+
+**StreamingAssets** (권장) — `Assets/StreamingAssets`에 두면 빌드에 자동 포함됩니다.
+
+```html
+<img src="StreamingAssets/loading-character.gif" />
+<link rel="stylesheet" href="StreamingAssets/loading-fonts.css" />
+```
+
+```text
+Assets/
+└── StreamingAssets/
+    ├── loading-character.gif
+    └── loading-fonts.css
+```
+
+**Data URI** — 수 KB 이하의 작은 이미지는 Base64로 인라인합니다.
+
+```html
+<img src="data:image/png;base64,iVBORw0KGgo..." />
+```
+
+**CDN** — 외부 URL로 로드합니다. 네트워크 의존성이 생기고, 로딩 화면 자체가 늦게 뜰 수 있습니다.
+
+```html
+<img src="https://your-cdn.com/loading-character.gif" />
+```
+
+## AITLoading API
+
+`window.AITLoading`은 `index.html`에서 정의되며 다음 여섯 가지가 공개 표면의 전부입니다. `_`로 시작하는 멤버는 내부 구현이므로 의존하지 마세요.
+
+| 멤버 | 설명 |
+|------|------|
+| `appInfo` | `{ iconUrl, displayName, primaryColor }` |
+| `onReady(callback)` | 앱 정보 준비 완료 |
+| `onProgress(callback)` | 진행률 업데이트 |
+| `onComplete(callback)` | 로딩 완료 |
+| `onError(callback)` | 에러 발생 |
+| `hide()` | 로딩 화면 숨김 |
+
+### appInfo
 
 ```javascript
 console.log(AITLoading.appInfo.iconUrl);       // 앱 아이콘 URL
@@ -110,11 +122,11 @@ console.log(AITLoading.appInfo.displayName);   // 앱 표시 이름
 console.log(AITLoading.appInfo.primaryColor);  // 기본 색상
 ```
 
-### 콜백 API
+초기값은 빌드 시 치환된 Configuration 값이고, 네이티브 앱 정보가 도착하면 그 값으로 갱신됩니다.
 
-#### `AITLoading.onReady(callback)`
+### onReady
 
-앱 정보(`appInfo`)가 준비되면 호출됩니다. UI 초기화에 사용합니다.
+앱 정보가 준비되면 호출됩니다. UI 초기화에 사용하세요.
 
 ```javascript
 AITLoading.onReady(function(appInfo) {
@@ -123,31 +135,31 @@ AITLoading.onReady(function(appInfo) {
 });
 ```
 
-#### `AITLoading.onProgress(callback)`
+> **중요**: `onReady` 콜백은 **한 번만 호출된다고 가정하면 안 됩니다.** 초기화 시점에 한 번 호출되고, 네이티브 앱 정보가 나중에 도착하면 갱신된 `appInfo`로 다시 호출됩니다. 콜백은 몇 번 실행돼도 안전하도록(idempotent) 작성하세요. 이미 초기화가 끝난 뒤에 등록하면 즉시 한 번 호출됩니다.
 
-진행률 업데이트 시 호출됩니다.
+### onProgress
+
+`0.0`부터 `1.0` 사이의 진행률을 받습니다.
 
 ```javascript
 AITLoading.onProgress(function(progress) {
-    // progress: 0.0 ~ 1.0
     console.log('로딩 진행률:', Math.round(progress * 100) + '%');
 });
 ```
 
-#### `AITLoading.onComplete(callback)`
+### onComplete
 
-로딩 완료 시 호출됩니다.
+로딩이 끝나면 호출됩니다. 이미 완료된 뒤에 등록하면 즉시 호출됩니다.
 
 ```javascript
 AITLoading.onComplete(function() {
-    console.log('로딩 완료!');
-    AITLoading.hide();  // 로딩 화면 숨기기
+    AITLoading.hide();
 });
 ```
 
-#### `AITLoading.onError(callback)`
+### onError
 
-로딩 에러 발생 시 호출됩니다.
+`{ message }` 형태의 객체를 받습니다.
 
 ```javascript
 AITLoading.onError(function(error) {
@@ -155,89 +167,23 @@ AITLoading.onError(function(error) {
 });
 ```
 
-#### `AITLoading.onFileProgress(callback)`
+> **참고**: WebGL 컨텍스트 생성 실패(`GLctx`, `WebGL context`, `Unable to create` 계열)는 SDK가 전용 경로로 처리하므로 이 콜백에 오지 않습니다. 기기가 WebGL을 못 여는 경우까지 직접 다루려는 것이 아니라면 신경 쓰지 않아도 됩니다.
 
-파일별 다운로드 진행 상황을 알려줍니다.
+### hide
 
-```javascript
-AITLoading.onFileProgress(function(fileInfo) {
-    // fileInfo: { name, url, loaded, total, percent, speed }
-    console.log(fileInfo.name + ': ' + fileInfo.percent + '%');
-});
-```
-
-### 통계 API
-
-#### `AITLoading.getFileStats()`
-
-로딩 완료 후 파일별 다운로드 정보를 반환합니다.
-
-```javascript
-AITLoading.onComplete(function() {
-    var stats = AITLoading.getFileStats();
-    stats.forEach(function(file) {
-        console.log(file.name + ':');
-        console.log('  크기: ' + (file.size / 1024 / 1024).toFixed(2) + 'MB');
-        console.log('  시간: ' + file.duration + 'ms');
-        console.log('  평균 속도: ' + file.avgSpeed.toFixed(1) + 'KB/s');
-    });
-});
-```
-
-**반환 데이터 구조:**
-
-```javascript
-[{
-    name: 'game.wasm',           // 파일명
-    url: 'Build/game.wasm',      // 전체 URL
-    size: 4521300,               // 크기 (바이트)
-    duration: 2890,              // 다운로드 시간 (ms)
-    startTime: 120.5,            // 시작 시점 (ms, 페이지 로드 기준)
-    responseEnd: 3010.5,         // 종료 시점 (ms)
-    avgSpeed: 1564.5,            // 평균 속도 (KB/s)
-    peakSpeed: 2341.8,           // 피크 속도 (KB/s)
-    minSpeed: 892.1,             // 최저 속도 (KB/s)
-    speedHistory: [892, 1234, 2341, 1876, 1423],  // 1초 간격 속도 기록
-    compressionType: 'brotli',   // 압축 형식 (brotli, gzip, unityweb, none)
-    contentEncoding: 'br',       // 서버 Content-Encoding 헤더 값
-    decompressionFallback: false, // JS 압축해제 fallback 발생 여부
-    preloaded: false             // HTML5 Preload로 미리 로드되었는지 여부
-}, ...]
-```
-
-#### `AITLoading.getTotalTime()`
-
-총 로딩 시간을 밀리초 단위로 반환합니다.
-
-```javascript
-AITLoading.onComplete(function() {
-    console.log('총 로딩 시간:', AITLoading.getTotalTime() + 'ms');
-});
-```
-
-### 제어 API
-
-#### `AITLoading.hide()`
-
-로딩 화면을 숨깁니다.
+`#ait-loading-wrapper` 요소를 `display: none`으로 숨깁니다.
 
 ```javascript
 AITLoading.hide();
 ```
 
----
-
 ## 예제
 
-### 간단한 커스텀 로딩 화면
+아래는 직접 작성한 예제입니다. SDK가 실제로 제공하는 기본 템플릿(다크 테마)은 `Assets/AppsInToss/loading.html`에서 확인하세요.
 
-아래는 간단한 커스텀 로딩 화면 예제입니다. 실제 기본 템플릿은 `Assets/AppsInToss/loading.html`에서 확인할 수 있습니다.
+### 진행률 바
 
 ```html
-<!--
-    CSS 변수를 수정하면 쉽게 색상과 크기를 변경할 수 있습니다.
--->
-
 <style>
     /* ===== 커스터마이징 가능한 CSS 변수 ===== */
     :root {
@@ -325,7 +271,7 @@ AITLoading.hide();
 
 <script>
 (function() {
-    // 앱 정보로 UI 초기화
+    // 앱 정보로 UI 초기화 (네이티브 정보 도착 시 다시 호출될 수 있음)
     AITLoading.onReady(function(appInfo) {
         document.getElementById('app-icon').src = appInfo.iconUrl || '';
         document.getElementById('app-name').textContent = appInfo.displayName || '';
@@ -346,7 +292,7 @@ AITLoading.hide();
 </script>
 ```
 
-### 퍼센트 표시가 있는 로딩 화면
+### 퍼센트 표시와 에러 처리
 
 ```html
 <style>
@@ -383,26 +329,22 @@ AITLoading.hide();
 
 <script>
 (function() {
-    // 앱 정보로 UI 초기화
     AITLoading.onReady(function(appInfo) {
         document.getElementById('app-icon').src = appInfo.iconUrl || '';
         document.getElementById('app-name').textContent = appInfo.displayName || '';
         document.getElementById('progress-bar').style.background = appInfo.primaryColor || '#3182f6';
     });
 
-    // 진행률 업데이트
     AITLoading.onProgress(function(progress) {
         var percent = Math.round(progress * 100);
         document.getElementById('progress-bar').style.width = percent + '%';
         document.getElementById('percent-text').textContent = percent + '%';
     });
 
-    // 로딩 완료 시 화면 숨기기
     AITLoading.onComplete(function() {
         AITLoading.hide();
     });
 
-    // 에러 처리
     AITLoading.onError(function(error) {
         document.getElementById('percent-text').textContent = '로딩 실패';
         document.getElementById('percent-text').style.color = '#f04452';
@@ -411,108 +353,31 @@ AITLoading.hide();
 </script>
 ```
 
-### 파일별 다운로드 진행률 표시
-
-```html
-<style>
-    .file-progress {
-        width: 280px;
-        margin-top: 20px;
-    }
-
-    .file-item {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 8px 0;
-        font-size: 12px;
-        color: #6b7684;
-    }
-
-    .file-name {
-        flex: 1;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    .file-speed {
-        margin-left: 8px;
-        color: #3182f6;
-    }
-</style>
-
-<div class="file-progress" id="fileProgress"></div>
-
-<script>
-    var fileProgress = document.getElementById('fileProgress');
-    var fileItems = {};
-
-    AITLoading.onFileProgress(function(info) {
-        if (!fileItems[info.name]) {
-            var item = document.createElement('div');
-            item.className = 'file-item';
-            item.innerHTML = '<span class="file-name">' + info.name + '</span>' +
-                           '<span class="file-speed" id="speed-' + info.name.replace(/\./g, '-') + '">0 KB/s</span>';
-            fileProgress.appendChild(item);
-            fileItems[info.name] = item;
-        }
-
-        var speedEl = document.getElementById('speed-' + info.name.replace(/\./g, '-'));
-        if (speedEl && info.speed) {
-            speedEl.textContent = Math.round(info.speed) + ' KB/s';
-        }
-    });
-</script>
-```
-
----
-
-## 콘솔 로그
-
-로딩 완료 시 자동으로 콘솔에 상세 정보가 출력됩니다:
-
-```
-[AIT Loading] ========== 로딩 완료 ==========
-[AIT Loading] 총 로딩 시간: 4523ms
-[AIT Loading] 파일별 다운로드:
-  - game.loader.js:
-      크기: 0.04MB
-      시간: 120ms
-      평균 속도: 376.7KB/s
-  - game.wasm:
-      크기: 4.41MB
-      시간: 2890ms
-      평균 속도: 1564.5KB/s
-      피크 속도: 2341.8KB/s
-  - game.data:
-      크기: 11.76MB
-      시간: 3210ms
-      평균 속도: 3751.9KB/s
-[AIT Loading] ================================
-```
-
----
-
 ## 트러블슈팅
 
 ### 아이콘이 표시되지 않음
 
-1. AIT Configuration에서 `iconUrl`이 설정되어 있는지 확인
-2. CORS 정책으로 외부 이미지가 차단될 수 있음 → 같은 도메인의 이미지 사용 권장
-3. 네이티브 앱 환경에서는 자동으로 앱 아이콘이 로드됨
+1. AIT Configuration에서 아이콘 URL이 설정되어 있는지 확인합니다
+2. CORS 정책으로 외부 이미지가 차단될 수 있습니다 — 같은 도메인의 이미지를 권장합니다
+3. 네이티브 앱 환경에서는 앱 아이콘이 자동으로 로드되므로 폴백 값이 보이지 않을 수 있습니다
 
 ### 커스텀 로딩 화면이 적용되지 않음
 
-1. `Assets/AppsInToss/loading.html` 파일이 올바른 위치에 있는지 확인
-2. 빌드를 다시 실행
+1. 파일이 `Assets/AppsInToss/loading.html`에 있는지 확인합니다 — 다른 경로는 인식되지 않습니다
+2. 로딩 화면은 빌드 시점에 인라인되므로 파일만 고치고 다시 빌드하지 않으면 반영되지 않습니다
 
 ### 진행률이 업데이트되지 않음
 
-1. `AITLoading.onProgress()` 콜백이 올바르게 등록되어 있는지 확인
-2. 콜백은 페이지 로드 초기에 등록해야 함
+1. `AITLoading.onProgress()`가 등록되어 있는지 확인합니다
+2. 콜백은 페이지 로드 초기에 등록해야 합니다 — 로딩이 이미 진행된 뒤 등록하면 그 이전 진행률은 받지 못합니다
 
-### appInfo가 비어있음
+### appInfo가 비어 있음
 
-1. 커스텀 로딩 화면에서는 `AITLoading._initialized`를 확인 후 사용
-2. 또는 `setInterval`로 초기화 완료를 대기
+`AITLoading.appInfo`를 직접 읽는 대신 `onReady` 콜백 안에서 사용하세요. 스크립트 실행 시점에 앱 정보 초기화가 아직 끝나지 않았을 수 있습니다.
+
+## 관련 문서
+
+- [빌드 파이프라인](BuildProcess.md) — `%AIT_LOADING_SCREEN%` 치환이 일어나는 지점
+- [빌드 커스터마이징](BuildCustomization.md) — 로딩 화면 밖의 웹 진입점 수정
+- [시작하기](GettingStarted.md) — 앱 정보 설정
+- [문제 해결](Troubleshooting.md) — 빌드·런타임 전반

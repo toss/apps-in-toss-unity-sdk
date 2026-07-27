@@ -59,7 +59,7 @@ pnpm test              # 전체 유닛 테스트
 pnpm test:invariants   # CI가 거는 것과 동일한 불변식 검사
 ```
 
-생성기를 고쳤다면 `pnpm generate` → `pnpm test:invariants` 순서로 확인하고, `git status`로 `Runtime/SDK/` 아래에 의도한 변경만 나왔는지 보세요. 타입 매핑 규칙 등 생성기 내부 구조는 `internal/sdk-generator.md`에 있습니다.
+생성기를 고쳤다면 `pnpm generate` → `pnpm test:invariants` 순서로 확인하고, `git status`로 `Runtime/SDK/` 아래에 의도한 변경만 나왔는지 보세요. 타입 매핑 규칙 등 생성기 내부 구조는 [SDK 런타임 생성기](internal/sdk-generator.md)에 있습니다.
 
 ## 로컬 검증
 

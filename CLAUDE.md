@@ -202,13 +202,22 @@ review-fix-loop 등 자동화 skill이 파싱하는 규약 섹션. 각 항목은
 
 ## 상세 문서
 
-필요할 때 Read로 가져가서 참조:
+`Documentation~/`가 문서 루트다. 인덱스는 `Documentation~/README.md`.
 
-- `Documentation~/internal/github-actions.md` — 워크플로우 ID 전체 테이블, 트리거 예시 (E2E/Preview/Release/SDK Update/Bulk Release), 상태 확인 명령
-- `Documentation~/internal/project-structure.md` — 전체 디렉토리 트리 (Runtime/SDK partial class 목록 포함)
-- `Documentation~/internal/build-pipeline.md` — 2단계 빌드 시스템 (Unity WebGL → Granite), 플레이스홀더 치환 규칙
-- `Documentation~/internal/testing.md` — 3-Level 테스트 구조, Unity 버전 요구사항, E2E 디렉토리 구조, 실행 명령, CI/CD 통합
-- `Documentation~/internal/sdk-generator.md` — `sdk-runtime-generator~` 워크플로우, 타입 매핑, API 사용 패턴
-- `Documentation~/internal/implementation-details.md` — WebGL 템플릿, 빌드 설정 자동 구성, 내장 Node.js 시스템, 설정 저장소
-- `Documentation~/internal/sentry-known-issues.md` — 무시 가능 Sentry 이슈 목록, 통합 테스트 environment 분리, strict 게이트 + NonSdkMessagePatterns 이중 안전망
-- `Documentation~/internal/build-session-recovery.md` — 빌드 중 도메인 리로드 복원력 (`AITBuildSessionRecovery`) 수동 재현 절차 (`.cs` 저장 / Unity 강제 종료 / Stale 세션 / Idle gate)
+**내부 런북** (`Documentation~/internal/`) — 저장소 운영용, 필요할 때 Read로 가져가서 참조:
+
+- `github-actions.md` — 워크플로우 15개 목록·ID 테이블, 트리거 예시 (E2E/Preview/Release/Beta Release/SDK Update/Bulk Release), 상태 확인, `rerun-failed-jobs`
+- `project-structure.md` — 디렉토리 지도 (Runtime·Editor·WebGLTemplates·Tests~ 트리)
+- `implementation-details.md` — 구현 지점 색인 (관심사 → 파일·상수명 매핑). 동작 설명은 공개 문서에 있고 여기엔 위치만
+- `testing.md` — 3-Level 테스트 구조, Unity 5개 버전, E2E 디렉토리, `test_level` 범위, 러너 라우팅
+- `sdk-generator.md` — 입출력, `TYPE_MAPPING` 표, `Awaitable`/`Task` 분기, JSDoc 이관, `field-docs.ts` 계약
+- `sentry-known-issues.md` — 무시 가능 이슈 목록, environment 분리, fallback warning 컨벤션, 이중 안전망, 릴리즈 게이트 resolve
+- `build-session-recovery.md` — `AITBuildSessionRecovery` 수동 재현 절차 (`.cs` 저장 / 강제 종료 / Stale 세션 / Idle gate)
+
+**공개 문서** (`Documentation~/`) — 제품 동작의 정본. 내부 런북은 여기를 링크만 한다:
+
+- `BuildProcess.md` — 2단계 빌드 파이프라인, 플레이스홀더 치환, 에러 코드, 내장 Node/pnpm
+- `BuildProfiles.md` — 프로필 4종, 환경 변수 오버라이드
+- `BuildCustomization.md` — 사용자 영역 마커, 외부 라이브러리 추가
+- `APIUsagePatterns.md` — async/await, `AITException.ErrorCode`, 타임아웃, Mock 브릿지, IAP 지급 승인
+- `Contributing.md` — 개발 환경, git hooks, `run-local-tests.sh`, 커밋·PR 규칙

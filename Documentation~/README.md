@@ -42,7 +42,17 @@ Apps in Toss Unity SDK 문서 목록입니다. 하려는 일부터 찾으세요.
 |------|------|
 | [기여 가이드](Contributing.md) | 개발 환경 설정, `.meta` 규칙, 커밋·PR 규칙 |
 
-`internal/`은 이 저장소를 운영하는 데 쓰는 내부 런북입니다. SDK를 사용하는 데는 필요하지 않습니다.
+`internal/`은 이 저장소를 운영하는 데 쓰는 런북입니다. SDK를 사용하는 데는 필요하지 않습니다.
+
+| 문서 | 내용 |
+|------|------|
+| [프로젝트 구조](internal/project-structure.md) | 디렉터리 지도 |
+| [구현 지점 색인](internal/implementation-details.md) | "이 동작은 어느 파일에 있나" |
+| [SDK 런타임 생성기](internal/sdk-generator.md) | `Runtime/SDK/`가 만들어지는 방식 |
+| [테스트 전략](internal/testing.md) | 3-Level 구조와 CI 실행 |
+| [GitHub Actions 워크플로](internal/github-actions.md) | 워크플로 목록과 트리거 |
+| [Sentry 알려진 이슈](internal/sentry-known-issues.md) | 무시 가능 이슈와 노이즈 차단 |
+| [빌드 중 도메인 리로드 수동 재현](internal/build-session-recovery.md) | 자동화할 수 없는 검증 절차 |
 
 ## API 변경 이력
 

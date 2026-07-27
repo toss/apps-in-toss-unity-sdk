@@ -1,70 +1,118 @@
 # 프로젝트 구조
 
-```
+저장소에서 무엇이 어디에 있는지에 대한 지도입니다.
+
+> **대상**: SDK 기여자. SDK를 사용하는 관점의 안내는 [시작하기](../GettingStarted.md)에 있습니다.
+
+## 최상위
+
+```text
 apps-in-toss-unity-sdk/
-├── Runtime/                          # 런타임 SDK 코드
-│   └── SDK/                          # 자동 생성 SDK API 파일 (카테고리별 partial class)
-│       ├── AIT.cs                   # 메인 partial class 선언
-│       ├── AIT.Advertising.cs       # 광고 API (GoogleAdMob, TossAds)
-│       ├── AIT.Analytics.cs         # 분석 API
-│       ├── AIT.AppEvents.cs         # 앱 이벤트 API
-│       ├── AIT.Authentication.cs    # 인증 API (AppLogin, GetIsTossLoginIntegratedService)
-│       ├── AIT.Certificate.cs       # 인증서 API
-│       ├── AIT.Clipboard.cs         # 클립보드 API
-│       ├── AIT.Device.cs            # 디바이스 API
-│       ├── AIT.Environment.cs       # 환경 API
-│       ├── AIT.Events.cs            # 이벤트 API
-│       ├── AIT.GameCenter.cs        # 게임센터 API
-│       ├── AIT.IAP.cs               # 인앱 결제 API
-│       ├── AIT.Location.cs          # 위치 API (GetCurrentLocation, StartUpdateLocation)
-│       ├── AIT.Media.cs             # 미디어 API
-│       ├── AIT.Navigation.cs        # 네비게이션 API
-│       ├── AIT.Other.cs             # 기타 API
-│       ├── AIT.Partner.cs           # 파트너 API
-│       ├── AIT.Payment.cs           # 결제 API (CheckoutPayment)
-│       ├── AIT.Permission.cs        # 권한 API (GetPermission, RequestPermission 등)
-│       ├── AIT.SafeArea.cs          # 세이프 에리어 API
-│       ├── AIT.Screen.cs            # 화면 API
-│       ├── AIT.Share.cs             # 공유 API
-│       ├── AIT.Storage.cs           # 스토리지 API
-│       ├── AIT.SystemInfo.cs        # 시스템 정보 API (GetDeviceId, GetLocale 등)
-│       ├── AIT.Visibility.cs        # 가시성 API
-│       ├── AIT.Types.cs             # 타입 정의 (Options, Result 클래스)
-│       ├── AITCore.cs               # 인프라 코드 (jslib 브릿지, 예외 처리)
-│       └── Plugins/                 # JavaScript 브릿지 (카테고리별 54개 jslib 파일)
-├── Editor/                           # Unity Editor 스크립트
-│   ├── AITConfigurationWindow.cs    # SDK 설정 윈도우 (메뉴: AIT/Configuration)
-│   ├── AITConvertCore.cs            # 빌드 파이프라인 진입점 (DoExport, Init)
-│   ├── AITPackageBuilder.cs         # 핵심 패키징 로직 (WebGL→ait-build 변환)
-│   ├── AITBuildInitializer.cs       # Unity PlayerSettings 자동 구성
-│   ├── AITNodeJSDownloader.cs       # 내장 Node.js 설치기
-│   ├── AITNpmRunner.cs              # npm/pnpm 실행 유틸리티
-│   ├── AITEditorScriptObject.cs     # 설정 ScriptableObject
-│   ├── AppsInTossMenu.cs            # Unity 메뉴 등록 (AIT/)
-│   └── ErrorTracker/                # Sentry 기반 에러 추적
-├── WebGLTemplates/                   # Unity WebGL 템플릿
-│   └── AITTemplate/                  # Unity 2021.3+ 템플릿
-│       ├── index.html               # 플레이스홀더가 포함된 템플릿 HTML
-│       ├── Runtime/                 # 플랫폼 브릿지 JavaScript
-│       │   └── appsintoss-unity-bridge.js
-│       └── BuildConfig~/            # Vite 빌드 설정
-│           ├── package.json         # npm 의존성
-│           ├── vite.config.ts       # Vite 설정
-│           └── granite.config.ts    # Granite 빌드 설정
-├── Tools~/                           # 개발 도구 (UPM에서 제외)
-│   └── NodeJS/                      # 내장 Node.js (자동 다운로드)
-├── Tests~/                           # 테스트 파일 (UPM에서 제외)
-│   └── E2E/                         # E2E 테스트
-│       ├── SampleUnityProject-6000.3/  # Unity 6000.3 테스트 프로젝트
-│       ├── SampleUnityProject-6000.2/  # Unity 6000.2 테스트 프로젝트
-│       ├── SampleUnityProject-6000.0/  # Unity 6000.0 테스트 프로젝트
-│       ├── SampleUnityProject-2022.3/  # Unity 2022.3 테스트 프로젝트
-│       ├── SampleUnityProject-2021.3/  # Unity 2021.3 테스트 프로젝트
-│       ├── SharedScripts/              # 공유 테스트 스크립트 (UPM 패키지)
-│       │   ├── Runtime/               # InteractiveAPITester, RuntimeAPITester 등
-│       │   └── Editor/                # E2EBuildRunner
-│       └── tests/                     # Playwright E2E 테스트
-└── sdk-runtime-generator~/           # SDK 코드 생성기 (UPM에서 제외)
+├── Runtime/                  런타임 코드 (UPM 배포)
+├── Editor/                   Unity Editor 코드 (UPM 배포)
+├── WebGLTemplates/           WebGL 템플릿 (UPM 배포)
+├── Documentation~/           문서
+├── Tests~/                   E2E 및 EditMode 테스트
+├── sdk-runtime-generator~/   SDK 코드 생성기
+├── scripts~/                 로컬 테스트 러너가 쓰는 셸·노드 스크립트
+├── .githooks/                pre-commit / pre-push
+├── package.json              UPM 매니페스트
+├── sdk-policy.json           최소 지원 버전 정책 (AITDeprecationChecker가 fetch)
+└── run-local-tests.sh        로컬 검증 진입점
 ```
 
-**참고**: `~` 접미사가 붙은 디렉토리는 Unity Package Manager 배포에서 제외됩니다.
+`~` 접미사가 붙은 디렉터리는 Unity가 임포트하지 않고 UPM 배포에서도 제외됩니다. `.meta`도 필요 없습니다.
+
+## Runtime
+
+```text
+Runtime/
+├── SDK/                      자동 생성 — 직접 수정 금지
+│   ├── AIT.cs                partial class 선언
+│   ├── AIT.<카테고리>.cs      카테고리별 API (Advertising, IAP, Storage 등 24개)
+│   ├── AIT.Types.<카테고리>.cs 카테고리별 Options·Result 타입
+│   ├── AITCore.cs            jslib 브릿지 인프라와 예외 처리
+│   └── Plugins/              카테고리별 jslib 브릿지
+├── Helpers/                  손으로 쓰는 런타임 보조 코드
+│   ├── AIT.BannerAd.cs       배너 광고 래퍼
+│   ├── AITBannerAdView.cs    RectTransform 영역 배너
+│   ├── AIT.PerformanceLogger.cs  SDK 이벤트 로깅
+│   ├── AIT.VisibilityHelper.cs   포그라운드·백그라운드 전환
+│   ├── AITSentryReleaseResolver.cs
+│   └── AITVersion.cs
+└── Sentry/                   Sentry Unity SDK 연동 (선택 의존성)
+    ├── AITSentryIntegration.cs   태그·컨텍스트 주입
+    ├── AITSentryContextEnricher.cs
+    ├── AITSentryAnalytics.cs     화면·노출·클릭 추적
+    └── link.xml                  IL2CPP 스트리핑 방지
+```
+
+`Runtime/SDK/`는 전부 `sdk-runtime-generator~/`가 만들어 냅니다. 생성 규칙은 [SDK 런타임 생성기](sdk-generator.md)를 참고하세요.
+
+## Editor
+
+```text
+Editor/
+├── AITConvertCore.cs         빌드 파이프라인 진입점 (Init, DoExport)
+├── AITPackageBuilder.cs      WebGL 산출물 → ait-build 변환
+├── AITBuildInitializer.cs    PlayerSettings 자동 구성과 복원
+├── AITBuildValidator.cs      빌드 전 설정 검증
+├── AITBuildSession.cs        빌드 세션 상태
+├── AITBuildSessionRecovery.cs  도메인 리로드 후 복원
+├── AITConfigurationWindow.cs   설정 창 (AIT > Configuration)
+├── AITEditorScriptObject.cs    설정 ScriptableObject와 기본값
+├── AITNodeJSDownloader.cs      내장 Node.js 설치
+├── AITNpmRunner.cs             패키지 매니저 실행
+├── AITTemplateManager.cs       WebGL 템플릿 복사·병합
+├── AITAutoUpdater.cs           업데이트 확인과 채널 판정
+├── AITExportErrorCatalog.cs    빌드 에러 코드와 안내 문구
+├── AppsInTossMenu.cs           AIT 메뉴 등록
+├── ErrorTracker/               Sentry 기반 Editor 에러 추적
+├── IssueReport/                이슈 리포트 창
+├── Menu/                       메뉴 액션 (Dev Server, 배포, 포트 해석)
+├── Package/                    granite·pnpm 실행과 설정 병합
+│   ├── BuildConfigMerger.cs      플레이스홀더 치환과 사용자 파일 병합
+│   ├── GraniteBuildRunner.cs     granite 빌드 실행
+│   ├── PnpmInstallStateMarker.cs 설치 스킵 마커
+│   └── WebGLBuildCopier.cs
+└── Sentry/                     빌드 시 DSN 주입
+```
+
+## WebGLTemplates
+
+```text
+WebGLTemplates/AITTemplate/
+├── index.html                플레이스홀더가 들어 있는 템플릿
+├── loading.html              로딩 화면 템플릿
+├── Runtime/
+│   ├── appsintoss-unity-bridge.js  플랫폼 브릿지
+│   └── devconsole/                 인앱 디버그 콘솔
+├── TemplateData/             스타일과 이미지
+└── BuildConfig~/             Vite·granite 빌드 설정
+    ├── granite.config.ts
+    ├── apps-in-toss.config.ts
+    ├── vite.config.ts
+    ├── unity-bridge.ts
+    └── package.json
+```
+
+빌드 시 무엇이 언제 복사·병합되는지는 [빌드 파이프라인](../BuildProcess.md)에 있습니다.
+
+## Tests~
+
+```text
+Tests~/E2E/
+├── SampleUnityProject-<버전>/  Unity 버전별 샘플 프로젝트 5개
+├── SharedScripts/              샘플 프로젝트가 공유하는 UPM 패키지
+│   ├── Runtime/                InteractiveAPITester, RuntimeAPITester 등
+│   ├── Editor/                 E2EBuildRunner, BuildOutputValidator, EditModeTests
+│   └── Plugins/                E2ETestBridge.jslib
+└── tests/                      Playwright 테스트와 설정
+```
+
+## 관련 문서
+
+- [SDK 런타임 생성기](sdk-generator.md) — `Runtime/SDK/`가 만들어지는 방식
+- [테스트 전략](testing.md) — `Tests~/` 구조와 실행
+- [빌드 파이프라인](../BuildProcess.md) — `Editor/`와 `WebGLTemplates/`가 실제로 하는 일
+- [기여 가이드](../Contributing.md) — 개발 환경과 커밋 규칙

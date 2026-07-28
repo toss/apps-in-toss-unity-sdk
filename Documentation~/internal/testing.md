@@ -84,6 +84,26 @@ pnpm test
 
 브라우저는 러너 이미지의 시스템 Chrome을 사용합니다(`playwright.config.ts`의 `channel`). Playwright가 관리하는 chromium 바이너리는 내려받지 않으므로 `playwright install`은 CI 경로에 없습니다.
 
+## 로컬 CI 재현
+
+E2E CI는 압축 비활성화(`AIT_COMPRESSION_FORMAT="0"`)로 실행되어 신규 빌드에서 Brotli/Gzip 크래시가 없습니다. 이전 빌드 분석이나 압축별 동작 검증이 필요하면 `--compression`과 `--parallel`을 조합합니다.
+
+```bash
+# E2E CI와 동일한 경로(압축 비활성화)
+./run-local-tests.sh --unity-build --compression disabled --unity-version 6000.2
+
+# Gzip / Brotli 강제 (압축 단계 flaky 재현용)
+./run-local-tests.sh --unity-build --compression gzip --unity-version 6000.2
+./run-local-tests.sh --unity-build --compression brotli --unity-version 6000.2
+
+# 동시 빌드로 리소스 경합 재현 (모든 버전 병렬)
+./run-local-tests.sh --unity-build --parallel --compression brotli
+```
+
+압축 포맷 값은 `auto` | `disabled` | `gzip` | `brotli`입니다(`run-local-tests.sh` 참조).
+
+> **주의**: self-hosted 러너의 리소스 경합 자체(CPU/메모리/디스크)는 로컬 머신 스펙에 따라 재현이 보장되지 않습니다. 로컬에서 통과해도 CI flaky가 재현되지 않을 수 있으며, 이 경우 [GitHub Actions 워크플로](github-actions.md)의 "E2E 알려진 flaky 패턴"을 참조해 실패한 잡만 재실행합니다.
+
 ## CI
 
 `.github/workflows/test-e2e.yml`이 Level 0부터 2까지를 순서대로 실행하고, 벤치마크 결과를 아티팩트로 올린 뒤 job summary에 성능 메트릭을 남깁니다.

@@ -73,6 +73,13 @@ SDK 정상 흐름의 fallback이나 timeout, 예측된 분기에서 나는 warni
 
 따라서 머지 직후에 대상 이슈가 여전히 unresolved로 보이는 것은 정상입니다. 릴리즈를 기다릴 수 없거나, 구버전 SDK에서 유입되어 미래 릴리즈 커밋 범위에 잡히지 않는 잔여 이벤트는 수동으로 resolve합니다.
 
+### 수동 resolve 절차
+
+1. 상태 확인 — Sentry MCP `get_sentry_resource(resourceType='issue', organizationSlug='toss', resourceId='APPS-IN-TOSS-UNITY-SDK-XX')` 또는 `search_issues`
+2. `unresolved`이면 직접 resolve — Sentry MCP `update_issue(organizationSlug='toss', issueId='APPS-IN-TOSS-UNITY-SDK-XX', status='resolved', reason='노이즈 패턴 PR #N 머지로 현행 SDK가 드롭 — 릴리즈 전 즉시 resolve')`
+
+이미 현행 main에 커버된 잔여 이벤트(구버전 SDK에서 유입, 코드나 PR 변경 없음)는 미래 릴리즈 커밋 범위에 `Fixes`가 없어 자동 resolve되지 않으므로 항상 수동 resolve로 정리합니다.
+
 ## 관련 문서
 
 - [Sentry 연동](../SentryIntegration.md) — 사용자 프로젝트 관점의 Sentry 설정

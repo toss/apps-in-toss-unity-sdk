@@ -90,8 +90,8 @@ packages:
   '@apps-in-toss/types@2.10.7':
     resolution: {integrity: sha512-NhOyuEXdkPvHeIxAKEVwSBLXtNmgI2OII/5oSfgQZ9RgVhh7EWxZgRLBjgXVKcyXdwPsYFe/rqbiZdNaZpI+IQ==}
 
-  '@apps-in-toss/user-scripts@2.10.7':
-    resolution: {integrity: sha512-5unL3I92TMQinQ0/PflDFuzA/X7Qop5cOXwhdc3d0N4pFFQYfBPRUGcKWL/FOkHc6kH0I7tBcno8SD/ZaJxLPg==}
+  '@apps-in-toss/user-scripts@2.10.8':
+    resolution: {integrity: sha512-a4Ea37kKeq/QkOWELgoUGHrTbrFSrGVkfpqGQqBO5vjH+j6rSBH+LzYf9kzSTOO43QZIMZMUQelXlMe0pDjVww==}
 
   '@apps-in-toss/web-analytics@2.10.7':
     resolution: {integrity: sha512-8UJwUOVqH2VmTEf7/FXXTFaUbICnTC/0mzj+lQNeYfoDKLAUsbEyE1Sdy6MAgL3QlutB3NAAS3VboWVrXDCJGw==}
@@ -2792,8 +2792,8 @@ packages:
   base64-js@1.5.1:
     resolution: {integrity: sha512-AKpaYlHn8t4SVbOHCy+b5+KKgvR4vrsD8vbvrbiQJps7fKDTkjkDry6ji0rUJjC0kzbNePLwzxq8iypo41qeWA==}
 
-  baseline-browser-mapping@2.11.1:
-    resolution: {integrity: sha512-HYXq73DDpCtNzOmrFsm9eSwCvWCql0RzqjpDzXN9EadiLJ4DNat0nsZ/Bzmy+Ud12mb4/zKDY0cQ805ZzN+i0A==}
+  baseline-browser-mapping@2.11.3:
+    resolution: {integrity: sha512-sbT0Ui/CZwyAyy7icT1Gw5P1LKRlFaHwaF6tDCW5YHq2X5SeeZFphBuIagopSfwSSZq3sQcbmEL072yphxm7ew==}
     engines: {node: '>=6.0.0'}
     hasBin: true
 
@@ -3497,20 +3497,20 @@ packages:
   flow-enums-runtime@0.0.5:
     resolution: {integrity: sha512-PSZF9ZuaZD03sT9YaIs0FrGJ7lSUw7rHZIex+73UYVXg46eL/wxN5PaVcPJFudE2cJu5f0fezitV5aBkLHPUOQ==}
 
-  flow-estree@0.323.0:
-    resolution: {integrity: sha512-VuCvqb38ueB7u9Xnfuj/uV9xWaqRM1XX8fUbch3Q1perZp1BZHAcGKcSkc57RdVXaDrjsfgNOiSEmlvx8Yhk4Q==}
+  flow-estree@0.324.0:
+    resolution: {integrity: sha512-As9kMmy7BhCHr3LZ48Y2eJXL8aceNCFN8kJFZxnr862e/P0q9zBO6b5rFJEfKdry3ZjPtaXcgG7ug8yeWQX6qw==}
     engines: {node: '>=18'}
 
   flow-parser@0.206.0:
     resolution: {integrity: sha512-HVzoK3r6Vsg+lKvlIZzaWNBVai+FXTX1wdYhz/wVlH13tb/gOdLXmlTqy6odmTBhT5UoWUbq0k8263Qhr9d88w==}
     engines: {node: '>=0.4.0'}
 
-  flow-parser@0.323.0:
-    resolution: {integrity: sha512-uTw5ffLYxQDnSe4Ch5mo1Sp7kFOrhOglz3nqgpQRrYpt4ucQTxrQRCLdC0F1hyhcIK7j5GjdxzV1d4DN68eDzA==}
+  flow-parser@0.324.0:
+    resolution: {integrity: sha512-0+8EOQ3qagZGO+0Hw6L4PN23vzL6OSrRODp7BZJwirkJxOZCAgJYUdRIQO/VSklUpOPaR7Zf+SAnlnYD9FI+Mg==}
     engines: {node: '>=0.4.0'}
 
-  flow-remove-types@2.323.0:
-    resolution: {integrity: sha512-yTEZufVufitZ2TAHZYEIU0551EjceBFVQ5pVLlJPYStxHdxvbXPowk1C2TQaX5Fr9w+sokykBldPJ+bTE4uwOg==}
+  flow-remove-types@2.324.0:
+    resolution: {integrity: sha512-YdshiFeOdS6jNyCunEQM2ekFooffNI+zSTWKmtJ7S5ici/h2lSEsTQU1+NnzCqC+M7HGxStHzW/I2U5FWT6BgQ==}
     engines: {node: '>=4'}
     hasBin: true
 
@@ -6015,7 +6015,7 @@ snapshots:
       '@apps-in-toss/native-modules': 2.10.7(@granite-js/native@1.0.20(@babel/runtime@7.29.7)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(@granite-js/react-native@1.0.20(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(@granite-js/native@1.0.20(@babel/runtime@7.29.7)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(@swc/helpers@0.5.17)(@types/node@26.1.1)(@types/react@19.2.17)(brick-module@0.5.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(jiti@1.21.7)(postcss@8.5.23)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)(typescript@7.0.2)(yaml@2.9.0))(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)
       '@apps-in-toss/plugins': 2.10.7(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(@react-navigation/native@7.2.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(@swc/helpers@0.5.17)(@types/node@26.1.1)(react-native-safe-area-context@5.6.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(react-native-screens@4.23.0(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)(typescript@7.0.2)
       '@apps-in-toss/types': 2.10.7
-      '@apps-in-toss/user-scripts': 2.10.7
+      '@apps-in-toss/user-scripts': 2.10.8
       '@granite-js/native': 1.0.20(@babel/runtime@7.29.7)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)
       '@granite-js/react-native': 1.0.20(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(@granite-js/native@1.0.20(@babel/runtime@7.29.7)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(@swc/helpers@0.5.17)(@types/node@26.1.1)(@types/react@19.2.17)(brick-module@0.5.2(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(jiti@1.21.7)(postcss@8.5.23)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)(typescript@7.0.2)(yaml@2.9.0)
       '@toss/tds-react-native': 2.0.4(9bb0757a07ed74a918041c6b0c7b35e5)
@@ -6153,7 +6153,7 @@ snapshots:
 
   '@apps-in-toss/types@2.10.7': {}
 
-  '@apps-in-toss/user-scripts@2.10.7': {}
+  '@apps-in-toss/user-scripts@2.10.8': {}
 
   '@apps-in-toss/web-analytics@2.10.7(@apps-in-toss/web-bridge@2.10.7)':
     dependencies:
@@ -7486,7 +7486,7 @@ snapshots:
       events: 3.3.0
       fastify: 5.10.0
       fastify-plugin: 4.5.1
-      flow-remove-types: 2.323.0
+      flow-remove-types: 2.324.0
       frogress-bar: 0.1.0
       fs-extra: 1.0.0
       graceful-fs: 4.2.11
@@ -9394,7 +9394,7 @@ snapshots:
 
   base64-js@1.5.1: {}
 
-  baseline-browser-mapping@2.11.1: {}
+  baseline-browser-mapping@2.11.3: {}
 
   bezier-easing@2.1.0: {}
 
@@ -9452,7 +9452,7 @@ snapshots:
 
   browserslist@4.28.7:
     dependencies:
-      baseline-browser-mapping: 2.11.1
+      baseline-browser-mapping: 2.11.3
       caniuse-lite: 1.0.30001806
       electron-to-chromium: 1.5.396
       node-releases: 2.0.51
@@ -10164,15 +10164,15 @@ snapshots:
 
   flow-enums-runtime@0.0.5: {}
 
-  flow-estree@0.323.0: {}
+  flow-estree@0.324.0: {}
 
   flow-parser@0.206.0: {}
 
-  flow-parser@0.323.0:
+  flow-parser@0.324.0:
     dependencies:
-      flow-estree: 0.323.0
+      flow-estree: 0.324.0
 
-  flow-remove-types@2.323.0:
+  flow-remove-types@2.324.0:
     dependencies:
       hermes-parser: 0.36.1
       pirates: 3.0.2
@@ -10960,7 +10960,7 @@ snapshots:
       '@babel/preset-flow': 7.29.7(@babel/core@7.29.7)
       '@babel/preset-typescript': 7.29.7(@babel/core@7.29.7)
       '@babel/register': 7.29.7(@babel/core@7.29.7)
-      flow-parser: 0.323.0
+      flow-parser: 0.324.0
       graceful-fs: 4.2.11
       neo-async: 2.6.2
       picocolors: 1.1.1

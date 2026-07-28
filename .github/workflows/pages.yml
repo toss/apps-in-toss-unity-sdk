@@ -1,0 +1,160 @@
+name: Pages
+
+# Documentation~/ 을 GitHub Pages 사이트로 발행한다.
+#
+# 배경: Pages는 원래 legacy Jekyll이 저장소 루트(main:/)를 직접 빌드했다.
+# 그 방식에서는 Jekyll이 `~` 접미 항목을 백업 파일로 간주해 제외하므로
+# Documentation~/ 이 통째로 404였고, 루트 README의 문서 링크가 전부 죽어 있었다.
+#
+# 이 워크플로는 발행 전에 Documentation~/ 을 `docs/` 로 스테이징해서
+# (a) 문서가 처음으로 사이트에 렌더되고
+# (b) 기존 공개 URL `<site>/docs/changelog/` 가 그대로 유지되도록 한다.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'Documentation~/**'
+      - 'README.md'
+      - '.github/workflows/pages.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'Documentation~/**'
+      - 'README.md'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 배포는 직렬화하되 진행 중인 배포를 취소하지 않는다.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build Site
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+
+      - name: Stage Site Source
+        run: |
+          set -euo pipefail
+          SRC="_pages_src"
+          rm -rf "$SRC"
+          mkdir -p "$SRC/docs"
+
+          # Documentation~/ → docs/ : 틸드를 떼야 Jekyll이 처리한다.
+          # changelog/index.html 도 이 복사에 포함되어 기존 URL이 유지된다.
+          cp -R 'Documentation~/.' "$SRC/docs/"
+
+          # 루트 README가 사이트 홈이 된다.
+          cp README.md "$SRC/index.md"
+          sed -i 's|Documentation~/|docs/|g' "$SRC/index.md"
+
+          # Jekyll은 front matter가 있는 .md만 페이지로 렌더한다(없으면 정적 복사).
+          # 본문은 {% raw %}로 감싸 Liquid 해석을 막는다 — 문서 예제에 GitHub
+          # Actions 표현식("달러 중괄호 2개" 구문)이 들어 있어 그대로 두면 빌드가
+          # 깨진다. (이 주석에도 그 리터럴을 쓸 수 없다 — run 블록 안에서는 주석도
+          # 표현식으로 평가된다. 이 워크플로 최초 버전이 정확히 그렇게 깨졌다.)
+          find "$SRC" -name '*.md' -print0 | while IFS= read -r -d '' f; do
+            {
+              printf '%s\n' '---' '---' '{% raw %}'
+              cat "$f"
+              printf '\n%s\n' '{% endraw %}'
+            } > "$f.staged"
+            mv "$f.staged" "$f"
+          done
+
+          # changelog/index.html 은 front matter가 없어 정적 파일로 복사된다.
+          # (생성물이라 Liquid를 태우면 안 된다.)
+          cat > "$SRC/_config.yml" <<'YAML'
+          title: Apps in Toss Unity SDK
+          description: Unity 프로젝트를 Apps in Toss 미니앱으로 변환하고 배포하는 SDK
+          theme: jekyll-theme-primer
+          plugins:
+            - jekyll-relative-links
+          relative_links:
+            enabled: true
+            collections: false
+          # github-pages gem이 기본 활성화하는 jekyll-readme-index를 끈다.
+          # 켜져 있으면 docs/README.md 가 docs/index.html 로 옮겨져
+          # 루트 README가 거는 docs/README.html 링크가 404가 된다.
+          readme_index:
+            enabled: false
+          YAML
+
+          echo "스테이징 완료:"
+          find "$SRC" -maxdepth 2 -type f | sort
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Build with Jekyll
+        uses: actions/jekyll-build-pages@v1
+        with:
+          source: _pages_src
+          destination: _site
+
+      - name: Verify Published Paths
+        run: |
+          set -uo pipefail
+          FAIL=0
+
+          # 기존 공개 URL. 이 경로가 사라지면 외부 링크가 죽는다.
+          if [ ! -f _site/docs/changelog/index.html ]; then
+            echo "✗ _site/docs/changelog/index.html 없음 — 공개 changelog URL이 깨진다"
+            FAIL=1
+          fi
+
+          # 마크다운이 실제로 렌더됐는지(정적 .md 복사로 끝나지 않았는지) 확인.
+          for target in _site/index.html \
+                        _site/docs/README.html \
+                        _site/docs/GettingStarted.html \
+                        _site/docs/APIUsagePatterns.html \
+                        _site/docs/Troubleshooting.html; do
+            if [ ! -f "$target" ]; then
+              echo "✗ $target 없음 — Jekyll이 마크다운을 렌더하지 못했다"
+              FAIL=1
+            fi
+          done
+
+          # 상대 링크가 .md 그대로 남아 있으면 사이트에서 404가 된다.
+          if grep -qE 'href="[^"]*\.md"' _site/index.html; then
+            echo "✗ _site/index.html 에 .md 링크가 남아 있다 — jekyll-relative-links 미동작"
+            FAIL=1
+          fi
+
+          if [ "$FAIL" -eq 0 ]; then
+            echo "✓ 발행 경로 점검 통과"
+          fi
+          exit "$FAIL"
+
+      - name: Upload Pages Artifact
+        uses: actions/upload-pages-artifact@v4
+
+  deploy:
+    name: Deploy Site
+    # PR에서는 빌드·점검만 하고 배포하지 않는다. 배포는 main에서만.
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -500,7 +500,7 @@ jobs:
           )
 
           # 인프라 서브카테고리 grep 패턴 (첫 매치가 detail에 노출됨).
-          # 패턴 추가 시 docs/claude/github-actions.md에도 반영을 권장.
+          # 패턴 추가 시 Documentation~/internal/github-actions.md에도 반영을 권장.
           classify_infra() {
             local logs_glob="$1"
             local hit_subcat="" hit_line=""

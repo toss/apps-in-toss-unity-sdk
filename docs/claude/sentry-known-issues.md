@@ -67,3 +67,18 @@ minVersion 비정상, 태그 자동 감지 실패 등). 이 컨벤션은 일괄 
 두 메커니즘은 독립적이라 한쪽이 실패해도 다른 쪽이 보완한다. strict 게이트가
 SDK 결함을 false negative로 드롭하면 §"무시해도 되는 이슈 패턴" 모니터링에서
 포착 → `IsAitRelated` 화이트리스트 또는 `SdkMessagePatterns` 키워드 추가로 복구.
+
+## 자동 resolve는 release-gated (머지 시점 아님)
+
+**Sentry 자동 resolve는 "머지 시점"이 아니라 "다음 릴리즈 시점"에 발생한다** — auto-resolve PR body의 `Fixes APPS-IN-TOSS-UNITY-SDK-XX` 키워드는 squash 머지 커밋에 그대로 들어가지만, 이슈가 실제로 closed 되는 건 **다음 `apps-in-toss.unity@X.Y.Z` 릴리즈가 cut될 때**다. `release.yml`의 `sentry-release` job(`getsentry/action-release@v3`, `set_commits: auto`, PR #657)이 릴리즈에 커밋 범위를 연결하고, 그 커밋의 `Fixes` trailer가 참조한 이슈를 Sentry가 resolve한다. 따라서 **머지 직후에는 대상 이슈가 여전히 `unresolved`로 보이는 게 정상**이다 (버그 아님, 2026-06 PR #703에서 확인).
+
+### 즉시 닫아야 할 때만 수동 resolve
+
+릴리즈를 기다리지 않거나, 아래 잔여 이벤트처럼 미래 릴리즈 커밋 범위에 안 잡히는 경우:
+
+1. 상태 확인 — Sentry MCP `get_sentry_resource(resourceType='issue', organizationSlug='toss', resourceId='APPS-IN-TOSS-UNITY-SDK-XX')` 또는 `search_issues`
+2. `unresolved`이면 직접 resolve — Sentry MCP `update_issue(organizationSlug='toss', issueId='APPS-IN-TOSS-UNITY-SDK-XX', status='resolved', reason='노이즈 패턴 PR #N 머지로 현행 SDK가 드롭 — 릴리즈 전 즉시 resolve')`
+
+### 잔여 이벤트는 항상 수동 resolve
+
+**이미 현행 main에 커버된 잔여 이벤트**(구버전 SDK에서 유입, 코드/PR 변경 없음)는 미래 릴리즈 커밋 범위에 `Fixes`가 없어 자동 resolve되지 않으므로 **항상 수동 resolve**로 정리한다.

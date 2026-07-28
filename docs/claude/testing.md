@@ -86,3 +86,22 @@ npm test
 - `2`: 전체 실행 (~14분, 기본값)
 
 `test_level=0/1`이면 `e2e-*` 잡은 skipped 처리되고 결과는 `build-*` 결과로 폴백.
+
+## 로컬 CI 재현 (압축 포맷 / 리소스 경합)
+
+E2E CI는 현재 압축이 **Disabled**(`AIT_COMPRESSION_FORMAT="0"`)이므로 신규 빌드에서 Brotli/Gzip 크래시는 발생하지 않음. 다만 이전 빌드 분석이나 압축별 동작 검증이 필요하면 `--compression`과 `--parallel`을 조합:
+
+```bash
+# E2E CI와 동일한 경로(압축 비활성화)
+./run-local-tests.sh --unity-build --compression disabled --unity-version 6000.2
+
+# Gzip / Brotli 강제 (압축 단계 flaky 재현용)
+./run-local-tests.sh --unity-build --compression gzip --unity-version 6000.2
+./run-local-tests.sh --unity-build --compression brotli --unity-version 6000.2
+
+# 동시 빌드로 리소스 경합 재현 (모든 버전 병렬)
+./run-local-tests.sh --unity-build --parallel --compression brotli
+```
+
+**압축 포맷 값**: `auto` | `disabled` | `gzip` | `brotli` (`run-local-tests.sh` 참조).
+**주의**: self-hosted runner의 리소스 경합 자체(CPU/메모리/디스크 경합)는 로컬 머신 스펙에 따라 재현이 보장되지 않음. 로컬에서 통과해도 CI flaky가 재현되지 않을 수 있으며, 이 경우 `rerun-failed-jobs` 경로를 사용 (`docs/claude/github-actions.md`의 "E2E 알려진 flaky 패턴" 참조).

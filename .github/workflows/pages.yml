@@ -63,7 +63,9 @@ jobs:
 
           # Jekyll은 front matter가 있는 .md만 페이지로 렌더한다(없으면 정적 복사).
           # 본문은 {% raw %}로 감싸 Liquid 해석을 막는다 — 문서 예제에 GitHub
-          # Actions 표현식(${{ ... }})이 들어 있어 그대로 두면 빌드가 깨진다.
+          # Actions 표현식("달러 중괄호 2개" 구문)이 들어 있어 그대로 두면 빌드가
+          # 깨진다. (이 주석에도 그 리터럴을 쓸 수 없다 — run 블록 안에서는 주석도
+          # 표현식으로 평가된다. 이 워크플로 최초 버전이 정확히 그렇게 깨졌다.)
           find "$SRC" -name '*.md' -print0 | while IFS= read -r -d '' f; do
             {
               printf '%s\n' '---' '---' '{% raw %}'

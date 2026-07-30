@@ -19,7 +19,7 @@
   "author": "",
   "license": "UNLICENSED",
   "devDependencies": {
-    "@playwright/test": "1.61.1",
+    "@playwright/test": "1.62.0",
     "serve": "^14.2.0"
   }
 }

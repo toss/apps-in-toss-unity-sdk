@@ -172,6 +172,12 @@ namespace AppsInToss
             if (string.IsNullOrEmpty(message)) return false;
             return message.Contains("__GRANITE_NATIVE_EMITTER") ||
                    message.Contains("ReactNativeWebView") ||
+                   // web-framework 3.x의 assertWebViewEnvironment 가드 메시지.
+                   // 가드 조건은 여전히 window.ReactNativeWebView 이지만 3.0.0-rc 부터
+                   // 메시지에서 그 단어가 빠지고 한국어 문장으로 바뀌었다
+                   // ("apps-in-toss 웹뷰 환경이 아니에요. 토스 앱 안에서만 호출할 수 있어요.").
+                   // 문장 뒷부분 변경에 견디도록 핵심 어구만 부분 매칭한다.
+                   message.Contains("웹뷰 환경이 아니") ||
                    message.Contains("is not a constant handler") ||
                    // WebGL JS 브리지 객체(window.AppsInToss)가 아직 초기화되지 않았을 때
                    // 발생하는 JS TypeError — 플랫폼 미지원과 동일하게 처리한다.

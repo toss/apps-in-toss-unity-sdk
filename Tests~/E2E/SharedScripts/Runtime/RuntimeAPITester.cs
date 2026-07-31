@@ -44,7 +44,12 @@ public class RuntimeAPITester : MonoBehaviour
         // bridge-core 에러
         "is not a constant handler",                    // Constant API
         "__GRANITE_NATIVE_EMITTER is not available",    // Async API (emitter)
-        "ReactNativeWebView is not available",          // Native 통신
+        "ReactNativeWebView is not available",          // Native 통신 (~2.x)
+
+        // web-framework 3.x assertWebViewEnvironment 가드
+        // ("apps-in-toss 웹뷰 환경이 아니에요. 토스 앱 안에서만 호출할 수 있어요.")
+        // 가드 조건은 2.x와 동일하게 window.ReactNativeWebView 이지만 메시지만 바뀌었다.
+        "웹뷰 환경이 아니",
 
         // 플랫폼 미지원 에러
         "Platform not available",

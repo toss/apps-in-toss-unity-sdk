@@ -1,0 +1,144 @@
+# 빌드 프로필
+
+`AIT` 메뉴의 빌드 진입점마다 어떤 설정이 자동으로 달라지는지, 그리고 그 값을 어떻게 바꾸는지 설명합니다.
+
+## 작업 메뉴
+
+| 메뉴 | 용도 |
+|------|------|
+| `AIT > Dev Server > Start Server` | 로컬 개발 서버 실행 |
+| `AIT > Production Server > Start Server` | 프로덕션 설정으로 로컬 서버 실행 (샌드박스 앱 연동 가능) |
+| `AIT > Build & Package` | 배포용 패키지 생성 |
+| `AIT > Publish` | Apps in Toss에 배포 |
+
+## 프로필 매트릭스
+
+| 작업 | Mock 브릿지 | 디버그 콘솔 | Development Build | WebGL 압축 | Stripping Level | LZ4 압축 | 디버그 심볼 |
+|------|:-----------:|:-----------:|:-----------------:|:----------:|:---------------:|:--------:|:-----------:|
+| **Dev Server** | ✅ 활성화 | ✅ 활성화 | ✅ 활성화 | Disabled | Minimal | ✅ 활성화 | Embedded |
+| **Production Server** | ❌ 비활성화 | ❌ 비활성화 | ❌ 비활성화 | 자동 (Brotli) | 자동 (High) | ✅ 활성화 | External |
+| **Build & Package** | ❌ 비활성화 | ❌ 비활성화 | ❌ 비활성화 | 자동 (Brotli) | 자동 (High) | ✅ 활성화 | External |
+| **Publish** | ❌ 비활성화 | ❌ 비활성화 | ❌ 비활성화 | 자동 (Brotli) | 자동 (High) | ✅ 활성화 | External |
+
+## 각 설정의 의미
+
+### Mock 브릿지
+
+네이티브 API가 없는 환경에서 SDK API 호출에 가짜 응답을 돌려주는 시뮬레이션 레이어입니다. 활성화하면 toss 앱 없이 로컬 브라우저에서 게임을 돌려볼 수 있고, 비활성화하면 실제 Apps in Toss 앱 환경에서만 API가 동작합니다. 반환되는 값과 한계는 [API 사용 패턴](APIUsagePatterns.md)의 Mock 브릿지 절에 정리되어 있습니다.
+
+### Development Build
+
+Unity의 Development Build 옵션입니다.
+
+| 값 | 설명 |
+|-----|------|
+| 활성화 | 빌드 속도 향상, 디버깅 편의 (Profiler 연결 가능) |
+| 비활성화 | 최적화된 릴리즈 빌드 |
+
+### 디버그 심볼
+
+디버그 심볼(소스맵)을 어디에 둘지 결정합니다. Unity 2022.3 이상에서 적용됩니다.
+
+| 값 | 설명 |
+|-----|------|
+| Embedded | 빌드 파일에 심볼 포함 (파일 크기 증가, 디버깅 용이) |
+| External | 별도 파일로 분리 (파일 크기 감소, 배포에 적합) |
+
+### 디버그 콘솔
+
+화면 좌측 하단에 디버그 버튼을 띄웁니다. 눌러서 로그와 [SDK 이벤트](Metrics.md)를 확인할 수 있습니다. 프로덕션 배포 시에는 비활성화하세요.
+
+### WebGL 압축
+
+최종 산출물의 압축 포맷입니다.
+
+| 값 | 설명 |
+|-----|------|
+| 자동 | Brotli 사용 (기본값) |
+| Disabled | 압축 없음 (빌드 속도 우선) |
+| Gzip | Gzip 압축 |
+| Brotli | Brotli 압축 (최고 압축률) |
+
+Dev Server만 빌드 속도를 위해 Disabled이고, 나머지 프로필은 자동(Brotli)입니다.
+
+### Stripping Level
+
+사용하지 않는 관리 코드를 제거하는 수준입니다.
+
+| 값 | 설명 |
+|-----|------|
+| 자동 | High 사용 (기본값) |
+| Minimal | 최소한의 코드만 제거 |
+| Low | 낮은 수준의 코드 제거 |
+| Medium | 중간 수준의 코드 제거 |
+| High | 적극적으로 코드 제거 (최소 빌드 크기) |
+
+Dev Server만 빌드 속도를 위해 Minimal이고, 나머지는 자동(High)입니다.
+
+> **참고**: Disabled는 WebGL(IL2CPP)에서 지원되지 않아 옵션에서 제외되었으며, 이전 버전에서 Disabled로 저장된 값은 Minimal로 정규화됩니다. 리플렉션으로만 참조되는 타입이 High에서 제거될 수 있으니, 스트리핑 이후 동작이 달라지면 `link.xml`로 보존 대상을 지정하세요.
+
+### LZ4 압축
+
+Unity 빌드 프로세스의 LZ4 압축입니다. 모든 프로필에서 기본 활성화되어 있습니다.
+
+## 프로필 커스터마이징
+
+1. `AIT > Configuration` 메뉴 열기
+2. "빌드 프로필" 섹션 확장
+3. 원하는 프로필(Dev Server, Production Server 등) 펼치기
+4. 각 옵션의 체크박스 변경
+5. 변경 사항은 자동 저장됨
+
+프로필 설정은 `Assets/AppsInToss/Editor/AITConfig.asset`에 저장됩니다.
+
+## 환경 변수 오버라이드
+
+CI/CD나 자동화 스크립트에서 프로필 값을 코드 수정 없이 덮어쓸 수 있습니다. 대부분은 `AITBuildInitializer.ApplyEnvironmentVariableOverrides(profile)`가 프로필 사본에 적용하고, `AIT_IL2CPP_CONFIGURATION`만 `Init` 단계에서 PlayerSettings에 직접 적용합니다.
+
+| 환경 변수 | 설명 | 허용 값 |
+|----------|------|-----|
+| `AIT_DEBUG_CONSOLE` | 디버그 콘솔 활성화 | `true` / `false` |
+| `AIT_COMPRESSION_FORMAT` | 압축 포맷 | `-1` (자동) / `0` (Disabled) / `1` (Gzip) / `2` (Brotli) |
+| `AIT_DEVELOPMENT_BUILD` | Development Build | `true` / `false` |
+| `AIT_IL2CPP_CONFIGURATION` | IL2CPP 컴파일러 최적화 수준 | `Debug` / `Release` / `Master` |
+
+허용 값을 벗어나면 `Debug.LogWarning`으로 경고하고 그 변수만 무시합니다 — 빌드는 계속됩니다.
+
+`AIT_DEVELOPMENT_BUILD`와 `AIT_IL2CPP_CONFIGURATION`은 둘 다 링크 시간을 줄이지만 서로 다른 레이어입니다. 전자는 Player 옵션이고 후자는 IL2CPP 컴파일러 옵티마이저 레벨이라, CI에서 빌드 시간을 줄이려면 두 개를 함께 지정해야 효과가 큽니다.
+
+```bash
+AIT_DEBUG_CONSOLE=true \
+AIT_COMPRESSION_FORMAT=0 \
+/Applications/Unity/Hub/Editor/2022.3.62f1/Unity.app/Contents/MacOS/Unity \
+  -quit -batchmode -projectPath ./MyProject
+```
+
+SDK가 읽는 환경 변수가 이 넷이 전부는 아닙니다. 패키징 단계의 `AIT_DISABLE_INSTALL_SKIP`은 [빌드 파이프라인](BuildProcess.md)에, Sentry 관련 변수는 [Sentry 연동](SentryIntegration.md)에 있습니다.
+
+## 빌드 로그
+
+빌드 시작 시 적용된 프로필이 Unity Console에 출력됩니다. 어떤 값이 실제로 먹었는지는 이 로그가 최종 확인 수단입니다 — 환경 변수 오버라이드도 여기에 반영됩니다.
+
+```text
+[AIT] ========================================
+[AIT] 빌드 프로필: Dev Server
+[AIT] ========================================
+[AIT]   Mock 브릿지: 활성화
+[AIT]   디버그 콘솔: 활성화
+[AIT]   Development Build: 활성화
+[AIT]   LZ4 압축: 활성화
+[AIT]   압축 포맷: Disabled
+[AIT]   Stripping Level: Minimal
+[AIT]   디버그 심볼: Embedded
+[AIT] ========================================
+```
+
+압축 포맷은 프로필에 저장된 값 그대로(`-1`이면 `자동`) 찍히고, Stripping Level은 `-1`일 때 실제 적용될 값을 괄호로 함께 표시합니다.
+
+## 관련 문서
+
+- [시작하기](GettingStarted.md) — 설치 및 기본 설정
+- [빌드 파이프라인](BuildProcess.md) — 프로필이 적용된 뒤 실제로 일어나는 일
+- [빌드 커스터마이징](BuildCustomization.md) — 웹 진입점과 마커 영역
+- [API 사용 패턴](APIUsagePatterns.md) — Mock 브릿지 동작
+- [문제 해결](Troubleshooting.md) — 빌드가 막혔을 때

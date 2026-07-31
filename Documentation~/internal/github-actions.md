@@ -226,7 +226,19 @@ gh api repos/toss/apps-in-toss-unity-sdk/actions/runs/RUN_ID/rerun-failed-jobs -
   - 단, 라벨 핀된 단일 러너(예: `macos-1-1`=2021.3)의 라이선스가 실제로 깨진 경우는 transient가 아닙니다. `rerun-failed-jobs`를 반복해도 인프라나 사람이 라이선스를 고치기 전까지 매번 동일 시그니처로 실패합니다. 2026-06 베타 deploy probe에서 attempt #1~#3이 모두 macos-1-1의 동일 라이선스 시그니처로 실패했고, 시간 경과가 아니라 수동 라이선스 수복 후에야 attempt #4가 통과했습니다(자연 복구 아님). 동일 라이선스 시그니처가 **2회 연속**이면 transient로 보지 말고 러너 라이선스 수복 필요로 에스컬레이션하세요(반복 rerun으로 시간 낭비 금지).
 - **Windows artifact upload finalize transient** — `actions/upload-artifact@v7`가 `successfully finalized` 메시지 없이 종료합니다(~1.3% 빈도). 진단 step과 `continue-on-error`가 적용되어 있고 재실행으로 해결됩니다.
 - **Unity WebGL Brotli/Gzip 크래시** — `[BUSY Ns] Brotli webgl/Build/...unityweb` 직후 `exit code: 1`. self-hosted 러너 동시 빌드 시 리소스 경합입니다. 현재 E2E CI는 압축 비활성화(`AIT_COMPRESSION_FORMAT="0"`)로 압축 단계 자체를 건너뛰므로 신규 발생이 없습니다(E2E는 vite preview에서만 로드되며 배포되지 않아 압축 불필요). 로컬 재현은 [테스트 전략](testing.md)의 "로컬 CI 재현"을 참조하세요.
-- **E2E warm-reload `unityInstance` 타임아웃** — `Tests~/E2E/tests/e2e-full-pipeline.test.js`의 test 3-1(`3-1. Page reload should not crash (cache warm)`)에서 `page.waitForFunction(() => window['unityInstance'] !== undefined, {timeout:120000})`(line ~795)가 120s 예산을 초과합니다. reload 자체는 200 성공(line 793 통과) 후 Unity WASM의 warm 재초기화가 CI 부하 편차로 예산 내 미완료 → `unityInstance` 미설정이 원인입니다. E2E TEST 잡은 격리된 GitHub-hosted `ubuntu-latest`에서 실행되어 self-hosted 경합과 무관합니다. **비결정적**입니다 — 동일 코드가 실행마다 랜덤하게 다른 macOS leg에서 실패(2022.3↔2021.3 이동)하므로 특정 커밋이나 버전의 결정적 회귀가 아닙니다(2026-07 #929 검증 중 확인 — run 28743857273=2022.3 실패, run 28802654528=2021.3 실패, 89e353f/run 28802966012=5/5 통과). **처리**: E2E Tests는 non-required라 머지를 차단하지 않습니다. 단일 leg 랜덤 실패면 transient로 보고 `rerun-failed-jobs`로 실패 leg만 재실행합니다.
+- **E2E warm-reload `unityInstance` 타임아웃** — `Tests~/E2E/tests/e2e-full-pipeline.test.js`의 test 3-1(`3-1. Page reload should not crash (cache warm)`)에서 리로드 후 `window['unityInstance']`가 예산 내 설정되지 않습니다. 대기 로직은 `waitForUnityBounded`(정의 L926, 호출 L980)이며 **75초 예산을 최대 3회 재시도**합니다(`maxAttempts = 3`, L871). 예산을 넘기면 L993이 다음 문자열을 던지므로, 로그 검색은 이 문자열로 하세요.
+
+  ```text
+  [3-1] attempt 1/3 reload status=200 after 180ms
+  [3-1] attempt 1/3 FAILED after 75666ms: unityInstance not set within 75s budget (evalThrows=2)
+  [3-1] harness connection-drop classified (server dropped webgl.data stream) — retrying reload
+  ```
+
+  reload 자체는 매 시도 200으로 성공합니다. 재시도 사유가 `harness connection-drop classified`(L1011)로 찍히면 원인은 warm 재초기화 지연이 아니라 **서버가 `webgl.data` 스트림 연결을 끊은 것**입니다(판정은 `hadHarnessDrop()`, L903). 진짜 크래시 시그니처(`CRASH_RE`, L869 — `webglcontextlost`/`Aborted(`/`RuntimeError`/`out of bounds`/`memory access`)는 재시도 없이 즉시 hard-fail하므로(L998), 재시도 로그가 보인다면 크래시가 아닙니다. E2E TEST 잡은 격리된 GitHub-hosted `ubuntu-latest`에서 실행되어 self-hosted 경합과 무관합니다.
+
+  **비결정적**입니다 — 실행마다 다른 macOS leg 조합이 걸립니다(run 30412296776=6000.2+6000.3, run 30606499460=6000.3+6000.0). **1개가 아니라 2개 leg이 동시에 걸리는 경우가 있으니 "단일 leg만 flaky"로 가정하지 마세요.** **처리**: E2E Tests는 non-required라 머지를 차단하지 않습니다. `rerun-failed-jobs`로 실패 leg만 재실행하면 통과합니다(run 30606499460은 코드 변경 없이 attempt 2에서 E2E 10개 leg 전부 통과).
+  - 버전 bump를 범인으로 지목하기 전에 **대조군부터** 확인하세요. 2026-07 `@playwright/test` 1.61.1 → 1.62.0 직후 이 실패가 났을 때, bump **이전** run 30412296776(로그에 `+ @playwright/test 1.61.1`)에 동일 시그니처(75s×3 예산, connection-drop 분류)가 이미 존재해 회귀 가설이 기각됐습니다. 실패 코드 경로는 playwright API가 아니라 테스트 하네스 자체 워치독이므로, playwright 회귀라면 나올 시그니처(strict mode violation, `Executable doesn't exist`, `browserType.launch` 실패)를 먼저 grep해 0건임을 확인하는 것이 빠릅니다.
+  - 근본 원인 미규명 — `webgl.data` 스트림이 왜 끊기는지는 확인되지 않았습니다. 동일 시그니처가 2개 이상 leg에서 **반복** 재현되면 transient로 넘기지 말고 별건 조사로 승격하세요.
   - 비인과적 red herring 주의 — 같은 3-1 창에 찍히는 vite `Pre-transform error: Failed to load /unity-bridge.ts`·`/src/main.ts`(404), `net::ERR_CONNECTION_CLOSED`, `wasm streaming compile failed`, 다수의 `AppsInToss 존재: false` 폴링, `createUnityInstance` 사이클은 통과 leg에도 카운트가 동일하므로 원인이 아닙니다. 로그 끝의 `vite preview ... SIGKILL (Forced termination)`은 타임아웃 후 Playwright teardown의 정리 동작입니다(원인이 아니라 결과). 실제 차이는 `unityInstance set/ready` 마커뿐입니다(통과 leg 9회 / 실패 leg 0회).
 
 ## Library/Bee 캐시 무효화 정책

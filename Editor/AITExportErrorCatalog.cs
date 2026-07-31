@@ -36,11 +36,11 @@ namespace AppsInToss.Editor
                            "4. File > Build Settings > WebGL에서 직접 빌드 시도";
 
                 case AITExportError.INVALID_APP_CONFIG:
-                    return "앱 설정이 올바르지 않습니다.\n\n" +
+                    return "Apps in Toss 설정을 불러오지 못했습니다.\n\n" +
                            "해결 방법:\n" +
-                           "1. Apps in Toss > Build & Deploy Window 열기\n" +
-                           "2. 설정 섹션에서 아이콘 URL 입력 (필수)\n" +
-                           "3. 앱 ID, 버전 등 기본 정보 확인";
+                           "1. AIT > Configuration 메뉴로 설정 창을 열어 값이 정상 표시되는지 확인\n" +
+                           "2. Assets/AppsInToss/Editor/AITConfig.asset 이 존재하고 읽기 전용이 아닌지 확인\n" +
+                           "3. 프로젝트 폴더 쓰기 권한 확인 후 Unity 재시작";
 
                 case AITExportError.NETWORK_ERROR:
                     return "네트워크 오류가 발생했습니다.\n\n" +
@@ -148,7 +148,7 @@ namespace AppsInToss.Editor
                     return "Unity WebGL 빌드 중 오류가 발생했습니다.\n" +
                            "Console 창에서 컴파일 오류나 스택 트레이스를 확인해주세요.";
                 case AITExportError.INVALID_APP_CONFIG:
-                    return "앱 설정이 올바르지 않거나 필수 필드(App ID, 아이콘 URL 등)가 누락되었습니다.\n" +
+                    return "Apps in Toss 설정 애셋(Assets/AppsInToss/Editor/AITConfig.asset)을 불러오거나 생성하지 못했습니다.\n" +
                            "AIT > Configuration 창에서 설정을 확인해주세요.";
                 case AITExportError.NETWORK_ERROR:
                     return "빌드 과정에서 네트워크 요청에 실패했습니다.\n" +

@@ -10,11 +10,7 @@
 
 ## 코드 결함
 
-- **P2 — `AITExportErrorCatalog`의 `INVALID_APP_CONFIG` 안내가 사실과 다름**: 두 곳 모두 존재하지 않는 메뉴와 잘못된 필수 조건을 안내한다. 사용자가 그대로 따라가면 막힌다.
-  - `Editor/AITExportErrorCatalog.cs:41` — "Apps in Toss > Build & Deploy Window 열기". 그런 `[MenuItem]`은 없고 실제 메뉴는 `AIT > Configuration`이다.
-  - `Editor/AITExportErrorCatalog.cs:42` — "아이콘 URL 입력 (필수)". 아이콘 URL은 선택 항목이다. `Editor/AITConfigurationWindow.cs:134` 주석이 "선택 사항"이라고 명시하고, 입력한 경우에만 `http://`/`https://` 형식을 검사한다.
-  - `Editor/AITExportErrorCatalog.cs:150` — "필수 필드(App ID, 아이콘 URL 등)". 같은 오류 반복.
-  - 실제 필수 항목은 앱 ID 하나. 공개 문서(`Documentation~/Troubleshooting.md`)는 이미 정정했으므로 콘솔 문구만 맞추면 된다.
+- **P3 — `AITEditorScriptObject.IsReadyForDeploy()`가 죽은 코드**: `Editor/AITEditorScriptObject.cs:273`. `IsIconUrlValid`/`IsAppNameValid`/`IsVersionValid` 셋을 묶지만 어디서도 호출되지 않는다(`Editor/AITCredentials.cs:82`의 동명 static은 별개 메서드이고 이쪽도 호출처가 없다). Configuration 창은 `IsAppNameValid()`를 직접 호출해 빌드 버튼을 게이팅하므로(`Editor/AITConfigurationWindow.cs:1139`) 기능 공백은 없다. 제거하거나, 빌드 진입 경로의 실제 게이트로 승격할지 결정 필요.
 
 - **P3 — 생성기가 파라미터 이름을 `args_0`/`args_1`로 내보냄**: `Runtime/SDK/AIT.Storage.cs:34` 등. 상위 `.d.ts`의 `@param` 이름을 살리지 못해 XML 주석과 IntelliSense가 무의미해진다. `sdk-runtime-generator~/src/parser/`에서 파라미터 이름을 보존하도록 수정 필요. 문서 이슈가 아니라 생성기 이슈.
 

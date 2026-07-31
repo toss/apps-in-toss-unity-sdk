@@ -36,7 +36,7 @@
     "@types/node": "^26.1.0",
     "@vitest/ui": "4.1.10",
     "glob": "13.0.6",
-    "tsx": "4.23.0",
+    "tsx": "4.23.1",
     "typescript": "7.0.2",
     "vitest": "4.1.10",
     "web-framework-1.10.0": "npm:@apps-in-toss/web-framework@1.10.0",

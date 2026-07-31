@@ -25,6 +25,11 @@ overrides:
   # SDK 산출물에 배포되지 않는다. 예기치 않은 상위 major 점프 차단 위해 캡.
   '@babel/core': '>=7.29.6 <8'
   '@fastify/middie': '>=9.3.2 <10'
+  # GHSA-83w8-p2f5-377r(경로순회) / GHSA-8pvw-jcv7-9cmj(인가 우회). @granite-js/mpack이
+  # 7.0.1을 정확 핀하지만 fastify·@fastify/middie와 동일하게 override로 덮는다. mpack은
+  # web-framework 1.x 픽스처의 전이 devDependency일 뿐이고 런타임 코드가 실행되지 않는다
+  # (multi-version 테스트는 .d.ts 타입 선언만 파싱).
+  '@fastify/static': '>=10.1.2 <11'
   esbuild: '>=0.28.1'
   fast-uri: '>=3.1.2 <4'
   fast-xml-parser: '>=5.7.0 <6'

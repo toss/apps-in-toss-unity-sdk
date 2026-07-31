@@ -30,6 +30,14 @@ overrides:
   # web-framework 1.x 픽스처의 전이 devDependency일 뿐이고 런타임 코드가 실행되지 않는다
   # (multi-version 테스트는 .d.ts 타입 선언만 파싱).
   '@fastify/static': '>=10.1.2 <11'
+  # 프리릴리스 유입 차단. @napi-rs/wasm-runtime@1.2.0이 peerDependencies로
+  # '^2.0.0-alpha.3'을 명시 요구하는데, 레지스트리에 emnapi 2.x 안정판이 아직 없어
+  # 그 범위의 유일한 매치가 alpha.3다. vite(rolldown 백엔드) → rolldown·oxc-transform의
+  # wasm32-wasi optional 바인딩 경로로 알파가 트리에 들어온다.
+  # peer 선언을 의도적으로 무시하는 override지만, 해당 바인딩은 cpu/os 필터로 실제
+  # 설치되지 않는 optional 경로이고 실사용처(oxc-transform·vite)는 1.11.3으로 정상 동작한다.
+  '@emnapi/core': '>=1.11.3 <2'
+  '@emnapi/runtime': '>=1.11.3 <2'
   esbuild: '>=0.28.1'
   fast-uri: '>=3.1.2 <4'
   fast-xml-parser: '>=5.7.0 <6'

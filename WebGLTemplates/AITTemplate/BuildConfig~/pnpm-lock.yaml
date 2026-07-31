@@ -2624,8 +2624,8 @@ packages:
   anynum@1.0.1:
     resolution: {integrity: sha512-N6//FLET/tXYNM/F6ABca1oH6fWB+KlTt909Le28WMDBk8oaT4vY17DCrwg2MvmuqUKt3Ni4N5dGJ/EoBgcO6A==}
 
-  appdirsjs@1.2.7:
-    resolution: {integrity: sha512-Quji6+8kLBC3NnBeo14nPDq0+2jUs5s3/xEye+udFHumHhRk4M7aAMXp/PBJqkKYGuuyR9M/6Dq7d2AViiGmhw==}
+  appdirsjs@1.2.8:
+    resolution: {integrity: sha512-8zl1xlxeS4a0/36CT6LOaVioPOL8TeLT1b9OHk0j9xSbzmPBuM7lUgWMSTh6SbuF8fbwjcP1rr30OCLpd1fl+A==}
 
   archiver-utils@5.0.2:
     resolution: {integrity: sha512-wuLJMmIBQYCsGZgYLTy5FIB2pF6Lfb6cXMSF8Qywwk3t20zWnAi7zLcQFdKQmIB8wyZpY5ER38x08GbwtR2cLA==}
@@ -3279,8 +3279,8 @@ packages:
     resolution: {integrity: sha512-Q0n9HRi4m6JuGIV1eFlmvJB7ZEVxu93IrMyiMsGC0lrMJMWzRgx6WGquyfQgZVb31vhGgXnfmPNNXmxnOkRBrg==}
     engines: {node: '>= 0.8'}
 
-  enhanced-resolve@5.24.3:
-    resolution: {integrity: sha512-PwKooW9JUzh5chmYfHM3IQl5OkK2u2Nm011MgeZrss3JmFraUx/fqrf78kk8GUMYoibx/14MdwTl/1WKkG7TpQ==}
+  enhanced-resolve@5.24.4:
+    resolution: {integrity: sha512-GVoi+ICHocoOIU7qVVM48wOJziRsqrsyqlI0Ce0LdowRn6v3bcH2zUa9kp85ncx0nwIb9/HOCOLS3fdThDG/XQ==}
     engines: {node: '>=10.13.0'}
 
   enquirer@2.4.1:
@@ -6074,7 +6074,7 @@ snapshots:
       assert: 2.1.0
       browserify-zlib: 0.2.0
       buffer: 6.0.3
-      enhanced-resolve: 5.24.3
+      enhanced-resolve: 5.24.4
       es-toolkit: 1.50.0
       events: 3.3.0
       https-browserify: 1.0.0
@@ -7480,7 +7480,7 @@ snapshots:
       cosmiconfig: 7.1.0
       debug: 4.4.3
       denodeify: 1.2.1
-      enhanced-resolve: 5.24.3
+      enhanced-resolve: 5.24.4
       error-stack-parser: 2.1.4
       es-toolkit: 1.50.0
       esbuild: 0.28.1
@@ -8277,7 +8277,7 @@ snapshots:
 
   '@react-native-community/cli-tools@11.3.7':
     dependencies:
-      appdirsjs: 1.2.7
+      appdirsjs: 1.2.8
       chalk: 4.1.2
       find-up: 5.0.0
       mime: 2.6.0
@@ -9159,7 +9159,7 @@ snapshots:
 
   anynum@1.0.1: {}
 
-  appdirsjs@1.2.7: {}
+  appdirsjs@1.2.8: {}
 
   archiver-utils@5.0.2:
     dependencies:
@@ -9880,7 +9880,7 @@ snapshots:
 
   encodeurl@2.0.0: {}
 
-  enhanced-resolve@5.24.3:
+  enhanced-resolve@5.24.4:
     dependencies:
       graceful-fs: 4.2.11
       tapable: 2.3.3

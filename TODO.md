@@ -22,6 +22,11 @@
   - 고칠 수 없었던 이유 두 가지 — (1) `brace-expansion: '>=5.0.8'` override는 5.x가 `"type": "module"` + `exports` 맵으로 재작성돼 `minimatch@3.1.5`/`5.1.9`/`9.0.9`의 CJS interop을 깨뜨린다(브레이스 패턴에서 `TypeError: expand is not a function`, 실측 확인). (2) 취약 버전을 끌어오는 부모 `jest@29.7.0`·`archiver@7.0.1`·`glob@7.2.3`·`test-exclude@6.0.0`은 전부 `@apps-in-toss/web-framework` 픽스처와 granite 툴체인의 전이 의존이라 우리가 bump할 수 없다(직계 devDependency는 `glob: 13.0.6` 하나뿐이고 이미 minimatch 10.x를 쓴다).
   - 재검토 조건: 위 부모들이 minimatch 10.x 계열로 이관되어 `brace-expansion@1.1.16`·`2.1.x`가 락파일에서 사라지는 시점. 확인 방법은 `grep -oE 'brace-expansion@[0-9.]+' <lockfile> | sort -u`.
 
+- **P3 — emnapi 2.x 안정판 출시 시 캡 override 해제**: `sdk-runtime-generator~/pnpm-workspace.yaml`의 `'@emnapi/core': '>=1.11.3 <2'`·`'@emnapi/runtime': '>=1.11.3 <2'`(#1035)는 **프리릴리스가 트리에 들어오는 것을 막기 위한 한시적 조치**다. 안정판이 나오면 걷어내고 상류 선언을 따르는 게 맞다.
+  - 배경: `@napi-rs/wasm-runtime@1.2.0`이 peerDependencies로 `^2.0.0-alpha.3`을 명시 요구하는데, 레지스트리에 emnapi 2.x 안정판이 없어 alpha.3가 그 범위의 유일한 매치였다. 유입 경로는 `vite`(rolldown 백엔드) → `rolldown`·`oxc-transform`의 `wasm32-wasi` optional 바인딩.
+  - 이 override는 상류 peer 선언을 의도적으로 무시한다. 해당 바인딩이 cpu/os 필터로 실제 설치되지 않는 optional 경로라 성립하는 예외이므로, **오래 유지할수록 위험이 커진다**. 특히 wasm 경로를 실제로 타는 환경이 생기면 검증되지 않은 조합이 된다(#1035 검증은 darwin-arm64에서 수행돼 wasm 바인딩 실행 확인을 하지 못했다).
+  - 해제 조건: `npm view @emnapi/core versions`에 프리릴리스가 아닌 2.x가 등장하는 시점. 해제 후 `grep -c 'emnapi' <lockfile>`로 알파 잔존 0건과 `./run-local-tests.sh --validate`를 확인.
+
 ## 파일 위생
 
 - **P3 — 고아 `.meta` 제거**: `Tests~/E2E/tests/package-lock.json.meta`가 추적되고 있으나 짝이 되는 `package-lock.json`은 없다(해당 디렉터리는 `pnpm-lock.yaml`을 쓴다). `Tests~/`는 틸드 폴더라 Unity가 임포트하지 않으므로 이 디렉터리의 `.meta`는 전부 무의미하다. 최소한 고아 하나는 제거.

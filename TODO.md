@@ -2,7 +2,7 @@
 
 > 2026-04-14 전체 리뷰 기준 작성 · 2026-06-16 코드 대조로 완료 항목 정리.
 > 우선순위 P1(높음) ~ P3(낮음).
-> 2026-07-08 P2 잔여 항목 완료로 정리 · 2026-07-26 베타 기능 항목 추가 · 2026-07-27 문서 통합 정리에서 발견한 항목 추가.
+> 2026-07-08 P2 잔여 항목 완료로 정리 · 2026-07-26 베타 기능 항목 추가 · 2026-07-27 문서 통합 정리에서 발견한 항목 추가 · 2026-08-01 의존성 항목 추가.
 
 ## 베타 기능
 
@@ -13,6 +13,14 @@
 - **P3 — `AITEditorScriptObject.IsReadyForDeploy()`가 죽은 코드**: `Editor/AITEditorScriptObject.cs:273`. `IsIconUrlValid`/`IsAppNameValid`/`IsVersionValid` 셋을 묶지만 어디서도 호출되지 않는다(`Editor/AITCredentials.cs:82`의 동명 static은 별개 메서드이고 이쪽도 호출처가 없다). Configuration 창은 `IsAppNameValid()`를 직접 호출해 빌드 버튼을 게이팅하므로(`Editor/AITConfigurationWindow.cs:1139`) 기능 공백은 없다. 제거하거나, 빌드 진입 경로의 실제 게이트로 승격할지 결정 필요.
 
 - **P3 — 생성기가 파라미터 이름을 `args_0`/`args_1`로 내보냄**: `Runtime/SDK/AIT.Storage.cs:34` 등. 상위 `.d.ts`의 `@param` 이름을 살리지 못해 XML 주석과 IntelliSense가 무의미해진다. `sdk-runtime-generator~/src/parser/`에서 파라미터 이름을 보존하도록 수정 필요. 문서 이슈가 아니라 생성기 이슈.
+
+## 의존성
+
+- **P3 — minimatch 10.x 이관 시 brace-expansion 취약점 재검토**: Dependabot #109(`WebGLTemplates/AITTemplate/BuildConfig~`)·#110(`sdk-runtime-generator~`)을 2026-08-01에 `tolerable_risk`로 dismiss했다. **dismiss한 알림은 같은 어드바이저리로 재알림이 오지 않으므로 아래 조건이 충족되면 수동으로 reopen해야 한다.**
+  - 대상: GHSA-mh99-v99m-4gvg (brace-expansion, 영향 범위 `<=5.0.7`, 유일 패치 `5.0.8`).
+  - dismiss 근거: dev 전이 의존이라 SDK/WebGL 산출물에 포함되지 않고, 공격 성립에 로컬 빌드의 glob 패턴 통제가 필요하다.
+  - 고칠 수 없었던 이유 두 가지 — (1) `brace-expansion: '>=5.0.8'` override는 5.x가 `"type": "module"` + `exports` 맵으로 재작성돼 `minimatch@3.1.5`/`5.1.9`/`9.0.9`의 CJS interop을 깨뜨린다(브레이스 패턴에서 `TypeError: expand is not a function`, 실측 확인). (2) 취약 버전을 끌어오는 부모 `jest@29.7.0`·`archiver@7.0.1`·`glob@7.2.3`·`test-exclude@6.0.0`은 전부 `@apps-in-toss/web-framework` 픽스처와 granite 툴체인의 전이 의존이라 우리가 bump할 수 없다(직계 devDependency는 `glob: 13.0.6` 하나뿐이고 이미 minimatch 10.x를 쓴다).
+  - 재검토 조건: 위 부모들이 minimatch 10.x 계열로 이관되어 `brace-expansion@1.1.16`·`2.1.x`가 락파일에서 사라지는 시점. 확인 방법은 `grep -oE 'brace-expansion@[0-9.]+' <lockfile> | sort -u`.
 
 ## 파일 위생
 

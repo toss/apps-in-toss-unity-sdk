@@ -65,6 +65,10 @@ WebGL 콜드 로드 시간을 줄이는 실험적 최적화 레버를 미리 적
 | 오디오 재인코딩 | `audioReencode = -1` (auto-ON / opt-out) | AudioImporter base 설정(WebGL이 ship하는 `defaultSampleSettings`)을 Vorbis + quality로 변경·reimport. 자동 모드는 비압축(PCM)/ADPCM만 Vorbis로 변환하고 이미 Vorbis인 클립은 건드리지 않음(near-transparent).<br>`audioReencodeQuality = 0.7`<br>`audioReencodeMinBytes = 0`<br>`audioReencodeDirs = ""`<br>`audioReencodeExcludeDirs = ""` | lossy(오디오 재인코딩, .data/CDN 오디오 품질 영향). `audioStreaming`으로 외부화된 클립은 대상 제외 | 콘텐츠 최적화 — 오디오 재인코딩 |
 | 스트림 사본 다운스케일 | `textureStreamDownscale = -1` (auto-ON / opt-out) | `textureStreaming`이 외부화한 스트림 사본(StreamingAssets / CDN 배포본)을 캡보다 크면 균일 배율로 축소. | CDN 전용 lossy — 프로젝트 원본 불변, 스트림은 비-부팅이라 로딩속도·부팅 무영향(CDN 무압축 총량만 감소). `textureStreaming`이 외부화한 텍스처에만 적용 | 콘텐츠 최적화 — 대형 텍스처 스트리밍 |
 
+마스터 스위치는 세 상태를 갖습니다 — `-1`은 자동, `0`은 비활성, `1`은 명시적 활성입니다. 이 절과 다음 절의 레버는 **자동이 곧 활성**이므로, 끄려면 `0`으로 명시해야 합니다. ([명시 활성 전용 레버](#명시-활성-전용-레버-opt-in--기본-off)만 자동이 곧 비활성입니다.)
+
+> **주의**: 텍스처 크기 클램프의 기본 상한은 2048입니다. HiDPI 헤드룸을 감안한 값으로, 화면 일부를 차지하는 스프라이트·UI·아이콘에는 충분하고 full-bleed 배경만 최고 DPR 기기에서 약간 소프트해집니다. 1024로 낮추면 DPR 2 풀스크린에서도 뭉개질 수 있습니다. 의도적으로 고해상도를 유지해야 하는 에셋은 상한을 올리거나 `textureClampExcludeDirs`로 빼세요. 빌드가 끝나면 원본 임포트 설정으로 복원됩니다.
+
 > **자동 모드 캡 주의**: `textureSizeClamp`·`textureStreamDownscale`는 자동(`-1`) 모드에서 각각 `textureClampMaxSize`·`textureStreamDownscaleMaxSize` 직렬화 값을 무시하고 항상 2048을 강제합니다. 사용자가 지정한 캡은 명시 활성(값 `1`)일 때만 적용됩니다. (클램프가 opt-in이던 구버전 `AITConfig.asset`에 남아있던 옛 캡이 posture 전환 이후 의도 없이 조용히 적용되는 것을 막기 위한 설계입니다.)
 
 ## 콘텐츠 외부화·자동 감지 레버 (무손실 · 경로 미설정 시 no-op)

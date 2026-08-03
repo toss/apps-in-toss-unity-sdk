@@ -203,7 +203,18 @@ yarn.lock.meta
 # sdk-runtime-generator~의 pnpm-lock.yaml은 커밋 (Regenerate Lockfiles 워크플로가 재생성·커밋)
 !sdk-runtime-generator~/pnpm-lock.yaml
 
-# Lockfile은 일반적으로 커밋하지 않음 (BuildConfig~, Tests~/E2E/tests, sdk-runtime-generator~ 제외)
+# Editor/FontSubset~, PngRecompress~, AudioTranscode~의 package-lock.json은 커밋
+# (on-demand 도구 설치 시 npm ci로 전이 의존성까지 고정하기 위해). *~ 규칙에 걸려
+# 디렉토리 자체가 제외되므로(위 line 111) 디렉토리도 함께 unignore 해야 파일 negation이 먹는다.
+!Editor/FontSubset~
+!Editor/FontSubset~/package-lock.json
+!Editor/PngRecompress~
+!Editor/PngRecompress~/package-lock.json
+!Editor/AudioTranscode~
+!Editor/AudioTranscode~/package-lock.json
+
+# Lockfile은 일반적으로 커밋하지 않음 (BuildConfig~, Tests~/E2E/tests, sdk-runtime-generator~,
+# Editor/FontSubset~·PngRecompress~·AudioTranscode~ 제외)
 
 # 로컬 전용 내부호스트 denylist (pre-push 훅용) — 커밋 금지. 템플릿: patterns.local.example
 .githooks/patterns.local

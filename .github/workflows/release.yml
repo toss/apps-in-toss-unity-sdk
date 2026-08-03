@@ -71,8 +71,7 @@ jobs:
       skip: ${{ steps.version.outputs.skip }}
 
     steps:
-      - name: Checkout (push 이벤트용)
-        if: github.event_name == 'push'
+      - name: Checkout
         uses: actions/checkout@v7
 
       - name: 버전 결정
@@ -105,6 +104,15 @@ jobs:
             echo "::error::올바른 버전 형식이 아닙니다: ${VERSION}"
             exit 1
           fi
+
+          # 배포 제외 버전(denylist) 검사 — 건너뛴 버전의 실수 재배포 방지
+          DENIED_VERSIONS=$(jq -r '(.deniedVersions // [])[]' sdk-policy.json)
+          for DENIED in $DENIED_VERSIONS; do
+            if [ "$VERSION" = "$DENIED" ] || [[ "$VERSION" == "$DENIED"-* ]]; then
+              echo "::error::배포가 제외된 버전입니다: ${VERSION} (거부 목록: ${DENIED})"
+              exit 1
+            fi
+          done
 
           echo "버전 검증 통과: ${VERSION}"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT

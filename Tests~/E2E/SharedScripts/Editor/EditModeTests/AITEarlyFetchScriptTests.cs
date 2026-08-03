@@ -170,4 +170,13 @@ public class AITEarlyFetchScriptTests
         StringAssert.DoesNotContain(".framework.js", js);
         StringAssert.DoesNotContain(".loader.js", js);
     }
+
+    [Test]
+    public void Modern_SignalDelegation_Guarded()
+    {
+        // legacy 경로(GenerateEarlyFetchScriptLegacyCaching)의 init.signal 위임 가드와
+        // 대칭: 로더가 취소 시그널을 넘기면 pending 재사용 없이 originalFetch로 위임해야 한다.
+        string js = WebGLBuildCopier.GenerateEarlyFetchScriptModern(KickUrlsJson);
+        StringAssert.Contains("if (init && init.signal) return originalFetch.apply(this, arguments);", js);
+    }
 }

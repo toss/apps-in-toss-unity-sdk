@@ -102,13 +102,12 @@ namespace AppsInToss
 
         private IEnumerator Run()
         {
+#if !AIT_HAS_UNITYWEBREQUEST || !AIT_HAS_ASSETBUNDLE
 #if !AIT_HAS_UNITYWEBREQUEST
             Debug.LogWarning("[AIT] unitywebrequest 모듈이 비활성화되어 폰트 스트리밍 재수화를 건너뜁니다");
-            Destroy(gameObject);
-            yield break;
-#endif
-#if !AIT_HAS_ASSETBUNDLE
+#else
             Debug.LogWarning("[AIT] assetbundle 모듈이 비활성화되어 폰트 스트리밍 재수화를 건너뜁니다");
+#endif
             Destroy(gameObject);
             yield break;
 #endif

@@ -124,13 +124,12 @@ namespace AppsInToss
 
         private IEnumerator Run()
         {
+#if !AIT_HAS_UNITYWEBREQUEST || !AIT_HAS_IMAGECONVERSION
 #if !AIT_HAS_UNITYWEBREQUEST
             Debug.LogWarning("[AIT] unitywebrequest 모듈이 비활성화되어 텍스처 스트리밍 복원을 건너뜁니다");
-            Destroy(gameObject);
-            yield break;
-#endif
-#if !AIT_HAS_IMAGECONVERSION
+#else
             Debug.LogWarning("[AIT] imageconversion 모듈이 비활성화되어 텍스처 스트리밍 복원을 건너뜁니다");
+#endif
             Destroy(gameObject);
             yield break;
 #endif

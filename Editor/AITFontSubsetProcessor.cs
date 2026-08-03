@@ -758,17 +758,36 @@ namespace AppsInToss.Editor
                 bool stampMatches = lockfileHash == null || ReadStampHash(stampPath) == lockfileHash;
                 if (!File.Exists(installed) || !stampMatches)
                 {
+                    // 기존 설치를 삭제 대신 .bak으로 대피시켜 npm ci 실패 시 원복할 수 있게 한다.
                     string nodeModulesDir = Path.Combine(homeTool, "node_modules");
+                    string nodeModulesBakDir = nodeModulesDir + ".bak";
+                    if (Directory.Exists(nodeModulesBakDir))
+                    {
+                        Directory.Delete(nodeModulesBakDir, true);
+                    }
                     if (Directory.Exists(nodeModulesDir))
                     {
-                        Directory.Delete(nodeModulesDir, true);
+                        Directory.Move(nodeModulesDir, nodeModulesBakDir);
                     }
 
                     Debug.Log("[AIT-FontSubset] subset-font 설치 중(내장 npm)...");
                     if (!RunNpmInstall(npm, nodeBin, homeTool) || !File.Exists(installed))
                     {
-                        Debug.LogWarning("[AIT-FontSubset] subset-font 설치 실패.");
+                        Debug.LogWarning("[AIT-FontSubset] subset-font 설치 실패. 기존 설치를 유지합니다.");
+                        if (Directory.Exists(nodeModulesDir))
+                        {
+                            Directory.Delete(nodeModulesDir, true);
+                        }
+                        if (Directory.Exists(nodeModulesBakDir))
+                        {
+                            Directory.Move(nodeModulesBakDir, nodeModulesDir);
+                        }
                         return false;
+                    }
+
+                    if (Directory.Exists(nodeModulesBakDir))
+                    {
+                        Directory.Delete(nodeModulesBakDir, true);
                     }
 
                     if (lockfileHash != null)

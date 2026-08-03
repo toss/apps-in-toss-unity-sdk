@@ -42,6 +42,11 @@ public class IAPv2Tester : MonoBehaviour
     /// <summary>화면 이벤트 로그(iapEventLog) 상한. 초과 시 오래된 항목을 트리밍한다.</summary>
     private const int MaxIapEventLogCount = 300;
 
+    /// <summary>[PLP round4] 그랜트 resolve 지연 토글 값(ms). 버튼 클릭으로 이 배열을 순환한다.</summary>
+    private static readonly int[] PlpGrantDelayOptionsMs = { 0, 3000, 5000 };
+    private int _plpGrantDelayIndex = 0;
+    private Text _plpGrantDelayLabel;
+
     // 구독 해제 액션
     private Action _purchaseDisposer;
 
@@ -153,6 +158,42 @@ public class IAPv2Tester : MonoBehaviour
         UIBuilder.SetLayout(_orderIdInput.gameObject, flexibleWidth: 1);
 
         UIBuilder.CreateButton(section, "IAPCompleteProductGrant(...)", onClick: ExecuteIAPCompleteGrant);
+
+        // [PLP round4] 오버레이 중 fetch 왕복 + 지연 resolve 계측 (techchat 4377)
+        UIBuilder.CreateText(section, "진단: Player Loop Probe round 4 (techchat 4377)",
+            UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary, fontStyle: FontStyle.Bold);
+        _plpGrantDelayLabel = UIBuilder.CreateText(section, "",
+            UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary);
+        UIBuilder.CreateButton(section, "그랜트 resolve 지연 토글 (0/3000/5000ms)", onClick: TogglePlpGrantDelay);
+        // 교착이 완전하면 onEvent/onError가 끝내 오지 않아 자동 리포트가 안 나온다.
+        // 화면이 다시 움직이기 시작하면 이 버튼으로 수집분을 강제로 덤프한다.
+        UIBuilder.CreateButton(section, "PLP 리포트 강제 출력", onClick: () => ReportPlayerLoopProbe("manual"));
+        UpdatePlpGrantDelayLabel();
+    }
+
+    /// <summary>
+    /// [PLP round4] 그랜트 resolve 지연 값을 0 → 3000 → 5000 → 0 순으로 순환하고
+    /// jslib 래퍼(PLP_EnableGrantDelay)에 반영한다. 결제 시작(Step 2 버튼) 전에 눌러야
+    /// 다음 구매 시도부터 맞물린다 — SDK jslib이 매 호출마다
+    /// window.AppsInToss.IAP.createOneTimePurchaseOrder를 다시 조회하기 때문이다.
+    /// </summary>
+    private void TogglePlpGrantDelay()
+    {
+        _plpGrantDelayIndex = (_plpGrantDelayIndex + 1) % PlpGrantDelayOptionsMs.Length;
+        int delayMs = PlpGrantDelayOptionsMs[_plpGrantDelayIndex];
+        PLP_EnableGrantDelay(delayMs);
+        UpdatePlpGrantDelayLabel();
+        LogIap($"[PLP] grant resolve delay = {delayMs}ms");
+        UpdateEventLog();
+    }
+
+    private void UpdatePlpGrantDelayLabel()
+    {
+        if (_plpGrantDelayLabel == null) return;
+        int delayMs = PlpGrantDelayOptionsMs[_plpGrantDelayIndex];
+        _plpGrantDelayLabel.text = delayMs > 0
+            ? $"그랜트 resolve 지연: {delayMs}ms (다음 구매 시도부터 적용)"
+            : "그랜트 resolve 지연: 0ms (래퍼는 설치, 지연 없음)";
     }
 
     private GameObject CreateDynamicContainer(Transform parent, string name)
@@ -443,6 +484,7 @@ public class IAPv2Tester : MonoBehaviour
 
         iapStatus = "Creating purchase order...";
         LogIap($"IAPCreateOneTimePurchaseOrder(sku: {iapSku})");
+        ArmPlayerLoopProbe();
         UpdateStatus();
         UpdateEventLog();
 
@@ -458,6 +500,11 @@ public class IAPv2Tester : MonoBehaviour
                 ProcessProductGrant = _ =>
                 {
                     LogIap("ProcessProductGrant: 즉시 true 반환 (동기)");
+                    // [PLP round4] 오버레이가 아직 열려 있는(= player loop 정지 중) 이 시점에
+                    // JS fetch 왕복을 발사한다. 완료 시 SendMessage로 OnPlpFetchProbeComplete가
+                    // 호출된다 — "fetch가 완료되고 전달까지 되는가"를 여기서 직접 관측한다.
+                    PLP_StartFetchProbe();
+                    LogIap("[PLP] fetch probe armed (ProcessProductGrant 진입 시점)");
                     UpdateEventLog();
                     return true;
                 }
@@ -471,6 +518,7 @@ public class IAPv2Tester : MonoBehaviour
                     iapOrderId = successEvent.Data?.OrderId ?? "";
                     if (_orderIdInput != null) _orderIdInput.text = iapOrderId;
                     LogIap($"OnEvent: orderId={successEvent.Data?.OrderId}, amount={successEvent.Data?.DisplayAmount}");
+                    ReportPlayerLoopProbe("onEvent");
 
                     // [2단계] 검증과 지급은 여기서. 오버레이가 닫혀 player loop가 살아난 뒤라
                     // 서버 왕복을 기다려도 안전하다 — OrderId와 살아있는 프레임을 동시에 갖는
@@ -485,6 +533,7 @@ public class IAPv2Tester : MonoBehaviour
                 {
                     iapStatus = "Purchase failed";
                     LogIap($"OnError: {error.ErrorCode} - {error.Message}");
+                    ReportPlayerLoopProbe("onError");
                     UpdateStatus();
                     UpdateEventLog();
                 }
@@ -704,5 +753,119 @@ public class IAPv2Tester : MonoBehaviour
         yield return new WaitForSecondsRealtime(0.2f);
         LogIap($"[2단계] 검증 통과, 상품 지급: {orderId}");
         tcs.SetResult(true);
+    }
+
+    // =====================================================
+    // Player loop freeze 진단 프로브 (techchat 4377 검증용) — round 4
+    //
+    // round 1~3 실측 확정 사항(미머지 브랜치 test/plp-round2/round3, 결론만 반영):
+    //   rAF 갭 27.52s ≡ hidden→visible 27.51s ≡ C# 프레임 갭 27.44s (세 값 일치).
+    //   원인은 웹뷰 suspend가 아니라 표준 visibilityState=hidden 처리이며, rAF가
+    //   스펙대로 멈추는 것뿐이다. setTimeout은 hidden 중에도 스로틀되며 생존한다
+    //   (28s간 22회 발화, 최대 갭 11.6s). await Task.Delay는 WebGL(스레드 없음)에서
+    //   영영 완료되지 않는다 — 확증됐고, 이번 라운드부터는 관찰하지 않는다
+    //   (코루틴 기반 대기만 사용, 위 VerifyReceiptOnServerAsync 참조).
+    //
+    // round 4가 새로 답하려는 두 질문(향후 AIT.HttpFetch + ProcessProductGrantDeferred의
+    // 착수 게이트):
+    //   (a) 오버레이 정지 중 발사한 JS fetch가 실제로 완료되고, .then이 즉시(스로틀 없이)
+    //       발화하며, SendMessage로 C#까지 전달되는가?             → PLP_StartFetchProbe
+    //   (b) 플랫폼이 processProductGrant의 Promise를 수 초간 pending으로 두는 것을
+    //       허용하는가(지연 resolve 후에도 정상 지급되는가)?        → PLP_EnableGrantDelay
+    //
+    // 모든 기록은 메모리에 남겼다가 루프 재개 후 이벤트 로그로 출력한다
+    // (loop가 멈춰도 SendMessage 진입·메모리 기록은 동기 경로라 유실되지 않음).
+    // =====================================================
+#if UNITY_WEBGL && !UNITY_EDITOR
+    [System.Runtime.InteropServices.DllImport("__Internal")]
+    private static extern void PLP_StartJsProbe();
+
+    [System.Runtime.InteropServices.DllImport("__Internal")]
+    private static extern string PLP_GetJsReport();
+
+    [System.Runtime.InteropServices.DllImport("__Internal")]
+    private static extern void PLP_StartFetchProbe();
+
+    [System.Runtime.InteropServices.DllImport("__Internal")]
+    private static extern void PLP_EnableGrantDelay(int delayMs);
+
+    [System.Runtime.InteropServices.DllImport("__Internal")]
+    private static extern string PLP_GetGrantDelayReport();
+#else
+    private static void PLP_StartJsProbe() { }
+    private static string PLP_GetJsReport() { return "{\"raf\":{},\"timer\":{},\"visibility\":[]}"; }
+    private static void PLP_StartFetchProbe() { }
+    private static void PLP_EnableGrantDelay(int delayMs) { }
+    private static string PLP_GetGrantDelayReport() { return "[]"; }
+#endif
+
+    private bool _plpArmed;
+    private int _plpFrames;
+    private float _plpLastFrameRealtime;
+    private float _plpMaxFrameGapSec;
+    private string _plpMaxGapAt = "";
+
+    /// <summary>[PLP round4] C# 프레임 갭 하트비트. Update()가 매 프레임 도는지로 player loop 정지를 직접 잰다.</summary>
+    private void Update()
+    {
+        if (!_plpArmed) return;
+        float now = Time.realtimeSinceStartup;
+        if (_plpLastFrameRealtime > 0f)
+        {
+            float gap = now - _plpLastFrameRealtime;
+            if (gap > _plpMaxFrameGapSec)
+            {
+                _plpMaxFrameGapSec = gap;
+                _plpMaxGapAt = DateTime.Now.ToString("HH:mm:ss.fff");
+            }
+        }
+        _plpLastFrameRealtime = now;
+        _plpFrames++;
+    }
+
+    /// <summary>[PLP round4] 구매 주문 생성 직전에 호출 — C#/JS 하트비트를 함께 무장한다.</summary>
+    private void ArmPlayerLoopProbe()
+    {
+        _plpArmed = true;
+        _plpFrames = 0;
+        _plpLastFrameRealtime = 0f;
+        _plpMaxFrameGapSec = 0f;
+        _plpMaxGapAt = "";
+        PLP_StartJsProbe();
+        LogIap("[PLP] probe armed (C# Update + JS raf/timer/visibility)");
+    }
+
+    /// <summary>
+    /// [PLP round4] 하트비트를 멈추고 수집분을 이벤트 로그로 덤프한다.
+    /// onEvent/onError에서 자동 호출되며, 교착으로 끝내 도달하지 않는 경우를 위해
+    /// "PLP 리포트 강제 출력" 버튼으로도 수동 호출할 수 있다(그 경로는 phase="manual").
+    /// </summary>
+    private void ReportPlayerLoopProbe(string phase)
+    {
+        if (!_plpArmed) return;
+        _plpArmed = false;
+        string jsReport = PLP_GetJsReport();
+        LogIap($"[PLP:{phase}] frames={_plpFrames}, maxFrameGap={_plpMaxFrameGapSec:F2}s@{_plpMaxGapAt}");
+        LogIap($"[PLP:{phase}] js={jsReport}");
+
+        string grantDelayReport = PLP_GetGrantDelayReport();
+        if (!string.IsNullOrEmpty(grantDelayReport) && grantDelayReport != "[]")
+        {
+            LogIap($"[PLP:{phase}] grantDelay={grantDelayReport}");
+        }
+
+        UpdateEventLog();
+    }
+
+    /// <summary>
+    /// [PLP round4] fetch 왕복 프로브(PLP_StartFetchProbe) 완료 시 jslib가 SendMessage로
+    /// 호출한다. 이 메서드에 진입한 시각 자체가 "SendMessage가 C#에 도달한 시각"이며,
+    /// LogIap의 타임스탬프로 기록된다 — player loop가 멈춰 있으면 fetch가 네트워크적으로
+    /// 끝나도 이 진입이 지연될 수 있다는 것이 이 프로브의 관찰 대상이다.
+    /// </summary>
+    public void OnPlpFetchProbeComplete(string jsonPayload)
+    {
+        LogIap($"[PLP] fetch probe complete: {jsonPayload}");
+        UpdateEventLog();
     }
 }

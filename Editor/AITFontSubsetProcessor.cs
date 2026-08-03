@@ -737,8 +737,14 @@ namespace AppsInToss.Editor
                 Directory.CreateDirectory(homeTool);
 
                 // 러너/매니페스트는 항상 최신본으로 동기화(SDK 업데이트 반영).
+                // package-lock.json도 함께 동기화해 npm ci가 전이 의존성까지 고정된 버전으로 설치하게 한다.
                 File.Copy(Path.Combine(srcDir, RunnerName), Path.Combine(homeTool, RunnerName), true);
                 File.Copy(Path.Combine(srcDir, "package.json"), Path.Combine(homeTool, "package.json"), true);
+                string srcLockfile = Path.Combine(srcDir, "package-lock.json");
+                if (File.Exists(srcLockfile))
+                {
+                    File.Copy(srcLockfile, Path.Combine(homeTool, "package-lock.json"), true);
+                }
 
                 // subset-font 미설치 시 1회 설치(on-demand, node 다운로드와 동일 철학).
                 string installed = Path.Combine(homeTool, "node_modules", "subset-font", "package.json");
@@ -776,15 +782,20 @@ namespace AppsInToss.Editor
                     CreateNoWindow = true,
                 };
 
+                // package-lock.json이 있으면 npm ci로 전이 의존성까지 잠긴 버전 그대로 재현 설치한다
+                // (없으면 구 SDK 배포본 등 하위 호환을 위해 install로 폴백). 두 경우 모두
+                // --ignore-scripts로 lifecycle 스크립트를 차단한다(현재 의존성 트리엔 없지만 방어적으로).
+                bool hasLockfile = File.Exists(Path.Combine(cwd, "package-lock.json"));
+                string npmSubcommand = hasLockfile ? "ci" : "install";
                 if (AITPlatformHelper.IsWindows)
                 {
                     psi.FileName = "cmd.exe";
-                    psi.Arguments = $"/c \"\"{npm}\" install --no-audit --no-fund --loglevel=error\"";
+                    psi.Arguments = $"/c \"\"{npm}\" {npmSubcommand} --no-audit --no-fund --ignore-scripts --loglevel=error\"";
                 }
                 else
                 {
                     psi.FileName = npm;
-                    psi.Arguments = "install --no-audit --no-fund --loglevel=error";
+                    psi.Arguments = $"{npmSubcommand} --no-audit --no-fund --ignore-scripts --loglevel=error";
                 }
 
                 PrependPath(psi, nodeBin);

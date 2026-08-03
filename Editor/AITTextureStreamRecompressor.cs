@@ -35,6 +35,9 @@ namespace AppsInToss.Editor
         private const int TimeoutMs = 600000;
         private const string TmpSuffix = ".aitpngtmp";
 
+        /// <summary>설치된 node_modules가 어떤 lockfile 해시로 설치됐는지 기록하는 스탬프 파일명.</summary>
+        private const string LockfileHashStampName = ".lockfile-hash";
+
         /// <summary>oxipng 최적화 레벨. 2: 레벨 4 대비 이득 ~2%p 차이에 시간 절반(실측) — 빌드 시간 균형점.</summary>
         internal const int Level = 2;
 
@@ -188,22 +191,38 @@ namespace AppsInToss.Editor
                 File.Copy(Path.Combine(srcDir, RunnerName), Path.Combine(homeTool, RunnerName), true);
                 File.Copy(Path.Combine(srcDir, "package.json"), Path.Combine(homeTool, "package.json"), true);
                 string srcLockfile = Path.Combine(srcDir, "package-lock.json");
+                string lockfileHash = null;
                 if (File.Exists(srcLockfile))
                 {
                     File.Copy(srcLockfile, Path.Combine(homeTool, "package-lock.json"), true);
+                    lockfileHash = ComputeFileHash(srcLockfile);
                 }
 
-                // 의존성 미설치 시 1회 설치(on-demand).
+                // 의존성 미설치 또는 lockfile 해시 불일치(기존 설치자 마이그레이션 포함) 시 재설치.
+                // lockfile이 없는 예외 상황(구 SDK 배포본 등)에서는 산출물 존재 판정으로 축퇴한다.
                 string installed = Path.Combine(homeTool, "node_modules", "@jsquash", "oxipng", "package.json");
-                if (!File.Exists(installed))
+                string stampPath = Path.Combine(homeTool, LockfileHashStampName);
+                bool stampMatches = lockfileHash == null || ReadStampHash(stampPath) == lockfileHash;
+                if (!File.Exists(installed) || !stampMatches)
                 {
-                    Debug.Log("[AIT-PngRecompress] 재압축기 최초 설치 중(내장 npm)...");
+                    string nodeModulesDir = Path.Combine(homeTool, "node_modules");
+                    if (Directory.Exists(nodeModulesDir))
+                    {
+                        Directory.Delete(nodeModulesDir, true);
+                    }
+
+                    Debug.Log("[AIT-PngRecompress] 재압축기 설치 중(내장 npm)...");
                     string npm = AITNodeJSDownloader.FindEmbeddedNpm(autoDownload: true);
                     if (string.IsNullOrEmpty(npm) || !RunNpmInstall(npm, Path.GetDirectoryName(npm), homeTool)
                         || !File.Exists(installed))
                     {
                         Debug.LogWarning("[AIT-PngRecompress] 재압축기 설치 실패.");
                         return false;
+                    }
+
+                    if (lockfileHash != null)
+                    {
+                        File.WriteAllText(stampPath, lockfileHash);
                     }
                 }
 
@@ -300,6 +319,36 @@ namespace AppsInToss.Editor
             {
                 Debug.LogWarning($"[AIT-PngRecompress] npm install 예외: {e.Message}");
                 return false;
+            }
+        }
+
+        /// <summary>lockfile 내용의 SHA-256 해시(소문자 hex). 설치 재현성 판정에 사용.</summary>
+        private static string ComputeFileHash(string filePath)
+        {
+            using (var sha256 = System.Security.Cryptography.SHA256.Create())
+            using (var stream = File.OpenRead(filePath))
+            {
+                byte[] hash = sha256.ComputeHash(stream);
+                var sb = new StringBuilder(hash.Length * 2);
+                foreach (byte b in hash)
+                {
+                    sb.Append(b.ToString("x2"));
+                }
+
+                return sb.ToString();
+            }
+        }
+
+        /// <summary>스탬프 파일에 기록된 lockfile 해시. 파일 없음/읽기 실패 시 null(불일치로 간주).</summary>
+        private static string ReadStampHash(string stampPath)
+        {
+            try
+            {
+                return File.Exists(stampPath) ? File.ReadAllText(stampPath).Trim() : null;
+            }
+            catch
+            {
+                return null;
             }
         }
 

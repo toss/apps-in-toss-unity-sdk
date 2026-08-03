@@ -46,6 +46,9 @@ namespace AppsInToss.Editor
         /// <summary>러너 파일명.</summary>
         private const string RunnerName = "audio-transcode-runner.mjs";
 
+        /// <summary>설치된 node_modules가 어떤 lockfile 해시로 설치됐는지 기록하는 스탬프 파일명.</summary>
+        private const string LockfileHashStampName = ".lockfile-hash";
+
         /// <summary>일괄 트랜스코딩 타임아웃(ms). 실측 파일당 ~0.7초(디코드+인코드)라 여유 값.</summary>
         private const int TimeoutMs = 600000;
 
@@ -281,23 +284,39 @@ namespace AppsInToss.Editor
                 File.Copy(Path.Combine(srcDir, RunnerName), Path.Combine(homeTool, RunnerName), true);
                 File.Copy(Path.Combine(srcDir, "package.json"), Path.Combine(homeTool, "package.json"), true);
                 string srcLockfile = Path.Combine(srcDir, "package-lock.json");
+                string lockfileHash = null;
                 if (File.Exists(srcLockfile))
                 {
                     File.Copy(srcLockfile, Path.Combine(homeTool, "package-lock.json"), true);
+                    lockfileHash = ComputeFileHash(srcLockfile);
                 }
 
-                // 의존성 미설치 시 1회 설치(on-demand, FontSubset 과 동일 철학).
+                // 의존성 미설치 또는 lockfile 해시 불일치(기존 설치자 마이그레이션 포함) 시 재설치.
+                // lockfile이 없는 예외 상황(구 SDK 배포본 등)에서는 산출물 존재 판정으로 축퇴한다.
                 string installedDecoder = Path.Combine(homeTool, "node_modules", "mpg123-decoder", "package.json");
                 string installedEncoder = Path.Combine(homeTool, "node_modules", "wasm-media-encoders", "package.json");
-                if (!File.Exists(installedDecoder) || !File.Exists(installedEncoder))
+                string stampPath = Path.Combine(homeTool, LockfileHashStampName);
+                bool stampMatches = lockfileHash == null || ReadStampHash(stampPath) == lockfileHash;
+                if (!File.Exists(installedDecoder) || !File.Exists(installedEncoder) || !stampMatches)
                 {
-                    Debug.Log("[AIT-AudioTranscode] 트랜스코더 최초 설치 중(내장 npm)...");
+                    string nodeModulesDir = Path.Combine(homeTool, "node_modules");
+                    if (Directory.Exists(nodeModulesDir))
+                    {
+                        Directory.Delete(nodeModulesDir, true);
+                    }
+
+                    Debug.Log("[AIT-AudioTranscode] 트랜스코더 설치 중(내장 npm)...");
                     string npm = AITNodeJSDownloader.FindEmbeddedNpm(autoDownload: true);
                     if (string.IsNullOrEmpty(npm) || !RunNpmInstall(npm, Path.GetDirectoryName(npm), homeTool)
                         || !File.Exists(installedDecoder) || !File.Exists(installedEncoder))
                     {
                         Debug.LogWarning("[AIT-AudioTranscode] 트랜스코더 설치 실패.");
                         return false;
+                    }
+
+                    if (lockfileHash != null)
+                    {
+                        File.WriteAllText(stampPath, lockfileHash);
                     }
                 }
 
@@ -394,6 +413,36 @@ namespace AppsInToss.Editor
             {
                 Debug.LogWarning($"[AIT-AudioTranscode] npm install 예외: {e.Message}");
                 return false;
+            }
+        }
+
+        /// <summary>lockfile 내용의 SHA-256 해시(소문자 hex). 설치 재현성 판정에 사용.</summary>
+        private static string ComputeFileHash(string filePath)
+        {
+            using (var sha256 = System.Security.Cryptography.SHA256.Create())
+            using (var stream = File.OpenRead(filePath))
+            {
+                byte[] hash = sha256.ComputeHash(stream);
+                var sb = new StringBuilder(hash.Length * 2);
+                foreach (byte b in hash)
+                {
+                    sb.Append(b.ToString("x2"));
+                }
+
+                return sb.ToString();
+            }
+        }
+
+        /// <summary>스탬프 파일에 기록된 lockfile 해시. 파일 없음/읽기 실패 시 null(불일치로 간주).</summary>
+        private static string ReadStampHash(string stampPath)
+        {
+            try
+            {
+                return File.Exists(stampPath) ? File.ReadAllText(stampPath).Trim() : null;
+            }
+            catch
+            {
+                return null;
             }
         }
 

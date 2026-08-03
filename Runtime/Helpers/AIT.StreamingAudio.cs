@@ -67,6 +67,19 @@ namespace AppsInToss
         private readonly Dictionary<string, Entry> byName = new Dictionary<string, Entry>();
         private readonly Dictionary<string, AudioClip> loaded = new Dictionary<string, AudioClip>();
         private readonly HashSet<string> loading = new HashSet<string>();
+
+        /// <summary>엔트리별 다운로드 실패 횟수(name 키). 상한 초과 시 포기해 무한 재다운로드를 차단.</summary>
+        private readonly Dictionary<string, int> downloadFailCounts = new Dictionary<string, int>();
+
+        /// <summary>엔트리별 디코드/적용 실패 횟수(name 키). 같은 바이트는 재시도해도 같게 실패하므로 상한이 작다.</summary>
+        private readonly Dictionary<string, int> applyFailCounts = new Dictionary<string, int>();
+
+        /// <summary>일시적일 수 있는 다운로드 실패의 시도 상한(초과 시 포기 — 스텁 유지, 기능 저하일 뿐 안전).</summary>
+        private const int MaxDownloadAttempts = 8;
+
+        /// <summary>결정적(같은 페이로드 → 같은 결과) 디코드/적용 실패의 시도 상한.</summary>
+        private const int MaxApplyAttempts = 2;
+
         private bool ready;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -205,8 +218,20 @@ namespace AppsInToss
                 yield return req.SendWebRequest();
                 if (!IsSuccess(req))
                 {
-                    Debug.LogWarning($"[AIT-StreamingAudio] 로드 실패 {entry.file}: {req.error}");
+                    // 실패 → loading 에서 제거해 다음 스캔에서 재시도하되, 상한 초과 시 포기(스텁 유지)해
+                    // 0.2초 간격 무한 재다운로드(배터리/네트워크 소모)를 차단한다.
                     loading.Remove(entry.name);
+                    int dlFails = IncrementFailure(downloadFailCounts, entry.name);
+                    if (dlFails >= MaxDownloadAttempts)
+                    {
+                        byName.Remove(entry.name);
+                        Debug.LogWarning($"[AIT-StreamingAudio] 로드 실패 {entry.file}: {req.error} — {dlFails}회 누적, 포기(스텁 유지)");
+                    }
+                    else
+                    {
+                        Debug.LogWarning($"[AIT-StreamingAudio] 로드 실패 {entry.file}: {req.error} (재시도 {dlFails}/{MaxDownloadAttempts})");
+                    }
+
                     yield break;
                 }
 
@@ -221,6 +246,21 @@ namespace AppsInToss
                         HotSwap(firstRequester, real);
                     }
                 }
+                else
+                {
+                    // 적용 실패 → 같은 바이트는 재시도해도 같게 실패하므로(예: 디코드 불가 손상 페이로드)
+                    // 소수 시도 후 포기(스텁 유지)해 0.2초 간격 무한 재다운로드 루프를 차단한다.
+                    int apFails = IncrementFailure(applyFailCounts, entry.name);
+                    if (apFails >= MaxApplyAttempts)
+                    {
+                        byName.Remove(entry.name);
+                        Debug.LogWarning($"[AIT-StreamingAudio] 클립 적용 실패 {entry.file} — {apFails}회(디코드 불가/손상 페이로드), 포기(스텁 유지)");
+                    }
+                    else
+                    {
+                        Debug.LogWarning($"[AIT-StreamingAudio] 클립 적용 실패 {entry.file} (재시도 {apFails}/{MaxApplyAttempts})");
+                    }
+                }
 
                 loading.Remove(entry.name);
             }
@@ -229,6 +269,14 @@ namespace AppsInToss
             loading.Remove(entry.name);
             yield break;
 #endif
+        }
+
+        /// <summary>name 의 실패 횟수를 1 올리고 누적값을 반환한다.</summary>
+        private static int IncrementFailure(Dictionary<string, int> counts, string name)
+        {
+            counts.TryGetValue(name, out int n);
+            counts[name] = ++n;
+            return n;
         }
 
         /// <summary>클립 길이가 무음 스텁 임계값보다 짧으면 재수화 대상(=스텁)으로 판정. (테스트 가능한 순수 함수)</summary>

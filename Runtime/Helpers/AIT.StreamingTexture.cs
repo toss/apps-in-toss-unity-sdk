@@ -30,7 +30,9 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+#if AIT_HAS_UNITYWEBREQUEST
 using UnityEngine.Networking;
+#endif
 using UnityEngine.Scripting;
 
 namespace AppsInToss
@@ -122,6 +124,16 @@ namespace AppsInToss
 
         private IEnumerator Run()
         {
+#if !AIT_HAS_UNITYWEBREQUEST
+            Debug.LogWarning("[AIT] unitywebrequest 모듈이 비활성화되어 텍스처 스트리밍 복원을 건너뜁니다");
+            Destroy(gameObject);
+            yield break;
+#endif
+#if !AIT_HAS_IMAGECONVERSION
+            Debug.LogWarning("[AIT] imageconversion 모듈이 비활성화되어 텍스처 스트리밍 복원을 건너뜁니다");
+            Destroy(gameObject);
+            yield break;
+#endif
             yield return LoadManifest();
             if (!ready || pending.Count == 0)
             {
@@ -143,6 +155,7 @@ namespace AppsInToss
 
         private IEnumerator LoadManifest()
         {
+#if AIT_HAS_UNITYWEBREQUEST
             string url = ResolveStreamingUrl(ManifestRelativePath);
             using (var req = UnityWebRequest.Get(url))
             {
@@ -180,6 +193,10 @@ namespace AppsInToss
                     Debug.LogWarning($"[AIT-StreamingTexture] 매니페스트 파싱 실패: {ex.Message}");
                 }
             }
+#else
+            // AIT_HAS_UNITYWEBREQUEST 미정의 시: Run() 진입부에서 이미 종료하므로 여기에 도달하지 않음.
+            yield return null;
+#endif
         }
 
         private void ScanAndRestore()
@@ -244,6 +261,7 @@ namespace AppsInToss
 
         private IEnumerator LoadAndApply(Entry e, Texture2D tex)
         {
+#if AIT_HAS_UNITYWEBREQUEST && AIT_HAS_IMAGECONVERSION
             string url = ResolveStreamingUrl(StreamDirRelativePath + e.file);
             using (var req = UnityWebRequest.Get(url))
             {
@@ -326,6 +344,10 @@ namespace AppsInToss
                     }
                 }
             }
+#else
+            // AIT_HAS_UNITYWEBREQUEST/AIT_HAS_IMAGECONVERSION 미정의 시: Run() 진입부에서 이미 종료하므로 여기에 도달하지 않음.
+            yield return null;
+#endif
         }
 
         /// <summary>guid 의 실패 횟수를 1 올리고 누적값을 반환한다.</summary>
@@ -336,6 +358,7 @@ namespace AppsInToss
             return n;
         }
 
+#if AIT_HAS_UNITYWEBREQUEST
         private static bool IsSuccess(UnityWebRequest req)
         {
 #if UNITY_2020_2_OR_NEWER
@@ -344,6 +367,7 @@ namespace AppsInToss
             return !req.isHttpError && !req.isNetworkError;
 #endif
         }
+#endif
 
         // WebGL: streamingAssetsPath는 상대/절대 URL. UnityWebRequest는 file:// 또는 http(s):// 모두 처리.
         private static string ResolveStreamingUrl(string rel)

@@ -680,6 +680,9 @@ namespace AppsInToss.Editor.Package
                 if (Object.keys(earlyFetchMap).length === 0) {{
                     window.fetch = originalFetch;
                 }}
+                // 로더가 취소 시그널을 넘기면(현행 로더는 미사용) early fetch는 그것을 반영할 수 없으므로
+                // pending 재사용 대신 실제 인자로 위임해 취소 시맨틱을 보존한다(향후 로더 변경 대비 방어).
+                if (init && init.signal) return originalFetch.apply(this, arguments);
                 // early fetch 실패(null)·비정상 응답(!ok)·body 소진 시 원본 fetch로 재시도
                 var self = this, args = arguments;
                 return pending.then(function(r) {{

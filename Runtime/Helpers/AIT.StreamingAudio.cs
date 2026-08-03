@@ -98,15 +98,14 @@ namespace AppsInToss
 
         private IEnumerator Run()
         {
+#if !AIT_HAS_UNITYWEBREQUEST || !AIT_HAS_UWR_AUDIO
 #if !AIT_HAS_UNITYWEBREQUEST
             // unitywebrequest 모듈이 비활성화된 환경: 매니페스트 로드 자체가 불가능하므로 컴포넌트 정리 후 종료.
             Debug.LogWarning("[AIT] unitywebrequest 모듈이 비활성화되어 오디오 스트리밍 복원을 건너뜁니다");
-            Destroy(gameObject);
-            yield break;
-#endif
-#if !AIT_HAS_UWR_AUDIO
+#else
             // unitywebrequestaudio 모듈이 비활성화된 환경: 복원 불가이므로 컴포넌트 정리 후 종료.
             Debug.LogWarning("[AIT] unitywebrequestaudio 모듈이 비활성화되어 오디오 스트리밍 복원을 건너뜁니다");
+#endif
             Destroy(gameObject);
             yield break;
 #endif
@@ -235,7 +234,18 @@ namespace AppsInToss
                     yield break;
                 }
 
-                var real = DownloadHandlerAudioClip.GetContent(req);
+                AudioClip real = null;
+                try
+                {
+                    real = DownloadHandlerAudioClip.GetContent(req);
+                }
+                catch (System.Exception ex)
+                {
+                    // GetContent 가 null 반환 대신 예외를 던지는 코너케이스(손상 페이로드 등)도
+                    // 아래의 적용 실패 경로(포기/재시도 카운트)에 합류시킨다.
+                    Debug.LogWarning($"[AIT-StreamingAudio] 클립 디코드 예외 {entry.file}: {ex.Message}");
+                }
+
                 if (real != null)
                 {
                     real.name = entry.name; // 이름 보존(이후 동일 클립 식별)
@@ -248,7 +258,7 @@ namespace AppsInToss
                 }
                 else
                 {
-                    // 적용 실패 → 같은 바이트는 재시도해도 같게 실패하므로(예: 디코드 불가 손상 페이로드)
+                    // 적용 실패(null 반환 또는 디코드 예외) → 같은 바이트는 재시도해도 같게 실패하므로(예: 디코드 불가 손상 페이로드)
                     // 소수 시도 후 포기(스텁 유지)해 0.2초 간격 무한 재다운로드 루프를 차단한다.
                     int apFails = IncrementFailure(applyFailCounts, entry.name);
                     if (apFails >= MaxApplyAttempts)

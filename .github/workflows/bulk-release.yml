@@ -107,6 +107,21 @@ jobs:
           done
           VERSIONS=$(echo "$VERSIONS" | sed '/^$/d')
 
+          # 배포 제외 버전(denylist) 검사 — 건너뛴 버전의 실수 재배포 방지
+          DENIED_VERSIONS=$(jq -r '(.deniedVersions // [])[]' sdk-policy.json)
+          DENIED_HITS=""
+          for V in $VERSIONS; do
+            for DENIED in $DENIED_VERSIONS; do
+              if [ "$V" = "$DENIED" ] || [[ "$V" == "$DENIED"-* ]]; then
+                DENIED_HITS="${DENIED_HITS}${V}(거부 목록: ${DENIED}) "
+              fi
+            done
+          done
+          if [ -n "$DENIED_HITS" ]; then
+            echo "::error::배포가 제외된 버전이 포함되어 있습니다: ${DENIED_HITS}"
+            exit 1
+          fi
+
           # npm 사전 존재 체크 — npm에서 제거된(unpublish) web-framework 버전은
           # regenerate-sdk가 ERR_PNPM_NO_MATCHING_VERSION으로 반드시 실패하므로
           # 대상에서 미리 제외한다 (주로 수명이 끝난 beta 스냅샷 태그).

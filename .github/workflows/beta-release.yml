@@ -146,6 +146,17 @@ jobs:
             exit 1
           fi
 
+          # --- 배포 제외 버전(denylist) 검사 — 건너뛴 버전의 실수 재배포 방지 ---
+          # dist-tag 입력도 위에서 이미 구체 버전으로 해석된 뒤이므로, dist-tag가
+          # 금지 버전을 가리키는 경우도 함께 걸러진다.
+          DENIED_VERSIONS=$(jq -r '(.deniedVersions // [])[]' sdk-policy.json)
+          for DENIED in $DENIED_VERSIONS; do
+            if [ "$NPM_VERSION" = "$DENIED" ] || [[ "$NPM_VERSION" == "$DENIED"-* ]]; then
+              echo "::error::배포가 제외된 버전입니다: ${NPM_VERSION} (거부 목록: ${DENIED})"
+              exit 1
+            fi
+          done
+
           # --- 채널 ref 가드 (stable 브랜치 금지) ---
           if [ -z "$CHANNEL_REF" ]; then
             echo "::error::channel_ref가 비어 있습니다."

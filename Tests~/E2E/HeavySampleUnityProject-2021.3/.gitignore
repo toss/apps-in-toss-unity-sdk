@@ -1,0 +1,63 @@
+# Unity generated
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+
+# Build artifacts
+ait-build/
+webgl/
+
+# WebGL Templates: SDK 자동 생성 부분(Runtime/, TemplateData/, loading.html)은 빌드 시 SDK로 덮어쓰므로 무시.
+# 단, AITTemplate/index.html(USER_* 마커 영역) 와 AITTemplate/BuildConfig~ 는 프로젝트 자산이므로 커밋.
+Assets/WebGLTemplates/AITTemplate/Runtime/
+Assets/WebGLTemplates/AITTemplate/Runtime.meta
+Assets/WebGLTemplates/AITTemplate/TemplateData/
+Assets/WebGLTemplates/AITTemplate/TemplateData.meta
+Assets/WebGLTemplates/AITTemplate/loading.html
+Assets/WebGLTemplates/AITTemplate/loading.html.meta
+
+# Package lock files (auto-generated)
+Packages/packages-lock.json
+
+# Resources folder (fonts copied from SharedScripts during build)
+Assets/Resources/
+Assets/Resources.meta
+
+# Benchmark results (generated during E2E tests)
+BenchmarkResults/
+
+# ============================================================
+# Apps in Toss SDK 설정 파일 (.gitignore 권장 설정)
+# 아래 패턴을 프로젝트의 .gitignore에 추가하세요
+# ============================================================
+
+# Apps in Toss SDK 설정 파일 (선택)
+# 프로젝트별 설정이므로 팀 정책에 따라 관리합니다
+# **/AITConfig.asset
+# **/AITConfig.asset.meta
+
+# Apps in Toss SDK - 민감한 인증 정보 보호 (필수!)
+# deploymentKey가 포함된 파일입니다. 절대 Git에 커밋하지 마세요!
+**/AITCredentials.asset
+**/AITCredentials.asset.meta
+
+# IDE
+.idea/
+.vscode/
+*.csproj
+*.sln
+
+# Heavy perf fixture: 빌드 시 HeavyBuildRunner가 생성하는 무거운 콘텐츠
+# (텍스처/오디오/메시/폰트 사본). Assets/Resources/ 가 이미 무시되지만 명시.
+Assets/Resources/HeavyGen/
+Assets/Heavy/
+Assets/Heavy.meta
+
+# Deploy probe 픽스처: 빌드 시 DeployProbeBuildRunner가 생성하는 배포 검증용 콘텐츠
+# (SharedScripts 공용 스크립트라 Heavy 프로젝트에서 실행해도 생성될 수 있음 — 명시 필요).
+Assets/DeployProbeGen/
+Assets/DeployProbeGen.meta

@@ -1722,8 +1722,11 @@ jobs:
           # Windows 러너의 release 프로필(fast-build=false) 6000.x 빌드는 Brotli 압축
           # 포함 ~28분(warm Library 캐시 실측, 2026-06 베타 릴리즈 run 27433833844)으로
           # 30분 한도에 아슬아슬하고, cold 캐시에서는 timeout으로 실패가 재발한다 →
-          # 45분으로 상향 (job 한도 90분 내 여유 충분. macOS는 30분 내 안정 통과라 유지).
-          timeout_minutes: 45
+          # 45분으로 상향. 이후 2022.3 cold 캐시(SDK 재생성 직후)에서는 wasm 링크만
+          # ~36분이라 Brotli 포함 총 소요가 45분을 2~3분 초과하는 실측이 재발
+          # (2026-08 베타 릴리즈 run 30802896662, 3회 연속 동일 시그니처) → 65분으로
+          # 재상향 (job 한도 90분 내 여유 유지. macOS는 30분 내 안정 통과라 유지).
+          timeout_minutes: 65
           max_attempts: 3
           retry_wait_seconds: 0
           retry_on_exit_code: 42

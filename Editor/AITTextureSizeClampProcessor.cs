@@ -5,8 +5,8 @@
 // </copyright>
 // -----------------------------------------------------------------------
 //
-// 빌드 직전, 대상 Texture2D 의 임포터 설정 중 maxTextureSize "만" 일시적으로 캡(상한)으로
-//   낮춰 reimport 하여, Unity 가 더 작은 텍셀의 텍스처를 .data 에 굽게 한다.
+// 빌드 직전, 대상 Texture2D / SpriteAtlas 의 임포터 설정 중 maxTextureSize "만" 일시적으로
+//   캡(상한)으로 낮춰 reimport 하여, Unity 가 더 작은 텍셀의 텍스처를 .data 에 굽게 한다.
 //   빌드 종료(성공/실패 무관) 후 원본 임포트 설정으로 원상 복원한다.
 //
 // crunch 와의 차이(분리된 이유):
@@ -17,31 +17,39 @@
 //   일절 건드리지 않고 maxTextureSize 한 필드만 override 하므로, 빌드 파이프라인이 정하는 기본
 //   format(WebGL fallback = ASTC/DXT)을 그대로 유지한 채 텍셀 수만 줄인다.
 //
+// SpriteAtlas: 아틀라스로 패킹되는 텍스처는 아틀라스 자체의 platform settings(DefaultTexturePlatform
+//   마스터 + WebGL 오버라이드)가 산출물 크기를 결정하므로, 소스 텍스처의 maxTextureSize 를 캡해도
+//   우회된다. 그래서 SpriteAtlas 에셋도 동일 캡 대상에 포함한다(AITTextureCrunchProcessor 의
+//   SpriteAtlas 경로와 동일 구조 — GetPlatformSettings/SetPlatformSettings 로 maxTextureSize 만 override).
+//
 // 효과: 부팅 텍스처를 예) 1024 로 캡하면 2048→1024 는 텍셀 1/4. 압축 포맷(ASTC/DXT)은 텍셀당
 //   고정 비트레이트이므로 압축 payload 도 ~1/4, on-wire(brotli) 도 감소하고 GPU 업로드 tail 도 일부
 //   완화된다. 단, 표시 해상도가 절반으로 떨어지는 lossy 변경(시각 품질 저하)이므로 기본 비활성이다.
 //
-// 비파괴: 각 텍스처의 원본 .meta 를 <path>.meta.aittexclampbak 로 백업, 빌드 후 원본을 그대로
-//   복원한다. 빌드가 비정상 종료되어 복원이 누락돼도, 다음 에디터 로드 시 안전망(SafetyNetRestore)이
-//   잔존 백업을 자동 복원한다.
+// 비파괴: 각 텍스처의 원본 .meta 를 <path>.meta.aittexclampbak 로, 각 SpriteAtlas 는 에셋 본체 파일을
+//   <path>.aittexclampbak 로 백업(플랫폼 설정이 아틀라스 에셋 안에 직렬화되므로 .meta 만으로는 복원 불가),
+//   빌드 후 원본을 그대로 복원한다. 빌드가 비정상 종료되어 복원이 누락돼도, 다음 에디터 로드 시
+//   안전망(SafetyNetRestore)이 잔존 백업을 자동 복원한다.
 //
 // 통합: AITConvertCore.BuildWebGL 가 BuildPipeline.BuildPlayer 직전에 ApplyForBuild,
 //   try/finally 의 finally 에서 RestoreForBuild 를 호출한다(텍스처 crunch 와 동일 패턴).
 //   적용 순서는 crunch 직후(=crunch 가 같은 텍스처에 maxSize 를 더 낮게 캡했다면 그 값이 우선이도록
 //   wouldChange 게이트가 더 큰 쪽으로만 내린다). 복원은 적용 역순.
 //
-// ⚠ 비용: maxTextureSize 변경은 reimport 를 유발한다(crunch 처럼 codec 재인코딩까지는 아니지만
-//   대상 수에 비례). apply + 복원으로 2회 reimport 가 발생하므로 명시적 opt-in 으로 기본 비활성이다.
+// ⚠ 비용: maxTextureSize 변경은 reimport(및 SpriteAtlas 는 repack)를 유발한다(crunch 처럼 codec
+//   재인코딩까지는 아니지만 대상 수에 비례). apply + 복원으로 2회 발생하므로 명시적 opt-in 으로 기본 비활성이다.
 
 using System;
 using System.IO;
 using UnityEditor;
+using UnityEditor.U2D;
 using UnityEngine;
+using UnityEngine.U2D;
 
 namespace AppsInToss.Editor
 {
     /// <summary>
-    /// 빌드 단계 텍스처 maxTextureSize 캡(crunch 비결합) 처리기.
+    /// 빌드 단계 텍스처/SpriteAtlas maxTextureSize 캡(crunch 비결합) 처리기.
     /// <see cref="AITEditorScriptObject.textureSizeClamp"/> 설정에 따라 동작한다.
     /// format/compression/crunch 는 건드리지 않고 maxTextureSize 한 필드만 override 한다.
     /// 런타임 컴포넌트는 없다(빌드 산출물만 작아질 뿐, 런타임 동작 동일).
@@ -49,7 +57,7 @@ namespace AppsInToss.Editor
     [InitializeOnLoad]
     public static class AITTextureSizeClampProcessor
     {
-        /// <summary>원본 .meta 를 보관하는 백업 접미사.</summary>
+        /// <summary>원본 .meta(텍스처) / 에셋 본체(SpriteAtlas)를 보관하는 백업 접미사.</summary>
         private const string BackupSuffix = ".aittexclampbak";
 
         /// <summary>apply 가 진행 중임을 표시하는 마커(Unity 가 무시하는 '.' 접두 숨김 파일).</summary>
@@ -66,6 +74,9 @@ namespace AppsInToss.Editor
 
             /// <summary>처리된 텍스처 개수.</summary>
             public int TextureCount;
+
+            /// <summary>처리된 SpriteAtlas 개수.</summary>
+            public int AtlasCount;
         }
 
         static AITTextureSizeClampProcessor()
@@ -121,18 +132,20 @@ namespace AppsInToss.Editor
                 CreateMarker();
 
                 int tex = ApplyTexture2D(clampMax, minBytes, dirs, excludeDirs);
+                int atl = ApplySpriteAtlas(clampMax, dirs, excludeDirs);
 
                 AssetDatabase.Refresh();
 
-                handle.Active = tex > 0;
+                handle.Active = (tex + atl) > 0;
                 handle.TextureCount = tex;
+                handle.AtlasCount = atl;
                 if (!handle.Active)
                 {
                     // 대상 0건 → 마커 제거(복원할 것 없음).
                     RemoveMarker();
                 }
 
-                Debug.Log($"[AIT-TextureSizeClamp] ✓ 텍스처 {tex}개 maxTextureSize≤{clampMax} 캡(format/crunch 불변) 적용{(config.textureSizeClamp < 0 ? " (자동)" : "")}.");
+                Debug.Log($"[AIT-TextureSizeClamp] ✓ 텍스처 {tex}개 + 아틀라스 {atl}개 maxTextureSize≤{clampMax} 캡(format/crunch 불변) 적용{(config.textureSizeClamp < 0 ? " (자동)" : "")}.");
                 return handle;
             }
             catch (Exception e)
@@ -158,7 +171,7 @@ namespace AppsInToss.Editor
                 int restored = RestoreAllBackups();
                 RemoveMarker();
                 AssetDatabase.Refresh();
-                Debug.Log($"[AIT-TextureSizeClamp] 복원 완료: {restored}개 텍스처 원본 임포트 설정 원상.");
+                Debug.Log($"[AIT-TextureSizeClamp] 복원 완료: {restored}개 에셋 원본 임포트 설정 원상.");
             }
             catch (Exception e)
             {
@@ -279,6 +292,91 @@ namespace AppsInToss.Editor
             return n;
         }
 
+        // ─────────────────────────── SpriteAtlas ───────────────────────────
+        private static int ApplySpriteAtlas(int clampMax, string[] dirs, string[] excludeDirs)
+        {
+            int n = 0;
+            var guids = AssetDatabase.FindAssets("t:SpriteAtlas", new[] { "Assets" });
+            string projectRoot = Directory.GetParent(Application.dataPath).FullName;
+            foreach (var g in guids)
+            {
+                string path = AssetDatabase.GUIDToAssetPath(g);
+                if (string.IsNullOrEmpty(path) || !path.StartsWith("Assets/"))
+                {
+                    continue;
+                }
+
+                if (dirs != null && !UnderAny(path, dirs))
+                {
+                    continue;
+                }
+
+                if (excludeDirs != null && UnderAny(path, excludeDirs))
+                {
+                    continue; // 사용자 escape hatch
+                }
+
+                var atlas = AssetDatabase.LoadAssetAtPath<SpriteAtlas>(path);
+                if (atlas == null)
+                {
+                    continue;
+                }
+
+                // 빌드가 실제로 ship 하는 maxTextureSize 를 해석한다: WebGL 오버라이드(overridden=true,
+                // maxTextureSize>0)가 있으면 그 값을, 없으면 DefaultTexturePlatform(마스터) 값을 본다
+                // (Texture2D 경로와 동일 구조 — ResolveEffectiveMaxSize 재사용).
+                var def = atlas.GetPlatformSettings("DefaultTexturePlatform");
+                var webPs = atlas.GetPlatformSettings("WebGL");
+                bool wasOverridden = webPs != null && webPs.overridden;
+                int effectiveMax = ResolveEffectiveMaxSize(
+                    wasOverridden, webPs != null ? webPs.maxTextureSize : 0, def.maxTextureSize);
+
+                // 빌드가 ship 하는 값이 이미 캡 이하면 줄일 것이 없음(재진입 등) → 비용 회피.
+                if (effectiveMax <= clampMax)
+                {
+                    continue;
+                }
+
+                // 아틀라스 에셋 파일 자체를 백업(플랫폼 설정이 아틀라스 에셋 안에 직렬화됨. .meta 로는 복원 불가).
+                if (!BackupAtlasAsset(path, projectRoot))
+                {
+                    continue;
+                }
+
+                // maxTextureSize 한 필드만 override. format/compression/crunch 설정은 보존.
+                // 마스터와(있다면) WebGL 오버라이드 양쪽을 캡 이하로 내린다 — 빌드가 오버라이드를 우선하므로
+                // 오버라이드를 안 내리면 clamp 가 무효. 각 필드는 cap 초과일 때만 건드려 더 작은 값은 보존.
+                if (def.maxTextureSize > clampMax)
+                {
+                    def.maxTextureSize = clampMax;
+                    atlas.SetPlatformSettings(def);
+                }
+                if (wasOverridden && webPs.maxTextureSize > clampMax)
+                {
+                    webPs.maxTextureSize = clampMax;
+                    atlas.SetPlatformSettings(webPs);
+                }
+
+                EditorUtility.SetDirty(atlas);
+                n++;
+            }
+
+            if (n > 0)
+            {
+                AssetDatabase.SaveAssets();
+                try
+                {
+                    SpriteAtlasUtility.PackAllAtlases(BuildTarget.WebGL);
+                }
+                catch (Exception e)
+                {
+                    Debug.LogWarning($"[AIT-TextureSizeClamp]   PackAllAtlases 경고: {e.Message}");
+                }
+            }
+
+            return n;
+        }
+
         // ─────────────────────────── 백업/복원 ───────────────────────────
 
         /// <summary>에셋의 .meta 파일을 <path>.meta.aittexclampbak 로 백업.</summary>
@@ -307,6 +405,35 @@ namespace AppsInToss.Editor
             }
         }
 
+        /// <summary>
+        /// SpriteAtlas 에셋 본체 파일을 <path>.aittexclampbak 로 백업. platform settings 가 아틀라스
+        /// 에셋 자체에 직렬화되므로(텍스처와 달리 .meta 가 아님) 본체 파일을 통째로 백업해야 복원 가능.
+        /// </summary>
+        private static bool BackupAtlasAsset(string assetPath, string projectRoot)
+        {
+            try
+            {
+                string full = Path.Combine(projectRoot, assetPath);
+                if (!File.Exists(full))
+                {
+                    return false;
+                }
+
+                string bak = full + BackupSuffix;
+                if (!File.Exists(bak))
+                {
+                    File.Copy(full, bak, true);
+                }
+
+                return true;
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[AIT-TextureSizeClamp] SpriteAtlas 백업 실패({assetPath}): {e.Message}");
+                return false;
+            }
+        }
+
         /// <summary>Assets 트리의 모든 *.aittexclampbak 를 원본으로 되돌리고 백업을 삭제한다. 복원 개수 반환.</summary>
         private static int RestoreAllBackups()
         {
@@ -325,14 +452,14 @@ namespace AppsInToss.Editor
 
             foreach (var bak in backups)
             {
-                // bak = "<original>.meta.aittexclampbak" → original 은 텍스처의 .meta.
+                // bak = "<original>.aittexclampbak" → original 은 텍스처의 .meta 또는 SpriteAtlas 본체.
                 string original = bak.Substring(0, bak.Length - BackupSuffix.Length);
                 try
                 {
                     File.Copy(bak, original, true);
                     File.Delete(bak);
 
-                    // reimport 대상 에셋 경로 산출: original 은 .meta 이므로 본체 경로로 환원.
+                    // reimport 대상 에셋 경로 산출: .meta 면 본체 경로로 환원, 아니면 그 파일 자체.
                     string assetFull = original.EndsWith(".meta")
                         ? original.Substring(0, original.Length - ".meta".Length)
                         : original;

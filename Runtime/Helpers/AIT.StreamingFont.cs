@@ -34,7 +34,9 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
 using UnityEngine;
+#if AIT_HAS_UNITYWEBREQUEST
 using UnityEngine.Networking;
+#endif
 using UnityEngine.Scripting;
 
 namespace AppsInToss
@@ -100,6 +102,11 @@ namespace AppsInToss
 
         private IEnumerator Run()
         {
+#if !AIT_HAS_UNITYWEBREQUEST
+            Debug.LogWarning("[AIT] unitywebrequest 모듈이 비활성화되어 폰트 스트리밍 재수화를 건너뜁니다");
+            Destroy(gameObject);
+            yield break;
+#endif
 #if !AIT_HAS_ASSETBUNDLE
             Debug.LogWarning("[AIT] assetbundle 모듈이 비활성화되어 폰트 스트리밍 재수화를 건너뜁니다");
             Destroy(gameObject);
@@ -164,6 +171,7 @@ namespace AppsInToss
 
         private IEnumerator LoadManifest()
         {
+#if AIT_HAS_UNITYWEBREQUEST
             string url = ResolveStreamingUrl(ManifestRelativePath);
             using (var req = UnityWebRequest.Get(url))
             {
@@ -201,11 +209,15 @@ namespace AppsInToss
                     Debug.LogWarning($"[AIT-StreamingFont] 매니페스트 파싱 실패: {ex.Message}");
                 }
             }
+#else
+            // AIT_HAS_UNITYWEBREQUEST 미정의 시: Run() 진입부에서 이미 종료하므로 여기에 도달하지 않음.
+            yield return null;
+#endif
         }
 
         private IEnumerator LoadAndInject(Entry e, Action<bool> done)
         {
-#if AIT_HAS_ASSETBUNDLE
+#if AIT_HAS_ASSETBUNDLE && AIT_HAS_UNITYWEBREQUEST
             byte[] data = null;
             string url = ResolveStreamingUrl(StreamDirRelativePath + e.bundle);
             using (var req = UnityWebRequest.Get(url))
@@ -272,7 +284,7 @@ namespace AppsInToss
             // 래스터화가 번들 자원을 늦게 참조할 위험이 있어 세션 동안 유지). 메모리 비용은 폰트 1~2개분.
             done(any);
 #else
-            // AIT_HAS_ASSETBUNDLE 미정의 시: Run() 진입부에서 이미 종료하므로 여기에 도달하지 않음.
+            // AIT_HAS_ASSETBUNDLE/AIT_HAS_UNITYWEBREQUEST 미정의 시: Run() 진입부에서 이미 종료하므로 여기에 도달하지 않음.
             // C# 컴파일러의 "yield return 없는 IEnumerator" 경고를 방지하기 위해 yield 유지.
             yield return null;
             done(false);
@@ -462,6 +474,7 @@ namespace AppsInToss
 
         // ─────────────────────────── 공통 유틸 ───────────────────────────
 
+#if AIT_HAS_UNITYWEBREQUEST
         private static bool IsSuccess(UnityWebRequest req)
         {
 #if UNITY_2020_2_OR_NEWER
@@ -470,6 +483,7 @@ namespace AppsInToss
             return !req.isHttpError && !req.isNetworkError;
 #endif
         }
+#endif
 
         // WebGL: streamingAssetsPath 는 상대/절대 URL. UnityWebRequest 는 file:// 또는 http(s):// 모두 처리.
         private static string ResolveStreamingUrl(string rel)

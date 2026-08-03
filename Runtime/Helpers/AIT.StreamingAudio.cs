@@ -24,7 +24,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-#if AIT_HAS_UWR_AUDIO
+#if AIT_HAS_UNITYWEBREQUEST
 using UnityEngine.Networking;
 #endif
 using UnityEngine.Scripting;
@@ -85,6 +85,12 @@ namespace AppsInToss
 
         private IEnumerator Run()
         {
+#if !AIT_HAS_UNITYWEBREQUEST
+            // unitywebrequest 모듈이 비활성화된 환경: 매니페스트 로드 자체가 불가능하므로 컴포넌트 정리 후 종료.
+            Debug.LogWarning("[AIT] unitywebrequest 모듈이 비활성화되어 오디오 스트리밍 복원을 건너뜁니다");
+            Destroy(gameObject);
+            yield break;
+#endif
 #if !AIT_HAS_UWR_AUDIO
             // unitywebrequestaudio 모듈이 비활성화된 환경: 복원 불가이므로 컴포넌트 정리 후 종료.
             Debug.LogWarning("[AIT] unitywebrequestaudio 모듈이 비활성화되어 오디오 스트리밍 복원을 건너뜁니다");
@@ -109,6 +115,7 @@ namespace AppsInToss
 
         private IEnumerator LoadManifest()
         {
+#if AIT_HAS_UNITYWEBREQUEST
             string url = ResolveStreamingUrl(ManifestRelativePath);
             using (var req = UnityWebRequest.Get(url))
             {
@@ -141,6 +148,10 @@ namespace AppsInToss
                     Debug.LogWarning($"[AIT-StreamingAudio] 매니페스트 파싱 실패: {ex.Message}");
                 }
             }
+#else
+            // AIT_HAS_UNITYWEBREQUEST 미정의 시: Run() 진입부에서 이미 종료하므로 여기에 도달하지 않음.
+            yield return null;
+#endif
         }
 
         private void ScanAndSwap()
@@ -184,7 +195,7 @@ namespace AppsInToss
 
         private IEnumerator LoadClip(Entry entry, AudioSource firstRequester)
         {
-#if AIT_HAS_UWR_AUDIO
+#if AIT_HAS_UNITYWEBREQUEST && AIT_HAS_UWR_AUDIO
             string url = ResolveStreamingUrl(StreamDirRelativePath + entry.file);
             var type = GuessAudioType(entry.file);
             using (var req = UnityWebRequestMultimedia.GetAudioClip(url, type))
@@ -214,8 +225,7 @@ namespace AppsInToss
                 loading.Remove(entry.name);
             }
 #else
-            // unitywebrequestaudio 모듈 비활성화 환경: 오디오 스트리밍 복원 불가.
-            Debug.LogWarning("[AIT] unitywebrequestaudio 모듈이 비활성화되어 오디오 스트리밍 복원을 건너뜁니다");
+            // AIT_HAS_UNITYWEBREQUEST/AIT_HAS_UWR_AUDIO 미정의 시: Run() 진입부에서 이미 종료하므로 여기에 도달하지 않음.
             loading.Remove(entry.name);
             yield break;
 #endif
@@ -242,6 +252,7 @@ namespace AppsInToss
             }
         }
 
+#if AIT_HAS_UNITYWEBREQUEST
         private static bool IsSuccess(UnityWebRequest req)
         {
 #if UNITY_2020_2_OR_NEWER
@@ -250,6 +261,7 @@ namespace AppsInToss
             return !req.isHttpError && !req.isNetworkError;
 #endif
         }
+#endif
 
         internal static AudioType GuessAudioType(string file)
         {

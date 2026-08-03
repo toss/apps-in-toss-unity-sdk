@@ -168,6 +168,13 @@ public class IAPv2Tester : MonoBehaviour
         // 교착이 완전하면 onEvent/onError가 끝내 오지 않아 자동 리포트가 안 나온다.
         // 화면이 다시 움직이기 시작하면 이 버튼으로 수집분을 강제로 덤프한다.
         UIBuilder.CreateButton(section, "PLP 리포트 강제 출력", onClick: () => ReportPlayerLoopProbe("manual"));
+        // jslib 주석의 설계 의도("delayMs=0도 래퍼는 그대로 설치한다")를 실제로 지키려면
+        // 시작 시점에 한 번 설치해 둬야 한다 — 안 그러면 사용자가 토글 버튼을 한 번도
+        // 누르지 않은 기본 상태에서는 래퍼가 아예 설치되지 않아, 아래 라벨이 주장하는
+        // "래퍼는 설치, 지연 없음"이 거짓이 된다. window.AppsInToss.IAP가 아직 준비되지
+        // 않았다면 PLP_EnableGrantDelay는 조용히 실패하고 __plpGrantDelayWrapped을 세팅하지
+        // 않으므로, 이후 토글 클릭 시 재시도된다(멱등).
+        PLP_EnableGrantDelay(PlpGrantDelayOptionsMs[_plpGrantDelayIndex]);
         UpdatePlpGrantDelayLabel();
     }
 

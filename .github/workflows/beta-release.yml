@@ -65,6 +65,11 @@ on:
         required: false
         type: boolean
         default: false
+      build_variant:
+        description: '채널 번들 마킹 식별자 (AITBuildVariant.Value 치환). beta-perf 릴리즈는 "perf" 전달, 빈 값이면 미치환(stable과 동일하게 빈 문자열 유지).'
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: write
@@ -297,6 +302,31 @@ jobs:
       # E2E 부트스트랩이 빌드에 그대로 살아 있어야 한다. 게시 패키지에는 publish-beta의
       # `rm -rf Tests~/` 가 SharedScripts를 통째로 제거하므로 테스트 코드가 새어 나가지 않는다
       # (E2EBootstrapper/E2EBuildRunner 참조는 전부 Tests~/ 내부에만 존재 — shipped SDK 무관).
+
+      - name: buildVariant 채널 마킹 주입
+        run: |
+          BUILD_VARIANT="${{ inputs.build_variant }}"
+          FILE="Editor/AITBuildVariant.cs"
+
+          if [ -z "$BUILD_VARIANT" ]; then
+            echo "build_variant 미지정 — buildVariant 마킹 미치환(빈 문자열 유지, stable과 동일)"
+            exit 0
+          fi
+
+          if ! grep -q "AIT_BUILD_VARIANT_INJECT" "$FILE"; then
+            echo "::error::${FILE}에서 AIT_BUILD_VARIANT_INJECT 앵커를 찾을 수 없습니다. 치환 대상 라인이 바뀌었는지 확인하세요."
+            exit 1
+          fi
+
+          sed -i "/AIT_BUILD_VARIANT_INJECT/s/Value = \"\"/Value = \"${BUILD_VARIANT}\"/" "$FILE"
+
+          if ! grep -q "Value = \"${BUILD_VARIANT}\";" "$FILE"; then
+            echo "::error::buildVariant 치환 검증 실패 — ${FILE}에 Value = \"${BUILD_VARIANT}\"; 가 반영되지 않았습니다."
+            exit 1
+          fi
+
+          echo "buildVariant 채널 마킹 주입 완료: ${BUILD_VARIANT}"
+          grep "AIT_BUILD_VARIANT_INJECT" "$FILE"
 
       - name: Staging Orphan Commit 생성 및 push
         id: stage

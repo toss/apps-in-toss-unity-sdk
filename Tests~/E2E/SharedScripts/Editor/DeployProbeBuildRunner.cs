@@ -33,8 +33,9 @@ using AppsInToss;
 /// AITFontSubsetProcessor/AITFontExternalizer 와 동일하게 TMP 타입은 전부 리플렉션으로만 접근한다
 /// (컴파일 타임 TMPro 참조 없음 — 2022.3/6000.x 모두, TMP 설치 여부와 무관하게 컴파일된다).
 /// TMP 가 실제로 설치되지 않은 환경(현재 모든 샘플 프로젝트)에서는 TMP_FontAsset 생성을 건너뛰고
-/// 레거시 UnityEngine.UI.Text + 원본 .otf 로 폴백한다(fontSubset 레버는 계속 발화, fontStreaming
-/// 레버만 스킵 — GetFontStreamingCandidates 가 t:TMP_FontAsset 만 스캔하기 때문).
+/// 레거시 UnityEngine.UI.Text + 원본 .otf 로 폴백한다(fontSubset 레버는 아래에서 명시 선택하는
+/// fontSubsetLanguages="ja" 덕분에 계속 발화, fontStreaming 레버만 스킵 — GetFontStreamingCandidates
+/// 가 t:TMP_FontAsset 만 스캔하기 때문).
 /// </summary>
 public class DeployProbeBuildRunner
 {
@@ -75,14 +76,18 @@ public class DeployProbeBuildRunner
 
         // 옵트인 레버 명시 활성화. textureStreamJpeg/audioStreamTranscode 는 시각/청취 검증 전까지
         // 기본값이 -1(자동=비활성) 이라, 프로브 빌드에서 발화시키려면 명시적으로 1 을 설정해야 한다.
-        // 나머지 레버(fontSubset/fontStreaming/textureStreaming/downscale/recompress/audioStreaming/
+        // fontSubset 는 자동(-1) 모드에서 동적 텍스트 언어가 하나도 선택되지 않으면 서브셋 자체를
+        // 건너뛰므로(선택 = 인지된 활성화, AITFontSubsetProcessor.ShouldSkipAutoWithoutSelection)
+        // fontSubsetLanguages 를 명시 선택해 러너 실행·복원·리포트와 언어 union 경로를 계속 커버한다.
+        // 나머지 레버(fontStreaming/textureStreaming/downscale/recompress/audioStreaming/
         // audioReencode)는 전부 auto-ON(-1) 이라 별도 설정이 필요 없다.
         var config = UnityUtil.GetEditorConf();
         config.textureStreamJpeg = 1;
         config.audioStreamTranscode = 1;
+        config.fontSubsetLanguages = "ja";
         EditorUtility.SetDirty(config);
         AssetDatabase.SaveAssets();
-        Debug.Log("✓ 옵트인 레버 명시 활성화: textureStreamJpeg=1, audioStreamTranscode=1");
+        Debug.Log("✓ 옵트인 레버 명시 활성화: textureStreamJpeg=1, audioStreamTranscode=1, fontSubsetLanguages=ja");
 
         // 검증된 E2E 빌드 파이프라인을 그대로 재사용(씬/SDK 설정/포트 오프셋/산출물 검증/exit code
         // 처리 전부 E2EBuildRunner 소유 — HeavyBuildRunner 와 동일 패턴).

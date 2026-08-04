@@ -1238,4 +1238,50 @@ public class AITFontSubsetAutoTests
         Assert.IsFalse(finalDto.entries.Any(e => e.lazyTag == "ja"),
             "이번 빌드에서 다시 만들지 않은 기존 lazy(ja) 는 stale 로 제거되어 파일에서도 사라져야 함(N10)");
     }
+
+    [Test]
+    public void PruneManifestToLazyOnly_RealFileIO_DropsEagerEntries_Idempotent()
+    {
+        // R6 보완: 롤백/안전망 경로에서 eager 번들 파일을 삭제한 뒤 manifest 도 lazy 전용으로 다시 쓰는지.
+        string dir = CreateTempDir();
+        string manifestPath = Path.Combine(dir, "manifest.json");
+
+        var eager = new AITFontLazyExtensionBuilder.ManifestEntryDto
+        {
+            guid = "eager-1",
+            bundle = "font-eager.bundle",
+            encoding = "br",
+            fonts = new[] { "Eager SDF" },
+            lazyTag = string.Empty,
+            lazyRanges = string.Empty,
+        };
+        var lazyJa = new AITFontLazyExtensionBuilder.ManifestEntryDto
+        {
+            guid = "lazy-ja",
+            bundle = "lazy-ja-abc.bundle",
+            encoding = string.Empty,
+            fonts = new[] { "lazy_ja SDF" },
+            lazyTag = "ja",
+            lazyRanges = "U+3040-309F",
+        };
+        File.WriteAllText(manifestPath, "{\"maxConcurrent\":3,\"entries\":["
+            + AITFontLazyExtensionBuilder.BuildEntryJson(eager) + ","
+            + AITFontLazyExtensionBuilder.BuildEntryJson(lazyJa) + "]}");
+
+        AITFontLazyExtensionBuilder.PruneManifestToLazyOnly(manifestPath);
+
+        var pruned = AITFontLazyExtensionBuilder.ReadManifest(manifestPath);
+        Assert.AreEqual(1, pruned.entries.Length, "eager 엔트리는 제거되고 lazy(ja) 만 남아야 함");
+        Assert.AreEqual("ja", pruned.entries[0].lazyTag);
+        Assert.AreEqual(3, pruned.maxConcurrent, "기존 maxConcurrent 는 보존되어야 함");
+
+        // 멱등성: lazy 전용 상태에서 다시 호출해도 내용이 변하지 않아야 함.
+        string afterFirst = File.ReadAllText(manifestPath);
+        AITFontLazyExtensionBuilder.PruneManifestToLazyOnly(manifestPath);
+        Assert.AreEqual(afterFirst, File.ReadAllText(manifestPath));
+
+        // 존재하지 않는 경로는 조용히 no-op 이어야 함(예외 없음).
+        Assert.DoesNotThrow(() => AITFontLazyExtensionBuilder.PruneManifestToLazyOnly(
+            Path.Combine(dir, "no-such-manifest.json")));
+    }
 }

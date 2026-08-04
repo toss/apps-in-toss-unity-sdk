@@ -854,6 +854,11 @@ namespace AppsInToss.Editor
                 || !string.IsNullOrWhiteSpace(config.fontSubsetUnicodeRanges);
             bool hasLanguageSelection = !string.IsNullOrWhiteSpace(config.fontSubsetLanguages);
 
+            // S8: 선택 언어 lazy 확장(tri-state)도 이 섹션 소속 — audioStreamTranscode 와 동일하게
+            // 선언 기본값과 실효값이 다를 때만 "수정됨"으로 집계(아래 lazyEnabled UI 계산과 동일 공식).
+            bool lazyDefault = AITDefaultSettings.GetDefaultFontSubsetLazyLanguages();
+            bool lazyModified = config.fontSubsetLazyLanguages >= 0 && (config.fontSubsetLazyLanguages == 1) != lazyDefault;
+
             // 4-state 매핑: 0=자동, 1=비활성화, 2=명시 활성(스캔 단독 실행), 3=수동 설정.
             // 우선순위: 비활성화(fontSubset==0) > 수동 override 존재 > 명시 활성(fontSubset==1) > 자동.
             //   fontSubset==1 이면서 수동 override 필드까지 채워져 있으면 "수동 설정"(3)이 실제 상태를
@@ -878,7 +883,7 @@ namespace AppsInToss.Editor
 
             EditorGUILayout.BeginHorizontal();
 
-            bool isModified = config.fontSubset == 0 || config.fontSubset == 1 || hasManualOverride || hasLanguageSelection;
+            bool isModified = config.fontSubset == 0 || config.fontSubset == 1 || hasManualOverride || hasLanguageSelection || lazyModified;
             DrawModifiedIndicator(isModified);
 
             string label = currentIndex == 0
@@ -926,6 +931,7 @@ namespace AppsInToss.Editor
                 config.fontSubsetTargetPaths = string.Empty;
                 config.fontSubsetUnicodeRanges = string.Empty;
                 config.fontSubsetLanguages = string.Empty;
+                config.fontSubsetLazyLanguages = -1;
                 currentIndex = 0;
             }
 
@@ -990,7 +996,7 @@ namespace AppsInToss.Editor
                     }
                 }
 
-                bool lazyDefault = AITDefaultSettings.GetDefaultFontSubsetLazyLanguages();
+                // lazyDefault 는 메서드 상단(isModified 계산)에서 이미 계산됨 — 재사용.
                 bool lazyEnabled = config.fontSubsetLazyLanguages >= 0
                     ? config.fontSubsetLazyLanguages == 1
                     : lazyDefault;

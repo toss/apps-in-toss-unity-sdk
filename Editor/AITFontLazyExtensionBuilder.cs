@@ -125,12 +125,34 @@ namespace AppsInToss.Editor
         /// <param name="anyLazyArtifactsPersisted">true 면 StreamingAssets 에 lazy 아티팩트가 남았음
         /// (RestoreForBuild 가 CleanupAfterBuild 를 호출해야 함을 뜻함).</param>
         /// <returns>boot union 계산에 사용할 언어 태그 CSV(bootTags, Table 순서로 결정적 직렬화).</returns>
+        /// <summary>
+        /// fontSubsetLazyLanguages tri-state 를 해석해 lazy 확장이 이번 빌드에서 활성인지 반환한다(N11:
+        /// AITFontSubsetProcessor 가 EnsureTool 조기 호출 여부를 이 값만으로 판단할 수 있도록 노출).
+        /// -1(자동)→GetDefaultFontSubsetLazyLanguages()(=항상 false), 0=비활성, 1=명시 활성.
+        /// audioStreamTranscode 와 동일 posture — 값 1일 때만 true.
+        /// </summary>
+        internal static bool IsLazyEnabled(AITEditorScriptObject config)
+        {
+            if (config == null)
+            {
+                return false;
+            }
+
+            return config.fontSubsetLazyLanguages >= 0
+                ? config.fontSubsetLazyLanguages == 1
+                : AITDefaultSettings.GetDefaultFontSubsetLazyLanguages();
+        }
+
         internal static string ApplyLazyExtensions(
             AITEditorScriptObject config, string[] targets, string node, string runner,
             out bool anyLazyArtifactsPersisted)
         {
             anyLazyArtifactsPersisted = false;
             string originalLanguagesCsv = config != null ? (config.fontSubsetLanguages ?? string.Empty) : string.Empty;
+
+            // outer catch 에서도 잔존 아티팩트 정리(S4)에 써야 하므로 try 진입 전에 선언(try 로컬 변수는
+            // catch 에서 보이지 않음).
+            string streamRootFull = null;
 
             try
             {
@@ -139,12 +161,7 @@ namespace AppsInToss.Editor
                     return originalLanguagesCsv;
                 }
 
-                // tri-state: -1(자동)→GetDefaultFontSubsetLazyLanguages()(=항상 false), 0=비활성,
-                // 1=명시 활성. audioStreamTranscode 와 동일 posture — 값 1일 때만 동작.
-                bool enabled = config.fontSubsetLazyLanguages >= 0
-                    ? config.fontSubsetLazyLanguages == 1
-                    : AITDefaultSettings.GetDefaultFontSubsetLazyLanguages();
-                if (!enabled)
+                if (!IsLazyEnabled(config))
                 {
                     return originalLanguagesCsv;
                 }
@@ -152,6 +169,15 @@ namespace AppsInToss.Editor
                 if (System.Type.GetType("UnityEngine.AssetBundle, UnityEngine.AssetBundleModule") == null)
                 {
                     Debug.LogWarning("[AIT-FontSubset-Lazy] assetbundle 모듈 비활성화로 lazy 확장을 건너뜁니다(선택 언어는 부트 union 유지).");
+                    return originalLanguagesCsv;
+                }
+
+                // S3: TMP Settings 리소스 자체가 없으면(TMP 패키지는 있어도 'TMP Settings' 에셋 미생성)
+                // 런타임 ResolveTmpFallback 이 결국 fallback 주입에 실패한다 — 빌드 시점에 미리 걸러
+                // lazy 를 통째로 포기한다(부트 union 은 항상 안전한 폴백).
+                if (!HasTmpSettingsResource())
+                {
+                    Debug.LogWarning("[AIT-FontSubset-Lazy] TMP Settings 리소스를 찾을 수 없어 lazy 확장을 건너뜁니다(선택 언어는 부트 union 유지).");
                     return originalLanguagesCsv;
                 }
 
@@ -167,11 +193,20 @@ namespace AppsInToss.Editor
                     return originalLanguagesCsv;
                 }
 
+                // B1: 다중 target 폰트는 target 별 확장을 아직 만들지 않으므로(후속 과제), lazy 를 전부
+                // 포기하고 전 언어를 boot union 으로 폴백한다 — targets[0] 하나에만 확장을 만들면 다른
+                // 폰트를 쓰는 텍스트의 해당 언어가 부트/lazy 어느 쪽에도 없게 된다(HashSet 열거 비결정성도 동반).
+                if (targets.Length > 1)
+                {
+                    Debug.LogWarning("[AIT-FontSubset-Lazy] 대상 폰트가 여러 개라 lazy 확장을 건너뜁니다 — 전 언어를 부트 폰트에 포함");
+                    return originalLanguagesCsv;
+                }
+
                 string primarySource = targets[0].Trim().Replace('\\', '/');
                 Debug.Log($"[AIT-FontSubset-Lazy] 주 폰트로 사용: {primarySource} (lazy 시도 언어: {string.Join(",", lazyTags)})");
 
                 string projectRoot = Directory.GetParent(Application.dataPath).FullName;
-                string streamRootFull = Path.Combine(projectRoot, StreamRootAssets);
+                streamRootFull = Path.Combine(projectRoot, StreamRootAssets);
                 string bundleTempFull = Path.Combine(projectRoot, BundleTempDir);
 
                 CreateMarker();
@@ -241,8 +276,45 @@ namespace AppsInToss.Editor
                 // 예상 밖 실패 → 전체 폴백: 이번에 시도된 태그 상태를 신뢰할 수 없으므로 선택 언어 전부를
                 // 부트 union 으로 되돌린다(과잉 보존이라 tofu 리스크 증가는 없음 — 안전 우선).
                 Debug.LogWarning($"[AIT-FontSubset-Lazy] 예외 → 전체 폴백(선택 언어 전부 부트 union 유지): {e.Message}");
-                RemoveMarker();
+
+                // S4: 일부 태그가 이미 성공해 StreamingAssets 에 lazy-*.bundle 아티팩트를 남긴 상태에서
+                // 이후 단계(매니페스트 쓰기 등)가 실패했을 수 있다 — 참조 없는 잔존 번들이 배포본에 실리지
+                // 않도록 정리한다. CleanupAfterBuild 는 실패 시 예외를 삼키고 마커를 남겨두므로(RemoveMarker
+                // 호출 전에 끊김) SafetyNetRestore 가 다음 에디터 로드 시 마저 정리한다.
+                if (HasLazyArtifacts(streamRootFull))
+                {
+                    CleanupAfterBuild();
+                }
+                else
+                {
+                    RemoveMarker();
+                }
+
                 return originalLanguagesCsv;
+            }
+        }
+
+        /// <summary>
+        /// TMP_Settings 타입 존재 + 'TMP Settings' 리소스 에셋(Resources.Load) 존재를 함께 확인한다(S3).
+        /// TMP 패키지는 설치돼 있어도 'TMP Settings' 리소스 에셋이 생성되지 않은 프로젝트가 있을 수 있는데,
+        /// 그런 경우 런타임 ResolveTmpFallback 이 결국 실패하므로 빌드 시점에 미리 걸러낸다.
+        /// </summary>
+        private static bool HasTmpSettingsResource()
+        {
+            try
+            {
+                Type settingsType = Type.GetType("TMPro.TMP_Settings, Unity.TextMeshPro");
+                if (settingsType == null)
+                {
+                    return false; // TMP 미설치.
+                }
+
+                var asset = UnityEngine.Resources.Load("TMP Settings", settingsType);
+                return asset != null;
+            }
+            catch
+            {
+                return false;
             }
         }
 
@@ -263,6 +335,16 @@ namespace AppsInToss.Editor
             if (!File.Exists(srcFull))
             {
                 Debug.LogWarning($"[AIT-FontSubset-Lazy]   '{tag}' 소스 폰트 없음: {primarySourceAssetPath}");
+                return null;
+            }
+
+            // B2: 서브셋 실행 전에 소스 폰트가 이 태그의 문자체계를 실제로 담고 있는지 커버리지를
+            // 샘플 검사한다. harfbuzz 서브셋은 소스에 없는 문자체계를 요청해도 '유효하지만 빈' 폰트를
+            // 반환해 성공 처리될 수 있어, 검사 없이는 해당 태그가 boot 에서도 lazy 에서도 빠져 영구
+            // tofu 가 된다.
+            if (!HasAnyCoverage(primarySourceAssetPath, langEntry.Ranges))
+            {
+                Debug.LogWarning($"[AIT-FontSubset-Lazy]   '{tag}' 소스 폰트가 해당 문자체계를 포함하지 않아 lazy 확장을 건너뜁니다.");
                 return null;
             }
 
@@ -353,6 +435,48 @@ namespace AppsInToss.Editor
                 {
                     AssetDatabase.DeleteAsset(tmpAssetPath);
                 }
+            }
+        }
+
+        // ─────────────────────────── 글리프 커버리지 검사(B2) ───────────────────────────
+
+        /// <summary>
+        /// 소스 폰트(targetPath)가 ranges 의 대표 코드포인트를 하나라도 가지고 있는지 검사한다. 하나라도
+        /// 있으면 진행(서브셋은 소스가 가진 글리프만 보존하므로 1단계 subset 과 동등한 커버리지가 보장된다).
+        /// Font 로드 실패·샘플이 전부 비어있음(BMP 밖 전용 범위)·HasCharacter 예외는 전부 false(안전 방향
+        /// fallback-to-boot).
+        /// </summary>
+        private static bool HasAnyCoverage(string targetPath, string ranges)
+        {
+            try
+            {
+                var font = AssetDatabase.LoadAssetAtPath<Font>(targetPath);
+                if (font == null)
+                {
+                    return false;
+                }
+
+                var samples = SampleCoverageCodepoints(ranges);
+                foreach (var cp in samples)
+                {
+                    try
+                    {
+                        if (font.HasCharacter((char)cp))
+                        {
+                            return true;
+                        }
+                    }
+                    catch
+                    {
+                        return false; // HasCharacter 예외 — 안전 방향 fallback.
+                    }
+                }
+
+                return false;
+            }
+            catch
+            {
+                return false;
             }
         }
 
@@ -547,6 +671,66 @@ namespace AppsInToss.Editor
         // ─────────────────────────── 순수 로직(단위 테스트 대상) ───────────────────────────
 
         /// <summary>
+        /// langEntry.Ranges("U+XXXX-YYYY,U+ZZZZ" 콤마 구분) 문자열에서 대표 코드포인트를 샘플링한다(B2).
+        /// 범위 토큰마다 시작 코드포인트 + (폭이 1보다 크면) 중간 코드포인트를 뽑아 최대 maxSamples 개까지
+        /// 모은다. Font.HasCharacter 가 char(UTF-16 코드유닛) 인자만 받으므로 BMP 밖(U+FFFF 초과) 코드
+        /// 포인트는 샘플에서 제외한다. 형식이 어긋난 토큰은 조용히 건너뛴다. 부수 효과 없음 — 테스트 대상.
+        /// </summary>
+        internal static List<int> SampleCoverageCodepoints(string ranges, int maxSamples = 20)
+        {
+            var result = new List<int>();
+            if (string.IsNullOrEmpty(ranges))
+            {
+                return result;
+            }
+
+            foreach (var rawToken in ranges.Split(','))
+            {
+                if (result.Count >= maxSamples)
+                {
+                    break;
+                }
+
+                string token = rawToken.Trim();
+                if (token.Length < 3 || !token.StartsWith("U+", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue; // 형식 불일치 — 무시.
+                }
+
+                string body = token.Substring(2);
+                int dashIdx = body.IndexOf('-');
+                string startHex = dashIdx >= 0 ? body.Substring(0, dashIdx) : body;
+                string endHex = dashIdx >= 0 ? body.Substring(dashIdx + 1) : body;
+
+                if (!int.TryParse(startHex, System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture, out int start)
+                    || !int.TryParse(endHex, System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture, out int end)
+                    || start > end)
+                {
+                    continue; // 파싱 실패/역전 구간 — 이 토큰만 무시.
+                }
+
+                AddSampleIfEligible(result, start, maxSamples);
+                if (end != start)
+                {
+                    int mid = start + (end - start) / 2;
+                    AddSampleIfEligible(result, mid, maxSamples);
+                }
+            }
+
+            return result;
+        }
+
+        private static void AddSampleIfEligible(List<int> result, int codepoint, int maxSamples)
+        {
+            if (result.Count >= maxSamples || codepoint > 0xFFFF || result.Contains(codepoint))
+            {
+                return; // BMP 밖은 char 로 표현 불가 → 제외. 중복도 스킵.
+            }
+
+            result.Add(codepoint);
+        }
+
+        /// <summary>
         /// 선택 언어 CSV 를 LazyEligible 여부로 lazySet/bootTags 로 분할한다. 태그 중복은 첫 등장만
         /// 반영(순서 보존은 하지 않음 — 최종 직렬화는 JoinInTableOrder 가 담당). 미지 태그는 안전하게
         /// bootTags 로 분류한다(기존 BuildRanges 도 미지 태그를 무시하므로 boot 에 있어도 무해).
@@ -669,31 +853,23 @@ namespace AppsInToss.Editor
 
         /// <summary>
         /// 기존 엔트리 배열과 이번에 새로 만든 lazy 엔트리를 병합한다(파일 IO 없음 — 순수 함수).
-        /// 규칙: eager 엔트리(lazyTag 비어있음)는 항상 보존, lazy 엔트리는 "이번에 다시 만든 같은 태그"만
-        /// 새 값으로 교체하고 그 외(다른 태그의 기존 lazy 엔트리)는 보존.
+        /// 규칙: eager 엔트리(lazyTag 비어있음)는 항상 보존. 기존 lazy 엔트리는 무조건 버리고
+        /// newLazyEntries 로만 대체한다(N10) — ApplyLazyExtensions 는 매 호출마다 이번 빌드가 시도하는
+        /// lazyTags 전부를 처리해 성공(newLazyEntries)/실패(boot 폴백) 중 하나로 귀결시키므로, "이번에
+        /// 다시 만들지 못한" 기존 lazy 엔트리는 태그가 더 이상 선택되지 않았거나 이번 빌드에서 실패해
+        /// boot 로 폴백된 것 — 어느 쪽이든 stale 이라 보존할 이유가 없다(그대로 두면 참조 없는 잔존
+        /// 번들·구 태그 엔트리가 매니페스트에 영구 축적된다).
         /// </summary>
         internal static List<ManifestEntryDto> MergeLazyEntries(ManifestEntryDto[] existingEntries, List<ManifestEntryDto> newLazyEntries)
         {
-            var newTags = new HashSet<string>(StringComparer.Ordinal);
-            if (newLazyEntries != null)
-            {
-                foreach (var e in newLazyEntries)
-                {
-                    if (!string.IsNullOrEmpty(e.lazyTag))
-                    {
-                        newTags.Add(e.lazyTag);
-                    }
-                }
-            }
-
             var merged = new List<ManifestEntryDto>();
             if (existingEntries != null)
             {
                 foreach (var e in existingEntries)
                 {
-                    if (string.IsNullOrEmpty(e.lazyTag) || !newTags.Contains(e.lazyTag))
+                    if (string.IsNullOrEmpty(e.lazyTag))
                     {
-                        merged.Add(e);
+                        merged.Add(e); // eager 엔트리는 항상 보존.
                     }
                 }
             }
@@ -858,11 +1034,17 @@ namespace AppsInToss.Editor
             }
         }
 
+        /// <summary>EnsureTempFolder 가 이번 호출에서 Assets/AppsInToss 를 새로 만들었는지(N12) — 만들었을 때만
+        /// CleanupTempFolder 가 그 폴더까지 정리 시도한다(이미 있던 폴더는 다른 기능이 쓸 수 있어 건드리지 않음).</summary>
+        private static bool createdAppsInTossFolder;
+
         private static void EnsureTempFolder()
         {
+            createdAppsInTossFolder = false;
             if (!AssetDatabase.IsValidFolder("Assets/AppsInToss"))
             {
                 AssetDatabase.CreateFolder("Assets", "AppsInToss");
+                createdAppsInTossFolder = true;
             }
 
             if (!AssetDatabase.IsValidFolder(TempFolder))
@@ -879,10 +1061,26 @@ namespace AppsInToss.Editor
                 {
                     AssetDatabase.DeleteAsset(TempFolder);
                 }
+
+                // N12: 이번 호출에서 Assets/AppsInToss 를 새로 만들었고, AITFontLazyTmp 정리 후 비어 있으면
+                // 함께 삭제한다(빈 폴더 잔존 방지). 우리가 만들지 않았던 기존 폴더는 건드리지 않는다.
+                if (createdAppsInTossFolder && AssetDatabase.IsValidFolder("Assets/AppsInToss"))
+                {
+                    string projectRoot = Directory.GetParent(Application.dataPath).FullName;
+                    string appsInTossFull = Path.Combine(projectRoot, "Assets/AppsInToss");
+                    if (Directory.Exists(appsInTossFull) && Directory.GetFileSystemEntries(appsInTossFull).Length == 0)
+                    {
+                        AssetDatabase.DeleteAsset("Assets/AppsInToss");
+                    }
+                }
             }
             catch (Exception e)
             {
                 Debug.LogWarning($"[AIT-FontSubset-Lazy] 임시 폴더 정리 예외(무시): {e.Message}");
+            }
+            finally
+            {
+                createdAppsInTossFolder = false;
             }
         }
 

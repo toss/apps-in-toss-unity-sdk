@@ -2,6 +2,9 @@ using UnityEngine;
 using UnityEngine.UI;
 using UnityEditor;
 using UnityEditor.SceneManagement;
+#if UNITY_6000_0_OR_NEWER
+using UnityEditor.Build;
+#endif
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -30,18 +33,21 @@ using AppsInToss.Editor;
 /// 반환해 NRE 가 난다).
 ///
 /// TMP(TextMeshPro) 의존성: SharedScripts 의 Runtime/Editor asmdef 는 Unity.TextMeshPro 를 참조하지
-/// 않는다. 실측으로도 SampleUnityProject-2022.3 의 로컬 Library/PackageCache 에 com.unity.textmeshpro
-/// 가 전혀 없음을 확인했다(어떤 샘플 프로젝트 manifest.json 에도 선언돼 있지 않다). 따라서
-/// AITFontSubsetProcessor/AITFontExternalizer 와 동일하게 TMP 타입은 전부 리플렉션으로만 접근한다
-/// (컴파일 타임 TMPro 참조 없음 — 2022.3/6000.x 모두, TMP 설치 여부와 무관하게 컴파일된다).
-/// TMP 가 실제로 설치되지 않은 환경(현재 모든 샘플 프로젝트)에서는 TMP_FontAsset 생성을 건너뛰고
-/// 레거시 UnityEngine.UI.Text + 원본 .otf 로 폴백한다(fontSubset 레버는 아래에서 명시 선택하는
-/// fontSubsetLanguages="ja" 덕분에 계속 발화, fontStreaming 레버만 스킵 — GetFontStreamingCandidates
-/// 가 t:TMP_FontAsset 만 스캔하기 때문). 같은 이유로 fontSubsetLazyLanguages=1 도 lazy 확장 경로
-/// (AITFontLazyExtensionBuilder.TryCreateDynamicTmpFontAsset)가 TMP 부재로 실패해 안전 불변식에
-/// 따라 fallback-to-boot 하는 경로를 커버하게 된다 — TMP 가 설치된 환경에서는 lazy 확장 성공
-/// 경로(서브셋 TTF → Dynamic TMP_FontAsset → AssetBundle)를 커버한다.
+/// 않는다. 따라서 AITFontSubsetProcessor/AITFontExternalizer 와 동일하게 TMP 타입은 전부 리플렉션으로만
+/// 접근한다(컴파일 타임 TMPro 참조 없음 — 2022.3/6000.x 모두, TMP 설치 여부와 무관하게 컴파일된다).
+/// 샘플 프로젝트별 TMP 실측(Packages/manifest.json): 2021.3/2022.3 는 "com.unity.textmeshpro": "3.0.6"
+/// 을 명시 추가했고(TMP 가용), 6000.x 는 "com.unity.ugui": "2.0.0" 만 선언한다(ugui 2.0 이 TMP 를
+/// 내장 제공하는 것으로 추정 — 별도 com.unity.textmeshpro 항목 없이도 TMPro.* 타입이 해석될 수 있다).
+/// 즉 "TMP 미설치" 는 현재 샘플 매트릭스의 상시 상태가 아니라, 타입 해석/Essential Resources
+/// 임포트/셰이더 가용성 중 하나가 실패하는 예외적 경우를 위한 안전망이다 — 그 경우
+/// TMP_FontAsset 생성을 건너뛰고 레거시 UnityEngine.UI.Text + 원본 .otf 로 폴백한다(fontSubset
+/// 레버는 아래에서 명시 선택하는 fontSubsetLanguages="ja" 덕분에 계속 발화, fontStreaming 레버만
+/// 스킵 — GetFontStreamingCandidates 가 t:TMP_FontAsset 만 스캔하기 때문). 같은 이유로
+/// fontSubsetLazyLanguages=1 도 lazy 확장 경로(AITFontLazyExtensionBuilder.TryCreateDynamicTmpFontAsset)가
+/// TMP 부재로 실패해 안전 불변식에 따라 fallback-to-boot 하는 경로를 커버하게 된다 — TMP 가 실제로
+/// 가용한 환경에서는 lazy 확장 성공 경로(서브셋 TTF → Dynamic TMP_FontAsset → AssetBundle)를 커버한다.
 /// </summary>
+[InitializeOnLoad]
 public class DeployProbeBuildRunner
 {
     /// <summary>생성 루트(Resources 밖 — 대형 텍스처 외부화가 /Resources/ 를 하드 제외하므로 필수).</summary>
@@ -75,6 +81,131 @@ public class DeployProbeBuildRunner
     private const string TmpAbsentFallbackLogFragment =
         "TMP Settings 리소스를 찾을 수 없어 lazy 확장을 건너뜁니다";
 
+    /// <summary>
+    /// 설정 원복 안전망(sentinel) 파일 경로(프로젝트 루트 기준, Library/ 하위 — .gitignore 로
+    /// 이미 무시 대상: "Tests~/E2E/SampleUnityProject*/Library/"). BuildDeployProbe() 가 옵트인
+    /// 레버(config 4필드) + WebGL 스크립팅 디파인을 변경하기 직전에 원본 값을 이 파일에 기록하고,
+    /// 정상 종료(finally) 시 삭제한다. E2EBuildRunner.BuildWithSDK() 가 실패 경로에서
+    /// EditorApplication.Exit(1|2) 로 프로세스를 즉시 종료하면 finally 가 돌지 않아 이 파일이
+    /// 잔존하는데, 그 경우 다음 에디터 로드 시 <see cref="SafetyNetRestore"/>(AITFontSubsetProcessor
+    /// 의 SafetyNetRestore 와 동일 패턴)가 자동 복원한다.
+    /// </summary>
+    private const string SentinelRelativePath = "Library/AITDeployProbeSentinel.json";
+
+    /// <summary>sentinel 파일에 기록되는 원본 설정 스냅샷.</summary>
+    [Serializable]
+    private class ProbeSettingsSentinel
+    {
+        public int textureStreamJpeg;
+        public int audioStreamTranscode;
+        public string fontSubsetLanguages;
+        public int fontSubsetLazyLanguages;
+        public string webglDefines;
+    }
+
+    static DeployProbeBuildRunner()
+    {
+        EditorApplication.delayCall += SafetyNetRestore;
+    }
+
+    /// <summary>
+    /// 에디터 로드 시 안전망. sentinel 이 잔존하면(=이전 프로브 빌드가 원복 전 비정상 종료) 원본
+    /// config 값 + WebGL 스크립팅 디파인을 복원한다. sentinel 이 없으면(공통 경로) no-op.
+    /// </summary>
+    private static void SafetyNetRestore()
+    {
+        try
+        {
+            string path = GetSentinelFullPath();
+            if (!File.Exists(path))
+            {
+                return; // 공통 경로: 잔존물 없음(빠른 반환).
+            }
+
+            var data = JsonUtility.FromJson<ProbeSettingsSentinel>(File.ReadAllText(path));
+            if (data != null)
+            {
+                var config = UnityUtil.GetEditorConf();
+                if (config != null)
+                {
+                    config.textureStreamJpeg = data.textureStreamJpeg;
+                    config.audioStreamTranscode = data.audioStreamTranscode;
+                    config.fontSubsetLanguages = data.fontSubsetLanguages;
+                    config.fontSubsetLazyLanguages = data.fontSubsetLazyLanguages;
+                    EditorUtility.SetDirty(config);
+                    AssetDatabase.SaveAssets();
+                }
+
+                SetWebGLDefines(data.webglDefines ?? string.Empty);
+            }
+
+            DeleteSentinel();
+            Debug.LogWarning("[deploy-probe] 안전망: 이전 빌드가 원복 전 비정상 종료되어 잔존한 프로브 설정을 복원했습니다.");
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning($"[deploy-probe] 안전망 복원 중 예외(무시): {e}");
+        }
+    }
+
+    private static string GetSentinelFullPath()
+    {
+        return Path.Combine(UnityUtil.GetProjectPath(), SentinelRelativePath);
+    }
+
+    /// <summary>설정 변경 직전에 원본 값을 sentinel 파일에 기록한다.</summary>
+    private static void WriteSentinel(ProbeSettingsSentinel data)
+    {
+        try
+        {
+            string path = GetSentinelFullPath();
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            File.WriteAllText(path, JsonUtility.ToJson(data));
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning($"[deploy-probe] 설정 원복 sentinel 기록 실패(비정상 종료 시 자동 복원 안전망이 비활성화됨): {e.Message}");
+        }
+    }
+
+    /// <summary>정상 원복이 끝난 뒤 sentinel 파일을 삭제한다.</summary>
+    private static void DeleteSentinel()
+    {
+        try
+        {
+            string path = GetSentinelFullPath();
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning($"[deploy-probe] sentinel 삭제 실패(무시): {e.Message}");
+        }
+    }
+
+    /// <summary>WebGL 스크립팅 디파인 조회(Unity 6000 이상은 obsolete 된 *ForGroup 대신
+    /// NamedBuildTarget 오버로드 사용 — Editor/AITBuildInitializer.cs 의 기존 컨벤션과 동일).</summary>
+    private static string GetWebGLDefines()
+    {
+#if UNITY_6000_0_OR_NEWER
+        return PlayerSettings.GetScriptingDefineSymbols(NamedBuildTarget.WebGL);
+#else
+        return PlayerSettings.GetScriptingDefineSymbolsForGroup(BuildTargetGroup.WebGL);
+#endif
+    }
+
+    /// <summary>WebGL 스크립팅 디파인 설정(위 GetWebGLDefines() 와 동일 사유).</summary>
+    private static void SetWebGLDefines(string defines)
+    {
+#if UNITY_6000_0_OR_NEWER
+        PlayerSettings.SetScriptingDefineSymbols(NamedBuildTarget.WebGL, defines);
+#else
+        PlayerSettings.SetScriptingDefineSymbolsForGroup(BuildTargetGroup.WebGL, defines);
+#endif
+    }
+
     [MenuItem("E2E/Build Deploy Probe")]
     public static void BuildDeployProbe()
     {
@@ -82,10 +213,10 @@ public class DeployProbeBuildRunner
         Debug.Log("Deploy Probe Fixture Build");
         Debug.Log("========================================");
 
-        bool tmpAvailable;
+        bool fontAssetGenerated;
         try
         {
-            tmpAvailable = GenerateProbeContent();
+            fontAssetGenerated = GenerateProbeContent();
         }
         catch (Exception ex)
         {
@@ -110,7 +241,7 @@ public class DeployProbeBuildRunner
         int originalAudioStreamTranscode = config.audioStreamTranscode;
         string originalFontSubsetLanguages = config.fontSubsetLanguages;
         int originalFontSubsetLazyLanguages = config.fontSubsetLazyLanguages;
-        string originalWebGLDefines = PlayerSettings.GetScriptingDefineSymbolsForGroup(BuildTargetGroup.WebGL);
+        string originalWebGLDefines = GetWebGLDefines();
 
         bool assertionsPassed = true;
         string failureReason = null;
@@ -118,6 +249,19 @@ public class DeployProbeBuildRunner
 
         try
         {
+            // F0: 옵트인 레버를 건드리기 직전에 원본 값을 sentinel 파일(Library/ 하위, untracked)에
+            // 기록한다 — 아래에서 호출하는 E2EBuildRunner.BuildWithSDK() 가 실패 경로에서
+            // EditorApplication.Exit(1|2) 로 프로세스를 즉시 종료하면 이 메서드의 finally 가 돌지 않아
+            // 원복이 누락되는데, 그 경우 다음 에디터 로드 시 SafetyNetRestore() 가 이 sentinel 로 복원한다.
+            WriteSentinel(new ProbeSettingsSentinel
+            {
+                textureStreamJpeg = originalTextureStreamJpeg,
+                audioStreamTranscode = originalAudioStreamTranscode,
+                fontSubsetLanguages = originalFontSubsetLanguages,
+                fontSubsetLazyLanguages = originalFontSubsetLazyLanguages,
+                webglDefines = originalWebGLDefines,
+            });
+
             // 옵트인 레버 명시 활성화. textureStreamJpeg/audioStreamTranscode 는 시각/청취 검증 전까지
             // 기본값이 -1(자동=비활성) 이라, 프로브 빌드에서 발화시키려면 명시적으로 1 을 설정해야 한다.
             // fontSubset 는 자동(-1) 모드에서 동적 텍스트 언어가 하나도 선택되지 않으면 서브셋 자체를
@@ -143,7 +287,7 @@ public class DeployProbeBuildRunner
             // DeployProbeLazyTextSpawner(Runtime, #if AIT_E2E_DEPLOY_PROBE 게이트)가 이 빌드에서만
             // 컴파일/부팅되도록 WebGL 스크립팅 디파인에 추가한다.
             string newDefines = AddDefine(originalWebGLDefines, DeployProbeDefine);
-            PlayerSettings.SetScriptingDefineSymbolsForGroup(BuildTargetGroup.WebGL, newDefines);
+            SetWebGLDefines(newDefines);
             Debug.Log($"✓ WebGL 스크립팅 디파인에 {DeployProbeDefine} 추가");
 
             // 빌드 중 로그를 전부 캡처해 lazy 확장의 성공/폴백 경고 문자열을 사후 검증한다.
@@ -162,7 +306,19 @@ public class DeployProbeBuildRunner
                 Application.logMessageReceived -= logHandler;
             }
 
-            assertionsPassed = ValidateLazyArtifacts(tmpAvailable, capturedLogs, out failureReason);
+            // F1: SDK 의 실제 lazy 진입 게이트(HasTmpSettingsResource)와 동일 기준으로 판정한다.
+            // fontAssetGenerated(GenerateProbeContent()의 TMP_FontAsset 생성 성공 여부)와는 별개다 —
+            // essentials 임포트 직후 Shader.Find 지연으로 폰트 에셋 생성만 실패해도 TMP Settings
+            // 리소스 자체는 존재해 SDK lazy 게이트는 정상 발화할 수 있다(그 반대 불일치도 가능).
+            bool tmpSettingsAvailable = HasTmpSettingsResource();
+            if (tmpSettingsAvailable != fontAssetGenerated)
+            {
+                Debug.Log("[deploy-probe] TMP 판정 불일치 감지(정상 범위): " +
+                    $"tmpSettingsAvailable={tmpSettingsAvailable}, fontAssetGenerated={fontAssetGenerated} " +
+                    "— 어서션은 tmpSettingsAvailable(SDK 게이트)을 기준으로 진행합니다.");
+            }
+
+            assertionsPassed = ValidateLazyArtifacts(tmpSettingsAvailable, capturedLogs, out failureReason);
         }
         finally
         {
@@ -174,13 +330,16 @@ public class DeployProbeBuildRunner
             EditorUtility.SetDirty(config);
             AssetDatabase.SaveAssets();
 
-            PlayerSettings.SetScriptingDefineSymbolsForGroup(BuildTargetGroup.WebGL, originalWebGLDefines);
+            SetWebGLDefines(originalWebGLDefines);
+
+            // 정상 원복이 여기까지 도달했다는 것 자체가 sentinel 이 더 이상 필요 없다는 뜻 — 삭제.
+            DeleteSentinel();
         }
 
         if (!assertionsPassed)
         {
             Debug.LogError("========================================");
-            Debug.LogError($"Deploy probe lazy 산출물 검증 FAILED: {failureReason}");
+            AITLog.Error($"Deploy probe lazy 산출물 검증 FAILED: {failureReason}", sentryCapture: false);
             Debug.LogError("========================================");
             EditorApplication.Exit(3);
         }
@@ -195,13 +354,69 @@ public class DeployProbeBuildRunner
     // ─────────────────────────── lazy 산출물 검증(W1) ───────────────────────────
 
     /// <summary>
-    /// 빌드 성공 후 lazy 확장 산출물을 검증한다. TMP 가용 여부에 따라 기대 결과가 갈린다:
+    /// SDK 의 실제 lazy 진입 게이트를 미러링한 판정(F1). 출처:
+    /// Editor/AITFontLazyExtensionBuilder.cs 의 private HasTmpSettingsResource() — 같은 어셈블리가
+    /// 아니라 직접 참조할 수 없어 로직을 복제한다(원본이 바뀌면 이 메서드도 함께 갱신 필요).
+    /// TMP_Settings 타입 해석(어셈블리 한정 시도 → 실패 시 AppDomain 전 어셈블리 스캔 폴백) +
+    /// Resources.Load("TMP Settings", type) != null 로 판정한다. GenerateProbeContent() 의
+    /// TMP_FontAsset 생성 성공 여부(fontAssetGenerated)와는 독립적인 신호다 — essentials 임포트
+    /// 직후 Shader.Find 지연 등으로 폰트 에셋 생성만 실패해도 TMP Settings 리소스 자체는 존재해 이
+    /// 게이트는 true 를 반환할 수 있다.
+    /// </summary>
+    private static bool HasTmpSettingsResource()
+    {
+        try
+        {
+            Type settingsType = Type.GetType("TMPro.TMP_Settings, Unity.TextMeshPro")
+                ?? FindTypeAcrossAssemblies("TMPro.TMP_Settings");
+            if (settingsType == null)
+            {
+                return false; // TMP 미설치.
+            }
+
+            var asset = UnityEngine.Resources.Load("TMP Settings", settingsType);
+            return asset != null;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Type.GetType(어셈블리 한정 문자열)이 null 을 반환하면(어셈블리명 차이로 흔함) 로드된 전
+    /// 어셈블리를 스캔해 흡수한다(AITFontLazyExtensionBuilder.FindTypeAcrossAssemblies 와 동일).
+    /// </summary>
+    private static Type FindTypeAcrossAssemblies(string fullName)
+    {
+        foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            try
+            {
+                var t = asm.GetType(fullName);
+                if (t != null)
+                {
+                    return t;
+                }
+            }
+            catch
+            {
+                // 일부 어셈블리는 GetType 에서 예외 — 무시하고 계속.
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// 빌드 성공 후 lazy 확장 산출물을 검증한다. tmpSettingsAvailable(SDK 의 실제 lazy 진입 게이트 —
+    /// <see cref="HasTmpSettingsResource"/>) 여부에 따라 기대 결과가 갈린다:
     ///   - TMP 가용: ja 가 lazy 로 성공 분리(manifest 엔트리 + 번들 파일 실존) + th 는 커버리지 0 이라
     ///     boot 로 폴백(manifest 에 엔트리 없음 + 커버리지 폴백 경고 로그 존재).
     ///   - TMP 부재: lazy 산출물이 전혀 없어야 하고(manifest 부재 또는 lazy 엔트리 0건), lazy 포기 경고
     ///     로그가 있어야 한다. 이 경로에서도 빌드 자체는 성공해야 한다(안전 불변식).
     /// </summary>
-    private static bool ValidateLazyArtifacts(bool tmpAvailable, List<string> capturedLogs, out string failureReason)
+    private static bool ValidateLazyArtifacts(bool tmpSettingsAvailable, List<string> capturedLogs, out string failureReason)
     {
         failureReason = null;
 
@@ -229,7 +444,7 @@ public class DeployProbeBuildRunner
             }
         }
 
-        if (tmpAvailable)
+        if (tmpSettingsAvailable)
         {
             if (jaEntry == null)
             {
@@ -324,8 +539,9 @@ public class DeployProbeBuildRunner
 
     // ─────────────────────────── 콘텐츠 생성 ───────────────────────────
 
-    /// <summary>프로브 콘텐츠를 생성한다. 반환값은 TMP_FontAsset 생성 성공 여부(tmpAvailable) —
-    /// 빌드 후 lazy 산출물 검증이 어느 분기(TMP 가용/부재)를 기대해야 하는지 결정하는 데 쓰인다.</summary>
+    /// <summary>프로브 콘텐츠를 생성한다. 반환값은 TMP_FontAsset 생성 성공 여부(fontAssetGenerated) —
+    /// 진단 로그(BuildDeployProbe)에서 SDK 의 실제 lazy 게이트(HasTmpSettingsResource)와 교차
+    /// 비교하는 데 쓰인다(F1 — 어서션 자체는 더 이상 이 값에 의존하지 않는다).</summary>
     private static bool GenerateProbeContent()
     {
         // 결정론 보장: 매 빌드 전 생성 루트를 비우고 새로 만든다(HeavyBuildRunner 와 동일 규약).

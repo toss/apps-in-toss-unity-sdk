@@ -3,9 +3,11 @@ using UnityEngine.UI;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using AppsInToss;
+using AppsInToss.Editor;
 
 /// <summary>
 /// 배포 프로브(deploy-probe) 픽스처 빌드 진입점.
@@ -51,6 +53,28 @@ public class DeployProbeBuildRunner
     /// <summary>E2EBuildRunner 훅과 공유하는 env var 이름.</summary>
     private const string EnvSceneVar = "AIT_DEPLOY_PROBE_SCENE_PATH";
 
+    /// <summary>
+    /// WebGL 스크립팅 디파인 게이트. 이 빌드에서만 추가되어 DeployProbeLazyTextSpawner(Runtime)의
+    /// 부트스트랩이 컴파일/발화하게 만든다 — 표준 E2E 빌드에는 이 디파인이 없어 해당 파일 전체가
+    /// #if 밖(빈 컴파일 유닛)이라 영향이 없다.
+    /// </summary>
+    private const string DeployProbeDefine = "AIT_E2E_DEPLOY_PROBE";
+
+    /// <summary>
+    /// AITFontLazyExtensionBuilder.BuildLazyExtensionForTag 의 B2(커버리지 0 폴백) 경고 조각.
+    /// 정확한 문자열은 Editor/AITFontLazyExtensionBuilder.cs 의 HasAnyCoverage 호출부에서 확인함 —
+    /// 그 파일의 로그 문구가 바뀌면 이 상수도 함께 갱신해야 한다.
+    /// </summary>
+    private const string ThCoverageFallbackLogFragment =
+        "'th' 소스 폰트가 해당 문자체계를 포함하지 않아 lazy 확장을 건너뜁니다.";
+
+    /// <summary>
+    /// AITFontLazyExtensionBuilder.ApplyLazyExtensions 의 S3(TMP Settings 리소스 부재) 폴백 경고 조각.
+    /// TMP 미설치 환경(HasTmpSettingsResource()==false)에서 lazy 확장 전체를 포기할 때 남는다.
+    /// </summary>
+    private const string TmpAbsentFallbackLogFragment =
+        "TMP Settings 리소스를 찾을 수 없어 lazy 확장을 건너뜁니다";
+
     [MenuItem("E2E/Build Deploy Probe")]
     public static void BuildDeployProbe()
     {
@@ -58,9 +82,10 @@ public class DeployProbeBuildRunner
         Debug.Log("Deploy Probe Fixture Build");
         Debug.Log("========================================");
 
+        bool tmpAvailable;
         try
         {
-            GenerateProbeContent();
+            tmpAvailable = GenerateProbeContent();
         }
         catch (Exception ex)
         {
@@ -77,31 +102,88 @@ public class DeployProbeBuildRunner
         // index 1 로 추가시키려면 env var 훅 외 다른 방법이 없다 — BuildWithSDK 호출 전에 설정한다.
         Environment.SetEnvironmentVariable(EnvSceneVar, ScenePath);
 
-        // 옵트인 레버 명시 활성화. textureStreamJpeg/audioStreamTranscode 는 시각/청취 검증 전까지
-        // 기본값이 -1(자동=비활성) 이라, 프로브 빌드에서 발화시키려면 명시적으로 1 을 설정해야 한다.
-        // fontSubset 는 자동(-1) 모드에서 동적 텍스트 언어가 하나도 선택되지 않으면 서브셋 자체를
-        // 건너뛰므로(선택 = 인지된 활성화, AITFontSubsetProcessor.ShouldSkipAutoWithoutSelection)
-        // fontSubsetLanguages 를 명시 선택해 러너 실행·복원·리포트와 언어 union 경로를 계속 커버한다.
-        // fontSubsetLazyLanguages=1(명시 활성)을 fontSubsetLanguages="ja"(LazyEligible)와 결합해
-        // AITFontLazyExtensionBuilder 의 lazy 확장 파이프라인(서브셋 TTF → Dynamic TMP_FontAsset →
-        // AssetBundle → manifest.json lazyTag/lazyRanges 기록)이 실빌드에서 실제로 발화하게 한다
-        // (TMP 미설치 환경에서는 TryCreateDynamicTmpFontAsset 이 실패해 fallback-to-boot 경로가 대신
-        // 발화한다 — 두 경로 모두 이 프로브로 커버됨).
-        // 나머지 레버(fontStreaming/textureStreaming/downscale/recompress/audioStreaming/
-        // audioReencode)는 전부 auto-ON(-1) 이라 별도 설정이 필요 없다.
         var config = UnityUtil.GetEditorConf();
-        config.textureStreamJpeg = 1;
-        config.audioStreamTranscode = 1;
-        config.fontSubsetLanguages = "ja";
-        config.fontSubsetLazyLanguages = 1;
-        EditorUtility.SetDirty(config);
-        AssetDatabase.SaveAssets();
-        Debug.Log("✓ 옵트인 레버 명시 활성화: textureStreamJpeg=1, audioStreamTranscode=1, " +
-            "fontSubsetLanguages=ja, fontSubsetLazyLanguages=1");
 
-        // 검증된 E2E 빌드 파이프라인을 그대로 재사용(씬/SDK 설정/포트 오프셋/산출물 검증/exit code
-        // 처리 전부 E2EBuildRunner 소유 — HeavyBuildRunner 와 동일 패턴).
-        E2EBuildRunner.BuildWithSDK();
+        // 원본 값 캡처(로컬 반복 실행 시 설정 오염 방지 — CI는 매번 clean checkout 이라 무관하지만
+        // 로컬에서 이 메뉴를 반복 실행해도 프로젝트 설정이 프로브 값으로 고착되지 않도록 한다).
+        int originalTextureStreamJpeg = config.textureStreamJpeg;
+        int originalAudioStreamTranscode = config.audioStreamTranscode;
+        string originalFontSubsetLanguages = config.fontSubsetLanguages;
+        int originalFontSubsetLazyLanguages = config.fontSubsetLazyLanguages;
+        string originalWebGLDefines = PlayerSettings.GetScriptingDefineSymbolsForGroup(BuildTargetGroup.WebGL);
+
+        bool assertionsPassed = true;
+        string failureReason = null;
+        var capturedLogs = new List<string>();
+
+        try
+        {
+            // 옵트인 레버 명시 활성화. textureStreamJpeg/audioStreamTranscode 는 시각/청취 검증 전까지
+            // 기본값이 -1(자동=비활성) 이라, 프로브 빌드에서 발화시키려면 명시적으로 1 을 설정해야 한다.
+            // fontSubset 는 자동(-1) 모드에서 동적 텍스트 언어가 하나도 선택되지 않으면 서브셋 자체를
+            // 건너뛰므로(선택 = 인지된 활성화, AITFontSubsetProcessor.ShouldSkipAutoWithoutSelection)
+            // fontSubsetLanguages 를 명시 선택해 러너 실행·복원·리포트와 언어 union 경로를 계속 커버한다.
+            // fontSubsetLazyLanguages=1(명시 활성)을 fontSubsetLanguages="ja,th"(둘 다 LazyEligible)와
+            // 결합해 AITFontLazyExtensionBuilder 의 lazy 확장 파이프라인(서브셋 TTF → Dynamic
+            // TMP_FontAsset → AssetBundle → manifest.json lazyTag/lazyRanges 기록)이 실빌드에서 실제로
+            // 발화하게 한다(TMP 미설치 환경에서는 TryCreateDynamicTmpFontAsset 이 실패해
+            // fallback-to-boot 경로가 대신 발화한다 — 두 경로 모두 이 프로브로 커버됨). th 는
+            // NotoSansKR 이 커버리지 0 인 언어라 B2(커버리지 폴백) 부정 경로를 함께 검증한다.
+            // 나머지 레버(fontStreaming/textureStreaming/downscale/recompress/audioStreaming/
+            // audioReencode)는 전부 auto-ON(-1) 이라 별도 설정이 필요 없다.
+            config.textureStreamJpeg = 1;
+            config.audioStreamTranscode = 1;
+            config.fontSubsetLanguages = "ja,th";
+            config.fontSubsetLazyLanguages = 1;
+            EditorUtility.SetDirty(config);
+            AssetDatabase.SaveAssets();
+            Debug.Log("✓ 옵트인 레버 명시 활성화: textureStreamJpeg=1, audioStreamTranscode=1, " +
+                "fontSubsetLanguages=ja,th, fontSubsetLazyLanguages=1");
+
+            // DeployProbeLazyTextSpawner(Runtime, #if AIT_E2E_DEPLOY_PROBE 게이트)가 이 빌드에서만
+            // 컴파일/부팅되도록 WebGL 스크립팅 디파인에 추가한다.
+            string newDefines = AddDefine(originalWebGLDefines, DeployProbeDefine);
+            PlayerSettings.SetScriptingDefineSymbolsForGroup(BuildTargetGroup.WebGL, newDefines);
+            Debug.Log($"✓ WebGL 스크립팅 디파인에 {DeployProbeDefine} 추가");
+
+            // 빌드 중 로그를 전부 캡처해 lazy 확장의 성공/폴백 경고 문자열을 사후 검증한다.
+            Application.LogCallback logHandler = (condition, stackTrace, type) => capturedLogs.Add(condition);
+            Application.logMessageReceived += logHandler;
+            try
+            {
+                // 검증된 E2E 빌드 파이프라인을 그대로 재사용(씬/SDK 설정/포트 오프셋/산출물 검증/exit
+                // code 처리 전부 E2EBuildRunner 소유 — HeavyBuildRunner 와 동일 패턴). 실패 시
+                // E2EBuildRunner 가 EditorApplication.Exit(1|2) 을 직접 호출해 프로세스가 종료되므로,
+                // 아래로 정상 반환됐다는 것 자체가 "빌드 성공"을 의미한다.
+                E2EBuildRunner.BuildWithSDK();
+            }
+            finally
+            {
+                Application.logMessageReceived -= logHandler;
+            }
+
+            assertionsPassed = ValidateLazyArtifacts(tmpAvailable, capturedLogs, out failureReason);
+        }
+        finally
+        {
+            // 설정 원복(로컬 반복 실행 위생 — CI는 clean checkout이라 무관).
+            config.textureStreamJpeg = originalTextureStreamJpeg;
+            config.audioStreamTranscode = originalAudioStreamTranscode;
+            config.fontSubsetLanguages = originalFontSubsetLanguages;
+            config.fontSubsetLazyLanguages = originalFontSubsetLazyLanguages;
+            EditorUtility.SetDirty(config);
+            AssetDatabase.SaveAssets();
+
+            PlayerSettings.SetScriptingDefineSymbolsForGroup(BuildTargetGroup.WebGL, originalWebGLDefines);
+        }
+
+        if (!assertionsPassed)
+        {
+            Debug.LogError("========================================");
+            Debug.LogError($"Deploy probe lazy 산출물 검증 FAILED: {failureReason}");
+            Debug.LogError("========================================");
+            EditorApplication.Exit(3);
+        }
     }
 
     /// <summary>커맨드라인 진입점(batchmode -executeMethod 용).</summary>
@@ -110,9 +192,141 @@ public class DeployProbeBuildRunner
         BuildDeployProbe();
     }
 
+    // ─────────────────────────── lazy 산출물 검증(W1) ───────────────────────────
+
+    /// <summary>
+    /// 빌드 성공 후 lazy 확장 산출물을 검증한다. TMP 가용 여부에 따라 기대 결과가 갈린다:
+    ///   - TMP 가용: ja 가 lazy 로 성공 분리(manifest 엔트리 + 번들 파일 실존) + th 는 커버리지 0 이라
+    ///     boot 로 폴백(manifest 에 엔트리 없음 + 커버리지 폴백 경고 로그 존재).
+    ///   - TMP 부재: lazy 산출물이 전혀 없어야 하고(manifest 부재 또는 lazy 엔트리 0건), lazy 포기 경고
+    ///     로그가 있어야 한다. 이 경로에서도 빌드 자체는 성공해야 한다(안전 불변식).
+    /// </summary>
+    private static bool ValidateLazyArtifacts(bool tmpAvailable, List<string> capturedLogs, out string failureReason)
+    {
+        failureReason = null;
+
+        string projectPath = UnityUtil.GetProjectPath();
+        string streamFontDir = Path.Combine(
+            projectPath, "ait-build", "dist", "web", "StreamingAssets", "ait-stream-font");
+        string manifestPath = Path.Combine(streamFontDir, "manifest.json");
+
+        var manifest = AITFontLazyExtensionBuilder.ReadManifest(manifestPath);
+        var entries = manifest.entries ?? Array.Empty<AITFontLazyExtensionBuilder.ManifestEntryDto>();
+
+        AITFontLazyExtensionBuilder.ManifestEntryDto? jaEntry = null;
+        int lazyEntryCount = 0;
+        foreach (var e in entries)
+        {
+            if (string.IsNullOrEmpty(e.lazyTag))
+            {
+                continue;
+            }
+
+            lazyEntryCount++;
+            if (e.lazyTag == "ja")
+            {
+                jaEntry = e;
+            }
+        }
+
+        if (tmpAvailable)
+        {
+            if (jaEntry == null)
+            {
+                failureReason = $"TMP 가용 환경인데 manifest 에 ja lazy 엔트리가 없음: {manifestPath}";
+                return false;
+            }
+
+            if (string.IsNullOrEmpty(jaEntry.Value.lazyRanges))
+            {
+                failureReason = "ja lazy 엔트리의 lazyRanges 가 비어있음";
+                return false;
+            }
+
+            string bundlePath = Path.Combine(streamFontDir, jaEntry.Value.bundle ?? string.Empty);
+            if (string.IsNullOrEmpty(jaEntry.Value.bundle) || !File.Exists(bundlePath) || new FileInfo(bundlePath).Length <= 0)
+            {
+                failureReason = $"ja lazy 번들 파일이 없거나 크기 0: {bundlePath}";
+                return false;
+            }
+
+            if (lazyEntryCount != 1)
+            {
+                // th 는 커버리지 0 이라 lazy 엔트리가 없어야 한다 — ja 외 다른 lazy 태그가 있으면 이상.
+                failureReason = $"기대한 lazy 엔트리 수(1: ja)와 다름(실제 {lazyEntryCount}건) — th 가 부당하게 lazy 로 분리됐을 수 있음";
+                return false;
+            }
+
+            if (!ContainsLog(capturedLogs, ThCoverageFallbackLogFragment))
+            {
+                failureReason = $"캡처 로그에 th 커버리지 폴백 경고가 없음(기대 문자열 조각: \"{ThCoverageFallbackLogFragment}\")";
+                return false;
+            }
+
+            Debug.Log($"[deploy-probe] lazy 검증 통과(TMP 가용 경로): ja bundle={jaEntry.Value.bundle}, th 는 boot 폴백 확인");
+        }
+        else
+        {
+            if (lazyEntryCount > 0)
+            {
+                failureReason = $"TMP 부재 환경인데 manifest 에 lazy 엔트리가 {lazyEntryCount}건 존재함: {manifestPath}";
+                return false;
+            }
+
+            if (!ContainsLog(capturedLogs, TmpAbsentFallbackLogFragment))
+            {
+                failureReason = $"캡처 로그에 lazy 포기 경고가 없음(기대 문자열 조각: \"{TmpAbsentFallbackLogFragment}\")";
+                return false;
+            }
+
+            Debug.Log("[deploy-probe] lazy 검증 통과(TMP 부재 경로): lazy 산출물 없음 확인 + 포기 경고 로그 확인");
+        }
+
+        return true;
+    }
+
+    private static bool ContainsLog(List<string> logs, string fragment)
+    {
+        if (logs == null || string.IsNullOrEmpty(fragment))
+        {
+            return false;
+        }
+
+        foreach (var l in logs)
+        {
+            if (!string.IsNullOrEmpty(l) && l.Contains(fragment))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>세미콜론 구분 스크립팅 디파인 문자열에 define 을 멱등 추가한다(이미 있으면 그대로 반환).</summary>
+    private static string AddDefine(string existingDefines, string define)
+    {
+        if (string.IsNullOrEmpty(existingDefines))
+        {
+            return define;
+        }
+
+        foreach (var p in existingDefines.Split(';'))
+        {
+            if (p == define)
+            {
+                return existingDefines;
+            }
+        }
+
+        return existingDefines + ";" + define;
+    }
+
     // ─────────────────────────── 콘텐츠 생성 ───────────────────────────
 
-    private static void GenerateProbeContent()
+    /// <summary>프로브 콘텐츠를 생성한다. 반환값은 TMP_FontAsset 생성 성공 여부(tmpAvailable) —
+    /// 빌드 후 lazy 산출물 검증이 어느 분기(TMP 가용/부재)를 기대해야 하는지 결정하는 데 쓰인다.</summary>
+    private static bool GenerateProbeContent()
     {
         // 결정론 보장: 매 빌드 전 생성 루트를 비우고 새로 만든다(HeavyBuildRunner 와 동일 규약).
         if (AssetDatabase.IsValidFolder(ProbeRoot))
@@ -134,6 +348,8 @@ public class DeployProbeBuildRunner
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
         LogProbeFootprint();
+
+        return !string.IsNullOrEmpty(fontAssetPath);
     }
 
     // ---- 텍스처: 3072² 완전 불투명 LCG 노이즈 (textureStreaming/downscale/recompress/JPEG 전환) ----

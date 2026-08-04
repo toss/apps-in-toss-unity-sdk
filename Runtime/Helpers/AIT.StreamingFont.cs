@@ -32,6 +32,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Reflection;
 using UnityEngine;
 #if AIT_HAS_UNITYWEBREQUEST
@@ -68,6 +69,27 @@ namespace AppsInToss
 
             /// <summary>페이로드 인코딩("br" = brotli). 빈 값이면 무압축(구 매니페스트 호환).</summary>
             public string encoding;
+
+            /// <summary>lazy 확장 언어 태그(예: "ja"). 빈 값/부재(구 매니페스트) = 기존 eager entry.</summary>
+            public string lazyTag;
+
+            /// <summary>lazyTag 의 전체 유니코드 범위("U+XXXX-YYYY,U+ZZZZ" 콤마 구분, 언어 테이블 값 그대로).</summary>
+            public string lazyRanges;
+        }
+
+        /// <summary>파싱된 유니코드 코드포인트 구간(양끝 포함). 순수 값 타입 — 테스트 가능.</summary>
+        internal readonly struct CodepointRange
+        {
+            public readonly int Start;
+            public readonly int End;
+
+            public CodepointRange(int start, int end)
+            {
+                Start = start;
+                End = end;
+            }
+
+            public bool Contains(int codepoint) => codepoint >= Start && codepoint <= End;
         }
 
         [Serializable]
@@ -85,6 +107,19 @@ namespace AppsInToss
         private Type tmpSettingsType;
         private Type tmpFontAssetType;
         private IList fallbackList;
+
+        // ─────────────── lazy 확장 언어 상태(pending 소진 전까지 GameObject 를 살려둔다) ───────────────
+        private readonly Dictionary<string, Entry> lazyPending = new Dictionary<string, Entry>();
+        private readonly Dictionary<string, CodepointRange[]> lazyPendingRanges = new Dictionary<string, CodepointRange[]>();
+        private int lazyInflight;
+        private bool lazySubscribed;
+        private EventInfo lazyEventInfo;
+        private Delegate lazyEventHandler;
+        private Coroutine lazyPollCoroutine;
+
+        // TMP_Text 리플렉션 캐시(lazy 초기 스윕/이벤트 스캔 전용 — RefreshVisibleText 와 별개 캐시).
+        private Type lazyTmpTextType;
+        private PropertyInfo lazyTmpTextTextProperty;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         [Preserve]
@@ -132,18 +167,43 @@ namespace AppsInToss
                 yield break;
             }
 
+            // eager/lazy 분리: lazyTag 가 있는 entry 는 즉시 로드하지 않고 pending 맵에만 등록한다.
+            var eagerQueue = new Queue<Entry>();
+            foreach (var e in pending)
+            {
+                if (string.IsNullOrEmpty(e.lazyTag))
+                {
+                    eagerQueue.Enqueue(e);
+                    continue;
+                }
+
+                if (lazyPending.ContainsKey(e.lazyTag))
+                {
+                    Debug.LogWarning($"[AIT-StreamingFont] 중복 lazyTag 무시: {e.lazyTag} ({e.bundle})");
+                    continue;
+                }
+
+                var ranges = ParseRanges(e.lazyRanges);
+                if (ranges.Length == 0)
+                {
+                    Debug.LogWarning($"[AIT-StreamingFont] lazyRanges 파싱 결과가 비어 있어 이 태그는 감지되지 않습니다: {e.lazyTag}");
+                }
+
+                lazyPending[e.lazyTag] = e;
+                lazyPendingRanges[e.lazyTag] = ranges;
+            }
+
             int injected = 0;
             int inflight = 0;
-            var queue = new Queue<Entry>(pending);
             int doneCount = 0;
-            int total = pending.Count;
+            int total = eagerQueue.Count;
 
             // 단순 동시성 게이트: maxConcurrent 만큼 동시에 로드/주입.
             while (doneCount < total)
             {
-                while (inflight < maxConcurrent && queue.Count > 0)
+                while (inflight < maxConcurrent && eagerQueue.Count > 0)
                 {
-                    var e = queue.Dequeue();
+                    var e = eagerQueue.Dequeue();
                     inflight++;
                     StartCoroutine(LoadAndInject(e, ok =>
                     {
@@ -164,8 +224,16 @@ namespace AppsInToss
                 RefreshVisibleText();
             }
 
-            Debug.Log($"[AIT-StreamingFont] 폰트 재수화 완료: {injected}/{total} 주입.");
-            Destroy(gameObject);
+            Debug.Log($"[AIT-StreamingFont] 폰트 재수화 완료(eager): {injected}/{total} 주입.");
+
+            if (lazyPending.Count == 0)
+            {
+                Destroy(gameObject);
+                yield break;
+            }
+
+            // lazy pending 이 남아있는 동안은 GameObject 를 유지한다 — 소진 시 FinishLazyDetection 에서 파괴.
+            SetupLazyDetection();
         }
 
         private IEnumerator LoadManifest()
@@ -288,6 +356,343 @@ namespace AppsInToss
             yield return null;
             done(false);
 #endif
+        }
+
+        // ─────────────────────────── lazy 확장 언어 감지/로드 ───────────────────────────
+
+        /// <summary>
+        /// "U+XXXX-YYYY,U+ZZZZ" 형식의 lazyRanges 문자열을 (start,end) 구간 배열로 파싱한다(양끝 포함).
+        /// 단일 코드포인트 토큰("U+ZZZZ", 대시 없음)은 start==end 구간으로 취급. 형식이 어긋난 토큰은
+        /// 조용히 무시하고 나머지 유효 토큰은 그대로 반영한다(전체 실패로 번지지 않음). 순수 정적
+        /// 함수 — 부수 효과 없음, 테스트 대상.
+        /// </summary>
+        internal static CodepointRange[] ParseRanges(string ranges)
+        {
+            if (string.IsNullOrEmpty(ranges))
+            {
+                return Array.Empty<CodepointRange>();
+            }
+
+            var result = new List<CodepointRange>();
+            foreach (var rawToken in ranges.Split(','))
+            {
+                string token = rawToken.Trim();
+                if (token.Length < 3 || !token.StartsWith("U+", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue; // 빈 토큰/형식 불일치 — 무시.
+                }
+
+                string body = token.Substring(2);
+                int dashIdx = body.IndexOf('-');
+                string startHex = dashIdx >= 0 ? body.Substring(0, dashIdx) : body;
+                string endHex = dashIdx >= 0 ? body.Substring(dashIdx + 1) : body;
+
+                if (int.TryParse(startHex, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out int start)
+                    && int.TryParse(endHex, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out int end)
+                    && start <= end)
+                {
+                    result.Add(new CodepointRange(start, end));
+                }
+
+                // else: 파싱 실패(비16진/역전 구간 등) — 이 토큰만 무시하고 계속.
+            }
+
+            return result.ToArray();
+        }
+
+        /// <summary>
+        /// text 안의 각 문자를 pending 언어 태그들의 유니코드 범위와 대조해, 매치되는 태그 전부를
+        /// 반환한다. 서로게이트 쌍은 UTF-32 코드포인트로 합성해 검사(BMP 밖 이모지 등 지원). 한
+        /// 문자가 여러 태그 범위에 걸치면(예: 한자가 ja/zh-Hans 양쪽에 속함) 매치되는 태그 전부를
+        /// 반환한다 — 겹치는 태그 모두 로드하는 것이 의도된 동작. 순수 정적 함수 — 테스트 대상.
+        /// </summary>
+        internal static List<string> MatchPendingTags(string text, IDictionary<string, CodepointRange[]> pendingTagRanges)
+        {
+            var matched = new List<string>();
+            if (string.IsNullOrEmpty(text) || pendingTagRanges == null || pendingTagRanges.Count == 0)
+            {
+                return matched;
+            }
+
+            for (int i = 0; i < text.Length; i++)
+            {
+                char c = text[i];
+                int codepoint;
+                if (char.IsHighSurrogate(c) && i + 1 < text.Length && char.IsLowSurrogate(text[i + 1]))
+                {
+                    codepoint = char.ConvertToUtf32(c, text[i + 1]);
+                    i++; // 서로게이트 쌍 소비.
+                }
+                else if (char.IsSurrogate(c))
+                {
+                    continue; // 짝없는 서로게이트 — 무시.
+                }
+                else
+                {
+                    codepoint = c;
+                }
+
+                foreach (var kv in pendingTagRanges)
+                {
+                    if (matched.Contains(kv.Key))
+                    {
+                        continue;
+                    }
+
+                    var tagRanges = kv.Value;
+                    if (tagRanges == null)
+                    {
+                        continue;
+                    }
+
+                    for (int r = 0; r < tagRanges.Length; r++)
+                    {
+                        if (tagRanges[r].Contains(codepoint))
+                        {
+                            matched.Add(kv.Key);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            return matched;
+        }
+
+        /// <summary>lazy pending 등록 직후 1회: 감지 소스(이벤트 or 폴링)를 세팅하기 전에 이미 떠 있는 TMP 텍스트를 스캔.</summary>
+        private void SetupLazyDetection()
+        {
+            ScanAllTmpText();
+
+            if (TrySubscribeTextChanged())
+            {
+                Debug.Log("[AIT-StreamingFont] TMPro_EventManager.TEXT_CHANGED_EVENT 구독 성공 — 이벤트 기반 lazy 감지.");
+            }
+            else
+            {
+                Debug.LogWarning("[AIT-StreamingFont] TEXT_CHANGED_EVENT 구독 실패 — 1초 간격 폴링으로 폴백합니다.");
+                lazyPollCoroutine = StartCoroutine(PollLazyDetection());
+            }
+
+            // 스윕 도중 이미 전 태그가 트리거되어 로드/완료까지 끝났을 수 있음(동기 완료 극단값) — 정리.
+            MaybeFinishLazy();
+        }
+
+        private bool CacheLazyTmpTextIntrospection()
+        {
+            if (lazyTmpTextType != null)
+            {
+                return true;
+            }
+
+            lazyTmpTextType = FindType("TMPro.TMP_Text");
+            if (lazyTmpTextType == null)
+            {
+                return false;
+            }
+
+            lazyTmpTextTextProperty = lazyTmpTextType.GetProperty("text", BindingFlags.Public | BindingFlags.Instance);
+            return lazyTmpTextTextProperty != null;
+        }
+
+        private void ScanAllTmpText()
+        {
+            if (!CacheLazyTmpTextIntrospection())
+            {
+                return;
+            }
+
+            try
+            {
+                var objs = Resources.FindObjectsOfTypeAll(lazyTmpTextType);
+                foreach (var o in objs)
+                {
+                    ScanOneTmpText(o);
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[AIT-StreamingFont] 초기 TMP 텍스트 스윕 예외: {e.Message}");
+            }
+        }
+
+        /// <summary>단일 TMP_Text 오브젝트의 현재 text 를 스캔해 매치되는 lazy 태그가 있으면 로드를 트리거.</summary>
+        private void ScanOneTmpText(UnityEngine.Object tmpTextObj)
+        {
+            if (tmpTextObj == null || lazyTmpTextTextProperty == null || lazyPending.Count == 0)
+            {
+                return;
+            }
+
+            string text;
+            try
+            {
+                text = lazyTmpTextTextProperty.GetValue(tmpTextObj) as string;
+            }
+            catch
+            {
+                return; // 개별 오브젝트 리플렉션 실패 — 무시하고 계속.
+            }
+
+            var matched = MatchPendingTags(text, lazyPendingRanges);
+            if (matched.Count > 0)
+            {
+                TriggerLazyLoad(matched);
+            }
+        }
+
+        /// <summary>매치된 태그들을 pending 에서 제거하고 각각 온디맨드 로드 코루틴을 시작.</summary>
+        private void TriggerLazyLoad(List<string> tags)
+        {
+            foreach (var tag in tags)
+            {
+                if (!lazyPending.TryGetValue(tag, out var e))
+                {
+                    continue; // 이미 트리거됨(경합 방지) — 세션 내 1회 시도 정책.
+                }
+
+                lazyPending.Remove(tag);
+                lazyPendingRanges.Remove(tag);
+                StartCoroutine(LoadLazyEntry(e));
+            }
+        }
+
+        /// <summary>lazy entry 1개를 기존 maxConcurrent 게이트를 지켜 로드/주입. 완료 시 소진 여부를 확인해 정리.</summary>
+        private IEnumerator LoadLazyEntry(Entry e)
+        {
+            while (lazyInflight >= maxConcurrent)
+            {
+                yield return null;
+            }
+
+            lazyInflight++;
+            bool ok = false;
+            yield return LoadAndInject(e, r => ok = r);
+            lazyInflight--;
+
+            if (ok)
+            {
+                RefreshVisibleText();
+                Debug.Log($"[AIT-StreamingFont] lazy 폰트 로드 완료: {e.lazyTag} ({e.bundle})");
+            }
+            else
+            {
+                Debug.LogWarning($"[AIT-StreamingFont] lazy 폰트 로드 실패(세션 내 재시도 없음): {e.lazyTag} ({e.bundle})");
+            }
+
+            MaybeFinishLazy();
+        }
+
+        /// <summary>pending 도 inflight 도 없으면(전 태그 소진) 감지 리소스를 정리하고 GameObject 를 파괴.</summary>
+        private void MaybeFinishLazy()
+        {
+            if (lazyPending.Count == 0 && lazyInflight == 0)
+            {
+                FinishLazyDetection();
+            }
+        }
+
+        private void FinishLazyDetection()
+        {
+            UnsubscribeTextChanged();
+            if (lazyPollCoroutine != null)
+            {
+                StopCoroutine(lazyPollCoroutine);
+                lazyPollCoroutine = null;
+            }
+
+            if (this != null && gameObject != null)
+            {
+                Debug.Log("[AIT-StreamingFont] lazy 폰트 전 태그 소진 — 재수화 컴포넌트를 종료합니다.");
+                Destroy(gameObject);
+            }
+        }
+
+        /// <summary>pending 이 남아있는 동안 1초 간격으로 전체 TMP_Text 를 스윕(이벤트 구독 실패 시 폴백).</summary>
+        private IEnumerator PollLazyDetection()
+        {
+            var wait = new WaitForSeconds(1f);
+            while (lazyPending.Count > 0)
+            {
+                yield return wait;
+                ScanAllTmpText();
+            }
+        }
+
+        /// <summary>
+        /// TMPro_EventManager.TEXT_CHANGED_EVENT(static event, UnityEngine.Object 1개 인자)에 리플렉션으로
+        /// 구독한다. 이벤트/타입 부재 또는 구독 중 예외 시 false(호출부가 폴링 폴백으로 전환).
+        /// </summary>
+        private bool TrySubscribeTextChanged()
+        {
+            try
+            {
+                var mgrType = FindType("TMPro.TMPro_EventManager");
+                if (mgrType == null)
+                {
+                    return false;
+                }
+
+                var eventInfo = mgrType.GetEvent("TEXT_CHANGED_EVENT", BindingFlags.Public | BindingFlags.Static);
+                var addMethod = eventInfo?.GetAddMethod();
+                var handlerMethod = GetType().GetMethod(nameof(OnTmpTextChangedHandler), BindingFlags.NonPublic | BindingFlags.Instance);
+                if (addMethod == null || handlerMethod == null)
+                {
+                    return false;
+                }
+
+                var handler = Delegate.CreateDelegate(eventInfo.EventHandlerType, this, handlerMethod);
+                addMethod.Invoke(null, new object[] { handler });
+
+                lazyEventInfo = eventInfo;
+                lazyEventHandler = handler;
+                lazySubscribed = true;
+                return true;
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[AIT-StreamingFont] TEXT_CHANGED_EVENT 구독 예외: {e.Message}");
+                lazyEventInfo = null;
+                lazyEventHandler = null;
+                lazySubscribed = false;
+                return false;
+            }
+        }
+
+        private void UnsubscribeTextChanged()
+        {
+            if (!lazySubscribed || lazyEventInfo == null || lazyEventHandler == null)
+            {
+                return;
+            }
+
+            try
+            {
+                lazyEventInfo.GetRemoveMethod()?.Invoke(null, new object[] { lazyEventHandler });
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[AIT-StreamingFont] TEXT_CHANGED_EVENT 구독 해제 예외: {e.Message}");
+            }
+            finally
+            {
+                lazySubscribed = false;
+                lazyEventHandler = null;
+                lazyEventInfo = null;
+            }
+        }
+
+        /// <summary>TEXT_CHANGED_EVENT 핸들러 — 변경된 오브젝트 1개만 스캔(전체 재스윕 대비 저비용).</summary>
+        private void OnTmpTextChangedHandler(UnityEngine.Object changedObj)
+        {
+            ScanOneTmpText(changedObj);
+        }
+
+        private void OnDestroy()
+        {
+            // static 이벤트 구독을 남긴 채 파괴되면 델리게이트가 죽은 this 를 참조해 누수/예외 위험 —
+            // 정상 종료 경로(FinishLazyDetection) 밖에서 파괴되는 경우(도메인 리로드 등)를 대비한 안전망.
+            UnsubscribeTextChanged();
         }
 
         // ─────────────────────────── TMP reflection ───────────────────────────

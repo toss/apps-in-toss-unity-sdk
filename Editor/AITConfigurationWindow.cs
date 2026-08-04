@@ -886,9 +886,9 @@ namespace AppsInToss.Editor
 
             bool defaultValue = AITDefaultSettings.GetDefaultFontSubset();
             // 수동 설정 모드: targetPaths 또는 unicodeRanges 가 채워져 있으면 override(수동) 모드로 간주.
-            bool hasManualOverride = !string.IsNullOrEmpty(config.fontSubsetTargetPaths)
-                || !string.IsNullOrEmpty(config.fontSubsetUnicodeRanges);
-            bool hasLanguageSelection = !string.IsNullOrEmpty(config.fontSubsetLanguages);
+            bool hasManualOverride = !string.IsNullOrWhiteSpace(config.fontSubsetTargetPaths)
+                || !string.IsNullOrWhiteSpace(config.fontSubsetUnicodeRanges);
+            bool hasLanguageSelection = !string.IsNullOrWhiteSpace(config.fontSubsetLanguages);
 
             // 4-state 매핑: 0=자동, 1=비활성화, 2=명시 활성(스캔 단독 실행), 3=수동 설정.
             // 우선순위: 비활성화(fontSubset==0) > 수동 override 존재 > 명시 활성(fontSubset==1) > 자동.
@@ -920,7 +920,7 @@ namespace AppsInToss.Editor
             string label = currentIndex == 0
                 ? $"폰트 subset (자동: {(defaultValue ? "활성화" : "비활성화")})"
                 : "폰트 subset";
-            string[] options = { "자동 (언어 선택 시 실행)", "비활성화", "명시 활성 (스캔 단독 실행)", "수동 설정" };
+            string[] options = { "자동 (언어 선택 시 실행)", "비활성화", "명시 활성 (스캔 단독 실행)", "수동 설정 (대상·범위 입력 시)" };
             int newIndex = EditorGUILayout.Popup(
                 new GUIContent(label,
                     "zero-config: 자동 모드는 동적 텍스트 언어를 하나 이상 선택해야 실행됩니다(선택 = 인지된 활성화). " +
@@ -947,6 +947,8 @@ namespace AppsInToss.Editor
                         config.fontSubsetUnicodeRanges = string.Empty;
                         break;
                     case 3: // 수동 설정 — 대상/범위 필드는 사용자가 아래에서 채운다.
+                        // 필드를 채우기 전까지는 다음 repaint에서 "명시 활성"(2)으로 표시된다
+                        // (이 인덱스는 필드 기재 여부로 판별되는 파생 상태 — 옵션 라벨에 명시).
                         config.fontSubset = 1;
                         break;
                 }
@@ -1018,9 +1020,11 @@ namespace AppsInToss.Editor
                     {
                         bool prevEnabled = GUI.enabled;
                         GUI.enabled = false;
-                        if (currentIndex == 3)
+                        if (!string.IsNullOrWhiteSpace(config.fontSubsetUnicodeRanges))
                         {
-                            // 수동 설정은 스캔/베이스라인을 생략하므로 "항상 보존"이 거짓 — 체크 해제+비활성으로 정직화.
+                            // 수동 범위(fontSubsetUnicodeRanges) 지정 시에만 스캔/베이스라인이 생략되므로
+                            // 그 경우에 한해 "항상 보존"이 거짓 — 체크 해제+비활성으로 정직화.
+                            // (대상 폰트만 수동 지정한 경우는 베이스라인이 여전히 union된다.)
                             EditorGUILayout.ToggleLeft($"{entry.Label} (수동 범위에 직접 포함 필요)", false);
                         }
                         else

@@ -35,7 +35,10 @@ using AppsInToss;
 /// TMP 가 실제로 설치되지 않은 환경(현재 모든 샘플 프로젝트)에서는 TMP_FontAsset 생성을 건너뛰고
 /// 레거시 UnityEngine.UI.Text + 원본 .otf 로 폴백한다(fontSubset 레버는 아래에서 명시 선택하는
 /// fontSubsetLanguages="ja" 덕분에 계속 발화, fontStreaming 레버만 스킵 — GetFontStreamingCandidates
-/// 가 t:TMP_FontAsset 만 스캔하기 때문).
+/// 가 t:TMP_FontAsset 만 스캔하기 때문). 같은 이유로 fontSubsetLazyLanguages=1 도 lazy 확장 경로
+/// (AITFontLazyExtensionBuilder.TryCreateDynamicTmpFontAsset)가 TMP 부재로 실패해 안전 불변식에
+/// 따라 fallback-to-boot 하는 경로를 커버하게 된다 — TMP 가 설치된 환경에서는 lazy 확장 성공
+/// 경로(서브셋 TTF → Dynamic TMP_FontAsset → AssetBundle)를 커버한다.
 /// </summary>
 public class DeployProbeBuildRunner
 {
@@ -79,15 +82,22 @@ public class DeployProbeBuildRunner
         // fontSubset 는 자동(-1) 모드에서 동적 텍스트 언어가 하나도 선택되지 않으면 서브셋 자체를
         // 건너뛰므로(선택 = 인지된 활성화, AITFontSubsetProcessor.ShouldSkipAutoWithoutSelection)
         // fontSubsetLanguages 를 명시 선택해 러너 실행·복원·리포트와 언어 union 경로를 계속 커버한다.
+        // fontSubsetLazyLanguages=1(명시 활성)을 fontSubsetLanguages="ja"(LazyEligible)와 결합해
+        // AITFontLazyExtensionBuilder 의 lazy 확장 파이프라인(서브셋 TTF → Dynamic TMP_FontAsset →
+        // AssetBundle → manifest.json lazyTag/lazyRanges 기록)이 실빌드에서 실제로 발화하게 한다
+        // (TMP 미설치 환경에서는 TryCreateDynamicTmpFontAsset 이 실패해 fallback-to-boot 경로가 대신
+        // 발화한다 — 두 경로 모두 이 프로브로 커버됨).
         // 나머지 레버(fontStreaming/textureStreaming/downscale/recompress/audioStreaming/
         // audioReencode)는 전부 auto-ON(-1) 이라 별도 설정이 필요 없다.
         var config = UnityUtil.GetEditorConf();
         config.textureStreamJpeg = 1;
         config.audioStreamTranscode = 1;
         config.fontSubsetLanguages = "ja";
+        config.fontSubsetLazyLanguages = 1;
         EditorUtility.SetDirty(config);
         AssetDatabase.SaveAssets();
-        Debug.Log("✓ 옵트인 레버 명시 활성화: textureStreamJpeg=1, audioStreamTranscode=1, fontSubsetLanguages=ja");
+        Debug.Log("✓ 옵트인 레버 명시 활성화: textureStreamJpeg=1, audioStreamTranscode=1, " +
+            "fontSubsetLanguages=ja, fontSubsetLazyLanguages=1");
 
         // 검증된 E2E 빌드 파이프라인을 그대로 재사용(씬/SDK 설정/포트 오프셋/산출물 검증/exit code
         // 처리 전부 E2EBuildRunner 소유 — HeavyBuildRunner 와 동일 패턴).

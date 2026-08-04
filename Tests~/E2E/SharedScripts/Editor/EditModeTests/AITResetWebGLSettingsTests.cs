@@ -54,6 +54,8 @@ public class AITResetWebGLSettingsTests
         // 폰트 CJK subset
         "fontSubset", "fontSubsetTargetPaths", "fontSubsetUnicodeRanges",
         "fontSubsetExtraRanges", "fontSubsetExcludeTargetPaths", "fontSubsetLanguages",
+        // 폰트 subset — 선택 언어 lazy 확장(실험적)
+        "fontSubsetLazyLanguages",
         // 대형 텍스처 스트리밍
         "textureStreaming", "textureStreamingMinBytes", "textureStreamingDirs",
         "textureStreamingExcludeDirs", "textureStreamingMaxConcurrent",

@@ -119,6 +119,21 @@ namespace AppsInToss.Editor
                 return handle;
             }
 
+            // 자동 모드(fontSubset == -1)에서 동적 텍스트 언어/범위/대상이 아무것도 선택되지 않았으면,
+            // 개발자가 동적 텍스트 리스크를 인지하지 못한 것으로 보아 subset 자체를 건너뛴다(선택 = 인지된 활성화).
+            // 명시 활성(fontSubset == 1)은 기존 동작 그대로(스캔 단독 실행 허용).
+            if (ShouldSkipAutoWithoutSelection(
+                    config.fontSubset,
+                    config.fontSubsetLanguages,
+                    config.fontSubsetUnicodeRanges,
+                    config.fontSubsetExtraRanges,
+                    config.fontSubsetTargetPaths))
+            {
+                Debug.Log("AIT 폰트 서브셋: 동적 텍스트 언어가 선택되지 않아 건너뜁니다. " +
+                    "Configuration > 폰트 CJK 서브셋에서 언어를 선택하거나, 명시 활성(활성화)으로 설정하세요.");
+                return handle;
+            }
+
             // ── 안전 정보 수집: TMP fallback 소스 / Dynamic atlas 소스 폰트(리플렉션, TMP 미설치 안전) ──
             //   fallback 소스: '임의 언어' 글자를 렌더하려고 존재하는 폰트라 subset 하면 tofu 위험 → 자동 제외.
             //   Dynamic atlas 소스: 런타임에 소스에서 글자를 즉석 래스터화 → 보존 범위 밖 '동적' 글자 tofu 위험 → 경고.
@@ -176,6 +191,15 @@ namespace AppsInToss.Editor
             else
             {
                 Debug.Log("[AIT-FontSubset] 수동 보존 범위 지정(override) → Auto 스캔 생략.");
+            }
+
+            // ── (additive) fontSubsetLanguages: auto/manual 무관하게 항상 union(override 아님) ──
+            //   개발자가 선택한 동적 텍스트 언어(닉네임/채팅 등)의 유니코드 범위를 보강한다.
+            string languageRanges = AITFontSubsetLanguages.BuildRanges(config.fontSubsetLanguages);
+            if (!string.IsNullOrEmpty(languageRanges))
+            {
+                ranges = string.IsNullOrEmpty(ranges) ? languageRanges : ranges + "," + languageRanges;
+                Debug.Log($"[AIT-FontSubset] 동적 텍스트 언어 보존 범위(union) 적용: {languageRanges}");
             }
 
             // ── (additive) fontSubsetExtraRanges: auto/manual 무관하게 항상 union(override 아님) ──
@@ -292,6 +316,27 @@ namespace AppsInToss.Editor
                 AssetDatabase.Refresh();
                 return new FontHandle();
             }
+        }
+
+        /// <summary>
+        /// 자동 모드(fontSubset == -1)에서 동적 텍스트 언어/범위/대상이 아무것도 선택되지 않았으면
+        /// true(subset 전체 skip). 선택 = 인지된 활성화 — 아무 설정도 없는 자동 모드는 개발자가
+        /// 동적 텍스트 리스크(서버발 닉네임/채팅 등)를 인지하지 못했을 가능성이 높다고 보아 보수적으로 건너뛴다.
+        /// fontSubset == 1(명시 활성)이면 기존 동작 그대로(스캔 단독 실행 허용) — false 를 반환.
+        /// 부수 효과 없음 → 단위 테스트 대상.
+        /// </summary>
+        internal static bool ShouldSkipAutoWithoutSelection(
+            int fontSubset, string languages, string unicodeRanges, string extraRanges, string targetPaths)
+        {
+            if (fontSubset != -1)
+            {
+                return false;
+            }
+
+            return string.IsNullOrEmpty((languages ?? string.Empty).Trim())
+                && string.IsNullOrEmpty((unicodeRanges ?? string.Empty).Trim())
+                && string.IsNullOrEmpty((extraRanges ?? string.Empty).Trim())
+                && string.IsNullOrEmpty((targetPaths ?? string.Empty).Trim());
         }
 
         /// <summary>빌드 종료 후(성공/실패 무관) 호출: 원본 폰트로 복원한다.</summary>

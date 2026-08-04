@@ -122,9 +122,6 @@ namespace AppsInToss.Editor
         /// (주 폰트) 만 lazy 확장 소스로 사용한다.</param>
         /// <param name="node">EnsureTool 로 해석된 node 실행 경로.</param>
         /// <param name="runner">subset-font-runner.mjs 경로.</param>
-        /// <param name="anyLazyArtifactsPersisted">true 면 StreamingAssets 에 lazy 아티팩트가 남았음
-        /// (RestoreForBuild 가 CleanupAfterBuild 를 호출해야 함을 뜻함).</param>
-        /// <returns>boot union 계산에 사용할 언어 태그 CSV(bootTags, Table 순서로 결정적 직렬화).</returns>
         /// <summary>
         /// fontSubsetLazyLanguages tri-state 를 해석해 lazy 확장이 이번 빌드에서 활성인지 반환한다(N11:
         /// AITFontSubsetProcessor 가 EnsureTool 조기 호출 여부를 이 값만으로 판단할 수 있도록 노출).
@@ -143,6 +140,19 @@ namespace AppsInToss.Editor
                 : AITDefaultSettings.GetDefaultFontSubsetLazyLanguages();
         }
 
+        /// <summary>
+        /// fontSubsetLazyLanguages tri-state 에 따라 lazy 확장을 시도하고, boot union 계산에 쓸 언어
+        /// CSV(=lazy 로 성공적으로 분리되지 않은 나머지, 즉 bootTags)를 반환한다. 이 함수는 어떤 경우에도
+        /// 예외를 던지지 않는다(호출부의 boot subset 흐름을 절대 막지 않기 위함 — 안전 불변식).
+        /// </summary>
+        /// <param name="config">에디터 설정. null 이면 원본 언어 CSV 그대로 반환(no-op).</param>
+        /// <param name="targets">boot subset 대상 폰트 경로들(원본 바이트 상태 — 아직 치환 전). 첫 번째
+        /// (주 폰트) 만 lazy 확장 소스로 사용한다.</param>
+        /// <param name="node">EnsureTool 로 해석된 node 실행 경로.</param>
+        /// <param name="runner">subset-font-runner.mjs 경로.</param>
+        /// <param name="anyLazyArtifactsPersisted">true 면 StreamingAssets 에 lazy 아티팩트가 남았음
+        /// (RestoreForBuild 가 CleanupAfterBuild 를 호출해야 함을 뜻함).</param>
+        /// <returns>boot union 계산에 사용할 언어 태그 CSV(bootTags, Table 순서로 결정적 직렬화).</returns>
         internal static string ApplyLazyExtensions(
             AITEditorScriptObject config, string[] targets, string node, string runner,
             out bool anyLazyArtifactsPersisted)
@@ -166,9 +176,9 @@ namespace AppsInToss.Editor
                     return originalLanguagesCsv;
                 }
 
-                if (System.Type.GetType("UnityEngine.AssetBundle, UnityEngine.AssetBundleModule") == null)
+                if (!HasRequiredRuntimeModules(out string missingModuleReason))
                 {
-                    Debug.LogWarning("[AIT-FontSubset-Lazy] assetbundle 모듈 비활성화로 lazy 확장을 건너뜁니다(선택 언어는 부트 union 유지).");
+                    Debug.LogWarning($"[AIT-FontSubset-Lazy] {missingModuleReason} — lazy 확장을 건너뜁니다(선택 언어는 부트 union 유지).");
                     return originalLanguagesCsv;
                 }
 
@@ -295,6 +305,65 @@ namespace AppsInToss.Editor
         }
 
         /// <summary>
+        /// 런타임(AITStreamingFont)이 lazy 폰트를 읽는 데 필요한 두 모듈(unitywebrequest, assetbundle)이
+        /// 프로젝트에 모두 등록돼 있는지 확인한다(R2). 에디터 AppDomain 은 프로젝트에서 제거된 모듈도
+        /// 타입 자체는 로드해 두는 경우가 있어 Type.GetType 기반 확인은 실효가 의심된다 — 대신
+        /// PackageManager.PackageInfo.GetAllRegisteredPackages() 로 실제 등록 여부(빌드에 반영되는 상태)를
+        /// 직접 조회한다. 런타임(AIT_HAS_UNITYWEBREQUEST/AIT_HAS_ASSETBUNDLE 매크로 부재 시 즉시 종료)은
+        /// 두 모듈을 모두 요구하므로, 여기서도 하나라도 없으면(또는 확인 자체가 실패하면) lazy 전체를
+        /// 포기해야 한다 — 그렇지 않으면 빌드만 lazy 아티팩트를 만들고 런타임이 못 읽어 영구 tofu 가 된다.
+        /// </summary>
+        private static bool HasRequiredRuntimeModules(out string reason)
+        {
+            const string UnityWebRequestModule = "com.unity.modules.unitywebrequest";
+            const string AssetBundleModule = "com.unity.modules.assetbundle";
+
+            try
+            {
+                var packages = UnityEditor.PackageManager.PackageInfo.GetAllRegisteredPackages();
+                bool hasUnityWebRequest = false;
+                bool hasAssetBundle = false;
+                foreach (var pkg in packages)
+                {
+                    if (pkg.name == UnityWebRequestModule)
+                    {
+                        hasUnityWebRequest = true;
+                    }
+                    else if (pkg.name == AssetBundleModule)
+                    {
+                        hasAssetBundle = true;
+                    }
+                }
+
+                if (!hasUnityWebRequest && !hasAssetBundle)
+                {
+                    reason = $"{UnityWebRequestModule}, {AssetBundleModule} 모듈이 모두 비활성화됨";
+                    return false;
+                }
+
+                if (!hasUnityWebRequest)
+                {
+                    reason = $"{UnityWebRequestModule} 모듈이 비활성화됨";
+                    return false;
+                }
+
+                if (!hasAssetBundle)
+                {
+                    reason = $"{AssetBundleModule} 모듈이 비활성화됨";
+                    return false;
+                }
+
+                reason = null;
+                return true;
+            }
+            catch (Exception e)
+            {
+                reason = $"모듈 등록 확인 실패({e.Message})";
+                return false;
+            }
+        }
+
+        /// <summary>
         /// TMP_Settings 타입 존재 + 'TMP Settings' 리소스 에셋(Resources.Load) 존재를 함께 확인한다(S3).
         /// TMP 패키지는 설치돼 있어도 'TMP Settings' 리소스 에셋이 생성되지 않은 프로젝트가 있을 수 있는데,
         /// 그런 경우 런타임 ResolveTmpFallback 이 결국 실패하므로 빌드 시점에 미리 걸러낸다.
@@ -303,7 +372,8 @@ namespace AppsInToss.Editor
         {
             try
             {
-                Type settingsType = Type.GetType("TMPro.TMP_Settings, Unity.TextMeshPro");
+                Type settingsType = Type.GetType("TMPro.TMP_Settings, Unity.TextMeshPro")
+                    ?? FindTypeAcrossAssemblies("TMPro.TMP_Settings");
                 if (settingsType == null)
                 {
                     return false; // TMP 미설치.
@@ -316,6 +386,31 @@ namespace AppsInToss.Editor
             {
                 return false;
             }
+        }
+
+        /// <summary>
+        /// R5: Type.GetType(어셈블리 한정 문자열)이 null 을 반환하면(어셈블리명 차이로 흔함) 런타임의
+        /// FindType 관용구(AIT.StreamingFont.cs)와 동일하게 로드된 전 어셈블리를 스캔해 흡수한다.
+        /// </summary>
+        private static Type FindTypeAcrossAssemblies(string fullName)
+        {
+            foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                try
+                {
+                    var t = asm.GetType(fullName);
+                    if (t != null)
+                    {
+                        return t;
+                    }
+                }
+                catch
+                {
+                    // 일부 어셈블리는 GetType 에서 예외 — 무시하고 계속.
+                }
+            }
+
+            return null;
         }
 
         /// <summary>
@@ -453,6 +548,18 @@ namespace AppsInToss.Editor
                 var font = AssetDatabase.LoadAssetAtPath<Font>(targetPath);
                 if (font == null)
                 {
+                    return false;
+                }
+
+                // R4: HasCharacter 는 폰트 임포터가 Dynamic 문자셋일 때만 전체 커버리지를 신뢰성 있게
+                // 반영한다(비-Dynamic 임포터는 임포트 시점에 이미 제한된 글리프 집합만 남기므로
+                // HasCharacter 가 "없음"을 반환해도 실제 소스 폰트에는 해당 문자체계가 있을 수 있다).
+                // 캐스트에 성공하면 원인을 구분한 별도 경고를 남긴다 — 캐스트 자체가 실패하면(예: 특수
+                // 임포터) 기존 메시지(호출부의 일반 "문자체계 미포함" 경고)를 그대로 유지한다.
+                var importer = AssetImporter.GetAtPath(targetPath) as TrueTypeFontImporter;
+                if (importer != null && importer.fontTextureCase != FontTextureCase.Dynamic)
+                {
+                    Debug.LogWarning($"[AIT-FontSubset-Lazy]   '{targetPath}' 폰트 임포터가 Dynamic 문자셋이 아니라 커버리지 검사를 신뢰할 수 없어 lazy 확장을 건너뜁니다(임포터를 Dynamic 으로 바꾸면 활성화 가능).");
                     return false;
                 }
 
@@ -1034,17 +1141,15 @@ namespace AppsInToss.Editor
             }
         }
 
-        /// <summary>EnsureTempFolder 가 이번 호출에서 Assets/AppsInToss 를 새로 만들었는지(N12) — 만들었을 때만
-        /// CleanupTempFolder 가 그 폴더까지 정리 시도한다(이미 있던 폴더는 다른 기능이 쓸 수 있어 건드리지 않음).</summary>
-        private static bool createdAppsInTossFolder;
-
+        /// <summary>R7: 부모 폴더(Assets/AppsInToss) 생성 추적/정리 분기는 실제 빌드에서 절대 실행되지
+        /// 않는 dead code 였다(config 에셋이 Assets/AppsInToss 하위에 위치해 폴더가 항상 선재) — 제거하고
+        /// AITFontLazyTmp 자신의 생성/정리만 유지한다. Assets/AppsInToss 가 없는 극단적 상황을 대비해
+        /// 생성 자체는 방어적으로 남긴다(추적/역정리는 하지 않음).</summary>
         private static void EnsureTempFolder()
         {
-            createdAppsInTossFolder = false;
             if (!AssetDatabase.IsValidFolder("Assets/AppsInToss"))
             {
                 AssetDatabase.CreateFolder("Assets", "AppsInToss");
-                createdAppsInTossFolder = true;
             }
 
             if (!AssetDatabase.IsValidFolder(TempFolder))
@@ -1061,26 +1166,10 @@ namespace AppsInToss.Editor
                 {
                     AssetDatabase.DeleteAsset(TempFolder);
                 }
-
-                // N12: 이번 호출에서 Assets/AppsInToss 를 새로 만들었고, AITFontLazyTmp 정리 후 비어 있으면
-                // 함께 삭제한다(빈 폴더 잔존 방지). 우리가 만들지 않았던 기존 폴더는 건드리지 않는다.
-                if (createdAppsInTossFolder && AssetDatabase.IsValidFolder("Assets/AppsInToss"))
-                {
-                    string projectRoot = Directory.GetParent(Application.dataPath).FullName;
-                    string appsInTossFull = Path.Combine(projectRoot, "Assets/AppsInToss");
-                    if (Directory.Exists(appsInTossFull) && Directory.GetFileSystemEntries(appsInTossFull).Length == 0)
-                    {
-                        AssetDatabase.DeleteAsset("Assets/AppsInToss");
-                    }
-                }
             }
             catch (Exception e)
             {
                 Debug.LogWarning($"[AIT-FontSubset-Lazy] 임시 폴더 정리 예외(무시): {e.Message}");
-            }
-            finally
-            {
-                createdAppsInTossFolder = false;
             }
         }
 

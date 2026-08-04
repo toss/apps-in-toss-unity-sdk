@@ -11,8 +11,12 @@ import { fileURLToPath } from 'url';
  *
  * 대상: DeployProbeBuildRunner(beta-release.yml probe_build=true)가 만든 빌드에만 존재하는
  * StreamingAssets/ait-stream-font/manifest.json 의 ja lazy 엔트리. 표준 E2E 빌드(probe_build 미사용,
- * 기본 매트릭스 전부)에는 이 매니페스트 자체가 없거나 lazyTag 엔트리가 없으므로 test.skip()으로
- * 자동 무해화된다 — 이 파일이 존재해도 기존 워크플로우의 pnpm test 실행에는 영향이 없다.
+ * 기본 매트릭스 전부)에는 이 매니페스트 자체가 없거나 lazyTag 엔트리가 없다 — e2e-ce-serving.test.js
+ * 의 hasCeBuild 관용구와 동일하게, 서버를 기동하기 전에 로컬 파일(디스크 상의
+ * ait-build/dist/web/StreamingAssets/ait-stream-font/manifest.json)을 먼저 읽어 ja lazyTag 엔트리
+ * 유무를 판정하고 describe 레벨 test.skip() 으로 올린다(F2). 이렇게 하면 비-probe 빌드에서는
+ * beforeAll(vite preview 서버 기동) 자체가 실행되지 않아 표준 E2E 레그가 서버 기동 실패에 오염되지
+ * 않는다 — 이 파일이 존재해도 기존 워크플로우의 pnpm test 실행에는 영향이 없다.
  *
  * 검증 대상 제품 경로: DeployProbeLazyTextSpawner(Runtime, AIT_E2E_DEPLOY_PROBE 게이트)가 부팅
  * 8초 후 TMP 기본 폰트(글리프 없음)로 일본어 문자열을 표시 → tofu 렌더 → TMP 글로벌 fallback 조회 →
@@ -45,6 +49,28 @@ function findSampleProject() {
 
 const SAMPLE_PROJECT = findSampleProject();
 const AIT_BUILD = path.resolve(SAMPLE_PROJECT, 'ait-build');
+
+// lazy 대상 존재 여부 — 서버 기동 없이 로컬 파일로 먼저 판정한다(F2, e2e-ce-serving.test.js 의
+// hasCeBuild 관용구와 동일). 파일 부재/파싱 실패도 "비-probe 빌드"로 간주해 skip 처리한다.
+const LAZY_MANIFEST_PATH = path.resolve(
+  AIT_BUILD, 'dist/web/StreamingAssets/ait-stream-font/manifest.json');
+
+function readLocalLazyManifest() {
+  try {
+    if (!fs.existsSync(LAZY_MANIFEST_PATH)) {
+      return null;
+    }
+    const raw = fs.readFileSync(LAZY_MANIFEST_PATH, 'utf-8');
+    return JSON.parse(raw);
+  } catch (e) {
+    console.log(`[lazy-font] 로컬 manifest.json 읽기/파싱 실패(${e.message}) — 비-probe 빌드로 간주, skip`);
+    return null;
+  }
+}
+
+const localManifest = readLocalLazyManifest();
+const localJaEntry = (localManifest?.entries || []).find((e) => e && e.lazyTag === 'ja') || null;
+const hasLazyManifest = !!localJaEntry;
 
 // 포트 대역: full-pipeline(4173+·8081+)/perf-ttff(4223+)/ce-serving(4323+)와 충돌하지 않는 별도 대역
 function getPortOffsetFromUnityVersion(projectPath) {
@@ -142,36 +168,37 @@ async function startPreviewServer() {
   return server;
 }
 
+// 벽시계-바운드 unityInstance 폴링. Playwright page.waitForFunction 은 제품 워치독의
+// location.reload() 를 만나면 새 navigation마다 재무장(re-arm)되어 지정한 timeout 을 사실상
+// 무시한다(e2e-full-pipeline.test.js 의 waitForUnityBounded 주석 참조 — 관측: 90s 지정에도
+// 363s 실행). 이 헬퍼는 내가 제어하는 벽시계 deadline 으로 실제 예산을 강제한다(고정 sleep 없이
+// 폴링 간격 + Date.now() 체크만 사용, F3).
+async function waitForUnityInstanceBounded(page, budgetMs) {
+  const deadline = Date.now() + budgetMs;
+  while (Date.now() < deadline) {
+    try {
+      const ready = await page.evaluate(() => typeof window !== 'undefined' && window['unityInstance'] !== undefined);
+      if (ready) return true;
+    } catch (e) {
+      // 재로드로 인한 컨텍스트 파괴 등 — 무시하고 계속 폴링.
+    }
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  return false;
+}
+
 test.describe('Deploy Probe: fontSubsetLazyLanguages 런타임 검증 (opt-in)', () => {
   test.skip(TEST_LEVEL < 2, `TEST_LEVEL=${TEST_LEVEL} (<2) — full e2e 레벨에서만 실행`);
+  // F2: 로컬 파일로 이미 판정된 결과로 describe 전체를 skip — 비-probe 빌드에서는 beforeAll(서버
+  // 기동)이 아예 실행되지 않는다(e2e-ce-serving.test.js 의 hasCeBuild 관용구와 동일).
+  test.skip(!hasLazyManifest,
+    'StreamingAssets/ait-stream-font/manifest.json 에 ja lazyTag 엔트리 없음(또는 파일 없음) — deploy probe 빌드가 아님(정상)');
 
   /** @type {import('child_process').ChildProcess | null} */
   let serverProcess = null;
-  /** @type {any} 서빙 루트 StreamingAssets/ait-stream-font/manifest.json (probe 빌드가 아니면 null) */
-  let manifest = null;
-  /** @type {any} manifest.entries 중 lazyTag === 'ja' 엔트리 */
-  let jaEntry = null;
 
   test.beforeAll(async () => {
-    if (!fs.existsSync(AIT_BUILD)) {
-      // ait-build 자체가 없으면(예: 이 Unity 버전 레그가 아직 안 빌드됨) 서버 기동 없이 skip 처리.
-      return;
-    }
-
     serverProcess = await startPreviewServer();
-
-    const manifestUrl = `http://localhost:${SERVER_PORT}/StreamingAssets/ait-stream-font/manifest.json`;
-    try {
-      const res = await fetch(manifestUrl);
-      if (res.ok) {
-        manifest = await res.json();
-        jaEntry = (manifest?.entries || []).find((e) => e && e.lazyTag === 'ja') || null;
-      } else {
-        console.log(`[lazy-font] manifest.json 없음(HTTP ${res.status}) — 비-probe 빌드로 간주, skip`);
-      }
-    } catch (e) {
-      console.log(`[lazy-font] manifest.json fetch 실패(${e.message}) — 비-probe 빌드로 간주, skip`);
-    }
   });
 
   test.afterAll(async () => {
@@ -182,11 +209,12 @@ test.describe('Deploy Probe: fontSubsetLazyLanguages 런타임 검증 (opt-in)',
   });
 
   test('ja lazy 폰트가 tofu 감지 후 온디맨드 다운로드/주입된다', async ({ browser }) => {
-    test.setTimeout(180000);
+    // F3: 예산 재배분 — 부팅 90s + 마커 30s + lazy 완료 45s = 165s 내부 폴링 합계, test.setTimeout
+    // 210s 로 goto/컨텍스트 생성/어서션 등 나머지 오버헤드 여유(45s)를 확보한다(구 배분: 부팅120+
+    // 마커60+lazy45=225s > setTimeout 180s 로 이미 예산 초과 상태였음).
+    test.setTimeout(210000);
 
-    // 비-probe 빌드(표준 E2E 매트릭스)에서는 manifest 자체가 없거나 ja lazy 엔트리가 없다 — 자동 무해화.
-    test.skip(!jaEntry, 'StreamingAssets/ait-stream-font/manifest.json 에 ja lazyTag 엔트리 없음 — deploy probe 빌드가 아님(정상)');
-
+    const jaEntry = localJaEntry;
     console.log(`[lazy-font] ja lazy 엔트리 확인: bundle=${jaEntry.bundle}, ranges=${jaEntry.lazyRanges}`);
 
     const context = await browser.newContext();
@@ -212,25 +240,31 @@ test.describe('Deploy Probe: fontSubsetLazyLanguages 런타임 검증 (opt-in)',
 
     await page.goto(`http://localhost:${SERVER_PORT}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
-    // Unity 부팅 확인 (DeployProbeLazyTextSpawner의 AfterSceneLoad 부트스트랩 전제조건)
-    await page.waitForFunction(() => window['unityInstance'] !== undefined, { timeout: 120000 });
+    // Unity 부팅 확인 (DeployProbeLazyTextSpawner의 AfterSceneLoad 부트스트랩 전제조건). 예산 90s(F3).
+    const bootReady = await waitForUnityInstanceBounded(page, 90000);
+    expect(bootReady, 'unityInstance 가 90초 예산 내에 준비되지 않음').toBe(true);
     console.log('[lazy-font] Unity 인스턴스 초기화 완료');
 
-    // (a) 마커 로그 대기: 스포너가 8초 지연 후 tofu 텍스트를 표시했다는 신호.
-    // Unity 부팅 자체가 오래 걸릴 수 있으므로 넉넉한 예산(60초)을 둔다.
+    // (a) 마커 로그 대기: 스포너가 8초 지연 후 tofu 텍스트를 표시했다는 신호. 예산 30s(F3).
     await expect.poll(() => consoleLogs.some((l) => l.includes('[DeployProbe] lazy 텍스트 표시')), {
-      timeout: 60000,
-      message: '마커 로그 "[DeployProbe] lazy 텍스트 표시"가 60초 내에 나타나지 않음',
+      timeout: 30000,
+      message: '마커 로그 "[DeployProbe] lazy 텍스트 표시"가 30초 내에 나타나지 않음',
     }).toBe(true);
     const markerSeenAt = Date.now();
-    console.log('[lazy-font] 마커 로그 확인 — lazy 텍스트 표시됨');
+    // F9: lazy 로드 완료 로그가 마커 로그 "이후" 발생했는지까지 고정한다(온디맨드 성질 자체를
+    // 검증 — 마커 이전에 우연히 찍힌 완료 로그를 통과시키지 않는다).
+    const markerIndex = consoleLogs.findIndex((l) => l.includes('[DeployProbe] lazy 텍스트 표시'));
+    console.log(`[lazy-font] 마커 로그 확인(index=${markerIndex}) — lazy 텍스트 표시됨`);
 
-    // (b) lazy 폰트 로드 완료 로그를 마커 후 45초 예산 내 대기 (실제 문자열은
-    // Runtime/Helpers/AIT.StreamingFont.cs LoadLazyEntry 참조).
-    await expect.poll(() => consoleLogs.some((l) => l.includes('[AIT-StreamingFont] lazy 폰트 로드 완료: ja')), {
-      timeout: 45000,
-      message: '"[AIT-StreamingFont] lazy 폰트 로드 완료: ja" 로그가 마커 후 45초 내에 나타나지 않음',
-    }).toBe(true);
+    // (b) lazy 폰트 로드 완료 로그를 마커 후 45초 예산 내 대기(F3) — 실제 문자열은
+    // Runtime/Helpers/AIT.StreamingFont.cs LoadLazyEntry 참조. markerIndex 이후 슬라이스만 검사(F9).
+    await expect.poll(
+      () => consoleLogs.slice(markerIndex + 1).some((l) => l.includes('[AIT-StreamingFont] lazy 폰트 로드 완료: ja')),
+      {
+        timeout: 45000,
+        message: '"[AIT-StreamingFont] lazy 폰트 로드 완료: ja" 로그가 마커 이후 45초 내에 나타나지 않음',
+      }
+    ).toBe(true);
     console.log(`[lazy-font] ja lazy 폰트 로드 완료 확인 (마커 후 ${Date.now() - markerSeenAt}ms)`);
 
     // (c) 로드 실패 로그가 없어야 한다.

@@ -609,9 +609,11 @@ namespace AppsInToss
 
         /// <summary>lazy entry 1개를 기존 maxConcurrent 게이트를 지켜 로드/주입. 완료 시 소진 여부를 확인해 정리.
         /// R0: 이중 try/finally 로 구성 — C# 이터레이터 제약(yield 는 catch 있는 try 안 금지, finally 만
-        /// 있는 try 안은 허용)을 지키면서, 무방비 구간(LoadAndInject 내부 등)에서 예외가 나도
-        /// lazyInflight/lazyOutstanding 감소와 MaybeFinishLazy 가 반드시 실행되도록 보장한다. 카운터가
-        /// 누수되면 maxConcurrent 게이트가 영구히 잠겨 대기 중이던 다른 태그가 영영 로드되지 않는다
+        /// 있는 try 안은 허용)을 지켜 lazyInflight/lazyOutstanding 감소와 MaybeFinishLazy 실행을 finally 로
+        /// 옮겼다. 정상 완료 시엔 언어 의미론대로 실행되고, 예외/Destroy 로 코루틴이 중단되는 경우엔 Unity 가
+        /// 중단된 코루틴의 이터레이터를 Dispose 해 주는 동작에 의존해 finally 가 실행된다(중첩 이터레이터
+        /// LoadAndInject 안에서 던진 예외는 부모 프레임을 직접 언와인드하지 않는다). 카운터가 누수되면
+        /// maxConcurrent 게이트가 영구히 잠겨 대기 중이던 다른 태그가 영영 로드되지 않는다
         /// (부트 union 에서 이미 빠진 언어 = 영구 tofu).</summary>
         private IEnumerator LoadLazyEntry(Entry e)
         {

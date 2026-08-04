@@ -327,12 +327,29 @@ public class AITStreamingFontTests
     [TearDown]
     public void TearDown()
     {
-        foreach (var go in createdGameObjects)
+        // 정지된 코루틴(첫 yield 에서 멈춘 LoadLazyEntry)을 명시적으로 중단하면 Unity 가 이터레이터를
+        // Dispose 하며 finally(카운터 감소 → MaybeFinishLazy → Destroy 시도)가 실행된다 — EditMode 의
+        // Destroy() 에러 로그가 테스트를 실패시키지 않도록 정리 구간 전체를 ignoreFailingMessages 로 감싼다.
+        LogAssert.ignoreFailingMessages = true;
+        try
         {
-            if (go != null)
+            foreach (var go in createdGameObjects)
             {
-                UnityEngine.Object.DestroyImmediate(go);
+                if (go != null)
+                {
+                    var comp = go.GetComponent<AITStreamingFont>();
+                    if (comp != null)
+                    {
+                        comp.StopAllCoroutines();
+                    }
+
+                    UnityEngine.Object.DestroyImmediate(go);
+                }
             }
+        }
+        finally
+        {
+            LogAssert.ignoreFailingMessages = false;
         }
 
         createdGameObjects.Clear();
@@ -367,8 +384,11 @@ public class AITStreamingFontTests
     }
 
     [Test]
-    public void TriggerLazyLoad_IncrementsLazyOutstandingBeforeStartingCoroutine()
+    public void TriggerLazyLoad_IncrementsLazyOutstandingForTriggeredTag()
     {
+        // 주의: 이 테스트가 고정하는 계약은 "TriggerLazyLoad 가 트리거한 태그를 lazyOutstanding 에
+        // 집계한다"까지다. StartCoroutine '이전' 이라는 순서 자체는 EditMode 에서 구분할 수 없다
+        // (코루틴이 첫 yield 에서 멈추므로 증가를 StartCoroutine 뒤로 옮겨도 결과값은 같다).
         var comp = CreateInstance();
         AddLazyPendingEntry(comp, "ja", "U+3040-309F");
 
@@ -376,8 +396,8 @@ public class AITStreamingFontTests
 
         int outstanding = (int)GetField(comp, "lazyOutstanding");
         Assert.AreEqual(1, outstanding,
-            "TriggerLazyLoad 는 StartCoroutine 시작 '전' 에 lazyOutstanding 을 증가시켜야 한다(B0) — " +
-            "그렇지 않으면 게이트 대기 중인 태그가 완료로 오판되어 GameObject 가 조기 파괴될 수 있다.");
+            "TriggerLazyLoad 는 트리거한 태그를 lazyOutstanding 으로 집계해야 한다(B0) — " +
+            "집계가 없으면 게이트 대기 중인 태그가 완료로 오판되어 GameObject 가 조기 파괴될 수 있다.");
     }
 
     [Test]

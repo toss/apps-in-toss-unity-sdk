@@ -111,7 +111,15 @@ namespace AppsInToss
         // ─────────────── lazy 확장 언어 상태(pending 소진 전까지 GameObject 를 살려둔다) ───────────────
         private readonly Dictionary<string, Entry> lazyPending = new Dictionary<string, Entry>();
         private readonly Dictionary<string, CodepointRange[]> lazyPendingRanges = new Dictionary<string, CodepointRange[]>();
+
+        /// <summary>동시성 게이트(실제 다운로드/로드 중인 개수) — maxConcurrent 상한과 비교되는 카운터.</summary>
         private int lazyInflight;
+
+        /// <summary>트리거됐으나 아직 끝나지 않은 전체 개수(게이트 대기 포함). TriggerLazyLoad 에서 코루틴
+        /// 시작 전에 증가시키고 LoadLazyEntry 종료 시 감소시킨다 — lazyPending 에서는 이미 빠졌지만 게이트
+        /// 대기 중이라 lazyInflight 에는 아직 안 잡힌 태그가 "완료"로 오판되어 GameObject 가 파괴되는(대기
+        /// 중 유실) 상황을 구조적으로 방지한다(B0). MaybeFinishLazy 는 이 카운터로 소진을 판정한다.</summary>
+        private int lazyOutstanding;
         private bool lazySubscribed;
         private EventInfo lazyEventInfo;
         private Delegate lazyEventHandler;
@@ -186,7 +194,10 @@ namespace AppsInToss
                 var ranges = ParseRanges(e.lazyRanges);
                 if (ranges.Length == 0)
                 {
-                    Debug.LogWarning($"[AIT-StreamingFont] lazyRanges 파싱 결과가 비어 있어 이 태그는 감지되지 않습니다: {e.lazyTag}");
+                    // 감지 불가능한 태그를 등록하면 영구 pending(폴링·GameObject 세션 내내 생존)으로
+                    // 남으므로, pending 자체에 등록하지 않는다(S7) — 경고만 남기고 스킵.
+                    Debug.LogWarning($"[AIT-StreamingFont] lazyRanges 파싱 결과가 비어 있어 이 태그는 등록하지 않습니다(감지 불가): {e.lazyTag}");
+                    continue;
                 }
 
                 lazyPending[e.lazyTag] = e;
@@ -231,6 +242,10 @@ namespace AppsInToss
                 Destroy(gameObject);
                 yield break;
             }
+
+            // 한계 고지(S3): lazy 확장은 TMP fallback 주입만 수행하므로 legacy UI Text/TextMesh 가 대상
+            // 폰트를 쓰는 프로젝트에서는 재수화되지 않는다.
+            Debug.LogWarning("[AIT-StreamingFont] lazy 확장은 TMP 텍스트만 복구합니다 — legacy Text/TextMesh가 대상 폰트를 쓰는 프로젝트는 lazy를 끄세요.");
 
             // lazy pending 이 남아있는 동안은 GameObject 를 유지한다 — 소진 시 FinishLazyDetection 에서 파괴.
             SetupLazyDetection();
@@ -507,6 +522,14 @@ namespace AppsInToss
                 var objs = Resources.FindObjectsOfTypeAll(lazyTmpTextType);
                 foreach (var o in objs)
                 {
+                    // 프리팹 에셋(씬에 없음)·비활성 오브젝트는 아직 실제로 렌더되지 않으므로 감지 대상에서
+                    // 제외한다(S6) — 그대로 두면 조기 다운로드 트리거로 이어진다. RefreshVisibleText 의
+                    // 갱신 경로(이미 주입된 fallback을 화면에 반영)는 이 필터 대상이 아니다.
+                    if (!IsScannableInstance(o))
+                    {
+                        continue;
+                    }
+
                     ScanOneTmpText(o);
                 }
             }
@@ -514,6 +537,16 @@ namespace AppsInToss
             {
                 Debug.LogWarning($"[AIT-StreamingFont] 초기 TMP 텍스트 스윕 예외: {e.Message}");
             }
+        }
+
+        /// <summary>o 가 씬에 실제로 존재하는(프리팹 에셋 아님) 활성 오브젝트에 속하는지. TMP_Text 는
+        /// 항상 Component(MonoBehaviour) 이므로 TMP 컴파일 의존 없이 UnityEngine.Component 로 캐스트해
+        /// gameObject 를 얻는다.</summary>
+        private static bool IsScannableInstance(UnityEngine.Object o)
+        {
+            var comp = o as Component;
+            var go = comp != null ? comp.gameObject : null;
+            return go != null && go.scene.IsValid() && go.activeInHierarchy;
         }
 
         /// <summary>단일 TMP_Text 오브젝트의 현재 text 를 스캔해 매치되는 lazy 태그가 있으면 로드를 트리거.</summary>
@@ -553,6 +586,11 @@ namespace AppsInToss
 
                 lazyPending.Remove(tag);
                 lazyPendingRanges.Remove(tag);
+
+                // 코루틴 시작 "전" 에 미완료로 집계한다(B0) — LoadLazyEntry 가 maxConcurrent 게이트
+                // 대기 중이라 lazyInflight 에 아직 안 잡힌 구간에도, 이 태그를 "완료됨"으로 오판해
+                // MaybeFinishLazy 가 GameObject 를 파괴하는 경합이 구조적으로 불가능해진다.
+                lazyOutstanding++;
                 StartCoroutine(LoadLazyEntry(e));
             }
         }
@@ -580,13 +618,20 @@ namespace AppsInToss
                 Debug.LogWarning($"[AIT-StreamingFont] lazy 폰트 로드 실패(세션 내 재시도 없음): {e.lazyTag} ({e.bundle})");
             }
 
+            // 게이트 대기 포함 이 태그의 전체 생애주기가 끝났다 — MaybeFinishLazy 판정 전에 반드시 감소.
+            lazyOutstanding--;
             MaybeFinishLazy();
         }
 
-        /// <summary>pending 도 inflight 도 없으면(전 태그 소진) 감지 리소스를 정리하고 GameObject 를 파괴.</summary>
+        /// <summary>lazy 완료 판정의 순수 로직(카운터 상태 전이) — pending 도 outstanding(트리거됐으나
+        /// 게이트 대기 포함 아직 안 끝난 전체)도 없어야 소진으로 판정한다. 부수 효과 없음 — 테스트 대상.</summary>
+        internal static bool IsLazyFullyDrained(int pendingCount, int outstandingCount)
+            => pendingCount == 0 && outstandingCount == 0;
+
+        /// <summary>pending 도 outstanding 도 없으면(전 태그 소진) 감지 리소스를 정리하고 GameObject 를 파괴.</summary>
         private void MaybeFinishLazy()
         {
-            if (lazyPending.Count == 0 && lazyInflight == 0)
+            if (IsLazyFullyDrained(lazyPending.Count, lazyOutstanding))
             {
                 FinishLazyDetection();
             }
@@ -682,7 +727,10 @@ namespace AppsInToss
             }
         }
 
-        /// <summary>TEXT_CHANGED_EVENT 핸들러 — 변경된 오브젝트 1개만 스캔(전체 재스윕 대비 저비용).</summary>
+        /// <summary>TEXT_CHANGED_EVENT 핸들러 — 변경된 오브젝트 1개만 스캔(전체 재스윕 대비 저비용).
+        /// 리플렉션(Delegate.CreateDelegate)으로만 참조되어 IL2CPP 스트리퍼가 직접 호출부를 못 찾으므로
+        /// [Preserve] 로 보존한다(S5, 기존 Bootstrap 의 [Preserve] 관용구와 동일).</summary>
+        [Preserve]
         private void OnTmpTextChangedHandler(UnityEngine.Object changedObj)
         {
             ScanOneTmpText(changedObj);

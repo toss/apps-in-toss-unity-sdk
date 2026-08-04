@@ -82,6 +82,26 @@ public class DeployProbeBuildRunner
         "TMP Settings 리소스를 찾을 수 없어 lazy 확장을 건너뜁니다";
 
     /// <summary>
+    /// F1: AITFontLazyExtensionBuilder.ApplyLazyExtensions(Editor/AITFontLazyExtensionBuilder.cs
+    /// 164-201행 부근)가 lazy 확장을 통째로 포기할 때 남기는 스킵 사유 로그 조각 목록. tmpSettingsAvailable
+    /// (SDK 게이트) 이 true 인데 manifest 에 ja lazy 엔트리가 없는 불일치가 나면, 이 조각들로
+    /// capturedLogs 를 스캔해 실제 스킵 사유를 failureReason 에 덧붙인다 — CI 로그만으로 원인이
+    /// 확정되도록 한다. 원본 로그 문구가 바뀌면 이 목록도 함께 갱신해야 한다.
+    ///   - 모듈 게이트(HasRequiredRuntimeModules, 169-172행): 사유 문자열이 동적이라(missingModuleReason)
+    ///     고정 접두/접미 중 module-gate 메시지에만 나타나는 em-dash 접미부로 식별한다.
+    ///   - TMP Settings 리소스 부재(178-181행): TmpAbsentFallbackLogFragment 재사용.
+    ///   - subset 대상 폰트 없음(190-193행): "subset 대상 폰트가 없어" 접두부로 식별한다.
+    ///   - 다중 target 폰트(199-202행): "대상 폰트가 여러 개라" 접두부로 식별한다.
+    /// </summary>
+    private static readonly (string Label, string Fragment)[] LazySkipReasonLogFragments =
+    {
+        ("모듈 게이트(HasRequiredRuntimeModules)", " — lazy 확장을 건너뜁니다(선택 언어는 부트 union 유지)."),
+        ("TMP Settings 리소스 부재", TmpAbsentFallbackLogFragment),
+        ("subset 대상 폰트 없음", "subset 대상 폰트가 없어"),
+        ("다중 target 폰트", "대상 폰트가 여러 개라"),
+    };
+
+    /// <summary>
     /// 설정 원복 안전망(sentinel) 파일 경로(프로젝트 루트 기준, Library/ 하위 — .gitignore 로
     /// 이미 무시 대상: "Tests~/E2E/SampleUnityProject*/Library/"). BuildDeployProbe() 가 옵트인
     /// 레버(config 4필드) + WebGL 스크립팅 디파인을 변경하기 직전에 원본 값을 이 파일에 기록하고,
@@ -133,10 +153,13 @@ public class DeployProbeBuildRunner
                     config.fontSubsetLanguages = data.fontSubsetLanguages;
                     config.fontSubsetLazyLanguages = data.fontSubsetLazyLanguages;
                     EditorUtility.SetDirty(config);
-                    AssetDatabase.SaveAssets();
                 }
 
                 SetWebGLDefines(data.webglDefines ?? string.Empty);
+
+                // F0: config + WebGL 디파인 원복이 모두 반영된 뒤 한 번에 영속화 — 센티널을 지우기
+                // 전에 디스크 flush 가 끝나야 한다(아래 finally 원복 경로와 동일한 순서 보장).
+                AssetDatabase.SaveAssets();
             }
 
             DeleteSentinel();
@@ -221,8 +244,11 @@ public class DeployProbeBuildRunner
         catch (Exception ex)
         {
             // 생성 실패는 빌드 전 단계이므로 CI가 명확히 검출하도록 exit 1 (HeavyBuildRunner 와 동일 규약).
+            // 예외 메시지/스택트레이스에 "ait-build" 등 AIT 키워드가 섞여 들어가면 SDK 에러 트래커가
+            // 캡처(IsAitRelated 통과)하므로 sentryCapture:false 로 차단한다 — 이 실패는 CI exit code 1로
+            // 검출되며 Sentry 대상이 아니다(E2EBuildRunner.cs 의 동일 컨벤션 참조).
             Debug.LogError("========================================");
-            Debug.LogError($"Deploy probe content generation FAILED: {ex}");
+            AITLog.Error($"Deploy probe content generation FAILED: {ex}", sentryCapture: false);
             Debug.LogError("========================================");
             EditorApplication.Exit(1);
             return;
@@ -328,9 +354,12 @@ public class DeployProbeBuildRunner
             config.fontSubsetLanguages = originalFontSubsetLanguages;
             config.fontSubsetLazyLanguages = originalFontSubsetLazyLanguages;
             EditorUtility.SetDirty(config);
-            AssetDatabase.SaveAssets();
 
             SetWebGLDefines(originalWebGLDefines);
+
+            // F0: config + WebGL 디파인 원복이 모두 반영된 뒤 한 번에 영속화 — 센티널을 지우기
+            // 전에 디스크 flush 가 끝나야 한다(위 SafetyNetRestore 경로와 동일한 순서 보장).
+            AssetDatabase.SaveAssets();
 
             // 정상 원복이 여기까지 도달했다는 것 자체가 sentinel 이 더 이상 필요 없다는 뜻 — 삭제.
             DeleteSentinel();
@@ -449,6 +478,13 @@ public class DeployProbeBuildRunner
             if (jaEntry == null)
             {
                 failureReason = $"TMP 가용 환경인데 manifest 에 ja lazy 엔트리가 없음: {manifestPath}";
+                // F1: capturedLogs 에서 SDK 의 lazy 스킵 사유 로그 조각을 찾아 덧붙인다 — CI 로그만으로
+                // 원인이 확정되도록(모듈 게이트/TMP Settings 부재/subset 대상 없음/다중 target 여부).
+                string skipReasonDetail = DescribeLazySkipReasons(capturedLogs);
+                if (!string.IsNullOrEmpty(skipReasonDetail))
+                {
+                    failureReason += $" (capturedLogs 에서 감지된 SDK lazy 스킵 사유: {skipReasonDetail})";
+                }
                 return false;
             }
 
@@ -516,6 +552,25 @@ public class DeployProbeBuildRunner
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// F1: capturedLogs 를 <see cref="LazySkipReasonLogFragments"/> 목록으로 스캔해, 매칭된 스킵 사유
+    /// 라벨을 쉼표로 이어붙여 반환한다(매칭 없으면 null). ValidateLazyArtifacts 가 tmpSettingsAvailable
+    /// =true 인데 ja lazy 엔트리가 없는 불일치를 만났을 때 failureReason 을 정밀화하는 데 쓰인다.
+    /// </summary>
+    private static string DescribeLazySkipReasons(List<string> capturedLogs)
+    {
+        var hits = new List<string>();
+        foreach (var (label, fragment) in LazySkipReasonLogFragments)
+        {
+            if (ContainsLog(capturedLogs, fragment))
+            {
+                hits.Add(label);
+            }
+        }
+
+        return hits.Count > 0 ? string.Join(", ", hits) : null;
     }
 
     /// <summary>세미콜론 구분 스크립팅 디파인 문자열에 define 을 멱등 추가한다(이미 있으면 그대로 반환).</summary>

@@ -53,7 +53,7 @@ public class AITResetWebGLSettingsTests
         "astcBlockAtlas", "astcBlockDirs", "astcBlockExcludeDirs",
         // 폰트 CJK subset
         "fontSubset", "fontSubsetTargetPaths", "fontSubsetUnicodeRanges",
-        "fontSubsetExtraRanges", "fontSubsetExcludeTargetPaths",
+        "fontSubsetExtraRanges", "fontSubsetExcludeTargetPaths", "fontSubsetLanguages",
         // 대형 텍스처 스트리밍
         "textureStreaming", "textureStreamingMinBytes", "textureStreamingDirs",
         "textureStreamingExcludeDirs", "textureStreamingMaxConcurrent",

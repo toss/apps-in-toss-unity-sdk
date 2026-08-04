@@ -57,25 +57,26 @@ namespace AppsInToss.Editor
         /// </summary>
         public static readonly Entry[] Table =
         {
-            new Entry("ko", "한국어", "U+AC00-D7A3,U+1100-11FF", true),
-            new Entry("la", "영어/라틴", "U+0020-007E,U+00A0-00FF", true),
-            new Entry("ja", "일본어", "U+3040-309F,U+30A0-30FF,U+31F0-31FF,U+3400-4DBF,U+4E00-9FFF", false),
-            new Entry("zh-Hans", "중국어(간체)", "U+3400-4DBF,U+4E00-9FFF", false),
-            new Entry("zh-Hant", "중국어(번체)", "U+3100-312F,U+31A0-31BF,U+3400-4DBF,U+4E00-9FFF", false),
+            new Entry("ko", "한국어", "U+AC00-D7A3,U+1100-11FF,U+3130-318F", true),
+            new Entry("la", "영어/기본 라틴", "U+0020-007E,U+00A0-00FF", true),
+            new Entry("ja", "일본어", "U+3000-303F,U+3040-309F,U+30A0-30FF,U+31F0-31FF,U+4E00-9FFF,U+FF00-FFEF", false),
+            new Entry("zh-Hans", "중국어(간체)", "U+3000-303F,U+3400-4DBF,U+4E00-9FFF,U+FF00-FFEF", false),
+            new Entry("zh-Hant", "중국어(번체)", "U+3000-303F,U+3100-312F,U+31A0-31BF,U+3400-4DBF,U+4E00-9FFF,U+FF00-FFEF", false),
             new Entry("ru", "러시아어/키릴", "U+0400-04FF,U+0500-052F", false),
             new Entry("th", "태국어", "U+0E00-0E7F", false),
-            new Entry("vi", "베트남어", "U+0100-024F,U+1E00-1EFF", false),
-            new Entry("ar", "아랍어", "U+0600-06FF,U+0750-077F,U+FB50-FDFF,U+FE70-FEFF", false),
-            new Entry("emoji", "이모지·기호", "U+200D,U+2600-26FF,U+2700-27BF,U+FE0E-FE0F,U+1F1E6-1F1FF,U+1F300-1F5FF,U+1F600-1F64F,U+1F680-1F6FF,U+1F900-1FAFF", false),
+            new Entry("latin-ext", "라틴 확장 (유럽어·베트남어)", "U+0100-024F,U+1E00-1EFF,U+20AB", false),
+            new Entry("ar", "아랍어", "U+0600-06FF,U+0750-077F,U+200C,U+FB50-FDFF,U+FE70-FEFF", false),
+            new Entry("emoji", "이모지·기호", "U+200D,U+20E3,U+2122,U+2190-21FF,U+2300-23FF,U+25A0-25FF,U+2600-26FF,U+2700-27BF,U+2B00-2BFF,U+FE0E-FE0F,U+1F170-1F1E5,U+1F1E6-1F1FF,U+1F300-1F5FF,U+1F600-1F64F,U+1F680-1F6FF,U+1F780-1F7FF,U+1F900-1FAFF", false),
         };
 
         /// <summary>
         /// 콤마 구분 언어 태그 CSV 를 받아, AlwaysIncluded 가 아닌 태그들의 Ranges 를 union 한
         /// fontTools 표기 범위 문자열을 만든다. AlwaysIncluded 태그(ko/la)와 미지 태그는 무시(skip)한다.
-        /// 부수 효과 없음 → 단위 테스트 대상.
+        /// 태그 중복뿐 아니라 범위 토큰 자체의 중복도 제거한다(예: ja+zh-Hans 동시 선택 시
+        /// 두 태그가 공유하는 U+4E00-9FFF 는 결과에 1회만 출력). 부수 효과 없음 → 단위 테스트 대상.
         /// </summary>
         /// <param name="csvTags">쉼표 구분 언어 태그(예: "ja,zh-Hans"). 중복 허용. null/빈 문자열 허용.</param>
-        /// <returns>선택된 언어들의 Ranges 를 콤마로 결합한 문자열. 선택 없으면 빈 문자열.</returns>
+        /// <returns>선택된 언어들의 Ranges 를 콤마로 결합한 문자열(토큰 중복 제거). 선택 없으면 빈 문자열.</returns>
         public static string BuildRanges(string csvTags)
         {
             if (string.IsNullOrEmpty(csvTags))
@@ -84,11 +85,12 @@ namespace AppsInToss.Editor
             }
 
             var sb = new StringBuilder();
-            var seen = new HashSet<string>();
+            var seenTags = new HashSet<string>();
+            var seenTokens = new HashSet<string>();
             foreach (var raw in csvTags.Split(','))
             {
                 string tag = raw.Trim();
-                if (tag.Length == 0 || !seen.Add(tag))
+                if (tag.Length == 0 || !seenTags.Add(tag))
                 {
                     continue;
                 }
@@ -99,12 +101,21 @@ namespace AppsInToss.Editor
                     continue;
                 }
 
-                if (sb.Length > 0)
+                foreach (var rawToken in entry.Ranges.Split(','))
                 {
-                    sb.Append(',');
-                }
+                    string token = rawToken.Trim();
+                    if (token.Length == 0 || !seenTokens.Add(token))
+                    {
+                        continue;
+                    }
 
-                sb.Append(entry.Ranges);
+                    if (sb.Length > 0)
+                    {
+                        sb.Append(',');
+                    }
+
+                    sb.Append(token);
+                }
             }
 
             return sb.ToString();

@@ -72,6 +72,13 @@ const localManifest = readLocalLazyManifest();
 const localJaEntry = (localManifest?.entries || []).find((e) => e && e.lazyTag === 'ja') || null;
 const hasLazyManifest = !!localJaEntry;
 
+// F2: probe_build=true 로 실행된 워크플로우(beta-release.yml e2e-beta-*)가 AIT_EXPECT_DEPLOY_PROBE 를
+// 전달하면, manifest 부재를 skip 이 아니라 명시적 실패로 처리한다(e2e-ce-serving.test.js 의
+// mustHaveCeBuild 관용구와 동일) — 프로브 빌드인데 lazy 산출물이 안 생긴 "조용한 green" 을 막는다.
+// AIT_EXPECT_DEPLOY_PROBE 가 false/0/빈값(기본값)이면 기존과 완전히 동일하게 동작(가드 비활성).
+const AIT_EXPECT_DEPLOY_PROBE = ['1', 'true'].includes(
+  (process.env.AIT_EXPECT_DEPLOY_PROBE || '').toLowerCase());
+
 // 포트 대역: full-pipeline(4173+·8081+)/perf-ttff(4223+)/ce-serving(4323+)와 충돌하지 않는 별도 대역
 function getPortOffsetFromUnityVersion(projectPath) {
   const match = projectPath.match(/SampleUnityProject-(\d+)\.(\d+)/);
@@ -190,8 +197,10 @@ async function waitForUnityInstanceBounded(page, budgetMs) {
 test.describe('Deploy Probe: fontSubsetLazyLanguages 런타임 검증 (opt-in)', () => {
   test.skip(TEST_LEVEL < 2, `TEST_LEVEL=${TEST_LEVEL} (<2) — full e2e 레벨에서만 실행`);
   // F2: 로컬 파일로 이미 판정된 결과로 describe 전체를 skip — 비-probe 빌드에서는 beforeAll(서버
-  // 기동)이 아예 실행되지 않는다(e2e-ce-serving.test.js 의 hasCeBuild 관용구와 동일).
-  test.skip(!hasLazyManifest,
+  // 기동)이 아예 실행되지 않는다(e2e-ce-serving.test.js 의 hasCeBuild 관용구와 동일). 단,
+  // AIT_EXPECT_DEPLOY_PROBE 가 참이면(probe 빌드가 기대되는 실행) manifest 가 없어도 skip 하지 않고
+  // 아래 test() 내부에서 명시적으로 실패시킨다 — "조용한 green" 방지.
+  test.skip(!hasLazyManifest && !AIT_EXPECT_DEPLOY_PROBE,
     'StreamingAssets/ait-stream-font/manifest.json 에 ja lazyTag 엔트리 없음(또는 파일 없음) — deploy probe 빌드가 아님(정상)');
 
   /** @type {import('child_process').ChildProcess | null} */
@@ -209,10 +218,18 @@ test.describe('Deploy Probe: fontSubsetLazyLanguages 런타임 검증 (opt-in)',
   });
 
   test('ja lazy 폰트가 tofu 감지 후 온디맨드 다운로드/주입된다', async ({ browser }) => {
-    // F3: 예산 재배분 — 부팅 90s + 마커 30s + lazy 완료 45s = 165s 내부 폴링 합계, test.setTimeout
-    // 210s 로 goto/컨텍스트 생성/어서션 등 나머지 오버헤드 여유(45s)를 확보한다(구 배분: 부팅120+
-    // 마커60+lazy45=225s > setTimeout 180s 로 이미 예산 초과 상태였음).
+    // F3: 예산 재배분 — goto 30s + 부팅 90s + 마커 30s + lazy 완료 45s = 195s 내부 폴링 합계,
+    // test.setTimeout 210s 로 컨텍스트 생성/어서션 등 나머지 오버헤드 여유(15s)를 확보한다(구 배분:
+    // goto60+부팅90+마커30+lazy45=225s > setTimeout 210s 로 이미 예산 초과 상태였음).
     test.setTimeout(210000);
+
+    // F2: AIT_EXPECT_DEPLOY_PROBE=1 인데 로컬 manifest 에 ja lazy 엔트리가 없으면 즉시 명시적으로
+    // 실패시킨다(조용한 skip 방지) — 위 describe skip 가드가 이 조합은 통과시켜 beforeAll(서버
+    // 기동)까지 실행된 상태다(e2e-ce-serving.test.js 의 mustHaveCeBuild 어서션과 동일 패턴).
+    expect(
+      hasLazyManifest,
+      `AIT_EXPECT_DEPLOY_PROBE=1 인데 manifest.json(${LAZY_MANIFEST_PATH})에 ja lazyTag 엔트리가 없음 — probe 빌드인데 lazy 산출물 누락(조용한 green 방지)`
+    ).toBe(true);
 
     const jaEntry = localJaEntry;
     console.log(`[lazy-font] ja lazy 엔트리 확인: bundle=${jaEntry.bundle}, ranges=${jaEntry.lazyRanges}`);
@@ -238,7 +255,8 @@ test.describe('Deploy Probe: fontSubsetLazyLanguages 런타임 검증 (opt-in)',
       }
     });
 
-    await page.goto(`http://localhost:${SERVER_PORT}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    // 예산 30s(F3).
+    await page.goto(`http://localhost:${SERVER_PORT}`, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
     // Unity 부팅 확인 (DeployProbeLazyTextSpawner의 AfterSceneLoad 부트스트랩 전제조건). 예산 90s(F3).
     const bootReady = await waitForUnityInstanceBounded(page, 90000);

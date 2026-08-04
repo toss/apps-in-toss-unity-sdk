@@ -43,12 +43,22 @@ namespace AppsInToss.Editor
             /// <summary>true 면 스캐너 BaselineRanges 가 이미 항상 보존하는 언어(체크 고정 표시용).</summary>
             public readonly bool AlwaysIncluded;
 
+            /// <summary>
+            /// true 면 fontSubsetLazyLanguages(명시 활성) 시 부트 union 대신 lazy 확장(빌드 시 별도 서브셋
+            /// TTF → Dynamic TMP_FontAsset → AssetBundle 외부화, 런타임 온디맨드 주입)으로 분리될 수 있는 언어.
+            /// AlwaysIncluded(ko/la, 부트 폰트 필수 포함)를 제외한 모든 태그가 true 다.
+            /// </summary>
+            public readonly bool LazyEligible;
+
             public Entry(string tag, string label, string ranges, bool alwaysIncluded)
             {
                 Tag = tag;
                 Label = label;
                 Ranges = ranges;
                 AlwaysIncluded = alwaysIncluded;
+                // AlwaysIncluded(ko/la)는 부트 폰트에 항상 포함되어야 하므로 lazy 대상이 될 수 없다.
+                // 그 외 전 태그는 lazy 확장 대상(계약: "AlwaysIncluded 를 제외한 모든 태그가 true").
+                LazyEligible = !alwaysIncluded;
             }
         }
 
@@ -132,6 +142,13 @@ namespace AppsInToss.Editor
             }
 
             return default;
+        }
+
+        /// <summary>Table 에서 태그를 조회한다(공개판). 못 찾으면 false(entry 는 default).</summary>
+        public static bool TryFindEntry(string tag, out Entry entry)
+        {
+            entry = FindEntry(tag);
+            return entry.Tag != null;
         }
     }
 }

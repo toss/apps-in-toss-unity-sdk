@@ -489,10 +489,21 @@ namespace AppsInToss.Editor
                 {
                     // 매니페스트 동봉(런타임 AITStreamingFont 가 읽는 계약: maxConcurrent + entries). n>0 일 때만 기록.
                     int maxConcurrent = config.fontStreamingMaxConcurrent > 0 ? config.fontStreamingMaxConcurrent : 2;
+                    string manifestPath = Path.Combine(streamRootFull, "manifest.json");
+
+                    // 매니페스트 병합(read-merge-write): AITWebGLBuilder 호출 순서상 fontSubset(+lazy 확장,
+                    // AITFontLazyExtensionBuilder)이 이 메서드보다 먼저 실행된다(fontSubset → fontStreaming,
+                    // AITWebGLBuilder.cs BuildWebGL 참조) — 이미 이 manifest.json 에 lazy 엔트리를 기록해
+                    // 두었을 수 있다. 순서가 바뀌어도 안전하도록 항상 기존 lazy 엔트리를 읽어 보존한 뒤
+                    // 이번 빌드의 eager 엔트리와 합쳐 다시 쓴다(eager 엔트리 자체는 항상 이번 빌드의
+                    // 최신 계산으로 덮어씀 — 기존 동작과 동일, lazy 엔트리만 read-merge 대상).
+                    var mergedEntries = new List<string>(AITFontLazyExtensionBuilder.ReadExistingLazyEntryJson(manifestPath));
+                    mergedEntries.AddRange(entries);
+
                     var sb = new StringBuilder();
                     sb.Append("{\"maxConcurrent\":").Append(maxConcurrent)
-                      .Append(",\"entries\":[").Append(string.Join(",", entries)).Append("]}");
-                    File.WriteAllText(Path.Combine(streamRootFull, "manifest.json"), sb.ToString());
+                      .Append(",\"entries\":[").Append(string.Join(",", mergedEntries)).Append("]}");
+                    File.WriteAllText(manifestPath, sb.ToString());
                     AssetDatabase.Refresh();
 
                     // 빌드 리포트 — 외부화된 폰트 목록 + defer 크기 출력.
@@ -511,8 +522,14 @@ namespace AppsInToss.Editor
                 else
                 {
                     // 외부화 0건 → 루프 중 생긴 잔존물(백업/번들/마커)을 모두 정리(비파괴 보증).
+                    // 단, StreamingAssets 디렉토리는 lazy 확장(AITFontLazyExtensionBuilder)이 이 메서드보다
+                    // 먼저(fontSubset 단계에서) 써 둔 아티팩트를 담고 있을 수 있어 무조건 삭제하면 안 된다
+                    // (BuildPlayer 가 아직 실행 전이라 삭제하면 lazy 번들이 빌드 산출물에 아예 반영되지 못한다).
                     RestoreAllBackups();
-                    RemoveStreamRoot();
+                    if (!AITFontLazyExtensionBuilder.HasLazyArtifacts(streamRootFull))
+                    {
+                        RemoveStreamRoot();
+                    }
                     RemoveBundleTemp();
                     RemoveMarker();
                     AssetDatabase.Refresh();
@@ -526,7 +543,10 @@ namespace AppsInToss.Editor
                 // 외부화 실패가 빌드 전체를 막지 않도록: 부분 변경을 즉시 복원하고 비활성 핸들 반환.
                 Debug.LogError($"[AIT-StreamingFont] 외부화 예외 → 복원 후 건너뜀: {e}");
                 RestoreAllBackups();
-                RemoveStreamRoot();
+                if (!ShouldPreserveStreamRootForLazy())
+                {
+                    RemoveStreamRoot();
+                }
                 RemoveBundleTemp();
                 RemoveMarker();
                 AssetDatabase.Refresh();
@@ -638,8 +658,12 @@ namespace AppsInToss.Editor
             return false;
         }
 
-        /// <summary>지정 TMP_FontAsset 을 단일 WebGL AssetBundle 로 빌드하여 StreamingAssets 로 복사. 성공 시 true.</summary>
-        private static bool BuildFontBundle(string tmpAssetPath, string bundleFileName, string bundleTempFull, string streamRootFull, bool uncompressed)
+        /// <summary>
+        /// 지정 TMP_FontAsset 을 단일 WebGL AssetBundle 로 빌드하여 StreamingAssets 로 복사. 성공 시 true.
+        /// internal(최소 리팩토링): AITFontLazyExtensionBuilder 가 lazy 확장 번들 빌드에 이 경로를 재사용한다
+        /// (bundleTempFull 은 서로 다른 임시 디렉토리를 써서 충돌/정리 순서를 분리한다).
+        /// </summary>
+        internal static bool BuildFontBundle(string tmpAssetPath, string bundleFileName, string bundleTempFull, string streamRootFull, bool uncompressed)
         {
             try
             {
@@ -935,7 +959,10 @@ namespace AppsInToss.Editor
                 }
 
                 int restored = RestoreAllBackups();
-                RemoveStreamRoot();
+                if (!ShouldPreserveStreamRootForLazy())
+                {
+                    RemoveStreamRoot();
+                }
                 RemoveBundleTemp();
                 RemoveMarker();
                 if (restored > 0)
@@ -948,6 +975,20 @@ namespace AppsInToss.Editor
             {
                 Debug.LogWarning($"[AIT-StreamingFont] 안전망 복원 중 예외(무시): {e}");
             }
+        }
+
+        /// <summary>
+        /// true 면 StreamingAssets ait-stream-font 디렉토리를 지금 삭제하면 안 된다 — lazy 확장
+        /// (AITFontLazyExtensionBuilder)이 이 apply 단계보다 먼저 써 둔 아티팩트(lazy-*.bundle[.br])가
+        /// 있고, 아직 BuildPlayer 가 실행되지 않아 그 아티팩트가 빌드 산출물에 반영되지 않았을 수 있기
+        /// 때문이다(무조건 삭제 시 lazy 기능이 조용히 무력화됨). BuildPlayer 이후(RestoreForBuild)의
+        /// 삭제는 이미 산출물이 캡처된 뒤라 안전하므로 그쪽은 무조건 삭제를 유지한다.
+        /// </summary>
+        private static bool ShouldPreserveStreamRootForLazy()
+        {
+            string projectRoot = Directory.GetParent(Application.dataPath).FullName;
+            string streamRootFull = Path.Combine(projectRoot, StreamRootAssets);
+            return AITFontLazyExtensionBuilder.HasLazyArtifacts(streamRootFull);
         }
 
         private static void RemoveStreamRoot()

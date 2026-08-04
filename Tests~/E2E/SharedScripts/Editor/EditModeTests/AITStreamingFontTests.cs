@@ -7,6 +7,10 @@
 //                        (경계 오판 = 문자가 등장했는데 로드가 트리거되지 않아 tofu 로 남음)
 //   - Manifest/Entry JsonUtility 왕복 : lazyTag/lazyRanges 필드 포함 신규 포맷과, 필드가 없는
 //                        구 매니페스트(하위호환) 양쪽 모두 파싱 가능해야 한다.
+//   - TriggerLazyLoad/MaybeFinishLazy 인스턴스 리플렉션 테스트(R1) : B0(게이트 대기 중 유실 방지)의
+//                        실제 카운터 조작 순서를 회귀 가드한다 — IsLazyFullyDrained 진리표만으로는
+//                        TriggerLazyLoad 의 lazyOutstanding++ 누락이나 MaybeFinishLazy 의 판정 카운터
+//                        치환(lazyInflight 로 되돌림) 을 잡지 못한다.
 // Entry/Manifest 는 AITStreamingFont 내부 private nested struct 라 리플렉션으로 접근한다.
 // 실제 번들 다운로드/이벤트 구독/코루틴 동시성은 브라우저(WebGL) 경로 의존이라 EditMode 로는 검증
 // 불가 — E2E 가 부팅/재수화를 커버하고, 본 테스트는 그 외 순수 결정 로직을 결정론적으로 고정한다.
@@ -16,6 +20,8 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using NUnit.Framework;
+using UnityEngine;
+using UnityEngine.TestTools;
 using AppsInToss;
 
 [TestFixture]
@@ -294,52 +300,144 @@ public class AITStreamingFontTests
 
     // =====================================================
     // IsLazyFullyDrained — 게이트 대기 유실 방지(B0) 카운터 상태 전이 순수 로직
+    // 진리표 자체는 1건만 유지한다 — 인자 2개짜리 항등 술어라 회귀 감지력이 없다(TriggerLazyLoad 의
+    // lazyOutstanding++ 삭제나 MaybeFinishLazy 의 판정 카운터 치환 어느 쪽도 이 술어 자체를 건드리지
+    // 않으므로 전부 통과해버린다). 실질 회귀 가드는 아래 "인스턴스 리플렉션 테스트" 섹션이 담당한다.
     // =====================================================
 
     [Test]
-    public void IsLazyFullyDrained_PendingAndOutstandingZero_ReturnsTrue()
+    public void IsLazyFullyDrained_ReturnsTrueOnlyWhenBothPendingAndOutstandingAreZero()
     {
         Assert.IsTrue(AITStreamingFont.IsLazyFullyDrained(0, 0));
-    }
-
-    [Test]
-    public void IsLazyFullyDrained_PendingRemains_ReturnsFalse()
-    {
         Assert.IsFalse(AITStreamingFont.IsLazyFullyDrained(1, 0));
-    }
-
-    [Test]
-    public void IsLazyFullyDrained_OutstandingRemains_ReturnsFalse()
-    {
-        // 핵심 회귀 시나리오(B0): 태그가 lazyPending 에서는 이미 빠졌지만(TriggerLazyLoad 직후) 아직
-        // maxConcurrent 게이트 대기 중이라 outstanding>0 인 동안은 "소진"으로 오판되면 안 된다.
-        Assert.IsFalse(AITStreamingFont.IsLazyFullyDrained(0, 1));
-    }
-
-    [Test]
-    public void IsLazyFullyDrained_BothRemain_ReturnsFalse()
-    {
+        Assert.IsFalse(AITStreamingFont.IsLazyFullyDrained(0, 1), "게이트 대기 중(outstanding>0)에는 소진이 아니어야 함(B0 핵심 불변식)");
         Assert.IsFalse(AITStreamingFont.IsLazyFullyDrained(2, 3));
     }
 
-    [Test]
-    public void IsLazyFullyDrained_GateWaitLifecycle_OnlyDrainedAfterOutstandingDecrements()
+    // =====================================================
+    // 인스턴스 리플렉션 테스트(R1) — TriggerLazyLoad/MaybeFinishLazy 의 실제 카운터 조작 순서를 회귀 가드.
+    // Entry/private 메서드는 리플렉션으로만 접근 가능. EditMode 에서 StartCoroutine 은 첫 yield 까지만
+    // 동기 실행되므로(LoadLazyEntry 의 첫 실제 yield 는 "yield return LoadAndInject(...)" 지점 —
+    // LoadAndInject 자신의 MoveNext 는 아직 한 번도 호출되지 않아 본문이 실행되지 않는다), 더미 Entry 로
+    // 네트워크/AssetBundle 접근 없이 안전하게 검증할 수 있다.
+    // =====================================================
+
+    private readonly List<GameObject> createdGameObjects = new List<GameObject>();
+
+    [TearDown]
+    public void TearDown()
     {
-        // TriggerLazyLoad → LoadLazyEntry 생애주기를 카운터 상태 전이로 시뮬레이션:
-        // 1) 매치 시점: pending 에서 제거, outstanding++ (코루틴 시작 전)
-        // 2) 게이트 대기 중(아직 lazyInflight 미증가): outstanding 은 여전히 1 → 소진 아님
-        // 3) 게이트 통과 후 로드 완료: outstanding-- → 그제서야 소진
-        int pending = 1;
-        int outstanding = 0;
+        foreach (var go in createdGameObjects)
+        {
+            if (go != null)
+            {
+                UnityEngine.Object.DestroyImmediate(go);
+            }
+        }
 
-        // 매치 → TriggerLazyLoad.
-        pending--;
-        outstanding++;
-        Assert.IsFalse(AITStreamingFont.IsLazyFullyDrained(pending, outstanding), "게이트 대기 중에는 소진이 아니어야 함(B0 핵심 불변식)");
+        createdGameObjects.Clear();
+    }
 
-        // LoadLazyEntry 완료(성공/실패 무관) → outstanding--.
-        outstanding--;
-        Assert.IsTrue(AITStreamingFont.IsLazyFullyDrained(pending, outstanding), "outstanding 감소 후에는 소진으로 판정되어야 함");
+    private AITStreamingFont CreateInstance()
+    {
+        var go = new GameObject("AITStreamingFontTest");
+        createdGameObjects.Add(go);
+        return go.AddComponent<AITStreamingFont>();
+    }
+
+    private static void AddLazyPendingEntry(AITStreamingFont comp, string tag, string ranges)
+    {
+        object entry = Activator.CreateInstance(EntryType);
+        SetField(entry, "guid", "test-" + tag);
+        SetField(entry, "bundle", $"lazy-{tag}-test.bundle");
+        SetField(entry, "fonts", new[] { "TestFont" });
+        SetField(entry, "encoding", "");
+        SetField(entry, "lazyTag", tag);
+        SetField(entry, "lazyRanges", ranges);
+
+        object pendingDict = GetField(comp, "lazyPending");
+        pendingDict.GetType().GetMethod("Add").Invoke(pendingDict, new object[] { tag, entry });
+    }
+
+    private static object InvokePrivateMethod(object target, string name, params object[] args)
+    {
+        var m = target.GetType().GetMethod(name, BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.IsNotNull(m, $"메서드를 찾지 못함: {name}");
+        return m.Invoke(target, args);
+    }
+
+    [Test]
+    public void TriggerLazyLoad_IncrementsLazyOutstandingBeforeStartingCoroutine()
+    {
+        var comp = CreateInstance();
+        AddLazyPendingEntry(comp, "ja", "U+3040-309F");
+
+        InvokePrivateMethod(comp, "TriggerLazyLoad", new List<string> { "ja" });
+
+        int outstanding = (int)GetField(comp, "lazyOutstanding");
+        Assert.AreEqual(1, outstanding,
+            "TriggerLazyLoad 는 StartCoroutine 시작 '전' 에 lazyOutstanding 을 증가시켜야 한다(B0) — " +
+            "그렇지 않으면 게이트 대기 중인 태그가 완료로 오판되어 GameObject 가 조기 파괴될 수 있다.");
+    }
+
+    [Test]
+    public void MaybeFinishLazy_OutstandingNonZero_DoesNotEnterDrainPath()
+    {
+        var comp = CreateInstance();
+        SetField(comp, "lazyInflight", 0);
+        SetField(comp, "lazyOutstanding", 1);
+        // lazyPending 은 새 인스턴스라 기본적으로 비어 있음 → pendingCount==0, outstanding==1.
+
+        var logs = CollectLogs(() => InvokePrivateMethod(comp, "MaybeFinishLazy"));
+        bool sawDrainLog = logs.Exists(l => l.message.Contains("lazy 폰트 전 태그 소진"));
+
+        Assert.IsFalse(sawDrainLog,
+            "MaybeFinishLazy 는 lazyOutstanding(트리거됐으나 게이트 대기 포함 아직 안 끝난 전체)로 판정해야 한다 — " +
+            "lazyInflight 로 오판하면 outstanding>0 인데도(게이트 대기 중인 태그가 있는데도) 소진으로 잘못 종료된다(B0).");
+    }
+
+    [Test]
+    public void MaybeFinishLazy_OutstandingZero_EntersDrainPath()
+    {
+        var comp = CreateInstance();
+        SetField(comp, "lazyInflight", 0);
+        SetField(comp, "lazyOutstanding", 0);
+
+        List<LogEntry> logs;
+        LogAssert.ignoreFailingMessages = true; // Destroy() 가 EditMode 에서 에러를 찍을 수 있음 — 흡수.
+        try
+        {
+            logs = CollectLogs(() => InvokePrivateMethod(comp, "MaybeFinishLazy"));
+        }
+        finally
+        {
+            LogAssert.ignoreFailingMessages = false;
+        }
+
+        bool sawDrainLog = logs.Exists(l => l.message.Contains("lazy 폰트 전 태그 소진"));
+        Assert.IsTrue(sawDrainLog, "pending==0 && outstanding==0 이면 종료(파괴) 경로에 진입해야 한다.");
+    }
+
+    // 동작 중 발생한 모든 로그를 타입과 함께 수집(LogAssert.NoUnexpectedReceived 가 정보/경고 로그는
+    // 감시하지 않는 한계 보완 — BuildFileSelectionTests.cs 의 동일 관용구 재사용).
+    private struct LogEntry
+    {
+        public LogType type;
+        public string message;
+    }
+
+    private static List<LogEntry> CollectLogs(Action action)
+    {
+        var logs = new List<LogEntry>();
+        Application.LogCallback handler = null;
+        handler = (msg, _, type) =>
+        {
+            logs.Add(new LogEntry { type = type, message = msg });
+        };
+        Application.logMessageReceived += handler;
+        try { action(); }
+        finally { Application.logMessageReceived -= handler; }
+        return logs;
     }
 
     private static object GetField(object target, string name)

@@ -543,7 +543,14 @@ namespace AppsInToss.Editor
                 // 외부화 실패가 빌드 전체를 막지 않도록: 부분 변경을 즉시 복원하고 비활성 핸들 반환.
                 Debug.LogError($"[AIT-StreamingFont] 외부화 예외 → 복원 후 건너뜀: {e}");
                 RestoreAllBackups();
-                if (!ShouldPreserveStreamRootForLazy())
+                if (ShouldPreserveStreamRootForLazy())
+                {
+                    // R6: 전체 보존이 아니라 lazy 전용 아티팩트(manifest.json + lazy-*.bundle*)만 남긴다 —
+                    // 이 예외 경로는 eager 외부화 도중 실패이므로, 만들다 만 eager 번들이 그대로 남으면
+                    // BuildPlayer 가 그걸 배포본에 실어버린다.
+                    PruneStreamRootForLazyOnly();
+                }
+                else
                 {
                     RemoveStreamRoot();
                 }
@@ -959,7 +966,12 @@ namespace AppsInToss.Editor
                 }
 
                 int restored = RestoreAllBackups();
-                if (!ShouldPreserveStreamRootForLazy())
+                if (ShouldPreserveStreamRootForLazy())
+                {
+                    // R6: SafetyNetRestore 도 동일 사유로 전체 보존 대신 lazy 전용 아티팩트만 남긴다.
+                    PruneStreamRootForLazyOnly();
+                }
+                else
                 {
                     RemoveStreamRoot();
                 }
@@ -1012,6 +1024,59 @@ namespace AppsInToss.Editor
             {
                 Debug.LogWarning($"[AIT-StreamingFont] StreamingAssets 번들 제거 실패: {e.Message}");
             }
+        }
+
+        /// <summary>
+        /// R6: ShouldPreserveStreamRootForLazy() 가 true 인 롤백/안전망 경로에서 스트림 루트 "전체"를
+        /// 보존하지 않는다 — lazy 확장이 실제로 필요로 하는 파일(manifest.json, lazy-*.bundle*)만 남기고
+        /// 나머지(예: 이 예외/이전 종료 시점에 만들다 만 eager 번들)는 삭제한다. 무조건 전체 보존은 완성되지
+        /// 않은 eager 번들이 그대로 배포본에 실리는 위험이 있다.
+        /// </summary>
+        private static void PruneStreamRootForLazyOnly()
+        {
+            string projectRoot = Directory.GetParent(Application.dataPath).FullName;
+            string streamRootFull = Path.Combine(projectRoot, StreamRootAssets);
+            if (!Directory.Exists(streamRootFull))
+            {
+                return;
+            }
+
+            try
+            {
+                foreach (var file in Directory.GetFiles(streamRootFull))
+                {
+                    string name = Path.GetFileName(file);
+                    if (IsLazyOnlyArtifact(name))
+                    {
+                        continue;
+                    }
+
+                    try
+                    {
+                        File.Delete(file);
+                    }
+                    catch (Exception e)
+                    {
+                        Debug.LogWarning($"[AIT-StreamingFont] lazy 전용 정리 중 파일 삭제 실패({name}): {e.Message}");
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[AIT-StreamingFont] lazy 전용 정리 실패: {e.Message}");
+            }
+        }
+
+        /// <summary>manifest.json(.meta 포함)과 lazy-&lt;tag&gt;-&lt;hash&gt;.bundle[.br][.meta] 만 보존 대상으로
+        /// 판정(R6). "lazy-" 접두 + ".bundle" 포함이면 원본/브로틀리 압축/메타 파일까지 자연히 매치한다.</summary>
+        private static bool IsLazyOnlyArtifact(string fileName)
+        {
+            if (fileName.StartsWith("manifest.json", StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            return fileName.StartsWith("lazy-", StringComparison.Ordinal) && fileName.Contains(".bundle");
         }
 
         /// <summary>AssetBundle 빌드 임시 디렉토리(Library/ait-fontbundle)를 제거(빌드 반복 시 사이드카 누적 방지).</summary>

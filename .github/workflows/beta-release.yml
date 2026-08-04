@@ -71,7 +71,7 @@ on:
         type: string
         default: ''
       probe_build:
-        description: 'true면 deploy probe 빌드로 실행 — lazy 폰트 등 옵트인 레버 발화 + 산출물 어서션(DeployProbeBuildRunner). false(기본)는 기존 E2EBuildRunner 경로와 완전히 동일.'
+        description: 'true면 deploy probe 빌드로 실행 — lazy 폰트 등 옵트인 레버 발화 + 산출물 어서션(DeployProbeBuildRunner). false(기본)는 기존 E2EBuildRunner 경로와 완전히 동일. 주의: probe 빌드도 실 콘솔 deploy 게이트로 배포됨 — 검증 전용이면 deploy_probe_only=true 를 함께 권장.'
         required: false
         type: boolean
         default: false

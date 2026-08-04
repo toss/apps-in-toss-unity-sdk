@@ -319,6 +319,17 @@ namespace AppsInToss.Editor
                         continue;
                     }
 
+                    // 방어선(subset-font-runner.mjs 의 noLayoutClosure 재시도가 1차 방어인
+                    // belt-and-suspenders): 러너가 ok:true 를 반환했어도 산출물에 외곽선 테이블이
+                    // 없으면(harfbuzz wasm 대규모 서브셋 조용한 드롭 등) 원본 소스 치환을 건너뛴다.
+                    byte[] subsetBytes = File.ReadAllBytes(tmpOut);
+                    if (!AITSfntLite.HasOutlineTable(subsetBytes))
+                    {
+                        Debug.LogWarning($"[AIT-FontSubset]   ⚠ {Path.GetFileName(assetPath)}: subset 산출물에 외곽선 테이블이 없어 원본을 유지합니다.");
+                        SafeDelete(tmpOut);
+                        continue;
+                    }
+
                     // 백업 후 소스 치환 + reimport(폰트 reimport 는 스크립트 컴파일 무유발 → 도메인 리로드 없음).
                     string bak = srcFull + BackupSuffix;
                     if (!File.Exists(bak))

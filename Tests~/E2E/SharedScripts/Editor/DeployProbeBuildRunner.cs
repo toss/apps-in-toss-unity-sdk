@@ -348,21 +348,51 @@ public class DeployProbeBuildRunner
         }
         finally
         {
-            // 설정 원복(로컬 반복 실행 위생 — CI는 clean checkout이라 무관).
-            config.textureStreamJpeg = originalTextureStreamJpeg;
-            config.audioStreamTranscode = originalAudioStreamTranscode;
-            config.fontSubsetLanguages = originalFontSubsetLanguages;
-            config.fontSubsetLazyLanguages = originalFontSubsetLazyLanguages;
-            EditorUtility.SetDirty(config);
+            // S5: 캐시된 config 참조 대신 원복 시점에 config 에셋을 신선하게 재로드한다. E2EBuildRunner.
+            // BuildWithSDK() 가 전체 빌드 + AssetDatabase 리프레시를 거치는 동안 위에서 캐시해 둔
+            // config(네이티브 ScriptableObject 래퍼)가 파괴된 fake-null 상태가 될 수 있고, 그 상태로
+            // EditorUtility.SetDirty 를 호출하면 ArgumentNullException 이 난다 — 이 finally 를
+            // 통째로 삼켜 아래 assertionsPassed 실패 처리(exit code 3)까지 함께 유실시킨 원인이었다.
+            // 그래서 재로드부터 sentinel 삭제까지 전체를 try/catch 로 감싼다: 원복 중 예외가 나도
+            // 여기서 흡수해 아래의 exit code 분기가 반드시 실행되게 한다.
+            try
+            {
+                var freshConfig = UnityUtil.GetEditorConf();
+                if (freshConfig != null)
+                {
+                    freshConfig.textureStreamJpeg = originalTextureStreamJpeg;
+                    freshConfig.audioStreamTranscode = originalAudioStreamTranscode;
+                    freshConfig.fontSubsetLanguages = originalFontSubsetLanguages;
+                    freshConfig.fontSubsetLazyLanguages = originalFontSubsetLazyLanguages;
+                    EditorUtility.SetDirty(freshConfig);
+                }
+                else
+                {
+                    Debug.LogWarning("[deploy-probe] 원복 시점에 config 에셋 재로드 실패 — config 필드 원복을 건너뜁니다" +
+                        "(sentinel 유지, 다음 에디터 로드 시 SafetyNetRestore 가 복원).");
+                }
 
-            SetWebGLDefines(originalWebGLDefines);
+                // WebGL 디파인 원복은 config 와 무관하므로 재로드 성공 여부와 상관없이 항상 시도.
+                SetWebGLDefines(originalWebGLDefines);
 
-            // F0: config + WebGL 디파인 원복이 모두 반영된 뒤 한 번에 영속화 — 센티널을 지우기
-            // 전에 디스크 flush 가 끝나야 한다(위 SafetyNetRestore 경로와 동일한 순서 보장).
-            AssetDatabase.SaveAssets();
+                // F0: config + WebGL 디파인 원복이 모두 반영된 뒤 한 번에 영속화 — 센티널을 지우기
+                // 전에 디스크 flush 가 끝나야 한다(위 SafetyNetRestore 경로와 동일한 순서 보장).
+                AssetDatabase.SaveAssets();
 
-            // 정상 원복이 여기까지 도달했다는 것 자체가 sentinel 이 더 이상 필요 없다는 뜻 — 삭제.
-            DeleteSentinel();
+                if (freshConfig != null)
+                {
+                    // 정상 원복(config 포함)이 여기까지 도달했다는 것 자체가 sentinel 이 더 이상
+                    // 필요 없다는 뜻 — 삭제. config 재로드가 실패한 경우는 원복이 불완전하므로
+                    // sentinel 을 남겨 다음 에디터 로드 시 안전망이 마저 처리하게 한다.
+                    DeleteSentinel();
+                }
+            }
+            catch (Exception restoreEx)
+            {
+                // 원복 예외가 위 assertionsPassed 실패 처리(exit code 3)를 삼키지 않도록 흡수한다.
+                // sentinel 은 지우지 않는다 — 다음 에디터 로드 시 SafetyNetRestore 가 원복을 이어받는다.
+                Debug.LogWarning($"[deploy-probe] finally 원복 중 예외(sentinel 유지, 다음 에디터 로드 시 안전망이 복원): {restoreEx}");
+            }
         }
 
         if (!assertionsPassed)

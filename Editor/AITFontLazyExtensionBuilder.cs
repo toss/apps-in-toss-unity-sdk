@@ -435,7 +435,7 @@ namespace AppsInToss.Editor
             // 샘플 검사한다. harfbuzz 서브셋은 소스에 없는 문자체계를 요청해도 '유효하지만 빈' 폰트를
             // 반환해 성공 처리될 수 있어, 검사 없이는 해당 태그가 boot 에서도 lazy 에서도 빠져 영구
             // tofu 가 된다.
-            if (!HasAnyCoverage(primarySourceAssetPath, langEntry.Ranges))
+            if (!HasAnyCoverage(srcFull, langEntry.Ranges))
             {
                 Debug.LogWarning($"[AIT-FontSubset-Lazy]   '{tag}' 소스 폰트가 해당 문자체계를 포함하지 않아 lazy 확장을 건너뜁니다.");
                 return null;
@@ -462,6 +462,15 @@ namespace AppsInToss.Editor
                 }
 
                 byte[] ttfBytes = File.ReadAllBytes(ttfFull);
+
+                // 방어선(S1 러너 재시도가 1차 방어인 belt-and-suspenders): 러너가 ok:true 를 반환했어도
+                // 산출물에 외곽선 테이블이 없으면(harfbuzz wasm 대규모 서브셋 드롭 등) 여기서 걸러낸다.
+                if (!AITSfntLite.HasOutlineTable(ttfBytes))
+                {
+                    Debug.LogWarning($"[AIT-FontSubset-Lazy]   '{tag}' 서브셋 산출물에 외곽선 테이블이 없어 lazy 확장을 건너뜁니다.");
+                    return null;
+                }
+
                 string hash = ComputeShortHash(ttfBytes);
 
                 AssetDatabase.ImportAsset(ttfAssetPath, ImportAssetOptions.ForceUpdate | ImportAssetOptions.ForceSynchronousImport);
@@ -534,50 +543,28 @@ namespace AppsInToss.Editor
         // ─────────────────────────── 글리프 커버리지 검사(B2) ───────────────────────────
 
         /// <summary>
-        /// 소스 폰트(targetPath)가 ranges 의 대표 코드포인트를 하나라도 가지고 있는지 검사한다. 하나라도
-        /// 있으면 진행(서브셋은 소스가 가진 글리프만 보존하므로 1단계 subset 과 동등한 커버리지가 보장된다).
-        /// Font 로드 실패·샘플이 전부 비어있음(BMP 밖 전용 범위)·HasCharacter 예외는 전부 false(안전 방향
-        /// fallback-to-boot).
+        /// 소스 폰트 파일(targetFullPath, 절대 경로)이 ranges 의 대표 코드포인트를 하나라도 가지고
+        /// 있는지 검사한다. 하나라도 있으면 진행(서브셋은 소스가 가진 글리프만 보존하므로 1단계
+        /// subset 과 동등한 커버리지가 보장된다).
+        ///
+        /// 과거에는 UnityEngine.Font.HasCharacter 로 샘플 검사했으나, 에디터의 Font.HasCharacter 는
+        /// OS 폰트 폴백을 포함해 판정하므로 소스 폰트에 실제로 없는 문자체계(예: NotoSansKR 소스에
+        /// 없는 th)에도 true 를 반환하는 거짓 양성이 있었다(빈 lazy 번들이 만들어지는 원인). 지금은
+        /// AITSfntLite 로 폰트 파일의 cmap 테이블을 직접 판독해 신뢰 가능한 커버리지를 판정한다.
+        /// 파일 읽기 실패·cmap 파싱 실패는 전부 false(안전 방향 fallback-to-boot).
         /// </summary>
-        private static bool HasAnyCoverage(string targetPath, string ranges)
+        private static bool HasAnyCoverage(string targetFullPath, string ranges)
         {
             try
             {
-                var font = AssetDatabase.LoadAssetAtPath<Font>(targetPath);
-                if (font == null)
+                if (string.IsNullOrEmpty(targetFullPath) || !File.Exists(targetFullPath))
                 {
                     return false;
                 }
 
-                // R4: HasCharacter 는 폰트 임포터가 Dynamic 문자셋일 때만 전체 커버리지를 신뢰성 있게
-                // 반영한다(비-Dynamic 임포터는 임포트 시점에 이미 제한된 글리프 집합만 남기므로
-                // HasCharacter 가 "없음"을 반환해도 실제 소스 폰트에는 해당 문자체계가 있을 수 있다).
-                // 캐스트에 성공하면 원인을 구분한 별도 경고를 남긴다 — 캐스트 자체가 실패하면(예: 특수
-                // 임포터) 기존 메시지(호출부의 일반 "문자체계 미포함" 경고)를 그대로 유지한다.
-                var importer = AssetImporter.GetAtPath(targetPath) as TrueTypeFontImporter;
-                if (importer != null && importer.fontTextureCase != FontTextureCase.Dynamic)
-                {
-                    Debug.LogWarning($"[AIT-FontSubset-Lazy]   '{targetPath}' 폰트 임포터가 Dynamic 문자셋이 아니라 커버리지 검사를 신뢰할 수 없어 lazy 확장을 건너뜁니다(임포터를 Dynamic 으로 바꾸면 활성화 가능).");
-                    return false;
-                }
-
+                byte[] bytes = File.ReadAllBytes(targetFullPath);
                 var samples = SampleCoverageCodepoints(ranges);
-                foreach (var cp in samples)
-                {
-                    try
-                    {
-                        if (font.HasCharacter((char)cp))
-                        {
-                            return true;
-                        }
-                    }
-                    catch
-                    {
-                        return false; // HasCharacter 예외 — 안전 방향 fallback.
-                    }
-                }
-
-                return false;
+                return AITSfntLite.CmapCoversAny(bytes, samples);
             }
             catch
             {

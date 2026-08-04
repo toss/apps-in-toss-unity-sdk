@@ -57,9 +57,11 @@ public class IAPv2Tester : MonoBehaviour
     private Text _plpGrantDecisionLabel;
 
     /// <summary>
-    /// [PLP round5] 결제 오버레이(visibilityState=hidden, rAF 정지) 중에도 Unity player loop를
+    /// [PLP round5 v2] 결제 오버레이(visibilityState=hidden, rAF 정지) 중에도 Unity player loop를
     /// setTimeout 타이밍(Emscripten mode 0)으로 돌릴 수 있는지 실기기에서 토글하기 위한 상태.
-    /// true면 Application.targetFrameRate = 30(setTimeout 구동), false면 -1(기본 rAF 구동).
+    /// v1(Application.targetFrameRate 토글)은 실기기에서 Emscripten 루프 타이밍을 바꾸지
+    /// 못함이 확인돼 폐기됐다 — true면 jslib에서 emscripten_set_main_loop_timing을 직접 호출해
+    /// setTimeout(33ms)으로 강제 전환, false면 rAF로 되돌린다.
     /// </summary>
     private bool _plpUseSetTimeoutLoop = false;
     private Text _plpLoopModeLabel;
@@ -237,6 +239,9 @@ public class IAPv2Tester : MonoBehaviour
         // 결제 오버레이 밖(평시)에서 동일 프로브를 실행해, 토글이 실제로 루프를 살리는지
         // 대조군 없이도 미리 검증할 수 있게 한다.
         UIBuilder.CreateButton(section, "[PLP5] await probe (지금)", onClick: RunPlp5AwaitProbeAsync);
+        // [PLP round5 v2] Task.Delay 자체의 생사를 평시 상태에서 격리 확정한다 — v1 실기기
+        // 실측에서 예외 없이 영영 재개되지 않는 것으로 관찰됐다(별도 사실로 고정하는 용도).
+        UIBuilder.CreateButton(section, "[PLP5v2] Task.Delay(3s) 단독", onClick: RunPlp5TaskDelayOnlyProbeAsync);
     }
 
     /// <summary>
@@ -286,24 +291,26 @@ public class IAPv2Tester : MonoBehaviour
     }
 
     /// <summary>
-    /// [PLP round5] Application.targetFrameRate를 -1(rAF 구동) ↔ 30(setTimeout 구동, Emscripten
-    /// mode 0)으로 순환한다. 적용 직후 jslib 헬퍼(PLP_GetMainLoopMethod)로 Emscripten 측
-    /// 실제 mainLoop.method도 함께 확인해 설정값과 실제 적용 여부가 일치하는지 로그로 남긴다.
+    /// [PLP round5 v2] Application.targetFrameRate 토글은 실기기(iOS, Unity 6000.2)에서
+    /// Browser.mainLoop.method를 바꾸지 못함이 확인됐다(rAF 고정 + 내부 프레임 스킵) — 현대
+    /// Unity는 targetFrameRate로 Emscripten 루프 타이밍을 전환하지 않는 것으로 보인다. v2는
+    /// Unity를 우회해 jslib에서 Emscripten 함수(emscripten_set_main_loop_timing)를 직접
+    /// 호출해 강제 전환한다. targetFrameRate는 더 이상 건드리지 않는다.
     /// </summary>
     private void TogglePlpLoopTiming()
     {
         _plpUseSetTimeoutLoop = !_plpUseSetTimeoutLoop;
-        Application.targetFrameRate = _plpUseSetTimeoutLoop ? 30 : -1;
+        int rc = _plpUseSetTimeoutLoop ? PLP_ForceLoopTiming(0, 33) : PLP_ForceLoopTiming(1, 1);
         UpdatePlpLoopModeLabel();
-        string mainLoopMethod = PLP_GetMainLoopMethod();
-        LogIap($"[PLP5] loop timing toggle: targetFrameRate={Application.targetFrameRate}, mainLoop={mainLoopMethod}");
+        string timingInfo = PLP_GetLoopTimingInfo();
+        LogIap($"[PLP5v2] force loop timing: mode={(_plpUseSetTimeoutLoop ? "setTimeout(33ms)" : "rAF")}, rc={rc}, info={timingInfo}");
         UpdateEventLog();
     }
 
     private void UpdatePlpLoopModeLabel()
     {
         if (_plpLoopModeLabel == null) return;
-        _plpLoopModeLabel.text = _plpUseSetTimeoutLoop ? "Loop: setTimeout(30)" : "Loop: rAF(-1)";
+        _plpLoopModeLabel.text = _plpUseSetTimeoutLoop ? "Loop: 강제 setTimeout(33ms)" : "Loop: 기본(rAF)";
     }
 
     /// <summary>[PLP round4] Deny 주문 기록을 PlayerPrefs에서 불러온다. 앱 시작 시(Awake) 1회 호출.</summary>
@@ -1109,14 +1116,18 @@ public class IAPv2Tester : MonoBehaviour
     private static extern string PLP_GetGrantDelayReport();
 
     [System.Runtime.InteropServices.DllImport("__Internal")]
-    private static extern string PLP_GetMainLoopMethod();
+    private static extern int PLP_ForceLoopTiming(int mode, int valueMs);
+
+    [System.Runtime.InteropServices.DllImport("__Internal")]
+    private static extern string PLP_GetLoopTimingInfo();
 #else
     private static void PLP_StartJsProbe() { }
     private static string PLP_GetJsReport() { return "{\"raf\":{},\"timer\":{},\"visibility\":[]}"; }
     private static void PLP_StartFetchProbe() { }
     private static void PLP_EnableGrantDelay(int delayMs) { }
     private static string PLP_GetGrantDelayReport() { return "[]"; }
-    private static string PLP_GetMainLoopMethod() { return "unknown"; }
+    private static int PLP_ForceLoopTiming(int mode, int valueMs) { return -999; }
+    private static string PLP_GetLoopTimingInfo() { return "{}"; }
 #endif
 
     private bool _plpArmed;
@@ -1190,32 +1201,45 @@ public class IAPv2Tester : MonoBehaviour
     }
 
     // =====================================================
-    // round 5 — 결제 오버레이(visibilityState=hidden, rAF 정지) 중에도 Unity player loop를
-    // setTimeout 타이밍(Application.targetFrameRate > 0, Emscripten mode 0)으로 계속 돌릴 수
-    // 있는가, 그리고 그때 C# await(Task.Delay, UnityWebRequest)가 재개되는가를 실기기에서
-    // 계측한다. 대조군은 기본 rAF 구동(targetFrameRate=-1) — 이 모드에서는 오버레이가 닫힌
-    // 뒤에야 await가 재개될 것으로 예상한다.
+    // round 5 v2 — v1 실기기 실측(iOS, Unity 6000.2)에서 Application.targetFrameRate 토글이
+    // Emscripten 루프 타이밍을 바꾸지 못하고(rAF 고정), await Task.Delay는 평시에도 예외 없이
+    // 영영 재개되지 않는 것으로 확인됐다(측정 도구로 부적합). v2는 (1) Unity를 우회해
+    // emscripten_set_main_loop_timing을 jslib에서 직접 호출해 루프 타이밍을 강제 전환하고,
+    // (2) await 생존 여부는 Task.Delay 대신 Task.Yield 루프(경과 시간을 직접 재는 방식)로
+    // 관측한다 — 루프가 살아있으면 3초 내외+다수 yield로 완료되고, 죽어있으면 오버레이 종료
+    // 후에야(즉 강제 전환과 무관하게) 완료된다. Task.Delay 자체의 생사는 별도 버튼
+    // (RunPlp5TaskDelayOnlyProbeAsync)으로 계속 고정 관측한다.
     // =====================================================
 
     /// <summary>
-    /// [PLP round5] await 생존 프로브. ProcessProductGrant 진입 시점(오버레이 정지 중)에
+    /// [PLP round5 v2] await 생존 프로브. ProcessProductGrant 진입 시점(오버레이 정지 중)에
     /// fire-and-forget으로 무장되거나, "[PLP5] await probe (지금)" 버튼으로 평시에 수동
-    /// 실행된다. Task.Delay(3000)이 재개되는 데 걸린 시간과, 이어서 same-origin
-    /// UnityWebRequest 왕복이 완료되는 데 걸린 시간을 각각 기록한다.
+    /// 실행된다. Task.Delay는 쓰지 않는다(v1 실측에서 죽은 것으로 확인돼 측정 도구로 부적합) —
+    /// 대신 Task.Yield 루프로 경과 시간을 직접 재며 3초 대기, 이어서 same-origin
+    /// UnityWebRequest 왕복이 완료되는 데 걸린 시간을 기록한다.
     /// </summary>
     private async void RunPlp5AwaitProbeAsync()
     {
         float t0 = Time.realtimeSinceStartup;
         try
         {
-            string mainLoopMethod = PLP_GetMainLoopMethod();
-            int targetFrameRate = Application.targetFrameRate;
-            LogIap($"[PLP5] await probe armed (Task.Delay 3000ms), mainLoop={mainLoopMethod}, targetFrameRate={targetFrameRate}");
+            string timingInfo = PLP_GetLoopTimingInfo();
+            LogIap($"[PLP5v2] await probe armed (Task.Yield 기반), info={timingInfo}");
             UpdateEventLog();
 
-            await Task.Delay(3000);
-            float delayElapsedSec = Time.realtimeSinceStartup - t0;
-            LogIap($"[PLP5] Task.Delay resumed: 경과 {delayElapsedSec:F1}s (기대 3.0s)");
+            await Task.Yield();
+            float firstYieldElapsedSec = Time.realtimeSinceStartup - t0;
+            LogIap($"[PLP5v2] 첫 yield 재개: 경과 {firstYieldElapsedSec:F3}s");
+            UpdateEventLog();
+
+            int yields = 0;
+            while (Time.realtimeSinceStartup - t0 < 3f)
+            {
+                await Task.Yield();
+                yields++;
+            }
+            float yieldDelayElapsedSec = Time.realtimeSinceStartup - t0;
+            LogIap($"[PLP5v2] yield-delay 3s 완료: yields={yields}, 경과 {yieldDelayElapsedSec:F1}s");
             UpdateEventLog();
 
             UnityWebRequest req = null;
@@ -1229,7 +1253,7 @@ public class IAPv2Tester : MonoBehaviour
                     await Task.Yield();
                 }
                 float totalElapsedSec = Time.realtimeSinceStartup - t0;
-                LogIap($"[PLP5] UnityWebRequest done: status={(long)req.responseCode}, 경과 {totalElapsedSec:F1}s");
+                LogIap($"[PLP5v2] UnityWebRequest done: status={(long)req.responseCode}, 경과 {totalElapsedSec:F1}s");
             }
             finally
             {
@@ -1238,7 +1262,35 @@ public class IAPv2Tester : MonoBehaviour
         }
         catch (Exception ex)
         {
-            LogIap($"[PLP5] await probe 예외: {ex.Message}");
+            LogIap($"[PLP5v2] await probe 예외: {ex.Message}");
+        }
+
+        UpdateEventLog();
+    }
+
+    /// <summary>
+    /// [PLP round5 v2] Task.Delay(3000ms) 단독 검증. 평시(오버레이 밖) visible 상태에서조차
+    /// Task.Delay 자체가 재개되는지를 격리해 확정한다 — v1 실기기 실측에서 예외 없이 영영
+    /// 재개되지 않는 것으로 관찰됐다(WebGL에 스레드 기반 타이머가 없는 것으로 보임). 이 버튼은
+    /// 그 사실을 필요할 때마다 반복 재현·재확인하기 위한 것으로, 위 await 생존 프로브
+    /// (Task.Yield 기반)와는 독립적으로 동작한다.
+    /// </summary>
+    private async void RunPlp5TaskDelayOnlyProbeAsync()
+    {
+        float t0 = Time.realtimeSinceStartup;
+        try
+        {
+            LogIap("[PLP5v2] Task.Delay(3s) 단독 armed");
+            UpdateEventLog();
+
+            await Task.Delay(3000);
+
+            float elapsedSec = Time.realtimeSinceStartup - t0;
+            LogIap($"[PLP5v2] Task.Delay(3s) 단독 재개: 경과 {elapsedSec:F1}s (기대 3.0s)");
+        }
+        catch (Exception ex)
+        {
+            LogIap($"[PLP5v2] Task.Delay(3s) 단독 예외: {ex.Message}");
         }
 
         UpdateEventLog();

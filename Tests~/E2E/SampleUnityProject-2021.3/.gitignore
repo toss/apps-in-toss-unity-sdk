@@ -35,6 +35,11 @@ BenchmarkResults/
 Assets/DeployProbeGen/
 Assets/DeployProbeGen.meta
 
+# TMP Essential Resources: DeployProbeBuildRunner가 TMP_FontAsset 생성을 위해 headless 임포트
+# (EnsureTmpEssentialResources) — 프로젝트 자산이 아닌 빌드 시점 산출물이므로 무시.
+Assets/TextMesh Pro/
+Assets/TextMesh Pro.meta
+
 # ============================================================
 # Apps in Toss SDK 설정 파일 (.gitignore 권장 설정)
 # 아래 패턴을 프로젝트의 .gitignore에 추가하세요

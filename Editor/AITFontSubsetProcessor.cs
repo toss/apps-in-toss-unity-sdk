@@ -119,8 +119,8 @@ namespace AppsInToss.Editor
                 return handle;
             }
 
-            // 자동 모드(fontSubset == -1)에서 동적 텍스트 언어/범위/대상이 아무것도 선택되지 않았으면,
-            // 개발자가 동적 텍스트 리스크를 인지하지 못한 것으로 보아 subset 자체를 건너뛴다(선택 = 인지된 활성화).
+            // 자동 모드(fontSubset == -1)에서 동적 텍스트 언어/범위/대상/제외 경로가 아무것도 설정되지 않았으면,
+            // 개발자가 동적 텍스트 리스크를 인지하지 못한 것으로 보아 subset 자체를 건너뛴다(설정 = 인지된 활성화).
             // 명시 활성(fontSubset == 1)은 기존 동작 그대로(스캔 단독 실행 허용).
             if (ShouldSkipAutoWithoutSelection(
                     config.fontSubset,

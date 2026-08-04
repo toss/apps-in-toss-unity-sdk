@@ -47,6 +47,32 @@ public class IAPv2Tester : MonoBehaviour
     private int _plpGrantDelayIndex = 0;
     private Text _plpGrantDelayLabel;
 
+    /// <summary>
+    /// [PLP round4] 복구 API 실기기 프로브 — Grant Approve/Deny 토글. true면 ProcessProductGrant가
+    /// false를 반환한다(플랫폼이 PAYMENT_COMPLETED로 기록하고 IAPGetPendingOrders에 노출하는지 실측용).
+    /// 기존 PLP_EnableGrantDelay(지연 토글)와는 독립적으로 조합 가능하다.
+    /// </summary>
+    private bool _plpDenyGrant = false;
+    private Text _plpGrantDecisionLabel;
+
+    /// <summary>[PLP round4] Deny된 주문 기록 — PlayerPrefs에 영속화되어 앱 재실행 후에도 남는다.</summary>
+    [Serializable]
+    private class PlpDeniedOrderRecord
+    {
+        public string orderId;
+        public string deniedAtUtc; // DateTime.UtcNow.ToString("o") — round-trip 포맷
+    }
+
+    /// <summary>JsonUtility는 최상위 배열을 직렬화하지 못해 래퍼 클래스로 감싼다.</summary>
+    [Serializable]
+    private class PlpDeniedOrderRecordListWrapper
+    {
+        public List<PlpDeniedOrderRecord> records = new List<PlpDeniedOrderRecord>();
+    }
+
+    private const string PlpDeniedOrdersPrefKey = "PLP4_DeniedOrders";
+    private List<PlpDeniedOrderRecord> _plpDeniedOrders = new List<PlpDeniedOrderRecord>();
+
     // 구독 해제 액션
     private Action _purchaseDisposer;
 
@@ -72,6 +98,8 @@ public class IAPv2Tester : MonoBehaviour
         // 진단 가치가 큰 Error/Exception은 스택트레이스를 그대로 유지한다.
         Application.SetStackTraceLogType(LogType.Log, StackTraceLogType.None);
         Application.SetStackTraceLogType(LogType.Warning, StackTraceLogType.None);
+
+        LoadPlpDeniedOrders();
     }
 
     /// <summary>
@@ -176,6 +204,18 @@ public class IAPv2Tester : MonoBehaviour
         // 않으므로, 이후 토글 클릭 시 재시도된다(멱등).
         PLP_EnableGrantDelay(PlpGrantDelayOptionsMs[_plpGrantDelayIndex]);
         UpdatePlpGrantDelayLabel();
+
+        // [PLP round4] 복구 API 실기기 프로브 — Deny 주문이 IAPGetPendingOrders에 노출되는지,
+        // 그 주문을 임의 시점(재실행 포함)에 IAPCompleteProductGrant로 늦게 지급할 수 있는지 실측.
+        UIBuilder.CreateText(section, "진단: 복구 API 프로브 (Deny 주문 → Pending 노출 → 늦은 지급)",
+            UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary, fontStyle: FontStyle.Bold);
+        _plpGrantDecisionLabel = UIBuilder.CreateText(section, "",
+            UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary);
+        UIBuilder.CreateButton(section, "Grant 결정 토글 (Approve ⇄ Deny)", onClick: TogglePlpGrantDecision);
+        UIBuilder.CreateButton(section, "Pending 조회 (round4)", onClick: async () => await RunPendingOrdersProbeAsync());
+        UIBuilder.CreateButton(section, "Completed/Refunded 조회 (round4)", onClick: async () => await RunCompletedOrdersProbeAsync());
+        UIBuilder.CreateButton(section, "늦은 지급 시도 (최근 Deny 주문)", onClick: ExecuteLatePlpGrantAttempt);
+        UpdatePlpGrantDecisionLabel();
     }
 
     /// <summary>
@@ -201,6 +241,221 @@ public class IAPv2Tester : MonoBehaviour
         _plpGrantDelayLabel.text = delayMs > 0
             ? $"그랜트 resolve 지연: {delayMs}ms (다음 구매 시도부터 적용)"
             : "그랜트 resolve 지연: 0ms (래퍼는 설치, 지연 없음)";
+    }
+
+    /// <summary>
+    /// [PLP round4] Grant Approve/Deny 결정을 토글한다. Deny면 다음 구매 시도의
+    /// ProcessProductGrant가 false를 반환한다 — 기존 지연 토글(PLP_EnableGrantDelay)과는
+    /// 독립적으로 동작하며 두 토글을 조합해 지연+Deny도 실측할 수 있다.
+    /// </summary>
+    private void TogglePlpGrantDecision()
+    {
+        _plpDenyGrant = !_plpDenyGrant;
+        UpdatePlpGrantDecisionLabel();
+        LogIap($"[PLP] Grant 결정 토글: {(_plpDenyGrant ? "Deny (다음 구매부터 false 반환)" : "Approve (다음 구매부터 true 반환)")}");
+        UpdateEventLog();
+    }
+
+    private void UpdatePlpGrantDecisionLabel()
+    {
+        if (_plpGrantDecisionLabel == null) return;
+        _plpGrantDecisionLabel.text = _plpDenyGrant
+            ? "Grant 결정: Deny (다음 구매부터 false 반환)"
+            : "Grant 결정: Approve (다음 구매부터 true 반환)";
+    }
+
+    /// <summary>[PLP round4] Deny 주문 기록을 PlayerPrefs에서 불러온다. 앱 시작 시(Awake) 1회 호출.</summary>
+    private void LoadPlpDeniedOrders()
+    {
+        _plpDeniedOrders = new List<PlpDeniedOrderRecord>();
+        string json = PlayerPrefs.GetString(PlpDeniedOrdersPrefKey, "");
+        if (string.IsNullOrEmpty(json)) return;
+
+        try
+        {
+            var wrapper = JsonUtility.FromJson<PlpDeniedOrderRecordListWrapper>(json);
+            if (wrapper?.records != null)
+            {
+                _plpDeniedOrders = wrapper.records;
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[IAPv2Tester] [PLP] Deny 기록 로드 실패 (무시하고 빈 목록으로 시작): {ex.Message}");
+        }
+    }
+
+    /// <summary>[PLP round4] Deny 주문 기록을 PlayerPrefs에 즉시 flush한다 — 재실행 후에도 남아야 한다.</summary>
+    private void SavePlpDeniedOrders()
+    {
+        var wrapper = new PlpDeniedOrderRecordListWrapper { records = _plpDeniedOrders };
+        string json = JsonUtility.ToJson(wrapper);
+        PlayerPrefs.SetString(PlpDeniedOrdersPrefKey, json);
+        PlayerPrefs.Save();
+    }
+
+    /// <summary>
+    /// [PLP round4] ProcessProductGrant가 false를 반환할 때 호출 — 주문 식별자와 UTC 타임스탬프를
+    /// 기록하고 PlayerPrefs에 영속화한다. 순수 동기 호출만 사용해 콜백의 동기 제약을 지킨다.
+    /// </summary>
+    private void RecordPlpDeniedOrder(string orderId)
+    {
+        if (string.IsNullOrEmpty(orderId))
+        {
+            LogIap("[PLP][DENY] orderId 없음 — 기록 생략", toConsole: false);
+            return;
+        }
+
+        var record = new PlpDeniedOrderRecord
+        {
+            orderId = orderId,
+            deniedAtUtc = DateTime.UtcNow.ToString("o")
+        };
+        _plpDeniedOrders.Add(record);
+        SavePlpDeniedOrders();
+        LogIap($"[PLP][DENY] orderId={orderId} deniedAtUtc={record.deniedAtUtc} (PlayerPrefs 기록, 재실행 후에도 유지)");
+    }
+
+    private bool IsPlpDeniedOrderId(string orderId)
+    {
+        if (string.IsNullOrEmpty(orderId)) return false;
+        foreach (var record in _plpDeniedOrders)
+        {
+            if (record.orderId == orderId) return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// [PLP round4] IAPGetPendingOrders()를 조회해 온스크린 로그에 덤프한다. 기록된 Deny 주문이
+    /// 목록에 있으면 "[DENIED-HIT]" 접두로 명시한다. 오버레이가 닫힌 평시 버튼에서만 호출되므로
+    /// await가 안전하다.
+    /// </summary>
+    private async Task RunPendingOrdersProbeAsync()
+    {
+        LogIap("[PLP] IAPGetPendingOrders() 조회 (복구 API 프로브)");
+        UpdateEventLog();
+
+        try
+        {
+            var result = await AIT.IAPGetPendingOrders();
+#if AIT_SDK_1_7_OR_LATER
+            int count = result?.Orders?.Length ?? 0;
+            LogIap($"[PLP] Pending 주문 {count}건");
+            if (result?.Orders != null)
+            {
+                foreach (var order in result.Orders)
+                {
+                    string prefix = IsPlpDeniedOrderId(order.OrderId) ? "[DENIED-HIT] " : "";
+                    LogIap($"[PLP]   {prefix}orderId={order.OrderId}, sku={order.Sku}, paymentCompletedDate={order.PaymentCompletedDate}");
+                }
+            }
+#else
+            LogIap("[PLP] Pending 주문 상세 필드는 SDK 1.7.0+ 필요 (현재 빌드는 미지원)");
+#endif
+        }
+        catch (AITException ex)
+        {
+            LogIap($"[PLP] Pending 조회 오류: {ex.ErrorCode} - {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            LogIap($"[PLP] Pending 조회 예외: {ex.Message}");
+        }
+
+        UpdateEventLog();
+    }
+
+    /// <summary>
+    /// [PLP round4] IAPGetCompletedOrRefundedOrders()를 조회해 온스크린 로그에 덤프한다.
+    /// 기록된 Deny 주문이 목록에 있으면 상태(Completed/Refunded)와 함께 "[DENIED-HIT]"로 표시한다.
+    /// </summary>
+    private async Task RunCompletedOrdersProbeAsync()
+    {
+        LogIap("[PLP] IAPGetCompletedOrRefundedOrders() 조회 (복구 API 프로브)");
+        UpdateEventLog();
+
+        try
+        {
+            var result = await AIT.IAPGetCompletedOrRefundedOrders();
+#if AIT_SDK_1_7_OR_LATER
+            int count = result?.Orders?.Length ?? 0;
+            LogIap($"[PLP] Completed/Refunded 주문 {count}건 (hasNext={result?.HasNext})");
+            if (result?.Orders != null)
+            {
+                foreach (var order in result.Orders)
+                {
+                    string prefix = IsPlpDeniedOrderId(order.OrderId) ? "[DENIED-HIT] " : "";
+                    LogIap($"[PLP]   {prefix}orderId={order.OrderId}, sku={order.Sku}, status={order.Status}, date={order.Date}");
+                }
+            }
+#else
+            LogIap("[PLP] Completed/Refunded 주문 상세 필드는 SDK 1.7.0+ 필요 (현재 빌드는 미지원)");
+#endif
+        }
+        catch (AITException ex)
+        {
+            LogIap($"[PLP] Completed/Refunded 조회 오류: {ex.ErrorCode} - {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            LogIap($"[PLP] Completed/Refunded 조회 예외: {ex.Message}");
+        }
+
+        UpdateEventLog();
+    }
+
+    /// <summary>
+    /// [PLP round4] 기록된 가장 최근 Deny 주문 식별자로 IAPCompleteProductGrant()를 호출해
+    /// "임의 시점(재실행 포함, 수 분~수 일 뒤)에 늦게 지급할 수 있는가"를 실측한다.
+    /// 성공/실패와 무관하게 두 조회(Pending, Completed/Refunded)를 자동 재실행해 상태 전이를
+    /// 온스크린 로그로 보여준다. 오버레이가 닫힌 평시 버튼에서만 호출되므로 await가 안전하다.
+    /// </summary>
+    private async void ExecuteLatePlpGrantAttempt()
+    {
+        if (_plpDeniedOrders.Count == 0)
+        {
+            LogIap("[PLP] 늦은 지급 시도: 기록된 Deny 주문 없음 (먼저 Grant 결정을 Deny로 토글하고 구매를 시도할 것)");
+            UpdateEventLog();
+            return;
+        }
+
+        var latest = _plpDeniedOrders[_plpDeniedOrders.Count - 1];
+        LogIap($"[PLP] 늦은 지급 시도: orderId={latest.orderId} (Deny 시각={latest.deniedAtUtc})");
+        UpdateEventLog();
+
+        try
+        {
+            var args = new IAPCompleteProductGrantArgs_0
+            {
+                Params = new IAPCompleteProductGrantArgs_0Params { OrderId = latest.orderId }
+            };
+            bool success = await AIT.IAPCompleteProductGrant(args);
+
+            string elapsedDesc = "알 수 없음";
+            if (DateTime.TryParse(latest.deniedAtUtc, System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.RoundtripKind, out var deniedAt))
+            {
+                TimeSpan elapsed = DateTime.UtcNow - deniedAt;
+                elapsedDesc = $"{elapsed.TotalSeconds:F1}s";
+            }
+
+            LogIap($"[PLP] 늦은 지급 결과: success={success}, Deny 시점 대비 경과={elapsedDesc}");
+        }
+        catch (AITException ex)
+        {
+            LogIap($"[PLP] 늦은 지급 오류: {ex.ErrorCode} - {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            LogIap($"[PLP] 늦은 지급 예외: {ex.Message}");
+        }
+
+        UpdateEventLog();
+
+        // 성공/실패와 무관하게 상태 전이(Pending → Completed/Refunded)를 보여주기 위해 재조회한다.
+        await RunPendingOrdersProbeAsync();
+        await RunCompletedOrdersProbeAsync();
     }
 
     private GameObject CreateDynamicContainer(Transform parent, string name)
@@ -504,16 +759,25 @@ public class IAPv2Tester : MonoBehaviour
                 // [1단계] 콜백은 즉시 승인한다. 오버레이가 player loop를 멈춘 동안 호출되는
                 // 자리라 반환형이 동기 bool이다(async는 컴파일 불가). 여기서 검증할 것도
                 // 없다(정보는 OrderId뿐) — 검증과 지급은 아래 onEvent(2단계)에서 한다.
-                ProcessProductGrant = _ =>
+                ProcessProductGrant = grantParam =>
                 {
-                    LogIap("ProcessProductGrant: 즉시 true 반환 (동기)");
+                    // [PLP round4] 복구 API 프로브: Grant Approve/Deny 토글값에 따라 반환값을 바꾼다.
+                    // 반드시 동기 유지 — 이 콜백 안에서 await/Task를 쓰면 오버레이 정지 중 교착된다.
+                    bool approve = !_plpDenyGrant;
+                    LogIap($"ProcessProductGrant: 즉시 {(approve ? "true" : "false")} 반환 (동기, orderId={grantParam?.OrderId})");
                     // [PLP round4] 오버레이가 아직 열려 있는(= player loop 정지 중) 이 시점에
                     // JS fetch 왕복을 발사한다. 완료 시 SendMessage로 OnPlpFetchProbeComplete가
                     // 호출된다 — "fetch가 완료되고 전달까지 되는가"를 여기서 직접 관측한다.
                     PLP_StartFetchProbe();
                     LogIap("[PLP] fetch probe armed (ProcessProductGrant 진입 시점)");
+                    if (!approve)
+                    {
+                        // PlayerPrefs.SetString/Save는 동기 API이므로 이 콜백의 "동기 유지" 제약을
+                        // 어기지 않는다 — await/Task는 여전히 없다.
+                        RecordPlpDeniedOrder(grantParam?.OrderId);
+                    }
                     UpdateEventLog();
-                    return true;
+                    return approve;
                 }
             };
 

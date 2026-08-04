@@ -178,22 +178,30 @@ namespace AppsInToss.Editor
                 return handle;
             }
 
-            // ── 도구 준비: lazy 확장(있으면)도 같은 npm 도구(subset-font-runner.mjs)를 재사용하므로
-            //   보존 범위 결정보다 앞으로 옮겼다(lazy 훅이 boot union 계산에 앞서 node/runner 를 필요로 함).
-            string node, runner;
-            if (!EnsureTool(out node, out runner))
+            // ── 도구 준비(N11): lazy 확장이 이번 빌드에서 활성일 때만 EnsureTool 을 보존 범위 결정보다
+            //   앞으로 옮긴다(lazy 훅이 boot union 계산에 앞서 node/runner 를 필요로 하기 때문). lazy
+            //   비활성 기본 경로는 1단계와 동일하게 EnsureTool 호출을 보존 범위 결정 "이후"(아래)로 유지해
+            //   불필요한 조기 도구 준비(느린 on-demand npm 설치 가능성 포함)를 피한다.
+            string node = null;
+            string runner = null;
+            bool lazyEnabledForBuild = AITFontLazyExtensionBuilder.IsLazyEnabled(config);
+            string bootLanguagesForUnion = config.fontSubsetLanguages ?? string.Empty;
+            if (lazyEnabledForBuild)
             {
-                Debug.LogWarning("[AIT-FontSubset] subset 도구 준비 실패 → subset 을 건너뜁니다(풀 폰트로 빌드 계속).");
-                return handle;
-            }
+                if (!EnsureTool(out node, out runner))
+                {
+                    Debug.LogWarning("[AIT-FontSubset] subset 도구 준비 실패 → subset 을 건너뜁니다(풀 폰트로 빌드 계속).");
+                    return handle;
+                }
 
-            // ── lazy 확장(있으면, fontSubsetLazyLanguages==1 명시 활성 전용): 부트 서브셋으로 파일이
-            //   치환되기 전(targets 는 아직 원본 바이트) 원본 폰트 바이트에서 언어별 확장 서브셋을 먼저
-            //   시도한다. 성공한 태그는 이후 boot union 에서 제외되고, 실패한 태그는 안전 불변식에 따라
-            //   bootLanguagesForUnion 에 그대로 남아 부트 union 에 포함된다(fallback-to-boot).
-            string bootLanguagesForUnion = AITFontLazyExtensionBuilder.ApplyLazyExtensions(
-                config, targets, node, runner, out bool lazyActive);
-            handle.LazyActive = lazyActive;
+                // ── lazy 확장(fontSubsetLazyLanguages==1 명시 활성 전용): 부트 서브셋으로 파일이
+                //   치환되기 전(targets 는 아직 원본 바이트) 원본 폰트 바이트에서 언어별 확장 서브셋을 먼저
+                //   시도한다. 성공한 태그는 이후 boot union 에서 제외되고, 실패한 태그는 안전 불변식에 따라
+                //   bootLanguagesForUnion 에 그대로 남아 부트 union 에 포함된다(fallback-to-boot).
+                bootLanguagesForUnion = AITFontLazyExtensionBuilder.ApplyLazyExtensions(
+                    config, targets, node, runner, out bool lazyActive);
+                handle.LazyActive = lazyActive;
+            }
 
             // ── 보존 범위 결정: 수동 범위(override)가 있으면 그대로, 없으면 Auto 스캔으로 도출 ──
             string ranges = (config.fontSubsetUnicodeRanges ?? string.Empty).Trim();
@@ -238,6 +246,16 @@ namespace AppsInToss.Editor
             {
                 ranges = string.IsNullOrEmpty(ranges) ? extraRanges : ranges + "," + extraRanges;
                 Debug.Log($"[AIT-FontSubset] 추가 보존 범위(union) 적용: {extraRanges}");
+            }
+
+            // lazy 비활성 경로(1단계와 동일 시점): 위에서 아직 EnsureTool 을 호출하지 않았으면 여기서 준비.
+            if (node == null)
+            {
+                if (!EnsureTool(out node, out runner))
+                {
+                    Debug.LogWarning("[AIT-FontSubset] subset 도구 준비 실패 → subset 을 건너뜁니다(풀 폰트로 빌드 계속).");
+                    return handle;
+                }
             }
 
             try

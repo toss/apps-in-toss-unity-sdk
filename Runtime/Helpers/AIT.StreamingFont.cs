@@ -300,71 +300,83 @@ namespace AppsInToss
         private IEnumerator LoadAndInject(Entry e, Action<bool> done)
         {
 #if AIT_HAS_ASSETBUNDLE && AIT_HAS_UNITYWEBREQUEST
-            byte[] data = null;
-            string url = ResolveStreamingUrl(StreamDirRelativePath + e.bundle);
-            using (var req = UnityWebRequest.Get(url))
+            // R0/R0b: 무방비 구간(SendWebRequest 전송, DecodePayload 가 null 을 통과시킨 뒤의
+            // LoadFromMemoryAsync(null), LoadAllAssetsAsync)에서 예외가 나면 done() 이 한 번도 호출되지
+            // 않을 수 있다 — eager 경로(Run())의 doneCount 와 lazy 경로(LoadLazyEntry)의 카운터가 모두
+            // done() 콜백에 의존하므로, 이를 누락하면 대기 루프가 영원히 안 끝나거나(eager) 뒤이은
+            // lazy 언어까지 영구 tofu(lazyInflight 누수)가 된다. try/finally 로 어떤 경로로 빠져나가든
+            // done() 이 정확히 한 번 호출되도록 보장한다.
+            bool result = false;
+            try
             {
-                yield return req.SendWebRequest();
-                if (!IsSuccess(req))
+                byte[] data = null;
+                string url = ResolveStreamingUrl(StreamDirRelativePath + e.bundle);
+                using (var req = UnityWebRequest.Get(url))
                 {
-                    Debug.LogWarning($"[AIT-StreamingFont] 번들 다운로드 실패 {e.bundle}: {req.error}");
-                    done(false);
+                    yield return req.SendWebRequest();
+                    if (!IsSuccess(req))
+                    {
+                        Debug.LogWarning($"[AIT-StreamingFont] 번들 다운로드 실패 {e.bundle}: {req.error}");
+                        yield break;
+                    }
+
+                    data = req.downloadHandler.data;
+                }
+
+                // .br 외부화 페이로드 정규화: 서버가 Content-Encoding 으로 이미 해제했으면 그대로,
+                // raw brotli 면 여기서 해제(UnityFS 매직으로 판별). 무압축 엔트리는 no-op.
+                data = AITStreamingCodec.DecodePayload(e.encoding, data, AITStreamingCodec.LooksLikeUnityFs, e.bundle);
+
+                // stripping High 가 잘라낸 GetAssetBundle/DownloadHandlerAssetBundle 대신
+                // DownloadHandlerBuffer 로 받은 바이트를 LoadFromMemoryAsync 로 적재(가상 FS 캐시 비의존).
+                var createReq = AssetBundle.LoadFromMemoryAsync(data);
+                yield return createReq;
+
+                var bundle = createReq.assetBundle;
+                if (bundle == null)
+                {
+                    Debug.LogWarning($"[AIT-StreamingFont] 번들 적재 실패(LoadFromMemoryAsync null): {e.bundle}");
                     yield break;
                 }
 
-                data = req.downloadHandler.data;
-            }
+                bool any = false;
+                var loadReq = bundle.LoadAllAssetsAsync();
+                yield return loadReq;
 
-            // .br 외부화 페이로드 정규화: 서버가 Content-Encoding 으로 이미 해제했으면 그대로,
-            // raw brotli 면 여기서 해제(UnityFS 매직으로 판별). 무압축 엔트리는 no-op.
-            data = AITStreamingCodec.DecodePayload(e.encoding, data, AITStreamingCodec.LooksLikeUnityFs, e.bundle);
-
-            // stripping High 가 잘라낸 GetAssetBundle/DownloadHandlerAssetBundle 대신
-            // DownloadHandlerBuffer 로 받은 바이트를 LoadFromMemoryAsync 로 적재(가상 FS 캐시 비의존).
-            var createReq = AssetBundle.LoadFromMemoryAsync(data);
-            yield return createReq;
-
-            var bundle = createReq.assetBundle;
-            if (bundle == null)
-            {
-                Debug.LogWarning($"[AIT-StreamingFont] 번들 적재 실패(LoadFromMemoryAsync null): {e.bundle}");
-                done(false);
-                yield break;
-            }
-
-            bool any = false;
-            var loadReq = bundle.LoadAllAssetsAsync();
-            yield return loadReq;
-
-            try
-            {
-                var assets = loadReq.allAssets;
-                if (assets != null)
+                try
                 {
-                    foreach (var a in assets)
+                    var assets = loadReq.allAssets;
+                    if (assets != null)
                     {
-                        if (a == null)
+                        foreach (var a in assets)
                         {
-                            continue;
-                        }
+                            if (a == null)
+                            {
+                                continue;
+                            }
 
-                        // TMP 컴파일 의존 없이 타입명으로 TMP_FontAsset 식별 → fallback 목록에 추가.
-                        if (IsTmpFontAsset(a) && InjectFallback(a))
-                        {
-                            any = true;
-                            Debug.Log($"[AIT-StreamingFont]   fallback 주입: {a.name} ({e.bundle})");
+                            // TMP 컴파일 의존 없이 타입명으로 TMP_FontAsset 식별 → fallback 목록에 추가.
+                            if (IsTmpFontAsset(a) && InjectFallback(a))
+                            {
+                                any = true;
+                                Debug.Log($"[AIT-StreamingFont]   fallback 주입: {a.name} ({e.bundle})");
+                            }
                         }
                     }
                 }
-            }
-            catch (Exception ex)
-            {
-                Debug.LogWarning($"[AIT-StreamingFont] 주입 예외 {e.bundle}: {ex.Message}");
-            }
+                catch (Exception ex)
+                {
+                    Debug.LogWarning($"[AIT-StreamingFont] 주입 예외 {e.bundle}: {ex.Message}");
+                }
 
-            // 번들은 언로드하지 않는다(unload(true) 는 주입한 폰트를 파괴, unload(false) 도 동적
-            // 래스터화가 번들 자원을 늦게 참조할 위험이 있어 세션 동안 유지). 메모리 비용은 폰트 1~2개분.
-            done(any);
+                // 번들은 언로드하지 않는다(unload(true) 는 주입한 폰트를 파괴, unload(false) 도 동적
+                // 래스터화가 번들 자원을 늦게 참조할 위험이 있어 세션 동안 유지). 메모리 비용은 폰트 1~2개분.
+                result = any;
+            }
+            finally
+            {
+                done(result);
+            }
 #else
             // AIT_HAS_ASSETBUNDLE/AIT_HAS_UNITYWEBREQUEST 미정의 시: Run() 진입부에서 이미 종료하므로 여기에 도달하지 않음.
             // C# 컴파일러의 "yield return 없는 IEnumerator" 경고를 방지하기 위해 yield 유지.
@@ -595,32 +607,48 @@ namespace AppsInToss
             }
         }
 
-        /// <summary>lazy entry 1개를 기존 maxConcurrent 게이트를 지켜 로드/주입. 완료 시 소진 여부를 확인해 정리.</summary>
+        /// <summary>lazy entry 1개를 기존 maxConcurrent 게이트를 지켜 로드/주입. 완료 시 소진 여부를 확인해 정리.
+        /// R0: 이중 try/finally 로 구성 — C# 이터레이터 제약(yield 는 catch 있는 try 안 금지, finally 만
+        /// 있는 try 안은 허용)을 지키면서, 무방비 구간(LoadAndInject 내부 등)에서 예외가 나도
+        /// lazyInflight/lazyOutstanding 감소와 MaybeFinishLazy 가 반드시 실행되도록 보장한다. 카운터가
+        /// 누수되면 maxConcurrent 게이트가 영구히 잠겨 대기 중이던 다른 태그가 영영 로드되지 않는다
+        /// (부트 union 에서 이미 빠진 언어 = 영구 tofu).</summary>
         private IEnumerator LoadLazyEntry(Entry e)
         {
-            while (lazyInflight >= maxConcurrent)
+            try
             {
-                yield return null;
+                while (lazyInflight >= maxConcurrent)
+                {
+                    yield return null;
+                }
+
+                lazyInflight++;
+                try
+                {
+                    bool ok = false;
+                    yield return LoadAndInject(e, r => ok = r);
+
+                    if (ok)
+                    {
+                        RefreshVisibleText();
+                        Debug.Log($"[AIT-StreamingFont] lazy 폰트 로드 완료: {e.lazyTag} ({e.bundle})");
+                    }
+                    else
+                    {
+                        Debug.LogWarning($"[AIT-StreamingFont] lazy 폰트 로드 실패(세션 내 재시도 없음): {e.lazyTag} ({e.bundle})");
+                    }
+                }
+                finally
+                {
+                    lazyInflight--;
+                }
             }
-
-            lazyInflight++;
-            bool ok = false;
-            yield return LoadAndInject(e, r => ok = r);
-            lazyInflight--;
-
-            if (ok)
+            finally
             {
-                RefreshVisibleText();
-                Debug.Log($"[AIT-StreamingFont] lazy 폰트 로드 완료: {e.lazyTag} ({e.bundle})");
+                // 게이트 대기 포함 이 태그의 전체 생애주기가 끝났다 — MaybeFinishLazy 판정 전에 반드시 감소.
+                lazyOutstanding--;
+                MaybeFinishLazy();
             }
-            else
-            {
-                Debug.LogWarning($"[AIT-StreamingFont] lazy 폰트 로드 실패(세션 내 재시도 없음): {e.lazyTag} ({e.bundle})");
-            }
-
-            // 게이트 대기 포함 이 태그의 전체 생애주기가 끝났다 — MaybeFinishLazy 판정 전에 반드시 감소.
-            lazyOutstanding--;
-            MaybeFinishLazy();
         }
 
         /// <summary>lazy 완료 판정의 순수 로직(카운터 상태 전이) — pending 도 outstanding(트리거됐으나
@@ -640,13 +668,23 @@ namespace AppsInToss
         private void FinishLazyDetection()
         {
             UnsubscribeTextChanged();
+
+            // R0: 코루틴 예외로 인한 finally 재진입 등, 이미 파괴된 컴포넌트에서 다시 호출될 가능성을
+            // 흡수한다 — StopCoroutine/Destroy 는 파괴된 MonoBehaviour 에서 호출 시 예외 위험이 있으므로
+            // this 가 죽었으면(Unity 오버로드 == 로 native 파괴 여부 판정) 여기서 정리하고 멈춘다.
+            if (this == null)
+            {
+                lazyPollCoroutine = null;
+                return;
+            }
+
             if (lazyPollCoroutine != null)
             {
                 StopCoroutine(lazyPollCoroutine);
                 lazyPollCoroutine = null;
             }
 
-            if (this != null && gameObject != null)
+            if (gameObject != null)
             {
                 Debug.Log("[AIT-StreamingFont] lazy 폰트 전 태그 소진 — 재수화 컴포넌트를 종료합니다.");
                 Destroy(gameObject);

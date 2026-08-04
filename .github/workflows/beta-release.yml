@@ -500,6 +500,9 @@ jobs:
           UNITY_PROJECT_PATH: ${{ github.workspace }}/Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}
           AIT_DEVELOPMENT_BUILD: "true"
           AIT_COMPRESSION_FORMAT: "0"
+          # F2: probe_build 입력을 그대로 반영 — true 면 e2e-lazy-font.test.js 가 lazy manifest
+          # 부재를 skip 대신 명시적 실패로 처리한다(조용한 green 방지). false(기본)는 가드 비활성.
+          AIT_EXPECT_DEPLOY_PROBE: ${{ inputs.probe_build }}
         run: pnpm test
 
       - name: 베타 ait deploy 검증 (게시 게이트)
@@ -675,6 +678,9 @@ jobs:
           UNITY_PROJECT_PATH: ${{ github.workspace }}/Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}
           AIT_DEVELOPMENT_BUILD: "true"
           AIT_COMPRESSION_FORMAT: "0"
+          # F2: probe_build 입력을 그대로 반영 — true 면 e2e-lazy-font.test.js 가 lazy manifest
+          # 부재를 skip 대신 명시적 실패로 처리한다(조용한 green 방지). false(기본)는 가드 비활성.
+          AIT_EXPECT_DEPLOY_PROBE: ${{ inputs.probe_build }}
         run: pnpm test
 
       - name: Upload Playwright Report

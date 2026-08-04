@@ -56,10 +56,11 @@ namespace AppsInToss.Editor
 
         /// <summary>
         /// 항시 포함 베이스라인 범위(스캔 결과와 무관하게 항상 보존).
-        /// ASCII + Latin-1 + 한글 음절/자모 + CJK 기호 + 전각. 기존 수동 기본값과 동일.
+        /// ASCII + Latin-1 + 한글 음절/자모/호환 자모 + CJK 기호 + 전각. 기존 수동 기본값과 동일
+        /// (호환 자모 U+3130-318F 는 ㅋㅋ/ㅠㅠ/ㅇㅇ 같은 낱자모 전용 동적 텍스트 보호를 위해 추가됨).
         /// </summary>
         public const string BaselineRanges =
-            "U+0020-007E,U+00A0-00FF,U+AC00-D7A3,U+1100-11FF,U+3000-303F,U+FF00-FFEF";
+            "U+0020-007E,U+00A0-00FF,U+AC00-D7A3,U+1100-11FF,U+3130-318F,U+3000-303F,U+FF00-FFEF";
 
         /// <summary>
         /// 스캔으로 감지한 코드포인트 + 블록 완성 + Han 패드 + 베이스라인을 합쳐

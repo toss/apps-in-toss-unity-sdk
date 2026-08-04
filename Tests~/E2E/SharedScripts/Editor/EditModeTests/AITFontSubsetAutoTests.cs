@@ -155,6 +155,20 @@ public class AITFontSubsetAutoTests
     }
 
     [Test]
+    public void BuildPreservedRanges_AlwaysIncludes_HangulCompatibilityJamo()
+    {
+        // 호환 자모(U+3130-318F): ㅋㅋ/ㅠㅠ/ㅇㅇ 같은 낱자모 전용 동적 텍스트가 자동 모드에서도
+        // 스캔 결과와 무관하게 항상 보존되어야 함(회귀 방지: 서버발 동적 텍스트).
+        string ranges = AITFontUsedCharScanner.BuildPreservedRanges(
+            new int[0], new int[0], out _);
+        var cps = Expand(ranges);
+
+        Assert.IsTrue(cps.Contains(0x314B), "ㅋ(U+314B, 호환 자모) 는 베이스라인으로 항상 포함");
+        Assert.IsTrue(cps.Contains(0x3160), "ㅠ(U+3160, 호환 자모) 는 베이스라인으로 항상 포함");
+        Assert.IsTrue(cps.Contains(0x3147), "ㅇ(U+3147, 호환 자모) 는 베이스라인으로 항상 포함");
+    }
+
+    [Test]
     public void BuildPreservedRanges_DetectedScript_ExpandsToWholeBlock()
     {
         // 키릴 한 글자(U+0410) 감지 → 키릴 블록 전체(0400-04FF) 보존
@@ -415,6 +429,16 @@ public class AITFontSubsetAutoTests
         Assert.IsTrue(cps.Contains(0x3041), "ja 선택 → ぁ(U+3041, 히라가나) 보존되어야 함");
         Assert.IsTrue(cps.Contains(0x30A2), "ja 선택 → ア(U+30A2, 가타카나) 보존되어야 함");
         Assert.IsTrue(cps.Contains(0x4E00), "ja 선택 → 一(U+4E00, 한자) 보존되어야 함");
+        Assert.IsTrue(cps.Contains(0x3001), "ja 선택 → CJK 문장부호(U+3001, 、) 보존되어야 함");
+        Assert.IsTrue(cps.Contains(0xFF21), "ja 선택 → 전각(U+FF21, Ａ) 보존되어야 함");
+    }
+
+    [Test]
+    public void LanguageTable_Japanese_ExcludesCjkExtensionA()
+    {
+        // 일본어 상용에 사실상 불필요한 CJK Ext-A(U+3400-4DBF)는 절감 우선으로 제외됨.
+        var cps = Expand(AITFontSubsetLanguages.BuildRanges("ja"));
+        Assert.IsFalse(cps.Contains(0x3400), "ja 선택 → CJK Ext-A(U+3400)는 포함되지 않아야 함");
     }
 
     [Test]
@@ -429,6 +453,20 @@ public class AITFontSubsetAutoTests
     {
         var cps = Expand(AITFontSubsetLanguages.BuildRanges("emoji"));
         Assert.IsTrue(cps.Contains(0x1F600), "emoji 선택 → U+1F600(웃는 얼굴) 보존되어야 함");
+    }
+
+    [Test]
+    public void LanguageTable_Emoji_CoversExtendedSymbolsAndDingbats()
+    {
+        var cps = Expand(AITFontSubsetLanguages.BuildRanges("emoji"));
+        Assert.IsTrue(cps.Contains(0x2122), "emoji 선택 → ™(U+2122) 보존되어야 함");
+        Assert.IsTrue(cps.Contains(0x20E3), "emoji 선택 → 키캡(U+20E3) 보존되어야 함");
+        Assert.IsTrue(cps.Contains(0x2190), "emoji 선택 → 화살표(U+2190) 보존되어야 함");
+        Assert.IsTrue(cps.Contains(0x231A), "emoji 선택 → ⌚(U+231A) 보존되어야 함");
+        Assert.IsTrue(cps.Contains(0x25B6), "emoji 선택 → ▶(U+25B6) 보존되어야 함");
+        Assert.IsTrue(cps.Contains(0x2B50), "emoji 선택 → ⭐(U+2B50) 보존되어야 함");
+        Assert.IsTrue(cps.Contains(0x1F191), "emoji 선택 → 알파벳 사각(U+1F191) 보존되어야 함");
+        Assert.IsTrue(cps.Contains(0x1F7E0), "emoji 선택 → 원형 기호(U+1F7E0) 보존되어야 함");
     }
 
     [Test]
@@ -454,10 +492,22 @@ public class AITFontSubsetAutoTests
     }
 
     [Test]
-    public void LanguageTable_Vietnamese_CoversLatinExtended()
+    public void LanguageTable_LatinExt_CoversEuropeanAndVietnamese()
     {
-        var cps = Expand(AITFontSubsetLanguages.BuildRanges("vi"));
-        Assert.IsTrue(cps.Contains(0x1EA0), "vi 선택 → 베트남어 성조 라틴 확장(U+1EA0) 보존되어야 함");
+        // latin-ext 는 유럽 닉네임(ł/š/ő 등, Latin Extended-A/B)과 베트남어 성조 부호(Latin Extended
+        // Additional)를 하나의 태그로 커버한다(vi 태그는 제거되고 latin-ext 로 흡수됨).
+        var cps = Expand(AITFontSubsetLanguages.BuildRanges("latin-ext"));
+        Assert.IsTrue(cps.Contains(0x0142), "latin-ext 선택 → ł(U+0142, Latin Extended-A) 보존되어야 함");
+        Assert.IsTrue(cps.Contains(0x1EA0), "latin-ext 선택 → 베트남어 성조(U+1EA0) 보존되어야 함");
+        Assert.IsTrue(cps.Contains(0x20AB), "latin-ext 선택 → 동화 기호(U+20AB) 보존되어야 함");
+    }
+
+    [Test]
+    public void LanguageTable_Vietnamese_TagRemoved_TreatedAsUnknown()
+    {
+        // vi 태그는 제거되었으므로 미지 태그로 취급되어 무시된다(BuildRanges_UnknownTag 계약과 동일).
+        Assert.AreEqual(string.Empty, AITFontSubsetLanguages.BuildRanges("vi"),
+            "vi 태그는 제거되어 미지 태그로 무시되어야 함");
     }
 
     [Test]
@@ -465,6 +515,7 @@ public class AITFontSubsetAutoTests
     {
         var cps = Expand(AITFontSubsetLanguages.BuildRanges("ar"));
         Assert.IsTrue(cps.Contains(0x0627), "ar 선택 → ا(U+0627) 보존되어야 함");
+        Assert.IsTrue(cps.Contains(0x200C), "ar 선택 → ZWNJ(U+200C) 보존되어야 함");
     }
 
     [Test]
@@ -506,6 +557,30 @@ public class AITFontSubsetAutoTests
         Assert.IsTrue(cps.Contains(0x0E01), "중복 태그 → 예외 없이 정상 union 결과 반환");
     }
 
+    [Test]
+    public void BuildRanges_JaAndZhHans_DedupsSharedRangeToken_OutputsOnce()
+    {
+        // ja 와 zh-Hans 는 U+4E00-9FFF·U+3000-303F·U+FF00-FFEF 토큰을 공유한다.
+        // 태그 중복 제거뿐 아니라 범위 토큰 자체도 중복 없이 1회만 출력되어야 한다.
+        string ranges = AITFontSubsetLanguages.BuildRanges("ja,zh-Hans");
+        var tokens = ranges.Split(',');
+
+        int hanCount = 0;
+        int punctCount = 0;
+        foreach (var token in tokens)
+        {
+            if (token == "U+4E00-9FFF") hanCount++;
+            if (token == "U+3000-303F") punctCount++;
+        }
+
+        Assert.AreEqual(1, hanCount, "ja+zh-Hans 동시 선택 시 공유 한자 범위(U+4E00-9FFF)는 1회만 출력되어야 함");
+        Assert.AreEqual(1, punctCount, "ja+zh-Hans 동시 선택 시 공유 CJK 문장부호 범위(U+3000-303F)는 1회만 출력되어야 함");
+
+        var cps = Expand(ranges);
+        Assert.IsTrue(cps.Contains(0x4E00), "한자 범위는 여전히 보존됨");
+        Assert.IsTrue(cps.Contains(0x3041), "ja 고유 범위(히라가나)도 보존됨");
+    }
+
     // =====================================================
     // AITFontSubsetProcessor.ShouldSkipAutoWithoutSelection: 진리표
     // =====================================================
@@ -513,42 +588,50 @@ public class AITFontSubsetAutoTests
     [Test]
     public void ShouldSkipAuto_AllEmptyAndAutoMode_ReturnsTrue()
     {
-        Assert.IsTrue(AITFontSubsetProcessor.ShouldSkipAutoWithoutSelection(-1, "", "", "", ""),
-            "자동 모드에서 언어·범위·대상이 전부 비어 있으면 인지된 선택이 없으므로 건너뛰어야 함");
+        Assert.IsTrue(AITFontSubsetProcessor.ShouldSkipAutoWithoutSelection(-1, "", "", "", "", ""),
+            "자동 모드에서 언어·범위·대상·제외경로가 전부 비어 있으면 인지된 선택이 없으므로 건너뛰어야 함");
     }
 
     [Test]
     public void ShouldSkipAuto_LanguagesOnly_ReturnsFalse()
     {
-        Assert.IsFalse(AITFontSubsetProcessor.ShouldSkipAutoWithoutSelection(-1, "ja", "", "", ""),
+        Assert.IsFalse(AITFontSubsetProcessor.ShouldSkipAutoWithoutSelection(-1, "ja", "", "", "", ""),
             "언어가 선택되었으면 인지된 활성화이므로 건너뛰지 않아야 함");
     }
 
     [Test]
     public void ShouldSkipAuto_ExtraRangesOnly_ReturnsFalse()
     {
-        Assert.IsFalse(AITFontSubsetProcessor.ShouldSkipAutoWithoutSelection(-1, "", "", "U+0E00-0E7F", ""),
+        Assert.IsFalse(AITFontSubsetProcessor.ShouldSkipAutoWithoutSelection(-1, "", "", "U+0E00-0E7F", "", ""),
             "추가 보존 범위가 지정되었으면 건너뛰지 않아야 함");
     }
 
     [Test]
     public void ShouldSkipAuto_TargetPathsOnly_ReturnsFalse()
     {
-        Assert.IsFalse(AITFontSubsetProcessor.ShouldSkipAutoWithoutSelection(-1, "", "", "", "Assets/Fonts/A.ttf"),
+        Assert.IsFalse(AITFontSubsetProcessor.ShouldSkipAutoWithoutSelection(-1, "", "", "", "Assets/Fonts/A.ttf", ""),
             "대상 폰트 경로가 지정되었으면 건너뛰지 않아야 함");
     }
 
     [Test]
     public void ShouldSkipAuto_ManualUnicodeRangesOnly_ReturnsFalse()
     {
-        Assert.IsFalse(AITFontSubsetProcessor.ShouldSkipAutoWithoutSelection(-1, "", "U+0E00-0E7F", "", ""),
+        Assert.IsFalse(AITFontSubsetProcessor.ShouldSkipAutoWithoutSelection(-1, "", "U+0E00-0E7F", "", "", ""),
             "수동 보존 범위가 지정되었으면 건너뛰지 않아야 함");
+    }
+
+    [Test]
+    public void ShouldSkipAuto_ExcludeTargetPathsOnly_ReturnsFalse()
+    {
+        // 제외 경로만 설정한 기존 사용자도 subset 의 존재와 위험을 인지·조정한 것이므로 게이팅하지 않는다.
+        Assert.IsFalse(AITFontSubsetProcessor.ShouldSkipAutoWithoutSelection(-1, "", "", "", "", "Assets/Fonts/Fallback.ttf"),
+            "제외 대상 경로가 지정되었으면 인지된 활성화로 보아 건너뛰지 않아야 함");
     }
 
     [Test]
     public void ShouldSkipAuto_ExplicitOn_AllEmpty_ReturnsFalse()
     {
-        Assert.IsFalse(AITFontSubsetProcessor.ShouldSkipAutoWithoutSelection(1, "", "", "", ""),
+        Assert.IsFalse(AITFontSubsetProcessor.ShouldSkipAutoWithoutSelection(1, "", "", "", "", ""),
             "fontSubset==1(명시 활성)이면 전부 비어 있어도 기존 동작(스캔 단독 실행)을 허용해야 함");
     }
 
@@ -557,14 +640,14 @@ public class AITFontSubsetAutoTests
     {
         // fontSubset==0 은 호출부(ApplyForBuild)에서 이미 no-op 처리되어 게이팅과 무관하지만,
         // 헬퍼 자체는 -1 이 아니면 항상 false 를 반환해야 함(안전한 순수 함수 계약).
-        Assert.IsFalse(AITFontSubsetProcessor.ShouldSkipAutoWithoutSelection(0, "", "", "", ""),
+        Assert.IsFalse(AITFontSubsetProcessor.ShouldSkipAutoWithoutSelection(0, "", "", "", "", ""),
             "fontSubset==0 은 -1 이 아니므로 게이팅 대상이 아니어야 함(호출부에서 이미 비활성 처리)");
     }
 
     [Test]
     public void ShouldSkipAuto_WhitespaceOnlyFields_TreatedAsEmpty()
     {
-        Assert.IsTrue(AITFontSubsetProcessor.ShouldSkipAutoWithoutSelection(-1, "   ", " ", "\t", ""),
+        Assert.IsTrue(AITFontSubsetProcessor.ShouldSkipAutoWithoutSelection(-1, "   ", " ", "\t", "", "  "),
             "공백만 있는 필드는 trim 후 빈 값으로 취급되어야 함");
     }
 }

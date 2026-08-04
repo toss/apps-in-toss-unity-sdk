@@ -854,13 +854,20 @@ namespace AppsInToss.Editor
                 || !string.IsNullOrEmpty(config.fontSubsetUnicodeRanges);
             bool hasLanguageSelection = !string.IsNullOrEmpty(config.fontSubsetLanguages);
 
-            // tri-state 매핑: 0=자동, 1=비활성화, 2=수동 설정.
+            // 4-state 매핑: 0=자동, 1=비활성화, 2=명시 활성(스캔 단독 실행), 3=수동 설정.
+            // 우선순위: 비활성화(fontSubset==0) > 수동 override 존재 > 명시 활성(fontSubset==1) > 자동.
+            //   fontSubset==1 이면서 수동 override 필드까지 채워져 있으면 "수동 설정"(3)이 실제 상태를
+            //   정확히 표현한다 — "명시 활성"은 override 없는 스캔 단독 실행이라는 뜻이기 때문이다.
             int currentIndex;
             if (config.fontSubset == 0)
             {
                 currentIndex = 1;
             }
             else if (hasManualOverride)
+            {
+                currentIndex = 3;
+            }
+            else if (config.fontSubset == 1)
             {
                 currentIndex = 2;
             }
@@ -871,18 +878,19 @@ namespace AppsInToss.Editor
 
             EditorGUILayout.BeginHorizontal();
 
-            bool isModified = config.fontSubset == 0 || hasManualOverride || hasLanguageSelection;
+            bool isModified = config.fontSubset == 0 || config.fontSubset == 1 || hasManualOverride || hasLanguageSelection;
             DrawModifiedIndicator(isModified);
 
             string label = currentIndex == 0
                 ? $"폰트 subset (자동: {(defaultValue ? "활성화" : "비활성화")})"
                 : "폰트 subset";
-            string[] options = { $"자동 ({(defaultValue ? "활성화" : "비활성화")})", "비활성화", "수동 설정" };
+            string[] options = { "자동 (언어 선택 시 실행)", "비활성화", "명시 활성 (스캔 단독 실행)", "수동 설정" };
             int newIndex = EditorGUILayout.Popup(
                 new GUIContent(label,
-                    "zero-config: 자동 모드는 크고(≥1MB) 빌드 포함 가능한 폰트를 탐지하고, 프로젝트에 등장하는 " +
-                    "문자체계의 유니코드 블록 전체를 보존하도록 subset합니다(동적 텍스트도 □가 되지 않음). " +
-                    "수동 설정은 대상/범위를 직접 지정합니다."),
+                    "zero-config: 자동 모드는 동적 텍스트 언어를 하나 이상 선택해야 실행됩니다(선택 = 인지된 활성화). " +
+                    "실행되면 크고(≥1MB) 빌드 포함 가능한 폰트를 탐지하고, 프로젝트에 등장하는 문자체계의 " +
+                    "유니코드 블록 전체를 보존하도록 subset합니다(동적 텍스트도 □가 되지 않음). " +
+                    "명시 활성은 언어 선택 없이도 스캔을 실행하고, 수동 설정은 대상/범위를 직접 지정합니다."),
                 currentIndex, options);
 
             if (newIndex != currentIndex)
@@ -897,7 +905,12 @@ namespace AppsInToss.Editor
                     case 1: // 비활성화
                         config.fontSubset = 0;
                         break;
-                    case 2: // 수동 설정
+                    case 2: // 명시 활성(스캔 단독 실행) — 수동 override 는 이 상태의 정의에서 제외.
+                        config.fontSubset = 1;
+                        config.fontSubsetTargetPaths = string.Empty;
+                        config.fontSubsetUnicodeRanges = string.Empty;
+                        break;
+                    case 3: // 수동 설정 — 대상/범위 필드는 사용자가 아래에서 채운다.
                         config.fontSubset = 1;
                         break;
                 }
@@ -919,13 +932,13 @@ namespace AppsInToss.Editor
             if (currentIndex == 0)
             {
                 EditorGUILayout.HelpBox(
-                    "자동 모드: 대상 폰트를 탐지하고, 씬/프리팹/asset/스크립트/로컬라이제이션에 등장하는 " +
-                    "문자체계의 유니코드 블록 전체를 보존하도록 subset합니다. " +
+                    "자동 모드: 동적 텍스트 언어를 하나 이상 선택해야 실행됩니다. 실행되면 대상 폰트를 탐지하고, " +
+                    "씬/프리팹/asset/스크립트/로컬라이제이션에 등장하는 문자체계의 유니코드 블록 전체를 보존하도록 subset합니다. " +
                     "한자는 KS X 1001 상용 한자(4,888자) + 감지된 한자를 보존하며, ASCII·한글 등 베이스라인은 항상 포함됩니다. " +
                     "빌드 로그에 드롭 리포트가 출력됩니다.",
                     MessageType.Info);
             }
-            else if (currentIndex == 2)
+            else if (currentIndex == 2 || currentIndex == 3)
             {
                 EditorGUI.indentLevel++;
                 config.fontSubsetTargetPaths = EditorGUILayout.TextField(
@@ -937,20 +950,31 @@ namespace AppsInToss.Editor
                     config.fontSubsetUnicodeRanges);
                 EditorGUI.indentLevel--;
 
-                EditorGUILayout.HelpBox(
-                    "⚠ 수동 보존 범위를 지정하면 그 범위만 남고 나머지 글자(희귀 한자/이모지/동적 텍스트)는 □로 렌더됩니다. " +
-                    "범위를 비우면 Auto 스캔이 등장 문자체계를 보존하므로 더 안전합니다.",
-                    MessageType.Warning);
+                if (currentIndex == 3)
+                {
+                    EditorGUILayout.HelpBox(
+                        "⚠ 수동 보존 범위를 지정하면 그 범위만 남고 나머지 글자(희귀 한자/이모지/동적 텍스트)는 □로 렌더됩니다. " +
+                        "범위를 비우면 Auto 스캔이 등장 문자체계를 보존하므로 더 안전합니다.",
+                        MessageType.Warning);
+                }
             }
 
-            // ── 동적 텍스트 언어 선택 — 자동·수동 공통(비활성화 모드 제외). 선택 = 인지된 활성화. ──
+            // ── 동적 텍스트 언어 선택 — 자동·명시 활성·수동 공통(비활성화 모드 제외). 선택 = 인지된 활성화. ──
             if (currentIndex != 1)
             {
                 EditorGUILayout.LabelField("동적 텍스트(닉네임·채팅 등)에 나올 수 있는 언어", EditorStyles.boldLabel);
                 EditorGUI.indentLevel++;
 
-                var selectedTags = new System.Collections.Generic.HashSet<string>(
-                    (config.fontSubsetLanguages ?? string.Empty).Split(','), StringComparer.Ordinal);
+                var selectedTags = new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
+                foreach (var rawTag in (config.fontSubsetLanguages ?? string.Empty).Split(','))
+                {
+                    string trimmedTag = rawTag.Trim();
+                    if (trimmedTag.Length > 0)
+                    {
+                        selectedTags.Add(trimmedTag);
+                    }
+                }
+
                 bool languageChanged = false;
                 foreach (var entry in AITFontSubsetLanguages.Table)
                 {
@@ -958,7 +982,16 @@ namespace AppsInToss.Editor
                     {
                         bool prevEnabled = GUI.enabled;
                         GUI.enabled = false;
-                        EditorGUILayout.ToggleLeft($"{entry.Label} (항상 보존)", true);
+                        if (currentIndex == 3)
+                        {
+                            // 수동 설정은 스캔/베이스라인을 생략하므로 "항상 보존"이 거짓 — 체크 해제+비활성으로 정직화.
+                            EditorGUILayout.ToggleLeft($"{entry.Label} (수동 범위에 직접 포함 필요)", false);
+                        }
+                        else
+                        {
+                            EditorGUILayout.ToggleLeft($"{entry.Label} (항상 보존)", true);
+                        }
+
                         GUI.enabled = prevEnabled;
                         continue;
                     }
@@ -1005,15 +1038,17 @@ namespace AppsInToss.Editor
                         config.fontSubsetLanguages,
                         config.fontSubsetUnicodeRanges,
                         config.fontSubsetExtraRanges,
-                        config.fontSubsetTargetPaths))
+                        config.fontSubsetTargetPaths,
+                        config.fontSubsetExcludeTargetPaths))
                 {
                     EditorGUILayout.HelpBox(
-                        "현재 설정에서는 서브셋이 실행되지 않습니다. 동적 텍스트 언어를 선택하거나, 명시 활성(수동 설정)으로 전환하세요.",
+                        "현재 설정에서는 서브셋이 실행되지 않습니다. 동적 텍스트 언어를 선택하거나, " +
+                        "명시 활성 또는 수동 설정으로 전환하세요.",
                         MessageType.Info);
                 }
             }
 
-            // ── 안전 필드(additive/exclude) — 자동·수동 공통(비활성화 모드 제외) ──
+            // ── 안전 필드(additive/exclude) — 자동·명시 활성·수동 공통(비활성화 모드 제외) ──
             if (currentIndex != 1)
             {
                 EditorGUI.indentLevel++;
@@ -2278,8 +2313,9 @@ namespace AppsInToss.Editor
             if (config.textureStreamJpeg >= 0 && (config.textureStreamJpeg == 1) != defaultStreamJpeg) count++;
             bool defaultAstcBlock = AITDefaultSettings.GetDefaultAstcBlockEscalation();
             if (config.astcBlockEscalation >= 0 && (config.astcBlockEscalation == 1) != defaultAstcBlock) count++;
-            // 폰트 subset: 비활성(0)이거나 수동 override(target/range/추가범위/제외경로/언어 지정)면 변경으로 집계.
+            // 폰트 subset: 비활성(0)·명시 활성(1)이거나 수동 override(target/range/추가범위/제외경로/언어 지정)면 변경으로 집계.
             if (config.fontSubset == 0
+                || config.fontSubset == 1
                 || !string.IsNullOrEmpty(config.fontSubsetTargetPaths)
                 || !string.IsNullOrEmpty(config.fontSubsetUnicodeRanges)
                 || !string.IsNullOrEmpty(config.fontSubsetExtraRanges)

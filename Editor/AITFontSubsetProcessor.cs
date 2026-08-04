@@ -127,9 +127,10 @@ namespace AppsInToss.Editor
                     config.fontSubsetLanguages,
                     config.fontSubsetUnicodeRanges,
                     config.fontSubsetExtraRanges,
-                    config.fontSubsetTargetPaths))
+                    config.fontSubsetTargetPaths,
+                    config.fontSubsetExcludeTargetPaths))
             {
-                Debug.Log("AIT 폰트 서브셋: 동적 텍스트 언어가 선택되지 않아 건너뜁니다. " +
+                Debug.Log("[AIT-FontSubset] 동적 텍스트 언어가 선택되지 않아 건너뜁니다. " +
                     "Configuration > 폰트 CJK 서브셋에서 언어를 선택하거나, 명시 활성(활성화)으로 설정하세요.");
                 return handle;
             }
@@ -319,14 +320,16 @@ namespace AppsInToss.Editor
         }
 
         /// <summary>
-        /// 자동 모드(fontSubset == -1)에서 동적 텍스트 언어/범위/대상이 아무것도 선택되지 않았으면
-        /// true(subset 전체 skip). 선택 = 인지된 활성화 — 아무 설정도 없는 자동 모드는 개발자가
+        /// 자동 모드(fontSubset == -1)에서 동적 텍스트 언어/범위/대상/제외경로가 아무것도 선택되지
+        /// 않았으면 true(subset 전체 skip). 선택 = 인지된 활성화 — 아무 설정도 없는 자동 모드는 개발자가
         /// 동적 텍스트 리스크(서버발 닉네임/채팅 등)를 인지하지 못했을 가능성이 높다고 보아 보수적으로 건너뛴다.
+        /// excludeTargetPaths(제외 경로만 설정한 경우)도 인지 신호로 취급한다 — 개발자가 이미 subset의
+        /// 존재와 위험을 알고 조정한 것이므로 게이팅 대상이 아니다.
         /// fontSubset == 1(명시 활성)이면 기존 동작 그대로(스캔 단독 실행 허용) — false 를 반환.
         /// 부수 효과 없음 → 단위 테스트 대상.
         /// </summary>
         internal static bool ShouldSkipAutoWithoutSelection(
-            int fontSubset, string languages, string unicodeRanges, string extraRanges, string targetPaths)
+            int fontSubset, string languages, string unicodeRanges, string extraRanges, string targetPaths, string excludeTargetPaths)
         {
             if (fontSubset != -1)
             {
@@ -336,7 +339,8 @@ namespace AppsInToss.Editor
             return string.IsNullOrEmpty((languages ?? string.Empty).Trim())
                 && string.IsNullOrEmpty((unicodeRanges ?? string.Empty).Trim())
                 && string.IsNullOrEmpty((extraRanges ?? string.Empty).Trim())
-                && string.IsNullOrEmpty((targetPaths ?? string.Empty).Trim());
+                && string.IsNullOrEmpty((targetPaths ?? string.Empty).Trim())
+                && string.IsNullOrEmpty((excludeTargetPaths ?? string.Empty).Trim());
         }
 
         /// <summary>빌드 종료 후(성공/실패 무관) 호출: 원본 폰트로 복원한다.</summary>

@@ -1,21 +1,29 @@
-// Player loop freeze 진단 프로브 (techchat 4377 검증용) — round 4
+// Player loop freeze 진단 프로브 (techchat 4377 검증용) — round 5
 //
 // round 1~3 실측 확정 사항 (미머지 브랜치 test/plp-round2/round3 실측, 결론만 포팅):
 //   rAF 갭 27.52s ≡ hidden→visible 27.51s ≡ C# 프레임 갭 27.44s (세 값 일치).
 //   원인은 웹뷰 suspend가 아니라 표준 visibilityState=hidden 처리이며,
 //   rAF가 스펙대로 멈추는 것뿐이다. setTimeout은 hidden 중에도 살아있으나
-//   스로틀된다(28s 동안 22회 발화, 최대 갭 11.6s). await Task.Delay는 WebGL에
-//   스레드가 없어 영영 완료되지 않는다(확증 완료 — 이후 라운드에서는 관찰 대상에서 뺀다).
+//   스로틀된다(28s 동안 22회 발화, 최대 갭 11.6s). await Task.Delay는 (기본 rAF 구동,
+//   Application.targetFrameRate=-1 기준) WebGL에 스레드가 없어 영영 완료되지 않는다
+//   (확증 완료). round 5는 targetFrameRate를 양수로 바꿔 구동 방식 자체를 setTimeout으로
+//   전환했을 때 이 결론이 달라지는지를 별도로 재검증한다 — 아래 참조.
 //
 //   (a) rAF    — requestAnimationFrame. Unity WebGL player loop를 실제로 구동하는 콜백.
 //   (b) timer  — setInterval(250ms). 타이머 큐 생존 여부(레버 A 발화 가능성).
 //   (c) visibility — visibilitychange 기록. rAF 정지 원인이 표준 hidden 처리인지 확인.
 //
-// round 4가 새로 답하려는 두 질문 (SDK 착수 게이트):
+// round 4가 답한 두 질문 (SDK 착수 게이트):
 //   (a) 오버레이 정지 중 발사한 JS fetch가 실제로 완료되고, .then이 스로틀 없이
 //       즉시 발화하며, SendMessage로 C#까지 전달되는가?             → PLP_StartFetchProbe
 //   (b) 플랫폼이 processProductGrant의 Promise를 수 초간 pending으로 두는 것을
 //       허용하는가(지연 resolve 후에도 정상 지급되는가)?             → PLP_EnableGrantDelay
+//
+// round 5가 새로 답하려는 질문: 결제 오버레이(visibilityState=hidden, rAF 정지) 중에도
+// Application.targetFrameRate를 양수로 설정해 Unity player loop를 setTimeout 타이밍
+// (Emscripten mode 0)으로 계속 돌릴 수 있는가, 그리고 그때 C# await(Task.Delay,
+// UnityWebRequest)가 재개되는가?                        → PLP_GetMainLoopMethod, IAPv2Tester의
+// RunPlp5AwaitProbeAsync/TogglePlpLoopTiming (대조군: targetFrameRate=-1인 기본 rAF 구동)
 //
 // 모든 기록은 메모리에만 쌓고 복귀 후 한 번에 리포트한다 (정지 중 로그 출력은 유실 위험).
 mergeInto(LibraryManager.library, {
@@ -212,6 +220,24 @@ mergeInto(LibraryManager.library, {
         var bufferSize = lengthBytesUTF8(report) + 1;
         var buffer = _malloc(bufferSize);
         stringToUTF8(report, buffer, bufferSize);
+        return buffer;
+    },
+
+    // round 5 — Application.targetFrameRate를 양수로 설정하면 Unity WebGL 메인 루프가
+    // 기본 rAF 구동에서 Emscripten mode 0(setTimeout) 구동으로 전환된다. 이 헬퍼는 설정이
+    // 실제로 적용됐는지(C# 쪽 targetFrameRate 값만으로는 Emscripten 내부 상태를 확인할 수
+    // 없음) Browser.mainLoop.method를 직접 읽어 C#에 돌려준다. Browser 전역이나 mainLoop가
+    // 아직 없는 시점(초기화 이전 등)에도 안전하도록 try/catch로 감싼다.
+    PLP_GetMainLoopMethod: function() {
+        var method = 'unknown';
+        try {
+            method = (typeof Browser !== 'undefined' && Browser.mainLoop && Browser.mainLoop.method) ? Browser.mainLoop.method : 'unknown';
+        } catch (err) {
+            method = 'unknown';
+        }
+        var bufferSize = lengthBytesUTF8(method) + 1;
+        var buffer = _malloc(bufferSize);
+        stringToUTF8(method, buffer, bufferSize);
         return buffer;
     }
 });

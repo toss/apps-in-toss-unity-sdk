@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using UnityEngine;
+using UnityEngine.Networking;
 using UnityEngine.UI;
 using AppsInToss;
 
@@ -54,6 +55,14 @@ public class IAPv2Tester : MonoBehaviour
     /// </summary>
     private bool _plpDenyGrant = false;
     private Text _plpGrantDecisionLabel;
+
+    /// <summary>
+    /// [PLP round5] 결제 오버레이(visibilityState=hidden, rAF 정지) 중에도 Unity player loop를
+    /// setTimeout 타이밍(Emscripten mode 0)으로 돌릴 수 있는지 실기기에서 토글하기 위한 상태.
+    /// true면 Application.targetFrameRate = 30(setTimeout 구동), false면 -1(기본 rAF 구동).
+    /// </summary>
+    private bool _plpUseSetTimeoutLoop = false;
+    private Text _plpLoopModeLabel;
 
     /// <summary>[PLP round4] Deny된 주문 기록 — PlayerPrefs에 영속화되어 앱 재실행 후에도 남는다.</summary>
     [Serializable]
@@ -216,6 +225,18 @@ public class IAPv2Tester : MonoBehaviour
         UIBuilder.CreateButton(section, "Completed/Refunded 조회 (round4)", onClick: async () => await RunCompletedOrdersProbeAsync());
         UIBuilder.CreateButton(section, "늦은 지급 시도 (최근 Deny 주문)", onClick: ExecuteLatePlpGrantAttempt);
         UpdatePlpGrantDecisionLabel();
+
+        // [PLP round5] 오버레이 중 loop 타이밍(rAF↔setTimeout) 전환이 실제로 player loop를
+        // 살리는지, 그때 C# await(Task.Delay/UnityWebRequest)가 재개되는지 실측한다.
+        UIBuilder.CreateText(section, "진단: Player Loop Probe round 5 (오버레이 중 await 생존)",
+            UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary, fontStyle: FontStyle.Bold);
+        _plpLoopModeLabel = UIBuilder.CreateText(section, "",
+            UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary);
+        UIBuilder.CreateButton(section, "루프 타이밍 토글 (rAF ⇄ setTimeout)", onClick: TogglePlpLoopTiming);
+        UpdatePlpLoopModeLabel();
+        // 결제 오버레이 밖(평시)에서 동일 프로브를 실행해, 토글이 실제로 루프를 살리는지
+        // 대조군 없이도 미리 검증할 수 있게 한다.
+        UIBuilder.CreateButton(section, "[PLP5] await probe (지금)", onClick: RunPlp5AwaitProbeAsync);
     }
 
     /// <summary>
@@ -262,6 +283,27 @@ public class IAPv2Tester : MonoBehaviour
         _plpGrantDecisionLabel.text = _plpDenyGrant
             ? "Grant 결정: Deny (다음 구매부터 false 반환)"
             : "Grant 결정: Approve (다음 구매부터 true 반환)";
+    }
+
+    /// <summary>
+    /// [PLP round5] Application.targetFrameRate를 -1(rAF 구동) ↔ 30(setTimeout 구동, Emscripten
+    /// mode 0)으로 순환한다. 적용 직후 jslib 헬퍼(PLP_GetMainLoopMethod)로 Emscripten 측
+    /// 실제 mainLoop.method도 함께 확인해 설정값과 실제 적용 여부가 일치하는지 로그로 남긴다.
+    /// </summary>
+    private void TogglePlpLoopTiming()
+    {
+        _plpUseSetTimeoutLoop = !_plpUseSetTimeoutLoop;
+        Application.targetFrameRate = _plpUseSetTimeoutLoop ? 30 : -1;
+        UpdatePlpLoopModeLabel();
+        string mainLoopMethod = PLP_GetMainLoopMethod();
+        LogIap($"[PLP5] loop timing toggle: targetFrameRate={Application.targetFrameRate}, mainLoop={mainLoopMethod}");
+        UpdateEventLog();
+    }
+
+    private void UpdatePlpLoopModeLabel()
+    {
+        if (_plpLoopModeLabel == null) return;
+        _plpLoopModeLabel.text = _plpUseSetTimeoutLoop ? "Loop: setTimeout(30)" : "Loop: rAF(-1)";
     }
 
     /// <summary>[PLP round4] Deny 주문 기록을 PlayerPrefs에서 불러온다. 앱 시작 시(Awake) 1회 호출.</summary>
@@ -770,6 +812,9 @@ public class IAPv2Tester : MonoBehaviour
                     // 호출된다 — "fetch가 완료되고 전달까지 되는가"를 여기서 직접 관측한다.
                     PLP_StartFetchProbe();
                     LogIap("[PLP] fetch probe armed (ProcessProductGrant 진입 시점)");
+                    // [PLP round5] 콜백은 계속 동기 유지 — await는 이 콜백 안에 넣지 않고
+                    // fire-and-forget으로 async void 메서드만 시작한다(내부에서 await한다).
+                    RunPlp5AwaitProbeAsync();
                     if (!approve)
                     {
                         // PlayerPrefs.SetString/Save는 동기 API이므로 이 콜백의 "동기 유지" 제약을
@@ -1027,7 +1072,7 @@ public class IAPv2Tester : MonoBehaviour
     }
 
     // =====================================================
-    // Player loop freeze 진단 프로브 (techchat 4377 검증용) — round 4
+    // Player loop freeze 진단 프로브 (techchat 4377 검증용) — round 4~5
     //
     // round 1~3 실측 확정 사항(미머지 브랜치 test/plp-round2/round3, 결론만 반영):
     //   rAF 갭 27.52s ≡ hidden→visible 27.51s ≡ C# 프레임 갭 27.44s (세 값 일치).
@@ -1062,12 +1107,16 @@ public class IAPv2Tester : MonoBehaviour
 
     [System.Runtime.InteropServices.DllImport("__Internal")]
     private static extern string PLP_GetGrantDelayReport();
+
+    [System.Runtime.InteropServices.DllImport("__Internal")]
+    private static extern string PLP_GetMainLoopMethod();
 #else
     private static void PLP_StartJsProbe() { }
     private static string PLP_GetJsReport() { return "{\"raf\":{},\"timer\":{},\"visibility\":[]}"; }
     private static void PLP_StartFetchProbe() { }
     private static void PLP_EnableGrantDelay(int delayMs) { }
     private static string PLP_GetGrantDelayReport() { return "[]"; }
+    private static string PLP_GetMainLoopMethod() { return "unknown"; }
 #endif
 
     private bool _plpArmed;
@@ -1137,6 +1186,61 @@ public class IAPv2Tester : MonoBehaviour
     public void OnPlpFetchProbeComplete(string jsonPayload)
     {
         LogIap($"[PLP] fetch probe complete: {jsonPayload}");
+        UpdateEventLog();
+    }
+
+    // =====================================================
+    // round 5 — 결제 오버레이(visibilityState=hidden, rAF 정지) 중에도 Unity player loop를
+    // setTimeout 타이밍(Application.targetFrameRate > 0, Emscripten mode 0)으로 계속 돌릴 수
+    // 있는가, 그리고 그때 C# await(Task.Delay, UnityWebRequest)가 재개되는가를 실기기에서
+    // 계측한다. 대조군은 기본 rAF 구동(targetFrameRate=-1) — 이 모드에서는 오버레이가 닫힌
+    // 뒤에야 await가 재개될 것으로 예상한다.
+    // =====================================================
+
+    /// <summary>
+    /// [PLP round5] await 생존 프로브. ProcessProductGrant 진입 시점(오버레이 정지 중)에
+    /// fire-and-forget으로 무장되거나, "[PLP5] await probe (지금)" 버튼으로 평시에 수동
+    /// 실행된다. Task.Delay(3000)이 재개되는 데 걸린 시간과, 이어서 same-origin
+    /// UnityWebRequest 왕복이 완료되는 데 걸린 시간을 각각 기록한다.
+    /// </summary>
+    private async void RunPlp5AwaitProbeAsync()
+    {
+        float t0 = Time.realtimeSinceStartup;
+        try
+        {
+            string mainLoopMethod = PLP_GetMainLoopMethod();
+            int targetFrameRate = Application.targetFrameRate;
+            LogIap($"[PLP5] await probe armed (Task.Delay 3000ms), mainLoop={mainLoopMethod}, targetFrameRate={targetFrameRate}");
+            UpdateEventLog();
+
+            await Task.Delay(3000);
+            float delayElapsedSec = Time.realtimeSinceStartup - t0;
+            LogIap($"[PLP5] Task.Delay resumed: 경과 {delayElapsedSec:F1}s (기대 3.0s)");
+            UpdateEventLog();
+
+            UnityWebRequest req = null;
+            try
+            {
+                string url = "index.html?plp5=" + DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                req = UnityWebRequest.Get(url);
+                var op = req.SendWebRequest();
+                while (!op.isDone)
+                {
+                    await Task.Yield();
+                }
+                float totalElapsedSec = Time.realtimeSinceStartup - t0;
+                LogIap($"[PLP5] UnityWebRequest done: status={(long)req.responseCode}, 경과 {totalElapsedSec:F1}s");
+            }
+            finally
+            {
+                req?.Dispose();
+            }
+        }
+        catch (Exception ex)
+        {
+            LogIap($"[PLP5] await probe 예외: {ex.Message}");
+        }
+
         UpdateEventLog();
     }
 }

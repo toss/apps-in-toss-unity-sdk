@@ -80,7 +80,7 @@ WebGL 콜드 로드 시간을 줄이는 실험적 최적화 레버를 미리 적
 | 텍스처 스트리밍 | `textureStreaming = -1` | `textureStreamingMinBytes = 524288`<br>`textureStreamingDirs = ""` (비우면 전체)<br>`textureStreamingExcludeDirs = ""`<br>`textureStreamingMaxConcurrent = 3` | 무손실(비-부팅 대형 텍스처를 StreamingAssets로 외부화 → 초기 다운로드/TTFF↓, 런타임 복원 시 픽셀 동일) | 콘텐츠 최적화 — 대형 텍스처 스트리밍 |
 | 스트림 PNG 무손실 재압축 | `textureStreamRecompress = -1` | (tri-state 전용, 추가 필드 없음) | 무손실(oxipng WASM, 픽셀 불변 — 필터/deflate 재탐색만). CDN 무압축 총량↓. `textureStreaming` 파이프라인 일부 | 콘텐츠 최적화 — 대형 텍스처 스트리밍 |
 | 오디오 스트리밍 | `audioStreaming = -1` | `audioStreamingMinBytes = 262144`<br>`audioStreamingDirs = ""` (비우면 전체 AudioClip) | 무손실(256KB 초과 AudioClip을 외부화·런타임 비동기 복원 → TTI↓) | 콘텐츠 최적화 — 오디오 스트리밍 |
-| 폰트 CJK 서브셋 | `fontSubset = -1` | `fontSubsetLanguages = ""` (동적 텍스트에 나올 언어 선택, 쉼표 구분 태그)<br>`fontSubsetTargetPaths = ""` (비우면 1MB 이상 폰트 자동 감지)<br>`fontSubsetUnicodeRanges = ""` (비우면 프로젝트 전체 스캔)<br>`fontSubsetExtraRanges = ""` (합집합 보강)<br>`fontSubsetExcludeTargetPaths = ""` (제외) | 동적 텍스트 lossy 가능 — 보존 범위 밖 글자를 제거. 프로젝트에 등장하는 문자체계는 블록 전체를 보존하지만, 등장하지 않는 문자체계를 외부에서 동적 로드하면 □(tofu)가 될 수 있음. **자동 모드는 `fontSubsetLanguages`·`fontSubsetUnicodeRanges`·`fontSubsetExtraRanges`·`fontSubsetTargetPaths`가 모두 비어 있으면 인지된 선택이 없다고 보아 서브셋 자체를 실행하지 않음**(선택 = 인지된 활성화) | 콘텐츠 최적화 — 폰트 CJK subset |
+| 폰트 CJK 서브셋 | `fontSubset = -1` | `fontSubsetLanguages = ""` (동적 텍스트에 나올 언어 선택, 쉼표 구분 태그)<br>`fontSubsetTargetPaths = ""` (비우면 1MB 이상 폰트 자동 감지)<br>`fontSubsetUnicodeRanges = ""` (비우면 프로젝트 전체 스캔)<br>`fontSubsetExtraRanges = ""` (합집합 보강)<br>`fontSubsetExcludeTargetPaths = ""` (제외) | 동적 텍스트 lossy 가능 — 보존 범위 밖 글자를 제거. 프로젝트에 등장하는 문자체계는 블록 전체를 보존하지만, 등장하지 않는 문자체계를 외부에서 동적 로드하면 □(tofu)가 될 수 있음. **자동 모드는 `fontSubsetLanguages`·`fontSubsetUnicodeRanges`·`fontSubsetExtraRanges`·`fontSubsetTargetPaths`·`fontSubsetExcludeTargetPaths`가 모두 비어 있으면 인지된 선택이 없다고 보아 서브셋 자체를 실행하지 않음**(설정 = 인지된 활성화) | 콘텐츠 최적화 — 폰트 CJK subset |
 | 폰트 스트리밍 | `fontStreaming = -1` | `fontStreamingTargetPaths = ""` (manual 모드 전용, 비우면 자동 감지)<br>`fontStreamingMaxConcurrent = 2` | 무손실(재수화 후 픽셀 동일)이나 재수화 전(또는 TMP 부재 시) 대상 폰트 글자는 □로 렌더. 비-부팅 1MB 이상 TMP 폰트 외부화 | 콘텐츠 최적화 — 대형 폰트 deferral |
 
 ## 명시 활성 전용 레버 (opt-in · 기본 OFF)
@@ -100,7 +100,7 @@ WebGL 콜드 로드 시간을 줄이는 실험적 최적화 레버를 미리 적
    - **품질 영향 레버 (lossy, 기본 ON)**: 텍스처 Crunch·텍스처 크기 클램프·ASTC 블록 에스컬레이션·오디오 재인코딩·스트림 사본 다운스케일 — 기본값에서 이미 켜져 있으므로, 끄거나 캡을 조정하려면 이 그룹을 확인하세요
    - **콘텐츠 외부화·자동 감지 레버**: 텍스처 스트리밍·스트림 PNG 무손실 재압축·오디오 스트리밍·폰트 CJK 서브셋(콘텐츠 최적화 Header), 폰트 스트리밍(콘텐츠 최적화 — 대형 폰트 deferral)
    - **명시 활성 전용 레버 (기본 OFF)**: 스트리밍 오디오 트랜스코딩·스트림 PNG→JPEG — 켜려면 값을 `1`로 설정
-3. 각 레버의 팝업에서 자동·비활성·활성 중 하나를 고르고, 필요하면 경로와 임계값을 입력합니다. lossy 레버를 끄려면 `0`(비활성)을, 사용자 캡을 존중시키려면 `1`(활성)을 선택하세요. (폰트 CJK 서브셋만 예외적으로 팝업이 자동/비활성/명시 활성(스캔 단독 실행)/수동 설정 4가지입니다 — 자동은 동적 텍스트 언어를 선택해야 실행되고, 명시 활성·수동 설정은 값 `1`로 동일하되 대상/범위 override 유무로 구분됩니다.)
+3. 각 레버의 팝업에서 자동·비활성·활성 중 하나를 고르고, 필요하면 경로와 임계값을 입력합니다. lossy 레버를 끄려면 `0`(비활성)을, 사용자 캡을 존중시키려면 `1`(활성)을 선택하세요. (폰트 CJK 서브셋만 예외적으로 팝업이 자동/비활성/명시 활성(스캔 단독 실행)/수동 설정 4가지입니다 — 자동은 동적 텍스트 언어를 선택해야 실행되고, "수동 설정"은 대상/범위 필드 기재 여부로 판별되는 표시 상태라 팝업에서 골라도 필드를 채우기 전까지는 "명시 활성"으로 표시됩니다.)
 4. `Assets/AppsInToss/Editor/AITConfig.asset`을 선택하면 같은 필드를 Inspector에서 직접 편집할 수도 있습니다.
 
 어떤 레버가 실제로 적용됐는지는 빌드 로그가 최종 확인 수단입니다. 레버마다 활성 여부와 자동 여부가 함께 출력됩니다.
@@ -131,7 +131,7 @@ fragment를 불변 stable 태그로 되돌립니다.
 - **번들 마킹은 채널 배포본에만 있습니다**: `"perf"` 마킹은 채널 발행 시점에 주입되므로 `#beta-perf` 또는 스냅샷 태그로 설치한 경우에만 적용됩니다. 저장소의 개발 브랜치를 직접 핀해서 빌드하면 `buildVariant`가 빈 문자열이라 측정에서 stable 번들과 구분되지 않습니다 — 반드시 채널 ref로 설치하세요.
 - **손실(lossy) 레버는 기본 실행됩니다 — 프로덕션 전 QA 필수**: 텍스처 Crunch 압축, 텍스처 크기 클램프(자동 캡 2048), ASTC 블록 에스컬레이션, 오디오 재인코딩, 스트림 사본 다운스케일은 기본값에서 빌드 시 실행되며(opt-out) 빌드 크기를 줄이는 대신 시각·청취 품질에 영향을 줄 수 있습니다. 프로젝트 원본 임포트 설정은 빌드 후 복원되지만 배포 산출물(.data/CDN)의 품질은 낮아지므로 반드시 품질 검수 후 적용하고, 필요하면 값을 `0`으로 끄거나 캡·폴더로 조정하세요.
 - **명시 활성 전용 lossy 레버(기본 OFF)**: 스트리밍 오디오 트랜스코딩(저비트레이트 재인코딩), 스트림 PNG→JPEG는 품질 검증 게이트를 통과하지 못해 기본 OFF입니다. 켜려면 값을 `1`로 명시하고, 켠 뒤 반드시 청취/시각 검증하세요.
-- **조건 불충족은 조용히 지나갑니다**: `textureStreaming`·`audioStreaming`·`fontStreaming`은 대상 경로 필드를 비워두면 자동 감지가 돌지만, 임계값을 넘는 에셋이 없으면 아무것도 처리되지 않습니다. `fontSubset`은 자동 모드에서 `fontSubsetLanguages`·`fontSubsetUnicodeRanges`·`fontSubsetExtraRanges`·`fontSubsetTargetPaths`가 모두 비어 있으면 동적 텍스트 언어가 선택되지 않은 것으로 보아 서브셋 자체를 건너뜁니다(선택 = 인지된 활성화). 에셋의 실제 경로와 크기를 확인한 뒤 필드를 채우세요.
+- **조건 불충족은 조용히 지나갑니다**: `textureStreaming`·`audioStreaming`·`fontStreaming`은 대상 경로 필드를 비워두면 자동 감지가 돌지만, 임계값을 넘는 에셋이 없으면 아무것도 처리되지 않습니다. `fontSubset`은 자동 모드에서 `fontSubsetLanguages`·`fontSubsetUnicodeRanges`·`fontSubsetExtraRanges`·`fontSubsetTargetPaths`·`fontSubsetExcludeTargetPaths`가 모두 비어 있으면 동적 텍스트 언어가 선택되지 않은 것으로 보아 서브셋 자체를 건너뜁니다(설정 = 인지된 활성화). 에셋의 실제 경로와 크기를 확인한 뒤 필드를 채우세요.
 - **폰트 레버의 동적 텍스트 리스크**: `fontSubset`은 보존 범위 밖 글자를 제거하므로, 프로젝트에 등장하지 않는 문자체계를 외부에서 동적으로 받아 표시하면 □(tofu)가 될 수 있습니다. Configuration 창에서 동적 텍스트(닉네임·채팅 등)에 나올 수 있는 언어를 `fontSubsetLanguages`로 선택하면 해당 언어의 유니코드 범위가 보존 범위에 합류됩니다. 그 밖의 세부 범위 보강이 필요하면 `fontSubsetExtraRanges` 또는 대상 제외(`fontSubsetExcludeTargetPaths`)로 대응하세요. `fontStreaming`은 재수화 전 대상 폰트 글자가 □로 렌더됩니다.
 - **서브타깃 제약**: ASTC 블록 에스컬레이션은 WebGL 빌드 subtarget이 ASTC일 때만 동작하고 DXT에서는 자동 비활성화됩니다. 텍스처 Crunch는 반대로 ASTC subtarget 빌드에서 경고 로그를 남기고 건너뜁니다.
 - **파일럿 지원**: 적용 중 발견한 이슈나 측정 결과는 안내받은 채널로 공유해 주세요.

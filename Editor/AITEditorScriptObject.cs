@@ -441,8 +441,8 @@ namespace AppsInToss
 
         [Tooltip("(additive) 서버발 동적 텍스트(닉네임·채팅 등)에 등장할 수 있는 언어를 선택(쉼표 구분 태그, AITFontSubsetLanguages 참조). " +
                  "선택한 언어의 유니코드 범위가 보존 범위에 합집합(union)됩니다. 예) \"ja,zh-Hans\". " +
-                 "자동 모드(fontSubset=-1)에서 이 필드·fontSubsetUnicodeRanges·fontSubsetExtraRanges·fontSubsetTargetPaths 가 " +
-                 "모두 비어 있으면 동적 텍스트 언어가 인지되지 않은 것으로 보아 subset 자체를 건너뜁니다.")]
+                 "자동 모드(fontSubset=-1)에서 이 필드·fontSubsetUnicodeRanges·fontSubsetExtraRanges·fontSubsetTargetPaths·" +
+                 "fontSubsetExcludeTargetPaths 가 모두 비어 있으면 동적 텍스트 언어가 인지되지 않은 것으로 보아 subset 자체를 건너뜁니다.")]
         public string fontSubsetLanguages = "";
         [Header("콘텐츠 최적화 — 대형 텍스처 스트리밍")]
         [Tooltip("비-부팅 대형 Texture2D 를 초기 .data 에서 분리해 StreamingAssets 로 외부화하고, 소스를 '동일 차원 단색 스텁'으로 치환합니다. " +

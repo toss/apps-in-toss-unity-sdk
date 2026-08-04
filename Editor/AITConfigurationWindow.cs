@@ -852,6 +852,7 @@ namespace AppsInToss.Editor
             // 수동 설정 모드: targetPaths 또는 unicodeRanges 가 채워져 있으면 override(수동) 모드로 간주.
             bool hasManualOverride = !string.IsNullOrEmpty(config.fontSubsetTargetPaths)
                 || !string.IsNullOrEmpty(config.fontSubsetUnicodeRanges);
+            bool hasLanguageSelection = !string.IsNullOrEmpty(config.fontSubsetLanguages);
 
             // tri-state 매핑: 0=자동, 1=비활성화, 2=수동 설정.
             int currentIndex;
@@ -870,7 +871,7 @@ namespace AppsInToss.Editor
 
             EditorGUILayout.BeginHorizontal();
 
-            bool isModified = config.fontSubset == 0 || hasManualOverride;
+            bool isModified = config.fontSubset == 0 || hasManualOverride || hasLanguageSelection;
             DrawModifiedIndicator(isModified);
 
             string label = currentIndex == 0
@@ -909,6 +910,7 @@ namespace AppsInToss.Editor
                 config.fontSubset = -1;
                 config.fontSubsetTargetPaths = string.Empty;
                 config.fontSubsetUnicodeRanges = string.Empty;
+                config.fontSubsetLanguages = string.Empty;
                 currentIndex = 0;
             }
 
@@ -939,6 +941,76 @@ namespace AppsInToss.Editor
                     "⚠ 수동 보존 범위를 지정하면 그 범위만 남고 나머지 글자(희귀 한자/이모지/동적 텍스트)는 □로 렌더됩니다. " +
                     "범위를 비우면 Auto 스캔이 등장 문자체계를 보존하므로 더 안전합니다.",
                     MessageType.Warning);
+            }
+
+            // ── 동적 텍스트 언어 선택 — 자동·수동 공통(비활성화 모드 제외). 선택 = 인지된 활성화. ──
+            if (currentIndex != 1)
+            {
+                EditorGUILayout.LabelField("동적 텍스트(닉네임·채팅 등)에 나올 수 있는 언어", EditorStyles.boldLabel);
+                EditorGUI.indentLevel++;
+
+                var selectedTags = new System.Collections.Generic.HashSet<string>(
+                    (config.fontSubsetLanguages ?? string.Empty).Split(','), StringComparer.Ordinal);
+                bool languageChanged = false;
+                foreach (var entry in AITFontSubsetLanguages.Table)
+                {
+                    if (entry.AlwaysIncluded)
+                    {
+                        bool prevEnabled = GUI.enabled;
+                        GUI.enabled = false;
+                        EditorGUILayout.ToggleLeft($"{entry.Label} (항상 보존)", true);
+                        GUI.enabled = prevEnabled;
+                        continue;
+                    }
+
+                    string languageLabel = entry.Tag == "ja" || entry.Tag == "zh-Hans" || entry.Tag == "zh-Hant"
+                        ? $"{entry.Label} (한자 통블록 — 절감 효과 감소)"
+                        : entry.Label;
+
+                    bool wasChecked = selectedTags.Contains(entry.Tag);
+                    bool isChecked = EditorGUILayout.ToggleLeft(languageLabel, wasChecked);
+                    if (isChecked != wasChecked)
+                    {
+                        languageChanged = true;
+                        if (isChecked)
+                        {
+                            selectedTags.Add(entry.Tag);
+                        }
+                        else
+                        {
+                            selectedTags.Remove(entry.Tag);
+                        }
+                    }
+                }
+
+                if (languageChanged)
+                {
+                    // 테이블 순서 고정 → 결정적 직렬화.
+                    var orderedTags = new System.Collections.Generic.List<string>();
+                    foreach (var entry in AITFontSubsetLanguages.Table)
+                    {
+                        if (!entry.AlwaysIncluded && selectedTags.Contains(entry.Tag))
+                        {
+                            orderedTags.Add(entry.Tag);
+                        }
+                    }
+
+                    config.fontSubsetLanguages = string.Join(",", orderedTags);
+                }
+
+                EditorGUI.indentLevel--;
+
+                if (currentIndex == 0 && AITFontSubsetProcessor.ShouldSkipAutoWithoutSelection(
+                        config.fontSubset,
+                        config.fontSubsetLanguages,
+                        config.fontSubsetUnicodeRanges,
+                        config.fontSubsetExtraRanges,
+                        config.fontSubsetTargetPaths))
+                {
+                    EditorGUILayout.HelpBox(
+                        "현재 설정에서는 서브셋이 실행되지 않습니다. 동적 텍스트 언어를 선택하거나, 명시 활성(수동 설정)으로 전환하세요.",
+                        MessageType.Info);
+                }
             }
 
             // ── 안전 필드(additive/exclude) — 자동·수동 공통(비활성화 모드 제외) ──
@@ -2206,12 +2278,13 @@ namespace AppsInToss.Editor
             if (config.textureStreamJpeg >= 0 && (config.textureStreamJpeg == 1) != defaultStreamJpeg) count++;
             bool defaultAstcBlock = AITDefaultSettings.GetDefaultAstcBlockEscalation();
             if (config.astcBlockEscalation >= 0 && (config.astcBlockEscalation == 1) != defaultAstcBlock) count++;
-            // 폰트 subset: 비활성(0)이거나 수동 override(target/range/추가범위/제외경로 지정)면 변경으로 집계.
+            // 폰트 subset: 비활성(0)이거나 수동 override(target/range/추가범위/제외경로/언어 지정)면 변경으로 집계.
             if (config.fontSubset == 0
                 || !string.IsNullOrEmpty(config.fontSubsetTargetPaths)
                 || !string.IsNullOrEmpty(config.fontSubsetUnicodeRanges)
                 || !string.IsNullOrEmpty(config.fontSubsetExtraRanges)
-                || !string.IsNullOrEmpty(config.fontSubsetExcludeTargetPaths))
+                || !string.IsNullOrEmpty(config.fontSubsetExcludeTargetPaths)
+                || !string.IsNullOrEmpty(config.fontSubsetLanguages))
             {
                 count++;
             }
@@ -2382,6 +2455,7 @@ namespace AppsInToss.Editor
             config.fontSubsetUnicodeRanges = string.Empty;
             config.fontSubsetExtraRanges = string.Empty;
             config.fontSubsetExcludeTargetPaths = string.Empty;
+            config.fontSubsetLanguages = string.Empty;
 
             // 콘텐츠 최적화 — 대형 텍스처 스트리밍
             config.textureStreaming = -1;

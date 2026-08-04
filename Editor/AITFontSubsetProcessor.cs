@@ -78,6 +78,15 @@ namespace AppsInToss.Editor
 
             /// <summary>subset 된 폰트 개수.</summary>
             public int Count;
+
+            /// <summary>
+            /// 이번 빌드에서 lazy 언어 확장(AITFontLazyExtensionBuilder)이 StreamingAssets 아티팩트를
+            /// 실제로 남겼는지. boot subset 자체(Active)와 독립적으로 추적한다 — boot subset 이 예외로
+            /// 실패해도(Active=false) lazy 아티팩트는 이미 디스크에 남아 있을 수 있어, RestoreForBuild 가
+            /// 이 값만 보고도 lazy 정리를 수행할 수 있어야 한다(그렇지 않으면 StreamingAssets 잔존 → 다음
+            /// 빌드까지 프로젝트 트리 오염).
+            /// </summary>
+            public bool LazyActive;
         }
 
         static AITFontSubsetProcessor()
@@ -169,6 +178,23 @@ namespace AppsInToss.Editor
                 return handle;
             }
 
+            // ── 도구 준비: lazy 확장(있으면)도 같은 npm 도구(subset-font-runner.mjs)를 재사용하므로
+            //   보존 범위 결정보다 앞으로 옮겼다(lazy 훅이 boot union 계산에 앞서 node/runner 를 필요로 함).
+            string node, runner;
+            if (!EnsureTool(out node, out runner))
+            {
+                Debug.LogWarning("[AIT-FontSubset] subset 도구 준비 실패 → subset 을 건너뜁니다(풀 폰트로 빌드 계속).");
+                return handle;
+            }
+
+            // ── lazy 확장(있으면, fontSubsetLazyLanguages==1 명시 활성 전용): 부트 서브셋으로 파일이
+            //   치환되기 전(targets 는 아직 원본 바이트) 원본 폰트 바이트에서 언어별 확장 서브셋을 먼저
+            //   시도한다. 성공한 태그는 이후 boot union 에서 제외되고, 실패한 태그는 안전 불변식에 따라
+            //   bootLanguagesForUnion 에 그대로 남아 부트 union 에 포함된다(fallback-to-boot).
+            string bootLanguagesForUnion = AITFontLazyExtensionBuilder.ApplyLazyExtensions(
+                config, targets, node, runner, out bool lazyActive);
+            handle.LazyActive = lazyActive;
+
             // ── 보존 범위 결정: 수동 범위(override)가 있으면 그대로, 없으면 Auto 스캔으로 도출 ──
             string ranges = (config.fontSubsetUnicodeRanges ?? string.Empty).Trim();
             bool manualRanges = !string.IsNullOrEmpty(ranges);
@@ -196,7 +222,9 @@ namespace AppsInToss.Editor
 
             // ── (additive) fontSubsetLanguages: auto/manual 무관하게 항상 union(override 아님) ──
             //   개발자가 선택한 동적 텍스트 언어(닉네임/채팅 등)의 유니코드 범위를 보강한다.
-            string languageRanges = AITFontSubsetLanguages.BuildRanges(config.fontSubsetLanguages);
+            //   bootLanguagesForUnion 은 lazy 로 성공적으로 분리된 태그를 제외한 나머지(bootTags)다
+            //   (lazy 미사용/전부 실패 시 config.fontSubsetLanguages 와 동일).
+            string languageRanges = AITFontSubsetLanguages.BuildRanges(bootLanguagesForUnion);
             if (!string.IsNullOrEmpty(languageRanges))
             {
                 ranges = string.IsNullOrEmpty(ranges) ? languageRanges : ranges + "," + languageRanges;
@@ -210,13 +238,6 @@ namespace AppsInToss.Editor
             {
                 ranges = string.IsNullOrEmpty(ranges) ? extraRanges : ranges + "," + extraRanges;
                 Debug.Log($"[AIT-FontSubset] 추가 보존 범위(union) 적용: {extraRanges}");
-            }
-
-            string node, runner;
-            if (!EnsureTool(out node, out runner))
-            {
-                Debug.LogWarning("[AIT-FontSubset] subset 도구 준비 실패 → subset 을 건너뜁니다(풀 폰트로 빌드 계속).");
-                return handle;
             }
 
             try
@@ -315,7 +336,13 @@ namespace AppsInToss.Editor
                 RestoreAllBackups();
                 RemoveMarker();
                 AssetDatabase.Refresh();
-                return new FontHandle();
+                // 새 핸들 대신 기존 handle 을 재사용해 LazyActive 를 보존한다 — lazy 확장은 이 예외
+                // (boot subset 루프 중 발생)보다 앞서 이미 완료돼 StreamingAssets 아티팩트를 남겼을 수
+                // 있고, 그 정리는 RestoreForBuild(handle.LazyActive) 가 전담한다(여기서 새 핸들을 반환하면
+                // LazyActive 가 유실되어 아티팩트가 프로젝트 트리에 영구 잔존한다).
+                handle.Active = false;
+                handle.Count = 0;
+                return handle;
             }
         }
 
@@ -343,20 +370,30 @@ namespace AppsInToss.Editor
                 && string.IsNullOrEmpty((excludeTargetPaths ?? string.Empty).Trim());
         }
 
-        /// <summary>빌드 종료 후(성공/실패 무관) 호출: 원본 폰트로 복원한다.</summary>
+        /// <summary>
+        /// 빌드 종료 후(성공/실패 무관) 호출: 원본 폰트로 복원하고(Active), lazy 확장 StreamingAssets
+        /// 아티팩트를 정리한다(LazyActive). 두 플래그는 독립적이다(boot subset 예외로 Active=false 여도
+        /// LazyActive=true 면 lazy 정리는 여전히 수행된다 — ApplyForBuild catch 블록 참조).
+        /// </summary>
         public static void RestoreForBuild(FontHandle handle)
         {
-            if (handle == null || !handle.Active)
+            if (handle == null || (!handle.Active && !handle.LazyActive))
             {
                 return;
             }
 
             try
             {
-                int restored = RestoreAllBackups();
+                int restored = handle.Active ? RestoreAllBackups() : 0;
+                if (handle.LazyActive)
+                {
+                    AITFontLazyExtensionBuilder.CleanupAfterBuild();
+                }
+
                 RemoveMarker();
                 AssetDatabase.Refresh();
-                Debug.Log($"[AIT-FontSubset] 복원 완료: {restored}개 폰트 원상.");
+                Debug.Log($"[AIT-FontSubset] 복원 완료: {restored}개 폰트 원상" +
+                    (handle.LazyActive ? ", lazy 확장 아티팩트 정리" : string.Empty) + ".");
             }
             catch (Exception e)
             {

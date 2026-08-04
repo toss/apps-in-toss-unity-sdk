@@ -444,6 +444,15 @@ namespace AppsInToss
                  "자동 모드(fontSubset=-1)에서 이 필드·fontSubsetUnicodeRanges·fontSubsetExtraRanges·fontSubsetTargetPaths·" +
                  "fontSubsetExcludeTargetPaths 가 모두 비어 있으면 동적 텍스트 언어가 인지되지 않은 것으로 보아 subset 자체를 건너뜁니다.")]
         public string fontSubsetLanguages = "";
+
+        [Tooltip("-1 = 자동(비활성 — 품질 게이트 미통과 opt-in 패턴, audioStreamTranscode 와 동일 posture), " +
+                 "0 = 비활성, 1 = 활성(명시 활성일 때만 동작). " +
+                 "fontSubsetLanguages 로 선택한 언어 중 LazyEligible(ko/la 제외 전부) 태그를 부트 union 대신 " +
+                 "lazy 확장으로 분리합니다: 빌드 시 언어별 확장 서브셋 TTF → Dynamic TMP_FontAsset → " +
+                 "AssetBundle 로 외부화하고, 런타임에 해당 문자체계 텍스트가 실제로 등장할 때만 다운로드해 " +
+                 "TMP 전역 fallback 에 주입합니다. 어떤 단계든 실패한 언어는 안전하게 부트 union 으로 되돌아갑니다 " +
+                 "(fallback-to-boot — 1단계 대비 tofu 리스크 증가 없음).")]
+        public int fontSubsetLazyLanguages = -1; // -1=자동(비활성), 0=비활성, 1=명시 활성
         [Header("콘텐츠 최적화 — 대형 텍스처 스트리밍")]
         [Tooltip("비-부팅 대형 Texture2D 를 초기 .data 에서 분리해 StreamingAssets 로 외부화하고, 소스를 '동일 차원 단색 스텁'으로 치환합니다. " +
                  "런타임(AITStreamingTexture)이 first-frame 이후 실 텍스처를 비동기 스트리밍 로드하여 동일 Texture2D 객체에 픽셀을 제자리 복원하므로 " +
@@ -887,6 +896,16 @@ namespace AppsInToss
         public static bool GetDefaultFontSubset()
         {
             return true;
+        }
+
+        /// <summary>
+        /// 기본 폰트 subset lazy 언어 확장 활성화 여부.
+        /// audioStreamTranscode 와 동일 posture(품질 게이트 미통과 opt-in 패턴)로, 자동(-1)은 항상 비활성 —
+        /// fontSubsetLazyLanguages == 1(명시 활성)에서만 동작한다.
+        /// </summary>
+        public static bool GetDefaultFontSubsetLazyLanguages()
+        {
+            return false;
         }
 
         /// <summary>

@@ -977,6 +977,43 @@ namespace AppsInToss.Editor
                     }
                 }
 
+                // ── lazy 확장(실험적) tri-state — LazyEligible 태그가 하나라도 체크돼 있을 때만 노출
+                //   (audioStreamTranscode 와 동일 opt-in UI 관용구: 자동은 항상 비활성). 이 값은 아래
+                //   체크박스 라벨(lazy 대상 병기)에도 쓰이므로 체크박스 루프보다 앞에서 계산한다.
+                bool anyLazyEligibleSelected = false;
+                foreach (var tag in selectedTags)
+                {
+                    if (AITFontSubsetLanguages.TryFindEntry(tag, out var selectedEntry) && selectedEntry.LazyEligible)
+                    {
+                        anyLazyEligibleSelected = true;
+                        break;
+                    }
+                }
+
+                bool lazyDefault = AITDefaultSettings.GetDefaultFontSubsetLazyLanguages();
+                bool lazyEnabled = config.fontSubsetLazyLanguages >= 0
+                    ? config.fontSubsetLazyLanguages == 1
+                    : lazyDefault;
+
+                if (anyLazyEligibleSelected)
+                {
+                    string lazyAuto = lazyDefault ? "활성화" : "비활성화";
+                    string[] lazyOptions = { $"자동 ({lazyAuto})", "비활성화", "활성화" };
+                    int lazyIndex = config.fontSubsetLazyLanguages < 0 ? 0 : config.fontSubsetLazyLanguages + 1;
+                    int newLazyIndex = EditorGUILayout.Popup(
+                        new GUIContent("선택 언어 lazy 확장 (실험적)",
+                            "ko/la(항상 보존)를 제외한 선택 언어를 부트 union 대신 lazy 확장으로 분리합니다: " +
+                            "빌드 시 언어별 확장 서브셋 TTF → Dynamic TMP_FontAsset → AssetBundle 외부화, " +
+                            "런타임에 해당 문자체계 텍스트가 실제로 등장할 때만 다운로드해 TMP 전역 fallback 에 " +
+                            "주입합니다. 어떤 단계든 실패한 언어는 안전하게 부트 union 으로 되돌아갑니다 " +
+                            "(fallback-to-boot — 1단계 대비 tofu 리스크 증가 없음)."),
+                        lazyIndex, lazyOptions);
+                    config.fontSubsetLazyLanguages = newLazyIndex == 0 ? -1 : newLazyIndex - 1;
+                    lazyEnabled = config.fontSubsetLazyLanguages >= 0
+                        ? config.fontSubsetLazyLanguages == 1
+                        : lazyDefault;
+                }
+
                 bool languageChanged = false;
                 foreach (var entry in AITFontSubsetLanguages.Table)
                 {
@@ -1000,9 +1037,24 @@ namespace AppsInToss.Editor
                         continue;
                     }
 
-                    string languageLabel = entry.Tag == "ja" || entry.Tag == "zh-Hans" || entry.Tag == "zh-Hant"
-                        ? $"{entry.Label} (한자 통블록 — 절감 효과 감소)"
-                        : entry.Label;
+                    string languageLabel;
+                    bool isCjkHanBlock = entry.Tag == "ja" || entry.Tag == "zh-Hans" || entry.Tag == "zh-Hant";
+                    if (isCjkHanBlock)
+                    {
+                        // lazy 활성 시 이 언어는 부트 union 에서 완전히 빠지므로 "한자 통블록 — 절감 효과
+                        // 감소" 경고는 더 이상 사실이 아니다 — "부트 폰트 비영향"으로 대체.
+                        languageLabel = lazyEnabled
+                            ? $"{entry.Label} (lazy 확장으로 분리 — 부트 폰트 비영향)"
+                            : $"{entry.Label} (한자 통블록 — 절감 효과 감소)";
+                    }
+                    else if (lazyEnabled && entry.LazyEligible)
+                    {
+                        languageLabel = $"{entry.Label} (lazy 확장으로 분리)";
+                    }
+                    else
+                    {
+                        languageLabel = entry.Label;
+                    }
 
                     bool wasChecked = selectedTags.Contains(entry.Tag);
                     bool isChecked = EditorGUILayout.ToggleLeft(languageLabel, wasChecked);
@@ -2329,6 +2381,11 @@ namespace AppsInToss.Editor
                 count++;
             }
 
+            // 폰트 subset lazy 언어 확장: audioStreamTranscode 와 동일하게 tri-state 가 선언 기본값과
+            // 다를 때만(자동 기준 실효값 비교) 변경으로 집계.
+            bool defaultFontSubsetLazy = AITDefaultSettings.GetDefaultFontSubsetLazyLanguages();
+            if (config.fontSubsetLazyLanguages >= 0 && (config.fontSubsetLazyLanguages == 1) != defaultFontSubsetLazy) count++;
+
             return count;
         }
 
@@ -2496,6 +2553,7 @@ namespace AppsInToss.Editor
             config.fontSubsetExtraRanges = string.Empty;
             config.fontSubsetExcludeTargetPaths = string.Empty;
             config.fontSubsetLanguages = string.Empty;
+            config.fontSubsetLazyLanguages = -1;
 
             // 콘텐츠 최적화 — 대형 텍스처 스트리밍
             config.textureStreaming = -1;

@@ -113,16 +113,6 @@ namespace AppsInToss.Editor
         // ─────────────────────────── 진입점 ───────────────────────────
 
         /// <summary>
-        /// fontSubsetLazyLanguages tri-state 에 따라 lazy 확장을 시도하고, boot union 계산에 쓸 언어
-        /// CSV(=lazy 로 성공적으로 분리되지 않은 나머지, 즉 bootTags)를 반환한다. 이 함수는 어떤 경우에도
-        /// 예외를 던지지 않는다(호출부의 boot subset 흐름을 절대 막지 않기 위함 — 안전 불변식).
-        /// </summary>
-        /// <param name="config">에디터 설정. null 이면 원본 언어 CSV 그대로 반환(no-op).</param>
-        /// <param name="targets">boot subset 대상 폰트 경로들(원본 바이트 상태 — 아직 치환 전). 첫 번째
-        /// (주 폰트) 만 lazy 확장 소스로 사용한다.</param>
-        /// <param name="node">EnsureTool 로 해석된 node 실행 경로.</param>
-        /// <param name="runner">subset-font-runner.mjs 경로.</param>
-        /// <summary>
         /// fontSubsetLazyLanguages tri-state 를 해석해 lazy 확장이 이번 빌드에서 활성인지 반환한다(N11:
         /// AITFontSubsetProcessor 가 EnsureTool 조기 호출 여부를 이 값만으로 판단할 수 있도록 노출).
         /// -1(자동)→GetDefaultFontSubsetLazyLanguages()(=항상 false), 0=비활성, 1=명시 활성.
@@ -321,6 +311,14 @@ namespace AppsInToss.Editor
             try
             {
                 var packages = UnityEditor.PackageManager.PackageInfo.GetAllRegisteredPackages();
+                if (packages == null || packages.Length == 0)
+                {
+                    // 레지스트리가 아직 채워지지 않은 타이밍 — "두 모듈 모두 비활성화" 와는 다른 상황이므로
+                    // 오진단을 피해 확인 실패로 구분한다(폴백 방향은 동일하게 안전).
+                    reason = "패키지 레지스트리가 비어 있어 모듈 등록을 확인할 수 없음";
+                    return false;
+                }
+
                 bool hasUnityWebRequest = false;
                 bool hasAssetBundle = false;
                 foreach (var pkg in packages)
@@ -1054,6 +1052,55 @@ namespace AppsInToss.Editor
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// 롤백/안전망 경로(AITFontExternalizer.PruneStreamRootForLazyOnly) 전용: manifest 를 lazy 엔트리만
+        /// 남기고 다시 쓴다. 그 경로는 eager 번들 파일을 삭제하므로, 삭제된 번들을 가리키는 stale eager
+        /// 엔트리가 남으면 런타임이 태그별 다운로드 실패 경고를 찍고 이후 빌드의 read-merge-write 로
+        /// 이월될 수 있다. 실패는 삼킨다(정리 부속 작업이 롤백 본류를 막으면 안 됨) — 멱등.
+        /// </summary>
+        internal static void PruneManifestToLazyOnly(string manifestPath)
+        {
+            try
+            {
+                if (!File.Exists(manifestPath))
+                {
+                    return;
+                }
+
+                var manifest = ReadManifest(manifestPath);
+                var lazyJsons = new List<string>();
+                bool hadEager = false;
+                if (manifest.entries != null)
+                {
+                    foreach (var e in manifest.entries)
+                    {
+                        if (!string.IsNullOrEmpty(e.lazyTag))
+                        {
+                            lazyJsons.Add(BuildEntryJson(e));
+                        }
+                        else
+                        {
+                            hadEager = true;
+                        }
+                    }
+                }
+
+                if (!hadEager)
+                {
+                    return; // 이미 lazy 전용 — 다시 쓸 필요 없음.
+                }
+
+                var sb = new StringBuilder();
+                sb.Append("{\"maxConcurrent\":").Append(manifest.maxConcurrent > 0 ? manifest.maxConcurrent : 2)
+                  .Append(",\"entries\":[").Append(string.Join(",", lazyJsons)).Append("]}");
+                File.WriteAllText(manifestPath, sb.ToString());
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[AIT-FontSubset-Lazy] manifest lazy 전용 정리 실패(무시): {e.Message}");
+            }
         }
 
         /// <summary>read-merge-write: 기존 매니페스트를 읽어 eager/다른 태그의 lazy 엔트리를 보존한 채

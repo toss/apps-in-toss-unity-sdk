@@ -1060,6 +1060,10 @@ namespace AppsInToss.Editor
                         Debug.LogWarning($"[AIT-StreamingFont] lazy 전용 정리 중 파일 삭제 실패({name}): {e.Message}");
                     }
                 }
+
+                // 방금 삭제한 eager 번들을 가리키는 stale 엔트리가 manifest 에 남지 않도록 lazy 전용으로
+                // 다시 쓴다(남으면 런타임 다운로드 실패 경고 소음 + 이후 빌드 read-merge-write 로 이월).
+                AITFontLazyExtensionBuilder.PruneManifestToLazyOnly(Path.Combine(streamRootFull, "manifest.json"));
             }
             catch (Exception e)
             {

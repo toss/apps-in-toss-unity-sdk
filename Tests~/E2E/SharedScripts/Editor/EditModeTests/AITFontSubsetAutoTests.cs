@@ -650,4 +650,347 @@ public class AITFontSubsetAutoTests
         Assert.IsTrue(AITFontSubsetProcessor.ShouldSkipAutoWithoutSelection(-1, "   ", " ", "\t", "", "  "),
             "공백만 있는 필드는 trim 후 빈 값으로 취급되어야 함");
     }
+
+    // =====================================================
+    // AITFontSubsetLanguages.LazyEligible: AlwaysIncluded(ko/la) 제외 전부 true
+    // =====================================================
+
+    [Test]
+    public void LazyEligible_AlwaysIncludedEntries_AreFalse()
+    {
+        foreach (var entry in AITFontSubsetLanguages.Table)
+        {
+            if (entry.AlwaysIncluded)
+            {
+                Assert.IsFalse(entry.LazyEligible,
+                    $"'{entry.Tag}' 는 AlwaysIncluded(부트 폰트 필수 포함)이므로 LazyEligible 이 false 여야 함");
+            }
+        }
+    }
+
+    [Test]
+    public void LazyEligible_NonAlwaysIncludedEntries_AreAllTrue()
+    {
+        foreach (var entry in AITFontSubsetLanguages.Table)
+        {
+            if (!entry.AlwaysIncluded)
+            {
+                Assert.IsTrue(entry.LazyEligible,
+                    $"'{entry.Tag}' 는 AlwaysIncluded 가 아니므로 LazyEligible 이 true 여야 함(계약: " +
+                    "AlwaysIncluded 를 제외한 모든 태그가 true)");
+            }
+        }
+    }
+
+    [Test]
+    public void LazyEligible_KoAndLa_AreFalse()
+    {
+        // 계약 문구를 태그 단위로도 직접 고정: ko/la 는 항상 부트 폰트에 포함되어야 하므로 lazy 대상이 아니다.
+        Assert.IsTrue(AITFontSubsetLanguages.TryFindEntry("ko", out var ko));
+        Assert.IsTrue(AITFontSubsetLanguages.TryFindEntry("la", out var la));
+        Assert.IsFalse(ko.LazyEligible, "ko 는 항상 부트 폰트에 포함되어야 하므로 LazyEligible=false");
+        Assert.IsFalse(la.LazyEligible, "la 는 항상 부트 폰트에 포함되어야 하므로 LazyEligible=false");
+    }
+
+    [Test]
+    public void LazyEligible_KnownEligibleTags_AreTrue()
+    {
+        // 계약이 열거한 8개 태그를 명시적으로 고정(테이블에 항목이 추가/누락되면 이 테스트가 즉시 감지).
+        foreach (var tag in new[] { "ja", "zh-Hans", "zh-Hant", "ru", "th", "latin-ext", "ar", "emoji" })
+        {
+            Assert.IsTrue(AITFontSubsetLanguages.TryFindEntry(tag, out var entry), $"'{tag}' 가 테이블에 있어야 함");
+            Assert.IsTrue(entry.LazyEligible, $"'{tag}' 는 LazyEligible=true 여야 함");
+        }
+    }
+
+    // =====================================================
+    // AITFontLazyExtensionBuilder.SplitLazyAndBootTags: lazySet/bootTags 분할
+    // =====================================================
+
+    [Test]
+    public void SplitLazyAndBootTags_MixedSelection_SplitsByLazyEligible()
+    {
+        AITFontLazyExtensionBuilder.SplitLazyAndBootTags(
+            "ja,ru,th", out List<string> lazyTags, out List<string> bootTags);
+
+        CollectionAssert.AreEquivalent(new[] { "ja", "ru", "th" }, lazyTags,
+            "ja/ru/th 는 전부 LazyEligible 이므로 lazyTags 로 분류되어야 함");
+        Assert.AreEqual(0, bootTags.Count, "LazyEligible 아닌 태그가 없으므로 bootTags 는 비어야 함");
+    }
+
+    [Test]
+    public void SplitLazyAndBootTags_KoLa_AlwaysGoesToBootTags()
+    {
+        // 계약: bootTags = 선택 언어 − lazySet. ko/la 는 LazyEligible=false 이므로 선택되어도 항상 bootTags.
+        AITFontLazyExtensionBuilder.SplitLazyAndBootTags(
+            "ko,la,ja", out List<string> lazyTags, out List<string> bootTags);
+
+        CollectionAssert.AreEquivalent(new[] { "ja" }, lazyTags);
+        CollectionAssert.AreEquivalent(new[] { "ko", "la" }, bootTags);
+    }
+
+    [Test]
+    public void SplitLazyAndBootTags_UnknownTag_SafelyGoesToBootTags()
+    {
+        // 미지 태그는 lazy 시도 대상이 될 수 없으므로(테이블에 범위가 없음) 안전하게 boot 로 분류된다
+        // (boot union 에 있어도 BuildRanges 가 미지 태그를 무시하므로 무해 — 기존 관용구와 동일).
+        AITFontLazyExtensionBuilder.SplitLazyAndBootTags(
+            "ja,unknown-tag", out List<string> lazyTags, out List<string> bootTags);
+
+        CollectionAssert.AreEquivalent(new[] { "ja" }, lazyTags);
+        CollectionAssert.AreEquivalent(new[] { "unknown-tag" }, bootTags);
+    }
+
+    [Test]
+    public void SplitLazyAndBootTags_DuplicateTags_DedupsToSingleEntry()
+    {
+        AITFontLazyExtensionBuilder.SplitLazyAndBootTags(
+            "ja,ja,ko,ko", out List<string> lazyTags, out List<string> bootTags);
+
+        Assert.AreEqual(1, lazyTags.Count, "중복 태그는 첫 등장만 반영되어야 함(ja)");
+        Assert.AreEqual(1, bootTags.Count, "중복 태그는 첫 등장만 반영되어야 함(ko)");
+    }
+
+    [Test]
+    public void SplitLazyAndBootTags_EmptyOrNullCsv_ReturnsBothEmpty()
+    {
+        AITFontLazyExtensionBuilder.SplitLazyAndBootTags(string.Empty, out List<string> lazyTagsEmpty, out List<string> bootTagsEmpty);
+        Assert.AreEqual(0, lazyTagsEmpty.Count);
+        Assert.AreEqual(0, bootTagsEmpty.Count);
+
+        AITFontLazyExtensionBuilder.SplitLazyAndBootTags(null, out List<string> lazyTagsNull, out List<string> bootTagsNull);
+        Assert.AreEqual(0, lazyTagsNull.Count);
+        Assert.AreEqual(0, bootTagsNull.Count);
+    }
+
+    // =====================================================
+    // AITFontLazyExtensionBuilder.JoinInTableOrder + 폴백(fallback-to-boot) 시뮬레이션
+    // =====================================================
+
+    [Test]
+    public void JoinInTableOrder_OrdersByTableRegardlessOfInputOrder()
+    {
+        // Table 순서: ko, la, ja, zh-Hans, zh-Hant, ru, th, latin-ext, ar, emoji.
+        string result = AITFontLazyExtensionBuilder.JoinInTableOrder(new[] { "th", "ja", "ko" });
+        Assert.AreEqual("ko,ja,th", result, "입력 순서와 무관하게 Table 순서로 결정적 직렬화되어야 함");
+    }
+
+    [Test]
+    public void JoinInTableOrder_DedupsDuplicateTags()
+    {
+        string result = AITFontLazyExtensionBuilder.JoinInTableOrder(new[] { "ja", "ja", "ko" });
+        Assert.AreEqual("ko,ja", result, "중복 태그는 1회만 출력되어야 함");
+    }
+
+    [Test]
+    public void JoinInTableOrder_EmptyInput_ReturnsEmptyString()
+    {
+        Assert.AreEqual(string.Empty, AITFontLazyExtensionBuilder.JoinInTableOrder(new List<string>()));
+        Assert.AreEqual(string.Empty, AITFontLazyExtensionBuilder.JoinInTableOrder(null));
+    }
+
+    [Test]
+    public void FallbackToBoot_FailedLazyTag_RestoredIntoBootUnion()
+    {
+        // 안전 불변식 시뮬레이션: "ja,ru" 선택 중 'ru' 의 lazy 확장이 실패했다고 가정하면, 호출부
+        // (ApplyLazyExtensions)는 실패한 태그를 bootTags 로 되돌린 뒤 JoinInTableOrder 로 최종 boot
+        // union CSV 를 만든다. 이 테스트는 그 재계산 로직이 실제 union 값에 반영됨을 순수 함수 조합으로 검증한다
+        // (로그만 남기고 범위가 빠지는 구조가 아님을 보장).
+        AITFontLazyExtensionBuilder.SplitLazyAndBootTags("ja,ru", out List<string> lazyTags, out List<string> bootTags);
+        Assert.AreEqual(2, lazyTags.Count, "사전조건: ja/ru 모두 처음엔 lazy 시도 대상");
+
+        // 'ru' 의 lazy 확장이 실패했다고 가정 → 호출부와 동일하게 bootTags 로 되돌린다.
+        bootTags.Add("ru");
+
+        string bootUnionCsv = AITFontLazyExtensionBuilder.JoinInTableOrder(bootTags);
+        Assert.AreEqual("ru", bootUnionCsv,
+            "실패한 'ru' 는 boot union CSV 에 나타나야 하고, 성공한 'ja' 는 나타나지 않아야 함(lazy 로 분리됨)");
+
+        var cps = Expand(AITFontSubsetLanguages.BuildRanges(bootUnionCsv));
+        Assert.IsTrue(cps.SetEquals(Expand(AITFontSubsetLanguages.BuildRanges("ru"))),
+            "폴백된 'ru' 의 boot union 범위는 'ru' 단독 BuildRanges 결과와 동일해야 함(1단계와 동등한 보존)");
+    }
+
+    [Test]
+    public void FallbackToBoot_AllLazyTagsFail_BootUnionEqualsOriginalSelection()
+    {
+        // 전부 실패하는 극단 케이스: bootTags 가 원래 선택 전체와 동일해져야 한다(1단계와 완전히 동등).
+        AITFontLazyExtensionBuilder.SplitLazyAndBootTags("ja,zh-Hans,ko", out List<string> lazyTags, out List<string> bootTags);
+        foreach (var tag in lazyTags)
+        {
+            bootTags.Add(tag); // 전부 실패 가정.
+        }
+
+        string bootUnionCsv = AITFontLazyExtensionBuilder.JoinInTableOrder(bootTags);
+        Assert.AreEqual("ko,ja,zh-Hans", bootUnionCsv,
+            "전 lazy 태그가 실패하면 boot union 은 원래 선택(순서만 Table 기준으로 정규화)과 동일해야 함");
+    }
+
+    // =====================================================
+    // AITFontLazyExtensionBuilder 매니페스트 병합(read-merge-write) 순수 로직
+    // =====================================================
+
+    [Test]
+    public void ParseManifestJson_EmptyOrNullInput_ReturnsEmptyEntries()
+    {
+        var dtoEmpty = AITFontLazyExtensionBuilder.ParseManifestJson(string.Empty);
+        Assert.IsNotNull(dtoEmpty.entries);
+        Assert.AreEqual(0, dtoEmpty.entries.Length);
+
+        var dtoNull = AITFontLazyExtensionBuilder.ParseManifestJson(null);
+        Assert.IsNotNull(dtoNull.entries);
+        Assert.AreEqual(0, dtoNull.entries.Length);
+    }
+
+    [Test]
+    public void ParseManifestJson_MalformedInput_ReturnsEmptyEntriesWithoutThrowing()
+    {
+        Assert.DoesNotThrow(() =>
+        {
+            var dto = AITFontLazyExtensionBuilder.ParseManifestJson("{not valid json!!");
+            Assert.IsNotNull(dto.entries);
+        });
+    }
+
+    [Test]
+    public void BuildEntryJson_EagerEntry_OmitsLazyFields()
+    {
+        var entry = new AITFontLazyExtensionBuilder.ManifestEntryDto
+        {
+            guid = "abc123",
+            bundle = "font-abc123.bundle",
+            encoding = "br",
+            fonts = new[] { "NotoSansKR SDF" },
+            lazyTag = string.Empty,
+            lazyRanges = string.Empty,
+        };
+
+        string json = AITFontLazyExtensionBuilder.BuildEntryJson(entry);
+        StringAssert.DoesNotContain("lazyTag", json, "빈 lazyTag(기존 eager 엔트리)는 필드 자체가 생략되어야 함");
+        StringAssert.DoesNotContain("lazyRanges", json);
+    }
+
+    [Test]
+    public void BuildEntryJson_LazyEntry_IncludesLazyTagAndRanges()
+    {
+        Assert.IsTrue(AITFontSubsetLanguages.TryFindEntry("ja", out var jaEntry));
+        var entry = new AITFontLazyExtensionBuilder.ManifestEntryDto
+        {
+            guid = "lazy-ja",
+            bundle = "lazy-ja-deadbeef.bundle.br",
+            encoding = "br",
+            fonts = new[] { "lazy_ja SDF" },
+            lazyTag = "ja",
+            lazyRanges = jaEntry.Ranges,
+        };
+
+        string json = AITFontLazyExtensionBuilder.BuildEntryJson(entry);
+        StringAssert.Contains("\"lazyTag\":\"ja\"", json);
+        StringAssert.Contains($"\"lazyRanges\":\"{jaEntry.Ranges}\"", json,
+            "lazyRanges 는 언어 테이블 값 그대로 직렬화되어야 함(계약)");
+    }
+
+    [Test]
+    public void BuildEntryJson_ThenParseManifestJson_RoundTripsLazyFields()
+    {
+        Assert.IsTrue(AITFontSubsetLanguages.TryFindEntry("th", out var thEntry));
+        var entry = new AITFontLazyExtensionBuilder.ManifestEntryDto
+        {
+            guid = "lazy-th",
+            bundle = "lazy-th-cafebabe.bundle",
+            encoding = string.Empty,
+            fonts = new[] { "lazy_th SDF" },
+            lazyTag = "th",
+            lazyRanges = thEntry.Ranges,
+        };
+
+        string entryJson = AITFontLazyExtensionBuilder.BuildEntryJson(entry);
+        string manifestJson = "{\"maxConcurrent\":2,\"entries\":[" + entryJson + "]}";
+
+        var dto = AITFontLazyExtensionBuilder.ParseManifestJson(manifestJson);
+        Assert.AreEqual(1, dto.entries.Length);
+        Assert.AreEqual("th", dto.entries[0].lazyTag);
+        Assert.AreEqual(thEntry.Ranges, dto.entries[0].lazyRanges,
+            "라운드트립 후에도 lazyRanges 가 테이블 값과 정확히 일치해야 함");
+    }
+
+    [Test]
+    public void MergeLazyEntries_PreservesEagerEntries_RegardlessOfNewLazyEntries()
+    {
+        var eager = new AITFontLazyExtensionBuilder.ManifestEntryDto
+        {
+            guid = "eager-1", bundle = "font-eager.bundle", fonts = new[] { "Eager SDF" },
+            lazyTag = string.Empty, lazyRanges = string.Empty,
+        };
+        var newLazy = new List<AITFontLazyExtensionBuilder.ManifestEntryDto>
+        {
+            new AITFontLazyExtensionBuilder.ManifestEntryDto
+            {
+                guid = "lazy-ja", bundle = "lazy-ja-x.bundle", fonts = new[] { "lazy_ja SDF" },
+                lazyTag = "ja", lazyRanges = "U+3040-309F",
+            },
+        };
+
+        var merged = AITFontLazyExtensionBuilder.MergeLazyEntries(new[] { eager }, newLazy);
+
+        Assert.AreEqual(2, merged.Count);
+        Assert.IsTrue(merged.Exists(e => e.guid == "eager-1"), "eager 엔트리는 항상 보존되어야 함");
+        Assert.IsTrue(merged.Exists(e => e.lazyTag == "ja"), "새 lazy 엔트리가 추가되어야 함");
+    }
+
+    [Test]
+    public void MergeLazyEntries_ReplacesSameTagLazyEntry_PreservesOtherTagLazyEntries()
+    {
+        var existingJa = new AITFontLazyExtensionBuilder.ManifestEntryDto
+        {
+            guid = "lazy-ja", bundle = "lazy-ja-OLD.bundle", fonts = new[] { "lazy_ja SDF" },
+            lazyTag = "ja", lazyRanges = "OLD_RANGE",
+        };
+        var existingRu = new AITFontLazyExtensionBuilder.ManifestEntryDto
+        {
+            guid = "lazy-ru", bundle = "lazy-ru-x.bundle", fonts = new[] { "lazy_ru SDF" },
+            lazyTag = "ru", lazyRanges = "U+0400-04FF",
+        };
+        var newJa = new AITFontLazyExtensionBuilder.ManifestEntryDto
+        {
+            guid = "lazy-ja", bundle = "lazy-ja-NEW.bundle", fonts = new[] { "lazy_ja SDF" },
+            lazyTag = "ja", lazyRanges = "NEW_RANGE",
+        };
+
+        var merged = AITFontLazyExtensionBuilder.MergeLazyEntries(
+            new[] { existingJa, existingRu },
+            new List<AITFontLazyExtensionBuilder.ManifestEntryDto> { newJa });
+
+        Assert.AreEqual(2, merged.Count, "같은 태그('ja')는 교체되고 다른 태그('ru')는 보존되어 총 2건이어야 함");
+        var mergedJa = merged.Find(e => e.lazyTag == "ja");
+        Assert.AreEqual("lazy-ja-NEW.bundle", mergedJa.bundle, "'ja' 엔트리는 새 값으로 교체되어야 함");
+        Assert.IsTrue(merged.Exists(e => e.lazyTag == "ru" && e.bundle == "lazy-ru-x.bundle"),
+            "'ru' 는 이번 빌드에서 다시 만들지 않았으므로 기존 값 그대로 보존되어야 함");
+    }
+
+    [Test]
+    public void MergeLazyEntries_NoNewLazyEntries_KeepsAllExisting()
+    {
+        var eager = new AITFontLazyExtensionBuilder.ManifestEntryDto
+        {
+            guid = "eager-1", bundle = "font-eager.bundle", fonts = new[] { "Eager SDF" },
+            lazyTag = string.Empty, lazyRanges = string.Empty,
+        };
+        var existingLazy = new AITFontLazyExtensionBuilder.ManifestEntryDto
+        {
+            guid = "lazy-ja", bundle = "lazy-ja-x.bundle", fonts = new[] { "lazy_ja SDF" },
+            lazyTag = "ja", lazyRanges = "U+3040-309F",
+        };
+
+        var merged = AITFontLazyExtensionBuilder.MergeLazyEntries(new[] { eager, existingLazy }, null);
+
+        Assert.AreEqual(2, merged.Count, "새 lazy 엔트리가 없으면 기존 전부(eager+lazy)가 보존되어야 함");
+    }
+
+    [Test]
+    public void HasLazyArtifacts_NonExistentDirectory_ReturnsFalse()
+    {
+        Assert.IsFalse(AITFontLazyExtensionBuilder.HasLazyArtifacts(
+            "Assets/__nonexistent_ait_lazy_probe_dir__"));
+    }
 }

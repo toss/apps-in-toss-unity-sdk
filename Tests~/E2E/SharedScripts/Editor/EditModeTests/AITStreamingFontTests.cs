@@ -292,6 +292,56 @@ public class AITStreamingFontTests
         Assert.AreEqual("U+0E00-0E7F", GetField(roundTrippedEntry, "lazyRanges"));
     }
 
+    // =====================================================
+    // IsLazyFullyDrained — 게이트 대기 유실 방지(B0) 카운터 상태 전이 순수 로직
+    // =====================================================
+
+    [Test]
+    public void IsLazyFullyDrained_PendingAndOutstandingZero_ReturnsTrue()
+    {
+        Assert.IsTrue(AITStreamingFont.IsLazyFullyDrained(0, 0));
+    }
+
+    [Test]
+    public void IsLazyFullyDrained_PendingRemains_ReturnsFalse()
+    {
+        Assert.IsFalse(AITStreamingFont.IsLazyFullyDrained(1, 0));
+    }
+
+    [Test]
+    public void IsLazyFullyDrained_OutstandingRemains_ReturnsFalse()
+    {
+        // 핵심 회귀 시나리오(B0): 태그가 lazyPending 에서는 이미 빠졌지만(TriggerLazyLoad 직후) 아직
+        // maxConcurrent 게이트 대기 중이라 outstanding>0 인 동안은 "소진"으로 오판되면 안 된다.
+        Assert.IsFalse(AITStreamingFont.IsLazyFullyDrained(0, 1));
+    }
+
+    [Test]
+    public void IsLazyFullyDrained_BothRemain_ReturnsFalse()
+    {
+        Assert.IsFalse(AITStreamingFont.IsLazyFullyDrained(2, 3));
+    }
+
+    [Test]
+    public void IsLazyFullyDrained_GateWaitLifecycle_OnlyDrainedAfterOutstandingDecrements()
+    {
+        // TriggerLazyLoad → LoadLazyEntry 생애주기를 카운터 상태 전이로 시뮬레이션:
+        // 1) 매치 시점: pending 에서 제거, outstanding++ (코루틴 시작 전)
+        // 2) 게이트 대기 중(아직 lazyInflight 미증가): outstanding 은 여전히 1 → 소진 아님
+        // 3) 게이트 통과 후 로드 완료: outstanding-- → 그제서야 소진
+        int pending = 1;
+        int outstanding = 0;
+
+        // 매치 → TriggerLazyLoad.
+        pending--;
+        outstanding++;
+        Assert.IsFalse(AITStreamingFont.IsLazyFullyDrained(pending, outstanding), "게이트 대기 중에는 소진이 아니어야 함(B0 핵심 불변식)");
+
+        // LoadLazyEntry 완료(성공/실패 무관) → outstanding--.
+        outstanding--;
+        Assert.IsTrue(AITStreamingFont.IsLazyFullyDrained(pending, outstanding), "outstanding 감소 후에는 소진으로 판정되어야 함");
+    }
+
     private static object GetField(object target, string name)
     {
         var f = target.GetType().GetField(name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);

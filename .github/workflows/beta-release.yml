@@ -70,6 +70,11 @@ on:
         required: false
         type: string
         default: ''
+      probe_build:
+        description: 'true면 deploy probe 빌드로 실행 — lazy 폰트 등 옵트인 레버 발화 + 산출물 어서션(DeployProbeBuildRunner). false(기본)는 기존 E2EBuildRunner 경로와 완전히 동일.'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -384,6 +389,9 @@ jobs:
       # 빌드한다. dev 빌드 wasm(6000.x ~134MiB)은 콘솔 번들 크기 제한을 초과해
       # 서버측 BUILD_FAILED가 난다 (2026-06 진단).
       fast-build: false
+      # probe_build=true면 DeployProbeBuildRunner(옵트인 레버 발화 + lazy 폰트 등 산출물 어서션)로
+      # 빌드한다. false(기본)는 기존 E2EBuildRunner.CommandLineBuild와 완전히 동일한 경로.
+      build-method: ${{ inputs.probe_build && 'DeployProbeBuildRunner.CommandLineDeployProbeBuild' || 'E2EBuildRunner.CommandLineBuild' }}
     secrets:
       AIT_AD_INTERSTITIAL_ID: ${{ secrets.AIT_AD_INTERSTITIAL_ID }}
       AIT_AD_REWARDED_ID: ${{ secrets.AIT_AD_REWARDED_ID }}
@@ -419,6 +427,8 @@ jobs:
       # macOS leg와 동일한 release 프로필로 빌드해 게시 게이트 검증의 일관성을
       # 유지한다 (베타 게시 대상 산출물은 dev 프로필이어선 안 됨).
       fast-build: false
+      # macOS leg와 동일 규칙(probe_build 입력을 그대로 반영).
+      build-method: ${{ inputs.probe_build && 'DeployProbeBuildRunner.CommandLineDeployProbeBuild' || 'E2EBuildRunner.CommandLineBuild' }}
     secrets:
       AIT_AD_INTERSTITIAL_ID: ${{ secrets.AIT_AD_INTERSTITIAL_ID }}
       AIT_AD_REWARDED_ID: ${{ secrets.AIT_AD_REWARDED_ID }}

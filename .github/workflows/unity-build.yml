@@ -78,7 +78,7 @@ on:
         required: false
         default: 'SampleUnityProject'
       build-method:
-        description: 'Unity -executeMethod entry point (E2EBuildRunner.CommandLineBuild | HeavyBuildRunner.CommandLineHeavyBuild)'
+        description: 'Unity -executeMethod entry point (E2EBuildRunner.CommandLineBuild | HeavyBuildRunner.CommandLineHeavyBuild | DeployProbeBuildRunner.CommandLineDeployProbeBuild)'
         type: string
         required: false
         default: 'E2EBuildRunner.CommandLineBuild'

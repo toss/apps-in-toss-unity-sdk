@@ -6,13 +6,49 @@
 // (동적 텍스트가 같은 문자체계라면 절대 □ 가 되지 않게.)
 // -----------------------------------------------------------------------
 
+using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using NUnit.Framework;
 using AppsInToss.Editor;
 
 [TestFixture]
 public class AITFontSubsetAutoTests
 {
+    // S9/N13: 파일 IO 픽스처 테스트가 생성한 임시 디렉토리(Path.GetTempPath() 하위) — [TearDown] 에서
+    // 반드시 삭제한다(프로젝트 Assets 아래에는 절대 만들지 않음).
+    private readonly List<string> tempDirsToCleanup = new List<string>();
+
+    [TearDown]
+    public void CleanupTempDirs()
+    {
+        foreach (var dir in tempDirsToCleanup)
+        {
+            try
+            {
+                if (Directory.Exists(dir))
+                {
+                    Directory.Delete(dir, true);
+                }
+            }
+            catch
+            {
+                // 정리 실패는 테스트 결과에 영향 주지 않음(다음 실행 시 다른 GUID 디렉토리 사용).
+            }
+        }
+
+        tempDirsToCleanup.Clear();
+    }
+
+    private string CreateTempDir()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "ait-fontlazy-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        tempDirsToCleanup.Add(dir);
+        return dir;
+    }
+
     // 범위 문자열 → 코드포인트 집합으로 펼치는 헬퍼(테스트 검증용).
     private static HashSet<int> Expand(string ranges)
     {
@@ -939,8 +975,11 @@ public class AITFontSubsetAutoTests
     }
 
     [Test]
-    public void MergeLazyEntries_ReplacesSameTagLazyEntry_PreservesOtherTagLazyEntries()
+    public void MergeLazyEntries_NewLazyEntries_DropsAllExistingLazyEntries_RegardlessOfTag()
     {
+        // N10 계약 변경: 기존 lazy 엔트리는 태그 일치 여부와 무관하게 전부 버려지고 newLazyEntries 로만
+        // 대체된다(stale 태그 축적 방지 — 이번 빌드에서 다시 만들지 못한 기존 lazy 태그는 "더 이상 선택
+        // 안 됨" 또는 "이번 빌드 실패→boot 폴백" 중 하나이므로 어느 쪽이든 보존할 이유가 없다).
         var existingJa = new AITFontLazyExtensionBuilder.ManifestEntryDto
         {
             guid = "lazy-ja", bundle = "lazy-ja-OLD.bundle", fonts = new[] { "lazy_ja SDF" },
@@ -961,16 +1000,20 @@ public class AITFontSubsetAutoTests
             new[] { existingJa, existingRu },
             new List<AITFontLazyExtensionBuilder.ManifestEntryDto> { newJa });
 
-        Assert.AreEqual(2, merged.Count, "같은 태그('ja')는 교체되고 다른 태그('ru')는 보존되어 총 2건이어야 함");
+        Assert.AreEqual(1, merged.Count,
+            "existingRu(다른 태그)도 stale 로 간주되어 제거되고, newLazyEntries(ja 1건)만 남아야 함");
         var mergedJa = merged.Find(e => e.lazyTag == "ja");
         Assert.AreEqual("lazy-ja-NEW.bundle", mergedJa.bundle, "'ja' 엔트리는 새 값으로 교체되어야 함");
-        Assert.IsTrue(merged.Exists(e => e.lazyTag == "ru" && e.bundle == "lazy-ru-x.bundle"),
-            "'ru' 는 이번 빌드에서 다시 만들지 않았으므로 기존 값 그대로 보존되어야 함");
+        Assert.IsFalse(merged.Exists(e => e.lazyTag == "ru"),
+            "'ru' 는 이번 빌드에서 다시 만들지 않았으므로(다른 태그라도) stale 로 제거되어야 함(N10)");
     }
 
     [Test]
-    public void MergeLazyEntries_NoNewLazyEntries_KeepsAllExisting()
+    public void MergeLazyEntries_NoNewLazyEntries_DropsAllExistingLazyEntries_KeepsOnlyEager()
     {
+        // N10 계약 변경: newLazyEntries 가 null/빈 경우에도 기존 lazy 엔트리는 전부 사라지고 eager 만 남는다
+        // (예: lazy 확장이 아예 비활성화되거나 이번 빌드에서 lazyTags 가 0건이면 매니페스트에서 이전 lazy
+        // 아티팩트 참조가 청소되어야 함 — 그대로 두면 참조 없는 잔존 번들이 매니페스트에 영구 축적된다).
         var eager = new AITFontLazyExtensionBuilder.ManifestEntryDto
         {
             guid = "eager-1", bundle = "font-eager.bundle", fonts = new[] { "Eager SDF" },
@@ -982,9 +1025,15 @@ public class AITFontSubsetAutoTests
             lazyTag = "ja", lazyRanges = "U+3040-309F",
         };
 
-        var merged = AITFontLazyExtensionBuilder.MergeLazyEntries(new[] { eager, existingLazy }, null);
+        var mergedWithNull = AITFontLazyExtensionBuilder.MergeLazyEntries(new[] { eager, existingLazy }, null);
+        Assert.AreEqual(1, mergedWithNull.Count, "newLazyEntries=null 이면 eager 만 남아야 함(기존 lazy 는 전부 제거)");
+        Assert.IsTrue(mergedWithNull.Exists(e => e.guid == "eager-1"));
+        Assert.IsFalse(mergedWithNull.Exists(e => e.lazyTag == "ja"));
 
-        Assert.AreEqual(2, merged.Count, "새 lazy 엔트리가 없으면 기존 전부(eager+lazy)가 보존되어야 함");
+        var mergedWithEmpty = AITFontLazyExtensionBuilder.MergeLazyEntries(
+            new[] { eager, existingLazy }, new List<AITFontLazyExtensionBuilder.ManifestEntryDto>());
+        Assert.AreEqual(1, mergedWithEmpty.Count, "newLazyEntries=빈 리스트여도 eager 만 남아야 함");
+        Assert.IsTrue(mergedWithEmpty.Exists(e => e.guid == "eager-1"));
     }
 
     [Test]
@@ -992,5 +1041,201 @@ public class AITFontSubsetAutoTests
     {
         Assert.IsFalse(AITFontLazyExtensionBuilder.HasLazyArtifacts(
             "Assets/__nonexistent_ait_lazy_probe_dir__"));
+    }
+
+    // =====================================================
+    // AITFontLazyExtensionBuilder.SampleCoverageCodepoints (B2)
+    // =====================================================
+
+    [Test]
+    public void SampleCoverageCodepoints_SingleRange_IncludesStartAndMid_AllWithinBmp()
+    {
+        // "U+0E00-0E7F"(태국어) → 시작(0x0E00) + 중간(0x0E00 + (0x0E7F-0x0E00)/2 = 0x0E3F) 2개, 전부 BMP.
+        var result = AITFontLazyExtensionBuilder.SampleCoverageCodepoints("U+0E00-0E7F");
+
+        CollectionAssert.AreEquivalent(new[] { 0x0E00, 0x0E3F }, result);
+        Assert.IsTrue(result.All(cp => cp <= 0xFFFF), "전부 BMP 이내여야 함");
+    }
+
+    [Test]
+    public void SampleCoverageCodepoints_MultiRangeCsv_CollectsPerTokenWithoutDuplicates()
+    {
+        // 토큰별로 시작/중간을 샘플링하되, 다른 토큰이 같은 코드포인트를 만들면 중복 없이 1개만 남아야 함.
+        // "U+0041"(단일) 과 "U+0041-0043"(시작이 같은 범위) → 시작 0x41 은 공유, 중간 0x42 만 추가.
+        var result = AITFontLazyExtensionBuilder.SampleCoverageCodepoints("U+0041,U+0041-0043");
+
+        CollectionAssert.AreEquivalent(new[] { 0x0041, 0x0042 }, result);
+        Assert.AreEqual(result.Count, result.Distinct().Count(), "샘플에 중복 코드포인트가 없어야 함");
+    }
+
+    [Test]
+    public void SampleCoverageCodepoints_SingleCodepointToken_ReturnsThatCodepointOnly()
+    {
+        // "U+200C"(ZWNJ, ar 테이블의 단일 코드포인트 토큰과 동일 형식) — 대시 없음 → 시작=끝, 1개만 샘플.
+        var result = AITFontLazyExtensionBuilder.SampleCoverageCodepoints("U+200C");
+
+        CollectionAssert.AreEqual(new[] { 0x200C }, result);
+    }
+
+    [Test]
+    public void SampleCoverageCodepoints_BmpOutOfRangeOnly_ReturnsEmptyList()
+    {
+        // "U+1F300-1F5FF" 는 BMP(0xFFFF) 밖 전용 범위 — Font.HasCharacter 가 char 만 받으므로 전부 제외.
+        // 호출부(HasAnyCoverage)는 빈 샘플 → false → boot 폴백으로 이어진다(안전 불변식).
+        var result = AITFontLazyExtensionBuilder.SampleCoverageCodepoints("U+1F300-1F5FF");
+
+        Assert.AreEqual(0, result.Count);
+    }
+
+    [Test]
+    public void SampleCoverageCodepoints_EmojiTable_MixedBmpAndNonBmp_OnlyBmpSamplesRemain()
+    {
+        // 회귀 고정: AITFontSubsetLanguages 테이블의 실제 emoji 엔트리 Ranges(BMP 10토큰 + 비BMP 7토큰)를
+        // 입력으로 사용 — BMP 토큰만 샘플로 남아야 한다(비BMP 전용 토큰은 전부 제외).
+        Assert.IsTrue(AITFontSubsetLanguages.TryFindEntry("emoji", out var emojiEntry));
+
+        var result = AITFontLazyExtensionBuilder.SampleCoverageCodepoints(emojiEntry.Ranges);
+
+        Assert.IsTrue(result.Count > 0, "BMP 토큰이 있으므로 샘플이 비어있으면 안 됨");
+        Assert.IsTrue(result.All(cp => cp <= 0xFFFF), "비BMP 코드포인트가 섞여 나오면 안 됨(char 로 표현 불가)");
+        // emoji 테이블의 BMP 토큰: U+200D, U+20E3, U+2122(단일 3개=3샘플) +
+        // U+2190-21FF, U+2300-23FF, U+25A0-25FF, U+2600-26FF, U+2700-27BF, U+2B00-2BFF(폭≥3 범위 6개=
+        // 시작+중간 12샘플, 중간이 시작과 다름) + U+FE0E-FE0F(폭=1 → 중간=시작과 정수나눗셈으로 겹쳐
+        // 1샘플만 추가) = 3+12+1 = 16개(maxSamples=20 이내라 잘리지 않음).
+        Assert.AreEqual(16, result.Count, "emoji 테이블 BMP 토큰 샘플 수가 바뀌면 이 값도 함께 갱신할 것(회귀 고정)");
+    }
+
+    [Test]
+    public void SampleCoverageCodepoints_MalformedOrInvertedTokens_AreIgnored()
+    {
+        // "U+GGGG"(hex 파싱 실패), "U+0100-00FF"(역전 구간, start>end), "0100-0200"("U+" 접두 없음)
+        // — 셋 다 이 토큰만 무시되고 예외 없이 빈 리스트를 반환해야 함.
+        var result = AITFontLazyExtensionBuilder.SampleCoverageCodepoints("U+GGGG,U+0100-00FF,0100-0200");
+
+        Assert.AreEqual(0, result.Count);
+    }
+
+    [Test]
+    public void SampleCoverageCodepoints_RespectsMaxSamplesCap()
+    {
+        // 범위 토큰 4개(각 2샘플 가능=최대 8개)를 maxSamples=3 으로 호출 → 정확히 3개에서 멈춰야 함.
+        var result = AITFontLazyExtensionBuilder.SampleCoverageCodepoints(
+            "U+0000-0002,U+0010-0012,U+0020-0022,U+0030-0032", maxSamples: 3);
+
+        Assert.AreEqual(3, result.Count);
+    }
+
+    // =====================================================
+    // S9/N13: 파일 IO 픽스처 테스트 (실제 디스크에서 도는 회귀 고정)
+    // =====================================================
+
+    [Test]
+    public void HasLazyArtifacts_LazyBundlePresent_ReturnsTrue()
+    {
+        string dir = CreateTempDir();
+        File.WriteAllText(Path.Combine(dir, "lazy-ja-deadbeef.bundle"), "dummy");
+
+        Assert.IsTrue(AITFontLazyExtensionBuilder.HasLazyArtifacts(dir));
+    }
+
+    [Test]
+    public void HasLazyArtifacts_OnlyBrotliVariantPresent_ReturnsTrue()
+    {
+        string dir = CreateTempDir();
+        // brotli 로 교체된 뒤에는 원본 .bundle 은 삭제되고 .bundle.br 만 남는다(실제 코드 경로와 동일 시나리오).
+        File.WriteAllText(Path.Combine(dir, "lazy-ja-deadbeef.bundle.br"), "dummy");
+
+        Assert.IsTrue(AITFontLazyExtensionBuilder.HasLazyArtifacts(dir));
+    }
+
+    [Test]
+    public void HasLazyArtifacts_OnlyUnrelatedFilesPresent_ReturnsFalse()
+    {
+        string dir = CreateTempDir();
+        // eager(fontStreaming) 번들·매니페스트 등 "lazy-" 접두가 아닌 파일만 있으면 false 여야 함(글롭 정확도).
+        File.WriteAllText(Path.Combine(dir, "font-eager.bundle"), "dummy");
+        File.WriteAllText(Path.Combine(dir, "manifest.json"), "{}");
+
+        Assert.IsFalse(AITFontLazyExtensionBuilder.HasLazyArtifacts(dir));
+    }
+
+    [Test]
+    public void HasLazyArtifacts_NonExistentDirectory_RealDisk_ReturnsFalse()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "ait-fontlazy-test-does-not-exist-" + Guid.NewGuid().ToString("N"));
+        Assert.IsFalse(AITFontLazyExtensionBuilder.HasLazyArtifacts(dir));
+    }
+
+    [Test]
+    public void ManifestReadMergeWrite_RealFileIO_PreservesEagerReplacesLazyEntries()
+    {
+        // S9/N13: 실제 파일 IO 로 read-merge-write 왕복을 검증한다. 픽스처 스키마는
+        // BuildEntryJson/ParseManifestJson 이 실제로 쓰고 읽는 형식과 동일해야 한다.
+        string dir = CreateTempDir();
+        string manifestPath = Path.Combine(dir, "manifest.json");
+
+        Assert.IsTrue(AITFontSubsetLanguages.TryFindEntry("ja", out var jaEntry));
+        Assert.IsTrue(AITFontSubsetLanguages.TryFindEntry("th", out var thEntry));
+
+        var initialEager = new AITFontLazyExtensionBuilder.ManifestEntryDto
+        {
+            guid = "eager-1",
+            bundle = "font-eager.bundle",
+            encoding = "br",
+            fonts = new[] { "Eager SDF" },
+            lazyTag = string.Empty,
+            lazyRanges = string.Empty,
+        };
+        var initialLazyJa = new AITFontLazyExtensionBuilder.ManifestEntryDto
+        {
+            guid = "lazy-ja",
+            bundle = "lazy-ja-old.bundle",
+            encoding = string.Empty,
+            fonts = new[] { "lazy_ja SDF" },
+            lazyTag = "ja",
+            lazyRanges = jaEntry.Ranges,
+        };
+
+        string initialJson = "{\"maxConcurrent\":2,\"entries\":["
+            + AITFontLazyExtensionBuilder.BuildEntryJson(initialEager) + ","
+            + AITFontLazyExtensionBuilder.BuildEntryJson(initialLazyJa) + "]}";
+        File.WriteAllText(manifestPath, initialJson);
+
+        // read
+        var readBack = AITFontLazyExtensionBuilder.ReadManifest(manifestPath);
+        Assert.AreEqual(2, readBack.entries.Length, "사전조건: 기록한 eager+lazy 2건이 그대로 읽혀야 함");
+
+        // ReadExistingLazyEntryJson 은 기존 lazy 엔트리(ja)만 JSON 조각으로 재직렬화해야 함.
+        var existingLazyJsons = AITFontLazyExtensionBuilder.ReadExistingLazyEntryJson(manifestPath);
+        Assert.AreEqual(1, existingLazyJsons.Count);
+        StringAssert.Contains("\"lazyTag\":\"ja\"", existingLazyJsons[0]);
+
+        // merge: 이번 빌드는 'th' 를 새로 lazy 확장했다고 가정(ja 는 이번엔 시도 대상이 아니었음 = stale).
+        var newLazyTh = new AITFontLazyExtensionBuilder.ManifestEntryDto
+        {
+            guid = "lazy-th",
+            bundle = "lazy-th-new.bundle",
+            encoding = "br",
+            fonts = new[] { "lazy_th SDF" },
+            lazyTag = "th",
+            lazyRanges = thEntry.Ranges,
+        };
+        var merged = AITFontLazyExtensionBuilder.MergeLazyEntries(
+            readBack.entries, new List<AITFontLazyExtensionBuilder.ManifestEntryDto> { newLazyTh });
+
+        // write: 병합 결과를 다시 실제 파일로 직렬화.
+        var mergedJsons = merged.Select(AITFontLazyExtensionBuilder.BuildEntryJson).ToList();
+        string mergedManifestJson = "{\"maxConcurrent\":2,\"entries\":[" + string.Join(",", mergedJsons) + "]}";
+        File.WriteAllText(manifestPath, mergedManifestJson);
+
+        // 왕복 확인: 파일을 다시 읽어 eager 보존 + lazy 는 이번 세트(th)로 완전히 대체됐는지 검증.
+        var finalDto = AITFontLazyExtensionBuilder.ReadManifest(manifestPath);
+        Assert.AreEqual(2, finalDto.entries.Length, "eager 1건 + 새 lazy(th) 1건 = 총 2건");
+        Assert.IsTrue(finalDto.entries.Any(e => e.guid == "eager-1" && string.IsNullOrEmpty(e.lazyTag)),
+            "eager 엔트리는 파일 왕복 후에도 보존되어야 함");
+        Assert.IsTrue(finalDto.entries.Any(e => e.lazyTag == "th" && e.bundle == "lazy-th-new.bundle"),
+            "새 lazy(th) 엔트리가 파일에 정확히 기록되어야 함");
+        Assert.IsFalse(finalDto.entries.Any(e => e.lazyTag == "ja"),
+            "이번 빌드에서 다시 만들지 않은 기존 lazy(ja) 는 stale 로 제거되어 파일에서도 사라져야 함(N10)");
     }
 }

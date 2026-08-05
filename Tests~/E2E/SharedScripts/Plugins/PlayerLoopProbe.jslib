@@ -401,5 +401,155 @@ mergeInto(LibraryManager.library, {
         var buffer = _malloc(bufferSize);
         stringToUTF8(report, buffer, bufferSize);
         return buffer;
+    },
+
+    // =====================================================
+    // 지연 지급 결정 PoC — round 4 (a)(b)가 확인한 두 사실(fetch 왕복 완주, processProductGrant
+    // Promise의 장시간 pending 허용)을 실서버 HTTP 검증으로 이어붙인 end-to-end 실증이다.
+    //
+    // PLP_EnableGrantDelay(위)는 SDK 자체 wrapper(originalGrant)를 그대로 거쳐가며 outer resolve만
+    // setTimeout으로 늦추지만, 여기서는 options.processProductGrant 자체를 완전히 새 함수로
+    // 교체한다 — 플랫폼 지급 질의를 C#으로 넘겨 실제 HTTP 응답을 받은 뒤 그 결정을 resolve한다.
+    // 이 경로에서는 originalGrant(=SDK jslib이 주입한 __AIT_NESTED_CALLBACKS 브릿지)를 아예
+    // 호출하지 않으므로, PoC ON 중에는 C# IAPv2Tester.ExecuteIAPCreateOrder의 동기
+    // ProcessProductGrant 델리게이트가 호출되지 않는다(의도된 우회 — C# 쪽 주석 참조).
+    // =====================================================
+    PLP_EnablePocGrant: function(goNamePtr) {
+        try {
+            var goName = UTF8ToString(goNamePtr);
+            window.__plpPocPending = window.__plpPocPending || {};
+            window.__plpPocLog = window.__plpPocLog || [];
+            window.__plpPocGoName = goName;
+
+            var pocLog = function(ev, id, extra) {
+                window.__plpPocLog.push({
+                    ev: ev,
+                    id: id || '',
+                    at: Date.now(),
+                    vis: (typeof document !== 'undefined') ? document.visibilityState : 'n/a',
+                    extra: (extra === undefined || extra === null) ? '' : String(extra)
+                });
+                if (window.__AIT_VERBOSE) console.log('[PLPPoc]', ev, id, extra);
+            };
+
+            if (window.__plpPocWrapped) {
+                // 이미 설치돼 있으면 target GameObject 이름만 갱신하고 재설치하지 않는다(중복 설치 방지).
+                pocLog('reEnable', '', 'goName=' + goName);
+                return 0;
+            }
+
+            if (!window.AppsInToss || !window.AppsInToss.IAP || typeof window.AppsInToss.IAP.createOneTimePurchaseOrder !== 'function') {
+                console.error('[PLPPoc] window.AppsInToss.IAP.createOneTimePurchaseOrder 를 찾을 수 없어 PoC 그랜트 인터셉터를 설치하지 못했습니다.');
+                return -999;
+            }
+
+            var originalCreate = window.AppsInToss.IAP.createOneTimePurchaseOrder;
+            window.__plpPocOrig = originalCreate;
+
+            window.AppsInToss.IAP.createOneTimePurchaseOrder = function(args) {
+                var originalOptions = (args && args.options) || {};
+
+                if (typeof originalOptions.processProductGrant !== 'function') {
+                    return originalCreate(args);
+                }
+
+                var wrappedOptions = Object.assign({}, originalOptions, {
+                    processProductGrant: function(param) {
+                        return new Promise(function(resolve) {
+                            var id = 'poc_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+
+                            var timeoutId = setTimeout(function() {
+                                var pending = window.__plpPocPending[id];
+                                if (!pending) return;
+                                delete window.__plpPocPending[id];
+                                pocLog('safetyTimeout', id);
+                                resolve(true);
+                            }, 12000); // 12초 근거: 플랫폼 30초 환불 페이지 대비 역산, JS 1s 타이머는 hidden 중 생존 실측.
+
+                            window.__plpPocPending[id] = { resolve: resolve, timeoutId: timeoutId };
+                            pocLog('grantAsked', id);
+
+                            var payload;
+                            try {
+                                payload = JSON.stringify({ id: id, param: param });
+                            } catch (e) {
+                                payload = JSON.stringify({ id: id, param: null });
+                            }
+                            SendMessage(window.__plpPocGoName, 'OnPocGrantRequest', payload);
+                        });
+                    }
+                });
+
+                return originalCreate(Object.assign({}, args, { options: wrappedOptions }));
+            };
+
+            window.__plpPocWrapped = true;
+            pocLog('installed', '', 'goName=' + goName);
+            return 0;
+        } catch (err) {
+            console.error('[PLPPoc] enable 예외', err);
+            return -998;
+        }
+    },
+
+    PLP_PocRespond: function(idPtr, result) {
+        try {
+            var id = UTF8ToString(idPtr);
+            window.__plpPocPending = window.__plpPocPending || {};
+            window.__plpPocLog = window.__plpPocLog || [];
+
+            var pending = window.__plpPocPending[id];
+            if (!pending) {
+                window.__plpPocLog.push({ ev: 'respondMiss', id: id, at: Date.now(), vis: document.visibilityState, extra: String(result) });
+                if (window.__AIT_VERBOSE) console.log('[PLPPoc] respond: pending 엔트리 없음(이미 처리됨/안전망 발화됨)', id);
+                return;
+            }
+
+            clearTimeout(pending.timeoutId);
+            delete window.__plpPocPending[id];
+            window.__plpPocLog.push({ ev: 'respond', id: id, at: Date.now(), vis: document.visibilityState, extra: String(result) });
+            if (window.__AIT_VERBOSE) console.log('[PLPPoc] respond', id, result);
+            pending.resolve(!!result);
+        } catch (err) {
+            console.error('[PLPPoc] respond 예외', err);
+        }
+    },
+
+    PLP_DisablePocGrant: function() {
+        try {
+            window.__plpPocLog = window.__plpPocLog || [];
+
+            if (window.__plpPocWrapped && window.__plpPocOrig && window.AppsInToss && window.AppsInToss.IAP) {
+                window.AppsInToss.IAP.createOneTimePurchaseOrder = window.__plpPocOrig;
+            }
+            window.__plpPocWrapped = false;
+            window.__plpPocOrig = null;
+
+            window.__plpPocPending = window.__plpPocPending || {};
+            var ids = Object.keys(window.__plpPocPending);
+            for (var i = 0; i < ids.length; i++) {
+                var id = ids[i];
+                var pending = window.__plpPocPending[id];
+                clearTimeout(pending.timeoutId);
+                window.__plpPocLog.push({ ev: 'disableSafeResolve', id: id, at: Date.now(), vis: document.visibilityState, extra: '' });
+                pending.resolve(true);
+            }
+            window.__plpPocPending = {};
+
+            window.__plpPocLog.push({ ev: 'disabled', id: '', at: Date.now(), vis: document.visibilityState, extra: '' });
+            if (window.__AIT_VERBOSE) console.log('[PLPPoc] disabled, 원본 복원 완료');
+            return 0;
+        } catch (err) {
+            console.error('[PLPPoc] disable 예외', err);
+            return -998;
+        }
+    },
+
+    PLP_GetPocReport: function() {
+        var report = JSON.stringify(window.__plpPocLog || []);
+        var bufferSize = lengthBytesUTF8(report) + 1;
+        var buffer = _malloc(bufferSize);
+        stringToUTF8(report, buffer, bufferSize);
+        return buffer;
     }
 });

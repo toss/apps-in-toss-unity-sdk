@@ -84,6 +84,37 @@ public class IAPv2Tester : MonoBehaviour
     private bool _plpAutoSwapEnabled = false;
     private Text _plpAutoSwapLabel;
 
+    /// <summary>
+    /// [지연 지급 결정 PoC] ON 토글 상태. ON 시 PLP_EnablePocGrant로 플랫폼 구매 함수를 래핑해
+    /// processProductGrant 질의를 C#(OnPocGrantRequest)으로 넘긴다. 자동 전환(_plpAutoSwapEnabled)도
+    /// 함께 무장해 오버레이 중 await(UnityWebRequest)가 재개되도록 한다.
+    /// 주의: PoC ON 중에는 이 jslib 래퍼가 SDK 자체 processProductGrant wrapper(originalGrant)를
+    /// 아예 호출하지 않으므로, ExecuteIAPCreateOrder에 설정된 동기 ProcessProductGrant 델리게이트는
+    /// 호출되지 않는다(의도된 우회 — jslib PLP_EnablePocGrant 주석 참조).
+    /// </summary>
+    private bool _pocGrantEnabled = false;
+    private Text _pocGrantLabel;
+
+    /// <summary>[지연 지급 결정 PoC] 서버 검증 후 내릴 결정을 미리 선택하는 토글. 기본값은 승인.</summary>
+    private bool _pocApprove = true;
+    private Text _pocDecisionLabel;
+
+    /// <summary>[지연 지급 결정 PoC] HTTP 왕복 + 폴백을 포함한 전체 결정 흐름의 realtime 상한(초).</summary>
+    private const float PocDecisionBudgetSec = 8f;
+
+    /// <summary>
+    /// [지연 지급 결정 PoC] 실제 외부 HTTP API — 서버측 2초 지연을 포함한 CORS 허용 공개 테스트
+    /// 서비스. 지연 지급 판단을 흉내 내기 위한 왕복 지연 시뮬레이션 용도로만 사용한다.
+    /// </summary>
+    private const string PocHttpDelayUrl = "https://httpbin.org/delay/2";
+
+    /// <summary>[지연 지급 결정 PoC] jslib → C# 지급 질의 페이로드. id 외 필드는 JsonUtility가 매칭하지 않는 한 무시된다.</summary>
+    [Serializable]
+    private class PocGrantRequestPayload
+    {
+        public string id;
+    }
+
     /// <summary>[PLP round4] Deny된 주문 기록 — PlayerPrefs에 영속화되어 앱 재실행 후에도 남는다.</summary>
     [Serializable]
     private class PlpDeniedOrderRecord
@@ -266,6 +297,20 @@ public class IAPv2Tester : MonoBehaviour
         // [PLP round5 v2] Task.Delay 자체의 생사를 평시 상태에서 격리 확정한다 — v1 실기기
         // 실측에서 예외 없이 영영 재개되지 않는 것으로 관찰됐다(별도 사실로 고정하는 용도).
         UIBuilder.CreateButton(section, "[PLP5v2] Task.Delay(3s) 단독", onClick: RunPlp5TaskDelayOnlyProbeAsync);
+
+        // [지연 지급 결정 PoC] 결제 오버레이 중 실서버 HTTP 왕복으로 지급 결정을 내리는
+        // end-to-end 실증. round4/5가 확인한 두 전제(fetch 왕복 완주, processProductGrant
+        // Promise의 장시간 pending 허용) 위에서 실제 지연 지급 판단 흐름을 재현한다.
+        UIBuilder.CreateText(section, "진단: 지연 지급 결정 PoC (실서버 HTTP 검증)",
+            UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary, fontStyle: FontStyle.Bold);
+        _pocGrantLabel = UIBuilder.CreateText(section, "",
+            UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary);
+        UIBuilder.CreateButton(section, "PoC 지연지급 토글 (OFF ⇄ ON)", onClick: TogglePlpPocGrant);
+        UpdatePlpPocGrantLabel();
+        _pocDecisionLabel = UIBuilder.CreateText(section, "",
+            UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary);
+        UIBuilder.CreateButton(section, "PoC 결정 토글 (승인 ⇄ 거절)", onClick: TogglePlpPocDecision);
+        UpdatePlpPocDecisionLabel();
     }
 
     /// <summary>
@@ -417,6 +462,189 @@ public class IAPv2Tester : MonoBehaviour
         _plpAutoSwapLabel.text = _plpAutoSwapEnabled
             ? "자동 전환: ON (hidden시 1000ms)"
             : "자동 전환: OFF";
+    }
+
+    /// <summary>
+    /// [지연 지급 결정 PoC] 자동 전환이 이미 ON이면 중복 enable을 생략하고 그대로 둔다 —
+    /// TogglePlpAutoTimingSwap을 직접 호출하면 이미 ON일 때 꺼버리므로 이 헬퍼로 분리했다.
+    /// </summary>
+    private void EnsurePlpAutoTimingSwapEnabled()
+    {
+        if (_plpAutoSwapEnabled)
+        {
+            LogIap("[POC] 자동 전환 이미 ON — 재사용");
+            return;
+        }
+
+        _plpAutoSwapEnabled = true;
+        Application.runInBackground = true;
+        int rc = PLP_EnableAutoTimingSwap(1);
+        UpdatePlpAutoSwapLabel();
+        LogIap($"[POC] 자동 전환 동반 활성화: rc={rc}, runInBackground={Application.runInBackground}");
+    }
+
+    /// <summary>
+    /// [지연 지급 결정 PoC] ON: 자동 전환을 함께 무장(이미 ON이면 재사용)하고
+    /// PLP_EnablePocGrant(gameObject.name)로 jslib 인터셉터를 설치한다. jslib는 이 컴포넌트가
+    /// 실제로 붙어 있는 GameObject(부트스트래핑 상 "BenchmarkManager")로 SendMessage를 보낸다.
+    /// OFF: PLP_DisablePocGrant로 원본 함수를 복원하고 pending 질의를 전부 안전 승인 처리한다.
+    /// </summary>
+    private void TogglePlpPocGrant()
+    {
+        _pocGrantEnabled = !_pocGrantEnabled;
+
+        if (_pocGrantEnabled)
+        {
+            EnsurePlpAutoTimingSwapEnabled();
+            int rc = PLP_EnablePocGrant(gameObject.name);
+            LogIap($"[POC] 지연지급 PoC ON: rc={rc}, target={gameObject.name} " +
+                "(PoC ON 중에는 jslib가 processProductGrant를 가로채므로 SDK 동기 ProcessProductGrant 콜백은 호출되지 않는다)");
+        }
+        else
+        {
+            int rc = PLP_DisablePocGrant();
+            LogIap($"[POC] 지연지급 PoC OFF: rc={rc}, 원본 함수 복원 + pending 전부 안전 승인 처리");
+        }
+
+        UpdatePlpPocGrantLabel();
+        UpdateEventLog();
+    }
+
+    private void UpdatePlpPocGrantLabel()
+    {
+        if (_pocGrantLabel == null) return;
+        _pocGrantLabel.text = _pocGrantEnabled ? "PoC 지연지급: ON" : "PoC 지연지급: OFF";
+    }
+
+    /// <summary>[지연 지급 결정 PoC] 서버 검증 후 내릴 결정을 승인/거절로 미리 선택한다.</summary>
+    private void TogglePlpPocDecision()
+    {
+        _pocApprove = !_pocApprove;
+        UpdatePlpPocDecisionLabel();
+        LogIap($"[POC] 결정 토글: {(_pocApprove ? "승인" : "거절")} (다음 지급 질의부터 적용)");
+        UpdateEventLog();
+    }
+
+    private void UpdatePlpPocDecisionLabel()
+    {
+        if (_pocDecisionLabel == null) return;
+        _pocDecisionLabel.text = _pocApprove ? "PoC 결정: 승인" : "PoC 결정: 거절";
+    }
+
+    /// <summary>
+    /// [지연 지급 결정 PoC] jslib PLP_EnablePocGrant가 설치한 인터셉터가 플랫폼 지급 질의를
+    /// 가로챌 때마다 SendMessage(gameObject.name, "OnPocGrantRequest", ...)로 호출한다.
+    /// id만 JsonUtility로 파싱하고, 실제 결정 흐름은 fire-and-forget async로 넘긴다 — 이
+    /// 메서드 자체는 동기로 즉시 반환해야 한다(jslib 쪽 SendMessage 호출 스택을 막지 않기 위함).
+    /// </summary>
+    public void OnPocGrantRequest(string json)
+    {
+        string id = "";
+        try
+        {
+            var payload = JsonUtility.FromJson<PocGrantRequestPayload>(json);
+            id = payload?.id ?? "";
+        }
+        catch (Exception ex)
+        {
+            LogIap($"[POC] 지급 질의 파싱 실패: {ex.Message}, raw={json}");
+            UpdateEventLog();
+            return;
+        }
+
+        if (string.IsNullOrEmpty(id))
+        {
+            LogIap($"[POC] 지급 질의 id 없음 — 무시, raw={json}");
+            UpdateEventLog();
+            return;
+        }
+
+        RunPocGrantDecisionAsync(id);
+    }
+
+    /// <summary>
+    /// [지연 지급 결정 PoC] 실제 외부 HTTP API(httpbin.org/delay/2, 서버측 2초 지연)를 호출해
+    /// 지연 지급 판단을 흉내 낸다. await 홉을 최소화하기 위해 while(!op.isDone) 루프 안에서만
+    /// yield하고(핫패스 1홉), 전체 흐름은 realtime 기준 8초 상한을 둔다. HTTP 실패 시
+    /// same-origin fetch 폴백(PLP_StartFetchProbe) + ~2초 대기 후 결정 토글값을 사용한다.
+    /// 예외 발생 시 즉시 승인(true)으로 응답한다 — 실결제 보호가 우선이다.
+    /// Task.Delay는 WebGL에서 hidden 중 영구 미재개이므로 절대 사용하지 않는다(while + Task.Yield만).
+    /// </summary>
+    private async void RunPocGrantDecisionAsync(string id)
+    {
+        float t0 = Time.realtimeSinceStartup;
+        long t0Epoch = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        bool decision = _pocApprove;
+        string path = "unknown";
+
+        try
+        {
+            LogIap($"[POC] 지급 질의 수신: id={id}, t0Epoch={t0Epoch}");
+            UpdateEventLog();
+
+            bool httpOk = false;
+            long httpStatus = 0;
+
+            UnityWebRequest req = null;
+            try
+            {
+                string url = PocHttpDelayUrl + "?nocache=" + t0Epoch;
+                req = UnityWebRequest.Get(url);
+                var op = req.SendWebRequest();
+                while (!op.isDone && Time.realtimeSinceStartup - t0 < PocDecisionBudgetSec)
+                {
+                    await Task.Yield();
+                }
+
+                if (op.isDone)
+                {
+                    httpStatus = req.responseCode;
+                    httpOk = req.result == UnityWebRequest.Result.Success && httpStatus >= 200 && httpStatus < 300;
+                    LogIap($"[POC] HTTP 완료: id={id}, status={httpStatus}, ok={httpOk}, 경과={Time.realtimeSinceStartup - t0:F1}s");
+                }
+                else
+                {
+                    LogIap($"[POC] HTTP 미완료(상한 도달): id={id}, 경과={Time.realtimeSinceStartup - t0:F1}s");
+                }
+            }
+            finally
+            {
+                req?.Dispose();
+            }
+
+            if (httpOk)
+            {
+                path = "http";
+                decision = _pocApprove;
+            }
+            else
+            {
+                path = "fallback";
+                PLP_StartFetchProbe();
+                LogIap($"[POC] HTTP 실패/미완료 — same-origin fetch 폴백 armed: id={id}");
+                UpdateEventLog();
+
+                float fallbackStart = Time.realtimeSinceStartup;
+                while (Time.realtimeSinceStartup - fallbackStart < 2f && Time.realtimeSinceStartup - t0 < PocDecisionBudgetSec)
+                {
+                    await Task.Yield();
+                }
+                decision = _pocApprove;
+                LogIap($"[POC] 폴백 대기 종료: id={id}, 경과={Time.realtimeSinceStartup - t0:F1}s");
+            }
+        }
+        catch (Exception ex)
+        {
+            // 실결제 보호 — 결정 흐름 어디서든 예외가 나면 즉시 승인으로 응답한다.
+            path = "exception";
+            decision = true;
+            LogIap($"[POC] 결정 흐름 예외 — 안전 승인으로 즉시 응답: id={id}, ex={ex.Message}");
+        }
+
+        float totalElapsedSec = Time.realtimeSinceStartup - t0;
+        PLP_PocRespond(id, decision ? 1 : 0);
+        LogIap($"[POC] 응답 전송: id={id}, 경로={path}, 결정={(decision ? "승인" : "거절")}, 총 소요={totalElapsedSec:F1}s");
+        UpdateEventLog();
     }
 
     /// <summary>[PLP round4] Deny 주문 기록을 PlayerPrefs에서 불러온다. 앱 시작 시(Awake) 1회 호출.</summary>
@@ -1232,6 +1460,18 @@ public class IAPv2Tester : MonoBehaviour
 
     [System.Runtime.InteropServices.DllImport("__Internal")]
     private static extern string PLP_GetAutoSwapLog();
+
+    [System.Runtime.InteropServices.DllImport("__Internal")]
+    private static extern int PLP_EnablePocGrant(string goName);
+
+    [System.Runtime.InteropServices.DllImport("__Internal")]
+    private static extern void PLP_PocRespond(string id, int result);
+
+    [System.Runtime.InteropServices.DllImport("__Internal")]
+    private static extern int PLP_DisablePocGrant();
+
+    [System.Runtime.InteropServices.DllImport("__Internal")]
+    private static extern string PLP_GetPocReport();
 #else
     private static void PLP_StartJsProbe() { }
     private static string PLP_GetJsReport() { return "{\"raf\":{},\"timer\":{},\"visibility\":[]}"; }
@@ -1242,6 +1482,10 @@ public class IAPv2Tester : MonoBehaviour
     private static string PLP_GetLoopTimingInfo() { return "{}"; }
     private static int PLP_EnableAutoTimingSwap(int enable) { return -999; }
     private static string PLP_GetAutoSwapLog() { return "[]"; }
+    private static int PLP_EnablePocGrant(string goName) { return -999; }
+    private static void PLP_PocRespond(string id, int result) { }
+    private static int PLP_DisablePocGrant() { return -999; }
+    private static string PLP_GetPocReport() { return "[]"; }
 #endif
 
     private bool _plpArmed;
@@ -1304,6 +1548,11 @@ public class IAPv2Tester : MonoBehaviour
         // 전이 이력을 한 번에 볼 수 있다.
         string autoSwapLog = PLP_GetAutoSwapLog();
         LogIap($"[PLP:{phase}] autoSwap={autoSwapLog}");
+
+        // [지연 지급 결정 PoC] 지급 질의/응답/안전망 발화 이력 — 누적 로그(비우지 않음)라
+        // 여러 구매 시도에 걸친 흐름을 한 번에 볼 수 있다.
+        string pocReport = PLP_GetPocReport();
+        LogIap($"[PLP:{phase}] poc={pocReport}");
 
         UpdateEventLog();
     }

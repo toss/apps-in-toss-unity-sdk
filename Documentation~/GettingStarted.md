@@ -12,7 +12,7 @@ SDK를 설치하고 첫 빌드를 띄우기까지 필요한 것만 순서대로 
 4. Git URL 입력:
 
 ```
-https://github.com/toss/apps-in-toss-unity-sdk.git#release/v3.0.1
+https://github.com/toss/apps-in-toss-unity-sdk.git#release/v3.0.2
 ```
 
 ### manifest.json 직접 수정
@@ -22,7 +22,7 @@ https://github.com/toss/apps-in-toss-unity-sdk.git#release/v3.0.1
 ```json
 {
   "dependencies": {
-    "im.toss.apps-in-toss-unity-sdk": "https://github.com/toss/apps-in-toss-unity-sdk.git#release/v3.0.1"
+    "im.toss.apps-in-toss-unity-sdk": "https://github.com/toss/apps-in-toss-unity-sdk.git#release/v3.0.2"
   }
 }
 ```

@@ -317,21 +317,54 @@ mergeInto(LibraryManager.library, {
     //
     // 반환값: 0=성공, _emscripten_set_main_loop_timing 부재 시 -999, 예외 시 -998.
     // (enable=0 경로에서 리스너가 애초에 없었어도 rAF 복원 자체는 시도하고 그 결과를 반환한다.)
+    // round 5 v5 — v4 실기기 결과: hidden 진입 시 _emscripten_set_main_loop_timing(0,1000)은
+    // rc=0으로 성공하고 Browser.mainLoop.timingMode/timingValue도 실제로 바뀌지만, 루프는
+    // hidden 12초 내내 정지했다(maxFrameGap 12.08s). 원인은 _emscripten_set_main_loop_timing이
+    // timingMode와 scheduler 함수만 교체할 뿐 scheduler를 직접 호출하지는 않는다는 데 있다 —
+    // 새 타이밍은 다음 runner 실행 시 재스케줄되는 시점에야 발효되는데, hidden 진입 시점에
+    // 걸려 있던 pending rAF는 hidden 중 발화하지 않으므로 runner가 다시 돌 기회 자체가 없어
+    // setTimeout 체인이 시작조차 못 한다.
+    //
+    // framework.js 실코드 확인: Browser.mainLoop.pause()는 scheduler를 null로 비우고
+    // currentlyRunningMainloop를 증가시켜 기존 pending rAF를 무효화하고(stale 콜백은 카운터
+    // 불일치로 no-op), resume()은 setMainLoop을 재등록한 뒤 _emscripten_set_main_loop_timing을
+    // 다시 호출하고 Browser.mainLoop.scheduler()를 그 자리에서 즉시 실행한다. 즉 "타이밍
+    // 설정 → pauseMainLoop() → resumeMainLoop()" 순서면 hidden 중에도 새 체인이 즉시
+    // 무장된다. 이 킥은 hidden 전환·visible 전환 양쪽에 모두 적용한다 — visible 복귀 시에도
+    // 재스케줄을 기다리지 않고 즉시 rAF 체인으로 복귀시켜야 최대 1초 지연을 없앨 수 있다.
     PLP_EnableAutoTimingSwap: function(enable) {
         var applyTiming = function(mode, valueMs, toLabel) {
             try {
                 if (typeof _emscripten_set_main_loop_timing !== 'function') {
-                    window.__plp5SwapLog.push({ to: toLabel, rc: -999, at: Date.now() });
+                    window.__plp5SwapLog.push({ to: toLabel, rc: -999, kick: -999, at: Date.now() });
                     return -999;
                 }
                 var rc = _emscripten_set_main_loop_timing(mode, valueMs);
-                window.__plp5SwapLog.push({ to: toLabel, rc: rc, at: Date.now() });
-                if (window.__AIT_VERBOSE) console.log('[PLP5v4] auto swap ->', toLabel, 'rc=', rc);
+                var kick = kickMainLoop();
+                window.__plp5SwapLog.push({ to: toLabel, rc: rc, kick: kick, at: Date.now() });
+                if (window.__AIT_VERBOSE) console.log('[PLP5v5] auto swap ->', toLabel, 'rc=', rc, 'kick=', kick);
                 return rc;
             } catch (err) {
-                window.__plp5SwapLog.push({ to: toLabel, rc: -998, at: Date.now() });
-                if (window.__AIT_VERBOSE) console.log('[PLP5v4] auto swap 예외', err);
+                window.__plp5SwapLog.push({ to: toLabel, rc: -998, kick: -998, at: Date.now() });
+                if (window.__AIT_VERBOSE) console.log('[PLP5v5] auto swap 예외', err);
                 return -998;
+            }
+        };
+
+        // 타이밍 전환 직후 pending rAF가 사라져 새 스케줄러가 무장되지 않는 문제(위 헤더 주석
+        // 참조)를 우회한다. Module.pauseMainLoop()로 기존 pending rAF를 무효화하고
+        // Module.resumeMainLoop()로 방금 설정한 타이밍 기준으로 즉시 재스케줄한다.
+        var kickMainLoop = function() {
+            try {
+                if (typeof Module.pauseMainLoop === 'function' && typeof Module.resumeMainLoop === 'function') {
+                    Module.pauseMainLoop();
+                    Module.resumeMainLoop();
+                    return 0;
+                }
+                return -997;
+            } catch (err) {
+                if (window.__AIT_VERBOSE) console.log('[PLP5v5] kick 예외', err);
+                return -996;
             }
         };
 
@@ -354,7 +387,7 @@ mergeInto(LibraryManager.library, {
             }
         };
         document.addEventListener('visibilitychange', window.__plp5AutoSwapHandler);
-        if (window.__AIT_VERBOSE) console.log('[PLP5v4] auto swap 리스너 등록됨');
+        if (window.__AIT_VERBOSE) console.log('[PLP5v5] auto swap 리스너 등록됨');
         return 0;
     },
 

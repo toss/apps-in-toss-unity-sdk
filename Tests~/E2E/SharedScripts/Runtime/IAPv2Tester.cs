@@ -407,7 +407,7 @@ public class IAPv2Tester : MonoBehaviour
 
         int rc = PLP_EnableAutoTimingSwap(_plpAutoSwapEnabled ? 1 : 0);
         UpdatePlpAutoSwapLabel();
-        LogIap($"[PLP5v4] 자동 전환 {(_plpAutoSwapEnabled ? "ON" : "OFF")}: rc={rc}, runInBackground={Application.runInBackground}");
+        LogIap($"[PLP5v5] 자동 전환 {(_plpAutoSwapEnabled ? "ON" : "OFF")}: rc={rc}, runInBackground={Application.runInBackground}");
         UpdateEventLog();
     }
 

@@ -57,13 +57,21 @@ public class IAPv2Tester : MonoBehaviour
     private Text _plpGrantDecisionLabel;
 
     /// <summary>
-    /// [PLP round5 v2] 결제 오버레이(visibilityState=hidden, rAF 정지) 중에도 Unity player loop를
-    /// setTimeout 타이밍(Emscripten mode 0)으로 돌릴 수 있는지 실기기에서 토글하기 위한 상태.
-    /// v1(Application.targetFrameRate 토글)은 실기기에서 Emscripten 루프 타이밍을 바꾸지
-    /// 못함이 확인돼 폐기됐다 — true면 jslib에서 emscripten_set_main_loop_timing을 직접 호출해
-    /// setTimeout(33ms)으로 강제 전환, false면 rAF로 되돌린다.
+    /// [PLP round5 v3] 결제 오버레이(visibilityState=hidden) 중 Unity player loop 구동 방식을
+    /// 3단으로 순환 전환하기 위한 상태. v2 실기기 실측(iOS, Unity 6000.2)에서 setTimeout(33ms)
+    /// 강제 전환 자체는 성공(rc=0)했지만, hidden 오버레이 중에는 33ms 연쇄 재예약 러너가
+    /// WebKit의 백그라운드 타이머 예산에 걸려 통째로 유예되는 것으로 관측됐다(같은 구간 1000ms
+    /// 간격 setTimeout 하트비트는 정상 발화). v3는 루프 타이밍 자체를 1000ms 간격으로 잡아
+    /// 예산 안에서 살아남는지 검증하는 세 번째 단계를 추가한다.
     /// </summary>
-    private bool _plpUseSetTimeoutLoop = false;
+    private enum PlpLoopTimingMode
+    {
+        RafDefault,
+        SetTimeout33,
+        SetTimeout1000
+    }
+
+    private PlpLoopTimingMode _plpLoopMode = PlpLoopTimingMode.RafDefault;
     private Text _plpLoopModeLabel;
 
     /// <summary>[PLP round4] Deny된 주문 기록 — PlayerPrefs에 영속화되어 앱 재실행 후에도 남는다.</summary>
@@ -234,7 +242,7 @@ public class IAPv2Tester : MonoBehaviour
             UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary, fontStyle: FontStyle.Bold);
         _plpLoopModeLabel = UIBuilder.CreateText(section, "",
             UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary);
-        UIBuilder.CreateButton(section, "루프 타이밍 토글 (rAF ⇄ setTimeout)", onClick: TogglePlpLoopTiming);
+        UIBuilder.CreateButton(section, "루프 타이밍 순환 (rAF → setTimeout33ms → setTimeout1000ms)", onClick: TogglePlpLoopTiming);
         UpdatePlpLoopModeLabel();
         // 결제 오버레이 밖(평시)에서 동일 프로브를 실행해, 토글이 실제로 루프를 살리는지
         // 대조군 없이도 미리 검증할 수 있게 한다.
@@ -291,26 +299,77 @@ public class IAPv2Tester : MonoBehaviour
     }
 
     /// <summary>
-    /// [PLP round5 v2] Application.targetFrameRate 토글은 실기기(iOS, Unity 6000.2)에서
+    /// [PLP round5 v3] 루프 타이밍을 rAF → setTimeout(33ms) → setTimeout(1000ms) → rAF 순으로
+    /// 순환한다. Application.targetFrameRate 토글은 실기기(iOS, Unity 6000.2)에서
     /// Browser.mainLoop.method를 바꾸지 못함이 확인됐다(rAF 고정 + 내부 프레임 스킵) — 현대
-    /// Unity는 targetFrameRate로 Emscripten 루프 타이밍을 전환하지 않는 것으로 보인다. v2는
+    /// Unity는 targetFrameRate로 Emscripten 루프 타이밍을 전환하지 않는 것으로 보인다. v2부터는
     /// Unity를 우회해 jslib에서 Emscripten 함수(emscripten_set_main_loop_timing)를 직접
     /// 호출해 강제 전환한다. targetFrameRate는 더 이상 건드리지 않는다.
+    ///
+    /// v2 실기기 실측: setTimeout(33ms) 강제 전환은 성공(rc=0)하고 평시엔 정상 구동하지만,
+    /// 결제 오버레이(hidden) 중에는 C# 루프가 여전히 0회 틱(maxFrameGap 12.70s)이었다 — 같은
+    /// 구간 1000ms 간격 JS 하트비트는 18회 정상 발화했다. WebKit의 hidden 타이머 예산이
+    /// 33ms 연쇄 재예약 러너를 통째로 유예시키는 것으로 추정, 1000ms 간격은 예산 안이라
+    /// 생존한다는 가설을 v3에서 setTimeout(1000ms) 단계로 검증한다.
+    ///
+    /// 전환마다 Application.runInBackground를 true로 설정한다(변수 제거 목적 — WebGL에서
+    /// 이 설정이 루프 pause에 관여할 가능성을 배제하기 위해 설정 전/후 값을 로그에 남긴다).
     /// </summary>
     private void TogglePlpLoopTiming()
     {
-        _plpUseSetTimeoutLoop = !_plpUseSetTimeoutLoop;
-        int rc = _plpUseSetTimeoutLoop ? PLP_ForceLoopTiming(0, 33) : PLP_ForceLoopTiming(1, 1);
+        _plpLoopMode = (PlpLoopTimingMode)(((int)_plpLoopMode + 1) % 3);
+
+        int mode;
+        int valueMs;
+        string modeLabel;
+        switch (_plpLoopMode)
+        {
+            case PlpLoopTimingMode.SetTimeout33:
+                mode = 0;
+                valueMs = 33;
+                modeLabel = "setTimeout(33ms)";
+                break;
+            case PlpLoopTimingMode.SetTimeout1000:
+                mode = 0;
+                valueMs = 1000;
+                modeLabel = "setTimeout(1000ms)";
+                break;
+            default:
+                mode = 1;
+                valueMs = 1;
+                modeLabel = "rAF";
+                break;
+        }
+
+        bool runInBackgroundBefore = Application.runInBackground;
+        Application.runInBackground = true;
+        bool runInBackgroundAfter = Application.runInBackground;
+
+        int rc = PLP_ForceLoopTiming(mode, valueMs);
         UpdatePlpLoopModeLabel();
         string timingInfo = PLP_GetLoopTimingInfo();
-        LogIap($"[PLP5v2] force loop timing: mode={(_plpUseSetTimeoutLoop ? "setTimeout(33ms)" : "rAF")}, rc={rc}, info={timingInfo}");
+        LogIap($"[PLP5v3] force loop timing: mode={modeLabel}, rc={rc}, info={timingInfo}, " +
+            $"runInBackground: {runInBackgroundBefore} -> {runInBackgroundAfter}");
         UpdateEventLog();
     }
 
     private void UpdatePlpLoopModeLabel()
     {
         if (_plpLoopModeLabel == null) return;
-        _plpLoopModeLabel.text = _plpUseSetTimeoutLoop ? "Loop: 강제 setTimeout(33ms)" : "Loop: 기본(rAF)";
+        string modeLabel;
+        switch (_plpLoopMode)
+        {
+            case PlpLoopTimingMode.SetTimeout33:
+                modeLabel = "강제 setTimeout(33ms)";
+                break;
+            case PlpLoopTimingMode.SetTimeout1000:
+                modeLabel = "강제 setTimeout(1000ms)";
+                break;
+            default:
+                modeLabel = "기본(rAF)";
+                break;
+        }
+        _plpLoopModeLabel.text = $"Loop: {modeLabel}";
     }
 
     /// <summary>[PLP round4] Deny 주문 기록을 PlayerPrefs에서 불러온다. 앱 시작 시(Awake) 1회 호출.</summary>

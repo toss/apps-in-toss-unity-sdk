@@ -74,6 +74,16 @@ public class IAPv2Tester : MonoBehaviour
     private PlpLoopTimingMode _plpLoopMode = PlpLoopTimingMode.RafDefault;
     private Text _plpLoopModeLabel;
 
+    /// <summary>
+    /// [PLP round5 v4] 자동 전환 토글 상태. v3의 수동 3단 순환은 hidden 중 1000ms 간격이
+    /// 예산 안에서 생존함을 확인했지만, 화면이 보이는 동안에도 1000ms(1fps)에 묶여 있어
+    /// 사용자가 결제 UI를 조작할 수 없다는 실사용 문제가 실기기에서 확인됐다. v4는 최종
+    /// SDK 기능과 동일한 모양으로 hidden 진입/visible 복귀에 맞춰 자동 전환한다
+    /// (PLP_EnableAutoTimingSwap, jslib의 visibilitychange 리스너).
+    /// </summary>
+    private bool _plpAutoSwapEnabled = false;
+    private Text _plpAutoSwapLabel;
+
     /// <summary>[PLP round4] Deny된 주문 기록 — PlayerPrefs에 영속화되어 앱 재실행 후에도 남는다.</summary>
     [Serializable]
     private class PlpDeniedOrderRecord
@@ -244,6 +254,12 @@ public class IAPv2Tester : MonoBehaviour
             UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary);
         UIBuilder.CreateButton(section, "루프 타이밍 순환 (rAF → setTimeout33ms → setTimeout1000ms)", onClick: TogglePlpLoopTiming);
         UpdatePlpLoopModeLabel();
+        // [PLP round5 v4] 최종 SDK 기능과 동일한 모양의 자동 전환 — visible에서는 rAF 정상,
+        // hidden 진입 순간에만 setTimeout(1000ms), visible 복귀 시 rAF 복원.
+        _plpAutoSwapLabel = UIBuilder.CreateText(section, "",
+            UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary);
+        UIBuilder.CreateButton(section, "자동 전환 토글 (hidden↔visible, hidden시 1000ms)", onClick: TogglePlpAutoTimingSwap);
+        UpdatePlpAutoSwapLabel();
         // 결제 오버레이 밖(평시)에서 동일 프로브를 실행해, 토글이 실제로 루프를 살리는지
         // 대조군 없이도 미리 검증할 수 있게 한다.
         UIBuilder.CreateButton(section, "[PLP5] await probe (지금)", onClick: RunPlp5AwaitProbeAsync);
@@ -370,6 +386,37 @@ public class IAPv2Tester : MonoBehaviour
                 break;
         }
         _plpLoopModeLabel.text = $"Loop: {modeLabel}";
+    }
+
+    /// <summary>
+    /// [PLP round5 v4] 자동 전환을 켜고 끈다. ON 시 PLP_EnableAutoTimingSwap(1)로
+    /// visibilitychange 리스너를 설치하고 Application.runInBackground를 true로 설정한다
+    /// (hidden 진입 시에도 루프가 setTimeout(1000ms)으로 계속 구동돼야 하므로 — 꺼져 있으면
+    /// 브라우저가 백그라운드 탭의 루프 자체를 중단시킬 수 있다). OFF 시 PLP_EnableAutoTimingSwap(0)로
+    /// 리스너를 제거하고 즉시 rAF로 복원한다(runInBackground는 되돌리지 않는다 — 이 진단 도구의
+    /// 다른 프로브들도 같은 설정에 의존할 수 있어 끄는 쪽이 더 위험하다고 판단).
+    /// </summary>
+    private void TogglePlpAutoTimingSwap()
+    {
+        _plpAutoSwapEnabled = !_plpAutoSwapEnabled;
+
+        if (_plpAutoSwapEnabled)
+        {
+            Application.runInBackground = true;
+        }
+
+        int rc = PLP_EnableAutoTimingSwap(_plpAutoSwapEnabled ? 1 : 0);
+        UpdatePlpAutoSwapLabel();
+        LogIap($"[PLP5v4] 자동 전환 {(_plpAutoSwapEnabled ? "ON" : "OFF")}: rc={rc}, runInBackground={Application.runInBackground}");
+        UpdateEventLog();
+    }
+
+    private void UpdatePlpAutoSwapLabel()
+    {
+        if (_plpAutoSwapLabel == null) return;
+        _plpAutoSwapLabel.text = _plpAutoSwapEnabled
+            ? "자동 전환: ON (hidden시 1000ms)"
+            : "자동 전환: OFF";
     }
 
     /// <summary>[PLP round4] Deny 주문 기록을 PlayerPrefs에서 불러온다. 앱 시작 시(Awake) 1회 호출.</summary>
@@ -1179,6 +1226,12 @@ public class IAPv2Tester : MonoBehaviour
 
     [System.Runtime.InteropServices.DllImport("__Internal")]
     private static extern string PLP_GetLoopTimingInfo();
+
+    [System.Runtime.InteropServices.DllImport("__Internal")]
+    private static extern int PLP_EnableAutoTimingSwap(int enable);
+
+    [System.Runtime.InteropServices.DllImport("__Internal")]
+    private static extern string PLP_GetAutoSwapLog();
 #else
     private static void PLP_StartJsProbe() { }
     private static string PLP_GetJsReport() { return "{\"raf\":{},\"timer\":{},\"visibility\":[]}"; }
@@ -1187,6 +1240,8 @@ public class IAPv2Tester : MonoBehaviour
     private static string PLP_GetGrantDelayReport() { return "[]"; }
     private static int PLP_ForceLoopTiming(int mode, int valueMs) { return -999; }
     private static string PLP_GetLoopTimingInfo() { return "{}"; }
+    private static int PLP_EnableAutoTimingSwap(int enable) { return -999; }
+    private static string PLP_GetAutoSwapLog() { return "[]"; }
 #endif
 
     private bool _plpArmed;
@@ -1243,6 +1298,12 @@ public class IAPv2Tester : MonoBehaviour
         {
             LogIap($"[PLP:{phase}] grantDelay={grantDelayReport}");
         }
+
+        // [PLP round5 v4] 자동 전환이 실제로 hidden/visible 순간에 발화했는지, 그때 rc가
+        // 무엇이었는지 사후 확인용. 로그는 누적이라(비우지 않음) 여러 결제 시도에 걸친
+        // 전이 이력을 한 번에 볼 수 있다.
+        string autoSwapLog = PLP_GetAutoSwapLog();
+        LogIap($"[PLP:{phase}] autoSwap={autoSwapLog}");
 
         UpdateEventLog();
     }

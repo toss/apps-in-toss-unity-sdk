@@ -296,5 +296,77 @@ mergeInto(LibraryManager.library, {
         var buffer = _malloc(bufferSize);
         stringToUTF8(report, buffer, bufferSize);
         return buffer;
+    },
+
+    // round 5 v4 — v3의 수동 3단 순환은 가설 검증(1000ms 간격이 hidden 타이머 예산 안에서
+    // 생존하는가)에는 맞았지만, 화면이 보이는 동안에도 계속 1000ms(=1fps)로 묶여 있어
+    // 사용자가 결제 UI를 조작할 수 없다는 실사용 문제가 실기기에서 확인됐다. 최종 SDK
+    // 기능과 동일한 모양으로 "visible이면 rAF(정상 프레임레이트), hidden 진입 순간에만
+    // setTimeout(1000ms), visible 복귀 시 rAF 복원"을 visibilitychange에 맞춰 자동
+    // 전환한다. 기존 PLP_ForceLoopTiming(수동 단발 전환)과 독립적으로 존재하며, 자동
+    // 전환이 켜진 상태에서 수동 전환 버튼을 눌러도 다음 hidden/visible 전이 때 자동
+    // 전환이 값을 다시 덮어쓴다(둘을 동시에 쓰는 것은 권장하지 않음, 진단 도구이므로
+    // 상호 배제는 강제하지 않는다).
+    //
+    // enable=1: document에 visibilitychange 리스너를 등록한다(중복 등록 방지 — 기존
+    // 핸들러가 있으면 먼저 제거 후 재등록). hidden 진입 시 setTimeout(1000ms)로,
+    // visible 복귀 시 rAF로 전환하며 매 전환마다 {to, rc, at}를 window.__plp5SwapLog에
+    // 누적 기록한다(PLP_GetAutoSwapLog로 조회, 비우지 않음).
+    // enable=0: 리스너를 제거하고 즉시 rAF로 복원한다(전환 이력 중인 채로 꺼졌을 때
+    // 루프가 setTimeout(1000ms)에 갇혀 있지 않도록).
+    //
+    // 반환값: 0=성공, _emscripten_set_main_loop_timing 부재 시 -999, 예외 시 -998.
+    // (enable=0 경로에서 리스너가 애초에 없었어도 rAF 복원 자체는 시도하고 그 결과를 반환한다.)
+    PLP_EnableAutoTimingSwap: function(enable) {
+        var applyTiming = function(mode, valueMs, toLabel) {
+            try {
+                if (typeof _emscripten_set_main_loop_timing !== 'function') {
+                    window.__plp5SwapLog.push({ to: toLabel, rc: -999, at: Date.now() });
+                    return -999;
+                }
+                var rc = _emscripten_set_main_loop_timing(mode, valueMs);
+                window.__plp5SwapLog.push({ to: toLabel, rc: rc, at: Date.now() });
+                if (window.__AIT_VERBOSE) console.log('[PLP5v4] auto swap ->', toLabel, 'rc=', rc);
+                return rc;
+            } catch (err) {
+                window.__plp5SwapLog.push({ to: toLabel, rc: -998, at: Date.now() });
+                if (window.__AIT_VERBOSE) console.log('[PLP5v4] auto swap 예외', err);
+                return -998;
+            }
+        };
+
+        window.__plp5SwapLog = window.__plp5SwapLog || [];
+
+        if (window.__plp5AutoSwapHandler) {
+            document.removeEventListener('visibilitychange', window.__plp5AutoSwapHandler);
+            window.__plp5AutoSwapHandler = null;
+        }
+
+        if (!enable) {
+            return applyTiming(1, 1, 'rAF');
+        }
+
+        window.__plp5AutoSwapHandler = function() {
+            if (document.visibilityState === 'hidden') {
+                applyTiming(0, 1000, 'timeout1000');
+            } else {
+                applyTiming(1, 1, 'rAF');
+            }
+        };
+        document.addEventListener('visibilitychange', window.__plp5AutoSwapHandler);
+        if (window.__AIT_VERBOSE) console.log('[PLP5v4] auto swap 리스너 등록됨');
+        return 0;
+    },
+
+    // round 5 v4 — PLP_EnableAutoTimingSwap이 실제로 hidden/visible 전이 순간에 발화했는지,
+    // 그때 rc가 무엇이었는지 사후 확인하기 위한 누적 로그 조회. 배열은 비우지 않는다(계속
+    // 누적) — onEvent/onError 덤프에서 반복 조회해도 이전 항목이 사라지지 않아야 여러
+    // 결제 시도에 걸친 전이 이력을 한 번에 볼 수 있다.
+    PLP_GetAutoSwapLog: function() {
+        var report = JSON.stringify(window.__plp5SwapLog || []);
+        var bufferSize = lengthBytesUTF8(report) + 1;
+        var buffer = _malloc(bufferSize);
+        stringToUTF8(report, buffer, bufferSize);
+        return buffer;
     }
 });

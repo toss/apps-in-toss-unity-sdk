@@ -127,6 +127,24 @@
                 <div id="unity-progress-bar-full"></div>
             </div>
         </div>
+        <script>
+            // AIT 로딩 오버레이가 실제로 삽입된 경우(%AIT_LOADING_SCREEN% 치환 결과가 비어있지 않음)에만
+            // Unity 기본 로딩 바를 동기적으로 제거한다. 브라우저의 레이아웃/페인트가 일어나기 전에
+            // DOM에서 떼어내므로 #unity-logo / #unity-progress-bar-* 의 CSS 배경 PNG
+            // (TemplateData/*.png) 네트워크 요청 자체가 발생하지 않는다 — AIT 오버레이(z-index 9998)가
+            // 어차피 화면 전체를 덮으므로 Unity 로딩 바는 다운로드할 이유가 없다.
+            // AIT 오버레이 미사용 시(로딩 화면 파일 없음 등 폴백 상황)에는 Unity 로딩 바가 유일한
+            // 진행률 UI이므로 절대 건드리지 않는다 — 아래 메인 스크립트에서 정상 동작해야 한다.
+            (function () {
+                var wrapper = document.getElementById('ait-loading-wrapper');
+                if (wrapper && wrapper.firstElementChild) {
+                    var bar = document.getElementById('unity-loading-bar');
+                    if (bar && bar.parentNode) {
+                        bar.parentNode.removeChild(bar);
+                    }
+                }
+            })();
+        </script>
         <div id="unity-warning"> </div>
         <div id="unity-footer">
             <div id="unity-webgl-logo"></div>
@@ -433,13 +451,32 @@
                 && typeof Response === 'function';
             if (!nativeServed || !canStream) return;
 
+            // wasm 스트리밍 폴백 관측용 헬퍼.
+            // window.__AIT_WASM_STREAMING_FALLBACK__ 은 런타임 쪽 에이전트와 공유하는 계약이므로
+            // 이름을 바꾸지 않는다. 정상 경로(스트리밍 성공)에서는 계속 undefined 로 남는다.
+            function markWasmStreamingFallback(reason) {
+                window.__AIT_WASM_STREAMING_FALLBACK__ = reason;
+                if (typeof performance !== 'undefined' && typeof performance.mark === 'function') {
+                    performance.mark('ait:wasm-streaming-fallback');
+                }
+            }
+
             config.instantiateWasm = function (imports, receiveInstance) {
                 var done = function (result) { receiveInstance(result.instance, result.module); };
+                // fetch가 vConsole 등으로 몽키패치됐는지 사전 감지 — 네이티브 함수는
+                // toString()에 '[native code]'가 포함된다(흔히 쓰는 몽키패치 탐지 기법).
+                var fetchLooksWrapped = false;
+                try { fetchLooksWrapped = fetch.toString().indexOf('[native code]') === -1; } catch (e) {}
+                var lastContentType = null;
+
                 fetch(codeUrl, { credentials: 'same-origin' })
                     .then(function (r) {
                         if (!r.ok) throw new Error('HTTP ' + r.status + ' for ' + codeUrl);
+                        lastContentType = (r.headers && typeof r.headers.get === 'function') ? r.headers.get('content-type') : null;
                         if (!r.body) {
                             // body 스트림 미지원(구형 환경): 같은 응답 바이트로 직접 컴파일(재페치 없음).
+                            markWasmStreamingFallback('no-streaming-api');
+                            console.warn('[AIT] Response.body 스트리밍 미지원 — ArrayBuffer 직접 컴파일:', codeUrl);
                             return r.arrayBuffer()
                                 .then(function (bytes) { return WebAssembly.instantiate(bytes, imports); })
                                 .then(done);
@@ -455,6 +492,14 @@
                         // 재포장으로 정상 경로의 스트리밍 실패는 제거됐다. 여기 도달하면 손상 응답 등
                         // 예기치 못한 이상이므로 마지막 수단으로 1회 재페치해 복구를 시도한다.
                         console.warn('[AIT] wasm 스트리밍 컴파일 실패 — ArrayBuffer 폴백:', err);
+                        // 실패 사유 추정: fetch 래핑(vConsole 등) > 원본 응답 MIME 불일치 >
+                        // 그 외(V8 스트리밍 브랜드 체크 실패 등) 순으로 판정.
+                        var reason = fetchLooksWrapped
+                            ? 'fetch-wrapped'
+                            : (lastContentType && lastContentType.indexOf('application/wasm') === -1
+                                ? 'content-type'
+                                : 'brand-check-failed');
+                        markWasmStreamingFallback(reason);
                         return fetch(codeUrl, { credentials: 'same-origin' })
                             .then(function (r) {
                                 if (!r.ok) throw new Error('HTTP ' + r.status + ' for ' + codeUrl);
@@ -639,7 +684,8 @@
             aitLoading.style.display = 'none';
         }
 
-        loadingBar.style.display = "block";
+        // AIT 오버레이 활성 시 위 스크립트에서 이미 제거되어 loadingBar 가 null 일 수 있다.
+        if (loadingBar) loadingBar.style.display = "block";
 
         // Unity 로드 시작
         console.log('[AIT] Unity 로딩 시작...');
@@ -874,11 +920,12 @@
                     }
                     var unityProgress = 0.1 + (progress * 0.9); // 10%부터 시작해서 100%까지
                     updateLoadingProgress(unityProgress);
-                    progressBarFull.style.width = 100 * progress + "%";
+                    // AIT 오버레이 활성 시 progressBarFull 이 이미 제거되어 null 일 수 있다.
+                    if (progressBarFull) progressBarFull.style.width = 100 * progress + "%";
                 }).then((unityInstance) => {
             window.removeEventListener('error', _aitGLErrorHandler);
             updateLoadingProgress(1.0);
-            loadingBar.style.display = "none";
+            if (loadingBar) loadingBar.style.display = "none";
             fullscreenButton.onclick = () => {
                 unityInstance.SetFullscreen(1);
             };

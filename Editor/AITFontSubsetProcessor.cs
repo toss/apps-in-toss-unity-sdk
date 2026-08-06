@@ -139,8 +139,7 @@ namespace AppsInToss.Editor
                     config.fontSubsetTargetPaths,
                     config.fontSubsetExcludeTargetPaths))
             {
-                Debug.Log("[AIT-FontSubset] 동적 텍스트 언어가 선택되지 않아 건너뜁니다. " +
-                    "Configuration > 폰트 CJK 서브셋에서 언어를 선택하거나, 명시 활성(활성화)으로 설정하세요.");
+                LogSkipWithPotentialSavings();
                 return handle;
             }
 
@@ -397,6 +396,70 @@ namespace AppsInToss.Editor
                 && string.IsNullOrEmpty((extraRanges ?? string.Empty).Trim())
                 && string.IsNullOrEmpty((targetPaths ?? string.Empty).Trim())
                 && string.IsNullOrEmpty((excludeTargetPaths ?? string.Empty).Trim());
+        }
+
+        /// <summary>
+        /// subset 산출물의 예상 잔존 크기(폰트 1개당) 상한 근사치. 파일 상단 주석(“CJK 전체
+        /// 폰트는 5~15MB → subset 후 ~0.1MB”)에서 가져온 값 — 실제 subset 을 수행하지 않고
+        /// 잠재 절감(= 원본 크기 − 잔존 추정치)을 어림하는 데만 쓰인다(정밀 계산 아님).
+        /// </summary>
+        private const long EstimatedSubsetResidualBytesPerFont = 100L * 1024; // ~0.1MB
+
+        /// <summary>
+        /// 자동 모드 스킵 경로(<see cref="ShouldSkipAutoWithoutSelection"/> == true) 전용:
+        /// 기본 안내 로그에 더해 "활성화 시 절감 가능한 예상 용량"을 추가로 리포트한다.
+        ///
+        /// 비용 근거: DetectAutoTargets 는 활성 씬 의존성 재귀 순회 + 프로젝트 전역
+        /// t:Font/t:TMP_FontAsset 스캔을 수행한다. Heavy 픽스처(생성 콘텐츠 ~194MB — 텍스처
+        /// 10종@2048², 오디오 2종@60초, 메시 80개, 대형 폰트 2종 포함, 격리된 워크트리에서 Unity
+        /// 2022.3 배치 모드로 실측)에서 7ms로 확인되어, 빌드 1회당 비용에 비해 무시 가능한 수준임을
+        /// 확인하고 스킵 경로에서도 무조건 실행하기로 결정했다(별도 게이팅 불필요 — env/설정 플래그
+        /// 추가는 이 비용 규모에서 과설계로 판단).
+        /// 이 진단 자체의 실패가 빌드를 막으면 안 되므로 전량 방어적으로 삼킨다(no-op 폴백).
+        /// </summary>
+        private static void LogSkipWithPotentialSavings()
+        {
+            Debug.Log("[AIT-FontSubset] 동적 텍스트 언어가 선택되지 않아 건너뜁니다. " +
+                "Configuration > 폰트 CJK 서브셋에서 언어를 선택하거나, 명시 활성(활성화)으로 설정하세요.");
+
+            try
+            {
+                var sw = Stopwatch.StartNew();
+                string[] candidates = DetectAutoTargets();
+                sw.Stop();
+
+                if (candidates == null || candidates.Length == 0)
+                {
+                    Debug.Log($"[AIT-FontSubset]   (자동 대상 탐지 {sw.ElapsedMilliseconds}ms — 대상 폰트 없어 절감 추정 불가)");
+                    return;
+                }
+
+                long totalBytes = 0;
+                string projectRoot = Directory.GetParent(Application.dataPath).FullName;
+                foreach (var path in candidates)
+                {
+                    try
+                    {
+                        string full = Path.Combine(projectRoot, path);
+                        if (File.Exists(full))
+                        {
+                            totalBytes += new FileInfo(full).Length;
+                        }
+                    }
+                    catch
+                    {
+                        // 개별 파일 접근 실패는 집계에서 제외(절감 추정치가 보수적으로 작아질 뿐 — 안전)
+                    }
+                }
+
+                long estimatedSavings = Math.Max(0, totalBytes - (candidates.Length * EstimatedSubsetResidualBytesPerFont));
+                Debug.Log($"[AIT-FontSubset]   활성화 시 최대 {estimatedSavings / 1048576f:0.0}MB 절감 가능 " +
+                    $"(대상 폰트 {candidates.Length}개, 자동 탐지 {sw.ElapsedMilliseconds}ms)");
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[AIT-FontSubset]   잠재 절감 추정 중 예외(무시): {e.Message}");
+            }
         }
 
         /// <summary>

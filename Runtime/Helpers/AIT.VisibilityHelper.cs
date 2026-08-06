@@ -61,6 +61,8 @@ namespace AppsInToss
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         private static void Initialize()
         {
+            using var _hookTimer = AITHookTimer.Begin("VisibilityHelper");
+
             EnsureInitialized();
         }
 

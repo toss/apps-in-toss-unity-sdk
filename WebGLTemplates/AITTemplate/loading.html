@@ -201,6 +201,9 @@
         // 이미지 URL이 있으면 백그라운드에서 로드
         if (appInfo.iconUrl) {
             var img = new Image();
+            // 아이콘은 .data/.wasm 등 크리티컬 리소스 대비 우선순위를 낮춰 대역폭 경합을 줄인다.
+            // 프로퍼티 대입 방식이라 미지원 웹뷰(iOS WKWebView 등)에서는 조용히 무시된다(no-op, 안전).
+            img.fetchPriority = 'low';
             img.onload = function() {
                 iconImg.src = appInfo.iconUrl;
                 iconImg.style.display = '';

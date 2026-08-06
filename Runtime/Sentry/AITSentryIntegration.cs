@@ -39,6 +39,8 @@ namespace AppsInToss.Sentry
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Initialize()
         {
+            using var _hookTimer = AITHookTimer.Begin("Sentry");
+
             if (_initialized) return;
             _initialized = true;
 

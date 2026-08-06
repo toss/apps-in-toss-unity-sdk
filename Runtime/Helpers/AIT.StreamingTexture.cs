@@ -112,6 +112,8 @@ namespace AppsInToss
         [Preserve]
         private static void Bootstrap()
         {
+            using var _hookTimer = AITHookTimer.Begin("StreamingTexture");
+
             // SDK가 텍스처 외부화를 수행한 빌드에서만 매니페스트가 존재한다.
             // 부팅 후 매니페스트가 없으면 Run() 코루틴이 스스로 종료한다.
             var go = new GameObject("[AIT] StreamingTexture");

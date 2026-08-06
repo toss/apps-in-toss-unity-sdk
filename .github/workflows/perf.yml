@@ -1,5 +1,5 @@
 name: Perf (WebGL load-time TTFF)
-run-name: "Perf TTFF${{ github.event.pull_request.number && format(' - PR #{0}', github.event.pull_request.number) || format(' - {0}', github.ref_name) }}${{ github.event_name == 'workflow_dispatch' && format(' [posture={0}, cf={1}]', inputs.posture || 'default', inputs.compression_format || '1') || '' }}"
+run-name: "Perf TTFF${{ github.event.pull_request.number && format(' - PR #{0}', github.event.pull_request.number) || format(' - {0}', github.ref_name) }}${{ github.event_name == 'workflow_dispatch' && format(' [posture={0}, cf={1}, net={2}]', inputs.posture || 'default', inputs.compression_format || '1', inputs.net_profile || 'default') || '' }}"
 
 # WebGL 로드타임 최적화 레버(L2~L12) PR별 효과(Δ)를 격리 측정하는 perf CI.
 #
@@ -11,6 +11,10 @@ run-name: "Perf TTFF${{ github.event.pull_request.number && format(' - PR #{0}',
 #  - TTFF 측정: ubuntu에서 빌드 산출물을 내려받아 pnpm run test:perf(perf-ttff.test.js) 실행.
 #  - baseline Δ: main 푸시(push 이벤트)가 동일 매트릭스를 측정해 Actions 캐시에 baseline 저장.
 #    PR 잡은 그 캐시를 복원해 Δ를 인라인 계산(부재 시 Δ 생략 — 부트스트랩 정상 경로).
+#  - 네트워크 프로파일: workflow_dispatch net_profile(default/mobile)이 measure-ttff 의 스로틀
+#    값만 바꿔 재측정한다(빌드는 재사용, build-heavy 는 이 입력을 참조하지 않음). mobile 은 저대역폭
+#    구간에서 전송-바운드/CPU-바운드 우선순위가 뒤집히는 크로스오버를 탐색하기 위한 축이며,
+#    self-hosted macOS 러너 비용 때문에 PR/push 자동 매트릭스에는 추가 레그로 얹지 않는다(dispatch 전용).
 #
 # **기록 전용**: 하드 임계 게이트 없음(self-hosted 부하 변동으로 flaky). 회귀 게이트는 후속.
 
@@ -38,6 +42,16 @@ on:
         description: '벤치 posture (default=자동 기본값, full=opt-in 레버 활성)'
         type: string
         default: 'default'
+      net_profile:
+        description: >-
+          측정 스로틀 프로파일. default=CPU 4x·100/50Mbps·RTT50ms(기존값, 하위호환).
+          mobile=CPU 6x·20/5Mbps·RTT150ms(저대역폭 크로스오버 탐색용, 근거는 build-heavy 잡 주석 참조).
+          build-heavy 재빌드 없이 measure-ttff 스로틀만 바뀐다 — dispatch 전용, PR/push 자동 매트릭스에는 추가하지 않음(러너 비용).
+        type: choice
+        options:
+          - default
+          - mobile
+        default: default
 
 concurrency:
   group: perf-${{ github.event.pull_request.number || github.ref }}
@@ -118,6 +132,22 @@ jobs:
       fast-build: false      # release wasm(배포·preview 와 동일 프로필) — dev build/Debug il2cpp 비활성
       compression-format: ${{ inputs.compression_format || '1' }} # fast-build 가 표현 못 하는 유일 노브: gzip/brotli 로 현실적 on-wire 측정 (dispatch 로 브로틀리 등 선택 가능)
       perf-posture: ${{ inputs.posture == 'full' && 'full' || '' }} # dispatch 에서 posture=full 이면 opt-in 레버(HeavyBuildRunner) 활성
+      # net_profile(measure-ttff 스로틀 축)은 의도적으로 여기서 참조하지 않는다 — 네트워크/CPU
+      # 스로틀은 브라우저 측 CDP 에뮬레이션(Emulation.setCPUThrottlingRate / Network.emulateNetworkConditions)
+      # 이라 빌드 산출물(wasm/data/js 바이트)에 아무 영향이 없다. 즉 build-heavy 는 net_profile 값과
+      # 무관하게 동일 아티팩트를 만들고, measure-ttff 가 그 아티팩트를 다른 스로틀로 반복 측정만 한다
+      # → 재빌드 비용 없이 네트워크 프로파일을 늘릴 수 있다.
+      #
+      # mobile 값 근거(20/5Mbps, RTT150ms, CPU 6x):
+      #  - 20Mbps down: 모티베이션에서 크로스오버 탐색 대상으로 지정된 값. OpenSignal/Ookla 류 실측
+      #    LTE 하위~중위 퍼센타일(혼잡 지역·저신호)과도 정합 — "느린 WiFi"가 아니라 "제약된 LTE"를 흉내.
+      #  - 5Mbps up: LTE 업/다운 비대칭(다운 대비 업 자원블록 배정이 적음)을 반영해 4:1 비율 채택.
+      #    TTFF 측정은 다운로드 위주라 up 값 자체의 민감도는 낮음.
+      #  - RTT 150ms: Lighthouse/WebPageTest 계열이 오래 써온 모바일 기준 RTT(3G/4G 프리셋)와 동일선상 —
+      #    default(50ms, 유선/WiFi 수준)보다 3배 — 코어망+무선 구간 지연을 반영.
+      #  - CPU 6x: default(4x)가 이미 "모바일 수준"(테스트 상단 docstring)이므로, mobile 프로파일은 그보다
+      #    한 단계 더 낮은 보급형 기기를 흉내내도록 6x로 올림(4x=중급기, 6x=보급형기 어림). 다운로드
+      #    시간(대역폭 종속)과는 독립적인 축이라 CPU/네트워크를 동시에 조여야 "저사양 모바일"에 근접.
     secrets:
       SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
       KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
@@ -196,6 +226,14 @@ jobs:
           AIT_DEVELOPMENT_BUILD: "false"
           AIT_COMPRESSION_FORMAT: ${{ inputs.compression_format || '1' }}
           AIT_PERF_POSTURE: ${{ inputs.posture || 'default' }}
+          # net_profile 스로틀 매핑(값/근거는 build-heavy 잡의 perf-posture 옆 주석 참조).
+          # default 분기 값은 perf-ttff.test.js 의 기존 하드코딩 기본값과 동일 — dispatch 없이
+          # 실행되는 pull_request/push 는 inputs.net_profile 이 비어(non-dispatch 이벤트) 항상
+          # default 분기를 타므로 기존 실행과 비트 단위로 동일하게 유지된다.
+          PERF_CPU_THROTTLE: ${{ inputs.net_profile == 'mobile' && '6' || '4' }}
+          PERF_NET_DOWN_MBPS: ${{ inputs.net_profile == 'mobile' && '20' || '100' }}
+          PERF_NET_UP_MBPS: ${{ inputs.net_profile == 'mobile' && '5' || '50' }}
+          PERF_NET_RTT_MS: ${{ inputs.net_profile == 'mobile' && '150' || '50' }}
         run: pnpm run test:perf
 
       - name: Upload Perf Result

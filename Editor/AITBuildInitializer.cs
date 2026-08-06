@@ -314,6 +314,9 @@ namespace AppsInToss.Editor
 #if UNITY_6000_0_OR_NEWER
             Debug.Log($"[AIT]   - WebAssembly 2023: {wasm2023}{(editorConfig.wasm2023 < 0 ? " (자동)" : "")}");
 #endif
+#if !UNITY_6000_0_OR_NEWER
+            LogEngineUpgradeAdvisory();
+#endif
             Debug.Log($"[AIT]   - Mip Stripping: {mipStripping}{(editorConfig.mipStripping < 0 ? " (자동)" : "")}");
             Debug.Log($"[AIT]   - Optimize Mesh Data: {stripUnusedMeshComponents}{(editorConfig.stripUnusedMeshComponents < 0 ? " (자동)" : "")}");
 #if UNITY_2023_3_OR_NEWER
@@ -359,6 +362,31 @@ namespace AppsInToss.Editor
             bool texStreamEnabled = editorConfig.textureStreaming == 1
                 || (editorConfig.textureStreaming < 0 && AITDefaultSettings.GetDefaultTextureStreaming());
             Debug.Log($"[AIT]   - 텍스처 스트리밍: {(texStreamEnabled ? "활성화" : "비활성화")}{(editorConfig.textureStreaming < 0 ? " (자동)" : "")}");
+        }
+
+        /// <summary>
+        /// Unity 6000.0 미만(2021.3/2022.3) 빌드에서만 빌드 요약 로그 끝에 1회 출력하는 엔진
+        /// 업그레이드 정보성 안내(경고 아님 — 무언가 고장났다는 뜻이 아니다).
+        ///
+        /// 대상 레버(이 파일에서 UNITY_6000_0_OR_NEWER 로 가드되어 이 버전엔 컴파일조차 안 됨,
+        /// 폴백 없음): IL2CPP Code Generation(위 로그 참조, PlayerSettings.SetIl2CppCodeGeneration)과
+        /// WebAssembly 2023(PlayerSettings.WebGL.wasm2023). WebGL Code Optimization(Disk Size with
+        /// LTO)은 이 버전에서도 동작은 하되 cross-module LTO 없는 DiskSize/Size 폴백으로 적용된다
+        /// (AITWebGLCodeOptimization.TrySetDiskSizeLTO 참고 — 완전히 잠긴 레버가 아니라 열외).
+        ///
+        /// 수치 출처: 이 SDK 자체 CI Heavy 벤치마크 픽스처(에뮬레이트 네트워크 스로틀링) 실측치다.
+        /// 파트너 개별 프로젝트의 실제 개선폭을 보장하지 않으므로 항상 출처를 함께 표기한다.
+        /// </summary>
+        private static void LogEngineUpgradeAdvisory()
+        {
+            Debug.Log("[AIT]   ── 참고: Unity 6000+ 업그레이드 시 열리는 로딩 성능 레버 ──");
+            Debug.Log($"[AIT]     현재 {AITDefaultSettings.GetUnityVersionGroup()}에서는 다음 레버가 컴파일 타임에 잠겨 있습니다(Unity 6000.0+ 전용, 폴백 없음): " +
+                "IL2CPP Code Generation(OptimizeSize), WebAssembly 2023.");
+            Debug.Log("[AIT]     SDK 자체 CI Heavy 벤치마크 실측 참고치(에뮬레이트 네트워크 스로틀링 — 파트너 프로젝트 실제 개선폭을 보장하지 않음): " +
+                "2021.3 기본 posture TTFF -13.2%(gzip) 대비 동일 posture 기준 Unity 6000.0 -23.7% / 6000.3 -27.9%. " +
+                "풀 레버+Brotli 조합에서는 6000.3이 TTFF -44.7%/전송량 -59.1%까지 확인됐고, 2021.3은 CPU-bound 구간이라 " +
+                "동일 전송량 절감이 TTFF에 거의 반영되지 않았습니다.");
+            Debug.Log("[AIT]     위 레버가 없어도 압축·오디오/텍스처 스트리밍·폰트 subset 등 이 버전에서 유효한 최적화는 계속 자동 적용됩니다.");
         }
 
         /// <summary>

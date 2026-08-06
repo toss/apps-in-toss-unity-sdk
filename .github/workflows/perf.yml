@@ -1,5 +1,5 @@
 name: Perf (WebGL load-time TTFF)
-run-name: "Perf TTFF${{ github.event.pull_request.number && format(' - PR #{0}', github.event.pull_request.number) || format(' - {0}', github.ref_name) }}"
+run-name: "Perf TTFF${{ github.event.pull_request.number && format(' - PR #{0}', github.event.pull_request.number) || format(' - {0}', github.ref_name) }}${{ github.event_name == 'workflow_dispatch' && format(' [posture={0}, cf={1}]', inputs.posture || 'default', inputs.compression_format || '1') || '' }}"
 
 # WebGL 로드타임 최적화 레버(L2~L12) PR별 효과(Δ)를 격리 측정하는 perf CI.
 #
@@ -29,6 +29,15 @@ on:
       - '.github/workflows/unity-build.yml'
       - '.github/scripts/generate-perf-report.js'
   workflow_dispatch:
+    inputs:
+      compression_format:
+        description: 'WebGL 압축 포맷 (1=Gzip, 2=Brotli)'
+        type: string
+        default: '1'
+      posture:
+        description: '벤치 posture (default=자동 기본값, full=opt-in 레버 활성)'
+        type: string
+        default: 'default'
 
 concurrency:
   group: perf-${{ github.event.pull_request.number || github.ref }}
@@ -107,7 +116,8 @@ jobs:
       project-dir-prefix: HeavySampleUnityProject
       build-method: HeavyBuildRunner.CommandLineHeavyBuild
       fast-build: false      # release wasm(배포·preview 와 동일 프로필) — dev build/Debug il2cpp 비활성
-      compression-format: "1" # fast-build 가 표현 못 하는 유일 노브: gzip 으로 현실적 on-wire 측정
+      compression-format: ${{ inputs.compression_format || '1' }} # fast-build 가 표현 못 하는 유일 노브: gzip/brotli 로 현실적 on-wire 측정 (dispatch 로 브로틀리 등 선택 가능)
+      perf-posture: ${{ inputs.posture == 'full' && 'full' || '' }} # dispatch 에서 posture=full 이면 opt-in 레버(HeavyBuildRunner) 활성
     secrets:
       SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
       KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
@@ -182,9 +192,10 @@ jobs:
         env:
           UNITY_PROJECT_PATH: ${{ env.HEAVY_PROJECT }}
           PERF_UNITY_VERSION: ${{ matrix.unity-version }}
-          # 빌드와 동일 값으로 전파 — 결과 JSON의 buildType/compressionFormat에 기록
+          # 빌드와 동일 값으로 전파 — 결과 JSON의 buildType/compressionFormat/posture에 스탬프됨
           AIT_DEVELOPMENT_BUILD: "false"
-          AIT_COMPRESSION_FORMAT: "1"
+          AIT_COMPRESSION_FORMAT: ${{ inputs.compression_format || '1' }}
+          AIT_PERF_POSTURE: ${{ inputs.posture || 'default' }}
         run: pnpm run test:perf
 
       - name: Upload Perf Result

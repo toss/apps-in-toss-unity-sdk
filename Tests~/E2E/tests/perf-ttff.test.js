@@ -343,6 +343,7 @@ test('TTFF 실측 (median-of-N, record-only)', async ({ browser }) => {
     unityVersion: UNITY_VERSION,
     buildType: process.env.AIT_DEVELOPMENT_BUILD === 'true' ? 'development' : 'release',
     compressionFormat: process.env.AIT_COMPRESSION_FORMAT ?? null,
+    posture: process.env.AIT_PERF_POSTURE ?? null,
     project: PROJECT,
     timestamp: new Date().toISOString(),
     throttle: {
@@ -366,7 +367,7 @@ test('TTFF 실측 (median-of-N, record-only)', async ({ browser }) => {
   fs.writeFileSync(outPath, JSON.stringify(result, null, 2));
 
   console.log('\n' + '━'.repeat(72));
-  console.log(`📊 Perf TTFF — Unity ${UNITY_VERSION} (${result.buildType})`);
+  console.log(`📊 Perf TTFF — Unity ${UNITY_VERSION} (${result.buildType}, posture=${result.posture ?? 'default'})`);
   console.log('━'.repeat(72));
   console.log(`  TTFF median:      ${result.ttffMs.median !== null ? result.ttffMs.median.toFixed(0) + ' ms' : 'N/A'} ` +
     `(${ttffValues.length}/${ITERATIONS} valid)`);

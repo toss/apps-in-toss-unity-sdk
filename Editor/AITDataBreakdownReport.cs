@@ -162,19 +162,19 @@ namespace AppsInToss.Editor
                 return;
             }
 
-            // .data 로 식별되는 출력 파일만 모은다(Split Application Binary 등으로 여러 파트일 수 있어
-            // EndsWith가 아닌 Contains로 매칭). 하나도 없으면 과대추정 폴백 없이 진단을 건너뛴다.
+            // WebGL은 Split Application Binary(Android 전용)가 없어 출력 .data가 항상 하나이고, Unity가
+            // 직렬화한 파일들(level0 / sharedassets*.assets / resources.assets / globalgamemanagers*)이
+            // 그대로 그 하나의 .data 컨테이너로 묶인다. 즉 이 콜백 시점의 packedAssets 전체가 곧 .data의
+            // 내용물이므로 별도 필터가 필요 없다.
+            //
+            // 초기 구현은 shortPath에 ".data"가 포함된 항목만 골랐는데, shortPath는 컨테이너 이름이 아니라
+            // 그 안에 묶이는 직렬화 파일 이름이라 WebGL에서 매칭이 항상 0건이 되어 진단이 통째로
+            // 건너뛰어졌다(E2E 런 31134175566에서 확인).
+            LogPackedContainers(allRaw);
+
             var dataEntries = allRaw
-                .Where(e => e.ShortPath.IndexOf(".data", StringComparison.OrdinalIgnoreCase) >= 0)
                 .Select(e => (e.SourcePath, e.TypeName, e.Bytes))
                 .ToList();
-            if (dataEntries.Count == 0)
-            {
-                AITLog.Info(
-                    "[AIT-DataBreakdown] .data 출력 파일을 식별하지 못했습니다(버전/설정별 산출물 파일명 차이 " +
-                    "가능) — 진단을 건너뜁니다(빌드에는 영향 없음).");
-                return;
-            }
 
             long grandTotal = allRaw.Sum(e => e.Bytes);
 
@@ -185,6 +185,32 @@ namespace AppsInToss.Editor
 
             var result = Aggregate(dataEntries, grandTotal, TopAssetCount, tagMap);
             LogConsoleTable(result, countByLever, manifestFound);
+        }
+
+        /// <summary>
+        /// 패킹된 출력 파일 이름을 한 줄로 남긴다. .data에 무엇이 묶였는지의 근거이자, Unity 버전에 따라
+        /// shortPath 명명이 달라졌을 때 집계가 어긋난 원인을 빌드 로그만으로 판별하기 위한 관측 지점이다
+        /// (이 진단이 처음 무력화된 원인이 정확히 shortPath 형태에 대한 오해였다).
+        /// </summary>
+        private static void LogPackedContainers(List<RawPackedEntry> allRaw)
+        {
+            const int MaxNames = 8;
+
+            var names = allRaw
+                .Select(e => e.ShortPath)
+                .Where(p => !string.IsNullOrEmpty(p))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (names.Count == 0)
+                return;
+
+            string shown = string.Join(", ", names.Take(MaxNames));
+            string suffix = names.Count > MaxNames
+                ? $" 외 {(names.Count - MaxNames).ToString(CultureInfo.InvariantCulture)}개"
+                : string.Empty;
+            AITLog.Info(
+                $"[AIT-DataBreakdown] 패킹 출력 파일 {names.Count.ToString(CultureInfo.InvariantCulture)}개: {shown}{suffix}");
         }
 
         /// <summary>

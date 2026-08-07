@@ -56,3 +56,13 @@ BenchmarkResults/
 Assets/Resources/HeavyGen/
 Assets/Heavy/
 Assets/Heavy.meta
+
+# Deploy probe 픽스처: 빌드 시 DeployProbeBuildRunner가 생성하는 배포 검증용 콘텐츠
+# (SharedScripts 공용 스크립트라 Heavy 프로젝트에서 실행해도 생성될 수 있음 — 명시 필요).
+Assets/DeployProbeGen/
+Assets/DeployProbeGen.meta
+
+# TMP Essential Resources: DeployProbeBuildRunner가 TMP_FontAsset 생성을 위해 headless 임포트
+# (EnsureTmpEssentialResources) — 프로젝트 자산이 아닌 빌드 시점 산출물이므로 무시.
+Assets/TextMesh Pro/
+Assets/TextMesh Pro.meta

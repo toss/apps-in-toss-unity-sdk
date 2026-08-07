@@ -8,6 +8,7 @@
     "im.toss.sdk-test-scripts": "file:../../SharedScripts",
     "io.sentry.unity": "https://github.com/getsentry/unity.git#4.1.0",
     "com.unity.modules.animation": "1.0.0",
+    "com.unity.modules.assetbundle": "1.0.0",
     "com.unity.modules.audio": "1.0.0",
     "com.unity.modules.imageconversion": "1.0.0",
     "com.unity.modules.imgui": "1.0.0",
@@ -15,7 +16,8 @@
     "com.unity.modules.physics": "1.0.0",
     "com.unity.modules.ui": "1.0.0",
     "com.unity.modules.uielements": "1.0.0",
-    "com.unity.modules.unitywebrequest": "1.0.0"
+    "com.unity.modules.unitywebrequest": "1.0.0",
+    "com.unity.modules.unitywebrequestaudio": "1.0.0"
   },
   "testables": [
     "im.toss.sdk-test-scripts"

@@ -24,17 +24,31 @@ namespace AppsInToss.Editor
         public WebGLExceptionSupport exceptionSupport;
         public bool decompressionFallback;
         public bool nameFilesAsHashes;
+        // WebGL code optimization(Disk Size with LTO)은 버전별 enum이 달라 멤버 "이름"으로 보관.
+        // API 부재 버전에서는 null(복원 시 no-op). 적용/읽기는 AITWebGLCodeOptimization(reflection).
+        public string webGLCodeOptimization;
 
         // 일반 설정
         public Texture2D defaultCursor;
         public Vector2 cursorHotspot;
         public bool runInBackground;
         public bool stripEngineCode;
+        public bool mipStripping;
+        public bool stripUnusedMeshComponents;
+
+        // 스플래시 스크린(Unity 로고) 설정 — AITBuildInitializer.ApplyShowUnityLogoSetting 이
+        // Pro 라이선스에서만 일시적으로 끄고, 빌드 후 여기 캡처한 원래 값으로 되돌린다.
+        public bool splashScreenShow;
+        public bool splashScreenShowUnityLogo;
 
         // IL2CPP/Stripping 설정
         public ScriptingImplementation scriptingBackend;
         public ManagedStrippingLevel managedStrippingLevel;
         public Il2CppCompilerConfiguration il2cppCompilerConfiguration;
+#if UNITY_6000_0_OR_NEWER
+        public Il2CppCodeGeneration il2cppCodeGeneration;
+        public bool wasm2023;
+#endif
 
         // Stack Trace Log Type (LogType별)
         public StackTraceLogType stackTraceLogTypeError;
@@ -67,16 +81,24 @@ namespace AppsInToss.Editor
                 exceptionSupport = PlayerSettings.WebGL.exceptionSupport,
                 decompressionFallback = PlayerSettings.WebGL.decompressionFallback,
                 nameFilesAsHashes = PlayerSettings.WebGL.nameFilesAsHashes,
+                webGLCodeOptimization = AITWebGLCodeOptimization.GetCurrentName(),
 
                 defaultCursor = PlayerSettings.defaultCursor,
                 cursorHotspot = PlayerSettings.cursorHotspot,
                 runInBackground = PlayerSettings.runInBackground,
                 stripEngineCode = PlayerSettings.stripEngineCode,
+                mipStripping = PlayerSettings.mipStripping,
+                stripUnusedMeshComponents = PlayerSettings.stripUnusedMeshComponents,
+
+                splashScreenShow = PlayerSettings.SplashScreen.show,
+                splashScreenShowUnityLogo = PlayerSettings.SplashScreen.showUnityLogo,
 
 #if UNITY_6000_0_OR_NEWER
                 scriptingBackend = PlayerSettings.GetScriptingBackend(NamedBuildTarget.WebGL),
                 managedStrippingLevel = PlayerSettings.GetManagedStrippingLevel(NamedBuildTarget.WebGL),
                 il2cppCompilerConfiguration = PlayerSettings.GetIl2CppCompilerConfiguration(NamedBuildTarget.WebGL),
+                il2cppCodeGeneration = PlayerSettings.GetIl2CppCodeGeneration(NamedBuildTarget.WebGL),
+                wasm2023 = PlayerSettings.WebGL.wasm2023,
 #else
                 scriptingBackend = PlayerSettings.GetScriptingBackend(BuildTargetGroup.WebGL),
                 managedStrippingLevel = PlayerSettings.GetManagedStrippingLevel(BuildTargetGroup.WebGL),
@@ -128,16 +150,26 @@ namespace AppsInToss.Editor
             PlayerSettings.WebGL.exceptionSupport = exceptionSupport;
             PlayerSettings.WebGL.decompressionFallback = decompressionFallback;
             PlayerSettings.WebGL.nameFilesAsHashes = nameFilesAsHashes;
+            // 빌드 시 DiskSizeLTO로 바꿨더라도 빌드 후 사용자의 원래 설정으로 되돌린다(영구 오염 방지).
+            // null이면(캡처 당시 API 부재) no-op.
+            AITWebGLCodeOptimization.TrySetByName(webGLCodeOptimization);
 
             PlayerSettings.defaultCursor = defaultCursor;
             PlayerSettings.cursorHotspot = cursorHotspot;
             PlayerSettings.runInBackground = runInBackground;
             PlayerSettings.stripEngineCode = stripEngineCode;
+            PlayerSettings.mipStripping = mipStripping;
+            PlayerSettings.stripUnusedMeshComponents = stripUnusedMeshComponents;
+
+            PlayerSettings.SplashScreen.show = splashScreenShow;
+            PlayerSettings.SplashScreen.showUnityLogo = splashScreenShowUnityLogo;
 
 #if UNITY_6000_0_OR_NEWER
             PlayerSettings.SetScriptingBackend(NamedBuildTarget.WebGL, scriptingBackend);
             PlayerSettings.SetManagedStrippingLevel(NamedBuildTarget.WebGL, managedStrippingLevel);
             PlayerSettings.SetIl2CppCompilerConfiguration(NamedBuildTarget.WebGL, il2cppCompilerConfiguration);
+            PlayerSettings.SetIl2CppCodeGeneration(NamedBuildTarget.WebGL, il2cppCodeGeneration);
+            PlayerSettings.WebGL.wasm2023 = wasm2023;
 #else
             PlayerSettings.SetScriptingBackend(BuildTargetGroup.WebGL, scriptingBackend);
             PlayerSettings.SetManagedStrippingLevel(BuildTargetGroup.WebGL, managedStrippingLevel);

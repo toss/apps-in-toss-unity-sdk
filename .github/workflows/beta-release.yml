@@ -65,6 +65,16 @@ on:
         required: false
         type: boolean
         default: false
+      build_variant:
+        description: '채널 번들 마킹 식별자 (AITBuildVariant.Value 치환). beta-perf 릴리즈는 "perf" 전달, 빈 값이면 미치환(stable과 동일하게 빈 문자열 유지).'
+        required: false
+        type: string
+        default: ''
+      probe_build:
+        description: 'true면 deploy probe 빌드로 실행 — lazy 폰트 등 옵트인 레버 발화 + 산출물 어서션(DeployProbeBuildRunner). false(기본)는 기존 E2EBuildRunner 경로와 완전히 동일. 주의: probe 빌드도 실 콘솔 deploy 게이트로 배포됨 — 검증 전용이면 deploy_probe_only=true 를 함께 권장.'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -309,6 +319,31 @@ jobs:
       # `rm -rf Tests~/` 가 SharedScripts를 통째로 제거하므로 테스트 코드가 새어 나가지 않는다
       # (E2EBootstrapper/E2EBuildRunner 참조는 전부 Tests~/ 내부에만 존재 — shipped SDK 무관).
 
+      - name: buildVariant 채널 마킹 주입
+        run: |
+          BUILD_VARIANT="${{ inputs.build_variant }}"
+          FILE="Editor/AITBuildVariant.cs"
+
+          if [ -z "$BUILD_VARIANT" ]; then
+            echo "build_variant 미지정 — buildVariant 마킹 미치환(빈 문자열 유지, stable과 동일)"
+            exit 0
+          fi
+
+          if ! grep -q "AIT_BUILD_VARIANT_INJECT" "$FILE"; then
+            echo "::error::${FILE}에서 AIT_BUILD_VARIANT_INJECT 앵커를 찾을 수 없습니다. 치환 대상 라인이 바뀌었는지 확인하세요."
+            exit 1
+          fi
+
+          sed -i "/AIT_BUILD_VARIANT_INJECT/s/Value = \"\"/Value = \"${BUILD_VARIANT}\"/" "$FILE"
+
+          if ! grep -q "Value = \"${BUILD_VARIANT}\";" "$FILE"; then
+            echo "::error::buildVariant 치환 검증 실패 — ${FILE}에 Value = \"${BUILD_VARIANT}\"; 가 반영되지 않았습니다."
+            exit 1
+          fi
+
+          echo "buildVariant 채널 마킹 주입 완료: ${BUILD_VARIANT}"
+          grep "AIT_BUILD_VARIANT_INJECT" "$FILE"
+
       - name: Staging Orphan Commit 생성 및 push
         id: stage
         run: |
@@ -365,6 +400,9 @@ jobs:
       # 빌드한다. dev 빌드 wasm(6000.x ~134MiB)은 콘솔 번들 크기 제한을 초과해
       # 서버측 BUILD_FAILED가 난다 (2026-06 진단).
       fast-build: false
+      # probe_build=true면 DeployProbeBuildRunner(옵트인 레버 발화 + lazy 폰트 등 산출물 어서션)로
+      # 빌드한다. false(기본)는 기존 E2EBuildRunner.CommandLineBuild와 완전히 동일한 경로.
+      build-method: ${{ inputs.probe_build && 'DeployProbeBuildRunner.CommandLineDeployProbeBuild' || 'E2EBuildRunner.CommandLineBuild' }}
     secrets:
       AIT_AD_INTERSTITIAL_ID: ${{ secrets.AIT_AD_INTERSTITIAL_ID }}
       AIT_AD_REWARDED_ID: ${{ secrets.AIT_AD_REWARDED_ID }}
@@ -400,6 +438,8 @@ jobs:
       # macOS leg와 동일한 release 프로필로 빌드해 게시 게이트 검증의 일관성을
       # 유지한다 (베타 게시 대상 산출물은 dev 프로필이어선 안 됨).
       fast-build: false
+      # macOS leg와 동일 규칙(probe_build 입력을 그대로 반영).
+      build-method: ${{ inputs.probe_build && 'DeployProbeBuildRunner.CommandLineDeployProbeBuild' || 'E2EBuildRunner.CommandLineBuild' }}
     secrets:
       AIT_AD_INTERSTITIAL_ID: ${{ secrets.AIT_AD_INTERSTITIAL_ID }}
       AIT_AD_REWARDED_ID: ${{ secrets.AIT_AD_REWARDED_ID }}
@@ -471,6 +511,9 @@ jobs:
           UNITY_PROJECT_PATH: ${{ github.workspace }}/Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}
           AIT_DEVELOPMENT_BUILD: "true"
           AIT_COMPRESSION_FORMAT: "0"
+          # F2: probe_build 입력을 그대로 반영 — true 면 e2e-lazy-font.test.js 가 lazy manifest
+          # 부재를 skip 대신 명시적 실패로 처리한다(조용한 green 방지). false(기본)는 가드 비활성.
+          AIT_EXPECT_DEPLOY_PROBE: ${{ inputs.probe_build }}
         run: pnpm test
 
       - name: 베타 ait deploy 검증 (게시 게이트)
@@ -481,16 +524,26 @@ jobs:
         #
         # 게시 게이트: 배포 실패 시 이 잡이 fail → publish-beta 스킵 → 배포 불가한 베타가 파일럿
         #   채널에 게시되는 것 차단. 분기:
-        #   - AIT_DEPLOY_KEY 미설정(로컬/포크) → 검증 건너뜀(exit 0).
-        #   - 타임아웃(5분) → 콘솔측 지연으로 간주, 경고만 남기고 통과(exit 0, 재실행 권장).
-        #   - 그 외 배포 실패 → 게이트 차단(exit 비0). 서버측 상태를 deployment GET으로 덤프해 진단.
+        #   - AIT_DEPLOY_KEY 미설정: canonical 저장소의 실제 게시 경로(deploy_probe_only=false)면
+        #     게이트 차단(exit 1) — 배포 검증 없이 파일럿 채널 게시 불가. 포크/로컬 또는
+        #     probe-only 실행은 검증 건너뜀(exit 0).
+        #   - 타임아웃(5분, exit 124) → 배포 검증 미완료이므로 게이트 차단(전이 지연이면 재실행).
+        #   - 그 외 배포 실패(서버측 BUILD_FAILED 등 ait CLI 비0 종료 포함) → 게이트 차단(exit 비0).
+        #     서버측 상태를 deployment GET으로 덤프해 진단.
         if: matrix.unity-version == fromJSON(needs.beta-prepare.outputs.macos_versions)[0]
         working-directory: ${{ env.AIT_BUILD_DIR }}
         env:
           AIT_DEPLOY_KEY: ${{ secrets.AIT_DEPLOY_KEY }}
+          # 실제 파일럿 채널 게시로 이어지는 컨텍스트 판별용(포크/로컬/probe-only 구분).
+          IS_CANONICAL: ${{ github.repository_owner == 'toss' }}
+          DEPLOY_PROBE_ONLY: ${{ inputs.deploy_probe_only }}
         run: |
           if [ -z "$AIT_DEPLOY_KEY" ]; then
-            echo "::warning::AIT_DEPLOY_KEY 미설정 — 베타 배포 검증을 건너뜁니다."
+            if [ "$IS_CANONICAL" = "true" ] && [ "$DEPLOY_PROBE_ONLY" != "true" ]; then
+              echo "::error::AIT_DEPLOY_KEY 미설정 — canonical 저장소의 파일럿 채널 게시 경로(deploy_probe_only=false)에서는 배포 검증 없이 진행할 수 없습니다. 게시 게이트 차단(publish-beta 스킵)."
+              exit 1
+            fi
+            echo "::warning::AIT_DEPLOY_KEY 미설정 — 포크/로컬 또는 probe-only 실행으로 간주해 베타 배포 검증을 건너뜁니다."
             exit 0
           fi
           echo "베타 배포 실행 (pnpm run deploy = 프로젝트 ait): $(pwd)"
@@ -532,8 +585,8 @@ jobs:
           fi
 
           if [ "$DEPLOY_STATUS" -eq 124 ]; then
-            echo "::warning::베타 배포 타임아웃 (5분 초과) — 콘솔측 지연으로 간주, 게이트 통과(재실행 권장)"
-            exit 0
+            echo "::error::베타 배포 타임아웃 (5분 초과) — 배포 검증이 완료되지 않았으므로 게시 게이트를 차단합니다(publish-beta 스킵). 콘솔측 전이 지연이 의심되면 이 잡을 재실행하세요."
+            exit 124
           elif [ "$DEPLOY_STATUS" -ne 0 ]; then
             echo "::error::베타 ait deploy 실패 (exit ${DEPLOY_STATUS}) — 게시 게이트 차단, publish-beta 스킵됨"
             exit "$DEPLOY_STATUS"
@@ -636,6 +689,9 @@ jobs:
           UNITY_PROJECT_PATH: ${{ github.workspace }}/Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}
           AIT_DEVELOPMENT_BUILD: "true"
           AIT_COMPRESSION_FORMAT: "0"
+          # F2: probe_build 입력을 그대로 반영 — true 면 e2e-lazy-font.test.js 가 lazy manifest
+          # 부재를 skip 대신 명시적 실패로 처리한다(조용한 green 방지). false(기본)는 가드 비활성.
+          AIT_EXPECT_DEPLOY_PROBE: ${{ inputs.probe_build }}
         run: pnpm test
 
       - name: Upload Playwright Report
@@ -652,6 +708,9 @@ jobs:
   # 베타 게시: 빌드 + E2E + 배포 검증 성공 후 staging 트리를 channel_ref로 승격
   # 빌드/E2E/배포 실패 시 게시하지 않음 → 깨졌거나 배포 불가한 SDK로 채널이 갱신되는 것 방지.
   # deploy_probe_only=true면 게시를 건너뛴다 — deploy 게이트만 점검하고 파일럿 채널은 건드리지 않음.
+  # skip-build 전략(skip_build=true)은 빌드/E2E/배포 게이트가 전부 스킵되어 검증 산출물이 없으므로
+  #   게시하지 않는다 — 검증되지 않은 트리가 파일럿 채널에 게시되는 것 차단. 또한 macOS E2E+배포
+  #   게이트(e2e-beta-macos)가 실제로 'success'여야만 게시한다(스킵 허용 안 함).
   # =====================================================
   publish-beta:
     name: 베타 채널 게시
@@ -660,10 +719,11 @@ jobs:
     if: |
       always() &&
       inputs.deploy_probe_only != true &&
+      needs.beta-prepare.outputs.skip_build != 'true' &&
       needs.beta-prepare.result == 'success' &&
       (needs.build-beta-macos.result == 'success' || needs.build-beta-macos.result == 'skipped') &&
       (needs.build-beta-windows.result == 'success' || needs.build-beta-windows.result == 'skipped') &&
-      (needs.e2e-beta-macos.result == 'success' || needs.e2e-beta-macos.result == 'skipped') &&
+      needs.e2e-beta-macos.result == 'success' &&
       (needs.e2e-beta-windows.result == 'success' || needs.e2e-beta-windows.result == 'skipped')
 
     outputs:

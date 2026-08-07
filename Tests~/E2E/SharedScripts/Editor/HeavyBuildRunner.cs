@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEditor;
 using System.IO;
 using System.Collections.Generic;
+using AppsInToss;
 
 /// <summary>
 /// 로딩 성능 실측(perf) 하네스용 빌드 진입점.
@@ -47,6 +48,21 @@ public class HeavyBuildRunner
             Debug.LogError("========================================");
             EditorApplication.Exit(1);
             return;
+        }
+
+        // perf full posture: 기본 자동 모드에선 꺼져 있는 opt-in 레버를 명시 활성화한다
+        // (fontSubset 은 언어 선택 게이트, audioStreamTranscode/textureStreamJpeg 는 opt-in 기본 OFF).
+        // dispatch 의 posture=full 이 unity-build.yml → AIT_PERF_POSTURE=full 로 전파된 것.
+        var posture = System.Environment.GetEnvironmentVariable("AIT_PERF_POSTURE");
+        if (posture == "full")
+        {
+            var config = UnityUtil.GetEditorConf();
+            config.fontSubsetLanguages = "ko";   // 자동 모드 언어 선택 게이트 통과 → 부팅 subset 발화
+            config.audioStreamTranscode = 1;     // opt-in
+            config.textureStreamJpeg = 1;        // opt-in
+            EditorUtility.SetDirty(config);
+            AssetDatabase.SaveAssets();
+            Debug.Log("[heavy] full posture 적용: fontSubsetLanguages=ko, audioStreamTranscode=1, textureStreamJpeg=1");
         }
 
         // 생성 콘텐츠가 임포트된 상태에서 검증된 E2E 빌드 파이프라인을 그대로 재사용.

@@ -9,6 +9,14 @@
 // Unity 빌드 설정에서 주입되는 값 (빌드 시 치환됨)
 var AIT_BUILD_IS_PRODUCTION = '%AIT_IS_PRODUCTION%';
 
+// 번들 마킹 — 이 SDK 변형(perf 채널 등)으로 생성된 번들을 클라이언트/RUM 에서 식별.
+// 빌드 시 %AIT_BUILD_VARIANT% 가 치환됨(미치환/main 산출 시 빈 문자열).
+// window.AITLoading.buildVariant 와 별개로 평면 글로벌로도 노출해 객체 리팩터링에 견고.
+var AIT_BUILD_VARIANT = '%AIT_BUILD_VARIANT%';
+if (typeof window !== 'undefined') {
+    window.AITBuildVariant = AIT_BUILD_VARIANT;
+}
+
 // 프로덕션 환경 감지: 빌드 설정만 사용
 var IS_PRODUCTION = (AIT_BUILD_IS_PRODUCTION === 'true');
 

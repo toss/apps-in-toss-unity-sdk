@@ -26,8 +26,8 @@ importers:
         specifier: 2.10.8
         version: 2.10.8(@apps-in-toss/web-bridge@2.10.8)
       '@apps-in-toss/web-framework':
-        specifier: 3.0.1
-        version: 3.0.1(typanion@3.14.0)(typescript@7.0.2)
+        specifier: 3.0.2
+        version: 3.0.2(typanion@3.14.0)(typescript@7.0.2)
     devDependencies:
       typescript:
         specifier: 7.0.2
@@ -63,8 +63,8 @@ packages:
   '@apps-in-toss/web-bridge@2.10.8':
     resolution: {integrity: sha512-P9AMSvBblL6YochydWfFdhP/OuOFTZFpIVt8wMpm7EUKJ60u+eQZTsiaXubrXWeL7SRDLrYXTz+MMmuTk5A7WQ==}
 
-  '@apps-in-toss/web-framework@3.0.1':
-    resolution: {integrity: sha512-cSLQ3GgOih6FLzCa24+hWZp1FuRwlwghrJRqoBHF9iAUtninkHy777uACBYzxmCgZ1+bDbhHgIlRYBqk43eJmQ==}
+  '@apps-in-toss/web-framework@3.0.2':
+    resolution: {integrity: sha512-O5KjIMPwI9Wo2Vu8khBqP66zca0XsnFnIusF8KZ9vXH80cLg5oRTTaT+BFAnIWvHxkS4b4sDhK/ybJwiX9/HgQ==}
     hasBin: true
 
   '@babel/code-frame@7.29.7':
@@ -1071,7 +1071,7 @@ snapshots:
     dependencies:
       '@apps-in-toss/types': 2.10.8
 
-  '@apps-in-toss/web-framework@3.0.1(typanion@3.14.0)(typescript@7.0.2)':
+  '@apps-in-toss/web-framework@3.0.2(typanion@3.14.0)(typescript@7.0.2)':
     dependencies:
       '@apps-in-toss/cli': 3.0.2(typanion@3.14.0)
       '@webview-bridge/web': 1.7.9

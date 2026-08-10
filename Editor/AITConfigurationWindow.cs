@@ -531,6 +531,8 @@ namespace AppsInToss.Editor
             DrawTextureSizeClampSetting();
             // 콘텐츠 최적화 — ASTC 블록 에스컬레이션
             DrawAstcBlockSetting();
+            // 콘텐츠 최적화 — Mesh 압축 (정점 데이터 양자화)
+            DrawMeshCompressionSetting();
             // 콘텐츠 최적화 — 폰트 CJK subset (.data 폰트 데이터 축소)
             DrawFontSubsetSetting();
 
@@ -2442,6 +2444,8 @@ namespace AppsInToss.Editor
             if (config.textureStreamJpeg >= 0 && (config.textureStreamJpeg == 1) != defaultStreamJpeg) count++;
             bool defaultAstcBlock = AITDefaultSettings.GetDefaultAstcBlockEscalation();
             if (config.astcBlockEscalation >= 0 && (config.astcBlockEscalation == 1) != defaultAstcBlock) count++;
+            bool defaultMeshCompression = AITDefaultSettings.GetDefaultMeshCompression();
+            if (config.meshCompression >= 0 && (config.meshCompression == 1) != defaultMeshCompression) count++;
             // 폰트 subset: 비활성(0)·명시 활성(1)이거나 수동 override(target/range/추가범위/제외경로/언어 지정)면 변경으로 집계.
             if (config.fontSubset == 0
                 || config.fontSubset == 1
@@ -2552,6 +2556,48 @@ namespace AppsInToss.Editor
             );
         }
 
+        private void DrawMeshCompressionSetting()
+        {
+            bool defaultValue = AITDefaultSettings.GetDefaultMeshCompression();
+            bool isModified = config.meshCompression >= 0 && (config.meshCompression == 1) != defaultValue;
+
+            EditorGUILayout.LabelField("콘텐츠 최적화 — Mesh 압축", EditorStyles.boldLabel);
+
+            EditorGUILayout.BeginHorizontal();
+
+            DrawModifiedIndicator(isModified);
+
+            string autoLabel = defaultValue ? "활성화" : "비활성화";
+            string label = config.meshCompression < 0
+                ? $"Mesh 압축 (자동: {autoLabel})"
+                : "Mesh 압축";
+
+            string[] options = { $"자동 ({autoLabel})", "비활성화", "활성화" };
+            int currentIndex = config.meshCompression < 0 ? 0 : config.meshCompression + 1;
+            int newIndex = EditorGUILayout.Popup(
+                new GUIContent(label,
+                    "대상 Mesh(모델 임포트 자산 및 직렬화 Mesh .asset)의 압축 설정을 빌드 시 일시적으로 Medium 으로 올려 " +
+                    "정점 데이터(position/normal/uv/tangent)를 양자화합니다. lossy. 빌드 후 원본 압축 설정으로 복원합니다."),
+                currentIndex,
+                options
+            );
+            config.meshCompression = newIndex == 0 ? -1 : newIndex - 1;
+
+            if (isModified && DrawResetButton())
+            {
+                config.meshCompression = -1;
+            }
+
+            EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.HelpBox(
+                "⚠ 손실: 정점 데이터를 양자화합니다. 대형 지형/정밀 지오메트리에서 아티팩트가 보일 수 있으므로 " +
+                "켠 뒤 빌드 결과를 반드시 시각 확인하세요. 시각 검증 전까지는 자동 모드가 비활성입니다.\n" +
+                "빌드 완료 후 원본 압축 설정이 자동으로 복원됩니다(비파괴).",
+                MessageType.Warning
+            );
+        }
+
         private void ResetWebGLSettings()
         {
             ResetWebGLOptimizationDefaults(config);
@@ -2622,6 +2668,9 @@ namespace AppsInToss.Editor
             config.astcBlockAtlas = true;
             config.astcBlockDirs = "";
             config.astcBlockExcludeDirs = "";
+
+            // 콘텐츠 최적화 — Mesh 압축
+            config.meshCompression = -1;
 
             // 콘텐츠 최적화 — 폰트 CJK subset
             config.fontSubset = -1;

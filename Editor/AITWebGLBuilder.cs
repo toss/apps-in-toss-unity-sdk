@@ -176,6 +176,7 @@ namespace AppsInToss.Editor
             AITTextureCrunchProcessor.CrunchHandle textureCrunchHandle = null;
             AITTextureSizeClampProcessor.ClampHandle textureClampHandle = null;
             AITAstcBlockProcessor.AstcBlockHandle astcBlockHandle = null;
+            AITMeshCompressionProcessor.MeshCompressionHandle meshCompressionHandle = null;
             AITFontSubsetProcessor.FontHandle fontSubsetHandle = null;
             AITLargeTextureExternalizer.TextureStreamHandle textureStreamHandle = null;
             AITFontExternalizer.FontStreamHandle fontStreamHandle = null;
@@ -195,6 +196,8 @@ namespace AppsInToss.Editor
                 textureClampHandle = AITTextureSizeClampProcessor.ApplyForBuild(config);
                 // 콘텐츠 최적화 — ASTC 블록 에스컬레이션 (빌드 산출물 .data 축소, 빌드 후 임포터 원복)
                 astcBlockHandle = AITAstcBlockProcessor.ApplyForBuild(config);
+                // 콘텐츠 최적화 — Mesh 압축 (정점 데이터 양자화로 .data 축소, 빌드 후 원본 압축 설정 복원)
+                meshCompressionHandle = AITMeshCompressionProcessor.ApplyForBuild(config);
                 // 콘텐츠 최적화 — 폰트 CJK subset (.data 폰트 데이터 축소, 빌드 후 원본 폰트 복원)
                 fontSubsetHandle = AITFontSubsetProcessor.ApplyForBuild(config);
                 // 콘텐츠 최적화 — 대형 텍스처 외부화 (초기 .data 에서 분리, 빌드 후 임포터/소스 원복)
@@ -215,14 +218,16 @@ namespace AppsInToss.Editor
                 // (순서가 어긋나면 뒤에 적용된 프로세서가 자신의 "이미 변형된" 스냅샷을 마지막에
                 //  덮어써 파트너 에셋이 매 빌드마다 영구 오염된다 — 교차-프로세서 복원 버그.)
                 //
-                // 적용 순서: audioStream → audioReencode → crunch → clamp → ASTC → fontSubset → texStream → fontStream
-                // 복원 순서: fontStream → texStream → fontSubset → ASTC → clamp → crunch → audioReencode → audioStream
+                // 적용 순서: audioStream → audioReencode → crunch → clamp → ASTC → meshCompression → fontSubset → texStream → fontStream
+                // 복원 순서: fontStream → texStream → fontSubset → meshCompression → ASTC → clamp → crunch → audioReencode → audioStream
                 // 콘텐츠 최적화 — 대형 폰트 deferral 원복(임포터 설정 복원) (빌드 성공/실패 무관)
                 AITFontExternalizer.RestoreForBuild(fontStreamHandle);
                 // 콘텐츠 최적화 — 대형 텍스처 외부화 원복(소스/임포터 복원) (빌드 성공/실패 무관)
                 AITLargeTextureExternalizer.RestoreForBuild(textureStreamHandle);
                 // 콘텐츠 최적화 — 폰트 subset 원본 폰트 복원 (빌드 성공/실패 무관)
                 AITFontSubsetProcessor.RestoreForBuild(fontSubsetHandle);
+                // 콘텐츠 최적화 — Mesh 압축 원본 압축 설정 원복 (빌드 성공/실패 무관)
+                AITMeshCompressionProcessor.RestoreForBuild(meshCompressionHandle);
                 // ASTC 블록 에스컬레이션 복원 (성공/실패 무관)
                 AITAstcBlockProcessor.RestoreForBuild(astcBlockHandle);
                 // 콘텐츠 최적화 — 텍스처 크기 클램프 임포터 설정 원복 (빌드 성공/실패 무관)

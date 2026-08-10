@@ -104,18 +104,46 @@ namespace AppsInToss
     /// Devtools(@apps-in-toss/devtools) 설정 — Dev Server 브라우저에서 SDK API를 Mock으로 동작시키는
     /// vite unplugin/패널/MCP 옵션. 빌드 산출물에 영향을 주지 않으므로(server-only) 빌드 프로필이 아닌
     /// config 직속으로 둔다.
+    ///
+    /// 주의(zero-fill 함정): Unity는 중첩 [Serializable] 클래스를 역직렬화할 때 생성자/필드 초기화식을
+    /// 실행하지 않고 필드를 zero-fill한다. devtools 블록이 없는 구버전 AITConfig.asset을 로드하면
+    /// 이 클래스가 통째로 zero-fill되므로, enabled/panel을 긍정형 필드로 두면 false로 굳어 devtools가
+    /// 조용히 꺼진다. 그래서 직렬화 필드는 부정형(disableMock/hidePanel)으로 두어 zero-fill(false)이
+    /// 곧 "기본 활성"이 되게 하고, 공개 API(enabled/panel)는 이를 반전한 프로퍼티로 노출한다.
     /// </summary>
     [System.Serializable]
     public class AITDevtoolsSettings
     {
-        [Tooltip("Dev Server에서 devtools mock(브라우저 로컬 SDK 모의 동작)을 사용합니다")]
-        public bool enabled = true;
+        [SerializeField]
+        [Tooltip("Dev Server에서 devtools mock(브라우저 로컬 SDK 모의 동작)을 사용하지 않습니다. 기본값 false(=mock 사용) — zero-fill 안전")]
+        private bool disableMock = false;
 
-        [Tooltip("devtools 플로팅 패널(Mock 상태 제어 UI)을 표시합니다")]
-        public bool panel = true;
+        [SerializeField]
+        [Tooltip("devtools 플로팅 패널(Mock 상태 제어 UI)을 숨깁니다. 기본값 false(=패널 표시) — zero-fill 안전")]
+        private bool hidePanel = false;
 
         [Tooltip("AI 에이전트가 제어할 수 있는 MCP 엔드포인트를 엽니다")]
         public bool mcp = false;
+
+        /// <summary>
+        /// Dev Server에서 devtools mock(브라우저 로컬 SDK 모의 동작) 사용 여부.
+        /// 직렬화 필드 disableMock을 반전해 노출한다(zero-fill = 기본 true).
+        /// </summary>
+        public bool enabled
+        {
+            get => !disableMock;
+            set => disableMock = !value;
+        }
+
+        /// <summary>
+        /// devtools 플로팅 패널(Mock 상태 제어 UI) 표시 여부.
+        /// 직렬화 필드 hidePanel을 반전해 노출한다(zero-fill = 기본 true).
+        /// </summary>
+        public bool panel
+        {
+            get => !hidePanel;
+            set => hidePanel = !value;
+        }
     }
 
     /// <summary>

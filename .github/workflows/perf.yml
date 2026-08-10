@@ -39,7 +39,7 @@ on:
         type: string
         default: '1'
       posture:
-        description: '벤치 posture (default=자동 기본값, full=opt-in 레버 활성)'
+        description: '벤치 posture (default=자동 기본값, full=opt-in 레버 활성, fullmesh=full+meshCompression — Mesh 레버 A/B용)'
         type: string
         default: 'default'
       net_profile:
@@ -131,7 +131,7 @@ jobs:
       build-method: HeavyBuildRunner.CommandLineHeavyBuild
       fast-build: false      # release wasm(배포·preview 와 동일 프로필) — dev build/Debug il2cpp 비활성
       compression-format: ${{ inputs.compression_format || '1' }} # fast-build 가 표현 못 하는 유일 노브: gzip/brotli 로 현실적 on-wire 측정 (dispatch 로 브로틀리 등 선택 가능)
-      perf-posture: ${{ inputs.posture == 'full' && 'full' || '' }} # dispatch 에서 posture=full 이면 opt-in 레버(HeavyBuildRunner) 활성
+      perf-posture: ${{ (inputs.posture == 'full' || inputs.posture == 'fullmesh') && inputs.posture || '' }} # dispatch 에서 posture=full/fullmesh 면 opt-in 레버(HeavyBuildRunner) 활성 — fullmesh 는 full+meshCompression
       # net_profile(measure-ttff 스로틀 축)은 의도적으로 여기서 참조하지 않는다 — 네트워크/CPU
       # 스로틀은 브라우저 측 CDP 에뮬레이션(Emulation.setCPUThrottlingRate / Network.emulateNetworkConditions)
       # 이라 빌드 산출물(wasm/data/js 바이트)에 아무 영향이 없다. 즉 build-heavy 는 net_profile 값과

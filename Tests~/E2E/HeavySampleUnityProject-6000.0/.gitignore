@@ -57,6 +57,10 @@ Assets/Resources/HeavyGen/
 Assets/Heavy/
 Assets/Heavy.meta
 
+# Heavy perf 픽스처(Resources 밖): OBJ 메시 세트 + 렌더러 갤러리 씬 (HeavyBuildRunner 생성)
+Assets/HeavyGen/
+Assets/HeavyGen.meta
+
 # Deploy probe 픽스처: 빌드 시 DeployProbeBuildRunner가 생성하는 배포 검증용 콘텐츠
 # (SharedScripts 공용 스크립트라 Heavy 프로젝트에서 실행해도 생성될 수 있음 — 명시 필요).
 Assets/DeployProbeGen/

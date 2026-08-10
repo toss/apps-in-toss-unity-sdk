@@ -492,6 +492,16 @@ namespace AppsInToss
 
         [Tooltip("제외할 폴더(쉼표 구분, Assets/ 기준). 사용자 escape hatch.")]
         public string textureClampExcludeDirs = "";
+        [Header("콘텐츠 최적화 — Mesh 압축 (lossy, 시각 검증 전 기본 OFF)")]
+        [Tooltip("-1 = 자동(현재 비활성), 0 = 비활성, 1 = 활성. " +
+                 "대상 Mesh(모델 임포트 자산 및 직렬화 Mesh .asset)의 압축 설정을 빌드 시 일시적으로 Medium 으로 올려 " +
+                 "정점 데이터(position/normal/uv/tangent)를 양자화하여 .data 크기를 줄입니다. " +
+                 "모델 임포트 자산은 meshCompression 이 Off 인 것만 상향하고(이미 설정된 값은 존중), " +
+                 "직렬화 Mesh .asset 은 MeshUtility.SetMeshCompression 으로 직접 적용합니다. " +
+                 "⚠ 손실 — 정점 데이터 양자화(대형 지형/정밀 지오메트리는 아티팩트 위험)라 켠 뒤 시각 검증이 필요하며, " +
+                 "시각 검증 전까지는 명시 활성(1)에서만 동작합니다(audioStreamTranscode/textureStreamJpeg 와 동일 posture). " +
+                 "빌드 후 원본 압축 설정/바이트로 복원합니다.")]
+        public int meshCompression = -1;
         [Header("콘텐츠 최적화 — 폰트 CJK subset")]
         [Tooltip("크고(≥1MB) 빌드에 포함될 가능성이 있는 .ttf/.otf 를 자동 탐지해, 프로젝트에 실제 등장하는 " +
                  "문자체계의 유니코드 블록 전체를 보존하도록 subset 합니다(.data 폰트 데이터 급감, CJK 풀 폰트 5~15MB → ~0.1MB). " +
@@ -1168,6 +1178,17 @@ namespace AppsInToss
         /// 전까지 auto 는 OFF — 명시 활성(textureStreamJpeg==1)에서만 동작한다.
         /// </summary>
         public static bool GetDefaultTextureStreamJpeg()
+        {
+            return false;
+        }
+
+        /// <summary>
+        /// 기본 Mesh 압축(정점 데이터 양자화) 활성 여부.
+        /// audioStreamTranscode/textureStreamJpeg 와 동일 posture(품질 게이트 미통과 opt-in 패턴)로,
+        /// 자동(-1)은 항상 비활성 — meshCompression == 1(명시 활성)에서만 동작한다. 대형 지형/정밀
+        /// 지오메트리에서 양자화 아티팩트가 보일 수 있어 시각 검증 게이트를 통과하기 전까지 auto 는 OFF.
+        /// </summary>
+        public static bool GetDefaultMeshCompression()
         {
             return false;
         }

@@ -160,6 +160,75 @@ function aitDevtoolsPanelPlugin(): Plugin {
     },
   };
 }
+/**
+ * Unity WASM 스트리밍 컴파일용 네이티브 fetch 보호 플러그인.
+ *
+ * 근본 원인: SDK 자체 번들 Dev Console(vConsole, Runtime/devconsole/vconsole.min.js)의
+ * Network 패널이 `new VConsole(...)` 생성 시 자동으로 window.fetch를 `Proxy(fetch, ...)`로
+ * 교체하고, 응답도 `new Proxy(response, ...)`로 감싸 반환한다. 이 Proxy는 instanceof/duck
+ * typing은 모두 통과하지만 V8의 WebAssembly.compileStreaming/instantiateStreaming 내부
+ * 브랜드 체크(엔진 내부 슬롯 확인, Proxy로는 위장 불가)를 통과하지 못해
+ * "wasm streaming compile failed" → ArrayBuffer 폴백(다운로드/컴파일 오버랩 상실)이 발생한다.
+ *
+ * Dev Console은 `enableDebugConsole` Unity 빌드 프로필 플래그로 켜지며, 이 vite 레벨의
+ * AIT_DEVTOOLS/AIT_DEVTOOLS_PANEL과는 완전히 독립적이다(실측 확인: AIT_DEVTOOLS=0 이어도
+ * 재현됨) — 따라서 이 가드는 devtoolsEnabled 여부와 무관하게 항상 설치한다.
+ *
+ * head-prepend + order:'pre'로 문서 최초 스크립트로 실행시켜 native fetch를 스냅샷하고,
+ * window.fetch를 accessor property로 재정의해 이후 어떤 스크립트가 `window.fetch = X`를
+ * 대입하더라도(vConsole 포함, 설치 타이밍 무관) 실제로는 "delegate"에만 저장되도록 가로챈다.
+ * Build 산출물(.unityweb/.wasm/.data, /Build/ 경로) 요청만 항상 캡처해둔 네이티브 fetch로
+ * 우회시키고, 그 외 요청은 delegate(= vConsole 등이 마지막으로 설치한 patched fetch)로
+ * 위임해 Network 탭 가시성을 유지한다.
+ */
+function aitNativeFetchGuardPlugin(): Plugin {
+  return {
+    name: 'ait-native-fetch-guard',
+    apply: 'serve',
+    transformIndexHtml: {
+      order: 'pre',
+      handler() {
+        const script = [
+          '(function () {',
+          '  if (typeof window === "undefined" || typeof window.fetch !== "function") return;',
+          '  var nativeFetch = window.fetch;',
+          '  var delegate = nativeFetch;',
+          '  function isBuildAssetUrl(input) {',
+          '    var url = "";',
+          '    if (typeof input === "string") url = input;',
+          '    else if (input && typeof input.url === "string") url = input.url;',
+          '    else return false;',
+          '    return /\\/Build\\//.test(url) || /\\.(unityweb|wasm|data)(\\?|$)/.test(url);',
+          '  }',
+          '  function stableFetch() {',
+          '    var fn = isBuildAssetUrl(arguments[0]) ? nativeFetch : delegate;',
+          '    return fn.apply(window, arguments);',
+          '  }',
+          '  try {',
+          '    Object.defineProperty(window, "fetch", {',
+          '      configurable: true,',
+          '      enumerable: true,',
+          '      get: function () { return stableFetch; },',
+          '      set: function (v) { delegate = v; },',
+          '    });',
+          '  } catch (e) {',
+          '    console.warn("[AIT] native fetch guard install failed:", e);',
+          '  }',
+          '})();',
+        ].join('\n');
+
+        return [
+          {
+            tag: 'script',
+            attrs: {},
+            injectTo: 'head-prepend' as const,
+            children: script,
+          },
+        ];
+      },
+    },
+  };
+}
 //// SDK_PLUGINS_END ////
 
 //// SDK_GENERATED_START - DO NOT EDIT THIS SECTION ////
@@ -204,7 +273,9 @@ async function sdkConfig(env: ConfigEnv): Promise<UserConfig> {
   return {
     // Unity WebGL 압축 파일 헤더 처리 플러그인. devtools는 항상 맨 앞에 위치
     // (web-framework → devtools mock alias가 다른 플러그인보다 먼저 걸려야 함)
-    plugins: [...devtoolsPlugins, unityWebContentEncodingPlugin()],
+    // native-fetch-guard는 devtoolsEnabled와 무관하게(enableDebugConsole은 별도 게이트)
+    // 항상 포함 — apply:'serve'라 build/preview에는 어차피 적용 안 됨.
+    plugins: [aitNativeFetchGuardPlugin(), ...devtoolsPlugins, unityWebContentEncodingPlugin()],
     // Apps in Toss 플랫폼에서 서브 경로 호스팅을 위해 상대 경로 사용
     base: './',
     server: {

@@ -67,7 +67,7 @@ SDK 템플릿 검색 순서:
 2. `Packages/com.appsintoss.miniapp/WebGLTemplates/`
 3. Assembly 경로 기반 (`typeof(AITConvertCore).Assembly.Location` 상위)
 
-프로젝트에 `Assets/WebGLTemplates/AITTemplate/`이 없으면 전체를 복사하고, 있으면 마커 기반으로 갱신해 사용자 커스텀 영역을 보존합니다. [템플릿 병합 시점](#템플릿-병합-시점)을 참고하세요.
+프로젝트에 `Assets/WebGLTemplates/AITTemplate/`이 없으면 전체를 복사하고, 있으면 마커 기반으로 갱신해 사용자 커스텀 영역을 보존합니다. 아래 **템플릿 병합 시점** 절을 참고하세요.
 
 ### 빌드 설정
 
@@ -238,7 +238,7 @@ webgl/
 └── index.html                   → ait-build/index.html (치환 후)
 ```
 
-이 과정에서 [플레이스홀더 치환](#플레이스홀더-치환)과 로딩 화면 삽입이 함께 일어납니다. 로딩 화면 자체의 동작과 커스터마이징은 [로딩 화면 커스터마이징](LoadingScreenCustomization.md)이 정본입니다.
+이 과정에서 플레이스홀더 치환과 로딩 화면 삽입이 함께 일어납니다. 치환 규칙은 아래 **플레이스홀더 치환** 절에 있습니다. 로딩 화면 자체의 동작과 커스터마이징은 [로딩 화면 커스터마이징](LoadingScreenCustomization.md)이 정본입니다.
 
 ### pnpm install
 

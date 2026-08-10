@@ -2,6 +2,8 @@
 
 SDK를 설치하고 첫 빌드를 띄우기까지 필요한 것만 순서대로 담았습니다.
 
+Apps in Toss Unity SDK를 사용하면 별도의 Vite 프로젝트 구성이나 JS Bridge 구현 없이 Unity 프로젝트를 미니앱으로 포팅할 수 있습니다. 로딩 화면이 SDK에 기본 포함되어 있고, 첫 상호작용까지 걸린 시간, 프레임 스톨, 에러·예외, 메모리 경고 같은 런타임 이벤트가 사용자 코드 없이 자동으로 수집됩니다(자세한 내용은 [SDK 이벤트 로깅](Metrics.md) 참고).
+
 ## SDK 설치
 
 ### Package Manager로 설치
@@ -30,6 +32,15 @@ https://github.com/toss/apps-in-toss-unity-sdk.git#release/v3.0.1
 ### 지원 Unity 버전
 
 최소 Unity 2021.3이 필요하고, Unity 6 이상을 권장합니다. 2021.3 이후의 모든 버전을 지원합니다.
+
+## SDK 구성
+
+Apps in Toss Unity SDK는 WebGL 환경에서 플랫폼 API를 쓸 수 있도록 두 계층을 함께 제공합니다.
+
+- **C# API Layer** (`Runtime/SDK/`) — `AIT.*` 형태의 C# 메서드로 플랫폼 API를 감쌉니다. 내부적으로 `DllImport("__Internal")`을 사용해 WebGL 빌드 시 JS 함수와 연결됩니다.
+- **JS Bridge** (`.jslib`) — C#에서 호출하는 JS 함수가 정의되어 있고, 실제 Apps in Toss WebView SDK와 통신하는 로직이 여기에 있습니다.
+
+두 계층 모두 SDK에 이미 포함되어 있어 직접 작성할 코드는 없습니다.
 
 ## 설치 ref 관리
 
@@ -74,6 +85,27 @@ SDK 설치 후 Unity Editor 메뉴에서 `AIT` > `Configuration`을 클릭해 �
 | **버전** | `x.y.z` 형식 |
 | **기본 색상** | 브랜드 색상. 진행률 바 등에 사용됩니다 |
 | **아이콘 URL** | 미니앱 아이콘으로 표시될 이미지 URL. 입력할 경우 `http://` 또는 `https://`로 시작해야 합니다 |
+
+## AIT 메뉴
+
+SDK 설치가 끝나면 Unity Editor 상단에 `AIT` 메뉴가 추가됩니다.
+
+| 메뉴 | 설명 |
+|------|------|
+| **Dev Server** | 하위에 Start / Stop / Restart Server / Restart Server (server-only)가 있습니다. `server-only`는 재빌드 없이 서버만 재시작합니다 |
+| **Production Server** | 하위에 Start / Stop / Restart Server / Restart Server (server-only)가 있습니다. `server-only`는 재빌드 없이 서버만 재시작합니다 |
+| **Build & Package** | WebGL 빌드와 `.ait` 패키징을 한 번에 실행합니다 |
+| **Publish** | 생성된 `.ait` 파일을 Apps in Toss 플랫폼으로 업로드합니다. `Configuration`에 배포 키가 설정되어 있어야 합니다 |
+| **Clean** | `webgl/`, `ait-build/` 빌드 산출물 폴더를 삭제합니다 |
+| **Open Build Output** | 빌드 산출물이 저장된 폴더를 엽니다 |
+| **Reset Loading Screen** | 로딩 화면을 SDK 기본 템플릿으로 되돌립니다. 자세한 내용은 [로딩 화면 커스터마이징](LoadingScreenCustomization.md) 참고 |
+| **Configuration** | 앱 ID, 표시 이름 등 미니앱 연동 설정 창을 엽니다 |
+| **Install Sentry SDK** | Sentry Unity SDK를 설치합니다. 자세한 내용은 [Sentry 연동](SentryIntegration.md) 참고 |
+| **이슈 제보하기** | 문제 상황을 제보하는 창을 엽니다 |
+| **Check for Updates...** | SDK 신규 릴리즈가 있는지 수동으로 확인합니다 |
+| **Debug** | SDK 상태 초기화, WebGL 템플릿 강제 갱신 등 디버그용 하위 메뉴가 모여 있습니다 |
+
+Dev Server와 Production Server, 각 빌드 프로필의 Mock 브릿지·압축 설정 차이는 [빌드 프로필](BuildProfiles.md)에 정리되어 있습니다.
 
 ## 첫 번째 빌드
 
@@ -192,6 +224,20 @@ public class FeedbackManager : MonoBehaviour
     }
 }
 ```
+
+## 테스트하기
+
+SDK API는 WebGL 빌드에서만 실제로 브릿지를 타고, 그마저도 대부분 Apps in Toss 앱 환경에서만 정상 동작합니다. Unity Editor에서는 Mock 브릿지가 기본값을 돌려줄 뿐입니다. 자세한 내용은 [API 사용 패턴](APIUsagePatterns.md)의 Mock 브릿지 절을 참고하세요.
+
+샌드박스 앱으로 로컬 빌드를 확인하는 절차는 [문제 해결](Troubleshooting.md) 문서의 "Dev Server 에서는 되는데 Production 에서 안 됨" 절에 정리되어 있습니다.
+
+배포 전 최종 검증에는 `.ait` 파일 업로드 테스트를 사용합니다.
+
+1. `AIT` > `Build & Package`로 `.ait` 파일을 생성합니다.
+2. [Apps in Toss 콘솔](https://apps-in-toss.toss.im/)에 업로드합니다.
+3. QR 코드로 미니앱을 실행해 확인합니다.
+
+막히는 부분이 있으면 [문제 해결](Troubleshooting.md) 문서를 참고하세요.
 
 ## 관련 문서
 

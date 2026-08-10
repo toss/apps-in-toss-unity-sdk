@@ -561,6 +561,19 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
     // 추가되어 기존 120000보다 여유를 둔다.
     test.setTimeout(200000);
 
+    // 패널/mock 주입 실패는 브라우저 콘솔에만 남고 테스트 실패로 드러나지 않을 수 있어,
+    // CI 로그에서 바로 확인할 수 있도록 pageerror/console을 캡처한다.
+    page.on('pageerror', error => {
+      console.log('[Page Error]', error.message);
+    });
+    page.on('console', msg => {
+      const type = msg.type();
+      const text = msg.text();
+      if (type === 'error' || type === 'warning' || text.includes('@apps-in-toss/devtools')) {
+        console.log('[Browser Console]', text);
+      }
+    });
+
     await applyMobileThrottling(page);
 
     expect(directoryExists(AIT_BUILD), 'ait-build/ should exist for dev server').toBe(true);

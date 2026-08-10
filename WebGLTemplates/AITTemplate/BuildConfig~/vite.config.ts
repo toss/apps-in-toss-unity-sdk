@@ -133,6 +133,12 @@ function isAitDevtoolsEnabled(env: ConfigEnv): boolean {
  * 훅으로 index.html에 직접 스크립트 태그를 심어 우회한다.
  *
  * `AIT_DEVTOOLS_PANEL`이 "0"이면(Editor의 config.devtools.panel=false) 주입을 skip한다.
+ *
+ * 스크립트는 인라인 module이 아니라 `src="/@id/..."`로 주입한다. Vite dev server는
+ * `src=`로 네트워크 요청되는 모듈만 bare specifier를 재작성하며, HTML에 텍스트로
+ * 박힌 인라인 module script는 변환 대상이 아니라 브라우저가 bare specifier를 그대로
+ * 해석하려다 실패한다. `/@id/` prefix는 Vite dev server가 임의 모듈 id를
+ * resolveId/load/transform 파이프라인으로 처리하게 하는 코어 지원 경로다.
  */
 function aitDevtoolsPanelPlugin(): Plugin {
   return {
@@ -146,8 +152,7 @@ function aitDevtoolsPanelPlugin(): Plugin {
         tags: [
           {
             tag: 'script',
-            attrs: { type: 'module' },
-            children: "import '@apps-in-toss/devtools/panel';",
+            attrs: { type: 'module', src: '/@id/@apps-in-toss/devtools/panel' },
             injectTo: 'body',
           },
         ],

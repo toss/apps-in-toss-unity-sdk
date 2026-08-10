@@ -132,10 +132,114 @@ public class AITDiagnosticsAggregationTests
         Assert.AreEqual(0, result.DataTotalBytes);
         Assert.AreEqual(0, result.ByType.Count);
         Assert.AreEqual(0, result.TopAssets.Count);
+        Assert.AreEqual(0, result.PackagesUntrackedCount, "null 입력에서 Packages 집계도 0이어야 함.");
+        Assert.AreEqual(0, result.PackagesUntrackedBytes);
+        Assert.AreEqual(0.0, result.PackagesUntrackedPercentOfData);
 
         Assert.DoesNotThrow(
             () => AITDataBreakdownReport.Aggregate(new List<(string, string, long)>(), 100, -1, null),
             "topN이 음수여도 예외 없이 처리되어야 함(빈 TOP 목록으로 취급).");
+    }
+
+    // ─────────────────────────── Packages/ 사각지대 태깅·집계 ───────────────────────────
+
+    [Test]
+    public void Aggregate_PackagesPathAsset_IsTaggedAsUntracked()
+    {
+        var entries = new List<(string SourcePath, string TypeName, long Bytes)>
+        {
+            ("Packages/im.toss.sdk-test-scripts/Fonts/NotoSansKR-Regular.otf", "Font", 700),
+            ("Assets/kept.png", "Texture2D", 300),
+        };
+
+        var result = AITDataBreakdownReport.Aggregate(entries, grandTotalBytes: 1000, topN: 20, tagMap: null);
+
+        var packagesAsset = result.TopAssets.Find(
+            a => a.SourcePath == "Packages/im.toss.sdk-test-scripts/Fonts/NotoSansKR-Regular.otf");
+        Assert.IsTrue(packagesAsset.IsPackagesUntracked,
+            "Packages/로 시작하고 외부화 태그가 없는 자산은 IsPackagesUntracked=true여야 함.");
+        Assert.IsFalse(packagesAsset.Externalized);
+
+        var assetsAsset = result.TopAssets.Find(a => a.SourcePath == "Assets/kept.png");
+        Assert.IsFalse(assetsAsset.IsPackagesUntracked, "Assets/ 아래 자산은 IsPackagesUntracked=false여야 함.");
+    }
+
+    [Test]
+    public void Aggregate_OnlyAssetsPaths_PackagesAggregateIsZeroAndUntagged()
+    {
+        var entries = new List<(string SourcePath, string TypeName, long Bytes)>
+        {
+            ("Assets/a.png", "Texture2D", 300),
+            ("Assets/b.wav", "AudioClip", 700),
+        };
+
+        var result = AITDataBreakdownReport.Aggregate(entries, grandTotalBytes: 1000, topN: 20, tagMap: null);
+
+        Assert.AreEqual(0, result.PackagesUntrackedCount, "Packages/ 자산이 없으면 집계 개수는 0이어야 함.");
+        Assert.AreEqual(0, result.PackagesUntrackedBytes, "Packages/ 자산이 없으면 집계 바이트는 0이어야 함.");
+        Assert.AreEqual(0.0, result.PackagesUntrackedPercentOfData);
+        Assert.IsTrue(result.TopAssets.TrueForAll(a => !a.IsPackagesUntracked),
+            "Assets/ 자산만 있으면 어떤 TOP-N 행에도 Packages 태그가 붙지 않아야 함.");
+    }
+
+    [Test]
+    public void Aggregate_ExternalizedPackagesAsset_IsNotOverriddenByPackagesTag()
+    {
+        // 현재 처리기 구조상 Packages/ 자산이 외부화될 수는 없지만, Aggregate의 우선순위 규칙
+        // (외부화 태그 > Packages 태그)이 실제로 지켜지는지 직접 검증한다.
+        var entries = new List<(string SourcePath, string TypeName, long Bytes)>
+        {
+            ("Packages/hypothetical/streamed.png", "Texture2D", 5),
+            ("Assets/kept.png", "Texture2D", 900),
+        };
+        var tagMap = new Dictionary<string, string>
+        {
+            ["Packages/hypothetical/streamed.png"] = "텍스처 스트리밍",
+        };
+
+        var result = AITDataBreakdownReport.Aggregate(entries, grandTotalBytes: 905, topN: 20, tagMap: tagMap);
+
+        var externalizedPackagesAsset = result.TopAssets.Find(a => a.SourcePath == "Packages/hypothetical/streamed.png");
+        Assert.IsTrue(externalizedPackagesAsset.Externalized, "외부화 태그가 있으면 Externalized=true여야 함.");
+        Assert.IsFalse(externalizedPackagesAsset.IsPackagesUntracked,
+            "외부화 태그가 있는 항목은 Packages 태그로 덮이지 않아야 함(외부화 태그 우선).");
+        Assert.AreEqual(0, result.PackagesUntrackedCount,
+            "외부화된 Packages/ 자산은 사각지대 집계에서도 제외되어야 함(이미 최적화 경로를 탄 자산).");
+        Assert.AreEqual(0, result.PackagesUntrackedBytes);
+    }
+
+    [Test]
+    public void Aggregate_PackagesSummary_ComputesCountBytesAndPercentAcrossFullInput()
+    {
+        var entries = new List<(string SourcePath, string TypeName, long Bytes)>
+        {
+            ("Packages/a/font.otf", "Font", 300),
+            ("Packages/b/tex.png", "Texture2D", 200),
+            ("Assets/kept.png", "Texture2D", 500),
+        };
+
+        // topN=1이어도 Packages 집계는 TOP-N 제한과 무관하게 dataEntries 전체를 대상으로 해야 함.
+        var result = AITDataBreakdownReport.Aggregate(entries, grandTotalBytes: 1000, topN: 1, tagMap: null);
+
+        Assert.AreEqual(2, result.PackagesUntrackedCount, "Packages/ 자산 2개가 모두 집계되어야 함(TOP-N 제한과 무관).");
+        Assert.AreEqual(500, result.PackagesUntrackedBytes, "Packages/ 바이트 합은 300+200=500이어야 함.");
+        Assert.AreEqual(50.0, result.PackagesUntrackedPercentOfData, 0.001, "비중은 500/1000=50%여야 함.");
+    }
+
+    [Test]
+    public void ExceedsPackagesUntrackedWarnThreshold_BoundaryAndZeroTotal_DoesNotThrow()
+    {
+        Assert.IsFalse(AITDataBreakdownReport.ExceedsPackagesUntrackedWarnThreshold(0),
+            "0바이트는 임계값 미만이어야 함.");
+        Assert.IsFalse(AITDataBreakdownReport.ExceedsPackagesUntrackedWarnThreshold(1024 * 1024 - 1),
+            "1MB 미만은 경고 임계값을 넘지 않아야 함.");
+        Assert.IsTrue(AITDataBreakdownReport.ExceedsPackagesUntrackedWarnThreshold(1024 * 1024),
+            "정확히 1MB는 경고 임계값 이상으로 판정되어야 함.");
+        Assert.IsTrue(AITDataBreakdownReport.ExceedsPackagesUntrackedWarnThreshold(1024L * 1024 * 50),
+            "1MB를 크게 초과하는 값도 경고 임계값 이상이어야 함.");
+
+        Assert.DoesNotThrow(() => AITDataBreakdownReport.ExceedsPackagesUntrackedWarnThreshold(0),
+            "0으로 나누기 등 예외 없이 판정되어야 함(순수 비교 연산).");
     }
 
     // ─────────────────────────── AITBootSceneDiagnostics.ComputeBootShare ───────────────────────────

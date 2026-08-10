@@ -35,6 +35,16 @@ namespace AppsInToss.Editor
 
         private const int TopAssetCount = 20;
 
+        // Packages/ 사각지대 진단 — 폰트 서브셋/외부화, 텍스처 crunch/clamp/외부화, 오디오 스트리밍 등
+        // 소스 치환형 콘텐츠 최적화 처리기 전부가 "!path.StartsWith(\"Assets/\")" 필터로 Packages/ 아래
+        // 자산을 대상에서 제외한다(자동 탐지 경로에서는 경고조차 없이 조용히 빠짐). 이 상수는 그
+        // 사각지대가 "무시해도 되는 수준"인지 "빌드에 실질적 영향을 주는 수준"인지 가르는 기준선이다.
+        private const long PackagesUntrackedWarnThresholdBytes = 1L * 1024 * 1024; // 1MB
+
+        private const string PackagesUntrackedTagLabel = "Packages/ — 자동 최적화 대상 밖";
+
+        private const string PackagesPathPrefix = "Packages/";
+
         // ait-stream-* 매니페스트 공통 계약: 모든 엔트리가 "guid" 필드를 갖는다(텍스처/오디오/폰트
         // 세 매니페스트 스키마가 서로 달라도 guid는 공통 — AITLargeTextureExternalizer/
         // AITAudioStreamingProcessor/AITFontExternalizer/AITFontLazyExtensionBuilder의 entries.Add 참조).
@@ -84,17 +94,33 @@ namespace AppsInToss.Editor
             public readonly long DataTotalBytes;
             public readonly long GrandTotalBytes;
             public readonly List<(string Type, int Count, long Bytes, double PercentOfData)> ByType;
-            public readonly List<(string SourcePath, string TypeName, long Bytes, double PercentOfData, bool Externalized, string ExternalizedLever)> TopAssets;
+
+            /// <summary>IsPackagesUntracked: Externalized가 아니면서 SourcePath가 "Packages/"로 시작하는 항목 —
+            /// 외부화 레버 태그가 우선이므로(현재는 Packages/ 자산이 외부화될 수 없어 실제 충돌은 없음)
+            /// Externalized=true인 항목은 항상 false로 계산된다.</summary>
+            public readonly List<(string SourcePath, string TypeName, long Bytes, double PercentOfData, bool Externalized, string ExternalizedLever, bool IsPackagesUntracked)> TopAssets;
+
+            /// <summary>Packages/ 사각지대 집계 — dataEntries 전체(TOP-N 제한 없음) 대상.
+            /// 외부화 태그가 있는 항목은 제외(위 IsPackagesUntracked와 동일한 우선순위 규칙).</summary>
+            public readonly int PackagesUntrackedCount;
+            public readonly long PackagesUntrackedBytes;
+            public readonly double PackagesUntrackedPercentOfData;
 
             public BreakdownResult(
                 long dataTotalBytes, long grandTotalBytes,
                 List<(string, int, long, double)> byType,
-                List<(string, string, long, double, bool, string)> topAssets)
+                List<(string, string, long, double, bool, string, bool)> topAssets,
+                int packagesUntrackedCount,
+                long packagesUntrackedBytes,
+                double packagesUntrackedPercentOfData)
             {
                 DataTotalBytes = dataTotalBytes;
                 GrandTotalBytes = grandTotalBytes;
                 ByType = byType;
                 TopAssets = topAssets;
+                PackagesUntrackedCount = packagesUntrackedCount;
+                PackagesUntrackedBytes = packagesUntrackedBytes;
+                PackagesUntrackedPercentOfData = packagesUntrackedPercentOfData;
             }
         }
 
@@ -131,13 +157,42 @@ namespace AppsInToss.Editor
                 {
                     string lever = null;
                     bool externalized = tagMap != null && tagMap.TryGetValue(e.SourcePath, out lever);
+                    bool packagesUntracked = !externalized && IsPackagesPath(e.SourcePath);
                     return (e.SourcePath, e.TypeName, e.Bytes, PercentOfData: PercentOf(e.Bytes, dataTotal),
-                        Externalized: externalized, ExternalizedLever: externalized ? lever : null);
+                        Externalized: externalized, ExternalizedLever: externalized ? lever : null,
+                        IsPackagesUntracked: packagesUntracked);
                 })
                 .ToList();
 
-            return new BreakdownResult(dataTotal, grandTotalBytes, byType, topAssets);
+            // Packages/ 사각지대 집계는 TOP-N 제한 없이 dataEntries 전체를 대상으로 한다 — TOP-N에
+            // 들지 못한 작은 Packages/ 자산이 다수라면 그 합계도 무시할 수 없는 크기일 수 있다.
+            // 외부화 태그가 붙은 항목은 위 TopAssets와 동일한 우선순위로 제외한다.
+            long packagesBytes = 0;
+            int packagesCount = 0;
+            foreach (var e in dataEntries)
+            {
+                if (string.IsNullOrEmpty(e.SourcePath) || !IsPackagesPath(e.SourcePath))
+                    continue;
+                bool externalized = tagMap != null && tagMap.ContainsKey(e.SourcePath);
+                if (externalized)
+                    continue;
+                packagesBytes += e.Bytes;
+                packagesCount++;
+            }
+
+            return new BreakdownResult(
+                dataTotal, grandTotalBytes, byType, topAssets,
+                packagesCount, packagesBytes, PercentOf(packagesBytes, dataTotal));
         }
+
+        private static bool IsPackagesPath(string sourcePath) =>
+            !string.IsNullOrEmpty(sourcePath) &&
+            sourcePath.StartsWith(PackagesPathPrefix, StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>Packages/ 사각지대 합계가 경고 수준인지 판정하는 순수 함수(0으로 나누기 없음, 임계값은
+        /// PackagesUntrackedWarnThresholdBytes). 로그 레벨 선택(Run → LogPackagesUntrackedSummary)에서 사용.</summary>
+        internal static bool ExceedsPackagesUntrackedWarnThreshold(long packagesUntrackedBytes) =>
+            packagesUntrackedBytes >= PackagesUntrackedWarnThresholdBytes;
 
         private static double PercentOf(long part, long total) => total <= 0 ? 0.0 : part * 100.0 / total;
 
@@ -185,6 +240,7 @@ namespace AppsInToss.Editor
 
             var result = Aggregate(dataEntries, grandTotal, TopAssetCount, tagMap);
             LogConsoleTable(result, countByLever, manifestFound);
+            LogPackagesUntrackedSummary(result);
         }
 
         /// <summary>
@@ -362,9 +418,13 @@ namespace AppsInToss.Editor
             int rank = 1;
             foreach (var a in result.TopAssets)
             {
+                // 우선순위: 외부화 태그 > Packages/ 사각지대 태그(Aggregate에서 이미 상호 배타적으로
+                // 계산됨 — IsPackagesUntracked는 Externalized=true인 항목에서는 항상 false).
                 string tag = a.Externalized
                     ? $" [외부화됨: {a.ExternalizedLever} — 표시 크기는 스텁/서브셋 잔존분, 재최적화 후보 아님]"
-                    : string.Empty;
+                    : a.IsPackagesUntracked
+                        ? $" [{PackagesUntrackedTagLabel}]"
+                        : string.Empty;
                 sb.AppendLine($"[AIT-DataBreakdown]   {rank,2}. {a.SourcePath} ({a.TypeName}) {Mb(a.Bytes)}MB ({PctStr(a.PercentOfData)}%){tag}");
                 rank++;
             }
@@ -376,6 +436,27 @@ namespace AppsInToss.Editor
             sb.Append("[AIT-DataBreakdown] ========================================");
 
             AITLog.Info(sb.ToString());
+        }
+
+        /// <summary>
+        /// Packages/ 사각지대 요약을 별도 로그로 남긴다(LogConsoleTable의 단일 Info 블록과 분리 —
+        /// 이 요약만 크기에 따라 Warning/Info 레벨이 갈리기 때문). 0개면 아무것도 출력하지 않는다.
+        /// </summary>
+        private static void LogPackagesUntrackedSummary(BreakdownResult result)
+        {
+            if (result.PackagesUntrackedCount == 0)
+                return;
+
+            string message =
+                $"[AIT-DataBreakdown] Packages/ 사각지대: {result.PackagesUntrackedCount}개 자산, " +
+                $"합계 {Mb(result.PackagesUntrackedBytes)}MB (.data의 {PctStr(result.PackagesUntrackedPercentOfData)}%) — " +
+                "폰트 서브셋·텍스처·오디오 자동 최적화는 Assets/ 아래 자산만 대상으로 하므로 Packages/ 아래 자산은 " +
+                "제외됩니다. 최적화가 필요한 대형 자산은 Assets/ 아래로 옮겨야 합니다.";
+
+            if (ExceedsPackagesUntrackedWarnThreshold(result.PackagesUntrackedBytes))
+                AITLog.Warning(message, sentryCapture: false);
+            else
+                AITLog.Info(message);
         }
 
         private static string Mb(long bytes) => (bytes / 1048576.0).ToString("0.00", CultureInfo.InvariantCulture);

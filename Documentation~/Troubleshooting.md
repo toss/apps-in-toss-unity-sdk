@@ -58,14 +58,17 @@ Console 창의 컴파일 오류와 스택 트레이스가 가장 확실한 단�
 
 ### Dev Server 에서는 되는데 Production 에서 안 됨
 
-Dev Server는 devtools가 켜져 있어 일반 브라우저에서도 60개 이상의 SDK API와 광고 흐름이 mock으로 동작합니다. Production 빌드는 실제 Apps in Toss 앱 환경을 필요로 합니다.
+Dev Server는 devtools가 켜져 있어 일반 브라우저에서도 60개 이상의 SDK API와 광고 흐름이 mock으로 동작합니다. Production 빌드는 실제 Apps in Toss 앱 환경을 필요로 하며, 브라우저에서는 재현할 수 없습니다.
 
-로컬에서 프로덕션 설정 그대로 확인하려면 이렇게 합니다.
-
-1. `AIT` > `Production Server` > `Start Server`로 로컬 서버를 실행합니다.
-2. [샌드박스 앱](https://developers-apps-in-toss.toss.im/development/test/sandbox)에서 그 로컬 서버에 연결합니다.
+프로덕션 설정 그대로 실기기에서 확인하려면 `AIT` > `Deploy (Test)`로 배포한 뒤, 뜨는 창의 QR을 Apps in Toss 앱으로 스캔하거나 URL로 접속하세요. `ait deploy`는 항상 콘솔 QR 테스트 환경(`intoss-private://`)에 배포하므로, 이 절차로 실제 심사·출시 전에 안전하게 확인할 수 있습니다.
 
 프로필별로 무엇이 달라지는지는 [빌드 프로필](BuildProfiles.md)에 있습니다.
+
+### (3.x 이전 사용자) `Production Server` 메뉴가 사라짐
+
+SDK 3.0.0부터 로컬 서버를 별도 샌드박스 앱에 연결해 테스트하는 방식이 불가능해지면서, `AIT` > `Production Server` 메뉴는 더 이상 존재하지 않습니다. 프로덕션 설정을 실기기에서 확인하려면 위 "Dev Server 에서는 되는데 Production 에서 안 됨" 항목대로 `Deploy (Test)`를 사용하세요.
+
+같은 개편으로 `AIT` > `Publish` 메뉴도 `Deploy (Test)`(증분 빌드, memo `[Test]`)와 `Deploy (Production)`(클린 빌드, memo `[Production]`)로 나뉘었습니다. `ait deploy` CLI 자체는 두 메뉴 모두 항상 콘솔 QR 테스트 환경에만 배포하며, 실제 출시는 `Deploy (Production)`이 배포 후 띄우는 "콘솔 열기" 버튼으로 이동해 콘솔에서 심사를 신청해야 이뤄집니다.
 
 ### AITException 이 발생함
 

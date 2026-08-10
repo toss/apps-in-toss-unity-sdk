@@ -47,9 +47,9 @@ Unity 프로젝트가 배포 가능한 `.ait` 패키지가 되기까지 SDK가 �
 |--------|-----------|------------|-----------|
 | `Build & Package` | `true` | `true` | `false` |
 | `Build & Package (clean)` | `true` | `true` | `true` |
-| `Publish` (재빌드) | `true` | `true` | `true` |
+| `Deploy (Test)` | `true` | `true` | `false` |
+| `Deploy (Production)` | `true` | `true` | `true` |
 | `Dev Server Start` | `true` | `true` | `false` |
-| `Prod Server Start` | `true` | `true` | `false` |
 | `Restart Server` | `true` | `true` | `false` |
 | `Restart (server-only)` | — | — | — |
 
@@ -545,8 +545,7 @@ ShowComplexDialog("빌드 실패", errorMessage, ...)
 | 조건 | 동작 |
 |------|------|
 | `AIT/Clean` | "webgl/, ait-build/ 폴더를 삭제하시겠습니까?" |
-| 배포 확인 | "앱 이름: X, 버전: Y — 배포하시겠습니까?" |
-| 서버 전환 | "Production 서버를 정지하고 Dev 서버를 시작하시겠습니까?" |
+| 배포 확인 | "앱 이름: X, 버전: Y — 배포하시겠습니까?" (memo 자동 생성값 표시) |
 | 설정 초기화 | "설정을 초기화하시겠습니까?" |
 | 로딩 화면 초기화 | "로딩 화면을 기본 템플릿으로 초기화하시겠습니까?" |
 
@@ -555,7 +554,6 @@ ShowComplexDialog("빌드 실패", errorMessage, ...)
 | 조건 | 옵션 |
 |------|------|
 | 빌드 실패 | "확인" / "Issue 신고" |
-| Publish 진입점 | "다시 빌드 후 배포" / "취소" / "기존 빌드로 배포" |
 | 배포 실패 | "확인" / "Issue 신고" |
 
 ### 콘솔 경고
@@ -590,30 +588,23 @@ ShowComplexDialog("빌드 실패", errorMessage, ...)
 
 ## 서버 라이프사이클
 
-`ServerType` enum (`Dev`, `Prod`)을 받는 통합 메서드로 서버를 관리합니다.
+로컬 서버는 Dev Server 하나뿐입니다 (과거 있었던 Production Server는 3.0.0부터 샌드박스 앱 연동이 불가능해지면서 제거됨 — 프로덕션 설정을 실기기에서 확인하려면 [시작하기의 Deploy (Test)](GettingStarted.md#실기기로-확인하기-deploy-test)를 사용).
 
 | 메서드 | 설명 |
 |--------|------|
-| `StartServer(type)` | 빌드 + 서버 시작 |
-| `StopServer(type)` | 서버 프로세스 종료 |
-| `RestartServer(type, serverOnly)` | `serverOnly=false`면 빌드+서버, `true`면 서버만 재시작 |
-| `ValidateAndSwitchServer(type)` | 반대 서버가 실행 중이면 전환 확인 다이얼로그 |
+| `StartServer()` | 빌드 + 서버 시작 |
+| `StopServer()` | 서버 프로세스 종료 |
+| `RestartServer(serverOnly)` | `serverOnly=false`면 빌드+서버, `true`면 서버만 재시작 |
 
 ```text
 AIT/Dev Server/
-├── Start Server              → StartServer(Dev) → DoExport(dev) + granite dev
-├── Stop Server               → StopServer(Dev)
-├── Restart Server            → RestartServer(Dev, serverOnly: false)
-└── Restart Server (server-only) → RestartServer(Dev, serverOnly: true)
-
-AIT/Production Server/
-├── Start Server              → StartServer(Prod) → DoExport(prod) + granite dev
-├── Stop Server               → StopServer(Prod)
-├── Restart Server            → RestartServer(Prod, serverOnly: false)
-└── Restart Server (server-only) → RestartServer(Prod, serverOnly: true)
+├── Start Server              → StartServer() → DoExport(dev) + granite dev
+├── Stop Server               → StopServer()
+├── Restart Server            → RestartServer(serverOnly: false)
+└── Restart Server (server-only) → RestartServer(serverOnly: true)
 ```
 
-Dev와 Production 서버는 동시에 실행할 수 없습니다. `StartServer(type)` 호출 시 반대 서버가 실행 중이면 `ValidateAndSwitchServer()`가 전환 여부를 묻고, 승인하면 기존 서버를 종료한 뒤 새 서버를 시작합니다. 대상 포트가 이미 사용 중이면 "포트 충돌" 다이얼로그를 띄우고, 사용자가 포트를 바꾸거나 점유 프로세스를 종료해야 합니다.
+대상 포트가 이미 사용 중이면 "포트 충돌" 다이얼로그를 띄우고, 사용자가 포트를 바꾸거나 점유 프로세스를 종료해야 합니다.
 
 ## 에러 리포팅
 

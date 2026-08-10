@@ -4,6 +4,7 @@ using System.Net;
 using System.Net.Sockets;
 using UnityEditor;
 using UnityEngine;
+using AppsInToss.Editor.Menu;
 using Debug = UnityEngine.Debug;
 
 namespace AppsInToss.Editor
@@ -11,10 +12,15 @@ namespace AppsInToss.Editor
     /// <summary>
     /// 서버 타입
     /// </summary>
+    /// <remarks>
+    /// Production Server 지원이 제거되며 Dev 단일 값만 남았습니다(샌드박스 앱 테스트 불가로
+    /// 존재 이유 상실 — SDK 3.0.0부터). enum 자체를 남긴 이유는 <see cref="AITServerStateManager"/>
+    /// 생성자·<c>ServerType type</c> 매개변수를 받는 기존 호출부들을 그대로 유지해 diff를 최소화하기
+    /// 위함입니다(전체 사용처 grep 결과, 완전 제거 시 다수 시그니처를 함께 바꿔야 해 diff가 커짐).
+    /// </remarks>
     public enum ServerType
     {
-        Dev,
-        Prod
+        Dev
     }
 
     /// <summary>
@@ -77,15 +83,62 @@ namespace AppsInToss.Editor
         /// <summary>
         /// 서버 상태 관리자 생성
         /// </summary>
-        /// <param name="type">서버 타입 (Dev 또는 Prod)</param>
+        /// <param name="type">서버 타입 (현재 Dev만 존재 — Production Server 제거됨)</param>
         public AITServerStateManager(ServerType type)
         {
             serverType = type;
 
-            // EditorPrefs 키 설정
-            string prefix = type == ServerType.Dev ? "AIT_DevServer" : "AIT_ProdServer";
-            pidPrefKey = $"{prefix}PID";
-            portPrefKey = $"{prefix}Port";
+            // EditorPrefs 키 리터럴 "AIT_DevServer"는 업그레이드 시 기존 실행 중 서버를 계속
+            // 추적해야 하므로 절대 변경하지 않는다.
+            pidPrefKey = "AIT_DevServerPID";
+            portPrefKey = "AIT_DevServerPort";
+        }
+
+        // 구버전(Production Server 지원 시절) EditorPrefs 키 — 1회성 마이그레이션 전용.
+        private const string LegacyProdPidPrefKey = "AIT_ProdServerPID";
+        private const string LegacyProdPortPrefKey = "AIT_ProdServerPort";
+
+        /// <summary>
+        /// 구 "AIT_ProdServer*" EditorPrefs 키가 남아 있으면(Production Server 지원 시절 상태)
+        /// 기록된 프로세스를 기존 kill 로직(PID 우선 종료 → 포트 백업 종료)으로 정리 시도한 뒤,
+        /// 성공 여부와 무관하게 키를 삭제하는 1회성 마이그레이션입니다. 절대 throw하지 않습니다.
+        /// </summary>
+        public static void MigrateLegacyProdServerState()
+        {
+            try
+            {
+                if (!EditorPrefs.HasKey(LegacyProdPidPrefKey) && !EditorPrefs.HasKey(LegacyProdPortPrefKey))
+                {
+                    return;
+                }
+
+                int pid = EditorPrefs.GetInt(LegacyProdPidPrefKey, 0);
+                int port = EditorPrefs.GetInt(LegacyProdPortPrefKey, 0);
+
+                if (IsProcessAlive(pid))
+                {
+                    try
+                    {
+                        Process.GetProcessById(pid).Kill();
+                    }
+                    catch
+                    {
+                        // 이미 종료되었거나 접근 불가 - 포트 기반 백업 종료로 이어감
+                    }
+                }
+
+                // 백업: 포트에서 실행 중인 프로세스도 종료 (StopServer와 동일한 기존 kill 로직)
+                PortResolver.KillProcessOnPort(port);
+            }
+            catch (Exception e)
+            {
+                Debug.Log($"[AIT] 레거시 Production Server 프로세스 정리 중 오류 (무시됨): {e.Message}");
+            }
+            finally
+            {
+                EditorPrefs.DeleteKey(LegacyProdPidPrefKey);
+                EditorPrefs.DeleteKey(LegacyProdPortPrefKey);
+            }
         }
 
         /// <summary>

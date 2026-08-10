@@ -756,7 +756,7 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
   // -------------------------------------------------------------------------
   // Test 2b: SDK dev 서버 커맨드 스모크 (granite bin collision 회귀 방지)
   // -------------------------------------------------------------------------
-  // Unity Editor의 Dev/Production Server 메뉴는 vite가 아니라 web-framework의
+  // Unity Editor의 Dev Server 메뉴는 vite가 아니라 web-framework의
   // granite CLI 파일을 node로 직접 실행한다 (DevServerCommandResolver —
   // node_modules/.bin/granite 이름 충돌 우회). test 2의 vite 경로는 이 커맨드를
   // 전혀 거치지 않으므로, 실제 커맨드가 즉사하지 않고 리슨 포트를 여는지만

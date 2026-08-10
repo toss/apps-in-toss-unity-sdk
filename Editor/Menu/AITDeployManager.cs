@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Text;
 using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEngine;
@@ -14,25 +15,47 @@ using AppsInToss.Editor.IssueReport;
 namespace AppsInToss.Editor.Menu
 {
     /// <summary>
-    /// 빌드/배포 실행 로직 (Publish, Build &amp; Package, Deploy).
+    /// 배포 종류 — 콘솔 QR 테스트 환경으로의 배포 목적을 구분한다.
+    /// </summary>
+    /// <remarks>
+    /// `ait deploy` CLI는 플래그와 무관하게 항상 테스트(QR) 환경에 배포하며, 실제 출시는
+    /// 콘솔 심사/출시 신청으로만 가능하다. 두 값은 배포 자체의 동작 차이(빌드 방식·memo 접두사·
+    /// 성공 창의 콘솔 안내 노출 여부)만 가른다 — CLI 호출 자체는 동일하다.
+    /// </remarks>
+    internal enum DeployKind
+    {
+        Test,
+        Production
+    }
+
+    /// <summary>
+    /// 빌드/배포 실행 로직 (Deploy (Test/Production), Build &amp; Package).
     /// AppsInTossMenu의 [MenuItem] 진입점에서 위임 받아 실행됩니다.
     /// internal 멤버는 Editor/AssemblyInfo.cs 의 InternalsVisibleTo 를 통해 테스트 어셈블리에서 접근됩니다.
     /// </summary>
     internal static class AITDeployManager
     {
-        // 재진입 가드 — RunBuildAndPackage / RunPublish 가 await 대기 중일 때 중복 클릭 차단.
+        // ait deploy -m/--memo 플래그의 CLI 측 최대 길이.
+        internal const int MaxMemoLength = 1000;
+
+        // 재진입 가드 — RunBuildAndPackage / RunDeploy 가 await 대기 중일 때 중복 클릭 차단.
         private static bool _buildEntryInProgress;
 
         // 빌드 소요 시간 측정 (StartServer의 buildStopwatch와 독립)
         private static Stopwatch _buildStopwatch = new Stopwatch();
 
-        // ==================== Publish ====================
+        // ==================== Deploy (Test) / Deploy (Production) ====================
 
         /// <summary>
-        /// Publish 메뉴의 실제 실행 로직.
-        /// AppsInTossMenu.Publish() [MenuItem] 에서 위임됩니다.
+        /// Deploy (Test) / Deploy (Production) 메뉴의 실제 실행 로직.
+        /// AppsInTossMenu.DeployTest()/DeployProduction() [MenuItem] 에서 위임됩니다.
         /// </summary>
-        internal static async void RunPublish()
+        /// <remarks>
+        /// `ait deploy`는 플래그와 무관하게 항상 콘솔 QR 테스트 환경에 배포한다(CLI에 릴리즈
+        /// 기능 없음). 두 메뉴는 그래서 배포 자체의 목적지가 아니라 빌드 방식(증분/클린)과
+        /// memo 접두사, 성공 창의 콘솔 안내 노출 여부만 가른다.
+        /// </remarks>
+        internal static async void RunDeploy(DeployKind kind)
         {
             if (_buildEntryInProgress)
             {
@@ -40,6 +63,7 @@ namespace AppsInToss.Editor.Menu
                 return;
             }
             _buildEntryInProgress = true;
+            string profileName = ProfileNameFor(kind);
             try
             {
                 var config = UnityUtil.GetEditorConf();
@@ -60,74 +84,37 @@ namespace AppsInToss.Editor.Menu
                     return;
                 }
 
-                string projectPath = UnityUtil.GetProjectPath();
-                string aitBuildPath = Path.Combine(projectPath, "ait-build");
-                string distPath = Path.Combine(aitBuildPath, "dist");
+                // Production은 현행 Publish와 동일하게 클린 빌드, Test는 반복 속도를 위해 증분 빌드.
+                bool cleanBuild = kind == DeployKind.Production;
 
-                // 기존 빌드가 있는지 확인
-                bool hasExistingBuild = Directory.Exists(distPath) &&
-                                        Directory.GetFiles(distPath, "*", SearchOption.AllDirectories).Length > 0;
+                Debug.Log($"AIT: {profileName} 빌드 시작 (cleanBuild={cleanBuild})...");
+                _buildStopwatch.Restart();
 
-                bool shouldRebuild = true;
+                var result = AITConvertCore.DoExport(
+                    buildWebGL: true,
+                    doPackaging: true,
+                    cleanBuild: cleanBuild,
+                    profile: config.productionProfile,
+                    profileName: profileName
+                );
+                _buildStopwatch.Stop();
 
-                if (hasExistingBuild)
+                if (result != AITConvertCore.AITExportError.SUCCEED)
                 {
-                    // 기존 빌드가 있으면 사용자에게 선택권 부여 (CI에서는 재빌드)
-                    int choice = AITPlatformHelper.ShowComplexDialog(
-                        "Publish",
-                        "기존 빌드가 존재합니다.\n\n" +
-                        "코드나 에셋을 변경했다면 다시 빌드하는 것을 권장합니다.",
-                        "다시 빌드 후 배포",  // 0: Alt (권장)
-                        "취소",               // 1: Cancel
-                        "기존 빌드로 배포",   // 2: Other
-                        defaultChoice: 0      // CI에서는 재빌드
-                    );
-
-                    if (choice == 1)
-                    {
-                        Debug.Log("AIT: Publish 취소됨");
-                        return;
-                    }
-
-                    shouldRebuild = (choice == 0);
+                    ShowBuildFailedDialog(result, profileName);
+                    return;
                 }
 
-                if (shouldRebuild)
-                {
-                    // 클린 빌드 후 배포 (Production 프로필 사용)
-                    Debug.Log("AIT: 클린 빌드 & 배포 시작...");
-                    _buildStopwatch.Restart();
-
-                    var result = AITConvertCore.DoExport(
-                        buildWebGL: true,
-                        doPackaging: true,
-                        cleanBuild: true,
-                        profile: config.productionProfile,
-                        profileName: "Publish"
-                    );
-                    _buildStopwatch.Stop();
-
-                    if (result != AITConvertCore.AITExportError.SUCCEED)
-                    {
-                        ShowBuildFailedDialog(result, "Publish");
-                        return;
-                    }
-
-                    Debug.Log($"AIT: 클린 빌드 완료 (소요 시간: {_buildStopwatch.Elapsed.TotalSeconds:F1}초)");
-                }
-                else
-                {
-                    Debug.Log("AIT: 기존 빌드를 사용하여 배포합니다.");
-                }
+                Debug.Log($"AIT: 빌드 완료 (소요 시간: {_buildStopwatch.Elapsed.TotalSeconds:F1}초)");
 
                 // 배포 실행
-                ExecuteDeploy();
+                ExecuteDeploy(kind);
             }
             catch (Exception e)
             {
                 // async void 의 미처리 예외는 SynchronizationContext 로 터져 Editor 전체에
                 // 영향을 주므로 여기서 삼키고 사용자에게 다이얼로그로 알린다.
-                AITLog.Error($"AIT: Publish 중 예외: {e.Message}", sentryCapture: true);
+                AITLog.Error($"AIT: {profileName} 중 예외: {e.Message}", sentryCapture: true);
                 AITPlatformHelper.ShowInfoDialog("오류", $"배포 중 오류가 발생했습니다.\n\n{e.Message}", "확인");
             }
             finally
@@ -135,6 +122,9 @@ namespace AppsInToss.Editor.Menu
                 _buildEntryInProgress = false;
             }
         }
+
+        private static string ProfileNameFor(DeployKind kind) =>
+            kind == DeployKind.Production ? "Deploy (Production)" : "Deploy (Test)";
 
         // ==================== Build & Package ====================
 
@@ -229,7 +219,7 @@ namespace AppsInToss.Editor.Menu
         /// <summary>
         /// 실제 배포 CLI 호출 로직.
         /// </summary>
-        private static void ExecuteDeploy()
+        private static void ExecuteDeploy(DeployKind kind)
         {
             var config = UnityUtil.GetEditorConf();
             if (!PathValidator.ValidateSettingsForPackage(config)) return;
@@ -254,9 +244,12 @@ namespace AppsInToss.Editor.Menu
                 return;
             }
 
+            string memo = BuildDeployMemo(kind, config.appName, config.version);
+            string profileName = ProfileNameFor(kind);
+
             bool confirmed = AITPlatformHelper.ShowConfirmDialog(
                 "배포 확인",
-                $"Apps in Toss에 배포하시겠습니까?\n\n프로젝트: {config.appName}\n버전: {config.version}",
+                $"Apps in Toss에 배포하시겠습니까? ({profileName})\n\n프로젝트: {config.appName}\n버전: {config.version}\nMemo: {memo}",
                 "배포",
                 "취소",
                 autoApprove: true
@@ -264,7 +257,7 @@ namespace AppsInToss.Editor.Menu
 
             if (!confirmed) return;
 
-            Debug.Log("AIT: Apps in Toss 배포 시작...");
+            Debug.Log($"AIT: Apps in Toss 배포 시작... ({profileName})");
 
             try
             {
@@ -274,11 +267,15 @@ namespace AppsInToss.Editor.Menu
                 string pnpmName = AITPlatformHelper.IsWindows ? "pnpm.cmd" : "pnpm";
                 string pnpmPath = Path.Combine(npmDir, pnpmName);
 
-                // pnpm exec ait deploy --api-key "KEY" 형태로 직접 실행
+                // pnpm exec ait deploy --api-key "KEY" -m "MEMO" 형태로 직접 실행
                 // additionalPaths는 BuildAdditionalPaths로 구성한다(npmDir 단독 전달 금지).
                 // node_modules/.bin이 PATH에서 빠지면 Windows에서 'ait' is not recognized로 배포가 실패한다
                 // (build 경로 RunNpmCommandWithCache와 동일한 PATH 구성). Sentry APPS-IN-TOSS-UNITY-SDK-12J.
-                string command = $"\"{pnpmPath}\" exec ait deploy --api-key \"{deploymentKey}\"";
+                // memo는 EscapeMemoForShell로 이스케이프한 뒤 -m "..."에 삽입한다 — 이 명령 문자열 전체가
+                // 이후 bash -l -c "..."로 한 번 더 감싸이므로(AITPlatformHelper.CreateProcessStartInfo),
+                // 여기서의 이스케이프는 memo 내부의 따옴표가 -m 인자 경계를 깨지 않도록 보호하는 것이 목적이다.
+                string escapedMemo = EscapeMemoForShell(memo);
+                string command = $"\"{pnpmPath}\" exec ait deploy --api-key \"{deploymentKey}\" -m \"{escapedMemo}\"";
                 var additionalPaths = AITNpmRunner.BuildAdditionalPaths(npmPath, buildPath);
                 var result = AITPlatformHelper.ExecuteCommand(
                     command,
@@ -360,7 +357,7 @@ namespace AppsInToss.Editor.Menu
                         Debug.Log($"AIT: 배포 URL: {deployUrl}");
                         if (!AITPlatformHelper.IsNonInteractive)
                         {
-                            DeploySuccessWindow.Show(deployUrl);
+                            DeploySuccessWindow.Show(deployUrl, kind);
                         }
                     }
                     else
@@ -390,6 +387,37 @@ namespace AppsInToss.Editor.Menu
                 case AITConvertCore.BuildPhase.Complete: return "완료";
                 default: return "빌드 중";
             }
+        }
+
+        /// <summary>
+        /// 배포 memo 자동 생성: "[Test] {appName} v{version} · Unity SDK {AITVersion.Version}"
+        /// (Production은 [Production] 접두사). CLI의 -m/--memo 최대 길이(1000자)에 맞춰 잘라낸다.
+        /// </summary>
+        internal static string BuildDeployMemo(DeployKind kind, string appName, string version)
+        {
+            string prefix = kind == DeployKind.Production ? "[Production]" : "[Test]";
+            string memo = $"{prefix} {appName} v{version} · Unity SDK {AITVersion.Version}";
+            return memo.Length > MaxMemoLength ? memo.Substring(0, MaxMemoLength) : memo;
+        }
+
+        /// <summary>
+        /// memo 문자열을 bash -l -c "..." 로 조립되는 명령의 -m "..." 인자 안에 안전하게
+        /// 삽입할 수 있도록 이스케이프한다. 백슬래시·큰따옴표·달러 기호·백틱을 백슬래시로 이스케이프.
+        /// </summary>
+        internal static string EscapeMemoForShell(string value)
+        {
+            if (string.IsNullOrEmpty(value)) return value;
+
+            var sb = new StringBuilder(value.Length);
+            foreach (char c in value)
+            {
+                if (c == '\\' || c == '"' || c == '$' || c == '`')
+                {
+                    sb.Append('\\');
+                }
+                sb.Append(c);
+            }
+            return sb.ToString();
         }
 
         /// <summary>

@@ -7,7 +7,7 @@ using AppsInToss.Editor.Package;
 namespace AppsInToss.Editor.Menu
 {
     /// <summary>
-    /// Dev/Production Server가 실행할 dev 서버 커맨드(pnpm 인자)를 web-framework 버전에 맞춰 해석합니다.
+    /// Dev Server가 실행할 dev 서버 커맨드(pnpm 인자)를 web-framework 버전에 맞춰 해석합니다.
     ///
     /// "granite"라는 bin 이름을 pnpm exec로 resolve하면 안 되는 이유:
     /// - 2.x: 전이 의존성 @granite-js/react-native도 같은 이름의 granite bin을 선언하므로,

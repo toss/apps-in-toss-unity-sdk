@@ -80,17 +80,62 @@ public class MenuRedesignTests
     }
 
     [Test]
-    public void ProdServer_RestartServer_Should_Not_Have_Auto_Suffix()
+    public void ProdServer_RestartServer_Method_Should_Not_Exist()
     {
+        // Production Server 메뉴 전체 제거 확인 (샌드박스 앱 테스트 불가로 존재 이유 상실)
         var method = menuType.GetMethod("MenuRestartProdServer", BindingFlags.Public | BindingFlags.Static);
-        Assert.IsNotNull(method, "MenuRestartProdServer() method should exist");
+        Assert.IsNull(method, "MenuRestartProdServer() method should have been removed (Production Server removed)");
+    }
+
+    // =====================================================
+    // Test 4b: AIT/Publish 메뉴 제거, Deploy (Test)/(Production) 메뉴로 대체 확인
+    // =====================================================
+
+    [Test]
+    public void Publish_MenuItem_Should_Not_Exist()
+    {
+        var method = menuType.GetMethod("Publish", BindingFlags.Public | BindingFlags.Static);
+        Assert.IsNull(method, "Publish() method should have been removed (replaced by DeployTest/DeployProduction)");
+    }
+
+    [Test]
+    public void DeployTest_MenuItem_Should_Exist()
+    {
+        var method = menuType.GetMethod("DeployTest", BindingFlags.Public | BindingFlags.Static);
+        Assert.IsNotNull(method, "DeployTest() method should exist");
 
         var menuItemAttr = method.GetCustomAttributes(typeof(MenuItem), false)
             .Cast<MenuItem>()
             .FirstOrDefault();
-        Assert.IsNotNull(menuItemAttr, "MenuRestartProdServer() should have MenuItem attribute");
-        Assert.AreEqual("AIT/Production Server/Restart Server", menuItemAttr.menuItem,
-            "Prod Restart Server menu should not have (auto) suffix");
+        Assert.IsNotNull(menuItemAttr, "DeployTest() should have MenuItem attribute");
+        Assert.AreEqual("AIT/Deploy (Test)", menuItemAttr.menuItem);
+    }
+
+    [Test]
+    public void DeployProduction_MenuItem_Should_Exist()
+    {
+        var method = menuType.GetMethod("DeployProduction", BindingFlags.Public | BindingFlags.Static);
+        Assert.IsNotNull(method, "DeployProduction() method should exist");
+
+        var menuItemAttr = method.GetCustomAttributes(typeof(MenuItem), false)
+            .Cast<MenuItem>()
+            .FirstOrDefault();
+        Assert.IsNotNull(menuItemAttr, "DeployProduction() should have MenuItem attribute");
+        Assert.AreEqual("AIT/Deploy (Production)", menuItemAttr.menuItem);
+    }
+
+    [Test]
+    public void DeployTest_MenuItem_Priority_Should_Precede_DeployProduction()
+    {
+        // 메뉴 순서: Deploy (Test)가 위, Deploy (Production)이 아래 (기존 AIT/Publish 자리 유지)
+        var testMethod = menuType.GetMethod("DeployTest", BindingFlags.Public | BindingFlags.Static);
+        var productionMethod = menuType.GetMethod("DeployProduction", BindingFlags.Public | BindingFlags.Static);
+
+        var testAttr = testMethod.GetCustomAttributes(typeof(MenuItem), false).Cast<MenuItem>().First();
+        var productionAttr = productionMethod.GetCustomAttributes(typeof(MenuItem), false).Cast<MenuItem>().First();
+
+        Assert.Less(testAttr.priority, productionAttr.priority,
+            "AIT/Deploy (Test) should appear above AIT/Deploy (Production) in the menu");
     }
 
     // =====================================================

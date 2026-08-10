@@ -8,20 +8,26 @@ namespace AppsInToss.Editor.Menu
     /// </summary>
     internal class DeploySuccessWindow : EditorWindow
     {
+        // 콘솔 워크스페이스 진입 베이스 URL. deploymentId로 배포 상세 화면에 바로 이동하는
+        // 딥링크 라우트는 미확인 상태라(플랫폼 팀 확인 필요, TODO.md 참조) 베이스 URL로만 연다.
+        private const string ConsoleBaseUrl = "https://apps-in-toss.toss.im/console";
+
         private string deployUrl;
         private bool copied = false;
         private Texture2D qrTexture;
         private bool qrFailed = false;
+        private bool isProduction = false;
         private GUIStyle urlStyle;
         private GUIStyle buttonStyle;
         private GUIStyle copiedLabelStyle;
 
-        internal static void Show(string url)
+        internal static void Show(string url, DeployKind kind)
         {
             var window = GetWindow<DeploySuccessWindow>(true, "배포 완료", true);
             window.deployUrl = url;
             window.copied = false;
             window.qrFailed = false;
+            window.isProduction = kind == DeployKind.Production;
 
             // 기존 QR 텍스처 정리
             if (window.qrTexture != null)
@@ -30,8 +36,11 @@ namespace AppsInToss.Editor.Menu
                 window.qrTexture = null;
             }
 
-            window.minSize = new Vector2(500, 400);
-            window.maxSize = new Vector2(700, 500);
+            // Production은 콘솔 심사 안내 + "콘솔 열기" 버튼이 추가되어 창 높이를 더 확보한다.
+            int extraHeight = window.isProduction ? 90 : 0;
+
+            window.minSize = new Vector2(500, 400 + extraHeight);
+            window.maxSize = new Vector2(700, 500 + extraHeight);
             window.ShowUtility();
             window.CenterOnMainWin();
 
@@ -44,8 +53,8 @@ namespace AppsInToss.Editor.Menu
             else
             {
                 window.qrFailed = true;
-                window.minSize = new Vector2(500, 160);
-                window.maxSize = new Vector2(700, 200);
+                window.minSize = new Vector2(500, 160 + extraHeight);
+                window.maxSize = new Vector2(700, 200 + extraHeight);
                 window.CenterOnMainWin();
             }
             window.Repaint();
@@ -151,6 +160,26 @@ namespace AppsInToss.Editor.Menu
             {
                 GUILayout.Space(5);
                 EditorGUILayout.LabelField("✓ 클립보드에 복사되었습니다", copiedLabelStyle);
+            }
+
+            // Production 전용 안내 — ait deploy는 항상 콘솔 QR 테스트 환경에 배포하므로,
+            // 실제 출시(사용자 노출)는 별도로 콘솔에서 이 배포를 심사 신청해야 한다.
+            if (isProduction)
+            {
+                GUILayout.Space(15);
+                EditorGUILayout.HelpBox(
+                    "실제 출시는 콘솔에서 이 배포를 심사 신청해야 합니다.",
+                    MessageType.Info);
+                GUILayout.Space(5);
+
+                EditorGUILayout.BeginHorizontal();
+                GUILayout.FlexibleSpace();
+                if (GUILayout.Button("콘솔 열기", buttonStyle, GUILayout.Width(120)))
+                {
+                    Application.OpenURL(ConsoleBaseUrl);
+                }
+                GUILayout.FlexibleSpace();
+                EditorGUILayout.EndHorizontal();
             }
 
             GUILayout.Space(10);

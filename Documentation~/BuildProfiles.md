@@ -7,18 +7,22 @@
 | 메뉴 | 용도 |
 |------|------|
 | `AIT > Dev Server > Start Server` | 로컬 개발 서버 실행 (devtools Mock SDK + 패널로 브라우저 테스트) |
-| `AIT > Production Server > Start Server` | 프로덕션 설정으로 로컬 서버 실행 (샌드박스 앱 연동 가능) |
 | `AIT > Build & Package` | 배포용 패키지 생성 |
-| `AIT > Publish` | Apps in Toss에 배포 |
+| `AIT > Deploy (Test)` | 증분 빌드 후 테스트 배포 (`ait deploy`) — QR/URL로 실기기 확인 |
+| `AIT > Deploy (Production)` | 클린 빌드 후 테스트 배포 (`ait deploy`) — 배포 후 콘솔에서 심사/출시 신청 |
+
+`ait deploy`는 두 메뉴 모두에서 **항상 콘솔 QR 테스트 환경**(`intoss-private://`)에 배포합니다. 실제 사용자에게 노출되는 출시는 이 CLI 명령이 아니라 배포 후 **콘솔에서 심사를 신청**해야 이뤄집니다. 자세한 흐름은 [시작하기](GettingStarted.md#실기기로-확인하기-deploy-test)를 참고하세요.
 
 ## 프로필 매트릭스
 
 | 작업 | 디버그 콘솔 | Development Build | WebGL 압축 | Stripping Level | LZ4 압축 | 디버그 심볼 |
 |------|:-----------:|:-----------------:|:----------:|:---------------:|:--------:|:-----------:|
 | **Dev Server** | ✅ 활성화 | ✅ 활성화 | Disabled | Minimal | ✅ 활성화 | Embedded |
-| **Production Server** | ❌ 비활성화 | ❌ 비활성화 | 자동 (Brotli) | 자동 (High) | ✅ 활성화 | External |
 | **Build & Package** | ❌ 비활성화 | ❌ 비활성화 | 자동 (Brotli) | 자동 (High) | ✅ 활성화 | External |
-| **Publish** | ❌ 비활성화 | ❌ 비활성화 | 자동 (Brotli) | 자동 (High) | ✅ 활성화 | External |
+| **Deploy (Test)** | ❌ 비활성화 | ❌ 비활성화 | 자동 (Brotli) | 자동 (High) | ✅ 활성화 | External |
+| **Deploy (Production)** | ❌ 비활성화 | ❌ 비활성화 | 자동 (Brotli) | 자동 (High) | ✅ 활성화 | External |
+
+Deploy (Test)와 Deploy (Production)은 같은 프로덕션 프로필을 쓰므로 위 설정값은 동일합니다. 둘의 차이는 이 표에 없는 **빌드 범위**(증분 vs 클린)와 **배포 memo 접두사**(`-m "[Test] …"` / `-m "[Production] …"`)입니다 — 콘솔에서 이 접두사로 두 배포를 구분합니다.
 
 > `Mock 브릿지`는 빌드 프로필 항목이 아닙니다. `devtools`(`@apps-in-toss/devtools`)는 별도 절 참고.
 
@@ -87,7 +91,7 @@ Unity 빌드 프로세스의 LZ4 압축입니다. 모든 프로필에서 기본 
 
 1. `AIT > Configuration` 메뉴 열기
 2. "빌드 프로필" 섹션 확장
-3. 원하는 프로필(Dev Server, Production Server 등) 펼치기
+3. 원하는 프로필(Dev Server, Production 등) 펼치기
 4. 각 옵션의 체크박스 변경
 5. 변경 사항은 자동 저장됨
 

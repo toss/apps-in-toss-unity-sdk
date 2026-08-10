@@ -21,7 +21,6 @@ namespace AppsInToss
     {
         // 서버 상태 관리자 (실제 상태 기반 판단)
         private static AITServerStateManager devServerState;
-        private static AITServerStateManager prodServerState;
         private static Stopwatch buildStopwatch = new Stopwatch();
 
         /// <summary>
@@ -29,13 +28,14 @@ namespace AppsInToss
         /// </summary>
         static AppsInTossMenu()
         {
+            // 구 Production Server EditorPrefs 키가 남아있으면 1회성 정리 (절대 throw하지 않음)
+            AITServerStateManager.MigrateLegacyProdServerState();
+
             // 상태 관리자 초기화
             devServerState = new AITServerStateManager(ServerType.Dev);
-            prodServerState = new AITServerStateManager(ServerType.Prod);
 
             // 즉시 실제 상태 검증 (domain reload 후 복원)
             devServerState.ValidateState();
-            prodServerState.ValidateState();
         }
 
         /// <summary>
@@ -45,23 +45,11 @@ namespace AppsInToss
         internal static void HandleEditorQuitting()
         {
             var devState = devServerState?.GetCachedState() ?? ServerState.NotRunning;
-            var prodState = prodServerState?.GetCachedState() ?? ServerState.NotRunning;
-            bool hadRunningServers = devState != ServerState.NotRunning || prodState != ServerState.NotRunning;
 
             if (devState != ServerState.NotRunning)
             {
                 Debug.Log("[AIT] Editor 종료 - Dev 서버 프로세스 정리 중...");
                 StopServer(ServerType.Dev);
-            }
-
-            if (prodState != ServerState.NotRunning)
-            {
-                Debug.Log("[AIT] Editor 종료 - Prod 서버 프로세스 정리 중...");
-                StopServer(ServerType.Prod);
-            }
-
-            if (hadRunningServers)
-            {
                 Debug.Log("[AIT] 모든 서버 프로세스가 정리되었습니다.");
             }
         }
@@ -81,16 +69,10 @@ namespace AppsInToss
                     Debug.Log("[AIT] SDK 패키지가 제거됨 - 서버 프로세스 정리 중...");
 
                     var devState = devServerState?.GetCachedState() ?? ServerState.NotRunning;
-                    var prodState = prodServerState?.GetCachedState() ?? ServerState.NotRunning;
 
                     if (devState != ServerState.NotRunning)
                     {
                         StopServer(ServerType.Dev);
-                    }
-
-                    if (prodState != ServerState.NotRunning)
-                    {
-                        StopServer(ServerType.Prod);
                     }
 
                     break;
@@ -156,64 +138,6 @@ namespace AppsInToss
             return state == ServerState.Running;
         }
 
-        // ==================== Production Server ====================
-
-        [MenuItem("AIT/Production Server/Start Server", false, 11)]
-        public static void MenuStartProdServer()
-        {
-            if (AITDeprecationChecker.BlockIfDeprecated()) return;
-            StartServer(ServerType.Prod);
-        }
-
-        [MenuItem("AIT/Production Server/Start Server", true)]
-        public static bool ValidateMenuStartProdServer()
-        {
-            var state = prodServerState?.GetCachedState() ?? ServerState.NotRunning;
-            return state == ServerState.NotRunning;
-        }
-
-        [MenuItem("AIT/Production Server/Stop Server", false, 12)]
-        public static void MenuStopProdServer()
-        {
-            Debug.Log("AIT: Production 서버 중지...");
-            StopServer(ServerType.Prod);
-        }
-
-        [MenuItem("AIT/Production Server/Stop Server", true)]
-        public static bool ValidateMenuStopProdServer()
-        {
-            var state = prodServerState?.GetCachedState() ?? ServerState.NotRunning;
-            return state == ServerState.Running;
-        }
-
-        [MenuItem("AIT/Production Server/Restart Server", false, 13)]
-        public static void MenuRestartProdServer()
-        {
-            Debug.Log("AIT: Production 서버 재시작...");
-            RestartProdServer();
-        }
-
-        [MenuItem("AIT/Production Server/Restart Server", true)]
-        public static bool ValidateMenuRestartProdServer()
-        {
-            var state = prodServerState?.GetCachedState() ?? ServerState.NotRunning;
-            return state == ServerState.Running;
-        }
-
-        [MenuItem("AIT/Production Server/Restart Server (server-only)", false, 14)]
-        public static void MenuRestartProdServerOnly()
-        {
-            Debug.Log("AIT: Production 서버 재시작 중 (서버만)...");
-            RestartProdServerOnly();
-        }
-
-        [MenuItem("AIT/Production Server/Restart Server (server-only)", true)]
-        public static bool ValidateMenuRestartProdServerOnly()
-        {
-            var state = prodServerState?.GetCachedState() ?? ServerState.NotRunning;
-            return state == ServerState.Running;
-        }
-
         // ==================== Helper Methods ====================
 
         private static void RestartServer(ServerType type, bool serverOnly)
@@ -234,9 +158,7 @@ namespace AppsInToss
         }
 
         private static void RestartDevServer() => RestartServer(ServerType.Dev, serverOnly: false);
-        private static void RestartProdServer() => RestartServer(ServerType.Prod, serverOnly: false);
         private static void RestartDevServerOnly() => RestartServer(ServerType.Dev, serverOnly: true);
-        private static void RestartProdServerOnly() => RestartServer(ServerType.Prod, serverOnly: true);
 
         // ==================== Build & Package ====================
         [MenuItem("AIT/Build & Package", false, 23)]
@@ -247,13 +169,23 @@ namespace AppsInToss
             AITDeployManager.RunBuildAndPackage();
         }
 
-        // ==================== Publish ====================
+        // ==================== Deploy (Test) / Deploy (Production) ====================
+        // ait deploy CLI는 플래그와 무관하게 항상 콘솔 QR 테스트 환경에 배포한다(실제 출시는
+        // 콘솔 심사/출시 신청으로만 가능). 두 메뉴는 빌드 방식(증분/클린)과 memo 접두사,
+        // 성공 창의 콘솔 안내 노출 여부만 다르다 — Editor/Menu/AITDeployManager.cs 참조.
 
-        [MenuItem("AIT/Publish", false, 31)]
-        public static void Publish()
+        [MenuItem("AIT/Deploy (Test)", false, 31)]
+        public static void DeployTest()
         {
             if (AITDeprecationChecker.BlockIfDeprecated()) return;
-            AITDeployManager.RunPublish();
+            AITDeployManager.RunDeploy(DeployKind.Test);
+        }
+
+        [MenuItem("AIT/Deploy (Production)", false, 32)]
+        public static void DeployProduction()
+        {
+            if (AITDeprecationChecker.BlockIfDeprecated()) return;
+            AITDeployManager.RunDeploy(DeployKind.Production);
         }
 
         // ==================== Clean ====================
@@ -484,24 +416,21 @@ namespace AppsInToss
         }
 
         // ==================== 서버 타입별 헬퍼 ====================
+        // Production Server 제거로 ServerType은 Dev 단일 값만 남았지만, 아래 헬퍼들의
+        // ServerType 매개변수는 호출부(StartServer/StartServerOnly/LaunchServerProcess/StopServer 등)
+        // 시그니처를 그대로 유지해 diff를 최소화하기 위해 남겨두었습니다.
 
-        private static ServerType OppositeType(ServerType type) =>
-            type == ServerType.Dev ? ServerType.Prod : ServerType.Dev;
+        private static AITServerStateManager GetServerState(ServerType type) => devServerState;
 
-        private static AITServerStateManager GetServerState(ServerType type) =>
-            type == ServerType.Dev ? devServerState : prodServerState;
-
-        private static string GetServerLabel(ServerType type) =>
-            type == ServerType.Dev ? "Dev" : "Production";
+        private static string GetServerLabel(ServerType type) => "Dev";
 
         private static AITBuildProfile GetBuildProfile(AITEditorScriptObject config, ServerType type) =>
-            type == ServerType.Dev ? config.devServerProfile : config.productionProfile;
+            config.devServerProfile;
 
-        private static string GetProfileName(ServerType type) =>
-            type == ServerType.Dev ? "Dev Server" : "Production Server";
+        private static string GetProfileName(ServerType type) => "Dev Server";
 
         /// <summary>
-        /// 서버 시작 전 공통 검증: 이미 실행 중인지 확인하고, 반대편 서버 전환을 처리
+        /// 서버 시작 전 공통 검증: 이미 실행 중인지 확인
         /// </summary>
         /// <returns>검증 통과 시 config, 실패 시 null</returns>
         private static AITEditorScriptObject ValidateAndSwitchServer(ServerType type)
@@ -515,26 +444,6 @@ namespace AppsInToss
             {
                 Debug.LogWarning($"AIT: {label} 서버가 이미 실행 중입니다.");
                 return null;
-            }
-
-            // 반대편 서버가 실행 중이면 확인 후 전환
-            var oppositeType = OppositeType(type);
-            var otherState = GetServerState(oppositeType).ValidateState();
-            if (otherState == ServerState.Running)
-            {
-                string oppositeLabel = GetServerLabel(oppositeType);
-                if (AITPlatformHelper.ShowConfirmDialog(
-                    "서버 전환",
-                    $"{oppositeLabel} 서버가 실행 중입니다.\n{label} 서버로 전환하시겠습니까?",
-                    "예", "아니오",
-                    autoApprove: true))
-                {
-                    StopServer(oppositeType);
-                }
-                else
-                {
-                    return null;
-                }
             }
 
             var config = UnityUtil.GetEditorConf();
@@ -645,10 +554,10 @@ namespace AppsInToss
             // 포트 가용성 검사와 Granite 관련 로그를 건너뛴다
             bool viteOnly = DevServerCommandResolver.IsViteOnly(buildPath);
 
-            // devtools(mock SDK) 활성화 여부 — Dev 서버 + config.devtools.enabled + viteOnly + 설치 확인을
+            // devtools(mock SDK) 활성화 여부 — config.devtools.enabled + viteOnly + 설치 확인을
             // 모두 통과해야 활성화되며, 실패해도 throw하지 않고 reason과 함께 비활성으로 계속 진행한다
-            bool devtoolsOn = DevtoolsSupport.ShouldEnable(config, type, buildPath, viteOnly, out string devtoolsReason);
-            if (type == ServerType.Dev && !devtoolsOn)
+            bool devtoolsOn = DevtoolsSupport.ShouldEnable(config, buildPath, viteOnly, out string devtoolsReason);
+            if (!devtoolsOn)
             {
                 Debug.LogWarning($"AIT: Devtools 비활성화 — {devtoolsReason}");
             }
@@ -666,8 +575,7 @@ namespace AppsInToss
             if (!viteOnly)
                 Debug.Log($"AIT:   Granite: {graniteHost}:{granitePort}");
             Debug.Log($"AIT:   Vite: {viteHost}:{vitePort}");
-            if (type == ServerType.Dev)
-                Debug.Log($"AIT:   Devtools: {(devtoolsOn ? "활성화" : "비활성화")}");
+            Debug.Log($"AIT:   Devtools: {(devtoolsOn ? "활성화" : "비활성화")}");
 
             // 캡처용 로컬 변수
             int finalVitePort = vitePort;
@@ -708,7 +616,7 @@ namespace AppsInToss
                             Debug.Log($"AIT:   Granite (Metro): http://{graniteHost}:{finalGranitePort}");
                         Debug.Log($"AIT:   Vite: http://{viteHost}:{finalVitePort}");
                         if (openBrowser)
-                            AITBrowserLauncher.OpenBrowser(finalVitePort, type);
+                            AITBrowserLauncher.OpenBrowser(finalVitePort);
                     },
                     onServerFailed: (reason) =>
                     {

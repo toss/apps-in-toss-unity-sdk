@@ -32,23 +32,31 @@ jobs:
         working-directory: sdk-runtime-generator~
         run: pnpm install --no-frozen-lockfile
 
+      - name: Verify Multi-Version Parsing
+        working-directory: sdk-runtime-generator~
+        run: pnpm test:multi-version
+
       - name: Generate Report
         working-directory: sdk-runtime-generator~
-        run: pnpm test:multi-version || true
+        run: pnpm changelog:generate
 
       - name: Commit Report
+        id: commit
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p 'Documentation~/changelog'
           cp sdk-runtime-generator~/reports/api-changelog.html 'Documentation~/changelog/index.html'
+          cp sdk-runtime-generator~/reports/api-changelog.md 'Documentation~/changelog/api-changelog.md'
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add 'Documentation~/changelog/'
           if git diff --staged --quiet; then
             echo "No changes to commit"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          echo "changed=true" >> "$GITHUB_OUTPUT"
 
           # 고정 브랜치 1개만 사용 → 열린 changelog PR은 항상 ≤1개.
           # (기존 타임스탬프 브랜치는 머지 실패 시 무한 누적되는 원인이었음)
@@ -95,3 +103,22 @@ jobs:
             gh pr merge "$BRANCH" --squash --delete-branch --auto \
               || echo "::warning::auto-merge 예약 실패 — PR을 수동으로 머지해주세요"
           fi
+
+      # changelog가 실제로 바뀐 경우, 또는 수동 workflow_dispatch(강제 업로드 목적)일 때
+      # 업로드한다 (secrets는 step if:에서 직접 참조할 수 없으므로, GITBOOK_* env 부재 시
+      # self-gate는 스크립트가 스스로 판단해 exit 0 한다).
+      #
+      # sdk-runtime-generator~/reports/api-changelog.md를 명시적으로 넘긴다 —
+      # Documentation~/changelog/api-changelog.md가 아니다. "Commit Report" 스텝의
+      # gh pr merge --delete-branch가 머지 후 로컬 체크아웃을 base 브랜치로 되돌리므로,
+      # 이 시점의 워킹트리는 이미 main 상태다. Documentation~/changelog/ 밑의 파일을
+      # 읽으면 1회차엔 파일이 아예 없고(ENOENT) 2회차부터는 한 세대 낡은 내용을 올리게 된다.
+      # reports/ 산출물은 .gitignore 대상(추적되지 않음)이라 git checkout의 영향을 받지
+      # 않고 "Generate Report" 스텝이 방금 만든 최신 내용 그대로 남아있다.
+      - name: Upload Changelog to GitBook
+        if: steps.commit.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
+        env:
+          GITBOOK_TOKEN: ${{ secrets.GITBOOK_TOKEN }}
+          GITBOOK_SPACE_ID: ${{ secrets.GITBOOK_SPACE_ID }}
+          GITBOOK_CHANGELOG_PAGE_ID: ${{ secrets.GITBOOK_CHANGELOG_PAGE_ID }}
+        run: node "scripts~/upload-changelog-to-gitbook.js" "sdk-runtime-generator~/reports/api-changelog.md"

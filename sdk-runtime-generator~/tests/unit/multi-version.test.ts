@@ -9,103 +9,18 @@
  */
 
 import { describe, test, expect, beforeAll } from 'vitest';
-import * as path from 'path';
-import * as fs from 'fs';
-import { TypeScriptParser } from '../../src/parser/TypeScriptParser.js';
-import { FRAMEWORK_APIS, API_CATEGORIES, CATEGORY_ORDER } from '../../src/categories.js';
+import { FRAMEWORK_APIS, API_CATEGORIES } from '../../src/categories.js';
 import type { ParsedAPI } from '../../src/types.js';
 import { prepareParameters } from '../../src/generators/csharp/api-data-preparer.js';
-import { generateChangelogHTML } from './report/changelog-html.js';
+import {
+  discoverInstalledVersions,
+  hasFrameworkApis,
+  resolveVersionPaths,
+  createParserForVersion,
+  type VersionPaths,
+} from '../../src/discovery.js';
 
-// =================================================================
-// 버전 자동 감지
-// =================================================================
-
-/**
- * 설치된 pnpm alias에서 테스트 대상 버전을 자동 감지
- */
-function discoverInstalledVersions(): string[] {
-  const nmDir = path.join(process.cwd(), 'node_modules');
-  if (!fs.existsSync(nmDir)) return [];
-
-  return fs.readdirSync(nmDir)
-    .filter(d => d.startsWith('web-framework-') && d !== 'web-framework')
-    .map(d => d.replace('web-framework-', ''))
-    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-}
-
-/**
- * FRAMEWORK_APIS가 도입된 최소 버전 (1.6.0 이상)
- */
-function hasFrameworkApis(version: string): boolean {
-  const [major, minor] = version.split('.').map(Number);
-  return major > 1 || (major === 1 && minor >= 6);
-}
-
-// =================================================================
-// 버전별 경로 해결
-// =================================================================
-
-interface VersionPaths {
-  dtsDir: string | null;
-  frameworkDts: string | null;
-  webFrameworkPath: string;
-  webAnalyticsDtsDir: string | null;
-}
-
-function resolveVersionPaths(version: string): VersionPaths {
-  const aliasPath = path.join(process.cwd(), 'node_modules', `web-framework-${version}`);
-  const realPath = fs.realpathSync(aliasPath);
-  const siblingDir = path.dirname(realPath); // .pnpm/.../node_modules/@apps-in-toss/
-
-  // web-bridge .d.ts 디렉토리 (dist/ 또는 built/)
-  const webBridgeBase = path.join(siblingDir, 'web-bridge');
-  let dtsDir: string | null = null;
-
-  for (const subdir of ['dist', 'built']) {
-    const candidate = path.join(webBridgeBase, subdir);
-    if (fs.existsSync(candidate)) {
-      const files = fs.readdirSync(candidate);
-      const hasValidDts = files.some(f =>
-        f.endsWith('.d.ts') &&
-        f !== 'index.d.ts' &&
-        f !== 'index.d.cts'
-      );
-      if (hasValidDts) {
-        dtsDir = candidate;
-        break;
-      }
-    }
-  }
-
-  // framework index.d.cts (FRAMEWORK_APIS용)
-  const frameworkDtsPath = path.join(siblingDir, 'framework', 'dist', 'index.d.cts');
-  const frameworkDts = fs.existsSync(frameworkDtsPath) ? frameworkDtsPath : null;
-
-  // web-analytics .d.ts 디렉토리 (sibling에 존재하는 경우)
-  let webAnalyticsDtsDir: string | null = null;
-  const webAnalyticsBase = path.join(siblingDir, 'web-analytics');
-  for (const subdir of ['dist', 'built']) {
-    const candidate = path.join(webAnalyticsBase, subdir);
-    if (fs.existsSync(candidate)) {
-      webAnalyticsDtsDir = candidate;
-      break;
-    }
-  }
-
-  return { dtsDir, frameworkDts, webFrameworkPath: realPath, webAnalyticsDtsDir };
-}
-
-/**
- * 버전 경로에서 파서를 생성하고 web-analytics 소스가 있으면 추가
- */
-function createParser(paths: VersionPaths): TypeScriptParser {
-  const parser = new TypeScriptParser(paths.dtsDir!, paths.webFrameworkPath);
-  if (paths.webAnalyticsDtsDir) {
-    parser.addSourceDirectory(paths.webAnalyticsDtsDir);
-  }
-  return parser;
-}
+// 버전 자동 감지·경로 해석은 src/discovery.ts로 통합됨 (changelog 파이프라인과 공유).
 
 // =================================================================
 // 테스트
@@ -123,11 +38,9 @@ describe('다중 버전 호환성 테스트', () => {
     let apis: ParsedAPI[] = [];
 
     beforeAll(async () => {
-      paths = resolveVersionPaths(version);
-      if (!paths.dtsDir) return;
-
+      paths = await resolveVersionPaths(version);
       const frameworkApiNames = hasFrameworkApis(version) ? FRAMEWORK_APIS : [];
-      apis = await createParser(paths).parseAPIs(frameworkApiNames);
+      apis = await createParserForVersion(paths).parseAPIs(frameworkApiNames);
     });
 
     test('TypeScript 정의 파일 디렉토리를 찾을 수 있어야 함', () => {
@@ -187,12 +100,11 @@ describe('다중 버전 호환성 테스트', () => {
     const first = installedVersions[0];
     const last = installedVersions[installedVersions.length - 1];
 
-    const firstPaths = resolveVersionPaths(first);
-    const lastPaths = resolveVersionPaths(last);
-    if (!firstPaths.dtsDir || !lastPaths.dtsDir) return;
+    const firstPaths = await resolveVersionPaths(first);
+    const lastPaths = await resolveVersionPaths(last);
 
-    const firstApis = await createParser(firstPaths).parseAPIs(hasFrameworkApis(first) ? FRAMEWORK_APIS : []);
-    const lastApis = await createParser(lastPaths).parseAPIs(hasFrameworkApis(last) ? FRAMEWORK_APIS : []);
+    const firstApis = await createParserForVersion(firstPaths).parseAPIs(hasFrameworkApis(first) ? FRAMEWORK_APIS : []);
+    const lastApis = await createParserForVersion(lastPaths).parseAPIs(hasFrameworkApis(last) ? FRAMEWORK_APIS : []);
 
     expect(
       lastApis.length,
@@ -218,10 +130,9 @@ describe('다중 버전 호환성 테스트', () => {
     let apis: ParsedAPI[] = [];
 
     beforeAll(async () => {
-      const paths = resolveVersionPaths(version);
-      if (!paths.dtsDir) return;
+      const paths = await resolveVersionPaths(version);
       const frameworkApiNames = hasFrameworkApis(version) ? FRAMEWORK_APIS : [];
-      apis = await createParser(paths).parseAPIs(frameworkApiNames);
+      apis = await createParserForVersion(paths).parseAPIs(frameworkApiNames);
     });
 
     test('모든 API 파라미터에서 Dictionary<string, object>가 생성되지 않아야 함', () => {
@@ -251,25 +162,5 @@ describe('다중 버전 호환성 테스트', () => {
         }
       }
     });
-  });
-
-  // 버전별 API 변화 HTML 리포트 생성
-  test('API 변화 HTML 리포트 생성', async () => {
-    const versionApis = new Map<string, ParsedAPI[]>();
-    for (const version of installedVersions) {
-      const paths = resolveVersionPaths(version);
-      if (!paths.dtsDir) continue;
-      const apis = await createParser(paths).parseAPIs(hasFrameworkApis(version) ? FRAMEWORK_APIS : []);
-      versionApis.set(version, apis);
-    }
-
-    const html = generateChangelogHTML(versionApis, CATEGORY_ORDER);
-    const reportsDir = path.join(process.cwd(), 'reports');
-    fs.mkdirSync(reportsDir, { recursive: true });
-    const reportPath = path.join(reportsDir, 'api-changelog.html');
-    fs.writeFileSync(reportPath, html, 'utf-8');
-
-    console.log(`\n📊 HTML 리포트 생성: ${reportPath}\n`);
-    expect(fs.existsSync(reportPath)).toBe(true);
   });
 });

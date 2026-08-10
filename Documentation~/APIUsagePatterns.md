@@ -35,7 +35,7 @@ public class Example : MonoBehaviour
 }
 ```
 
-> **중요**: 예외가 하나 있습니다. 인앱결제의 `ProcessProductGrant` 콜백만은 동기 `bool`을 반환합니다. 이유와 올바른 구조는 [인앱결제 절](#인앱결제-지급-승인과-서버-검증)을 참고하세요.
+> **중요**: 예외가 하나 있습니다. 인앱결제의 `ProcessProductGrant` 콜백만은 동기 `bool`을 반환합니다. 이유와 올바른 구조는 아래 **인앱결제: 지급 승인과 서버 검증** 절을 참고하세요.
 
 ### Awaitable 과 Task
 
@@ -239,7 +239,7 @@ POST https://apps-in-toss-api.toss.im/api-partner/v1/apps-in-toss/order/get-orde
 { "orderId": "..." }
 ```
 
-- **mTLS 인증서가 필수**입니다 (서버 간 통신). 발급 방법은 [연동 절차 문서](https://developers-apps-in-toss.toss.im/development/integration-process.html)를 참고하세요.
+- **mTLS 인증서가 필수**입니다 (서버 간 통신). 인증서와 사용자 인증 헤더 안내는 [인증 문서](https://developers-apps-in-toss.toss.im/documentation/api/auth)를 참고하세요.
 - `x-toss-user-key` 헤더에 토스 로그인으로 얻은 userKey를 넣으면 **그 유저의 주문만** 응답합니다. 넣지 않으면 모든 주문이 조회되므로, 다른 유저의 `OrderId`를 가로채 재사용하는 것을 막으려면 이 헤더를 함께 보내야 합니다.
 - 응답의 `sku`로 실제 결제된 상품을 확인할 수 있습니다. 클라이언트가 알려준 SKU를 신뢰하지 마세요.
 
@@ -254,7 +254,7 @@ POST https://apps-in-toss-api.toss.im/api-partner/v1/apps-in-toss/order/get-orde
 
 앞의 두 값이 곧 `ProcessProductGrant` 반환값의 결과입니다. `true`를 반환한 주문은 `PURCHASED`, 그렇지 않은 주문은 `PAYMENT_COMPLETED`로 남습니다.
 
-자세한 명세는 [공식 IAP 문서](https://developers-apps-in-toss.toss.im/bedrock/reference/framework/%EC%9D%B8%EC%95%B1%20%EA%B2%B0%EC%A0%9C/IAP.html)를 참고하세요.
+자세한 명세는 [공식 IAP 문서](https://developers-apps-in-toss.toss.im/documentation/sdk/domains-api/iap)를 참고하세요.
 
 ### 3단계 앱 시작 시 미배달 대사
 

@@ -1,6 +1,9 @@
 using UnityEngine;
 using UnityEditor;
+using UnityEditor.SceneManagement;
 using System.IO;
+using System.Text;
+using System.Globalization;
 using System.Collections.Generic;
 using AppsInToss;
 
@@ -20,13 +23,46 @@ using AppsInToss;
 /// 생성 콘텐츠 ↔ 작동 레버 매핑:
 ///   - mipmap + DXT5 2048² 텍스처  → L6(mip strip) · L9(crunch, DXT 전용) · L11(대형 텍스처 외부화)
 ///   - DecompressOnLoad PCM 오디오  → L8(오디오 스트리밍)
-///   - 절차 생성 메시(normals/tangents/uv2) → L7(optimize mesh data)
+///   - 절차 생성 메시(normals/tangents/uv2, .asset, Resources 안) → L7(optimize mesh data)
+///   - 절차 생성 OBJ 메시(ModelImporter 경로, Assets/HeavyGen/ObjMeshes, Resources 밖)
+///       + HeavyGenGallery 씬(전체 메시를 MeshFilter/MeshRenderer 로 렌더러 연결)
+///       → stripUnusedMeshComponents(채널 스트리핑) 판정을 실제 렌더러 사용 여부 기준으로 실사용화하고,
+///         씬 참조 자산이 sharedassets 로 패킹되는 실게임 경로를 만든다.
 ///   - NotoSansKR 폰트 사본 N종      → L10(CJK subset) · L12(폰트 deferral)
 ///   - (L2~L5 = 코드/로더 레버 → 콘텐츠 무관, wasm/loader에 항상 작동)
 /// </summary>
 public class HeavyBuildRunner
 {
     private const string HeavyRoot = "Assets/Resources/HeavyGen";
+
+    /// <summary>OBJ 메시 + 갤러리 씬 생성 루트(Resources 밖 — 대형 텍스처 외부화와 동일 사유로,
+    /// 이 콘텐츠는 "씬 참조로만 빌드에 포함되는" 경로를 검증해야 하므로 Resources 강제 포함을 피한다).</summary>
+    private const string HeavyGenRoot = "Assets/HeavyGen";
+    private const string ObjMeshRoot = HeavyGenRoot + "/ObjMeshes";
+    private const string GalleryScenePath = HeavyGenRoot + "/HeavyGenGallery.unity";
+
+    /// <summary>
+    /// E2EBuildRunner.BuildWithSDK() 가 제공하는 유일한 "부트 씬(scenes[0]) 뒤에 씬 1개를 추가"
+    /// 훅(env var 이름은 DeployProbeBuildRunner 가 먼저 도입한 것을 그대로 재사용한다). 이 작업의
+    /// 수정 허용 파일은 HeavyBuildRunner.cs 하나뿐이라 E2EBuildRunner.cs 에 전용 훅을 새로 만들 수
+    /// 없다 — E2EBuildRunner.cs 73행에서 EditorBuildSettings.scenes 를 단일 원소로 덮어쓴 직후,
+    /// 76~87행이 정확히 이 env var 를 읽어 index 1 로 append 한다(DeployProbeBuildRunner.cs 257-260행
+    /// 참조, 동일 문제·동일 해법).
+    ///
+    /// IPreprocessBuildWithReport 로 빌드 직전에 EditorBuildSettings.scenes 를 바꾸는 방법은 이미
+    /// 늦다는 점에 주의: AITWebGLBuilder.BuildWebGL() 이 BuildPipeline.BuildPlayer 호출 "전"에
+    /// UnityUtil.GetBuildScenes() 로 씬 목록을 지역 변수(string[])에 스냅샷해 BuildPlayerOptions.scenes
+    /// 에 고정하므로, IPreprocessBuildWithReport 콜백(BuildPipeline.BuildPlayer 내부에서 발화)에서
+    /// EditorBuildSettings.scenes 를 바꿔도 이미 고정된 배열에는 반영되지 않는다. 따라서 DoExport 가
+    /// 호출되기 전(E2EBuildRunner.BuildWithSDK 73행 직후)에 env var 로 값을 넘기는 이 경로가 유일하다.
+    ///
+    /// 참고(메인 세션 검토 포인트): env var 이름이 "DEPLOY_PROBE" 로 고정돼 있어 Heavy 픽스처 재사용은
+    /// 의미상 부정확하다 — 두 픽스처가 같은 프로세스에서 순차 실행되지 않는 한(현재 CI 구조상 별도
+    /// MenuItem/커맨드라인 진입점이라 발생하지 않음) 충돌은 없지만, 이 훅을 "AIT_EXTRA_SCENE_PATH" 등
+    /// 픽스처 중립적인 이름으로 일반화하는 편이 장기적으로 안전하다(E2EBuildRunner.cs 수정 필요 — 이번
+    /// 작업 범위 밖).
+    /// </summary>
+    private const string ExtraSceneEnvVar = "AIT_DEPLOY_PROBE_SCENE_PATH";
 
     [MenuItem("E2E/Build Heavy (perf fixture)")]
     public static void BuildHeavy()
@@ -50,20 +86,42 @@ public class HeavyBuildRunner
             return;
         }
 
-        // perf full posture: 기본 자동 모드에선 꺼져 있는 opt-in 레버를 명시 활성화한다
+        // perf full/fullmesh posture: 기본 자동 모드에선 꺼져 있는 opt-in 레버를 명시 활성화한다
         // (fontSubset 은 언어 선택 게이트, audioStreamTranscode/textureStreamJpeg 는 opt-in 기본 OFF).
-        // dispatch 의 posture=full 이 unity-build.yml → AIT_PERF_POSTURE=full 로 전파된 것.
+        // fullmesh 는 full 에 meshCompression=1 만 더한 것 — 같은 픽스처에서 full↔fullmesh A/B 로
+        // Mesh 압축 레버 단독 효과를 격리 측정하기 위한 posture 다.
+        // dispatch 의 posture 입력이 unity-build.yml → AIT_PERF_POSTURE 로 전파된 것.
         var posture = System.Environment.GetEnvironmentVariable("AIT_PERF_POSTURE");
-        if (posture == "full")
+        if (posture == "full" || posture == "fullmesh")
         {
             var config = UnityUtil.GetEditorConf();
             config.fontSubsetLanguages = "ko";   // 자동 모드 언어 선택 게이트 통과 → 부팅 subset 발화
             config.audioStreamTranscode = 1;     // opt-in
             config.textureStreamJpeg = 1;        // opt-in
+            string levers = "fontSubsetLanguages=ko, audioStreamTranscode=1, textureStreamJpeg=1";
+            if (posture == "fullmesh")
+            {
+                config.meshCompression = 1;      // opt-in (Mesh 압축 레버 A/B 측정용)
+                levers += ", meshCompression=1";
+            }
             EditorUtility.SetDirty(config);
             AssetDatabase.SaveAssets();
-            Debug.Log("[heavy] full posture 적용: fontSubsetLanguages=ko, audioStreamTranscode=1, textureStreamJpeg=1");
+            Debug.Log($"[heavy] {posture} posture 적용: {levers}");
         }
+
+        // 갤러리 씬(index 1)을 EditorBuildSettings.scenes 에 추가 예약 — ExtraSceneEnvVar 문서 참조.
+        // GenerateHeavyContent() 가 이미 씬 저장 성공을 확인했지만(BuildGalleryScene 내부 검증),
+        // 이 시점에 다시 한번 존재를 확인해 "씬 누락 → OBJ 세트 전량 누락"을 확실히 차단한다.
+        if (!File.Exists(GalleryScenePath))
+        {
+            Debug.LogError("========================================");
+            Debug.LogError($"[heavy] 갤러리 씬을 찾을 수 없어 OBJ 메시 세트가 빌드에서 누락됩니다: {GalleryScenePath}");
+            Debug.LogError("========================================");
+            EditorApplication.Exit(1);
+            return;
+        }
+        System.Environment.SetEnvironmentVariable(ExtraSceneEnvVar, GalleryScenePath);
+        Debug.Log($"[heavy] 갤러리 씬을 scenes[1] 로 추가 예약: {GalleryScenePath} (E2EBuildRunner 훅 재사용)");
 
         // 생성 콘텐츠가 임포트된 상태에서 검증된 E2E 빌드 파이프라인을 그대로 재사용.
         // (씬/SDK 설정/포트 오프셋/산출물 검증/exit code 처리 전부 E2EBuildRunner 소유)
@@ -89,10 +147,13 @@ public class HeavyBuildRunner
         int meshCount = GetEnvInt("AIT_HEAVY_MESHES", 80);
         int meshGrid = GetEnvInt("AIT_HEAVY_MESH_GRID", 70); // (grid+1)^2 verts ≈ 5041
         int fontCopies = GetEnvInt("AIT_HEAVY_FONT_COPIES", 2);
+        // OBJ 메시 세트(ModelImporter 경로, Resources 밖 — 갤러리 씬 참조로만 빌드에 포함).
+        int objMeshCount = GetEnvInt("AIT_HEAVY_OBJ_MESHES", 20);
+        int objMeshGrid = GetEnvInt("AIT_HEAVY_OBJ_MESH_GRID", 50); // (grid+1)^2 verts ≈ 2601, 개당 ~수백KB
 
         Debug.Log($"[heavy] generating: textures={textureCount}(+{crunchTextureCount} 압축성)@{textureSize}², " +
                   $"audio={audioCount}@{audioSeconds}s, meshes={meshCount}@~{(meshGrid + 1) * (meshGrid + 1)}v, " +
-                  $"fontCopies={fontCopies}");
+                  $"objMeshes={objMeshCount}@~{(objMeshGrid + 1) * (objMeshGrid + 1)}v, fontCopies={fontCopies}");
 
         // 결정론 보장: 매 빌드 전 생성 루트를 비우고 새로 만든다.
         if (AssetDatabase.IsValidFolder(HeavyRoot))
@@ -105,6 +166,15 @@ public class HeavyBuildRunner
         EnsureFolder(HeavyRoot + "/Meshes");
         EnsureFolder(HeavyRoot + "/Fonts");
 
+        // OBJ/갤러리 씬 루트도 동일 규약으로 비우고 새로 만든다(재실행 안전 — CI 영속 워크스페이스에서
+        // 중복 누적 금지).
+        if (AssetDatabase.IsValidFolder(HeavyGenRoot))
+        {
+            AssetDatabase.DeleteAsset(HeavyGenRoot);
+        }
+        EnsureFolder(HeavyGenRoot);
+        EnsureFolder(ObjMeshRoot);
+
         // 주의: 이 루프를 StartAssetEditing/StopAssetEditing 배치로 감싸면 안 된다.
         // 배치 중에는 AssetDatabase 임포트가 지연되어, GenerateTexture/GenerateAudio 내부의
         // AssetImporter.GetAtPath()가 (아직 임포트 전이라) null 을 반환하고 importer.* 접근에서
@@ -115,6 +185,18 @@ public class HeavyBuildRunner
         for (int i = 0; i < audioCount; i++) GenerateAudio(i, audioSeconds);
         for (int i = 0; i < meshCount; i++) GenerateMesh(i, meshGrid);
         CopyFonts(fontCopies);
+
+        // OBJ 메시 세트 생성(ModelImporter 경로) → 갤러리 씬에서 참조할 Mesh 목록을 확보.
+        var objMeshes = new List<Mesh>(objMeshCount);
+        for (int i = 0; i < objMeshCount; i++)
+        {
+            objMeshes.Add(GenerateObjMesh(i, objMeshGrid));
+        }
+
+        // 렌더러 연결 씬: 기존 .asset 메시 80개 전부 + 신규 OBJ 메시 전부를 배치.
+        // 이 씬이 EditorBuildSettings.scenes 에 추가돼야(BuildHeavy() 의 ExtraSceneEnvVar 경로)
+        // OBJ 메시(Resources 밖)가 실제로 빌드에 포함된다.
+        BuildGalleryScene(meshCount, objMeshes);
 
         // L6(mip stripping) 측정 가능화: 모든 Quality 레벨의 텍스처 mip 제한을 설정한다.
         // 이 설정 단독으로는 .data 가 변하지 않는다(mipStripping=false 면 mip 전량 빌드 포함 →
@@ -279,7 +361,12 @@ public class HeavyBuildRunner
         importer.SaveAndReimport();
     }
 
-    // ---- 메시: 절차 생성 그리드, normals/tangents/uv2 포함 (L7) ----
+    // ---- 메시: 절차 생성 그리드, normals/tangents/uv2 포함 (L7, SetMeshCompression 경로) ----
+    // Resources/ 안(.asset)이라 씬 연결 없이도 빌드에 강제 포함되지만, 렌더러 미연결이면
+    // stripUnusedMeshComponents 의 "채널 사용" 판정이 신뢰 불가하다(레버가 항상 안전하게 보수적으로
+    // 판단해 아무 채널도 못 지움). 아래 BuildGalleryScene 이 이 메시 80개 전부를 실제
+    // MeshFilter/MeshRenderer 로 씬에 연결해 채널 스트리핑 판정을 실사용화한다 — uv2 는 그 판정을
+    // 검증하는 "미사용 채널" 신호로 남긴다(씬에서도 실제로 읽히지 않는 채널).
     private static void GenerateMesh(int index, int grid)
     {
         int dim = grid + 1;
@@ -333,6 +420,171 @@ public class HeavyBuildRunner
         mesh.RecalculateBounds();
 
         AssetDatabase.CreateAsset(mesh, $"{HeavyRoot}/Meshes/heavy_mesh_{index:D2}.asset");
+    }
+
+    // ---- OBJ 메시: 절차 생성 Wavefront 텍스트, ModelImporter 경로 (L7 확장 대상) ----
+    // v/vn/vt/f 만 사용하는 사각 격자 삼각형화(GenerateMesh 와 동일 수식·LCG 스타일 재사용). 법선은
+    // GenerateMesh 와 동일하게 전부 위쪽 고정(Vector3.up)이라 vn 라인 1개만 공유 참조한다(파일 크기
+    // 절감, 유효한 OBJ). Resources 밖(Assets/HeavyGen/ObjMeshes)이라 BuildGalleryScene 의 씬 참조가
+    // 유일한 빌드 포함 경로다. 임포터 기본 설정(압축 Off 등)은 건드리지 않는다 — 레버가 조정할 대상이므로
+    // 원본 상태를 유지해야 한다.
+    private static Mesh GenerateObjMesh(int index, int grid)
+    {
+        string assetPath = $"{ObjMeshRoot}/heavy_obj_{index:D2}.obj";
+        string text = BuildObjText(index, grid);
+        // BOM 없는 UTF-8: 주석의 한글이 깨지지 않으면서도(가독성) OBJ 파서 호환성을 해치지 않는다
+        // (v/vn/vt/f 데이터 라인 자체는 CultureInfo.InvariantCulture 로 순수 ASCII 숫자만 사용).
+        File.WriteAllText(assetPath, text, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        AssetDatabase.ImportAsset(assetPath, ImportAssetOptions.ForceSynchronousImport);
+
+        var importer = AssetImporter.GetAtPath(assetPath) as ModelImporter;
+        if (importer == null)
+            throw new System.Exception(
+                $"[heavy] ModelImporter 가 null: {assetPath} (OBJ 가 ModelImporter 경로로 임포트되지 않음 — " +
+                "이 메시 세트 전체가 빌드에서 누락된다)");
+
+        var mesh = LoadImportedMesh(assetPath);
+        if (mesh == null)
+            throw new System.Exception($"[heavy] OBJ 임포트 후 Mesh 서브에셋을 찾지 못함: {assetPath}");
+
+        return mesh;
+    }
+
+    /// <summary>OBJ(.obj) Wavefront 텍스트를 직접 조립한다(수식 기반 완전 결정론, 로케일 무관).</summary>
+    private static string BuildObjText(int index, int grid)
+    {
+        int dim = grid + 1;
+        var sb = new StringBuilder(dim * dim * 48 + grid * grid * 2 * 40);
+        sb.Append("# heavy_obj_").Append(index.ToString("D2")).Append(" - 절차 생성 grid=")
+          .Append(grid).Append(" (LCG 결정론)\n");
+        sb.Append("vn 0.0000 1.0000 0.0000\n"); // 공유 단일 노멀(GenerateMesh 와 동일하게 전부 위쪽 고정)
+
+        // GenerateMesh 와 다른 상수(+7 오프셋)로 시드를 분리해 asset 메시와 값이 겹치지 않게 한다.
+        uint state = 0x27D4EB2Fu ^ (uint)(index * 0x165667B1u + 7u);
+        for (int y = 0; y <= grid; y++)
+        {
+            for (int x = 0; x <= grid; x++)
+            {
+                state = NextLcg(state);
+                float h = ((state >> 8) & 0xFFFF) / 65535f; // 결정론적 높이 노이즈
+                float fx = (float)x / grid;
+                float fy = (float)y / grid;
+                float vx = fx - 0.5f;
+                float vy = h * 0.2f;
+                float vz = fy - 0.5f;
+
+                sb.Append("v ")
+                  .Append(vx.ToString("F4", CultureInfo.InvariantCulture)).Append(' ')
+                  .Append(vy.ToString("F4", CultureInfo.InvariantCulture)).Append(' ')
+                  .Append(vz.ToString("F4", CultureInfo.InvariantCulture)).Append('\n');
+                sb.Append("vt ")
+                  .Append(fx.ToString("F4", CultureInfo.InvariantCulture)).Append(' ')
+                  .Append(fy.ToString("F4", CultureInfo.InvariantCulture)).Append('\n');
+            }
+        }
+
+        for (int y = 0; y < grid; y++)
+        {
+            for (int x = 0; x < grid; x++)
+            {
+                int v0 = y * dim + x + 1; // OBJ 인덱스는 1-based
+                int v1 = v0 + 1;
+                int v2 = v0 + dim;
+                int v3 = v2 + 1;
+                AppendObjFace(sb, v0, v2, v1);
+                AppendObjFace(sb, v1, v2, v3);
+            }
+        }
+
+        return sb.ToString();
+    }
+
+    /// <summary>OBJ 삼각형 face 라인 1개를 추가한다(v/vt 는 정점 인덱스, vn 은 공유 인덱스 1 고정).</summary>
+    private static void AppendObjFace(StringBuilder sb, int a, int b, int c)
+    {
+        sb.Append("f ")
+          .Append(a).Append('/').Append(a).Append("/1 ")
+          .Append(b).Append('/').Append(b).Append("/1 ")
+          .Append(c).Append('/').Append(c).Append("/1\n");
+    }
+
+    /// <summary>ModelImporter 로 임포트된 자산에서 Mesh 서브에셋을 찾는다.</summary>
+    private static Mesh LoadImportedMesh(string assetPath)
+    {
+        foreach (var obj in AssetDatabase.LoadAllAssetsAtPath(assetPath))
+        {
+            if (obj is Mesh mesh) return mesh;
+        }
+        return null;
+    }
+
+    // ---- 렌더러 연결 씬: 기존 asset 메시 80개 + 신규 OBJ 메시 전부를 배치 ----
+    // (a) stripUnusedMeshComponents 의 채널 사용 판정을 실제 렌더러 기준으로 실사용화하고,
+    // (b) 씬 참조 자산이 sharedassets 로 패킹되는 실게임 경로를 만든다. 이 씬을 EditorBuildSettings.scenes
+    // 에 추가하는 것은 BuildHeavy() 의 책임(ExtraSceneEnvVar 훅) — 여기서는 씬 파일만 만들고 저장 성공을
+    // 즉시 검증한다(OBJ 메시가 Resources 밖이라 이 씬이 유일한 빌드 포함 경로이므로 실패를 조용히 넘기면
+    // 안 된다).
+    private static void BuildGalleryScene(int assetMeshCount, List<Mesh> objMeshes)
+    {
+        // 결정론 보장: 매 빌드 전 기존 갤러리 씬을 지우고 새로 만든다(HeavyRoot 와 동일 규약).
+        if (File.Exists(GalleryScenePath))
+        {
+            File.Delete(GalleryScenePath);
+            string metaPath = GalleryScenePath + ".meta";
+            if (File.Exists(metaPath)) File.Delete(metaPath);
+            AssetDatabase.Refresh();
+        }
+
+        // 비부트 씬(index 1) — Camera/Light 불필요, 런타임 로드 목적이 아니라 메시 렌더러 연결(빌드
+        // 포함 + 채널 스트리핑 판정 실사용화)이 목적이다(DeployProbeBuildRunner 의 비부트 씬과 동일 철학).
+        var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+
+        // 공유 머티리얼 1개: 빌트인 기본 머티리얼(렌더 파이프라인/Unity 버전 무관하게 항상 존재하는
+        // GetBuiltinExtraResource 리소스 — 별도 .mat 에셋 생성 불필요).
+        var sharedMaterial = AssetDatabase.GetBuiltinExtraResource<Material>("Default-Material.mat");
+
+        int placed = 0;
+        for (int i = 0; i < assetMeshCount; i++)
+        {
+            string meshPath = $"{HeavyRoot}/Meshes/heavy_mesh_{i:D2}.asset";
+            var mesh = AssetDatabase.LoadAssetAtPath<Mesh>(meshPath);
+            if (mesh == null)
+                throw new System.Exception($"[heavy] 갤러리 씬 배치 실패 — 메시 애셋 로드 불가: {meshPath}");
+            PlaceMeshGameObject($"AssetMesh_{i:D2}", mesh, sharedMaterial, placed++);
+        }
+
+        for (int i = 0; i < objMeshes.Count; i++)
+        {
+            if (objMeshes[i] == null)
+                throw new System.Exception($"[heavy] 갤러리 씬 배치 실패 — OBJ 메시 index {i} 가 null");
+            PlaceMeshGameObject($"ObjMesh_{i:D2}", objMeshes[i], sharedMaterial, placed++);
+        }
+
+        EditorSceneManager.SaveScene(scene, GalleryScenePath);
+
+        if (!File.Exists(GalleryScenePath))
+        {
+            // 씬 추가가 실패하면 OBJ 메시 세트 전체가 빌드에서 누락된다(Resources 밖이라 이 씬 참조가
+            // 유일한 포함 경로) — 명확한 예외로 CI가 즉시 검출하게 한다.
+            throw new System.Exception($"[heavy] 갤러리 씬 저장 실패: {GalleryScenePath}");
+        }
+
+        Debug.Log($"[heavy] gallery scene saved: {GalleryScenePath} " +
+                  $"({placed}개 메시 배치: asset {assetMeshCount} + obj {objMeshes.Count})");
+    }
+
+    /// <summary>메시 GameObject 1개를 생성해 격자 배치한다(렌더링 결과는 무관 — 씬 참조 확립이 목적).</summary>
+    private static void PlaceMeshGameObject(string name, Mesh mesh, Material material, int index)
+    {
+        var go = new GameObject(name);
+        var meshFilter = go.AddComponent<MeshFilter>();
+        meshFilter.sharedMesh = mesh;
+        var meshRenderer = go.AddComponent<MeshRenderer>();
+        meshRenderer.sharedMaterial = material;
+
+        const int cols = 10;
+        const float spacing = 2f;
+        go.transform.position = new Vector3((index % cols) * spacing, 0f, (index / cols) * spacing);
     }
 
     // ---- 폰트: NotoSansKR 사본 N종 (L10/L12) ----
@@ -431,8 +683,15 @@ public class HeavyBuildRunner
 
     private static void LogHeavyFootprint()
     {
+        long total = SumDirectorySize(HeavyRoot) + SumDirectorySize(HeavyGenRoot);
+        Debug.Log($"[heavy] generated source footprint: {total / (1024.0 * 1024.0):F1} MB on disk " +
+                  $"(빌드 .data 기여는 압축 포맷에 따라 상이; gitignore 대상)");
+    }
+
+    private static long SumDirectorySize(string relativeRoot)
+    {
         long total = 0;
-        string abs = Path.GetFullPath(HeavyRoot);
+        string abs = Path.GetFullPath(relativeRoot);
         if (Directory.Exists(abs))
         {
             foreach (string file in Directory.GetFiles(abs, "*", SearchOption.AllDirectories))
@@ -441,8 +700,7 @@ public class HeavyBuildRunner
                 total += new FileInfo(file).Length;
             }
         }
-        Debug.Log($"[heavy] generated source footprint: {total / (1024.0 * 1024.0):F1} MB on disk " +
-                  $"(빌드 .data 기여는 압축 포맷에 따라 상이; gitignore 대상)");
+        return total;
     }
 
     // ---- Quality mip 제한 (L6 mip stripping 레버 측정 가능화) ----

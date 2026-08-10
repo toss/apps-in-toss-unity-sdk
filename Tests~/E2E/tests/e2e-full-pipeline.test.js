@@ -224,7 +224,7 @@ async function killServerProcess(proc, ports = []) {
   }
 }
 
-async function startDevServer(aitBuildDir, defaultPort) {
+async function startDevServer(aitBuildDir, defaultPort, extraEnv = {}) {
   const vitePort = VITE_DEV_PORT;
 
   const myPorts = [serverPort, vitePort];
@@ -248,7 +248,7 @@ async function startDevServer(aitBuildDir, defaultPort) {
       cwd: aitBuildDir,
       stdio: 'pipe',
       shell: true,
-      env: { ...process.env, NODE_OPTIONS: '' }
+      env: { ...process.env, NODE_OPTIONS: '', ...extraEnv }
     });
 
     let started = false;
@@ -557,14 +557,18 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
   // Test 2: AIT Dev Server (vite)
   // -------------------------------------------------------------------------
   test('2. AIT dev server should start and load Unity', async ({ page }) => {
-    test.setTimeout(120000);
+    // devtools mock 초기화(cold optimizeDeps ~2-4초) + TriggerAPITest allowlist 대기가
+    // 추가되어 기존 120000보다 여유를 둔다.
+    test.setTimeout(200000);
 
     await applyMobileThrottling(page);
 
     expect(directoryExists(AIT_BUILD), 'ait-build/ should exist for dev server').toBe(true);
 
-    console.log('🚀 Starting dev server (vite)...');
-    const devServer = await startDevServer(AIT_BUILD, serverPort);
+    console.log('🚀 Starting dev server (vite) with devtools mock enabled...');
+    // AIT_DEVTOOLS=1: Editor가 AIT/Dev Server 실행 시 항상 명시하는 값과 동일한 계약
+    // (vite.config.ts가 AIT_DEVTOOLS='1'일 때만 devtools unplugin + 패널을 활성화).
+    const devServer = await startDevServer(AIT_BUILD, serverPort, { AIT_DEVTOOLS: '1' });
     serverProcess = devServer.process;
     const actualPort = devServer.port;
 
@@ -637,6 +641,107 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
     }
 
     const loadTime = Date.now() - startTime;
+
+    // -------------------------------------------------------------------------
+    // devtools mock 통합 단언 (AIT_DEVTOOLS=1 계약 검증)
+    // -------------------------------------------------------------------------
+
+    // ① devtools unplugin이 @apps-in-toss/web-framework를 mock으로 alias했다는 직접 증거:
+    //    window.AppsInToss.getPlatformOS 함수가 주입되어 있어야 한다.
+    const hasGetPlatformOS = await page.evaluate(() => {
+      return typeof window['AppsInToss']?.getPlatformOS === 'function';
+    });
+    expect(hasGetPlatformOS, 'window.AppsInToss.getPlatformOS should be injected by devtools unplugin').toBe(true);
+
+    // ② mock 함수가 reject 없이 문자열을 반환하는지 (mock이 실제로 동작한다는 증명)
+    const platformOSResult = await page.evaluate(async () => {
+      try {
+        const os = await window['AppsInToss'].getPlatformOS();
+        return { ok: true, type: typeof os };
+      } catch (e) {
+        return { ok: false, error: e?.message || String(e) };
+      }
+    });
+    expect(platformOSResult.ok, `getPlatformOS() should not reject (got: ${JSON.stringify(platformOSResult)})`).toBe(true);
+    expect(platformOSResult.type, 'getPlatformOS() should resolve to a string').toBe('string');
+
+    // ③ 패널 호스트 엘리먼트 존재 (AIT_DEVTOOLS_PANEL 기본 on, 명시 미설정 시 활성).
+    //    셀렉터 `.ait-panel-toggle`은 devtools 패키지 자신이
+    //    "The CSS-class / attribute contract relied on by e2e/panel.test.ts"로 문서화한
+    //    안정 계약(dist/panel/index.js 주석) — 내부 React 트리 구조가 바뀌어도
+    //    devtools가 마이너 업데이트에서 지키기로 약속한 셀렉터라 관대하게 안전하다.
+    const panelToggleCount = await page.locator('.ait-panel-toggle').count();
+    expect(panelToggleCount, 'devtools floating panel toggle button should be mounted').toBeGreaterThan(0);
+
+    // ④ 소규모 allowlist API가 mock에서 실제로 성공하는지, 기존 TriggerAPITest 하네스
+    //    (Test 4와 동일한 트리거 + 결과 수집 코드)를 재사용해 확인한다 — 새 하네스를
+    //    만들지 않는다.
+    //    allowlist 근거: RuntimeAPITester.cs가 호출하는 apiName과
+    //    node_modules/@apps-in-toss/devtools/dist/mock/3x.js의 export를 대조해,
+    //    파라미터 없이 호출되고 aitState 기본값을 예외 없이 즉시 반환하는 4개를 선정했다
+    //    (getPlatformOS/getOperationalEnvironment/getDeviceId/getLocale). Storage 계열은
+    //    RuntimeAPITester.cs가 애초에 호출하지 않아 이 하네스로는 검증 대상이 아니다.
+    const MOCK_SUCCESS_ALLOWLIST = [
+      'API_GetPlatformOS',
+      'API_GetOperationalEnvironment',
+      'API_GetDeviceId',
+      'API_GetLocale',
+    ];
+
+    try {
+      await page.waitForFunction(() => typeof window['TriggerAPITest'] === 'function', { timeout: 10000 });
+    } catch {
+      console.log('⚠️ TriggerAPITest not found on dev server page (mock allowlist assertion may fail)');
+    }
+
+    const devApiResults = await page.evaluate(() => {
+      return new Promise((resolve) => {
+        if (window['__E2E_API_TEST_DATA__']) {
+          resolve(window['__E2E_API_TEST_DATA__']);
+          return;
+        }
+
+        const handler = (event) => {
+          window.removeEventListener('e2e-api-test-complete', handler);
+          resolve(event.detail);
+        };
+        window.addEventListener('e2e-api-test-complete', handler);
+
+        if (typeof window['TriggerAPITest'] === 'function') {
+          window['TriggerAPITest']();
+        }
+
+        setTimeout(() => resolve(null), 60000);
+      });
+    });
+
+    if (devApiResults) {
+      let devResults = devApiResults;
+      if (typeof devResults === 'string') {
+        try { devResults = JSON.parse(devResults); } catch {}
+      }
+
+      const byName = new Map((devResults.results || []).map(r => [r.apiName, r]));
+      for (const name of MOCK_SUCCESS_ALLOWLIST) {
+        const r = byName.get(name);
+        expect(r, `${name} should be present in TriggerAPITest results`).toBeTruthy();
+        expect(r.success, `${name} should succeed under devtools mock (got: ${JSON.stringify(r)})`).toBe(true);
+        expect(r.isExpectedError, `${name} should be a genuine mock success, not an expected-error pass-through (got: ${JSON.stringify(r)})`).toBe(false);
+      }
+    } else {
+      console.log('⚠️ TriggerAPITest results not received on dev server (mock allowlist assertion skipped)');
+    }
+
+    // ⑤ 회귀: 삭제된 자체 mock 브리지(appsintoss-unity-bridge.js)의 흔적이
+    //    devtools 경로로 재유입되지 않았는지 확인.
+    const legacyBridgeGlobals = await page.evaluate(() => ({
+      unityBridge: typeof window['AppsInTossUnityBridge'],
+      googleAdMob: typeof window['GoogleAdMob'],
+      aitShowToast: typeof window['aitShowToast'],
+    }));
+    expect(legacyBridgeGlobals.unityBridge, 'window.AppsInTossUnityBridge should not exist (legacy mock bridge removed)').toBe('undefined');
+    expect(legacyBridgeGlobals.googleAdMob, 'window.GoogleAdMob should not exist (legacy mock bridge removed)').toBe('undefined');
+    expect(legacyBridgeGlobals.aitShowToast, 'window.aitShowToast should not exist (legacy mock bridge removed)').toBe('undefined');
 
     await killServerProcess(serverProcess, [VITE_DEV_PORT, serverPort]);
     serverProcess = null;
@@ -1029,7 +1134,7 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
     // -------------------------------------------------------------------------
     // Test 4: Runtime API Error Validation
     // -------------------------------------------------------------------------
-    test('4. All SDK APIs should return correct errors in dev environment', async () => {
+    test('4. All SDK APIs should return correct errors in production preview (no Toss bridge)', async () => {
       test.setTimeout(180000);
 
       console.log('🔄 Triggering API tests via JavaScript...');

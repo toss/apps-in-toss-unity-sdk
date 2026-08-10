@@ -1,4 +1,4 @@
-import { defineConfig, mergeConfig, type Plugin } from 'vite';
+import { defineConfig, mergeConfig, type ConfigEnv, type Plugin, type UserConfig } from 'vite';
 import { openSync, readSync, closeSync } from 'fs';
 import { join } from 'path';
 
@@ -101,33 +101,135 @@ function unityWebContentEncodingPlugin(): Plugin {
     },
   };
 }
+
+/**
+ * devtools mock/패널 활성화 여부를 Vite ConfigEnv + 환경변수로 판정한다.
+ *
+ * 판정 규칙 (Editor → Vite 환경변수 계약):
+ * - `vite build`/`vite preview`(command !== 'serve' 또는 isPreview) → 항상 비활성.
+ *   프로덕션 산출물에 mock/패널이 섞여 들어가면 안 됨.
+ * - `AIT_DEVTOOLS` 미설정 또는 빈 문자열 → 활성 (수동 `pnpm dev` 실행 시 기본 ON).
+ * - `AIT_DEVTOOLS`가 "0" 또는 "false"(대소문자 무관) → 비활성.
+ * - 그 외(주로 "1"/"true" — Editor가 Dev 서버 실행 시 항상 명시) → 활성.
+ */
+function isAitDevtoolsEnabled(env: ConfigEnv): boolean {
+  if (env.command !== 'serve' || env.isPreview) return false;
+
+  const raw = process.env.AIT_DEVTOOLS;
+  if (raw === undefined || raw === '') return true;
+
+  const normalized = raw.trim().toLowerCase();
+  if (normalized === '0' || normalized === 'false') return false;
+
+  return true;
+}
+
+/**
+ * devtools 플로팅 패널을 index.html에 직접 주입하는 플러그인.
+ *
+ * @apps-in-toss/devtools의 패널 자동 주입기는 진입점 파일명이
+ * `main|index|entry|app.[tj]sx?` 패턴에 매칭될 때만 동작한다. Unity 템플릿의
+ * 진입점은 `unity-bridge.ts`라 이 패턴에 걸리지 않으므로, transformIndexHtml
+ * 훅으로 index.html에 직접 스크립트 태그를 심어 우회한다.
+ *
+ * `AIT_DEVTOOLS_PANEL`이 "0"이면(Editor의 config.devtools.panel=false) 주입을 skip한다.
+ */
+function aitDevtoolsPanelPlugin(): Plugin {
+  return {
+    name: 'ait-devtools-panel-inject',
+    apply: 'serve',
+    transformIndexHtml(html) {
+      if (process.env.AIT_DEVTOOLS_PANEL === '0') return html;
+
+      return {
+        html,
+        tags: [
+          {
+            tag: 'script',
+            attrs: { type: 'module' },
+            children: "import '@apps-in-toss/devtools/panel';",
+            injectTo: 'body',
+          },
+        ],
+      };
+    },
+  };
+}
 //// SDK_PLUGINS_END ////
 
 //// SDK_GENERATED_START - DO NOT EDIT THIS SECTION ////
-const sdkConfig = defineConfig({
-  // Unity WebGL 압축 파일 헤더 처리 플러그인
-  plugins: [unityWebContentEncodingPlugin()],
-  // Apps in Toss 플랫폼에서 서브 경로 호스팅을 위해 상대 경로 사용
-  base: './',
-  server: {
-    host: process.env.AIT_VITE_HOST || '%AIT_VITE_HOST%',
-    port: parseInt(process.env.AIT_VITE_PORT || '%AIT_VITE_PORT%', 10),
-    strictPort: true, // 포트 충돌 시 서버 실행 실패
-  },
-  build: {
-    // Unity WebGL 빌드와 호환되도록 설정
-    target: 'es2015',
-    // 빌드 출력 설정
-    rollupOptions: {
-      output: {
-        // 해시를 포함하지 않는 파일명으로 출력 (예측 가능한 이름)
-        entryFileNames: 'assets/[name].js',
-        chunkFileNames: 'assets/[name].js',
-        assetFileNames: 'assets/[name][extname]',
+async function sdkConfig(env: ConfigEnv): Promise<UserConfig> {
+  const devtoolsEnabled = isAitDevtoolsEnabled(env);
+
+  // devtools 플러그인은 활성화된 경우에만 동적으로 로드한다. 프로덕션 빌드
+  // (devtoolsEnabled=false)에서는 import 자체를 건너뛰어 번들에 devtools 코드가
+  // 섞여 들어가지 않도록 한다.
+  const devtoolsPlugins: Plugin[] = [];
+  if (devtoolsEnabled) {
+    try {
+      const { vite: aitDevtools } = await import('@apps-in-toss/devtools/unplugin');
+      devtoolsPlugins.push(
+        aitDevtools({
+          mock: true,
+          // 패널 주입은 위 aitDevtoolsPanelPlugin()이 index.html에 직접 담당한다.
+          panel: false,
+          mcp: process.env.AIT_DEVTOOLS_MCP === '1',
+          tunnel: process.env.AIT_DEVTOOLS_TUNNEL === '1',
+          webViewType: 'game',
+        }) as Plugin,
+        aitDevtoolsPanelPlugin(),
+      );
+    } catch (err) {
+      // devtools 미설치(예: SDK 업데이트 직후 node_modules 재설치 누락) 시
+      // 조용히 건너뛰고 실 SDK로 계속 진행한다 — 프로덕션 vite build는 이 import
+      // 실패와 무관하게(devtoolsEnabled=false라 애초에 이 블록에 들어오지 않음)
+      // 항상 죽지 않아야 하고, 개발 모드에서도 mock 없이 서버가 뜰 수 있어야 한다.
+      console.warn('[AIT] @apps-in-toss/devtools 로드 실패, mock 없이 진행합니다:', err);
+    }
+  }
+
+  // devtools 플러그인이 실제로 로드된 경우에만 pre-bundle 대상에 포함시킨다.
+  // - include: '@apps-in-toss/devtools/panel'을 미리 pre-bundle해 두지 않으면
+  //   panel import가 실 SDK(alias 대상)보다 먼저 최적화되며 mock이 무시될 수 있음
+  // - exclude: web-framework/web-analytics를 pre-bundle 대상에서 빼서 devtools의
+  //   alias가 걸리기 전에 실 SDK가 먼저 구워지는 것을 방지. 세션 중간에
+  //   re-optimize가 발생하면 브라우저 전체 리로드가 걸리므로 이를 예방하는 목적도 있음
+  const devtoolsLoaded = devtoolsPlugins.length > 0;
+
+  return {
+    // Unity WebGL 압축 파일 헤더 처리 플러그인. devtools는 항상 맨 앞에 위치
+    // (web-framework → devtools mock alias가 다른 플러그인보다 먼저 걸려야 함)
+    plugins: [...devtoolsPlugins, unityWebContentEncodingPlugin()],
+    // Apps in Toss 플랫폼에서 서브 경로 호스팅을 위해 상대 경로 사용
+    base: './',
+    server: {
+      host: process.env.AIT_VITE_HOST || '%AIT_VITE_HOST%',
+      port: parseInt(process.env.AIT_VITE_PORT || '%AIT_VITE_PORT%', 10),
+      strictPort: true, // 포트 충돌 시 서버 실행 실패
+    },
+    build: {
+      // Unity WebGL 빌드와 호환되도록 설정
+      target: 'es2015',
+      // 빌드 출력 설정
+      rollupOptions: {
+        output: {
+          // 해시를 포함하지 않는 파일명으로 출력 (예측 가능한 이름)
+          entryFileNames: 'assets/[name].js',
+          chunkFileNames: 'assets/[name].js',
+          assetFileNames: 'assets/[name][extname]',
+        },
       },
     },
-  },
-});
+    ...(devtoolsLoaded
+      ? {
+          optimizeDeps: {
+            include: ['@apps-in-toss/devtools/panel'],
+            exclude: ['@apps-in-toss/web-framework', '@apps-in-toss/web-analytics'],
+          },
+        }
+      : {}),
+  };
+}
 //// SDK_GENERATED_END ////
 
 //// USER_CONFIG_START ////
@@ -137,4 +239,4 @@ const userConfig = defineConfig({
 });
 //// USER_CONFIG_END ////
 
-export default mergeConfig(sdkConfig, userConfig);
+export default defineConfig(async (env) => mergeConfig(await sdkConfig(env), userConfig as UserConfig));

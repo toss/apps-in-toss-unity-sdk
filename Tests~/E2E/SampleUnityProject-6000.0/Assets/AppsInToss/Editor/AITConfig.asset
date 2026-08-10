@@ -28,7 +28,6 @@ MonoBehaviour:
   vitePort: 5175
   outdir: dist
   devServerProfile:
-    enableMockBridge: 1
     enableDebugConsole: 1
     developmentBuild: 1
     enableLZ4Compression: 1
@@ -36,7 +35,6 @@ MonoBehaviour:
     managedStrippingLevel: 1
     debugSymbolsExternal: 0
   productionProfile:
-    enableMockBridge: 0
     enableDebugConsole: 0
     developmentBuild: 0
     enableLZ4Compression: 1

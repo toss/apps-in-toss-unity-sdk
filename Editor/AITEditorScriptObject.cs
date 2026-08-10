@@ -11,9 +11,6 @@ namespace AppsInToss
     public class AITBuildProfile
     {
         [Header("런타임 설정")]
-        [Tooltip("Mock 브릿지 사용 (로컬 테스트용, 네이티브 API 없이 동작)")]
-        public bool enableMockBridge = false;
-
         [Tooltip("디버그 콘솔 활성화 (개발/테스트 목적)")]
         public bool enableDebugConsole = false;
 
@@ -45,7 +42,6 @@ namespace AppsInToss
         {
             return new AITBuildProfile
             {
-                enableMockBridge = true,
                 enableDebugConsole = true,
                 developmentBuild = true,
                 enableLZ4Compression = true,
@@ -63,7 +59,6 @@ namespace AppsInToss
         {
             return new AITBuildProfile
             {
-                enableMockBridge = false,
                 enableDebugConsole = false,
                 developmentBuild = false,
                 enableLZ4Compression = true,
@@ -103,6 +98,24 @@ namespace AppsInToss
         [Header("Geolocation")]
         [Tooltip("위치 정보 접근 권한 (access only)")]
         public bool geolocation = false;
+    }
+
+    /// <summary>
+    /// Devtools(@apps-in-toss/devtools) 설정 — Dev Server 브라우저에서 SDK API를 Mock으로 동작시키는
+    /// vite unplugin/패널/MCP 옵션. 빌드 산출물에 영향을 주지 않으므로(server-only) 빌드 프로필이 아닌
+    /// config 직속으로 둔다.
+    /// </summary>
+    [System.Serializable]
+    public class AITDevtoolsSettings
+    {
+        [Tooltip("Dev Server에서 devtools mock(브라우저 로컬 SDK 모의 동작)을 사용합니다")]
+        public bool enabled = true;
+
+        [Tooltip("devtools 플로팅 패널(Mock 상태 제어 UI)을 표시합니다")]
+        public bool panel = true;
+
+        [Tooltip("AI 에이전트가 제어할 수 있는 MCP 엔드포인트를 엽니다")]
+        public bool mcp = false;
     }
 
     /// <summary>
@@ -218,6 +231,9 @@ namespace AppsInToss
 
         [Header("권한 설정")]
         public AITPermissionConfig permissionConfig = new AITPermissionConfig();
+
+        [Header("Devtools 설정")]
+        public AITDevtoolsSettings devtools = new AITDevtoolsSettings();
 
         /// <summary>
         /// 아이콘 URL 유효성 검사

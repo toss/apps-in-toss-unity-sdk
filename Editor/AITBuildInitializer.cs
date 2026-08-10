@@ -389,7 +389,6 @@ namespace AppsInToss.Editor
             Debug.Log("[AIT] ========================================");
             Debug.Log($"[AIT] 빌드 프로필: {profileName}");
             Debug.Log("[AIT] ========================================");
-            Debug.Log($"[AIT]   Mock 브릿지: {(profile.enableMockBridge ? "활성화" : "비활성화")}");
             Debug.Log($"[AIT]   디버그 콘솔: {(profile.enableDebugConsole ? "활성화" : "비활성화")}");
             Debug.Log($"[AIT]   Development Build: {(profile.developmentBuild ? "활성화" : "비활성화")}");
             Debug.Log($"[AIT]   LZ4 압축: {(profile.enableLZ4Compression ? "활성화" : "비활성화")}");

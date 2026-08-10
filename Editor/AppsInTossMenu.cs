@@ -645,6 +645,14 @@ namespace AppsInToss
             // 포트 가용성 검사와 Granite 관련 로그를 건너뛴다
             bool viteOnly = DevServerCommandResolver.IsViteOnly(buildPath);
 
+            // devtools(mock SDK) 활성화 여부 — Dev 서버 + config.devtools.enabled + viteOnly + 설치 확인을
+            // 모두 통과해야 활성화되며, 실패해도 throw하지 않고 reason과 함께 비활성으로 계속 진행한다
+            bool devtoolsOn = DevtoolsSupport.ShouldEnable(config, type, buildPath, viteOnly, out string devtoolsReason);
+            if (type == ServerType.Dev && !devtoolsOn)
+            {
+                Debug.LogWarning($"AIT: Devtools 비활성화 — {devtoolsReason}");
+            }
+
             // 서버 포트 해석 및 충돌 검사
             if (!PortResolver.TryResolveServerPorts(config,
                 out string graniteHost, out int granitePort,
@@ -658,6 +666,8 @@ namespace AppsInToss
             if (!viteOnly)
                 Debug.Log($"AIT:   Granite: {graniteHost}:{granitePort}");
             Debug.Log($"AIT:   Vite: {viteHost}:{vitePort}");
+            if (type == ServerType.Dev)
+                Debug.Log($"AIT:   Devtools: {(devtoolsOn ? "활성화" : "비활성화")}");
 
             // 캡처용 로컬 변수
             int finalVitePort = vitePort;
@@ -673,6 +683,7 @@ namespace AppsInToss
                     { "AIT_VITE_HOST", viteHost },
                     { "AIT_VITE_PORT", finalVitePort.ToString() }
                 };
+                DevtoolsSupport.AddEnvVars(envVars, config, devtoolsOn);
 
                 // web-framework 버전에 맞는 dev 서버 커맨드 해석
                 // (2.x: granite bin 파일을 node로 직접 실행 — .bin/granite 이름 충돌 우회, 3.x: vite)

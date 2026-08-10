@@ -1960,6 +1960,13 @@ jobs:
       # package.json#pnpm 불가) overrides config가 비어 lockfile의 overrides 스냅샷과 어긋나
       # ERR_PNPM_LOCKFILE_CONFIG_MISMATCH로 실패한다. ignoreScripts/minimumReleaseAgeExclude도
       # 이 파일에서만 읽으므로 함께 전달되어야 한다.
+      #
+      # vite.config.ts/unity-bridge.ts/tsconfig.json/apps-in-toss.config.ts는
+      # BuildConfigMerger(UpdateViteConfig/AITPackageBuilder 6번 항목/MergeTsConfig/
+      # UpdateAppsInTossConfig)가 매 빌드 SDK BuildConfig~ 템플릿에서 무조건 생성·복사하므로
+      # (SDK 템플릿 파일이 리포에 항상 존재 — WebGLTemplates/AITTemplate/BuildConfig~/ 참조)
+      # if-no-files-found: error 하에서도 안전하다. devtools mock 격리(E2E Test 2) 검증에
+      # vite.config.ts가 필요하다.
       - name: Upload AIT Build
         if: inputs.run-build && (inputs.test-level || '2') != '0'
         uses: actions/upload-artifact@v7
@@ -1975,6 +1982,10 @@ jobs:
             Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}/ait-build/pnpm-workspace.yaml
             Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}/ait-build/ait-patch-cli.mjs
             Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}/ait-build/granite.config.ts
+            Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}/ait-build/vite.config.ts
+            Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}/ait-build/unity-bridge.ts
+            Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}/ait-build/tsconfig.json
+            Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}/ait-build/apps-in-toss.config.ts
             Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}/ait-build/build-validation.json
           if-no-files-found: error
           retention-days: 7

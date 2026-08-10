@@ -100,114 +100,6 @@
             padding: 5px;
             display: none;
         }
-
-        /* Apps in Toss Toast */
-        .ait-toast {
-            position: fixed;
-            z-index: 9999;
-            background: rgba(0, 0, 0, 0.8);
-            color: white;
-            padding: 12px 20px;
-            border-radius: 20px;
-            font-size: 14px;
-            max-width: 300px;
-            text-align: center;
-            pointer-events: none;
-            opacity: 0;
-            transition: opacity 0.3s ease;
-        }
-        
-        .ait-toast.show {
-            opacity: 1;
-        }
-        
-        .ait-toast.top {
-            top: 50px;
-            left: 50%;
-            transform: translateX(-50%);
-        }
-        
-        .ait-toast.center {
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-        }
-        
-        .ait-toast.bottom {
-            bottom: 50px;
-            left: 50%;
-            transform: translateX(-50%);
-        }
-
-        /* Apps in Toss Modal */
-        .ait-modal {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            z-index: 10000;
-            background: rgba(0, 0, 0, 0.5);
-            display: none;
-            justify-content: center;
-            align-items: center;
-        }
-        
-        .ait-modal-content {
-            background: white;
-            border-radius: 12px;
-            padding: 20px;
-            max-width: 320px;
-            width: 90%;
-            text-align: center;
-        }
-        
-        .ait-modal-title {
-            font-size: 18px;
-            font-weight: bold;
-            margin-bottom: 10px;
-            color: #333;
-        }
-        
-        .ait-modal-message {
-            font-size: 14px;
-            line-height: 1.4;
-            margin-bottom: 20px;
-            color: #666;
-        }
-        
-        .ait-modal-buttons {
-            display: flex;
-            gap: 10px;
-        }
-        
-        .ait-modal-button {
-            flex: 1;
-            padding: 12px;
-            border: none;
-            border-radius: 8px;
-            font-size: 14px;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        
-        .ait-modal-button.primary {
-            background: #3182ce;
-            color: white;
-        }
-        
-        .ait-modal-button.primary:hover {
-            background: #2c5aa0;
-        }
-        
-        .ait-modal-button.secondary {
-            background: #e2e8f0;
-            color: #4a5568;
-        }
-        
-        .ait-modal-button.secondary:hover {
-            background: #cbd5e0;
-        }
     </style>
 
     <!-- USER_HEAD_START - 이 영역에 사용자 커스텀 스크립트/스타일을 추가하세요 -->
@@ -238,24 +130,6 @@
         </div>
     </div>
 
-    <!-- Toast Container -->
-    <div id="ait-toast-container"></div>
-
-    <!-- Modal Container -->
-    <div id="ait-modal" class="ait-modal">
-        <div class="ait-modal-content">
-            <div id="ait-modal-title" class="ait-modal-title"></div>
-            <div id="ait-modal-message" class="ait-modal-message"></div>
-            <div class="ait-modal-buttons">
-                <button id="ait-modal-cancel" class="ait-modal-button secondary" style="display: none;">취소</button>
-                <button id="ait-modal-confirm" class="ait-modal-button primary">확인</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Apps in Toss Unity Bridge (Unity 로더보다 먼저!) -->
-    <!-- Legacy bridge for compatibility -->
-    <script src="Runtime/appsintoss-unity-bridge.js"></script>
     <!-- Web Framework Bridge - @apps-in-toss/web-framework 함수를 window.AppsInToss에 노출 -->
     <script type="module" src="./unity-bridge.ts"></script>
 
@@ -918,12 +792,6 @@
             try { sessionStorage.removeItem('__ait_reload_count__'); } catch (e) {}
 
             console.log('[AIT] ✓ Unity 인스턴스 로드 완료');
-
-            // Apps in Toss Unity Bridge 초기화
-            if (typeof AppsInTossUnityBridge !== 'undefined') {
-                AppsInTossUnityBridge.setUnityInstance(unityInstance);
-                console.log('[AIT] ✓ Apps in Toss Unity Bridge 초기화 완료');
-            }
 
             // 로딩 화면 숨기기
             console.log('[AIT] ✓ 게임 로딩 완료!');

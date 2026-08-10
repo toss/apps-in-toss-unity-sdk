@@ -57,6 +57,8 @@ namespace AppsInToss.Editor
             GUILayout.Space(10);
             DrawDevServerSettings();
             GUILayout.Space(10);
+            DrawDevtoolsSettings();
+            GUILayout.Space(10);
             DrawBuildOutputSettings();
             GUILayout.Space(10);
             DrawBuildSettings();
@@ -228,6 +230,44 @@ namespace AppsInToss.Editor
             EditorGUILayout.EndVertical();
         }
 
+        private void DrawDevtoolsSettings()
+        {
+            EditorGUILayout.LabelField("Devtools 설정", EditorStyles.boldLabel);
+            EditorGUILayout.BeginVertical("box");
+
+            if (config.devtools == null)
+            {
+                config.devtools = new AITDevtoolsSettings();
+            }
+
+            config.devtools.enabled = EditorGUILayout.Toggle(
+                new GUIContent("Devtools 모드 사용 (브라우저 Mock SDK)", "Dev Server에서 @apps-in-toss/devtools로 SDK API를 브라우저 로컬 Mock으로 동작시킵니다"),
+                config.devtools.enabled
+            );
+
+            using (new EditorGUI.DisabledScope(!config.devtools.enabled))
+            {
+                config.devtools.panel = EditorGUILayout.Toggle(
+                    new GUIContent("패널 표시", "Mock 상태를 제어하는 플로팅 패널을 브라우저에 표시합니다"),
+                    config.devtools.panel
+                );
+            }
+
+            config.devtools.mcp = EditorGUILayout.Toggle(
+                new GUIContent("MCP 활성화", "AI 에이전트가 제어할 수 있는 로컬 MCP 엔드포인트를 엽니다"),
+                config.devtools.mcp
+            );
+
+            EditorGUILayout.HelpBox(
+                "Devtools가 켜져 있으면 Dev Server는 브라우저에서 Mock SDK로 동작합니다.\n" +
+                "끄면 대부분의 SDK API가 예외를 던집니다(실기기/WebView 없이는 네이티브 브릿지가 없기 때문).\n" +
+                "MCP는 AI 에이전트가 Mock 상태를 제어할 수 있는 로컬 엔드포인트를 엽니다.",
+                MessageType.Info
+            );
+
+            EditorGUILayout.EndVertical();
+        }
+
         private void DrawBuildOutputSettings()
         {
             EditorGUILayout.LabelField("빌드 출력 설정", EditorStyles.boldLabel);
@@ -263,7 +303,7 @@ namespace AppsInToss.Editor
             DrawBuildProfile(
                 ref showDevServerProfile,
                 "Dev Server",
-                "로컬 개발/테스트용 (빌드 속도 우선, Mock 브릿지 활성화)",
+                "로컬 개발/테스트용 (빌드 속도 우선)",
                 config.devServerProfile,
                 AITBuildProfile.CreateDevServerProfile()
             );
@@ -318,12 +358,6 @@ namespace AppsInToss.Editor
 
             // 런타임 설정 헤더
             EditorGUILayout.LabelField("런타임 설정", EditorStyles.boldLabel);
-
-            // Mock 브릿지
-            profile.enableMockBridge = EditorGUILayout.Toggle(
-                new GUIContent("Mock 브릿지 사용", "로컬 테스트용, 네이티브 API 없이 동작"),
-                profile.enableMockBridge
-            );
 
             // 디버그 콘솔
             profile.enableDebugConsole = EditorGUILayout.Toggle(
@@ -395,7 +429,6 @@ namespace AppsInToss.Editor
 
         private void ResetProfile(AITBuildProfile profile, AITBuildProfile defaultProfile)
         {
-            profile.enableMockBridge = defaultProfile.enableMockBridge;
             profile.enableDebugConsole = defaultProfile.enableDebugConsole;
             profile.developmentBuild = defaultProfile.developmentBuild;
             profile.enableLZ4Compression = defaultProfile.enableLZ4Compression;
@@ -407,7 +440,6 @@ namespace AppsInToss.Editor
         private string GetProfileSummary(AITBuildProfile profile)
         {
             var parts = new System.Collections.Generic.List<string>();
-            if (profile.enableMockBridge) parts.Add("Mock");
             if (profile.enableDebugConsole) parts.Add("Debug");
             if (profile.developmentBuild) parts.Add("Dev");
             if (profile.enableLZ4Compression) parts.Add("LZ4");
@@ -433,8 +465,7 @@ namespace AppsInToss.Editor
 
         private bool IsProfileDefault(AITBuildProfile profile, AITBuildProfile defaultProfile)
         {
-            return profile.enableMockBridge == defaultProfile.enableMockBridge &&
-                   profile.enableDebugConsole == defaultProfile.enableDebugConsole &&
+            return profile.enableDebugConsole == defaultProfile.enableDebugConsole &&
                    profile.developmentBuild == defaultProfile.developmentBuild &&
                    profile.enableLZ4Compression == defaultProfile.enableLZ4Compression &&
                    profile.compressionFormat == defaultProfile.compressionFormat &&

@@ -6,25 +6,27 @@
 
 | 메뉴 | 용도 |
 |------|------|
-| `AIT > Dev Server > Start Server` | 로컬 개발 서버 실행 |
+| `AIT > Dev Server > Start Server` | 로컬 개발 서버 실행 (devtools Mock SDK + 패널로 브라우저 테스트) |
 | `AIT > Production Server > Start Server` | 프로덕션 설정으로 로컬 서버 실행 (샌드박스 앱 연동 가능) |
 | `AIT > Build & Package` | 배포용 패키지 생성 |
 | `AIT > Publish` | Apps in Toss에 배포 |
 
 ## 프로필 매트릭스
 
-| 작업 | Mock 브릿지 | 디버그 콘솔 | Development Build | WebGL 압축 | Stripping Level | LZ4 압축 | 디버그 심볼 |
-|------|:-----------:|:-----------:|:-----------------:|:----------:|:---------------:|:--------:|:-----------:|
-| **Dev Server** | ✅ 활성화 | ✅ 활성화 | ✅ 활성화 | Disabled | Minimal | ✅ 활성화 | Embedded |
-| **Production Server** | ❌ 비활성화 | ❌ 비활성화 | ❌ 비활성화 | 자동 (Brotli) | 자동 (High) | ✅ 활성화 | External |
-| **Build & Package** | ❌ 비활성화 | ❌ 비활성화 | ❌ 비활성화 | 자동 (Brotli) | 자동 (High) | ✅ 활성화 | External |
-| **Publish** | ❌ 비활성화 | ❌ 비활성화 | ❌ 비활성화 | 자동 (Brotli) | 자동 (High) | ✅ 활성화 | External |
+| 작업 | 디버그 콘솔 | Development Build | WebGL 압축 | Stripping Level | LZ4 압축 | 디버그 심볼 |
+|------|:-----------:|:-----------------:|:----------:|:---------------:|:--------:|:-----------:|
+| **Dev Server** | ✅ 활성화 | ✅ 활성화 | Disabled | Minimal | ✅ 활성화 | Embedded |
+| **Production Server** | ❌ 비활성화 | ❌ 비활성화 | 자동 (Brotli) | 자동 (High) | ✅ 활성화 | External |
+| **Build & Package** | ❌ 비활성화 | ❌ 비활성화 | 자동 (Brotli) | 자동 (High) | ✅ 활성화 | External |
+| **Publish** | ❌ 비활성화 | ❌ 비활성화 | 자동 (Brotli) | 자동 (High) | ✅ 활성화 | External |
+
+> `Mock 브릿지`는 빌드 프로필 항목이 아닙니다. `devtools`(`@apps-in-toss/devtools`)는 별도 절 참고.
 
 ## 각 설정의 의미
 
-### Mock 브릿지
+### devtools
 
-네이티브 API가 없는 환경에서 SDK API 호출에 가짜 응답을 돌려주는 시뮬레이션 레이어입니다. 활성화하면 toss 앱 없이 로컬 브라우저에서 게임을 돌려볼 수 있고, 비활성화하면 실제 Apps in Toss 앱 환경에서만 API가 동작합니다. 반환되는 값과 한계는 [API 사용 패턴](APIUsagePatterns.md)의 Mock 브릿지 절에 정리되어 있습니다.
+Dev Server 전용으로, **빌드 프로필이 아니라 `AIT > Configuration`의 별도 설정**입니다. 켜져 있으면 브라우저에서 토스 앱 없이 devtools의 Mock SDK로 게임을 돌려볼 수 있고 화면에 상태 조작용 패널이 뜹니다. 빌드 프로필과 달리 빌드 산출물을 바꾸지 않으므로 설정을 바꾼 뒤 **서버 재시작만으로 반영**됩니다. 반환값과 한계는 [API 사용 패턴](APIUsagePatterns.md)의 devtools 절에 정리되어 있습니다.
 
 ### Development Build
 
@@ -123,7 +125,6 @@ SDK가 읽는 환경 변수가 이 넷이 전부는 아닙니다. 패키징 단�
 [AIT] ========================================
 [AIT] 빌드 프로필: Dev Server
 [AIT] ========================================
-[AIT]   Mock 브릿지: 활성화
 [AIT]   디버그 콘솔: 활성화
 [AIT]   Development Build: 활성화
 [AIT]   LZ4 압축: 활성화
@@ -140,5 +141,5 @@ SDK가 읽는 환경 변수가 이 넷이 전부는 아닙니다. 패키징 단�
 - [시작하기](GettingStarted.md) — 설치 및 기본 설정
 - [빌드 파이프라인](BuildProcess.md) — 프로필이 적용된 뒤 실제로 일어나는 일
 - [빌드 커스터마이징](BuildCustomization.md) — 웹 진입점과 마커 영역
-- [API 사용 패턴](APIUsagePatterns.md) — Mock 브릿지 동작
+- [API 사용 패턴](APIUsagePatterns.md) — devtools 동작
 - [문제 해결](Troubleshooting.md) — 빌드가 막혔을 때

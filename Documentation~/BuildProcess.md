@@ -196,7 +196,6 @@ PreparePackaging() ← 동기/비동기 공통
 │   ├── Runtime → ait-build/public/Runtime/ 복사
 │   ├── index.html 플레이스홀더 치환 → ait-build/index.html
 │   ├── 로딩 화면 삽입
-│   ├── 브릿지 JS 플레이스홀더 치환
 │   └── 플레이스홀더 검증
 ├── pnpm 경로 확인
 └── ValidateNodeModulesIntegrity()
@@ -399,7 +398,6 @@ Build/",         ← 구분자 뒤 빈 파일명
 
 | 플레이스홀더 | 치환 값 | 설명 |
 |-------------|---------|------|
-| `%AIT_IS_PRODUCTION%` | `"true"` / `"false"` | `profile.enableMockBridge == false`이면 `"true"` |
 | `%AIT_ENABLE_DEBUG_CONSOLE%` | `"true"` / `"false"` | 디버그 콘솔 활성화 |
 | `%AIT_DEVICE_PIXEL_RATIO%` | 숫자 | 디바이스 픽셀 비율 |
 | `%AIT_ICON_URL%` | URL 문자열 | 앱 아이콘 URL |
@@ -443,10 +441,6 @@ Build/",         ← 구분자 뒤 빈 파일명
 
 `%AIT_VITE_HOST%` → `config.viteHost`, `%AIT_VITE_PORT%` → `config.vitePort`.
 
-### 브릿지 JS
-
-`Runtime/appsintoss-unity-bridge.js`에서 `%AIT_IS_PRODUCTION%`을 index.html과 같은 로직으로 치환합니다.
-
 ## 템플릿 병합 시점
 
 `AITTemplateManager`가 SDK 템플릿과 프로젝트 커스텀 영역을 마커 기반으로 병합합니다. 마커 문법과 사용자가 편집할 수 있는 영역은 [빌드 커스터마이징](BuildCustomization.md)이 정본입니다. 여기서는 병합이 **언제, 무엇에** 일어나는지만 다룹니다.
@@ -460,7 +454,7 @@ SDK 업데이트 시:
   │   └── 마커 있음 → USER_HEAD, USER_BODY_END 영역 보존, 나머지 갱신
   ├── vite.config.ts, granite.config.ts, apps-in-toss.config.ts:
   │   └── USER_CONFIG 영역 보존, SDK_GENERATED 영역 갱신
-  ├── Runtime/ → 항상 SDK 버전으로 덮어쓰기 (브릿지 코드)
+  ├── Runtime/ → 항상 SDK 버전으로 덮어쓰기 (디버그 콘솔 등)
   └── TemplateData/ → 항상 SDK 버전으로 덮어쓰기
 ```
 

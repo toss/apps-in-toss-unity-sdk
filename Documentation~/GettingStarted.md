@@ -81,7 +81,7 @@ SDK 설치 후 Unity Editor 메뉴에서 `AIT` > `Configuration`을 클릭해 �
 
 ### 개발 서버로 확인하기
 
-개발 단계에서는 Dev Server를 사용합니다. Mock 브릿지가 활성화되어 있어 toss 앱 없이 브라우저에서 플랫폼 API 호출을 확인할 수 있습니다.
+개발 단계에서는 Dev Server를 사용합니다. `@apps-in-toss/devtools`의 Mock SDK와 패널이 함께 실행되어, toss 앱 없이 브라우저에서 플랫폼 API 호출을 mock으로 확인하고 패널로 mock 상태를 직접 제어할 수 있습니다.
 
 1. `AIT` > `Dev Server` > `Start Server` 클릭
 2. Unity WebGL 빌드가 자동으로 실행됩니다
@@ -195,7 +195,7 @@ public class FeedbackManager : MonoBehaviour
 
 ## 관련 문서
 
-- [API 사용 패턴](APIUsagePatterns.md) — async/await, 에러 처리, Mock 브릿지
+- [API 사용 패턴](APIUsagePatterns.md) — async/await, 에러 처리, Mock
 - [빌드 프로필](BuildProfiles.md) — 빌드 진입점별 설정 차이
 - [빌드 커스터마이징](BuildCustomization.md) — 웹 진입점 수정, 외부 라이브러리 추가
 - [로딩 화면 커스터마이징](LoadingScreenCustomization.md) — 로딩 화면 교체

@@ -648,6 +648,9 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
 
     // ① devtools unplugin이 @apps-in-toss/web-framework를 mock으로 alias했다는 직접 증거:
     //    window.AppsInToss.getPlatformOS 함수가 주입되어 있어야 한다.
+    // unity-bridge.ts 모듈 실행(window.AppsInToss 생성)은 devtools mock의 cold optimizeDeps(~2-4초) 및
+    // Unity 캔버스 로딩과 병렬·독립 경로라 단발 체크가 레이스할 수 있어 폴링으로 먼저 대기한다.
+    await page.waitForFunction(() => typeof window['AppsInToss']?.getPlatformOS === 'function', { timeout: 15000 }).catch(() => {});
     const hasGetPlatformOS = await page.evaluate(() => {
       return typeof window['AppsInToss']?.getPlatformOS === 'function';
     });
@@ -670,6 +673,8 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
     //    "The CSS-class / attribute contract relied on by e2e/panel.test.ts"로 문서화한
     //    안정 계약(dist/panel/index.js 주석) — 내부 React 트리 구조가 바뀌어도
     //    devtools가 마이너 업데이트에서 지키기로 약속한 셀렉터라 관대하게 안전하다.
+    // 패널 모듈 로드도 Unity 캔버스 등장과 병렬 경로라 카운트 확인 전에 짧게 폴링한다.
+    await page.waitForSelector('.ait-panel-toggle', { timeout: 10000 }).catch(() => {});
     const panelToggleCount = await page.locator('.ait-panel-toggle').count();
     expect(panelToggleCount, 'devtools floating panel toggle button should be mounted').toBeGreaterThan(0);
 

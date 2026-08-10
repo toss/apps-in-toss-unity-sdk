@@ -712,6 +712,14 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       console.log('⚠️ TriggerAPITest not found on dev server page (mock allowlist assertion may fail)');
     }
 
+    // 원인: 아래 TriggerAPITest 스윕이 CloseView를 호출하면 devtools mock의 closeView()가
+    // window.history.back()을 실행해 page.goto 직후 페이지를 실제로 이탈시키고, 이를
+    // 기다리는 evaluate()의 실행 컨텍스트를 파괴한다. same-document 히스토리 엔트리를
+    // 미리 쌓아 back()을 컨텍스트 보존형 popstate 이동으로 바꿔 방지한다.
+    await page.evaluate(() => {
+      history.pushState({ aitE2eGuard: true }, '', location.href);
+    });
+
     const devApiResults = await page.evaluate(() => {
       return new Promise((resolve) => {
         if (window['__E2E_API_TEST_DATA__']) {

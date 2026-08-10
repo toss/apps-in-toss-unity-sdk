@@ -54,7 +54,7 @@ Console 창의 컴파일 오류와 스택 트레이스가 가장 확실한 단�
 
 정상 동작입니다. SDK API는 WebGL 빌드에서만 실제로 브릿지를 탑니다. Editor에서는 `[AIT Mock] <API> called` 로그를 남기고 기본값을 돌려줍니다.
 
-실제 동작은 WebGL로 빌드해 Apps in Toss 앱에서 확인하세요. 자세한 내용은 [API 사용 패턴](APIUsagePatterns.md#mock)을 참고하세요.
+실제 동작은 WebGL로 빌드해 Apps in Toss 앱에서 확인하세요. 자세한 내용은 [API 사용 패턴](APIUsagePatterns.md) 문서의 **Mock** 절을 참고하세요.
 
 ### Dev Server 에서는 되는데 Production 에서 안 됨
 
@@ -94,6 +94,12 @@ catch (AITException ex)
 
 로딩 화면 자체를 다루는 방법은 [로딩 화면 커스터마이징](LoadingScreenCustomization.md)에 있습니다.
 
+### WebGL 빌드에서 메모리 사용량이 계속 늘어남 (Rigidbody2D 사용 시)
+
+Unity 6000.1.8 미만 버전에서는 2D 물리 엔진(`Rigidbody2D`)을 사용할 때 WebGL 빌드에서 GC 메모리가 해제되지 않고 계속 누적되는 알려진 이슈가 있습니다. 자세한 내용은 [Unity Discussions 포럼](https://discussions.unity.com/t/memory-leak-when-using-rigidbody2d-physics-in-webgl/1649803)을 참고하세요.
+
+**해결**: Unity 6000.1.8 이상 버전을 사용하세요.
+
 ### 결제 API 가 동작하지 않음
 
 1. **Mock 환경** — 실제 결제는 Apps in Toss 앱 안에서만 동작합니다.
@@ -124,7 +130,7 @@ onEvent: e => { ShowPurchaseSuccess(); _ = MyServer.VerifyAndDeliver(e.Data.Orde
 
 **이미 실패한 주문 복구**: 이 증상으로 `true` 응답을 놓친 주문은 지급 실패 상태로 남습니다. `IAPGetPendingOrders`로 조회한 뒤 `IAPCompleteProductGrant`로 지급을 완료하세요. 승인은 됐지만 지급이 누락된 주문은 `IAPGetCompletedOrRefundedOrders`로 찾습니다.
 
-> **중요**: 자세한 메커니즘과 전체 코드는 [API 사용 패턴](APIUsagePatterns.md#인앱결제-지급-승인과-서버-검증)을 참고하세요. 즉시 승인, `onEvent` 검증, 앱 시작 시 대사 — 이 셋은 한 묶음이라 하나만 떼어 쓰면 안 됩니다.
+> **중요**: 자세한 메커니즘과 전체 코드는 [API 사용 패턴](APIUsagePatterns.md) 문서의 **인앱결제: 지급 승인과 서버 검증** 절을 참고하세요. 즉시 승인, `onEvent` 검증, 앱 시작 시 대사 — 이 셋은 한 묶음이라 하나만 떼어 쓰면 안 됩니다.
 
 ## 개발 환경
 

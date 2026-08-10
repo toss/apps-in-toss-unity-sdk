@@ -123,39 +123,64 @@ namespace AppsInToss.Editor.Package
                 return AITConvertCore.AITExportError.REQUIRED_FILE_MISSING;
             }
 
-            // Build 대상 폴더 정리 후 재생성
-            if (Directory.Exists(buildDest))
-            {
-                // 실패 시 DeleteDirectory가 내부 경고를 남기지만, 잔존 파일이 이후 복사 단계에
-                // 섞일 수 있으므로 상위 레벨에서도 한 번 더 사용자에게 알림.
-                // 주의: 이 LogWarning은 단순 폴백이 아니라 실제 빌드 오염 위험 신호이므로 Sentry로
-                // 캡처되도록 Warning 레벨을 유지한다. (File.Copy는 덮어쓰지만 복사 대상 목록
-                // (filesToCopy)에 포함되지 않은 잔존 파일은 패키지에 섞여 런타임 오류를 유발할 수 있음)
-                if (!AITFileUtils.DeleteDirectory(buildDest))
-                {
-                    Debug.LogWarning($"[AIT] 이전 빌드 잔여물 정리 실패: {buildDest} — 새 빌드에 오래된 파일이 섞일 수 있습니다");
-                }
-            }
-            Directory.CreateDirectory(buildDest);
-
-            // 필수 파일만 선별 복사
+            // 필수 파일만 선별 복사 (변경분만 — 크기/내용이 같으면 스킵해 초 단위 I/O를 줄인다)
             var filesToCopy = new List<string> { loaderFile, dataFile, frameworkFile, wasmFile };
             if (!string.IsNullOrEmpty(symbolsFile))
             {
                 filesToCopy.Add(symbolsFile);
             }
 
-            long totalBytes = 0;
-            foreach (var fileName in filesToCopy)
-            {
-                string src = Path.Combine(buildSrc, fileName);
-                string dest = Path.Combine(buildDest, fileName);
-                File.Copy(src, dest, true);
-                UnityUtil.EnsureFileReadable(dest);
-                totalBytes += new FileInfo(src).Length;
-            }
+            Directory.CreateDirectory(buildDest);
 
-            Debug.Log($"[AIT] ✓ Build 파일 {filesToCopy.Count}개 선별 복사 완료 ({totalBytes / 1024.0 / 1024.0:0.#}MB)");
+            long totalBytes = 0;
+            try
+            {
+                int copiedCount = 0, skippedCount = 0, staleCount = 0;
+                foreach (var fileName in filesToCopy)
+                {
+                    string src = Path.Combine(buildSrc, fileName);
+                    string dest = Path.Combine(buildDest, fileName);
+                    if (CopyFileIfChanged(src, dest)) copiedCount++; else skippedCount++;
+                    totalBytes += new FileInfo(src).Length;
+                }
+
+                // 미러 의미론 유지: 압축 포맷 전환(.br ↔ .unityweb 등)이나 symbols 파일 유무 변경으로
+                // 이전 선택 집합에만 있던 잔존 파일이 남지 않도록 제거한다.
+                var desiredNames = new HashSet<string>(filesToCopy, System.StringComparer.OrdinalIgnoreCase);
+                foreach (var existing in Directory.GetFiles(buildDest))
+                {
+                    if (!desiredNames.Contains(Path.GetFileName(existing)))
+                    {
+                        File.Delete(existing);
+                        staleCount++;
+                    }
+                }
+
+                Debug.Log($"[AIT] ✓ Build 파일 {filesToCopy.Count}개 선별 복사 완료 (복사 {copiedCount}개, 스킵 {skippedCount}개, 잔여물 정리 {staleCount}개, {totalBytes / 1024.0 / 1024.0:0.#}MB)");
+            }
+            catch (System.Exception ex)
+            {
+                // 기능 정확성이 속도보다 우선 — 변경분 복사 경로에서 실패하면 기존 전체 삭제+재복사로 폴백.
+                Debug.LogWarning($"[AIT] Build 폴더 변경분 복사 실패, 전체 재복사로 폴백: {ex.GetType().Name}: {ex.Message}");
+
+                if (!AITFileUtils.DeleteDirectory(buildDest))
+                {
+                    Debug.LogWarning($"[AIT] 이전 빌드 잔여물 정리 실패: {buildDest} — 새 빌드에 오래된 파일이 섞일 수 있습니다");
+                }
+                Directory.CreateDirectory(buildDest);
+
+                totalBytes = 0;
+                foreach (var fileName in filesToCopy)
+                {
+                    string src = Path.Combine(buildSrc, fileName);
+                    string dest = Path.Combine(buildDest, fileName);
+                    File.Copy(src, dest, true);
+                    UnityUtil.EnsureFileReadable(dest);
+                    totalBytes += new FileInfo(src).Length;
+                }
+
+                Debug.Log($"[AIT] ✓ Build 파일 {filesToCopy.Count}개 전체 재복사 완료 ({totalBytes / 1024.0 / 1024.0:0.#}MB)");
+            }
 
             // 안전장치: Build/ 폴더에 인식되지 않은 파일이 있으면 로그 출력
             var allBuildFiles = Directory.GetFiles(buildSrc);
@@ -174,7 +199,7 @@ namespace AppsInToss.Editor.Package
             string templateDataDest = Path.Combine(publicPath, "TemplateData");
             if (Directory.Exists(templateDataSrc))
             {
-                UnityUtil.CopyDirectory(templateDataSrc, templateDataDest);
+                MirrorDirectorySafe(templateDataSrc, templateDataDest, "TemplateData");
             }
 
             // Runtime 폴더 → public/Runtime
@@ -184,7 +209,7 @@ namespace AppsInToss.Editor.Package
             string runtimeDest = Path.Combine(publicPath, "Runtime");
             if (Directory.Exists(runtimeSrc))
             {
-                UnityUtil.CopyDirectory(runtimeSrc, runtimeDest);
+                MirrorDirectorySafe(runtimeSrc, runtimeDest, "Runtime");
             }
             else
             {
@@ -195,7 +220,7 @@ namespace AppsInToss.Editor.Package
                 string sdkRuntimePath = SdkPathResolver.FindSdkRuntimePath();
                 if (!string.IsNullOrEmpty(sdkRuntimePath) && Directory.Exists(sdkRuntimePath))
                 {
-                    UnityUtil.CopyDirectory(sdkRuntimePath, runtimeDest);
+                    MirrorDirectorySafe(sdkRuntimePath, runtimeDest, "Runtime(SDK 템플릿)");
                     Debug.Log("[AIT] ✓ Runtime 폴더: SDK 템플릿에서 복사 완료");
                 }
                 else
@@ -224,7 +249,7 @@ namespace AppsInToss.Editor.Package
             string streamingAssetsDest = Path.Combine(publicPath, "StreamingAssets");
             if (Directory.Exists(streamingAssetsSrc))
             {
-                UnityUtil.CopyDirectory(streamingAssetsSrc, streamingAssetsDest);
+                MirrorDirectorySafe(streamingAssetsSrc, streamingAssetsDest, "StreamingAssets");
             }
 
             // index.html → 프로젝트 루트 (Vite가 루트에서 index.html을 찾음)
@@ -348,6 +373,140 @@ namespace AppsInToss.Editor.Package
             Debug.Log("[AIT]   - Build, TemplateData, Runtime → public/");
 
             return AITConvertCore.AITExportError.SUCCEED;
+        }
+
+        /// <summary>
+        /// 파일이 이미 동일한 내용인지 판정합니다 (크기 비교 → 동일하면 청크 단위 바이트 비교).
+        /// mtime은 Unity가 매 빌드 산출물을 다시 쓰므로 판정 기준에서 제외한다.
+        /// </summary>
+        private static bool FilesAreIdentical(string srcPath, string destPath)
+        {
+            var srcInfo = new FileInfo(srcPath);
+            var destInfo = new FileInfo(destPath);
+            if (!destInfo.Exists || srcInfo.Length != destInfo.Length)
+            {
+                return false;
+            }
+
+            const int bufferSize = 1024 * 1024;
+            var bufferA = new byte[bufferSize];
+            var bufferB = new byte[bufferSize];
+
+            using (var fsA = new FileStream(srcPath, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize))
+            using (var fsB = new FileStream(destPath, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize))
+            {
+                int readA;
+                while ((readA = fsA.Read(bufferA, 0, bufferSize)) > 0)
+                {
+                    int readB = fsB.Read(bufferB, 0, readA);
+                    if (readA != readB)
+                    {
+                        return false;
+                    }
+                    for (int i = 0; i < readA; i++)
+                    {
+                        if (bufferA[i] != bufferB[i])
+                        {
+                            return false;
+                        }
+                    }
+                }
+                return true;
+            }
+        }
+
+        /// <summary>
+        /// 소스 파일을 대상 경로로 복사하되, 이미 동일한 파일이 있으면 복사를 스킵합니다.
+        /// internal 승격: EditMode 테스트(AppsInTossEditModeTests, InternalsVisibleTo)에서 헬퍼 단위로 검증하기 위함.
+        /// </summary>
+        /// <returns>실제로 복사했으면 true, 동일 파일이라 스킵했으면 false</returns>
+        internal static bool CopyFileIfChanged(string srcPath, string destPath)
+        {
+            if (File.Exists(destPath) && FilesAreIdentical(srcPath, destPath))
+            {
+                return false;
+            }
+
+            File.Copy(srcPath, destPath, true);
+            UnityUtil.EnsureFileReadable(destPath);
+            return true;
+        }
+
+        /// <summary>
+        /// srcDir → destDir 재귀 미러 복사: 변경된 파일만 복사하고, destDir에서 srcDir에 없는
+        /// 파일/디렉토리를 제거해 stale 산출물이 남지 않게 한다 (Unity 버전 전환으로 파일명 세트가
+        /// 바뀌는 경우 포함). .meta 파일은 UnityUtil.CopyDirectory와 동일하게 복사·정리 대상에서
+        /// 제외한다 (Unity가 대상 위치에 새로 생성 — GUID 충돌 방지).
+        /// internal 승격: EditMode 테스트(AppsInTossEditModeTests, InternalsVisibleTo)에서 미러 의미론을 검증하기 위함.
+        /// </summary>
+        internal static void MirrorCopyDirectory(string srcDir, string destDir, ref int copiedCount, ref int skippedCount, ref int staleCount)
+        {
+            Directory.CreateDirectory(destDir);
+
+            var srcFileNames = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
+            foreach (var file in Directory.GetFiles(srcDir))
+            {
+                if (file.EndsWith(".meta", System.StringComparison.OrdinalIgnoreCase)) continue;
+
+                string fileName = Path.GetFileName(file);
+                srcFileNames.Add(fileName);
+
+                string destFile = Path.Combine(destDir, fileName);
+                if (CopyFileIfChanged(file, destFile)) copiedCount++; else skippedCount++;
+            }
+
+            var srcDirNames = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
+            foreach (var dir in Directory.GetDirectories(srcDir))
+            {
+                string dirName = Path.GetFileName(dir);
+                srcDirNames.Add(dirName);
+                MirrorCopyDirectory(dir, Path.Combine(destDir, dirName), ref copiedCount, ref skippedCount, ref staleCount);
+            }
+
+            // stale 정리: 소스에 더 이상 없는 파일/디렉토리는 dest에서 제거 (.meta는 위와 동일하게 건드리지 않음)
+            foreach (var existingFile in Directory.GetFiles(destDir))
+            {
+                string fileName = Path.GetFileName(existingFile);
+                if (fileName.EndsWith(".meta", System.StringComparison.OrdinalIgnoreCase)) continue;
+                if (!srcFileNames.Contains(fileName))
+                {
+                    File.Delete(existingFile);
+                    staleCount++;
+                }
+            }
+
+            foreach (var existingDir in Directory.GetDirectories(destDir))
+            {
+                string dirName = Path.GetFileName(existingDir);
+                if (!srcDirNames.Contains(dirName))
+                {
+                    Directory.Delete(existingDir, true);
+                    staleCount++;
+                }
+            }
+        }
+
+        /// <summary>
+        /// MirrorCopyDirectory를 실패 시 기존 전체 삭제+재복사(UnityUtil.CopyDirectory)로 폴백하는
+        /// 안전 래퍼. 기능 정확성이 속도보다 우선이므로 예외가 나면 변경분 복사를 포기하고 통째로 다시 복사한다.
+        /// </summary>
+        private static void MirrorDirectorySafe(string srcDir, string destDir, string label)
+        {
+            try
+            {
+                int copiedCount = 0, skippedCount = 0, staleCount = 0;
+                MirrorCopyDirectory(srcDir, destDir, ref copiedCount, ref skippedCount, ref staleCount);
+                Debug.Log($"[AIT] ✓ {label} 미러 복사 완료 (복사 {copiedCount}개, 스킵 {skippedCount}개, 잔여물 정리 {staleCount}개)");
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogWarning($"[AIT] {label} 변경분 복사 실패, 전체 재복사로 폴백: {ex.GetType().Name}: {ex.Message}");
+                if (Directory.Exists(destDir))
+                {
+                    AITFileUtils.DeleteDirectory(destDir);
+                }
+                UnityUtil.CopyDirectory(srcDir, destDir);
+            }
         }
 
         /// <summary>

@@ -14,7 +14,12 @@ namespace AppsInToss.Editor
         /// <summary>
         /// Unity WebGL 빌드 설정 초기화
         /// </summary>
-        internal static void Init(AITBuildProfile profile = null)
+        /// <param name="isDevServerBuild">
+        /// Dev Server(AIT/Dev Server/Start Server) 경로에서의 빌드인지 여부.
+        /// IL2CPP 컴파일러 구성 결정(<see cref="ResolveIl2CppConfiguration"/>)에만 영향을 주며,
+        /// 기본값 false는 Production/Deploy/Build & Package 등 기존 호출부의 동작을 보존한다.
+        /// </param>
+        internal static void Init(AITBuildProfile profile = null, bool isDevServerBuild = false)
         {
             // WebGL 템플릿 복사 (필요한 경우)
             bool templatesChanged = AITTemplateManager.EnsureWebGLTemplatesExist();
@@ -146,9 +151,7 @@ namespace AppsInToss.Editor
             PlayerSettings.SetManagedStrippingLevel(BuildTargetGroup.WebGL, strippingLevel);
 #endif
 
-            Il2CppCompilerConfiguration il2cppConfig = editorConfig.il2cppConfiguration >= 0
-                ? (Il2CppCompilerConfiguration)editorConfig.il2cppConfiguration
-                : AITDefaultSettings.GetDefaultIl2CppConfiguration();
+            Il2CppCompilerConfiguration il2cppConfig = ResolveIl2CppConfiguration(editorConfig.il2cppConfiguration, isDevServerBuild);
 
             // E2E CI 한정 오버라이드: IL2CPP 컴파일러 옵티마이저 레벨을 줄여 Link_WebGL_wasm 단축.
             // developmentBuild 플래그는 Player 측 옵션이며 IL2CPP 옵티마이저와 별개라 별도 변수 필요.
@@ -295,6 +298,28 @@ namespace AppsInToss.Editor
             PlayerSettings.SetStackTraceLogType(LogType.Warning, StackTraceLogType.ScriptOnly);
             PlayerSettings.SetStackTraceLogType(LogType.Log, StackTraceLogType.ScriptOnly);
             PlayerSettings.SetStackTraceLogType(LogType.Exception, StackTraceLogType.ScriptOnly);
+        }
+
+        /// <summary>
+        /// IL2CPP 컴파일러 구성 결정 (env 오버라이드 제외 — 그건 Init에서 이 함수 호출 이후 별도 적용).
+        /// 우선순위:
+        /// 1. editorConfig.il2cppConfiguration 명시값(-1 아님) — 사용자의 명시 선택 존중
+        /// 2. Dev Server 빌드면 Debug — 반복 루프 빌드 속도 우선 (런타임 성능은 Release 대비 저하)
+        /// 3. 그 외 기본값(Release) — Production/Deploy/Build & Package 동작 불변
+        /// </summary>
+        internal static Il2CppCompilerConfiguration ResolveIl2CppConfiguration(int editorConfigValue, bool isDevServerBuild)
+        {
+            if (editorConfigValue >= 0)
+                return (Il2CppCompilerConfiguration)editorConfigValue;
+
+            if (isDevServerBuild)
+            {
+                Debug.Log("[AIT] Dev Server 빌드: IL2CPP 컴파일러 구성을 Debug로 설정합니다. " +
+                          "빌드 속도가 개선되지만 런타임 성능은 Release 대비 저하될 수 있습니다.");
+                return Il2CppCompilerConfiguration.Debug;
+            }
+
+            return AITDefaultSettings.GetDefaultIl2CppConfiguration();
         }
 
         /// <summary>

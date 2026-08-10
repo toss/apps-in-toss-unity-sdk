@@ -50,16 +50,40 @@ public class DevServerCommandResolverTests
         }
     }
 
+    private void WriteVitePackage(string binJson, string binFileToCreate = null)
+    {
+        string pkgDir = Path.Combine(tempDir, DevServerCommandResolver.VitePackagePath);
+        Directory.CreateDirectory(pkgDir);
+        File.WriteAllText(Path.Combine(pkgDir, "package.json"),
+            "{\"name\":\"vite\"" + (binJson != null ? ",\"bin\":" + binJson : "") + "}");
+        if (binFileToCreate != null)
+        {
+            string binPath = Path.Combine(pkgDir, binFileToCreate);
+            Directory.CreateDirectory(Path.GetDirectoryName(binPath));
+            File.WriteAllText(binPath, "// bin");
+        }
+    }
+
+    // Resolve()의 node 직접 실행 분기(5b)를 결정론적으로 테스트하기 위한 가짜 node 실행 파일.
+    // 실제 node 바이너리일 필요는 없음 — Resolve()는 File.Exists만 확인한다.
+    private string CreateFakeNodeExecutable()
+    {
+        string nodePath = Path.Combine(tempDir, "fake-node");
+        File.WriteAllText(nodePath, "#!/bin/sh\n");
+        return nodePath;
+    }
+
     [Test]
     public void Resolve_2x_WithGraniteBin_ReturnsNodeDirectInvocation()
     {
         WriteBuildPackageJson("2.10.7");
         WriteWebFrameworkPackage("{\"ait\":\"./ait.js\",\"granite\":\"./bin.js\"}", "bin.js");
 
-        string cmd = DevServerCommandResolver.Resolve(tempDir, 5174, out bool viteOnly);
+        string cmd = DevServerCommandResolver.Resolve(tempDir, 5174, out bool viteOnly, out string directExecutablePath);
 
         Assert.IsFalse(viteOnly);
         Assert.AreEqual("exec -- node node_modules/@apps-in-toss/web-framework/bin.js dev", cmd);
+        Assert.IsNull(directExecutablePath, "granite 경로는 항상 pnpm exec 경유 (5b는 vite 전용)");
     }
 
     [Test]
@@ -67,11 +91,13 @@ public class DevServerCommandResolverTests
     {
         WriteBuildPackageJson("3.0.0-rc.0");
         // 3.x는 granite bin이 없으므로 web-framework 패키지 유무와 무관하게 vite 경로
+        // node_modules/vite 자체가 없으므로 bin 직접 실행은 해석되지 않고 기존 pnpm exec 명령으로 폴백해야 함
 
-        string cmd = DevServerCommandResolver.Resolve(tempDir, 5174, out bool viteOnly);
+        string cmd = DevServerCommandResolver.Resolve(tempDir, 5174, out bool viteOnly, out string directExecutablePath);
 
         Assert.IsTrue(viteOnly);
         Assert.AreEqual("exec -- vite --host --port 5174", cmd);
+        Assert.IsNull(directExecutablePath);
     }
 
     [Test]
@@ -79,10 +105,11 @@ public class DevServerCommandResolverTests
     {
         WriteBuildPackageJson("^3.0.0-beta.283cb36");
 
-        string cmd = DevServerCommandResolver.Resolve(tempDir, 5175, out bool viteOnly);
+        string cmd = DevServerCommandResolver.Resolve(tempDir, 5175, out bool viteOnly, out string directExecutablePath);
 
         Assert.IsTrue(viteOnly);
         Assert.AreEqual("exec -- vite --host --port 5175", cmd);
+        Assert.IsNull(directExecutablePath);
     }
 
     [Test]
@@ -91,10 +118,11 @@ public class DevServerCommandResolverTests
         WriteBuildPackageJson("2.10.7");
         // node_modules/@apps-in-toss/web-framework 자체가 없음
 
-        string cmd = DevServerCommandResolver.Resolve(tempDir, 5174, out bool viteOnly);
+        string cmd = DevServerCommandResolver.Resolve(tempDir, 5174, out bool viteOnly, out string directExecutablePath);
 
         Assert.IsFalse(viteOnly);
         Assert.AreEqual(DevServerCommandResolver.LegacyGraniteCommand, cmd);
+        Assert.IsNull(directExecutablePath);
     }
 
     [Test]
@@ -103,9 +131,10 @@ public class DevServerCommandResolverTests
         WriteBuildPackageJson("2.10.7");
         WriteWebFrameworkPackage("{\"ait\":\"./bin/ait.js\"}");
 
-        string cmd = DevServerCommandResolver.Resolve(tempDir, 5174, out bool viteOnly);
+        string cmd = DevServerCommandResolver.Resolve(tempDir, 5174, out bool viteOnly, out string directExecutablePath);
 
         Assert.AreEqual(DevServerCommandResolver.LegacyGraniteCommand, cmd);
+        Assert.IsNull(directExecutablePath);
     }
 
     [Test]
@@ -114,9 +143,10 @@ public class DevServerCommandResolverTests
         WriteBuildPackageJson("2.10.7");
         WriteWebFrameworkPackage("{\"granite\":\"./bin.js\"}", binFileToCreate: null);
 
-        string cmd = DevServerCommandResolver.Resolve(tempDir, 5174, out bool viteOnly);
+        string cmd = DevServerCommandResolver.Resolve(tempDir, 5174, out bool viteOnly, out string directExecutablePath);
 
         Assert.AreEqual(DevServerCommandResolver.LegacyGraniteCommand, cmd);
+        Assert.IsNull(directExecutablePath);
     }
 
     [Test]
@@ -124,9 +154,10 @@ public class DevServerCommandResolverTests
     {
         // package.json 없음 → GetWebFrameworkMajor는 2 반환 → bin 해석도 실패 → 폴백
 
-        string cmd = DevServerCommandResolver.Resolve(tempDir, 5174, out bool viteOnly);
+        string cmd = DevServerCommandResolver.Resolve(tempDir, 5174, out bool viteOnly, out string directExecutablePath);
 
         Assert.IsFalse(viteOnly);
+        Assert.IsNull(directExecutablePath);
         Assert.AreEqual(DevServerCommandResolver.LegacyGraniteCommand, cmd);
     }
 
@@ -203,5 +234,110 @@ public class DevServerCommandResolverTests
         File.WriteAllText(Path.Combine(pkgDir, "package.json"), "{ not valid json");
 
         Assert.IsNull(DevServerCommandResolver.ResolveGraniteBinRelPath(tempDir));
+    }
+
+    // ==================== ResolveViteBinRelPath (5b: vite bin 직접 실행) ====================
+
+    [Test]
+    public void ResolveViteBinRelPath_ObjectBinForm_ReturnsRelPath()
+    {
+        WriteVitePackage("{\"vite\":\"bin/vite.js\"}", "bin/vite.js");
+
+        Assert.AreEqual("node_modules/vite/bin/vite.js", DevServerCommandResolver.ResolveViteBinRelPath(tempDir));
+    }
+
+    [Test]
+    public void ResolveViteBinRelPath_StringBinForm_ReturnsRelPath()
+    {
+        // 일부 단일 커맨드 패키지는 "bin"을 객체가 아닌 문자열로 선언한다
+        WriteVitePackage("\"bin/vite.js\"", "bin/vite.js");
+
+        Assert.AreEqual("node_modules/vite/bin/vite.js", DevServerCommandResolver.ResolveViteBinRelPath(tempDir));
+    }
+
+    [Test]
+    public void ResolveViteBinRelPath_SingleEntryDifferentKey_ReturnsRelPath()
+    {
+        // 스코프가 다른 배포본 등 "vite" 키가 아니어도 엔트리가 하나뿐이면 그 값을 사용
+        WriteVitePackage("{\"vite-cli\":\"bin/vite.js\"}", "bin/vite.js");
+
+        Assert.AreEqual("node_modules/vite/bin/vite.js", DevServerCommandResolver.ResolveViteBinRelPath(tempDir));
+    }
+
+    [Test]
+    public void ResolveViteBinRelPath_MultiEntryWithoutViteKey_ReturnsNull()
+    {
+        // 엔트리가 여러 개인데 "vite" 키가 없으면 어느 것이 진입점인지 알 수 없어 폴백
+        WriteVitePackage("{\"a\":\"a.js\",\"b\":\"b.js\"}", null);
+
+        Assert.IsNull(DevServerCommandResolver.ResolveViteBinRelPath(tempDir));
+    }
+
+    [Test]
+    public void ResolveViteBinRelPath_VitePackageMissing_ReturnsNull()
+    {
+        // node_modules/vite 자체가 없음
+        Assert.IsNull(DevServerCommandResolver.ResolveViteBinRelPath(tempDir));
+    }
+
+    [Test]
+    public void ResolveViteBinRelPath_BinFileMissingOnDisk_ReturnsNull()
+    {
+        WriteVitePackage("{\"vite\":\"bin/vite.js\"}", binFileToCreate: null);
+
+        Assert.IsNull(DevServerCommandResolver.ResolveViteBinRelPath(tempDir));
+    }
+
+    [Test]
+    public void ResolveViteBinRelPath_UnsafeBinPath_ReturnsNull()
+    {
+        // ResolveGraniteBinRelPath와 동일한 IsSafeBinRelPath allowlist를 공유하므로 대표 케이스만 커버
+        WriteVitePackage("{\"vite\":\"bin with space.js\"}", null);
+
+        Assert.IsNull(DevServerCommandResolver.ResolveViteBinRelPath(tempDir));
+    }
+
+    // ==================== Resolve() 노드 직접 실행 분기 (5b) ====================
+
+    [Test]
+    public void Resolve_3x_ViteBinAndNodeAvailable_ReturnsDirectNodeInvocation()
+    {
+        WriteBuildPackageJson("3.0.0-rc.0");
+        WriteVitePackage("{\"vite\":\"bin/vite.js\"}", "bin/vite.js");
+        string fakeNode = CreateFakeNodeExecutable();
+
+        string cmd = DevServerCommandResolver.Resolve(tempDir, 5174, fakeNode, out bool viteOnly, out string directExecutablePath);
+
+        Assert.IsTrue(viteOnly);
+        Assert.AreEqual("node_modules/vite/bin/vite.js --host --port 5174", cmd);
+        Assert.AreEqual(fakeNode, directExecutablePath);
+    }
+
+    [Test]
+    public void Resolve_3x_NodeUnavailable_FallsBackToPnpmExec()
+    {
+        WriteBuildPackageJson("3.0.0-rc.0");
+        WriteVitePackage("{\"vite\":\"bin/vite.js\"}", "bin/vite.js");
+        string missingNode = Path.Combine(tempDir, "no-such-node");
+
+        string cmd = DevServerCommandResolver.Resolve(tempDir, 5174, missingNode, out bool viteOnly, out string directExecutablePath);
+
+        Assert.IsTrue(viteOnly);
+        Assert.AreEqual("exec -- vite --host --port 5174", cmd);
+        Assert.IsNull(directExecutablePath);
+    }
+
+    [Test]
+    public void Resolve_3x_NodeAvailableButViteBinUnresolvable_FallsBackToPnpmExec()
+    {
+        WriteBuildPackageJson("3.0.0-rc.0");
+        // node_modules/vite 자체가 없음 — node는 있지만 bin 해석이 실패하는 경우
+        string fakeNode = CreateFakeNodeExecutable();
+
+        string cmd = DevServerCommandResolver.Resolve(tempDir, 5174, fakeNode, out bool viteOnly, out string directExecutablePath);
+
+        Assert.IsTrue(viteOnly);
+        Assert.AreEqual("exec -- vite --host --port 5174", cmd);
+        Assert.IsNull(directExecutablePath);
     }
 }

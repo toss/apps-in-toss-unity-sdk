@@ -23,6 +23,11 @@ namespace AppsInToss.Editor
         {
             if (!AITBuildSession.TryLoadPendingSession(out var session)) return;
 
+            // pending 세션이 있었다는 것은 빌드 도중 도메인 리로드가 끼어들었을 가능성을 뜻한다.
+            // 리로드로 onComplete 클로저와 함께 EditorUtility.DisplayCancelableProgressBar가
+            // 남긴 진행률 바도 사라지지 않고 남을 수 있어 여기서 유령 진행률 바를 제거한다.
+            EditorUtility.ClearProgressBar();
+
             try
             {
                 if (AITBuildSession.IsStale(session))

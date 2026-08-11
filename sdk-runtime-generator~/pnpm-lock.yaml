@@ -28,8 +28,8 @@ importers:
         specifier: 2.10.8
         version: 2.10.8(@apps-in-toss/web-bridge@2.10.8)
       '@apps-in-toss/web-framework':
-        specifier: 3.0.2
-        version: 3.0.2(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)(typescript@7.0.2)
+        specifier: 3.0.3
+        version: 3.0.3(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)(typescript@7.0.2)
       commander:
         specifier: 15.0.0
         version: 15.0.0
@@ -268,6 +268,9 @@ importers:
       web-framework-3.0.2:
         specifier: npm:@apps-in-toss/web-framework@3.0.2
         version: '@apps-in-toss/web-framework@3.0.2(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)(typescript@7.0.2)'
+      web-framework-3.0.3:
+        specifier: npm:@apps-in-toss/web-framework@3.0.3
+        version: '@apps-in-toss/web-framework@3.0.3(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)(typescript@7.0.2)'
 
 packages:
 
@@ -4068,6 +4071,10 @@ packages:
 
   '@apps-in-toss/web-framework@3.0.2':
     resolution: {integrity: sha512-O5KjIMPwI9Wo2Vu8khBqP66zca0XsnFnIusF8KZ9vXH80cLg5oRTTaT+BFAnIWvHxkS4b4sDhK/ybJwiX9/HgQ==}
+    hasBin: true
+
+  '@apps-in-toss/web-framework@3.0.3':
+    resolution: {integrity: sha512-OF97r3wGujYDcK3bTjyLda9qFO6QUTXyoFwGE7gfXLY6fwfSw0NUT7UTn3lgunpwdlXaTJ39+f6ENxV05skkhg==}
     hasBin: true
 
   '@babel/code-frame@7.24.7':
@@ -9747,8 +9754,8 @@ packages:
     resolution: {integrity: sha512-hjMmLaUXAm1hIuTqOdeYObMslq/q+Xff6QE3Y2P+uoHAg2nmVlLBps2hzh1UJDdMtDTMXOFewK6ky51JQIeECg==}
     engines: {node: '>= 4'}
 
-  recast@0.23.19:
-    resolution: {integrity: sha512-T98lym7kH+pnZmRaD8yDRdaNqyUbwnbEBx0MuchrzMFOEMray4AO3ZJoTUZ5r78Ao78X/OhzW0DL8GB85w/I2w==}
+  recast@0.23.21:
+    resolution: {integrity: sha512-mFAyJq9vUbSTARLZUvAEf1z3YxlvAwswbmxMx2mPA/MSm4KmpwvwvhsH/NIrZhyOuwD60Lzyw2qh83uCbgTPYw==}
     engines: {node: '>= 4'}
 
   recyclerlistview@4.2.0:
@@ -25510,6 +25517,19 @@ snapshots:
       - typanion
       - typescript
 
+  '@apps-in-toss/web-framework@3.0.3(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)(typescript@7.0.2)':
+    dependencies:
+      '@apps-in-toss/cli': 3.0.3(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)
+      '@webview-bridge/web': 1.7.9
+      semver: 7.8.5
+      valibot: 1.4.2(typescript@7.0.2)
+    transitivePeerDependencies:
+      - '@babel/preset-env'
+      - magicast
+      - supports-color
+      - typanion
+      - typescript
+
   '@babel/code-frame@7.24.7':
     dependencies:
       '@babel/highlight': 7.25.9
@@ -29033,7 +29053,7 @@ snapshots:
   '@react-native/codegen@0.84.0(@babel/core@7.29.7)':
     dependencies:
       '@babel/core': 7.29.7
-      '@babel/parser': 7.28.5
+      '@babel/parser': 7.29.8
       hermes-parser: 0.32.0
       invariant: 2.2.4
       nullthrows: 1.1.1
@@ -31939,7 +31959,7 @@ snapshots:
       neo-async: 2.6.2
       picocolors: 1.1.1
       picomatch: 4.0.5
-      recast: 0.23.19
+      recast: 0.23.21
       tmp: 0.2.7
       write-file-atomic: 5.0.1
     optionalDependencies:
@@ -33280,7 +33300,7 @@ snapshots:
       source-map: 0.6.1
       tslib: 2.8.1
 
-  recast@0.23.19:
+  recast@0.23.21:
     dependencies:
       ast-types: 0.16.1
       esprima: 4.0.1

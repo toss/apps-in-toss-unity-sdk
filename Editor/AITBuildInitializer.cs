@@ -14,12 +14,13 @@ namespace AppsInToss.Editor
         /// <summary>
         /// Unity WebGL 빌드 설정 초기화
         /// </summary>
-        /// <param name="isDevServerBuild">
-        /// Dev Server(AIT/Dev Server/Start Server) 경로에서의 빌드인지 여부.
-        /// IL2CPP 컴파일러 구성 결정(<see cref="ResolveIl2CppConfiguration"/>)에만 영향을 주며,
-        /// 기본값 false는 Production/Deploy/Build & Package 등 기존 호출부의 동작을 보존한다.
+        /// <param name="fastBuild">
+        /// 빠른 반복 빌드(Dev Server·Deploy (Test)) 경로에서의 빌드인지 여부.
+        /// IL2CPP 컴파일러 구성 결정(<see cref="ResolveIl2CppConfiguration"/>)과
+        /// IL2CPP Code Generation 결정(<see cref="ResolveIl2CppCodeGeneration"/>)에 영향을 주며,
+        /// 기본값 false는 Production/Deploy (Production)/Build & Package 등 기존 호출부의 동작을 보존한다.
         /// </param>
-        internal static void Init(AITBuildProfile profile = null, bool isDevServerBuild = false)
+        internal static void Init(AITBuildProfile profile = null, bool fastBuild = false)
         {
             // WebGL 템플릿 복사 (필요한 경우)
             bool templatesChanged = AITTemplateManager.EnsureWebGLTemplatesExist();
@@ -151,7 +152,7 @@ namespace AppsInToss.Editor
             PlayerSettings.SetManagedStrippingLevel(BuildTargetGroup.WebGL, strippingLevel);
 #endif
 
-            Il2CppCompilerConfiguration il2cppConfig = ResolveIl2CppConfiguration(editorConfig.il2cppConfiguration, isDevServerBuild);
+            Il2CppCompilerConfiguration il2cppConfig = ResolveIl2CppConfiguration(editorConfig.il2cppConfiguration, fastBuild);
 
             // E2E CI 한정 오버라이드: IL2CPP 컴파일러 옵티마이저 레벨을 줄여 Link_WebGL_wasm 단축.
             // developmentBuild 플래그는 Player 측 옵션이며 IL2CPP 옵티마이저와 별개라 별도 변수 필요.
@@ -174,6 +175,47 @@ namespace AppsInToss.Editor
 #else
             PlayerSettings.SetIl2CppCompilerConfiguration(BuildTargetGroup.WebGL, il2cppConfig);
 #endif
+
+            // ===== IL2CPP Code Generation (빠른 반복 빌드 레버) =====
+            // OptimizeSize("Faster (smaller) builds")는 제네릭 공유로 IL2CPP 변환량을 대폭 줄여
+            // 빌드 속도를 개선하지만 런타임 성능은 OptimizeSpeed(Unity 기본) 대비 저하될 수 있다.
+            // fastBuild가 아니면 null을 돌려받아 프로젝트에 이미 설정된 Code Generation 값을
+            // 그대로 유지한다 — Player Settings에서 명시적으로 OptimizeSize를 선택한 사용자의
+            // 설정을 Production/Deploy (Production)/Build & Package에서 조용히 덮어쓰지 않기 위함.
+            UnityEditor.Build.Il2CppCodeGeneration? il2cppCodeGeneration = ResolveIl2CppCodeGeneration(fastBuild);
+
+            string il2cppCodeGenEnv = System.Environment.GetEnvironmentVariable("AIT_IL2CPP_CODE_GENERATION");
+            if (!string.IsNullOrEmpty(il2cppCodeGenEnv))
+            {
+                if (System.Enum.TryParse<UnityEditor.Build.Il2CppCodeGeneration>(il2cppCodeGenEnv, ignoreCase: true, out var parsedCodeGen))
+                {
+                    il2cppCodeGeneration = parsedCodeGen;
+                    Debug.Log($"[AIT] 환경 변수 오버라이드: AIT_IL2CPP_CODE_GENERATION={parsedCodeGen}");
+                }
+                else
+                {
+                    Debug.LogWarning($"[AIT] AIT_IL2CPP_CODE_GENERATION 환경 변수 값이 올바르지 않습니다: '{il2cppCodeGenEnv}' (OptimizeSpeed/OptimizeSize 필요)");
+                }
+            }
+
+            // 값이 있을 때만(빠른 빌드 또는 env 오버라이드) PlayerSettings/EditorUserBuildSettings에 적용.
+            // 값이 없으면(Production 등) 프로젝트에 이미 설정된 값을 그대로 둔다.
+            if (il2cppCodeGeneration.HasValue)
+            {
+                // PlayerSettings.SetIl2CppCodeGeneration(NamedBuildTarget, ...)은 Unity 2022.2+ API.
+                // 최소 지원 버전(2021.3)에서는 프로젝트 전역 설정인 EditorUserBuildSettings.il2CppCodeGeneration(2021.2+)을 사용.
+#if UNITY_2022_2_OR_NEWER
+                PlayerSettings.SetIl2CppCodeGeneration(UnityEditor.Build.NamedBuildTarget.WebGL, il2cppCodeGeneration.Value);
+#else
+                EditorUserBuildSettings.il2CppCodeGeneration = il2cppCodeGeneration.Value;
+#endif
+
+                if (il2cppCodeGeneration.Value == UnityEditor.Build.Il2CppCodeGeneration.OptimizeSize)
+                {
+                    Debug.Log("[AIT] IL2CPP Code Generation: OptimizeSize (Faster (smaller) builds) 적용 — " +
+                              "제네릭 공유로 IL2CPP 변환량이 줄어 빌드 속도가 개선되지만 런타임 성능은 저하될 수 있습니다.");
+                }
+            }
 
             // ===== Unity 6 (2023.3+) 전용 설정 =====
 #if UNITY_2023_3_OR_NEWER
@@ -211,6 +253,7 @@ namespace AppsInToss.Editor
             Debug.Log($"[AIT]   - Stack Trace Log Type (Error/Assert/Warning/Log/Exception): {PlayerSettings.GetStackTraceLogType(LogType.Error)} (WebGL 자동)");
             Debug.Log($"[AIT]   - Stripping Level: {strippingLevel}{(profile?.managedStrippingLevel < 0 || profile == null ? " (자동)" : " (프로필)")}");
             Debug.Log($"[AIT]   - IL2CPP 설정: {il2cppConfig}{(!string.IsNullOrEmpty(il2cppConfigEnv) ? " (환경 변수)" : editorConfig.il2cppConfiguration < 0 ? " (자동)" : "")}");
+            Debug.Log($"[AIT]   - IL2CPP Code Generation: {DescribeIl2CppCodeGeneration(il2cppCodeGeneration, il2cppCodeGenEnv)}");
             Debug.Log($"[AIT]   - Run In Background: {runInBackground}{(editorConfig.runInBackground < 0 ? " (자동)" : "")}");
             Debug.Log($"[AIT]   - Decompression Fallback: {decompressionFallback}{(editorConfig.decompressionFallback < 0 ? " (자동)" : "")}");
 #if UNITY_2023_3_OR_NEWER
@@ -304,22 +347,58 @@ namespace AppsInToss.Editor
         /// IL2CPP 컴파일러 구성 결정 (env 오버라이드 제외 — 그건 Init에서 이 함수 호출 이후 별도 적용).
         /// 우선순위:
         /// 1. editorConfig.il2cppConfiguration 명시값(-1 아님) — 사용자의 명시 선택 존중
-        /// 2. Dev Server 빌드면 Debug — 반복 루프 빌드 속도 우선 (런타임 성능은 Release 대비 저하)
-        /// 3. 그 외 기본값(Release) — Production/Deploy/Build & Package 동작 불변
+        /// 2. 빠른 빌드(Dev Server·Deploy (Test))면 Debug — 반복 루프 빌드 속도 우선 (런타임 성능은 Release 대비 저하)
+        /// 3. 그 외 기본값(Release) — Production/Deploy (Production)/Build & Package 동작 불변
         /// </summary>
-        internal static Il2CppCompilerConfiguration ResolveIl2CppConfiguration(int editorConfigValue, bool isDevServerBuild)
+        internal static Il2CppCompilerConfiguration ResolveIl2CppConfiguration(int editorConfigValue, bool fastBuild)
         {
             if (editorConfigValue >= 0)
                 return (Il2CppCompilerConfiguration)editorConfigValue;
 
-            if (isDevServerBuild)
+            if (fastBuild)
             {
-                Debug.Log("[AIT] Dev Server 빌드: IL2CPP 컴파일러 구성을 Debug로 설정합니다. " +
+                Debug.Log("[AIT] 빠른 빌드: IL2CPP 컴파일러 구성을 Debug로 설정합니다. " +
                           "빌드 속도가 개선되지만 런타임 성능은 Release 대비 저하될 수 있습니다.");
                 return Il2CppCompilerConfiguration.Debug;
             }
 
             return AITDefaultSettings.GetDefaultIl2CppConfiguration();
+        }
+
+        /// <summary>
+        /// IL2CPP Code Generation(Faster runtime / Faster (smaller) builds) 결정 (env 오버라이드 제외
+        /// — 그건 Init에서 이 함수 호출 이후 별도 적용).
+        /// fastBuild면 OptimizeSize("Faster (smaller) builds") — 제네릭 공유로 IL2CPP 변환량이 대폭
+        /// 줄어 빌드 속도가 개선되지만 런타임 성능은 저하될 수 있다.
+        /// fastBuild가 아니면 null을 돌려준다 — il2cppConfiguration(-1=자동)과 달리 Code Generation은
+        /// 이 SDK가 관리하는 사용자 설정 경로가 없으므로, 강제로 값을 적용하는 대신 Player Settings에
+        /// 이미 설정된 프로젝트 값을 그대로 유지한다(Production/Deploy (Production)/Build & Package 동작 불변).
+        /// </summary>
+        internal static UnityEditor.Build.Il2CppCodeGeneration? ResolveIl2CppCodeGeneration(bool fastBuild)
+        {
+            return fastBuild
+                ? UnityEditor.Build.Il2CppCodeGeneration.OptimizeSize
+                : (UnityEditor.Build.Il2CppCodeGeneration?)null;
+        }
+
+        /// <summary>
+        /// 요약 로그용: IL2CPP Code Generation 값의 출처를 함께 표기한다.
+        /// 값이 없으면(=미적용) 프로젝트에 현재 설정된 값을 조회해 "(유지)"로 표기한다.
+        /// </summary>
+        private static string DescribeIl2CppCodeGeneration(UnityEditor.Build.Il2CppCodeGeneration? resolved, string envOverride)
+        {
+            if (resolved.HasValue)
+            {
+                string suffix = !string.IsNullOrEmpty(envOverride) ? " (환경 변수)" : " (빠른 빌드)";
+                return $"{resolved.Value}{suffix}";
+            }
+
+#if UNITY_2022_2_OR_NEWER
+            var current = PlayerSettings.GetIl2CppCodeGeneration(UnityEditor.Build.NamedBuildTarget.WebGL);
+#else
+            var current = EditorUserBuildSettings.il2CppCodeGeneration;
+#endif
+            return $"{current} (유지 · 프로젝트 설정)";
         }
 
         /// <summary>

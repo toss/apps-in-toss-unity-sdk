@@ -1,6 +1,7 @@
 // -----------------------------------------------------------------------
-// DeployMemoTests.cs - Deploy (Test)/(Production) memo 생성·셸 이스케이프 검증
-// Level 0: AITDeployManager.BuildDeployMemo / EscapeMemoForShell 을 Unity/pnpm 실행 없이 검증한다.
+// DeployMemoTests.cs - Deploy (Test)/(Production) memo 생성·셸 이스케이프·빌드 플래그 검증
+// Level 0: AITDeployManager.BuildDeployMemo / EscapeMemoForShell / GetBuildFlags 를
+//   Unity/pnpm 실행 없이 검증한다.
 //
 // 배경: ait deploy 명령은 bash -l -c "..." 문자열로 조립되어 실행된다(AITPlatformHelper.
 //   CreateProcessStartInfo). memo는 -m "<memo>" 형태로 명령에 삽입되므로, appName 등에 포함된
@@ -114,6 +115,30 @@ public class DeployMemoTests
     {
         Assert.IsNull(AITDeployManager.EscapeMemoForShell(null));
         Assert.AreEqual(string.Empty, AITDeployManager.EscapeMemoForShell(string.Empty));
+    }
+
+    // =====================================================
+    // GetBuildFlags: DeployKind별 (cleanBuild, fastBuild) 매트릭스
+    // =====================================================
+
+    [Test]
+    public void GetBuildFlags_Production_ReturnsCleanBuildTrue_FastBuildFalse()
+    {
+        // Production은 현행 Publish와 동일하게 클린 빌드 + 기존 IL2CPP 설정을 유지해야 한다.
+        var (cleanBuild, fastBuild) = AITDeployManager.GetBuildFlags(DeployKind.Production);
+
+        Assert.IsTrue(cleanBuild, "Deploy (Production)은 클린 빌드여야 함.");
+        Assert.IsFalse(fastBuild, "Deploy (Production)은 빠른 빌드 레버(IL2CPP Debug/OptimizeSize)를 켜면 안 됨.");
+    }
+
+    [Test]
+    public void GetBuildFlags_Test_ReturnsCleanBuildFalse_FastBuildTrue()
+    {
+        // Test는 반복 배포 속도를 위해 증분 빌드 + 빠른 빌드(IL2CPP Debug/OptimizeSize + 에셋 최적화 검사 스킵)를 사용해야 한다.
+        var (cleanBuild, fastBuild) = AITDeployManager.GetBuildFlags(DeployKind.Test);
+
+        Assert.IsFalse(cleanBuild, "Deploy (Test)는 증분 빌드여야 함.");
+        Assert.IsTrue(fastBuild, "Deploy (Test)는 빠른 빌드 레버를 켜야 함 (Dev Server와 동일).");
     }
 
     // =====================================================

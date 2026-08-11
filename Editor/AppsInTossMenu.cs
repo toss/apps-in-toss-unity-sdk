@@ -504,8 +504,9 @@ namespace AppsInToss
 
                 // Dev Server는 granite build(production build)를 스킵하여 시작 속도 개선
                 bool skipGraniteBuild = (type == ServerType.Dev);
-                // Dev Server 빌드: IL2CPP Debug 구성 + 에셋 최적화 검사 스킵으로 반복 루프 속도 개선
-                bool isDevServerBuild = (type == ServerType.Dev);
+                // 빠른 빌드(Dev Server): IL2CPP Debug 구성 + Code Generation OptimizeSize +
+                // 에셋 최적화 검사 스킵으로 반복 루프 속도 개선
+                bool fastBuild = (type == ServerType.Dev);
 
                 Debug.Log($"AIT: 빌드 & 패키징 수행 중 (증분 빌드, {profileName} 프로필{(skipGraniteBuild ? ", granite build 스킵" : "")})...");
                 buildStopwatch.Restart();
@@ -565,7 +566,7 @@ namespace AppsInToss
                         }
                     },
                     skipGraniteBuild: skipGraniteBuild,
-                    isDevServerBuild: isDevServerBuild
+                    fastBuild: fastBuild
                 );
             }
             catch (Exception e)

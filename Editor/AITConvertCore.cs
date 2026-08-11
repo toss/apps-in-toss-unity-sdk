@@ -69,9 +69,9 @@ namespace AppsInToss
         /// <summary>
         /// Unity WebGL 빌드 설정 초기화
         /// </summary>
-        public static void Init(AITBuildProfile profile = null, bool isDevServerBuild = false)
+        public static void Init(AITBuildProfile profile = null, bool fastBuild = false)
         {
-            AITBuildInitializer.Init(profile, isDevServerBuild);
+            AITBuildInitializer.Init(profile, fastBuild);
         }
 
         /// <summary>
@@ -220,7 +220,7 @@ namespace AppsInToss
         /// DoExport/DoExportAsync 공통 셋업: 프로필 폴백, 환경 변수 오버라이드, Init, 로그, PlayerSettings 적용
         /// </summary>
         /// <returns>editorConfig (null이면 설정 오류)</returns>
-        private static AITEditorScriptObject PrepareExport(ref AITBuildProfile profile, ref string profileName, bool isDevServerBuild = false)
+        private static AITEditorScriptObject PrepareExport(ref AITBuildProfile profile, ref string profileName, bool fastBuild = false)
         {
             var editorConfig = UnityUtil.GetEditorConf();
             if (profile == null)
@@ -230,7 +230,7 @@ namespace AppsInToss
             }
 
             profile = AITBuildInitializer.ApplyEnvironmentVariableOverrides(profile);
-            Init(profile, isDevServerBuild);
+            Init(profile, fastBuild);
             AITBuildInitializer.LogBuildProfile(profile, profileName);
             AITBuildInitializer.ApplyBuildProfileSettings(profile);
 
@@ -238,16 +238,17 @@ namespace AppsInToss
         }
 
         /// <summary>
-        /// 빌드 전 에셋 최적화 검사 (배치 모드 또는 Dev Server 빌드에서는 스킵)
-        /// Dev Server 경로는 반복 루프 속도가 우선이며, 검사는 Deploy/Build & Package에서 계속 수행됨.
+        /// 빌드 전 에셋 최적화 검사 (배치 모드 또는 빠른 빌드에서는 스킵)
+        /// 빠른 빌드(Dev Server·Deploy (Test)) 경로는 반복 루프 속도가 우선이며, 검사는
+        /// Deploy (Production)/Build & Package에서 계속 수행됨.
         /// </summary>
         /// <returns>true = 빌드 진행, false = 빌드 취소</returns>
-        private static bool RunPreBuildOptimizationCheck(AITEditorScriptObject editorConfig, bool isDevServerBuild = false)
+        private static bool RunPreBuildOptimizationCheck(AITEditorScriptObject editorConfig, bool fastBuild = false)
         {
             if (Application.isBatchMode) return true;
-            if (isDevServerBuild)
+            if (fastBuild)
             {
-                Debug.Log("[AIT] Dev Server 빌드: 에셋 최적화 검사를 건너뜁니다 (Deploy/Build & Package에서는 계속 수행됨).");
+                Debug.Log("[AIT] 빠른 빌드: 에셋 최적화 검사를 건너뜁니다 (Deploy (Production)/Build & Package에서는 계속 수행됨).");
                 return true;
             }
             if (editorConfig == null) return true;
@@ -281,12 +282,13 @@ namespace AppsInToss
         /// <param name="cleanBuild">클린 빌드 여부 (false면 incremental build)</param>
         /// <param name="profile">적용할 빌드 프로필 (null이면 productionProfile 사용)</param>
         /// <param name="profileName">빌드 프로필 이름 (로그 출력용)</param>
-        /// <param name="isDevServerBuild">
-        /// Dev Server 경로 여부. true면 IL2CPP 컴파일러 구성을 Debug로 전환하고 에셋 최적화 검사를
-        /// 건너뛴다 (반복 루프 속도 우선). 기본값 false는 기존 호출부의 동작을 보존한다.
+        /// <param name="fastBuild">
+        /// 빠른 반복 빌드(Dev Server·Deploy (Test)) 경로 여부. true면 IL2CPP 컴파일러 구성을 Debug로,
+        /// IL2CPP Code Generation을 OptimizeSize로 전환하고 에셋 최적화 검사를 건너뛴다
+        /// (반복 루프 속도 우선). 기본값 false는 기존 호출부의 동작을 보존한다.
         /// </param>
         /// <returns>변환 결과</returns>
-        public static AITExportError DoExport(bool buildWebGL = true, bool doPackaging = true, bool cleanBuild = false, AITBuildProfile profile = null, string profileName = null, bool skipGraniteBuild = false, bool isDevServerBuild = false)
+        public static AITExportError DoExport(bool buildWebGL = true, bool doPackaging = true, bool cleanBuild = false, AITBuildProfile profile = null, string profileName = null, bool skipGraniteBuild = false, bool fastBuild = false)
         {
             // play mode 중에는 BuildPipeline.BuildPlayer가 내부적으로 Addressables 빌드를
             // PreprocessBuild에서 트리거하며 "This cannot be used during play mode." 에러를 낸다.
@@ -317,7 +319,7 @@ namespace AppsInToss
 
             try
             {
-                var editorConfig = PrepareExport(ref profile, ref profileName, isDevServerBuild);
+                var editorConfig = PrepareExport(ref profile, ref profileName, fastBuild);
 
                 Debug.Log($"Apps in Toss 미니앱 변환을 시작합니다... (cleanBuild: {cleanBuild})");
 
@@ -329,7 +331,7 @@ namespace AppsInToss
                 }
 
                 // 빌드 전 에셋 최적화 검사
-                if (buildWebGL && !RunPreBuildOptimizationCheck(editorConfig, isDevServerBuild))
+                if (buildWebGL && !RunPreBuildOptimizationCheck(editorConfig, fastBuild))
                 {
                     return AITExportError.CANCELLED;
                 }
@@ -413,9 +415,10 @@ namespace AppsInToss
         /// <param name="profileName">프로필 이름 (로그용)</param>
         /// <param name="onComplete">완료 콜백</param>
         /// <param name="onProgress">진행 상황 콜백 (phase, progress, status)</param>
-        /// <param name="isDevServerBuild">
-        /// Dev Server 경로 여부. DoExport와 동일한 의미 — 후속 단계에서 StartServer가 이 메서드로
-        /// 전환될 때 사용된다. 기본값 false는 기존 호출부(AITDeployManager 등)의 동작을 보존한다.
+        /// <param name="fastBuild">
+        /// 빠른 반복 빌드(Dev Server·Deploy (Test)) 경로 여부. DoExport와 동일한 의미 — StartServer와
+        /// AITDeployManager.RunDeploy(DeployKind.Test)가 이 값을 전달한다. 기본값 false는 Production
+        /// 계열 호출부의 동작을 보존한다.
         /// </param>
         public static void DoExportAsync(
             bool buildWebGL,
@@ -426,7 +429,7 @@ namespace AppsInToss
             Action<AITExportError> onComplete,
             Action<BuildPhase, float, string> onProgress = null,
             bool skipGraniteBuild = false,
-            bool isDevServerBuild = false)
+            bool fastBuild = false)
         {
             // play mode 중 빌드 진입 차단 (SDK-QJ/QH/QG/E1). DoExport와 동일한 가드 — 메뉴/UI 모든
             // 진입점이 DoExport/DoExportAsync로 수렴하므로 두 곳만 막으면 전체 경로가 커버된다.
@@ -440,7 +443,7 @@ namespace AppsInToss
             // 배치 모드에서는 동기 실행
             if (Application.isBatchMode)
             {
-                var result = DoExport(buildWebGL, doPackaging, cleanBuild, profile, profileName, skipGraniteBuild, isDevServerBuild);
+                var result = DoExport(buildWebGL, doPackaging, cleanBuild, profile, profileName, skipGraniteBuild, fastBuild);
                 onComplete?.Invoke(result);
                 return;
             }
@@ -455,7 +458,7 @@ namespace AppsInToss
 
             try
             {
-                var editorConfig = PrepareExport(ref profile, ref profileName, isDevServerBuild);
+                var editorConfig = PrepareExport(ref profile, ref profileName, fastBuild);
 
                 onProgress?.Invoke(BuildPhase.Preparing, 0.01f, "빌드 준비 중...");
                 Debug.Log($"[AIT] 비동기 미니앱 변환 시작... (cleanBuild: {cleanBuild})");
@@ -470,7 +473,7 @@ namespace AppsInToss
                 }
 
                 // 빌드 전 에셋 최적화 검사
-                if (buildWebGL && !RunPreBuildOptimizationCheck(editorConfig, isDevServerBuild))
+                if (buildWebGL && !RunPreBuildOptimizationCheck(editorConfig, fastBuild))
                 {
                     try { snapshot.Restore(); }
                     finally { AITBuildSession.EndBuild(); }

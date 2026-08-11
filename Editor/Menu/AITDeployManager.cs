@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using UnityEditor;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
@@ -84,20 +85,54 @@ namespace AppsInToss.Editor.Menu
                     return;
                 }
 
-                // Production은 현행 Publish와 동일하게 클린 빌드, Test는 반복 속도를 위해 증분 빌드.
-                bool cleanBuild = kind == DeployKind.Production;
+                // Production은 현행 Publish와 동일하게 클린 빌드, Test는 반복 속도를 위해 증분 빌드 +
+                // 빠른 빌드(IL2CPP Debug + Code Generation OptimizeSize + 에셋 최적화 검사 스킵).
+                var (cleanBuild, fastBuild) = GetBuildFlags(kind);
+                string il2cppMode = fastBuild ? "Debug/OptimizeSize" : "기본";
 
-                Debug.Log($"AIT: {profileName} 빌드 시작 (cleanBuild={cleanBuild})...");
+                Debug.Log($"AIT: {profileName} 빌드 시작 (cleanBuild={cleanBuild}, fastBuild={fastBuild}, IL2CPP={il2cppMode})...");
                 _buildStopwatch.Restart();
 
-                var result = AITConvertCore.DoExport(
+                // DoExportAsync 병렬 경로로 전환 — pnpm install이 WebGL 빌드 시간에 숨겨진다
+                // (StartServer의 동일 패턴 참조). onComplete를 TaskCompletionSource로 감싸 await함으로써
+                // 이 async void 메서드의 try/finally 재진입 가드가 배포 흐름 완료/실패까지 유지되도록 한다.
+                var tcs = new TaskCompletionSource<AITConvertCore.AITExportError>();
+
+                AITConvertCore.DoExportAsync(
                     buildWebGL: true,
                     doPackaging: true,
                     cleanBuild: cleanBuild,
                     profile: config.productionProfile,
-                    profileName: profileName
+                    profileName: profileName,
+                    onComplete: (result) => tcs.TrySetResult(result),
+                    onProgress: (phase, progress, status) =>
+                    {
+                        // DisplayCancelableProgressBar로 취소 가능한 진행률 표시 (AITDeployManager/StartServer와 동일 패턴)
+                        bool cancelled = EditorUtility.DisplayCancelableProgressBar(
+                            $"Apps in Toss - {profileName}",
+                            status,
+                            progress
+                        );
+
+                        if (cancelled)
+                        {
+                            AITConvertCore.CancelBuild();
+                        }
+                    },
+                    skipGraniteBuild: false,
+                    fastBuild: fastBuild
                 );
+
+                var result = await tcs.Task;
                 _buildStopwatch.Stop();
+                EditorUtility.ClearProgressBar();
+
+                if (result == AITConvertCore.AITExportError.CANCELLED)
+                {
+                    Debug.Log("AIT: 빌드가 사용자에 의해 취소되었습니다.");
+                    AITPlatformHelper.ShowInfoDialog("취소됨", "빌드가 취소되었습니다.", "확인");
+                    return;
+                }
 
                 if (result != AITConvertCore.AITExportError.SUCCEED)
                 {
@@ -107,7 +142,7 @@ namespace AppsInToss.Editor.Menu
 
                 Debug.Log($"AIT: 빌드 완료 (소요 시간: {_buildStopwatch.Elapsed.TotalSeconds:F1}초)");
 
-                // 배포 실행
+                // 배포 실행 (성공 시에만)
                 ExecuteDeploy(kind);
             }
             catch (Exception e)
@@ -119,12 +154,35 @@ namespace AppsInToss.Editor.Menu
             }
             finally
             {
+                // 정상 종료 시 128행에서 이미 ClearProgressBar가 호출되지만, DoExportAsync가
+                // onComplete를 끝내 호출하지 못해 await가 영영 완료되지 않는 경로(예: 동기 구간
+                // 예외로 tcs가 set되지 않는 경우)에서도 진행률 바가 남지 않도록 finally에서도 정리한다
+                // (StartServer의 catch 블록과 동일한 방어 — AppsInTossMenu.cs 참조).
+                EditorUtility.ClearProgressBar();
                 _buildEntryInProgress = false;
             }
         }
 
         private static string ProfileNameFor(DeployKind kind) =>
             kind == DeployKind.Production ? "Deploy (Production)" : "Deploy (Test)";
+
+        /// <summary>
+        /// DeployKind별 빌드 플래그 매트릭스.
+        /// Production: 클린 빌드(cleanBuild=true) + 기존 IL2CPP 설정(fastBuild=false) — 현행 Publish와 동일.
+        /// Test: 증분 빌드(cleanBuild=false) + 빠른 빌드(fastBuild=true) — IL2CPP Debug + Code Generation
+        /// OptimizeSize + 에셋 최적화 검사 스킵으로 반복 배포 속도 개선 (Dev Server와 동일 레버).
+        /// </summary>
+        internal static (bool cleanBuild, bool fastBuild) GetBuildFlags(DeployKind kind)
+        {
+            return kind switch
+            {
+                DeployKind.Production => (cleanBuild: true, fastBuild: false),
+                DeployKind.Test => (cleanBuild: false, fastBuild: true),
+                // 안전한 기본값: 향후 DeployKind가 추가되어도 미인지 값이 자동으로 빠른 빌드
+                // (IL2CPP Debug/OptimizeSize)를 받는 일이 없도록 명시적으로 실패시킨다.
+                _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "정의되지 않은 DeployKind"),
+            };
+        }
 
         // ==================== Build & Package ====================
 
@@ -247,9 +305,15 @@ namespace AppsInToss.Editor.Menu
             string memo = BuildDeployMemo(kind, config.appName, config.version);
             string profileName = ProfileNameFor(kind);
 
+            // Deploy (Test)는 빠른 빌드(IL2CPP Debug + Code Generation OptimizeSize) 산출물이라
+            // 런타임 성능이 실제 출시 빌드와 다르다 — QR로 성능을 재는 테스터가 오해하지 않도록 고지.
+            string fastBuildNotice = kind == DeployKind.Test
+                ? "\n\n⚠ Deploy (Test)는 빠른 빌드(IL2CPP Debug/OptimizeSize)로 생성되어 런타임 성능이 실제 출시 빌드와 다릅니다."
+                : "";
+
             bool confirmed = AITPlatformHelper.ShowConfirmDialog(
                 "배포 확인",
-                $"Apps in Toss에 배포하시겠습니까? ({profileName})\n\n프로젝트: {config.appName}\n버전: {config.version}\nMemo: {memo}",
+                $"Apps in Toss에 배포하시겠습니까? ({profileName})\n\n프로젝트: {config.appName}\n버전: {config.version}\nMemo: {memo}{fastBuildNotice}",
                 "배포",
                 "취소",
                 autoApprove: true

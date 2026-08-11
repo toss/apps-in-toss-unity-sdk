@@ -75,6 +75,13 @@ public class InteractiveAPITesterUI
     private string _lastResultText = "";
     private bool _lastResultSuccess = true;
 
+    // ─── 구독형(Action 반환) 결과 표시 ───
+    private bool _isSubscriptionMode = false;
+    private List<string> _subscriptionLog = new List<string>();
+    private Button _unsubscribeBtn;
+
+    private const int MaxSubscriptionLogLines = 200;
+
     // ─── 서브 테스터 컨테이너 ───
     private RectTransform _subTesterContainer;
 
@@ -83,6 +90,7 @@ public class InteractiveAPITesterUI
     public Action OnExecuteRequested;
     public Action OnBackToList;
     public Action OnRetry;
+    public Action OnUnsubscribeRequested;
 
     // ─── DPI debug info ───
     private Text _dpiDebugText;
@@ -574,6 +582,12 @@ public class InteractiveAPITesterUI
             onClick: () => OnBackToList?.Invoke());
         UIBuilder.SetLayout(backBtn.gameObject, minWidth: 160, preferredWidth: 160);
 
+        // \uad6c\ub3c5 \ud574\uc81c \ubc84\ud2bc (\uad6c\ub3c5\ud615 \uacb0\uacfc\uc77c \ub54c\ub9cc \ud45c\uc2dc)
+        _unsubscribeBtn = UIBuilder.CreateButton(btnBar, "\uad6c\ub3c5 \ud574\uc81c",
+            onClick: () => OnUnsubscribeRequested?.Invoke(), style: UIBuilder.ButtonStyle.Danger);
+        UIBuilder.SetLayout(_unsubscribeBtn.gameObject, minWidth: 120, preferredWidth: 120);
+        _unsubscribeBtn.gameObject.SetActive(false);
+
         var spacer = new GameObject("Spacer");
         spacer.AddComponent<RectTransform>().SetParent(btnBar, false);
         UIBuilder.SetLayout(spacer, flexibleWidth: 1);
@@ -655,6 +669,13 @@ public class InteractiveAPITesterUI
         else if (type == typeof(bool))
         {
             BuildBoolField(parent, fieldPath, displayName, indentLevel);
+        }
+        else if (typeof(Delegate).IsAssignableFrom(type))
+        {
+            // 콜백(Action/Action<T>) 파라미터 - 사용자 입력 대상이 아니며,
+            // 실행 시 InteractiveAPITester가 자동으로 로깅 델리게이트를 연결한다.
+            UIBuilder.CreateText(parent, $"{displayName}: (콜백 - 실행 시 자동 연결되어 이벤트 로그에 표시됩니다)",
+                UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextCallback);
         }
         else if (IsComplexObjectType(type))
         {
@@ -871,6 +892,8 @@ public class InteractiveAPITesterUI
 
     private void InitializeDefaults(string basePath, Type type)
     {
+        if (typeof(Delegate).IsAssignableFrom(type))
+            return; // 콜백 파라미터는 사용자 입력 상태가 없음 (BuildCallbackDelegate가 실행 시 대신 구성)
         if (type == typeof(string))
             _stringInputs[basePath] = "";
         else if (type == typeof(int) || type == typeof(double) || type == typeof(float))
@@ -896,6 +919,11 @@ public class InteractiveAPITesterUI
     /// </summary>
     public object BuildParameterObject(string basePath, Type type)
     {
+        // 방어적 처리: 콜백 파라미터는 최상위에서는 InteractiveAPITester.BuildCallbackDelegate가
+        // 대신 채우므로 이 메서드까지 오지 않는게 정상이지만, Activator.CreateInstance(delegate)는
+        // ArgumentException을 던지므로 안전망으로 null을 반환한다.
+        if (typeof(Delegate).IsAssignableFrom(type))
+            return null;
         if (type == typeof(string))
             return _stringInputs.TryGetValue(basePath, out var s) ? s : "";
         if (type == typeof(int))
@@ -966,6 +994,11 @@ public class InteractiveAPITesterUI
     /// </summary>
     public void ShowResult(string methodName, object result, bool success)
     {
+        // 일반(Task/Awaitable) 결과 표시로 전환 - 구독 로그 모드였다면 화면 표시만 원상복구한다
+        // (구독 자체의 생명주기는 InteractiveAPITester가 소유 - 여기서는 화면 상태만 정리)
+        _isSubscriptionMode = false;
+        if (_unsubscribeBtn != null) _unsubscribeBtn.gameObject.SetActive(false);
+
         _lastResultSuccess = success;
         _lastResultObject = (success && result != null && !(result is string)) ? result : null;
         _lastResultText = result == null ? "null"
@@ -989,6 +1022,82 @@ public class InteractiveAPITesterUI
         if (_resultScrollRect != null) _resultScrollRect.normalizedPosition = new Vector2(0, 1);
 
         ShowView(ViewState.Result);
+    }
+
+    /// <summary>
+    /// 구독형(Action 반환) API 실행 성공 시 Result 뷰를 구독 로그 모드로 전환한다.
+    /// onEvent/onError 콜백이 발생할 때마다 <see cref="AppendSubscriptionLog"/>가 호출되어
+    /// 화면이 실시간으로 갱신된다.
+    /// </summary>
+    public void ShowSubscriptionResult(string methodName)
+    {
+        _isSubscriptionMode = true;
+        _subscriptionLog.Clear();
+        _subscriptionLog.Add($"[{DateTime.Now:HH:mm:ss}] 구독 시작됨 - 이벤트 발생을 기다리는 중...");
+
+        _resultHeaderText.text = $"Result: {methodName} (구독 중)";
+        _statusBadge.text = "● Subscribed";
+        _statusBadgeBg.color = UIBuilder.Theme.AccentBg;
+
+        // 구조화/JSON 토글은 구독 로그와 무관하므로 숨긴다
+        _displayModeRow.SetActive(false);
+        if (_unsubscribeBtn != null) _unsubscribeBtn.gameObject.SetActive(true);
+
+        RenderSubscriptionLog();
+
+        if (_resultScrollRect != null) _resultScrollRect.normalizedPosition = new Vector2(0, 1);
+
+        ShowView(ViewState.Result);
+    }
+
+    /// <summary>
+    /// 구독 중인 API의 onEvent/onError 콜백이 발생할 때마다 호출되어 로그를 한 줄 추가한다.
+    /// 현재 Result 뷰가 이 구독을 보고 있지 않아도(다른 화면으로 이동했어도) 내역은 계속 누적되고,
+    /// 다시 이 구독의 결과 화면으로 돌아오면 전체 로그가 다시 렌더링된다.
+    /// </summary>
+    public void AppendSubscriptionLog(string line)
+    {
+        _subscriptionLog.Add(line);
+        if (_subscriptionLog.Count > MaxSubscriptionLogLines)
+        {
+            _subscriptionLog.RemoveRange(0, _subscriptionLog.Count - MaxSubscriptionLogLines);
+        }
+
+        if (_isSubscriptionMode)
+        {
+            RenderSubscriptionLog();
+        }
+    }
+
+    /// <summary>
+    /// 구독 활성 상태를 UI에 반영한다 (구독 해제 버튼 표시 여부, 배지 표시).
+    /// </summary>
+    public void SetSubscriptionActive(bool active)
+    {
+        if (_unsubscribeBtn != null) _unsubscribeBtn.gameObject.SetActive(active);
+
+        if (!active && _isSubscriptionMode)
+        {
+            _subscriptionLog.Add($"[{DateTime.Now:HH:mm:ss}] 구독 해제됨");
+            if (_statusBadge != null) _statusBadge.text = "○ Unsubscribed";
+            if (_statusBadgeBg != null) _statusBadgeBg.color = UIBuilder.Theme.ButtonBg;
+            RenderSubscriptionLog();
+        }
+    }
+
+    private void RenderSubscriptionLog()
+    {
+        for (int i = _resultContent.childCount - 1; i >= 0; i--)
+        {
+            UnityEngine.Object.DestroyImmediate(_resultContent.GetChild(i).gameObject);
+        }
+
+        var text = UIBuilder.CreateText(_resultContent, string.Join("\n", _subscriptionLog),
+            UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextPrimary);
+        text.horizontalOverflow = HorizontalWrapMode.Wrap;
+        text.verticalOverflow = VerticalWrapMode.Overflow;
+        var le = text.GetComponent<LayoutElement>();
+        if (le != null) le.minHeight = 100;
     }
 
     private void SetDisplayMode(ResultDisplayMode mode)

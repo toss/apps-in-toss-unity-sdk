@@ -16,6 +16,10 @@ public class InteractiveAPITester : MonoBehaviour
     private Dictionary<string, List<APIMethodInfo>> groupedMethods;
     private APIMethodInfo selectedMethod;
 
+    // Action(구독) 반환 API 실행 시 살아있는 구독 1개를 추적 (동시에 여러 구독을 열지 않음 - 재진입/누수 방지)
+    private Action _activeSubscriptionDisposer;
+    private string _activeSubscriptionMethodName;
+
     // uGUI UI 관리자
     private InteractiveAPITesterUI _ui;
 
@@ -64,6 +68,7 @@ public class InteractiveAPITester : MonoBehaviour
         _ui.OnExecuteRequested = ExecuteAPI;
         _ui.OnBackToList = BackToList;
         _ui.OnRetry = () => _ui.ShowParameterInput(selectedMethod);
+        _ui.OnUnsubscribeRequested = DisposeActiveSubscription;
         _ui.Build(allMethods, groupedMethods);
 
         // 서브 테스터 UI 설정
@@ -96,6 +101,7 @@ public class InteractiveAPITester : MonoBehaviour
 
     void OnDestroy()
     {
+        DisposeActiveSubscription();
         _ui?.Destroy();
     }
 
@@ -150,12 +156,22 @@ public class InteractiveAPITester : MonoBehaviour
         try
         {
             // 파라미터 조합
+            // 콜백(Action/Action<T>) 타입 파라미터는 UI 입력값으로 만들 수 없으므로(Activator.CreateInstance가
+            // delegate 타입에서 실패함) 여기서 리플렉션으로 로깅 델리게이트를 구성해 대신 채운다.
             object[] parameters = new object[selectedMethod.Parameters.Count];
             for (int i = 0; i < selectedMethod.Parameters.Count; i++)
             {
                 var param = selectedMethod.Parameters[i];
-                parameters[i] = _ui.BuildParameterObject(param.Name, param.Type);
-                Debug.Log($"[InteractiveAPITester] Parameter {param.Name}: {parameters[i]}");
+                if (typeof(Delegate).IsAssignableFrom(param.Type))
+                {
+                    parameters[i] = BuildCallbackDelegate(param.Type, param.Name);
+                    Debug.Log($"[InteractiveAPITester] Parameter {param.Name}: <callback: {param.Type.Name}>");
+                }
+                else
+                {
+                    parameters[i] = _ui.BuildParameterObject(param.Name, param.Type);
+                    Debug.Log($"[InteractiveAPITester] Parameter {param.Name}: {parameters[i]}");
+                }
             }
 
             // API 호출
@@ -213,6 +229,11 @@ public class InteractiveAPITester : MonoBehaviour
                 }
             }
 #endif
+            else if (result is Action unsubscribeAction)
+            {
+                // 구독형 API (onEvent/onError 콜백을 등록하고, 구독 해제용 Action을 반환)
+                HandleSubscriptionResult(unsubscribeAction);
+            }
             else
             {
                 ShowResult($"Unexpected return type: {resultTypeName}", false);
@@ -313,5 +334,110 @@ public class InteractiveAPITester : MonoBehaviour
         Debug.Log($"[InteractiveAPITester] Result: {resultText}");
 
         _ui.ShowResult(selectedMethod.Name, result, success);
+    }
+
+    // ─── 구독형 API (Action 반환) 처리 ───
+
+    /// <summary>
+    /// 구독 등록 성공 시 호출됨. 재진입(같은/다른 API를 다시 실행)에 대비해 기존 구독을 먼저 정리하고
+    /// 새 구독의 해제 Action을 보관한 뒤, UI에 구독 중 상태를 표시한다.
+    /// </summary>
+    private void HandleSubscriptionResult(Action unsubscribeAction)
+    {
+        DisposeActiveSubscription();
+
+        _activeSubscriptionDisposer = unsubscribeAction;
+        _activeSubscriptionMethodName = selectedMethod.Name;
+
+        Debug.Log($"[InteractiveAPITester] Subscribed: {selectedMethod.Name}");
+        _ui.ShowSubscriptionResult(selectedMethod.Name);
+    }
+
+    /// <summary>
+    /// 현재 활성 구독이 있으면 해제한다. Unsubscribe 버튼, 새 구독 시작(재진입), 씬 파괴(OnDestroy)
+    /// 3곳에서 공통으로 호출되어 구독 해제 Action이 누락되지 않도록 한다.
+    /// </summary>
+    private void DisposeActiveSubscription()
+    {
+        if (_activeSubscriptionDisposer == null) return;
+
+        try
+        {
+            _activeSubscriptionDisposer.Invoke();
+            Debug.Log($"[InteractiveAPITester] Unsubscribed: {_activeSubscriptionMethodName}");
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[InteractiveAPITester] 구독 해제 중 예외 발생: {ex.Message}");
+        }
+
+        _activeSubscriptionDisposer = null;
+        _activeSubscriptionMethodName = null;
+        _ui?.SetSubscriptionActive(false);
+    }
+
+    /// <summary>
+    /// delegateType(Action 또는 Action&lt;T&gt;)에 맞는 로깅용 델리게이트를 리플렉션으로 구성한다.
+    /// 페이로드가 있는 콜백(Action&lt;T&gt;)은 <see cref="CreateTypedLogger{T}"/>를 제네릭 메서드로
+    /// 바인딩해 생성하고, 페이로드가 없는 콜백(Action)은 클로저로 직접 생성한다.
+    /// </summary>
+    private Delegate BuildCallbackDelegate(Type delegateType, string paramLabel)
+    {
+        var invokeMethod = delegateType.GetMethod("Invoke");
+        var invokeParams = invokeMethod.GetParameters();
+
+        if (invokeParams.Length == 0)
+        {
+            Action handler = () => OnSubscriptionEvent(paramLabel, null);
+            return handler;
+        }
+
+        if (invokeParams.Length == 1)
+        {
+            Type payloadType = invokeParams[0].ParameterType;
+            var genericHelper = typeof(InteractiveAPITester)
+                .GetMethod(nameof(CreateTypedLogger), BindingFlags.NonPublic | BindingFlags.Instance)
+                .MakeGenericMethod(payloadType);
+            return (Delegate)genericHelper.Invoke(this, new object[] { paramLabel });
+        }
+
+        // 대상 5종 API는 모두 0~1개 파라미터의 콜백만 사용함. 향후 다중 파라미터 콜백이 추가되면
+        // 여기서 null을 반환하고 Invoke 시 ArgumentException으로 드러나 즉시 눈에 띈다.
+        Debug.LogWarning($"[InteractiveAPITester] 지원하지 않는 콜백 시그니처: {paramLabel} ({invokeParams.Length}개 파라미터)");
+        return null;
+    }
+
+    /// <summary>
+    /// Action&lt;T&gt;를 위한 제네릭 로깅 델리게이트 생성. BuildCallbackDelegate가 MakeGenericMethod로
+    /// 런타임 payload 타입 T를 바인딩해 호출한다.
+    /// </summary>
+    private Delegate CreateTypedLogger<T>(string paramLabel)
+    {
+        Action<T> handler = (payload) => OnSubscriptionEvent(paramLabel, payload);
+        return handler;
+    }
+
+    /// <summary>
+    /// 구독 콜백(onEvent/onError)이 발생할 때마다 호출되어 이벤트를 콘솔과 UI 로그에 남긴다.
+    /// </summary>
+    private void OnSubscriptionEvent(string paramLabel, object payload)
+    {
+        string message;
+        if (payload == null)
+        {
+            message = "(no payload)";
+        }
+        else if (payload is AITException aitEx)
+        {
+            message = $"AITException: {aitEx.Message} (code: {aitEx.ErrorCode})";
+        }
+        else
+        {
+            message = APIParameterInspector.SerializeToJson(payload);
+        }
+
+        string line = $"[{DateTime.Now:HH:mm:ss}] {paramLabel}: {message}";
+        Debug.Log($"[InteractiveAPITester] Subscription event ({_activeSubscriptionMethodName}): {line}");
+        _ui.AppendSubscriptionLog(line);
     }
 }

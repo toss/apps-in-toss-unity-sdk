@@ -696,14 +696,36 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
     //    만들지 않는다.
     //    allowlist 근거: RuntimeAPITester.cs가 호출하는 apiName과
     //    node_modules/@apps-in-toss/devtools/dist/mock/3x.js의 export를 대조해,
-    //    파라미터 없이 호출되고 aitState 기본값을 예외 없이 즉시 반환하는 4개를 선정했다
-    //    (getPlatformOS/getOperationalEnvironment/getDeviceId/getLocale). Storage 계열은
-    //    RuntimeAPITester.cs가 애초에 호출하지 않아 이 하네스로는 검증 대상이 아니다.
+    //    aitState 기본값(권한 allowed, deviceModes mock 등)으로 예외 없이 즉시 성공
+    //    반환하는 항목만 선정했다.
+    //    - getPlatformOS/getOperationalEnvironment/getDeviceId/getLocale: 파라미터 없음
+    //    - env.getDeploymentId/getAppsInTossGlobals/isMinVersionSupported/getServerTime:
+    //      SDK 3.0 신규 표면(2026-08 감사로 RuntimeAPITester에 편입). mock이 각각
+    //      aitState 값을 동기/즉시 Promise로 반환 — 예외 경로 없음.
+    //    - Storage.getItem/setItem/removeItem/clearItems: 권한 게이트 없이 localStorage에
+    //      직접 위임 — 예외 경로 없음(devtools#770/#775에서 이미 실측 확정).
+    //    - partner.addAccessoryButton/removeAccessoryButton: console.log만 하고 즉시
+    //      resolve하는 스텁 — 예외 경로 없음.
+    //    - fetchAlbumItems: photos 권한 기본값 allowed + deviceModes.photos 기본값
+    //      mock이라 file picker 없이 즉시 목업 배열을 반환.
+    //    - SafeAreaInsets.get: aitState.state.safeAreaInsets 스냅샷을 동기 반환.
     const MOCK_SUCCESS_ALLOWLIST = [
       'API_GetPlatformOS',
       'API_GetOperationalEnvironment',
       'API_GetDeviceId',
       'API_GetLocale',
+      'API_EnvGetDeploymentId',
+      'API_GetAppsInTossGlobals',
+      'API_IsMinVersionSupported',
+      'API_GetServerTime',
+      'API_StorageSetItem',
+      'API_StorageGetItem',
+      'API_StorageRemoveItem',
+      'API_StorageClearItems',
+      'API_PartnerAddAccessoryButton',
+      'API_PartnerRemoveAccessoryButton',
+      'API_FetchAlbumItems',
+      'API_SafeAreaInsetsGet',
     ];
 
     try {

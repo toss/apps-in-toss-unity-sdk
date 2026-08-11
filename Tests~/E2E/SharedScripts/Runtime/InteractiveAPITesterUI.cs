@@ -79,6 +79,13 @@ public class InteractiveAPITesterUI
     private bool _isSubscriptionMode = false;
     private List<string> _subscriptionLog = new List<string>();
     private Button _unsubscribeBtn;
+    private Text _unsubscribeBtnText;
+
+    // 활성 구독 대상 API 이름. null이면 활성 구독 없음.
+    // InteractiveAPITester의 단일 슬롯 정책(_activeSubscriptionDisposer)과 항상 동기화되며,
+    // 현재 보고 있는 결과 화면(_isSubscriptionMode)과 무관하게 유지된다 — 구독 중에 다른
+    // Task 반환 API를 실행해 ShowResult()로 넘어가도 구독 해제 버튼이 계속 보이도록 하기 위함.
+    private string _activeSubscriptionLabel = null;
 
     private const int MaxSubscriptionLogLines = 200;
 
@@ -586,6 +593,7 @@ public class InteractiveAPITesterUI
         _unsubscribeBtn = UIBuilder.CreateButton(btnBar, "\uad6c\ub3c5 \ud574\uc81c",
             onClick: () => OnUnsubscribeRequested?.Invoke(), style: UIBuilder.ButtonStyle.Danger);
         UIBuilder.SetLayout(_unsubscribeBtn.gameObject, minWidth: 120, preferredWidth: 120);
+        _unsubscribeBtnText = _unsubscribeBtn.GetComponentInChildren<Text>();
         _unsubscribeBtn.gameObject.SetActive(false);
 
         var spacer = new GameObject("Spacer");
@@ -996,8 +1004,13 @@ public class InteractiveAPITesterUI
     {
         // 일반(Task/Awaitable) 결과 표시로 전환 - 구독 로그 모드였다면 화면 표시만 원상복구한다
         // (구독 자체의 생명주기는 InteractiveAPITester가 소유 - 여기서는 화면 상태만 정리)
+        // 주의: 활성 구독이 남아있는 동안(_activeSubscriptionLabel != null) 다른 Task 반환 API를
+        // 실행해 이 메서드에 도달할 수 있다. 이때 버튼을 무조건 숨기면 UI로 그 구독을 해제할
+        // 방법이 사라지므로, 활성 구독이 있는 한 버튼은 계속 노출하고 라벨로 어떤 API의
+        // 구독인지 표시한다.
         _isSubscriptionMode = false;
-        if (_unsubscribeBtn != null) _unsubscribeBtn.gameObject.SetActive(false);
+        if (_unsubscribeBtn != null) _unsubscribeBtn.gameObject.SetActive(_activeSubscriptionLabel != null);
+        UpdateUnsubscribeButtonLabel();
 
         _lastResultSuccess = success;
         _lastResultObject = (success && result != null && !(result is string)) ? result : null;
@@ -1032,6 +1045,7 @@ public class InteractiveAPITesterUI
     public void ShowSubscriptionResult(string methodName)
     {
         _isSubscriptionMode = true;
+        _activeSubscriptionLabel = methodName;
         _subscriptionLog.Clear();
         _subscriptionLog.Add($"[{DateTime.Now:HH:mm:ss}] 구독 시작됨 - 이벤트 발생을 기다리는 중...");
 
@@ -1042,6 +1056,7 @@ public class InteractiveAPITesterUI
         // 구조화/JSON 토글은 구독 로그와 무관하므로 숨긴다
         _displayModeRow.SetActive(false);
         if (_unsubscribeBtn != null) _unsubscribeBtn.gameObject.SetActive(true);
+        UpdateUnsubscribeButtonLabel();
 
         RenderSubscriptionLog();
 
@@ -1074,7 +1089,12 @@ public class InteractiveAPITesterUI
     /// </summary>
     public void SetSubscriptionActive(bool active)
     {
+        if (!active)
+        {
+            _activeSubscriptionLabel = null;
+        }
         if (_unsubscribeBtn != null) _unsubscribeBtn.gameObject.SetActive(active);
+        UpdateUnsubscribeButtonLabel();
 
         if (!active && _isSubscriptionMode)
         {
@@ -1083,6 +1103,19 @@ public class InteractiveAPITesterUI
             if (_statusBadgeBg != null) _statusBadgeBg.color = UIBuilder.Theme.ButtonBg;
             RenderSubscriptionLog();
         }
+    }
+
+    /// <summary>
+    /// 구독 해제 버튼의 라벨을 갱신한다. 구독 로그 화면을 보고 있으면 단순히 "구독 해제"로,
+    /// 다른 결과 화면을 보는 중에 백그라운드에 활성 구독이 남아있으면 어떤 API의 구독인지
+    /// 괄호로 표시해 사용자가 헷갈리지 않게 한다.
+    /// </summary>
+    private void UpdateUnsubscribeButtonLabel()
+    {
+        if (_unsubscribeBtnText == null) return;
+        _unsubscribeBtnText.text = (!_isSubscriptionMode && _activeSubscriptionLabel != null)
+            ? $"구독 해제 ({_activeSubscriptionLabel})"
+            : "구독 해제";
     }
 
     private void RenderSubscriptionLog()

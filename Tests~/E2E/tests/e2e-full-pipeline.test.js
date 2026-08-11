@@ -559,7 +559,12 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
   test('2. AIT dev server should start and load Unity', async ({ page }) => {
     // devtools mock 초기화(cold optimizeDeps ~2-4초) + TriggerAPITest allowlist 대기가
     // 추가되어 기존 120000보다 여유를 둔다.
-    test.setTimeout(200000);
+    // 300000 산정 근거: GH-hosted 러너 최번시(2026-08-11 15~16시 UTC 실측)에는 wasm
+    // 인스턴스화만 평시 80초 → 150초+로 늘어져, 평시 2.0분(run 1058 실측)에 맞춘 200000
+    // 예산으로는 10/10 leg가 일제히 타임아웃했다. 이 테스트는 기능 검증이 목적이고
+    // 소요 시간은 리포트의 per-test duration으로 계속 관측하므로 예산은 러너 편차를
+    // 흡수할 만큼 여유 있게 둔다.
+    test.setTimeout(300000);
 
     // 패널/mock 주입 실패는 브라우저 콘솔에만 남고 테스트 실패로 드러나지 않을 수 있어,
     // CI 로그에서 바로 확인할 수 있도록 pageerror/console을 캡처한다.
@@ -699,9 +704,16 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
     //    aitState 기본값(권한 allowed, deviceModes mock 등)으로 예외 없이 즉시 성공
     //    반환하는 항목만 선정했다.
     //    - getPlatformOS/getOperationalEnvironment/getDeviceId/getLocale: 파라미터 없음
-    //    - env.getDeploymentId/getAppsInTossGlobals/isMinVersionSupported/getServerTime:
+    //    - env.getDeploymentId/getAppsInTossGlobals/getServerTime:
     //      SDK 3.0 신규 표면(2026-08 감사로 RuntimeAPITester에 편입). mock이 각각
     //      aitState 값을 동기/즉시 Promise로 반환 — 예외 경로 없음.
+    //    - isMinVersionSupported: SDK 3.0 신규 표면(2026-08 감사로 RuntimeAPITester에 편입).
+    //      실제 SDK 타입(@apps-in-toss/web-framework)과 devtools mock 구현 모두 boolean을
+    //      "동기" 반환하는 함수라 Promise가 아니다 — 생성된 jslib(__isMinVersionSupported_Internal)도
+    //      window.AppsInToss.isMinVersionSupported(...) 반환값을 await 없이 그대로 읽어 즉시
+    //      SendMessage 콜백을 보낸다. (Unity 쪽 AIT.IsMinVersionSupported가 Task/Awaitable인 것은
+    //      SendMessage 콜백 브리지의 공통 패턴일 뿐이며, 이 API 자체가 비동기라서가 아니다.)
+    //      예외 경로 없음.
     //    - Storage.getItem/setItem/removeItem/clearItems: 권한 게이트 없이 localStorage에
     //      직접 위임 — 예외 경로 없음(devtools#770/#775에서 이미 실측 확정).
     //    - partner.addAccessoryButton/removeAccessoryButton: console.log만 하고 즉시

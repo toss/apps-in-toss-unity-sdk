@@ -17,6 +17,19 @@ public class InteractiveAPITester : MonoBehaviour
     private APIMethodInfo selectedMethod;
 
     // Action(구독) 반환 API 실행 시 살아있는 구독 1개를 추적 (동시에 여러 구독을 열지 않음 - 재진입/누수 방지)
+    //
+    // 단일 슬롯 정책의 적용 범위: 이 필드는 특정 API 몇 개가 아니라 Action을 반환하는
+    // SDK API 13종 전부(GoogleAdMobLoadAppsInTossAdMob/GoogleAdMobShowAppsInTossAdMob,
+    // LoadFullScreenAd/ShowFullScreenAd, GraniteEventSubscribeBackEvent/HomeEvent,
+    // TdsEventSubscribeNavigationAccessoryEvent, StartUpdateLocation, ContactsViral,
+    // IAPCreateOneTimePurchaseOrder/IAPCreateSubscriptionPurchaseOrder,
+    // RequestNotificationAgreement, OnVisibilityChangedByTransparentServiceWeb)에 공통 적용된다 —
+    // ExecuteAPI()가 반환 타입만으로 분기해 HandleSubscriptionResult()를 호출하기 때문에
+    // 특정 API를 예외 처리하지 않는 한 전부 이 슬롯을 공유한다.
+    // 이 인터랙티브 테스터는 임의 API를 하나씩 탐색/스모크 테스트하는 용도라 동시 1개 구독으로
+    // 충분하며, 여러 구독을 동시에 유지하며 상호작용을 검증해야 하는 시나리오(광고 로드+표시
+    // 동시 진행, IAP 주문 플로우 등)는 전용 테스터(AdV2Tester, IAPv2Tester, FullScreenAdTester 등)가
+    // 정식 경로다 — 그쪽은 각자 독립된 구독 핸들을 관리한다.
     private Action _activeSubscriptionDisposer;
     private string _activeSubscriptionMethodName;
 
@@ -341,9 +354,17 @@ public class InteractiveAPITester : MonoBehaviour
     /// <summary>
     /// 구독 등록 성공 시 호출됨. 재진입(같은/다른 API를 다시 실행)에 대비해 기존 구독을 먼저 정리하고
     /// 새 구독의 해제 Action을 보관한 뒤, UI에 구독 중 상태를 표시한다.
+    ///
+    /// 단일 슬롯 정책: Action을 반환하는 API 13종(GoogleAdMob Load/Show, FullScreenAd Load/Show,
+    /// IAP 주문 생성 2종 등 - 상세는 _activeSubscriptionDisposer 필드 주석 참조) 중 무엇을 실행하든
+    /// 이 메서드를 거치며, 새 구독을 시작하면 기존에 살아있던 구독은(대상 API와 무관하게) 자동
+    /// 해제된다. 자동 해제가 발생하면 어떤 API의 구독이 대체됐는지 새 구독의 UI 로그 첫 줄에 남긴다.
     /// </summary>
     private void HandleSubscriptionResult(Action unsubscribeAction)
     {
+        string previousMethodName = _activeSubscriptionMethodName;
+        bool hadActiveSubscription = _activeSubscriptionDisposer != null;
+
         DisposeActiveSubscription();
 
         _activeSubscriptionDisposer = unsubscribeAction;
@@ -351,6 +372,11 @@ public class InteractiveAPITester : MonoBehaviour
 
         Debug.Log($"[InteractiveAPITester] Subscribed: {selectedMethod.Name}");
         _ui.ShowSubscriptionResult(selectedMethod.Name);
+
+        if (hadActiveSubscription)
+        {
+            _ui.AppendSubscriptionLog($"[{DateTime.Now:HH:mm:ss}] 이전 구독 자동 해제됨 (단일 슬롯 정책): {previousMethodName}");
+        }
     }
 
     /// <summary>

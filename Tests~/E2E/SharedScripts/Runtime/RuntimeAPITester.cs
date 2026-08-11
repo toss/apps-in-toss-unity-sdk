@@ -275,6 +275,13 @@ public class RuntimeAPITester : MonoBehaviour
         TestAPICall("GetServerTime", async () => { await AIT.GetServerTime(); });
 
         // Storage APIs
+        // 주의: 아래 set→get→remove→clear는 가독성을 위해 이 순서로 나열했을 뿐 실행 순서를
+        // 보장하지 않는다. TestAPICall()은 apiCall()을 호출해 Task/Awaitable을 즉시 실행시키고
+        // 완료를 기다리지 않은 채 바로 다음 TestAPICall()로 넘어가며(TestAllSDKAPIs()가 이 4개를
+        // 연속 호출), 각 호출의 완료 대기는 별도 코루틴(WaitForTask/WaitForAwaitable)에 병렬로
+        // 큐잉된다. 지금은 예외 없이 끝나는지만 확인하므로 문제 없지만, 나중에 "get으로 읽은 값이
+        // set한 값과 같은지" 같은 값 검증을 추가하면 이 순서 비보장 때문에 flaky해질 수 있다 —
+        // 값 검증이 필요해지면 개별 await 체이닝(순차 실행)으로 바꿀 것.
         TestAPICall("StorageSetItem", async () => { await AIT.StorageSetItem("e2e-test-key", "e2e-test-value"); });
         TestAPICall("StorageGetItem", async () => { await AIT.StorageGetItem("e2e-test-key"); });
         TestAPICall("StorageRemoveItem", async () => { await AIT.StorageRemoveItem("e2e-test-key"); });

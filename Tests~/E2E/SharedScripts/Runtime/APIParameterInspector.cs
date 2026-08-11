@@ -175,9 +175,9 @@ public static class APIParameterInspector
         "Authentication",
         "Payment",
         "IAP",
-        "Advertising",
+        "Ads: AdMob",
+        "Ads: TossAds",
         "SystemInfo",
-        "Environment",
         "Location",
         "Permission",
         "GameCenter",
@@ -186,13 +186,12 @@ public static class APIParameterInspector
         "Clipboard",
         "Device",
         "Navigation",
-        "Events",
-        "Certificate",
-        "Visibility",
         "Storage",
         "SafeArea",
-        "Partner",
+        "Analytics",
         "AppEvents",
+        "Partner",
+        "User",
         "Other"
     };
 
@@ -201,39 +200,39 @@ public static class APIParameterInspector
     /// </summary>
     private static readonly Dictionary<string, string> APICategoryMap = new Dictionary<string, string>
     {
-        // Authentication
+        // Authentication (Certificate 카테고리 흡수: 인증서 서명도 넓은 의미의 인증 도메인)
         { "AppLogin", "Authentication" },
         { "GetIsTossLoginIntegratedService", "Authentication" },
+        { "AppsInTossSignTossCert", "Authentication" },
 
         // Payment
         { "CheckoutPayment", "Payment" },
+        { "RequestTossPayPaysBilling", "Payment" },
 
-        // IAP (In-App Purchase)
+        // IAP (In-App Purchase) - 구독 API 2종(IAPCreateSubscriptionPurchaseOrder/IAPGetSubscriptionInfo) 편입
         { "IAPCreateOneTimePurchaseOrder", "IAP" },
         { "IAPGetProductItemList", "IAP" },
         { "IAPGetPendingOrders", "IAP" },
         { "IAPGetCompletedOrRefundedOrders", "IAP" },
         { "IAPCompleteProductGrant", "IAP" },
+        { "IAPCreateSubscriptionPurchaseOrder", "IAP" },
+        { "IAPGetSubscriptionInfo", "IAP" },
 
-        // Advertising (Google AdMob)
-        { "GoogleAdMobLoadAdMobInterstitialAd", "Advertising" },
-        { "GoogleAdMobShowAdMobInterstitialAd", "Advertising" },
-        { "GoogleAdMobLoadAdMobRewardedAd", "Advertising" },
-        { "GoogleAdMobShowAdMobRewardedAd", "Advertising" },
-        { "GoogleAdMobLoadAppsInTossAdMob", "Advertising" },
-        { "GoogleAdMobShowAppsInTossAdMob", "Advertising" },
+        // Ads: AdMob (Runtime/SDK에 없는 GoogleAdMobLoadAdMobInterstitialAd 등 죽은 항목 4종은 제외)
+        { "GoogleAdMobLoadAppsInTossAdMob", "Ads: AdMob" },
+        { "GoogleAdMobShowAppsInTossAdMob", "Ads: AdMob" },
+        { "GoogleAdMobIsAppsInTossAdMobLoaded", "Ads: AdMob" },
 
-        // Advertising (TossAds)
-        { "TossAdsInitialize", "Advertising" },
-        { "TossAdsAttach", "Advertising" },
-        { "TossAdsAttachBanner", "Advertising" },
-        { "TossAdsDestroy", "Advertising" },
-        { "TossAdsDestroyAll", "Advertising" },
-        { "LoadFullScreenAd", "Advertising" },
-        { "ShowFullScreenAd", "Advertising" },
-        { "GoogleAdMobIsAppsInTossAdMobLoaded", "Advertising" },
+        // Ads: TossAds
+        { "TossAdsInitialize", "Ads: TossAds" },
+        { "TossAdsAttach", "Ads: TossAds" },
+        { "TossAdsAttachBanner", "Ads: TossAds" },
+        { "TossAdsDestroy", "Ads: TossAds" },
+        { "TossAdsDestroyAll", "Ads: TossAds" },
+        { "LoadFullScreenAd", "Ads: TossAds" },
+        { "ShowFullScreenAd", "Ads: TossAds" },
 
-        // SystemInfo
+        // SystemInfo (Environment 카테고리 통합 + GetServerTime 신규 편입)
         { "GetDeviceId", "SystemInfo" },
         { "GetLocale", "SystemInfo" },
         { "GetNetworkStatus", "SystemInfo" },
@@ -241,11 +240,10 @@ public static class APIParameterInspector
         { "GetPlatformOS", "SystemInfo" },
         { "GetSchemeUri", "SystemInfo" },
         { "GetTossAppVersion", "SystemInfo" },
-
-        // Environment
-        { "GetAppsInTossGlobals", "Environment" },
-        { "IsMinVersionSupported", "Environment" },
-        { "envGetDeploymentId", "Environment" },
+        { "GetServerTime", "SystemInfo" },
+        { "GetAppsInTossGlobals", "SystemInfo" },
+        { "IsMinVersionSupported", "SystemInfo" },
+        { "EnvGetDeploymentId", "SystemInfo" }, // 대소문자 수정: envGetDeploymentId -> EnvGetDeploymentId (AIT.Environment.cs 실제 메서드명)
 
         // Location
         { "GetCurrentLocation", "Location" },
@@ -256,12 +254,13 @@ public static class APIParameterInspector
         { "OpenPermissionDialog", "Permission" },
         { "RequestPermission", "Permission" },
 
-        // GameCenter
+        // GameCenter (GrantPromotionReward 편입: GrantPromotionRewardForGame과 같은 도메인)
         { "GetGameCenterGameProfile", "GameCenter" },
         { "GetUserKeyForGame", "GameCenter" },
         { "GrantPromotionRewardForGame", "GameCenter" },
         { "OpenGameCenterLeaderboard", "GameCenter" },
         { "SubmitGameCenterLeaderBoardScore", "GameCenter" },
+        { "GrantPromotionReward", "GameCenter" },
 
         // Share
         { "ContactsViral", "Share" },
@@ -269,10 +268,12 @@ public static class APIParameterInspector
         { "GetTossShareLink", "Share" },
         { "Share", "Share" },
 
-        // Media
+        // Media (FetchAlbumItems, OpenPDFViewer 신규 편입)
         { "FetchAlbumPhotos", "Media" },
         { "OpenCamera", "Media" },
         { "SaveBase64Data", "Media" },
+        { "FetchAlbumItems", "Media" },
+        { "OpenPDFViewer", "Media" },
 
         // Clipboard
         { "GetClipboardText", "Clipboard" },
@@ -289,15 +290,6 @@ public static class APIParameterInspector
         { "CloseView", "Navigation" },
         { "OpenURL", "Navigation" },
 
-        // Events
-        { "EventLog", "Events" },
-
-        // Certificate
-        { "AppsInTossSignTossCert", "Certificate" },
-
-        // Visibility
-        { "OnVisibilityChangedByTransparentServiceWeb", "Visibility" },
-
         // Storage
         { "StorageGetItem", "Storage" },
         { "StorageSetItem", "Storage" },
@@ -308,17 +300,32 @@ public static class APIParameterInspector
         { "SafeAreaInsetsGet", "SafeArea" },
         { "SafeAreaInsetsSubscribe", "SafeArea" },
 
-        // Partner
-        { "partnerAddAccessoryButton", "Partner" },
-        { "partnerRemoveAccessoryButton", "Partner" },
+        // Analytics (기존 Events 카테고리를 개명하고 AnalyticsScreen/Impression/Click 3종 편입)
+        { "EventLog", "Analytics" },
+        { "AnalyticsScreen", "Analytics" },
+        { "AnalyticsImpression", "Analytics" },
+        { "AnalyticsClick", "Analytics" },
 
-        // Other
-        { "GetGroupId", "Other" },
-
-        // AppEvents
-        { "AppsInTossEventSubscribeEntryMessageExited", "AppEvents" },
+        // AppEvents (Visibility 카테고리 흡수 + GraniteEventSubscribeHomeEvent/RequestNotificationAgreement/RequestReview 편입)
         { "GraniteEventSubscribeBackEvent", "AppEvents" },
+        { "GraniteEventSubscribeHomeEvent", "AppEvents" },
         { "TdsEventSubscribeNavigationAccessoryEvent", "AppEvents" },
+        { "OnVisibilityChangedByTransparentServiceWeb", "AppEvents" },
+        { "RequestNotificationAgreement", "AppEvents" },
+        { "RequestReview", "AppEvents" },
+
+        // Partner (대소문자 수정: partnerAddAccessoryButton/partnerRemoveAccessoryButton -> 실제 PascalCase 메서드명)
+        { "PartnerAddAccessoryButton", "Partner" },
+        { "PartnerRemoveAccessoryButton", "Partner" },
+
+        // User (신설 - AIT.Other.cs의 사용자 정보 조회 API)
+        { "GetAnonymousKey", "User" },
+        { "GetConsentedUserData", "User" },
+        { "GetDeclaredAgeRange", "User" },
+
+        // Other (도메인 분류가 어려운 나머지 API. GetAllAPIMethods() 기준 미매핑 API는 없어야 하며,
+        // 신규 API 추가 시 이 폴백으로 새지 않는지는 APICategoryMapGuardTests가 검증한다)
+        { "GetGroupId", "Other" },
     };
 
     /// <summary>

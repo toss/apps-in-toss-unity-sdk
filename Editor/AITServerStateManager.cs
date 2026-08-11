@@ -190,32 +190,76 @@ namespace AppsInToss.Editor
             int savedPid = EditorPrefs.GetInt(pidPrefKey, 0);
             int savedPort = EditorPrefs.GetInt(portPrefKey, 0);
 
+            // EditorPrefs가 비어 있으면(직전 검증에서 방금 지워졌거나, cfprefsd flush 지연 등)
+            // 도메인 리로드 전까지는 in-memory 캐시 값으로 폴백한다. 인스턴스가 살아있는 동안은
+            // SetExpectedPortAndProcess/OnServerStarted가 남긴 값이 EditorPrefs보다 항상 최신이거나
+            // 같으므로 폴백해도 안전하다.
+            int pid = savedPid > 0 ? savedPid : cachedPid;
+            int port = savedPort > 0 ? savedPort : cachedPort;
+
             // 포트 사용 확인 (가장 신뢰할 수 있는 지표)
-            bool portInUse = savedPort > 0 && IsPortInUse(savedPort);
+            bool portInUse = port > 0 && IsPortInUse(port);
 
             // 상태 결정: 포트만으로 판단
             if (portInUse)
             {
                 // 포트가 열려있으면 서버가 실행 중
                 cachedState = ServerState.Running;
-                cachedPid = savedPid;
-                cachedPort = savedPort;
+                cachedPid = pid;
+                cachedPort = port;
+
+                // EditorPrefs가 비어 있어 in-memory 값으로 복구된 경우, 다음 도메인 리로드에
+                // 대비해 다시 기록해 둔다.
+                if (savedPort <= 0 && port > 0)
+                {
+                    EditorPrefs.SetInt(portPrefKey, port);
+                }
+                if (savedPid <= 0 && pid > 0)
+                {
+                    EditorPrefs.SetInt(pidPrefKey, pid);
+                }
 
                 // 프로세스 관리자 복원 시도 (없는 경우, PID가 유효하면)
-                if (processManager == null && IsProcessAlive(savedPid))
+                if (processManager == null && IsProcessAlive(pid))
                 {
-                    RestoreProcessManager(savedPid);
+                    RestoreProcessManager(pid);
                 }
             }
             else
             {
-                // 포트가 열리지 않았으면 NotRunning
                 cachedState = ServerState.NotRunning;
-                ClearPersistedState();
+
+                // 정리할 상태가 애초에 없으면(신규 세션 등) 조용히 넘어간다 — 매 도메인 리로드마다
+                // 무의미한 "정리" 로그가 찍히는 것을 방지.
+                bool hasTrackedState = savedPid > 0 || savedPort > 0 || cachedPid > 0 || cachedPort > 0 || processManager != null;
+
+                // 포트가 아직 열리지 않았더라도, 추적 중인 PID가 살아있다면(예: 서버가 막 시작되어
+                // 아직 포트를 열기 전인 순간) 영속 상태를 지우지 않는다. 다음 검증에서 포트가 열리면
+                // 자동으로 Running으로 복구된다. PID가 죽었거나 애초에 없을 때만 정리한다.
+                if (hasTrackedState && ShouldClearPersistedState(portInUse, pid, IsProcessAlive))
+                {
+                    ClearPersistedState($"포트 {port} 미사용 + PID {pid} 비활성 (ValidateState)");
+                }
             }
 
             lastValidationTime = EditorApplication.timeSinceStartup;
             return cachedState;
+        }
+
+        /// <summary>
+        /// 영속화된(EditorPrefs) 서버 상태를 지워야 하는지 판단하는 순수 함수.
+        /// 포트가 열려 있으면(portInUse) 절대 지우지 않고, PID가 없거나(&lt;= 0) 이미 죽었을 때만 지운다.
+        /// PID가 살아있다면(서버 프로세스가 시작되어 아직 포트를 열기 전인 순간 등) 일시적으로
+        /// portInUse가 false여도 상태를 보존해 다음 검증에서 자동 복구되도록 한다.
+        /// </summary>
+        /// <param name="portInUse">현재 포트가 사용 중인지 여부</param>
+        /// <param name="pid">추적 중인 프로세스 PID (저장값 또는 캐시값)</param>
+        /// <param name="isAlive">PID 생존 여부를 확인하는 함수 (테스트 시 대체 가능)</param>
+        internal static bool ShouldClearPersistedState(bool portInUse, int pid, Func<int, bool> isAlive)
+        {
+            if (portInUse) return false;
+            if (pid <= 0) return true;
+            return !(isAlive?.Invoke(pid) ?? false);
         }
 
         /// <summary>
@@ -264,7 +308,7 @@ namespace AppsInToss.Editor
             lastValidationTime = EditorApplication.timeSinceStartup;
             serverStartedTime = 0;  // Grace period 초기화
 
-            ClearPersistedState();
+            ClearPersistedState("서버 시작 실패 (OnServerFailed)");
         }
 
         /// <summary>
@@ -292,7 +336,7 @@ namespace AppsInToss.Editor
             lastValidationTime = EditorApplication.timeSinceStartup;
             serverStartedTime = 0;  // Grace period 초기화
 
-            ClearPersistedState();
+            ClearPersistedState("사용자 요청에 의한 서버 중지 (OnServerStopped)");
         }
 
         /// <summary>
@@ -331,8 +375,11 @@ namespace AppsInToss.Editor
         /// <summary>
         /// 영속화된 상태 정리
         /// </summary>
-        private void ClearPersistedState()
+        /// <param name="reason">정리 사유 (로그 추적용) — 무로그 삭제로 원인 추적이 불가했던 문제 대응</param>
+        private void ClearPersistedState(string reason)
         {
+            Debug.Log($"[AIT] Dev 서버 영속 상태(EditorPrefs) 정리 — 사유: {reason}");
+
             processManager = null;
             cachedPid = 0;
             cachedPort = 0;

@@ -51,6 +51,25 @@ mergeInto(LibraryManager.library, {
     },
 
     /**
+     * PlayerPrefs 테스트 결과를 window 객체에 저장하고 콘솔에 출력
+     * (PlayerPrefs → 앱인토스 Storage 영속화 E2E 검증용)
+     * @param {string} jsonPtr - JSON 문자열 포인터 ({ op, key, value, success })
+     */
+    SendPlayerPrefsResult: function(jsonPtr) {
+        var json = UTF8ToString(jsonPtr);
+        console.log('[E2E-PLAYERPREFS] ' + json);
+
+        var data = JSON.parse(json);
+
+        // window 객체에 저장하여 Playwright에서 접근 가능하도록 함
+        window.__E2E_PLAYERPREFS_DATA__ = data;
+
+        // CustomEvent 발생
+        var event = new CustomEvent('e2e-playerprefs-complete', { detail: data });
+        window.dispatchEvent(event);
+    },
+
+    /**
      * JavaScript에서 JSON 파싱 검증
      * C# → JSON → JavaScript 파싱 → JSON → C# 역직렬화 round-trip 검증용
      * @param {string} jsonPtr - JSON 문자열 포인터
@@ -111,6 +130,34 @@ mergeInto(LibraryManager.library, {
             console.log('[E2E-TRIGGER] Triggering Serialization Test...');
             if (window.unityInstance) {
                 window.unityInstance.SendMessage('BenchmarkManager', 'TriggerSerializationTest');
+                return true;
+            }
+            console.error('[E2E-TRIGGER] Unity instance not available');
+            return false;
+        };
+
+        /**
+         * PlayerPrefs Set+Save 트리거 (JavaScript에서 호출 가능)
+         * window.TriggerPlayerPrefsSet('{"key":"...","value":"..."}') 로 호출
+         */
+        window.TriggerPlayerPrefsSet = function(json) {
+            console.log('[E2E-TRIGGER] Triggering PlayerPrefs Set: ' + json);
+            if (window.unityInstance) {
+                window.unityInstance.SendMessage('BenchmarkManager', 'TriggerPlayerPrefsSet', json);
+                return true;
+            }
+            console.error('[E2E-TRIGGER] Unity instance not available');
+            return false;
+        };
+
+        /**
+         * PlayerPrefs Get 트리거 (JavaScript에서 호출 가능)
+         * window.TriggerPlayerPrefsGet('key') 로 호출
+         */
+        window.TriggerPlayerPrefsGet = function(key) {
+            console.log('[E2E-TRIGGER] Triggering PlayerPrefs Get: ' + key);
+            if (window.unityInstance) {
+                window.unityInstance.SendMessage('BenchmarkManager', 'TriggerPlayerPrefsGet', key);
                 return true;
             }
             console.error('[E2E-TRIGGER] Unity instance not available');

@@ -16,6 +16,10 @@
 
 - **P3 — Deploy (Production) 성공 창의 콘솔 딥링크**: `Editor/Menu/DeploySuccessWindow.cs`의 "콘솔 열기" 버튼은 현재 콘솔 베이스 URL(`https://apps-in-toss.toss.im/console`)만 여는데, deploymentId로 배포 상세 화면에 바로 이동하는 딥링크 라우트가 있는지 콘솔 라우트가 미확인이라 적용하지 못했다. 플랫폼 팀 확인 후 딥링크로 교체.
 
+## 후속 검증
+
+- **P2 — PlayerPrefs 영속화: 플랫폼 Storage 값 크기 상한 미확인**: 개발자센터 스토리지 문서에 `Storage.setItem` 값 크기 상한이 명시돼 있지 않아, `WebGLTemplates/AITTemplate/Runtime/ait-playerprefs.js`는 보수값 512KB(`MAX_MANIFEST_CHARS`) 초과 시 push를 건너뛰고 경고를 남긴다. 실기기(토스 앱 샌드박스)에서 16KB~1MB 구간 setItem/getItem 왕복을 실측해 상한을 확정하고 임계값을 조정할 것. 함께 실측: 백그라운드 전환 시 Unity의 PlayerPrefs 자동 flush 여부와 `visibilitychange` 발화 후 JS 실행 시간 확보 여부(미보장으로 확인되면 C#측 강제 `PlayerPrefs.Save()` 헬퍼를 후속 추가).
+
 ## 코드 결함
 
 - **P3 — `AITEditorScriptObject.IsReadyForDeploy()`가 죽은 코드**: `Editor/AITEditorScriptObject.cs:273`. `IsIconUrlValid`/`IsAppNameValid`/`IsVersionValid` 셋을 묶지만 어디서도 호출되지 않는다(`Editor/AITCredentials.cs:82`의 동명 static은 별개 메서드이고 이쪽도 호출처가 없다). Configuration 창은 `IsAppNameValid()`를 직접 호출해 빌드 버튼을 게이팅하므로(`Editor/AITConfigurationWindow.cs:1139`) 기능 공백은 없다. 제거하거나, 빌드 진입 경로의 실제 게이트로 승격할지 결정 필요.

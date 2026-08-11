@@ -380,6 +380,29 @@ async function applyMobileThrottling(page, overrideRate = undefined) {
   return client;
 }
 
+/**
+ * window.unityInstance가 세팅될 때까지 대기 (신규 격리 page용 헬퍼).
+ * 기존 shared-session beforeAll의 인라인 폴링과 동일한 조건.
+ */
+async function waitForUnityInstance(page, timeoutMs = 60000) {
+  await page.waitForFunction(() => window['unityInstance'] !== undefined, { timeout: timeoutMs });
+}
+
+/**
+ * window.__E2E_PLAYERPREFS_DATA__를 지운 뒤 triggerFn()을 실행하고,
+ * 지정한 op으로 결과가 도착할 때까지 폴링한다 (PlayerPrefsTester → E2ETestBridge.jslib 계약).
+ * 같은 page를 여러 케이스에서 재사용할 때 이전 결과 잔재를 읽지 않도록 매번 지우고 시작한다.
+ */
+async function triggerPlayerPrefsAndWait(page, triggerFn, expectedOp, timeoutMs = 10000) {
+  await page.evaluate(() => { delete window['__E2E_PLAYERPREFS_DATA__']; });
+  await triggerFn();
+  await page.waitForFunction((op) => {
+    const d = window['__E2E_PLAYERPREFS_DATA__'];
+    return d !== undefined && d !== null && d.op === op;
+  }, expectedOp, { timeout: timeoutMs });
+  return page.evaluate(() => window['__E2E_PLAYERPREFS_DATA__']);
+}
+
 
 // ============================================================================
 // Test Suite
@@ -1007,6 +1030,13 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       expect(preloadWarnings.length,
         'Early fetch should not cause credentials mode mismatch warnings').toBe(0);
 
+      // Storage 브릿지 존재 확인 (생성기가 unity-bridge.ts에서 Storage 네임스페이스를
+      // 드롭하는 회귀를 감지 — PlayerPrefs 영속화 레이어가 이 함수에 의존한다)
+      const storageGetItemType = await sharedPage.evaluate(
+        () => typeof (window['AppsInToss'] && window['AppsInToss'].Storage && window['AppsInToss'].Storage.getItem)
+      );
+      expect(storageGetItemType, 'window.AppsInToss.Storage.getItem should be a function').toBe('function');
+
       testResults.tests['3_production_server'] = {
         passed: true,
         pageLoadTimeMs: pageLoadTime,
@@ -1558,6 +1588,267 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       expect(roundTrip.unknownCase.result, 'unknown callback should resolve false').toBe(false);
       expect(roundTrip.unknownCase.syncSettled, 'unregistered path must also respond synchronously').toBe(true);
     });
+
+
+    // -------------------------------------------------------------------------
+    // Test 9: PlayerPrefs → 앱인토스 Storage 영속화 (platform Storage mock)
+    // sharedPage를 오염시키지 않도록 각 케이스는 browser.newPage()로 격리된
+    // page를 사용한다. 케이스 간 상태 승계가 필요한 조합(9-1→9-2, 9-3→9-4)만
+    // page를 재사용하고, serial 실행 순서로 이를 보장한다.
+    // -------------------------------------------------------------------------
+    test.describe.serial('9. PlayerPrefs Persistence (platform Storage mock)', () => {
+      /** @type {import('@playwright/test').Page} */
+      let mockPage = null;
+      /** @type {import('@playwright/test').Page} */
+      let failPage = null;
+      /** @type {import('@playwright/test').Page} */
+      let noMockPage = null;
+
+      test.afterAll(async () => {
+        if (mockPage) { await mockPage.close(); mockPage = null; }
+        if (failPage) { await failPage.close(); failPage = null; }
+        if (noMockPage) { await noMockPage.close(); noMockPage = null; }
+      });
+
+      // -----------------------------------------------------------------------
+      // 9-1: localStorage 기반 mock을 오버라이드 훅에 설치 → Set+Save →
+      //      mock 백킹(localStorage)에 manifest가 기록되는지 확인
+      // -----------------------------------------------------------------------
+      test('9-1. mirrors PlayerPrefs.Save to platform Storage', async ({ browser }) => {
+        test.setTimeout(120000);
+
+        mockPage = await browser.newPage();
+
+        // addInitScript는 reload마다 재실행되고, localStorage는 reload에도 살아남는다
+        // (9-2가 IndexedDB만 지우고 이 mock 백킹은 보존되는 전제).
+        await mockPage.addInitScript(() => {
+          var PREFIX = 'PW_PP_MOCK_';
+          window['__AIT_PLAYERPREFS_STORAGE__'] = {
+            getItem: function (key) {
+              return Promise.resolve(window.localStorage.getItem(PREFIX + key));
+            },
+            setItem: function (key, value) {
+              return Promise.resolve(window.localStorage.setItem(PREFIX + key, value));
+            }
+          };
+        });
+
+        const response = await mockPage.goto(`http://localhost:${sharedPort}?e2e=true`, {
+          waitUntil: 'domcontentloaded',
+          timeout: 60000
+        });
+        expect(response?.status()).toBe(200);
+        await waitForUnityInstance(mockPage);
+
+        const result = await triggerPlayerPrefsAndWait(
+          mockPage,
+          () => mockPage.evaluate((json) => window['TriggerPlayerPrefsSet'](json),
+            JSON.stringify({ key: 'ait_e2e_pp', value: 'v1' })),
+          'set'
+        );
+        console.log(`[9-1] TriggerPlayerPrefsSet result: ${JSON.stringify(result)}`);
+        expect(result.success, 'PlayerPrefs.SetString + Save should succeed').toBe(true);
+
+        // mock 백킹(localStorage)에 manifest가 비어있지 않게 기록되었는지 확인
+        const backingValue = await mockPage.evaluate(
+          () => window.localStorage.getItem('PW_PP_MOCK_AITUnityFS_v1_manifest')
+        );
+        expect(backingValue, 'mock backing storage should have a manifest entry').toBeTruthy();
+        expect(backingValue.length, 'manifest entry should not be empty').toBeGreaterThan(0);
+
+        // manifest를 파싱해 PlayerPrefs 파일이 실제로 스냅샷에 수집됐는지 확인한다.
+        // (빈 {"files":{}} 승격 push만으로도 backingValue가 truthy가 되는 구멍을 막는다 —
+        //  경로 규칙 미스 등으로 실제 미러링이 0건이어도 이 단언 없이는 통과할 수 있었다)
+        const manifestCheck = await mockPage.evaluate(() => {
+          var raw = window.localStorage.getItem('PW_PP_MOCK_AITUnityFS_v1_manifest');
+          var manifest = JSON.parse(raw);
+          var snapshot = JSON.parse(manifest.inline);
+          var keys = Object.keys(snapshot.files || {});
+          var ppKeys = keys.filter(function (k) { return /\/PlayerPrefs$/.test(k); });
+          var hasNonEmptyData = ppKeys.some(function (k) {
+            var d = snapshot.files[k] && snapshot.files[k].d;
+            return typeof d === 'string' && d.length > 0;
+          });
+          return { ppKeyCount: ppKeys.length, hasNonEmptyData: hasNonEmptyData };
+        });
+        expect(manifestCheck.ppKeyCount, 'snapshot must contain at least one /PlayerPrefs file entry').toBeGreaterThan(0);
+        expect(manifestCheck.hasNonEmptyData, 'PlayerPrefs file entry must carry non-empty base64 data').toBe(true);
+
+        const ppState = await mockPage.evaluate(() => ({
+          preRunRan: window['__AIT_PP'].preRunRan,
+          captured: window['__AIT_PP'].captured
+        }));
+        expect(ppState.preRunRan, '__AIT_PP.preRunRan should be true').toBe(true);
+        expect(ppState.captured, '__AIT_PP.captured should be true').toBe(true);
+
+        const status91 = await mockPage.evaluate(() => window['AITPlayerPrefs'].status());
+        expect(status91.mirrorCount, 'status().mirrorCount should be > 0 after a successful mirror').toBeGreaterThan(0);
+      });
+
+      // -----------------------------------------------------------------------
+      // 9-2 (핵심): IndexedDB만 CDP로 wipe하고 reload → 값이 앱인토스 Storage
+      //      (mock 백킹 localStorage)로부터 복원되는지 확인
+      // -----------------------------------------------------------------------
+      test('9-2. value survives reload with IndexedDB wiped', async () => {
+        test.setTimeout(90000);
+        expect(mockPage, '9-1 should have created mockPage').not.toBeNull();
+
+        const cdp = await mockPage.context().newCDPSession(mockPage);
+        const origin = new URL(mockPage.url()).origin;
+        // localStorage(mock 백킹)는 보존, IndexedDB(IDBFS 미러)만 제거
+        await cdp.send('Storage.clearDataForOrigin', {
+          origin,
+          storageTypes: 'indexeddb,cache_storage'
+        });
+
+        // CDP wipe가 실제로 IndexedDB를 비웠는지 확인한다. IDBFS.getDB는 IndexedDB
+        // 커넥션을 dbs 캐시에 열어둔 채 유지하므로, 이 커넥션이 살아있으면
+        // clearDataForOrigin이 에러 없이 resolve되면서도 조용히 부분 실패할 수 있다.
+        const dbsAfterWipe = await mockPage.evaluate(async () => {
+          if (typeof indexedDB.databases !== 'function') return null; // 미지원 브라우저는 스킵
+          var dbs = await indexedDB.databases();
+          return dbs.map(function (d) { return d.name; });
+        });
+        if (dbsAfterWipe !== null) {
+          expect(dbsAfterWipe, 'IndexedDB should be empty after Storage.clearDataForOrigin').toEqual([]);
+        }
+
+        const response = await mockPage.reload({ waitUntil: 'domcontentloaded', timeout: 60000 });
+        expect(response?.status()).toBe(200);
+        await waitForUnityInstance(mockPage);
+
+        // 이 테스트가 검증하려는 기능(앱인토스 Storage 경로 복원)이 실제로 실행됐는지
+        // status()로 먼저 확인한다 — 원본 IDBFS populate만으로 우연히 값이 살아남아도
+        // (예: CDP wipe 부분 실패) mode/restoredBytes 단언이 없으면 이 구멍을 못 잡는다.
+        const status92 = await mockPage.evaluate(() => window['AITPlayerPrefs'].status());
+        expect(status92.mode, 'restore should have gone through the AIT overlay path (mode===ait)').toBe('ait');
+        expect(status92.restoredBytes, 'restoredBytes should be > 0 after an AIT snapshot restore').toBeGreaterThan(0);
+
+        const result = await triggerPlayerPrefsAndWait(
+          mockPage,
+          () => mockPage.evaluate((key) => window['TriggerPlayerPrefsGet'](key), 'ait_e2e_pp'),
+          'get'
+        );
+        console.log(`[9-2] TriggerPlayerPrefsGet result: ${JSON.stringify(result)}`);
+        expect(result.success, 'PlayerPrefs.GetString should succeed').toBe(true);
+        expect(result.value, 'value should survive IndexedDB wipe via platform Storage restore').toBe('v1');
+      });
+
+      // -----------------------------------------------------------------------
+      // 9-3: 항상 reject하는 mock → 부트가 막히면 안 되고, disabled=true로
+      //      보고되어야 하며, 처리되지 않은 예외/거부가 없어야 한다
+      // -----------------------------------------------------------------------
+      test('9-3. platform Storage failure must not block boot', async ({ browser }) => {
+        test.setTimeout(120000);
+
+        failPage = await browser.newPage();
+
+        const pageErrors = [];
+        failPage.on('pageerror', (err) => pageErrors.push(err.message));
+
+        await failPage.addInitScript(() => {
+          window['__AIT_PLAYERPREFS_STORAGE__'] = {
+            getItem: function () { return Promise.reject(new Error('mock storage getItem failure')); },
+            setItem: function () { return Promise.reject(new Error('mock storage setItem failure')); }
+          };
+          window['__unhandledRejections'] = [];
+          window.addEventListener('unhandledrejection', function (e) {
+            var reason = e && e.reason;
+            window['__unhandledRejections'].push(reason && reason.message ? reason.message : String(reason));
+          });
+        });
+
+        const response = await failPage.goto(`http://localhost:${sharedPort}?e2e=true`, {
+          waitUntil: 'domcontentloaded',
+          timeout: 60000
+        });
+        expect(response?.status()).toBe(200);
+        await waitForUnityInstance(failPage);
+
+        const status = await failPage.evaluate(() => window['AITPlayerPrefs'].status());
+        console.log(`[9-3] AITPlayerPrefs.status(): ${JSON.stringify(status)}`);
+        expect(status.disabled, 'status().disabled should be true when platform Storage always fails').toBe(true);
+
+        const unhandled = await failPage.evaluate(() => window['__unhandledRejections'] || []);
+        expect(unhandled.length, `no unhandled rejections: ${JSON.stringify(unhandled)}`).toBe(0);
+        expect(pageErrors.length, `no page errors: ${JSON.stringify(pageErrors)}`).toBe(0);
+      });
+
+      // -----------------------------------------------------------------------
+      // 9-4: 9-3 상태(disabled)에서 IndexedDB는 그대로 두고 reload —
+      //      IDBFS 경로 무회귀 확인 (Set+Save→reload→Get)
+      // -----------------------------------------------------------------------
+      test('9-4. falls back to IndexedDB when platform Storage errors', async () => {
+        test.setTimeout(90000);
+        expect(failPage, '9-3 should have created failPage').not.toBeNull();
+
+        const setResult = await triggerPlayerPrefsAndWait(
+          failPage,
+          () => failPage.evaluate((json) => window['TriggerPlayerPrefsSet'](json),
+            JSON.stringify({ key: 'ait_e2e_pp2', value: 'v2' })),
+          'set'
+        );
+        expect(setResult.success, 'PlayerPrefs.SetString + Save should succeed even when platform Storage is disabled').toBe(true);
+
+        // IndexedDB는 건드리지 않고 reload (CDP wipe 없음)
+        const response = await failPage.reload({ waitUntil: 'domcontentloaded', timeout: 60000 });
+        expect(response?.status()).toBe(200);
+        await waitForUnityInstance(failPage);
+
+        const getResult = await triggerPlayerPrefsAndWait(
+          failPage,
+          () => failPage.evaluate((key) => window['TriggerPlayerPrefsGet'](key), 'ait_e2e_pp2'),
+          'get'
+        );
+        console.log(`[9-4] TriggerPlayerPrefsGet result: ${JSON.stringify(getResult)}`);
+        expect(getResult.success, 'PlayerPrefs.GetString should succeed').toBe(true);
+        expect(getResult.value, 'IndexedDB(IDBFS) round-trip must keep working when platform Storage is disabled').toBe('v2');
+      });
+
+      // -----------------------------------------------------------------------
+      // 9-5: mock 없음 — 순정 프로덕션 페이지에서 회귀(에러/거부)가 없어야 하며,
+      //      mount 트랩은 storage 가용성과 무관하게 발화해야 한다
+      // -----------------------------------------------------------------------
+      test('9-5. no mock: no rejections, no boot regression', async ({ browser }) => {
+        test.setTimeout(120000);
+
+        noMockPage = await browser.newPage();
+
+        const consoleErrors = [];
+        noMockPage.on('console', (msg) => {
+          if (msg.type() === 'error') consoleErrors.push(msg.text());
+        });
+        const pageErrors = [];
+        noMockPage.on('pageerror', (err) => pageErrors.push(err.message));
+
+        await noMockPage.addInitScript(() => {
+          window['__unhandledRejections'] = [];
+          window.addEventListener('unhandledrejection', function (e) {
+            var reason = e && e.reason;
+            window['__unhandledRejections'].push(reason && reason.message ? reason.message : String(reason));
+          });
+        });
+
+        const response = await noMockPage.goto(`http://localhost:${sharedPort}?e2e=true`, {
+          waitUntil: 'domcontentloaded',
+          timeout: 60000
+        });
+        expect(response?.status()).toBe(200);
+        await waitForUnityInstance(noMockPage);
+
+        const ppCaptured = await noMockPage.evaluate(() => window['__AIT_PP'].captured);
+        expect(ppCaptured, '__AIT_PP.captured should be true regardless of storage backend availability').toBe(true);
+
+        const unhandled = await noMockPage.evaluate(() => window['__unhandledRejections'] || []);
+        expect(unhandled.length, `no unhandled rejections: ${JSON.stringify(unhandled)}`).toBe(0);
+        expect(pageErrors.length, `no page errors: ${JSON.stringify(pageErrors)}`).toBe(0);
+
+        const aitConsoleErrors = consoleErrors.filter((t) => /\[AIT-PP\]|AITPlayerPrefs/.test(t));
+        expect(aitConsoleErrors.length,
+          `no AITPlayerPrefs-related console.error: ${JSON.stringify(aitConsoleErrors)}`).toBe(0);
+      });
+
+    }); // end of test.describe.serial('9. ...')
 
   }); // end of test.describe.serial
 

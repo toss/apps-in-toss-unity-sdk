@@ -257,6 +257,10 @@ namespace AppsInToss
         [Tooltip("first-interactive 계측: -1 = 자동 (활성), 0 = 비활성, 1 = 활성")]
         public int firstInteractiveLog = -1;
 
+        [Header("스토리지 설정")]
+        [Tooltip("PlayerPrefs 영속화 (앱인토스 Storage): -1 = 자동 (활성), 0 = 비활성, 1 = 활성")]
+        public int playerPrefsPersistence = -1;
+
         [Header("권한 설정")]
         public AITPermissionConfig permissionConfig = new AITPermissionConfig();
 
@@ -545,6 +549,16 @@ namespace AppsInToss
         /// 픽셀 불변·세션당 1회 단일 이벤트·호스트 로딩 지표 표준화에 해당하므로 기본 ON.
         /// </summary>
         public static bool GetDefaultFirstInteractiveLog()
+        {
+            return true;
+        }
+
+        /// <summary>
+        /// PlayerPrefs 영속화(앱인토스 Storage) 기본 활성 여부.
+        /// IndexedDB 영속성이 보장되지 않는 웹뷰 환경에서 게임 코드 수정 없이
+        /// PlayerPrefs 데이터를 보호하기 위해 기본 ON.
+        /// </summary>
+        public static bool GetDefaultPlayerPrefsPersistence()
         {
             return true;
         }

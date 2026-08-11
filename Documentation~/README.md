@@ -26,6 +26,7 @@ Apps in Toss Unity SDK 문서 목록입니다. 하려는 일부터 찾으세요.
 | [빌드 커스터마이징](BuildCustomization.md) | 웹 진입점 수정, 외부 라이브러리 추가, 마커 영역 |
 | [로딩 화면 커스터마이징](LoadingScreenCustomization.md) | 로딩 화면 교체와 `AITLoading` API |
 | [빌드 파이프라인](BuildProcess.md) | Unity WebGL 빌드부터 패키징까지의 내부 동작 |
+| [수동 연동](ManualIntegration.md) | 권장하지 않는 예외 경로 — SDK 없이 수동으로 WebGL 빌드까지만 만드는 방법 (완결된 배포 절차는 제공하지 않음) |
 
 ## 파일럿 채널
 
@@ -57,3 +58,5 @@ Apps in Toss Unity SDK 문서 목록입니다. 하려는 일부터 찾으세요.
 ## API 변경 이력
 
 SDK가 노출하는 C# 표면이 `@apps-in-toss/web-framework` 버전에 따라 어떻게 달라지는지 담은 리포트입니다. `main`에 푸시될 때마다 CI가 재생성해 [changelog/index.html](changelog/index.html)에 커밋합니다.
+
+Unity SDK 패키지 버전은 `SDK Update` 워크플로가 `@apps-in-toss/web-framework` 버전을 그대로 따라 올리므로 두 번호는 동일합니다(예: 패키지 `3.0.1` = web-framework `3.0.1` = 태그 `release/v3.0.1`). 릴리즈 노트와 설치 태그 목록은 [GitHub Releases](https://github.com/toss/apps-in-toss-unity-sdk/releases)에서 확인하세요.

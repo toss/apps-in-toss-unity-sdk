@@ -561,6 +561,19 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
     // 추가되어 기존 120000보다 여유를 둔다.
     test.setTimeout(200000);
 
+    // 패널/mock 주입 실패는 브라우저 콘솔에만 남고 테스트 실패로 드러나지 않을 수 있어,
+    // CI 로그에서 바로 확인할 수 있도록 pageerror/console을 캡처한다.
+    page.on('pageerror', error => {
+      console.log('[Page Error]', error.message);
+    });
+    page.on('console', msg => {
+      const type = msg.type();
+      const text = msg.text();
+      if (type === 'error' || type === 'warning' || text.includes('@apps-in-toss/devtools')) {
+        console.log('[Browser Console]', text);
+      }
+    });
+
     await applyMobileThrottling(page);
 
     expect(directoryExists(AIT_BUILD), 'ait-build/ should exist for dev server').toBe(true);
@@ -648,6 +661,9 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
 
     // ① devtools unplugin이 @apps-in-toss/web-framework를 mock으로 alias했다는 직접 증거:
     //    window.AppsInToss.getPlatformOS 함수가 주입되어 있어야 한다.
+    // unity-bridge.ts 모듈 실행(window.AppsInToss 생성)은 devtools mock의 cold optimizeDeps(~2-4초) 및
+    // Unity 캔버스 로딩과 병렬·독립 경로라 단발 체크가 레이스할 수 있어 폴링으로 먼저 대기한다.
+    await page.waitForFunction(() => typeof window['AppsInToss']?.getPlatformOS === 'function', { timeout: 15000 }).catch(() => {});
     const hasGetPlatformOS = await page.evaluate(() => {
       return typeof window['AppsInToss']?.getPlatformOS === 'function';
     });
@@ -670,6 +686,8 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
     //    "The CSS-class / attribute contract relied on by e2e/panel.test.ts"로 문서화한
     //    안정 계약(dist/panel/index.js 주석) — 내부 React 트리 구조가 바뀌어도
     //    devtools가 마이너 업데이트에서 지키기로 약속한 셀렉터라 관대하게 안전하다.
+    // 패널 모듈 로드도 Unity 캔버스 등장과 병렬 경로라 카운트 확인 전에 짧게 폴링한다.
+    await page.waitForSelector('.ait-panel-toggle', { timeout: 10000 }).catch(() => {});
     const panelToggleCount = await page.locator('.ait-panel-toggle').count();
     expect(panelToggleCount, 'devtools floating panel toggle button should be mounted').toBeGreaterThan(0);
 
@@ -693,6 +711,14 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
     } catch {
       console.log('⚠️ TriggerAPITest not found on dev server page (mock allowlist assertion may fail)');
     }
+
+    // 원인: 아래 TriggerAPITest 스윕이 CloseView를 호출하면 devtools mock의 closeView()가
+    // window.history.back()을 실행해 page.goto 직후 페이지를 실제로 이탈시키고, 이를
+    // 기다리는 evaluate()의 실행 컨텍스트를 파괴한다. same-document 히스토리 엔트리를
+    // 미리 쌓아 back()을 컨텍스트 보존형 popstate 이동으로 바꿔 방지한다.
+    await page.evaluate(() => {
+      history.pushState({ aitE2eGuard: true }, '', location.href);
+    });
 
     const devApiResults = await page.evaluate(() => {
       return new Promise((resolve) => {

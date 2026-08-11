@@ -559,11 +559,10 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
   test('2. AIT dev server should start and load Unity', async ({ page }) => {
     // devtools mock 초기화(cold optimizeDeps ~2-4초) + TriggerAPITest allowlist 대기가
     // 추가되어 기존 120000보다 여유를 둔다.
-    // 300000 산정 근거: GH-hosted 러너 최번시(2026-08-11 15~16시 UTC 실측)에는 wasm
-    // 인스턴스화만 평시 80초 → 150초+로 늘어져, 평시 2.0분(run 1058 실측)에 맞춘 200000
-    // 예산으로는 10/10 leg가 일제히 타임아웃했다. 이 테스트는 기능 검증이 목적이고
-    // 소요 시간은 리포트의 per-test duration으로 계속 관측하므로 예산은 러너 편차를
-    // 흡수할 만큼 여유 있게 둔다.
+    // 300000 산정 근거: 평시 소요 2.0분(run 1058 실측) 대비 200000은 여유가 40%뿐이라
+    // GH-hosted 러너 성능 편차(피크 시간대 wasm 인스턴스화 80초→150초+ 실측)를 흡수하지
+    // 못한다. 이 테스트는 기능 검증이 목적이고 소요 시간은 리포트의 per-test duration으로
+    // 계속 관측하므로 예산은 편차를 흡수할 만큼 여유 있게 둔다.
     test.setTimeout(300000);
 
     // 패널/mock 주입 실패는 브라우저 콘솔에만 남고 테스트 실패로 드러나지 않을 수 있어,

@@ -361,7 +361,12 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: playwright-report-macos-${{ matrix.unity-version }}
-          path: Tests~/E2E/tests/playwright-report/
+          # playwright.config.ts의 reporter가 ['list']뿐이라 playwright-report/는 생성되지
+          # 않는다 — 실제 실패 증거(trace.zip, 실패 스크린샷)는 기본 outputDir인
+          # test-results/에 쌓이므로 반드시 함께 업로드해야 한다.
+          path: |
+            Tests~/E2E/tests/playwright-report/
+            Tests~/E2E/tests/test-results/
           if-no-files-found: ignore
           compression-level: 9
           retention-days: 7
@@ -440,7 +445,12 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: playwright-report-windows-${{ matrix.unity-version }}
-          path: Tests~/E2E/tests/playwright-report/
+          # playwright.config.ts의 reporter가 ['list']뿐이라 playwright-report/는 생성되지
+          # 않는다 — 실제 실패 증거(trace.zip, 실패 스크린샷)는 기본 outputDir인
+          # test-results/에 쌓이므로 반드시 함께 업로드해야 한다.
+          path: |
+            Tests~/E2E/tests/playwright-report/
+            Tests~/E2E/tests/test-results/
           if-no-files-found: ignore
           compression-level: 9
           retention-days: 7

@@ -1822,10 +1822,26 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
           { timeout: 30000 }
         );
 
+        // 진단: reload 직전 MEMFS의 scoped 파일 상태 + 레이어 상태 (2021.3 유실 원인 특정용)
+        const preState = await failPage.evaluate(() => ({
+          status: window['AITPlayerPrefs'].status(),
+          persistCount: window['__AIT_PP'].persistCount,
+          files: window['__AIT_PP'].debugScopedFiles()
+        }));
+        console.log(`[9-4] pre-reload: ${JSON.stringify(preState)}`);
+
         // IndexedDB는 건드리지 않고 reload (CDP wipe 없음)
         const response = await failPage.reload({ waitUntil: 'domcontentloaded', timeout: 60000 });
         expect(response?.status()).toBe(200);
         await waitForUnityInstance(failPage);
+
+        // 진단: reload 직후(원본 IDBFS populate 완료 후) 복원 결과
+        const postState = await failPage.evaluate(() => ({
+          status: window['AITPlayerPrefs'].status(),
+          persistCount: window['__AIT_PP'].persistCount,
+          files: window['__AIT_PP'].debugScopedFiles()
+        }));
+        console.log(`[9-4] post-reload: ${JSON.stringify(postState)}`);
 
         const getResult = await triggerPlayerPrefsAndWait(
           failPage,

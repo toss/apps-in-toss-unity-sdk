@@ -698,6 +698,23 @@
         return !activeMount || !activeMount.idbPersistState;
     }
 
+    /**
+     * 진단용(E2E·실기기 콘솔): 현재 MEMFS의 scoped 파일 경로/크기(base64 길이)/mtime 목록.
+     * 캡처 전이거나 수집 실패 시 null — 값 내용은 노출하지 않는다.
+     */
+    function debugScopedFiles() {
+        if (!activeMount) return null;
+        var col = collectScoped(activeMount);
+        if (!col) return null;
+        var out = [];
+        var keys = Object.keys(col.files).sort();
+        for (var i = 0; i < keys.length; i++) {
+            var rec = col.files[keys[i]];
+            out.push({ path: keys[i], dir: typeof rec.d !== 'string', bytes: typeof rec.d === 'string' ? rec.d.length : 0, t: rec.t });
+        }
+        return out;
+    }
+
     // ===========================================
     // 마운트 트랩 (preRun)
     // ===========================================
@@ -898,7 +915,8 @@
         bootTimeoutMs: DEFAULT_BOOT_TIMEOUT_MS,
         manifestKey: MANIFEST_KEY,
         persistCount: 0,
-        persistIdle: persistIdle
+        persistIdle: persistIdle,
+        debugScopedFiles: debugScopedFiles
     };
 
     window.__AIT_PP = api;

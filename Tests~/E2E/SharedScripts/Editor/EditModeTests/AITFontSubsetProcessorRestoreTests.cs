@@ -259,7 +259,12 @@ public class AITFontSubsetProcessorRestoreTests
         }
     }
 
-    /// <summary>샘플 프로젝트에 동봉된 실 폰트(.ttf/.otf) 바이트를 GUID 검색으로 확보. 없으면 null.</summary>
+    /// <summary>샘플 프로젝트에 동봉된 실 폰트(.ttf/.otf) 바이트를 확보한다. 1순위: AssetDatabase GUID
+    /// 검색(Assets/ 하위에 실제로 임포트된 폰트가 있는 프로젝트 변형 대비). 2순위: SharedScripts 패키지의
+    /// 비임포트 원본(Runtime/Fonts~/NotoSansKR-Regular.otf) — "패키지 Runtime/Resources/ 는 무조건
+    /// 빌드 포함" 규칙을 피하려 비임포트 "~" 폴더로 옮겨져 더 이상 AssetDatabase 로 검색되지 않으므로
+    /// File.ReadAllBytes 로 직접 읽는다(AITSfntLiteTests.ResolveNotoSansKrPath 와 동일 관용구). 둘
+    /// 다 실패하면 null.</summary>
     private static byte[] TryLoadSampleFontBytes(string projectRoot, out string foundAssetPath)
     {
         foundAssetPath = null;
@@ -285,8 +290,42 @@ public class AITFontSubsetProcessorRestoreTests
             }
         }
 
+        string rawPath = ResolveNotoSansKrRawPath();
+        if (!string.IsNullOrEmpty(rawPath) && File.Exists(rawPath))
+        {
+            foundAssetPath = rawPath;
+            return File.ReadAllBytes(rawPath);
+        }
+
         return null;
     }
+
+    /// <summary>패키지 비임포트 원본(Runtime/Fonts~/NotoSansKR-Regular.otf)의 실 파일시스템 경로를
+    /// 해석한다(AITSfntLiteTests.ResolveNotoSansKrPath 와 동일 관용구: Packages/ 가상 경로 우선 →
+    /// 이 테스트 파일 자신의 물리적 위치 기준 CallerFilePath 상대 경로 폴백).</summary>
+    private static string ResolveNotoSansKrRawPath()
+    {
+        const string fileName = "NotoSansKR-Regular.otf";
+
+        string viaPackages = Path.GetFullPath("Packages/im.toss.sdk-test-scripts/Runtime/Fonts~/" + fileName);
+        if (File.Exists(viaPackages))
+        {
+            return viaPackages;
+        }
+
+        string thisFileDir = Path.GetDirectoryName(CallerFilePath());
+        if (string.IsNullOrEmpty(thisFileDir))
+        {
+            return null;
+        }
+
+        // Editor/EditModeTests/ → (상위 2단계) → SharedScripts/ → Runtime/Fonts~/
+        string viaSharedScriptsRelative = Path.GetFullPath(Path.Combine(
+            thisFileDir, "..", "..", "Runtime", "Fonts~", fileName));
+        return File.Exists(viaSharedScriptsRelative) ? viaSharedScriptsRelative : null;
+    }
+
+    private static string CallerFilePath([System.Runtime.CompilerServices.CallerFilePath] string path = "") => path;
 
     /// <summary>
     /// 원본보다 확실히 작고 내용이 다른 바이트 페이로드(실 subset 산출물의 스탠드인).

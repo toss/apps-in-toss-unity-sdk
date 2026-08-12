@@ -588,6 +588,8 @@ public class HeavyBuildRunner
     }
 
     // ---- 폰트: NotoSansKR 사본 N종 (L10/L12) ----
+    // 원본이 패키지 비임포트 폴더(Runtime/Fonts~/)로 이동해 더 이상 AssetDatabase 자산이 아니므로
+    // (AssetDatabase.CopyAsset 불가) raw File.Copy 후 ImportAsset 으로 대상만 임포트한다.
     private static void CopyFonts(int copies)
     {
         if (copies <= 0) return;
@@ -602,25 +604,46 @@ public class HeavyBuildRunner
         for (int i = 0; i < copies; i++)
         {
             string dst = $"{HeavyRoot}/Fonts/heavy_font_{i:D2}.otf";
-            if (!AssetDatabase.CopyAsset(srcPath, dst))
+            try
             {
-                Debug.LogWarning($"[heavy] 폰트 사본 실패: {srcPath} → {dst}");
+                File.Copy(srcPath, Path.GetFullPath(dst), overwrite: true);
+                AssetDatabase.ImportAsset(dst, ImportAssetOptions.ForceSynchronousImport);
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning($"[heavy] 폰트 사본 실패: {srcPath} → {dst} ({e.Message})");
             }
         }
     }
 
+    /// <summary>패키지 비임포트 원본(Runtime/Fonts~/NotoSansKR-Regular.otf)의 실 파일시스템 경로를
+    /// 해석한다. UPM/embedded 설치 모두 해석(AITFontSubsetProcessor.ResolveToolSourceDir 와 동일
+    /// 관용구: PackageInfo.FindForAssembly resolvedPath 우선 → CallerFilePath 폴백). 폰트가 더 이상
+    /// AssetDatabase 로 검색 가능한 임포트 자산이 아니므로 File.Exists 기반으로 확인한다.</summary>
     private static string FindNotoSansKrPath()
     {
-        // 패키지/프로젝트 어디에 있든 AssetDatabase로 탐색.
-        foreach (string guid in AssetDatabase.FindAssets("NotoSansKR t:Font"))
+        try
         {
-            string p = AssetDatabase.GUIDToAssetPath(guid);
-            if (p.EndsWith(".otf") || p.EndsWith(".ttf")) return p;
+            var pkg = UnityEditor.PackageManager.PackageInfo.FindForAssembly(typeof(HeavyBuildRunner).Assembly);
+            if (pkg != null && !string.IsNullOrEmpty(pkg.resolvedPath))
+            {
+                string viaPackage = Path.Combine(pkg.resolvedPath, "Runtime", "Fonts~", "NotoSansKR-Regular.otf");
+                if (File.Exists(viaPackage)) return viaPackage;
+            }
         }
-        // 폴백: 알려진 SharedScripts 패키지 경로.
-        string known = "Packages/im.toss.sdk-test-scripts/Runtime/Resources/Fonts/NotoSansKR-Regular.otf";
-        return File.Exists(Path.GetFullPath(known)) ? known : null;
+        catch
+        {
+            // PackageInfo 미해석(Assets 내 임베드 개발) → 소스 파일 위치 폴백.
+        }
+
+        string here = CallerDir();
+        if (string.IsNullOrEmpty(here)) return null;
+        string viaCaller = Path.GetFullPath(Path.Combine(here, "..", "Runtime", "Fonts~", "NotoSansKR-Regular.otf"));
+        return File.Exists(viaCaller) ? viaCaller : null;
     }
+
+    private static string CallerDir([System.Runtime.CompilerServices.CallerFilePath] string thisFile = "")
+        => string.IsNullOrEmpty(thisFile) ? null : Path.GetDirectoryName(thisFile);
 
     // ---- WAV(RIFF/PCM 16-bit) 바이트 생성 ----
     private static byte[] BuildWav(int frames, int channels, int sampleRate, int seed)

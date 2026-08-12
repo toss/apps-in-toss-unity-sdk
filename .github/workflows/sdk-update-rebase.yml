@@ -196,18 +196,47 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
+      - name: 동반 패키지 버전 결정
+        if: steps.author-check.outputs.skip != 'true'
+        id: family
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+
+          # 3.0부터 web-framework와 자매 패키지(web-analytics/bridge-core)는 lockstep으로
+          # publish되지 않는다(web-framework@3.0.1은 자매 패키지 의존 선언 자체가 제거됨).
+          # 요청 버전이 해당 패키지에 실제로 존재하면 그대로 쓰고(lockstep 복원 시 자동 동기화),
+          # 없으면 그 패키지의 latest를 쓴다 — release/v3.0.0-rc.4가 검증한 조합과 같은 방식.
+          # (update.yml의 "동반 패키지 버전 결정" 단계와 동일 — 리베이스도 같은 lockstep 가정을
+          #  했다가 web-analytics가 3.0.x로 아직 publish되지 않아 실패했다.)
+          resolve() {
+            local PKG="$1"
+            if npm view "${PKG}" versions --json --registry https://registry.npmjs.org \
+              | jq -e --arg v "$VERSION" '[.] | flatten | index($v) != null' > /dev/null; then
+              echo "${VERSION}"
+            else
+              npm view "${PKG}" dist-tags.latest --registry https://registry.npmjs.org
+            fi
+          }
+
+          ANALYTICS_VERSION=$(resolve "@apps-in-toss/web-analytics")
+          BRIDGE_CORE_VERSION=$(resolve "@apps-in-toss/bridge-core")
+          echo "web-analytics: ${ANALYTICS_VERSION} / bridge-core: ${BRIDGE_CORE_VERSION}"
+          echo "analytics_version=${ANALYTICS_VERSION}" >> $GITHUB_OUTPUT
+          echo "bridge_core_version=${BRIDGE_CORE_VERSION}" >> $GITHUB_OUTPUT
+
       - name: web-framework 버전 업데이트 및 SDK 재생성
         if: steps.author-check.outputs.skip != 'true'
         id: generate
         working-directory: sdk-runtime-generator~
         run: |
           VERSION="${{ steps.version.outputs.version }}"
+          ANALYTICS_VERSION="${{ steps.family.outputs.analytics_version }}"
 
-          echo "=== web-framework, web-analytics v${VERSION} 업데이트 ==="
+          echo "=== web-framework v${VERSION}, web-analytics v${ANALYTICS_VERSION} 업데이트 ==="
 
           # 캐시 정리 후 강제 업데이트 (캐시로 인한 오래된 버전 문제 방지)
           pnpm store prune
-          pnpm update "@apps-in-toss/web-framework@${VERSION}" "@apps-in-toss/web-analytics@${VERSION}" --force --registry https://registry.npmjs.org
+          pnpm update "@apps-in-toss/web-framework@${VERSION}" "@apps-in-toss/web-analytics@${ANALYTICS_VERSION}" --force --registry https://registry.npmjs.org
 
           # 설치된 버전 검증
           INSTALLED_VERSION=$(pnpm list @apps-in-toss/web-framework --json | jq -r '.[0].dependencies["@apps-in-toss/web-framework"].version')
@@ -260,22 +289,25 @@ jobs:
         if: steps.author-check.outputs.skip != 'true'
         run: |
           VERSION="${{ steps.version.outputs.version }}"
+          ANALYTICS_VERSION="${{ steps.family.outputs.analytics_version }}"
+          BRIDGE_CORE_VERSION="${{ steps.family.outputs.bridge_core_version }}"
           BUILDCONFIG_PKG="WebGLTemplates/AITTemplate/BuildConfig~/package.json"
 
           # BuildConfig의 @apps-in-toss 패밀리 버전 동기화
-          # bridge-core는 직접 의존성으로 존재할 때만 갱신 — 향후 직접 핀이 제거되어도 phantom 키를
-          # 다시 만들지 않도록 조건부 처리 (update.yml:309-315와 동일 정책).
-          # 이 절이 없어 리베이스된 PR은 web-framework/web-analytics만 올라가고 bridge-core가
+          # 자매 패키지 버전은 "동반 패키지 버전 결정" 단계가 패키지별로 해석한다 (3.0부터 lockstep publish 아님).
+          # bridge-core는 직접 의존성으로 존재할 때만 갱신 — 향후 직접 핀이 제거되어도 phantom 키를 다시
+          # 만들지 않도록 조건부 처리 (update.yml과 동일 정책).
+          # 이 절이 없던 시절 리베이스된 PR은 web-framework/web-analytics만 올라가고 bridge-core가
           # 옛 버전에 남아, 머지 시 main이 패밀리 split 상태가 됐다.
-          jq --arg v "$VERSION" '
-            .dependencies["@apps-in-toss/web-framework"] = $v |
-            .dependencies["@apps-in-toss/web-analytics"] = $v |
+          jq --arg fw "$VERSION" --arg wa "$ANALYTICS_VERSION" --arg bc "$BRIDGE_CORE_VERSION" '
+            .dependencies["@apps-in-toss/web-framework"] = $fw |
+            .dependencies["@apps-in-toss/web-analytics"] = $wa |
             (if .dependencies["@apps-in-toss/bridge-core"]
-             then .dependencies["@apps-in-toss/bridge-core"] = $v
+             then .dependencies["@apps-in-toss/bridge-core"] = $bc
              else . end)
           ' "$BUILDCONFIG_PKG" > tmp.json
           mv tmp.json "$BUILDCONFIG_PKG"
-          echo "BuildConfig web-framework/web-analytics/bridge-core 버전: ${VERSION}"
+          echo "BuildConfig 버전 — web-framework: ${VERSION}, web-analytics: ${ANALYTICS_VERSION}, bridge-core: ${BRIDGE_CORE_VERSION}"
 
           # 확인
           cat "$BUILDCONFIG_PKG" | jq '.dependencies'
@@ -331,7 +363,7 @@ jobs:
           - @apps-in-toss/web-framework v${VERSION} 기반 SDK 코드 재생성
           - main 브랜치 최신 상태 기반 리베이스
           - package.json 버전 동기화
-          - BuildConfig package.json web-framework/web-analytics 버전 동기화
+          - BuildConfig package.json web-framework/web-analytics/bridge-core 버전 동기화
           - Documentation~/GettingStarted.md 설치 가이드 업데이트
 
           자동 생성: $(date -u +%Y-%m-%dT%H:%M:%SZ)"

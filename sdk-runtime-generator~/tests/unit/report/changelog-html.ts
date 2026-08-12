@@ -1,220 +1,26 @@
 /**
  * Rich HTML API Changelog Report Generator
  *
- * 버전별 API 변화를 시각적으로 확인할 수 있는 self-contained HTML 리포트를 생성합니다.
+ * ChangelogModel(changelog-model.ts)을 받아 시각적으로 확인할 수 있는 self-contained
+ * HTML 리포트를 렌더링합니다. diff 계산·EXCLUDED_APIS 필터링 등은 모델 진입점
+ * (buildChangelogModel)에서 이미 처리되었으므로, 이 파일은 렌더링만 담당합니다.
  * - Changelog 탭: 버전 간 diff (추가/제거 API)
  * - Catalog 탭: 전체 버전별 API 카탈로그
  * - API 디테일 패널: 파라미터, 리턴 타입, 설명 등 상세 정보
  */
 
-import type { ParsedAPI } from '../../../src/types.js';
-import { getCategory } from '../../../src/categories.js';
-import { mapToCSharpType } from '../../../src/validators/types.js';
+import type { ChangelogModel } from './changelog-model.js';
 
-interface SerializedParam {
-  name: string;
-  type: string;
-  optional: boolean;
-  description?: string;
-}
-
-interface SerializedAPI {
-  name: string;
-  pascalName: string;
-  displayName: string;
-  category: string;
-  file: string;
-  description?: string;
-  returnDescription?: string;
-  examples?: string[];
-  parameters: SerializedParam[];
-  returnType: string;
-  isAsync: boolean;
-  isCallbackBased?: boolean;
-  isEventSubscription?: boolean;
-  isDeprecated?: boolean;
-  deprecatedMessage?: string;
-  hasPermission: boolean;
-  versions: string[];
-}
-
-function serializeAPI(api: ParsedAPI, versions: string[]): SerializedAPI {
-  const category = getCategory(api.name);
-  return {
-    name: api.name,
-    pascalName: api.pascalName,
-    displayName: 'AIT.' + api.pascalName,
-    category,
-    file: 'AIT.' + category + '.cs',
-    description: api.description,
-    returnDescription: api.returnDescription,
-    examples: api.examples,
-    parameters: api.parameters.map(p => ({
-      name: p.name,
-      type: mapToCSharpType(p.type),
-      optional: p.optional,
-      description: p.description,
-    })),
-    returnType: mapToCSharpType(api.returnType),
-    isAsync: api.isAsync,
-    isCallbackBased: api.isCallbackBased,
-    isEventSubscription: api.isEventSubscription,
-    isDeprecated: api.isDeprecated,
-    deprecatedMessage: api.deprecatedMessage,
-    hasPermission: api.hasPermission,
-    versions,
-  };
-}
-
-interface APIChange {
-  kind: 'param-added' | 'param-removed' | 'param-type-changed' | 'return-type-changed' | 'flag-changed';
-  description: string;
-}
-
-interface ModifiedAPI {
-  name: string;
-  changes: APIChange[];
-}
-
-interface VersionDiff {
-  from: string;
-  to: string;
-  added: string[];
-  removed: string[];
-  modified: ModifiedAPI[];
-  totalApis: number;
-}
-
-function diffAPIs(prev: SerializedAPI, curr: SerializedAPI): APIChange[] {
-  const changes: APIChange[] = [];
-
-  // Compare parameters by name
-  const prevParams = new Map(prev.parameters.map(p => [p.name, p]));
-  const currParams = new Map(curr.parameters.map(p => [p.name, p]));
-
-  for (const [name, cp] of currParams) {
-    const pp = prevParams.get(name);
-    if (!pp) {
-      changes.push({ kind: 'param-added', description: `parameter added: ${name}: ${cp.type}${cp.optional ? '?' : ''}` });
-    } else {
-      if (pp.type !== cp.type) {
-        changes.push({ kind: 'param-type-changed', description: `${name}: ${pp.type} → ${cp.type}` });
-      }
-      if (pp.optional !== cp.optional) {
-        changes.push({ kind: 'param-type-changed', description: `${name}: ${pp.optional ? 'optional' : 'required'} → ${cp.optional ? 'optional' : 'required'}` });
-      }
-    }
-  }
-  for (const [name] of prevParams) {
-    if (!currParams.has(name)) {
-      changes.push({ kind: 'param-removed', description: `parameter removed: ${name}` });
-    }
-  }
-
-  // Compare return type
-  if (prev.returnType !== curr.returnType) {
-    changes.push({ kind: 'return-type-changed', description: `return: ${prev.returnType} → ${curr.returnType}` });
-  }
-
-  // Compare flags
-  const flags = ['isAsync', 'isDeprecated', 'isCallbackBased', 'isEventSubscription', 'hasPermission'] as const;
-  for (const flag of flags) {
-    if ((prev[flag] ?? false) !== (curr[flag] ?? false)) {
-      changes.push({ kind: 'flag-changed', description: `${flag}: ${prev[flag] ?? false} → ${curr[flag] ?? false}` });
-    }
-  }
-
-  return changes;
-}
-
-export function generateChangelogHTML(
-  versionApis: Map<string, ParsedAPI[]>,
-  categoryOrder: string[],
-): string {
-  const versions = [...versionApis.keys()];
-
-  // API 인덱스 구축: 최신 버전 데이터 우선, 제거된 API도 보존
-  const apiIndex = new Map<string, { api: ParsedAPI; versions: string[] }>();
-  for (const [version, apis] of versionApis) {
-    for (const api of apis) {
-      const existing = apiIndex.get(api.name);
-      if (existing) {
-        existing.versions.push(version);
-        existing.api = api; // 최신 버전 데이터로 갱신
-      } else {
-        apiIndex.set(api.name, { api, versions: [version] });
-      }
-    }
-  }
-
-  // Serialized API 데이터
-  const serializedApis: Record<string, SerializedAPI> = {};
-  for (const [name, { api, versions: apiVersions }] of apiIndex) {
-    serializedApis[name] = serializeAPI(api, apiVersions);
-  }
-
-  // Diff 계산
-  const diffs: VersionDiff[] = [];
-  for (let i = 1; i < versions.length; i++) {
-    const prevApis = versionApis.get(versions[i - 1])!;
-    const currApis = versionApis.get(versions[i])!;
-    const prevNames = new Set(prevApis.map(a => a.name));
-    const currNames = new Set(currApis.map(a => a.name));
-    const added = [...currNames].filter(n => !prevNames.has(n)).sort();
-    const removed = [...prevNames].filter(n => !currNames.has(n)).sort();
-
-    // Modified 감지: 양쪽에 모두 존재하는 API의 시그니처 비교
-    const modified: ModifiedAPI[] = [];
-    const commonNames = [...currNames].filter(n => prevNames.has(n));
-    const prevApiMap = new Map(prevApis.map(a => [a.name, a]));
-    const currApiMap = new Map(currApis.map(a => [a.name, a]));
-    for (const name of commonNames) {
-      const prevSerialized = serializeAPI(prevApiMap.get(name)!, [versions[i - 1]]);
-      const currSerialized = serializeAPI(currApiMap.get(name)!, [versions[i]]);
-      const changes = diffAPIs(prevSerialized, currSerialized);
-      if (changes.length > 0) {
-        modified.push({ name, changes });
-      }
-    }
-    modified.sort((a, b) => a.name.localeCompare(b.name));
-
-    if (added.length > 0 || removed.length > 0 || modified.length > 0) {
-      diffs.push({
-        from: versions[i - 1],
-        to: versions[i],
-        added,
-        removed,
-        modified,
-        totalApis: currNames.size,
-      });
-    }
-  }
-
-  // 카테고리별 API 그룹핑 (버전별) — getCategory()로 정확한 분류
-  const versionCatalog = new Map<string, Map<string, string[]>>();
-  for (const [version, apis] of versionApis) {
-    const catMap = new Map<string, string[]>();
-    for (const api of apis) {
-      const cat = getCategory(api.name);
-      if (!catMap.has(cat)) catMap.set(cat, []);
-      catMap.get(cat)!.push(api.name);
-    }
-    // 카테고리 내 API 정렬
-    for (const [, apiList] of catMap) apiList.sort();
-    // categoryOrder 순서로 정렬된 Map 생성
-    const orderedMap = new Map<string, string[]>();
-    for (const cat of categoryOrder) {
-      if (catMap.has(cat)) orderedMap.set(cat, catMap.get(cat)!);
-    }
-    // categoryOrder에 없는 카테고리 추가
-    for (const [cat, apiList] of catMap) {
-      if (!orderedMap.has(cat)) orderedMap.set(cat, apiList);
-    }
-    versionCatalog.set(version, orderedMap);
-  }
+export function generateChangelogHTML(model: ChangelogModel): string {
+  const { versions, apis: serializedApis, diffs: allDiffs, catalog: versionCatalog } = model;
+  // 모델은 변화 없는 전이도 포함하지만(changelog-model.ts 참고), 기존 HTML 형태를
+  // 보존하기 위해 이 렌더러는 실제 추가/제거/변경이 있는 diff만 카드로 표시한다.
+  const diffs = allDiffs.filter(d => d.added.length > 0 || d.removed.length > 0 || d.modified.length > 0);
 
   const firstVersion = versions[0];
-  const firstApis = versionApis.get(firstVersion)!;
+  const firstVersionApiCount = [...(versionCatalog.get(firstVersion)?.values() ?? [])]
+    .reduce((sum, names) => sum + names.length, 0);
+  const apiCount = Object.keys(serializedApis).length;
 
   return `<!DOCTYPE html>
 <html lang="ko">
@@ -736,12 +542,12 @@ body {
 
 <div class="header">
   <h1>Apps in Toss Unity SDK — API Changelog</h1>
-  <div class="subtitle">Generated as of v${versions[versions.length - 1]} · ${versions.length} versions · ${apiIndex.size} unique APIs</div>
+  <div class="subtitle">Generated as of v${versions[versions.length - 1]} · ${versions.length} versions · ${apiCount} unique APIs</div>
 </div>
 
 <div class="summary-bar">
   <span class="stat">Versions: <strong>${versions[0]}</strong> → <strong>${versions[versions.length - 1]}</strong></span>
-  <span class="stat">Total APIs: <strong>${apiIndex.size}</strong></span>
+  <span class="stat">Total APIs: <strong>${apiCount}</strong></span>
   <span class="stat">Changes: <strong>${diffs.length}</strong> version transitions with diffs</span>
 </div>
 
@@ -754,7 +560,7 @@ body {
   <!-- Changelog Tab -->
   <div id="tab-changelog" class="tab-panel active">
     <div class="base-version">
-      Base version: <strong>v${firstVersion}</strong> — ${firstApis.length} APIs
+      Base version: <strong>v${firstVersion}</strong> — ${firstVersionApiCount} APIs
     </div>
 ${diffs.length === 0
   ? '    <div class="no-changes">No API changes detected across versions.</div>'

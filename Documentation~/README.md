@@ -57,6 +57,6 @@ Apps in Toss Unity SDK 문서 목록입니다. 하려는 일부터 찾으세요.
 
 ## API 변경 이력
 
-SDK가 노출하는 C# 표면이 `@apps-in-toss/web-framework` 버전에 따라 어떻게 달라지는지 담은 리포트입니다. `main`에 푸시될 때마다 CI가 재생성해 [changelog/index.html](changelog/index.html)에 커밋합니다.
+SDK가 노출하는 C# 표면이 `@apps-in-toss/web-framework` 버전에 따라 어떻게 달라지는지 담은 리포트입니다. `main`에 푸시될 때마다 CI가 재생성해 [changelog/index.html](changelog/index.html)에 커밋합니다. 같은 데이터로 만든 마크다운 리포트([changelog/api-changelog.md](changelog/api-changelog.md))도 함께 생성·커밋되며, GitBook 연동(GITBOOK_TOKEN 등 secrets)이 구성된 경우 GitBook changelog 페이지에도 자동 반영됩니다.
 
 Unity SDK 패키지 버전은 `SDK Update` 워크플로가 `@apps-in-toss/web-framework` 버전을 그대로 따라 올리므로 두 번호는 동일합니다(예: 패키지 `3.0.1` = web-framework `3.0.1` = 태그 `release/v3.0.1`). 릴리즈 노트와 설치 태그 목록은 [GitHub Releases](https://github.com/toss/apps-in-toss-unity-sdk/releases)에서 확인하세요.

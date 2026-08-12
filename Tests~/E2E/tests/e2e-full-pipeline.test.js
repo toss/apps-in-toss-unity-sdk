@@ -1990,13 +1990,38 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       // 9-6 [통제군, 2021.3 전용]: SDK 레이어를 완전히 비활성화한 순정 Unity 상태에서
       //     9-4와 같은 타임라인(세션 노화 → Set+Save → reload → Get)을 재연한다.
       //     여기서도 값이 유실되면 9-4의 2021.3 실패가 레이어와 무관한 순정
-      //     Unity/Emscripten 결함임이 증명된다. 값 자체는 단언하지 않는다(진단 목적).
+      //     Unity/Emscripten 결함임이 증명된다.
+      //
+      //     하드 단언은 통제군 성립 조건(레이어 비활성)까지만 — CI 실측(run
+      //     31577487933)에서 노화된 순정 2021.3 페이지는 reload 후 page.evaluate가
+      //     무기한 hang(페이지 wedge)됐다. 결함 재연 구간은 값/성공 여부를 단언하지
+      //     않고 스텝별 시간 예산을 두는 best-effort 진단 로그로만 남긴다 — hang
+      //     자체가 순정 결함의 증거이며, 테스트 타임아웃을 소진하게 두지 않는다.
       // -----------------------------------------------------------------------
       test('9-6. [control] stock Unity (layer disabled) IDBFS behavior on 2021.3', async ({ browser }) => {
         const is2021 = (process.env.AIT_BUILD_DIR || '').includes('2021.3');
         test.skip(!is2021, '2021.3 전용 통제군 — 다른 버전에서는 9-4가 하드 단언으로 커버');
-        // 부트 2회(~70초×2) + 세션 노화 대기 45초 + 트리거 여유
-        test.setTimeout(300000);
+        // 최악 경로: 부트(120초) + 노화 45초 + best-effort 예산 합(~200초)
+        test.setTimeout(420000);
+
+        // fn을 budgetMs 안에서 실행하고 {ok, value|error}로 정규화한다. 예산 초과 시
+        // 진행을 포기하고 계속 간다(reject 핸들러는 생성 시점에 붙여 unhandled
+        // rejection을 막는다 — wedge된 페이지의 protocol 호출은 나중에 reject된다).
+        async function bestEffort(label, budgetMs, fn) {
+          const work = Promise.resolve().then(fn).then(
+            (value) => ({ label, ok: true, value }),
+            (e) => ({ label, ok: false, error: String((e && e.message) || e) })
+          );
+          let timerId;
+          const timer = new Promise((resolve) => {
+            timerId = setTimeout(() => resolve({
+              label, ok: false, error: `예산 ${budgetMs}ms 초과 — 페이지 wedge 추정`
+            }), budgetMs);
+          });
+          const result = await Promise.race([work, timer]);
+          clearTimeout(timerId);
+          return result;
+        }
 
         const controlPage = await browser.newPage();
         try {
@@ -2019,7 +2044,7 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
           expect(response?.status()).toBe(200);
           await waitForUnityInstance(controlPage);
 
-          // 레이어가 정말 비활성인지 증명 (통제군 성립 조건)
+          // 레이어가 정말 비활성인지 증명 (통제군 성립 조건 — 여기까지만 하드 단언)
           const layerState = await controlPage.evaluate(() => ({
             mode: window['__AIT_PP'].mode,
             captured: window['__AIT_PP'].captured
@@ -2031,29 +2056,29 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
           // 9-4 실패 시점과 동일한 세션 나이(~90초+)까지 노화시킨다
           await controlPage.waitForTimeout(45000);
 
-          const setResult = await triggerPlayerPrefsAndWait(
+          const diag = [];
+          diag.push(await bestEffort('set', 20000, () => triggerPlayerPrefsAndWait(
             controlPage,
             () => controlPage.evaluate((json) => window['TriggerPlayerPrefsSet'](json),
               JSON.stringify({ key: 'ait_e2e_pp6', value: 'v6' })),
-            'set'
-          );
-          expect(setResult.success, 'stock PlayerPrefs.SetString + Save should succeed').toBe(true);
+            'set', 15000
+          )));
           // 레이어가 없어 persist 완료를 관측할 수 없다 — 순정 persist(<1초)에 충분한 고정 대기
           await controlPage.waitForTimeout(5000);
-
-          const response2 = await controlPage.reload({ waitUntil: 'domcontentloaded', timeout: 60000 });
-          expect(response2?.status()).toBe(200);
-          await waitForUnityInstance(controlPage);
-
-          const getResult = await triggerPlayerPrefsAndWait(
+          diag.push(await bestEffort('reload', 70000, async () => {
+            const r = await controlPage.reload({ waitUntil: 'domcontentloaded', timeout: 60000 });
+            return r ? r.status() : null;
+          }));
+          diag.push(await bestEffort('boot', 70000, () => waitForUnityInstance(controlPage)));
+          diag.push(await bestEffort('get', 25000, () => triggerPlayerPrefsAndWait(
             controlPage,
             () => controlPage.evaluate((key) => window['TriggerPlayerPrefsGet'](key), 'ait_e2e_pp6'),
-            'get'
-          );
-          // 값은 단언하지 않는다 — ''이면 순정도 동일하게 유실됨을 증명(9-4 skip의 근거),
-          // 'v6'이면 이 셀에서는 노화 결함이 재현되지 않은 것
-          console.log(`[9-6] stock get after reload: ${JSON.stringify(getResult)} — ''이면 순정 Unity도 동일 유실(레이어 무관 증명)`);
-          expect(getResult.success, 'stock PlayerPrefs.GetString should succeed').toBe(true);
+            'get', 15000
+          )));
+
+          // 해석: get value가 ''이거나 스텝이 wedge로 좌초하면 순정 Unity도 동일하게
+          // 저장이 죽는다는 증명(9-4 skip의 근거). 'v6'이면 이 셀에서는 미재현.
+          console.log(`[9-6] stock control diagnostics: ${JSON.stringify(diag)}`);
         } finally {
           await controlPage.close();
         }

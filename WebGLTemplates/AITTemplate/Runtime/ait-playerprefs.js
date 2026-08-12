@@ -361,19 +361,23 @@
         if (!IDBFS || !mount) return null;
         var localSet = null;
         var called = false;
-        var failed = false;
+        var failErr = null;
         try {
             IDBFS.getLocalSet(mount, function (err, set) {
                 called = true;
-                if (err) failed = true;
+                if (err) failErr = err;
                 else localSet = set;
             });
         } catch (e) {
             recordError('getLocalSet', e);
             return null;
         }
-        if (!called || failed || !localSet || !localSet.entries) {
-            recordError('getLocalSet', new Error('로컬 파일 목록을 얻지 못했습니다'));
+        if (!called || failErr || !localSet || !localSet.entries) {
+            // 구버전 Emscripten ErrnoError는 message가 없을 수 있어 errno까지 남긴다
+            var detail = !called ? '콜백 미호출(비동기 구현?)'
+                : failErr ? ('err=' + String(failErr) + (failErr && failErr.errno !== undefined ? ' errno=' + failErr.errno : ''))
+                : '결과 집합 없음';
+            recordError('getLocalSet', new Error('로컬 파일 목록을 얻지 못했습니다: ' + detail));
             return null;
         }
 
@@ -609,7 +613,9 @@
         // 부트 게이트 타이머는 ①이 끝난 뒤(= ② 스냅샷 대기 직전)에만 건다 — ①까지
         // 감싸면 저사양 기기/IDB 경합으로 원본 populate가 늦어질 때 게이트가 먼저
         // 발화해 순정 대비 회귀(정상 데이터를 빈 상태로 취급)가 생긴다.
-        callOrig(mount, true, function () {
+        callOrig(mount, true, function (populateErr) {
+            // 원본과 동일하게 삼키되(Unity도 로그만 남기고 진행) 관측 가능하게 기록
+            if (populateErr) recordError('원본 populate', populateErr);
             if (settled) return;
 
             // ② AIT 스냅샷 대기만 타임박스한다
@@ -667,7 +673,11 @@
 
         // AIT 모드가 아니면 100% 원본 위임 (동작 무회귀)
         if (state.mode !== 'ait') {
-            callOrig(mount, false, function () { done(); });
+            callOrig(mount, false, function (err) {
+                // 원본과 동일하게 삼키되(회귀 없음) status().lastError로는 관측 가능하게
+                if (err) recordError('원본 persist', err);
+                done();
+            });
             return;
         }
 

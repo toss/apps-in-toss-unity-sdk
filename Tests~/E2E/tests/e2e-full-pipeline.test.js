@@ -1853,17 +1853,69 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
         });
         console.log(`[9-4] pre-reload: ${JSON.stringify(preState)}`);
 
+        // 진단: IDBFS의 IndexedDB('/idbfs' DB)를 직접 열어 PlayerPrefs 엔트리의
+        // mtime을 확인한다 — set 이후 버전이 실제로 커밋됐는지(쓰기) vs 복원이
+        // 깨지는지(읽기)를 판별하는 결정적 증거. indexedDB.databases()와 달리
+        // 단순 open+get은 열린 IDBFS 커넥션과 공존 가능하지만, 만약을 위해
+        // 5초 타임아웃으로 감싸 hang이 테스트를 죽이지 않게 한다.
+        const idbProbe = await failPage.evaluate(() => {
+          const probe = new Promise((resolve) => {
+            try {
+              const req = indexedDB.open('/idbfs');
+              req.onerror = () => resolve({ error: String(req.error) });
+              req.onsuccess = () => {
+                try {
+                  const db = req.result;
+                  const names = Array.from(db.objectStoreNames);
+                  const store = names.includes('FILE_DATA') ? 'FILE_DATA' : names[0];
+                  const tx = db.transaction(store, 'readonly');
+                  const out = [];
+                  const cur = tx.objectStore(store).openCursor();
+                  cur.onsuccess = () => {
+                    const c = cur.result;
+                    if (c) {
+                      const k = String(c.key);
+                      if (k.indexOf('PlayerPrefs') !== -1) {
+                        const v = c.value || {};
+                        out.push({
+                          key: k,
+                          t: v.timestamp ? new Date(v.timestamp).getTime() : null,
+                          bytes: v.contents ? v.contents.length : 0
+                        });
+                      }
+                      c.continue();
+                    } else {
+                      db.close();
+                      resolve({ stores: names, entries: out });
+                    }
+                  };
+                  cur.onerror = () => { db.close(); resolve({ error: String(cur.error) }); };
+                } catch (e) { resolve({ error: String(e) }); }
+              };
+            } catch (e) { resolve({ error: String(e) }); }
+          });
+          return Promise.race([
+            probe,
+            new Promise((resolve) => setTimeout(() => resolve({ error: 'probe timeout' }), 5000))
+          ]);
+        });
+        console.log(`[9-4] idb-probe: ${JSON.stringify(idbProbe)}`);
+
         // IndexedDB는 건드리지 않고 reload (CDP wipe 없음)
         const response = await failPage.reload({ waitUntil: 'domcontentloaded', timeout: 60000 });
         expect(response?.status()).toBe(200);
         await waitForUnityInstance(failPage);
 
-        // 진단: reload 직후(원본 IDBFS populate 완료 후) 복원 결과
-        const postState = await failPage.evaluate(() => ({
-          status: window['AITPlayerPrefs'].status(),
-          persistCount: window['__AIT_PP'].persistCount,
-          files: window['__AIT_PP'].debugScopedFiles()
-        }));
+        // 진단: reload 직후(원본 IDBFS populate 완료 후) 복원 결과.
+        // files를 먼저 평가해야 수집 실패 시 그 에러가 status.lastError에 잡힌다.
+        const postState = await failPage.evaluate(() => {
+          const files = window['__AIT_PP'].debugScopedFiles();
+          return {
+            files: files,
+            persistCount: window['__AIT_PP'].persistCount,
+            status: window['AITPlayerPrefs'].status()
+          };
+        });
         console.log(`[9-4] post-reload: ${JSON.stringify(postState)}`);
 
         const getResult = await triggerPlayerPrefsAndWait(

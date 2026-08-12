@@ -47,15 +47,16 @@ public class AITSfntLiteTests
     /// "Packages/&lt;name&gt;" 가 실제 파일시스템 경로로 해석되지 않을 수 있어(로컬 file: 참조 패키지가
     /// 실제 Packages/&lt;name&gt; 물리 폴더 없이 매니페스트로만 매핑되는 경우), 2순위로 이 테스트 파일
     /// 자신의 물리적 위치(Tests~/E2E/SharedScripts/Editor/EditModeTests/) 기준 상대 경로로 폴백한다
-    /// (SharedScripts 루트 바로 아래 Runtime/Resources/Fonts/ — AITFontSubsetProcessor.CallerDir 와
-    /// 동일한 CallerFilePath 관용구).
+    /// (SharedScripts 루트 바로 아래 비임포트 Runtime/Fonts~/ — AITFontSubsetProcessor.CallerDir 와
+    /// 동일한 CallerFilePath 관용구). 폰트는 "패키지 Runtime/Resources/ 는 무조건 빌드 포함" 규칙을
+    /// 피하기 위해 Runtime/Fonts~/(비임포트, "~" 접미)에 있다 — Resources/ 가 아니다.
     /// </summary>
     private static string ResolveNotoSansKrPath()
     {
         const string relativeFromFontDir = "NotoSansKR-Regular.otf";
 
         string viaPackages = Path.GetFullPath(
-            "Packages/im.toss.sdk-test-scripts/Runtime/Resources/Fonts/" + relativeFromFontDir);
+            "Packages/im.toss.sdk-test-scripts/Runtime/Fonts~/" + relativeFromFontDir);
         if (File.Exists(viaPackages))
         {
             return viaPackages;
@@ -67,9 +68,9 @@ public class AITSfntLiteTests
             return null;
         }
 
-        // Editor/EditModeTests/ → (상위 2단계) → SharedScripts/ → Runtime/Resources/Fonts/
+        // Editor/EditModeTests/ → (상위 2단계) → SharedScripts/ → Runtime/Fonts~/
         string viaSharedScriptsRelative = Path.GetFullPath(Path.Combine(
-            thisFileDir, "..", "..", "Runtime", "Resources", "Fonts", relativeFromFontDir));
+            thisFileDir, "..", "..", "Runtime", "Fonts~", relativeFromFontDir));
         return File.Exists(viaSharedScriptsRelative) ? viaSharedScriptsRelative : null;
     }
 

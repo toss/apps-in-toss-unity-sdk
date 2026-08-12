@@ -63,11 +63,20 @@ public class APICategoryMapGuardTests
 
     // =====================================================
     // (b) APICategoryMap의 모든 키 -> 실제 표면에 존재 (죽은 항목 재유입 방지)
+    //
+    // 이 방향만 sdk_version_override(하위호환 빌드)에서 성립하지 않는다. override는
+    // package.json 버전을 덮고 Runtime/SDK를 그 web-framework 버전으로 재생성하므로,
+    // 그 이후 추가된 API의 매핑이 전부 "유령키"로 보인다. 매핑은 최신 표면 기준으로
+    // 유지하는 것이 맞으므로 테스트를 최신 빌드에서만 켠다.
+    // (a)/(c)/(d)는 실제 표면 또는 매핑 내부 정합성만 보므로 전 버전에서 그대로 유효하다.
     // =====================================================
 
     [Test]
     public void Every_CategoryMap_Key_Exists_In_Real_API_Surface()
     {
+#if !AIT_SDK_3_0_OR_LATER
+        Assert.Ignore("sdk_version_override 하위호환 빌드에서는 신규 API 매핑이 유령키로 보이는 것이 정상");
+#else
         var realNames = GetRealApiMethodNames();
         var categoryMap = GetCategoryMap();
 
@@ -78,6 +87,7 @@ public class APICategoryMapGuardTests
             "존재하지 않는 죽은 항목입니다. SDK에서 제거되었거나 이름이 바뀌었을 수 있으니 " +
             "APIParameterInspector.cs의 APICategoryMap에서 제거하거나 이름을 수정하세요: " +
             string.Join(", ", ghosts));
+#endif
     }
 
     // =====================================================

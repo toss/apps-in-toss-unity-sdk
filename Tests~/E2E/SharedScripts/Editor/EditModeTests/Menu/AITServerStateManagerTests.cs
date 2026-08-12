@@ -1,6 +1,7 @@
 // -----------------------------------------------------------------------
 // AITServerStateManagerTests.cs
-// Level 0: AITServerStateManager.ShouldClearPersistedState 순수 함수 검증
+// Level 0: AITServerStateManager.ShouldClearPersistedState 순수 함수 +
+//   레거시 상태 마이그레이션의 PID 재사용 방어 판정 검증
 //
 // 배경: Dev 서버가 시작되어 프로세스는 살아있지만 아직 포트를 열기 전인
 // 순간(SetExpectedPortAndProcess ~ OnServerStarted 사이)에 ValidateState()가
@@ -70,5 +71,36 @@ public class AITServerStateManagerTests
         // portInUse가 최우선 신호: PID가 죽은 것으로 보고돼도 포트가 열려 있으면 지우지 않는다.
         Assert.IsFalse(AITServerStateManager.ShouldClearPersistedState(
             portInUse: true, pid: 1234, isAlive: _ => false));
+    }
+
+    // =====================================================
+    // PID 재사용 오검출 방어 (MigrateLegacyProdServerState의 kill 판정 기준)
+    //
+    // 레거시 "AIT_ProdServerPID"는 수 주~수개월 전 값일 수 있어 OS가 같은 번호를
+    // 무관한 프로세스에 재사용했을 수 있다. 구 Production Server는 granite/vite
+    // (node 기반)이므로 이름이 node 계열일 때만 kill한다.
+    // =====================================================
+
+    [TestCase("node")]
+    [TestCase("Node")]
+    [TestCase("node.exe")]
+    [TestCase("pnpm")]
+    [TestCase("npm")]
+    [TestCase("npm.cmd")]
+    public void IsNodeLikeProcessName_NodeFamily_ReturnsTrue(string processName)
+    {
+        Assert.IsTrue(AITBuildSessionRecovery.IsNodeLikeProcessName(processName),
+            $"node 계열 프로세스명은 kill 대상으로 판정해야 함: {processName}");
+    }
+
+    [TestCase("Slack")]
+    [TestCase("Unity")]
+    [TestCase("chrome")]
+    [TestCase("")]
+    [TestCase(null)]
+    public void IsNodeLikeProcessName_UnrelatedProcess_ReturnsFalse(string processName)
+    {
+        Assert.IsFalse(AITBuildSessionRecovery.IsNodeLikeProcessName(processName),
+            $"node 계열이 아닌 프로세스는 kill 대상에서 제외해야 함(PID 재사용 방어): {processName}");
     }
 }

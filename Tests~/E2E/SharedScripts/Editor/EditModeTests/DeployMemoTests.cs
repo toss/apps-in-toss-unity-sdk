@@ -1,11 +1,12 @@
 // -----------------------------------------------------------------------
-// DeployMemoTests.cs - Deploy (Test)/(Production) memo 생성·셸 이스케이프·빌드 플래그 검증
-// Level 0: AITDeployManager.BuildDeployMemo / EscapeMemoForShell / GetBuildFlags 를
+// DeployMemoTests.cs - Deploy (Test)/(Production) memo 생성·무해화·셸 이스케이프·빌드 플래그 검증
+// Level 0: AITDeployManager.BuildDeployMemo / SanitizeMemo / EscapeMemoForShell / GetBuildFlags 를
 //   Unity/pnpm 실행 없이 검증한다.
 //
-// 배경: ait deploy 명령은 bash -l -c "..." 문자열로 조립되어 실행된다(AITPlatformHelper.
-//   CreateProcessStartInfo). memo는 -m "<memo>" 형태로 명령에 삽입되므로, appName 등에 포함된
-//   큰따옴표/달러 기호/백틱/백슬래시가 이스케이프되지 않으면 명령 구조가 깨질 수 있다.
+// 배경: ait deploy 명령은 bash -l -c "..." 문자열(Windows는 powershell -Command)로 조립되어
+//   실행된다(AITPlatformHelper.CreateProcessStartInfo). memo는 -m "<memo>" 형태로 명령에 삽입되고
+//   그 명령 문자열이 다시 한 번 이스케이프·argv 파싱을 거치므로, 이스케이프 층을 쌓는 대신
+//   memo 생성 시점에 \ " ` $ 와 제어 문자를 무해화한다. EscapeMemoForShell은 남겨둔 심층 방어층.
 //
 // 메모: 이 파일은 AppsInTossEditModeTests 어셈블리에 속한다(DeployPathTests.cs와 동일 위치).
 //   해당 어셈블리는 InternalsVisibleTo로 internal AITDeployManager/DeployKind에 접근 가능하다.
@@ -57,7 +58,74 @@ public class DeployMemoTests
     }
 
     // =====================================================
-    // EscapeMemoForShell: 특수 문자 이스케이프
+    // BuildDeployMemo: 셸 인용을 깨는 문자 무해화 (소스 단계 sanitize)
+    // =====================================================
+
+    [Test]
+    public void BuildDeployMemo_ReplacesShellQuotingChars_WithSingleQuote()
+    {
+        // 백틱/달러/백슬래시/큰따옴표는 이스케이프 중첩(bash -l -c 재이스케이프 + argv 파싱)에서
+        // 원본에 없던 백슬래시를 남기고, Windows(-Command)에서는 인자 경계를 깬다.
+        string memo = AITDeployManager.BuildDeployMemo(DeployKind.Test, "My\"Game`$Cool\\Studio", "1.0.0");
+
+        Assert.IsFalse(memo.Contains("\""), $"큰따옴표가 memo에 남아있음: {memo}");
+        Assert.IsFalse(memo.Contains("`"), $"백틱이 memo에 남아있음: {memo}");
+        Assert.IsFalse(memo.Contains("$"), $"달러 기호가 memo에 남아있음: {memo}");
+        Assert.IsFalse(memo.Contains("\\"), $"백슬래시가 memo에 남아있음: {memo}");
+
+        // 4종은 제거가 아니라 작은따옴표 치환이므로 appName의 나머지 글자는 그대로 보존된다.
+        Assert.IsTrue(memo.Contains("My'Game''Cool'Studio"), $"치환 결과가 예상과 다름: {memo}");
+    }
+
+    [Test]
+    public void BuildDeployMemo_RemovesControlCharacters()
+    {
+        string memo = AITDeployManager.BuildDeployMemo(DeployKind.Test, "My\nGame\r\tStudio", "1.0.0");
+
+        Assert.IsFalse(memo.Contains("\n"), $"개행이 memo에 남아있음: {memo}");
+        Assert.IsFalse(memo.Contains("\r"), $"캐리지 리턴이 memo에 남아있음: {memo}");
+        Assert.IsFalse(memo.Contains("\t"), $"탭이 memo에 남아있음: {memo}");
+        Assert.IsTrue(memo.Contains("MyGameStudio"), $"제어 문자만 제거되어야 함: {memo}");
+    }
+
+    [Test]
+    public void BuildDeployMemo_SanitizedMemo_IsUnchangedByEscape()
+    {
+        // sanitize 이후에는 EscapeMemoForShell이 아무것도 바꾸지 않아야 한다
+        // (= 이스케이프 백슬래시가 최종 memo에 잔존할 여지가 없다).
+        string memo = AITDeployManager.BuildDeployMemo(DeployKind.Production, "Game`$\"\\Name", "2.0.0");
+
+        Assert.AreEqual(memo, AITDeployManager.EscapeMemoForShell(memo),
+            "무해화된 memo는 셸 이스케이프 대상 문자를 포함하지 않아야 함.");
+    }
+
+    [Test]
+    public void BuildDeployMemo_SpecialCharsWithLongAppName_StillTruncatedToMaxLength()
+    {
+        // sanitize(치환/제거)는 길이를 늘리지 않으므로 절단 후 재팽창이 없다.
+        string longAppName = new string('$', 2000);
+        string memo = AITDeployManager.BuildDeployMemo(DeployKind.Test, longAppName, "1.0.0");
+
+        Assert.AreEqual(AITDeployManager.MaxMemoLength, memo.Length,
+            $"무해화 후에도 {AITDeployManager.MaxMemoLength}자로 잘라내야 함. 실제 길이: {memo.Length}");
+        Assert.IsFalse(memo.Contains("$"), "절단된 memo에도 특수문자가 남으면 안 됨.");
+    }
+
+    [Test]
+    public void SanitizeMemo_PlainText_IsUnchanged()
+    {
+        Assert.AreEqual("MyGame v1.0.0", AITDeployManager.SanitizeMemo("MyGame v1.0.0"));
+    }
+
+    [Test]
+    public void SanitizeMemo_NullOrEmpty_ReturnsInput()
+    {
+        Assert.IsNull(AITDeployManager.SanitizeMemo(null));
+        Assert.AreEqual(string.Empty, AITDeployManager.SanitizeMemo(string.Empty));
+    }
+
+    // =====================================================
+    // EscapeMemoForShell: 특수 문자 이스케이프 (심층 방어층 — 단독 계약 유지)
     // =====================================================
 
     [Test]

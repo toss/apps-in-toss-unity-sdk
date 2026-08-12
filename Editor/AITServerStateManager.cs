@@ -4,7 +4,6 @@ using System.Net;
 using System.Net.Sockets;
 using UnityEditor;
 using UnityEngine;
-using AppsInToss.Editor.Menu;
 using Debug = UnityEngine.Debug;
 
 namespace AppsInToss.Editor
@@ -100,8 +99,15 @@ namespace AppsInToss.Editor
 
         /// <summary>
         /// 구 "AIT_ProdServer*" EditorPrefs 키가 남아 있으면(Production Server 지원 시절 상태)
-        /// 기록된 프로세스를 기존 kill 로직(PID 우선 종료 → 포트 백업 종료)으로 정리 시도한 뒤,
-        /// 성공 여부와 무관하게 키를 삭제하는 1회성 마이그레이션입니다. 절대 throw하지 않습니다.
+        /// 기록된 프로세스를 PID로 정리 시도한 뒤, 성공 여부와 무관하게 키를 삭제하는
+        /// 1회성 마이그레이션입니다. 절대 throw하지 않습니다.
+        /// PID 종료는 프로세스 이름이 node 계열일 때만 수행합니다(<see cref="TryKillLegacyProdProcess"/>).
+        ///
+        /// 포트 기반 백업 종료(<c>PortResolver.KillProcessOnPort</c>)는 의도적으로 하지 않습니다.
+        /// 여기서 읽는 포트 번호는 수 주~수개월 전에 기록된 값이라 지금은 무관한 프로세스가
+        /// 그 포트를 점유하고 있을 수 있는데, 포트 기반 종료는 점유 프로세스의 정체를 확인하지 않고
+        /// kill -9 하므로 오폭 위험이 이득보다 큽니다. 이름 검증을 통과한 PID 종료가 성공하면
+        /// 포트는 어차피 해제되고, 실패했다면 해당 포트를 쥔 것이 레거시 서버라는 보장도 없습니다.
         /// </summary>
         public static void MigrateLegacyProdServerState()
         {
@@ -113,22 +119,11 @@ namespace AppsInToss.Editor
                 }
 
                 int pid = EditorPrefs.GetInt(LegacyProdPidPrefKey, 0);
-                int port = EditorPrefs.GetInt(LegacyProdPortPrefKey, 0);
 
                 if (IsProcessAlive(pid))
                 {
-                    try
-                    {
-                        Process.GetProcessById(pid).Kill();
-                    }
-                    catch
-                    {
-                        // 이미 종료되었거나 접근 불가 - 포트 기반 백업 종료로 이어감
-                    }
+                    TryKillLegacyProdProcess(pid);
                 }
-
-                // 백업: 포트에서 실행 중인 프로세스도 종료 (StopServer와 동일한 기존 kill 로직)
-                PortResolver.KillProcessOnPort(port);
             }
             catch (Exception e)
             {
@@ -138,6 +133,34 @@ namespace AppsInToss.Editor
             {
                 EditorPrefs.DeleteKey(LegacyProdPidPrefKey);
                 EditorPrefs.DeleteKey(LegacyProdPortPrefKey);
+            }
+        }
+
+        /// <summary>
+        /// 레거시 Production Server 프로세스를 PID로 종료한다.
+        /// EditorPrefs에 남은 구 PID는 수 주~수개월 전 값일 수 있어 OS가 같은 번호를 무관한
+        /// 프로세스에 재사용했을 수 있으므로, 이름이 node 계열(구 Production Server는 granite/vite
+        /// = node 기반)일 때만 kill한다 — AITBuildSessionRecovery.TryKillIfRunning과 동일한 기준.
+        /// 이름이 맞지 않으면 kill만 건너뛴다(마이그레이션의 키 삭제는 호출부 finally에서 항상 수행).
+        /// </summary>
+        private static void TryKillLegacyProdProcess(int pid)
+        {
+            try
+            {
+                using var p = Process.GetProcessById(pid);
+                string name = (p.ProcessName ?? string.Empty).ToLowerInvariant();
+                if (!AITBuildSessionRecovery.IsNodeLikeProcessName(name))
+                {
+                    Debug.Log($"[AIT] 레거시 Production Server PID {pid}은 node 계열 프로세스가 아님 (name={name}). 종료를 건너뜁니다.");
+                    return;
+                }
+
+                Debug.Log($"[AIT] 레거시 Production Server 프로세스 종료 중: PID {pid} (name={name}).");
+                p.Kill();
+            }
+            catch
+            {
+                // 이미 종료되었거나 접근 불가 - 레거시 상태 키 삭제만 진행
             }
         }
 

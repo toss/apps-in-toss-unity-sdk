@@ -335,9 +335,10 @@ namespace AppsInToss.Editor.Menu
                 // additionalPaths는 BuildAdditionalPaths로 구성한다(npmDir 단독 전달 금지).
                 // node_modules/.bin이 PATH에서 빠지면 Windows에서 'ait' is not recognized로 배포가 실패한다
                 // (build 경로 RunNpmCommandWithCache와 동일한 PATH 구성). Sentry APPS-IN-TOSS-UNITY-SDK-12J.
-                // memo는 EscapeMemoForShell로 이스케이프한 뒤 -m "..."에 삽입한다 — 이 명령 문자열 전체가
-                // 이후 bash -l -c "..."로 한 번 더 감싸이므로(AITPlatformHelper.CreateProcessStartInfo),
-                // 여기서의 이스케이프는 memo 내부의 따옴표가 -m 인자 경계를 깨지 않도록 보호하는 것이 목적이다.
+                // memo는 BuildDeployMemo가 이미 셸 인용을 깨는 문자를 제거한 상태다(SanitizeMemo).
+                // EscapeMemoForShell은 그 위의 심층 방어층 — 이 명령 문자열 전체가 이후
+                // bash -l -c "..."로 한 번 더 감싸이므로(AITPlatformHelper.CreateProcessStartInfo)
+                // 이스케이프에만 의존하면 층이 중첩되어 원본에 없던 백슬래시가 memo에 남는다.
                 string escapedMemo = EscapeMemoForShell(memo);
                 string command = $"\"{pnpmPath}\" exec ait deploy --api-key \"{deploymentKey}\" -m \"{escapedMemo}\"";
                 var additionalPaths = AITNpmRunner.BuildAdditionalPaths(npmPath, buildPath);
@@ -455,18 +456,52 @@ namespace AppsInToss.Editor.Menu
 
         /// <summary>
         /// 배포 memo 자동 생성: "[Test] {appName} v{version} · Unity SDK {AITVersion.Version}"
-        /// (Production은 [Production] 접두사). CLI의 -m/--memo 최대 길이(1000자)에 맞춰 잘라낸다.
+        /// (Production은 [Production] 접두사). 셸 인용을 깨는 문자를 소스에서 무해화한 뒤
+        /// CLI의 -m/--memo 최대 길이(1000자)에 맞춰 잘라낸다(무해화는 길이를 늘리지 않으므로
+        /// 절단 후 재팽창이 없다).
         /// </summary>
         internal static string BuildDeployMemo(DeployKind kind, string appName, string version)
         {
             string prefix = kind == DeployKind.Production ? "[Production]" : "[Test]";
-            string memo = $"{prefix} {appName} v{version} · Unity SDK {AITVersion.Version}";
+            string memo = SanitizeMemo($"{prefix} {appName} v{version} · Unity SDK {AITVersion.Version}");
             return memo.Length > MaxMemoLength ? memo.Substring(0, MaxMemoLength) : memo;
+        }
+
+        /// <summary>
+        /// memo에서 셸 인용 경계를 깨는 문자를 소스 단계에서 제거한다.
+        /// </summary>
+        /// <remarks>
+        /// memo는 콘솔 배포 이력에 표시되는 정보성 라벨이라 원문 문자 보존이 필요 없다. 반면 명령
+        /// 조립 경로는 이스케이프가 중첩된다 — 여기서 만든 문자열이 -m "..."에 들어간 뒤
+        /// AITPlatformHelper.CreateProcessStartInfo가 macOS/Linux에서 명령 전체를 bash -l -c "..."로
+        /// 한 번 더 이스케이프하고, 그 결과를 .NET이 argv로 파싱하면서 백슬래시 축약 규칙이 다시
+        /// 적용된다. 그래서 이스케이프 층을 더 쌓으면 원본에 없던 백슬래시가 최종 memo에 남고,
+        /// Windows(-Command 문자열)에서는 큰따옴표가 인자 경계를 깬다.
+        /// \ " ` $ 4종은 작은따옴표로 치환하고, 개행 등 제어 문자는 제거한다.
+        /// </remarks>
+        internal static string SanitizeMemo(string value)
+        {
+            if (string.IsNullOrEmpty(value)) return value;
+
+            var sb = new StringBuilder(value.Length);
+            foreach (char c in value)
+            {
+                if (c == '\\' || c == '"' || c == '$' || c == '`')
+                {
+                    sb.Append('\'');
+                    continue;
+                }
+                if (char.IsControl(c)) continue;
+                sb.Append(c);
+            }
+            return sb.ToString();
         }
 
         /// <summary>
         /// memo 문자열을 bash -l -c "..." 로 조립되는 명령의 -m "..." 인자 안에 안전하게
         /// 삽입할 수 있도록 이스케이프한다. 백슬래시·큰따옴표·달러 기호·백틱을 백슬래시로 이스케이프.
+        /// <see cref="SanitizeMemo"/>가 이미 4종을 제거하므로 현재 memo 소스(BuildDeployMemo)에서는
+        /// 도달하지 않는 심층 방어층이다 — memo 소스가 늘어날 때를 대비해 유지한다.
         /// </summary>
         internal static string EscapeMemoForShell(string value)
         {

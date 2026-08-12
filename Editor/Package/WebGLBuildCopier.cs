@@ -10,14 +10,30 @@ namespace AppsInToss.Editor.Package
     /// - index.html은 프로젝트 루트로 (Vite 요구); Unity/AIT 플레이스홀더 치환, 사용자 커스텀 섹션 머지, 로딩 화면 삽입 포함
     /// - Build/TemplateData/Runtime은 public/ 하위로 (필수 파일 선별 복사)
     /// - 추가 사용자 BuildConfig 파일 복사 (재귀)
-    /// - ait-build 폴더의 이전 결과물 정리 (node_modules/설정 파일은 유지)
+    /// - ait-build 폴더의 이전 결과물 정리 (node_modules/설정 파일, public/의 미러 대상은 유지)
     /// - Early fetch 스크립트 생성
     /// internal 멤버는 Editor/AssemblyInfo.cs 의 InternalsVisibleTo 를 통해 테스트 어셈블리에서 접근됩니다.
     /// </summary>
     internal static class WebGLBuildCopier
     {
         /// <summary>
+        /// public/ 하위에서 <see cref="CopyWebGLToPublic"/>가 미러로 소유(생성·갱신·잔여물 정리)하는
+        /// 디렉토리 목록. <see cref="PrepareAitBuildFolder"/>는 이 목록만 보존해 변경분 미러 복사가
+        /// 실제로 스킵될 수 있게 하고, 나머지 public/ 항목은 이전과 동일하게 매 빌드 정리한다.
+        /// </summary>
+        internal static readonly string[] MirroredPublicDirectories =
+        {
+            "Build",
+            "TemplateData",
+            "Runtime",
+            "StreamingAssets"
+        };
+
+        /// <summary>
         /// Unity WebGL 빌드를 public 폴더로 복사합니다.
+        /// <see cref="MirroredPublicDirectories"/>는 이 함수가 미러로 소유합니다 — 변경분만 복사하고,
+        /// 소스에 없는 파일·디렉토리와 소스 자체가 사라진 미러 대상은 제거해 전체 삭제+재복사와
+        /// 동일한 최종 상태를 보장합니다.
         /// </summary>
         /// <returns>성공 시 SUCCEED, 실패 시 해당 에러 코드</returns>
         internal static AITConvertCore.AITExportError CopyWebGLToPublic(string webglPath, string buildProjectPath, AITBuildProfile profile = null)
@@ -146,6 +162,7 @@ namespace AppsInToss.Editor.Package
 
                 // 미러 의미론 유지: 압축 포맷 전환(.br ↔ .unityweb 등)이나 symbols 파일 유무 변경으로
                 // 이전 선택 집합에만 있던 잔존 파일이 남지 않도록 제거한다.
+                // (public/이 빌드마다 통째로 삭제되지 않으므로 이 정리가 유일한 잔여물 방어선이다.)
                 var desiredNames = new HashSet<string>(filesToCopy, System.StringComparer.OrdinalIgnoreCase);
                 foreach (var existing in Directory.GetFiles(buildDest))
                 {
@@ -154,6 +171,13 @@ namespace AppsInToss.Editor.Package
                         File.Delete(existing);
                         staleCount++;
                     }
+                }
+
+                // Unity WebGL의 Build/ 산출물은 평면 구조라 하위 디렉토리는 모두 잔여물이다.
+                foreach (var existingDir in Directory.GetDirectories(buildDest))
+                {
+                    Directory.Delete(existingDir, true);
+                    staleCount++;
                 }
 
                 Debug.Log($"[AIT] ✓ Build 파일 {filesToCopy.Count}개 선별 복사 완료 (복사 {copiedCount}개, 스킵 {skippedCount}개, 잔여물 정리 {staleCount}개, {totalBytes / 1024.0 / 1024.0:0.#}MB)");
@@ -201,6 +225,10 @@ namespace AppsInToss.Editor.Package
             {
                 MirrorDirectorySafe(templateDataSrc, templateDataDest, "TemplateData");
             }
+            else
+            {
+                RemoveStalePublicDirectory(templateDataDest, "TemplateData");
+            }
 
             // Runtime 폴더 → public/Runtime
             // 1순위: webgl/ 폴더에 Runtime이 있으면 사용 (AITTemplate 빌드)
@@ -226,6 +254,9 @@ namespace AppsInToss.Editor.Package
                 else
                 {
                     Debug.LogError("[AIT] Runtime 폴더를 찾을 수 없습니다. 'Build And Package'를 사용하세요.");
+                    // 소스를 어디서도 찾지 못한 경우, 이전 빌드의 Runtime을 그대로 서빙하면
+                    // 원인 파악이 더 어려워지므로 잔여물을 제거한다(public 전체 삭제 시절과 동일한 최종 상태).
+                    RemoveStalePublicDirectory(runtimeDest, "Runtime");
                 }
             }
 
@@ -250,6 +281,10 @@ namespace AppsInToss.Editor.Package
             if (Directory.Exists(streamingAssetsSrc))
             {
                 MirrorDirectorySafe(streamingAssetsSrc, streamingAssetsDest, "StreamingAssets");
+            }
+            else
+            {
+                RemoveStalePublicDirectory(streamingAssetsDest, "StreamingAssets");
             }
 
             // index.html → 프로젝트 루트 (Vite가 루트에서 index.html을 찾음)
@@ -483,6 +518,25 @@ namespace AppsInToss.Editor.Package
                     Directory.Delete(existingDir, true);
                     staleCount++;
                 }
+            }
+        }
+
+        /// <summary>
+        /// 이번 빌드에서 소스가 사라진 미러 대상 디렉토리를 public/에서 제거한다.
+        /// PrepareAitBuildFolder가 public/을 통째로 지우지 않게 되면서(변경분 미러 복사 보존),
+        /// "소스가 사라진 디렉토리"의 정리 책임이 이쪽으로 넘어왔다.
+        /// </summary>
+        private static void RemoveStalePublicDirectory(string destDir, string label)
+        {
+            if (!Directory.Exists(destDir)) return;
+
+            if (AITFileUtils.DeleteDirectory(destDir))
+            {
+                Debug.Log($"[AIT] ✓ {label} 소스가 없어 public 잔여물 제거");
+            }
+            else
+            {
+                Debug.LogWarning($"[AIT] {label} 잔여물 정리 실패: {destDir} — 이전 빌드 파일이 서빙될 수 있습니다");
             }
         }
 
@@ -896,7 +950,11 @@ namespace AppsInToss.Editor.Package
         }
 
         /// <summary>
-        /// ait-build 폴더 준비 (기존 결과물 정리)
+        /// ait-build 폴더 준비 (기존 결과물 정리).
+        /// node_modules/설정 파일과 public/(정확히는 <see cref="MirroredPublicDirectories"/>)은 유지하고
+        /// 나머지 이전 결과물(dist, index.html 등)을 지운다. public/을 통째로 지우면 매 빌드마다
+        /// 수백 MB의 Unity 산출물을 다시 복사해야 해 CopyWebGLToPublic의 변경분 미러 복사가 항상
+        /// 무효화되므로, 미러 대상만 남기고 그 외 public/ 항목은 <see cref="PrunePublicFolder"/>가 정리한다.
         /// internal 승격: facade(AITPackageBuilder) 및 EditMode 테스트(리플렉션)에서 호출하기 위함.
         /// </summary>
         internal static void PrepareAitBuildFolder(string buildProjectPath)
@@ -908,7 +966,7 @@ namespace AppsInToss.Editor.Package
             }
             else
             {
-                Debug.Log("[AIT] 기존 빌드 결과물 정리 중... (node_modules와 설정 파일은 유지)");
+                Debug.Log("[AIT] 기존 빌드 결과물 정리 중... (node_modules·설정 파일과 public/ 미러 대상은 유지)");
 
                 string[] itemsToKeep = new string[]
                 {
@@ -920,7 +978,10 @@ namespace AppsInToss.Editor.Package
                     "granite.config.ts",
                     "apps-in-toss.config.ts",
                     "vite.config.ts",
-                    "tsconfig.json"
+                    "tsconfig.json",
+                    // public/은 CopyWebGLToPublic이 미러로 관리한다 — 여기서 통째로 지우면
+                    // 변경분 복사가 매번 전량 복사로 퇴화한다. 미러 대상 밖 항목은 아래 PrunePublicFolder가 정리.
+                    "public"
                 };
 
                 foreach (string item in Directory.GetFileSystemEntries(buildProjectPath))
@@ -948,6 +1009,36 @@ namespace AppsInToss.Editor.Package
                     {
                         AITFileSystemHelper.SafeDelete(item);
                     }
+                }
+
+                PrunePublicFolder(Path.Combine(buildProjectPath, "public"));
+            }
+        }
+
+        /// <summary>
+        /// public/에서 미러 대상(<see cref="MirroredPublicDirectories"/>)만 남기고 나머지를 지운다.
+        /// 미러 대상은 CopyWebGLToPublic이 변경분 복사 + stale 제거로 최종 상태를 보장하므로 보존해도
+        /// 잔여물이 남지 않는다. 그 외 항목(사용자 BuildConfig~의 public/ 파일 등)은 매 빌드 다시
+        /// 복사되므로 예전처럼 여기서 지워야 소스에서 삭제된 파일이 계속 서빙되지 않는다.
+        /// </summary>
+        private static void PrunePublicFolder(string publicPath)
+        {
+            if (!Directory.Exists(publicPath)) return;
+
+            var mirrored = new HashSet<string>(MirroredPublicDirectories, System.StringComparer.Ordinal);
+
+            foreach (string item in Directory.GetFileSystemEntries(publicPath))
+            {
+                string itemName = Path.GetFileName(item);
+
+                if (Directory.Exists(item))
+                {
+                    if (mirrored.Contains(itemName)) continue;
+                    AITFileUtils.DeleteDirectory(item);
+                }
+                else if (File.Exists(item))
+                {
+                    AITFileSystemHelper.SafeDelete(item);
                 }
             }
         }

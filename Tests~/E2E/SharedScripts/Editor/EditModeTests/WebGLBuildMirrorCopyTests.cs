@@ -1,7 +1,9 @@
 // -----------------------------------------------------------------------
 // WebGLBuildMirrorCopyTests.cs - EditMode 변경분 미러 복사 검증 테스트
 // Level 0: WebGLBuildCopier.CopyFileIfChanged / MirrorCopyDirectory의
-//   "변경 시에만 복사 + stale 산출물 제거" 미러 의미론을 파일시스템 수준에서 검증
+//   "변경 시에만 복사 + stale 산출물 제거" 미러 의미론을 파일시스템 수준에서 검증하고,
+//   PrepareAitBuildFolder가 public/ 미러 대상을 보존해 그 최적화가 실제 빌드에서
+//   유효하게 유지되는지(= 매 빌드 전량 복사로 퇴화하지 않는지) 함께 검증한다.
 // -----------------------------------------------------------------------
 
 using NUnit.Framework;
@@ -234,6 +236,103 @@ public class WebGLBuildMirrorCopyTests
 
         Assert.AreEqual(1, copied, "중첩 디렉토리 안의 변경 파일도 복사되어야 함");
         Assert.AreEqual("nested-v2", File.ReadAllText(Path.Combine(destDir, "sub", "nested.txt")));
+    }
+
+    // =====================================================
+    // PrepareAitBuildFolder: public/ 미러 대상 보존
+    // 이 보존이 없으면 매 빌드 public/이 통째로 삭제되어 아래 "2회 연속 미러 복사 시 스킵"이
+    // 실제 빌드에서는 절대 성립하지 않는다 (변경분 복사 최적화가 항상 무효).
+    // =====================================================
+
+    [Test]
+    public void PrepareAitBuildFolder_PreservesMirroredPublicDirectories()
+    {
+        string buildProjectPath = Path.Combine(tempDir, "ait-build");
+        Directory.CreateDirectory(buildProjectPath);
+
+        foreach (var name in WebGLBuildCopier.MirroredPublicDirectories)
+        {
+            string dir = Path.Combine(buildProjectPath, "public", name);
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(Path.Combine(dir, "artifact.bin"), name);
+        }
+
+        // 미러 대상이 아닌 public/ 항목 + 빌드 산출물
+        File.WriteAllText(Path.Combine(buildProjectPath, "public", "user-file.json"), "{}");
+        Directory.CreateDirectory(Path.Combine(buildProjectPath, "dist"));
+
+        WebGLBuildCopier.PrepareAitBuildFolder(buildProjectPath);
+
+        foreach (var name in WebGLBuildCopier.MirroredPublicDirectories)
+        {
+            Assert.IsTrue(File.Exists(Path.Combine(buildProjectPath, "public", name, "artifact.bin")),
+                $"public/{name}은 미러 대상이므로 보존되어야 함");
+        }
+        Assert.IsFalse(File.Exists(Path.Combine(buildProjectPath, "public", "user-file.json")),
+            "미러 대상이 아닌 public/ 항목은 기존과 동일하게 매 빌드 정리되어야 함");
+        Assert.IsFalse(Directory.Exists(Path.Combine(buildProjectPath, "dist")),
+            "dist/는 계속 삭제되어야 함");
+    }
+
+    // =====================================================
+    // 2회 연속 미러 복사: 두 번째 실행은 전부 스킵 (실제 빌드 반복 시나리오)
+    // =====================================================
+
+    [Test]
+    public void MirrorCopyDirectory_SecondRunWithUnchangedSource_SkipsEverything()
+    {
+        Directory.CreateDirectory(Path.Combine(srcDir, "sub"));
+        File.WriteAllText(Path.Combine(srcDir, "a.txt"), "a");
+        File.WriteAllText(Path.Combine(srcDir, "sub", "b.txt"), "b");
+
+        int copied = 0, skipped = 0, stale = 0;
+        WebGLBuildCopier.MirrorCopyDirectory(srcDir, destDir, ref copied, ref skipped, ref stale);
+        Assert.AreEqual(2, copied, "1회차는 두 파일 모두 복사");
+
+        // 스킵 여부를 mtime 표식으로 관찰 (재작성되면 mtime이 바뀐다)
+        var sentinel = new DateTime(2020, 1, 1, 0, 0, 0);
+        File.SetLastWriteTime(Path.Combine(destDir, "a.txt"), sentinel);
+        File.SetLastWriteTime(Path.Combine(destDir, "sub", "b.txt"), sentinel);
+
+        copied = 0; skipped = 0; stale = 0;
+        WebGLBuildCopier.MirrorCopyDirectory(srcDir, destDir, ref copied, ref skipped, ref stale);
+
+        Assert.AreEqual(0, copied, "2회차는 변경분이 없으므로 복사가 없어야 함");
+        Assert.AreEqual(2, skipped, "2회차는 두 파일 모두 스킵되어야 함");
+        Assert.AreEqual(0, stale, "2회차에 제거할 잔여물은 없어야 함");
+        Assert.AreEqual(sentinel, File.GetLastWriteTime(Path.Combine(destDir, "a.txt")),
+            "스킵된 파일은 재작성되지 않아야 함");
+        Assert.AreEqual(sentinel, File.GetLastWriteTime(Path.Combine(destDir, "sub", "b.txt")),
+            "중첩 디렉토리의 스킵된 파일도 재작성되지 않아야 함");
+    }
+
+    // =====================================================
+    // 2회 연속 미러 복사: 소스에서 사라진 파일은 2회차에서 제거
+    // (public/을 보존하게 되면서 stale 제거 책임이 이 함수로 넘어왔다)
+    // =====================================================
+
+    [Test]
+    public void MirrorCopyDirectory_SecondRunAfterSourceDeletion_RemovesFromDest()
+    {
+        File.WriteAllText(Path.Combine(srcDir, "keep.txt"), "keep");
+        File.WriteAllText(Path.Combine(srcDir, "gone.txt"), "gone");
+
+        int copied = 0, skipped = 0, stale = 0;
+        WebGLBuildCopier.MirrorCopyDirectory(srcDir, destDir, ref copied, ref skipped, ref stale);
+        Assert.AreEqual(2, copied);
+
+        // 소스에서 에셋이 삭제된 상황 (dev server가 계속 서빙하면 회귀)
+        File.Delete(Path.Combine(srcDir, "gone.txt"));
+
+        copied = 0; skipped = 0; stale = 0;
+        WebGLBuildCopier.MirrorCopyDirectory(srcDir, destDir, ref copied, ref skipped, ref stale);
+
+        Assert.AreEqual(0, copied);
+        Assert.AreEqual(1, skipped, "keep.txt는 스킵");
+        Assert.AreEqual(1, stale, "gone.txt는 stale로 제거");
+        Assert.IsTrue(File.Exists(Path.Combine(destDir, "keep.txt")));
+        Assert.IsFalse(File.Exists(Path.Combine(destDir, "gone.txt")),
+            "소스에서 삭제된 파일은 대상에서도 제거되어야 함");
     }
 
     // =====================================================

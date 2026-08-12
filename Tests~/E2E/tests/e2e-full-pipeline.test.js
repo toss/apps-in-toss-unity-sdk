@@ -1752,7 +1752,8 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       //      보고되어야 하며, 처리되지 않은 예외/거부가 없어야 한다
       // -----------------------------------------------------------------------
       test('9-3. platform Storage failure must not block boot', async ({ browser }) => {
-        test.setTimeout(120000);
+        // 가장 느린 러너에서 새 페이지 부트만 ~70초+ 실측 — 통과 케이스도 1.2m을 소모했다
+        test.setTimeout(180000);
 
         failPage = await browser.newPage();
 
@@ -1792,8 +1793,8 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       //      IDBFS 경로 무회귀 확인 (Set+Save→reload→Get)
       // -----------------------------------------------------------------------
       test('9-4. falls back to IndexedDB when platform Storage errors', async () => {
-        // 느린 CI 러너에서 failPage 부트만 ~70초 소요 실측됨 — 90초는 여유가 부족하다
-        test.setTimeout(120000);
+        // 느린 CI 러너에서 reload 부트만 ~70초+ 소요 실측 + persist idle 대기(최대 30초) 추가
+        test.setTimeout(180000);
         expect(failPage, '9-3 should have created failPage').not.toBeNull();
 
         // persistCount 베이스라인: PlayerPrefs.Save()는 JS queuePersist(비동기 커밋 시작)만
@@ -1809,9 +1810,14 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
         );
         expect(setResult.success, 'PlayerPrefs.SetString + Save should succeed even when platform Storage is disabled').toBe(true);
 
-        // reload 전에 persist(populate=false) 방향이 최종 cb까지 완료됐는지 대기
+        // reload 전에 persist(populate=false) 방향이 최종 cb까지 완료됐는지 대기.
+        // count 증가만으로는 부족하다: autoPersist(Sentry 파일 등)로 set "이전에" 수집을
+        // 시작한 persist가 완료돼도 count는 오르지만 v2는 그 수집에 없고, v2를 실은
+        // 후속 persist가 in-flight인 채 reload되면 IDB 트랜잭션이 중단돼 유실된다
+        // (2021.3 느린 러너에서 재현). Unity 코얼레싱 상태(idbPersistState)가 완전
+        // idle이 될 때까지 함께 기다려야 Save() 이후 수집이 보장된 persist까지 커밋된다.
         await failPage.waitForFunction(
-          (baseline) => window['__AIT_PP'].persistCount > baseline,
+          (baseline) => window['__AIT_PP'].persistCount > baseline && window['__AIT_PP'].persistIdle(),
           persistCountBefore,
           { timeout: 30000 }
         );
@@ -1836,7 +1842,8 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       //      mount 트랩은 storage 가용성과 무관하게 발화해야 한다
       // -----------------------------------------------------------------------
       test('9-5. no mock: no rejections, no boot regression', async ({ browser }) => {
-        test.setTimeout(120000);
+        // 가장 느린 러너에서 새 페이지 부트가 120초 예산을 초과한 사례 실측(macOS 2022.3)
+        test.setTimeout(180000);
 
         noMockPage = await browser.newPage();
 

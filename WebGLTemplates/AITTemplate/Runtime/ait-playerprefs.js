@@ -687,6 +687,17 @@
         else persistPath(mount, callback);
     }
 
+    /**
+     * Unity의 IDBFS persist 큐가 완전히 idle인지. mount.idbPersistState는
+     * 0/undefined=idle, setTimeout 핸들=시작 대기, 'idb'=진행 중, 'again'=진행 중+추가 대기.
+     * persistCount 증가만으로는 "마지막 쓰기가 커밋됐다"를 보장할 수 없다 —
+     * 쓰기 이전에 수집을 시작한 persist의 완료일 수 있다. E2E가 reload 전
+     * count 증가와 이 idle을 함께 확인하면 코얼레싱 간극 없이 커밋 완료가 보장된다.
+     */
+    function persistIdle() {
+        return !activeMount || !activeMount.idbPersistState;
+    }
+
     // ===========================================
     // 마운트 트랩 (preRun)
     // ===========================================
@@ -886,7 +897,8 @@
         mode: 'pending',
         bootTimeoutMs: DEFAULT_BOOT_TIMEOUT_MS,
         manifestKey: MANIFEST_KEY,
-        persistCount: 0
+        persistCount: 0,
+        persistIdle: persistIdle
     };
 
     window.__AIT_PP = api;

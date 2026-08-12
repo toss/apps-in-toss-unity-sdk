@@ -1792,8 +1792,14 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       //      IDBFS 경로 무회귀 확인 (Set+Save→reload→Get)
       // -----------------------------------------------------------------------
       test('9-4. falls back to IndexedDB when platform Storage errors', async () => {
-        test.setTimeout(90000);
+        // 느린 CI 러너에서 failPage 부트만 ~70초 소요 실측됨 — 90초는 여유가 부족하다
+        test.setTimeout(120000);
         expect(failPage, '9-3 should have created failPage').not.toBeNull();
+
+        // persistCount 베이스라인: PlayerPrefs.Save()는 JS queuePersist(비동기 커밋 시작)만
+        // 걸고 리턴하므로, "성공" 보고 직후 바로 reload하면 IndexedDB 커밋이 끝나기 전에
+        // reload되어 값이 유실될 수 있다(flaky). persist 완료(성공/실패 무관)를 관측해야 한다.
+        const persistCountBefore = await failPage.evaluate(() => window['__AIT_PP'].persistCount);
 
         const setResult = await triggerPlayerPrefsAndWait(
           failPage,
@@ -1802,6 +1808,13 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
           'set'
         );
         expect(setResult.success, 'PlayerPrefs.SetString + Save should succeed even when platform Storage is disabled').toBe(true);
+
+        // reload 전에 persist(populate=false) 방향이 최종 cb까지 완료됐는지 대기
+        await failPage.waitForFunction(
+          (baseline) => window['__AIT_PP'].persistCount > baseline,
+          persistCountBefore,
+          { timeout: 30000 }
+        );
 
         // IndexedDB는 건드리지 않고 reload (CDP wipe 없음)
         const response = await failPage.reload({ waitUntil: 'domcontentloaded', timeout: 60000 });

@@ -57,11 +57,13 @@
         configured: false,
         preRunRan: false,
         captured: false,
-        mode: 'pending',          // 'pending' | 'ait' | 'vanilla' | 'disabled'
+        mode: 'pending',          // 'pending' | 'ait' | 'vanilla' | 'disabled' | 'foreign'
         backend: 'none',          // 'platform' | 'override' | 'none'
         disabled: false,          // AIT 쓰기 금지 여부
+        foreign: false,           // manifest 키가 다른 주체(게임 자체 코드 등)의 값으로 이미 사용 중 — 세션 동안 setItem 금지
         restoredBytes: 0,
         mirrorCount: 0,
+        persistCount: 0,          // persist(populate=false) 방향이 최종 cb까지 완료된 횟수(성공/실패 무관)
         lastError: null
     };
 
@@ -263,14 +265,19 @@
     // ===========================================
     // 스냅샷 fetch
     // ===========================================
-    /** manifest 문자열 → 스냅샷 객체({files:{}}). 형식이 아니면 null */
+    /**
+     * manifest 문자열 → 스냅샷 객체({files:{}}).
+     * 우리 manifest 형태가 아니면(파싱 실패 포함) throw — 호출자가 foreign으로 분류한다.
+     */
     function parseManifest(raw) {
         var parsed = JSON.parse(raw);
-        if (!parsed || typeof parsed !== 'object') return null;
-        var snapshot = parsed;
-        if (typeof parsed.inline === 'string') snapshot = JSON.parse(parsed.inline);
-        if (!snapshot || typeof snapshot !== 'object') return null;
-        if (!snapshot.files || typeof snapshot.files !== 'object') return null;
+        if (!parsed || typeof parsed !== 'object') throw new Error('manifest가 객체가 아닙니다');
+        if (typeof parsed.v !== 'number') throw new Error('v 필드가 숫자가 아닙니다');
+        if (parsed.v > SNAPSHOT_VERSION) throw new Error('미래 버전 manifest입니다(v=' + parsed.v + ')');
+        if (typeof parsed.inline !== 'string') throw new Error('inline 필드가 없습니다');
+        var snapshot = JSON.parse(parsed.inline);
+        if (!snapshot || typeof snapshot !== 'object') throw new Error('inline 스냅샷이 객체가 아닙니다');
+        if (!snapshot.files || typeof snapshot.files !== 'object') throw new Error('files 필드가 없습니다');
         return snapshot;
     }
 
@@ -285,12 +292,14 @@
                 if (raw === null || raw === undefined || raw === '') return { kind: 'absent' };
                 try {
                     var snapshot = parseManifest(String(raw));
-                    if (!snapshot) throw new Error('스냅샷 형식 불일치');
                     return { kind: 'present', snapshot: snapshot };
                 } catch (e) {
-                    // 파싱 실패는 "없음"으로 취급(다음 push가 정상 스냅샷으로 덮어씀)하되 흔적은 남긴다
+                    // 값은 있지만 우리 manifest 형태가 아니다 — 게임이 이 키를 이미 다른
+                    // 용도로 쓰고 있을 수 있으므로 "없음"으로 취급해 덮어쓰지 않는다.
+                    // 대신 foreign으로 분류해 이번 세션 쓰기를 완전히 차단한다(미래 버전
+                    // manifest 포함 — 구버전 SDK가 신버전 포맷을 안전하게 재작성할 수 없다).
                     recordError('스냅샷 파싱', e);
-                    return { kind: 'absent' };
+                    return { kind: 'foreign' };
                 }
             }, function (e) {
                 recordError('스냅샷 읽기', e);
@@ -314,6 +323,13 @@
                 // 수 있으므로 다음 reload에서 다시 시도할 기회를 남겨둔다. L3는 setItem
                 // 연속 실패(L2)에서만 사용한다.
                 state.disabled = true;
+            } else if (res.kind === 'foreign') {
+                // 읽기 자체는 성공했지만 우리 manifest가 아니다 — 게임의 기존 값을
+                // 보호하기 위해 이번 세션 동안 해당 키에 절대 쓰지 않는다(canWrite 참조).
+                readOk = true;
+                state.foreign = true;
+                warnOnce('foreign-manifest',
+                    '저장소 키(' + MANIFEST_KEY + ')가 알 수 없는 값으로 이미 사용 중이라 PlayerPrefs 영속화를 이번 세션에서 비활성화합니다. 기존 값은 보호됩니다.');
             } else {
                 readOk = true;
                 if (res.kind === 'present') {
@@ -498,7 +514,10 @@
     }
 
     function canWrite() {
-        return state.enabled && !state.disabled && readOk && state.mode === 'ait' && !!activeStorage;
+        // state.foreign은 mode !== 'ait'로도 이미 걸리지만(foreign은 vanilla와 동일하게
+        // 강등됨), push의 유일한 진입점인 이 함수에서 한 번 더 명시적으로 막아 우회
+        // 경로를 남기지 않는다.
+        return state.enabled && !state.disabled && !state.foreign && readOk && state.mode === 'ait' && !!activeStorage;
     }
 
     /** scoped 스냅샷을 앱인토스 Storage에 push. 절대 reject하지 않는다. */
@@ -615,6 +634,9 @@
                         // 마이그레이션: 기존 IndexedDB 데이터를 채택하고 즉시 AIT로 승격
                         finish('ait');
                         scheduleImmediatePush(mount);
+                    } else if (res.kind === 'foreign') {
+                        // 다른 주체가 이미 이 키를 쓰고 있다 — 오버레이도, 승격 push도 하지 않는다
+                        finish('foreign');
                     } else {
                         finish('vanilla');
                     }
@@ -634,6 +656,10 @@
         function done() {
             if (finished) return;
             finished = true;
+            // persist(populate=false) 방향의 최종 완료 시점(원본 syncfs + push 처리 포함,
+            // 성공/실패 무관) — E2E가 reload 전 커밋 완료를 관측하는 용도.
+            state.persistCount++;
+            api.persistCount = state.persistCount;
             try { callback(null); } catch (e) { recordError('persist 콜백', e); }
         }
 
@@ -859,7 +885,8 @@
         captured: false,
         mode: 'pending',
         bootTimeoutMs: DEFAULT_BOOT_TIMEOUT_MS,
-        manifestKey: MANIFEST_KEY
+        manifestKey: MANIFEST_KEY,
+        persistCount: 0
     };
 
     window.__AIT_PP = api;

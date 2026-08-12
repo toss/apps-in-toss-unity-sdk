@@ -28,7 +28,11 @@ using AppsInToss;
 ///       + HeavyGenGallery 씬(전체 메시를 MeshFilter/MeshRenderer 로 렌더러 연결)
 ///       → stripUnusedMeshComponents(채널 스트리핑) 판정을 실제 렌더러 사용 여부 기준으로 실사용화하고,
 ///         씬 참조 자산이 sharedassets 로 패킹되는 실게임 경로를 만든다.
-///   - NotoSansKR 폰트 사본 N종      → L10(CJK subset) · L12(폰트 deferral)
+///   - NotoSansKR 폰트 사본 N종(+TMP_FontAsset Dynamic 래핑, 갤러리 씬 참조)
+///       → L10(CJK subset) · L12(폰트 deferral, AITFontExternalizer 자동 스캔)
+///       주: 부팅 공유 폰트(Assets/Resources/Fonts/NotoSansKR-Regular.otf, E2EBuildRunner 가 스테이징)는
+///           Resources.Load 동적 로드라 외부화 게이트(부팅 씬 재귀 의존성 스캔)가 감지하지 못하므로
+///           절대 TMP 로 감싸지 않는다(감싸는 순간 부팅 UI 가 영구 □ 가 되고 E2E 한글 단언이 깨진다).
 ///   - (L2~L5 = 코드/로더 레버 → 콘텐츠 무관, wasm/loader에 항상 작동)
 /// </summary>
 public class HeavyBuildRunner
@@ -40,6 +44,13 @@ public class HeavyBuildRunner
     private const string HeavyGenRoot = "Assets/HeavyGen";
     private const string ObjMeshRoot = HeavyGenRoot + "/ObjMeshes";
     private const string GalleryScenePath = HeavyGenRoot + "/HeavyGenGallery.unity";
+
+    /// <summary>heavy 폰트의 TMP_FontAsset 배치 루트(Resources 밖 — 아틀라스/머티리얼 부속물이
+    /// Resources 강제 포함으로 .data 에 끌려오는 것을 막고, 갤러리 씬 참조 경로로만 빌드에 포함되게
+    /// 한다 — ObjMeshRoot 와 동일 철학). 소스 .otf 는 종전대로 Resources 밑(HeavyRoot)에 남긴다:
+    /// TMP 래핑이 없거나 실패해도 폰트가 Resources 강제 포함으로 .data 에 잔류해(fail-safe) baseline 이
+    /// 조용히 증발하지 않는다.</summary>
+    private const string TmpFontAssetRoot = HeavyGenRoot + "/Fonts";
 
     /// <summary>
     /// E2EBuildRunner.BuildWithSDK() 가 제공하는 유일한 "부트 씬(scenes[0]) 뒤에 씬 1개를 추가"
@@ -174,6 +185,7 @@ public class HeavyBuildRunner
         }
         EnsureFolder(HeavyGenRoot);
         EnsureFolder(ObjMeshRoot);
+        EnsureFolder(TmpFontAssetRoot);
 
         // 주의: 이 루프를 StartAssetEditing/StopAssetEditing 배치로 감싸면 안 된다.
         // 배치 중에는 AssetDatabase 임포트가 지연되어, GenerateTexture/GenerateAudio 내부의
@@ -184,7 +196,8 @@ public class HeavyBuildRunner
         for (int i = 0; i < crunchTextureCount; i++) GenerateCompressibleTexture(i, textureSize);
         for (int i = 0; i < audioCount; i++) GenerateAudio(i, audioSeconds);
         for (int i = 0; i < meshCount; i++) GenerateMesh(i, meshGrid);
-        CopyFonts(fontCopies);
+        List<string> fontOtfPaths = CopyFonts(fontCopies);
+        List<string> tmpFontAssets = WrapFontsAsTmpAssets(fontOtfPaths);
 
         // OBJ 메시 세트 생성(ModelImporter 경로) → 갤러리 씬에서 참조할 Mesh 목록을 확보.
         var objMeshes = new List<Mesh>(objMeshCount);
@@ -193,10 +206,10 @@ public class HeavyBuildRunner
             objMeshes.Add(GenerateObjMesh(i, objMeshGrid));
         }
 
-        // 렌더러 연결 씬: 기존 .asset 메시 80개 전부 + 신규 OBJ 메시 전부를 배치.
+        // 렌더러 연결 씬: 기존 .asset 메시 80개 전부 + 신규 OBJ 메시 전부를 배치 + TMP 폰트 프로브 부착.
         // 이 씬이 EditorBuildSettings.scenes 에 추가돼야(BuildHeavy() 의 ExtraSceneEnvVar 경로)
-        // OBJ 메시(Resources 밖)가 실제로 빌드에 포함된다.
-        BuildGalleryScene(meshCount, objMeshes);
+        // OBJ 메시(Resources 밖)와 TMP_FontAsset(Resources 밖) 이 실제로 빌드에 포함된다.
+        BuildGalleryScene(meshCount, objMeshes, tmpFontAssets);
 
         // L6(mip stripping) 측정 가능화: 모든 Quality 레벨의 텍스처 mip 제한을 설정한다.
         // 이 설정 단독으로는 .data 가 변하지 않는다(mipStripping=false 면 mip 전량 빌드 포함 →
@@ -206,7 +219,7 @@ public class HeavyBuildRunner
 
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
-        LogHeavyFootprint();
+        LogHeavyFootprint(fontOtfPaths.Count, tmpFontAssets.Count);
     }
 
     // ---- 텍스처: mipmap + WebGL DXT5 (L6/L9/L11) ----
@@ -518,13 +531,13 @@ public class HeavyBuildRunner
         return null;
     }
 
-    // ---- 렌더러 연결 씬: 기존 asset 메시 80개 + 신규 OBJ 메시 전부를 배치 ----
+    // ---- 렌더러 연결 씬: 기존 asset 메시 80개 + 신규 OBJ 메시 전부를 배치 + TMP 폰트 프로브 부착 ----
     // (a) stripUnusedMeshComponents 의 채널 사용 판정을 실제 렌더러 기준으로 실사용화하고,
     // (b) 씬 참조 자산이 sharedassets 로 패킹되는 실게임 경로를 만든다. 이 씬을 EditorBuildSettings.scenes
     // 에 추가하는 것은 BuildHeavy() 의 책임(ExtraSceneEnvVar 훅) — 여기서는 씬 파일만 만들고 저장 성공을
-    // 즉시 검증한다(OBJ 메시가 Resources 밖이라 이 씬이 유일한 빌드 포함 경로이므로 실패를 조용히 넘기면
-    // 안 된다).
-    private static void BuildGalleryScene(int assetMeshCount, List<Mesh> objMeshes)
+    // 즉시 검증한다(OBJ 메시/TMP_FontAsset 모두 Resources 밖이라 이 씬이 유일한 빌드 포함 경로이므로
+    // 실패를 조용히 넘기면 안 된다).
+    private static void BuildGalleryScene(int assetMeshCount, List<Mesh> objMeshes, List<string> tmpFontAssetPaths)
     {
         // 결정론 보장: 매 빌드 전 기존 갤러리 씬을 지우고 새로 만든다(HeavyRoot 와 동일 규약).
         if (File.Exists(GalleryScenePath))
@@ -560,6 +573,8 @@ public class HeavyBuildRunner
             PlaceMeshGameObject($"ObjMesh_{i:D2}", objMeshes[i], sharedMaterial, placed++);
         }
 
+        AttachTmpFontProbes(tmpFontAssetPaths);
+
         EditorSceneManager.SaveScene(scene, GalleryScenePath);
 
         if (!File.Exists(GalleryScenePath))
@@ -587,18 +602,47 @@ public class HeavyBuildRunner
         go.transform.position = new Vector3((index % cols) * spacing, 0f, (index / cols) * spacing);
     }
 
+    /// <summary>갤러리 씬에 빈 TextMeshProUGUI 프로브를 부착한다(TMP_FontAsset 개수만큼). 이 씬은
+    /// 런타임에 로드되지 않는다(scenes[1], 부팅은 BenchmarkScene) — 목적은 렌더링이 아니라
+    /// (a) TMP_FontAsset 을 실제 빌드 참여 자산으로 만들고 (b) Unity.TextMeshPro/TMP_Settings 가
+    /// IL2CPP 스트리핑 후에도 잔존해 런타임 fallback 재수화 경로가 실제로 돌게 하는 것이다. 실패해도
+    /// 예외를 던지지 않는다(메시 배치 실패와 달리 빌드 포함성의 결정적 경로가 아님 — 고아 TMP 에셋으로
+    /// 남아도 AITFontExternalizer 의 t:TMP_FontAsset 자동 스캔에는 여전히 잡힌다).</summary>
+    private static void AttachTmpFontProbes(List<string> tmpFontAssetPaths)
+    {
+        if (tmpFontAssetPaths == null || tmpFontAssetPaths.Count == 0) return;
+
+        var canvasGo = new GameObject("TmpFontProbeCanvas");
+        var canvas = canvasGo.AddComponent<Canvas>();
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+
+        int attached = 0;
+        for (int i = 0; i < tmpFontAssetPaths.Count; i++)
+        {
+            var go = new GameObject($"TmpFontProbe_{i:D2}");
+            go.transform.SetParent(canvasGo.transform, false);
+            // 문자열은 비워 둔다 — 에디터 즉시 래스터화로 Dynamic 아틀라스가 굳어 .data/번들에
+            // 실리는 것을 방지한다(AITTestTmpFontFactory.TryAttachEmptyTmpText 의 text 미설정 가드 참조).
+            if (AITTestTmpFontFactory.TryAttachEmptyTmpText(go, tmpFontAssetPaths[i], "[heavy]")) attached++;
+        }
+
+        Debug.Log($"[heavy] TMP 텍스트 프로브 {attached}/{tmpFontAssetPaths.Count}개 부착(갤러리 씬, 빈 문자열).");
+    }
+
     // ---- 폰트: NotoSansKR 사본 N종 (L10/L12) ----
     // 원본이 패키지 비임포트 폴더(Runtime/Fonts~/)로 이동해 더 이상 AssetDatabase 자산이 아니므로
     // (AssetDatabase.CopyAsset 불가) raw File.Copy 후 ImportAsset 으로 대상만 임포트한다.
-    private static void CopyFonts(int copies)
+    // 반환값은 복사에 성공한 소스 .otf 애셋 경로 목록(WrapFontsAsTmpAssets 가 TMP 래핑 대상으로 사용).
+    private static List<string> CopyFonts(int copies)
     {
-        if (copies <= 0) return;
+        var copiedPaths = new List<string>();
+        if (copies <= 0) return copiedPaths;
 
         string srcPath = FindNotoSansKrPath();
         if (string.IsNullOrEmpty(srcPath))
         {
             Debug.LogWarning("[heavy] NotoSansKR 폰트를 찾지 못해 폰트 사본 생성을 건너뜀 (L10/L12 신호 약화).");
-            return;
+            return copiedPaths;
         }
 
         for (int i = 0; i < copies; i++)
@@ -608,12 +652,71 @@ public class HeavyBuildRunner
             {
                 File.Copy(srcPath, Path.GetFullPath(dst), overwrite: true);
                 AssetDatabase.ImportAsset(dst, ImportAssetOptions.ForceSynchronousImport);
+                copiedPaths.Add(dst);
             }
             catch (System.Exception e)
             {
                 Debug.LogWarning($"[heavy] 폰트 사본 실패: {srcPath} → {dst} ({e.Message})");
             }
         }
+
+        return copiedPaths;
+    }
+
+    // ---- 폰트 TMP 래핑: raw .otf → Dynamic TMP_FontAsset (L12 AITFontExternalizer 자동 스캔 대상) ----
+    // AITFontExternalizer 의 자동 모드는 t:TMP_FontAsset 만 스캔한다(raw .otf 사본만으로는 fontStreaming
+    // 이 걸리지 않는다 — DeployProbeBuildRunner 헤더 주석과 동일 근거). AIT_HEAVY_FONT_TMP=0 이면 래핑을
+    // 생략해 옛 동작(raw .otf 만 .data 잔류)을 재현할 수 있다(머지 전후 baseline 점프 로컬 대조용 킬스위치).
+    private static List<string> WrapFontsAsTmpAssets(List<string> otfPaths)
+    {
+        var result = new List<string>();
+        if (otfPaths == null || otfPaths.Count == 0) return result;
+
+        if (GetEnvInt("AIT_HEAVY_FONT_TMP", 1) != 1)
+        {
+            Debug.Log("[heavy] AIT_HEAVY_FONT_TMP=0 — 폰트 TMP 래핑 생략(L12 대조군 빌드).");
+            return result;
+        }
+
+        try
+        {
+            System.Type fontAssetType = AITTestTmpFontFactory.ResolveFontAssetType("[heavy]");
+            if (fontAssetType == null)
+            {
+                Debug.LogWarning("[heavy] ⚠ TMP(Unity.TextMeshPro) 미설치 — 폰트 TMP 래핑과 fontStreaming(L12) 측정을 " +
+                    "건너뜁니다. heavy 폰트는 raw .otf 로 .data 에 잔류합니다(이전 baseline 과 동일).");
+                return result;
+            }
+
+            if (!AITTestTmpFontFactory.EnsureEssentials(fontAssetType, "[heavy]"))
+            {
+                Debug.LogWarning("[heavy] ⚠ TMP Essential Resources/SDF 셰이더 준비 실패 — 폰트 TMP 래핑과 " +
+                    "fontStreaming(L12) 측정을 건너뜁니다. heavy 폰트는 raw .otf 로 .data 에 잔류합니다.");
+                return result;
+            }
+
+            foreach (var otf in otfPaths)
+            {
+                string dest = $"{TmpFontAssetRoot}/{Path.GetFileNameWithoutExtension(otf)}_SDF.asset";
+                string created = AITTestTmpFontFactory.CreateDynamicFontAsset(fontAssetType, otf, dest, "[heavy]");
+                if (created != null) result.Add(created);
+            }
+
+            Debug.Log($"[heavy] TMP_FontAsset {result.Count}/{otfPaths.Count}개 생성(Dynamic, {TmpFontAssetRoot}) " +
+                "— AITFontExternalizer(L12) 자동 스캔 후보로 편입.");
+        }
+        catch (System.Exception e)
+        {
+            // TMP 래핑 전체 실패는 heavy 빌드를 막지 않는다(픽스처 하나가 perf 전체를 막으면 안 됨).
+            System.Exception root = e;
+            while (root is System.Reflection.TargetInvocationException tie && tie.InnerException != null)
+            {
+                root = tie.InnerException;
+            }
+            Debug.LogWarning($"[heavy] ⚠ 폰트 TMP 래핑 예외(heavy 빌드는 계속 진행): {root.GetType().Name}: {root.Message}");
+        }
+
+        return result;
     }
 
     /// <summary>패키지 비임포트 원본(Runtime/Fonts~/NotoSansKR-Regular.otf)의 실 파일시스템 경로를
@@ -704,11 +807,18 @@ public class HeavyBuildRunner
         AssetDatabase.CreateFolder(parent, leaf);
     }
 
-    private static void LogHeavyFootprint()
+    private static void LogHeavyFootprint(int fontOtfCount, int tmpFontAssetCount)
     {
         long total = SumDirectorySize(HeavyRoot) + SumDirectorySize(HeavyGenRoot);
         Debug.Log($"[heavy] generated source footprint: {total / (1024.0 * 1024.0):F1} MB on disk " +
                   $"(빌드 .data 기여는 압축 포맷에 따라 상이; gitignore 대상)");
+
+        // 측정 서사 추적용: heavy 폰트 소스 바이트 합계 + TMP 래핑 개수 + 킬스위치 상태를 별도 로그로
+        // 남긴다(perf Δ가 안 움직일 때 원인 판별 — WrapFontsAsTmpAssets/AttachTmpFontProbes 참조).
+        long fontOtfBytes = SumDirectorySize(HeavyRoot + "/Fonts");
+        bool tmpWrapEnabled = GetEnvInt("AIT_HEAVY_FONT_TMP", 1) == 1;
+        Debug.Log($"[heavy] font footprint: 원본 .otf {fontOtfCount}개 {fontOtfBytes / (1024.0 * 1024.0):F1}MB, " +
+                  $"TMP_FontAsset {tmpFontAssetCount}개 래핑(AIT_HEAVY_FONT_TMP={(tmpWrapEnabled ? 1 : 0)}).");
     }
 
     private static long SumDirectorySize(string relativeRoot)

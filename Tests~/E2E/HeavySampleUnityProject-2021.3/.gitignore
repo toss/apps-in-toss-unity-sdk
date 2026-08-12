@@ -70,3 +70,8 @@ Assets/DeployProbeGen.meta
 # (EnsureTmpEssentialResources) — 프로젝트 자산이 아닌 빌드 시점 산출물이므로 무시.
 Assets/TextMesh Pro/
 Assets/TextMesh Pro.meta
+
+# AITFontExternalizer가 빌드 중 생성하는 폰트 스트리밍 번들(Assets/StreamingAssets/ait-stream-font/).
+# 빌드 후 복원 단계에서 정리되지만, 빌드 크래시 시 대용량 번들이 untracked로 남을 수 있어 명시 무시.
+Assets/StreamingAssets/
+Assets/StreamingAssets.meta

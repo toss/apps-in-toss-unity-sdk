@@ -1822,12 +1822,35 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
           { timeout: 30000 }
         );
 
-        // 진단: reload 직전 MEMFS의 scoped 파일 상태 + 레이어 상태 (2021.3 유실 원인 특정용)
-        const preState = await failPage.evaluate(() => ({
-          status: window['AITPlayerPrefs'].status(),
-          persistCount: window['__AIT_PP'].persistCount,
-          files: window['__AIT_PP'].debugScopedFiles()
-        }));
+        // 2021.3에서 Save()가 유발한 persist는 마지막 파일 flush 이전 상태를 수집한다
+        // (1-persist 지연, run5 진단으로 실측: 복원된 파일 mtime이 set 시각보다 앞섰다).
+        // 신선한 내용은 "다음" persist에서야 IndexedDB에 도달하므로, 같은 페이로드로
+        // 한 번 더 Save를 트리거해 후속 persist를 결정적으로 만들어준다. 이는 우리
+        // 레이어와 무관한 순정 Unity 2021.3 동작이다(이 페이지의 레이어는 100% 위임 모드).
+        const persistCountMid = await failPage.evaluate(() => window['__AIT_PP'].persistCount);
+        const setResult2 = await triggerPlayerPrefsAndWait(
+          failPage,
+          () => failPage.evaluate((json) => window['TriggerPlayerPrefsSet'](json),
+            JSON.stringify({ key: 'ait_e2e_pp2', value: 'v2' })),
+          'set'
+        );
+        expect(setResult2.success, 'second PlayerPrefs.Save should also succeed').toBe(true);
+        await failPage.waitForFunction(
+          (baseline) => window['__AIT_PP'].persistCount > baseline && window['__AIT_PP'].persistIdle(),
+          persistCountMid,
+          { timeout: 30000 }
+        );
+
+        // 진단: reload 직전 MEMFS의 scoped 파일 상태 + 레이어 상태 (2021.3 유실 원인 특정용).
+        // files를 먼저 평가해야 수집 실패 시 그 에러가 status.lastError에 잡힌다.
+        const preState = await failPage.evaluate(() => {
+          const files = window['__AIT_PP'].debugScopedFiles();
+          return {
+            files: files,
+            persistCount: window['__AIT_PP'].persistCount,
+            status: window['AITPlayerPrefs'].status()
+          };
+        });
         console.log(`[9-4] pre-reload: ${JSON.stringify(preState)}`);
 
         // IndexedDB는 건드리지 않고 reload (CDP wipe 없음)

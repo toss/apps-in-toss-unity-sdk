@@ -16,16 +16,17 @@
     "test:watch": "vitest watch",
     "test:ui": "vitest --ui",
     "test:binding": "vitest run tests/unit/binding.test.ts",
-    "test:invariants": "vitest run tests/unit/invariants.test.ts tests/unit/function-mapping.test.ts tests/unit/nested-callback-diagnostic.test.ts tests/unit/field-docs.test.ts tests/unit/differential.test.ts",
+    "test:invariants": "vitest run tests/unit/invariants.test.ts tests/unit/function-mapping.test.ts tests/unit/nested-callback-diagnostic.test.ts tests/unit/field-docs.test.ts tests/unit/differential.test.ts tests/unit/discovery-invariants.test.ts tests/unit/report/changelog-markdown.test.ts",
     "test:serialization": "vitest run tests/unit/serialization.test.ts",
     "test:differential": "vitest run tests/unit/differential.test.ts",
-    "test:multi-version": "vitest run tests/unit/multi-version.test.ts"
+    "test:multi-version": "vitest run tests/unit/multi-version.test.ts",
+    "changelog:generate": "tsx tests/unit/scripts/generate-changelog.ts"
   },
   "packageManager": "pnpm@11.6.0",
   "dependencies": {
     "@apps-in-toss/framework": "1.6.0",
     "@apps-in-toss/web-analytics": "2.10.8",
-    "@apps-in-toss/web-framework": "3.0.1",
+    "@apps-in-toss/web-framework": "3.0.3",
     "commander": "15.0.0",
     "handlebars": "4.7.9",
     "picocolors": "1.1.1",
@@ -105,6 +106,8 @@
     "web-framework-2.9.1": "npm:@apps-in-toss/web-framework@2.9.1",
     "web-framework-2.9.2": "npm:@apps-in-toss/web-framework@2.9.2",
     "web-framework-2.9.3": "npm:@apps-in-toss/web-framework@2.9.3",
-    "web-framework-3.0.1": "npm:@apps-in-toss/web-framework@3.0.1"
+    "web-framework-3.0.1": "npm:@apps-in-toss/web-framework@3.0.1",
+    "web-framework-3.0.2": "npm:@apps-in-toss/web-framework@3.0.2",
+    "web-framework-3.0.3": "npm:@apps-in-toss/web-framework@3.0.3"
   }
 }

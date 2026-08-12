@@ -14,7 +14,7 @@ Apps in Toss Unity SDK를 사용하면 별도의 Vite 프로젝트 구성이나 
 4. Git URL 입력:
 
 ```
-https://github.com/toss/apps-in-toss-unity-sdk.git#release/v3.0.1
+https://github.com/toss/apps-in-toss-unity-sdk.git#release/v3.0.3
 ```
 
 ### manifest.json 직접 수정
@@ -24,7 +24,7 @@ https://github.com/toss/apps-in-toss-unity-sdk.git#release/v3.0.1
 ```json
 {
   "dependencies": {
-    "im.toss.apps-in-toss-unity-sdk": "https://github.com/toss/apps-in-toss-unity-sdk.git#release/v3.0.1"
+    "im.toss.apps-in-toss-unity-sdk": "https://github.com/toss/apps-in-toss-unity-sdk.git#release/v3.0.3"
   }
 }
 ```

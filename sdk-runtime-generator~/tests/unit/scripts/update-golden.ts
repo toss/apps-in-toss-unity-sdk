@@ -10,6 +10,9 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import { buildSampleVersionApis, SAMPLE_CATEGORY_ORDER } from '../../fixtures/changelog/sample-versions.js';
+import { buildChangelogModel } from '../report/changelog-model.js';
+import { generateChangelogMarkdown } from '../report/changelog-markdown.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -74,6 +77,20 @@ async function main() {
     console.log('⚠️  일부 파일이 없습니다. "pnpm generate"를 먼저 실행하세요.\n');
     process.exit(1);
   }
+
+  // Changelog 마크다운 golden 갱신 (합성 fixture 기반 — web-framework 설치 불필요)
+  // approximatedVersions는 tests/unit/report/changelog-markdown.test.ts의 golden 테스트와
+  // 반드시 동일한 값을 써야 한다(v3.0.0을 pnpm store 폴백 근사 버전으로 가정하는 합성 케이스 —
+  // v2.0.0과 API 표면이 동일해 v2.0.0 → v3.0.0이 빈 diff가 되고 v3.x 그룹 전체가 빈 전이뿐이게 됨).
+  console.log('📝 Changelog 마크다운 golden 업데이트 중...\n');
+  const changelogModel = buildChangelogModel(buildSampleVersionApis(), SAMPLE_CATEGORY_ORDER);
+  const changelogMarkdown = generateChangelogMarkdown(changelogModel, {
+    dialect: 'commonmark',
+    approximatedVersions: ['3.0.0'],
+  });
+  const changelogGoldenPath = path.join(GOLDEN_DIR, 'api-changelog.md.golden');
+  await fs.writeFile(changelogGoldenPath, changelogMarkdown);
+  console.log(`   ✅ api-changelog.md.golden → ${changelogGoldenPath}\n`);
 
   console.log('✅ Golden files 업데이트 완료\n');
   console.log('💡 이제 "pnpm test:differential"로 회귀 테스트를 실행할 수 있습니다.\n');

@@ -8,6 +8,7 @@
     "im.toss.sdk-test-scripts": "file:../../SharedScripts",
     "io.sentry.unity": "https://github.com/getsentry/unity.git#4.1.0",
     "com.unity.modules.animation": "1.0.0",
+    "com.unity.modules.assetbundle": "1.0.0",
     "com.unity.modules.audio": "1.0.0",
     "com.unity.modules.imageconversion": "1.0.0",
     "com.unity.modules.imgui": "1.0.0",

@@ -15,13 +15,18 @@
 // 게이트 뒤에 있으면 파괴적 쓰기 경로 전부가 커버된다.
 //
 // Level 0: IsSourceFontPathAllowed 순수 로직(AssetDatabase 비의존, 문자열 판정만).
-// Level 1: 실 AssetDatabase — 이 저장소 테스트 패키지에 실재하는 읽기 전용 Packages/ 폰트
-//   (Packages/im.toss.sdk-test-scripts/Runtime/Resources/Fonts/NotoSansKR-Regular.otf, ~16MB —
-//   자동 스캔 1MB 임계값을 실제로 넘어 이 게이트가 없으면 정말로 후보에 들어갔을 것임을 보장)를
-//   소스로 하는 TMP_FontAsset 을 생성해, 자동 스캔 후보/수동 모드 계획 양쪽에서 제외되는지 검증한다.
-//   TMP_FontAsset 생성 리플렉션 패턴은 DeployProbeBuildRunner.cs 의 TryGenerateProbeFontAsset(약
-//   :732-822)/EnsureTmpEssentialResources(약 :824-873) 를 그대로 따른다. Packages/ 소스 파일은
-//   ★절대 수정하지 않는다★(읽기만).
+// Level 1: 실 AssetDatabase — 이 저장소 테스트 패키지의 비임포트 원본 폰트
+//   (Packages/im.toss.sdk-test-scripts/Runtime/Fonts~/NotoSansKR-Regular.otf, ~16MB — "패키지
+//   Runtime/Resources/ 는 무조건 빌드 포함" 규칙을 피하려 비임포트 "~" 폴더에 있어 AssetDatabase 로
+//   직접 로드할 수 없다)를 SetUp에서 이 패키지 내 "임포트되는" 경로
+//   (Runtime/GateTestFixtures/gate_test_font.otf, "~" 접미 아님)로 File.Copy + AssetDatabase.Refresh
+//   해 스테이징한다(로컬 file: 패키지는 mutable이라 가능). 그 사본(자동 스캔 1MB 임계값을 실제로 넘어
+//   이 게이트가 없으면 정말로 후보에 들어갔을 것임을 보장)을 소스로 하는 TMP_FontAsset 을 생성해,
+//   자동 스캔 후보/수동 모드 계획 양쪽에서 제외되는지 검증한다. TearDown에서 스테이징한 사본 +
+//   .meta + 빈 폴더를 best-effort 로 제거한다(2차 안전망: Tests~/E2E/SharedScripts/.gitignore 의
+//   Runtime/GateTestFixtures/ 규칙). TMP_FontAsset 생성 리플렉션 패턴은 DeployProbeBuildRunner.cs 의
+//   TryGenerateProbeFontAsset(약 :732-822)/EnsureTmpEssentialResources(약 :824-873) 를 그대로
+//   따른다. 원본(Fonts~)은 ★절대 수정하지 않는다★(읽기만).
 
 using System;
 using System.IO;
@@ -75,10 +80,11 @@ public class AITFontExternalizerIsSourceFontPathAllowedTests
 [TestFixture]
 public class AITFontExternalizerPackagesSourceCandidateExclusionTests
 {
-    // 이 저장소 테스트 패키지(Tests~/E2E/SharedScripts, package.json name=im.toss.sdk-test-scripts)에
-    // 실재하는 읽기 전용 대형(~16MB) 소스 폰트. 절대 수정하지 않는다 — 로드(Font 임포트 확인)만 한다.
-    private const string PackagesSourceFontPath =
-        "Packages/im.toss.sdk-test-scripts/Runtime/Resources/Fonts/NotoSansKR-Regular.otf";
+    // 이 저장소 테스트 패키지(Tests~/E2E/SharedScripts, package.json name=im.toss.sdk-test-scripts)의
+    // 비임포트 원본(대형 ~16MB, 절대 수정하지 않는다 — 읽기만) 및 SetUp이 스테이징하는 임포트 가능한 사본.
+    private const string PackagesRawFontRelativePath = "Runtime/Fonts~/NotoSansKR-Regular.otf";
+    private const string GateFixtureRelativePath = "Runtime/GateTestFixtures/gate_test_font.otf";
+    private const string PackagesSourceFontPath = "Packages/im.toss.sdk-test-scripts/" + GateFixtureRelativePath;
 
     private const string TempDir = "Assets/AITTest_FontExternalizerPackagesGate";
     private const string TmpFontAssetPath = TempDir + "/PackagesSourceProbeFontAsset.asset";
@@ -91,12 +97,16 @@ public class AITFontExternalizerPackagesSourceCandidateExclusionTests
     private bool _fixtureReady;
     private string _skipReason;
 
+    /// <summary>SetUp이 스테이징한 게이트 픽스처의 실 파일시스템 경로(TearDown 정리 대상).</summary>
+    private string _gateFixturePhysicalPath;
+
     [SetUp]
     public void SetUp()
     {
         _projectRoot = Directory.GetParent(Application.dataPath).FullName;
         _fixtureReady = false;
         _skipReason = null;
+        _gateFixturePhysicalPath = null;
 
         Type fontAssetType = Type.GetType("TMPro.TMP_FontAsset, Unity.TextMeshPro");
         if (fontAssetType == null)
@@ -105,10 +115,15 @@ public class AITFontExternalizerPackagesSourceCandidateExclusionTests
             return;
         }
 
+        if (!TryStagePackagesSourceFixture(out _skipReason))
+        {
+            return;
+        }
+
         var sourceFont = AssetDatabase.LoadAssetAtPath<Font>(PackagesSourceFontPath);
         if (sourceFont == null)
         {
-            _skipReason = $"읽기 전용 패키지 소스 폰트 로드 실패: {PackagesSourceFontPath} " +
+            _skipReason = $"게이트 테스트 픽스처 로드 실패: {PackagesSourceFontPath} " +
                 "(im.toss.sdk-test-scripts 패키지가 이 환경에 해석되지 않음).";
             return;
         }
@@ -179,7 +194,38 @@ public class AITFontExternalizerPackagesSourceCandidateExclusionTests
     [TearDown]
     public void TearDown()
     {
-        // Packages/ 쪽은 절대 건드리지 않는다 — Assets/ 쪽 픽스처/잔존물만 정리(베스트 에포트).
+        // SetUp이 패키지 내부에 스테이징한 게이트 픽스처(사본) 정리 — best-effort. 원본(Fonts~)은
+        // 건드리지 않는다(_gateFixturePhysicalPath는 그 사본만 가리킨다).
+        if (!string.IsNullOrEmpty(_gateFixturePhysicalPath))
+        {
+            try { if (File.Exists(_gateFixturePhysicalPath)) File.Delete(_gateFixturePhysicalPath); }
+            catch { /* best-effort */ }
+
+            try
+            {
+                string metaPath = _gateFixturePhysicalPath + ".meta";
+                if (File.Exists(metaPath)) File.Delete(metaPath);
+            }
+            catch { /* best-effort */ }
+
+            try
+            {
+                string dirAbs = Path.GetDirectoryName(_gateFixturePhysicalPath);
+                if (!string.IsNullOrEmpty(dirAbs) && Directory.Exists(dirAbs) &&
+                    Directory.GetFileSystemEntries(dirAbs).Length == 0)
+                {
+                    Directory.Delete(dirAbs);
+                    string dirMeta = dirAbs + ".meta";
+                    if (File.Exists(dirMeta)) File.Delete(dirMeta);
+                }
+            }
+            catch { /* best-effort */ }
+
+            _gateFixturePhysicalPath = null;
+            AssetDatabase.Refresh();
+        }
+
+        // Packages/ 원본(Fonts~)은 절대 건드리지 않는다 — Assets/ 쪽 픽스처/잔존물만 정리(베스트 에포트).
         try
         {
             string assetsAbs = Application.dataPath;
@@ -227,10 +273,12 @@ public class AITFontExternalizerPackagesSourceCandidateExclusionTests
         }
 
         // 사전조건: 게이트가 없다면 이 자산이 진짜로 후보였을 것임을 보장(비-공허 테스트) — 크기 ≥ 1MB.
-        string srcFull = Path.Combine(_projectRoot, PackagesSourceFontPath);
-        Assert.IsTrue(File.Exists(srcFull), $"사전조건: 패키지 소스 폰트 실파일 확인({srcFull}).");
-        Assert.GreaterOrEqual(new FileInfo(srcFull).Length, 1 * 1024 * 1024,
-            "사전조건: 패키지 소스 폰트가 자동 스캔 1MB 임계값 이상이어야 이 테스트가 비-공허함.");
+        // (SetUp이 스테이징한 실 파일 경로를 사용 — Packages/ 가상 경로가 항상 프로젝트 루트 기준 실
+        //  파일시스템 경로로 그대로 결합된다고 가정하지 않는다.)
+        Assert.IsTrue(File.Exists(_gateFixturePhysicalPath),
+            $"사전조건: 게이트 픽스처 실파일 확인({_gateFixturePhysicalPath}).");
+        Assert.GreaterOrEqual(new FileInfo(_gateFixturePhysicalPath).Length, 1 * 1024 * 1024,
+            "사전조건: 게이트 픽스처(원본 폰트 사본)가 자동 스캔 1MB 임계값 이상이어야 이 테스트가 비-공허함.");
 
         // ── 검증 대상 그 자체: 자동 스캔 후보 목록 ──
         string[] candidates = AITFontExternalizer.GetFontStreamingCandidates();
@@ -274,6 +322,89 @@ public class AITFontExternalizerPackagesSourceCandidateExclusionTests
             AssetDatabase.Refresh();
         }
     }
+
+    // ─────────────────────────── 헬퍼: 게이트 픽스처 스테이징 ───────────────────────────
+
+    /// <summary>
+    /// 패키지 비임포트 원본(Runtime/Fonts~/NotoSansKR-Regular.otf)을 이 패키지 내 "임포트되는" 경로
+    /// (Runtime/GateTestFixtures/gate_test_font.otf)로 복사해 AssetDatabase 가 Font 로 인식하게
+    /// 만든다. 원본이 "패키지 Runtime/Resources/ 는 무조건 빌드 포함" 규칙을 피하려 비임포트
+    /// "~" 폴더로 옮겨져 AssetDatabase.LoadAssetAtPath 로 직접 로드할 수 없기 때문이다. 성공 시
+    /// _gateFixturePhysicalPath 를 채워 TearDown 정리 대상으로 남긴다. 실패 시 skipReason 을 채우고
+    /// false 반환.
+    /// </summary>
+    private bool TryStagePackagesSourceFixture(out string skipReason)
+    {
+        skipReason = null;
+
+        var pkg = UnityEditor.PackageManager.PackageInfo.FindForAssembly(
+            typeof(AITFontExternalizerPackagesSourceCandidateExclusionTests).Assembly);
+        if (pkg == null || string.IsNullOrEmpty(pkg.resolvedPath))
+        {
+            skipReason = "im.toss.sdk-test-scripts 패키지의 물리 경로(resolvedPath) 해석 실패 — " +
+                "게이트 픽스처 스테이징 불가.";
+            return false;
+        }
+
+        string rawFontPath = ResolveNotoSansKrRawPath(pkg.resolvedPath);
+        if (string.IsNullOrEmpty(rawFontPath))
+        {
+            skipReason = $"패키지 비임포트 원본을 찾지 못함({PackagesRawFontRelativePath}).";
+            return false;
+        }
+
+        string destAbs = Path.Combine(
+            pkg.resolvedPath, GateFixtureRelativePath.Replace('/', Path.DirectorySeparatorChar));
+        string destDirAbs = Path.GetDirectoryName(destAbs);
+        try
+        {
+            if (!string.IsNullOrEmpty(destDirAbs) && !Directory.Exists(destDirAbs))
+            {
+                Directory.CreateDirectory(destDirAbs);
+            }
+            File.Copy(rawFontPath, destAbs, overwrite: true);
+        }
+        catch (Exception e)
+        {
+            skipReason = $"게이트 픽스처 스테이징(File.Copy) 실패: {e.Message}";
+            return false;
+        }
+
+        _gateFixturePhysicalPath = destAbs;
+        AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+        return true;
+    }
+
+    /// <summary>패키지 비임포트 원본(Runtime/Fonts~/NotoSansKR-Regular.otf)의 실 파일시스템 경로를
+    /// 해석한다(AITSfntLiteTests.ResolveNotoSansKrPath 와 동일 관용구 — pkgResolvedPath 기준 우선,
+    /// 실패 시 이 테스트 파일 자신의 물리적 위치 기준 CallerFilePath 상대 경로 폴백).</summary>
+    private static string ResolveNotoSansKrRawPath(string pkgResolvedPath)
+    {
+        const string fileName = "NotoSansKR-Regular.otf";
+
+        if (!string.IsNullOrEmpty(pkgResolvedPath))
+        {
+            string viaPkg = Path.Combine(pkgResolvedPath, "Runtime", "Fonts~", fileName);
+            if (File.Exists(viaPkg))
+            {
+                return viaPkg;
+            }
+        }
+
+        string thisFileDir = Path.GetDirectoryName(CallerFilePath());
+        if (string.IsNullOrEmpty(thisFileDir))
+        {
+            return null;
+        }
+
+        // Editor/EditModeTests/ → (상위 2단계) → SharedScripts/ → Runtime/Fonts~/
+        string viaSharedScriptsRelative = Path.GetFullPath(Path.Combine(
+            thisFileDir, "..", "..", "Runtime", "Fonts~", fileName));
+        return File.Exists(viaSharedScriptsRelative) ? viaSharedScriptsRelative : null;
+    }
+
+    private static string CallerFilePath(
+        [System.Runtime.CompilerServices.CallerFilePath] string path = "") => path;
 
     // ─────────────────────────── 헬퍼(DeployProbeBuildRunner.EnsureTmpEssentialResources 이관) ───────────────────────────
 

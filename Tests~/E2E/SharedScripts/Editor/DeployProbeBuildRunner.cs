@@ -699,35 +699,52 @@ public class DeployProbeBuildRunner
     }
 
     // ---- 폰트(원본 .otf): SharedScripts 패키지 동봉 NotoSansKR 사본 (fontSubset 대상) ----
+    // 원본이 패키지 비임포트 폴더(Runtime/Fonts~/)에 있어 더 이상 AssetDatabase 자산이 아니므로 raw
+    // File.Copy 후 대상만 ImportAsset 한다(HeavyBuildRunner.CopyFonts 와 동일 패턴). 이 러너는 공용
+    // 훅(E2EBuildRunner.EnsureFontsCopiedToResources)에 의존하지 않고 직접 원본을 해석한다 —
+    // GenerateProbeContent() 가 BuildWithSDK() 보다 먼저 실행되어 그 훅이 아직 돌지 않았기 때문이다.
     private static string GenerateProbeFontRaw()
     {
-        const string knownSrc = "Packages/im.toss.sdk-test-scripts/Runtime/Resources/Fonts/NotoSansKR-Regular.otf";
         string dst = $"{ProbeRoot}/Fonts/probe_font.otf";
-
-        if (!AssetDatabase.CopyAsset(knownSrc, dst))
+        string srcPath = FindNotoSansKrPath();
+        if (string.IsNullOrEmpty(srcPath))
         {
-            // 폴백: AssetDatabase 검색으로 재해석(패키지 물리 경로가 버전/설치 방식에 따라 달라질 대비 —
-            // HeavyBuildRunner.FindNotoSansKrPath 와 동일 사유).
-            string resolved = FindNotoSansKrPath();
-            if (string.IsNullOrEmpty(resolved) || !AssetDatabase.CopyAsset(resolved, dst))
-            {
-                throw new Exception($"[deploy-probe] NotoSansKR 폰트 복사 실패: {knownSrc}");
-            }
+            throw new Exception(
+                "[deploy-probe] NotoSansKR 폰트 원본을 찾지 못함(Runtime/Fonts~/NotoSansKR-Regular.otf)");
         }
 
+        File.Copy(srcPath, Path.GetFullPath(dst), overwrite: true);
         AssetDatabase.ImportAsset(dst, ImportAssetOptions.ForceSynchronousImport);
         return dst;
     }
 
+    /// <summary>패키지 비임포트 원본(Runtime/Fonts~/NotoSansKR-Regular.otf)의 실 파일시스템 경로를
+    /// 해석한다(HeavyBuildRunner.FindNotoSansKrPath 와 동일 관용구 — PackageInfo.FindForAssembly
+    /// resolvedPath 우선 → CallerFilePath 폴백).</summary>
     private static string FindNotoSansKrPath()
     {
-        foreach (string guid in AssetDatabase.FindAssets("NotoSansKR t:Font"))
+        try
         {
-            string p = AssetDatabase.GUIDToAssetPath(guid);
-            if (p.EndsWith(".otf") || p.EndsWith(".ttf")) return p;
+            var pkg = UnityEditor.PackageManager.PackageInfo.FindForAssembly(typeof(DeployProbeBuildRunner).Assembly);
+            if (pkg != null && !string.IsNullOrEmpty(pkg.resolvedPath))
+            {
+                string viaPackage = Path.Combine(pkg.resolvedPath, "Runtime", "Fonts~", "NotoSansKR-Regular.otf");
+                if (File.Exists(viaPackage)) return viaPackage;
+            }
         }
-        return null;
+        catch
+        {
+            // PackageInfo 미해석(Assets 내 임베드 개발) → 소스 파일 위치 폴백.
+        }
+
+        string here = CallerDir();
+        if (string.IsNullOrEmpty(here)) return null;
+        string viaCaller = Path.GetFullPath(Path.Combine(here, "..", "Runtime", "Fonts~", "NotoSansKR-Regular.otf"));
+        return File.Exists(viaCaller) ? viaCaller : null;
     }
+
+    private static string CallerDir([System.Runtime.CompilerServices.CallerFilePath] string thisFile = "")
+        => string.IsNullOrEmpty(thisFile) ? null : Path.GetDirectoryName(thisFile);
 
     // ---- TMP_FontAsset(리플렉션): 설치돼 있을 때만 생성(fontStreaming 대상). 미설치 시 null 반환 ----
     private static string TryGenerateProbeFontAsset(string rawFontPath)

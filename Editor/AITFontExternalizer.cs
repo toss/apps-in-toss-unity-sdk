@@ -179,6 +179,15 @@ namespace AppsInToss.Editor
                     if (string.IsNullOrEmpty(srcPath))
                         continue;
 
+                    // 소스가 Assets/ 밖(예: Packages/ UPM 패키지)이면 자동 스캔 후보에서 제외.
+                    // 스텁 치환은 소스 파일 바이트를 파괴하는 연산이고, 백업 복원 스캔(RestoreAllBackups)은
+                    // Application.dataPath(Assets/) 전용이라 Packages/ 소스는 영원히 복원 불가능해진다.
+                    if (!IsSourceFontPathAllowed(srcPath))
+                    {
+                        Debug.Log($"[AIT-StreamingFont] 자동 스캔 제외(소스 Assets/ 밖): {srcPath}");
+                        continue;
+                    }
+
                     // (a) 소스 크기 ≥ 1MB
                     long srcBytes = SafeFileSize(Path.Combine(projectRoot, srcPath));
                     if (srcBytes < AutoScanMinSrcBytes)
@@ -342,6 +351,17 @@ namespace AppsInToss.Editor
                     if (string.IsNullOrEmpty(srcFontPath))
                     {
                         Debug.LogWarning($"[AIT-StreamingFont]   소스 .ttf/.otf 해석 실패(의존성에 폰트 없음) → 건너뜀: {tmpAssetPath}");
+                        continue;
+                    }
+
+                    // 안전: 소스가 Assets/ 밖(예: Packages/ UPM 패키지)이면 절대 스텁 치환 대상으로 삼지 않는다.
+                    // 수동 모드(fontStreamingTargetPaths)는 GetFontStreamingCandidates 를 거치지 않고 여기로
+                    // 바로 들어오므로, 이 계획 수립 단계(plan.Add 이전)가 파괴적 쓰기(Phase C 스텁 치환·백업
+                    // 생성) 전 마지막 공통 게이트다. 백업 복원 스캔(RestoreAllBackups)은 Application.dataPath
+                    // (Assets/) 전용이라 Packages/ 소스를 치환하면 백업을 영원히 찾지 못해 원본이 영구 파손된다.
+                    if (!IsSourceFontPathAllowed(srcFontPath))
+                    {
+                        Debug.LogWarning($"[AIT-StreamingFont]   대상 제외(소스 Assets/ 밖): {srcFontPath}");
                         continue;
                     }
 
@@ -1172,5 +1192,20 @@ namespace AppsInToss.Editor
 
         private static string JsonStr(string s)
             => "\"" + (s ?? string.Empty).Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
+
+        // ─────────────────────────── 순수 내부 헬퍼 (테스트용, 에셋 DB 비의존) ───────────────────────────
+
+        /// <summary>
+        /// 소스 폰트(.ttf/.otf) 경로가 외부화 후보로 허용되는지 여부(순수 함수, 테스트용).
+        /// 스텁 치환(SwapSourceToStub)은 파일 바이트를 직접 파괴하는 위험한 연산이라, TMP_FontAsset
+        /// 경로(tmpAssetPath)와 마찬가지로 소스도 Assets/ 밖(Packages/ UPM 패키지 등)이면 절대 대상으로
+        /// 삼으면 안 된다 — 백업 복원 스캔(RestoreAllBackups)이 Application.dataPath(Assets/) 전용 재귀
+        /// 검색이라, Packages/ 소스를 치환하면 백업(.aitfontsrcbak~)을 영원히 찾지 못해 원본이 영구
+        /// 파손(전역 tofu + 복원 불가)된다.
+        /// </summary>
+        internal static bool IsSourceFontPathAllowed(string srcFontPath)
+        {
+            return !string.IsNullOrEmpty(srcFontPath) && srcFontPath.StartsWith("Assets/");
+        }
     }
 }

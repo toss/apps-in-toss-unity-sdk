@@ -29,6 +29,9 @@ importers:
         specifier: 3.0.3
         version: 3.0.3(typanion@3.14.0)(typescript@7.0.2)
     devDependencies:
+      '@apps-in-toss/devtools':
+        specifier: 3.0.3
+        version: 3.0.3(@apps-in-toss/web-framework@3.0.3(typanion@3.14.0)(typescript@7.0.2))(rolldown@1.1.5)(vite@8.1.5(@types/node@26.2.0)(jiti@2.7.0))
       typescript:
         specifier: 7.0.2
         version: 7.0.2
@@ -51,6 +54,15 @@ packages:
   '@apps-in-toss/cli@3.0.3':
     resolution: {integrity: sha512-1537v+CX13H+DX2Q8sP+kmfG6djb4jxUlT4IS8Dk3USaEbK+WY5H2xalG9VQTMILDxeI+HgWruPmL4ra+oDLJA==}
     hasBin: true
+
+  '@apps-in-toss/devtools@3.0.3':
+    resolution: {integrity: sha512-oM6uGFl91FsvHTNU2NjIHrQCoz4bLVq+WpG1cW4mRvZid6G8qQ3MNW02N6qxcmocn1yI29NKtUS55rBetXXXTg==}
+    engines: {node: '>=24'}
+    peerDependencies:
+      '@apps-in-toss/web-framework': '>=2.6.0 <3.0.0 || >=3.0.1 <4.0.0'
+    peerDependenciesMeta:
+      '@apps-in-toss/web-framework':
+        optional: true
 
   '@apps-in-toss/types@2.10.8':
     resolution: {integrity: sha512-TLpKTXqDwDPBQH4qDX8Yj8OCL0aPZCxNMcF98JGnjObx33nvzrrQA22Xfbho8tFVsZhlLvji4k0RtvECyfHjsg==}
@@ -588,6 +600,10 @@ packages:
     resolution: {integrity: sha512-neHB9xuzh/wk0dIHweyAXv2aPGZIVk3pLMe+/RNzINf17fe0OG96QroktYAUm7SM1PBnzTabaLboqqxDyMU+SQ==}
     engines: {node: '>=6'}
 
+  cloudflared@0.7.1:
+    resolution: {integrity: sha512-jJn1Gu9Tf4qnIu8tfiHZ25Hs8rNcRYSVf8zAd97wvYdOCzftm1CTs1S/RPhijjGi8gUT1p9yzfDi9zYlU/0RwA==}
+    hasBin: true
+
   commondir@1.0.1:
     resolution: {integrity: sha512-W9pAhw0ja1Edb5GVdIF1mjZw/ASI0AlShXM83UUGe2DVr5TdAPEA1OA8m/g8zWp9x6On7gqufY+FatDbC3MDQg==}
 
@@ -620,8 +636,8 @@ packages:
     resolution: {integrity: sha512-nI4U3TottKAcAD9LLud4Cb7b2QztQMUEfHbvhTH09bqXTxnSie8WnjPALV/WMCrJZ6UV/qHJ6L03OqO3LcdYZw==}
     engines: {node: '>=12'}
 
-  electron-to-chromium@1.5.402:
-    resolution: {integrity: sha512-/oOpMaPT6Yg+6/1XQhyIPlzgj7Ye9zf+nNM2Uh6OcE2G2oNptWazFa+qB2Pdqqbsc9KnIDzgAntoYN0dbwOXwA==}
+  electron-to-chromium@1.5.403:
+    resolution: {integrity: sha512-MQsYmdaLzvaCX5j+ZZBr5Fm6uCCnPQcRtlvmvRlWqrXy+BH2O4ffXIAScF+JQznQWB9brWp4lSD9Z4yNmaf2BA==}
 
   escalade@3.2.0:
     resolution: {integrity: sha512-WUj2qlxaQtO4g6Pq5c29GTcWGDyd8itL8zTlipgECz3JesAiiOKotd8JU6otB3PACgG6xkJUyVhboMS+bje/jA==}
@@ -889,6 +905,10 @@ packages:
     resolution: {integrity: sha512-/FPD0nUc9jH6rfFjji9IBqOz4pcSE3CsT1m7Ep6Mdb0LxSUMj8hgl6GomOvZzpNpAqqGaXA0P3VSrZLFzIhQrw==}
     engines: {node: '>=12.0.0'}
 
+  qrcode-terminal@0.12.0:
+    resolution: {integrity: sha512-EXtzRZmC+YGmGlDFbXKxQiMZNwCLEO6BANKXG4iCtSIM0yqc/pappSx3RIKr4r0uh5JsBckOXeKrB3Iz7mdQpQ==}
+    hasBin: true
+
   rc9@3.0.1:
     resolution: {integrity: sha512-gMDyleLWVE+i6Sgtc0QbbY6pEKqYs97NGi6isHQPqYlLemPoO8dxQ3uGi0f4NiP98c+jMW6cG1Kx9dDwfvqARQ==}
 
@@ -965,6 +985,39 @@ packages:
   undici-types@8.3.0:
     resolution: {integrity: sha512-j375ScV60dom+YkPFIfTLcOiPxkN/buHz5GobjLhixFuANaNs3C9l4GmrWqejgXWJ7BbJcFYpTEUkS1Ge8bpZQ==}
 
+  unplugin@3.3.0:
+    resolution: {integrity: sha512-qa66K+crbfyE6JK10GjvbJeRrOsuC/JpbnHctfyp/i4oBTxWOzJfRZyDiOk1PtErMFRu8JhsU/wPvOdBNWe5Rg==}
+    engines: {node: ^20.19.0 || >=22.12.0}
+    peerDependencies:
+      '@farmfe/core': '*'
+      '@rspack/core': '*'
+      bun-types-no-globals: '*'
+      esbuild: '>=0.28.1'
+      rolldown: '*'
+      rollup: '*'
+      unloader: '*'
+      vite: '*'
+      webpack: '*'
+    peerDependenciesMeta:
+      '@farmfe/core':
+        optional: true
+      '@rspack/core':
+        optional: true
+      bun-types-no-globals:
+        optional: true
+      esbuild:
+        optional: true
+      rolldown:
+        optional: true
+      rollup:
+        optional: true
+      unloader:
+        optional: true
+      vite:
+        optional: true
+      webpack:
+        optional: true
+
   update-browserslist-db@1.3.0:
     resolution: {integrity: sha512-x/M6q3w4Ybp91CNaS4S69UnliqR3BzRpOT6LWbksjth0S/+jhfaPJsWjt/TewpT8j9eLIojUf5jr29WextHroA==}
     hasBin: true
@@ -1026,6 +1079,9 @@ packages:
       yaml:
         optional: true
 
+  webpack-virtual-modules@0.6.2:
+    resolution: {integrity: sha512-66/V2i5hQanC51vBQKPH4aI8NMAcBW59FVBs+rC7eGHupMyfn34q7rZIE+ETlJ+XTevqfUhVVBgSUNSW2flEUQ==}
+
   write-file-atomic@5.0.1:
     resolution: {integrity: sha512-+QU2zd6OTD8XWIJCbffaiQeH9U73qIqafo1x6V1snCWYGJf6cVE0cDR4D8xRzcEnfI21IFrUPzPGtcPf8AC+Rw==}
     engines: {node: ^14.17.0 || ^16.13.0 || >=18.0.0}
@@ -1060,6 +1116,24 @@ snapshots:
       - magicast
       - supports-color
       - typanion
+
+  '@apps-in-toss/devtools@3.0.3(@apps-in-toss/web-framework@3.0.3(typanion@3.14.0)(typescript@7.0.2))(rolldown@1.1.5)(vite@8.1.5(@types/node@26.2.0)(jiti@2.7.0))':
+    dependencies:
+      cloudflared: 0.7.1
+      qrcode-terminal: 0.12.0
+      unplugin: 3.3.0(rolldown@1.1.5)(vite@8.1.5(@types/node@26.2.0)(jiti@2.7.0))
+    optionalDependencies:
+      '@apps-in-toss/web-framework': 3.0.3(typanion@3.14.0)(typescript@7.0.2)
+    transitivePeerDependencies:
+      - '@farmfe/core'
+      - '@rspack/core'
+      - bun-types-no-globals
+      - esbuild
+      - rolldown
+      - rollup
+      - unloader
+      - vite
+      - webpack
 
   '@apps-in-toss/types@2.10.8': {}
 
@@ -1541,7 +1615,7 @@ snapshots:
     dependencies:
       baseline-browser-mapping: 2.11.13
       caniuse-lite: 1.0.30001809
-      electron-to-chromium: 1.5.402
+      electron-to-chromium: 1.5.403
       node-releases: 2.0.53
       update-browserslist-db: 1.3.0(browserslist@4.28.8)
 
@@ -1578,6 +1652,8 @@ snapshots:
       kind-of: 6.0.3
       shallow-clone: 3.0.1
 
+  cloudflared@0.7.1: {}
+
   commondir@1.0.1: {}
 
   confbox@0.2.4: {}
@@ -1596,7 +1672,7 @@ snapshots:
 
   dotenv@17.4.2: {}
 
-  electron-to-chromium@1.5.402: {}
+  electron-to-chromium@1.5.403: {}
 
   escalade@3.2.0: {}
 
@@ -1815,6 +1891,8 @@ snapshots:
       '@types/node': 26.2.0
       long: 5.3.2
 
+  qrcode-terminal@0.12.0: {}
+
   rc9@3.0.1:
     dependencies:
       defu: 6.1.7
@@ -1912,6 +1990,15 @@ snapshots:
 
   undici-types@8.3.0: {}
 
+  unplugin@3.3.0(rolldown@1.1.5)(vite@8.1.5(@types/node@26.2.0)(jiti@2.7.0)):
+    dependencies:
+      '@jridgewell/remapping': 2.3.5
+      picomatch: 4.0.5
+      webpack-virtual-modules: 0.6.2
+    optionalDependencies:
+      rolldown: 1.1.5
+      vite: 8.1.5(@types/node@26.2.0)(jiti@2.7.0)
+
   update-browserslist-db@1.3.0(browserslist@4.28.8):
     dependencies:
       browserslist: 4.28.8
@@ -1935,6 +2022,8 @@ snapshots:
       '@types/node': 26.2.0
       fsevents: 2.3.3
       jiti: 2.7.0
+
+  webpack-virtual-modules@0.6.2: {}
 
   write-file-atomic@5.0.1:
     dependencies:

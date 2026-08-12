@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "ait dev",
+    "dev": "vite",
     "build": "ait build || granite build",
-    "start": "ait dev",
+    "start": "vite",
     "deploy": "ait deploy"
   },
   "dependencies": {
@@ -14,8 +14,9 @@
     "@apps-in-toss/web-framework": "3.0.3"
   },
   "devDependencies": {
-    "vite": "8.1.5",
-    "typescript": "7.0.2"
+    "@apps-in-toss/devtools": "3.0.3",
+    "typescript": "7.0.2",
+    "vite": "8.1.5"
   },
   "packageManager": "pnpm@11.6.0"
 }

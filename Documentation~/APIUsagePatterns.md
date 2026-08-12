@@ -12,7 +12,7 @@ SDK API를 C#에서 호출할 때 반복해서 마주치는 패턴을 다룹니�
 | [앱인토스 개발자센터](https://developers-apps-in-toss.toss.im/) | 플랫폼 정책, 콘솔 설정, 서버 연동 등 클라이언트 SDK 공식 문서 |
 | 이 문서 모음 | 위 둘에 없는 Unity 고유 사정 |
 
-이 저장소의 문서에 API 레퍼런스를 따로 두지 않는 이유는, 그것이 상위 문서의 수기 사본이 되기 때문입니다. C# 표면은 SDK를 업데이트할 때마다 재생성되지만 손으로 쓴 마크다운은 그렇지 않아서, 시간이 지나면 반드시 어긋납니다. 대신 **IntelliSense가 항상 최신**이고, 이 문서는 상위 문서가 다루지 않는 것만 씁니다 — async/await, `Awaitable`과 `Task`의 분기, `timeoutMs`, `AITException.ErrorCode`, Mock 브릿지, IL2CPP 스트리핑.
+이 저장소의 문서에 API 레퍼런스를 따로 두지 않는 이유는, 그것이 상위 문서의 수기 사본이 되기 때문입니다. C# 표면은 SDK를 업데이트할 때마다 재생성되지만 손으로 쓴 마크다운은 그렇지 않아서, 시간이 지나면 반드시 어긋납니다. 대신 **IntelliSense가 항상 최신**이고, 이 문서는 상위 문서가 다루지 않는 것만 씁니다 — async/await, `Awaitable`과 `Task`의 분기, `timeoutMs`, `AITException.ErrorCode`, Mock(Editor mock, devtools), IL2CPP 스트리핑.
 
 SDK 버전에 따라 C# 표면이 어떻게 달라졌는지는 [API 변경 이력](changelog/index.html)에서 확인할 수 있습니다.
 
@@ -366,7 +366,7 @@ catch (AITException ex)
 | 환경 | 동작 |
 |------|------|
 | WebGL 빌드 + Apps in Toss 앱 | 실제 네이티브 API 호출 |
-| WebGL 빌드 + 일반 브라우저 | 브릿지에 도달하지 못해 대부분 실패. 광고는 Mock 브릿지가 응답 |
+| WebGL 빌드 + 일반 브라우저 | 대부분 실패. devtools가 켜져 있으면(Dev Server) mock으로 응답 |
 | Unity Editor | Editor mock 호출 |
 | 그 외 플랫폼 (Windows, macOS 등) | Editor mock 호출 |
 
@@ -387,16 +387,16 @@ void Start()
 
 실제 네이티브 동작을 확인하려면 WebGL로 빌드해 Apps in Toss 앱에서 실행해야 합니다. Editor에서는 무엇을 해도 mock입니다.
 
-## Mock 브릿지
+## Mock
 
 "Mock"이라는 이름으로 불리는 것이 **두 가지**이고, 서로 다르게 동작합니다.
 
-| | Editor mock | Mock 브릿지 |
+| | Editor mock | devtools |
 |---|---|---|
-| 어디에 | `Runtime/SDK/`의 C# | `appsintoss-unity-bridge.js` |
-| 무엇을 | 모든 SDK API | `AppsInToss.GoogleAdMob` (광고)만 |
-| 언제 | WebGL 빌드가 아닐 때 (컴파일 시점 결정) | WebGL 빌드에서 Mock 브릿지가 켜져 있을 때 |
-| 어떻게 끄나 | 끌 수 없음 | 빌드 프로필 |
+| 어디에 | `Runtime/SDK/`의 C# | `@apps-in-toss/devtools`(npm 패키지, 빌드 산출물을 브라우저에서 열 때 동작) |
+| 무엇을 | 모든 SDK API | 60개 이상의 SDK API + 상태를 조작하는 플로팅 패널 |
+| 언제 | WebGL 빌드가 아닐 때 (컴파일 시점 결정) | Dev Server로 실행한 빌드를 일반 브라우저에서 열 때 |
+| 어떻게 끄나 | 끌 수 없음 | `AIT > Configuration`의 devtools 설정, 또는 서버 실행 시 환경 변수 `AIT_DEVTOOLS=0` |
 
 ### Editor mock
 
@@ -417,31 +417,18 @@ Unity Editor와 비 WebGL 플랫폼에서 API를 호출하면 로그를 남기�
 
 클래스 타입이 `null`로 온다는 점이 중요합니다. Editor에서 `result.SomeField`를 바로 읽으면 `NullReferenceException`이 납니다. Editor에서도 돌려볼 로직이라면 null 체크를 넣으세요. 배열을 돌려주는 API는 빈 배열이 오므로 `foreach`가 안전합니다.
 
-### 광고 Mock 브릿지
+### devtools
 
-빌드 프로필의 Mock 브릿지 설정은 WebGL 빌드 산출물에 `%AIT_IS_PRODUCTION%` 값으로 새겨집니다. 활성화하면 프로덕션이 아닌 것으로 표시되어, 브라우저에 네이티브 광고 객체가 없을 때 `appsintoss-unity-bridge.js`가 가짜 `GoogleAdMob`을 만들어 `loaded` 같은 이벤트를 흉내 냅니다. 덕분에 토스 앱 없이 브라우저에서 광고 흐름을 눌러볼 수 있습니다.
+`@apps-in-toss/devtools`는 `@apps-in-toss/web-framework` **3.x 전용** 개발 도구입니다. Dev Server를 실행하면 vite 플러그인이 `@apps-in-toss/web-framework` import를 mock 구현으로 alias해, 토스 앱 없이 일반 브라우저에서 60개 이상의 SDK API가 mock으로 동작합니다. 동시에 화면에 플로팅 패널이 떠서 로그인 상태·광고 결과·스토리지 값 같은 mock 상태를 직접 조작할 수 있습니다.
 
-Mock 광고가 응답하면 브라우저 콘솔에 경고가 찍힙니다.
+패널은 기본으로 켜져 있습니다. devtools 전체(또는 패널만)를 끄려면 `AIT > Configuration`의 devtools 설정을 바꾸세요 — 빌드 산출물은 그대로이므로 **서버 재시작만으로 반영**됩니다. CI나 임시 확인처럼 설정을 건드리지 않고 한 번만 끄고 싶다면 서버 실행 환경 변수 `AIT_DEVTOOLS=0`으로 오버라이드할 수 있습니다.
 
-```text
-[AIT Mock] 🔴 이것은 MOCK 광고입니다. 실제 앱에서는 보이면 안 됩니다!
-```
-
-비활성화하면 프로덕션으로 간주해 mock을 만들지 않고, 네이티브가 광고 객체를 주입할 때까지 폴링합니다. 배포 빌드에서 반드시 꺼야 하는 이유입니다.
-
-| 빌드 프로필 | Mock 브릿지 |
-|------------|------------|
-| Dev Server | ✅ 활성화 |
-| Production Server | ❌ 비활성화 |
-| Build & Package | ❌ 비활성화 |
-| Publish | ❌ 비활성화 |
-
-광고를 제외한 나머지 API에는 Mock 브릿지가 관여하지 않습니다. 브라우저에서 그 API들을 부르면 `IsPlatformUnavailable`이 `true`인 `AITException`이 납니다.
+devtools가 꺼져 있는 상태(예: 일반 브라우저에서 열되 devtools를 비활성화한 경우)에서 SDK API를 부르면 `IsPlatformUnavailable`이 `true`인 `AITException`이 납니다.
 
 ## 관련 문서
 
 - [시작하기](GettingStarted.md) — 설치와 기본 설정
 - [광고 연동](Advertising.md) — 광고 API 사용법
 - [Sentry 연동](SentryIntegration.md) — 에러를 Sentry로 수집하기
-- [빌드 프로필](BuildProfiles.md) — Mock 브릿지 켜고 끄기
+- [빌드 프로필](BuildProfiles.md) — devtools 설정 위치
 - [문제 해결](Troubleshooting.md) — 자주 막히는 지점

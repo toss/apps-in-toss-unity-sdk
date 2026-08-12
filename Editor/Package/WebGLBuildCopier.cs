@@ -9,7 +9,6 @@ namespace AppsInToss.Editor.Package
     /// Unity WebGL 빌드 결과물을 Vite 기반 ait-build 프로젝트 구조로 복사/가공.
     /// - index.html은 프로젝트 루트로 (Vite 요구); Unity/AIT 플레이스홀더 치환, 사용자 커스텀 섹션 머지, 로딩 화면 삽입 포함
     /// - Build/TemplateData/Runtime은 public/ 하위로 (필수 파일 선별 복사)
-    /// - Runtime/appsintoss-unity-bridge.js의 Mock 브릿지 플래그 치환
     /// - 추가 사용자 BuildConfig 파일 복사 (재귀)
     /// - ait-build 폴더의 이전 결과물 정리 (node_modules/설정 파일은 유지)
     /// - Early fetch 스크립트 생성
@@ -251,8 +250,7 @@ namespace AppsInToss.Editor.Package
 
             string indexContent = File.ReadAllText(indexSrc);
 
-            // 프로필 기반 설정값 (Mock 브릿지가 비활성화되면 프로덕션 모드로 간주)
-            string isProduction = profile.enableMockBridge ? "false" : "true";
+            // 프로필 기반 설정값
             string enableDebugConsole = profile.enableDebugConsole ? "true" : "false";
 
             // 프로젝트의 index.html에서 사용자 커스텀 섹션 추출 (있는 경우)
@@ -299,7 +297,6 @@ namespace AppsInToss.Editor.Package
                 .Replace("%UNITY_WEBGL_CODE_FILENAME%", wasmFile)
                 .Replace("%UNITY_WEBGL_SYMBOLS_FILENAME%", symbolsFile)
                 // AIT 커스텀 플레이스홀더
-                .Replace("%AIT_IS_PRODUCTION%", isProduction)
                 .Replace("%AIT_ENABLE_DEBUG_CONSOLE%", enableDebugConsole)
                 .Replace("%AIT_FIRST_INTERACTIVE_LOG%", EffectiveFirstInteractiveLog(config) ? "true" : "false")
                 .Replace("%AIT_DEVICE_PIXEL_RATIO%", config.devicePixelRatio.ToString())
@@ -344,16 +341,6 @@ namespace AppsInToss.Editor.Package
             if (!AITBuildValidator.ValidatePlaceholderSubstitution(indexContent, indexDest))
             {
                 return AITConvertCore.AITExportError.PLACEHOLDER_SUBSTITUTION_FAILED;
-            }
-
-            // Runtime/appsintoss-unity-bridge.js 파일도 치환
-            string bridgeSrc = Path.Combine(publicPath, "Runtime", "appsintoss-unity-bridge.js");
-            if (File.Exists(bridgeSrc))
-            {
-                string bridgeContent = File.ReadAllText(bridgeSrc);
-                bridgeContent = bridgeContent.Replace("%AIT_IS_PRODUCTION%", isProduction);
-                File.WriteAllText(bridgeSrc, bridgeContent, System.Text.Encoding.UTF8);
-                Debug.Log($"[AIT] appsintoss-unity-bridge.js Mock 브릿지 모드: {(profile.enableMockBridge ? "활성화" : "비활성화")}");
             }
 
             Debug.Log("[AIT] Unity WebGL 빌드 복사 완료");

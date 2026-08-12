@@ -219,5 +219,5 @@ view.Show();   // showOnEnable 이 true(기본)이고 AdGroupId 가 채워져 �
 ## 관련 문서
 
 - [API 사용 패턴](APIUsagePatterns.md) — 콜백형 API와 구독 해제, 에러 처리
-- [빌드 프로필](BuildProfiles.md) — Mock 브릿지를 끄고 실제 광고를 받는 빌드 만들기
+- [빌드 프로필](BuildProfiles.md) — devtools를 끄고 실제 광고 흐름을 확인하기
 - [문제 해결](Troubleshooting.md) — 그 밖의 문제 해결

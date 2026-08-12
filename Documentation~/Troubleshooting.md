@@ -54,11 +54,11 @@ Console 창의 컴파일 오류와 스택 트레이스가 가장 확실한 단�
 
 정상 동작입니다. SDK API는 WebGL 빌드에서만 실제로 브릿지를 탑니다. Editor에서는 `[AIT Mock] <API> called` 로그를 남기고 기본값을 돌려줍니다.
 
-실제 동작은 WebGL로 빌드해 Apps in Toss 앱에서 확인하세요. 자세한 내용은 [API 사용 패턴](APIUsagePatterns.md) 문서의 **Mock 브릿지** 절을 참고하세요.
+실제 동작은 WebGL로 빌드해 Apps in Toss 앱에서 확인하세요. 자세한 내용은 [API 사용 패턴](APIUsagePatterns.md) 문서의 **Mock** 절을 참고하세요.
 
 ### Dev Server 에서는 되는데 Production 에서 안 됨
 
-Dev Server는 Mock 브릿지가 켜져 있어 일반 브라우저에서도 광고 흐름 등이 흉내로 동작합니다. Production 빌드는 실제 Apps in Toss 앱 환경을 필요로 합니다.
+Dev Server는 devtools가 켜져 있어 일반 브라우저에서도 60개 이상의 SDK API와 광고 흐름이 mock으로 동작합니다. Production 빌드는 실제 Apps in Toss 앱 환경을 필요로 합니다.
 
 로컬에서 프로덕션 설정 그대로 확인하려면 이렇게 합니다.
 

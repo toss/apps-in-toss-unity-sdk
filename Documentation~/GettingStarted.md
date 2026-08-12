@@ -105,7 +105,7 @@ SDK 설치가 끝나면 Unity Editor 상단에 `AIT` 메뉴가 추가됩니다.
 | **Check for Updates...** | SDK 신규 릴리즈가 있는지 수동으로 확인합니다 |
 | **Debug** | SDK 상태 초기화, WebGL 템플릿 강제 갱신 등 디버그용 하위 메뉴가 모여 있습니다 |
 
-Dev Server와 Production Server, 각 빌드 프로필의 Mock 브릿지·압축 설정 차이는 [빌드 프로필](BuildProfiles.md)에 정리되어 있습니다.
+Dev Server와 Production Server, 각 빌드 프로필의 devtools·압축 설정 차이는 [빌드 프로필](BuildProfiles.md)에 정리되어 있습니다.
 
 ## 첫 번째 빌드
 
@@ -113,7 +113,7 @@ Dev Server와 Production Server, 각 빌드 프로필의 Mock 브릿지·압축 
 
 ### 개발 서버로 확인하기
 
-개발 단계에서는 Dev Server를 사용합니다. Mock 브릿지가 활성화되어 있어 toss 앱 없이 브라우저에서 플랫폼 API 호출을 확인할 수 있습니다.
+개발 단계에서는 Dev Server를 사용합니다. `@apps-in-toss/devtools`의 Mock SDK와 패널이 함께 실행되어, toss 앱 없이 브라우저에서 플랫폼 API 호출을 mock으로 확인하고 패널로 mock 상태를 직접 제어할 수 있습니다.
 
 1. `AIT` > `Dev Server` > `Start Server` 클릭
 2. Unity WebGL 빌드가 자동으로 실행됩니다
@@ -227,7 +227,7 @@ public class FeedbackManager : MonoBehaviour
 
 ## 테스트하기
 
-SDK API는 WebGL 빌드에서만 실제로 브릿지를 타고, 그마저도 대부분 Apps in Toss 앱 환경에서만 정상 동작합니다. Unity Editor에서는 Mock 브릿지가 기본값을 돌려줄 뿐입니다. 자세한 내용은 [API 사용 패턴](APIUsagePatterns.md)의 Mock 브릿지 절을 참고하세요.
+SDK API는 WebGL 빌드에서만 실제로 브릿지를 타고, 그마저도 대부분 Apps in Toss 앱 환경에서만 정상 동작합니다. Unity Editor에서는 Editor mock이 기본값을 돌려줄 뿐입니다. 자세한 내용은 [API 사용 패턴](APIUsagePatterns.md)의 **Mock** 절을 참고하세요.
 
 샌드박스 앱으로 로컬 빌드를 확인하는 절차는 [문제 해결](Troubleshooting.md) 문서의 "Dev Server 에서는 되는데 Production 에서 안 됨" 절에 정리되어 있습니다.
 
@@ -241,7 +241,7 @@ SDK API는 WebGL 빌드에서만 실제로 브릿지를 타고, 그마저도 대
 
 ## 관련 문서
 
-- [API 사용 패턴](APIUsagePatterns.md) — async/await, 에러 처리, Mock 브릿지
+- [API 사용 패턴](APIUsagePatterns.md) — async/await, 에러 처리, Mock
 - [빌드 프로필](BuildProfiles.md) — 빌드 진입점별 설정 차이
 - [빌드 커스터마이징](BuildCustomization.md) — 웹 진입점 수정, 외부 라이브러리 추가
 - [로딩 화면 커스터마이징](LoadingScreenCustomization.md) — 로딩 화면 교체

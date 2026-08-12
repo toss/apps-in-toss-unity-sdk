@@ -53,6 +53,8 @@ SDK의 `WebGLTemplates/AITTemplate/`이 원본이고, `Editor/AITTemplateManager
 
 > **참고**: 필수 입력은 앱 ID 하나입니다. 검증 규칙은 `Editor/AITBuildValidator.cs`가 단일 출처이며, 사용자 관점 설명은 [문제 해결](../Troubleshooting.md)에 있습니다.
 
+devtools(`@apps-in-toss/devtools`) 설정은 빌드 프로필이 아니라 `AITConfig.asset`의 `AITDevtoolsSettings` 필드입니다. 활성화 게이트와 Vite 환경 변수 주입은 `Editor/Menu/DevtoolsSupport.cs`(`ShouldEnable`, `AddEnvVars`)가 단일 출처입니다.
+
 ## 런타임
 
 | 관심사 | 구현 지점 |

@@ -1,6 +1,7 @@
 using System.IO;
 using UnityEngine;
 using AppsInToss.Editor;
+using AppsInToss.Editor.Package;
 
 namespace AppsInToss.Editor.Menu
 {
@@ -78,9 +79,30 @@ namespace AppsInToss.Editor.Menu
         internal static bool EnsureNodeModules(string buildPath, string npmPath)
         {
             string nodeModulesPath = Path.Combine(buildPath, "node_modules");
-            if (!Directory.Exists(nodeModulesPath))
+            bool nodeModulesExists = Directory.Exists(nodeModulesPath);
+
+            // 폴더 존재만으로는 SDK 업그레이드(예: devtools 신규 의존성 추가) 후 server-only 재시작이
+            // stale node_modules를 그대로 타는 문제를 잡지 못한다. PnpmInstallStateMarker로
+            // package.json/lockfile 해시 및 무결성까지 확인해 재설치 필요 여부를 판단한다.
+            bool needsInstall = !nodeModulesExists;
+            if (nodeModulesExists)
             {
-                Debug.Log("AIT: node_modules가 없습니다. pnpm install을 실행합니다...");
+                bool canSkip = PnpmInstallStateMarker.ShouldSkipInstall(buildPath, out string skipReason);
+                if (canSkip)
+                {
+                    Debug.Log($"AIT: pnpm install 스킵 — {skipReason}");
+                }
+                else
+                {
+                    needsInstall = true;
+                }
+            }
+
+            if (needsInstall)
+            {
+                Debug.Log(nodeModulesExists
+                    ? "AIT: node_modules가 최신 상태가 아닙니다. pnpm install을 실행합니다..."
+                    : "AIT: node_modules가 없습니다. pnpm install을 실행합니다...");
 
                 string localCachePath = AITPackageBuilder.GetSharedPnpmStorePath(buildPath);
                 var installResult = AITNpmRunner.RunNpmCommandWithCache(

@@ -85,7 +85,6 @@ WebGLTemplates/AITTemplate/
 ├── index.html                플레이스홀더가 들어 있는 템플릿
 ├── loading.html              로딩 화면 템플릿
 ├── Runtime/
-│   ├── appsintoss-unity-bridge.js  플랫폼 브릿지
 │   └── devconsole/                 인앱 디버그 콘솔
 ├── TemplateData/             스타일과 이미지
 └── BuildConfig~/             Vite·granite 빌드 설정

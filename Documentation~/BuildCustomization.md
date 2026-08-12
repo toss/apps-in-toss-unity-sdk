@@ -263,7 +263,7 @@ ait-build/
 ├── public/
 │   ├── Build/              ← Unity WebGL 빌드 파일
 │   ├── TemplateData/       ← 스타일, 이미지
-│   ├── Runtime/            ← 플랫폼 브릿지 (appsintoss-unity-bridge.js)
+│   ├── Runtime/            ← 디버그 콘솔 등 부가 스크립트
 │   └── StreamingAssets/    ← StreamingAssets (있는 경우)
 ├── src/                    ← 사용자 TypeScript 코드 (있는 경우)
 ├── .env                    ← 사용자 환경 변수 (있는 경우)

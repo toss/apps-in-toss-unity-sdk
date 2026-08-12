@@ -8,6 +8,7 @@
     "im.toss.apps-in-toss-unity-sdk": "file:../../../..",
     "im.toss.sdk-test-scripts": "file:../../SharedScripts",
     "com.unity.modules.animation": "1.0.0",
+    "com.unity.modules.assetbundle": "1.0.0",
     "com.unity.modules.audio": "1.0.0",
     "com.unity.modules.imageconversion": "1.0.0",
     "com.unity.modules.imgui": "1.0.0",

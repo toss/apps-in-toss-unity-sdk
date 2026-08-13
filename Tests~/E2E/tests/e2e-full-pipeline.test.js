@@ -403,6 +403,95 @@ async function triggerPlayerPrefsAndWait(page, triggerFn, expectedOp, timeoutMs 
   return page.evaluate(() => window['__E2E_PLAYERPREFS_DATA__']);
 }
 
+/**
+ * reload → unityInstance 재설정까지를 3-1과 동일한 하니스 순단 분류로 감싼 재시도 헬퍼.
+ *
+ * self-hosted 러너의 vite preview가 부하로 루프백 스트림을 끊으면(ERR_CONNECTION_CLOSED /
+ * "Failed to download file" / download-watchdog) 제품 결함이 아니라 인프라 아티팩트이므로
+ * bounded 재시도한다. 진짜 크래시 시그니처(RuntimeError/webglcontextlost/Aborted()/
+ * out of bounds/memory access)는 재시도로 삼키지 않고 즉시 hard-fail (3-1과 동일 계약).
+ * run 31581794167 rerun2에서 9-4의 reload 부트가 단발 drop으로 죽은 실측에 따른 보강.
+ *
+ * unityInstance 대기는 벽시계-바운드 폴링이다 — 제품 워치독의 location.reload() 루프를
+ * 만나면 Playwright waitForFunction은 navigation마다 re-arm되어 자체 timeout을 무시하고
+ * test.setTimeout 예산 전체를 소진한다(3-1 주석 및 rerun2의 9-4 180초 소진으로 실측).
+ */
+async function reloadAndWaitForUnity(page, tag, { maxAttempts = 3, bootBudgetMs = 75000 } = {}) {
+  const CRASH_RE = /webglcontextlost|Aborted\(|RuntimeError|out of bounds|memory access/i;
+  const HARNESS_RE = /ERR_CONNECTION_CLOSED|Failed to download file|download-watchdog/i;
+
+  const pageErrors = [];
+  const failedRequests = [];
+  const consoleLines = [];
+  const errHandler = (err) => pageErrors.push(String((err && err.message) || err));
+  const reqFailedHandler = (req) => {
+    try {
+      failedRequests.push(`${req.url().split('/').slice(-2).join('/')} :: ${req.failure()?.errorText || '?'}`);
+    } catch (e) {}
+  };
+  const consoleHandler = (msg) => consoleLines.push(msg.text());
+  page.on('pageerror', errHandler);
+  page.on('requestfailed', reqFailedHandler);
+  page.on('console', consoleHandler);
+
+  try {
+    let lastErr = null;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      pageErrors.length = 0; failedRequests.length = 0; consoleLines.length = 0;
+      if (attempt > 1) {
+        // 제품 측 재로드 워치독 카운터와 캐시 우회 플래그를 리셋해 재시도 reload가
+        // 새 예산 + 워밍된 Cache-Storage로 부트하게 한다 (3-1과 동일).
+        try {
+          await page.evaluate(() => {
+            try { sessionStorage.removeItem('__ait_reload_count__'); } catch (e) {}
+            try { sessionStorage.removeItem('__ait_skip_data_cache__'); } catch (e) {}
+          });
+        } catch (e) {}
+      }
+      const t0 = Date.now();
+      try {
+        const resp = await page.reload({ waitUntil: 'domcontentloaded', timeout: 45000 });
+        if (!resp || resp.status() !== 200) {
+          throw new Error(`reload status=${resp ? resp.status() : 'null'}`);
+        }
+        const deadline = Date.now() + bootBudgetMs;
+        let ready = false;
+        while (Date.now() < deadline) {
+          try {
+            ready = await page.evaluate(() => window['unityInstance'] !== undefined);
+            if (ready) break;
+          } catch (e) {
+            // 재로드 루프 중 컨텍스트 파괴는 계속 폴링, 페이지가 닫혔으면 fatal
+            if (/has been closed|Target closed/.test(e.message || '')) throw e;
+          }
+          await new Promise((r) => setTimeout(r, 1000));
+        }
+        if (!ready) throw new Error(`unityInstance not set within ${bootBudgetMs}ms budget`);
+        if (attempt > 1) console.log(`[${tag}] reload recovered on attempt ${attempt}/${maxAttempts}`);
+        return;
+      } catch (err) {
+        lastErr = err;
+        const crash = pageErrors.some((m) => CRASH_RE.test(m));
+        const drop = failedRequests.some((f) => HARNESS_RE.test(f)) || consoleLines.some((l) => HARNESS_RE.test(l));
+        console.log(`[${tag}] reload attempt ${attempt}/${maxAttempts} FAILED after ${Date.now() - t0}ms: ` +
+          `${err.message} (crash=${crash}, drop=${drop}; requestfailed=${failedRequests.slice(0, 5).join(' | ')})`);
+        if (crash) throw err; // 진짜 크래시 — 재시도로 삼키지 않음
+        if (/has been closed|Target closed/.test(err.message || '')) throw err; // 재시도 불가
+        if (attempt < maxAttempts && drop) {
+          console.log(`[${tag}] harness connection-drop classified — retrying reload`);
+          continue;
+        }
+        throw err; // 소진 또는 미분류
+      }
+    }
+    throw lastErr;
+  } finally {
+    page.off('pageerror', errHandler);
+    page.off('requestfailed', reqFailedHandler);
+    page.off('console', consoleHandler);
+  }
+}
+
 
 // ============================================================================
 // Test Suite
@@ -1690,7 +1779,8 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       //      (mock 백킹 localStorage)로부터 복원되는지 확인
       // -----------------------------------------------------------------------
       test('9-2. value survives reload with IndexedDB wiped', async () => {
-        test.setTimeout(90000);
+        // reload 재시도 harness 최악 경로: 3 attempt × (reload 45초 + 부트 예산 75초)
+        test.setTimeout(420000);
         expect(mockPage, '9-1 should have created mockPage').not.toBeNull();
 
         const cdp = await mockPage.context().newCDPSession(mockPage);
@@ -1726,9 +1816,10 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
           expect(dbsAfterWipe, 'IndexedDB should be empty after Storage.clearDataForOrigin').toEqual([]);
         }
 
-        const response = await mockPage.reload({ waitUntil: 'domcontentloaded', timeout: 60000 });
-        expect(response?.status()).toBe(200);
-        await waitForUnityInstance(mockPage);
+        // 하니스 순단(러너의 webgl.data 스트림 drop) 대비 재시도 포함 reload.
+        // 재시도해도 계약은 불변: mock 백킹(localStorage)은 reload에 살아남고, 아래
+        // mode==='ait' 단언이 복원이 실제로 앱인토스 Storage 경로로 갔는지를 강제한다.
+        await reloadAndWaitForUnity(mockPage, '9-2');
 
         // 이 테스트가 검증하려는 기능(앱인토스 Storage 경로 복원)이 실제로 실행됐는지
         // status()로 먼저 확인한다 — 원본 IDBFS populate만으로 우연히 값이 살아남아도
@@ -1793,8 +1884,8 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       //      IDBFS 경로 무회귀 확인 (Set+Save→reload→Get)
       // -----------------------------------------------------------------------
       test('9-4. falls back to IndexedDB when platform Storage errors', async () => {
-        // 느린 CI 러너에서 reload 부트만 ~70초+ 소요 실측 + persist idle 대기(최대 30초) 추가
-        test.setTimeout(180000);
+        // persist idle 대기(최대 30초×2) + reload 재시도 harness 최악 경로(3×120초)
+        test.setTimeout(480000);
         expect(failPage, '9-3 should have created failPage').not.toBeNull();
 
         // persistCount 베이스라인: PlayerPrefs.Save()는 JS queuePersist(비동기 커밋 시작)만
@@ -1901,10 +1992,10 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
         });
         console.log(`[9-4] idb-probe: ${JSON.stringify(idbProbe)}`);
 
-        // IndexedDB는 건드리지 않고 reload (CDP wipe 없음)
-        const response = await failPage.reload({ waitUntil: 'domcontentloaded', timeout: 60000 });
-        expect(response?.status()).toBe(200);
-        await waitForUnityInstance(failPage);
+        // IndexedDB는 건드리지 않고 reload (CDP wipe 없음). 하니스 순단 대비 재시도 포함 —
+        // set이 실은 persist는 위에서 idle까지 완료를 확인했으므로 실패한 부트를 다시
+        // 시도해도 IndexedDB 상태는 불변이다 (run 31581794167 rerun2 실측 보강).
+        await reloadAndWaitForUnity(failPage, '9-4');
 
         // 진단: reload 직후(원본 IDBFS populate 완료 후) 복원 결과.
         // files를 먼저 평가해야 수집 실패 시 그 에러가 status.lastError에 잡힌다.

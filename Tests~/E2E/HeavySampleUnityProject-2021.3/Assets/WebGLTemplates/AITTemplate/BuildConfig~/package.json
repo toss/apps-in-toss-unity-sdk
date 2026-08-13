@@ -2,27 +2,11 @@
   "name": "unity-miniapp",
   "version": "1.0.0",
   "type": "module",
-  "scripts": {
-    "dev": "vite",
-    "build": "ait build || granite build",
-    "start": "vite",
-    "deploy": "ait deploy"
-  },
   "dependencies": {
-    "@apps-in-toss/web-analytics": "2.10.8",
-    "@apps-in-toss/web-framework": "3.0.3",
     "canvas-confetti": "^1.9.3",
     "firebase": "^10.7.0"
   },
   "devDependencies": {
-    "@types/canvas-confetti": "^1.6.4",
-    "vite": "8.1.5",
-    "typescript": "7.0.2"
-  },
-  "pnpm": {
-    "overrides": {
-      "find-my-way": ">=8.2.2",
-      "ip": ">=2.0.1"
-    }
+    "@types/canvas-confetti": "^1.6.4"
   }
 }

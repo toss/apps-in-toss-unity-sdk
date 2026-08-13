@@ -8,12 +8,16 @@
  * 인라인 계산해 단일 레버 PR의 효과를 한눈에 보여준다.
  *
  * 입력 레이아웃 (perf.yml report 잡에서 구성):
- *   artifacts/perf-results-macos-<version>/perf-results-<version>.json   ← 이번 실행(PR/branch)
- *   baseline/baseline-<version>.json                                     ← 직전 main 측정(옵션, 캐시 복원)
+ *   artifacts/perf-results-macos-<version>/perf-results-<version>.json        ← 이번 실행(PR/branch, A)
+ *   artifacts/perf-results-macos-<version>/perf-results-<version>-pair.json   ← 페어 A/B 모드의 B(옵션)
+ *   baseline/baseline-<version>.json                                          ← 직전 main 측정(옵션, 캐시 복원)
  *
  * 출력: perf-report.md (PR 코멘트 + job summary로 사용)
  *
  * **기록 전용**: 하드 게이트 없음. self-hosted 부하 변동 때문에 Δ는 참고용 신호다.
+ *
+ * 페어 A/B 데이터(perf-ttff.test.js 의 result.pairing)가 없으면 페어 섹션은 추가되지 않아 출력이
+ * 기존과 완전히 동일하다 — 하위호환은 loadPairResult()/anyPair 판정에서만 분기한다.
  */
 
 import fs from "fs";
@@ -64,6 +68,22 @@ function loadBaseline(version) {
   return null;
 }
 
+/**
+ * 페어 A/B 모드의 B 결과 로드 (artifacts/perf-results-<os>-<version>/perf-results-<version>-pair.json).
+ * 페어 모드가 아니면(perf-ttff.test.js 가 파일을 만들지 않음) 존재하지 않아 null — 리포트는 기존과 동일해진다.
+ */
+function loadPairResult(version) {
+  const fp = path.join("artifacts", `perf-results-${OS}-${version}`, `perf-results-${version}-pair.json`);
+  if (fs.existsSync(fp)) {
+    try {
+      return JSON.parse(fs.readFileSync(fp, "utf8"));
+    } catch (e) {
+      console.error(`Failed to parse pair result ${fp}: ${e.message}`);
+    }
+  }
+  return null;
+}
+
 function fmtMs(v) {
   if (v === null || v === undefined || isNaN(v)) return "-";
   return Math.round(v).toLocaleString("en-US") + " ms";
@@ -71,6 +91,18 @@ function fmtMs(v) {
 function fmtMB(bytes) {
   if (bytes === null || bytes === undefined || isNaN(bytes)) return "-";
   return (bytes / MB).toFixed(2) + " MB";
+}
+
+/** 페어 Δ(부호 있는 절대차) 표기 — baseline 대비 delta()와 달리 이미 계산된 차 값을 그대로 표기한다. */
+function fmtSignedMs(v) {
+  if (v === null || v === undefined || isNaN(v)) return "-";
+  const sign = v > 0 ? "+" : v < 0 ? "−" : "±";
+  return `${sign}${Math.abs(Math.round(v)).toLocaleString("en-US")} ms`;
+}
+function fmtSignedMB(bytes) {
+  if (bytes === null || bytes === undefined || isNaN(bytes)) return "-";
+  const sign = bytes > 0 ? "+" : bytes < 0 ? "−" : "±";
+  return `${sign}${(Math.abs(bytes) / MB).toFixed(2)} MB`;
 }
 
 /**
@@ -177,6 +209,28 @@ function generateReport(data, meta) {
   }
   md += "\n";
 
+  // ===== 페어 A/B 표 (pairing 데이터 없으면 섹션 자체를 추가하지 않음 — 기존 리포트와 바이트 동일) =====
+  const anyPair = UNITY_VERSIONS.some((v) => data[v]?.current?.pairing);
+  if (anyPair) {
+    md += "### 🔀 페어 A/B (같은 러너 · 반복 단위 인터리브)\n\n";
+    md += "> Δ = **반복별 차의 중앙값**(중앙값의 차가 아님) — 러너 개체차·잡 내부 드리프트가 상쇄된다.\n";
+    md += "> 순서는 반복마다 A→B / B→A 교대. baseline(main) Δ 는 페어 모드에서 표시하지 않는다.\n\n";
+    md += "| Unity | A | B | A TTFF | B TTFF | Δ TTFF (median) | Δ 범위 | 부호일치(음수) | Δ wasm |\n";
+    md += "|:------|:--|:--|-------:|-------:|-----------------:|:------:|:--------------:|-------:|\n";
+    for (const v of UNITY_VERSIONS) {
+      const cur = data[v]?.current;
+      const p = cur?.pairing;
+      if (!p) continue;
+      const pairB = data[v]?.pairB;
+      const d = p.deltaTtffMs || {};
+      const range = (d.min != null && d.max != null) ? `${fmtSignedMs(d.min)} ~ ${fmtSignedMs(d.max)}` : "-";
+      const signMatch = d.values?.length ? `${d.negativeCount}/${d.values.length}` : "-";
+      md += `| ${v} | ${p.labelA ?? "A"} | ${p.labelB ?? "B"} | ${fmtMs(cur?.ttffMs?.median)} | ${fmtMs(pairB?.ttffMs?.median)} | ` +
+        `${fmtSignedMs(d.median)} | ${range} | ${signMatch} | ${fmtSignedMB(p.deltaWasmBytes)} |\n`;
+    }
+    md += "\n";
+  }
+
   // ===== on-wire 바이트 표 =====
   md += "### 📦 On-wire 전송 바이트 (transferSize median)\n\n";
   md += "| Unity | wasm | data | total | Δ total vs main |\n";
@@ -220,11 +274,12 @@ let baselineCount = 0;
 for (const v of UNITY_VERSIONS) {
   const current = loadPerfResult(v);
   const baseline = loadBaseline(v);
-  data[v] = { current, baseline };
+  const pairB = loadPairResult(v);
+  data[v] = { current, baseline, pairB };
   if (current) {
     loaded++;
     const med = current.ttffMs?.median;
-    console.log(`  ✓ ${v}: TTFF median = ${med != null ? Math.round(med) + "ms" : "N/A"}${baseline ? " (baseline 있음)" : ""}`);
+    console.log(`  ✓ ${v}: TTFF median = ${med != null ? Math.round(med) + "ms" : "N/A"}${baseline ? " (baseline 있음)" : ""}${current.pairing ? " (페어 있음)" : ""}`);
   }
   if (baseline) baselineCount++;
 }

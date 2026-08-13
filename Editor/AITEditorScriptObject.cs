@@ -67,6 +67,37 @@ namespace AppsInToss
                 debugSymbolsExternal = true
             };
         }
+
+        /// <summary>
+        /// Deploy (Test) 전용 오버라이드 프로필 생성.
+        /// baseProfile(보통 productionProfile)의 나머지 필드는 그대로 복사한 "새 인스턴스"에
+        /// 압축 포맷/Managed Stripping Level만 빌드 가속용 값으로 덮어쓴다.
+        /// </summary>
+        /// <remarks>
+        /// baseProfile 인스턴스는 절대 변형하지 않는다 — config.productionProfile은 ScriptableObject로
+        /// 영속화되므로 여기서 원본 필드를 바꾸면 사용자가 Configuration에서 설정한 Production 값이
+        /// 디스크(AITConfig.asset)에 그대로 오염된다. 그래서 Clone() 뒤 필드를 대입하는 대신, object
+        /// initializer로 완전히 새 인스턴스를 만들어 baseProfile을 읽기 전용으로만 사용한다.
+        ///
+        /// 오버라이드 값의 근거(저장값 컨벤션): AITBuildInitializer.ConvertToCompressionFormat/
+        /// ConvertToManagedStrippingLevel 주석 — compressionFormat 1=Gzip, managedStrippingLevel 1=Minimal.
+        /// Production(-1=자동)은 Brotli·High로 변환되므로, Test만 Gzip·Minimal로 갈라진다.
+        /// </remarks>
+        internal static AITBuildProfile CreateTestDeployProfile(AITBuildProfile baseProfile)
+        {
+            if (baseProfile == null)
+                baseProfile = CreateProductionProfile();
+
+            return new AITBuildProfile
+            {
+                enableDebugConsole = baseProfile.enableDebugConsole,
+                developmentBuild = baseProfile.developmentBuild,
+                enableLZ4Compression = baseProfile.enableLZ4Compression,
+                compressionFormat = 1,  // Gzip — Deploy (Test) 가속: 압축 시간 단축(Production은 Brotli 유지)
+                managedStrippingLevel = 1,  // Minimal — Deploy (Test) 가속: 스트리핑 시간 단축(Production은 High 유지)
+                debugSymbolsExternal = baseProfile.debugSymbolsExternal
+            };
+        }
     }
 
     /// <summary>

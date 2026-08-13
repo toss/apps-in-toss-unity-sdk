@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Threading;
 using UnityEditor;
@@ -420,6 +421,12 @@ namespace AppsInToss
         /// AITDeployManager.RunDeploy(DeployKind.Test)가 이 값을 전달한다. 기본값 false는 Production
         /// 계열 호출부의 동작을 보존한다.
         /// </param>
+        /// <remarks>
+        /// onProgress/onComplete는 내부적으로 <see cref="PhaseTimingTracker"/>로 감싸여 BuildPhase 전환
+        /// 시점 기준 단계별 소요 시간을 계측한다 — Deploy (Test)/(Production)/Build &amp; Package/Dev Server 등
+        /// 이 메서드를 쓰는 모든 인터랙티브 경로에 공통 적용된다. 완료 시 "AIT: 단계별 소요 — ..." 요약
+        /// 1줄만 로그로 남기며(실패 시 실패 단계까지의 부분 요약 1줄), Sentry로는 전송하지 않는다.
+        /// </remarks>
         public static void DoExportAsync(
             bool buildWebGL,
             bool doPackaging,
@@ -456,11 +463,26 @@ namespace AppsInToss
             var snapshot = PlayerSettingsSnapshot.Capture();
             AITBuildSession.RecordPlayerSettingsSnapshot(snapshot);
 
+            // 단계별 시간 계측 — onProgress의 BuildPhase 전환 시점을 가로채 누적하고,
+            // onComplete 시점에 요약 1줄을 로그로 남긴다. 아래 두 래퍼를 거치지 않는 진입점
+            // (위 play mode/배치 모드의 조기 return)은 실제 빌드를 시작하지 않으므로 계측 대상이 아니다.
+            var phaseTiming = new PhaseTimingTracker();
+            Action<BuildPhase, float, string> trackedOnProgress = (phase, progress, status) =>
+            {
+                phaseTiming.EnterPhase(phase);
+                onProgress?.Invoke(phase, progress, status);
+            };
+            Action<AITExportError> trackedOnComplete = (result) =>
+            {
+                phaseTiming.LogSummary(result);
+                onComplete?.Invoke(result);
+            };
+
             try
             {
                 var editorConfig = PrepareExport(ref profile, ref profileName, fastBuild);
 
-                onProgress?.Invoke(BuildPhase.Preparing, 0.01f, "빌드 준비 중...");
+                trackedOnProgress(BuildPhase.Preparing, 0.01f, "빌드 준비 중...");
                 Debug.Log($"[AIT] 비동기 미니앱 변환 시작... (cleanBuild: {cleanBuild})");
 
                 if (editorConfig == null)
@@ -468,7 +490,7 @@ namespace AppsInToss
                     AITLog.Error("Apps in Toss 설정을 찾을 수 없습니다.", sentryCapture: false);
                     try { snapshot.Restore(); }
                     finally { AITBuildSession.EndBuild(); }
-                    onComplete?.Invoke(AITExportError.INVALID_APP_CONFIG);
+                    trackedOnComplete(AITExportError.INVALID_APP_CONFIG);
                     return;
                 }
 
@@ -477,7 +499,7 @@ namespace AppsInToss
                 {
                     try { snapshot.Restore(); }
                     finally { AITBuildSession.EndBuild(); }
-                    onComplete?.Invoke(AITExportError.CANCELLED);
+                    trackedOnComplete(AITExportError.CANCELLED);
                     return;
                 }
 
@@ -489,12 +511,12 @@ namespace AppsInToss
                         Debug.LogWarning("[AIT] 빌드가 취소되었습니다.");
                         try { snapshot.Restore(); }
                         finally { AITBuildSession.EndBuild(); }
-                        onComplete?.Invoke(AITExportError.CANCELLED);
+                        trackedOnComplete(AITExportError.CANCELLED);
                         return;
                     }
 
                     // Phase 0: BuildConfig 복사 + pnpm install 백그라운드 시작
-                    onProgress?.Invoke(BuildPhase.Preparing, 0.02f, "빌드 설정 파일 복사 및 pnpm install 준비 중...");
+                    trackedOnProgress(BuildPhase.Preparing, 0.02f, "빌드 설정 파일 복사 및 pnpm install 준비 중...");
                     string projectPath = UnityUtil.GetProjectPath();
 
                     var (earlyCtx, earlyError) = Editor.AITPackageBuilder.PrepareEarlyPackaging(projectPath, profile);
@@ -502,7 +524,7 @@ namespace AppsInToss
                     {
                         try { snapshot.Restore(); }
                         finally { AITBuildSession.EndBuild(); }
-                        onComplete?.Invoke(earlyError);
+                        trackedOnComplete(earlyError);
                         return;
                     }
 
@@ -511,7 +533,7 @@ namespace AppsInToss
 
                     // Phase 1: WebGL Build (BLOCKING - 메인 스레드)
                     // 백그라운드 pnpm install은 독립 OS 프로세스이므로 이 동안 병렬 실행됨
-                    onProgress?.Invoke(BuildPhase.WebGLBuild, 0.05f, "WebGL 빌드 중... (pnpm install 병렬 실행 중)");
+                    trackedOnProgress(BuildPhase.WebGLBuild, 0.05f, "WebGL 빌드 중... (pnpm install 병렬 실행 중)");
 
                     AITBuildSession.SetStage(BuildStage.WebGLBuild);
                     var webglResult = Editor.AITWebGLBuilder.BuildWebGL(cleanBuild, profile);
@@ -521,7 +543,7 @@ namespace AppsInToss
                         AITBuildCancellation.SetCurrentEarlyContext(null);
                         try { snapshot.Restore(); }
                         finally { AITBuildSession.EndBuild(); }
-                        onComplete?.Invoke(webglResult);
+                        trackedOnComplete(webglResult);
                         return;
                     }
 
@@ -532,7 +554,7 @@ namespace AppsInToss
                         Debug.LogWarning("[AIT] 빌드가 취소되었습니다.");
                         try { snapshot.Restore(); }
                         finally { AITBuildSession.EndBuild(); }
-                        onComplete?.Invoke(AITExportError.CANCELLED);
+                        trackedOnComplete(AITExportError.CANCELLED);
                         return;
                     }
 
@@ -541,7 +563,7 @@ namespace AppsInToss
                     AITBuildCancellation.SetCurrentEarlyContext(null);
                     AITBuildSession.SetStage(BuildStage.Packaging);
                     Editor.AITPackageBuilder.CompletePackagingAfterWebGLBuild(
-                        earlyCtx, webglPath, profile, snapshot, onComplete, onProgress, skipGraniteBuild);
+                        earlyCtx, webglPath, profile, snapshot, trackedOnComplete, trackedOnProgress, skipGraniteBuild);
                 }
                 else if (buildWebGL)
                 {
@@ -551,11 +573,11 @@ namespace AppsInToss
                         Debug.LogWarning("[AIT] 빌드가 취소되었습니다.");
                         try { snapshot.Restore(); }
                         finally { AITBuildSession.EndBuild(); }
-                        onComplete?.Invoke(AITExportError.CANCELLED);
+                        trackedOnComplete(AITExportError.CANCELLED);
                         return;
                     }
 
-                    onProgress?.Invoke(BuildPhase.WebGLBuild, 0.05f, "WebGL 빌드 중... (Unity 제한으로 에디터가 일시 정지됩니다)");
+                    trackedOnProgress(BuildPhase.WebGLBuild, 0.05f, "WebGL 빌드 중... (Unity 제한으로 에디터가 일시 정지됩니다)");
 
                     AITBuildSession.SetStage(BuildStage.WebGLBuild);
                     var webglResult = Editor.AITWebGLBuilder.BuildWebGL(cleanBuild, profile);
@@ -563,7 +585,7 @@ namespace AppsInToss
                     {
                         try { snapshot.Restore(); }
                         finally { AITBuildSession.EndBuild(); }
-                        onComplete?.Invoke(webglResult);
+                        trackedOnComplete(webglResult);
                         return;
                     }
 
@@ -571,7 +593,7 @@ namespace AppsInToss
                     Debug.Log("[AIT] 비동기 미니앱 변환이 완료되었습니다!");
                     try { snapshot.Restore(); }
                     finally { AITBuildSession.EndBuild(); }
-                    onComplete?.Invoke(AITExportError.SUCCEED);
+                    trackedOnComplete(AITExportError.SUCCEED);
                 }
                 else if (doPackaging)
                 {
@@ -581,12 +603,12 @@ namespace AppsInToss
                         Debug.LogWarning("[AIT] 빌드가 취소되었습니다.");
                         try { snapshot.Restore(); }
                         finally { AITBuildSession.EndBuild(); }
-                        onComplete?.Invoke(AITExportError.CANCELLED);
+                        trackedOnComplete(AITExportError.CANCELLED);
                         return;
                     }
 
                     AITBuildSession.SetStage(BuildStage.Packaging);
-                    GenerateMiniAppPackageAsync(profile, snapshot, onComplete, onProgress, skipGraniteBuild);
+                    GenerateMiniAppPackageAsync(profile, snapshot, trackedOnComplete, trackedOnProgress, skipGraniteBuild);
                 }
                 else
                 {
@@ -594,7 +616,7 @@ namespace AppsInToss
                     Debug.Log("[AIT] 비동기 미니앱 변환이 완료되었습니다!");
                     try { snapshot.Restore(); }
                     finally { AITBuildSession.EndBuild(); }
-                    onComplete?.Invoke(AITExportError.SUCCEED);
+                    trackedOnComplete(AITExportError.SUCCEED);
                 }
             }
             catch (Exception e)
@@ -602,7 +624,7 @@ namespace AppsInToss
                 Debug.LogError($"[AIT] 변환 중 오류가 발생했습니다: {e}");
                 try { snapshot.Restore(); }
                 finally { AITBuildSession.EndBuild(); }
-                onComplete?.Invoke(AITExportError.BUILD_WEBGL_FAILED);
+                trackedOnComplete(AITExportError.BUILD_WEBGL_FAILED);
             }
         }
 
@@ -656,6 +678,137 @@ namespace AppsInToss
                 onProgress: onProgress,
                 skipGraniteBuild: skipGraniteBuild
             );
+        }
+
+        #endregion
+
+        #region Phase Timing (Deploy 가속 계측)
+
+        /// <summary>
+        /// DoExportAsync 진행 중 BuildPhase 전환 시점을 기준으로 각 단계의 소요 시간을 누적한다.
+        /// 동일 단계에 여러 번 재진입해도(GraniteBuildRunner의 pnpm 재설치 → granite 재시도 경로 등)
+        /// 시간을 합산한다. Preparing/Complete/Failed/Cancelled/None은 순간적인 마커라 별도 버킷을
+        /// 만들지 않는다(그 구간에 흐른 시간은 요약에서 빠지지만, 총 소요 시간은 overall 스톱워치가
+        /// 별도로 잡으므로 정보 손실이 실질적으로 없다 — 준비 단계는 보통 1초 미만).
+        /// </summary>
+        private sealed class PhaseTimingTracker
+        {
+            private static readonly HashSet<BuildPhase> TrackedPhases = new HashSet<BuildPhase>
+            {
+                BuildPhase.WebGLBuild,
+                BuildPhase.CopyingFiles,
+                BuildPhase.PnpmInstall,
+                BuildPhase.GraniteBuild,
+            };
+
+            private readonly System.Diagnostics.Stopwatch _overallStopwatch = System.Diagnostics.Stopwatch.StartNew();
+            private readonly System.Diagnostics.Stopwatch _phaseStopwatch = new System.Diagnostics.Stopwatch();
+            private readonly List<BuildPhase> _phaseOrder = new List<BuildPhase>();
+            private readonly Dictionary<BuildPhase, double> _phaseSeconds = new Dictionary<BuildPhase, double>();
+            private BuildPhase? _currentPhase;
+            private bool _summaryLogged;
+
+            /// <summary>
+            /// onProgress가 새 phase를 보고할 때마다 호출한다. phase가 실제로 바뀐 경우에만
+            /// 직전 phase의 경과 시간을 버킷에 반영하고 스톱워치를 재시작한다 — 같은 phase가
+            /// 여러 번(진행률 갱신마다) 불려도 시간이 끊기지 않는다.
+            /// </summary>
+            public void EnterPhase(BuildPhase phase)
+            {
+                if (_currentPhase.HasValue && _currentPhase.Value != phase)
+                {
+                    FlushCurrentPhase();
+                }
+                if (!_currentPhase.HasValue || _currentPhase.Value != phase)
+                {
+                    _currentPhase = phase;
+                    _phaseStopwatch.Restart();
+                }
+            }
+
+            private void FlushCurrentPhase()
+            {
+                if (!_currentPhase.HasValue) return;
+                double seconds = _phaseStopwatch.Elapsed.TotalSeconds;
+                var phase = _currentPhase.Value;
+                if (!TrackedPhases.Contains(phase)) return;
+
+                if (!_phaseSeconds.ContainsKey(phase))
+                {
+                    _phaseSeconds[phase] = 0;
+                    _phaseOrder.Add(phase);
+                }
+                _phaseSeconds[phase] += seconds;
+            }
+
+            /// <summary>
+            /// 빌드 완료(성공/실패/취소) 시 1회 호출. 요약 로그 1줄을 남긴다. 중복 호출은 무시한다
+            /// (일부 실패 경로가 콜백을 여러 겹으로 감쌀 가능성에 대비한 방어).
+            /// </summary>
+            public void LogSummary(AITExportError result)
+            {
+                if (_summaryLogged) return;
+                _summaryLogged = true;
+
+                FlushCurrentPhase();
+                _overallStopwatch.Stop();
+
+                // 단계 진입 전 즉시 종료(예: 설정 오류로 즉시 실패)된 경우 요약할 내용이 없다.
+                if (_phaseOrder.Count == 0) return;
+
+                var phaseTimings = new List<(string label, double seconds)>(_phaseOrder.Count);
+                foreach (var phase in _phaseOrder)
+                {
+                    phaseTimings.Add((PhaseTimingLabel(phase), _phaseSeconds[phase]));
+                }
+
+                double totalSeconds = _overallStopwatch.Elapsed.TotalSeconds;
+                string failedAtLabel = result == AITExportError.SUCCEED || !_currentPhase.HasValue
+                    ? null
+                    : PhaseTimingLabel(_currentPhase.Value);
+
+                Debug.Log(FormatPhaseTimings(phaseTimings, totalSeconds, failedAtLabel));
+            }
+        }
+
+        /// <summary>
+        /// 단계별 시간 요약 로그에 쓰는 한국어 라벨. AITDeployManager.GetPhaseText(진행률 다이얼로그용)와는
+        /// 별개 — GraniteBuild는 여기서 "vite/ait build"로 표기해 실제 실행되는 CLI를 드러낸다.
+        /// </summary>
+        private static string PhaseTimingLabel(BuildPhase phase)
+        {
+            switch (phase)
+            {
+                case BuildPhase.WebGLBuild: return "WebGL 빌드";
+                case BuildPhase.CopyingFiles: return "파일 복사";
+                case BuildPhase.PnpmInstall: return "pnpm install";
+                case BuildPhase.GraniteBuild: return "vite/ait build";
+                default: return phase.ToString();
+            }
+        }
+
+        /// <summary>
+        /// 단계별 소요 시간 요약을 "AIT: " 로그 컨벤션에 맞는 한 줄 문자열로 조립한다.
+        /// Stopwatch/시각 의존이 없는 순수 함수 — 유닛 테스트로 포맷을 고정할 수 있다.
+        /// 예: "AIT: 단계별 소요 — WebGL 빌드 87.3s · 파일 복사 2.1s · pnpm install 0.4s · vite/ait build 41.2s (총 131.0s)"
+        /// failedAtLabel이 주어지면(성공하지 못한 경우) 실패 시점까지의 부분 요약으로 표기한다.
+        /// </summary>
+        internal static string FormatPhaseTimings(IReadOnlyList<(string label, double seconds)> phaseTimings, double totalSeconds, string failedAtLabel = null)
+        {
+            var segments = new List<string>(phaseTimings?.Count ?? 0);
+            if (phaseTimings != null)
+            {
+                foreach (var (label, seconds) in phaseTimings)
+                {
+                    segments.Add($"{label} {seconds.ToString("F1", CultureInfo.InvariantCulture)}s");
+                }
+            }
+            string body = string.Join(" · ", segments);
+            string totalStr = totalSeconds.ToString("F1", CultureInfo.InvariantCulture);
+
+            return string.IsNullOrEmpty(failedAtLabel)
+                ? $"AIT: 단계별 소요 — {body} (총 {totalStr}s)"
+                : $"AIT: 단계별 소요(실패: {failedAtLabel}) — {body} (실패까지 {totalStr}s)";
         }
 
         #endregion

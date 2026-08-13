@@ -181,6 +181,76 @@ public class AITBuildProfileMappingTests
     // PlayerSettings 라운드트립 — WebGL 타깃이 변환 결과를 실제로 수용하는지
     // =====================================================
 
+    // =====================================================
+    // AITBuildProfile.CreateTestDeployProfile — Deploy (Test) 전용 압축/스트리핑 오버라이드
+    // baseProfile(보통 productionProfile)을 절대 변형하지 않고 새 인스턴스를 만들어야 한다.
+    // =====================================================
+
+    [Test]
+    public void CreateTestDeployProfile_Overrides_CompressionAndStripping()
+    {
+        var baseProfile = AITBuildProfile.CreateProductionProfile();
+
+        var testProfile = AITBuildProfile.CreateTestDeployProfile(baseProfile);
+
+        Assert.AreEqual(1, testProfile.compressionFormat, "Deploy (Test)는 압축 포맷 저장값 1(Gzip)이어야 함.");
+        Assert.AreEqual(1, testProfile.managedStrippingLevel, "Deploy (Test)는 Stripping 저장값 1(Minimal)이어야 함.");
+        Assert.AreEqual(WebGLCompressionFormat.Gzip, AITBuildInitializer.ConvertToCompressionFormat(testProfile.compressionFormat));
+        Assert.AreEqual(ManagedStrippingLevel.Minimal, AITBuildInitializer.ConvertToManagedStrippingLevel(testProfile.managedStrippingLevel));
+    }
+
+    [Test]
+    public void CreateTestDeployProfile_PreservesRemainingFields_FromBaseProfile()
+    {
+        var baseProfile = new AITBuildProfile
+        {
+            enableDebugConsole = true,
+            developmentBuild = true,
+            enableLZ4Compression = false,
+            compressionFormat = 2,          // Brotli — 오버라이드 대상이 아님을 증명하기 위한 값
+            managedStrippingLevel = 4,       // High — 오버라이드 대상이 아님을 증명하기 위한 값
+            debugSymbolsExternal = false
+        };
+
+        var testProfile = AITBuildProfile.CreateTestDeployProfile(baseProfile);
+
+        Assert.AreEqual(baseProfile.enableDebugConsole, testProfile.enableDebugConsole);
+        Assert.AreEqual(baseProfile.developmentBuild, testProfile.developmentBuild);
+        Assert.AreEqual(baseProfile.enableLZ4Compression, testProfile.enableLZ4Compression);
+        Assert.AreEqual(baseProfile.debugSymbolsExternal, testProfile.debugSymbolsExternal);
+
+        // 압축/스트리핑만 오버라이드되고 나머지는 baseProfile 값을 그대로 물려받아야 함
+        Assert.AreEqual(1, testProfile.compressionFormat);
+        Assert.AreEqual(1, testProfile.managedStrippingLevel);
+    }
+
+    [Test]
+    public void CreateTestDeployProfile_DoesNotMutate_BaseProfileInstance()
+    {
+        var baseProfile = new AITBuildProfile
+        {
+            compressionFormat = 2,   // Brotli
+            managedStrippingLevel = 4 // High
+        };
+
+        AITBuildProfile.CreateTestDeployProfile(baseProfile);
+
+        Assert.AreEqual(2, baseProfile.compressionFormat,
+            "CreateTestDeployProfile은 baseProfile 인스턴스를 절대 변형하면 안 됨(압축).");
+        Assert.AreEqual(4, baseProfile.managedStrippingLevel,
+            "CreateTestDeployProfile은 baseProfile 인스턴스를 절대 변형하면 안 됨(스트리핑).");
+    }
+
+    [Test]
+    public void CreateTestDeployProfile_ReturnsDifferentInstance_FromBaseProfile()
+    {
+        var baseProfile = AITBuildProfile.CreateProductionProfile();
+
+        var testProfile = AITBuildProfile.CreateTestDeployProfile(baseProfile);
+
+        Assert.AreNotSame(baseProfile, testProfile, "반환 인스턴스는 baseProfile과 다른 참조여야 함.");
+    }
+
     [Test]
     public void SetManagedStrippingLevel_RoundTrips_ConvertedMinimal()
     {
@@ -211,5 +281,77 @@ public class AITBuildProfileMappingTests
             PlayerSettings.SetManagedStrippingLevel(BuildTargetGroup.WebGL, original);
         }
 #endif
+    }
+
+    // =====================================================
+    // AITConvertCore.FormatPhaseTimings — 단계별 소요 시간 요약 로그 포맷
+    // Stopwatch/시각 의존이 없는 순수 함수이므로 고정 입력으로 문자열을 그대로 검증한다.
+    // =====================================================
+
+    [Test]
+    public void FormatPhaseTimings_SuccessCase_MatchesExpectedFormat()
+    {
+        var phaseTimings = new System.Collections.Generic.List<(string label, double seconds)>
+        {
+            ("WebGL 빌드", 87.34),
+            ("파일 복사", 2.06),
+            ("pnpm install", 0.4),
+            ("vite/ait build", 41.2),
+        };
+
+        string formatted = AITConvertCore.FormatPhaseTimings(phaseTimings, 131.0);
+
+        Assert.AreEqual(
+            "AIT: 단계별 소요 — WebGL 빌드 87.3s · 파일 복사 2.1s · pnpm install 0.4s · vite/ait build 41.2s (총 131.0s)",
+            formatted);
+    }
+
+    [Test]
+    public void FormatPhaseTimings_FailureCase_IncludesFailedPhaseLabel()
+    {
+        var phaseTimings = new System.Collections.Generic.List<(string label, double seconds)>
+        {
+            ("WebGL 빌드", 12.5),
+        };
+
+        string formatted = AITConvertCore.FormatPhaseTimings(phaseTimings, 12.5, "WebGL 빌드");
+
+        Assert.AreEqual(
+            "AIT: 단계별 소요(실패: WebGL 빌드) — WebGL 빌드 12.5s (실패까지 12.5s)",
+            formatted);
+    }
+
+    [Test]
+    public void FormatPhaseTimings_EmptyPhaseList_StillProducesTotal()
+    {
+        var phaseTimings = new System.Collections.Generic.List<(string label, double seconds)>();
+
+        string formatted = AITConvertCore.FormatPhaseTimings(phaseTimings, 3.0);
+
+        Assert.AreEqual("AIT: 단계별 소요 —  (총 3.0s)", formatted);
+    }
+
+    [Test]
+    public void FormatPhaseTimings_UsesInvariantCulture_ForDecimalSeparator()
+    {
+        // 소수점 구분자가 시스템 로케일(예: 콤마 사용 로케일)에 흔들리지 않고 항상 '.'이어야 함.
+        var previousCulture = System.Threading.Thread.CurrentThread.CurrentCulture;
+        try
+        {
+            System.Threading.Thread.CurrentThread.CurrentCulture = System.Globalization.CultureInfo.GetCultureInfo("de-DE");
+            var phaseTimings = new System.Collections.Generic.List<(string label, double seconds)>
+            {
+                ("WebGL 빌드", 1000.5),
+            };
+
+            string formatted = AITConvertCore.FormatPhaseTimings(phaseTimings, 1000.5);
+
+            StringAssert.Contains("1000.5s", formatted);
+            StringAssert.DoesNotContain(",5s", formatted);
+        }
+        finally
+        {
+            System.Threading.Thread.CurrentThread.CurrentCulture = previousCulture;
+        }
     }
 }

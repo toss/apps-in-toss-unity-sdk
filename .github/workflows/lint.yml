@@ -104,3 +104,54 @@ jobs:
         # 배포 .meta의 중복 GUID / 손-작성 순차 GUID 검사 (techchat #4076 재발 방지).
         # Node stdlib만 사용 — ubuntu-latest 기본 Node로 충분.
         run: node "scripts~/check-meta-guids.js"
+
+  check-fixture-buildconfig-sync:
+    name: Check E2E fixture package.json 정본 동기화
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+
+      - name: Check E2E fixture package.json dependencies drift against canonical
+        # E2E 픽스처(Tests~/E2E/*/Assets/.../BuildConfig~/package.json)는 사람이 손으로 만든
+        # 스냅샷이라 SDK 정본(WebGLTemplates/AITTemplate/BuildConfig~/package.json)이 업데이트돼도
+        # 자동으로 따라가지 않는다. 정본에 존재하는 dependencies/devDependencies 키가 픽스처에도
+        # 있는데 값이 다르면 실패시켜 드리프트를 조기에 잡는다.
+        run: |
+          set -euo pipefail
+
+          CANONICAL="WebGLTemplates/AITTemplate/BuildConfig~/package.json"
+          echo "E2E 픽스처 package.json이 정본과 동기화되어 있는지 검사 중..."
+          echo "정본: $CANONICAL"
+          echo ""
+
+          FAILED=0
+          shopt -s nullglob
+
+          for SECTION in dependencies devDependencies; do
+            KEYS=$(jq -r --arg s "$SECTION" '.[$s] // {} | keys[]' "$CANONICAL")
+            while IFS= read -r KEY; do
+              [ -z "$KEY" ] && continue
+              CANON_VALUE=$(jq -r --arg s "$SECTION" --arg k "$KEY" '.[$s][$k]' "$CANONICAL")
+
+              for FIXTURE in Tests~/E2E/*/Assets/WebGLTemplates/AITTemplate/BuildConfig~/package.json; do
+                [ -f "$FIXTURE" ] || continue
+                FIXTURE_VALUE=$(jq -r --arg s "$SECTION" --arg k "$KEY" '.[$s][$k] // empty' "$FIXTURE")
+                if [ -n "$FIXTURE_VALUE" ] && [ "$FIXTURE_VALUE" != "$CANON_VALUE" ]; then
+                  echo "::error::[$FIXTURE] $SECTION.$KEY = \"$FIXTURE_VALUE\" (정본 값: \"$CANON_VALUE\")"
+                  FAILED=1
+                fi
+              done
+            done <<< "$KEYS"
+          done
+
+          if [ "$FAILED" -ne 0 ]; then
+            echo ""
+            echo "E2E 픽스처 package.json의 dependencies/devDependencies가 정본과 어긋난 항목이 있습니다."
+            echo "정본 값으로 동기화하세요. 픽스처를 새로 만들 때는 기존 픽스처를 복사하지 말고"
+            echo "정본(WebGLTemplates/AITTemplate/BuildConfig~/package.json) 기준으로 값을 작성하세요."
+            exit 1
+          fi
+
+          echo "✓ 모든 E2E 픽스처 package.json이 정본과 동기화되어 있습니다."

@@ -184,33 +184,48 @@ namespace AppsInToss.Editor
             // 실제 LTO는 emscripten code optimization으로 켠다. 버전별 API 차이(2022.3/6: UserBuildSettings,
             // 구버전: PlayerSettings.WebGL) + WebGL 모듈 어셈블리 참조 보장 부재 때문에
             // AITWebGLCodeOptimization이 reflection으로 적용한다(멤버 없는 버전은 fail-safe로 건너뜀).
-            // editorConfig.webGLCodeOptimization: -1(자동)/1 → DiskSizeLTO 적용, 0 → 미적용(Unity 설정 유지).
+            // editorConfig.webGLCodeOptimization: -1(자동)/1 → 적용, 0 → 미적용(Unity 설정 유지).
             bool applyWebGLCodeOpt = editorConfig.webGLCodeOptimization != 0;
             string webGLCodeOptTarget = AITDefaultSettings.GetDefaultWebGLCodeOptimization();
-            bool webGLCodeOptApplied = false;
+            string webGLCodeOptEnv = System.Environment.GetEnvironmentVariable(AITWebGLCodeOptimization.EnvOverrideKey);
             // Unity 6000.0의 emscripten 툴체인은 대형 프로젝트의 whole-program LTO 링크에서
             // wasm-ld가 빌드 머신 메모리(>65GB)를 초과해 OOM(SIGKILL "Killed: 9")으로 빌드를 깨뜨린다.
             // 6000.3의 신형 툴체인은 동일한 DiskSizeLTO를 정상 링크함을 실측 확인했다.
-            // 따라서 6000.0.x에서만 LTO 적용을 건너뛰어 하드 빌드 실패를 막는다
-            // (저메모리 빌드 머신을 쓰는 실사용자 보호 + 비-LTO 산출물로 빌드 완주).
-            bool webGLCodeOptOomSkipped =
-                applyWebGLCodeOpt
-                && webGLCodeOptTarget == AITWebGLCodeOptimization.DiskSizeLTO
-                && Application.unityVersion.StartsWith("6000.0.");
-            if (webGLCodeOptOomSkipped)
+            // 따라서 6000.0.x에서는 사다리 1순위(DiskSizeLTO)만 제외하고 2순위(DiskSize, 비-LTO)부터
+            // 태운다(저메모리 빌드 머신을 쓰는 실사용자 보호 + 비-LTO 산출물로 빌드 완주). 과거에는
+            // TrySetDiskSizeLTO() 호출 자체를 건너뛰어 6000.0에서 code optimization이 완전히
+            // 미적용이었다 — 버전 게이트/킬스위치 결정 로직은 AITWebGLCodeOptimization.ResolveDecision
+            // (순수 함수, EditMode 데이터 주도 테스트 대상)으로 뽑아 한곳에서 관리한다.
+            var codeOpt = AITWebGLCodeOptimization.ResolveDecision(
+                applyWebGLCodeOpt, Application.unityVersion, webGLCodeOptEnv);
+            string webGLCodeOptBefore = AITWebGLCodeOptimization.GetCurrentName();
+            bool webGLCodeOptApplied = false;
+            if (codeOpt.Apply)
             {
-                Debug.LogWarning(
-                    $"[AIT] WebGL Code Optimization({webGLCodeOptTarget}) 건너뜀 — Unity 6000.0 emscripten은 대형 프로젝트 LTO 링크에서 메모리 초과(OOM)로 빌드가 실패할 수 있어 이 버전에서만 비활성화 (6000.1+ 권장, 빌드는 계속)");
-            }
-            else if (applyWebGLCodeOpt)
-            {
-                // TrySetDiskSizeLTO: DiskSizeLTO 미지원 버전에서 DiskSize로 자동 폴백
-                // (Sentry APPS-IN-TOSS-UNITY-SDK-10W: 멤버 미정의 시 건너뛰던 동작 개선)
-                webGLCodeOptApplied = AITWebGLCodeOptimization.TrySetDiskSizeLTO();
+                if (!string.IsNullOrEmpty(codeOpt.ForcedMember))
+                {
+                    // AIT_WEBGL_CODE_OPTIMIZATION 환경 변수로 특정 멤버를 강제(운영자 오버라이드).
+                    // GUI '미적용'(editorConfig.webGLCodeOptimization == 0)도 무시하고 적용된다 —
+                    // 6000.0 OOM 재현/반증 등을 위한 의도된 동작이다.
+                    webGLCodeOptApplied = AITWebGLCodeOptimization.TrySetByName(codeOpt.ForcedMember);
+                    Debug.Log($"[AIT] 환경 변수 오버라이드: {AITWebGLCodeOptimization.EnvOverrideKey}={codeOpt.ForcedMember} (적용={webGLCodeOptApplied})");
+                }
+                if (!webGLCodeOptApplied)
+                {
+                    // 강제 멤버가 지정되지 않은 일반 경로이거나, 강제가 실패한 경우(오타/버전 불일치로
+                    // enum에 없는 멤버명): 정상 사다리로 폴백한다. codeOpt.AllowLto는 강제 분기에서도
+                    // 버전 게이트 값을 그대로 유지하므로, 6000.0에서 강제가 실패해도 DiskSizeLTO(OOM
+                    // 레버)가 재활성화되지 않고 DiskSize(2순위)부터 사다리를 탄다.
+                    webGLCodeOptApplied = AITWebGLCodeOptimization.TrySetBestAvailable(codeOpt.AllowLto);
+                }
                 if (!webGLCodeOptApplied)
                 {
                     Debug.LogWarning(
                         $"[AIT] WebGL Code Optimization({webGLCodeOptTarget}) 미적용 — 이 Unity 버전에서 API/멤버 부재 (빌드는 계속)");
+                }
+                else
+                {
+                    Debug.Log($"[AIT] WebGL codeOptimization: '{webGLCodeOptBefore ?? "?"}' → '{AITWebGLCodeOptimization.GetCurrentName()}'");
                 }
             }
             // ===== IL2CPP Code Generation (Meta 로드타임 스택: OptimizeSize) =====
@@ -350,10 +365,11 @@ namespace AppsInToss.Editor
                 : showUnityLogoApplied ? "숨김"
                 : "숨김 요청됨 (Pro 라이선스 없음 — 미적용)";
             Debug.Log($"[AIT]   - Unity 로고: {showUnityLogoLog}{(editorConfig.showUnityLogo < 0 ? " (자동)" : "")}");
-            string webGLCodeOptLog = !applyWebGLCodeOpt ? "미적용 (off)"
-                : webGLCodeOptOomSkipped ? "미적용 (6000.0 LTO OOM 회피)"
-                : webGLCodeOptApplied ? $"{webGLCodeOptTarget}{(editorConfig.webGLCodeOptimization < 0 ? " (자동)" : "")}"
-                : "미적용 (API 부재)";
+            string webGLCodeOptLog = !codeOpt.Apply
+                ? (applyWebGLCodeOpt ? "미적용 (env off)" : "미적용 (off)")
+                : webGLCodeOptApplied
+                    ? $"{AITWebGLCodeOptimization.GetCurrentName()}{(codeOpt.AllowLto ? "" : " (LTO 제외 — 6000.0 OOM 회피)")}{(editorConfig.webGLCodeOptimization < 0 ? " (자동)" : "")}"
+                    : "미적용 (API 부재)";
             Debug.Log($"[AIT]   - WebGL Code Optimization: {webGLCodeOptLog}");
 #if UNITY_6000_0_OR_NEWER
             Debug.Log($"[AIT]   - IL2CPP Code Generation: {il2cppCodeGen}{(editorConfig.il2cppCodeGeneration < 0 ? " (자동)" : "")}");

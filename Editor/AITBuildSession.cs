@@ -35,6 +35,7 @@ namespace AppsInToss.Editor
         public ScriptingImplementation scriptingBackend;
         public ManagedStrippingLevel managedStrippingLevel;
         public Il2CppCompilerConfiguration il2cppCompilerConfiguration;
+        public UnityEditor.Build.Il2CppCodeGeneration il2cppCodeGeneration;
 
         // Stack Trace Log Type (LogType별)
         public StackTraceLogType stackTraceLogTypeError;
@@ -88,6 +89,14 @@ namespace AppsInToss.Editor
                 stackTraceLogTypeWarning   = PlayerSettings.GetStackTraceLogType(LogType.Warning),
                 stackTraceLogTypeLog       = PlayerSettings.GetStackTraceLogType(LogType.Log),
                 stackTraceLogTypeException = PlayerSettings.GetStackTraceLogType(LogType.Exception),
+
+                // PlayerSettings.SetIl2CppCodeGeneration(NamedBuildTarget, ...)은 2022.2+ API.
+                // 최소 지원 버전(2021.3)에서는 프로젝트 전역 설정인 EditorUserBuildSettings.il2CppCodeGeneration(2021.2+)을 사용.
+#if UNITY_2022_2_OR_NEWER
+                il2cppCodeGeneration = PlayerSettings.GetIl2CppCodeGeneration(UnityEditor.Build.NamedBuildTarget.WebGL),
+#else
+                il2cppCodeGeneration = EditorUserBuildSettings.il2CppCodeGeneration,
+#endif
             };
 
 #if UNITY_2022_3_OR_NEWER
@@ -142,6 +151,12 @@ namespace AppsInToss.Editor
             PlayerSettings.SetScriptingBackend(BuildTargetGroup.WebGL, scriptingBackend);
             PlayerSettings.SetManagedStrippingLevel(BuildTargetGroup.WebGL, managedStrippingLevel);
             PlayerSettings.SetIl2CppCompilerConfiguration(BuildTargetGroup.WebGL, il2cppCompilerConfiguration);
+#endif
+
+#if UNITY_2022_2_OR_NEWER
+            PlayerSettings.SetIl2CppCodeGeneration(UnityEditor.Build.NamedBuildTarget.WebGL, il2cppCodeGeneration);
+#else
+            EditorUserBuildSettings.il2CppCodeGeneration = il2cppCodeGeneration;
 #endif
 
             PlayerSettings.SetStackTraceLogType(LogType.Error,     stackTraceLogTypeError);

@@ -941,7 +941,7 @@ jobs:
 
                 # ait deploy 실행 (작업 디렉토리를 build_dir로 변경)
                 # 5분(300초) 타임아웃 설정 - 배포 서버 응답 대기
-                DEPLOY_OUTPUT=$(cd "${build_dir}" && timeout 300 ait deploy --api-key "$AIT_DEPLOY_KEY" 2>&1) && DEPLOY_STATUS=0 || DEPLOY_STATUS=$?
+                DEPLOY_OUTPUT=$(cd "${build_dir}" && timeout 300 ait deploy --api-key "$AIT_DEPLOY_KEY" -m "[CI] Release v${VERSION} (${OS_DISPLAY} · Unity ${UNITY_VERSION})" 2>&1) && DEPLOY_STATUS=0 || DEPLOY_STATUS=$?
 
                 echo "$DEPLOY_OUTPUT"
 

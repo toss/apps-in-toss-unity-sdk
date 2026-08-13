@@ -303,6 +303,7 @@ jobs:
         id: deploy
         env:
           AIT_DEPLOY_KEY: ${{ secrets.AIT_DEPLOY_KEY }}
+          PR_NUMBER: ${{ needs.parse-targets.outputs.pr_number }}
         run: |
           if [ -z "$AIT_DEPLOY_KEY" ]; then
             echo "::error::AIT_DEPLOY_KEY is not set"
@@ -329,7 +330,7 @@ jobs:
               echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
               echo "Deploying: ${OS_DISPLAY} - Unity ${UNITY_VERSION}"
 
-              DEPLOY_OUTPUT=$(cd "${build_dir}" && timeout 300 ait deploy --api-key "$AIT_DEPLOY_KEY" 2>&1) && DEPLOY_STATUS=0 || DEPLOY_STATUS=$?
+              DEPLOY_OUTPUT=$(cd "${build_dir}" && timeout 300 ait deploy --api-key "$AIT_DEPLOY_KEY" -m "[CI] Preview PR #${PR_NUMBER} (${OS_DISPLAY} · Unity ${UNITY_VERSION})" 2>&1) && DEPLOY_STATUS=0 || DEPLOY_STATUS=$?
 
               echo "$DEPLOY_OUTPUT"
 

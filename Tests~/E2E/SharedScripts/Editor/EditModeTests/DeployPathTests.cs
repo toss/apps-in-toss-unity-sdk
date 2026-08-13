@@ -109,9 +109,9 @@ public class DeployPathTests
         Assert.IsTrue(File.Exists(sourcePath), $"AITDeployManager.cs가 존재해야 함: {sourcePath}");
 
         string source = File.ReadAllText(sourcePath);
-        string deployBody = ExtractMethodBody(source, "private static void ExecuteDeploy()");
+        string deployBody = ExtractMethodBody(source, "private static void ExecuteDeploy(DeployKind kind)");
         Assert.IsNotNull(deployBody,
-            "AITDeployManager.ExecuteDeploy() 메서드를 소스에서 찾을 수 없음.");
+            "AITDeployManager.ExecuteDeploy(DeployKind kind) 메서드를 소스에서 찾을 수 없음.");
 
         bool usesRawNpmDirArray =
             deployBody.Contains("new[] { npmDir }") ||

@@ -26,6 +26,11 @@ using AppsInToss;
 ///
 /// ## 비소모품
 /// - 한 번 구매하면 영구 소유, CompleteProductGrant 불필요
+///
+/// ## 구독 (SDK 3.0)
+/// 1. CreateSubscriptionPurchaseOrder() - 구독 주문 생성 (일회성 구매와 동일하게 processProductGrant는
+///    즉시 true를 반환하는 동기 콜백, 검증·지급은 onEvent에서)
+/// 2. GetSubscriptionInfo(orderId) - 주문 ID로 구독 상태(status/만료일/자동갱신 여부) 조회
 /// </summary>
 public class IAPv2Tester : MonoBehaviour
 {
@@ -42,18 +47,35 @@ public class IAPv2Tester : MonoBehaviour
     /// <summary>화면 이벤트 로그(iapEventLog) 상한. 초과 시 오래된 항목을 트리밍한다.</summary>
     private const int MaxIapEventLogCount = 300;
 
+#if AIT_SDK_3_0_OR_LATER
+    // 구독 테스트 상태 (SDK 3.0)
+    private string iapSubscriptionSku = "";
+    private string iapSubscriptionOfferId = "";
+    private IapSubscriptionInfoResponse iapSubscriptionInfo = null;
+#endif
+
     // 구독 해제 액션
     private Action _purchaseDisposer;
+#if AIT_SDK_3_0_OR_LATER
+    private Action _subscriptionPurchaseDisposer;
+#endif
 
     // uGUI 참조
     private Text _statusText;
     private InputField _skuInput;
     private InputField _orderIdInput;
+#if AIT_SDK_3_0_OR_LATER
+    private InputField _subscriptionSkuInput;
+    private InputField _subscriptionOfferIdInput;
+#endif
     private GameObject _eventLogContainer;
     private GameObject _productListContainer;
     private GameObject _quickSelectContainer;
     private GameObject _pendingOrdersContainer;
     private GameObject _completedOrdersContainer;
+#if AIT_SDK_3_0_OR_LATER
+    private GameObject _subscriptionInfoContainer;
+#endif
 
     /// <summary>
     /// 마지막 작업 상태 메시지
@@ -153,6 +175,42 @@ public class IAPv2Tester : MonoBehaviour
         UIBuilder.SetLayout(_orderIdInput.gameObject, flexibleWidth: 1);
 
         UIBuilder.CreateButton(section, "IAPCompleteProductGrant(...)", onClick: ExecuteIAPCompleteGrant);
+
+#if AIT_SDK_3_0_OR_LATER
+        // Step 6: 구독 주문 생성
+        UIBuilder.CreateText(section, "Step 6: Create Subscription Order (구독)",
+            UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary, fontStyle: FontStyle.Bold);
+
+        var subscriptionSkuRow = UIBuilder.CreateHorizontalLayout(section, 8);
+        subscriptionSkuRow.gameObject.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+        var subscriptionSkuLabel = UIBuilder.CreateText(subscriptionSkuRow, "SKU:",
+            UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary);
+        UIBuilder.SetLayout(subscriptionSkuLabel.gameObject, minWidth: 50, preferredWidth: 50);
+        _subscriptionSkuInput = UIBuilder.CreateInputField(subscriptionSkuRow, "예: mock-sub-monthly",
+            onValueChanged: (v) => iapSubscriptionSku = v);
+        UIBuilder.SetLayout(_subscriptionSkuInput.gameObject, flexibleWidth: 1);
+
+        var offerIdRow = UIBuilder.CreateHorizontalLayout(section, 8);
+        offerIdRow.gameObject.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+        var offerIdLabel = UIBuilder.CreateText(offerIdRow, "Offer ID:",
+            UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary);
+        UIBuilder.SetLayout(offerIdLabel.gameObject, minWidth: 80, preferredWidth: 80);
+        _subscriptionOfferIdInput = UIBuilder.CreateInputField(offerIdRow, "(선택)",
+            onValueChanged: (v) => iapSubscriptionOfferId = v);
+        UIBuilder.SetLayout(_subscriptionOfferIdInput.gameObject, flexibleWidth: 1);
+
+        UIBuilder.CreateButton(section, "IAPCreateSubscriptionPurchaseOrder(...)", onClick: ExecuteIAPCreateSubscriptionOrder);
+
+        // Step 7: 구독 정보 조회
+        UIBuilder.CreateText(section, "Step 7: Get Subscription Info (구독)",
+            UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary, fontStyle: FontStyle.Bold);
+        UIBuilder.CreateText(section, "위 Step 5의 Order ID 입력란을 재사용해요.",
+            UIBuilder.Theme.FontTiny, UIBuilder.Theme.TextSecondary);
+        UIBuilder.CreateButton(section, "IAPGetSubscriptionInfo(...)", onClick: ExecuteIAPGetSubscriptionInfo);
+
+        _subscriptionInfoContainer = CreateDynamicContainer(section, "SubscriptionInfo");
+        _subscriptionInfoContainer.SetActive(false);
+#endif
     }
 
     private GameObject CreateDynamicContainer(Transform parent, string name)
@@ -401,6 +459,32 @@ public class IAPv2Tester : MonoBehaviour
         }
 #endif
     }
+
+#if AIT_SDK_3_0_OR_LATER
+    private void UpdateSubscriptionInfo()
+    {
+        if (_subscriptionInfoContainer == null) return;
+        ClearContainer(_subscriptionInfoContainer);
+
+        var sub = iapSubscriptionInfo?.Subscription;
+        if (sub != null)
+        {
+            _subscriptionInfoContainer.SetActive(true);
+            UIBuilder.CreateText(_subscriptionInfoContainer.transform, "Subscription Info:",
+                UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextPrimary);
+            UIBuilder.CreateText(_subscriptionInfoContainer.transform,
+                $"  status={sub.Status}, autoRenew={sub.IsAutoRenew}, accessible={sub.IsAccessible}",
+                UIBuilder.Theme.FontTiny, UIBuilder.Theme.TextCallback);
+            UIBuilder.CreateText(_subscriptionInfoContainer.transform,
+                $"  expiresAt={sub.ExpiresAt}, gracePeriodExpiresAt={sub.GracePeriodExpiresAt}",
+                UIBuilder.Theme.FontTiny, UIBuilder.Theme.TextCallback);
+        }
+        else
+        {
+            _subscriptionInfoContainer.SetActive(false);
+        }
+    }
+#endif
 
     private async void ExecuteIAPGetProductList()
     {
@@ -654,9 +738,154 @@ public class IAPv2Tester : MonoBehaviour
         UpdateEventLog();
     }
 
+#if AIT_SDK_3_0_OR_LATER
+    /// <summary>
+    /// 구독 주문을 생성한다. 일회성 구매(ExecuteIAPCreateOrder)와 흐름은 동일하지만
+    /// Args가 ProductId 대신 Sku + 선택적 OfferId를 받고, ProcessProductGrant 콜백 파라미터에
+    /// SubscriptionId가 추가로 실려 온다.
+    /// </summary>
+    private void ExecuteIAPCreateSubscriptionOrder()
+    {
+        if (string.IsNullOrEmpty(iapSubscriptionSku))
+        {
+            iapStatus = "Please enter a subscription SKU";
+            UpdateStatus();
+            return;
+        }
+
+        // 이전 주문의 구독 정보 패널이 새 주문 흐름에서도 남아 있지 않도록 먼저 접는다
+        // (ExecuteIAPGetPendingOrders가 실패 시 backing field를 비우는 것과 동일한 패턴).
+        iapSubscriptionInfo = null;
+        UpdateSubscriptionInfo();
+
+        iapStatus = "Creating subscription order...";
+        LogIap($"IAPCreateSubscriptionPurchaseOrder(sku: {iapSubscriptionSku}, offerId: {iapSubscriptionOfferId})");
+        UpdateStatus();
+        UpdateEventLog();
+
+        try
+        {
+            var options = new CreateSubscriptionPurchaseOrderOptionsOptions
+            {
+                Sku = iapSubscriptionSku,
+                OfferId = string.IsNullOrEmpty(iapSubscriptionOfferId) ? null : iapSubscriptionOfferId,
+                // [1단계] 일회성 구매와 동일하게 즉시 승인한다 — 검증·지급은 onEvent(2단계)에서.
+                ProcessProductGrant = param =>
+                {
+                    LogIap($"ProcessProductGrant: 즉시 true 반환 (subscriptionId: {param?.SubscriptionId})");
+                    UpdateEventLog();
+                    return true;
+                }
+            };
+
+            _subscriptionPurchaseDisposer?.Invoke();
+            _subscriptionPurchaseDisposer = AIT.IAPCreateSubscriptionPurchaseOrder(
+                onEvent: (successEvent) =>
+                {
+                    iapStatus = "Subscription purchase completed";
+                    iapOrderId = successEvent.Data?.OrderId ?? "";
+                    if (_orderIdInput != null) _orderIdInput.text = iapOrderId;
+                    LogIap($"OnEvent: orderId={successEvent.Data?.OrderId}, amount={successEvent.Data?.DisplayAmount}");
+                    UpdateStatus();
+                    UpdateEventLog();
+                },
+                options: options,
+                onError: (error) =>
+                {
+                    iapStatus = "Subscription purchase failed";
+                    LogIap($"OnError: {error.ErrorCode} - {error.Message}");
+                    UpdateStatus();
+                    UpdateEventLog();
+                }
+            );
+
+            iapStatus = "Subscription order created";
+            LogIap("Subscription order created successfully");
+        }
+        catch (AITException ex)
+        {
+            iapStatus = $"Error: {ex.Message}";
+            LogIap($"Error: {ex.ErrorCode} - {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            iapStatus = $"Error: {ex.Message}";
+            LogIap($"Exception: {ex.Message}");
+        }
+
+        UpdateStatus();
+        UpdateEventLog();
+    }
+
+    /// <summary>
+    /// Order ID로 구독 상태를 조회한다. Step 5의 Order ID 입력란(iapOrderId)을 그대로 재사용한다 —
+    /// 구독 주문 생성 성공 시 iapOrderId가 자동으로 채워지므로 별도 입력란을 두지 않았다.
+    /// </summary>
+    private async void ExecuteIAPGetSubscriptionInfo()
+    {
+        if (string.IsNullOrEmpty(iapOrderId))
+        {
+            iapStatus = "Please enter Order ID";
+            UpdateStatus();
+            return;
+        }
+
+        iapStatus = "Loading subscription info...";
+        LogIap($"IAPGetSubscriptionInfo(orderId: {iapOrderId})");
+        UpdateStatus();
+        UpdateEventLog();
+
+        try
+        {
+            var args = new IAPGetSubscriptionInfoArgs_0
+            {
+                Params = new IAPGetSubscriptionInfoArgs_0Params
+                {
+                    OrderId = iapOrderId
+                }
+            };
+
+            iapSubscriptionInfo = await AIT.IAPGetSubscriptionInfo(args);
+            var sub = iapSubscriptionInfo?.Subscription;
+            if (sub != null)
+            {
+                iapStatus = $"Subscription status: {sub.Status}";
+                LogIap($"Success: catalogId={sub.CatalogId}, status={sub.Status}, expiresAt={sub.ExpiresAt}, " +
+                    $"isAutoRenew={sub.IsAutoRenew}, gracePeriodExpiresAt={sub.GracePeriodExpiresAt}, isAccessible={sub.IsAccessible}");
+            }
+            else
+            {
+                // subscription이 비어 있는 응답도 유효한 관찰 대상이다(예: 미프로비저닝 구독) —
+                // error 필드를 함께 로그에 남겨 원인 파악에 쓴다.
+                iapStatus = $"Subscription info empty (error: {iapSubscriptionInfo?.error})";
+                LogIap($"Empty response: error={iapSubscriptionInfo?.error}");
+            }
+        }
+        catch (AITException ex)
+        {
+            iapSubscriptionInfo = null;
+            iapStatus = $"Error: {ex.Message}";
+            LogIap($"Error: {ex.ErrorCode} - {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            iapSubscriptionInfo = null;
+            iapStatus = $"Error: {ex.Message}";
+            LogIap($"Exception: {ex.Message}");
+        }
+
+        UpdateStatus();
+        UpdateEventLog();
+        UpdateSubscriptionInfo();
+    }
+#endif
+
     private void OnDestroy()
     {
         _purchaseDisposer?.Invoke();
+#if AIT_SDK_3_0_OR_LATER
+        _subscriptionPurchaseDisposer?.Invoke();
+#endif
     }
 
     /// <summary>

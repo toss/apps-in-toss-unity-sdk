@@ -23,6 +23,11 @@ namespace AppsInToss.Editor
         {
             if (!AITBuildSession.TryLoadPendingSession(out var session)) return;
 
+            // pending 세션이 있었다는 것은 빌드 도중 도메인 리로드가 끼어들었을 가능성을 뜻한다.
+            // 리로드로 onComplete 클로저와 함께 EditorUtility.DisplayCancelableProgressBar가
+            // 남긴 진행률 바도 사라지지 않고 남을 수 있어 여기서 유령 진행률 바를 제거한다.
+            EditorUtility.ClearProgressBar();
+
             try
             {
                 if (AITBuildSession.IsStale(session))
@@ -63,6 +68,18 @@ namespace AppsInToss.Editor
             }
         }
 
+        /// <summary>
+        /// 프로세스 이름이 SDK 가 띄우는 Node 계열(node/pnpm/npm)인지 판정한다.
+        /// 기록해 둔 PID 로 kill 하는 모든 경로가 공유하는 PID 재사용 오검출 방어 기준
+        /// (AITServerStateManager 의 레거시 상태 마이그레이션 포함).
+        /// </summary>
+        internal static bool IsNodeLikeProcessName(string processName)
+        {
+            if (string.IsNullOrEmpty(processName)) return false;
+            string name = processName.ToLowerInvariant();
+            return name.Contains("node") || name.Contains("pnpm") || name.Contains("npm");
+        }
+
         internal static bool TryKillIfRunning(int pid)
         {
             try
@@ -72,8 +89,7 @@ namespace AppsInToss.Editor
                 // PID 재사용 오검출 방어 — name 이 pnpm/node/npm 계열일 때만 kill.
                 // PID 재사용 창이 열려 있을 때(예: 재부팅 후) 사용자의 다른 node 프로세스를
                 // 잘못 kill 할 가능성은 남으므로, kill 전에 반드시 PID+name 을 로그로 남긴다.
-                bool matchesBuildProcess =
-                    name.Contains("node") || name.Contains("pnpm") || name.Contains("npm");
+                bool matchesBuildProcess = IsNodeLikeProcessName(name);
                 if (!matchesBuildProcess)
                 {
                     Debug.Log($"[AIT] PID {pid} 은 빌드 프로세스가 아님 (name={name}). Skip.");

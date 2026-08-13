@@ -11,10 +11,15 @@ namespace AppsInToss.Editor
     /// <summary>
     /// 서버 타입
     /// </summary>
+    /// <remarks>
+    /// Production Server 지원이 제거되며 Dev 단일 값만 남았습니다(샌드박스 앱 테스트 불가로
+    /// 존재 이유 상실 — SDK 3.0.0부터). enum 자체를 남긴 이유는 <see cref="AITServerStateManager"/>
+    /// 생성자·<c>ServerType type</c> 매개변수를 받는 기존 호출부들을 그대로 유지해 diff를 최소화하기
+    /// 위함입니다(전체 사용처 grep 결과, 완전 제거 시 다수 시그니처를 함께 바꿔야 해 diff가 커짐).
+    /// </remarks>
     public enum ServerType
     {
-        Dev,
-        Prod
+        Dev
     }
 
     /// <summary>
@@ -77,15 +82,86 @@ namespace AppsInToss.Editor
         /// <summary>
         /// 서버 상태 관리자 생성
         /// </summary>
-        /// <param name="type">서버 타입 (Dev 또는 Prod)</param>
+        /// <param name="type">서버 타입 (현재 Dev만 존재 — Production Server 제거됨)</param>
         public AITServerStateManager(ServerType type)
         {
             serverType = type;
 
-            // EditorPrefs 키 설정
-            string prefix = type == ServerType.Dev ? "AIT_DevServer" : "AIT_ProdServer";
-            pidPrefKey = $"{prefix}PID";
-            portPrefKey = $"{prefix}Port";
+            // EditorPrefs 키 리터럴 "AIT_DevServer"는 업그레이드 시 기존 실행 중 서버를 계속
+            // 추적해야 하므로 절대 변경하지 않는다.
+            pidPrefKey = "AIT_DevServerPID";
+            portPrefKey = "AIT_DevServerPort";
+        }
+
+        // 구버전(Production Server 지원 시절) EditorPrefs 키 — 1회성 마이그레이션 전용.
+        private const string LegacyProdPidPrefKey = "AIT_ProdServerPID";
+        private const string LegacyProdPortPrefKey = "AIT_ProdServerPort";
+
+        /// <summary>
+        /// 구 "AIT_ProdServer*" EditorPrefs 키가 남아 있으면(Production Server 지원 시절 상태)
+        /// 기록된 프로세스를 PID로 정리 시도한 뒤, 성공 여부와 무관하게 키를 삭제하는
+        /// 1회성 마이그레이션입니다. 절대 throw하지 않습니다.
+        /// PID 종료는 프로세스 이름이 node 계열일 때만 수행합니다(<see cref="TryKillLegacyProdProcess"/>).
+        ///
+        /// 포트 기반 백업 종료(<c>PortResolver.KillProcessOnPort</c>)는 의도적으로 하지 않습니다.
+        /// 여기서 읽는 포트 번호는 수 주~수개월 전에 기록된 값이라 지금은 무관한 프로세스가
+        /// 그 포트를 점유하고 있을 수 있는데, 포트 기반 종료는 점유 프로세스의 정체를 확인하지 않고
+        /// kill -9 하므로 오폭 위험이 이득보다 큽니다. 이름 검증을 통과한 PID 종료가 성공하면
+        /// 포트는 어차피 해제되고, 실패했다면 해당 포트를 쥔 것이 레거시 서버라는 보장도 없습니다.
+        /// </summary>
+        public static void MigrateLegacyProdServerState()
+        {
+            try
+            {
+                if (!EditorPrefs.HasKey(LegacyProdPidPrefKey) && !EditorPrefs.HasKey(LegacyProdPortPrefKey))
+                {
+                    return;
+                }
+
+                int pid = EditorPrefs.GetInt(LegacyProdPidPrefKey, 0);
+
+                if (IsProcessAlive(pid))
+                {
+                    TryKillLegacyProdProcess(pid);
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.Log($"[AIT] 레거시 Production Server 프로세스 정리 중 오류 (무시됨): {e.Message}");
+            }
+            finally
+            {
+                EditorPrefs.DeleteKey(LegacyProdPidPrefKey);
+                EditorPrefs.DeleteKey(LegacyProdPortPrefKey);
+            }
+        }
+
+        /// <summary>
+        /// 레거시 Production Server 프로세스를 PID로 종료한다.
+        /// EditorPrefs에 남은 구 PID는 수 주~수개월 전 값일 수 있어 OS가 같은 번호를 무관한
+        /// 프로세스에 재사용했을 수 있으므로, 이름이 node 계열(구 Production Server는 granite/vite
+        /// = node 기반)일 때만 kill한다 — AITBuildSessionRecovery.TryKillIfRunning과 동일한 기준.
+        /// 이름이 맞지 않으면 kill만 건너뛴다(마이그레이션의 키 삭제는 호출부 finally에서 항상 수행).
+        /// </summary>
+        private static void TryKillLegacyProdProcess(int pid)
+        {
+            try
+            {
+                using var p = Process.GetProcessById(pid);
+                string name = (p.ProcessName ?? string.Empty).ToLowerInvariant();
+                if (!AITBuildSessionRecovery.IsNodeLikeProcessName(name))
+                {
+                    Debug.Log($"[AIT] 레거시 Production Server PID {pid}은 node 계열 프로세스가 아님 (name={name}). 종료를 건너뜁니다.");
+                    return;
+                }
+
+                Debug.Log($"[AIT] 레거시 Production Server 프로세스 종료 중: PID {pid} (name={name}).");
+                p.Kill();
+            }
+            catch
+            {
+                // 이미 종료되었거나 접근 불가 - 레거시 상태 키 삭제만 진행
+            }
         }
 
         /// <summary>
@@ -137,32 +213,76 @@ namespace AppsInToss.Editor
             int savedPid = EditorPrefs.GetInt(pidPrefKey, 0);
             int savedPort = EditorPrefs.GetInt(portPrefKey, 0);
 
+            // EditorPrefs가 비어 있으면(직전 검증에서 방금 지워졌거나, cfprefsd flush 지연 등)
+            // 도메인 리로드 전까지는 in-memory 캐시 값으로 폴백한다. 인스턴스가 살아있는 동안은
+            // SetExpectedPortAndProcess/OnServerStarted가 남긴 값이 EditorPrefs보다 항상 최신이거나
+            // 같으므로 폴백해도 안전하다.
+            int pid = savedPid > 0 ? savedPid : cachedPid;
+            int port = savedPort > 0 ? savedPort : cachedPort;
+
             // 포트 사용 확인 (가장 신뢰할 수 있는 지표)
-            bool portInUse = savedPort > 0 && IsPortInUse(savedPort);
+            bool portInUse = port > 0 && IsPortInUse(port);
 
             // 상태 결정: 포트만으로 판단
             if (portInUse)
             {
                 // 포트가 열려있으면 서버가 실행 중
                 cachedState = ServerState.Running;
-                cachedPid = savedPid;
-                cachedPort = savedPort;
+                cachedPid = pid;
+                cachedPort = port;
+
+                // EditorPrefs가 비어 있어 in-memory 값으로 복구된 경우, 다음 도메인 리로드에
+                // 대비해 다시 기록해 둔다.
+                if (savedPort <= 0 && port > 0)
+                {
+                    EditorPrefs.SetInt(portPrefKey, port);
+                }
+                if (savedPid <= 0 && pid > 0)
+                {
+                    EditorPrefs.SetInt(pidPrefKey, pid);
+                }
 
                 // 프로세스 관리자 복원 시도 (없는 경우, PID가 유효하면)
-                if (processManager == null && IsProcessAlive(savedPid))
+                if (processManager == null && IsProcessAlive(pid))
                 {
-                    RestoreProcessManager(savedPid);
+                    RestoreProcessManager(pid);
                 }
             }
             else
             {
-                // 포트가 열리지 않았으면 NotRunning
                 cachedState = ServerState.NotRunning;
-                ClearPersistedState();
+
+                // 정리할 상태가 애초에 없으면(신규 세션 등) 조용히 넘어간다 — 매 도메인 리로드마다
+                // 무의미한 "정리" 로그가 찍히는 것을 방지.
+                bool hasTrackedState = savedPid > 0 || savedPort > 0 || cachedPid > 0 || cachedPort > 0 || processManager != null;
+
+                // 포트가 아직 열리지 않았더라도, 추적 중인 PID가 살아있다면(예: 서버가 막 시작되어
+                // 아직 포트를 열기 전인 순간) 영속 상태를 지우지 않는다. 다음 검증에서 포트가 열리면
+                // 자동으로 Running으로 복구된다. PID가 죽었거나 애초에 없을 때만 정리한다.
+                if (hasTrackedState && ShouldClearPersistedState(portInUse, pid, IsProcessAlive))
+                {
+                    ClearPersistedState($"포트 {port} 미사용 + PID {pid} 비활성 (ValidateState)");
+                }
             }
 
             lastValidationTime = EditorApplication.timeSinceStartup;
             return cachedState;
+        }
+
+        /// <summary>
+        /// 영속화된(EditorPrefs) 서버 상태를 지워야 하는지 판단하는 순수 함수.
+        /// 포트가 열려 있으면(portInUse) 절대 지우지 않고, PID가 없거나(&lt;= 0) 이미 죽었을 때만 지운다.
+        /// PID가 살아있다면(서버 프로세스가 시작되어 아직 포트를 열기 전인 순간 등) 일시적으로
+        /// portInUse가 false여도 상태를 보존해 다음 검증에서 자동 복구되도록 한다.
+        /// </summary>
+        /// <param name="portInUse">현재 포트가 사용 중인지 여부</param>
+        /// <param name="pid">추적 중인 프로세스 PID (저장값 또는 캐시값)</param>
+        /// <param name="isAlive">PID 생존 여부를 확인하는 함수 (테스트 시 대체 가능)</param>
+        internal static bool ShouldClearPersistedState(bool portInUse, int pid, Func<int, bool> isAlive)
+        {
+            if (portInUse) return false;
+            if (pid <= 0) return true;
+            return !(isAlive?.Invoke(pid) ?? false);
         }
 
         /// <summary>
@@ -211,7 +331,7 @@ namespace AppsInToss.Editor
             lastValidationTime = EditorApplication.timeSinceStartup;
             serverStartedTime = 0;  // Grace period 초기화
 
-            ClearPersistedState();
+            ClearPersistedState("서버 시작 실패 (OnServerFailed)");
         }
 
         /// <summary>
@@ -239,7 +359,7 @@ namespace AppsInToss.Editor
             lastValidationTime = EditorApplication.timeSinceStartup;
             serverStartedTime = 0;  // Grace period 초기화
 
-            ClearPersistedState();
+            ClearPersistedState("사용자 요청에 의한 서버 중지 (OnServerStopped)");
         }
 
         /// <summary>
@@ -278,8 +398,11 @@ namespace AppsInToss.Editor
         /// <summary>
         /// 영속화된 상태 정리
         /// </summary>
-        private void ClearPersistedState()
+        /// <param name="reason">정리 사유 (로그 추적용) — 무로그 삭제로 원인 추적이 불가했던 문제 대응</param>
+        private void ClearPersistedState(string reason)
         {
+            Debug.Log($"[AIT] Dev 서버 영속 상태(EditorPrefs) 정리 — 사유: {reason}");
+
             processManager = null;
             cachedPid = 0;
             cachedPort = 0;

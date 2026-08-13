@@ -80,7 +80,7 @@ public class DevtoolsSupportTests
     }
 
     // ---------------------------------------------------------------
-    // ShouldEnable — 게이트 순서: env 오버라이드 → Dev 서버만 →
+    // ShouldEnable — 게이트 순서: env 오버라이드 →
     // config.devtools.enabled → viteOnly → devtools 설치 확인
     // ---------------------------------------------------------------
 
@@ -88,7 +88,7 @@ public class DevtoolsSupportTests
     public void ShouldEnable_DevtoolsNotInstalled_ReturnsFalseWithReason()
     {
         // node_modules/@apps-in-toss/devtools 없음, 그 외 조건은 모두 충족.
-        bool result = DevtoolsSupport.ShouldEnable(config, ServerType.Dev, tempDir, viteOnly: true, out string reason);
+        bool result = DevtoolsSupport.ShouldEnable(config, tempDir, viteOnly: true, out string reason);
 
         Assert.IsFalse(result);
         Assert.IsFalse(string.IsNullOrEmpty(reason), "reason은 항상 비어있지 않아야 함");
@@ -99,7 +99,7 @@ public class DevtoolsSupportTests
     {
         WriteDevtoolsInstalled();
 
-        bool result = DevtoolsSupport.ShouldEnable(config, ServerType.Dev, tempDir, viteOnly: false, out string reason);
+        bool result = DevtoolsSupport.ShouldEnable(config, tempDir, viteOnly: false, out string reason);
 
         Assert.IsFalse(result);
         Assert.IsFalse(string.IsNullOrEmpty(reason));
@@ -111,18 +111,7 @@ public class DevtoolsSupportTests
         WriteDevtoolsInstalled();
         config.devtools.enabled = false;
 
-        bool result = DevtoolsSupport.ShouldEnable(config, ServerType.Dev, tempDir, viteOnly: true, out string reason);
-
-        Assert.IsFalse(result);
-        Assert.IsFalse(string.IsNullOrEmpty(reason));
-    }
-
-    [Test]
-    public void ShouldEnable_ServerTypeProd_ReturnsFalse()
-    {
-        WriteDevtoolsInstalled();
-
-        bool result = DevtoolsSupport.ShouldEnable(config, ServerType.Prod, tempDir, viteOnly: true, out string reason);
+        bool result = DevtoolsSupport.ShouldEnable(config, tempDir, viteOnly: true, out string reason);
 
         Assert.IsFalse(result);
         Assert.IsFalse(string.IsNullOrEmpty(reason));
@@ -133,7 +122,7 @@ public class DevtoolsSupportTests
     {
         WriteDevtoolsInstalled();
 
-        bool result = DevtoolsSupport.ShouldEnable(config, ServerType.Dev, tempDir, viteOnly: true, out string reason);
+        bool result = DevtoolsSupport.ShouldEnable(config, tempDir, viteOnly: true, out string reason);
 
         Assert.IsTrue(result);
         Assert.IsFalse(string.IsNullOrEmpty(reason));
@@ -147,7 +136,7 @@ public class DevtoolsSupportTests
         Environment.SetEnvironmentVariable("AIT_DEVTOOLS", "0");
         try
         {
-            bool result = DevtoolsSupport.ShouldEnable(config, ServerType.Dev, tempDir, viteOnly: true, out string reason);
+            bool result = DevtoolsSupport.ShouldEnable(config, tempDir, viteOnly: true, out string reason);
 
             Assert.IsFalse(result);
             StringAssert.Contains("AIT_DEVTOOLS", reason);
@@ -165,7 +154,7 @@ public class DevtoolsSupportTests
         Environment.SetEnvironmentVariable("AIT_DEVTOOLS", "FALSE");
         try
         {
-            bool result = DevtoolsSupport.ShouldEnable(config, ServerType.Dev, tempDir, viteOnly: true, out string reason);
+            bool result = DevtoolsSupport.ShouldEnable(config, tempDir, viteOnly: true, out string reason);
 
             Assert.IsFalse(result);
         }
@@ -178,7 +167,7 @@ public class DevtoolsSupportTests
     [Test]
     public void ShouldEnable_NullConfig_ReturnsFalse()
     {
-        bool result = DevtoolsSupport.ShouldEnable(null, ServerType.Dev, tempDir, viteOnly: true, out string reason);
+        bool result = DevtoolsSupport.ShouldEnable(null, tempDir, viteOnly: true, out string reason);
 
         Assert.IsFalse(result);
         Assert.IsFalse(string.IsNullOrEmpty(reason));

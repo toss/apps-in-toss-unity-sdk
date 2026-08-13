@@ -52,6 +52,8 @@ namespace AppsInToss.Editor.ErrorTracker
         // Dev/Production Server 프로세스에서 리디렉션된 로그의 prefix 패턴.
         // 이 로그는 granite dev 프로세스의 stdout/stderr를 Unity Console로 전달한 것이며,
         // SDK 자체 에러가 아니므로 Sentry 캡처에서 제외해야 합니다.
+        // "[Production Server]"는 Production Server 메뉴 제거(신규 SDK는 더 이상 방출하지 않음) 후에도
+        // 구버전 SDK가 남긴 로그를 걸러내기 위해 레거시로 유지한다 (삭제 금지).
         private static readonly string[] ServerLogPrefixes =
         {
             "[Dev Server]",
@@ -1215,6 +1217,8 @@ namespace AppsInToss.Editor.ErrorTracker
                 return true;
 
             // 사용자 환경 포트 점유 / 외부 프로세스 비정상 종료 — actionable 가이드는 콘솔에 이미 출력.
+            // "AIT: Production 서버 시작 실패"는 Production Server 메뉴 제거 후에도 구버전 SDK가
+            // 여전히 방출할 수 있어 레거시로 유지한다 (삭제 금지).
             // Sentry APPS-IN-TOSS-UNITY-SDK-KP, APPS-IN-TOSS-UNITY-SDK-Q3.
             if (message.IndexOf("AIT: Dev 서버 시작 실패", StringComparison.Ordinal) >= 0
                 || message.IndexOf("AIT: Production 서버 시작 실패", StringComparison.Ordinal) >= 0)

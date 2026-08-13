@@ -22,7 +22,7 @@ Apps in Toss Unity SDK 문서 목록입니다. 하려는 일부터 찾으세요.
 
 | 문서 | 내용 |
 |------|------|
-| [빌드 프로필](BuildProfiles.md) | Dev Server, Production Server, Build & Package, Publish |
+| [빌드 프로필](BuildProfiles.md) | Dev Server, Build & Package, Deploy (Test), Deploy (Production) |
 | [빌드 커스터마이징](BuildCustomization.md) | 웹 진입점 수정, 외부 라이브러리 추가, 마커 영역 |
 | [로딩 화면 커스터마이징](LoadingScreenCustomization.md) | 로딩 화면 교체와 `AITLoading` API |
 | [빌드 파이프라인](BuildProcess.md) | Unity WebGL 빌드부터 패키징까지의 내부 동작 |

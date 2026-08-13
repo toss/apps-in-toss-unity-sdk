@@ -488,13 +488,14 @@ jobs:
         working-directory: ${{ env.AIT_BUILD_DIR }}
         env:
           AIT_DEPLOY_KEY: ${{ secrets.AIT_DEPLOY_KEY }}
+          PKG_VERSION: ${{ needs.beta-prepare.outputs.pkg_version }}
         run: |
           if [ -z "$AIT_DEPLOY_KEY" ]; then
             echo "::warning::AIT_DEPLOY_KEY 미설정 — 베타 배포 검증을 건너뜁니다."
             exit 0
           fi
           echo "베타 배포 실행 (pnpm run deploy = 프로젝트 ait): $(pwd)"
-          DEPLOY_OUTPUT=$(timeout 300 pnpm run deploy --api-key "$AIT_DEPLOY_KEY" 2>&1) && DEPLOY_STATUS=0 || DEPLOY_STATUS=$?
+          DEPLOY_OUTPUT=$(timeout 300 pnpm run deploy --api-key "$AIT_DEPLOY_KEY" -m "[CI] Beta v${PKG_VERSION} (macOS · Unity ${{ matrix.unity-version }})" 2>&1) && DEPLOY_STATUS=0 || DEPLOY_STATUS=$?
           echo "$DEPLOY_OUTPUT"
           CLEANED=$(echo "$DEPLOY_OUTPUT" | sed 's/\x1b\[[0-9;]*m//g' | tr -d '\r')
 

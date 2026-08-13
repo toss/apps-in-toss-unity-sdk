@@ -10,14 +10,30 @@ namespace AppsInToss.Editor.Package
     /// - index.html은 프로젝트 루트로 (Vite 요구); Unity/AIT 플레이스홀더 치환, 사용자 커스텀 섹션 머지, 로딩 화면 삽입 포함
     /// - Build/TemplateData/Runtime은 public/ 하위로 (필수 파일 선별 복사)
     /// - 추가 사용자 BuildConfig 파일 복사 (재귀)
-    /// - ait-build 폴더의 이전 결과물 정리 (node_modules/설정 파일은 유지)
+    /// - ait-build 폴더의 이전 결과물 정리 (node_modules/설정 파일, public/의 미러 대상은 유지)
     /// - Early fetch 스크립트 생성
     /// internal 멤버는 Editor/AssemblyInfo.cs 의 InternalsVisibleTo 를 통해 테스트 어셈블리에서 접근됩니다.
     /// </summary>
     internal static class WebGLBuildCopier
     {
         /// <summary>
+        /// public/ 하위에서 <see cref="CopyWebGLToPublic"/>가 미러로 소유(생성·갱신·잔여물 정리)하는
+        /// 디렉토리 목록. <see cref="PrepareAitBuildFolder"/>는 이 목록만 보존해 변경분 미러 복사가
+        /// 실제로 스킵될 수 있게 하고, 나머지 public/ 항목은 이전과 동일하게 매 빌드 정리한다.
+        /// </summary>
+        internal static readonly string[] MirroredPublicDirectories =
+        {
+            "Build",
+            "TemplateData",
+            "Runtime",
+            "StreamingAssets"
+        };
+
+        /// <summary>
         /// Unity WebGL 빌드를 public 폴더로 복사합니다.
+        /// <see cref="MirroredPublicDirectories"/>는 이 함수가 미러로 소유합니다 — 변경분만 복사하고,
+        /// 소스에 없는 파일·디렉토리와 소스 자체가 사라진 미러 대상은 제거해 전체 삭제+재복사와
+        /// 동일한 최종 상태를 보장합니다.
         /// </summary>
         /// <returns>성공 시 SUCCEED, 실패 시 해당 에러 코드</returns>
         internal static AITConvertCore.AITExportError CopyWebGLToPublic(string webglPath, string buildProjectPath, AITBuildProfile profile = null)
@@ -123,39 +139,72 @@ namespace AppsInToss.Editor.Package
                 return AITConvertCore.AITExportError.REQUIRED_FILE_MISSING;
             }
 
-            // Build 대상 폴더 정리 후 재생성
-            if (Directory.Exists(buildDest))
-            {
-                // 실패 시 DeleteDirectory가 내부 경고를 남기지만, 잔존 파일이 이후 복사 단계에
-                // 섞일 수 있으므로 상위 레벨에서도 한 번 더 사용자에게 알림.
-                // 주의: 이 LogWarning은 단순 폴백이 아니라 실제 빌드 오염 위험 신호이므로 Sentry로
-                // 캡처되도록 Warning 레벨을 유지한다. (File.Copy는 덮어쓰지만 복사 대상 목록
-                // (filesToCopy)에 포함되지 않은 잔존 파일은 패키지에 섞여 런타임 오류를 유발할 수 있음)
-                if (!AITFileUtils.DeleteDirectory(buildDest))
-                {
-                    Debug.LogWarning($"[AIT] 이전 빌드 잔여물 정리 실패: {buildDest} — 새 빌드에 오래된 파일이 섞일 수 있습니다");
-                }
-            }
-            Directory.CreateDirectory(buildDest);
-
-            // 필수 파일만 선별 복사
+            // 필수 파일만 선별 복사 (변경분만 — 크기/내용이 같으면 스킵해 초 단위 I/O를 줄인다)
             var filesToCopy = new List<string> { loaderFile, dataFile, frameworkFile, wasmFile };
             if (!string.IsNullOrEmpty(symbolsFile))
             {
                 filesToCopy.Add(symbolsFile);
             }
 
-            long totalBytes = 0;
-            foreach (var fileName in filesToCopy)
-            {
-                string src = Path.Combine(buildSrc, fileName);
-                string dest = Path.Combine(buildDest, fileName);
-                File.Copy(src, dest, true);
-                UnityUtil.EnsureFileReadable(dest);
-                totalBytes += new FileInfo(src).Length;
-            }
+            Directory.CreateDirectory(buildDest);
 
-            Debug.Log($"[AIT] ✓ Build 파일 {filesToCopy.Count}개 선별 복사 완료 ({totalBytes / 1024.0 / 1024.0:0.#}MB)");
+            long totalBytes = 0;
+            try
+            {
+                int copiedCount = 0, skippedCount = 0, staleCount = 0;
+                foreach (var fileName in filesToCopy)
+                {
+                    string src = Path.Combine(buildSrc, fileName);
+                    string dest = Path.Combine(buildDest, fileName);
+                    if (CopyFileIfChanged(src, dest)) copiedCount++; else skippedCount++;
+                    totalBytes += new FileInfo(src).Length;
+                }
+
+                // 미러 의미론 유지: 압축 포맷 전환(.br ↔ .unityweb 등)이나 symbols 파일 유무 변경으로
+                // 이전 선택 집합에만 있던 잔존 파일이 남지 않도록 제거한다.
+                // (public/이 빌드마다 통째로 삭제되지 않으므로 이 정리가 유일한 잔여물 방어선이다.)
+                var desiredNames = new HashSet<string>(filesToCopy, System.StringComparer.OrdinalIgnoreCase);
+                foreach (var existing in Directory.GetFiles(buildDest))
+                {
+                    if (!desiredNames.Contains(Path.GetFileName(existing)))
+                    {
+                        File.Delete(existing);
+                        staleCount++;
+                    }
+                }
+
+                // Unity WebGL의 Build/ 산출물은 평면 구조라 하위 디렉토리는 모두 잔여물이다.
+                foreach (var existingDir in Directory.GetDirectories(buildDest))
+                {
+                    Directory.Delete(existingDir, true);
+                    staleCount++;
+                }
+
+                Debug.Log($"[AIT] ✓ Build 파일 {filesToCopy.Count}개 선별 복사 완료 (복사 {copiedCount}개, 스킵 {skippedCount}개, 잔여물 정리 {staleCount}개, {totalBytes / 1024.0 / 1024.0:0.#}MB)");
+            }
+            catch (System.Exception ex)
+            {
+                // 기능 정확성이 속도보다 우선 — 변경분 복사 경로에서 실패하면 기존 전체 삭제+재복사로 폴백.
+                Debug.LogWarning($"[AIT] Build 폴더 변경분 복사 실패, 전체 재복사로 폴백: {ex.GetType().Name}: {ex.Message}");
+
+                if (!AITFileUtils.DeleteDirectory(buildDest))
+                {
+                    Debug.LogWarning($"[AIT] 이전 빌드 잔여물 정리 실패: {buildDest} — 새 빌드에 오래된 파일이 섞일 수 있습니다");
+                }
+                Directory.CreateDirectory(buildDest);
+
+                totalBytes = 0;
+                foreach (var fileName in filesToCopy)
+                {
+                    string src = Path.Combine(buildSrc, fileName);
+                    string dest = Path.Combine(buildDest, fileName);
+                    File.Copy(src, dest, true);
+                    UnityUtil.EnsureFileReadable(dest);
+                    totalBytes += new FileInfo(src).Length;
+                }
+
+                Debug.Log($"[AIT] ✓ Build 파일 {filesToCopy.Count}개 전체 재복사 완료 ({totalBytes / 1024.0 / 1024.0:0.#}MB)");
+            }
 
             // 안전장치: Build/ 폴더에 인식되지 않은 파일이 있으면 로그 출력
             var allBuildFiles = Directory.GetFiles(buildSrc);
@@ -174,7 +223,11 @@ namespace AppsInToss.Editor.Package
             string templateDataDest = Path.Combine(publicPath, "TemplateData");
             if (Directory.Exists(templateDataSrc))
             {
-                UnityUtil.CopyDirectory(templateDataSrc, templateDataDest);
+                MirrorDirectorySafe(templateDataSrc, templateDataDest, "TemplateData");
+            }
+            else
+            {
+                RemoveStalePublicDirectory(templateDataDest, "TemplateData");
             }
 
             // Runtime 폴더 → public/Runtime
@@ -184,7 +237,7 @@ namespace AppsInToss.Editor.Package
             string runtimeDest = Path.Combine(publicPath, "Runtime");
             if (Directory.Exists(runtimeSrc))
             {
-                UnityUtil.CopyDirectory(runtimeSrc, runtimeDest);
+                MirrorDirectorySafe(runtimeSrc, runtimeDest, "Runtime");
             }
             else
             {
@@ -195,12 +248,15 @@ namespace AppsInToss.Editor.Package
                 string sdkRuntimePath = SdkPathResolver.FindSdkRuntimePath();
                 if (!string.IsNullOrEmpty(sdkRuntimePath) && Directory.Exists(sdkRuntimePath))
                 {
-                    UnityUtil.CopyDirectory(sdkRuntimePath, runtimeDest);
+                    MirrorDirectorySafe(sdkRuntimePath, runtimeDest, "Runtime(SDK 템플릿)");
                     Debug.Log("[AIT] ✓ Runtime 폴더: SDK 템플릿에서 복사 완료");
                 }
                 else
                 {
                     Debug.LogError("[AIT] Runtime 폴더를 찾을 수 없습니다. 'Build And Package'를 사용하세요.");
+                    // 소스를 어디서도 찾지 못한 경우, 이전 빌드의 Runtime을 그대로 서빙하면
+                    // 원인 파악이 더 어려워지므로 잔여물을 제거한다(public 전체 삭제 시절과 동일한 최종 상태).
+                    RemoveStalePublicDirectory(runtimeDest, "Runtime");
                 }
             }
 
@@ -224,7 +280,11 @@ namespace AppsInToss.Editor.Package
             string streamingAssetsDest = Path.Combine(publicPath, "StreamingAssets");
             if (Directory.Exists(streamingAssetsSrc))
             {
-                UnityUtil.CopyDirectory(streamingAssetsSrc, streamingAssetsDest);
+                MirrorDirectorySafe(streamingAssetsSrc, streamingAssetsDest, "StreamingAssets");
+            }
+            else
+            {
+                RemoveStalePublicDirectory(streamingAssetsDest, "StreamingAssets");
             }
 
             // index.html → 프로젝트 루트 (Vite가 루트에서 index.html을 찾음)
@@ -348,6 +408,159 @@ namespace AppsInToss.Editor.Package
             Debug.Log("[AIT]   - Build, TemplateData, Runtime → public/");
 
             return AITConvertCore.AITExportError.SUCCEED;
+        }
+
+        /// <summary>
+        /// 파일이 이미 동일한 내용인지 판정합니다 (크기 비교 → 동일하면 청크 단위 바이트 비교).
+        /// mtime은 Unity가 매 빌드 산출물을 다시 쓰므로 판정 기준에서 제외한다.
+        /// </summary>
+        private static bool FilesAreIdentical(string srcPath, string destPath)
+        {
+            var srcInfo = new FileInfo(srcPath);
+            var destInfo = new FileInfo(destPath);
+            if (!destInfo.Exists || srcInfo.Length != destInfo.Length)
+            {
+                return false;
+            }
+
+            const int bufferSize = 1024 * 1024;
+            var bufferA = new byte[bufferSize];
+            var bufferB = new byte[bufferSize];
+
+            using (var fsA = new FileStream(srcPath, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize))
+            using (var fsB = new FileStream(destPath, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize))
+            {
+                int readA;
+                while ((readA = fsA.Read(bufferA, 0, bufferSize)) > 0)
+                {
+                    int readB = fsB.Read(bufferB, 0, readA);
+                    if (readA != readB)
+                    {
+                        return false;
+                    }
+                    for (int i = 0; i < readA; i++)
+                    {
+                        if (bufferA[i] != bufferB[i])
+                        {
+                            return false;
+                        }
+                    }
+                }
+                return true;
+            }
+        }
+
+        /// <summary>
+        /// 소스 파일을 대상 경로로 복사하되, 이미 동일한 파일이 있으면 복사를 스킵합니다.
+        /// internal 승격: EditMode 테스트(AppsInTossEditModeTests, InternalsVisibleTo)에서 헬퍼 단위로 검증하기 위함.
+        /// </summary>
+        /// <returns>실제로 복사했으면 true, 동일 파일이라 스킵했으면 false</returns>
+        internal static bool CopyFileIfChanged(string srcPath, string destPath)
+        {
+            if (File.Exists(destPath) && FilesAreIdentical(srcPath, destPath))
+            {
+                return false;
+            }
+
+            File.Copy(srcPath, destPath, true);
+            UnityUtil.EnsureFileReadable(destPath);
+            return true;
+        }
+
+        /// <summary>
+        /// srcDir → destDir 재귀 미러 복사: 변경된 파일만 복사하고, destDir에서 srcDir에 없는
+        /// 파일/디렉토리를 제거해 stale 산출물이 남지 않게 한다 (Unity 버전 전환으로 파일명 세트가
+        /// 바뀌는 경우 포함). .meta 파일은 UnityUtil.CopyDirectory와 동일하게 복사·정리 대상에서
+        /// 제외한다 (Unity가 대상 위치에 새로 생성 — GUID 충돌 방지).
+        /// internal 승격: EditMode 테스트(AppsInTossEditModeTests, InternalsVisibleTo)에서 미러 의미론을 검증하기 위함.
+        /// </summary>
+        internal static void MirrorCopyDirectory(string srcDir, string destDir, ref int copiedCount, ref int skippedCount, ref int staleCount)
+        {
+            Directory.CreateDirectory(destDir);
+
+            var srcFileNames = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
+            foreach (var file in Directory.GetFiles(srcDir))
+            {
+                if (file.EndsWith(".meta", System.StringComparison.OrdinalIgnoreCase)) continue;
+
+                string fileName = Path.GetFileName(file);
+                srcFileNames.Add(fileName);
+
+                string destFile = Path.Combine(destDir, fileName);
+                if (CopyFileIfChanged(file, destFile)) copiedCount++; else skippedCount++;
+            }
+
+            var srcDirNames = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
+            foreach (var dir in Directory.GetDirectories(srcDir))
+            {
+                string dirName = Path.GetFileName(dir);
+                srcDirNames.Add(dirName);
+                MirrorCopyDirectory(dir, Path.Combine(destDir, dirName), ref copiedCount, ref skippedCount, ref staleCount);
+            }
+
+            // stale 정리: 소스에 더 이상 없는 파일/디렉토리는 dest에서 제거 (.meta는 위와 동일하게 건드리지 않음)
+            foreach (var existingFile in Directory.GetFiles(destDir))
+            {
+                string fileName = Path.GetFileName(existingFile);
+                if (fileName.EndsWith(".meta", System.StringComparison.OrdinalIgnoreCase)) continue;
+                if (!srcFileNames.Contains(fileName))
+                {
+                    File.Delete(existingFile);
+                    staleCount++;
+                }
+            }
+
+            foreach (var existingDir in Directory.GetDirectories(destDir))
+            {
+                string dirName = Path.GetFileName(existingDir);
+                if (!srcDirNames.Contains(dirName))
+                {
+                    Directory.Delete(existingDir, true);
+                    staleCount++;
+                }
+            }
+        }
+
+        /// <summary>
+        /// 이번 빌드에서 소스가 사라진 미러 대상 디렉토리를 public/에서 제거한다.
+        /// PrepareAitBuildFolder가 public/을 통째로 지우지 않게 되면서(변경분 미러 복사 보존),
+        /// "소스가 사라진 디렉토리"의 정리 책임이 이쪽으로 넘어왔다.
+        /// </summary>
+        private static void RemoveStalePublicDirectory(string destDir, string label)
+        {
+            if (!Directory.Exists(destDir)) return;
+
+            if (AITFileUtils.DeleteDirectory(destDir))
+            {
+                Debug.Log($"[AIT] ✓ {label} 소스가 없어 public 잔여물 제거");
+            }
+            else
+            {
+                Debug.LogWarning($"[AIT] {label} 잔여물 정리 실패: {destDir} — 이전 빌드 파일이 서빙될 수 있습니다");
+            }
+        }
+
+        /// <summary>
+        /// MirrorCopyDirectory를 실패 시 기존 전체 삭제+재복사(UnityUtil.CopyDirectory)로 폴백하는
+        /// 안전 래퍼. 기능 정확성이 속도보다 우선이므로 예외가 나면 변경분 복사를 포기하고 통째로 다시 복사한다.
+        /// </summary>
+        private static void MirrorDirectorySafe(string srcDir, string destDir, string label)
+        {
+            try
+            {
+                int copiedCount = 0, skippedCount = 0, staleCount = 0;
+                MirrorCopyDirectory(srcDir, destDir, ref copiedCount, ref skippedCount, ref staleCount);
+                Debug.Log($"[AIT] ✓ {label} 미러 복사 완료 (복사 {copiedCount}개, 스킵 {skippedCount}개, 잔여물 정리 {staleCount}개)");
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogWarning($"[AIT] {label} 변경분 복사 실패, 전체 재복사로 폴백: {ex.GetType().Name}: {ex.Message}");
+                if (Directory.Exists(destDir))
+                {
+                    AITFileUtils.DeleteDirectory(destDir);
+                }
+                UnityUtil.CopyDirectory(srcDir, destDir);
+            }
         }
 
         /// <summary>
@@ -737,7 +950,11 @@ namespace AppsInToss.Editor.Package
         }
 
         /// <summary>
-        /// ait-build 폴더 준비 (기존 결과물 정리)
+        /// ait-build 폴더 준비 (기존 결과물 정리).
+        /// node_modules/설정 파일과 public/(정확히는 <see cref="MirroredPublicDirectories"/>)은 유지하고
+        /// 나머지 이전 결과물(dist, index.html 등)을 지운다. public/을 통째로 지우면 매 빌드마다
+        /// 수백 MB의 Unity 산출물을 다시 복사해야 해 CopyWebGLToPublic의 변경분 미러 복사가 항상
+        /// 무효화되므로, 미러 대상만 남기고 그 외 public/ 항목은 <see cref="PrunePublicFolder"/>가 정리한다.
         /// internal 승격: facade(AITPackageBuilder) 및 EditMode 테스트(리플렉션)에서 호출하기 위함.
         /// </summary>
         internal static void PrepareAitBuildFolder(string buildProjectPath)
@@ -749,7 +966,7 @@ namespace AppsInToss.Editor.Package
             }
             else
             {
-                Debug.Log("[AIT] 기존 빌드 결과물 정리 중... (node_modules와 설정 파일은 유지)");
+                Debug.Log("[AIT] 기존 빌드 결과물 정리 중... (node_modules·설정 파일과 public/ 미러 대상은 유지)");
 
                 string[] itemsToKeep = new string[]
                 {
@@ -761,7 +978,10 @@ namespace AppsInToss.Editor.Package
                     "granite.config.ts",
                     "apps-in-toss.config.ts",
                     "vite.config.ts",
-                    "tsconfig.json"
+                    "tsconfig.json",
+                    // public/은 CopyWebGLToPublic이 미러로 관리한다 — 여기서 통째로 지우면
+                    // 변경분 복사가 매번 전량 복사로 퇴화한다. 미러 대상 밖 항목은 아래 PrunePublicFolder가 정리.
+                    "public"
                 };
 
                 foreach (string item in Directory.GetFileSystemEntries(buildProjectPath))
@@ -789,6 +1009,36 @@ namespace AppsInToss.Editor.Package
                     {
                         AITFileSystemHelper.SafeDelete(item);
                     }
+                }
+
+                PrunePublicFolder(Path.Combine(buildProjectPath, "public"));
+            }
+        }
+
+        /// <summary>
+        /// public/에서 미러 대상(<see cref="MirroredPublicDirectories"/>)만 남기고 나머지를 지운다.
+        /// 미러 대상은 CopyWebGLToPublic이 변경분 복사 + stale 제거로 최종 상태를 보장하므로 보존해도
+        /// 잔여물이 남지 않는다. 그 외 항목(사용자 BuildConfig~의 public/ 파일 등)은 매 빌드 다시
+        /// 복사되므로 예전처럼 여기서 지워야 소스에서 삭제된 파일이 계속 서빙되지 않는다.
+        /// </summary>
+        private static void PrunePublicFolder(string publicPath)
+        {
+            if (!Directory.Exists(publicPath)) return;
+
+            var mirrored = new HashSet<string>(MirroredPublicDirectories, System.StringComparer.Ordinal);
+
+            foreach (string item in Directory.GetFileSystemEntries(publicPath))
+            {
+                string itemName = Path.GetFileName(item);
+
+                if (Directory.Exists(item))
+                {
+                    if (mirrored.Contains(itemName)) continue;
+                    AITFileUtils.DeleteDirectory(item);
+                }
+                else if (File.Exists(item))
+                {
+                    AITFileSystemHelper.SafeDelete(item);
                 }
             }
         }

@@ -120,17 +120,27 @@ Dev Server와 Production Server, 각 빌드 프로필의 devtools·압축 설정
 3. 빌드가 끝나면 로컬 개발 서버가 시작됩니다
 4. 브라우저가 자동으로 열리거나, 콘솔에 표시된 URL로 접속합니다
 
-프로덕션 설정 그대로 로컬에서 확인하려면 `AIT` > `Production Server` > `Start Server`를 사용합니다. 이쪽은 샌드박스 앱과 연동할 수 있습니다.
-
 ### 배포용 패키지 만들기
 
 1. `AIT` > `Build & Package` 클릭
 2. 빌드가 끝나면 `ait-build/dist/`에서 결과물을 확인합니다
 
-### 플랫폼에 배포하기
+### 실기기로 확인하기 (Deploy Test)
 
-1. `AIT` > `Publish` 클릭
+브라우저 Mock으로는 확인할 수 없는 실제 Toss 앱 환경(카메라, 결제, 광고 등)을 실기기에서 확인하려면 Deploy (Test)를 사용합니다.
+
+1. `AIT` > `Deploy (Test)` 클릭
 2. 배포 키가 설정되어 있어야 합니다. `AIT` > `Configuration`에서 입력합니다
+3. 증분 빌드 후 `ait deploy`로 콘솔 QR 테스트 환경에 배포됩니다 (memo에 `[Test]` 접두사가 자동으로 붙습니다)
+4. 배포가 끝나면 뜨는 창의 QR을 Toss 앱으로 스캔하거나 URL로 접속해 실기기에서 확인합니다
+
+### 플랫폼에 출시하기 (Deploy Production)
+
+실제 사용자에게 노출하려면 클린 빌드로 다시 배포한 뒤 콘솔에서 심사를 신청해야 합니다.
+
+1. `AIT` > `Deploy (Production)` 클릭 (Deploy (Test)와 동일하지만 클린 빌드 + memo `[Production]` 접두사)
+2. 배포가 끝나면 뜨는 창에서 "콘솔 열기" 버튼으로 Apps in Toss 콘솔로 이동합니다
+3. 콘솔에서 방금 배포한 빌드를 심사/출시 신청합니다 — `ait deploy` 자체는 항상 콘솔 QR 테스트 환경에 배포할 뿐이며, 실제 출시는 이 콘솔 절차로만 이뤄집니다
 
 ## SDK 사용 예제
 

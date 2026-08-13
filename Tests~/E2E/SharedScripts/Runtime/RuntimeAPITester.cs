@@ -1,6 +1,10 @@
 // -----------------------------------------------------------------------
 // RuntimeAPITester.cs - E2E Runtime API Test Runner
-// 39개 SDK API에 대한 올바른 에러 발생 검증
+// APITestCatalog.AllAPINames(3.0 풀빌드 기준 51개, 2026-08 SDK 3.0 커버리지
+// 감사로 갱신)에 대한 올바른 에러 발생 검증. API 이름 목록은 APITestCatalog.cs와
+// 단일화되어 있으며, 이 파일과 SDKAPIReflectionTests.cs가 함께 소비한다. 버전
+// 종속 항목은 양쪽 모두 동일한 #if 가드로 감싸 sdk_version_override 매트릭스에서
+// 카탈로그-호출부 드리프트가 나지 않게 한다.
 // -----------------------------------------------------------------------
 
 using UnityEngine;
@@ -20,7 +24,8 @@ using APICallFunc = System.Func<System.Threading.Tasks.Task>;
 
 /// <summary>
 /// Runtime API 테스트 실행기
-/// 모든 39개 SDK API를 호출하고, 개발 환경에서 올바른 에러가 발생하는지 검증
+/// APITestCatalog.AllAPINames의 모든 SDK API를 호출하고, 개발 환경에서 올바른
+/// 에러가 발생하는지 검증
 /// </summary>
 public class RuntimeAPITester : MonoBehaviour
 {
@@ -97,7 +102,7 @@ public class RuntimeAPITester : MonoBehaviour
 
         Debug.Log("[RuntimeAPITester] ========================================");
         Debug.Log("[RuntimeAPITester] RUNTIME API TESTS STARTING");
-        Debug.Log("[RuntimeAPITester] Testing all 39 SDK APIs for correct error handling");
+        Debug.Log($"[RuntimeAPITester] Testing all {APITestCatalog.AllAPINames.Length} SDK APIs for correct error handling");
         Debug.Log("[RuntimeAPITester] ========================================");
 
         // 1. SDK 기본 접근 테스트
@@ -247,6 +252,106 @@ public class RuntimeAPITester : MonoBehaviour
         // ContactsViral API - 콜백 분리 패턴
         TestAPICall("ContactsViral", async () =>
             { AIT.ContactsViral((evt) => { }, null); await System.Threading.Tasks.Task.CompletedTask; });
+
+        // =====================================================================
+        // SDK 3.0 신규 표면 (2026-08 감사로 편입, 12개)
+        // 편입 기준: Task/Awaitable 반환 + 무인(unattended) 실행 안전.
+        // 각 항목의 devtools mock 기본 동작(무인 자동 응답)은 감사 시점에
+        // scratchpad의 devtools mock 소스로 확인했다 — file picker/사용자 입력을
+        // 기다리는 API는 편입하지 않았다(SafeAreaInsetsSubscribe 등은 제외).
+        //
+        // sdk_version_override로 3.0 미만 web-framework를 재생성하면 이 타입/메서드가
+        // 존재하지 않아 CS0117/CS0246로 컴파일이 깨지므로 AIT_SDK_3_0_OR_LATER로 감싼다
+        // (asmdef versionDefines에 정의됨 — IAPv2Tester.cs와 동일 패턴).
+        // =====================================================================
+
+#if AIT_SDK_3_0_OR_LATER
+        // Environment APIs
+        TestAPICall("EnvGetDeploymentId", async () => { await AIT.EnvGetDeploymentId(); });
+        TestAPICall("GetAppsInTossGlobals", async () => { await AIT.GetAppsInTossGlobals(); });
+        TestAPICall("IsMinVersionSupported", async () => { await AIT.IsMinVersionSupported(new IsMinVersionSupportedMinVersions { Android = "1.0.0", Ios = "1.0.0" }); });
+
+        // SystemInfo API
+        TestAPICall("GetServerTime", async () => { await AIT.GetServerTime(); });
+
+        // Storage APIs
+        // 주의: 아래 set→get→remove→clear는 가독성을 위해 이 순서로 나열했을 뿐 실행 순서를
+        // 보장하지 않는다. TestAPICall()은 apiCall()을 호출해 Task/Awaitable을 즉시 실행시키고
+        // 완료를 기다리지 않은 채 바로 다음 TestAPICall()로 넘어가며(TestAllSDKAPIs()가 이 4개를
+        // 연속 호출), 각 호출의 완료 대기는 별도 코루틴(WaitForTask/WaitForAwaitable)에 병렬로
+        // 큐잉된다. 지금은 예외 없이 끝나는지만 확인하므로 문제 없지만, 나중에 "get으로 읽은 값이
+        // set한 값과 같은지" 같은 값 검증을 추가하면 이 순서 비보장 때문에 flaky해질 수 있다 —
+        // 값 검증이 필요해지면 개별 await 체이닝(순차 실행)으로 바꿀 것.
+        TestAPICall("StorageSetItem", async () => { await AIT.StorageSetItem("e2e-test-key", "e2e-test-value"); });
+        TestAPICall("StorageGetItem", async () => { await AIT.StorageGetItem("e2e-test-key"); });
+        TestAPICall("StorageRemoveItem", async () => { await AIT.StorageRemoveItem("e2e-test-key"); });
+        TestAPICall("StorageClearItems", async () => { await AIT.StorageClearItems(); });
+
+        // Partner APIs
+        TestAPICall("PartnerAddAccessoryButton", async () => { await AIT.PartnerAddAccessoryButton(new AddAccessoryButtonOptions { Id = "e2e-test", Title = "test", Icon = new AddAccessoryButtonOptionsIcon { Name = "test-icon" } }); });
+        TestAPICall("PartnerRemoveAccessoryButton", async () => { await AIT.PartnerRemoveAccessoryButton(); });
+
+        // Media API
+        TestAPICall("FetchAlbumItems", async () => { await AIT.FetchAlbumItems(new FetchAlbumItemsOptions { MaxCount = 1 }); });
+
+        // SafeArea API (Get만 편입 — Subscribe는 콜백 구독 패턴이라 이 하네스 제외)
+        TestAPICall("SafeAreaInsetsGet", async () => { await AIT.SafeAreaInsetsGet(); });
+#endif
+    }
+
+    /// <summary>
+    /// APITestCatalog.AllAPINames(단일 소스)와 이 파일이 실제로 큐에 넣은 API 이름
+    /// 사이의 드리프트를 검출한다. 카탈로그에는 있지만 위에서 TestAPICall로 호출하지
+    /// 않은 이름, 혹은 그 반대(카탈로그에 없는데 호출된 이름)가 있으면 명시적으로
+    /// 실패시켜 조용한 누락을 막는다.
+    /// 모든 비동기 테스트가 완료된 뒤(SendResults 직전)에 호출해야 _results가
+    /// 채워진 상태에서 정확히 비교할 수 있다.
+    /// </summary>
+    void VerifyCatalogConsistency()
+    {
+        var testedNames = new HashSet<string>();
+        foreach (var key in _results.Keys)
+        {
+            if (key.StartsWith("API_"))
+            {
+                testedNames.Add(key.Substring("API_".Length));
+            }
+        }
+
+        var catalogNames = new HashSet<string>(APITestCatalog.AllAPINames);
+        var driftMessages = new List<string>();
+
+        foreach (var name in testedNames)
+        {
+            // web-framework 3.0.0에서 제거된 API라 카탈로그에 의도적으로 없음(위
+            // "Visibility API" 주석 참조) — 드리프트 아님.
+            if (name == "OnVisibilityChangedByTransparentServiceWeb") continue;
+
+            if (!catalogNames.Contains(name))
+            {
+                driftMessages.Add($"'{name}' 은 TestAllSDKAPIs()에서 호출되었지만 APITestCatalog.AllAPINames에 없어요");
+            }
+        }
+
+        foreach (var name in catalogNames)
+        {
+            if (!testedNames.Contains(name))
+            {
+                driftMessages.Add($"'{name}' 은 APITestCatalog.AllAPINames에 있지만 TestAllSDKAPIs()에서 호출되지 않았어요");
+            }
+        }
+
+        if (driftMessages.Count > 0)
+        {
+            string message = string.Join("; ", driftMessages);
+            RecordResult("Catalog_Consistency", false, false, message, null);
+            Debug.LogError($"[RuntimeAPITester] Catalog_Consistency: FAIL - {message}");
+        }
+        else
+        {
+            RecordResult("Catalog_Consistency", true, false, null, null);
+            Debug.Log("[RuntimeAPITester] Catalog_Consistency: PASS");
+        }
     }
 
     void TestAPICall(string apiName, APICallFunc apiCall)
@@ -478,6 +583,10 @@ public class RuntimeAPITester : MonoBehaviour
     {
         if (_testCompleted) return;
         _testCompleted = true;
+
+        // 모든 비동기 테스트가 큐에 추가되고 완료된 시점 — _results가 채워져 있으므로
+        // 카탈로그 드리프트 검사를 여기서 수행한다.
+        VerifyCatalogConsistency();
 
         int successCount = 0;
         int expectedErrorCount = 0;

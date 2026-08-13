@@ -965,6 +965,52 @@
     });
   }
 
+  // =========================================================================
+  // Unity 빌드 자산 fetch 우회 라우터
+  //  제약: vConsole 네트워크 계측이 chunked 응답 reader에서 예외를 던져 Unity 6 로더의
+  //  .data 다운로드를 깨뜨린다(스트림 종료 read({done:true,value:undefined}) 가드 부재 →
+  //  value.length 접근에서 TypeError). 로더는 그 실패를 rethrow 없이 삼키고 undefined를
+  //  resolve하므로 run dependency(dataUrl)가 영구 미충족 → createUnityInstance가 영영
+  //  settle되지 않는다(warm reload 무한 로딩). 계측이 Response를 Proxy로 감싸는 탓에
+  //  WebAssembly.instantiateStreaming의 brand check도 실패해 wasm이 매 로드 2회
+  //  다운로드되는 낭비까지 따라온다.
+  //  대책: vConsole 생성 직전의 fetch(= 진짜 Response를 반환하는 구현. 콜드 로드에서는
+  //  SDK early-fetch 셔임, warm reload에서는 네이티브)를 캡처해 두고, Unity 빌드
+  //  산출물(Build/, StreamingAssets/) 요청만 그쪽으로 라우팅한다. 나머지 트래픽은 계측
+  //  fetch를 그대로 타므로 Network 탭 기능은 유지된다.
+  //  (vConsole은 XHR도 패치하지만 Unity 로더는 fetch만 쓰므로 XHR은 손대지 않는다.)
+  // =========================================================================
+  var UNITY_ASSET_PATH_RE = /\/(Build|StreamingAssets)\//;
+
+  function requestUrlOf(input) {
+    if (typeof input === 'string') return input;
+    if (!input || typeof input !== 'object') return null;
+    if (typeof input.url === 'string') return input.url;    // Request
+    if (typeof input.href === 'string') return input.href;  // URL
+    return null;
+  }
+
+  function isUnityAssetRequest(input) {
+    var raw = requestUrlOf(input);
+    if (!raw) return false; // 판정 불가 → 계측 fetch로(보수적)
+    try {
+      return UNITY_ASSET_PATH_RE.test(new URL(raw, location.href).pathname);
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function installUnityAssetFetchBypass(preVconsoleFetch) {
+    if (typeof preVconsoleFetch !== 'function') return;
+    var instrumentedFetch = window.fetch;
+    // 계측이 설치되지 않았으면(fetch 그대로) 라우터도 불필요.
+    if (typeof instrumentedFetch !== 'function' || instrumentedFetch === preVconsoleFetch) return;
+    window.fetch = function (input) {
+      var target = isUnityAssetRequest(input) ? preVconsoleFetch : instrumentedFetch;
+      return target.apply(this, arguments);
+    };
+  }
+
   function replayEarlyLogs() {
     var logs = window._aitEarlyLogs;
     if (logs && logs.length) {
@@ -979,6 +1025,10 @@
   // =========================================================================
   injectMetricsCss();
 
+  // vConsole 생성 전 fetch를 캡처해 둔다 — 생성자가 동기적으로 네트워크 계측(mockFetch)을
+  // 설치하므로, 이 시점의 fetch만이 Unity 로더에 안전한(진짜 Response) 구현이다.
+  var preVconsoleFetch = window.fetch;
+
   var vConsole = new window.VConsole({
     theme: 'dark',
     defaultPlugins: ['system', 'network', 'storage'],
@@ -992,6 +1042,9 @@
     // 생성자 직후 호출보다 이 방식이 안전하다.
     onReady: function () { installLogTabCopyButton(vConsole); }
   });
+  // 생성자 반환과 같은 틱에 라우터를 설치한다 — 계측 fetch가 유효한 구간에는 항상
+  // 라우터도 함께 있어야 Unity 로더 요청이 계측을 거치는 창이 생기지 않는다.
+  installUnityAssetFetchBypass(preVconsoleFetch);
   window._aitVConsole = vConsole;
 
   var metricsPlugin = new window.VConsole.VConsolePlugin('ait_metrics', 'Metrics');

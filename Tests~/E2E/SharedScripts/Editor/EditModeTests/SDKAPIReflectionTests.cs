@@ -1,6 +1,8 @@
 // -----------------------------------------------------------------------
 // SDKAPIReflectionTests.cs - EditMode SDK API 리플렉션 테스트
 // Level 0: WebGL 빌드 없이 AIT 클래스의 API 메서드 존재 여부를 검증
+// 검증 대상 API 이름 목록은 APITestCatalog.AllAPINames(RuntimeAPITester.cs와
+// 단일화된 공유 소스)를 [TestCaseSource]로 그대로 소비한다.
 // -----------------------------------------------------------------------
 
 using NUnit.Framework;
@@ -24,45 +26,7 @@ public class SDKAPIReflectionTests
     // API 메서드 존재 확인
     // =====================================================
 
-    [TestCase("AppLogin")]
-    [TestCase("GetIsTossLoginIntegratedService")]
-    [TestCase("GetDeviceId")]
-    [TestCase("GetLocale")]
-    [TestCase("GetNetworkStatus")]
-    [TestCase("GetOperationalEnvironment")]
-    [TestCase("GetPlatformOS")]
-    [TestCase("GetSchemeUri")]
-    [TestCase("GetTossAppVersion")]
-    [TestCase("GetClipboardText")]
-    [TestCase("SetClipboardText")]
-    [TestCase("CloseView")]
-    [TestCase("OpenURL")]
-    [TestCase("GetTossShareLink")]
-    [TestCase("Share")]
-    [TestCase("FetchContacts")]
-    [TestCase("EventLog")]
-    [TestCase("GetPermission")]
-    [TestCase("RequestPermission")]
-    [TestCase("OpenPermissionDialog")]
-    [TestCase("GetCurrentLocation")]
-    [TestCase("GenerateHapticFeedback")]
-    [TestCase("SetDeviceOrientation")]
-    [TestCase("SetIosSwipeGestureEnabled")]
-    [TestCase("SetScreenAwakeMode")]
-    [TestCase("SetSecureScreen")]
-    [TestCase("CheckoutPayment")]
-    [TestCase("FetchAlbumPhotos")]
-    [TestCase("OpenCamera")]
-    [TestCase("SaveBase64Data")]
-    [TestCase("GetGameCenterGameProfile")]
-    [TestCase("GetUserKeyForGame")]
-    [TestCase("OpenGameCenterLeaderboard")]
-    [TestCase("SubmitGameCenterLeaderBoardScore")]
-    [TestCase("GrantPromotionRewardForGame")]
-    [TestCase("AppsInTossSignTossCert")]
-    [TestCase("StartUpdateLocation")]
-    [TestCase("ContactsViral")]
-    [TestCase("GetGroupId")]
+    [TestCaseSource(typeof(APITestCatalog), nameof(APITestCatalog.AllAPINames))]
     public void AIT_API_Exists(string methodName)
     {
         var methods = aitType.GetMethods(BindingFlags.Public | BindingFlags.Static);
@@ -93,7 +57,7 @@ public class SDKAPIReflectionTests
     }
 
     // =====================================================
-    // API 개수 확인 (최소 39개)
+    // API 개수 확인 (최소 APITestCatalog.AllAPINames.Length개)
     // =====================================================
 
     [Test]
@@ -110,8 +74,9 @@ public class SDKAPIReflectionTests
             }
         }
 
-        Assert.GreaterOrEqual(count, 39,
-            $"AIT should have at least 39 public static API methods, found {count}");
+        int minExpected = APITestCatalog.AllAPINames.Length;
+        Assert.GreaterOrEqual(count, minExpected,
+            $"AIT should have at least {minExpected} public static API methods, found {count}");
     }
 
     // =====================================================

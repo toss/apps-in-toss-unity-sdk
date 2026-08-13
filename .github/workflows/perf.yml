@@ -1,5 +1,5 @@
 name: Perf (WebGL load-time TTFF)
-run-name: "Perf TTFF${{ github.event.pull_request.number && format(' - PR #{0}', github.event.pull_request.number) || format(' - {0}', github.ref_name) }}${{ github.event_name == 'workflow_dispatch' && format(' [posture={0}, cf={1}, net={2}]', inputs.posture || 'default', inputs.compression_format || '1', inputs.net_profile || 'default') || '' }}"
+run-name: "Perf TTFF${{ github.event.pull_request.number && format(' - PR #{0}', github.event.pull_request.number) || format(' - {0}', github.ref_name) }}${{ github.event_name == 'workflow_dispatch' && format(' [posture={0}, cf={1}, net={2}]', inputs.posture || 'default', inputs.compression_format || '1', inputs.net_profile || 'default') || '' }}${{ inputs.pair_run_id && format(' [pair #{0}]', inputs.pair_run_id) || '' }}"
 
 # WebGL 로드타임 최적화 레버(L2~L12) PR별 효과(Δ)를 격리 측정하는 perf CI.
 #
@@ -52,6 +52,22 @@ on:
           - default
           - mobile
         default: default
+      pair_run_id:
+        description: >-
+          페어 A/B: 이 run id 의 heavy 아티팩트를 B 로 받아 같은 measure 잡에서 A 와 인터리브 측정한다
+          (러너 편차 상쇄). 미지정 시 기존 단일 측정과 완전 동일. 아티팩트 retention 7일 제한.
+        type: string
+        default: ''
+      base_run_id:
+        description: >-
+          A 도 기존 run 아티팩트에서 가져온다(지정 시 self-hosted 빌드 잡 전체 스킵 — 재측정 전용).
+          pair_run_id 와 같은 값을 주면 바이트 동일 A/A 널 테스트(하니스 검출 하한 측정).
+        type: string
+        default: ''
+      iterations:
+        description: '반복 횟수(median-of-N). 미지정 시 5(기존 동작).'
+        type: string
+        default: ''
 
 concurrency:
   group: perf-${{ github.event.pull_request.number || github.ref }}
@@ -75,6 +91,9 @@ jobs:
       pr_number: ${{ steps.gate.outputs.pr_number }}
       head_ref: ${{ steps.gate.outputs.head_ref }}
       build_ref: ${{ steps.gate.outputs.build_ref }}
+      pair_mode: ${{ steps.gate.outputs.pair_mode }}
+      pair_run_id: ${{ steps.gate.outputs.pair_run_id }}
+      base_run_id: ${{ steps.gate.outputs.base_run_id }}
     steps:
       - name: Resolve gate
         id: gate
@@ -87,6 +106,9 @@ jobs:
           PUSH_SHA: ${{ github.sha }}
           # perf 라벨 게이트: pull_request에서만 라벨을 본다.
           HAS_PERF_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'perf') }}
+          # 페어 A/B 입력(workflow_dispatch 전용) — 그 외 이벤트에서는 항상 빈 문자열
+          PAIR_RUN_ID: ${{ inputs.pair_run_id }}
+          BASE_RUN_ID: ${{ inputs.base_run_id }}
         run: |
           if [ "$EVENT_NAME" = "push" ]; then
             SHOULD_RUN=true;  IS_BASELINE=true;  BUILD_REF="$PUSH_SHA"
@@ -95,14 +117,29 @@ jobs:
           else
             SHOULD_RUN="$HAS_PERF_LABEL"; IS_BASELINE=false; BUILD_REF="$PR_HEAD_SHA"
           fi
+
+          # run id 는 숫자만 허용(오타/인젝션 차단)
+          for v in "$PAIR_RUN_ID" "$BASE_RUN_ID"; do
+            [ -z "$v" ] && continue
+            case "$v" in *[!0-9]*) echo "::error::run id 는 숫자여야 합니다: '$v'"; exit 1;; esac
+          done
+          if [ -n "$BASE_RUN_ID" ] && [ -z "$PAIR_RUN_ID" ]; then
+            echo "::error::base_run_id 는 pair_run_id 와 함께만 사용합니다(단독 재측정은 미지원)"; exit 1
+          fi
+          PAIR_MODE=false
+          [ -n "$PAIR_RUN_ID" ] && PAIR_MODE=true
+
           {
             echo "should_run=${SHOULD_RUN}"
             echo "is_baseline=${IS_BASELINE}"
             echo "build_ref=${BUILD_REF}"
             echo "pr_number=${PR_NUMBER}"
             echo "head_ref=${HEAD_REF}"
+            echo "pair_mode=${PAIR_MODE}"
+            echo "pair_run_id=${PAIR_RUN_ID}"
+            echo "base_run_id=${BASE_RUN_ID}"
           } >> "$GITHUB_OUTPUT"
-          echo "event=$EVENT_NAME perf_label=$HAS_PERF_LABEL should_run=$SHOULD_RUN baseline=$IS_BASELINE"
+          echo "event=$EVENT_NAME perf_label=$HAS_PERF_LABEL should_run=$SHOULD_RUN baseline=$IS_BASELINE pair_mode=$PAIR_MODE"
 
   # =====================================================
   # 무거운 WebGL 빌드 (재사용 unity-build.yml, self-hosted)
@@ -110,7 +147,8 @@ jobs:
   build-heavy:
     name: Build Heavy (Unity ${{ matrix.unity-version }})
     needs: setup
-    if: needs.setup.outputs.should_run == 'true'
+    # base_run_id 지정 시 A 도 과거 run 아티팩트에서 가져오므로 self-hosted 빌드 잡 자체가 불필요(재측정 전용 경로)
+    if: needs.setup.outputs.should_run == 'true' && needs.setup.outputs.base_run_id == ''
 
     strategy:
       fail-fast: false
@@ -162,9 +200,22 @@ jobs:
   measure-ttff:
     name: Measure TTFF (Unity ${{ matrix.unity-version }})
     needs: [setup, build-heavy]
-    if: needs.setup.outputs.should_run == 'true' && needs.build-heavy.result == 'success'
+    # !cancelled(): base_run_id 지정으로 build-heavy 가 스킵된 build-free 경로에서도 이 잡이 돌아야 한다
+    # (needs 잡이 skipped 면 status function 없이는 이 잡도 함께 skipped 된다). 실제 빌드가 도는 기존 경로는
+    # needs.build-heavy.result == 'success' 조건이 그대로 유지되므로 빌드 실패 시 측정하지 않는 계약은 불변.
+    if: >-
+      !cancelled() && needs.setup.outputs.should_run == 'true' && (
+        needs.build-heavy.result == 'success' ||
+        (needs.setup.outputs.base_run_id != '' && needs.build-heavy.result == 'skipped')
+      )
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # job-level permissions 는 workflow-level(pull-requests/issues write 포함)을 병합이 아니라 완전히
+    # 대체한다 — 이 잡에는 PR 코멘트 스텝이 없어 그 두 권한 상실은 영향 없음. 교차 run 아티팩트
+    # 다운로드(actions:read)만 최소 권한으로 부여한다.
+    permissions:
+      contents: read
+      actions: read
+    timeout-minutes: ${{ needs.setup.outputs.pair_mode == 'true' && 90 || 45 }}
 
     strategy:
       fail-fast: false
@@ -174,6 +225,9 @@ jobs:
     env:
       HEAVY_PROJECT: ${{ github.workspace }}/Tests~/E2E/HeavySampleUnityProject-${{ matrix.unity-version }}
       AIT_BUILD_DIR: ${{ github.workspace }}/Tests~/E2E/HeavySampleUnityProject-${{ matrix.unity-version }}/ait-build
+      # 페어(B) 산출물 전용 디렉토리 — A 와 분리된 preview 서버로 서빙(단일 모드에선 미사용)
+      HEAVY_PROJECT_PAIR: ${{ github.workspace }}/Tests~/E2E/HeavySampleUnityProject-${{ matrix.unity-version }}-pair
+      AIT_BUILD_DIR_PAIR: ${{ github.workspace }}/Tests~/E2E/HeavySampleUnityProject-${{ matrix.unity-version }}-pair/ait-build
 
     steps:
       - name: Checkout Repository
@@ -181,11 +235,33 @@ jobs:
         with:
           ref: ${{ needs.setup.outputs.build_ref }}
 
-      - name: Download Heavy Build Artifact
+      - name: Download Heavy Build Artifact (this run)
+        # base_run_id 미지정 시(기존 경로): 이번 run 자신의 build-heavy 산출물을 받는다.
+        if: needs.setup.outputs.base_run_id == ''
         uses: actions/download-artifact@v8
         with:
           name: ait-build-heavy-macos-${{ matrix.unity-version }}
           path: ${{ env.AIT_BUILD_DIR }}
+
+      - name: Download Heavy Build Artifact (base run)
+        # base_run_id 지정 시: A 도 과거 run 의 아티팩트에서 교차 다운로드(빌드 0회 재측정 경로).
+        if: needs.setup.outputs.base_run_id != ''
+        uses: actions/download-artifact@v8
+        with:
+          name: ait-build-heavy-macos-${{ matrix.unity-version }}
+          path: ${{ env.AIT_BUILD_DIR }}
+          run-id: ${{ needs.setup.outputs.base_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Download Pair(B) Build Artifact
+        # 페어 모드: pair_run_id run 의 아티팩트를 B 로 별도 디렉토리에 받는다.
+        if: needs.setup.outputs.pair_mode == 'true'
+        uses: actions/download-artifact@v8
+        with:
+          name: ait-build-heavy-macos-${{ matrix.unity-version }}
+          path: ${{ env.AIT_BUILD_DIR_PAIR }}
+          run-id: ${{ needs.setup.outputs.pair_run_id }}
+          github-token: ${{ github.token }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -211,6 +287,13 @@ jobs:
         working-directory: ${{ env.AIT_BUILD_DIR }}
         run: pnpm install --no-frozen-lockfile --ignore-scripts
 
+      - name: Install Pair(B) AIT Build Dependencies
+        # B 는 자기 아티팩트의 vite.config/package.json 으로 서빙해야 A/B 가 공정하다
+        # (Content-Encoding 플러그인 등 템플릿 계약이 산출물에 딸려온다 — A cwd 에서 --outDir 만 바꿔 서빙하지 않는 이유).
+        if: needs.setup.outputs.pair_mode == 'true'
+        working-directory: ${{ env.AIT_BUILD_DIR_PAIR }}
+        run: pnpm install --no-frozen-lockfile --ignore-scripts
+
       - name: Install Playwright Test Dependencies
         working-directory: Tests~/E2E/tests
         # 브라우저는 runner image의 시스템 Chrome 사용(perf config: channel='chrome') →
@@ -234,6 +317,11 @@ jobs:
           PERF_NET_DOWN_MBPS: ${{ inputs.net_profile == 'mobile' && '20' || '100' }}
           PERF_NET_UP_MBPS: ${{ inputs.net_profile == 'mobile' && '5' || '50' }}
           PERF_NET_RTT_MS: ${{ inputs.net_profile == 'mobile' && '150' || '50' }}
+          # 페어 A/B 모드 입력(미지정 시 모두 빈 값/기본값 — 기존 단일 측정과 동일)
+          PERF_ITERATIONS: ${{ inputs.iterations || '5' }}
+          PERF_PAIR_PROJECT_PATH: ${{ needs.setup.outputs.pair_mode == 'true' && env.HEAVY_PROJECT_PAIR || '' }}
+          PERF_LABEL_A: ${{ needs.setup.outputs.base_run_id != '' && format('base#{0}', needs.setup.outputs.base_run_id) || format('run#{0}', github.run_id) }}
+          PERF_LABEL_B: ${{ needs.setup.outputs.pair_run_id != '' && format('pair#{0}', needs.setup.outputs.pair_run_id) || '' }}
         run: pnpm run test:perf
 
       - name: Upload Perf Result
@@ -241,7 +329,8 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: perf-results-macos-${{ matrix.unity-version }}
-          path: Tests~/E2E/tests/perf-results-${{ matrix.unity-version }}.json
+          # 글롭: 단일 모드에선 A 파일 1개만 매치(기존과 동일). 페어 모드는 -pair.json(B)도 함께 매치.
+          path: Tests~/E2E/tests/perf-results-${{ matrix.unity-version }}*.json
           if-no-files-found: warn
 
       - name: Upload Playwright Report
@@ -260,7 +349,9 @@ jobs:
   save-baseline:
     name: Save Baseline Cache
     needs: [setup, measure-ttff]
-    if: needs.setup.outputs.is_baseline == 'true' && needs.measure-ttff.result == 'success'
+    # pair_mode 가드는 방어적 조치: is_baseline(push 전용)과 pair_mode(workflow_dispatch 전용)는
+    # 트리거 이벤트가 겹치지 않아 구조적으로 동시에 true 일 수 없지만, baseline 캐시 오염을 이중으로 차단한다.
+    if: needs.setup.outputs.is_baseline == 'true' && needs.setup.outputs.pair_mode != 'true' && needs.measure-ttff.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - name: Download Perf Artifacts
@@ -307,8 +398,9 @@ jobs:
           path: artifacts
 
       - name: Restore baseline cache
-        # baseline 자신을 만드는 main 푸시 런에서는 복원 불필요(자기 자신이 baseline)
-        if: needs.setup.outputs.is_baseline != 'true'
+        # baseline 자신을 만드는 main 푸시 런에서는 복원 불필요(자기 자신이 baseline).
+        # 페어 모드에서도 스킵 — main 대비 Δ 와 페어 Δ 가 동시에 표시되면 오독을 유발한다.
+        if: needs.setup.outputs.is_baseline != 'true' && needs.setup.outputs.pair_mode != 'true'
         uses: actions/cache/restore@v6
         with:
           path: baseline

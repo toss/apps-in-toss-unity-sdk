@@ -21,7 +21,6 @@
   },
   "pnpm": {
     "overrides": {
-      "@granite-js/plugin-core": "0.1.30",
       "find-my-way": ">=8.2.2",
       "ip": ">=2.0.1"
     }

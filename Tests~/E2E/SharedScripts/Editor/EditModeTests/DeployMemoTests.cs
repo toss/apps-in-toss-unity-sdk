@@ -12,6 +12,9 @@
 //   해당 어셈블리는 InternalsVisibleTo로 internal AITDeployManager/DeployKind에 접근 가능하다.
 // -----------------------------------------------------------------------
 
+using System;
+using System.Globalization;
+using System.Text.RegularExpressions;
 using NUnit.Framework;
 using AppsInToss.Editor.Menu;  // AITDeployManager, DeployKind (internal, .Menu 하위 네임스페이스)
 
@@ -122,6 +125,112 @@ public class DeployMemoTests
     {
         Assert.IsNull(AITDeployManager.SanitizeMemo(null));
         Assert.AreEqual(string.Empty, AITDeployManager.SanitizeMemo(string.Empty));
+    }
+
+    // =====================================================
+    // ResolveTimeZoneAbbreviation: 순수 함수 — 시스템 TimeZoneInfo 조회 없이 문자열/TimeSpan만으로 검증.
+    // TimeZoneInfo.FindSystemTimeZoneById 등 시스템 존 조회는 Windows CI에서 실패할 수 있어 사용하지 않는다.
+    // =====================================================
+
+    [Test]
+    public void ResolveTimeZoneAbbreviation_AsiaSeoulId_ReturnsKst()
+    {
+        string abbr = AITDeployManager.ResolveTimeZoneAbbreviation("Asia/Seoul", TimeSpan.FromHours(9), "대한민국 표준시");
+        Assert.AreEqual("KST", abbr);
+    }
+
+    [Test]
+    public void ResolveTimeZoneAbbreviation_KoreaStandardTimeWindowsId_ReturnsKst()
+    {
+        string abbr = AITDeployManager.ResolveTimeZoneAbbreviation("Korea Standard Time", TimeSpan.FromHours(9), "대한민국 표준시");
+        Assert.AreEqual("KST", abbr);
+    }
+
+    [Test]
+    public void ResolveTimeZoneAbbreviation_EtcUtcId_ReturnsUtc()
+    {
+        string abbr = AITDeployManager.ResolveTimeZoneAbbreviation("Etc/UTC", TimeSpan.Zero, "UTC");
+        Assert.AreEqual("UTC", abbr);
+    }
+
+    [Test]
+    public void ResolveTimeZoneAbbreviation_UnknownId_ShortUppercaseTzName_UsesTzNameAsIs()
+    {
+        // 1단계 known 매핑에 없는 id라도 tzName이 이미 2~5자 대문자 약어 형태면 2단계 휴리스틱으로 그대로 사용.
+        string abbr = AITDeployManager.ResolveTimeZoneAbbreviation("Europe/Paris", TimeSpan.FromHours(1), "CET");
+        Assert.AreEqual("CET", abbr);
+    }
+
+    [Test]
+    public void ResolveTimeZoneAbbreviation_UnknownId_LocalizedLongName_FallsBackToPositiveOffset()
+    {
+        // known 매핑도 없고 tzName도 약어 형태가 아니면(로컬라이즈된 긴 이름) 3단계 오프셋 폴백.
+        string abbr = AITDeployManager.ResolveTimeZoneAbbreviation("Unknown/Zone", TimeSpan.FromHours(9), "일본 표준시");
+        Assert.AreEqual("UTC+9", abbr);
+    }
+
+    [Test]
+    public void ResolveTimeZoneAbbreviation_UnknownId_LocalizedLongName_FallsBackToNegativeOffset()
+    {
+        string abbr = AITDeployManager.ResolveTimeZoneAbbreviation("Unknown/Zone", TimeSpan.FromHours(-5), "Eastern Standard Time (Localized)");
+        Assert.AreEqual("UTC-5", abbr);
+    }
+
+    [Test]
+    public void ResolveTimeZoneAbbreviation_UnknownId_HalfHourOffset_FallsBackWithMinutes()
+    {
+        string abbr = AITDeployManager.ResolveTimeZoneAbbreviation("Unknown/Zone", new TimeSpan(5, 30, 0), "Indian Standard Time (Localized)");
+        Assert.AreEqual("UTC+5:30", abbr);
+    }
+
+    [Test]
+    public void ResolveTimeZoneAbbreviation_UnknownId_ZeroOffset_FallsBackToUtc()
+    {
+        string abbr = AITDeployManager.ResolveTimeZoneAbbreviation("Unknown/Zone", TimeSpan.Zero, "Greenwich Mean Time (Localized)");
+        Assert.AreEqual("UTC", abbr);
+    }
+
+    // =====================================================
+    // FormatDeployTimestamp: 고정 DateTime + InvariantCulture — 테스트 러너 문화권과 무관해야 함.
+    // =====================================================
+
+    [Test]
+    public void FormatDeployTimestamp_FixedDateTime_FormatsAsExpected()
+    {
+        var fixedDateTime = new DateTime(2026, 8, 13, 14, 5, 0);
+        string formatted = AITDeployManager.FormatDeployTimestamp(fixedDateTime, "KST");
+        Assert.AreEqual("2026-08-13 14:05 KST", formatted);
+    }
+
+    [Test]
+    public void FormatDeployTimestamp_UsesInvariantCulture_RegardlessOfCurrentCulture()
+    {
+        var originalCulture = CultureInfo.CurrentCulture;
+        try
+        {
+            // 일부 문화권(예: fr-FR)은 날짜 구분자·자릿수 표기가 달라진다 — InvariantCulture 강제 검증.
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("fr-FR");
+            var fixedDateTime = new DateTime(2026, 1, 5, 9, 3, 0);
+            string formatted = AITDeployManager.FormatDeployTimestamp(fixedDateTime, "UTC");
+            Assert.AreEqual("2026-01-05 09:03 UTC", formatted);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = originalCulture;
+        }
+    }
+
+    // =====================================================
+    // BuildDeployMemo: 타임스탬프 첨부 (기존 memo 조립 파이프라인과의 결합)
+    // =====================================================
+
+    [Test]
+    public void BuildDeployMemo_EndsWithSeparatorAndTimestampPattern()
+    {
+        string memo = AITDeployManager.BuildDeployMemo(DeployKind.Test, "MyGame", "1.2.3");
+
+        Assert.IsTrue(Regex.IsMatch(memo, @" · \d{4}-\d{2}-\d{2} \d{2}:\d{2} \S+$"),
+            $"memo는 ' · ' 구분자 + 타임스탬프 패턴으로 끝나야 함. 실제: {memo}");
     }
 
     // =====================================================

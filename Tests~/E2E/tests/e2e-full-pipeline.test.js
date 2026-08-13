@@ -2175,6 +2175,135 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
         }
       });
 
+      // -----------------------------------------------------------------------
+      // 9-7 [제휴사 시나리오]: 게임이 자체 커스텀 키로 플랫폼 Storage를 직접 사용
+      //     중인 상태(자체 마이그레이션을 이미 마친 제휴사 모사)에서 레이어가
+      //     활성화되어도, 제휴사 소유 키는 쓰기/삭제는 물론 읽기조차 겪지 않아야
+      //     한다. mock 백엔드에 전체 호출 장부(ledger)를 달아 레이어의 Storage
+      //     접근을 키 단위로 감사한다 — 레이어에 허용된 접근은 자기 manifest 키
+      //     (AITUnityFS_v1_manifest)의 get/set뿐이다.
+      // -----------------------------------------------------------------------
+      test('9-7. [partner scenario] partner-owned Storage keys are never touched', async ({ browser }) => {
+        // 첫 부트(~70초) + reload 재시도 harness 최악 경로(3×120초)
+        test.setTimeout(480000);
+
+        const MANIFEST_KEY = 'AITUnityFS_v1_manifest';
+        const partnerPage = await browser.newPage();
+        try {
+          await partnerPage.addInitScript(() => {
+            var PREFIX = 'PW_PARTNER_MOCK_';
+            // 제휴사가 자체 마이그레이션으로 이미 최신 데이터를 커스텀 키에 보관 중인
+            // 상태를 시드한다. addInitScript는 reload 후에도 재실행되므로 "없을 때만"
+            // 시드해 세션 1에서의 게임 갱신이 reload를 넘어 보존되게 한다.
+            if (window.localStorage.getItem(PREFIX + 'partner_game_save_v2') === null) {
+              window.localStorage.setItem(PREFIX + 'partner_game_save_v2', JSON.stringify({ level: 42, gold: 12345 }));
+            }
+            if (window.localStorage.getItem(PREFIX + 'partner_settings_v2') === null) {
+              window.localStorage.setItem(PREFIX + 'partner_settings_v2', 'bgm=0.8;sfx=0.5');
+            }
+            var ledger = [];
+            window['__STORAGE_CALL_LEDGER__'] = ledger;
+            window['__AIT_PLAYERPREFS_STORAGE__'] = {
+              getItem: function (key) {
+                ledger.push({ op: 'get', key: key });
+                return Promise.resolve(window.localStorage.getItem(PREFIX + key));
+              },
+              setItem: function (key, value) {
+                ledger.push({ op: 'set', key: key });
+                return Promise.resolve(window.localStorage.setItem(PREFIX + key, value));
+              },
+              // 레이어는 아래 둘을 절대 호출하면 안 된다 — 호출되면 장부에서 잡힌다
+              removeItem: function (key) {
+                ledger.push({ op: 'remove', key: key });
+                return Promise.resolve(window.localStorage.removeItem(PREFIX + key));
+              },
+              clearItems: function () {
+                ledger.push({ op: 'clear', key: '*' });
+                return Promise.resolve();
+              }
+            };
+          });
+
+          const response = await partnerPage.goto(`http://localhost:${sharedPort}?e2e=true`, {
+            waitUntil: 'domcontentloaded',
+            timeout: 60000
+          });
+          expect(response?.status()).toBe(200);
+          await waitForUnityInstance(partnerPage);
+
+          // 감사가 유효하려면 레이어가 실제로 이 mock 백엔드 위에서 동작해야 한다
+          const status97 = await partnerPage.evaluate(() => window['AITPlayerPrefs'].status());
+          expect(status97.backend, 'layer must run on the audited mock backend').toBe('override');
+
+          // 세션 1: PlayerPrefs Set+Save → 레이어의 승격/미러 push 경로를 실제로 태운다
+          const setResult = await triggerPlayerPrefsAndWait(
+            partnerPage,
+            () => partnerPage.evaluate((json) => window['TriggerPlayerPrefsSet'](json),
+              JSON.stringify({ key: 'ait_e2e_pp7', value: 'v7' })),
+            'set'
+          );
+          expect(setResult.success, 'PlayerPrefs.SetString + Save should succeed').toBe(true);
+          // 디바운스된 push가 mock 백킹에 도달할 때까지 대기 (즉시 단언은 flaky)
+          await partnerPage.waitForFunction(
+            () => window.localStorage.getItem('PW_PARTNER_MOCK_AITUnityFS_v1_manifest') !== null,
+            undefined, { timeout: 15000 }
+          );
+
+          // 게임의 직접 Storage 사용 모사: 제휴사 키 갱신 1회 + 읽기 2회
+          const gameOps = await partnerPage.evaluate(async () => {
+            var s = window['__AIT_PLAYERPREFS_STORAGE__'];
+            await s.setItem('partner_game_save_v2', JSON.stringify({ level: 43, gold: 99999 }));
+            var save = await s.getItem('partner_game_save_v2');
+            var settings = await s.getItem('partner_settings_v2');
+            return { save: save, settings: settings };
+          });
+          expect(JSON.parse(gameOps.save).level, 'partner write must round-trip').toBe(43);
+          expect(gameOps.settings, 'untouched partner key must keep its seed value').toBe('bgm=0.8;sfx=0.5');
+
+          // 감사 1 (세션 1 전체): manifest 외 키 엔트리는 위 게임 모사 호출 3건과
+          // 정확히 일치해야 하고, remove/clear는 어떤 키로도 0건이어야 한다.
+          const ledger1 = await partnerPage.evaluate(() => window['__STORAGE_CALL_LEDGER__']);
+          const nonManifest1 = ledger1.filter((e) => e.key !== MANIFEST_KEY);
+          expect(nonManifest1, 'layer must not touch any non-manifest key').toEqual([
+            { op: 'set', key: 'partner_game_save_v2' },
+            { op: 'get', key: 'partner_game_save_v2' },
+            { op: 'get', key: 'partner_settings_v2' }
+          ]);
+          expect(ledger1.filter((e) => e.op === 'remove' || e.op === 'clear'),
+            'layer must never call removeItem/clearItems').toEqual([]);
+          expect(ledger1.some((e) => e.op === 'set' && e.key === MANIFEST_KEY),
+            'layer must have pushed its own manifest during the audit window').toBe(true);
+
+          // 세션 2: reload → 레이어가 스냅샷 복원(mode ait)을 수행한 후에도 제휴사
+          // 키가 세션 1의 최신 갱신 그대로인지 확인
+          await reloadAndWaitForUnity(partnerPage, '9-7');
+
+          const status97b = await partnerPage.evaluate(() => window['AITPlayerPrefs'].status());
+          expect(status97b.mode, 'restore must go through the AIT overlay path').toBe('ait');
+
+          const after = await partnerPage.evaluate(async () => {
+            var s = window['__AIT_PLAYERPREFS_STORAGE__'];
+            var save = await s.getItem('partner_game_save_v2');
+            var settings = await s.getItem('partner_settings_v2');
+            return { save: save, settings: settings, ledger: window['__STORAGE_CALL_LEDGER__'] };
+          });
+          expect(after.save, 'partner data must survive layer boot/restore/promotion unchanged')
+            .toBe(JSON.stringify({ level: 43, gold: 99999 }));
+          expect(after.settings, 'partner settings must survive unchanged').toBe('bgm=0.8;sfx=0.5');
+
+          // 감사 2 (세션 2 부트~복원 구간): 역시 manifest 키 밖 접근은 위 읽기 2건뿐
+          const nonManifest2 = after.ledger.filter((e) => e.key !== MANIFEST_KEY);
+          expect(nonManifest2, 'boot/restore must not touch any non-manifest key').toEqual([
+            { op: 'get', key: 'partner_game_save_v2' },
+            { op: 'get', key: 'partner_settings_v2' }
+          ]);
+          expect(after.ledger.filter((e) => e.op === 'remove' || e.op === 'clear'),
+            'layer must never call removeItem/clearItems (post-reload)').toEqual([]);
+        } finally {
+          await partnerPage.close();
+        }
+      });
+
     }); // end of test.describe.serial('9. ...')
 
   }); // end of test.describe.serial

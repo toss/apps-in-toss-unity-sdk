@@ -1025,13 +1025,32 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       // ~100MB webgl.data 재다운로드를 제거하므로 정상 경로에서는 1회 시도로 통과한다.
       //
       // 하니스 순단 분류: self-hosted 러너의 vite preview가 부하로 루프백 스트림을 끊으면
-      // (ERR_CONNECTION_CLOSED / download-watchdog 발동 / "Failed to download file")
-      // 이는 제품 크래시가 아니라 하니스 인프라 아티팩트이므로 bounded 재시도한다.
+      // (ERR_CONNECTION_CLOSED 등 Chromium net 에러) 이는 제품 크래시가 아니라 하니스
+      // 인프라 아티팩트이므로 bounded 재시도한다.
       // 반면 진짜 크래시 시그니처(RuntimeError/webglcontextlost/Aborted()/out of bounds/
       // memory access)는 즉시 hard-fail — 재시도로 삼키지 않는다(원 계약 보존).
+      // 제품 hang 시그니처("Failed to download file" = 로더의 .data 다운로드 실패)도 마찬가지로
+      // 즉시 hard-fail — 과거 이 문구가 HARNESS_RE에 들어 있어 제품 결함이 조용한 재시도로
+      // 은폐됐다(dev 빌드 warm reload에서 fetch 계측이 로더 다운로드를 깨뜨린 회귀).
       test.setTimeout(360000);
       const CRASH_RE = /webglcontextlost|Aborted\(|RuntimeError|out of bounds|memory access/i;
-      const HARNESS_RE = /ERR_CONNECTION_CLOSED|Failed to download file|download-watchdog/i;
+      // 하니스 전용 패턴만 남긴다: 아래 넷은 모두 Chromium이 requestfailed에 싣는 전송 계층
+      // 순단(루프백 스트림 끊김/서버 종료)으로, 제품 코드가 절대 만들어내지 않는 문구다.
+      // ERR_INCOMPLETE_CHUNKED_ENCODING: vite preview는 .data를 chunked로 서빙하므로
+      // 본문 스트리밍 중 끊기면 Chromium이 CLOSED/RESET 대신 이 코드를 보고한다.
+      // 제거된 것: "Failed to download file"(Unity 로더의 제품 결함 지문) 및
+      // "download-watchdog"(그 실패를 받은 제품 워치독의 진단 마커 — 즉 같은 제품 결함).
+      const HARNESS_RE = /ERR_CONNECTION_CLOSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE|ERR_INCOMPLETE_CHUNKED_ENCODING/i;
+      // 제품 hang 지문: 로더가 .data 다운로드 실패 시 남기는 유일한 콘솔 신호.
+      // 동반 pageerror("...reading 'subarray'")는 진단용으로만 수집한다(판정 조건 아님 —
+      // 로더가 실패를 삼켜 subarray 예외 없이 조용히 매다는 변종도 있기 때문).
+      const PRODUCT_HANG_RE = /Failed to download file/i;
+      const HANG_PAGEERROR_RE = /reading ['"]subarray['"]/i;
+      // 예산 근거(실측): 성공 경로는 warm reload 후 1.1~5.8초에 unityInstance가 재설정되고,
+      // 실패(제품 hang) 경로는 3.5초 안에 "Failed to download file"로 확정된다.
+      // 25s면 성공 상한의 ~4배 마진이라 느린 러너에서도 오탐하지 않으면서, 예전 75s처럼
+      // 실패 케이스에서 시도당 1분 이상을 버리지 않는다.
+      const UNITY_WAIT_BUDGET_MS = 25000;
       const maxAttempts = 3;
 
       const reloadErrors = [];   // { message, stack }
@@ -1067,6 +1086,12 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       const hadHarnessDrop = () =>
         failedRequests.some(f => HARNESS_RE.test(f)) ||
         consoleLines.some(l => HARNESS_RE.test(l));
+      const hadProductHang = () => consoleLines.some(l => PRODUCT_HANG_RE.test(l));
+      const productHangDetail = () => {
+        const sig = consoleLines.filter(l => PRODUCT_HANG_RE.test(l)).slice(0, 3);
+        const sub = reloadErrors.filter(e => HANG_PAGEERROR_RE.test(e.message)).map(e => e.message).slice(0, 2);
+        return `console=[${sig.join(' | ')}] pageerror(subarray)=[${sub.join(' | ') || '없음'}]`;
+      };
       const dumpDiag = (tag) => {
         console.log(`[3-1] pageerrors(${reloadErrors.length}):`);
         reloadErrors.forEach((e, i) => {
@@ -1087,10 +1112,13 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       // test.setTimeout 예산 전체를 소진한다(관측: 90s 지정에도 363s 실행). 이 헬퍼는
       // 내가 제어하는 벽시계 deadline으로 시도별 예산을 실제로 강제하고, navigation 중
       // evaluate 예외("context destroyed"/page closed)를 삼켜 재로드 루프에 견딘다.
-      const waitForUnityBounded = async (budgetMs) => {
+      // abortIf: 매 폴링 사이클 앞에서 평가되는 조기 종료 술어(제품 hang 지문 관측 등).
+      // 예산을 끝까지 태우지 않고 즉시 { aborted: true }로 빠져나온다.
+      const waitForUnityBounded = async (budgetMs, abortIf) => {
         const deadline = Date.now() + budgetMs;
         let evalThrows = 0;
         while (Date.now() < deadline) {
+          if (abortIf && abortIf()) return { ready: false, aborted: true, evalThrows };
           try {
             const ready = await sharedPage.evaluate(
               () => typeof window !== 'undefined' && window['unityInstance'] !== undefined);
@@ -1141,7 +1169,7 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
             console.log(`[3-1] navigation type=${navType}`);
 
             const tWait = Date.now();
-            const res = await waitForUnityBounded(75000);
+            const res = await waitForUnityBounded(UNITY_WAIT_BUDGET_MS, hadProductHang);
             if (res.ready) {
               console.log(`[3-1] unityInstance re-set after ${Date.now() - tWait}ms (warm reinit ok, attempt ${attempt}, evalThrows=${res.evalThrows})`);
               // 성공 경로에서도 진짜 크래시 시그니처는 hard-fail.
@@ -1154,7 +1182,11 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
             }
             // unityInstance가 예산 내 미설정(evalThrows>0이면 재로드 루프 진행 중 = 워치독 발동).
             closedFatal = !!res.closed;
-            throw new Error(`unityInstance not set within 75s budget (evalThrows=${res.evalThrows}${res.closed ? ', page closed' : ''})`);
+            if (res.aborted) {
+              // 제품 hang 지문 관측 — 예산 소진을 기다리지 않고 즉시 실패로 넘긴다(분류는 catch에서).
+              throw new Error(`제품 hang 지문 조기 감지로 대기 중단 (${Date.now() - tWait}ms 경과)`);
+            }
+            throw new Error(`unityInstance not set within ${UNITY_WAIT_BUDGET_MS / 1000}s budget (evalThrows=${res.evalThrows}${res.closed ? ', page closed' : ''})`);
           } catch (err) {
             lastErr = err;
             console.log(`[3-1] attempt ${attempt}/${maxAttempts} FAILED after ${Date.now() - t0}ms: ${err.message}`);
@@ -1164,13 +1196,26 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
               dumpDiag('crash');
               throw err;
             }
+            // 제품 hang 시그니처면 재시도 없이 즉시 실패 — 재시도로 삼키면 회귀가 다시 은폐된다.
+            // (제품 워치독이 최대 2회 자동 reload 하지만, 첫 관측에서 바로 종료하므로 그 루프와
+            //  경합하지 않는다. 리스너는 아래 finally에서 한 번에 해제된다.)
+            // 단, 로더는 진짜 전송 계층 순단(fetch reject)에도 같은 "Failed to download file"을
+            // 남기므로 net 에러 시그니처가 공존하면 순단이 원인 — 하니스 재시도 경로로 넘긴다.
+            // 제품 결함(fetch 계측 예외)은 요청 자체는 성공해 net 에러가 절대 없다는 점이 지문이다.
+            if (hadProductHang() && !hadHarnessDrop()) {
+              console.log(`[3-1] product hang signature detected (Failed to download file) — hard-fail (no retry)`);
+              dumpDiag('product-hang');
+              throw new Error(
+                'Unity 로더 .data 다운로드가 fetch 계측 예외로 깨진 제품 결함 시그니처 ' +
+                `(런북: dev 빌드 warm reload hang): ${productHangDetail()} :: ${err.message}`);
+            }
             // 페이지/컨텍스트가 닫혔으면 재시도 불가(fatal).
             if (closedFatal || /has been closed|Target closed/.test(err.message || '')) {
               console.log(`[3-1] page/context closed — cannot retry`);
               dumpDiag('closed');
               throw err;
             }
-            // 하니스 순단(로컬 서버 연결 끊김/다운로드 실패)이고 시도가 남았으면 재시도.
+            // 하니스 순단(로컬 서버 연결 끊김 — 전송 계층 net 에러)이고 시도가 남았으면 재시도.
             if (attempt < maxAttempts && hadHarnessDrop()) {
               console.log(`[3-1] harness connection-drop classified (server dropped webgl.data stream) — retrying reload`);
               continue;

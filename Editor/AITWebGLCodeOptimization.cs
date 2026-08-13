@@ -164,21 +164,36 @@ namespace AppsInToss.Editor
         /// 설정을 완전 건너뛰던 동작을 DiskSize 폴백으로 개선.
         /// 2021.3(레거시 WebGLCodeOptimization={Speed,Size})은 DiskSize도 없어 이 개선의
         /// 사각지대로 남아 있었다 — Size 3순위 폴백으로 추가 커버.
+        ///
+        /// 기존 공개 시그니처는 유지한다 — 사다리 1순위(DiskSizeLTO)부터 시도하는
+        /// <see cref="TrySetBestAvailable"/>(allowLto: true)로 위임.
         /// </summary>
-        public static bool TrySetDiskSizeLTO()
+        public static bool TrySetDiskSizeLTO() => TrySetBestAvailable(allowLto: true);
+
+        /// <summary>
+        /// codeOptimization 사다리를 적용한다. allowLto가 false면 1순위(DiskSizeLTO)를 건너뛰고
+        /// 2순위(DiskSize, LTO 없는 disk-size 최적화)부터 3순위(Size, 2021.3 레거시)로만 폴백한다.
+        ///
+        /// Unity 6000.0.x의 emscripten 툴체인은 대형 프로젝트 whole-program LTO 링크에서
+        /// wasm-ld가 빌드 머신 메모리를 초과해 OOM(SIGKILL)을 낼 수 있다(OOM 원인은 LTO 링크이지
+        /// disk-size 최적화(-Os) 자체가 아니다) — 이 경로("LTO 제외 모드")가 그 회피 레버다.
+        /// 버전 판정은 <see cref="ResolveDecision"/>이 담당하며 이 메서드는 버전을 모른다(순수 레버).
+        /// </summary>
+        internal static bool TrySetBestAvailable(bool allowLto)
         {
             var p = ResolveProperty();
             if (p == null) return false;
 
-            // 1순위: DiskSizeLTO (cross-module LTO 포함, 권장)
-            if (Enum.IsDefined(p.PropertyType, DiskSizeLTO))
+            // 1순위: DiskSizeLTO (cross-module LTO 포함, 권장) — allowLto=false면 건너뛴다.
+            if (allowLto && Enum.IsDefined(p.PropertyType, DiskSizeLTO))
                 return TrySetByName(DiskSizeLTO);
 
             // 2순위: DiskSize (LTO 없는 disk-size 최적화, 동일 방향의 폴백)
             if (Enum.IsDefined(p.PropertyType, DiskSizeFallback))
             {
-                Debug.Log(
-                    $"[AIT] WebGL codeOptimization: '{DiskSizeLTO}' 미지원 버전 — '{DiskSizeFallback}'(폴백) 적용");
+                Debug.Log(allowLto
+                    ? $"[AIT] WebGL codeOptimization: '{DiskSizeLTO}' 미지원 버전 — '{DiskSizeFallback}'(폴백) 적용"
+                    : $"[AIT] WebGL codeOptimization: LTO 제외 모드 — '{DiskSizeFallback}'(비-LTO) 적용");
                 return TrySetByName(DiskSizeFallback);
             }
 
@@ -192,6 +207,91 @@ namespace AppsInToss.Editor
 
             // 셋 다 없는 경우: 호출자가 별도 경고를 남기므로 여기서는 false만 반환
             return false;
+        }
+
+        /// <summary>
+        /// CI/로컬에서 code optimization 정책을 덮어쓰는 환경변수 키.
+        /// 'off'/'none'/'false'(대소문자 무관) = 모든 Unity 버전에서 적용 자체를 끔(킬스위치),
+        /// 'auto'/빈값 = 기본 정책(editorConfig + 버전 게이트), 그 외 = 해당 enum 멤버를 강제
+        /// (예: 6000.0에서 DiskSizeLTO를 재현/반증). 관용구 출처: AITBuildInitializer의
+        /// AIT_IL2CPP_CONFIGURATION 오버라이드.
+        /// </summary>
+        internal const string EnvOverrideKey = "AIT_WEBGL_CODE_OPTIMIZATION";
+
+        /// <summary>
+        /// Unity 6000.0.x emscripten 툴체인은 대형 프로젝트 whole-program LTO 링크에서
+        /// wasm-ld가 빌드 머신 메모리를 초과해 OOM(SIGKILL "Killed: 9")으로 빌드를 깨뜨린다.
+        /// OOM 원인은 LTO 링크이지 disk-size 최적화(-Os) 자체가 아니므로 사다리 1순위만 제외한다.
+        /// 6000.3의 신형 툴체인은 동일한 DiskSizeLTO를 정상 링크함을 실측 확인했다(6000.0 한정 위험).
+        /// </summary>
+        internal static bool IsLtoRiskyVersion(string unityVersion) =>
+            !string.IsNullOrEmpty(unityVersion) && unityVersion.StartsWith("6000.0.", StringComparison.Ordinal);
+
+        /// <summary>
+        /// <see cref="ResolveDecision"/>의 반환값. code optimization 적용 여부/LTO 허용 여부/
+        /// env로 강제된 멤버 이름을 담는다(순수 데이터, 부수효과 없음).
+        /// </summary>
+        internal readonly struct Decision
+        {
+            /// <summary>code optimization을 적용할지.</summary>
+            public readonly bool Apply;
+
+            /// <summary>사다리 1순위(DiskSizeLTO) 허용 여부. false면 DiskSize→Size로만 폴백.</summary>
+            public readonly bool AllowLto;
+
+            /// <summary>env로 강제된 enum 멤버 이름(없으면 null). Apply=true일 때만 의미가 있다.</summary>
+            public readonly string ForcedMember;
+
+            public Decision(bool apply, bool allowLto, string forcedMember)
+            {
+                Apply = apply;
+                AllowLto = allowLto;
+                ForcedMember = forcedMember;
+            }
+        }
+
+        /// <summary>
+        /// editorConfig(-1 자동/0 미적용/1 적용의 의미상 "적용 여부") + Unity 버전 + 환경변수로
+        /// code optimization 적용 정책을 결정하는 순수 함수. PlayerSettings/Application 등 실제 API를
+        /// 건드리지 않으므로 실행 중인 Unity 버전과 무관하게 EditMode에서 데이터 주도로 검증할 수 있다.
+        /// </summary>
+        /// <param name="configApply">editorConfig.webGLCodeOptimization != 0 (GUI가 적용을 원하는지).</param>
+        /// <param name="unityVersion">Application.unityVersion.</param>
+        /// <param name="envValue">EnvOverrideKey 환경변수 원본 값(null 허용).</param>
+        internal static Decision ResolveDecision(bool configApply, string unityVersion, string envValue)
+        {
+            string env = (envValue ?? string.Empty).Trim();
+
+            // 킬스위치: off/none/false는 GUI 설정(configApply)이나 Unity 버전과 무관하게
+            // *모든* Unity 버전에서 code optimization 적용 자체를 끈다. 6000.0 한정으로는
+            // 과거(완전 skip) 동작을 정확히 복원하지만, 2021.3/2022.3/6000.2/6000.3 등 다른
+            // 버전에서는 오늘 적용되던 DiskSizeLTO/폴백이 이 값으로 "새로" 꺼진다는 점에 주의.
+            if (env.Equals("off", StringComparison.OrdinalIgnoreCase) ||
+                env.Equals("none", StringComparison.OrdinalIgnoreCase) ||
+                env.Equals("false", StringComparison.OrdinalIgnoreCase))
+            {
+                return new Decision(apply: false, allowLto: false, forcedMember: null);
+            }
+
+            // 버전 게이트: 6000.0.x만 LTO 위험(OOM) — 그 외 버전은 기존과 동일하게 LTO 허용.
+            bool allowLto = !IsLtoRiskyVersion(unityVersion);
+
+            if (env.Length == 0 || env.Equals("auto", StringComparison.OrdinalIgnoreCase))
+            {
+                // 기본 정책: GUI(editorConfig) 값 그대로 + 버전 게이트만 적용.
+                return new Decision(apply: configApply, allowLto: allowLto, forcedMember: null);
+            }
+
+            // 명시적 멤버 강제(운영자 오버라이드, 예: 6000.0에서 DiskSizeLTO를 다시 켜 OOM 재현/반증):
+            // GUI '미적용'(configApply == false)도 무시하고 적용한다 — 의도된 동작이다.
+            //
+            // AllowLto는 여기서도 버전 게이트 값을 그대로 유지해야 한다(무조건 true로 고정하면 안 됨).
+            // 이유: 강제 멤버명이 오타이거나 이 버전 enum에 없으면 TrySetByName이 false를 반환하고,
+            // 호출자(AITBuildInitializer)는 일반 사다리 TrySetBestAvailable(decision.AllowLto)로
+            // 폴백한다. 이때 AllowLto가 true로 고정돼 있으면 6000.0에서 강제가 실패한 뒤 폴백
+            // 사다리가 1순위 DiskSizeLTO(OOM 레버)부터 다시 타 조용히 재활성화된다 — 6000.0에서는
+            // 강제 실패 후에도 폴백 사다리가 여전히 DiskSize(2순위)부터 타야 한다.
+            return new Decision(apply: true, allowLto: allowLto, forcedMember: env);
         }
     }
 }

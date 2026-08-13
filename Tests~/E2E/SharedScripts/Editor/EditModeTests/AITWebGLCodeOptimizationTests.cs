@@ -4,6 +4,9 @@
 // Sentry 이슈 APPS-IN-TOSS-UNITY-SDK-10W 재발 방지용 회귀 테스트:
 //   DiskSizeLTO 멤버 미정의 시 경고 후 건너뛰던 동작을 DiskSize 폴백으로 개선.
 //   이후 2021.3 레거시 enum(DiskSize도 없음)을 위한 Size 3순위 폴백 추가.
+// Unity 6000.0 OOM 회피가 "완전 스킵"에서 "LTO 제외(TrySetBestAvailable) DiskSize 적용"으로
+// 바뀐 뒤 추가된 테스트: LTO 제외 모드 자체, 6000.0의 DiskSize 멤버 실재 전제, 빌드 세션 스냅샷
+// 복원 계약. 버전 게이트/킬스위치 순수 로직(ResolveDecision)은 AITWebGLCodeOptDecisionTests.cs 참조.
 // -----------------------------------------------------------------------
 
 using NUnit.Framework;
@@ -197,6 +200,115 @@ public class AITWebGLCodeOptimizationTests
                 Assert.AreEqual(AITWebGLCodeOptimization.DiskSizeLTO, after,
                     "DiskSizeLTO 지원 버전에서는 DiskSizeLTO가 직접 적용되어야 합니다.");
             }
+        }
+        finally
+        {
+            if (before != null)
+                AITWebGLCodeOptimization.TrySetByName(before);
+        }
+    }
+
+    // =================================================================
+    // Unity 6000.0 OOM 회피: "완전 스킵" → "LTO 제외 DiskSize 적용" 회귀 방지
+    // =================================================================
+
+    /// <summary>
+    /// allowLto=false면 사다리 1순위(DiskSizeLTO)를 건너뛰고 2순위(DiskSize, 비-LTO)를 적용해야 한다.
+    /// Unity 6000.0 OOM 회피 경로("LTO 제외 모드")의 계약 — DiskSizeLTO가 절대 선택되지 않아야 한다.
+    /// </summary>
+    [Test]
+    public void TrySetBestAvailable_WhenLtoDisallowed_AppliesDiskSizeAndNeverLTO()
+    {
+        if (!AITWebGLCodeOptimization.IsSupported)
+        {
+            Assert.Ignore("이 Unity 버전은 codeOptimization API를 지원하지 않습니다.");
+            return;
+        }
+
+        if (!AITWebGLCodeOptimization.IsMemberDefined(AITWebGLCodeOptimization.DiskSizeFallback))
+        {
+            Assert.Ignore("이 Unity 버전 enum에는 DiskSize가 없어 LTO 제외 경로를 검증할 수 없습니다.");
+            return;
+        }
+
+        string before = AITWebGLCodeOptimization.GetCurrentName();
+
+        try
+        {
+            LogAssert.Expect(LogType.Log, new Regex(
+                @"\[AIT\] WebGL codeOptimization: LTO 제외 모드 — 'DiskSize'\(비-LTO\) 적용"));
+
+            bool result = AITWebGLCodeOptimization.TrySetBestAvailable(allowLto: false);
+
+            Assert.IsTrue(result, "DiskSize가 정의된 버전에서는 LTO 제외 모드도 true를 반환해야 합니다.");
+            Assert.AreEqual(AITWebGLCodeOptimization.DiskSizeFallback, AITWebGLCodeOptimization.GetCurrentName(),
+                "LTO 제외 모드에서 적용된 값은 DiskSize여야 하며 DiskSizeLTO여서는 안 됩니다.");
+        }
+        finally
+        {
+            if (before != null)
+                AITWebGLCodeOptimization.TrySetByName(before);
+        }
+    }
+
+    /// <summary>
+    /// 6000.0 개선의 핵심 전제 검증: 6000.0.x의 WasmCodeOptimization enum에 'DiskSize' 멤버가
+    /// 실재해야 LTO 제외 폴백이 실제로 값을 바꾼다(없으면 사다리가 fail-safe로 무적용된다 —
+    /// 이 경우 6000.0 개선 자체가 no-op이므로 perf 전제가 무너졌다는 신호가 된다).
+    /// E2E test_level=0이 여러 Unity 버전 매트릭스에서 돌기 때문에 이 단언이 6000.0 레그에서만
+    /// 사실을 확정하고, 그 외 버전에서는 Assert.Ignore로 스스로를 제외한다.
+    /// </summary>
+    [Test]
+    public void DiskSizeMember_IsDefined_OnUnity6000_0()
+    {
+        if (!AITWebGLCodeOptimization.IsLtoRiskyVersion(Application.unityVersion))
+        {
+            Assert.Ignore("6000.0.x가 아니어서 이 전제 검증 대상이 아닙니다. (unityVersion=" + Application.unityVersion + ")");
+            return;
+        }
+
+        Assert.IsTrue(AITWebGLCodeOptimization.IsSupported,
+            "6000.0.x는 codeOptimization API(UserBuildSettings)를 지원해야 합니다.");
+        Assert.IsTrue(AITWebGLCodeOptimization.IsMemberDefined(AITWebGLCodeOptimization.DiskSizeFallback),
+            $"6000.0 LTO 제외 폴백은 'DiskSize' 멤버 존재가 전제입니다 (unityVersion={Application.unityVersion}).");
+    }
+
+    /// <summary>
+    /// 빌드 세션 스냅샷 계약 회귀 방지: LTO 제외 모드(TrySetBestAvailable(false))로 적용을 바꾼 뒤에도
+    /// PlayerSettingsSnapshot.Capture()/Restore()가 적용 전 원래 값으로 정확히 되돌려야 한다.
+    /// AITBuildSession은 멤버 이름 문자열로 캡처/복원하므로(AITBuildSession.cs:84,155) DiskSize도
+    /// 기존 DiskSizeLTO와 동일하게 안전해야 한다 — 6000.0에서 실제 값이 바뀌게 된 이번 변경의
+    /// 회귀 방지 테스트.
+    /// </summary>
+    [Test]
+    public void Snapshot_Restores_CodeOptimization_AfterNoLtoApply()
+    {
+        if (!AITWebGLCodeOptimization.IsSupported)
+        {
+            Assert.Ignore("이 Unity 버전은 codeOptimization API를 지원하지 않습니다.");
+            return;
+        }
+
+        if (!AITWebGLCodeOptimization.IsMemberDefined(AITWebGLCodeOptimization.DiskSizeFallback))
+        {
+            Assert.Ignore("이 Unity 버전 enum에는 DiskSize가 없어 LTO 제외 경로를 검증할 수 없습니다.");
+            return;
+        }
+
+        string before = AITWebGLCodeOptimization.GetCurrentName();
+
+        try
+        {
+            var snapshot = PlayerSettingsSnapshot.Capture();
+
+            Assert.IsTrue(AITWebGLCodeOptimization.TrySetBestAvailable(allowLto: false));
+            Assert.AreEqual(AITWebGLCodeOptimization.DiskSizeFallback, AITWebGLCodeOptimization.GetCurrentName(),
+                "사전 조건: LTO 제외 모드 적용 후 현재 값은 DiskSize여야 합니다.");
+
+            snapshot.Restore();
+
+            Assert.AreEqual(before, AITWebGLCodeOptimization.GetCurrentName(),
+                "빌드 세션 스냅샷 복원은 codeOptimization을 캡처 당시 값으로 되돌려야 합니다.");
         }
         finally
         {

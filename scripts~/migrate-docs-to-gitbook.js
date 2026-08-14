@@ -12,10 +12,10 @@
  *   2. --dry-run이면 산출물(ops.*.json / bodies / links.csv / report.txt) 출력 후 exit 0
  *   3. 같은 subject의 열린 CR 조회 → 있으면 URL 출력하고 exit 2 (--ignore-open-cr로만 진행)
  *   4. CR 생성
- *   5. pass1: 페이지 목록 스냅샷 → insert_page × 6 (그룹 4 + 최상위 문서 2) → 신규 ID diff 관측
- *   6. pass2: 페이지 목록 스냅샷 → insert_page × 13 (자식 문서) → 신규 ID diff 관측
+ *   5. pass1: 페이지 목록 스냅샷 → insert_page × 4 (그룹 3 + 최상위 문서 1) → 신규 ID diff 관측
+ *   6. pass2: 페이지 목록 스냅샷 → insert_page × 10 (자식 문서) → 신규 ID diff 관측
  *   7. 관측된 URL로 링크 맵 확정 → 본문 재작성(센티넬 → 실제 URL) → 잔존 0건 확인
- *   8. update_page × 15 push
+ *   8. update_page × 14 (문서 11 + 그룹 색인 3) push
  *   9. CR URL과 후속 안내 출력
  *
  * ⚠️ 중간에 실패하면 재개하지 않는다. 복구 절차는 사람이 수행한다:
@@ -128,32 +128,22 @@ const RECOVERY_HINT =
 
 // ============================================================
 // 매니페스트 (설계 §1.2 배정 표를 그대로 상수화)
-// pass: 1 = 그룹 4 + 최상위 문서 2, 2 = 그룹 아래 자식 문서 13
+// pass: 1 = 그룹 3 + 최상위 문서 1, 2 = 그룹 아래 자식 문서 10
 // ============================================================
 
 const MANIFEST = [
   { key: "first-steps", type: "group", title: "처음이라면", slug: "first-steps", parentKey: "root", pass: 1 },
   { key: "add-features", type: "group", title: "기능 붙이기", slug: "add-features", parentKey: "root", pass: 1 },
   { key: "build", type: "group", title: "빌드 다루기", slug: "build", parentKey: "root", pass: 1 },
-  { key: "pilot-channels", type: "group", title: "파일럿 채널", slug: "pilot-channels", parentKey: "root", pass: 1 },
   {
     key: "overview",
     type: "document",
     source: "README.md",
-    title: "Unity SDK 문서",
+    title: "Overview",
     slug: "overview",
     parentKey: "root",
     pass: 1,
     titleOverride: true,
-  },
-  {
-    key: "contributing",
-    type: "document",
-    source: "Contributing.md",
-    title: "기여 가이드",
-    slug: "contributing",
-    parentKey: "root",
-    pass: 1,
   },
   {
     key: "getting-started",
@@ -177,10 +167,13 @@ const MANIFEST = [
     key: "troubleshooting",
     type: "document",
     source: "Troubleshooting.md",
-    title: "문제 해결",
-    slug: "troubleshooting",
+    title: "FAQ",
+    slug: "faq",
     parentKey: "first-steps",
     pass: 2,
+    // 저장소 원본 H1은 "# 문제 해결"이지만 포털 페이지 제목은 "FAQ"로 바꾼다(저장소 .md는
+    // 수정하지 않음). titleOverride로 H1↔title 일치 검사를 건너뛰고 title을 페이지 제목으로 쓴다.
+    titleOverride: true,
   },
   {
     key: "advertising",
@@ -245,38 +238,18 @@ const MANIFEST = [
     parentKey: "build",
     pass: 2,
   },
-  {
-    key: "manual-integration",
-    type: "document",
-    source: "ManualIntegration.md",
-    title: "수동 연동",
-    slug: "manual-integration",
-    parentKey: "build",
-    pass: 2,
-  },
-  {
-    key: "beta-channel",
-    type: "document",
-    source: "BetaChannel.md",
-    title: "베타 채널",
-    slug: "beta-channel",
-    parentKey: "pilot-channels",
-    pass: 2,
-  },
-  {
-    key: "perf-beta-channel",
-    type: "document",
-    source: "PerfBetaChannel.md",
-    title: "perf 베타 채널",
-    slug: "perf-beta-channel",
-    parentKey: "pilot-channels",
-    pass: 2,
-  },
 ];
 
 const GROUP_KEYS = MANIFEST.filter((e) => e.type === "group").map((e) => e.key);
 const DOCUMENT_ENTRIES = MANIFEST.filter((e) => e.type === "document");
 const MANIFEST_BY_SOURCE = new Map(DOCUMENT_ENTRIES.map((e) => [e.source, e]));
+
+// 이관 제외 소스 — 저장소엔 남기되 포털엔 올리지 않는 .md. I-1은 "--docs-dir 직속 .md
+// 집합 == 매니페스트 소스 ∪ 제외 소스"로 확장 검증하므로, 새 .md를 추가하면 여전히 I-1이
+// 잡는다(매니페스트에 넣거나 여기에 명시해야 통과). 이들을 가리키는 다른 문서의 링크는
+// resolveLink()에서 GitHub blob URL(표 밖)로, README 표 안이면 filterReadmeInternalRows()가
+// 행째(빈 표면 섹션 heading까지) 삭제로 처리한다.
+const EXCLUDED_SOURCES = new Set(["Contributing.md", "ManualIntegration.md", "BetaChannel.md", "PerfBetaChannel.md"]);
 const MANIFEST_BY_KEY = new Map(MANIFEST.map((e) => [e.key, e]));
 
 // ============================================================
@@ -399,7 +372,7 @@ const USAGE = `Documentation~/ → GitBook 포털 이관 도구 (일회성, CR �
   node scripts~/migrate-docs-to-gitbook.js --dry-run [옵션]
   node scripts~/migrate-docs-to-gitbook.js [옵션]
 
-실행은 항상 전체 시퀀스(CR 생성 → insert 6건 → insert 13건 → update 15건)를 돈다.
+실행은 항상 전체 시퀀스(CR 생성 → insert 4건 → insert 10건 → update 14건)를 돈다.
 부분 실행·재개 옵션은 없다. 중간 실패 시 GitBook UI에서 그 CR을 archive하고 다시 실행하면
 새 CR로 처음부터 진행한다.
 
@@ -719,6 +692,20 @@ function resolveLink(sourceFile, rawTarget, ctx) {
   const base = hashIdx === -1 ? rawTarget : rawTarget.slice(0, hashIdx);
   const anchor = hashIdx === -1 ? "" : rawTarget.slice(hashIdx);
 
+  // 이관 제외 소스(저장소엔 있으나 포털엔 없음). README 표 안이면 행째 삭제(internal/과 동일
+  // 경로), 그 밖에서는 GitHub blob URL로 재작성한다. anchor는 GitHub .md의 한글 앵커가
+  // 불안정하므로 버린다(internal/ 규칙과 동일).
+  if (EXCLUDED_SOURCES.has(base)) {
+    if (sourceFile === "README.md") {
+      return { rule: "REMOVED_WITH_TABLE_ROW", rewritten: "", anchor: "" };
+    }
+    return {
+      rule: "EXCLUDED_TO_GITHUB",
+      rewritten: `https://github.com/toss/apps-in-toss-unity-sdk/blob/main/Documentation~/${base}`,
+      anchor: "",
+    };
+  }
+
   if (/^[A-Za-z][A-Za-z0-9]*\.md$/.test(base)) {
     if (!MANIFEST_BY_SOURCE.has(base)) {
       throw new MigrationError(
@@ -757,7 +744,12 @@ function isTableSeparator(line) {
   return isTableRow(line) && /^[\s|:-]+$/.test(line) && line.includes("-");
 }
 function rowLinksToInternal(row) {
-  return /\]\(internal\//.test(row);
+  if (/\]\(internal\//.test(row)) return true;
+  // 이관 제외 소스로 링크하는 행도 삭제 대상(포털엔 없는 문서다).
+  for (const src of EXCLUDED_SOURCES) {
+    if (row.includes(`](${src})`) || row.includes(`](${src}#`)) return true;
+  }
+  return false;
 }
 
 /**
@@ -785,11 +777,19 @@ function filterReadmeInternalRows(lines) {
         const kept = dataRows.filter((row) => !rowLinksToInternal(row));
         removed += dataRows.length - kept.length;
         if (kept.length === 0) {
-          // 표 전체 삭제 + 바로 앞 안내 문단 삭제
-          while (out.length && out[out.length - 1].trim() === "") out.pop();
+          // 표 전체 삭제 + 바로 앞 안내 문단(1블록) 삭제. 단일 패스로만 걷어내 자체 heading이
+          // 없는 섹션(internal/ 안내문+표)에서 위 섹션 내용까지 잠식하지 않게 한다.
+          const popBlanks = () => {
+            while (out.length && out[out.length - 1].trim() === "") out.pop();
+          };
+          popBlanks();
           while (out.length && out[out.length - 1].trim() !== "" && !/^#{1,6}\s/.test(out[out.length - 1])) {
             out.pop();
           }
+          // 안내 문단과 heading 사이 빈 줄까지 걷어낸 뒤, 바로 앞이 이 표 섹션의 heading이면
+          // (= 그 섹션에 이 표 말고는 내용이 없었다는 뜻) heading도 제거해 빈 섹션을 없앤다.
+          popBlanks();
+          if (out.length && /^#{1,6}\s/.test(out[out.length - 1])) out.pop();
         } else {
           out.push(header, sep, ...kept);
         }
@@ -903,6 +903,23 @@ function rewriteLinks(sourceFile, lines, ctx, records) {
   return out;
 }
 
+/**
+ * 그룹(섹션) 랜딩 페이지의 본문을 만든다 — 자식 문서로 가는 링크 색인. 페이지 제목은
+ * title 필드에서 오므로 본문에 선두 H1을 넣지 않는다(문서 본문과 동일 규약). 링크 대상은
+ * 자식의 .md source이고, rewriteLinks()가 문서 본문과 똑같은 resolveLink()로 최종
+ * URL(sentinel/관측)로 바꾸므로 규칙·결과가 문서 링크와 항상 일치한다. records를 넘기면
+ * I-21 관측 URL 재검사(findBadInternalLinks)가 그룹 링크까지 커버한다.
+ */
+function buildGroupBody(groupKey, mode, ctx, records) {
+  if (ctx.mode !== mode) {
+    throw new MigrationError(`buildGroupBody 내부 오류: mode="${mode}"인데 ctx.mode="${ctx.mode}"`, 1);
+  }
+  const children = DOCUMENT_ENTRIES.filter((e) => e.parentKey === groupKey);
+  const srcName = `__group:${groupKey}__`;
+  const lines = children.map((c) => `- [${c.title}](${c.source})`);
+  return `${rewriteLinks(srcName, lines, ctx, records).join("\n")}\n`;
+}
+
 // ============================================================
 // 문서 본문 빌드
 // ============================================================
@@ -995,12 +1012,22 @@ function loadSources(docsDir) {
   const actualSet = new Set(mdFiles);
   const manifestSet = new Set(DOCUMENT_ENTRIES.map((e) => e.source));
 
+  // 제외 소스가 매니페스트에도 있으면 모순(어느 쪽 규칙을 따를지 불명) — 즉시 중단.
+  const overlap = [...EXCLUDED_SOURCES].filter((f) => manifestSet.has(f));
+  if (overlap.length) {
+    throw new MigrationError(`I-1 위반: EXCLUDED_SOURCES와 매니페스트 소스가 겹칩니다: ${JSON.stringify(overlap)}`, 2);
+  }
+
+  // I-1: docs 직속 .md 집합 == 매니페스트 소스 ∪ 제외 소스. 새 .md는 둘 중 하나에
+  // 명시되기 전까지 여기서 잡힌다. 제외 소스인데 파일이 없으면(dangling) 그것도 중단.
+  const allowedSet = new Set([...manifestSet, ...EXCLUDED_SOURCES]);
   const missing = [...manifestSet].filter((f) => !actualSet.has(f));
-  const extra = [...actualSet].filter((f) => !manifestSet.has(f));
-  if (missing.length || extra.length) {
+  const extra = [...actualSet].filter((f) => !allowedSet.has(f));
+  const danglingExcluded = [...EXCLUDED_SOURCES].filter((f) => !actualSet.has(f));
+  if (missing.length || extra.length || danglingExcluded.length) {
     throw new MigrationError(
-      `I-1 위반: --docs-dir 직속 .md 파일 집합이 매니페스트와 다릅니다. ` +
-        `누락=${JSON.stringify(missing)} 추가=${JSON.stringify(extra)}`,
+      `I-1 위반: --docs-dir 직속 .md 파일 집합이 매니페스트∪제외와 다릅니다. ` +
+        `누락=${JSON.stringify(missing)} 추가=${JSON.stringify(extra)} 제외-미존재=${JSON.stringify(danglingExcluded)}`,
       2,
     );
   }
@@ -1052,18 +1079,21 @@ function loadExistingMap(existingMapPath) {
 function checkManifestInvariants(existingMap) {
   const rows = [];
 
-  // I-2: 오퍼레이션 수 — insert 억제분(existing-map)을 더하면 항상 6 / 13이어야 한다.
+  // I-2: 오퍼레이션 수 — insert 억제분(existing-map)을 더하면 매니페스트의 pass별 총수와
+  // 같아야 한다(제외/제거로 개수가 바뀌어도 자동 추종). links = 문서 update + 그룹 색인 update.
   const suppressed = (pass) => [...existingMap.keys()].filter((k) => MANIFEST_BY_SOURCE.get(k).pass === pass).length;
   const insertCount = (pass) =>
     MANIFEST.filter((e) => e.pass === pass && !(e.type === "document" && existingMap.has(e.source))).length;
+  const expPass1 = MANIFEST.filter((e) => e.pass === 1).length;
+  const expPass2 = MANIFEST.filter((e) => e.pass === 2).length;
   const pass1 = insertCount(1);
   const pass2 = insertCount(2);
-  const links = DOCUMENT_ENTRIES.length;
+  const links = DOCUMENT_ENTRIES.length + GROUP_KEYS.length;
   rows.push({
     id: "I-2",
     desc: "오퍼레이션 수 (pass1 insert / pass2 insert / links update)",
-    pass: pass1 + suppressed(1) === 6 && pass2 + suppressed(2) === 13 && links === 15,
-    detail: `pass1=${pass1}(+억제 ${suppressed(1)}) pass2=${pass2}(+억제 ${suppressed(2)}) links=${links}`,
+    pass: pass1 + suppressed(1) === expPass1 && pass2 + suppressed(2) === expPass2,
+    detail: `pass1=${pass1}(+억제 ${suppressed(1)})/${expPass1} pass2=${pass2}(+억제 ${suppressed(2)})/${expPass2} links=${links}(문서 ${DOCUMENT_ENTRIES.length}+그룹 ${GROUP_KEYS.length})`,
   });
 
   // I-11: 제목·slug 유일성
@@ -1075,7 +1105,7 @@ function checkManifestInvariants(existingMap) {
   rows.push({
     id: "I-11",
     desc: "제목·slug 유일성, slug 형식",
-    pass: titleDupes.length === 0 && slugDupes.length === 0 && badSlugs.length === 0 && MANIFEST.length === 19,
+    pass: titleDupes.length === 0 && slugDupes.length === 0 && badSlugs.length === 0 && MANIFEST.length === 14,
     detail: `총 ${MANIFEST.length}개, 제목중복=${titleDupes.length} slug중복=${slugDupes.length} 형식위반=${JSON.stringify(badSlugs)}`,
   });
 
@@ -1083,7 +1113,7 @@ function checkManifestInvariants(existingMap) {
   const badParents = MANIFEST.filter((e) => e.pass === 2 && !GROUP_KEYS.includes(e.parentKey));
   rows.push({
     id: "I-12",
-    desc: "pass2 부모 참조 무결성 (pass1 그룹 4개 중 하나)",
+    desc: `pass2 부모 참조 무결성 (pass1 그룹 ${GROUP_KEYS.length}개 중 하나)`,
     pass: badParents.length === 0,
     detail: badParents.length ? `위반: ${badParents.map((e) => e.key).join(", ")}` : "전부 유효",
   });
@@ -1159,7 +1189,18 @@ function runTransformPipeline(opts) {
     };
   }
 
-  return { sources, existingMap, resolveCtx, sentinelCtx, linksCsvRows, bodies, totalInternalRemoved, docsDirAbs };
+  // 그룹 랜딩 페이지 본문(자식 색인). 문서 링크와 같은 sentinel→resolve 흐름을 타므로
+  // pass1은 sentinelBody로 insert하고, links 패스에서 관측 URL로 resolvedBody를 다시
+  // 만들어 update한다. 이 시점의 resolvedBody는 예측 URL 기준(dry-run 산출물용).
+  const groupBodies = {};
+  for (const groupKey of GROUP_KEYS) {
+    groupBodies[groupKey] = {
+      sentinelBody: buildGroupBody(groupKey, "sentinel", sentinelCtx, null),
+      resolvedBody: buildGroupBody(groupKey, "resolve", resolveCtx, null),
+    };
+  }
+
+  return { sources, existingMap, resolveCtx, sentinelCtx, linksCsvRows, bodies, groupBodies, totalInternalRemoved, docsDirAbs };
 }
 
 // auditLinks: 원본 텍스트(H1 포함)를 그대로 줄 단위로 스캔하며 원본 줄 번호로 링크를 기록한다.
@@ -1198,7 +1239,12 @@ function runInvariants(pipeline, opts) {
   const push = (id, desc, pass, detail) => rows.push({ id, desc, pass, detail });
 
   // I-1은 loadSources에서 이미 강제됨(FAIL이면 여기까지 오지 못함) — 통과 기록만 남김.
-  push("I-1", "--docs-dir 직속 .md 집합 == 매니페스트 소스 집합", true, `${DOCUMENT_ENTRIES.length}개 일치`);
+  push(
+    "I-1",
+    "--docs-dir 직속 .md 집합 == 매니페스트 소스 ∪ 제외 소스",
+    true,
+    `문서 ${DOCUMENT_ENTRIES.length} + 제외 ${EXCLUDED_SOURCES.size}`,
+  );
 
   for (const row of checkManifestInvariants(pipeline.existingMap)) rows.push(row);
 
@@ -1210,7 +1256,12 @@ function runInvariants(pipeline, opts) {
     if (bodyStartsWithHeading(b.resolvedBody)) residualHeading.push(source);
     if (bodyStartsWithHeading(b.sentinelBody)) residualHeading.push(`${source}(sentinel)`);
   }
-  push("I-3", "선두 H1 제거 (15건, 제목 일치)", h1RemovedCount === 15, `${h1RemovedCount}/15`);
+  push(
+    "I-3",
+    `선두 H1 제거 (${DOCUMENT_ENTRIES.length}건, 제목 일치)`,
+    h1RemovedCount === DOCUMENT_ENTRIES.length,
+    `${h1RemovedCount}/${DOCUMENT_ENTRIES.length}`,
+  );
   push("I-4", "최종 본문 시작이 '# '인 파일 0건", residualHeading.length === 0, JSON.stringify(residualHeading));
 
   // I-5: 최종 본문의 상대 경로 링크 0건
@@ -1225,6 +1276,9 @@ function runInvariants(pipeline, opts) {
   const sentinelLeftover = [];
   for (const [source, b] of Object.entries(pipeline.bodies)) {
     if (b.resolvedBody.includes(SENTINEL_HOST)) sentinelLeftover.push(source);
+  }
+  for (const groupKey of GROUP_KEYS) {
+    if (pipeline.groupBodies[groupKey].resolvedBody.includes(SENTINEL_HOST)) sentinelLeftover.push(`group:${groupKey}`);
   }
   push("I-6", `${SENTINEL_HOST} 잔존 0건 (resolved 본문)`, sentinelLeftover.length === 0, JSON.stringify(sentinelLeftover));
 
@@ -1269,8 +1323,16 @@ function runInvariants(pipeline, opts) {
     `총 ${pipeline.linksCsvRows.length}행, 규칙별=${JSON.stringify(ruleCounts)}`,
   );
 
-  // I-14: 배치 크기 (한 요청당 오퍼레이션 ≤ BATCH_LIMIT)
-  push("I-14", `배치 크기 ≤ ${BATCH_LIMIT}`, true, `pass1=6 pass2=13 links=15 (전부 ≤ ${BATCH_LIMIT})`);
+  // I-14: 배치 크기 (한 요청당 오퍼레이션 ≤ BATCH_LIMIT). links = 문서 update + 그룹 색인 update.
+  const i14p1 = MANIFEST.filter((e) => e.pass === 1).length;
+  const i14p2 = MANIFEST.filter((e) => e.pass === 2).length;
+  const i14lk = DOCUMENT_ENTRIES.length + GROUP_KEYS.length;
+  push(
+    "I-14",
+    `배치 크기 ≤ ${BATCH_LIMIT}`,
+    i14p1 <= BATCH_LIMIT && i14p2 <= BATCH_LIMIT && i14lk <= BATCH_LIMIT,
+    `pass1=${i14p1} pass2=${i14p2} links=${i14lk} (전부 ≤ ${BATCH_LIMIT})`,
+  );
 
   // I-15: 본문 크기
   const oversizedPages = [];
@@ -1328,6 +1390,23 @@ function runInvariants(pipeline, opts) {
     badPrefix.length ? JSON.stringify(badPrefix) : `${pipeline.resolveCtx.pageMap.size}개 문서 URL 전부 일치`,
   );
 
+  // I-22: 그룹 색인 본문 무결성 — 센티넬 0 / 상대링크 0 / 선두 H1 없음 / 자식 수 == 링크 수.
+  const groupIssues = [];
+  for (const groupKey of GROUP_KEYS) {
+    const b = pipeline.groupBodies[groupKey];
+    if (!b) {
+      groupIssues.push(`${groupKey}: 본문 없음`);
+      continue;
+    }
+    if (b.resolvedBody.includes(SENTINEL_HOST)) groupIssues.push(`${groupKey}: 센티넬 잔존`);
+    if (findRemainingRelativeLinks(b.resolvedBody).length) groupIssues.push(`${groupKey}: 상대링크 잔존`);
+    if (bodyStartsWithHeading(b.resolvedBody)) groupIssues.push(`${groupKey}: 선두 H1`);
+    const childCount = DOCUMENT_ENTRIES.filter((e) => e.parentKey === groupKey).length;
+    const linkCount = (b.resolvedBody.match(/^- \[/gm) || []).length;
+    if (childCount !== linkCount) groupIssues.push(`${groupKey}: 자식 ${childCount} vs 링크 ${linkCount}`);
+  }
+  push("I-22", `그룹 색인 본문 무결성 (${GROUP_KEYS.length}개 그룹)`, groupIssues.length === 0, JSON.stringify(groupIssues));
+
   return rows;
 }
 
@@ -1359,12 +1438,12 @@ function chunkChanges(changes) {
   return chunks;
 }
 
-/** pass1에서 실제로 insert할 엔트리(그룹 4 + 최상위 문서 2 − existing-map 억제분). */
+/** pass1에서 실제로 insert할 엔트리(그룹 3 + 최상위 문서 1 − existing-map 억제분). */
 function pass1Entries(existingMap) {
   return MANIFEST.filter((e) => e.pass === 1 && !(e.type === "document" && existingMap.has(e.source)));
 }
 
-/** pass2에서 실제로 insert할 엔트리(자식 문서 13 − existing-map 억제분). */
+/** pass2에서 실제로 insert할 엔트리(자식 문서 10 − existing-map 억제분). */
 function pass2Entries(existingMap) {
   return MANIFEST.filter((e) => e.pass === 2 && !existingMap.has(e.source));
 }
@@ -1375,10 +1454,11 @@ function buildPass1Ops(pipeline, opts) {
     const into = entry.parentKey === "root" ? opts.parent || undefined : undefined;
     if (entry.type === "group") {
       // insert_page 오퍼레이션 실스펙에는 group/document를 가르는 type 필드가 없다 —
-      // document가 필수다. 그룹 역할은 "빈 본문 + 자식을 이 페이지의 into로 삽입"으로
-      // 구현한다. CR diff에서 사이드바에 그룹처럼 보이는지 사람이 1회 스팟체크해야 한다
-      // (report.txt에도 경고로 남긴다).
-      changes.push(buildInsertOp(entry, "", into));
+      // document가 필수다. 그룹 역할은 "자식 색인 본문 + 자식을 이 페이지의 into로 삽입"으로
+      // 구현한다(빈 본문이면 사이드바 랜딩 페이지가 비어 보인다). 본문 링크는 pass1 시점엔
+      // 아직 자식이 없으므로 sentinel이고, links 패스에서 관측 URL로 update된다. CR diff에서
+      // 사이드바에 그룹처럼 보이는지 사람이 1회 스팟체크한다(report.txt에도 경고로 남긴다).
+      changes.push(buildInsertOp(entry, pipeline.groupBodies[entry.key].sentinelBody, into));
     } else {
       changes.push(buildInsertOp(entry, pipeline.bodies[entry.source].sentinelBody, into));
     }
@@ -1395,11 +1475,16 @@ function buildPass2Ops(pipeline, groupPageIds) {
   return chunkChanges(changes);
 }
 
-function buildLinksOps(pipeline, pageIdBySource) {
+function buildLinksOps(pipeline, pageIdBySource, groupPageIds) {
   const changes = [];
   for (const entry of DOCUMENT_ENTRIES) {
     const pageId = pageIdBySource.get(entry.source) || `<observed:${entry.key}>`;
     changes.push(buildUpdateOp(pageId, pipeline.bodies[entry.source].resolvedBody));
+  }
+  // 그룹 랜딩 페이지도 관측 URL로 자식 색인 본문을 채운다(pass1엔 sentinel로 넣었다).
+  for (const groupKey of GROUP_KEYS) {
+    const pageId = (groupPageIds && groupPageIds.get(groupKey)) || `<observed-group:${groupKey}>`;
+    changes.push(buildUpdateOp(pageId, pipeline.groupBodies[groupKey].resolvedBody));
   }
   return chunkChanges(changes);
 }
@@ -1451,8 +1536,8 @@ function writeReport(filePath, invariantRows, opts, warnings) {
   lines.push("=".repeat(60));
   lines.push("");
   lines.push("실행 모델: 일회성 · 단일 CR · 부분 실행/재개 없음.");
-  lines.push("  전체 시퀀스 = CR 생성 → insert 6건(그룹 4 + 최상위 문서 2) → insert 13건(자식 문서)");
-  lines.push("               → update 15건(센티넬 링크를 관측된 실제 URL로 재작성).");
+  lines.push("  전체 시퀀스 = CR 생성 → insert 4건(그룹 3 + 최상위 문서 1) → insert 10건(자식 문서)");
+  lines.push("               → update 14건(문서 11 + 그룹 색인 3, 센티넬 링크를 관측된 실제 URL로 재작성).");
   lines.push("  중간 실패 시 GitBook UI에서 그 CR을 archive하고 다시 실행하면 새 CR로 처음부터 진행한다.");
   lines.push("  머지는 이 도구가 하지 않는다 — 사람이 GitBook UI에서 검토 후 수동으로 처리한다.");
   lines.push("");
@@ -1480,7 +1565,7 @@ function writeReport(filePath, invariantRows, opts, warnings) {
   lines.push("");
   lines.push("사람이 CR 리뷰에서 직접 확인할 것");
   lines.push("-".repeat(60));
-  lines.push("- 그룹 4개가 사이드바에서 실제로 '그룹'처럼 보이는지 (빈 본문 페이지로 구현했다)");
+  lines.push("- 그룹 3개가 사이드바에서 실제로 '그룹'처럼 보이는지 (자식 문서 색인 본문을 담은 페이지로 구현했다)");
   lines.push("- 문서 13개가 의도한 그룹 아래에 배치됐는지 (스크립트는 부모 배치를 검증하지 않는다)");
   lines.push("- 재작성된 내부 링크가 실제로 열리는지 (샘플 2~3건)");
   lines.push("");
@@ -1528,10 +1613,13 @@ function writeAllArtifacts(pipeline, invariantRows, opts, warnings) {
   writeJsonLF(path.join(out, "manifest.json"), manifestToJson(opts));
   writeJsonLF(path.join(out, "ops.pass1.json"), buildPass1Ops(pipeline, opts));
   writeJsonLF(path.join(out, "ops.pass2.json"), buildPass2Ops(pipeline, groupPageIds));
-  writeJsonLF(path.join(out, "ops.links.json"), buildLinksOps(pipeline, pageIdBySource));
+  writeJsonLF(path.join(out, "ops.links.json"), buildLinksOps(pipeline, pageIdBySource, groupPageIds));
 
   for (const entry of DOCUMENT_ENTRIES) {
     writeFileLF(path.join(out, "bodies", `${entry.slug}.md`), pipeline.bodies[entry.source].resolvedBody);
+  }
+  for (const g of MANIFEST.filter((e) => e.type === "group")) {
+    writeFileLF(path.join(out, "bodies", `${g.slug}.md`), pipeline.groupBodies[g.key].resolvedBody);
   }
 
   writeLinksCsv(path.join(out, "links.csv"), pipeline.linksCsvRows);
@@ -1787,8 +1875,8 @@ async function main() {
   }
   if (!opts.existingMap) {
     warn(
-      "--existing-map이 지정되지 않아 15개 문서를 전부 새로 insert합니다. 포털에 동일 제목의 기존 페이지가 " +
-        "남아 있다면 중복이 생기니 리뷰 시 GitBook UI에서 정리하세요.",
+      `--existing-map이 지정되지 않아 ${DOCUMENT_ENTRIES.length}개 문서를 전부 새로 insert합니다. 포털에 동일 제목의 ` +
+        "기존 페이지가 남아 있다면 중복이 생기니 리뷰 시 GitBook UI에서 정리하세요.",
     );
   }
 
@@ -1980,7 +2068,7 @@ async function runExecutionMode(opts, pipeline, invariantRows, warnings, token, 
     }
   };
 
-  // --- 3. pass1: 그룹 4 + 최상위 문서 2 --------------------------------------
+  // --- 3. pass1: 그룹 3 + 최상위 문서 1 --------------------------------------
   const p1Entries = pass1Entries(existingMap);
   const beforeP1 = await withCrRef(snapshotPageIds(spaceId, token, crId));
   await withCrRef(pushAll(buildPass1Ops(pipeline, opts)));
@@ -2003,7 +2091,7 @@ async function runExecutionMode(opts, pipeline, invariantRows, warnings, token, 
   // 영원히 `<pass1:key>` 플레이스홀더로 남아 실제로 push한 into 값과 어긋난다.
   writeJsonLF(path.join(opts.out, "ops.pass2.json"), buildPass2Ops(pipeline, groupPageIds));
 
-  // --- 4. pass2: 자식 문서 13 ------------------------------------------------
+  // --- 4. pass2: 자식 문서 10 ------------------------------------------------
   const p2Entries = pass2Entries(existingMap);
   if (p2Entries.length) {
     const beforeP2 = await withCrRef(snapshotPageIds(spaceId, token, crId));
@@ -2013,13 +2101,13 @@ async function runExecutionMode(opts, pipeline, invariantRows, warnings, token, 
     const p2Observed = await withCrRef(observeInsertedPages(spaceId, token, crId, beforeP2, p2Entries, "pass2 관측"));
     for (const entry of p2Entries) recordDocument(entry, p2Observed.get(entry.key));
   } else {
-    console.log("   pass2 건너뜀 (--existing-map으로 자식 문서 13건이 전부 억제됨)");
+    console.log("   pass2 건너뜀 (--existing-map으로 자식 문서 10건이 전부 억제됨)");
   }
   await resolveExistingDocs(DOCUMENT_ENTRIES.filter((e) => e.pass === 2 && existingMap.has(e.source)));
   state.completed.push({ pass: 2, inserted: p2Entries.length });
   saveState(opts.out, state);
 
-  // --- 5. links: 센티넬 → 관측 URL 재작성 후 update_page × 15 -----------------
+  // --- 5. links: 센티넬 → 관측 URL 재작성 후 update_page × 14 (문서 11 + 그룹 색인 3) ----
   if (pageIdBySource.size !== DOCUMENT_ENTRIES.length) {
     throw fail(
       `문서 pageId를 ${DOCUMENT_ENTRIES.length}건 확보해야 하는데 ${pageIdBySource.size}건만 확보했습니다: ` +
@@ -2032,6 +2120,11 @@ async function runExecutionMode(opts, pipeline, invariantRows, warnings, token, 
     const rebuilt = buildDocumentBody(entry, pipeline.sources.get(entry.source), "resolve", pipeline.resolveCtx, observedRecords);
     pipeline.bodies[entry.source].resolvedBody = rebuilt.body;
   }
+  // 그룹 색인도 관측 URL로 다시 만든다. observedRecords에 함께 실어 아래 I-21 관측 재검사가
+  // 그룹 링크까지 커버하게 한다.
+  for (const groupKey of GROUP_KEYS) {
+    pipeline.groupBodies[groupKey].resolvedBody = buildGroupBody(groupKey, "resolve", pipeline.resolveCtx, observedRecords);
+  }
 
   // I-21 재검사(관측 URL 기준) — 예측 URL로 통과했더라도 관측 URL이 섹션 접두사를
   // 빠뜨렸다면 여기서 push 전에 죽는다.
@@ -2043,10 +2136,14 @@ async function runExecutionMode(opts, pipeline, invariantRows, warnings, token, 
     );
   }
 
-  // I-6 재확인: 센티넬 잔존 0건이어야 실제로 push한다.
+  // I-6 재확인: 센티넬 잔존 0건이어야 실제로 push한다(문서 + 그룹 색인 본문 모두).
   const sentinelLeft = DOCUMENT_ENTRIES.filter((e) => pipeline.bodies[e.source].resolvedBody.includes(SENTINEL_HOST));
-  if (sentinelLeft.length) {
-    throw fail(`센티넬 잔존: ${JSON.stringify(sentinelLeft.map((e) => e.source))} (링크 해석 실패 가능성)`);
+  const groupSentinelLeft = GROUP_KEYS.filter((k) => pipeline.groupBodies[k].resolvedBody.includes(SENTINEL_HOST));
+  if (sentinelLeft.length || groupSentinelLeft.length) {
+    throw fail(
+      `센티넬 잔존(링크 해석 실패 가능성): 문서=${JSON.stringify(sentinelLeft.map((e) => e.source))} ` +
+        `그룹=${JSON.stringify(groupSentinelLeft)}`,
+    );
   }
 
   // links.csv도 관측 URL 기준으로 다시 만든다 — auditLinks()를 관측이 반영된
@@ -2061,10 +2158,13 @@ async function runExecutionMode(opts, pipeline, invariantRows, warnings, token, 
   pipeline.linksCsvRows = observedLinksCsvRows;
 
   // 실제로 push하는 페이로드를 관측값 그대로 산출물에 남긴다(사후 감사용).
-  const linksOps = buildLinksOps(pipeline, pageIdBySource);
+  const linksOps = buildLinksOps(pipeline, pageIdBySource, groupPageIds);
   writeJsonLF(path.join(opts.out, "ops.links.json"), linksOps);
   for (const entry of DOCUMENT_ENTRIES) {
     writeFileLF(path.join(opts.out, "bodies", `${entry.slug}.md`), pipeline.bodies[entry.source].resolvedBody);
+  }
+  for (const g of MANIFEST.filter((e) => e.type === "group")) {
+    writeFileLF(path.join(opts.out, "bodies", `${g.slug}.md`), pipeline.groupBodies[g.key].resolvedBody);
   }
   writeLinksCsv(path.join(opts.out, "links.csv"), pipeline.linksCsvRows);
 
@@ -2078,7 +2178,9 @@ async function runExecutionMode(opts, pipeline, invariantRows, warnings, token, 
   writeReport(path.join(opts.out, "report.txt"), invariantRows, opts, warnings);
 
   await withCrRef(pushAll(linksOps));
-  console.log(`   links 갱신 완료 (문서 ${DOCUMENT_ENTRIES.length}개 본문을 관측된 실제 URL로 재작성)`);
+  console.log(
+    `   links 갱신 완료 (문서 ${DOCUMENT_ENTRIES.length}개 + 그룹 색인 ${GROUP_KEYS.length}개 본문을 관측된 실제 URL로 재작성)`,
+  );
   state.completed.push({ pass: "links", updated: DOCUMENT_ENTRIES.length });
   saveState(opts.out, state);
 

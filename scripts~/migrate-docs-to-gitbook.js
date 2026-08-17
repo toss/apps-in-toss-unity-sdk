@@ -2,7 +2,7 @@
 /**
  * Documentation~/ → GitBook 포털 이관 도구 (CR 생성까지만, 머지는 사람이 GitBook UI에서)
  *
- * 계획: /Users/dave.v2/.claude/plans/repository-ticklish-teapot.md 섹션 ③·④ (2026-08-12 조정판)
+ * 설계 기준: 2026-08-12 조정판 (GitBook 업로드 경로 + 이관 런북)
  *
  * ── 실행 모델: 일회성·단일 CR·재실행=새 CR ─────────────────────────────────
  * 이 스크립트는 "사람이 1회 손으로 돌리는 이관 도구"다. 부분 실행(--phase)·재개(resume)

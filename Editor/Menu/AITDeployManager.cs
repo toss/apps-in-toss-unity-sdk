@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -302,7 +303,11 @@ namespace AppsInToss.Editor.Menu
                 return;
             }
 
-            string memo = BuildDeployMemo(kind, config.appName, config.version);
+            // 다이얼로그에는 타임스탬프 없는 미리보기만 보여준다 — 이 다이얼로그는 사용자 확인을
+            // 기다리는 모달이라 실제 배포까지 임의의 시간이 걸릴 수 있고, 여기서 memo를 확정해버리면
+            // 표시된 시각과 실제 ait deploy 실행 시각이 어긋난다. 최종 memo(타임스탬프 포함)는
+            // 확인 이후 명령을 조립하는 시점에 BuildDeployMemo로 다시 만든다.
+            string memoPreview = BuildDeployMemoPreview(kind, config.appName, config.version);
             string profileName = ProfileNameFor(kind);
 
             // Deploy (Test)는 빠른 빌드(IL2CPP Debug + Code Generation OptimizeSize) 산출물이라
@@ -313,7 +318,7 @@ namespace AppsInToss.Editor.Menu
 
             bool confirmed = AITPlatformHelper.ShowConfirmDialog(
                 "배포 확인",
-                $"Apps in Toss에 배포하시겠습니까? ({profileName})\n\n프로젝트: {config.appName}\n버전: {config.version}\nMemo: {memo}{fastBuildNotice}",
+                $"Apps in Toss에 배포하시겠습니까? ({profileName})\n\n프로젝트: {config.appName}\n버전: {config.version}\nMemo: {memoPreview} (+ 배포 시각 자동 첨부){fastBuildNotice}",
                 "배포",
                 "취소",
                 autoApprove: true
@@ -322,6 +327,10 @@ namespace AppsInToss.Editor.Menu
             if (!confirmed) return;
 
             Debug.Log($"AIT: Apps in Toss 배포 시작... ({profileName})");
+
+            // ait deploy 명령을 조립하는 이 시점에 memo를 확정한다 — 실제 배포(CLI 실행) 시각과
+            // memo에 찍히는 타임스탬프가 일치하도록.
+            string memo = BuildDeployMemo(kind, config.appName, config.version);
 
             try
             {
@@ -455,16 +464,144 @@ namespace AppsInToss.Editor.Menu
         }
 
         /// <summary>
-        /// 배포 memo 자동 생성: "[Test] {appName} v{version} · Unity SDK {AITVersion.Version}"
-        /// (Production은 [Production] 접두사). 셸 인용을 깨는 문자를 소스에서 무해화한 뒤
-        /// CLI의 -m/--memo 최대 길이(1000자)에 맞춰 잘라낸다(무해화는 길이를 늘리지 않으므로
-        /// 절단 후 재팽창이 없다).
+        /// 배포 memo 자동 생성: "[Test] {appName} v{version} · Unity SDK {AITVersion.Version} · {배포 시각} {TZ 약어}"
+        /// (Production은 [Production] 접두사). 배포가 실행된 로컬 시각 + 타임존 약어를 덧붙인 뒤
+        /// 셸 인용을 깨는 문자를 소스에서 무해화하고 CLI의 -m/--memo 최대 길이(1000자)에 맞춰
+        /// 잘라낸다(무해화는 길이를 늘리지 않으므로 절단 후 재팽창이 없다). 타임스탬프 첨부가 실패해도
+        /// (예: 알 수 없는 TimeZoneInfo 상태) 예외를 삼키고 타임스탬프 없는 memo로 폴백한다
+        /// (<see cref="AppendDeployTimestamp"/> 참조) — 배포 자체가 이 때문에 죽으면 안 된다.
         /// </summary>
         internal static string BuildDeployMemo(DeployKind kind, string appName, string version)
         {
-            string prefix = kind == DeployKind.Production ? "[Production]" : "[Test]";
-            string memo = SanitizeMemo($"{prefix} {appName} v{version} · Unity SDK {AITVersion.Version}");
+            string baseMemo = BuildDeployMemoBase(kind, appName, version);
+            string withTimestamp = AppendDeployTimestamp(baseMemo);
+            string memo = SanitizeMemo(withTimestamp);
             return memo.Length > MaxMemoLength ? memo.Substring(0, MaxMemoLength) : memo;
+        }
+
+        /// <summary>
+        /// 배포 확인 다이얼로그에 보여줄 memo 미리보기 — 타임스탬프 없이 기본 memo만 무해화해 표시한다.
+        /// 실제 배포 시 첨부되는 memo(<see cref="BuildDeployMemo"/>)와는 타임스탬프 유무만 다르다.
+        /// </summary>
+        private static string BuildDeployMemoPreview(DeployKind kind, string appName, string version)
+        {
+            return SanitizeMemo(BuildDeployMemoBase(kind, appName, version));
+        }
+
+        /// <summary>
+        /// 타임스탬프를 제외한 memo 본문: "[Test] {appName} v{version} · Unity SDK {AITVersion.Version}"
+        /// </summary>
+        private static string BuildDeployMemoBase(DeployKind kind, string appName, string version)
+        {
+            string prefix = kind == DeployKind.Production ? "[Production]" : "[Test]";
+            return $"{prefix} {appName} v{version} · Unity SDK {AITVersion.Version}";
+        }
+
+        /// <summary>
+        /// baseMemo에 "현재 로컬 시각 + 타임존 약어"를 " · " 구분자로 덧붙인다.
+        /// TimeZoneInfo.Local / DateTime.Now 조회 및 그 조합 과정에서 어떤 예외가 나더라도
+        /// 배포 흐름 자체를 막지 않도록 여기서 삼키고, 실패 시 타임스탬프 없는 baseMemo를 반환한다.
+        /// </summary>
+        private static string AppendDeployTimestamp(string baseMemo)
+        {
+            try
+            {
+                TimeZoneInfo tz = TimeZoneInfo.Local;
+                DateTime now = DateTime.Now;
+                TimeSpan utcOffset = tz.GetUtcOffset(now);
+                string tzName = tz.IsDaylightSavingTime(now) ? tz.DaylightName : tz.StandardName;
+                string abbreviation = ResolveTimeZoneAbbreviation(tz.Id, utcOffset, tzName);
+                string timestamp = FormatDeployTimestamp(now, abbreviation);
+                return $"{baseMemo} · {timestamp}";
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"AIT: 배포 memo에 타임스탬프를 추가하지 못했습니다 ({e.Message}). 타임스탬프 없이 진행합니다.");
+                return baseMemo;
+            }
+        }
+
+        // IANA(예: Asia/Seoul) / Windows(예: Korea Standard Time) id를 함께 등록한다 — 플랫폼에 따라
+        // TimeZoneInfo.Local.Id가 둘 중 하나로 오기 때문. DST가 있는 타임존은 약어가 계절에 따라
+        // 바뀌므로(예: 미국 동부 EST/EDT) 여기서는 의도적으로 다루지 않는다 — 아래 오프셋 폴백으로 처리.
+        private static readonly Dictionary<string, string> KnownTimeZoneAbbreviations =
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                { "Asia/Seoul", "KST" },
+                { "Korea Standard Time", "KST" },
+                { "Etc/UTC", "UTC" },
+                { "UTC", "UTC" },
+                { "Asia/Tokyo", "JST" },
+                { "Tokyo Standard Time", "JST" },
+                { "Asia/Shanghai", "CST" },
+                { "China Standard Time", "CST" },
+                { "Asia/Taipei", "CST" },
+                { "Taipei Standard Time", "CST" },
+                { "Asia/Singapore", "SGT" },
+                { "Singapore Standard Time", "SGT" },
+                { "Asia/Hong_Kong", "HKT" },
+                { "Hong Kong Standard Time", "HKT" },
+                { "Hong Kong SAR Standard Time", "HKT" },
+            };
+
+        /// <summary>
+        /// 타임존 id/오프셋/이름으로부터 사람이 읽을 약어를 3단계로 해석한다.
+        /// 1) known 매핑 (IANA + Windows id, DST 없는 아시아권 위주)
+        /// 2) tzName이 이미 2~5자 대문자 약어 형태면 그대로 사용 (일부 플랫폼은 CultureInfo와 무관하게
+        ///    약어를 준다)
+        /// 3) UTC 오프셋 폴백 ("UTC+9", "UTC-5", "UTC+5:30", 오프셋 0은 "UTC")
+        /// 순수 함수 — 시스템 TimeZoneInfo 조회(FindSystemTimeZoneById 등)에 의존하지 않아 테스트 가능.
+        /// </summary>
+        internal static string ResolveTimeZoneAbbreviation(string tzId, TimeSpan utcOffset, string tzName)
+        {
+            if (!string.IsNullOrEmpty(tzId))
+            {
+                if (KnownTimeZoneAbbreviations.TryGetValue(tzId, out string known))
+                {
+                    return known;
+                }
+
+                // "Hong Kong Standard Time" / "Hong Kong SAR Standard Time" 등 Windows 표기 변형 계열.
+                if (tzId.IndexOf("Hong Kong", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    return "HKT";
+                }
+            }
+
+            if (!string.IsNullOrEmpty(tzName) && Regex.IsMatch(tzName, "^[A-Z]{2,5}$"))
+            {
+                return tzName;
+            }
+
+            return FormatUtcOffsetAbbreviation(utcOffset);
+        }
+
+        /// <summary>
+        /// UTC 오프셋을 "UTC+9" / "UTC-5" / "UTC+5:30" 형식으로 포맷한다. 분이 0이면 시(hour)만
+        /// 표기하고, 오프셋이 0이면 "UTC"만 반환한다.
+        /// </summary>
+        private static string FormatUtcOffsetAbbreviation(TimeSpan utcOffset)
+        {
+            if (utcOffset == TimeSpan.Zero) return "UTC";
+
+            string sign = utcOffset < TimeSpan.Zero ? "-" : "+";
+            TimeSpan abs = utcOffset.Duration();
+            string result = $"UTC{sign}{abs.Hours}";
+            if (abs.Minutes != 0)
+            {
+                result += $":{abs.Minutes:D2}";
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// 배포 시각을 "yyyy-MM-dd HH:mm {약어}" 형식으로 포맷한다. CultureInfo.InvariantCulture를
+        /// 사용해 Editor/테스트 러너의 문화권 설정과 무관하게 항상 동일한 출력을 보장한다.
+        /// 순수 함수 — 테스트 가능성을 위해 시스템 시계/타임존 조회와 분리했다.
+        /// </summary>
+        internal static string FormatDeployTimestamp(DateTime localNow, string abbreviation)
+        {
+            return $"{localNow.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)} {abbreviation}";
         }
 
         /// <summary>

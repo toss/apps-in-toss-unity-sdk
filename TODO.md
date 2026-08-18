@@ -14,7 +14,7 @@
 
 ## Deploy
 
-- **P3 — Deploy (Production) 성공 창의 콘솔 딥링크**: `Editor/Menu/DeploySuccessWindow.cs`의 "콘솔 열기" 버튼은 현재 콘솔 베이스 URL(`https://apps-in-toss.toss.im/console`)만 여는데, deploymentId로 배포 상세 화면에 바로 이동하는 딥링크 라우트가 있는지 콘솔 라우트가 미확인이라 적용하지 못했다. 플랫폼 팀 확인 후 딥링크로 교체.
+- **P3 — Deploy Release Candidate 성공 창의 콘솔 딥링크**: `Editor/Menu/DeploySuccessWindow.cs`의 "콘솔 열기" 버튼은 현재 콘솔 베이스 URL(`https://apps-in-toss.toss.im/console`)만 여는데, deploymentId로 배포 상세 화면에 바로 이동하는 딥링크 라우트가 있는지 콘솔 라우트가 미확인이라 적용하지 못했다. 플랫폼 팀 확인 후 딥링크로 교체.
 
 ## 코드 결함
 

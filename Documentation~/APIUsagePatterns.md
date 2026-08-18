@@ -366,7 +366,7 @@ catch (AITException ex)
 | 환경 | 동작 |
 |------|------|
 | WebGL 빌드 + Apps in Toss 앱 | 실제 네이티브 API 호출 |
-| WebGL 빌드 + 일반 브라우저 | 대부분 실패. devtools가 켜져 있으면(Dev Server) mock으로 응답 |
+| WebGL 빌드 + 일반 브라우저 | 대부분 실패. devtools가 켜져 있으면(Local Debug) mock으로 응답 |
 | Unity Editor | Editor mock 호출 |
 | 그 외 플랫폼 (Windows, macOS 등) | Editor mock 호출 |
 
@@ -395,7 +395,7 @@ void Start()
 |---|---|---|
 | 어디에 | `Runtime/SDK/`의 C# | `@apps-in-toss/devtools`(npm 패키지, 빌드 산출물을 브라우저에서 열 때 동작) |
 | 무엇을 | 모든 SDK API | 60개 이상의 SDK API + 상태를 조작하는 플로팅 패널 |
-| 언제 | WebGL 빌드가 아닐 때 (컴파일 시점 결정) | Dev Server로 실행한 빌드를 일반 브라우저에서 열 때 |
+| 언제 | WebGL 빌드가 아닐 때 (컴파일 시점 결정) | Local Debug로 실행한 빌드를 일반 브라우저에서 열 때 |
 | 어떻게 끄나 | 끌 수 없음 | `AIT > Configuration`의 devtools 설정, 또는 서버 실행 시 환경 변수 `AIT_DEVTOOLS=0` |
 
 ### Editor mock
@@ -419,7 +419,7 @@ Unity Editor와 비 WebGL 플랫폼에서 API를 호출하면 로그를 남기�
 
 ### devtools
 
-`@apps-in-toss/devtools`는 `@apps-in-toss/web-framework` **3.x 전용** 개발 도구입니다. Dev Server를 실행하면 vite 플러그인이 `@apps-in-toss/web-framework` import를 mock 구현으로 alias해, 토스 앱 없이 일반 브라우저에서 60개 이상의 SDK API가 mock으로 동작합니다. 동시에 화면에 플로팅 패널이 떠서 로그인 상태·광고 결과·스토리지 값 같은 mock 상태를 직접 조작할 수 있습니다.
+`@apps-in-toss/devtools`는 `@apps-in-toss/web-framework` **3.x 전용** 개발 도구입니다. Local Debug를 실행하면 vite 플러그인이 `@apps-in-toss/web-framework` import를 mock 구현으로 alias해, 토스 앱 없이 일반 브라우저에서 60개 이상의 SDK API가 mock으로 동작합니다. 동시에 화면에 플로팅 패널이 떠서 로그인 상태·광고 결과·스토리지 값 같은 mock 상태를 직접 조작할 수 있습니다.
 
 패널은 기본으로 켜져 있습니다. devtools 전체(또는 패널만)를 끄려면 `AIT > Configuration`의 devtools 설정을 바꾸세요 — 빌드 산출물은 그대로이므로 **서버 재시작만으로 반영**됩니다. CI나 임시 확인처럼 설정을 건드리지 않고 한 번만 끄고 싶다면 서버 실행 환경 변수 `AIT_DEVTOOLS=0`으로 오버라이드할 수 있습니다.
 

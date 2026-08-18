@@ -69,7 +69,7 @@ Editor/
 ├── AppsInTossMenu.cs           AIT 메뉴 등록
 ├── ErrorTracker/               Sentry 기반 Editor 에러 추적
 ├── IssueReport/                이슈 리포트 창
-├── Menu/                       메뉴 액션 (Dev Server, 배포, 포트 해석)
+├── Menu/                       메뉴 액션 (Local Debug, 배포, 포트 해석)
 ├── Package/                    granite·pnpm 실행과 설정 병합
 │   ├── BuildConfigMerger.cs      플레이스홀더 치환과 사용자 파일 병합
 │   ├── GraniteBuildRunner.cs     granite 빌드 실행

@@ -6,12 +6,12 @@
 
 | 메뉴 | 용도 |
 |------|------|
-| `AIT > Dev Server > Start Server` | 로컬 개발 서버 실행 (devtools Mock SDK + 패널로 브라우저 테스트) |
-| `AIT > Build & Package` | 배포용 패키지 생성 |
-| `AIT > Deploy (Test)` | 증분 빌드 후 테스트 배포 (`ait deploy`) — QR/URL로 실기기 확인 |
-| `AIT > Deploy (Production)` | 클린 빌드 후 테스트 배포 (`ait deploy`) — 배포 후 콘솔에서 심사/출시 신청 |
+| `AIT > Local Debug > Start Server` | 로컬 개발 서버 실행 (devtools Mock SDK + 패널로 브라우저 테스트) |
+| `AIT > Advanced > Build & Package` | 배포용 패키지 생성 |
+| `AIT > Deploy for Online Test` | 증분 빌드 후 테스트 배포 (`ait deploy`) — QR/URL로 실기기 확인 |
+| `AIT > Deploy Release Candidate` | 클린 빌드 후 테스트 배포 (`ait deploy`) — 배포 후 콘솔에서 심사/출시 신청 |
 
-`ait deploy`는 두 메뉴 모두에서 **항상 콘솔 QR 테스트 환경**(`intoss-private://`)에 배포합니다. 실제 사용자에게 노출되는 출시는 이 CLI 명령이 아니라 배포 후 **콘솔에서 심사를 신청**해야 이뤄집니다. 자세한 흐름은 [시작하기](GettingStarted.md#실기기로-확인하기-deploy-test)를 참고하세요.
+`ait deploy`는 두 메뉴 모두에서 **항상 콘솔 QR 테스트 환경**(`intoss-private://`)에 배포합니다. 실제 사용자에게 노출되는 출시는 이 CLI 명령이 아니라 배포 후 **콘솔에서 심사를 신청**해야 이뤄집니다. 자세한 흐름은 [시작하기](GettingStarted.md#실기기로-확인하기-deploy-for-online-test)를 참고하세요.
 
 ## 프로필 매트릭스
 
@@ -19,10 +19,10 @@
 |------|:-----------:|:-----------------:|:----------:|:---------------:|:--------:|:-----------:|
 | **Dev Server** | ✅ 활성화 | ✅ 활성화 | Disabled | Minimal | ✅ 활성화 | Embedded |
 | **Build & Package** | ❌ 비활성화 | ❌ 비활성화 | 자동 (Brotli) | 자동 (High) | ✅ 활성화 | External |
-| **Deploy (Test)** | ❌ 비활성화 | ❌ 비활성화 | Gzip (오버라이드) | Minimal (오버라이드) | ✅ 활성화 | External |
-| **Deploy (Production)** | ❌ 비활성화 | ❌ 비활성화 | 자동 (Brotli) | 자동 (High) | ✅ 활성화 | External |
+| **Deploy for Online Test** | ❌ 비활성화 | ❌ 비활성화 | Gzip (오버라이드) | Minimal (오버라이드) | ✅ 활성화 | External |
+| **Deploy Release Candidate** | ❌ 비활성화 | ❌ 비활성화 | 자동 (Brotli) | 자동 (High) | ✅ 활성화 | External |
 
-Deploy (Test)는 production 프로필의 복제본에 압축(Gzip)·스트리핑(Minimal) 오버라이드를 적용해 배포 속도를 높입니다(`AITEditorScriptObject.CreateTestDeployProfile`) — Brotli 대비 다운로드 크기가 소폭 늘고 Minimal 스트리핑은 산출물 크기가 커질 수 있으니, 테스트 배포 결과를 성능·크기 측정 기준으로 삼지 마세요. 여기에 더해 증분 빌드 + IL2CPP Debug/OptimizeSize 빠른 빌드(fastBuild)도 함께 적용됩니다(`AITDeployManager.RunDeploy`). Deploy (Production)과 Build & Package는 이런 오버라이드 없이 `config.productionProfile` 원본 그대로 사용합니다. 둘의 나머지 차이는 이 표에 없는 **빌드 범위**(증분 vs 클린)와 **배포 memo 접두사**(`-m "[Test] …"` / `-m "[Production] …"`)입니다 — 콘솔에서 이 접두사로 두 배포를 구분합니다.
+Deploy for Online Test는 production 프로필의 복제본에 압축(Gzip)·스트리핑(Minimal) 오버라이드를 적용해 배포 속도를 높입니다(`AITEditorScriptObject.CreateTestDeployProfile`) — Brotli 대비 다운로드 크기가 소폭 늘고 Minimal 스트리핑은 산출물 크기가 커질 수 있으니, 테스트 배포 결과를 성능·크기 측정 기준으로 삼지 마세요. 여기에 더해 증분 빌드 + IL2CPP Debug/OptimizeSize 빠른 빌드(fastBuild)도 함께 적용됩니다(`AITDeployManager.RunDeploy`). Deploy Release Candidate·Build & Package는 이런 오버라이드 없이 `config.productionProfile` 원본 그대로 사용합니다. 둘의 나머지 차이는 이 표에 없는 **빌드 범위**(증분 vs 클린)와 **배포 memo 접두사**(`-m "[Test] …"` / `-m "[Production] …"`)입니다 — 콘솔에서 이 접두사로 두 배포를 구분합니다.
 
 > `Mock 브릿지`는 빌드 프로필 항목이 아닙니다. `devtools`(`@apps-in-toss/devtools`)는 별도 절 참고.
 
@@ -65,7 +65,7 @@ Unity의 Development Build 옵션입니다.
 | Gzip | Gzip 압축 |
 | Brotli | Brotli 압축 (최고 압축률) |
 
-Dev Server는 빌드 속도를 위해 Disabled, Deploy (Test)는 배포 가속을 위해 Gzip으로 오버라이드됩니다(Brotli 대비 다운로드 크기 소폭 증가 — 성능·크기 측정 기준으로 쓰지 마세요). 나머지(Build & Package, Deploy (Production))는 자동(Brotli)입니다.
+Dev Server는 빌드 속도를 위해 Disabled, Deploy for Online Test는 배포 가속을 위해 Gzip으로 오버라이드됩니다(Brotli 대비 다운로드 크기 소폭 증가 — 성능·크기 측정 기준으로 쓰지 마세요). 나머지(Build & Package, Deploy Release Candidate)는 자동(Brotli)입니다.
 
 ### Stripping Level
 
@@ -79,7 +79,7 @@ Dev Server는 빌드 속도를 위해 Disabled, Deploy (Test)는 배포 가속�
 | Medium | 중간 수준의 코드 제거 |
 | High | 적극적으로 코드 제거 (최소 빌드 크기) |
 
-Dev Server와 Deploy (Test)는 빌드 속도를 위해 Minimal이고(Deploy (Test)는 오버라이드 — High 대비 산출물 크기가 커질 수 있습니다), 나머지(Build & Package, Deploy (Production))는 자동(High)입니다.
+Dev Server와 Deploy for Online Test는 빌드 속도를 위해 Minimal이고(Deploy for Online Test는 오버라이드 — High 대비 산출물 크기가 커질 수 있습니다), 나머지(Build & Package, Deploy Release Candidate)는 자동(High)입니다.
 
 > **참고**: Disabled는 WebGL(IL2CPP)에서 지원되지 않아 옵션에서 제외되었으며, 이전 버전에서 Disabled로 저장된 값은 Minimal로 정규화됩니다. 리플렉션으로만 참조되는 타입이 High에서 제거될 수 있으니, 스트리핑 이후 동작이 달라지면 `link.xml`로 보존 대상을 지정하세요.
 

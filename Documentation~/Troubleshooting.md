@@ -56,19 +56,33 @@ Console 창의 컴파일 오류와 스택 트레이스가 가장 확실한 단�
 
 실제 동작은 WebGL로 빌드해 Apps in Toss 앱에서 확인하세요. 자세한 내용은 [API 사용 패턴](APIUsagePatterns.md) 문서의 **Mock** 절을 참고하세요.
 
-### Dev Server 에서는 되는데 Production 에서 안 됨
+### Local Debug 에서는 되는데 Production 에서 안 됨
 
-Dev Server는 devtools가 켜져 있어 일반 브라우저에서도 60개 이상의 SDK API와 광고 흐름이 mock으로 동작합니다. Production 빌드는 실제 Apps in Toss 앱 환경을 필요로 하며, 브라우저에서는 재현할 수 없습니다.
+Local Debug는 devtools가 켜져 있어 일반 브라우저에서도 60개 이상의 SDK API와 광고 흐름이 mock으로 동작합니다. Production 빌드는 실제 Apps in Toss 앱 환경을 필요로 하며, 브라우저에서는 재현할 수 없습니다.
 
-프로덕션 설정 그대로 실기기에서 확인하려면 `AIT` > `Deploy (Test)`로 배포한 뒤, 뜨는 창의 QR을 Apps in Toss 앱으로 스캔하거나 URL로 접속하세요. `ait deploy`는 항상 콘솔 QR 테스트 환경(`intoss-private://`)에 배포하므로, 이 절차로 실제 심사·출시 전에 안전하게 확인할 수 있습니다.
+프로덕션 설정 그대로 실기기에서 확인하려면 `AIT` > `Deploy for Online Test`로 배포한 뒤, 뜨는 창의 QR을 Apps in Toss 앱으로 스캔하거나 URL로 접속하세요. `ait deploy`는 항상 콘솔 QR 테스트 환경(`intoss-private://`)에 배포하므로, 이 절차로 실제 심사·출시 전에 안전하게 확인할 수 있습니다.
 
 프로필별로 무엇이 달라지는지는 [빌드 프로필](BuildProfiles.md)에 있습니다.
 
 ### (3.x 이전 사용자) `Production Server` 메뉴가 사라짐
 
-SDK 3.0.0부터 로컬 서버를 별도 샌드박스 앱에 연결해 테스트하는 방식이 불가능해지면서, `AIT` > `Production Server` 메뉴는 더 이상 존재하지 않습니다. 프로덕션 설정을 실기기에서 확인하려면 위 "Dev Server 에서는 되는데 Production 에서 안 됨" 항목대로 `Deploy (Test)`를 사용하세요.
+SDK 3.0.0부터 로컬 서버를 별도 샌드박스 앱에 연결해 테스트하는 방식이 불가능해지면서, `AIT` > `Production Server` 메뉴는 더 이상 존재하지 않습니다. 프로덕션 설정을 실기기에서 확인하려면 위 "Local Debug 에서는 되는데 Production 에서 안 됨" 항목대로 `Deploy for Online Test`를 사용하세요.
 
-같은 개편으로 `AIT` > `Publish` 메뉴도 `Deploy (Test)`(증분 빌드, memo `[Test]`)와 `Deploy (Production)`(클린 빌드, memo `[Production]`)로 나뉘었습니다. `ait deploy` CLI 자체는 두 메뉴 모두 항상 콘솔 QR 테스트 환경에만 배포하며, 실제 출시는 `Deploy (Production)`이 배포 후 띄우는 "콘솔 열기" 버튼으로 이동해 콘솔에서 심사를 신청해야 이뤄집니다.
+같은 개편으로 `AIT` > `Publish` 메뉴도 `Deploy for Online Test`(증분 빌드, memo `[Test]`)와 `Deploy Release Candidate`(클린 빌드, memo `[Production]`)로 나뉘었습니다. `ait deploy` CLI 자체는 두 메뉴 모두 항상 콘솔 QR 테스트 환경에만 배포하며, 실제 출시는 `Deploy Release Candidate`가 배포 후 띄우는 "콘솔 열기" 버튼으로 이동해 콘솔에서 심사를 신청해야 이뤄집니다.
+
+### 메뉴 이름이 바뀌었습니다
+
+개발 단계가 메뉴에서 바로 보이도록 AIT 메뉴를 개편했습니다. 빌드 동작과 산출물은 동일하며 바뀐 것은 이름과 위치뿐입니다.
+
+| 이전 (3.0.x) | 현재 | 하는 일 |
+|---|---|---|
+| Dev Server | Local Debug | devtools Mock SDK로 로컬 브라우저에서 확인 (배포 없음) |
+| Production Server | (3.0.0에서 제거됨) | — |
+| Publish | Deploy for Online Test | 증분·빠른 빌드로 콘솔 QR 테스트 환경에 배포 |
+| — | Deploy Release Candidate | 클린 빌드로 콘솔 QR 테스트 환경에 배포 + 콘솔 심사 안내 |
+| Build & Package | Advanced > Build & Package | 배포 없이 .ait 산출물만 생성 |
+
+두 Deploy 메뉴는 둘 다 콘솔 QR 테스트 환경에 배포합니다. `ait deploy` CLI에는 출시 기능이 없으며 실제 출시는 콘솔 심사 신청으로 이뤄집니다. 차이는 빌드 방식(증분·빠른 빌드 vs 클린 빌드)과 memo 접두사입니다. Shortcuts Manager에 옛 경로로 걸어둔 단축키는 다시 바인딩해야 합니다.
 
 ### AITException 이 발생함
 

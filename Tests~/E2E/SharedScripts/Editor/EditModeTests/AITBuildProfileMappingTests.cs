@@ -182,7 +182,7 @@ public class AITBuildProfileMappingTests
     // =====================================================
 
     // =====================================================
-    // AITBuildProfile.CreateTestDeployProfile — Deploy (Test) 전용 압축/스트리핑 오버라이드
+    // AITBuildProfile.CreateTestDeployProfile — Deploy for Online Test 전용 압축/스트리핑 오버라이드
     // baseProfile(보통 productionProfile)을 절대 변형하지 않고 새 인스턴스를 만들어야 한다.
     // =====================================================
 
@@ -193,8 +193,8 @@ public class AITBuildProfileMappingTests
 
         var testProfile = AITBuildProfile.CreateTestDeployProfile(baseProfile);
 
-        Assert.AreEqual(1, testProfile.compressionFormat, "Deploy (Test)는 압축 포맷 저장값 1(Gzip)이어야 함.");
-        Assert.AreEqual(1, testProfile.managedStrippingLevel, "Deploy (Test)는 Stripping 저장값 1(Minimal)이어야 함.");
+        Assert.AreEqual(1, testProfile.compressionFormat, "Deploy for Online Test는 압축 포맷 저장값 1(Gzip)이어야 함.");
+        Assert.AreEqual(1, testProfile.managedStrippingLevel, "Deploy for Online Test는 Stripping 저장값 1(Minimal)이어야 함.");
         Assert.AreEqual(WebGLCompressionFormat.Gzip, AITBuildInitializer.ConvertToCompressionFormat(testProfile.compressionFormat));
         Assert.AreEqual(ManagedStrippingLevel.Minimal, AITBuildInitializer.ConvertToManagedStrippingLevel(testProfile.managedStrippingLevel));
     }

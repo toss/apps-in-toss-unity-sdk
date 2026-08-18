@@ -293,7 +293,7 @@ namespace AppsInToss.Editor
 
             EditorGUILayout.HelpBox(
                 "Dev Server: 로컬 개발/테스트용 (빌드 속도 우선)\n" +
-                "Production: 배포용 (Prod Server, Build & Package, Publish에서 공통 사용)",
+                "Production: 배포용 (Build & Package, Deploy for Online Test, Deploy Release Candidate에서 공통 사용)",
                 MessageType.Info
             );
 
@@ -314,7 +314,7 @@ namespace AppsInToss.Editor
             DrawBuildProfile(
                 ref showProductionProfile,
                 "Production",
-                "배포용 (Prod Server, Build & Package, Publish에서 공통 사용)",
+                "배포용 (Build & Package, Deploy for Online Test, Deploy Release Candidate에서 공통 사용)",
                 config.productionProfile,
                 AITBuildProfile.CreateProductionProfile()
             );

@@ -92,10 +92,10 @@ SDK 설치가 끝나면 Unity Editor 상단에 `AIT` 메뉴가 추가됩니다.
 
 | 메뉴 | 설명 |
 |------|------|
-| **Dev Server** | 하위에 Start / Stop / Restart Server / Restart Server (server-only)가 있습니다. `server-only`는 재빌드 없이 서버만 재시작합니다 |
-| **Production Server** | 하위에 Start / Stop / Restart Server / Restart Server (server-only)가 있습니다. `server-only`는 재빌드 없이 서버만 재시작합니다 |
-| **Build & Package** | WebGL 빌드와 `.ait` 패키징을 한 번에 실행합니다 |
-| **Publish** | 생성된 `.ait` 파일을 Apps in Toss 플랫폼으로 업로드합니다. `Configuration`에 배포 키가 설정되어 있어야 합니다 |
+| **Local Debug** | 하위에 Start / Stop / Restart Server / Restart Server (server-only)가 있습니다. `server-only`는 재빌드 없이 서버만 재시작합니다 |
+| **Deploy for Online Test** | 증분·빠른 빌드로 콘솔 QR 테스트 환경에 배포합니다. `Configuration`에 배포 키가 설정되어 있어야 합니다 |
+| **Deploy Release Candidate** | 클린 빌드로 콘솔 QR 테스트 환경에 배포하고, 배포 후 콘솔 심사 신청 안내를 보여줍니다 |
+| **Advanced > Build & Package** | WebGL 빌드와 `.ait` 패키징만 실행합니다 (배포는 하지 않습니다) |
 | **Clean** | `webgl/`, `ait-build/` 빌드 산출물 폴더를 삭제합니다 |
 | **Open Build Output** | 빌드 산출물이 저장된 폴더를 엽니다 |
 | **Reset Loading Screen** | 로딩 화면을 SDK 기본 템플릿으로 되돌립니다. 자세한 내용은 [로딩 화면 커스터마이징](LoadingScreenCustomization.md) 참고 |
@@ -105,40 +105,40 @@ SDK 설치가 끝나면 Unity Editor 상단에 `AIT` 메뉴가 추가됩니다.
 | **Check for Updates...** | SDK 신규 릴리즈가 있는지 수동으로 확인합니다 |
 | **Debug** | SDK 상태 초기화, WebGL 템플릿 강제 갱신 등 디버그용 하위 메뉴가 모여 있습니다 |
 
-Dev Server와 Production Server, 각 빌드 프로필의 devtools·압축 설정 차이는 [빌드 프로필](BuildProfiles.md)에 정리되어 있습니다.
+각 진입점의 devtools·압축 설정 차이는 [빌드 프로필](BuildProfiles.md)에 정리되어 있습니다.
 
 ## 첫 번째 빌드
 
 빌드 진입점은 모두 `AIT` 메뉴에 있습니다. 각 진입점이 무엇을 어떻게 다르게 빌드하는지는 [빌드 프로필](BuildProfiles.md)에 정리되어 있습니다.
 
-### 개발 서버로 확인하기
+### 로컬 브라우저에서 확인하기 (Local Debug)
 
-개발 단계에서는 Dev Server를 사용합니다. `@apps-in-toss/devtools`의 Mock SDK와 패널이 함께 실행되어, toss 앱 없이 브라우저에서 플랫폼 API 호출을 mock으로 확인하고 패널로 mock 상태를 직접 제어할 수 있습니다.
+개발 단계에서는 Local Debug를 사용합니다. `@apps-in-toss/devtools`의 Mock SDK와 패널이 함께 실행되어, toss 앱 없이 브라우저에서 플랫폼 API 호출을 mock으로 확인하고 패널로 mock 상태를 직접 제어할 수 있습니다.
 
-1. `AIT` > `Dev Server` > `Start Server` 클릭
+1. `AIT` > `Local Debug` > `Start Server` 클릭
 2. Unity WebGL 빌드가 자동으로 실행됩니다
 3. 빌드가 끝나면 로컬 개발 서버가 시작됩니다
 4. 브라우저가 자동으로 열리거나, 콘솔에 표시된 URL로 접속합니다
 
 ### 배포용 패키지 만들기
 
-1. `AIT` > `Build & Package` 클릭
+1. `AIT` > `Advanced` > `Build & Package` 클릭
 2. 빌드가 끝나면 `ait-build/dist/`에서 결과물을 확인합니다
 
-### 실기기로 확인하기 (Deploy Test)
+### 실기기로 확인하기 (Deploy for Online Test)
 
-브라우저 Mock으로는 확인할 수 없는 실제 Toss 앱 환경(카메라, 결제, 광고 등)을 실기기에서 확인하려면 Deploy (Test)를 사용합니다.
+브라우저 Mock으로는 확인할 수 없는 실제 Toss 앱 환경(카메라, 결제, 광고 등)을 실기기에서 확인하려면 Deploy for Online Test를 사용합니다.
 
-1. `AIT` > `Deploy (Test)` 클릭
+1. `AIT` > `Deploy for Online Test` 클릭
 2. 배포 키가 설정되어 있어야 합니다. `AIT` > `Configuration`에서 입력합니다
 3. 증분 빌드 후 `ait deploy`로 콘솔 QR 테스트 환경에 배포됩니다 (memo에 `[Test]` 접두사가 자동으로 붙습니다)
 4. 배포가 끝나면 뜨는 창의 QR을 Toss 앱으로 스캔하거나 URL로 접속해 실기기에서 확인합니다
 
-### 플랫폼에 출시하기 (Deploy Production)
+### 플랫폼에 출시하기 (Deploy Release Candidate)
 
 실제 사용자에게 노출하려면 클린 빌드로 다시 배포한 뒤 콘솔에서 심사를 신청해야 합니다.
 
-1. `AIT` > `Deploy (Production)` 클릭 (Deploy (Test)와 동일하지만 클린 빌드 + memo `[Production]` 접두사)
+1. `AIT` > `Deploy Release Candidate` 클릭 (Deploy for Online Test와 동일하지만 클린 빌드 + memo `[Production]` 접두사)
 2. 배포가 끝나면 뜨는 창에서 "콘솔 열기" 버튼으로 Apps in Toss 콘솔로 이동합니다
 3. 콘솔에서 방금 배포한 빌드를 심사/출시 신청합니다 — `ait deploy` 자체는 항상 콘솔 QR 테스트 환경에 배포할 뿐이며, 실제 출시는 이 콘솔 절차로만 이뤄집니다
 

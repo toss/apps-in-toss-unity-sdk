@@ -45,7 +45,7 @@ public class MenuRedesignTests
     }
 
     // =====================================================
-    // Test 3: AIT/Build & Package 메뉴 존재
+    // Test 3: AIT/Advanced/Build & Package 메뉴 존재
     // =====================================================
 
     [Test]
@@ -58,7 +58,7 @@ public class MenuRedesignTests
             .Cast<MenuItem>()
             .FirstOrDefault();
         Assert.IsNotNull(menuItemAttr, "BuildAndPackage() should have MenuItem attribute");
-        Assert.AreEqual("AIT/Build & Package", menuItemAttr.menuItem);
+        Assert.AreEqual("AIT/Advanced/Build & Package", menuItemAttr.menuItem);
     }
 
     // =====================================================
@@ -75,7 +75,7 @@ public class MenuRedesignTests
             .Cast<MenuItem>()
             .FirstOrDefault();
         Assert.IsNotNull(menuItemAttr, "MenuRestartDevServer() should have MenuItem attribute");
-        Assert.AreEqual("AIT/Dev Server/Restart Server", menuItemAttr.menuItem,
+        Assert.AreEqual("AIT/Local Debug/Restart Server", menuItemAttr.menuItem,
             "Dev Restart Server menu should not have (auto) suffix");
     }
 
@@ -88,7 +88,7 @@ public class MenuRedesignTests
     }
 
     // =====================================================
-    // Test 4b: AIT/Publish 메뉴 제거, Deploy (Test)/(Production) 메뉴로 대체 확인
+    // Test 4b: AIT/Publish 메뉴 제거, Deploy for Online Test/Deploy Release Candidate 메뉴로 대체 확인
     // =====================================================
 
     [Test]
@@ -108,7 +108,7 @@ public class MenuRedesignTests
             .Cast<MenuItem>()
             .FirstOrDefault();
         Assert.IsNotNull(menuItemAttr, "DeployTest() should have MenuItem attribute");
-        Assert.AreEqual("AIT/Deploy (Test)", menuItemAttr.menuItem);
+        Assert.AreEqual("AIT/Deploy for Online Test", menuItemAttr.menuItem);
     }
 
     [Test]
@@ -121,13 +121,13 @@ public class MenuRedesignTests
             .Cast<MenuItem>()
             .FirstOrDefault();
         Assert.IsNotNull(menuItemAttr, "DeployProduction() should have MenuItem attribute");
-        Assert.AreEqual("AIT/Deploy (Production)", menuItemAttr.menuItem);
+        Assert.AreEqual("AIT/Deploy Release Candidate", menuItemAttr.menuItem);
     }
 
     [Test]
     public void DeployTest_MenuItem_Priority_Should_Precede_DeployProduction()
     {
-        // 메뉴 순서: Deploy (Test)가 위, Deploy (Production)이 아래 (기존 AIT/Publish 자리 유지)
+        // 메뉴 순서: Deploy for Online Test가 위, Deploy Release Candidate가 아래 (기존 AIT/Publish 자리 유지)
         var testMethod = menuType.GetMethod("DeployTest", BindingFlags.Public | BindingFlags.Static);
         var productionMethod = menuType.GetMethod("DeployProduction", BindingFlags.Public | BindingFlags.Static);
 
@@ -135,7 +135,51 @@ public class MenuRedesignTests
         var productionAttr = productionMethod.GetCustomAttributes(typeof(MenuItem), false).Cast<MenuItem>().First();
 
         Assert.Less(testAttr.priority, productionAttr.priority,
-            "AIT/Deploy (Test) should appear above AIT/Deploy (Production) in the menu");
+            "AIT/Deploy for Online Test should appear above AIT/Deploy Release Candidate in the menu");
+    }
+
+    // =====================================================
+    // Test 4c: 구 메뉴 경로 부재 확인 (이름 변경으로 완전히 대체됨)
+    // =====================================================
+
+    private void AssertNoMenuItemPathExists(string oldPath)
+    {
+        var allMethods = menuType.GetMethods(
+            BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance);
+
+        foreach (var method in allMethods)
+        {
+            var menuItemAttrs = method.GetCustomAttributes(typeof(MenuItem), false).Cast<MenuItem>();
+            foreach (var attr in menuItemAttrs)
+            {
+                Assert.AreNotEqual(oldPath, attr.menuItem,
+                    $"Old menu path should no longer exist: {oldPath}");
+            }
+        }
+    }
+
+    [Test]
+    public void OldDeployTestMenuPath_Should_Not_Exist()
+    {
+        AssertNoMenuItemPathExists("AIT/Deploy (Test)");
+    }
+
+    [Test]
+    public void OldDeployProductionMenuPath_Should_Not_Exist()
+    {
+        AssertNoMenuItemPathExists("AIT/Deploy (Production)");
+    }
+
+    [Test]
+    public void OldDevServerStartServerMenuPath_Should_Not_Exist()
+    {
+        AssertNoMenuItemPathExists("AIT/Dev Server/Start Server");
+    }
+
+    [Test]
+    public void OldTopLevelBuildAndPackageMenuPath_Should_Not_Exist()
+    {
+        AssertNoMenuItemPathExists("AIT/Build & Package");
     }
 
     // =====================================================

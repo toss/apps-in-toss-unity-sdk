@@ -29,7 +29,7 @@ Edit > Project Settings > Player 메뉴에서 다음 항목을 설정합니다.
 - Publishing Settings
   - Compression Format: `Brotli`로 설정
 
-> **참고**: SDK를 사용한 자동 연동에서도 Production Server, Build & Package, Publish 프로필은 압축 포맷을 자동으로 Brotli로 설정합니다. Dev Server 프로필만 빌드 속도를 위해 압축을 비활성화합니다. 프로필별 매트릭스는 [빌드 프로필](BuildProfiles.md)을 참고하세요.
+> **참고**: SDK를 사용한 자동 연동에서도 Build & Package와 Deploy Release Candidate 프로필은 압축 포맷을 자동으로 Brotli로 설정합니다. Dev Server 프로필은 빌드 속도를 위해 압축을 비활성화하고, Deploy for Online Test 프로필은 배포 가속을 위해 Gzip으로 오버라이드합니다. 프로필별 매트릭스는 [빌드 프로필](BuildProfiles.md)을 참고하세요.
 
 ## 4. 빌드하기
 

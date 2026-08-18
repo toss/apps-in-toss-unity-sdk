@@ -46,10 +46,10 @@ namespace AppsInToss.Editor.Menu
         // 빌드 소요 시간 측정 (StartServer의 buildStopwatch와 독립)
         private static Stopwatch _buildStopwatch = new Stopwatch();
 
-        // ==================== Deploy (Test) / Deploy (Production) ====================
+        // ==================== Deploy for Online Test / Deploy Release Candidate ====================
 
         /// <summary>
-        /// Deploy (Test) / Deploy (Production) 메뉴의 실제 실행 로직.
+        /// Deploy for Online Test / Deploy Release Candidate 메뉴의 실제 실행 로직.
         /// AppsInTossMenu.DeployTest()/DeployProduction() [MenuItem] 에서 위임됩니다.
         /// </summary>
         /// <remarks>
@@ -91,9 +91,9 @@ namespace AppsInToss.Editor.Menu
                 var (cleanBuild, fastBuild) = GetBuildFlags(kind);
                 string il2cppMode = fastBuild ? "Debug/OptimizeSize" : "기본";
 
-                // Deploy (Test)만 압축 Gzip + 스트리핑 Minimal로 오버라이드한 새 프로필을 사용한다.
+                // Deploy for Online Test만 압축 Gzip + 스트리핑 Minimal로 오버라이드한 새 프로필을 사용한다.
                 // config.productionProfile 자체는 절대 변형하지 않는다(CreateTestDeployProfile 참조) —
-                // Deploy (Production)/Build & Package는 이 분기에 들어오지 않으므로 한 글자도 영향받지 않는다.
+                // Deploy Release Candidate/Build & Package는 이 분기에 들어오지 않으므로 한 글자도 영향받지 않는다.
                 AITBuildProfile deployProfile = kind == DeployKind.Test
                     ? AITBuildProfile.CreateTestDeployProfile(config.productionProfile)
                     : config.productionProfile;
@@ -172,7 +172,7 @@ namespace AppsInToss.Editor.Menu
         }
 
         private static string ProfileNameFor(DeployKind kind) =>
-            kind == DeployKind.Production ? "Deploy (Production)" : "Deploy (Test)";
+            kind == DeployKind.Production ? "Deploy Release Candidate" : "Deploy for Online Test";
 
         /// <summary>
         /// DeployKind별 빌드 플래그 매트릭스.
@@ -317,11 +317,11 @@ namespace AppsInToss.Editor.Menu
             string memoPreview = BuildDeployMemoPreview(kind, config.appName, config.version);
             string profileName = ProfileNameFor(kind);
 
-            // Deploy (Test)는 빠른 빌드(IL2CPP Debug + Code Generation OptimizeSize) 산출물이고
+            // Deploy for Online Test는 빠른 빌드(IL2CPP Debug + Code Generation OptimizeSize) 산출물이고
             // 압축 Gzip + 스트리핑 Minimal 오버라이드까지 적용되어 런타임 성능·산출물 크기가 실제
             // 출시 빌드와 다르다 — QR로 성능을 재는 테스터가 오해하지 않도록 고지.
             string fastBuildNotice = kind == DeployKind.Test
-                ? "\n\n⚠ Deploy (Test)는 빠른 빌드(IL2CPP Debug/OptimizeSize)로 생성되어 런타임 성능이 실제 출시 빌드와 다릅니다." +
+                ? "\n\n⚠ Deploy for Online Test는 빠른 빌드(IL2CPP Debug/OptimizeSize)로 생성되어 런타임 성능이 실제 출시 빌드와 다릅니다." +
                   "\n⚠ 압축 Gzip(출시 빌드는 Brotli — 다운로드 크기 소폭 증가) + 코드 스트리핑 Minimal(출시 빌드는 High)이 적용됩니다."
                 : "";
 

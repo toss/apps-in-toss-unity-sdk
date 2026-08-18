@@ -47,8 +47,8 @@ Unity 프로젝트가 배포 가능한 `.ait` 패키지가 되기까지 SDK가 �
 |--------|-----------|------------|-----------|
 | `Build & Package` | `true` | `true` | `false` |
 | `Build & Package (clean)` | `true` | `true` | `true` |
-| `Deploy (Test)` | `true` | `true` | `false` |
-| `Deploy (Production)` | `true` | `true` | `true` |
+| `Deploy for Online Test` | `true` | `true` | `false` |
+| `Deploy Release Candidate` | `true` | `true` | `true` |
 | `Dev Server Start` | `true` | `true` | `false` |
 | `Restart Server` | `true` | `true` | `false` |
 | `Restart (server-only)` | — | — | — |
@@ -588,7 +588,7 @@ ShowComplexDialog("빌드 실패", errorMessage, ...)
 
 ## 서버 라이프사이클
 
-로컬 서버는 Dev Server 하나뿐입니다 (과거 있었던 Production Server는 3.0.0부터 샌드박스 앱 연동이 불가능해지면서 제거됨 — 프로덕션 설정을 실기기에서 확인하려면 [시작하기의 Deploy (Test)](GettingStarted.md#실기기로-확인하기-deploy-test)를 사용).
+로컬 서버는 Local Debug 하나뿐입니다 (과거 있었던 Production Server는 3.0.0부터 샌드박스 앱 연동이 불가능해지면서 제거됨 — 프로덕션 설정을 실기기에서 확인하려면 [시작하기의 Deploy for Online Test](GettingStarted.md#실기기로-확인하기-deploy-for-online-test)를 사용).
 
 | 메서드 | 설명 |
 |--------|------|
@@ -597,7 +597,7 @@ ShowComplexDialog("빌드 실패", errorMessage, ...)
 | `RestartServer(serverOnly)` | `serverOnly=false`면 빌드+서버, `true`면 서버만 재시작 |
 
 ```text
-AIT/Dev Server/
+AIT/Local Debug/
 ├── Start Server              → StartServer() → DoExport(dev) + granite dev
 ├── Stop Server               → StopServer()
 ├── Restart Server            → RestartServer(serverOnly: false)

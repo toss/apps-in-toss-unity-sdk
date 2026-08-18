@@ -13,7 +13,7 @@ SDK가 제공하는 세 가지 광고 표면과, 각각을 붙이는 방법을 �
 ## 공통 전제
 
 - **`adGroupId`** 는 Apps in Toss 콘솔에서 발급받은 광고 그룹 ID입니다. 이 값으로 광고 종류(전면·보상형, 배너 강조 유형)와 노출 정책이 결정됩니다.
-- **실제 광고 렌더링은 Toss 앱 안에서만 동작합니다.** 일반 브라우저나 Unity Editor에서는 광고 네트워크에 도달하지 못하므로, 초기화 이후 `FailedToRender`·`NoFill`(배너) 또는 에러 콜백이 오는 것이 정상입니다. `AIT` > `Deploy (Test)`로 배포해 QR로 실기기에서 확인하세요.
+- **실제 광고 렌더링은 Toss 앱 안에서만 동작합니다.** 일반 브라우저나 Unity Editor에서는 광고 네트워크에 도달하지 못하므로, 초기화 이후 `FailedToRender`·`NoFill`(배너) 또는 에러 콜백이 오는 것이 정상입니다. `AIT` > `Deploy for Online Test`로 배포해 QR로 실기기에서 확인하세요.
 - Unity Editor와 비 WebGL 환경에서는 모든 광고 API가 `[AIT Mock]` 로그만 남기고 실제 이벤트를 발생시키지 않습니다. 동작 확인은 WebGL 빌드 후 Toss 앱에서 하세요.
 - 모든 콜백형 API는 **구독 취소용 `Action`** 을 반환합니다. `OnDestroy` 등에서 호출해 정리하세요.
 
@@ -204,7 +204,7 @@ view.Show();   // showOnEnable 이 true(기본)이고 AdGroupId 가 채워져 �
 
 ## 광고가 보이지 않을 때
 
-1. **Toss 앱 안에서 실행 중인가?** 실제 렌더링은 Toss 앱 안에서만 됩니다. 일반 브라우저와 Editor에서는 초기화 후 실패·노필 이벤트가 오는 것이 정상입니다. `Deploy (Test)`로 배포해 실기기에서 확인하세요.
+1. **Toss 앱 안에서 실행 중인가?** 실제 렌더링은 Toss 앱 안에서만 됩니다. 일반 브라우저와 Editor에서는 초기화 후 실패·노필 이벤트가 오는 것이 정상입니다. `Deploy for Online Test`로 배포해 실기기에서 확인하세요.
 2. **`adGroupId`가 콘솔 발급 값과 일치하는가?** 잘못된 ID는 형식·파라미터 오류(예: `code 1002`)로 거부됩니다.
 3. **전면과 AdMob 광고는 `loaded` 이후에 `Show` 했는가?** `dismissed` 뒤에는 다시 `Load` 해야 합니다.
 4. **`onError`와 이벤트 콜백을 구독하고 있는가?** 배너는 `FailedToRender`·`NoFill`의 `ErrorCode`와 `ErrorMessage`에 사유가 담깁니다.

@@ -16,7 +16,7 @@ Unity 2021.3 이상을 지원하며, Unity 6 이상을 권장합니다.
 |------|------|
 | [시작하기](Documentation~/GettingStarted.md) | 설치, 설치 ref 관리, 설정, 첫 번째 빌드 |
 | [API 사용 패턴](Documentation~/APIUsagePatterns.md) | async/await, 에러 처리, Mock 브릿지 |
-| [빌드 프로필](Documentation~/BuildProfiles.md) | Dev Server, Production Server, Build & Package, Publish |
+| [빌드 프로필](Documentation~/BuildProfiles.md) | Local Debug, Advanced > Build & Package, Deploy for Online Test, Deploy Release Candidate |
 | [빌드 커스터마이징](Documentation~/BuildCustomization.md) | 웹 진입점 수정, 외부 라이브러리 추가 |
 | [문제 해결](Documentation~/Troubleshooting.md) | 자주 막히는 지점과 해결 방법 |
 

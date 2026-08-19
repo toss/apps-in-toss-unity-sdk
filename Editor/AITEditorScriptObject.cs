@@ -71,7 +71,8 @@ namespace AppsInToss
         /// <summary>
         /// Deploy (Test) 전용 오버라이드 프로필 생성.
         /// baseProfile(보통 productionProfile)의 나머지 필드는 그대로 복사한 "새 인스턴스"에
-        /// 압축 포맷/Managed Stripping Level만 빌드 가속용 값으로 덮어쓴다.
+        /// 압축 포맷/외부 디버그 심볼만 빌드 가속용 값으로 덮어쓴다. Managed Stripping Level은
+        /// 실측상 base(Production=High) 유지가 오히려 더 빠르므로 오버라이드하지 않는다(아래 참고).
         /// </summary>
         /// <remarks>
         /// baseProfile 인스턴스는 절대 변형하지 않는다 — config.productionProfile은 ScriptableObject로
@@ -79,9 +80,13 @@ namespace AppsInToss
         /// 디스크(AITConfig.asset)에 그대로 오염된다. 그래서 Clone() 뒤 필드를 대입하는 대신, object
         /// initializer로 완전히 새 인스턴스를 만들어 baseProfile을 읽기 전용으로만 사용한다.
         ///
-        /// 오버라이드 값의 근거(저장값 컨벤션): AITBuildInitializer.ConvertToCompressionFormat/
-        /// ConvertToManagedStrippingLevel 주석 — compressionFormat 1=Gzip, managedStrippingLevel 1=Minimal.
-        /// Production(-1=자동)은 Brotli·High로 변환되므로, Test만 Gzip·Minimal로 갈라진다.
+        /// 오버라이드 값의 근거(저장값 컨벤션): AITBuildInitializer.ConvertToCompressionFormat 주석 —
+        /// compressionFormat 1=Gzip. Production(-1=자동)은 Brotli로 변환되므로 Test만 Gzip으로 갈라진다.
+        /// managedStrippingLevel은 한때 1(Minimal)로 가속을 노렸으나, 실측(SampleUnityProject-2022.3)에서
+        /// High 스트리핑이 IL2CPP 변환·직렬 링크량을 줄여 cold 빌드가 오히려 ~15초 더 빨랐다(123→108s,
+        /// UnityLinker 자체는 5→12s로 늘지만 상쇄됨) — "Minimal이 빌드 속도 우선"이라는 가정이 뒤집혀
+        /// base 값을 그대로 물려받도록 되돌렸다. 부수 효과로 Production과 동일 스트리핑이 되어
+        /// 배포 충실성(Test와 Production 간 산출물 차이) 격차도 줄어든다.
         /// </remarks>
         internal static AITBuildProfile CreateTestDeployProfile(AITBuildProfile baseProfile)
         {
@@ -94,7 +99,7 @@ namespace AppsInToss
                 developmentBuild = baseProfile.developmentBuild,
                 enableLZ4Compression = baseProfile.enableLZ4Compression,
                 compressionFormat = 1,  // Gzip — Deploy (Test) 가속: 압축 시간 단축(Production은 Brotli 유지)
-                managedStrippingLevel = 1,  // Minimal — Deploy (Test) 가속: 스트리핑 시간 단축(Production은 High 유지)
+                managedStrippingLevel = baseProfile.managedStrippingLevel,  // base(Production=High) 유지 — 실측상 High 스트리핑이 IL2CPP 변환·링크량을 줄여 cold 빌드가 Minimal보다 ~15초 빠르고(123→108s), Production과 동일 스트리핑이라 배포 충실성도 확보
                 debugSymbolsExternal = false  // Embedded — Deploy (Test) 가속: 외부 심볼 생성으로 늘어나는 emscripten 링크 시간 제거(Production은 base 값 유지)
             };
         }

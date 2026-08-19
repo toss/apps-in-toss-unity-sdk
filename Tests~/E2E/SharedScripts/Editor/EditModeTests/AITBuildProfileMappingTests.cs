@@ -182,22 +182,24 @@ public class AITBuildProfileMappingTests
     // =====================================================
 
     // =====================================================
-    // AITBuildProfile.CreateTestDeployProfile — Deploy (Test) 전용 압축/스트리핑 오버라이드
+    // AITBuildProfile.CreateTestDeployProfile — Deploy (Test) 전용 압축/외부 심볼 오버라이드
+    // (스트리핑은 실측상 base 유지가 더 빠르므로 오버라이드하지 않음 — 아래 테스트 참고)
     // baseProfile(보통 productionProfile)을 절대 변형하지 않고 새 인스턴스를 만들어야 한다.
     // =====================================================
 
     [Test]
-    public void CreateTestDeployProfile_Overrides_CompressionAndStripping()
+    public void CreateTestDeployProfile_OverridesCompressionAndSymbols_PreservesBaseStripping()
     {
         var baseProfile = AITBuildProfile.CreateProductionProfile();
 
         var testProfile = AITBuildProfile.CreateTestDeployProfile(baseProfile);
 
         Assert.AreEqual(1, testProfile.compressionFormat, "Deploy (Test)는 압축 포맷 저장값 1(Gzip)이어야 함.");
-        Assert.AreEqual(1, testProfile.managedStrippingLevel, "Deploy (Test)는 Stripping 저장값 1(Minimal)이어야 함.");
+        Assert.AreEqual(baseProfile.managedStrippingLevel, testProfile.managedStrippingLevel,
+            "Deploy (Test)는 Stripping을 오버라이드하지 않고 base(Production) 값을 그대로 물려받아야 함 — 실측상 High가 Minimal보다 cold 빌드가 빠름.");
         Assert.IsFalse(testProfile.debugSymbolsExternal, "Deploy (Test)는 외부 디버그 심볼을 끄고 Embedded여야 함 (링크 시간 단축).");
         Assert.AreEqual(WebGLCompressionFormat.Gzip, AITBuildInitializer.ConvertToCompressionFormat(testProfile.compressionFormat));
-        Assert.AreEqual(ManagedStrippingLevel.Minimal, AITBuildInitializer.ConvertToManagedStrippingLevel(testProfile.managedStrippingLevel));
+        Assert.AreEqual(ManagedStrippingLevel.High, AITBuildInitializer.ConvertToManagedStrippingLevel(testProfile.managedStrippingLevel));
     }
 
     [Test]
@@ -219,9 +221,10 @@ public class AITBuildProfileMappingTests
         Assert.AreEqual(baseProfile.developmentBuild, testProfile.developmentBuild);
         Assert.AreEqual(baseProfile.enableLZ4Compression, testProfile.enableLZ4Compression);
 
-        // 압축/스트리핑/외부 심볼만 오버라이드되고 나머지는 baseProfile 값을 그대로 물려받아야 함
+        // 압축/외부 심볼만 오버라이드되고, 스트리핑을 포함한 나머지는 baseProfile 값을 그대로 물려받아야 함
         Assert.AreEqual(1, testProfile.compressionFormat);
-        Assert.AreEqual(1, testProfile.managedStrippingLevel);
+        Assert.AreEqual(baseProfile.managedStrippingLevel, testProfile.managedStrippingLevel,
+            "managedStrippingLevel은 오버라이드 대상이 아니므로 base 값(이 테스트에서는 4/High)을 그대로 물려받아야 함.");
         Assert.IsFalse(testProfile.debugSymbolsExternal);
     }
 

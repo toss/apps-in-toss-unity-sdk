@@ -41,7 +41,7 @@
 
 `src/parser/jsdoc-extractor.ts`가 상위 `.d.ts`의 JSDoc을 C# XML 주석으로 옮깁니다. 그래서 개별 API 설명은 마크다운에 옮겨 적지 않아도 IntelliSense에 그대로 뜨고, 상위 문서가 갱신되면 다음 `pnpm generate`에서 자동으로 따라옵니다.
 
-> **중요**: API 설명을 마크다운 문서에 복사하지 마세요. 상위는 SDK 업데이트마다 재생성되지만 마크다운은 아니라서 확정적으로 어긋납니다. 공개 문서는 상위에 없는 것만 다룹니다 — [API 사용 패턴](../APIUsagePatterns.md) 참조.
+> **중요**: API 설명을 마크다운 문서에 복사하지 마세요. 상위는 SDK 업데이트마다 재생성되지만 마크다운은 아니라서 확정적으로 어긋납니다. 공개 문서는 상위에 없는 것만 다룹니다 — [API 사용 패턴](https://developers-apps-in-toss.toss.im/documentation/unity/first-steps/api-usage-patterns) 참조.
 
 ## 문서 링크가 생성물로 들어가는 지점
 
@@ -65,5 +65,5 @@ catch (AITException ex)
 ## 관련 문서
 
 - [기여 가이드](../Contributing.md) — 생성기 실행 명령과 검증 순서
-- [API 사용 패턴](../APIUsagePatterns.md) — 생성된 API를 쓰는 쪽 관점
+- [API 사용 패턴](https://developers-apps-in-toss.toss.im/documentation/unity/first-steps/api-usage-patterns) — 생성된 API를 쓰는 쪽 관점
 - [프로젝트 구조](project-structure.md) — 생성물이 놓이는 위치

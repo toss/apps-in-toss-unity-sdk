@@ -245,6 +245,7 @@ namespace AppsInToss.Editor.Package
                 // 이 분기는 SDK가 자가복구를 수행하는 정상 폴백 경로이므로 Log로 출력한다
                 // (LogWarning으로 두면 ErrorTracker가 Sentry로 송신해 노이즈가 됨 — Sentry R8).
                 Debug.Log("[AIT] WebGL 빌드에 Runtime 폴더가 없어 SDK 템플릿에서 복사합니다 (AITTemplate이 아닌 다른 템플릿으로 빌드되었을 수 있음).");
+                Debug.Log("[AIT] ⚠ 커스텀(비AITTemplate) 템플릿에서는 PlayerPrefs 영속화가 적용되지 않습니다 (index.html의 %AIT_PLAYERPREFS_PERSISTENCE% 치환/스크립트 삽입이 AITTemplate 전용).");
                 string sdkRuntimePath = SdkPathResolver.FindSdkRuntimePath();
                 if (!string.IsNullOrEmpty(sdkRuntimePath) && Directory.Exists(sdkRuntimePath))
                 {
@@ -359,6 +360,7 @@ namespace AppsInToss.Editor.Package
                 // AIT 커스텀 플레이스홀더
                 .Replace("%AIT_ENABLE_DEBUG_CONSOLE%", enableDebugConsole)
                 .Replace("%AIT_FIRST_INTERACTIVE_LOG%", EffectiveFirstInteractiveLog(config) ? "true" : "false")
+                .Replace("%AIT_PLAYERPREFS_PERSISTENCE%", EffectivePlayerPrefsPersistence(config) ? "true" : "false")
                 .Replace("%AIT_DEVICE_PIXEL_RATIO%", config.devicePixelRatio.ToString())
                 .Replace("%AIT_ICON_URL%", config.iconUrl ?? "")
                 .Replace("%AIT_DISPLAY_NAME%", config.displayName ?? "")
@@ -947,6 +949,19 @@ namespace AppsInToss.Editor.Package
             return config.firstInteractiveLog >= 0
                 ? config.firstInteractiveLog == 1
                 : AITDefaultSettings.GetDefaultFirstInteractiveLog();
+        }
+
+        /// <summary>
+        /// PlayerPrefs 영속화(앱인토스 Storage) 실효 활성 여부를 반환한다(tri-state 해석).
+        /// 설정 로드 실패 시에도 기본 보호를 제공하기 위해 null → true(fail-open).
+        /// playerPrefsPersistence >= 0 이면 ==1, &lt;0 이면 GetDefaultPlayerPrefsPersistence().
+        /// </summary>
+        internal static bool EffectivePlayerPrefsPersistence(AITEditorScriptObject config)
+        {
+            if (config == null) return true; // fail-open: 설정 로드 실패 시 기본 보호 유지
+            return config.playerPrefsPersistence >= 0
+                ? config.playerPrefsPersistence == 1
+                : AITDefaultSettings.GetDefaultPlayerPrefsPersistence();
         }
 
         /// <summary>

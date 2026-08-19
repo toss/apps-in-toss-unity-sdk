@@ -130,6 +130,20 @@
         </div>
     </div>
 
+    <!-- PlayerPrefs 영속화(앱인토스 Storage 미러링) 설정.
+         빌드 시 %AIT_PLAYERPREFS_PERSISTENCE% 플레이스홀더가 "true"/"false"로 치환됨.
+         미치환 리터럴('%AIT_PLAYERPREFS_PERSISTENCE%')은 "false"와 다르므로 true로 평가 — fail-open.
+         ⚠️ 반드시 ait-playerprefs.js 로드 직전에 선언한다 — 그 스크립트의 부트스트랩이
+         로드 즉시(스크립트 실행 시점) 이 값을 읽어 스냅샷 fetch 착수 여부를 결정하므로,
+         순서가 뒤바뀌면 opt-out(enabled:false) 설정이 무시되고 fetch가 착수된다. -->
+    <script>
+        window.__AIT_PLAYERPREFS = {
+            enabled: '%AIT_PLAYERPREFS_PERSISTENCE%' !== 'false',
+            bootTimeoutMs: 2500
+        };
+    </script>
+    <!-- PlayerPrefs 영속화 레이어 — Unity 로더보다 먼저 로드해 스냅샷 fetch를 미리 착수 -->
+    <script src="Runtime/ait-playerprefs.js"></script>
     <!-- Web Framework Bridge - @apps-in-toss/web-framework 함수를 window.AppsInToss에 노출 -->
     <script type="module" src="./unity-bridge.ts"></script>
 
@@ -397,6 +411,11 @@
         // 빌드 시 %AIT_FIRST_INTERACTIVE_LOG% 플레이스홀더가 "true"/"false"로 치환됨.
         // 미치환 리터럴('%AIT_FIRST_INTERACTIVE_LOG%')은 "false"와 다르므로 true로 평가 — fail-open.
         window.__AIT_FIRST_INTERACTIVE_LOG = '%AIT_FIRST_INTERACTIVE_LOG%' !== 'false';
+
+        // Unity 로더 config에 PlayerPrefs 영속화 훅(preRun 트랩)을 주입.
+        // window.__AIT_PLAYERPREFS는 ait-playerprefs.js 로드 직전(<head 이후 스크립트 블록>)에
+        // 이미 선언되어 있다. 반드시 createUnityInstance 앞에서 호출한다.
+        if (window.__AIT_PP) window.__AIT_PP.configure(config);
 
         // 기기 성능에 따른 최적 devicePixelRatio 계산
         function getOptimalDevicePixelRatio() {

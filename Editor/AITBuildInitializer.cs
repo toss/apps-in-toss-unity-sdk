@@ -267,6 +267,11 @@ namespace AppsInToss.Editor
                 ? editorConfig.firstInteractiveLog == 1
                 : AITDefaultSettings.GetDefaultFirstInteractiveLog();
             Debug.Log($"[AIT]   - first-interactive 계측: {firstInteractiveEnabled}{(editorConfig.firstInteractiveLog < 0 ? " (자동)" : "")}");
+            // PlayerPrefs 영속화는 BuildPlayer 후 WebGLBuildCopier에서 처리
+            bool playerPrefsPersistenceEnabled = editorConfig.playerPrefsPersistence >= 0
+                ? editorConfig.playerPrefsPersistence == 1
+                : AITDefaultSettings.GetDefaultPlayerPrefsPersistence();
+            Debug.Log($"[AIT]   - PlayerPrefs 영속화: {playerPrefsPersistenceEnabled}{(editorConfig.playerPrefsPersistence < 0 ? " (자동)" : " (명시)")}");
         }
 
         /// <summary>

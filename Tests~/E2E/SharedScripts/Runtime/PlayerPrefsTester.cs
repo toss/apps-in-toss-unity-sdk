@@ -40,6 +40,9 @@ public class PlayerPrefsTester : MonoBehaviour
     /// <summary>sessionStorage['__ait_pp_disabled']가 '1'이면 1, 아니면 0을 반환합니다.</summary>
     [DllImport("__Internal")]
     private static extern int PP_GetL3Disabled();
+
+    [DllImport("__Internal")]
+    private static extern void PP_Reload();
 #endif
 
     [Serializable]
@@ -227,6 +230,11 @@ public class PlayerPrefsTester : MonoBehaviour
         UIBuilder.CreateButton(section, "백그라운드 로그", onClick: OnBackgroundLogClick);
 
         UIBuilder.CreateText(section,
+            "Reload: 세션을 유지한 채 페이지만 새로고침합니다. 미니앱을 껐다 다시 열면 새 세션이라 L3 플래그가 초기화되므로, L3 시나리오의 reload는 반드시 이 버튼으로 하세요.",
+            UIBuilder.Theme.FontTiny, UIBuilder.Theme.TextSecondary);
+        UIBuilder.CreateButton(section, "Reload (세션 유지 새로고침)", onClick: OnReloadClick);
+
+        UIBuilder.CreateText(section,
             "L3: 다음 reload 후 이 탭 세션 동안 앱인토스 Storage 레이어를 끄고 순정 IndexedDB 모드로 동작시킵니다.",
             UIBuilder.Theme.FontTiny, UIBuilder.Theme.TextSecondary);
         UIBuilder.CreateButton(section, "다음 reload부터 레이어 끄기(L3)", onClick: OnEnableL3Click);
@@ -396,6 +404,24 @@ public class PlayerPrefsTester : MonoBehaviour
         catch (Exception e)
         {
             UpdateManualResultUI($"백그라운드 로그 조회 실패: {e.Message}");
+        }
+#else
+        UpdateManualResultUI("(Editor: N/A)");
+#endif
+    }
+
+    // ─── Reload: 세션 유지 새로고침(location.reload) ───
+
+    private void OnReloadClick()
+    {
+#if UNITY_WEBGL && !UNITY_EDITOR
+        try
+        {
+            PP_Reload();
+        }
+        catch (Exception e)
+        {
+            UpdateManualResultUI($"Reload 실패: {e.Message}");
         }
 #else
         UpdateManualResultUI("(Editor: N/A)");

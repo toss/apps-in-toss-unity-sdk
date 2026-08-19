@@ -175,6 +175,19 @@ mergeInto(LibraryManager.library, {
     },
 
     /**
+     * 페이지를 세션 유지 상태로 새로고침(location.reload)
+     * 실기기(토스 앱 WebView)에는 브라우저 새로고침 UI가 없고, 미니앱을 껐다 다시 열면
+     * 새 세션이라 sessionStorage 기반 L3 플래그가 초기화된다 — L3 시나리오는 반드시 이 경로로 reload해야 함
+     */
+    PP_Reload: function() {
+        try {
+            location.reload();
+        } catch (e) {
+            console.error('[E2E-PLAYERPREFS] PP_Reload failed: ' + e.message);
+        }
+    },
+
+    /**
      * JavaScript에서 JSON 파싱 검증
      * C# → JSON → JavaScript 파싱 → JSON → C# 역직렬화 round-trip 검증용
      * @param {string} jsonPtr - JSON 문자열 포인터

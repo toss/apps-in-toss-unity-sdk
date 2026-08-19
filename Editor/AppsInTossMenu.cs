@@ -88,16 +88,18 @@ namespace AppsInToss
             }
         }
 
-        // ==================== Dev Server ====================
+        // ==================== Local Debug ====================
+        // 메뉴 경로는 "Local Debug"지만 내부 ServerType/GetProfileName("Dev Server")·로그 prefix는
+        // Sentry 노이즈 필터(AITEditorErrorTracker.ServerLogPrefixes)와 결합되어 있어 그대로 둔다.
 
-        [MenuItem("AIT/Dev Server/Start Server", false, 1)]
+        [MenuItem("AIT/Local Debug/Start Server", false, 1)]
         public static void MenuStartDevServer()
         {
             if (AITDeprecationChecker.BlockIfDeprecated()) return;
             StartServer(ServerType.Dev);
         }
 
-        [MenuItem("AIT/Dev Server/Start Server", true)]
+        [MenuItem("AIT/Local Debug/Start Server", true)]
         public static bool ValidateMenuStartDevServer()
         {
             if (_devServerBuildInProgress) return false;
@@ -105,42 +107,42 @@ namespace AppsInToss
             return state == ServerState.NotRunning;
         }
 
-        [MenuItem("AIT/Dev Server/Stop Server", false, 2)]
+        [MenuItem("AIT/Local Debug/Stop Server", false, 2)]
         public static void MenuStopDevServer()
         {
             Debug.Log("AIT: Dev 서버 중지...");
             StopServer(ServerType.Dev);
         }
 
-        [MenuItem("AIT/Dev Server/Stop Server", true)]
+        [MenuItem("AIT/Local Debug/Stop Server", true)]
         public static bool ValidateMenuStopDevServer()
         {
             var state = devServerState?.GetCachedState() ?? ServerState.NotRunning;
             return state == ServerState.Running;
         }
 
-        [MenuItem("AIT/Dev Server/Restart Server", false, 3)]
+        [MenuItem("AIT/Local Debug/Restart Server", false, 3)]
         public static void MenuRestartDevServer()
         {
             Debug.Log("AIT: Dev 서버 재시작...");
             RestartDevServer();
         }
 
-        [MenuItem("AIT/Dev Server/Restart Server", true)]
+        [MenuItem("AIT/Local Debug/Restart Server", true)]
         public static bool ValidateMenuRestartDevServer()
         {
             var state = devServerState?.GetCachedState() ?? ServerState.NotRunning;
             return state == ServerState.Running;
         }
 
-        [MenuItem("AIT/Dev Server/Restart Server (server-only)", false, 4)]
+        [MenuItem("AIT/Local Debug/Restart Server (server-only)", false, 4)]
         public static void MenuRestartDevServerOnly()
         {
             Debug.Log("AIT: Dev 서버 재시작 중 (서버만)...");
             RestartDevServerOnly();
         }
 
-        [MenuItem("AIT/Dev Server/Restart Server (server-only)", true)]
+        [MenuItem("AIT/Local Debug/Restart Server (server-only)", true)]
         public static bool ValidateMenuRestartDevServerOnly()
         {
             var state = devServerState?.GetCachedState() ?? ServerState.NotRunning;
@@ -169,32 +171,32 @@ namespace AppsInToss
         private static void RestartDevServer() => RestartServer(ServerType.Dev, serverOnly: false);
         private static void RestartDevServerOnly() => RestartServer(ServerType.Dev, serverOnly: true);
 
-        // ==================== Build & Package ====================
-        [MenuItem("AIT/Build & Package", false, 23)]
-        public static void BuildAndPackage()
-        {
-            if (AITDeprecationChecker.BlockIfDeprecated()) return;
-            Debug.Log("AIT: Build & Package 시작...");
-            AITDeployManager.RunBuildAndPackage();
-        }
-
-        // ==================== Deploy (Test) / Deploy (Production) ====================
+        // ==================== Deploy for Online Test / Deploy Release Candidate ====================
         // ait deploy CLI는 플래그와 무관하게 항상 콘솔 QR 테스트 환경에 배포한다(실제 출시는
         // 콘솔 심사/출시 신청으로만 가능). 두 메뉴는 빌드 방식(증분/클린)과 memo 접두사,
         // 성공 창의 콘솔 안내 노출 여부만 다르다 — Editor/Menu/AITDeployManager.cs 참조.
 
-        [MenuItem("AIT/Deploy (Test)", false, 31)]
+        [MenuItem("AIT/Deploy for Online Test", false, 31)]
         public static void DeployTest()
         {
             if (AITDeprecationChecker.BlockIfDeprecated()) return;
             AITDeployManager.RunDeploy(DeployKind.Test);
         }
 
-        [MenuItem("AIT/Deploy (Production)", false, 32)]
+        [MenuItem("AIT/Deploy Release Candidate", false, 32)]
         public static void DeployProduction()
         {
             if (AITDeprecationChecker.BlockIfDeprecated()) return;
             AITDeployManager.RunDeploy(DeployKind.Production);
+        }
+
+        // ==================== Advanced ====================
+        [MenuItem("AIT/Advanced/Build & Package", false, 51)]
+        public static void BuildAndPackage()
+        {
+            if (AITDeprecationChecker.BlockIfDeprecated()) return;
+            Debug.Log("AIT: Build & Package 시작...");
+            AITDeployManager.RunBuildAndPackage();
         }
 
         // ==================== Clean ====================
@@ -595,8 +597,8 @@ namespace AppsInToss
             // 빌드 결과물이 있는지 확인
             if (!Directory.Exists(buildPath))
             {
-                AITLog.Error($"AIT: 빌드 결과물이 없습니다. 먼저 Build & Package를 실행하세요. ({buildPath})", sentryCapture: false);
-                AITPlatformHelper.ShowInfoDialog("빌드 필요", "빌드 결과물이 없습니다.\n먼저 Build & Package를 실행하세요.", "확인");
+                AITLog.Error($"AIT: 빌드 결과물이 없습니다. 먼저 AIT > Advanced > Build & Package를 실행하세요. ({buildPath})", sentryCapture: false);
+                AITPlatformHelper.ShowInfoDialog("빌드 필요", "빌드 결과물이 없습니다.\n먼저 AIT > Advanced > Build & Package를 실행하세요.", "확인");
                 return;
             }
 

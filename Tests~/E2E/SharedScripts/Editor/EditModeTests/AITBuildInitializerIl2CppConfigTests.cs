@@ -3,7 +3,7 @@
 // Level 0: AITBuildInitializer.ResolveIl2CppConfiguration / ResolveIl2CppCodeGeneration 순수 함수
 //   단위 테스트 (env AIT_IL2CPP_CONFIGURATION/AIT_IL2CPP_CODE_GENERATION 오버라이드는 각 함수 밖에서
 //   별도 적용되므로 대상 아님) + Init(profile, fastBuild) 실경로 통합 검증
-// 빠른 빌드(Dev Server·Deploy (Test)) 속도 개선(IL2CPP Compiler Configuration=Debug,
+// 빠른 빌드(Dev Server·Deploy for Online Test) 속도 개선(IL2CPP Compiler Configuration=Debug,
 // Code Generation=OptimizeSize) 회귀 방지용
 // -----------------------------------------------------------------------
 
@@ -48,7 +48,7 @@ public class AITBuildInitializerIl2CppConfigTests
         var result = AITBuildInitializer.ResolveIl2CppConfiguration(editorConfigValue: -1, fastBuild: false);
 
         Assert.AreEqual(AITDefaultSettings.GetDefaultIl2CppConfiguration(), result);
-        // 회귀 방지: Production/Deploy (Production)/Build & Package 경로는 절대 Debug가 되면 안 됨
+        // 회귀 방지: Production/Deploy Release Candidate/Build & Package 경로는 절대 Debug가 되면 안 됨
         Assert.AreNotEqual(Il2CppCompilerConfiguration.Debug, result);
     }
 
@@ -78,7 +78,7 @@ public class AITBuildInitializerIl2CppConfigTests
     {
         var result = AITBuildInitializer.ResolveIl2CppCodeGeneration(fastBuild: false);
 
-        // 회귀 방지: Production/Deploy (Production)/Build & Package 경로는 프로젝트에 이미 설정된
+        // 회귀 방지: Production/Deploy Release Candidate/Build & Package 경로는 프로젝트에 이미 설정된
         // Player Settings 값을 그대로 유지해야 한다(예: 사용자가 명시적으로 선택한 OptimizeSize를
         // 조용히 OptimizeSpeed로 되돌리면 안 됨) — 그래서 값을 강제하지 않고 null을 반환한다.
         Assert.IsNull(result);
@@ -146,7 +146,7 @@ public class AITBuildInitializerIl2CppConfigTests
 
         Assert.AreEqual(AITDefaultSettings.GetDefaultIl2CppConfiguration(), GetAppliedIl2CppConfiguration());
         Assert.AreNotEqual(Il2CppCompilerConfiguration.Debug, GetAppliedIl2CppConfiguration(),
-            "Production/Deploy (Production)/Build & Package 경로는 fastBuild 없이 Debug가 적용되면 안 됨");
+            "Production/Deploy Release Candidate/Build & Package 경로는 fastBuild 없이 Debug가 적용되면 안 됨");
     }
 
     [Test]
@@ -205,7 +205,7 @@ public class AITBuildInitializerIl2CppConfigTests
     public void Init_NotFastBuild_PreservesExistingOptimizeSize_DoesNotOverwrite()
     {
         // 사용자가 Player Settings에서 명시적으로 OptimizeSize("Faster (smaller) builds")를
-        // 선택해 둔 경우, fastBuild 없는 경로(Production/Deploy (Production)/Build & Package)는
+        // 선택해 둔 경우, fastBuild 없는 경로(Production/Deploy Release Candidate/Build & Package)는
         // 이를 조용히 OptimizeSpeed로 되돌리면 안 된다.
         SetAppliedIl2CppCodeGeneration(UnityEditor.Build.Il2CppCodeGeneration.OptimizeSize);
 

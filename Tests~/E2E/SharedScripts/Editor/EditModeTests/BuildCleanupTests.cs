@@ -60,7 +60,7 @@ public class BuildCleanupTests
         File.WriteAllText(Path.Combine(buildPath, "index.html"), "stale index");
         File.WriteAllText(Path.Combine(buildPath, "random-leftover.txt"), "leftover");
 
-        prepareMethod.Invoke(null, new object[] { buildPath });
+        prepareMethod.Invoke(null, new object[] { buildPath, false });
 
         // public/Build는 CopyWebGLToPublic이 미러로 소유하므로 보존된다
         // (통째로 지우면 변경분 미러 복사가 매번 전량 복사로 퇴화).
@@ -102,7 +102,7 @@ public class BuildCleanupTests
         File.WriteAllText(Path.Combine(buildPath, "public", "user-asset.png"), "user file from BuildConfig~");
         Directory.CreateDirectory(Path.Combine(buildPath, "public", "legacy-dir"));
 
-        prepareMethod.Invoke(null, new object[] { buildPath });
+        prepareMethod.Invoke(null, new object[] { buildPath, false });
 
         // 보존 확인
         Assert.IsTrue(Directory.Exists(Path.Combine(buildPath, "node_modules")),
@@ -145,7 +145,7 @@ public class BuildCleanupTests
         string buildPath = Path.Combine(tempDir, "new-ait-build");
         Assert.IsFalse(Directory.Exists(buildPath), "Precondition: folder should not exist");
 
-        prepareMethod.Invoke(null, new object[] { buildPath });
+        prepareMethod.Invoke(null, new object[] { buildPath, false });
 
         Assert.IsTrue(Directory.Exists(buildPath),
             "PrepareAitBuildFolder should create the folder when it doesn't exist");
@@ -310,7 +310,7 @@ public class BuildCleanupTests
         string buildProjectPath = Path.Combine(tempDir, "ait-build");
 
         // === 사이클 1: Dev 빌드 ===
-        prepareMethod.Invoke(null, new object[] { buildProjectPath });
+        prepareMethod.Invoke(null, new object[] { buildProjectPath, false });
 
         // Dev 빌드 결과물 시뮬레이션
         string publicPath = Path.Combine(buildProjectPath, "public");
@@ -328,7 +328,7 @@ public class BuildCleanupTests
         File.WriteAllText(Path.Combine(buildProjectPath, "vite.config.ts"), "export default {}");
 
         // === 사이클 2: Prod 빌드 (PrepareAitBuildFolder가 이전 결과물 정리) ===
-        prepareMethod.Invoke(null, new object[] { buildProjectPath });
+        prepareMethod.Invoke(null, new object[] { buildProjectPath, false });
 
         Assert.IsTrue(Directory.Exists(publicBuild),
             "Cycle 2: public/Build should be preserved (mirror-owned)");
@@ -356,7 +356,7 @@ public class BuildCleanupTests
             "Cycle 2: Dev 빌드의 .data는 복사 단계의 stale 정리로 제거되어야 함");
 
         // === 사이클 3: 다시 Dev 빌드 ===
-        prepareMethod.Invoke(null, new object[] { buildProjectPath });
+        prepareMethod.Invoke(null, new object[] { buildProjectPath, false });
 
         Assert.IsTrue(Directory.Exists(publicBuild),
             "Cycle 3: public/Build should be preserved (mirror-owned)");
@@ -404,7 +404,7 @@ public class BuildCleanupTests
         string buildSrc = Path.Combine(webglPath, "Build");
 
         // === 1단계: 비압축 빌드 ===
-        prepareMethod.Invoke(null, new object[] { buildProjectPath });
+        prepareMethod.Invoke(null, new object[] { buildProjectPath, false });
 
         Directory.CreateDirectory(buildSrc);
         File.WriteAllText(Path.Combine(buildSrc, "build.loader.js"), "loader");
@@ -430,7 +430,7 @@ public class BuildCleanupTests
         // === 2단계: Brotli 빌드로 전환 ===
         // PrepareAitBuildFolder는 public/ 미러 대상을 보존한다 (변경분 복사가 동작하려면 필수).
         // 이전 포맷 파일 제거는 복사 단계의 stale 정리 몫이다.
-        prepareMethod.Invoke(null, new object[] { buildProjectPath });
+        prepareMethod.Invoke(null, new object[] { buildProjectPath, false });
 
         Assert.IsTrue(File.Exists(Path.Combine(publicBuild, "build.data")),
             "public/Build should be preserved by PrepareAitBuildFolder (mirror-owned)");

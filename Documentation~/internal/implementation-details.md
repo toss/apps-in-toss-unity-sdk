@@ -57,13 +57,13 @@ devtools(`@apps-in-toss/devtools`) 설정은 빌드 프로필이 아니라 `AITC
 
 ## 배포
 
-`Editor/Menu/AITDeployManager.cs`가 `AIT/Deploy (Test)` / `AIT/Deploy (Production)` 두 메뉴를 공통 메서드 `RunDeploy(DeployKind kind)`로 처리합니다. `DeployKind` enum(`Test`/`Production`)이 `cleanBuild` 여부와 `-m/--memo` 접두사(`[Test]`/`[Production]`)를 결정합니다 — 그 외 빌드 프로필(`productionProfile`)과 `ait deploy` 호출 자체는 두 종류가 동일합니다.
+`Editor/Menu/AITDeployManager.cs`가 `AIT/Deploy for Online Test` / `AIT/Deploy Release Candidate` 두 메뉴를 공통 메서드 `RunDeploy(DeployKind kind)`로 처리합니다. `DeployKind` enum(`Test`/`Production`)이 `cleanBuild` 여부와 `-m/--memo` 접두사(`[Test]`/`[Production]`)를 결정합니다 — 그 외 빌드 프로필(`productionProfile`)과 `ait deploy` 호출 자체는 두 종류가 동일합니다.
 
 `ait deploy`는 kind와 무관하게 항상 콘솔 QR 테스트 환경(`intoss-private://`)에 배포합니다. 실제 심사·출시는 이 CLI가 아니라 배포 완료 후 콘솔 UI에서 이뤄지는 별도 액션입니다.
 
 배포 성공 시 뜨는 `DeploySuccessWindow`는 두 kind 모두 QR + URL을 보여주고, `Production`일 때만 "콘솔 열기" 버튼(콘솔 베이스 URL로 이동 — deploymentId 딥링크는 콘솔 라우트 미확인 상태라 후속 과제)을 추가로 표시합니다.
 
-과거 있었던 `AIT/Production Server`(로컬 서버 + 샌드박스 앱 연동)는 3.0.0부터 샌드박스 앱 연동이 불가능해지면서 제거되었습니다. 로컬 서버는 이제 Dev Server(devtools mock) 하나뿐이며, `Editor/AITServerStateManager.cs`의 서버 상태 관리도 단일 서버 기준으로 단순화되어 있습니다.
+과거 있었던 `AIT/Production Server`(로컬 서버 + 샌드박스 앱 연동)는 3.0.0부터 샌드박스 앱 연동이 불가능해지면서 제거되었습니다. 로컬 서버는 이제 Local Debug(devtools mock, 내부적으로는 여전히 `ServerType.Dev` 단일 값) 하나뿐이며, `Editor/AITServerStateManager.cs`의 서버 상태 관리도 단일 서버 기준으로 단순화되어 있습니다.
 
 ## 런타임
 

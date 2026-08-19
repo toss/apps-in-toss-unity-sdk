@@ -18,7 +18,7 @@ Unity 2021.3 이상을 지원하며, Unity 6 이상을 권장합니다.
 |------|------|
 | [시작하기](https://developers-apps-in-toss.toss.im/documentation/unity/first-steps/getting-started) | 설치, 설치 ref 관리, 설정, 첫 번째 빌드 |
 | [API 사용 패턴](https://developers-apps-in-toss.toss.im/documentation/unity/first-steps/api-usage-patterns) | async/await, 에러 처리, Mock 브릿지 |
-| [빌드 프로필](https://developers-apps-in-toss.toss.im/documentation/unity/build/build-profiles) | Dev Server, Build & Package, Deploy (Test), Deploy (Production) |
+| [빌드 프로필](https://developers-apps-in-toss.toss.im/documentation/unity/build/build-profiles) | Local Debug, Advanced > Build & Package, Deploy for Online Test, Deploy Release Candidate |
 | [빌드 커스터마이징](https://developers-apps-in-toss.toss.im/documentation/unity/build/build-customization) | 웹 진입점 수정, 외부 라이브러리 추가 |
 | [FAQ](https://developers-apps-in-toss.toss.im/documentation/unity/first-steps/faq) | 자주 막히는 지점과 해결 방법 |
 

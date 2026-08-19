@@ -53,7 +53,7 @@ namespace AppsInToss
 
         /// <summary>
         /// Production 기본 프로필 생성 (최적화 우선)
-        /// Prod Server, Build & Package, Publish에서 공통으로 사용
+        /// Build & Package, Deploy for Online Test, Deploy Release Candidate에서 공통으로 사용
         /// </summary>
         public static AITBuildProfile CreateProductionProfile()
         {
@@ -69,7 +69,7 @@ namespace AppsInToss
         }
 
         /// <summary>
-        /// Deploy (Test) 전용 오버라이드 프로필 생성.
+        /// Deploy for Online Test 전용 오버라이드 프로필 생성.
         /// baseProfile(보통 productionProfile)의 나머지 필드는 그대로 복사한 "새 인스턴스"에
         /// 압축 포맷/외부 디버그 심볼만 빌드 가속용 값으로 덮어쓴다. Managed Stripping Level은
         /// 실측상 base(Production=High) 유지가 오히려 더 빠르므로 오버라이드하지 않는다(아래 참고).
@@ -98,9 +98,9 @@ namespace AppsInToss
                 enableDebugConsole = baseProfile.enableDebugConsole,
                 developmentBuild = baseProfile.developmentBuild,
                 enableLZ4Compression = baseProfile.enableLZ4Compression,
-                compressionFormat = 1,  // Gzip — Deploy (Test) 가속: 압축 시간 단축(Production은 Brotli 유지)
+                compressionFormat = 1,  // Gzip — Deploy for Online Test 가속: 압축 시간 단축(Production은 Brotli 유지)
                 managedStrippingLevel = baseProfile.managedStrippingLevel,  // base(Production=High) 유지 — 실측상 High 스트리핑이 IL2CPP 변환·링크량을 줄여 cold 빌드가 Minimal보다 ~15초 빠르고(123→108s), Production과 동일 스트리핑이라 배포 충실성도 확보
-                debugSymbolsExternal = false  // Embedded — Deploy (Test) 가속: 외부 심볼 생성으로 늘어나는 emscripten 링크 시간 제거(Production은 base 값 유지)
+                debugSymbolsExternal = false  // Embedded — Deploy for Online Test 가속: 외부 심볼 생성으로 늘어나는 emscripten 링크 시간 제거(Production은 base 값 유지)
             };
         }
     }
@@ -238,7 +238,7 @@ namespace AppsInToss
         [Tooltip("Dev Server 실행 시 적용되는 빌드 설정 (빌드 속도 우선)")]
         public AITBuildProfile devServerProfile = AITBuildProfile.CreateDevServerProfile();
 
-        [Tooltip("Production 빌드 시 적용되는 빌드 설정 (Prod Server, Build & Package, Publish)")]
+        [Tooltip("Production 빌드 시 적용되는 빌드 설정 (Build & Package, Deploy for Online Test, Deploy Release Candidate)")]
         public AITBuildProfile productionProfile = AITBuildProfile.CreateProductionProfile();
 
         [Header("WebGL 최적화 설정")]

@@ -86,7 +86,7 @@ namespace AppsInToss.Editor
         /// Node.js 대기, 프로필 폴백, 폴더 정리, 파일 복사, pnpm 경로 확인, node_modules 검증.
         /// </summary>
         private static (PackageContext ctx, AITConvertCore.AITExportError error) PreparePackaging(
-            string projectPath, string webglPath, AITBuildProfile profile)
+            string projectPath, string webglPath, AITBuildProfile profile, bool fastBuild = false)
         {
             // 백그라운드 Node.js/pnpm 설치 대기 (빌드 경로이므로 blocking으로 대기)
             if (AITPackageInitializer.IsInstalling)
@@ -102,7 +102,7 @@ namespace AppsInToss.Editor
             if (profile == null) profile = AITBuildProfile.CreateProductionProfile();
 
             string buildProjectPath = Path.Combine(projectPath, "ait-build");
-            Package.WebGLBuildCopier.PrepareAitBuildFolder(buildProjectPath);
+            Package.WebGLBuildCopier.PrepareAitBuildFolder(buildProjectPath, preserveDist: fastBuild);
 
             // npm 경로 확인
             string npmPath = AITNpmRunner.FindNpmPath();
@@ -162,7 +162,7 @@ namespace AppsInToss.Editor
         /// pnpm install을 즉시 시작할 수 있는 상태를 만듭니다.
         /// </summary>
         internal static (EarlyPackageContext ctx, AITConvertCore.AITExportError error) PrepareEarlyPackaging(
-            string projectPath, AITBuildProfile profile)
+            string projectPath, AITBuildProfile profile, bool fastBuild = false)
         {
             // 백그라운드 Node.js/pnpm 설치 대기
             if (AITPackageInitializer.IsInstalling)
@@ -178,7 +178,7 @@ namespace AppsInToss.Editor
             if (profile == null) profile = AITBuildProfile.CreateProductionProfile();
 
             string buildProjectPath = Path.Combine(projectPath, "ait-build");
-            Package.WebGLBuildCopier.PrepareAitBuildFolder(buildProjectPath);
+            Package.WebGLBuildCopier.PrepareAitBuildFolder(buildProjectPath, preserveDist: fastBuild);
 
             // BuildConfig 복사 (WebGL 출력 불필요 — package.json, lockfile 등만)
             Debug.Log("[AIT] [병렬] BuildConfig 파일 복사 중...");
@@ -237,7 +237,8 @@ namespace AppsInToss.Editor
             PlayerSettingsSnapshot snapshot,
             Action<AITConvertCore.AITExportError> onComplete,
             Action<AITConvertCore.BuildPhase, float, string> onProgress,
-            bool skipGraniteBuild = false)
+            bool skipGraniteBuild = false,
+            bool fastBuild = false)
         {
             // Step 1: WebGL 출력을 public/ 폴더로 복사
             onProgress?.Invoke(AITConvertCore.BuildPhase.CopyingFiles, 0.15f, "WebGL 빌드 파일 복사 중...");
@@ -258,7 +259,7 @@ namespace AppsInToss.Editor
             {
                 // 이미 완료됨 — 즉시 진행
                 Debug.Log("[AIT] [병렬] ✓ pnpm install 이미 완료 (WebGL 빌드 시간에 숨겨짐)");
-                OnPnpmInstallReady(earlyCtx, snapshot, onComplete, onProgress, skipGraniteBuild);
+                OnPnpmInstallReady(earlyCtx, snapshot, onComplete, onProgress, skipGraniteBuild, fastBuild);
             }
             else
             {
@@ -282,7 +283,7 @@ namespace AppsInToss.Editor
 
                     EditorApplication.update -= PollPnpmCompletion;
                     Debug.Log("[AIT] [병렬] ✓ pnpm install 완료 확인");
-                    OnPnpmInstallReady(earlyCtx, snapshot, onComplete, onProgress, skipGraniteBuild);
+                    OnPnpmInstallReady(earlyCtx, snapshot, onComplete, onProgress, skipGraniteBuild, fastBuild);
                 }
 
                 EditorApplication.update += PollPnpmCompletion;
@@ -297,7 +298,8 @@ namespace AppsInToss.Editor
             PlayerSettingsSnapshot snapshot,
             Action<AITConvertCore.AITExportError> onComplete,
             Action<AITConvertCore.BuildPhase, float, string> onProgress,
-            bool skipGraniteBuild = false)
+            bool skipGraniteBuild = false,
+            bool fastBuild = false)
         {
             var installResult = earlyCtx.PnpmInstallResult ?? AITConvertCore.AITExportError.FAIL_NPM_BUILD;
             if (installResult != AITConvertCore.AITExportError.SUCCEED)
@@ -341,8 +343,28 @@ namespace AppsInToss.Editor
                 UnityMetadataEnv = earlyCtx.UnityMetadataEnv,
             };
 
+            // 패키징 산출물 스킵 판정 — fastBuild(Deploy (Test) 등 빠른 반복 경로)에서만
+            // 활성화된다. Production 배포(fastBuild=false)는 이 분기에 들어오지 않으므로
+            // 항상 전량 재빌드한다 (안전 우선).
+            if (fastBuild && Package.PackageBuildStateMarker.ShouldSkipPackageBuild(ctx.BuildProjectPath, out string skipReason))
+            {
+                Debug.Log($"[AIT] [병렬] 패키징 산출물 무변경 — vite/ait build 스킵 (재실행: ait-build/dist 삭제 또는 {Package.PackageBuildStateMarker.KillSwitchEnvVar}=1) [{skipReason}]");
+                onProgress?.Invoke(AITConvertCore.BuildPhase.GraniteBuild, 0.5f, "패키징 산출물 무변경 — vite/ait build 스킵");
+                onProgress?.Invoke(AITConvertCore.BuildPhase.Complete, 1f, "패키징 완료! (스킵)");
+                earlyCtx.CancelAndDisposePnpm();
+                AITConvertCore.SetCurrentAsyncTask(null);
+                try { snapshot.Restore(); }
+                finally { AITBuildSession.EndBuild(); }
+                onComplete?.Invoke(AITConvertCore.AITExportError.SUCCEED);
+                return;
+            }
+
             // granite build 실행 (비동기)
+            // 스킵하지 않기로 했으므로, PrepareAitBuildFolder(preserveDist: true)가 보존해뒀을 수 있는
+            // 이전 dist를 여기서 명시적으로 지운다 — "빌드는 항상 빈 dist에서 시작한다" 불변식 복원.
             var cancellationToken = earlyCtx.PnpmCancellationToken;
+            Package.WebGLBuildCopier.DeleteDistFolder(ctx.BuildProjectPath);
+            Package.PackageBuildStateMarker.InvalidateMarker(ctx.BuildProjectPath);
             Package.GraniteBuildRunner.RunGraniteBuildAsync(ctx, cancellationToken, onProgress,
                 (buildResult) =>
                 {
@@ -353,6 +375,8 @@ namespace AppsInToss.Editor
 
                     if (buildResult == AITConvertCore.AITExportError.SUCCEED)
                     {
+                        Package.PackageBuildStateMarker.RecordSuccessfulBuild(
+                            ctx.BuildProjectPath, Package.GraniteBuildRunner.GetWebFrameworkMajor(ctx.BuildProjectPath));
                         Debug.Log("[AIT] [병렬] ✓ 비동기 미니앱 생성 완료!");
                     }
 
@@ -367,11 +391,11 @@ namespace AppsInToss.Editor
         /// <summary>
         /// WebGL 빌드를 ait-build로 패키징
         /// </summary>
-        internal static AITConvertCore.AITExportError PackageWebGLBuild(string projectPath, string webglPath, AITBuildProfile profile = null, bool skipGraniteBuild = false)
+        internal static AITConvertCore.AITExportError PackageWebGLBuild(string projectPath, string webglPath, AITBuildProfile profile = null, bool skipGraniteBuild = false, bool fastBuild = false)
         {
             Debug.Log("[AIT] Vite 기반 빌드 패키징 시작...");
 
-            var (ctx, prepError) = PreparePackaging(projectPath, webglPath, profile);
+            var (ctx, prepError) = PreparePackaging(projectPath, webglPath, profile, fastBuild);
             if (ctx == null) return prepError;
 
             // Step 3: pnpm install & build
@@ -386,6 +410,18 @@ namespace AppsInToss.Editor
                 return AITConvertCore.AITExportError.SUCCEED;
             }
 
+            // 패키징 산출물 스킵 판정 — fastBuild(Deploy (Test) 등 빠른 반복 경로)에서만
+            // 활성화된다. Production 배포(fastBuild=false)는 항상 전량 재빌드한다 (안전 우선).
+            if (fastBuild && Package.PackageBuildStateMarker.ShouldSkipPackageBuild(ctx.BuildProjectPath, out string skipReason))
+            {
+                Debug.Log($"[AIT] 패키징 산출물 무변경 — vite/ait build 스킵 (재실행: ait-build/dist 삭제 또는 {Package.PackageBuildStateMarker.KillSwitchEnvVar}=1) [{skipReason}]");
+                return AITConvertCore.AITExportError.SUCCEED;
+            }
+
+            // 스킵하지 않기로 했으므로, PrepareAitBuildFolder(preserveDist: true)가 보존해뒀을 수 있는
+            // 이전 dist를 여기서 명시적으로 지운다 — "빌드는 항상 빈 dist에서 시작한다" 불변식 복원.
+            Package.WebGLBuildCopier.DeleteDistFolder(ctx.BuildProjectPath);
+            Package.PackageBuildStateMarker.InvalidateMarker(ctx.BuildProjectPath);
             var buildResult = Package.GraniteBuildRunner.RunGraniteBuildSync(ctx);
             if (buildResult != AITConvertCore.AITExportError.SUCCEED) return buildResult;
 
@@ -394,6 +430,9 @@ namespace AppsInToss.Editor
 
             var distValidation = AITBuildValidator.ValidateDistOutput(ctx.BuildProjectPath);
             if (distValidation != AITConvertCore.AITExportError.SUCCEED) return distValidation;
+
+            Package.PackageBuildStateMarker.RecordSuccessfulBuild(
+                ctx.BuildProjectPath, Package.GraniteBuildRunner.GetWebFrameworkMajor(ctx.BuildProjectPath));
 
             Debug.Log($"[AIT] ✓ 패키징 완료: {distPath}");
 
@@ -518,7 +557,8 @@ namespace AppsInToss.Editor
             Action<AITConvertCore.AITExportError> onComplete,
             Action<AITConvertCore.BuildPhase, float, string> onProgress = null,
             CancellationToken cancellationToken = default,
-            bool skipGraniteBuild = false)
+            bool skipGraniteBuild = false,
+            bool fastBuild = false)
         {
             onProgress?.Invoke(AITConvertCore.BuildPhase.Preparing, 0.01f, "패키징 준비 중...");
 
@@ -531,7 +571,7 @@ namespace AppsInToss.Editor
             Debug.Log("[AIT] Vite 기반 비동기 패키징 시작...");
             onProgress?.Invoke(AITConvertCore.BuildPhase.CopyingFiles, 0.05f, "빌드 설정 파일 복사 중...");
 
-            var (ctx, prepError) = PreparePackaging(projectPath, webglPath, profile);
+            var (ctx, prepError) = PreparePackaging(projectPath, webglPath, profile, fastBuild);
             if (ctx == null)
             {
                 onComplete?.Invoke(prepError);
@@ -576,7 +616,30 @@ namespace AppsInToss.Editor
                         onComplete?.Invoke(AITConvertCore.AITExportError.SUCCEED);
                         return;
                     }
-                    Package.GraniteBuildRunner.RunGraniteBuildAsync(ctx, cancellationToken, onProgress, onComplete);
+
+                    // 패키징 산출물 스킵 판정 — fastBuild에서만 활성화 (Production은 항상 전량 재빌드).
+                    if (fastBuild && Package.PackageBuildStateMarker.ShouldSkipPackageBuild(ctx.BuildProjectPath, out string skipReason))
+                    {
+                        Debug.Log($"[AIT] 패키징 산출물 무변경 — vite/ait build 스킵 (재실행: ait-build/dist 삭제 또는 {Package.PackageBuildStateMarker.KillSwitchEnvVar}=1) [{skipReason}]");
+                        onProgress?.Invoke(AITConvertCore.BuildPhase.GraniteBuild, 0.5f, "패키징 산출물 무변경 — vite/ait build 스킵");
+                        onProgress?.Invoke(AITConvertCore.BuildPhase.Complete, 1f, "패키징 완료! (스킵)");
+                        onComplete?.Invoke(AITConvertCore.AITExportError.SUCCEED);
+                        return;
+                    }
+
+                    // 스킵하지 않기로 했으므로, PrepareAitBuildFolder(preserveDist: true)가 보존해뒀을 수
+                    // 있는 이전 dist를 여기서 명시적으로 지운다 — "빌드는 항상 빈 dist에서 시작한다" 불변식 복원.
+                    Package.WebGLBuildCopier.DeleteDistFolder(ctx.BuildProjectPath);
+                    Package.PackageBuildStateMarker.InvalidateMarker(ctx.BuildProjectPath);
+                    Package.GraniteBuildRunner.RunGraniteBuildAsync(ctx, cancellationToken, onProgress, (buildResult) =>
+                    {
+                        if (buildResult == AITConvertCore.AITExportError.SUCCEED)
+                        {
+                            Package.PackageBuildStateMarker.RecordSuccessfulBuild(
+                                ctx.BuildProjectPath, Package.GraniteBuildRunner.GetWebFrameworkMajor(ctx.BuildProjectPath));
+                        }
+                        onComplete?.Invoke(buildResult);
+                    });
                 }
             );
         }

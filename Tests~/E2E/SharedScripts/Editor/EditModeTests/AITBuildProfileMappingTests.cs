@@ -182,7 +182,7 @@ public class AITBuildProfileMappingTests
     // =====================================================
 
     // =====================================================
-    // AITBuildProfile.CreateTestDeployProfile — Deploy (Test) 전용 압축/외부 심볼 오버라이드
+    // AITBuildProfile.CreateTestDeployProfile — Deploy for Online Test 전용 압축/외부 심볼 오버라이드
     // (스트리핑은 실측상 base 유지가 더 빠르므로 오버라이드하지 않음 — 아래 테스트 참고)
     // baseProfile(보통 productionProfile)을 절대 변형하지 않고 새 인스턴스를 만들어야 한다.
     // =====================================================
@@ -194,10 +194,10 @@ public class AITBuildProfileMappingTests
 
         var testProfile = AITBuildProfile.CreateTestDeployProfile(baseProfile);
 
-        Assert.AreEqual(1, testProfile.compressionFormat, "Deploy (Test)는 압축 포맷 저장값 1(Gzip)이어야 함.");
+        Assert.AreEqual(1, testProfile.compressionFormat, "Deploy for Online Test는 압축 포맷 저장값 1(Gzip)이어야 함.");
         Assert.AreEqual(baseProfile.managedStrippingLevel, testProfile.managedStrippingLevel,
-            "Deploy (Test)는 Stripping을 오버라이드하지 않고 base(Production) 값을 그대로 물려받아야 함 — 실측상 High가 Minimal보다 cold 빌드가 빠름.");
-        Assert.IsFalse(testProfile.debugSymbolsExternal, "Deploy (Test)는 외부 디버그 심볼을 끄고 Embedded여야 함 (링크 시간 단축).");
+            "Deploy for Online Test는 Stripping을 오버라이드하지 않고 base(Production) 값을 그대로 물려받아야 함 — 실측상 High가 Minimal보다 cold 빌드가 빠름.");
+        Assert.IsFalse(testProfile.debugSymbolsExternal, "Deploy for Online Test는 외부 디버그 심볼을 끄고 Embedded여야 함 (링크 시간 단축).");
         Assert.AreEqual(WebGLCompressionFormat.Gzip, AITBuildInitializer.ConvertToCompressionFormat(testProfile.compressionFormat));
         Assert.AreEqual(ManagedStrippingLevel.High, AITBuildInitializer.ConvertToManagedStrippingLevel(testProfile.managedStrippingLevel));
     }

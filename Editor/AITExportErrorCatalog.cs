@@ -64,7 +64,7 @@ namespace AppsInToss.Editor
                     return "WebGL 빌드의 Build 폴더를 찾을 수 없습니다.\n\n" +
                            "WebGL 빌드가 실행되지 않았거나 빌드 결과물이 삭제되었습니다.\n\n" +
                            "해결 방법:\n" +
-                           "1. 'Build & Package' 메뉴로 전체 빌드를 실행하세요.\n" +
+                           "1. 'AIT > Advanced > Build & Package' 메뉴로 전체 빌드를 실행하세요.\n" +
                            "2. webgl/ 폴더가 존재하는지 확인하세요.";
 
                 case AITExportError.REQUIRED_FILE_MISSING:

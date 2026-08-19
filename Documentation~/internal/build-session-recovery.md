@@ -13,7 +13,7 @@
 ## cs 저장으로 리로드 트리거
 
 1. Unity에서 샘플 프로젝트를 엽니다.
-2. `AIT` > `Build & Package`를 실행합니다.
+2. `AIT` > `Advanced` > `Build & Package`를 실행합니다.
 3. 콘솔에 `[AIT] pnpm install 진행 중` 로그가 찍힐 때까지 기다립니다. Packaging 단계입니다.
 4. 아무 `.cs` 파일(예: `Assets/Script/Test.cs`)에 공백 줄을 하나 추가하고 저장합니다.
 5. Unity가 Reloading Domain에 진입했다가 수 초 뒤 복귀합니다.
@@ -30,7 +30,7 @@
 
 ## Unity 강제 종료
 
-1. `AIT` > `Build & Package`를 실행하고 Packaging 단계 진입을 확인합니다.
+1. `AIT` > `Advanced` > `Build & Package`를 실행하고 Packaging 단계 진입을 확인합니다.
 2. OS 레벨에서 종료합니다 — `kill -9 $(pgrep -f Unity)` 또는 작업 관리자 강제 종료.
 3. Unity를 다시 실행합니다.
 4. 에디터 시작 시 위와 같은 복원 로그가 그대로 나와야 성공입니다.

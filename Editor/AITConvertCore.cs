@@ -240,8 +240,8 @@ namespace AppsInToss
 
         /// <summary>
         /// 빌드 전 에셋 최적화 검사 (배치 모드 또는 빠른 빌드에서는 스킵)
-        /// 빠른 빌드(Dev Server·Deploy (Test)) 경로는 반복 루프 속도가 우선이며, 검사는
-        /// Deploy (Production)/Build & Package에서 계속 수행됨.
+        /// 빠른 빌드(Dev Server·Deploy for Online Test) 경로는 반복 루프 속도가 우선이며, 검사는
+        /// Deploy Release Candidate/Build & Package에서 계속 수행됨.
         /// </summary>
         /// <returns>true = 빌드 진행, false = 빌드 취소</returns>
         private static bool RunPreBuildOptimizationCheck(AITEditorScriptObject editorConfig, bool fastBuild = false)
@@ -249,7 +249,7 @@ namespace AppsInToss
             if (Application.isBatchMode) return true;
             if (fastBuild)
             {
-                Debug.Log("[AIT] 빠른 빌드: 에셋 최적화 검사를 건너뜁니다 (Deploy (Production)/Build & Package에서는 계속 수행됨).");
+                Debug.Log("[AIT] 빠른 빌드: 에셋 최적화 검사를 건너뜁니다 (Deploy Release Candidate/Build & Package에서는 계속 수행됨).");
                 return true;
             }
             if (editorConfig == null) return true;
@@ -284,7 +284,7 @@ namespace AppsInToss
         /// <param name="profile">적용할 빌드 프로필 (null이면 productionProfile 사용)</param>
         /// <param name="profileName">빌드 프로필 이름 (로그 출력용)</param>
         /// <param name="fastBuild">
-        /// 빠른 반복 빌드(Dev Server·Deploy (Test)) 경로 여부. true면 IL2CPP 컴파일러 구성을 Debug로,
+        /// 빠른 반복 빌드(Dev Server·Deploy for Online Test) 경로 여부. true면 IL2CPP 컴파일러 구성을 Debug로,
         /// IL2CPP Code Generation을 OptimizeSize로 전환하고 에셋 최적화 검사를 건너뛴다
         /// (반복 루프 속도 우선). 기본값 false는 기존 호출부의 동작을 보존한다.
         /// </param>
@@ -417,13 +417,13 @@ namespace AppsInToss
         /// <param name="onComplete">완료 콜백</param>
         /// <param name="onProgress">진행 상황 콜백 (phase, progress, status)</param>
         /// <param name="fastBuild">
-        /// 빠른 반복 빌드(Dev Server·Deploy (Test)) 경로 여부. DoExport와 동일한 의미 — StartServer와
+        /// 빠른 반복 빌드(Dev Server·Deploy for Online Test) 경로 여부. DoExport와 동일한 의미 — StartServer와
         /// AITDeployManager.RunDeploy(DeployKind.Test)가 이 값을 전달한다. 기본값 false는 Production
         /// 계열 호출부의 동작을 보존한다.
         /// </param>
         /// <remarks>
         /// onProgress/onComplete는 내부적으로 <see cref="PhaseTimingTracker"/>로 감싸여 BuildPhase 전환
-        /// 시점 기준 단계별 소요 시간을 계측한다 — Deploy (Test)/(Production)/Build &amp; Package/Dev Server 등
+        /// 시점 기준 단계별 소요 시간을 계측한다 — Deploy for Online Test/Deploy Release Candidate/Build &amp; Package/Dev Server 등
         /// 이 메서드를 쓰는 모든 인터랙티브 경로에 공통 적용된다. 완료 시 "AIT: 단계별 소요 — ..." 요약
         /// 1줄만 로그로 남기며(실패 시 실패 단계까지의 부분 요약 1줄), Sentry로는 전송하지 않는다.
         /// </remarks>

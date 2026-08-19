@@ -15,10 +15,10 @@ namespace AppsInToss.Editor
         /// Unity WebGL 빌드 설정 초기화
         /// </summary>
         /// <param name="fastBuild">
-        /// 빠른 반복 빌드(Dev Server·Deploy (Test)) 경로에서의 빌드인지 여부.
+        /// 빠른 반복 빌드(Dev Server·Deploy for Online Test) 경로에서의 빌드인지 여부.
         /// IL2CPP 컴파일러 구성 결정(<see cref="ResolveIl2CppConfiguration"/>)과
         /// IL2CPP Code Generation 결정(<see cref="ResolveIl2CppCodeGeneration"/>)에 영향을 주며,
-        /// 기본값 false는 Production/Deploy (Production)/Build & Package 등 기존 호출부의 동작을 보존한다.
+        /// 기본값 false는 Production/Deploy Release Candidate/Build & Package 등 기존 호출부의 동작을 보존한다.
         /// </param>
         internal static void Init(AITBuildProfile profile = null, bool fastBuild = false)
         {
@@ -181,7 +181,7 @@ namespace AppsInToss.Editor
             // 빌드 속도를 개선하지만 런타임 성능은 OptimizeSpeed(Unity 기본) 대비 저하될 수 있다.
             // fastBuild가 아니면 null을 돌려받아 프로젝트에 이미 설정된 Code Generation 값을
             // 그대로 유지한다 — Player Settings에서 명시적으로 OptimizeSize를 선택한 사용자의
-            // 설정을 Production/Deploy (Production)/Build & Package에서 조용히 덮어쓰지 않기 위함.
+            // 설정을 Production/Deploy Release Candidate/Build & Package에서 조용히 덮어쓰지 않기 위함.
             UnityEditor.Build.Il2CppCodeGeneration? il2cppCodeGeneration = ResolveIl2CppCodeGeneration(fastBuild);
 
             string il2cppCodeGenEnv = System.Environment.GetEnvironmentVariable("AIT_IL2CPP_CODE_GENERATION");
@@ -352,8 +352,8 @@ namespace AppsInToss.Editor
         /// IL2CPP 컴파일러 구성 결정 (env 오버라이드 제외 — 그건 Init에서 이 함수 호출 이후 별도 적용).
         /// 우선순위:
         /// 1. editorConfig.il2cppConfiguration 명시값(-1 아님) — 사용자의 명시 선택 존중
-        /// 2. 빠른 빌드(Dev Server·Deploy (Test))면 Debug — 반복 루프 빌드 속도 우선 (런타임 성능은 Release 대비 저하)
-        /// 3. 그 외 기본값(Release) — Production/Deploy (Production)/Build & Package 동작 불변
+        /// 2. 빠른 빌드(Dev Server·Deploy for Online Test)면 Debug — 반복 루프 빌드 속도 우선 (런타임 성능은 Release 대비 저하)
+        /// 3. 그 외 기본값(Release) — Production/Deploy Release Candidate/Build & Package 동작 불변
         /// </summary>
         internal static Il2CppCompilerConfiguration ResolveIl2CppConfiguration(int editorConfigValue, bool fastBuild)
         {
@@ -377,7 +377,7 @@ namespace AppsInToss.Editor
         /// 줄어 빌드 속도가 개선되지만 런타임 성능은 저하될 수 있다.
         /// fastBuild가 아니면 null을 돌려준다 — il2cppConfiguration(-1=자동)과 달리 Code Generation은
         /// 이 SDK가 관리하는 사용자 설정 경로가 없으므로, 강제로 값을 적용하는 대신 Player Settings에
-        /// 이미 설정된 프로젝트 값을 그대로 유지한다(Production/Deploy (Production)/Build & Package 동작 불변).
+        /// 이미 설정된 프로젝트 값을 그대로 유지한다(Production/Deploy Release Candidate/Build & Package 동작 불변).
         /// </summary>
         internal static UnityEditor.Build.Il2CppCodeGeneration? ResolveIl2CppCodeGeneration(bool fastBuild)
         {

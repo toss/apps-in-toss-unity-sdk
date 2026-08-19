@@ -76,7 +76,7 @@ namespace AppsInToss.Editor.Menu
 
                 if (!IsDevtoolsInstalled(buildProjectPath))
                 {
-                    reason = "@apps-in-toss/devtools가 설치되어 있지 않습니다. AIT > Build & Package 등으로 ait-build를 재설치해주세요.";
+                    reason = "@apps-in-toss/devtools가 설치되어 있지 않습니다. AIT > Advanced > Build & Package 등으로 ait-build를 재설치해주세요.";
                     return false;
                 }
 

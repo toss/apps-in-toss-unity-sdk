@@ -519,7 +519,7 @@ namespace AppsInToss
                     trackedOnProgress(BuildPhase.Preparing, 0.02f, "빌드 설정 파일 복사 및 pnpm install 준비 중...");
                     string projectPath = UnityUtil.GetProjectPath();
 
-                    var (earlyCtx, earlyError) = Editor.AITPackageBuilder.PrepareEarlyPackaging(projectPath, profile);
+                    var (earlyCtx, earlyError) = Editor.AITPackageBuilder.PrepareEarlyPackaging(projectPath, profile, fastBuild);
                     if (earlyCtx == null)
                     {
                         try { snapshot.Restore(); }

@@ -12,9 +12,17 @@ namespace AppsInToss.Editor.Package
     /// 재실행을 건너뛰기 위한 판단 근거. <see cref="PnpmInstallStateMarker"/>와 동일한
     /// 해시 마커 + 킬스위치 + fail-closed 패턴을 패키징 단계(granite/ait build)에 적용한다.
     ///
-    /// 성공한 빌드 직후 (1) ait-build/public 트리 상태(경로·크기·mtime)와 (2) ait-build 설정
-    /// 파일들의 내용 해시를 ait-build/.ait-package-build-state.json 에 기록하고, 다음 빌드에서
-    /// 둘 다 일치하며 산출물(dist/*.ait)이 여전히 존재하면 vite/ait build 자체를 건너뛴다.
+    /// 마커를 node_modules/ 안(node_modules/.ait-package-build-state.json)에 두는 이유는
+    /// PnpmInstallStateMarker와 동일하다: 모든 빌드 진입점이 가장 먼저 호출하는
+    /// WebGLBuildCopier.PrepareAitBuildFolder의 정리 대상 제외 목록(itemsToKeep)에
+    /// node_modules가 이미 포함돼 있어 마커가 자연히 생존하고, Package.NodeModulesValidator.
+    /// CleanNodeModules가 node_modules를 통째로 지우는 재시도 정책과도 자동으로 정합된다
+    /// (node_modules가 사라지면 마커도 함께 사라져 fail-closed).
+    ///
+    /// 성공한 빌드 직후 (1) ait-build/public 트리 상태(경로·크기·mtime), (2) ait-build 설정
+    /// 파일들의 내용 해시, (3) UNITY_METADATA 중 .ait 헤더에 반영되는 필드의 해시를
+    /// node_modules/.ait-package-build-state.json 에 기록하고, 다음 빌드에서 전부 일치하며
+    /// 산출물(dist/*.ait)이 여전히 존재하면 vite/ait build 자체를 건너뛴다.
     ///
     /// public/ 트리는 내용을 다시 읽지 않고 (경로, 길이, mtimeTicks)만 본다 — WebGLBuildCopier.
     /// CopyFileIfChanged가 내용이 같은 파일은 mtime을 보존한 채 복사를 스킵하므로, mtime이
@@ -110,15 +118,15 @@ namespace AppsInToss.Editor.Package
 
         internal static string GetMarkerPath(string aitBuildPath)
         {
-            return Path.Combine(aitBuildPath, MarkerFileName);
+            return Path.Combine(aitBuildPath, "node_modules", MarkerFileName);
         }
 
         /// <summary>
         /// 이번 빌드에서 vite/ait build(패키징)를 건너뛰어도 안전한지 판단한다.
-        /// 킬스위치 비활성 + 마커 유효 + 스키마 일치 + public 매니페스트/설정 파일 해시
-        /// 일치 + web-framework 메이저 버전 일치 + dist/*.ait 산출물 존재를 전부 만족할
-        /// 때만 true. 호출부는 fastBuild(Deploy (Test) 등 빠른 반복 경로)에서만 이 메서드를
-        /// 호출해야 한다 — Production 배포는 항상 전량 재빌드한다(안전 우선).
+        /// 킬스위치 비활성 + 마커 유효 + 스키마 일치 + web-framework 메이저 버전 일치 +
+        /// public 매니페스트/설정 파일/Unity 메타데이터 해시 일치 + dist/*.ait 산출물 존재를
+        /// 전부 만족할 때만 true. 호출부는 fastBuild(Deploy (Test) 등 빠른 반복 경로)에서만
+        /// 이 메서드를 호출해야 한다 — Production 배포는 항상 전량 재빌드한다(안전 우선).
         /// </summary>
         internal static bool ShouldSkipPackageBuild(string aitBuildPath, out string reason)
         {
@@ -167,18 +175,31 @@ namespace AppsInToss.Editor.Package
                     return false;
                 }
 
+                if (!marker.TryGetValue("metadataHash", out object metadataHashObj)
+                    || (metadataHashObj as string) != ComputeMetadataHash())
+                {
+                    return false;
+                }
+
                 // 해시가 전부 일치해도 산출물이 사라졌으면(수동 삭제, Clean 메뉴 등) 스킵 불가.
+                // AITBuildValidator.ValidateDistOutput은 실패 시 진단용 Debug.LogError를 남겨
+                // (Sentry로도 캡처됨) 성공으로 끝날 스킵 판정에서 유령 에러가 발생하므로 여기서는
+                // 호출하지 않고, 로그를 남기지 않는 조용한 존재 확인만 한다.
+                //
+                // web-framework 2.x가 dist/ 대신 ait-build 루트에 .ait를 emit하는 경우는
+                // 의도적으로 스킵 대상에서 제외한다 (fail-closed) — 아래 dist/ 존재 요구
+                // 자체가 이 케이스를 걸러내므로 2.x 루트 emit 빌드는 항상 재빌드된다.
                 string distPath = Path.Combine(aitBuildPath, "dist");
                 if (!Directory.Exists(distPath))
                 {
                     return false;
                 }
-                if (AITBuildValidator.ValidateDistOutput(aitBuildPath) != AITConvertCore.AITExportError.SUCCEED)
+                if (Directory.GetFiles(distPath, "*.ait", SearchOption.TopDirectoryOnly).Length == 0)
                 {
                     return false;
                 }
 
-                reason = "ait-build/public + 설정 파일 변경 없음 + dist/*.ait 산출물 존재";
+                reason = "ait-build/public + 설정 파일 + Unity 메타데이터 변경 없음 + dist/*.ait 산출물 존재";
                 return true;
             }
             catch (Exception e)
@@ -226,6 +247,7 @@ namespace AppsInToss.Editor.Package
                     { "schemaVersion", SchemaVersion },
                     { "publicManifestHash", ComputePublicManifestHash(aitBuildPath) },
                     { "configFilesHash", ComputeConfigFilesHash(aitBuildPath) },
+                    { "metadataHash", ComputeMetadataHash() },
                     { "webFrameworkMajor", webFrameworkMajor },
                     { "lastBuildSucceededUtc", DateTime.UtcNow.ToString("o") },
                 };
@@ -309,6 +331,18 @@ namespace AppsInToss.Editor.Package
             }
 
             return ComputeStringHash(sb.ToString());
+        }
+
+        /// <summary>
+        /// UNITY_METADATA 중 .ait 헤더에 그대로 반영되는 필드(sdkVersion, sdkCommitHash,
+        /// unityVersion 등 — buildTimestamp 제외)의 해시. public/과 설정 파일 내용이 우연히
+        /// 이전 빌드와 동일해도, SDK를 업데이트했거나 Unity 버전이 바뀌었다면 스킵되지 않도록
+        /// 막는다. buildTimestamp는 매 빌드마다 항상 바뀌므로 포함하면 스킵이 영원히 발동하지
+        /// 않게 되어 <see cref="AITUnityMetadata.BuildContentMetadataJson"/>에서 제외한다.
+        /// </summary>
+        internal static string ComputeMetadataHash()
+        {
+            return ComputeStringHash(AITUnityMetadata.BuildContentMetadataJson());
         }
 
         /// <summary>

@@ -8,6 +8,7 @@ overrides:
   '@granite-js/plugin-core': 0.1.30
   find-my-way: '>=8.2.2'
   ip: '>=2.0.1'
+  cloudflared: 0.7.1
   '@babel/core': '>=7.29.6 <8'
   '@fastify/middie': '>=9.3.2 <10'
   esbuild: '>=0.28.1'
@@ -576,8 +577,8 @@ packages:
     resolution: {integrity: sha512-neHB9xuzh/wk0dIHweyAXv2aPGZIVk3pLMe+/RNzINf17fe0OG96QroktYAUm7SM1PBnzTabaLboqqxDyMU+SQ==}
     engines: {node: '>=6'}
 
-  cloudflared@0.7.3:
-    resolution: {integrity: sha512-dR4QMS4PbD287QqOV/vAoE1BcQCXphLOVrN9vjNUgkLrPDA5qxn9Dz0VId0P7/Czj4Mxu3hoLgbrVx5OtOWr5Q==}
+  cloudflared@0.7.1:
+    resolution: {integrity: sha512-jJn1Gu9Tf4qnIu8tfiHZ25Hs8rNcRYSVf8zAd97wvYdOCzftm1CTs1S/RPhijjGi8gUT1p9yzfDi9zYlU/0RwA==}
     hasBin: true
 
   commondir@1.0.1:
@@ -1095,7 +1096,7 @@ snapshots:
 
   '@apps-in-toss/devtools@3.0.3(@apps-in-toss/web-framework@3.0.3(typanion@3.14.0)(typescript@7.0.2))(rolldown@1.2.4)(vite@8.2.1(@types/node@26.2.0)(jiti@2.7.0))':
     dependencies:
-      cloudflared: 0.7.3
+      cloudflared: 0.7.1
       qrcode-terminal: 0.12.0
       unplugin: 3.3.0(rolldown@1.2.4)(vite@8.2.1(@types/node@26.2.0)(jiti@2.7.0))
     optionalDependencies:
@@ -1593,7 +1594,7 @@ snapshots:
       kind-of: 6.0.3
       shallow-clone: 3.0.1
 
-  cloudflared@0.7.3: {}
+  cloudflared@0.7.1: {}
 
   commondir@1.0.1: {}
 

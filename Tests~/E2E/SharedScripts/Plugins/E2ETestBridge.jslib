@@ -69,6 +69,111 @@ mergeInto(LibraryManager.library, {
         window.dispatchEvent(event);
     },
 
+    // =====================================================
+    // PlayerPrefs 실기기 실측 진단 (Storage 영속화 레이어)
+    // =====================================================
+
+    /**
+     * window.AITPlayerPrefs.status()와 window.__AIT_PP 진단 정보를 JSON 문자열로 반환
+     * 전역이 없으면(레이어 미주입 빌드 등) '레이어 없음' 문자열을 그대로 반환
+     * @returns {string} - JSON 문자열 또는 '레이어 없음'
+     */
+    PP_GetDiagnosticsStatusJson: function() {
+        var s;
+        if (typeof window.AITPlayerPrefs === 'undefined' || typeof window.AITPlayerPrefs.status !== 'function') {
+            s = '레이어 없음';
+        } else {
+            try {
+                var pp = (typeof window.__AIT_PP !== 'undefined') ? window.__AIT_PP : null;
+                var ppInfo = pp ? {
+                    captured: pp.captured,
+                    preRunRan: pp.preRunRan,
+                    mode: pp.mode,
+                    persistCount: pp.persistCount,
+                    persistIdle: (typeof pp.persistIdle === 'function') ? pp.persistIdle() : null
+                } : null;
+                s = JSON.stringify({ status: window.AITPlayerPrefs.status(), pp: ppInfo });
+            } catch (e) {
+                s = 'status 조회 예외: ' + e.message;
+            }
+        }
+
+        var bufferSize = lengthBytesUTF8(s) + 1;
+        var buffer = _malloc(bufferSize);
+        stringToUTF8(s, buffer, bufferSize);
+        return buffer;
+    },
+
+    /**
+     * 백그라운드 전환(visibilitychange)과 pagehide 이벤트를 window.__AIT_PP_VISLOG(최대 50개)에 기록하도록 등록
+     * 중복 호출해도 리스너가 두 번 붙지 않도록 가드함 (SetupUI가 재호출될 수 있음)
+     */
+    PP_InitVisibilityLog: function() {
+        if (window.__AIT_PP_VISLOG_INIT) return;
+        window.__AIT_PP_VISLOG_INIT = true;
+        window.__AIT_PP_VISLOG = window.__AIT_PP_VISLOG || [];
+
+        var pushVisEvent = function(ev) {
+            window.__AIT_PP_VISLOG.push({ ev: ev, ts: Date.now(), vis: document.visibilityState });
+            while (window.__AIT_PP_VISLOG.length > 50) {
+                window.__AIT_PP_VISLOG.shift();
+            }
+        };
+
+        document.addEventListener('visibilitychange', function() {
+            pushVisEvent(document.visibilityState === 'hidden' ? 'hidden' : 'visible');
+        });
+        window.addEventListener('pagehide', function() {
+            pushVisEvent('pagehide');
+        });
+
+        console.log('[E2E-PLAYERPREFS] Visibility log initialized');
+    },
+
+    /**
+     * 기록된 백그라운드 전환 로그 + (있으면) __AIT_PP.persistCount를 JSON 문자열로 반환
+     * @returns {string} - { log: [...], persistCount } JSON 문자열
+     */
+    PP_GetVisibilityLogJson: function() {
+        var log = window.__AIT_PP_VISLOG || [];
+        var persistCount = (typeof window.__AIT_PP !== 'undefined') ? window.__AIT_PP.persistCount : null;
+        var s = JSON.stringify({ log: log, persistCount: persistCount });
+
+        var bufferSize = lengthBytesUTF8(s) + 1;
+        var buffer = _malloc(bufferSize);
+        stringToUTF8(s, buffer, bufferSize);
+        return buffer;
+    },
+
+    /**
+     * sessionStorage['__ait_pp_disabled']를 세팅(1)하거나 제거(0)함
+     * 세팅 후 reload하면 그 탭 세션 동안 앱인토스 Storage 레이어가 꺼지고 순정 IndexedDB 모드로 동작
+     * @param {number} disabled - 1이면 세팅, 0이면 제거
+     */
+    PP_SetL3Disabled: function(disabled) {
+        try {
+            if (disabled) {
+                sessionStorage.setItem('__ait_pp_disabled', '1');
+            } else {
+                sessionStorage.removeItem('__ait_pp_disabled');
+            }
+        } catch (e) {
+            console.error('[E2E-PLAYERPREFS] PP_SetL3Disabled failed: ' + e.message);
+        }
+    },
+
+    /**
+     * sessionStorage['__ait_pp_disabled']가 '1'이면 1, 아니면 0을 반환
+     * @returns {number} 0 또는 1
+     */
+    PP_GetL3Disabled: function() {
+        try {
+            return sessionStorage.getItem('__ait_pp_disabled') === '1' ? 1 : 0;
+        } catch (e) {
+            return 0;
+        }
+    },
+
     /**
      * JavaScript에서 JSON 파싱 검증
      * C# → JSON → JavaScript 파싱 → JSON → C# 역직렬화 round-trip 검증용

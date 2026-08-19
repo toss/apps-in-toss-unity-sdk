@@ -13,7 +13,7 @@
 | 빌드 전 설정 검증 | `Editor/AITBuildValidator.cs` |
 | 에러 코드와 사용자 안내 문구 | `Editor/AITExportErrorCatalog.cs` |
 | WebGL 산출물 복사 | `Editor/Package/WebGLBuildCopier.cs` |
-| PlayerPrefs 영속화 플레이스홀더 치환·실효값 계산 | `Editor/Package/WebGLBuildCopier.cs` — `%AIT_PLAYERPREFS_PERSISTENCE%` 치환, `EffectivePlayerPrefsPersistence()`. 동작 설명은 [PlayerPrefs 영속화](../PlayerPrefs.md) |
+| PlayerPrefs 영속화 플레이스홀더 치환·실효값 계산 | `Editor/Package/WebGLBuildCopier.cs` — `%AIT_PLAYERPREFS_PERSISTENCE%` 치환, `EffectivePlayerPrefsPersistence()`. 동작 설명은 [PlayerPrefs 영속화](https://developers-apps-in-toss.toss.im/documentation/unity/add-features/playerprefs) |
 | granite 실행 | `Editor/Package/GraniteBuildRunner.cs` |
 | 플레이스홀더 치환과 사용자 파일 병합 | `Editor/Package/BuildConfigMerger.cs` |
 | 설치 스킵 마커 | `Editor/Package/PnpmInstallStateMarker.cs` |
@@ -77,7 +77,7 @@ devtools(`@apps-in-toss/devtools`) 설정은 빌드 프로필이 아니라 `AITC
 | Sentry 태그·컨텍스트 | `Runtime/Sentry/AITSentryIntegration.cs` |
 | Sentry 화면·노출·클릭 추적 | `Runtime/Sentry/AITSentryAnalytics.cs` |
 | IL2CPP 스트리핑 방지 | `Runtime/Sentry/link.xml` |
-| PlayerPrefs 영속화(IDBFS syncfs 미러링) | `WebGLTemplates/AITTemplate/Runtime/ait-playerprefs.js`. 동작 설명은 [PlayerPrefs 영속화](../PlayerPrefs.md) |
+| PlayerPrefs 영속화(IDBFS syncfs 미러링) | `WebGLTemplates/AITTemplate/Runtime/ait-playerprefs.js`. 동작 설명은 [PlayerPrefs 영속화](https://developers-apps-in-toss.toss.im/documentation/unity/add-features/playerprefs) |
 
 ## 관련 문서
 

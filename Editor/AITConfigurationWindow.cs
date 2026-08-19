@@ -509,6 +509,11 @@ namespace AppsInToss.Editor
 
             GUILayout.Space(10);
 
+            // PlayerPrefs 영속화
+            DrawPlayerPrefsPersistenceSetting();
+
+            GUILayout.Space(10);
+
             // 변경된 설정 개수 표시
             int modifiedCount = CountModifiedWebGLSettings();
             if (modifiedCount > 0)
@@ -1024,6 +1029,37 @@ namespace AppsInToss.Editor
             EditorGUILayout.EndHorizontal();
         }
 
+        private void DrawPlayerPrefsPersistenceSetting()
+        {
+            bool defaultValue = AITDefaultSettings.GetDefaultPlayerPrefsPersistence();
+            bool isModified = config.playerPrefsPersistence >= 0 && (config.playerPrefsPersistence == 1) != defaultValue;
+
+            EditorGUILayout.BeginHorizontal();
+
+            DrawModifiedIndicator(isModified);
+
+            string autoLabel = defaultValue ? "활성화" : "비활성화";
+            string label = config.playerPrefsPersistence < 0
+                ? $"PlayerPrefs 영속화 (자동: {autoLabel})"
+                : "PlayerPrefs 영속화";
+
+            string[] options = { $"자동 ({autoLabel})", "비활성화", "활성화" };
+            int currentIndex = config.playerPrefsPersistence < 0 ? 0 : config.playerPrefsPersistence + 1;
+            int newIndex = EditorGUILayout.Popup(
+                new GUIContent(label,
+                    "PlayerPrefs 영속화 (앱인토스 Storage): WebGL의 IndexedDB 영속성이 보장되지 않는 웹뷰 환경에서 " +
+                    "PlayerPrefs 데이터를 앱인토스 Storage에 투명하게 백업/복원합니다. 기본 활성화됩니다."),
+                currentIndex, options);
+            config.playerPrefsPersistence = newIndex == 0 ? -1 : newIndex - 1;
+
+            if (isModified && DrawResetButton())
+            {
+                config.playerPrefsPersistence = -1;
+            }
+
+            EditorGUILayout.EndHorizontal();
+        }
+
         private int CountModifiedWebGLSettings()
         {
             int count = 0;
@@ -1037,6 +1073,9 @@ namespace AppsInToss.Editor
             bool defaultFirstInteractive = AITDefaultSettings.GetDefaultFirstInteractiveLog();
             if (config.firstInteractiveLog >= 0 && (config.firstInteractiveLog == 1) != defaultFirstInteractive) count++;
 
+            bool defaultPlayerPrefsPersistence = AITDefaultSettings.GetDefaultPlayerPrefsPersistence();
+            if (config.playerPrefsPersistence >= 0 && (config.playerPrefsPersistence == 1) != defaultPlayerPrefsPersistence) count++;
+
             return count;
         }
 
@@ -1047,6 +1086,7 @@ namespace AppsInToss.Editor
             // dataCaching은 UI에서 숨겨진 베타 설정이라 리셋 대상에서도 제외 —
             // 화면에 보이지 않는 값을 복원 버튼이 조용히 덮어쓰면 안 됨
             config.firstInteractiveLog = -1;
+            config.playerPrefsPersistence = -1;
         }
 
         private void ResetAdvancedSettings()

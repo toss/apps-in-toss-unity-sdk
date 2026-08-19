@@ -38,7 +38,8 @@ const FIELD_DOC_OVERRIDES: Record<string, string> = {
         /// </para>
         /// <para>
         /// <c>false</c>는 정말로 이 상품을 줄 수 없을 때만 반환한다 — true가 아닌 응답은
-        /// 사용자에게 환불 안내 페이지를 띄운다. 자세한 절차는 Documentation~/APIUsagePatterns.md의
+        /// 사용자에게 환불 안내 페이지를 띄운다. 자세한 절차는 Apps in Toss 개발자 문서 포털
+        /// (https://developers-apps-in-toss.toss.im/documentation/unity/first-steps/api-usage-patterns)의
         /// "인앱결제: 지급 승인과 서버 검증" 절 참고.
         /// </para>
         /// </remarks>

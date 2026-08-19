@@ -22,9 +22,8 @@
 | SDK Update Auto Rebase | push(main), 수동 | `update/` PR 충돌 자동 rebase |
 | Update API Changelog | push(main), 수동 | API 변경 이력 갱신 |
 | Regenerate Lockfiles | 스케줄(매일), 수동 | pnpm lockfile 재생성 PR |
-| Pages | push(main), PR, 수동 | `Documentation~/`를 GitHub Pages로 발행 |
 
-Validate와 Lint, String Check, Pages는 자동 트리거가 주 경로입니다. Pages만 수동 트리거를 함께 받습니다.
+Validate와 Lint, String Check는 자동 트리거가 주 경로입니다.
 
 ## 워크플로 ID
 
@@ -223,7 +222,7 @@ gh api repos/toss/apps-in-toss-unity-sdk/actions/runs/RUN_ID/rerun-failed-jobs -
 대부분 인프라 기인이라 코드 변경 없이 `rerun-failed-jobs` 재실행으로 해결됩니다. Unity 라이선스 결함은 예외입니다(첫 항목 참조).
 
 - **Unity 라이선스 충돌** — `Code 8 (또는 Code 10) while verifying Licensing Client signature` / `No ULF license found` / `Token not found in cache` / handshake / IPC 에러(exit code 42). self-hosted 러너는 현재 `unity-<version>` 라벨로 1:1 핀 고정되어 차단 중입니다. 재발하면 라벨이 빠진 머신이 있는지 확인하세요(러너 라우팅은 [테스트 전략](testing.md) 참조).
-  - 단, 라벨 핀된 단일 러너(예: `macos-1-1`=2021.3)의 라이선스가 실제로 깨진 경우는 transient가 아닙니다. `rerun-failed-jobs`를 반복해도 인프라나 사람이 라이선스를 고치기 전까지 매번 동일 시그니처로 실패합니다. 2026-06 베타 deploy probe에서 attempt #1~#3이 모두 macos-1-1의 동일 라이선스 시그니처로 실패했고, 시간 경과가 아니라 수동 라이선스 수복 후에야 attempt #4가 통과했습니다(자연 복구 아님). 동일 라이선스 시그니처가 **2회 연속**이면 transient로 보지 말고 러너 라이선스 수복 필요로 에스컬레이션하세요(반복 rerun으로 시간 낭비 금지).
+  - 단, 라벨 핀된 단일 러너(특정 Unity 버전에 1:1 핀된 머신)의 라이선스가 실제로 깨진 경우는 transient가 아닙니다. `rerun-failed-jobs`를 반복해도 인프라나 사람이 라이선스를 고치기 전까지 매번 동일 시그니처로 실패합니다. 2026-06 베타 deploy probe에서 attempt #1~#3이 모두 해당 러너의 동일 라이선스 시그니처로 실패했고, 시간 경과가 아니라 수동 라이선스 수복 후에야 attempt #4가 통과했습니다(자연 복구 아님). 동일 라이선스 시그니처가 **2회 연속**이면 transient로 보지 말고 러너 라이선스 수복 필요로 에스컬레이션하세요(반복 rerun으로 시간 낭비 금지).
 - **Windows artifact upload finalize transient** — `actions/upload-artifact@v7`가 `successfully finalized` 메시지 없이 종료합니다(~1.3% 빈도). 진단 step과 `continue-on-error`가 적용되어 있고 재실행으로 해결됩니다.
 - **Unity WebGL Brotli/Gzip 크래시** — `[BUSY Ns] Brotli webgl/Build/...unityweb` 직후 `exit code: 1`. self-hosted 러너 동시 빌드 시 리소스 경합입니다. 현재 E2E CI는 압축 비활성화(`AIT_COMPRESSION_FORMAT="0"`)로 압축 단계 자체를 건너뛰므로 신규 발생이 없습니다(E2E는 vite preview에서만 로드되며 배포되지 않아 압축 불필요). 로컬 재현은 [테스트 전략](testing.md)의 "로컬 CI 재현"을 참조하세요.
 - **E2E warm-reload `unityInstance` 타임아웃** — `Tests~/E2E/tests/e2e-full-pipeline.test.js`의 test 3-1(`3-1. Page reload should not crash (cache warm)`)에서 리로드 후 `window['unityInstance']`가 예산 내 설정되지 않습니다. 대기 로직은 `waitForUnityBounded`(정의 L926, 호출 L980)이며 **75초 예산을 최대 3회 재시도**합니다(`maxAttempts = 3`, L871). 예산을 넘기면 L993이 다음 문자열을 던지므로, 로그 검색은 이 문자열로 하세요.

@@ -21,6 +21,10 @@ overrides:
   '@granite-js/plugin-core': 0.1.30
   find-my-way: '>=8.2.2'
   ip: '>=2.0.1'
+  # 일부 npm 미러/프록시 환경에서 cloudflared 0.7.3 타르볼이 404를 반환해 클라이언트
+  # SDK 빌드의 pnpm install이 실패하는 사례가 있다. 0.7.1은 동일 환경에서 정상 제공되고
+  # @apps-in-toss/devtools@3.0.3이 요구하는 범위(^0.7.1) 안이라 0.7.1로 고정한다.
+  cloudflared: 0.7.1
   # dependabot 취약점 대응(패치 존재분). granite 빌드 툴체인의 전이 의존이며
   # WebGL 산출물에 배포되지 않는다. 예기치 않은 상위 major 점프 차단 위해 캡.
   '@babel/core': '>=7.29.6 <8'

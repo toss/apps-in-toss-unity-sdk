@@ -1317,6 +1317,10 @@ packages:
     resolution: {integrity: sha512-1537v+CX13H+DX2Q8sP+kmfG6djb4jxUlT4IS8Dk3USaEbK+WY5H2xalG9VQTMILDxeI+HgWruPmL4ra+oDLJA==}
     hasBin: true
 
+  '@apps-in-toss/cli@3.0.4':
+    resolution: {integrity: sha512-Ie1dn5bMO/a8/L4uuV73UlmGEuApiYbi1BYf4nWzjDblXSPbludexpAn2WZKrhpD38E77u6JxHi8DHiok5TAWw==}
+    hasBin: true
+
   '@apps-in-toss/framework@1.10.0':
     resolution: {integrity: sha512-6H7a1Sjseqlg4nFNPE7KCwIpFjtv0CUe5th2TEu6wUmsBSI6C7UBTirNaHc1QKxQmu6/Lf7hKgiTgkglGltcKA==}
     hasBin: true
@@ -7785,8 +7789,8 @@ packages:
   ee-first@1.1.1:
     resolution: {integrity: sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==}
 
-  electron-to-chromium@1.5.406:
-    resolution: {integrity: sha512-hWH5ORBi3d0IipnMh7BN5GDTaAmrSSSWmznwt2zltdiRNEWoEQyTwF0FFSBxzHO7hLSRT6loQu3IQGV0wg/Tvg==}
+  electron-to-chromium@1.5.407:
+    resolution: {integrity: sha512-4R8XgQOdfxexCd/u63lRm6wCHjECwI45MV9wxAs2ggtfWe2hwlo1ql97jKsju2IcJ+jFSTwBssyYoiWhh7mauQ==}
 
   emittery@0.13.1:
     resolution: {integrity: sha512-DeWwawk6r5yR9jFgnDKYt4sLS0LmHJJi3ZOnb5/JdbYwj3nW+FxQnHIjhBKz8YLC7oRNPVM9NQ47I3CVx34eqQ==}
@@ -7973,8 +7977,8 @@ packages:
   fast-xml-builder@1.3.1:
     resolution: {integrity: sha512-pIM/1n3ntFXKYrUZwW7QCK0gAW7XY+wzj1YMIV3tLDvPj/V+zTGJK5e3/4WJfwj0qWw2ElNXiTixda/R+3YSug==}
 
-  fast-xml-parser@5.10.1:
-    resolution: {integrity: sha512-IEMIf7298kXuZSRFoGfMYrl7is8LpavODgbNz1cwIudv7KwVFnuU+UsMporfq6PD6aXSlawZlARiA3UywCTfMw==}
+  fast-xml-parser@5.11.0:
+    resolution: {integrity: sha512-9IGxMqvqLOnqP+Egi1nqDHKv5k8aZ7r9n558enxcucmyVGEBNPAU+MOg/8jPIS7rO7sSq4gFm1/nHtiaubMruw==}
     hasBin: true
 
   fastify-plugin@4.5.1:
@@ -8029,8 +8033,8 @@ packages:
     resolution: {integrity: sha512-Tq6PixE0w/VMFfCgbONnkiQIVol/JJL7nRMi20fqzA4NRs9AfeqMGeRdPi3wIhYkxjeBaWh2rxwapn5Tu3IqOQ==}
     engines: {node: '>=6'}
 
-  find-my-way@9.7.0:
-    resolution: {integrity: sha512-f2JHn75x2JlwUwLenZypgczR7YWMb/uO9BvUXtus+JMgkbIkLADd38cI4EiV+OQqrGo1Zlq6V8wnqMJ8e62wUQ==}
+  find-my-way@9.8.0:
+    resolution: {integrity: sha512-JtyUgATO7qxRp2zKhrmWof74Mqxc1ikbwpwMY97p8ipuTj2QtreA4gK2JNAF6SOqqHnYYkwMUvsgQVi2AJxIyw==}
     engines: {node: '>=20'}
 
   find-up@3.0.0:
@@ -8054,20 +8058,20 @@ packages:
   flow-enums-runtime@0.0.5:
     resolution: {integrity: sha512-PSZF9ZuaZD03sT9YaIs0FrGJ7lSUw7rHZIex+73UYVXg46eL/wxN5PaVcPJFudE2cJu5f0fezitV5aBkLHPUOQ==}
 
-  flow-estree@0.327.0:
-    resolution: {integrity: sha512-f9vK751YUzD0qaHSpKc5/qQM6gqOlgGS+4ZRqTNcZOpVqn3mC55yEQ6dUG2K1eaVm5FbKkz9CFWe6XNvrkQFQg==}
+  flow-estree@0.328.0:
+    resolution: {integrity: sha512-uMB3dC4nfZYn+dd7/PYkyAK1mqBR4TJ4TWRdOjubpb/ObrLvPFdFSmMTq55fqttCCTygQ4NtD1Zdd+wcjC5t0g==}
     engines: {node: '>=18'}
 
   flow-parser@0.206.0:
     resolution: {integrity: sha512-HVzoK3r6Vsg+lKvlIZzaWNBVai+FXTX1wdYhz/wVlH13tb/gOdLXmlTqy6odmTBhT5UoWUbq0k8263Qhr9d88w==}
     engines: {node: '>=0.4.0'}
 
-  flow-parser@0.327.0:
-    resolution: {integrity: sha512-/MYZ5hXWf5ozpbdfUDmazMgQXviLxWEiRLH3MppEGDdW0itRVqmB5UaU7QX+SBCDNiq+gEesSVn8nlxmPDyDkw==}
+  flow-parser@0.328.0:
+    resolution: {integrity: sha512-F+Ik2Of7ndl2FyPmZ77NrhbZp9lYjIsreDXeq4fo0sjxa3SIFv48QAszBqvPeMMzmw7JzqySJUxGR8CSD7EdXw==}
     engines: {node: '>=0.4.0'}
 
-  flow-remove-types@2.327.0:
-    resolution: {integrity: sha512-vuyazNIdkH98GAbpMYjtpmMQ4CXiNg0PM1eu/O9GGm1o/njmEhN/Ei1trgda+maBgsjLYXvOfHTEL3xU/fiRSw==}
+  flow-remove-types@2.328.0:
+    resolution: {integrity: sha512-vynTXnWGZzz+V7PcI90gV9ZpbOsUsLOx2x1tWNP7gMYiBkq+w/A8eDOMSwGcAbDSzMJst0ebKQm9B8hV75dc5w==}
     engines: {node: '>=4'}
     hasBin: true
 
@@ -13539,6 +13543,21 @@ snapshots:
       c12: 3.3.4
       clipanion: 4.0.0-rc.4(typanion@3.14.0)
       jscodeshift: 17.4.0(@babel/preset-env@7.28.5(@babel/core@7.29.7))
+      uuidv7: 1.2.1
+    transitivePeerDependencies:
+      - '@babel/preset-env'
+      - magicast
+      - supports-color
+      - typanion
+
+  '@apps-in-toss/cli@3.0.4(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)':
+    dependencies:
+      '@apps-in-toss/ait-format': 1.0.0
+      '@clack/prompts': 1.7.0
+      c12: 3.3.4
+      clipanion: 4.0.0-rc.4(typanion@3.14.0)
+      jscodeshift: 17.4.0(@babel/preset-env@7.28.5(@babel/core@7.29.7))
+      picocolors: 1.1.1
       uuidv7: 1.2.1
     transitivePeerDependencies:
       - '@babel/preset-env'
@@ -25493,7 +25512,7 @@ snapshots:
 
   '@apps-in-toss/web-framework@3.0.1(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)(typescript@7.0.2)':
     dependencies:
-      '@apps-in-toss/cli': 3.0.3(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)
+      '@apps-in-toss/cli': 3.0.4(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)
       '@webview-bridge/web': 1.7.9
       semver: 7.8.5
       valibot: 1.4.2(typescript@7.0.2)
@@ -25506,7 +25525,7 @@ snapshots:
 
   '@apps-in-toss/web-framework@3.0.2(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)(typescript@7.0.2)':
     dependencies:
-      '@apps-in-toss/cli': 3.0.3(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)
+      '@apps-in-toss/cli': 3.0.4(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)
       '@webview-bridge/web': 1.7.9
       semver: 7.8.5
       valibot: 1.4.2(typescript@7.0.2)
@@ -26832,7 +26851,7 @@ snapshots:
     dependencies:
       '@fastify/error': 4.2.0
       fastify-plugin: 6.0.0
-      find-my-way: 9.7.0
+      find-my-way: 9.8.0
       path-to-regexp: 8.4.2
       reusify: 1.1.0
 
@@ -27330,7 +27349,7 @@ snapshots:
       events: 3.3.0
       fastify: 5.12.0
       fastify-plugin: 4.5.1
-      flow-remove-types: 2.327.0
+      flow-remove-types: 2.328.0
       frogress-bar: 0.1.0
       fs-extra: 1.0.0
       graceful-fs: 4.2.11
@@ -27441,7 +27460,7 @@ snapshots:
       events: 3.3.0
       fastify: 5.12.0
       fastify-plugin: 4.5.1
-      flow-remove-types: 2.327.0
+      flow-remove-types: 2.328.0
       frogress-bar: 0.1.0
       fs-extra: 1.0.0
       graceful-fs: 4.2.11
@@ -27552,7 +27571,7 @@ snapshots:
       events: 3.3.0
       fastify: 5.12.0
       fastify-plugin: 4.5.1
-      flow-remove-types: 2.327.0
+      flow-remove-types: 2.328.0
       frogress-bar: 0.1.0
       fs-extra: 1.0.0
       graceful-fs: 4.2.11
@@ -27663,7 +27682,7 @@ snapshots:
       events: 3.3.0
       fastify: 5.12.0
       fastify-plugin: 4.5.1
-      flow-remove-types: 2.327.0
+      flow-remove-types: 2.328.0
       frogress-bar: 0.1.0
       fs-extra: 1.0.0
       graceful-fs: 4.2.11
@@ -28892,7 +28911,7 @@ snapshots:
       '@react-native-community/cli-tools': 11.3.7
       chalk: 4.1.2
       execa: 5.1.1
-      fast-xml-parser: 5.10.1
+      fast-xml-parser: 5.11.0
       glob: 7.2.3
       ora: 5.4.1
     transitivePeerDependencies:
@@ -30355,7 +30374,7 @@ snapshots:
     dependencies:
       baseline-browser-mapping: 2.11.14
       caniuse-lite: 1.0.30001809
-      electron-to-chromium: 1.5.406
+      electron-to-chromium: 1.5.407
       node-releases: 2.0.53
       update-browserslist-db: 1.3.1(browserslist@4.28.8)
 
@@ -30818,7 +30837,7 @@ snapshots:
 
   ee-first@1.1.1: {}
 
-  electron-to-chromium@1.5.406: {}
+  electron-to-chromium@1.5.407: {}
 
   emittery@0.13.1: {}
 
@@ -31034,7 +31053,7 @@ snapshots:
       path-expression-matcher: 1.6.2
       xml-naming: 0.3.0
 
-  fast-xml-parser@5.10.1:
+  fast-xml-parser@5.11.0:
     dependencies:
       '@nodable/entities': 3.0.0
       fast-xml-builder: 1.3.1
@@ -31056,7 +31075,7 @@ snapshots:
       abstract-logging: 2.0.1
       avvio: 9.3.0
       fast-json-stringify: 7.0.1
-      find-my-way: 9.7.0
+      find-my-way: 9.8.0
       light-my-request: 6.6.0
       pino: 10.3.1
       process-warning: 5.1.0
@@ -31109,7 +31128,7 @@ snapshots:
       make-dir: 2.1.0
       pkg-dir: 3.0.0
 
-  find-my-way@9.7.0:
+  find-my-way@9.8.0:
     dependencies:
       fast-deep-equal: 3.1.3
       fast-querystring: 1.1.2
@@ -31139,15 +31158,15 @@ snapshots:
 
   flow-enums-runtime@0.0.5: {}
 
-  flow-estree@0.327.0: {}
+  flow-estree@0.328.0: {}
 
   flow-parser@0.206.0: {}
 
-  flow-parser@0.327.0:
+  flow-parser@0.328.0:
     dependencies:
-      flow-estree: 0.327.0
+      flow-estree: 0.328.0
 
-  flow-remove-types@2.327.0:
+  flow-remove-types@2.328.0:
     dependencies:
       hermes-parser: 0.36.1
       pirates: 3.0.2
@@ -31931,7 +31950,7 @@ snapshots:
       '@babel/register': 7.29.7(@babel/core@7.29.7)
       babel-core: 7.0.0-bridge.0(@babel/core@7.29.7)
       chalk: 4.1.2
-      flow-parser: 0.327.0
+      flow-parser: 0.206.0
       graceful-fs: 4.2.11
       micromatch: 4.0.8
       neo-async: 2.6.2
@@ -31954,7 +31973,7 @@ snapshots:
       '@babel/preset-flow': 7.29.7(@babel/core@7.29.7)
       '@babel/preset-typescript': 7.29.7(@babel/core@7.29.7)
       '@babel/register': 7.29.7(@babel/core@7.29.7)
-      flow-parser: 0.327.0
+      flow-parser: 0.328.0
       graceful-fs: 4.2.11
       neo-async: 2.6.2
       picocolors: 1.1.1

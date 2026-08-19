@@ -3,7 +3,7 @@
 // - 튜토리얼 #1: canvas-confetti — Unity와 무관한 외부 라이브러리 번들링 예시
 // - 튜토리얼 #2: Firebase Analytics — 환경변수 기반 초기화 예시
 //
-// 자세한 내용: Documentation~/BuildCustomization.md
+// 자세한 내용: https://developers-apps-in-toss.toss.im/documentation/unity/build/build-customization
 
 import confetti from 'canvas-confetti';
 import { initializeApp } from 'firebase/app';

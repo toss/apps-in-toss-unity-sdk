@@ -48,6 +48,7 @@ public class InteractiveAPITester : MonoBehaviour
     private ContactsViralTester _contactsViralTester;
     private VisibilityBGMTester _visibilityBGMTester;
     private MetricEventTester _metricEventTester;
+    private PlayerPrefsTester _playerPrefsTester;
 
     void Start()
     {
@@ -68,6 +69,7 @@ public class InteractiveAPITester : MonoBehaviour
         _contactsViralTester = GetComponent<ContactsViralTester>() ?? gameObject.AddComponent<ContactsViralTester>();
         _visibilityBGMTester = GetComponent<VisibilityBGMTester>() ?? gameObject.AddComponent<VisibilityBGMTester>();
         _metricEventTester = GetComponent<MetricEventTester>() ?? gameObject.AddComponent<MetricEventTester>();
+        _playerPrefsTester = GetComponent<PlayerPrefsTester>() ?? gameObject.AddComponent<PlayerPrefsTester>();
 
         // API 목록 로드
         allMethods = APIParameterInspector.GetAllAPIMethods();
@@ -99,6 +101,7 @@ public class InteractiveAPITester : MonoBehaviour
         _bannerAdTester?.SetupUI(subTesterContainer);
         _contactsViralTester?.SetupUI(subTesterContainer);
         _metricEventTester?.SetupUI(subTesterContainer);
+        _playerPrefsTester?.SetupUI(subTesterContainer);
 
         // Safe Area Insets 적용 (Apps in Toss 플랫폼)
 #if AIT_SDK_1_7_1_OR_LATER

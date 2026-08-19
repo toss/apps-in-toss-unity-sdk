@@ -1,6 +1,6 @@
 # PlayerPrefs 영속화 실기기 검증
 
-[PlayerPrefs 영속화](../PlayerPrefs.md)의 동작 중 CI(Chromium)만으로는 확정할 수 없는 항목을 실기기(토스 앱 WebView)에서 확인하기 위한 런북입니다. `TODO.md`의 "후속 검증" 항목 2건과, 백그라운드 전환 시 PlayerPrefs 자동 flush 여부와 JS 실행 시간 확보 여부 실측이 대상입니다.
+[PlayerPrefs 영속화](https://developers-apps-in-toss.toss.im/documentation/unity/add-features/playerprefs)의 동작 중 CI(Chromium)만으로는 확정할 수 없는 항목을 실기기(토스 앱 WebView)에서 확인하기 위한 런북입니다. `TODO.md`의 "후속 검증" 항목 2건과, 백그라운드 전환 시 PlayerPrefs 자동 flush 여부와 JS 실행 시간 확보 여부 실측이 대상입니다.
 
 > **대상**: SDK 기여자. 아래 버튼들은 E2E 샘플 프로젝트의 Interactive 테스터(PlayerPrefs 서브패널)에 포함되어 있다 — 이 문서 자체는 실측 절차만 정의합니다.
 
@@ -14,6 +14,8 @@ macos-2021.3   ← 최소 지원 버전, 순정 IDBFS 세션 노화 결함 재�
 ```
 
 빌드가 끝나면 Job Summary 또는 PR 코멘트에 게시된 QR을 토스 앱에서 스캔해 실기기에 엽니다.
+
+> **reload 방법**: 아래 절차의 "reload"는 모두 테스터 UI의 **"Reload (세션 유지 새로고침)"** 버튼으로 수행합니다. 실기기 WebView에는 브라우저 새로고침 UI가 없고, **미니앱을 껐다 다시 여는 것은 reload가 아니라 새 세션**이라 `sessionStorage` 기반 L3 플래그가 초기화됩니다(절차 C가 무효가 됨). 반대로 절차 B의 "완전 종료 후 재실행"은 의도적으로 새 세션을 만드는 단계이므로 Reload 버튼이 아니라 실제 태스크 킬로 수행합니다.
 
 ## 절차 A: Storage 크기 상한
 
@@ -66,7 +68,7 @@ macos-2021.3   ← 최소 지원 버전, 순정 IDBFS 세션 노화 결함 재�
 
 ### 결과 반영 기준
 
-- 본 시나리오에서 유실이 재현되면: (1) CI 관찰과 일치함을 기록, (2) 2021.3 사용자에게 이 기능 opt-out을 비권장한다는 안내를 [PlayerPrefs.md](../PlayerPrefs.md)의 알려진 이슈 절에 반영(사용자 허락 후), (3) Unity 상류 리포트 여부를 판단.
+- 본 시나리오에서 유실이 재현되면: (1) CI 관찰과 일치함을 기록, (2) 2021.3 사용자에게 이 기능 opt-out을 비권장한다는 안내를 포털 [PlayerPrefs 문서](https://developers-apps-in-toss.toss.im/documentation/unity/add-features/playerprefs)의 알려진 이슈 절에 반영(GitBook change request로 제안), (3) Unity 상류 리포트 여부를 판단.
 - 재현되지 않으면: CI 전용 환경 요인(예: 특정 Chromium 버전)일 가능성을 기록하고 실기기 영향 없음으로 결론.
 
 ## 결과 기록 템플릿
@@ -82,11 +84,11 @@ macos-2021.3   ← 최소 지원 버전, 순정 IDBFS 세션 노화 결함 재�
 
 - **A**: `WebGLTemplates/AITTemplate/Runtime/ait-playerprefs.js`의 `MAX_MANIFEST_CHARS` 상수.
 - **B**: 필요 시 `Runtime/Helpers/AIT.VisibilityHelper.cs` 부근에 강제 Save 헬퍼 추가.
-- **C**: `Documentation~/PlayerPrefs.md`의 알려진 이슈 절, 필요 시 `AITConfigurationWindow.cs`의 툴팁 보강.
+- **C**: 포털 PlayerPrefs 문서의 알려진 이슈 절(GitBook change request), 필요 시 `AITConfigurationWindow.cs`의 툴팁 보강.
 - 실측이 완료되어 해당 TODO 항목의 불확실성이 해소되면, `TODO.md`에서 해당 항목을 코드 근거와 함께 통째로 제거합니다(취소선 처리 금지 — 저장소 정책).
 
 ## 관련 문서
 
-- [PlayerPrefs 영속화](../PlayerPrefs.md) — 동작 원리와 진단 필드
+- [PlayerPrefs 영속화](https://developers-apps-in-toss.toss.im/documentation/unity/add-features/playerprefs) — 동작 원리와 진단 필드
 - [GitHub Actions 워크플로](github-actions.md) — Preview workflow_dispatch 호출 예시
 - [테스트 전략](testing.md) — CI가 커버하는 9-x 케이스 요약

@@ -376,7 +376,7 @@ namespace AppsInToss
                         Editor.ErrorTracker.AITEditorErrorTracker.AddBreadcrumb("build", "패키징 시작");
                     var packageSpan = transaction?.StartSpan("packaging", "Generate MiniApp Package");
                     AITBuildSession.SetStage(BuildStage.Packaging);
-                    var exportResult = GenerateMiniAppPackage(profile, skipGraniteBuild);
+                    var exportResult = GenerateMiniAppPackage(profile, skipGraniteBuild, fastBuild);
                     packageSpan?.Finish(exportResult == AITExportError.SUCCEED ? "ok" : "internal_error");
 
                     if (exportResult != AITExportError.SUCCEED)
@@ -519,7 +519,7 @@ namespace AppsInToss
                     trackedOnProgress(BuildPhase.Preparing, 0.02f, "빌드 설정 파일 복사 및 pnpm install 준비 중...");
                     string projectPath = UnityUtil.GetProjectPath();
 
-                    var (earlyCtx, earlyError) = Editor.AITPackageBuilder.PrepareEarlyPackaging(projectPath, profile);
+                    var (earlyCtx, earlyError) = Editor.AITPackageBuilder.PrepareEarlyPackaging(projectPath, profile, fastBuild);
                     if (earlyCtx == null)
                     {
                         try { snapshot.Restore(); }
@@ -563,7 +563,7 @@ namespace AppsInToss
                     AITBuildCancellation.SetCurrentEarlyContext(null);
                     AITBuildSession.SetStage(BuildStage.Packaging);
                     Editor.AITPackageBuilder.CompletePackagingAfterWebGLBuild(
-                        earlyCtx, webglPath, profile, snapshot, trackedOnComplete, trackedOnProgress, skipGraniteBuild);
+                        earlyCtx, webglPath, profile, snapshot, trackedOnComplete, trackedOnProgress, skipGraniteBuild, fastBuild);
                 }
                 else if (buildWebGL)
                 {
@@ -608,7 +608,7 @@ namespace AppsInToss
                     }
 
                     AITBuildSession.SetStage(BuildStage.Packaging);
-                    GenerateMiniAppPackageAsync(profile, snapshot, trackedOnComplete, trackedOnProgress, skipGraniteBuild);
+                    GenerateMiniAppPackageAsync(profile, snapshot, trackedOnComplete, trackedOnProgress, skipGraniteBuild, fastBuild);
                 }
                 else
                 {
@@ -636,7 +636,8 @@ namespace AppsInToss
             PlayerSettingsSnapshot snapshot,
             Action<AITExportError> onComplete,
             Action<BuildPhase, float, string> onProgress,
-            bool skipGraniteBuild = false)
+            bool skipGraniteBuild = false,
+            bool fastBuild = false)
         {
             Debug.Log("[AIT] 비동기 미니앱 패키지 생성 시작...");
 
@@ -676,7 +677,8 @@ namespace AppsInToss
                     onComplete?.Invoke(result);
                 },
                 onProgress: onProgress,
-                skipGraniteBuild: skipGraniteBuild
+                skipGraniteBuild: skipGraniteBuild,
+                fastBuild: fastBuild
             );
         }
 
@@ -823,7 +825,7 @@ namespace AppsInToss
 
         #region Package Generation
 
-        private static AITExportError GenerateMiniAppPackage(AITBuildProfile profile = null, bool skipGraniteBuild = false)
+        private static AITExportError GenerateMiniAppPackage(AITBuildProfile profile = null, bool skipGraniteBuild = false, bool fastBuild = false)
         {
             Debug.Log("Apps in Toss 미니앱 패키지를 생성합니다...");
 
@@ -843,7 +845,7 @@ namespace AppsInToss
             }
 
             // AITPackageBuilder에 패키징 위임
-            var packageResult = AITPackageBuilder.PackageWebGLBuild(projectPath, webglPath, profile, skipGraniteBuild);
+            var packageResult = AITPackageBuilder.PackageWebGLBuild(projectPath, webglPath, profile, skipGraniteBuild, fastBuild);
             if (packageResult != AITExportError.SUCCEED)
             {
                 return packageResult;

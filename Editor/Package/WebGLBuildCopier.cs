@@ -972,7 +972,17 @@ namespace AppsInToss.Editor.Package
         /// 무효화되므로, 미러 대상만 남기고 그 외 public/ 항목은 <see cref="PrunePublicFolder"/>가 정리한다.
         /// internal 승격: facade(AITPackageBuilder) 및 EditMode 테스트(리플렉션)에서 호출하기 위함.
         /// </summary>
-        internal static void PrepareAitBuildFolder(string buildProjectPath)
+        /// <param name="preserveDist">
+        /// true면 dist/도 정리 대상에서 제외해 보존한다. fastBuild(Deploy (Test)) 경로에서만
+        /// true로 전달해야 한다 — Package.PackageBuildStateMarker.ShouldSkipPackageBuild가
+        /// dist/*.ait 존재를 스킵 조건으로 검사하는데, 이 판정 전에 dist가 지워지면 스킵이
+        /// 절대 발동하지 않는다(모든 빌드 진입점이 이 함수를 가장 먼저 호출하기 때문).
+        /// 스킵 판정이 결국 false로 나오면 호출부가 <see cref="DeleteDistFolder"/>로 실제
+        /// 빌드 시작 직전 dist/를 명시적으로 삭제해 "빌드는 항상 빈 dist에서 시작한다"
+        /// 불변식을 복원한다. 기본값(false)은 Production/Build & Package 경로의 기존 동작과
+        /// 동일 — dist는 항상 이 함수에서 정리된다.
+        /// </param>
+        internal static void PrepareAitBuildFolder(string buildProjectPath, bool preserveDist = false)
         {
             if (!Directory.Exists(buildProjectPath))
             {
@@ -983,7 +993,7 @@ namespace AppsInToss.Editor.Package
             {
                 Debug.Log("[AIT] 기존 빌드 결과물 정리 중... (node_modules·설정 파일과 public/ 미러 대상은 유지)");
 
-                string[] itemsToKeep = new string[]
+                var itemsToKeep = new List<string>
                 {
                     "node_modules",
                     "package.json",
@@ -998,6 +1008,11 @@ namespace AppsInToss.Editor.Package
                     // 변경분 복사가 매번 전량 복사로 퇴화한다. 미러 대상 밖 항목은 아래 PrunePublicFolder가 정리.
                     "public"
                 };
+
+                if (preserveDist)
+                {
+                    itemsToKeep.Add("dist");
+                }
 
                 foreach (string item in Directory.GetFileSystemEntries(buildProjectPath))
                 {
@@ -1027,6 +1042,24 @@ namespace AppsInToss.Editor.Package
                 }
 
                 PrunePublicFolder(Path.Combine(buildProjectPath, "public"));
+            }
+        }
+
+        /// <summary>
+        /// ait-build/dist를 삭제한다. <see cref="PrepareAitBuildFolder"/>(preserveDist: true)가
+        /// 보존해둔 이전 dist를, Package.PackageBuildStateMarker.ShouldSkipPackageBuild 판정이
+        /// 결국 false로 나와 실제 vite/ait build를 새로 시작하기 직전에 호출해 지운다 —
+        /// "빌드는 항상 빈 dist에서 시작한다" 불변식을 복원해 옛 .ait와 새 .ait가 공존하는
+        /// 것을 막는다(예: appName/version 변경으로 산출물 파일명이 달라지는 경우).
+        /// preserveDist:false 경로에서는 PrepareAitBuildFolder가 이미 dist를 지웠으므로
+        /// 이 호출은 언제나 안전한 no-op이다.
+        /// </summary>
+        internal static void DeleteDistFolder(string buildProjectPath)
+        {
+            string distPath = Path.Combine(buildProjectPath, "dist");
+            if (Directory.Exists(distPath))
+            {
+                AITFileUtils.DeleteDirectory(distPath);
             }
         }
 

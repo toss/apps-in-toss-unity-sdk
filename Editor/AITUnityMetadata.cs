@@ -18,7 +18,27 @@ namespace AppsInToss.Editor
         /// </summary>
         internal static string BuildMetadataJson()
         {
-            var pairs = new string[]
+            var pairs = GetContentMetadataPairs();
+            // 빌드(패키징) 시각 — .ait 생성 시점. 콘솔 배포(deploy) 시각과는 다르다.
+            pairs.Add($"\"buildTimestamp\":{JsonEscape(DateTime.UtcNow.ToString("o"))}");
+            return "{" + string.Join(",", pairs) + "}";
+        }
+
+        /// <summary>
+        /// UNITY_METADATA 중 buildTimestamp를 제외한 나머지 필드만의 compact JSON.
+        /// buildTimestamp는 매 빌드마다 항상 달라지므로, 이 값을 그대로
+        /// Package.PackageBuildStateMarker의 스킵 판정 해시 입력에 쓰면 스킵이 영원히
+        /// 발동하지 않게 된다 — sdkVersion/sdkCommitHash/unityVersion처럼 .ait 헤더에
+        /// 그대로 반영되지만 "빌드 내용"의 일부인 필드만 골라 해시하기 위한 전용 메서드.
+        /// </summary>
+        internal static string BuildContentMetadataJson()
+        {
+            return "{" + string.Join(",", GetContentMetadataPairs()) + "}";
+        }
+
+        private static List<string> GetContentMetadataPairs()
+        {
+            return new List<string>
             {
                 $"\"unityVersion\":{JsonEscape(Application.unityVersion)}",
                 $"\"bundleVersion\":{JsonEscape(PlayerSettings.bundleVersion)}",
@@ -26,10 +46,7 @@ namespace AppsInToss.Editor
                 $"\"sdkCommitHash\":{JsonEscape(ResolveSdkCommitHash())}",
                 $"\"productName\":{JsonEscape(PlayerSettings.productName)}",
                 $"\"companyName\":{JsonEscape(PlayerSettings.companyName)}",
-                // 빌드(패키징) 시각 — .ait 생성 시점. 콘솔 배포(deploy) 시각과는 다르다.
-                $"\"buildTimestamp\":{JsonEscape(DateTime.UtcNow.ToString("o"))}",
             };
-            return "{" + string.Join(",", pairs) + "}";
         }
 
         /// <summary>

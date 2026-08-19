@@ -2,7 +2,7 @@
 
 SDK 자체를 고칠 때 필요한 개발 환경 설정과 규칙입니다.
 
-> **대상**: SDK 기여자. SDK를 사용하기만 한다면 [시작하기](GettingStarted.md)로 가세요.
+> **대상**: SDK 기여자. SDK를 사용하기만 한다면 [시작하기](https://developers-apps-in-toss.toss.im/documentation/unity/first-steps/getting-started)로 가세요.
 
 ## 개발 환경 설정
 
@@ -139,6 +139,6 @@ feat: Add user authentication API    영어 사용
 
 ## 관련 문서
 
-- [시작하기](GettingStarted.md) — SDK 사용자 관점의 설치와 설정
-- [빌드 파이프라인](BuildProcess.md) — 빌드가 실제로 하는 일
-- [문제 해결](Troubleshooting.md) — 빌드가 막혔을 때
+- [시작하기](https://developers-apps-in-toss.toss.im/documentation/unity/first-steps/getting-started) — SDK 사용자 관점의 설치와 설정
+- [빌드 파이프라인](https://developers-apps-in-toss.toss.im/documentation/unity/build/build-process) — 빌드가 실제로 하는 일
+- [FAQ](https://developers-apps-in-toss.toss.im/documentation/unity/first-steps/faq) — 빌드가 막혔을 때

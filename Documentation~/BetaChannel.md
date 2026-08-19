@@ -28,7 +28,7 @@
 }
 ```
 
-Package Manager의 `Add package from git URL...`에 같은 URL을 넣어도 됩니다. 설치 ref를 다루는 방법 전반은 [시작하기](GettingStarted.md)의 설치 ref 관리 절에 정리되어 있습니다.
+Package Manager의 `Add package from git URL...`에 같은 URL을 넣어도 됩니다. 설치 ref를 다루는 방법 전반은 [시작하기](https://developers-apps-in-toss.toss.im/documentation/unity/first-steps/getting-started)의 설치 ref 관리 절에 정리되어 있습니다.
 
 특정 베타 스냅샷에 고정하려면 이동 브랜치 대신 스냅샷 태그(`#release/v3.0.0-beta.<해시>`)를 쓰세요. 베타 릴리즈 목록은 [GitHub Releases](https://github.com/toss/apps-in-toss-unity-sdk/releases)에서 `prerelease` 표시로 확인할 수 있습니다.
 
@@ -36,7 +36,7 @@ Package Manager의 `Add package from git URL...`에 같은 URL을 넣어도 됩�
 
 자동 업데이트 프롬프트가 뜨지 않으므로, 새 베타 안내를 받으면 직접 최신 `beta` HEAD를 다시 당겨와야 합니다. UPM이 커밋 해시를 `packages-lock.json`에 잠가 두기 때문에 Unity를 다시 여는 것만으로는 갱신되지 않습니다.
 
-구체적인 두 가지 방법(패키지 제거 후 재추가 / lock 해제)은 [시작하기](GettingStarted.md)의 설치 ref 관리 절에 있습니다. 베타 채널이라서 다른 것은 없고, 이동 ref를 쓰는 모든 경우에 같은 절차가 적용됩니다.
+구체적인 두 가지 방법(패키지 제거 후 재추가 / lock 해제)은 [시작하기](https://developers-apps-in-toss.toss.im/documentation/unity/first-steps/getting-started)의 설치 ref 관리 절에 있습니다. 베타 채널이라서 다른 것은 없고, 이동 ref를 쓰는 모든 경우에 같은 절차가 적용됩니다.
 
 ## stable 로 복귀
 
@@ -54,10 +54,10 @@ stable 태그로 핀하면 자동 업데이터가 다시 해당 ref를 추적합
 - **재현 가능한 빌드**: `beta`는 force-push로 갱신되는 이동 ref입니다. 같은 산출물을 다시 만들어야 한다면 스냅샷 태그로 핀하세요.
 - **Latest 아님**: 베타 릴리즈는 항상 prerelease로 표시되며 stable의 Latest 표시에 영향을 주지 않습니다.
 - **메이저 변경**: 빌드·배포 동작이 stable과 다를 수 있습니다. 파일럿 중 발견한 이슈는 안내받은 채널로 즉시 공유해 주세요.
-- **Sentry 분리**: 베타 빌드의 에러는 `environment:beta`로 분리 수집되어 stable triage를 오염시키지 않습니다. 자세한 내용은 [Sentry 연동](SentryIntegration.md)을 참고하세요.
+- **Sentry 분리**: 베타 빌드의 에러는 `environment:beta`로 분리 수집되어 stable triage를 오염시키지 않습니다. 자세한 내용은 [Sentry 연동](https://developers-apps-in-toss.toss.im/documentation/unity/add-features/sentry-integration)을 참고하세요.
 
 ## 관련 문서
 
-- [시작하기](GettingStarted.md) — 설치 ref 관리 공통 절차
+- [시작하기](https://developers-apps-in-toss.toss.im/documentation/unity/first-steps/getting-started) — 설치 ref 관리 공통 절차
 - [perf 베타 채널](PerfBetaChannel.md) — 콜드 로드 최적화 파일럿 채널
-- [문제 해결](Troubleshooting.md) — 문제가 생겼을 때
+- [FAQ](https://developers-apps-in-toss.toss.im/documentation/unity/first-steps/faq) — 문제가 생겼을 때

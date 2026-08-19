@@ -319,18 +319,6 @@ jobs:
           pnpm install --no-frozen-lockfile
           echo "BuildConfig pnpm-lock.yaml 업데이트 완료"
 
-      - name: Documentation~/GettingStarted.md 설치 가이드 업데이트
-        if: steps.author-check.outputs.skip != 'true'
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          TAG_NAME="release/v${VERSION}"
-
-          # Documentation~/GettingStarted.md의 Git URL을 최신 릴리즈 태그로 업데이트
-          sed -i 's|https://github.com/toss/apps-in-toss-unity-sdk\.git\(#[^"]*\)\?|https://github.com/toss/apps-in-toss-unity-sdk.git#'"${TAG_NAME}"'|g' Documentation~/GettingStarted.md
-
-          echo "Documentation~/GettingStarted.md 업데이트 완료: #${TAG_NAME}"
-          grep -n "apps-in-toss-unity-sdk.git" Documentation~/GettingStarted.md || true
-
       - name: 기존 브랜치에 force-push
         if: steps.author-check.outputs.skip != 'true'
         id: push
@@ -364,7 +352,6 @@ jobs:
           - main 브랜치 최신 상태 기반 리베이스
           - package.json 버전 동기화
           - BuildConfig package.json web-framework/web-analytics/bridge-core 버전 동기화
-          - Documentation~/GettingStarted.md 설치 가이드 업데이트
 
           자동 생성: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 

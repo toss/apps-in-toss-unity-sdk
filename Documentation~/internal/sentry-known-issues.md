@@ -2,7 +2,7 @@
 
 Sentry에 뜨는 이슈 중 조치가 필요 없는 것과, 노이즈를 막는 장치에 대한 내부 메모입니다.
 
-> **대상**: SDK 기여자. 사용자 프로젝트에서 Sentry를 붙이는 방법은 [Sentry 연동](../SentryIntegration.md)에 있습니다.
+> **대상**: SDK 기여자. 사용자 프로젝트에서 Sentry를 붙이는 방법은 [Sentry 연동](https://developers-apps-in-toss.toss.im/documentation/unity/add-features/sentry-integration)에 있습니다.
 
 ## 무시해도 되는 이슈 패턴
 
@@ -82,6 +82,6 @@ SDK 정상 흐름의 fallback이나 timeout, 예측된 분기에서 나는 warni
 
 ## 관련 문서
 
-- [Sentry 연동](../SentryIntegration.md) — 사용자 프로젝트 관점의 Sentry 설정
+- [Sentry 연동](https://developers-apps-in-toss.toss.im/documentation/unity/add-features/sentry-integration) — 사용자 프로젝트 관점의 Sentry 설정
 - [GitHub Actions 워크플로](github-actions.md) — 릴리즈 워크플로
 - [테스트 전략](testing.md) — 통합 테스트가 도는 위치

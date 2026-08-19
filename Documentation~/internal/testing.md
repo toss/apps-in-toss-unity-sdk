@@ -16,7 +16,7 @@ Level 2는 Level 1이 업로드한 `ait-build` 아티팩트를 내려받아 vite
 
 ### PlayerPrefs 영속화 테스트 그룹 (9-x)
 
-`e2e-full-pipeline.test.js`의 9번대 테스트가 [PlayerPrefs 영속화](../PlayerPrefs.md)를 검증합니다. 동작 설명은 그 문서가 정본이고, 여기서는 각 케이스가 무엇을 확인하는지만 요약합니다.
+`e2e-full-pipeline.test.js`의 9번대 테스트가 [PlayerPrefs 영속화](https://developers-apps-in-toss.toss.im/documentation/unity/add-features/playerprefs)를 검증합니다. 동작 설명은 그 문서가 정본이고, 여기서는 각 케이스가 무엇을 확인하는지만 요약합니다.
 
 | 케이스 | 확인 내용 |
 |--------|-----------|

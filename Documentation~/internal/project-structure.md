@@ -2,7 +2,7 @@
 
 저장소에서 무엇이 어디에 있는지에 대한 지도입니다.
 
-> **대상**: SDK 기여자. SDK를 사용하는 관점의 안내는 [시작하기](../GettingStarted.md)에 있습니다.
+> **대상**: SDK 기여자. SDK를 사용하는 관점의 안내는 [시작하기](https://developers-apps-in-toss.toss.im/documentation/unity/first-steps/getting-started)에 있습니다.
 
 ## 최상위
 
@@ -95,7 +95,7 @@ WebGLTemplates/AITTemplate/
     └── package.json
 ```
 
-빌드 시 무엇이 언제 복사·병합되는지는 [빌드 파이프라인](../BuildProcess.md)에 있습니다.
+빌드 시 무엇이 언제 복사·병합되는지는 [빌드 파이프라인](https://developers-apps-in-toss.toss.im/documentation/unity/build/build-process)에 있습니다.
 
 ## Tests~
 
@@ -113,5 +113,5 @@ Tests~/E2E/
 
 - [SDK 런타임 생성기](sdk-generator.md) — `Runtime/SDK/`가 만들어지는 방식
 - [테스트 전략](testing.md) — `Tests~/` 구조와 실행
-- [빌드 파이프라인](../BuildProcess.md) — `Editor/`와 `WebGLTemplates/`가 실제로 하는 일
+- [빌드 파이프라인](https://developers-apps-in-toss.toss.im/documentation/unity/build/build-process) — `Editor/`와 `WebGLTemplates/`가 실제로 하는 일
 - [기여 가이드](../Contributing.md) — 개발 환경과 커밋 규칙

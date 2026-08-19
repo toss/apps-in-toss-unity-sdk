@@ -107,6 +107,13 @@ public static class E2EBootstrapper
             Debug.Log("[E2EBootstrapper] Added SerializationTester component (waiting for trigger)");
         }
 
+        // PlayerPrefsTester 추가 (PlayerPrefs → 앱인토스 Storage 영속화 E2E 트리거용)
+        if (benchmarkManager.GetComponent<PlayerPrefsTester>() == null)
+        {
+            benchmarkManager.AddComponent<PlayerPrefsTester>();
+            Debug.Log("[E2EBootstrapper] Added PlayerPrefsTester component");
+        }
+
         // E2ETestTrigger 추가 (JavaScript → Unity 테스트 트리거용)
         if (benchmarkManager.GetComponent<E2ETestTrigger>() == null)
         {
@@ -243,6 +250,40 @@ public class E2ETestTrigger : MonoBehaviour
         else
         {
             Debug.LogError("[E2ETestTrigger] SerializationTester component not found!");
+        }
+    }
+
+    /// <summary>
+    /// JavaScript에서 호출: window.TriggerPlayerPrefsSet(json)
+    /// </summary>
+    public void TriggerPlayerPrefsSet(string json)
+    {
+        Debug.Log("[E2ETestTrigger] PlayerPrefs Set triggered from JavaScript");
+        var tester = GetComponent<PlayerPrefsTester>();
+        if (tester != null)
+        {
+            tester.SetAndSave(json);
+        }
+        else
+        {
+            Debug.LogError("[E2ETestTrigger] PlayerPrefsTester component not found!");
+        }
+    }
+
+    /// <summary>
+    /// JavaScript에서 호출: window.TriggerPlayerPrefsGet(key)
+    /// </summary>
+    public void TriggerPlayerPrefsGet(string key)
+    {
+        Debug.Log("[E2ETestTrigger] PlayerPrefs Get triggered from JavaScript");
+        var tester = GetComponent<PlayerPrefsTester>();
+        if (tester != null)
+        {
+            tester.GetAndReport(key);
+        }
+        else
+        {
+            Debug.LogError("[E2ETestTrigger] PlayerPrefsTester component not found!");
         }
     }
 

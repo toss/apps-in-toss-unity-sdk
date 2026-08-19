@@ -153,7 +153,7 @@ review-fix-loop 등 자동화 skill이 파싱하는 규약 섹션. 각 항목은
 
 ## 상세 문서
 
-`Documentation~/`가 문서 루트다. 인덱스는 `Documentation~/README.md`.
+`Documentation~/`가 문서 루트다. 공개 문서 정본은 포털(https://developers-apps-in-toss.toss.im/documentation/unity)이며, 저장소의 공개 문서 사본 11종(README/GettingStarted/APIUsagePatterns/Troubleshooting/Advertising/Metrics/SentryIntegration/BuildProfiles/BuildCustomization/LoadingScreenCustomization/BuildProcess)은 제거 예정 — 그때까지 편집 동결.
 
 **내부 런북** (`Documentation~/internal/`) — 저장소 운영용, 필요할 때 Read로 가져가서 참조:
 
@@ -165,10 +165,9 @@ review-fix-loop 등 자동화 skill이 파싱하는 규약 섹션. 각 항목은
 - `sentry-known-issues.md` — 무시 가능 이슈 목록, environment 분리, fallback warning 컨벤션, 이중 안전망, 릴리즈 게이트 resolve
 - `build-session-recovery.md` — `AITBuildSessionRecovery` 수동 재현 절차 (`.cs` 저장 / 강제 종료 / Stale 세션 / Idle gate)
 
-**공개 문서** (`Documentation~/`) — 제품 동작의 정본. 내부 런북은 여기를 링크만 한다:
+**저장소 잔류 문서** (`Documentation~/`) — 이관 대상이 아니라 계속 저장소에서 관리:
 
-- `BuildProcess.md` — 2단계 빌드 파이프라인, 플레이스홀더 치환, 에러 코드, 내장 Node/pnpm
-- `BuildProfiles.md` — 프로필 4종, 환경 변수 오버라이드
-- `BuildCustomization.md` — 사용자 영역 마커, 외부 라이브러리 추가
-- `APIUsagePatterns.md` — async/await, `AITException.ErrorCode`, 타임아웃, Mock 브릿지, IAP 지급 승인
 - `Contributing.md` — 개발 환경, git hooks, `run-local-tests.sh`, 커밋·PR 규칙
+- `ManualIntegration.md` — SDK 없이 수동으로 WebGL 빌드하는 방법
+- `BetaChannel.md` / `PerfBetaChannel.md` — 파일럿 전용 옵트인 채널 가이드
+- `changelog/` — 릴리즈별 변경 이력

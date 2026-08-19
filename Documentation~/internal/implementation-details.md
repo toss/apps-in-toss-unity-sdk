@@ -2,7 +2,7 @@
 
 "이 동작은 어느 파일에 있나"를 빠르게 찾기 위한 색인입니다. 동작 자체의 설명은 공개 문서에 있고, 여기에는 코드 위치만 둡니다.
 
-> **대상**: SDK 기여자. 빌드가 무엇을 하는지는 [빌드 파이프라인](../BuildProcess.md)을 보세요.
+> **대상**: SDK 기여자. 빌드가 무엇을 하는지는 [빌드 파이프라인](https://developers-apps-in-toss.toss.im/documentation/unity/build/build-process)을 보세요.
 
 ## 빌드
 
@@ -22,7 +22,7 @@
 
 SDK의 `WebGLTemplates/AITTemplate/`이 원본이고, `Editor/AITTemplateManager.cs`가 프로젝트의 `Assets/WebGLTemplates/`로 복사합니다. `AITBuildInitializer`가 `PlayerSettings.WebGL.template`을 `PROJECT:AITTemplate`으로 지정합니다.
 
-사용자가 편집하는 영역과 마커 계약은 [빌드 커스터마이징](../BuildCustomization.md)에 있습니다.
+사용자가 편집하는 영역과 마커 계약은 [빌드 커스터마이징](https://developers-apps-in-toss.toss.im/documentation/unity/build/build-customization)에 있습니다.
 
 ## 내장 Node.js
 
@@ -51,7 +51,7 @@ SDK의 `WebGLTemplates/AITTemplate/`이 원본이고, `Editor/AITTemplateManager
 
 배포 자격증명은 별도 에셋(`Assets/AppsInToss/Editor/AITCredentials.asset`)에 분리되어 있고 `Editor/AITGitGuard.cs`가 커밋되지 않도록 감시합니다.
 
-> **참고**: 필수 입력은 앱 ID 하나입니다. 검증 규칙은 `Editor/AITBuildValidator.cs`가 단일 출처이며, 사용자 관점 설명은 [문제 해결](../Troubleshooting.md)에 있습니다.
+> **참고**: 필수 입력은 앱 ID 하나입니다. 검증 규칙은 `Editor/AITBuildValidator.cs`가 단일 출처이며, 사용자 관점 설명은 [FAQ](https://developers-apps-in-toss.toss.im/documentation/unity/first-steps/faq)에 있습니다.
 
 devtools(`@apps-in-toss/devtools`) 설정은 빌드 프로필이 아니라 `AITConfig.asset`의 `AITDevtoolsSettings` 필드입니다. 활성화 게이트와 Vite 환경 변수 주입은 `Editor/Menu/DevtoolsSupport.cs`(`ShouldEnable`, `AddEnvVars`)가 단일 출처입니다.
 
@@ -79,7 +79,7 @@ devtools(`@apps-in-toss/devtools`) 설정은 빌드 프로필이 아니라 `AITC
 
 ## 관련 문서
 
-- [빌드 파이프라인](../BuildProcess.md) — 빌드 단계와 에러 코드
-- [빌드 프로필](../BuildProfiles.md) — 프로필별 설정과 환경 변수 오버라이드
+- [빌드 파이프라인](https://developers-apps-in-toss.toss.im/documentation/unity/build/build-process) — 빌드 단계와 에러 코드
+- [빌드 프로필](https://developers-apps-in-toss.toss.im/documentation/unity/build/build-profiles) — 프로필별 설정과 환경 변수 오버라이드
 - [프로젝트 구조](project-structure.md) — 디렉터리 전체 지도
 - [기여 가이드](../Contributing.md) — 개발 환경 설정

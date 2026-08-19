@@ -31,7 +31,7 @@ WebGL 콜드 로드 시간을 줄이는 실험적 최적화 레버를 미리 적
 }
 ```
 
-설치 ref를 다루는 방법 전반과, 이동 ref를 최신으로 다시 당겨오는 절차는 [시작하기](GettingStarted.md)의 설치 ref 관리 절에 정리되어 있습니다. perf 베타 채널이라서 다른 점은 없습니다.
+설치 ref를 다루는 방법 전반과, 이동 ref를 최신으로 다시 당겨오는 절차는 [시작하기](https://developers-apps-in-toss.toss.im/documentation/unity/first-steps/getting-started)의 설치 ref 관리 절에 정리되어 있습니다. perf 베타 채널이라서 다른 점은 없습니다.
 
 특정 스냅샷에 고정하려면 이동 브랜치 대신 스냅샷 태그(`#release/vX.Y.Z-beta.<해시>`)를 쓰세요.
 
@@ -90,7 +90,7 @@ WebGL 콜드 로드 시간을 줄이는 실험적 최적화 레버를 미리 적
 3. 콜드 로드 시간(첫 프레임 표시까지)과 초기 다운로드 페이로드 크기를 두 빌드 사이에서 비교합니다.
 4. 어느 번들이 어느 채널 것인지는 `window.AITLoading.buildVariant === "perf"`로 구분합니다.
 
-첫 프레임 시각은 SDK가 자동 수집하는 `unity_first_interactive` 이벤트로도 얻을 수 있습니다. 자세한 내용은 [SDK 이벤트 로깅](Metrics.md)을 참고하세요.
+첫 프레임 시각은 SDK가 자동 수집하는 `unity_first_interactive` 이벤트로도 얻을 수 있습니다. 자세한 내용은 [SDK 이벤트 로깅](https://developers-apps-in-toss.toss.im/documentation/unity/add-features/metrics)을 참고하세요.
 
 ## stable 로 복귀
 
@@ -113,7 +113,7 @@ stable로 돌아가면 위 레버와 설정 필드가 함께 사라집니다. `A
 
 ## 관련 문서
 
-- [시작하기](GettingStarted.md) — 설치 ref 관리 공통 절차
+- [시작하기](https://developers-apps-in-toss.toss.im/documentation/unity/first-steps/getting-started) — 설치 ref 관리 공통 절차
 - [베타 채널](BetaChannel.md) — web-framework 메이저 업그레이드 파일럿 채널
-- [SDK 이벤트 로깅](Metrics.md) — 첫 프레임 시각 계측
-- [빌드 프로필](BuildProfiles.md) — stable에도 있는 압축·스트리핑 설정
+- [SDK 이벤트 로깅](https://developers-apps-in-toss.toss.im/documentation/unity/add-features/metrics) — 첫 프레임 시각 계측
+- [빌드 프로필](https://developers-apps-in-toss.toss.im/documentation/unity/build/build-profiles) — stable에도 있는 압축·스트리핑 설정

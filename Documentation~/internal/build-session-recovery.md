@@ -67,4 +67,4 @@ Unity에 무한 컴파일 루프를 유도하기 어려우므로 단위 테스�
 
 - [테스트 전략](testing.md) — 자동화된 테스트 층위
 - [구현 지점 색인](implementation-details.md) — 세션 복원 구현 위치
-- [빌드 파이프라인](../BuildProcess.md) — Packaging 단계가 하는 일
+- [빌드 파이프라인](https://developers-apps-in-toss.toss.im/documentation/unity/build/build-process) — Packaging 단계가 하는 일

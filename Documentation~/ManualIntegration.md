@@ -1,10 +1,10 @@
 # 수동 연동
 
-> **참고**: Apps in Toss Unity SDK 사용을 권장합니다. 수동 연동 방식은 JS Bridge, WebGL 빌드 설정, 패키징을 모두 직접 구현해야 합니다. 특별한 이유가 없다면 [SDK를 사용한 자동 연동](GettingStarted.md)을 사용하세요.
+> **참고**: Apps in Toss Unity SDK 사용을 권장합니다. 수동 연동 방식은 JS Bridge, WebGL 빌드 설정, 패키징을 모두 직접 구현해야 합니다. 특별한 이유가 없다면 [SDK를 사용한 자동 연동](https://developers-apps-in-toss.toss.im/documentation/unity/first-steps/getting-started)을 사용하세요.
 
 Apps in Toss에 Unity 게임을 배포하려면 Unity 프로젝트를 WebGL로 빌드해야 합니다. 이 문서는 SDK 없이 Unity에서 WebGL 빌드를 만드는 지점까지를 설명합니다. 웹 프로젝트로 감싸 배포 가능한 패키지로 만드는 작업(Vite 구성, `.ait` 패키징)은 다루지 않습니다 — 아래 "5. 결과물 확인" 절 참고.
 
-SDK를 사용하면 이 과정 전체(WebGL 빌드부터 `.ait` 패키징까지)가 자동화됩니다. 자동화된 과정의 내부 동작은 [빌드 파이프라인](BuildProcess.md)에 정리되어 있습니다.
+SDK를 사용하면 이 과정 전체(WebGL 빌드부터 `.ait` 패키징까지)가 자동화됩니다. 자동화된 과정의 내부 동작은 [빌드 파이프라인](https://developers-apps-in-toss.toss.im/documentation/unity/build/build-process)에 정리되어 있습니다.
 
 ## 1. WebGL 모듈 설치
 
@@ -29,7 +29,7 @@ Edit > Project Settings > Player 메뉴에서 다음 항목을 설정합니다.
 - Publishing Settings
   - Compression Format: `Brotli`로 설정
 
-> **참고**: SDK를 사용한 자동 연동에서도 Build & Package와 Deploy Release Candidate 프로필은 압축 포맷을 자동으로 Brotli로 설정합니다. Dev Server 프로필은 빌드 속도를 위해 압축을 비활성화하고, Deploy for Online Test 프로필은 배포 가속을 위해 Gzip으로 오버라이드합니다. 프로필별 매트릭스는 [빌드 프로필](BuildProfiles.md)을 참고하세요.
+> **참고**: SDK를 사용한 자동 연동에서도 Build & Package와 Deploy Release Candidate 프로필은 압축 포맷을 자동으로 Brotli로 설정합니다. Dev Server 프로필은 빌드 속도를 위해 압축을 비활성화하고, Deploy for Online Test 프로필은 배포 가속을 위해 Gzip으로 오버라이드합니다. 프로필별 매트릭스는 [빌드 프로필](https://developers-apps-in-toss.toss.im/documentation/unity/build/build-profiles)을 참고하세요.
 
 ## 4. 빌드하기
 
@@ -43,10 +43,10 @@ Edit > Project Settings > Player 메뉴에서 다음 항목을 설정합니다.
 
 이 폴더들을 Vite 등으로 구성한 웹 프로젝트에 포함시키면 정적 웹페이지 형태로 띄울 수 있습니다. Vite 프로젝트를 구성하는 방법과, 그 결과물을 배포 가능한 `.ait` 패키지로 만드는 방법은 이 문서의 범위를 벗어납니다.
 
-SDK를 사용한 자동 연동에서는 이 부분을 [빌드 파이프라인](BuildProcess.md)의 Phase 2 패키징 단계가 대신합니다 — WebGL 산출물을 웹 프로젝트 구조로 재배치하고, 플레이스홀더를 치환하고, `granite build`로 `.ait` 패키지를 생성합니다.
+SDK를 사용한 자동 연동에서는 이 부분을 [빌드 파이프라인](https://developers-apps-in-toss.toss.im/documentation/unity/build/build-process)의 Phase 2 패키징 단계가 대신합니다 — WebGL 산출물을 웹 프로젝트 구조로 재배치하고, 플레이스홀더를 치환하고, `granite build`로 `.ait` 패키지를 생성합니다.
 
 ## 관련 문서
 
-- [시작하기](GettingStarted.md) — SDK를 사용한 자동 연동
-- [빌드 파이프라인](BuildProcess.md) — SDK가 WebGL 빌드부터 패키징까지 자동화하는 방식
-- [빌드 프로필](BuildProfiles.md) — 프로필별 압축 포맷 등 설정 차이
+- [시작하기](https://developers-apps-in-toss.toss.im/documentation/unity/first-steps/getting-started) — SDK를 사용한 자동 연동
+- [빌드 파이프라인](https://developers-apps-in-toss.toss.im/documentation/unity/build/build-process) — SDK가 WebGL 빌드부터 패키징까지 자동화하는 방식
+- [빌드 프로필](https://developers-apps-in-toss.toss.im/documentation/unity/build/build-profiles) — 프로필별 압축 포맷 등 설정 차이

@@ -2,7 +2,7 @@
 
 Sentry에 뜨는 이슈 중 조치가 필요 없는 것과, 노이즈를 막는 장치에 대한 내부 메모입니다.
 
-> **대상**: SDK 기여자. 사용자 프로젝트에서 Sentry를 붙이는 방법은 [Sentry 연동](../SentryIntegration.md)에 있습니다.
+> **대상**: SDK 기여자. 사용자 프로젝트에서 Sentry를 붙이는 방법은 [Sentry 연동](https://developers-apps-in-toss.toss.im/documentation/unity/add-features/sentry-integration)에 있습니다.
 
 ## 무시해도 되는 이슈 패턴
 
@@ -75,13 +75,13 @@ SDK 정상 흐름의 fallback이나 timeout, 예측된 분기에서 나는 warni
 
 ### 수동 resolve 절차
 
-1. 상태 확인 — Sentry MCP `get_sentry_resource(resourceType='issue', organizationSlug='toss', resourceId='APPS-IN-TOSS-UNITY-SDK-XX')` 또는 `search_issues`
-2. `unresolved`이면 직접 resolve — Sentry MCP `update_issue(organizationSlug='toss', issueId='APPS-IN-TOSS-UNITY-SDK-XX', status='resolved', reason='노이즈 패턴 PR #N 머지로 현행 SDK가 드롭 — 릴리즈 전 즉시 resolve')`
+1. 상태 확인 — Sentry MCP `get_sentry_resource(resourceType='issue', organizationSlug='<org-slug>', resourceId='APPS-IN-TOSS-UNITY-SDK-XX')` 또는 `search_issues`
+2. `unresolved`이면 직접 resolve — Sentry MCP `update_issue(organizationSlug='<org-slug>', issueId='APPS-IN-TOSS-UNITY-SDK-XX', status='resolved', reason='노이즈 패턴 PR #N 머지로 현행 SDK가 드롭 — 릴리즈 전 즉시 resolve')`
 
 이미 현행 main에 커버된 잔여 이벤트(구버전 SDK에서 유입, 코드나 PR 변경 없음)는 미래 릴리즈 커밋 범위에 `Fixes`가 없어 자동 resolve되지 않으므로 항상 수동 resolve로 정리합니다.
 
 ## 관련 문서
 
-- [Sentry 연동](../SentryIntegration.md) — 사용자 프로젝트 관점의 Sentry 설정
+- [Sentry 연동](https://developers-apps-in-toss.toss.im/documentation/unity/add-features/sentry-integration) — 사용자 프로젝트 관점의 Sentry 설정
 - [GitHub Actions 워크플로](github-actions.md) — 릴리즈 워크플로
 - [테스트 전략](testing.md) — 통합 테스트가 도는 위치

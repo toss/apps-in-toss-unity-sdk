@@ -95,7 +95,7 @@ namespace AppsInToss
                 enableLZ4Compression = baseProfile.enableLZ4Compression,
                 compressionFormat = 1,  // Gzip — Deploy (Test) 가속: 압축 시간 단축(Production은 Brotli 유지)
                 managedStrippingLevel = 1,  // Minimal — Deploy (Test) 가속: 스트리핑 시간 단축(Production은 High 유지)
-                debugSymbolsExternal = baseProfile.debugSymbolsExternal
+                debugSymbolsExternal = false  // Embedded — Deploy (Test) 가속: 외부 심볼 생성으로 늘어나는 emscripten 링크 시간 제거(Production은 base 값 유지)
             };
         }
     }

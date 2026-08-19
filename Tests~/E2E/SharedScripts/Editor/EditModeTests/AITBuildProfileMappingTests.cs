@@ -195,6 +195,7 @@ public class AITBuildProfileMappingTests
 
         Assert.AreEqual(1, testProfile.compressionFormat, "Deploy (Test)는 압축 포맷 저장값 1(Gzip)이어야 함.");
         Assert.AreEqual(1, testProfile.managedStrippingLevel, "Deploy (Test)는 Stripping 저장값 1(Minimal)이어야 함.");
+        Assert.IsFalse(testProfile.debugSymbolsExternal, "Deploy (Test)는 외부 디버그 심볼을 끄고 Embedded여야 함 (링크 시간 단축).");
         Assert.AreEqual(WebGLCompressionFormat.Gzip, AITBuildInitializer.ConvertToCompressionFormat(testProfile.compressionFormat));
         Assert.AreEqual(ManagedStrippingLevel.Minimal, AITBuildInitializer.ConvertToManagedStrippingLevel(testProfile.managedStrippingLevel));
     }
@@ -209,7 +210,7 @@ public class AITBuildProfileMappingTests
             enableLZ4Compression = false,
             compressionFormat = 2,          // Brotli — 오버라이드 대상이 아님을 증명하기 위한 값
             managedStrippingLevel = 4,       // High — 오버라이드 대상이 아님을 증명하기 위한 값
-            debugSymbolsExternal = false
+            debugSymbolsExternal = true      // 오버라이드로 false가 됨을 증명하기 위한 값
         };
 
         var testProfile = AITBuildProfile.CreateTestDeployProfile(baseProfile);
@@ -217,11 +218,11 @@ public class AITBuildProfileMappingTests
         Assert.AreEqual(baseProfile.enableDebugConsole, testProfile.enableDebugConsole);
         Assert.AreEqual(baseProfile.developmentBuild, testProfile.developmentBuild);
         Assert.AreEqual(baseProfile.enableLZ4Compression, testProfile.enableLZ4Compression);
-        Assert.AreEqual(baseProfile.debugSymbolsExternal, testProfile.debugSymbolsExternal);
 
-        // 압축/스트리핑만 오버라이드되고 나머지는 baseProfile 값을 그대로 물려받아야 함
+        // 압축/스트리핑/외부 심볼만 오버라이드되고 나머지는 baseProfile 값을 그대로 물려받아야 함
         Assert.AreEqual(1, testProfile.compressionFormat);
         Assert.AreEqual(1, testProfile.managedStrippingLevel);
+        Assert.IsFalse(testProfile.debugSymbolsExternal);
     }
 
     [Test]

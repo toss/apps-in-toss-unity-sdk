@@ -30,10 +30,10 @@ const DEFAULT_MAX_BYTES = 200_000;
 /**
  * ChangelogModel을 마크다운 문자열로 렌더링한다.
  *
- * - commonmark만 구현되어 있다. gitbook dialect는 `{% hint %}` 등 GitBook 전용 문법을
- *   쓰는데, 이 프로젝트의 pages.yml이 Jekyll `{% raw %}` 처리와 함께 마크다운을
- *   서빙하므로 지금은 GitBook 전용 문법을 도입하지 않는다 — 값을 넘기면 미구현으로
- *   throw한다.
+ * - commonmark만 구현되어 있다. gitbook dialect(`{% hint %}` 등 GitBook 전용 문법)는
+ *   아직 도입하지 않았다 — 산출 md가 저장소에도 커밋되어 GitHub 웹 뷰어 등 일반
+ *   마크다운 렌더러로도 읽히므로, 전용 문법 도입은 이득이 확인될 때 별도 결정한다.
+ *   값을 넘기면 미구현으로 throw한다.
  * - 선두에 H1을 두지 않는다 (GitBook 페이지 제목은 별도 필드로 관리된다). 문서는
  *   짧은 소개 문단 다음 H2/H3 구조로 이어진다.
  * - 구성: 최신 버전이 위로 오도록 정렬, major 버전별로 그룹핑된 버전 전이 diff

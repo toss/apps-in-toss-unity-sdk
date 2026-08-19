@@ -206,7 +206,3 @@ yarn.lock.meta
 
 # 로컬 전용 내부호스트 denylist (pre-push 훅용) — 커밋 금지. 템플릿: patterns.local.example
 .githooks/patterns.local
-
-# GitHub Pages 빌드 산출물 (pages.yml 이 러너에서 생성)
-_pages_src/
-_site/

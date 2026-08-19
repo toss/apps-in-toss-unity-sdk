@@ -22,9 +22,8 @@
 | SDK Update Auto Rebase | push(main), 수동 | `update/` PR 충돌 자동 rebase |
 | Update API Changelog | push(main), 수동 | API 변경 이력 갱신 |
 | Regenerate Lockfiles | 스케줄(매일), 수동 | pnpm lockfile 재생성 PR |
-| Pages | push(main), PR, 수동 | `Documentation~/`를 GitHub Pages로 발행 |
 
-Validate와 Lint, String Check, Pages는 자동 트리거가 주 경로입니다. Pages만 수동 트리거를 함께 받습니다.
+Validate와 Lint, String Check는 자동 트리거가 주 경로입니다.
 
 ## 워크플로 ID
 

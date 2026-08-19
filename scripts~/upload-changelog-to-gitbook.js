@@ -103,7 +103,8 @@ async function createChangeRequest(spaceId, token) {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({}),
+      // 빈 객체 {}는 400 "body is required"로 거부된다(2026-08-19 실측) — subject 필수.
+      body: JSON.stringify({ subject: "API Changelog 자동 갱신" }),
     },
     "change-request 생성",
   );
@@ -139,16 +140,16 @@ async function updateChangeRequestContent(spaceId, token, changeRequestId, pageI
 }
 
 /**
- * change-request 머지 응답에서 상태를 읽는다.
+ * change-request를 머지하고, 머지 여부를 CR 재조회로 정본 판정한다.
  *
- * 주의: GitBook의 merge 응답 스키마는 공식 문서로 완전히 검증하지 못했다 — 이 필드
- * 이름/형태는 첫 실운영 사용에서 실제 응답을 보고 조정될 수 있다. 그 전까지는
- * "state" 필드가 명시적으로 "merged"일 때만 성공으로 간주한다(필드 부재를 성공으로
- * 취급하는 soft default를 두지 않는다). 응답 본문의 값은 신뢰할 수 없는 외부 입력이므로
- * 로그에 값을 남기지 않고, 진단을 위해 최상위 키 이름만 남긴다.
+ * 2026-08-19 첫 실운영 실측: merge 응답 본문은 {result, revision} 형태이고 state
+ * 필드가 없다 — merge 응답 스키마에 의존하지 않고, POST 후 CR을 다시 GET해서
+ * status 필드("merged"|"draft"|"open"|"archived", 목록/단건 조회에서 반복 검증된
+ * 스키마)로 판정한다. 응답 본문의 값은 신뢰할 수 없는 외부 입력이므로 로그에
+ * 값을 남기지 않는다.
  */
 async function mergeChangeRequest(spaceId, token, changeRequestId) {
-  const response = await requestWithRetry(
+  await requestWithRetry(
     `${API_BASE}/spaces/${encodeURIComponent(spaceId)}/change-requests/${encodeURIComponent(changeRequestId)}/merge`,
     {
       method: "POST",
@@ -160,13 +161,17 @@ async function mergeChangeRequest(spaceId, token, changeRequestId) {
     },
     "change-request 머지",
   );
-  const data = await response.json().catch(() => ({}));
-  const state = data && typeof data === "object" ? data.state : undefined;
-  if (state !== "merged") {
-    const topLevelKeys = data && typeof data === "object" ? Object.keys(data) : [];
-    console.warn(`⚠️  merge 응답에 state:"merged"가 없습니다. 응답 최상위 키: [${topLevelKeys.join(", ")}]`);
-  }
-  return state;
+  // 정본 판정: CR 재조회 status
+  const check = await requestWithRetry(
+    `${API_BASE}/spaces/${encodeURIComponent(spaceId)}/change-requests/${encodeURIComponent(changeRequestId)}`,
+    {
+      method: "GET",
+      headers: { Authorization: `Bearer ${token}` },
+    },
+    "change-request 머지 상태 확인",
+  );
+  const data = await check.json().catch(() => ({}));
+  return data && typeof data === "object" ? data.status : undefined;
 }
 
 async function main() {
@@ -226,7 +231,7 @@ async function main() {
 
     const mergeState = await mergeChangeRequest(spaceId, token, changeRequestId);
     if (mergeState !== "merged") {
-      throw new Error(`change-request가 머지되지 않았습니다 (state: ${mergeState ?? "(응답에 state 필드 없음)"})`);
+      throw new Error(`change-request가 머지되지 않았습니다 (status: ${mergeState ?? "(재조회 응답에 status 필드 없음)"})`);
     }
     console.log("✅ GitBook changelog 업로드 완료");
   } catch (err) {

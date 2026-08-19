@@ -110,11 +110,10 @@ const DEFAULT_DOCS_DIR = "Documentation~";
 // 산출물 출력 디렉토리에는 기본값을 두지 않는다 — 이 스크립트는 이 저장소(public)에
 // 커밋되는 범용 도구라 특정 세션/사용자의 로컬 경로를 컴파일된 기본값으로 박아둘 수
 // 없다. --out은 항상 명시적으로 받는다(main()에서 --help가 아닌 한 필수로 강제).
-// GitHub Pages 공개 URL — .github/workflows/pages.yml이 Documentation~/를 docs/로
-// 스테이징해 배포한다(org=toss, repo=apps-in-toss-unity-sdk, 기본 Pages 경로 규칙).
-// 워크플로가 page_url을 런타임에 출력하므로 저장소에 리터럴 소스는 없다 — Phase 0에서
-// 브라우저로 1회 확인 후 필요하면 --changelog-url로 덮어쓴다.
-const DEFAULT_CHANGELOG_URL = "https://toss.github.io/apps-in-toss-unity-sdk/docs/changelog/index.html";
+// changelog 공개 URL — 포털의 API Changelog 페이지(자동 갱신 파이프라인 대상).
+// 과거에는 GitHub Pages(pages.yml)가 HTML changelog를 서빙했으나 이관 완료로 폐기됐다.
+// 필요하면 --changelog-url로 덮어쓴다.
+const DEFAULT_CHANGELOG_URL = "https://developers-apps-in-toss.toss.im/documentation/unity/changelog";
 const DEFAULT_CHANGELOG_MD_URL =
   "https://github.com/toss/apps-in-toss-unity-sdk/blob/main/Documentation~/changelog/api-changelog.md";
 

@@ -155,18 +155,37 @@ jobs:
         run: |
           set -euo pipefail
           Z40=0000000000000000000000000000000000000000
-          # range 계산. PR 은 base..head(정확히 PR 커밋). push 기존 브랜치는 before..after.
-          # push 새 브랜치/태그(before=40-zero)는 '방금 푸시된 ref 를 제외한 다른 모든 remote
-          # 브랜치·태그' 를 기준으로 'after 에서만 도달 가능한' 커밋 — orphan/disjoint 히스토리의
+
+          # '방금 푸시된 ref 를 제외한 다른 모든 remote 브랜치·태그' 기준으로 EV_AFTER 에서만
+          # 도달 가능한 커밋 range 를 계산한다 — 신규 브랜치 최초 push 와 force-push before 유실
+          # 폴백이 공유하는 로직이라 함수로 공용화(중복 구현 금지). orphan/disjoint 히스토리의
           # 첫 푸시 커밋도 전부 포함(tip-only 아님, origin/main merge-base 아님).
+          others_fallback_range() {
+            local CUR OTHERS
+            if [ "$REF_TYPE" = "tag" ]; then CUR="refs/tags/$PUSH_REF"; else CUR="refs/remotes/origin/$PUSH_REF"; fi
+            OTHERS=$(git for-each-ref --format='%(refname)' refs/remotes/origin refs/tags | grep -vFx "$CUR" || true)
+            if [ -n "$OTHERS" ]; then echo "$EV_AFTER --not $OTHERS"; else echo "$EV_AFTER"; fi
+          }
+
+          # range 계산. PR 은 base..head(정확히 PR 커밋). push 기존 브랜치는 before..after 가 기본이나,
+          # 리베이스 force-push 시 EV_BEFORE(구 head)가 어떤 ref 에서도 도달 불가해 fetch-depth:0
+          # checkout 에도 없을 수 있다(방치 시 git log rc=128 로 fail-closed) — 로컬 존재 여부를 먼저
+          # 확인하고, 없으면 SHA 직접 fetch 를 한 번 시도한다(GitHub 은 SHA 직접 fetch 를 허용하므로
+          # force-push 직후 구 head 는 대체로 아직 fetch 가능). 그마저 실패하면(구 객체 만료 등) 신규
+          # 브랜치와 동일한 OTHERS 폴백으로 대체한다. push 새 브랜치/태그(before=40-zero)는 처음부터
+          # 이 OTHERS 폴백을 사용한다.
           if [ -n "${PR_HEAD:-}" ]; then
             RANGE="$PR_BASE..$PR_HEAD"
           elif [ "${EV_BEFORE:-$Z40}" != "$Z40" ]; then
-            RANGE="$EV_BEFORE..$EV_AFTER"
+            if git cat-file -e "$EV_BEFORE^{commit}" 2>/dev/null; then
+              RANGE="$EV_BEFORE..$EV_AFTER"
+            elif git fetch --quiet origin "$EV_BEFORE" 2>/dev/null; then
+              RANGE="$EV_BEFORE..$EV_AFTER"
+            else
+              RANGE="$(others_fallback_range)"
+            fi
           else
-            if [ "$REF_TYPE" = "tag" ]; then CUR="refs/tags/$PUSH_REF"; else CUR="refs/remotes/origin/$PUSH_REF"; fi
-            OTHERS=$(git for-each-ref --format='%(refname)' refs/remotes/origin refs/tags | grep -vFx "$CUR" || true)
-            if [ -n "$OTHERS" ]; then RANGE="$EV_AFTER --not $OTHERS"; else RANGE="$EV_AFTER"; fi
+            RANGE="$(others_fallback_range)"
           fi
 
           # (B) 커밋 메시지 — pathspec 없이 스캔(경로에 안 걸리는 orphan/메시지-only 유출 커밋 누락 방지).

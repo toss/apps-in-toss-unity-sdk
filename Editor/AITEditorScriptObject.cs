@@ -46,7 +46,13 @@ namespace AppsInToss
                 developmentBuild = true,
                 enableLZ4Compression = true,
                 compressionFormat = 0,  // Disabled - 빌드 속도 우선
-                managedStrippingLevel = 1,  // Minimal - 빌드 속도 우선
+                managedStrippingLevel = -1,  // 자동 (High) - 실측상 Minimal보다 cold 빌드가 더 빠름(87.4s→42.6~47.4s,
+                                              // SampleUnityProject-2022.3/Unity 2022.3.62f2/batchmode).
+                                              // High 스트리핑이 IL2CPP로 넘어가는 관리 코드량을 줄여 UnityLinker가
+                                              // 몇 초 더 쓰는 대신 IL2CPP 변환·컴파일과 직렬 emscripten 링크가 크게 줄어듦.
+                                              // warm 빌드(무변경/1줄 수정)는 Minimal과 동등. 또한 Production·Deploy for
+                                              // Online Test가 이미 High이므로 통일하면 스트리핑 관련 문제가 배포 단계가
+                                              // 아니라 로컬 Dev Server 단계에서 가장 먼저 드러남.
                 debugSymbolsExternal = false
             };
         }

@@ -84,12 +84,14 @@ public class AITBuildProfileMappingTests
     }
 
     [Test]
-    public void DevServerProfile_Default_Stripping_Applies_Minimal()
+    public void DevServerProfile_Default_Stripping_Applies_High()
     {
-        // Dev Server 프로필 기본값(저장값 1)은 주석("Minimal - 빌드 속도 우선")대로 Minimal이어야 함
-        // 원래 버그: 직접 캐스팅으로 Low가 적용됨
+        // Dev Server 프로필 기본값(저장값 -1 = 자동)은 High로 매핑되어야 함.
+        // 실측(SampleUnityProject-2022.3, Unity 2022.3.62f2, batchmode): cold 빌드가
+        // Minimal 87.4s → High 42.6~47.4s로 오히려 더 빠름(warm 빌드는 동등) — Production·
+        // Deploy for Online Test와 스트리핑 레벨을 통일해 세 프로필 모두 High를 사용한다.
         var profile = AITBuildProfile.CreateDevServerProfile();
-        Assert.AreEqual(ManagedStrippingLevel.Minimal,
+        Assert.AreEqual(ManagedStrippingLevel.High,
             AITBuildInitializer.ConvertToManagedStrippingLevel(profile.managedStrippingLevel));
     }
 

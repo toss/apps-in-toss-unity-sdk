@@ -25,8 +25,8 @@ importers:
         specifier: 1.6.0
         version: 1.6.0(8148fa1969e9065ebb00d5656eedd429)
       '@apps-in-toss/web-analytics':
-        specifier: 2.10.8
-        version: 2.10.8(@apps-in-toss/web-bridge@2.10.8)
+        specifier: 2.10.9
+        version: 2.10.9(@apps-in-toss/web-bridge@2.10.8)
       '@apps-in-toss/web-framework':
         specifier: 3.0.3
         version: 3.0.3(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)(typescript@7.0.2)
@@ -3333,6 +3333,11 @@ packages:
 
   '@apps-in-toss/web-analytics@2.10.8':
     resolution: {integrity: sha512-rnvrIScbTqYGudlkPFtPwnF/+kaIwlPwaRdRLQvZFApDo01tQBGcg7pF1j+GR21dx8wyfYYOl6AMb8fPuODMEg==}
+    peerDependencies:
+      '@apps-in-toss/web-bridge': '*'
+
+  '@apps-in-toss/web-analytics@2.10.9':
+    resolution: {integrity: sha512-LsQPhdcfWM8ynfj94f6DBu5E80WJayTCdm9l6t62uIXHzvgT2bIsc8PdmVpmC+JpGR0exYSHCLGFIyLvL1tPBQ==}
     peerDependencies:
       '@apps-in-toss/web-bridge': '*'
 
@@ -21287,6 +21292,10 @@ snapshots:
     dependencies:
       '@apps-in-toss/web-bridge': 2.10.8
 
+  '@apps-in-toss/web-analytics@2.10.9(@apps-in-toss/web-bridge@2.10.8)':
+    dependencies:
+      '@apps-in-toss/web-bridge': 2.10.8
+
   '@apps-in-toss/web-analytics@2.2.0(@apps-in-toss/web-bridge@2.2.0)':
     dependencies:
       '@apps-in-toss/web-bridge': 2.2.0
@@ -31950,7 +31959,7 @@ snapshots:
       '@babel/register': 7.29.7(@babel/core@7.29.7)
       babel-core: 7.0.0-bridge.0(@babel/core@7.29.7)
       chalk: 4.1.2
-      flow-parser: 0.206.0
+      flow-parser: 0.328.0
       graceful-fs: 4.2.11
       micromatch: 4.0.8
       neo-async: 2.6.2

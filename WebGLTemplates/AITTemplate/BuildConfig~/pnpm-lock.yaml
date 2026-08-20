@@ -21,8 +21,8 @@ importers:
   .:
     dependencies:
       '@apps-in-toss/bridge-core':
-        specifier: 2.10.8
-        version: 2.10.8
+        specifier: 2.10.9
+        version: 2.10.9
       '@apps-in-toss/web-analytics':
         specifier: 2.10.8
         version: 2.10.8(@apps-in-toss/web-bridge@2.10.10)
@@ -49,8 +49,8 @@ packages:
     resolution: {integrity: sha512-1no0CXOhPEeSCrGduT37KMmCqA6irhowXa0S7AaPHb4RQSHGioR3wvvD7HHBCaUriMYs0EvtqRJfOgYd0ycKlQ==}
     engines: {node: '>=24'}
 
-  '@apps-in-toss/bridge-core@2.10.8':
-    resolution: {integrity: sha512-mZPLdxMo2eEG3NGRwrjZwzXwqms20UJxdi/6d7Rfvjw2GBvfdBvZbupVCp9kxROYYxfXsbCI2vmuCgZDG8/XAQ==}
+  '@apps-in-toss/bridge-core@2.10.9':
+    resolution: {integrity: sha512-PKFkPserIDHPvwIwS/89jR4QEVOU4A7MaIQkGBoVu8uY6IBzzp3oPJ6Gad2TRZGYKhC0ydbDw6gSVY3wx+8riw==}
 
   '@apps-in-toss/cli@3.0.3':
     resolution: {integrity: sha512-1537v+CX13H+DX2Q8sP+kmfG6djb4jxUlT4IS8Dk3USaEbK+WY5H2xalG9VQTMILDxeI+HgWruPmL4ra+oDLJA==}
@@ -1078,7 +1078,7 @@ snapshots:
       '@apps-in-toss/ait-format-proto': 1.0.0
       fflate: 0.8.3
 
-  '@apps-in-toss/bridge-core@2.10.8': {}
+  '@apps-in-toss/bridge-core@2.10.9': {}
 
   '@apps-in-toss/cli@3.0.3(typanion@3.14.0)':
     dependencies:

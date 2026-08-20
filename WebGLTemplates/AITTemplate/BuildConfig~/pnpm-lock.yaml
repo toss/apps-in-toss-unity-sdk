@@ -24,8 +24,8 @@ importers:
         specifier: 2.10.8
         version: 2.10.8
       '@apps-in-toss/web-analytics':
-        specifier: 2.10.8
-        version: 2.10.8(@apps-in-toss/web-bridge@2.10.10)
+        specifier: 2.10.9
+        version: 2.10.9(@apps-in-toss/web-bridge@2.10.10)
       '@apps-in-toss/web-framework':
         specifier: 3.0.3
         version: 3.0.3(typanion@3.14.0)(typescript@7.0.2)
@@ -68,8 +68,8 @@ packages:
   '@apps-in-toss/types@2.10.10':
     resolution: {integrity: sha512-8amwCHkTj2s5Y+2fv72Q7APVAc793zqacaHNfDFtTJZaDD5Ib0oWSVyF3a7NKDkM6zcigz/nf7YdgUJ3WiIWig==}
 
-  '@apps-in-toss/web-analytics@2.10.8':
-    resolution: {integrity: sha512-rnvrIScbTqYGudlkPFtPwnF/+kaIwlPwaRdRLQvZFApDo01tQBGcg7pF1j+GR21dx8wyfYYOl6AMb8fPuODMEg==}
+  '@apps-in-toss/web-analytics@2.10.9':
+    resolution: {integrity: sha512-LsQPhdcfWM8ynfj94f6DBu5E80WJayTCdm9l6t62uIXHzvgT2bIsc8PdmVpmC+JpGR0exYSHCLGFIyLvL1tPBQ==}
     peerDependencies:
       '@apps-in-toss/web-bridge': '*'
 
@@ -1114,7 +1114,7 @@ snapshots:
 
   '@apps-in-toss/types@2.10.10': {}
 
-  '@apps-in-toss/web-analytics@2.10.8(@apps-in-toss/web-bridge@2.10.10)':
+  '@apps-in-toss/web-analytics@2.10.9(@apps-in-toss/web-bridge@2.10.10)':
     dependencies:
       '@apps-in-toss/web-bridge': 2.10.10
 

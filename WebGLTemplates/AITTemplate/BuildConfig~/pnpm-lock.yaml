@@ -21,18 +21,18 @@ importers:
   .:
     dependencies:
       '@apps-in-toss/bridge-core':
-        specifier: 2.10.8
-        version: 2.10.8
+        specifier: 2.10.9
+        version: 2.10.9
       '@apps-in-toss/web-analytics':
-        specifier: 2.10.8
-        version: 2.10.8(@apps-in-toss/web-bridge@2.10.10)
+        specifier: 2.10.9
+        version: 2.10.9(@apps-in-toss/web-bridge@2.10.10)
       '@apps-in-toss/web-framework':
-        specifier: 3.0.3
-        version: 3.0.3(typanion@3.14.0)(typescript@7.0.2)
+        specifier: 3.0.4
+        version: 3.0.4(typanion@3.14.0)(typescript@7.0.2)
     devDependencies:
       '@apps-in-toss/devtools':
         specifier: 3.0.3
-        version: 3.0.3(@apps-in-toss/web-framework@3.0.3(typanion@3.14.0)(typescript@7.0.2))(rolldown@1.2.4)(vite@8.2.1(@types/node@26.2.0)(jiti@2.7.0))
+        version: 3.0.3(@apps-in-toss/web-framework@3.0.4(typanion@3.14.0)(typescript@7.0.2))(rolldown@1.2.4)(vite@8.2.1(@types/node@26.2.0)(jiti@2.7.0))
       typescript:
         specifier: 7.0.2
         version: 7.0.2
@@ -49,11 +49,11 @@ packages:
     resolution: {integrity: sha512-1no0CXOhPEeSCrGduT37KMmCqA6irhowXa0S7AaPHb4RQSHGioR3wvvD7HHBCaUriMYs0EvtqRJfOgYd0ycKlQ==}
     engines: {node: '>=24'}
 
-  '@apps-in-toss/bridge-core@2.10.8':
-    resolution: {integrity: sha512-mZPLdxMo2eEG3NGRwrjZwzXwqms20UJxdi/6d7Rfvjw2GBvfdBvZbupVCp9kxROYYxfXsbCI2vmuCgZDG8/XAQ==}
+  '@apps-in-toss/bridge-core@2.10.9':
+    resolution: {integrity: sha512-PKFkPserIDHPvwIwS/89jR4QEVOU4A7MaIQkGBoVu8uY6IBzzp3oPJ6Gad2TRZGYKhC0ydbDw6gSVY3wx+8riw==}
 
-  '@apps-in-toss/cli@3.0.3':
-    resolution: {integrity: sha512-1537v+CX13H+DX2Q8sP+kmfG6djb4jxUlT4IS8Dk3USaEbK+WY5H2xalG9VQTMILDxeI+HgWruPmL4ra+oDLJA==}
+  '@apps-in-toss/cli@3.0.4':
+    resolution: {integrity: sha512-Ie1dn5bMO/a8/L4uuV73UlmGEuApiYbi1BYf4nWzjDblXSPbludexpAn2WZKrhpD38E77u6JxHi8DHiok5TAWw==}
     hasBin: true
 
   '@apps-in-toss/devtools@3.0.3':
@@ -68,16 +68,16 @@ packages:
   '@apps-in-toss/types@2.10.10':
     resolution: {integrity: sha512-8amwCHkTj2s5Y+2fv72Q7APVAc793zqacaHNfDFtTJZaDD5Ib0oWSVyF3a7NKDkM6zcigz/nf7YdgUJ3WiIWig==}
 
-  '@apps-in-toss/web-analytics@2.10.8':
-    resolution: {integrity: sha512-rnvrIScbTqYGudlkPFtPwnF/+kaIwlPwaRdRLQvZFApDo01tQBGcg7pF1j+GR21dx8wyfYYOl6AMb8fPuODMEg==}
+  '@apps-in-toss/web-analytics@2.10.9':
+    resolution: {integrity: sha512-LsQPhdcfWM8ynfj94f6DBu5E80WJayTCdm9l6t62uIXHzvgT2bIsc8PdmVpmC+JpGR0exYSHCLGFIyLvL1tPBQ==}
     peerDependencies:
       '@apps-in-toss/web-bridge': '*'
 
   '@apps-in-toss/web-bridge@2.10.10':
     resolution: {integrity: sha512-GYFP4exdjRGWU4ea3uU0aYjHUIvN5QgzyGmZobdlwe3tEqlZ/1tAJ6aX2bLpe7//zLRbXi55mSDYszX1K1aFTA==}
 
-  '@apps-in-toss/web-framework@3.0.3':
-    resolution: {integrity: sha512-OF97r3wGujYDcK3bTjyLda9qFO6QUTXyoFwGE7gfXLY6fwfSw0NUT7UTn3lgunpwdlXaTJ39+f6ENxV05skkhg==}
+  '@apps-in-toss/web-framework@3.0.4':
+    resolution: {integrity: sha512-cKbPPmANJ5ncCwoSiVZRfj7PfAf8GUfh/NDMpJqmhkRdlyTB5eU5aovbz55egQtuOxCls6VE09QoA4HhvAwzeQ==}
     hasBin: true
 
   '@babel/code-frame@7.29.7':
@@ -527,14 +527,14 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@webview-bridge/types@1.7.9':
-    resolution: {integrity: sha512-Xqi6opGJB+LVpyb+2ZxqpKv2ox2/cnkbp0G2OMCnSNi/D6U5HkMsSbaW8GrXGEVwbybltK7uLKN+el1CqEGiRg==}
+  '@webview-bridge/types@1.7.10':
+    resolution: {integrity: sha512-s5JfIzkKo6SIMErw1u/UVHM8/rh4kRAuaQPeSk3iXH2momsv4GFY9U3NKUr+Wq2V4Nalrzx0dNxqFad6UcvX/Q==}
 
-  '@webview-bridge/utils@1.7.9':
-    resolution: {integrity: sha512-qTgppsE7ydroMJTeIpLiS7TIdKmdw2z6CtakPDutivkG2pztKa8CCB8ap1UkUoaE6RHQS1XeEBEII3HasW/WRw==}
+  '@webview-bridge/utils@1.7.10':
+    resolution: {integrity: sha512-otH5LE6P7F3nVZUqgxVcmNVsMioZBx6l+Djyl1cNwIBL3607b4Y5V1mt8lTSu6byCly2ADx6kxM2oldxBvgZzw==}
 
-  '@webview-bridge/web@1.7.9':
-    resolution: {integrity: sha512-CxOOGpE4yOwdpm15S6i/KagwYXX5W6CedPRKor+ublk8sDkbotWImSdO99L7Z1wEoSic0EF3fN3MeU7dObBG3w==}
+  '@webview-bridge/web@1.7.10':
+    resolution: {integrity: sha512-E38r69W13RwizgtbQwMh7qf6Fk3VW0YzeasYpx7+RhNSufegCrIAtwEaGHLNJsnu2X0Od38gNOI4iWtTOSpFdg==}
 
   ast-types@0.16.1:
     resolution: {integrity: sha512-6t10qk83GOG8p0vKmaCr8eiilZwO171AvbROMtvvNiwrTly62t+7XkA8RdIIVbpMhCASAsxgAzdRSwh6nw/5Dg==}
@@ -1078,15 +1078,16 @@ snapshots:
       '@apps-in-toss/ait-format-proto': 1.0.0
       fflate: 0.8.3
 
-  '@apps-in-toss/bridge-core@2.10.8': {}
+  '@apps-in-toss/bridge-core@2.10.9': {}
 
-  '@apps-in-toss/cli@3.0.3(typanion@3.14.0)':
+  '@apps-in-toss/cli@3.0.4(typanion@3.14.0)':
     dependencies:
       '@apps-in-toss/ait-format': 1.0.0
       '@clack/prompts': 1.7.0
       c12: 3.3.4
       clipanion: 4.0.0-rc.4(typanion@3.14.0)
       jscodeshift: 17.4.0
+      picocolors: 1.1.1
       uuidv7: 1.2.1
     transitivePeerDependencies:
       - '@babel/preset-env'
@@ -1094,13 +1095,13 @@ snapshots:
       - supports-color
       - typanion
 
-  '@apps-in-toss/devtools@3.0.3(@apps-in-toss/web-framework@3.0.3(typanion@3.14.0)(typescript@7.0.2))(rolldown@1.2.4)(vite@8.2.1(@types/node@26.2.0)(jiti@2.7.0))':
+  '@apps-in-toss/devtools@3.0.3(@apps-in-toss/web-framework@3.0.4(typanion@3.14.0)(typescript@7.0.2))(rolldown@1.2.4)(vite@8.2.1(@types/node@26.2.0)(jiti@2.7.0))':
     dependencies:
       cloudflared: 0.7.1
       qrcode-terminal: 0.12.0
       unplugin: 3.3.0(rolldown@1.2.4)(vite@8.2.1(@types/node@26.2.0)(jiti@2.7.0))
     optionalDependencies:
-      '@apps-in-toss/web-framework': 3.0.3(typanion@3.14.0)(typescript@7.0.2)
+      '@apps-in-toss/web-framework': 3.0.4(typanion@3.14.0)(typescript@7.0.2)
     transitivePeerDependencies:
       - '@farmfe/core'
       - '@rspack/core'
@@ -1114,7 +1115,7 @@ snapshots:
 
   '@apps-in-toss/types@2.10.10': {}
 
-  '@apps-in-toss/web-analytics@2.10.8(@apps-in-toss/web-bridge@2.10.10)':
+  '@apps-in-toss/web-analytics@2.10.9(@apps-in-toss/web-bridge@2.10.10)':
     dependencies:
       '@apps-in-toss/web-bridge': 2.10.10
 
@@ -1122,10 +1123,10 @@ snapshots:
     dependencies:
       '@apps-in-toss/types': 2.10.10
 
-  '@apps-in-toss/web-framework@3.0.3(typanion@3.14.0)(typescript@7.0.2)':
+  '@apps-in-toss/web-framework@3.0.4(typanion@3.14.0)(typescript@7.0.2)':
     dependencies:
-      '@apps-in-toss/cli': 3.0.3(typanion@3.14.0)
-      '@webview-bridge/web': 1.7.9
+      '@apps-in-toss/cli': 3.0.4(typanion@3.14.0)
+      '@webview-bridge/web': 1.7.10
       semver: 7.8.5
       valibot: 1.4.2(typescript@7.0.2)
     transitivePeerDependencies:
@@ -1538,14 +1539,14 @@ snapshots:
   '@typescript/typescript-win32-x64@7.0.2':
     optional: true
 
-  '@webview-bridge/types@1.7.9': {}
+  '@webview-bridge/types@1.7.10': {}
 
-  '@webview-bridge/utils@1.7.9': {}
+  '@webview-bridge/utils@1.7.10': {}
 
-  '@webview-bridge/web@1.7.9':
+  '@webview-bridge/web@1.7.10':
     dependencies:
-      '@webview-bridge/types': 1.7.9
-      '@webview-bridge/utils': 1.7.9
+      '@webview-bridge/types': 1.7.10
+      '@webview-bridge/utils': 1.7.10
 
   ast-types@0.16.1:
     dependencies:

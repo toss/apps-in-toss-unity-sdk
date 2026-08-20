@@ -400,7 +400,7 @@ namespace AppsInToss.Editor
             string[] strippingOptions = { "자동 (High)", "Minimal", "Low", "Medium", "High" };
             int strippingIndex = profile.managedStrippingLevel < 0 ? 0 : profile.managedStrippingLevel;
             strippingIndex = EditorGUILayout.Popup(
-                new GUIContent("Managed Stripping", "코드 스트리핑 레벨 (낮을수록 빌드 속도 향상)"),
+                new GUIContent("Managed Stripping", "코드 스트리핑 레벨. 높을수록 산출물이 작고 실측상 빌드도 빠름(IL2CPP로 넘어가는 관리 코드량이 줄어 변환·컴파일·링크 시간이 감소)"),
                 strippingIndex,
                 strippingOptions
             );

@@ -71,8 +71,9 @@ namespace AppsInToss
         /// <summary>
         /// Deploy for Online Test 전용 오버라이드 프로필 생성.
         /// baseProfile(보통 productionProfile)의 나머지 필드는 그대로 복사한 "새 인스턴스"에
-        /// 압축 포맷/외부 디버그 심볼만 빌드 가속용 값으로 덮어쓴다. Managed Stripping Level은
-        /// 실측상 base(Production=High) 유지가 오히려 더 빠르므로 오버라이드하지 않는다(아래 참고).
+        /// 압축 포맷/외부 디버그 심볼은 빌드 가속용 값으로, 디버그 콘솔은 실기기 디버깅용으로
+        /// 덮어쓴다. Managed Stripping Level은 실측상 base(Production=High) 유지가 오히려
+        /// 더 빠르므로 오버라이드하지 않는다(아래 참고).
         /// </summary>
         /// <remarks>
         /// baseProfile 인스턴스는 절대 변형하지 않는다 — config.productionProfile은 ScriptableObject로
@@ -95,7 +96,7 @@ namespace AppsInToss
 
             return new AITBuildProfile
             {
-                enableDebugConsole = baseProfile.enableDebugConsole,
+                enableDebugConsole = true,  // Deploy for Online Test는 실기기 디버깅 용도라 콘솔 활성화(Production은 base=false 유지). 템플릿 주입만 결정하므로 빌드 시간·캐시 영향 없음
                 developmentBuild = baseProfile.developmentBuild,
                 enableLZ4Compression = baseProfile.enableLZ4Compression,
                 compressionFormat = 1,  // Gzip — Deploy for Online Test 가속: 압축 시간 단축(Production은 Brotli 유지)

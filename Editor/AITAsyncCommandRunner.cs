@@ -61,6 +61,10 @@ namespace AppsInToss.Editor
         private static int isQueueProcessorRegistered = 0;
         private static int taskIdCounter = 0;
 
+        // stderr 폴백으로 stdout을 Console에 남길 때 Console 폭주를 막기 위한 말미 줄 수 제한.
+        // vite/esbuild 등은 실패 원인을 stdout에 여러 줄 출력할 수 있어 전체를 남기면 로그가 과도해진다.
+        private const int MaxOutputTailLines = 40;
+
         /// <summary>
         /// 비동기 명령 실행 (즉시 반환, 콜백으로 결과 전달)
         /// </summary>
@@ -347,6 +351,16 @@ namespace AppsInToss.Editor
                                     $"[AIT Async] stderr:\n{result.Error.Trim()}",
                                     sentryCapture: false);
                             }
+                            else if (!string.IsNullOrEmpty(result.Output))
+                            {
+                                // vite/esbuild 등은 실패 원인을 stderr가 아닌 stdout에 쓰고 종료 코드만
+                                // non-zero로 남긴다. stderr 폴백이 없으면 원인이 Console에 한 글자도
+                                // 남지 않으므로(실사례: vite build 실패 → 원인 불명 재시도 캐스케이드),
+                                // stdout 말미로 폴백한다.
+                                AppsInToss.Editor.AITLog.Error(
+                                    $"[AIT Async] stdout (stderr 없음):\n{TailLines(result.Output.Trim(), MaxOutputTailLines)}",
+                                    sentryCapture: false);
+                            }
                         }
                         task.OnComplete?.Invoke(result);
                     });
@@ -371,6 +385,36 @@ namespace AppsInToss.Editor
             {
                 if (pid > 0) AITBuildSession.ClearPid(pid);
             }
+        }
+
+        /// <summary>
+        /// 텍스트를 마지막 maxLines 줄로 잘라낸다. Console 폭주 방지용(정상 실패 시 stdout 폴백 로깅).
+        /// 프로세스 실행 없이 순수 문자열 연산만 수행하므로 EditMode 단위 테스트로 검증 가능하다.
+        /// </summary>
+        /// <param name="text">원본 텍스트 (null/빈 문자열은 그대로 반환)</param>
+        /// <param name="maxLines">유지할 마지막 줄 수 (0 이하이면 빈 문자열 반환)</param>
+        /// <returns>줄 수가 maxLines 이하이면 원본 그대로, 초과하면 "…(마지막 N줄만 표시 — 전체 M줄)" 안내 문구 + 마지막 N줄</returns>
+        internal static string TailLines(string text, int maxLines)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return text;
+            }
+
+            if (maxLines <= 0)
+            {
+                return string.Empty;
+            }
+
+            string[] lines = text.Replace("\r\n", "\n").Split('\n');
+            if (lines.Length <= maxLines)
+            {
+                return text;
+            }
+
+            int start = lines.Length - maxLines;
+            string tail = string.Join("\n", lines, start, maxLines);
+            return $"…(마지막 {maxLines}줄만 표시 — 전체 {lines.Length}줄 중 앞부분 생략)\n{tail}";
         }
 
         /// <summary>

@@ -102,7 +102,7 @@ namespace AppsInToss.Editor
             if (profile == null) profile = AITBuildProfile.CreateProductionProfile();
 
             string buildProjectPath = Path.Combine(projectPath, "ait-build");
-            Package.WebGLBuildCopier.PrepareAitBuildFolder(buildProjectPath, preserveDist: fastBuild);
+            Package.WebGLBuildCopier.PrepareAitBuildFolder(buildProjectPath, preservePackagingOutputs: fastBuild);
 
             // npm 경로 확인
             string npmPath = AITNpmRunner.FindNpmPath();
@@ -178,7 +178,7 @@ namespace AppsInToss.Editor
             if (profile == null) profile = AITBuildProfile.CreateProductionProfile();
 
             string buildProjectPath = Path.Combine(projectPath, "ait-build");
-            Package.WebGLBuildCopier.PrepareAitBuildFolder(buildProjectPath, preserveDist: fastBuild);
+            Package.WebGLBuildCopier.PrepareAitBuildFolder(buildProjectPath, preservePackagingOutputs: fastBuild);
 
             // BuildConfig 복사 (WebGL 출력 불필요 — package.json, lockfile 등만)
             Debug.Log("[AIT] [병렬] BuildConfig 파일 복사 중...");
@@ -348,7 +348,7 @@ namespace AppsInToss.Editor
             // 항상 전량 재빌드한다 (안전 우선).
             if (fastBuild && Package.PackageBuildStateMarker.ShouldSkipPackageBuild(ctx.BuildProjectPath, out string skipReason))
             {
-                Debug.Log($"[AIT] [병렬] 패키징 산출물 무변경 — vite/ait build 스킵 (재실행: ait-build/dist 삭제 또는 {Package.PackageBuildStateMarker.KillSwitchEnvVar}=1) [{skipReason}]");
+                Debug.Log($"[AIT] [병렬] 패키징 산출물 무변경 — vite/ait build 스킵 (재실행: ait-build/*.ait 삭제 또는 {Package.PackageBuildStateMarker.KillSwitchEnvVar}=1) [{skipReason}]");
                 onProgress?.Invoke(AITConvertCore.BuildPhase.GraniteBuild, 0.5f, "패키징 산출물 무변경 — vite/ait build 스킵");
                 onProgress?.Invoke(AITConvertCore.BuildPhase.Complete, 1f, "패키징 완료! (스킵)");
                 earlyCtx.CancelAndDisposePnpm();
@@ -360,10 +360,11 @@ namespace AppsInToss.Editor
             }
 
             // granite build 실행 (비동기)
-            // 스킵하지 않기로 했으므로, PrepareAitBuildFolder(preserveDist: true)가 보존해뒀을 수 있는
-            // 이전 dist를 여기서 명시적으로 지운다 — "빌드는 항상 빈 dist에서 시작한다" 불변식 복원.
+            // 스킵하지 않기로 했으므로, PrepareAitBuildFolder(preservePackagingOutputs: true)가 보존해뒀을
+            // 수 있는 이전 산출물(dist/ + 루트 *.ait)을 여기서 명시적으로 지운다 —
+            // "빌드는 항상 빈 산출물 상태에서 시작한다" 불변식 복원.
             var cancellationToken = earlyCtx.PnpmCancellationToken;
-            Package.WebGLBuildCopier.DeleteDistFolder(ctx.BuildProjectPath);
+            Package.WebGLBuildCopier.DeletePreviousPackagingOutputs(ctx.BuildProjectPath);
             Package.PackageBuildStateMarker.InvalidateMarker(ctx.BuildProjectPath);
             Package.GraniteBuildRunner.RunGraniteBuildAsync(ctx, cancellationToken, onProgress,
                 (buildResult) =>
@@ -414,13 +415,14 @@ namespace AppsInToss.Editor
             // 활성화된다. Production 배포(fastBuild=false)는 항상 전량 재빌드한다 (안전 우선).
             if (fastBuild && Package.PackageBuildStateMarker.ShouldSkipPackageBuild(ctx.BuildProjectPath, out string skipReason))
             {
-                Debug.Log($"[AIT] 패키징 산출물 무변경 — vite/ait build 스킵 (재실행: ait-build/dist 삭제 또는 {Package.PackageBuildStateMarker.KillSwitchEnvVar}=1) [{skipReason}]");
+                Debug.Log($"[AIT] 패키징 산출물 무변경 — vite/ait build 스킵 (재실행: ait-build/*.ait 삭제 또는 {Package.PackageBuildStateMarker.KillSwitchEnvVar}=1) [{skipReason}]");
                 return AITConvertCore.AITExportError.SUCCEED;
             }
 
-            // 스킵하지 않기로 했으므로, PrepareAitBuildFolder(preserveDist: true)가 보존해뒀을 수 있는
-            // 이전 dist를 여기서 명시적으로 지운다 — "빌드는 항상 빈 dist에서 시작한다" 불변식 복원.
-            Package.WebGLBuildCopier.DeleteDistFolder(ctx.BuildProjectPath);
+            // 스킵하지 않기로 했으므로, PrepareAitBuildFolder(preservePackagingOutputs: true)가 보존해뒀을
+            // 수 있는 이전 산출물(dist/ + 루트 *.ait)을 여기서 명시적으로 지운다 —
+            // "빌드는 항상 빈 산출물 상태에서 시작한다" 불변식 복원.
+            Package.WebGLBuildCopier.DeletePreviousPackagingOutputs(ctx.BuildProjectPath);
             Package.PackageBuildStateMarker.InvalidateMarker(ctx.BuildProjectPath);
             var buildResult = Package.GraniteBuildRunner.RunGraniteBuildSync(ctx);
             if (buildResult != AITConvertCore.AITExportError.SUCCEED) return buildResult;
@@ -620,16 +622,17 @@ namespace AppsInToss.Editor
                     // 패키징 산출물 스킵 판정 — fastBuild에서만 활성화 (Production은 항상 전량 재빌드).
                     if (fastBuild && Package.PackageBuildStateMarker.ShouldSkipPackageBuild(ctx.BuildProjectPath, out string skipReason))
                     {
-                        Debug.Log($"[AIT] 패키징 산출물 무변경 — vite/ait build 스킵 (재실행: ait-build/dist 삭제 또는 {Package.PackageBuildStateMarker.KillSwitchEnvVar}=1) [{skipReason}]");
+                        Debug.Log($"[AIT] 패키징 산출물 무변경 — vite/ait build 스킵 (재실행: ait-build/*.ait 삭제 또는 {Package.PackageBuildStateMarker.KillSwitchEnvVar}=1) [{skipReason}]");
                         onProgress?.Invoke(AITConvertCore.BuildPhase.GraniteBuild, 0.5f, "패키징 산출물 무변경 — vite/ait build 스킵");
                         onProgress?.Invoke(AITConvertCore.BuildPhase.Complete, 1f, "패키징 완료! (스킵)");
                         onComplete?.Invoke(AITConvertCore.AITExportError.SUCCEED);
                         return;
                     }
 
-                    // 스킵하지 않기로 했으므로, PrepareAitBuildFolder(preserveDist: true)가 보존해뒀을 수
-                    // 있는 이전 dist를 여기서 명시적으로 지운다 — "빌드는 항상 빈 dist에서 시작한다" 불변식 복원.
-                    Package.WebGLBuildCopier.DeleteDistFolder(ctx.BuildProjectPath);
+                    // 스킵하지 않기로 했으므로, PrepareAitBuildFolder(preservePackagingOutputs: true)가
+                    // 보존해뒀을 수 있는 이전 산출물(dist/ + 루트 *.ait)을 여기서 명시적으로 지운다 —
+                    // "빌드는 항상 빈 산출물 상태에서 시작한다" 불변식 복원.
+                    Package.WebGLBuildCopier.DeletePreviousPackagingOutputs(ctx.BuildProjectPath);
                     Package.PackageBuildStateMarker.InvalidateMarker(ctx.BuildProjectPath);
                     Package.GraniteBuildRunner.RunGraniteBuildAsync(ctx, cancellationToken, onProgress, (buildResult) =>
                     {

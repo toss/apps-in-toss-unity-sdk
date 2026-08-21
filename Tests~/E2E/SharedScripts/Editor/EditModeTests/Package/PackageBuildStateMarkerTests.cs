@@ -18,6 +18,13 @@ namespace AppsInToss.Editor.Package.Tests
         private const string WebFrameworkVersion = "3.0.3";
         private const int WebFrameworkMajor = 3;
 
+        /// <summary>
+        /// web-framework 3.x의 `ait build`가 실제로 emit하는 산출물 경로 — ait-build "루트"의
+        /// &lt;appName&gt;.ait 다. dist/ 아래에는 vite 산출물(dist/web)만 생긴다.
+        /// (#1094의 스킵이 실측에서 한 번도 걸리지 않은 원인이 이 위치 규약 불일치였다.)
+        /// </summary>
+        private const string RootAitFileName = "unity-sdk-sample.ait";
+
         private string _tempDir;
 
         [SetUp]
@@ -48,10 +55,46 @@ namespace AppsInToss.Editor.Package.Tests
         }
 
         /// <summary>
-        /// 스킵 가능한 정상 상태 fixture: package.json(웹프레임워크 3.x) + 설정 파일들 +
-        /// public/ 산출물 + dist/*.ait + node_modules/(마커가 여기 저장됨) + 성공 마커.
+        /// 스킵 가능한 정상 상태 fixture — <b>실제 web-framework 3.x 빌드가 남기는 디스크 레이아웃</b>을
+        /// 그대로 재현한다: package.json(3.x) + 설정 파일들 + public/ 산출물 +
+        /// dist/web(=vite build --outDir) + 루트 &lt;appName&gt;.ait(=ait build) +
+        /// node_modules/(마커가 여기 저장됨) + 성공 마커.
+        ///
+        /// 이전 fixture는 존재하지 않는 dist/*.ait 레이아웃을 가정했고, 그래서 판정 로직이
+        /// dist/만 보고 있어도 모든 테스트가 통과했다 — 실측에서 스킵이 한 번도 걸리지 않은
+        /// 결함을 테스트가 잡지 못한 이유다. 실제 레이아웃 고정이 이 fixture의 핵심 계약.
         /// </summary>
         private void CreateValidBuiltState()
+        {
+            CreateSourceState();
+
+            // vite build --outDir dist/web 산출물 (여기에는 .ait가 없다)
+            WriteFile("dist/web/index.html", "<html>vite output</html>");
+            WriteFile("dist/web/assets/index-abc123.js", "console.log('bundle');");
+
+            // ait build 산출물 — ait-build "루트"에 emit된다
+            WriteFile(RootAitFileName, "ait-archive-placeholder");
+
+            FinalizeBuiltState();
+        }
+
+        /// <summary>
+        /// .ait가 dist/ 아래에 생기는 대체 레이아웃(ait build CLI 버전에 따라 가능) fixture.
+        /// AITBuildValidator.ValidateDistOutput이 두 위치를 모두 인정하므로 스킵 판정도 같아야 한다.
+        /// </summary>
+        private void CreateValidBuiltState_AitInsideDist()
+        {
+            CreateSourceState();
+
+            WriteFile("dist/output.ait", "ait-archive-placeholder");
+
+            FinalizeBuiltState();
+        }
+
+        /// <summary>
+        /// 산출물(.ait/dist)을 제외한 입력 측 상태 — 설정 파일 + public/ 트리.
+        /// </summary>
+        private void CreateSourceState()
         {
             WriteFile("package.json", "{\"dependencies\":{\"@apps-in-toss/web-framework\":\"" + WebFrameworkVersion + "\"}}");
             WriteFile("pnpm-lock.yaml", "lockfileVersion: '9.0'\n");
@@ -61,9 +104,10 @@ namespace AppsInToss.Editor.Package.Tests
 
             WriteFile("public/Build/game.wasm", "wasm-bytes-placeholder");
             WriteFile("public/TemplateData/style.css", "body{}");
+        }
 
-            WriteFile("dist/output.ait", "ait-archive-placeholder");
-
+        private void FinalizeBuiltState()
+        {
             // 마커는 node_modules/ 안에 저장된다 (PrepareAitBuildFolder의 itemsToKeep 생존 +
             // NodeModulesValidator.CleanNodeModules와의 fail-closed 정합을 위해) — 폴더가
             // 없으면 RecordSuccessfulBuild가 조용히 기록을 포기한다.
@@ -79,10 +123,10 @@ namespace AppsInToss.Editor.Package.Tests
         [Test]
         public void ShouldSkipPackageBuild_ReturnsFalse_WhenMarkerMissing()
         {
-            // RecordSuccessfulBuild를 호출하지 않은 상태 — public/config/dist는 만들어도 마커가 없음
+            // RecordSuccessfulBuild를 호출하지 않은 상태 — public/config/산출물은 만들어도 마커가 없음
             WriteFile("package.json", "{\"dependencies\":{\"@apps-in-toss/web-framework\":\"" + WebFrameworkVersion + "\"}}");
             WriteFile("public/Build/game.wasm", "wasm-bytes-placeholder");
-            WriteFile("dist/output.ait", "ait-archive-placeholder");
+            WriteFile(RootAitFileName, "ait-archive-placeholder");
 
             Assert.IsFalse(PackageBuildStateMarker.ShouldSkipPackageBuild(_tempDir, out _));
         }
@@ -310,28 +354,79 @@ namespace AppsInToss.Editor.Package.Tests
         }
 
         // =====================================================
-        // dist/*.ait 부재 → 스킵 불가
+        // .ait 산출물 존재/부재 → 스킵 가부
+        //
+        // 판정이 찾는 위치는 AITBuildValidator.ValidateDistOutput과 정확히 같아야 한다
+        // (루트 → dist/). 3.x는 루트에, 일부 CLI 버전은 dist/에 emit하므로 둘 다 인정.
         // =====================================================
+
+        [Test]
+        public void ShouldSkipPackageBuild_Skips_WhenAitFileIsAtBuildRoot_RealWebFramework3Layout()
+        {
+            // 실제 3.x 레이아웃: dist/에는 vite 산출물(web/)만 있고 .ait는 루트에 있다.
+            CreateValidBuiltState();
+
+            Assert.IsFalse(File.Exists(Path.Combine(_tempDir, "dist", "output.ait")),
+                "Precondition: 3.x는 dist/ 최상위에 .ait를 만들지 않는다");
+            Assert.IsTrue(File.Exists(Path.Combine(_tempDir, RootAitFileName)),
+                "Precondition: 3.x의 .ait는 ait-build 루트에 있다");
+
+            Assert.IsTrue(PackageBuildStateMarker.ShouldSkipPackageBuild(_tempDir, out _),
+                "루트 .ait를 산출물로 인정하지 않으면 3.x에서는 스킵이 영원히 발동하지 않는다");
+        }
+
+        [Test]
+        public void ShouldSkipPackageBuild_Skips_WhenAitFileIsInsideDist()
+        {
+            CreateValidBuiltState_AitInsideDist();
+
+            Assert.IsTrue(PackageBuildStateMarker.ShouldSkipPackageBuild(_tempDir, out _));
+        }
+
+        [Test]
+        public void ShouldSkipPackageBuild_ArtifactGate_AgreesWithValidateDistOutput()
+        {
+            // 산출물 위치 규약이 두 곳에서 갈라지면 다시 같은 결함이 재발한다 — 실제
+            // 검증기(ValidateDistOutput)가 통과시키는 레이아웃은 스킵 판정도 통과시켜야 한다.
+            CreateValidBuiltState();
+
+            Assert.AreEqual(AITConvertCore.AITExportError.SUCCEED,
+                AITBuildValidator.ValidateDistOutput(_tempDir),
+                "Precondition: 실제 검증기는 루트 .ait 레이아웃을 정상으로 본다");
+            Assert.IsTrue(PackageBuildStateMarker.ShouldSkipPackageBuild(_tempDir, out _),
+                "스킵 판정의 산출물 게이트가 ValidateDistOutput과 같은 위치를 봐야 한다");
+        }
 
         [Test]
         public void ShouldSkipPackageBuild_ReturnsFalse_WhenAitFileMissing()
         {
             CreateValidBuiltState();
 
-            File.Delete(Path.Combine(_tempDir, "dist", "output.ait"));
+            File.Delete(Path.Combine(_tempDir, RootAitFileName));
 
-            // dist/ 디렉토리는 남아있지만 *.ait 파일이 없다 — 판정은 로그를 남기지 않는 조용한
-            // Directory.GetFiles 존재 확인만 하므로(AITBuildValidator.ValidateDistOutput 미호출),
+            // dist/ 디렉토리는 남아있지만 어디에도 *.ait 파일이 없다 — 판정은 로그를 남기지 않는
+            // 조용한 존재 확인만 하므로(AITBuildValidator.ValidateDistOutput 미호출),
             // 여기서 Debug.LogError가 발생하지 않아야 한다 (성공할 스킵 판정에서 유령 에러 방지).
             Assert.IsFalse(PackageBuildStateMarker.ShouldSkipPackageBuild(_tempDir, out _));
         }
 
         [Test]
-        public void ShouldSkipPackageBuild_ReturnsFalse_WhenDistDirectoryMissing()
+        public void ShouldSkipPackageBuild_ReturnsFalse_WhenAitFileMissingFromDistLayout()
+        {
+            CreateValidBuiltState_AitInsideDist();
+
+            File.Delete(Path.Combine(_tempDir, "dist", "output.ait"));
+
+            Assert.IsFalse(PackageBuildStateMarker.ShouldSkipPackageBuild(_tempDir, out _));
+        }
+
+        [Test]
+        public void ShouldSkipPackageBuild_ReturnsFalse_WhenAllOutputsMissing()
         {
             CreateValidBuiltState();
 
             Directory.Delete(Path.Combine(_tempDir, "dist"), recursive: true);
+            File.Delete(Path.Combine(_tempDir, RootAitFileName));
 
             Assert.IsFalse(PackageBuildStateMarker.ShouldSkipPackageBuild(_tempDir, out _));
         }
@@ -539,87 +634,110 @@ namespace AppsInToss.Editor.Package.Tests
         }
 
         // =====================================================
-        // 실제 빌드 진입 시퀀스: WebGLBuildCopier.PrepareAitBuildFolder(preserveDist) 통합
+        // 실제 빌드 진입 시퀀스: WebGLBuildCopier.PrepareAitBuildFolder(preservePackagingOutputs) 통합
         //
-        // (치명 결함 수정) 모든 빌드 진입점(PreparePackaging/PrepareEarlyPackaging)이 맨 먼저
-        // 호출하는 PrepareAitBuildFolder의 기존 itemsToKeep에는 dist도 마커도 없어서, 정리
-        // 루프가 매 빌드 시작 시 둘 다 지워버리면 ShouldSkipPackageBuild는 항상 false가 된다.
+        // 모든 빌드 진입점(PreparePackaging/PrepareEarlyPackaging)이 맨 먼저 호출하는
+        // PrepareAitBuildFolder의 itemsToKeep에는 마커도 산출물도 없어서, 정리 루프가 매 빌드
+        // 시작 시 이들을 지워버리면 ShouldSkipPackageBuild는 항상 false가 된다.
         // 마커는 node_modules/ 안으로 옮겨 itemsToKeep에 이미 있는 node_modules로 생존시키고,
-        // dist는 fastBuild 경로에서만 preserveDist:true로 생존시킨 뒤 스킵 판정이 false로
-        // 나오면 WebGLBuildCopier.DeleteDistFolder로 명시적으로 지워 "빌드는 항상 빈 dist에서
-        // 시작한다" 불변식을 복원한다 — 이 시퀀스 전체가 실제로 맞물려 동작하는지 검증한다.
+        // 산출물(dist/ + 루트 *.ait)은 fastBuild 경로에서만 preservePackagingOutputs:true로
+        // 생존시킨 뒤, 스킵 판정이 false로 나오면 WebGLBuildCopier.DeletePreviousPackagingOutputs로
+        // 명시적으로 지워 "빌드는 항상 빈 산출물 상태에서 시작한다" 불변식을 복원한다 —
+        // 이 시퀀스 전체가 실제 3.x 레이아웃에서 맞물려 동작하는지 검증한다.
         // =====================================================
 
         [Test]
-        public void PrepareAitBuildFolder_PreserveDistTrue_KeepsMarkerAndDistAlive_AndStillSkips()
+        public void PreservePackagingOutputs_KeepsMarkerAndRootAitAlive_AndStillSkips()
         {
+            // 실측 결함의 직접 회귀 테스트: fastBuild 2회 연속 실행에서 두 번째 실행의
+            // 준비 단계가 루트 .ait를 지워버리면 스킵은 절대 발동하지 않는다.
             CreateValidBuiltState();
             Assert.IsTrue(PackageBuildStateMarker.ShouldSkipPackageBuild(_tempDir, out _),
                 "Precondition: valid built state should be skippable before folder prep");
 
-            WebGLBuildCopier.PrepareAitBuildFolder(_tempDir, preserveDist: true);
+            WebGLBuildCopier.PrepareAitBuildFolder(_tempDir, preservePackagingOutputs: true);
 
             Assert.IsTrue(File.Exists(PackageBuildStateMarker.GetMarkerPath(_tempDir)),
-                "preserveDist=true: marker (inside node_modules) must survive folder cleanup");
+                "preservePackagingOutputs=true: marker (inside node_modules) must survive folder cleanup");
+            Assert.IsTrue(File.Exists(Path.Combine(_tempDir, RootAitFileName)),
+                "preservePackagingOutputs=true: the real 3.x artifact (root *.ait) must survive folder cleanup");
             Assert.IsTrue(Directory.Exists(Path.Combine(_tempDir, "dist")),
-                "preserveDist=true: dist/ must survive folder cleanup so the skip check can find it");
+                "preservePackagingOutputs=true: dist/ must survive folder cleanup");
 
-            // index.html은 itemsToKeep에 없어 preserveDist 여부와 무관하게 항상 지워진다 — 실제
+            // index.html은 itemsToKeep에 없어 보존 여부와 무관하게 항상 지워진다 — 실제
             // 파이프라인에서는 이 직후 WebGLBuildCopier.CopyWebGLToPublic이 스킵 여부와 상관없이
             // 매번 동일한 내용으로 무조건 다시 쓰기 때문에(클래스 doc 참조) 실제 스킵 판정
             // 시점에는 이미 복원되어 있다 — 그 필수 재생성 단계를 여기서 재현한다.
             WriteFile("index.html", "<html><body>unity</body></html>");
 
             Assert.IsTrue(PackageBuildStateMarker.ShouldSkipPackageBuild(_tempDir, out _),
-                "preserveDist=true: skip should still fire after folder prep since nothing changed");
+                "preservePackagingOutputs=true: skip should still fire after folder prep since nothing changed");
         }
 
         [Test]
-        public void PrepareAitBuildFolder_PreserveDistFalse_DeletesDist_MarkerSurvivesButSkipFails()
+        public void PreservePackagingOutputs_False_DeletesOutputs_MarkerSurvivesButSkipFails()
         {
             CreateValidBuiltState();
 
-            WebGLBuildCopier.PrepareAitBuildFolder(_tempDir, preserveDist: false);
+            WebGLBuildCopier.PrepareAitBuildFolder(_tempDir, preservePackagingOutputs: false);
 
             Assert.IsTrue(File.Exists(PackageBuildStateMarker.GetMarkerPath(_tempDir)),
-                "preserveDist=false: marker still survives because node_modules itself is always preserved");
+                "preservePackagingOutputs=false: marker still survives because node_modules itself is always preserved");
             Assert.IsFalse(Directory.Exists(Path.Combine(_tempDir, "dist")),
-                "preserveDist=false: dist/ should still be wiped every build (Production/Build & Package invariant)");
+                "preservePackagingOutputs=false: dist/ should still be wiped every build (Production/Build & Package invariant)");
+            Assert.IsFalse(File.Exists(Path.Combine(_tempDir, RootAitFileName)),
+                "preservePackagingOutputs=false: root *.ait should still be wiped every build");
             Assert.IsFalse(PackageBuildStateMarker.ShouldSkipPackageBuild(_tempDir, out _),
-                "dist/ gone means the skip check must fail-closed even though the marker survives");
+                "outputs gone means the skip check must fail-closed even though the marker survives");
         }
 
         [Test]
-        public void PrepareAitBuildFolder_DefaultOverload_BehavesLikePreserveDistFalse()
+        public void PrepareAitBuildFolder_DefaultOverload_BehavesLikePreserveFalse()
         {
-            // preserveDist 파라미터를 생략한 기존 호출부(BuildCleanupTests 등)가 계속 이전과
-            // 동일하게 dist를 지우는지 확인 — 기본값 자체의 회귀 방지.
+            // 파라미터를 생략한 기존 호출부(BuildCleanupTests 등)가 계속 이전과 동일하게
+            // 산출물을 지우는지 확인 — 기본값 자체의 회귀 방지.
             CreateValidBuiltState();
 
             WebGLBuildCopier.PrepareAitBuildFolder(_tempDir);
 
             Assert.IsFalse(Directory.Exists(Path.Combine(_tempDir, "dist")));
+            Assert.IsFalse(File.Exists(Path.Combine(_tempDir, RootAitFileName)));
         }
 
         [Test]
-        public void DeleteDistFolder_RemovesDist_PreservedByPrepareAitBuildFolder()
+        public void DeletePreviousPackagingOutputs_RemovesDistAndRootAit()
         {
-            // 실제 시퀀스 재현: fastBuild 경로에서 PrepareAitBuildFolder(preserveDist:true)로
-            // dist를 보존했다가, 스킵 판정이 false가 되어 실제 빌드로 진행할 때
-            // WebGLBuildCopier.DeleteDistFolder가 불변식을 복원하는지 검증.
+            // 실제 시퀀스 재현: fastBuild 경로에서 PrepareAitBuildFolder(preservePackagingOutputs:true)로
+            // 산출물을 보존했다가, 스킵 판정이 false가 되어 실제 빌드로 진행할 때
+            // DeletePreviousPackagingOutputs가 불변식을 복원하는지 검증 (스테일 .ait 공존 방지).
             CreateValidBuiltState();
-            WebGLBuildCopier.PrepareAitBuildFolder(_tempDir, preserveDist: true);
+            WebGLBuildCopier.PrepareAitBuildFolder(_tempDir, preservePackagingOutputs: true);
             Assert.IsTrue(Directory.Exists(Path.Combine(_tempDir, "dist")), "Precondition: dist preserved");
+            Assert.IsTrue(File.Exists(Path.Combine(_tempDir, RootAitFileName)), "Precondition: root .ait preserved");
 
-            WebGLBuildCopier.DeleteDistFolder(_tempDir);
+            WebGLBuildCopier.DeletePreviousPackagingOutputs(_tempDir);
 
             Assert.IsFalse(Directory.Exists(Path.Combine(_tempDir, "dist")));
+            Assert.IsFalse(File.Exists(Path.Combine(_tempDir, RootAitFileName)));
         }
 
         [Test]
-        public void DeleteDistFolder_DoesNotThrow_WhenDistAbsent()
+        public void DeletePreviousPackagingOutputs_KeepsNonAitRootFiles()
         {
-            Assert.DoesNotThrow(() => WebGLBuildCopier.DeleteDistFolder(_tempDir));
+            // 루트 정리는 확장자 기준이므로 설정 파일 등 다른 루트 파일을 건드리면 안 된다.
+            CreateValidBuiltState();
+
+            WebGLBuildCopier.DeletePreviousPackagingOutputs(_tempDir);
+
+            Assert.IsTrue(File.Exists(Path.Combine(_tempDir, "package.json")));
+            Assert.IsTrue(File.Exists(Path.Combine(_tempDir, "vite.config.ts")));
+            Assert.IsTrue(File.Exists(PackageBuildStateMarker.GetMarkerPath(_tempDir)));
+        }
+
+        [Test]
+        public void DeletePreviousPackagingOutputs_DoesNotThrow_WhenOutputsAbsent()
+        {
+            Assert.DoesNotThrow(() => WebGLBuildCopier.DeletePreviousPackagingOutputs(_tempDir));
         }
     }
 }

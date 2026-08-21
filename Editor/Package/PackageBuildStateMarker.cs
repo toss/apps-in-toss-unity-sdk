@@ -22,7 +22,9 @@ namespace AppsInToss.Editor.Package
     /// 성공한 빌드 직후 (1) ait-build/public 트리 상태(경로·크기·mtime), (2) ait-build 설정
     /// 파일들의 내용 해시, (3) UNITY_METADATA 중 .ait 헤더에 반영되는 필드의 해시를
     /// node_modules/.ait-package-build-state.json 에 기록하고, 다음 빌드에서 전부 일치하며
-    /// 산출물(dist/*.ait)이 여전히 존재하면 vite/ait build 자체를 건너뛴다.
+    /// 산출물(.ait)이 여전히 존재하면 vite/ait build 자체를 건너뛴다. .ait의 위치는
+    /// ait build CLI 버전에 따라 ait-build 루트(2.x·3.x 현행) 또는 dist/이므로
+    /// <see cref="AITBuildValidator.ValidateDistOutput"/>과 동일하게 두 곳을 모두 본다.
     ///
     /// public/ 트리는 내용을 다시 읽지 않고 (경로, 길이, mtimeTicks)만 본다 — WebGLBuildCopier.
     /// CopyFileIfChanged가 내용이 같은 파일은 mtime을 보존한 채 복사를 스킵하므로, mtime이
@@ -124,9 +126,10 @@ namespace AppsInToss.Editor.Package
         /// <summary>
         /// 이번 빌드에서 vite/ait build(패키징)를 건너뛰어도 안전한지 판단한다.
         /// 킬스위치 비활성 + 마커 유효 + 스키마 일치 + web-framework 메이저 버전 일치 +
-        /// public 매니페스트/설정 파일/Unity 메타데이터 해시 일치 + dist/*.ait 산출물 존재를
-        /// 전부 만족할 때만 true. 호출부는 fastBuild(Deploy (Test) 등 빠른 반복 경로)에서만
-        /// 이 메서드를 호출해야 한다 — Production 배포는 항상 전량 재빌드한다(안전 우선).
+        /// public 매니페스트/설정 파일/Unity 메타데이터 해시 일치 + .ait 산출물(ait-build 루트
+        /// 또는 dist/) 존재를 전부 만족할 때만 true. 호출부는 fastBuild(Deploy (Test) 등 빠른
+        /// 반복 경로)에서만 이 메서드를 호출해야 한다 — Production 배포는 항상 전량 재빌드한다
+        /// (안전 우선). 거절 시에는 사유를 Debug.Log로 남긴다 (조용한 fail-closed 금지).
         /// </summary>
         internal static bool ShouldSkipPackageBuild(string aitBuildPath, out string reason)
         {
@@ -134,72 +137,17 @@ namespace AppsInToss.Editor.Package
 
             try
             {
-                if (IsKillSwitchActive(Environment.GetEnvironmentVariable(KillSwitchEnvVar)))
+                string blocker = FindSkipBlocker(aitBuildPath);
+                if (blocker != null)
                 {
+                    // 거절 사유를 항상 남긴다 — fail-closed 분기가 조용히 false를 반환하면
+                    // "스킵이 왜 안 걸리는지" 를 로그만으로 진단할 수 없어(실제로 .ait 위치
+                    // 규약 불일치가 이 방식으로 장기간 은폐됐다) 회귀를 놓치게 된다.
+                    Debug.Log($"[AIT] 패키징 스킵 조건 불충족 — vite/ait build를 실행합니다 ({blocker})");
                     return false;
                 }
 
-                string markerPath = GetMarkerPath(aitBuildPath);
-                if (!File.Exists(markerPath))
-                {
-                    return false;
-                }
-
-                var marker = MiniJson.Deserialize(File.ReadAllText(markerPath)) as Dictionary<string, object>;
-                if (marker == null)
-                {
-                    return false;
-                }
-
-                if (!marker.TryGetValue("schemaVersion", out object schemaObj)
-                    || Convert.ToInt32(schemaObj) != SchemaVersion)
-                {
-                    return false;
-                }
-
-                if (!marker.TryGetValue("webFrameworkMajor", out object majorObj)
-                    || Convert.ToInt32(majorObj) != GraniteBuildRunner.GetWebFrameworkMajor(aitBuildPath))
-                {
-                    return false;
-                }
-
-                if (!marker.TryGetValue("publicManifestHash", out object publicHashObj)
-                    || (publicHashObj as string) != ComputePublicManifestHash(aitBuildPath))
-                {
-                    return false;
-                }
-
-                if (!marker.TryGetValue("configFilesHash", out object configHashObj)
-                    || (configHashObj as string) != ComputeConfigFilesHash(aitBuildPath))
-                {
-                    return false;
-                }
-
-                if (!marker.TryGetValue("metadataHash", out object metadataHashObj)
-                    || (metadataHashObj as string) != ComputeMetadataHash())
-                {
-                    return false;
-                }
-
-                // 해시가 전부 일치해도 산출물이 사라졌으면(수동 삭제, Clean 메뉴 등) 스킵 불가.
-                // AITBuildValidator.ValidateDistOutput은 실패 시 진단용 Debug.LogError를 남겨
-                // (Sentry로도 캡처됨) 성공으로 끝날 스킵 판정에서 유령 에러가 발생하므로 여기서는
-                // 호출하지 않고, 로그를 남기지 않는 조용한 존재 확인만 한다.
-                //
-                // web-framework 2.x가 dist/ 대신 ait-build 루트에 .ait를 emit하는 경우는
-                // 의도적으로 스킵 대상에서 제외한다 (fail-closed) — 아래 dist/ 존재 요구
-                // 자체가 이 케이스를 걸러내므로 2.x 루트 emit 빌드는 항상 재빌드된다.
-                string distPath = Path.Combine(aitBuildPath, "dist");
-                if (!Directory.Exists(distPath))
-                {
-                    return false;
-                }
-                if (Directory.GetFiles(distPath, "*.ait", SearchOption.TopDirectoryOnly).Length == 0)
-                {
-                    return false;
-                }
-
-                reason = "ait-build/public + 설정 파일 + Unity 메타데이터 변경 없음 + dist/*.ait 산출물 존재";
+                reason = "ait-build/public + 설정 파일 + Unity 메타데이터 변경 없음 + .ait 산출물 존재";
                 return true;
             }
             catch (Exception e)
@@ -207,6 +155,110 @@ namespace AppsInToss.Editor.Package
                 Debug.Log($"[AIT] 패키징 빌드 스킵 판정 중 오류 (스킵하지 않고 vite/ait build 진행): {e.Message}");
                 return false;
             }
+        }
+
+        /// <summary>
+        /// 스킵을 막는 첫 번째 사유를 사람이 읽을 수 있는 문자열로 반환한다. 스킵 가능하면 null.
+        /// <see cref="ShouldSkipPackageBuild"/>의 fail-closed 분기를 진단 가능한 형태로 분리한 것.
+        /// </summary>
+        private static string FindSkipBlocker(string aitBuildPath)
+        {
+            if (IsKillSwitchActive(Environment.GetEnvironmentVariable(KillSwitchEnvVar)))
+            {
+                return $"킬스위치 {KillSwitchEnvVar} 활성";
+            }
+
+            string markerPath = GetMarkerPath(aitBuildPath);
+            if (!File.Exists(markerPath))
+            {
+                return "이전 성공 빌드 마커 없음";
+            }
+
+            var marker = MiniJson.Deserialize(File.ReadAllText(markerPath)) as Dictionary<string, object>;
+            if (marker == null)
+            {
+                return "마커 파싱 실패";
+            }
+
+            if (!marker.TryGetValue("schemaVersion", out object schemaObj)
+                || Convert.ToInt32(schemaObj) != SchemaVersion)
+            {
+                return "마커 schemaVersion 불일치";
+            }
+
+            int currentMajor = GraniteBuildRunner.GetWebFrameworkMajor(aitBuildPath);
+            if (!marker.TryGetValue("webFrameworkMajor", out object majorObj)
+                || Convert.ToInt32(majorObj) != currentMajor)
+            {
+                return $"web-framework 메이저 버전 변경 (현재 {currentMajor})";
+            }
+
+            if (!marker.TryGetValue("publicManifestHash", out object publicHashObj)
+                || (publicHashObj as string) != ComputePublicManifestHash(aitBuildPath))
+            {
+                return "ait-build/public 변경";
+            }
+
+            if (!marker.TryGetValue("configFilesHash", out object configHashObj)
+                || (configHashObj as string) != ComputeConfigFilesHash(aitBuildPath))
+            {
+                return "빌드 설정 파일(index.html 포함) 변경";
+            }
+
+            if (!marker.TryGetValue("metadataHash", out object metadataHashObj)
+                || (metadataHashObj as string) != ComputeMetadataHash())
+            {
+                return "Unity 메타데이터(sdkVersion/unityVersion 등) 변경";
+            }
+
+            // 해시가 전부 일치해도 산출물이 사라졌으면(수동 삭제, Clean 메뉴 등) 스킵 불가.
+            // AITBuildValidator.ValidateDistOutput은 실패 시 진단용 Debug.LogError를 남겨
+            // (Sentry로도 캡처됨) 성공으로 끝날 스킵 판정에서 유령 에러가 발생하므로 여기서는
+            // 호출하지 않고, 로그를 남기지 않는 조용한 존재 확인만 한다.
+            if (!HasAitArchive(aitBuildPath))
+            {
+                return ".ait 산출물 없음 (ait-build 루트/dist 모두)";
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// 패키징 산출물(.ait)이 존재하는지 조용히 확인한다. 탐색 위치와 순서는
+        /// <see cref="AITBuildValidator.ValidateDistOutput"/>과 동일해야 한다 — ait build CLI는
+        /// 버전에 따라 ait-build 루트(2.x, 3.x 현행) 또는 dist/에 .ait를 emit하기 때문이다.
+        /// 여기서 dist/만 보면 실제 산출물이 루트에 있는 현행 3.x에서는 스킵이 영원히 발동하지
+        /// 않는다 (#1094가 실측에서 걸리지 않은 원인).
+        /// </summary>
+        private static bool HasAitArchive(string aitBuildPath)
+        {
+            if (ContainsAitArchive(aitBuildPath))
+            {
+                return true;
+            }
+
+            return ContainsAitArchive(Path.Combine(aitBuildPath, "dist"));
+        }
+
+        private static bool ContainsAitArchive(string directory)
+        {
+            if (!Directory.Exists(directory))
+            {
+                return false;
+            }
+
+            // Windows의 8.3 단축명 때문에 "*.ait" glob이 .aitxxx까지 잡을 수 있어
+            // 확장자를 명시적으로 비교한다.
+            foreach (string path in Directory.GetFiles(directory, "*", SearchOption.TopDirectoryOnly))
+            {
+                if (string.Equals(Path.GetExtension(path), WebGLBuildCopier.AitArchiveExtension,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         /// <summary>
@@ -268,7 +320,7 @@ namespace AppsInToss.Editor.Package
         /// ait-build/public 트리를 재귀 순회해 각 파일의 (상대경로, 길이, mtimeTicks)를
         /// 상대경로 오름차순으로 정렬한 목록의 SHA256. 내용을 읽지 않으므로 대용량
         /// .data/.wasm가 섞여 있어도 저렴하다. public/이 없으면 빈 매니페스트로 취급한다
-        /// (WebGL 출력 복사가 아직 실행되지 않은 비정상 상태 — 아래 dist 존재 검사가
+        /// (WebGL 출력 복사가 아직 실행되지 않은 비정상 상태 — .ait 산출물 존재 검사가
         /// 별도로 막는다).
         /// </summary>
         internal static string ComputePublicManifestHash(string aitBuildPath)

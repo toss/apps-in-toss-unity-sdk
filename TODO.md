@@ -2,7 +2,7 @@
 
 > 2026-04-14 전체 리뷰 기준 작성 · 2026-06-16 코드 대조로 완료 항목 정리.
 > 우선순위 P1(높음) ~ P3(낮음).
-> 2026-07-08 P2 잔여 항목 완료로 정리 · 2026-07-26 베타 기능 항목 추가 · 2026-07-27 문서 통합 정리에서 발견한 항목 추가 · 2026-08-01 의존성 항목 추가 · 2026-08-10 Deploy 항목 추가.
+> 2026-07-08 P2 잔여 항목 완료로 정리 · 2026-07-26 베타 기능 항목 추가 · 2026-07-27 문서 통합 정리에서 발견한 항목 추가 · 2026-08-01 의존성 항목 추가 · 2026-08-10 Deploy 항목 추가 · 2026-08-21 후속 검증에 옛 origin 조회 API 통합 대기 항목 추가.
 
 ## 베타 기능
 
@@ -19,6 +19,8 @@
 ## 후속 검증
 
 - **P2 — Unity 2021.3 순정 IDBFS 세션 노화 결함 실기기 확인**: E2E CI(Chromium, macOS/Windows)에서 Unity 2021.3(Emscripten 2.0.19) 빌드가 세션 시작 약 60초 후부터 순정 IDBFS 저장이 통째로 죽는 현상을 재현(4 run × 2 attempt × 2 OS, 16/16). 시그니처: `IDBFS.getLocalSet`의 MEMFS 트리 순회가 `errno=44`(ENOENT)로 실패 → `IDBFS.syncfs` 양방향 전부 조용히 실패(Unity가 에러를 삼킴) → 이후 저장된 값은 reload 시 유실, `indexedDB.open('/idbfs')` 직접 프로브도 응답 없음. 레이어를 완전히 끈 순정 페이지에서는 노화 후 reload하면 `page.evaluate`가 무기한 hang되는 페이지 wedge까지 관찰됨(run 31577487933, 양 OS). SDK PlayerPrefs 레이어와 무관함은 E2E 9-6 통제군(레이어 완전 비활성)으로 검증하며, 9-4의 IDBFS 폴백 값 단언은 2021.3에서만 skip 처리(`Tests~/E2E/tests/e2e-full-pipeline.test.js`). 같은 조건에서 앱인토스 Storage 경로(9-1/9-2)는 2021.3 포함 전 버전 green — 이 결함이 본 기능의 필요성을 강화한다. 후속: (1) 실기기(토스 앱 WebView) 2021.3 빌드에서 동일 결함 재현 여부 확인, (2) 재현 시 2021.3 사용자에게 PlayerPrefs 영속화 opt-out 비권장 안내 문서화(사용자 허락 후), (3) Unity 상류 리포트 여부 판단. (실측 절차: Documentation~/internal/playerprefs-device-verification.md)
+
+- **P2 — 이전 origin 저장소 조회 수단 확보 시 어댑터 연결**: SDK 3.x로 오면서 서빙 origin이 변경됐다(플랫폼 공지 기준). 브라우저 저장소는 origin 단위로 격리되므로, 순정 경로의 PlayerPrefs가 놓이는 IDBFS(IndexedDB)는 origin이 바뀌면 이전 데이터에 접근할 수 없다. 플랫폼이 마이그레이션 지원 방안을 검토 중이나 **구체적인 방법과 일정은 미정**이다. 우리가 필요로 하는 형태는 IndexedDB DB명 `/idbfs`, 오브젝트스토어 `FILE_DATA`의 덤프(키=파일 경로, 값=contents/mode/timestamp)이며, 이 요구는 플랫폼 측에 전달돼 있다. 이번 변경으로 레이어에 mock 주입 가능한 seam(`__AIT_PP_LEGACY_SOURCE__` 오버라이드 훅 + `getPlatformLegacySource()` stub)이 들어가 있어, 수단이 확정되면 stub 하나를 채우는 작은 통합만 남는다. 어댑터를 의도적으로 얇게 유지하는 근거: IndexedDB는 웹 표준상 best-effort 저장소라 이미 좌초된 데이터를 구조하는 일의 기대값이 낮고, 가치의 본체는 앞으로의 쓰기를 IndexedDB에서 걷어내는 쪽에 있다.
 
 ## 코드 결함
 

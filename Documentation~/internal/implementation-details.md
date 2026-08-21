@@ -78,6 +78,7 @@ devtools(`@apps-in-toss/devtools`) 설정은 빌드 프로필이 아니라 `AITC
 | Sentry 화면·노출·클릭 추적 | `Runtime/Sentry/AITSentryAnalytics.cs` |
 | IL2CPP 스트리핑 방지 | `Runtime/Sentry/link.xml` |
 | PlayerPrefs 영속화(IDBFS syncfs 미러링) | `WebGLTemplates/AITTemplate/Runtime/ait-playerprefs.js`. 동작 설명은 [PlayerPrefs 영속화](https://developers-apps-in-toss.toss.im/documentation/unity/add-features/playerprefs) |
+| PlayerPrefs 레거시 origin 마이그레이션 어댑터 | `WebGLTemplates/AITTemplate/Runtime/ait-playerprefs.js` — `resolveLegacySource()`, `getPlatformLegacySource()`, `normalizeLegacyDump()`, `applyLegacyFiles()`, `tryLegacyImport()`, `__AIT_PP_LEGACY_SOURCE__` 오버라이드 훅, `state.legacyImport`/`legacyBackend`/`legacyBytes`/`legacyMs`. 마이그레이션 창 판정은 `snapshotHasScopedFile()`(매니페스트 부재 + "PlayerPrefs 0건 매니페스트"), 창 유지는 `pushScoped()`의 `remoteHasScoped` 가드(빈 매니페스트 생성 금지), 임포트 크기 상한은 `LEGACY_MAX_BYTES`/`LEGACY_MAX_B64_CHARS`. 플랫폼 seam(`getPlatformLegacySource()`)은 옛 origin 저장소 조회 API 스펙 미확정으로 아직 구현 없음(stub) |
 
 ## 관련 문서
 

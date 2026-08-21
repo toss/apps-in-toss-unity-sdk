@@ -274,6 +274,49 @@ public class AITWarmManifestEmitterTests
             "같은 입력에 대해 두 번 호출하면 byte-identical 산출물이어야 한다(타임스탬프/랜덤 없음)");
     }
 
+    // ===== 케이스 8b: mtime 보존 — 내용이 같으면 재작성하지 않는다 =====
+    //
+    // Package.PackageBuildStateMarker 는 ait-build/public 트리를 (경로, 길이, mtimeTicks)로만
+    // 해시하며 "mtime 불변 == 내용 불변"을 전제한다. 이 산출기는 public/ 안에 쓰므로, 내용이
+    // 같은데도 무조건 재작성하면 mtime 이 매번 전진해 패키징 스킵이 영원히 발동하지 않는다.
+    // 산출물이 결정적(케이스 8)이라는 것만으로는 부족하고 "쓰지 않는 것"까지 보장해야 한다.
+
+    [Test]
+    public void NormalEmit_SameContent_PreservesMtime()
+    {
+        WriteManifest();
+        string manifestPath = Path.Combine(_tempDir, AITWarmManifestEmitter.FileName);
+        Assert.IsTrue(File.Exists(manifestPath), "SetUp: 1차 산출이 성공해야 한다");
+
+        // 파일시스템 타임스탬프 해상도에 의존하지 않도록 과거 시각을 명시적으로 심는다.
+        var stamp = new DateTime(2020, 1, 2, 3, 4, 5, DateTimeKind.Utc);
+        File.SetLastWriteTimeUtc(manifestPath, stamp);
+
+        WriteManifest();
+
+        Assert.AreEqual(stamp, File.GetLastWriteTimeUtc(manifestPath),
+            "내용이 동일하면 재작성을 생략해 mtime 이 보존되어야 한다 (PackageBuildStateMarker 의 public/ 해시 불변식)");
+    }
+
+    // ===== 케이스 8c: 내용이 달라지면 반드시 재작성한다(스킵이 stale 을 남기면 안 됨) =====
+
+    [Test]
+    public void NormalEmit_ChangedContent_RewritesFile()
+    {
+        WriteManifest();
+        string manifestPath = Path.Combine(_tempDir, AITWarmManifestEmitter.FileName);
+        var stamp = new DateTime(2020, 1, 2, 3, 4, 5, DateTimeKind.Utc);
+        File.SetLastWriteTimeUtc(manifestPath, stamp);
+
+        _config.pageCacheName = "ait-page-cache-changed";
+        WriteManifest();
+
+        Assert.AreNotEqual(stamp, File.GetLastWriteTimeUtc(manifestPath),
+            "내용이 달라지면 재작성되어 mtime 이 전진해야 한다");
+        StringAssert.Contains("ait-page-cache-changed", ReadManifest(),
+            "재작성된 산출물에 변경된 캐시 이름이 반영되어야 한다");
+    }
+
     // ===== 케이스 9: schemaVersion, generator 필드 존재 =====
 
     [Test]

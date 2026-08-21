@@ -123,8 +123,10 @@ namespace AppsInToss.Editor.Package
                 return;
             }
 
-            File.WriteAllText(outputPath, html, Encoding.UTF8);
-            Debug.Log($"[AIT] ✓ ait-warm.html 산출 완료{(config.warmPage < 0 ? " (자동)" : "")}: {outputPath}");
+            // public/ 안에 쓰므로 반드시 IfChanged 경로를 타야 한다 (AITWarmManifestEmitter와 동일 사유 —
+            // PackageBuildStateMarker의 mtime 기반 public/ 해시 불변식 유지).
+            bool written = WebGLBuildCopier.WriteAllTextIfChanged(outputPath, html, Encoding.UTF8);
+            Debug.Log($"[AIT] ✓ ait-warm.html 산출 완료{(config.warmPage < 0 ? " (자동)" : "")}{(written ? "" : " (내용 동일 — 재작성 생략)")}: {outputPath}");
         }
 
         // -----------------------------------------------------------------------

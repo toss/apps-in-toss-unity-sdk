@@ -128,7 +128,11 @@
             </div>
         </div>
         <script>
-            // AIT 로딩 오버레이가 실제로 삽입된 경우(%AIT_LOADING_SCREEN% 치환 결과가 비어있지 않음)에만
+            // ⚠️ 이 주석에 로딩 화면 플레이스홀더 토큰(퍼센트로 감싼 AIT_LOADING_SCREEN)을 그대로
+            // 적지 말 것 — 치환이 단순 문자열 Replace 라 주석 안에도 loading.html 전문이 주입되고,
+            // '//' 주석은 첫 줄만 막으므로 2번째 줄부터 살아있는 JS 로 파싱되어 이 <script> 블록
+            // 전체가 SyntaxError 로 죽는다(= 아래 로딩 바 제거가 통째로 실행되지 않음).
+            // AIT 로딩 오버레이가 실제로 삽입된 경우(위 플레이스홀더 치환 결과가 비어있지 않음)에만
             // Unity 기본 로딩 바를 동기적으로 제거한다. 브라우저의 레이아웃/페인트가 일어나기 전에
             // DOM에서 떼어내므로 #unity-logo / #unity-progress-bar-* 의 CSS 배경 PNG
             // (TemplateData/*.png) 네트워크 요청 자체가 발생하지 않는다 — AIT 오버레이(z-index 9998)가

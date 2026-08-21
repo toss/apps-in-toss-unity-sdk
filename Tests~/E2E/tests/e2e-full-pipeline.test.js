@@ -423,6 +423,58 @@ async function scopedFileCountInManifest(page, prefix) {
 }
 
 /**
+ * IDBFS 백킹 IndexedDB(DB명 '/idbfs', 오브젝트스토어 'FILE_DATA')에서 PlayerPrefs
+ * 엔트리의 원본 바이트를 읽는다. 9-8이 손으로 만든 바이트가 아니라 **실제 Unity가 쓴**
+ * PlayerPrefs 포맷을 레거시 덤프로 재사용하기 위한 추출기다.
+ *
+ * open이 onsuccess/onerror/onupgradeneeded 중 아무것도 발화하지 않는 무응답 사례가
+ * 실측돼 자체 타임박스를 둔다(2021.3 계열 순정 IDBFS 세션 노화 — TODO.md P2 참조).
+ */
+async function readPlayerPrefsEntryFromIdb(page, timeoutMs) {
+  return page.evaluate((limit) => {
+    const probe = new Promise((resolve, reject) => {
+      try {
+        const req = indexedDB.open('/idbfs');
+        req.onerror = () => reject(req.error || new Error('idb open failed'));
+        req.onsuccess = () => {
+          try {
+            const db = req.result;
+            const names = Array.from(db.objectStoreNames);
+            const store = names.includes('FILE_DATA') ? 'FILE_DATA' : names[0];
+            const tx = db.transaction(store, 'readonly');
+            let found = null;
+            const cur = tx.objectStore(store).openCursor();
+            cur.onsuccess = () => {
+              const c = cur.result;
+              if (c) {
+                const k = String(c.key);
+                if (/\/PlayerPrefs$/.test(k)) {
+                  const v = c.value || {};
+                  found = {
+                    mode: v.mode,
+                    timestamp: v.timestamp ? new Date(v.timestamp).getTime() : 0,
+                    contents: v.contents ? Array.from(v.contents) : []
+                  };
+                }
+                c.continue();
+              } else {
+                db.close();
+                if (found) resolve(found); else reject(new Error('PlayerPrefs entry not found in IDBFS'));
+              }
+            };
+            cur.onerror = () => { db.close(); reject(cur.error); };
+          } catch (e) { reject(e); }
+        };
+      } catch (e) { reject(e); }
+    });
+    return Promise.race([
+      probe,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('idb probe timeout')), limit))
+    ]);
+  }, timeoutMs);
+}
+
+/**
  * reload → unityInstance 재설정까지를 3-1과 동일한 하니스 순단 분류로 감싼 재시도 헬퍼.
  *
  * self-hosted 러너의 vite preview가 부하로 루프백 스트림을 끊으면(ERR_CONNECTION_CLOSED /
@@ -2324,23 +2376,33 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       });
 
       // -----------------------------------------------------------------------
-      // 9-8 [레거시 origin 마이그레이션 어댑터] AIT 매니페스트 부재 + 로컬 IDBFS도
-      //     빈 첫 부팅에서, __AIT_PP_LEGACY_SOURCE__ 오버라이드 훅이 준 옛 origin
-      //     IDBFS 덤프를 채택해 MEMFS에 심고 즉시 AIT Storage로 승격하는지 확인한다.
+      // 9-8 [레거시 origin 마이그레이션 어댑터] 로컬에 PlayerPrefs가 없는 부팅에서
+      //     __AIT_PP_LEGACY_SOURCE__ 오버라이드 훅이 준 옛 origin IDBFS 덤프를 채택해
+      //     MEMFS에 심고 즉시 AIT Storage로 승격하는지 확인한다.
       //
       //     실제 브라우저 IndexedDB(IDBFS 백킹, DB명 '/idbfs', 'FILE_DATA' object
       //     store)에서 진짜 Unity가 쓴 PlayerPrefs 엔트리를 먼저 만든 뒤 그대로
       //     추출해 덤프로 재사용한다 — 손으로 만든 바이트가 아니라 실제 Unity
       //     PlayerPrefs 포맷이어야 TriggerPlayerPrefsGet 왕복까지 검증할 수 있다.
-      //     seed 파일의 경로 해시(legacy_origin_seed)는 이번 세션의 실제
-      //     mountpoint와 다르게 골라 리매핑 로직(§2.3-5)도 함께 검증한다.
+      //     seed 파일의 경로 해시(legacy_origin_seed)는 이번 세션의 실제 앱 디렉터리와
+      //     다르게 골라 리매핑 로직도 함께 검증한다. <hash>는 빌드가 서비스되는 URL에서
+      //     유도돼 origin이 바뀌면 실제로 달라지므로 리매핑은 선택이 아니라 필수다.
       //
       //     3단계에서는 "PlayerPrefs가 하나도 없는 매니페스트"가 이미 깔린 설치에서도
       //     같은 임포트가 일어나는지 확인한다 — 마이그레이션 창을 매니페스트 부재에만
       //     걸어두면 이관 대상 인구가 통째로 누락되기 때문이다.
+      //
+      //     ⚠️ 두 단계 모두 훅 없이 한 번 부팅한 뒤 훅을 걸고 재부팅한다. 리매핑 기준인
+      //     앱 디렉터리(/idbfs/<hash>)는 Unity 네이티브가 main() 안에서 만들고
+      //     마운트포인트는 /idbfs 자체라, 부팅 이력이 없는 페이지에서는 populate 시점에
+      //     심을 경로를 알 수 없다(그 분기는 9-10의 cold-boot 케이스가 고정한다).
+      //
+      //     1단계의 seed 추출 프로브는 오래 산 페이지에서 무응답이 되는 실측이 있어
+      //     (TODO.md P2의 순정 IDBFS 세션 노화 계열) 실패 시 같은 origin의 갓 만든
+      //     페이지에서 한 번 더 시도한다 — readPlayerPrefsEntryFromIdb 주석 참조.
       // -----------------------------------------------------------------------
       test('9-8. [legacy import] adopts a legacy origin IDBFS dump and promotes it to AIT Storage', async ({ browser }) => {
-        // seed 부팅 + persist idle 대기(최대 30초×2) + 임포트 부팅 + 빈 매니페스트 부팅,
+        // seed 부팅 + persist idle 대기 + (워밍 부팅 + 재부팅) × 2단계,
         // 느린 러너 대비 여유
         test.setTimeout(420000);
 
@@ -2391,64 +2453,82 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
             { timeout: 30000 }
           );
 
-          legacySeed = await seedPage.evaluate(() => {
-            const probe = new Promise((resolve, reject) => {
-              try {
-                const req = indexedDB.open('/idbfs');
-                req.onerror = () => reject(req.error || new Error('idb open failed'));
-                req.onsuccess = () => {
-                  try {
-                    const db = req.result;
-                    const names = Array.from(db.objectStoreNames);
-                    const store = names.includes('FILE_DATA') ? 'FILE_DATA' : names[0];
-                    const tx = db.transaction(store, 'readonly');
-                    let found = null;
-                    const cur = tx.objectStore(store).openCursor();
-                    cur.onsuccess = () => {
-                      const c = cur.result;
-                      if (c) {
-                        const k = String(c.key);
-                        if (/\/PlayerPrefs$/.test(k)) {
-                          const v = c.value || {};
-                          found = {
-                            mode: v.mode,
-                            timestamp: v.timestamp ? new Date(v.timestamp).getTime() : 0,
-                            contents: v.contents ? Array.from(v.contents) : []
-                          };
-                        }
-                        c.continue();
-                      } else {
-                        db.close();
-                        if (found) resolve(found); else reject(new Error('PlayerPrefs entry not found in IDBFS'));
-                      }
-                    };
-                    cur.onerror = () => { db.close(); reject(cur.error); };
-                  } catch (e) { reject(e); }
-                };
-              } catch (e) { reject(e); }
-            });
-            return Promise.race([
-              probe,
-              new Promise((_, reject) => setTimeout(() => reject(new Error('idb probe timeout')), 8000))
-            ]);
-          });
+          try {
+            legacySeed = await readPlayerPrefsEntryFromIdb(seedPage, 8000);
+          } catch (probeErr) {
+            // 부팅 이력이 긴 페이지에서 indexedDB.open('/idbfs')이 무응답이 되는 사례가
+            // 실측됐다(run 32455289846의 Windows 2021.3/2022.3, macOS 2022.3). 같은 leg의
+            // macOS 2021.3은 통과했으니 버전이 아니라 **그 페이지가 산 시간**의 문제다 —
+            // TODO.md P2의 순정 IDBFS 세션 노화와 같은 계열이다.
+            //
+            // ⚠️ 반드시 seedPage와 **같은 BrowserContext**에서 연다. browser.newPage()는
+            // 새 컨텍스트(= 격리된 저장소 파티션)를 만들어 seedPage의 IndexedDB가 아예
+            // 보이지 않는다 — 이 파일의 2단계가 browser.newPage()로 "깨끗한 IDB"를 얻는
+            // 데 의존하는 것이 그 증거다. 저장소는 컨텍스트가 공유하고 세션 수명은
+            // 페이지마다 따로이므로, 같은 컨텍스트의 새 페이지가 정확히 필요한 조합이다.
+            // Unity를 띄우면 세션을 다시 늙히므로 route로 빈 문서만 하나 물린다.
+            console.log(`[9-8] seed page IDB probe failed (${probeErr && probeErr.message}) — retrying from a fresh page in the same context`);
+            const probePage = await seedPage.context().newPage();
+            try {
+              const probeUrl = `http://localhost:${sharedPort}/__ait_idb_probe__`;
+              await probePage.route(probeUrl, (route) => route.fulfill({
+                status: 200,
+                contentType: 'text/html',
+                body: '<!doctype html><meta charset="utf-8"><title>idb probe</title>'
+              }));
+              await probePage.goto(probeUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+              legacySeed = await readPlayerPrefsEntryFromIdb(probePage, 15000);
+              console.log('[9-8] fresh-page IDB probe succeeded');
+            } finally {
+              await probePage.close();
+            }
+          }
           expect(legacySeed && legacySeed.contents && legacySeed.contents.length,
             'seeded PlayerPrefs entry must carry non-empty raw bytes').toBeGreaterThan(0);
         } finally {
           await seedPage.close();
         }
 
-        // --- 2단계: 완전히 빈 새 페이지에서 레거시 소스 훅으로 위 덤프를 제공 ---
+        // --- 2단계: "새 origin에서 이미 한 번 부팅한 설치"에 레거시 훅을 걸고 재부팅 ---
+        // 리매핑 기준인 앱 디렉터리(/idbfs/<hash>)는 Unity 네이티브가 main() 안에서
+        // persistentDataPath를 처음 만질 때 만든다. 마운트포인트는 /idbfs 자체이므로
+        // (원본 prejs: FS.mount(IDBFS, ..., '/idbfs')) 부팅 이력이 없는 페이지에서는
+        // populate 시점에 <hash>를 알 방법이 없다 — 값이 빌드 URL에서 유도돼 옛 origin
+        // 것과 다르고 우리가 계산할 수도 없다. 실제 이관 대상은 "새 origin에서 최소
+        // 한 번 실행된 설치"이므로, 훅 없이 한 번 부팅해 앱 디렉터리를 IndexedDB에
+        // 남긴 뒤 훅을 걸고 재부팅하는 형태로 모사한다.
         const legacyPage = await browser.newPage();
         try {
-          await legacyPage.addInitScript((seed) => {
+          await legacyPage.addInitScript(() => {
             window['__AIT_PLAYERPREFS_STORAGE__'] = {
               getItem: function (key) { return Promise.resolve(window.localStorage.getItem('PW_PP8_AIT_MOCK_' + key)); },
               setItem: function (key, value) { return Promise.resolve(window.localStorage.setItem('PW_PP8_AIT_MOCK_' + key, value)); }
             };
+          });
+
+          const warmResp = await legacyPage.goto(`http://localhost:${sharedPort}?e2e=true`, {
+            waitUntil: 'domcontentloaded',
+            timeout: 60000
+          });
+          expect(warmResp?.status()).toBe(200);
+          await waitForUnityInstance(legacyPage);
+          // 앱 디렉터리가 IndexedDB까지 내려가야 다음 부팅의 populate가 복원한다
+          await legacyPage.waitForFunction(
+            () => window['__AIT_PP'].persistCount > 0 && window['__AIT_PP'].persistIdle(),
+            undefined,
+            { timeout: 30000 }
+          );
+          // PlayerPrefs가 없는 부팅은 매니페스트를 남기지 않아야 창이 열린 채 유지된다
+          expect(
+            await legacyPage.evaluate(() => window.localStorage.getItem('PW_PP8_AIT_MOCK_AITUnityFS_v1_manifest')),
+            'a boot with no PlayerPrefs must not write a manifest — that would close the migration window'
+          ).toBeNull();
+
+          // 이후 로드에만 레거시 훅을 건다
+          await legacyPage.addInitScript((seed) => {
             var dump = {};
-            // 현재 세션의 mountpoint 해시와 일부러 다른 경로 — 어댑터가 현재
-            // mountpoint 기준으로 리매핑하는지(§2.3-5) 함께 검증한다.
+            // 현재 세션의 앱 디렉터리 해시와 일부러 다른 경로 — 어댑터가 현재 앱
+            // 디렉터리로 리매핑하는지 함께 검증한다.
             dump['/idbfs/legacy_origin_seed/PlayerPrefs'] = {
               mode: seed.mode,
               timestamp: seed.timestamp,
@@ -2458,13 +2538,12 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
               readIdbfs: function () { return Promise.resolve(dump); }
             };
           }, legacySeed);
+          await reloadAndWaitForUnity(legacyPage, '9-8 import');
 
-          const legacyResp = await legacyPage.goto(`http://localhost:${sharedPort}?e2e=true`, {
-            waitUntil: 'domcontentloaded',
-            timeout: 60000
-          });
-          expect(legacyResp?.status()).toBe(200);
-          await waitForUnityInstance(legacyPage);
+          // 진단을 값 단언보다 **먼저** 읽는다 — 값 단언이 먼저 깨지면 어느 분기에서
+          // 빠졌는지(skip-unknown-appdir / timeout / empty ...) 알 수 없게 된다.
+          const status98 = await legacyPage.evaluate(() => window['AITPlayerPrefs'].status());
+          console.log(`[9-8] status: ${JSON.stringify(status98)}`);
 
           const getResult = await triggerPlayerPrefsAndWait(
             legacyPage,
@@ -2472,12 +2551,9 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
             'get'
           );
           console.log(`[9-8] TriggerPlayerPrefsGet result: ${JSON.stringify(getResult)}`);
+          expect(status98.legacyImport, 'legacyImport must report imported').toBe('imported');
           expect(getResult.success, 'PlayerPrefs.GetString should succeed after legacy adoption').toBe(true);
           expect(getResult.value, 'Unity must read the value adopted from the legacy origin dump').toBe('v8');
-
-          const status98 = await legacyPage.evaluate(() => window['AITPlayerPrefs'].status());
-          console.log(`[9-8] status: ${JSON.stringify(status98)}`);
-          expect(status98.legacyImport, 'legacyImport must report imported').toBe('imported');
           expect(status98.legacyBackend, 'legacyBackend must report override').toBe('override');
           expect(status98.legacyBytes, 'legacyBytes must be > 0').toBeGreaterThan(0);
           expect(status98.mode, 'adopted legacy data must be promoted to ait mode').toBe('ait');
@@ -2497,7 +2573,7 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
         // 스냅샷에 scoped 파일이 0건이면 창이 아직 열려 있다고 보고 훑어야 한다.
         const staleEmptyPage = await browser.newPage();
         try {
-          await staleEmptyPage.addInitScript((seed) => {
+          await staleEmptyPage.addInitScript(() => {
             var PREFIX = 'PW_PP8B_AIT_MOCK_';
             // 이전 부팅이 남긴 빈 매니페스트를 시드 (files가 비어 있는 정상 포맷)
             if (window.localStorage.getItem(PREFIX + 'AITUnityFS_v1_manifest') === null) {
@@ -2509,6 +2585,22 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
               getItem: function (key) { return Promise.resolve(window.localStorage.getItem(PREFIX + key)); },
               setItem: function (key, value) { return Promise.resolve(window.localStorage.setItem(PREFIX + key, value)); }
             };
+          });
+
+          // 2단계와 같은 이유로 앱 디렉터리를 먼저 만들어 둔다(훅 없이 1회 부팅)
+          const staleResp = await staleEmptyPage.goto(`http://localhost:${sharedPort}?e2e=true`, {
+            waitUntil: 'domcontentloaded',
+            timeout: 60000
+          });
+          expect(staleResp?.status()).toBe(200);
+          await waitForUnityInstance(staleEmptyPage);
+          await staleEmptyPage.waitForFunction(
+            () => window['__AIT_PP'].persistCount > 0 && window['__AIT_PP'].persistIdle(),
+            undefined,
+            { timeout: 30000 }
+          );
+
+          await staleEmptyPage.addInitScript((seed) => {
             var dump = {};
             dump['/idbfs/legacy_origin_seed/PlayerPrefs'] = {
               mode: seed.mode,
@@ -2519,13 +2611,10 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
               readIdbfs: function () { return Promise.resolve(dump); }
             };
           }, legacySeed);
+          await reloadAndWaitForUnity(staleEmptyPage, '9-8 empty-manifest');
 
-          const staleResp = await staleEmptyPage.goto(`http://localhost:${sharedPort}?e2e=true`, {
-            waitUntil: 'domcontentloaded',
-            timeout: 60000
-          });
-          expect(staleResp?.status()).toBe(200);
-          await waitForUnityInstance(staleEmptyPage);
+          const status98b = await staleEmptyPage.evaluate(() => window['AITPlayerPrefs'].status());
+          console.log(`[9-8] empty-manifest phase status: ${JSON.stringify(status98b)}`);
 
           const staleGet = await triggerPlayerPrefsAndWait(
             staleEmptyPage,
@@ -2533,12 +2622,9 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
             'get'
           );
           console.log(`[9-8] empty-manifest phase TriggerPlayerPrefsGet result: ${JSON.stringify(staleGet)}`);
-          expect(staleGet.value, 'seam must also fire when the manifest exists but carries no PlayerPrefs file').toBe('v8');
-
-          const status98b = await staleEmptyPage.evaluate(() => window['AITPlayerPrefs'].status());
-          console.log(`[9-8] empty-manifest phase status: ${JSON.stringify(status98b)}`);
           expect(status98b.legacyImport, 'an empty manifest must not close the migration window').toBe('imported');
           expect(status98b.mode, 'boot must stay in ait mode').toBe('ait');
+          expect(staleGet.value, 'seam must also fire when the manifest exists but carries no PlayerPrefs file').toBe('v8');
 
           // 임포트분이 매니페스트로 승격됐는지 (빈 매니페스트가 그대로 남으면 안 된다)
           await staleEmptyPage.waitForFunction(() => {
@@ -2612,73 +2698,116 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       //     수 있어 하드 단언하지 않고 진단 로그로만 남긴다 — 검증 대상은 어디까지나
       //     legacyImport 값과 최종 mode다.
       //
-      //     두 분기 모두 **빈 매니페스트를 남기지 않는지**도 함께 본다. 실패한 레거시
+      //     세 번째 분기는 "이 origin에서 한 번도 실행된 적 없는 설치"다. 리매핑
+      //     기준인 앱 디렉터리(/idbfs/<hash>)가 아직 없어 심을 곳을 모르는 상태이고,
+      //     그때 추측하지 않고 skip-unknown-appdir로 물러나는지 확인한다 — 알려진
+      //     한계라서 조용히 넘기는 대신 값으로 고정해 둔다.
+      //
+      //     세 분기 모두 **빈 매니페스트를 남기지 않는지**도 함께 본다. 실패한 레거시
       //     읽기가 `{"files":{}}`를 기록해버리면 다음 부팅이 'present' 분기로 빠져
       //     그 사용자의 마이그레이션 창이 영구히 닫힌다(재시도 기회가 사라진다).
       // -----------------------------------------------------------------------
       test('9-10. [failure matrix] legacy source reject/hang degrades gracefully without blocking boot', async ({ browser }) => {
-        test.setTimeout(300000);
+        test.setTimeout(420000);
+
+        // 어댑터는 리매핑 기준인 앱 디렉터리(/idbfs/<hash>)를 알아야 비로소 레거시
+        // 소스를 호출한다. 그 디렉터리는 Unity가 main() 안에서 만들기 때문에 부팅
+        // 이력이 없는 페이지에서는 readIdbfs가 아예 불리지 않는다(= skip-unknown-appdir).
+        // 그래서 각 분기는 훅 없이 1회 부팅해 앱 디렉터리를 남긴 뒤 훅을 걸고 재부팅한다.
+        //
+        // 분기끼리 페이지를 공유하지 않는다. 재사용하면 뒤쪽 분기일수록 세션이 늙는데,
+        // 노화된 세션을 reload하면 page.evaluate가 무기한 hang되는 wedge가 실측돼 있다
+        // (TODO.md P2, run 31577487933 양 OS). 워밍 부팅을 한 번 더 치르는 편이 싸다.
+        const runFailureBranch = async (label, prefix, installHook) => {
+          const page = await browser.newPage();
+          try {
+            await page.addInitScript((p) => {
+              window['__AIT_PLAYERPREFS_STORAGE__'] = {
+                getItem: function (key) { return Promise.resolve(window.localStorage.getItem(p + key)); },
+                setItem: function (key, value) { return Promise.resolve(window.localStorage.setItem(p + key, value)); }
+              };
+            }, prefix);
+            const warmResp = await page.goto(`http://localhost:${sharedPort}?e2e=true`, {
+              waitUntil: 'domcontentloaded',
+              timeout: 60000
+            });
+            expect(warmResp?.status()).toBe(200);
+            await waitForUnityInstance(page);
+            await page.waitForFunction(
+              () => window['__AIT_PP'].persistCount > 0 && window['__AIT_PP'].persistIdle(),
+              undefined,
+              { timeout: 30000 }
+            );
+
+            await page.addInitScript(installHook);
+            const t0 = Date.now();
+            await reloadAndWaitForUnity(page, `9-10 ${label}`);
+            console.log(`[9-10] ${label} branch booted in ${Date.now() - t0}ms`);
+
+            const status = await page.evaluate(() => window['AITPlayerPrefs'].status());
+            console.log(`[9-10] ${label} branch status: ${JSON.stringify(status)}`);
+            return { status, manifestCount: await scopedFileCountInManifest(page, prefix) };
+          } finally {
+            await page.close();
+          }
+        };
 
         // --- reject 분기 ---
-        const rejectPage = await browser.newPage();
-        try {
-          await rejectPage.addInitScript(() => {
-            window['__AIT_PLAYERPREFS_STORAGE__'] = {
-              getItem: function (key) { return Promise.resolve(window.localStorage.getItem('PW_PP10A_MOCK_' + key)); },
-              setItem: function (key, value) { return Promise.resolve(window.localStorage.setItem('PW_PP10A_MOCK_' + key, value)); }
-            };
-            window['__AIT_PP_LEGACY_SOURCE__'] = {
-              readIdbfs: function () { return Promise.reject(new Error('legacy backend unavailable (e2e)')); }
-            };
-          });
-          const t0 = Date.now();
-          const rejectResp = await rejectPage.goto(`http://localhost:${sharedPort}?e2e=true`, {
-            waitUntil: 'domcontentloaded',
-            timeout: 60000
-          });
-          expect(rejectResp?.status()).toBe(200);
-          await waitForUnityInstance(rejectPage);
-          console.log(`[9-10] reject branch booted in ${Date.now() - t0}ms`);
-
-          const statusReject = await rejectPage.evaluate(() => window['AITPlayerPrefs'].status());
-          console.log(`[9-10] reject branch status: ${JSON.stringify(statusReject)}`);
-          expect(statusReject.legacyImport, 'a rejecting legacy source must be recorded as error, not silently ignored').toBe('error');
-          expect(statusReject.mode, 'boot must still promote to ait mode after a legacy source rejection').toBe('ait');
-          expect(await scopedFileCountInManifest(rejectPage, 'PW_PP10A_MOCK_'),
-            'a failed legacy read must not leave an empty manifest behind — it would close the migration window for good').not.toBe(0);
-        } finally {
-          await rejectPage.close();
-        }
+        const rejectBranch = await runFailureBranch('reject', 'PW_PP10A_MOCK_', () => {
+          window['__AIT_PP_LEGACY_SOURCE__'] = {
+            readIdbfs: function () { return Promise.reject(new Error('legacy backend unavailable (e2e)')); }
+          };
+        });
+        expect(rejectBranch.status.legacyImport, 'a rejecting legacy source must be recorded as error, not silently ignored').toBe('error');
+        expect(rejectBranch.status.mode, 'boot must still promote to ait mode after a legacy source rejection').toBe('ait');
+        expect(rejectBranch.manifestCount,
+          'a failed legacy read must not leave an empty manifest behind — it would close the migration window for good').not.toBe(0);
 
         // --- hang 분기: 영원히 resolve/reject하지 않는 Promise ---
-        const hangPage = await browser.newPage();
+        const hangBranch = await runFailureBranch('hang', 'PW_PP10B_MOCK_', () => {
+          window['__AIT_PP_LEGACY_SOURCE__'] = {
+            readIdbfs: function () { return new Promise(function () { /* 의도적으로 영원히 미해결 */ }); }
+          };
+        });
+        expect(hangBranch.status.legacyImport, 'a hanging legacy source must be bounded by its own timebox, not the boot gate').toBe('timeout');
+        expect(hangBranch.status.mode, 'boot must still reach ait mode after a legacy source timeout (not degrade to vanilla)').toBe('ait');
+        expect(hangBranch.manifestCount,
+          'a timed-out legacy read must not leave an empty manifest behind — it would close the migration window for good').not.toBe(0);
+
+        // --- 최초 부팅 분기: 앱 디렉터리가 아직 없으면 심을 곳을 모른다 ---
+        // 이 origin에서 한 번도 실행된 적 없는 설치가 여기 해당한다. <hash>는 빌드가
+        // 서비스되는 URL에서 유도돼 옛 origin 값과 다르고 우리가 계산할 수 없으므로,
+        // 추측해서 심으면 Unity가 읽지 못하는 좌초 경로가 매니페스트에 실려 이후
+        // 부팅마다 복원되기만 한다. 그래서 이 부팅은 아무것도 하지 않고 넘어가되,
+        // 매니페스트를 쓰지 않아 창을 열어둔다 — 앱 디렉터리가 생긴 다음 부팅에서
+        // 이관이 일어난다. 알려진 한계이므로 조용히 넘기지 않고 값으로 고정한다.
+        const coldPage = await browser.newPage();
         try {
-          await hangPage.addInitScript(() => {
+          await coldPage.addInitScript(() => {
             window['__AIT_PLAYERPREFS_STORAGE__'] = {
-              getItem: function (key) { return Promise.resolve(window.localStorage.getItem('PW_PP10B_MOCK_' + key)); },
-              setItem: function (key, value) { return Promise.resolve(window.localStorage.setItem('PW_PP10B_MOCK_' + key, value)); }
+              getItem: function (key) { return Promise.resolve(window.localStorage.getItem('PW_PP10C_MOCK_' + key)); },
+              setItem: function (key, value) { return Promise.resolve(window.localStorage.setItem('PW_PP10C_MOCK_' + key, value)); }
             };
             window['__AIT_PP_LEGACY_SOURCE__'] = {
-              readIdbfs: function () { return new Promise(function () { /* 의도적으로 영원히 미해결 */ }); }
+              readIdbfs: function () { return Promise.resolve({ '/idbfs/legacy_origin_seed/PlayerPrefs': { mode: 33188, timestamp: 1, contents: [1, 2, 3] } }); }
             };
           });
-          const t0 = Date.now();
-          const hangResp = await hangPage.goto(`http://localhost:${sharedPort}?e2e=true`, {
+          const coldResp = await coldPage.goto(`http://localhost:${sharedPort}?e2e=true`, {
             waitUntil: 'domcontentloaded',
             timeout: 60000
           });
-          expect(hangResp?.status()).toBe(200);
-          await waitForUnityInstance(hangPage);
-          console.log(`[9-10] hang branch booted in ${Date.now() - t0}ms`);
+          expect(coldResp?.status()).toBe(200);
+          await waitForUnityInstance(coldPage);
 
-          const statusHang = await hangPage.evaluate(() => window['AITPlayerPrefs'].status());
-          console.log(`[9-10] hang branch status: ${JSON.stringify(statusHang)}`);
-          expect(statusHang.legacyImport, 'a hanging legacy source must be bounded by its own timebox, not the boot gate').toBe('timeout');
-          expect(statusHang.mode, 'boot must still reach ait mode after a legacy source timeout (not degrade to vanilla)').toBe('ait');
-          expect(await scopedFileCountInManifest(hangPage, 'PW_PP10B_MOCK_'),
-            'a timed-out legacy read must not leave an empty manifest behind — it would close the migration window for good').not.toBe(0);
+          const statusCold = await coldPage.evaluate(() => window['AITPlayerPrefs'].status());
+          console.log(`[9-10] cold-boot branch status: ${JSON.stringify(statusCold)}`);
+          expect(statusCold.legacyImport, 'a boot with no app directory yet must report skip-unknown-appdir, not a fake success').toBe('skip-unknown-appdir');
+          expect(statusCold.legacyBytes, 'nothing may be written when the target path is unknown').toBe(0);
+          expect(statusCold.mode, 'boot must still reach ait mode').toBe('ait');
+          expect(await scopedFileCountInManifest(coldPage, 'PW_PP10C_MOCK_'),
+            'the migration window must stay open for the next boot').not.toBe(0);
         } finally {
-          await hangPage.close();
+          await coldPage.close();
         }
       });
 

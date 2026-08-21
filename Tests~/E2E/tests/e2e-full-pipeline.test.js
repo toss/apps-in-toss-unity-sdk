@@ -1764,6 +1764,12 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       /** @type {import('@playwright/test').Page} */
       let noMockPage = null;
 
+      // 9-8이 1단계에서 추출한 "실제 Unity가 쓴 PlayerPrefs 바이트". 9-8b가 재사용한다 —
+      // 추출에만 Unity 부팅 1회가 들어서 테스트마다 다시 만들면 예산이 감당이 안 된다
+      // (describe.serial이라 9-8이 먼저 돌고, 실패하면 9-8b는 어차피 skip된다).
+      /** @type {{mode:number,timestamp:number,contents:number[]}|null} */
+      let pp8LegacySeed = null;
+
       test.afterAll(async () => {
         if (mockPage) { await mockPage.close(); mockPage = null; }
         if (failPage) { await failPage.close(); failPage = null; }
@@ -2388,11 +2394,10 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       //     다르게 골라 리매핑 로직도 함께 검증한다. <hash>는 빌드가 서비스되는 URL에서
       //     유도돼 origin이 바뀌면 실제로 달라지므로 리매핑은 선택이 아니라 필수다.
       //
-      //     3단계에서는 "PlayerPrefs가 하나도 없는 매니페스트"가 이미 깔린 설치에서도
-      //     같은 임포트가 일어나는지 확인한다 — 마이그레이션 창을 매니페스트 부재에만
-      //     걸어두면 이관 대상 인구가 통째로 누락되기 때문이다.
+      //     "빈 매니페스트가 이미 깔린 설치"에서도 같은 임포트가 일어나는지는 9-8b가
+      //     맡는다(원래 이 테스트의 3단계였는데 예산 문제로 분리했다 — 9-8b 주석 참조).
       //
-      //     ⚠️ 두 단계 모두 훅 없이 한 번 부팅한 뒤 훅을 걸고 재부팅한다. 리매핑 기준인
+      //     ⚠️ 2단계는 훅 없이 한 번 부팅한 뒤 훅을 걸고 재부팅한다. 리매핑 기준인
       //     앱 디렉터리(/idbfs/<hash>)는 Unity 네이티브가 main() 안에서 만들고
       //     마운트포인트는 /idbfs 자체라, 부팅 이력이 없는 페이지에서는 populate 시점에
       //     심을 경로를 알 수 없다(그 분기는 9-10의 cold-boot 케이스가 고정한다).
@@ -2402,9 +2407,9 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       //     페이지에서 한 번 더 시도한다 — readPlayerPrefsEntryFromIdb 주석 참조.
       // -----------------------------------------------------------------------
       test('9-8. [legacy import] adopts a legacy origin IDBFS dump and promotes it to AIT Storage', async ({ browser }) => {
-        // seed 부팅 + persist idle 대기 + (워밍 부팅 + 재부팅) × 2단계,
-        // 느린 러너 대비 여유
-        test.setTimeout(420000);
+        // seed 부팅 + persist idle 대기 + (워밍 부팅 + 재부팅). 느린 러너(6000.0/6000.3)에서
+        // 이 구간만 실측 ~6분이라(run 32462382123) 420초로는 마진이 없다.
+        test.setTimeout(600000);
 
         // --- 1단계: 실제 Unity PlayerPrefs 바이트를 만들어 IndexedDB(IDBFS)에서 추출 ---
         const seedPage = await browser.newPage();
@@ -2567,10 +2572,27 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
           await legacyPage.close();
         }
 
-        // --- 3단계: "PlayerPrefs가 하나도 없는 매니페스트"가 이미 깔린 설치 ---
-        // 마이그레이션 창을 absent에만 걸어두면 정작 이관이 필요한 인구(신 origin에서
-        // 한 번이라도 부팅해 빈 매니페스트가 기록된 기존 설치)가 통째로 누락된다.
-        // 스냅샷에 scoped 파일이 0건이면 창이 아직 열려 있다고 보고 훑어야 한다.
+        pp8LegacySeed = legacySeed;
+      });
+
+      // -----------------------------------------------------------------------
+      // 9-8b [레거시 origin 마이그레이션 — 빈 매니페스트 설치] "PlayerPrefs가 하나도 없는
+      //      매니페스트"가 이미 깔린 설치에서도 같은 임포트가 일어나는지 확인한다.
+      //      마이그레이션 창을 매니페스트 부재에만 걸어두면 정작 이관이 필요한 인구
+      //      (신 origin에서 한 번이라도 부팅해 빈 매니페스트가 기록된 기존 설치)가 통째로
+      //      누락된다 — 창은 "스냅샷에 scoped 파일 0건"으로 판정해야 한다.
+      //
+      //      9-8과 한 테스트였다가 분리했다. 두 단계가 각각 Unity 부팅 2회를 쓰는데
+      //      test.setTimeout은 테스트 단위라, 느린 러너(6000.0/6000.3)에서 1+2단계가
+      //      예산의 대부분을 먹고 3단계가 시간 안에 못 끝나 죽었다(run 32462382123).
+      //      분리하면 각 테스트가 자기 예산을 갖고, CI 재시도도 실패한 쪽만 다시 돈다.
+      //      1단계 seed는 9-8이 만든 것을 pp8LegacySeed로 물려받는다.
+      // -----------------------------------------------------------------------
+      test('9-8b. [legacy import] fires even when a manifest exists but carries no PlayerPrefs', async ({ browser }) => {
+        test.setTimeout(420000);
+        expect(pp8LegacySeed, '9-8 must have produced a legacy seed first').toBeTruthy();
+        const legacySeed = pp8LegacySeed;
+
         const staleEmptyPage = await browser.newPage();
         try {
           await staleEmptyPage.addInitScript(() => {
@@ -2587,7 +2609,7 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
             };
           });
 
-          // 2단계와 같은 이유로 앱 디렉터리를 먼저 만들어 둔다(훅 없이 1회 부팅)
+          // 9-8 2단계와 같은 이유로 앱 디렉터리를 먼저 만들어 둔다(훅 없이 1회 부팅)
           const staleResp = await staleEmptyPage.goto(`http://localhost:${sharedPort}?e2e=true`, {
             waitUntil: 'domcontentloaded',
             timeout: 60000
@@ -2611,17 +2633,17 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
               readIdbfs: function () { return Promise.resolve(dump); }
             };
           }, legacySeed);
-          await reloadAndWaitForUnity(staleEmptyPage, '9-8 empty-manifest');
+          await reloadAndWaitForUnity(staleEmptyPage, '9-8b empty-manifest');
 
           const status98b = await staleEmptyPage.evaluate(() => window['AITPlayerPrefs'].status());
-          console.log(`[9-8] empty-manifest phase status: ${JSON.stringify(status98b)}`);
+          console.log(`[9-8b] status: ${JSON.stringify(status98b)}`);
 
           const staleGet = await triggerPlayerPrefsAndWait(
             staleEmptyPage,
             () => staleEmptyPage.evaluate((key) => window['TriggerPlayerPrefsGet'](key), 'ait_e2e_pp8'),
             'get'
           );
-          console.log(`[9-8] empty-manifest phase TriggerPlayerPrefsGet result: ${JSON.stringify(staleGet)}`);
+          console.log(`[9-8b] TriggerPlayerPrefsGet result: ${JSON.stringify(staleGet)}`);
           expect(status98b.legacyImport, 'an empty manifest must not close the migration window').toBe('imported');
           expect(status98b.mode, 'boot must stay in ait mode').toBe('ait');
           expect(staleGet.value, 'seam must also fire when the manifest exists but carries no PlayerPrefs file').toBe('v8');

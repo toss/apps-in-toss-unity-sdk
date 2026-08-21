@@ -33,6 +33,7 @@ public class AITResetWebGLSettingsTests
         // (brotliRecompress 도 같은 사유로 제외 — UI 미노출 숨김 스파이크 설정이라 "기본값 복원"이
         //  조용히 덮어쓰면 안 되므로 ResetWebGLOptimizationDefaults 대상 및 이 목록에서 제외한다.)
         "memorySize", "threadsSupport", "nameFilesAsHashes", "firstInteractiveLog",
+        "playerPrefsPersistence",
         // 페이지 캐시 / warm / 네이티브 프리페치
         "pageCache", "pageCacheName", "warmManifest", "warmPage", "nativeAssetSource",
         // 오디오 스트리밍

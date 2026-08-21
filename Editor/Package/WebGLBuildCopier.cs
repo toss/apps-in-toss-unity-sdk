@@ -549,6 +549,38 @@ namespace AppsInToss.Editor.Package
         }
 
         /// <summary>
+        /// 텍스트를 대상 경로에 쓰되, 이미 같은 내용이 들어 있으면 쓰기를 스킵합니다
+        /// (<see cref="CopyFileIfChanged"/>의 텍스트 산출물 판(版)).
+        ///
+        /// public/ 안에 파일을 산출하는 코드는 반드시 이 헬퍼를 써야 한다:
+        /// <see cref="Package.PackageBuildStateMarker.ComputePublicManifestHash"/>가 public/ 트리를
+        /// (경로, 길이, mtimeTicks)로만 해시하며 "mtime 불변 == 내용 불변"을 전제하기 때문이다
+        /// (PackageBuildStateMarker 클래스 주석 참조). 내용이 같은데도 무조건 재작성하면 mtime이
+        /// 매번 전진해 패키징 스킵이 영원히 발동하지 않는다.
+        ///
+        /// 인코딩은 호출부가 넘긴 것을 그대로 쓴다(BOM 유무 등 기존 산출물과 byte-identical 유지).
+        /// 비교는 <see cref="File.ReadAllText(string)"/>의 디코딩 결과로 하므로 BOM 차이에 영향받지 않는다.
+        /// </summary>
+        /// <returns>실제로 썼으면 true, 내용이 같아 스킵했으면 false</returns>
+        internal static bool WriteAllTextIfChanged(string destPath, string content, System.Text.Encoding encoding)
+        {
+            try
+            {
+                if (File.Exists(destPath) && File.ReadAllText(destPath) == content)
+                {
+                    return false;
+                }
+            }
+            catch (System.Exception)
+            {
+                // 비교 실패(락·인코딩 이상 등)는 fail-open — 그냥 새로 쓴다.
+            }
+
+            File.WriteAllText(destPath, content, encoding);
+            return true;
+        }
+
+        /// <summary>
         /// srcDir → destDir 재귀 미러 복사: 변경된 파일만 복사하고, destDir에서 srcDir에 없는
         /// 파일/디렉토리를 제거해 stale 산출물이 남지 않게 한다 (Unity 버전 전환으로 파일명 세트가
         /// 바뀌는 경우 포함). .meta 파일은 UnityUtil.CopyDirectory와 동일하게 복사·정리 대상에서

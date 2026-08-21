@@ -195,8 +195,11 @@ namespace AppsInToss.Editor.Package
                 return null;
             }
 
-            File.WriteAllText(outputPath, json, Encoding.UTF8);
-            Debug.Log($"[AIT] ✓ ait-warm-manifest.json 산출 완료: {outputPath}");
+            // public/ 안에 쓰므로 반드시 IfChanged 경로를 타야 한다 — PackageBuildStateMarker가
+            // public/ 트리를 mtime으로 해시하며 "mtime 불변 == 내용 불변"을 전제하기 때문에,
+            // 내용이 같은데 무조건 재작성하면 패키징 스킵이 영원히 발동하지 않는다.
+            bool written = WebGLBuildCopier.WriteAllTextIfChanged(outputPath, json, Encoding.UTF8);
+            Debug.Log($"[AIT] ✓ ait-warm-manifest.json 산출 완료{(written ? "" : " (내용 동일 — 재작성 생략)")}: {outputPath}");
 
             // .ait 메타데이터 prefetch 에 인라인으로 실을 compact v2 카탈로그를 산출.
             // nativeSource 실효값(tri-state: -1=자동, 0=비활성, 1=활성)을 카탈로그에 동봉.

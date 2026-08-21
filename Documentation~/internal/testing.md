@@ -26,6 +26,9 @@ Level 2는 Level 1이 업로드한 `ait-build` 아티팩트를 내려받아 vite
 | 9-5 | mock 없는 순정 프로덕션 경로에서 에러·거부·부팅 회귀 없음 |
 | 9-6 | [통제군, 2021.3 전용] 레이어를 완전히 끈 순정 Unity 상태에서 같은 세션 노화 시나리오를 재연해, 9-4의 실패가 레이어와 무관함을 증명 |
 | 9-7 | 제휴사(게임)가 자체 키로 Storage를 직접 쓰는 상황에서, 레이어가 제휴사 소유 키를 절대 건드리지 않음(레이어의 접근은 매니페스트 키 1개로 한정됨)을 호출 장부(ledger)로 감사 |
+| 9-8 | [레거시 origin 마이그레이션] AIT 매니페스트 부재 + 로컬 IDBFS도 빈 첫 부팅에서, `__AIT_PP_LEGACY_SOURCE__` 오버라이드 훅이 준 옛 origin IDBFS 덤프(실제 Unity가 쓴 PlayerPrefs 바이트)를 채택해 MEMFS에 심고 즉시 AIT Storage로 승격함(경로 리매핑 포함)을 `TriggerPlayerPrefsGet` 왕복과 `status()`로 검증. 3단계에서 "PlayerPrefs가 하나도 없는 매니페스트"가 이미 깔린 설치에서도 동일하게 발화함을 확인 — 마이그레이션 창은 매니페스트 부재가 아니라 "스냅샷에 scoped 파일 0건"으로 판정된다 |
+| 9-9 | [회귀 방지] `__AIT_PP_LEGACY_SOURCE__` 훅을 설치하지 않으면 absent 분기 동작이 어댑터 도입 이전과 정확히 동일함(`legacyImport`/`legacyBackend`가 `none`, `legacyBytes`가 0)을 확인 |
+| 9-10 | [실패 매트릭스] 레거시 소스가 reject하거나 hang해도 부팅을 막지 않음 — reject는 `legacyImport: 'error'`, hang은 자체 타임박스로 `legacyImport: 'timeout'`이 되며 두 경우 모두 `mode: 'ait'`로 부팅 완료. 두 분기 모두 빈 매니페스트(`files: {}`)를 남기지 않아 다음 부팅에 재시도 여지가 남는지도 함께 검증 |
 
 ## Unity 버전
 

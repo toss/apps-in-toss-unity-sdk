@@ -43,6 +43,15 @@
     var BASE64_CHUNK = 8192;             // 8KB 슬라이스 (스택 오버플로 회피)
     var FIRST_PERSIST_LOG_LIMIT = 40;    // 첫 persist 경로 로그 상한
 
+    var LEGACY_READ_TIMEOUT_MS = 1000;   // 레거시 read 자체 상한 (필수 경로인 STORAGE_POLL_TIMEOUT_MS보다 짧게)
+    var LEGACY_GATE_RESERVE_MS = 400;    // 부트 게이트 데드라인까지 남겨둘 마진 — 레거시 타임아웃이 항상 먼저 발화하도록
+    var LEGACY_MIN_BUDGET_MS = 250;      // 이보다 예산이 적으면 시도조차 하지 않는다
+    // 임포트 방향 크기 상한 — push의 MAX_MANIFEST_CHARS와 대칭. base64 인코딩/복호와
+    // MEMFS 쓰기는 전부 동기라 타임박스가 선점할 수 없다(거대 페이로드 = 메인 스레드 동결).
+    // 상한을 넘긴 덤프는 어차피 MAX_MANIFEST_CHARS 때문에 push도 못 하므로 심을 이유가 없다.
+    var LEGACY_MAX_BYTES = 256 * 1024;                              // 원본 바이트 상한
+    var LEGACY_MAX_B64_CHARS = 4 * Math.ceil(LEGACY_MAX_BYTES / 3); // 위 상한을 base64 길이로 환산
+
     // stat.mode 비트 (Emscripten FS와 동일)
     var S_IFMT = 61440;
     var S_IFDIR = 16384;
@@ -64,6 +73,12 @@
         restoredBytes: 0,
         mirrorCount: 0,
         persistCount: 0,          // persist(populate=false) 방향이 최종 cb까지 완료된 횟수(성공/실패 무관)
+        legacyImport: 'none',     // 'none' | 'skip-mountpoint' | 'skip-budget' | 'skip-unknown-local'
+                                  // | 'skip-local-present' | 'skip-gate-fired' | 'empty' | 'imported'
+                                  // | 'timeout' | 'error'
+        legacyBackend: 'none',    // 'none' | 'override' | 'platform'
+        legacyBytes: 0,           // 레거시 origin에서 심은 바이트 (restoredBytes와 의미가 다르므로 분리)
+        legacyMs: 0,              // readIdbfs 소요 ms (예산 튜닝 관측용)
         lastError: null
     };
 
@@ -76,9 +91,11 @@
     var readOk = false;           // 초기 read 성공 여부 — 실패 세션은 절대 쓰지 않는다
     var sessionKilled = false;    // kill-switch L3
     var lastPushedHash = null;    // 변경 없을 때 push 생략
+    var remoteHasScoped = false;  // 원격 스냅샷에 scoped 파일이 실려 있는지 — 빈 매니페스트 생성 방지용
     var setItemFailures = 0;      // kill-switch L2 카운터
     var seq = 0;                  // 스냅샷 시퀀스
     var firstPersistLogged = false;
+    var legacyImportRan = false;  // 레거시 임포트 세션 내 재진입 가드 (settled는 호출별 지역 변수라 못 막는다)
     var warned = {};              // console.warn 1회 보장용
 
     // ===========================================
@@ -335,6 +352,9 @@
                 if (res.kind === 'present') {
                     var s = Number(res.snapshot.seq);
                     if (isFinite(s) && s > seq) seq = s;
+                    // 이미 원격에 PlayerPrefs가 있는 스냅샷에서만 "빈 files push"(DeleteAll
+                    // 반영)를 허용한다 — pushScoped 참조
+                    if (snapshotHasScopedFile(res.snapshot)) remoteHasScoped = true;
                 }
             }
             return res;
@@ -517,6 +537,272 @@
         log('스냅샷 복원 완료 — 파일 ' + keys.length + '개, ' + state.restoredBytes + 'B');
     }
 
+    // ===========================================
+    // 레거시 origin 임포트 (마이그레이션 seam)
+    // ===========================================
+    function isUsableLegacySource(s) {
+        return !!(s && typeof s.readIdbfs === 'function');
+    }
+
+    /**
+     * 플랫폼의 "옛 origin 저장소 읽기" API를 레거시 소스로 감싼다.
+     * 스펙 미확정 — 확정되면 이 함수 본문만 바꾼다.
+     *
+     * 제약 (본문을 채울 때 반드시 지킬 것):
+     *  - 반드시 **동기 탐지**만 한다. resolveStorage()식 폴링을 흉내 내면 레거시 소스가
+     *    영영 없는 대다수 부팅에서 부트 게이트 예산을 통째로 태운다.
+     *  - activeStorage(플랫폼 Storage) 객체를 경유하지 않는다. 이 레이어의 Storage
+     *    접근은 매니페스트 키 1개로 감사되고 있다.
+     */
+    function getPlatformLegacySource() {
+        return null;
+    }
+
+    function getOverrideLegacySource() {
+        var o = window.__AIT_PP_LEGACY_SOURCE__;
+        return isUsableLegacySource(o) ? o : null;
+    }
+
+    /** __AIT_PLAYERPREFS_STORAGE__과 동일 위험도의 테스트 훅 — 프로덕션 잔류를 1회 경고한다 */
+    function maybeWarnLegacyProdOverride() {
+        if (!state.configured || !state.isProduction) return;
+        if (!getOverrideLegacySource()) return;
+        warnOnce('prod-override-legacy',
+            'window.__AIT_PP_LEGACY_SOURCE__ 오버라이드가 프로덕션에서 사용됩니다. 테스트용 훅이 남아있지 않은지 확인하세요.');
+    }
+
+    /** 오버라이드 훅 → 플랫폼 seam 순서로 동기 1회 조회. 없으면 null */
+    function resolveLegacySource() {
+        var o = getOverrideLegacySource();
+        if (o) { state.legacyBackend = 'override'; maybeWarnLegacyProdOverride(); return o; }
+        var p = getPlatformLegacySource();
+        if (isUsableLegacySource(p)) { state.legacyBackend = 'platform'; return p; }
+        return null;
+    }
+
+    /**
+     * 레거시 contents의 바이트 길이. 바이트 배열류가 아니면 -1.
+     * ⚠️ 숫자를 여기서 걸러내는 것이 핵심이다 — 플랫폼이 length 필드를 그대로 흘려
+     *    contents=500000000 같은 값이 오면 encodeBase64의 `new Uint8Array(bytes)`가
+     *    500MB를 조용히 할당해버린다.
+     */
+    function legacyByteLength(raw) {
+        if (typeof raw !== 'object' || raw === null) return -1;
+        if (typeof ArrayBuffer !== 'undefined' && raw instanceof ArrayBuffer) return raw.byteLength;
+        var n = raw.length;
+        if (typeof n !== 'number' || !isFinite(n) || n < 0) return -1;
+        return n;
+    }
+
+    /**
+     * 레거시 IDBFS 덤프(키=절대경로, 값=FILE_DATA 엔트리)에서 scoped 파일 1건만 골라
+     * 우리 files 형태로 정규화한다. 판단이 조금이라도 모호하면 null(포기).
+     *
+     * ⚠️ 조상 디렉터리 엔트리는 만들지 않는다. Emscripten storeLocalEntry는 **디렉터리
+     *    엔트리에 한해서만** mkdirTree를 부르고 파일 엔트리에는 부르지 않는다 — 지금은
+     *    SCOPE_RE가 /idbfs/<hash>/PlayerPrefs 단일 파일이고 그 부모는 Unity가 이미
+     *    마운트해 둔 마운트포인트라 무해하다. 스코프를 하위 경로까지 넓히면 이 전제가
+     *    깨지므로, 그때는 조상 디렉터리 엔트리를 함께 만들어야 한다(overlayScoped 참조).
+     */
+    function normalizeLegacyDump(dump, mountpoint) {
+        if (!dump || typeof dump !== 'object') return null;
+        if (!SCOPE_DIR_RE.test(mountpoint)) return null;
+
+        var keys = Object.keys(dump);
+        var candidates = [];
+        for (var i = 0; i < keys.length; i++) {
+            if (SCOPE_RE.test(keys[i])) candidates.push(keys[i]);
+        }
+        candidates.sort();
+
+        // 옛 origin의 /idbfs/<hash>가 현재 세션과 다를 수 있으므로 현재 마운트포인트로
+        // 리매핑한다. 리매핑 없이 심으면 Unity가 못 읽는 좌초 경로가 매니페스트에 실려
+        // 이후 부팅마다 복원된다.
+        var target = mountpoint + '/PlayerPrefs';
+        var picked = null;
+        if (candidates.indexOf(target) !== -1) picked = target;
+        else if (candidates.length === 1) picked = candidates[0];
+        // 정확 일치 없이 후보가 2개 이상이면 어느 게임의 데이터인지 판단할 수 없다
+        if (!picked) return null;
+
+        var v = dump[picked];
+        if (!v || typeof v !== 'object') return null;
+        var mode = Number(v['mode']);
+        if (!isFinite(mode) || isDirMode(mode)) return null;
+
+        var d = '';
+        var raw = v['contents'];
+        if (typeof raw === 'string') {
+            // 이미 base64 — 인코딩 없이 길이만으로 상한을 건다
+            if (raw.length > LEGACY_MAX_B64_CHARS) {
+                recordError('레거시 contents 크기',
+                    new Error('base64 ' + raw.length + '자 > 상한 ' + LEGACY_MAX_B64_CHARS + '자'));
+                return null;
+            }
+            d = raw;
+        } else if (raw !== null && raw !== undefined) {
+            // 인코딩(동기·비선점) 이전에 형태와 크기를 먼저 확정한다
+            var len = legacyByteLength(raw);
+            if (len < 0) {
+                recordError('레거시 contents 형태', new Error('바이트 배열이 아닙니다'));
+                return null;
+            }
+            if (len > LEGACY_MAX_BYTES) {
+                recordError('레거시 contents 크기',
+                    new Error(len + 'B > 상한 ' + LEGACY_MAX_BYTES + 'B'));
+                return null;
+            }
+            try {
+                d = encodeBase64(raw);
+            } catch (e) {
+                recordError('레거시 contents 인코딩', e);
+                return null;
+            }
+        }
+
+        // 0바이트 파일은 채택하지 않는다(임포트할 내용이 없는 것과 같다). 심어버리면
+        // 직후 승격 push에서 col.scoped.length가 1이 되어 "빈 매니페스트를 쓰지 않는다"는
+        // 가드를 우회하고, 빈 PlayerPrefs가 정본으로 승격돼 마이그레이션 창이 영구히
+        // 닫힌다. 호출자는 이 null을 legacyImport='empty'로 기록한다.
+        if (d.length === 0) return null;
+
+        var files = {};
+        files[target] = { m: mode, t: toMillis(v['timestamp']), d: d };
+        return files;
+    }
+
+    /**
+     * 레거시 files를 MEMFS에 심고 심은 바이트 수를 돌려준다.
+     * ⚠️ overlayScoped와 달리 lastPushedHash를 절대 건드리지 않는다 — 건드리면 직후
+     *    승격 push가 "변경 없음"으로 판정돼 통째로 스킵된다(기능이 조용히 무효화).
+     * 전제조건상 로컬 scoped 집합이 비어 있으므로 삭제(removeEntrySync)는 하지 않는다.
+     */
+    function applyLegacyFiles(mount, files) {
+        var keys = Object.keys(files).sort();
+        var bytes = 0;
+        for (var i = 0; i < keys.length; i++) {
+            var rec = files[keys[i]];
+            var buf;
+            try {
+                buf = decodeBase64(rec.d);
+            } catch (e) {
+                recordError('레거시 base64 복호(' + keys[i] + ')', e);
+                continue;
+            }
+            if (storeEntrySync(keys[i], { 'timestamp': rec.t, 'mode': rec.m, 'contents': buf })) {
+                bytes += buf.length;
+            }
+        }
+        return bytes;
+    }
+
+    /** 스냅샷에 scoped PlayerPrefs 파일이 하나라도 담겨 있는지 (조상 디렉터리 엔트리는 제외) */
+    function snapshotHasScopedFile(snapshot) {
+        var files = snapshot && snapshot.files;
+        if (!files || typeof files !== 'object') return false;
+        var keys = Object.keys(files);
+        for (var i = 0; i < keys.length; i++) {
+            if (SCOPE_RE.test(keys[i])) return true;
+        }
+        return false;
+    }
+
+    /**
+     * 부트 게이트 데드라인까지 LEGACY_GATE_RESERVE_MS를 남기고 쓸 수 있는 read 예산.
+     * 호출 시각 기준이라, 사이에 동기 작업이 끼면 반드시 다시 계산해야 한다.
+     */
+    function legacyBudgetMs(gateArmedAt) {
+        return Math.min(
+            LEGACY_READ_TIMEOUT_MS,
+            state.bootTimeoutMs - (Date.now() - gateArmedAt) - LEGACY_GATE_RESERVE_MS
+        );
+    }
+
+    /**
+     * 마이그레이션 창(= AIT 스냅샷에 PlayerPrefs가 하나도 없는 상태)에서, 로컬도
+     * 완전히 빈 부팅에 한해 옛 origin 저장소를 한 번 훑는다.
+     *
+     * done은 정확히 1회 호출된다. 레거시 소스가 없으면 **동기** 호출이므로 오늘의
+     * absent 경로와 같은 tick·같은 순서가 유지된다.
+     *
+     * 부트 게이트와 레이스하지 않는다 — 자기 타이머 데드라인이 LEGACY_GATE_RESERVE_MS만큼
+     * 항상 앞서므로, 레거시 임포트 때문에 게이트가 발화해 vanilla로 강등되는 일이 없다.
+     */
+    function tryLegacyImport(mount, gateArmedAt, isSettled, done) {
+        var finished = false;
+        function finishOnce() {
+            if (finished) return;
+            finished = true;
+            done();
+        }
+
+        // 재진입: 앞선 실행이 남긴 확정 진단('imported'/'timeout'/...)을 덮어쓰지 않는다
+        if (legacyImportRan) { finishOnce(); return; }
+        var src = resolveLegacySource();
+        if (!src) { state.legacyImport = 'none'; finishOnce(); return; }
+        legacyImportRan = true;
+
+        var mp = String((mount && mount.mountpoint) || '').replace(/\/+$/, '');
+        if (!SCOPE_DIR_RE.test(mp)) { state.legacyImport = 'skip-mountpoint'; finishOnce(); return; }
+
+        // 예산이 이미 없으면 collectScoped 비용조차 치르지 않는다
+        if (legacyBudgetMs(gateArmedAt) < LEGACY_MIN_BUDGET_MS) {
+            state.legacyImport = 'skip-budget'; finishOnce(); return;
+        }
+
+        var col = collectScoped(mount);
+        // "비었음"과 "모름"은 다르다 — 모르는 상태에서 심으면 덮어쓰기 금지 원칙을 어긴다
+        if (!col) { state.legacyImport = 'skip-unknown-local'; finishOnce(); return; }
+        if (col.scoped.length > 0) { state.legacyImport = 'skip-local-present'; finishOnce(); return; }
+
+        // collectScoped는 전부 동기(getLocalSet + 파일별 loadLocalEntry + base64 인코딩)라
+        // 큰 파일 트리에서 수백 ms를 태울 수 있다. 타이머를 거는 **이 시점**의 예산으로
+        // 다시 계산해야 실제 게이트 마진이 LEGACY_GATE_RESERVE_MS로 보장된다 —
+        // 호출 진입 시각 기준으로 걸면 그 사이 소요분만큼 마진이 잠식돼, 레거시
+        // 임포트 때문에 게이트가 먼저 발화하고 vanilla로 강등될 수 있다.
+        var budget = legacyBudgetMs(gateArmedAt);
+        if (budget < LEGACY_MIN_BUDGET_MS) { state.legacyImport = 'skip-budget'; finishOnce(); return; }
+
+        var t0 = Date.now();
+        var timer = setTimeout(function () {
+            state.legacyMs = Date.now() - t0;
+            state.legacyImport = 'timeout';
+            finishOnce();
+        }, budget);
+
+        new Promise(function (r) {
+            // readIdbfs가 동기 throw해도 여기서 잡힌다
+            r(src.readIdbfs());
+        }).then(function (dump) {
+            if (finished) return; // 타임아웃이 이미 이겼다
+            clearTimeout(timer);
+            state.legacyMs = Date.now() - t0;
+            // 게이트가 이미 발화했다면 Unity가 MEMFS를 읽어간 뒤다 — 절대 건드리지 않는다
+            if (isSettled()) { state.legacyImport = 'skip-gate-fired'; finishOnce(); return; }
+            var files;
+            try {
+                files = normalizeLegacyDump(dump, mp);
+                if (files) state.legacyBytes = applyLegacyFiles(mount, files);
+            } catch (e) {
+                recordError('레거시 임포트 적용', e);
+                state.legacyImport = 'error';
+                finishOnce();
+                return;
+            }
+            if (!files) { state.legacyImport = 'empty'; finishOnce(); return; }
+            state.legacyImport = state.legacyBytes > 0 ? 'imported' : 'empty';
+            log('레거시 origin 스냅샷을 채택했습니다 — ' + state.legacyBytes + 'B, ' + state.legacyMs + 'ms');
+            finishOnce();
+        }, function (e) {
+            if (finished) return;
+            clearTimeout(timer);
+            state.legacyMs = Date.now() - t0;
+            recordError('레거시 읽기', e);
+            state.legacyImport = 'error';
+            finishOnce();
+        });
+    }
+
     function canWrite() {
         // state.foreign은 mode !== 'ait'로도 이미 걸리지만(foreign은 vanilla와 동일하게
         // 강등됨), push의 유일한 진입점인 이 함수에서 한 번 더 명시적으로 막아 우회
@@ -531,6 +817,12 @@
             if (!canWrite()) { resolve(false); return; }
             var col = collectScoped(mount);
             if (!col) { resolve(false); return; }
+
+            // 원격에도 로컬에도 PlayerPrefs가 없는 상태에서는 매니페스트를 만들지 않는다.
+            // 빈 매니페스트를 한 번 쓰면 다음 부팅부터 스냅샷이 'present'가 되어
+            // 마이그레이션 창이 닫힌다 — 지울 것도 실을 것도 없는 push라 얻는 것도 없다.
+            // (remoteHasScoped가 true면 DeleteAll 반영이므로 빈 files를 그대로 push한다)
+            if (col.scoped.length === 0 && !remoteHasScoped) { resolve(false); return; }
 
             var filesJson = serializeFiles(col.files);
             var hash = fnv1a(filesJson);
@@ -551,6 +843,7 @@
             }).then(function () {
                 seq = nextSeq;
                 lastPushedHash = hash;
+                remoteHasScoped = col.scoped.length > 0;
                 setItemFailures = 0;
                 state.mirrorCount++;
                 clearSessionKill();
@@ -590,6 +883,11 @@
         }
     }
 
+    /**
+     * 승격 push. 로컬도 레거시도 비어 있는 부팅에서는 pushScoped가 알아서 아무것도
+     * 쓰지 않는다 — 레거시 읽기가 timeout/error/skip-budget으로 끝난 부팅에서
+     * `{"files":{}}`를 남기면 그 순간 다음 부팅부터 마이그레이션 창이 닫히기 때문이다.
+     */
     function scheduleImmediatePush(mount) {
         setTimeout(function () {
             pushScoped(mount).catch(function (e) { recordError('승격 push', e); });
@@ -599,6 +897,9 @@
     function populatePath(mount, callback) {
         var settled = false;
         var gate = null;
+        var gateArmedAt = 0;
+
+        function isSettled() { return settled; }
 
         function finish(mode) {
             if (settled) return;
@@ -607,6 +908,19 @@
             setMode(mode);
             // Unity의 addRunDependency 게이트를 푸는 유일한 지점 — 정확히 1회
             try { callback(null); } catch (e) { recordError('populate 콜백', e); }
+        }
+
+        /**
+         * 마이그레이션 창 처리: 옛 origin을 한 번 훑은 뒤 로컬 상태를 AIT로 승격한다.
+         * 레거시 소스가 없으면 tryLegacyImport가 **동기**로 done을 부르므로 어댑터
+         * 도입 이전과 같은 tick·같은 순서가 유지된다.
+         */
+        function importThenPromote() {
+            tryLegacyImport(mount, gateArmedAt, isSettled, function () {
+                if (settled) return;
+                finish('ait');
+                scheduleImmediatePush(mount);
+            });
         }
 
         // ① 기존 IndexedDB → MEMFS 복원 (에러는 현행 Unity 동작대로 삼킨다)
@@ -619,6 +933,8 @@
             if (settled) return;
 
             // ② AIT 스냅샷 대기만 타임박스한다
+            // 레거시 임포트 예산의 기준점은 반드시 "게이트를 건 시각"이어야 한다
+            gateArmedAt = Date.now();
             gate = setTimeout(function () {
                 // 스냅샷을 기다리다 부팅을 막을 수는 없다 — vanilla로 강등하고 진행.
                 // L3 세션 kill은 여기서 걸지 않는다(가용성 프로브 실패는 일시적일 수
@@ -635,11 +951,20 @@
                     if (res.kind === 'present') {
                         // ② AIT 스냅샷이 정본 — scoped 영역만 덮어쓴다
                         overlayScoped(mount, res.snapshot);
-                        finish('ait');
+                        if (snapshotHasScopedFile(res.snapshot)) {
+                            finish('ait');
+                        } else {
+                            // 매니페스트는 있는데 PlayerPrefs가 하나도 없다 = 마이그레이션
+                            // 창이 아직 열려 있는 상태다. 'absent'에만 걸어두면 이전 버전이
+                            // 남긴 빈 매니페스트(또는 데이터가 생기기 전 부팅)만으로 창이
+                            // 닫혀, 정작 이관이 필요한 사용자에게 seam이 영영 발화하지 않는다.
+                            importThenPromote();
+                        }
                     } else if (res.kind === 'absent') {
-                        // 마이그레이션: 기존 IndexedDB 데이터를 채택하고 즉시 AIT로 승격
-                        finish('ait');
-                        scheduleImmediatePush(mount);
+                        // 마이그레이션: 기존 IndexedDB 데이터를 채택하고 즉시 AIT로 승격.
+                        // 로컬이 완전히 빈 부팅에 한해 그 직전에 옛 origin 저장소를 한 번 훑는다.
+                        // Unity는 callback(null) 직후 MEMFS를 읽으므로 finish는 임포트 뒤에 온다.
+                        importThenPromote();
                     } else if (res.kind === 'foreign') {
                         // 다른 주체가 이미 이 키를 쓰고 있다 — 오버레이도, 승격 push도 하지 않는다
                         finish('foreign');
@@ -835,6 +1160,10 @@
             mode: state.mode,
             restoredBytes: state.restoredBytes,
             mirrorCount: state.mirrorCount,
+            legacyImport: state.legacyImport,
+            legacyBackend: state.legacyBackend,
+            legacyBytes: state.legacyBytes,
+            legacyMs: state.legacyMs,
             lastError: state.lastError
         };
     }
@@ -904,6 +1233,7 @@
         }
 
         maybeWarnProdOverride();
+        maybeWarnLegacyProdOverride();
 
         try {
             // 파일 close마다 자동 persist → PlayerPrefs.Save() 없이도 미러링 기회 확보

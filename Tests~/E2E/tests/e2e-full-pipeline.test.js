@@ -404,6 +404,25 @@ async function triggerPlayerPrefsAndWait(page, triggerFn, expectedOp, timeoutMs 
 }
 
 /**
+ * mock 백킹(localStorage)에 기록된 AIT 매니페스트의 /PlayerPrefs 엔트리 수.
+ * 매니페스트가 아직 없으면 null (= 아무것도 기록하지 않음)이고, 0이면 **빈 매니페스트**다.
+ * 빈 매니페스트는 다음 부팅을 'present' 분기로 보내 레거시 마이그레이션 창을 영구히
+ * 닫아버리므로, 실을 데이터가 없는 부팅에서는 애초에 기록되지 않아야 한다.
+ */
+async function scopedFileCountInManifest(page, prefix) {
+  return page.evaluate((p) => {
+    const raw = window.localStorage.getItem(p + 'AITUnityFS_v1_manifest');
+    if (raw === null) return null;
+    try {
+      const files = JSON.parse(JSON.parse(raw).inline).files || {};
+      return Object.keys(files).filter((k) => /\/PlayerPrefs$/.test(k)).length;
+    } catch (e) {
+      return -1; // 우리 포맷이 아니다 — 이 단언의 관심사가 아니므로 0이 아닌 값으로
+    }
+  }, prefix);
+}
+
+/**
  * reload → unityInstance 재설정까지를 3-1과 동일한 하니스 순단 분류로 감싼 재시도 헬퍼.
  *
  * self-hosted 러너의 vite preview가 부하로 루프백 스트림을 끊으면(ERR_CONNECTION_CLOSED /
@@ -2301,6 +2320,365 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
             'layer must never call removeItem/clearItems (post-reload)').toEqual([]);
         } finally {
           await partnerPage.close();
+        }
+      });
+
+      // -----------------------------------------------------------------------
+      // 9-8 [레거시 origin 마이그레이션 어댑터] AIT 매니페스트 부재 + 로컬 IDBFS도
+      //     빈 첫 부팅에서, __AIT_PP_LEGACY_SOURCE__ 오버라이드 훅이 준 옛 origin
+      //     IDBFS 덤프를 채택해 MEMFS에 심고 즉시 AIT Storage로 승격하는지 확인한다.
+      //
+      //     실제 브라우저 IndexedDB(IDBFS 백킹, DB명 '/idbfs', 'FILE_DATA' object
+      //     store)에서 진짜 Unity가 쓴 PlayerPrefs 엔트리를 먼저 만든 뒤 그대로
+      //     추출해 덤프로 재사용한다 — 손으로 만든 바이트가 아니라 실제 Unity
+      //     PlayerPrefs 포맷이어야 TriggerPlayerPrefsGet 왕복까지 검증할 수 있다.
+      //     seed 파일의 경로 해시(legacy_origin_seed)는 이번 세션의 실제
+      //     mountpoint와 다르게 골라 리매핑 로직(§2.3-5)도 함께 검증한다.
+      //
+      //     3단계에서는 "PlayerPrefs가 하나도 없는 매니페스트"가 이미 깔린 설치에서도
+      //     같은 임포트가 일어나는지 확인한다 — 마이그레이션 창을 매니페스트 부재에만
+      //     걸어두면 이관 대상 인구가 통째로 누락되기 때문이다.
+      // -----------------------------------------------------------------------
+      test('9-8. [legacy import] adopts a legacy origin IDBFS dump and promotes it to AIT Storage', async ({ browser }) => {
+        // seed 부팅 + persist idle 대기(최대 30초×2) + 임포트 부팅 + 빈 매니페스트 부팅,
+        // 느린 러너 대비 여유
+        test.setTimeout(420000);
+
+        // --- 1단계: 실제 Unity PlayerPrefs 바이트를 만들어 IndexedDB(IDBFS)에서 추출 ---
+        const seedPage = await browser.newPage();
+        let legacySeed;
+        try {
+          await seedPage.addInitScript(() => {
+            window['__AIT_PLAYERPREFS_STORAGE__'] = {
+              getItem: function (key) { return Promise.resolve(window.localStorage.getItem('PW_PP8_SEED_MOCK_' + key)); },
+              setItem: function (key, value) { return Promise.resolve(window.localStorage.setItem('PW_PP8_SEED_MOCK_' + key, value)); }
+            };
+          });
+          const seedResp = await seedPage.goto(`http://localhost:${sharedPort}?e2e=true`, {
+            waitUntil: 'domcontentloaded',
+            timeout: 60000
+          });
+          expect(seedResp?.status()).toBe(200);
+          await waitForUnityInstance(seedPage);
+
+          const persistCountBefore = await seedPage.evaluate(() => window['__AIT_PP'].persistCount);
+          const seedSet = await triggerPlayerPrefsAndWait(
+            seedPage,
+            () => seedPage.evaluate((json) => window['TriggerPlayerPrefsSet'](json),
+              JSON.stringify({ key: 'ait_e2e_pp8', value: 'v8' })),
+            'set'
+          );
+          expect(seedSet.success, 'seed PlayerPrefs.SetString + Save should succeed').toBe(true);
+          await seedPage.waitForFunction(
+            (baseline) => window['__AIT_PP'].persistCount > baseline && window['__AIT_PP'].persistIdle(),
+            persistCountBefore,
+            { timeout: 30000 }
+          );
+
+          // 2021.3의 1-persist 지연 대비(9-4와 동일 근거) — 두 번째 Save로 최신 값이
+          // 실린 persist를 결정적으로 만든다.
+          const persistCountMid = await seedPage.evaluate(() => window['__AIT_PP'].persistCount);
+          const seedSet2 = await triggerPlayerPrefsAndWait(
+            seedPage,
+            () => seedPage.evaluate((json) => window['TriggerPlayerPrefsSet'](json),
+              JSON.stringify({ key: 'ait_e2e_pp8', value: 'v8' })),
+            'set'
+          );
+          expect(seedSet2.success, 'second seed Save should also succeed').toBe(true);
+          await seedPage.waitForFunction(
+            (baseline) => window['__AIT_PP'].persistCount > baseline && window['__AIT_PP'].persistIdle(),
+            persistCountMid,
+            { timeout: 30000 }
+          );
+
+          legacySeed = await seedPage.evaluate(() => {
+            const probe = new Promise((resolve, reject) => {
+              try {
+                const req = indexedDB.open('/idbfs');
+                req.onerror = () => reject(req.error || new Error('idb open failed'));
+                req.onsuccess = () => {
+                  try {
+                    const db = req.result;
+                    const names = Array.from(db.objectStoreNames);
+                    const store = names.includes('FILE_DATA') ? 'FILE_DATA' : names[0];
+                    const tx = db.transaction(store, 'readonly');
+                    let found = null;
+                    const cur = tx.objectStore(store).openCursor();
+                    cur.onsuccess = () => {
+                      const c = cur.result;
+                      if (c) {
+                        const k = String(c.key);
+                        if (/\/PlayerPrefs$/.test(k)) {
+                          const v = c.value || {};
+                          found = {
+                            mode: v.mode,
+                            timestamp: v.timestamp ? new Date(v.timestamp).getTime() : 0,
+                            contents: v.contents ? Array.from(v.contents) : []
+                          };
+                        }
+                        c.continue();
+                      } else {
+                        db.close();
+                        if (found) resolve(found); else reject(new Error('PlayerPrefs entry not found in IDBFS'));
+                      }
+                    };
+                    cur.onerror = () => { db.close(); reject(cur.error); };
+                  } catch (e) { reject(e); }
+                };
+              } catch (e) { reject(e); }
+            });
+            return Promise.race([
+              probe,
+              new Promise((_, reject) => setTimeout(() => reject(new Error('idb probe timeout')), 8000))
+            ]);
+          });
+          expect(legacySeed && legacySeed.contents && legacySeed.contents.length,
+            'seeded PlayerPrefs entry must carry non-empty raw bytes').toBeGreaterThan(0);
+        } finally {
+          await seedPage.close();
+        }
+
+        // --- 2단계: 완전히 빈 새 페이지에서 레거시 소스 훅으로 위 덤프를 제공 ---
+        const legacyPage = await browser.newPage();
+        try {
+          await legacyPage.addInitScript((seed) => {
+            window['__AIT_PLAYERPREFS_STORAGE__'] = {
+              getItem: function (key) { return Promise.resolve(window.localStorage.getItem('PW_PP8_AIT_MOCK_' + key)); },
+              setItem: function (key, value) { return Promise.resolve(window.localStorage.setItem('PW_PP8_AIT_MOCK_' + key, value)); }
+            };
+            var dump = {};
+            // 현재 세션의 mountpoint 해시와 일부러 다른 경로 — 어댑터가 현재
+            // mountpoint 기준으로 리매핑하는지(§2.3-5) 함께 검증한다.
+            dump['/idbfs/legacy_origin_seed/PlayerPrefs'] = {
+              mode: seed.mode,
+              timestamp: seed.timestamp,
+              contents: seed.contents
+            };
+            window['__AIT_PP_LEGACY_SOURCE__'] = {
+              readIdbfs: function () { return Promise.resolve(dump); }
+            };
+          }, legacySeed);
+
+          const legacyResp = await legacyPage.goto(`http://localhost:${sharedPort}?e2e=true`, {
+            waitUntil: 'domcontentloaded',
+            timeout: 60000
+          });
+          expect(legacyResp?.status()).toBe(200);
+          await waitForUnityInstance(legacyPage);
+
+          const getResult = await triggerPlayerPrefsAndWait(
+            legacyPage,
+            () => legacyPage.evaluate((key) => window['TriggerPlayerPrefsGet'](key), 'ait_e2e_pp8'),
+            'get'
+          );
+          console.log(`[9-8] TriggerPlayerPrefsGet result: ${JSON.stringify(getResult)}`);
+          expect(getResult.success, 'PlayerPrefs.GetString should succeed after legacy adoption').toBe(true);
+          expect(getResult.value, 'Unity must read the value adopted from the legacy origin dump').toBe('v8');
+
+          const status98 = await legacyPage.evaluate(() => window['AITPlayerPrefs'].status());
+          console.log(`[9-8] status: ${JSON.stringify(status98)}`);
+          expect(status98.legacyImport, 'legacyImport must report imported').toBe('imported');
+          expect(status98.legacyBackend, 'legacyBackend must report override').toBe('override');
+          expect(status98.legacyBytes, 'legacyBytes must be > 0').toBeGreaterThan(0);
+          expect(status98.mode, 'adopted legacy data must be promoted to ait mode').toBe('ait');
+
+          // 승격 push까지 완료됐는지 — 매니페스트가 AIT Storage(mock 백킹)에 기록되어야 한다
+          await legacyPage.waitForFunction(
+            () => window.localStorage.getItem('PW_PP8_AIT_MOCK_AITUnityFS_v1_manifest') !== null,
+            undefined, { timeout: 15000 }
+          );
+        } finally {
+          await legacyPage.close();
+        }
+
+        // --- 3단계: "PlayerPrefs가 하나도 없는 매니페스트"가 이미 깔린 설치 ---
+        // 마이그레이션 창을 absent에만 걸어두면 정작 이관이 필요한 인구(신 origin에서
+        // 한 번이라도 부팅해 빈 매니페스트가 기록된 기존 설치)가 통째로 누락된다.
+        // 스냅샷에 scoped 파일이 0건이면 창이 아직 열려 있다고 보고 훑어야 한다.
+        const staleEmptyPage = await browser.newPage();
+        try {
+          await staleEmptyPage.addInitScript((seed) => {
+            var PREFIX = 'PW_PP8B_AIT_MOCK_';
+            // 이전 부팅이 남긴 빈 매니페스트를 시드 (files가 비어 있는 정상 포맷)
+            if (window.localStorage.getItem(PREFIX + 'AITUnityFS_v1_manifest') === null) {
+              var inline = JSON.stringify({ v: 1, seq: 1, scope: 'playerprefs', files: {} });
+              window.localStorage.setItem(PREFIX + 'AITUnityFS_v1_manifest',
+                JSON.stringify({ v: 1, seq: 1, ts: Date.now(), inline: inline }));
+            }
+            window['__AIT_PLAYERPREFS_STORAGE__'] = {
+              getItem: function (key) { return Promise.resolve(window.localStorage.getItem(PREFIX + key)); },
+              setItem: function (key, value) { return Promise.resolve(window.localStorage.setItem(PREFIX + key, value)); }
+            };
+            var dump = {};
+            dump['/idbfs/legacy_origin_seed/PlayerPrefs'] = {
+              mode: seed.mode,
+              timestamp: seed.timestamp,
+              contents: seed.contents
+            };
+            window['__AIT_PP_LEGACY_SOURCE__'] = {
+              readIdbfs: function () { return Promise.resolve(dump); }
+            };
+          }, legacySeed);
+
+          const staleResp = await staleEmptyPage.goto(`http://localhost:${sharedPort}?e2e=true`, {
+            waitUntil: 'domcontentloaded',
+            timeout: 60000
+          });
+          expect(staleResp?.status()).toBe(200);
+          await waitForUnityInstance(staleEmptyPage);
+
+          const staleGet = await triggerPlayerPrefsAndWait(
+            staleEmptyPage,
+            () => staleEmptyPage.evaluate((key) => window['TriggerPlayerPrefsGet'](key), 'ait_e2e_pp8'),
+            'get'
+          );
+          console.log(`[9-8] empty-manifest phase TriggerPlayerPrefsGet result: ${JSON.stringify(staleGet)}`);
+          expect(staleGet.value, 'seam must also fire when the manifest exists but carries no PlayerPrefs file').toBe('v8');
+
+          const status98b = await staleEmptyPage.evaluate(() => window['AITPlayerPrefs'].status());
+          console.log(`[9-8] empty-manifest phase status: ${JSON.stringify(status98b)}`);
+          expect(status98b.legacyImport, 'an empty manifest must not close the migration window').toBe('imported');
+          expect(status98b.mode, 'boot must stay in ait mode').toBe('ait');
+
+          // 임포트분이 매니페스트로 승격됐는지 (빈 매니페스트가 그대로 남으면 안 된다)
+          await staleEmptyPage.waitForFunction(() => {
+            var raw = window.localStorage.getItem('PW_PP8B_AIT_MOCK_AITUnityFS_v1_manifest');
+            if (!raw) return false;
+            try {
+              var files = JSON.parse(JSON.parse(raw).inline).files || {};
+              return Object.keys(files).some(function (k) { return /\/PlayerPrefs$/.test(k); });
+            } catch (e) { return false; }
+          }, undefined, { timeout: 15000 });
+        } finally {
+          await staleEmptyPage.close();
+        }
+      });
+
+      // -----------------------------------------------------------------------
+      // 9-9 [회귀 방지] __AIT_PP_LEGACY_SOURCE__ 훅을 설치하지 않으면 absent 분기의
+      //     동작이 어댑터 도입 이전과 정확히 동일해야 한다 — 이것이 어댑터 설계의
+      //     핵심 불변식이다(훅이 없으면 동작 변화가 정확히 0).
+      // -----------------------------------------------------------------------
+      test('9-9. [regression guard] legacy import stays a no-op when no legacy source hook is installed', async ({ browser }) => {
+        test.setTimeout(120000);
+
+        const page = await browser.newPage();
+        try {
+          await page.addInitScript(() => {
+            window['__AIT_PLAYERPREFS_STORAGE__'] = {
+              getItem: function (key) { return Promise.resolve(window.localStorage.getItem('PW_PP9_MOCK_' + key)); },
+              setItem: function (key, value) { return Promise.resolve(window.localStorage.setItem('PW_PP9_MOCK_' + key, value)); }
+            };
+            // 의도적으로 __AIT_PP_LEGACY_SOURCE__는 설치하지 않는다.
+          });
+
+          const response = await page.goto(`http://localhost:${sharedPort}?e2e=true`, {
+            waitUntil: 'domcontentloaded',
+            timeout: 60000
+          });
+          expect(response?.status()).toBe(200);
+          await waitForUnityInstance(page);
+
+          const result = await triggerPlayerPrefsAndWait(
+            page,
+            () => page.evaluate((json) => window['TriggerPlayerPrefsSet'](json),
+              JSON.stringify({ key: 'ait_e2e_pp9', value: 'v9' })),
+            'set'
+          );
+          expect(result.success, 'PlayerPrefs.SetString + Save should succeed exactly as before the adapter existed').toBe(true);
+
+          const status99 = await page.evaluate(() => window['AITPlayerPrefs'].status());
+          console.log(`[9-9] status: ${JSON.stringify(status99)}`);
+          expect(status99.mode, 'absent-branch boot must still promote to ait mode without a legacy source').toBe('ait');
+          expect(status99.legacyImport, 'legacyImport must report none when no hook is installed').toBe('none');
+          expect(status99.legacyBackend, 'legacyBackend must report none when no hook is installed').toBe('none');
+          expect(status99.legacyBytes, 'legacyBytes must stay 0 when no import was attempted').toBe(0);
+
+          await page.waitForFunction(
+            () => window.localStorage.getItem('PW_PP9_MOCK_AITUnityFS_v1_manifest') !== null,
+            undefined, { timeout: 15000 }
+          );
+        } finally {
+          await page.close();
+        }
+      });
+
+      // -----------------------------------------------------------------------
+      // 9-10 [실패 매트릭스] 레거시 소스가 reject하거나 hang해도 부팅을 막지 않아야
+      //     한다. hang 분기는 절대 resolve/reject하지 않는 Promise를 주고, 어댑터의
+      //     자체 타임박스(최대 1000ms, §4)로 강등되는지 확인한다 — 부트 게이트
+      //     (기본 2500ms)까지 태우면 그 자체가 §5-④ 순회귀다. 절대 시간(elapsed)은
+      //     느린 CI 러너에서 Unity 자체 부트(wasm 컴파일 등)만으로도 수십 초가 걸릴
+      //     수 있어 하드 단언하지 않고 진단 로그로만 남긴다 — 검증 대상은 어디까지나
+      //     legacyImport 값과 최종 mode다.
+      //
+      //     두 분기 모두 **빈 매니페스트를 남기지 않는지**도 함께 본다. 실패한 레거시
+      //     읽기가 `{"files":{}}`를 기록해버리면 다음 부팅이 'present' 분기로 빠져
+      //     그 사용자의 마이그레이션 창이 영구히 닫힌다(재시도 기회가 사라진다).
+      // -----------------------------------------------------------------------
+      test('9-10. [failure matrix] legacy source reject/hang degrades gracefully without blocking boot', async ({ browser }) => {
+        test.setTimeout(300000);
+
+        // --- reject 분기 ---
+        const rejectPage = await browser.newPage();
+        try {
+          await rejectPage.addInitScript(() => {
+            window['__AIT_PLAYERPREFS_STORAGE__'] = {
+              getItem: function (key) { return Promise.resolve(window.localStorage.getItem('PW_PP10A_MOCK_' + key)); },
+              setItem: function (key, value) { return Promise.resolve(window.localStorage.setItem('PW_PP10A_MOCK_' + key, value)); }
+            };
+            window['__AIT_PP_LEGACY_SOURCE__'] = {
+              readIdbfs: function () { return Promise.reject(new Error('legacy backend unavailable (e2e)')); }
+            };
+          });
+          const t0 = Date.now();
+          const rejectResp = await rejectPage.goto(`http://localhost:${sharedPort}?e2e=true`, {
+            waitUntil: 'domcontentloaded',
+            timeout: 60000
+          });
+          expect(rejectResp?.status()).toBe(200);
+          await waitForUnityInstance(rejectPage);
+          console.log(`[9-10] reject branch booted in ${Date.now() - t0}ms`);
+
+          const statusReject = await rejectPage.evaluate(() => window['AITPlayerPrefs'].status());
+          console.log(`[9-10] reject branch status: ${JSON.stringify(statusReject)}`);
+          expect(statusReject.legacyImport, 'a rejecting legacy source must be recorded as error, not silently ignored').toBe('error');
+          expect(statusReject.mode, 'boot must still promote to ait mode after a legacy source rejection').toBe('ait');
+          expect(await scopedFileCountInManifest(rejectPage, 'PW_PP10A_MOCK_'),
+            'a failed legacy read must not leave an empty manifest behind — it would close the migration window for good').not.toBe(0);
+        } finally {
+          await rejectPage.close();
+        }
+
+        // --- hang 분기: 영원히 resolve/reject하지 않는 Promise ---
+        const hangPage = await browser.newPage();
+        try {
+          await hangPage.addInitScript(() => {
+            window['__AIT_PLAYERPREFS_STORAGE__'] = {
+              getItem: function (key) { return Promise.resolve(window.localStorage.getItem('PW_PP10B_MOCK_' + key)); },
+              setItem: function (key, value) { return Promise.resolve(window.localStorage.setItem('PW_PP10B_MOCK_' + key, value)); }
+            };
+            window['__AIT_PP_LEGACY_SOURCE__'] = {
+              readIdbfs: function () { return new Promise(function () { /* 의도적으로 영원히 미해결 */ }); }
+            };
+          });
+          const t0 = Date.now();
+          const hangResp = await hangPage.goto(`http://localhost:${sharedPort}?e2e=true`, {
+            waitUntil: 'domcontentloaded',
+            timeout: 60000
+          });
+          expect(hangResp?.status()).toBe(200);
+          await waitForUnityInstance(hangPage);
+          console.log(`[9-10] hang branch booted in ${Date.now() - t0}ms`);
+
+          const statusHang = await hangPage.evaluate(() => window['AITPlayerPrefs'].status());
+          console.log(`[9-10] hang branch status: ${JSON.stringify(statusHang)}`);
+          expect(statusHang.legacyImport, 'a hanging legacy source must be bounded by its own timebox, not the boot gate').toBe('timeout');
+          expect(statusHang.mode, 'boot must still reach ait mode after a legacy source timeout (not degrade to vanilla)').toBe('ait');
+          expect(await scopedFileCountInManifest(hangPage, 'PW_PP10B_MOCK_'),
+            'a timed-out legacy read must not leave an empty manifest behind — it would close the migration window for good').not.toBe(0);
+        } finally {
+          await hangPage.close();
         }
       });
 

@@ -80,6 +80,44 @@ public class AITIndexTemplateBootTests
         StringAssert.DoesNotContain("crossorigin", preloadTag);
     }
 
+    /// <summary>
+    /// 여러 줄 콘텐츠로 치환되는 플레이스홀더는 index.html 에 정확히 1회만 등장해야 한다.
+    ///
+    /// 치환은 단순 문자열 Replace 이므로 주석 안에 토큰을 적어두면 그 자리에도 콘텐츠가 주입된다.
+    /// 주입값이 여러 줄이면 '//' 주석(첫 줄만 막음)이나 HTML 주석을 뚫고 나와 뒤따르는 코드를
+    /// 통째로 망가뜨린다 — 실제로 로딩 바 제거 스크립트가 이 방식으로 SyntaxError 를 내며
+    /// 통째로 실행되지 않았고("Unexpected identifier 'Unity'"), 페이지 에러를 단언하는 E2E 가
+    /// 생기기 전까지 아무도 알아채지 못했다.
+    ///
+    /// 한 줄 값으로 치환되는 토큰(%AIT_BUILD_VARIANT% 등)은 주석에 적어도 안전하므로 대상이 아니다.
+    /// </summary>
+    [Test]
+    public void MultiLinePlaceholders_AppearExactlyOnce()
+    {
+        string html = ReadIndexHtmlSource();
+
+        string[] multiLinePlaceholders =
+        {
+            "%AIT_LOADING_SCREEN%",
+            "%AIT_PAGE_CACHE_SCRIPT%",
+            "%AIT_EARLY_FETCH_SCRIPT%",
+        };
+
+        foreach (string token in multiLinePlaceholders)
+        {
+            int count = 0;
+            for (int i = html.IndexOf(token); i >= 0; i = html.IndexOf(token, i + token.Length))
+            {
+                count++;
+            }
+
+            Assert.AreEqual(1, count,
+                $"{token} 은 실제 치환 지점 1곳에만 있어야 한다(현재 {count}곳). " +
+                "주석/문서 문구에서 이 토큰을 언급하면 그 자리에도 여러 줄 콘텐츠가 주입되어 " +
+                "해당 스크립트 블록이 SyntaxError 로 죽는다.");
+        }
+    }
+
     [Test]
     public void Head_DoesNotPreloadDataOrCodeUrl()
     {

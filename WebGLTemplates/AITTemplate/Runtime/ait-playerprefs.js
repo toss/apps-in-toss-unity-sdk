@@ -34,6 +34,10 @@
     var SCOPE_RE = /^\/idbfs\/[^/]+\/PlayerPrefs$/;
     // 위 파일의 조상 디렉터리(/idbfs/<hash>) — 스냅샷에 함께 담긴다
     var SCOPE_DIR_RE = /^\/idbfs\/[^/]+$/;
+    // Unity가 IDBFS를 마운트하는 지점. prejs IdbFs.js가 FS.mkdir('/idbfs') 직후
+    // FS.mount(IDBFS, ..., '/idbfs')를 부르므로 마운트포인트는 /idbfs "자체"다 —
+    // 앱 디렉터리 /idbfs/<hash>는 그 안쪽이고 마운트포인트가 아니다.
+    var IDBFS_ROOT = '/idbfs';
 
     var STORAGE_POLL_INTERVAL_MS = 50;   // window.AppsInToss.Storage 폴링 간격
     var STORAGE_POLL_TIMEOUT_MS = 1500;  // 폴링 상한
@@ -74,8 +78,8 @@
         mirrorCount: 0,
         persistCount: 0,          // persist(populate=false) 방향이 최종 cb까지 완료된 횟수(성공/실패 무관)
         legacyImport: 'none',     // 'none' | 'skip-mountpoint' | 'skip-budget' | 'skip-unknown-local'
-                                  // | 'skip-local-present' | 'skip-gate-fired' | 'empty' | 'imported'
-                                  // | 'timeout' | 'error'
+                                  // | 'skip-local-present' | 'skip-unknown-appdir' | 'skip-gate-fired'
+                                  // | 'empty' | 'imported' | 'timeout' | 'error'
         legacyBackend: 'none',    // 'none' | 'override' | 'platform'
         legacyBytes: 0,           // 레거시 origin에서 심은 바이트 (restoredBytes와 의미가 다르므로 분리)
         legacyMs: 0,              // readIdbfs 소요 ms (예산 튜닝 관측용)
@@ -599,14 +603,19 @@
      * 우리 files 형태로 정규화한다. 판단이 조금이라도 모호하면 null(포기).
      *
      * ⚠️ 조상 디렉터리 엔트리는 만들지 않는다. Emscripten storeLocalEntry는 **디렉터리
-     *    엔트리에 한해서만** mkdirTree를 부르고 파일 엔트리에는 부르지 않는다 — 지금은
-     *    SCOPE_RE가 /idbfs/<hash>/PlayerPrefs 단일 파일이고 그 부모는 Unity가 이미
-     *    마운트해 둔 마운트포인트라 무해하다. 스코프를 하위 경로까지 넓히면 이 전제가
-     *    깨지므로, 그때는 조상 디렉터리 엔트리를 함께 만들어야 한다(overlayScoped 참조).
+     *    엔트리에 한해서만** mkdirTree를 부르고 파일 엔트리에는 FS.writeFile을 부르므로
+     *    부모가 이미 있어야 한다. appDir은 호출자가 **현재 로컬 엔트리 목록에 실재하는
+     *    경로 중에서** 고른 값이라 존재 자체는 보장된다(resolveAppDir 참조). 그것이
+     *    디렉터리인지까지는 확인하지 않는데, getLocalSet의 entries가 timestamp만 싣고
+     *    mode는 loadLocalEntry(= 파일이면 내용 전체 읽기)로만 알 수 있어 부트 경로에
+     *    올릴 비용이 아니기 때문이다. 만에 하나 파일이면 storeLocalEntry가 ENOTDIR을
+     *    콜백으로 돌려주고 0바이트로 끝나(legacyImport='empty') 매니페스트를 건드리지
+     *    않으므로 창은 열린 채 남는다. 스코프를 하위 경로까지 넓히면 이 전제가 깨지므로,
+     *    그때는 조상 디렉터리 엔트리를 함께 만들어야 한다(overlayScoped 참조).
      */
-    function normalizeLegacyDump(dump, mountpoint) {
+    function normalizeLegacyDump(dump, appDir) {
         if (!dump || typeof dump !== 'object') return null;
-        if (!SCOPE_DIR_RE.test(mountpoint)) return null;
+        if (!SCOPE_DIR_RE.test(appDir)) return null;
 
         var keys = Object.keys(dump);
         var candidates = [];
@@ -615,10 +624,10 @@
         }
         candidates.sort();
 
-        // 옛 origin의 /idbfs/<hash>가 현재 세션과 다를 수 있으므로 현재 마운트포인트로
-        // 리매핑한다. 리매핑 없이 심으면 Unity가 못 읽는 좌초 경로가 매니페스트에 실려
-        // 이후 부팅마다 복원된다.
-        var target = mountpoint + '/PlayerPrefs';
+        // <hash>는 빌드가 서비스되는 URL에서 유도되므로 origin이 바뀌면 값도 바뀐다.
+        // 옛 origin의 경로를 그대로 심으면 Unity가 읽지 않는 좌초 경로가 매니페스트에
+        // 실려 이후 부팅마다 복원되기만 한다 — 반드시 현재 앱 디렉터리로 리매핑한다.
+        var target = appDir + '/PlayerPrefs';
         var picked = null;
         if (candidates.indexOf(target) !== -1) picked = target;
         else if (candidates.length === 1) picked = candidates[0];
@@ -696,6 +705,44 @@
         return bytes;
     }
 
+    /**
+     * 현재 세션의 앱 디렉터리(/idbfs/<hash>)를 로컬 파일 목록에서 찾는다.
+     *
+     * ⚠️ 마운트포인트로 대신할 수 없다. Unity는 IDBFS를 /idbfs 자체에 마운트하고
+     *    <hash> 디렉터리는 네이티브가 persistentDataPath를 처음 만질 때 그 안쪽에
+     *    만든다 — 즉 mount.mountpoint는 항상 '/idbfs'이지 앱 디렉터리가 아니다.
+     *
+     * 후보가 0개거나 2개 이상이면 null. 0개는 "이 origin에서 아직 한 번도 부팅한 적
+     * 없어 <hash>를 알 방법이 없다"는 뜻이다 — URL에서 유도되는 값이라 우리가 계산할
+     * 수 없고, 추측해서 심으면 매니페스트에 좌초 경로가 실려 이후 부팅마다 복원된다.
+     * 이 경우 임포트를 포기하는 대신 매니페스트를 쓰지 않아 창을 열어둔다(다음 부팅에
+     * 앱 디렉터리가 생기고 나면 그때 발화한다). 2개 이상은 한 origin이 서로 다른 빌드
+     * 둘을 서비스한 경우인데, 어느 쪽 데이터인지 알 수 없으므로 똑같이 물러난다.
+     *
+     * ⚠️ 알려진 한계: "후보 1개"가 곧 "그게 현재 앱 디렉터리"는 아니다. 같은 origin에서
+     *    서빙 URL만 바뀌면(경로 버저닝 등) 옛 URL의 디렉터리만 복원된 상태로 이 검사를
+     *    통과해 좌초 경로에 심게 되고, 그 결과가 매니페스트로 승격되면 창이 영구히 닫힌다
+     *    (옛 디렉터리에 PlayerPrefs가 남아 있으면 skip-local-present로 먼저 빠지므로
+     *    위험한 조합은 "PlayerPrefs 없는 stale 디렉터리 1개"뿐이다). 지금은
+     *    getPlatformLegacySource()가 stub이라 오버라이드 훅 없이는 도달하지 않는다 —
+     *    플랫폼 조회 수단을 연결하기 전에 반드시 해소할 것(TODO.md P2, 테스트 C5).
+     *
+     * 후보가 디렉터리인지는 검사하지 않는다 — getLocalSet의 entries는 timestamp만 싣고
+     * mode는 loadLocalEntry로만 알 수 있는데 그건 파일이면 내용을 통째로 읽는다. 순정
+     * Unity 빌드에서 /idbfs 바로 밑에는 앱 디렉터리 말고 아무것도 생기지 않고, 설령
+     * 파일이 걸려도 뒤쪽 storeLocalEntry가 ENOTDIR로 조용히 실패할 뿐이라
+     * (normalizeLegacyDump 주석 참조) 부트 경로에 동기 읽기를 얹을 값어치가 없다.
+     */
+    function resolveAppDir(all) {
+        var found = null;
+        for (var i = 0; i < all.length; i++) {
+            if (!SCOPE_DIR_RE.test(all[i])) continue;
+            if (found) return null; // 앱 디렉터리 후보가 둘 이상 — 어느 쪽인지 알 수 없다
+            found = all[i];
+        }
+        return found;
+    }
+
     /** 스냅샷에 scoped PlayerPrefs 파일이 하나라도 담겨 있는지 (조상 디렉터리 엔트리는 제외) */
     function snapshotHasScopedFile(snapshot) {
         var files = snapshot && snapshot.files;
@@ -743,17 +790,32 @@
         legacyImportRan = true;
 
         var mp = String((mount && mount.mountpoint) || '').replace(/\/+$/, '');
-        if (!SCOPE_DIR_RE.test(mp)) { state.legacyImport = 'skip-mountpoint'; finishOnce(); return; }
+        if (mp !== IDBFS_ROOT) { state.legacyImport = 'skip-mountpoint'; finishOnce(); return; }
 
         // 예산이 이미 없으면 collectScoped 비용조차 치르지 않는다
         if (legacyBudgetMs(gateArmedAt) < LEGACY_MIN_BUDGET_MS) {
             state.legacyImport = 'skip-budget'; finishOnce(); return;
         }
 
-        var col = collectScoped(mount);
+        // collectScoped의 getLocalSet은 자체 try/catch를 갖지만 loadEntrySync와
+        // encodeBase64는 그렇지 않다. 여기서 동기로 throw하면 populatePath의 try까지
+        // 올라가 세션이 통째로 vanilla로 강등되는데(그 경로에서는 legacyImport가 'none'
+        // 으로 남아 "훅 미설치"와 구분도 안 된다), 레거시 임포트는 어디까지나 부가
+        // 기능이라 실패해도 본 기능을 끌 이유가 없다. 여기서 막고 'skip-unknown-local'
+        // 로 기록한다 — pushScoped 경로에서는 Promise executor 안이라 원래 삼켜진다.
+        var col = null;
+        try {
+            col = collectScoped(mount);
+        } catch (e) {
+            recordError('레거시 임포트용 로컬 수집', e);
+        }
         // "비었음"과 "모름"은 다르다 — 모르는 상태에서 심으면 덮어쓰기 금지 원칙을 어긴다
         if (!col) { state.legacyImport = 'skip-unknown-local'; finishOnce(); return; }
         if (col.scoped.length > 0) { state.legacyImport = 'skip-local-present'; finishOnce(); return; }
+
+        // 리매핑 기준. 못 찾으면 심을 곳을 모르는 것이므로 아무것도 하지 않는다.
+        var appDir = resolveAppDir(col.all);
+        if (!appDir) { state.legacyImport = 'skip-unknown-appdir'; finishOnce(); return; }
 
         // collectScoped는 전부 동기(getLocalSet + 파일별 loadLocalEntry + base64 인코딩)라
         // 큰 파일 트리에서 수백 ms를 태울 수 있다. 타이머를 거는 **이 시점**의 예산으로
@@ -781,7 +843,7 @@
             if (isSettled()) { state.legacyImport = 'skip-gate-fired'; finishOnce(); return; }
             var files;
             try {
-                files = normalizeLegacyDump(dump, mp);
+                files = normalizeLegacyDump(dump, appDir);
                 if (files) state.legacyBytes = applyLegacyFiles(mount, files);
             } catch (e) {
                 recordError('레거시 임포트 적용', e);

@@ -358,7 +358,17 @@ namespace AppsInToss.Editor
             Debug.Log($"[AIT]   - Stack Trace Log Type (Error/Assert/Warning/Log/Exception): {PlayerSettings.GetStackTraceLogType(LogType.Error)} (WebGL 자동)");
             Debug.Log($"[AIT]   - Stripping Level: {strippingLevel}{(profile?.managedStrippingLevel < 0 || profile == null ? " (자동)" : " (프로필)")}");
             Debug.Log($"[AIT]   - IL2CPP 설정: {il2cppConfig}{(!string.IsNullOrEmpty(il2cppConfigEnv) ? " (환경 변수)" : editorConfig.il2cppConfiguration < 0 ? " (자동)" : "")}");
-            Debug.Log($"[AIT]   - IL2CPP Code Generation: {DescribeIl2CppCodeGeneration(il2cppCodeGeneration, il2cppCodeGenEnv)}");
+            // Unity 6+에서는 위에서 editorConfig/기본값으로 1차 적용한 뒤 빠른 빌드·env 오버라이드가
+            // 있을 때만 덮어쓰므로, 오버라이드가 없으면 1차 적용값이 최종값이다. 그 경우
+            // DescribeIl2CppCodeGeneration의 "(유지 · 프로젝트 설정)" 표기는 사실과 다르다.
+#if UNITY_6000_0_OR_NEWER
+            string il2cppCodeGenLog = il2cppCodeGeneration.HasValue
+                ? DescribeIl2CppCodeGeneration(il2cppCodeGeneration, il2cppCodeGenEnv)
+                : $"{il2cppCodeGen}{(editorConfig.il2cppCodeGeneration < 0 ? " (자동)" : "")}";
+#else
+            string il2cppCodeGenLog = DescribeIl2CppCodeGeneration(il2cppCodeGeneration, il2cppCodeGenEnv);
+#endif
+            Debug.Log($"[AIT]   - IL2CPP Code Generation: {il2cppCodeGenLog}");
             Debug.Log($"[AIT]   - Run In Background: {runInBackground}{(editorConfig.runInBackground < 0 ? " (자동)" : "")}");
             Debug.Log($"[AIT]   - Decompression Fallback: {decompressionFallback}{(editorConfig.decompressionFallback < 0 ? " (자동)" : "")}");
             string showUnityLogoLog = showUnityLogo ? "표시"
@@ -371,9 +381,6 @@ namespace AppsInToss.Editor
                     ? $"{AITWebGLCodeOptimization.GetCurrentName()}{(codeOpt.AllowLto ? "" : " (LTO 제외 — 6000.0 OOM 회피)")}{(editorConfig.webGLCodeOptimization < 0 ? " (자동)" : "")}"
                     : "미적용 (API 부재)";
             Debug.Log($"[AIT]   - WebGL Code Optimization: {webGLCodeOptLog}");
-#if UNITY_6000_0_OR_NEWER
-            Debug.Log($"[AIT]   - IL2CPP Code Generation: {il2cppCodeGen}{(editorConfig.il2cppCodeGeneration < 0 ? " (자동)" : "")}");
-#endif
 #if UNITY_6000_0_OR_NEWER
             Debug.Log($"[AIT]   - WebAssembly 2023: {wasm2023}{(editorConfig.wasm2023 < 0 ? " (자동)" : "")}");
 #endif

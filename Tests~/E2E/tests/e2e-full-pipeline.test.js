@@ -2412,7 +2412,13 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
         test.setTimeout(600000);
 
         // --- 1단계: 실제 Unity PlayerPrefs 바이트를 만들어 IndexedDB(IDBFS)에서 추출 ---
-        const seedPage = await browser.newPage();
+        // ⚠️ browser.newPage()가 아니라 **명시적 컨텍스트**로 연다. browser.newPage()는
+        // "페이지 1개 전용" 컨텍스트를 암묵 생성하고, 그 컨텍스트에 .newPage()를 다시
+        // 부르면 Playwright가 `Please use browser.newContext()`로 거부한다. 아래 폴백
+        // 프로브가 정확히 그 호출을 해야 하므로(같은 origin 저장소를 공유하는 새 페이지가
+        // 필요하다) 여기서부터 컨텍스트를 직접 만들어 둔다.
+        const seedContext = await browser.newContext();
+        const seedPage = await seedContext.newPage();
         let legacySeed;
         try {
           await seedPage.addInitScript(() => {
@@ -2472,8 +2478,14 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
             // 데 의존하는 것이 그 증거다. 저장소는 컨텍스트가 공유하고 세션 수명은
             // 페이지마다 따로이므로, 같은 컨텍스트의 새 페이지가 정확히 필요한 조합이다.
             // Unity를 띄우면 세션을 다시 늙히므로 route로 빈 문서만 하나 물린다.
+            //
+            // seedContext를 직접 쓴다(seedPage.context()가 아니라). 의미는 같지만,
+            // 이 컨텍스트가 browser.newContext()로 만들어진 것이어야 .newPage()가
+            // 허용된다는 사실을 호출부에서 바로 보이게 하려는 것이다 — 여기서
+            // browser.newPage()발 암묵 컨텍스트를 쓰면 `Please use browser.newContext()`로
+            // 죽는다(run 32466990653의 2021.3/2022.3 4개 leg가 전부 이 경로였다).
             console.log(`[9-8] seed page IDB probe failed (${probeErr && probeErr.message}) — retrying from a fresh page in the same context`);
-            const probePage = await seedPage.context().newPage();
+            const probePage = await seedContext.newPage();
             try {
               const probeUrl = `http://localhost:${sharedPort}/__ait_idb_probe__`;
               await probePage.route(probeUrl, (route) => route.fulfill({
@@ -2491,7 +2503,8 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
           expect(legacySeed && legacySeed.contents && legacySeed.contents.length,
             'seeded PlayerPrefs entry must carry non-empty raw bytes').toBeGreaterThan(0);
         } finally {
-          await seedPage.close();
+          // 컨텍스트를 닫으면 그 안의 페이지도 함께 닫힌다
+          await seedContext.close();
         }
 
         // --- 2단계: "새 origin에서 이미 한 번 부팅한 설치"에 레거시 훅을 걸고 재부팅 ---
@@ -2546,9 +2559,16 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
           await reloadAndWaitForUnity(legacyPage, '9-8 import');
 
           // 진단을 값 단언보다 **먼저** 읽는다 — 값 단언이 먼저 깨지면 어느 분기에서
-          // 빠졌는지(skip-unknown-appdir / timeout / empty ...) 알 수 없게 된다.
-          const status98 = await legacyPage.evaluate(() => window['AITPlayerPrefs'].status());
-          console.log(`[9-8] status: ${JSON.stringify(status98)}`);
+          // 빠졌는지(skip-no-watcher / skip-ambiguous / timeout / empty ...) 알 수 없게 된다.
+          //
+          // ⚠️ 이 시점 값에 단언을 걸면 안 된다. 심기는 populate가 아니라 **Unity가
+          // <appDir>/PlayerPrefs를 처음 열 때(node_ops.lookup 미스)** 일어나므로,
+          // 게이트 해제 직후에는 아직 'deferred'가 정상이다. PlayerPrefsTester는
+          // Awake/Start에서 PlayerPrefs를 건드리지 않아 부팅만으로는 발화하지 않는다.
+          // 단언은 Get 이후에 다시 뜬 statusAfter에 건다 — Get이 반드시 lookup을
+          // 유발하므로 그 시점에는 'imported'가 확정된다.
+          const statusBefore = await legacyPage.evaluate(() => window['AITPlayerPrefs'].status());
+          console.log(`[9-8] status (before first access): ${JSON.stringify(statusBefore)}`);
 
           const getResult = await triggerPlayerPrefsAndWait(
             legacyPage,
@@ -2556,11 +2576,16 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
             'get'
           );
           console.log(`[9-8] TriggerPlayerPrefsGet result: ${JSON.stringify(getResult)}`);
+
+          const status98 = await legacyPage.evaluate(() => window['AITPlayerPrefs'].status());
+          console.log(`[9-8] status (after first access): ${JSON.stringify(status98)}`);
+
           expect(status98.legacyImport, 'legacyImport must report imported').toBe('imported');
           expect(getResult.success, 'PlayerPrefs.GetString should succeed after legacy adoption').toBe(true);
           expect(getResult.value, 'Unity must read the value adopted from the legacy origin dump').toBe('v8');
           expect(status98.legacyBackend, 'legacyBackend must report override').toBe('override');
           expect(status98.legacyBytes, 'legacyBytes must be > 0').toBeGreaterThan(0);
+          expect(status98.legacyAppDir, 'legacyAppDir must record the observed app directory').toMatch(/^\/idbfs\/[^/]+$/);
           expect(status98.mode, 'adopted legacy data must be promoted to ait mode').toBe('ait');
 
           // 승격 push까지 완료됐는지 — 매니페스트가 AIT Storage(mock 백킹)에 기록되어야 한다
@@ -2635,8 +2660,9 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
           }, legacySeed);
           await reloadAndWaitForUnity(staleEmptyPage, '9-8b empty-manifest');
 
-          const status98b = await staleEmptyPage.evaluate(() => window['AITPlayerPrefs'].status());
-          console.log(`[9-8b] status: ${JSON.stringify(status98b)}`);
+          // 9-8과 같은 이유로 단언은 Get 이후 status에 건다(심기가 lookup 미스까지 지연됨)
+          const statusBefore98b = await staleEmptyPage.evaluate(() => window['AITPlayerPrefs'].status());
+          console.log(`[9-8b] status (before first access): ${JSON.stringify(statusBefore98b)}`);
 
           const staleGet = await triggerPlayerPrefsAndWait(
             staleEmptyPage,
@@ -2644,6 +2670,10 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
             'get'
           );
           console.log(`[9-8b] TriggerPlayerPrefsGet result: ${JSON.stringify(staleGet)}`);
+
+          const status98b = await staleEmptyPage.evaluate(() => window['AITPlayerPrefs'].status());
+          console.log(`[9-8b] status (after first access): ${JSON.stringify(status98b)}`);
+
           expect(status98b.legacyImport, 'an empty manifest must not close the migration window').toBe('imported');
           expect(status98b.mode, 'boot must stay in ait mode').toBe('ait');
           expect(staleGet.value, 'seam must also fire when the manifest exists but carries no PlayerPrefs file').toBe('v8');
@@ -2720,26 +2750,29 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       //     수 있어 하드 단언하지 않고 진단 로그로만 남긴다 — 검증 대상은 어디까지나
       //     legacyImport 값과 최종 mode다.
       //
-      //     세 번째 분기는 "이 origin에서 한 번도 실행된 적 없는 설치"다. 리매핑
-      //     기준인 앱 디렉터리(/idbfs/<hash>)가 아직 없어 심을 곳을 모르는 상태이고,
-      //     그때 추측하지 않고 skip-unknown-appdir로 물러나는지 확인한다 — 알려진
-      //     한계라서 조용히 넘기는 대신 값으로 고정해 둔다.
+      //     콜드 부트(앱 디렉터리가 아직 없는 최초 부팅)는 실패 사례가 아니라 정상
+      //     이관 경로가 되었으므로 9-11로 분리했다.
       //
-      //     세 분기 모두 **빈 매니페스트를 남기지 않는지**도 함께 본다. 실패한 레거시
+      //     두 분기 모두 **빈 매니페스트를 남기지 않는지**도 함께 본다. 실패한 레거시
       //     읽기가 `{"files":{}}`를 기록해버리면 다음 부팅이 'present' 분기로 빠져
       //     그 사용자의 마이그레이션 창이 영구히 닫힌다(재시도 기회가 사라진다).
       // -----------------------------------------------------------------------
       test('9-10. [failure matrix] legacy source reject/hang degrades gracefully without blocking boot', async ({ browser }) => {
-        test.setTimeout(420000);
+        // 분기당 워밍 부팅 + 재부팅 = Unity 부팅 4회. 예산 420초에 실측 426초로
+        // run 32466990653에서 5개 leg가 전부 6초 차로 죽었다(옛 9-8과 같은 병).
+        // 콜드 부트 분기를 9-11로 떼어냈지만 예산 자체에도 여유를 준다.
+        test.setTimeout(600000);
 
-        // 어댑터는 리매핑 기준인 앱 디렉터리(/idbfs/<hash>)를 알아야 비로소 레거시
-        // 소스를 호출한다. 그 디렉터리는 Unity가 main() 안에서 만들기 때문에 부팅
-        // 이력이 없는 페이지에서는 readIdbfs가 아예 불리지 않는다(= skip-unknown-appdir).
-        // 그래서 각 분기는 훅 없이 1회 부팅해 앱 디렉터리를 남긴 뒤 훅을 걸고 재부팅한다.
+        // 분기마다 **콜드 부트 1회**만 쓴다. 예전에는 훅 없이 한 번 부팅해 앱 디렉터리를
+        // 남긴 뒤 훅을 걸고 재부팅했는데, 그건 어댑터가 심을 위치를 populate 시점에
+        // 알아야 했던 시절의 요건이다. 지금은 readIdbfs 호출에 앱 디렉터리 선행 조건이
+        // 없다 — tryLegacyImport가 예산 확인 직후 곧바로 src.readIdbfs()를 부르고,
+        // reject/timeout은 그 자리에서 결판난다(앱 디렉터리 관측은 심기 시점으로 밀렸다).
+        // 워밍 부팅은 순수 낭비였고, 그 2회가 run 32466990653의 예산 초과에 기여했다.
         //
         // 분기끼리 페이지를 공유하지 않는다. 재사용하면 뒤쪽 분기일수록 세션이 늙는데,
         // 노화된 세션을 reload하면 page.evaluate가 무기한 hang되는 wedge가 실측돼 있다
-        // (TODO.md P2, run 31577487933 양 OS). 워밍 부팅을 한 번 더 치르는 편이 싸다.
+        // (TODO.md P2, run 31577487933 양 OS).
         const runFailureBranch = async (label, prefix, installHook) => {
           const page = await browser.newPage();
           try {
@@ -2749,21 +2782,15 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
                 setItem: function (key, value) { return Promise.resolve(window.localStorage.setItem(p + key, value)); }
               };
             }, prefix);
-            const warmResp = await page.goto(`http://localhost:${sharedPort}?e2e=true`, {
+            await page.addInitScript(installHook);
+
+            const t0 = Date.now();
+            const resp = await page.goto(`http://localhost:${sharedPort}?e2e=true`, {
               waitUntil: 'domcontentloaded',
               timeout: 60000
             });
-            expect(warmResp?.status()).toBe(200);
+            expect(resp?.status()).toBe(200);
             await waitForUnityInstance(page);
-            await page.waitForFunction(
-              () => window['__AIT_PP'].persistCount > 0 && window['__AIT_PP'].persistIdle(),
-              undefined,
-              { timeout: 30000 }
-            );
-
-            await page.addInitScript(installHook);
-            const t0 = Date.now();
-            await reloadAndWaitForUnity(page, `9-10 ${label}`);
             console.log(`[9-10] ${label} branch booted in ${Date.now() - t0}ms`);
 
             const status = await page.evaluate(() => window['AITPlayerPrefs'].status());
@@ -2796,24 +2823,53 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
         expect(hangBranch.manifestCount,
           'a timed-out legacy read must not leave an empty manifest behind — it would close the migration window for good').not.toBe(0);
 
-        // --- 최초 부팅 분기: 앱 디렉터리가 아직 없으면 심을 곳을 모른다 ---
-        // 이 origin에서 한 번도 실행된 적 없는 설치가 여기 해당한다. <hash>는 빌드가
-        // 서비스되는 URL에서 유도돼 옛 origin 값과 다르고 우리가 계산할 수 없으므로,
-        // 추측해서 심으면 Unity가 읽지 못하는 좌초 경로가 매니페스트에 실려 이후
-        // 부팅마다 복원되기만 한다. 그래서 이 부팅은 아무것도 하지 않고 넘어가되,
-        // 매니페스트를 쓰지 않아 창을 열어둔다 — 앱 디렉터리가 생긴 다음 부팅에서
-        // 이관이 일어난다. 알려진 한계이므로 조용히 넘기지 않고 값으로 고정한다.
+      });
+
+      // -----------------------------------------------------------------------
+      // 9-11 [콜드 부트 이관] "이 origin에서 한 번도 실행된 적 없는 설치"에서 **같은
+      //      세션 안에** 이관이 끝나는지 확인한다. 실제 이관 대상 인구의 첫 부팅이
+      //      정확히 이 모양이므로 이 테스트가 기능의 본체를 증명한다.
+      //
+      //      원래 9-10의 세 번째 분기로 "앱 디렉터리를 모르니 skip-unknown-appdir로
+      //      물러난다"를 고정하고 있었다. 어댑터가 심을 위치를 **추측**하던 시절의
+      //      한계였고, 그 추측은 후보가 1개면 좌초 경로에도 심어 창을 영구히 닫는
+      //      위험을 안고 있었다. 이제는 추측하지 않고 관측한다 — populate 시점에는
+      //      후보를 park만 하고(`deferred`), Unity가 <appDir>/PlayerPrefs를 처음 열 때
+      //      발생하는 node_ops.lookup 미스에서 엔진이 건네준 parent를 앱 디렉터리로
+      //      확정해 그 자리에 심는다. 따라서 기대값이 통째로 뒤집힌다.
+      //
+      //      ⚠️ 부팅 직후 값은 'deferred'가 정상이다. PlayerPrefsTester가 Awake/Start
+      //      에서 PlayerPrefs를 건드리지 않아 부팅만으로는 lookup이 일어나지 않는다.
+      //      Get이 첫 접근을 만들고, 그 접근이 곧 심기 트리거다. 심으면서 우리가
+      //      노드를 돌려주므로 그 자리에서 Unity가 우리 바이트를 읽는다 — 그래서
+      //      같은 Get 호출이 'v8'까지 돌려주는 것이 이 설계의 핵심 증거다.
+      //
+      //      seed는 9-8이 만든 **실제 Unity 바이트**를 재사용한다(9-8b와 같은 이유).
+      // -----------------------------------------------------------------------
+      test('9-11. [cold boot] legacy import completes within the very first session on a new origin', async ({ browser }) => {
+        test.setTimeout(300000);
+        expect(pp8LegacySeed, '9-8 must have produced a legacy seed first').toBeTruthy();
+        const legacySeed = pp8LegacySeed;
+
         const coldPage = await browser.newPage();
         try {
-          await coldPage.addInitScript(() => {
+          await coldPage.addInitScript((seed) => {
             window['__AIT_PLAYERPREFS_STORAGE__'] = {
-              getItem: function (key) { return Promise.resolve(window.localStorage.getItem('PW_PP10C_MOCK_' + key)); },
-              setItem: function (key, value) { return Promise.resolve(window.localStorage.setItem('PW_PP10C_MOCK_' + key, value)); }
+              getItem: function (key) { return Promise.resolve(window.localStorage.getItem('PW_PP11_MOCK_' + key)); },
+              setItem: function (key, value) { return Promise.resolve(window.localStorage.setItem('PW_PP11_MOCK_' + key, value)); }
+            };
+            var dump = {};
+            dump['/idbfs/legacy_origin_seed/PlayerPrefs'] = {
+              mode: seed.mode,
+              timestamp: seed.timestamp,
+              contents: seed.contents
             };
             window['__AIT_PP_LEGACY_SOURCE__'] = {
-              readIdbfs: function () { return Promise.resolve({ '/idbfs/legacy_origin_seed/PlayerPrefs': { mode: 33188, timestamp: 1, contents: [1, 2, 3] } }); }
+              readIdbfs: function () { return Promise.resolve(dump); }
             };
-          });
+          }, legacySeed);
+
+          // 워밍 부팅 없이 **곧바로** 훅을 걸고 1회만 부팅한다 — 그것이 이 테스트의 요점이다
           const coldResp = await coldPage.goto(`http://localhost:${sharedPort}?e2e=true`, {
             waitUntil: 'domcontentloaded',
             timeout: 60000
@@ -2821,13 +2877,44 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
           expect(coldResp?.status()).toBe(200);
           await waitForUnityInstance(coldPage);
 
+          const statusParked = await coldPage.evaluate(() => window['AITPlayerPrefs'].status());
+          console.log(`[9-11] status (parked, before first access): ${JSON.stringify(statusParked)}`);
+          expect(statusParked.legacyImport,
+            'populate must park the candidate, never guess a path to plant into').toBe('deferred');
+          expect(statusParked.legacyBytes, 'nothing may be planted before the app directory is observed').toBe(0);
+          expect(statusParked.mode, 'boot must reach ait mode while the import is still parked').toBe('ait');
+
+          // 첫 접근이 곧 심기 트리거다
+          const coldGet = await triggerPlayerPrefsAndWait(
+            coldPage,
+            () => coldPage.evaluate((key) => window['TriggerPlayerPrefsGet'](key), 'ait_e2e_pp8'),
+            'get'
+          );
+          console.log(`[9-11] TriggerPlayerPrefsGet result: ${JSON.stringify(coldGet)}`);
+
           const statusCold = await coldPage.evaluate(() => window['AITPlayerPrefs'].status());
-          console.log(`[9-10] cold-boot branch status: ${JSON.stringify(statusCold)}`);
-          expect(statusCold.legacyImport, 'a boot with no app directory yet must report skip-unknown-appdir, not a fake success').toBe('skip-unknown-appdir');
-          expect(statusCold.legacyBytes, 'nothing may be written when the target path is unknown').toBe(0);
-          expect(statusCold.mode, 'boot must still reach ait mode').toBe('ait');
-          expect(await scopedFileCountInManifest(coldPage, 'PW_PP10C_MOCK_'),
-            'the migration window must stay open for the next boot').not.toBe(0);
+          console.log(`[9-11] status (after first access): ${JSON.stringify(statusCold)}`);
+
+          expect(statusCold.legacyImport,
+            'the first PlayerPrefs access must complete the import in this same session').toBe('imported');
+          expect(statusCold.legacyBytes, 'legacyBytes must be > 0 after the import lands').toBeGreaterThan(0);
+          expect(statusCold.legacyAppDir,
+            'the planted path must be the app directory the engine handed us').toMatch(/^\/idbfs\/[^/]+$/);
+          expect(statusCold.legacyAppDir,
+            'the seeded legacy hash must never be used as the plant target — it is remapped').not.toContain('legacy_origin_seed');
+          expect(coldGet.value,
+            'Unity must read the bytes we planted during its own lookup — planting returns the node').toBe('v8');
+          expect(statusCold.mode, 'boot must stay in ait mode').toBe('ait');
+
+          // 임포트분이 매니페스트로 승격됐는지
+          await coldPage.waitForFunction(() => {
+            var raw = window.localStorage.getItem('PW_PP11_MOCK_AITUnityFS_v1_manifest');
+            if (!raw) return false;
+            try {
+              var files = JSON.parse(JSON.parse(raw).inline).files || {};
+              return Object.keys(files).some(function (k) { return /\/PlayerPrefs$/.test(k); });
+            } catch (e) { return false; }
+          }, undefined, { timeout: 15000 });
         } finally {
           await coldPage.close();
         }

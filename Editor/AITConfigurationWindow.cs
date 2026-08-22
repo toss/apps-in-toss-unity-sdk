@@ -544,7 +544,7 @@ namespace AppsInToss.Editor
             GUILayout.Space(10);
 
             // 변경된 설정 개수 표시
-            int modifiedCount = CountModifiedWebGLSettings();
+            int modifiedCount = CountModifiedWebGLSettings(config);
             if (modifiedCount > 0)
             {
                 EditorGUILayout.HelpBox(
@@ -2393,8 +2393,18 @@ namespace AppsInToss.Editor
             EditorGUILayout.EndHorizontal();
         }
 
-        private int CountModifiedWebGLSettings()
+        /// <summary>
+        /// WebGL 최적화 레버 중 기본값에서 벗어난 항목 수를 센다("N개 설정이 기본값에서 변경됨" 배지).
+        ///
+        /// 세는 대상은 <see cref="ResetWebGLOptimizationDefaults"/> 가 되돌리는 레버 집합과 일치해야 한다 —
+        /// 한쪽에만 레버를 추가하면 "변경됨" 배지가 뜨지 않아 복원 버튼 자체가 노출되지 않는다.
+        /// AITResetWebGLSettingsTests 가 Reset 을 기준으로 이 메서드의 누락을 기계적으로 검출한다
+        /// (그래서 테스트에서 호출할 수 있도록 config 를 인자로 받는 static 순수 함수다).
+        /// </summary>
+        internal static int CountModifiedWebGLSettings(AITEditorScriptObject config)
         {
+            if (config == null) return 0;
+
             int count = 0;
 
             int defaultMemory = AITDefaultSettings.GetDefaultMemorySize();
@@ -2438,6 +2448,10 @@ namespace AppsInToss.Editor
 
             bool defaultTextureClamp = AITDefaultSettings.GetDefaultTextureSizeClamp();
             if (config.textureSizeClamp >= 0 && (config.textureSizeClamp == 1) != defaultTextureClamp) count++;
+            bool defaultTextureStreaming = AITDefaultSettings.GetDefaultTextureStreaming();
+            if (config.textureStreaming >= 0 && (config.textureStreaming == 1) != defaultTextureStreaming) count++;
+            bool defaultStreamDownscale = AITDefaultSettings.GetDefaultTextureStreamDownscale();
+            if (config.textureStreamDownscale >= 0 && (config.textureStreamDownscale == 1) != defaultStreamDownscale) count++;
             bool defaultStreamRecompress = AITDefaultSettings.GetDefaultTextureStreamRecompress();
             if (config.textureStreamRecompress >= 0 && (config.textureStreamRecompress == 1) != defaultStreamRecompress) count++;
             bool defaultStreamJpeg = AITDefaultSettings.GetDefaultTextureStreamJpeg();
@@ -2465,6 +2479,9 @@ namespace AppsInToss.Editor
             // 다를 때만(자동 기준 실효값 비교) 변경으로 집계.
             bool defaultFontSubsetLazy = AITDefaultSettings.GetDefaultFontSubsetLazyLanguages();
             if (config.fontSubsetLazyLanguages >= 0 && (config.fontSubsetLazyLanguages == 1) != defaultFontSubsetLazy) count++;
+
+            bool defaultFontStreaming = AITDefaultSettings.GetDefaultFontStreaming();
+            if (config.fontStreaming >= 0 && (config.fontStreaming == 1) != defaultFontStreaming) count++;
 
             return count;
         }

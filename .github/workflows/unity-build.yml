@@ -1667,6 +1667,16 @@ jobs:
             echo "Unity build finished (log-based exit code: $EXIT_CODE)"
 
             if [ $EXIT_CODE -ne 0 ]; then
+              # C# 컴파일 오류 우선 감지 — 결정적 실패이므로 재시도는 순수 낭비다.
+              # Unity 로그에는 정상 기동 시에도 "Access token is unavailable" 같은 라이선스
+              # 문구가 섞여 있어, 이 검사가 없으면 아래 LICENSE_ERROR가 먼저 걸려 컴파일
+              # 오류가 라이선스 오류로 3회 재시도된다 (v3.0.4 릴리즈 실패 시 실제 발생).
+              if grep -qE "error CS[0-9]+" "$LOG_FILE" 2>/dev/null; then
+                echo "::error::C# compile error detected (not a license issue), failing immediately"
+                grep -E "error CS[0-9]+" "$LOG_FILE" 2>/dev/null | sort -u | head -10
+                exit $EXIT_CODE
+              fi
+
               # 빌드 도구 에러 우선 감지 (라이선스 오분류 방지)
               BUILD_TOOL_ERROR=false
               if grep -qE "Unknown Syntax Error|FAIL_NPM_BUILD|FAIL_NPM_INSTALL|Command not found.*ait|npm ERR!" "$LOG_FILE" 2>/dev/null; then
@@ -1806,6 +1816,19 @@ jobs:
             }
 
             if ($exitCode -ne 0) {
+              # C# 컴파일 오류 우선 감지 — 결정적 실패이므로 재시도는 순수 낭비다.
+              # Unity 로그에는 정상 기동 시에도 라이선스 문구가 섞여 있어, 이 검사가 없으면
+              # 아래 licenseError가 먼저 걸려 컴파일 오류가 라이선스 오류로 재시도된다.
+              if (Test-Path $logFile) {
+                $logContent = Get-Content $logFile -Raw -ErrorAction SilentlyContinue
+                if ($logContent -match "error CS[0-9]+") {
+                  Write-Host "::error::C# compile error detected (not a license issue), failing immediately"
+                  Select-String -Path $logFile -Pattern "error CS[0-9]+" |
+                    ForEach-Object { $_.Line } | Select-Object -Unique -First 10
+                  exit $exitCode
+                }
+              }
+
               # 빌드 도구 에러 우선 감지 (라이선스 오분류 방지)
               $buildToolError = $false
               if (Test-Path $logFile) {

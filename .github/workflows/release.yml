@@ -241,9 +241,26 @@ jobs:
           SHARED_RUNTIME="Tests~/E2E/SharedScripts/Runtime"
 
           # SharedScripts/Runtime의 .cs 파일 삭제 (API 호환성 문제가 있는 코드)
+          # .cs.meta도 함께 삭제 — 남기면 Unity가 orphan meta 경고를 20줄 넘게 쏟아내
+          # 실제 컴파일 오류를 가린다. 아래에서 재생성하는 스텁 2종의 .meta는 GUID 유지를 위해 보존.
           if [ -d "$SHARED_RUNTIME" ]; then
             echo "SharedScripts/Runtime .cs 파일 삭제 중..."
             find "$SHARED_RUNTIME" -name "*.cs" -type f -delete
+            find "$SHARED_RUNTIME" -name "*.cs.meta" -type f \
+              ! -name "E2EBootstrapper.cs.meta" \
+              ! -name "E2EBootstrapperHelper.cs.meta" \
+              -delete
+          fi
+
+          # EditMode 테스트 삭제
+          # 릴리즈 빌드는 테스트를 실행하지 않지만 패키지 안에 있으면 컴파일은 된다.
+          # AppsInTossEditModeTests asmdef가 Runtime asmdef를 참조하므로, EditMode 테스트가
+          # 위에서 지운 Runtime 타입을 하나라도 쓰면 빌드 전체가 CS0246으로 깨진다
+          # (SDKAPIReflectionTests → APITestCatalog: v3.0.4 릴리즈 실패 원인).
+          EDITMODE_TESTS="Tests~/E2E/SharedScripts/Editor/EditModeTests"
+          if [ -d "$EDITMODE_TESTS" ]; then
+            echo "SharedScripts/Editor/EditModeTests 삭제 중..."
+            rm -rf "$EDITMODE_TESTS" "${EDITMODE_TESTS}.meta"
           fi
 
           # E2EBuildRunner.cs가 의존하는 최소 스텁 파일 생성

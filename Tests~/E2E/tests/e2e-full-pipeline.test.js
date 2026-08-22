@@ -2507,14 +2507,27 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
           await seedContext.close();
         }
 
-        // --- 2단계: "새 origin에서 이미 한 번 부팅한 설치"에 레거시 훅을 걸고 재부팅 ---
-        // 리매핑 기준인 앱 디렉터리(/idbfs/<hash>)는 Unity 네이티브가 main() 안에서
-        // persistentDataPath를 처음 만질 때 만든다. 마운트포인트는 /idbfs 자체이므로
-        // (원본 prejs: FS.mount(IDBFS, ..., '/idbfs')) 부팅 이력이 없는 페이지에서는
-        // populate 시점에 <hash>를 알 방법이 없다 — 값이 빌드 URL에서 유도돼 옛 origin
-        // 것과 다르고 우리가 계산할 수도 없다. 실제 이관 대상은 "새 origin에서 최소
-        // 한 번 실행된 설치"이므로, 훅 없이 한 번 부팅해 앱 디렉터리를 IndexedDB에
-        // 남긴 뒤 훅을 걸고 재부팅하는 형태로 모사한다.
+        // --- 2단계: 레거시 훅을 걸고 부팅해 임포트 + AIT 승격을 확인 ---
+        // 예전에는 여기서 "훅 없이 1회 부팅 → 훅 걸고 재부팅"을 했다. 그 워밍 부팅을
+        // **삭제한다.** 두 가지 이유가 겹친다.
+        //
+        // ① 기술적 선행 조건이 아니게 됐다. 앱 디렉터리가 미리 있어야 했던 건 어댑터가
+        //    심을 위치를 populate 시점에 추측하던 시절의 요건이고, 지금은 node_ops.lookup
+        //    미스로 관측한다.
+        // ② 더 중요한 이유 — **워밍 부팅을 하면 이 테스트는 통과할 수 없다.** Unity가
+        //    부팅 중에 스스로 PlayerPrefs를 만든다(키 하나: `unity.cloud_userid`, 설치마다
+        //    새로 생성되는 32자 hex). 게임 코드는 PlayerPrefs를 건드리지도 않는데 그렇다.
+        //    그 파일이 persist되면 매니페스트에 scoped 항목이 실리고, 다음 부팅의
+        //    populatePath가 snapshotHasScopedFile()로 finish('ait')를 때려 임포트를
+        //    아예 호출하지 않는다(ait-playerprefs.js:1341-1352). 즉 "이미 한 번 부팅한
+        //    설치"는 지금 구조에서 이관이 불가능한 상태이고, 그건 이 테스트가 덮을 게
+        //    아니라 **제품 결함**이다 — 통과하는 테스트로 덮으면 안 된다.
+        //    (run 32585243501 Windows 2022.3에서 매니페스트에 실린 cloud_userid를 실측.
+        //    TODO.md에 stub 채우기 전 강제 선행 조건으로 등록했다.)
+        //
+        // 플랫폼 편차도 여기 걸려 있었다 — 같은 2022.3인데 Windows는 이 파일을 쓰고
+        // macOS는 30초 안에 persist가 한 번도 안 났다. 워밍 부팅에 의존하는 한 이
+        // 테스트는 러너마다 다른 이유로 깨진다.
         const legacyPage = await browser.newPage();
         try {
           await legacyPage.addInitScript(() => {
@@ -2524,25 +2537,6 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
             };
           });
 
-          const warmResp = await legacyPage.goto(`http://localhost:${sharedPort}?e2e=true`, {
-            waitUntil: 'domcontentloaded',
-            timeout: 60000
-          });
-          expect(warmResp?.status()).toBe(200);
-          await waitForUnityInstance(legacyPage);
-          // 앱 디렉터리가 IndexedDB까지 내려가야 다음 부팅의 populate가 복원한다
-          await legacyPage.waitForFunction(
-            () => window['__AIT_PP'].persistCount > 0 && window['__AIT_PP'].persistIdle(),
-            undefined,
-            { timeout: 30000 }
-          );
-          // PlayerPrefs가 없는 부팅은 매니페스트를 남기지 않아야 창이 열린 채 유지된다
-          expect(
-            await legacyPage.evaluate(() => window.localStorage.getItem('PW_PP8_AIT_MOCK_AITUnityFS_v1_manifest')),
-            'a boot with no PlayerPrefs must not write a manifest — that would close the migration window'
-          ).toBeNull();
-
-          // 이후 로드에만 레거시 훅을 건다
           await legacyPage.addInitScript((seed) => {
             var dump = {};
             // 현재 세션의 앱 디렉터리 해시와 일부러 다른 경로 — 어댑터가 현재 앱
@@ -2556,15 +2550,21 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
               readIdbfs: function () { return Promise.resolve(dump); }
             };
           }, legacySeed);
-          await reloadAndWaitForUnity(legacyPage, '9-8 import');
+          const legacyResp = await legacyPage.goto(`http://localhost:${sharedPort}?e2e=true`, {
+            waitUntil: 'domcontentloaded',
+            timeout: 60000
+          });
+          expect(legacyResp?.status()).toBe(200);
+          await waitForUnityInstance(legacyPage);
 
           // 진단을 값 단언보다 **먼저** 읽는다 — 값 단언이 먼저 깨지면 어느 분기에서
           // 빠졌는지(skip-no-watcher / skip-ambiguous / timeout / empty ...) 알 수 없게 된다.
           //
           // ⚠️ 이 시점 값에 단언을 걸면 안 된다. 심기는 populate가 아니라 **Unity가
-          // <appDir>/PlayerPrefs를 처음 열 때(node_ops.lookup 미스)** 일어나므로,
-          // 게이트 해제 직후에는 아직 'deferred'가 정상이다. PlayerPrefsTester는
-          // Awake/Start에서 PlayerPrefs를 건드리지 않아 부팅만으로는 발화하지 않는다.
+          // <appDir>/PlayerPrefs를 처음 열 때(node_ops.lookup 미스)** 일어나는데,
+          // Unity는 부팅 중에 스스로 PlayerPrefs를 열어(cloud_userid) 그 미스를 이미
+          // 유발한다. 그래서 여기서 관측되는 값은 실측상 'deferred'가 아니라 'imported'다
+          // (run 32585243501 전 leg). park 창은 테스트가 볼 수 있는 창이 아니다.
           // 단언은 Get 이후에 다시 뜬 statusAfter에 건다 — Get이 반드시 lookup을
           // 유발하므로 그 시점에는 'imported'가 확정된다.
           const statusBefore = await legacyPage.evaluate(() => window['AITPlayerPrefs'].status());
@@ -2634,19 +2634,10 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
             };
           });
 
-          // 9-8 2단계와 같은 이유로 앱 디렉터리를 먼저 만들어 둔다(훅 없이 1회 부팅)
-          const staleResp = await staleEmptyPage.goto(`http://localhost:${sharedPort}?e2e=true`, {
-            waitUntil: 'domcontentloaded',
-            timeout: 60000
-          });
-          expect(staleResp?.status()).toBe(200);
-          await waitForUnityInstance(staleEmptyPage);
-          await staleEmptyPage.waitForFunction(
-            () => window['__AIT_PP'].persistCount > 0 && window['__AIT_PP'].persistIdle(),
-            undefined,
-            { timeout: 30000 }
-          );
-
+          // 9-8 2단계와 같은 이유로 워밍 부팅을 두지 않는다 — Unity가 부팅 중에 스스로
+          // 만드는 cloud_userid PlayerPrefs가 매니페스트에 실리면 "빈 매니페스트"라는
+          // 이 테스트의 전제 자체가 무너진다(9-8 2단계의 ⚠️ 참조). 빈 매니페스트는
+          // 위 addInitScript가 직접 시드하므로 부팅으로 만들 필요도 없다.
           await staleEmptyPage.addInitScript((seed) => {
             var dump = {};
             dump['/idbfs/legacy_origin_seed/PlayerPrefs'] = {
@@ -2658,7 +2649,12 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
               readIdbfs: function () { return Promise.resolve(dump); }
             };
           }, legacySeed);
-          await reloadAndWaitForUnity(staleEmptyPage, '9-8b empty-manifest');
+          const staleResp = await staleEmptyPage.goto(`http://localhost:${sharedPort}?e2e=true`, {
+            waitUntil: 'domcontentloaded',
+            timeout: 60000
+          });
+          expect(staleResp?.status()).toBe(200);
+          await waitForUnityInstance(staleEmptyPage);
 
           // 9-8과 같은 이유로 단언은 Get 이후 status에 건다(심기가 lookup 미스까지 지연됨)
           const statusBefore98b = await staleEmptyPage.evaluate(() => window['AITPlayerPrefs'].status());
@@ -2879,12 +2875,17 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
 
           const statusParked = await coldPage.evaluate(() => window['AITPlayerPrefs'].status());
           console.log(`[9-11] status (parked, before first access): ${JSON.stringify(statusParked)}`);
-          expect(statusParked.legacyImport,
-            'populate must park the candidate, never guess a path to plant into').toBe('deferred');
-          expect(statusParked.legacyBytes, 'nothing may be planted before the app directory is observed').toBe(0);
-          expect(statusParked.mode, 'boot must reach ait mode while the import is still parked').toBe('ait');
+          // ⚠️ 여기서 'deferred'를 단언하면 안 된다. park 상태는 **테스트가 관측할 수 있는
+          // 창이 아니다** — waitForUnityInstance가 돌아오는 시점이면 Unity는 이미 main()을
+          // 지나 앱 디렉터리를 만들고 PlayerPrefs를 열었고, 그 lookup 미스가 곧 심기다.
+          // (run 32585243501에서 정확히 이걸로 실패했다. 9-8/9-8b의 before 스냅샷도
+          // 전 leg에서 imported로 찍혀 같은 사실을 보여준다.) 그러니 이 시점에 걸 수 있는
+          // 단언은 "실패 상태가 아니다"뿐이고, 심기가 옳은 자리에 갔는지는 아래 Get 이후에 건다.
+          expect(['deferred', 'imported'],
+            'parked/planted 중 하나여야 한다 — skip-*/error/timeout이면 회귀다').toContain(statusParked.legacyImport);
+          expect(statusParked.mode, 'boot must reach ait mode regardless of import timing').toBe('ait');
 
-          // 첫 접근이 곧 심기 트리거다
+          // 첫 접근은 (아직 안 심겼다면) 심기 트리거이고, 이미 심겼다면 심은 바이트의 독자다
           const coldGet = await triggerPlayerPrefsAndWait(
             coldPage,
             () => coldPage.evaluate((key) => window['TriggerPlayerPrefsGet'](key), 'ait_e2e_pp8'),

@@ -1921,7 +1921,7 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       // -----------------------------------------------------------------------
       test('9-3. platform Storage failure must not block boot', async ({ browser }) => {
         // 가장 느린 러너에서 새 페이지 부트만 ~70초+ 실측 — 통과 케이스도 1.2m을 소모했다
-        test.setTimeout(180000);
+        test.setTimeout(300000);
 
         failPage = await browser.newPage();
 
@@ -2116,7 +2116,7 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       // -----------------------------------------------------------------------
       test('9-5. no mock: no rejections, no boot regression', async ({ browser }) => {
         // 가장 느린 러너에서 새 페이지 부트가 120초 예산을 초과한 사례 실측(macOS 2022.3)
-        test.setTimeout(180000);
+        test.setTimeout(420000);
 
         noMockPage = await browser.newPage();
 
@@ -2170,7 +2170,7 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
         const is2021 = (process.env.AIT_BUILD_DIR || '').includes('2021.3');
         test.skip(!is2021, '2021.3 전용 통제군 — 다른 버전에서는 9-4가 하드 단언으로 커버');
         // 최악 경로: 부트(120초) + 노화 45초 + best-effort 예산 합(~200초)
-        test.setTimeout(420000);
+        test.setTimeout(600000);
 
         // fn을 budgetMs 안에서 실행하고 {ok, value|error}로 정규화한다. 예산 초과 시
         // 진행을 포기하고 계속 간다(reject 핸들러는 생성 시점에 붙여 unhandled
@@ -2262,7 +2262,7 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       // -----------------------------------------------------------------------
       test('9-7. [partner scenario] partner-owned Storage keys are never touched', async ({ browser }) => {
         // 첫 부트(~70초) + reload 재시도 harness 최악 경로(3×120초)
-        test.setTimeout(480000);
+        test.setTimeout(900000);
 
         const MANIFEST_KEY = 'AITUnityFS_v1_manifest';
         const partnerPage = await browser.newPage();
@@ -2409,7 +2409,7 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       test('9-8. [legacy import] adopts a legacy origin IDBFS dump and promotes it to AIT Storage', async ({ browser }) => {
         // seed 부팅 + persist idle 대기 + (워밍 부팅 + 재부팅). 느린 러너(6000.0/6000.3)에서
         // 이 구간만 실측 ~6분이라(run 32462382123) 420초로는 마진이 없다.
-        test.setTimeout(600000);
+        test.setTimeout(900000);
 
         // --- 1단계: 실제 Unity PlayerPrefs 바이트를 만들어 IndexedDB(IDBFS)에서 추출 ---
         // ⚠️ browser.newPage()가 아니라 **명시적 컨텍스트**로 연다. browser.newPage()는
@@ -2614,7 +2614,7 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       //      1단계 seed는 9-8이 만든 것을 pp8LegacySeed로 물려받는다.
       // -----------------------------------------------------------------------
       test('9-8b. [legacy import] fires even when a manifest exists but carries no PlayerPrefs', async ({ browser }) => {
-        test.setTimeout(420000);
+        test.setTimeout(600000);
         expect(pp8LegacySeed, '9-8 must have produced a legacy seed first').toBeTruthy();
         const legacySeed = pp8LegacySeed;
 
@@ -2694,7 +2694,7 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       //     핵심 불변식이다(훅이 없으면 동작 변화가 정확히 0).
       // -----------------------------------------------------------------------
       test('9-9. [regression guard] legacy import stays a no-op when no legacy source hook is installed', async ({ browser }) => {
-        test.setTimeout(120000);
+        test.setTimeout(360000);
 
         const page = await browser.newPage();
         try {

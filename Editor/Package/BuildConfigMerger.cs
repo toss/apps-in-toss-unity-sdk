@@ -407,8 +407,10 @@ namespace AppsInToss.Editor.Package
 
             // 플레이스홀더 치환
             string finalContent = sdkTemplate
-                .Replace("%AIT_VITE_HOST%", config.viteHost)
-                .Replace("%AIT_VITE_PORT%", config.vitePort.ToString());
+                // vite.config.ts 에서도 두 값 모두 작은따옴표 문자열 리터럴 자리에 놓인다
+                // (host: process.env.AIT_VITE_HOST || '%AIT_VITE_HOST%').
+                .Replace("%AIT_VITE_HOST%", AITJsStringEscaper.EscapeSingleQuoted(config.viteHost))
+                .Replace("%AIT_VITE_PORT%", AITJsStringEscaper.EscapeSingleQuoted(config.vitePort.ToString()));
 
             // 프로젝트 파일이 있으면 USER_CONFIG 영역만 보존
             if (File.Exists(projectFile))
@@ -452,20 +454,25 @@ namespace AppsInToss.Editor.Package
 
             // 플레이스홀더 치환
             Debug.Log("[AIT] granite.config.ts placeholder 치환 중...");
+            // 템플릿에서 작은따옴표 문자열 리터럴 자리에 놓이는 토큰은 이스케이프해서 넣는다
+            // (값의 작은따옴표 하나가 granite.config.ts 전체를 깨뜨려 vite/esbuild 파싱 오류가 난다).
+            // %AIT_PERMISSIONS% / %AIT_NAVIGATION_BAR% / 불리언·포트는 값 자체가 코드로 전개되는
+            // 자리라 이스케이프하면 안 된다 — 아래 구분을 유지할 것.
             string finalContent = sdkTemplate
-                .Replace("%AIT_APP_NAME%", config.appName)
-                .Replace("%AIT_DISPLAY_NAME%", config.displayName)
-                .Replace("%AIT_PRIMARY_COLOR%", config.primaryColor)
-                .Replace("%AIT_ICON_URL%", config.iconUrl)
-                .Replace("%AIT_BRIDGE_COLOR_MODE%", config.GetBridgeColorModeString())
-                .Replace("%AIT_WEBVIEW_TYPE%", config.GetWebViewTypeString())
+                .Replace("%AIT_APP_NAME%", AITJsStringEscaper.EscapeSingleQuoted(config.appName))
+                .Replace("%AIT_DISPLAY_NAME%", AITJsStringEscaper.EscapeSingleQuoted(config.displayName))
+                .Replace("%AIT_PRIMARY_COLOR%", AITJsStringEscaper.EscapeSingleQuoted(config.primaryColor))
+                .Replace("%AIT_ICON_URL%", AITJsStringEscaper.EscapeSingleQuoted(config.iconUrl))
+                .Replace("%AIT_BRIDGE_COLOR_MODE%", AITJsStringEscaper.EscapeSingleQuoted(config.GetBridgeColorModeString()))
+                .Replace("%AIT_WEBVIEW_TYPE%", AITJsStringEscaper.EscapeSingleQuoted(config.GetWebViewTypeString()))
                 .Replace("%AIT_NAVIGATION_BAR%", config.GetNavigationBarJson())
                 .Replace("%AIT_ALLOWS_INLINE_MEDIA_PLAYBACK%", config.allowsInlineMediaPlayback.ToString().ToLower())
                 .Replace("%AIT_MEDIA_PLAYBACK_REQUIRES_USER_ACTION%", config.mediaPlaybackRequiresUserAction.ToString().ToLower())
-                .Replace("%AIT_VITE_HOST%", config.viteHost)
-                .Replace("%AIT_VITE_PORT%", config.vitePort.ToString())
+                .Replace("%AIT_VITE_HOST%", AITJsStringEscaper.EscapeSingleQuoted(config.viteHost))
+                // 템플릿에서 parseInt(process.env.AIT_VITE_PORT || '%AIT_VITE_PORT%', 10) 로 따옴표 안에 놓인다.
+                .Replace("%AIT_VITE_PORT%", AITJsStringEscaper.EscapeSingleQuoted(config.vitePort.ToString()))
                 .Replace("%AIT_PERMISSIONS%", config.GetPermissionsJson())
-                .Replace("%AIT_OUTDIR%", config.outdir);
+                .Replace("%AIT_OUTDIR%", AITJsStringEscaper.EscapeSingleQuoted(config.outdir));
 
             // 프로젝트 파일이 있으면 USER_CONFIG 영역만 보존
             if (File.Exists(projectFile))
@@ -516,8 +523,9 @@ namespace AppsInToss.Editor.Package
             // 플레이스홀더 치환 (granite.config.ts와 동일한 값 소스 사용 — 권한 JSON 형식이 3.x와 호환)
             Debug.Log("[AIT] apps-in-toss.config.ts placeholder 치환 중...");
             string finalContent = sdkTemplate
-                .Replace("%AIT_APP_NAME%", config.appName)
-                .Replace("%AIT_PRIMARY_COLOR%", config.primaryColor)
+                // granite.config.ts 와 동일 — 문자열 리터럴 자리만 이스케이프한다.
+                .Replace("%AIT_APP_NAME%", AITJsStringEscaper.EscapeSingleQuoted(config.appName))
+                .Replace("%AIT_PRIMARY_COLOR%", AITJsStringEscaper.EscapeSingleQuoted(config.primaryColor))
                 .Replace("%AIT_ALLOWS_INLINE_MEDIA_PLAYBACK%", config.allowsInlineMediaPlayback.ToString().ToLower())
                 .Replace("%AIT_MEDIA_PLAYBACK_REQUIRES_USER_ACTION%", config.mediaPlaybackRequiresUserAction.ToString().ToLower())
                 .Replace("%AIT_NAVIGATION_BAR%", config.GetNavigationBarJson())

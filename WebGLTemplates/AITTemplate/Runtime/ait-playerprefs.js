@@ -980,17 +980,22 @@
      * Unity가 "아직 없는 PlayerPrefs"를 처음 열려는 순간. parent가 곧 현재 앱 디렉터리다.
      * 심었으면 그 노드를, 아니면 null(호출자가 원본 lookup으로 위임 = ENOENT)을 돌려준다.
      *
-     * ⚠️ 이 앵커의 **미검증 전제**: 그 첫 접근이 read-open이어야 한다.
-     *    lookup 미스는 read/write를 구분하지 못하는데, FS.open은 lookup 성공 후 O_TRUNC면
-     *    곧바로 자른다(library_fs.js FS.open의 O_TRUNC 처리). 즉 첫 미스가 write-open
-     *    (fopen(path,"wb") = O_WRONLY|O_CREAT|O_TRUNC)에서 나면 우리가 심은 내용은
-     *    심자마자 잘려나가고, 그럼에도 legacyImport는 'imported'/legacyBytes>0으로 남아
-     *    승격 push가 0바이트를 정본으로 올린다 = 창이 닫힌 채 이관은 0바이트.
-     *    실사용에서는 Unity가 어떤 PlayerPrefs API든 최초 접근 시 파일을 먼저 읽어
-     *    딕셔너리를 채우므로 read-first가 사실상 확정이지만, 그 전제는 엔진 쪽 사실이라
-     *    이 레이어에서 강제할 수 없다. 유닛 하니스도 O_TRUNC를 모델링하지 않으므로,
-     *    이 전제를 고정하려면 E2E에서 "PlayerPrefs.SetString → Save를 먼저 하는 씬"이
-     *    필요하다(후속 과제).
+     * ⚠️ 이 앵커의 전제는 "그 첫 접근이 read-open이어야 한다"인데, **2021.3에서 거짓임이
+     *    실측됐다**(E2E run 32589182104, macOS/Windows 양쪽). lookup 미스는 read/write를
+     *    구분하지 못하는데, FS.open은 lookup 성공 후 O_TRUNC면 곧바로 자른다
+     *    (library_fs.js:1042-1045 — created 여부와 무관하게 무조건). 즉 첫 미스가
+     *    write-open(fopen(path,"wb") = O_WRONLY|O_CREAT|O_TRUNC)에서 나면 우리가 심은
+     *    내용은 심자마자 잘려나가고, 그럼에도 legacyImport는 'imported'/legacyBytes>0으로
+     *    남아 승격 push가 잘린 내용을 정본으로 올린다 = 창이 닫힌 채 이관은 0바이트.
+     *
+     *    실측 결과: 2021.3은 두 OS 모두 잘림(값 ""), 2022.3·6000.x는 두 OS 모두 정상(v8).
+     *    OS와도, 시드 크기와도 무관한 **Unity 버전 게이팅**이다.
+     *
+     *    오늘 이 결함은 프로덕션에서 관측되지 않는다 — getPlatformLegacySource()가
+     *    null이라 레거시 경로 자체가 비활성이고, 오버라이드 훅을 심는 E2E에서만 발화한다.
+     *    그래서 지금 고치지 않는다. 다만 **스텁을 채우기 전에 반드시 선결해야 한다**
+     *    (TODO.md P2 선결 과제 3). 재시도로는 못 푼다: 잘린 파일이 로컬에 남아 다음
+     *    부팅의 lookup에서 미스가 나지 않으므로 이 앵커가 영영 발화하지 않는다.
      */
     function tryPlantAt(parent) {
         var pending = appDirWatch;

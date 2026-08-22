@@ -26,11 +26,21 @@
 
   **남은 선결 과제 — 플랫폼 API의 스코프 확인.** 훅이 붙으면서 임포트가 "콜드 부트에서도 같은 세션에 반드시 심는다"로 공격적으로 바뀌었다. `pickLegacyTarget()`의 리매핑 규칙은 "경로 정확일치 우선, 없으면 후보가 1개일 때만"이라, 플랫폼 API가 여러 앱/origin의 데이터를 한 덤프에 섞어 주면 **다른 게임의 세이브를 이 게임의 앱 디렉터리로 옮길** 소지가 있다. `getPlatformLegacySource()` stub을 채우기 전에 그 API가 앱 단위로 스코프되어 있는지 반드시 확인할 것. (덤프가 우리가 이해하는 모양이 아닐 때의 방어선: 후보 수 `LEGACY_MAX_CANDIDATES`, 누적 크기 `LEGACY_MAX_B64_CHARS`, 그리고 위 규칙에 걸리면 `legacyImport: 'skip-ambiguous'`로 아무것도 심지 않는다.)
 
+  **선결 과제 2 — 창 판정 키를 파일 존재에서 옮길 것 (실측으로 확인된 결함, 위보다 심각).** E2E run 32585243501에서 **Unity가 부팅 중에 스스로 PlayerPrefs 파일을 만든다**는 사실이 드러났다. 게임 코드가 `PlayerPrefs`를 한 번도 부르지 않고 레거시 훅도 없는 부팅인데, 매니페스트에 `/idbfs/<hash>/PlayerPrefs`가 실렸고 내용은 키 하나 — `unity.cloud_userid`(설치마다 새로 생성되는 32자 hex)뿐이었다. 플랫폼 편차가 있다: Windows 2021.3·2022.3 leg는 썼고, macOS 2022.3은 30초 안에 persist가 한 번도 안 났으며, 6000.x는 양 OS 모두 안 썼다.
+
+  이것이 마이그레이션 창을 첫 부팅에 닫는다. `populatePath`(`ait-playerprefs.js:1341-1352`)는 `res.kind === 'present'`이고 `snapshotHasScopedFile(res.snapshot)`이면 `finish('ait')`로 끝내고 **`importThenPromote()`를 호출조차 하지 않는다.** 그리고 `snapshotHasScopedFile()`(`:1050-1058`)은 `SCOPE_RE` **경로 패턴 검사뿐**이라 내용을 보지 않는다 — `unity.cloud_userid`만 든 파일과 진짜 세이브를 구분하지 못한다. 창 판정을 "매니페스트 부재"에서 "scoped 파일 0건"으로 옮긴 것이 바로 이 종류의 조기 종료를 막기 위해서였는데(`:1347-1350` 주석), Unity 자신의 housekeeping 쓰기가 같은 문을 다시 연다. **결론: 오늘 배포된 SDK로 한 번이라도 부팅한 설치는, 플랫폼 조회 수단이 언제 오든 관계없이 창이 이미 닫혀 있다.**
+
+  해법은 **창 판정을 파일 존재가 아닌 별도 필드로 옮기는 것**이다(예: 매니페스트 스키마 bump + `legacyChecked`, `tryLegacyImport`가 종결 상태에 도달했을 때만 기록). 반드시 **필드 부재 = 아직 시도 안 함**으로 해석하는 grandfather 규칙을 포함해야 한다 — 그 규칙이 있으면 이미 창이 닫힌 기존 설치까지 전부 회복되고, 그래서 **이 수정을 stub 채우는 PR로 미뤄도 손실이 없다**(창이 닫히는 것은 데이터 유실이 아니라 이관 미발화다). 검토했으나 채택하지 않은 대안: (a) UnityPrf 블롭을 파싱해 `unity.*` 키만 있으면 빈 것으로 취급 — 비공개 바이너리 포맷을 Unity 5버전+Tuanjie에 걸쳐 유지해야 하고 오판이 곧 세이브 유실이라 방어선으로는 몰라도 주 수단으로는 부적합, (b) 바이트 크기 임계값 — bool 하나짜리 진짜 세이브와 구분되지 않아 실패 모드를 바꿀 뿐이다.
+
+  E2E 영향: 9-8/9-8b에서 워밍 부팅을 제거했다. 워밍 부팅이 cloud_userid를 남기면 다음 부팅에서 창이 닫혀 임포트가 발화하지 않으므로, "이미 한 번 부팅한 설치" 시나리오는 이 결함이 고쳐지기 전까지 **통과하는 테스트로 덮을 수 없다**(덮으면 결함을 초록불로 가리게 된다).
+
   나머지 남는 위험: 이 세션에서 PlayerPrefs를 한 번도 열지 않는 게임은 `LEGACY_WATCH_MS`(20초) 만료 후 `legacyImport: 'expired'`로 포기하고 다음 부팅에 재시도한다(오늘의 skip과 동급). stale 디렉터리에 PlayerPrefs가 **남아 있는** 경우는 이 설계의 대상이 아니다 — `collectScoped()`가 `SCOPE_RE`에 맞는 모든 경로를 긁어 좌초 PlayerPrefs가 매니페스트에 올라가는 별건 결함이다.
 
   어댑터를 의도적으로 얇게 유지하는 근거: IndexedDB는 웹 표준상 best-effort 저장소라 이미 좌초된 데이터를 구조하는 일의 기대값이 낮고, 가치의 본체는 앞으로의 쓰기를 IndexedDB에서 걷어내는 쪽에 있다.
 
 ## 코드 결함
+
+- **P3 — `onFlush()`가 IndexedDB 미러를 재시도하지 않는다(비대칭)**: `WebGLTemplates/AITTemplate/Runtime/ait-playerprefs.js:1529-1532`. visibilitychange/pagehide 훅은 `pushScoped(activeMount)`만 다시 부르고 순정 IDBFS 미러(`callOrig(mount, false, ...)`)는 재시도하지 않는다. E2E run 32585243501에서 Windows leg 한정으로 `lastError: "IndexedDB 미러: No such file or directory"`가 관측됐는데(순정 `IDBFS.syncfs` 안의 `getLocalSet`/`loadLocalEntry`에서 나는 러너 부하 타이밍 레이스, 우리 코드가 호출하지도 않는 경로), 그 세션에서 이후 write가 없으면 미러 사본이 빠진 채 끝날 수 있다. 주 경로인 AIT Storage push는 무사하고 다음 write에서 diff가 재계산돼 자가 치유되므로 "백업의 백업"이 빠지는 수준이다. 이 비대칭은 #1066부터 있던 것이고 레이스도 순정 코드라 어느 쪽도 최근 변경의 회귀는 아니다. 고친다면 `onFlush()`에 기존 `callOrig` 헬퍼 호출을 한 줄 더하는 정도.
 
 - **P3 — `AITEditorScriptObject.IsReadyForDeploy()`가 죽은 코드**: `Editor/AITEditorScriptObject.cs:273`. `IsIconUrlValid`/`IsAppNameValid`/`IsVersionValid` 셋을 묶지만 어디서도 호출되지 않는다(`Editor/AITCredentials.cs:82`의 동명 static은 별개 메서드이고 이쪽도 호출처가 없다). Configuration 창은 `IsAppNameValid()`를 직접 호출해 빌드 버튼을 게이팅하므로(`Editor/AITConfigurationWindow.cs:1139`) 기능 공백은 없다. 제거하거나, 빌드 진입 경로의 실제 게이트로 승격할지 결정 필요.
 

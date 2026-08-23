@@ -475,6 +475,30 @@ async function readPlayerPrefsEntryFromIdb(page, timeoutMs) {
 }
 
 /**
+ * mock 백킹(localStorage)의 AIT 매니페스트에서 PlayerPrefs 엔트리를 직접 추출한다.
+ * readPlayerPrefsEntryFromIdb(IndexedDB 프로브)와 달리 이 경로는 IDBFS를 전혀 거치지
+ * 않는다 — 레이어 push는 collectScoped가 MEMFS를 직접 읽어 매니페스트를 만들므로
+ * IDBFS 세션 노화 결함(TODO.md P2)과 무관하다. 9-1/9-2가 2021.3에서도 green인 것과
+ * 같은 이유로, 9-8 1단계의 seed 추출은 이 경로를 1차로 쓴다(라운드 7, run 32662771953).
+ */
+async function readPlayerPrefsEntryFromMockManifest(page, mockPrefix) {
+  return page.evaluate((prefix) => {
+    const raw = window.localStorage.getItem(prefix + 'AITUnityFS_v1_manifest');
+    if (raw === null) throw new Error('mock manifest not found for prefix ' + prefix);
+    const envelope = JSON.parse(raw);
+    const snapshot = JSON.parse(envelope.inline);
+    const files = snapshot.files || {};
+    const key = Object.keys(files).find((k) => /\/PlayerPrefs$/.test(k));
+    if (!key) throw new Error('no /PlayerPrefs entry in mock manifest for prefix ' + prefix);
+    const f = files[key];
+    const bin = atob(f.d || '');
+    const bytes = new Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return { mode: f.m, timestamp: f.t || 0, contents: bytes };
+  }, mockPrefix);
+}
+
+/**
  * reload → unityInstance 재설정까지를 3-1과 동일한 하니스 순단 분류로 감싼 재시도 헬퍼.
  *
  * self-hosted 러너의 vite preview가 부하로 루프백 스트림을 끊으면(ERR_CONNECTION_CLOSED /
@@ -2464,40 +2488,49 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
             { timeout: 30000 }
           );
 
+          // 1차: mock 백킹(localStorage) 매니페스트에서 직접 추출한다 — collectScoped가
+          // MEMFS를 읽어 만드는 경로라 IDBFS 세션 노화(TODO.md P2)에 면역이다(라운드 7,
+          // run 32662771953). 아래 IDB 프로브(+fresh-page 폴백)는 이 1차 경로가 실패할
+          // 때만 쓰는 2차 폴백으로 남긴다.
           try {
-            legacySeed = await readPlayerPrefsEntryFromIdb(seedPage, 8000);
-          } catch (probeErr) {
-            // 부팅 이력이 긴 페이지에서 indexedDB.open('/idbfs')이 무응답이 되는 사례가
-            // 실측됐다(run 32455289846의 Windows 2021.3/2022.3, macOS 2022.3). 같은 leg의
-            // macOS 2021.3은 통과했으니 버전이 아니라 **그 페이지가 산 시간**의 문제다 —
-            // TODO.md P2의 순정 IDBFS 세션 노화와 같은 계열이다.
-            //
-            // ⚠️ 반드시 seedPage와 **같은 BrowserContext**에서 연다. browser.newPage()는
-            // 새 컨텍스트(= 격리된 저장소 파티션)를 만들어 seedPage의 IndexedDB가 아예
-            // 보이지 않는다 — 이 파일의 2단계가 browser.newPage()로 "깨끗한 IDB"를 얻는
-            // 데 의존하는 것이 그 증거다. 저장소는 컨텍스트가 공유하고 세션 수명은
-            // 페이지마다 따로이므로, 같은 컨텍스트의 새 페이지가 정확히 필요한 조합이다.
-            // Unity를 띄우면 세션을 다시 늙히므로 route로 빈 문서만 하나 물린다.
-            //
-            // seedContext를 직접 쓴다(seedPage.context()가 아니라). 의미는 같지만,
-            // 이 컨텍스트가 browser.newContext()로 만들어진 것이어야 .newPage()가
-            // 허용된다는 사실을 호출부에서 바로 보이게 하려는 것이다 — 여기서
-            // browser.newPage()발 암묵 컨텍스트를 쓰면 `Please use browser.newContext()`로
-            // 죽는다(run 32466990653의 2021.3/2022.3 4개 leg가 전부 이 경로였다).
-            console.log(`[9-8] seed page IDB probe failed (${probeErr && probeErr.message}) — retrying from a fresh page in the same context`);
-            const probePage = await seedContext.newPage();
+            legacySeed = await readPlayerPrefsEntryFromMockManifest(seedPage, 'PW_PP8_SEED_MOCK_');
+          } catch (manifestErr) {
+            console.log(`[9-8] mock manifest seed extraction failed (${manifestErr && manifestErr.message}) — falling back to IDB probe`);
             try {
-              const probeUrl = `http://localhost:${sharedPort}/__ait_idb_probe__`;
-              await probePage.route(probeUrl, (route) => route.fulfill({
-                status: 200,
-                contentType: 'text/html',
-                body: '<!doctype html><meta charset="utf-8"><title>idb probe</title>'
-              }));
-              await probePage.goto(probeUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-              legacySeed = await readPlayerPrefsEntryFromIdb(probePage, 15000);
-              console.log('[9-8] fresh-page IDB probe succeeded');
-            } finally {
-              await probePage.close();
+              legacySeed = await readPlayerPrefsEntryFromIdb(seedPage, 8000);
+            } catch (probeErr) {
+              // 부팅 이력이 긴 페이지에서 indexedDB.open('/idbfs')이 무응답이 되는 사례가
+              // 실측됐다(run 32455289846의 Windows 2021.3/2022.3, macOS 2022.3). 같은 leg의
+              // macOS 2021.3은 통과했으니 버전이 아니라 **그 페이지가 산 시간**의 문제다 —
+              // TODO.md P2의 순정 IDBFS 세션 노화와 같은 계열이다.
+              //
+              // ⚠️ 반드시 seedPage와 **같은 BrowserContext**에서 연다. browser.newPage()는
+              // 새 컨텍스트(= 격리된 저장소 파티션)를 만들어 seedPage의 IndexedDB가 아예
+              // 보이지 않는다 — 이 파일의 2단계가 browser.newPage()로 "깨끗한 IDB"를 얻는
+              // 데 의존하는 것이 그 증거다. 저장소는 컨텍스트가 공유하고 세션 수명은
+              // 페이지마다 따로이므로, 같은 컨텍스트의 새 페이지가 정확히 필요한 조합이다.
+              // Unity를 띄우면 세션을 다시 늙히므로 route로 빈 문서만 하나 물린다.
+              //
+              // seedContext를 직접 쓴다(seedPage.context()가 아니라). 의미는 같지만,
+              // 이 컨텍스트가 browser.newContext()로 만들어진 것이어야 .newPage()가
+              // 허용된다는 사실을 호출부에서 바로 보이게 하려는 것이다 — 여기서
+              // browser.newPage()발 암묵 컨텍스트를 쓰면 `Please use browser.newContext()`로
+              // 죽는다(run 32466990653의 2021.3/2022.3 4개 leg가 전부 이 경로였다).
+              console.log(`[9-8] seed page IDB probe failed (${probeErr && probeErr.message}) — retrying from a fresh page in the same context`);
+              const probePage = await seedContext.newPage();
+              try {
+                const probeUrl = `http://localhost:${sharedPort}/__ait_idb_probe__`;
+                await probePage.route(probeUrl, (route) => route.fulfill({
+                  status: 200,
+                  contentType: 'text/html',
+                  body: '<!doctype html><meta charset="utf-8"><title>idb probe</title>'
+                }));
+                await probePage.goto(probeUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+                legacySeed = await readPlayerPrefsEntryFromIdb(probePage, 15000);
+                console.log('[9-8] fresh-page IDB probe succeeded');
+              } finally {
+                await probePage.close();
+              }
             }
           }
           expect(legacySeed && legacySeed.contents && legacySeed.contents.length,
@@ -2506,9 +2539,14 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
           // 로그에 남겨 둔다(회귀 시 재현/비교 자료). 로그 오염 방지로 120자로 절단.
           const seedB64 = Buffer.from(legacySeed.contents).toString('base64');
           console.log(`[9-8] seed contents (base64, truncated): ${seedB64.slice(0, 120)}`);
-          // 시드는 1단계의 산출물이므로 2단계(심기)의 성패와 무관하게 물려준다.
-          // 2단계가 2021.3 잘림으로 skip되더라도 9-8b/9-11은 자기 시드를 받아야
-          // 각자의 판정(같은 한계인지, 다른 회귀인지)을 스스로 내릴 수 있다.
+          // 시드에 실제로 우리가 쓴 키가 실려 있는지 하드 단언한다 — 2021.3에서 IDB 세션
+          // 노화로 인해 부팅 직후 housekeeping persist의 스테일 사본(cloud_userid만 있고
+          // ait_e2e_pp8 키는 없는 68바이트)을 3라운드 동안 유효 시드로 착각한 회귀가
+          // 실측됐다(run 32662771953). 이후 모든 판정은 이 단언을 통과한 시드를 전제한다.
+          expect(Buffer.from(legacySeed.contents).includes('ait_e2e_pp8'),
+            '시드에 ait_e2e_pp8 키가 없으면 이후 모든 판정이 무의미하다 — 2021.3에서 IDB 노화로 스테일 시드(cloud_userid만)를 3라운드 동안 잡지 못한 회귀 방지(run 32662771953)').toBe(true);
+          // 시드는 1단계의 산출물이므로 2단계(심기)의 성패와 무관하게 물려준다 —
+          // 9-8b/9-11은 자기 판정을 스스로 내릴 수 있도록 항상 시드를 받아야 한다.
           pp8LegacySeed = legacySeed;
         } finally {
           // 컨텍스트를 닫으면 그 안의 페이지도 함께 닫힌다
@@ -2588,35 +2626,13 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
           const status98 = await legacyPage.evaluate(() => window['AITPlayerPrefs'].status());
           console.log(`[9-8] status (after first access): ${JSON.stringify(status98)}`);
 
-          // 알려진 한계(2021.3 한정): 첫 lookup 미스가 **write-open**에서 나면 우리가 심은
-          // 내용이 심자마자 O_TRUNC로 잘린다(ait-playerprefs.js tryPlantAt 주석의 전제가
-          // 깨지는 경우). FS.open은 lookup 성공 직후 O_TRUNC면 무조건 FS.truncate(node,0)을
-          // 부르는데(library_fs.js:1042-1045) lookup은 read/write를 구분할 수 없다.
-          // 실측(run 32589182104): 2021.3은 macOS/Windows **양쪽 모두** imported/68B인데
-          // 값은 ""로 잘렸고, 2022.3·6000.x는 양쪽 OS 모두 v8로 통과했다. OS와 무관하고
-          // 시드 크기(2022.3은 83B로 더 큼)와도 무관한 **순수 Unity 버전 게이팅**이다.
-          // 프로덕션에서는 getPlatformLegacySource()가 null이라 이 경로 자체가 비활성이며,
-          // 스텁을 채울 때 반드시 선결해야 한다(TODO.md P2 선결 과제 2).
-          // 라운드 7 = 관측 라운드(§1-5 명세 v2). mkdir-plant가 유효한 모델(i-b: readdir
-          // 내용 확인)인지 무효한 모델(i-a: 디렉터리 유무만 판정)인지 현재 증거로는
-          // 구분할 수 없다. 여기서는 데이터 안전 불변식만 하드 단언하고, 모델 판별
-          // 정보(plantedBy/legacyImport/truncatedAtMs)는 진단 로그로만 남긴 뒤 skip한다.
-          // value==='v8'이면 이 가드는 아예 불발하고 전체 하드 단언이 그대로 통과한다
-          // (= 모델 i-b 확정 = §1-5 해소).
-          const is2021_98 = (process.env.AIT_BUILD_DIR || '').includes('2021.3');
-          if (is2021_98 && getResult.value !== 'v8') {
-            expect(getResult.value, '잘림이면 값은 빈 문자열이다 — 다른 값이면 미지의 회귀다').toBe('');
-            expect(status98.legacyChecked,
-              'skip-truncated/미확정 경로에서 legacyChecked가 기록되면 창이 영구히 닫힌다 — 절대 기록되면 안 된다').toBeFalsy();
-            expect(['skip-truncated', 'imported'],
-              '파수꾼 작동(skip-truncated) 또는 mkdir 불발 후 lookup 폴백(imported) 중 하나여야 한다 — 제3의 상태는 미지의 회귀다')
-              .toContain(status98.legacyImport);
-            // triage.py가 수집하는 `[태그] status: <json>` 포맷 — plantedBy/legacyImport/
-            // truncatedAtMs로 모델을 사후 판별한다.
-            console.log(`[9-8] status: ${JSON.stringify(status98)}`);
-            console.log(`[9-8] 2021.3 모델 판별(관측 라운드): plantedBy=${status98.plantedBy}, legacyImport=${status98.legacyImport}, truncatedAtMs=${status98.truncatedAtMs} — 모델 미확정, 잠정 skip`);
-            test.skip(true, 'Unity 2021.3 mkdir-plant model discrimination round — see [9-8] status log (TODO.md P2 선결 과제 2)');
-          }
+          // 2021.3 특별 처리 제거(라운드 7, run 32662771953): '잘림'은 IDB 노화가 만든
+          // 스테일 시드의 오진이었다. mkdir-plant 하에서 2021.3도 심은 파일을 읽는 것이
+          // 실측됐으므로(plantedBy:'mkdir', plantSeenRead:true) 유효 시드로는 전 버전
+          // 균일 단언이 성립한다. 시드 유효성은 1단계 하드 단언이 보증한다.
+          // triage.py가 수집하는 `[태그] status: <json>` 포맷 — plantedBy/legacyImport/
+          // truncatedAtMs로 모델을 사후 판별한다.
+          console.log(`[9-8] status: ${JSON.stringify(status98)}`);
 
           expect(status98.legacyImport, 'legacyImport must report imported').toBe('imported');
           expect(getResult.success, 'PlayerPrefs.GetString should succeed after legacy adoption').toBe(true);
@@ -2706,23 +2722,11 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
           const status98b = await staleEmptyPage.evaluate(() => window['AITPlayerPrefs'].status());
           console.log(`[9-8b] status (after first access): ${JSON.stringify(status98b)}`);
 
-          // 2021.3 write-open 잘림 — 9-8과 동일한 한계다(사유는 9-8의 주석 참조).
-          // 이 테스트의 고유 관심사(빈 매니페스트가 창을 닫지 않는가)는 잘림과 무관하게
-          // 검증 가능하므로, legacyImport==='imported' 도달까지는 하드로 걸고 값만 면제한다.
-          // 9-8과 동일한 관측 라운드 — 하드 단언은 데이터 안전 불변식만, 모델 판별
-          // 정보는 진단 로그로만 남긴다(사유는 9-8의 가드 주석 참조).
-          const is2021_98b = (process.env.AIT_BUILD_DIR || '').includes('2021.3');
-          if (is2021_98b && staleGet.value !== 'v8') {
-            expect(staleGet.value, '잘림이면 값은 빈 문자열이다 — 다른 값이면 미지의 회귀다').toBe('');
-            expect(status98b.legacyChecked,
-              'skip-truncated/미확정 경로에서 legacyChecked가 기록되면 창이 영구히 닫힌다 — 절대 기록되면 안 된다').toBeFalsy();
-            expect(['skip-truncated', 'imported'],
-              '파수꾼 작동(skip-truncated) 또는 mkdir 불발 후 lookup 폴백(imported) 중 하나여야 한다 — 제3의 상태는 미지의 회귀다')
-              .toContain(status98b.legacyImport);
-            console.log(`[9-8b] status: ${JSON.stringify(status98b)}`);
-            console.log(`[9-8b] 2021.3 모델 판별(관측 라운드): plantedBy=${status98b.plantedBy}, legacyImport=${status98b.legacyImport}, truncatedAtMs=${status98b.truncatedAtMs} — 모델 미확정, 잠정 skip`);
-            test.skip(true, 'Unity 2021.3 mkdir-plant model discrimination round — see [9-8b] status log (TODO.md P2 선결 과제 2)');
-          }
+          // 2021.3 특별 처리 제거(라운드 7, run 32662771953): '잘림'은 IDB 노화가 만든
+          // 스테일 시드의 오진이었다. mkdir-plant 하에서 2021.3도 심은 파일을 읽는 것이
+          // 실측됐으므로(plantedBy:'mkdir', plantSeenRead:true) 유효 시드로는 전 버전
+          // 균일 단언이 성립한다. 시드 유효성은 1단계 하드 단언이 보증한다.
+          console.log(`[9-8b] status: ${JSON.stringify(status98b)}`);
 
           expect(status98b.legacyImport, 'an empty manifest must not close the migration window').toBe('imported');
           expect(status98b.mode, 'boot must stay in ait mode').toBe('ait');
@@ -2973,25 +2977,11 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
           const statusCold = await coldPage.evaluate(() => window['AITPlayerPrefs'].status());
           console.log(`[9-11] status (after first access): ${JSON.stringify(statusCold)}`);
 
-          // 2021.3 write-open 잘림 — 9-8과 동일한 한계다(사유는 9-8의 주석 참조).
-          // 이 테스트의 고유 관심사(신규 origin의 **첫 세션 안에** 심기가 완료되는가,
-          // 그리고 시드 해시가 아니라 엔진이 준 앱 디렉터리로 리매핑되는가)는 잘림과
-          // 무관하게 성립하므로 그 둘은 하드로 남기고 값 단언만 면제한다.
-          // 9-8과 동일한 관측 라운드 — 하드 단언은 데이터 안전 불변식만. 리매핑
-          // 검증(legacyAppDir)은 이 테스트 고유 관심사이지만 데이터 안전 불변식은
-          // 아니므로 진단 로그로 내리고, skip-truncated 쪽에서는 하드로 걸지 않는다.
-          const is2021_911 = (process.env.AIT_BUILD_DIR || '').includes('2021.3');
-          if (is2021_911 && coldGet.value !== 'v8') {
-            expect(coldGet.value, '잘림이면 값은 빈 문자열이다 — 다른 값이면 미지의 회귀다').toBe('');
-            expect(statusCold.legacyChecked,
-              'skip-truncated/미확정 경로에서 legacyChecked가 기록되면 창이 영구히 닫힌다 — 절대 기록되면 안 된다').toBeFalsy();
-            expect(['skip-truncated', 'imported'],
-              '파수꾼 작동(skip-truncated) 또는 mkdir 불발 후 lookup 폴백(imported) 중 하나여야 한다 — 제3의 상태는 미지의 회귀다')
-              .toContain(statusCold.legacyImport);
-            console.log(`[9-11] status: ${JSON.stringify(statusCold)}`);
-            console.log(`[9-11] 2021.3 모델 판별(관측 라운드): plantedBy=${statusCold.plantedBy}, legacyImport=${statusCold.legacyImport}, truncatedAtMs=${statusCold.truncatedAtMs}, legacyAppDir=${statusCold.legacyAppDir} — 모델 미확정, 잠정 skip`);
-            test.skip(true, 'Unity 2021.3 mkdir-plant model discrimination round — see [9-11] status log (TODO.md P2 선결 과제 2)');
-          }
+          // 2021.3 특별 처리 제거(라운드 7, run 32662771953): '잘림'은 IDB 노화가 만든
+          // 스테일 시드의 오진이었다. mkdir-plant 하에서 2021.3도 심은 파일을 읽는 것이
+          // 실측됐으므로(plantedBy:'mkdir', plantSeenRead:true) 유효 시드로는 전 버전
+          // 균일 단언이 성립한다. 시드 유효성은 1단계 하드 단언이 보증한다.
+          console.log(`[9-11] status: ${JSON.stringify(statusCold)}`);
 
           expect(statusCold.legacyImport,
             'the first PlayerPrefs access must complete the import in this same session').toBe('imported');

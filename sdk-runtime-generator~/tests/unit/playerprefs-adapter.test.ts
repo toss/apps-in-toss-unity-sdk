@@ -97,6 +97,35 @@ interface FsEntry {
 interface NodeOps {
   lookup(parent: FsNode, name: string): FsNode;
   mknod(parent: FsNode, name: string, mode: number, dev: number): FsNode;
+  /**
+   * `setattr`: FS.truncate와 FS.open(O_TRUNC)이 거치는 **유일한** 경로다
+   * (library_fs.js:1042-1045 → FS.truncate → node_ops.setattr). §1-5의 실측 증상
+   * (심자마자 잘림)이 여기를 지나가므로, 잘림 파수꾼도 이 함수를 감싼다.
+   */
+  setattr?(node: FsNode, attr: SetattrArgs): void;
+  [key: string]: unknown;
+}
+
+/** node_ops.setattr의 인자 — size가 있을 때만 잘림이다(chmod/utime은 size undefined) */
+interface SetattrArgs {
+  mode?: number;
+  timestamp?: number;
+  size?: number;
+}
+
+/**
+ * MEMFS stream_ops(library_memfs.js ops_table.file.stream) 중 우리가 쓰는 부분.
+ * FS.open은 이 테이블을 **open 시점에** FSStream으로 캡처하고(FS.createStream),
+ * 이후 fread는 그 캡처본만 통과한다 — 파수꾼의 read 관측이 걸리는 지점이다.
+ */
+interface StreamOps {
+  read(
+    stream: { node: FsNode },
+    buffer: Uint8Array,
+    offset: number,
+    length: number,
+    position: number,
+  ): number;
   [key: string]: unknown;
 }
 
@@ -104,6 +133,8 @@ interface NodeOps {
 interface MemfsOps {
   dir: NodeOps;
   file: NodeOps;
+  /** 파일 노드가 공유하는 stream_ops 테이블 (ops_table.file.stream) */
+  fileStream: StreamOps;
 }
 
 /** MEMFS FSNode 흉내 (library_fs.js:40-53 + library_memfs.js:68-94) */
@@ -116,6 +147,8 @@ interface FsNode {
   /** 디렉터리면 자식 노드 map, 파일이면 바이트 배열(생성 직후에는 null) */
   contents: Record<string, FsNode> | unknown;
   node_ops: NodeOps;
+  /** 파일 노드에만 붙는다 (MEMFS.createNode: 디렉터리는 stream_ops가 없다) */
+  stream_ops?: StreamOps;
   /** FS.mount가 마운트 루트에 걸어두는 mount 객체 */
   mount?: MountMock;
 }
@@ -136,6 +169,12 @@ interface IdbfsMock {
   loadLocalEntry(path: string, cb: (err: Error | null, entry?: FsEntry) => void): void;
   storeLocalEntry(path: string, entry: FsEntry, cb: (err: Error | null) => void): void;
   removeLocalEntry(path: string, cb: (err: Error | null) => void): void;
+  /**
+   * 원본 syncfs가 하는 일을 주입하는 훅. 어댑터는 포획 시점에 원본 함수 참조를
+   * origSyncfs로 들고 가므로(`b.idbfs.syncfs`를 나중에 갈아끼워도 소용없다),
+   * "엔진 populate 도중의 FS.mkdirTree" 같은 사건은 이 훅으로만 재현할 수 있다.
+   */
+  onOrigSyncfs?: (populate: boolean) => void;
 }
 
 /** 트리에서 파생되는 "경로 → 엔트리" 뷰 (기존 단언이 쓰던 Map 표면만 제공한다) */
@@ -172,6 +211,8 @@ function createNode(parent: FsNode | null, name: string, mode: number, ops: Memf
     //    mnt.node_ops를 다시 대입하는 이유가 바로 이것이다(자동 전파가 없다).
     node_ops: dir ? ops.dir : ops.file,
   };
+  // MEMFS는 정규 파일에만 stream_ops를 붙인다. 이것도 **공유 테이블**이다.
+  if (!dir) node.stream_ops = ops.fileStream;
   node.parent = parent || node;
   if (parent) (parent.contents as Record<string, FsNode>)[name] = node;
   return node;
@@ -192,11 +233,83 @@ function makeMemfsOps(): MemfsOps {
         return createNode(parent, name, mode, table);
       },
     },
-    // 파일 노드 테이블에는 lookup/mknod가 없다 (MEMFS ops_table.file.node)
-    file: {} as NodeOps,
+    // 파일 노드 테이블에는 lookup/mknod가 없다 (MEMFS ops_table.file.node).
+    // setattr은 **있다** — 이것을 빼면 FS.open(O_TRUNC)이 표현되지 않아 잘림 파수꾼
+    // (installTruncationSentinel)이 조용히 아무것도 감싸지 않고, 파수꾼 케이스가
+    // 전부 가짜 통과한다.
+    file: {
+      setattr(node: FsNode, attr: SetattrArgs): void {
+        if (typeof attr.mode === 'number') node.mode = attr.mode;
+        if (typeof attr.timestamp === 'number') node.timestamp = attr.timestamp;
+        if (typeof attr.size !== 'number') return;
+        // ⚠️ **실제로 자른다.** 관측만 하고 바이트를 그대로 두면 "심은 값이 살아남았다"는
+        //    단언이 잘림 부팅에서도 통과해버려 모델 판별(i-a vs i-b)이 무의미해진다.
+        const cur = node.contents as ArrayLike<number> | null;
+        const next = new Uint8Array(attr.size);
+        if (cur && typeof cur.length === 'number') {
+          const n = Math.min(cur.length, attr.size);
+          for (let i = 0; i < n; i++) next[i] = cur[i];
+        }
+        node.contents = next;
+      },
+    } as unknown as NodeOps,
+    // 파일 노드가 공유하는 stream_ops. 파수꾼이 이것을 in-place로 고치면 파일시스템
+    // 전역이 오염된다(무회귀 계약 5) — 반드시 클론 후 노드에만 지정해야 한다.
+    fileStream: {
+      read(stream, buffer, offset, length, position): number {
+        const c = stream.node.contents as ArrayLike<number> | null;
+        const size = c && typeof c.length === 'number' ? c.length : 0;
+        if (position >= size) return 0;
+        const n = Math.min(size - position, length);
+        for (let i = 0; i < n; i++) buffer[offset + i] = c![position + i];
+        return n;
+      },
+    },
   };
   return table;
 }
+
+/**
+ * O_TRUNC 흉내 (fopen(path,"wb") / PlayerPrefs.DeleteAll 등).
+ *
+ * ⚠️ 하니스 계약: 잘림은 **반드시 `node_ops.setattr(node, {size:0})`을 경유**한다.
+ *    `node.contents`를 직접 비우면 파수꾼이 관측할 기회 자체가 사라져, 파수꾼이
+ *    통째로 빠져 있어도 테스트가 통과한다(가짜 통과).
+ */
+function truncateNode(node: FsNode): void {
+  const setattr = node.node_ops.setattr;
+  if (typeof setattr !== 'function') throw new Error('setattr 없는 노드는 자를 수 없다');
+  setattr.call(node.node_ops, node, { size: 0 });
+}
+
+/**
+ * fopen(path,"rb") + fread 흉내.
+ *
+ * ⚠️ 하니스 계약: 읽기는 **open 시점에 캡처한 `stream_ops.read`만** 경유한다
+ *    (FS.open → FS.createStream이 stream_ops를 스트림에 싣는다). `node.contents`를
+ *    직접 읽으면 파수꾼의 read 관측(plantSeenRead)이 발화하지 않는데도 "읽었다"는
+ *    단언이 통과해 모델 i-b 판정이 가짜가 된다.
+ */
+function readFileViaStream(node: FsNode): Uint8Array {
+  const sops = node.stream_ops; // ← open 시점 캡처
+  const read = sops && typeof sops.read === 'function' ? sops.read : null;
+  if (!sops || !read) return new Uint8Array(0);
+  const stream = { node };
+  const out: number[] = [];
+  const chunk = new Uint8Array(64);
+  let pos = 0;
+  for (;;) {
+    const n = read.call(sops, stream, chunk, 0, chunk.length, pos);
+    if (!n || n <= 0) break;
+    for (let i = 0; i < n; i++) out.push(chunk[i]);
+    pos += n;
+    if (out.length > 1024 * 1024) break; // 폭주 방지 안전판
+  }
+  return new Uint8Array(out);
+}
+
+const decodeBytes = (v: unknown): string =>
+  new TextDecoder().decode(new Uint8Array((v as ArrayLike<number>) || []));
 
 /** 마운트 루트('/idbfs')를 기준으로 절대경로를 노드로 푼다 */
 function resolveNode(root: FsNode, p: string): FsNode | null {
@@ -266,7 +379,10 @@ function makeFs(
   const entries = makeFsView(root);
 
   const idbfs: IdbfsMock = {
-    syncfs(_mount, _populate, cb) {
+    syncfs(_mount, populate, cb) {
+      const hook = idbfs.onOrigSyncfs;
+      // 원본 populate가 MEMFS에 만드는 것들(FS.mkdirTree로 좌초 디렉터리 복원 등)
+      if (typeof hook === 'function') hook(populate);
       cb(null);
     },
     getLocalSet(_mount, cb) {
@@ -358,6 +474,13 @@ function makeFs(
         }
       }
       if (!node) node = parent.node_ops.mknod(parent, name, entry.mode, 0);
+      // FS.writeFile은 O_WRONLY|O_CREAT|O_TRUNC로 여는데, FS.open은 created 여부와
+      // 무관하게 O_TRUNC면 FS.truncate → node_ops.setattr(size:0)을 부른다
+      // (library_fs.js:1042-1045). 이 호출을 재현하지 않으면 "우리 자신의 쓰기가
+      // 파수꾼을 오발화시키지 않는가"라는 순서 불변식이 검증되지 않는다.
+      if (typeof node.node_ops.setattr === 'function') {
+        node.node_ops.setattr(node, { size: 0 });
+      }
       node.mode = entry.mode;
       node.timestamp = entry.timestamp;
       node.contents = entry.contents === undefined ? null : entry.contents;
@@ -394,16 +517,52 @@ function lookupNode(parent: FsNode, name: string): FsNode | null {
 }
 
 /**
+ * Unity 네이티브가 PlayerPrefs 파일의 "존재"를 판정하는 방식. 라운드 5 실측으로
+ * 2021.3이 lookup 미스에 O_TRUNC를 들고 오는 것까지는 확인됐지만, 판정의 근거가
+ * 디렉터리 유무인지 readdir 내용인지는 아직 가려지지 않았다(명세 결정 변경 1).
+ * 이 유닛은 두 모델을 **둘 다** 돌려 각각의 기대 동작을 고정하는 판별 도구다.
+ *
+ *  - `readFirst`         : 기존 모델. 첫 접근이 read-open이라 lookup 미스가 곧 관측이다.
+ *                          (fread 자체는 테스트가 `readFileViaStream`으로 따로 낸다 —
+ *                           "심었지만 아직 읽지 않은" 상태를 표현해야 하기 때문이다.)
+ *  - `dirCheckWriteFirst`: 모델 i-a. 디렉터리 유무만 보고 곧장 fopen(path,"wb"),
+ *                          즉 O_WRONLY|O_CREAT|O_TRUNC — 심어둔 내용이 잘린다.
+ *  - `readdirCheckThenRead`: 모델 i-b. readdir에 PlayerPrefs가 보이면 fopen(path,"rb")로
+ *                          읽는다 — mkdir-plant가 유효해지는 모델.
+ */
+type BootModel = 'readFirst' | 'dirCheckWriteFirst' | 'readdirCheckThenRead';
+
+/**
  * Unity 네이티브의 첫 PlayerPrefs 접근을 흉내 낸다.
  *  ① persistentDataPath 디렉터리 생성: FS.mkdir(:641-648) → FS.mknod(:618-634) →
  *     parent.node_ops.mknod. 이미 있으면(warm boot) 그대로 재사용한다.
- *  ② PlayerPrefs 열기: lookupNode(appDir, 'PlayerPrefs').
+ *  ② 위 부팅 모델에 따라 PlayerPrefs를 연다.
  * 반환값은 ②가 얻은 노드(없으면 null) — 훅이 심었는지를 그대로 관측한다.
  */
-function simulateUnityBoot(b: BootResult, appDir: string): FsNode | null {
+function simulateUnityBoot(b: BootResult, appDir: string, model: BootModel = 'readFirst'): FsNode | null {
   const hash = appDir.indexOf(MOUNT + '/') === 0 ? appDir.slice(MOUNT.length + 1) : appDir;
   let dir = childOf(b.root, hash);
   if (!dir) dir = b.root.node_ops.mknod(b.root, hash, DIR_MODE, 0);
+
+  let effective = model;
+  if (effective === 'readdirCheckThenRead') {
+    // readdir = 디렉터리 contents 나열. 보이면 rb로 열어 읽는다.
+    const visible = childOf(dir, 'PlayerPrefs');
+    if (visible) {
+      readFileViaStream(visible);
+      return visible;
+    }
+    // 안 보이면 엔진은 새로 만든다 = 아래 write-first와 같은 경로다
+    effective = 'dirCheckWriteFirst';
+  }
+
+  if (effective === 'dirCheckWriteFirst') {
+    let node = lookupNode(dir, 'PlayerPrefs');
+    if (!node) node = dir.node_ops.mknod(dir, 'PlayerPrefs', FILE_MODE, 0);
+    truncateNode(node); // O_TRUNC — 반드시 setattr 경유
+    return node;
+  }
+
   return lookupNode(dir, 'PlayerPrefs');
 }
 
@@ -543,10 +702,74 @@ const bootedBefore: Record<string, FsEntry> = {
   [APP + '/Sentry']: dirEntry(),
 };
 
+// 이 레이어가 **쓰는** Storage 키는 정확히 2개다 (명세 결정 변경 2 / Storage 감사 원칙)
+const MANIFEST_KEY = 'AITUnityFS_v1_manifest';
+const STASH_KEY = 'AITUnityFS_v1_legacy'; // write-once — 레거시 덤프 보관 전용
+
 function manifestFiles(raw: string | undefined | null): string[] | null {
   if (raw === undefined || raw === null) return null;
   return Object.keys(JSON.parse(JSON.parse(raw).inline).files);
 }
+
+/** 매니페스트의 inline 스냅샷 전체 (files/legacy/seq를 함께 봐야 하는 단언용) */
+function manifestInline(raw: string | undefined | null): any {
+  if (raw === undefined || raw === null) return null;
+  return JSON.parse(JSON.parse(raw).inline);
+}
+
+/** 매니페스트의 이관 창 부기. 필드 자체가 없으면 undefined(= 미기록) */
+function manifestLegacy(raw: string | undefined | null): any {
+  const inline = manifestInline(raw);
+  return inline ? inline.legacy : undefined;
+}
+
+/**
+ * 매니페스트 문자열 빌더. 적대적/손상된 legacy 필드를 직접 심어야 형태 검증을
+ * 고정할 수 있어서, 실제 push로 만든 매니페스트만으로는 부족하다.
+ */
+function makeManifest(opts: { files?: Record<string, unknown>; legacy?: unknown; seq?: number }): string {
+  const seq = opts.seq === undefined ? 3 : opts.seq;
+  const inline: Record<string, unknown> = { v: 1, seq, scope: 'playerprefs', files: opts.files || {} };
+  if (opts.legacy !== undefined) inline.legacy = opts.legacy;
+  return JSON.stringify({ v: 1, seq, ts: 1, inline: JSON.stringify(inline) });
+}
+
+/** 매니페스트 files 레코드 (serializeFiles의 {m,t,d} 표현) */
+const fileRec = (text: string) => ({
+  m: FILE_MODE,
+  t: 1700000000000,
+  d: Buffer.from(text).toString('base64'),
+});
+const dirRec = () => ({ m: DIR_MODE, t: 1 });
+
+// 신규 스위트 공용: 옛 origin 덤프와 그것을 읽어주는 소스(조회 횟수를 셀 수 있다)
+const LEGACY_TEXT = 'legacy-bytes';
+const legacyDumpOf = (text: string = LEGACY_TEXT) => ({
+  [OLD + '/PlayerPrefs']: {
+    mode: FILE_MODE,
+    timestamp: 5,
+    contents: Array.from(Buffer.from(text)),
+  },
+});
+const countingLegacySource = (counter: { n: number }) => ({
+  readIdbfs: () => {
+    counter.n++;
+    return Promise.resolve(legacyDumpOf());
+  },
+});
+const plainLegacySource = () => ({ readIdbfs: () => Promise.resolve(legacyDumpOf()) });
+
+/** present + scoped 파일이 실린 매니페스트 (stash 경로의 전제 조건) */
+const presentScopedManifest = (legacy?: unknown) =>
+  makeManifest({
+    files: { [APP]: dirRec(), [APP + '/PlayerPrefs']: fileRec('mine') },
+    legacy,
+  });
+/** 위 매니페스트와 짝이 되는 로컬 상태 */
+const presentScopedFs = (): Record<string, FsEntry> => ({
+  ...bootedBefore,
+  [APP + '/PlayerPrefs']: ppEntry('mine'),
+});
 
 describe('ait-playerprefs.js — IDBFS syncfs 어댑터', () => {
   describe('기본 부트 경로', () => {
@@ -1371,6 +1594,634 @@ describe('ait-playerprefs.js — IDBFS syncfs 어댑터', () => {
       const files = manifestFiles(b.store.get('AITUnityFS_v1_manifest'));
       expect(Array.isArray(files)).toBe(true);
       expect(files).toHaveLength(0);
+    });
+  });
+
+  /**
+   * mkdir-plant 앵커 (명세 수정 A).
+   *
+   * lookup 앵커는 "첫 접근이 read-open"을 전제하는데 2021.3에서 그 전제가 거짓임이
+   * 실측됐다. 앱 디렉터리가 **막 생긴 직후**(= 비어 있는 것이 보장된 순간) 미리 심어
+   * 두면 그 전제 없이도 이관이 성립할 수 있다. 아래는 발화 조건을 좁게 고정한다 —
+   * 이 앵커는 엔진 내부 이벤트에 직접 올라타므로 오발화 반경이 그대로 위험이다.
+   */
+  describe('mkdir-plant 앵커 (수정 A)', () => {
+    test("M1) 앱 디렉터리 mkdir 직후 심고 plantedBy='mkdir'로 기록한다", async () => {
+      const b = boot({ fsInit: { [MOUNT]: dirEntry() }, legacySource: plainLegacySource() });
+      await syncfs(b, true);
+      await wait(300);
+      expect(b.win.__AIT_PP.status().legacyImport).toBe('deferred');
+
+      // Unity 네이티브가 persistentDataPath를 만드는 순간 = mknod 한 번.
+      // 이 시점에 PlayerPrefs lookup은 아직 한 번도 일어나지 않았다.
+      const dir = b.root.node_ops.mknod(b.root, APP.slice(MOUNT.length + 1), DIR_MODE, 0);
+      const planted = childOf(dir, 'PlayerPrefs');
+      expect(planted, 'lookup 미스 없이도 mkdir 앵커가 심어야 한다').not.toBeNull();
+      expect(decodeBytes(planted!.contents)).toBe(LEGACY_TEXT);
+
+      const s = b.win.__AIT_PP.status();
+      expect(s.legacyImport).toBe('imported');
+      expect(s.plantedBy).toBe('mkdir');
+      expect(s.legacyAppDir).toBe(APP);
+      expect(s.legacyBytes).toBe(LEGACY_TEXT.length);
+      await wait(200);
+      expect(manifestFiles(b.store.get(MANIFEST_KEY))).toContain(APP + '/PlayerPrefs');
+    });
+
+    // 앱 디렉터리는 항상 마운트 루트 바로 아래(depth 1)다. 그 아래에서 생기는
+    // 디렉터리(/idbfs/<hash>/sub 등)는 우리 대상이 아니다 — 심으면 Unity가 절대
+    // 읽지 않는 좌초 경로에 데이터를 만들고 창까지 소모한다.
+    test('M2) depth-2 mkdir에서는 발화하지 않고 창도 소모하지 않는다', async () => {
+      const b = boot({ fsInit: bootedBefore, legacySource: plainLegacySource() });
+      await syncfs(b, true);
+      await wait(300);
+      expect(b.win.__AIT_PP.status().legacyImport).toBe('deferred');
+
+      const app = b.entries.node(APP)!;
+      const sub = app.node_ops.mknod(app, 'sub', DIR_MODE, 0); // parent !== 마운트 루트
+      expect(childOf(sub, 'PlayerPrefs')).toBeNull();
+      const s = b.win.__AIT_PP.status();
+      expect(s.legacyImport).toBe('deferred'); // 창은 그대로 열려 있다
+      expect(s.plantedBy).toBeNull();
+
+      // 반대 증거: 같은 조건에서 depth-1이면 심는다(= 앵커 자체가 죽은 게 아니다)
+      const d1 = b.root.node_ops.mknod(b.root, 'aaaabbbbcccc', DIR_MODE, 0);
+      expect(childOf(d1, 'PlayerPrefs')).not.toBeNull();
+      expect(b.win.__AIT_PP.status().plantedBy).toBe('mkdir');
+    });
+
+    // 마운트 루트 바로 아래라도 디렉터리가 아니면 대상이 아니다. SCOPE_DIR_RE는
+    // '/idbfs/<한 세그먼트>'라 파일 이름도 그대로 통과하므로, 실제 방어선은
+    // isDirMode(mode) 하나뿐이다. (마운트 루트 자신은 FS.mount가 직접 만들어
+    //  mknod를 거치지 않으므로 재현 대상이 아니다.)
+    test('M3) 마운트 루트 아래라도 디렉터리가 아닌 mknod에서는 발화하지 않는다', async () => {
+      const b = boot({ fsInit: { [MOUNT]: dirEntry() }, legacySource: plainLegacySource() });
+      await syncfs(b, true);
+      await wait(300);
+      expect(b.win.__AIT_PP.status().legacyImport).toBe('deferred');
+
+      const f = b.root.node_ops.mknod(b.root, 'save.dat', FILE_MODE, 0);
+      expect(isDirMode(f.mode)).toBe(false);
+      expect([...b.entries.keys()].some((k) => /PlayerPrefs$/.test(k))).toBe(false);
+      const s = b.win.__AIT_PP.status();
+      expect(s.legacyImport).toBe('deferred');
+      expect(s.plantedBy).toBeNull();
+      expect(b.store.has(MANIFEST_KEY)).toBe(false); // 창 유지
+    });
+
+    // 늦은(게임 유발) syncfs(true) reconcile의 FS.mkdirTree는 좌초 디렉터리를 복원한다.
+    // 그 mkdir을 "Unity가 persistentDataPath를 만들었다"로 오인하면 아무도 읽지 않을
+    // 경로에 심고 관측 기회를 태운다 — inEnginePopulate 플래그가 그 경로를 끊는다.
+    test('M4) 엔진 populate 구간의 mkdir(좌초 디렉터리 복원)은 앵커를 오발화시키지 않는다', async () => {
+      const b = boot({ fsInit: { [MOUNT]: dirEntry() }, legacySource: plainLegacySource() });
+      await syncfs(b, true);
+      await wait(300);
+      expect(b.win.__AIT_PP.status().legacyImport).toBe('deferred');
+
+      b.idbfs.onOrigSyncfs = (populate) => {
+        if (populate && !childOf(b.root, 'stranded1234')) {
+          b.root.node_ops.mknod(b.root, 'stranded1234', DIR_MODE, 0);
+        }
+      };
+      await syncfs(b, true); // 늦은 reconcile
+      await wait(200);
+
+      const stranded = childOf(b.root, 'stranded1234');
+      expect(stranded, '테스트 전제: 복원이 실제로 일어났다').not.toBeNull();
+      expect(childOf(stranded!, 'PlayerPrefs'), '엔진 복원 구간에서는 심지 않는다').toBeNull();
+      const s = b.win.__AIT_PP.status();
+      expect(s.legacyImport).toBe('deferred');
+      expect(s.plantedBy).toBeNull();
+
+      // 반대 증거: 같은 mkdir이라도 populate 밖이면 심는다(= 플래그가 창을 죽인 게 아니다)
+      b.idbfs.onOrigSyncfs = undefined;
+      const live = b.root.node_ops.mknod(b.root, 'livehash1234', DIR_MODE, 0);
+      expect(childOf(live, 'PlayerPrefs')).not.toBeNull();
+      expect(b.win.__AIT_PP.status().plantedBy).toBe('mkdir');
+    });
+  });
+
+  /**
+   * 모델 판별 (명세 결정 변경 1).
+   *
+   * 2021.3의 "PlayerPrefs 존재 판정"이 디렉터리 유무(i-a)인지 readdir 내용(i-b)인지는
+   * 아직 가려지지 않았다. 아래 두 케이스는 **각 모델에서 무엇이 일어나야 하는가**를
+   * 고정한다 — 라운드 7의 E2E 관측이 어느 쪽으로 나오든 유닛은 그 해석의 기준이 된다.
+   */
+  describe('부팅 모델 판별 (i-a / i-b)', () => {
+    test('MD1) 모델 i-b(readdir → rb) → 심은 값이 살아남고 plantSeenRead가 선다', async () => {
+      const b = boot({ fsInit: { [MOUNT]: dirEntry() }, legacySource: plainLegacySource() });
+      await syncfs(b, true);
+      await wait(300);
+
+      const node = simulateUnityBoot(b, APP, 'readdirCheckThenRead');
+      expect(node).not.toBeNull();
+      expect(decodeBytes(node!.contents), '값이 생존한다 = 이관 성립').toBe(LEGACY_TEXT);
+
+      const s = b.win.__AIT_PP.status();
+      expect(s.plantedBy).toBe('mkdir');
+      expect(s.plantSeenRead).toBe(true);
+      expect(s.legacyImport).toBe('imported');
+      expect(s.truncatedAtMs).toBeNull();
+
+      await wait(200); // 승격 push — 읽기 관측 뒤라 창 부기가 실린다
+      expect(manifestFiles(b.store.get(MANIFEST_KEY))).toContain(APP + '/PlayerPrefs');
+      expect(manifestLegacy(b.store.get(MANIFEST_KEY))).toMatchObject({
+        checked: true,
+        result: 'imported',
+      });
+    });
+
+    // ⚠️ 이 케이스의 기대 동작은 "이관 실패"다. 모델 i-a가 확정되면 mkdir-plant는
+    //    §1-5를 해소하지 못한다는 뜻이고, 그때 지켜야 할 것은 이관이 아니라
+    //    **창을 닫지 않는 것**(→ 다음 부팅 stash로 보존)이다.
+    test('MD2) 모델 i-a(곧장 wb=O_TRUNC) → skip-truncated + 승격 push 억제 + 창 유지', async () => {
+      const b = boot({ fsInit: { [MOUNT]: dirEntry() }, legacySource: plainLegacySource() });
+      await syncfs(b, true);
+      await wait(300);
+
+      const node = simulateUnityBoot(b, APP, 'dirCheckWriteFirst');
+      expect(node).not.toBeNull();
+      expect((node!.contents as Uint8Array).length, '실제로 잘렸다').toBe(0);
+
+      const s = b.win.__AIT_PP.status();
+      expect(s.plantedBy).toBe('mkdir');
+      expect(s.plantSeenRead).toBe(false);
+      expect(s.legacyImport).toBe('skip-truncated');
+      expect(typeof s.truncatedAtMs).toBe('number');
+
+      await wait(200);
+      expect(b.store.has(MANIFEST_KEY), '잘린 0바이트를 정본으로 올리지 않는다').toBe(false);
+      expect(b.win.__AIT_PP.status().legacyChecked, '창은 열린 채 남는다').toBeNull();
+    });
+  });
+
+  /** 잘림 파수꾼 (명세 수정 C) */
+  describe('잘림 파수꾼 (수정 C)', () => {
+    test('S1) 심기 자신의 O_TRUNC 쓰기는 파수꾼을 발화시키지 않는다 (순서 불변식)', async () => {
+      const b = boot({ fsInit: bootedBefore, legacySource: plainLegacySource() });
+      await syncfs(b, true);
+      await wait(300);
+
+      // applyLegacyFiles는 FS.writeFile(= O_TRUNC) 경유라 setattr(size:0)을 반드시
+      // 한 번 부른다. 파수꾼이 그보다 **먼저** 설치되면 심자마자 skip-truncated가 된다.
+      const node = simulateUnityBoot(b, APP)!;
+      expect(node).not.toBeNull();
+      const s = b.win.__AIT_PP.status();
+      expect(s.legacyImport).toBe('imported');
+      expect(s.truncatedAtMs).toBeNull();
+      expect(decodeBytes(node.contents)).toBe(LEGACY_TEXT);
+
+      // 위 단언이 "파수꾼 부재"로 통과한 것이 아님을 같은 케이스에서 증명한다
+      expect(node.node_ops, '파수꾼이 실제로 설치돼 있다').not.toBe(b.ops.file);
+      truncateNode(node);
+      expect(b.win.__AIT_PP.status().legacyImport).toBe('skip-truncated');
+    });
+
+    // read 없이 게임이 곧바로 DeleteAll/Save하면 오탐이지만, 읽은 뒤의 잘림은
+    // 정상적인 게임 쓰기다 — 여기서 창을 닫지 않으면 이미 이관된 데이터를 두고
+    // 매 부팅 레거시 소스를 다시 훑게 된다.
+    test('S2) Unity가 읽은 뒤의 잘림은 파수꾼을 발화시키지 않는다', async () => {
+      const b = boot({ fsInit: bootedBefore, legacySource: plainLegacySource() });
+      await syncfs(b, true);
+      await wait(300);
+
+      const node = simulateUnityBoot(b, APP)!;
+      expect(decodeBytes(readFileViaStream(node))).toBe(LEGACY_TEXT);
+      expect(b.win.__AIT_PP.status().plantSeenRead).toBe(true);
+
+      truncateNode(node); // 게임의 DeleteAll/Save
+      const s = b.win.__AIT_PP.status();
+      expect(s.legacyImport).toBe('imported');
+      expect(s.truncatedAtMs).toBeNull();
+    });
+
+    test('S3) 파수꾼은 공유 MEMFS 테이블을 오염시키지 않는다 (무회귀 계약 5)', async () => {
+      const ops = makeMemfsOps();
+      const origSetattr = ops.file.setattr;
+      const origRead = ops.fileStream.read;
+      const b = boot({ nodeOps: ops, fsInit: bootedBefore, legacySource: plainLegacySource() });
+      await syncfs(b, true);
+      await wait(300);
+
+      const node = simulateUnityBoot(b, APP)!;
+      expect(node.node_ops).not.toBe(ops.file); // 노드에만 클론이 붙는다
+      expect(node.stream_ops).not.toBe(ops.fileStream);
+      expect(ops.file.setattr).toBe(origSetattr); // 전역 테이블은 참조까지 그대로
+      expect(ops.fileStream.read).toBe(origRead);
+
+      // 무관한 파일은 원본 테이블 그대로 → 그 파일의 잘림은 관측되지 않는다
+      const other = b.entries.node(APP)!.node_ops.mknod(b.entries.node(APP)!, 'other.dat', FILE_MODE, 0);
+      expect(other.node_ops).toBe(ops.file);
+      expect(other.stream_ops).toBe(ops.fileStream);
+      truncateNode(other);
+      expect(b.win.__AIT_PP.status().legacyImport).toBe('imported');
+    });
+
+    // 돌연변이 검증: setattr 래퍼의 `!inSelfFs` 조건을 지우면(즉 조건이
+    // `attr.size===0 && !plantSeenRead && legacyImport!=='skip-truncated'`만 남으면)
+    // 아래 단언이 깨진다 — collectScoped(→loadEntrySync)가 심어진 노드를 다시 읽는
+    // 구간은 어댑터 자신의 enterSelfFs() 안이라, 그 안에서 발생한 setattr(size:0)은
+    // (실제 엔진 write가 아니라) overlayScoped류 우리 자신의 재기록으로 취급돼야
+    // 하기 때문이다. Emscripten의 실제 loadLocalEntry는 setattr을 부르지 않지만,
+    // "우리 구간 안에서 setattr이 불리면 무조건 면제돼야 한다"는 것이 이 가드의
+    // 안전성 주장 그 자체이므로 C7(로컬 수집 훅 재정의)과 같은 방식으로 하니스가
+    // loadLocalEntry에 개입해 그 경계 조건을 직접 고정한다.
+    test('S4) 우리 자신의 selfFs 구간(collectScoped) 안에서 발생한 setattr은 파수꾼을 발화시키지 않는다 (재진입 방어)', async () => {
+      const b = boot({ fsInit: bootedBefore, legacySource: plainLegacySource() });
+      await syncfs(b, true);
+      await wait(300);
+
+      const node = simulateUnityBoot(b, APP)!; // 심기 성공 — 파수꾼 설치 완료, 아직 읽지 않음
+      expect(node).not.toBeNull();
+      expect(b.win.__AIT_PP.status().legacyImport).toBe('imported');
+      expect(b.win.__AIT_PP.status().plantSeenRead, '읽기 전이라 !inSelfFs가 유일한 방어선이다').toBe(false);
+
+      const targetPath = APP + '/PlayerPrefs';
+      const origLoad = b.idbfs.loadLocalEntry;
+      b.idbfs.loadLocalEntry = (p: string, cb: any) => {
+        if (p === targetPath) truncateNode(node); // enterSelfFs() 구간 안에서 O_TRUNC 재현
+        return origLoad(p, cb);
+      };
+      try {
+        await wait(300); // scheduleImmediatePush → pushScoped → collectScoped가 위 훅을 통과
+      } finally {
+        b.idbfs.loadLocalEntry = origLoad;
+      }
+
+      expect(b.win.__AIT_PP.status().legacyImport, '우리 자신의 재진입은 잘림으로 오판되면 안 된다').toBe(
+        'imported',
+      );
+    });
+  });
+
+  /**
+   * 이관 창 부기 (명세 수정 B).
+   *
+   * 이 필드 하나가 "레거시 소스를 다시 훑을 것인가"를 영구히 결정하므로, 잘못 쓰면
+   * 이관이 영영 실패하고(위양성) 안 쓰면 매 부팅 비용을 낸다(위음성). 아래는 기록
+   * 조건과 읽기 조건을 양방향으로 못박는다.
+   */
+  describe('이관 창 부기 (legacyChecked, 수정 B)', () => {
+    test('K1) legacy 필드가 없는 매니페스트는 창을 닫지 않는다 (grandfather)', async () => {
+      const counter = { n: 0 };
+      const b = boot({
+        storageSeed: { [MANIFEST_KEY]: presentScopedManifest() },
+        fsInit: presentScopedFs(),
+        legacySource: countingLegacySource(counter),
+      });
+      await syncfs(b, true);
+      await wait(400);
+      // 이 레이어가 나가기 전에 쓰인 매니페스트에는 이 필드가 없다 — 부재를
+      // "이관 완료"로 읽으면 오늘의 전 사용자가 창을 잃는다.
+      expect(counter.n, '창이 열려 있으므로 레거시 소스를 다시 훑는다').toBe(1);
+      expect(b.win.__AIT_PP.status().legacyChecked).toMatchObject({ checked: true, result: 'stashed' });
+    });
+
+    test('K2) 형태가 깨진 legacy 필드는 부재로 취급한다', async () => {
+      // 적대적/손상된 매니페스트가 마이그레이션 창을 영구히 닫지 못하게 하는 방어선
+      const malformed: unknown[] = [
+        true,
+        'imported',
+        { checked: false, result: 'imported' },
+        { checked: true, result: 123 },
+        { checked: true },
+      ];
+      for (const legacy of malformed) {
+        const counter = { n: 0 };
+        const b = boot({
+          storageSeed: { [MANIFEST_KEY]: presentScopedManifest(legacy) },
+          fsInit: presentScopedFs(),
+          legacySource: countingLegacySource(counter),
+        });
+        await syncfs(b, true);
+        await wait(400);
+        expect(counter.n, JSON.stringify(legacy) + '는 부재로 취급돼야 한다').toBe(1);
+      }
+    }, 20000);
+
+    test('K3) 레거시 소스가 없는 부팅은 창 부기를 만들지도 싣지도 않는다 (무회귀 계약 1)', async () => {
+      const b = boot({
+        storageSeed: { [MANIFEST_KEY]: presentScopedManifest() },
+        fsInit: presentScopedFs(),
+        legacySource: null,
+      });
+      await syncfs(b, true);
+      await wait(300);
+      const s = b.win.__AIT_PP.status();
+      expect(s.legacyChecked).toBeNull();
+      expect(s.legacyImport).toBe('none');
+      expect(s.legacyStashState).toBeNull();
+      expect(b.store.has(STASH_KEY)).toBe(false);
+
+      // 게임이 저장하면 push는 일어나되 페이로드는 오늘과 완전히 같아야 한다
+      b.entries.node(APP + '/PlayerPrefs')!.contents = new Uint8Array(Buffer.from('changed'));
+      await syncfs(b, false);
+      await wait(200);
+      const raw = b.store.get(MANIFEST_KEY)!;
+      expect(manifestFiles(raw)).toContain(APP + '/PlayerPrefs');
+      expect(manifestLegacy(raw)).toBeUndefined();
+      expect(JSON.parse(raw).inline, 'legacy 필드 자체가 직렬화되지 않는다').not.toContain('legacy');
+    });
+
+    // 심기→즉시 push→(다음 프레임)잘림 레이스에서 창이 닫힌 채 0바이트가 정본이 되는
+    // 위음성을 차단한다. 창 부기는 "Unity가 심은 바이트를 실제로 읽었다" 이후에만.
+    test('K4) imported 부기는 Unity가 심은 바이트를 읽은 뒤의 push에서만 실린다', async () => {
+      const b = boot({ fsInit: bootedBefore, legacySource: plainLegacySource() });
+      await syncfs(b, true);
+      await wait(300);
+
+      const node = simulateUnityBoot(b, APP)!; // 심기만 — 아직 읽지 않았다
+      await wait(200); // 승격 push 완료
+      const first = b.store.get(MANIFEST_KEY);
+      expect(manifestFiles(first)).toContain(APP + '/PlayerPrefs');
+      expect(manifestLegacy(first), '읽기 전에는 창을 닫지 않는다').toBeUndefined();
+      expect(b.win.__AIT_PP.status().legacyChecked).toBeNull();
+
+      readFileViaStream(node); // Unity가 실제로 읽었다
+      expect(b.win.__AIT_PP.status().plantSeenRead).toBe(true);
+      // files도 함께 바꿔 push 자체는 해시 계약과 무관하게 성립시킨다(H1과 회귀 분리)
+      node.contents = new Uint8Array(Buffer.from('game-save'));
+      await syncfs(b, false); // persistPath 경유 push
+      await wait(200);
+      const second = b.store.get(MANIFEST_KEY);
+      expect(manifestLegacy(second)).toMatchObject({ checked: true, result: 'imported' });
+      expect(b.win.__AIT_PP.status().legacyChecked).toMatchObject({ result: 'imported' });
+    });
+
+    test('K5) 매니페스트에 실린 창 부기는 다음 부팅에서 창을 닫고 그대로 다시 실린다', async () => {
+      // ① 부팅 A: 심고 읽어서 legacy.checked=imported를 매니페스트에 올린다
+      const a = boot({ fsInit: bootedBefore, legacySource: plainLegacySource() });
+      await syncfs(a, true);
+      await wait(300);
+      const node = simulateUnityBoot(a, APP)!;
+      readFileViaStream(node);
+      await syncfs(a, false);
+      await wait(200);
+      const seeded = a.store.get(MANIFEST_KEY)!;
+      expect(manifestLegacy(seeded)).toMatchObject({ checked: true, result: 'imported' });
+
+      // ② 부팅 B: 같은 매니페스트 → 레거시 소스를 **아예 조회하지 않는다**
+      const counter = { n: 0 };
+      const b = boot({
+        storageSeed: { [MANIFEST_KEY]: seeded },
+        fsInit: { ...bootedBefore, [APP + '/PlayerPrefs']: ppEntry(LEGACY_TEXT) },
+        legacySource: countingLegacySource(counter),
+      });
+      await syncfs(b, true);
+      await wait(300);
+      expect(counter.n).toBe(0);
+      expect(b.win.__AIT_PP.status().legacyChecked).toMatchObject({ checked: true, result: 'imported' });
+      expect(b.win.__AIT_PP.status().legacyImport).toBe('none'); // 조회 자체가 없었다
+
+      // ③ 왕복 보존: 이후 push에도 그대로 다시 실린다
+      b.entries.node(APP + '/PlayerPrefs')!.contents = new Uint8Array(Buffer.from('next'));
+      await syncfs(b, false);
+      await wait(200);
+      expect(manifestLegacy(b.store.get(MANIFEST_KEY))).toMatchObject({
+        checked: true,
+        result: 'imported',
+      });
+    });
+
+    // 이관이 끝난 뒤 DeleteAll로 files가 비어도 창은 닫힌 채여야 한다 —
+    // 여기서 부기가 떨어지면 다음 부팅에 레거시가 되살아난다(부활 사고).
+    test('K6) DeleteAll로 files가 비어도 창 부기는 매니페스트에 남는다', async () => {
+      const b = boot({
+        storageSeed: {
+          [MANIFEST_KEY]: presentScopedManifest({ checked: true, result: 'imported', ts: 111 }),
+        },
+        fsInit: presentScopedFs(),
+      });
+      await syncfs(b, true);
+      await wait(200);
+      b.entries.delete(APP + '/PlayerPrefs'); // PlayerPrefs.DeleteAll 모사
+      await syncfs(b, false);
+      await wait(200);
+      const raw = b.store.get(MANIFEST_KEY);
+      expect(manifestFiles(raw)).toHaveLength(0);
+      expect(manifestLegacy(raw)).toMatchObject({ checked: true, result: 'imported', ts: 111 });
+    });
+
+    // 늦은(게임 유발) syncfs(true) reconcile은 populatePath를 재진입시키지만,
+    // snapshotPromise는 스크립트 로드 시 1회 메모이제이션이라 res.snapshot은 이번
+    // 부팅의 stash **이전** 원본(legacy 필드 없음)이다. 여기서 부기를 무조건 덮어쓰면
+    // 세션 중 닫은 창이 다시 열리고, 직후 push가 legacy 없는 매니페스트를 써서
+    // 매 부팅 레거시 재조회+재stash가 무한 반복된다.
+    test('K7) 늦은 syncfs(true) reconcile이 세션 중 세운 창 부기를 지우지 않는다', async () => {
+      const counter = { n: 0 };
+      const b = boot({
+        storageSeed: { [MANIFEST_KEY]: presentScopedManifest() },
+        fsInit: presentScopedFs(),
+        legacySource: countingLegacySource(counter),
+      });
+      await syncfs(b, true);
+      await wait(400);
+      expect(b.win.__AIT_PP.status().legacyChecked).toMatchObject({
+        checked: true,
+        result: 'stashed',
+      });
+      expect(manifestLegacy(b.store.get(MANIFEST_KEY))).toMatchObject({ result: 'stashed' });
+
+      await syncfs(b, true); // 늦은 reconcile (같은 세션, 같은 스냅샷)
+      await wait(400);
+      expect(b.win.__AIT_PP.status().legacyChecked, '세션 중 세운 부기가 살아남는다').toMatchObject({
+        checked: true,
+        result: 'stashed',
+      });
+      expect(counter.n, '창은 닫힌 채다 — 레거시 소스 재조회 없음').toBe(1);
+
+      // 직후 게임 세이브가 legacy 없는 매니페스트를 덮어쓰지 않는다
+      b.entries.node(APP + '/PlayerPrefs')!.contents = new Uint8Array(Buffer.from('game-save'));
+      await syncfs(b, false);
+      await wait(200);
+      expect(manifestLegacy(b.store.get(MANIFEST_KEY))).toMatchObject({
+        checked: true,
+        result: 'stashed',
+      });
+    });
+
+    // ★ 변경 감지 해시 계약: files가 그대로이고 legacy 부기만 새로 생긴 push가
+    //   "변경 없음"으로 스킵되면 창이 영영 닫히지 않는다(= stash 성공했는데 다음
+    //   부팅에서 또 stash를 시도하고, write-once라 영원히 'existing'만 반복).
+    test('H1) files가 한 바이트도 안 바뀌어도 창 부기만 생기면 push가 일어난다', async () => {
+      // 씨앗 매니페스트는 실제 push로 만든다 — files 표현이 완전히 일치해야
+      // "files 무변경"이라는 전제가 성립한다.
+      const seedFs = presentScopedFs();
+      const b0 = boot({ fsInit: seedFs });
+      await syncfs(b0, true);
+      await wait(300);
+      const seeded = b0.store.get(MANIFEST_KEY)!;
+      expect(manifestLegacy(seeded)).toBeUndefined();
+
+      const b = boot({
+        storageSeed: { [MANIFEST_KEY]: seeded },
+        fsInit: { ...seedFs },
+        legacySource: plainLegacySource(),
+      });
+      await syncfs(b, true);
+      await wait(400);
+      const after = b.store.get(MANIFEST_KEY)!;
+      expect(manifestInline(after).files, 'files는 한 바이트도 바뀌지 않았다').toEqual(
+        manifestInline(seeded).files,
+      );
+      expect(manifestInline(after).seq, '해시에 legacy가 빠지면 push가 통째로 스킵된다').toBe(
+        manifestInline(seeded).seq + 1,
+      );
+      expect(manifestLegacy(after)).toMatchObject({ checked: true, result: 'stashed' });
+    });
+  });
+
+  /**
+   * 레거시 stash (명세 수정 D).
+   *
+   * 이관 창은 열려 있는데 로컬에 이미 정본 PlayerPrefs가 있어 **심을 수 없는** 부팅.
+   * 심으면 라이브 데이터를 덮으므로(무회귀 계약 3), 옛 origin 덤프를 별도 write-once
+   * 키에 한 번 보관만 한다. 잘림으로 이관에 실패한 다음 부팅이 정확히 여기로 온다.
+   */
+  describe('레거시 stash (수정 D)', () => {
+    test('T1) 로컬에 정본이 있어도 보관한다 (skip-local-present 관문 우회)', async () => {
+      const b = boot({
+        storageSeed: { [MANIFEST_KEY]: presentScopedManifest() },
+        fsInit: presentScopedFs(),
+        legacySource: plainLegacySource(),
+      });
+      await syncfs(b, true);
+      await wait(400);
+
+      const s = b.win.__AIT_PP.status();
+      expect(s.legacyImport, 'tryLegacyImport를 재사용했다면 skip-local-present로 즉사한다').toBe('stashed');
+      expect(s.legacyStashState).toBe('written');
+
+      const stash = JSON.parse(b.store.get(STASH_KEY)!);
+      // 키는 **레거시 원본 경로** 그대로 — 리매핑은 심을 때만 하는 일이다
+      expect(Object.keys(stash.files)).toEqual([OLD + '/PlayerPrefs']);
+      expect(Buffer.from(stash.files[OLD + '/PlayerPrefs'].d, 'base64').toString()).toBe(LEGACY_TEXT);
+
+      // 라이브 데이터는 한 바이트도 건드리지 않는다
+      expect(decodeBytes(b.entries.get(APP + '/PlayerPrefs')!.contents)).toBe('mine');
+      expect(manifestLegacy(b.store.get(MANIFEST_KEY))).toMatchObject({
+        checked: true,
+        result: 'stashed',
+      });
+    });
+
+    // W15의 대칭 케이스. stash 경로가 armAppDirWatch를 부르면 훅이 설치되고, 이후
+    // DeleteAll이 만드는 lookup 미스에서 사용자가 방금 지운 값이 레거시로 되살아난다.
+    test('T2) stash 경로는 엔진 node_ops를 아예 건드리지 않는다 (무회귀 계약 6)', async () => {
+      const ops = makeMemfsOps();
+      const origLookup = ops.dir.lookup;
+      const origMknod = ops.dir.mknod;
+      const b = boot({
+        nodeOps: ops,
+        storageSeed: { [MANIFEST_KEY]: presentScopedManifest() },
+        fsInit: presentScopedFs(),
+        legacySource: plainLegacySource(),
+      });
+      await syncfs(b, true);
+      await wait(400);
+
+      expect(b.win.__AIT_PP.status().legacyImport).toBe('stashed'); // 보관은 됐는데
+      expect(b.root.node_ops).toBe(ops.dir); // 훅은 붙지 않았다
+      expect(ops.dir.lookup).toBe(origLookup);
+      expect(ops.dir.mknod).toBe(origMknod);
+      expect(b.entries.node(APP)!.node_ops, 'backfill도 일어나지 않는다').toBe(ops.dir);
+
+      // 감시자가 무장하지 않았으므로 DeleteAll 후 재접근이 레거시를 되살리지 않는다
+      b.entries.delete(APP + '/PlayerPrefs');
+      expect(simulateUnityBoot(b, APP)).toBeNull();
+    });
+
+    test('T3) STASH_KEY가 이미 있으면 setItem을 부르지 않는다 (write-once)', async () => {
+      const existing = JSON.stringify({
+        v: 1,
+        ts: 1,
+        files: { [OLD + '/PlayerPrefs']: { m: FILE_MODE, t: 5, d: 'b2xk' } },
+      });
+      const b = boot({
+        storageSeed: { [MANIFEST_KEY]: presentScopedManifest(), [STASH_KEY]: existing },
+        fsInit: presentScopedFs(),
+        legacySource: plainLegacySource(),
+      });
+      const calls: string[] = [];
+      const st = b.win.__AIT_PLAYERPREFS_STORAGE__;
+      const origSet = st.setItem;
+      st.setItem = (k: string, v: string) => {
+        calls.push(k);
+        return origSet(k, v);
+      };
+
+      await syncfs(b, true);
+      await wait(400);
+      const s = b.win.__AIT_PP.status();
+      expect(s.legacyStashState).toBe('existing');
+      expect(s.legacyImport).toBe('stashed'); // 창은 닫는다(이미 보관돼 있으므로)
+      expect(calls, '먼저 보관된 덤프가 정본이다 — 덮지 않는다').not.toContain(STASH_KEY);
+      expect(b.store.get(STASH_KEY)).toBe(existing);
+      expect(manifestLegacy(b.store.get(MANIFEST_KEY))).toMatchObject({ result: 'stashed' });
+    });
+
+    // 읽기 실패/타임아웃/예산 미달/게이트 발화는 전부 **재시도군**이다 — 기록을
+    // 남기면 읽지도 못한 덤프에 대해 창이 닫힌다.
+    // (onGateFired는 LEGACY_GATE_RESERVE_MS 때문에 레거시 타이머가 항상 부트 게이트보다
+    //  먼저 발화해 이 하니스에서는 구조적으로 도달할 수 없다 — 같은 종점을 공유하는
+    //  onTimeout으로 대표해 고정한다.)
+    test('T4) stash 읽기가 타임아웃하면 아무것도 기록하지 않는다', async () => {
+      const b = boot({
+        storageSeed: { [MANIFEST_KEY]: presentScopedManifest() },
+        fsInit: presentScopedFs(),
+        legacySource: { readIdbfs: () => new Promise(() => {}) },
+      });
+      await syncfs(b, true);
+      await wait(1600);
+      const s = b.win.__AIT_PP.status();
+      expect(s.mode, '부팅은 막히지 않는다').toBe('ait');
+      expect(s.legacyChecked).toBeNull(); // 창 유지
+      expect(s.legacyStashState).toBeNull();
+      expect(b.store.has(STASH_KEY)).toBe(false);
+      expect(manifestLegacy(b.store.get(MANIFEST_KEY))).toBeUndefined();
+    });
+
+    // ★ 데이터 안전성 사슬 전체. 이 수정의 안전성 근거는 승격 push 게이트가 아니라
+    //   "skip-truncated면 창 미기록 → 다음 부팅 present+scoped+미체크 → stash로 보존"
+    //   이라는 연결이다. 한 케이스로 끝까지 붙여 고정한다.
+    test('T5) 잘림으로 이관에 실패해도 다음 부팅의 stash로 수렴한다', async () => {
+      // ① 모델 i-a 부팅: mkdir-plant → 곧바로 잘림
+      const b1 = boot({ fsInit: { [MOUNT]: dirEntry() }, legacySource: plainLegacySource() });
+      await syncfs(b1, true);
+      await wait(300);
+      simulateUnityBoot(b1, APP, 'dirCheckWriteFirst');
+      await wait(200);
+      expect(b1.win.__AIT_PP.status().legacyImport).toBe('skip-truncated');
+      expect(b1.store.has(MANIFEST_KEY), '승격 push는 억제된다').toBe(false);
+
+      // 그 뒤 게임이 진짜 세이브를 한다 — persistPath는 게이트되지 않는다(무회귀 계약 7)
+      b1.entries.node(APP + '/PlayerPrefs')!.contents = new Uint8Array(Buffer.from('real-save'));
+      await syncfs(b1, false);
+      await wait(200);
+      const m1 = b1.store.get(MANIFEST_KEY);
+      expect(manifestFiles(m1), '게임 쓰기는 정본으로 올라간다').toContain(APP + '/PlayerPrefs');
+      expect(manifestLegacy(m1), '창은 열린 채 남아야 다음 부팅에서 보존된다').toBeUndefined();
+
+      // ② 다음 부팅: present + scoped 존재 + 미체크 → stash 경로
+      const b2 = boot({
+        storageSeed: Object.fromEntries(b1.store),
+        fsInit: { ...bootedBefore, [APP + '/PlayerPrefs']: ppEntry('real-save') },
+        legacySource: plainLegacySource(),
+      });
+      await syncfs(b2, true);
+      await wait(400);
+      const s2 = b2.win.__AIT_PP.status();
+      expect(s2.legacyImport).toBe('stashed');
+      expect(s2.legacyStashState).toBe('written');
+      expect(b2.store.has(STASH_KEY), '레거시 덤프가 보존됐다').toBe(true);
+      expect(decodeBytes(b2.entries.get(APP + '/PlayerPrefs')!.contents), '라이브 세이브 무변경').toBe(
+        'real-save',
+      );
+      expect(manifestLegacy(b2.store.get(MANIFEST_KEY))).toMatchObject({
+        checked: true,
+        result: 'stashed',
+      });
     });
   });
 });

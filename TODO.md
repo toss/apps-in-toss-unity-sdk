@@ -26,23 +26,9 @@
 
   **남은 선결 과제 — 플랫폼 API의 스코프 확인.** 훅이 붙으면서 임포트가 "콜드 부트에서도 같은 세션에 반드시 심는다"로 공격적으로 바뀌었다. `pickLegacyTarget()`의 리매핑 규칙은 "경로 정확일치 우선, 없으면 후보가 1개일 때만"이라, 플랫폼 API가 여러 앱/origin의 데이터를 한 덤프에 섞어 주면 **다른 게임의 세이브를 이 게임의 앱 디렉터리로 옮길** 소지가 있다. `getPlatformLegacySource()` stub을 채우기 전에 그 API가 앱 단위로 스코프되어 있는지 반드시 확인할 것. (덤프가 우리가 이해하는 모양이 아닐 때의 방어선: 후보 수 `LEGACY_MAX_CANDIDATES`, 누적 크기 `LEGACY_MAX_B64_CHARS`, 그리고 위 규칙에 걸리면 `legacyImport: 'skip-ambiguous'`로 아무것도 심지 않는다.)
 
-  **선결 과제 2 — 창 판정 키를 파일 존재에서 옮길 것 (실측으로 확인된 결함, 위보다 심각).** E2E run 32585243501에서 **Unity가 부팅 중에 스스로 PlayerPrefs 파일을 만든다**는 사실이 드러났다. 게임 코드가 `PlayerPrefs`를 한 번도 부르지 않고 레거시 훅도 없는 부팅인데, 매니페스트에 `/idbfs/<hash>/PlayerPrefs`가 실렸고 내용은 키 하나 — `unity.cloud_userid`(설치마다 새로 생성되는 32자 hex)뿐이었다. 플랫폼 편차가 있다: Windows 2021.3·2022.3 leg는 썼고, macOS 2022.3은 30초 안에 persist가 한 번도 안 났으며, 6000.x는 양 OS 모두 안 썼다.
+  **선결 과제 2 — Unity 2021.3 write-first 부팅의 존재 판정 모델 판별 (구현 반영됨, E2E 라운드 관측 대기).** 2021.3의 첫 PlayerPrefs 접근은 파일 수준 프로브(stat/read-open) 없이 곧장 write-open(O_TRUNC)이라는 것이 실측으로 확정됐다(run 32589182104 — lookup 미스가 O_TRUNC를 들고 왔고, 선행 프로브가 있었다면 그 시점에 심겨 값이 읽혔을 것이다). 남은 미지수는 엔진의 존재 판정 방식이고 두 모델이 관측과 양립한다: **(i-a) 디렉터리 유무 판정** — 심는 시점을 mkdir로 앞당겨도 wb가 잘라서 무효, **(i-b) readdir 내용 확인** — mkdir 시점 심기가 해소한다. 현재 구현은 어느 모델이든 안전하도록 세 겹이다: mkdir-plant 앵커(`plantedBy` 계측), 잘림 파수꾼(읽기 관측 전 `setattr(size:0)` → `'skip-truncated'`, `legacyChecked` 미기록), 레거시 stash(별도 write-once 키 `AITUnityFS_v1_legacy` — 잘려도 다음 부팅 present+scoped+미체크 경로가 원본을 보존한다). E2E 9-8/9-8b/9-11은 관측 라운드 설계 — 하드 단언은 데이터 안전 불변식만 걸고 모델 판별 정보(`plantedBy`/`legacyImport`/`truncatedAtMs`)는 진단 로그로 남긴다. 다음 E2E 라운드 결과가 (i-b)(2021.3에서 값 `v8` 생존)면 이 항목을 제거하고 가드를 하드화, (i-a)(`skip-truncated`)면 "2021.3 한정 즉시 이관 불가, 단 stash로 데이터는 보존"으로 확정 문서화할 것.
 
-  이것이 마이그레이션 창을 첫 부팅에 닫는다. `populatePath`(`ait-playerprefs.js:1346-1357`)는 `res.kind === 'present'`이고 `snapshotHasScopedFile(res.snapshot)`이면 `finish('ait')`로 끝내고 **`importThenPromote()`를 호출조차 하지 않는다.** 그리고 `snapshotHasScopedFile()`(`:1055-1063`)은 `SCOPE_RE` **경로 패턴 검사뿐**이라 내용을 보지 않는다 — `unity.cloud_userid`만 든 파일과 진짜 세이브를 구분하지 못한다. 창 판정을 "매니페스트 부재"에서 "scoped 파일 0건"으로 옮긴 것이 바로 이 종류의 조기 종료를 막기 위해서였는데(`:1352-1355` 주석), Unity 자신의 housekeeping 쓰기가 같은 문을 다시 연다. **결론: 오늘 배포된 SDK로 한 번이라도 부팅한 설치는, 플랫폼 조회 수단이 언제 오든 관계없이 창이 이미 닫혀 있다.**
-
-  해법은 **창 판정을 파일 존재가 아닌 별도 필드로 옮기는 것**이다(예: 매니페스트 스키마 bump + `legacyChecked`, `tryLegacyImport`가 종결 상태에 도달했을 때만 기록). 반드시 **필드 부재 = 아직 시도 안 함**으로 해석하는 grandfather 규칙을 포함해야 한다 — 그 규칙이 있으면 이미 창이 닫힌 기존 설치까지 전부 회복되고, 그래서 **이 수정을 stub 채우는 PR로 미뤄도 손실이 없다**(창이 닫히는 것은 데이터 유실이 아니라 이관 미발화다). 검토했으나 채택하지 않은 대안: (a) UnityPrf 블롭을 파싱해 `unity.*` 키만 있으면 빈 것으로 취급 — 비공개 바이너리 포맷을 Unity 5버전+Tuanjie에 걸쳐 유지해야 하고 오판이 곧 세이브 유실이라 방어선으로는 몰라도 주 수단으로는 부적합, (b) 바이트 크기 임계값 — bool 하나짜리 진짜 세이브와 구분되지 않아 실패 모드를 바꿀 뿐이다.
-
-  E2E 영향: 9-8/9-8b에서 워밍 부팅을 제거했다. 워밍 부팅이 cloud_userid를 남기면 다음 부팅에서 창이 닫혀 임포트가 발화하지 않으므로, "이미 한 번 부팅한 설치" 시나리오는 이 결함이 고쳐지기 전까지 **통과하는 테스트로 덮을 수 없다**(덮으면 결함을 초록불로 가리게 된다).
-
-  **선결 과제 3 — Unity 2021.3에서는 심은 내용이 O_TRUNC로 잘린다 (실측으로 확인된 결함).** `tryPlantAt()`의 앵커는 "Unity의 첫 PlayerPrefs 접근이 read-open"이라는 전제 위에 있는데(`ait-playerprefs.js:983-999`), E2E run 32589182104에서 **2021.3에서는 그 전제가 거짓**임이 확인됐다. `FS.open`은 lookup이 성공한 뒤 `O_TRUNC`면 `created` 여부와 무관하게 즉시 `FS.truncate(node, 0)`을 부르고(`library_fs.js:1042-1045`), `node_ops.lookup` 미스는 read-open과 write-open을 구분할 수단이 없다. 그래서 첫 접근이 `fopen(path,"wb")`이면 우리가 심은 바이트가 심은 즉시 잘리는데, `legacyImport`는 `'imported'`/`legacyBytes>0`으로 남아 승격 push가 잘린 내용을 정본으로 올린다.
-
-  버전 게이팅이 명확하다: **2021.3은 macOS/Windows 양쪽 모두 잘림(값 `""`), 2022.3·6000.x는 양쪽 모두 정상(`v8`)**. OS와도, 시드 크기와도 무관하다(2022.3 시드가 83B로 더 큰데도 통과).
-
-  **재시도로는 못 푼다.** 잘린 파일이 로컬에 남아 다음 부팅의 `origSyncfs` 복원에 포함되므로 `node_ops.lookup` 미스가 다시는 나지 않고, 이 앵커는 영영 발화하지 않는다. 그래서 "잘림을 감지해 승격을 막고 다음 부팅에 재시도"는 성립하지 않으며, 그 수정의 실효는 진단 문자열 정직화(`'imported'` → `'skip-truncated'`)뿐이다.
-
-  오늘은 고치지 않는다 — `getPlatformLegacySource()`가 `null`이라 이 경로는 프로덕션에서 완전히 비활성이고, 오버라이드 훅을 심는 E2E에서만 발화한다. 검증 불가능한(2021.3 원본이 로컬에 없어 E2E 한 바퀴 외에는 확인 수단이 없는) 엔진 표면을 지금 늘리는 것보다, 스텁을 채우는 PR에서 선결 과제 2와 함께 푸는 편이 맞다. 그때의 후보: (a) 심은 노드 하나에만 `node_ops`를 클론해 `setattr(size:0)`을 잡아 잘림을 관측 — 반경이 노드 1개라 정밀하지만 진단만 고침, (b) 앵커를 `lookup`에서 옮겨 write-open을 구분할 수 있는 지점을 찾기 — MEMFS 파일 노드에는 `stream_ops.open`이 없어(`library_memfs.js:37-50`) 오늘의 레이어에는 그런 seam이 없다, (c) 2021.3에 한해 이관을 포기하고 명시적으로 보고.
-
-  E2E 영향: 9-8/9-8b/9-11이 2021.3에서 **잘림 시그니처를 하드 단언한 뒤** 값 단언만 skip한다(9-4의 2021.3 처리와 같은 선례). 시그니처를 단언하는 이유는 skip이 다른 회귀를 가리지 못하게 하기 위해서다 — 심기 도달(`'imported'`)·리매핑·`legacyBytes>0`은 잘림과 무관하게 성립하므로 그대로 검증된다.
+  **선결 과제 3 — 레거시 'empty' 응답의 창 처리 재결정.** 현재 구현은 소스가 존재하는데 빈 응답이면 `legacyChecked`를 기록하지 않는다(재시도군 — 매 부팅 재조회, 예산 ≤1초). 미출시 플랫폼 API의 빈 응답이 lazy-backfill(데이터가 나중에 채워짐)일 가능성을 배제할 수 없어 보수적으로 창을 열어 뒀다. stub을 채우는 PR에서 API 의미론(빈 응답이 종결인지)과 실지연을 확인해, 'empty'를 종결로 기록할지(재조회 비용 제거) 재결정할 것.
 
   나머지 남는 위험: 이 세션에서 PlayerPrefs를 한 번도 열지 않는 게임은 `LEGACY_WATCH_MS`(20초) 만료 후 `legacyImport: 'expired'`로 포기하고 다음 부팅에 재시도한다(오늘의 skip과 동급). stale 디렉터리에 PlayerPrefs가 **남아 있는** 경우는 이 설계의 대상이 아니다 — `collectScoped()`가 `SCOPE_RE`에 맞는 모든 경로를 긁어 좌초 PlayerPrefs가 매니페스트에 올라가는 별건 결함이다.
 

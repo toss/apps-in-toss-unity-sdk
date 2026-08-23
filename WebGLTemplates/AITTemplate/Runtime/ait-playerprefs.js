@@ -23,6 +23,14 @@
 
     // 앱인토스 Storage 키 (레거시 'ait_' localStorage 접두사와 무충돌)
     var MANIFEST_KEY = 'AITUnityFS_v1_manifest';
+    // 레거시 origin 덤프 보관용 **별도** 키 (write-once — 한 번 쓰면 덮지 않는다).
+    // 매니페스트에 함께 싣지 않는 이유:
+    //  (a) 구버전 SDK의 pushScoped는 v:1 매니페스트를 files로부터 처음부터 재구성하므로
+    //      매니페스트에 실은 stash는 구버전이 한 번만 push해도 파괴된다.
+    //  (b) 진짜 세이브와 stash가 MAX_MANIFEST_CHARS(512KB) 상한을 나눠 쓰게 되어,
+    //      둘 다 상한 이내인데도 합계가 넘겨 **정상 세이브 push까지 영구 차단**된다.
+    // 별도 키면 두 문제가 모두 소멸한다.
+    var STASH_KEY = 'AITUnityFS_v1_legacy';
     // kill-switch L3: 이번 탭 세션에서 레이어를 완전히 끄는 플래그
     var SESSION_KILL_KEY = '__ait_pp_disabled';
     // 개발용 mock storage 키 접두사
@@ -55,6 +63,16 @@
     // 상한을 넘긴 덤프는 어차피 MAX_MANIFEST_CHARS 때문에 push도 못 하므로 심을 이유가 없다.
     var LEGACY_MAX_BYTES = 256 * 1024;                              // 원본 바이트 상한
     var LEGACY_MAX_B64_CHARS = 4 * Math.ceil(LEGACY_MAX_BYTES / 3); // 위 상한을 base64 길이로 환산
+    // normalizeLegacyCandidates가 재는 것은 base64 누적 길이뿐인데, writeLegacyStash는
+    // 같은 LEGACY_MAX_B64_CHARS를 JSON 봉투 전체 길이(경로 키 quoting + 파일당 "m"/"t"/"d"
+    // 필드 + 콤마·중괄호 + 바깥 "v"/"ts"/"files" 헤더)에 적용한다. 두 곳이 같은 상수를
+    // 다른 대상에 적용하면 누적 base64가 상한에 근접한 덤프는 normalize는 통과하고
+    // stash에서만 조용히·영구히 탈락한다(재시도군이라 기록도 안 남는 비수렴 실패 모드).
+    // normalize 쪽 실효 상한을 프레이밍만큼 미리 낮춰 항상 write 쪽보다 엄격하게
+    // 만든다 — 마진 1024자는 LEGACY_MAX_CANDIDATES(8후보) × (경로 ~40자 + 파일당
+    // JSON 오버헤드 `"path":{"m":000,"t":0000000000000,"d":""}` ~40자)의 최악치보다
+    // 크게 잡은 보수치다.
+    var LEGACY_NORMALIZE_MAX_B64_CHARS = LEGACY_MAX_B64_CHARS - 1024;
     // 후보 개수 상한. 심기가 "관측된 앱 디렉터리"까지 지연되면서 후보 맵이 그 관측
     // 시점까지 메모리에 상주하게 됐다 — 개수와 누적 base64 길이(LEGACY_MAX_B64_CHARS)를
     // 함께 묶어 상주량을 push 방향과 같은 크기 예산 안에 가둔다.
@@ -91,12 +109,20 @@
         legacyImport: 'none',     // 'none' | 'skip-mountpoint' | 'skip-budget' | 'skip-unknown-local'
                                   // | 'skip-local-present' | 'skip-no-watcher' | 'skip-gate-fired'
                                   // | 'skip-ambiguous' | 'deferred' | 'expired'
-                                  // | 'empty' | 'imported' | 'timeout' | 'error'
+                                  // | 'empty' | 'imported' | 'skip-truncated' | 'stashed'
+                                  // | 'timeout' | 'error'
         legacyBackend: 'none',    // 'none' | 'override' | 'platform'
         legacyBytes: 0,           // 레거시 origin에서 심은 바이트 (restoredBytes와 의미가 다르므로 분리)
         legacyMs: 0,              // readIdbfs 소요 ms (예산 튜닝 관측용)
         legacyAppDir: null,       // 실제로 심은 앱 디렉터리(/idbfs/<hash>) — 관측값이므로 진단 가치가 크다
         legacyWatchMs: LEGACY_WATCH_MS,
+        // 이관 창 부기. null이면 "아직 시도한 적 없음"(= 창 열림, grandfather).
+        // { checked: true, result: 'imported'|'stashed', ts: <ms> }
+        legacyChecked: null,
+        plantedBy: null,          // 심기를 발화시킨 앵커: 'mkdir' | 'lookup' | null
+        plantSeenRead: false,     // 심은 파일을 Unity가 실제로 **읽었는가**(파수꾼 관측)
+        truncatedAtMs: null,      // 심은 뒤 잘림까지 걸린 ms — 부팅 직후(엔진) vs 늦은 시점(게임) 구분용
+        legacyStashState: null,   // 'written' | 'existing' | 'skipped' | null
         lastError: null
     };
 
@@ -114,6 +140,8 @@
     var seq = 0;                  // 스냅샷 시퀀스
     var firstPersistLogged = false;
     var legacyImportRan = false;  // 레거시 임포트 세션 내 재진입 가드 (settled는 호출별 지역 변수라 못 막는다)
+    var legacyStashRan = false;   // 레거시 stash 세션 내 재진입 가드 (위와 같은 이유)
+    var plantedAtMs = 0;          // 심은 시각 — truncatedAtMs 계산의 기준점
     // 앱 디렉터리 관측(Unity가 "아직 없는 PlayerPrefs"를 열려는 순간을 잡는 lookup 훅) 상태.
     // 훅은 레거시 후보가 실제로 park될 때(armAppDirWatch)만 설치된다 — 레거시 소스가 없는
     // 대다수 부팅에서는 엔진 객체를 참조 동일성까지 그대로 둔다(installNodeOpsHook 참조).
@@ -121,6 +149,14 @@
     var watchInstalled = false;
     var appDirWatch = null;       // { files, timer } — 관측을 기다리는 레거시 후보. null이면 미무장
     var inSelfFs = false;         // 우리 자신의 FS 호출 재진입 가드 (훅이 우리 쓰기에 반응하지 않게)
+    // 엔진이 유발한 populate(callOrig(mount, true, ...)) 구간 표시. 늦은 syncfs(true)
+    // reconcile의 FS.mkdirTree가 좌초 디렉터리를 복원하며 mkdir-plant 앵커를 오발화시키는
+    // 경로를 차단한다. persistPath(callOrig false)는 이 플래그와 무관하다(무회귀 계약 7).
+    // ⚠️ 단순 불리언이 아니라 진행 중 카운터다 — Emscripten FS.syncfs는 동시 호출을
+    // 직렬화하지 않으므로 populate가 겹치면(예: reload 하니스의 순단 재시도) 안쪽
+    // 콜백이 먼저 끝나 바깥 구간이 아직 진행 중인데도 표시를 꺼버릴 수 있다. 증감으로
+    // 바꿔 가장 안쪽 콜백이 끝나야 비로소 0이 되게 한다. 판정은 `> 0`(진행 중).
+    var inEnginePopulate = 0;
     var warned = {};              // console.warn 1회 보장용
 
     // ===========================================
@@ -530,6 +566,33 @@
     }
 
     /**
+     * 스냅샷의 legacy 필드 → 유효하면 정규화된 창 부기, 아니면 null.
+     *
+     * - **필드 부재 = 미시도 = 창 열림**(grandfather). 이 레이어가 나가기 전에 쓰인
+     *   매니페스트에는 이 필드가 없으므로, 부재를 "이관 완료"로 읽으면 안 된다.
+     * - **형태 검증 실패도 부재 취급**한다. 적대적/손상된 매니페스트(legacy:true 같은
+     *   값)가 마이그레이션 창을 영구히 닫아버리지 못하게 하는 방어선이다.
+     */
+    function readLegacyChecked(snapshot) {
+        var l = snapshot && snapshot.legacy;
+        if (!l || typeof l !== 'object') return null;
+        if (l.checked !== true) return null;
+        if (typeof l.result !== 'string' || l.result.length === 0) return null;
+        return { checked: true, result: l.result, ts: toMillis(l.ts) };
+    }
+
+    /**
+     * 창 부기를 매니페스트 직렬화 형태로. 미설정이면 '' — 그때는 legacy 필드 자체를
+     * 싣지 않는다(무회귀 계약 1: 소스 부재 부팅의 push 페이로드가 오늘과 동일).
+     * 키 순서를 고정해야 변경 감지 해시가 안정적이다.
+     */
+    function serializeLegacyChecked() {
+        var l = state.legacyChecked;
+        if (!l || l.checked !== true || typeof l.result !== 'string') return '';
+        return '{"checked":true,"result":' + JSON.stringify(l.result) + ',"ts":' + (toMillis(l.ts) || 0) + '}';
+    }
+
+    /**
      * 스냅샷에서 읽은 files를 우리 내부 표현으로 정규화 (해시 비교 기준 통일).
      * scope 밖 경로는 버린다 — 손상된 스냅샷이 PlayerPrefs 외 파일을 덮지 못하게 하는 방어선.
      */
@@ -635,8 +698,11 @@
         // 덮어쓰므로, 스냅샷 값(files)으로 해시를 계산하면 복원 직후 실제 디스크 상태와
         // 어긋난다. pushScoped와 동일하게 collectScoped(mount)로 실측값을 다시 모아
         // 그 값으로 해시를 계산해야 첫 persist에서 불필요한 push가 발생하지 않는다.
+        // 해시 조합은 pushScoped와 **반드시 동일**해야 한다(files + legacy 부기).
+        // 한쪽만 legacy를 빼면 복원 직후 불필요한 push가 나거나(또는 그 반대로)
+        // legacy 필드 변경이 "변경 없음"으로 판정돼 영영 영속화되지 않는다.
         var after = collectScoped(mount);
-        lastPushedHash = fnv1a(serializeFiles(after ? after.files : files));
+        lastPushedHash = fnv1a(serializeFiles(after ? after.files : files) + '|' + serializeLegacyChecked());
         log('스냅샷 복원 완료 — 파일 ' + keys.length + '개, ' + state.restoredBytes + 'B');
     }
 
@@ -654,8 +720,9 @@
      * 제약 (본문을 채울 때 반드시 지킬 것):
      *  - 반드시 **동기 탐지**만 한다. resolveStorage()식 폴링을 흉내 내면 레거시 소스가
      *    영영 없는 대다수 부팅에서 부트 게이트 예산을 통째로 태운다.
-     *  - activeStorage(플랫폼 Storage) 객체를 경유하지 않는다. 이 레이어의 Storage
-     *    접근은 매니페스트 키 1개로 감사되고 있다.
+     *  - activeStorage(플랫폼 Storage) 객체를 경유하지 않는다. 이 레이어가 **쓰는**
+     *    Storage 키는 정확히 2개다 — MANIFEST_KEY(매 push)와 STASH_KEY(write-once,
+     *    레거시 보존 1회). 레거시 소스 읽기는 이 둘 중 어느 것도 경유하지 않는다.
      */
     function getPlatformLegacySource() {
         return null;
@@ -756,10 +823,11 @@
             var d = '';
             var raw = v['contents'];
             if (typeof raw === 'string') {
-                // 이미 base64 — 인코딩 없이 길이만으로 상한을 건다
-                if (raw.length > LEGACY_MAX_B64_CHARS) {
+                // 이미 base64 — 인코딩 없이 길이만으로 상한을 건다(상한은 stash 프레이밍
+                // 예약분만큼 낮춘 실효 상한 — 위 LEGACY_NORMALIZE_MAX_B64_CHARS 주석 참조)
+                if (raw.length > LEGACY_NORMALIZE_MAX_B64_CHARS) {
                     recordError('레거시 contents 크기',
-                        new Error('base64 ' + raw.length + '자 > 상한 ' + LEGACY_MAX_B64_CHARS + '자'));
+                        new Error('base64 ' + raw.length + '자 > 상한 ' + LEGACY_NORMALIZE_MAX_B64_CHARS + '자'));
                     continue;
                 }
                 d = raw;
@@ -790,9 +858,11 @@
             if (d.length === 0) continue;
 
             // 누적 상한 — 여러 후보를 들고 있어도 push 방향의 크기 예산을 넘기지 않는다
-            if (totalB64 + d.length > LEGACY_MAX_B64_CHARS) {
+            // (실효 상한 LEGACY_NORMALIZE_MAX_B64_CHARS — writeLegacyStash의 봉투
+            // 프레이밍을 미리 예약해둔 값)
+            if (totalB64 + d.length > LEGACY_NORMALIZE_MAX_B64_CHARS) {
                 recordError('레거시 후보 누적 크기',
-                    new Error('base64 누적 ' + (totalB64 + d.length) + '자 > 상한 ' + LEGACY_MAX_B64_CHARS + '자'));
+                    new Error('base64 누적 ' + (totalB64 + d.length) + '자 > 상한 ' + LEGACY_NORMALIZE_MAX_B64_CHARS + '자'));
                 break;
             }
             totalB64 += d.length;
@@ -874,6 +944,25 @@
             try {
                 if (node && isDirMode(mode) && node.node_ops !== ours) node.node_ops = ours;
             } catch (e) { /* 전파 실패는 훅 미발화로 끝날 뿐이므로 삼킨다 */ }
+            // ── mkdir-plant 앵커 ───────────────────────────────────────────────
+            // lookup 앵커는 "첫 접근이 read-open"을 전제하는데 2021.3에서 그 전제가
+            // 거짓임이 실측됐다(tryPlantAt 주석). 앱 디렉터리가 **막 생긴 직후**,
+            // 즉 Unity가 그 안의 PlayerPrefs를 아직 열기도 전에 심어두면 그 전제 없이
+            // 이관이 성립할 수 있다(모델 i-b: 엔진이 readdir 내용을 보고 rb로 연다).
+            // 모델 i-a(디렉터리 유무만 보고 곧장 wb=O_TRUNC)라면 심어도 잘리는데,
+            // 그 경우는 수정 C의 파수꾼이 'skip-truncated'로 관측해 창을 열어 둔다.
+            // ⚠️ 반환 계약: 심기 성패와 무관하게 반드시 origMknod의 노드를 돌려준다.
+            try {
+                if (node && isDirMode(mode) && appDirWatch && !inSelfFs && inEnginePopulate === 0 &&
+                    parent === mountRootNode && typeof name === 'string' &&
+                    SCOPE_DIR_RE.test(IDBFS_ROOT + '/' + name)) {
+                    tryPlantOnMkdir(node, name);
+                }
+            } catch (e) {
+                recordError('mkdir-plant 앵커', e);
+                if (state.legacyImport === 'deferred') state.legacyImport = 'error';
+                disarmAppDirWatch(); // 에러는 disarm (아래 disarm 정책 참조)
+            }
             return node;
         };
 
@@ -977,8 +1066,144 @@
     }
 
     /**
+     * 잘림 파수꾼 — 심은 파일 노드 **하나에만** 설치한다.
+     *
+     * ⚠️ 순서 불변식: 반드시 `applyLegacyFiles`가 성공적으로 반환한 **뒤에** 부른다.
+     *    우리 자신의 쓰기(storeLocalEntry → FS.writeFile = O_TRUNC 경유)가 파수꾼을
+     *    오발화시키지 않게 하는 유일한 근거가 이 순서다.
+     * ⚠️ 공유 테이블(MEMFS.ops_table)을 in-place로 고치지 않는다 — 반드시 클론해서
+     *    이 노드에만 지정한다(무회귀 계약 5).
+     *
+     * 관측하는 것:
+     *  - stream_ops.read / mmap → plantSeenRead = true (Unity가 심은 바이트를 실제로 읽었다)
+     *  - node_ops.setattr에서 size === 0 → 'skip-truncated' (읽기 전에 잘렸다 = 모델 i-a)
+     *
+     * 한계(과장하지 말 것):
+     *  - unlink/rename 교체는 미탐이다. §1-5 실측 증상은 O_TRUNC라 우선순위가 낮다.
+     *  - read 없이 게임이 곧바로 DeleteAll/Save하면 오탐이다. 결과는 "창 유지 + 다음
+     *    부팅 stash"라 무손실이고, truncatedAtMs로 부팅 직후(엔진) vs 늦은 시점(게임)을
+     *    구분할 수 있다.
+     */
+    function installTruncationSentinel(node) {
+        if (!node) return;
+        try {
+            var sops = node.stream_ops;
+            if (sops && typeof sops === 'object') {
+                var cloneS = Object.assign({}, sops);
+                var origRead = sops.read;
+                if (typeof origRead === 'function') {
+                    cloneS.read = function () {
+                        state.plantSeenRead = true; // 1회 기록 후 원본에 위임
+                        return origRead.apply(this, arguments);
+                    };
+                }
+                var origMmap = sops.mmap;
+                if (typeof origMmap === 'function') {
+                    cloneS.mmap = function () {
+                        state.plantSeenRead = true;
+                        return origMmap.apply(this, arguments);
+                    };
+                }
+                node.stream_ops = cloneS;
+            }
+
+            var nops = node.node_ops;
+            var origSetattr = nops && nops.setattr;
+            if (typeof origSetattr === 'function') {
+                var cloneN = Object.assign({}, nops);
+                cloneN.setattr = function (n, attr) {
+                    try {
+                        // chmod/utime은 size가 undefined라 여기서 발화하지 않는다.
+                        // !inSelfFs: overlayScoped 재기록 등 우리 구간은 면제.
+                        if (attr && attr.size === 0 && !state.plantSeenRead && !inSelfFs &&
+                            state.legacyImport !== 'skip-truncated') {
+                            state.legacyImport = 'skip-truncated';
+                            state.truncatedAtMs = Date.now() - plantedAtMs;
+                        }
+                    } catch (e) { /* 관측 실패가 FS 동작을 막아서는 안 된다 */ }
+                    return origSetattr.apply(this, arguments);
+                };
+                node.node_ops = cloneN;
+            }
+        } catch (e) {
+            recordError('잘림 파수꾼 설치', e);
+        }
+    }
+
+    /**
+     * 후보를 **관측된** 앱 디렉터리에 실제로 심는다.
+     * 반환: { result: 'planted'|'skip-ambiguous'|'empty'|'error', bytes, node }
+     *
+     * ⚠️ disarm은 여기서 하지 않는다 — 앵커(lookup/mkdir)마다 정책이 다르므로 호출자 몫이다.
+     */
+    function plantLegacyInto(dirNode, appDir, pendingFiles, plantedBy) {
+        var files = pickLegacyTarget(pendingFiles, appDir);
+        if (!files) return { result: 'skip-ambiguous', bytes: 0, node: null };
+
+        var bytes = 0;
+        var prev = enterSelfFs();
+        try {
+            bytes = applyLegacyFiles(files);
+        } catch (e) {
+            recordError('레거시 지연 적용', e);
+            return { result: 'error', bytes: 0, node: null };
+        } finally {
+            exitSelfFs(prev);
+        }
+        if (!bytes) return { result: 'empty', bytes: 0, node: null };
+
+        state.legacyBytes = bytes;
+        state.legacyAppDir = appDir;
+        state.legacyImport = 'imported';
+        state.plantedBy = plantedBy;
+        plantedAtMs = Date.now();
+
+        var node = (dirNode.contents && dirNode.contents[PLAYERPREFS_NAME]) || null;
+        // 순서 불변식 — 우리 쓰기가 끝난 **뒤에만** 파수꾼을 건다(위 주석 참조)
+        installTruncationSentinel(node);
+        return { result: 'planted', bytes: bytes, node: node };
+    }
+
+    /**
+     * mkdir-plant 앵커의 본체. Unity가 앱 디렉터리를 막 만든 직후(=비어 있는 것이
+     * 보장된 순간) 미리 심어 둔다.
+     *
+     * disarm 정책(lookup 앵커와 다르다):
+     *  - 실제로 심었거나 에러(쓰기 시도 실패 포함)면 disarm — 1회성 유지.
+     *  - 후보 불일치로 **심지 않은** 경우(skip)는 armed 유지. 첫 depth-1 mkdir 하나가
+     *    이 세션의 관측 기회를 소진하고 lookup 폴백까지 죽이는 것을 막는다.
+     *    이때 legacyImport는 'deferred' 그대로 둔다 — 창이 실제로 열려 있기 때문이다.
+     */
+    function tryPlantOnMkdir(dirNode, name) {
+        var pending = appDirWatch;
+        if (!pending || !dirNode) return;
+        var appDir = IDBFS_ROOT + '/' + name;
+        if (!SCOPE_DIR_RE.test(appDir)) return;
+        // 갓 생긴 디렉터리라 비어 있는 것이 정상이지만, 존재하는 파일은 어떤 경로로도
+        // 덮지 않는다(무회귀 계약 3). 이 경우도 skip이므로 armed를 유지한다.
+        if (dirNode.contents && dirNode.contents[PLAYERPREFS_NAME]) return;
+
+        var r = plantLegacyInto(dirNode, appDir, pending.files, 'mkdir');
+        if (r.result === 'skip-ambiguous') return; // armed 유지 — lookup 폴백 기회를 남긴다
+
+        disarmAppDirWatch(); // 심었거나(planted) 쓰기까지 갔다가 실패(empty/error)한 경우
+        if (r.result === 'empty') { state.legacyImport = 'empty'; return; }
+        if (r.result === 'error') { state.legacyImport = 'error'; return; }
+
+        try {
+            log('레거시 스냅샷을 앱 디렉터리(' + appDir + ')에 mkdir 직후 심었습니다 — ' + r.bytes + 'B');
+            scheduleImmediatePush(activeMount);
+        } catch (e) {
+            recordError('레거시 심기 뒤처리', e);
+        }
+    }
+
+    /**
      * Unity가 "아직 없는 PlayerPrefs"를 처음 열려는 순간. parent가 곧 현재 앱 디렉터리다.
      * 심었으면 그 노드를, 아니면 null(호출자가 원본 lookup으로 위임 = ENOENT)을 돌려준다.
+     *
+     * mkdir-plant 앵커(위)가 도입된 뒤에도 **폴백으로 유지**한다 — warm boot처럼 앱
+     * 디렉터리가 이미 존재해 mknod를 거치지 않는 경로가 남아 있기 때문이다(W8).
      *
      * ⚠️ 이 앵커의 전제는 "그 첫 접근이 read-open이어야 한다"인데, **2021.3에서 거짓임이
      *    실측됐다**(E2E run 32589182104, macOS/Windows 양쪽). lookup 미스는 read/write를
@@ -993,9 +1218,14 @@
      *
      *    오늘 이 결함은 프로덕션에서 관측되지 않는다 — getPlatformLegacySource()가
      *    null이라 레거시 경로 자체가 비활성이고, 오버라이드 훅을 심는 E2E에서만 발화한다.
-     *    그래서 지금 고치지 않는다. 다만 **스텁을 채우기 전에 반드시 선결해야 한다**
-     *    (TODO.md P2 선결 과제 3). 재시도로는 못 푼다: 잘린 파일이 로컬에 남아 다음
-     *    부팅의 lookup에서 미스가 나지 않으므로 이 앵커가 영영 발화하지 않는다.
+     *    대응은 세 겹이다: ① mkdir-plant 앵커(tryPlantOnMkdir)가 심는 시점을 앱 디렉터리
+     *    생성 순간으로 앞당기고(엔진의 존재 판정이 readdir 기반[모델 i-b]이면 해소),
+     *    ② 잘림 파수꾼(installTruncationSentinel)이 읽기 관측 전 잘림을 'skip-truncated'로
+     *    정직화해 legacyChecked를 기록하지 않으며, ③ 다음 부팅의 present+scoped+미체크
+     *    경로가 레거시 원본을 stash(STASH_KEY)로 보존한다. 이 lookup 앵커 단독으로 재시도가
+     *    성립하지 않는 점은 그대로다: 잘린 파일이 로컬에 남아 다음 부팅에서 lookup 미스가
+     *    다시 나지 않는다. 모델 판별(i-a/i-b)은 E2E 관측 라운드가 결정한다
+     *    (TODO.md P2 선결 과제 2).
      */
     function tryPlantAt(parent) {
         var pending = appDirWatch;
@@ -1011,27 +1241,18 @@
         // 조건이지만, 이 설계의 안전성 근거를 호출부에도 명시적으로 남긴다.)
         if (parent.contents && parent.contents[PLAYERPREFS_NAME]) return null;
 
+        // lookup 앵커는 기존의 1회성 disarm을 유지한다 — 재진입·DeleteAll 부활 방지
+        // 근거가 그대로 유효하기 때문이다(pushScoped의 disarm 주석, W11).
         disarmAppDirWatch(); // 성패 무관 1회성 — 재진입·DeleteAll 부활 방지
 
-        var files = pickLegacyTarget(pending.files, appDir);
-        if (!files) { state.legacyImport = 'skip-ambiguous'; return null; }
-
-        var bytes = 0;
-        var prev = enterSelfFs();
-        try {
-            bytes = applyLegacyFiles(files);
-        } catch (e) {
-            recordError('레거시 지연 적용', e);
-            state.legacyImport = 'error';
+        var planted = plantLegacyInto(parent, appDir, pending.files, 'lookup');
+        if (planted.result !== 'planted') {
+            if (planted.result === 'skip-ambiguous') state.legacyImport = 'skip-ambiguous';
+            else if (planted.result === 'empty') state.legacyImport = 'empty';
+            else state.legacyImport = 'error';
             return null;
-        } finally {
-            exitSelfFs(prev);
         }
-        if (!bytes) { state.legacyImport = 'empty'; return null; }
-
-        state.legacyBytes = bytes;
-        state.legacyAppDir = appDir;
-        state.legacyImport = 'imported';
+        var bytes = planted.bytes;
 
         // ⚠️ 심기가 성공한 뒤로는 **어떤 경우에도 노드를 돌려줘야 한다.** 여기서 예외가
         //    새면 호출부(ours.lookup)의 catch가 그것을 삼키고 원본 lookup으로 위임하는데,
@@ -1041,7 +1262,7 @@
         //    (library_fs.js:618-634) fopen 자체가 실패한다. 즉 예외가 새는 것이 아니라
         //    **삼킨 결과가 FS 실제 상태와 어긋나서** 다음 FS 호출이 죽는 형태다.
         //    그래서 노드를 먼저 확정하고, 뒤처리(로그/승격 push 예약)는 따로 감싼다.
-        var node = (parent.contents && parent.contents[PLAYERPREFS_NAME]) || null;
+        var node = planted.node;
         try {
             log('레거시 스냅샷을 앱 디렉터리(' + appDir + ')에 심었습니다 — ' + bytes + 'B');
             scheduleImmediatePush(activeMount);
@@ -1071,6 +1292,52 @@
             LEGACY_READ_TIMEOUT_MS,
             state.bootTimeoutMs - (Date.now() - gateArmedAt) - LEGACY_GATE_RESERVE_MS
         );
+    }
+
+    /**
+     * 레거시 소스 읽기를 예산 안에서 **정확히 1회** 수행하는 공유 타임박스.
+     * 심기(tryLegacyImport)와 보존(tryLegacyStash) 두 경로가 같은 예산·게이트 규칙을
+     * 쓰도록 추출했다 — 한쪽만 게이트를 빠뜨리면 그 경로가 부트를 늦추거나, Unity가
+     * MEMFS를 읽어간 뒤에 손을 대게 된다.
+     *
+     * handlers의 콜백은 통틀어 정확히 1회만 불린다:
+     *  onSkipBudget / onTimeout / onGateFired / onError / onDump
+     *
+     * ⚠️ 타이머를 거는 **이 시점**의 예산으로 다시 계산한다. 호출자 진입 시각 기준으로
+     *    걸면 그 사이 동기 작업(collectScoped 등) 소요분만큼 마진이 잠식돼, 레거시
+     *    작업 때문에 부트 게이트가 먼저 발화하고 vanilla로 강등될 수 있다.
+     */
+    function readLegacyWithBudget(src, gateArmedAt, isSettled, handlers) {
+        var budget = legacyBudgetMs(gateArmedAt);
+        if (budget < LEGACY_MIN_BUDGET_MS) { handlers.onSkipBudget(); return; }
+
+        var done = false;
+        var t0 = Date.now();
+        var timer = setTimeout(function () {
+            if (done) return;
+            done = true;
+            state.legacyMs = Date.now() - t0;
+            handlers.onTimeout();
+        }, budget);
+
+        new Promise(function (r) {
+            // readIdbfs가 동기 throw해도 여기서 잡힌다
+            r(src.readIdbfs());
+        }).then(function (dump) {
+            if (done) return; // 타임아웃이 이미 이겼다
+            done = true;
+            clearTimeout(timer);
+            state.legacyMs = Date.now() - t0;
+            // 게이트가 이미 발화했다면 Unity가 MEMFS를 읽어간 뒤다 — 절대 건드리지 않는다
+            if (isSettled()) { handlers.onGateFired(); return; }
+            handlers.onDump(dump);
+        }, function (e) {
+            if (done) return;
+            done = true;
+            clearTimeout(timer);
+            state.legacyMs = Date.now() - t0;
+            handlers.onError(e);
+        });
     }
 
     /**
@@ -1127,68 +1394,153 @@
         if (col.scoped.length > 0) { state.legacyImport = 'skip-local-present'; finishOnce(); return; }
 
         // collectScoped는 전부 동기(getLocalSet + 파일별 loadLocalEntry + base64 인코딩)라
-        // 큰 파일 트리에서 수백 ms를 태울 수 있다. 타이머를 거는 **이 시점**의 예산으로
-        // 다시 계산해야 실제 게이트 마진이 LEGACY_GATE_RESERVE_MS로 보장된다 —
-        // 호출 진입 시각 기준으로 걸면 그 사이 소요분만큼 마진이 잠식돼, 레거시
-        // 임포트 때문에 게이트가 먼저 발화하고 vanilla로 강등될 수 있다.
-        var budget = legacyBudgetMs(gateArmedAt);
-        if (budget < LEGACY_MIN_BUDGET_MS) { state.legacyImport = 'skip-budget'; finishOnce(); return; }
-
-        var t0 = Date.now();
-        var timer = setTimeout(function () {
-            state.legacyMs = Date.now() - t0;
-            state.legacyImport = 'timeout';
-            finishOnce();
-        }, budget);
-
-        new Promise(function (r) {
-            // readIdbfs가 동기 throw해도 여기서 잡힌다
-            r(src.readIdbfs());
-        }).then(function (dump) {
-            if (finished) return; // 타임아웃이 이미 이겼다
-            clearTimeout(timer);
-            state.legacyMs = Date.now() - t0;
-            // 게이트가 이미 발화했다면 Unity가 MEMFS를 읽어간 뒤다 — 절대 건드리지 않는다
-            if (isSettled()) { state.legacyImport = 'skip-gate-fired'; finishOnce(); return; }
-            var cand;
-            try {
-                cand = normalizeLegacyCandidates(dump);
-            } catch (e) {
-                recordError('레거시 임포트 적용', e);
+        // 큰 파일 트리에서 수백 ms를 태울 수 있다. 예산 재계산은 공유 헬퍼가 타이머를
+        // 거는 시점에 수행한다(readLegacyWithBudget 주석 참조).
+        readLegacyWithBudget(src, gateArmedAt, isSettled, {
+            onSkipBudget: function () { state.legacyImport = 'skip-budget'; finishOnce(); },
+            onTimeout: function () { state.legacyImport = 'timeout'; finishOnce(); },
+            onGateFired: function () { state.legacyImport = 'skip-gate-fired'; finishOnce(); },
+            onError: function (e) {
+                recordError('레거시 읽기', e);
                 state.legacyImport = 'error';
                 finishOnce();
-                return;
-            }
-            if (!cand) { state.legacyImport = 'empty'; finishOnce(); return; }
+            },
+            onDump: function (dump) {
+                var cand;
+                try {
+                    cand = normalizeLegacyCandidates(dump);
+                } catch (e) {
+                    recordError('레거시 임포트 적용', e);
+                    state.legacyImport = 'error';
+                    finishOnce();
+                    return;
+                }
+                if (!cand) { state.legacyImport = 'empty'; finishOnce(); return; }
 
-            // ── 심기 분기 ────────────────────────────────────────────────────
-            // 앱 디렉터리(/idbfs/<hash>)를 **추측하지 않는다.** 로컬 엔트리 목록의 유일
-            // 후보를 현재 앱 디렉터리로 간주하던 옛 규칙(resolveAppDir)은, 같은 origin에서
-            // 서빙 URL만 바뀐 설치(경로 버저닝 등)에서 옛 URL이 남긴 좌초 디렉터리를 그대로
-            // 통과시켰다. 그러면 Unity가 절대 읽지 않는 경로에 심고 그것이 매니페스트로
-            // 승격되면서 마이그레이션 창이 **영구히** 닫힌다. 심을 위치는 오직 Unity 자신이
-            // "이 경로의 PlayerPrefs를 연다"고 알려준 값 — 관측값이어야 한다.
-            //
-            // 그래서 여기서는 심지 않고 후보를 park만 한다. 관측(lookup 미스)이 오면
-            // tryPlantAt이 그때 심는다. 관측이 없으면 창은 열린 채 남는다.
-            //
-            // ⚠️ park(armAppDirWatch)는 반드시 finish() **이전**에 끝나야 한다. Unity는
-            //    callback(null) 직후 MEMFS를 읽으므로, 순서가 뒤집히면 첫 PlayerPrefs
-            //    open이 감시자보다 앞서 임포트가 조용히 누락된다(테스트 W9).
-            //
-            // 엔진 계약 셀프체크(node_ops.lookup/mknod)에 실패하면 감시자를 못 붙이므로
-            // 아무것도 심지 않는 오늘 거동으로 후퇴한다 — 레이어 전체를 끄지는 않는다.
-            if (!armAppDirWatch(cand)) { state.legacyImport = 'skip-no-watcher'; finishOnce(); return; }
-            state.legacyImport = 'deferred';
-            finishOnce();
-        }, function (e) {
-            if (finished) return;
-            clearTimeout(timer);
-            state.legacyMs = Date.now() - t0;
-            recordError('레거시 읽기', e);
-            state.legacyImport = 'error';
-            finishOnce();
+                // ── 심기 분기 ────────────────────────────────────────────────
+                // 앱 디렉터리(/idbfs/<hash>)를 **추측하지 않는다.** 로컬 엔트리 목록의 유일
+                // 후보를 현재 앱 디렉터리로 간주하던 옛 규칙(resolveAppDir)은, 같은 origin에서
+                // 서빙 URL만 바뀐 설치(경로 버저닝 등)에서 옛 URL이 남긴 좌초 디렉터리를 그대로
+                // 통과시켰다. 그러면 Unity가 절대 읽지 않는 경로에 심고 그것이 매니페스트로
+                // 승격되면서 마이그레이션 창이 **영구히** 닫힌다. 심을 위치는 오직 Unity 자신이
+                // "이 경로의 PlayerPrefs를 연다/만든다"고 알려준 값 — 관측값이어야 한다.
+                //
+                // 그래서 여기서는 심지 않고 후보를 park만 한다. 관측(앱 디렉터리 mkdir 또는
+                // PlayerPrefs lookup 미스)이 오면 그때 심는다. 관측이 없으면 창은 열린 채 남는다.
+                //
+                // ⚠️ park(armAppDirWatch)는 반드시 finish() **이전**에 끝나야 한다. Unity는
+                //    callback(null) 직후 MEMFS를 읽으므로, 순서가 뒤집히면 첫 PlayerPrefs
+                //    open이 감시자보다 앞서 임포트가 조용히 누락된다(테스트 W9).
+                //
+                // 엔진 계약 셀프체크(node_ops.lookup/mknod)에 실패하면 감시자를 못 붙이므로
+                // 아무것도 심지 않는 오늘 거동으로 후퇴한다 — 레이어 전체를 끄지는 않는다.
+                if (!armAppDirWatch(cand)) { state.legacyImport = 'skip-no-watcher'; finishOnce(); return; }
+                state.legacyImport = 'deferred';
+                finishOnce();
+            }
         });
+    }
+
+    /**
+     * 레거시 stash(보존) — 이관 창은 열려 있는데 로컬에 이미 정본 PlayerPrefs가 있어
+     * **심을 수 없는** 부팅에서, 옛 origin의 덤프를 별도 write-once 키에 한 번 보관한다.
+     *
+     * ⚠️ tryLegacyImport를 재사용하지 않는다:
+     *    (a) 이 경로의 전제 자체가 "로컬에 scoped 파일이 있다"라서 skip-local-present
+     *        관문에 즉사한다.
+     *    (b) 성공 종점의 armAppDirWatch가 훅을 설치하고 **심기를 유발**한다 — 라이브
+     *        데이터가 있는 부팅에서 절대 해서는 안 되는 일이다.
+     *    그래서 stash 경로는 armAppDirWatch/installNodeOpsHook을 **절대 호출하지 않는다**
+     *    (무회귀 계약 6). 예산·게이트 규칙만 readLegacyWithBudget으로 공유한다.
+     *
+     * done은 정확히 1회 호출된다. 실제 Storage 쓰기는 done 이후 fire-and-forget이라
+     * 부팅을 블록하지 않는다(실패하면 다음 부팅에 재시도 — 기록을 남기지 않으므로).
+     */
+    function tryLegacyStash(mount, gateArmedAt, isSettled, done) {
+        var finished = false;
+        function finishOnce() {
+            if (finished) return;
+            finished = true;
+            done();
+        }
+
+        if (legacyStashRan) { finishOnce(); return; }
+        var src = resolveLegacySource();
+        if (!src) { finishOnce(); return; }
+        legacyStashRan = true;
+
+        var mp = String((mount && mount.mountpoint) || '').replace(/\/+$/, '');
+        if (mp !== IDBFS_ROOT) { finishOnce(); return; }
+
+        readLegacyWithBudget(src, gateArmedAt, isSettled, {
+            // 아래 넷은 전부 **기록 없음** — 재시도군으로 남겨 다음 부팅에 다시 시도한다
+            onSkipBudget: finishOnce,
+            onTimeout: finishOnce,
+            onGateFired: finishOnce,
+            onError: function (e) { recordError('레거시 stash 읽기', e); finishOnce(); },
+            onDump: function (dump) {
+                var cand = null;
+                try {
+                    cand = normalizeLegacyCandidates(dump); // 형태·크기 상한 재사용
+                } catch (e) {
+                    recordError('레거시 stash 정규화', e);
+                    finishOnce();
+                    return;
+                }
+                // 부팅을 먼저 놓아준다. 뒤이은 Storage 쓰기는 canWrite()를 경유하는데,
+                // 그 가드가 mode === 'ait'를 요구하므로 finish 이후여야 성립한다.
+                finishOnce();
+                if (!cand) return; // 후보 없음 = 'empty' — 아무것도 기록하지 않는다(결정 변경 3)
+                writeLegacyStash(cand);
+            }
+        });
+    }
+
+    /**
+     * stash 페이로드를 STASH_KEY에 write-once로 쓴다. 성공(또는 기존재) 확인 후에만
+     * 창 부기(legacyChecked)를 남긴다 — 쓰지도 못했는데 창을 닫으면 이관이 영구 실패한다.
+     */
+    function writeLegacyStash(files) {
+        if (!canWrite()) { state.legacyStashState = 'skipped'; return; }
+
+        var payload = '{"v":' + SNAPSHOT_VERSION + ',"ts":' + Date.now() + ',"files":' + serializeFiles(files) + '}';
+        if (payload.length > LEGACY_MAX_B64_CHARS) {
+            // 상한 초과 — 쓰지 않고 **기록도 남기지 않는다**(재시도군)
+            recordError('레거시 stash 크기',
+                new Error(payload.length + '자 > 상한 ' + LEGACY_MAX_B64_CHARS + '자'));
+            state.legacyStashState = 'skipped';
+            return;
+        }
+
+        var storage = activeStorage;
+        new Promise(function (r) {
+            r(storage.getItem(STASH_KEY));
+        }).then(function (existing) {
+            if (existing !== null && existing !== undefined && existing !== '') {
+                // write-once: 먼저 보관된 덤프가 정본이다. 덮으면 재부팅마다 최신
+                // (=이미 이관된 뒤일 수 있는) 상태로 갈아치울 위험이 있다.
+                state.legacyStashState = 'existing';
+                markLegacyStashed();
+                return null;
+            }
+            return new Promise(function (r) {
+                r(storage.setItem(STASH_KEY, payload));
+            }).then(function () {
+                state.legacyStashState = 'written';
+                log('레거시 덤프를 ' + STASH_KEY + '에 보관했습니다 — ' + payload.length + '자');
+                markLegacyStashed();
+            });
+        }).catch(function (e) {
+            // 실패는 기록을 남기지 않는다 = 다음 부팅에 그대로 재시도된다
+            recordError('레거시 stash 저장', e);
+        });
+    }
+
+    /** stash 성공(또는 기존재) 확정 — 창을 닫고 그 사실을 매니페스트에 싣는다 */
+    function markLegacyStashed() {
+        state.legacyImport = 'stashed';
+        state.legacyChecked = { checked: true, result: 'stashed', ts: Date.now() };
+        scheduleImmediatePush(activeMount);
     }
 
     function canWrite() {
@@ -1212,12 +1564,32 @@
             // (remoteHasScoped가 true면 DeleteAll 반영이므로 빈 files를 그대로 push한다)
             if (col.scoped.length === 0 && !remoteHasScoped) { resolve(false); return; }
 
+            // 창 부기 기록 조건 ①: 'imported'는 **plantSeenRead === true** 이후에만.
+            // 심기→즉시 push→(다음 프레임)잘림 레이스에서 창이 닫힌 채 0바이트가 정본이
+            // 되는 위음성을 차단한다. 읽기가 관측되기 전에는 legacyBytes/legacyAppDir만
+            // 진단으로 남기고 창은 열어 둔다(다음 부팅에 stash로 수렴).
+            // ('stashed'는 writeLegacyStash가 쓰기 성공 확인 후 직접 기록한다.
+            //  'empty'/skip-*/error/timeout/expired/skip-truncated와 소스 부재 부팅은
+            //  전부 미기록 = 재시도군이다. 특히 'empty'를 기록하지 않는 것은 의도된
+            //  결정이다 — 빈 매니페스트 가드와 충돌하는데다, 미출시 플랫폼 API의
+            //  lazy-backfill 가능성 하에서 첫 빈 응답으로 창을 닫는 것은 조기 종결이다.
+            //  대가는 "소스가 있는 한 매 부팅 재조회(≤1초 타임박스)"이며, 플랫폼 API
+            //  실성능이 확인되면 재결정한다.)
+            if (!state.legacyChecked && state.legacyImport === 'imported' && state.plantSeenRead) {
+                state.legacyChecked = { checked: true, result: 'imported', ts: Date.now() };
+            }
+
             var filesJson = serializeFiles(col.files);
-            var hash = fnv1a(filesJson);
+            var legacyJson = serializeLegacyChecked();
+            // ⚠️ 변경 감지 해시에 legacy를 **반드시** 포함한다. files가 그대로이고
+            //    legacy 부기만 새로 생긴 push(= stash 직후, 또는 읽기 관측 직후)가
+            //    "변경 없음"으로 스킵되면 창이 영영 닫히지 않는다.
+            var hash = fnv1a(filesJson + '|' + legacyJson);
             if (hash === lastPushedHash) { resolve(false); return; } // 변경 없음
 
             var nextSeq = seq + 1;
-            var body = '{"v":' + SNAPSHOT_VERSION + ',"seq":' + nextSeq + ',"scope":"' + SCOPE + '","files":' + filesJson + '}';
+            var body = '{"v":' + SNAPSHOT_VERSION + ',"seq":' + nextSeq + ',"scope":"' + SCOPE + '","files":' + filesJson +
+                (legacyJson ? ',"legacy":' + legacyJson : '') + '}';
             var manifest = '{"v":' + SNAPSHOT_VERSION + ',"seq":' + nextSeq + ',"ts":' + Date.now() + ',"inline":' + JSON.stringify(body) + '}';
             if (manifest.length > MAX_MANIFEST_CHARS) {
                 warnOnce('too-large', '스냅샷이 상한(' + MAX_MANIFEST_CHARS + '자)을 초과해 저장하지 않습니다. 크기=' + manifest.length);
@@ -1285,6 +1657,14 @@
      */
     function scheduleImmediatePush(mount) {
         setTimeout(function () {
+            // 잘림 파수꾼이 발화했으면 이 승격 push는 하지 않는다 — 잘린 0바이트를
+            // 정본으로 올리지 않기 위해서다.
+            // ⚠️ 이 게이트의 효과는 **"즉시 승격 push 1회 억제"뿐이다.** Unity의 후속
+            //    저장이 유발하는 persistPath→pushScoped는 게이트하지 않는다(게임 쓰기가
+            //    정본 — 무회귀 계약 7). 데이터 안전성의 근거는 이 게이트가 아니라
+            //    **"skip-truncated면 legacyChecked 미기록 → 다음 부팅에 present+scoped+
+            //    미체크 → stash 경로로 보존"** 이라는 사슬이다.
+            if (state.legacyImport === 'skip-truncated') return;
             pushScoped(mount).catch(function (e) { recordError('승격 push', e); });
         }, 0);
     }
@@ -1318,11 +1698,31 @@
             });
         }
 
+        /**
+         * 이관 창은 열려 있는데(legacy 부기 없음) 로컬에 이미 정본 PlayerPrefs가 있는
+         * 부팅. 심는 것은 금지(무회귀 계약 3)이므로, 옛 origin 덤프를 별도 키에 한 번
+         * 보관만 하고 종결한다 — 그래야 잘림/미관측으로 이관하지 못한 데이터가 사라지지
+         * 않는다.
+         *
+         * 레거시 소스가 없으면(= 오늘의 전 프로덕션) **동기** 종결이라 관측 가능한
+         * 동작 변화가 0이다(무회귀 계약 1).
+         */
+        function stashThenFinish() {
+            var src = getOverrideLegacySource() || getPlatformLegacySource();
+            if (!isUsableLegacySource(src)) { finish('ait'); return; }
+            tryLegacyStash(mount, gateArmedAt, isSettled, function () { finish('ait'); });
+        }
+
         // ① 기존 IndexedDB → MEMFS 복원 (에러는 현행 Unity 동작대로 삼킨다)
         // 부트 게이트 타이머는 ①이 끝난 뒤(= ② 스냅샷 대기 직전)에만 건다 — ①까지
         // 감싸면 저사양 기기/IDB 경합으로 원본 populate가 늦어질 때 게이트가 먼저
         // 발화해 순정 대비 회귀(정상 데이터를 빈 상태로 취급)가 생긴다.
+        // inEnginePopulate: 이 구간의 FS.mkdirTree(좌초 디렉터리 복원 등)가 mkdir-plant
+        // 앵커를 오발화시키지 않게 한다. persistPath는 이 플래그와 무관하다(계약 7).
+        // 카운터이므로 겹친 populate가 있어도 가장 안쪽 콜백이 끝나야 0으로 내려간다.
+        inEnginePopulate++;
         callOrig(mount, true, function (populateErr) {
+            inEnginePopulate--;
             // 원본과 동일하게 삼키되(Unity도 로그만 남기고 진행) 관측 가능하게 기록
             if (populateErr) recordError('원본 populate', populateErr);
             if (settled) return;
@@ -1344,16 +1744,33 @@
                 if (settled) return;
                 try {
                     if (res.kind === 'present') {
+                        // 창 부기를 **overlayScoped보다 먼저** 적재한다 — overlayScoped가
+                        // 세우는 lastPushedHash가 files+legacy 조합이라, 순서가 뒤집히면
+                        // 첫 persist에서 불필요한 push가 한 번 더 발생한다.
+                        //
+                        // ⚠️ 세션 중 세운 값을 덮지 않는다(|| 적재). snapshotPromise는
+                        // 스크립트 로드 시 1회 메모이제이션되므로, 늦은 syncfs(true)
+                        // reconcile로 populatePath가 재진입하면 res.snapshot은 stash/import
+                        // 이전의 **원본**(legacy 필드 없음)이다. 무조건 대입하면 이번 부팅에
+                        // 세운 legacyChecked가 지워지고, 직후 push가 legacy 없는 매니페스트를
+                        // 써서 이미 닫힌 이관 창이 다시 열린다(매 부팅 레거시 재조회+재stash).
+                        state.legacyChecked = state.legacyChecked || readLegacyChecked(res.snapshot);
                         // ② AIT 스냅샷이 정본 — scoped 영역만 덮어쓴다
                         overlayScoped(mount, res.snapshot);
-                        if (snapshotHasScopedFile(res.snapshot)) {
+                        if (state.legacyChecked) {
+                            // 이 origin에서는 이관 시도가 이미 끝났다(imported/stashed) —
+                            // 창을 닫는다. 이후 부팅에서 레거시 소스를 다시 훑지 않는다.
                             finish('ait');
-                        } else {
+                        } else if (!snapshotHasScopedFile(res.snapshot)) {
                             // 매니페스트는 있는데 PlayerPrefs가 하나도 없다 = 마이그레이션
                             // 창이 아직 열려 있는 상태다. 'absent'에만 걸어두면 이전 버전이
                             // 남긴 빈 매니페스트(또는 데이터가 생기기 전 부팅)만으로 창이
                             // 닫혀, 정작 이관이 필요한 사용자에게 seam이 영영 발화하지 않는다.
                             importThenPromote();
+                        } else {
+                            // 정본이 이미 있는데 창은 열려 있다 = 심을 수는 없고 보존만
+                            // 가능한 상태(잘림으로 이관에 실패한 다음 부팅이 여기로 온다).
+                            stashThenFinish();
                         }
                     } else if (res.kind === 'absent') {
                         // 마이그레이션: 기존 IndexedDB 데이터를 채택하고 즉시 AIT로 승격.
@@ -1565,6 +1982,12 @@
             legacyBytes: state.legacyBytes,
             legacyMs: state.legacyMs,
             legacyAppDir: state.legacyAppDir,
+            // 이관 창 부기와 판별 계측 — E2E/실기기 콘솔이 모델(i-a/i-b)을 가리는 근거다
+            legacyChecked: state.legacyChecked,
+            plantedBy: state.plantedBy,
+            plantSeenRead: state.plantSeenRead,
+            truncatedAtMs: state.truncatedAtMs,
+            legacyStashState: state.legacyStashState,
             lastError: state.lastError
         };
     }

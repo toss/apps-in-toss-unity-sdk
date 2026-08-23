@@ -1093,14 +1093,18 @@
                 var origRead = sops.read;
                 if (typeof origRead === 'function') {
                     cloneS.read = function () {
-                        state.plantSeenRead = true; // 1회 기록 후 원본에 위임
+                        // !inSelfFs: 우리 자신의 읽기(collectScoped 등)는 "Unity가 읽었다"의
+                        // 증거가 아니다 — setattr 게이트와 같은 면제를 대칭으로 건다.
+                        // 엔진 읽기가 selfFs 구간과 겹칠 수는 없다(단일 스레드, selfFs는
+                        // 우리 동기 구간 한정)이므로 위음성은 구조적으로 불가능하다.
+                        if (!inSelfFs) state.plantSeenRead = true; // 1회 기록 후 원본에 위임
                         return origRead.apply(this, arguments);
                     };
                 }
                 var origMmap = sops.mmap;
                 if (typeof origMmap === 'function') {
                     cloneS.mmap = function () {
-                        state.plantSeenRead = true;
+                        if (!inSelfFs) state.plantSeenRead = true;
                         return origMmap.apply(this, arguments);
                     };
                 }

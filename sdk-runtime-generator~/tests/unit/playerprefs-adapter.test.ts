@@ -1853,6 +1853,48 @@ describe('ait-playerprefs.js — IDBFS syncfs 어댑터', () => {
         'imported',
       );
     });
+
+    // 돌연변이 검증: read 훅의 `!inSelfFs` 조건을 지우면(즉 조건 없이 무조건
+    // `state.plantSeenRead = true`가 되면) 아래 단언이 깨진다 — collectScoped(→
+    // loadEntrySync)가 심어진 노드를 다시 읽는 구간은 어댑터 자신의 enterSelfFs()
+    // 안이라, 그 안에서 발생한 read는 (실제 엔진 fread가 아니라) 우리 자신의 재수집
+    // 읽기로 취급돼야 하기 때문이다. Emscripten의 실제 loadLocalEntry는
+    // node.contents를 직접 참조해 stream_ops.read를 거치지 않지만, "우리 구간 안에서
+    // read가 불리면 무조건 면제돼야 한다"는 것이 이 가드의 안전성 주장 그 자체이므로
+    // S4와 같은 방식으로 하니스가 loadLocalEntry에 개입해 그 경계 조건을 직접 고정한다.
+    test('S5) 우리 자신의 selfFs 구간(collectScoped) 안에서 발생한 read는 파수꾼을 발화시키지 않는다 (읽기 게이트 재진입 방어)', async () => {
+      const b = boot({ fsInit: bootedBefore, legacySource: plainLegacySource() });
+      await syncfs(b, true);
+      await wait(300);
+
+      const node = simulateUnityBoot(b, APP)!; // 심기 성공 — 파수꾼 설치 완료, 아직 읽지 않음
+      expect(node).not.toBeNull();
+      expect(b.win.__AIT_PP.status().legacyImport).toBe('imported');
+      expect(b.win.__AIT_PP.status().plantSeenRead, '읽기 전이라 !inSelfFs가 유일한 방어선이다').toBe(false);
+
+      const targetPath = APP + '/PlayerPrefs';
+      const origLoad = b.idbfs.loadLocalEntry;
+      b.idbfs.loadLocalEntry = (p: string, cb: any) => {
+        if (p === targetPath) readFileViaStream(node); // enterSelfFs() 구간 안에서 재수집 read 재현
+        return origLoad(p, cb);
+      };
+      try {
+        await wait(300); // scheduleImmediatePush → pushScoped → collectScoped가 위 훅을 통과
+      } finally {
+        b.idbfs.loadLocalEntry = origLoad;
+      }
+      expect(b.win.__AIT_PP.status().plantSeenRead, '우리 자신의 재진입 읽기는 기록되면 안 된다').toBe(false);
+
+      // 대조: 엔진이 selfFs 밖에서 실제로 읽으면 정상적으로 전환된다(위음성이 아님의 증거)
+      readFileViaStream(node);
+      expect(b.win.__AIT_PP.status().plantSeenRead).toBe(true);
+
+      // 전환 이후 push에서도 기존 K4 계약(읽기 이후 push에서만 legacyChecked 기록)과 충돌하지 않는다
+      node.contents = new Uint8Array(Buffer.from('game-save'));
+      await syncfs(b, false);
+      await wait(200);
+      expect(b.win.__AIT_PP.status().legacyChecked).toMatchObject({ result: 'imported' });
+    });
   });
 
   /**

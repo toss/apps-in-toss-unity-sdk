@@ -14,6 +14,8 @@ import { resolvePackagePath } from '../generators/jslib-compiler.js';
 export class TypeScriptParser {
   private project: Project;
   private _frameworkDtsPath?: string;
+  private bundledNamespaceSource?: import('ts-morph').SourceFile;
+  private bundledNamespaceAllowlist: Set<string> = new Set();
 
   constructor(private sourceDir: string, private webFrameworkPath?: string) {
     // tsconfig.json 경로 찾기 (상위 디렉토리도 확인)
@@ -61,6 +63,19 @@ export class TypeScriptParser {
    */
   addSourceDirectory(dir: string): void {
     this.project.addSourceFilesAtPaths(path.join(dir, '**', '*.d.ts'));
+  }
+
+  /**
+   * web-framework 번들 index.d.ts를 보충 네임스페이스 소스로 등록
+   *
+   * 기본 입력(web-bridge의 파일별 .d.ts)에 없는 3.x 전용 네임스페이스(예: Ads)를
+   * 번들에서 추가로 파싱하기 위한 opt-in 경로. allowedNamespaces에 등재된
+   * 네임스페이스의 API만 채택하고, 기본 소스에서 이미 파싱된 API와 이름이
+   * 겹치면 기본 소스 결과를 우선한다 (parseAPIs 참조).
+   */
+  addBundledNamespaceSource(filePath: string, allowedNamespaces: string[]): void {
+    this.bundledNamespaceSource = this.project.addSourceFileAtPath(filePath);
+    this.bundledNamespaceAllowlist = new Set(allowedNamespaces);
   }
 
   /**
@@ -173,6 +188,11 @@ export class TypeScriptParser {
     const sourceFiles = this.project.getSourceFiles();
 
     for (const sourceFile of sourceFiles) {
+      // 번들 보충 소스는 메인 루프에서 제외 (아래에서 허용목록 기반으로만 파싱)
+      if (sourceFile === this.bundledNamespaceSource) {
+        continue;
+      }
+
       const filePath = sourceFile.getFilePath();
       const fileName = path.basename(filePath);
 
@@ -190,6 +210,20 @@ export class TypeScriptParser {
 
       const fileAPIs = parseSourceFile(sourceFile);
       apis.push(...fileAPIs);
+    }
+
+    // web-framework 번들 보충 파싱: 허용목록 네임스페이스만, 기본 소스와 중복되지 않는 것만
+    if (this.bundledNamespaceSource && this.bundledNamespaceAllowlist.size > 0) {
+      const existingNames = new Set(apis.map(api => api.name));
+      const bundledAPIs = parseNamespaceObjects(this.bundledNamespaceSource, {
+        restrictToNamespaces: this.bundledNamespaceAllowlist,
+      }).filter(api => !existingNames.has(api.name));
+      if (bundledAPIs.length > 0) {
+        console.log(
+          `  번들 index.d.ts 보충 파싱: ${bundledAPIs.map(api => api.name).join(', ')}`,
+        );
+      }
+      apis.push(...bundledAPIs);
     }
 
     // @apps-in-toss/framework에서 추가 API 파싱 (web-framework에서 re-export되지 않는 API)

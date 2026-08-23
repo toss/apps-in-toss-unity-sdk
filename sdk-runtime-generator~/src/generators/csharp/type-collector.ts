@@ -385,8 +385,17 @@ export function collectFunctionParamTypes(
     }
     // Union 멤버들도 재귀 처리
     if (paramType.unionTypes) {
+      // named union이면 union 이름을 컨텍스트로 전달한다. 익명 object 멤버의 중첩
+      // 프로퍼티가 부모 컨텍스트 없이 명명되어 고아 타입(예: data → 'DataType')이
+      // 생기는 것을 막는다 — 병합 클래스(예: ShowTossAdOrShoppingAdsEvent)와 그
+      // 중첩 타입(...EventData)이 이미 수집되어 있어 같은 이름은 스킵된다.
+      // named 멤버는 isAnonymous=false 경로라 컨텍스트의 영향을 받지 않는다.
+      const unionContext =
+        paramType.name && paramType.name.includes('.')
+          ? extractCleanName(paramType.name)
+          : contextName;
       for (const member of paramType.unionTypes) {
-        collectFunctionParamTypes(member, typeMap, exclude, tracker, generateClassType);
+        collectFunctionParamTypes(member, typeMap, exclude, tracker, generateClassType, unionContext);
       }
     }
   }

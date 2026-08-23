@@ -71,6 +71,9 @@ export const API_CATEGORIES: Record<string, string[]> = {
     // Full Screen Ads (top-level exports)
     'loadFullScreenAd',
     'showFullScreenAd',
+    // Shopping Ads / IAC 라우팅 (web-framework 3.1.0+, Ads 네임스페이스)
+    'AdsShowTossAdOrShoppingAds',
+    'AdsShowTossShoppingAds',
   ],
   SafeArea: [
     'SafeAreaInsetsGet',
@@ -115,6 +118,7 @@ export const CATEGORY_INFERENCE_RULES: CategoryInferenceRule[] = [
   { pattern: /^IAP[A-Z]/, category: 'IAP' },
   { pattern: /^Storage[A-Z]/, category: 'Storage' },
   { pattern: /^GoogleAdMob/, category: 'Advertising' },
+  { pattern: /^Ads[A-Z]/, category: 'Advertising' },
   { pattern: /^TossAds/, category: 'Advertising' },
   { pattern: /^SafeArea/, category: 'SafeArea' },
   { pattern: /^Partner/, category: 'Partner' },
@@ -316,6 +320,19 @@ export function resolveApiCategory(
 export const FRAMEWORK_APIS: string[] = [
   'loadFullScreenAd',
   'showFullScreenAd',
+];
+
+/**
+ * web-framework 번들 index.d.ts에서 보충 파싱을 허용하는 네임스페이스 목록
+ *
+ * 생성기의 기본 입력은 web-bridge의 파일별 .d.ts지만, 3.x부터 web-framework가
+ * web-bridge에 없는 자체 API(예: Ads — 쇼핑 광고 라우팅)를 번들 index.d.ts에만
+ * 선언한다. 여기 등재된 네임스페이스만 번들에서 추가로 파싱한다
+ * (opt-in — 번들 전체를 파싱하면 의도하지 않은 API 표면 확장이 생기므로).
+ * 설치된 web-framework 버전에 해당 네임스페이스가 없으면 조용히 무시된다.
+ */
+export const BUNDLED_NAMESPACE_ALLOWLIST: string[] = [
+  'Ads', // 쇼핑 광고 라우팅 (web-framework 3.1.0+)
 ];
 
 /**

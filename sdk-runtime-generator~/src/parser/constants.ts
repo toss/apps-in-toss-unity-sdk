@@ -56,6 +56,7 @@ export const DOM_TYPES = new Set([
  * 새 네임스페이스가 추가되어도 자동으로 처리됨
  */
 export const NAMESPACE_CATEGORY_OVERRIDES: Record<string, string> = {
+  Ads: 'Advertising',
   GoogleAdMob: 'Advertising',
   SafeAreaInsets: 'SafeArea',
   env: 'Environment',

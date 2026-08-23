@@ -15,7 +15,7 @@ import { typeCheckBridgeCode, printTypeCheckResult, cleanupCache } from './gener
 import { generateUnityBridge } from './generators/unity-bridge.js';
 import { generateScreenManualCs, generateScreenManualJslib, generateCoreManualJslib } from './generators/webgl-manual.js';
 import { formatCommand } from './commands/format.js';
-import { FRAMEWORK_APIS, EXCLUDED_APIS, DEPRECATED_API_OVERRIDES, CATEGORY_ORDER, DEFAULT_CATEGORY, resolveApiCategory } from './categories.js';
+import { FRAMEWORK_APIS, BUNDLED_NAMESPACE_ALLOWLIST, EXCLUDED_APIS, DEPRECATED_API_OVERRIDES, CATEGORY_ORDER, DEFAULT_CATEGORY, resolveApiCategory } from './categories.js';
 import { getApiImportSource, type ParsedAPI, type GeneratedTypeUnit } from './types.js';
 
 const program = new Command();
@@ -304,6 +304,18 @@ async function generate(options: {
     if (webAnalyticsPath) {
       parser.addSourceDirectory(webAnalyticsPath);
     }
+
+    // web-framework 번들 index.d.ts 보충 등록 (web-bridge에 없는 3.x 전용 네임스페이스 — 예: Ads)
+    const bundledIndexPath = path.join(webFrameworkPath, 'dist', 'index.d.ts');
+    if (BUNDLED_NAMESPACE_ALLOWLIST.length > 0) {
+      try {
+        await fs.access(bundledIndexPath);
+        parser.addBundledNamespaceSource(bundledIndexPath, BUNDLED_NAMESPACE_ALLOWLIST);
+      } catch {
+        // 번들 index.d.ts가 없는 구버전(web-bridge 배포 구조)이면 스킵
+      }
+    }
+
     const allParsedApis = await parser.parseAPIs(FRAMEWORK_APIS);
 
     // DOM-only 타입 위반 검증: 파싱 중 누적된 위반을 한 번에 보고하고 실패시킨다.

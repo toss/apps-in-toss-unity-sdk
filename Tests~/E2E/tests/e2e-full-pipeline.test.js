@@ -2488,10 +2488,21 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
             { timeout: 30000 }
           );
 
-          // 1차: mock 백킹(localStorage) 매니페스트에서 직접 추출한다 — collectScoped가
-          // MEMFS를 읽어 만드는 경로라 IDBFS 세션 노화(TODO.md P2)에 면역이다(라운드 7,
-          // run 32662771953). 아래 IDB 프로브(+fresh-page 폴백)는 이 1차 경로가 실패할
-          // 때만 쓰는 2차 폴백으로 남긴다.
+          // 추출 직전 레이어 진단 스냅샷 — push가 조용히 skip되는 회귀의 사후 판별
+          // 자료다(라운드 8, run 32667523175: 2021.3 노화 세션에서 getLocalSet 사망 →
+          // persistCount는 실패에도 증가하므로 위 대기들은 통과하지만 매니페스트는
+          // 부팅 직후 사본에 동결). lastError/mirrorCount/collectFallbackCount로 어느
+          // 분기가 막혔는지 이 로그만으로 특정할 수 있다.
+          const seedStatus = await seedPage.evaluate(() => window['AITPlayerPrefs'].status());
+          console.log(`[9-8] seed status: ${JSON.stringify(seedStatus)}`);
+
+          // 1차: mock 백킹(localStorage) 매니페스트에서 직접 추출한다. ⚠️ 이 경로도
+          // 노화에 무조건 면역은 아니다 — 라운드 8(run 32667523175)에서 2021.3 노화
+          // 세션은 push 파이프라인 자체(getLocalSet)가 죽어 매니페스트가 부팅 직후
+          // 사본(cloud_userid만)에 동결됨이 실측됐다. 런타임의 노드 순회 폴백
+          // (status().collectFallbackCount)이 이를 견디는 것이 전제이고, 시드 유효성은
+          // 아래 하드 단언이 최종 보증한다. IDB 프로브(+fresh-page 폴백)는 이 1차
+          // 경로가 실패할 때만 쓰는 2차 폴백으로 남긴다.
           try {
             legacySeed = await readPlayerPrefsEntryFromMockManifest(seedPage, 'PW_PP8_SEED_MOCK_');
           } catch (manifestErr) {

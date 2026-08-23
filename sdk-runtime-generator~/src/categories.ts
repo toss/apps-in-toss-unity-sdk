@@ -177,6 +177,62 @@ export const CATEGORY_ORDER: string[] = [
 ];
 
 /**
+ * changelog 리포트 전용 카테고리 매핑 (web-framework 3.x self-bundle 등에서 새로
+ * 발견된 API 이름 → 카테고리).
+ *
+ * ⚠️ 이 맵은 getCategory()에 명시적으로 전달됐을 때만(changelog-model.ts) 참조된다.
+ * C# 생성 경로(resolveApiCategory → index.ts/CSharpGenerator.ts/CSharpTypeGenerator.ts,
+ * framework-parser.ts)는 이 맵을 절대 전달하지 않는다 — 2.10.8 fallback dist에도
+ * 동일한 이름(getGroupId, requestReview, grantPromotionReward, openPDFViewer,
+ * requestTossPayPaysBilling, getAnonymousKey, getConsentedUserData, getDeclaredAgeRange
+ * 등)이 실제로 존재해서(실측), API_CATEGORIES에 직접 추가하면 그 이름들의 카테고리가
+ * 바뀌어 `pnpm generate`의 Runtime/SDK/ 출력이 달라지는 회귀가 발생하기 때문이다
+ * (생성 경로 무변경 불변식 보호 — B2/B3의 includeDeprecatedGlobals/includeWrappedCallables
+ * opt-in 패턴과 동일한 이유).
+ *
+ * 새 카테고리 3종(Promotion/Notification/Review)은 changelog 표시 전용이라
+ * CATEGORY_ORDER에 넣지 않는다 — changelog-model.ts의 카테고리 정렬은 getCategory가
+ * 반환한 문자열을 그대로 쓰고, CATEGORY_ORDER에 없는 이름은 알파벳 순으로 뒤에 붙는다.
+ */
+export const CHANGELOG_ONLY_CATEGORIES: Record<string, string[]> = {
+  Clipboard: ['ClipboardGetText', 'ClipboardSetText'],
+  Media: ['DeviceOpenCamera', 'FileOpenPDFViewer', 'FileSaveBase64', 'openPDFViewer'],
+  Navigation: ['DeviceOpenURL', 'ScreenClose'],
+  Environment: ['envGetDeploymentId'],
+  SystemInfo: [
+    'EnvironmentGetNetworkStatus',
+    'EnvironmentGetServerTime',
+    'getGroupId',
+    'getAnonymousKey',
+    'getConsentedUserData',
+    'getDeclaredAgeRange',
+    'UserGetAnonymousKey',
+    'UserGetConsentedData',
+    'UserGetDeclaredAgeRange',
+  ],
+  GameCenter: [
+    'GameGetUserProfile',
+    // 구버전(2.x 이전) @apps-in-toss/web-bridge에 존재하던, getUserKeyForGame과는
+    // 별개의 독립 심볼. 실제 존재가 실측 확인됨(생성 경로의 2.10.8 fallback dist에는
+    // 없음 — 있었다면 이 맵이 아니라 API_CATEGORIES에 직접 추가했을 것).
+    'getUserKey',
+  ],
+  SafeArea: ['getSafeAreaInsets'],
+  Promotion: ['grantPromotionReward', 'PromotionGrantReward'],
+  Notification: ['NotificationRequestAgreement', 'requestNotificationAgreement'],
+  Partner: ['partnerAddAccessoryButton', 'partnerRemoveAccessoryButton'],
+  Review: ['requestReview', 'ReviewRequest'],
+  Payment: [
+    'requestTossPayPaysBilling',
+    'TossPayAuthorize',
+    'TossPayAuthorizeSubscription',
+    'TossPayRequestTossPayPaysBilling',
+  ],
+  Device: ['ScreenSetAwakeMode', 'ScreenSetIosSwipeBack', 'ScreenSetSecure'],
+  Authentication: ['TossAuthIsIntegrated', 'TossAuthLogin', 'TossAuthSign'],
+};
+
+/**
  * API 이름으로 카테고리 찾기
  *
  * 카테고리 결정 우선순위:
@@ -187,13 +243,30 @@ export const CATEGORY_ORDER: string[] = [
  * @param apiName API 이름 (camelCase, 예: appLogin) 또는 PascalCase (예: IAPGetProductItemList)
  * @param warn 매핑 누락 시 경고 출력 여부 (기본 true). 타입 분류처럼 동일 API에 대해
  *   getCategory가 두 번 호출되는 경로에서는 false로 넘겨 중복 경고를 막는다.
+ * @param extraCategories 명시적 매핑에 추가로 참조할 카테고리 맵 (기본 없음). changelog
+ *   리포트 전용 CHANGELOG_ONLY_CATEGORIES를 넘길 때만 사용 — C# 생성 경로
+ *   (resolveApiCategory)는 이 인자를 절대 넘기지 않는다. CHANGELOG_ONLY_CATEGORIES의
+ *   주석 참고.
  * @returns 카테고리 이름
  */
-export function getCategory(apiName: string, warn: boolean = true): string {
+export function getCategory(
+  apiName: string,
+  warn: boolean = true,
+  extraCategories?: Record<string, string[]>
+): string {
   // 1. 명시적 매핑 확인 (가장 우선)
   for (const [category, apis] of Object.entries(API_CATEGORIES)) {
     if (apis.includes(apiName)) {
       return category;
+    }
+  }
+
+  // 1.5. 호출부가 명시적으로 넘긴 추가 매핑 확인 (changelog 전용, opt-in)
+  if (extraCategories) {
+    for (const [category, apis] of Object.entries(extraCategories)) {
+      if (apis.includes(apiName)) {
+        return category;
+      }
     }
   }
 
@@ -257,6 +330,15 @@ export const EXCLUDED_APIS: string[] = [
   'GoogleAdMobShowAdMobRewardedAd',
   // v1.8.0에서 제거된 API (AppsInTossEvent = {})
   'AppsInTossEventSubscribeEntryMessageExited',
+  // web-framework 3.x self-bundle dist/index.d.ts(discovery.ts detectSelfContainedDts
+  // 참고)에 동거하는 내부/설정 심볼 — 실제 제품 API가 아니라 스퓨리어스 오검출이므로
+  // 제외한다. createAsyncBridge는 파서 크래시(RangeError)를 유발해 이미 파서 레벨
+  // (detection.ts PARSER_SKIP_GLOBAL_FUNCTIONS)에서 별도로 제외되므로 여기 없음.
+  'createConstantBridge',
+  'createEventBridge',
+  // dist/config.d.ts가 dist/index.d.ts와 동거하며 함께 파싱되어 검출되는 빌드 설정
+  // 헬퍼(defineConfig) — SDK 브릿지 API가 아님.
+  'defineConfig',
 ];
 
 /**

@@ -213,40 +213,50 @@ export function parseSourceFile(sourceFile: SourceFile): ParsedAPI[] {
 
   for (const [name, declarations] of exportedDeclarations) {
     for (const declaration of declarations) {
-      // 함수 선언
-      if (declaration.getKind() === SyntaxKind.FunctionDeclaration) {
-        const func = declaration as FunctionDeclaration;
-        const api = parseFunctionDeclaration(func, sourceFile);
-        if (api) {
-          apis.push(api);
-        }
-      }
-
-      // 변수 선언 (const openCamera = ..., const getClipboardText: PermissionFunctionWithDialog<...>)
-      if (declaration.getKind() === SyntaxKind.VariableDeclaration) {
-        const varDecl = declaration.asKind(SyntaxKind.VariableDeclaration);
-        if (varDecl) {
-          const initializer = varDecl.getInitializer();
-          // Arrow function (const fn = () => {})
-          if (initializer && initializer.getKind() === SyntaxKind.ArrowFunction) {
-            const api = parseVariableFunction(name, varDecl, sourceFile);
-            if (api) {
-              apis.push(api);
-            }
+      try {
+        // 함수 선언
+        if (declaration.getKind() === SyntaxKind.FunctionDeclaration) {
+          const func = declaration as FunctionDeclaration;
+          const api = parseFunctionDeclaration(func, sourceFile);
+          if (api) {
+            apis.push(api);
           }
-          // Const with function type (const fn: FnType = ...)
-          // Arrow function이 없어도 타입이 함수면 파싱
-          else {
-            const type = varDecl.getType();
-            const callSignatures = type.getCallSignatures();
-            if (callSignatures.length > 0) {
+        }
+
+        // 변수 선언 (const openCamera = ..., const getClipboardText: PermissionFunctionWithDialog<...>)
+        if (declaration.getKind() === SyntaxKind.VariableDeclaration) {
+          const varDecl = declaration.asKind(SyntaxKind.VariableDeclaration);
+          if (varDecl) {
+            const initializer = varDecl.getInitializer();
+            // Arrow function (const fn = () => {})
+            if (initializer && initializer.getKind() === SyntaxKind.ArrowFunction) {
               const api = parseVariableFunction(name, varDecl, sourceFile);
               if (api) {
                 apis.push(api);
               }
             }
+            // Const with function type (const fn: FnType = ...)
+            // Arrow function이 없어도 타입이 함수면 파싱
+            else {
+              const type = varDecl.getType();
+              const callSignatures = type.getCallSignatures();
+              if (callSignatures.length > 0) {
+                const api = parseVariableFunction(name, varDecl, sourceFile);
+                if (api) {
+                  apis.push(api);
+                }
+              }
+            }
           }
         }
+      } catch (err) {
+        // 일부 심볼(예: 자기참조 제네릭 타입)은 .getType()/.getCallSignatures() 호출 시
+        // ts-morph/TypeScript 컴파일러 내부에서 RangeError(스택 오버플로우) 등을 유발할 수
+        // 있다. 파이프라인 전체를 죽이지 않고 해당 심볼만 건너뛴다 — 침묵 스킵 금지,
+        // 원인 진단이 가능하도록 심볼명과 에러를 남긴다.
+        console.warn(
+          `⚠️  API '${name}' 파싱 중 오류가 발생해 건너뜁니다: ${err instanceof Error ? err.message : String(err)}`
+        );
       }
     }
   }

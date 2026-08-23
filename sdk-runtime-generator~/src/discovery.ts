@@ -20,10 +20,13 @@ import { TypeScriptParser } from './parser/index.js';
 /**
  * .d.ts 디렉토리를 찾은 전략.
  * - sibling: web-framework의 pnpm 의존성 그래프 sibling에서 발견 (가장 정확)
- * - pnpm-store: node_modules/.pnpm 전체를 스캔해 발견 (sibling 실패 시 폴백)
+ * - self-bundle: web-framework 자체 dist/index.d.ts가 전체 API 표면을 번들링하고
+ *   있어(더 이상 별도 web-bridge sibling 패키지가 없음) 그 파일 자체를 사용 (3.x+)
+ * - pnpm-store: node_modules/.pnpm 전체를 스캔해 발견 (sibling·self-bundle 모두
+ *   실패했을 때의 폴백 — stale 버전의 web-bridge를 근사로 사용하므로 부정확할 수 있음)
  * - package-dir: node_modules 직하 또는 web-framework 패키지 내부 경로에서 발견
  */
-export type DtsSource = 'sibling' | 'pnpm-store' | 'package-dir';
+export type DtsSource = 'sibling' | 'self-bundle' | 'pnpm-store' | 'package-dir';
 
 /**
  * 특정 web-framework 버전에 대해 해석된 경로 정보.
@@ -121,6 +124,44 @@ async function hasValidDtsFiles(dir: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * self-bundle(자기완결) dist/index.d.ts 판정에 쓰는 최소 //#region 마커 개수.
+ * 낮은 임계값은 우연히 region 주석 몇 개 있는 일반 barrel 파일을 오탐할 수 있고,
+ * 너무 높으면 작은 self-bundle 버전을 놓칠 수 있다. 실측(3.0.1 dist/index.d.ts,
+ * 2502줄)에서 102개가 관찰되어 여유 있게 10으로 잡는다.
+ */
+const SELF_BUNDLE_REGION_MARKER_THRESHOLD = 10;
+
+/**
+ * web-framework 패키지 자체의 dist/index.d.ts가 "자기완결(self-contained) 번들"인지
+ * 판정한다 — 즉 별도 web-bridge sibling 패키지 없이 전체 API 표면이 이 파일 하나에
+ * 번들되어 있는지.
+ *
+ * 실측 근거(2026-08-22 조사, `@apps-in-toss/web-framework` 3.0.1~3.0.4):
+ * - dist/index.d.ts가 2502줄이며 원본 소스 파일 경계마다 rollup-plugin-dts류 번들러가
+ *   삽입하는 `//#region src/apis/.../*.d.ts` 마커가 102개 존재 (일반 재수출 barrel
+ *   파일에는 이런 마커가 없다).
+ * - dist/ 디렉토리에 index.d.ts 외에 config.d.ts가 동거하지만, index.d.ts 자체에
+ *   전체 API(Device, TossPay, Share, checkoutPayment, getDeviceId, ... 등)가 이미
+ *   다 들어있어 index.d.ts만으로 충분히 자기완결적이다.
+ * - 3.0.1~3.0.3의 index.d.ts는 바이트 동일(md5 e4c54acb)이고 3.0.4는 다르다(md5
+ *   d37b0236) — 버전이 달라도 이 판정 로직 자체는 파일 내용에 의존하지 않고 구조적
+ *   특징(region 마커 개수)만 보므로 안정적으로 동작한다.
+ */
+export async function detectSelfContainedDts(webFrameworkPath: string): Promise<string | null> {
+  const indexDtsPath = path.join(webFrameworkPath, 'dist', 'index.d.ts');
+  try {
+    const content = await fs.readFile(indexDtsPath, 'utf-8');
+    const regionMarkerCount = (content.match(/\/\/#region /g) ?? []).length;
+    if (regionMarkerCount >= SELF_BUNDLE_REGION_MARKER_THRESHOLD) {
+      return path.join(webFrameworkPath, 'dist');
+    }
+  } catch {
+    // dist/index.d.ts가 없으면 self-bundle이 아님
+  }
+  return null;
 }
 
 /**
@@ -308,22 +349,59 @@ export function hasFrameworkApis(version: string): boolean {
 /**
  * 특정 web-framework alias 버전의 경로 전체를 해석한다.
  *
- * sibling에서 dtsDir을 찾지 못하면(예: 3.0.0+의 web-bridge → webview-bridge 리네임)
- * pnpm store 폴백을 시도하고, 그래도 해석에 실패하면 조용히 스킵하는 대신 이 버전이
- * 왜 빠지는지 알 수 있도록 명확한 한국어 메시지로 throw한다 — changelog 최신 버전
- * 누락(예: 3.0.1) 버그의 재발을 방지하기 위함.
+ * ⚠️ 스코프 경계: 이 함수는 changelog 전용 호출부(tests/unit/scripts/generate-changelog.ts,
+ * tests/unit/multi-version.test.ts)에서만 쓰인다. index.ts의 generate() 파이프라인은
+ * findTypeDefinitions()/findTypeDefinitionsWithSource()를 직접 호출하며 이 함수를 거치지
+ * 않는다. 그래서 여기서 self-bundle 단축 경로를 앞에 추가해도 findTypeDefinitionsWithSource의
+ * 공유 후보 배열 순서(및 그걸 그대로 쓰는 generate() 경로의 동작)는 전혀 바뀌지 않는다
+ * (검증: `pnpm generate` 후 `git status`에서 Runtime/SDK/ 무변경 — 이 파일 상단 주석 참고).
+ *
+ * web-framework 3.x+는 별도 web-bridge sibling 패키지 없이 자체 dist/index.d.ts에 전체
+ * API 표면을 번들링한다(detectSelfContainedDts 참고) — sibling 탐색보다 먼저 이 단축
+ * 경로를 확인해 stale pnpm-store 폴백(2.10.8 고정)으로 새지 않게 한다.
+ *
+ * self-bundle도 sibling에서 dtsDir을 찾지도 못하면(예: 3.0.0+의 web-bridge →
+ * webview-bridge 리네임) pnpm store 폴백을 시도하고, 그래도 해석에 실패하면 조용히
+ * 스킵하는 대신 이 버전이 왜 빠지는지 알 수 있도록 명확한 한국어 메시지로 throw한다 —
+ * changelog 최신 버전 누락(예: 3.0.1) 버그의 재발을 방지하기 위함.
+ *
+ * fail-loud 게이트: web-framework major가 3 이상인데도 최종 source가 'pnpm-store'
+ * 폴백이면(= self-bundle 판정도 실패하고 sibling도 없어 stale 근사로 빠진 것) 조용히
+ * 근사 리포트를 내는 대신 즉시 throw한다. 향후 4.x 등에서 또 구조가 바뀌면(예: dist
+ * 번들링 방식 변경) self-bundle 판정이 깨질 수 있는데, 이때 stale 2.10.8로 조용히
+ * 폴백하며 "변경 없음"을 오보하는 사고(이번 3.0.1 버그와 동일한 유형)가 재발하지
+ * 않도록 하기 위함.
  */
 export async function resolveVersionPaths(version: string): Promise<VersionPaths> {
   const aliasPath = path.join(process.cwd(), 'node_modules', `web-framework-${version}`);
   const realPath = await fs.realpath(aliasPath);
 
-  const result = await findTypeDefinitionsWithSource(realPath);
+  const selfBundleDtsDir = await detectSelfContainedDts(realPath);
+  const result = selfBundleDtsDir
+    ? { path: selfBundleDtsDir, source: 'self-bundle' as const }
+    : await findTypeDefinitionsWithSource(realPath);
+
   if (!result) {
     throw new Error(
       `web-framework v${version}의 TypeScript 정의 파일을 찾을 수 없습니다.\n` +
-      `  확인한 경로: sibling(web-bridge), pnpm store 폴백, ${realPath} 하위 dist/built/lib 등.\n` +
+      `  확인한 경로: self-bundle(dist/index.d.ts), sibling(web-bridge), pnpm store 폴백, ` +
+      `${realPath} 하위 dist/built/lib 등.\n` +
       `  web-framework 재구성(예: web-bridge → webview-bridge 리네임)으로 발견 전략이 깨졌을 수 있습니다.\n` +
       `  discovery.ts의 findTypeDefinitionsWithSource를 확인하세요.`
+    );
+  }
+
+  const majorVersion = Number(version.split('.')[0]);
+  if (majorVersion >= 3 && result.source === 'pnpm-store') {
+    throw new Error(
+      `web-framework v${version}(major ${majorVersion})의 API 표면을 pnpm-store 폴백으로만 ` +
+      `찾았습니다 — self-bundle 판정과 sibling 탐색 모두 실패했다는 뜻입니다.\n` +
+      `  이 폴백은 stale 버전의 web-bridge(예: v2.10.8)를 근사로 사용하므로, 3.x+에서는 ` +
+      `changelog가 "변경 없음"을 오보하는 사고(2026-08 web-framework 3.0.1 누락 버그와 ` +
+      `동일 유형)로 이어질 수 있어 조용히 넘어가지 않고 즉시 실패시킵니다.\n` +
+      `  discovery.ts의 detectSelfContainedDts(//#region 마커 판정)가 v${version}의 새 dist ` +
+      `구조를 더 이상 인식하지 못할 수 있습니다 — 실제 dist/index.d.ts 구조를 확인하고 ` +
+      `판정 로직을 갱신하세요.`
     );
   }
 
@@ -340,10 +418,16 @@ export async function resolveVersionPaths(version: string): Promise<VersionPaths
 
 /**
  * 버전 경로에서 파서를 생성하고 web-analytics 소스가 있으면 추가
+ *
+ * self-bundle(paths.dtsSource === 'self-bundle')인 경우 dist/index.d.ts 자체가 이미
+ * Analytics 네임스페이스를 포함한 전체 API 표면을 번들링하고 있으므로(detectSelfContainedDts
+ * 참고) web-analytics sibling dist를 추가로 addSourceDirectory하면 같은 API가 두 번
+ * 파싱되어 changelog 카탈로그에 중복 항목이 생긴다 (실측: AnalyticsClick/Impression/Screen
+ * 각 2건). self-bundle은 "이 파일 하나로 완결"이라는 설계와 정합하도록 여기서 스킵한다.
  */
 export function createParserForVersion(paths: VersionPaths): TypeScriptParser {
   const parser = new TypeScriptParser(paths.dtsDir, paths.webFrameworkPath);
-  if (paths.webAnalyticsDtsDir) {
+  if (paths.webAnalyticsDtsDir && paths.dtsSource !== 'self-bundle') {
     parser.addSourceDirectory(paths.webAnalyticsDtsDir);
   }
   return parser;

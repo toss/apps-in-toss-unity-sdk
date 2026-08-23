@@ -8,6 +8,8 @@ import {
   detectEventNamespaces,
   detectGlobalFunctions,
   detectNamespaceObjects,
+  isDeprecatedDeclaration,
+  getDeprecatedMessage,
 } from './detection.js';
 import { parseEventNamespace } from './event-parser.js';
 
@@ -221,8 +223,15 @@ export function parseNamespaceObject(
 /**
  * index.d.ts에서 네임스페이스 객체, 이벤트 네임스페이스, 글로벌 함수 파싱
  * 모든 항목을 동적으로 감지하여 파싱
+ *
+ * @param options detectGlobalFunctions에 그대로 전달됨 (includeDeprecatedGlobals,
+ *   includeWrappedCallables). 기본값 둘 다 false — 기존 동작 보존, changelog
+ *   self-bundle 경로에서만 opt-in.
  */
-export function parseNamespaceObjects(sourceFile: SourceFile): ParsedAPI[] {
+export function parseNamespaceObjects(
+  sourceFile: SourceFile,
+  options?: { includeDeprecatedGlobals?: boolean; includeWrappedCallables?: boolean }
+): ParsedAPI[] {
   const apis: ParsedAPI[] = [];
   const exportedDeclarations = sourceFile.getExportedDeclarations();
 
@@ -230,59 +239,68 @@ export function parseNamespaceObjects(sourceFile: SourceFile): ParsedAPI[] {
   const eventNamespaces = detectEventNamespaces(sourceFile);
 
   // 2. 글로벌 함수 감지 (FunctionDeclaration)
-  const globalFunctions = detectGlobalFunctions(sourceFile);
+  const globalFunctions = detectGlobalFunctions(sourceFile, options);
 
   // 3. 네임스페이스 객체 감지 (나머지 중 메서드만 있는 객체)
   const namespaceObjects = detectNamespaceObjects(sourceFile, eventNamespaces, globalFunctions);
 
   for (const [name, declarations] of exportedDeclarations) {
-    // 네임스페이스 객체 파싱 (동적 감지됨)
-    if (namespaceObjects.has(name)) {
-      for (const declaration of declarations) {
-        if (declaration.getKind() === SyntaxKind.VariableDeclaration) {
-          const varDecl = declaration.asKind(SyntaxKind.VariableDeclaration);
-          if (varDecl) {
-            const namespaceAPIs = parseNamespaceObject(name, varDecl, sourceFile);
-            apis.push(...namespaceAPIs);
+    try {
+      // 네임스페이스 객체 파싱 (동적 감지됨)
+      if (namespaceObjects.has(name)) {
+        for (const declaration of declarations) {
+          if (declaration.getKind() === SyntaxKind.VariableDeclaration) {
+            const varDecl = declaration.asKind(SyntaxKind.VariableDeclaration);
+            if (varDecl) {
+              const namespaceAPIs = parseNamespaceObject(name, varDecl, sourceFile);
+              apis.push(...namespaceAPIs);
+            }
           }
         }
       }
-    }
 
-    // 이벤트 네임스페이스 파싱 (동적 감지됨)
-    if (eventNamespaces.has(name)) {
-      const eventAPIs = parseEventNamespace(name, sourceFile);
-      apis.push(...eventAPIs);
-    }
+      // 이벤트 네임스페이스 파싱 (동적 감지됨)
+      if (eventNamespaces.has(name)) {
+        const eventAPIs = parseEventNamespace(name, sourceFile);
+        apis.push(...eventAPIs);
+      }
 
-    // 글로벌 함수 파싱 (동적 감지됨)
-    if (globalFunctions.has(name)) {
-      for (const declaration of declarations) {
-        if (declaration.getKind() === SyntaxKind.FunctionDeclaration) {
-          const func = declaration as FunctionDeclaration;
-          const api = parseFunctionDeclarationForNamespace(func, sourceFile);
-          if (api) {
-            // 글로벌 함수는 Environment 카테고리로 설정
-            api.category = 'Environment';
-            apis.push(api);
+      // 글로벌 함수 파싱 (동적 감지됨)
+      if (globalFunctions.has(name)) {
+        for (const declaration of declarations) {
+          if (declaration.getKind() === SyntaxKind.FunctionDeclaration) {
+            const func = declaration as FunctionDeclaration;
+            const api = parseFunctionDeclarationForNamespace(func, sourceFile);
+            if (api) {
+              // 글로벌 함수는 Environment 카테고리로 설정
+              api.category = 'Environment';
+              apis.push(api);
+            }
           }
-        }
-        // 변수 선언 형태의 함수도 처리
-        if (declaration.getKind() === SyntaxKind.VariableDeclaration) {
-          const varDecl = declaration.asKind(SyntaxKind.VariableDeclaration);
-          if (varDecl) {
-            const type = varDecl.getType();
-            const callSignatures = type.getCallSignatures();
-            if (callSignatures.length > 0) {
-              const api = parseVariableFunctionForNamespace(name, varDecl, sourceFile);
-              if (api) {
-                api.category = 'Environment';
-                apis.push(api);
+          // 변수 선언 형태의 함수도 처리
+          if (declaration.getKind() === SyntaxKind.VariableDeclaration) {
+            const varDecl = declaration.asKind(SyntaxKind.VariableDeclaration);
+            if (varDecl) {
+              const type = varDecl.getType();
+              const callSignatures = type.getCallSignatures();
+              if (callSignatures.length > 0) {
+                const api = parseVariableFunctionForNamespace(name, varDecl, sourceFile);
+                if (api) {
+                  api.category = 'Environment';
+                  apis.push(api);
+                }
               }
             }
           }
         }
       }
+    } catch (err) {
+      // 자기참조 제네릭 타입 등에서 .getType()/.getCallSignatures() 호출이 컴파일러
+      // 내부 RangeError(스택 오버플로우) 등을 유발할 수 있다. 해당 심볼만 건너뛰고
+      // 파이프라인은 계속 진행한다 — 침묵 스킵 금지, 심볼명과 원인을 남긴다.
+      console.warn(
+        `⚠️  네임스페이스 API '${name}' 파싱 중 오류가 발생해 건너뜁니다: ${err instanceof Error ? err.message : String(err)}`
+      );
     }
   }
 
@@ -351,6 +369,8 @@ function parseFunctionDeclarationForNamespace(
     isAsync: isCallbackBased ? false : isAsync,
     hasPermission,
     isCallbackBased,
+    isDeprecated: isDeprecatedDeclaration(func),
+    deprecatedMessage: getDeprecatedMessage(func),
   };
 }
 
@@ -423,6 +443,8 @@ function parseVariableFunctionForNamespace(
     isAsync: isCallbackBased ? false : isAsync,
     hasPermission: false,
     isCallbackBased,
+    isDeprecated: isDeprecatedDeclaration(varDecl),
+    deprecatedMessage: getDeprecatedMessage(varDecl),
   };
 }
 

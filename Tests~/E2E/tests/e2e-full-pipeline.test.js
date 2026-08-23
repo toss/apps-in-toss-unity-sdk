@@ -2502,6 +2502,10 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
           }
           expect(legacySeed && legacySeed.contents && legacySeed.contents.length,
             'seeded PlayerPrefs entry must carry non-empty raw bytes').toBeGreaterThan(0);
+          // UnityPrf 실물 픽스처 확보 — 실제 Unity가 쓴 PlayerPrefs 바이트를 base64로
+          // 로그에 남겨 둔다(회귀 시 재현/비교 자료). 로그 오염 방지로 120자로 절단.
+          const seedB64 = Buffer.from(legacySeed.contents).toString('base64');
+          console.log(`[9-8] seed contents (base64, truncated): ${seedB64.slice(0, 120)}`);
           // 시드는 1단계의 산출물이므로 2단계(심기)의 성패와 무관하게 물려준다.
           // 2단계가 2021.3 잘림으로 skip되더라도 9-8b/9-11은 자기 시드를 받아야
           // 각자의 판정(같은 한계인지, 다른 회귀인지)을 스스로 내릴 수 있다.
@@ -2585,23 +2589,33 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
           console.log(`[9-8] status (after first access): ${JSON.stringify(status98)}`);
 
           // 알려진 한계(2021.3 한정): 첫 lookup 미스가 **write-open**에서 나면 우리가 심은
-          // 내용이 심자마자 O_TRUNC로 잘린다(ait-playerprefs.js:982-993의 미검증 전제가
+          // 내용이 심자마자 O_TRUNC로 잘린다(ait-playerprefs.js tryPlantAt 주석의 전제가
           // 깨지는 경우). FS.open은 lookup 성공 직후 O_TRUNC면 무조건 FS.truncate(node,0)을
           // 부르는데(library_fs.js:1042-1045) lookup은 read/write를 구분할 수 없다.
           // 실측(run 32589182104): 2021.3은 macOS/Windows **양쪽 모두** imported/68B인데
           // 값은 ""로 잘렸고, 2022.3·6000.x는 양쪽 OS 모두 v8로 통과했다. OS와 무관하고
           // 시드 크기(2022.3은 83B로 더 큼)와도 무관한 **순수 Unity 버전 게이팅**이다.
           // 프로덕션에서는 getPlatformLegacySource()가 null이라 이 경로 자체가 비활성이며,
-          // 스텁을 채울 때 반드시 선결해야 한다(TODO.md P2 선결 과제 3).
+          // 스텁을 채울 때 반드시 선결해야 한다(TODO.md P2 선결 과제 2).
+          // 라운드 7 = 관측 라운드(§1-5 명세 v2). mkdir-plant가 유효한 모델(i-b: readdir
+          // 내용 확인)인지 무효한 모델(i-a: 디렉터리 유무만 판정)인지 현재 증거로는
+          // 구분할 수 없다. 여기서는 데이터 안전 불변식만 하드 단언하고, 모델 판별
+          // 정보(plantedBy/legacyImport/truncatedAtMs)는 진단 로그로만 남긴 뒤 skip한다.
+          // value==='v8'이면 이 가드는 아예 불발하고 전체 하드 단언이 그대로 통과한다
+          // (= 모델 i-b 확정 = §1-5 해소).
           const is2021_98 = (process.env.AIT_BUILD_DIR || '').includes('2021.3');
           if (is2021_98 && getResult.value !== 'v8') {
-            // skip이 **다른 실패를 가리지 않도록** 잘림 시그니처 자체는 하드 단언한다.
-            // (심기까지는 갔는데 내용만 잘린 상태 — skip-*/error/empty면 다른 회귀다.)
-            expect(status98.legacyImport, '2021.3 잘림 경로에서도 심기 자체는 도달해야 한다').toBe('imported');
-            expect(status98.legacyBytes, '심은 바이트 수는 기록돼 있어야 한다').toBeGreaterThan(0);
             expect(getResult.value, '잘림이면 값은 빈 문자열이다 — 다른 값이면 미지의 회귀다').toBe('');
-            console.log('[9-8] 2021.3 알려진 한계: 첫 접근이 write-open이라 심은 내용이 O_TRUNC로 잘림 — skip');
-            test.skip(true, 'Unity 2021.3 opens PlayerPrefs write-first; planted bytes are truncated (TODO.md P2 선결 과제 3)');
+            expect(status98.legacyChecked,
+              'skip-truncated/미확정 경로에서 legacyChecked가 기록되면 창이 영구히 닫힌다 — 절대 기록되면 안 된다').toBeFalsy();
+            expect(['skip-truncated', 'imported'],
+              '파수꾼 작동(skip-truncated) 또는 mkdir 불발 후 lookup 폴백(imported) 중 하나여야 한다 — 제3의 상태는 미지의 회귀다')
+              .toContain(status98.legacyImport);
+            // triage.py가 수집하는 `[태그] status: <json>` 포맷 — plantedBy/legacyImport/
+            // truncatedAtMs로 모델을 사후 판별한다.
+            console.log(`[9-8] status: ${JSON.stringify(status98)}`);
+            console.log(`[9-8] 2021.3 모델 판별(관측 라운드): plantedBy=${status98.plantedBy}, legacyImport=${status98.legacyImport}, truncatedAtMs=${status98.truncatedAtMs} — 모델 미확정, 잠정 skip`);
+            test.skip(true, 'Unity 2021.3 mkdir-plant model discrimination round — see [9-8] status log (TODO.md P2 선결 과제 2)');
           }
 
           expect(status98.legacyImport, 'legacyImport must report imported').toBe('imported');
@@ -2695,28 +2709,57 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
           // 2021.3 write-open 잘림 — 9-8과 동일한 한계다(사유는 9-8의 주석 참조).
           // 이 테스트의 고유 관심사(빈 매니페스트가 창을 닫지 않는가)는 잘림과 무관하게
           // 검증 가능하므로, legacyImport==='imported' 도달까지는 하드로 걸고 값만 면제한다.
+          // 9-8과 동일한 관측 라운드 — 하드 단언은 데이터 안전 불변식만, 모델 판별
+          // 정보는 진단 로그로만 남긴다(사유는 9-8의 가드 주석 참조).
           const is2021_98b = (process.env.AIT_BUILD_DIR || '').includes('2021.3');
           if (is2021_98b && staleGet.value !== 'v8') {
-            expect(status98b.legacyImport,
-              '빈 매니페스트에서도 창은 열려 심기까지 도달해야 한다 — 이건 잘림과 무관하다').toBe('imported');
             expect(staleGet.value, '잘림이면 값은 빈 문자열이다 — 다른 값이면 미지의 회귀다').toBe('');
-            console.log('[9-8b] 2021.3 알려진 한계: 심은 내용이 O_TRUNC로 잘림 — 값 단언만 skip');
-            test.skip(true, 'Unity 2021.3 opens PlayerPrefs write-first; planted bytes are truncated (TODO.md P2 선결 과제 3)');
+            expect(status98b.legacyChecked,
+              'skip-truncated/미확정 경로에서 legacyChecked가 기록되면 창이 영구히 닫힌다 — 절대 기록되면 안 된다').toBeFalsy();
+            expect(['skip-truncated', 'imported'],
+              '파수꾼 작동(skip-truncated) 또는 mkdir 불발 후 lookup 폴백(imported) 중 하나여야 한다 — 제3의 상태는 미지의 회귀다')
+              .toContain(status98b.legacyImport);
+            console.log(`[9-8b] status: ${JSON.stringify(status98b)}`);
+            console.log(`[9-8b] 2021.3 모델 판별(관측 라운드): plantedBy=${status98b.plantedBy}, legacyImport=${status98b.legacyImport}, truncatedAtMs=${status98b.truncatedAtMs} — 모델 미확정, 잠정 skip`);
+            test.skip(true, 'Unity 2021.3 mkdir-plant model discrimination round — see [9-8b] status log (TODO.md P2 선결 과제 2)');
           }
 
           expect(status98b.legacyImport, 'an empty manifest must not close the migration window').toBe('imported');
           expect(status98b.mode, 'boot must stay in ait mode').toBe('ait');
           expect(staleGet.value, 'seam must also fire when the manifest exists but carries no PlayerPrefs file').toBe('v8');
 
-          // 임포트분이 매니페스트로 승격됐는지 (빈 매니페스트가 그대로 남으면 안 된다)
+          // 임포트분이 매니페스트로 승격됐는지 (빈 매니페스트가 그대로 남으면 안 된다) —
+          // 하드 단언은 이것(hasPp)만 건다. legacy.checked는 원래 plantSeenRead가 선 뒤
+          // push가 한 번 더 일어난다는 전제였는데, mkdir-plant로 심기(프레임 N)와 첫
+          // 읽기(프레임 N+1)가 갈라지면서 승격 push가 읽기보다 먼저 나가 legacy 필드가
+          // 없는 채로 끝날 수 있다(이후 push를 유발하는 것이 없으면 그대로 타임아웃 —
+          // 2022.3/macOS 30초간 persist 0회 실측, 9-8 주석 참조). 이 세션에서 checked
+          // 미기록은 설계상 정상(다음 부팅 stash로 수렴)이므로 하드 단언에서 빼고
+          // 진단 로그로만 남긴다.
           await staleEmptyPage.waitForFunction(() => {
             var raw = window.localStorage.getItem('PW_PP8B_AIT_MOCK_AITUnityFS_v1_manifest');
             if (!raw) return false;
             try {
-              var files = JSON.parse(JSON.parse(raw).inline).files || {};
-              return Object.keys(files).some(function (k) { return /\/PlayerPrefs$/.test(k); });
+              var snapshot = JSON.parse(JSON.parse(raw).inline);
+              var files = snapshot.files || {};
+              var hasPp = Object.keys(files).some(function (k) { return /\/PlayerPrefs$/.test(k); });
+              return hasPp;
             } catch (e) { return false; }
           }, undefined, { timeout: 15000 });
+
+          const legacyCheckedPoll98b = await staleEmptyPage.evaluate(() => {
+            var raw = window.localStorage.getItem('PW_PP8B_AIT_MOCK_AITUnityFS_v1_manifest');
+            if (!raw) return { checked: false };
+            try {
+              var snapshot = JSON.parse(JSON.parse(raw).inline);
+              return { checked: !!(snapshot.legacy && snapshot.legacy.checked === true) };
+            } catch (e) { return { checked: false }; }
+          });
+          console.log(`[9-8b] status: ${JSON.stringify({
+            legacyChecked: legacyCheckedPoll98b.checked
+              ? 'checked 기록됨'
+              : '미기록 — read/push 순서상 정상, 다음 부팅 수렴'
+          })}`);
         } finally {
           await staleEmptyPage.close();
         }
@@ -2934,17 +2977,20 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
           // 이 테스트의 고유 관심사(신규 origin의 **첫 세션 안에** 심기가 완료되는가,
           // 그리고 시드 해시가 아니라 엔진이 준 앱 디렉터리로 리매핑되는가)는 잘림과
           // 무관하게 성립하므로 그 둘은 하드로 남기고 값 단언만 면제한다.
+          // 9-8과 동일한 관측 라운드 — 하드 단언은 데이터 안전 불변식만. 리매핑
+          // 검증(legacyAppDir)은 이 테스트 고유 관심사이지만 데이터 안전 불변식은
+          // 아니므로 진단 로그로 내리고, skip-truncated 쪽에서는 하드로 걸지 않는다.
           const is2021_911 = (process.env.AIT_BUILD_DIR || '').includes('2021.3');
           if (is2021_911 && coldGet.value !== 'v8') {
-            expect(statusCold.legacyImport,
-              '첫 세션 안에 심기까지는 도달해야 한다 — 이건 잘림과 무관하다').toBe('imported');
-            expect(statusCold.legacyAppDir,
-              '리매핑은 잘림과 무관하게 검증된다').toMatch(/^\/idbfs\/[^/]+$/);
-            expect(statusCold.legacyAppDir,
-              '시드 해시를 심기 대상으로 쓰면 안 된다').not.toContain('legacy_origin_seed');
             expect(coldGet.value, '잘림이면 값은 빈 문자열이다 — 다른 값이면 미지의 회귀다').toBe('');
-            console.log('[9-11] 2021.3 알려진 한계: 심은 내용이 O_TRUNC로 잘림 — 값 단언만 skip');
-            test.skip(true, 'Unity 2021.3 opens PlayerPrefs write-first; planted bytes are truncated (TODO.md P2 선결 과제 3)');
+            expect(statusCold.legacyChecked,
+              'skip-truncated/미확정 경로에서 legacyChecked가 기록되면 창이 영구히 닫힌다 — 절대 기록되면 안 된다').toBeFalsy();
+            expect(['skip-truncated', 'imported'],
+              '파수꾼 작동(skip-truncated) 또는 mkdir 불발 후 lookup 폴백(imported) 중 하나여야 한다 — 제3의 상태는 미지의 회귀다')
+              .toContain(statusCold.legacyImport);
+            console.log(`[9-11] status: ${JSON.stringify(statusCold)}`);
+            console.log(`[9-11] 2021.3 모델 판별(관측 라운드): plantedBy=${statusCold.plantedBy}, legacyImport=${statusCold.legacyImport}, truncatedAtMs=${statusCold.truncatedAtMs}, legacyAppDir=${statusCold.legacyAppDir} — 모델 미확정, 잠정 skip`);
+            test.skip(true, 'Unity 2021.3 mkdir-plant model discrimination round — see [9-11] status log (TODO.md P2 선결 과제 2)');
           }
 
           expect(statusCold.legacyImport,
@@ -2969,6 +3015,182 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
           }, undefined, { timeout: 15000 });
         } finally {
           await coldPage.close();
+        }
+      });
+
+      // -----------------------------------------------------------------------
+      // 9-12 [레거시 stash — 진짜 세이브 보존] present(스코프 파일 존재) + 마이그레이션
+      //      창이 열린 상태에서 레거시 소스까지 있어도, mkdir-plant/lookup 임포트
+      //      경로(skip-local-present 관문)를 타지 않고 별도 write-once Storage 키
+      //      (AITUnityFS_v1_legacy)에 stash만 하는지 확인한다. 라이브 PlayerPrefs는
+      //      절대 레거시로 덮이면 안 된다 — 이게 stash를 도입한 이유 그 자체다.
+      //
+      //      pp8LegacySeed에 의존하지 않는다. stashThenFinish는 후보 내용을 파싱하지
+      //      않고 normalizeLegacyCandidates로 형태·크기만 검증한 뒤 그대로 보관하므로
+      //      실제 Unity PlayerPrefs 바이너리 포맷이 필요 없다 — 합성 덤프로 충분하고,
+      //      9-8의 실패/스킵과 무관하게 항상 실행된다.
+      //
+      //      ① 훅 없이 부팅해 실제 라이브 세이브를 만든다. Set+Save를 2회 반복하는
+      //         것은 9-8과 같은 이유(2021.3 1-persist 지연 보정)다.
+      //      ② 같은 컨텍스트의 새 페이지에서(reload가 아니다 — 9-8의 seedContext/
+      //         probePage와 같은, 이미 검증된 "같은 컨텍스트 새 페이지" 하니스
+      //         패턴을 재사용해 reloadAndWaitForUnity의 크래시/드롭 재시도 분류
+      //         경로를 아예 타지 않는다) 합성 레거시 훅을 걸고 재부팅한다. present
+      //         분기이므로 skip-local-present 관문에 걸려 stashThenFinish로
+      //         빠져야 한다.
+      // -----------------------------------------------------------------------
+      test('9-12. [legacy stash] a genuine save is preserved and the legacy dump is stashed, not merged', async ({ browser }) => {
+        // 부팅 2회 + 각 2회 Save/persistIdle 대기. 9-10 실측(부팅 4회로 426초) 대비
+        // 부팅은 절반이지만 느린 러너 편차를 흡수할 여유를 둔다.
+        test.setTimeout(900000);
+
+        const STASH_KEY = 'AITUnityFS_v1_legacy';
+        const PREFIX = 'PW_PP12_MOCK_';
+        // stash는 내용을 파싱하지 않고 형태(mode)·크기만 검증한 뒤 그대로 보관하므로
+        // 실제 Unity PlayerPrefs 바이너리일 필요가 없다 — 합성 바이트로 충분하다.
+        // Node 쪽에도 같은 배열을 들고 있어 나중에 "STASH_KEY 내용 일치"를 base64로
+        // 대조한다.
+        const syntheticLegacyBytes = Array.from({ length: 32 }, (_, i) => (i * 7 + 3) % 256);
+
+        const stashContext = await browser.newContext();
+        try {
+          // --- ①: 훅 없이 부팅해 진짜 라이브 세이브를 만든다 ---
+          const livePage = await stashContext.newPage();
+          await livePage.addInitScript((p) => {
+            window['__AIT_PLAYERPREFS_STORAGE__'] = {
+              getItem: function (key) { return Promise.resolve(window.localStorage.getItem(p + key)); },
+              setItem: function (key, value) { return Promise.resolve(window.localStorage.setItem(p + key, value)); }
+            };
+          }, PREFIX);
+          const liveResp = await livePage.goto(`http://localhost:${sharedPort}?e2e=true`, {
+            waitUntil: 'domcontentloaded',
+            timeout: 60000
+          });
+          expect(liveResp?.status()).toBe(200);
+          await waitForUnityInstance(livePage);
+
+          const persistCountBefore = await livePage.evaluate(() => window['__AIT_PP'].persistCount);
+          const liveSet = await triggerPlayerPrefsAndWait(
+            livePage,
+            () => livePage.evaluate((json) => window['TriggerPlayerPrefsSet'](json),
+              JSON.stringify({ key: 'ait_e2e_pp12', value: 'v12' })),
+            'set'
+          );
+          expect(liveSet.success, 'live PlayerPrefs.SetString + Save should succeed').toBe(true);
+          await livePage.waitForFunction(
+            (baseline) => window['__AIT_PP'].persistCount > baseline && window['__AIT_PP'].persistIdle(),
+            persistCountBefore,
+            { timeout: 30000 }
+          );
+
+          // 2021.3의 1-persist 지연 대비(9-8과 동일 근거) — 두 번째 Save로 최신 값이
+          // 실린 persist를 결정적으로 만든다.
+          const persistCountMid = await livePage.evaluate(() => window['__AIT_PP'].persistCount);
+          const liveSet2 = await triggerPlayerPrefsAndWait(
+            livePage,
+            () => livePage.evaluate((json) => window['TriggerPlayerPrefsSet'](json),
+              JSON.stringify({ key: 'ait_e2e_pp12', value: 'v12' })),
+            'set'
+          );
+          expect(liveSet2.success, 'second live Save should also succeed').toBe(true);
+          await livePage.waitForFunction(
+            (baseline) => window['__AIT_PP'].persistCount > baseline && window['__AIT_PP'].persistIdle(),
+            persistCountMid,
+            { timeout: 30000 }
+          );
+
+          // present 분기가 성립하려면 다음 부팅이 볼 스냅샷에 scoped 파일이 있어야 한다
+          await livePage.waitForFunction((p) => {
+            var raw = window.localStorage.getItem(p + 'AITUnityFS_v1_manifest');
+            if (!raw) return false;
+            try {
+              var files = JSON.parse(JSON.parse(raw).inline).files || {};
+              return Object.keys(files).some(function (k) { return /\/PlayerPrefs$/.test(k); });
+            } catch (e) { return false; }
+          }, PREFIX, { timeout: 15000 });
+
+          // 같은 컨텍스트만 필요하고(스토리지 공유), livePage가 계속 떠 있으면 같은
+          // 컨텍스트에 Unity 인스턴스 2개가 공존해 livePage 쪽 레이어가 legacy 없는
+          // 매니페스트로 되쓰기하는 경합이 생긴다 — 아래 stashPage의 마지막
+          // waitForFunction 타임아웃 및 'v12' 생존 단언과 충돌하므로 먼저 닫는다.
+          await livePage.close();
+
+          // --- ②: 같은 컨텍스트의 새 페이지에서 합성 레거시 훅을 걸고 재부팅 ---
+          const stashPage = await stashContext.newPage();
+          await stashPage.addInitScript((p) => {
+            window['__AIT_PLAYERPREFS_STORAGE__'] = {
+              getItem: function (key) { return Promise.resolve(window.localStorage.getItem(p + key)); },
+              setItem: function (key, value) { return Promise.resolve(window.localStorage.setItem(p + key, value)); }
+            };
+          }, PREFIX);
+          await stashPage.addInitScript((bytes) => {
+            var dump = {};
+            // 시드 해시는 이번 세션의 실제 앱 디렉터리와 일부러 다르게 둔다 — stash
+            // 경로는 리매핑을 하지 않으므로(심지 않는다) 이 차이 자체는 무관하지만,
+            // 9-8/9-11과 같은 형태의 덤프를 유지해 하니스 일관성을 지킨다.
+            dump['/idbfs/legacy_origin_seed/PlayerPrefs'] = {
+              mode: 33206, // S_IFREG(0o100000) | 0o666 — isFileMode() 통과용 합성 모드
+              timestamp: Date.now(),
+              contents: bytes
+            };
+            window['__AIT_PP_LEGACY_SOURCE__'] = {
+              readIdbfs: function () { return Promise.resolve(dump); }
+            };
+          }, syntheticLegacyBytes);
+
+          const stashResp = await stashPage.goto(`http://localhost:${sharedPort}?e2e=true`, {
+            waitUntil: 'domcontentloaded',
+            timeout: 60000
+          });
+          expect(stashResp?.status()).toBe(200);
+          await waitForUnityInstance(stashPage);
+
+          // 라이브 값 생존 확인
+          const liveGet = await triggerPlayerPrefsAndWait(
+            stashPage,
+            () => stashPage.evaluate((key) => window['TriggerPlayerPrefsGet'](key), 'ait_e2e_pp12'),
+            'get'
+          );
+          console.log(`[9-12] TriggerPlayerPrefsGet(live) result: ${JSON.stringify(liveGet)}`);
+          expect(liveGet.success, 'PlayerPrefs.GetString should succeed for the live key').toBe(true);
+          expect(liveGet.value, 'the genuine save must survive a present+legacy-source boot unchanged').toBe('v12');
+
+          // 레거시가 라이브 네임스페이스로 새어 들어가지 않았는지 — stash는 절대
+          // 병합하지 않는다(별도 write-once 키에만 보관)
+          const legacyLeakGet = await triggerPlayerPrefsAndWait(
+            stashPage,
+            () => stashPage.evaluate((key) => window['TriggerPlayerPrefsGet'](key), 'ait_e2e_pp8_stash'),
+            'get'
+          );
+          console.log(`[9-12] TriggerPlayerPrefsGet(legacy-probe) result: ${JSON.stringify(legacyLeakGet)}`);
+          expect(legacyLeakGet.value,
+            'the stashed legacy dump must never be merged into the live PlayerPrefs namespace').toBe('');
+
+          const status912 = await stashPage.evaluate(() => window['AITPlayerPrefs'].status());
+          console.log(`[9-12] status: ${JSON.stringify(status912)}`);
+          expect(status912.legacyImport,
+            'present + open window + legacy source must resolve to stashed, not imported').toBe('stashed');
+
+          // STASH_KEY 존재 + 내용 일치 확인 (write-once 별도 키 — 매니페스트에는 안 실린다)
+          const stashBacking = await stashPage.evaluate((args) => {
+            return window.localStorage.getItem(args.prefix + args.stashKey);
+          }, { prefix: PREFIX, stashKey: STASH_KEY });
+          expect(stashBacking, 'STASH_KEY must be written to platform Storage').toBeTruthy();
+          const expectedB64 = Buffer.from(syntheticLegacyBytes).toString('base64');
+          expect(stashBacking.includes(expectedB64),
+            `STASH_KEY payload must contain the stashed candidate bytes (got: ${stashBacking.slice(0, 200)})`).toBe(true);
+
+          // 매니페스트에는 legacy.checked만 실리고(stash 데이터 자체는 별도 키) — §1-4
+          await stashPage.waitForFunction((p) => {
+            var raw = window.localStorage.getItem(p + 'AITUnityFS_v1_manifest');
+            if (!raw) return false;
+            try {
+              var snapshot = JSON.parse(JSON.parse(raw).inline);
+              return !!(snapshot.legacy && snapshot.legacy.checked === true && snapshot.legacy.result === 'stashed');
+            } catch (e) { return false; }
+          }, PREFIX, { timeout: 15000 });
+        } finally {
+          await stashContext.close();
         }
       });
 

@@ -106,6 +106,9 @@
         restoredBytes: 0,
         mirrorCount: 0,
         persistCount: 0,          // persist(populate=false) 방향이 최종 cb까지 완료된 횟수(성공/실패 무관)
+        collectFallbackCount: 0,  // collectScopedInner가 노드 그래프 폴백(collectScopedFromNodes)으로
+                                  // 성공한 횟수 — getLocalSet/loadEntrySync가 죽는 2021.3 IDBFS 세션
+                                  // 노화 결함에서 매니페스트가 동결되지 않았음을 관측하는 용도
         legacyImport: 'none',     // 'none' | 'skip-mountpoint' | 'skip-budget' | 'skip-unknown-local'
                                   // | 'skip-local-present' | 'skip-no-watcher' | 'skip-gate-fired'
                                   // | 'skip-ambiguous' | 'deferred' | 'expired'
@@ -514,7 +517,11 @@
             });
         } catch (e) {
             recordError('getLocalSet', e);
-            return null;
+            // getLocalSet은 FS.readdir/FS.stat(경로 lookup)에 의존한다. 2021.3의 순정
+            // IDBFS 세션 노화 결함(실측: 세션 ~60초 후 errno=44)이 이 lookup 자체를
+            // 죽이는데, MEMFS 노드 그래프를 직접 순회하는 아래 폴백은 lookup을 전혀
+            // 쓰지 않으므로 이 결함에 면역이다.
+            return collectScopedFallback(mount);
         }
         if (!called || failErr || !localSet || !localSet.entries) {
             // 구버전 Emscripten ErrnoError는 message가 없을 수 있어 errno까지 남긴다
@@ -522,7 +529,7 @@
                 : failErr ? ('err=' + String(failErr) + (failErr && failErr.errno !== undefined ? ' errno=' + failErr.errno : ''))
                 : '결과 집합 없음';
             recordError('getLocalSet', new Error('로컬 파일 목록을 얻지 못했습니다: ' + detail));
-            return null;
+            return collectScopedFallback(mount);
         }
 
         var all = Object.keys(localSet.entries);
@@ -538,17 +545,98 @@
 
         var files = {};
         var keys = Object.keys(wanted).sort();
+        var dropped = false;
         for (var k = 0; k < keys.length; k++) {
             var entry = loadEntrySync(keys[k]);
-            if (!entry) continue; // 레이스로 사라진 엔트리는 조용히 스킵
+            // getLocalSet 콜백과 이 루프는 전부 동기이므로 그 사이 정당한 삭제는
+            // 구조적으로 불가능하다 — null은 "레이스로 사라진 엔트리"가 아니라
+            // loadLocalEntry의 lookup 기계 고장이다(2021.3 IDBFS 세션 노화 결함이
+            // getLocalSet뿐 아니라 loadEntrySync도 같이 죽인다). 조용히 스킵하고
+            // 부분 결과를 push하면 Storage 매니페스트에서 해당 파일이 빠진 채 정본이
+            // 갱신되는 원격 데이터 유실이 되므로, 하나라도 드롭되면 부분 결과를 버리고
+            // 아래에서 노드 그래프 폴백으로 전환한다.
+            if (!entry) { dropped = true; continue; }
             var mode = entry['mode'];
             var rec = { m: mode, t: toMillis(entry['timestamp']) };
             if (!isDirMode(mode)) rec.d = encodeBase64(entry['contents']);
             files[keys[k]] = rec;
         }
+        if (dropped) {
+            recordError('loadEntrySync', new Error('scoped 엔트리 로드 중 일부가 드롭되었습니다(lookup 고장 의심)'));
+            return collectScopedFallback(mount);
+        }
         // all(전체 엔트리 경로 목록)은 더 이상 돌려주지 않는다 — 유일한 소비자가 앱
         // 디렉터리를 추측하던 resolveAppDir였고, 그 추측을 코드에서 없앴다.
         return { files: files, scoped: scoped.sort() };
+    }
+
+    /**
+     * MEMFS 노드 그래프를 mountRootNode부터 직접 순회해 collectScopedInner와 동일한
+     * 반환 형태({files, scoped})를 만드는 폴백. FS API·lookupPath·stream_ops를 전혀
+     * 호출하지 않는 순수 객체 접근이라, getLocalSet/loadLocalEntry가 의존하는 경로
+     * lookup이 죽어도(2021.3 IDBFS 세션 노화 결함) 영향을 받지 않는다.
+     *
+     * ⚠️ 파수꾼 read/mmap 훅(installTruncationSentinel)을 오발화시키지 않도록 stream_ops를
+     *    절대 건드리지 않는다 — node['contents']/node['mode']/node['timestamp']만 읽는다.
+     * 실패(mountRootNode 없음, 노드 형태 이상 등)는 전부 삼키고 null.
+     */
+    function collectScopedFromNodes(mount) {
+        var root = mountRootNode;
+        if (!root) return null;
+        try {
+            var base = (activeMount && activeMount.mountpoint) || IDBFS_ROOT;
+            base = String(base).replace(/\/+$/, '') || IDBFS_ROOT;
+
+            var files = {};
+            var scoped = [];
+
+            function fileBytes(node) {
+                var c = node['contents'];
+                if (!c) return new Uint8Array(0); // 빈 파일 — contents가 null일 수 있다
+                var len = typeof node['usedBytes'] === 'number' ? node['usedBytes'] : c.length;
+                if (typeof c.subarray === 'function') return len === c.length ? c : c.subarray(0, len);
+                return new Uint8Array(Array.prototype.slice.call(c, 0, len)); // 구버전 Emscripten: plain Array
+            }
+
+            function walk(node, path, parent) {
+                if (!node) return;
+                var mode = node['mode'];
+                if (isDirMode(mode)) {
+                    var contents = node['contents'] || {};
+                    var names = Object.keys(contents);
+                    for (var i = 0; i < names.length; i++) {
+                        walk(contents[names[i]], path + '/' + names[i], node);
+                    }
+                    return;
+                }
+                if (!SCOPE_RE.test(path)) return;
+                scoped.push(path);
+                files[path] = { m: mode, t: toMillis(node['timestamp']), d: encodeBase64(fileBytes(node)) };
+                // 조상 디렉터리(/idbfs/<hash>) — collectScopedInner의 wanted 구성과 대칭
+                var dirPath = path.slice(0, path.lastIndexOf('/'));
+                if (!files[dirPath] && parent) {
+                    files[dirPath] = { m: parent['mode'], t: toMillis(parent['timestamp']) };
+                }
+            }
+
+            var rootContents = root['contents'] || {};
+            var rootNames = Object.keys(rootContents);
+            for (var i = 0; i < rootNames.length; i++) {
+                walk(rootContents[rootNames[i]], base + '/' + rootNames[i], root);
+            }
+
+            return { files: files, scoped: scoped.sort() };
+        } catch (e) {
+            recordError('nodewalk', e);
+            return null;
+        }
+    }
+
+    /** collectScopedFromNodes를 호출하고 성공 시에만 진단 카운터를 올린다 */
+    function collectScopedFallback(mount) {
+        var res = collectScopedFromNodes(mount);
+        if (res) state.collectFallbackCount++;
+        return res;
     }
 
     /** 키 오름차순 + 고정 필드 순서 = 해시 안정적인 결정적 직렬화 */
@@ -1981,6 +2069,7 @@
             mode: state.mode,
             restoredBytes: state.restoredBytes,
             mirrorCount: state.mirrorCount,
+            collectFallbackCount: state.collectFallbackCount,
             legacyImport: state.legacyImport,
             legacyBackend: state.legacyBackend,
             legacyBytes: state.legacyBytes,

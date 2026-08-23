@@ -1598,6 +1598,111 @@ describe('ait-playerprefs.js — IDBFS syncfs 어댑터', () => {
   });
 
   /**
+   * 노드 그래프 폴백 (collectScopedFromNodes, E2E 라운드 8 결함 대응).
+   *
+   * Unity 2021.3의 순정 IDBFS 세션 노화 결함(9-6 통제군 실측: 세션 ~60초 후
+   * getLocalSet errno=44)은 FS 경로 lookup에 의존하는 getLocalSet/loadLocalEntry를
+   * 함께 죽인다. collectScopedInner가 그 실패를 그냥 삼키면(수정 전) recordError 후
+   * null을 돌려주고 pushScoped가 조용히 skip하는데, persistCount는 성공/실패 무관하게
+   * 올라가므로 겉보기엔 정상인 채로 매니페스트가 부팅 직후 사본에 동결된다 — 원격
+   * 데이터 유실. 아래는 노드 그래프(순수 객체 접근, FS lookup 불필요)로 우회하는
+   * 폴백이 실제로 그 결함에 면역인지, 그리고 부분 드롭을 절대 push하지 않는지를 고정한다.
+   */
+  describe('노드 그래프 폴백 (2021.3 IDBFS 세션 노화 결함 대응)', () => {
+    test('N1) getLocalSet이 세션 노화(errno 44)로 죽어도 노드 그래프 폴백이 최신 바이트를 매니페스트에 싣는다', async () => {
+      const b = boot({ fsInit: { ...bootedBefore, [APP + '/PlayerPrefs']: ppEntry('mine') } });
+      await syncfs(b, true);
+      await wait(300);
+      expect(manifestFiles(b.store.get(MANIFEST_KEY))).toContain(APP + '/PlayerPrefs'); // 사전 조건: 정상 승격
+
+      // 게임의 새 Save — 엔진이 MEMFS 노드에 직접 쓰는 것을 흉내낸다(T5와 동일한 패턴)
+      const node = b.entries.node(APP + '/PlayerPrefs')!;
+      node.contents = new Uint8Array(Buffer.from('updated'));
+
+      // 2021.3 순정 IDBFS 세션 노화 결함 흉내
+      b.idbfs.getLocalSet = (_mount, cb) => cb(fsError(ERRNO_ENOENT, 'ENOENT: session aged'));
+
+      await syncfs(b, false); // Unity의 auto-persist(populate=false) 경로
+
+      const s = b.win.__AIT_PP.status();
+      expect(s.collectFallbackCount).toBeGreaterThanOrEqual(1);
+      expect(String(s.lastError)).toMatch(/getLocalSet/);
+      const inline = manifestInline(b.store.get(MANIFEST_KEY));
+      expect(inline.files[APP + '/PlayerPrefs'].d).toBe(Buffer.from('updated').toString('base64'));
+    });
+
+    // silent-drop 데이터 유실 가드. getLocalSet 콜백과 loadEntrySync 루프는 전부 동기라
+    // 그 사이 정당한 삭제는 구조적으로 불가능하다 — null은 lookup 기계 고장이지 삭제가
+    // 아니다. 이대로 push하면 Storage 매니페스트에서 PlayerPrefs 파일이 빠진 채 정본이
+    // 갱신되는 원격 데이터 유실이 된다.
+    test('N2) getLocalSet은 정상인데 loadLocalEntry가 scoped 파일에서만 실패해도 그 파일을 매니페스트에서 드롭하지 않는다', async () => {
+      const b = boot({ fsInit: { ...bootedBefore, [APP + '/PlayerPrefs']: ppEntry('mine') } });
+      await syncfs(b, true);
+      await wait(300);
+      expect(manifestFiles(b.store.get(MANIFEST_KEY))).toContain(APP + '/PlayerPrefs');
+
+      const node = b.entries.node(APP + '/PlayerPrefs')!;
+      node.contents = new Uint8Array(Buffer.from('updated'));
+
+      const targetPath = APP + '/PlayerPrefs';
+      const origLoad = b.idbfs.loadLocalEntry;
+      b.idbfs.loadLocalEntry = (p, cb) => {
+        if (p === targetPath) {
+          cb(fsError(ERRNO_ENOENT, 'ENOENT: ' + p));
+          return;
+        }
+        origLoad(p, cb);
+      };
+      try {
+        await syncfs(b, false);
+      } finally {
+        b.idbfs.loadLocalEntry = origLoad;
+      }
+
+      const s = b.win.__AIT_PP.status();
+      expect(s.collectFallbackCount).toBeGreaterThanOrEqual(1);
+      const inline = manifestInline(b.store.get(MANIFEST_KEY));
+      expect(
+        inline.files[targetPath],
+        '동기 구간에서 정당한 삭제는 불가능하다 — null은 lookup 고장이지 삭제가 아니다',
+      ).toBeDefined();
+      expect(inline.files[targetPath].d).toBe(Buffer.from('updated').toString('base64'));
+    });
+
+    // 폴백 자체도 불가능한 상황 — push가 아예 스킵되고 기존 매니페스트가 그대로
+    // 보존되어야 한다. mountRootNode 접근 실패(예: 마운트 트랩이 아직 안 걸린 상태) 자체를
+    // 재현하기는 하니스 구조상 어렵지만(부팅 완료 후에는 항상 캡처돼 있다), 폴백이
+    // 순회하는 루트의 contents 접근을 손상시키는 것으로 "폴백도 죽는" 상황을 동등하게
+    // 재현한다 — collectScopedFromNodes는 이 접근을 try/catch로 감싸므로 결과는
+    // "폴백 실패 → null" 그 자체와 같다.
+    test('N3) getLocalSet과 노드 그래프 폴백이 모두 죽으면 push를 건너뛰고 기존 매니페스트를 보존한다', async () => {
+      const b = boot({ fsInit: { ...bootedBefore, [APP + '/PlayerPrefs']: ppEntry('mine') } });
+      await syncfs(b, true);
+      await wait(300);
+      const before = b.store.get(MANIFEST_KEY);
+      expect(manifestFiles(before)).toContain(APP + '/PlayerPrefs');
+
+      const node = b.entries.node(APP + '/PlayerPrefs')!;
+      node.contents = new Uint8Array(Buffer.from('updated')); // 폴백이 살아있다면 실렸을 값
+
+      b.idbfs.getLocalSet = (_mount, cb) => cb(fsError(ERRNO_ENOENT, 'ENOENT: session aged'));
+      Object.defineProperty(b.root, 'contents', {
+        configurable: true,
+        get() {
+          throw new Error('노드 그래프 손상(N3 시뮬레이션)');
+        },
+      });
+
+      await syncfs(b, false);
+
+      expect(b.store.get(MANIFEST_KEY), '매니페스트는 기존 그대로 — push가 스킵됐다').toBe(before);
+      const s = b.win.__AIT_PP.status();
+      expect(s.collectFallbackCount).toBe(0);
+      expect(String(s.lastError)).toMatch(/nodewalk/);
+    });
+  });
+
+  /**
    * mkdir-plant 앵커 (명세 수정 A).
    *
    * lookup 앵커는 "첫 접근이 read-open"을 전제하는데 2021.3에서 그 전제가 거짓임이

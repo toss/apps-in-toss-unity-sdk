@@ -595,6 +595,10 @@ namespace AppsInToss.Editor.Package
             };
         } catch (e) {
             // 설치 과정의 어떤 예외도 부팅을 막지 않습니다(priorFetch=원래 fetch 가 그대로 살아 있음).
+            // 단, 완전히 침묵하면 페이지 캐시가 꺼진 채 아무도 모른다 — 같은 인라인 스크립트 계열인
+            // 로딩바 제거 블록이 SyntaxError 로 죽은 채 방치됐던 전례가 있어, 진단 가능한 경고 한 줄을
+            // 남긴다(운영 영향 없음: warn 1회). __aitCacheStats 는 이 시점에 미정의일 수 있어 쓰지 않는다.
+            try { console.warn('[AIT PageCache] 설치 실패 - 페이지 캐시 비활성, 부팅은 정상 진행: ' + (e && e.message || e)); } catch (e2) {}
         }
     })();
     </script>";

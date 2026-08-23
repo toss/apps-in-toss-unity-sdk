@@ -78,12 +78,22 @@ on:
         required: false
         default: 'SampleUnityProject'
       build-method:
-        description: 'Unity -executeMethod entry point (E2EBuildRunner.CommandLineBuild | HeavyBuildRunner.CommandLineHeavyBuild)'
+        description: 'Unity -executeMethod entry point (E2EBuildRunner.CommandLineBuild | HeavyBuildRunner.CommandLineHeavyBuild | DeployProbeBuildRunner.CommandLineDeployProbeBuild)'
         type: string
         required: false
         default: 'E2EBuildRunner.CommandLineBuild'
       compression-format:
         description: 'AIT_COMPRESSION_FORMAT override: 0=disabled 1=gzip 2=brotli -1=auto. 빈 값이면 fast-build 파생(E2E=0). perf=1(gzip).'
+        type: string
+        required: false
+        default: ''
+      perf-posture:
+        description: 'perf 벤치 posture. ''full''이면 빌드 시 AIT_PERF_POSTURE=full 주입 (HeavyBuildRunner가 opt-in 레버 활성화)'
+        type: string
+        required: false
+        default: ''
+      leg-suffix:
+        description: '같은 (os, unity-version) 조합의 병행 레그 구분자 (예: "-brotli"). 잡 표시명·concurrency 그룹·모든 아티팩트 이름에 붙어 이름 충돌을 막는다. 기본 빈 값 = 기존 이름 그대로.'
         type: string
         required: false
         default: ''
@@ -133,7 +143,7 @@ on:
 
 jobs:
   build:
-    name: Build (${{ inputs.os }}, Unity ${{ inputs.unity-version }})
+    name: Build (${{ inputs.os }}, Unity ${{ inputs.unity-version }}${{ inputs.leg-suffix }})
     # Unity 버전별 머신 핀: 같은 self-hosted runner에 두 개 이상의 Unity
     # LicensingClient가 동시에 살아 있으면 signature/handshake/IPC 충돌이
     # 발생한다(run #683의 Code 10 등). runner 풀에 unity-<version> 라벨을
@@ -155,7 +165,7 @@ jobs:
     # 이중방어 락을 둔다. 같은 매트릭스 잡이 동시에 두 번 dispatch되는 케이스만
     # 차단하고, 다른 unity-version 잡끼리는 머신 핀(위)으로 분리된다.
     concurrency:
-      group: unity-build-${{ inputs.ref || github.sha }}-${{ inputs.os }}-${{ inputs.unity-version }}-${{ inputs.sdk-version-override || 'default' }}
+      group: unity-build-${{ inputs.ref || github.sha }}-${{ inputs.os }}-${{ inputs.unity-version }}${{ inputs.leg-suffix }}-${{ inputs.sdk-version-override || 'default' }}
       cancel-in-progress: false
 
     outputs:
@@ -1103,7 +1113,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
-          name: editmode-results-${{ inputs.os }}-${{ inputs.unity-version }}
+          name: editmode-results-${{ inputs.os }}-${{ inputs.unity-version }}${{ inputs.leg-suffix }}
           path: Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}/editmode-results.xml
           if-no-files-found: ignore
           retention-days: 7
@@ -1116,7 +1126,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
-          name: unity-log-editmode-${{ inputs.os }}-${{ inputs.unity-version }}
+          name: unity-log-editmode-${{ inputs.os }}-${{ inputs.unity-version }}${{ inputs.leg-suffix }}
           path: /tmp/unity-editmode-${{ inputs.unity-version }}.log
           if-no-files-found: ignore
           retention-days: 7
@@ -1127,7 +1137,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
-          name: unity-log-editmode-${{ inputs.os }}-${{ inputs.unity-version }}
+          name: unity-log-editmode-${{ inputs.os }}-${{ inputs.unity-version }}${{ inputs.leg-suffix }}
           path: ${{ runner.temp }}\unity-editmode-${{ inputs.unity-version }}.log
           if-no-files-found: ignore
           retention-days: 7
@@ -1498,7 +1508,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
-          name: unit-test-results-${{ inputs.os }}-${{ inputs.unity-version }}
+          name: unit-test-results-${{ inputs.os }}-${{ inputs.unity-version }}${{ inputs.leg-suffix }}
           path: |
             /tmp/unity-test-results-${{ inputs.unity-version }}.xml
             ${{ runner.temp }}/unity-test-results-${{ inputs.unity-version }}.xml
@@ -1511,7 +1521,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
-          name: unity-log-unit-test-${{ inputs.os }}-${{ inputs.unity-version }}
+          name: unity-log-unit-test-${{ inputs.os }}-${{ inputs.unity-version }}${{ inputs.leg-suffix }}
           path: /tmp/unity-test-${{ inputs.unity-version }}.log
           if-no-files-found: ignore
           retention-days: 7
@@ -1522,7 +1532,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
-          name: unity-log-unit-test-${{ inputs.os }}-${{ inputs.unity-version }}
+          name: unity-log-unit-test-${{ inputs.os }}-${{ inputs.unity-version }}${{ inputs.leg-suffix }}
           path: ${{ runner.temp }}\unity-test-${{ inputs.unity-version }}.log
           if-no-files-found: ignore
           retention-days: 7
@@ -1562,6 +1572,8 @@ jobs:
           #   E2E 기본 fast-build(true)→0(Disabled, vite preview 전용·압축 불필요·wallclock 절감).
           #   preview/perf 의 fast-build=false 경로에서 빈 값이면 ''(SDK 기본 압축). perf 는 '1' 명시.
           AIT_COMPRESSION_FORMAT: ${{ inputs.compression-format != '' && inputs.compression-format || (inputs.fast-build && '0' || '') }}
+          # perf 벤치 posture: 'full'이면 HeavyBuildRunner가 opt-in 레버(폰트 subset/오디오·텍스처 스트리밍) 활성화.
+          AIT_PERF_POSTURE: ${{ inputs.perf-posture }}
           # Development Build / IL2CPP 프로필: fast-build 단일 스위치가 담당(main PR #551).
           #   fast-build=true(E2E) → dev build + Debug(Link_WebGL_wasm -O3 단축, wallclock 절감).
           #   fast-build=false(preview·perf) → ''(SDK 기본 release 프로필 = 배포와 동일한 wasm).
@@ -1720,6 +1732,7 @@ jobs:
           AIT_DEBUG_CONSOLE: "true"
           # macOS step의 동일 주석 참조 (compression-format 명시 우선, dev/il2cpp 는 fast-build 단일 스위치).
           AIT_COMPRESSION_FORMAT: ${{ inputs.compression-format != '' && inputs.compression-format || (inputs.fast-build && '0' || '') }}
+          AIT_PERF_POSTURE: ${{ inputs.perf-posture }}
           AIT_DEVELOPMENT_BUILD: ${{ inputs.fast-build && 'true' || '' }}
           AIT_IL2CPP_CONFIGURATION: ${{ inputs.fast-build && 'Debug' || '' }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
@@ -1727,8 +1740,11 @@ jobs:
           # Windows 러너의 release 프로필(fast-build=false) 6000.x 빌드는 Brotli 압축
           # 포함 ~28분(warm Library 캐시 실측, 2026-06 베타 릴리즈 run 27433833844)으로
           # 30분 한도에 아슬아슬하고, cold 캐시에서는 timeout으로 실패가 재발한다 →
-          # 45분으로 상향 (job 한도 90분 내 여유 충분. macOS는 30분 내 안정 통과라 유지).
-          timeout_minutes: 45
+          # 45분으로 상향. 이후 2022.3 cold 캐시(SDK 재생성 직후)에서는 wasm 링크만
+          # ~36분이라 Brotli 포함 총 소요가 45분을 2~3분 초과하는 실측이 재발
+          # (2026-08 베타 릴리즈 run 30802896662, 3회 연속 동일 시그니처) → 65분으로
+          # 재상향 (job 한도 90분 내 여유 유지. macOS는 30분 내 안정 통과라 유지).
+          timeout_minutes: 65
           max_attempts: 3
           retry_wait_seconds: 0
           retry_on_exit_code: 42
@@ -1966,14 +1982,16 @@ jobs:
           UNITY_VERSION: ${{ inputs.unity-version }}
           SDK_VERSION: ${{ inputs.sdk-version }}
           PROJECT_DIR_PREFIX: ${{ inputs.project-dir-prefix }}
+          LEG_SUFFIX: ${{ inputs.leg-suffix }}
         run: |
           const fs = require('fs');
-          const { OS, UNITY_VERSION, SDK_VERSION, PROJECT_DIR_PREFIX } = process.env;
+          const { OS, UNITY_VERSION, SDK_VERSION, PROJECT_DIR_PREFIX, LEG_SUFFIX } = process.env;
           const suffix = SDK_VERSION ? `-v${SDK_VERSION}` : '';
           // perf 하네스(HeavySampleUnityProject)는 'heavy-' 변형 이름으로 E2E 아티팩트와 충돌 회피.
           // 기본(SampleUnityProject)이면 variant='' → 기존 이름 'ait-build-${OS}-${VERSION}' 그대로.
+          // leg-suffix(예: '-brotli')는 같은 (os, version)의 병행 레그 구분 — 빈 값이면 기존 이름 유지.
           const variant = (PROJECT_DIR_PREFIX || '').startsWith('Heavy') ? 'heavy-' : '';
-          const name = `ait-build-${variant}${OS}-${UNITY_VERSION}${suffix}`;
+          const name = `ait-build-${variant}${OS}-${UNITY_VERSION}${suffix}${LEG_SUFFIX || ''}`;
           fs.appendFileSync(process.env.GITHUB_OUTPUT, `name=${name}\n`);
           console.log(`Artifact name: ${name}`);
 
@@ -1990,6 +2008,10 @@ jobs:
       # (SDK 템플릿 파일이 리포에 항상 존재 — WebGLTemplates/AITTemplate/BuildConfig~/ 참조)
       # if-no-files-found: error 하에서도 안전하다. devtools mock 격리(E2E Test 2) 검증에
       # vite.config.ts가 필요하다.
+      #
+      # vite.config.ts는 unityWebContentEncodingPlugin(.br/.gz/.unityweb에 Content-Encoding
+      # 부여)을 configurePreviewServer 훅으로 등록한다 — 누락하면 다운스트림 E2E의
+      # `vite preview`가 설정 없이 떠서 CE 압축 빌드(brotli 레그)의 로더가 부팅에 실패한다.
       - name: Upload AIT Build
         if: inputs.run-build && (inputs.test-level || '2') != '0'
         uses: actions/upload-artifact@v7
@@ -2021,7 +2043,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
-          name: unity-log-build-${{ inputs.os }}-${{ inputs.unity-version }}
+          name: unity-log-build-${{ inputs.os }}-${{ inputs.unity-version }}${{ inputs.leg-suffix }}
           path: /tmp/unity-build-${{ inputs.unity-version }}.log
           if-no-files-found: ignore
           retention-days: 7
@@ -2032,7 +2054,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
-          name: unity-log-build-${{ inputs.os }}-${{ inputs.unity-version }}
+          name: unity-log-build-${{ inputs.os }}-${{ inputs.unity-version }}${{ inputs.leg-suffix }}
           path: ${{ runner.temp }}\unity-build-${{ inputs.unity-version }}.log
           if-no-files-found: ignore
           retention-days: 7

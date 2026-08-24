@@ -149,6 +149,13 @@ interface FsNode {
   node_ops: NodeOps;
   /** 파일 노드에만 붙는다 (MEMFS.createNode: 디렉터리는 stream_ops가 없다) */
   stream_ops?: StreamOps;
+  /**
+   * 파일 노드에만 붙는다. 실제 MEMFS는 성장 전략상 contents를 usedBytes보다 크게
+   * 과할당할 수 있어 논리 길이를 별도로 유지한다(ait-playerprefs.js의
+   * collectScopedFromNodes.fileBytes가 이 불변식을 전제한다). 구버전 형태(plain
+   * Array 등)를 흉내내는 테스트는 의도적으로 비워둘 수 있어 optional이다.
+   */
+  usedBytes?: number;
   /** FS.mount가 마운트 루트에 걸어두는 mount 객체 */
   mount?: MountMock;
 }
@@ -212,7 +219,12 @@ function createNode(parent: FsNode | null, name: string, mode: number, ops: Memf
     node_ops: dir ? ops.dir : ops.file,
   };
   // MEMFS는 정규 파일에만 stream_ops를 붙인다. 이것도 **공유 테이블**이다.
-  if (!dir) node.stream_ops = ops.fileStream;
+  // usedBytes도 파일 노드 생성 시 0으로 시작한다(library_memfs.js:68-94) —
+  // fileBytes의 usedBytes 분기가 이 필드의 존재를 전제하므로 하니스도 맞춘다.
+  if (!dir) {
+    node.stream_ops = ops.fileStream;
+    node.usedBytes = 0;
+  }
   node.parent = parent || node;
   if (parent) (parent.contents as Record<string, FsNode>)[name] = node;
   return node;
@@ -251,6 +263,8 @@ function makeMemfsOps(): MemfsOps {
           for (let i = 0; i < n; i++) next[i] = cur[i];
         }
         node.contents = next;
+        // 실제 MEMFS도 truncate/확장 뒤 usedBytes를 새 논리 길이로 갱신한다.
+        node.usedBytes = attr.size;
       },
     } as unknown as NodeOps,
     // 파일 노드가 공유하는 stream_ops. 파수꾼이 이것을 in-place로 고치면 파일시스템
@@ -267,6 +281,20 @@ function makeMemfsOps(): MemfsOps {
     },
   };
   return table;
+}
+
+/**
+ * 엔진이 우리 storeLocalEntry를 거치지 않고 MEMFS 노드에 직접 쓰는 것(게임의 새
+ * Save 등)을 흉내낼 때 쓰는 헬퍼. 실제 MEMFS는 쓰기 후 usedBytes를 항상 새 길이로
+ * 갱신하므로, 테스트가 `node.contents`만 갈아끼우고 usedBytes를 갱신하지 않으면
+ * (직전 내용 길이가 그대로 남는다) 노드 그래프 폴백(collectScopedFromNodes)의
+ * usedBytes 분기가 옛 길이로 잘못 슬라이스한다 — 이 헬퍼로 항상 함께 갱신한다.
+ * (의도적으로 과할당/구버전 plain Array 형태를 재현하는 케이스는 이 헬퍼를 쓰지
+ * 않고 직접 `contents`/`usedBytes`를 따로 설정한다 — N5/N6 참조.)
+ */
+function setFileContents(node: FsNode, bytes: Uint8Array): void {
+  node.contents = bytes;
+  node.usedBytes = bytes.length;
 }
 
 /**
@@ -484,6 +512,10 @@ function makeFs(
       node.mode = entry.mode;
       node.timestamp = entry.timestamp;
       node.contents = entry.contents === undefined ? null : entry.contents;
+      // 실제 MEMFS는 파일 노드에 항상 usedBytes를 유지한다. 이 하니스는 IDB와
+      // MEMFS를 한 트리로 합쳤으므로(파일 상단 주석 3) 이 쓰기 경로가 그 갱신 지점이다.
+      const written = node.contents as ArrayLike<number> | null;
+      node.usedBytes = written && typeof written.length === 'number' ? written.length : 0;
       cb(null);
     },
     removeLocalEntry(entryPath, cb) {
@@ -1030,7 +1062,14 @@ describe('ait-playerprefs.js — IDBFS syncfs 어댑터', () => {
     // 무조건 물러났기 때문에 이 경로 자체가 죽어 있었다. 이제는 레거시 훅이 걸린 부팅마다
     // 지나가므로, 여기서 새어 나가면 populatePath의 try까지 올라가 세션 전체가 vanilla로
     // 강등된다 — 부가 기능(레거시 임포트) 실패가 본 기능(영속화)을 꺼서는 안 된다.
-    test('C7) 로컬 수집 중 동기 throw가 세션을 vanilla로 떨어뜨리지 않는다', async () => {
+    //
+    // ⚠️ 노드 그래프 폴백(collectScopedFromNodes) 도입 이후로는 이 동기 throw 자체가
+    //    collectScopedInner 내부에서 잡혀 폴백으로 흡수된다(R1 수정). 폴백은 FS lookup을
+    //    쓰지 않고 노드 트리를 직접 읽으므로 이 케이스에서도 로컬에 scoped 파일이
+    //    실재함을 정확히 알아낸다 — 그래서 예전처럼 "모른다"(skip-unknown-local)로
+    //    물러나지 않고 "로컬에 이미 있다"(skip-local-present)로 더 정확히 진단한다.
+    //    mode가 vanilla로 떨어지지 않는다는 이 테스트의 핵심 불변식은 그대로다.
+    test('C7) 로컬 수집 중 동기 throw가 세션을 vanilla로 떨어뜨리지 않는다(폴백이 로컬 존재를 정확히 진단)', async () => {
       const b = boot({
         // scoped 파일이 있어야 collectScoped가 loadEntrySync 루프까지 들어간다
         fsInit: {
@@ -1047,7 +1086,8 @@ describe('ait-playerprefs.js — IDBFS syncfs 어댑터', () => {
       await wait(300);
       const s = b.win.__AIT_PP.status();
       expect(s.mode).toBe('ait');
-      expect(s.legacyImport).toBe('skip-unknown-local');
+      expect(s.legacyImport).toBe('skip-local-present');
+      expect(s.collectFallbackCount).toBeGreaterThanOrEqual(1);
     });
 
     test('D) 적대적 contents(숫자) → 거대 할당 없이 즉시 거부한다', async () => {
@@ -1378,7 +1418,7 @@ describe('ait-playerprefs.js — IDBFS syncfs 어댑터', () => {
       // 라이브 게임 데이터를 훅을 거치지 않고 트리에 직접 만든다(= nameTable 히트 상태)
       const app = b.entries.node(APP)!;
       const live = app.node_ops.mknod(app, 'PlayerPrefs', FILE_MODE, 0);
-      live.contents = new Uint8Array(Buffer.from('live-game-data'));
+      setFileContents(live, new Uint8Array(Buffer.from('live-game-data')));
 
       // 훅을 직접 호출한다 — 심지 않고 원본으로 위임해야 하므로 ENOENT가 그대로 난다
       expect(() => b.root.node_ops.lookup(app, 'PlayerPrefs')).toThrow();
@@ -1617,7 +1657,7 @@ describe('ait-playerprefs.js — IDBFS syncfs 어댑터', () => {
 
       // 게임의 새 Save — 엔진이 MEMFS 노드에 직접 쓰는 것을 흉내낸다(T5와 동일한 패턴)
       const node = b.entries.node(APP + '/PlayerPrefs')!;
-      node.contents = new Uint8Array(Buffer.from('updated'));
+      setFileContents(node, new Uint8Array(Buffer.from('updated')));
 
       // 2021.3 순정 IDBFS 세션 노화 결함 흉내
       b.idbfs.getLocalSet = (_mount, cb) => cb(fsError(ERRNO_ENOENT, 'ENOENT: session aged'));
@@ -1642,7 +1682,7 @@ describe('ait-playerprefs.js — IDBFS syncfs 어댑터', () => {
       expect(manifestFiles(b.store.get(MANIFEST_KEY))).toContain(APP + '/PlayerPrefs');
 
       const node = b.entries.node(APP + '/PlayerPrefs')!;
-      node.contents = new Uint8Array(Buffer.from('updated'));
+      setFileContents(node, new Uint8Array(Buffer.from('updated')));
 
       const targetPath = APP + '/PlayerPrefs';
       const origLoad = b.idbfs.loadLocalEntry;
@@ -1683,7 +1723,7 @@ describe('ait-playerprefs.js — IDBFS syncfs 어댑터', () => {
       expect(manifestFiles(before)).toContain(APP + '/PlayerPrefs');
 
       const node = b.entries.node(APP + '/PlayerPrefs')!;
-      node.contents = new Uint8Array(Buffer.from('updated')); // 폴백이 살아있다면 실렸을 값
+      setFileContents(node, new Uint8Array(Buffer.from('updated'))); // 폴백이 살아있다면 실렸을 값
 
       b.idbfs.getLocalSet = (_mount, cb) => cb(fsError(ERRNO_ENOENT, 'ENOENT: session aged'));
       Object.defineProperty(b.root, 'contents', {
@@ -1699,6 +1739,106 @@ describe('ait-playerprefs.js — IDBFS syncfs 어댑터', () => {
       const s = b.win.__AIT_PP.status();
       expect(s.collectFallbackCount).toBe(0);
       expect(String(s.lastError)).toMatch(/nodewalk/);
+    });
+
+    // getLocalSet은 멀쩡히 성공하지만(N1/N2와의 차이), 그 뒤 loadEntrySync 루프가 콜백
+    // 에러가 아니라 **동기 throw**하는 구버전 ErrnoError 케이스(C7이 이미 실재한다고
+    // 채택한 형태). collectScopedInner의 수집 루프 자체가 무방비면 이 예외가
+    // collectScoped를 뚫고 pushScoped의 Promise executor까지 올라가 자동 reject되므로
+    // 폴백이 발동조차 못 하고 이번 push 전체가 조용히 유실된다 — 아래는 그 회귀를 고정한다.
+    test('N4) loadLocalEntry가 콜백이 아니라 동기 throw해도 노드 그래프 폴백이 발동해 최신 바이트를 싣는다', async () => {
+      const b = boot({ fsInit: { ...bootedBefore, [APP + '/PlayerPrefs']: ppEntry('mine') } });
+      await syncfs(b, true);
+      await wait(300);
+      expect(manifestFiles(b.store.get(MANIFEST_KEY))).toContain(APP + '/PlayerPrefs'); // 사전 조건: 정상 승격
+
+      // 게임의 새 Save
+      const node = b.entries.node(APP + '/PlayerPrefs')!;
+      setFileContents(node, new Uint8Array(Buffer.from('updated')));
+
+      // getLocalSet은 그대로 두고 loadLocalEntry만 동기 throw로 바꾼다(C7과 동일한 형태)
+      b.idbfs.loadLocalEntry = () => {
+        throw Object.assign(new Error('ErrnoError'), { errno: 44 });
+      };
+
+      // pushScoped의 모든 호출부는 이미 .then(_, fn)/.catch(fn)을 붙이므로 이 시나리오는
+      // 애초에 Node의 unhandledRejection을 유발하지 않는다 — 그럼에도 회귀 방지선으로
+      // 명시적으로 감시해 "예외가 어딘가로 샌다"는 형태 자체가 없음을 함께 고정한다.
+      let unhandled: unknown = null;
+      const onUnhandled = (reason: unknown) => {
+        unhandled = reason;
+      };
+      process.on('unhandledRejection', onUnhandled);
+      try {
+        await syncfs(b, false); // Unity의 auto-persist(populate=false) 경로
+        await wait(0);
+      } finally {
+        process.off('unhandledRejection', onUnhandled);
+      }
+
+      expect(unhandled, '동기 throw가 pushScoped의 Promise executor까지 새면 안 된다').toBeNull();
+      const s = b.win.__AIT_PP.status();
+      expect(s.collectFallbackCount).toBeGreaterThanOrEqual(1);
+      const inline = manifestInline(b.store.get(MANIFEST_KEY));
+      expect(inline.files[APP + '/PlayerPrefs'].d).toBe(Buffer.from('updated').toString('base64'));
+    });
+
+    // 실제 MEMFS는 성장 전략상 contents를 usedBytes보다 크게 과할당할 수 있다
+    // (파일 상단 하니스 주석 및 U1 참조). collectScopedFromNodes.fileBytes의
+    // usedBytes 분기가 잔여 과할당 바이트를 실수로 실어 보내지 않는지 고정한다.
+    test('N5) usedBytes보다 긴 과할당 버퍼를 폴백이 usedBytes만큼만 자른다', async () => {
+      const b = boot({ fsInit: { ...bootedBefore, [APP + '/PlayerPrefs']: ppEntry('mine') } });
+      await syncfs(b, true);
+      await wait(300);
+      expect(manifestFiles(b.store.get(MANIFEST_KEY))).toContain(APP + '/PlayerPrefs');
+
+      // 32B 버퍼 앞 7B에 'updated'를 쓰고 usedBytes=7로 논리 길이만 알린다.
+      // 나머지 25B는 과할당 잔여물(0으로 채워짐)이라 매니페스트에 실리면 안 된다.
+      const node = b.entries.node(APP + '/PlayerPrefs')!;
+      const over = new Uint8Array(32);
+      over.set(Buffer.from('updated'), 0);
+      node.contents = over;
+      node.usedBytes = 7;
+
+      b.idbfs.getLocalSet = (_mount, cb) => cb(fsError(ERRNO_ENOENT, 'ENOENT: session aged'));
+      await syncfs(b, false);
+
+      const s = b.win.__AIT_PP.status();
+      expect(s.collectFallbackCount).toBeGreaterThanOrEqual(1);
+      const inline = manifestInline(b.store.get(MANIFEST_KEY));
+      expect(inline.files[APP + '/PlayerPrefs'].d).toBe(Buffer.from('updated').toString('base64'));
+    });
+
+    // 폴백의 fileBytes가 다루는 두 엣지 형태를 함께 고정한다 —
+    //  ① contents가 null인 빈 파일(생성 직후 또는 0바이트로 잘린 뒤의 정상 형태)
+    //  ② 구버전 Emscripten의 plain Array 형태(usedBytes 없이 배열 전체가 논리 내용)
+    // 서로 다른 앱 디렉터리(APP/OLD)에 하나씩 심어 한 번의 폴백 수집으로 같이 검증한다.
+    test('N6) 빈 파일(contents=null)과 구버전 plain Array 파일을 폴백이 각각 올바르게 수집한다', async () => {
+      const b = boot({ fsInit: { ...bootedBefore, [APP + '/PlayerPrefs']: ppEntry('mine') } });
+      await syncfs(b, true);
+      await wait(300);
+      expect(manifestFiles(b.store.get(MANIFEST_KEY))).toContain(APP + '/PlayerPrefs');
+
+      // ① 빈 파일 — MEMFS는 0바이트 파일의 contents를 null로 둔다
+      const node = b.entries.node(APP + '/PlayerPrefs')!;
+      node.contents = null;
+      node.usedBytes = 0;
+
+      // ② 구버전 형태(plain Array, usedBytes 없음)의 다른 앱 디렉터리 파일
+      const oldDirName = OLD.slice(MOUNT.length + 1);
+      const oldDir = b.root.node_ops.mknod(b.root, oldDirName, DIR_MODE, 0);
+      const oldFile: FsNode = oldDir.node_ops.mknod(oldDir, 'PlayerPrefs', FILE_MODE, 0);
+      oldFile.contents = Array.from(Buffer.from('legacy-array'));
+      delete oldFile.usedBytes; // 구버전 Emscripten은 이 필드 자체가 없었다
+
+      b.idbfs.getLocalSet = (_mount, cb) => cb(fsError(ERRNO_ENOENT, 'ENOENT: session aged'));
+      await syncfs(b, false);
+
+      const s = b.win.__AIT_PP.status();
+      expect(s.collectFallbackCount).toBeGreaterThanOrEqual(1);
+      const inline = manifestInline(b.store.get(MANIFEST_KEY));
+      expect(inline.files[APP + '/PlayerPrefs'].d).toBe('');
+      expect(inline.files[OLD + '/PlayerPrefs'].d).toBe(Buffer.from('legacy-array').toString('base64'));
     });
   });
 
@@ -1995,7 +2135,7 @@ describe('ait-playerprefs.js — IDBFS syncfs 어댑터', () => {
       expect(b.win.__AIT_PP.status().plantSeenRead).toBe(true);
 
       // 전환 이후 push에서도 기존 K4 계약(읽기 이후 push에서만 legacyChecked 기록)과 충돌하지 않는다
-      node.contents = new Uint8Array(Buffer.from('game-save'));
+      setFileContents(node, new Uint8Array(Buffer.from('game-save')));
       await syncfs(b, false);
       await wait(200);
       expect(b.win.__AIT_PP.status().legacyChecked).toMatchObject({ result: 'imported' });
@@ -2062,7 +2202,7 @@ describe('ait-playerprefs.js — IDBFS syncfs 어댑터', () => {
       expect(b.store.has(STASH_KEY)).toBe(false);
 
       // 게임이 저장하면 push는 일어나되 페이로드는 오늘과 완전히 같아야 한다
-      b.entries.node(APP + '/PlayerPrefs')!.contents = new Uint8Array(Buffer.from('changed'));
+      setFileContents(b.entries.node(APP + '/PlayerPrefs')!, new Uint8Array(Buffer.from('changed')));
       await syncfs(b, false);
       await wait(200);
       const raw = b.store.get(MANIFEST_KEY)!;
@@ -2088,7 +2228,7 @@ describe('ait-playerprefs.js — IDBFS syncfs 어댑터', () => {
       readFileViaStream(node); // Unity가 실제로 읽었다
       expect(b.win.__AIT_PP.status().plantSeenRead).toBe(true);
       // files도 함께 바꿔 push 자체는 해시 계약과 무관하게 성립시킨다(H1과 회귀 분리)
-      node.contents = new Uint8Array(Buffer.from('game-save'));
+      setFileContents(node, new Uint8Array(Buffer.from('game-save')));
       await syncfs(b, false); // persistPath 경유 push
       await wait(200);
       const second = b.store.get(MANIFEST_KEY);
@@ -2122,7 +2262,7 @@ describe('ait-playerprefs.js — IDBFS syncfs 어댑터', () => {
       expect(b.win.__AIT_PP.status().legacyImport).toBe('none'); // 조회 자체가 없었다
 
       // ③ 왕복 보존: 이후 push에도 그대로 다시 실린다
-      b.entries.node(APP + '/PlayerPrefs')!.contents = new Uint8Array(Buffer.from('next'));
+      setFileContents(b.entries.node(APP + '/PlayerPrefs')!, new Uint8Array(Buffer.from('next')));
       await syncfs(b, false);
       await wait(200);
       expect(manifestLegacy(b.store.get(MANIFEST_KEY))).toMatchObject({
@@ -2179,7 +2319,7 @@ describe('ait-playerprefs.js — IDBFS syncfs 어댑터', () => {
       expect(counter.n, '창은 닫힌 채다 — 레거시 소스 재조회 없음').toBe(1);
 
       // 직후 게임 세이브가 legacy 없는 매니페스트를 덮어쓰지 않는다
-      b.entries.node(APP + '/PlayerPrefs')!.contents = new Uint8Array(Buffer.from('game-save'));
+      setFileContents(b.entries.node(APP + '/PlayerPrefs')!, new Uint8Array(Buffer.from('game-save')));
       await syncfs(b, false);
       await wait(200);
       expect(manifestLegacy(b.store.get(MANIFEST_KEY))).toMatchObject({
@@ -2343,7 +2483,7 @@ describe('ait-playerprefs.js — IDBFS syncfs 어댑터', () => {
       expect(b1.store.has(MANIFEST_KEY), '승격 push는 억제된다').toBe(false);
 
       // 그 뒤 게임이 진짜 세이브를 한다 — persistPath는 게이트되지 않는다(무회귀 계약 7)
-      b1.entries.node(APP + '/PlayerPrefs')!.contents = new Uint8Array(Buffer.from('real-save'));
+      setFileContents(b1.entries.node(APP + '/PlayerPrefs')!, new Uint8Array(Buffer.from('real-save')));
       await syncfs(b1, false);
       await wait(200);
       const m1 = b1.store.get(MANIFEST_KEY);

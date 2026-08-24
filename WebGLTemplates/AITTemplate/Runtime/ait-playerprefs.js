@@ -545,24 +545,37 @@
 
         var files = {};
         var keys = Object.keys(wanted).sort();
-        var dropped = false;
-        for (var k = 0; k < keys.length; k++) {
-            var entry = loadEntrySync(keys[k]);
-            // getLocalSet 콜백과 이 루프는 전부 동기이므로 그 사이 정당한 삭제는
-            // 구조적으로 불가능하다 — null은 "레이스로 사라진 엔트리"가 아니라
-            // loadLocalEntry의 lookup 기계 고장이다(2021.3 IDBFS 세션 노화 결함이
-            // getLocalSet뿐 아니라 loadEntrySync도 같이 죽인다). 조용히 스킵하고
-            // 부분 결과를 push하면 Storage 매니페스트에서 해당 파일이 빠진 채 정본이
-            // 갱신되는 원격 데이터 유실이 되므로, 하나라도 드롭되면 부분 결과를 버리고
-            // 아래에서 노드 그래프 폴백으로 전환한다.
-            if (!entry) { dropped = true; continue; }
-            var mode = entry['mode'];
-            var rec = { m: mode, t: toMillis(entry['timestamp']) };
-            if (!isDirMode(mode)) rec.d = encodeBase64(entry['contents']);
-            files[keys[k]] = rec;
-        }
-        if (dropped) {
-            recordError('loadEntrySync', new Error('scoped 엔트리 로드 중 일부가 드롭되었습니다(lookup 고장 의심)'));
+        // ⚠️ 루프 전체(드롭 판정 포함)를 try로 감싼다. loadEntrySync 내부의
+        // IDBFS.loadLocalEntry가 콜백 에러가 아니라 **동기 throw**하는 구버전
+        // ErrnoError 케이스(C7)가 있는데, 이 try가 없으면 예외가 loadEntrySync의
+        // try/finally(엔트리·종료 표시만 하고 잡지는 않는다)를 그대로 뚫고
+        // collectScoped를 넘어 pushScoped의 Promise executor까지 올라가 자동
+        // reject된다 — 그러면 폴백이 발동조차 못 하고 이번 push 전체가 조용히
+        // 유실된다. 즉 "루프가 정상 완주 + 드롭 0건"일 때만 아래에서 직접 결과를
+        // 반환하고, 그 외(드롭 발생이든 동기 throw든)는 전부 폴백으로 넘긴다.
+        try {
+            var dropped = false;
+            for (var k = 0; k < keys.length; k++) {
+                var entry = loadEntrySync(keys[k]);
+                // getLocalSet 콜백과 이 루프는 전부 동기이므로 그 사이 정당한 삭제는
+                // 구조적으로 불가능하다 — null은 "레이스로 사라진 엔트리"가 아니라
+                // loadLocalEntry의 lookup 기계 고장이다(2021.3 IDBFS 세션 노화 결함이
+                // getLocalSet뿐 아니라 loadEntrySync도 같이 죽인다). 조용히 스킵하고
+                // 부분 결과를 push하면 Storage 매니페스트에서 해당 파일이 빠진 채 정본이
+                // 갱신되는 원격 데이터 유실이 되므로, 하나라도 드롭되면 부분 결과를 버리고
+                // 아래에서 노드 그래프 폴백으로 전환한다.
+                if (!entry) { dropped = true; continue; }
+                var mode = entry['mode'];
+                var rec = { m: mode, t: toMillis(entry['timestamp']) };
+                if (!isDirMode(mode)) rec.d = encodeBase64(entry['contents']);
+                files[keys[k]] = rec;
+            }
+            if (dropped) {
+                recordError('loadEntrySync', new Error('scoped 엔트리 로드 중 일부가 드롭되었습니다(lookup 고장 의심)'));
+                return collectScopedFallback(mount);
+            }
+        } catch (e2) {
+            recordError('loadEntrySync', e2);
             return collectScopedFallback(mount);
         }
         // all(전체 엔트리 경로 목록)은 더 이상 돌려주지 않는다 — 유일한 소비자가 앱
@@ -598,31 +611,42 @@
                 return new Uint8Array(Array.prototype.slice.call(c, 0, len)); // 구버전 Emscripten: plain Array
             }
 
-            function walk(node, path, parent) {
-                if (!node) return;
+            // 재귀 대신 명시적 스택으로 순회한다(무회귀 조건: files/scoped 구성과
+            // 조상 디렉터리 {m,t} 기록은 기존 재귀와 바이트 단위로 동일해야 한다 —
+            // 아래는 그 형태만 스택 반복으로 옮긴 것이다). 이 폴백은 getLocalSet이
+            // 죽은 노화 세션의 유일한 안전망이라, 깊은 트리에서 재귀 호출 스택이
+            // RangeError로 죽어 안전망 자체가 자멸하면 안 된다.
+            var stack = [];
+            var rootContents = root['contents'] || {};
+            var rootNames = Object.keys(rootContents);
+            for (var i = 0; i < rootNames.length; i++) {
+                stack.push({ node: rootContents[rootNames[i]], path: base + '/' + rootNames[i], parent: root });
+            }
+            while (stack.length > 0) {
+                var cur = stack.pop();
+                var node = cur.node;
+                if (!node) continue;
                 var mode = node['mode'];
                 if (isDirMode(mode)) {
                     var contents = node['contents'] || {};
                     var names = Object.keys(contents);
-                    for (var i = 0; i < names.length; i++) {
-                        walk(contents[names[i]], path + '/' + names[i], node);
+                    for (var j = 0; j < names.length; j++) {
+                        stack.push({ node: contents[names[j]], path: cur.path + '/' + names[j], parent: node });
                     }
-                    return;
+                    continue;
                 }
-                if (!SCOPE_RE.test(path)) return;
-                scoped.push(path);
-                files[path] = { m: mode, t: toMillis(node['timestamp']), d: encodeBase64(fileBytes(node)) };
+                // 디렉터리도 정규 파일도 아닌 노드(symlink 등)는 건강 경로의
+                // loadEntrySync(→ IDBFS.loadLocalEntry)도 'node type not supported'로
+                // 거부한다 — 폴백도 대칭으로 조용히 스킵한다.
+                if (!isFileMode(mode)) continue;
+                if (!SCOPE_RE.test(cur.path)) continue;
+                scoped.push(cur.path);
+                files[cur.path] = { m: mode, t: toMillis(node['timestamp']), d: encodeBase64(fileBytes(node)) };
                 // 조상 디렉터리(/idbfs/<hash>) — collectScopedInner의 wanted 구성과 대칭
-                var dirPath = path.slice(0, path.lastIndexOf('/'));
-                if (!files[dirPath] && parent) {
-                    files[dirPath] = { m: parent['mode'], t: toMillis(parent['timestamp']) };
+                var dirPath = cur.path.slice(0, cur.path.lastIndexOf('/'));
+                if (!files[dirPath] && cur.parent) {
+                    files[dirPath] = { m: cur.parent['mode'], t: toMillis(cur.parent['timestamp']) };
                 }
-            }
-
-            var rootContents = root['contents'] || {};
-            var rootNames = Object.keys(rootContents);
-            for (var i = 0; i < rootNames.length; i++) {
-                walk(rootContents[rootNames[i]], base + '/' + rootNames[i], root);
             }
 
             return { files: files, scoped: scoped.sort() };

@@ -1340,6 +1340,22 @@ namespace AppsInToss.Editor.ErrorTracker
                 && message.IndexOf(".cs(", StringComparison.Ordinal) >= 0)
                 return true;
 
+            // 사용자 코드의 사용되지 않은 필드 경고 (CS0414) — Unity 컴파일러가 직접 출력.
+            // 예: "UnityWarning: Assets\01_Script\AppsInToss\AppsInTossPromotionManager.cs(28,35): warning CS0414:
+            //       The field 'AppsInTossPromotionManager.persistEditorMockGrantState' is assigned but its value is never used"
+            // Sentry APPS-IN-TOSS-UNITY-SDK-140.
+            // 위 NonSdkMessagePatterns에 "warning CS0414" substring이 이미 있으나, 사용자 폴더명이
+            // 'AppsInToss'(예: Assets\01_Script\AppsInToss\...)이면 단어 경계로 SDK 키워드 가드가 먼저
+            // 발동해 NonSdkMessagePatterns 루프(가드 이후)까지 도달하지 못하는 갭이 있었다.
+            // CS0103/CS0117/CS1061/CS1998/CS0618과 동일한 컨벤션으로 Assets/ 경로 + .cs(L,C) 마커를
+            // 합성 AND로 요구해 가드보다 먼저 매칭한다. SDK 자체 코드는 Packages/ 또는 Library/PackageCache/
+            // 경로로 출력되어 안전.
+            if (message.IndexOf("warning CS0414", StringComparison.Ordinal) >= 0
+                && (message.IndexOf("Assets/", StringComparison.Ordinal) >= 0
+                    || message.IndexOf("Assets\\", StringComparison.Ordinal) >= 0)
+                && message.IndexOf(".cs(", StringComparison.Ordinal) >= 0)
+                return true;
+
             // 사용자 코드의 'AppsInToss' 미발견 컴파일 에러 — SDK 미설치 또는 asmdef 참조 누락.
             // 예: "Assets/.../Foo.cs(L,C): error CS0246: The type or namespace name 'AppsInToss' could not be found ..."
             // 메시지에 'AppsInToss' 토큰이 들어가 SDK 키워드 가드가 발동하므로 가드보다 먼저 매칭한다.

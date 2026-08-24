@@ -1126,6 +1126,54 @@ public class IsKnownNonSdkMessageTests
 
     #endregion
 
+    #region 사용자 코드 CS0414 미사용 필드 경고 — AppsInToss 폴더명 경로 가드 갭 (APPS-IN-TOSS-UNITY-SDK-140)
+
+    [Test]
+    public void UserCodeCS0414_AppsInTossFolderPath_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-140 — 사용자 폴더명이 'AppsInToss'라 기존 NonSdkMessagePatterns의
+        // "warning CS0414" substring이 SDK 키워드 가드(MessageContainsSdkKeyword)에 먼저 막혀 도달하지
+        // 못했던 갭. CS0103/CS0117/CS1061/CS1998/CS0618과 동일한 composite AND 가드로 매칭돼야 한다.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "UnityWarning: Assets\\01_Script\\AppsInToss\\AppsInTossPromotionManager.cs(28,35): warning CS0414: The field 'AppsInTossPromotionManager.persistEditorMockGrantState' is assigned but its value is never used"));
+    }
+
+    [Test]
+    public void UserCodeCS0414_ForwardSlashPath_ReturnsTrue()
+    {
+        // POSIX 경로 변형 — AppsInToss 폴더명이 없어도 Assets/ + .cs(L,C) 합성 가드로 동일하게 매칭.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Assets/Scripts/PlayerController.cs(12,17): warning CS0414: The field 'PlayerController.unusedFlag' is assigned but its value is never used"));
+    }
+
+    [Test]
+    public void Cs0414_SdkPackagePath_NeverFiltered()
+    {
+        // SDK 자체 .cs의 CS0414는 Packages/com.toss.apps-in-toss 경로로 출력 → Assets/ 가드 미충족 +
+        // "apps-in-toss" 키워드 가드로 보호되어 절대 드롭되지 않아야 한다.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Packages/com.toss.apps-in-toss/Editor/Foo.cs(10,5): warning CS0414: The field 'Foo.bar' is assigned but its value is never used"));
+    }
+
+    [Test]
+    public void Cs0414_NoAssetsPath_StillFilteredByLegacyPattern()
+    {
+        // Assets/ 경로도 .cs(L,C)도 없어 새 composite 가드는 매칭되지 않지만, 기존 NonSdkMessagePatterns의
+        // "warning CS0414" substring(가드 회귀 방지)이 여전히 드롭한다 — 기존 동작 불변 확인.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "SomeLib.dll: warning CS0414: 'Z' is assigned but its value is never used"));
+    }
+
+    [Test]
+    public void Cs0414WithoutAssetsPrefix_AitProtected_ReturnsFalse()
+    {
+        // SDK 자체 진단 라인(Assets/ 경로 미포함)은 [AIT] prefix로 보호됨 — CS0103/CS1061과 동일 컨벤션.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] diag: warning CS0414 reported in SDK fallback path"));
+    }
+
+    #endregion
+
     #region pnpm stdout/stderr 패스스루 (SDK-HA, SDK-R6, SDK-VF, SDK-VA)
 
     [Test]

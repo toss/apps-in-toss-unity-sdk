@@ -165,6 +165,11 @@ Tests~/E2E/SampleUnityProject*/WebGLBuild/
 Tests~/E2E/SampleUnityProject*/Builds/
 Tests~/E2E/SampleUnityProject*/editmode-results.xml
 Tests~/E2E/SampleUnityProject*/Assets/Plugins/E2ETestBridge.jslib*
+# EditMode 테스트 실행 시 생성되는 자산 — Unity 가 자동 임포트하거나 테스트가 만들어낸다.
+Tests~/E2E/SampleUnityProject*/Assets/TextMesh Pro/
+Tests~/E2E/SampleUnityProject*/Assets/TextMesh Pro.meta
+Tests~/E2E/SampleUnityProject*/Assets/DeployProbeGen/
+Tests~/E2E/SampleUnityProject*/Assets/DeployProbeGen.meta
 # WebGLTemplates: SDK 자동 생성 부분만 무시. AITTemplate(튜토리얼 자산)은 커밋.
 Tests~/E2E/SampleUnityProject*/Assets/WebGLTemplates/AITTemplate/Runtime/
 Tests~/E2E/SampleUnityProject*/Assets/WebGLTemplates/AITTemplate/Runtime.meta

@@ -365,13 +365,21 @@ namespace AppsInToss.Editor.Package
                 .Replace("%UNITY_WEBGL_CODE_FILENAME%", wasmFile)
                 .Replace("%UNITY_WEBGL_SYMBOLS_FILENAME%", symbolsFile)
                 // AIT 커스텀 플레이스홀더
-                .Replace("%AIT_ENABLE_DEBUG_CONSOLE%", enableDebugConsole)
-                .Replace("%AIT_FIRST_INTERACTIVE_LOG%", EffectiveFirstInteractiveLog(config) ? "true" : "false")
-                .Replace("%AIT_PLAYERPREFS_PERSISTENCE%", EffectivePlayerPrefsPersistence(config) ? "true" : "false")
+                // ── 템플릿에서 작은따옴표 문자열 리터럴 자리에 놓이는 토큰 ──
+                // 값에 작은따옴표·개행·"</script>"가 들어가면 그 인라인 <script> 블록 전체가
+                // SyntaxError 로 죽는다(appInfo = { iconUrl: '%AIT_ICON_URL%', ... }).
+                // "따옴표 자리면 예외 없이 이스케이프" 규칙을 유지한다 — 아래 셋처럼 값이 상수라
+                // 실질 no-op 인 경우에도 그대로 통과시켜, 호출부마다 안전 여부를 판단하는 일이
+                // 없도록 한다(판단이 개입하는 순간 다음 토큰에서 빠뜨리게 된다).
+                // AITJsStringEscaperWiringTests 가 템플릿에서 따옴표 자리 토큰을 유도해 대조한다.
+                .Replace("%AIT_ENABLE_DEBUG_CONSOLE%", AITJsStringEscaper.EscapeSingleQuoted(enableDebugConsole))
+                .Replace("%AIT_FIRST_INTERACTIVE_LOG%", AITJsStringEscaper.EscapeSingleQuoted(EffectiveFirstInteractiveLog(config) ? "true" : "false"))
+                .Replace("%AIT_PLAYERPREFS_PERSISTENCE%", AITJsStringEscaper.EscapeSingleQuoted(EffectivePlayerPrefsPersistence(config) ? "true" : "false"))
+                .Replace("%AIT_ICON_URL%", AITJsStringEscaper.EscapeSingleQuoted(config.iconUrl ?? ""))
+                .Replace("%AIT_DISPLAY_NAME%", AITJsStringEscaper.EscapeSingleQuoted(config.displayName ?? ""))
+                .Replace("%AIT_PRIMARY_COLOR%", AITJsStringEscaper.EscapeSingleQuoted(config.primaryColor ?? "#3182f6"))
+                // ── 코드 문맥(값이 그대로 JS 로 전개) — 이스케이프하면 안 된다 ──
                 .Replace("%AIT_DEVICE_PIXEL_RATIO%", config.devicePixelRatio.ToString())
-                .Replace("%AIT_ICON_URL%", config.iconUrl ?? "")
-                .Replace("%AIT_DISPLAY_NAME%", config.displayName ?? "")
-                .Replace("%AIT_PRIMARY_COLOR%", config.primaryColor ?? "#3182f6")
                 // Early Fetch 스크립트 (로딩 성능 개선 + 레거시 warm-reload Cache-Storage 워밍)
                 .Replace("%AIT_EARLY_FETCH_SCRIPT%", GenerateEarlyFetchScript(dataFile, wasmFile, buildSrc, PlayerSettings.bundleVersion));
 
@@ -627,8 +635,13 @@ namespace AppsInToss.Editor.Package
                     continue;
                 }
 
+                // 무조건 덮어쓰기(File.Copy overwrite)가 아니라 IfChanged 경로를 타야 한다:
+                // excludeFolders 에 "public" 이 없어서 사용자가 BuildConfig~/public/ 에 정적 파일을
+                // 두면 그대로 ait-build/public/ 로 복사되는데, PackageBuildStateMarker 는 public/ 트리를
+                // (경로, 길이, mtimeTicks)로 해시하며 "mtime 불변 == 내용 불변"을 전제한다.
+                // 내용이 같은데도 매번 다시 쓰면 mtime 이 전진해 패키징 스킵이 영원히 발동하지 않는다.
                 string destFile = Path.Combine(destDir, fileName);
-                File.Copy(file, destFile, true);
+                CopyFileIfChanged(file, destFile);
 
                 // 의미 있는 파일만 로그 출력
                 if (fileName.EndsWith(".ts") || fileName.EndsWith(".tsx") ||

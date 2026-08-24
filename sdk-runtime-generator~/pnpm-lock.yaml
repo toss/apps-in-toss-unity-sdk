@@ -1324,8 +1324,8 @@ packages:
     resolution: {integrity: sha512-Ie1dn5bMO/a8/L4uuV73UlmGEuApiYbi1BYf4nWzjDblXSPbludexpAn2WZKrhpD38E77u6JxHi8DHiok5TAWw==}
     hasBin: true
 
-  '@apps-in-toss/cli@3.0.5':
-    resolution: {integrity: sha512-10Vhd8539WzEoQ7CmoQxbW2PhYpLGDRd4cb9zINtyvdD73NfebBDgFABvEIVu8swHHDWc1gSO1wFRO1mpV4BjA==}
+  '@apps-in-toss/cli@3.1.1':
+    resolution: {integrity: sha512-ljYMvh/dCuv8YZEDLbbkf2LDXEhi3VHMQgKFi3BWplkKxu6Kcm9EP3OOiGr7tHTjT83U8u8RIbrZeLDwtZFs/Q==}
     hasBin: true
 
   '@apps-in-toss/framework@1.10.0':
@@ -7299,8 +7299,8 @@ packages:
   base64-js@1.5.1:
     resolution: {integrity: sha512-AKpaYlHn8t4SVbOHCy+b5+KKgvR4vrsD8vbvrbiQJps7fKDTkjkDry6ji0rUJjC0kzbNePLwzxq8iypo41qeWA==}
 
-  baseline-browser-mapping@2.11.16:
-    resolution: {integrity: sha512-H/bNPUFHewJHyCTdjn1n3Pit5+2GmWT6mmeHImPX+8MA9NA6b67jO4gYmi4jTbCJb2otq34KMZnovndDPqJwhQ==}
+  baseline-browser-mapping@2.11.17:
+    resolution: {integrity: sha512-KAUDn1OSS0fmPlGO+NOUMRcOQ/b/shUBH3OgkG73mPgdf+JD/BQ6fHboGxNOxnUmlwcq+lLq3dTkayRPuSfXwg==}
     engines: {node: '>=6.0.0'}
     hasBin: true
 
@@ -7820,8 +7820,8 @@ packages:
   ee-first@1.1.1:
     resolution: {integrity: sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==}
 
-  electron-to-chromium@1.5.411:
-    resolution: {integrity: sha512-gglkxzokjHfawpGxq75XdBV2/l3BAPzrsMs70qgaZdTW5rpV1tC4MdgJVP9fN126bODA4ZJQkn1wryEzJyQXIg==}
+  electron-to-chromium@1.5.412:
+    resolution: {integrity: sha512-z4rMe3esBzlzovKHj4gxJnsCGZRK5l4baUvm+gCGJBPE+gsyUMKsuU9tnEUtI1dOebXz1ytAPGjvXhmQ7rIPwA==}
 
   emittery@0.13.1:
     resolution: {integrity: sha512-DeWwawk6r5yR9jFgnDKYt4sLS0LmHJJi3ZOnb5/JdbYwj3nW+FxQnHIjhBKz8YLC7oRNPVM9NQ47I3CVx34eqQ==}
@@ -13596,7 +13596,7 @@ snapshots:
       - supports-color
       - typanion
 
-  '@apps-in-toss/cli@3.0.5(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)':
+  '@apps-in-toss/cli@3.1.1(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)':
     dependencies:
       '@apps-in-toss/ait-format': 1.0.0
       '@clack/prompts': 1.7.0
@@ -25562,7 +25562,7 @@ snapshots:
 
   '@apps-in-toss/web-framework@3.0.1(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)(typescript@7.0.2)':
     dependencies:
-      '@apps-in-toss/cli': 3.0.5(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)
+      '@apps-in-toss/cli': 3.1.1(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)
       '@webview-bridge/web': 1.7.9
       semver: 7.8.5
       valibot: 1.4.2(typescript@7.0.2)
@@ -25575,7 +25575,7 @@ snapshots:
 
   '@apps-in-toss/web-framework@3.0.2(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)(typescript@7.0.2)':
     dependencies:
-      '@apps-in-toss/cli': 3.0.5(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)
+      '@apps-in-toss/cli': 3.1.1(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)
       '@webview-bridge/web': 1.7.9
       semver: 7.8.5
       valibot: 1.4.2(typescript@7.0.2)
@@ -30368,7 +30368,7 @@ snapshots:
 
   base64-js@1.5.1: {}
 
-  baseline-browser-mapping@2.11.16: {}
+  baseline-browser-mapping@2.11.17: {}
 
   bezier-easing@2.1.0: {}
 
@@ -30447,9 +30447,9 @@ snapshots:
 
   browserslist@4.28.8:
     dependencies:
-      baseline-browser-mapping: 2.11.16
+      baseline-browser-mapping: 2.11.17
       caniuse-lite: 1.0.30001809
-      electron-to-chromium: 1.5.411
+      electron-to-chromium: 1.5.412
       node-releases: 2.0.53
       update-browserslist-db: 1.3.1(browserslist@4.28.8)
 
@@ -30912,7 +30912,7 @@ snapshots:
 
   ee-first@1.1.1: {}
 
-  electron-to-chromium@1.5.411: {}
+  electron-to-chromium@1.5.412: {}
 
   emittery@0.13.1: {}
 

@@ -7,7 +7,7 @@
  */
 
 import type { ParsedAPI } from '../../../src/types.js';
-import { getCategory, EXCLUDED_APIS } from '../../../src/categories.js';
+import { getCategory, EXCLUDED_APIS, CHANGELOG_ONLY_CATEGORIES } from '../../../src/categories.js';
 import { mapToCSharpType } from '../../../src/validators/types.js';
 
 export interface SerializedParam {
@@ -38,13 +38,17 @@ export interface SerializedAPI {
 }
 
 function serializeAPI(api: ParsedAPI, versions: string[]): SerializedAPI {
-  const category = getCategory(api.name);
+  const category = getCategory(api.name, true, CHANGELOG_ONLY_CATEGORIES);
+  // file은 리포트 표시용 category가 아니라 C# 생성기와 동일한 분류(getCategory 기본 맵)를
+  // 따라야 한다 — HTML 렌더러가 이 값으로 Runtime/SDK/<file> 딥링크를 만들기 때문에,
+  // CHANGELOG_ONLY_CATEGORIES로 재분류된 이름을 쓰면 실존하지 않는 .cs 파일(404)을 가리킨다.
+  const generatorCategory = getCategory(api.name, false);
   return {
     name: api.name,
     pascalName: api.pascalName,
     displayName: 'AIT.' + api.pascalName,
     category,
-    file: 'AIT.' + category + '.cs',
+    file: 'AIT.' + generatorCategory + '.cs',
     description: api.description,
     returnDescription: api.returnDescription,
     examples: api.examples,
@@ -225,7 +229,7 @@ export function buildChangelogModel(
   for (const [version, apis] of filteredVersionApis) {
     const catMap = new Map<string, string[]>();
     for (const api of apis) {
-      const cat = getCategory(api.name);
+      const cat = getCategory(api.name, true, CHANGELOG_ONLY_CATEGORIES);
       if (!catMap.has(cat)) catMap.set(cat, []);
       catMap.get(cat)!.push(api.name);
     }

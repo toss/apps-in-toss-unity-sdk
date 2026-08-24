@@ -160,8 +160,15 @@ export class TypeScriptParser {
   /**
    * 모든 API 파싱
    * @param frameworkApiNames @apps-in-toss/framework에서 직접 파싱할 API 이름 목록 (선택)
+   * @param options parseNamespaceObjects/detectGlobalFunctions에 그대로 전달됨
+   *   (includeDeprecatedGlobals, includeWrappedCallables). 기본값 둘 다 false로, C#
+   *   생성 경로(index.ts)를 포함한 기존 모든 호출부의 동작을 그대로 보존한다 —
+   *   changelog self-bundle(3.x) 경로에서만 opt-in.
    */
-  async parseAPIs(frameworkApiNames?: string[]): Promise<ParsedAPI[]> {
+  async parseAPIs(
+    frameworkApiNames?: string[],
+    options?: { includeDeprecatedGlobals?: boolean; includeWrappedCallables?: boolean }
+  ): Promise<ParsedAPI[]> {
     const apis: ParsedAPI[] = [];
     const sourceFiles = this.project.getSourceFiles();
 
@@ -171,7 +178,7 @@ export class TypeScriptParser {
 
       // index.d.ts는 네임스페이스 객체만 파싱 (IAP, Storage 등)
       if (fileName === 'index.d.ts') {
-        const namespaceAPIs = parseNamespaceObjects(sourceFile);
+        const namespaceAPIs = parseNamespaceObjects(sourceFile, options);
         apis.push(...namespaceAPIs);
         continue;
       }
@@ -188,6 +195,19 @@ export class TypeScriptParser {
     // @apps-in-toss/framework에서 추가 API 파싱 (web-framework에서 re-export되지 않는 API)
     if (frameworkApiNames && frameworkApiNames.length > 0) {
       const frameworkAPIs = this.parseFrameworkAPIs(frameworkApiNames, this.frameworkDtsPath);
+      if (frameworkAPIs.length > 0) {
+        // includeWrappedCallables(self-bundle 전용 opt-in) 사용 시 web-framework
+        // 자체 dist/index.d.ts에 loadFullScreenAd/showFullScreenAd 같은 FRAMEWORK_APIS
+        // 이름이 intersection 타입(`(...) & { isSupported }`)으로 재선언되어 있어,
+        // 위 메인 스캔에서도 같은 이름이 이미 잡혔을 수 있다(실측: v3.0.1에서 카탈로그에
+        // AIT.LoadFullScreenAd/AIT.ShowFullScreenAd가 2줄씩 중복 출력됨). FRAMEWORK_APIS
+        // 전용 파서가 isTopLevelExport/category(Advertising) 등 C# 생성에 필요한 필드를
+        // 정확히 채우므로 그쪽을 우선하고, 메인 스캔 쪽 중복 항목은 제거한다.
+        const frameworkNames = new Set(frameworkAPIs.map(a => a.name));
+        for (let i = apis.length - 1; i >= 0; i--) {
+          if (frameworkNames.has(apis[i].name)) apis.splice(i, 1);
+        }
+      }
       apis.push(...frameworkAPIs);
     }
 

@@ -40,7 +40,15 @@ describe('다중 버전 호환성 테스트', () => {
     beforeAll(async () => {
       paths = await resolveVersionPaths(version);
       const frameworkApiNames = hasFrameworkApis(version) ? FRAMEWORK_APIS : [];
-      apis = await createParserForVersion(paths).parseAPIs(frameworkApiNames);
+      // changelog 파이프라인(generate-changelog.ts)과 동일한 옵션 — self-bundle(3.x+)
+      // index.d.ts의 deprecated 최상위 함수(checkoutPayment 등)를 isDeprecated=true로
+      // 보존하고, intersection/제네릭 wrapper 화살표 타입(getServerTime 등)도 감지해서
+      // 파싱한다 (detection.ts detectGlobalFunctions 참고).
+      const isSelfBundle = paths.dtsSource === 'self-bundle';
+      apis = await createParserForVersion(paths).parseAPIs(frameworkApiNames, {
+        includeDeprecatedGlobals: isSelfBundle,
+        includeWrappedCallables: isSelfBundle,
+      });
     });
 
     test('TypeScript 정의 파일 디렉토리를 찾을 수 있어야 함', () => {
@@ -60,10 +68,37 @@ describe('다중 버전 호환성 테스트', () => {
 
     test('핵심 API가 포함되어야 함', () => {
       const apiNames = new Set(apis.map(a => a.name));
-      // 모든 버전에 존재하는 기본 API
+      const major = Number(version.split('.')[0]);
+
+      // appLogin은 3.x에서도 플랫 함수로 그대로 남아있음 (실측)
       expect(apiNames.has('appLogin')).toBe(true);
-      expect(apiNames.has('getDeviceId')).toBe(true);
-      expect(apiNames.has('checkoutPayment')).toBe(true);
+
+      if (major < 3) {
+        // 2.x 이하: getDeviceId/checkoutPayment가 플랫 함수로 존재
+        expect(apiNames.has('getDeviceId')).toBe(true);
+        expect(apiNames.has('checkoutPayment')).toBe(true);
+      } else {
+        // 3.x+: web-framework 자체 dist/index.d.ts(discovery.ts detectSelfContainedDts가
+        // 'self-bundle'로 판정)는 getDeviceId/checkoutPayment를 여전히 최상위 export로
+        // 유지하되 @deprecated JSDoc만 붙인다(실측: 3.0.1 index.d.ts). self-bundle 경로에서
+        // 파서는 이런 deprecated 플랫 함수를 제거하지 않고 isDeprecated=true로 보존한다
+        // (detectGlobalFunctions의 includeDeprecatedGlobals 옵션) — 그래서 getDeviceId/
+        // checkoutPayment 둘 다 여전히 파싱 결과에 존재한다.
+        expect(apiNames.has('getDeviceId')).toBe(true);
+        expect(apiNames.has('checkoutPayment')).toBe(true);
+        const flatCheckoutPayment = apis.find(a => a.name === 'checkoutPayment');
+        expect(flatCheckoutPayment?.isDeprecated).toBe(true);
+
+        // TossPay 네임스페이스 객체는 checkoutPayment를 `typeof checkoutPayment`로
+        // 그대로 재노출하며, 이 재노출 지점(TossPay.checkoutPayment)에도 별도로
+        // `@deprecated TossPay.authorize를 사용해주세요` JSDoc이 붙어 있다(실측).
+        // 즉 TossPayCheckoutPayment는 대체 API가 아니라 checkoutPayment와 동일하게
+        // deprecated된 별칭이며, 실제 대체 API는 TossPayAuthorize다.
+        expect(apiNames.has('TossPayCheckoutPayment')).toBe(true);
+        const namespacedCheckoutPayment = apis.find(a => a.name === 'TossPayCheckoutPayment');
+        expect(namespacedCheckoutPayment?.isDeprecated).toBe(true);
+        expect(apiNames.has('TossPayAuthorize')).toBe(true);
+      }
     });
 
     test('FRAMEWORK_APIS 호환성', () => {

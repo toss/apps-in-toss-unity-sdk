@@ -1540,6 +1540,19 @@ namespace AppsInToss.Editor.ErrorTracker
                 && !message.StartsWith("[AIT", StringComparison.Ordinal))
                 return true;
 
+            // 사용자 코드의 미사용 이벤트 선언 경고 (CS0067) — Unity 컴파일러가 직접 출력.
+            // 예: "Assets\ArrowPuzzle\Scripts\AppsInToss\AppsInTossStorageManager.WeeklyLeague.cs(89,31):
+            //       warning CS0067: The event 'AppsInTossStorageManager.WeeklyLeagueResultStateChanged' is never used"
+            // Sentry APPS-IN-TOSS-UNITY-SDK-1A3.
+            // 사용자 클래스명(AppsInTossStorageManager)에 'AppsInToss' 토큰이 포함돼 SDK 키워드 가드가
+            // 발동하므로 CS1998/CS0618과 동일하게 가드보다 먼저 매칭한다(Assets/ 경로 + .cs(L,C) 패턴).
+            // SDK 자체 코드는 Packages/ 또는 Library/PackageCache/ 경로로 출력되어 Assets/ 가드와 충돌 없음.
+            if (message.IndexOf("warning CS0067", StringComparison.Ordinal) >= 0
+                && (message.IndexOf("Assets/", StringComparison.Ordinal) >= 0
+                    || message.IndexOf("Assets\\", StringComparison.Ordinal) >= 0)
+                && message.IndexOf(".cs(", StringComparison.Ordinal) >= 0)
+                return true;
+
             // SDK 자체 로그는 절대 필터링하지 않음 — AitKeywords 전체를 가드로 사용
             if (MessageContainsSdkKeyword(message))
                 return false;

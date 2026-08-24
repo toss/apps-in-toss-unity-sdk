@@ -2348,6 +2348,34 @@ public class IsKnownNonSdkMessageTests
             "SomeLib.dll: warning CS0618: 'Z' is obsolete"));
     }
 
+    [Test]
+    public void UserCodeCs0067_AssetsBackslashPath_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-1A3 — 사용자 프로젝트(Assets/) 코드의 미사용 이벤트 선언 경고.
+        // 사용자 클래스명 'AppsInTossStorageManager'가 단어 경계 없이 붙어 키워드 가드를 우회하므로
+        // Assets/ + .cs(L,C) 합성으로 좁혀 매칭.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Assets\\ArrowPuzzle\\Scripts\\AppsInToss\\AppsInTossStorageManager.WeeklyLeague.cs(89,31): warning CS0067: The event 'AppsInTossStorageManager.WeeklyLeagueResultStateChanged' is never used"));
+    }
+
+    [Test]
+    public void Cs0067_SdkPackagePath_NeverFiltered()
+    {
+        // SDK 자체 .cs의 CS0067은 Packages/com.toss.apps-in-toss 경로로 출력 → Assets/ 가드 미충족 +
+        // "apps-in-toss" 키워드 가드 보호. SDK 코드 경고는 절대 드롭하지 않는다.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Packages/com.toss.apps-in-toss/Runtime/Foo.cs(10,5): warning CS0067: The event 'Foo.OnChanged' is never used"));
+    }
+
+    [Test]
+    public void Cs0067_NoAssetsPath_NotFiltered()
+    {
+        // Assets/ 경로도 .cs(L,C)도 없는 일반 CS0067은 합성 가드가 매칭되지 않아 통과.
+        // CS0067을 무차별 드롭하지 않음을 검증.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "SomeLib.dll: warning CS0067: 'Z' is never used"));
+    }
+
     #endregion
 
     #region Android 키스토어 노이즈 (APPS-IN-TOSS-UNITY-SDK-118)

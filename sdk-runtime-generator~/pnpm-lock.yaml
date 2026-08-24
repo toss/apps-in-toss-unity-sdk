@@ -28,8 +28,8 @@ importers:
         specifier: 2.10.9
         version: 2.10.9(@apps-in-toss/web-bridge@2.10.8)
       '@apps-in-toss/web-framework':
-        specifier: 3.0.4
-        version: 3.0.4(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)(typescript@7.0.2)
+        specifier: 3.0.5
+        version: 3.0.5(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)(typescript@7.0.2)
       commander:
         specifier: 15.0.0
         version: 15.0.0
@@ -274,6 +274,9 @@ importers:
       web-framework-3.0.4:
         specifier: npm:@apps-in-toss/web-framework@3.0.4
         version: '@apps-in-toss/web-framework@3.0.4(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)(typescript@7.0.2)'
+      web-framework-3.0.5:
+        specifier: npm:@apps-in-toss/web-framework@3.0.5
+        version: '@apps-in-toss/web-framework@3.0.5(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)(typescript@7.0.2)'
 
 packages:
 
@@ -4095,6 +4098,10 @@ packages:
 
   '@apps-in-toss/web-framework@3.0.4':
     resolution: {integrity: sha512-cKbPPmANJ5ncCwoSiVZRfj7PfAf8GUfh/NDMpJqmhkRdlyTB5eU5aovbz55egQtuOxCls6VE09QoA4HhvAwzeQ==}
+    hasBin: true
+
+  '@apps-in-toss/web-framework@3.0.5':
+    resolution: {integrity: sha512-3FSzQ1ik2sb5giZW/1lQKjAK+/p5m/x10kC8KfUwBNg863T25MnY3sCy/23SHphHPimEmI3X9oendpCQ3Y7IzA==}
     hasBin: true
 
   '@babel/code-frame@7.24.7':
@@ -8089,16 +8096,16 @@ packages:
   flow-enums-runtime@0.0.5:
     resolution: {integrity: sha512-PSZF9ZuaZD03sT9YaIs0FrGJ7lSUw7rHZIex+73UYVXg46eL/wxN5PaVcPJFudE2cJu5f0fezitV5aBkLHPUOQ==}
 
-  flow-estree@0.328.0:
-    resolution: {integrity: sha512-uMB3dC4nfZYn+dd7/PYkyAK1mqBR4TJ4TWRdOjubpb/ObrLvPFdFSmMTq55fqttCCTygQ4NtD1Zdd+wcjC5t0g==}
+  flow-estree@0.329.0:
+    resolution: {integrity: sha512-Stv2+LumW7n6DUrV+KlqB4HikeyQtLFUpd9iVexISblopKiYFjNYMmTGUcN5at8NKEmkhjAV5UGps3Z8QqK1lw==}
     engines: {node: '>=18'}
 
   flow-parser@0.206.0:
     resolution: {integrity: sha512-HVzoK3r6Vsg+lKvlIZzaWNBVai+FXTX1wdYhz/wVlH13tb/gOdLXmlTqy6odmTBhT5UoWUbq0k8263Qhr9d88w==}
     engines: {node: '>=0.4.0'}
 
-  flow-parser@0.328.0:
-    resolution: {integrity: sha512-F+Ik2Of7ndl2FyPmZ77NrhbZp9lYjIsreDXeq4fo0sjxa3SIFv48QAszBqvPeMMzmw7JzqySJUxGR8CSD7EdXw==}
+  flow-parser@0.329.0:
+    resolution: {integrity: sha512-skMH3HUOF3+JSlIKt4F/LITfzMGEPpJ0S+Gu7HcmxOjWeYEO5PUZJi5WpLw+L4MZaNcMEkzUtoN+M2fAbiutWA==}
     engines: {node: '>=0.4.0'}
 
   flow-remove-types@2.328.0:
@@ -25612,6 +25619,19 @@ snapshots:
       - typanion
       - typescript
 
+  '@apps-in-toss/web-framework@3.0.5(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)(typescript@7.0.2)':
+    dependencies:
+      '@apps-in-toss/cli': 3.0.5(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)
+      '@webview-bridge/web': 1.7.10
+      semver: 7.8.5
+      valibot: 1.4.2(typescript@7.0.2)
+    transitivePeerDependencies:
+      - '@babel/preset-env'
+      - magicast
+      - supports-color
+      - typanion
+      - typescript
+
   '@babel/code-frame@7.24.7':
     dependencies:
       '@babel/highlight': 7.25.9
@@ -29135,7 +29155,7 @@ snapshots:
   '@react-native/codegen@0.84.0(@babel/core@7.29.7)':
     dependencies:
       '@babel/core': 7.29.7
-      '@babel/parser': 7.28.5
+      '@babel/parser': 7.29.8
       hermes-parser: 0.32.0
       invariant: 2.2.4
       nullthrows: 1.1.1
@@ -31233,13 +31253,13 @@ snapshots:
 
   flow-enums-runtime@0.0.5: {}
 
-  flow-estree@0.328.0: {}
+  flow-estree@0.329.0: {}
 
   flow-parser@0.206.0: {}
 
-  flow-parser@0.328.0:
+  flow-parser@0.329.0:
     dependencies:
-      flow-estree: 0.328.0
+      flow-estree: 0.329.0
 
   flow-remove-types@2.328.0:
     dependencies:
@@ -32025,7 +32045,7 @@ snapshots:
       '@babel/register': 7.29.7(@babel/core@7.29.7)
       babel-core: 7.0.0-bridge.0(@babel/core@7.29.7)
       chalk: 4.1.2
-      flow-parser: 0.206.0
+      flow-parser: 0.329.0
       graceful-fs: 4.2.11
       micromatch: 4.0.8
       neo-async: 2.6.2
@@ -32048,7 +32068,7 @@ snapshots:
       '@babel/preset-flow': 7.29.7(@babel/core@7.29.7)
       '@babel/preset-typescript': 7.29.7(@babel/core@7.29.7)
       '@babel/register': 7.29.7(@babel/core@7.29.7)
-      flow-parser: 0.328.0
+      flow-parser: 0.329.0
       graceful-fs: 4.2.11
       neo-async: 2.6.2
       picocolors: 1.1.1

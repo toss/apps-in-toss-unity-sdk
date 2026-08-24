@@ -1,10 +1,124 @@
 Apps in Toss Unity SDK가 노출하는 C# API 표면이 `@apps-in-toss/web-framework` 버전에 따라 어떻게 달라지는지 정리한 자동 생성 리포트입니다. 최신 버전(v3.0.4)이 최상단에 오도록 정렬되어 있습니다.
 
-다음 버전은 패키지 리네임 등으로 sibling 탐색에 실패해 pnpm store 폴백으로 API 표면을 근사함: v3.0.1, v3.0.2, v3.0.3, v3.0.4
-
 ## v3.x
 
-변경 없음: v3.0.3 → v3.0.4 · v3.0.2 → v3.0.3 · v3.0.1 → v3.0.2 · v2.10.8 → v3.0.1
+### v2.10.8 → v3.0.1
+
+API 총 126개 · 추가 42 · 변경 64 · 제거 0
+
+**추가된 API**
+
+- `AIT.AnalyticsLog`
+- `AIT.ClipboardGetText`
+- `AIT.ClipboardSetText`
+- `AIT.DeviceGetAlbumItems`
+- `AIT.DeviceGetContacts`
+- `AIT.DeviceGetLocation`
+- `AIT.DeviceGetPhotos`
+- `AIT.DeviceOpenCamera`
+- `AIT.DeviceOpenURL`
+- `AIT.DeviceSubscribeLocation`
+- `AIT.DeviceTriggerHaptic`
+- `AIT.EnvironmentGetNetworkStatus`
+- `AIT.EnvironmentGetServerTime`
+- `AIT.FileOpenPDFViewer`
+- `AIT.FileSaveBase64`
+- `AIT.GameGetUserProfile`
+- `AIT.GameOpenLeaderboard`
+- `AIT.GameSetLeaderboardScore`
+- `AIT.NotificationRequestAgreement`
+- `AIT.PromotionGrantReward`
+- `AIT.PromotionOpenContactsInvite`
+- `AIT.ReviewRequest`
+- `AIT.SafeAreaGet`
+- `AIT.SafeAreaSubscribe`
+- `AIT.ScreenClose`
+- `AIT.ScreenSetAwakeMode`
+- `AIT.ScreenSetIosSwipeBack`
+- `AIT.ScreenSetOrientation`
+- `AIT.ScreenSetSecure`
+- `AIT.ShareCreateLink`
+- `AIT.ShareSendMessage`
+- `AIT.TossAuthIsIntegrated`
+- `AIT.TossAuthLogin`
+- `AIT.TossAuthSign`
+- `AIT.TossPayAuthorize`
+- `AIT.TossPayAuthorizeSubscription`
+- `AIT.TossPayCheckoutPayment`
+- `AIT.TossPayRequestTossPayPaysBilling`
+- `AIT.UserGetAnonymousKey`
+- `AIT.UserGetConsentedData`
+- `AIT.UserGetDeclaredAgeRange`
+- `AIT.GetSafeAreaInsets`
+
+**변경된 API**
+
+- `AIT.AnalyticsClick`: `params: object → LoggerParams`
+- `AIT.AnalyticsImpression`: `params: object → LoggerParams`
+- `AIT.AnalyticsScreen`: `params: object → LoggerParams`
+- `AIT.AppLogin`: `return: object → AppLoginResponse; isDeprecated: false → true`
+- `AIT.AppsInTossSignTossCert`: `isDeprecated: false → true`
+- `AIT.CheckoutPayment`: `isDeprecated: false → true`
+- `AIT.CloseView`: `isDeprecated: false → true`
+- `AIT.ContactsViral`: `isDeprecated: false → true`
+- `AIT.EnvGetDeploymentId`: `isDeprecated: false → true`
+- `AIT.EventLog`: `isDeprecated: false → true`
+- `AIT.FetchAlbumItems`: `isDeprecated: false → true`
+- `AIT.FetchAlbumPhotos`: `options: FetchAlbumPhotosOptions → FetchAlbumPhotosParams; isDeprecated: false → true`
+- `AIT.FetchContacts`: `options: FetchContactsOptions → FetchContactsParams; return: ContactResult → FetchContactsResult; isDeprecated: false → true`
+- `AIT.GenerateHapticFeedback`: `isDeprecated: false → true`
+- `AIT.GetAnonymousKey`: `return: GetAnonymousKeySuccessResponseERRORundefined → GetAnonymousKeyResponseERRORundefined; isDeprecated: false → true`
+- `AIT.GetClipboardText`: `isDeprecated: false → true`
+- `AIT.GetConsentedUserData`: `isDeprecated: false → true`
+- `AIT.GetCurrentLocation`: `isDeprecated: false → true`
+- `AIT.GetDeclaredAgeRange`: `params: object → GetDeclaredAgeRangeParams; isDeprecated: false → true`
+- `AIT.GetDeviceId`: `isDeprecated: false → true`
+- `AIT.GetGameCenterGameProfile`: `isDeprecated: false → true`
+- `AIT.GetGroupId`: `isDeprecated: false → true`
+- `AIT.GetIsTossLoginIntegratedService`: `isDeprecated: false → true`
+- `AIT.GetLocale`: `isDeprecated: false → true`
+- `AIT.GetNetworkStatus`: `isDeprecated: false → true`
+- `AIT.GetOperationalEnvironment`: `isDeprecated: false → true`
+- `AIT.GetPlatformOS`: `isDeprecated: false → true`
+- `AIT.GetSchemeUri`: `isDeprecated: false → true`
+- `AIT.GetServerTime`: `isDeprecated: false → true`
+- `AIT.GetTossAppVersion`: `isDeprecated: false → true`
+- `AIT.GetTossShareLink`: `isDeprecated: false → true`
+- `AIT.GetUserKeyForGame`: `return: string → GetAnonymousKeyResponseERRORundefined; isDeprecated: false → true`
+- `AIT.GoogleAdMobIsAppsInTossAdMobLoaded`: `parameter added: options: GetCachedStatusAppsInTossAdmobParams; parameter removed: args_0`
+- `AIT.GoogleAdMobLoadAppsInTossAdMob`: `parameter added: params: object; parameter removed: args`
+- `AIT.GoogleAdMobShowAppsInTossAdMob`: `parameter added: params: object; parameter removed: args`
+- `AIT.GrantPromotionReward`: `params: object → GrantPromotionRewardParams; isDeprecated: false → true`
+- `AIT.GrantPromotionRewardForGame`: `params: object → GrantPromotionRewardParams; return: GrantPromotionRewardResult → GrantPromotionRewardResponseERRORerrorCode:stringmessage:stringundefined; isDeprecated: false → true`
+- `AIT.IAPCompleteProductGrant`: `parameter added: args: object; parameter removed: args_0`
+- `AIT.IAPGetPendingOrders`: `return: object → GetPendingOrdersResult`
+- `AIT.IAPGetProductItemList`: `return: object → IapGetProductItemListResult`
+- `AIT.IAPGetSubscriptionInfo`: `parameter added: args: object; parameter removed: args_0`
+- `AIT.OpenCamera`: `options: OpenCameraOptions → OpenCameraParams; isDeprecated: false → true`
+- `AIT.OpenGameCenterLeaderboard`: `isDeprecated: false → true`
+- `AIT.OpenPDFViewer`: `isDeprecated: false → true`
+- `AIT.OpenPermissionDialog`: `return: string → PermissionDialogResult`
+- `AIT.OpenURL`: `isDeprecated: false → true`
+- `AIT.PartnerAddAccessoryButton`: `parameter added: params: AddAccessoryButtonParams; parameter removed: args_0`
+- `AIT.RequestNotificationAgreement`: `isDeprecated: false → true`
+- `AIT.RequestReview`: `isDeprecated: false → true`
+- `AIT.RequestTossPayPaysBilling`: `isDeprecated: false → true`
+- `AIT.SafeAreaInsetsSubscribe`: `parameter added: args: object; parameter removed: __0`
+- `AIT.SaveBase64Data`: `isDeprecated: false → true`
+- `AIT.SetClipboardText`: `isDeprecated: false → true`
+- `AIT.SetDeviceOrientation`: `options: object → SetDeviceOrientationOptions; isDeprecated: false → true`
+- `AIT.SetIosSwipeGestureEnabled`: `options: object → SetIosSwipeGestureEnabledOptions; isDeprecated: false → true`
+- `AIT.SetScreenAwakeMode`: `options: object → SetScreenAwakeModeOptions; isDeprecated: false → true`
+- `AIT.SetSecureScreen`: `options: object → SetSecureScreenOptions; isDeprecated: false → true`
+- `AIT.Share`: `isDeprecated: false → true`
+- `AIT.StartUpdateLocation`: `isDeprecated: false → true`
+- `AIT.StorageClearItems`: `parameter removed: args_0`
+- `AIT.StorageGetItem`: `parameter added: key: string; parameter removed: args_0`
+- `AIT.StorageRemoveItem`: `parameter added: key: string; parameter removed: args_0`
+- `AIT.StorageSetItem`: `parameter added: key: string; parameter added: value: string; parameter removed: args_0; parameter removed: args_1`
+- `AIT.SubmitGameCenterLeaderBoardScore`: `isDeprecated: false → true`
+
+변경 없음: v3.0.3 → v3.0.4 · v3.0.2 → v3.0.3 · v3.0.1 → v3.0.2
 
 ## v2.x
 
@@ -221,12 +335,20 @@ API 총 62개 · 추가 0 · 변경 3 · 제거 0
 
 ### Authentication
 
+- `AIT.TossAuthIsIntegrated`
+- `AIT.TossAuthLogin`
+- `AIT.TossAuthSign`
 - `AIT.AppLogin`
 - `AIT.GetIsTossLoginIntegratedService`
 
 ### Payment
 
+- `AIT.TossPayAuthorize`
+- `AIT.TossPayAuthorizeSubscription`
+- `AIT.TossPayCheckoutPayment`
+- `AIT.TossPayRequestTossPayPaysBilling`
 - `AIT.CheckoutPayment`
+- `AIT.RequestTossPayPaysBilling`
 
 ### IAP
 
@@ -240,7 +362,16 @@ API 총 62개 · 추가 0 · 변경 3 · 제거 0
 
 ### SystemInfo
 
+- `AIT.EnvironmentGetNetworkStatus`
+- `AIT.EnvironmentGetServerTime`
+- `AIT.UserGetAnonymousKey`
+- `AIT.UserGetConsentedData`
+- `AIT.UserGetDeclaredAgeRange`
+- `AIT.GetAnonymousKey`
+- `AIT.GetConsentedUserData`
+- `AIT.GetDeclaredAgeRange`
 - `AIT.GetDeviceId`
+- `AIT.GetGroupId`
 - `AIT.GetLocale`
 - `AIT.GetNetworkStatus`
 - `AIT.GetOperationalEnvironment`
@@ -251,6 +382,8 @@ API 총 62개 · 추가 0 · 변경 3 · 제거 0
 
 ### Location
 
+- `AIT.DeviceGetLocation`
+- `AIT.DeviceSubscribeLocation`
 - `AIT.GetCurrentLocation`
 - `AIT.StartUpdateLocation`
 
@@ -262,6 +395,9 @@ API 총 62개 · 추가 0 · 변경 3 · 제거 0
 
 ### GameCenter
 
+- `AIT.GameGetUserProfile`
+- `AIT.GameOpenLeaderboard`
+- `AIT.GameSetLeaderboardScore`
 - `AIT.GetGameCenterGameProfile`
 - `AIT.GetUserKeyForGame`
 - `AIT.GrantPromotionRewardForGame`
@@ -270,6 +406,10 @@ API 총 62개 · 추가 0 · 변경 3 · 제거 0
 
 ### Share
 
+- `AIT.DeviceGetContacts`
+- `AIT.PromotionOpenContactsInvite`
+- `AIT.ShareCreateLink`
+- `AIT.ShareSendMessage`
 - `AIT.ContactsViral`
 - `AIT.FetchContacts`
 - `AIT.GetTossShareLink`
@@ -277,18 +417,31 @@ API 총 62개 · 추가 0 · 변경 3 · 제거 0
 
 ### Media
 
+- `AIT.DeviceGetAlbumItems`
+- `AIT.DeviceGetPhotos`
+- `AIT.DeviceOpenCamera`
+- `AIT.FileOpenPDFViewer`
+- `AIT.FileSaveBase64`
 - `AIT.FetchAlbumItems`
 - `AIT.FetchAlbumPhotos`
 - `AIT.OpenCamera`
+- `AIT.OpenPDFViewer`
 - `AIT.SaveBase64Data`
 
 ### Clipboard
 
+- `AIT.ClipboardGetText`
+- `AIT.ClipboardSetText`
 - `AIT.GetClipboardText`
 - `AIT.SetClipboardText`
 
 ### Device
 
+- `AIT.DeviceTriggerHaptic`
+- `AIT.ScreenSetAwakeMode`
+- `AIT.ScreenSetIosSwipeBack`
+- `AIT.ScreenSetOrientation`
+- `AIT.ScreenSetSecure`
 - `AIT.GenerateHapticFeedback`
 - `AIT.SetDeviceOrientation`
 - `AIT.SetIosSwipeGestureEnabled`
@@ -297,6 +450,8 @@ API 총 62개 · 추가 0 · 변경 3 · 제거 0
 
 ### Navigation
 
+- `AIT.DeviceOpenURL`
+- `AIT.ScreenClose`
 - `AIT.CloseView`
 - `AIT.OpenURL`
 
@@ -308,6 +463,7 @@ API 총 62개 · 추가 0 · 변경 3 · 제거 0
 
 - `AIT.AnalyticsClick`
 - `AIT.AnalyticsImpression`
+- `AIT.AnalyticsLog`
 - `AIT.AnalyticsScreen`
 
 ### Certificate
@@ -340,8 +496,16 @@ API 총 62개 · 추가 0 · 변경 3 · 제거 0
 
 ### SafeArea
 
+- `AIT.SafeAreaGet`
 - `AIT.SafeAreaInsetsGet`
 - `AIT.SafeAreaInsetsSubscribe`
+- `AIT.SafeAreaSubscribe`
+- `AIT.GetSafeAreaInsets`
+
+### Partner
+
+- `AIT.PartnerAddAccessoryButton`
+- `AIT.PartnerRemoveAccessoryButton`
 
 ### AppEvents
 
@@ -351,20 +515,21 @@ API 총 62개 · 추가 0 · 변경 3 · 제거 0
 
 ### Environment
 
+- `AIT.EnvGetDeploymentId`
 - `AIT.GetAppsInTossGlobals`
 - `AIT.IsMinVersionSupported`
 
-### Other
+### Notification
 
-- `AIT.EnvGetDeploymentId`
-- `AIT.GetAnonymousKey`
-- `AIT.GetConsentedUserData`
-- `AIT.GetDeclaredAgeRange`
-- `AIT.GetGroupId`
-- `AIT.GrantPromotionReward`
-- `AIT.OpenPDFViewer`
-- `AIT.PartnerAddAccessoryButton`
-- `AIT.PartnerRemoveAccessoryButton`
+- `AIT.NotificationRequestAgreement`
 - `AIT.RequestNotificationAgreement`
+
+### Promotion
+
+- `AIT.PromotionGrantReward`
+- `AIT.GrantPromotionReward`
+
+### Review
+
+- `AIT.ReviewRequest`
 - `AIT.RequestReview`
-- `AIT.RequestTossPayPaysBilling`

@@ -1297,27 +1297,26 @@
      * mkdir-plant 앵커(위)가 도입된 뒤에도 **폴백으로 유지**한다 — warm boot처럼 앱
      * 디렉터리가 이미 존재해 mknod를 거치지 않는 경로가 남아 있기 때문이다(W8).
      *
-     * ⚠️ 이 앵커의 전제는 "그 첫 접근이 read-open이어야 한다"인데, **2021.3에서 거짓임이
-     *    실측됐다**(E2E run 32589182104, macOS/Windows 양쪽). lookup 미스는 read/write를
-     *    구분하지 못하는데, FS.open은 lookup 성공 후 O_TRUNC면 곧바로 자른다
-     *    (library_fs.js:1042-1045 — created 여부와 무관하게 무조건). 즉 첫 미스가
-     *    write-open(fopen(path,"wb") = O_WRONLY|O_CREAT|O_TRUNC)에서 나면 우리가 심은
-     *    내용은 심자마자 잘려나가고, 그럼에도 legacyImport는 'imported'/legacyBytes>0으로
-     *    남아 승격 push가 잘린 내용을 정본으로 올린다 = 창이 닫힌 채 이관은 0바이트.
+     * ⚠️ 한때 이 자리에는 "2021.3의 첫 접근은 write-open(O_TRUNC)이라 심자마자 잘린다"는
+     *    실측 결론(run 32589182104: 2021.3 양 OS에서 imported/68B인데 값 '')이 있었다.
+     *    **오진이었다** — 그 68B는 E2E 시드 생성 페이지의 push가 2021.3 IDBFS 세션 노화로
+     *    부팅 직후 사본(unity.cloud_userid만, 테스트 키 부재)에 동결된 스테일 시드였고,
+     *    값 ''는 잘림이 아니라 "키 없는 정상 파일의 정확한 파싱"이었다(run 32662771953의
+     *    시드 base64 실측으로 판명). 유효 시드로 돌린 run 32672140247에서 2021.3 양 OS
+     *    모두 값 v8 green — plantSeenRead=true, truncatedAtMs=null, 잘림은 어느 라운드에서도
+     *    실제로 관측된 적이 없다.
      *
-     *    실측 결과: 2021.3은 두 OS 모두 잘림(값 ""), 2022.3·6000.x는 두 OS 모두 정상(v8).
-     *    OS와도, 시드 크기와도 무관한 **Unity 버전 게이팅**이다.
-     *
-     *    오늘 이 결함은 프로덕션에서 관측되지 않는다 — getPlatformLegacySource()가
-     *    null이라 레거시 경로 자체가 비활성이고, 오버라이드 훅을 심는 E2E에서만 발화한다.
-     *    대응은 세 겹이다: ① mkdir-plant 앵커(tryPlantOnMkdir)가 심는 시점을 앱 디렉터리
-     *    생성 순간으로 앞당기고(엔진의 존재 판정이 readdir 기반[모델 i-b]이면 해소),
-     *    ② 잘림 파수꾼(installTruncationSentinel)이 읽기 관측 전 잘림을 'skip-truncated'로
-     *    정직화해 legacyChecked를 기록하지 않으며, ③ 다음 부팅의 present+scoped+미체크
-     *    경로가 레거시 원본을 stash(STASH_KEY)로 보존한다. 이 lookup 앵커 단독으로 재시도가
-     *    성립하지 않는 점은 그대로다: 잘린 파일이 로컬에 남아 다음 부팅에서 lookup 미스가
-     *    다시 나지 않는다. 모델 판별(i-a/i-b)은 E2E 관측 라운드가 결정한다
-     *    (TODO.md P2 선결 과제 2).
+     *    그럼에도 아래 세 겹 방어는 유지한다. FS.open은 lookup 성공 직후 O_TRUNC면
+     *    무조건 FS.truncate를 부르고(library_fs.js:1042-1045 — created 여부와 무관),
+     *    lookup은 read/write를 구분하지 못하므로, "첫 미스가 write-open(fopen "wb")"인
+     *    엔진 경로가 존재한다면 심은 내용이 잘린 채 'imported'로 남는 시나리오 자체는
+     *    구조적으로 가능하기 때문이다(실측 발화 0건, 유닛으로 고정된 가상 시나리오):
+     *    ① mkdir-plant 앵커(tryPlantOnMkdir)가 심는 시점을 앱 디렉터리 생성 순간으로
+     *    앞당기고, ② 잘림 파수꾼(installTruncationSentinel)이 읽기 관측 전 잘림을
+     *    'skip-truncated'로 정직화해 legacyChecked를 기록하지 않으며, ③ 다음 부팅의
+     *    present+scoped+미체크 경로가 레거시 원본을 stash(STASH_KEY)로 보존한다.
+     *    이 lookup 앵커 단독으로 재시도가 성립하지 않는 점(잘린 파일이 로컬에 남아
+     *    다음 부팅에서 미스가 재발하지 않음)도 ②③이 커버한다.
      */
     function tryPlantAt(parent) {
         var pending = appDirWatch;

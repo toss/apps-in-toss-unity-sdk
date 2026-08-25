@@ -2,7 +2,7 @@
 
 > 2026-04-14 전체 리뷰 기준 작성 · 2026-06-16 코드 대조로 완료 항목 정리.
 > 우선순위 P1(높음) ~ P3(낮음).
-> 2026-07-08 P2 잔여 항목 완료로 정리 · 2026-07-26 베타 기능 항목 추가 · 2026-07-27 문서 통합 정리에서 발견한 항목 추가 · 2026-08-01 의존성 항목 추가 · 2026-08-10 Deploy 항목 추가 · 2026-08-21 후속 검증에 옛 origin 조회 API 통합 대기 항목 추가.
+> 2026-07-08 P2 잔여 항목 완료로 정리 · 2026-07-26 베타 기능 항목 추가 · 2026-07-27 문서 통합 정리에서 발견한 항목 추가 · 2026-08-01 의존성 항목 추가 · 2026-08-10 Deploy 항목 추가 · 2026-08-21 후속 검증에 옛 origin 조회 API 통합 대기 항목 추가 · 2026-08-25 머지 전 감사에서 나온 배포 URL 추출 항목 추가.
 
 ## 베타 기능
 
@@ -13,6 +13,10 @@
 - **P3 — devtools tunnel(실기기 프리뷰) 재검토**: `AIT_DEVTOOLS_TUNNEL`은 `aitc.dev` 호스트 + `cloudflared` 다운로드에 의존해 사람이 수동으로만 켜도록 막아뒀다(Editor/CI는 절대 설정하지 않음). `aitc.dev` 호스트 운영 상황이 안정화되면 Editor 통합(자동 설정, 메뉴 노출) 여부를 재검토.
 
 ## Deploy
+
+- **P3 — 배포 URL 추출 로직이 네 벌로 복제돼 있고 자동 검증은 C# 한 벌에만 걸린다**: 박스 래핑된 `ait deploy` 출력에서 URL을 복원하는 같은 로직이 `Editor/Menu/AITDeployManager.cs`의 `ExtractDeployUrl`(C#)과 `.github/workflows/{preview,beta-release,release}.yml`의 awk 블록 세 벌에 있다. 머지 전 감사에서 네 벌을 필드별로 대조해 **현재는 동작 등가**임을 확인했다(문자 클래스, 래핑 판정, `host=` 멱등 검사, `?`/`&` 분기가 1:1. C#은 비매치 줄에서 `break`, awk는 스캔을 계속하지만 `!url` 가드 때문에 두 번째 URL을 잡지 않아 결과가 같다). 문제는 검증 비대칭이다 — `Tests~/E2E/SharedScripts/Editor/EditModeTests/DeployUrlTests.cs`(6건)는 C#만 고정하고, awk 세 벌은 shellcheck/actionlint도 없어 드리프트하면 해당 채널의 배포 링크만 조용히 깨진다. 고친다면 awk를 `scripts/`의 셸 스크립트 한 벌로 추출해 세 워크플로가 호출하게 하고, `DeployUrlTests.cs`와 같은 입력을 먹이는 셸 테스트를 `run-local-tests.sh --validate`에 등록하는 형태.
+
+  같은 감사에서 나온 **알려진 한계**도 함께 기록한다: 래핑 판정은 "매치가 줄 끝에 닿았는가"로만 하므로, URL의 마지막 조각이 박스 폭을 **정확히** 채우면 래핑이 끝났는데도 다음 줄을 이어붙인다. 다음 줄이 공백 없는 순수 ASCII 토큰(`SUCCESS` 등)이면 그대로 URL에 붙어 잘못된 링크가 된다. 하단 테두리·빈 줄·공백 포함 문장은 문자 클래스에 걸리지 않아 안전하고, URL이 줄 끝에 닿지 않는 경우는 `ExtractDeployUrl_UnwrappedUrlFollowedByText_DoesNotSwallowNextLine`이 고정하고 있다. 렌더된 박스 출력만 보고는 "폭을 정확히 채운 마지막 줄"과 "래핑 중인 줄"을 원리적으로 구분할 수 없어 지금은 방어를 넣지 않았다. 선결 조건은 **`ait deploy`의 실제 stdout 전체 포맷을 한 번 캡처하는 것** — 저장소·CI 로그 어디에도 전체 출력이 없어 현재 로직은 관측된 두 스니펫과 추론으로만 고정돼 있다. 캡처하면 박스 내부 폭과 URL 뒤에 오는 줄의 실제 형태가 확정되고, 그때 방어가 필요한지도 함께 결정된다. 피해 범위는 PR 코멘트·릴리스 노트의 링크이며 배포 산출물 자체는 무관하다.
 
 - **P3 — Deploy Release Candidate 성공 창의 콘솔 딥링크**: `Editor/Menu/DeploySuccessWindow.cs`의 "콘솔 열기" 버튼은 현재 콘솔 베이스 URL(`https://apps-in-toss.toss.im/console`)만 여는데, deploymentId로 배포 상세 화면에 바로 이동하는 딥링크 라우트가 있는지 콘솔 라우트가 미확인이라 적용하지 못했다. 플랫폼 팀 확인 후 딥링크로 교체.
 

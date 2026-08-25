@@ -28,8 +28,8 @@ importers:
         specifier: 2.10.9
         version: 2.10.9(@apps-in-toss/web-bridge@2.10.8)
       '@apps-in-toss/web-framework':
-        specifier: 3.1.0
-        version: 3.1.0(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)(typescript@7.0.2)
+        specifier: 3.1.1
+        version: 3.1.1(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)(typescript@7.0.2)
       commander:
         specifier: 15.0.0
         version: 15.0.0
@@ -280,6 +280,9 @@ importers:
       web-framework-3.1.0:
         specifier: npm:@apps-in-toss/web-framework@3.1.0
         version: '@apps-in-toss/web-framework@3.1.0(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)(typescript@7.0.2)'
+      web-framework-3.1.1:
+        specifier: npm:@apps-in-toss/web-framework@3.1.1
+        version: '@apps-in-toss/web-framework@3.1.1(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)(typescript@7.0.2)'
 
 packages:
 
@@ -4117,6 +4120,10 @@ packages:
 
   '@apps-in-toss/web-framework@3.1.0':
     resolution: {integrity: sha512-noBvxvvlfEnDBXxDUCELw0LwuzMOLL4OjQwnvrrmnl9lxJFvPyraRXAxo9aR1SZ3tYi2skvnRRvAJ1SWDCL6iA==}
+    hasBin: true
+
+  '@apps-in-toss/web-framework@3.1.1':
+    resolution: {integrity: sha512-2hOa3FbgiTam+LT1ITv7PmMGEE4y548n5bgtkRdfc8OLNcDIZdWLA7PH/nUyOrC/nwDGlmRDCTUZvymy0T5J/g==}
     hasBin: true
 
   '@babel/code-frame@7.24.7':
@@ -25680,6 +25687,19 @@ snapshots:
   '@apps-in-toss/web-framework@3.1.0(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)(typescript@7.0.2)':
     dependencies:
       '@apps-in-toss/cli': 3.1.0(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)
+      '@webview-bridge/web': 1.7.10
+      semver: 7.8.5
+      valibot: 1.4.2(typescript@7.0.2)
+    transitivePeerDependencies:
+      - '@babel/preset-env'
+      - magicast
+      - supports-color
+      - typanion
+      - typescript
+
+  '@apps-in-toss/web-framework@3.1.1(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)(typescript@7.0.2)':
+    dependencies:
+      '@apps-in-toss/cli': 3.1.1(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)
       '@webview-bridge/web': 1.7.10
       semver: 7.8.5
       valibot: 1.4.2(typescript@7.0.2)

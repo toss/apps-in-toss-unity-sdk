@@ -28,8 +28,8 @@ importers:
         specifier: 2.10.9
         version: 2.10.9(@apps-in-toss/web-bridge@2.10.8)
       '@apps-in-toss/web-framework':
-        specifier: 3.1.0
-        version: 3.1.0(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)(typescript@7.0.2)
+        specifier: 3.1.1
+        version: 3.1.1(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)(typescript@7.0.2)
       commander:
         specifier: 15.0.0
         version: 15.0.0
@@ -280,6 +280,9 @@ importers:
       web-framework-3.1.0:
         specifier: npm:@apps-in-toss/web-framework@3.1.0
         version: '@apps-in-toss/web-framework@3.1.0(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)(typescript@7.0.2)'
+      web-framework-3.1.1:
+        specifier: npm:@apps-in-toss/web-framework@3.1.1
+        version: '@apps-in-toss/web-framework@3.1.1(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)(typescript@7.0.2)'
 
 packages:
 
@@ -4117,6 +4120,10 @@ packages:
 
   '@apps-in-toss/web-framework@3.1.0':
     resolution: {integrity: sha512-noBvxvvlfEnDBXxDUCELw0LwuzMOLL4OjQwnvrrmnl9lxJFvPyraRXAxo9aR1SZ3tYi2skvnRRvAJ1SWDCL6iA==}
+    hasBin: true
+
+  '@apps-in-toss/web-framework@3.1.1':
+    resolution: {integrity: sha512-2hOa3FbgiTam+LT1ITv7PmMGEE4y548n5bgtkRdfc8OLNcDIZdWLA7PH/nUyOrC/nwDGlmRDCTUZvymy0T5J/g==}
     hasBin: true
 
   '@babel/code-frame@7.24.7':
@@ -9458,6 +9465,10 @@ packages:
 
   picomatch@4.0.5:
     resolution: {integrity: sha512-RvwwcruNjI1ncT5xRakeyS9Lf8lcItv34KD+aif+VH9kduAyfYBipGh12274xtenIPZ119/R9BdTBa8gAwSh0A==}
+    engines: {node: '>=12'}
+
+  picomatch@4.0.7:
+    resolution: {integrity: sha512-qcJu88Q2IWqJsDD529JKMdwGm/dvInW4HvQnRwiH9JtihJvzGOscDtHE3x1pBKeUOTysQ8kVmLnJ2kJu7yhcGA==}
     engines: {node: '>=12'}
 
   pify@4.0.1:
@@ -25690,6 +25701,19 @@ snapshots:
       - typanion
       - typescript
 
+  '@apps-in-toss/web-framework@3.1.1(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)(typescript@7.0.2)':
+    dependencies:
+      '@apps-in-toss/cli': 3.1.1(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)
+      '@webview-bridge/web': 1.7.10
+      semver: 7.8.5
+      valibot: 1.4.2(typescript@7.0.2)
+    transitivePeerDependencies:
+      - '@babel/preset-env'
+      - magicast
+      - supports-color
+      - typanion
+      - typescript
+
   '@babel/code-frame@7.24.7':
     dependencies:
       '@babel/highlight': 7.25.9
@@ -32103,7 +32127,7 @@ snapshots:
       '@babel/register': 7.29.7(@babel/core@7.29.7)
       babel-core: 7.0.0-bridge.0(@babel/core@7.29.7)
       chalk: 4.1.2
-      flow-parser: 0.206.0
+      flow-parser: 0.329.0
       graceful-fs: 4.2.11
       micromatch: 4.0.8
       neo-async: 2.6.2
@@ -32130,7 +32154,7 @@ snapshots:
       graceful-fs: 4.2.11
       neo-async: 2.6.2
       picocolors: 1.1.1
-      picomatch: 4.0.5
+      picomatch: 4.0.7
       recast: 0.23.21
       tmp: 0.2.7
       write-file-atomic: 5.0.1
@@ -33033,6 +33057,8 @@ snapshots:
   picomatch@2.3.2: {}
 
   picomatch@4.0.5: {}
+
+  picomatch@4.0.7: {}
 
   pify@4.0.1: {}
 
@@ -34201,7 +34227,7 @@ snapshots:
   vite@8.2.2(@types/node@26.2.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.50.0)(tsx@4.23.12)(yaml@2.9.0):
     dependencies:
       lightningcss: 1.33.0
-      picomatch: 4.0.5
+      picomatch: 4.0.7
       postcss: 8.5.26
       rolldown: 1.2.5
       tinyglobby: 0.2.17

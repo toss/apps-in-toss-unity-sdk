@@ -1,4 +1,4 @@
-Apps in Toss Unity SDK가 노출하는 C# API 표면이 `@apps-in-toss/web-framework` 버전에 따라 어떻게 달라지는지 정리한 자동 생성 리포트입니다. 최신 버전(v3.0.4)이 최상단에 오도록 정렬되어 있습니다.
+Apps in Toss Unity SDK가 노출하는 C# API 표면이 `@apps-in-toss/web-framework` 버전에 따라 어떻게 달라지는지 정리한 자동 생성 리포트입니다. 최신 버전(v3.0.5)이 최상단에 오도록 정렬되어 있습니다.
 
 ## v3.x
 
@@ -118,7 +118,7 @@ API 총 126개 · 추가 42 · 변경 64 · 제거 0
 - `AIT.StorageSetItem`: `parameter added: key: string; parameter added: value: string; parameter removed: args_0; parameter removed: args_1`
 - `AIT.SubmitGameCenterLeaderBoardScore`: `isDeprecated: false → true`
 
-변경 없음: v3.0.3 → v3.0.4 · v3.0.2 → v3.0.3 · v3.0.1 → v3.0.2
+변경 없음: v3.0.4 → v3.0.5 · v3.0.3 → v3.0.4 · v3.0.2 → v3.0.3 · v3.0.1 → v3.0.2
 
 ## v2.x
 
@@ -331,7 +331,7 @@ API 총 62개 · 추가 0 · 변경 3 · 제거 0
 
 변경 없음: v1.14.0 → v1.14.1 · v1.12.0 → v1.13.0 · v1.11.1 → v1.11.2 · v1.11.0 → v1.11.1 · v1.10.0 → v1.10.1 · v1.9.3 → v1.9.4 · v1.9.2 → v1.9.3 · v1.9.1 → v1.9.2 · v1.9.0 → v1.9.1 · v1.8.0 → v1.8.1 · v1.6.2 → v1.7.0 · v1.6.1 → v1.6.2 · v1.6.0 → v1.6.1
 
-## v3.0.4 API 카탈로그
+## v3.0.5 API 카탈로그
 
 ### Authentication
 

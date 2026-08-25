@@ -1,0 +1,36 @@
+<linker>
+    <!-- Prevent IL2CPP from stripping AppsInToss SDK types -->
+    <!-- SDK is compiled as AppsInTossSDK assembly (defined in asmdef) -->
+    <!-- Fields are accessed via Reflection (JsonUtility) so must be preserved -->
+    <assembly fullname="AppsInTossSDK" preserve="all">
+        <!-- Explicitly preserve all types with their fields -->
+        <type fullname="AppsInToss.AppLoginResult" preserve="all"/>
+        <type fullname="AppsInToss.CheckoutPaymentResult" preserve="all"/>
+        <type fullname="AppsInToss.ContactResult" preserve="all"/>
+        <type fullname="AppsInToss.GameCenterGameProfileResponse" preserve="all"/>
+        <type fullname="AppsInToss.GetUserKeyForGameResult" preserve="all"/>
+        <type fullname="AppsInToss.GrantPromotionRewardForGameResult" preserve="all"/>
+        <type fullname="AppsInToss.ImageResponse" preserve="all"/>
+        <type fullname="AppsInToss.Location" preserve="all"/>
+        <type fullname="AppsInToss.NetworkStatus" preserve="all"/>
+        <type fullname="AppsInToss.SetScreenAwakeModeResult" preserve="all"/>
+        <type fullname="AppsInToss.SetSecureScreenResult" preserve="all"/>
+        <type fullname="AppsInToss.SubmitGameCenterLeaderBoardScoreResponse" preserve="all"/>
+        <type fullname="AppsInToss.CallbackData" preserve="all"/>
+        <!-- Wildcard to catch any other types -->
+        <type fullname="AppsInToss.*" preserve="all"/>
+    </assembly>
+
+    <!-- Preserve Newtonsoft.Json attribute types for deserialization -->
+    <!-- Without these, [JsonProperty] attributes are stripped and deserialization fails -->
+    <assembly fullname="Newtonsoft.Json" preserve="all">
+        <type fullname="Newtonsoft.Json.JsonPropertyAttribute" preserve="all"/>
+        <type fullname="Newtonsoft.Json.JsonConverterAttribute" preserve="all"/>
+        <type fullname="Newtonsoft.Json.Converters.StringEnumConverter" preserve="all"/>
+    </assembly>
+
+    <!-- Preserve System.Runtime.Serialization for EnumMember attribute -->
+    <assembly fullname="System.Runtime.Serialization">
+        <type fullname="System.Runtime.Serialization.EnumMemberAttribute" preserve="all"/>
+    </assembly>
+</linker>

@@ -227,13 +227,39 @@ export function parseNamespaceObject(
  * @param options detectGlobalFunctions에 그대로 전달됨 (includeDeprecatedGlobals,
  *   includeWrappedCallables). 기본값 둘 다 false — 기존 동작 보존, changelog
  *   self-bundle 경로에서만 opt-in.
+ *
+ *   options.restrictToNamespaces 지정 시 이 집합에 속한 네임스페이스 객체만 파싱한다
+ *   (이벤트 네임스페이스·글로벌 함수 감지는 건너뜀). web-framework 번들 index.d.ts처럼
+ *   대형 파일에서 특정 네임스페이스만 골라 파싱할 때 사용 — 무관한 네임스페이스의
+ *   재귀 타입 순회로 인한 스택 오버플로우와 의도치 않은 API 표면 확장을 방지한다.
  */
 export function parseNamespaceObjects(
   sourceFile: SourceFile,
-  options?: { includeDeprecatedGlobals?: boolean; includeWrappedCallables?: boolean }
+  options?: {
+    includeDeprecatedGlobals?: boolean;
+    includeWrappedCallables?: boolean;
+    restrictToNamespaces?: Set<string>;
+  },
 ): ParsedAPI[] {
   const apis: ParsedAPI[] = [];
   const exportedDeclarations = sourceFile.getExportedDeclarations();
+
+  // 제한 모드: 허용목록의 네임스페이스 객체만 파싱하고 즉시 반환
+  const restrictToNamespaces = options?.restrictToNamespaces;
+  if (restrictToNamespaces) {
+    for (const [name, declarations] of exportedDeclarations) {
+      if (!restrictToNamespaces.has(name)) continue;
+      for (const declaration of declarations) {
+        if (declaration.getKind() === SyntaxKind.VariableDeclaration) {
+          const varDecl = declaration.asKind(SyntaxKind.VariableDeclaration);
+          if (varDecl) {
+            apis.push(...parseNamespaceObject(name, varDecl, sourceFile));
+          }
+        }
+      }
+    }
+    return apis;
+  }
 
   // 1. 이벤트 네임스페이스 감지 (addEventListener 패턴)
   const eventNamespaces = detectEventNamespaces(sourceFile);

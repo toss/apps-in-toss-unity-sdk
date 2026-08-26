@@ -121,6 +121,18 @@ logs/
 # 샘플 프로젝트에 빌드 시 스캐폴드되는 SDK 템플릿 사본 (AITTemplateManager.UpdateConfigFileWithMarkers)
 Tests~/E2E/*UnityProject-*/Assets/WebGLTemplates/AITTemplate/BuildConfig~/vite.config.ts
 Tests~/E2E/*UnityProject-*/Assets/WebGLTemplates/AITTemplate/BuildConfig~/granite.config.ts
+# 픽스처의 index.html — Init()이 탈 때마다 AITTemplateManager.MergeHtmlTemplates가 SDK 정본을
+# 베이스로 재작성하므로(AITTemplateManager.cs의 `result = sdkContent`) 추적하면 매번 diff가 난다.
+# 유일한 프로젝트 고유 내용인 USER_BODY_END 튜토리얼 블록은
+# E2EBuildRunner.EnsureTutorialUserBodyEnd()가 빌드 시 주입한다.
+Tests~/E2E/*UnityProject-*/Assets/WebGLTemplates/AITTemplate/index.html
+Tests~/E2E/*UnityProject-*/Assets/WebGLTemplates/AITTemplate/index.html.meta
+# 픽스처의 벤치마크 씬 — E2EBuildRunner.BuildWithSDK()가 매 빌드 삭제 후 재생성하므로
+# (Unity가 fileID를 새로 매겨 매번 100줄 단위 diff가 난다) 추적하지 않는다.
+# 폴더 meta까지 함께 빼야 fresh clone의 빈 폴더에 고아 .meta가 남지 않는다.
+Tests~/E2E/*UnityProject-*/Assets/Scenes/BenchmarkScene.unity
+Tests~/E2E/*UnityProject-*/Assets/Scenes/BenchmarkScene.unity.meta
+Tests~/E2E/*UnityProject-*/Assets/Scenes.meta
 
 # Legacy folders (replaced with ~ suffix versions)
 BuildTemplate/
@@ -182,6 +194,8 @@ Tests~/E2E/benchmark*.log
 Tests~/E2E/temp/
 Tests~/E2E/tests/test-results.json
 Tests~/E2E/tests/e2e-test-results.json
+# perf 하네스 산출물 (버전별로 생성됨)
+Tests~/E2E/tests/perf-results-*.json
 Tests~/E2E/tests/test-results/
 Tests~/E2E/tests/*-screenshot.png
 

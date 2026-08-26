@@ -25,6 +25,13 @@ public class E2EBuildRunner
         EditorUserBuildSettings.connectProfiler = false;
         Debug.Log("✓ Profiler autoconnect disabled (prevents port conflict)");
 
+        // 빌드 전 PlayerSettings 원본 스냅샷.
+        // DoExport도 내부적으로 스냅샷/복원을 하지만, 그 시점은 아래 3단계의 AITConvertCore.Init()이
+        // 이미 PlayerSettings를 바꾼 뒤라 커밋된 원본으로는 돌아가지 않는다 (실측: 픽스처의
+        // webGLExceptionSupport가 커밋값 1에서 3으로 고착돼 ProjectSettings.asset이 계속 dirty였다).
+        // E2E 하네스는 픽스처를 더럽히면 안 되므로 러너가 직접 원본을 들고 있다가 빌드 후 되돌린다.
+        var preBuildPlayerSettings = PlayerSettingsSnapshot.Capture();
+
         // 1. 씬 생성 및 설정
         Debug.Log("[1/5] Creating and setting up benchmark scene...");
         string scenePath = "Assets/Scenes/BenchmarkScene.unity";
@@ -90,14 +97,32 @@ public class E2EBuildRunner
         config.viteHost = GetEnvString("AIT_VITE_HOST", "localhost");
         config.vitePort = GetEnvInt("AIT_VITE_PORT", 5173 + portOffset);
         Debug.Log($"✓ Server config: Granite={config.graniteHost}:{config.granitePort}, Vite={config.viteHost}:{config.vitePort}");
+        // 권한 전체 활성화 - granite.config.ts / bundle.json 의 permissions 배열 생성 경로를 E2E에서 태운다.
+        // AITConfig.asset은 추적하지 않으므로(루트 .gitignore) fresh clone에서는 기본값(전부 false)으로
+        // 생성된다. 여기서 코드로 지정해야 산출물이 픽스처 유무와 무관하게 동일해진다.
+        config.permissionConfig = new AITPermissionConfig
+        {
+            clipboardRead = true,
+            clipboardWrite = true,
+            contacts = true,
+            photos = true,
+            camera = true,
+            geolocation = true
+        };
         EditorUtility.SetDirty(config);
         AssetDatabase.SaveAssets();
         Debug.Log("✓ SDK config updated");
 
         // 3. SDK의 Init 호출
         Debug.Log("[3/5] Initializing SDK...");
+        // Init()이 템플릿 폴더를 통째로 갈아엎지 않도록 index.html을 미리 놓아둔다 (아래 메서드 주석 참조).
+        SeedTemplateIndexHtmlIfMissing();
+
         AITConvertCore.Init();
         Debug.Log("✓ SDK initialized");
+
+        // Init()이 정본 템플릿을 프로젝트에 스캐폴드한 직후에만 주입이 가능하다.
+        EnsureTutorialUserBodyEnd();
 
         // 4. SDK의 빌드 & 패키징 실행
         Debug.Log("[4/5] Building WebGL and packaging with SDK...");
@@ -114,6 +139,13 @@ public class E2EBuildRunner
             profile: config.productionProfile,
             profileName: "E2E Build"
         );
+
+        // 빌드 산출물은 이미 디스크에 기록됐으므로, 여기서 PlayerSettings를 원본으로 되돌려도
+        // 결과에 영향이 없다. EditorApplication.Exit 이후에는 finally가 보장되지 않으므로
+        // 분기 이전에 처리한다.
+        preBuildPlayerSettings.Restore();
+        AssetDatabase.SaveAssets();
+        Debug.Log("✓ PlayerSettings restored to pre-build state");
 
         if (result == AITConvertCore.AITExportError.SUCCEED)
         {
@@ -162,6 +194,102 @@ public class E2EBuildRunner
             Debug.LogError("========================================");
             EditorApplication.Exit(1);
         }
+    }
+
+    // 빌드 커스터마이징 튜토리얼 진입점. e2e-full-pipeline.test.js의 Test 6(confetti)/Test 7(Firebase)이
+    // 이 태그로 번들링된 BuildConfig~/src/main.ts의 실행 결과를 검증한다.
+    private const string TUTORIAL_SCRIPT_TAG = "<script type=\"module\" src=\"./src/main.ts\"></script>";
+
+    /// <summary>
+    /// Init() 전에 프로젝트 템플릿의 index.html 존재를 보장한다.
+    ///
+    /// AITTemplateManager.EnsureWebGLTemplatesExist()는 index.html이 없으면 "전체 복사" 경로를 타면서
+    /// 프로젝트 템플릿 폴더를 Directory.Delete(recursive: true)로 통째로 지운 뒤 SDK 정본을 복사한다.
+    /// 픽스처는 index.html을 추적하지 않으므로(fresh clone에는 없다) 그 경로를 그대로 타면 SDK 정본에는
+    /// 없는 BuildConfig~/src/main.ts — Test 6/7이 검증하는 튜토리얼 진입점 — 까지 함께 삭제된다.
+    ///
+    /// 그래서 정본 index.html만 미리 제자리에 놓아 "이미 존재" 경로(마커 기반 머지)로 유도한다.
+    /// 템플릿 폴더 자체가 없으면 잃을 자산도 없으므로 SDK의 전체 복사에 맡긴다.
+    /// </summary>
+    private static void SeedTemplateIndexHtmlIfMissing()
+    {
+        string templateDir = Path.Combine(Application.dataPath, "WebGLTemplates", "AITTemplate");
+        string indexPath = Path.Combine(templateDir, "index.html");
+
+        if (!Directory.Exists(templateDir) || File.Exists(indexPath))
+        {
+            return;
+        }
+
+        if (!AITPackagePathResolver.TryResolveDirectory(
+                "WebGLTemplates", out string sdkTemplatesPath, typeof(AITConvertCore)))
+        {
+            throw new System.Exception("[E2E] SDK WebGLTemplates 폴더를 찾지 못했습니다.");
+        }
+
+        string sdkIndexHtml = Path.Combine(sdkTemplatesPath, "AITTemplate", "index.html");
+        if (!File.Exists(sdkIndexHtml))
+        {
+            throw new System.Exception($"[E2E] SDK 정본 index.html이 없습니다: {sdkIndexHtml}");
+        }
+
+        File.Copy(sdkIndexHtml, indexPath);
+        Debug.Log($"✓ WebGL template index.html seeded from SDK: {sdkIndexHtml}");
+    }
+
+    /// <summary>
+    /// WebGL 템플릿 index.html의 USER_BODY_END 영역에 튜토리얼 스크립트 태그를 주입한다.
+    ///
+    /// 픽스처의 index.html은 Git 추적 대상이 아니다 — AITTemplateManager.MergeHtmlTemplates가 SDK 정본을
+    /// 베이스(result = sdkContent)로 매번 재작성하므로, 커밋해 두면 Unity를 열 때마다 작업 트리에 diff가
+    /// 쌓인다. 그래서 이 파일에서 유일하게 프로젝트 고유였던 스크립트 태그만 빌드 시 코드로 주입한다.
+    ///
+    /// 주입 후 DoExport 내부에서 Init이 한 번 더 돌지만, 머지는 프로젝트 쪽 USER_BODY_END 영역을
+    /// 마커 포함 통째로 보존하므로(ExtractHtmlUserSection/ReplaceHtmlUserSection) 주입분이 살아남는다.
+    /// </summary>
+    private static void EnsureTutorialUserBodyEnd()
+    {
+        string indexPath = Path.Combine(Application.dataPath, "WebGLTemplates", "AITTemplate", "index.html");
+
+        if (!File.Exists(indexPath))
+        {
+            throw new System.Exception(
+                $"[E2E] WebGL 템플릿 index.html이 없습니다: {indexPath}\n" +
+                "AITConvertCore.Init()이 SDK 정본을 스캐폴드했어야 합니다.");
+        }
+
+        string html = File.ReadAllText(indexPath);
+
+        int startIdx = html.IndexOf(AITTemplateManager.HTML_USER_BODY_END_START);
+        int endIdx = html.IndexOf(AITTemplateManager.HTML_USER_BODY_END_END);
+        int startCommentEnd = startIdx == -1 ? -1 : html.IndexOf("-->", startIdx);
+
+        if (startIdx == -1 || endIdx == -1 || startCommentEnd == -1 || startCommentEnd >= endIdx)
+        {
+            // 조용히 건너뛰면 Test 6/7이 원인 불명으로 깨지므로 빌드 단계에서 즉시 실패시킨다.
+            throw new System.Exception(
+                $"[E2E] index.html에서 USER_BODY_END 마커 쌍을 찾지 못했습니다: {indexPath}\n" +
+                "SDK 정본 템플릿의 마커가 변경/제거되었는지 확인하세요.");
+        }
+
+        int bodyStart = startCommentEnd + "-->".Length;
+        string currentBody = html.Substring(bodyStart, endIdx - bodyStart);
+
+        if (currentBody.Contains(TUTORIAL_SCRIPT_TAG))
+        {
+            Debug.Log("✓ Tutorial script tag already present in WebGL template");
+            return;
+        }
+
+        // Windows 체크아웃(core.autocrlf=true)에서 CRLF가 섞이지 않도록 원본 개행을 따른다.
+        string nl = html.Contains("\r\n") ? "\r\n" : "\n";
+        string newBody =
+            nl + "    <!-- 빌드 커스터마이징 튜토리얼: BuildConfig~/src/main.ts 진입점 로드 -->" +
+            nl + "    " + TUTORIAL_SCRIPT_TAG +
+            nl + "    ";
+
+        File.WriteAllText(indexPath, html.Substring(0, bodyStart) + newBody + html.Substring(endIdx));
+        Debug.Log($"✓ Tutorial script tag injected into WebGL template: {indexPath}");
     }
 
     /// <summary>

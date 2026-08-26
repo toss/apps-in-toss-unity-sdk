@@ -153,10 +153,23 @@ namespace AppsInToss.Editor
             PlayerSettings.SetIl2CppCompilerConfiguration(BuildTargetGroup.WebGL, il2cppCompilerConfiguration);
 #endif
 
+            // 값이 바뀌지 않았으면 되쓰지 않는다.
+            // il2cppCodeGeneration은 ProjectSettings.asset에 `il2cppCodeGeneration: {}`(암묵 기본값)으로
+            // 직렬화돼 있는 경우가 많은데, 같은 값이라도 Set을 호출하면 Unity가 이를 `WebGL: 0`(명시형)으로
+            // 물질화해 파일을 더럽힌다. Production 경로는 AITBuildInitializer가 이 설정을 의도적으로
+            // 건드리지 않으므로(AITBuildInitializer.cs의 "값이 없으면 ... 그대로 둔다"), 여기서 무조건
+            // 되쓰면 그 계약이 깨지고 빌드할 때마다 무의미한 VCS diff가 생긴다.
+            // 값이 실제로 달라진 경우(빠른 빌드의 OptimizeSize 등)에는 그대로 복원된다.
 #if UNITY_2022_2_OR_NEWER
-            PlayerSettings.SetIl2CppCodeGeneration(UnityEditor.Build.NamedBuildTarget.WebGL, il2cppCodeGeneration);
+            if (PlayerSettings.GetIl2CppCodeGeneration(UnityEditor.Build.NamedBuildTarget.WebGL) != il2cppCodeGeneration)
+            {
+                PlayerSettings.SetIl2CppCodeGeneration(UnityEditor.Build.NamedBuildTarget.WebGL, il2cppCodeGeneration);
+            }
 #else
-            EditorUserBuildSettings.il2CppCodeGeneration = il2cppCodeGeneration;
+            if (EditorUserBuildSettings.il2CppCodeGeneration != il2cppCodeGeneration)
+            {
+                EditorUserBuildSettings.il2CppCodeGeneration = il2cppCodeGeneration;
+            }
 #endif
 
             PlayerSettings.SetStackTraceLogType(LogType.Error,     stackTraceLogTypeError);

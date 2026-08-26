@@ -12,7 +12,8 @@ ait-build/
 webgl/
 
 # WebGL Templates: SDK 자동 생성 부분(Runtime/, TemplateData/, loading.html)은 빌드 시 SDK로 덮어쓰므로 무시.
-# 단, AITTemplate/index.html(USER_* 마커 영역) 와 AITTemplate/BuildConfig~ 는 프로젝트 자산이므로 커밋.
+# index.html도 SDK가 재작성하므로 루트 .gitignore에서 무시한다 (USER_BODY_END 블록은 E2EBuildRunner가 빌드 시 주입).
+# 단, AITTemplate/BuildConfig~ 는 프로젝트 자산이므로 커밋.
 Assets/WebGLTemplates/AITTemplate/Runtime/
 Assets/WebGLTemplates/AITTemplate/Runtime.meta
 Assets/WebGLTemplates/AITTemplate/TemplateData/

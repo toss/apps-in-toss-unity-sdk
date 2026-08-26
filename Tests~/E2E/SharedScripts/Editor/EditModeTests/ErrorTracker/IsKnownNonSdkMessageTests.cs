@@ -100,6 +100,34 @@ public class IsKnownNonSdkMessageTests
     }
 
     [Test]
+    public void ExternalAitCloudSavePrefix_IdentifyKeyMissing_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-19D — 사용자 게임이 AIT.Storage/GetAnonymousKey 위에 직접
+        // 구현한 Cloud Save 래퍼가 SDK와 동일한 "[AIT ...]" 컨벤션으로 출력하는 정상 폴백 로그.
+        // SDK 코드에는 Cloud Save 기능 자체가 없으므로(grep 확인) "[AIT Cloud Save]" 문자열이
+        // 존재하지 않는다. ExternalAitPrefixes로 AitKeywords 가드보다 먼저 매칭되어 노이즈로 드롭된다.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT Cloud Save] 게임 사용자 식별키를 받지 못했습니다. 로컬 저장으로 계속합니다."));
+    }
+
+    [Test]
+    public void ExternalAitCloudSavePrefix_WithUnityWarningPrefix_ReturnsTrue()
+    {
+        // 실제 Sentry 이슈 제목은 "UnityWarning: [AIT Cloud Save] ..." 형태로 캡처된다.
+        // Unity 로그 핸들러가 덧붙이는 "UnityWarning:" prefix가 있어도 IndexOf 부분 매칭이므로 동일하게 드롭된다.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "UnityWarning: [AIT Cloud Save] 게임 사용자 식별키를 받지 못했습니다. 로컬 저장으로 계속합니다."));
+    }
+
+    [Test]
+    public void RegularAitPrefix_NotMatchingCloudSave_StillProtected()
+    {
+        // "[AIT Cloud Save]"가 아닌 일반 [AIT] prefix는 SDK 보호 가드로 필터링되지 않아야 함
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] Cloud Save initialized"));
+    }
+
+    [Test]
     public void ExternalAitPromotionPrefix_CaptureEntryPointSkipped_ReturnsTrue()
     {
         // Sentry SDK-S1 — 사용자 게임의 프로모션 로직이 <color=Yellow>AITPromotion</color> tag로 출력하는 로그.

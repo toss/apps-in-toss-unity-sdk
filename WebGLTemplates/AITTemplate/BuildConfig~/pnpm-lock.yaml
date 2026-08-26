@@ -659,12 +659,12 @@ packages:
     resolution: {integrity: sha512-1yD6RmLI1XBfxugvORwlck6f75tYL+iR0jqwsOrOxMZyGYqUuDhJ0l4AXdO1iX/FTs9cBAMEk1gWSEx1kSbylg==}
     engines: {node: '>=6'}
 
-  flow-estree@0.328.0:
-    resolution: {integrity: sha512-uMB3dC4nfZYn+dd7/PYkyAK1mqBR4TJ4TWRdOjubpb/ObrLvPFdFSmMTq55fqttCCTygQ4NtD1Zdd+wcjC5t0g==}
+  flow-estree@0.329.0:
+    resolution: {integrity: sha512-Stv2+LumW7n6DUrV+KlqB4HikeyQtLFUpd9iVexISblopKiYFjNYMmTGUcN5at8NKEmkhjAV5UGps3Z8QqK1lw==}
     engines: {node: '>=18'}
 
-  flow-parser@0.328.0:
-    resolution: {integrity: sha512-F+Ik2Of7ndl2FyPmZ77NrhbZp9lYjIsreDXeq4fo0sjxa3SIFv48QAszBqvPeMMzmw7JzqySJUxGR8CSD7EdXw==}
+  flow-parser@0.329.0:
+    resolution: {integrity: sha512-skMH3HUOF3+JSlIKt4F/LITfzMGEPpJ0S+Gu7HcmxOjWeYEO5PUZJi5WpLw+L4MZaNcMEkzUtoN+M2fAbiutWA==}
     engines: {node: '>=0.4.0'}
 
   fsevents@2.3.3:
@@ -1646,11 +1646,11 @@ snapshots:
     dependencies:
       locate-path: 3.0.0
 
-  flow-estree@0.328.0: {}
+  flow-estree@0.329.0: {}
 
-  flow-parser@0.328.0:
+  flow-parser@0.329.0:
     dependencies:
-      flow-estree: 0.328.0
+      flow-estree: 0.329.0
 
   fsevents@2.3.3:
     optional: true
@@ -1685,7 +1685,7 @@ snapshots:
       '@babel/preset-flow': 7.29.7(@babel/core@7.29.7)
       '@babel/preset-typescript': 7.29.7(@babel/core@7.29.7)
       '@babel/register': 7.29.7(@babel/core@7.29.7)
-      flow-parser: 0.328.0
+      flow-parser: 0.329.0
       graceful-fs: 4.2.11
       neo-async: 2.6.2
       picocolors: 1.1.1

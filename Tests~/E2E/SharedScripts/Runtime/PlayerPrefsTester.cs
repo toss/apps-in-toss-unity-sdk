@@ -103,6 +103,7 @@ public class PlayerPrefsTester : MonoBehaviour
         public int v = 1;
         public string step = "IDLE";
         public string unity = "";
+        public string url = "";
         public long startedAt;
         public int reloadCount;
         public string abort = "";
@@ -134,6 +135,9 @@ public class PlayerPrefsTester : MonoBehaviour
     private Text _probeProgressText;
     private bool _probeChainRunning = false;
     private ProbeJournal _journal = new ProbeJournal { step = "IDLE", entries = new List<ProbeJournalEntry>() };
+
+    /// <summary>S2에서 hidden 이벤트 미발화 경고를 이미 한 번 띄웠는지(같은 세션 한정, 저널에는 영속화하지 않음).</summary>
+    private bool _probeBgWarned = false;
 
     /// <summary>reload를 이 횟수 넘게 반복하면 버그로 간주하고 DONE으로 강제 종료합니다(무한 reload 방지).</summary>
     private const int MaxReloadCount = 8;
@@ -569,8 +573,8 @@ public class PlayerPrefsTester : MonoBehaviour
     // =====================================================
     //
     // 상태표(요약):
-    //   IDLE --(클릭)--> S0,S1 실행 --> S2 대기
-    //   S2   --(클릭)--> S2 실행     --> S3 대기
+    //   IDLE --(클릭)--> S0(정리+baseline),S1 실행 --> S2 대기
+    //   S2   --(클릭)--> hidden 이벤트 없으면 1회 경고 후 재확인 요구, 있으면(또는 재확인 후) S2 실행 --> S3 대기
     //   S3   --(클릭)--> S3,S4 실행  --> S5 대기
     //   S5   --(클릭)--> S5,S6,S7 실행 --> reload --> S8 (자동 재개)
     //   S8   --(자동)--> S8,S9 실행  --> reload --> S10 (자동 재개)
@@ -615,6 +619,7 @@ public class PlayerPrefsTester : MonoBehaviour
     {
         StopAllCoroutines();
         _probeChainRunning = false;
+        _probeBgWarned = false;
         _journal = new ProbeJournal { step = "IDLE", entries = new List<ProbeJournalEntry>() };
         ClearJournalRaw();
         if (_probeProgressText != null) _probeProgressText.text = "";
@@ -671,10 +676,13 @@ public class PlayerPrefsTester : MonoBehaviour
         {
             step = "IDLE",
             unity = Application.unityVersion,
+            url = Application.absoluteURL ?? "",
             startedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
             reloadCount = 0,
             entries = new List<ProbeJournalEntry>()
         };
+        // 새 진단 실행이므로 이전 실행에서 남은 백그라운드 경고 상태도 초기화
+        _probeBgWarned = false;
     }
 
     private void StartProbeChain(IEnumerator chain)
@@ -719,7 +727,9 @@ public class PlayerPrefsTester : MonoBehaviour
                 break;
             case "S2":
                 btnText = "계속 (백그라운드 다녀온 뒤)";
-                guide = "홈 버튼으로 앱을 나갔다가 5초 뒤 돌아와서 [계속]을 누르세요.";
+                guide = _probeBgWarned
+                    ? "⚠️ hidden 이벤트가 잡히지 않았습니다. 정말 홈 버튼으로 앱을 나갔다 오셨다면 [계속]을 한 번 더 누르세요 (이벤트 미발화 자체도 측정 대상입니다)."
+                    : "홈 버튼으로 앱을 나갔다가 5초 뒤 돌아와서 [계속]을 누르세요.";
                 break;
             case "S3":
                 btnText = "계속 (앱 재실행 뒤)";
@@ -862,6 +872,7 @@ public class PlayerPrefsTester : MonoBehaviour
         sb.Append("\"v\":1,");
         sb.Append("\"step\":\"").Append(JsonEscape(_journal.step)).Append("\",");
         sb.Append("\"unity\":\"").Append(JsonEscape(_journal.unity)).Append("\",");
+        sb.Append("\"url\":\"").Append(JsonEscape(_journal.url)).Append("\",");
         sb.Append("\"startedAt\":").Append(_journal.startedAt).Append(',');
         sb.Append("\"reloadCount\":").Append(_journal.reloadCount);
 
@@ -989,7 +1000,15 @@ public class PlayerPrefsTester : MonoBehaviour
 
     private void DoS0Action()
     {
-        AddEntry("S0", "baseline get", GetPPValueForLog());
+        // 이전 수동 테스트나 다른 빌드가 같은 미니앱 Storage에 남긴 잔여값이 있으면
+        // S3의 V7/V8 판정이 무의미해지므로, 오염 여부를 먼저 기록한 뒤 반드시 정리한다.
+        AddEntry("S0", "baseline get (정리 전)", GetPPValueForLog());
+
+        PlayerPrefs.DeleteKey(_manualKey);
+        PlayerPrefs.Save();
+        AddEntry("S0", "cleanup delete+save", $"{_manualKey} 삭제");
+
+        AddEntry("S0", "baseline get (정리 후, 빈 값이어야 정상)", GetPPValueForLog());
         AddEntry("S0", "baseline status", GetStatusJson());
     }
 
@@ -999,12 +1018,6 @@ public class PlayerPrefsTester : MonoBehaviour
         PlayerPrefs.SetString(_manualKey, _manualValue);
         AddEntry("S1", "set (no save)", $"{_manualKey}={_manualValue}");
         AddEntry("S1", "status", GetStatusJson());
-    }
-
-    private void DoS2Action()
-    {
-        AddEntry("S2", "vislog", GetVisibilityLogJsonSafe());
-        AddEntry("S2", "status", GetStatusJson());
     }
 
     private void DoS3Action()
@@ -1093,10 +1106,26 @@ public class PlayerPrefsTester : MonoBehaviour
 
     private IEnumerator Chain_S2()
     {
-        DoS2Action();
+        // hidden 이벤트가 실기기에서 발화하지 않는 것 자체가 측정 대상 결함이므로,
+        // 이벤트가 없다고 진행을 "막지"는 않는다 — 대신 한 번 더 확인만 요구한다.
+        string vislog = GetVisibilityLogJsonSafe();
+        bool hasHidden = vislog != null && vislog.Contains("hidden");
+
+        if (!hasHidden)
+        {
+            if (!_probeBgWarned)
+            {
+                _probeBgWarned = true;
+                yield break; // step은 S2 유지, RefreshProbeUI가 경고 문구로 갱신하고 버튼을 다시 활성화함
+            }
+
+            AddEntry("S2", "hidden 이벤트 미발화 상태로 사용자 확인 후 진행", "no-hidden-confirmed");
+        }
+
+        AddEntry("S2", "vislog", vislog);
+        AddEntry("S2", "status", GetStatusJson());
         _journal.step = "S3";
         SaveJournal();
-        yield break;
     }
 
     private IEnumerator Chain_S3()

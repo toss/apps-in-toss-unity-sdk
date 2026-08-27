@@ -418,13 +418,19 @@ mergeInto(LibraryManager.library, {
             }
 
             // 5) 순수 DOM 대조군 바 (화면 상단). Unity 캔버스와 무관한 입력 경로다
+            // 상단 고정이지만 노치/상태바 아래로 내려야 한다. safe-area-inset-top을 padding에
+            // 더하지 않으면 노치에 가려 탭 자체가 불가능하다(실기기에서 확인됨).
+            // env()를 모르는 환경에서도 최소 44px은 확보되도록 max()로 바닥을 깔아둔다.
             var bar = document.createElement('div');
             bar.id = '__ait_kb_probe__';
             bar.setAttribute('style',
                 'position:fixed;top:0;left:0;right:0;z-index:2147483000;' +
                 'background:#111827;color:#fff;box-sizing:border-box;' +
                 'font:12px -apple-system,BlinkMacSystemFont,sans-serif;' +
-                'padding:6px 8px;display:flex;gap:6px;align-items:center;');
+                'padding:6px 8px;padding-top:max(44px, calc(env(safe-area-inset-top, 0px) + 6px));' +
+                'padding-left:max(8px, env(safe-area-inset-left, 0px));' +
+                'padding-right:max(8px, env(safe-area-inset-right, 0px));' +
+                'display:flex;gap:6px;align-items:center;');
 
             var label = document.createElement('span');
             label.textContent = 'DOM 대조군';
@@ -474,7 +480,9 @@ mergeInto(LibraryManager.library, {
                     ov.id = '__ait_kb_probe_overlay__';
                     ov.setAttribute('style',
                         'position:fixed;inset:0;z-index:2147483646;background:#111827;' +
-                        'display:flex;flex-direction:column;padding:10px;box-sizing:border-box;gap:8px;');
+                        'display:flex;flex-direction:column;padding:10px;box-sizing:border-box;gap:8px;' +
+                        'padding-top:max(44px, calc(env(safe-area-inset-top, 0px) + 10px));' +
+                        'padding-bottom:max(10px, calc(env(safe-area-inset-bottom, 0px) + 10px));');
 
                     var ta = document.createElement('textarea');
                     ta.id = '__ait_kb_probe_text__';

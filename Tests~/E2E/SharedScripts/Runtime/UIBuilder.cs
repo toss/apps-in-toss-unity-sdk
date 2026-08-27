@@ -99,8 +99,22 @@ public static class UIBuilder
         if (EventSystem.current == null)
         {
             var esGo = new GameObject("EventSystem");
-            esGo.AddComponent<EventSystem>();
+            var eventSystem = esGo.AddComponent<EventSystem>();
             esGo.AddComponent<StandaloneInputModule>();
+
+            // 고해상도 화면에서 드래그 판정 임계값을 손가락 크기에 맞게 키운다.
+            //
+            // 기본값 10은 프레임버퍼 픽셀 기준이라 devicePixelRatio가 3인 기기에서는 CSS 픽셀로
+            // 3픽셀 남짓, 1mm도 안 되는 이동이다. ScrollRect 안에 있는 InputField를 탭하면
+            // 손가락이 그만큼은 반드시 움직이므로 제스처가 스크롤 드래그로 넘어가고 InputField는
+            // 클릭을 받지 못한다 — 실기기에서 스크롤 영역 안의 입력칸만 소프트 키보드가 안 뜨는
+            // 원인이었다. 스크롤바 바깥에 있는 검색바는 같은 InputField인데도 정상 동작한다.
+            //
+            // 160dpi를 1x로 보고 화면 밀도에 비례해 키우되, 기본값 아래로는 내려가지 않게 한다.
+            float dpi = Screen.dpi > 0f ? Screen.dpi : 160f;
+            eventSystem.pixelDragThreshold = Mathf.Max(
+                eventSystem.pixelDragThreshold,
+                Mathf.RoundToInt(eventSystem.pixelDragThreshold * dpi / 160f));
         }
 
         return canvas;

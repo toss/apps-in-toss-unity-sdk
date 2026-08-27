@@ -150,6 +150,15 @@ public class PlayerPrefsTester : MonoBehaviour
     private Button _probeButton;
     private Text _probeGuideText;
     private Text _probeProgressText;
+
+    /// <summary>
+    /// "진단 초기화" 버튼. 다른 수동 UI와 달리 step(S2/S3/S5 사람 대기 지점)이 아니라
+    /// _probeChainRunning 기준으로 잠근다 — 60초 대기/persist 폴링처럼 코루틴이 실제로 도는
+    /// 동안(오조작 시 20분짜리 실측을 통째로 날림)에만 잠그고, 사람이 백그라운드 전환/재실행을
+    /// 기다리는 지점에서는 탈출구로 계속 눌리게 둔다.
+    /// </summary>
+    private Button _resetButton;
+
     private bool _probeChainRunning = false;
     private ProbeJournal _journal = new ProbeJournal { step = "IDLE", entries = new List<ProbeJournalEntry>() };
 
@@ -310,7 +319,7 @@ public class PlayerPrefsTester : MonoBehaviour
         _probeProgressText = UIBuilder.CreateText(section, "",
             UIBuilder.Theme.FontTiny, UIBuilder.Theme.TextAccent);
         _probeProgressText.horizontalOverflow = HorizontalWrapMode.Wrap;
-        UIBuilder.CreateButton(section, "진단 초기화", onClick: OnProbeResetClick, style: UIBuilder.ButtonStyle.Danger);
+        _resetButton = UIBuilder.CreateButton(section, "진단 초기화", onClick: OnProbeResetClick, style: UIBuilder.ButtonStyle.Danger);
 
         _sessionStatusText = UIBuilder.CreateText(section, "세션 경과: 0초",
             UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary);
@@ -706,6 +715,9 @@ public class PlayerPrefsTester : MonoBehaviour
     {
         if (_probeChainRunning) return;
         _probeChainRunning = true;
+        // "진단 초기화" 잠금은 _probeChainRunning 기준이라 다음 RefreshProbeUI() 호출(체인 종료
+        // 시점)까지 기다리면 늦다 — 코루틴이 실행되는 즉시(60초 대기/폴링 시작 전) 잠근다.
+        RefreshOtherUILock();
 
         if (_probeButton != null)
         {
@@ -780,13 +792,25 @@ public class PlayerPrefsTester : MonoBehaviour
         _probeButton.interactable = interactable;
         if (_probeGuideText != null) _probeGuideText.text = guide;
 
-        // 자동 진단이 진행 중(IDLE/DONE이 아닌 모든 대기·실행 지점)인 동안에는 기존 수동 UI를 잠근다.
-        // 특히 L3를 실수로 미리 켜면 저널에 흔적이 안 남아 사후 판별이 불가능해지므로 반드시 잠가야 한다.
+        RefreshOtherUILock();
+    }
+
+    /// <summary>
+    /// 자동 진단이 진행 중(IDLE/DONE이 아닌 모든 대기·실행 지점)인 동안에는 기존 수동 UI를 잠근다.
+    /// 특히 L3를 실수로 미리 켜면 저널에 흔적이 안 남아 사후 판별이 불가능해지므로 반드시 잠가야 한다.
+    /// </summary>
+    private void RefreshOtherUILock()
+    {
         bool runInProgress = _journal.step != "IDLE" && _journal.step != "DONE";
         SetOtherUIInteractable(!runInProgress);
     }
 
-    /// <summary>자동 진단 하니스 진행 중 기존 수동 버튼/입력칸을 잠그거나 풉니다.</summary>
+    /// <summary>
+    /// 자동 진단 하니스 진행 중 기존 수동 버튼/입력칸을 잠그거나 풉니다.
+    /// "진단 초기화"는 다른 버튼들과 기준이 다르다 — step(S2/S3/S5 사람 대기 지점) 대신
+    /// _probeChainRunning으로 판단해, 코루틴이 실제로 도는 동안(60초 대기/persist 폴링 등)에만
+    /// 잠그고 사람이 백그라운드 전환/재실행을 기다리는 지점에서는 탈출구로 남겨둔다.
+    /// </summary>
     private void SetOtherUIInteractable(bool interactable)
     {
         if (_manualSetButton != null) _manualSetButton.interactable = interactable;
@@ -800,6 +824,8 @@ public class PlayerPrefsTester : MonoBehaviour
         if (_disableL3Button != null) _disableL3Button.interactable = interactable;
         if (_keyInput != null) _keyInput.interactable = interactable;
         if (_valueInput != null) _valueInput.interactable = interactable;
+
+        if (_resetButton != null) _resetButton.interactable = !_probeChainRunning;
     }
 
     // ─── 저널 entries 기록 헬퍼 ───
@@ -1161,13 +1187,18 @@ public class PlayerPrefsTester : MonoBehaviour
 
     /// <summary>
     /// ait 모드 세션 전용. Set+Save 직후 persist(callOrig/pushScoped)가 실제로 커밋됐는지
-    /// 200ms 간격으로 폴링합니다. persistCount가 baseline보다 늘거나 persistIdle()==true가
-    /// 되면 정착으로 간주하고, 최대 10초까지만 기다립니다.
-    /// ait-playerprefs.js의 코드 주석대로 persistCount 증가만으로는 "마지막 쓰기"가 커밋됐다는
-    /// 보장이 없어(coalescing gap) 두 신호를 함께 봅니다. 타임아웃이어도 진단을 막지 않고
-    /// settled/timeout 여부와 경과 시간, 최종 persistCount를 저널에 남깁니다.
-    /// vanilla/L3 세션에서는 activeMount가 없어 이 신호들이 항상 무의미하므로 호출하지 않습니다
-    /// (해당 구간은 고정 대기를 사용합니다).
+    /// 200ms 간격으로 폴링합니다. persistCount가 baseline보다 늘고 persistIdle()==true도
+    /// 함께 될 때만 정착으로 간주하며, 최대 10초까지만 기다립니다.
+    /// 반드시 AND여야 한다 — count 증가만으로는 부족하다(이번 Save 이전에 이미 시작된 persist가
+    /// 뒤늦게 끝나도 count는 오르지만 이번 쓰기는 그 수집에 없다). idle만으로도 부족하다
+    /// (첫 폴링 틱 시점엔 Unity가 아직 디바운스 타이머를 걸지 않아 idle=true가 잡힐 수 있는데,
+    /// 그러면 이번 Save가 유발한 pushScoped가 시작도 하기 전에 정착으로 오판한다). 이 레이스는
+    /// 저장소 기존 E2E(e2e-full-pipeline.test.js 9-4)가 이미 실측으로 겪고 AND로 고쳐놓은
+    /// 결함과 동일하다. ait-playerprefs.js의 코드 주석대로 persistCount 증가만으로는
+    /// "마지막 쓰기"가 커밋됐다는 보장이 없어(coalescing gap) 두 신호를 함께 봐야 한다.
+    /// 타임아웃이어도 진단을 막지 않고 settled/timeout 여부와 경과 시간, 최종 persistCount를
+    /// 저널에 남깁니다. vanilla/L3 세션에서는 activeMount가 없어 이 신호들이 항상 무의미하므로
+    /// 호출하지 않습니다(해당 구간은 고정 대기를 사용합니다).
     /// </summary>
     private IEnumerator PersistSettleRoutine(string stepTag, int baselinePersistCount)
     {
@@ -1187,7 +1218,7 @@ public class PlayerPrefsTester : MonoBehaviour
             }
 
             lastCount = count;
-            if (count > baselinePersistCount || idle)
+            if (count > baselinePersistCount && idle)
             {
                 settled = true;
                 break;
@@ -1278,11 +1309,23 @@ public class PlayerPrefsTester : MonoBehaviour
         string value = StepValue("S7");
         PlayerPrefs.SetString(_manualKey, value);
         PlayerPrefs.Save();
-        AddEntry("S7", "set+save (reload#1 전)", $"{_manualKey}={value}");
+        AddEntry("S7", "set+save (reload#1 전, 1차)", $"{_manualKey}={value}");
 
-        // ait 모드: persistCount 증가 또는 persistIdle()==true를 최대 10초까지 폴링해
-        // Save() 직후 곧바로 reload하는 경쟁 상태(문서 주석에 명시된 위험)를 완화한다.
+        // ait 모드: persistCount 증가와 persistIdle()==true가 함께 될 때까지 최대 10초까지
+        // 폴링해 Save() 직후 곧바로 reload하는 경쟁 상태(문서 주석에 명시된 위험)를 완화한다.
         yield return PersistSettleRoutine("S7", baselinePersistCount);
+
+        // 2021.3 1-persist 지연 보정. 저장소 기존 E2E(e2e-full-pipeline.test.js 9-4,
+        // 커밋 5d07a2a3)가 이미 실측으로 겪은 순정 Unity 2021.3 동작이다 — Save()가 유발한
+        // persist는 마지막 파일 flush "이전" 상태를 수집하고, 신선한 내용은 "다음" persist에서야
+        // 도달한다. 고정 대기를 늘려도 해결되지 않으므로 같은 페이로드로 한 번 더 Save를
+        // 트리거해 후속 persist를 결정적으로 강제한다.
+        TryGetPersistSettleInfo(out int baselinePersistCount2, out _);
+        PlayerPrefs.SetString(_manualKey, value);
+        PlayerPrefs.Save();
+        AddEntry("S7", "2차 set+save (1-persist 지연 보정)", $"{_manualKey}={value}");
+
+        yield return PersistSettleRoutine("S7", baselinePersistCount2);
 
         // 노화 세션이 reload로 소멸하기 전에 status를 찍는다(수정 A).
         // collectFallbackCount는 IIFE 지역 변수라 persist 되지 않고 reload할 때마다 0으로
@@ -1315,11 +1358,20 @@ public class PlayerPrefsTester : MonoBehaviour
         string value = StepValue("S11");
         PlayerPrefs.SetString(_manualKey, value);
         PlayerPrefs.Save();
-        AddEntry("S11", "set+save (reload#3 전, vanilla 모드)", $"{_manualKey}={value}");
+        AddEntry("S11", "set+save (reload#3 전, vanilla 모드, 1차)", $"{_manualKey}={value}");
 
         // vanilla/L3 세션은 activeMount가 마운트 트랩 내부에서만 할당되는데 이 트랩이 아예
         // 설치되지 않으므로 persistCount/persistIdle()이 항상 무의미하다(폴링 불가) —
         // 대신 원본 syncfs 콜백이 끝날 시간을 고정으로 확보한다.
+        yield return new WaitForSecondsRealtime(1.5f);
+
+        // 2021.3 1-persist 지연 보정(수정 G). 이 워크어라운드는 우리 레이어와 무관한 순정
+        // Unity 2021.3 동작이라 vanilla/L3 모드에도 그대로 적용된다 — 폴링이 불가능하므로
+        // "기다리는" 대신 같은 페이로드로 한 번 더 Save를 트리거해 후속 persist를 강제한다.
+        PlayerPrefs.SetString(_manualKey, value);
+        PlayerPrefs.Save();
+        AddEntry("S11", "2차 set+save (1-persist 지연 보정)", $"{_manualKey}={value}");
+
         yield return new WaitForSecondsRealtime(3f);
 
         AddEntry("S11", "status (vanilla, reload#3 전 고정 대기 후)", GetStatusJson());

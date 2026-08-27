@@ -64,6 +64,10 @@ public class PlayerPrefsTester : MonoBehaviour
     /// <summary>최종 진단 저널 JSON 문자열을 콘솔 로그 + 클립보드 복사 시도 + 화면 오버레이로 노출합니다.</summary>
     [DllImport("__Internal")]
     private static extern void PP_EmitResult(string str);
+
+    /// <summary>persist 정착 폴링 전용 경량 조회. "&lt;persistCount&gt;:&lt;idle 0|1&gt;" 형식 문자열을 반환합니다.</summary>
+    [DllImport("__Internal")]
+    private static extern string PP_GetPersistSettleInfo();
 #endif
 
     [Serializable]
@@ -122,6 +126,19 @@ public class PlayerPrefsTester : MonoBehaviour
     private Text _l3StatusText;
     private float _lastSessionDisplayUpdate = -1f;
     private bool _sizeProbeRunning = false;
+
+    // ─── 자동 진단 하니스 실행 중 잠가야 하는 기존 수동 UI 참조 ───
+    // 자동 체인이 도는 동안 이 버튼들이나 Key/Value 입력칸이 그대로 눌리면(특히 L3를 실수로
+    // 미리 켜면) 저널에 아무 흔적도 안 남긴 채 실측 세션 전체가 오염될 수 있어 잠가야 한다.
+    private Button _manualSetButton;
+    private Button _manualGetButton;
+    private Button _manualSetNoSaveButton;
+    private Button _sizeProbeButton;
+    private Button _diagStatusButton;
+    private Button _backgroundLogButton;
+    private Button _reloadButton;
+    private Button _enableL3Button;
+    private Button _disableL3Button;
 
     /// <summary>Storage 크기 프로브 스윕 대상 크기(바이트). 이 값들만으로 어디까지 되는지 확인합니다.</summary>
     private static readonly int[] SizeProbeBytes = { 16 * 1024, 64 * 1024, 128 * 1024, 256 * 1024, 512 * 1024, 1024 * 1024 };
@@ -271,9 +288,9 @@ public class PlayerPrefsTester : MonoBehaviour
         UIBuilder.SetLayout(_valueInput.gameObject, flexibleWidth: 1);
 
         // 액션 버튼
-        UIBuilder.CreateButton(section, "Set + Save", onClick: OnManualSetClick);
-        UIBuilder.CreateButton(section, "Get", onClick: OnManualGetClick);
-        UIBuilder.CreateButton(section, "Set (Save 없음)", onClick: OnManualSetNoSaveClick);
+        _manualSetButton = UIBuilder.CreateButton(section, "Set + Save", onClick: OnManualSetClick);
+        _manualGetButton = UIBuilder.CreateButton(section, "Get", onClick: OnManualGetClick);
+        _manualSetNoSaveButton = UIBuilder.CreateButton(section, "Set (Save 없음)", onClick: OnManualSetNoSaveClick);
 
         // 결과 표시
         _resultText = UIBuilder.CreateText(section, "",
@@ -298,20 +315,20 @@ public class PlayerPrefsTester : MonoBehaviour
         _sessionStatusText = UIBuilder.CreateText(section, "세션 경과: 0초",
             UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary);
 
-        UIBuilder.CreateButton(section, "Storage 크기 프로브", onClick: OnSizeProbeClick);
-        UIBuilder.CreateButton(section, "영속화 status", onClick: OnDiagnosticsStatusClick);
-        UIBuilder.CreateButton(section, "백그라운드 로그", onClick: OnBackgroundLogClick);
+        _sizeProbeButton = UIBuilder.CreateButton(section, "Storage 크기 프로브", onClick: OnSizeProbeClick);
+        _diagStatusButton = UIBuilder.CreateButton(section, "영속화 status", onClick: OnDiagnosticsStatusClick);
+        _backgroundLogButton = UIBuilder.CreateButton(section, "백그라운드 로그", onClick: OnBackgroundLogClick);
 
         UIBuilder.CreateText(section,
             "Reload: 세션을 유지한 채 페이지만 새로고침합니다. 미니앱을 껐다 다시 열면 새 세션이라 L3 플래그가 초기화되므로, L3 시나리오의 reload는 반드시 이 버튼으로 하세요.",
             UIBuilder.Theme.FontTiny, UIBuilder.Theme.TextSecondary);
-        UIBuilder.CreateButton(section, "Reload (세션 유지 새로고침)", onClick: OnReloadClick);
+        _reloadButton = UIBuilder.CreateButton(section, "Reload (세션 유지 새로고침)", onClick: OnReloadClick);
 
         UIBuilder.CreateText(section,
             "L3: 다음 reload 후 이 탭 세션 동안 앱인토스 Storage 레이어를 끄고 순정 IndexedDB 모드로 동작시킵니다.",
             UIBuilder.Theme.FontTiny, UIBuilder.Theme.TextSecondary);
-        UIBuilder.CreateButton(section, "다음 reload부터 레이어 끄기(L3)", onClick: OnEnableL3Click);
-        UIBuilder.CreateButton(section, "L3 해제", onClick: OnDisableL3Click);
+        _enableL3Button = UIBuilder.CreateButton(section, "다음 reload부터 레이어 끄기(L3)", onClick: OnEnableL3Click);
+        _disableL3Button = UIBuilder.CreateButton(section, "L3 해제", onClick: OnDisableL3Click);
         _l3StatusText = UIBuilder.CreateText(section, "L3 상태: (미조회)",
             UIBuilder.Theme.FontTiny, UIBuilder.Theme.TextSecondary);
 
@@ -416,11 +433,11 @@ public class PlayerPrefsTester : MonoBehaviour
                 string payload = BuildProbePayload(size);
 
                 var setSw = System.Diagnostics.Stopwatch.StartNew();
-                await AIT.StorageSetItem(SizeProbeKey, payload, timeoutMs: 30000);
+                await AIT.StorageSetItem(SizeProbeKey, payload, timeoutMs: 10000);
                 setSw.Stop();
 
                 var getSw = System.Diagnostics.Stopwatch.StartNew();
-                string readBack = await AIT.StorageGetItem(SizeProbeKey, timeoutMs: 30000);
+                string readBack = await AIT.StorageGetItem(SizeProbeKey, timeoutMs: 10000);
                 getSw.Stop();
 
                 bool ok = readBack != null && readBack.Length == payload.Length && string.Equals(readBack, payload, StringComparison.Ordinal);
@@ -438,7 +455,7 @@ public class PlayerPrefsTester : MonoBehaviour
 
         try
         {
-            await AIT.StorageRemoveItem(SizeProbeKey, timeoutMs: 30000);
+            await AIT.StorageRemoveItem(SizeProbeKey, timeoutMs: 10000);
         }
         catch (Exception e)
         {
@@ -762,6 +779,27 @@ public class PlayerPrefsTester : MonoBehaviour
         if (label != null) label.text = btnText;
         _probeButton.interactable = interactable;
         if (_probeGuideText != null) _probeGuideText.text = guide;
+
+        // 자동 진단이 진행 중(IDLE/DONE이 아닌 모든 대기·실행 지점)인 동안에는 기존 수동 UI를 잠근다.
+        // 특히 L3를 실수로 미리 켜면 저널에 흔적이 안 남아 사후 판별이 불가능해지므로 반드시 잠가야 한다.
+        bool runInProgress = _journal.step != "IDLE" && _journal.step != "DONE";
+        SetOtherUIInteractable(!runInProgress);
+    }
+
+    /// <summary>자동 진단 하니스 진행 중 기존 수동 버튼/입력칸을 잠그거나 풉니다.</summary>
+    private void SetOtherUIInteractable(bool interactable)
+    {
+        if (_manualSetButton != null) _manualSetButton.interactable = interactable;
+        if (_manualGetButton != null) _manualGetButton.interactable = interactable;
+        if (_manualSetNoSaveButton != null) _manualSetNoSaveButton.interactable = interactable;
+        if (_sizeProbeButton != null) _sizeProbeButton.interactable = interactable;
+        if (_diagStatusButton != null) _diagStatusButton.interactable = interactable;
+        if (_backgroundLogButton != null) _backgroundLogButton.interactable = interactable;
+        if (_reloadButton != null) _reloadButton.interactable = interactable;
+        if (_enableL3Button != null) _enableL3Button.interactable = interactable;
+        if (_disableL3Button != null) _disableL3Button.interactable = interactable;
+        if (_keyInput != null) _keyInput.interactable = interactable;
+        if (_valueInput != null) _valueInput.interactable = interactable;
     }
 
     // ─── 저널 entries 기록 헬퍼 ───
@@ -784,6 +822,17 @@ public class PlayerPrefsTester : MonoBehaviour
         string v = PlayerPrefs.GetString(_manualKey, "");
         return string.IsNullOrEmpty(v) ? "<빈값>" : v;
     }
+
+    /// <summary>
+    /// 단계별로 겹치지 않는 고유 마커 값을 만듭니다.
+    /// _manualValue가 고정값이면 S1/S4/S7/S11의 쓰기가 전부 같은 문자열이 되어 "이번 단계 쓰기가
+    /// 살아남음"과 "이전 단계(또는 이전 세션)의 잔여값"을 구분할 수 없습니다. 게다가 ait 모드의
+    /// persist는 항상 순정 /idbfs에도 같은 값을 미러링하고 L3/vanilla 세션은 그 미러를 그대로
+    /// 읽으므로, 단계 태그+타임스탬프를 붙여 각 쓰기를 유일하게 만들어야 사후 문자열 비교로
+    /// 정확히 어느 단계의 값이 살아남았는지 판별할 수 있습니다.
+    /// </summary>
+    private string StepValue(string step) =>
+        $"{_manualValue}-{step}-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
 
     private string GetStatusJson()
     {
@@ -828,6 +877,41 @@ public class PlayerPrefsTester : MonoBehaviour
         {
             Debug.LogError($"[PlayerPrefsTester] L3 설정 실패: {e.Message}");
         }
+#endif
+    }
+
+    /// <summary>
+    /// persist 정착 폴링용. PP_GetPersistSettleInfo()의 "&lt;persistCount&gt;:&lt;idle 0|1&gt;" 응답을 파싱합니다.
+    /// 조회 자체가 불가능하면(에디터, 예외 등) false를 반환합니다.
+    /// </summary>
+    private bool TryGetPersistSettleInfo(out int persistCount, out bool idle)
+    {
+        persistCount = 0;
+        idle = false;
+#if UNITY_WEBGL && !UNITY_EDITOR
+        try
+        {
+            string raw = PP_GetPersistSettleInfo();
+            if (!string.IsNullOrEmpty(raw))
+            {
+                var parts = raw.Split(':');
+                if (parts.Length == 2
+                    && int.TryParse(parts[0], out int c)
+                    && int.TryParse(parts[1], out int idleFlag))
+                {
+                    persistCount = c;
+                    idle = idleFlag != 0;
+                    return true;
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            Debug.LogError($"[PlayerPrefsTester] persist 정착 정보 조회 실패: {e.Message}");
+        }
+        return false;
+#else
+        return false;
 #endif
     }
 
@@ -1015,8 +1099,10 @@ public class PlayerPrefsTester : MonoBehaviour
     private void DoS1Action()
     {
         // 의도적으로 Save() 미호출: 백그라운드 전환 시 레이어가 자동 flush 하는지 보는 지점
-        PlayerPrefs.SetString(_manualKey, _manualValue);
-        AddEntry("S1", "set (no save)", $"{_manualKey}={_manualValue}");
+        // 단계별 고유 마커(StepValue)를 써서 이후 단계의 Get이 "이번 쓰기 생존"과 "잔여값"을 구분할 수 있게 한다.
+        string value = StepValue("S1");
+        PlayerPrefs.SetString(_manualKey, value);
+        AddEntry("S1", "set (no save)", $"{_manualKey}={value}");
         AddEntry("S1", "status", GetStatusJson());
     }
 
@@ -1028,9 +1114,10 @@ public class PlayerPrefsTester : MonoBehaviour
 
     private void DoS4Action()
     {
-        PlayerPrefs.SetString(_manualKey, _manualValue);
+        string value = StepValue("S4");
+        PlayerPrefs.SetString(_manualKey, value);
         PlayerPrefs.Save();
-        AddEntry("S4", "set+save", $"{_manualKey}={_manualValue}");
+        AddEntry("S4", "set+save", $"{_manualKey}={value}");
     }
 
     private void DoS5Action()
@@ -1070,6 +1157,48 @@ public class PlayerPrefsTester : MonoBehaviour
 
         if (_probeProgressText != null)
             _probeProgressText.text = $"{label}: 완료, 계속 진행합니다...";
+    }
+
+    /// <summary>
+    /// ait 모드 세션 전용. Set+Save 직후 persist(callOrig/pushScoped)가 실제로 커밋됐는지
+    /// 200ms 간격으로 폴링합니다. persistCount가 baseline보다 늘거나 persistIdle()==true가
+    /// 되면 정착으로 간주하고, 최대 10초까지만 기다립니다.
+    /// ait-playerprefs.js의 코드 주석대로 persistCount 증가만으로는 "마지막 쓰기"가 커밋됐다는
+    /// 보장이 없어(coalescing gap) 두 신호를 함께 봅니다. 타임아웃이어도 진단을 막지 않고
+    /// settled/timeout 여부와 경과 시간, 최종 persistCount를 저널에 남깁니다.
+    /// vanilla/L3 세션에서는 activeMount가 없어 이 신호들이 항상 무의미하므로 호출하지 않습니다
+    /// (해당 구간은 고정 대기를 사용합니다).
+    /// </summary>
+    private IEnumerator PersistSettleRoutine(string stepTag, int baselinePersistCount)
+    {
+        const float timeoutSec = 10f;
+        const float pollIntervalSec = 0.2f;
+        float startTime = Time.realtimeSinceStartup;
+
+        int lastCount = baselinePersistCount;
+        bool settled = false;
+
+        while (Time.realtimeSinceStartup - startTime < timeoutSec)
+        {
+            if (!TryGetPersistSettleInfo(out int count, out bool idle))
+            {
+                // 조회 자체가 불가능하면(에디터 등) 더 기다려도 의미가 없으므로 즉시 종료
+                break;
+            }
+
+            lastCount = count;
+            if (count > baselinePersistCount || idle)
+            {
+                settled = true;
+                break;
+            }
+
+            yield return new WaitForSeconds(pollIntervalSec);
+        }
+
+        int elapsedMs = Mathf.RoundToInt((Time.realtimeSinceStartup - startTime) * 1000f);
+        AddEntry(stepTag, "persist 정착 대기 결과",
+            $"{(settled ? "settled" : "timeout")}, elapsedMs={elapsedMs}, persistCount={lastCount}");
     }
 
     private IEnumerator StorageProbeRoutine()
@@ -1144,9 +1273,22 @@ public class PlayerPrefsTester : MonoBehaviour
         yield return StorageProbeRoutine();
         yield return CountdownRoutine(60, "재시작 전 대기(1/2)");
 
-        PlayerPrefs.SetString(_manualKey, _manualValue);
+        TryGetPersistSettleInfo(out int baselinePersistCount, out _);
+
+        string value = StepValue("S7");
+        PlayerPrefs.SetString(_manualKey, value);
         PlayerPrefs.Save();
-        AddEntry("S7", "set+save (reload#1 전)", $"{_manualKey}={_manualValue}");
+        AddEntry("S7", "set+save (reload#1 전)", $"{_manualKey}={value}");
+
+        // ait 모드: persistCount 증가 또는 persistIdle()==true를 최대 10초까지 폴링해
+        // Save() 직후 곧바로 reload하는 경쟁 상태(문서 주석에 명시된 위험)를 완화한다.
+        yield return PersistSettleRoutine("S7", baselinePersistCount);
+
+        // 노화 세션이 reload로 소멸하기 전에 status를 찍는다(수정 A).
+        // collectFallbackCount는 IIFE 지역 변수라 persist 되지 않고 reload할 때마다 0으로
+        // 리셋되므로, 이 시점(노화 세션 내부, reload 전)에서 찍지 않으면 폴백 발화 여부를
+        // 영구히 관측할 수 없다. S8의 status는 reload 이후(새 세션) 값이라 비교군으로 그대로 둔다.
+        AddEntry("S7", "status (노화 세션 내부, reload 전 — collectFallbackCount 관측 지점)", GetStatusJson());
 
         _journal.step = "S8";
         DoReloadOrAbort();
@@ -1170,9 +1312,17 @@ public class PlayerPrefsTester : MonoBehaviour
 
         yield return CountdownRoutine(60, "재시작 전 대기(2/2, vanilla 모드)");
 
-        PlayerPrefs.SetString(_manualKey, _manualValue);
+        string value = StepValue("S11");
+        PlayerPrefs.SetString(_manualKey, value);
         PlayerPrefs.Save();
-        AddEntry("S11", "set+save (reload#3 전, vanilla 모드)", $"{_manualKey}={_manualValue}");
+        AddEntry("S11", "set+save (reload#3 전, vanilla 모드)", $"{_manualKey}={value}");
+
+        // vanilla/L3 세션은 activeMount가 마운트 트랩 내부에서만 할당되는데 이 트랩이 아예
+        // 설치되지 않으므로 persistCount/persistIdle()이 항상 무의미하다(폴링 불가) —
+        // 대신 원본 syncfs 콜백이 끝날 시간을 고정으로 확보한다.
+        yield return new WaitForSecondsRealtime(3f);
+
+        AddEntry("S11", "status (vanilla, reload#3 전 고정 대기 후)", GetStatusJson());
 
         _journal.step = "S12";
         DoReloadOrAbort();

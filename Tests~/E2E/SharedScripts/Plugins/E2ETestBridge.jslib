@@ -236,6 +236,35 @@ mergeInto(LibraryManager.library, {
     },
 
     /**
+     * persist 정착 폴링 전용 경량 브릿지.
+     * ait-playerprefs.js의 status()/PP_GetDiagnosticsStatusJson 전체를 200ms 간격으로 반복
+     * 호출하면 매번 JSON 파싱 비용과 로그 배열 전송 비용이 들어 폴링에 부적합하므로,
+     * persistCount와 persistIdle() 두 값만 뽑아 "<count>:<idle 0|1>" 형태의 짧은 문자열로 반환한다.
+     * 레이어가 없거나(mode!=='ait') 예외가 나면 idle=1(정착으로 간주)을 반환해
+     * 폴링 쪽이 무한정 기다리지 않게 한다.
+     * @returns {string} - "<persistCount>:<0|1>" 형식
+     */
+    PP_GetPersistSettleInfo: function() {
+        var count = 0;
+        var idle = 1;
+        try {
+            var pp = window.__AIT_PP;
+            if (pp) {
+                count = (typeof pp.persistCount === 'number') ? pp.persistCount : 0;
+                idle = (typeof pp.persistIdle === 'function') ? (pp.persistIdle() ? 1 : 0) : 1;
+            }
+        } catch (e) {
+            idle = 1;
+        }
+
+        var s = count + ':' + idle;
+        var bufferSize = lengthBytesUTF8(s) + 1;
+        var buffer = _malloc(bufferSize);
+        stringToUTF8(s, buffer, bufferSize);
+        return buffer;
+    },
+
+    /**
      * 자동 진단 하니스의 최종 결과(JSON 문자열)를 사람이 가져갈 수 있도록 노출함
      * - console.log에 남기고, 가능하면 클립보드 자동 복사를 시도하되(비신뢰 경로)
      * - 항상 화면 전체를 덮는 오버레이(textarea + 복사/닫기 버튼)를 띄워 수동 복사 경로를 보장함.

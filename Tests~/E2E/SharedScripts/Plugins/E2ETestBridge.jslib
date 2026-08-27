@@ -187,6 +187,164 @@ mergeInto(LibraryManager.library, {
         }
     },
 
+    // =====================================================
+    // 실기기 자동 진단 하니스 (버튼 하나로 진행) 전용 브릿지
+    // =====================================================
+
+    /**
+     * 자동 진단 하니스 저널을 localStorage에서 읽어옴
+     * 앱을 완전히 종료했다가 재실행해도 남아있어야 하므로 sessionStorage가 아닌 localStorage 사용
+     * @returns {string} - 저장된 JSON 문자열, 없으면 빈 문자열
+     */
+    PP_ProbeJournalLoad: function() {
+        var s = '';
+        try {
+            s = localStorage.getItem('__AIT_PP_PROBE__') || '';
+        } catch (e) {
+            s = '';
+        }
+
+        var bufferSize = lengthBytesUTF8(s) + 1;
+        var buffer = _malloc(bufferSize);
+        stringToUTF8(s, buffer, bufferSize);
+        return buffer;
+    },
+
+    /**
+     * 자동 진단 하니스 저널(JSON 문자열)을 localStorage에 저장
+     * 저장 실패는 진단 진행을 막으면 안 되므로 throw하지 않고 콘솔에만 남김
+     * @param {string} strPtr - 저장할 JSON 문자열 포인터
+     */
+    PP_ProbeJournalSave: function(strPtr) {
+        try {
+            var s = UTF8ToString(strPtr);
+            localStorage.setItem('__AIT_PP_PROBE__', s);
+        } catch (e) {
+            console.error('[E2E-PLAYERPREFS] PP_ProbeJournalSave failed: ' + e.message);
+        }
+    },
+
+    /**
+     * 자동 진단 하니스 저널을 localStorage에서 삭제 ("진단 초기화" 버튼용)
+     */
+    PP_ProbeJournalClear: function() {
+        try {
+            localStorage.removeItem('__AIT_PP_PROBE__');
+        } catch (e) {
+            console.error('[E2E-PLAYERPREFS] PP_ProbeJournalClear failed: ' + e.message);
+        }
+    },
+
+    /**
+     * 자동 진단 하니스의 최종 결과(JSON 문자열)를 사람이 가져갈 수 있도록 노출함
+     * - console.log에 남기고, 가능하면 클립보드 자동 복사를 시도하되(비신뢰 경로)
+     * - 항상 화면 전체를 덮는 오버레이(textarea + 복사/닫기 버튼)를 띄워 수동 복사 경로를 보장함.
+     *   iOS WebView에서는 Unity 캔버스 클릭에서 이어진 호출이 user gesture 컨텍스트를 유지하지
+     *   못해 navigator.clipboard.writeText가 자동으로는 실패할 수 있음 — 그래서 오버레이의
+     *   [복사] 버튼(진짜 사용자 클릭에서 시작되는 경로)이 신뢰 가능한 경로이고, textarea는
+     *   사용자가 길게 눌러 수동으로 전체 선택/복사할 수 있도록 항상 남겨둠
+     * @param {string} strPtr - 최종 저널 JSON 문자열 포인터
+     */
+    PP_EmitResult: function(strPtr) {
+        var s = UTF8ToString(strPtr);
+        console.log('[AIT-PP-PROBE] ' + s);
+
+        // 자동 클립보드 복사 시도 (실패해도 무시 — 오버레이의 [복사] 버튼이 신뢰 경로)
+        try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                var autoCopyPromise = navigator.clipboard.writeText(s);
+                if (autoCopyPromise && typeof autoCopyPromise.catch === 'function') {
+                    autoCopyPromise.catch(function(e) {
+                        console.error('[AIT-PP-PROBE] clipboard.writeText (auto) failed: ' + e.message);
+                    });
+                }
+            }
+        } catch (e) {
+            console.error('[AIT-PP-PROBE] clipboard.writeText (auto) threw: ' + e.message);
+        }
+
+        var overlay = document.getElementById('__ait_pp_probe_overlay__');
+        var textarea, copyBtn, closeBtn;
+
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = '__ait_pp_probe_overlay__';
+            overlay.style.cssText = 'position:fixed; inset:0; z-index:2147483647; background:#111; color:#eee; padding:10px; box-sizing:border-box; display:flex; flex-direction:column; font-family:monospace;';
+
+            var title = document.createElement('div');
+            title.style.cssText = 'font-size:13px; margin-bottom:8px; flex:none;';
+            title.textContent = 'AIT PlayerPrefs 실기기 진단 결과';
+            overlay.appendChild(title);
+
+            textarea = document.createElement('textarea');
+            textarea.id = '__ait_pp_probe_overlay_textarea__';
+            textarea.readOnly = true;
+            textarea.style.cssText = 'width:100%; height:80%; font-size:12px; box-sizing:border-box; background:#000; color:#0f0;';
+            overlay.appendChild(textarea);
+
+            var btnRow = document.createElement('div');
+            btnRow.style.cssText = 'display:flex; gap:8px; margin-top:8px; flex:none;';
+
+            copyBtn = document.createElement('button');
+            copyBtn.id = '__ait_pp_probe_overlay_copy__';
+            copyBtn.textContent = '복사';
+            copyBtn.style.cssText = 'flex:1; padding:14px; font-size:14px;';
+            btnRow.appendChild(copyBtn);
+
+            closeBtn = document.createElement('button');
+            closeBtn.id = '__ait_pp_probe_overlay_close__';
+            closeBtn.textContent = '닫기';
+            closeBtn.style.cssText = 'flex:1; padding:14px; font-size:14px;';
+            btnRow.appendChild(closeBtn);
+
+            overlay.appendChild(btnRow);
+            document.body.appendChild(overlay);
+
+            closeBtn.addEventListener('click', function() {
+                overlay.style.display = 'none';
+            });
+        } else {
+            overlay.style.display = 'flex';
+            textarea = document.getElementById('__ait_pp_probe_overlay_textarea__');
+            copyBtn = document.getElementById('__ait_pp_probe_overlay_copy__');
+        }
+
+        textarea.value = s;
+
+        // [복사] 버튼: 진짜 사용자 클릭에서 시작되는 신뢰 가능한 클립보드 경로
+        copyBtn.onclick = function() {
+            textarea.focus();
+            textarea.select();
+            try {
+                textarea.setSelectionRange(0, s.length);
+            } catch (e) {
+                // 일부 브라우저에서 setSelectionRange가 없거나 실패해도 select()로 충분함
+            }
+
+            var reportResult = function(ok) {
+                copyBtn.textContent = ok ? '복사됨' : '수동 선택 후 복사하세요';
+            };
+
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(s).then(function() {
+                    reportResult(true);
+                }).catch(function() {
+                    try {
+                        reportResult(document.execCommand('copy'));
+                    } catch (e) {
+                        reportResult(false);
+                    }
+                });
+            } else {
+                try {
+                    reportResult(document.execCommand('copy'));
+                } catch (e) {
+                    reportResult(false);
+                }
+            }
+        };
+    },
+
     /**
      * JavaScript에서 JSON 파싱 검증
      * C# → JSON → JavaScript 파싱 → JSON → C# 역직렬화 round-trip 검증용

@@ -264,6 +264,308 @@ mergeInto(LibraryManager.library, {
         return buffer;
     },
 
+    // =====================================================
+    // 소프트 키보드 프로브 (PlayerPrefs 측정과 독립적으로 동작)
+    // =====================================================
+
+    /**
+     * iOS 소프트 키보드가 실제로 올라왔는지를 사람 눈이 아니라 숫자로 판별하는 프로브를 설치한다.
+     * 중복 호출은 무시된다.
+     *
+     * 관측하는 것 네 가지를 하나의 타임라인에 찍는다:
+     *  1. visualViewport 높이 — 키보드가 뜨면 뷰포트가 그만큼 줄어든다. iOS WebView에서 키보드
+     *     발생 여부를 알 수 있는 유일한 객관적 신호다(키보드 자체를 조회하는 API는 없다).
+     *  2. 캔버스 터치 — 사용자가 Unity InputField를 탭한 시점. 이게 없으면 "탭했는데 아무 일도
+     *     없었다"와 "탭한 적이 없다"를 구분할 수 없다.
+     *  3. focusin/focusout — 포커스가 어떤 엘리먼트로 갔는지.
+     *  4. body에 새로 붙는 엘리먼트 — Unity 2022.x+의 lib/MobileKeyboard.js가 소프트 키보드를
+     *     띄울 때 body에 position:fixed 입력 바를 만든다. 이게 안 생기면 엔진이 키보드를 띄우려는
+     *     시도조차 안 한 것이고, 생겼는데 뷰포트가 안 줄면 iOS/WebView가 focus를 거부한 것이다.
+     *
+     * 그리고 Unity를 전혀 거치지 않는 순수 DOM <input>을 대조군으로 화면 상단에 띄운다.
+     * 거기서도 키보드가 안 올라오면 원인은 Unity 밖(WebView 설정 또는 기기 상태)이다.
+     *
+     * 로그는 localStorage에 누적 저장되어 reload를 넘어 살아남는다(진단 하니스가 페이지를
+     * 여러 번 reload하기 때문). 상한 200건에 도달하면 더 쌓지 않는다.
+     */
+    PP_InstallKeyboardProbe: function() {
+        try {
+            if (window.__AIT_KB_PROBE__) return;
+
+            var KEY = '__AIT_KB_PROBE_LOG__';
+            var MAX = 200;
+            var log = [];
+            try {
+                var prev = localStorage.getItem(KEY);
+                if (prev) log = JSON.parse(prev) || [];
+            } catch (e0) {
+                log = [];
+            }
+            if (!log.length) log = [];
+
+            function rec(kind, obj) {
+                if (log.length >= MAX) return;
+                obj = obj || {};
+                obj.k = kind;
+                obj.t = Date.now();
+                log.push(obj);
+                try {
+                    localStorage.setItem(KEY, JSON.stringify(log));
+                } catch (e1) {
+                    // 저장 실패는 관측을 막지 않는다 — 메모리 로그는 그대로 유지된다
+                }
+            }
+
+            var vv = window.visualViewport || null;
+            var baseH = vv ? vv.height : window.innerHeight;
+
+            rec('base', {
+                vvH: Math.round(baseH),
+                innerH: window.innerHeight,
+                dpr: window.devicePixelRatio || 0,
+                hasVV: vv ? 1 : 0,
+                ua: (navigator.userAgent || '').slice(0, 200)
+            });
+
+            // 1) 뷰포트 축소 = 키보드 발생. kb 플래그는 100px 이상 줄었을 때만 세운다
+            //    (주소창 숨김 등으로 생기는 수십 px 변동과 구분하기 위한 여유값)
+            if (vv) {
+                var onVV = function() {
+                    rec('vv', {
+                        h: Math.round(vv.height),
+                        off: Math.round(vv.offsetTop || 0),
+                        kb: (baseH - vv.height) > 100 ? 1 : 0
+                    });
+                };
+                vv.addEventListener('resize', onVV);
+                vv.addEventListener('scroll', onVV);
+            }
+            window.addEventListener('resize', function() {
+                rec('winresize', { innerH: window.innerHeight });
+            });
+
+            // 2) 캔버스 탭. passive라 preventDefault가 불가능하고 전파도 막지 않으므로
+            //    Unity 자신의 터치 처리에 영향을 주지 않는다
+            var canvas = document.getElementById('unity-canvas');
+            if (canvas) {
+                canvas.addEventListener('touchstart', function(ev) {
+                    var t = (ev.touches && ev.touches[0]) || null;
+                    rec('canvastap', {
+                        x: t ? Math.round(t.clientX) : -1,
+                        y: t ? Math.round(t.clientY) : -1
+                    });
+                }, { passive: true, capture: true });
+            } else {
+                rec('note', { msg: 'unity-canvas element not found' });
+            }
+
+            // 3) 포커스 이동
+            document.addEventListener('focusin', function(ev) {
+                var el = ev.target || {};
+                rec('focusin', {
+                    tag: el.tagName || '?',
+                    id: el.id || '',
+                    type: el.type || ''
+                });
+            }, true);
+            document.addEventListener('focusout', function(ev) {
+                var el = ev.target || {};
+                rec('focusout', { tag: el.tagName || '?', id: el.id || '' });
+            }, true);
+
+            // 4) body 직하위에 새로 붙는 엘리먼트 (Unity의 키보드 입력 바 감지)
+            if (window.MutationObserver) {
+                var mo = new MutationObserver(function(muts) {
+                    for (var i = 0; i < muts.length; i++) {
+                        var added = muts[i].addedNodes || [];
+                        for (var j = 0; j < added.length; j++) {
+                            var n = added[j];
+                            if (!n || n.nodeType !== 1) continue;
+                            if (n.id === '__ait_kb_probe__' || n.id === '__ait_kb_probe_overlay__') continue;
+                            if (n.id === '__ait_pp_probe_overlay__') continue;
+
+                            var pos = '';
+                            var bottom = '';
+                            try {
+                                var cs = window.getComputedStyle(n);
+                                pos = cs.position;
+                                bottom = cs.bottom;
+                            } catch (e2) {
+                                // getComputedStyle 실패는 무시 — 태그 정보만으로도 판별에 쓸 수 있다
+                            }
+
+                            var cls = '';
+                            try {
+                                cls = (n.className && n.className.toString) ? n.className.toString().slice(0, 60) : '';
+                            } catch (e3) {
+                                cls = '';
+                            }
+
+                            rec('dom+', {
+                                tag: n.tagName,
+                                id: n.id || '',
+                                cls: cls,
+                                pos: pos,
+                                bottom: bottom,
+                                inputs: n.querySelectorAll ? n.querySelectorAll('input,textarea').length : 0
+                            });
+                        }
+                    }
+                });
+                mo.observe(document.body, { childList: true, subtree: false });
+            } else {
+                rec('note', { msg: 'MutationObserver unavailable' });
+            }
+
+            // 5) 순수 DOM 대조군 바 (화면 상단). Unity 캔버스와 무관한 입력 경로다
+            var bar = document.createElement('div');
+            bar.id = '__ait_kb_probe__';
+            bar.setAttribute('style',
+                'position:fixed;top:0;left:0;right:0;z-index:2147483000;' +
+                'background:#111827;color:#fff;box-sizing:border-box;' +
+                'font:12px -apple-system,BlinkMacSystemFont,sans-serif;' +
+                'padding:6px 8px;display:flex;gap:6px;align-items:center;');
+
+            var label = document.createElement('span');
+            label.textContent = 'DOM 대조군';
+            label.setAttribute('style', 'white-space:nowrap;opacity:0.75;');
+
+            // font-size가 16px 미만이면 iOS가 포커스 시 페이지를 확대해 관측이 지저분해진다
+            var input = document.createElement('input');
+            input.type = 'text';
+            input.id = '__ait_kb_probe_input__';
+            input.placeholder = '여기를 탭';
+            input.setAttribute('style',
+                'flex:1;min-width:0;font-size:16px;padding:4px 6px;' +
+                'border:1px solid #6b7280;border-radius:4px;');
+
+            var copyBtn = document.createElement('button');
+            copyBtn.textContent = '로그';
+            copyBtn.setAttribute('style',
+                'flex:none;font-size:12px;padding:5px 9px;border:0;border-radius:4px;' +
+                'background:#2563eb;color:#fff;');
+
+            var hideBtn = document.createElement('button');
+            hideBtn.textContent = '✕';
+            hideBtn.setAttribute('style',
+                'flex:none;font-size:12px;padding:5px 8px;border:0;border-radius:4px;' +
+                'background:#374151;color:#fff;');
+            hideBtn.onclick = function() { bar.style.display = 'none'; };
+
+            bar.appendChild(label);
+            bar.appendChild(input);
+            bar.appendChild(copyBtn);
+            bar.appendChild(hideBtn);
+            document.body.appendChild(bar);
+
+            // 6) 로그 노출. PlayerPrefs 하니스와 완전히 독립된 오버레이라 진단 체인을 끝내지
+            //    않고도 언제든 키보드 관측 결과만 따로 가져갈 수 있다
+            function show() {
+                var text = '';
+                try {
+                    text = JSON.stringify({ v: 1, kind: 'keyboard-probe', log: log }, null, 1);
+                } catch (e4) {
+                    text = '[]';
+                }
+
+                var ov = document.getElementById('__ait_kb_probe_overlay__');
+                if (!ov) {
+                    ov = document.createElement('div');
+                    ov.id = '__ait_kb_probe_overlay__';
+                    ov.setAttribute('style',
+                        'position:fixed;inset:0;z-index:2147483646;background:#111827;' +
+                        'display:flex;flex-direction:column;padding:10px;box-sizing:border-box;gap:8px;');
+
+                    var ta = document.createElement('textarea');
+                    ta.id = '__ait_kb_probe_text__';
+                    ta.readOnly = true;
+                    ta.setAttribute('style',
+                        'flex:1;width:100%;box-sizing:border-box;font:11px ui-monospace,monospace;' +
+                        'padding:8px;border-radius:6px;border:1px solid #374151;');
+
+                    var row = document.createElement('div');
+                    row.setAttribute('style', 'display:flex;gap:8px;');
+
+                    var doCopy = document.createElement('button');
+                    doCopy.textContent = '복사';
+                    doCopy.setAttribute('style',
+                        'flex:1;font-size:15px;padding:10px;border:0;border-radius:6px;background:#2563eb;color:#fff;');
+                    doCopy.onclick = function() {
+                        var el = document.getElementById('__ait_kb_probe_text__');
+                        try {
+                            el.select();
+                            el.setSelectionRange(0, 999999);
+                        } catch (e5) {
+                            // 선택 실패해도 clipboard API 경로가 남아 있다
+                        }
+                        try {
+                            navigator.clipboard.writeText(el.value).then(function() {
+                                doCopy.textContent = '복사됨';
+                            }, function() {
+                                doCopy.textContent = '길게 눌러 복사하세요';
+                            });
+                        } catch (e6) {
+                            doCopy.textContent = '길게 눌러 복사하세요';
+                        }
+                    };
+
+                    var doClose = document.createElement('button');
+                    doClose.textContent = '닫기';
+                    doClose.setAttribute('style',
+                        'flex:none;font-size:15px;padding:10px 16px;border:0;border-radius:6px;background:#374151;color:#fff;');
+                    doClose.onclick = function() { ov.style.display = 'none'; };
+
+                    row.appendChild(doCopy);
+                    row.appendChild(doClose);
+                    ov.appendChild(ta);
+                    ov.appendChild(row);
+                    document.body.appendChild(ov);
+                }
+
+                ov.style.display = 'flex';
+                document.getElementById('__ait_kb_probe_text__').value = text;
+                console.log('[AIT-KB-PROBE] ' + text);
+            }
+
+            copyBtn.onclick = show;
+
+            window.__AIT_KB_PROBE__ = {
+                log: log,
+                show: show,
+                clear: function() {
+                    log.length = 0;
+                    try {
+                        localStorage.removeItem(KEY);
+                    } catch (e7) {
+                        // 무시
+                    }
+                }
+            };
+        } catch (e) {
+            console.error('[E2E-PLAYERPREFS] PP_InstallKeyboardProbe failed: ' + e.message);
+        }
+    },
+
+    /**
+     * 소프트 키보드 프로브 로그를 JSON 배열 문자열로 반환한다.
+     * 프로브가 설치되지 않았거나 예외가 나면 빈 배열을 반환해 저널 조립을 막지 않는다.
+     * @returns {string} - JSON 배열 문자열
+     */
+    PP_GetKeyboardProbeLog: function() {
+        var s = '[]';
+        try {
+            var p = window.__AIT_KB_PROBE__;
+            if (p && p.log) s = JSON.stringify(p.log);
+        } catch (e) {
+            s = '[]';
+        }
+
+        var bufferSize = lengthBytesUTF8(s) + 1;
+        var buffer = _malloc(bufferSize);
+        stringToUTF8(s, buffer, bufferSize);
+        return buffer;
+    },
+
     /**
      * 자동 진단 하니스의 최종 결과(JSON 문자열)를 사람이 가져갈 수 있도록 노출함
      * - console.log에 남기고, 가능하면 클립보드 자동 복사를 시도하되(비신뢰 경로)

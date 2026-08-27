@@ -68,6 +68,16 @@ public class PlayerPrefsTester : MonoBehaviour
     /// <summary>persist 정착 폴링 전용 경량 조회. "&lt;persistCount&gt;:&lt;idle 0|1&gt;" 형식 문자열을 반환합니다.</summary>
     [DllImport("__Internal")]
     private static extern string PP_GetPersistSettleInfo();
+
+    // ─── 소프트 키보드 프로브 extern (PlayerPrefs 측정과 독립) ───
+
+    /// <summary>visualViewport/캔버스 탭/포커스/DOM 변화를 기록하는 키보드 프로브를 설치합니다(중복 호출 안전).</summary>
+    [DllImport("__Internal")]
+    private static extern void PP_InstallKeyboardProbe();
+
+    /// <summary>키보드 프로브 로그를 JSON 배열 문자열로 반환합니다. 없으면 "[]".</summary>
+    [DllImport("__Internal")]
+    private static extern string PP_GetKeyboardProbeLog();
 #endif
 
     [Serializable]
@@ -349,6 +359,15 @@ public class PlayerPrefsTester : MonoBehaviour
         catch (Exception e)
         {
             Debug.LogError($"[PlayerPrefsTester] PP_InitVisibilityLog failed: {e.Message}");
+        }
+
+        try
+        {
+            PP_InstallKeyboardProbe();
+        }
+        catch (Exception e)
+        {
+            Debug.LogError($"[PlayerPrefsTester] PP_InstallKeyboardProbe failed: {e.Message}");
         }
 #endif
 
@@ -876,6 +895,27 @@ public class PlayerPrefsTester : MonoBehaviour
 #endif
     }
 
+    /// <summary>
+    /// 키보드 프로브 로그를 JSON 배열 문자열 그대로 반환합니다(이미 JSON이라 escape하지 않고 저널에 직접 박습니다).
+    /// 실패하면 빈 배열을 반환해 저널 조립을 막지 않습니다.
+    /// </summary>
+    private string GetKeyboardProbeLogSafe()
+    {
+#if UNITY_WEBGL && !UNITY_EDITOR
+        try
+        {
+            string s = PP_GetKeyboardProbeLog();
+            return string.IsNullOrEmpty(s) ? "[]" : s;
+        }
+        catch (Exception)
+        {
+            return "[]";
+        }
+#else
+        return "[]";
+#endif
+    }
+
     private string GetVisibilityLogJsonSafe()
     {
 #if UNITY_WEBGL && !UNITY_EDITOR
@@ -1006,6 +1046,7 @@ public class PlayerPrefsTester : MonoBehaviour
             sb.Append('}');
         }
         sb.Append(']');
+        sb.Append(",\"keyboard\":").Append(GetKeyboardProbeLogSafe());
         sb.Append('}');
         return sb.ToString();
     }

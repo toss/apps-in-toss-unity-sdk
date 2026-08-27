@@ -115,9 +115,8 @@ public class E2EBuildRunner
 
         // 3. SDK의 Init 호출
         Debug.Log("[3/5] Initializing SDK...");
-        // Init()이 템플릿 폴더를 통째로 갈아엎지 않도록 index.html을 미리 놓아둔다 (아래 메서드 주석 참조).
-        SeedTemplateIndexHtmlIfMissing();
-
+        // index.html이 없어도 Init()이 템플릿 폴더를 갈아엎지 않는다
+        // (AITTemplateManager.SyncProjectTemplate이 정본에서 index.html만 복구한다).
         AITConvertCore.Init();
         Debug.Log("✓ SDK initialized");
 
@@ -200,42 +199,6 @@ public class E2EBuildRunner
     // 이 태그로 번들링된 BuildConfig~/src/main.ts의 실행 결과를 검증한다.
     private const string TUTORIAL_SCRIPT_TAG = "<script type=\"module\" src=\"./src/main.ts\"></script>";
 
-    /// <summary>
-    /// Init() 전에 프로젝트 템플릿의 index.html 존재를 보장한다.
-    ///
-    /// AITTemplateManager.EnsureWebGLTemplatesExist()는 index.html이 없으면 "전체 복사" 경로를 타면서
-    /// 프로젝트 템플릿 폴더를 Directory.Delete(recursive: true)로 통째로 지운 뒤 SDK 정본을 복사한다.
-    /// 픽스처는 index.html을 추적하지 않으므로(fresh clone에는 없다) 그 경로를 그대로 타면 SDK 정본에는
-    /// 없는 BuildConfig~/src/main.ts — Test 6/7이 검증하는 튜토리얼 진입점 — 까지 함께 삭제된다.
-    ///
-    /// 그래서 정본 index.html만 미리 제자리에 놓아 "이미 존재" 경로(마커 기반 머지)로 유도한다.
-    /// 템플릿 폴더 자체가 없으면 잃을 자산도 없으므로 SDK의 전체 복사에 맡긴다.
-    /// </summary>
-    private static void SeedTemplateIndexHtmlIfMissing()
-    {
-        string templateDir = Path.Combine(Application.dataPath, "WebGLTemplates", "AITTemplate");
-        string indexPath = Path.Combine(templateDir, "index.html");
-
-        if (!Directory.Exists(templateDir) || File.Exists(indexPath))
-        {
-            return;
-        }
-
-        if (!AITPackagePathResolver.TryResolveDirectory(
-                "WebGLTemplates", out string sdkTemplatesPath, typeof(AITConvertCore)))
-        {
-            throw new System.Exception("[E2E] SDK WebGLTemplates 폴더를 찾지 못했습니다.");
-        }
-
-        string sdkIndexHtml = Path.Combine(sdkTemplatesPath, "AITTemplate", "index.html");
-        if (!File.Exists(sdkIndexHtml))
-        {
-            throw new System.Exception($"[E2E] SDK 정본 index.html이 없습니다: {sdkIndexHtml}");
-        }
-
-        File.Copy(sdkIndexHtml, indexPath);
-        Debug.Log($"✓ WebGL template index.html seeded from SDK: {sdkIndexHtml}");
-    }
 
     /// <summary>
     /// WebGL 템플릿 index.html의 USER_BODY_END 영역에 튜토리얼 스크립트 태그를 주입한다.

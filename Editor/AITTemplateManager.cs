@@ -27,8 +27,6 @@ namespace AppsInToss.Editor
         {
             // 프로젝트의 Assets/WebGLTemplates 경로
             string projectTemplatesPath = Path.Combine(Application.dataPath, "WebGLTemplates");
-            string projectTemplate = Path.Combine(projectTemplatesPath, "AITTemplate");
-            string projectIndexHtml = Path.Combine(projectTemplate, "index.html");
 
             // 항상 최신 SDK 템플릿으로 교체 (기존 조건 제거)
             // SDK 업데이트 시 새 템플릿이 적용되도록 함
@@ -41,6 +39,19 @@ namespace AppsInToss.Editor
                 return false;
             }
 
+            return SyncProjectTemplate(projectTemplatesPath, sdkTemplatesPath);
+        }
+
+        /// <summary>
+        /// SDK 정본 WebGLTemplates를 프로젝트 WebGLTemplates에 반영합니다.
+        /// 경로를 인자로 받아 테스트에서 임시 디렉토리로 검증할 수 있게 분리했습니다.
+        /// </summary>
+        /// <returns>파일이 실제로 변경된 경우 true</returns>
+        internal static bool SyncProjectTemplate(string projectTemplatesPath, string sdkTemplatesPath)
+        {
+            string projectTemplate = Path.Combine(projectTemplatesPath, "AITTemplate");
+            string projectIndexHtml = Path.Combine(projectTemplate, "index.html");
+
             string sdkTemplate = Path.Combine(sdkTemplatesPath, "AITTemplate");
             string sdkIndexHtml = Path.Combine(sdkTemplate, "index.html");
 
@@ -50,24 +61,38 @@ namespace AppsInToss.Editor
                 return false;
             }
 
-            // 프로젝트 템플릿이 없으면 전체 복사
-            if (!Directory.Exists(projectTemplate) || !File.Exists(projectIndexHtml))
+            // 프로젝트 템플릿 자체가 없으면 전체 복사 (잃을 자산이 없는 경우)
+            if (!Directory.Exists(projectTemplate))
             {
                 Debug.Log("[AIT] WebGLTemplates를 프로젝트로 복사 중...");
-
-                if (Directory.Exists(projectTemplate))
-                {
-                    Directory.Delete(projectTemplate, true);
-                }
-
                 Directory.CreateDirectory(projectTemplatesPath);
                 UnityUtil.CopyDirectory(sdkTemplate, projectTemplate);
                 Debug.Log("[AIT] ✓ WebGLTemplates 복사 완료");
                 return true;
             }
 
+            bool restoredIndexHtml = false;
+
+            // index.html만 없는 경우 폴더를 통째로 지우지 않는다.
+            // AITTemplate 아래의 BuildConfig~는 프로젝트 소유 자산이라 SDK 정본에 없는 파일
+            // (빌드 진입점 src/ 등)이 들어 있고, 한 번 지우면 정본 복사로 되살아나지 않는다.
+            // 정본에서 index.html만 되돌린 뒤 나머지는 아래 마커 기반 업데이트에 맡긴다.
+            if (!File.Exists(projectIndexHtml))
+            {
+                if (!File.Exists(sdkIndexHtml))
+                {
+                    Debug.LogError($"[AIT] SDK 정본 index.html을 찾을 수 없습니다: {sdkIndexHtml}");
+                    return false;
+                }
+
+                Debug.Log("[AIT] index.html이 없어 SDK 정본에서 복구합니다.");
+                File.Copy(sdkIndexHtml, projectIndexHtml);
+                restoredIndexHtml = true;
+            }
+
             // 프로젝트 템플릿이 있으면 마커 기반으로 업데이트
-            return UpdateProjectTemplate(projectTemplate, sdkTemplate);
+            bool updated = UpdateProjectTemplate(projectTemplate, sdkTemplate);
+            return updated || restoredIndexHtml;
         }
 
         /// <summary>

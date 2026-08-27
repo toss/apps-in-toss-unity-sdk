@@ -579,7 +579,8 @@ PlayerSettings:
     WebGL: 1
   il2cppCompilerConfiguration:
     WebGL: 1
-  il2cppCodeGeneration: {}
+  il2cppCodeGeneration:
+    WebGL: 0
   managedStrippingLevel:
     WebGL: 3
   incrementalIl2cppBuild: {}

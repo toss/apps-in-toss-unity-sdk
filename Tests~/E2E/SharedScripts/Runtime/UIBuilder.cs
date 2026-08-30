@@ -99,11 +99,62 @@ public static class UIBuilder
         if (EventSystem.current == null)
         {
             var esGo = new GameObject("EventSystem");
-            esGo.AddComponent<EventSystem>();
+            var eventSystem = esGo.AddComponent<EventSystem>();
             esGo.AddComponent<StandaloneInputModule>();
+            ScaleDragThresholdToScreenDensity(eventSystem);
         }
 
         return canvas;
+    }
+
+    /// <summary>
+    /// 드래그 판정 임계값을 화면 밀도에 맞춰 키웁니다.
+    ///
+    /// <see cref="EventSystem.pixelDragThreshold"/>는 탭과 드래그를 가르는 이동 거리이고,
+    /// 기본값 10은 Unity 스크린 픽셀 기준입니다. 이 단위는 화면 밀도에 따라 물리 거리가 달라집니다 —
+    /// WebGL에서는 스크린 픽셀이 캔버스 프레임버퍼 픽셀이라 CSS 픽셀의 devicePixelRatio배이고,
+    /// 배율 2인 기기에서 10 프레임버퍼 픽셀은 5 CSS 픽셀, 1.5mm가 안 됩니다. 손가락으로는
+    /// 가만히 눌러도 넘기는 거리입니다.
+    ///
+    /// 그래서 기본값을 CSS 기준 밀도(96dpi)에서의 물리 거리(약 2.6mm)로 보고, 화면 밀도에 비례해
+    /// 그 물리 거리를 유지합니다. WebGL의 <see cref="Screen.dpi"/>는 devicePixelRatio * 96이므로
+    /// (ScreenManagerWebGL::GetDPI가 배율에 96을 곱해 반환하고, 그 배율은 lib/SystemInfo.js의
+    /// JS_SystemInfo_GetPreferredDevicePixelRatio가 캔버스 스케일과 같은 값으로 넘겨줍니다)
+    /// 결과는 배율과 무관하게 항상 10 CSS 픽셀입니다. Android의 터치 슬롭 8dp(약 1.3mm)와
+    /// Chromium이 스크롤 판정에 쓰는 15 CSS 픽셀(약 4mm) 사이입니다.
+    ///
+    /// 배율 1인 환경(데스크톱 브라우저)에서는 기본값 그대로라 동작이 바뀌지 않습니다.
+    /// CI의 Playwright는 두 갈래인데, 기본 프로필은 배율 1이고 MOBILE_EMULATION=true인 leg는
+    /// iPhone 8 프로필(배율 2)이라 임계값이 20이 됩니다. 그 leg에서 이 경로를 타는 테스트는
+    /// test-interactive-mode 하나뿐이고 제스처를 검증하지 않아 결과에 영향이 없습니다.
+    ///
+    /// 주의: 이 값은 InputField가 탭에 반응하지 않는 증상과는 무관합니다. uGUI의 InputField는
+    /// IDragHandler를 자기가 구현하므로 pointerPress와 pointerDrag가 같은 GameObject가 되고,
+    /// PointerInputModule.ProcessDrag가 eligibleForClick을 끄는 조건(pointerPress != pointerDrag)이
+    /// 성립하지 않습니다. 임계값을 어떻게 잡든 InputField의 클릭은 취소되지 않습니다.
+    /// </summary>
+    private static void ScaleDragThresholdToScreenDensity(EventSystem eventSystem)
+    {
+        eventSystem.pixelDragThreshold =
+            ScaledDragThreshold(eventSystem.pixelDragThreshold, Screen.dpi);
+    }
+
+    /// <summary>CSS가 기준으로 삼는 밀도. Unity WebGL의 Screen.dpi도 이 값에 배율을 곱해 만들어집니다.</summary>
+    private const float CssReferenceDpi = 96f;
+
+    /// <summary>
+    /// <see cref="ScaleDragThresholdToScreenDensity"/>의 계산부. 테스트를 위해 분리했습니다.
+    /// dpi를 알 수 없거나(0 이하) 기준 밀도보다 낮으면 기준값을 그대로 돌려줍니다 —
+    /// 임계값을 낮추면 스크롤 도중 원치 않는 클릭이 발생합니다.
+    /// </summary>
+    /// <param name="baseThreshold">Unity 기본 임계값(스크린 픽셀).</param>
+    /// <param name="dpi"><see cref="Screen.dpi"/>. WebGL에서는 devicePixelRatio * 96입니다.</param>
+    public static int ScaledDragThreshold(int baseThreshold, float dpi)
+    {
+        if (dpi <= 0f) return baseThreshold;
+
+        int scaled = Mathf.RoundToInt(baseThreshold * (dpi / CssReferenceDpi));
+        return Mathf.Max(baseThreshold, scaled);
     }
 
     // ─── Safe Area ───

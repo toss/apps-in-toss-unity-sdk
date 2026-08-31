@@ -79,6 +79,13 @@ public class PointerTapDiagnostics : MonoBehaviour,
         public float MovedPixels;
         public bool ClickReceived;
 
+        /// <summary>
+        /// release 시점 pointerDrag가 이 InputField 자신이었는가.
+        /// 가설의 메커니즘(:418이 ScrollRect가 아니라 InputField를 드래그 대상으로 잡는다)에 대한
+        /// 직접 증거라, 클릭 발화 여부와 별개로 기록합니다.
+        /// </summary>
+        public bool DragIsSelf;
+
         /// <summary>press와 release 사이에 포인터 밑의 GameObject가 바뀌었는가.</summary>
         public bool OverChanged => UpReceived && DownOver != UpOver;
     }
@@ -135,6 +142,7 @@ public class PointerTapDiagnostics : MonoBehaviour,
         public string ReleaseHandler;  // release 시점 currentOverGo로 다시 구한 IPointerClickHandler
         public bool Eligible;
         public bool Dragging;
+        public bool DragIsSelf;        // release 시점 pointerDrag == 이 GameObject
         public bool WillFireClick;
         public float MovedPixels;
         public int DragThreshold;
@@ -168,8 +176,11 @@ public class PointerTapDiagnostics : MonoBehaviour,
         string scroll = s.HasScrollRect
             ? $"scroll=YES vel=({s.ScrollVelocity.x:F0},{s.ScrollVelocity.y:F0})"
             : "scroll=NO";
+        // pointerPress/pointerDrag는 여기서 읽으면 안 됩니다. OnPointerDown은 ExecuteHierarchy
+        // 안에서 불리므로(:396) 모듈이 이번 press 값을 대입하기 전이고, 직전 이벤트 값이 남아
+        // 있습니다. 확정값은 UP 줄에 찍습니다.
         return $"#{seq} DOWN {label} | {scroll} thr={s.DragThreshold}\n"
-             + $"    over={s.Over} press={s.PointerPress} drag={s.PointerDrag}";
+             + $"    over={s.Over}";
     }
 
     public static string FormatUp(int seq, string label, TapSnapshot s)
@@ -177,6 +188,7 @@ public class PointerTapDiagnostics : MonoBehaviour,
         string verdict = s.WillFireClick ? "FIRE=YES" : $"FIRE=NO — {ExplainNoFire(s)}";
         return $"#{seq} UP   {label} | moved={s.MovedPixels:F1}px elig={(s.Eligible ? 1 : 0)} dragging={(s.Dragging ? 1 : 0)}\n"
              + $"    over={s.Over} click={s.PointerClick} hnd={s.ReleaseHandler}\n"
+             + $"    drag={s.PointerDrag}{(s.DragIsSelf ? " (자신 — ScrollRect가 아님)" : "")}\n"
              + $"    => {verdict}";
     }
 
@@ -263,6 +275,7 @@ public class PointerTapDiagnostics : MonoBehaviour,
             r.UpOver = s.Over;
             r.WillFireClick = s.WillFireClick;
             r.MovedPixels = s.MovedPixels;
+            r.DragIsSelf = s.DragIsSelf;
             return r;
         });
     }
@@ -312,6 +325,7 @@ public class PointerTapDiagnostics : MonoBehaviour,
             ReleaseHandler = includeRelease ? Name(releaseHandler) : "-",
             Eligible = e.eligibleForClick,
             Dragging = e.dragging,
+            DragIsSelf = includeRelease && e.pointerDrag == gameObject,
             WillFireClick = includeRelease && WillFireClick(e.pointerClick, releaseHandler, e.eligibleForClick),
             MovedPixels = Vector2.Distance(e.position, e.pressPosition),
             DragThreshold = EventSystem.current != null ? EventSystem.current.pixelDragThreshold : -1,

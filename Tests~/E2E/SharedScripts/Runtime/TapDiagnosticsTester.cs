@@ -95,6 +95,10 @@ public class TapDiagnosticsTester : MonoBehaviour
         RefreshVerdict();
 
         if (_logText == null) return;
+        // 자동 진단이 도는 동안에는 로그 패널을 다시 그리지 않습니다. 이 패널은 측정 대상과 같은
+        // ScrollRect 안에 있어서, 텍스트가 길어지며 일어나는 레이아웃 재구축이 탭이 진행되는
+        // 프레임에 끼어듭니다. 어차피 도는 동안 읽을 사람도 없습니다.
+        if (_autoProbe != null && _autoProbe.IsRunning) return;
         if (_lastRefreshTime >= 0f && Time.realtimeSinceStartup - _lastRefreshTime < RefreshIntervalSeconds) return;
         _lastRefreshTime = Time.realtimeSinceStartup;
 
@@ -122,7 +126,7 @@ public class TapDiagnosticsTester : MonoBehaviour
         }
         else
         {
-            body = _autoProbe.Verdict + "\n\n" + TapAutoProbe.Summarize(_autoProbe.Results);
+            body = _autoProbe.Verdict + "\n\n" + TapAutoProbe.Summarize(_autoProbe.Info, _autoProbe.Results);
         }
 
         if (body != _lastVerdictRender)

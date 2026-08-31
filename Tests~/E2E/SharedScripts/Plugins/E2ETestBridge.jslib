@@ -247,13 +247,18 @@ mergeInto(LibraryManager.library, {
         window.__AIT_TAP_ID = (window.__AIT_TAP_ID || 0) + 1;
         var id = window.__AIT_TAP_ID;
 
-        var touch = {
-            identifier: id,
-            target: canvas,
-            clientX: cx, clientY: cy,
-            pageX: cx + window.pageXOffset, pageY: cy + window.pageYOffset,
-            screenX: cx, screenY: cy,
-            radiusX: 1, radiusY: 1, rotationAngle: 0, force: 1
+        // emscripten의 터치 콜백은 touch 객체에 isChanged/onTarget을 써 넣는다. 같은 객체를
+        // touchstart와 touchend에 재사용하면 touchstart에서 세워진 값이 touchend까지 새어
+        // 나가므로 이벤트마다 새로 만든다.
+        var makeTouch = function() {
+            return {
+                identifier: id,
+                target: canvas,
+                clientX: cx, clientY: cy,
+                pageX: cx + window.pageXOffset, pageY: cy + window.pageYOffset,
+                screenX: cx, screenY: cy,
+                radiusX: 1, radiusY: 1, rotationAngle: 0, force: 1
+            };
         };
 
         var fire = function(type, touches, changed, target) {
@@ -265,10 +270,12 @@ mergeInto(LibraryManager.library, {
             canvas.dispatchEvent(e);
         };
 
-        fire('touchstart', [touch], [touch], [touch]);
+        var down = makeTouch();
+        fire('touchstart', [down], [down], [down]);
         setTimeout(function() {
             // 손을 뗀 상태라 touches/targetTouches는 비고 changedTouches에만 남는다.
-            fire('touchend', [], [touch], []);
+            var up = makeTouch();
+            fire('touchend', [], [up], []);
             window.__AIT_TAP_BUSY = Math.max(0, (window.__AIT_TAP_BUSY || 1) - 1);
         }, holdMs);
     },

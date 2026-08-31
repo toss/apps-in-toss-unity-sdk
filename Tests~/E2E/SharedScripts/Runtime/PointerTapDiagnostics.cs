@@ -50,6 +50,7 @@ public class PointerTapDiagnostics : MonoBehaviour,
 
     private static readonly List<string> LinesBuffer = new List<string>();
     private static readonly List<PendingTap> PendingTaps = new List<PendingTap>();
+    private static readonly List<TapRecord> RecordsBuffer = new List<TapRecord>();
     private static int _seqCounter;
 
     /// <summary>로그가 바뀔 때마다 증가합니다. UI가 매 프레임 문자열을 다시 만들지 않도록 하는 용도.</summary>
@@ -57,12 +58,62 @@ public class PointerTapDiagnostics : MonoBehaviour,
 
     public static IReadOnlyList<string> Lines => LinesBuffer;
 
+    /// <summary>
+    /// 자동 진단이 판정에 쓰는 구조화 기록. 화면용 문자열과 달리 잘리지 않고 전부 남습니다 —
+    /// 문자열을 되파싱하지 않고 이쪽을 읽습니다.
+    /// </summary>
+    public static IReadOnlyList<TapRecord> Records => RecordsBuffer;
+
+    /// <summary>탭 하나에 대한 press/release 결과. 판정 로직이 이것만 보고 결론을 냅니다.</summary>
+    public struct TapRecord
+    {
+        public int Seq;
+        public string Label;
+        public bool HasScrollRect;
+        public float DownVelocityY;
+        public string DownOver;
+        public int DragThreshold;
+        public bool UpReceived;
+        public string UpOver;
+        public bool WillFireClick;
+        public float MovedPixels;
+        public bool ClickReceived;
+
+        /// <summary>press와 release 사이에 포인터 밑의 GameObject가 바뀌었는가.</summary>
+        public bool OverChanged => UpReceived && DownOver != UpOver;
+    }
+
     /// <summary>이 프로브를 구분할 이름. UIBuilder가 placeholder 문구로 채웁니다.</summary>
     public string Label = "input";
 
     private ScrollRect _scrollRect;
     private bool _scrollRectResolved;
     private int _currentSeq = -1;
+
+    private static readonly List<PointerTapDiagnostics> Live = new List<PointerTapDiagnostics>();
+
+    /// <summary>
+    /// 살아 있는 프로브 목록. 자동 진단이 대상 InputField를 찾을 때 씁니다 —
+    /// FindObjectsOfType은 Unity 6에서 이름이 바뀌어 5개 버전을 모두 지원하기 번거롭습니다.
+    /// </summary>
+    public static IReadOnlyList<PointerTapDiagnostics> LiveProbes => Live;
+
+    /// <summary>Label이 일치하는 첫 프로브. 없으면 null.</summary>
+    public static PointerTapDiagnostics FindByLabel(string label)
+    {
+        foreach (var p in Live)
+        {
+            if (p != null && p.Label == label) return p;
+        }
+        return null;
+    }
+
+    private void OnEnable() => Live.Add(this);
+
+    private void OnDisable() => Live.Remove(this);
+
+    /// <summary>이 프로브가 속한 ScrollRect. 없으면 null(스크롤 밖).</summary>
+    public ScrollRect OwningScrollRect => ResolveScrollRect();
 
     private struct PendingTap
     {
@@ -145,6 +196,7 @@ public class PointerTapDiagnostics : MonoBehaviour,
     {
         LinesBuffer.Clear();
         PendingTaps.Clear();
+        RecordsBuffer.Clear();
         Revision++;
 #if UNITY_WEBGL && !UNITY_EDITOR
         try { TAP_Clear(); } catch (System.Exception e) { Debug.LogError($"[TapDiag] TAP_Clear failed: {e.Message}"); }
@@ -188,19 +240,48 @@ public class PointerTapDiagnostics : MonoBehaviour,
         var s = Sample(eventData, includeRelease: false);
         Append(FormatDown(_currentSeq, Label, s));
         PendingTaps.Add(new PendingTap { Seq = _currentSeq, Label = Label, DownTime = Time.realtimeSinceStartup });
+        RecordsBuffer.Add(new TapRecord
+        {
+            Seq = _currentSeq,
+            Label = Label,
+            HasScrollRect = s.HasScrollRect,
+            DownVelocityY = s.ScrollVelocity.y,
+            DownOver = s.Over,
+            DragThreshold = s.DragThreshold,
+        });
     }
 
     public void OnPointerUp(PointerEventData eventData)
     {
         int seq = _currentSeq;
         RemovePending(seq);
-        Append(FormatUp(seq, Label, Sample(eventData, includeRelease: true)));
+        var s = Sample(eventData, includeRelease: true);
+        Append(FormatUp(seq, Label, s));
+        Patch(seq, r =>
+        {
+            r.UpReceived = true;
+            r.UpOver = s.Over;
+            r.WillFireClick = s.WillFireClick;
+            r.MovedPixels = s.MovedPixels;
+            return r;
+        });
     }
 
     public void OnPointerClick(PointerEventData eventData)
     {
         var field = GetComponent<InputField>();
         Append(FormatClick(_currentSeq, Label, field != null && field.isFocused));
+        Patch(_currentSeq, r => { r.ClickReceived = true; return r; });
+    }
+
+    private static void Patch(int seq, System.Func<TapRecord, TapRecord> edit)
+    {
+        for (int i = RecordsBuffer.Count - 1; i >= 0; i--)
+        {
+            if (RecordsBuffer[i].Seq != seq) continue;
+            RecordsBuffer[i] = edit(RecordsBuffer[i]);
+            return;
+        }
     }
 
     private static void RemovePending(int seq)

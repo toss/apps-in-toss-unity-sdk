@@ -22,11 +22,18 @@ public class TapDiagnosticsTester : MonoBehaviour
     private const float RefreshIntervalSeconds = 0.3f;
 
     private Text _logText;
+    private Text _verdictText;
+    private Button _runButton;
+    private Text _runButtonLabel;
+    private TapAutoProbe _autoProbe;
     private int _lastRenderedRevision = -1;
     private float _lastRefreshTime = -1f;
+    private string _lastVerdictRender;
 
     public void SetupUI(Transform parent)
     {
+        _autoProbe = GetComponent<TapAutoProbe>() ?? gameObject.AddComponent<TapAutoProbe>();
+
         var section = UIBuilder.CreatePanel(parent, UIBuilder.Theme.SectionBg);
         var vlg = section.gameObject.AddComponent<VerticalLayoutGroup>();
         vlg.spacing = UIBuilder.Theme.SpacingSmall;
@@ -41,14 +48,27 @@ public class TapDiagnosticsTester : MonoBehaviour
             UIBuilder.Theme.FontLarge, UIBuilder.Theme.TextAccent, fontStyle: FontStyle.Bold);
 
         UIBuilder.CreateText(section,
-            "InputField를 탭하면 press/release 시점의 포인터 상태가 아래에 쌓입니다. "
-            + "위쪽 검색바는 스크롤 밖(scroll=NO), 이 아래 PlayerPrefs의 Key/Value 칸은 스크롤 안(scroll=YES)입니다. "
-            + "둘을 번갈아 탭해서 UP 줄의 FIRE 값을 비교하세요.",
+            "아래 버튼 하나면 A/B/C 전부 자동으로 돕니다. 20초쯤 걸리고, 끝나면 판정이 그대로 뜹니다. "
+            + "도는 동안 화면을 만지지 마세요 — 사람 손 입력이 섞이면 집계가 오염됩니다.",
+            UIBuilder.Theme.FontTiny, UIBuilder.Theme.TextSecondary);
+
+        _runButton = UIBuilder.CreateButton(section, "자동 진단 실행", onClick: OnAutoRunClick);
+        _runButtonLabel = _runButton != null ? _runButton.GetComponentInChildren<Text>() : null;
+
+        _verdictText = UIBuilder.CreateText(section, "(아직 실행하지 않음)",
+            UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextAccent);
+        _verdictText.horizontalOverflow = HorizontalWrapMode.Wrap;
+
+        UIBuilder.CreateText(section,
+            "손으로 확인하려면: 위쪽 검색바는 스크롤 밖(scroll=NO), 이 아래 PlayerPrefs의 Key/Value 칸은 "
+            + "스크롤 안(scroll=YES)입니다. 둘을 번갈아 탭해서 UP 줄의 FIRE 값을 비교하세요. "
+            + "FIRE=NO거나 UP 줄이 '미수신'이면 그 줄에 적힌 사유가 원인입니다.",
             UIBuilder.Theme.FontTiny, UIBuilder.Theme.TextSecondary);
 
         UIBuilder.CreateText(section,
-            "FIRE=YES면 클릭이 발화합니다. FIRE=NO거나 UP 줄 자체가 '미수신'이면 그 줄에 적힌 사유가 원인입니다. "
-            + "스크롤을 세게 튕긴 직후(vel이 0이 아닐 때) 탭하면 재현 확률이 올라갑니다.",
+            "자동 진단이 답하지 못하는 것 하나: 합성 터치는 iOS가 사용자 제스처로 쳐주지 않아서 "
+            + "소프트 키보드가 뜨는지는 못 봅니다. FIRE=YES로 나오면 그때 손으로 한 번 탭해서 "
+            + "키보드가 뜨는지 확인해 주세요.",
             UIBuilder.Theme.FontTiny, UIBuilder.Theme.TextSecondary);
 
         UIBuilder.CreateButton(section, "로그 지우기", onClick: OnClearClick);
@@ -63,9 +83,16 @@ public class TapDiagnosticsTester : MonoBehaviour
         PointerTapDiagnostics.Clear();
     }
 
+    private void OnAutoRunClick()
+    {
+        if (_autoProbe == null) return;
+        _autoProbe.StartRun();
+    }
+
     private void Update()
     {
         PointerTapDiagnostics.PollPendingTaps();
+        RefreshVerdict();
 
         if (_logText == null) return;
         if (_lastRefreshTime >= 0f && Time.realtimeSinceStartup - _lastRefreshTime < RefreshIntervalSeconds) return;
@@ -74,6 +101,42 @@ public class TapDiagnosticsTester : MonoBehaviour
         if (_lastRenderedRevision == PointerTapDiagnostics.Revision) return;
         _lastRenderedRevision = PointerTapDiagnostics.Revision;
         _logText.text = BuildVisibleLog();
+    }
+
+    /// <summary>
+    /// 진행 상황과 판정을 다시 그립니다. 실행 중에는 버튼을 잠급니다 — 도는 도중 다시 누르면
+    /// 두 번째 실행이 첫 번째 집계 위에 겹쳐 쌓입니다.
+    /// </summary>
+    private void RefreshVerdict()
+    {
+        if (_verdictText == null || _autoProbe == null) return;
+
+        string body;
+        if (_autoProbe.IsRunning)
+        {
+            body = $"진행 중 — {_autoProbe.Progress}";
+        }
+        else if (string.IsNullOrEmpty(_autoProbe.Verdict))
+        {
+            body = "(아직 실행하지 않음)";
+        }
+        else
+        {
+            body = _autoProbe.Verdict + "\n\n" + TapAutoProbe.Summarize(_autoProbe.Results);
+        }
+
+        if (body != _lastVerdictRender)
+        {
+            _lastVerdictRender = body;
+            _verdictText.text = body;
+        }
+
+        if (_runButton != null) _runButton.interactable = !_autoProbe.IsRunning;
+        if (_runButtonLabel != null)
+        {
+            string label = _autoProbe.IsRunning ? "실행 중…" : "자동 진단 실행";
+            if (_runButtonLabel.text != label) _runButtonLabel.text = label;
+        }
     }
 
     private static string BuildVisibleLog()

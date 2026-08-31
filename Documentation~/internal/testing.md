@@ -14,24 +14,6 @@ SDK가 무엇을 어떤 층위에서 검증하는지, 그리고 CI가 그것을 
 
 Level 2는 Level 1이 업로드한 `ait-build` 아티팩트를 내려받아 vite preview로 띄우고 테스트합니다. Unity 바이너리에 의존하지 않으므로 self-hosted 러너의 리소스 경합과 무관합니다.
 
-### PlayerPrefs 영속화 테스트 그룹 (9-x)
-
-`e2e-full-pipeline.test.js`의 9번대 테스트가 [PlayerPrefs 영속화](https://developers-apps-in-toss.toss.im/documentation/unity/add-features/playerprefs)를 검증합니다. 동작 설명은 그 문서가 정본이고, 여기서는 각 케이스가 무엇을 확인하는지만 요약합니다.
-
-| 케이스 | 확인 내용 |
-|--------|-----------|
-| 9-1 / 9-2 | 앱인토스 Storage 경로로 저장된 값이 IndexedDB를 CDP로 wipe해도 reload 후 생존 |
-| 9-3 | 앱인토스 Storage 실패(mock이 항상 reject)가 부팅을 막지 않음 |
-| 9-4 | 앱인토스 Storage 실패 시 IndexedDB 폴백으로 동작(2021.3은 순정 IDBFS 세션 노화 결함으로 값 단언을 skip — 9-6 참고) |
-| 9-5 | mock 없는 순정 프로덕션 경로에서 에러·거부·부팅 회귀 없음 |
-| 9-6 | [통제군, 2021.3 전용] 레이어를 완전히 끈 순정 Unity 상태에서 같은 세션 노화 시나리오를 재연해, 9-4의 실패가 레이어와 무관함을 증명 |
-| 9-7 | 제휴사(게임)가 자체 키로 Storage를 직접 쓰는 상황에서, 레이어가 제휴사 소유 키를 절대 건드리지 않음(레이어의 접근은 매니페스트 키 1개로 한정됨)을 호출 장부(ledger)로 감사 |
-| 9-8 | [레거시 origin 마이그레이션] 로컬에 PlayerPrefs가 없는 부팅에서 `__AIT_PP_LEGACY_SOURCE__` 오버라이드 훅이 준 옛 origin IDBFS 덤프(실제 Unity가 쓴 PlayerPrefs 바이트)를 채택해 MEMFS에 심고 AIT Storage로 승격함(경로 리매핑 포함)을 `TriggerPlayerPrefsGet` 왕복과 `status()`로 검증. ⚠️ **단언은 반드시 Get 이후 `status()`에 건다** — 심기가 populate가 아니라 Unity의 첫 `<appDir>/PlayerPrefs` 접근(= `node_ops.lookup` 미스)까지 지연되므로 부팅 직후 값은 `deferred`가 정상이다(`PlayerPrefsTester`는 Awake/Start에서 PlayerPrefs를 건드리지 않는다). seed 추출용 IDB 프로브는 오래 산 페이지에서 무응답이 되는 실측이 있어(2021.3 계열 세션 노화) 실패 시 같은 origin의 갓 만든 빈 페이지에서 1회 재시도하는데, 이때 seed 페이지를 **`browser.newContext()`로 명시 생성**해야 한다 — `browser.newPage()`는 페이지 1개 전용 컨텍스트라 `.newPage()`가 `Please use browser.newContext()`로 거부된다(run 32466990653에서 2021.3/2022.3 4개 leg가 이 경로로 죽었다). 예산 600초 |
-| 9-8b | [레거시 origin 마이그레이션 — 빈 매니페스트] "PlayerPrefs가 하나도 없는 매니페스트"가 이미 깔린 설치에서도 9-8과 동일하게 발화함을 확인 — 마이그레이션 창은 매니페스트 부재가 아니라 "스냅샷에 scoped 파일 0건"으로 판정되며, 그렇지 않으면 신 origin에서 한 번이라도 부팅한 기존 설치가 이관 대상에서 통째로 누락된다. 원래 9-8의 3단계였는데 분리했다: `test.setTimeout`이 테스트 단위라 앞 단계가 예산을 다 먹고 마지막 단계가 시간 안에 못 끝났다(run 32462382123). 분리 후 실측 3.3~3.8분으로 예산에 여유가 확인됐다(run 32466990653). 1단계 seed는 `describe` 스코프의 `pp8LegacySeed`로 9-8에서 물려받는다(`describe.serial`이라 순서·skip 전파가 보장됨). 9-8과 같은 이유로 단언은 Get 이후 `status()`에 건다. 예산 420초 |
-| 9-9 | [회귀 방지] `__AIT_PP_LEGACY_SOURCE__` 훅을 설치하지 않으면 absent 분기 동작이 어댑터 도입 이전과 정확히 동일함(`legacyImport`/`legacyBackend`가 `none`, `legacyBytes`가 0)을 확인 |
-| 9-10 | [실패 매트릭스] 레거시 소스가 reject하거나 hang해도 부팅을 막지 않음 — reject는 `legacyImport: 'error'`, hang은 자체 타임박스로 `legacyImport: 'timeout'`. 두 분기 모두 `mode: 'ait'`로 부팅 완료하고, 빈 매니페스트(`files: {}`)를 남기지 않아 다음 부팅에 재시도 여지가 남는지도 함께 검증. 분기마다 **콜드 부트 1회**만 쓴다 — `readIdbfs` 호출에 앱 디렉터리 선행 조건이 없어졌기 때문이다(앱 디렉터리 관측은 심기 시점으로 밀렸다). 예전의 워밍 부팅 2회는 순수 낭비였고 run 32466990653의 예산 초과(420초 예산 대 426초 실측, 5개 leg가 6초 차로 사망)에 기여했다. 예산 600초 |
-| 9-11 | [콜드 부트 이관] 이 origin에서 한 번도 실행된 적 없는 설치가 **같은 세션 안에** 이관을 끝내는지 — 실제 이관 대상 인구의 첫 부팅이 이 모양이라 기능의 본체를 증명하는 테스트다. 부팅 직후 `legacyImport: 'deferred'` + `legacyBytes: 0`(추측해서 심지 않았음)을 확인한 뒤, `TriggerPlayerPrefsGet`이 만드는 첫 접근에서 `imported`로 전이하고 `legacyAppDir`이 실제 앱 디렉터리(`legacy_origin_seed`가 아닌)로 기록되며 같은 Get이 `v8`을 돌려주는지까지 본다 — 심으면서 노드를 돌려주므로 Unity가 그 자리에서 우리 바이트를 읽는다. 원래 9-10의 세 번째 분기로 `skip-unknown-appdir`(심을 곳을 모르니 포기)을 고정하고 있었으나, 어댑터가 추측 대신 관측으로 바뀌면서 기대값이 통째로 뒤집혀 별도 테스트로 분리했다. seed는 `pp8LegacySeed`를 재사용. 예산 300초 |
-
 ## Unity 버전
 
 E2E 매트릭스는 아래 5개 버전을 macOS와 Windows 양쪽에서 돌립니다.

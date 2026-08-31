@@ -666,56 +666,24 @@ namespace AppsInToss.Editor.Menu
         }
 
         /// <summary>
-        /// 배포 출력에서 intoss-private:// URL 추출.
-        /// ait CLI는 URL을 고정폭 박스(│ ... │) 안에 출력하므로 긴 URL(예: UUID deploymentId)은
-        /// 여러 줄로 래핑된다 — 줄 단위 매칭은 URL을 중간에서 자르므로, 박스 문자·여백 제거 후
-        /// 줄 끝까지 이어지는 URL을 연속 줄과 접합해 복원한다.
+        /// 배포 출력에서 intoss-private:// URL 추출
         /// </summary>
-        internal static string ExtractDeployUrl(string output)
+        private static string ExtractDeployUrl(string output)
         {
             if (string.IsNullOrEmpty(output))
             {
                 return null;
             }
 
+            // intoss-private://... URL 패턴 찾기
             // (ANSI 코드는 AITPlatformHelper.ExecuteCommand에서 이미 제거됨)
-            const string urlChars = "A-Za-z0-9._~%=&?/-";
-            string url = null;
-            bool wrapped = false;
-            foreach (var raw in output.Split('\n'))
+            var match = Regex.Match(output, @"intoss-private://[^\s\│\│]+");
+            if (match.Success)
             {
-                string line = raw.Replace("│", "").Trim();
-                if (url == null)
-                {
-                    var match = Regex.Match(line, "intoss-private://[" + urlChars + "]+");
-                    if (match.Success)
-                    {
-                        url = match.Value;
-                        // URL이 줄 끝까지 이어졌으면 박스 폭 래핑으로 잘렸을 수 있음
-                        wrapped = match.Index + match.Length == line.Length;
-                    }
-                    continue;
-                }
-                if (wrapped && Regex.IsMatch(line, "^[" + urlChars + "]+$"))
-                {
-                    url += line;
-                    continue;
-                }
-                break;
+                return match.Value.TrimEnd('│', ' ', '\r', '\n');
             }
 
-            if (url == null)
-            {
-                return null;
-            }
-
-            // SDK 3.0(V3 host) 딥링크는 host 파라미터가 필수 — V3로 출시된 적 없는 스킴은
-            // CDN에 deployment.json이 없어 host 없이는 V3 진입이 안 된다. CLI가 이미 붙였으면 유지.
-            if (!Regex.IsMatch(url, @"[?&]host="))
-            {
-                url += (url.Contains("?") ? "&" : "?") + "host=appsInTossHost";
-            }
-            return url;
+            return null;
         }
 
         /// <summary>

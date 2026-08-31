@@ -114,8 +114,6 @@ gh api repos/toss/apps-in-toss-unity-sdk/actions/workflows/216269700/dispatches 
 EOF
 ```
 
-빌드가 끝나면 deploy 단계가 `intoss-private://` URL을 추출해 QR 이미지를 생성하고 Job Summary에 게시합니다. `target_ref`가 PR로 해석된 경우에만 PR 코멘트에도 게시됩니다(브랜치로 dispatch한 경우는 Job Summary에만 게시). QR을 토스 앱으로 스캔하면 해당 빌드가 실기기에서 열립니다.
-
 ### Release
 
 ```bash

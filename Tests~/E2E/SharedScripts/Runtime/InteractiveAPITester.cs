@@ -49,6 +49,7 @@ public class InteractiveAPITester : MonoBehaviour
     private VisibilityBGMTester _visibilityBGMTester;
     private MetricEventTester _metricEventTester;
     private PlayerPrefsTester _playerPrefsTester;
+    private TapDiagnosticsTester _tapDiagnosticsTester;
 
     void Start()
     {
@@ -70,6 +71,7 @@ public class InteractiveAPITester : MonoBehaviour
         _visibilityBGMTester = GetComponent<VisibilityBGMTester>() ?? gameObject.AddComponent<VisibilityBGMTester>();
         _metricEventTester = GetComponent<MetricEventTester>() ?? gameObject.AddComponent<MetricEventTester>();
         _playerPrefsTester = GetComponent<PlayerPrefsTester>() ?? gameObject.AddComponent<PlayerPrefsTester>();
+        _tapDiagnosticsTester = GetComponent<TapDiagnosticsTester>() ?? gameObject.AddComponent<TapDiagnosticsTester>();
 
         // API 목록 로드
         allMethods = APIParameterInspector.GetAllAPIMethods();
@@ -102,6 +104,10 @@ public class InteractiveAPITester : MonoBehaviour
         _contactsViralTester?.SetupUI(subTesterContainer);
         _metricEventTester?.SetupUI(subTesterContainer);
         _playerPrefsTester?.SetupUI(subTesterContainer);
+
+        // 탭 진단 패널은 PlayerPrefs의 Key/Value 입력칸 바로 아래에 둡니다 — 재현 대상을 탭한
+        // 직후 같은 화면에서 결과를 읽을 수 있어야 합니다.
+        _tapDiagnosticsTester?.SetupUI(subTesterContainer);
 
         // Safe Area Insets 적용 (Apps in Toss 플랫폼)
 #if AIT_SDK_1_7_1_OR_LATER

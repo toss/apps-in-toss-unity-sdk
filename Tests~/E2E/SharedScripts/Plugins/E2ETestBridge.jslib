@@ -188,6 +188,33 @@ mergeInto(LibraryManager.library, {
     },
 
     /**
+     * 탭 진단 한 줄을 window.__AIT_TAPLOG에 쌓고 console.log로 흘림
+     *
+     * 화면 패널과 별개로 콘솔에도 남기는 이유: 진단 대상이 "스크롤 영역 안에서 탭이 안 먹는 증상"이라
+     * 화면 UI 조작 자체가 증상의 영향을 받을 수 있다. 원격 인스펙터가 붙는 상황이면 화면을 거치지 않고
+     * 여기서 읽는 편이 확실하다.
+     *
+     * @param {number} linePtr - 진단 한 줄 문자열 포인터
+     */
+    TAP_Log: function(linePtr) {
+        var line = UTF8ToString(linePtr);
+        window.__AIT_TAPLOG = window.__AIT_TAPLOG || [];
+        window.__AIT_TAPLOG.push(line);
+        while (window.__AIT_TAPLOG.length > 200) {
+            window.__AIT_TAPLOG.shift();
+        }
+        console.log('[E2E-TAP] ' + line);
+    },
+
+    /**
+     * window.__AIT_TAPLOG를 비움
+     */
+    TAP_Clear: function() {
+        window.__AIT_TAPLOG = [];
+        console.log('[E2E-TAP] cleared');
+    },
+
+    /**
      * JavaScript에서 JSON 파싱 검증
      * C# → JSON → JavaScript 파싱 → JSON → C# 역직렬화 round-trip 검증용
      * @param {string} jsonPtr - JSON 문자열 포인터

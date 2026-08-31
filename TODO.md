@@ -2,7 +2,7 @@
 
 > 2026-04-14 전체 리뷰 기준 작성 · 2026-06-16 코드 대조로 완료 항목 정리.
 > 우선순위 P1(높음) ~ P3(낮음).
-> 2026-07-08 P2 잔여 항목 완료로 정리 · 2026-07-26 베타 기능 항목 추가 · 2026-07-27 문서 통합 정리에서 발견한 항목 추가 · 2026-08-01 의존성 항목 추가 · 2026-08-10 Deploy 항목 추가 · 2026-08-25 머지 전 감사에서 나온 배포 URL 추출 항목 추가.
+> 2026-07-08 P2 잔여 항목 완료로 정리 · 2026-07-26 베타 기능 항목 추가 · 2026-07-27 문서 통합 정리에서 발견한 항목 추가 · 2026-08-01 의존성 항목 추가 · 2026-08-10 Deploy 항목 추가 · 2026-08-21 후속 검증에 옛 origin 조회 API 통합 대기 항목 추가 · 2026-08-25 머지 전 감사에서 나온 배포 URL 추출 항목 추가.
 
 ## 베타 기능
 
@@ -26,7 +26,21 @@
 
 - **P2 — Unity 2021.3 순정 IDBFS 세션 노화 결함 실기기 확인**: E2E CI(Chromium, macOS/Windows)에서 Unity 2021.3(Emscripten 2.0.19) 빌드가 세션 시작 약 60초 후부터 순정 IDBFS 저장이 통째로 죽는 현상을 재현(4 run × 2 attempt × 2 OS, 16/16). 시그니처: `IDBFS.getLocalSet`의 MEMFS 트리 순회가 `errno=44`(ENOENT)로 실패 → `IDBFS.syncfs` 양방향 전부 조용히 실패(Unity가 에러를 삼킴) → 이후 저장된 값은 reload 시 유실, `indexedDB.open('/idbfs')` 직접 프로브도 응답 없음. 레이어를 완전히 끈 순정 페이지에서는 노화 후 reload하면 `page.evaluate`가 무기한 hang되는 페이지 wedge까지 관찰됨(run 31577487933, 양 OS). SDK PlayerPrefs 레이어와 무관함은 E2E 9-6 통제군(레이어 완전 비활성)으로 검증하며, 9-4의 IDBFS 폴백 값 단언은 2021.3에서만 skip 처리(`Tests~/E2E/tests/e2e-full-pipeline.test.js`). 같은 조건에서 앱인토스 Storage 경로(9-1/9-2)는 2021.3 포함 전 버전 green — 이 결함이 본 기능의 필요성을 강화한다. 후속: (1) 실기기(토스 앱 WebView) 2021.3 빌드에서 동일 결함 재현 여부 확인, (2) 재현 시 2021.3 사용자에게 PlayerPrefs 영속화 opt-out 비권장 안내 문서화(사용자 허락 후), (3) Unity 상류 리포트 여부 판단.
 
+- **P2 — 이전 origin 저장소 조회 수단 확보 시 어댑터 연결**: SDK 3.x로 오면서 서빙 origin이 변경됐다(플랫폼 공지 기준). 브라우저 저장소는 origin 단위로 격리되므로, 순정 경로의 PlayerPrefs가 놓이는 IDBFS(IndexedDB)는 origin이 바뀌면 이전 데이터에 접근할 수 없다. 플랫폼이 마이그레이션 지원 방안을 검토 중이나 **구체적인 방법과 일정은 미정**이다. 우리가 필요로 하는 형태는 IndexedDB DB명 `/idbfs`, 오브젝트스토어 `FILE_DATA`의 덤프(키=파일 경로, 값=contents/mode/timestamp)이며, 이 요구는 플랫폼 측에 전달돼 있다. 이번 변경으로 레이어에 mock 주입 가능한 seam(`__AIT_PP_LEGACY_SOURCE__` 오버라이드 훅 + `getPlatformLegacySource()` stub)이 들어가 있어, 수단이 확정되면 stub 하나를 채우는 작은 통합만 남는다. **심을 위치 문제는 이 PR에서 해소됐다(2026-08-23).** 심을 경로 `/idbfs/<hash>/PlayerPrefs`의 `<hash>`는 빌드가 서비스되는 URL에서 유도돼 origin이 바뀌면 값이 달라지는데, 이 디렉터리는 Unity 네이티브가 `main()` 안에서 만들기 때문에 populate 시점(= 임포트 시점)에는 아직 없다. 옛 규칙(`resolveAppDir()`)은 로컬 엔트리 목록에서 `/idbfs/<한 세그먼트>` 후보를 찾아 **정확히 1개일 때만** 채택하는 추측이었고, 그 추측은 두 방향으로 모두 나빴다 — 후보 0개(신규 origin)면 이관이 영영 발화하지 않았고(A), 후보 1개가 현재 앱 디렉터리가 아니면(같은 origin에서 서빙 URL만 바뀐 경로 버저닝 `/app/v1` → `/app/v2` 등) 좌초 경로에 심고 그것이 매니페스트로 승격돼 창이 **영구히** 닫혔다(B).
+
+  지금은 심을 위치를 추측하지 않고 **관측**한다. `resolveAppDir()`은 함수째 삭제했고, `tryLegacyImport()`는 후보를 park만 한 뒤(`legacyImport: 'deferred'`) 실제 심기는 `tryPlantAt()`으로 미룬다. 관측 앵커는 **`node_ops.lookup` 미스**다: `FS.lookupNode`(`library_fs.js:225-244`)는 nameTable을 먼저 뒤지고 **미스일 때만** `FS.lookup`(`:614-616`) → `parent.node_ops.lookup`을 부르며 그 반환값을 그대로 노드로 쓴다. `MEMFS.node_ops.lookup`(`library_memfs.js:183-185`)은 무조건 ENOENT를 throw하므로, 이 지점 도달은 곧 "지금 없는 이름을 누군가 찾는다"는 순수 이벤트다. 즉 Unity가 `<appDir>/PlayerPrefs`를 처음 열려는 순간 **엔진이 parent 노드(= 현재 앱 디렉터리)를 직접 건네준다** — 추측이 아니라 통보다. 미스에서만 발화하므로 라이브 데이터를 덮어쓰는 것이 구조적으로 불가능하다는 성질도 따라온다. (이전에 여기 적혀 있던 `node_ops.mkdir` 훅 안은 틀렸다: MEMFS `ops_table.dir.node`에는 `mkdir` 키가 아예 없고 `FS.mkdir`(`library_fs.js:641`)은 `FS.mknod`(`:618`)를 거쳐 `parent.node_ops.mknod`(`:632`)만 부르므로, `prejs/IdbFs.js:75`의 `mkdir` 오버라이드는 호출부 0건의 죽은 코드다. 디렉터리 생성 단독으로는 persist도 발생하지 않는다.)
+
+  **남은 선결 과제 — 플랫폼 API의 스코프 확인.** 훅이 붙으면서 임포트가 "콜드 부트에서도 같은 세션에 반드시 심는다"로 공격적으로 바뀌었다. `pickLegacyTarget()`의 리매핑 규칙은 "경로 정확일치 우선, 없으면 후보가 1개일 때만"이라, 플랫폼 API가 여러 앱/origin의 데이터를 한 덤프에 섞어 주면 **다른 게임의 세이브를 이 게임의 앱 디렉터리로 옮길** 소지가 있다. `getPlatformLegacySource()` stub을 채우기 전에 그 API가 앱 단위로 스코프되어 있는지 반드시 확인할 것. (덤프가 우리가 이해하는 모양이 아닐 때의 방어선: 후보 수 `LEGACY_MAX_CANDIDATES`, 누적 크기 `LEGACY_MAX_B64_CHARS`, 그리고 위 규칙에 걸리면 `legacyImport: 'skip-ambiguous'`로 아무것도 심지 않는다.)
+
+  **선결 과제 2 — 레거시 'empty' 응답의 창 처리 재결정.** 현재 구현은 소스가 존재하는데 빈 응답이면 `legacyChecked`를 기록하지 않는다(재시도군 — 매 부팅 재조회, 예산 ≤1초). 미출시 플랫폼 API의 빈 응답이 lazy-backfill(데이터가 나중에 채워짐)일 가능성을 배제할 수 없어 보수적으로 창을 열어 뒀다. stub을 채우는 PR에서 API 의미론(빈 응답이 종결인지)과 실지연을 확인해, 'empty'를 종결로 기록할지(재조회 비용 제거) 재결정할 것.
+
+  나머지 남는 위험: 이 세션에서 PlayerPrefs를 한 번도 열지 않는 게임은 `LEGACY_WATCH_MS`(20초) 만료 후 `legacyImport: 'expired'`로 포기하고 다음 부팅에 재시도한다(오늘의 skip과 동급). stale 디렉터리에 PlayerPrefs가 **남아 있는** 경우는 이 설계의 대상이 아니다 — `collectScoped()`가 `SCOPE_RE`에 맞는 모든 경로를 긁어 좌초 PlayerPrefs가 매니페스트에 올라가는 별건 결함이다.
+
+  어댑터를 의도적으로 얇게 유지하는 근거: IndexedDB는 웹 표준상 best-effort 저장소라 이미 좌초된 데이터를 구조하는 일의 기대값이 낮고, 가치의 본체는 앞으로의 쓰기를 IndexedDB에서 걷어내는 쪽에 있다.
+
 ## 코드 결함
+
+- **P3 — `onFlush()`가 IndexedDB 미러를 재시도하지 않는다(비대칭)**: `WebGLTemplates/AITTemplate/Runtime/ait-playerprefs.js:1534-1537`. visibilitychange/pagehide 훅은 `pushScoped(activeMount)`만 다시 부르고 순정 IDBFS 미러(`callOrig(mount, false, ...)`)는 재시도하지 않는다. E2E run 32585243501에서 Windows leg 한정으로 `lastError: "IndexedDB 미러: No such file or directory"`가 관측됐는데(순정 `IDBFS.syncfs` 안의 `getLocalSet`/`loadLocalEntry`에서 나는 러너 부하 타이밍 레이스, 우리 코드가 호출하지도 않는 경로), 그 세션에서 이후 write가 없으면 미러 사본이 빠진 채 끝날 수 있다. 주 경로인 AIT Storage push는 무사하고 다음 write에서 diff가 재계산돼 자가 치유되므로 "백업의 백업"이 빠지는 수준이다. 이 비대칭은 #1066부터 있던 것이고 레이스도 순정 코드라 어느 쪽도 최근 변경의 회귀는 아니다. 고친다면 `onFlush()`에 기존 `callOrig` 헬퍼 호출을 한 줄 더하는 정도.
 
 - **P3 — `AITEditorScriptObject.IsReadyForDeploy()`가 죽은 코드**: `Editor/AITEditorScriptObject.cs:273`. `IsIconUrlValid`/`IsAppNameValid`/`IsVersionValid` 셋을 묶지만 어디서도 호출되지 않는다(`Editor/AITCredentials.cs:82`의 동명 static은 별개 메서드이고 이쪽도 호출처가 없다). Configuration 창은 `IsAppNameValid()`를 직접 호출해 빌드 버튼을 게이팅하므로(`Editor/AITConfigurationWindow.cs:1139`) 기능 공백은 없다. 제거하거나, 빌드 진입 경로의 실제 게이트로 승격할지 결정 필요.
 

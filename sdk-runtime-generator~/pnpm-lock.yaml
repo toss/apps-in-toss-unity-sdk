@@ -8050,8 +8050,8 @@ packages:
   fastify@5.12.1:
     resolution: {integrity: sha512-FWi+tQvwxR/PeRX7Z2mhfEF5ozJ3jn9asiiclzKXNSzJRHAYcU924aIOKAdHFJ+YIKieh3cqr1IwCOvTr41B3Q==}
 
-  fastq@1.20.2:
-    resolution: {integrity: sha512-UpGiiODyCGprM8EPP6JodP6jC9Rws6TCuiDOD+nn0CJhR8guI3g/ozo4ugL0vJ+Yz1UtJuuRPqvQuybVOF1VQA==}
+  fastq@1.20.3:
+    resolution: {integrity: sha512-XKv5nnLs6nLF71NgiKJLIZFLkPyIEuOselLG7ujZnGrRfQK8HpvY+WqKhAJUAdLomwVHErVS4LfxFlPq0/FTAw==}
 
   fb-dotslash@0.5.8:
     resolution: {integrity: sha512-XHYLKk9J4BupDxi9bSEhkfss0m+Vr9ChTrjhf9l2iw3jB5C7BnY4GVPoMcqbrTutsKJso6yj2nAB6BI/F2oZaA==}
@@ -10753,8 +10753,8 @@ packages:
   zod@3.24.4:
     resolution: {integrity: sha512-OdqJE9UDRPwWsrHjLN2F8bPxvwJBK22EHLWtanu0LSYr5YqzsaaW3RMgmjwr8Rypg5k+meEJdSPXJZXE/yqOMg==}
 
-  zod@4.5.1:
-    resolution: {integrity: sha512-P3GqeAEOEDqKvafVGLezbg+39YW/ze4xrD4qdS0adOY8eoI3zfjv1PQM4UwQzgT8mZKXEbqtVt8K+ZKGqkMFKg==}
+  zod@4.5.4:
+    resolution: {integrity: sha512-sC95tT5iHHH9gtpj6A81kh+NEaRAUFN+qlUPDUbRfOMvNf5QCBqsb3WgvnpVtK5Y+4UfA6KqufotuTvMGiTlsA==}
 
 snapshots:
 
@@ -27036,7 +27036,7 @@ snapshots:
       '@fastify/send': 4.1.1
       content-disposition: 2.0.1
       fastify-plugin: 6.0.0
-      fastq: 1.20.2
+      fastq: 1.20.3
       glob: 13.0.6
 
   '@granite-js/blur-view@1.0.10(@granite-js/native@1.0.10(@babel/runtime@7.29.7)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(@types/react@19.2.18)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)':
@@ -28033,7 +28033,7 @@ snapshots:
       es-toolkit: 1.52.0
       esbuild: 0.28.2
       fastify: 5.12.1
-      zod: 4.5.1
+      zod: 4.5.4
     transitivePeerDependencies:
       - '@swc/helpers'
       - '@types/node'
@@ -28051,7 +28051,7 @@ snapshots:
       es-toolkit: 1.52.0
       esbuild: 0.28.2
       fastify: 5.12.1
-      zod: 4.5.1
+      zod: 4.5.4
     transitivePeerDependencies:
       - '@swc/helpers'
       - '@types/node'
@@ -28069,7 +28069,7 @@ snapshots:
       es-toolkit: 1.52.0
       esbuild: 0.28.2
       fastify: 5.12.1
-      zod: 4.5.1
+      zod: 4.5.4
     transitivePeerDependencies:
       - '@swc/helpers'
       - '@types/node'
@@ -28087,7 +28087,7 @@ snapshots:
       es-toolkit: 1.52.0
       esbuild: 0.28.2
       fastify: 5.12.1
-      zod: 4.5.1
+      zod: 4.5.4
     transitivePeerDependencies:
       - '@swc/helpers'
       - '@types/node'
@@ -28105,7 +28105,7 @@ snapshots:
       es-toolkit: 1.52.0
       esbuild: 0.28.2
       fastify: 5.12.1
-      zod: 4.5.1
+      zod: 4.5.4
     transitivePeerDependencies:
       - '@swc/helpers'
       - '@types/node'
@@ -28123,7 +28123,7 @@ snapshots:
       es-toolkit: 1.52.0
       esbuild: 0.28.2
       fastify: 5.12.1
-      zod: 4.5.1
+      zod: 4.5.4
     transitivePeerDependencies:
       - '@swc/helpers'
       - '@types/node'
@@ -28897,7 +28897,7 @@ snapshots:
   '@nodelib/fs.walk@1.2.8':
     dependencies:
       '@nodelib/fs.scandir': 2.1.5
-      fastq: 1.20.2
+      fastq: 1.20.3
 
   '@oxc-project/types@0.147.0': {}
 
@@ -30280,7 +30280,7 @@ snapshots:
   avvio@9.3.0:
     dependencies:
       '@fastify/error': 4.2.0
-      fastq: 1.20.2
+      fastq: 1.20.3
 
   b4a@1.8.1: {}
 
@@ -31257,7 +31257,7 @@ snapshots:
       semver: 7.8.5
       toad-cache: 3.7.4
 
-  fastq@1.20.2:
+  fastq@1.20.3:
     dependencies:
       reusify: 1.1.0
 
@@ -34423,4 +34423,4 @@ snapshots:
 
   zod@3.24.4: {}
 
-  zod@4.5.1: {}
+  zod@4.5.4: {}

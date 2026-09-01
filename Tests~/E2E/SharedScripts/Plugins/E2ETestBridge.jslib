@@ -270,14 +270,25 @@ mergeInto(LibraryManager.library, {
             canvas.dispatchEvent(e);
         };
 
-        var down = makeTouch();
-        fire('touchstart', [down], [down], [down]);
+        // dispatch를 프레임 밖으로 미룬다. 여기는 C# 코루틴 → jslib 호출 스택 안, 즉 PlayerLoop
+        // 한복판이다. touchstart를 동기로 쏘면 엔진의 터치 핸들러가 그 자리에서 입력 처리를
+        // 재진입하려 들고, Unity가 "PlayerLoop internal function has been called recursively"로
+        // 막는다. 막히기만 하고 이벤트는 다음 프레임에 처리되므로 측정값은 멀쩡했지만, 탭마다
+        // 에러가 하나씩 쌓여 실기기 로그를 덮는다.
+        //
+        // 조준 보정(TapAutoProbe.LeadFrames)은 그대로 둔다. 매크로태스크는 현재 rAF 콜백이
+        // 끝난 뒤 다음 rAF 전에 돌므로, 엔진이 터치를 집어가는 프레임은 동기 dispatch 때와
+        // 같은 다음 프레임이다.
         setTimeout(function() {
-            // 손을 뗀 상태라 touches/targetTouches는 비고 changedTouches에만 남는다.
-            var up = makeTouch();
-            fire('touchend', [], [up], []);
-            window.__AIT_TAP_BUSY = Math.max(0, (window.__AIT_TAP_BUSY || 1) - 1);
-        }, holdMs);
+            var down = makeTouch();
+            fire('touchstart', [down], [down], [down]);
+            setTimeout(function() {
+                // 손을 뗀 상태라 touches/targetTouches는 비고 changedTouches에만 남는다.
+                var up = makeTouch();
+                fire('touchend', [], [up], []);
+                window.__AIT_TAP_BUSY = Math.max(0, (window.__AIT_TAP_BUSY || 1) - 1);
+            }, holdMs);
+        }, 0);
     },
 
     /**

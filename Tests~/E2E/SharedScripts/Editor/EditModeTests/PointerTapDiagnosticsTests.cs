@@ -257,4 +257,57 @@ public class PointerTapDiagnosticsTests
         // UP이 안 오는 경로는 ProcessDrag가 pointerPress를 null로 만든 경우뿐이다.
         StringAssert.Contains("pointerPress", line);
     }
+
+    // ─── 신원 비교 ───
+    //
+    // 아래 두 건은 실기기 실측에서 실제로 걸린 구멍이다. 스크롤 콘텐츠가 손가락 밑으로
+    // 흐르면 press 때와 다른 GameObject 위에서 release되는데, 그 GameObject의 이름이
+    // 같은 경우가 흔하다(같은 목록의 이웃 InputField). 이름만 비교하면 신원이 바뀐 것을
+    // 놓치고, 로그에는 "핸들러(InputField)와 핸들러(InputField)가 다름"이라는 읽을 수 없는
+    // 줄이 남는다. 그래서 Name()이 인스턴스 ID를 붙인다.
+
+    [Test]
+    public void OverChanged_SameNameDifferentInstance_IsTrue()
+    {
+        var r = new PointerTapDiagnostics.TapRecord
+        {
+            UpReceived = true,
+            DownOver = "InputField#-1010",
+            UpOver = "InputField#-2020",
+        };
+
+        Assert.IsTrue(r.OverChanged);
+    }
+
+    [Test]
+    public void OverChanged_SameInstance_IsFalse()
+    {
+        var r = new PointerTapDiagnostics.TapRecord
+        {
+            UpReceived = true,
+            DownOver = "InputField#-1010",
+            UpOver = "InputField#-1010",
+        };
+
+        Assert.IsFalse(r.OverChanged);
+    }
+
+    [Test]
+    public void ExplainNoFire_SameNameDifferentInstance_StaysReadable()
+    {
+        var s = new PointerTapDiagnostics.TapSnapshot
+        {
+            WillFireClick = false,
+            Eligible = true,
+            PointerClick = "InputField#-1010",
+            ReleaseHandler = "InputField#-2020",
+        };
+
+        string reason = PointerTapDiagnostics.ExplainNoFire(s);
+
+        // 두 조각이 서로 다르게 보여야 한다. 이 단언이 깨지면 로그를 읽는 사람이
+        // "같은 것 둘이 다르다"는 문장을 마주하게 된다.
+        StringAssert.Contains("-1010", reason);
+        StringAssert.Contains("-2020", reason);
+    }
 }

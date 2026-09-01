@@ -86,7 +86,11 @@ public class PointerTapDiagnostics : MonoBehaviour,
         /// </summary>
         public bool DragIsSelf;
 
-        /// <summary>press와 release 사이에 포인터 밑의 GameObject가 바뀌었는가.</summary>
+        /// <summary>
+        /// press와 release 사이에 포인터 밑의 GameObject가 바뀌었는가.
+        /// 두 문자열에는 인스턴스 ID가 붙어 있어서(Name 참조) 이름이 같은 이웃 위젯으로 넘어간
+        /// 경우도 잡힙니다. 스크롤 목록에서는 그쪽이 오히려 흔한 모양입니다.
+        /// </summary>
         public bool OverChanged => UpReceived && DownOver != UpOver;
     }
 
@@ -348,5 +352,11 @@ public class PointerTapDiagnostics : MonoBehaviour,
         return _scrollRect;
     }
 
-    private static string Name(GameObject go) => go != null ? go.name : "(none)";
+    /// <summary>
+    /// 이름 뒤에 인스턴스 ID를 붙입니다. 이름만 찍으면 같은 이름의 다른 GameObject를 구분하지
+    /// 못해서, 실기기 로그에 "핸들러(InputField)와 핸들러(InputField)가 다름" 같은 줄이 나옵니다.
+    /// 스크롤 콘텐츠가 손가락 밑에서 흐르면 실제로 이웃한 동명 위젯으로 넘어가므로 흔한 경우입니다.
+    /// TapRecord.OverChanged도 이 문자열을 비교하니, ID가 없으면 신원이 바뀐 것을 놓칩니다.
+    /// </summary>
+    private static string Name(GameObject go) => go != null ? $"{go.name}#{go.GetInstanceID()}" : "(none)";
 }

@@ -529,6 +529,11 @@ public static class UIBuilder
         if (onValueChanged != null) inputField.onValueChanged.AddListener((v) => onValueChanged(v));
         if (onEndEdit != null) inputField.onEndEdit.AddListener((v) => onEndEdit(v));
 
+        // 탭 진단 프로브. InputField가 이미 구현한 인터페이스만 구현하므로 이벤트 라우팅이 바뀌지 않습니다.
+        // 자세한 근거는 PointerTapDiagnostics의 주석 참조.
+        var probe = go.AddComponent<PointerTapDiagnostics>();
+        probe.Label = string.IsNullOrEmpty(placeholder) ? go.name : placeholder;
+
         return inputField;
     }
 

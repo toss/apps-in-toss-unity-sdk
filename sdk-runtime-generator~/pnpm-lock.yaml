@@ -1345,6 +1345,10 @@ packages:
     resolution: {integrity: sha512-ljYMvh/dCuv8YZEDLbbkf2LDXEhi3VHMQgKFi3BWplkKxu6Kcm9EP3OOiGr7tHTjT83U8u8RIbrZeLDwtZFs/Q==}
     hasBin: true
 
+  '@apps-in-toss/cli@3.2.0':
+    resolution: {integrity: sha512-qbHyhP1GGBvgecR/BQmKefXmYvR/gJ+y94/sQIAEy1BYcdbxX1AHio3nwwNzTiwlGtrageEz/Jx0fNyrm/O/ew==}
+    hasBin: true
+
   '@apps-in-toss/framework@1.10.0':
     resolution: {integrity: sha512-6H7a1Sjseqlg4nFNPE7KCwIpFjtv0CUe5th2TEu6wUmsBSI6C7UBTirNaHc1QKxQmu6/Lf7hKgiTgkglGltcKA==}
     hasBin: true
@@ -13670,6 +13674,21 @@ snapshots:
       - supports-color
       - typanion
 
+  '@apps-in-toss/cli@3.2.0(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)':
+    dependencies:
+      '@apps-in-toss/ait-format': 1.0.0
+      '@clack/prompts': 1.7.0
+      c12: 3.3.4
+      clipanion: 4.0.0-rc.4(typanion@3.14.0)
+      jscodeshift: 17.4.0(@babel/preset-env@7.28.5(@babel/core@7.29.7))
+      picocolors: 1.1.1
+      uuidv7: 1.2.1
+    transitivePeerDependencies:
+      - '@babel/preset-env'
+      - magicast
+      - supports-color
+      - typanion
+
   '@apps-in-toss/framework@1.10.0(@babel/preset-env@7.28.5(@babel/core@7.29.7))(@granite-js/native@0.1.31(@babel/runtime@7.29.7)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(@granite-js/react-native@0.1.31(@granite-js/native@0.1.31(@babel/runtime@7.29.7)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(@swc/helpers@0.5.17)(@types/node@26.4.0)(@types/react@19.2.18)(jiti@2.7.0)(postcss@8.5.26)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)(tsx@4.23.12)(typescript@7.0.2)(yaml@2.9.0))(@swc/helpers@0.5.17)(@toss/tds-react-native@2.0.5(7b6d86ff265b3e2dde752154bac4abc9))(@types/node@26.4.0)(@types/react@19.2.18)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)(typanion@3.14.0)(typescript@7.0.2)':
     dependencies:
       '@apps-in-toss/analytics': 1.10.0(@granite-js/native@0.1.31(@babel/runtime@7.29.7)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(@granite-js/react-native@0.1.31(@granite-js/native@0.1.31(@babel/runtime@7.29.7)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0))(@swc/helpers@0.5.17)(@types/node@26.4.0)(@types/react@19.2.18)(jiti@2.7.0)(postcss@8.5.26)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)(tsx@4.23.12)(typescript@7.0.2)(yaml@2.9.0))(@types/react@19.2.18)(react-native@0.72.6(@babel/core@7.29.7)(@babel/preset-env@7.28.5(@babel/core@7.29.7))(react@18.2.0))(react@18.2.0)
@@ -25621,7 +25640,7 @@ snapshots:
 
   '@apps-in-toss/web-framework@3.0.1(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)(typescript@7.0.2)':
     dependencies:
-      '@apps-in-toss/cli': 3.1.1(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)
+      '@apps-in-toss/cli': 3.2.0(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)
       '@webview-bridge/web': 1.7.9
       semver: 7.8.5
       valibot: 1.4.2(typescript@7.0.2)
@@ -25634,7 +25653,7 @@ snapshots:
 
   '@apps-in-toss/web-framework@3.0.2(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)(typescript@7.0.2)':
     dependencies:
-      '@apps-in-toss/cli': 3.1.1(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)
+      '@apps-in-toss/cli': 3.2.0(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)
       '@webview-bridge/web': 1.7.9
       semver: 7.8.5
       valibot: 1.4.2(typescript@7.0.2)

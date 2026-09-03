@@ -185,6 +185,54 @@ public class BuildFileSelectionTests
     }
 
     // =====================================================
+    // Sentry APPS-IN-TOSS-UNITY-SDK-1AN 회귀: *.loader.js 누락 시 에러 로그 방출
+    // WebGLBuildCopier가 loader 패턴을 항상 "isRequired: true"로 검색하므로(압축 포맷과
+    // 무관하게 loader.js는 항상 필수), 빈 문자열을 받으면 FindFileInBuild 내부에서
+    // "[AIT] ✗ 필수 파일을 찾을 수 없습니다: *.loader.js" 에러가 발생한다.
+    // *.framework.js*(SDK-ZM)에는 이미 동일한 회귀 가드가 있었지만 *.loader.js에는
+    // 없었다 — 이 테스트는 그 커버리지 갭을 메운다.
+    // =====================================================
+
+    [Test]
+    public void FindFileInBuild_MissingLoaderJs_EmitsRequiredErrorLog()
+    {
+        // Build/ 폴더에 data, framework.js, wasm만 있고 loader.js는 없음
+        File.WriteAllText(Path.Combine(tempDir, "build.data"), "data");
+        File.WriteAllText(Path.Combine(tempDir, "build.framework.js"), "framework");
+        File.WriteAllText(Path.Combine(tempDir, "build.wasm"), "wasm");
+        // loader.js 의도적으로 생성 안 함
+
+        // AITLog.Error → Debug.LogError 다단 진단 블록(검색 경로·Build 폴더 파일 목록 등
+        // 가변 개수)을 의도적으로 발화시키므로, UTF의 unhandled-log 실패를 스코프 한정으로
+        // 무시한다. 핵심 에러의 실제 방출 여부는 아래 CollectLogs 기반 양성 검증이 보장한다.
+        string result = null;
+        List<LogEntry> logs;
+        LogAssert.ignoreFailingMessages = true;
+        try
+        {
+            logs = CollectLogs(() =>
+                result = AITBuildValidator.FindFileInBuild(tempDir, "*.loader.js", isRequired: true));
+        }
+        finally
+        {
+            LogAssert.ignoreFailingMessages = false;
+        }
+
+        // 빈 문자열 반환 → missingFiles.Add("*.loader.js") 로 이어짐 (WebGLBuildCopier.cs)
+        Assert.AreEqual("", result,
+            "loader.js 파일이 없으면 빈 문자열을 반환해야 함");
+
+        // "[AIT] ✗ 필수 파일을 찾을 수 없습니다: *.loader.js" 에러 로그 방출 확인
+        bool emittedRequiredError = logs.Exists(l =>
+            l.type == LogType.Error &&
+            l.message.Contains("필수 파일을 찾을 수 없습니다") &&
+            l.message.Contains("*.loader.js"));
+        Assert.IsTrue(emittedRequiredError,
+            "isRequired:true 이면서 파일이 없으면 에러 로그가 방출되어야 함. " +
+            "실제 로그: " + string.Join(" | ", logs.ConvertAll(l => $"[{l.type}] {l.message}")));
+    }
+
+    // =====================================================
     // GetFilePatterns — decompressionFallback=true 시 .unityweb 패턴 반환
     // =====================================================
 

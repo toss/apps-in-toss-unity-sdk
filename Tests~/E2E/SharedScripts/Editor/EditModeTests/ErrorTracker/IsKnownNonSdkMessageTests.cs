@@ -2691,6 +2691,45 @@ public class IsKnownNonSdkMessageTests
 
     #endregion
 
+    #region pnpm 중첩 가상 스토어 경로 삭제 실패 경고 (APPS-IN-TOSS-UNITY-SDK-1A9)
+
+    [Test]
+    public void PnpmNestedStoreDelete_ReportedMessage_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-1A9 — ait-build/node_modules 하위 pnpm 가상 스토어의
+        // 중첩 경로(.pnpm/<pkg>@<ver>_<hash>/node_modules/...)를 Unity가 자체적으로 삭제 시도하다
+        // 경로 검증에 실패해 출력하는 경고. ait-build는 Assets/ 밖에 위치해 SDK 코드는 이 경로를
+        // AssetDatabase API로 다루지 않으므로(grep 확인) Unity 자체 노이즈로 분류한다.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Cannot delete asset. ait-build/node_modules/.pnpm/@granite-js+cli@1.0.4_@granite-js+types@1.0.4_typescript@5.9.3_zod@3.25.76__7197c115a07e4eff2a78d23f36868faf/node_modules/clipanion/lib/advanced/index.mjs is not a valid path."));
+    }
+
+    [Test]
+    public void PnpmNestedStoreDelete_UnityWarningPrefix_ReturnsTrue()
+    {
+        // "UnityWarning: " prefix가 덧붙은 변형(에디터 로그 핸들러 래핑)도 동일하게 드롭.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "UnityWarning: Cannot delete asset. ait-build/node_modules/.pnpm/@some+other-pkg@2.0.0/node_modules/foo/bar.mjs is not a valid path."));
+    }
+
+    [Test]
+    public void PnpmNestedStoreDelete_WithoutPnpmSegment_NotFiltered()
+    {
+        // ".pnpm" 세그먼트가 없는 일반 "삭제 실패" 경고는 이 규칙과 무관해야 함 — 과매칭 방지.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Cannot delete asset. Assets/SomeFolder/File.txt is not a valid path."));
+    }
+
+    [Test]
+    public void PnpmNestedStoreDelete_WithoutCannotDeletePhrase_NotFiltered()
+    {
+        // "Cannot delete asset" 문구가 없으면 매칭되지 않아야 함 — composite AND 가드 검증.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "node_modules/.pnpm/foo@1.0.0/bar.mjs is not a valid path."));
+    }
+
+    #endregion
+
     #region SDK 관련 메시지는 통과 (negative cases)
 
     [Test]

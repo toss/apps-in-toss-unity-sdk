@@ -96,9 +96,9 @@ namespace AppsInToss.Editor
                            "3. AIT > Clean 메뉴 실행 후 Clean Build 재시도";
 
                 case AITExportError.AIT_FILE_MISSING:
-                    return "dist/ 폴더에 .ait 파일이 생성되지 않았습니다.\n\n" +
+                    return ".ait 파일이 생성되지 않았습니다.\n\n" +
                            "해결 방법:\n" +
-                           "1. ait-build/dist/ 폴더의 내용을 확인하세요\n" +
+                           "1. ait-build/ 폴더(ait build CLI 버전에 따라 루트 또는 dist/ 하위)의 내용을 확인하세요\n" +
                            "2. granite.config.ts 설정을 확인하세요\n" +
                            "3. AIT > Clean 메뉴 실행 후 Clean Build 재시도";
 
@@ -175,7 +175,7 @@ namespace AppsInToss.Editor
                     return "granite 빌드가 완료되었지만 dist 폴더가 생성되지 않았습니다.\n" +
                            "granite.config.ts 의 플레이스홀더가 올바르게 치환되었는지 확인해주세요.";
                 case AITExportError.AIT_FILE_MISSING:
-                    return "dist/ 폴더에 .ait 파일이 생성되지 않았습니다.\n" +
+                    return "ait-build/ 폴더(ait build CLI 버전에 따라 루트 또는 dist/ 하위)에 .ait 파일이 생성되지 않았습니다.\n" +
                            "granite 빌드 설정을 확인한 뒤 Clean Build 로 재시도해주세요.";
                 default:
                     return $"알 수 없는 오류 (코드: {error}).";

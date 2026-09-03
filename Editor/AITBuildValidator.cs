@@ -503,12 +503,16 @@ namespace AppsInToss.Editor
         /// </summary>
         internal static AITConvertCore.AITExportError ValidateDistOutput(string buildProjectPath)
         {
-            // .ait 파일은 ait build CLI 버전에 따라 빌드 루트 또는 dist/에 생성될 수 있음
-            var aitFiles = Directory.GetFiles(buildProjectPath, "*.ait");
+            // .ait 파일은 ait build CLI 버전에 따라 빌드 루트 또는 dist/에 생성될 수 있음.
+            // GetAitFiles가 Directory.GetFiles(path, "*.ait") 대신 확장자를 명시적으로 비교하는
+            // 이유는 Package.PackageBuildStateMarker.ContainsAitArchive 주석 참조 — Windows의
+            // 8.3 단축명 매칭 때문에 "*.ait" glob이 .aitpart 같은 더 긴 확장자 파일까지 잡을 수
+            // 있어, 그대로 두면 진짜 .ait가 없어도 SUCCEED를 반환하는 성공 오탐이 생긴다.
+            var aitFiles = GetAitFiles(buildProjectPath);
             string distPath = Path.Combine(buildProjectPath, "dist");
             if (aitFiles.Length == 0 && Directory.Exists(distPath))
             {
-                aitFiles = Directory.GetFiles(distPath, "*.ait");
+                aitFiles = GetAitFiles(distPath);
             }
 
             if (aitFiles.Length == 0)
@@ -539,6 +543,31 @@ namespace AppsInToss.Editor
                 Debug.Log($"[AIT] ✓ .ait 파일 발견: {Path.GetFileName(aitFile)}");
             }
             return AITConvertCore.AITExportError.SUCCEED;
+        }
+
+        /// <summary>
+        /// 지정한 디렉터리 최상위에서 확장자가 정확히 .ait인 파일만 반환합니다.
+        /// Directory.GetFiles(dir, "*.ait")는 Windows에서 8.3 단축명 매칭으로 인해 .aitpart처럼
+        /// "ait"로 시작하는 더 긴 확장자의 파일까지 오검출할 수 있으므로 Path.GetExtension으로
+        /// 명시 비교합니다 (Package.PackageBuildStateMarker.ContainsAitArchive와 동일 대응).
+        /// </summary>
+        private static string[] GetAitFiles(string directory)
+        {
+            if (!Directory.Exists(directory))
+            {
+                return Array.Empty<string>();
+            }
+
+            var result = new List<string>();
+            foreach (string path in Directory.GetFiles(directory, "*", SearchOption.TopDirectoryOnly))
+            {
+                if (string.Equals(Path.GetExtension(path), Package.WebGLBuildCopier.AitArchiveExtension,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    result.Add(path);
+                }
+            }
+            return result.ToArray();
         }
 
         /// <summary>

@@ -350,6 +350,8 @@ namespace AppsInToss.Editor.ErrorTracker
         //     SDK 어디에도 "AITPromotion" 문자열이 출력되지 않으며 (grep 확인),
         //     AitKeywords의 "[AIT"/"AIT:"와도 매칭되지 않으므로 ExternalAitPrefixes로 안전하게 분류.
         //     "UnityWarning:" prefix가 덧붙은 변형(SDK-S1 재발)도 IndexOf 부분 매칭으로 동일하게 드롭.
+        //   - SDK-19D: [AIT Cloud Save] 게임 사용자 식별키를 받지 못했습니다. 로컬 저장으로 계속합니다.
+        //     (SDK에 Cloud Save 기능 자체가 없음 — 사용자 게임이 자체 구현한 래퍼의 폴백 로그)
         private static readonly string[] ExternalAitPrefixes =
         {
             "[AIT Login]",
@@ -365,6 +367,13 @@ namespace AppsInToss.Editor.ErrorTracker
             // SDK 코드는 "[AIT_Auth]" prefix를 출력하지 않음(grep 확인). 단, "[AIT"로 시작해 AitKeywords 가드에
             // 걸려 NonSdkMessagePatterns로는 드롭 불가하므로, 가드보다 먼저 매칭되는 ExternalAitPrefixes로 분류.
             "[AIT_Auth]",
+            // SDK-19D: [AIT Cloud Save] 게임 사용자 식별키를 받지 못했습니다. 로컬 저장으로 계속합니다.
+            // SDK에는 Cloud Save 기능/API가 존재하지 않으며(grep 확인 — "Cloud Save", "식별키" 문자열이
+            // Runtime/Editor 어디에도 없음), 사용자 게임이 AIT.Storage/GetAnonymousKey 위에 직접 구현한
+            // 자체 Cloud Save 래퍼가 SDK와 동일한 "[AIT ...]" 로그 컨벤션을 흉내내 출력한 정상 폴백 로그다.
+            // "[AIT"로 시작해 AitKeywords 가드에 걸려 NonSdkMessagePatterns로는 드롭 불가하므로,
+            // 가드보다 먼저 매칭되는 ExternalAitPrefixes로 분류한다.
+            "[AIT Cloud Save]",
         };
 
         #endregion

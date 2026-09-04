@@ -104,6 +104,25 @@ public class SentryNoiseSuppressionCallsiteTests
             expectWarning: false);  // AITLog.Error (사용자에게 치명적 오류로 표시해야 하므로 Error 레벨)
 
     /// <summary>
+    /// 회귀 가드 — APPS-IN-TOSS-UNITY-SDK-19M:
+    /// Run3xBuildAsync가 vite build(web-framework 3.x, 2단계 빌드의 1단계) 실패를 로그할 때
+    /// raw Debug.LogError 로 되돌아가지 않고 AITLog.Error(sentryCapture:false) 를 유지하는지 검증.
+    ///
+    /// vite build 실패는 lockfile drift/네트워크/AV 스캔/사용자 vite 설정 등 사용자 환경 원인이며,
+    /// RunNpmCommandWithCacheAsync가 이미 exit code/stderr를 Console에 상세 기록한다(동일 정책,
+    /// 파일 내 다른 재시도 실패 로그들과 동일). 진짜 빌드 실패는 상위 CaptureBuildError가 구조화
+    /// 이벤트로 별도 캡처하므로, 이 중간 단계 요약 로그가 raw Debug.LogError로 되돌아가면 동일
+    /// 실패가 "[AIT] vite build 실패 (3.x)"라는 SDK 자체 로그로 Sentry에 노이즈 중복 전송된다.
+    /// </summary>
+    [Test]
+    public void NineteenM_ViteBuildFailure_StaysSentrySuppressed()
+        => AssertCallsiteSuppressed(
+            "GraniteBuildRunner.cs",
+            "vite build 실패 (3.x)",
+            "19M",
+            expectWarning: false);  // AITLog.Error (사용자에게 표시해야 하므로 Error 레벨)
+
+    /// <summary>
     /// fileName 소스에서 messageAnchor를 내보내는 가장 가까운 선행 로그 호출이
     /// AITLog.Warning( 또는 AITLog.Error(이고, 그 호출 인자에 sentryCapture: false가 포함됨을
     /// 정적으로 검증한다.

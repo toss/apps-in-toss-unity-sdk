@@ -311,7 +311,15 @@ namespace AppsInToss.Editor.Package
                     if (viteResult != AITConvertCore.AITExportError.SUCCEED)
                     {
                         if (viteResult != AITConvertCore.AITExportError.CANCELLED)
-                            Debug.LogError("[AIT] vite build 실패 (3.x)");
+                        {
+                            // vite build 실패는 lockfile drift/네트워크/AV 스캔/사용자 vite 설정 등
+                            // 사용자 환경 원인 — RunNpmCommandWithCacheAsync가 이미 exit code/stderr를
+                            // Console(AITLog.Error, sentryCapture:false)에 상세 기록했다. 이 요약 로그까지
+                            // raw Debug.LogError로 내보내면 같은 실패가 Sentry에 노이즈로 중복 전송된다
+                            // (Sentry 단일 이벤트는 상위 CaptureBuildError에 위임 — cascade 중복 방지,
+                            // 파일 내 다른 실패 로그와 동일 정책, APPS-IN-TOSS-UNITY-SDK-19M).
+                            AITLog.Error("[AIT] vite build 실패 (3.x)", sentryCapture: false);
+                        }
                         onComplete?.Invoke(viteResult);
                         return;
                     }

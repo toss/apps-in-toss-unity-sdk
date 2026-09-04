@@ -691,6 +691,25 @@ public class TapAutoProbeTests
         }
     }
 
+    [Test]
+    public void ViewportProbeBridge_ExistsOnBothSides()
+    {
+        string cs = ReadSibling("../../Runtime/TapDiagnosticsTester.cs");
+        string js = ReadSibling("../../Plugins/E2ETestBridge.jslib");
+        if (cs == null || js == null) Assert.Ignore("소스 경로를 찾지 못했다. 대조를 건너뛴다.");
+
+        var csInstall = Regex.Match(cs, @"static\s+extern\s+void\s+VP_Install\s*\(([^)]*)\)");
+        var jsInstall = Regex.Match(js, @"VP_Install\s*:\s*function\s*\(([^)]*)\)");
+        Assert.IsTrue(csInstall.Success, "C#에 VP_Install extern이 없다");
+        Assert.IsTrue(jsInstall.Success, "jslib에 VP_Install이 없다");
+        Assert.AreEqual(0, ArgCount(csInstall.Groups[1].Value));
+        Assert.AreEqual(0, ArgCount(jsInstall.Groups[1].Value));
+
+        // 두 쪽이 같은 태그로 찍어야 Dev Console 내보내기에서 한 흐름으로 읽힌다.
+        StringAssert.Contains("[E2E-VP]", cs);
+        StringAssert.Contains("[E2E-VP]", js);
+    }
+
     private static int ArgCount(string paramList)
     {
         paramList = paramList.Trim();

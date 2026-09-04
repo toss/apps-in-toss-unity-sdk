@@ -1,0 +1,26 @@
+{
+    "name": "AppsInToss.Sentry",
+    "rootNamespace": "AppsInToss.Sentry",
+    "references": [
+        "AppsInTossSDK",
+        "AppsInToss.Helpers",
+        "Sentry.Unity"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [
+        "AIT_SENTRY_AVAILABLE"
+    ],
+    "versionDefines": [
+        {
+            "name": "io.sentry.unity",
+            "expression": "4.0.0",
+            "define": "AIT_SENTRY_AVAILABLE"
+        }
+    ],
+    "noEngineReferences": false
+}

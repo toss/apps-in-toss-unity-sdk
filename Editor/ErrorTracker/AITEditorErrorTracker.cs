@@ -1578,6 +1578,22 @@ namespace AppsInToss.Editor.ErrorTracker
                 && message.IndexOf(".cs(", StringComparison.Ordinal) >= 0)
                 return true;
 
+            // pnpm이 content-addressable store에서 만드는 중첩 가상 스토어 경로
+            // (node_modules/.pnpm/<pkg>@<ver>_<hash>/node_modules/...)를 Unity 에디터가 자체적으로
+            // 삭제 시도하다 경로 검증에 실패해 출력하는 표준 경고.
+            // 예: "Cannot delete asset. ait-build/node_modules/.pnpm/@granite-js+cli@1.0.4_.../node_modules/
+            //      clipanion/lib/advanced/index.mjs is not a valid path."
+            // ait-build는 Assets/ 밖(프로젝트 루트, UnityUtil.GetProjectPath() 참고)에 위치하고
+            // SDK 코드는 이 경로를 AssetDatabase API로 다루지 않는다(grep 확인, PrepareAitBuildFolder는
+            // node_modules를 보존 대상으로 두고 File/Directory API로만 정리) — Unity 자체 내부 동작에서
+            // 비롯된 외부 노이즈로 판단. 메시지에 "ait-build"가 포함돼 SDK 키워드 가드가 발동하므로
+            // 가드보다 먼저 매칭한다. ".pnpm" 세그먼트로 특정 패키지명/해시와 무관하게 일반화.
+            // Sentry APPS-IN-TOSS-UNITY-SDK-1A9.
+            if (message.IndexOf("Cannot delete asset", StringComparison.Ordinal) >= 0
+                && message.IndexOf("is not a valid path", StringComparison.Ordinal) >= 0
+                && message.IndexOf(".pnpm", StringComparison.Ordinal) >= 0)
+                return true;
+
             // SDK 자체 로그는 절대 필터링하지 않음 — AitKeywords 전체를 가드로 사용
             if (MessageContainsSdkKeyword(message))
                 return false;

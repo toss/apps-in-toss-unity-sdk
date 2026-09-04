@@ -1947,6 +1947,15 @@ public class IsKnownNonSdkMessageTests
     }
 
     [Test]
+    public void BuildLibraryBee_ReleaseWasmObjFailed_10S_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-10S: 동일 형식의 또 다른 해시 .o 파일(GameAssembly release_WebGL_wasm).
+        // 기존 "Building Library/Bee/artifacts/WebGL/" 패턴이 새 해시 변형도 커버하는지 evidence로 검증.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "UnityError: Building Library/Bee/artifacts/WebGL/GameAssembly/release_WebGL_wasm/33pcnmr1fbpj.o failed with output:"));
+    }
+
+    [Test]
     public void BuildLibraryBee_WithAitPrefix_StillProtected()
     {
         // SDK 보호 가드: SDK가 동일 prefix로 출력하는 가상의 케이스도 필터링 안 되어야 함.

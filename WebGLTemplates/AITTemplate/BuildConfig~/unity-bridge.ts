@@ -12,13 +12,16 @@ import * as WebFramework from '@apps-in-toss/web-framework';
 import { GoogleAdMob } from '@apps-in-toss/web-framework';
 import { IAP } from '@apps-in-toss/web-framework';
 import { SafeAreaInsets } from '@apps-in-toss/web-framework';
-import { Storage } from '@apps-in-toss/web-framework';
 import { TossAds } from '@apps-in-toss/web-framework';
 import { env } from '@apps-in-toss/web-framework';
 import { graniteEvent } from '@apps-in-toss/web-framework';
 import { partner } from '@apps-in-toss/web-framework';
 import { tdsEvent } from '@apps-in-toss/web-framework';
 import { Analytics } from '@apps-in-toss/web-analytics';
+
+// Storage는 번들 전용 네임스페이스 — 구버전 web-framework/devtools mock에 없을 수 있어
+// named import(누락 시 link-time 에러) 대신 방어적으로 접근한다.
+const Storage = (WebFramework as Record<string, any>)['Storage'];
 
 // window.AppsInToss 타입 정의
 declare global {
@@ -56,6 +59,12 @@ window.AppsInToss = WebFramework as typeof WebFramework & {
 const _aitNamespaces = { Analytics, GoogleAdMob, IAP, SafeAreaInsets, Storage, TossAds, env, graniteEvent, partner, tdsEvent };
 for (const [_name, _value] of Object.entries(_aitNamespaces)) {
   try {
+    // 번들 전용 네임스페이스가 설치된 web-framework에 없으면 노출을 건너뛴다
+    if (_value === undefined) {
+      console.warn(`[Unity Bridge] ${_name} is not available in the installed @apps-in-toss/web-framework — skipping`);
+      continue;
+    }
+
     // 이미 존재하고 값이 같으면 건너뛰기
     if ((window.AppsInToss as any)[_name] === _value) continue;
 

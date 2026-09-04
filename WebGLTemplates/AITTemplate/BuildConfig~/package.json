@@ -11,7 +11,7 @@
   "dependencies": {
     "@apps-in-toss/bridge-core": "2.10.9",
     "@apps-in-toss/web-analytics": "2.10.9",
-    "@apps-in-toss/web-framework": "3.1.1"
+    "@apps-in-toss/web-framework": "3.2.0"
   },
   "devDependencies": {
     "@apps-in-toss/devtools": "3.1.1",

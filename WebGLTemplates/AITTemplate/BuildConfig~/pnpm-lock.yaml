@@ -27,12 +27,12 @@ importers:
         specifier: 2.10.9
         version: 2.10.9(@apps-in-toss/web-bridge@2.10.10)
       '@apps-in-toss/web-framework':
-        specifier: 3.1.1
-        version: 3.1.1(typanion@3.14.0)(typescript@7.0.2)
+        specifier: 3.2.0
+        version: 3.2.0(typanion@3.14.0)(typescript@7.0.2)
     devDependencies:
       '@apps-in-toss/devtools':
         specifier: 3.1.1
-        version: 3.1.1(@apps-in-toss/web-framework@3.1.1(typanion@3.14.0)(typescript@7.0.2))(rolldown@1.2.6)(vite@8.2.1(@types/node@26.4.0)(jiti@2.7.0))
+        version: 3.1.1(@apps-in-toss/web-framework@3.2.0(typanion@3.14.0)(typescript@7.0.2))(rolldown@1.2.6)(vite@8.2.1(@types/node@26.4.0)(jiti@2.7.0))
       typescript:
         specifier: 7.0.2
         version: 7.0.2
@@ -52,8 +52,8 @@ packages:
   '@apps-in-toss/bridge-core@2.10.9':
     resolution: {integrity: sha512-PKFkPserIDHPvwIwS/89jR4QEVOU4A7MaIQkGBoVu8uY6IBzzp3oPJ6Gad2TRZGYKhC0ydbDw6gSVY3wx+8riw==}
 
-  '@apps-in-toss/cli@3.1.1':
-    resolution: {integrity: sha512-ljYMvh/dCuv8YZEDLbbkf2LDXEhi3VHMQgKFi3BWplkKxu6Kcm9EP3OOiGr7tHTjT83U8u8RIbrZeLDwtZFs/Q==}
+  '@apps-in-toss/cli@3.2.0':
+    resolution: {integrity: sha512-qbHyhP1GGBvgecR/BQmKefXmYvR/gJ+y94/sQIAEy1BYcdbxX1AHio3nwwNzTiwlGtrageEz/Jx0fNyrm/O/ew==}
     hasBin: true
 
   '@apps-in-toss/devtools@3.1.1':
@@ -76,8 +76,8 @@ packages:
   '@apps-in-toss/web-bridge@2.10.10':
     resolution: {integrity: sha512-GYFP4exdjRGWU4ea3uU0aYjHUIvN5QgzyGmZobdlwe3tEqlZ/1tAJ6aX2bLpe7//zLRbXi55mSDYszX1K1aFTA==}
 
-  '@apps-in-toss/web-framework@3.1.1':
-    resolution: {integrity: sha512-2hOa3FbgiTam+LT1ITv7PmMGEE4y548n5bgtkRdfc8OLNcDIZdWLA7PH/nUyOrC/nwDGlmRDCTUZvymy0T5J/g==}
+  '@apps-in-toss/web-framework@3.2.0':
+    resolution: {integrity: sha512-Zi6jjmSSJeLXWx1cHYV+KSCObLrUOaONcvXpspz9FpGWjYQ/squkdF2AFUo6WsxBT58/ZuKHF5jSZ11+nkjj1w==}
     hasBin: true
 
   '@babel/code-frame@7.29.7':
@@ -1078,7 +1078,7 @@ snapshots:
 
   '@apps-in-toss/bridge-core@2.10.9': {}
 
-  '@apps-in-toss/cli@3.1.1(typanion@3.14.0)':
+  '@apps-in-toss/cli@3.2.0(typanion@3.14.0)':
     dependencies:
       '@apps-in-toss/ait-format': 1.0.0
       '@clack/prompts': 1.7.0
@@ -1093,11 +1093,11 @@ snapshots:
       - supports-color
       - typanion
 
-  '@apps-in-toss/devtools@3.1.1(@apps-in-toss/web-framework@3.1.1(typanion@3.14.0)(typescript@7.0.2))(rolldown@1.2.6)(vite@8.2.1(@types/node@26.4.0)(jiti@2.7.0))':
+  '@apps-in-toss/devtools@3.1.1(@apps-in-toss/web-framework@3.2.0(typanion@3.14.0)(typescript@7.0.2))(rolldown@1.2.6)(vite@8.2.1(@types/node@26.4.0)(jiti@2.7.0))':
     dependencies:
       unplugin: 3.3.0(rolldown@1.2.6)(vite@8.2.1(@types/node@26.4.0)(jiti@2.7.0))
     optionalDependencies:
-      '@apps-in-toss/web-framework': 3.1.1(typanion@3.14.0)(typescript@7.0.2)
+      '@apps-in-toss/web-framework': 3.2.0(typanion@3.14.0)(typescript@7.0.2)
     transitivePeerDependencies:
       - '@farmfe/core'
       - '@rspack/core'
@@ -1119,9 +1119,9 @@ snapshots:
     dependencies:
       '@apps-in-toss/types': 2.10.10
 
-  '@apps-in-toss/web-framework@3.1.1(typanion@3.14.0)(typescript@7.0.2)':
+  '@apps-in-toss/web-framework@3.2.0(typanion@3.14.0)(typescript@7.0.2)':
     dependencies:
-      '@apps-in-toss/cli': 3.1.1(typanion@3.14.0)
+      '@apps-in-toss/cli': 3.2.0(typanion@3.14.0)
       '@webview-bridge/web': 1.7.10
       semver: 7.8.5
       valibot: 1.4.2(typescript@7.0.2)

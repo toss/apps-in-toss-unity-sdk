@@ -26,7 +26,7 @@
   "dependencies": {
     "@apps-in-toss/framework": "1.6.0",
     "@apps-in-toss/web-analytics": "2.10.9",
-    "@apps-in-toss/web-framework": "3.1.1",
+    "@apps-in-toss/web-framework": "3.2.0",
     "commander": "15.0.0",
     "handlebars": "4.7.9",
     "picocolors": "1.1.1",
@@ -112,6 +112,7 @@
     "web-framework-3.0.4": "npm:@apps-in-toss/web-framework@3.0.4",
     "web-framework-3.0.5": "npm:@apps-in-toss/web-framework@3.0.5",
     "web-framework-3.1.0": "npm:@apps-in-toss/web-framework@3.1.0",
-    "web-framework-3.1.1": "npm:@apps-in-toss/web-framework@3.1.1"
+    "web-framework-3.1.1": "npm:@apps-in-toss/web-framework@3.1.1",
+    "web-framework-3.2.0": "npm:@apps-in-toss/web-framework@3.2.0"
   }
 }

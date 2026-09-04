@@ -130,6 +130,45 @@ public class ValidateDistOutputTests
     }
 
     // =====================================================
+    // Windows 8.3 단축명 오검출 방지 (Sentry APPS-IN-TOSS-UNITY-SDK-1AE 참조 —
+    // "[AIT Batch] Export reported success, but no .ait package exists" 증상의
+    // 원인 후보 중 하나. Directory.GetFiles(dir, "*.ait")는 Windows에서 8.3 단축명
+    // 매칭 때문에 .aitpart처럼 "ait"로 시작하는 더 긴 확장자 파일까지 잡을 수 있어,
+    // 그대로 두면 진짜 .ait가 없어도 SUCCEED를 반환하는 성공 오탐이 생길 수 있다.
+    // ValidateDistOutput은 확장자를 명시 비교(Path.GetExtension)해야 하며, 이는
+    // Package.PackageBuildStateMarker.ContainsAitArchive가 이미 적용 중인 방어와
+    // 일치해야 한다.
+    // =====================================================
+
+    [Test]
+    public void ValidateDistOutput_OnlyLongerExtensionStartingWithAit_ReturnsAitFileMissing()
+    {
+        // dist/ 에 진짜 .ait는 없고 "ait"로 시작하는 더 긴 확장자 파일만 있는 경우.
+        string distPath = Path.Combine(tempDir, "dist");
+        Directory.CreateDirectory(distPath);
+        File.WriteAllText(Path.Combine(distPath, "app.aitpart"), "partial-content");
+
+        LogAssert.Expect(LogType.Error, new Regex(@"\.ait 파일이 생성되지 않았습니다"));
+        var result = AITBuildValidator.ValidateDistOutput(tempDir);
+        Assert.AreEqual(AITConvertCore.AITExportError.AIT_FILE_MISSING, result,
+            "확장자가 \"ait\"로 시작할 뿐 정확히 .ait가 아니면 AIT_FILE_MISSING을 반환해야 한다 " +
+            "(Windows 8.3 단축명 오검출 방지)");
+    }
+
+    [Test]
+    public void ValidateDistOutput_RealAitFile_AlongsideLongerAitPrefixedExtension_ReturnsSucceed()
+    {
+        // 진짜 .ait와 "ait"로 시작하는 더 긴 확장자 파일이 함께 있어도 정상 판정되어야 한다.
+        string distPath = Path.Combine(tempDir, "dist");
+        Directory.CreateDirectory(distPath);
+        File.WriteAllText(Path.Combine(distPath, "app.ait"), "ait-content");
+        File.WriteAllText(Path.Combine(distPath, "app.aitpart"), "partial-content");
+
+        var result = AITBuildValidator.ValidateDistOutput(tempDir);
+        Assert.AreEqual(AITConvertCore.AITExportError.SUCCEED, result);
+    }
+
+    // =====================================================
     // 빌드 루트 .ait 파일이 dist/ 탐색보다 우선됨
     // =====================================================
 

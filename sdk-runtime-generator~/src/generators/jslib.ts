@@ -1294,8 +1294,12 @@ ${onEventHandler}
 
       case 'object':
       case 'array':
+      case 'record':
       case 'unknown':
         // unknown 타입도 JSON.parse로 처리 (intersection 타입 등 파서가 해결하지 못한 타입)
+        // record(Dictionary<K,V>)도 object/array와 동일하게 JSON 직렬화된 문자열로 넘어오므로
+        // 파싱이 필요하다 — 누락 시 raw pointer가 그대로 API 호출부에 전달된다
+        // (getJSConversionTs의 동일 분기와 정렬 유지).
         return `JSON.parse(UTF8ToString(${paramName}))`;
 
       default:

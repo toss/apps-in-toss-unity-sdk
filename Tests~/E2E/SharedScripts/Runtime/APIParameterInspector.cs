@@ -295,6 +295,8 @@ public static class APIParameterInspector
         { "StorageSetItem", "Storage" },
         { "StorageRemoveItem", "Storage" },
         { "StorageClearItems", "Storage" },
+        { "StorageGetItems", "Storage" },
+        { "StorageSetItems", "Storage" },
 
         // SafeArea
         { "SafeAreaInsetsGet", "SafeArea" },

@@ -58,6 +58,9 @@ export const API_CATEGORIES: Record<string, string[]> = {
     'StorageSetItem',
     'StorageRemoveItem',
     'StorageClearItems',
+    // Storage 네임스페이스 객체의 배치 read/write API (web-framework 3.2.0+)
+    'StorageGetItems',
+    'StorageSetItems',
   ],
   Advertising: [
     'GoogleAdMobLoadAppsInTossAdMob',
@@ -333,6 +336,16 @@ export const FRAMEWORK_APIS: string[] = [
  */
 export const BUNDLED_NAMESPACE_ALLOWLIST: string[] = [
   'Ads', // 쇼핑 광고 라우팅 (web-framework 3.1.0+)
+  'Storage', // 배치 read/write(getItems/setItems) 네임스페이스 API (web-framework 3.2.0+)
+  // 'Game'은 의도적으로 제외한다: Game.subscribeInfoOverlayHidden의 실제 시그니처는
+  // (params: { onEvent: () => void; onError: (error: unknown) => void }) => () => void
+  // 인데, 생성기의 콜백 기반 네임스페이스 메서드 브릿징 경로는 이를 다른 구독형 API와
+  // 동일한 { options, onEvent, onError } 형태로 잘못 감싸고 onEvent에 (data: unknown)
+  // 인자를 붙여, jslib TS 타입 검사 실패(TS2322)는 물론 실제 런타임 호출 형태도
+  // upstream과 어긋난다(잘못된 인자 형태로 실제 API를 호출하게 됨). Game.openLeaderboard/
+  // setLeaderboardScore/getUserProfile 3개는 이 문제와 무관하지만, 네임스페이스 단위로만
+  // opt-in 가능한 구조라 3개만 선택적으로 포함할 수 없다. 콜백 브릿징 코드 자체의 수정이
+  // 필요하므로 이번 변경 범위에서는 제외 — 별도 이슈로 다룰 것.
 ];
 
 /**

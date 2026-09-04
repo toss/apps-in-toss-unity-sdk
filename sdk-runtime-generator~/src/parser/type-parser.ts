@@ -456,6 +456,26 @@ export function parseType(typeNode: any): ParsedType {
   if (isObject || typeText.startsWith('{')) {
     const properties = typeNode.getProperties?.() || [];
 
+    // 프로퍼티 없는 "명명된" object 타입 중 문자열 인덱스 시그니처만 있는 경우
+    // (예: interface GetStorageItemsResult { [key: string]: string | null })는
+    // 실질적으로 딕셔너리다. 그대로 두면 이 타입을 참조하는 async 반환 타입 경로가
+    // 클래스 생성 없이 이름만 반환해 정의되지 않은 C# 타입(CS0246)을 참조하게 되므로,
+    // Record<string, V>로 재해석해 이미 검증된 Dictionary<string, V> 매핑 경로를 태운다.
+    // (익명 객체 `{ [key: string]: V }`는 typeText가 '{'로 시작해 여기 걸리지 않음 —
+    // 그 경로는 별도의 object/property 기반 처리로 충분히 안전하다.)
+    if (properties.length === 0 && !typeText.startsWith('{')) {
+      const stringIndexType = typeNode.getStringIndexType?.();
+      if (stringIndexType) {
+        return {
+          name: 'Record',
+          kind: 'record',
+          keyType: { name: 'string', kind: 'primitive', raw: 'string' },
+          valueType: parseType(stringIndexType),
+          raw: typeText,
+        };
+      }
+    }
+
     // 익명 객체의 경우 의미 있는 이름 생성
     let objectName = symbol?.getName() || typeText;
     objectName = cleanTypeName(objectName); // $1, $2 등 접미사 제거

@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.InteropServices;
 using System.Text;
 using UnityEngine;
 using UnityEngine.UI;
@@ -21,6 +22,12 @@ public class TapDiagnosticsTester : MonoBehaviour
 
     private const float RefreshIntervalSeconds = 0.3f;
 
+#if UNITY_WEBGL && !UNITY_EDITOR
+    /// <summary>소프트 키보드가 뜰 때 뷰포트 변화를 콘솔에 남기는 프로브. E2ETestBridge.jslib.</summary>
+    [DllImport("__Internal")]
+    private static extern void VP_Install();
+#endif
+
     private Text _logText;
     private Text _verdictText;
     private Button _runButton;
@@ -30,9 +37,21 @@ public class TapDiagnosticsTester : MonoBehaviour
     private float _lastRefreshTime = -1f;
     private string _lastVerdictRender;
 
+    // Unity가 보는 화면 크기. JS 쪽 프로브(VP_Install)가 찍는 canvas.width/height와 대조해
+    // 키보드가 뜰 때 엔진이 리사이즈를 인지하는지 본다.
+    private int _lastScreenW = -1;
+    private int _lastScreenH = -1;
+    private Rect _lastSafeArea;
+    private bool _lastKeyboardVisible;
+
     public void SetupUI(Transform parent)
     {
         _autoProbe = GetComponent<TapAutoProbe>() ?? gameObject.AddComponent<TapAutoProbe>();
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        try { VP_Install(); }
+        catch (Exception e) { Debug.LogWarning($"[E2E-VP] VP_Install failed: {e.Message}"); }
+#endif
 
         var section = UIBuilder.CreatePanel(parent, UIBuilder.Theme.SectionBg);
         var vlg = section.gameObject.AddComponent<VerticalLayoutGroup>();
@@ -71,6 +90,11 @@ public class TapDiagnosticsTester : MonoBehaviour
             + "키보드가 뜨는지 확인해 주세요.",
             UIBuilder.Theme.FontTiny, UIBuilder.Theme.TextSecondary);
 
+        UIBuilder.CreateText(section,
+            "키보드가 뜰 때 화면이 밀리거나 줄어드는 증상은 콘솔의 [E2E-VP] 줄에 남습니다. "
+            + "입력칸을 탭해 키보드를 띄운 뒤 Dev Console에서 로그를 내보내면 됩니다.",
+            UIBuilder.Theme.FontTiny, UIBuilder.Theme.TextSecondary);
+
         UIBuilder.CreateButton(section, "로그 지우기", onClick: OnClearClick);
 
         _logText = UIBuilder.CreateText(section, "(아직 탭 기록 없음)",
@@ -92,6 +116,7 @@ public class TapDiagnosticsTester : MonoBehaviour
     private void Update()
     {
         PointerTapDiagnostics.PollPendingTaps();
+        WatchScreen();
         RefreshVerdict();
 
         if (_logText == null) return;
@@ -105,6 +130,23 @@ public class TapDiagnosticsTester : MonoBehaviour
         if (_lastRenderedRevision == PointerTapDiagnostics.Revision) return;
         _lastRenderedRevision = PointerTapDiagnostics.Revision;
         _logText.text = BuildVisibleLog();
+    }
+
+    /// <summary>
+    /// Screen 크기·safeArea·TouchScreenKeyboard.visible이 바뀔 때만 한 줄 남깁니다.
+    /// JS 프로브가 찍는 값과 태그([E2E-VP])를 맞춰서 Dev Console 내보내기에서 한 흐름으로 읽힙니다.
+    /// 값이 한 번도 안 바뀌면 "Unity는 키보드를 전혀 인지하지 못한다"는 뜻이고, 그것도 결과입니다.
+    /// </summary>
+    private void WatchScreen()
+    {
+        int w = Screen.width, h = Screen.height;
+        Rect sa = Screen.safeArea;
+        bool kb = TouchScreenKeyboard.visible;
+        if (w == _lastScreenW && h == _lastScreenH && sa == _lastSafeArea && kb == _lastKeyboardVisible) return;
+
+        string tag = _lastScreenW < 0 ? "unity-base" : "unity-change";
+        _lastScreenW = w; _lastScreenH = h; _lastSafeArea = sa; _lastKeyboardVisible = kb;
+        Debug.Log($"[E2E-VP] {tag} Screen={w}x{h} safeArea=({sa.x:F0},{sa.y:F0},{sa.width:F0},{sa.height:F0}) kbVisible={(kb ? 1 : 0)}");
     }
 
     /// <summary>

@@ -241,6 +241,19 @@ gh api repos/toss/apps-in-toss-unity-sdk/actions/runs/RUN_ID/rerun-failed-jobs -
   - 버전 bump를 범인으로 지목하기 전에 **대조군부터** 확인하세요. 2026-07 `@playwright/test` 1.61.1 → 1.62.0 직후 이 실패가 났을 때, bump **이전** run 30412296776(로그에 `+ @playwright/test 1.61.1`)에 동일 시그니처(75s×3 예산, connection-drop 분류)가 이미 존재해 회귀 가설이 기각됐습니다. 실패 코드 경로는 playwright API가 아니라 테스트 하네스 자체 워치독이므로, playwright 회귀라면 나올 시그니처(strict mode violation, `Executable doesn't exist`, `browserType.launch` 실패)를 먼저 grep해 0건임을 확인하는 것이 빠릅니다.
   - 근본 원인 미규명 — `webgl.data` 스트림이 왜 끊기는지는 확인되지 않았습니다. 동일 시그니처가 2개 이상 leg에서 **반복** 재현되면 transient로 넘기지 말고 별건 조사로 승격하세요.
   - 비인과적 red herring 주의 — 같은 3-1 창에 찍히는 vite `Pre-transform error: Failed to load /unity-bridge.ts`·`/src/main.ts`(404), `net::ERR_CONNECTION_CLOSED`, `wasm streaming compile failed`, 다수의 `AppsInToss 존재: false` 폴링, `createUnityInstance` 사이클은 통과 leg에도 카운트가 동일하므로 원인이 아닙니다. 로그 끝의 `vite preview ... SIGKILL (Forced termination)`은 타임아웃 후 Playwright teardown의 정리 동작입니다(원인이 아니라 결과). 실제 차이는 `unityInstance set/ready` 마커뿐입니다(통과 leg 9회 / 실패 leg 0회).
+- **E2E 9-2 `indexedDB.databases()` 프로브 hang (Chrome 152 러너 이미지)** — `Tests~/E2E/tests/e2e-full-pipeline.test.js`의 test 9-2(`9-2. value survives reload with IndexedDB wiped`)가 420초 테스트 타임아웃까지 멈춘 뒤 아래 시그니처로 실패합니다. 2026-09-03~09-07 사이 run마다 1~4개 leg(신 이미지 leg 42개 중 40개)에서 발생했고 #1168로 해결됐습니다.
+
+  ```text
+  [9-2] indexedDB.databases() verification failed/hung (page.evaluate: Target page, context or browser has been closed) — IDBFS의 열린 커넥션으로 인한 알려진 환경 제약으로 보고 skip
+  [9-2] reload attempt 1/3 FAILED after 5ms: page.reload: Target page, context or browser has been closed (crash=false, drop=false; requestfailed=)
+  Test timeout of 420000ms exceeded.
+  ```
+
+  원인은 하네스에 있었습니다. CDP `Storage.clearDataForOrigin` 직후 실행하는 `indexedDB.databases()` 확인은 부가 검증인데 데드라인 없이 `await`돼 있었습니다. Emscripten IDBFS가 IndexedDB 커넥션을 열어둔 채 유지하므로 headless Chrome에서는 이 호출이 legs의 약 90%에서 응답하지 않습니다(2026-08 이후 상시). Chrome 151까지는 버려진 promise가 렌더러에서 GC돼 몇 초 만에 `Resulting promise was garbage collected`로 reject됐고 catch가 이를 skip해 9-2는 통과했습니다. 2026-09-03부터 배정된 러너 이미지 `ubuntu24/20260831.293`(Chrome 152.0.7977.64)에서는 GC가 일어나지 않아 evaluate가 테스트 타임아웃까지 매달리고 teardown이 페이지를 닫을 때에야 `Target page, context or browser has been closed`로 떨어집니다. 이 문구는 결과일 뿐 원인이 아니고 렌더러 크래시도 아닙니다(trace에서 hang 내내 screencast 프레임이 이어졌습니다). 같은 run 안에서 일부 leg만 실패한 이유는 구 이미지(Chrome 151)와 신 이미지가 섞여 배정되던 과도기였기 때문입니다.
+  - **repo 변경 없이 깨진 이유** — `Tests~/E2E/tests/playwright.config.ts`가 `channel: 'chrome'`으로 러너 이미지의 시스템 Chrome을 쓰므로 이미지 교체가 곧 브라우저 교체입니다. 이미지 버전은 잡 로그 `##[group]Runner Image` 블록의 `Version:` 줄에서 읽으세요. 바로 위 `Runner Image Provisioner` 블록의 `Version:`은 프로비저너 버전이라 값이 다릅니다. #1168 이후 E2E TEST 잡은 `Log system Chrome version` 스텝에서 `google-chrome --version`을 찍으므로 leg 로그만으로 브라우저를 판별할 수 있습니다.
+  - **수정 내용(#1168)** — 프로브에 10초 데드라인(`Promise.race`)을 걸어 미응답이면 검증만 skip하고 본 단언(reload 후 `mode==='ait'` 복원)은 그대로 진행합니다. `has been closed`/`Page crashed`류 에러는 삼키지 않고 다시 던집니다. wipe 대상에서 `cache_storage`를 뺐고(앱은 CacheStorage를 쓰지 않음) 9-1이 만든 `mockPage`에 `crash`/`close` 로그를 달았습니다. 검증 run 34083545292는 Chrome 152 leg 10/10 통과였고 `cache_storage` 제거만으로는 hang이 사라지지 않았습니다(9/10 leg가 10초 skip). wedge의 원인은 CacheStorage teardown이 아니라 IDBFS의 열린 커넥션입니다.
+  - **정상 로그와 재발 판별** — `[9-2] indexedDB.databases() 10000ms 내 미응답 — IDBFS 열린 커넥션 wedge로 보고 검증 skip`은 정상이며 대부분의 leg에 찍힙니다. `[9-x] mockPage CLOSED`는 그룹 afterAll 시점에 leg당 1회가 정상입니다. 9-2에 귀속된 `Test timeout of 420000ms exceeded`가 다시 나오거나, 9-2~9-11 사이에 `mockPage CLOSED`/`mockPage CRASHED`가 찍히면 재발이므로 rerun 대신 별건 조사로 승격하세요.
+  - **교훈** — `page.evaluate`에는 자체 타임아웃이 없고 `actionTimeout`도 설정돼 있지 않으므로 응답이 보장되지 않는 부가 프로브는 반드시 자체 데드라인을 걸어야 합니다. 이미지 교체는 GitHub-hosted에서 막을 수 없으니 rerun으로 버티는 대응은 fleet가 신 이미지로 모두 넘어가는 순간 무력화됩니다.
 
 ## Library/Bee 캐시 무효화 정책
 

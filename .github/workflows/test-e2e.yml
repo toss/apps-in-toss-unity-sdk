@@ -339,6 +339,11 @@ jobs:
         # 따라서 npm registry 기반 pnpm install만 수행 — 외부 다운로드 의존성 0.
         run: pnpm install --frozen-lockfile
 
+      - name: Log system Chrome version
+        # playwright.config.ts channel='chrome' → 러너 이미지의 시스템 Chrome을 쓴다.
+        # 이미지 교체로 브라우저가 바뀌면 leg 로그만으로 판별할 수 있게 남긴다.
+        run: google-chrome --version
+
       - name: Run Playwright E2E
         working-directory: Tests~/E2E/tests
         env:
@@ -422,6 +427,11 @@ jobs:
         # GitHub Actions runner에서 stall/hang하므로 일절 받지 않음 (video도 비활성화).
         # 따라서 npm registry 기반 pnpm install만 수행 — 외부 다운로드 의존성 0.
         run: pnpm install --frozen-lockfile
+
+      - name: Log system Chrome version
+        # playwright.config.ts channel='chrome' → 러너 이미지의 시스템 Chrome을 쓴다.
+        # 이미지 교체로 브라우저가 바뀌면 leg 로그만으로 판별할 수 있게 남긴다.
+        run: google-chrome --version
 
       - name: Run Playwright E2E
         working-directory: Tests~/E2E/tests

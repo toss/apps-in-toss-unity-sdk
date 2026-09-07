@@ -1808,6 +1808,8 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
         test.setTimeout(120000);
 
         mockPage = await browser.newPage();
+        mockPage.on('crash', () => console.log('[9-x] mockPage CRASHED (renderer died)'));
+        mockPage.on('close', () => console.log('[9-x] mockPage CLOSED'));
 
         // addInitScript는 reload마다 재실행되고, localStorage는 reload에도 살아남는다
         // (9-2가 IndexedDB만 지우고 이 mock 백킹은 보존되는 전제).
@@ -1887,31 +1889,55 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
         const cdp = await mockPage.context().newCDPSession(mockPage);
         const origin = new URL(mockPage.url()).origin;
         // localStorage(mock 백킹)는 보존, IndexedDB(IDBFS 미러)만 제거
+        // (앱은 CacheStorage/service worker를 쓰지 않으므로 cache_storage는 wipe 대상에서 뺀다 —
+        //  IndexedDB 하나로 좁혀 아래 검증 프로브의 대상 표면도 함께 줄인다)
         await cdp.send('Storage.clearDataForOrigin', {
           origin,
-          storageTypes: 'indexeddb,cache_storage'
+          storageTypes: 'indexeddb'
         });
 
-        // CDP wipe가 실제로 IndexedDB를 비웠는지 확인한다. IDBFS.getDB는 IndexedDB
-        // 커넥션을 dbs 캐시에 열어둔 채 유지하므로, 이 커넥션이 살아있으면
-        // clearDataForOrigin이 에러 없이 resolve되면서도 조용히 부분 실패할 수 있다.
+        // CDP wipe가 실제로 IndexedDB를 비웠는지 확인한다. 부가 안전장치라서 본 테스트의
+        // 핵심 단언(재로드 후 앱인토스 Storage 경로 복원)을 막으면 안 된다.
         //
-        // 단, 이 열린 커넥션 때문에 헤드리스 Chrome CI 환경에서 indexedDB.databases()
-        // 자체가 내부적으로 멈춰(hang) Playwright의 evaluate promise가 GC되며
-        // "Resulting promise was garbage collected" 에러로 죽는 사례가 관측됐다
-        // (모든 OS/Unity 버전 조합에서 재현). 이 검증은 부가적인 안전장치이므로,
-        // 실패/행에도 본 테스트의 핵심 단언(재로드 후 앱인토스 Storage 경로로
-        // 복원되는지)을 막지 않도록 soft-skip 처리한다.
+        // IDBFS.getDB가 IndexedDB 커넥션을 dbs 캐시에 열어둔 채 유지하므로, 헤드리스
+        // Chrome CI에서는 clearDataForOrigin 직후 indexedDB.databases()가 응답하지
+        // 않는 경우가 대부분이다(2026-08 이후 legs의 약 90%). Chrome 151까지는 버려진
+        // promise가 GC되며 몇 초 만에 "Resulting promise was garbage collected"로
+        // reject돼 저절로 skip됐지만, Chrome 152(러너 이미지 ubuntu24/20260831.293~)부터는
+        // GC되지 않아 evaluate가 테스트 타임아웃(420s)까지 멈춘다. page.evaluate에는
+        // 자체 타임아웃이 없으므로 여기서 직접 데드라인을 건다.
         let dbsAfterWipe = null;
-        try {
-          dbsAfterWipe = await mockPage.evaluate(async () => {
+        {
+          const PROBE_BUDGET_MS = 10000;
+          const PROBE_TIMED_OUT = Symbol('probe-timeout');
+          const probe = mockPage.evaluate(async () => {
             if (typeof indexedDB.databases !== 'function') return null; // 미지원 브라우저는 스킵
             var dbs = await indexedDB.databases();
             return dbs.map(function (d) { return d.name; });
           });
-        } catch (e) {
-          console.log(`[9-2] indexedDB.databases() verification failed/hung (${e.message}) — IDBFS의 열린 커넥션으로 인한 알려진 환경 제약으로 보고 skip`);
-          dbsAfterWipe = null;
+          // race에서 진 뒤 늦게 reject돼도(reload가 실행 컨텍스트를 파괴하면 반드시
+          // reject된다) unhandled rejection이 되지 않게 미리 흡수한다.
+          probe.catch(() => {});
+          let probeTimer = null;
+          let outcome;
+          try {
+            outcome = await Promise.race([
+              probe,
+              new Promise((resolve) => { probeTimer = setTimeout(() => resolve(PROBE_TIMED_OUT), PROBE_BUDGET_MS); })
+            ]);
+          } catch (e) {
+            // 페이지/타깃이 실제로 죽은 경우는 삼키지 않는다 — 그 신호가 진짜 진단 정보다.
+            if (/has been closed|Page crashed|Target crashed/i.test(e.message)) throw e;
+            console.log(`[9-2] indexedDB.databases() 검증 실패 (${e.message}) — 부가 검증이므로 skip`);
+            outcome = PROBE_TIMED_OUT;
+          } finally {
+            if (probeTimer) clearTimeout(probeTimer);
+          }
+          if (outcome === PROBE_TIMED_OUT) {
+            console.log(`[9-2] indexedDB.databases() ${PROBE_BUDGET_MS}ms 내 미응답 — IDBFS 열린 커넥션 wedge로 보고 검증 skip`);
+          } else {
+            dbsAfterWipe = outcome;
+          }
         }
         if (dbsAfterWipe !== null) {
           expect(dbsAfterWipe, 'IndexedDB should be empty after Storage.clearDataForOrigin').toEqual([]);

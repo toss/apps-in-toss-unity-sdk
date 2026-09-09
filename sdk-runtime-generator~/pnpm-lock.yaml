@@ -1352,8 +1352,8 @@ packages:
     resolution: {integrity: sha512-qbHyhP1GGBvgecR/BQmKefXmYvR/gJ+y94/sQIAEy1BYcdbxX1AHio3nwwNzTiwlGtrageEz/Jx0fNyrm/O/ew==}
     hasBin: true
 
-  '@apps-in-toss/cli@3.3.0':
-    resolution: {integrity: sha512-f7rEMhcXILIUInYImpqSrQ0H7R49v/h/Ik8rk0wmANXkWIKeS7kBGMlTns/G6Dtc2l6tiOXM/DXE2dR0daB3Wg==}
+  '@apps-in-toss/cli@3.4.0':
+    resolution: {integrity: sha512-5p41iw4DRSQSz/gp5GtGLWN/+5FoZtJcy8Ag3RkO6VzZojHQt4DP4GVgTZN9GnlaOOew2AfQaXjADbu/aoWauQ==}
     hasBin: true
 
   '@apps-in-toss/framework@1.10.0':
@@ -13703,7 +13703,7 @@ snapshots:
       - supports-color
       - typanion
 
-  '@apps-in-toss/cli@3.3.0(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)':
+  '@apps-in-toss/cli@3.4.0(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)':
     dependencies:
       '@apps-in-toss/ait-format': 1.0.0
       '@clack/prompts': 1.7.0
@@ -25669,7 +25669,7 @@ snapshots:
 
   '@apps-in-toss/web-framework@3.0.1(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)(typescript@7.0.2)':
     dependencies:
-      '@apps-in-toss/cli': 3.3.0(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)
+      '@apps-in-toss/cli': 3.4.0(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)
       '@webview-bridge/web': 1.7.9
       semver: 7.8.5
       valibot: 1.4.2(typescript@7.0.2)
@@ -25682,7 +25682,7 @@ snapshots:
 
   '@apps-in-toss/web-framework@3.0.2(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)(typescript@7.0.2)':
     dependencies:
-      '@apps-in-toss/cli': 3.3.0(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)
+      '@apps-in-toss/cli': 3.4.0(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)
       '@webview-bridge/web': 1.7.9
       semver: 7.8.5
       valibot: 1.4.2(typescript@7.0.2)

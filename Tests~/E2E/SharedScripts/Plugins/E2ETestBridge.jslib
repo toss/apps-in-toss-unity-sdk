@@ -300,6 +300,73 @@ mergeInto(LibraryManager.library, {
     },
 
     /**
+     * 소프트 키보드가 뜰 때 뷰포트가 어떻게 움직이는지 기록한다.
+     *
+     * 갈라야 하는 것은 둘이다. (a) 캔버스가 실제로 줄어드는가 — innerHeight·캔버스 rect 높이·
+     * 프레임버퍼(canvas.width/height)가 변한다. (b) 캔버스가 통째로 밀려 올라가는가 — 크기는
+     * 그대로인데 visualViewport.offsetTop이 커지고 캔버스 rect top이 음수가 된다.
+     *
+     * MobileKeyboard.js는 body 직하위에 position:fixed; bottom:0 컨테이너를 만들고 그 안의
+     * input에 focus()를 건다. 그 순간(focusin)과 뷰포트 이벤트마다 한 줄씩 찍고, 키보드
+     * 애니메이션이 끝난 뒤의 정착 상태를 보려고 focusin 뒤 600ms/1500ms에 한 번씩 더 찍는다.
+     * 같은 값이 연달아 오는 vv-scroll은 한 줄만 남긴다.
+     */
+    VP_Install: function() {
+        if (window.__AIT_VP_INSTALLED) return;
+        window.__AIT_VP_INSTALLED = true;
+
+        var canvas = Module['canvas'] || document.querySelector('canvas');
+        var vv = window.visualViewport;
+        var last = '';
+
+        var barRect = function() {
+            // 포커스된 input의 부모(= MobileKeyboard.js 컨테이너) 위치. 키보드 위에 보이는지,
+            // 레이아웃 뷰포트 바닥(= 키보드 뒤)에 있는지를 vvTop+vv와 대조하면 알 수 있다.
+            var ae = document.activeElement;
+            if (!ae || (ae.tagName !== 'INPUT' && ae.tagName !== 'TEXTAREA')) return '-';
+            var el = ae.parentElement || ae;
+            var r = el.getBoundingClientRect();
+            return Math.round(r.top) + '..' + Math.round(r.bottom);
+        };
+
+        var snap = function(tag) {
+            var r = canvas ? canvas.getBoundingClientRect() : { top: 0, height: 0 };
+            var ae = document.activeElement;
+            var focus = ae && ae !== document.body ? ae.tagName.toLowerCase() : '-';
+            var body = ' inner=' + window.innerHeight
+                + ' vv=' + (vv ? Math.round(vv.height) : '-')
+                + ' vvTop=' + (vv ? Math.round(vv.offsetTop) : '-')
+                + ' scrollY=' + Math.round(window.scrollY)
+                + ' cTop=' + Math.round(r.top) + ' cH=' + Math.round(r.height)
+                + ' fb=' + (canvas ? canvas.width + 'x' + canvas.height : '-')
+                + ' focus=' + focus + ' bar=' + barRect();
+            if (tag.indexOf('vv-') === 0 && body === last) return;
+            last = body;
+            console.log('[E2E-VP] ' + tag + body);
+        };
+
+        snap('base');
+        document.addEventListener('focusin', function(e) {
+            var t = e.target && e.target.tagName ? e.target.tagName.toLowerCase() : '?';
+            snap('focusin:' + t);
+            setTimeout(function() { snap('focusin+600ms'); }, 600);
+            setTimeout(function() { snap('focusin+1500ms'); }, 1500);
+        }, true);
+        document.addEventListener('focusout', function() {
+            snap('focusout');
+            setTimeout(function() { snap('focusout+600ms'); }, 600);
+        }, true);
+        if (vv) {
+            vv.addEventListener('resize', function() { snap('vv-resize'); });
+            vv.addEventListener('scroll', function() { snap('vv-scroll'); });
+        }
+        window.addEventListener('resize', function() { snap('win-resize'); });
+        window.addEventListener('scroll', function() { snap('win-scroll'); });
+        window.__AIT_VP = snap;
+        console.log('[E2E-VP] installed visualViewport=' + (vv ? 'yes' : 'no'));
+    },
+
+    /**
      * JavaScript에서 JSON 파싱 검증
      * C# → JSON → JavaScript 파싱 → JSON → C# 역직렬화 round-trip 검증용
      * @param {string} jsonPtr - JSON 문자열 포인터

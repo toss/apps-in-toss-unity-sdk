@@ -1377,11 +1377,19 @@ namespace AppsInToss.Editor.ErrorTracker
                 && message.IndexOf(".cs(", StringComparison.Ordinal) >= 0)
                 return true;
 
-            // 사용자 코드의 'AppsInToss' using 중복(CS0105) — Unity 컴파일러가 직접 출력.
+            // 사용자 코드의 using 중복(CS0105) — Unity 컴파일러가 직접 출력.
             // 예: "Assets/.../Foo.cs(L,C): warning CS0105: The using directive for 'AppsInToss' appeared previously in this namespace"
-            // Sentry APPS-IN-TOSS-UNITY-SDK-SW.
+            // 예(2): "Assets\01.Scripts\Platform\AppsInToss\TossPlatformServices.cs(2,7): warning CS0105:
+            //         The using directive for 'System' appeared previously in this namespace"
+            // Sentry APPS-IN-TOSS-UNITY-SDK-SW, APPS-IN-TOSS-UNITY-SDK-1B1.
+            // 원래는 중복 대상을 'AppsInToss'로만 한정했으나, 사용자 폴더명에 'AppsInToss' 세그먼트가
+            // 포함된 파일(Platform\AppsInToss\...)에서 'System' 등 다른 using이 중복되는 경우
+            // AitKeywords 보호 가드에 걸려 드롭되지 못하는 공백이 있었다. 중복 대상 식별자는 임의이므로
+            // 컴파일러 고정 문구("The using directive for '" ~ "appeared previously in this namespace")로
+            // 일반화하고, Assets/ 경로 + .cs(L,C) 마커 합성 AND는 기존 컨벤션대로 유지한다.
             if (message.IndexOf("warning CS0105", StringComparison.Ordinal) >= 0
-                && message.IndexOf("'AppsInToss'", StringComparison.Ordinal) >= 0
+                && message.IndexOf("The using directive for '", StringComparison.Ordinal) >= 0
+                && message.IndexOf("appeared previously in this namespace", StringComparison.Ordinal) >= 0
                 && (message.IndexOf("Assets/", StringComparison.Ordinal) >= 0
                     || message.IndexOf("Assets\\", StringComparison.Ordinal) >= 0)
                 && message.IndexOf(".cs(", StringComparison.Ordinal) >= 0)

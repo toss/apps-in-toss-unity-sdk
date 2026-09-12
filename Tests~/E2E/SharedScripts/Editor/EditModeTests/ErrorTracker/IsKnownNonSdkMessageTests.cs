@@ -1407,6 +1407,18 @@ public class IsKnownNonSdkMessageTests
     }
 
     [Test]
+    public void UsingDirectiveAppearedPreviously_OtherTargetInAppsInTossFolder_ReturnsTrue()
+    {
+        // Sentry SDK-1B1 — 사용자 코드(TossPlatformServices.cs)의 using System; 중복 (CS0105).
+        // 중복 대상이 'AppsInToss'가 아닌 'System'이지만, 파일 경로에 'AppsInToss' 세그먼트가
+        // 포함돼 있어 AitKeywords 보호 가드가 먼저 발동할 뻔한 케이스. 컴파일러 고정 문구
+        // ("The using directive for '" ~ "appeared previously in this namespace")로 일반화한
+        // composite 조건이 가드보다 먼저 매칭해 드롭해야 한다.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "UnityWarning: Assets\\01.Scripts\\Platform\\AppsInToss\\TossPlatformServices.cs(2,7): warning CS0105: The using directive for 'System' appeared previously in this namespace"));
+    }
+
+    [Test]
     public void UsingDirectiveAppearedPreviously_AitKeywordProtected()
     {
         // SDK 자체 로그가 "[AIT ...] warning CS0105 ..." 형태로 캡처될 가능성 보호.

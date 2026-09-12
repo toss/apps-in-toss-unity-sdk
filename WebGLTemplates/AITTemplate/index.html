@@ -102,6 +102,39 @@
         }
     </style>
 
+    <!-- 소프트 키보드 뷰포트 고정.
+         Unity WebGL의 소프트 키보드 입력창(MobileKeyboard.js)은 position:fixed; bottom:0 으로 붙는다.
+         iOS WKWebView는 키보드가 뜨면 그 입력창을 키보드 위로 드러내려고 문서를 스크롤하는데,
+         position:fixed 인 #unity-container 가 그 스크롤을 따라 위로 끌려가 상단 UI가 화면 밖으로 밀린다
+         (iOS 26.5 WKWebView 실측: 컨테이너 top 0 → -403px).
+         visualViewport 의 resize/scroll 마다 컨테이너를 "보이는 영역"에 다시 맞춘다. 컨테이너 높이가
+         줄어들면 캔버스(height:100%)도 같이 줄어 Unity가 키보드 위 영역 기준으로 다시 레이아웃한다.
+         키보드가 내려가면 인라인 스타일을 지워 CSS 기본값(top:0; height:100%)으로 되돌린다 —
+         회전 등으로 px 값이 낡은 채 남지 않게. -->
+    <script>
+        (function () {
+            var vv = window.visualViewport;
+            if (!vv) return;
+            var raf = 0;
+            function apply() {
+                raf = 0;
+                var c = document.getElementById('unity-container');
+                if (!c) return;
+                var keyboardUp = vv.offsetTop > 1 || Math.abs(vv.height - window.innerHeight) > 1;
+                if (keyboardUp) {
+                    c.style.top = Math.round(vv.offsetTop) + 'px';
+                    c.style.height = Math.round(vv.height) + 'px';
+                } else {
+                    c.style.top = '';
+                    c.style.height = '';
+                }
+            }
+            function schedule() { if (!raf) raf = requestAnimationFrame(apply); }
+            vv.addEventListener('resize', schedule);
+            vv.addEventListener('scroll', schedule);
+        })();
+    </script>
+
     <!-- USER_HEAD_START - 이 영역에 사용자 커스텀 스크립트/스타일을 추가하세요 -->
     <!-- 예: <script src="https://cdn.example.com/library.js"></script> -->
     <!-- 예: <link rel="stylesheet" href="custom.css"> -->

@@ -31,8 +31,8 @@ importers:
         version: 3.5.0(typanion@3.14.0)(typescript@7.0.2)
     devDependencies:
       '@apps-in-toss/devtools':
-        specifier: 3.1.1
-        version: 3.1.1(@apps-in-toss/web-framework@3.5.0(typanion@3.14.0)(typescript@7.0.2))(rolldown@1.2.9)(vite@8.2.2(@types/node@26.6.1)(jiti@2.7.0))
+        specifier: 3.4.1
+        version: 3.4.1(@apps-in-toss/web-framework@3.5.0(typanion@3.14.0)(typescript@7.0.2))(rolldown@1.2.9)(vite@8.2.2(@types/node@26.6.1)(jiti@2.7.0))
       typescript:
         specifier: 7.0.2
         version: 7.0.2
@@ -56,8 +56,8 @@ packages:
     resolution: {integrity: sha512-tnq5CSnWagx/4ToRFgfOABGD1ElTuPqLzDsqbKjB40MX3cbPM3j8aYb83AjzPbGJYLJVI7MPI2StIV0l5cn3+A==}
     hasBin: true
 
-  '@apps-in-toss/devtools@3.1.1':
-    resolution: {integrity: sha512-8AHZs79hJNXjDOhi9EGpPbwtyK/XhRM/lffbIQ1+S8wpzoWA/F50Viq9XVaLwMMHFoteAqpnJ9pLDNGSB30pdg==}
+  '@apps-in-toss/devtools@3.4.1':
+    resolution: {integrity: sha512-CidQ6kWkkxpqacKgaRQ58USsaK00FgLlqDLUUHIRKQsS006o3KP2UA7BPw2pYCqlvJk1VDVqlyOy2MIAC7EffA==}
     engines: {node: '>=24'}
     peerDependencies:
       '@apps-in-toss/web-framework': '>=2.6.0 <3.0.0 || >=3.0.1 <4.0.0'
@@ -1099,7 +1099,7 @@ snapshots:
       - supports-color
       - typanion
 
-  '@apps-in-toss/devtools@3.1.1(@apps-in-toss/web-framework@3.5.0(typanion@3.14.0)(typescript@7.0.2))(rolldown@1.2.9)(vite@8.2.2(@types/node@26.6.1)(jiti@2.7.0))':
+  '@apps-in-toss/devtools@3.4.1(@apps-in-toss/web-framework@3.5.0(typanion@3.14.0)(typescript@7.0.2))(rolldown@1.2.9)(vite@8.2.2(@types/node@26.6.1)(jiti@2.7.0))':
     dependencies:
       unplugin: 3.4.0(rolldown@1.2.9)(vite@8.2.2(@types/node@26.6.1)(jiti@2.7.0))
     optionalDependencies:

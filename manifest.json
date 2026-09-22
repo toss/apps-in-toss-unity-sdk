@@ -1,0 +1,14 @@
+{
+  "dependencies": {
+    "com.appsintoss.miniapp": "https://github.com/appsintoss/apps-in-toss-unity-transform-sdk"
+  },
+  "scopedRegistries": [
+    {
+      "name": "Apps in Toss Registry",
+      "url": "https://npm.appsintoss.com",
+      "scopes": [
+        "com.appsintoss"
+      ]
+    }
+  ]
+}

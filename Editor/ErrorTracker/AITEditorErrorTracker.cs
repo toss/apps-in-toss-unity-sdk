@@ -325,6 +325,16 @@ namespace AppsInToss.Editor.ErrorTracker
             // 예: "UnityError: [MCP Build] ✗ Build failed: WebGL — Building Library/Bee/artifacts/WebGL/ManagedStripped failed with output:"
             // Sentry APPS-IN-TOSS-UNITY-SDK-13E.
             "[MCP Build]",
+
+            // Unity 에디터가 로컬 Android 기기 연결(adb reverse, USB 디버깅) 시 직접 출력하는 표준 경고.
+            // AIT SDK 코드는 adb/reverse를 전혀 호출하지 않으며(grep 확인), 사용자 PC의 Android SDK/adb
+            // 설정 문제로 발생. "Build target 'WebGL' not supported", "Import Error Code:(" 와 동일한
+            // Unity 엔진 자체 노이즈 계열. AitKeywords에 없어 보호 가드와 충돌 없음.
+            // 예: "UnityWarning: Connection to Android device failed: Unable to reverse network traffic to
+            //      device. Please make sure the Android SDK is installed and is properly configured in the
+            //      Editor. See the Console for more details."
+            // Sentry APPS-IN-TOSS-UNITY-SDK-13K.
+            "Unable to reverse network traffic to device",
         };
 
         // DetermineErrorSource에서 메시지를 SDK로 분류하는 추가 패턴.

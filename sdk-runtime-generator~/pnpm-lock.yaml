@@ -28,8 +28,8 @@ importers:
         specifier: 2.10.9
         version: 2.10.9(@apps-in-toss/web-bridge@2.10.8)
       '@apps-in-toss/web-framework':
-        specifier: 3.2.0
-        version: 3.2.0(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)(typescript@7.0.2)
+        specifier: 3.3.0
+        version: 3.3.0(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)(typescript@7.0.2)
       commander:
         specifier: 15.0.0
         version: 15.0.0
@@ -286,6 +286,9 @@ importers:
       web-framework-3.2.0:
         specifier: npm:@apps-in-toss/web-framework@3.2.0
         version: '@apps-in-toss/web-framework@3.2.0(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)(typescript@7.0.2)'
+      web-framework-3.3.0:
+        specifier: npm:@apps-in-toss/web-framework@3.3.0
+        version: '@apps-in-toss/web-framework@3.3.0(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)(typescript@7.0.2)'
 
 packages:
 
@@ -1350,6 +1353,10 @@ packages:
 
   '@apps-in-toss/cli@3.2.0':
     resolution: {integrity: sha512-qbHyhP1GGBvgecR/BQmKefXmYvR/gJ+y94/sQIAEy1BYcdbxX1AHio3nwwNzTiwlGtrageEz/Jx0fNyrm/O/ew==}
+    hasBin: true
+
+  '@apps-in-toss/cli@3.3.0':
+    resolution: {integrity: sha512-f7rEMhcXILIUInYImpqSrQ0H7R49v/h/Ik8rk0wmANXkWIKeS7kBGMlTns/G6Dtc2l6tiOXM/DXE2dR0daB3Wg==}
     hasBin: true
 
   '@apps-in-toss/cli@3.5.0':
@@ -4139,6 +4146,10 @@ packages:
 
   '@apps-in-toss/web-framework@3.2.0':
     resolution: {integrity: sha512-Zi6jjmSSJeLXWx1cHYV+KSCObLrUOaONcvXpspz9FpGWjYQ/squkdF2AFUo6WsxBT58/ZuKHF5jSZ11+nkjj1w==}
+    hasBin: true
+
+  '@apps-in-toss/web-framework@3.3.0':
+    resolution: {integrity: sha512-uVUI14bkYpAPHCBA538Hlf/Q3VoAE0+9/8e8T1tqXCptE8DgCbXwnYSdjN0NnGnq7BpnR8Pxd+HFN/UyedgHpA==}
     hasBin: true
 
   '@babel/code-frame@7.24.7':
@@ -8136,16 +8147,16 @@ packages:
   flow-enums-runtime@0.0.5:
     resolution: {integrity: sha512-PSZF9ZuaZD03sT9YaIs0FrGJ7lSUw7rHZIex+73UYVXg46eL/wxN5PaVcPJFudE2cJu5f0fezitV5aBkLHPUOQ==}
 
-  flow-estree@0.331.0:
-    resolution: {integrity: sha512-FVLYkSL/ITb/QXBEQvNWPjPooRGswuUtGOwrH+puSlMDneNkxy640+FZsk/TfKL+b7Wbw/Fg9FTUv2bMQDpj2w==}
+  flow-estree@0.332.0:
+    resolution: {integrity: sha512-nsh1Ty3l/a8xJLGWnrZ0VFfQXjIpA6Gm1LqovVyj8RR6gE9Hz/cDl951qNNUnZtJ08u+6V0SFrY66XAoct76Fg==}
     engines: {node: '>=18'}
 
   flow-parser@0.206.0:
     resolution: {integrity: sha512-HVzoK3r6Vsg+lKvlIZzaWNBVai+FXTX1wdYhz/wVlH13tb/gOdLXmlTqy6odmTBhT5UoWUbq0k8263Qhr9d88w==}
     engines: {node: '>=0.4.0'}
 
-  flow-parser@0.331.0:
-    resolution: {integrity: sha512-vEZcHIlnKeN8JSVtYFczj8sWJfHIJOkz+YG00O/oul/Bete+t1ZhTi+O6JRRLFYvGW+yJkZ0YgL16iStnbkUqQ==}
+  flow-parser@0.332.0:
+    resolution: {integrity: sha512-Ly9ylvWknL6YGW2lq0stmDg8PfEh9qHxPoqlZLDjjH/9yd9Ik37m335a0WngsxQvDfrW8lwBPm++RmZm3e4lFQ==}
     engines: {node: '>=0.4.0'}
 
   flow-remove-types@2.331.0:
@@ -13689,6 +13700,21 @@ snapshots:
       - typanion
 
   '@apps-in-toss/cli@3.2.0(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)':
+    dependencies:
+      '@apps-in-toss/ait-format': 1.0.0
+      '@clack/prompts': 1.8.1
+      c12: 3.3.4
+      clipanion: 4.0.0-rc.4(typanion@3.14.0)
+      jscodeshift: 17.4.0(@babel/preset-env@7.28.5(@babel/core@7.29.7))
+      picocolors: 1.1.1
+      uuidv7: 1.2.1
+    transitivePeerDependencies:
+      - '@babel/preset-env'
+      - magicast
+      - supports-color
+      - typanion
+
+  '@apps-in-toss/cli@3.3.0(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)':
     dependencies:
       '@apps-in-toss/ait-format': 1.0.0
       '@clack/prompts': 1.8.1
@@ -25771,6 +25797,19 @@ snapshots:
       - typanion
       - typescript
 
+  '@apps-in-toss/web-framework@3.3.0(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)(typescript@7.0.2)':
+    dependencies:
+      '@apps-in-toss/cli': 3.3.0(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)
+      '@webview-bridge/web': 1.7.10
+      semver: 7.8.5
+      valibot: 1.5.0(typescript@7.0.2)
+    transitivePeerDependencies:
+      - '@babel/preset-env'
+      - magicast
+      - supports-color
+      - typanion
+      - typescript
+
   '@babel/code-frame@7.24.7':
     dependencies:
       '@babel/highlight': 7.25.9
@@ -29294,7 +29333,7 @@ snapshots:
   '@react-native/codegen@0.84.0(@babel/core@7.29.7)':
     dependencies:
       '@babel/core': 7.29.7
-      '@babel/parser': 7.28.5
+      '@babel/parser': 7.29.9
       hermes-parser: 0.32.0
       invariant: 2.2.4
       nullthrows: 1.1.1
@@ -31394,13 +31433,13 @@ snapshots:
 
   flow-enums-runtime@0.0.5: {}
 
-  flow-estree@0.331.0: {}
+  flow-estree@0.332.0: {}
 
   flow-parser@0.206.0: {}
 
-  flow-parser@0.331.0:
+  flow-parser@0.332.0:
     dependencies:
-      flow-estree: 0.331.0
+      flow-estree: 0.332.0
 
   flow-remove-types@2.331.0:
     dependencies:
@@ -32186,7 +32225,7 @@ snapshots:
       '@babel/register': 7.29.7(@babel/core@7.29.7)
       babel-core: 7.0.0-bridge.0(@babel/core@7.29.7)
       chalk: 4.1.2
-      flow-parser: 0.206.0
+      flow-parser: 0.332.0
       graceful-fs: 4.2.11
       micromatch: 4.0.8
       neo-async: 2.6.2
@@ -32209,7 +32248,7 @@ snapshots:
       '@babel/preset-flow': 7.29.7(@babel/core@7.29.7)
       '@babel/preset-typescript': 7.29.7(@babel/core@7.29.7)
       '@babel/register': 7.29.7(@babel/core@7.29.7)
-      flow-parser: 0.331.0
+      flow-parser: 0.332.0
       graceful-fs: 4.2.11
       neo-async: 2.6.2
       picocolors: 1.1.1

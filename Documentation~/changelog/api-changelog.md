@@ -1,6 +1,14 @@
-Apps in Toss Unity SDK가 노출하는 C# API 표면이 `@apps-in-toss/web-framework` 버전에 따라 어떻게 달라지는지 정리한 자동 생성 리포트입니다. 최신 버전(v3.3.0)이 최상단에 오도록 정렬되어 있습니다.
+Apps in Toss Unity SDK가 노출하는 C# API 표면이 `@apps-in-toss/web-framework` 버전에 따라 어떻게 달라지는지 정리한 자동 생성 리포트입니다. 최신 버전(v3.4.0)이 최상단에 오도록 정렬되어 있습니다.
 
 ## v3.x
+
+### v3.3.0 → v3.4.0
+
+API 총 132개 · 추가 1 · 변경 0 · 제거 0
+
+**추가된 API**
+
+- `AIT.ViralTrack`
 
 ### v3.2.0 → v3.3.0
 
@@ -350,7 +358,7 @@ API 총 62개 · 추가 0 · 변경 3 · 제거 0
 
 변경 없음: v1.14.0 → v1.14.1 · v1.12.0 → v1.13.0 · v1.11.1 → v1.11.2 · v1.11.0 → v1.11.1 · v1.10.0 → v1.10.1 · v1.9.3 → v1.9.4 · v1.9.2 → v1.9.3 · v1.9.1 → v1.9.2 · v1.9.0 → v1.9.1 · v1.8.0 → v1.8.1 · v1.6.2 → v1.7.0 · v1.6.1 → v1.6.2 · v1.6.0 → v1.6.1
 
-## v3.3.0 API 카탈로그
+## v3.4.0 API 카탈로그
 
 ### Authentication
 
@@ -431,6 +439,7 @@ API 총 62개 · 추가 0 · 변경 3 · 제거 0
 - `AIT.ShareSendMessage`
 - `AIT.ViralGetCampaign`
 - `AIT.ViralShare`
+- `AIT.ViralTrack`
 - `AIT.ContactsViral`
 - `AIT.FetchContacts`
 - `AIT.GetTossShareLink`

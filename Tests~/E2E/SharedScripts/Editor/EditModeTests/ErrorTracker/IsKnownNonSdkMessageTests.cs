@@ -2740,6 +2740,37 @@ public class IsKnownNonSdkMessageTests
 
     #endregion
 
+    #region Android 기기 연결(adb reverse) 노이즈 (APPS-IN-TOSS-UNITY-SDK-13K)
+
+    [Test]
+    public void AndroidAdbReverseFailure_UnityWarningPrefix_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-13K — Unity 에디터가 로컬 Android 기기 연결(adb reverse,
+        // USB 디버깅) 시 직접 출력하는 표준 경고. AIT SDK 코드는 adb/reverse를 전혀 호출하지 않으며
+        // (grep 확인), 사용자 PC의 Android SDK/adb 설정 문제로 발생.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "UnityWarning: Connection to Android device failed: Unable to reverse network traffic to device. Please make sure the Android SDK is installed and is properly configured in the Editor. See the Console for more details."));
+    }
+
+    [Test]
+    public void AndroidAdbReverseFailure_BareVariant_ReturnsTrue()
+    {
+        // "UnityWarning: " prefix가 없는 변형도 부분 문자열 매칭으로 동일하게 드롭됨을 검증.
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "Connection to Android device failed: Unable to reverse network traffic to device."));
+    }
+
+    [Test]
+    public void AndroidAdbReverseFailure_WithAitKeyword_NeverFiltered()
+    {
+        // AitKeywords 가드 회귀 방지: 메시지 본문에 AppsInToss 식별자가 섞이면
+        // MessageContainsSdkKeyword 가드가 먼저 매칭되어 이 패턴보다 우선해 보호되어야 함.
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] Unable to reverse network traffic to device during AppsInToss device sync"));
+    }
+
+    #endregion
+
     #region pnpm 중첩 가상 스토어 경로 삭제 실패 경고 (APPS-IN-TOSS-UNITY-SDK-1A9)
 
     [Test]

@@ -102,15 +102,12 @@
         }
     </style>
 
-    <!-- 소프트 키보드 뷰포트 고정.
-         Unity WebGL의 소프트 키보드 입력창(MobileKeyboard.js)은 position:fixed; bottom:0 으로 붙는다.
-         iOS WKWebView는 키보드가 뜨면 그 입력창을 키보드 위로 드러내려고 문서를 스크롤하는데,
-         position:fixed 인 #unity-container 가 그 스크롤을 따라 위로 끌려가 상단 UI가 화면 밖으로 밀린다
-         (iOS 26.5 WKWebView 실측: 컨테이너 top 0 → -403px).
-         visualViewport 의 resize/scroll 마다 컨테이너를 "보이는 영역"에 다시 맞춘다. 컨테이너 높이가
-         줄어들면 캔버스(height:100%)도 같이 줄어 Unity가 키보드 위 영역 기준으로 다시 레이아웃한다.
-         키보드가 내려가면 인라인 스타일을 지워 CSS 기본값(top:0; height:100%)으로 되돌린다 —
-         회전 등으로 px 값이 낡은 채 남지 않게. -->
+    <!-- 소프트 키보드 대응: Unity 가 만드는 입력창은 position:fixed; bottom:0 이라 WKWebView 가 이를 드러내려고
+         문서를 스크롤하고, 그때 position:fixed 인 #unity-container 가 함께 밀려 상단 UI 가 화면 밖으로 나간다.
+         visualViewport.offsetTop 만큼 컨테이너의 top 을 되돌려 상단을 보이는 영역에 맞춘다.
+         높이는 건드리지 않는다. 캔버스 크기가 바뀌면 Unity 가 프레임버퍼를 다시 만들고 UI 전체를 리레이아웃하는데,
+         키보드 애니메이션 동안 프레임마다 그 비용이 들어 화면이 끊긴다. 대신 키보드에 가려지는 아래쪽 영역은
+         보이지 않는다(네이티브 adjustPan 과 같은 동작). 키보드가 내려가면 인라인 top 을 지워 CSS 기본값(top:0)으로 돌아간다. -->
     <script>
         (function () {
             var vv = window.visualViewport;
@@ -120,14 +117,8 @@
                 raf = 0;
                 var c = document.getElementById('unity-container');
                 if (!c) return;
-                var keyboardUp = vv.offsetTop > 1 || Math.abs(vv.height - window.innerHeight) > 1;
-                if (keyboardUp) {
-                    c.style.top = Math.round(vv.offsetTop) + 'px';
-                    c.style.height = Math.round(vv.height) + 'px';
-                } else {
-                    c.style.top = '';
-                    c.style.height = '';
-                }
+                var offset = Math.round(vv.offsetTop);
+                c.style.top = offset > 1 ? offset + 'px' : '';
             }
             function schedule() { if (!raf) raf = requestAnimationFrame(apply); }
             vv.addEventListener('resize', schedule);

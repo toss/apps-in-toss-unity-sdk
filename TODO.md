@@ -41,10 +41,6 @@
 
 - **P3 — emnapi 2.x 안정판 출시 시 캡 override 해제**: `sdk-runtime-generator~/pnpm-workspace.yaml`의 `'@emnapi/core'`/`'@emnapi/runtime'` `'>=1.11.3 <2'` 캡(#1035)은 프리릴리스 유입을 막는 한시적 조치다(`@napi-rs/wasm-runtime`의 peer가 `^2.0.0-alpha.3` 요구, 2.x 안정판 없어 alpha만 매치. 유입 경로 vite(rolldown) → rolldown·oxc-transform의 optional wasm 바인딩, 미설치). 해제 조건: `npm view @emnapi/core versions`에 2.x 안정판 등장. 확인: `cd sdk-runtime-generator~ && pnpm why @emnapi/core`에 alpha 0건 + `--validate`.
 
-## 파일 위생
-
-- **P3 — 고아 `.meta` 제거**: `Tests~/E2E/tests/package-lock.json.meta`가 추적되고 있으나 짝이 되는 `package-lock.json`은 없다(해당 디렉터리는 `pnpm-lock.yaml`을 쓴다). `Tests~/`는 틸드 폴더라 Unity가 임포트하지 않으므로 이 디렉터리의 `.meta`는 전부 무의미하다. 최소한 고아 하나는 제거.
-
 ## 문서
 
 - **P3 — 미문서 public API 약 65개**: 문서 통합 정리에서 의도적으로 범위 제외. API 설명은 상위 `@apps-in-toss/web-framework` JSDoc이 생성기로 XML 주석에 자동 이관되므로, 마크다운 레퍼런스를 두면 상위의 수기 포크가 돼 드리프트한다. 현재 완화책은 API 사용 패턴 문서의 "API 원문은 어디에 있나" 절. 정책 충분성은 사용자 피드백으로 재검토.

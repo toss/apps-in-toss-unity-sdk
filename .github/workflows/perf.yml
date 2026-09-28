@@ -101,7 +101,6 @@ jobs:
       unity-version: ${{ matrix.unity-version }}
       run-build: true
       run-editmode-test: false
-      run-unit-test: false
       clean-library: false
       # ---- perf 입력: 무거운 픽스처 + 배포 동일 Release wasm + gzip(현실적 on-wire) ----
       project-dir-prefix: HeavySampleUnityProject

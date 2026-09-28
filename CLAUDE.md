@@ -4,142 +4,79 @@
 
 ## 개요
 
-**Apps in Toss Unity SDK** - Unity/Tuanjie 엔진 게임 프로젝트를 Apps in Toss 플랫폼의 미니앱으로 변환하고 배포할 수 있게 해주는 Unity 패키지입니다.
+**Apps in Toss Unity SDK** - Unity/Tuanjie 게임을 Apps in Toss 플랫폼의 미니앱으로 변환·배포하는 Unity 패키지입니다.
 
 ## ⚠️ 필수 규칙
 
 ### 브랜치 보호 규칙
-- **main 브랜치에 직접 push 불가** — 반드시 PR을 통해 머지
-- main 브랜치 규칙 (Repository Rulesets, 서버 측 강제):
-  - PR 필수 (승인 없이 머지 가능)
-  - **머지 방식: squash merge만 허용** (merge commit, rebase 불가)
-  - 커밋 서명 필수 (`required_signatures`)
-  - 삭제 불가, force push 불가
-  - bypass 권한자 없음 (`current_user_can_bypass: never`)
-- **작업 시**: 항상 feature 브랜치 생성 → PR 제출 → squash merge로 병합
+- **main에 직접 push 금지. feature 브랜치 → PR → squash merge만 허용**
+- Repository Rulesets(서버 강제): PR 필수(승인 없이 머지 가능) · **squash만**(merge commit·rebase 불가) · 커밋 서명 필수(`required_signatures`) · 삭제·force push 불가 · bypass 없음(`current_user_can_bypass: never`)
 
 ### 머지 실행 정책
-- Claude는 사용자의 **명시적 머지 요청**이 있을 때만 머지를 실행한다.
-  - 허용 예: "머지해줘", "squash merge로 머지", "/ship merge" + 명시적 확인
-  - PR 생성/푸시 같은 일반 작업의 일부로 자동 머지 금지
-- 명시적 요청을 받은 경우 다음 절차로 진행:
-  1. PR이 mergeable + 모든 required check가 success인지 확인
-  2. 머지 직전에 한 번 더 사용자에게 확인 ("PR #N을 squash merge합니다. 진행할까요?")
-  3. 사용자 확인 후 `gh pr merge <N> --squash` 실행
-- GitHub Ruleset이 서버 단에서 squash merge / 서명 / non-bypass를 강제하므로 Claude의 머지 실행도 이 경계 안에서만 가능
+- **명시적 머지 요청**이 있을 때만 머지한다(예: "머지해줘" + 확인). PR 생성·push 같은 일반 작업의 일부로는 자동 머지하지 않는다.
+- 순서: ① mergeable이고 required check가 전부 success인지 확인. `gh api repos/toss/apps-in-toss-unity-sdk/pulls/<N> --jq .mergeable_state`가 `clean`이면 충족, `unstable`이면 실패·대기 중인 체크가 non-required뿐인지 `commits/<sha>/check-runs`로 확인, 그 외 값은 중단 ② 머지 직전 재확인("PR #N을 squash merge합니다. 진행할까요?") ③ `gh api -X PUT repos/toss/apps-in-toss-unity-sdk/pulls/<N>/merge -f merge_method=squash`
+- Ruleset이 squash·서명·non-bypass를 서버에서 강제하므로 머지도 이 경계 안에서만 가능하다.
 
 ### Git 커밋 가이드라인
-- **모든 커밋 메시지는 반드시 한국어로 작성**
-- 커밋 메시지 형식: `<타입>: <설명>`
-  - 타입 예시: 기능, 수정, 개선, 문서, 리팩토링, 테스트, 빌드
-- 예시:
-  - ✅ `기능: 사용자 인증 API 추가`
-  - ✅ `수정: WebGL 빌드 오류 해결`
-  - ❌ `feat: Add user authentication API` (영어 - 허용 안됨)
+- **커밋 메시지는 한국어 `<타입>: <설명>` 형식**(기능/수정/개선/문서/리팩토링/테스트/빌드)
+- 예: ✅ `수정: WebGL 빌드 오류 해결` / ❌ `feat: Add user authentication API`(영어 불허)
 
 ### 문서 생성 정책
-- **사용자의 명시적 허락 없이 *.md 파일을 생성하거나 수정하지 말 것**
-- 해당 파일:
-  - README.md, CHANGELOG.md, CONTRIBUTING.md
-  - PRD.md, USER_GUIDE.md, API.md
-  - 기타 모든 마크다운 문서 파일
-- **예외**: 명시적으로 지시받은 경우 CLAUDE.md 수정 가능, TODO.md는 PR 제출 시 자동 최신화 (아래 규칙 참조)
-- **이유**: AI가 생성한 문서는 기업 저장소에 부적절하게 보일 수 있음
+- **사용자의 명시적 허락 없이 모든 `*.md` 파일의 생성·수정을 금지**(README, CHANGELOG, 기타 문서 파일 전부 포함)
+- **예외**: 명시적으로 지시받은 경우의 CLAUDE.md 수정, PR 제출 시 자동 최신화하는 TODO.md(아래 규칙 참조)
 
 ### 저장소 소유권 및 공개 범위
-- ⚠️ **이 저장소는 GitHub상 public(소스 공개) 저장소다.** 개발자가 UPM git URL(`im.toss.apps-in-toss-unity-sdk` → `github.com/toss/apps-in-toss-unity-sdk.git`)로 소비하는 **개발자용 SDK**라서 public이 의도된 설계다. **여기에 push하는 모든 브랜치·커밋·PR(제목/본문 포함)은 익명 사용자에게 즉시 공개**되며, 한 번 push되면 GH Archive 등에 수집되어 사실상 회수 불가다.
-- **기업 소유이며 오픈소스 라이선스는 부여하지 않는다**(source-available, OSS 아님). 따라서 LICENSE 파일이나 오픈소스 라이선스 정보 추가 금지, package.json "license" 필드 추가 금지.
-- 🔒 **비공개 자원을 이 public 저장소에 절대 엮지 말 것.** 비공개 repo(별도의 비공개 게임/앱 프로젝트 등)의 이름·존재·clone URL·빌드 워크플로·관련 PR/커밋 메시지를 이 저장소(브랜치/PR/Actions 로그/커밋)에 넣지 않는다. (이 CLAUDE.md 자체도 public이므로 비공개 repo 이름을 예시로도 적지 않는다.) 비공개 프로젝트의 빌드·측정 등은 **로컬 환경**에서 수행한다(로컬 git 자격증명으로 clone, 산출물은 로컬 디스크에만 보관). 실수로 노출 시 브랜치 삭제+PR close만으로는 완전 제거가 안 되므로(커밋/PR 페이지·GH Archive 잔존) GitHub Support 퍼지가 필요하다.
+- ⚠️ **GitHub public 저장소다.** push한 브랜치·커밋·PR(제목·본문)·Actions 로그는 즉시 공개되고 회수 불가능하다.
+- **기업 소유, source-available(OSS 아님).** LICENSE·라이선스 정보·package.json `"license"` 필드 추가 금지.
+- 🔒 **비공개 자원을 여기에 엮지 않는다.** 비공개 repo의 이름·존재·clone URL·빌드 워크플로·관련 PR·커밋 메시지를 브랜치·PR·Actions 로그·커밋 어디에도 넣지 않는다(이 파일도 공개되므로 예시로도 적지 않는다). 비공개 프로젝트의 빌드·측정은 로컬에서 하고 산출물도 로컬에만 둔다.
+- 노출되면 브랜치 삭제·PR close로 제거되지 않는다(GH Archive 잔존). 노출되면 즉시 사용자에게 알리고 GitHub Support 퍼지를 요청한다.
 
 ### 자동 생성 코드 정책
-- **`Runtime/SDK/` 디렉토리의 파일을 직접 수정하지 말 것**
-- `Runtime/SDK/`의 모든 파일은 `sdk-runtime-generator~/`에서 자동 생성됨
-- 버그 수정이나 변경이 필요한 경우:
-  1. `sdk-runtime-generator~/`의 생성기 코드 수정
-  2. `pnpm run generate`로 SDK 파일 재생성
-  3. `./run-local-tests.sh --all`로 변경사항 검증
-- 생성된 파일을 직접 수정하면 다음 생성 시 덮어씌워짐
+- **`Runtime/SDK/` 파일을 직접 수정하지 말 것.** `sdk-runtime-generator~/`에서 자동 생성되며, 직접 수정하면 `pnpm generate` 때 덮어씌워진다.
+- 변경 시 생성기 코드를 고친 뒤 `pnpm generate` → `./run-local-tests.sh --validate` 순으로 검증한다. 전체 절차: `.claude/commands/generate.md`(`/generate`).
 
 ### TODO.md 최신화
-- **PR을 제출할 때마다** `TODO.md`를 확인하고, 해당 PR의 변경사항으로 완료된 항목이 있으면 제거
-- 확인 방법: PR에 포함된 커밋/변경 내용이 TODO 항목의 문제를 해결했는지 코드를 기준으로 검증
-- 완료된 항목은 통째로 제거 (주석 처리나 ~~취소선~~ 사용하지 않음)
-- TODO.md 변경은 별도 커밋이 아닌 해당 PR의 커밋에 포함
+- **PR 제출마다** `TODO.md` 확인, 완료 항목은 통째로 제거(주석·취소선 금지)
+- 완료 여부는 PR의 코드 변경이 문제를 실제로 해결했는지로 판단
+- TODO.md 변경은 해당 PR 커밋에 포함(별도 커밋 금지)
+- 항목은 요지와 심볼 포인터로, 줄번호·조사 경위는 적지 않는다(재비대화 방지)
 
 ### 파일 위생
-- 불필요한 파일 발견 시 **적극적으로 .gitignore에 추가** (일반적인 무시 대상은 기존 `.gitignore` 참조)
-- 커밋하면 안 되는 추적되지 않은 파일 발견 시 적절한 `.gitignore` 파일에 추가
+- 불필요한 파일은 적극적으로 `.gitignore`에 추가한다
+- `git status`에 `webgl/`, `ait-build/dist/`, `Library/`, `Temp/`, `*.log` 등이 보이면 누락을 검토한다
+- 커밋 직전 `git diff --cached`로 확인: 의도치 않은 `Runtime/SDK/` 산출물, `.meta` 누락·추가, 대용량 바이너리 혼입
 
 ## 자주 하는 실수 방지
 
-### SDK 생성기 관련
-- `Runtime/SDK/` 파일을 직접 수정하면 다음 `pnpm generate` 시 덮어씌워짐
-- SDK API 변경이 필요하면 반드시 `sdk-runtime-generator~/` 내 코드를 수정할 것
-- 생성기 수정 후 검증 순서: `pnpm generate` → `pnpm validate` → `pnpm test`
-
 ### pnpm 버전 핀 동기화
 
-`Editor/AITPackageManagerHelper.cs`의 `PNPM_VERSION` 상수와 다음 세 파일의 `"packageManager"` 필드는 **항상 같은 버전**으로 유지해야 한다. 한 곳을 bump하면 나머지도 함께 bump:
+`Editor/AITPackageManagerHelper.cs`의 `PNPM_VERSION` 상수와 다음 세 파일의 `"packageManager"` 필드를 동기화한다:
 
-- `package.json` (UPM 매니페스트)
+- `package.json`
 - `sdk-runtime-generator~/package.json`
 - `WebGLTemplates/AITTemplate/BuildConfig~/package.json`
 
-값이 갈라지면 클라이언트 SDK가 사용하는 pnpm과 lockfile을 갱신한 pnpm이 달라져 미세한 specifier drift가 발생할 수 있다.
-
-### GitHub Actions 관련
-- `gh workflow run` 명령어 사용 불가 (GraphQL 차단) — REST API 사용 필수
-- 워크플로우 트리거 예시와 ID 참조 테이블은 `Documentation~/internal/github-actions.md` 참조
-- PR 번호 사용 시 `target_ref`에 숫자만 입력 (# 접두사 불필요)
-
-### E2E 테스트 실패 대응
-- E2E 실패 시 `e2e-triage` 스킬(`.claude/skills/e2e-triage/SKILL.md`)을 먼저 로드 — 인프라 기인 flaky 판별, `rerun-failed-jobs` 재실행, 라이선스 2연속 실패 에스컬레이션, Sentry 노이즈/자동 resolve 처리 기준이 정리되어 있음
+### GitHub CLI / Actions
+- GraphQL 기반 `gh` 명령(`gh pr create`/`merge`/`view`, `gh workflow run`)은 실패하므로 REST `gh api`를 쓴다.
+- PR 생성: `gh api -X POST repos/toss/apps-in-toss-unity-sdk/pulls --input pr.json`
+- 트리거 예시·ID 테이블: `Documentation~/internal/github-actions.md`
+- PR 번호는 `target_ref`에 숫자만(#불필요)
 
 ### 테스트 관련
-- E2E 테스트 전 빌드 필요: `./run-local-tests.sh --all` (빌드+테스트) vs `--e2e` (테스트만)
-- Level 0 테스트(EditMode)는 빌드 없이 ~10초만에 실행 가능
-- 상세 테스트 구조는 `Documentation~/internal/testing.md` 참조
+- E2E 전 빌드 필요: `--all`(빌드+테스트) vs `--e2e`(테스트만). EditMode는 빌드 없이 ~10초
+- 상세 구조와 로컬 CI 재현: `Documentation~/internal/testing.md`
+- E2E 실패 시 `e2e-triage` 스킬을 먼저 로드한다
 
 ### Sentry 이슈 관련
-- EditMode 통합 테스트가 의도적으로 발생시키는 무시 가능한 이슈들이 있음 (SDK-2, SDK-3, SDK-8, SDK-9, SDK-A, SDK-B, SDK-C) — 이미 Sentry에서 ignored 처리됨
-- 상세 목록 및 통합 테스트 environment 분리 절차는 `Documentation~/internal/sentry-known-issues.md` 참조
-
-### Push 직전 검증 체크리스트
-
-SDK 생성기 작업을 포함하는 변경사항을 커밋/푸시하기 전, **순서대로** 확인:
-
-1. **생성물 상태 확인**: `sdk-runtime-generator~/` 또는 `Runtime/SDK/` 근처를 수정했다면 먼저
-   ```bash
-   cd sdk-runtime-generator~ && pnpm generate && cd ..
-   git status --short
-   ```
-   `Runtime/SDK/` 하위에 예상치 못한 변경이 보이면 생성기 수정 의도와 맞는지 확인. 의도하지 않은 산출물은 커밋 전 조치.
-2. **.gitignore 적용 확인**: `webgl/`, `ait-build/dist/`, `ait-build/node_modules/`, `Library/`, `Temp/`, `*.log` 등이 `git status`에 나타나면 `.gitignore`에 빠진 항목이 있는지 검토 (기존 `.gitignore` 참조).
-3. **로컬 검증 실행**: 빠른 경로는 `./run-local-tests.sh --validate` (~30초) — 파일 구조 + SDK 유닛 테스트. 생성기 변경에는 `--editmode`(~10초)도 병행 권장.
-4. **스테이지 최종 리뷰**: `git diff --cached`로 정확히 어떤 파일이 커밋되는지 한 번 더 확인. 특히 다음을 체크:
-   - 의도하지 않은 `Runtime/SDK/` 재생성 산출물 포함 여부
-   - `.meta` 파일 누락/추가 여부 (Lint 워크플로우에서 검출)
-   - 대용량 바이너리/빌드 산출물 혼입 여부
-
-### 로컬 CI 재현 (압축 포맷 / 리소스 경합)
-
-E2E CI는 현재 압축 비활성화(`AIT_COMPRESSION_FORMAT="0"`)로 실행되어 신규 빌드에서 Brotli/Gzip 크래시 없음. 압축별 동작 검증·병렬 리소스 경합 재현 명령(`--compression`/`--parallel` 조합)은 `Documentation~/internal/testing.md`의 "로컬 CI 재현" 섹션 참조.
+EditMode 테스트가 의도적으로 내는 이슈는 이미 ignored 처리돼 있다. 목록과 절차: `Documentation~/internal/sentry-known-issues.md`.
 
 ### Library/Bee 캐시 동작
-
-CI Unity 빌드는 SDK/asmdef/jslib 변경 시 `Library/Bee` 삭제(full rebuild — stale ref.dll 차단), 무변경 시 캐시 보존(incremental), 판별 실패 시 보수적으로 삭제한다. 캐시가 의심되는 빌드 실패는 먼저 workflow_dispatch `clean_library=true`로 재트리거해 재현 확인 (상세: `Documentation~/internal/github-actions.md`의 "Library/Bee 캐시 무효화 정책").
+의심되는 빌드 실패는 workflow_dispatch `clean_library=true`로 재트리거해 재현한다. 정책: `Documentation~/internal/github-actions.md`의 "Library/Bee 캐시 무효화 정책".
 
 ## 빠른 참조: 주요 명령어
 
-| 작업 | 명령어 |
-|------|--------|
-| SDK 재생성 | `cd sdk-runtime-generator~ && pnpm generate` |
-| SDK 검증 | `cd sdk-runtime-generator~ && pnpm validate` |
-| SDK 테스트 | `cd sdk-runtime-generator~ && pnpm test` |
-| 전체 로컬 테스트 | `./run-local-tests.sh --all` |
-| 빠른 검증만 | `./run-local-tests.sh --validate` |
-| E2E만 | `./run-local-tests.sh --e2e` |
-| CI 트리거 (E2E) | `Documentation~/internal/github-actions.md` 참조 |
+- SDK 재생성: `cd sdk-runtime-generator~ && pnpm generate`
+- 로컬 테스트 옵션·소요시간: `./run-local-tests.sh --help`
 
 ## Verification Commands
 
@@ -153,21 +90,22 @@ review-fix-loop 등 자동화 skill이 파싱하는 규약 섹션. 각 항목은
 
 ## 상세 문서
 
-`Documentation~/`가 문서 루트다. 공개 문서 정본은 포털(https://developers-apps-in-toss.toss.im/documentation/unity)이며, 저장소의 공개 문서 사본 11종(README/GettingStarted/APIUsagePatterns/Troubleshooting/Advertising/Metrics/SentryIntegration/BuildProfiles/BuildCustomization/LoadingScreenCustomization/BuildProcess)은 포털 이관 완료 후 제거됐다.
+`Documentation~/`가 문서 루트다. 공개 문서 정본은 포털(https://developers-apps-in-toss.toss.im/documentation/unity)이고, 저장소에는 사본을 두지 않는다.
 
-**내부 런북** (`Documentation~/internal/`) — 저장소 운영용, 필요할 때 Read로 가져가서 참조:
+**내부 런북**(`Documentation~/internal/`) — 필요할 때 Read로 참조:
 
-- `github-actions.md` — 워크플로우 14개 목록·ID 테이블, 트리거 예시 (E2E/Preview/Release/Beta Release/SDK Update/Bulk Release), 상태 확인, `rerun-failed-jobs`
-- `project-structure.md` — 디렉토리 지도 (Runtime·Editor·WebGLTemplates·Tests~ 트리)
-- `implementation-details.md` — 구현 지점 색인 (관심사 → 파일·상수명 매핑). 동작 설명은 공개 문서에 있고 여기엔 위치만
-- `testing.md` — 3-Level 테스트 구조, Unity 5개 버전, E2E 디렉토리, `test_level` 범위, 러너 라우팅
-- `sdk-generator.md` — 입출력, `TYPE_MAPPING` 표, `Awaitable`/`Task` 분기, JSDoc 이관, `field-docs.ts` 계약
-- `sentry-known-issues.md` — 무시 가능 이슈 목록, environment 분리, fallback warning 컨벤션, 이중 안전망, 릴리즈 게이트 resolve
-- `build-session-recovery.md` — `AITBuildSessionRecovery` 수동 재현 절차 (`.cs` 저장 / 강제 종료 / Stale 세션 / Idle gate)
+- `github-actions.md`: 워크플로우 목록·트리거, 상태 확인, `rerun-failed-jobs`, E2E flaky
+- `project-structure.md`: 디렉토리 지도
+- `implementation-details.md`: 관심사→파일 매핑
+- `testing.md`: 테스트 구조, Unity 버전, 로컬 CI 재현
+- `sdk-generator.md`: 생성기 입출력·타입 매핑
+- `sentry-known-issues.md`: 무시 가능 이슈, resolve 절차
+- `build-session-recovery.md`: `AITBuildSessionRecovery` 수동 재현 절차
+- `playerprefs-device-verification.md`: 실기기 검증 절차
 
-**저장소 잔류 문서** (`Documentation~/`) — 이관 대상이 아니라 계속 저장소에서 관리:
+**저장소 잔류 문서**(`Documentation~/`):
 
-- `Contributing.md` — 개발 환경, git hooks, `run-local-tests.sh`, 커밋·PR 규칙
-- `ManualIntegration.md` — SDK 없이 수동으로 WebGL 빌드하는 방법
-- `BetaChannel.md` / `PerfBetaChannel.md` — 파일럿 전용 옵트인 채널 가이드
-- `changelog/` — 릴리즈별 변경 이력
+- `Contributing.md`: 개발 환경, git hooks, 커밋·PR 규칙
+- `ManualIntegration.md`: 수동 WebGL 빌드
+- `BetaChannel.md` / `PerfBetaChannel.md`: 옵트인 채널 가이드
+- `changelog/`: 변경 이력

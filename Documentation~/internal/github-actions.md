@@ -256,6 +256,25 @@ CI Unity 빌드의 `Library/Bee` 캐시 무효화 정책은 다음과 같습니�
 
 캐시가 의심되는 빌드 실패는 먼저 `clean_library=true`로 재트리거해 재현 여부를 확인합니다.
 
+## CI 스크립트
+
+워크플로 인라인 스크립트가 커지면 `.github/scripts/<영역>/`으로 뽑아냅니다. 숨김 디렉터리라 `.meta`가 필요 없고, `rm -rf .github/`로 릴리즈 배포물에서 빠집니다(선례: `generate-benchmark-report.js`, `generate-perf-report.js`).
+
+`lint.yml`의 `ci-scripts` 잡이 아래를 검사합니다.
+
+- actionlint(버전 고정, `-shellcheck=`)로 워크플로 YAML 전체를 검사합니다. `release.yml`의 `SENTRY_AUTH_TOKEN` workflow_call secrets 오탐(`bulk-release`가 `secrets: inherit`으로 호출해 런타임에는 전달됨)은 이 잡에서 명시적으로 `-ignore`합니다.
+- `.github/scripts/**/*.sh`는 `bash -n`과 `shellcheck -S error`(ubuntu-latest 기본 탑재, 별도 설치 없음)를 통과해야 합니다.
+- `.github/scripts/**/*.ps1`은 ASCII 전용이어야 합니다. PowerShell 5.1이 BOM 없는 UTF-8을 CP949로 오독하기 때문입니다. 한국어 설명은 스크립트 안이 아니라 그 스크립트를 호출하는 YAML 스텝의 이름·주석에 둡니다.
+- `.github/scripts/**/*.{js,cjs}`는 `node --check`를 통과해야 합니다.
+
+actionlint는 내장 shellcheck를 끄고 돌립니다. 그래서 워크플로 YAML 안에 남아 있는 인라인 `run:` 블록은 shellcheck 검사를 받지 않고, `.github/scripts/`로 뽑아낸 스크립트만 검사 대상이 됩니다.
+
+`.ci`는 추출한 스크립트를 부르는 워크플로가 스크립트 전용으로 쓰는 두 번째 체크아웃 경로입니다(`.gitignore`의 `/.ci/`). 지금은 이 체크아웃을 쓰는 워크플로가 없습니다. 기본 체크아웃은 `target_ref`나 포크를 가리킬 수 있어 워크플로 YAML과 스크립트가 다른 커밋을 볼 수 있지만, `.ci` 체크아웃은 ref를 지정하지 않아 워크플로 YAML과 항상 같은 커밋의 스크립트를 읽습니다.
+
+셸 옵션은 원래 스텝의 실행 방식과 맞춥니다. 기본 셸 스텝(`shell:` 미지정)은 `bash -e {0}`이라 스크립트 헤더에 `set -e`만 두고, `shell: bash`를 명시한 스텝은 `-eo pipefail`이 붙으므로 `set -eo pipefail`을 씁니다. `.ps1`은 같은 세션에서 `& "<path>"`로 호출해 러너가 앞뒤로 붙이는 `$ErrorActionPreference`/`LASTEXITCODE` 처리를 그대로 상속합니다.
+
+워크플로 변경을 REST dispatch로 검증할 때는 `ref`를 브랜치로 줍니다. `ref: main` + `target_ref`는 main에 있는 워크플로 YAML을 실행하므로 브랜치의 변경 사항을 검증하지 못합니다.
+
 ## 알아둘 점
 
 - **PR 번호 사용 권장** — `target_ref`에 PR 번호를 넣으면 결과가 PR 코멘트로 자동 게시됩니다.

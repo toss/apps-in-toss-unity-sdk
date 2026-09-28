@@ -15,6 +15,7 @@ apps-in-toss-unity-sdk/
 ├── Tests~/                   E2E 및 EditMode 테스트
 ├── sdk-runtime-generator~/   SDK 코드 생성기
 ├── scripts~/                 로컬 테스트 러너가 쓰는 셸·노드 스크립트
+├── .github/                  workflows, actions, scripts (UPM 배포 제외)
 ├── .githooks/                pre-commit / pre-push
 ├── package.json              UPM 매니페스트
 ├── sdk-policy.json           최소 지원 버전 정책 (AITDeprecationChecker가 fetch)

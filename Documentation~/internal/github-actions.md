@@ -221,7 +221,7 @@ gh api repos/toss/apps-in-toss-unity-sdk/actions/runs/RUN_ID/rerun-failed-jobs -
 
 ## E2E 알려진 flaky 패턴
 
-대부분 인프라 기인이라 코드 변경 없이 `rerun-failed-jobs` 재실행으로 해결됩니다. Unity 라이선스 결함은 예외입니다. 빌드 로그의 인프라 시그니처 목록은 E2E 매트릭스 실패 분류기 `classify_infra()`에 있습니다.
+대부분 인프라 기인이라 코드 변경 없이 `rerun-failed-jobs` 재실행으로 해결됩니다. Unity 라이선스 결함은 예외입니다. 빌드 로그의 인프라 시그니처 목록은 E2E 매트릭스 실패 분류기 `classify_infra()`(`.github/scripts/e2e/classify-matrix-failures.sh`)에 있습니다.
 
 - **Unity 라이선스 충돌** — `Code 8 (또는 Code 10) while verifying Licensing Client signature` / `No ULF license found` / `Token not found in cache` / handshake·IPC 에러(exit code 42). self-hosted 러너는 `unity-<version>` 라벨로 1:1 핀 고정돼 있습니다. 재발하면 라벨이 빠진 머신이 있는지 확인합니다. 같은 시그니처가 2회 연속이면 러너의 라이선스가 실제로 깨진 것이므로 rerun을 반복하지 말고 라이선스 수복을 에스컬레이션합니다.
 - **Windows artifact upload finalize transient** — `actions/upload-artifact`가 `successfully finalized` 없이 끝납니다(~1.3%). 재실행으로 해결됩니다.

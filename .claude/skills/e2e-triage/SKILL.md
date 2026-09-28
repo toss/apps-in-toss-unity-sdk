@@ -5,7 +5,7 @@ description: E2E Tests 워크플로우 실패 시 사용 — 인프라 기인 fl
 
 # E2E 테스트 실패 대응
 
-- E2E 실패 시 먼저 **코드 변경과 무관한 인프라 이슈인지** 판별 — 알려진 flaky 패턴(Unity 라이선스 충돌 / Windows artifact finalize / Brotli·Gzip 크래시 / warm-reload `unityInstance` 120s 타임아웃)의 시그니처·판별 상세와 red herring 목록은 `Documentation~/internal/github-actions.md`의 "E2E 알려진 flaky 패턴"을 Read 후 대조
+- E2E 실패 시 먼저 **코드 변경과 무관한 인프라 이슈인지** 판별 — 알려진 flaky 패턴(Unity 라이선스 충돌 / Windows artifact finalize / Brotli·Gzip 크래시 / warm-reload `unityInstance` 타임아웃)의 시그니처·판별 상세와 red herring 목록은 `Documentation~/internal/github-actions.md`의 "E2E 알려진 flaky 패턴"을 Read 후 대조
 - **인프라 기인 실패 시**: `rerun-failed-jobs`로 실패한 job만 재실행 (전체 재실행보다 성공률 높음 — self-hosted runner 리소스 경합 감소)
   ```bash
   gh api repos/{owner}/{repo}/actions/runs/{run_id}/rerun-failed-jobs -X POST

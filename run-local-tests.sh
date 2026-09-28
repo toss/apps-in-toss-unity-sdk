@@ -3,19 +3,8 @@
 # GitHub Actions 테스트를 로컬에서 실행하는 스크립트
 # 사용법: ./run-local-tests.sh [옵션]
 #
-# 옵션:
-#   --all                    모든 테스트 실행 (Unity 빌드 포함)
-#   --quick                  빠른 테스트만 (E2E validation)
-#   --editmode               Unity EditMode 테스트 실행 (~10초)
-#   --e2e                    E2E 테스트만 (빌드 결과물 필요)
-#   --unity-build            Unity WebGL 빌드 실행
-#   --heavy                  무거운 픽스처(HeavySampleUnityProject) 릴리즈+gzip 빌드 (perf용)
-#   --perf                   로딩 성능(TTFF) 실측 (무거운 빌드 결과물 필요)
-#   --unity-version <버전>   특정 Unity 버전 지정 (예: 2022.3, 6000.0)
-#   --compression <format>   압축 포맷 지정 (auto, disabled, gzip, brotli)
-#   --parallel               다른 모드와 조합하여 병렬 실행 (예: --unity-build --parallel)
-#   --list-unity             설치된 Unity 버전 목록 표시
-#   --help                   도움말
+# 인수 없이 실행하면 --validate(기본). 전체 옵션·소요시간·실행 순서는
+# ./run-local-tests.sh --help 참조(정의: scripts~/lib-unity-discovery.sh의 show_help).
 #
 
 # set -e 제거 - 각 테스트 함수에서 직접 에러 처리

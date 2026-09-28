@@ -72,6 +72,7 @@ Tests~/E2E/
 │       └── E2ETestBridge.jslib       WebGL 브릿지
 └── tests/
     ├── e2e-full-pipeline.test.js     Level 2 본 테스트
+    ├── lib/                          공용 헬퍼(서버 부팅·Unity 로드/재로드·PlayerPrefs 프로브)
     ├── test-interactive-mode.test.js
     ├── perf-ttff.test.js             콜드 로드 계측 (별도 config)
     ├── playwright.config.ts

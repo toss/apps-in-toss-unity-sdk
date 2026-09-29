@@ -269,7 +269,7 @@ CI Unity 빌드의 `Library/Bee` 캐시 무효화 정책은 다음과 같습니�
 
 actionlint는 내장 shellcheck를 끄고 돌립니다. 그래서 워크플로 YAML 안에 남아 있는 인라인 `run:` 블록은 shellcheck 검사를 받지 않고, `.github/scripts/`로 뽑아낸 스크립트만 검사 대상이 됩니다.
 
-`.ci`는 추출한 스크립트를 부르는 워크플로가 스크립트 전용으로 쓰는 두 번째 체크아웃 경로입니다(`.gitignore`의 `/.ci/`). 지금은 preview.yml의 deploy 잡이 이 체크아웃으로 `.github/scripts/deploy/extract-deploy-url.sh`를 부릅니다. 기본 체크아웃은 `target_ref`나 포크를 가리킬 수 있어 워크플로 YAML과 스크립트가 다른 커밋을 볼 수 있지만, `.ci` 체크아웃은 ref를 지정하지 않아 워크플로 YAML과 항상 같은 커밋의 스크립트를 읽습니다.
+`.ci`는 추출한 스크립트를 부르는 워크플로가 스크립트 전용으로 쓰는 두 번째 체크아웃 경로입니다(`.gitignore`의 `/.ci/`). 지금은 preview.yml의 deploy 잡과 beta-release.yml의 e2e-beta-macos 잡(게시 게이트)이 이 체크아웃으로 `.github/scripts/deploy/extract-deploy-url.sh`를 부릅니다. 기본 체크아웃은 `target_ref`나 포크를 가리킬 수 있어 워크플로 YAML과 스크립트가 다른 커밋을 볼 수 있지만, `.ci` 체크아웃은 ref를 지정하지 않아 워크플로 YAML과 항상 같은 커밋의 스크립트를 읽습니다.
 
 셸 옵션은 원래 스텝의 실행 방식과 맞춥니다. 기본 셸 스텝(`shell:` 미지정)은 `bash -e {0}`이라 스크립트 헤더에 `set -e`만 두고, `shell: bash`를 명시한 스텝은 `-eo pipefail`이 붙으므로 `set -eo pipefail`을 씁니다. `.ps1`은 같은 세션에서 `& "<path>"`로 호출해 러너가 앞뒤로 붙이는 `$ErrorActionPreference`/`LASTEXITCODE` 처리를 그대로 상속합니다.
 

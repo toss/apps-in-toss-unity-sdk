@@ -226,14 +226,14 @@ gh api repos/toss/apps-in-toss-unity-sdk/actions/runs/RUN_ID/rerun-failed-jobs -
 - **Unity 라이선스 충돌** — `Code 8 (또는 Code 10) while verifying Licensing Client signature` / `No ULF license found` / `Token not found in cache` / handshake·IPC 에러(exit code 42). self-hosted 러너는 `unity-<version>` 라벨로 1:1 핀 고정돼 있습니다. 재발하면 라벨이 빠진 머신이 있는지 확인합니다. 같은 시그니처가 2회 연속이면 러너의 라이선스가 실제로 깨진 것이므로 rerun을 반복하지 말고 라이선스 수복을 에스컬레이션합니다.
 - **Windows artifact upload finalize transient** — `actions/upload-artifact`가 `successfully finalized` 없이 끝납니다(~1.3%). 재실행으로 해결됩니다.
 - **Unity WebGL Brotli/Gzip 크래시** — `Brotli webgl/Build/...unityweb` 직후 `exit code: 1`. self-hosted 러너의 동시 빌드 경합입니다. E2E CI는 압축을 끄고(`AIT_COMPRESSION_FORMAT="0"`) 돌아 새로 발생하지 않습니다. 로컬 재현은 [테스트 전략](testing.md)의 "로컬 CI 재현"을 참조하세요.
-- **E2E warm-reload `unityInstance` 타임아웃(3-1)** — 리로드 후 `window['unityInstance']`가 `UNITY_WAIT_BUDGET_MS`(25초) 안에 설정되지 않습니다. 시도는 최대 3회(`maxAttempts`)입니다. 9-x가 쓰는 `reloadAndWaitForUnity()`는 값이 다릅니다. 예산이 75초씩 3회이고 `Failed to download file`도 재시도 대상으로 봅니다.
+- **E2E warm-reload `unityInstance` 타임아웃(3-1)** — 리로드 후 `window['unityInstance']`가 `UNITY_WAIT_BUDGET_MS`(25초) 안에 설정되지 않습니다. 시도는 최대 3회(`maxAttempts`)입니다. 재시도 루프는 `Tests~/E2E/tests/lib/reload-retry.js`의 `reloadWithRetry()`이고, 3-1은 `POLICY_WARM_CACHE` 정책을 씁니다. 9-x가 쓰는 `reloadAndWaitForUnity()`는 `POLICY_ISOLATED_PAGE`라 값이 다릅니다. 예산이 75초씩 3회이고 `Failed to download file`도 재시도 대상으로 봅니다.
   - 로그 검색어: `unityInstance not set within 25s budget`, `harness connection-drop classified`
-  - 판정 순서(3-1 블록의 catch 분기):
+  - 판정 순서(`reloadWithRetry()`의 catch 분기, 3-1 기준):
     1. `CRASH_RE`가 맞으면 즉시 실패합니다. 로그는 `genuine crash signature detected`.
-    2. `PRODUCT_HANG_RE`(`Failed to download file`)가 있고 net 에러가 없으면 즉시 실패합니다. 로그는 `product hang signature detected`.
+    2. `productHangRe`(`Failed to download file`)가 있고 net 에러가 없으면 즉시 실패합니다. 로그는 `product hang signature detected`.
     3. 페이지가 닫혔으면(`has been closed`/`Target closed`) 즉시 실패합니다. 로그는 `page/context closed`.
     4. `hadHarnessDrop()`이 참이고 시도가 남았으면 재시도합니다. 로그는 `harness connection-drop classified`.
-  - `hadHarnessDrop()`이 보는 net 에러(`HARNESS_RE`)는 `ERR_CONNECTION_CLOSED`/`ERR_CONNECTION_RESET`/`ERR_EMPTY_RESPONSE`/`ERR_INCOMPLETE_CHUNKED_ENCODING`입니다. net 에러가 `Failed to download file`과 함께 찍히면 순단이 원인이므로 4번으로 갑니다. 1번과 2번은 flaky가 아니라 제품 결함 신호입니다. 재시도 로그가 보이면 크래시가 아닙니다. reload 자체는 매 시도 200입니다.
+  - `hadHarnessDrop()`이 보는 net 에러(`POLICY_WARM_CACHE.harnessRe`)는 `ERR_CONNECTION_CLOSED`/`ERR_CONNECTION_RESET`/`ERR_EMPTY_RESPONSE`/`ERR_INCOMPLETE_CHUNKED_ENCODING`입니다. net 에러가 `Failed to download file`과 함께 찍히면 순단이 원인이므로 4번으로 갑니다. 1번과 2번은 flaky가 아니라 제품 결함 신호입니다. 재시도 로그가 보이면 크래시가 아닙니다. reload 자체는 매 시도 200입니다.
   - 처리: 비결정적이라 실행마다 걸리는 leg가 다르고 두 leg가 함께 걸리기도 합니다. E2E Tests는 non-required이므로 실패한 leg만 재실행합니다. 같은 시그니처가 2개 이상 leg에서 반복되면 별건 조사로 올립니다. `webgl.data` 스트림이 끊기는 원인은 아직 모릅니다.
   - 버전 bump를 의심하기 전에 bump 이전 run에 같은 시그니처가 있는지 봅니다. playwright 회귀라면 `strict mode violation`, `Executable doesn't exist`, `browserType.launch` 실패가 나옵니다.
   - red herring: `Pre-transform error: Failed to load /unity-bridge.ts`·`/src/main.ts`(404), `net::ERR_CONNECTION_CLOSED`, `wasm streaming compile failed`, `AppsInToss 존재: false` 폴링, `createUnityInstance` 사이클은 통과한 leg에도 똑같이 찍힙니다. 로그 끝의 `vite preview ... SIGKILL (Forced termination)`은 타임아웃 뒤 teardown의 결과입니다. 통과와 실패를 가르는 마커는 `unityInstance set/ready`뿐입니다.

@@ -16,7 +16,7 @@ Level 2는 Level 1이 업로드한 `ait-build` 아티팩트를 내려받아 vite
 
 ### PlayerPrefs 영속화 테스트 그룹 (9-x)
 
-`e2e-full-pipeline.test.js`의 9번대 테스트가 [PlayerPrefs 영속화](https://developers-apps-in-toss.toss.im/documentation/unity/add-features/playerprefs)를 검증합니다. 동작 설명은 그 문서가 정본이고, 여기서는 각 케이스가 무엇을 확인하는지만 요약합니다.
+`e2e-full-pipeline.test.js`가 등록하는 9번대 테스트(`suites/playerprefs.suite.js`)가 [PlayerPrefs 영속화](https://developers-apps-in-toss.toss.im/documentation/unity/add-features/playerprefs)를 검증합니다. 동작 설명은 그 문서가 정본이고, 여기서는 각 케이스가 무엇을 확인하는지만 요약합니다.
 
 | 케이스 | 확인 내용 |
 |--------|-----------|
@@ -71,8 +71,10 @@ Tests~/E2E/
 │   └── Plugins/
 │       └── E2ETestBridge.jslib       WebGL 브릿지
 └── tests/
-    ├── e2e-full-pipeline.test.js     Level 2 본 테스트
+    ├── e2e-full-pipeline.test.js     Level 2 본 테스트 (진입 파일, 공유 세션 훅)
     ├── lib/                          공용 헬퍼(서버 부팅·Unity 로드/재로드·PlayerPrefs 프로브)
+    ├── suites/
+    │   └── playerprefs.suite.js      9번대 PlayerPrefs 테스트 등록 모듈
     ├── test-interactive-mode.test.js
     ├── perf-ttff.test.js             콜드 로드 계측 (별도 config)
     ├── playwright.config.ts

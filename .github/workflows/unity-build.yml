@@ -195,6 +195,18 @@ jobs:
           # 다중 커밋 푸시도 커버하도록 50 depth — diff 실패 시 보수적으로 Bee 삭제.
           fetch-depth: 50
 
+      # 루트 체크아웃은 inputs.ref/repository(포크 PR·target_ref)를 따를 수 있어,
+      # 그 위치에 이 워크플로 YAML이 기대하는 .github/scripts/가 없을 수 있다.
+      # .ci 는 ref/repository 기본값(=워크플로 YAML을 로드한 커밋, github.sha)으로
+      # 별도 경로에 체크아웃해, 이후 스텝이 항상 자기 자신과 같은 커밋의 스크립트를 읽게 한다.
+      - name: Checkout CI 스크립트 (.ci)
+        uses: actions/checkout@v7
+        with:
+          path: .ci
+          sparse-checkout: |
+            .github/scripts
+          sparse-checkout-cone-mode: false
+
       # =====================================================
       # Runner 진단 (debug-runner 플래그 활성화 시)
       # Unity 관련 프로세스를 모두 kill하고 시스템 상태를 로깅
@@ -494,107 +506,18 @@ jobs:
       # =====================================================
       # 이전 빌드 정리
       # =====================================================
-      - name: Clean Previous Build Artifacts (macOS)
-        if: inputs.os == 'macos' && (inputs.test-level || '2') != '0'
-        run: |
-          PROJECT_PATH="Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}"
-          echo "Cleaning previous build artifacts..."
-          rm -rf "${PROJECT_PATH}/ait-build" 2>/dev/null || true
-          rm -rf "${PROJECT_PATH}/webgl" 2>/dev/null || true
-          if [ "${{ inputs.clean-library }}" = "true" ]; then
-            echo "Cleaning Library cache (requested via input)..."
-            rm -rf "${PROJECT_PATH}/Library" 2>/dev/null || true
-          else
-            # Bee는 SDK/asmdef/jslib rename 시 stale ref.dll을 캐시한다
-            # → 해당 변경이 있을 때만 Bee 삭제. 그 외엔 증분 빌드 보존.
-            BEFORE_SHA="${{ github.event.before }}"
-            if [ -z "$BEFORE_SHA" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
-              BEFORE_REF="HEAD~1"
-            else
-              BEFORE_REF="$BEFORE_SHA"
-            fi
-            CHANGED=""
-            if git rev-parse --verify "$BEFORE_REF" >/dev/null 2>&1; then
-              CHANGED=$(git diff --name-only "$BEFORE_REF" HEAD -- \
-                'Runtime/SDK/' '*.asmdef' '*.jslib' 2>/dev/null || echo "__diff_failed__")
-            else
-              CHANGED="__diff_failed__"
-            fi
-            if [ "$CHANGED" = "__diff_failed__" ] || [ -n "$CHANGED" ]; then
-              if [ "$CHANGED" = "__diff_failed__" ]; then
-                echo "Cannot resolve git diff base — wiping Bee conservatively"
-              else
-                echo "SDK/asmdef/jslib changes detected — wiping Bee to prevent stale ref.dll:"
-                echo "$CHANGED" | sed 's/^/  /'
-              fi
-              rm -rf "${PROJECT_PATH}/Library/Bee" 2>/dev/null || true
-            else
-              echo "No SDK/asmdef/jslib changes — preserving Bee for incremental build"
-            fi
-          fi
-          echo "Done."
-
-      # Windows: shell 의존성을 피하기 위해 node 로 git/diff/rm 를 직접 호출
-      # (위 BuildConfig 스텝의 WSL/Git-bash 이슈 주석 참조)
-      - name: Clean Previous Build Artifacts (Windows)
-        if: inputs.os == 'windows' && (inputs.test-level || '2') != '0'
+      # macOS/Windows 모두 shell 의존성을 피하기 위해 node 로 git/diff/rm 를 직접 호출
+      # (WSL/Git-bash 이슈는 아래 'Update BuildConfig SDK Version' 스텝 주석 참조). 두 OS 로직이 같아
+      # clean-build-artifacts.cjs 하나로 통합했다.
+      - name: Clean Previous Build Artifacts
+        if: (inputs.test-level || '2') != '0'
         shell: node {0}
         env:
           UNITY_VERSION: ${{ inputs.unity-version }}
           PROJECT_DIR_PREFIX: ${{ inputs.project-dir-prefix }}
           CLEAN_LIBRARY: ${{ inputs.clean-library }}
           BEFORE_SHA: ${{ github.event.before }}
-        run: |
-          const fs = require('fs');
-          const path = require('path');
-          const { execFileSync } = require('child_process');
-
-          const projectPath = path.join('Tests~', 'E2E', `${process.env.PROJECT_DIR_PREFIX}-${process.env.UNITY_VERSION}`);
-          const rm = (rel) => {
-            const p = path.join(projectPath, rel);
-            if (fs.existsSync(p)) {
-              fs.rmSync(p, { recursive: true, force: true });
-              console.log(`  removed: ${p}`);
-            }
-          };
-
-          console.log('Cleaning previous build artifacts...');
-          rm('ait-build');
-          rm('webgl');
-
-          if (process.env.CLEAN_LIBRARY === 'true') {
-            console.log('Cleaning Library cache (requested via input)...');
-            rm('Library');
-            console.log('Done.');
-            return;
-          }
-
-          let beforeRef = process.env.BEFORE_SHA;
-          if (!beforeRef || /^0+$/.test(beforeRef)) beforeRef = 'HEAD~1';
-
-          let changed = null;
-          let diffFailed = false;
-          try {
-            execFileSync('git', ['rev-parse', '--verify', beforeRef], { stdio: 'ignore' });
-            changed = execFileSync('git', [
-              'diff', '--name-only', beforeRef, 'HEAD', '--',
-              'Runtime/SDK/', '*.asmdef', '*.jslib',
-            ], { encoding: 'utf8' }).trim();
-          } catch {
-            diffFailed = true;
-          }
-
-          if (diffFailed) {
-            console.log('Cannot resolve git diff base — wiping Bee conservatively');
-            rm(path.join('Library', 'Bee'));
-          } else if (changed && changed.length > 0) {
-            console.log('SDK/asmdef/jslib changes detected — wiping Bee to prevent stale ref.dll:');
-            for (const line of changed.split(/\r?\n/)) console.log('  ' + line);
-            rm(path.join('Library', 'Bee'));
-          } else {
-            console.log('No SDK/asmdef/jslib changes — preserving Bee for incremental build');
-          }
-          console.log('Done.');
+        run: require(process.env.GITHUB_WORKSPACE + '/.ci/.github/scripts/unity-build/clean-build-artifacts.cjs')
 
       # =====================================================
       # Unity 설치 감지
@@ -912,70 +835,12 @@ jobs:
       # =====================================================
       - name: Run EditMode Tests (macOS)
         if: inputs.os == 'macos' && inputs.run-editmode-test
-        run: |
-          UNITY_PATH="${{ steps.unity-macos.outputs.UNITY_PATH }}"
-          PROJECT_PATH="${{ github.workspace }}/Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}"
-          RESULTS_FILE="$PROJECT_PATH/editmode-results.xml"
-          LOG_FILE="/tmp/unity-editmode-${{ inputs.unity-version }}.log"
-          MAX_WAIT=600  # Unity 프로세스 최대 대기 시간 (10분)
-
-          echo "Running EditMode Tests..."
-          echo "Unity Version: ${{ steps.unity-macos.outputs.UNITY_VERSION }}"
-          echo "Log file: $LOG_FILE"
-
-          # 프로세스 치환으로 stdout/stderr를 tee에 흘려 파일을 보존한다 — 잡 종료 후
-          # 통합 분류기가 라이선스/Hub/캐시 등 인프라 결함을 grep으로 세분화할 수 있도록 한다.
-          # 파이프(`| tee`)를 쓰면 `$!`이 tee의 PID가 되어 아래 wait 루프가 깨지므로
-          # `> >(tee ...)` 형태를 사용해 `$!`이 Unity PID를 가리키도록 한다.
-          "$UNITY_PATH" -batchmode -nographics \
-            -projectPath "$PROJECT_PATH" \
-            -runTests -testPlatform EditMode \
-            -testResults "$RESULTS_FILE" \
-            -logFile - > >(tee "$LOG_FILE") 2>&1 &
-          UNITY_PID=$!
-
-          # 타임아웃 대기: 결과 파일이 생성되면 프로세스 종료를 기다리되, 최대 MAX_WAIT초
-          WAIT_SECONDS=0
-          while kill -0 $UNITY_PID 2>/dev/null; do
-            sleep 3
-            WAIT_SECONDS=$((WAIT_SECONDS + 3))
-
-            # 결과 파일이 생성된 후 60초 내에 프로세스가 종료되지 않으면 강제 종료
-            if [ -f "$RESULTS_FILE" ] && [ $WAIT_SECONDS -gt 60 ]; then
-              RESULT_AGE=$(( $(date +%s) - $(stat -f %m "$RESULTS_FILE") ))
-              if [ $RESULT_AGE -gt 60 ]; then
-                echo "::warning::Unity process did not exit within 60s after test results were written. Force killing (pid: $UNITY_PID)..."
-                kill -9 $UNITY_PID 2>/dev/null || true
-                break
-              fi
-            fi
-
-            if [ $WAIT_SECONDS -ge $MAX_WAIT ]; then
-              echo "::warning::Unity process timed out after ${MAX_WAIT}s. Force killing (pid: $UNITY_PID)..."
-              kill -9 $UNITY_PID 2>/dev/null || true
-              break
-            fi
-          done
-          wait $UNITY_PID 2>/dev/null || true
-
-          # Unity Test Runner는 테스트 실패 시 exit code 2를 반환
-          # editmode-results.xml을 파싱하여 실제 실패 여부 확인.
-          # 결과 파일이 없으면 라이선스/Hub/캐시 등 인프라 문제로 Unity가 테스트를 실행하지 못한 것이므로
-          # 회귀가 조용히 묻히지 않도록 fail 처리한다 (분류기가 results-missing으로 잡아낼 수 있도록).
-          if [ -f "$RESULTS_FILE" ]; then
-            echo "EditMode test results:"
-            if grep -q 'result="Failed"' "$RESULTS_FILE"; then
-              echo "::error::EditMode tests failed"
-              grep 'result="Failed"' "$RESULTS_FILE" | head -20
-              exit 1
-            else
-              PASSED=$(grep -o 'result="Passed"' "$RESULTS_FILE" | wc -l | tr -d ' ')
-              echo "✓ EditMode tests passed (${PASSED} tests)"
-            fi
-          else
-            echo "::error::EditMode test results file not found at $RESULTS_FILE — Unity가 테스트를 실행하지 못함 (라이선스/Hub/캐시 의심)"
-            exit 1
-          fi
+        env:
+          UNITY_PATH: ${{ steps.unity-macos.outputs.UNITY_PATH }}
+          UNITY_VERSION_FULL: ${{ steps.unity-macos.outputs.UNITY_VERSION }}
+          UNITY_VERSION_PATTERN: ${{ inputs.unity-version }}
+          PROJECT_DIR_PREFIX: ${{ inputs.project-dir-prefix }}
+        run: bash "$GITHUB_WORKSPACE/.ci/.github/scripts/unity-build/run-editmode-tests.sh"
 
       - name: Probe Windows runner PATH (diagnostic)
         if: inputs.os == 'windows' && inputs.run-editmode-test
@@ -1002,92 +867,19 @@ jobs:
           Write-Host "=== where.exe git ==="
           where.exe git 2>&1 | ForEach-Object { Write-Host "  $_" }
 
+      # run-editmode-tests.ps1의 로그 경로는 GitHub Actions의 runner.temp(=$env:RUNNER_TEMP)와
+      # 일치시켜 업로드 step의 path가 정확히 매치되게 한다 ($env:TEMP는 self-hosted Windows에서
+      # 다른 경로).
       - name: Run EditMode Tests (Windows)
         if: inputs.os == 'windows' && inputs.run-editmode-test
         shell: powershell
+        env:
+          UNITY_PATH: ${{ steps.unity-windows.outputs.UNITY_PATH }}
+          UNITY_VERSION_FULL: ${{ steps.unity-windows.outputs.UNITY_VERSION }}
+          UNITY_VERSION_PATTERN: ${{ inputs.unity-version }}
+          PROJECT_DIR_PREFIX: ${{ inputs.project-dir-prefix }}
         run: |
-          # Windows PowerShell 5.1 reads scripts using the system code page; non-ASCII
-          # string literals (e.g. Korean) can be mis-decoded under CP949 and break the
-          # parser. Force UTF-8 output and keep user-facing messages ASCII-only.
-          [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-          $OutputEncoding = [System.Text.Encoding]::UTF8
-
-          $unityPath = "${{ steps.unity-windows.outputs.UNITY_PATH }}"
-          $projectPath = "${{ github.workspace }}\Tests~\E2E\${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}"
-          $resultsFile = "$projectPath\editmode-results.xml"
-          $maxWaitSeconds = 600  # Unity process max wait (10 minutes)
-
-          Write-Host "Running EditMode Tests..."
-          Write-Host "Unity Version: ${{ steps.unity-windows.outputs.UNITY_VERSION }}"
-
-          # GitHub Actions의 runner.temp(=$env:RUNNER_TEMP)와 일치시켜 업로드 step의
-          # path가 정확히 매치되게 한다 ($env:TEMP는 self-hosted Windows에서 다른 경로).
-          $logFile = "$env:RUNNER_TEMP\unity-editmode-${{ inputs.unity-version }}.log"
-
-          $proc = Start-Process -FilePath $unityPath -ArgumentList @(
-            "-batchmode", "-nographics",
-            "-projectPath", $projectPath,
-            "-runTests", "-testPlatform", "EditMode",
-            "-testResults", $resultsFile,
-            "-logFile", $logFile
-          ) -PassThru -NoNewWindow
-
-          # Stream log to console and watch for timeout
-          $logReader = $null
-          $waitSeconds = 0
-          while (-not $proc.HasExited) {
-            Start-Sleep -Seconds 3
-            $waitSeconds += 3
-
-            if (-not $logReader -and (Test-Path $logFile)) {
-              $logReader = [System.IO.StreamReader]::new(
-                [System.IO.FileStream]::new($logFile, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
-              )
-            }
-            if ($logReader) {
-              $chunk = $logReader.ReadToEnd()
-              if ($chunk) { Write-Host $chunk -NoNewline }
-            }
-
-            # Force-kill if process does not exit within 60s after results file was written
-            if ((Test-Path $resultsFile) -and $waitSeconds -gt 60) {
-              $resultAge = (New-TimeSpan -Start (Get-Item $resultsFile).LastWriteTime -End (Get-Date)).TotalSeconds
-              if ($resultAge -gt 60) {
-                Write-Host "::warning::Unity process did not exit within 60s after test results were written. Force killing (pid: $($proc.Id))..."
-                Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-                break
-              }
-            }
-
-            if ($waitSeconds -ge $maxWaitSeconds) {
-              Write-Host "::warning::Unity process timed out after ${maxWaitSeconds}s. Force killing (pid: $($proc.Id))..."
-              Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-              break
-            }
-          }
-
-          if ($logReader) {
-            Start-Sleep -Seconds 1
-            $chunk = $logReader.ReadToEnd()
-            if ($chunk) { Write-Host $chunk -NoNewline }
-            $logReader.Close()
-          }
-
-          # Inspect results - missing results file means infra fault (license/Hub/cache),
-          # so fail the step loudly so the classifier picks it up as results-missing.
-          if (Test-Path $resultsFile) {
-            $content = Get-Content $resultsFile -Raw
-            if ($content -match 'result="Failed"') {
-              Write-Host "::error::EditMode tests failed"
-              exit 1
-            } else {
-              $passed = ([regex]::Matches($content, 'result="Passed"')).Count
-              Write-Host "EditMode tests passed ($passed tests)"
-            }
-          } else {
-            Write-Host "::error::EditMode test results file not found at $resultsFile - Unity failed to run tests (suspect license/Hub/cache)"
-            exit 1
-          }
+          & "$env:GITHUB_WORKSPACE\.ci\.github\scripts\unity-build\run-editmode-tests.ps1"
 
       # 디버그/리포트 artifact: actions/upload-artifact의 finalize transient 실패가
       # 빌드 자체를 fail로 만들지 않도록 continue-on-error로 격리

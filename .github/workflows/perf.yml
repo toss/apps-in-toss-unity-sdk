@@ -28,6 +28,7 @@ on:
       - '.github/workflows/perf.yml'
       - '.github/workflows/unity-build.yml'
       - '.github/scripts/generate-perf-report.js'
+      - '.github/scripts/unity-build/**'
   workflow_dispatch:
 
 concurrency:

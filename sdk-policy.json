@@ -1,0 +1,5 @@
+{
+  "schemaVersion": 1,
+  "minVersion": "2.4.0",
+  "deniedVersions": ["3.0.0"]
+}

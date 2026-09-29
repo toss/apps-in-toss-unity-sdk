@@ -1,0 +1,40 @@
+name: Validate
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches: [main]
+
+jobs:
+  sdk-generator-tests:
+    name: SDK Generator Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+
+      - name: 배포 URL 추출 셸 테스트
+        # ubuntu-latest 기본 awk는 mawk. 배포 잡(preview/beta-release/release)이
+        # 쓰는 awk와 같은 구현으로 검증한다.
+        shell: bash
+        run: bash .github/scripts/deploy/extract-deploy-url.test.sh
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Install Dependencies
+        working-directory: sdk-runtime-generator~
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Run Unit Tests (C#/jslib invariants)
+        working-directory: sdk-runtime-generator~
+        run: pnpm run test:invariants

@@ -1,0 +1,42 @@
+Apps in Toss Unity SDK가 노출하는 C# API 표면이 `@apps-in-toss/web-framework` 버전에 따라 어떻게 달라지는지 정리한 자동 생성 리포트입니다. 최신 버전(v3.0.0)이 최상단에 오도록 정렬되어 있습니다.
+
+다음 버전은 패키지 리네임 등으로 sibling 탐색에 실패해 pnpm store 폴백으로 API 표면을 근사함: v3.0.0
+
+## v3.x
+
+변경 없음: v2.0.0 → v3.0.0
+
+## v2.x
+
+### v1.1.0 → v2.0.0
+
+API 총 2개 · 추가 1 · 변경 0 · 제거 1
+
+**추가된 API**
+
+- `AIT.SampleQuxLatest`
+
+**제거된 API**
+
+- `AIT.SampleFooBar`
+
+## v1.x
+
+### v1.0.0 → v1.1.0
+
+API 총 2개 · 추가 1 · 변경 1 · 제거 0
+
+**추가된 API**
+
+- `AIT.SampleBazNew`
+
+**변경된 API**
+
+- `AIT.SampleFooBar`: `value: string → double`
+
+## v3.0.0 API 카탈로그
+
+### Other
+
+- `AIT.SampleBazNew`
+- `AIT.SampleQuxLatest`

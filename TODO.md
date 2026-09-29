@@ -13,9 +13,7 @@
 
 ## Deploy
 
-- **P3 — 배포 URL 추출 로직이 네 벌로 복제돼 있고 자동 검증은 C# 한 벌에만 걸린다**: `ait deploy` 박스 출력의 URL 복원 로직이 `AITDeployManager.ExtractDeployUrl`(C#)과 preview/beta-release/release awk 세 벌에 있다(현재 동작 등가). awk는 shellcheck/actionlint 대상이 아니다. 고치면 awk를 스크립트로 추출, `DeployUrlTests.cs` 입력을 `--validate`에 등록.
-
-- **P3 — 배포 URL 추출의 알려진 한계**: 박스 폭을 정확히 채운 URL 마지막 줄과 래핑 줄을 구분할 수 없다. 선결 조건: `ait deploy` stdout 전체를 한 번 캡처. 피해 범위: PR 코멘트·릴리스 노트 링크(배포 산출물 무관).
+- **P3 — 배포 URL 추출의 알려진 한계**: 박스 폭을 정확히 채운 URL 마지막 줄과 래핑 줄을 구분할 수 없다. 선결 조건: `ait deploy` stdout 전체를 한 번 캡처. 피해 범위: PR 코멘트·릴리스 노트 링크(배포 산출물 무관). 로직은 `.github/scripts/deploy/extract-deploy-url.sh`(테스트: `extract-deploy-url.test.sh`)로 통합돼 있다.
 
 - **P3 — Deploy Release Candidate 성공 창의 콘솔 딥링크**: `DeploySuccessWindow`의 "콘솔 열기" 버튼은 콘솔 베이스 URL(`ConsoleBaseUrl`)만 연다. deploymentId 딥링크 라우트 존재 여부가 미확인이라 못 적용. 플랫폼 팀 확인 후 교체.
 

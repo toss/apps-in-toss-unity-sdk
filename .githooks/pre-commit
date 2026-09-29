@@ -1,0 +1,49 @@
+#!/bin/bash
+
+# Unity .meta 파일 누락 검사 스크립트
+# Unity 패키지의 Editor/, Runtime/ 디렉토리 내 파일들은 반드시 .meta 파일이 필요합니다.
+
+set -e
+
+# 색상 정의
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+# 체크할 디렉토리 목록 (Unity 패키지에서 .meta가 필요한 디렉토리)
+UNITY_DIRS=("Editor" "Runtime" "WebGLTemplates")
+
+missing_meta_files=()
+
+for dir in "${UNITY_DIRS[@]}"; do
+    if [ -d "$dir" ]; then
+        # 디렉토리 내 모든 파일 검사 (숨김 파일, .meta 파일, node_modules, ~ 접미사 폴더 제외)
+        # ~ 접미사 폴더는 Unity가 무시하는 특수 폴더이므로 .meta 파일이 필요 없음
+        while IFS= read -r -d '' file; do
+            # .meta 파일이 존재하는지 확인
+            meta_file="${file}.meta"
+            if [ ! -f "$meta_file" ]; then
+                missing_meta_files+=("$file")
+            fi
+        done < <(find "$dir" -type d -name "node_modules" -prune -o -type d -name "*~" -prune -o -type f ! -name ".*" ! -name "*.meta" ! -name ".DS_Store" ! -name "*.swp" ! -name "*.tmp" -print0)
+    fi
+done
+
+if [ ${#missing_meta_files[@]} -gt 0 ]; then
+    echo -e "${RED}오류: Unity .meta 파일이 누락되었습니다!${NC}"
+    echo ""
+    echo "다음 파일들에 대한 .meta 파일이 없습니다:"
+    for file in "${missing_meta_files[@]}"; do
+        echo -e "  ${YELLOW}$file${NC}"
+    done
+    echo ""
+    echo "해결 방법:"
+    echo "  1. Unity Editor에서 프로젝트를 열어 자동으로 .meta 파일 생성"
+    echo "  2. 또는 수동으로 .meta 파일 생성 (GUID 포함)"
+    echo ""
+    echo "커밋을 강제로 진행하려면: git commit --no-verify"
+    exit 1
+fi
+
+echo "✓ Unity .meta 파일 검사 통과"
+exit 0

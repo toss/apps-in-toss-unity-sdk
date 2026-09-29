@@ -1142,6 +1142,11 @@ jobs:
           AIT_DEVELOPMENT_BUILD: ${{ inputs.fast-build && 'true' || '' }}
           AIT_IL2CPP_CONFIGURATION: ${{ inputs.fast-build && 'Debug' || '' }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          UNITY_PATH: ${{ steps.unity-macos.outputs.UNITY_PATH }}
+          UNITY_VERSION_FULL: ${{ steps.unity-macos.outputs.UNITY_VERSION }}
+          UNITY_VERSION_PATTERN: ${{ inputs.unity-version }}
+          PROJECT_DIR_PREFIX: ${{ inputs.project-dir-prefix }}
+          BUILD_METHOD: ${{ inputs.build-method }}
         with:
           timeout_minutes: 30
           max_attempts: 3
@@ -1160,131 +1165,10 @@ jobs:
             echo "::warning::Retry #${ATTEMPT}: waiting ${DELAY}s (base=${BASE_DELAY}s + jitter=${JITTER}s) before next attempt..."
             sleep $DELAY
           command: |
-            # attempt 카운터 초기화 (매번 — self-hosted 러너 잔존 파일 방지)
-            ATTEMPT_FILE="/tmp/retry-attempt-${{ inputs.unity-version }}"
-            echo "0" > "$ATTEMPT_FILE"
-
-            UNITY_PATH="${{ steps.unity-macos.outputs.UNITY_PATH }}"
-            PROJECT_PATH="${{ github.workspace }}/Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}"
-            LOG_FILE="/tmp/unity-build-${{ inputs.unity-version }}.log"
-
-            # Unity 프로세스 트리 강제 종료 (SIGKILL)
-            # websockify가 retry 액션의 pipe fd를 상속받으면 EOF가 안 되어 hang
-            cleanup_unity() {
-              [ -n "$UNITY_PID" ] && kill -9 $UNITY_PID 2>/dev/null || true
-              # Unity 프로세스 그룹의 자식만 정리 (다른 프로세스 영향 방지)
-              [ -n "$UNITY_PID" ] && pkill -9 -P $UNITY_PID 2>/dev/null || true
-              pkill -9 -P $$ 2>/dev/null || true
-            }
-            trap cleanup_unity EXIT
-
-            echo "Unity Version: ${{ steps.unity-macos.outputs.UNITY_VERSION }}"
-            echo "Unity Path: ${UNITY_PATH}"
-            echo "Project Path: ${PROJECT_PATH}"
-
-            # self-hosted 러너 잔존 로그 파일 정리
-            rm -f "$LOG_FILE"
-
-            # Unity 실행 (로그는 -logFile로 파일에 기록)
-            # 주의: >/dev/null 사용 불가 — Unity의 -logFile이 stdout fd에 의존함
-            "$UNITY_PATH" -quit -batchmode -nographics \
-              -projectPath "$PROJECT_PATH" \
-              -executeMethod ${{ inputs.build-method }} \
-              -buildTarget WebGL \
-              -logFile "$LOG_FILE" &
-            UNITY_PID=$!
-            echo "Unity started (PID: $UNITY_PID, log: $LOG_FILE)"
-
-            # 로그 파일 생성 대기
-            for i in $(seq 1 30); do
-              [ -f "$LOG_FILE" ] && break
-              sleep 1
-            done
-
-            # 로그 시그널 기반 대기 + 증분 로그 출력
-            # 증분 출력 헬퍼 (tail -f 대신 — 백그라운드 프로세스 0개 유지)
-            flush_log() {
-              [ -f "$LOG_FILE" ] || return
-              CURRENT_SIZE=$(stat -f%z "$LOG_FILE" 2>/dev/null || echo "0")
-              CURRENT_SIZE=${CURRENT_SIZE:-0}
-              if [ "$CURRENT_SIZE" -gt "$LOG_OFFSET" ]; then
-                tail -c +$((LOG_OFFSET + 1)) "$LOG_FILE" 2>/dev/null | head -c $((CURRENT_SIZE - LOG_OFFSET))
-                LOG_OFFSET=$CURRENT_SIZE
-              fi
-            }
-            LOG_OFFSET=0
-            MAX_WAIT=1500
-            WAIT_SECONDS=0
-            while [ $WAIT_SECONDS -lt $MAX_WAIT ]; do
-              sleep 5
-              WAIT_SECONDS=$((WAIT_SECONDS + 5))
-              flush_log
-              if [ -f "$LOG_FILE" ]; then
-                if grep -q "Exiting batchmode successfully now!" "$LOG_FILE" 2>/dev/null; then break; fi
-                if grep -qE "FAIL_NPM_BUILD|FAIL_NPM_INSTALL|No valid Unity Editor license found|batch mode failed" "$LOG_FILE" 2>/dev/null; then break; fi
-              fi
-              if ! kill -0 $UNITY_PID 2>/dev/null; then break; fi
-            done
-            flush_log
-
-            # 로그 기반 성공 판정 (exit code 대신 — websockify가 exit code를 왜곡할 수 있음)
-            EXIT_CODE=0
-            if ! grep -q "Exiting batchmode successfully now!" "$LOG_FILE" 2>/dev/null; then
-              EXIT_CODE=1
-            fi
-
-            # Unity 프로세스 트리 강제 종료
-            cleanup_unity
-            sleep 1
-
-            echo "Unity build finished (log-based exit code: $EXIT_CODE)"
-
-            if [ $EXIT_CODE -ne 0 ]; then
-              # C# 컴파일 오류 우선 감지 — 결정적 실패이므로 재시도는 순수 낭비다.
-              # Unity 로그에는 정상 기동 시에도 "Access token is unavailable" 같은 라이선스
-              # 문구가 섞여 있어, 이 검사가 없으면 아래 LICENSE_ERROR가 먼저 걸려 컴파일
-              # 오류가 라이선스 오류로 3회 재시도된다 (v3.0.4 릴리즈 실패 시 실제 발생).
-              if grep -qE "error CS[0-9]+" "$LOG_FILE" 2>/dev/null; then
-                echo "::error::C# compile error detected (not a license issue), failing immediately"
-                grep -E "error CS[0-9]+" "$LOG_FILE" 2>/dev/null | sort -u | head -10
-                exit $EXIT_CODE
-              fi
-
-              # 빌드 도구 에러 우선 감지 (라이선스 오분류 방지)
-              BUILD_TOOL_ERROR=false
-              if grep -qE "Unknown Syntax Error|FAIL_NPM_BUILD|FAIL_NPM_INSTALL|Command not found.*ait|npm ERR!" "$LOG_FILE" 2>/dev/null; then
-                BUILD_TOOL_ERROR=true
-              fi
-
-              if [ "$BUILD_TOOL_ERROR" = true ]; then
-                echo "::error::Build tool error detected (not a license issue), failing immediately"
-                grep -E "Unknown Syntax Error|FAIL_NPM|Command not found|npm ERR!" "$LOG_FILE" 2>/dev/null | tail -5
-                exit $EXIT_CODE
-              fi
-
-              # 라이선스 관련 오류 감지 (retry 액션이 자동 재시도)
-              # signature/handshake/IPC 실패는 같은 self-hosted runner에서 다른 Unity 버전의
-              # LicensingClient가 살아있어 충돌하는 케이스 — retry로 회복 가능.
-              LICENSE_ERROR=false
-              if grep -qE "No valid Unity Editor license found|Unsupported protocol version|ResponseCode: 505|Access token is unavailable|Code 10 while verifying Licensing Client signature|LicensingClient has failed validation|Failed to handshake to channel|IPC channel to LicensingClient doesn't exist" "$LOG_FILE" 2>/dev/null; then
-                LICENSE_ERROR=true
-              fi
-              if [ $EXIT_CODE -eq 199 ]; then
-                LICENSE_ERROR=true
-              fi
-
-              if [ "$LICENSE_ERROR" = true ]; then
-                echo "::warning::Unity license error detected, triggering retry..."
-                exit 42
-              fi
-
-              echo "::error::Unity build failed with exit code: $EXIT_CODE"
-              exit $EXIT_CODE
-            fi
-
-            # 성공 시 attempt 카운터 정리
-            rm -f "$ATTEMPT_FILE"
-            echo "Unity build completed successfully"
+            # macOS WebGL 빌드 명령 본문은 build-webgl.sh 로 이동(exit 42 재시도 계약,
+            # exit 199 라이선스 판정, C# 컴파일 오류 즉시 실패 순서는 그대로 유지).
+            # exec로 실행해 trap cleanup_unity와 pkill -P $$ 가 가리키는 PID를 그대로 유지한다.
+            exec bash "$GITHUB_WORKSPACE/.ci/.github/scripts/unity-build/build-webgl.sh"
 
       - name: Build Unity WebGL (Windows)
         if: inputs.os == 'windows' && inputs.run-build && (inputs.test-level || '2') != '0'
@@ -1296,6 +1180,11 @@ jobs:
           AIT_DEVELOPMENT_BUILD: ${{ inputs.fast-build && 'true' || '' }}
           AIT_IL2CPP_CONFIGURATION: ${{ inputs.fast-build && 'Debug' || '' }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          UNITY_PATH: ${{ steps.unity-windows.outputs.UNITY_PATH }}
+          UNITY_VERSION_FULL: ${{ steps.unity-windows.outputs.UNITY_VERSION }}
+          UNITY_VERSION_PATTERN: ${{ inputs.unity-version }}
+          PROJECT_DIR_PREFIX: ${{ inputs.project-dir-prefix }}
+          BUILD_METHOD: ${{ inputs.build-method }}
         with:
           # Windows 러너의 release 프로필(fast-build=false) 6000.x 빌드는 Brotli 압축
           # 포함 ~28분(warm Library 캐시 실측, 2026-06 베타 릴리즈 run 27433833844)으로
@@ -1321,146 +1210,10 @@ jobs:
             Write-Host "::warning::Retry #${attempt}: waiting ${delay}s (base=${baseDelay}s + jitter=${jitter}s) before next attempt..."
             Start-Sleep -Seconds $delay
           command: |
-            # attempt 카운터 초기화 (첫 실행 시)
-            $attemptFile = "$env:TEMP\retry-attempt-${{ inputs.unity-version }}"
-            if (-not (Test-Path $attemptFile)) {
-              Set-Content -Path $attemptFile -Value "0"
-            }
-
-            $unityPath = "${{ steps.unity-windows.outputs.UNITY_PATH }}"
-            $projectPath = "${{ github.workspace }}\Tests~\E2E\${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}"
-
-            Write-Host "Unity Version: ${{ steps.unity-windows.outputs.UNITY_VERSION }}"
-            Write-Host "Unity Path: $unityPath"
-            Write-Host "Project Path: $projectPath"
-
-            # runner.temp(=$env:RUNNER_TEMP)와 일치시켜 업로드 step path가 매치되게 한다.
-            $logFile = "$env:RUNNER_TEMP\unity-build-${{ inputs.unity-version }}.log"
-            Write-Host "Starting Unity build..."
-            Write-Host "Log file: $logFile"
-
-            $unityProcess = Start-Process -FilePath $unityPath -ArgumentList @(
-              "-quit", "-batchmode", "-nographics",
-              "-projectPath", $projectPath,
-              "-executeMethod", "${{ inputs.build-method }}",
-              "-buildTarget", "WebGL",
-              "-logFile", $logFile
-            ) -PassThru -NoNewWindow
-
-            Write-Host "Waiting for Unity build to complete..."
-            $logReader = $null
-            while (-not $unityProcess.HasExited) {
-              Start-Sleep -Seconds 5
-              if (-not $logReader -and (Test-Path $logFile)) {
-                $logReader = [System.IO.StreamReader]::new(
-                  [System.IO.FileStream]::new($logFile, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
-                )
-              }
-              if ($logReader) {
-                $chunk = $logReader.ReadToEnd()
-                if ($chunk) { Write-Host $chunk -NoNewline }
-              }
-            }
-
-            # WaitForExit()으로 ExitCode 설정 보장 (HasExited 후에도 즉시 설정되지 않을 수 있음)
-            $unityProcess.WaitForExit()
-
-            # 남은 로그 읽기
-            if ($logReader) {
-              $chunk = $logReader.ReadToEnd()
-              if ($chunk) { Write-Host $chunk -NoNewline }
-              $logReader.Close()
-            }
-
-            $exitCode = $unityProcess.ExitCode
-            Write-Host "Unity exited with code: $exitCode"
-
-            # ExitCode가 null인 경우 방어 (빌드 출력 존재 여부로 판단)
-            if ($null -eq $exitCode) {
-              Write-Host "::warning::ExitCode is null, checking build output..."
-              $distPath = "${{ github.workspace }}\Tests~\E2E\${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}\ait-build\dist"
-              if (Test-Path $distPath) {
-                Write-Host "Build output exists, treating as success"
-                $exitCode = 0
-              } else {
-                Write-Host "::error::Build output missing and ExitCode null, treating as failure"
-                $exitCode = 1
-              }
-            }
-
-            if ($exitCode -ne 0) {
-              # C# 컴파일 오류 우선 감지 — 결정적 실패이므로 재시도는 순수 낭비다.
-              # Unity 로그에는 정상 기동 시에도 라이선스 문구가 섞여 있어, 이 검사가 없으면
-              # 아래 licenseError가 먼저 걸려 컴파일 오류가 라이선스 오류로 재시도된다.
-              if (Test-Path $logFile) {
-                $logContent = Get-Content $logFile -Raw -ErrorAction SilentlyContinue
-                if ($logContent -match "error CS[0-9]+") {
-                  Write-Host "::error::C# compile error detected (not a license issue), failing immediately"
-                  Select-String -Path $logFile -Pattern "error CS[0-9]+" |
-                    ForEach-Object { $_.Line } | Select-Object -Unique -First 10
-                  exit $exitCode
-                }
-              }
-
-              # 빌드 도구 에러 우선 감지 (라이선스 오분류 방지)
-              $buildToolError = $false
-              if (Test-Path $logFile) {
-                $logContent = Get-Content $logFile -Raw -ErrorAction SilentlyContinue
-                if ($logContent -match "Unknown Syntax Error|FAIL_NPM_BUILD|FAIL_NPM_INSTALL|Command not found.*ait|npm ERR!") {
-                  $buildToolError = $true
-                }
-              }
-
-              if ($buildToolError) {
-                Write-Host "::error::Build tool error detected (not a license issue), failing immediately"
-                exit $exitCode
-              }
-
-              # 라이선스 관련 오류 감지 (retry 액션이 자동 재시도)
-              # signature/handshake/IPC 실패는 같은 self-hosted runner에서 다른 Unity 버전의
-              # LicensingClient가 살아있어 충돌하는 케이스 — retry로 회복 가능.
-              $licenseError = $false
-              if (Test-Path $logFile) {
-                $logContent = Get-Content $logFile -Raw -ErrorAction SilentlyContinue
-                if ($logContent -match "No valid Unity Editor license found|Unsupported protocol version|ResponseCode: 505|Access token is unavailable|Code 10 while verifying Licensing Client signature|LicensingClient has failed validation|Failed to handshake to channel|IPC channel to LicensingClient doesn't exist") {
-                  $licenseError = $true
-                }
-              }
-              if ($exitCode -eq 199) {
-                $licenseError = $true
-              }
-
-              if ($licenseError) {
-                Write-Host "::warning::Unity license error detected, attempting recovery via Unity Hub..."
-
-                # Unity Hub를 headless로 실행하여 라이선스 토큰 갱신 유도
-                $hubPath = "C:\Program Files\Unity Hub\Unity Hub.exe"
-                if (Test-Path $hubPath) {
-                  try {
-                    & $hubPath -- --headless editors --installed 2>&1 | Out-Null
-                    Write-Host "Unity Hub license refresh attempted"
-                  } catch {
-                    Write-Host "Unity Hub refresh failed: $_"
-                  }
-                  Start-Sleep -Seconds 3
-
-                  # 기존 Licensing Client 프로세스 정리
-                  Get-Process -Name "Unity.Licensing.Client" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-                  Start-Sleep -Seconds 2
-                  Write-Host "Licensing Client processes cleared for fresh start"
-                }
-
-                Write-Host "::warning::Triggering retry after license recovery..."
-                exit 42
-              }
-
-              Write-Host "::error::Unity build failed with exit code: $exitCode"
-              exit $exitCode
-            }
-
-            # 성공 시 attempt 카운터 정리
-            Remove-Item -Path $attemptFile -ErrorAction SilentlyContinue
-            Write-Host "Unity build completed successfully (exit code: $exitCode)"
+            # Windows WebGL 빌드 명령 본문은 build-webgl.ps1 로 이동(exit 42 재시도 계약,
+            # exit 199 라이선스 판정, C# 컴파일 오류 즉시 실패 순서는 그대로 유지).
+            # 같은 세션에서 & 로 호출해 호출자의 오류 처리·LASTEXITCODE 를 그대로 물려받는다.
+            & "$env:GITHUB_WORKSPACE\.ci\.github\scripts\unity-build\build-webgl.ps1"; exit $LASTEXITCODE
 
       # =====================================================
       # 빌드 출력 검증

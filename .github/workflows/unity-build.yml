@@ -213,140 +213,13 @@ jobs:
       # =====================================================
       - name: Debug Runner - Kill Unity Processes & Log System Info (macOS)
         if: inputs.debug-runner && inputs.os == 'macos'
-        run: |
-          echo "=== Runner Diagnostics ==="
-          echo "Hostname: $(hostname)"
-          echo "Date: $(date)"
-          echo ""
-
-          echo "=== CPU Info ==="
-          sysctl -n machdep.cpu.brand_string
-          echo "CPU cores: $(sysctl -n hw.ncpu)"
-          echo ""
-
-          echo "=== Memory Usage ==="
-          vm_stat | head -10
-          echo "Total RAM: $(sysctl -n hw.memsize | awk '{printf "%.1f GB", $1/1073741824}')"
-          echo ""
-
-          echo "=== Disk Usage ==="
-          df -h / | tail -1
-          echo ""
-
-          echo "=== Top 20 Processes by CPU ==="
-          ps aux --sort=-%cpu | head -21
-          echo ""
-
-          echo "=== Top 20 Processes by Memory ==="
-          ps aux --sort=-%mem | head -21
-          echo ""
-
-          echo "=== Unity-related Processes ==="
-          ps aux | grep -i -E "unity|Unity.Licensing|UnityHelper|UnityShaderCompiler|UnityPackageManager" | grep -v grep || echo "No Unity processes found"
-          echo ""
-
-          echo "=== Killing Unity-related Processes ==="
-          KILLED=0
-          for PROC_NAME in Unity Unity.Licensing.Client UnityHelper UnityShaderCompiler UnityPackageManager; do
-            PIDS=$(pgrep -x "$PROC_NAME" 2>/dev/null || true)
-            if [ -n "$PIDS" ]; then
-              echo "Killing $PROC_NAME (PIDs: $PIDS)..."
-              kill -9 $PIDS 2>/dev/null || true
-              KILLED=$((KILLED + 1))
-            fi
-          done
-          # 패턴으로도 추가 정리
-          UNITY_PIDS=$(pgrep -if "unity" 2>/dev/null || true)
-          if [ -n "$UNITY_PIDS" ]; then
-            echo "Killing remaining Unity-related processes (PIDs: $UNITY_PIDS)..."
-            kill -9 $UNITY_PIDS 2>/dev/null || true
-            KILLED=$((KILLED + 1))
-          fi
-          if [ $KILLED -eq 0 ]; then
-            echo "No Unity processes to kill"
-          fi
-          sleep 2
-          echo ""
-
-          echo "=== Post-cleanup Process Check ==="
-          ps aux | grep -i unity | grep -v grep || echo "No Unity processes remaining"
-          echo ""
-
-          echo "=== Memory After Cleanup ==="
-          vm_stat | head -10
+        run: bash "$GITHUB_WORKSPACE/.ci/.github/scripts/unity-build/debug-runner.sh"
 
       - name: Debug Runner - Kill Unity Processes & Log System Info (Windows)
         if: inputs.debug-runner && inputs.os == 'windows'
         shell: powershell
         run: |
-          Write-Host "=== Runner Diagnostics ==="
-          Write-Host "Hostname: $env:COMPUTERNAME"
-          Write-Host "Date: $(Get-Date)"
-          Write-Host ""
-
-          Write-Host "=== CPU Info ==="
-          Get-CimInstance Win32_Processor | Select-Object Name, NumberOfCores, NumberOfLogicalProcessors | Format-List
-          Write-Host ""
-
-          Write-Host "=== Memory Usage ==="
-          $os = Get-CimInstance Win32_OperatingSystem
-          $totalGB = [math]::Round($os.TotalVisibleMemorySize / 1MB, 1)
-          $freeGB = [math]::Round($os.FreePhysicalMemory / 1MB, 1)
-          $usedGB = [math]::Round(($os.TotalVisibleMemorySize - $os.FreePhysicalMemory) / 1MB, 1)
-          Write-Host "Total: ${totalGB} GB / Used: ${usedGB} GB / Free: ${freeGB} GB"
-          Write-Host ""
-
-          Write-Host "=== Disk Usage ==="
-          Get-PSDrive -PSProvider FileSystem | Format-Table Name, @{L='Used(GB)';E={[math]::Round($_.Used/1GB,1)}}, @{L='Free(GB)';E={[math]::Round($_.Free/1GB,1)}}
-          Write-Host ""
-
-          Write-Host "=== Top 20 Processes by CPU ==="
-          Get-Process | Sort-Object CPU -Descending | Select-Object -First 20 Name, Id, CPU, @{L='Mem(MB)';E={[math]::Round($_.WorkingSet64/1MB,1)}} | Format-Table
-          Write-Host ""
-
-          Write-Host "=== Top 20 Processes by Memory ==="
-          Get-Process | Sort-Object WorkingSet64 -Descending | Select-Object -First 20 Name, Id, CPU, @{L='Mem(MB)';E={[math]::Round($_.WorkingSet64/1MB,1)}} | Format-Table
-          Write-Host ""
-
-          Write-Host "=== Unity-related Processes ==="
-          $unityProcs = Get-Process | Where-Object { $_.Name -match "Unity|UnityHelper|UnityShaderCompiler|UnityPackageManager" }
-          if ($unityProcs) {
-            $unityProcs | Format-Table Name, Id, CPU, @{L='Mem(MB)';E={[math]::Round($_.WorkingSet64/1MB,1)}}, Path
-          } else {
-            Write-Host "No Unity processes found"
-          }
-          Write-Host ""
-
-          Write-Host "=== Killing Unity-related Processes ==="
-          $killed = 0
-          $unityProcs = Get-Process | Where-Object { $_.Name -match "Unity|UnityHelper|UnityShaderCompiler|UnityPackageManager" }
-          foreach ($proc in $unityProcs) {
-            Write-Host "Killing $($proc.Name) (PID: $($proc.Id))..."
-            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-            $killed++
-          }
-          if ($killed -eq 0) {
-            Write-Host "No Unity processes to kill"
-          } else {
-            Write-Host "Killed $killed process(es)"
-            Start-Sleep -Seconds 2
-          }
-          Write-Host ""
-
-          Write-Host "=== Post-cleanup Process Check ==="
-          $remaining = Get-Process | Where-Object { $_.Name -match "Unity" }
-          if ($remaining) {
-            $remaining | Format-Table Name, Id
-          } else {
-            Write-Host "No Unity processes remaining"
-          }
-          Write-Host ""
-
-          Write-Host "=== Memory After Cleanup ==="
-          $os = Get-CimInstance Win32_OperatingSystem
-          $freeGB = [math]::Round($os.FreePhysicalMemory / 1MB, 1)
-          $usedGB = [math]::Round(($os.TotalVisibleMemorySize - $os.FreePhysicalMemory) / 1MB, 1)
-          Write-Host "Used: ${usedGB} GB / Free: ${freeGB} GB"
+          & "$env:GITHUB_WORKSPACE\.ci\.github\scripts\unity-build\debug-runner.ps1"
 
       # =====================================================
       # Windows: Node.js 가용성 보장
@@ -378,91 +251,7 @@ jobs:
         shell: node {0}
         env:
           OVERRIDE_VERSION: ${{ inputs.sdk-version-override }}
-        run: |
-          const fs = require('fs');
-          const os = require('os');
-          const path = require('path');
-          const { execFileSync } = require('child_process');
-
-          const overrideVersion = process.env.OVERRIDE_VERSION;
-          const onWindows = process.platform === 'win32';
-          // Windows에서 npx/pnpm은 .cmd 래퍼라 shell:true 필요. POSIX는 그대로.
-          const run = (cmd, args, opts = {}) =>
-            execFileSync(cmd, args, { stdio: 'inherit', shell: onWindows, ...opts });
-
-          console.log('=== SDK Version Override ===');
-          console.log(`Target SDK version: ${overrideVersion}`);
-          console.log('');
-
-          // 1. package.json 버전 변경 (메타데이터용 — AITVersion.Version의 소스)
-          console.log('=== Updating package.json version ===');
-          {
-            const pkgPath = 'package.json';
-            const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
-            console.log(`Original version: ${pkg.version}`);
-            pkg.version = overrideVersion;
-            fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
-            console.log(`Overridden version: ${pkg.version}`);
-          }
-
-          // 2. BuildConfig의 web-framework 버전만 동기화
-          // 주의: override는 web-framework 전용 버전(예: 3.0.0-beta.<hash>)이다.
-          // @apps-in-toss/web-analytics는 별도 버전 라인(latest=2.6.1)이라 해당
-          // 버전이 npm에 존재하지 않으며, web-framework 3.x는 web-analytics에
-          // 의존하지도 않는다(검증됨). web-analytics까지 override로 덮으면
-          // ait-build의 pnpm install이 ERR_PNPM_NO_MATCHING_VERSION으로 실패하므로
-          // web-analytics는 BuildConfig 기본 핀(2.6.1)을 그대로 둔다.
-          console.log('');
-          console.log('=== Syncing BuildConfig web-framework version ===');
-          {
-            const buildConfig = 'WebGLTemplates/AITTemplate/BuildConfig~/package.json';
-            const pkg = JSON.parse(fs.readFileSync(buildConfig, 'utf8'));
-            for (const section of ['dependencies', 'devDependencies']) {
-              if (!pkg[section]) continue;
-              if (pkg[section]['@apps-in-toss/web-framework']) {
-                pkg[section]['@apps-in-toss/web-framework'] = overrideVersion;
-              }
-            }
-            fs.writeFileSync(buildConfig, JSON.stringify(pkg, null, 2) + '\n');
-            console.log('BuildConfig updated (web-analytics는 의도적으로 유지):');
-            console.log(fs.readFileSync(buildConfig, 'utf8'));
-          }
-
-          // 3. SDK 코드 재생성 (잡별 격리된 pnpm store — 동시 실행 store 충돌 방지)
-          console.log('');
-          console.log('=== SDK 코드 재생성 ===');
-          const generatorDir = 'sdk-runtime-generator~';
-          const isolatedStore = path.join(process.env.RUNNER_TEMP || os.tmpdir(), `pnpm-store-${process.pid}`);
-          run('npx', ['-y', 'pnpm@10', 'install', '--store-dir', isolatedStore], { cwd: generatorDir });
-          run('npx', ['-y', 'pnpm@10', 'update', `@apps-in-toss/web-framework@${overrideVersion}`,
-            '--force', '--registry', 'https://registry.npmjs.org', '--store-dir', isolatedStore], { cwd: generatorDir });
-
-          // 설치된 버전 검증
-          let installedVersion = 'unknown';
-          try {
-            const listJson = execFileSync('npx', ['-y', 'pnpm@10', 'list', '@apps-in-toss/web-framework', '--json'],
-              { cwd: generatorDir, shell: onWindows, encoding: 'utf8' });
-            installedVersion = JSON.parse(listJson)[0].dependencies['@apps-in-toss/web-framework'].version;
-          } catch (e) {
-            console.log(`::warning::설치 버전 파싱 실패: ${e.message}`);
-          }
-          console.log(`요청 버전: ${overrideVersion}`);
-          console.log(`설치된 버전: ${installedVersion}`);
-          if (installedVersion !== overrideVersion) {
-            console.log(`::warning::버전 불일치 - 요청: ${overrideVersion}, 설치됨: ${installedVersion}`);
-          }
-
-          console.log('SDK 코드 생성 중...');
-          run('npx', ['-y', 'pnpm@10', 'generate'], { cwd: generatorDir });
-          console.log('SDK 코드 생성 완료');
-
-          // 격리된 store 정리
-          try { fs.rmSync(isolatedStore, { recursive: true, force: true }); } catch (e) { /* best-effort */ }
-
-          // 4. 재생성된 SDK 파일 확인
-          console.log('');
-          console.log('=== Regenerated SDK files ===');
-          for (const f of fs.readdirSync('Runtime/SDK').slice(0, 20)) console.log(f);
+        run: require(process.env.GITHUB_WORKSPACE + '/.ci/.github/scripts/unity-build/override-sdk-version.cjs')
 
       # =====================================================
       # Windows Defender 제외 (Windows)
@@ -635,7 +424,7 @@ jobs:
           // npm에 존재하지 않으며, web-framework 3.x는 web-analytics에 의존하지도 않는다(검증됨).
           // web-analytics까지 덮으면 아래 pnpm install이 ERR_PNPM_NO_MATCHING_VERSION으로
           // 실패하므로, bridge-core와 동일하게 BuildConfig 기본 핀을 그대로 둔다.
-          // (위 "Regenerate SDK" 스텝의 BuildConfig 동기화와 동일 정책.)
+          // (override-sdk-version.cjs의 BuildConfig 동기화 로직과 동일 정책.)
           const pkg = JSON.parse(fs.readFileSync(buildConfig, 'utf8'));
           for (const section of ['dependencies', 'devDependencies']) {
             if (!pkg[section]) continue;
@@ -1028,100 +817,9 @@ jobs:
       # =====================================================
       - name: Fix LicensingClient Code Signature (macOS)
         if: inputs.os == 'macos' && inputs.run-build && (inputs.test-level || '2') != '0'
-        run: |
-          UNITY_BASE="/Applications/Unity/Hub/Editor"
-          CURRENT_VERSION="${{ steps.unity-macos.outputs.UNITY_VERSION }}"
-          CURRENT_DIR="${UNITY_BASE}/${CURRENT_VERSION}"
-
-          # LicensingClient.app 경로 탐색 (버전별로 위치가 다를 수 있음)
-          TARGET_APP=""
-          for candidate in \
-            "${CURRENT_DIR}/Unity.app/Contents/Frameworks/UnityLicensingClient.app" \
-            "${CURRENT_DIR}/Unity.app/Contents/Helpers/UnityLicensingClient.app"; do
-            if [ -d "$candidate" ]; then
-              TARGET_APP="$candidate"
-              break
-            fi
-          done
-
-          if [ -z "$TARGET_APP" ]; then
-            echo "LicensingClient.app not found, skipping"
-            exit 0
-          fi
-
-          echo "Verifying code signature: ${TARGET_APP}"
-
-          # codesign 검증 — 정상이면 아무것도 하지 않음
-          if codesign --verify --deep --strict "$TARGET_APP" 2>/dev/null; then
-            echo "Code signature is valid, no action needed"
-            exit 0
-          fi
-
-          VERIFY_MSG=$(codesign --verify --deep --strict "$TARGET_APP" 2>&1 || true)
-          echo "::warning::LicensingClient code signature invalid: ${VERIFY_MSG}"
-
-          # 서명이 유효한 LicensingClient.app 찾기
-          # 탐색 순서: Unity Hub 내장 → 다른 Unity 버전
-          DONOR_APP=""
-          DONOR_VERSION=""
-
-          # 1) Unity Hub 내장 LicensingClient (Hub가 설치되어 있으면 항상 최신 서명)
-          for hub_candidate in \
-            "/Applications/Unity Hub.app/Contents/Frameworks/UnityLicensingClient_V1.app" \
-            "/Applications/Unity Hub.app/Contents/Frameworks/UnityLicensingClient.app"; do
-            if [ -d "$hub_candidate" ] && codesign --verify --deep --strict "$hub_candidate" 2>/dev/null; then
-              DONOR_APP="$hub_candidate"
-              DONOR_VERSION="Unity Hub"
-              break
-            fi
-          done
-
-          # 2) 다른 Unity 버전
-          if [ -z "$DONOR_APP" ]; then
-            for dir in $(ls -d "${UNITY_BASE}"/*/ 2>/dev/null | sort -rV); do
-              version=$(basename "$dir")
-              [ "$version" = "$CURRENT_VERSION" ] && continue
-
-              for candidate in \
-                "${dir}Unity.app/Contents/Helpers/UnityLicensingClient.app" \
-                "${dir}Unity.app/Contents/Frameworks/UnityLicensingClient.app"; do
-                if [ -d "$candidate" ] && codesign --verify --deep --strict "$candidate" 2>/dev/null; then
-                  DONOR_APP="$candidate"
-                  DONOR_VERSION="$version"
-                  break 2
-                fi
-              done
-            done
-          fi
-
-          if [ -n "$DONOR_APP" ]; then
-            DONOR_LC_VERSION=$("${DONOR_APP}/Contents/MacOS/Unity.Licensing.Client" --version 2>&1 || echo "unknown")
-            TARGET_LC_VERSION=$("${TARGET_APP}/Contents/MacOS/Unity.Licensing.Client" --version 2>&1 || echo "unknown")
-            echo "Replacing invalid LicensingClient (${TARGET_LC_VERSION}) with valid one from ${DONOR_VERSION} (${DONOR_LC_VERSION})"
-
-            mv "$TARGET_APP" "${TARGET_APP}.bak"
-            cp -R "$DONOR_APP" "$TARGET_APP"
-
-            if codesign --verify --deep --strict "$TARGET_APP" 2>/dev/null; then
-              echo "LicensingClient replaced and verified successfully"
-              rm -rf "${TARGET_APP}.bak"
-              exit 0
-            else
-              echo "Replacement also failed, restoring backup and trying re-sign"
-              rm -rf "$TARGET_APP"
-              mv "${TARGET_APP}.bak" "$TARGET_APP"
-            fi
-          fi
-
-          # 다른 Unity 버전이 없거나 교체도 실패한 경우: ad-hoc 재서명
-          echo "Attempting ad-hoc re-sign of LicensingClient.app..."
-          codesign --force --deep --sign - "$TARGET_APP" 2>&1 || true
-
-          if codesign --verify --deep --strict "$TARGET_APP" 2>/dev/null; then
-            echo "LicensingClient re-signed successfully"
-          else
-            echo "::warning::LicensingClient re-sign failed, build may fail due to license issues"
-          fi
+        env:
+          UNITY_VERSION_FULL: ${{ steps.unity-macos.outputs.UNITY_VERSION }}
+        run: bash "$GITHUB_WORKSPACE/.ci/.github/scripts/unity-build/fix-licensing-client-signature.sh"
 
       # =====================================================
       # Unity WebGL 빌드

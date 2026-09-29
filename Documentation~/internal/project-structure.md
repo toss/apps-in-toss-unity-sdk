@@ -68,6 +68,7 @@ Editor/
 ├── AITAutoUpdater.cs           업데이트 확인과 채널 판정
 ├── AITExportErrorCatalog.cs    빌드 에러 코드와 안내 문구
 ├── AppsInTossMenu.cs           AIT 메뉴 등록
+├── AppsInTossMenu.DevServer.cs   Local Debug 서버 기동·중지·상태·포트 관리 (partial)
 ├── ErrorTracker/               Sentry 기반 Editor 에러 추적
 ├── IssueReport/                이슈 리포트 창
 ├── Menu/                       메뉴 액션 (Local Debug, 배포, 포트 해석)

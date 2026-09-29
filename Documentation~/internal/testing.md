@@ -71,9 +71,13 @@ Tests~/E2E/
 │   └── Plugins/
 │       └── E2ETestBridge.jslib       WebGL 브릿지
 └── tests/
-    ├── e2e-full-pipeline.test.js     Level 2 본 테스트 (진입 파일, 공유 세션 훅)
-    ├── lib/                          공용 헬퍼(서버 부팅·Unity 로드/재로드·PlayerPrefs 프로브)
+    ├── e2e-full-pipeline.test.js     Level 2 본 테스트 (진입 파일, 등록 순서와 공유 세션 훅)
+    ├── lib/                          공용 헬퍼(서버 부팅·Unity 로드/재로드·PlayerPrefs 프로브·결과 집계)
     ├── suites/
+    │   ├── build-and-dev.suite.js    빌드 검증 + AIT dev 서버 테스트 등록 모듈 (1, 2, 2b)
+    │   ├── production-core.suite.js  프로덕션 서버 + 런타임 검증 테스트 등록 모듈 (3, 3-1, 4, 5)
+    │   ├── tutorials.suite.js        Build Customization 튜토리얼 테스트 등록 모듈 (6, 7)
+    │   ├── nested-callback.suite.js  중첩 콜백 동기 왕복 테스트 등록 모듈 (8)
     │   └── playerprefs.suite.js      9번대 PlayerPrefs 테스트 등록 모듈
     ├── test-interactive-mode.test.js
     ├── perf-ttff.test.js             콜드 로드 계측 (별도 config)

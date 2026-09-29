@@ -205,6 +205,7 @@ main() {
             test_e2e_validation
             test_playwright_config
             test_sdk_generator_unit
+            test_deploy_url_extraction
             if [ "$PARALLEL_MODE" = true ]; then
                 run_parallel_editmode
                 run_parallel_builds
@@ -252,6 +253,7 @@ main() {
             test_playwright_config
             test_sdk_generator_unit
             test_meta_guids
+            test_deploy_url_extraction
             ;;
     esac
 

@@ -16,7 +16,7 @@
  *   - .github/ 제외
  *   - 릴리즈 시 제거되는 루트 파일(.gitignore.meta, CLAUDE.md.meta, run-local-tests.sh.meta) 제외
  *
- * 사용법:  node scripts/check-meta-guids.js
+ * 사용법:  node scripts~/check-meta-guids.js
  * 종료코드: 위반이 하나라도 있으면 1, 없으면 0.
  *
  * 알려진 한계: 휴리스틱은 "명백히 구조적인" 손-작성 GUID를 잡는다. 우연히 랜덤처럼

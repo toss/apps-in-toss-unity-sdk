@@ -1,0 +1,28 @@
+{
+  "name": "@apps-in-toss/unity-sdk-generator-tests",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Property-based validation tests for Unity SDK Generator",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest watch",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest run --coverage",
+    "test:binding": "vitest run binding.test.ts",
+    "test:invariants": "vitest run invariants.test.ts",
+    "test:serialization": "vitest run serialization.test.ts",
+    "test:differential": "vitest run differential.test.ts",
+    "test:multi-version": "vitest run multi-version.test.ts",
+    "test:update-golden": "pnpx tsx scripts/update-golden.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@vitest/ui": "^4.0.15",
+    "glob": "^11.0.0",
+    "ts-morph": "^23.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.8.3",
+    "vitest": "^4.0.15"
+  }
+}

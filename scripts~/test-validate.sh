@@ -153,3 +153,16 @@ test_meta_guids() {
         return 1
     fi
 }
+
+# 5.7 배포 URL 추출 셸 헬퍼 테스트 (AITDeployManager.ExtractDeployUrl과 케이스 동기화)
+test_deploy_url_extraction() {
+    print_header "Deploy URL Extraction"
+
+    if bash "$SCRIPT_DIR/.github/scripts/deploy/extract-deploy-url.test.sh"; then
+        print_success "Deploy URL Extraction"
+        return 0
+    else
+        print_failure "Deploy URL Extraction"
+        return 1
+    fi
+}

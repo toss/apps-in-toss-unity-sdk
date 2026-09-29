@@ -720,6 +720,7 @@ namespace AppsInToss.Editor.Menu
         /// ait CLI는 URL을 고정폭 박스(│ ... │) 안에 출력하므로 긴 URL(예: UUID deploymentId)은
         /// 여러 줄로 래핑된다 — 줄 단위 매칭은 URL을 중간에서 자르므로, 박스 문자·여백 제거 후
         /// 줄 끝까지 이어지는 URL을 연속 줄과 접합해 복원한다.
+        /// 셸 쌍둥이: .github/scripts/deploy/extract-deploy-url.sh (같은 의미론을 유지할 것).
         /// </summary>
         internal static string ExtractDeployUrl(string output)
         {

@@ -75,6 +75,10 @@ namespace AppsInToss.Editor
         /// <param name="onOutputReceived">출력 수신 콜백 (메인 스레드에서 호출)</param>
         /// <param name="timeoutMs">타임아웃 (밀리초, 기본 5분)</param>
         /// <returns>명령 작업 객체</returns>
+        /// <remarks>
+        /// 명령 문자열·출력은 마스킹 없이 로그된다 — 비밀값(배포 키 등)을 포함한 명령은
+        /// <see cref="AITPlatformHelper.ExecuteCommand"/>의 sensitiveValues 매개변수를 사용할 것.
+        /// </remarks>
         public static CommandTask RunAsync(
             string command,
             string workingDirectory,
@@ -144,70 +148,13 @@ namespace AppsInToss.Editor
 
             try
             {
-                string shell, shellArgs;
-                string pathEnv = AITPlatformHelper.BuildPathEnv(additionalPaths ?? new string[0]);
-
-                if (AITPlatformHelper.IsWindows)
-                {
-                    shell = "powershell.exe";
-                    string escapedCommand = EscapeForPowerShell(command);
-                    string escapedPathEnv = pathEnv.Replace("'", "''");
-                    string envSetup = $"$env:CI = 'true'; $env:PATH = '{escapedPathEnv}';";
-                    if (additionalEnvVars != null)
-                    {
-                        foreach (var kvp in additionalEnvVars)
-                        {
-                            string escapedValue = kvp.Value.Replace("'", "''");
-                            envSetup += $" $env:{kvp.Key} = '{escapedValue}';";
-                        }
-                    }
-                    shellArgs = $"-ExecutionPolicy Bypass -NoProfile -NoLogo -Command \"[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; {envSetup} {escapedCommand}\"";
-                }
-                else
-                {
-                    shell = "/bin/bash";
-                    // 환경변수는 아래 ProcessStartInfo.EnvironmentVariables 블록에서 설정
-                    // bash -c "..." 안에서 export 할당 시 JSON 등의 큰따옴표가
-                    // 바깥 큰따옴표와 충돌하므로, 셸 명령에서는 CI만 설정
-                    string envExports = "export CI=true";
-                    string escapedCommand = AITPlatformHelper.EscapeForBashDoubleQuotes(command);
-                    string escapedPathEnv = AITPlatformHelper.EscapeForBashDoubleQuotes(pathEnv);
-                    shellArgs = $"-l -c \"{envExports} && export PATH=\\\"{escapedPathEnv}\\\" && {escapedCommand}\"";
-                }
+                // 셸 래핑·환경변수는 AITPlatformHelper.CreateProcessStartInfo 단일 구현을 공유한다.
+                // additionalEnvVars는 ProcessStartInfo.EnvironmentVariables로만 전달한다 — 기존에는
+                // 스크립트 안에 $env:K = '...' 를 추가로 대입했는데, JSON 값의 큰따옴표가 argv
+                // 계층에서 벗겨져 올바른 상속값(UNITY_METADATA)을 깨진 값으로 덮어쓰는 버그가 있었다.
+                var processInfo = AITPlatformHelper.CreateProcessStartInfo(command, workingDirectory, additionalPaths, additionalEnvVars);
 
                 EnqueueMainThread(() => Debug.Log($"[AIT Async] 명령 시작: {command}"));
-
-                var processInfo = new ProcessStartInfo
-                {
-                    FileName = shell,
-                    Arguments = shellArgs,
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    CreateNoWindow = true,
-                    StandardOutputEncoding = Encoding.UTF8,
-                    StandardErrorEncoding = Encoding.UTF8
-                };
-
-                if (!string.IsNullOrEmpty(workingDirectory) && System.IO.Directory.Exists(workingDirectory))
-                {
-                    processInfo.WorkingDirectory = workingDirectory;
-                }
-
-                if (additionalPaths != null && additionalPaths.Length > 0)
-                {
-                    processInfo.EnvironmentVariables["PATH"] = pathEnv;
-                }
-                processInfo.EnvironmentVariables["CI"] = "true";
-
-                // 추가 환경변수 설정
-                if (additionalEnvVars != null)
-                {
-                    foreach (var kvp in additionalEnvVars)
-                    {
-                        processInfo.EnvironmentVariables[kvp.Key] = kvp.Value;
-                    }
-                }
 
                 using (var process = new Process { StartInfo = processInfo })
                 {
@@ -415,16 +362,6 @@ namespace AppsInToss.Editor
             int start = lines.Length - maxLines;
             string tail = string.Join("\n", lines, start, maxLines);
             return $"…(마지막 {maxLines}줄만 표시 — 전체 {lines.Length}줄 중 앞부분 생략)\n{tail}";
-        }
-
-        /// <summary>
-        /// PowerShell 명령용 문자열 이스케이프
-        /// </summary>
-        private static string EscapeForPowerShell(string command)
-        {
-            return command
-                .Replace("`", "``")
-                .Replace("$", "`$");
         }
 
         /// <summary>

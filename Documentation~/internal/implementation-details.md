@@ -48,7 +48,7 @@ SDK의 `WebGLTemplates/AITTemplate/`이 원본이고, `Editor/AITTemplateManager
 
 ## 설정 저장소
 
-설정은 `Assets/AppsInToss/Editor/AITConfig.asset`(ScriptableObject)에 저장됩니다. 필드 정의와 기본값은 `Editor/AITEditorScriptObject.cs`, 편집 UI는 `Editor/AITConfigurationWindow.cs`에 있습니다.
+설정은 `Assets/AppsInToss/Editor/AITConfig.asset`(ScriptableObject)에 저장됩니다. 필드 정의와 기본값은 `Editor/AITEditorScriptObject.cs`, 편집 UI는 `Editor/AITConfigurationWindow*.cs`에 있습니다.
 
 배포 자격증명은 별도 에셋(`Assets/AppsInToss/Editor/AITCredentials.asset`)에 분리되어 있고 `Editor/AITGitGuard.cs`가 커밋되지 않도록 감시합니다.
 

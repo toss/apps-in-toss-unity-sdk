@@ -59,6 +59,12 @@ namespace AppsInToss.Editor.Package
         internal const string CacheNamePrefix = "ait-page-cache-";
 
         /// <summary>
+        /// populated 힌트의 localStorage 키 접두사(뒤에 캐시명이 붙는다). 값은 캐시에 put 된 절대 URL 을
+        /// 개행으로 이은 문자열이다. 인터셉터(CacheCoreJs)와 warm page(AITWarmPageEmitter)가 같은 키를 쓴다.
+        /// </summary>
+        internal const string PopulatedHintKeyPrefix = "ait-pc-populated:";
+
+        /// <summary>
         /// appName(앱 식별자)에서 캐시 버킷 이름을 파생합니다.
         /// 영문 소문자/숫자/하이픈으로 정규화하며, 비ASCII 문자는 짧은 해시로 대체합니다.
         /// identifier 가 비어 있으면 null 을 반환합니다(호출자가 폴백 처리).
@@ -461,24 +467,70 @@ namespace AppsInToss.Editor.Package
             // 설치 시점의 fetch 를 캡처(여기선 native; Early Fetch 는 아직 미설치).
             var priorFetch = window.fetch.bind(window);
 
+            // populated 힌트: 이 버킷에 put 된 URL 목록을 localStorage 에 동기 조회 가능한 형태로 남긴다.
+            // 캐시 조회(open→match)는 비동기라, head 에서 시작해도 응답 처리는 뒤따르는 body 파싱·첫 렌더가
+            // 메인 스레드를 놓을 때까지 밀린다(CPU 4x 스로틀 실측 ~140ms). 첫 방문처럼 캐시가 빈 부팅에서는
+            // 그만큼 data/wasm 다운로드 시작이 늦어지므로, 힌트에 없는 URL 은 조회와 동시에 네트워크를 먼저 건다.
+            //  · 힌트에 있음 → 기존 cache-first 그대로(재방문 네트워크 0 유지).
+            //  · 힌트에 없음 → 네트워크 선시작 + 조회 병행. 조회가 히트하면(힌트를 남기지 않는 populator 가
+            //    채운 경우) 선시작을 abort 하고 히트를 서빙한 뒤 힌트를 보정한다 → 그 비용은 1회로 끝난다.
+            //  · localStorage 접근 불가 → 판단 불가이므로 기존 cache-first.
+            // 힌트 기록 주체: 이 인터셉터(put 성공·보정)와 warm page(ait-warm.html, 동일 키 규약).
+            var HINT_KEY = 'ait-pc-populated:' + CACHE_NAME;
+            function isHinted(url) {
+                try {
+                    var h = window.localStorage.getItem(HINT_KEY) || '';
+                    return ('\n' + h + '\n').indexOf('\n' + url + '\n') >= 0;
+                } catch (e) { return true; }
+            }
+            function markPopulated(url) {
+                try {
+                    var prev = (window.localStorage.getItem(HINT_KEY) || '').split('\n');
+                    var next = [url];
+                    // 현재 빌드 allowlist 밖의 옛 URL 은 버린다(부팅 sweep 이 엔트리를 지우는 것과 같은 기준).
+                    for (var i = 0; i < prev.length; i++) {
+                        if (prev[i] && prev[i] !== url && ALLOW_ABS[prev[i]]) { next.push(prev[i]); }
+                    }
+                    window.localStorage.setItem(HINT_KEY, next.join('\n'));
+                } catch (e) {}
+            }
+
             // cache-first 체인: CacheStorage/IndexedDB 히트 → 단락, 미스 → priorFetch 후 비차단 put.
             // native-first 분기가 실패/미설정/타임아웃일 때의 폴백 경로로도 재사용됩니다.
             function cacheFirst(resource, init, url) {
+                // 네트워크 선시작 조건: 힌트 없음 + 호출자가 취소 시그널을 넘기지 않은 문자열 URL 요청
+                // (부트 경로의 Early Fetch·로더가 이 형태). 그 외에는 선시작 없이 기존 순서를 따른다.
+                var spec = null, specAbort = null, specFailed = false;
+                if (typeof AbortController === 'function' && typeof resource === 'string'
+                    && !(init && init.signal) && !isHinted(url)) {
+                    try {
+                        specAbort = new AbortController();
+                        var specInit = { signal: specAbort.signal };
+                        if (init) { for (var k in init) { specInit[k] = init[k]; } }
+                        spec = priorFetch(resource, specInit);
+                        // abort·네트워크 실패의 reject 를 흡수하고, 실패 여부만 기록(아래 폴백 판단용).
+                        spec.catch(function () { specFailed = true; });
+                    } catch (e) { spec = null; specAbort = null; }
+                }
                 return getCache().then(function (cache) {
                     return cache.match(url).then(function (hit) {
                         if (hit) {
+                            if (specAbort) {
+                                try { specAbort.abort(); } catch (e) {}
+                                markPopulated(url); // 힌트 없이 채워진 엔트리 → 다음 부팅부터 선시작 없음.
+                            }
                             window.__aitCacheStats.hits.push(url);
                             return hit; // 캐시 히트 → 네트워크 0, transferSize 0 으로 단락.
                         }
                         window.__aitCacheStats.misses.push(url);
-                        return priorFetch(resource, init).then(function (resp) {
+                        return (spec || priorFetch(resource, init)).then(function (resp) {
                             // put 은 절대 await 하지 않음 → 부트 fetch 무지연(비차단).
                             try {
                                 if (resp && resp.ok && resp.body !== undefined) {
                                     // decode-free 계약: 응답을 가공 없이 그대로 저장/반환.
                                     var clone = resp.clone();
                                     getCache().then(function (c) { return c.put(url, clone); })
-                                        .then(function () { window.__aitCacheStats.puts.push(url); })
+                                        .then(function () { window.__aitCacheStats.puts.push(url); markPopulated(url); })
                                         .catch(function (e) {
                                             // QuotaExceededError 포함 모든 put 실패 흡수(부팅 무영향).
                                             // 공간 회복은 다음 부팅의 allowlist 정리에 위임.
@@ -493,8 +545,9 @@ namespace AppsInToss.Editor.Package
                     });
                 }).catch(function (e) {
                     // match 경로 실패 시 원래 fetch 로 완전 위임(부트 미정지).
+                    // 선시작한 요청이 살아 있으면 그것을 그대로 쓰고(이중 다운로드 방지), 실패했으면 새로 건다.
                     window.__aitCacheStats.errors.push('match ' + url + ': ' + (e && e.message || e));
-                    return priorFetch(resource, init);
+                    return (spec && !specFailed) ? spec : priorFetch(resource, init);
                 });
             }";
 

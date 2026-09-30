@@ -252,8 +252,34 @@ namespace AppsInToss.Editor.Package
 
         var originalFetch = window.fetch;
 
+        // stored 힌트: 이 캐시에 저장을 마친 URL 을 localStorage 에 남겨 동기로 조회한다.
+        // 캐시 조회(open→match)는 비동기라 head 에서 걸어도 응답 처리가 body 파싱·첫 렌더 뒤로 밀려,
+        // 캐시가 빈 첫 방문에서 data/wasm 다운로드 시작이 그만큼 늦어진다(CPU 4x 스로틀 실측 ~200ms).
+        // 이 캐시는 아래 storeBuffer 만 채우므로, 힌트에 없는 URL 은 조회를 건너뛰고 바로 네트워크로 간다.
+        // localStorage 접근 불가면 판단할 수 없으므로 기존대로 조회한다.
+        var HINT_KEY = 'ait-dc-stored:' + CACHE_NAME;
+        function isStored(url) {{
+            try {{
+                return ('\n' + (localStorage.getItem(HINT_KEY) || '') + '\n').indexOf('\n' + url + '\n') >= 0;
+            }} catch (e) {{ return true; }}
+        }}
+        function markStored(url) {{
+            try {{
+                if (isStored(url)) return;
+                var prev = localStorage.getItem(HINT_KEY);
+                localStorage.setItem(HINT_KEY, prev ? prev + '\n' + url : url);
+            }} catch (e) {{}}
+        }}
+
         // 콜드 로드에서 이전(스테일) 빌드 캐시 정리(현재 캐시명은 data/wasm 바이트 크기로 버스팅됨).
         if (!isReload && cacheOK) {{
+            // 이전 빌드 캐시명에 딸린 stored 힌트도 함께 정리한다.
+            try {{
+                for (var hi = localStorage.length - 1; hi >= 0; hi--) {{
+                    var hk = localStorage.key(hi);
+                    if (hk && hk.indexOf('ait-dc-stored:') === 0 && hk !== HINT_KEY) localStorage.removeItem(hk);
+                }}
+            }} catch (e) {{}}
             try {{
                 self.caches.keys().then(function(names) {{
                     names.forEach(function(n) {{
@@ -271,6 +297,7 @@ namespace AppsInToss.Editor.Package
                 self.caches.open(CACHE_NAME).then(function(c) {{
                     return c.put(url, new Response(buf, {{ status: 200, headers: h }}));
                 }}).then(function() {{
+                    markStored(url);
                     try {{ console.log('[AIT] cache: stored ' + url); }} catch (e) {{}}
                 }}).catch(function() {{
                     try {{ console.warn('[AIT] cache: put failed ' + url); }} catch (e) {{}}
@@ -313,7 +340,8 @@ namespace AppsInToss.Editor.Package
         // EARLY KICKOFF: 콜드(비리로드) 로드에서 known 리소스의 다운로드를 head 파싱 시점에 선시작한다.
         // 로더가 같은 URL을 fetch하면 아래 오버라이드가 pending promise를 재사용해 이중 다운로드 없이
         // 로더 다운로드+파싱+초기화 갭만큼 크리티컬 다운로드를 앞당긴다(modern 6000.x 경로와 동일 발상).
-        //  · 캐시 가용 시 HIT 확인 후 MISS만 선시작 → 재방문(비리로드 내비게이션) 캐시 HIT에 네트워크 낭비 없음.
+        //  · 캐시 가용 + stored 힌트가 있으면 HIT 확인 후 MISS만 선시작 → 재방문(비리로드 내비게이션) 캐시 HIT에
+        //    네트워크 낭비 없음. 힌트가 없으면(첫 방문) 조회 없이 즉시 선시작한다.
         //    (pendingEarly 엔트리는 동기 설정되므로 로더 fetch가 match 진행 중에 와도 같은 promise에 합류 — race 없음)
         //  · 선시작 대상은 C# 이 명시로 넘긴 kickUrls(= data/wasm 만): 레거시(2021/2022) 로더는 framework 을
         //    <script src> 로, index.html 은 loader 를 <script src> 로 소비해 window.fetch 로 재요청되지
@@ -327,7 +355,7 @@ namespace AppsInToss.Editor.Package
         if (!isReload) {{
             for (var ki = 0; ki < kickUrls.length; ki++) (function(url) {{
                 var p;
-                if (cacheOK && !skipCacheOnce) {{
+                if (cacheOK && !skipCacheOnce && isStored(url)) {{
                     p = self.caches.open(CACHE_NAME).then(function(c) {{
                         return c.match(url, {{ ignoreSearch: true }});
                     }}).then(function(hit) {{
@@ -364,7 +392,7 @@ namespace AppsInToss.Editor.Package
             if (!cacheOK) return originalFetch.apply(self2, args);
 
             // 캐시 우선(skip 플래그면 우회). HIT → 네트워크 없이 서빙(warm reload 순단 원천 차단).
-            if (!skipCacheOnce) {{
+            if (!skipCacheOnce && isStored(url)) {{
                 return self.caches.open(CACHE_NAME).then(function(c) {{
                     return c.match(url, {{ ignoreSearch: true }});
                 }}).then(function(cached) {{

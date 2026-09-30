@@ -279,6 +279,23 @@ public class AITWarmPageEmitterTests
             "error 신호 타입 문자열이 포함되어야 한다");
     }
 
+    // ===== populated 힌트 키 규약: 인터셉터와 동일 키 =====
+
+    [Test]
+    public void WritePage_RecordsPopulatedHint_WithInterceptorKeyPrefix()
+    {
+        // warm page 가 채운 캐시를 인터셉터가 네트워크 선시작 없이 서빙하려면, 두 산출물이 같은
+        // localStorage 키 접두사로 populated 힌트를 읽고 써야 한다.
+        WritePage();
+        string html = ReadPage();
+        string interceptor = AITPageCacheEmitter.GenerateInterceptorScript(_config, "a.data", "a.framework.js", "a.wasm");
+
+        StringAssert.Contains("localStorage.setItem('" + AITPageCacheEmitter.PopulatedHintKeyPrefix + "'", html,
+            "warm page 가 populated 힌트를 기록해야 한다");
+        StringAssert.Contains("'" + AITPageCacheEmitter.PopulatedHintKeyPrefix + "'", interceptor,
+            "인터셉터가 warm page 와 같은 힌트 키 접두사를 써야 한다");
+    }
+
     // ===== 케이스 10: 마커 잔존 없음 + %[A-Z0-9_]+% 없음 =====
 
     [Test]

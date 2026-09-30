@@ -35,6 +35,10 @@ namespace AppsInToss.Sentry
         {
             try
             {
+                // 브리지 호출과 콜백 역직렬화가 첫 프레임 앞에 끼어들면 그만큼 TTFF 가 밀리므로
+                // 첫 프레임이 그려진 다음 프레임부터 수집한다.
+                await WaitForFirstFrame();
+
                 var context = new Dictionary<string, string>();
 
                 context["sdk_version"] = AITVersion.FullVersion;
@@ -89,6 +93,15 @@ namespace AppsInToss.Sentry
         }
 
 #if UNITY_6000_0_OR_NEWER
+        private static async Awaitable WaitForFirstFrame()
+        {
+            int startFrame = Time.frameCount;
+            while (Time.frameCount <= startFrame + 1)
+            {
+                await Awaitable.NextFrameAsync();
+            }
+        }
+
         private delegate Awaitable<string> AsyncStringCall();
 
         private static async Awaitable<string> CollectSafe(string apiName, AsyncStringCall call)
@@ -130,6 +143,15 @@ namespace AppsInToss.Sentry
         private static Awaitable<string> CallGetOperationalEnvironment() => AIT.GetOperationalEnvironment();
         private static Awaitable<string> CallEnvGetDeploymentId() => AIT.EnvGetDeploymentId();
 #else
+        private static async System.Threading.Tasks.Task WaitForFirstFrame()
+        {
+            int startFrame = Time.frameCount;
+            while (Time.frameCount <= startFrame + 1)
+            {
+                await System.Threading.Tasks.Task.Yield();
+            }
+        }
+
         private delegate System.Threading.Tasks.Task<string> AsyncStringCall();
 
         private static async System.Threading.Tasks.Task<string> CollectSafe(string apiName, AsyncStringCall call)

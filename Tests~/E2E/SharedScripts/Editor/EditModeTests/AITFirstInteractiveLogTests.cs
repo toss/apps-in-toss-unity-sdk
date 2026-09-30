@@ -3,8 +3,10 @@
 // Level 0: AssetDatabase 비의존 순수 헬퍼 함수 EditMode 테스트
 //   - EffectiveFirstInteractiveLog: null/tri-state 해석 (fail-open 포함)
 //   - ShouldEmitFirstInteractive: alreadySent, 프록시 씬 접두, null/빈 씬명, Ordinal 대소문자
+//   - BuildLogJson: 직접 쓴 JSON 이 Newtonsoft 직렬화 결과와 같은지 대조
 // -----------------------------------------------------------------------
 
+using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEngine;
 using AppsInToss;
@@ -128,5 +130,96 @@ public class AITFirstInteractiveLogTests
     {
         Assert.IsTrue(AITPerformanceLogger.ShouldEmitFirstInteractive("aitproxyboot", alreadySent: false),
             "소문자 'aitproxyboot'는 Ordinal 비교이므로 true 이어야 합니다(대소문자 구분).");
+    }
+
+    // =====================================================
+    // 8) BuildLogJson — Newtonsoft 직렬화와 같은 문자열
+    //    (첫 프레임 전에 Newtonsoft 를 깨우지 않으려고 직접 쓰므로 형식이 어긋나면 안 됨)
+    // =====================================================
+
+    private static string SerializeWithNewtonsoft(string logName, Dictionary<string, object> parameters)
+    {
+        return AITJsonSettings.Serialize(new EventLogParams
+        {
+            Log_name = logName,
+            Log_type = "unity_runtime",
+            Params = parameters
+        });
+    }
+
+    [Test]
+    public void BuildLogJson_SceneLoadedPayload_MatchesNewtonsoft()
+    {
+        var parameters = new Dictionary<string, object>
+        {
+            { "event_type", "scene_loaded" },
+            { "scene_name", "Main" },
+            { "scene_build_index", 0 },
+            { "load_mode", "Single" },
+            { "previous_scene", "" },
+            { "total_loaded_scenes", 1 },
+            { "time_since_start_sec", 1.5 }
+        };
+
+        Assert.AreEqual(SerializeWithNewtonsoft("unity_scene_transition", parameters),
+            AITPerformanceLogger.BuildLogJson("unity_scene_transition", parameters));
+    }
+
+    [Test]
+    public void BuildLogJson_FirstInteractivePayload_MatchesNewtonsoft()
+    {
+        var parameters = new Dictionary<string, object>
+        {
+            { "event_type", "first_interactive" },
+            { "time_since_start_ms", 4321L },
+            { "hook_timings_ms", new Dictionary<string, object> { { "Sentry", 12.345 }, { "AITVersion", 3.0 } } },
+            { "hook_timings_total_ms", 15.345 },
+            { "wasm_streaming_fallback_reason", null },
+            { "has_focus", true },
+            { "frame_duration_ms", 750.0 },
+            { "time_scale", 0.001 },
+            { "ratio", 1.5f }
+        };
+
+        Assert.AreEqual(SerializeWithNewtonsoft("unity_first_interactive", parameters),
+            AITPerformanceLogger.BuildLogJson("unity_first_interactive", parameters));
+    }
+
+    [Test]
+    public void BuildLogJson_EscapesStringsLikeNewtonsoft()
+    {
+        var parameters = new Dictionary<string, object>
+        {
+            { "message", "NullReference \"x\" at C:\\game\\a.cs\n\t줄바꿈\r\b\f\u0001\u001f\u0085\u2028\u2029 끝 😀" },
+            { "stack_trace", "" },
+            { "키\"", "값" }
+        };
+
+        Assert.AreEqual(SerializeWithNewtonsoft("unity_error", parameters),
+            AITPerformanceLogger.BuildLogJson("unity_error", parameters));
+    }
+
+    [Test]
+    public void BuildLogJson_EmptyAndNullParams_MatchNewtonsoft()
+    {
+        var empty = new Dictionary<string, object>();
+        Assert.AreEqual(SerializeWithNewtonsoft("unity_low_memory", empty),
+            AITPerformanceLogger.BuildLogJson("unity_low_memory", empty));
+        Assert.AreEqual(SerializeWithNewtonsoft("unity_low_memory", null),
+            AITPerformanceLogger.BuildLogJson("unity_low_memory", null));
+    }
+
+    [Test]
+    public void BuildLogJson_UnsupportedValue_FallsBackToNewtonsoft()
+    {
+        // 직접 쓰지 않는 형식(배열, NaN)이 섞이면 통째로 Newtonsoft 결과를 쓴다
+        var parameters = new Dictionary<string, object>
+        {
+            { "values", new[] { 1, 2, 3 } },
+            { "nan", double.NaN }
+        };
+
+        Assert.AreEqual(SerializeWithNewtonsoft("unity_custom", parameters),
+            AITPerformanceLogger.BuildLogJson("unity_custom", parameters));
     }
 }

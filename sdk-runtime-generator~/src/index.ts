@@ -364,8 +364,14 @@ async function generate(options: {
         console.error(picocolors.yellow(`   findFrameworkPath()가 올바른 버전을 찾고 있는지 확인하세요.`));
         console.error(picocolors.yellow(`   현재 framework 경로: ${parser.frameworkDtsPath ?? '찾을 수 없음'}`));
         process.exit(1);
+      } else if (!parser.frameworkDtsPath) {
+        // framework .d.ts를 못 찾았으면 API가 없는지조차 알 수 없다. 스킵하면 AIT.LoadFullScreenAd 등이
+        // 조용히 빠져 Unity 컴파일에서야 CS0117로 드러나므로 여기서 멈춘다.
+        console.error(picocolors.red(`\n❌ FRAMEWORK_APIS를 파싱할 framework .d.ts를 찾지 못했습니다: ${missingFrameworkApis.join(', ')}`));
+        console.error(picocolors.yellow(`   node_modules/@apps-in-toss/framework 설치와 package.json 선언 버전을 확인하세요.`));
+        process.exit(1);
       } else {
-        // 모두 missing → 이 web-framework 버전에 해당 API 없음 (정상)
+        // framework .d.ts는 찾았지만 API가 모두 없음 → 이 버전에 해당 API 없음 (정상)
         console.log(picocolors.yellow(`⚠️  FRAMEWORK_APIS 스킵: ${missingFrameworkApis.join(', ')} (이 web-framework 버전에 해당 API 없음)`));
       }
     }

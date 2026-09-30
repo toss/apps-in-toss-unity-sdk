@@ -7,11 +7,12 @@ import { toPascalCase } from './utils.js';
 import { parseType, parseSimpleType, parseSimpleFunctionType, parseFrameworkSimpleType, parseTypeMembers } from './type-parser.js';
 
 /**
- * pnpm virtual store에서 framework 패키지 경로 찾기
+ * framework 패키지의 dist/index.d.cts 경로 찾기
  *
  * @param webFrameworkPath web-framework 패키지의 실제 경로 (sibling 기반 해결에 사용)
+ * @param cwd package.json과 node_modules가 있는 생성기 디렉터리 (테스트용)
  */
-export function findFrameworkPath(webFrameworkPath?: string): string | null {
+export function findFrameworkPath(webFrameworkPath?: string, cwd: string = process.cwd()): string | null {
   // 전략 1: webFrameworkPath가 주어지면 sibling에서 찾기 (가장 정확)
   if (webFrameworkPath) {
     try {
@@ -25,33 +26,31 @@ export function findFrameworkPath(webFrameworkPath?: string): string | null {
     }
   }
 
-  // 전략 2: package.json 버전으로 정확 매칭
-  const pkgJsonPath = path.join(process.cwd(), 'package.json');
+  // 전략 2: package.json에 선언된 직접 의존성을 node_modules 링크로 해석하고 버전을 확인
+  // .pnpm 디렉터리 이름을 "@apps-in-toss+framework@<버전>" 접두사로 찾으면 안 된다.
+  // pnpm은 이름이 virtualStoreDirMaxLength(Windows 기본 60)를 넘으면
+  // "@apps-in-toss+framework@1.6_<hash>"처럼 잘라서, Windows에서만 매칭이 실패하고
+  // loadFullScreenAd/showFullScreenAd가 조용히 빠졌다(2026-09-29 override 런 CS0117).
+  const pkgJsonPath = path.join(cwd, 'package.json');
   if (fs.existsSync(pkgJsonPath)) {
     try {
       const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf-8'));
       const frameworkVersion = pkgJson.dependencies?.['@apps-in-toss/framework'];
       if (frameworkVersion) {
-        const pnpmPath = path.join(process.cwd(), 'node_modules', '.pnpm');
-        if (fs.existsSync(pnpmPath)) {
-          const prefix = `@apps-in-toss+framework@${frameworkVersion}`;
-          const dirs = fs.readdirSync(pnpmPath).filter(d => d.startsWith(prefix));
-          for (const dir of dirs) {
-            const indexPath = path.join(pnpmPath, dir, 'node_modules', '@apps-in-toss', 'framework', 'dist', 'index.d.cts');
-            if (fs.existsSync(indexPath)) {
-              return indexPath;
-            }
-          }
+        const linkedDir = fs.realpathSync(path.join(cwd, 'node_modules', '@apps-in-toss', 'framework'));
+        const installed = JSON.parse(fs.readFileSync(path.join(linkedDir, 'package.json'), 'utf-8')).version;
+        const indexPath = path.join(linkedDir, 'dist', 'index.d.cts');
+        if (installed === frameworkVersion && fs.existsSync(indexPath)) {
+          return indexPath;
         }
+        console.debug(`[findFrameworkPath] 전략 2 실패: 선언 ${frameworkVersion}, 설치 ${installed}`);
       }
     } catch (e) {
-      console.debug(`[findFrameworkPath] 전략 2 실패 (package.json 매칭): ${e}`);
+      console.debug(`[findFrameworkPath] 전략 2 실패 (node_modules 링크 해석): ${e}`);
     }
   }
 
   // 전략 1, 2 모두 실패 시 null 반환 (잘못된 버전 선택 방지)
-  // 기존에는 pnpm store에서 첫 번째 매치를 반환했으나, 파일시스템 정렬 순서에
-  // 의존하여 잘못된 버전을 선택하는 버그가 있었음
   return null;
 }
 

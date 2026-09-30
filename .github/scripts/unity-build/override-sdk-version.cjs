@@ -23,6 +23,9 @@ console.log('=== Updating package.json version ===');
   fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
   console.log(`Overridden version: ${pkg.version}`);
 }
+// lockfile을 만든 pnpm과 같은 버전을 쓴다(CLAUDE.md "pnpm 버전 핀 동기화").
+// floating pnpm@10은 pnpm 11 lockfile을 그대로 쓰지 못하고 전체를 다시 resolve했다.
+const pnpm = ['-y', `pnpm@${JSON.parse(fs.readFileSync('package.json', 'utf8')).packageManager.replace(/^pnpm@/, '')}`];
 
 // 2. BuildConfig의 web-framework 버전만 동기화
 // 주의: override는 web-framework 전용 버전(예: 3.0.0-beta.<hash>)이다.
@@ -47,19 +50,24 @@ console.log('=== Syncing BuildConfig web-framework version ===');
   console.log(fs.readFileSync(buildConfig, 'utf8'));
 }
 
-// 3. SDK 코드 재생성 (잡별 격리된 pnpm store — 동시 실행 store 충돌 방지)
+// 3. SDK 코드 재생성 (러너별 영속 pnpm store)
+// self-hosted 러너는 잡을 하나씩만 돌리므로 RUNNER_NAME별 store는 동시 쓰기가 없다.
+// 매번 빈 store로 ~2,100개 패키지를 받으면 레지스트리 fetch 타임아웃이 반복됐다
+// (2026-09-29 override 런 두 번의 빌드 레그 20개 중 16개가 install 단계 TimeoutError로 실패).
 console.log('');
 console.log('=== SDK 코드 재생성 ===');
 const generatorDir = 'sdk-runtime-generator~';
-const isolatedStore = path.join(process.env.RUNNER_TEMP || os.tmpdir(), `pnpm-store-${process.pid}`);
-run('npx', ['-y', 'pnpm@10', 'install', '--store-dir', isolatedStore], { cwd: generatorDir });
-run('npx', ['-y', 'pnpm@10', 'update', `@apps-in-toss/web-framework@${overrideVersion}`,
-  '--force', '--registry', 'https://registry.npmjs.org', '--store-dir', isolatedStore], { cwd: generatorDir });
+const store = path.join(process.env.RUNNER_TOOL_CACHE || os.tmpdir(), `pnpm-store-sdk-override-${process.env.RUNNER_NAME || 'local'}`);
+const fetchArgs = ['--store-dir', store, '--prefer-offline', '--fetch-retries', '5',
+  '--fetch-retry-mintimeout', '15000', '--fetch-retry-maxtimeout', '90000', '--fetch-timeout', '120000'];
+run('npx', [...pnpm, 'install', '--frozen-lockfile', ...fetchArgs], { cwd: generatorDir });
+run('npx', [...pnpm, 'update', `@apps-in-toss/web-framework@${overrideVersion}`,
+  '--force', '--registry', 'https://registry.npmjs.org', ...fetchArgs], { cwd: generatorDir });
 
 // 설치된 버전 검증
 let installedVersion = 'unknown';
 try {
-  const listJson = execFileSync('npx', ['-y', 'pnpm@10', 'list', '@apps-in-toss/web-framework', '--json'],
+  const listJson = execFileSync('npx', [...pnpm, 'list', '@apps-in-toss/web-framework', '--json'],
     { cwd: generatorDir, shell: onWindows, encoding: 'utf8' });
   installedVersion = JSON.parse(listJson)[0].dependencies['@apps-in-toss/web-framework'].version;
 } catch (e) {
@@ -72,11 +80,8 @@ if (installedVersion !== overrideVersion) {
 }
 
 console.log('SDK 코드 생성 중...');
-run('npx', ['-y', 'pnpm@10', 'generate'], { cwd: generatorDir });
+run('npx', [...pnpm, 'generate'], { cwd: generatorDir });
 console.log('SDK 코드 생성 완료');
-
-// 격리된 store 정리
-try { fs.rmSync(isolatedStore, { recursive: true, force: true }); } catch (e) { /* best-effort */ }
 
 // 4. 재생성된 SDK 파일 확인
 console.log('');

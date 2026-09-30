@@ -214,8 +214,10 @@ jobs:
     # workflow_dispatch에서는 github.event.pull_request.number가 비어 있고
     # github.ref가 항상 dispatch한 ref(보통 main)라 PR 간 분리가 안 됨 →
     # needs.setup.outputs.ref(target_ref 해석 결과)를 우선 사용해 PR/브랜치별 격리.
+    # sdk_version_override도 그룹에 넣는다. 빠지면 같은 ref의 기본 실행과 override 실행이
+    # 서로를 cancel-in-progress로 잘라먹는다(2026-09-29 run 36565331019).
     concurrency:
-      group: e2e-${{ github.workflow }}-${{ needs.setup.outputs.ref || github.event.pull_request.number || github.ref }}-macos-${{ matrix.unity-version }}
+      group: e2e-${{ github.workflow }}-${{ needs.setup.outputs.ref || github.event.pull_request.number || github.ref }}-macos-${{ matrix.unity-version }}-${{ inputs.sdk_version_override || 'default' }}
       cancel-in-progress: true
 
     strategy:
@@ -252,7 +254,7 @@ jobs:
     needs: [setup]
 
     concurrency:
-      group: e2e-${{ github.workflow }}-${{ needs.setup.outputs.ref || github.event.pull_request.number || github.ref }}-windows-${{ matrix.unity-version }}
+      group: e2e-${{ github.workflow }}-${{ needs.setup.outputs.ref || github.event.pull_request.number || github.ref }}-windows-${{ matrix.unity-version }}-${{ inputs.sdk_version_override || 'default' }}
       cancel-in-progress: true
 
     strategy:

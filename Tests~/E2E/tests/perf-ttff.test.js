@@ -21,6 +21,10 @@ import { fileURLToPath } from 'url';
  *    를 후킹, FRAMEBUFFER_BINDING === null(= 화면 기본 프레임버퍼)인 첫 draw의 performance.now().
  *  - 스로틀: CDP Emulation.setCPUThrottlingRate + Network.emulateNetworkConditions.
  *  - on-wire 바이트: Resource Timing transferSize를 .wasm / .data / 기타로 분리.
+ *  - 화면 노출(firstVisible): 첫 draw 와 로딩 오버레이(#ait-loading-wrapper) 숨김 중 늦은 시각.
+ *    TTFF 가 같아도 오버레이가 늦게 걷히면 사용자는 그만큼 늦게 게임을 본다.
+ *  - 재방문(warm): cold 측정 뒤 캐시 저장을 기다렸다가 같은 컨텍스트에서 한 번 더 연다.
+ *    TTFF 와 data+wasm 전송 바이트(캐시가 서빙하면 0)를 기록한다.
  *  - median-of-N: 매 반복마다 새 BrowserContext(콜드 캐시)로 측정, 중앙값 기록.
  *
  * **기록 전용(record-only).** self-hosted 러너 부하 변동으로 하드 임계 게이트는 flaky하므로
@@ -36,6 +40,7 @@ import { fileURLToPath } from 'url';
  *  - PERF_NET_DOWN_MBPS : 다운로드 Mbps(기본 100). 0이면 네트워크 스로틀 비활성.
  *  - PERF_NET_UP_MBPS   : 업로드 Mbps(기본 50).
  *  - PERF_NET_RTT_MS    : RTT ms(기본 50).
+ *  - PERF_WARM          : 0이면 재방문(warm) 측정 생략(기본 1).
  *  - PERF_PAIR_PROJECT_PATH : (페어 A/B 모드) B 산출물의 프로젝트 경로. 미지정 시 기존 단일 측정과 동일.
  *  - PERF_LABEL_A / PERF_LABEL_B : 페어 모드에서 결과 JSON pairing 섹션에 남길 라벨(기본 'A'/'B').
  *
@@ -55,6 +60,7 @@ const CPU_THROTTLE = Math.max(0, parseInt(process.env.PERF_CPU_THROTTLE || '4', 
 const NET_DOWN_MBPS = parseFloat(process.env.PERF_NET_DOWN_MBPS || '100');
 const NET_UP_MBPS = parseFloat(process.env.PERF_NET_UP_MBPS || '50');
 const NET_RTT_MS = parseFloat(process.env.PERF_NET_RTT_MS || '50');
+const MEASURE_WARM = process.env.PERF_WARM !== '0';
 
 // ---- 페어 A/B 모드 (미지정 시 기존 단일 측정과 완전 동일) ----
 const PAIR_PROJECT = process.env.PERF_PAIR_PROJECT_PATH || '';
@@ -162,6 +168,19 @@ const TTFF_INIT_SCRIPT = `
     }
     return ctx;
   };
+  // 로딩 오버레이가 사라진 시각. 첫 draw 뒤에도 오버레이가 덮고 있으면 사용자는 게임 화면을 보지 못한다.
+  window.__overlayHidden__ = null;
+  function watchOverlay() {
+    var el = document.querySelector('#ait-loading-wrapper');
+    if (!el) return;
+    var check = function () {
+      if (window.__overlayHidden__ === null && el.style.display === 'none') window.__overlayHidden__ = performance.now();
+    };
+    new MutationObserver(check).observe(el, { attributes: true, attributeFilter: ['style'] });
+    check();
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', watchOverlay);
+  else watchOverlay();
 })();
 `;
 
@@ -240,16 +259,9 @@ function median(values) {
   return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
 }
 
-/**
- * 반복 1회 측정 (콜드 캐시 새 BrowserContext + 동일 CDP 스로틀). A/B 공용 — 페어 모드에서는
- * 이 함수를 A/B 각각의 url 로 호출해 같은 로직으로 공정하게 잰다.
- */
-async function measureIteration(browser, url, iter, label) {
-  const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
-  await context.addInitScript(TTFF_INIT_SCRIPT);
+/** 새 페이지를 열고 CDP 스로틀을 건다(네비게이션 이전). 스로틀은 페이지 세션 단위라 페이지마다 다시 건다. */
+async function openThrottledPage(context) {
   const page = await context.newPage();
-
-  // 스로틀 적용 (네비게이션 이전)
   const client = await context.newCDPSession(page);
   if (CPU_THROTTLE > 0) {
     await client.send('Emulation.setCPUThrottlingRate', { rate: CPU_THROTTLE });
@@ -263,56 +275,95 @@ async function measureIteration(browser, url, iter, label) {
       latency: NET_RTT_MS,
     });
   }
+  return page;
+}
 
-  let ttff = null;
+/** 한 페이지 로드를 재서 지표를 돌려준다(cold/warm 공용). */
+async function measureLoad(page, url) {
   let unityReady = null;
-  let drawCount = 0;
+  const resp = await page.goto(url, { waitUntil: 'commit', timeout: 120000 });
+  expect(resp?.status(), 'navigation should return 200').toBe(200);
+
+  // 첫 화면 draw 대기 (= TTFF). 미검출 시 unityInstance ready로 폴백.
+  const gotDraw = await page.waitForFunction(
+    () => window['__TTFF__'] !== null,
+    { timeout: 480000 }
+  ).then(() => true).catch(() => false);
+
+  if (!gotDraw) {
+    // 폴백: Unity 인스턴스 준비라도 확인 (측정은 무효 처리하되 진단 기록)
+    await page.waitForFunction(() => window['unityInstance'] !== undefined, { timeout: 60000 })
+      .then(() => { unityReady = true; })
+      .catch(() => { unityReady = false; });
+  }
+
+  // 전송 바이트는 첫 draw 직후에 읽는다 — 뒤로 미루면 첫 프레임 뒤에 시작되는 다운로드가 섞인다.
+  const metrics = await page.evaluate(() => {
+    const navEntry = performance.getEntriesByType('navigation')[0] || {};
+    const res = performance.getEntriesByType('resource');
+    let wasm = 0, data = 0, total = 0, framework = 0;
+    for (const e of res) {
+      const ts = e.transferSize || 0;
+      total += ts;
+      if (/\.wasm(\b|\.|\?|$)/.test(e.name)) wasm += ts;
+      else if (/\.data(\b|\.|\?|$)/.test(e.name)) data += ts;
+      else if (/\.framework\.js|loader\.js|\.js(\.|\b|\?|$)/.test(e.name)) framework += ts;
+    }
+    return {
+      ttff: window['__TTFF__'],
+      firstDrawCount: window['__firstDrawCount'] || 0,
+      domContentLoaded: navEntry.domContentLoadedEventEnd || null,
+      loadEvent: navEntry.loadEventEnd || null,
+      onWire: { wasm, data, framework, total },
+    };
+  });
+
+  // 게임 화면이 실제로 보이기 시작한 시각: 첫 draw 와 오버레이 숨김 중 늦은 쪽.
+  // 오버레이가 걷힐 때까지 기다린다(템플릿 상한은 인스턴스 준비 + 500ms). 오버레이가 없는 빌드는 null 로 남는다.
+  let overlayHidden = null;
+  if (gotDraw) {
+    await page.waitForFunction(() => window['__overlayHidden__'] !== null, { timeout: 5000 }).catch(() => {});
+    overlayHidden = await page.evaluate(() => window['__overlayHidden__']);
+  }
+  const firstVisible = (typeof metrics.ttff === 'number' && typeof overlayHidden === 'number')
+    ? Math.max(metrics.ttff, overlayHidden)
+    : null;
+  return { ...metrics, firstVisible, unityReady };
+}
+
+/**
+ * 재방문 측정 전에 페이지 캐시 저장이 끝나기를 기다린다. 캐시가 꺼진 빌드는 기다릴 신호가 없으므로
+ * 상한까지만 기다리고 그대로 잰다(그 경우 warm 값은 네트워크 재다운로드를 포함한다).
+ */
+async function waitForCachePuts(page) {
+  await page.waitForFunction(() => {
+    const s = window['__aitCacheStats'];
+    return !!s && Array.isArray(s.puts) && s.puts.length >= 2;
+  }, { timeout: 15000 }).catch(() => {});
+  await page.waitForTimeout(500);
+}
+
+/**
+ * 반복 1회 측정 (콜드 캐시 새 BrowserContext + 동일 CDP 스로틀). A/B 공용 — 페어 모드에서는
+ * 이 함수를 A/B 각각의 url 로 호출해 같은 로직으로 공정하게 잰다.
+ * PERF_WARM 이 켜져 있으면 같은 컨텍스트에서 한 번 더 열어 재방문(warm) 값도 잰다.
+ */
+async function measureIteration(browser, url, iter, label) {
+  const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+  await context.addInitScript(TTFF_INIT_SCRIPT);
+  const page = await openThrottledPage(context);
+
   const navStart = Date.now();
   try {
-    const resp = await page.goto(url, { waitUntil: 'commit', timeout: 120000 });
-    expect(resp?.status(), 'navigation should return 200').toBe(200);
-
-    // 첫 화면 draw 대기 (= TTFF). 미검출 시 unityInstance ready로 폴백.
-    const gotDraw = await page.waitForFunction(
-      () => window['__TTFF__'] !== null,
-      { timeout: 480000 }
-    ).then(() => true).catch(() => false);
-
-    if (!gotDraw) {
-      // 폴백: Unity 인스턴스 준비라도 확인 (측정은 무효 처리하되 진단 기록)
-      await page.waitForFunction(() => window['unityInstance'] !== undefined, { timeout: 60000 })
-        .then(() => { unityReady = true; })
-        .catch(() => { unityReady = false; });
-    }
-
-    const metrics = await page.evaluate(() => {
-      const navEntry = performance.getEntriesByType('navigation')[0] || {};
-      const res = performance.getEntriesByType('resource');
-      let wasm = 0, data = 0, total = 0, framework = 0;
-      for (const e of res) {
-        const ts = e.transferSize || 0;
-        total += ts;
-        if (/\.wasm(\b|\.|\?|$)/.test(e.name)) wasm += ts;
-        else if (/\.data(\b|\.|\?|$)/.test(e.name)) data += ts;
-        else if (/\.framework\.js|loader\.js|\.js(\.|\b|\?|$)/.test(e.name)) framework += ts;
-      }
-      return {
-        ttff: window['__TTFF__'],
-        firstDrawCount: window['__firstDrawCount'] || 0,
-        domContentLoaded: navEntry.domContentLoadedEventEnd || null,
-        loadEvent: navEntry.loadEventEnd || null,
-        onWire: { wasm, data, framework, total },
-      };
-    });
-
-    ttff = metrics.ttff;
-    drawCount = metrics.firstDrawCount;
+    const metrics = await measureLoad(page, url);
+    const ttff = metrics.ttff;
 
     const sample = {
       iteration: iter,
       ttffMs: ttff,
-      unityReady,
-      firstDrawCount: drawCount,
+      firstVisibleMs: metrics.firstVisible,
+      unityReady: metrics.unityReady,
+      firstDrawCount: metrics.firstDrawCount,
       domContentLoadedMs: metrics.domContentLoaded,
       loadEventMs: metrics.loadEvent,
       onWireBytes: metrics.onWire,
@@ -321,8 +372,29 @@ async function measureIteration(browser, url, iter, label) {
     // 페어 모드 전용 필드 — 단일 모드 결과 JSON 스키마는 기존과 완전히 동일해야 하므로 반드시 가드 안에서만 추가.
     if (PAIR_MODE) sample.label = label;
 
+    let warmNote = '';
+    if (MEASURE_WARM && typeof ttff === 'number') {
+      try {
+        await waitForCachePuts(page);
+        await page.close();
+        const warmPage = await openThrottledPage(context);
+        const warm = await measureLoad(warmPage, url);
+        sample.warm = {
+          ttffMs: warm.ttff,
+          firstVisibleMs: warm.firstVisible,
+          onWireBytes: warm.onWire,
+        };
+        warmNote = ` warm=${typeof warm.ttff === 'number' ? warm.ttff.toFixed(0) + 'ms' : 'N/A'}` +
+          `(${((warm.onWire.wasm + warm.onWire.data) / 1048576).toFixed(2)}MB)`;
+      } catch (e) {
+        // warm 측정 실패는 cold 결과를 무효로 만들지 않는다.
+        console.warn(`  warm 측정 실패(iter ${iter + 1}): ${e && e.message}`);
+      }
+    }
+
     console.log(`  iter ${iter + 1}/${ITERATIONS}${PAIR_MODE ? ` [${label}]` : ''}: TTFF=${ttff !== null ? ttff.toFixed(0) + 'ms' : 'N/A'} ` +
-      `wasm=${(metrics.onWire.wasm / 1048576).toFixed(2)}MB data=${(metrics.onWire.data / 1048576).toFixed(2)}MB`);
+      `visible=${metrics.firstVisible !== null ? metrics.firstVisible.toFixed(0) + 'ms' : 'N/A'} ` +
+      `wasm=${(metrics.onWire.wasm / 1048576).toFixed(2)}MB data=${(metrics.onWire.data / 1048576).toFixed(2)}MB${warmNote}`);
 
     return sample;
   } finally {
@@ -336,6 +408,13 @@ function summarize(samples, projectPath) {
   const wasmValues = samples.map(s => s.onWireBytes?.wasm).filter(v => typeof v === 'number' && v > 0);
   const dataValues = samples.map(s => s.onWireBytes?.data).filter(v => typeof v === 'number' && v > 0);
   const totalValues = samples.map(s => s.onWireBytes?.total).filter(v => typeof v === 'number' && v > 0);
+  const visibleValues = samples.map(s => s.firstVisibleMs).filter(v => typeof v === 'number' && v > 0);
+  const warmTtffValues = samples.map(s => s.warm?.ttffMs).filter(v => typeof v === 'number' && v > 0);
+  const warmVisibleValues = samples.map(s => s.warm?.firstVisibleMs).filter(v => typeof v === 'number' && v > 0);
+  // warm 전송량은 0 이 정상값(캐시 서빙)이라 0 을 걸러내지 않는다.
+  const warmCodeDataValues = samples
+    .filter(s => s.warm?.onWireBytes)
+    .map(s => (s.warm.onWireBytes.wasm || 0) + (s.warm.onWireBytes.data || 0));
 
   return {
     schemaVersion: 1,
@@ -353,6 +432,11 @@ function summarize(samples, projectPath) {
     },
     iterations: ITERATIONS,
     ttffMs: { median: median(ttffValues), values: ttffValues },
+    // 아래 세 항목은 추가 지표다(없던 시절의 baseline JSON 에는 없다 — 소비 측은 부재를 허용해야 한다).
+    firstVisibleMs: { median: median(visibleValues), values: visibleValues },
+    warmTtffMs: { median: median(warmTtffValues), values: warmTtffValues },
+    warmFirstVisibleMs: { median: median(warmVisibleValues), values: warmVisibleValues },
+    warmCodeDataBytes: { median: median(warmCodeDataValues), values: warmCodeDataValues },
     onWireBytes: {
       wasm: { median: median(wasmValues) },
       data: { median: median(dataValues) },
@@ -501,6 +585,9 @@ test('TTFF 실측 (median-of-N, record-only)', async ({ browser }) => {
   console.log('━'.repeat(72));
   console.log(`  TTFF median:      ${resultA.ttffMs.median !== null ? resultA.ttffMs.median.toFixed(0) + ' ms' : 'N/A'} ` +
     `(${resultA.ttffMs.values.length}/${ITERATIONS} valid)`);
+  console.log(`  화면 노출 median: ${resultA.firstVisibleMs.median !== null ? resultA.firstVisibleMs.median.toFixed(0) + ' ms' : 'N/A'}`);
+  console.log(`  재방문 TTFF:      ${resultA.warmTtffMs.median !== null ? resultA.warmTtffMs.median.toFixed(0) + ' ms' : 'N/A'} ` +
+    `(data+wasm 전송 ${resultA.warmCodeDataBytes.median !== null ? (resultA.warmCodeDataBytes.median / 1048576).toFixed(2) + ' MB' : 'N/A'})`);
   console.log(`  on-wire wasm:     ${resultA.onWireBytes.wasm.median ? (resultA.onWireBytes.wasm.median / 1048576).toFixed(2) + ' MB' : 'N/A'}`);
   console.log(`  on-wire data:     ${resultA.onWireBytes.data.median ? (resultA.onWireBytes.data.median / 1048576).toFixed(2) + ' MB' : 'N/A'}`);
   console.log(`  on-wire total:    ${resultA.onWireBytes.total.median ? (resultA.onWireBytes.total.median / 1048576).toFixed(2) + ' MB' : 'N/A'}`);

@@ -312,7 +312,7 @@ jobs:
           # 기존 perf 코멘트가 있으면 PATCH(upsert) — synchronize마다 새 코멘트 스팸 방지.
           # REST만 사용(GraphQL 미사용).
           EXISTING_ID=$(gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" --paginate \
-            --jq "map(select(.body | contains(\"${MARKER}\"))) | .[0].id // empty" 2>/dev/null || echo "")
+            --jq "map(select(.body | contains(\"${MARKER}\"))) | .[0].id // empty" 2>/dev/null) || EXISTING_ID=""
 
           if [ -n "$EXISTING_ID" ]; then
             gh api "repos/${REPO}/issues/comments/${EXISTING_ID}" \

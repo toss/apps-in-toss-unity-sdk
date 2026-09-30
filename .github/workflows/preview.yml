@@ -46,7 +46,7 @@ jobs:
             echo "PR 번호로 감지: #${PR_NUMBER}"
 
             # PR에서 브랜치와 저장소 가져오기
-            PR_DATA=$(gh api "repos/${{ github.repository }}/pulls/${PR_NUMBER}" --jq '{ref: .head.ref, repo: .head.repo.full_name}' 2>/dev/null || echo "")
+            PR_DATA=$(gh api "repos/${{ github.repository }}/pulls/${PR_NUMBER}" --jq '{ref: .head.ref, repo: .head.repo.full_name}' 2>/dev/null) || PR_DATA=""
 
             if [ -z "$PR_DATA" ]; then
               echo "::error::PR #${PR_NUMBER}을(를) 찾을 수 없습니다"
@@ -146,7 +146,9 @@ jobs:
         run: |
           REF="${{ needs.parse-targets.outputs.ref }}"
           REPO="${{ needs.parse-targets.outputs.repository }}"
-          SHA=$(gh api "repos/${REPO}/git/ref/heads/${REF}" --jq '.object.sha' 2>/dev/null || echo "")
+          # gh api는 HTTP 오류 때 응답 본문(JSON)을 stdout에 쓴다. `|| echo ""`를 괄호 안에 두면 그 JSON이
+          # SHA에 남아 아래 빈 값 검사를 통과한다(실행 중 브랜치가 머지·삭제되면 404로 발생).
+          SHA=$(gh api "repos/${REPO}/git/ref/heads/${REF}" --jq '.object.sha' 2>/dev/null) || SHA=""
 
           if [ -z "$SHA" ]; then
             echo "::warning::Could not get SHA for ref ${REF} in ${REPO}"
@@ -537,7 +539,9 @@ jobs:
         run: |
           REF="${{ needs.parse-targets.outputs.ref }}"
           REPO="${{ needs.parse-targets.outputs.repository }}"
-          SHA=$(gh api "repos/${REPO}/git/ref/heads/${REF}" --jq '.object.sha' 2>/dev/null || echo "")
+          # gh api는 HTTP 오류 때 응답 본문(JSON)을 stdout에 쓴다. `|| echo ""`를 괄호 안에 두면 그 JSON이
+          # SHA에 남아 아래 빈 값 검사를 통과한다(실행 중 브랜치가 머지·삭제되면 404로 발생).
+          SHA=$(gh api "repos/${REPO}/git/ref/heads/${REF}" --jq '.object.sha' 2>/dev/null) || SHA=""
 
           if [ -z "$SHA" ]; then
             echo "::warning::Could not get SHA for ref ${REF} in ${REPO}"

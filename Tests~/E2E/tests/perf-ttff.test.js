@@ -343,6 +343,18 @@ async function waitForCachePuts(page) {
   await page.waitForTimeout(500);
 }
 
+/** 재방문 측정 전체와 컨텍스트 정리의 벽시계 상한. 렌더러가 멈춘 러너에서 테스트 timeout 을 다 먹지 않게 한다. */
+const WARM_DEADLINE_MS = 120000;
+const CLOSE_DEADLINE_MS = 30000;
+
+function withDeadline(promise, ms, what) {
+  let timer;
+  const deadline = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${what}: ${ms}ms 상한 초과`)), ms);
+  });
+  return Promise.race([promise, deadline]).finally(() => clearTimeout(timer));
+}
+
 /**
  * 반복 1회 측정 (콜드 캐시 새 BrowserContext + 동일 CDP 스로틀). A/B 공용 — 페어 모드에서는
  * 이 함수를 A/B 각각의 url 로 호출해 같은 로직으로 공정하게 잰다.
@@ -375,10 +387,12 @@ async function measureIteration(browser, url, iter, label) {
     let warmNote = '';
     if (MEASURE_WARM && typeof ttff === 'number') {
       try {
-        await waitForCachePuts(page);
-        await page.close();
-        const warmPage = await openThrottledPage(context);
-        const warm = await measureLoad(warmPage, url);
+        const warm = await withDeadline((async () => {
+          await waitForCachePuts(page);
+          await page.close();
+          const warmPage = await openThrottledPage(context);
+          return measureLoad(warmPage, url);
+        })(), WARM_DEADLINE_MS, 'warm 측정');
         sample.warm = {
           ttffMs: warm.ttff,
           firstVisibleMs: warm.firstVisible,
@@ -398,7 +412,8 @@ async function measureIteration(browser, url, iter, label) {
 
     return sample;
   } finally {
-    await context.close();
+    await withDeadline(context.close(), CLOSE_DEADLINE_MS, 'context.close')
+      .catch(e => console.warn(`  컨텍스트 정리 실패(iter ${iter + 1}): ${e.message}`));
   }
 }
 

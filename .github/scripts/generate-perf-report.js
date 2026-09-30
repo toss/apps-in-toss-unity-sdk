@@ -231,6 +231,25 @@ function generateReport(data, meta) {
     md += "\n";
   }
 
+  // ===== 화면 노출 · 재방문 표 (해당 필드가 없는 구버전 결과면 섹션을 추가하지 않음) =====
+  const hasVisible = (r) => r?.firstVisibleMs?.median != null || r?.warmTtffMs?.median != null;
+  if (UNITY_VERSIONS.some((v) => hasVisible(data[v]?.current))) {
+    md += "### 👁️ 화면 노출 · 재방문\n\n";
+    md += "> 화면 노출 = 로딩 오버레이가 사라진 시각. 재방문 = 캐시가 채워진 뒤 새 페이지로 다시 연 측정.\n\n";
+    md += "| Unity | 빌드 | 화면 노출 | 재방문 TTFF | 재방문 화면 노출 | 재방문 data+wasm 전송 |\n";
+    md += "|:------|:-----|----------:|------------:|-----------------:|----------------------:|\n";
+    for (const v of UNITY_VERSIONS) {
+      const cur = data[v]?.current;
+      const rows = [[cur?.pairing?.labelA ?? "현재", cur], [cur?.pairing?.labelB ?? "B", data[v]?.pairB]];
+      for (const [label, r] of rows) {
+        if (!hasVisible(r)) continue;
+        md += `| ${v} | ${label} | ${fmtMs(r.firstVisibleMs?.median)} | ${fmtMs(r.warmTtffMs?.median)} | ` +
+          `${fmtMs(r.warmFirstVisibleMs?.median)} | ${fmtMB(r.warmCodeDataBytes?.median)} |\n`;
+      }
+    }
+    md += "\n";
+  }
+
   // ===== on-wire 바이트 표 =====
   md += "### 📦 On-wire 전송 바이트 (transferSize median)\n\n";
   md += "| Unity | wasm | data | total | Δ total vs main |\n";

@@ -7,6 +7,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.Text;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.Scripting;
@@ -137,13 +139,7 @@ namespace AppsInToss
 
             try
             {
-                var eventLogParams = new EventLogParams
-                {
-                    Log_name = logName,
-                    Log_type = "unity_runtime",
-                    Params = parameters
-                };
-                __AITDebugLog_Send(AITJsonSettings.Serialize(eventLogParams));
+                __AITDebugLog_Send(BuildLogJson(logName, parameters));
             }
             catch (Exception ex)
             {
@@ -154,6 +150,125 @@ namespace AppsInToss
                 _isSending = false;
             }
 #endif
+        }
+
+        private const string RuntimeLogType = "unity_runtime";
+
+        /// <summary>
+        /// 로그 페이로드(<see cref="EventLogParams"/> 와 같은 모양)를 JSON 문자열로 만든다.
+        /// </summary>
+        /// <remarks>
+        /// 부팅 첫 씬의 scene_loaded 로그는 첫 프레임 전에 나간다. 여기서 Newtonsoft 를 처음 쓰면
+        /// 리플렉션으로 계약을 만드는 비용이 그대로 TTFF 에 얹히므로(6000.3 CPU 4x 기준 약 87ms)
+        /// 이 로거가 쓰는 값 형식은 직접 쓴다. 모르는 형식이 섞이면 Newtonsoft 로 넘긴다.
+        /// </remarks>
+        internal static string BuildLogJson(string logName, Dictionary<string, object> parameters)
+        {
+            var sb = new StringBuilder(256);
+            sb.Append("{\"log_name\":");
+            AppendJsonString(sb, logName);
+            sb.Append(",\"log_type\":\"").Append(RuntimeLogType).Append("\",\"params\":");
+            if (!TryAppendJsonValue(sb, parameters))
+            {
+                return AITJsonSettings.Serialize(new EventLogParams
+                {
+                    Log_name = logName,
+                    Log_type = RuntimeLogType,
+                    Params = parameters
+                });
+            }
+            sb.Append('}');
+            return sb.ToString();
+        }
+
+        private static bool TryAppendJsonValue(StringBuilder sb, object value)
+        {
+            switch (value)
+            {
+                case null:
+                    sb.Append("null");
+                    return true;
+                case string s:
+                    AppendJsonString(sb, s);
+                    return true;
+                case bool b:
+                    sb.Append(b ? "true" : "false");
+                    return true;
+                case int i:
+                    sb.Append(i.ToString(CultureInfo.InvariantCulture));
+                    return true;
+                case long l:
+                    sb.Append(l.ToString(CultureInfo.InvariantCulture));
+                    return true;
+                case double d:
+                    if (double.IsNaN(d) || double.IsInfinity(d)) return false;
+                    AppendJsonFloat(sb, d.ToString("R", CultureInfo.InvariantCulture));
+                    return true;
+                case float f:
+                    if (float.IsNaN(f) || float.IsInfinity(f)) return false;
+                    AppendJsonFloat(sb, f.ToString("R", CultureInfo.InvariantCulture));
+                    return true;
+                case Dictionary<string, object> dict:
+                    sb.Append('{');
+                    bool first = true;
+                    foreach (var kv in dict)
+                    {
+                        if (!first) sb.Append(',');
+                        first = false;
+                        AppendJsonString(sb, kv.Key);
+                        sb.Append(':');
+                        if (!TryAppendJsonValue(sb, kv.Value)) return false;
+                    }
+                    sb.Append('}');
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        // Newtonsoft 와 같게 정수로 떨어지는 실수에도 소수점을 남긴다(1 -> 1.0).
+        private static void AppendJsonFloat(StringBuilder sb, string text)
+        {
+            sb.Append(text);
+            if (text.IndexOf('.') < 0 && text.IndexOf('E') < 0 && text.IndexOf('e') < 0)
+            {
+                sb.Append(".0");
+            }
+        }
+
+        private static void AppendJsonString(StringBuilder sb, string value)
+        {
+            if (value == null)
+            {
+                sb.Append("null");
+                return;
+            }
+
+            sb.Append('"');
+            foreach (char c in value)
+            {
+                switch (c)
+                {
+                    case '"': sb.Append("\\\""); break;
+                    case '\\': sb.Append("\\\\"); break;
+                    case '\b': sb.Append("\\b"); break;
+                    case '\f': sb.Append("\\f"); break;
+                    case '\n': sb.Append("\\n"); break;
+                    case '\r': sb.Append("\\r"); break;
+                    case '\t': sb.Append("\\t"); break;
+                    default:
+                        if (c < ' ' || c == '\u0085' || c == '\u2028' || c == '\u2029')
+                        {
+                            sb.Append("\\u").Append(((int)c).ToString("x4", CultureInfo.InvariantCulture));
+                        }
+                        else
+                        {
+                            sb.Append(c);
+                        }
+                        break;
+                }
+            }
+            sb.Append('"');
         }
 
         // ---- 1. Scene Transition ----

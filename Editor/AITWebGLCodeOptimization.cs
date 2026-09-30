@@ -21,10 +21,9 @@ namespace AppsInToss.Editor
     ///   Unity 6에서 제거됨 → 직접 참조 시 컴파일 실패.
     /// 두 API의 enum 멤버명(DiskSizeLTO 등)이 동일하므로 멤버 "이름"으로 다룬다.
     ///
-    /// codeOptimization API는 있지만 enum에 DiskSizeLTO/DiskSize/Size가 모두 없는 버전에서만
+    /// codeOptimization API는 있지만 enum에 DiskSizeLTO/DiskSize/Speed가 모두 없는 버전에서만
     /// fail-safe로 동작한다 — 설정을 건너뛰고 경고만 남기며 빌드는 계속된다(해당 버전에서 LTO 이득만 없음).
-    /// 2021.3의 레거시 WebGLCodeOptimization={Speed,Size}은 DiskSizeLTO/DiskSize는 없지만
-    /// Size는 있어 3순위 폴백으로 커버된다(아래 SizeFallback 참고).
+    /// 2021.3의 레거시 WebGLCodeOptimization={Speed,Size}에는 Speed를 적용한다(아래 LegacySpeed 참고).
     /// </summary>
     internal static class AITWebGLCodeOptimization
     {
@@ -38,15 +37,17 @@ namespace AppsInToss.Editor
         internal const string DiskSizeFallback = "DiskSize";
 
         /// <summary>
-        /// DiskSizeLTO/DiskSize 둘 다 미지원인 버전(2021.3 레거시)용 2차 폴백 멤버 이름.
-        /// 근거: 2021.3의 PlayerSettings.WebGL.codeOptimization은 별도 레거시 enum
-        /// WebGLCodeOptimization={Speed,Size}를 쓴다(2feeb437에서 실측 확인, 테스트 파일 참고).
-        /// 이 enum의 "Size"는 "코드 크기를 우선해 최적화"라는 동일한 방향성을 가지므로
-        /// 6000.x의 "DiskSize"(LTO 없는 disk-size 최적화)와 의미상 동치로 본다.
-        /// 2022.3+는 UserBuildSettings.codeOptimization(WasmCodeOptimization) enum에
-        /// DiskSizeLTO가 이미 정의되어 있어 1순위에서 매칭되고 이 3순위까지 내려오지 않는다.
+        /// DiskSizeLTO/DiskSize 둘 다 미지원인 버전(2021.3 레거시 enum WebGLCodeOptimization={Speed,Size})에
+        /// 적용하는 멤버 이름. 이 enum 에서는 크기 쪽(Size)이 아니라 속도 쪽(Speed, Unity 기본값)을 고른다.
+        /// perf 벤치(Heavy 픽스처, 페어 A/B)에서 Size 는 gzip wasm 을 0.39MB 줄이는 대신 엔진 초기화 CPU 가
+        /// 늘어, CPU 4x·100Mbps 에서 첫 실행 TTFF 약 250ms·재방문 약 150ms, CPU 6x·20Mbps 에서 첫 실행
+        /// 약 340ms·재방문 약 500ms 느렸다. Unity 6 의 DiskSizeLTO 는 같은 비교에서 반대로 이겼으므로
+        /// 1·2순위는 그대로 둔다.
         /// </summary>
-        internal const string SizeFallback = "Size";
+        internal const string LegacySpeed = "Speed";
+
+        /// <summary>레거시 enum 판별용 멤버 이름(2021.3 WebGLCodeOptimization 의 크기 우선 값).</summary>
+        internal const string LegacySize = "Size";
 
         private static bool _resolved;
         private static PropertyInfo _prop;
@@ -97,7 +98,7 @@ namespace AppsInToss.Editor
 
         /// <summary>
         /// 지정한 멤버 이름이 현재 resolved enum에 정의되어 있는지.
-        /// 버전별 폴백 우선순위(DiskSizeLTO/DiskSize/Size)를 구분해야 하는 테스트가 사용한다.
+        /// 버전별 사다리(DiskSizeLTO/DiskSize/레거시 Speed)를 구분해야 하는 테스트가 사용한다.
         /// </summary>
         internal static bool IsMemberDefined(string name)
         {
@@ -107,12 +108,16 @@ namespace AppsInToss.Editor
         }
 
         /// <summary>
-        /// resolved된 codeOptimization enum이 DiskSizeLTO/DiskSize/Size 중 하나라도 정의하는지.
-        /// 이 셋이 모두 없는 버전에서만 TrySetDiskSizeLTO()가 설계상 false(fail-safe skip)를
+        /// resolved된 codeOptimization enum이 사다리 대상(DiskSizeLTO/DiskSize/레거시 Speed·Size) 중
+        /// 하나라도 정의하는지. 모두 없는 버전에서만 TrySetDiskSizeLTO()가 설계상 false(fail-safe skip)를
         /// 반환한다. 이 경우를 구분해야 하는 호출자/테스트가 사용한다.
         /// </summary>
-        internal static bool SupportsDiskSizeMember =>
-            IsMemberDefined(DiskSizeLTO) || IsMemberDefined(DiskSizeFallback) || IsMemberDefined(SizeFallback);
+        internal static bool SupportsLadderMember =>
+            IsMemberDefined(DiskSizeLTO) || IsMemberDefined(DiskSizeFallback) || IsLegacyEnum;
+
+        /// <summary>2021.3 레거시 enum(WebGLCodeOptimization={Speed,Size})인지.</summary>
+        internal static bool IsLegacyEnum =>
+            !IsMemberDefined(DiskSizeFallback) && IsMemberDefined(LegacySpeed) && IsMemberDefined(LegacySize);
 
         /// <summary>현재 값의 enum 멤버 이름. API 부재 시 null.</summary>
         public static string GetCurrentName()
@@ -157,13 +162,13 @@ namespace AppsInToss.Editor
         /// <summary>
         /// DiskSizeLTO(disk-size 최적화 + cross-module LTO)를 적용한다.
         /// DiskSizeLTO 멤버가 이 Unity 버전의 enum에 없으면 DiskSize(LTO 없는 disk-size)로,
-        /// 그마저 없으면(2021.3 레거시) Size로 폴백한다.
+        /// 그마저 없는 2021.3 레거시 enum 에서는 Speed 를 적용한다(<see cref="LegacySpeed"/> 참고).
         /// 세 멤버 모두 없거나 API 자체가 없으면 false를 반환하고 호출자가 경고를 남긴다.
         ///
         /// Sentry APPS-IN-TOSS-UNITY-SDK-10W: DiskSizeLTO 미정의 버전에서 경고만 남기고
         /// 설정을 완전 건너뛰던 동작을 DiskSize 폴백으로 개선.
-        /// 2021.3(레거시 WebGLCodeOptimization={Speed,Size})은 DiskSize도 없어 이 개선의
-        /// 사각지대로 남아 있었다 — Size 3순위 폴백으로 추가 커버.
+        /// 2021.3(레거시 WebGLCodeOptimization={Speed,Size})은 DiskSize도 없어 한때 Size 로 폴백했으나,
+        /// 측정 결과 로드가 느려져 Speed 로 바꿨다.
         ///
         /// 기존 공개 시그니처는 유지한다 — 사다리 1순위(DiskSizeLTO)부터 시도하는
         /// <see cref="TrySetBestAvailable"/>(allowLto: true)로 위임.
@@ -172,7 +177,7 @@ namespace AppsInToss.Editor
 
         /// <summary>
         /// codeOptimization 사다리를 적용한다. allowLto가 false면 1순위(DiskSizeLTO)를 건너뛰고
-        /// 2순위(DiskSize, LTO 없는 disk-size 최적화)부터 3순위(Size, 2021.3 레거시)로만 폴백한다.
+        /// 2순위(DiskSize, LTO 없는 disk-size 최적화)부터 3순위(2021.3 레거시 enum 의 Speed)로만 폴백한다.
         ///
         /// Unity 6000.0.x의 emscripten 툴체인은 대형 프로젝트 whole-program LTO 링크에서
         /// wasm-ld가 빌드 머신 메모리를 초과해 OOM(SIGKILL)을 낼 수 있다(OOM 원인은 LTO 링크이지
@@ -197,12 +202,12 @@ namespace AppsInToss.Editor
                 return TrySetByName(DiskSizeFallback);
             }
 
-            // 3순위: Size (2021.3 레거시 enum 전용, DiskSize와 의미상 동치인 크기 우선 최적화)
-            if (Enum.IsDefined(p.PropertyType, SizeFallback))
+            // 3순위: 2021.3 레거시 enum 은 Speed. 이 enum 의 Size 는 크기 이득보다 초기화 CPU 손해가 커서 쓰지 않는다.
+            if (Enum.IsDefined(p.PropertyType, LegacySpeed) && Enum.IsDefined(p.PropertyType, LegacySize))
             {
                 Debug.Log(
-                    $"[AIT] WebGL codeOptimization: '{DiskSizeLTO}'/'{DiskSizeFallback}' 미지원 버전 — '{SizeFallback}'(폴백) 적용");
-                return TrySetByName(SizeFallback);
+                    $"[AIT] WebGL codeOptimization: '{DiskSizeLTO}'/'{DiskSizeFallback}' 미지원 레거시 버전 — '{LegacySpeed}' 적용(Size 는 로드가 더 느림)");
+                return TrySetByName(LegacySpeed);
             }
 
             // 셋 다 없는 경우: 호출자가 별도 경고를 남기므로 여기서는 false만 반환

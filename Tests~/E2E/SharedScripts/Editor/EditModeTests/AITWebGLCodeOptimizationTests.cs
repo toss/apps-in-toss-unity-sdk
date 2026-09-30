@@ -77,7 +77,7 @@ public class AITWebGLCodeOptimizationTests
         // 자체가 없으므로 "true 반환" 계약을 요구할 수 없다 → 별도 fail-safe 동작으로 보고 Ignore.
         // (IsSupported만으로는 이 버전을 걸러내지 못한다 — codeOptimization API 자체는 있고
         // IsSupported==true이나 세 멤버가 전부 없는 경우가 이론상 존재할 수 있다.)
-        if (!AITWebGLCodeOptimization.SupportsDiskSizeMember)
+        if (!AITWebGLCodeOptimization.SupportsLadderMember)
         {
             Assert.Ignore("이 Unity 버전의 codeOptimization enum에는 DiskSizeLTO/DiskSize/Size가 없어 폴백 대상이 아닙니다.");
             return;
@@ -99,10 +99,10 @@ public class AITWebGLCodeOptimizationTests
             bool isBestAvailable =
                 after == AITWebGLCodeOptimization.DiskSizeLTO ||
                 after == AITWebGLCodeOptimization.DiskSizeFallback ||
-                after == AITWebGLCodeOptimization.SizeFallback;
+                after == AITWebGLCodeOptimization.LegacySpeed;
             Assert.IsTrue(isBestAvailable,
                 $"TrySetDiskSizeLTO 적용 후 값은 '{AITWebGLCodeOptimization.DiskSizeLTO}', " +
-                $"'{AITWebGLCodeOptimization.DiskSizeFallback}', '{AITWebGLCodeOptimization.SizeFallback}' 중 " +
+                $"'{AITWebGLCodeOptimization.DiskSizeFallback}', '{AITWebGLCodeOptimization.LegacySpeed}' 중 " +
                 $"하나여야 합니다. 실제: '{after}'");
         }
         finally
@@ -115,14 +115,12 @@ public class AITWebGLCodeOptimizationTests
 
     /// <summary>
     /// 2021.3 레거시 enum(WebGLCodeOptimization={Speed,Size})처럼 DiskSizeLTO/DiskSize가 둘 다
-    /// 없고 Size만 있는 버전에서 TrySetDiskSizeLTO가 3순위 Size 폴백을 적용하는지 검증한다.
-    /// 이 경로가 회귀 대상 버그였다 — 이전에는 Size가 폴백 후보에 없어 2021.3에서
-    /// codeOptimization이 전혀 반영되지 않았다.
-    /// 실행 중인 Unity의 resolved enum이 이 조건(DiskSizeLTO 없음, DiskSize 없음, Size 있음)을
-    /// 만족할 때만 실행되고, 그 외(예: 2022.3+)에서는 Ignore.
+    /// 없는 버전에서 TrySetDiskSizeLTO가 Size 가 아니라 Speed 를 적용하는지 검증한다.
+    /// 이 enum 의 Size 는 perf 벤치에서 첫 실행·재방문 모두 Speed 보다 느렸다(LegacySpeed 주석 참고).
+    /// 실행 중인 Unity의 resolved enum이 레거시 조건을 만족할 때만 실행되고, 그 외(예: 2022.3+)에서는 Ignore.
     /// </summary>
     [Test]
-    public void TrySetDiskSizeLTO_WhenOnlyLegacySizeDefined_FallsBackToSizeAndLogs()
+    public void TrySetDiskSizeLTO_OnLegacyEnum_AppliesSpeedAndLogs()
     {
         if (!AITWebGLCodeOptimization.IsSupported)
         {
@@ -130,14 +128,10 @@ public class AITWebGLCodeOptimizationTests
             return;
         }
 
-        bool hasDiskSizeLTO = AITWebGLCodeOptimization.IsMemberDefined(AITWebGLCodeOptimization.DiskSizeLTO);
-        bool hasDiskSize = AITWebGLCodeOptimization.IsMemberDefined(AITWebGLCodeOptimization.DiskSizeFallback);
-        bool hasSize = AITWebGLCodeOptimization.IsMemberDefined(AITWebGLCodeOptimization.SizeFallback);
-
-        if (hasDiskSizeLTO || hasDiskSize || !hasSize)
+        if (AITWebGLCodeOptimization.IsMemberDefined(AITWebGLCodeOptimization.DiskSizeLTO) ||
+            !AITWebGLCodeOptimization.IsLegacyEnum)
         {
-            Assert.Ignore(
-                "이 Unity 버전은 2021.3 레거시 enum(Size만 정의) 조건이 아니어서 3순위 폴백 경로를 검증할 수 없습니다.");
+            Assert.Ignore("이 Unity 버전은 2021.3 레거시 enum({Speed,Size}) 조건이 아니어서 레거시 경로를 검증할 수 없습니다.");
             return;
         }
 
@@ -145,14 +139,17 @@ public class AITWebGLCodeOptimizationTests
 
         try
         {
+            // 시작 값을 Size 로 두어 실제로 Speed 로 바뀌는지 본다.
+            AITWebGLCodeOptimization.TrySetByName(AITWebGLCodeOptimization.LegacySize);
+
             LogAssert.Expect(LogType.Log, new Regex(
-                @"\[AIT\] WebGL codeOptimization: 'DiskSizeLTO'/'DiskSize' 미지원 버전 — 'Size'\(폴백\) 적용"));
+                @"\[AIT\] WebGL codeOptimization: 'DiskSizeLTO'/'DiskSize' 미지원 레거시 버전 — 'Speed' 적용"));
 
             bool result = AITWebGLCodeOptimization.TrySetDiskSizeLTO();
 
-            Assert.IsTrue(result, "DiskSizeLTO/DiskSize가 없고 Size만 있으면 Size 폴백이 적용되어 true를 반환해야 합니다.");
-            Assert.AreEqual(AITWebGLCodeOptimization.SizeFallback, AITWebGLCodeOptimization.GetCurrentName(),
-                "적용 후 현재 값은 Size여야 합니다.");
+            Assert.IsTrue(result, "레거시 enum 에서는 Speed 가 적용되어 true를 반환해야 합니다.");
+            Assert.AreEqual(AITWebGLCodeOptimization.LegacySpeed, AITWebGLCodeOptimization.GetCurrentName(),
+                "적용 후 현재 값은 Speed여야 합니다.");
         }
         finally
         {
@@ -175,7 +172,7 @@ public class AITWebGLCodeOptimizationTests
         }
 
         // 테스트 전제 "DiskSizeLTO 정의됨"을 실제로 확인 — 2021.3처럼 DiskSizeLTO/DiskSize 가
-        // 없는 버전은 Size 폴백이 적용되어 result=true 여도 값이 DiskSizeLTO 가 아니다
+        // 없는 버전은 레거시 Speed 가 적용되어 result=true 여도 값이 DiskSizeLTO 가 아니다
         // (폴백 경로는 위 폴백 전용 테스트가 검증).
         if (!AITWebGLCodeOptimization.IsMemberDefined(AITWebGLCodeOptimization.DiskSizeLTO))
         {

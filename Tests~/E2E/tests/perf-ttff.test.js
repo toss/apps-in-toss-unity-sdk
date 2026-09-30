@@ -347,6 +347,11 @@ async function waitForCachePuts(page) {
 const WARM_DEADLINE_MS = 120000;
 const CLOSE_DEADLINE_MS = 30000;
 
+// 테스트 timeout 과 집계·서버 정리에 남겨 둘 여유. 느린 러너에서는 반복·재방문 측정을 줄여 timeout 전에 집계한다.
+const TEST_TIMEOUT_MS = PAIR_MODE ? 1190000 : 590000;
+const SUMMARY_RESERVE_MS = 60000;
+let testDeadlineAt = Infinity;
+
 function withDeadline(promise, ms, what) {
   let timer;
   const deadline = new Promise((_, reject) => {
@@ -385,7 +390,11 @@ async function measureIteration(browser, url, iter, label) {
     if (PAIR_MODE) sample.label = label;
 
     let warmNote = '';
-    if (MEASURE_WARM && typeof ttff === 'number') {
+    const warmFits = Date.now() + WARM_DEADLINE_MS + CLOSE_DEADLINE_MS < testDeadlineAt;
+    if (MEASURE_WARM && typeof ttff === 'number' && !warmFits) {
+      console.warn(`  warm 측정 생략(iter ${iter + 1}): 테스트 시간 예산 부족`);
+    }
+    if (MEASURE_WARM && typeof ttff === 'number' && warmFits) {
       try {
         const warm = await withDeadline((async () => {
           await waitForCachePuts(page);
@@ -477,7 +486,9 @@ test.afterAll(async () => {
 test('TTFF 실측 (median-of-N, record-only)', async ({ browser }) => {
   // 무거운 빌드 + 스로틀 + N회 반복이므로 넉넉한 타임아웃 (config 600s와 정합).
   // 페어 모드는 한 테스트가 A/B 두 산출물을 인터리브로 재므로 시간 예산 2배(config 1200s와 정합).
-  test.setTimeout(PAIR_MODE ? 1190000 : 590000);
+  test.setTimeout(TEST_TIMEOUT_MS);
+  const testStart = Date.now();
+  testDeadlineAt = testStart + TEST_TIMEOUT_MS - SUMMARY_RESERVE_MS;
 
   expect(directoryExists(DIST_WEB), `dist/web/ should exist for perf measurement: ${DIST_WEB}`).toBe(true);
   if (PAIR_MODE) {
@@ -519,9 +530,17 @@ test('TTFF 실측 (median-of-N, record-only)', async ({ browser }) => {
   const samplesB = [];
   const order = [];
 
+  let slowestIterMs = 0;
   for (let iter = 0; iter < ITERATIONS; iter++) {
+    // 직전까지 가장 느렸던 반복이 남은 예산에 들어가지 않으면 여기서 멈추고 모은 샘플로 집계한다.
+    if (iter > 0 && Date.now() + slowestIterMs > testDeadlineAt) {
+      console.warn(`  시간 예산 부족: ${iter}/${ITERATIONS}회에서 측정 중단(가장 느린 반복 ${(slowestIterMs / 1000).toFixed(0)}s)`);
+      break;
+    }
+    const iterStart = Date.now();
     if (!PAIR_MODE) {
       samplesA.push(await measureIteration(browser, url, iter, LABEL_A));
+      slowestIterMs = Math.max(slowestIterMs, Date.now() - iterStart);
       continue;
     }
     // 순서 편향(브라우저/디스크 웜업) 상쇄: 반복마다 A→B / B→A 교대(짝수 i는 A 먼저)
@@ -534,6 +553,7 @@ test('TTFF 실측 (median-of-N, record-only)', async ({ browser }) => {
       samplesB.push(await measureIteration(browser, urlPair, iter, LABEL_B));
       samplesA.push(await measureIteration(browser, url, iter, LABEL_A));
     }
+    slowestIterMs = Math.max(slowestIterMs, Date.now() - iterStart);
   }
 
   // 집계 — A(이번 실행/기존 단일 측정과 동일한 결과 JSON)

@@ -48,6 +48,78 @@ test_e2e_validation() {
         fi
     done
 
+    # IsKnownNonSdkMessageTests partial 분할 구조 확인
+    echo ""
+    echo "Checking IsKnownNonSdkMessageTests partial structure..."
+
+    local ikns_dir="Tests~/E2E/SharedScripts/Editor/EditModeTests/ErrorTracker"
+    local ikns_files=("$ikns_dir"/IsKnownNonSdkMessageTests*.cs)
+
+    if [ ! -e "${ikns_files[0]}" ]; then
+        echo -e "  ${YELLOW}!${NC} IsKnownNonSdkMessageTests*.cs not found — skip"
+    else
+        local fixture_count=0
+        local testfixture_string_count=0
+        local ikns_ok=true
+
+        for f in "${ikns_files[@]}"; do
+            if grep -qE '^\[TestFixture\]' "$f"; then
+                fixture_count=$((fixture_count + 1))
+            fi
+
+            if grep -q 'TestFixture' "$f"; then
+                testfixture_string_count=$((testfixture_string_count + 1))
+            fi
+
+            if ! grep -q 'partial class IsKnownNonSdkMessageTests' "$f"; then
+                echo -e "    ${RED}✗${NC} $(basename "$f") missing 'partial class IsKnownNonSdkMessageTests' declaration"
+                all_found=false
+                ikns_ok=false
+            fi
+
+            if [ ! -f "$f.meta" ]; then
+                echo -e "    ${RED}✗${NC} $(basename "$f").meta not found"
+                all_found=false
+                ikns_ok=false
+            fi
+        done
+
+        if [ "$fixture_count" -ne 1 ]; then
+            echo -e "    ${RED}✗${NC} exactly one IsKnownNonSdkMessageTests*.cs must carry [TestFixture] (found: $fixture_count)"
+            all_found=false
+            ikns_ok=false
+        fi
+
+        # 문자열 "TestFixture" 자체(주석 포함)는 본 파일에만 있어야 함 — partial 파일이 이 리터럴을
+        # 담으면 grep -l '[TestFixture]' IsKnownNonSdkMessageTests*.cs 가 여러 파일을 잘못 반환한다.
+        if [ "$testfixture_string_count" -ne 1 ]; then
+            echo -e "    ${RED}✗${NC} literal string 'TestFixture' must appear in exactly one file (found in: $testfixture_string_count)"
+            all_found=false
+            ikns_ok=false
+        fi
+
+        # partial 파일에는 클래스 어트리뷰트([Category(...)] 등)를 달지 않는다
+        for f in "${ikns_files[@]}"; do
+            if [[ "$(basename "$f")" != "IsKnownNonSdkMessageTests.cs" ]] && grep -qE '^\[Category\(' "$f"; then
+                echo -e "    ${RED}✗${NC} $(basename "$f") must not carry a class-level [Category(...)] attribute"
+                all_found=false
+                ikns_ok=false
+            fi
+        done
+
+        # GUID 유일성 (meta 파일)
+        local guid_dupes=$(grep -h '^guid:' "$ikns_dir"/IsKnownNonSdkMessageTests*.cs.meta 2>/dev/null | sort | uniq -d)
+        if [ -n "$guid_dupes" ]; then
+            echo -e "    ${RED}✗${NC} duplicate .meta GUID(s) found among IsKnownNonSdkMessageTests*.cs.meta"
+            all_found=false
+            ikns_ok=false
+        fi
+
+        if [ "$ikns_ok" = true ] && [ "$fixture_count" -eq 1 ] && [ "$testfixture_string_count" -eq 1 ]; then
+            echo -e "  ${GREEN}✓${NC} IsKnownNonSdkMessageTests partial structure (${#ikns_files[@]} files, 1 [TestFixture], all partial + .meta, distinct GUIDs)"
+        fi
+    fi
+
     # Playwright 테스트 파일 확인
     echo ""
     echo "Checking Playwright test files..."

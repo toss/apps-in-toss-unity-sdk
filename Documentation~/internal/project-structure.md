@@ -75,7 +75,9 @@ Editor/
 │   ├── BuildConfigMerger.cs      플레이스홀더 치환과 사용자 파일 병합
 │   ├── GraniteBuildRunner.cs     granite 빌드 실행
 │   ├── PnpmInstallStateMarker.cs 설치 스킵 마커
-│   └── WebGLBuildCopier.cs
+│   ├── WebGLBuildCopier.cs             Unity WebGL 산출물을 ait-build 구조로 복사·가공 (partial: EarlyFetch/BuildFolder)
+│   ├── WebGLBuildCopier.EarlyFetch.cs  조기 fetch 스크립트 생성
+│   └── WebGLBuildCopier.BuildFolder.cs ait-build 폴더 정리
 └── Sentry/                     빌드 시 DSN 주입
 ```
 

@@ -541,7 +541,7 @@ public partial class IsKnownNonSdkMessageTests
         // 사용자 클래스명 'AppsInTossStorageManager'가 단어 경계 없이 붙어 키워드 가드를 우회하므로
         // Assets/ + .cs(L,C) 합성으로 좁혀 매칭.
         Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
-            "Assets\\ArrowPuzzle\\Scripts\\AppsInToss\\AppsInTossStorageManager.WeeklyLeague.cs(89,31): warning CS0067: The event 'AppsInTossStorageManager.WeeklyLeagueResultStateChanged' is never used"));
+            "Assets\\MyGame\\Scripts\\AppsInToss\\AppsInTossStorageManager.Ranking.cs(89,31): warning CS0067: The event 'AppsInTossStorageManager.RankingResultStateChanged' is never used"));
     }
 
     [Test]

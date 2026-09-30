@@ -777,8 +777,8 @@ namespace AppsInToss.Editor.ErrorTracker
                 return true;
 
             // 사용자 코드의 미사용 이벤트 선언 경고 (CS0067) — Unity 컴파일러가 직접 출력.
-            // 예: "Assets\ArrowPuzzle\Scripts\AppsInToss\AppsInTossStorageManager.WeeklyLeague.cs(89,31):
-            //       warning CS0067: The event 'AppsInTossStorageManager.WeeklyLeagueResultStateChanged' is never used"
+            // 예: "Assets\MyGame\Scripts\AppsInToss\AppsInTossStorageManager.Ranking.cs(89,31):
+            //       warning CS0067: The event 'AppsInTossStorageManager.RankingResultStateChanged' is never used"
             // Sentry APPS-IN-TOSS-UNITY-SDK-1A3.
             // 사용자 클래스명(AppsInTossStorageManager)에 'AppsInToss' 토큰이 포함돼 SDK 키워드 가드가
             // 발동하므로 CS1998/CS0618과 동일하게 가드보다 먼저 매칭한다(Assets/ 경로 + .cs(L,C) 패턴).

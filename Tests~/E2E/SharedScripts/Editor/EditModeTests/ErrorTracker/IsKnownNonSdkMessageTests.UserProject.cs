@@ -346,7 +346,7 @@ public partial class IsKnownNonSdkMessageTests
         // SDK는 "[WebGL]" prefix를 사용하지 않음.
         Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
             "[WebGL] unity-webview.js source not found: " +
-            "/Users/ad03148361/jenkins_workspace/attack-web/Assets/WebGLTemplates/Fill/TemplateData/unity-webview.js"));
+            "/Users/dev/jenkins_workspace/my-game/Assets/WebGLTemplates/Fill/TemplateData/unity-webview.js"));
     }
 
     [Test]
@@ -357,7 +357,7 @@ public partial class IsKnownNonSdkMessageTests
         // 패턴이 prefix 유무와 무관하게 그대로 매칭한다.
         Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
             "UnityWarning: [WebGL] unity-webview.js source not found: " +
-            "/Users/ad03148361/jenkins_workspace/attack-web/Assets/WebGLTemplates/Fill/TemplateData/unity-webview.js"));
+            "/Users/dev/jenkins_workspace/my-game/Assets/WebGLTemplates/Fill/TemplateData/unity-webview.js"));
     }
 
     [Test]

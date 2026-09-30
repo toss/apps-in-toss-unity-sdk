@@ -192,7 +192,7 @@ public partial class IsKnownNonSdkMessageTests
         // 위 140 composite AND 가드는 파일명을 특정하지 않고 warning CS0414 + Assets 경로 + .cs(L,C)로
         // 일반화돼 있어 이 메시지도 이미 매칭한다(회귀 확인용, 새 패턴 불필요).
         Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
-            "UnityWarning: Assets\\ArrowPuzzle\\Scripts\\AppsInToss\\AppsInTossStorageManager.cs(159,49): warning CS0414: The field 'AppsInTossStorageManager.timeoutSeconds' is assigned but its value is never used"));
+            "UnityWarning: Assets\\MyGame\\Scripts\\AppsInToss\\AppsInTossStorageManager.cs(159,49): warning CS0414: The field 'AppsInTossStorageManager.timeoutSeconds' is assigned but its value is never used"));
     }
 
     [Test]
@@ -201,7 +201,7 @@ public partial class IsKnownNonSdkMessageTests
         // Sentry APPS-IN-TOSS-UNITY-SDK-15S — 사용자 스크립트 AppsInTossIAPManager.cs의 CS0414 경고.
         // 동일하게 140 composite AND 가드가 파일명 무관하게 이미 매칭한다(회귀 확인용, 새 패턴 불필요).
         Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
-            "UnityWarning: Assets\\ArrowPuzzle\\Scripts\\AppsInToss\\AppsInTossIAPManager.cs(18,49): warning CS0414: The field 'AppsInTossIAPManager.purchaseResultTimeoutSeconds' is assigned but its value is never used"));
+            "UnityWarning: Assets\\MyGame\\Scripts\\AppsInToss\\AppsInTossIAPManager.cs(18,49): warning CS0414: The field 'AppsInTossIAPManager.purchaseResultTimeoutSeconds' is assigned but its value is never used"));
     }
 
     #endregion

@@ -60,7 +60,7 @@ Editor/
 ├── AITBuildValidator.cs      빌드 전 설정 검증
 ├── AITBuildSession.cs        빌드 세션 상태
 ├── AITBuildSessionRecovery.cs  도메인 리로드 후 복원
-├── AITConfigurationWindow.cs   설정 창 (AIT > Configuration)
+├── AITConfigurationWindow*.cs  설정 창 (AIT > Configuration, partial: BuildProfiles/WebGLSettings/AdvancedSettings)
 ├── AITEditorScriptObject.cs    설정 ScriptableObject와 기본값
 ├── AITNodeJSDownloader.cs      내장 Node.js 설치
 ├── AITNpmRunner.cs             패키지 매니저 실행
@@ -79,6 +79,8 @@ Editor/
 │   └── WebGLBuildCopier.cs
 └── Sentry/                     빌드 시 DSN 주입
 ```
+
+대형 Editor 클래스는 `<Type>.<영역>.cs` partial로 나눈다. 기본 파일(클래스명과 같은 이름)이 GUID·필드·static 상태·클래스 속성을 소유한다.
 
 ## WebGLTemplates
 

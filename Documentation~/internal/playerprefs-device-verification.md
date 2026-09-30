@@ -84,7 +84,7 @@ macos-2021.3   ← 최소 지원 버전, 순정 IDBFS 세션 노화 결함 재�
 
 - **A**: `WebGLTemplates/AITTemplate/Runtime/ait-playerprefs.js`의 `MAX_MANIFEST_CHARS` 상수.
 - **B**: 필요 시 `Runtime/Helpers/AIT.VisibilityHelper.cs` 부근에 강제 Save 헬퍼 추가.
-- **C**: 포털 PlayerPrefs 문서의 알려진 이슈 절(GitBook change request), 필요 시 `AITConfigurationWindow.cs`의 툴팁 보강.
+- **C**: 포털 PlayerPrefs 문서의 알려진 이슈 절(GitBook change request), 필요 시 `AITConfigurationWindow.WebGLSettings.cs`의 툴팁 보강.
 - 실측이 완료되어 해당 TODO 항목의 불확실성이 해소되면, `TODO.md`에서 해당 항목을 코드 근거와 함께 통째로 제거합니다(취소선 처리 금지 — 저장소 정책).
 
 ## 관련 문서
